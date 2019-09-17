@@ -1,4 +1,4 @@
-<img src="http://github.com/didichuxing/go-spring/raw/master/go-spring.png" width="55" height="98" />
+<img src="https://raw.githubusercontent.com/didichuxing/go-spring/master/go-spring.png?token=ACFOLQHI4AIOHMUXXVBYCSK5RIDHU" width="200" height="*" />
 <br/>Go-Spring 是模仿 Java 的 Spring 全家桶实现的一套 GoLang 的应用程序框架，
 仍然遵循“习惯优于配置”的原则，提供了依赖注入、自动配置、开箱即用、丰富的第三
 方类库集成等功能，能够让程序员少写很多的样板代码。
@@ -93,4 +93,4 @@ TODO
 
 ### QQ 交流群
 
-<img src="http://github.com/didichuxing/go-spring/raw/master/qq.png" width="55" height="98" />
+<img src="https://raw.githubusercontent.com/didichuxing/go-spring/master/qq.png?token=ACFOLQD3TYNQR4IHHK6AKSK5RIDRY" width="140" height="*" />
