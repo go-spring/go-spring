@@ -1,8 +1,25 @@
-# Go-Spring
-
-Go-Spring 是模仿 Java 的 Spring 全家桶实现的一套 GoLang 的应用程序框架，
+<img src="https://fukuoka.gocon.jp/_nuxt/img/8dfd0c4.png" width="55" height="98" />
+<br/>Go-Spring 是模仿 Java 的 Spring 全家桶实现的一套 GoLang 的应用程序框架，
 仍然遵循“习惯优于配置”的原则，提供了依赖注入、自动配置、开箱即用、丰富的第三
 方类库集成等功能，能够让程序员少写很多的样板代码。
+
+### 模块介绍
+
+完整的 go-spring 项目一共包含 6 个模块，当前模块仅实现了基础的 IOC 容器
+的能力，该模块可以独立使用，但是配合其他模块才能使得效率最大化。其他模块发布
+在 https://github.com/go-spring 仓库下。下面是所有模块的列表：
+
+1、程序启动框架  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;AppRunner  
+2、核心功能模块  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;GoSpring  
+3、启动器核心组件  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;GoSpringBoot  
+4、开源微服务组件  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;GoSpringCloud  
+5、多个项目启动器  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;GoSpringBootStarter  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;GoSpringCloudStarter  
 
 ### 项目特点
 
@@ -54,3 +71,26 @@ Go-Spring 是模仿 Java 的 Spring 全家桶实现的一套 GoLang 的应用程
 11. 定制 banner
 12. 属性支持占位符，松散绑定等高级特性 …
 
+### 1.0 版本目标
+
+TODO
+
+### 示例
+
+https://github.com/go-spring
+
+### 相关文档
+
+TODO
+
+### 项目成员
+
+#### 发起者/负责人
+
+[lvan100 (LiangHuan)](https://github.com/lvan100)
+
+如何成为外部贡献者？ 提交有意义的PR，并被采纳。
+
+### QQ 交流群
+
+<img src="https://fukuoka.gocon.jp/_nuxt/img/8dfd0c4.png" width="55" height="98" />
