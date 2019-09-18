@@ -19,7 +19,7 @@ package SpringEcho
 import (
 	"context"
 	"github.com/labstack/echo"
-	"github.com/didichuxing/go-spring/spring-web"
+	"github.com/didi/go-spring/spring-web"
 )
 
 //

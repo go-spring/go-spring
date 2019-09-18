@@ -22,7 +22,7 @@ import (
 	"time"
 	"fmt"
 	"github.com/sirupsen/logrus"
-	"github.com/didichuxing/go-spring/spring-logger"
+	"github.com/didi/go-spring/spring-logger"
 )
 
 type NullOutput struct {

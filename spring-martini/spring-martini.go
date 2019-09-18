@@ -20,7 +20,7 @@ import (
 	"context"
 	"net/http"
 	"github.com/go-martini/martini"
-	"github.com/didichuxing/go-spring/spring-web"
+	"github.com/didi/go-spring/spring-web"
 )
 
 //

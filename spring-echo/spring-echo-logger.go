@@ -28,7 +28,7 @@ import (
 	"fmt"
 	"github.com/labstack/echo"
 	"github.com/valyala/fasttemplate"
-	Logger "github.com/didichuxing/go-spring/spring-logger"
+	Logger "github.com/didi/go-spring/spring-logger"
 )
 
 type (

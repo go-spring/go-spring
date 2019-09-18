@@ -18,8 +18,8 @@ package SpringGoRedis
 
 import (
 	"github.com/go-redis/redis"
-	"github.com/didichuxing/go-spring/spring-core"
-	Logger "github.com/didichuxing/go-spring/spring-logger"
+	"github.com/didi/go-spring/spring-core"
+	Logger "github.com/didi/go-spring/spring-logger"
 )
 
 type GoRedisTemplate struct {

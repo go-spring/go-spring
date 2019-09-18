@@ -25,8 +25,8 @@ import (
 	"crypto/tls"
 	"encoding/xml"
 	"context"
-	"github.com/didichuxing/go-spring/spring-rpc"
-	Logger "github.com/didichuxing/go-spring/spring-logger"
+	"github.com/didi/go-spring/spring-rpc"
+	Logger "github.com/didi/go-spring/spring-logger"
 )
 
 //

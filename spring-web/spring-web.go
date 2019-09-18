@@ -20,7 +20,7 @@ import (
 	"net/http"
 	"encoding/json"
 	"runtime/debug"
-	Logger "github.com/didichuxing/go-spring/spring-logger"
+	Logger "github.com/didi/go-spring/spring-logger"
 )
 
 //

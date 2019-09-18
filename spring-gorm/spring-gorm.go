@@ -17,7 +17,7 @@
 package SpringGOrm
 
 import (
-	"github.com/didichuxing/go-spring/spring-core"
+	"github.com/didi/go-spring/spring-core"
 )
 
 type GOrmMySqlTemplate struct {

@@ -19,7 +19,7 @@ package SpringHttp
 import (
 	"net/http"
 	"context"
-	"github.com/didichuxing/go-spring/spring-web"
+	"github.com/didi/go-spring/spring-web"
 )
 
 //

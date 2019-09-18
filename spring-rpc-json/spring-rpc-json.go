@@ -25,7 +25,7 @@ import (
 	"strings"
 	"encoding/xml"
 	"errors"
-	"github.com/didichuxing/go-spring/spring-rpc"
+	"github.com/didi/go-spring/spring-rpc"
 )
 
 //
