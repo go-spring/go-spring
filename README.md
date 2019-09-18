@@ -1,13 +1,10 @@
-<img src="https://raw.githubusercontent.com/didichuxing/go-spring/master/go-spring.png?token=ACFOLQHI4AIOHMUXXVBYCSK5RIDHU" width="200" height="*" />
-<br/>Go-Spring 是模仿 Java 的 Spring 全家桶实现的一套 GoLang 的应用程序框架，
-仍然遵循“习惯优于配置”的原则，提供了依赖注入、自动配置、开箱即用、丰富的第三
-方类库集成等功能，能够让程序员少写很多的样板代码。
+# Go-Spring
+
+是模仿 Java 的 Spring 全家桶实现的一套 GoLang 的应用程序框架，仍然遵循“习惯优于配置”的原则，提供了依赖注入、自动配置、开箱即用、丰富的第三方类库集成等功能，能够让程序员少写很多的样板代码。
 
 ### 模块介绍
 
-完整的 go-spring 项目一共包含 6 个模块，当前模块仅实现了基础的 IOC 容器
-的能力，该模块可以独立使用，但是配合其他模块才能使得效率最大化。其他模块发布
-在 https://github.com/go-spring 仓库下。下面是所有模块的列表：
+完整的 go-spring 项目一共包含 6 个模块，当前模块仅实现了基础的 IOC 容器的能力，该模块可以独立使用，但是配合其他模块才能使得效率最大化。其他模块发布在 https://github.com/go-spring 仓库下。下面是所有模块的列表：
 
 1、程序启动框架  
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;AppRunner  
@@ -93,4 +90,8 @@ TODO
 
 ### QQ 交流群
 
-<img src="https://raw.githubusercontent.com/didichuxing/go-spring/master/qq.png?token=ACFOLQD3TYNQR4IHHK6AKSK5RIDRY" width="140" height="*" />
+<img src="https://raw.githubusercontent.com/go-spring/go-spring-website/master/qq.png" width="140" height="*" />
+
+### Note
+
+This is not an official Didi product (experimental or otherwise), it is just code that happens to be owned by Didi.
