@@ -2,6 +2,7 @@ module github.com/didi/go-spring
 
 require (
 	github.com/codegangsta/inject v0.0.0-20150114235600-33e0aa1cb7c0 // indirect
+	github.com/gin-gonic/gin v1.4.0
 	github.com/go-martini/martini v0.0.0-20170121215854-22fa46961aab
 	github.com/go-redis/redis v6.15.5+incompatible
 	github.com/labstack/echo v3.3.10+incompatible
