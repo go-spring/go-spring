@@ -26,7 +26,13 @@ Go-Spring 有两个仓库，一个是实现 IoC 容器特性的主项目所在�
 
 ### Go-Spring 1.0 目标
 
-实现完善的 IoC 容器功能，支持数组对象注入，支持更多类型的属性绑定；
+实现完善的 IoC 容器功能，支持数组对象注入，支持更多类型的属性绑定，可能会支持 Bean 设置顺序；
+
+SpringWeb: 为 Echo、Gin 等社区流行的 Go Web 服务实现一个抽象层，目前 SpringWeb 和 SpringRPC 的功能重合，未来 SpringWeb 的接口会重构，更贴近现有的 Web 服务的接口；
+
+SpringRPC: 为 Http、Thrift、gRPC、Dubbo 等社区流行的 RPC 服务实现一个抽象层，现在项目中有一个示例，可以证明通过 SpringRpcContext 有机会将上层接口统一；
+
+SpringLog: 为一般日志场景和微服务所需的 Trace 场景提供日志支持，目前规划实现一个 TraceContext 结构，内部包含一个 context.Context 对象，一个 Trace 对象，并且实现 Log 接口，还提供一个 CopyTrace 方法。
 
 TODO
 
