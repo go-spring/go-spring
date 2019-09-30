@@ -28,7 +28,8 @@ func CheckError(err error) {
 }
 
 //
-// 检查变量是否不为空，如果为空，则触发 panic 。
+// 检查变量是否不为空，如果为空，则触发 panic 。TODO 请仔细验证该函数的效果，
+// 参见 https://github.com/didi/go-spring/issues/9 的讨论。
 //
 func CheckNotNull(i interface{}) {
 	if i == nil {
