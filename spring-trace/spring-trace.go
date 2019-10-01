@@ -27,105 +27,171 @@ import (
 // 带 Trace 功能的 Context 对象
 //
 type TraceContext interface {
-	SpringLogger.SimpleLogger
+	SpringLogger.StdLogger
+
+	// kvs 实际上是 map[string]string 展开
+	Logger(kvs ... string) SpringLogger.StdLogger
 }
+
+//
+// 将日志输出到控制台
+//
+var console Console
 
 //
 // 默认的 TraceContext 版本
 //
 type DefaultTraceContext struct {
-	ctx    context.Context
-	logger SpringLogger.ContextLogger
+	ctx context.Context
+
+	// 获取一个标准的 Logger 接口, kvs 实际上是 map[string]string 展开
+	logger func(ctx context.Context, kvs ... string) SpringLogger.StdLogger
 }
 
 //
 // 工厂函数
 //
-func NewDefaultTraceContext(ctx context.Context, logger SpringLogger.ContextLogger) *DefaultTraceContext {
+func NewDefaultTraceContext(ctx context.Context, logger func(ctx context.Context, kvs ... string) SpringLogger.StdLogger) *DefaultTraceContext {
 	return &DefaultTraceContext{
 		ctx:    ctx,
 		logger: logger,
 	}
 }
 
+func (c *DefaultTraceContext) Logger(kvs ... string) SpringLogger.StdLogger {
+	if c.logger != nil {
+		return c.logger(c.ctx, kvs...)
+	} else {
+		return &console
+	}
+}
+
 func (c *DefaultTraceContext) Debugf(format string, args ...interface{}) {
 	if c.logger != nil {
-		c.logger.Debugf(c.ctx, format+"\n", args...)
+		c.logger(c.ctx).Debugf(format, args...)
 	} else {
-		fmt.Printf(format+"\n", args...)
+		console.Debugf(format, args...)
 	}
 }
 
 func (c *DefaultTraceContext) Debug(args ...interface{}) {
 	if c.logger != nil {
-		c.logger.Debug(c.ctx, args...)
+		c.logger(c.ctx).Debug(args...)
 	} else {
-		fmt.Println(args...)
+		console.Debug(args...)
 	}
 }
 
 func (c *DefaultTraceContext) Infof(format string, args ...interface{}) {
 	if c.logger != nil {
-		c.logger.Infof(c.ctx, format+"\n", args...)
+		c.logger(c.ctx).Infof(format, args...)
 	} else {
-		fmt.Printf(format+"\n", args...)
+		console.Infof(format, args...)
 	}
 }
 
 func (c *DefaultTraceContext) Info(args ...interface{}) {
 	if c.logger != nil {
-		c.logger.Info(c.ctx, args...)
+		c.logger(c.ctx).Info(args...)
 	} else {
-		fmt.Println(args...)
+		console.Info(args...)
 	}
 }
 
 func (c *DefaultTraceContext) Warnf(format string, args ...interface{}) {
 	if c.logger != nil {
-		c.logger.Warnf(c.ctx, format+"\n", args...)
+		c.logger(c.ctx).Warnf(format, args...)
 	} else {
-		fmt.Printf(format+"\n", args...)
+		console.Warnf(format, args...)
 	}
 }
 
 func (c *DefaultTraceContext) Warn(args ...interface{}) {
 	if c.logger != nil {
-		c.logger.Warn(c.ctx, args...)
+		c.logger(c.ctx).Warn(args...)
 	} else {
-		fmt.Println(args...)
+		console.Warn(args...)
 	}
 }
 
 func (c *DefaultTraceContext) Errorf(format string, args ...interface{}) {
 	if c.logger != nil {
-		c.logger.Errorf(c.ctx, format+"\n", args...)
+		c.logger(c.ctx).Errorf(format, args...)
 	} else {
-		fmt.Printf(format+"\n", args...)
+		console.Errorf(format, args...)
 	}
 }
 
 func (c *DefaultTraceContext) Error(args ...interface{}) {
 	if c.logger != nil {
-		c.logger.Error(c.ctx, args...)
+		c.logger(c.ctx).Error(args...)
 	} else {
-		fmt.Println(args...)
+		console.Error(args...)
 	}
 }
 
 func (c *DefaultTraceContext) Fatalf(format string, args ...interface{}) {
 	if c.logger != nil {
-		c.logger.Fatalf(c.ctx, format+"\n", args...)
+		c.logger(c.ctx).Fatalf(format, args...)
 	} else {
-		fmt.Printf(format+"\n", args...)
+		console.Fatalf(format, args...)
 		os.Exit(0)
 	}
 }
 
 func (c *DefaultTraceContext) Fatal(args ...interface{}) {
 	if c.logger != nil {
-		c.logger.Fatal(c.ctx, args...)
+		c.logger(c.ctx).Fatal(args...)
 	} else {
-		fmt.Println(args...)
+		console.Fatal(args...)
 		os.Exit(0)
 	}
+}
+
+//
+// 控制台打印
+//
+type Console struct {
+}
+
+func (c *Console) Debugf(format string, args ...interface{}) {
+	fmt.Printf(format+"\n", args...)
+}
+
+func (c *Console) Debug(args ...interface{}) {
+	fmt.Println(args...)
+}
+
+func (c *Console) Infof(format string, args ...interface{}) {
+	fmt.Printf(format+"\n", args...)
+}
+
+func (c *Console) Info(args ...interface{}) {
+	fmt.Println(args...)
+}
+
+func (c *Console) Warnf(format string, args ...interface{}) {
+	fmt.Printf(format+"\n", args...)
+}
+
+func (c *Console) Warn(args ...interface{}) {
+	fmt.Println(args...)
+}
+
+func (c *Console) Errorf(format string, args ...interface{}) {
+	fmt.Printf(format+"\n", args...)
+}
+
+func (c *Console) Error(args ...interface{}) {
+	fmt.Println(args...)
+}
+
+func (c *Console) Fatalf(format string, args ...interface{}) {
+	fmt.Printf(format+"\n", args...)
+	os.Exit(0)
+}
+
+func (c *Console) Fatal(args ...interface{}) {
+	fmt.Println(args...)
+	os.Exit(0)
 }

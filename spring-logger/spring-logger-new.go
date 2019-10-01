@@ -16,12 +16,10 @@
 
 package SpringLogger
 
-import "context"
-
 //
-// 标准版的 Logger 接口
+// 标准的 Logger 接口
 //
-type SimpleLogger interface {
+type StdLogger interface {
 	Debug(args ...interface{})
 	Debugf(format string, args ...interface{})
 
@@ -36,24 +34,4 @@ type SimpleLogger interface {
 
 	Fatal(args ...interface{})
 	Fatalf(format string, args ...interface{})
-}
-
-//
-// 扩展板的 Logger 接口
-//
-type ContextLogger interface {
-	Debug(ctx context.Context, args ...interface{})
-	Debugf(ctx context.Context, format string, args ...interface{})
-
-	Info(ctx context.Context, args ...interface{})
-	Infof(ctx context.Context, format string, args ...interface{})
-
-	Warn(ctx context.Context, args ...interface{})
-	Warnf(ctx context.Context, format string, args ...interface{})
-
-	Error(ctx context.Context, args ...interface{})
-	Errorf(ctx context.Context, format string, args ...interface{})
-
-	Fatal(ctx context.Context, args ...interface{})
-	Fatalf(ctx context.Context, format string, args ...interface{})
 }
