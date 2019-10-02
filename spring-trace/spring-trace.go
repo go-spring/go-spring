@@ -29,6 +29,9 @@ import (
 type TraceContext interface {
 	SpringLogger.StdLogger
 
+	// 获取标准的 Context 对象
+	Context() context.Context
+
 	// kvs 实际上是 map[string]string 展开
 	Logger(kvs ... string) SpringLogger.StdLogger
 }
@@ -56,6 +59,10 @@ func NewDefaultTraceContext(ctx context.Context, logger func(ctx context.Context
 		ctx:    ctx,
 		logger: logger,
 	}
+}
+
+func (c *DefaultTraceContext) Context() context.Context {
+	return c.ctx
 }
 
 func (c *DefaultTraceContext) Logger(kvs ... string) SpringLogger.StdLogger {
