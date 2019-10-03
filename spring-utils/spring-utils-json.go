@@ -14,22 +14,14 @@
  * limitations under the License.
  */
 
-package SpringRpc
+package SpringUtils
 
-import (
-	"fmt"
-	"errors"
-	"testing"
-	"github.com/didi/go-spring/spring-utils"
-)
+import "encoding/json"
 
-func TestRpcPanic(t *testing.T) {
-
-	defer func() {
-		err := recover()
-		fmt.Println(SpringUtils.ToJson(err))
-	}()
-
-	err := errors.New("whatever")
-	ERROR.Panic(err).When(err != nil)
+func ToJson(i interface{}) string {
+	if bytes, err := json.Marshal(i); err != nil {
+		return ""
+	} else {
+		return string(bytes)
+	}
 }

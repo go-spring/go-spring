@@ -35,3 +35,23 @@ type StdLogger interface {
 	Fatal(args ...interface{})
 	Fatalf(format string, args ...interface{})
 }
+
+//
+// 带前缀名的 Logger 接口
+//
+type PrefixLogger interface {
+	LogDebug(args ...interface{})
+	LogDebugf(format string, args ...interface{})
+
+	LogInfo(args ...interface{})
+	LogInfof(format string, args ...interface{})
+
+	LogWarn(args ...interface{})
+	LogWarnf(format string, args ...interface{})
+
+	LogError(args ...interface{})
+	LogErrorf(format string, args ...interface{})
+
+	LogFatal(args ...interface{})
+	LogFatalf(format string, args ...interface{})
+}

@@ -17,143 +17,206 @@
 package SpringWeb
 
 import (
+	"io"
+	"net/url"
 	"net/http"
-	"encoding/json"
-	"runtime/debug"
-	Logger "github.com/didi/go-spring/spring-logger"
+	"mime/multipart"
+	"github.com/didi/go-spring/spring-trace"
 )
 
-//
-// 错误值
-//
-type Error struct {
-	Code int32  `json:"code"`
-	Msg  string `json:"msg"`
-}
-
-var (
-	ERROR   = Error{-1, "ERROR"}
-	SUCCESS = Error{200, "SUCCESS"}
-)
+type Handler func(WebContext)
 
 //
-// 返回值类型
+// Web 上下文接口，设计理念：为社区 top3 的 web 服务器提供一个抽象层，使得底层
+// 可以灵活切换，因此在功能上优先取这些服务器功能的交集，同时提供获取底层对象的接
+// 口，以便在框架不能满足用户要求的时候使用底层框架的能力，当然这种功能要慎用。
 //
-type RpcResult struct {
-	Error
+type WebContext interface {
+	/////////////////////////////////////////
+	// 通用能力部分
 
-	Data interface{} `json:"data,omitempty"`
+	SpringTrace.TraceContext
+
+	// 获取封装的底层上下文对象
+	NativeContext() interface{}
+
+	// Get retrieves data from the context.
+	Get(key string) interface{}
+
+	// Set saves data in the context.
+	Set(key string, val interface{})
+
+	/////////////////////////////////////////
+	// Request Part
+
+	// Request returns `*http.Request`.
+	Request() *http.Request
+
+	// IsTLS returns true if HTTP connection is TLS otherwise false.
+	IsTLS() bool
+
+	// IsWebSocket returns true if HTTP connection is WebSocket otherwise false.
+	IsWebSocket() bool
+
+	// Scheme returns the HTTP protocol scheme, `http` or `https`.
+	Scheme() string
+
+	// ClientIP implements a best effort algorithm to return the real client IP, it parses
+	// X-Real-IP and X-Forwarded-For in order to work properly with reverse-proxies such us: nginx or haproxy.
+	// Use X-Forwarded-For before X-Real-Ip as nginx uses X-Real-Ip with the proxy's IP.
+	ClientIP() string
+
+	// Path returns the registered path for the handler.
+	Path() string
+
+	// Handler returns the matched handler by router.
+	Handler() Handler
+
+	// ContentType returns the Content-Type header of the request.
+	ContentType() string
+
+	// GetHeader returns value from request headers.
+	GetHeader(key string) string
+
+	// GetRawData return stream data.
+	GetRawData() ([]byte, error)
+
+	// Param returns path parameter by name.
+	Param(name string) string
+
+	// ParamNames returns path parameter names.
+	ParamNames() []string
+
+	// ParamValues returns path parameter values.
+	ParamValues() []string
+
+	// QueryParam returns the query param for the provided name.
+	QueryParam(name string) string
+
+	// QueryParams returns the query parameters as `url.Values`.
+	QueryParams() url.Values
+
+	// QueryString returns the URL query string.
+	QueryString() string
+
+	// FormValue returns the form field value for the provided name.
+	FormValue(name string) string
+
+	// FormParams returns the form parameters as `url.Values`.
+	FormParams() (url.Values, error)
+
+	// FormFile returns the multipart form file for the provided name.
+	FormFile(name string) (*multipart.FileHeader, error)
+
+	// MultipartForm returns the multipart form.
+	MultipartForm() (*multipart.Form, error)
+
+	// Cookie returns the named cookie provided in the request.
+	Cookie(name string) (*http.Cookie, error)
+
+	// Cookies returns the HTTP cookies sent with the request.
+	Cookies() []*http.Cookie
+
+	// Bind binds the request body into provided type `i`. The default binder
+	// does it based on Content-Type header.
+	Bind(i interface{}) error
+
+	/////////////////////////////////////////
+	// Response Part
+
+	// Header is a intelligent shortcut for c.Writer.Header().Set(key, value).
+	// It writes a header in the response.
+	// If value == "", this method removes the header `c.Writer.Header().Del(key)`
+	Header(key, value string)
+
+	// SetAccepted sets Accept header data.
+	SetAccepted(formats ...string)
+
+	// Render renders a template with data and sends a text/html response with status
+	// code. Renderer must be registered using `Echo.Renderer`.
+	Render(code int, name string, data interface{}) error
+
+	// HTML sends an HTTP response with status code.
+	HTML(code int, html string) error
+
+	// HTMLBlob sends an HTTP blob response with status code.
+	HTMLBlob(code int, b []byte) error
+
+	// String writes the given string into the response body.
+	String(code int, format string, values ...interface{})
+
+	// JSON sends a JSON response with status code.
+	JSON(code int, i interface{}) error
+
+	// JSONPretty sends a pretty-print JSON with status code.
+	JSONPretty(code int, i interface{}, indent string) error
+
+	// JSONBlob sends a JSON blob response with status code.
+	JSONBlob(code int, b []byte) error
+
+	// JSONP sends a JSONP response with status code. It uses `callback` to construct
+	// the JSONP payload.
+	JSONP(code int, callback string, i interface{}) error
+
+	// JSONPBlob sends a JSONP blob response with status code. It uses `callback`
+	// to construct the JSONP payload.
+	JSONPBlob(code int, callback string, b []byte) error
+
+	// XML sends an XML response with status code.
+	XML(code int, i interface{}) error
+
+	// XMLPretty sends a pretty-print XML with status code.
+	XMLPretty(code int, i interface{}, indent string) error
+
+	// XMLBlob sends an XML blob response with status code.
+	XMLBlob(code int, b []byte) error
+
+	// Blob sends a blob response with status code and content type.
+	Blob(code int, contentType string, b []byte) error
+
+	// Stream sends a streaming response with status code and content type.
+	Stream(code int, contentType string, r io.Reader) error
+
+	// File sends a response with the content of the file.
+	File(file string) error
+
+	// Attachment sends a response as attachment, prompting client to save the
+	// file.
+	Attachment(file string, name string) error
+
+	// Inline sends a response as inline, opening the file in the browser.
+	Inline(file string, name string) error
+
+	// NoContent sends a response with no body and a status code.
+	NoContent(code int) error
+
+	// Redirect redirects the request to a provided URL with status code.
+	Redirect(code int, url string) error
+
+	// Error invokes the registered HTTP error handler. Generally used by middleware.
+	Error(err error)
+
+	// Data writes some data into the body stream and updates the HTTP code.
+	Data(code int, contentType string, data []byte)
+
+	// SSEvent writes a Server-Sent Event into the body stream.
+	SSEvent(name string, message interface{})
+
+	// SetCookie adds a `Set-Cookie` header in HTTP response.
+	SetCookie(cookie *http.Cookie)
 }
-
-type Handler func(*SpringWebContext) interface{}
 
 //
-// 封装的路由器
-//
-type WebRouter struct {
-	root string
-	wc   WebContainer
-}
-
-func NewWebRouter(wc WebContainer, root string) *WebRouter {
-	return &WebRouter{
-		wc:   wc,
-		root: root,
-	}
-}
-
-func (r *WebRouter) Router(path string) *WebRouter {
-	return &WebRouter{
-		wc:   r.wc,
-		root: r.root + path,
-	}
-}
-
-func (r *WebRouter) GET(path string, fn Handler, tags ...string) {
-	r.wc.GET(r.root+path, fn, tags...)
-}
-
-func (r *WebRouter) POST(path string, fn Handler, tags ...string) {
-	r.wc.POST(r.root+path, fn, tags...)
-}
-
-//
-// 容器接口
+// Web 容器接口
 //
 type WebContainer interface {
-	Stop()
-
-	Start(address string) error
-	StartTLS(address string, certFile, keyFile string) error
-
-	Router(path string) *WebRouter
-
-	GET(path string, fn Handler, tags ...string)
-	POST(path string, fn Handler, tags ...string)
+	GET(path string, fn Handler)
+	POST(path string, fn Handler)
 }
 
 //
-// 容器上下文
+// Web Bean 初始化接口
 //
-type SpringWebContext struct {
-	R *http.Request
-	W http.ResponseWriter
-}
-
-func (context *SpringWebContext) Bind(i interface{}) error {
-	bytes := make([]byte, context.R.ContentLength)
-	context.R.Body.Read(bytes)
-	return json.Unmarshal(bytes, i)
-}
-
-func (context *SpringWebContext) Json(i interface{}) error {
-	bytes, err := json.MarshalIndent(i, "", "  ")
-	_, err = context.W.Write(bytes)
-	return err
-}
-
-func (context *SpringWebContext) Write(b []byte) error {
-	_, err := context.W.Write(b)
-	return err
-}
-
-//
-// 直接回复响应
-//
-const DirectResponse = "direct response"
-
-//
-// 包装处理器
-//
-type HandlerWrapper struct {
-	Fn Handler
-}
-
-func (handler *HandlerWrapper) Handler(w http.ResponseWriter, r *http.Request) {
-
-	ctx := &SpringWebContext{W: w, R: r}
-
-	defer func() {
-		if err := recover(); err != nil {
-			Logger.Errorln(string(debug.Stack()))
-			ctx.Json(err)
-		}
-	}()
-
-	data := handler.Fn(ctx)
-
-	if str, ok := data.(string); ok {
-		if str != DirectResponse {
-			ctx.Write([]byte(str))
-		}
-	} else {
-		ctx.Json(&RpcResult{SUCCESS, data})
-	}
-}
-
-//
-// 初始化 Spring Controller
-//
-type SpringControllerInitialization interface {
-	InitController(c WebContainer)
+type WebBeanInitialization interface {
+	InitWebBean(c WebContainer)
 }

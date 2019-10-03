@@ -17,7 +17,6 @@
 package SpringRpc
 
 import (
-	"encoding/json"
 	"github.com/didi/go-spring/spring-trace"
 )
 
@@ -25,8 +24,8 @@ import (
 // RPC 错误值
 //
 type RpcError struct {
-	Code int32  `json:"code"` // 错误码
-	Msg  string `json:"msg"`  // 错误信息
+	Code int32  // 错误码
+	Msg  string // 错误信息
 }
 
 func (e *RpcError) Panic(err error) *RpcPanic {
@@ -62,8 +61,8 @@ var (
 type RpcResult struct {
 	*RpcError
 
-	Err  string      `json:"err"`  // 错误源
-	Data interface{} `json:"data"` // 返回值数据
+	Err  string      // 错误源
+	Data interface{} // 返回值数据
 }
 
 //
@@ -76,33 +75,34 @@ func NewRpcResult(e *RpcError, data interface{}) *RpcResult {
 	}
 }
 
-func (r *RpcResult) String() string {
-	b, _ := json.Marshal(r)
-	return string(b)
-}
-
 //
-// RPC 上下文
+// RPC 上下文，务必保持是 WebContext 的子集！
 //
 type RpcContext interface {
 	SpringTrace.TraceContext
 
 	Bind(i interface{}) error
+
+	// Get retrieves data from the context.
+	Get(key string) interface{}
+
+	// Set saves data in the context.
+	Set(key string, val interface{})
 }
 
 type Handler func(RpcContext) interface{}
 
+//
+// RPC 服务器
+//
 type RpcContainer interface {
-	Stop()
-
-	// 启动 RPC 服务器
-	Start(address string) error
-	StartTLS(address string, certFile, keyFile string) error
-
 	// 注册 RPC 方法（服务名+方法名）
 	Register(service string, method string, fn Handler)
 }
 
+//
+// RPC Bean 初始化
+//
 type RpcBeanInitialization interface {
 	InitRpcBean(c RpcContainer)
 }

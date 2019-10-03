@@ -27,13 +27,13 @@ import (
 // 带 Trace 功能的 Context 对象
 //
 type TraceContext interface {
-	SpringLogger.StdLogger
+	SpringLogger.PrefixLogger
 
 	// 获取标准的 Context 对象
 	Context() context.Context
 
-	// kvs 实际上是 map[string]string 展开
-	Logger(kvs ... string) SpringLogger.StdLogger
+	// 获取一个标准的 Logger 接口
+	Logger(tags ... string) SpringLogger.StdLogger
 }
 
 //
@@ -45,110 +45,105 @@ var console Console
 // 默认的 TraceContext 版本
 //
 type DefaultTraceContext struct {
-	ctx context.Context
-
-	// 获取一个标准的 Logger 接口, kvs 实际上是 map[string]string 展开
-	logger func(ctx context.Context, kvs ... string) SpringLogger.StdLogger
+	ContextFunc func() context.Context
 }
 
 //
-// 工厂函数
+// 获取一个标准的 Logger 接口
 //
-func NewDefaultTraceContext(ctx context.Context, logger func(ctx context.Context, kvs ... string) SpringLogger.StdLogger) *DefaultTraceContext {
-	return &DefaultTraceContext{
-		ctx:    ctx,
-		logger: logger,
-	}
-}
+var Logger func(ctx context.Context, tags ... string) SpringLogger.StdLogger
 
 func (c *DefaultTraceContext) Context() context.Context {
-	return c.ctx
+	if c.ContextFunc != nil {
+		return c.ContextFunc()
+	}
+	return context.TODO()
 }
 
-func (c *DefaultTraceContext) Logger(kvs ... string) SpringLogger.StdLogger {
-	if c.logger != nil {
-		return c.logger(c.ctx, kvs...)
+func (c *DefaultTraceContext) Logger(tags ... string) SpringLogger.StdLogger {
+	if Logger != nil {
+		return Logger(c.Context(), tags...)
 	} else {
 		return &console
 	}
 }
 
-func (c *DefaultTraceContext) Debugf(format string, args ...interface{}) {
-	if c.logger != nil {
-		c.logger(c.ctx).Debugf(format, args...)
+func (c *DefaultTraceContext) LogDebugf(format string, args ...interface{}) {
+	if Logger != nil {
+		Logger(c.Context()).Debugf(format, args...)
 	} else {
 		console.Debugf(format, args...)
 	}
 }
 
-func (c *DefaultTraceContext) Debug(args ...interface{}) {
-	if c.logger != nil {
-		c.logger(c.ctx).Debug(args...)
+func (c *DefaultTraceContext) LogDebug(args ...interface{}) {
+	if Logger != nil {
+		Logger(c.Context()).Debug(args...)
 	} else {
 		console.Debug(args...)
 	}
 }
 
-func (c *DefaultTraceContext) Infof(format string, args ...interface{}) {
-	if c.logger != nil {
-		c.logger(c.ctx).Infof(format, args...)
+func (c *DefaultTraceContext) LogInfof(format string, args ...interface{}) {
+	if Logger != nil {
+		Logger(c.Context()).Infof(format, args...)
 	} else {
 		console.Infof(format, args...)
 	}
 }
 
-func (c *DefaultTraceContext) Info(args ...interface{}) {
-	if c.logger != nil {
-		c.logger(c.ctx).Info(args...)
+func (c *DefaultTraceContext) LogInfo(args ...interface{}) {
+	if Logger != nil {
+		Logger(c.Context()).Info(args...)
 	} else {
 		console.Info(args...)
 	}
 }
 
-func (c *DefaultTraceContext) Warnf(format string, args ...interface{}) {
-	if c.logger != nil {
-		c.logger(c.ctx).Warnf(format, args...)
+func (c *DefaultTraceContext) LogWarnf(format string, args ...interface{}) {
+	if Logger != nil {
+		Logger(c.Context()).Warnf(format, args...)
 	} else {
 		console.Warnf(format, args...)
 	}
 }
 
-func (c *DefaultTraceContext) Warn(args ...interface{}) {
-	if c.logger != nil {
-		c.logger(c.ctx).Warn(args...)
+func (c *DefaultTraceContext) LogWarn(args ...interface{}) {
+	if Logger != nil {
+		Logger(c.Context()).Warn(args...)
 	} else {
 		console.Warn(args...)
 	}
 }
 
-func (c *DefaultTraceContext) Errorf(format string, args ...interface{}) {
-	if c.logger != nil {
-		c.logger(c.ctx).Errorf(format, args...)
+func (c *DefaultTraceContext) LogErrorf(format string, args ...interface{}) {
+	if Logger != nil {
+		Logger(c.Context()).Errorf(format, args...)
 	} else {
 		console.Errorf(format, args...)
 	}
 }
 
-func (c *DefaultTraceContext) Error(args ...interface{}) {
-	if c.logger != nil {
-		c.logger(c.ctx).Error(args...)
+func (c *DefaultTraceContext) LogError(args ...interface{}) {
+	if Logger != nil {
+		Logger(c.Context()).Error(args...)
 	} else {
 		console.Error(args...)
 	}
 }
 
-func (c *DefaultTraceContext) Fatalf(format string, args ...interface{}) {
-	if c.logger != nil {
-		c.logger(c.ctx).Fatalf(format, args...)
+func (c *DefaultTraceContext) LogFatalf(format string, args ...interface{}) {
+	if Logger != nil {
+		Logger(c.Context()).Fatalf(format, args...)
 	} else {
 		console.Fatalf(format, args...)
 		os.Exit(0)
 	}
 }
 
-func (c *DefaultTraceContext) Fatal(args ...interface{}) {
-	if c.logger != nil {
-		c.logger(c.ctx).Fatal(args...)
+func (c *DefaultTraceContext) LogFatal(args ...interface{}) {
+	if Logger != nil {
+		Logger(c.Context()).Fatal(args...)
 	} else {
 		console.Fatal(args...)
 		os.Exit(0)
