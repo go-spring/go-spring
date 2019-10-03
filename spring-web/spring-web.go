@@ -17,12 +17,15 @@
 package SpringWeb
 
 import (
+	"errors"
 	"io"
-	"net/url"
-	"net/http"
 	"mime/multipart"
+	"net/http"
+	"net/url"
 	"github.com/didi/go-spring/spring-trace"
 )
+
+var UNSUPPORTED_METHOD = errors.New("unsupported method")
 
 type Handler func(WebContext)
 
@@ -210,8 +213,12 @@ type WebContext interface {
 // Web 容器接口
 //
 type WebContainer interface {
-	GET(path string, fn Handler)
-	POST(path string, fn Handler)
+	Stop()
+
+	Start(address string) error
+	StartTLS(address string, certFile, keyFile string) error
+
+	Register(method string, path string, fn Handler)
 }
 
 //

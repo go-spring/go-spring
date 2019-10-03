@@ -47,7 +47,7 @@ type DefaultSpringContext struct {
 	properties        map[string]string
 }
 
-func NewSpringContext() *DefaultSpringContext {
+func NewDefaultSpringContext() *DefaultSpringContext {
 	return &DefaultSpringContext{
 		beanDefinitionMap: make(map[string]*SpringBeanDefinition),
 		properties:        make(map[string]string),

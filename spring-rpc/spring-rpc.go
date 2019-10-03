@@ -16,9 +16,7 @@
 
 package SpringRpc
 
-import (
-	"github.com/didi/go-spring/spring-trace"
-)
+import "github.com/didi/go-spring/spring-trace"
 
 //
 // RPC 错误值
@@ -96,6 +94,11 @@ type Handler func(RpcContext) interface{}
 // RPC 服务器
 //
 type RpcContainer interface {
+	Stop()
+
+	Start(address string) error
+	StartTLS(address string, certFile, keyFile string) error
+
 	// 注册 RPC 方法（服务名+方法名）
 	Register(service string, method string, fn Handler)
 }

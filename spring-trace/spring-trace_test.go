@@ -17,12 +17,12 @@
 package SpringTrace
 
 import (
-	"os"
-	"fmt"
-	"testing"
 	"context"
-	"github.com/didi/go-spring/spring-logger"
+	"fmt"
+	"os"
 	"strings"
+	"testing"
+	"github.com/didi/go-spring/spring-logger"
 )
 
 type ContextLogger struct {

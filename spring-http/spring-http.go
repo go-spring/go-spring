@@ -17,40 +17,29 @@
 package SpringHttp
 
 import (
-	"net/http"
 	"context"
+	"net/http"
 	"github.com/didi/go-spring/spring-web"
 )
 
-//
-// 容器
-//
-type HttpContainer struct {
+type Container struct {
 	HttpServer *http.Server
 }
 
-func (container *HttpContainer) Stop() {
-	container.HttpServer.Shutdown(context.TODO())
+func (c *Container) Stop() {
+	c.HttpServer.Shutdown(context.TODO())
 }
 
-func (container *HttpContainer) Start(address string) error {
-	container.HttpServer = &http.Server{Addr: address, Handler: nil}
-	return container.HttpServer.ListenAndServe()
+func (c *Container) Start(address string) error {
+	c.HttpServer = &http.Server{Addr: address, Handler: nil}
+	return c.HttpServer.ListenAndServe()
 }
 
-func (container *HttpContainer) StartTLS(address string, certFile, keyFile string) error {
-	container.HttpServer = &http.Server{Addr: address, Handler: nil}
-	return container.HttpServer.ListenAndServeTLS(certFile, keyFile)
+func (c *Container) StartTLS(address string, certFile, keyFile string) error {
+	c.HttpServer = &http.Server{Addr: address, Handler: nil}
+	return c.HttpServer.ListenAndServeTLS(certFile, keyFile)
 }
 
-func (container *HttpContainer) Router(path string) *SpringWeb.WebRouter {
-	return SpringWeb.NewWebRouter(container, path)
-}
-
-func (container *HttpContainer) GET(path string, fn SpringWeb.Handler, tags ...string) {
-	http.HandleFunc(path, (&SpringWeb.HandlerWrapper{fn}).Handler)
-}
-
-func (container *HttpContainer) POST(path string, fn SpringWeb.Handler, tags ...string) {
-	http.HandleFunc(path, (&SpringWeb.HandlerWrapper{fn}).Handler)
+func (c *Container) Register(method string, path string, fn SpringWeb.Handler) {
+	panic(SpringWeb.UNSUPPORTED_METHOD)
 }

@@ -26,13 +26,13 @@ type Message struct {
 //
 // 消息消费者
 //
-type SpringMessageConsumer interface {
+type Consumer interface {
 	Consume(msg *Message)
 }
 
 //
 // 消息生产者
 //
-type SpringMessageProducer interface {
+type Producer interface {
 	Send(topic string, body string) error
 }

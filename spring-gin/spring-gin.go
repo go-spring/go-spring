@@ -19,70 +19,27 @@ package SpringGin
 import (
 	"context"
 	"net/http"
-
-	SpringWeb "github.com/didi/go-spring/spring-web"
-	"github.com/gin-gonic/gin"
+	"github.com/didi/go-spring/spring-web"
 )
 
-//
-// 容器
-//
-type GinContainer struct {
-	GinRouter *gin.Engine
+type Container struct {
 	GinServer *http.Server
 }
 
-func NewGinContainer() *GinContainer {
-
-	router := gin.New()
-	router.Use(gin.Logger(), gin.Recovery())
-	srv := &http.Server{
-		Handler: router,
-	}
-	return &GinContainer{GinServer: srv, GinRouter: router}
+func (c *Container) Stop() {
+	c.GinServer.Shutdown(context.TODO())
 }
 
-func (container *GinContainer) Start(address string) error {
-	container.GinServer.Addr = address
-	return container.GinServer.ListenAndServe()
+func (c *Container) Start(address string) error {
+	c.GinServer = &http.Server{Addr: address, Handler: nil}
+	return c.GinServer.ListenAndServe()
 }
 
-func (container *GinContainer) StartTLS(address string, certFile, keyFile string) error {
-	container.GinServer.Addr = address
-	return container.GinServer.ListenAndServeTLS(certFile, keyFile)
+func (c *Container) StartTLS(address string, certFile, keyFile string) error {
+	c.GinServer = &http.Server{Addr: address, Handler: nil}
+	return c.GinServer.ListenAndServeTLS(certFile, keyFile)
 }
 
-func (container *GinContainer) Stop() {
-	container.GinServer.Shutdown(context.TODO())
-}
-
-func (container *GinContainer) Router(path string) *SpringWeb.WebRouter {
-	return SpringWeb.NewWebRouter(container, path)
-}
-
-func (container *GinContainer) GET(path string, fn SpringWeb.Handler, tags ...string) {
-	container.GinRouter.GET(path, NewGinHandlerWrapper(fn).Handler)
-}
-
-func (container *GinContainer) POST(path string, fn SpringWeb.Handler, tags ...string) {
-	container.GinRouter.POST(path, NewGinHandlerWrapper(fn).Handler)
-}
-
-//
-// 包装处理器
-//
-type GinHandlerWrapper struct {
-	SpringWeb.HandlerWrapper
-}
-
-func NewGinHandlerWrapper(fn SpringWeb.Handler) *GinHandlerWrapper {
-	handler := new(GinHandlerWrapper)
-	handler.Fn = fn
-	return handler
-}
-
-func (handler *GinHandlerWrapper) Handler(context *gin.Context) {
-	r := context.Request
-	w := context.Writer
-	handler.HandlerWrapper.Handler(w, r)
+func (c *Container) Register(method string, path string, fn SpringWeb.Handler) {
+	panic(SpringWeb.UNSUPPORTED_METHOD)
 }

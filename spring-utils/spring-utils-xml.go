@@ -17,8 +17,8 @@
 package SpringUtils
 
 import (
-	"io/ioutil"
 	"encoding/xml"
+	"io/ioutil"
 )
 
 //

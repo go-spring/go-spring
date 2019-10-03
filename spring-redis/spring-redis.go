@@ -16,8 +16,10 @@
 
 package SpringRedis
 
+import "github.com/didi/go-spring/spring-trace"
+
 type RedisTemplate interface {
-	Get(key string) (string, error)
-	Set(key string, val string) error
-	HGetAll(key string) (map[string]string, error)
+	Get(ctx SpringTrace.TraceContext, key string) (string, error)
+	Set(ctx SpringTrace.TraceContext, key string, val string) error
+	HGetAll(ctx SpringTrace.TraceContext, key string) (map[string]string, error)
 }

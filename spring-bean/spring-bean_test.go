@@ -18,9 +18,9 @@ package SpringBean
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
-	"fmt"
 )
 
 func TestCopyBean(t *testing.T) {

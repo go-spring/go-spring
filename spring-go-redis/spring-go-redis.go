@@ -18,43 +18,35 @@ package SpringGoRedis
 
 import (
 	"github.com/go-redis/redis"
-	"github.com/didi/go-spring/spring-core"
-	Logger "github.com/didi/go-spring/spring-logger"
+	"github.com/didi/go-spring/spring-trace"
 )
 
-type GoRedisTemplate struct {
+type Template struct {
 	Client *redis.Client
 }
 
-func (redisTemplate *GoRedisTemplate) InitBean(context SpringCore.SpringContext) (err error) {
-	redisTemplate.Client = redis.NewClient(&redis.Options{
-		Addr: context.GetProperties("redis.address"),
-	})
-	return
-}
-
-func (redisTemplate *GoRedisTemplate) HGetAll(key string) (map[string]string, error) {
-	result := redisTemplate.Client.HGetAll(key)
+func (t *Template) HGetAll(ctx SpringTrace.TraceContext, key string) (map[string]string, error) {
+	result := t.Client.HGetAll(key)
 	if result.Err() != nil {
-		Logger.Errorln(result.Err())
+		ctx.LogError(result.Err())
 		return nil, result.Err()
 	}
 	return result.Val(), nil
 }
 
-func (redisTemplate *GoRedisTemplate) Get(key string) (string, error) {
-	result := redisTemplate.Client.Get(key)
+func (t *Template) Get(ctx SpringTrace.TraceContext, key string) (string, error) {
+	result := t.Client.Get(key)
 	if result.Err() != nil {
-		Logger.Errorln(result.Err())
+		ctx.LogError(result.Err())
 		return "", result.Err()
 	}
 	return result.Val(), nil
 }
 
-func (redisTemplate *GoRedisTemplate) Set(key, val string) error {
-	result := redisTemplate.Client.Set(key, val, 0)
+func (t *Template) Set(ctx SpringTrace.TraceContext, key, val string) error {
+	result := t.Client.Set(key, val, 0)
 	if result.Err() != nil {
-		Logger.Errorln(result.Err())
+		ctx.LogError(result.Err())
 		return result.Err()
 	}
 	return nil

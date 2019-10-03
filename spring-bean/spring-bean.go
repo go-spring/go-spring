@@ -18,8 +18,8 @@ package SpringBean
 
 import (
 	"encoding/json"
-	"reflect"
 	"errors"
+	"reflect"
 )
 
 //
@@ -34,6 +34,7 @@ func CopyBeanUseJson(src interface{}, dest interface{}) error {
 }
 
 //
+// TODO 完善此方法，可以参考 json 序列化，并进行性能测试。
 // 使用反射直接赋值的方式拷贝，不支持匿名字段，不支持类型转换。
 //
 func CopyBean(src interface{}, dest interface{}) error {

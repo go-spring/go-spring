@@ -17,17 +17,30 @@
 package SpringRpcHttp
 
 import (
-	"strings"
 	"net/http"
+	"strings"
+
 	"github.com/didi/go-spring/spring-rpc"
 	"github.com/didi/go-spring/spring-web"
 )
 
-type RpcHttpContainer struct {
+type Container struct {
 	WebContainer SpringWeb.WebContainer
 }
 
-func (c *RpcHttpContainer) Register(service string, method string, fn SpringRpc.Handler) {
+func (c *Container) Stop() {
+	c.WebContainer.Stop()
+}
+
+func (c *Container) Start(address string) error {
+	return c.WebContainer.Start(address)
+}
+
+func (c *Container) StartTLS(address string, certFile, keyFile string) error {
+	return c.WebContainer.StartTLS(address, certFile, keyFile)
+}
+
+func (c *Container) Register(service string, method string, fn SpringRpc.Handler) {
 
 	var path string
 
@@ -38,14 +51,14 @@ func (c *RpcHttpContainer) Register(service string, method string, fn SpringRpc.
 	}
 
 	// HTTP RPC 只能使用 POST 方法传输数据
-	c.WebContainer.POST(path, func(ctx SpringWeb.WebContext) {
+	c.WebContainer.Register("POST", path, func(ctx SpringWeb.WebContext) {
 
 		// HTTP RPC 只能返回 json 格式的数据
 		ctx.Header("Content-Type", "application/json")
 
 		err := ctx.JSON(http.StatusOK, fn(ctx))
 		if err != nil {
-			ctx.Logger("__http_out").Error(err)
+			ctx.Logger("__rpc_out").Error(err)
 		}
 	})
 }

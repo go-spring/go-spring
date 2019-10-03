@@ -18,68 +18,27 @@ package SpringEcho
 
 import (
 	"context"
+
 	"github.com/labstack/echo"
 	"github.com/didi/go-spring/spring-web"
 )
 
-//
-// 容器
-//
-type EchoContainer struct {
+type Container struct {
 	EchoServer *echo.Echo
 }
 
-func NewEchoContainer() *EchoContainer {
-
-	server := echo.New()
-	server.HidePort = true
-	server.HideBanner = true
-
-	server.Use(EchoLogger())
-
-	return &EchoContainer{EchoServer: server,}
+func (c *Container) Stop() {
+	c.EchoServer.Shutdown(context.TODO())
 }
 
-func (container *EchoContainer) Start(address string) error {
-	return container.EchoServer.Start(address)
+func (c *Container) Start(address string) error {
+	return c.EchoServer.Start(address)
 }
 
-func (container *EchoContainer) StartTLS(address string, certFile, keyFile string) error {
-	return container.EchoServer.StartTLS(address, certFile, keyFile)
+func (c *Container) StartTLS(address string, certFile, keyFile string) error {
+	return c.EchoServer.StartTLS(address, certFile, keyFile)
 }
 
-func (container *EchoContainer) Stop() {
-	container.EchoServer.Shutdown(context.TODO())
-}
-
-func (container *EchoContainer) Router(path string) *SpringWeb.WebRouter {
-	return SpringWeb.NewWebRouter(container, path)
-}
-
-func (container *EchoContainer) GET(path string, fn SpringWeb.Handler, tags ... string) {
-	container.EchoServer.GET(path, NewEchoHandlerWrapper(fn).Handler)
-}
-
-func (container *EchoContainer) POST(path string, fn SpringWeb.Handler, tags ... string) {
-	container.EchoServer.POST(path, NewEchoHandlerWrapper(fn).Handler)
-}
-
-//
-// 包装处理器
-//
-type EchoHandlerWrapper struct {
-	SpringWeb.HandlerWrapper
-}
-
-func NewEchoHandlerWrapper(fn SpringWeb.Handler) *EchoHandlerWrapper {
-	handler := new(EchoHandlerWrapper)
-	handler.Fn = fn
-	return handler
-}
-
-func (handler *EchoHandlerWrapper) Handler(context echo.Context) error {
-	r := context.Request()
-	w := context.Response().Writer
-	handler.HandlerWrapper.Handler(w, r)
-	return nil
+func (c *Container) Register(method string, path string, fn SpringWeb.Handler) {
+	panic(SpringWeb.UNSUPPORTED_METHOD)
 }

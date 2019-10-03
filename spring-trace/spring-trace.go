@@ -17,9 +17,9 @@
 package SpringTrace
 
 import (
-	"os"
-	"fmt"
 	"context"
+	"fmt"
+	"os"
 	"github.com/didi/go-spring/spring-logger"
 )
 
@@ -33,7 +33,7 @@ type TraceContext interface {
 	Context() context.Context
 
 	// 获取一个标准的 Logger 接口
-	Logger(tags ... string) SpringLogger.StdLogger
+	Logger(tags ...string) SpringLogger.StdLogger
 }
 
 //
@@ -51,7 +51,7 @@ type DefaultTraceContext struct {
 //
 // 获取一个标准的 Logger 接口
 //
-var Logger func(ctx context.Context, tags ... string) SpringLogger.StdLogger
+var Logger func(ctx context.Context, tags ...string) SpringLogger.StdLogger
 
 func (c *DefaultTraceContext) Context() context.Context {
 	if c.ContextFunc != nil {
@@ -60,7 +60,7 @@ func (c *DefaultTraceContext) Context() context.Context {
 	return context.TODO()
 }
 
-func (c *DefaultTraceContext) Logger(tags ... string) SpringLogger.StdLogger {
+func (c *DefaultTraceContext) Logger(tags ...string) SpringLogger.StdLogger {
 	if Logger != nil {
 		return Logger(c.Context(), tags...)
 	} else {

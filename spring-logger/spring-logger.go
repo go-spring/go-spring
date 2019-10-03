@@ -17,99 +17,41 @@
 package SpringLogger
 
 //
-// 日志接口
+// 标准的 Logger 接口
 //
-type LoggerInterface interface {
-	Debugf(format string, args ...interface{})
-	Debugln(args ...interface{})
+type StdLogger interface {
 	Debug(args ...interface{})
+	Debugf(format string, args ...interface{})
 
-	Infof(format string, args ...interface{})
-	Infoln(args ...interface{})
 	Info(args ...interface{})
+	Infof(format string, args ...interface{})
 
-	Warnf(format string, args ...interface{})
-	Warnln(args ...interface{})
 	Warn(args ...interface{})
+	Warnf(format string, args ...interface{})
 
-	Errorf(format string, args ...interface{})
-	Errorln(args ...interface{})
 	Error(args ...interface{})
+	Errorf(format string, args ...interface{})
 
-	Fatalf(format string, args ...interface{})
-	Fatalln(args ...interface{})
 	Fatal(args ...interface{})
-
-	Printf(format string, args ...interface{})
+	Fatalf(format string, args ...interface{})
 }
-
-var (
-	Logger LoggerInterface = new(DefaultLogger)
-)
 
 //
-// 注册日志接口
+// 带前缀名的 Logger 接口
 //
-func SetLogger(l LoggerInterface) {
-	Logger = l
-}
+type PrefixLogger interface {
+	LogDebug(args ...interface{})
+	LogDebugf(format string, args ...interface{})
 
-func Debugf(format string, args ...interface{}) {
-	Logger.Debugf(format, args...)
-}
+	LogInfo(args ...interface{})
+	LogInfof(format string, args ...interface{})
 
-func Debugln(args ...interface{}) {
-	Logger.Debugln(args...)
-}
+	LogWarn(args ...interface{})
+	LogWarnf(format string, args ...interface{})
 
-func Debug(args ...interface{}) {
-	Logger.Debug(args...)
-}
+	LogError(args ...interface{})
+	LogErrorf(format string, args ...interface{})
 
-func Infof(format string, args ...interface{}) {
-	Logger.Infof(format, args...)
-}
-
-func Infoln(args ...interface{}) {
-	Logger.Infoln(args...)
-}
-
-func Info(args ...interface{}) {
-	Logger.Info(args...)
-}
-
-func Warnf(format string, args ...interface{}) {
-	Logger.Warnf(format, args...)
-}
-
-func Warnln(args ...interface{}) {
-	Logger.Warnln(args...)
-}
-
-func Warn(args ...interface{}) {
-	Logger.Warn(args...)
-}
-
-func Errorf(format string, args ...interface{}) {
-	Logger.Errorf(format, args...)
-}
-
-func Errorln(args ...interface{}) {
-	Logger.Errorln(args...)
-}
-
-func Error(args ...interface{}) {
-	Logger.Error(args...)
-}
-
-func Fatalf(format string, args ...interface{}) {
-	Logger.Fatalf(format, args...)
-}
-
-func Fatalln(args ...interface{}) {
-	Logger.Fatalln(args...)
-}
-
-func Fatal(args ...interface{}) {
-	Logger.Fatal(args...)
+	LogFatal(args ...interface{})
+	LogFatalf(format string, args ...interface{})
 }
