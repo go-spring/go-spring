@@ -22,12 +22,6 @@ import (
 	"github.com/didi/go-spring/spring-web"
 )
 
-func init() {
-	SpringWeb.RegisterWebContainer(func() SpringWeb.WebContainer {
-		return new(Container)
-	})
-}
-
 type Container struct {
 	HttpServer *http.Server
 }

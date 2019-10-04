@@ -17,14 +17,15 @@
 package SpringEcho
 
 import (
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
 	"net/url"
 
-	"github.com/didi/go-spring/spring-trace"
-	"github.com/labstack/echo"
 	"github.com/didi/go-spring/spring-web"
+	"github.com/labstack/echo"
+	"github.com/didi/go-spring/spring-trace"
 )
 
 type Context struct {
@@ -86,7 +87,7 @@ func (ctx *Context) GetRawData() ([]byte, error) {
 }
 
 func (ctx *Context) Param(name string) string {
-	panic(SpringWeb.UNSUPPORTED_METHOD)
+	return ctx.EchoContext.Param(name)
 }
 
 func (ctx *Context) ParamNames() []string {
@@ -98,7 +99,7 @@ func (ctx *Context) ParamValues() []string {
 }
 
 func (ctx *Context) QueryParam(name string) string {
-	panic(SpringWeb.UNSUPPORTED_METHOD)
+	return ctx.EchoContext.QueryParam(name)
 }
 
 func (ctx *Context) QueryParams() url.Values {
@@ -134,7 +135,7 @@ func (ctx *Context) Cookies() []*http.Cookie {
 }
 
 func (ctx *Context) Bind(i interface{}) error {
-	panic(SpringWeb.UNSUPPORTED_METHOD)
+	return ctx.EchoContext.Bind(i)
 }
 
 func (ctx *Context) Header(key, value string) {
@@ -158,7 +159,7 @@ func (ctx *Context) HTMLBlob(code int, b []byte) error {
 }
 
 func (ctx *Context) String(code int, format string, values ...interface{}) {
-	panic(SpringWeb.UNSUPPORTED_METHOD)
+	ctx.EchoContext.String(code, fmt.Sprintf(format, values...))
 }
 
 func (ctx *Context) JSON(code int, i interface{}) error {

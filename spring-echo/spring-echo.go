@@ -21,10 +21,22 @@ import (
 
 	"github.com/labstack/echo"
 	"github.com/didi/go-spring/spring-web"
+	"github.com/labstack/echo/middleware"
 )
 
 type Container struct {
 	EchoServer *echo.Echo
+}
+
+func NewContainer() *Container {
+	e := echo.New()
+
+	// 使用错误恢复机制
+	e.Use(middleware.Recover())
+
+	return &Container{
+		EchoServer: e,
+	}
 }
 
 func (c *Container) Stop() {
@@ -39,6 +51,29 @@ func (c *Container) StartTLS(address string, certFile, keyFile string) error {
 	return c.EchoServer.StartTLS(address, certFile, keyFile)
 }
 
-func (c *Container) Register(method string, path string, fn SpringWeb.Handler) {
-	panic(SpringWeb.UNSUPPORTED_METHOD)
+func (c *Container) GET(path string, fn SpringWeb.Handler) {
+	c.EchoServer.GET(path, NewHandlerWrapper(fn))
+}
+
+func (c *Container) POST(path string, fn SpringWeb.Handler) {
+	c.EchoServer.POST(path, NewHandlerWrapper(fn))
+}
+
+//
+// 处理函数包装器
+//
+type HandlerWrapper struct {
+	fn SpringWeb.Handler
+}
+
+func NewHandlerWrapper(fn SpringWeb.Handler) echo.HandlerFunc {
+	return (&HandlerWrapper{fn}).Handler
+}
+
+func (wrapper *HandlerWrapper) Handler(echoCtx echo.Context) error {
+	webCtx := &Context{
+		EchoContext: echoCtx,
+	}
+	wrapper.fn(webCtx)
+	return nil
 }

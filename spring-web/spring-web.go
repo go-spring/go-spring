@@ -23,7 +23,6 @@ import (
 	"net/http"
 	"net/url"
 	"github.com/didi/go-spring/spring-trace"
-	_ "github.com/didi/go-spring/spring-http" // 导入默认的 Web 服务器
 )
 
 var UNSUPPORTED_METHOD = errors.New("unsupported method")
@@ -219,7 +218,8 @@ type WebContainer interface {
 	Start(address string) error
 	StartTLS(address string, certFile, keyFile string) error
 
-	Register(method string, path string, fn Handler)
+	GET(path string, fn Handler)
+	POST(path string, fn Handler)
 }
 
 //

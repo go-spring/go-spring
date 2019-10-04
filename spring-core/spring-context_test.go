@@ -14,4 +14,68 @@
  * limitations under the License.
  */
 
-package SpringCore
+package SpringCore_test
+
+import (
+	"fmt"
+	"testing"
+
+	"github.com/didi/go-spring/spring-core"
+	"github.com/didi/go-spring/spring-utils"
+)
+
+func TestValueWire(t *testing.T) {
+
+	type People struct {
+		FirstName string `value:"${people.first_name}"`
+		LastName  string `value:"${people.last_name:=Green}"`
+	}
+
+	ctx := SpringCore.NewDefaultSpringContext()
+
+	p := new(People)
+	ctx.RegisterBean(p)
+
+	ctx.SetProperties("people.first_name", "Jim")
+
+	if err := ctx.AutoWireBeans(); err != nil {
+		panic(err)
+	}
+
+	fmt.Println(SpringUtils.ToJson(p))
+}
+
+func TestBeanWire(t *testing.T) {
+
+	type Config struct {
+		Name string
+	}
+
+	type DataSource struct {
+		Url string
+	}
+
+	type Application struct {
+		Config     *Config     `autowire:""`
+		DataSource *DataSource `autowire:"ds"`
+	}
+
+	ctx := SpringCore.NewDefaultSpringContext()
+
+	app := new(Application)
+	ctx.RegisterBean(app)
+
+	cfg := &Config{Name: "application.cfg"}
+	ctx.RegisterBean(cfg)
+
+	ds := &DataSource{
+		Url: "mysql:127.0.0.1...",
+	}
+
+	ctx.RegisterBean(ds)
+	ctx.RegisterNameBean("ds", ds)
+
+	ctx.AutoWireBeans()
+
+	fmt.Println(SpringUtils.ToJson(app))
+}
