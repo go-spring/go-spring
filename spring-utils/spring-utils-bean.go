@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package SpringBean
+package SpringUtils
 
 import (
 	"encoding/json"
@@ -34,8 +34,8 @@ func CopyBeanUseJson(src interface{}, dest interface{}) error {
 }
 
 //
-// TODO 完善此方法，可以参考 json 序列化，并进行性能测试。
 // 使用反射直接赋值的方式拷贝，不支持匿名字段，不支持类型转换。
+// TODO 完善该方法，可以参考 json 序列化，需要进行性能测试。
 //
 func CopyBean(src interface{}, dest interface{}) error {
 

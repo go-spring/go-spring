@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package SpringRpcHttp
+package SpringHttpRpc
 
 import (
 	"net/http"

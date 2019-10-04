@@ -21,12 +21,12 @@ import (
 	"github.com/didi/go-spring/spring-trace"
 )
 
-type Template struct {
+type Client struct {
 	Client *redis.Client
 }
 
-func (t *Template) HGetAll(ctx SpringTrace.TraceContext, key string) (map[string]string, error) {
-	result := t.Client.HGetAll(key)
+func (c *Client) HGetAll(ctx SpringTrace.TraceContext, key string) (map[string]string, error) {
+	result := c.Client.HGetAll(key)
 	if result.Err() != nil {
 		ctx.LogError(result.Err())
 		return nil, result.Err()
@@ -34,8 +34,8 @@ func (t *Template) HGetAll(ctx SpringTrace.TraceContext, key string) (map[string
 	return result.Val(), nil
 }
 
-func (t *Template) Get(ctx SpringTrace.TraceContext, key string) (string, error) {
-	result := t.Client.Get(key)
+func (c *Client) Get(ctx SpringTrace.TraceContext, key string) (string, error) {
+	result := c.Client.Get(key)
 	if result.Err() != nil {
 		ctx.LogError(result.Err())
 		return "", result.Err()
@@ -43,8 +43,8 @@ func (t *Template) Get(ctx SpringTrace.TraceContext, key string) (string, error)
 	return result.Val(), nil
 }
 
-func (t *Template) Set(ctx SpringTrace.TraceContext, key, val string) error {
-	result := t.Client.Set(key, val, 0)
+func (c *Client) Set(ctx SpringTrace.TraceContext, key, val string) error {
+	result := c.Client.Set(key, val, 0)
 	if result.Err() != nil {
 		ctx.LogError(result.Err())
 		return result.Err()

@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"net/url"
 	"github.com/didi/go-spring/spring-trace"
+	_ "github.com/didi/go-spring/spring-http" // 导入默认的 Web 服务器
 )
 
 var UNSUPPORTED_METHOD = errors.New("unsupported method")
@@ -226,4 +227,21 @@ type WebContainer interface {
 //
 type WebBeanInitialization interface {
 	InitWebBean(c WebContainer)
+}
+
+//
+// 定义 WebContainer 的工厂函数
+//
+type Factory func() WebContainer
+
+//
+// 保存 WebContainer 的工厂函数
+//
+var WebContainerFactory Factory
+
+//
+// 注册 WebContainer 的工厂函数
+//
+func RegisterWebContainer(fn Factory) {
+	WebContainerFactory = fn
 }

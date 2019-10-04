@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package SpringBean
+package SpringUtils
 
 import (
 	"encoding/json"
