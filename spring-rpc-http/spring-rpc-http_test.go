@@ -31,6 +31,8 @@ import (
 func TestContainer(t *testing.T) {
 
 	c := SpringHttpRpc.NewContainer(SpringHttp.NewContainer())
+	//c := SpringHttpRpc.NewContainer(SpringGin.NewContainer())
+	//c := SpringHttpRpc.NewContainer(SpringEcho.NewContainer())
 
 	store := make(map[string]string)
 

@@ -139,7 +139,7 @@ func (ctx *Context) Bind(i interface{}) error {
 }
 
 func (ctx *Context) Header(key, value string) {
-	panic(SpringWeb.UNSUPPORTED_METHOD)
+	ctx.GinContext.Header(key, value)
 }
 
 func (ctx *Context) SetAccepted(formats ...string) {
@@ -163,7 +163,8 @@ func (ctx *Context) String(code int, format string, values ...interface{}) {
 }
 
 func (ctx *Context) JSON(code int, i interface{}) error {
-	panic(SpringWeb.UNSUPPORTED_METHOD)
+	ctx.GinContext.JSON(code, i)
+	return nil
 }
 
 func (ctx *Context) JSONPretty(code int, i interface{}, indent string) error {

@@ -21,6 +21,8 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+
+	"github.com/spf13/cast"
 )
 
 //
@@ -350,13 +352,17 @@ func (ctx *DefaultSpringContext) wireBeanByDefinition(beanDefinition *SpringBean
 
 				switch vf.Kind() {
 				case reflect.Uint64, reflect.Uint32, reflect.Uint16, reflect.Uint8, reflect.Uint:
-					vf.SetUint(propValue.(uint64))
+					u := cast.ToUint64(propValue)
+					vf.SetUint(u)
 				case reflect.Int64, reflect.Int32, reflect.Int16, reflect.Int8, reflect.Int:
-					vf.SetInt(propValue.(int64))
+					i := cast.ToInt64(propValue)
+					vf.SetInt(i)
 				case reflect.String:
-					vf.SetString(propValue.(string))
+					s := cast.ToString(propValue)
+					vf.SetString(s)
 				case reflect.Bool:
-					vf.SetBool(propValue.(bool))
+					b := cast.ToBool(propValue)
+					vf.SetBool(b)
 				default:
 					return errors.New("unsupported type " + vf.Type().String())
 				}

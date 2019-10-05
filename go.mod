@@ -6,4 +6,5 @@ require (
 	github.com/go-redis/redis v6.15.5+incompatible
 	github.com/labstack/echo v3.3.10+incompatible
 	github.com/labstack/gommon v0.3.0 // indirect
+	github.com/spf13/cast v1.3.0
 )
