@@ -18,12 +18,17 @@ package SpringHttp
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"github.com/didi/go-spring/spring-web"
 )
 
 type Container struct {
 	HttpServer *http.Server
+}
+
+func NewContainer() *Container {
+	return &Container{}
 }
 
 func (c *Container) Stop() {
@@ -40,6 +45,35 @@ func (c *Container) StartTLS(address string, certFile, keyFile string) error {
 	return c.HttpServer.ListenAndServeTLS(certFile, keyFile)
 }
 
-func (c *Container) Register(method string, path string, fn SpringWeb.Handler) {
-	panic(SpringWeb.UNSUPPORTED_METHOD)
+func (c *Container) GET(path string, fn SpringWeb.Handler) {
+	http.HandleFunc(path, HandlerWrapper(fn))
+}
+
+func (c *Container) POST(path string, fn SpringWeb.Handler) {
+	http.HandleFunc(path, HandlerWrapper(fn))
+}
+
+//
+// 处理函数包装器
+//
+func HandlerWrapper(fn SpringWeb.Handler) func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+
+		webCtx := &Context{
+			W: w,
+			R: r,
+		}
+
+		defer func() {
+			if r := recover(); r != nil {
+				err, ok := r.(error)
+				if !ok {
+					err = fmt.Errorf("%v", r)
+				}
+				webCtx.Error(err)
+			}
+		}()
+
+		fn(webCtx)
+	}
 }

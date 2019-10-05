@@ -35,6 +35,13 @@ func (e *RpcError) Panic(err error) *RpcPanic {
 	}
 }
 
+func (e *RpcError) Data(data interface{}) *RpcResult {
+	return &RpcResult{
+		RpcError: e,
+		Data:     data,
+	}
+}
+
 //
 // 封装触发 panic 条件
 //
@@ -61,16 +68,6 @@ type RpcResult struct {
 
 	Err  string      // 错误源
 	Data interface{} // 返回值数据
-}
-
-//
-// 工厂函数
-//
-func NewRpcResult(e *RpcError, data interface{}) *RpcResult {
-	return &RpcResult{
-		RpcError: e,
-		Data:     data,
-	}
 }
 
 //

@@ -17,13 +17,20 @@
 package SpringHttp
 
 import (
+	"encoding/json"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/didi/go-spring/spring-web"
 	"github.com/didi/go-spring/spring-trace"
+)
+
+const (
+	defaultMemory = 32 << 20 // 32 MB
 )
 
 type Context struct {
@@ -53,7 +60,7 @@ func (ctx *Context) Set(key string, val interface{}) {
 }
 
 func (ctx *Context) Request() *http.Request {
-	panic(SpringWeb.UNSUPPORTED_METHOD)
+	return ctx.R
 }
 
 func (ctx *Context) IsTLS() bool {
@@ -105,7 +112,7 @@ func (ctx *Context) ParamValues() []string {
 }
 
 func (ctx *Context) QueryParam(name string) string {
-	panic(SpringWeb.UNSUPPORTED_METHOD)
+	return ctx.R.URL.Query().Get(name)
 }
 
 func (ctx *Context) QueryParams() url.Values {
@@ -121,7 +128,16 @@ func (ctx *Context) FormValue(name string) string {
 }
 
 func (ctx *Context) FormParams() (url.Values, error) {
-	panic(SpringWeb.UNSUPPORTED_METHOD)
+	if strings.HasPrefix(ctx.R.Header.Get(HeaderContentType), MIMEMultipartForm) {
+		if err := ctx.R.ParseMultipartForm(defaultMemory); err != nil {
+			return nil, err
+		}
+	} else {
+		if err := ctx.R.ParseForm(); err != nil {
+			return nil, err
+		}
+	}
+	return ctx.R.Form, nil
 }
 
 func (ctx *Context) FormFile(name string) (*multipart.FileHeader, error) {
@@ -141,11 +157,11 @@ func (ctx *Context) Cookies() []*http.Cookie {
 }
 
 func (ctx *Context) Bind(i interface{}) error {
-	panic(SpringWeb.UNSUPPORTED_METHOD)
+	return (&DefaultBinder{}).Bind(i, ctx)
 }
 
 func (ctx *Context) Header(key, value string) {
-	panic(SpringWeb.UNSUPPORTED_METHOD)
+	ctx.W.Header().Set(key, value)
 }
 
 func (ctx *Context) SetAccepted(formats ...string) {
@@ -154,6 +170,13 @@ func (ctx *Context) SetAccepted(formats ...string) {
 
 func (ctx *Context) Render(code int, name string, data interface{}) error {
 	panic(SpringWeb.UNSUPPORTED_METHOD)
+}
+
+func (ctx *Context) writeContentType(value string) {
+	header := ctx.W.Header()
+	if header.Get(HeaderContentType) == "" {
+		header.Set(HeaderContentType, value)
+	}
 }
 
 func (ctx *Context) HTML(code int, html string) error {
@@ -165,11 +188,15 @@ func (ctx *Context) HTMLBlob(code int, b []byte) error {
 }
 
 func (ctx *Context) String(code int, format string, values ...interface{}) {
-	panic(SpringWeb.UNSUPPORTED_METHOD)
+	ctx.W.WriteHeader(code)
+	ctx.W.Write([]byte(fmt.Sprintf(format, values...)))
 }
 
 func (ctx *Context) JSON(code int, i interface{}) error {
-	panic(SpringWeb.UNSUPPORTED_METHOD)
+	enc := json.NewEncoder(ctx.W)
+	ctx.writeContentType(MIMEApplicationJSONCharsetUTF8)
+	ctx.W.WriteHeader(code)
+	return enc.Encode(i)
 }
 
 func (ctx *Context) JSONPretty(code int, i interface{}, indent string) error {
@@ -228,8 +255,38 @@ func (ctx *Context) Redirect(code int, url string) error {
 	panic(SpringWeb.UNSUPPORTED_METHOD)
 }
 
+func DefaultHTTPErrorHandler(err error, ctx *Context) {
+	var (
+		code = http.StatusInternalServerError
+		msg  interface{}
+	)
+
+	if he, ok := err.(*HTTPError); ok {
+		code = he.Code
+		msg = he.Message
+		if he.Internal != nil {
+			err = fmt.Errorf("%v, %v", err, he.Internal)
+		}
+	} else {
+		msg = http.StatusText(code)
+	}
+	if _, ok := msg.(string); ok {
+		msg = map[string]interface{}{"message": msg}
+	}
+
+	if ctx.R.Method == http.MethodHead {
+		err = ctx.NoContent(code)
+	} else {
+		err = ctx.JSON(code, msg)
+	}
+
+	if err != nil {
+		ctx.LogError(err)
+	}
+}
+
 func (ctx *Context) Error(err error) {
-	panic(SpringWeb.UNSUPPORTED_METHOD)
+	DefaultHTTPErrorHandler(err, ctx)
 }
 
 func (ctx *Context) Data(code int, contentType string, data []byte) {
