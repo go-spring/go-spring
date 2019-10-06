@@ -24,8 +24,8 @@ import (
 	"net/url"
 
 	"github.com/didi/go-spring/spring-trace"
-	"github.com/gin-gonic/gin"
 	"github.com/didi/go-spring/spring-web"
+	"github.com/gin-gonic/gin"
 )
 
 type Context struct {

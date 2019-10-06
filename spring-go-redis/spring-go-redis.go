@@ -17,8 +17,8 @@
 package SpringGoRedis
 
 import (
-	"github.com/go-redis/redis"
 	"github.com/didi/go-spring/spring-trace"
+	"github.com/go-redis/redis"
 )
 
 type Client struct {

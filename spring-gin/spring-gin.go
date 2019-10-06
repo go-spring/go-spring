@@ -20,8 +20,8 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/gin-gonic/gin"
 	"github.com/didi/go-spring/spring-web"
+	"github.com/gin-gonic/gin"
 )
 
 type Container struct {

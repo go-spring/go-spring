@@ -22,16 +22,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/didi/go-spring/spring-http"
+	"github.com/didi/go-spring/spring-gin"
+	"github.com/didi/go-spring/spring-rpc"
 	"github.com/didi/go-spring/spring-rpc-http"
 	"github.com/didi/go-spring/spring-utils"
-	"github.com/didi/go-spring/spring-rpc"
 )
 
 func TestContainer(t *testing.T) {
 
-	c := SpringHttpRpc.NewContainer(SpringHttp.NewContainer())
-	//c := SpringHttpRpc.NewContainer(SpringGin.NewContainer())
+	c := SpringHttpRpc.NewContainer(SpringGin.NewContainer())
 	//c := SpringHttpRpc.NewContainer(SpringEcho.NewContainer())
 
 	store := make(map[string]string)

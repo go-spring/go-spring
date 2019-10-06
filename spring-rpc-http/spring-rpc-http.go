@@ -26,8 +26,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/didi/go-spring/spring-web"
 	"github.com/didi/go-spring/spring-rpc"
+	"github.com/didi/go-spring/spring-web"
 )
 
 type Container struct {

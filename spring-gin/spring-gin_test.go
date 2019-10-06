@@ -24,9 +24,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/didi/go-spring/spring-gin"
 	"github.com/didi/go-spring/spring-utils"
 	"github.com/didi/go-spring/spring-web"
-	"github.com/didi/go-spring/spring-gin"
 )
 
 func TestContainer(t *testing.T) {
