@@ -36,6 +36,17 @@ SpringLog: 为一般日志场景和微服务所需的 Trace 场景提供日志�
 
 TODO
 
+### 代码风格
+
+代码必须使用 `goimports` 进行格式化，格式化的命令是 `goimports -w -format-only *`。如果你使用的是 IDEA 开发工具，请按照以下步骤进行配置：
+
+1. Editor -> Code Style -> Go，选中 Imports 标签；
+2. Sorting type 选择 `goimports`；
+3. 选中 `Add parentheses for a single import`；
+4. 选中 `Group stdlib imports`；
+5. 选中 `Move all stdlib imports in a single group`；
+6. 选中 `Move all imports in a single declaration`；
+
 ****
 
 ### Go-Spring 项目简介
