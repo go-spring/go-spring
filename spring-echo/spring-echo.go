@@ -24,10 +24,16 @@ import (
 	"github.com/labstack/echo/middleware"
 )
 
+//
+// 适配 echo 的 Web 容器
+//
 type Container struct {
 	EchoServer *echo.Echo
 }
 
+//
+// 工厂函数
+//
 func NewContainer() *Container {
 	e := echo.New()
 
@@ -52,28 +58,23 @@ func (c *Container) StartTLS(address string, certFile, keyFile string) error {
 }
 
 func (c *Container) GET(path string, fn SpringWeb.Handler) {
-	c.EchoServer.GET(path, NewHandlerWrapper(fn))
+	c.EchoServer.GET(path, HandlerWrapper(fn))
 }
 
 func (c *Container) POST(path string, fn SpringWeb.Handler) {
-	c.EchoServer.POST(path, NewHandlerWrapper(fn))
+	c.EchoServer.POST(path, HandlerWrapper(fn))
 }
 
 //
-// 处理函数包装器
+// Web 处理函数包装器
 //
-type HandlerWrapper struct {
-	fn SpringWeb.Handler
-}
-
-func NewHandlerWrapper(fn SpringWeb.Handler) echo.HandlerFunc {
-	return (&HandlerWrapper{fn}).Handler
-}
-
-func (wrapper *HandlerWrapper) Handler(echoCtx echo.Context) error {
-	webCtx := &Context{
-		EchoContext: echoCtx,
+func HandlerWrapper(fn SpringWeb.Handler) func(echo.Context) error {
+	return func(echoCtx echo.Context) error {
+		webCtx := &Context{
+			EchoContext: echoCtx,
+			HandlerFunc: fn,
+		}
+		fn(webCtx)
+		return nil
 	}
-	wrapper.fn(webCtx)
-	return nil
 }

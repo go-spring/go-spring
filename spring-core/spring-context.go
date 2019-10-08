@@ -52,11 +52,14 @@ type SpringBeanDefinition struct {
 // 定义 SpringContext 接口
 //
 type SpringContext interface {
-	// 注册 SpringBean 使用默认的 Bean 名称
+	// 使用默认的名称注册 SpringBean 对象
 	RegisterBean(bean SpringBean)
 
-	// 注册 SpringBean 使用指定的 Bean 名称
+	// 使用指定的名称注册 SpringBean 对象
 	RegisterNameBean(name string, bean SpringBean)
+
+	// 通过 SpringBeanDefinition 注册 SpringBean 对象
+	RegisterBeanDefinition(d *SpringBeanDefinition)
 
 	// 根据 Bean 类型查找 SpringBean 数组
 	FindBeansByType(i interface{})
@@ -95,6 +98,8 @@ type SpringContext interface {
 type DefaultSpringContext struct {
 	beanDefinitionMap map[string]*SpringBeanDefinition // Bean 集合
 	propertiesMap     map[string]interface{}           // 属性值集合
+
+	nextBeanId int // 匿名注册使用 "bean#id" 作为 bean 的名称
 }
 
 //
@@ -117,10 +122,18 @@ const (
 )
 
 //
-// 注册 SpringBean 的定义
+// SpringBean 转换为 SpringBeanDefinition 对象
 //
-func (ctx *DefaultSpringContext) registerBeanDefinition(name string, bean SpringBean, t reflect.Type, v reflect.Value) {
-	ctx.beanDefinitionMap[name] = &SpringBeanDefinition{
+func (ctx *DefaultSpringContext) ToSpringBeanDefinition(name string, bean SpringBean) *SpringBeanDefinition {
+
+	t := reflect.TypeOf(bean)
+	v := reflect.ValueOf(bean)
+
+	if t.Kind() != reflect.Ptr {
+		panic("bean must be pointer")
+	}
+
+	return &SpringBeanDefinition{
 		Init:  Uninitialized,
 		Name:  name,
 		Bean:  bean,
@@ -130,31 +143,30 @@ func (ctx *DefaultSpringContext) registerBeanDefinition(name string, bean Spring
 }
 
 //
-// 检查 SpringBean 的类型
-//
-func checkSpringBeanType(bean SpringBean) (t reflect.Type, v reflect.Value) {
-	t = reflect.TypeOf(bean)
-	if t.Kind() != reflect.Ptr {
-		panic("bean must be pointer")
-	}
-	v = reflect.ValueOf(bean)
-	return
-}
-
-//
-// 注册 SpringBean 使用默认的 Bean 名称
+// 使用默认的名称注册 SpringBean 对象
 //
 func (ctx *DefaultSpringContext) RegisterBean(bean SpringBean) {
-	t, v := checkSpringBeanType(bean)
-	ctx.registerBeanDefinition(t.Elem().Name(), bean, t, v)
+
+	name := fmt.Sprintf("bean#%d", ctx.nextBeanId)
+	ctx.nextBeanId++
+
+	beanDefinition := ctx.ToSpringBeanDefinition(name, bean)
+	ctx.RegisterBeanDefinition(beanDefinition)
 }
 
 //
-// 注册 SpringBean 使用指定的 Bean 名称
+// 使用指定的名称注册 SpringBean 对象
 //
 func (ctx *DefaultSpringContext) RegisterNameBean(name string, bean SpringBean) {
-	t, v := checkSpringBeanType(bean)
-	ctx.registerBeanDefinition(name, bean, t, v)
+	beanDefinition := ctx.ToSpringBeanDefinition(name, bean)
+	ctx.RegisterBeanDefinition(beanDefinition)
+}
+
+//
+// 通过 SpringBeanDefinition 注册 SpringBean 对象
+//
+func (ctx *DefaultSpringContext) RegisterBeanDefinition(d *SpringBeanDefinition) {
+	ctx.beanDefinitionMap[d.Name] = d
 }
 
 //
@@ -264,15 +276,8 @@ func (ctx *DefaultSpringContext) AutoWireBeans() error {
 // 绑定外部指定的 SpringBean
 //
 func (ctx *DefaultSpringContext) WireBean(bean SpringBean) error {
-	t, v := checkSpringBeanType(bean)
-	b := &SpringBeanDefinition{
-		Name:  t.Elem().Name(),
-		Init:  Uninitialized,
-		Bean:  bean,
-		Type:  t,
-		Value: v,
-	}
-	return ctx.wireBeanByDefinition(b)
+	beanDefinition := ctx.ToSpringBeanDefinition("", bean)
+	return ctx.wireBeanByDefinition(beanDefinition)
 }
 
 //

@@ -26,14 +26,47 @@ import (
 	"github.com/didi/go-spring/spring-trace"
 )
 
-var UNSUPPORTED_METHOD = errors.New("unsupported method")
+//
+// 方法未实现，如果某个方法未实现需要抛出此错误。
+//
+var UNIMPLEMENTED_METHOD = errors.New("unimplemented method")
 
+//
+// 定义 Web 处理函数
+//
 type Handler func(WebContext)
 
 //
-// Web 上下文接口，设计理念：为社区 top3 的 web 服务器提供一个抽象层，使得底层
-// 可以灵活切换，因此在功能上优先取这些服务器功能的交集，同时提供获取底层对象的接
-// 口，以便在框架不能满足用户要求的时候使用底层框架的能力，当然这种功能要慎用。
+// 定义 Web 容器接口
+//
+type WebContainer interface {
+	// 停止 Web 容器
+	Stop()
+
+	// 启动 HTTP 容器
+	Start(address string) error
+
+	// 启动 HTTPS 容器
+	StartTLS(address string, certFile, keyFile string) error
+
+	// 注册 GET 方法处理函数
+	GET(path string, fn Handler)
+
+	// 注册 POST 方法处理函数
+	POST(path string, fn Handler)
+}
+
+//
+// 定义 Web Bean 初始化接口
+//
+type WebBeanInitialization interface {
+	InitWebBean(c WebContainer)
+}
+
+//
+// 定义 Web 上下文接口，设计理念：为社区中优秀的 Web 服务器提供一个抽象层，使得
+// 底层可以灵活切换，因此在功能上取这些 Web 服务器功能的交集，同时提供获取底层对
+// 象的接口，以便在不能满足用户要求的时候使用底层实现的能力，当然这种功能要慎用。
 //
 type WebContext interface {
 	/////////////////////////////////////////
@@ -65,9 +98,10 @@ type WebContext interface {
 	// Scheme returns the HTTP protocol scheme, `http` or `https`.
 	Scheme() string
 
-	// ClientIP implements a best effort algorithm to return the real client IP, it parses
-	// X-Real-IP and X-Forwarded-For in order to work properly with reverse-proxies such us: nginx or haproxy.
-	// Use X-Forwarded-For before X-Real-Ip as nginx uses X-Real-Ip with the proxy's IP.
+	// ClientIP implements a best effort algorithm to return the real client IP,
+	// it parses X-Real-IP and X-Forwarded-For in order to work properly with
+	// reverse-proxies such us: nginx or haproxy. Use X-Forwarded-For before
+	// X-Real-Ip as nginx uses X-Real-Ip with the proxy's IP.
 	ClientIP() string
 
 	// Path returns the registered path for the handler.
@@ -86,13 +120,13 @@ type WebContext interface {
 	GetRawData() ([]byte, error)
 
 	// Param returns path parameter by name.
-	Param(name string) string
+	PathParam(name string) string
 
 	// ParamNames returns path parameter names.
-	ParamNames() []string
+	PathParamNames() []string
 
 	// ParamValues returns path parameter values.
-	ParamValues() []string
+	PathParamValues() []string
 
 	// QueryParam returns the query param for the provided name.
 	QueryParam(name string) string
@@ -112,6 +146,9 @@ type WebContext interface {
 	// FormFile returns the multipart form file for the provided name.
 	FormFile(name string) (*multipart.FileHeader, error)
 
+	// SaveUploadedFile uploads the form file to specific dst.
+	SaveUploadedFile(file *multipart.FileHeader, dst string) error
+
 	// MultipartForm returns the multipart form.
 	MultipartForm() (*multipart.Form, error)
 
@@ -128,106 +165,82 @@ type WebContext interface {
 	/////////////////////////////////////////
 	// Response Part
 
+	// Status sets the HTTP response code.
+	Status(code int)
+
 	// Header is a intelligent shortcut for c.Writer.Header().Set(key, value).
 	// It writes a header in the response.
 	// If value == "", this method removes the header `c.Writer.Header().Del(key)`
 	Header(key, value string)
 
-	// SetAccepted sets Accept header data.
-	SetAccepted(formats ...string)
+	// SetCookie adds a `Set-Cookie` header in HTTP response.
+	SetCookie(cookie *http.Cookie)
 
-	// Render renders a template with data and sends a text/html response with status
-	// code. Renderer must be registered using `Echo.Renderer`.
-	Render(code int, name string, data interface{}) error
-
-	// HTML sends an HTTP response with status code.
-	HTML(code int, html string) error
-
-	// HTMLBlob sends an HTTP blob response with status code.
-	HTMLBlob(code int, b []byte) error
+	// NoContent sends a response with no body and a status code.
+	NoContent(code int)
 
 	// String writes the given string into the response body.
 	String(code int, format string, values ...interface{})
 
+	// HTML sends an HTTP response with status code.
+	HTML(code int, html string)
+
+	// HTMLBlob sends an HTTP blob response with status code.
+	HTMLBlob(code int, b []byte)
+
 	// JSON sends a JSON response with status code.
-	JSON(code int, i interface{}) error
+	JSON(code int, i interface{})
 
 	// JSONPretty sends a pretty-print JSON with status code.
-	JSONPretty(code int, i interface{}, indent string) error
+	JSONPretty(code int, i interface{}, indent string)
 
 	// JSONBlob sends a JSON blob response with status code.
-	JSONBlob(code int, b []byte) error
+	JSONBlob(code int, b []byte)
 
-	// JSONP sends a JSONP response with status code. It uses `callback` to construct
-	// the JSONP payload.
-	JSONP(code int, callback string, i interface{}) error
-
-	// JSONPBlob sends a JSONP blob response with status code. It uses `callback`
+	// JSONP sends a JSONP response with status code. It uses `callback`
 	// to construct the JSONP payload.
-	JSONPBlob(code int, callback string, b []byte) error
+	JSONP(code int, callback string, i interface{})
+
+	// JSONPBlob sends a JSONP blob response with status code. It uses
+	// `callback` to construct the JSONP payload.
+	JSONPBlob(code int, callback string, b []byte)
 
 	// XML sends an XML response with status code.
-	XML(code int, i interface{}) error
+	XML(code int, i interface{})
 
 	// XMLPretty sends a pretty-print XML with status code.
-	XMLPretty(code int, i interface{}, indent string) error
+	XMLPretty(code int, i interface{}, indent string)
 
 	// XMLBlob sends an XML blob response with status code.
-	XMLBlob(code int, b []byte) error
+	XMLBlob(code int, b []byte)
 
 	// Blob sends a blob response with status code and content type.
-	Blob(code int, contentType string, b []byte) error
+	Blob(code int, contentType string, b []byte)
 
 	// Stream sends a streaming response with status code and content type.
-	Stream(code int, contentType string, r io.Reader) error
+	Stream(code int, contentType string, r io.Reader)
 
 	// File sends a response with the content of the file.
-	File(file string) error
+	File(file string)
 
 	// Attachment sends a response as attachment, prompting client to save the
 	// file.
-	Attachment(file string, name string) error
+	Attachment(file string, name string)
 
 	// Inline sends a response as inline, opening the file in the browser.
-	Inline(file string, name string) error
-
-	// NoContent sends a response with no body and a status code.
-	NoContent(code int) error
+	Inline(file string, name string)
 
 	// Redirect redirects the request to a provided URL with status code.
-	Redirect(code int, url string) error
-
-	// Error invokes the registered HTTP error handler. Generally used by middleware.
-	Error(err error)
-
-	// Data writes some data into the body stream and updates the HTTP code.
-	Data(code int, contentType string, data []byte)
+	Redirect(code int, url string)
 
 	// SSEvent writes a Server-Sent Event into the body stream.
 	SSEvent(name string, message interface{})
 
-	// SetCookie adds a `Set-Cookie` header in HTTP response.
-	SetCookie(cookie *http.Cookie)
-}
+	/////////////////////////////////////////
+	// 错误处理部分
 
-//
-// Web 容器接口
-//
-type WebContainer interface {
-	Stop()
-
-	Start(address string) error
-	StartTLS(address string, certFile, keyFile string) error
-
-	GET(path string, fn Handler)
-	POST(path string, fn Handler)
-}
-
-//
-// Web Bean 初始化接口
-//
-type WebBeanInitialization interface {
-	InitWebBean(c WebContainer)
+	// Error invokes the registered HTTP error handler.
+	Error(err error)
 }
 
 //

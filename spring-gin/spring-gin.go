@@ -24,11 +24,17 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+//
+// 适配 gin 的 Web 容器
+//
 type Container struct {
 	HttpServer *http.Server
 	GinEngine  *gin.Engine
 }
 
+//
+// 工厂函数
+//
 func NewContainer() *Container {
 	gin.SetMode(gin.ReleaseMode)
 	e := gin.Default()
@@ -52,27 +58,23 @@ func (c *Container) StartTLS(address string, certFile, keyFile string) error {
 }
 
 func (c *Container) GET(path string, fn SpringWeb.Handler) {
-	c.GinEngine.GET(path, NewHandlerWrapper(fn))
+	c.GinEngine.GET(path, HandlerWrapper(path, fn))
 }
 
 func (c *Container) POST(path string, fn SpringWeb.Handler) {
-	c.GinEngine.POST(path, NewHandlerWrapper(fn))
+	c.GinEngine.POST(path, HandlerWrapper(path, fn))
 }
 
 //
-// 处理函数包装器
+// Web 处理函数包装器
 //
-type HandlerWrapper struct {
-	fn SpringWeb.Handler
-}
-
-func NewHandlerWrapper(fn SpringWeb.Handler) gin.HandlerFunc {
-	return (&HandlerWrapper{fn}).Handler
-}
-
-func (wrapper *HandlerWrapper) Handler(ginCtx *gin.Context) {
-	webCtx := &Context{
-		GinContext: ginCtx,
+func HandlerWrapper(path string, fn SpringWeb.Handler) func(*gin.Context) {
+	return func(ginCtx *gin.Context) {
+		webCtx := &Context{
+			GinContext:  ginCtx,
+			HandlerPath: path,
+			HandlerFunc: fn,
+		}
+		fn(webCtx)
 	}
-	wrapper.fn(webCtx)
 }
