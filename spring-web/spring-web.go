@@ -54,6 +54,21 @@ type WebContainer interface {
 
 	// 注册 POST 方法处理函数
 	POST(path string, fn Handler)
+
+	// 注册 PATCH 方法处理函数
+	PATCH(path string, fn Handler)
+
+	// 注册 PUT 方法处理函数
+	PUT(path string, fn Handler)
+
+	// 注册 DELETE 方法处理函数
+	DELETE(path string, fn Handler)
+
+	// 注册 HEAD 方法处理函数
+	HEAD(path string, fn Handler)
+
+	// 注册 OPTIONS 方法处理函数
+	OPTIONS(path string, fn Handler)
 }
 
 //

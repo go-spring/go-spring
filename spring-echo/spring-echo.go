@@ -61,8 +61,28 @@ func (c *Container) GET(path string, fn SpringWeb.Handler) {
 	c.EchoServer.GET(path, HandlerWrapper(fn))
 }
 
+func (c *Container) PATCH(path string, fn SpringWeb.Handler) {
+	c.EchoServer.PATCH(path, HandlerWrapper(fn))
+}
+
+func (c *Container) PUT(path string, fn SpringWeb.Handler) {
+	c.EchoServer.PUT(path, HandlerWrapper(fn))
+}
+
 func (c *Container) POST(path string, fn SpringWeb.Handler) {
 	c.EchoServer.POST(path, HandlerWrapper(fn))
+}
+
+func (c *Container) DELETE(path string, fn SpringWeb.Handler) {
+	c.EchoServer.DELETE(path, HandlerWrapper(fn))
+}
+
+func (c *Container) HEAD(path string, fn SpringWeb.Handler) {
+	c.EchoServer.HEAD(path, HandlerWrapper(fn))
+}
+
+func (c *Container) OPTIONS(path string, fn SpringWeb.Handler) {
+	c.EchoServer.OPTIONS(path, HandlerWrapper(fn))
 }
 
 //
