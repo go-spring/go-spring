@@ -18,6 +18,9 @@ package SpringCore_test
 
 import (
 	"fmt"
+	"github.com/didi/go-spring/spring-core/testdata/bar"
+	"github.com/didi/go-spring/spring-core/testdata/foo"
+	"github.com/stretchr/testify/assert"
 	"testing"
 
 	"github.com/didi/go-spring/spring-core"
@@ -34,7 +37,7 @@ func TestValueWire(t *testing.T) {
 	ctx := SpringCore.NewDefaultSpringContext()
 
 	p := new(People)
-	ctx.RegisterBean(p)
+	ctx.RegisterSingletonBean(p)
 
 	ctx.SetProperties("people.first_name", "Jim")
 
@@ -63,19 +66,40 @@ func TestBeanWire(t *testing.T) {
 	ctx := SpringCore.NewDefaultSpringContext()
 
 	app := new(Application)
-	ctx.RegisterBean(app)
+	ctx.RegisterSingletonBean(app)
 
 	cfg := &Config{Name: "application.cfg"}
-	ctx.RegisterBean(cfg)
+	ctx.RegisterSingletonBean(cfg)
 
 	ds := &DataSource{
 		Url: "mysql:127.0.0.1...",
 	}
 
-	ctx.RegisterBean(ds)
-	ctx.RegisterNameBean("ds", ds)
+	ctx.RegisterSingletonBean(ds)
+	ctx.RegisterSingletonNameBean("ds", ds)
 
-	ctx.AutoWireBeans()
+	barBean := new(foo.Demo)
+	fooBean := new(bar.Demo)
+	ctx.RegisterSingletonBean(barBean)
+	ctx.RegisterSingletonBean(fooBean)
+
+	if e := ctx.AutoWireBeans(); e != nil {
+		t.Error(e)
+	}
+
+	for _, v := range ctx.GetAllBeanNames() {
+		t.Logf("bean name : %v", v)
+	}
+
+	var (
+		f foo.Demo
+		b bar.Demo
+	)
+
+	foundFooBean := ctx.FindBeanByType(&f)
+	foundFarBean := ctx.FindBeanByType(&b)
+
+	assert.NotEqual(t, foundFarBean, foundFooBean)
 
 	fmt.Println(SpringUtils.ToJson(app))
 }
