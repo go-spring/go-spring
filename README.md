@@ -28,6 +28,8 @@ Go-Spring 有两个仓库，一个是实现 IoC 容器特性的主项目所在�
 
 SpringCore: 实现完善的 IoC 容器功能，支持数组对象注入，支持更多类型的属性绑定，可能会支持 Bean 设置顺序；
 
+&nbsp;&nbsp;&nbsp;&nbsp; TODO: 属性绑定支持结构嵌套，功能和设计见下面的详述。
+
 SpringWeb: 为 Echo、Gin 等社区流行的 Go Web 服务实现一个抽象层，目前 SpringWeb 和 SpringRPC 的功能重合，未来 SpringWeb 的接口会重构，更贴近现有的 Web 服务的接口；
 
 SpringRPC: 为 Http、Thrift、gRPC、Dubbo 等社区流行的 RPC 服务实现一个抽象层，现在项目中有一个示例，可以证明通过 SpringRpcContext 有机会将上层接口统一；
@@ -52,6 +54,57 @@ TODO
 4. 选中 `Group stdlib imports`；
 5. 选中 `Move all stdlib imports in a single group`；
 6. 选中 `Move all imports in a single declaration`；
+
+****
+
+### TODO 详述
+
+#### 属性绑定的嵌套功能说明
+
+现在的样子:
+
+```
+type StreamServerConfig struct {
+	// RTMP 内网配置
+	RtmpInnerSecurePort   string `value:"${rtmp.inner.secure.port}"`
+	RtmpInnerInsecurePort string `value:"${rtmp.inner.insecure.port}"`
+
+	// RTMP 外网配置
+	RtmpPublicSecureHost   string `value:"${rtmp.public.secure.host}"`
+	RtmpPublicInsecureHost string `value:"${rtmp.public.insecure.host}"`
+
+	// HTTP 内网配置
+	HttpInnerSecurePort   string `value:"${http.inner.secure.port}"`
+	HttpInnerInsecurePort string `value:"${http.inner.insecure.port}"`
+
+	// HTTP 外网配置
+	HttpPublicSecureHost   string `value:"${http.public.secure.host}"`
+	HttpPublicInsecureHost string `value:"${http.public.insecure.host}"`
+}
+```
+
+改造后的样子：
+
+```
+type StreamServer struct {
+
+    SecurePort      string  `value:"${secure.port}"` 
+    SecureHost      string  `value:"${secure.host}"` 
+
+    InsecurePort    string  `value:"${insecure.port}"`
+    InsecureHost    string  `value:"${insecure.host}"`
+}
+
+type StreamServerConfig struct {
+
+    RtmpInner      *StreamServer     `value:"${rtmp.inner}"`
+    RtmpPublic     *StreamServer     `value:"${rtmp.public}"`
+
+    HttpInner      *StreamServer     `value:"${http.inner}"`
+    HttpPublic     *StreamServer     `value:"${http.public}"`
+}
+
+```
 
 ****
 
