@@ -30,13 +30,17 @@ SpringCore: 实现完善的 IoC 容器功能，支持数组对象注入，支持
 
 &nbsp;&nbsp;&nbsp;&nbsp; TODO: 属性绑定支持结构嵌套，功能和设计见下面的详述。
 
-SpringWeb: 为 Echo、Gin 等社区流行的 Go Web 服务实现一个抽象层，目前 SpringWeb 和 SpringRPC 的功能重合，未来 SpringWeb 的接口会重构，更贴近现有的 Web 服务的接口；
+SpringWeb: 目前已经抽象出了一个 SpringWeb 抽象层，并且完成了 gin 和 echo 的适配；
 
-SpringRPC: 为 Http、Thrift、gRPC、Dubbo 等社区流行的 RPC 服务实现一个抽象层，现在项目中有一个示例，可以证明通过 SpringRpcContext 有机会将上层接口统一；
+&nbsp;&nbsp;&nbsp;&nbsp; TODO: 中间件。一种方式是利用 gin 和 echo 各自的中间件，但是适配的时候会有问题，两者功能不对齐，难度不小；如果前面的方法不行，就要自己写代码，那么有两种方式，一种是完全自己写，一种是利用(抄)成熟项目的代码，前者就是工作量，但是没有风险，后者就要处理好不要落个抄袭的帽子。
 
-SpringLog: 为一般日志场景和微服务所需的 Trace 场景提供日志支持，目前规划实现一个 TraceContext 结构，内部包含一个 context.Context 对象，一个 Trace 对象，并且实现 Log 接口，还提供一个 CopyTrace 方法。
+SpringRPC: 目前已经抽象出了一个 SpringRpc 抽象层，并且已经实现了 http-json 的 rpc 功能；
 
-脚手架: 创建 Go-Spring 推荐的项目结构，仓库地址 https://github.com/go-spring/create-go-spring。
+&nbsp;&nbsp;&nbsp;&nbsp; TODO: gRpc。我和 @CoderPoet 已经研究了 gRpc 的集成，目前是通过暴露一个底层 gRpcServer 的方式实现的，但是 context 不能做到统一，但是能用；下一步的想法是 fork grpc 的 go 包 (https://github.com/go-spring/grpc-go)，在里面实现一个新的 server，然后在 starter 里面做个适配应该就可以。
+
+SpringTrace: 目前已经实现了一个 TraceContext，它是 context.Context 的增强版，具有 trace 和 log 的功能，也会对 context.Context 的功能作出限制，解决 context.Context 自身的一些问题。每个公司可能都会有自己的 log 格式，所以需要根据自己公司的情况进行适配，框架提供了适配的能力。
+
+脚手架: TODO 创建 Go-Spring 推荐的项目结构，仓库地址 https://github.com/go-spring/create-go-spring。
 
 TODO
 
@@ -58,6 +62,18 @@ TODO
 ****
 
 ### TODO 详述
+
+#### create-go-spring 工具
+
+语法示例:
+
+```
+create-go-spring -m 'github.com/go-spring/create-go-spring' [ web http-rpc redis gorm ... ]
+```
+
+-m 指定项目的 module 名称，存在 -m 标记时表示创建初始化项目，没有 -m 标记时表示给现有项目添加新的 go-spring 模块。
+
+最后面是 go-spring 的模块名，用户选择了什么模块，初始项目中就有那个模块的简单示例；如果什么参数都不加就显示 help 信息，列出所有支持的模块。
 
 #### 属性绑定的嵌套功能说明
 
@@ -89,19 +105,19 @@ type StreamServerConfig struct {
 type StreamServer struct {
 
     SecurePort      string  `value:"${secure.port}"` 
-    SecureHost      string  `value:"${secure.host}"` 
+    SecureHost      string  `value:"${secure.host:=}"`  // 有默认值
 
     InsecurePort    string  `value:"${insecure.port}"`
-    InsecureHost    string  `value:"${insecure.host}"`
+    InsecureHost    string  `value:"${insecure.host:=}"`
 }
 
 type StreamServerConfig struct {
 
-    RtmpInner      *StreamServer     `value:"${rtmp.inner}"`
-    RtmpPublic     *StreamServer     `value:"${rtmp.public}"`
+    RtmpInner      *StreamServer     `value:"${^rtmp.inner}"`   // ^ 表示一个属性前缀，不能有默认值
+    RtmpPublic     *StreamServer     `value:"${^rtmp.public}"`
 
-    HttpInner      *StreamServer     `value:"${http.inner}"`
-    HttpPublic     *StreamServer     `value:"${http.public}"`
+    HttpInner      *StreamServer     `value:"${^http.inner}"`
+    HttpPublic     *StreamServer     `value:"${^http.public}"`
 }
 
 ```
