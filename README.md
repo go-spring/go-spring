@@ -26,7 +26,7 @@ Go-Spring 有两个仓库，一个是实现 IoC 容器特性的主项目所在�
 
 ### Go-Spring 1.0 目标
 
-实现完善的 IoC 容器功能，支持数组对象注入，支持更多类型的属性绑定，可能会支持 Bean 设置顺序；
+SpringCore: 实现完善的 IoC 容器功能，支持数组对象注入，支持更多类型的属性绑定，可能会支持 Bean 设置顺序；
 
 SpringWeb: 为 Echo、Gin 等社区流行的 Go Web 服务实现一个抽象层，目前 SpringWeb 和 SpringRPC 的功能重合，未来 SpringWeb 的接口会重构，更贴近现有的 Web 服务的接口；
 
@@ -34,9 +34,15 @@ SpringRPC: 为 Http、Thrift、gRPC、Dubbo 等社区流行的 RPC 服务实现�
 
 SpringLog: 为一般日志场景和微服务所需的 Trace 场景提供日志支持，目前规划实现一个 TraceContext 结构，内部包含一个 context.Context 对象，一个 Trace 对象，并且实现 Log 接口，还提供一个 CopyTrace 方法。
 
+脚手架: 创建 Go-Spring 推荐的项目结构，仓库地址 https://github.com/go-spring/create-go-spring。
+
 TODO
 
-### 代码风格
+### Go-Spring 开发环境
+
+当前请使用 Go1.12 版本进行开发。Go 保持半年一个版本的发布节奏，所以 Go 版本会定期的保持升级，但是一般会低 1~2 个版本。
+
+### Go-Spring 代码风格
 
 代码必须使用 `goimports` 进行格式化，格式化的命令是 `goimports -w -format-only *`。如果你使用的是 IDEA 开发工具，请按照以下步骤进行配置：
 
