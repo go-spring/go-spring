@@ -215,7 +215,3 @@ TODO
 ### QQ 交流群
 
 <img src="https://raw.githubusercontent.com/go-spring/go-spring-website/master/qq.png" width="140" height="*" />
-
-### Note
-
-This is not an official Didi product (experimental or otherwise), it is just code that happens to be owned by Didi.
