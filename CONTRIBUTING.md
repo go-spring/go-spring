@@ -11,7 +11,7 @@ Before sending pull request to this project, please read and follow guidelines b
 3. Commit message: Use English or Chinese and be aware of your spell.
 4. Test: Make sure to test your code.
 
-NOTE: We assume all your contribution can be licensed under the [Apache License 2.0](https://github.com/didi/DoraemonKit/blob/master/LICENSE).
+NOTE: We assume all your contribution can be licensed under the [Apache License 2.0](https://github.com/go-spring/go-spring/blob/master/LICENSE).
 
 ## Issues
 

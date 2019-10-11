@@ -23,7 +23,7 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/didi/go-spring/spring-trace"
+	"github.com/go-spring/go-spring/spring-trace"
 )
 
 //

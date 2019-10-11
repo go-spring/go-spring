@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/didi/go-spring/spring-utils"
+	"github.com/go-spring/go-spring/spring-utils"
 )
 
 func TestRpcPanic(t *testing.T) {

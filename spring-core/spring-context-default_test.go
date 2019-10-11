@@ -18,13 +18,13 @@ package SpringCore_test
 
 import (
 	"fmt"
-	"github.com/didi/go-spring/spring-core/testdata/bar"
-	"github.com/didi/go-spring/spring-core/testdata/foo"
-	"github.com/stretchr/testify/assert"
 	"testing"
 
-	"github.com/didi/go-spring/spring-core"
-	"github.com/didi/go-spring/spring-utils"
+	"github.com/go-spring/go-spring/spring-core"
+	"github.com/go-spring/go-spring/spring-core/testdata/bar"
+	"github.com/go-spring/go-spring/spring-core/testdata/foo"
+	"github.com/go-spring/go-spring/spring-utils"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestValueWire(t *testing.T) {

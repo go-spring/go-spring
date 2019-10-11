@@ -17,8 +17,8 @@
 package SpringCore
 
 import (
-	"github.com/didi/go-spring/spring-core/testdata/bar"
-	"github.com/didi/go-spring/spring-core/testdata/foo"
+	"github.com/go-spring/go-spring/spring-core/testdata/bar"
+	"github.com/go-spring/go-spring/spring-core/testdata/foo"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )

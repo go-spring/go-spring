@@ -1,4 +1,4 @@
-module github.com/didi/go-spring
+module github.com/go-spring/go-spring
 
 go 1.12
 
@@ -10,4 +10,5 @@ require (
 	github.com/labstack/gommon v0.3.0 // indirect
 	github.com/spf13/cast v1.3.0
 	github.com/stretchr/testify v1.4.0
+	github.com/valyala/fasttemplate v1.1.0 // indirect
 )

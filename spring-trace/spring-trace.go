@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/didi/go-spring/spring-logger"
+	"github.com/go-spring/go-spring/spring-logger"
 )
 
 //

@@ -20,8 +20,8 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/didi/go-spring/spring-web"
 	"github.com/gin-gonic/gin"
+	"github.com/go-spring/go-spring/spring-web"
 )
 
 //

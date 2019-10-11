@@ -26,9 +26,9 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/didi/go-spring/spring-trace"
-	"github.com/didi/go-spring/spring-web"
 	"github.com/gin-gonic/gin"
+	"github.com/go-spring/go-spring/spring-trace"
+	"github.com/go-spring/go-spring/spring-web"
 )
 
 const (

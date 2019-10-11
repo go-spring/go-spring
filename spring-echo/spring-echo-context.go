@@ -25,8 +25,8 @@ import (
 	"net/url"
 	"os"
 
-	"github.com/didi/go-spring/spring-trace"
-	"github.com/didi/go-spring/spring-web"
+	"github.com/go-spring/go-spring/spring-trace"
+	"github.com/go-spring/go-spring/spring-web"
 	"github.com/labstack/echo"
 )
 

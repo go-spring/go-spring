@@ -16,7 +16,7 @@
 
 package SpringRpc
 
-import "github.com/didi/go-spring/spring-trace"
+import "github.com/go-spring/go-spring/spring-trace"
 
 //
 // RPC 错误值

@@ -19,7 +19,7 @@ package SpringEcho
 import (
 	"context"
 
-	"github.com/didi/go-spring/spring-web"
+	"github.com/go-spring/go-spring/spring-web"
 	"github.com/labstack/echo"
 	"github.com/labstack/echo/middleware"
 )
