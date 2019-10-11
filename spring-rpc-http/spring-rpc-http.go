@@ -84,10 +84,7 @@ func (c *Container) Register(service string, method string, fn SpringRpc.Handler
 		ctx.Header("Content-Type", "application/json")
 
 		rpcResult := SpringRpc.SUCCESS.Data(fn(ctx))
-		err := ctx.JSON(http.StatusOK, rpcResult)
-		if err != nil {
-			ctx.Logger("__rpc_out").Error(err)
-		}
+		ctx.JSON(http.StatusOK, rpcResult)
 	})
 }
 

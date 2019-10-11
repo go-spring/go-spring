@@ -65,6 +65,26 @@ func (c *Container) POST(path string, fn SpringWeb.Handler) {
 	c.GinEngine.POST(path, HandlerWrapper(path, fn))
 }
 
+func (c *Container) PATCH(path string, fn SpringWeb.Handler) {
+	c.GinEngine.PATCH(path, HandlerWrapper(path, fn))
+}
+
+func (c *Container) PUT(path string, fn SpringWeb.Handler) {
+	c.GinEngine.PUT(path, HandlerWrapper(path, fn))
+}
+
+func (c *Container) DELETE(path string, fn SpringWeb.Handler) {
+	c.GinEngine.DELETE(path, HandlerWrapper(path, fn))
+}
+
+func (c *Container) HEAD(path string, fn SpringWeb.Handler) {
+	c.GinEngine.HEAD(path, HandlerWrapper(path, fn))
+}
+
+func (c *Container) OPTIONS(path string, fn SpringWeb.Handler) {
+	c.GinEngine.OPTIONS(path, HandlerWrapper(path, fn))
+}
+
 //
 // Web 处理函数包装器
 //
