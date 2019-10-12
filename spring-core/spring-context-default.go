@@ -53,24 +53,6 @@ const (
 	Initialized
 )
 
-func (ctx *DefaultSpringContext) RegisterSliceBean(bean SpringBean) {
-	t := reflect.TypeOf(bean)
-	v := reflect.ValueOf(bean)
-
-	name := fmt.Sprintf("bean#%d", ctx.nextBeanId)
-	ctx.nextBeanId++
-
-	beanDefinition := &SpringBeanDefinition{
-		Init:  Uninitialized,
-		Name:  name,
-		Bean:  bean,
-		Type:  t,
-		Value: v,
-	}
-
-	ctx.RegisterBeanDefinition(beanDefinition)
-}
-
 //
 // SpringBean 转换为 SpringBeanDefinition 对象
 //
@@ -81,8 +63,15 @@ func (ctx *DefaultSpringContext) ToSpringBeanDefinition(name string, bean Spring
 
 	// 未指定名称的情况，按照默认规则生成名称
 	if name == "" {
-		name = getBeanUnameByType(t)
+		switch t.Kind() {
+		case reflect.Slice:
+			name = fmt.Sprintf("bean#%d", ctx.nextBeanId)
+			ctx.nextBeanId++
+		case reflect.Ptr:
+			name = getBeanUnameByType(t)
+		}
 	}
+
 
 	return &SpringBeanDefinition{
 		Init:  Uninitialized,
@@ -121,6 +110,9 @@ func (ctx *DefaultSpringContext) RegisterSingletonBean(bean SpringBean) {
 //
 func (ctx *DefaultSpringContext) RegisterSingletonNameBean(name string, bean SpringBean) {
 	beanDefinition := ctx.ToSpringBeanDefinition(name, bean)
+	if ctx.beanDefinitionMap[beanDefinition.Name] != nil {
+		panic(fmt.Sprintf("Singleton bean do not allow duplicate register"))
+	}
 	ctx.RegisterBeanDefinition(beanDefinition)
 }
 

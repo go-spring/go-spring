@@ -97,10 +97,10 @@ func TestStructSliceWire(t *testing.T) {
 	ctx.RegisterSingletonBean(cfg)
 
 	nums := []int{1, 2}
-	ctx.RegisterBean(nums)
+	ctx.RegisterSingletonBean(nums)
 
 	strs := []string{"a", "b"}
-	ctx.RegisterBean(strs)
+	ctx.RegisterSingletonBean(strs)
 
 	cfgs := []*Config{
 		{
@@ -110,7 +110,7 @@ func TestStructSliceWire(t *testing.T) {
 			Port: 8081,
 		},
 	}
-	ctx.RegisterBean(cfgs)
+	ctx.RegisterSingletonBean(cfgs)
 
 	demo := new(ConfigsDemo)
 	ctx.RegisterSingletonBean(demo)
@@ -285,7 +285,7 @@ func TestFindSliceBean(t *testing.T) {
 			Port: 8081,
 		},
 	}
-	ctx.RegisterBean(cfgs)
+	ctx.RegisterSingletonBean(cfgs)
 
 	var find []*Config
 	ctx.GetBeanByType(&find)
