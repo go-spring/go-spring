@@ -18,14 +18,15 @@ package SpringCore_test
 
 import (
 	"fmt"
-	SpringCore "github.com/go-spring/go-spring/spring-core"
-	"github.com/go-spring/go-spring/spring-core/testdata/bar"
-	"github.com/go-spring/go-spring/spring-core/testdata/foo"
-	SpringUtils "github.com/go-spring/go-spring/spring-utils"
-	"github.com/stretchr/testify/assert"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/go-spring/go-spring/spring-core"
+	"github.com/go-spring/go-spring/spring-core/testdata/bar"
+	"github.com/go-spring/go-spring/spring-core/testdata/foo"
+	"github.com/go-spring/go-spring/spring-utils"
+	"github.com/stretchr/testify/assert"
 )
 
 type EvenetHandler interface {
@@ -296,5 +297,20 @@ func TestFindSliceBean(t *testing.T) {
 	var cfg *Config
 	ctx.GetBeanByType(&cfg)
 	assert.Equal(t, cfg.Port, int32(1234))
+}
 
+func TestGetBeanUname(t *testing.T) {
+	beanUname := SpringCore.GetTypeName(reflect.TypeOf(&foo.Demo{}))
+	otherPkgBeanUname := SpringCore.GetTypeName(reflect.TypeOf(&bar.Demo{}))
+	assert.NotEqual(t, beanUname, otherPkgBeanUname)
+}
+
+func TestGetBeanName(t *testing.T) {
+	ctx := SpringCore.NewDefaultSpringContext()
+	ctx.RegisterSingletonBean(new(Config))
+	var cfg *Config
+	ctx.FindBeanByType(cfg)
+	t.Log(SpringCore.GetBeanName(cfg))
+
+	ctx.GetAllBeanNames()
 }
