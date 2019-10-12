@@ -164,9 +164,13 @@ func (ctx *DefaultSpringContext) FindBeanByType(i interface{}) SpringBean {
 }
 
 func (ctx *DefaultSpringContext) FindSliceBeanByType(i interface{}) {
-	//it := checkBeanType(i)
-	//et := it.Elem()
-
+	it := checkBeanType(i)
+	for _, beanDefinition := range ctx.beanDefinitionMap {
+		if beanDefinition.Type.AssignableTo(it.Elem()) {
+			v := reflect.ValueOf(i)
+			v.Elem().Set(beanDefinition.Value)
+		}
+	}
 }
 
 //
@@ -294,49 +298,12 @@ func (ctx *DefaultSpringContext) wireBeanByDefinition(beanDefinition *SpringBean
 		}
 	}
 
-	//// 根据bean的类型分别处理
-	//switch beanDefinition.Type.Kind() {
-	//case reflect.Slice:
-	//	//t := beanDefinition.Type
-	//	//v := beanDefinition.Value
-	//	//if err := ctx.wireSliceBeanByDefinition(t, v); err != nil {
-	//	//	return err
-	//	//}
-	//
-	//	//t := beanDefinition.Type.Elem()
-	//	//v := beanDefinition.Value.Elem()
-	//	//if err := ctx.wireStructBeanByDefinition(t, v); err != nil {
-	//	//	return err
-	//	//}
-	//case reflect.Ptr:
-	//	t := beanDefinition.Type.Elem()
-	//	v := beanDefinition.Value.Elem()
-	//	if err := ctx.wireStructBeanByDefinition(t, v); err != nil {
-	//		return err
-	//	}
-	//}
-
 	// 执行 SpringBean 的初始化接口
 	if c, ok := beanDefinition.Bean.(SpringBeanInitialization); ok {
 		c.InitBean(ctx)
 	}
 
 	beanDefinition.Init = Initialized
-	return nil
-}
-
-//
-// 为数组做自动注入
-//
-func (ctx *DefaultSpringContext) wireSliceBeanByDefinition(t reflect.Type, v reflect.Value) error {
-
-	// 遍历数组
-	for i := 0; i < v.Len(); i++ {
-		if err := ctx.wireStructBeanByDefinition(t.Elem().Elem(), v.Index(i).Elem()); err != nil {
-			return err
-		}
-	}
-
 	return nil
 }
 

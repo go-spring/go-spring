@@ -286,11 +286,10 @@ func TestFindSliceBean(t *testing.T) {
 	ctx.RegisterBean(cfgs)
 
 	var find []*Config
-	ctx.FindBeansByType(&find)
 
-	for k, v := range find {
-		t.Log(k)
-		t.Log(v)
-	}
+	ctx.FindSliceBeanByType(&find)
+
+	assert.Equal(t, find[0].Port, int32(8080))
+	assert.Equal(t, find[1].Port, int32(8081))
 
 }
