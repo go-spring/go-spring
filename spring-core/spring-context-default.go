@@ -163,7 +163,7 @@ func (ctx *DefaultSpringContext) FindBeanByType(i interface{}) SpringBean {
 	return ctx.beanDefinitionMap[getBeanUnameByType(checkBeanType(i))].Bean
 }
 
-func (ctx *DefaultSpringContext) FindSliceBeanByType(i interface{}) {
+func (ctx *DefaultSpringContext) GetBeanByType(i interface{}) {
 	it := checkBeanType(i)
 	for _, beanDefinition := range ctx.beanDefinitionMap {
 		if beanDefinition.Type.AssignableTo(it.Elem()) {

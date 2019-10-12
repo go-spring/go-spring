@@ -275,6 +275,8 @@ func TestRegiserSingletonBean(t *testing.T) {
 func TestFindSliceBean(t *testing.T) {
 	ctx := SpringCore.NewDefaultSpringContext()
 
+	ctx.RegisterSingletonBean(&Config{Port: 1234})
+
 	cfgs := []*Config{
 		{
 			Port: 8080,
@@ -286,10 +288,13 @@ func TestFindSliceBean(t *testing.T) {
 	ctx.RegisterBean(cfgs)
 
 	var find []*Config
-
-	ctx.FindSliceBeanByType(&find)
+	ctx.GetBeanByType(&find)
 
 	assert.Equal(t, find[0].Port, int32(8080))
 	assert.Equal(t, find[1].Port, int32(8081))
+
+	var cfg *Config
+	ctx.GetBeanByType(&cfg)
+	assert.Equal(t, cfg.Port, int32(1234))
 
 }
