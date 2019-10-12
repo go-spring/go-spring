@@ -32,10 +32,10 @@ func getBeanUnameByType(t reflect.Type) string {
 }
 
 // 反射提取type，强制必须传入指针
-func MustPointerTypeOf(bean SpringBean) reflect.Type {
+func checkBeanType(bean SpringBean) reflect.Type {
 	t := reflect.TypeOf(bean)
-	if t.Kind() != reflect.Ptr {
-		panic("bean must be pointer")
+	if t.Kind() != reflect.Ptr && t.Kind() != reflect.Slice {
+		panic("bean must be pointer or slice")
 	}
 	return t
 }

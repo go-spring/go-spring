@@ -24,13 +24,13 @@ import (
 )
 
 func TestGetBeanUname(t *testing.T) {
-	beanUname := getBeanUnameByType(MustPointerTypeOf(&foo.Demo{}))
-	otherPkgBeanUname := getBeanUnameByType(MustPointerTypeOf(&bar.Demo{}))
+	beanUname := getBeanUnameByType(checkBeanType(&foo.Demo{}))
+	otherPkgBeanUname := getBeanUnameByType(checkBeanType(&bar.Demo{}))
 	assert.NotEqual(t, beanUname, otherPkgBeanUname)
 }
 
 func TestMustPointerTypeOf(t *testing.T) {
 	assert.Panics(t, func() {
-		MustPointerTypeOf(foo.Demo{})
+		checkBeanType(foo.Demo{})
 	})
 }
