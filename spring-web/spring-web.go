@@ -50,25 +50,25 @@ type WebContainer interface {
 	StartTLS(address string, certFile, keyFile string) error
 
 	// 注册 GET 方法处理函数
-	GET(path string, fn Handler)
+	GET(path string, fn Handler, filters ...Filter)
 
 	// 注册 POST 方法处理函数
-	POST(path string, fn Handler)
+	POST(path string, fn Handler, filters ...Filter)
 
 	// 注册 PATCH 方法处理函数
-	PATCH(path string, fn Handler)
+	PATCH(path string, fn Handler, filters ...Filter)
 
 	// 注册 PUT 方法处理函数
-	PUT(path string, fn Handler)
+	PUT(path string, fn Handler, filters ...Filter)
 
 	// 注册 DELETE 方法处理函数
-	DELETE(path string, fn Handler)
+	DELETE(path string, fn Handler, filters ...Filter)
 
 	// 注册 HEAD 方法处理函数
-	HEAD(path string, fn Handler)
+	HEAD(path string, fn Handler, filters ...Filter)
 
 	// 注册 OPTIONS 方法处理函数
-	OPTIONS(path string, fn Handler)
+	OPTIONS(path string, fn Handler, filters ...Filter)
 }
 
 //
@@ -256,6 +256,63 @@ type WebContext interface {
 
 	// Error invokes the registered HTTP error handler.
 	Error(err error)
+}
+
+//
+// 定义 Web 过滤器
+//
+type Filter interface {
+	// 函数内部通过 chain.Next() 驱动链条向后执行
+	Invoke(ctx WebContext, chain *FilterChain)
+}
+
+//
+// 包装 Web 处理函数的过滤器
+//
+type handlerFilter struct {
+	fn Handler
+}
+
+func (h *handlerFilter) Invoke(ctx WebContext, _ *FilterChain) {
+	h.fn(ctx)
+}
+
+//
+// 把 Web 处理函数转换成 Web 过滤器
+//
+func HandlerFilter(fn Handler) Filter {
+	return &handlerFilter{
+		fn: fn,
+	}
+}
+
+//
+// 定义 Web 过滤器链条
+//
+type FilterChain struct {
+	filters []Filter
+	next    int
+}
+
+//
+// 工厂函数
+//
+func NewFilterChain(filters ...Filter) *FilterChain {
+	return &FilterChain{
+		filters: filters,
+	}
+}
+
+//
+// 执行下一个 Web 过滤器
+//
+func (chain *FilterChain) Next(ctx WebContext) {
+	if chain.next >= len(chain.filters) {
+		return
+	}
+	f := chain.filters[chain.next]
+	chain.next++
+	f.Invoke(ctx, chain)
 }
 
 //

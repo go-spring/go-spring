@@ -57,44 +57,48 @@ func (c *Container) StartTLS(address string, certFile, keyFile string) error {
 	return c.HttpServer.ListenAndServeTLS(certFile, keyFile)
 }
 
-func (c *Container) GET(path string, fn SpringWeb.Handler) {
-	c.GinEngine.GET(path, HandlerWrapper(path, fn))
+func (c *Container) GET(path string, fn SpringWeb.Handler, filters ...SpringWeb.Filter) {
+	c.GinEngine.GET(path, HandlerWrapper(path, fn, filters...))
 }
 
-func (c *Container) POST(path string, fn SpringWeb.Handler) {
-	c.GinEngine.POST(path, HandlerWrapper(path, fn))
+func (c *Container) POST(path string, fn SpringWeb.Handler, filters ...SpringWeb.Filter) {
+	c.GinEngine.POST(path, HandlerWrapper(path, fn, filters...))
 }
 
-func (c *Container) PATCH(path string, fn SpringWeb.Handler) {
-	c.GinEngine.PATCH(path, HandlerWrapper(path, fn))
+func (c *Container) PATCH(path string, fn SpringWeb.Handler, filters ...SpringWeb.Filter) {
+	c.GinEngine.PATCH(path, HandlerWrapper(path, fn, filters...))
 }
 
-func (c *Container) PUT(path string, fn SpringWeb.Handler) {
-	c.GinEngine.PUT(path, HandlerWrapper(path, fn))
+func (c *Container) PUT(path string, fn SpringWeb.Handler, filters ...SpringWeb.Filter) {
+	c.GinEngine.PUT(path, HandlerWrapper(path, fn, filters...))
 }
 
-func (c *Container) DELETE(path string, fn SpringWeb.Handler) {
-	c.GinEngine.DELETE(path, HandlerWrapper(path, fn))
+func (c *Container) DELETE(path string, fn SpringWeb.Handler, filters ...SpringWeb.Filter) {
+	c.GinEngine.DELETE(path, HandlerWrapper(path, fn, filters...))
 }
 
-func (c *Container) HEAD(path string, fn SpringWeb.Handler) {
-	c.GinEngine.HEAD(path, HandlerWrapper(path, fn))
+func (c *Container) HEAD(path string, fn SpringWeb.Handler, filters ...SpringWeb.Filter) {
+	c.GinEngine.HEAD(path, HandlerWrapper(path, fn, filters...))
 }
 
-func (c *Container) OPTIONS(path string, fn SpringWeb.Handler) {
-	c.GinEngine.OPTIONS(path, HandlerWrapper(path, fn))
+func (c *Container) OPTIONS(path string, fn SpringWeb.Handler, filters ...SpringWeb.Filter) {
+	c.GinEngine.OPTIONS(path, HandlerWrapper(path, fn, filters...))
 }
 
 //
 // Web 处理函数包装器
 //
-func HandlerWrapper(path string, fn SpringWeb.Handler) func(*gin.Context) {
+func HandlerWrapper(path string, fn SpringWeb.Handler, filters ...SpringWeb.Filter) func(*gin.Context) {
 	return func(ginCtx *gin.Context) {
+
 		webCtx := &Context{
 			GinContext:  ginCtx,
 			HandlerPath: path,
 			HandlerFunc: fn,
 		}
-		fn(webCtx)
+
+		filters = append(filters, SpringWeb.HandlerFilter(fn))
+		chain := SpringWeb.NewFilterChain(filters...)
+		chain.Next(webCtx)
 	}
 }

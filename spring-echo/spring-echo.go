@@ -57,44 +57,49 @@ func (c *Container) StartTLS(address string, certFile, keyFile string) error {
 	return c.EchoServer.StartTLS(address, certFile, keyFile)
 }
 
-func (c *Container) GET(path string, fn SpringWeb.Handler) {
-	c.EchoServer.GET(path, HandlerWrapper(fn))
+func (c *Container) GET(path string, fn SpringWeb.Handler, filters ...SpringWeb.Filter) {
+	c.EchoServer.GET(path, HandlerWrapper(fn, filters...))
 }
 
-func (c *Container) PATCH(path string, fn SpringWeb.Handler) {
-	c.EchoServer.PATCH(path, HandlerWrapper(fn))
+func (c *Container) PATCH(path string, fn SpringWeb.Handler, filters ...SpringWeb.Filter) {
+	c.EchoServer.PATCH(path, HandlerWrapper(fn, filters...))
 }
 
-func (c *Container) PUT(path string, fn SpringWeb.Handler) {
-	c.EchoServer.PUT(path, HandlerWrapper(fn))
+func (c *Container) PUT(path string, fn SpringWeb.Handler, filters ...SpringWeb.Filter) {
+	c.EchoServer.PUT(path, HandlerWrapper(fn, filters...))
 }
 
-func (c *Container) POST(path string, fn SpringWeb.Handler) {
-	c.EchoServer.POST(path, HandlerWrapper(fn))
+func (c *Container) POST(path string, fn SpringWeb.Handler, filters ...SpringWeb.Filter) {
+	c.EchoServer.POST(path, HandlerWrapper(fn, filters...))
 }
 
-func (c *Container) DELETE(path string, fn SpringWeb.Handler) {
-	c.EchoServer.DELETE(path, HandlerWrapper(fn))
+func (c *Container) DELETE(path string, fn SpringWeb.Handler, filters ...SpringWeb.Filter) {
+	c.EchoServer.DELETE(path, HandlerWrapper(fn, filters...))
 }
 
-func (c *Container) HEAD(path string, fn SpringWeb.Handler) {
-	c.EchoServer.HEAD(path, HandlerWrapper(fn))
+func (c *Container) HEAD(path string, fn SpringWeb.Handler, filters ...SpringWeb.Filter) {
+	c.EchoServer.HEAD(path, HandlerWrapper(fn, filters...))
 }
 
-func (c *Container) OPTIONS(path string, fn SpringWeb.Handler) {
-	c.EchoServer.OPTIONS(path, HandlerWrapper(fn))
+func (c *Container) OPTIONS(path string, fn SpringWeb.Handler, filters ...SpringWeb.Filter) {
+	c.EchoServer.OPTIONS(path, HandlerWrapper(fn, filters...))
 }
 
 //
 // Web 处理函数包装器
 //
-func HandlerWrapper(fn SpringWeb.Handler) func(echo.Context) error {
+func HandlerWrapper(fn SpringWeb.Handler, filters ...SpringWeb.Filter) echo.HandlerFunc {
 	return func(echoCtx echo.Context) error {
+
 		webCtx := &Context{
 			EchoContext: echoCtx,
 			HandlerFunc: fn,
 		}
-		fn(webCtx)
+
+		filters = append(filters, SpringWeb.HandlerFilter(fn))
+		chain := SpringWeb.NewFilterChain(filters...)
+		chain.Next(webCtx)
+
 		return nil
 	}
 }

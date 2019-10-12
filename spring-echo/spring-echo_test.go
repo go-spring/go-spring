@@ -29,54 +29,93 @@ import (
 	"github.com/go-spring/go-spring/spring-web"
 )
 
+type NumberFilter struct {
+	n int
+}
+
+func NewNumberFilter(n int) *NumberFilter {
+	return &NumberFilter{
+		n: n,
+	}
+}
+
+func (f *NumberFilter) Invoke(ctx SpringWeb.WebContext, chain *SpringWeb.FilterChain) {
+	defer fmt.Println("::after", f.n)
+	fmt.Println("::before", f.n)
+	chain.Next(ctx)
+}
+
+type Service struct {
+	store map[string]string
+}
+
+func NewService() *Service {
+	return &Service{
+		store: make(map[string]string),
+	}
+}
+
+func (s *Service) Get(ctx SpringWeb.WebContext) {
+
+	key := ctx.QueryParam("key")
+	ctx.LogInfo("/get", "key=", key)
+
+	val := s.store[key]
+	ctx.LogInfo("/get", "val=", val)
+
+	ctx.String(http.StatusOK, val)
+}
+
+func (s *Service) Set(ctx SpringWeb.WebContext) {
+
+	var param struct {
+		A string `form:"a" json:"a"`
+	}
+
+	ctx.Bind(&param)
+
+	ctx.LogInfo("/set", "param="+SpringUtils.ToJson(param))
+
+	s.store["a"] = param.A
+}
+
+func (s *Service) Panic(ctx SpringWeb.WebContext) {
+	panic("this is a panic")
+}
+
 func TestContainer(t *testing.T) {
 	c := SpringEcho.NewContainer()
 
-	store := make(map[string]string)
+	s := NewService()
 
-	c.GET("/get", func(ctx SpringWeb.WebContext) {
+	f2 := NewNumberFilter(2)
+	f5 := NewNumberFilter(5)
+	f7 := NewNumberFilter(7)
 
-		key := ctx.QueryParam("key")
-		fmt.Println("/get", "key=", key)
-
-		val := store[key]
-		fmt.Println("/get", "val=", val)
-
-		ctx.String(http.StatusOK, val)
-	})
-
-	c.POST("/set", func(ctx SpringWeb.WebContext) {
-
-		var param struct {
-			A string `form:"a" json:"a"`
-		}
-
-		ctx.Bind(&param)
-
-		fmt.Println("/set", "param="+SpringUtils.ToJson(param))
-
-		store["a"] = param.A
-	})
-
-	c.GET("/panic", func(ctx SpringWeb.WebContext) {
-		panic("this is a panic")
-	})
+	c.GET("/get", s.Get, f2, f5)
+	c.POST("/set", s.Set, f2, f7)
+	c.GET("/panic", s.Panic, f5, f7)
 
 	go c.Start(":8080")
 
 	time.Sleep(time.Millisecond * 100)
+	fmt.Println()
 
 	resp, _ := http.Get("http://127.0.0.1:8080/get?key=a")
 	body, _ := ioutil.ReadAll(resp.Body)
 	fmt.Println("code:", resp.StatusCode, "||", "resp:", string(body))
+	fmt.Println()
 
 	http.PostForm("http://127.0.0.1:8080/set", url.Values{
 		"a": []string{"1"},
 	})
 
+	fmt.Println()
+
 	resp, _ = http.Get("http://127.0.0.1:8080/get?key=a")
 	body, _ = ioutil.ReadAll(resp.Body)
 	fmt.Println("code:", resp.StatusCode, "||", "resp:", string(body))
+	fmt.Println()
 
 	resp, _ = http.Get("http://127.0.0.1:8080/panic")
 	body, _ = ioutil.ReadAll(resp.Body)
