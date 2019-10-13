@@ -27,9 +27,10 @@ import (
 
 //
 // SpringContext 的默认版本
-// 目前支持两种bean的命名方式：
-// 1、匿名注册使用 "bean#id" 作为 bean 的名称
-// 2、采用 RegisterSingletonBean 注册的bean，以 PkgPath + struct name 命名
+// 目前支持三种bean的命名方式：
+// 1、slice bean 匿名注册使用 "bean#id" 作为 bean 的名称
+// 2、struct ptr bean，以 PkgPath + struct name ，以 . 分割 作为 bean 的名称
+// 3、自定义命名
 //
 type DefaultSpringContext struct {
 	beanDefinitionMap map[string]*SpringBeanDefinition // Bean 集合
