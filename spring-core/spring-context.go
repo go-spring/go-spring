@@ -65,6 +65,9 @@ type SpringContext interface {
 	// 根据 Bean 类型查找 SpringBean
 	FindBeanByType(i interface{}) SpringBean
 
+	// 根据 Bean 类型查找
+	GetBeanByType(i interface{})
+
 	// 根据 Bean 类型查找 SpringBean 数组
 	FindBeansByType(i interface{})
 

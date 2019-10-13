@@ -19,19 +19,24 @@ package SpringCore
 import (
 	"errors"
 	"fmt"
-	"github.com/spf13/cast"
 	"reflect"
 	"strings"
+
+	"github.com/spf13/cast"
 )
 
 //
 // SpringContext 的默认版本
+// 目前支持三种bean的命名方式：
+// 1、slice bean 匿名注册使用 "bean#id" 作为 bean 的名称
+// 2、struct ptr bean，以 PkgPath + struct name ，以 . 分割 作为 bean 的名称
+// 3、自定义命名
 //
 type DefaultSpringContext struct {
 	beanDefinitionMap map[string]*SpringBeanDefinition // Bean 集合
 	propertiesMap     map[string]interface{}           // 属性值集合
 
-	nextBeanId int // 匿名注册使用 "bean#id" 作为 bean 的名称
+	nextBeanId int
 }
 
 //
@@ -58,12 +63,18 @@ const (
 //
 func (ctx *DefaultSpringContext) ToSpringBeanDefinition(name string, bean SpringBean) *SpringBeanDefinition {
 
-	t := MustPointerTypeOf(bean)
+	t := checkBeanType(bean)
 	v := reflect.ValueOf(bean)
 
 	// 未指定名称的情况，按照默认规则生成名称
 	if name == "" {
-		name = getBeanUnameByType(t)
+		switch t.Kind() {
+		case reflect.Slice:
+			name = fmt.Sprintf("bean#%d", ctx.nextBeanId)
+			ctx.nextBeanId++
+		case reflect.Ptr:
+			name = GetTypeName(t)
+		}
 	}
 
 	return &SpringBeanDefinition{
@@ -92,6 +103,9 @@ func (ctx *DefaultSpringContext) RegisterBean(bean SpringBean) {
 //
 func (ctx *DefaultSpringContext) RegisterSingletonBean(bean SpringBean) {
 	beanDefinition := ctx.ToSpringBeanDefinition("", bean)
+	if ctx.beanDefinitionMap[beanDefinition.Name] != nil {
+		panic(fmt.Sprintf("Singleton bean do not allow duplicate register"))
+	}
 	ctx.RegisterBeanDefinition(beanDefinition)
 }
 
@@ -100,6 +114,9 @@ func (ctx *DefaultSpringContext) RegisterSingletonBean(bean SpringBean) {
 //
 func (ctx *DefaultSpringContext) RegisterSingletonNameBean(name string, bean SpringBean) {
 	beanDefinition := ctx.ToSpringBeanDefinition(name, bean)
+	if ctx.beanDefinitionMap[beanDefinition.Name] != nil {
+		panic(fmt.Sprintf("Singleton bean do not allow duplicate register"))
+	}
 	ctx.RegisterBeanDefinition(beanDefinition)
 }
 
@@ -139,7 +156,20 @@ func (ctx *DefaultSpringContext) FindBeanDefinitionByName(name string) *SpringBe
 // 根据 Bean 类型查找 SpringBean
 //
 func (ctx *DefaultSpringContext) FindBeanByType(i interface{}) SpringBean {
-	return ctx.beanDefinitionMap[getBeanUnameByType(MustPointerTypeOf(i))].Bean
+	return ctx.beanDefinitionMap[GetTypeName(checkBeanType(i))].Bean
+}
+
+//
+// 根据 Bean 类型查找 SpringBean, 并反射赋值
+//
+func (ctx *DefaultSpringContext) GetBeanByType(i interface{}) {
+	it := checkBeanType(i)
+	for _, beanDefinition := range ctx.beanDefinitionMap {
+		if beanDefinition.Type.AssignableTo(it.Elem()) {
+			v := reflect.ValueOf(i)
+			v.Elem().Set(beanDefinition.Value)
+		}
+	}
 }
 
 //
@@ -147,7 +177,7 @@ func (ctx *DefaultSpringContext) FindBeanByType(i interface{}) SpringBean {
 //
 func (ctx *DefaultSpringContext) FindBeansByType(i interface{}) {
 
-	it := MustPointerTypeOf(i)
+	it := checkBeanType(i)
 	et := it.Elem()
 
 	v := reflect.New(et).Elem()
@@ -173,16 +203,6 @@ func (ctx *DefaultSpringContext) FindBeanDefinitionsByType(t reflect.Type) []*Sp
 		}
 	}
 	return result
-}
-
-//
-// 获取所有的bean name
-//
-func (ctx *DefaultSpringContext) GetAllBeanNames() (names []string) {
-	for name, _ := range ctx.beanDefinitionMap {
-		names = append(names, name)
-	}
-	return
 }
 
 //
@@ -259,25 +279,55 @@ func (ctx *DefaultSpringContext) wireBeanByDefinition(beanDefinition *SpringBean
 
 	beanDefinition.Init = Initializing
 
-	t := beanDefinition.Type.Elem()
-	v := beanDefinition.Value.Elem()
+	if beanDefinition.Type.Kind() == reflect.Ptr {
+		t := beanDefinition.Type.Elem()
+		v := beanDefinition.Value.Elem()
+		if err := ctx.wireStructBeanByDefinition(t, v); err != nil {
+			return err
+		}
+	}
 
-	// 遍历 SpringBean 所有的字段
+	// 执行 SpringBean 的初始化接口
+	if c, ok := beanDefinition.Bean.(SpringBeanInitialization); ok {
+		c.InitBean(ctx)
+	}
+
+	beanDefinition.Init = Initialized
+	return nil
+}
+
+//
+// 为结构体做自动注入
+//
+func (ctx *DefaultSpringContext) wireStructBeanByDefinition(t reflect.Type, v reflect.Value) error {
+
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
 
 		// 查找依赖绑定的标签
 		if beanName, ok := f.Tag.Lookup("autowire"); ok {
-			// TODO 数组绑定
 
-			var definition *SpringBeanDefinition
+			var (
+				definition  *SpringBeanDefinition
+				definitions []*SpringBeanDefinition
+			)
 
 			if len(beanName) > 0 {
 				definition = ctx.FindBeanDefinitionByName(beanName)
 			} else {
-				definitions := ctx.FindBeanDefinitionsByType(f.Type)
-				if len(definitions) > 0 {
-					definition = definitions[0]
+				// 判断注入字段为是否为一个接口slice
+				if f.Type.Kind() == reflect.Slice && f.Type.Elem().Kind() == reflect.Interface {
+					definitions = ctx.FindBeanDefinitionsByType(f.Type.Elem())
+					slice := reflect.MakeSlice(f.Type, 0, 0)
+					for _, dv := range definitions {
+						slice = reflect.Append(slice, dv.Value)
+					}
+					v.Field(i).Set(slice)
+				} else {
+					definitions = ctx.FindBeanDefinitionsByType(f.Type)
+					if len(definitions) > 0 {
+						definition = definitions[0]
+					}
 				}
 			}
 
@@ -339,11 +389,44 @@ func (ctx *DefaultSpringContext) wireBeanByDefinition(beanDefinition *SpringBean
 		}
 	}
 
-	// 执行 SpringBean 的初始化接口
-	if c, ok := beanDefinition.Bean.(SpringBeanInitialization); ok {
-		c.InitBean(ctx)
-	}
-
-	beanDefinition.Init = Initialized
 	return nil
+}
+
+//
+// 获取Bean的唯一签名，规则 ：pkgpath + struct name
+//
+func GetTypeName(t reflect.Type) string {
+	return fmt.Sprintf(
+		"%s.%s",
+		strings.Replace(t.Elem().PkgPath(), "/", ".", -1),
+		t.Elem().Name(),
+	)
+}
+
+//
+// 获取 SpringBean 的名称
+//
+func GetBeanName(bean SpringBean) string {
+	return GetTypeName(reflect.TypeOf(bean))
+}
+
+//
+// 检查待注册bean的类型
+//
+func checkBeanType(bean SpringBean) reflect.Type {
+	t := reflect.TypeOf(bean)
+	if t.Kind() != reflect.Ptr && t.Kind() != reflect.Slice {
+		panic("bean must be pointer or slice")
+	}
+	return t
+}
+
+//
+// 获取所有的bean name
+//
+func (ctx *DefaultSpringContext) GetAllBeanNames() (names []string) {
+	for name, _ := range ctx.beanDefinitionMap {
+		names = append(names, name)
+	}
+	return
 }
