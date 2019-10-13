@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/go-spring/go-spring/spring-core"
 	"github.com/go-spring/go-spring/spring-trace"
 )
 
@@ -75,7 +76,7 @@ type WebContainer interface {
 // 定义 Web Bean 初始化接口
 //
 type WebBeanInitialization interface {
-	InitWebBean(c WebContainer)
+	InitWebBean(c WebContainer, ctx SpringCore.SpringContext)
 }
 
 //
