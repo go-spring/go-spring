@@ -24,6 +24,7 @@ import (
 
 	"github.com/go-spring/go-spring/spring-core"
 	"github.com/go-spring/go-spring/spring-core/testdata/bar"
+	otherfoo "github.com/go-spring/go-spring/spring-core/testdata/bar/foo"
 	"github.com/go-spring/go-spring/spring-core/testdata/foo"
 	"github.com/go-spring/go-spring/spring-utils"
 	"github.com/stretchr/testify/assert"
@@ -313,4 +314,123 @@ func TestGetBeanName(t *testing.T) {
 	t.Log(SpringCore.GetBeanName(cfg))
 
 	ctx.GetAllBeanNames()
+}
+
+func TestRegisterSingletonBean(t *testing.T) {
+	ctx := SpringCore.NewDefaultSpringContext()
+
+	f := &foo.Demo{}
+	b := &bar.Demo{}
+	otherf := &otherfoo.Demo{}
+
+	ctx.RegisterSingletonBean(f)
+	ctx.RegisterSingletonBean(b)
+	ctx.RegisterSingletonBean(otherf)
+
+	_ = ctx.AutoWireBeans()
+
+	t.Log(ctx.GetAllBeanNames())
+
+}
+
+func TestGetTypeName(t *testing.T) {
+
+	ctx := SpringCore.NewDefaultSpringContext()
+
+	t.Run("struct ptr slice bean", func(t *testing.T) {
+		cfgs := []*Config{
+			{
+				Port: 8080,
+			},
+			{
+				Port: 8081,
+			},
+		}
+		ctx.RegisterSingletonBean(cfgs)
+	})
+
+	t.Run("struct slice", func(t *testing.T) {
+		cfgs2 := []Config{
+			{
+				Port: 8080,
+			},
+			{
+				Port: 8081,
+			},
+		}
+		ctx.RegisterSingletonBean(cfgs2)
+	})
+
+	t.Run("struct ptr bean", func(t *testing.T) {
+		ctx.RegisterSingletonBean(new(Config))
+	})
+
+	t.Run("built in type bean", func(t *testing.T) {
+		nums := []int{1, 2}
+		ctx.RegisterSingletonBean(nums)
+
+		strs := []string{"a", "b"}
+		ctx.RegisterSingletonBean(strs)
+	})
+
+	_ = ctx.AutoWireBeans()
+
+	t.Log(ctx.GetAllBeanNames())
+
+}
+
+func TestPkgPath(t *testing.T) {
+
+	num := 1
+	t.Log(reflect.TypeOf(num).PkgPath())
+
+	nums := []int{1, 2}
+	t.Log(reflect.TypeOf(nums).Elem().PkgPath())
+}
+
+// TODO beanmap的key可以参考这个
+type key struct {
+	t reflect.Type
+
+	// 允许重复注册同一种类型，即 => type相同，name不同
+	name string
+}
+
+func TestReflectTypeAsKey(t *testing.T) {
+	f := &foo.Demo{}
+	b := &bar.Demo{}
+	otherf := &otherfoo.Demo{}
+	nums := []int{1, 2, 3}
+	strs := []string{"a", "b", "c"}
+	cfgs := []*Config{
+		{
+			Port: 8080,
+		},
+		{
+			Port: 8081,
+		},
+	}
+	cfgsNotPtr := []Config{
+		{
+			Port: 8080,
+		},
+		{
+			Port: 8081,
+		},
+	}
+
+	var beanMap = make(map[key]reflect.Value)
+
+	assert.NotEqual(t, reflect.TypeOf(f).Elem(), reflect.TypeOf(otherf).Elem())
+	assert.Equal(t, reflect.TypeOf(f).Name(), reflect.TypeOf(otherf).Name())
+
+	beanMap[key{t: reflect.TypeOf(f)}] = reflect.ValueOf(f)
+	beanMap[key{t: reflect.TypeOf(b)}] = reflect.ValueOf(b)
+	beanMap[key{t: reflect.TypeOf(otherf)}] = reflect.ValueOf(otherf)
+	beanMap[key{t: reflect.TypeOf(nums)}] = reflect.ValueOf(nums)
+	beanMap[key{t: reflect.TypeOf(strs)}] = reflect.ValueOf(strs)
+	beanMap[key{t: reflect.TypeOf(cfgs)}] = reflect.ValueOf(cfgs)
+	beanMap[key{t: reflect.TypeOf(cfgsNotPtr)}] = reflect.ValueOf(cfgsNotPtr)
+
+	assert.Equal(t, 7, len(beanMap))
 }
