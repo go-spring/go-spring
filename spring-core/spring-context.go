@@ -47,10 +47,10 @@ type SpringBeanDefinition struct {
 // 定义 SpringContext 接口
 //
 type SpringContext interface {
-	// 使用默认的名称注册 SpringBean 对象
+	// Deprecated: 废弃，改用 RegisterSingletonBean
 	RegisterBean(bean SpringBean)
 
-	// 使用指定的名称注册 SpringBean 对象
+	// Deprecated: 废弃，改用 RegisterSingletonNameBean
 	RegisterNameBean(name string, bean SpringBean)
 
 	// 使用默认的名称注册 Singleton SpringBean 对象

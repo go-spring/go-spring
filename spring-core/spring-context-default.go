@@ -27,10 +27,6 @@ import (
 
 //
 // SpringContext 的默认版本
-// 目前支持三种bean的命名方式：
-// 1、slice bean 匿名注册使用 "bean#id" 作为 bean 的名称
-// 2、struct ptr bean，以 PkgPath + struct name ，以 . 分割 作为 bean 的名称
-// 3、自定义命名
 //
 type DefaultSpringContext struct {
 	beanDefinitionMap map[string]*SpringBeanDefinition // Bean 集合
@@ -68,13 +64,7 @@ func (ctx *DefaultSpringContext) ToSpringBeanDefinition(name string, bean Spring
 
 	// 未指定名称的情况，按照默认规则生成名称
 	if name == "" {
-		switch t.Kind() {
-		case reflect.Slice:
-			name = fmt.Sprintf("bean#%d", ctx.nextBeanId)
-			ctx.nextBeanId++
-		case reflect.Ptr:
-			name = GetTypeName(t)
-		}
+		name = GetTypeName(t)
 	}
 
 	return &SpringBeanDefinition{
@@ -87,7 +77,7 @@ func (ctx *DefaultSpringContext) ToSpringBeanDefinition(name string, bean Spring
 }
 
 //
-// 使用默认的名称注册 SpringBean 对象
+// Deprecated: 废弃，改用 RegisterSingletonBean
 //
 func (ctx *DefaultSpringContext) RegisterBean(bean SpringBean) {
 
@@ -120,8 +110,9 @@ func (ctx *DefaultSpringContext) RegisterSingletonNameBean(name string, bean Spr
 	ctx.RegisterBeanDefinition(beanDefinition)
 }
 
+
 //
-// 使用指定的名称注册 SpringBean 对象
+// Deprecated:RegisterNameBean 废弃，改用 RegisterSingletonNameBean
 //
 func (ctx *DefaultSpringContext) RegisterNameBean(name string, bean SpringBean) {
 	beanDefinition := ctx.ToSpringBeanDefinition(name, bean)
@@ -301,6 +292,10 @@ func (ctx *DefaultSpringContext) wireBeanByDefinition(beanDefinition *SpringBean
 //
 func (ctx *DefaultSpringContext) wireStructBeanByDefinition(t reflect.Type, v reflect.Value) error {
 
+	if t.Kind() != reflect.Struct {
+		return nil
+	}
+
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
 
@@ -393,14 +388,50 @@ func (ctx *DefaultSpringContext) wireStructBeanByDefinition(t reflect.Type, v re
 }
 
 //
-// 获取Bean的唯一签名，规则 ：pkgpath + struct name
+// 根据类型获取bean签名
 //
 func GetTypeName(t reflect.Type) string {
-	return fmt.Sprintf(
-		"%s.%s",
-		strings.Replace(t.Elem().PkgPath(), "/", ".", -1),
-		t.Elem().Name(),
-	)
+
+	if t.Kind() == reflect.Slice {
+		// 区别处理slice元素类型
+		switch t.Elem().Kind() {
+		case reflect.Ptr:
+			// 1、struct ptr slice
+			return fmt.Sprintf(
+				"%s.%s.%s.%s",
+				strings.Replace(t.Elem().Elem().PkgPath(), "/", ".", -1),
+				t.Kind(),
+				t.Elem().Kind(),
+				t.Elem().Elem().Name(),
+			)
+		case reflect.Struct:
+			// 2、struct slice
+			return fmt.Sprintf(
+				"%s.%s.%s.%s",
+				strings.Replace(t.Elem().PkgPath(), "/", ".", -1),
+				t.Kind(),
+				t.Elem().Kind(),
+				t.Elem().Name(),
+			)
+		default:
+			// 3、builtin type slice
+			return fmt.Sprintf(
+				"%s.%s.%s",
+				t.Kind(),
+				t.Elem().Kind(),
+				t.Elem().Name(),
+			)
+		}
+	} else {
+		// 4、struct ptr
+		return fmt.Sprintf(
+			"%s.%s.%s",
+			strings.Replace(t.Elem().PkgPath(), "/", ".", -1),
+			t.Kind(),
+			t.Elem().Name(),
+		)
+	}
+
 }
 
 //
