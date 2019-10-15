@@ -157,6 +157,11 @@ func TestValueWire(t *testing.T) {
 	type People struct {
 		FirstName string `value:"${people.first_name}"`
 		LastName  string `value:"${people.last_name:=Green}"`
+
+		Uint  uint64  `value:"${people.uint:=1}"`
+		Int   int64   `value:"${people.int:=-1}"`
+		Float float64 `value:"${people.float:=3.14}"`
+		Bool  bool    `value:"${people.bool:=true}"`
 	}
 
 	ctx := SpringCore.NewDefaultSpringContext()
@@ -169,6 +174,16 @@ func TestValueWire(t *testing.T) {
 	if err := ctx.AutoWireBeans(); err != nil {
 		panic(err)
 	}
+
+	var find *People
+	ctx.GetBeanByType(&find)
+
+	assert.Equal(t, "Jim", find.FirstName)
+	assert.Equal(t, "Green", find.LastName)
+	assert.Equal(t, 3.14, find.Float)
+	assert.Equal(t, int64(-1), find.Int)
+	assert.Equal(t, uint64(1), find.Uint)
+	assert.Equal(t, true, find.Bool)
 
 	fmt.Println(SpringUtils.ToJson(p))
 }

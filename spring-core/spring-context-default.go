@@ -110,7 +110,6 @@ func (ctx *DefaultSpringContext) RegisterSingletonNameBean(name string, bean Spr
 	ctx.RegisterBeanDefinition(beanDefinition)
 }
 
-
 //
 // Deprecated:RegisterNameBean 废弃，改用 RegisterSingletonNameBean
 //
@@ -369,6 +368,8 @@ func (ctx *DefaultSpringContext) wireStructBeanByDefinition(t reflect.Type, v re
 				case reflect.Int64, reflect.Int32, reflect.Int16, reflect.Int8, reflect.Int:
 					i := cast.ToInt64(propValue)
 					vf.SetInt(i)
+				case reflect.Float64, reflect.Float32:
+					vf.SetFloat(cast.ToFloat64(propValue))
 				case reflect.String:
 					s := cast.ToString(propValue)
 					vf.SetString(s)
