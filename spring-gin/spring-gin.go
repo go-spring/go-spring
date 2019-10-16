@@ -97,8 +97,6 @@ func HandlerWrapper(path string, fn SpringWeb.Handler, filters ...SpringWeb.Filt
 			HandlerFunc: fn,
 		}
 
-		filters = append(filters, SpringWeb.HandlerFilter(fn))
-		chain := SpringWeb.NewFilterChain(filters...)
-		chain.Next(webCtx)
+		SpringWeb.InvokeHandler(webCtx, fn, filters)
 	}
 }

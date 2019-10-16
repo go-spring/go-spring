@@ -23,51 +23,28 @@ import (
 )
 
 //
-// 将 FilterChain 包装成 Filter
-//
-type WrapperFilter struct {
-	chain *SpringWeb.FilterChain
-}
-
-//
-// 工厂函数
-//
-func NewWrapperFilter(chain *SpringWeb.FilterChain) *WrapperFilter {
-	return &WrapperFilter{
-		chain: chain,
-	}
-}
-
-func (f *WrapperFilter) Invoke(ctx SpringWeb.WebContext, _ *SpringWeb.FilterChain) {
-	f.chain.Next(ctx)
-}
-
-//
 // Swagger 流式构建器
 //
 type SwaggerBuilder struct {
-	doc    string
-	method string
-	path   string
-	fn     SpringWeb.Handler
-	chain  *SpringWeb.FilterChain
+	doc     string
+	method  string
+	path    string
+	fn      SpringWeb.Handler
+	filters []SpringWeb.Filter
 }
 
 //
 // 工厂函数
 //
-func NewSwaggerBuilder(method string, path string, fn SpringWeb.Handler, filters ...SpringWeb.Filter) *SwaggerBuilder {
+func NewSwaggerBuilder(method string, path string, fn SpringWeb.Handler, filters []SpringWeb.Filter) *SwaggerBuilder {
 
 	// TODO 这里需要有一个 SwaggerBuilder 的注册机制
 
-	filters = append(filters, SpringWeb.HandlerFilter(fn))
-	chain := SpringWeb.NewFilterChain(filters...)
-
 	return &SwaggerBuilder{
-		method: method,
-		path:   path,
-		fn:     fn,
-		chain:  chain,
+		method:  method,
+		path:    path,
+		fn:      fn,
+		filters: filters,
 	}
 }
 
@@ -83,55 +60,57 @@ func (builder *SwaggerBuilder) Doc(doc string) *SwaggerBuilder {
 //
 // 返回 WebContainer.HttpMethod 需要的参数，得益于 golang 的多返回值特性
 //
-func (builder *SwaggerBuilder) Build() (string, SpringWeb.Handler, SpringWeb.Filter) {
-	return builder.path, builder.fn, NewWrapperFilter(builder.chain)
+func (builder *SwaggerBuilder) Build() (string, SpringWeb.Handler) {
+	return builder.path, func(ctx SpringWeb.WebContext) {
+		SpringWeb.InvokeHandler(ctx, builder.fn, builder.filters)
+	}
 }
 
 //
 // 对应 WebContainer.GET 方法
 //
 func GET(path string, fn SpringWeb.Handler, filters ...SpringWeb.Filter) *SwaggerBuilder {
-	return NewSwaggerBuilder("GET", path, fn, filters...)
+	return NewSwaggerBuilder("GET", path, fn, filters)
 }
 
 //
 // 对应 WebContainer.POST 方法
 //
 func POST(path string, fn SpringWeb.Handler, filters ...SpringWeb.Filter) *SwaggerBuilder {
-	return NewSwaggerBuilder("POST", path, fn, filters...)
+	return NewSwaggerBuilder("POST", path, fn, filters)
 }
 
 //
 // 对应 WebContainer.PATCH 方法
 //
 func PATCH(path string, fn SpringWeb.Handler, filters ...SpringWeb.Filter) *SwaggerBuilder {
-	return NewSwaggerBuilder("PATCH", path, fn, filters...)
+	return NewSwaggerBuilder("PATCH", path, fn, filters)
 }
 
 //
 // 对应 WebContainer.PUT 方法
 //
 func PUT(path string, fn SpringWeb.Handler, filters ...SpringWeb.Filter) *SwaggerBuilder {
-	return NewSwaggerBuilder("PUT", path, fn, filters...)
+	return NewSwaggerBuilder("PUT", path, fn, filters)
 }
 
 //
 // 对应 WebContainer.DELETE 方法
 //
 func DELETE(path string, fn SpringWeb.Handler, filters ...SpringWeb.Filter) *SwaggerBuilder {
-	return NewSwaggerBuilder("DELETE", path, fn, filters...)
+	return NewSwaggerBuilder("DELETE", path, fn, filters)
 }
 
 //
 // 对应 WebContainer.HEAD 方法
 //
 func HEAD(path string, fn SpringWeb.Handler, filters ...SpringWeb.Filter) *SwaggerBuilder {
-	return NewSwaggerBuilder("HEAD", path, fn, filters...)
+	return NewSwaggerBuilder("HEAD", path, fn, filters)
 }
 
 //
 // 对应 WebContainer.OPTIONS 方法
 //
 func OPTIONS(path string, fn SpringWeb.Handler, filters ...SpringWeb.Filter) *SwaggerBuilder {
-	return NewSwaggerBuilder("OPTIONS", path, fn, filters...)
+	return NewSwaggerBuilder("OPTIONS", path, fn, filters)
 }

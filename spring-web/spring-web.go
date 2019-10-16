@@ -298,7 +298,7 @@ type FilterChain struct {
 //
 // 工厂函数
 //
-func NewFilterChain(filters ...Filter) *FilterChain {
+func NewFilterChain(filters []Filter) *FilterChain {
 	return &FilterChain{
 		filters: filters,
 	}
@@ -314,6 +314,19 @@ func (chain *FilterChain) Next(ctx WebContext) {
 	f := chain.filters[chain.next]
 	chain.next++
 	f.Invoke(ctx, chain)
+}
+
+//
+// 执行 Web 处理函数
+//
+func InvokeHandler(ctx WebContext, fn Handler, filters []Filter) {
+	if len(filters) > 0 {
+		filters = append(filters, HandlerFilter(fn))
+		chain := NewFilterChain(filters)
+		chain.Next(ctx)
+	} else {
+		fn(ctx)
+	}
 }
 
 //
