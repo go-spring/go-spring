@@ -1,3 +1,3 @@
 # go-spring-boot
 
-适配 AppStarter 的 GoSpringApplication。
+适配 BootStarter 的 GoSpringApplication。

@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/go-spring/go-spring/app-starter"
+	"github.com/go-spring/go-spring/boot-starter"
 )
 
 //
@@ -58,7 +58,7 @@ func NewApplication(configLocation string) *Application {
 // 启动 SpringBoot 应用对的快捷方式
 //
 func RunApplication(configLocation string) {
-	AppStarter.Run(NewApplication(configLocation))
+	BootStarter.Run(NewApplication(configLocation))
 }
 
 //
