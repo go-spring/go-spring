@@ -17,6 +17,9 @@
 package SpringBoot
 
 import (
+	"fmt"
+	"runtime"
+
 	"github.com/go-spring/go-spring/spring-core"
 )
 
@@ -34,5 +37,9 @@ var Modules = make([]ModuleFunc, 0)
 // 注册 SpringBoot 模块
 //
 func RegisterModule(fn ModuleFunc) {
+
+	_, file, line, _ := runtime.Caller(1)
+	fmt.Println("模块注册", file, line)
+
 	Modules = append(Modules, fn)
 }

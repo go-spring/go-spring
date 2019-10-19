@@ -75,11 +75,17 @@ type SpringContext interface {
 	// 的情况。
 	GetBean(i interface{})
 
+	// 根据类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
+	FindBean(i interface{}) bool
+
 	// 根据名称和类型获取单例 Bean，若多于 1 个则 panic，什么情况下会多于 1 个？
 	// 假设 StructA 和 StructB 都实现了 InterfaceT，而且用户在注册时使用了相
 	// 同的名称分别注册了 StructA 和 StructB 的 Bean，这时候如果使用
 	// InterfaceT 去获取，就会出现多于 1 个的情况。
 	GetBeanByName(name string, i interface{})
+
+	// 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
+	FindBeanByName(name string, i interface{}) bool
 
 	// 收集数组或指针定义的所有符合条件的 Bean 对象。什么情况下可以使用此功能？
 	// 假设 HandlerA 和 HandlerB 都实现了 HandlerT 接口，而且用户分别注册了
