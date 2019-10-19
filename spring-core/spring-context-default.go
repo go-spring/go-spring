@@ -175,14 +175,14 @@ func ToBeanDefinition(name string, bean SpringBean) *BeanDefinition {
 }
 
 //
-// 注册单例 Bean，不指定名称
+// 注册单例 Bean，不指定名称，重复注册会 panic。
 //
 func (ctx *DefaultSpringContext) RegisterBean(bean SpringBean) {
 	ctx.RegisterNameBean("", bean)
 }
 
 //
-// 注册单例 Bean，需指定名称
+// 注册单例 Bean，需指定名称，重复注册会 panic。
 //
 func (ctx *DefaultSpringContext) RegisterNameBean(name string, bean SpringBean) {
 	beanDefinition := ToBeanDefinition(name, bean)
@@ -190,7 +190,7 @@ func (ctx *DefaultSpringContext) RegisterNameBean(name string, bean SpringBean) 
 }
 
 //
-// 注册单例 Bean，使用 BeanDefinition 对象
+// 注册单例 Bean，使用 BeanDefinition 对象，重复注册会 panic。
 //
 func (ctx *DefaultSpringContext) RegisterBeanDefinition(d *BeanDefinition) {
 	item, _ := ctx.CachedBeanMap.Get(d.Type)
@@ -199,7 +199,7 @@ func (ctx *DefaultSpringContext) RegisterBeanDefinition(d *BeanDefinition) {
 }
 
 //
-// 根据类型获取单例 Bean，若多于 1 个则 panic
+// 根据类型获取单例 Bean，多于 1 个会 panic，找不到也会 panic。
 //
 func (ctx *DefaultSpringContext) GetBean(i interface{}) {
 	ctx.GetBeanByName("", i)
@@ -210,6 +210,32 @@ func (ctx *DefaultSpringContext) GetBean(i interface{}) {
 //
 func (ctx *DefaultSpringContext) FindBean(i interface{}) bool {
 	return ctx.FindBeanByName("", i)
+}
+
+//
+// 根据名称和类型获取单例 Bean，多于 1 个会 panic，找不到也会 panic。
+//
+func (ctx *DefaultSpringContext) GetBeanByName(name string, i interface{}) {
+	if ok := ctx.FindBeanByName(name, i); !ok {
+		panic("没有找到符合条件的 Bean")
+	}
+}
+
+//
+// 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
+//
+func (ctx *DefaultSpringContext) FindBeanByName(name string, i interface{}) bool {
+
+	it := reflect.TypeOf(i)
+
+	// 使用指针才能够对外赋值
+	if it.Kind() != reflect.Ptr {
+		panic("i must be pointer")
+	}
+
+	iv := reflect.ValueOf(i)
+
+	return ctx.findBeanByName(name, iv.Elem())
 }
 
 func (ctx *DefaultSpringContext) findBeanByName(name string, v reflect.Value) bool {
@@ -306,39 +332,37 @@ func (ctx *DefaultSpringContext) findBeanByName(name string, v reflect.Value) bo
 	return true
 }
 
-func (ctx *DefaultSpringContext) mustFindBean(name string, v reflect.Value) {
-	if ok := ctx.findBeanByName(name, v); !ok {
-		panic("没有找到符合条件的 Bean")
-	}
-}
-
 //
-// 根据名称和类型获取单例 Bean，若多于 1 个则 panic
+// 收集数组或指针定义的所有符合条件的 Bean 对象，收集到返回 true，否则返回 false。
 //
-func (ctx *DefaultSpringContext) GetBeanByName(name string, i interface{}) {
-	if ok := ctx.FindBeanByName(name, i); !ok {
-		panic("没有找到符合条件的 Bean")
-	}
-}
-
-//
-// 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
-//
-func (ctx *DefaultSpringContext) FindBeanByName(name string, i interface{}) bool {
-
+func (ctx *DefaultSpringContext) CollectBeans(i interface{}) bool {
 	it := reflect.TypeOf(i)
 
-	// 使用指针才能够对外赋值
 	if it.Kind() != reflect.Ptr {
 		panic("i must be pointer")
 	}
 
-	iv := reflect.ValueOf(i)
+	et := it.Elem()
 
-	return ctx.findBeanByName(name, iv.Elem())
+	if et.Kind() != reflect.Slice {
+		panic("i.Elem() must be slice")
+	}
+
+	ev := reflect.ValueOf(i).Elem()
+
+	return ctx.collectBeans(ev)
 }
 
-func (ctx *DefaultSpringContext) collectBeans(v reflect.Value) {
+//
+// 收集数组或指针定义的所有符合条件的 Bean 对象，收集不到会 panic。
+//
+func (ctx *DefaultSpringContext) MustCollectBeans(i interface{}) {
+	if ok := ctx.CollectBeans(i); !ok {
+		panic("没有找到符合条件的 Bean")
+	}
+}
+
+func (ctx *DefaultSpringContext) collectBeans(v reflect.Value) bool {
 
 	t := v.Type()
 	et := t.Elem()
@@ -382,35 +406,20 @@ func (ctx *DefaultSpringContext) collectBeans(v reflect.Value) {
 		m.StoreCollect(ev)
 
 		// 给外面的数组赋值
-		v.Set(ev)
-		return
+		if ev.Len() > 0 {
+			v.Set(ev)
+			return true
+		}
+		return false
 	}
 
 	// 命中缓存，则从缓存中查询
 
-	v.Set(m.Collect)
-}
-
-//
-// 收集数组或指针定义的所有符合条件的 Bean 对象
-//
-func (ctx *DefaultSpringContext) CollectBeans(i interface{}) {
-
-	it := reflect.TypeOf(i)
-
-	if it.Kind() != reflect.Ptr {
-		panic("i must be pointer")
+	if m.Collect.Len() > 0 {
+		v.Set(m.Collect)
+		return true
 	}
-
-	et := it.Elem()
-
-	if et.Kind() != reflect.Slice {
-		panic("i.Elem() must be slice")
-	}
-
-	ev := reflect.ValueOf(i).Elem()
-
-	ctx.collectBeans(ev)
+	return false
 }
 
 // 获取所有的 bean 对象
@@ -479,19 +488,30 @@ func (ctx *DefaultSpringContext) WireBean(bean SpringBean) error {
 }
 
 func (ctx *DefaultSpringContext) handleTagAutowire(f reflect.StructField, fv reflect.Value) {
-	if beanName, ok := f.Tag.Lookup("autowire"); ok {
+	if tagValue, ok := f.Tag.Lookup("autowire"); ok {
+		beanName := strings.TrimSuffix(tagValue, "?")
+
+		// nullable 为 true 时找不到 Bean 会 panic
+		nullable := len(beanName) != len(tagValue)
+
 		if beanName == "[]" { // 收集模式，autowire:"[]"
 			fvk := fv.Type().Kind()
 
 			// 收集模式的绑定对象必须是数组
-			if fvk == reflect.Slice {
-				ctx.collectBeans(fv)
-			} else {
-				panic("must be slice when autowire []")
+			if fvk != reflect.Slice {
+				panic(f.Type.String() + ".$" + f.Name + " must be slice when autowire []")
+			}
+
+			ok := ctx.collectBeans(fv)
+			if !ok && !nullable { // 没找到且不能为空则 panic
+				panic(f.Type.String() + ".$" + f.Name + " 没有找到符合条件的 Bean")
 			}
 
 		} else { // 匹配模式，autowire:"" or autowire:"name"
-			ctx.mustFindBean(beanName, fv)
+			ok := ctx.findBeanByName(beanName, fv)
+			if !ok && !nullable { // 没找到且不能为空则 panic
+				panic(f.Type.String() + ".$" + f.Name + " 没有找到符合条件的 Bean")
+			}
 		}
 	}
 }
@@ -563,7 +583,7 @@ func (ctx *DefaultSpringContext) WireBeanDefinition(beanDefinition *BeanDefiniti
 		t := st.Elem()
 		if t.Kind() == reflect.Struct {
 
-			fmt.Printf("wire bean %v:\"%s\"\n", beanDefinition.Type, beanDefinition.Name)
+			fmt.Printf("wire bean %v: \"%s\"\n", beanDefinition.Type, beanDefinition.Name)
 
 			sv := beanDefinition.Value
 			v := sv.Elem()
@@ -584,7 +604,7 @@ func (ctx *DefaultSpringContext) WireBeanDefinition(beanDefinition *BeanDefiniti
 				c.InitBean(ctx)
 			}
 
-			fmt.Printf("success wire bean %v:\"%s\"\n", beanDefinition.Type, beanDefinition.Name)
+			fmt.Printf("success wire bean %v: \"%s\"\n", beanDefinition.Type, beanDefinition.Name)
 		}
 	}
 

@@ -60,38 +60,41 @@ type SpringContext interface {
 	// 1. 单例 Bean 只能注册指针和数组。
 	// 2. 执行完 AutoWireBeans 后不能再注册 Bean（性能考虑）。
 
-	// 注册单例 Bean，不指定名称
+	// 注册单例 Bean，不指定名称，重复注册会 panic。
 	RegisterBean(bean SpringBean)
 
-	// 注册单例 Bean，需指定名称
+	// 注册单例 Bean，需指定名称，重复注册会 panic。
 	RegisterNameBean(name string, bean SpringBean)
 
-	// 注册单例 Bean，使用 BeanDefinition 对象
+	// 注册单例 Bean，使用 BeanDefinition 对象，重复注册会 panic。
 	RegisterBeanDefinition(beanDefinition *BeanDefinition)
 
-	// 根据类型获取单例 Bean，若多于 1 个则 panic，什么情况下会多于 1 个？
-	// 假设 StructA 实现了 InterfaceT，而且用户在注册时使用了 StructA 的
-	// 指针注册多个 Bean，如果在获取时使用 InterfaceT，则必然出现多于 1 个
-	// 的情况。
+	// 根据类型获取单例 Bean，多于 1 个会 panic，找不到也会 panic。
+	// 什么情况下会多于 1 个？假设 StructA 实现了 InterfaceT，而且用户在注
+	// 册时使用了 StructA 的指针注册多个 Bean，如果在获取时使用 InterfaceT,
+	// 则必然出现多于 1 个的情况。
 	GetBean(i interface{})
 
 	// 根据类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 	FindBean(i interface{}) bool
 
-	// 根据名称和类型获取单例 Bean，若多于 1 个则 panic，什么情况下会多于 1 个？
-	// 假设 StructA 和 StructB 都实现了 InterfaceT，而且用户在注册时使用了相
-	// 同的名称分别注册了 StructA 和 StructB 的 Bean，这时候如果使用
-	// InterfaceT 去获取，就会出现多于 1 个的情况。
+	// 根据名称和类型获取单例 Bean，多于 1 个会 panic，找不到也会 panic。
+	// 什么情况下会多于 1 个？假设 StructA 和 StructB 都实现了 InterfaceT，
+	// 而且用户在注册时使用了相同的名称分别注册了 StructA 和 StructB 的 Bean，
+	// 这时候如果使用 InterfaceT 去获取，就会出现多于 1 个的情况。
 	GetBeanByName(name string, i interface{})
 
 	// 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 	FindBeanByName(name string, i interface{}) bool
 
-	// 收集数组或指针定义的所有符合条件的 Bean 对象。什么情况下可以使用此功能？
-	// 假设 HandlerA 和 HandlerB 都实现了 HandlerT 接口，而且用户分别注册了
-	// 一个 HandlerA 和 HandlerB 对象，如果用户想要同时获取 HandlerA 和
-	// HandlerB 对象，那么他可以通过 []HandlerT 即数组的方式获取到所有 Bean。
-	CollectBeans(i interface{})
+	// 收集数组或指针定义的所有符合条件的 Bean 对象，收集到返回 true，否则返回 false。
+	// 什么情况下可以使用此功能？假设 HandlerA 和 HandlerB 都实现了 HandlerT 接口，
+	// 而且用户分别注册了一个 HandlerA 和 HandlerB 对象，如果用户想要同时获取 HandlerA
+	// 和 HandlerB 对象，那么他可以通过 []HandlerT 即数组的方式获取到所有 Bean。
+	CollectBeans(i interface{}) bool
+
+	// 收集数组或指针定义的所有符合条件的 Bean 对象，收集不到会 panic。
+	MustCollectBeans(i interface{})
 
 	// 注册原型 Bean，使用反射创建新的 Bean
 	// TODO RegisterPrototypeBean(bean SpringBean)
