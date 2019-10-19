@@ -14,33 +14,10 @@
  * limitations under the License.
  */
 
-package SpringWeb_test
+package pkg
 
-import (
-	"fmt"
-	"testing"
-
-	"github.com/go-spring/go-spring/spring-web"
-)
-
-type NumberFilter struct {
-	n int
-}
-
-func NewNumberFilter(n int) *NumberFilter {
-	return &NumberFilter{
-		n: n,
-	}
-}
-
-func (f *NumberFilter) Invoke(ctx SpringWeb.WebContext, chain *SpringWeb.FilterChain) {
-	defer fmt.Println("::after", f.n)
-	fmt.Println("::before", f.n)
-	chain.Next(ctx)
-}
-
-func TestFilterChain(t *testing.T) {
-	filters := []SpringWeb.Filter{NewNumberFilter(2), NewNumberFilter(5)}
-	chain := SpringWeb.NewFilterChain(filters)
-	chain.Next(nil)
+//
+// golang 允许不同的路径下存在相同的包，而且允许存在相同的包。
+//
+type Demo struct {
 }

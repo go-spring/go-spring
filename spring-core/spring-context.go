@@ -28,75 +28,93 @@ type SpringBean interface{}
 //
 // SpringBean 初始化接口
 //
-type SpringBeanInitialization interface {
+type BeanInitialization interface {
 	InitBean(ctx SpringContext)
 }
 
 //
-// 定义 SpringBeanDefinition 类型
+// SpringBean 初始化状态值
 //
-type SpringBeanDefinition struct {
-	Bean  SpringBean
-	Name  string
-	Init  int
-	Type  reflect.Type
-	Value reflect.Value
+const (
+	Uninitialized = iota // 还未初始化
+	Initializing         // 正在初始化
+	Initialized          // 完成初始化
+)
+
+//
+// 定义 BeanDefinition 类型
+//
+type BeanDefinition struct {
+	Bean  SpringBean    // Bean 对象
+	Name  string        // Bean 名称，可能为空
+	Init  int           // Bean 初始化状态
+	Type  reflect.Type  // Bean 反射得到的类型
+	Value reflect.Value // Bean 反射得到的值
 }
 
 //
 // 定义 SpringContext 接口
 //
 type SpringContext interface {
-	// Deprecated: 废弃，改用 RegisterSingletonBean
+	// Bean 的注册规则:
+	// 1. 单例 Bean 只能注册指针和数组。
+	// 2. 执行完 AutoWireBeans 后不能再注册 Bean（性能考虑）。
+
+	// 注册单例 Bean，不指定名称
 	RegisterBean(bean SpringBean)
 
-	// Deprecated: 废弃，改用 RegisterSingletonNameBean
+	// 注册单例 Bean，需指定名称
 	RegisterNameBean(name string, bean SpringBean)
 
-	// 使用默认的名称注册 Singleton SpringBean 对象
-	RegisterSingletonBean(bean SpringBean)
+	// 注册单例 Bean，使用 BeanDefinition 对象
+	RegisterBeanDefinition(beanDefinition *BeanDefinition)
 
-	// 使用指定的名称注册 Singleton SpringBean 对象
-	RegisterSingletonNameBean(name string, bean SpringBean)
+	// 根据类型获取单例 Bean，若多于 1 个则 panic，什么情况下会多于 1 个？
+	// 假设 StructA 实现了 InterfaceT，而且用户在注册时使用了 StructA 的
+	// 指针注册多个 Bean，如果在获取时使用 InterfaceT，则必然出现多于 1 个
+	// 的情况。
+	GetBean(i interface{})
 
-	// 通过 SpringBeanDefinition 注册 SpringBean 对象
-	RegisterBeanDefinition(d *SpringBeanDefinition)
+	// 根据名称和类型获取单例 Bean，若多于 1 个则 panic，什么情况下会多于 1 个？
+	// 假设 StructA 和 StructB 都实现了 InterfaceT，而且用户在注册时使用了相
+	// 同的名称分别注册了 StructA 和 StructB 的 Bean，这时候如果使用
+	// InterfaceT 去获取，就会出现多于 1 个的情况。
+	GetBeanByName(name string, i interface{})
 
-	// 根据 Bean 类型查找 SpringBean
-	FindBeanByType(i interface{}) SpringBean
+	// 收集数组或指针定义的所有符合条件的 Bean 对象。什么情况下可以使用此功能？
+	// 假设 HandlerA 和 HandlerB 都实现了 HandlerT 接口，而且用户分别注册了
+	// 一个 HandlerA 和 HandlerB 对象，如果用户想要同时获取 HandlerA 和
+	// HandlerB 对象，那么他可以通过 []HandlerT 即数组的方式获取到所有 Bean。
+	CollectBeans(i interface{})
 
-	// 根据 Bean 类型查找
-	GetBeanByType(i interface{})
+	// 注册原型 Bean，使用反射创建新的 Bean
+	// TODO RegisterPrototypeBean(bean SpringBean)
 
-	// 根据 Bean 类型查找 SpringBean 数组
-	FindBeansByType(i interface{})
+	// 注册原型 Bean，使用工厂创建新的 Bean
+	// TODO RegisterPrototypeBeanFactory(factory func() SpringBean)
 
-	// 根据 Bean 类型查找 SpringBeanDefinition 数组
-	FindBeanDefinitionsByType(t reflect.Type) []*SpringBeanDefinition
+	// 获取原型 Bean 并自动完成绑定
+	// TODO GetPrototypeBean(i interface{})
 
-	// 根据 Bean 名称查找 SpringBean
-	FindBeanByName(name string) SpringBean
+	// 获取所有 Bean 的定义，一般仅供调试使用。
+	GetAllBeansDefinition() []*BeanDefinition
 
-	// 根据 Bean 名称查找 SpringBeanDefinition
-	FindBeanDefinitionByName(name string) *SpringBeanDefinition
-
-	// 获取所有的bean name
-	GetAllBeanNames() []string
-
-	// 获取属性值
+	// 获取属性值，属性名称不支持大小写。
 	GetProperties(name string) interface{}
 
-	// 设置属性值
+	// TODO GetIntProperties() 等。
+
+	// 设置属性值，属性名称不支持大小写。
 	SetProperties(name string, value interface{})
 
-	// 获取指定前缀的属性值集合
+	// 获取指定前缀的属性值集合，属性名称不支持大小写。
 	GetPrefixProperties(prefix string) map[string]interface{}
 
-	// 获取属性值，如果没有找到则使用指定的默认值
+	// 获取属性值，如果没有找到则使用指定的默认值，属性名称不支持大小写。
 	GetDefaultProperties(name string, defaultValue interface{}) (interface{}, bool)
 
 	// 自动绑定所有的 SpringBean
-	AutoWireBeans() error
+	AutoWireBeans()
 
 	// 绑定外部指定的 SpringBean
 	WireBean(bean SpringBean) error

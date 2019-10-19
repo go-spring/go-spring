@@ -18,434 +18,234 @@ package SpringCore_test
 
 import (
 	"fmt"
-	"reflect"
-	"strings"
+	"strconv"
 	"testing"
 
 	"github.com/go-spring/go-spring/spring-core"
-	"github.com/go-spring/go-spring/spring-core/testdata/bar"
-	otherfoo "github.com/go-spring/go-spring/spring-core/testdata/bar/foo"
-	"github.com/go-spring/go-spring/spring-core/testdata/foo"
-	"github.com/go-spring/go-spring/spring-utils"
-	"github.com/stretchr/testify/assert"
+	pkg1 "github.com/go-spring/go-spring/spring-core/testdata/pkg/bar"
+	pkg2 "github.com/go-spring/go-spring/spring-core/testdata/pkg/foo"
 )
 
-type EvenetHandler interface {
-	Notify() string
-}
-
-type FooEventHandler struct {
-	Name    string
-	*Config `autowire:""`
-}
-
-func (e *FooEventHandler) Notify() string {
-	return fmt.Sprintf("I am %s , config port: %d !", e.Name, e.Config.Port)
-}
-
-type BarEventHandler struct {
-	Name    string
-	*Config `autowire:""`
-}
-
-func (e *BarEventHandler) Notify() string {
-	return fmt.Sprintf("I am %s , config port: %d !", e.Name, e.Config.Port)
-}
-
-type EventDemo struct {
-	Handlers []EvenetHandler `autowire:""`
-}
-
-type Config struct {
-	Port int32 `value:"${test.spring.core.config.port:=1234}"`
-}
-
-func TestInterfaceSliceBeanWire(t *testing.T) {
-	ctx := SpringCore.NewDefaultSpringContext()
-
-	c := &Config{Port: 9090}
-	ctx.RegisterSingletonBean(c)
-
-	f := &FooEventHandler{Name: "Foo"}
-	ctx.RegisterSingletonBean(f)
-
-	b := &BarEventHandler{Name: "Bar"}
-	ctx.RegisterSingletonBean(b)
-
-	demo := new(EventDemo)
-	ctx.RegisterSingletonBean(demo)
-
-	_ = ctx.AutoWireBeans()
-
-	eventDemo := ctx.FindBeanByType(&EventDemo{}).(*EventDemo)
-
-	assert.Equal(t, len(eventDemo.Handlers), 2)
-
-	for _, h := range eventDemo.Handlers {
-		t.Log(h.Notify())
-	}
-}
-
-type ConfigsDemo struct {
-	Configs []*Config `autowire:""`
-	Nums    []int     `autowire:""`
-	Strings []string  `autowire:""`
-}
-
-func TestStructSliceWire(t *testing.T) {
-	ctx := SpringCore.NewDefaultSpringContext()
-
-	cfg := new(Config)
-	ctx.RegisterSingletonBean(cfg)
-
-	nums := []int{1, 2}
-	ctx.RegisterSingletonBean(nums)
-
-	strs := []string{"a", "b"}
-	ctx.RegisterSingletonBean(strs)
-
-	cfgs := []*Config{
-		{
-			Port: 8080,
-		},
-		{
-			Port: 8081,
-		},
-	}
-	ctx.RegisterSingletonBean(cfgs)
-
-	demo := new(ConfigsDemo)
-	ctx.RegisterSingletonBean(demo)
-
-	_ = ctx.AutoWireBeans()
-
-	cfgsDemo := ctx.FindBeanByType(&ConfigsDemo{}).(*ConfigsDemo)
-	assert.Equal(t, cfgsDemo.Configs[0].Port, int32(8080))
-	assert.Equal(t, cfgsDemo.Nums[0], 1)
-	assert.Equal(t, cfgsDemo.Strings[0], "a")
-	assert.Equal(t, cfgsDemo.Configs[1].Port, int32(8081))
-	assert.Equal(t, cfgsDemo.Nums[1], 2)
-	assert.Equal(t, cfgsDemo.Strings[1], "b")
-
-}
-
-func TestStructSlice(t *testing.T) {
-
-	cfgs := []*Config{
-		{
-			Port: 8080,
-		},
-		{
-			Port: 8081,
-		},
-	}
-
-	typeOf := reflect.TypeOf(&cfgs)
-
-	beanName := fmt.Sprintf(
-		"%s.%s",
-		strings.Replace(typeOf.Elem().PkgPath(), "/", ".", -1),
-		typeOf.Elem().Name(),
-	)
-
-	t.Log(beanName)
-
-}
-
-func TestValueWire(t *testing.T) {
-
-	type People struct {
-		FirstName string `value:"${people.first_name}"`
-		LastName  string `value:"${people.last_name:=Green}"`
-
-		Uint  uint64  `value:"${people.uint:=1}"`
-		Int   int64   `value:"${people.int:=-1}"`
-		Float float64 `value:"${people.float:=3.14}"`
-		Bool  bool    `value:"${people.bool:=true}"`
-	}
+func TestDefaultSpringContext(t *testing.T) {
 
 	ctx := SpringCore.NewDefaultSpringContext()
 
-	p := new(People)
-	ctx.RegisterSingletonBean(p)
+	/////////////////////////////////////////
+	// 基础数据类型，int，string，float，complex
 
-	ctx.SetProperties("people.first_name", "Jim")
+	{
+		e := int(3)
+		a := []int{3}
 
-	if err := ctx.AutoWireBeans(); err != nil {
-		panic(err)
-	}
+		// 普通类型用属性注入
+		// ctx.RegisterBean(e)
 
-	var find *People
-	ctx.GetBeanByType(&find)
+		ctx.RegisterBean(&e)
 
-	assert.Equal(t, "Jim", find.FirstName)
-	assert.Equal(t, "Green", find.LastName)
-	assert.Equal(t, 3.14, find.Float)
-	assert.Equal(t, int64(-1), find.Int)
-	assert.Equal(t, uint64(1), find.Uint)
-	assert.Equal(t, true, find.Bool)
+		// 相同类型的匿名 bean 不能重复注册
+		// ctx.RegisterBean(&e)
 
-	fmt.Println(SpringUtils.ToJson(p))
-}
+		// 相同类型不同名称的 bean 都可注册
+		ctx.RegisterNameBean("i3", &e)
 
-func TestBeanWire(t *testing.T) {
+		// 相同类型不同名称的 bean 都可注册
+		ctx.RegisterNameBean("i4", &e)
 
-	type Config struct {
-		Name string
-	}
+		ctx.RegisterBean(a)
+		ctx.RegisterBean(&a)
 
-	type DataSource struct {
-		Url string
-	}
-
-	type Application struct {
-		Config     *Config     `autowire:""`
-		DataSource *DataSource `autowire:"ds"`
-	}
-
-	ctx := SpringCore.NewDefaultSpringContext()
-
-	app := new(Application)
-	ctx.RegisterSingletonBean(app)
-
-	cfg := &Config{Name: "application.cfg"}
-	ctx.RegisterSingletonBean(cfg)
-
-	ds := &DataSource{
-		Url: "mysql:127.0.0.1...",
-	}
-
-	ctx.RegisterSingletonBean(ds)
-	ctx.RegisterSingletonNameBean("ds", ds)
-
-	barBean := new(foo.Demo)
-	fooBean := new(bar.Demo)
-	ctx.RegisterSingletonBean(barBean)
-	ctx.RegisterSingletonBean(fooBean)
-
-	if e := ctx.AutoWireBeans(); e != nil {
-		t.Error(e)
-	}
-
-	for _, v := range ctx.GetAllBeanNames() {
-		t.Logf("bean name : %v", v)
-	}
-
-	var (
-		f foo.Demo
-		b bar.Demo
-	)
-
-	foundFooBean := ctx.FindBeanByType(&f)
-	foundFarBean := ctx.FindBeanByType(&b)
-
-	assert.NotEqual(t, foundFarBean, foundFooBean)
-
-	fmt.Println(SpringUtils.ToJson(app))
-}
-
-func TestSlice(t *testing.T) {
-	f := &FooEventHandler{Name: "foo"}
-	b := &BarEventHandler{Name: "bar"}
-	var handlers []EvenetHandler
-	slice := reflect.MakeSlice(reflect.TypeOf(handlers), 0, 0)
-	slice = reflect.Append(slice, reflect.ValueOf(f), reflect.ValueOf(b))
-	t.Log(slice)
-}
-
-func TestField(t *testing.T) {
-	f := &FooEventHandler{Name: "foo"}
-	b := &BarEventHandler{Name: "bar"}
-	var handlers []EvenetHandler
-	handlers = append(handlers, f, b)
-	demo := &EventDemo{Handlers: handlers}
-
-	demoType := reflect.TypeOf(demo)
-
-	filed := demoType.Elem().Field(0)
-
-	filedInterface := filed.Type.Elem()
-
-	t.Log(filed.Type.Name())
-
-	slice := reflect.MakeSlice(filed.Type, 2, 2)
-	reflect.Append(slice, reflect.ValueOf(f))
-	t.Log(slice)
-
-	t.Log(reflect.TypeOf(f).Implements(filedInterface))
-	t.Log(filedInterface)
-
-}
-
-func TestRegiserSingletonBean(t *testing.T) {
-	assert.Panics(t, func() {
-		ctx := SpringCore.NewDefaultSpringContext()
-
-		cfg := new(Config)
-		ctx.RegisterSingletonBean(cfg)
-
-		cfg2 := &Config{Port: int32(1111)}
-		ctx.RegisterSingletonBean(cfg2)
-	})
-}
-
-func TestFindSliceBean(t *testing.T) {
-	ctx := SpringCore.NewDefaultSpringContext()
-
-	ctx.RegisterSingletonBean(&Config{Port: 1234})
-
-	cfgs := []*Config{
-		{
-			Port: 8080,
-		},
-		{
-			Port: 8081,
-		},
-	}
-	ctx.RegisterSingletonBean(cfgs)
-
-	var find []*Config
-	ctx.GetBeanByType(&find)
-
-	assert.Equal(t, find[0].Port, int32(8080))
-	assert.Equal(t, find[1].Port, int32(8081))
-
-	var cfg *Config
-	ctx.GetBeanByType(&cfg)
-	assert.Equal(t, cfg.Port, int32(1234))
-}
-
-func TestGetBeanUname(t *testing.T) {
-	beanUname := SpringCore.GetTypeName(reflect.TypeOf(&foo.Demo{}))
-	otherPkgBeanUname := SpringCore.GetTypeName(reflect.TypeOf(&bar.Demo{}))
-	assert.NotEqual(t, beanUname, otherPkgBeanUname)
-}
-
-func TestGetBeanName(t *testing.T) {
-	ctx := SpringCore.NewDefaultSpringContext()
-	ctx.RegisterSingletonBean(new(Config))
-	var cfg *Config
-	ctx.FindBeanByType(cfg)
-	t.Log(SpringCore.GetBeanName(cfg))
-
-	ctx.GetAllBeanNames()
-}
-
-func TestRegisterSingletonBean(t *testing.T) {
-	ctx := SpringCore.NewDefaultSpringContext()
-
-	f := &foo.Demo{}
-	b := &bar.Demo{}
-	otherf := &otherfoo.Demo{}
-
-	ctx.RegisterSingletonBean(f)
-	ctx.RegisterSingletonBean(b)
-	ctx.RegisterSingletonBean(otherf)
-
-	_ = ctx.AutoWireBeans()
-
-	t.Log(ctx.GetAllBeanNames())
-
-}
-
-func TestGetTypeName(t *testing.T) {
-
-	ctx := SpringCore.NewDefaultSpringContext()
-
-	t.Run("struct ptr slice bean", func(t *testing.T) {
-		cfgs := []*Config{
-			{
-				Port: 8080,
-			},
-			{
-				Port: 8081,
-			},
+		// 找到多个符合条件的值
+		if false {
+			var i int
+			ctx.GetBean(&i)
 		}
-		ctx.RegisterSingletonBean(cfgs)
-	})
 
-	t.Run("struct slice", func(t *testing.T) {
-		cfgs2 := []Config{
-			{
-				Port: 8080,
-			},
-			{
-				Port: 8081,
-			},
+		// 入参不是可赋值的对象
+		if false {
+			var i int
+			ctx.GetBeanByName("i3", &i)
+			fmt.Println(i)
 		}
-		ctx.RegisterSingletonBean(cfgs2)
-	})
 
-	t.Run("struct ptr bean", func(t *testing.T) {
-		ctx.RegisterSingletonBean(new(Config))
-	})
-
-	t.Run("built in type bean", func(t *testing.T) {
-		nums := []int{1, 2}
-		ctx.RegisterSingletonBean(nums)
-
-		strs := []string{"a", "b"}
-		ctx.RegisterSingletonBean(strs)
-	})
-
-	_ = ctx.AutoWireBeans()
-
-	t.Log(ctx.GetAllBeanNames())
-
-}
-
-func TestPkgPath(t *testing.T) {
-
-	num := 1
-	t.Log(reflect.TypeOf(num).PkgPath())
-
-	nums := []int{1, 2}
-	t.Log(reflect.TypeOf(nums).Elem().PkgPath())
-}
-
-// TODO beanmap的key可以参考这个
-type key struct {
-	t reflect.Type
-
-	// 允许重复注册同一种类型，即 => type相同，name不同
-	name string
-}
-
-func TestReflectTypeAsKey(t *testing.T) {
-	f := &foo.Demo{}
-	b := &bar.Demo{}
-	otherf := &otherfoo.Demo{}
-	nums := []int{1, 2, 3}
-	strs := []string{"a", "b", "c"}
-	cfgs := []*Config{
 		{
-			Port: 8080,
-		},
+			var i *int
+			// 直接使用缓存
+			ctx.GetBeanByName("i3", &i)
+			fmt.Println(*i)
+		}
+
 		{
-			Port: 8081,
-		},
-	}
-	cfgsNotPtr := []Config{
+			var i []int
+			// 直接使用缓存
+			ctx.GetBean(&i)
+			fmt.Println(i)
+		}
+
 		{
-			Port: 8080,
-		},
-		{
-			Port: 8081,
-		},
+			var i *[]int
+			// 直接使用缓存
+			ctx.GetBean(&i)
+			fmt.Println(i)
+		}
 	}
 
-	var beanMap = make(map[key]reflect.Value)
+	/////////////////////////////////////////
+	// 自定义数据类型
 
-	assert.NotEqual(t, reflect.TypeOf(f).Elem(), reflect.TypeOf(otherf).Elem())
-	assert.Equal(t, reflect.TypeOf(f).Name(), reflect.TypeOf(otherf).Name())
+	{
+		e := pkg1.Demo{}
+		a := []pkg1.Demo{{}}
+		p := []*pkg1.Demo{{}}
 
-	beanMap[key{t: reflect.TypeOf(f)}] = reflect.ValueOf(f)
-	beanMap[key{t: reflect.TypeOf(b)}] = reflect.ValueOf(b)
-	beanMap[key{t: reflect.TypeOf(otherf)}] = reflect.ValueOf(otherf)
-	beanMap[key{t: reflect.TypeOf(nums)}] = reflect.ValueOf(nums)
-	beanMap[key{t: reflect.TypeOf(strs)}] = reflect.ValueOf(strs)
-	beanMap[key{t: reflect.TypeOf(cfgs)}] = reflect.ValueOf(cfgs)
-	beanMap[key{t: reflect.TypeOf(cfgsNotPtr)}] = reflect.ValueOf(cfgsNotPtr)
+		// 栈上的对象不能注册
+		// ctx.RegisterBean(e)
 
-	assert.Equal(t, 7, len(beanMap))
+		ctx.RegisterBean(&e)
+
+		// 相同类型不同名称的 bean 都可注册
+		ctx.RegisterNameBean("i3", &e)
+
+		// 相同类型不同名称的 bean 都可注册
+		ctx.RegisterNameBean("i4", &e)
+
+		ctx.RegisterBean(a)
+		ctx.RegisterBean(&a)
+		ctx.RegisterBean(p)
+		ctx.RegisterBean(&p)
+	}
+
+	{
+		e := pkg2.Demo{}
+		a := []pkg2.Demo{{}}
+		p := []*pkg2.Demo{{}}
+
+		// 栈上的对象不能注册
+		// ctx.RegisterBean(e)
+
+		ctx.RegisterBean(&e)
+
+		// 相同类型不同名称的 bean 都可注册
+		// 不同类型相同名称的 bean 也可注册
+		ctx.RegisterNameBean("i3", &e)
+
+		// 相同类型不同名称的 bean 都可注册
+		ctx.RegisterNameBean("i4", &e)
+
+		ctx.RegisterBean(a)
+		ctx.RegisterBean(&a)
+		ctx.RegisterBean(p)
+		ctx.RegisterBean(&p)
+
+		ctx.RegisterNameBean("i5", &e)
+	}
+
+	if false {
+		var i SpringCore.SpringBean
+		ctx.GetBean(&i)
+		fmt.Println(i)
+	}
+
+	{
+		var i SpringCore.SpringBean
+		ctx.GetBeanByName("i5", &i)
+		fmt.Println(i)
+	}
+}
+
+type Binding struct {
+	i int
+}
+
+func (b *Binding) String() string {
+	if b == nil {
+		return ""
+	} else {
+		return strconv.Itoa(b.i)
+	}
+}
+
+type Object struct {
+	// 基础类型指针
+	IntPtrByType *int `autowire:""`
+	IntPtrByName *int `autowire:"int_ptr"`
+
+	// 基础类型数组
+	//IntSliceByType []int `autowire:""`
+	IntCollection   []int `autowire:"[]"`
+	IntSliceByName  []int `autowire:"int_slice"`
+	IntSliceByName2 []int `autowire:"int_slice_2"`
+
+	// 基础类型指针数组
+	IntPtrSliceByType []*int `autowire:""`
+	IntPtrCollection  []*int `autowire:"[]"`
+	IntPtrSliceByName []*int `autowire:"int_ptr_slice"`
+
+	// 自定义类型指针
+	StructByType *Binding `autowire:""`
+	StructByName *Binding `autowire:"struct_ptr"`
+
+	// 自定义类型数组
+	StructSliceByType []Binding `autowire:""`
+	StructCollection  []Binding `autowire:"[]"`
+	StructSliceByName []Binding `autowire:"struct_slice"`
+
+	// 自定义类型指针数组
+	StructPtrSliceByType []*Binding `autowire:""`
+	StructPtrCollection  []*Binding `autowire:"[]"`
+	StructPtrSliceByName []*Binding `autowire:"struct_ptr_slice"`
+
+	// 接口
+	InterfaceByType fmt.Stringer `autowire:""`
+	InterfaceByName fmt.Stringer `autowire:"struct_ptr"`
+
+	// 接口数组
+	InterfaceSliceByType []fmt.Stringer `autowire:""`
+
+	InterfaceCollection  []fmt.Stringer `autowire:"[]"`
+	InterfaceCollection2 []fmt.Stringer `autowire:"[]"`
+
+	// 指定名称时使用精确匹配模式，不对数组元素进行转换，即便能做到似乎也无意义
+	InterfaceSliceByName []fmt.Stringer `autowire:"struct_ptr_slice"`
+}
+
+func TestDefaultSpringContext_AutoWireBeans(t *testing.T) {
+	ctx := SpringCore.NewDefaultSpringContext()
+
+	obj := &Object{}
+	ctx.RegisterBean(obj)
+
+	i := int(3)
+	ctx.RegisterNameBean("int_ptr", &i)
+
+	if false {
+		i2 := int(3)
+		ctx.RegisterNameBean("int_ptr_2", &i2)
+	}
+
+	is := []int{1, 2, 3}
+	ctx.RegisterNameBean("int_slice", is)
+
+	is2 := []int{2, 3, 4}
+	ctx.RegisterNameBean("int_slice_2", is2)
+
+	i2 := 4
+	ips := []*int{&i2}
+	ctx.RegisterNameBean("int_ptr_slice", ips)
+
+	b := Binding{1}
+	ctx.RegisterNameBean("struct_ptr", &b)
+
+	bs := []Binding{{10}}
+	ctx.RegisterNameBean("struct_slice", bs)
+
+	b2 := Binding{2}
+	bps := []*Binding{&b2}
+	ctx.RegisterNameBean("struct_ptr_slice", bps)
+
+	s := []fmt.Stringer{&Binding{3}}
+	ctx.RegisterBean(s)
+
+	ctx.AutoWireBeans()
+
+	fmt.Printf("%+v", obj)
 }
