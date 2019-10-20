@@ -249,3 +249,62 @@ func TestDefaultSpringContext_AutoWireBeans(t *testing.T) {
 
 	fmt.Printf("%+v", obj)
 }
+
+type SubSubSetting struct {
+	Int        int `value:"${int}"`
+	DefaultInt int `value:"${default.int:=2}"`
+}
+
+type SubSetting struct {
+	Int        int `value:"${int}"`
+	DefaultInt int `value:"${default.int:=2}"`
+
+	SubSubSetting SubSubSetting `value:"${sub}"`
+}
+
+type Setting struct {
+	Int        int `value:"${int}"`
+	DefaultInt int `value:"${default.int:=2}"`
+	//IntPtr     *int `value:"${int}"` // 不支持指针
+
+	Uint        uint `value:"${uint}"`
+	DefaultUint uint `value:"${default.uint:=2}"`
+
+	Float        float32 `value:"${float}"`
+	DefaultFloat float32 `value:"${default.float:=2}"`
+
+	//Complex complex64 `value:"${complex}"` // 不支持复数
+
+	String        string `value:"${string}"`
+	DefaultString string `value:"${default.string:=2}"`
+
+	Bool        bool `value:"${bool}"`
+	DefaultBool bool `value:"${default.bool:=false}"`
+
+	SubSetting SubSetting `value:"${sub}"`
+	//SubSettingPtr *SubSetting `value:"${sub}"` // 不支持指针
+
+	SubSubSetting SubSubSetting `value:"${sub_sub}"`
+}
+
+func TestDefaultSpringContext_ValueTag(t *testing.T) {
+	ctx := SpringCore.NewDefaultSpringContext()
+
+	ctx.SetProperties("int", int(3))
+	ctx.SetProperties("uint", uint(3))
+	ctx.SetProperties("float", float32(3))
+	ctx.SetProperties("complex", complex(3, 0))
+	ctx.SetProperties("string", "3")
+	ctx.SetProperties("bool", true)
+
+	setting := &Setting{}
+	ctx.RegisterBean(setting)
+
+	ctx.SetProperties("sub.int", int(4))
+	ctx.SetProperties("sub.sub.int", int(5))
+	ctx.SetProperties("sub_sub.int", int(6))
+
+	ctx.AutoWireBeans()
+
+	fmt.Printf("%+v", setting)
+}

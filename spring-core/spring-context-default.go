@@ -488,79 +488,120 @@ func (ctx *DefaultSpringContext) WireBean(bean SpringBean) error {
 }
 
 func (ctx *DefaultSpringContext) handleTagAutowire(f reflect.StructField, fv reflect.Value) {
-	if tagValue, ok := f.Tag.Lookup("autowire"); ok {
-		beanName := strings.TrimSuffix(tagValue, "?")
+	tagValue, ok := f.Tag.Lookup("autowire")
+	if !ok { // 没有 autowire 标签
+		return
+	}
 
-		// nullable 为 true 时找不到 Bean 会 panic
-		nullable := len(beanName) != len(tagValue)
+	// 获取绑定源的名称
+	beanName := strings.TrimSuffix(tagValue, "?")
 
-		if beanName == "[]" { // 收集模式，autowire:"[]"
-			fvk := fv.Type().Kind()
+	// nullable 为 true 时找不到 Bean 会 panic
+	nullable := len(beanName) != len(tagValue)
 
-			// 收集模式的绑定对象必须是数组
-			if fvk != reflect.Slice {
-				panic(f.Type.String() + ".$" + f.Name + " must be slice when autowire []")
-			}
+	if beanName == "[]" { // 收集模式，autowire:"[]"
+		fvk := fv.Type().Kind()
 
-			ok := ctx.collectBeans(fv)
-			if !ok && !nullable { // 没找到且不能为空则 panic
-				panic(f.Type.String() + ".$" + f.Name + " 没有找到符合条件的 Bean")
-			}
+		// 收集模式的绑定对象必须是数组
+		if fvk != reflect.Slice {
+			panic(f.Type.String() + ".$" + f.Name + " must be slice when autowire []")
+		}
 
-		} else { // 匹配模式，autowire:"" or autowire:"name"
-			ok := ctx.findBeanByName(beanName, fv)
-			if !ok && !nullable { // 没找到且不能为空则 panic
-				panic(f.Type.String() + ".$" + f.Name + " 没有找到符合条件的 Bean")
-			}
+		ok := ctx.collectBeans(fv)
+		if !ok && !nullable { // 没找到且不能为空则 panic
+			panic(f.Type.String() + ".$" + f.Name + " 没有找到符合条件的 Bean")
+		}
+
+	} else { // 匹配模式，autowire:"" or autowire:"name"
+
+		ok := ctx.findBeanByName(beanName, fv)
+		if !ok && !nullable { // 没找到且不能为空则 panic
+			panic(f.Type.String() + ".$" + f.Name + " 没有找到符合条件的 Bean")
 		}
 	}
 }
 
-func (ctx *DefaultSpringContext) handleTagValue(f reflect.StructField, fv reflect.Value) {
-	if value, ok := f.Tag.Lookup("value"); ok && len(value) > 0 {
-		// TODO 数组绑定
+func (ctx *DefaultSpringContext) subStructValue(prefix string, f reflect.StructField, fv reflect.Value) {
+	ft := f.Type
+	for i := 0; i < ft.NumField(); i++ {
+		it := ft.Field(i)
+		iv := fv.Field(i)
+		ctx.handleTagValue(prefix, it, iv)
+	}
+}
 
-		if strings.HasPrefix(value, "${") {
-			str := value[2 : len(value)-1]
-			ss := strings.Split(str, ":=")
+func (ctx *DefaultSpringContext) handleTagValue(prefix string, f reflect.StructField, fv reflect.Value) {
+	tagValue, ok := f.Tag.Lookup("value")
+	if !ok { // 没有 value 标签
+		return
+	}
 
-			var (
-				propName  string
-				propValue interface{}
-			)
+	// 检查语法是否正确
+	if !(strings.HasPrefix(tagValue, "${") && strings.HasSuffix(tagValue, "}")) {
+		panic(f.Type.String() + ".$" + f.Name + " 属性绑定的语法发生错误")
+	}
 
-			propName = ss[0]
-			if len(ss) > 1 {
-				propValue = ss[1]
-			}
+	fvk := fv.Kind()
 
-			if prop, ok := ctx.GetDefaultProperties(propName, ""); ok {
-				propValue = prop
-			} else {
-				if len(ss) < 2 {
-					panic("properties " + propName + " not config!")
-				}
-			}
+	// 指针不能作为属性绑定的目标
+	if fvk == reflect.Ptr {
+		panic(f.Type.String() + ".$" + f.Name + " 属性绑定的目标不能是指针")
+	}
 
-			switch fv.Kind() {
-			case reflect.Uint64, reflect.Uint32, reflect.Uint16, reflect.Uint8, reflect.Uint:
-				u := cast.ToUint64(propValue)
-				fv.SetUint(u)
-			case reflect.Int64, reflect.Int32, reflect.Int16, reflect.Int8, reflect.Int:
-				i := cast.ToInt64(propValue)
-				fv.SetInt(i)
-			case reflect.Float64, reflect.Float32:
-				fv.SetFloat(cast.ToFloat64(propValue))
-			case reflect.String:
-				s := cast.ToString(propValue)
-				fv.SetString(s)
-			case reflect.Bool:
-				b := cast.ToBool(propValue)
-				fv.SetBool(b)
-			default:
-				panic("unsupported type " + fv.Type().String())
-			}
+	ss := strings.Split(tagValue[2:len(tagValue)-1], ":=")
+
+	var (
+		propName  string
+		propValue interface{}
+	)
+
+	propName = ss[0]
+
+	// 属性名如果有前缀要加上前缀
+	if prefix != "" {
+		propName = prefix + "." + propName
+	}
+
+	if len(ss) > 1 {
+		propValue = ss[1]
+	}
+
+	// 结构体不能指定默认值
+	if fvk == reflect.Struct {
+
+		if len(ss) > 1 {
+			panic(f.Type.String() + ".$" + f.Name + " 结构体属性不能指定默认值")
 		}
+
+		ctx.subStructValue(propName, f, fv)
+		return
+	}
+
+	if prop, ok := ctx.GetDefaultProperties(propName, ""); ok {
+		propValue = prop
+	} else {
+		if len(ss) < 2 {
+			panic("properties " + propName + " not config")
+		}
+	}
+
+	switch fv.Kind() {
+	case reflect.Uint64, reflect.Uint32, reflect.Uint16, reflect.Uint8, reflect.Uint:
+		u := cast.ToUint64(propValue)
+		fv.SetUint(u)
+	case reflect.Int64, reflect.Int32, reflect.Int16, reflect.Int8, reflect.Int:
+		i := cast.ToInt64(propValue)
+		fv.SetInt(i)
+	case reflect.Float64, reflect.Float32:
+		fv.SetFloat(cast.ToFloat64(propValue))
+	case reflect.String:
+		s := cast.ToString(propValue)
+		fv.SetString(s)
+	case reflect.Bool:
+		b := cast.ToBool(propValue)
+		fv.SetBool(b)
+	default:
+		panic(f.Type.String() + ".$" + f.Name + " unsupported type " + fvk.String())
 	}
 }
 
@@ -593,7 +634,7 @@ func (ctx *DefaultSpringContext) WireBeanDefinition(beanDefinition *BeanDefiniti
 				fv := v.Field(i)
 
 				// 处理 value 标签
-				ctx.handleTagValue(f, fv)
+				ctx.handleTagValue("", f, fv)
 
 				// 处理 autowire 标签
 				ctx.handleTagAutowire(f, fv)
