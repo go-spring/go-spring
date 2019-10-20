@@ -94,9 +94,18 @@ func TestContainer(t *testing.T) {
 
 	c.GET("/get", s.Get, f2, f5)
 
-	c.Route("", f2, f7).
-		POST("/set", s.Set).
-		GET("/panic", s.Panic)
+	if false { // 流式风格
+		c.Route("", f2, f7).
+			POST("/set", s.Set).
+			GET("/panic", s.Panic)
+	}
+
+	// 障眼法，显得更整齐
+	r := c.Route("", f2, f7)
+	{
+		r.POST("/set", s.Set)
+		r.GET("/panic", s.Panic)
+	}
 
 	go c.Start(":8080")
 
