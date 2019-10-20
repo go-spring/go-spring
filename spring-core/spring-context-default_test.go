@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/go-spring/go-spring/spring-core"
 	pkg1 "github.com/go-spring/go-spring/spring-core/testdata/pkg/bar"
@@ -307,4 +308,70 @@ func TestDefaultSpringContext_ValueTag(t *testing.T) {
 	ctx.AutoWireBeans()
 
 	fmt.Printf("%+v", setting)
+}
+
+type GreetingService struct {
+}
+
+func (gs *GreetingService) Greeting(name string) string {
+	return "hello " + name
+}
+
+type PrototypeBean struct {
+	Service *GreetingService `autowire:""`
+	name    string
+	t       time.Time
+}
+
+func (p *PrototypeBean) Greeting() string {
+	return p.t.Format("15:04:05.000") + " " + p.Service.Greeting(p.name)
+}
+
+type PrototypeBeanFactory struct {
+	Ctx SpringCore.SpringContext `autowire:""`
+}
+
+func (f *PrototypeBeanFactory) New(name string) *PrototypeBean {
+	b := &PrototypeBean{
+		name: name,
+		t:    time.Now(),
+	}
+
+	// PrototypeBean 依赖的服务可以通过 SpringContext 注入
+	f.Ctx.WireBean(b)
+
+	return b
+}
+
+type PrototypeBeanService struct {
+	Factory *PrototypeBeanFactory `autowire:""`
+}
+
+func (s *PrototypeBeanService) Service(name string) {
+	// 通过 PrototypeBean 的工厂获取新的实例，并且每个实例都有自己的时间戳
+	fmt.Println(s.Factory.New(name).Greeting())
+}
+
+func TestDefaultSpringContext_PrototypeBean(t *testing.T) {
+	ctx := SpringCore.NewDefaultSpringContext()
+	ctx.RegisterBean(ctx)
+
+	gs := &GreetingService{}
+	ctx.RegisterBean(gs)
+
+	s := &PrototypeBeanService{}
+	ctx.RegisterBean(s)
+
+	f := &PrototypeBeanFactory{}
+	ctx.RegisterBean(f)
+
+	ctx.AutoWireBeans()
+
+	s.Service("Li Lei")
+	time.Sleep(50 * time.Millisecond)
+
+	s.Service("Jim Green")
+	time.Sleep(50 * time.Millisecond)
+
+	s.Service("Han MeiMei")
 }

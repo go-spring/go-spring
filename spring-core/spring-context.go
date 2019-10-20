@@ -59,6 +59,7 @@ type SpringContext interface {
 	// Bean 的注册规则:
 	// 1. 单例 Bean 只能注册指针和数组。
 	// 2. 执行完 AutoWireBeans 后不能再注册 Bean（性能考虑）。
+	// 3. 原型 Bean 只能通过 BeanFactory 的形式使用，参见测试用例。
 
 	// 注册单例 Bean，不指定名称，重复注册会 panic。
 	RegisterBean(bean SpringBean)
@@ -95,15 +96,6 @@ type SpringContext interface {
 
 	// 收集数组或指针定义的所有符合条件的 Bean 对象，收集不到会 panic。
 	MustCollectBeans(i interface{})
-
-	// 注册原型 Bean，使用反射创建新的 Bean
-	// TODO RegisterPrototypeBean(bean SpringBean)
-
-	// 注册原型 Bean，使用工厂创建新的 Bean
-	// TODO RegisterPrototypeBeanFactory(factory func() SpringBean)
-
-	// 获取原型 Bean 并自动完成绑定
-	// TODO GetPrototypeBean(i interface{})
 
 	// 获取所有 Bean 的定义，一般仅供调试使用。
 	GetAllBeansDefinition() []*BeanDefinition

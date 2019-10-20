@@ -235,16 +235,16 @@ func (ctx *DefaultSpringContext) FindBeanByName(name string, i interface{}) bool
 
 	iv := reflect.ValueOf(i)
 
-	return ctx.findBeanByName(name, iv.Elem())
+	return ctx.findBeanByName(name, iv.Elem(), "")
 }
 
-func (ctx *DefaultSpringContext) findBeanByName(name string, v reflect.Value) bool {
+func (ctx *DefaultSpringContext) findBeanByName(name string, v reflect.Value, fName string) bool {
 
 	t := v.Type()
 
 	// 检查接收者的类型，接收者必须是指针、数组、接口其中的一种，不能是原始类型。
 	if t.Kind() != reflect.Ptr && t.Kind() != reflect.Slice && t.Kind() != reflect.Interface {
-		panic("receiver must be pointer or slice or interface")
+		panic("receiver \"" + fName + "\" must be pointer or slice or interface")
 	}
 
 	m, ok := ctx.CachedBeanMap.Get(t)
@@ -487,7 +487,7 @@ func (ctx *DefaultSpringContext) WireBean(bean SpringBean) error {
 	return ctx.WireBeanDefinition(beanDefinition)
 }
 
-func (ctx *DefaultSpringContext) handleTagAutowire(f reflect.StructField, fv reflect.Value) {
+func (ctx *DefaultSpringContext) handleTagAutowire(f reflect.StructField, fv reflect.Value, fName string) {
 	tagValue, ok := f.Tag.Lookup("autowire")
 	if !ok { // 没有 autowire 标签
 		return
@@ -504,19 +504,19 @@ func (ctx *DefaultSpringContext) handleTagAutowire(f reflect.StructField, fv ref
 
 		// 收集模式的绑定对象必须是数组
 		if fvk != reflect.Slice {
-			panic(f.Type.String() + ".$" + f.Name + " must be slice when autowire []")
+			panic(fName + " must be slice when autowire []")
 		}
 
 		ok := ctx.collectBeans(fv)
 		if !ok && !nullable { // 没找到且不能为空则 panic
-			panic(f.Type.String() + ".$" + f.Name + " 没有找到符合条件的 Bean")
+			panic(fName + " 没有找到符合条件的 Bean")
 		}
 
 	} else { // 匹配模式，autowire:"" or autowire:"name"
 
-		ok := ctx.findBeanByName(beanName, fv)
+		ok := ctx.findBeanByName(beanName, fv, fName)
 		if !ok && !nullable { // 没找到且不能为空则 panic
-			panic(f.Type.String() + ".$" + f.Name + " 没有找到符合条件的 Bean")
+			panic(fName + " 没有找到符合条件的 Bean")
 		}
 	}
 }
@@ -526,11 +526,11 @@ func (ctx *DefaultSpringContext) subStructValue(prefix string, f reflect.StructF
 	for i := 0; i < ft.NumField(); i++ {
 		it := ft.Field(i)
 		iv := fv.Field(i)
-		ctx.handleTagValue(prefix, it, iv)
+		ctx.handleTagValue(prefix, it, iv, "")
 	}
 }
 
-func (ctx *DefaultSpringContext) handleTagValue(prefix string, f reflect.StructField, fv reflect.Value) {
+func (ctx *DefaultSpringContext) handleTagValue(prefix string, f reflect.StructField, fv reflect.Value, fName string) {
 	tagValue, ok := f.Tag.Lookup("value")
 	if !ok { // 没有 value 标签
 		return
@@ -538,14 +538,14 @@ func (ctx *DefaultSpringContext) handleTagValue(prefix string, f reflect.StructF
 
 	// 检查语法是否正确
 	if !(strings.HasPrefix(tagValue, "${") && strings.HasSuffix(tagValue, "}")) {
-		panic(f.Type.String() + ".$" + f.Name + " 属性绑定的语法发生错误")
+		panic(fName + " 属性绑定的语法发生错误")
 	}
 
 	fvk := fv.Kind()
 
 	// 指针不能作为属性绑定的目标
 	if fvk == reflect.Ptr {
-		panic(f.Type.String() + ".$" + f.Name + " 属性绑定的目标不能是指针")
+		panic(fName + " 属性绑定的目标不能是指针")
 	}
 
 	ss := strings.Split(tagValue[2:len(tagValue)-1], ":=")
@@ -570,7 +570,7 @@ func (ctx *DefaultSpringContext) handleTagValue(prefix string, f reflect.StructF
 	if fvk == reflect.Struct {
 
 		if len(ss) > 1 {
-			panic(f.Type.String() + ".$" + f.Name + " 结构体属性不能指定默认值")
+			panic(fName + " 结构体属性不能指定默认值")
 		}
 
 		ctx.subStructValue(propName, f, fv)
@@ -601,7 +601,7 @@ func (ctx *DefaultSpringContext) handleTagValue(prefix string, f reflect.StructF
 		b := cast.ToBool(propValue)
 		fv.SetBool(b)
 	default:
-		panic(f.Type.String() + ".$" + f.Name + " unsupported type " + fvk.String())
+		panic(fName + " unsupported type " + fvk.String())
 	}
 }
 
@@ -633,11 +633,13 @@ func (ctx *DefaultSpringContext) WireBeanDefinition(beanDefinition *BeanDefiniti
 				f := t.Field(i)
 				fv := v.Field(i)
 
+				fName := t.Name() + ".$" + f.Name
+
 				// 处理 value 标签
-				ctx.handleTagValue("", f, fv)
+				ctx.handleTagValue("", f, fv, fName)
 
 				// 处理 autowire 标签
-				ctx.handleTagAutowire(f, fv)
+				ctx.handleTagAutowire(f, fv, fName)
 			}
 
 			// 初始化当前的 SpringBean
