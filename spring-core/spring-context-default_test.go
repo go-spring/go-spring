@@ -205,7 +205,7 @@ type Object struct {
 	InterfaceCollection2 []fmt.Stringer `autowire:"[]"`
 
 	// 指定名称时使用精确匹配模式，不对数组元素进行转换，即便能做到似乎也无意义
-	InterfaceSliceByName []fmt.Stringer `autowire:"struct_ptr_slice"`
+	InterfaceSliceByName []fmt.Stringer `autowire:"struct_ptr_slice?"`
 }
 
 func TestDefaultSpringContext_AutoWireBeans(t *testing.T) {

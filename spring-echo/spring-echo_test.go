@@ -93,8 +93,11 @@ func TestContainer(t *testing.T) {
 	f7 := NewNumberFilter(7)
 
 	c.GET("/get", s.Get, f2, f5)
-	c.POST("/set", s.Set, f2, f7)
-	c.GET("/panic", s.Panic, f5, f7)
+
+	c.Group("", func(g *SpringWeb.Group) {
+		g.GET("/panic", s.Panic)
+		g.POST("/set", s.Set)
+	}, f2, f7)
 
 	go c.Start(":8080")
 

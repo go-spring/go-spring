@@ -57,6 +57,10 @@ func (c *Container) StartTLS(address string, certFile, keyFile string) error {
 	return c.HttpServer.ListenAndServeTLS(certFile, keyFile)
 }
 
+func (c *Container) Group(path string, fn SpringWeb.GroupHandler, filters ...SpringWeb.Filter) {
+	fn(SpringWeb.NewGroup(c, path, filters))
+}
+
 func (c *Container) GET(path string, fn SpringWeb.Handler, filters ...SpringWeb.Filter) {
 	c.GinEngine.GET(path, HandlerWrapper(path, fn, filters...))
 }

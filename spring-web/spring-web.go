@@ -38,6 +38,59 @@ var UNIMPLEMENTED_METHOD = errors.New("unimplemented method")
 type Handler func(WebContext)
 
 //
+// 定义 Web 路由分组。分组的限制：分组内路由只能共享相同的 filters。
+//
+type Group struct {
+	basePath string
+	filters  []Filter
+	wc       WebContainer
+}
+
+//
+// 工厂函数
+//
+func NewGroup(wc WebContainer, path string, filters []Filter) *Group {
+	return &Group{
+		wc:       wc,
+		basePath: path,
+		filters:  filters,
+	}
+}
+
+//
+// 定义分组处理函数
+//
+type GroupHandler func(*Group)
+
+func (g *Group) GET(path string, fn Handler) {
+	g.wc.GET(g.basePath+path, fn, g.filters...)
+}
+
+func (g *Group) POST(path string, fn Handler) {
+	g.wc.POST(g.basePath+path, fn, g.filters...)
+}
+
+func (g *Group) PATCH(path string, fn Handler) {
+	g.wc.PATCH(g.basePath+path, fn, g.filters...)
+}
+
+func (g *Group) PUT(path string, fn Handler) {
+	g.wc.PUT(g.basePath+path, fn, g.filters...)
+}
+
+func (g *Group) DELETE(path string, fn Handler) {
+	g.wc.DELETE(g.basePath+path, fn, g.filters...)
+}
+
+func (g *Group) HEAD(path string, fn Handler) {
+	g.wc.HEAD(g.basePath+path, fn, g.filters...)
+}
+
+func (g *Group) OPTIONS(path string, fn Handler) {
+	g.wc.OPTIONS(g.basePath+path, fn, g.filters...)
+}
+
+//
 // 定义 Web 容器接口
 //
 type WebContainer interface {
@@ -49,6 +102,9 @@ type WebContainer interface {
 
 	// 启动 HTTPS 容器
 	StartTLS(address string, certFile, keyFile string) error
+
+	// 通过路由分组注册 Web 处理函数
+	Group(path string, fn GroupHandler, filters ...Filter)
 
 	// 注册 GET 方法处理函数
 	GET(path string, fn Handler, filters ...Filter)
