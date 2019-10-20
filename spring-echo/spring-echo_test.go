@@ -94,10 +94,9 @@ func TestContainer(t *testing.T) {
 
 	c.GET("/get", s.Get, f2, f5)
 
-	c.Group("", func(g *SpringWeb.Group) {
-		g.GET("/panic", s.Panic)
-		g.POST("/set", s.Set)
-	}, f2, f7)
+	c.Route("", f2, f7).
+		POST("/set", s.Set).
+		GET("/panic", s.Panic)
 
 	go c.Start(":8080")
 

@@ -40,7 +40,7 @@ type Handler func(WebContext)
 //
 // 定义 Web 路由分组。分组的限制：分组内路由只能共享相同的 filters。
 //
-type Group struct {
+type Route struct {
 	basePath string
 	filters  []Filter
 	wc       WebContainer
@@ -49,8 +49,8 @@ type Group struct {
 //
 // 工厂函数
 //
-func NewGroup(wc WebContainer, path string, filters []Filter) *Group {
-	return &Group{
+func NewRoute(wc WebContainer, path string, filters []Filter) *Route {
+	return &Route{
 		wc:       wc,
 		basePath: path,
 		filters:  filters,
@@ -60,34 +60,41 @@ func NewGroup(wc WebContainer, path string, filters []Filter) *Group {
 //
 // 定义分组处理函数
 //
-type GroupHandler func(*Group)
+type GroupHandler func(*Route)
 
-func (g *Group) GET(path string, fn Handler) {
+func (g *Route) GET(path string, fn Handler) *Route {
 	g.wc.GET(g.basePath+path, fn, g.filters...)
+	return g
 }
 
-func (g *Group) POST(path string, fn Handler) {
+func (g *Route) POST(path string, fn Handler) *Route {
 	g.wc.POST(g.basePath+path, fn, g.filters...)
+	return g
 }
 
-func (g *Group) PATCH(path string, fn Handler) {
+func (g *Route) PATCH(path string, fn Handler) *Route {
 	g.wc.PATCH(g.basePath+path, fn, g.filters...)
+	return g
 }
 
-func (g *Group) PUT(path string, fn Handler) {
+func (g *Route) PUT(path string, fn Handler) *Route {
 	g.wc.PUT(g.basePath+path, fn, g.filters...)
+	return g
 }
 
-func (g *Group) DELETE(path string, fn Handler) {
+func (g *Route) DELETE(path string, fn Handler) *Route {
 	g.wc.DELETE(g.basePath+path, fn, g.filters...)
+	return g
 }
 
-func (g *Group) HEAD(path string, fn Handler) {
+func (g *Route) HEAD(path string, fn Handler) *Route {
 	g.wc.HEAD(g.basePath+path, fn, g.filters...)
+	return g
 }
 
-func (g *Group) OPTIONS(path string, fn Handler) {
+func (g *Route) OPTIONS(path string, fn Handler) *Route {
 	g.wc.OPTIONS(g.basePath+path, fn, g.filters...)
+	return g
 }
 
 //
@@ -102,6 +109,9 @@ type WebContainer interface {
 
 	// 启动 HTTPS 容器
 	StartTLS(address string, certFile, keyFile string) error
+
+	// 通过路由分组注册 Web 处理函数
+	Route(path string, filters ...Filter) *Route
 
 	// 通过路由分组注册 Web 处理函数
 	Group(path string, fn GroupHandler, filters ...Filter)

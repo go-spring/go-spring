@@ -57,8 +57,12 @@ func (c *Container) StartTLS(address string, certFile, keyFile string) error {
 	return c.EchoServer.StartTLS(address, certFile, keyFile)
 }
 
+func (c *Container) Route(path string, filters ...SpringWeb.Filter) *SpringWeb.Route {
+	return SpringWeb.NewRoute(c, path, filters)
+}
+
 func (c *Container) Group(path string, fn SpringWeb.GroupHandler, filters ...SpringWeb.Filter) {
-	fn(SpringWeb.NewGroup(c, path, filters))
+	fn(SpringWeb.NewRoute(c, path, filters))
 }
 
 func (c *Container) GET(path string, fn SpringWeb.Handler, filters ...SpringWeb.Filter) {
