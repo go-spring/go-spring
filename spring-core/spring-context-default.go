@@ -134,7 +134,7 @@ func (m CachedBeanMap) Get(t reflect.Type) (*CachedBeanMapItem, bool) {
 //
 type DefaultSpringContext struct {
 	Wired         bool                   // 绑定过程已经完成
-	propertiesMap map[string]interface{} // 所有属性值的集合
+	Properties    map[string]interface{} // 所有属性值的集合
 	BeanMap       BeanMap                // 所有 Bean 的集合
 	CachedBeanMap CachedBeanMap          // 根据类型分组 Bean
 }
@@ -147,7 +147,7 @@ func NewDefaultSpringContext() *DefaultSpringContext {
 		Wired:         false,
 		BeanMap:       NewBeanMap(),
 		CachedBeanMap: NewCachedBeanMap(),
-		propertiesMap: make(map[string]interface{}),
+		Properties:    make(map[string]interface{}),
 	}
 }
 
@@ -221,6 +221,8 @@ func (ctx *DefaultSpringContext) GetBeanByName(name string, i interface{}) {
 	}
 }
 
+var EMPTY_VALUE = reflect.ValueOf(0)
+
 //
 // 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 //
@@ -235,12 +237,12 @@ func (ctx *DefaultSpringContext) FindBeanByName(name string, i interface{}) bool
 
 	iv := reflect.ValueOf(i)
 
-	return ctx.findBeanByName(name, iv.Elem(), "")
+	return ctx.findBeanByName(name, EMPTY_VALUE, iv.Elem(), "")
 }
 
-func (ctx *DefaultSpringContext) findBeanByName(name string, v reflect.Value, fName string) bool {
+func (ctx *DefaultSpringContext) findBeanByName(name string, parentValue reflect.Value, fv reflect.Value, fName string) bool {
 
-	t := v.Type()
+	t := fv.Type()
 
 	// 检查接收者的类型，接收者必须是指针、数组、接口其中的一种，不能是原始类型。
 	if t.Kind() != reflect.Ptr && t.Kind() != reflect.Slice && t.Kind() != reflect.Interface {
@@ -257,14 +259,14 @@ func (ctx *DefaultSpringContext) findBeanByName(name string, v reflect.Value, fN
 			result *BeanDefinition
 		)
 
-		for _, v := range ctx.BeanMap {
-			if v.Type.AssignableTo(t) {
-				m.Store(v)
+		for _, bean := range ctx.BeanMap {
+			if bean.Type.AssignableTo(t) && bean.Value != parentValue {
+				m.Store(bean)
 
 				// 如果不指定名称，则所有结果都匹配；
 				// 如果指定了名称，则名称相同才匹配。
-				if name == "" || v.Name == name {
-					result = v
+				if name == "" || bean.Name == name {
+					result = bean
 					count++
 				}
 			}
@@ -281,7 +283,7 @@ func (ctx *DefaultSpringContext) findBeanByName(name string, v reflect.Value, fN
 		}
 
 		// 恰好 1 个
-		v.Set(result.Value)
+		fv.Set(result.Value)
 		return true
 	}
 
@@ -295,9 +297,9 @@ func (ctx *DefaultSpringContext) findBeanByName(name string, v reflect.Value, fN
 		if ln+lu > 1 {
 			panic("找到多个符合条件的值")
 		} else if ln == 1 {
-			v.Set(m.Named[0].Value)
+			fv.Set(m.Named[0].Value)
 		} else if lu == 1 {
-			v.Set(m.Unnamed[0].Value)
+			fv.Set(m.Unnamed[0].Value)
 		} else {
 			return false // 没有找到
 		}
@@ -328,7 +330,7 @@ func (ctx *DefaultSpringContext) findBeanByName(name string, v reflect.Value, fN
 	}
 
 	// 恰好 1 个
-	v.Set(result.Value)
+	fv.Set(result.Value)
 	return true
 }
 
@@ -432,17 +434,52 @@ func (ctx *DefaultSpringContext) GetAllBeansDefinition() []*BeanDefinition {
 }
 
 //
-// 获取属性值
+// 获取属性值，属性名称不支持大小写。
 //
-func (ctx *DefaultSpringContext) GetProperties(name string) interface{} {
-	return ctx.propertiesMap[name]
+func (ctx *DefaultSpringContext) GetProperty(name string) interface{} {
+	return ctx.Properties[name]
 }
 
 //
-// 设置属性值
+// 获取布尔型属性值，属性名称不支持大小写。
 //
-func (ctx *DefaultSpringContext) SetProperties(name string, value interface{}) {
-	ctx.propertiesMap[name] = value
+func (ctx *DefaultSpringContext) GetBoolProperty(name string) bool {
+	return cast.ToBool(ctx.GetProperty(name))
+}
+
+//
+// 获取有符号整型属性值，属性名称不支持大小写。
+//
+func (ctx *DefaultSpringContext) GetIntProperty(name string) int64 {
+	return cast.ToInt64(ctx.GetProperty(name))
+}
+
+//
+// 获取无符号整型属性值，属性名称不支持大小写。
+//
+func (ctx *DefaultSpringContext) GetUintProperty(name string) uint64 {
+	return cast.ToUint64(ctx.GetProperty(name))
+}
+
+//
+// 获取浮点型属性值，属性名称不支持大小写。
+//
+func (ctx *DefaultSpringContext) GetFloatProperty(name string) float64 {
+	return cast.ToFloat64(ctx.GetProperty(name))
+}
+
+//
+// 获取字符串型属性值，属性名称不支持大小写。
+//
+func (ctx *DefaultSpringContext) GetStringProperty(name string) string {
+	return cast.ToString(ctx.GetProperty(name))
+}
+
+//
+// 设置属性值，属性名称不支持大小写。
+//
+func (ctx *DefaultSpringContext) SetProperty(name string, value interface{}) {
+	ctx.Properties[name] = value
 }
 
 //
@@ -450,7 +487,7 @@ func (ctx *DefaultSpringContext) SetProperties(name string, value interface{}) {
 //
 func (ctx *DefaultSpringContext) GetPrefixProperties(prefix string) map[string]interface{} {
 	result := make(map[string]interface{})
-	for k, v := range ctx.propertiesMap {
+	for k, v := range ctx.Properties {
 		if strings.HasPrefix(k, prefix) {
 			result[k] = v
 		}
@@ -461,8 +498,8 @@ func (ctx *DefaultSpringContext) GetPrefixProperties(prefix string) map[string]i
 //
 // 获取属性值，如果没有找到则使用指定的默认值
 //
-func (ctx *DefaultSpringContext) GetDefaultProperties(name string, defaultValue interface{}) (interface{}, bool) {
-	if v, ok := ctx.propertiesMap[name]; ok {
+func (ctx *DefaultSpringContext) GetDefaultProperty(name string, defaultValue interface{}) (interface{}, bool) {
+	if v, ok := ctx.Properties[name]; ok {
 		return v, true
 	}
 	return defaultValue, false
@@ -487,7 +524,7 @@ func (ctx *DefaultSpringContext) WireBean(bean SpringBean) error {
 	return ctx.WireBeanDefinition(beanDefinition)
 }
 
-func (ctx *DefaultSpringContext) handleTagAutowire(f reflect.StructField, fv reflect.Value, fName string) {
+func (ctx *DefaultSpringContext) handleTagAutowire(parentValue reflect.Value, f reflect.StructField, fv reflect.Value, fName string) {
 	tagValue, ok := f.Tag.Lookup("autowire")
 	if !ok { // 没有 autowire 标签
 		return
@@ -514,7 +551,7 @@ func (ctx *DefaultSpringContext) handleTagAutowire(f reflect.StructField, fv ref
 
 	} else { // 匹配模式，autowire:"" or autowire:"name"
 
-		ok := ctx.findBeanByName(beanName, fv, fName)
+		ok := ctx.findBeanByName(beanName, parentValue, fv, fName)
 		if !ok && !nullable { // 没找到且不能为空则 panic
 			panic(fName + " 没有找到符合条件的 Bean")
 		}
@@ -577,11 +614,11 @@ func (ctx *DefaultSpringContext) handleTagValue(prefix string, f reflect.StructF
 		return
 	}
 
-	if prop, ok := ctx.GetDefaultProperties(propName, ""); ok {
+	if prop, ok := ctx.GetDefaultProperty(propName, ""); ok {
 		propValue = prop
 	} else {
 		if len(ss) < 2 {
-			panic("properties " + propName + " not config")
+			panic("property \"" + propName + "\" not config")
 		}
 	}
 
@@ -639,7 +676,7 @@ func (ctx *DefaultSpringContext) WireBeanDefinition(beanDefinition *BeanDefiniti
 				ctx.handleTagValue("", f, fv, fName)
 
 				// 处理 autowire 标签
-				ctx.handleTagAutowire(f, fv, fName)
+				ctx.handleTagAutowire(sv, f, fv, fName)
 			}
 
 			// 初始化当前的 SpringBean

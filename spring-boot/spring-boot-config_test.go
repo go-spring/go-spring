@@ -43,6 +43,6 @@ func TestConfigParserViper(t *testing.T) {
 	app := NewApplication("data/")
 	app.loadConfigFiles()
 
-	appName := app.AppContext.GetProperties("spring.application.name")
-	fmt.Println("spring.application.name=" + appName.(string))
+	appName := app.AppContext.GetStringProperty("spring.application.name")
+	fmt.Println("spring.application.name=" + appName)
 }

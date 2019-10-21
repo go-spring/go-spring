@@ -19,12 +19,14 @@ package SpringCore_test
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/go-spring/go-spring/spring-core"
 	pkg1 "github.com/go-spring/go-spring/spring-core/testdata/pkg/bar"
 	pkg2 "github.com/go-spring/go-spring/spring-core/testdata/pkg/foo"
+	"github.com/spf13/cast"
 )
 
 func TestDefaultSpringContext(t *testing.T) {
@@ -248,7 +250,7 @@ func TestDefaultSpringContext_AutoWireBeans(t *testing.T) {
 
 	ctx.AutoWireBeans()
 
-	fmt.Printf("%+v", obj)
+	fmt.Printf("%+v\n", obj)
 }
 
 type SubSubSetting struct {
@@ -291,23 +293,23 @@ type Setting struct {
 func TestDefaultSpringContext_ValueTag(t *testing.T) {
 	ctx := SpringCore.NewDefaultSpringContext()
 
-	ctx.SetProperties("int", int(3))
-	ctx.SetProperties("uint", uint(3))
-	ctx.SetProperties("float", float32(3))
-	ctx.SetProperties("complex", complex(3, 0))
-	ctx.SetProperties("string", "3")
-	ctx.SetProperties("bool", true)
+	ctx.SetProperty("int", int(3))
+	ctx.SetProperty("uint", uint(3))
+	ctx.SetProperty("float", float32(3))
+	ctx.SetProperty("complex", complex(3, 0))
+	ctx.SetProperty("string", "3")
+	ctx.SetProperty("bool", true)
 
 	setting := &Setting{}
 	ctx.RegisterBean(setting)
 
-	ctx.SetProperties("sub.int", int(4))
-	ctx.SetProperties("sub.sub.int", int(5))
-	ctx.SetProperties("sub_sub.int", int(6))
+	ctx.SetProperty("sub.int", int(4))
+	ctx.SetProperty("sub.sub.int", int(5))
+	ctx.SetProperty("sub_sub.int", int(6))
 
 	ctx.AutoWireBeans()
 
-	fmt.Printf("%+v", setting)
+	fmt.Printf("%+v\n", setting)
 }
 
 type GreetingService struct {
@@ -374,4 +376,100 @@ func TestDefaultSpringContext_PrototypeBean(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	s.Service("Han MeiMei")
+}
+
+type EnvEnum string
+
+const (
+	ENV_TEST    EnvEnum = "test"
+	ENV_PRODUCT EnvEnum = "product"
+)
+
+type EnvEnumBean struct {
+	EnvType EnvEnum `value:"${env.type}"`
+}
+
+type Point struct {
+	x int
+	y int
+}
+
+type PointBean struct {
+	Point        Point `value:"${point}"`
+	DefaultPoint Point `value:"${default_point:=(3,4)}"`
+}
+
+func PointConverter(val string) Point {
+	if !(strings.HasPrefix(val, "(") && strings.HasSuffix(val, ")")) {
+		panic("数据格式错误")
+	}
+	ss := strings.Split(val[1:len(val)-1], ",")
+	x := cast.ToInt(ss[0])
+	y := cast.ToInt(ss[1])
+	return Point{x, y}
+}
+
+func TestDefaultSpringContext_TypeConverter(t *testing.T) {
+	//ctx := SpringCore.NewDefaultSpringContext()
+	//
+	//b := &EnvEnumBean{}
+	//ctx.RegisterBean(b)
+	//
+	//ctx.SetProperties("env.type", "test")
+	//
+	//p := &PointBean{}
+	//ctx.RegisterBean(p)
+	//
+	//if false { // 不是函数
+	//	ctx.RegisterTypeConverter(3)
+	//}
+	//
+	//if false { // 参数太多
+	//	ctx.RegisterTypeConverter(func(_ string, _ string) Point {
+	//		return Point{}
+	//	})
+	//}
+	//
+	//if false { // 返回值太多
+	//	ctx.RegisterTypeConverter(func(_ string) (Point, Point) {
+	//		return Point{}, Point{}
+	//	})
+	//}
+	//
+	//ctx.RegisterTypeConverter(PointConverter)
+	//
+	//ctx.SetProperties("point", "(7,5)")
+	//
+	//ctx.AutoWireBeans()
+	//
+	//if b.EnvType == ENV_TEST {
+	//	fmt.Println("ok")
+	//}
+	//
+	//fmt.Printf("%+v\n", b)
+	//fmt.Printf("%+v\n", p)
+}
+
+type Grouper interface {
+	Group()
+}
+
+type MyGrouper struct {
+}
+
+func (g *MyGrouper) Group() {
+
+}
+
+type ProxyGrouper struct {
+	Grouper `autowire:""`
+}
+
+func TestDefaultSpringContext_NestedBean(t *testing.T) {
+	ctx := SpringCore.NewDefaultSpringContext()
+
+	ctx.RegisterBean(new(MyGrouper))
+	ctx.RegisterBean(new(ProxyGrouper))
+
+	ctx.AutoWireBeans()
 }

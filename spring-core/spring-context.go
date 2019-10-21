@@ -101,18 +101,31 @@ type SpringContext interface {
 	GetAllBeansDefinition() []*BeanDefinition
 
 	// 获取属性值，属性名称不支持大小写。
-	GetProperties(name string) interface{}
+	GetProperty(name string) interface{}
 
-	// TODO GetIntProperties() 等。
+	// 获取布尔型属性值，属性名称不支持大小写。
+	GetBoolProperty(name string) bool
+
+	// 获取有符号整型属性值，属性名称不支持大小写。
+	GetIntProperty(name string) int64
+
+	// 获取无符号整型属性值，属性名称不支持大小写。
+	GetUintProperty(name string) uint64
+
+	// 获取浮点型属性值，属性名称不支持大小写。
+	GetFloatProperty(name string) float64
+
+	// 获取字符串型属性值，属性名称不支持大小写。
+	GetStringProperty(name string) string
+
+	// 获取属性值，如果没有找到则使用指定的默认值，属性名称不支持大小写。
+	GetDefaultProperty(name string, defaultValue interface{}) (interface{}, bool)
 
 	// 设置属性值，属性名称不支持大小写。
-	SetProperties(name string, value interface{})
+	SetProperty(name string, value interface{})
 
 	// 获取指定前缀的属性值集合，属性名称不支持大小写。
 	GetPrefixProperties(prefix string) map[string]interface{}
-
-	// 获取属性值，如果没有找到则使用指定的默认值，属性名称不支持大小写。
-	GetDefaultProperties(name string, defaultValue interface{}) (interface{}, bool)
 
 	// 自动绑定所有的 SpringBean
 	AutoWireBeans()

@@ -55,7 +55,7 @@ func (parser *ConfigParserViper) Parse(ctx ApplicationContext, filename string) 
 
 	for _, key := range v.AllKeys() {
 		val := v.Get(key)
-		ctx.SetProperties(key, val)
+		ctx.SetProperty(key, val)
 	}
 	return nil
 }
