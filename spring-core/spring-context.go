@@ -53,6 +53,44 @@ type BeanDefinition struct {
 }
 
 //
+// 获取原始类型的全限定名
+//
+func TypeName(t reflect.Type) string {
+
+	for {
+		if t.Kind() != reflect.Ptr && t.Kind() != reflect.Slice {
+			break
+		} else {
+			t = t.Elem()
+		}
+	}
+
+	if pkgPath := t.PkgPath(); pkgPath != "" {
+		return pkgPath + "/" + t.String()
+	} else {
+		return t.String()
+	}
+}
+
+//
+// 测试类型全限定名和 Bean 名称是否都能匹配
+//
+func (bean *BeanDefinition) Match(typeName string, beanName string) bool {
+
+	typeIsSame := false
+	if typeName == "" || TypeName(bean.Type) == typeName {
+		typeIsSame = true
+	}
+
+	nameIsSame := false
+	if beanName == "" || bean.Name == beanName {
+		nameIsSame = true
+	}
+
+	return typeIsSame && nameIsSame
+}
+
+//
 // 定义 SpringContext 接口
 //
 type SpringContext interface {
@@ -83,10 +121,10 @@ type SpringContext interface {
 	// 什么情况下会多于 1 个？假设 StructA 和 StructB 都实现了 InterfaceT，
 	// 而且用户在注册时使用了相同的名称分别注册了 StructA 和 StructB 的 Bean，
 	// 这时候如果使用 InterfaceT 去获取，就会出现多于 1 个的情况。
-	GetBeanByName(name string, i interface{})
+	GetBeanByName(beanId string, i interface{})
 
 	// 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
-	FindBeanByName(name string, i interface{}) bool
+	FindBeanByName(beanId string, i interface{}) bool
 
 	// 收集数组或指针定义的所有符合条件的 Bean 对象，收集到返回 true，否则返回 false。
 	// 什么情况下可以使用此功能？假设 HandlerA 和 HandlerB 都实现了 HandlerT 接口，

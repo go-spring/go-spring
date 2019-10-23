@@ -96,9 +96,9 @@ func TestDefaultSpringContext(t *testing.T) {
 	// 自定义数据类型
 
 	{
-		e := pkg1.Demo{}
-		a := []pkg1.Demo{{}}
-		p := []*pkg1.Demo{{}}
+		e := pkg1.SamePkg{}
+		a := []pkg1.SamePkg{{}}
+		p := []*pkg1.SamePkg{{}}
 
 		// 栈上的对象不能注册
 		// ctx.RegisterBean(e)
@@ -118,9 +118,9 @@ func TestDefaultSpringContext(t *testing.T) {
 	}
 
 	{
-		e := pkg2.Demo{}
-		a := []pkg2.Demo{{}}
-		p := []*pkg2.Demo{{}}
+		e := pkg2.SamePkg{}
+		a := []pkg2.SamePkg{{}}
+		p := []*pkg2.SamePkg{{}}
 
 		// 栈上的对象不能注册
 		// ctx.RegisterBean(e)
@@ -470,6 +470,56 @@ func TestDefaultSpringContext_NestedBean(t *testing.T) {
 
 	ctx.RegisterBean(new(MyGrouper))
 	ctx.RegisterBean(new(ProxyGrouper))
+
+	ctx.AutoWireBeans()
+}
+
+type Pkg interface {
+	Package()
+}
+
+type SamePkgHolder struct {
+	//Pkg `autowire:""` // 这种方式会找到多个符合条件的 Bean
+	Pkg `autowire:"github.com/go-spring/go-spring/spring-core/testdata/pkg/bar/pkg.SamePkg:*pkg.SamePkg"`
+}
+
+func TestDefaultSpringContext_SameNameBean(t *testing.T) {
+	ctx := SpringCore.NewDefaultSpringContext()
+
+	ctx.RegisterBean(new(SamePkgHolder))
+
+	ctx.RegisterBean(&pkg1.SamePkg{})
+	ctx.RegisterBean(&pkg2.SamePkg{})
+
+	ctx.AutoWireBeans()
+}
+
+type DiffPkgOne struct {
+}
+
+func (d *DiffPkgOne) Package() {
+	fmt.Println("github.com/go-spring/go-spring/spring-core_test/SpringCore_test.DiffPkgOne")
+}
+
+type DiffPkgTwo struct {
+}
+
+func (d *DiffPkgTwo) Package() {
+	fmt.Println("github.com/go-spring/go-spring/spring-core_test/SpringCore_test.DiffPkgTwo")
+}
+
+type DiffPkgHolder struct {
+	//Pkg `autowire:"same"` // 如果两个 Bean 不小心重名了，也会找到多个符合条件的 Bean
+	Pkg `autowire:"github.com/go-spring/go-spring/spring-core_test/SpringCore_test.DiffPkgTwo:same"`
+}
+
+func TestDefaultSpringContext_DiffNameBean(t *testing.T) {
+	ctx := SpringCore.NewDefaultSpringContext()
+
+	ctx.RegisterNameBean("same", &DiffPkgOne{})
+	ctx.RegisterNameBean("same", &DiffPkgTwo{})
+
+	ctx.RegisterBean(new(DiffPkgHolder))
 
 	ctx.AutoWireBeans()
 }
