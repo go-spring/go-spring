@@ -173,4 +173,7 @@ type SpringContext interface {
 
 	// 绑定外部指定的 SpringBean
 	WireBean(bean SpringBean) error
+
+	// 注册类型转换器，用于属性绑定，函数原型 func(string)struct
+	RegisterTypeConverter(fn interface{})
 }

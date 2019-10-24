@@ -129,10 +129,11 @@ func (m CachedBeanMap) Get(t reflect.Type) (*CachedBeanMapItem, bool) {
 // SpringContext 的默认版本
 //
 type DefaultSpringContext struct {
-	Wired         bool                   // 绑定过程已经完成
-	Properties    map[string]interface{} // 所有属性值的集合
-	BeanMap       BeanMap                // 所有 Bean 的集合
-	CachedBeanMap CachedBeanMap          // 根据类型分组 Bean
+	Wired         bool                         // 绑定过程已经完成
+	Properties    map[string]interface{}       // 所有属性值的集合
+	BeanMap       BeanMap                      // 所有 Bean 的集合
+	CachedBeanMap CachedBeanMap                // 根据类型分组 Bean
+	TypeConverter map[reflect.Type]interface{} // 类型转换器的集合
 }
 
 //
@@ -144,6 +145,7 @@ func NewDefaultSpringContext() *DefaultSpringContext {
 		BeanMap:       NewBeanMap(),
 		CachedBeanMap: NewCachedBeanMap(),
 		Properties:    make(map[string]interface{}),
+		TypeConverter: make(map[reflect.Type]interface{}),
 	}
 }
 
@@ -618,8 +620,30 @@ func (ctx *DefaultSpringContext) handleTagValue(prefix string, f reflect.StructF
 		propValue = ss[1]
 	}
 
+	// 检查是否有默认值
+	checkDefaultProperty := func() {
+		if prop, ok := ctx.GetDefaultProperty(propName, ""); ok {
+			propValue = prop
+		} else {
+			if len(ss) < 2 {
+				panic("properties \"" + propName + "\" not config")
+			}
+		}
+	}
+
 	// 结构体不能指定默认值
 	if fvk == reflect.Struct {
+
+		// 存在类型转换器的情况下优先使用属性值绑定，否则才考虑属性嵌套
+		if fn, ok := ctx.TypeConverter[f.Type]; ok {
+
+			checkDefaultProperty()
+
+			v := reflect.ValueOf(fn)
+			res := v.Call([]reflect.Value{reflect.ValueOf(propValue)})
+			fv.Set(res[0])
+			return
+		}
 
 		if len(ss) > 1 {
 			panic(fName + " 结构体属性不能指定默认值")
@@ -629,13 +653,7 @@ func (ctx *DefaultSpringContext) handleTagValue(prefix string, f reflect.StructF
 		return
 	}
 
-	if prop, ok := ctx.GetDefaultProperty(propName, ""); ok {
-		propValue = prop
-	} else {
-		if len(ss) < 2 {
-			panic("property \"" + propName + "\" not config")
-		}
-	}
+	checkDefaultProperty()
 
 	switch fv.Kind() {
 	case reflect.Uint64, reflect.Uint32, reflect.Uint16, reflect.Uint8, reflect.Uint:
@@ -705,4 +723,22 @@ func (ctx *DefaultSpringContext) WireBeanDefinition(beanDefinition *BeanDefiniti
 
 	beanDefinition.Init = Initialized
 	return nil
+}
+
+//
+// 注册类型转换器，用于属性绑定，函数原型 func(string)struct
+//
+func (ctx *DefaultSpringContext) RegisterTypeConverter(fn interface{}) {
+
+	t := reflect.TypeOf(fn)
+
+	if t.Kind() != reflect.Func || t.NumIn() != 1 || t.NumOut() != 1 {
+		panic("fn must be func(string)struct")
+	}
+
+	if t.In(0).Kind() != reflect.String || t.Out(0).Kind() != reflect.Struct {
+		panic("fn must be func(string)struct")
+	}
+
+	ctx.TypeConverter[t.Out(0)] = fn
 }

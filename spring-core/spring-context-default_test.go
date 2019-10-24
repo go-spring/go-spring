@@ -410,44 +410,44 @@ func PointConverter(val string) Point {
 }
 
 func TestDefaultSpringContext_TypeConverter(t *testing.T) {
-	//ctx := SpringCore.NewDefaultSpringContext()
-	//
-	//b := &EnvEnumBean{}
-	//ctx.RegisterBean(b)
-	//
-	//ctx.SetProperties("env.type", "test")
-	//
-	//p := &PointBean{}
-	//ctx.RegisterBean(p)
-	//
-	//if false { // 不是函数
-	//	ctx.RegisterTypeConverter(3)
-	//}
-	//
-	//if false { // 参数太多
-	//	ctx.RegisterTypeConverter(func(_ string, _ string) Point {
-	//		return Point{}
-	//	})
-	//}
-	//
-	//if false { // 返回值太多
-	//	ctx.RegisterTypeConverter(func(_ string) (Point, Point) {
-	//		return Point{}, Point{}
-	//	})
-	//}
-	//
-	//ctx.RegisterTypeConverter(PointConverter)
-	//
-	//ctx.SetProperties("point", "(7,5)")
-	//
-	//ctx.AutoWireBeans()
-	//
-	//if b.EnvType == ENV_TEST {
-	//	fmt.Println("ok")
-	//}
-	//
-	//fmt.Printf("%+v\n", b)
-	//fmt.Printf("%+v\n", p)
+	ctx := SpringCore.NewDefaultSpringContext()
+
+	b := &EnvEnumBean{}
+	ctx.RegisterBean(b)
+
+	ctx.SetProperty("env.type", "test")
+
+	p := &PointBean{}
+	ctx.RegisterBean(p)
+
+	if false { // 不是函数
+		ctx.RegisterTypeConverter(3)
+	}
+
+	if false { // 参数太多
+		ctx.RegisterTypeConverter(func(_ string, _ string) Point {
+			return Point{}
+		})
+	}
+
+	if false { // 返回值太多
+		ctx.RegisterTypeConverter(func(_ string) (Point, Point) {
+			return Point{}, Point{}
+		})
+	}
+
+	ctx.RegisterTypeConverter(PointConverter)
+
+	ctx.SetProperty("point", "(7,5)")
+
+	ctx.AutoWireBeans()
+
+	if b.EnvType == ENV_TEST {
+		fmt.Println("ok")
+	}
+
+	fmt.Printf("%+v\n", b)
+	fmt.Printf("%+v\n", p)
 }
 
 type Grouper interface {
