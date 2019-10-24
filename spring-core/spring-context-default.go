@@ -313,7 +313,6 @@ func (ctx *DefaultSpringContext) findBeanByName(typeName string, beanName string
 	// 未命中缓存，则从注册列表里面查询，并更新缓存
 	if !ok {
 
-		// TODO 查询优化 MAP
 		for _, bean := range ctx.BeanMap {
 			if found(bean) {
 				m.Store(bean)
