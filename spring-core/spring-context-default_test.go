@@ -523,3 +523,10 @@ func TestDefaultSpringContext_DiffNameBean(t *testing.T) {
 
 	ctx.AutoWireBeans()
 }
+
+func TestDefaultSpringContext_LoadProperties(t *testing.T) {
+	ctx := SpringCore.NewDefaultSpringContext()
+	ctx.LoadProperties("testdata/config/application.properties")
+	appName := ctx.GetStringProperty("spring.application.name")
+	fmt.Println("spring.application.name=" + appName)
+}

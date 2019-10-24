@@ -375,3 +375,20 @@ func TestTypeName(t *testing.T) {
 		fmt.Println(SpringCore.TypeName(it), it.String())
 	})
 }
+
+func TestRange(t *testing.T) {
+
+	i := 0
+
+	f := func() []int {
+		i++
+		return []int{5, 6, 7, 8}
+	}
+
+	// range 用法中的 f() 只调用一次
+	for _, v := range f() {
+		fmt.Println(v)
+	}
+
+	fmt.Println(i)
+}

@@ -138,6 +138,9 @@ type SpringContext interface {
 	// 获取所有 Bean 的定义，一般仅供调试使用。
 	GetAllBeansDefinition() []*BeanDefinition
 
+	// 加载属性配置文件
+	LoadProperties(filename string)
+
 	// 获取属性值，属性名称不支持大小写。
 	GetProperty(name string) interface{}
 

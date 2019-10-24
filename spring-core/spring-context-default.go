@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cast"
+	"github.com/spf13/viper"
 )
 
 //
@@ -435,6 +436,21 @@ func (ctx *DefaultSpringContext) GetAllBeansDefinition() []*BeanDefinition {
 		result = append(result, v)
 	}
 	return result
+}
+
+//
+// 加载属性配置文件
+//
+func (ctx *DefaultSpringContext) LoadProperties(filename string) {
+
+	v := viper.New()
+	v.SetConfigFile(filename)
+	v.ReadInConfig()
+
+	for _, key := range v.AllKeys() {
+		val := v.Get(key)
+		ctx.SetProperty(key, val)
+	}
 }
 
 //

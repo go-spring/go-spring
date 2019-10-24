@@ -40,7 +40,6 @@ type ApplicationEvent interface {
 type Application struct {
 	AppContext     ApplicationContext // 应用上下文
 	ConfigLocation string             // 配置文件目录
-	ConfigParsers  []ConfigParser     // 配置文件解析器
 }
 
 //
@@ -50,7 +49,6 @@ func NewApplication(configLocation string) *Application {
 	return &Application{
 		AppContext:     NewDefaultApplicationContext(),
 		ConfigLocation: configLocation,
-		ConfigParsers:  []ConfigParser{new(ConfigParserViper)},
 	}
 }
 
@@ -67,9 +65,7 @@ func RunApplication(configLocation string) {
 func (app *Application) Start() {
 
 	// 加载配置文件
-	if err := app.loadConfigFiles(); err != nil {
-		panic(err)
-	}
+	app.loadConfigFiles()
 
 	// 注册 ApplicationContext Bean 对象
 	app.AppContext.RegisterBean(app.AppContext)
@@ -93,41 +89,26 @@ func (app *Application) Start() {
 	}
 }
 
-func (app *Application) loadConfigFiles0(filePath string) error {
-	for _, parser := range app.ConfigParsers {
-		for _, ext := range parser.FileExt() {
-			err := parser.Parse(app.AppContext, filePath+ext)
-			if err != nil {
-				// 忽略文件不存在的错误
-				if _, ok := err.(*os.PathError); !ok {
-					return err
-				}
-			}
-		}
+func (app *Application) loadConfigFiles0(filePath string) {
+	for _, ext := range []string{".properties", ".yaml", ".toml"} {
+		app.AppContext.LoadProperties(filePath + ext)
 	}
-	return nil
 }
 
 //
 // 加载应用配置文件
 //
-func (app *Application) loadConfigFiles() error {
+func (app *Application) loadConfigFiles() {
 
 	// 加载默认的应用配置文件，如 application.properties
 	filePath := app.ConfigLocation + "application"
-	if err := app.loadConfigFiles0(filePath); err != nil {
-		return err
-	}
+	app.loadConfigFiles0(filePath)
 
 	// 加载用户设置的配置文件，如 application-test.properties
 	if env := os.Getenv("spring.profile"); len(env) > 0 {
 		filePath = fmt.Sprintf(app.ConfigLocation+"application-%s", env)
-		if err := app.loadConfigFiles0(filePath); err != nil {
-			return err
-		}
+		app.loadConfigFiles0(filePath)
 	}
-
-	return nil
 }
 
 //
