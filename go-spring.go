@@ -167,6 +167,13 @@ func GetPrefixProperties(prefix string) map[string]interface{} {
 }
 
 //
+// 获取所有的属性值
+//
+func GetAllProperties() map[string]interface{} {
+	return ctx.GetAllProperties()
+}
+
+//
 // 自动绑定所有的 SpringBean
 //
 func AutoWireBeans() {
@@ -178,4 +185,11 @@ func AutoWireBeans() {
 //
 func WireBean(bean SpringCore.SpringBean) error {
 	return ctx.WireBean(bean)
+}
+
+//
+// 注册类型转换器，用于属性绑定，函数原型 func(string)struct
+//
+func RegisterTypeConverter(fn interface{}) {
+	ctx.RegisterTypeConverter(fn)
 }

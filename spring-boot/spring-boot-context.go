@@ -64,7 +64,9 @@ func (ctx *DefaultApplicationContext) SafeGoroutine(fn GoFunc) {
 	go func() {
 
 		defer func() {
-			fmt.Println(".")
+			if err := recover(); err != nil {
+				fmt.Println(err)
+			}
 		}()
 
 		ctx.wg.Add(1)

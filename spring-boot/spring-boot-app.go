@@ -24,17 +24,6 @@ import (
 )
 
 //
-// 应用运行过程中产生的事件
-//
-type ApplicationEvent interface {
-	// 应用启动的事件
-	OnStartApplication(ctx ApplicationContext)
-
-	// 应用停止的事件
-	OnStopApplication(ctx ApplicationContext)
-}
-
-//
 // 定义 SpringBoot 应用
 //
 type Application struct {
@@ -87,6 +76,8 @@ func (app *Application) Start() {
 			bean.OnStartApplication(app.AppContext)
 		}
 	}
+
+	fmt.Println("~spring boot started~")
 }
 
 func (app *Application) loadConfigFiles0(filePath string) {
@@ -129,5 +120,5 @@ func (app *Application) ShutDown() {
 	// 等待所有 goroutine 退出
 	app.AppContext.Wait()
 
-	fmt.Println("spring boot exit")
+	fmt.Println("~spring boot exit~")
 }

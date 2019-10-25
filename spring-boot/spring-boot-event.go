@@ -16,30 +16,13 @@
 
 package SpringBoot
 
-import (
-	"fmt"
-	"runtime"
-
-	"github.com/go-spring/go-spring/spring-core"
-)
-
 //
-// 定义 SpringBoot 模块初始化函数，未来可能成为接口
+// 应用运行过程中产生的事件
 //
-type ModuleFunc func(SpringCore.SpringContext)
+type ApplicationEvent interface {
+	// 应用启动的事件
+	OnStartApplication(ctx ApplicationContext)
 
-//
-// 定义 SpringBoot 模块数组
-//
-var Modules = make([]ModuleFunc, 0)
-
-//
-// 注册 SpringBoot 模块
-//
-func RegisterModule(fn ModuleFunc) {
-
-	_, file, line, _ := runtime.Caller(1)
-	fmt.Println("register module", file, line)
-
-	Modules = append(Modules, fn)
+	// 应用停止的事件
+	OnStopApplication(ctx ApplicationContext)
 }

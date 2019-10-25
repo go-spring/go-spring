@@ -168,6 +168,9 @@ type SpringContext interface {
 	// 获取指定前缀的属性值集合，属性名称不支持大小写。
 	GetPrefixProperties(prefix string) map[string]interface{}
 
+	// 获取所有的属性值
+	GetAllProperties() map[string]interface{}
+
 	// 自动绑定所有的 SpringBean
 	AutoWireBeans()
 
