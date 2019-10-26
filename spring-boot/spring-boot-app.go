@@ -24,6 +24,13 @@ import (
 )
 
 //
+// 启动 SpringBoot 应用的快捷方式
+//
+func RunApplication(configLocation string) {
+	BootStarter.Run(NewApplication(configLocation))
+}
+
+//
 // 定义 SpringBoot 应用
 //
 type Application struct {
@@ -39,13 +46,6 @@ func NewApplication(configLocation string) *Application {
 		AppContext:     NewDefaultApplicationContext(),
 		ConfigLocation: configLocation,
 	}
-}
-
-//
-// 启动 SpringBoot 应用对的快捷方式
-//
-func RunApplication(configLocation string) {
-	BootStarter.Run(NewApplication(configLocation))
 }
 
 //
