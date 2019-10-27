@@ -14,15 +14,36 @@
  * limitations under the License.
  */
 
-package SpringBoot
+package BootStarter_test
 
-//
-// 应用运行过程中产生的事件
-//
-type ApplicationEvent interface {
-	// 应用启动的事件
-	OnStartApplication(ctx ApplicationContext)
+import (
+	"fmt"
+	"testing"
+	"time"
 
-	// 应用停止的事件
-	OnStopApplication(ctx ApplicationContext)
+	"github.com/go-spring/go-spring/boot-starter"
+)
+
+type MyApp struct {
+}
+
+func (app *MyApp) Start() {
+	fmt.Println("app start")
+}
+
+func (app *MyApp) ShutDown() {
+	fmt.Println("app shutdown")
+}
+
+func TestBootStarter(t *testing.T) {
+
+	go func() {
+		defer fmt.Println("go stop")
+		fmt.Println("go start")
+
+		time.Sleep(200 * time.Millisecond)
+		BootStarter.Exit()
+	}()
+
+	BootStarter.Run(new(MyApp))
 }

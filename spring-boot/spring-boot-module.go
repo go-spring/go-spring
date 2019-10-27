@@ -24,22 +24,22 @@ import (
 )
 
 //
-// 定义 SpringBoot 模块初始化函数，未来可能成为接口
+// 定义 SpringBoot 模块初始化函数。
 //
 type ModuleFunc func(SpringCore.SpringContext)
 
 //
-// 定义 SpringBoot 模块数组
+// 定义 SpringBoot 模块数组。
 //
-var Modules = make([]ModuleFunc, 0)
+var modules = make([]ModuleFunc, 0)
 
 //
-// 注册 SpringBoot 模块
+// 注册 SpringBoot 模块。
 //
 func RegisterModule(fn ModuleFunc) {
 
 	_, file, line, _ := runtime.Caller(1)
 	fmt.Println("register module", file, line)
 
-	Modules = append(Modules, fn)
+	modules = append(modules, fn)
 }

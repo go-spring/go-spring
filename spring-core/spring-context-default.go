@@ -25,10 +25,6 @@ import (
 	"github.com/spf13/viper"
 )
 
-const (
-	REGISTRATION_FROZEN = "registration frozen"
-)
-
 //
 // BeanKey defines a bean's unique key, type+name.
 //
@@ -158,7 +154,7 @@ func (ctx *DefaultSpringContext) RegisterNameBean(name string, bean SpringBean) 
 func (ctx *DefaultSpringContext) RegisterBeanDefinition(d *BeanDefinition) {
 
 	if ctx.Frozen { // 注册已被冻结
-		panic(REGISTRATION_FROZEN)
+		panic("bean registration frozen")
 	}
 
 	fmt.Printf("register bean %s:%s\n", TypeName(d.Type), d.Name)

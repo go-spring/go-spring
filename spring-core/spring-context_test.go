@@ -38,6 +38,7 @@ func TestReflectType(t *testing.T) {
 		{
 			var b bool
 			t := reflect.TypeOf(b)
+			// bool bool bool
 			fmt.Println(t, t.Kind(), t.Name())
 		}
 
@@ -45,6 +46,7 @@ func TestReflectType(t *testing.T) {
 		{
 			var b bool
 			t := reflect.TypeOf(&b)
+			// *bool ptr bool bool
 			fmt.Println(t, t.Kind(), t.Elem().Name(), t.Elem().Kind())
 		}
 
@@ -52,6 +54,7 @@ func TestReflectType(t *testing.T) {
 		{
 			var b []bool
 			t := reflect.TypeOf(b)
+			// []bool slice bool bool
 			fmt.Println(t, t.Kind(), t.Elem().Name(), t.Elem().Kind())
 		}
 
@@ -59,6 +62,7 @@ func TestReflectType(t *testing.T) {
 		{
 			var b []bool
 			t := reflect.TypeOf(&b)
+			// *[]bool ptr  slice
 			fmt.Println(t, t.Kind(), t.Elem().Name(), t.Elem().Kind())
 		}
 	})
@@ -69,6 +73,7 @@ func TestReflectType(t *testing.T) {
 		{
 			var i int
 			t := reflect.TypeOf(i)
+			// int int int
 			fmt.Println(t, t.Kind(), t.Name())
 		}
 
@@ -76,6 +81,7 @@ func TestReflectType(t *testing.T) {
 		{
 			var i int
 			t := reflect.TypeOf(&i)
+			// *int ptr int int
 			fmt.Println(t, t.Kind(), t.Elem().Name(), t.Elem().Kind())
 		}
 
@@ -83,6 +89,7 @@ func TestReflectType(t *testing.T) {
 		{
 			var i []int
 			t := reflect.TypeOf(i)
+			// []int slice int int
 			fmt.Println(t, t.Kind(), t.Elem().Name(), t.Elem().Kind())
 		}
 
@@ -90,6 +97,7 @@ func TestReflectType(t *testing.T) {
 		{
 			var i []int
 			t := reflect.TypeOf(&i)
+			// *[]int ptr  slice
 			fmt.Println(t, t.Kind(), t.Elem().Name(), t.Elem().Kind())
 		}
 	})
@@ -100,6 +108,7 @@ func TestReflectType(t *testing.T) {
 		{
 			var u uint
 			t := reflect.TypeOf(u)
+			// uint uint uint
 			fmt.Println(t, t.Kind(), t.Name())
 		}
 
@@ -107,6 +116,7 @@ func TestReflectType(t *testing.T) {
 		{
 			var u uint
 			t := reflect.TypeOf(&u)
+			// *uint ptr uint uint
 			fmt.Println(t, t.Kind(), t.Elem().Name(), t.Elem().Kind())
 		}
 
@@ -114,6 +124,7 @@ func TestReflectType(t *testing.T) {
 		{
 			var u []uint
 			t := reflect.TypeOf(u)
+			// []uint slice uint uint
 			fmt.Println(t, t.Kind(), t.Elem().Name(), t.Elem().Kind())
 		}
 
@@ -121,6 +132,7 @@ func TestReflectType(t *testing.T) {
 		{
 			var u []uint
 			t := reflect.TypeOf(&u)
+			// *[]uint ptr  slice
 			fmt.Println(t, t.Kind(), t.Elem().Name(), t.Elem().Kind())
 		}
 	})
@@ -131,6 +143,7 @@ func TestReflectType(t *testing.T) {
 		{
 			var f float32
 			t := reflect.TypeOf(f)
+			// float32 float32 float32
 			fmt.Println(t, t.Kind(), t.Name())
 		}
 
@@ -138,6 +151,7 @@ func TestReflectType(t *testing.T) {
 		{
 			var f float32
 			t := reflect.TypeOf(&f)
+			// *float32 ptr float32 float32
 			fmt.Println(t, t.Kind(), t.Elem().Name(), t.Elem().Kind())
 		}
 
@@ -145,6 +159,7 @@ func TestReflectType(t *testing.T) {
 		{
 			var f []float32
 			t := reflect.TypeOf(f)
+			// []float32 slice float32 float32
 			fmt.Println(t, t.Kind(), t.Elem().Name(), t.Elem().Kind())
 		}
 
@@ -152,6 +167,7 @@ func TestReflectType(t *testing.T) {
 		{
 			var f []float32
 			t := reflect.TypeOf(&f)
+			// *[]float32 ptr  slice
 			fmt.Println(t, t.Kind(), t.Elem().Name(), t.Elem().Kind())
 		}
 	})
@@ -162,6 +178,7 @@ func TestReflectType(t *testing.T) {
 		{
 			var c complex64
 			t := reflect.TypeOf(c)
+			// complex64 complex64 complex64
 			fmt.Println(t, t.Kind(), t.Name())
 		}
 
@@ -169,6 +186,7 @@ func TestReflectType(t *testing.T) {
 		{
 			var c complex64
 			t := reflect.TypeOf(&c)
+			// *complex64 ptr complex64 complex64
 			fmt.Println(t, t.Kind(), t.Elem().Name(), t.Elem().Kind())
 		}
 
@@ -176,6 +194,7 @@ func TestReflectType(t *testing.T) {
 		{
 			var c []complex64
 			t := reflect.TypeOf(c)
+			// []complex64 slice complex64 complex64
 			fmt.Println(t, t.Kind(), t.Elem().Name(), t.Elem().Kind())
 		}
 
@@ -183,6 +202,7 @@ func TestReflectType(t *testing.T) {
 		{
 			var c []complex64
 			t := reflect.TypeOf(&c)
+			// *[]complex64 ptr  slice
 			fmt.Println(t, t.Kind(), t.Elem().Name(), t.Elem().Kind())
 		}
 	})
@@ -193,6 +213,7 @@ func TestReflectType(t *testing.T) {
 		{
 			var s string
 			t := reflect.TypeOf(s)
+			// string string string
 			fmt.Println(t, t.Kind(), t.Name())
 		}
 
@@ -200,6 +221,7 @@ func TestReflectType(t *testing.T) {
 		{
 			var s string
 			t := reflect.TypeOf(&s)
+			// *string ptr string string
 			fmt.Println(t, t.Kind(), t.Elem().Name(), t.Elem().Kind())
 		}
 
@@ -207,6 +229,7 @@ func TestReflectType(t *testing.T) {
 		{
 			var s []string
 			t := reflect.TypeOf(s)
+			// []string slice string string
 			fmt.Println(t, t.Kind(), t.Elem().Name(), t.Elem().Kind())
 		}
 
@@ -214,6 +237,7 @@ func TestReflectType(t *testing.T) {
 		{
 			var s []string
 			t := reflect.TypeOf(&s)
+			// *[]string ptr  slice
 			fmt.Println(t, t.Kind(), t.Elem().Name(), t.Elem().Kind())
 		}
 	})
@@ -227,6 +251,7 @@ func TestReflectType(t *testing.T) {
 		{
 			var m map[string]string
 			t := reflect.TypeOf(m)
+			// map[string]string map
 			fmt.Println(t, t.Kind(), t.Name())
 		}
 
@@ -234,6 +259,7 @@ func TestReflectType(t *testing.T) {
 		{
 			var m map[string]string
 			t := reflect.TypeOf(&m)
+			// *map[string]string ptr  map
 			fmt.Println(t, t.Kind(), t.Elem().Name(), t.Elem().Kind())
 		}
 
@@ -241,6 +267,7 @@ func TestReflectType(t *testing.T) {
 		{
 			var m []map[string]string
 			t := reflect.TypeOf(m)
+			// []map[string]string slice  map
 			fmt.Println(t, t.Kind(), t.Elem().Name(), t.Elem().Kind())
 		}
 
@@ -248,6 +275,7 @@ func TestReflectType(t *testing.T) {
 		{
 			var m []map[string]string
 			t := reflect.TypeOf(&m)
+			// *[]map[string]string ptr  slice
 			fmt.Println(t, t.Kind(), t.Elem().Name(), t.Elem().Kind())
 		}
 	})
@@ -260,24 +288,28 @@ func TestReflectType(t *testing.T) {
 		{
 			var o pkg1.SamePkg
 			t := reflect.TypeOf(o)
+			// pkg.SamePkg struct SamePkg
 			fmt.Println(t, t.Kind(), t.Name())
 		}
 
 		{
 			var o pkg1.SamePkg
 			t := reflect.TypeOf(&o)
+			// *pkg.SamePkg ptr SamePkg struct
 			fmt.Println(t, t.Kind(), t.Elem().Name(), t.Elem().Kind())
 		}
 
 		{
 			var o []pkg1.SamePkg
 			t := reflect.TypeOf(o)
+			// []pkg.SamePkg slice SamePkg struct
 			fmt.Println(t, t.Kind(), t.Elem().Name(), t.Elem().Kind())
 		}
 
 		{
 			var o []pkg1.SamePkg
 			t := reflect.TypeOf(&o)
+			// *[]pkg.SamePkg ptr  slice
 			fmt.Println(t, t.Kind(), t.Elem().Name(), t.Elem().Kind())
 		}
 	})
@@ -287,24 +319,28 @@ func TestReflectType(t *testing.T) {
 		{
 			var o pkg2.SamePkg
 			t := reflect.TypeOf(o)
+			// pkg.SamePkg struct SamePkg
 			fmt.Println(t, t.Kind(), t.Name())
 		}
 
 		{
 			var o pkg2.SamePkg
 			t := reflect.TypeOf(&o)
+			// *pkg.SamePkg ptr SamePkg struct
 			fmt.Println(t, t.Kind(), t.Elem().Name(), t.Elem().Kind())
 		}
 
 		{
 			var o []pkg2.SamePkg
 			t := reflect.TypeOf(o)
+			// []pkg.SamePkg slice SamePkg struct
 			fmt.Println(t, t.Kind(), t.Elem().Name(), t.Elem().Kind())
 		}
 
 		{
 			var o []pkg2.SamePkg
 			t := reflect.TypeOf(&o)
+			// *[]pkg.SamePkg ptr  slice
 			fmt.Println(t, t.Kind(), t.Elem().Name(), t.Elem().Kind())
 		}
 	})
@@ -314,24 +350,28 @@ func TestReflectType(t *testing.T) {
 		{
 			var r io.Reader
 			t := reflect.TypeOf(r)
+			// <nil>
 			fmt.Println(t)
 		}
 
 		{
 			var r io.Reader
 			t := reflect.TypeOf(&r)
+			// *io.Reader ptr Reader interface
 			fmt.Println(t, t.Kind(), t.Elem().Name(), t.Elem().Kind())
 		}
 
 		{
 			var r []io.Reader
 			t := reflect.TypeOf(r)
+			// []io.Reader slice Reader interface
 			fmt.Println(t, t.Kind(), t.Elem().Name(), t.Elem().Kind())
 		}
 
 		{
 			var r []io.Reader
 			t := reflect.TypeOf(&r)
+			// *[]io.Reader ptr  slice
 			fmt.Println(t, t.Kind(), t.Elem().Name(), t.Elem().Kind())
 		}
 	})
@@ -343,17 +383,21 @@ func TestTypeName(t *testing.T) {
 		i := int(3)
 
 		it := reflect.TypeOf(i)
+		// int int
 		fmt.Println(SpringCore.TypeName(it), it.String())
 
 		it = reflect.TypeOf(&i)
+		// int *int
 		fmt.Println(SpringCore.TypeName(it), it.String())
 
 		a := []int{3}
 
 		it = reflect.TypeOf(a)
+		// int []int
 		fmt.Println(SpringCore.TypeName(it), it.String())
 
 		it = reflect.TypeOf(&a)
+		// int *[]int
 		fmt.Println(SpringCore.TypeName(it), it.String())
 	})
 
@@ -361,17 +405,21 @@ func TestTypeName(t *testing.T) {
 		o := pkg2.SamePkg{}
 
 		it := reflect.TypeOf(o)
+		// .../testdata/pkg/foo/pkg.SamePkg pkg.SamePkg
 		fmt.Println(SpringCore.TypeName(it), it.String())
 
 		it = reflect.TypeOf(&o)
+		// .../testdata/pkg/foo/pkg.SamePkg *pkg.SamePkg
 		fmt.Println(SpringCore.TypeName(it), it.String())
 
 		a := []pkg2.SamePkg{{}}
 
 		it = reflect.TypeOf(a)
+		// .../testdata/pkg/foo/pkg.SamePkg []pkg.SamePkg
 		fmt.Println(SpringCore.TypeName(it), it.String())
 
 		it = reflect.TypeOf(&a)
+		// .../testdata/pkg/foo/pkg.SamePkg *[]pkg.SamePkg
 		fmt.Println(SpringCore.TypeName(it), it.String())
 	})
 }
@@ -390,5 +438,5 @@ func TestRange(t *testing.T) {
 		fmt.Println(v)
 	}
 
-	fmt.Println(i)
+	fmt.Println("count:", i)
 }

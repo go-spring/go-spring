@@ -14,6 +14,9 @@
  * limitations under the License.
  */
 
+//
+// 实现了一个完善的 IoC 容器。
+//
 package SpringCore
 
 import (
@@ -53,7 +56,8 @@ type BeanDefinition struct {
 }
 
 //
-// 获取原始类型的全限定名
+// 获取原始类型的全限定名，golang 允许不同的路径下存在相同的包，故此有全限定名的需求。形如
+// "github.com/go-spring/go-spring/spring-core/SpringCore.DefaultSpringContext"
 //
 func TypeName(t reflect.Type) string {
 
@@ -73,7 +77,7 @@ func TypeName(t reflect.Type) string {
 }
 
 //
-// 测试类型全限定名和 Bean 名称是否都能匹配
+// 测试类型全限定名和 Bean 名称是否都能匹配。
 //
 func (bean *BeanDefinition) Match(typeName string, beanName string) bool {
 
@@ -91,14 +95,12 @@ func (bean *BeanDefinition) Match(typeName string, beanName string) bool {
 }
 
 //
-// 定义 SpringContext 接口
+// 定义 IoC 容器接口，Bean 的注册规则：
+//   1. 单例 Bean 只能注册指针和数组。
+//   2. 执行完 AutoWireBeans 后不能再注册 Bean（性能考虑）。
+//   3. 原型 Bean 只能通过 BeanFactory 的形式使用，参见测试用例。
 //
 type SpringContext interface {
-	// Bean 的注册规则:
-	// 1. 单例 Bean 只能注册指针和数组。
-	// 2. 执行完 AutoWireBeans 后不能再注册 Bean（性能考虑）。
-	// 3. 原型 Bean 只能通过 BeanFactory 的形式使用，参见测试用例。
-
 	// 注册单例 Bean，不指定名称，重复注册会 panic。
 	RegisterBean(bean SpringBean)
 

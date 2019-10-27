@@ -1,68 +1,29 @@
 # boot-starter
 
-通用的 Go 程序启动器。
+通用的 Go 程序启动器框架。
 
-```go
-//
-// 实现了一个通用的启动框架。
-//
-package BootStarter
-
-import (
-	"os"
-	"os/signal"
-	"syscall"
-)
-
-//
-// 应用执行器。
-//
-type AppRunner interface {
-	Start()    // 启动执行器
-	ShutDown() // 关闭执行器
+```
+type MyApp struct {
 }
 
-var exitChan chan struct{}
+func (app *MyApp) Start() {
+	fmt.Println("app start")
+}
 
-//
-// 启动应用执行器。
-//
-func Run(runner AppRunner) {
+func (app *MyApp) ShutDown() {
+	fmt.Println("app shutdown")
+}
 
-	exitChan = make(chan struct{})
+func TestBootStarter(t *testing.T) {
 
 	go func() {
-		// 响应控制台的 Ctrl+C 及 kill 命令。
+		defer fmt.Println("go stop")
+		fmt.Println("go start")
 
-		sig := make(chan os.Signal, 1)
-		signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
-
-		<-sig
-
-		SafeCloseChan(exitChan)
+		time.Sleep(200 * time.Millisecond)
+		BootStarter.Exit()
 	}()
 
-	runner.Start()
-
-	<-exitChan
-
-	runner.ShutDown()
-}
-
-//
-// 退出当前的应用程序。
-//
-func Exit() {
-	SafeCloseChan(exitChan)
-}
-
-func SafeCloseChan(ch chan struct{}) {
-	select {
-	case <-ch:
-		// Already closed. Don't close again.
-	default:
-		// Safe to close here.
-		close(ch)
-	}
+	BootStarter.Run(new(MyApp))
 }
 ```

@@ -26,21 +26,21 @@ import (
 type GoFunc func()
 
 //
-// Application 上下文
+// 定义 Application 上下文。
 //
 type ApplicationContext interface {
-	// 继承 SpringContext 的功能
+	// 继承 SpringContext 的功能。
 	SpringCore.SpringContext
 
-	// 安全的启动一个 goroutine
+	// 安全的启动一个 goroutine。
 	SafeGoroutine(fn GoFunc)
 
-	// 等待所有 goroutine 退出
+	// 等待所有 goroutine 退出。
 	Wait()
 }
 
 //
-// ApplicationContext 的默认版本
+// 定义 ApplicationContext 的默认版本。
 //
 type DefaultApplicationContext struct {
 	*SpringCore.DefaultSpringContext
@@ -58,7 +58,7 @@ func NewDefaultApplicationContext() *DefaultApplicationContext {
 }
 
 //
-// 安全的启动一个 goroutine
+// 安全地启动一个 goroutine。
 //
 func (ctx *DefaultApplicationContext) SafeGoroutine(fn GoFunc) {
 	go func() {
@@ -77,7 +77,7 @@ func (ctx *DefaultApplicationContext) SafeGoroutine(fn GoFunc) {
 }
 
 //
-// 等待所有 goroutine 退出
+// 等待所有 goroutine 安全地退出。
 //
 func (ctx *DefaultApplicationContext) Wait() {
 	ctx.wg.Wait()

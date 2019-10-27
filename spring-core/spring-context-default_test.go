@@ -341,7 +341,6 @@ func (f *PrototypeBeanFactory) New(name string) *PrototypeBean {
 
 	// PrototypeBean 依赖的服务可以通过 SpringContext 注入
 	f.Ctx.WireBean(b)
-
 	return b
 }
 

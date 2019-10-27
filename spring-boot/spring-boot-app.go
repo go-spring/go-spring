@@ -14,6 +14,9 @@
  * limitations under the License.
  */
 
+//
+// 开箱即用的 Go-Spring 程序启动框架。
+//
 package SpringBoot
 
 import (
@@ -24,18 +27,26 @@ import (
 )
 
 //
-// 启动 SpringBoot 应用的快捷方式
+// 启动 SpringBoot 应用。
 //
 func RunApplication(configLocation string) {
 	BootStarter.Run(NewApplication(configLocation))
 }
 
 //
-// 定义 SpringBoot 应用
+// 定义 SpringBoot 应用。
 //
 type Application struct {
 	AppContext     ApplicationContext // 应用上下文
 	ConfigLocation string             // 配置文件目录
+}
+
+//
+// 应用运行过程中的事件。
+//
+type ApplicationEvent interface {
+	OnStartApplication(ctx ApplicationContext) // 应用启动的事件
+	OnStopApplication(ctx ApplicationContext)  // 应用停止的事件
 }
 
 //
@@ -49,7 +60,7 @@ func NewApplication(configLocation string) *Application {
 }
 
 //
-// 启动 SpringBoot 应用
+// BootStarter.AppRunner.$Start
 //
 func (app *Application) Start() {
 
@@ -60,11 +71,11 @@ func (app *Application) Start() {
 	app.AppContext.RegisterBean(app.AppContext)
 
 	// 初始化所有的 SpringBoot 模块
-	for _, fn := range Modules {
+	for _, fn := range modules {
 		fn(app.AppContext)
 	}
 
-	// 依赖注入
+	// 依赖注入、属性绑定、Bean 初始化
 	app.AppContext.AutoWireBeans()
 
 	// 通知应用启动事件
@@ -77,18 +88,9 @@ func (app *Application) Start() {
 		}
 	}
 
-	fmt.Println("~spring boot started~")
+	fmt.Println("spring boot started")
 }
 
-func (app *Application) loadConfigFiles0(filePath string) {
-	for _, ext := range []string{".properties", ".yaml", ".toml"} {
-		app.AppContext.LoadProperties(filePath + ext)
-	}
-}
-
-//
-// 加载应用配置文件
-//
 func (app *Application) loadConfigFiles() {
 
 	// 加载默认的应用配置文件，如 application.properties
@@ -102,8 +104,14 @@ func (app *Application) loadConfigFiles() {
 	}
 }
 
+func (app *Application) loadConfigFiles0(filePath string) {
+	for _, ext := range []string{".properties", ".yaml", ".toml"} {
+		app.AppContext.LoadProperties(filePath + ext)
+	}
+}
+
 //
-// 停止 SpringBoot 应用
+// BootStarter.AppRunner.$ShutDown
 //
 func (app *Application) ShutDown() {
 
@@ -120,5 +128,5 @@ func (app *Application) ShutDown() {
 	// 等待所有 goroutine 退出
 	app.AppContext.Wait()
 
-	fmt.Println("~spring boot exit~")
+	fmt.Println("spring boot exit")
 }
