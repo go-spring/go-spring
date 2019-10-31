@@ -22,16 +22,7 @@ package SpringBoot
 import (
 	"fmt"
 	"os"
-
-	"github.com/go-spring/go-spring/boot-starter"
 )
-
-//
-// 启动 SpringBoot 应用。
-//
-func RunApplication(configLocation string) {
-	BootStarter.Run(NewApplication(configLocation))
-}
 
 //
 // 定义 SpringBoot 应用。

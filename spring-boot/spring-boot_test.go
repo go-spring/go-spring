@@ -21,37 +21,57 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-spring/go-spring/boot-starter"
 	"github.com/go-spring/go-spring/spring-boot"
 	"github.com/go-spring/go-spring/spring-core"
 )
 
 func init() {
+
+	// 方法 1，通常情况下都能够满足要求。
+	SpringBoot.RegisterBean(&MyModule{"123"})
+
+	// 方法 2，如果需要属性值来创建 Bean 的时候非常有用。
 	SpringBoot.RegisterModule(func(ctx SpringCore.SpringContext) {
-		ctx.RegisterBean(new(MyModule))
+		for k, v := range ctx.GetAllProperties() {
+			fmt.Println(k + "=" + fmt.Sprint(v))
+		}
 	})
 }
 
+func TestRunApplication(t *testing.T) {
+	SpringBoot.RunApplication("testdata/config/")
+}
+
+////////////////// MyModule ///////////////////
+
 type MyModule struct {
+	id string
 }
 
 func (m *MyModule) OnStartApplication(ctx SpringBoot.ApplicationContext) {
 	fmt.Println("MyModule start")
 
-	ctx.SafeGoroutine(func() {
+	var e *MyModule
+	ctx.GetBean(&e)
+	fmt.Println(e)
 
-		defer fmt.Println("go stop")
-		fmt.Println("go start")
-
-		time.Sleep(200 * time.Millisecond)
-		BootStarter.Exit()
-	})
+	ctx.SafeGoroutine(Process)
 }
 
 func (m *MyModule) OnStopApplication(ctx SpringBoot.ApplicationContext) {
 	fmt.Println("MyModule stop")
 }
 
-func TestRunApplication(t *testing.T) {
-	SpringBoot.RunApplication("config/")
+func Process() {
+
+	defer fmt.Println("go stop")
+	fmt.Println("go start")
+
+	var m *MyModule
+	SpringBoot.GetBean(&m)
+	fmt.Println(m)
+
+	time.Sleep(200 * time.Millisecond)
+
+	SpringBoot.Exit()
 }
