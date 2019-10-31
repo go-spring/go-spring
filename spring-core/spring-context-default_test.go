@@ -209,6 +209,9 @@ type Object struct {
 
 	// 指定名称时使用精确匹配模式，不对数组元素进行转换，即便能做到似乎也无意义
 	InterfaceSliceByName []fmt.Stringer `autowire:"struct_ptr_slice?"`
+
+	MapTyType map[string]interface{} `autowire:""`
+	MapByName map[string]interface{} `autowire:"map"`
 }
 
 func TestDefaultSpringContext_AutoWireBeans(t *testing.T) {
@@ -247,6 +250,12 @@ func TestDefaultSpringContext_AutoWireBeans(t *testing.T) {
 
 	s := []fmt.Stringer{&Binding{3}}
 	ctx.RegisterBean(s)
+
+	m := map[string]interface{}{
+		"5": 5,
+	}
+
+	ctx.RegisterNameBean("map", m)
 
 	ctx.AutoWireBeans()
 

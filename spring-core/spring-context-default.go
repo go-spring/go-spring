@@ -104,8 +104,8 @@ func ToBeanDefinition(name string, bean SpringBean) *BeanDefinition {
 	t := reflect.TypeOf(bean)
 
 	// 检查 Bean 的类型，只能注册指针或者数组类型的 Bean
-	if t.Kind() != reflect.Ptr && t.Kind() != reflect.Slice {
-		panic("bean must be pointer or slice")
+	if t.Kind() != reflect.Ptr && t.Kind() != reflect.Slice && t.Kind() != reflect.Map {
+		panic("bean must be pointer or slice or map")
 	}
 
 	v := reflect.ValueOf(bean)
@@ -246,8 +246,8 @@ func (ctx *DefaultSpringContext) findBeanByName(typeName string, beanName string
 	t := fv.Type()
 
 	// 检查接收者的类型，接收者必须是指针、数组、接口其中的一种，不能是原始类型。
-	if t.Kind() != reflect.Ptr && t.Kind() != reflect.Slice && t.Kind() != reflect.Interface {
-		panic("receiver \"" + fName + "\" must be pointer or slice or interface")
+	if t.Kind() != reflect.Ptr && t.Kind() != reflect.Slice && t.Kind() != reflect.Interface && t.Kind() != reflect.Map {
+		panic("receiver \"" + fName + "\" must be pointer or slice or interface or map")
 	}
 
 	m, ok := ctx.GetBeanCacheItem(t)
