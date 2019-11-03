@@ -10,3 +10,8 @@ yaml:
       -
         name: "bob"
         age: 8
+
+point:
+  list:
+    - (2,3)
+    - (5,3)

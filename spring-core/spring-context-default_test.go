@@ -298,6 +298,10 @@ type Setting struct {
 	//SubSettingPtr *SubSetting `value:"${sub}"` // 不支持指针
 
 	SubSubSetting SubSubSetting `value:"${sub_sub}"`
+
+	IntSlice    []int    `value:"${int_slice}"`
+	StringSlice []string `value:"${string_slice}"`
+	//FloatSlice  []float64 `value:"${float_slice}"`
 }
 
 func TestDefaultSpringContext_ValueTag(t *testing.T) {
@@ -316,6 +320,10 @@ func TestDefaultSpringContext_ValueTag(t *testing.T) {
 	ctx.SetProperty("sub.int", int(4))
 	ctx.SetProperty("sub.sub.int", int(5))
 	ctx.SetProperty("sub_sub.int", int(6))
+
+	ctx.SetProperty("int_slice", []int{1, 2})
+	ctx.SetProperty("string_slice", []string{"1", "2"})
+	//ctx.SetProperty("float_slice", []float64{1, 2})
 
 	ctx.AutoWireBeans()
 
@@ -406,6 +414,8 @@ type Point struct {
 type PointBean struct {
 	Point        Point `value:"${point}"`
 	DefaultPoint Point `value:"${default_point:=(3,4)}"`
+
+	PointList []Point `value:"${point.list}"`
 }
 
 func PointConverter(val string) Point {
@@ -420,6 +430,7 @@ func PointConverter(val string) Point {
 
 func TestDefaultSpringContext_TypeConverter(t *testing.T) {
 	ctx := SpringCore.NewDefaultSpringContext()
+	ctx.LoadProperties("testdata/config/application.yaml")
 
 	b := &EnvEnumBean{}
 	ctx.RegisterBean(b)
@@ -451,9 +462,7 @@ func TestDefaultSpringContext_TypeConverter(t *testing.T) {
 
 	ctx.AutoWireBeans()
 
-	if b.EnvType == ENV_TEST {
-		fmt.Println("ok")
-	}
+	assert.Equal(t, b.EnvType, ENV_TEST)
 
 	fmt.Printf("%+v\n", b)
 	fmt.Printf("%+v\n", p)
@@ -562,4 +571,8 @@ func TestDefaultSpringContext_LoadProperties(t *testing.T) {
 	//	{"name": "jerry", "age": 2},
 	//	{"name": "tom", "age": 4},
 	//})
+}
+
+func TestDefaultSpringContext_GetBean(t *testing.T) {
+
 }

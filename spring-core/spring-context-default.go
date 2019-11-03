@@ -706,6 +706,36 @@ func (ctx *DefaultSpringContext) handleTagValue(prefix string, f reflect.StructF
 	case reflect.Bool:
 		b := cast.ToBool(propValue)
 		fv.SetBool(b)
+	case reflect.Slice:
+		{
+			elemType := fv.Type().Elem()
+			elemKind := elemType.Kind()
+
+			switch elemKind {
+			case reflect.Int:
+				i := cast.ToIntSlice(propValue)
+				fv.Set(reflect.ValueOf(i))
+			case reflect.String:
+				i := cast.ToStringSlice(propValue)
+				fv.Set(reflect.ValueOf(i))
+			default:
+				if fn, ok := ctx.TypeConverter[elemType]; ok {
+
+					v := reflect.ValueOf(fn)
+					s0 := cast.ToStringSlice(propValue)
+					sv := reflect.MakeSlice(f.Type, len(s0), len(s0))
+
+					for i, iv := range s0 {
+						res := v.Call([]reflect.Value{reflect.ValueOf(iv)})
+						sv.Index(i).Set(res[0])
+					}
+
+					fv.Set(sv)
+				} else {
+					panic(fName + " unsupported type " + elemKind.String())
+				}
+			}
+		}
 	default:
 		panic(fName + " unsupported type " + fvk.String())
 	}
