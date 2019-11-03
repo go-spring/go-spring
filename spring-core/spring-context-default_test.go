@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-spring/go-spring-parent/spring-utils"
 	"github.com/go-spring/go-spring/spring-core"
 	pkg1 "github.com/go-spring/go-spring/spring-core/testdata/pkg/bar"
 	pkg2 "github.com/go-spring/go-spring/spring-core/testdata/pkg/foo"
@@ -573,6 +574,27 @@ func TestDefaultSpringContext_LoadProperties(t *testing.T) {
 	//})
 }
 
-func TestDefaultSpringContext_GetBean(t *testing.T) {
+type BeanZero struct {
+	Int int
+}
 
+type BeanOne struct {
+	Zero *BeanZero `autowire:""`
+}
+
+type BeanTwo struct {
+	One *BeanOne `autowire:""`
+}
+
+func TestDefaultSpringContext_GetBean(t *testing.T) {
+	ctx := SpringCore.NewDefaultSpringContext()
+
+	ctx.RegisterBean(&BeanZero{5})
+	ctx.RegisterBean(new(BeanOne))
+	ctx.RegisterBean(new(BeanTwo))
+
+	var two *BeanTwo
+	ctx.GetBean(&two)
+
+	fmt.Printf(SpringUtils.ToJson(two))
 }
