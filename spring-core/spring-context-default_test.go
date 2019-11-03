@@ -26,6 +26,7 @@ import (
 	"github.com/go-spring/go-spring/spring-core"
 	pkg1 "github.com/go-spring/go-spring/spring-core/testdata/pkg/bar"
 	pkg2 "github.com/go-spring/go-spring/spring-core/testdata/pkg/foo"
+	"github.com/magiconair/properties/assert"
 	"github.com/spf13/cast"
 )
 
@@ -533,8 +534,32 @@ func TestDefaultSpringContext_DiffNameBean(t *testing.T) {
 }
 
 func TestDefaultSpringContext_LoadProperties(t *testing.T) {
+
 	ctx := SpringCore.NewDefaultSpringContext()
+	ctx.LoadProperties("testdata/config/application.yaml")
 	ctx.LoadProperties("testdata/config/application.properties")
-	appName := ctx.GetStringProperty("spring.application.name")
-	fmt.Println("spring.application.name=" + appName)
+
+	val0 := ctx.GetStringProperty("spring.application.name")
+	assert.Equal(t, val0, "test")
+
+	val1 := ctx.GetProperty("yaml.list")
+	assert.Equal(t, val1, []interface{}{1, 2})
+
+	//val2 := ctx.GetStringSliceProperty("properties.list")
+	//assert.Equal(t, val2, []string{"1", "2"})
+
+	val3 := ctx.GetStringSliceProperty("yaml.list")
+	assert.Equal(t, val3, []string{"1", "2"})
+
+	val4 := ctx.GetMapSliceProperty("yaml.obj.list")
+	assert.Equal(t, val4, []map[string]interface{}{
+		{"name": "jim", "age": 12},
+		{"name": "bob", "age": 8},
+	})
+
+	//val5 := ctx.GetMapSliceProperty("properties.obj.list")
+	//assert.Equal(t, val5, []map[string]interface{}{
+	//	{"name": "jerry", "age": 2},
+	//	{"name": "tom", "age": 4},
+	//})
 }

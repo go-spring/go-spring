@@ -19,6 +19,7 @@ package SpringCore
 import (
 	"fmt"
 	"reflect"
+	"sort"
 	"strings"
 
 	"github.com/spf13/cast"
@@ -420,14 +421,19 @@ func (ctx *DefaultSpringContext) GetAllBeansDefinition() []*BeanDefinition {
 // 加载属性配置文件
 //
 func (ctx *DefaultSpringContext) LoadProperties(filename string) {
+	fmt.Println("load properties from", filename)
 
 	v := viper.New()
 	v.SetConfigFile(filename)
 	v.ReadInConfig()
 
-	for _, key := range v.AllKeys() {
-		val := v.Get(key)
-		ctx.SetProperty(key, val)
+	keys := v.AllKeys()
+	sort.Strings(keys)
+
+	for _, k := range keys {
+		v := v.Get(k)
+		ctx.SetProperty(k, v)
+		fmt.Printf("%s=%v\n", k, v)
 	}
 }
 
@@ -471,6 +477,46 @@ func (ctx *DefaultSpringContext) GetFloatProperty(name string) float64 {
 //
 func (ctx *DefaultSpringContext) GetStringProperty(name string) string {
 	return cast.ToString(ctx.GetProperty(name))
+}
+
+//
+// 获取字符串数组属性值，属性名称不支持大小写。
+//
+func (ctx *DefaultSpringContext) GetStringSliceProperty(name string) []string {
+	m := ctx.GetPrefixProperties(name)
+	if v, ok := m[name]; ok {
+		return cast.ToStringSlice(v)
+	} else {
+		panic(fmt.Sprintf("property %s not found or use yaml", name))
+	}
+}
+
+//
+// 获取哈希表数组属性值，属性名称不支持大小写。
+//
+func (ctx *DefaultSpringContext) GetMapSliceProperty(name string) []map[string]interface{} {
+
+	m := ctx.GetPrefixProperties(name)
+	if v, ok := m[name]; ok {
+
+		if s, ok := v.([]interface{}); ok {
+			var result []map[string]interface{}
+
+			for _, si := range s {
+				if sv, ok := si.(map[interface{}]interface{}); ok {
+					result = append(result, cast.ToStringMap(sv))
+				} else {
+					panic(fmt.Sprintf("property %s isn't []map[string]interface{}", name))
+				}
+			}
+
+			return result
+		} else {
+			panic(fmt.Sprintf("property %s isn't []map[string]interface{}", name))
+		}
+	} else {
+		panic(fmt.Sprintf("property %s not found or use yaml", name))
+	}
 }
 
 //

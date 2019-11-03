@@ -1,0 +1,12 @@
+yaml:
+  list:
+    - 1
+    - 2
+  obj:
+    list:
+      -
+        name: "jim"
+        age: 12
+      -
+        name: "bob"
+        age: 8
