@@ -101,6 +101,9 @@ func (bean *BeanDefinition) Match(typeName string, beanName string) bool {
 //   3. 原型 Bean 只能通过 BeanFactory 的形式使用，参见测试用例。
 //
 type SpringContext interface {
+	// 属性值列表接口
+	Properties
+
 	// 注册单例 Bean，不指定名称，重复注册会 panic。
 	RegisterBean(bean SpringBean)
 
@@ -139,45 +142,6 @@ type SpringContext interface {
 
 	// 获取所有 Bean 的定义，一般仅供调试使用。
 	GetAllBeansDefinition() []*BeanDefinition
-
-	// 加载属性配置文件
-	LoadProperties(filename string)
-
-	// 获取属性值，属性名称不支持大小写。
-	GetProperty(name string) interface{}
-
-	// 获取布尔型属性值，属性名称不支持大小写。
-	GetBoolProperty(name string) bool
-
-	// 获取有符号整型属性值，属性名称不支持大小写。
-	GetIntProperty(name string) int64
-
-	// 获取无符号整型属性值，属性名称不支持大小写。
-	GetUintProperty(name string) uint64
-
-	// 获取浮点型属性值，属性名称不支持大小写。
-	GetFloatProperty(name string) float64
-
-	// 获取字符串型属性值，属性名称不支持大小写。
-	GetStringProperty(name string) string
-
-	// 获取字符串数组属性值，属性名称不支持大小写。
-	GetStringSliceProperty(name string) []string
-
-	// 获取哈希表数组属性值，属性名称不支持大小写。
-	GetMapSliceProperty(name string) []map[string]interface{}
-
-	// 获取属性值，如果没有找到则使用指定的默认值，属性名称不支持大小写。
-	GetDefaultProperty(name string, defaultValue interface{}) (interface{}, bool)
-
-	// 设置属性值，属性名称不支持大小写。
-	SetProperty(name string, value interface{})
-
-	// 获取指定前缀的属性值集合，属性名称不支持大小写。
-	GetPrefixProperties(prefix string) map[string]interface{}
-
-	// 获取所有的属性值
-	GetAllProperties() map[string]interface{}
 
 	// 自动绑定所有的 SpringBean
 	AutoWireBeans()

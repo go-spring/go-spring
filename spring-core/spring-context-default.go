@@ -19,11 +19,9 @@ package SpringCore
 import (
 	"fmt"
 	"reflect"
-	"sort"
 	"strings"
 
 	"github.com/spf13/cast"
-	"github.com/spf13/viper"
 )
 
 //
@@ -77,8 +75,10 @@ func (item *BeanCacheItem) StoreCollect(v reflect.Value) {
 // SpringContext 的默认版本
 //
 type DefaultSpringContext struct {
+	// 属性值列表接口
+	*DefaultProperties
+
 	Frozen        bool                            // 冻结 Bean 注册
-	Properties    map[string]interface{}          // 所有属性值的集合
 	BeanMap       map[BeanKey]*BeanDefinition     // 所有 Bean 的集合
 	BeanCache     map[reflect.Type]*BeanCacheItem // Bean 的分组缓存
 	TypeConverter map[reflect.Type]interface{}    // 类型转换器的集合
@@ -89,11 +89,11 @@ type DefaultSpringContext struct {
 //
 func NewDefaultSpringContext() *DefaultSpringContext {
 	return &DefaultSpringContext{
-		Frozen:        false,
-		Properties:    make(map[string]interface{}),
-		BeanMap:       make(map[BeanKey]*BeanDefinition),
-		BeanCache:     make(map[reflect.Type]*BeanCacheItem),
-		TypeConverter: make(map[reflect.Type]interface{}),
+		DefaultProperties: NewDefaultProperties(),
+		Frozen:            false,
+		BeanMap:           make(map[BeanKey]*BeanDefinition),
+		BeanCache:         make(map[reflect.Type]*BeanCacheItem),
+		TypeConverter:     make(map[reflect.Type]interface{}),
 	}
 }
 
@@ -415,145 +415,6 @@ func (ctx *DefaultSpringContext) GetAllBeansDefinition() []*BeanDefinition {
 		result = append(result, v)
 	}
 	return result
-}
-
-//
-// 加载属性配置文件
-//
-func (ctx *DefaultSpringContext) LoadProperties(filename string) {
-	fmt.Println("load properties from", filename)
-
-	v := viper.New()
-	v.SetConfigFile(filename)
-	v.ReadInConfig()
-
-	keys := v.AllKeys()
-	sort.Strings(keys)
-
-	for _, k := range keys {
-		v := v.Get(k)
-		ctx.SetProperty(k, v)
-		fmt.Printf("%s=%v\n", k, v)
-	}
-}
-
-//
-// 获取属性值，属性名称不支持大小写。
-//
-func (ctx *DefaultSpringContext) GetProperty(name string) interface{} {
-	return ctx.Properties[name]
-}
-
-//
-// 获取布尔型属性值，属性名称不支持大小写。
-//
-func (ctx *DefaultSpringContext) GetBoolProperty(name string) bool {
-	return cast.ToBool(ctx.GetProperty(name))
-}
-
-//
-// 获取有符号整型属性值，属性名称不支持大小写。
-//
-func (ctx *DefaultSpringContext) GetIntProperty(name string) int64 {
-	return cast.ToInt64(ctx.GetProperty(name))
-}
-
-//
-// 获取无符号整型属性值，属性名称不支持大小写。
-//
-func (ctx *DefaultSpringContext) GetUintProperty(name string) uint64 {
-	return cast.ToUint64(ctx.GetProperty(name))
-}
-
-//
-// 获取浮点型属性值，属性名称不支持大小写。
-//
-func (ctx *DefaultSpringContext) GetFloatProperty(name string) float64 {
-	return cast.ToFloat64(ctx.GetProperty(name))
-}
-
-//
-// 获取字符串型属性值，属性名称不支持大小写。
-//
-func (ctx *DefaultSpringContext) GetStringProperty(name string) string {
-	return cast.ToString(ctx.GetProperty(name))
-}
-
-//
-// 获取字符串数组属性值，属性名称不支持大小写。
-//
-func (ctx *DefaultSpringContext) GetStringSliceProperty(name string) []string {
-	m := ctx.GetPrefixProperties(name)
-	if v, ok := m[name]; ok {
-		return cast.ToStringSlice(v)
-	} else {
-		panic(fmt.Sprintf("property %s not found or use yaml", name))
-	}
-}
-
-//
-// 获取哈希表数组属性值，属性名称不支持大小写。
-//
-func (ctx *DefaultSpringContext) GetMapSliceProperty(name string) []map[string]interface{} {
-
-	m := ctx.GetPrefixProperties(name)
-	if v, ok := m[name]; ok {
-
-		if s, ok := v.([]interface{}); ok {
-			var result []map[string]interface{}
-
-			for _, si := range s {
-				if sv, ok := si.(map[interface{}]interface{}); ok {
-					result = append(result, cast.ToStringMap(sv))
-				} else {
-					panic(fmt.Sprintf("property %s isn't []map[string]interface{}", name))
-				}
-			}
-
-			return result
-		} else {
-			panic(fmt.Sprintf("property %s isn't []map[string]interface{}", name))
-		}
-	} else {
-		panic(fmt.Sprintf("property %s not found or use yaml", name))
-	}
-}
-
-//
-// 设置属性值，属性名称不支持大小写。
-//
-func (ctx *DefaultSpringContext) SetProperty(name string, value interface{}) {
-	ctx.Properties[name] = value
-}
-
-//
-// 获取指定前缀的属性值集合
-//
-func (ctx *DefaultSpringContext) GetPrefixProperties(prefix string) map[string]interface{} {
-	result := make(map[string]interface{})
-	for k, v := range ctx.Properties {
-		if strings.HasPrefix(k, prefix) {
-			result[k] = v
-		}
-	}
-	return result
-}
-
-//
-// 获取属性值，如果没有找到则使用指定的默认值
-//
-func (ctx *DefaultSpringContext) GetDefaultProperty(name string, defaultValue interface{}) (interface{}, bool) {
-	if v, ok := ctx.Properties[name]; ok {
-		return v, true
-	}
-	return defaultValue, false
-}
-
-//
-// 获取所有的属性值
-//
-func (ctx *DefaultSpringContext) GetAllProperties() map[string]interface{} {
-	return ctx.Properties
 }
 
 //
