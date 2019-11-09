@@ -53,6 +53,7 @@ type BeanDefinition struct {
 	Init  int           // Bean 初始化状态
 	Type  reflect.Type  // Bean 反射得到的类型
 	Value reflect.Value // Bean 反射得到的值
+	cond  *Conditional  // Bean 注册需要满足的条件
 }
 
 //
@@ -105,13 +106,13 @@ type SpringContext interface {
 	Properties
 
 	// 注册单例 Bean，不指定名称，重复注册会 panic。
-	RegisterBean(bean SpringBean)
+	RegisterBean(bean SpringBean) *Conditional
 
 	// 注册单例 Bean，需指定名称，重复注册会 panic。
-	RegisterNameBean(name string, bean SpringBean)
+	RegisterNameBean(name string, bean SpringBean) *Conditional
 
 	// 注册单例 Bean，使用 BeanDefinition 对象，重复注册会 panic。
-	RegisterBeanDefinition(beanDefinition *BeanDefinition)
+	RegisterBeanDefinition(beanDefinition *BeanDefinition) *Conditional
 
 	// 根据类型获取单例 Bean，多于 1 个会 panic，找不到也会 panic。
 	// 什么情况下会多于 1 个？假设 StructA 实现了 InterfaceT，而且用户在注

@@ -137,22 +137,22 @@ func (ctx *DefaultSpringContext) GetBeanCacheItem(t reflect.Type) (*BeanCacheIte
 //
 // 注册单例 Bean，不指定名称，重复注册会 panic。
 //
-func (ctx *DefaultSpringContext) RegisterBean(bean SpringBean) {
-	ctx.RegisterNameBean("", bean)
+func (ctx *DefaultSpringContext) RegisterBean(bean SpringBean) *Conditional {
+	return ctx.RegisterNameBean("", bean)
 }
 
 //
 // 注册单例 Bean，需指定名称，重复注册会 panic。
 //
-func (ctx *DefaultSpringContext) RegisterNameBean(name string, bean SpringBean) {
+func (ctx *DefaultSpringContext) RegisterNameBean(name string, bean SpringBean) *Conditional {
 	beanDefinition := ToBeanDefinition(name, bean)
-	ctx.RegisterBeanDefinition(beanDefinition)
+	return ctx.RegisterBeanDefinition(beanDefinition)
 }
 
 //
 // 注册单例 Bean，使用 BeanDefinition 对象，重复注册会 panic。
 //
-func (ctx *DefaultSpringContext) RegisterBeanDefinition(d *BeanDefinition) {
+func (ctx *DefaultSpringContext) RegisterBeanDefinition(d *BeanDefinition) *Conditional {
 
 	if ctx.Frozen { // 注册已被冻结
 		panic("bean registration frozen")
@@ -175,6 +175,9 @@ func (ctx *DefaultSpringContext) RegisterBeanDefinition(d *BeanDefinition) {
 
 		ctx.BeanMap[k] = d
 	}
+
+	d.cond = NewConditional()
+	return d.cond
 }
 
 //
@@ -426,6 +429,13 @@ func (ctx *DefaultSpringContext) AutoWireBeans() {
 	// 逐步建立起这个缓存，而随着缓存的建立，绑定的速度会越来越快，从而减少性能的损失。
 
 	ctx.Frozen = true
+
+	// 检查每个 bean 是否符合注册条件，不符合的立即删除
+	for key, beanDefinition := range ctx.BeanMap {
+		if !beanDefinition.cond.Matches(ctx) {
+			delete(ctx.BeanMap, key)
+		}
+	}
 
 	for _, beanDefinition := range ctx.BeanMap {
 		if err := ctx.WireBeanDefinition(beanDefinition); err != nil {
