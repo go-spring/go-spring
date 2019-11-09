@@ -317,11 +317,11 @@ func TestDefaultSpringContext_ValueTag(t *testing.T) {
 
 	setting := &Setting{}
 
-	//ctx.RegisterBean(setting).ConditionMatches(func(ctx SpringCore.SpringContext) bool {
+	//ctx.RegisterBean(setting).ConditionOnMatches(func(ctx SpringCore.SpringContext) bool {
 	//	return false
 	//}).Or().ConditionOnProperty("bool")
 
-	//ctx.RegisterBean(setting).ConditionMatches(func(ctx SpringCore.SpringContext) bool {
+	//ctx.RegisterBean(setting).ConditionOnMatches(func(ctx SpringCore.SpringContext) bool {
 	//	return true
 	//}).And().ConditionOnProperty("bool")
 
@@ -597,6 +597,10 @@ type BeanTwo struct {
 	One *BeanOne `autowire:""`
 }
 
+type BeanThree struct {
+	One *BeanTwo `autowire:""`
+}
+
 func TestDefaultSpringContext_GetBean(t *testing.T) {
 	ctx := SpringCore.NewDefaultSpringContext()
 
@@ -605,7 +609,77 @@ func TestDefaultSpringContext_GetBean(t *testing.T) {
 	ctx.RegisterBean(new(BeanTwo))
 
 	var two *BeanTwo
-	ctx.GetBean(&two)
+	ok := ctx.GetBean(&two)
+	assert.Equal(t, ok, true)
+
+	var three *BeanThree
+	ok = ctx.GetBean(&three)
+	assert.Equal(t, ok, false)
 
 	fmt.Printf(SpringUtils.ToJson(two))
+}
+
+func TestDefaultSpringContext_GetBeanByName(t *testing.T) {
+	ctx := SpringCore.NewDefaultSpringContext()
+
+	ctx.RegisterBean(&BeanZero{5})
+	ctx.RegisterBean(new(BeanOne))
+	ctx.RegisterBean(new(BeanTwo))
+
+	var two *BeanTwo
+	ok := ctx.GetBeanByName("", &two)
+	assert.Equal(t, ok, true)
+
+	ok = ctx.GetBeanByName("*SpringCore_test.BeanTwo", &two)
+	assert.Equal(t, ok, true)
+
+	ok = ctx.GetBeanByName("BeanTwo", &two)
+	assert.Equal(t, ok, false)
+
+	ok = ctx.GetBeanByName(":*SpringCore_test.BeanTwo", &two)
+	assert.Equal(t, ok, true)
+
+	ok = ctx.GetBeanByName("github.com/go-spring/go-spring/spring-core_test/SpringCore_test.BeanTwo:*SpringCore_test.BeanTwo", &two)
+	assert.Equal(t, ok, true)
+
+	ok = ctx.GetBeanByName("xxx:*SpringCore_test.BeanTwo", &two)
+	assert.Equal(t, ok, false)
+
+	var three *BeanThree
+	ok = ctx.GetBeanByName("", &three)
+	assert.Equal(t, ok, false)
+
+	fmt.Printf(SpringUtils.ToJson(two))
+}
+
+func TestDefaultSpringContext_FindBeanByName(t *testing.T) {
+	ctx := SpringCore.NewDefaultSpringContext()
+
+	ctx.RegisterBean(&BeanZero{5})
+	ctx.RegisterBean(new(BeanOne))
+	ctx.RegisterBean(new(BeanTwo))
+
+	assert.Panic(t, func() {
+		ctx.FindBeanByName("")
+	}, "找到多个符合条件的值")
+
+	i, ok := ctx.FindBeanByName("*SpringCore_test.BeanTwo")
+	fmt.Println(SpringUtils.ToJson(i))
+	assert.Equal(t, ok, true)
+
+	i, ok = ctx.FindBeanByName("BeanTwo")
+	fmt.Println(SpringUtils.ToJson(i))
+	assert.Equal(t, ok, false)
+
+	i, ok = ctx.FindBeanByName(":*SpringCore_test.BeanTwo")
+	fmt.Println(SpringUtils.ToJson(i))
+	assert.Equal(t, ok, true)
+
+	i, ok = ctx.FindBeanByName("github.com/go-spring/go-spring/spring-core_test/SpringCore_test.BeanTwo:*SpringCore_test.BeanTwo")
+	fmt.Println(SpringUtils.ToJson(i))
+	assert.Equal(t, ok, true)
+
+	i, ok = ctx.FindBeanByName("xxx:*SpringCore_test.BeanTwo")
+	fmt.Println(SpringUtils.ToJson(i))
+	assert.Equal(t, ok, false)
 }

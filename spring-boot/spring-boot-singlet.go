@@ -55,50 +55,36 @@ func Exit() {
 //
 // 注册单例 Bean，不指定名称，重复注册会 panic。
 //
-func RegisterBean(bean SpringCore.SpringBean) {
-	ctx.RegisterBean(bean)
+func RegisterBean(bean SpringCore.SpringBean) *SpringCore.Conditional {
+	return ctx.RegisterBean(bean)
 }
 
 //
 // 注册单例 Bean，需指定名称，重复注册会 panic。
 //
-func RegisterNameBean(name string, bean SpringCore.SpringBean) {
-	ctx.RegisterNameBean(name, bean)
+func RegisterNameBean(name string, bean SpringCore.SpringBean) *SpringCore.Conditional {
+	return ctx.RegisterNameBean(name, bean)
 }
 
 //
 // 注册单例 Bean，使用 BeanDefinition 对象，重复注册会 panic。
 //
-func RegisterBeanDefinition(beanDefinition *SpringCore.BeanDefinition) {
-	ctx.RegisterBeanDefinition(beanDefinition)
-}
-
-//
-// 根据类型获取单例 Bean，多于 1 个会 panic，找不到也会 panic。
-//
-func GetBean(i interface{}) {
-	ctx.GetBean(i)
+func RegisterBeanDefinition(beanDefinition *SpringCore.BeanDefinition) *SpringCore.Conditional {
+	return ctx.RegisterBeanDefinition(beanDefinition)
 }
 
 //
 // 根据类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 //
-func FindBean(i interface{}) bool {
-	return ctx.FindBean(i)
-}
-
-//
-// 根据名称和类型获取单例 Bean，多于 1 个会 panic，找不到也会 panic。
-//
-func GetBeanByName(beanId string, i interface{}) {
-	ctx.GetBeanByName(beanId, i)
+func GetBean(i interface{}) bool {
+	return ctx.GetBean(i)
 }
 
 //
 // 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 //
-func FindBeanByName(beanId string, i interface{}) bool {
-	return ctx.FindBeanByName(beanId, i)
+func GetBeanByName(beanId string, i interface{}) bool {
+	return ctx.GetBeanByName(beanId, i)
 }
 
 //
@@ -109,17 +95,17 @@ func CollectBeans(i interface{}) bool {
 }
 
 //
-// 收集数组或指针定义的所有符合条件的 Bean 对象，收集不到会 panic。
+// 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 //
-func MustCollectBeans(i interface{}) {
-	ctx.MustCollectBeans(i)
+func FindBeanByName(beanId string) (interface{}, bool) {
+	return ctx.FindBeanByName(beanId)
 }
 
 //
 // 获取所有 Bean 的定义，一般仅供调试使用。
 //
-func GetAllBeansDefinition() []*SpringCore.BeanDefinition {
-	return ctx.GetAllBeansDefinition()
+func GetAllBeanDefinitions() []*SpringCore.BeanDefinition {
+	return ctx.GetAllBeanDefinitions()
 }
 
 //

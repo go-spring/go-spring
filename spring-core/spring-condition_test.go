@@ -67,3 +67,43 @@ func TestConditional(t *testing.T) {
 	cond = SpringCore.NewConditional().ConditionOnProperty("bool")
 	assert.Equal(t, cond.Matches(ctx), false)
 }
+
+func TestConditional_ConditionalOnBean(t *testing.T) {
+	ctx := SpringCore.NewDefaultSpringContext()
+
+	ctx.RegisterBean(&BeanZero{5})
+	ctx.RegisterBean(new(BeanOne))
+
+	ctx.RegisterBean(new(BeanTwo)).ConditionalOnBean("*SpringCore_test.BeanOne")
+	ctx.RegisterNameBean("another_two", new(BeanTwo)).ConditionalOnBean("BeanOne")
+
+	ctx.AutoWireBeans()
+
+	var two *BeanTwo
+	ok := ctx.GetBeanByName("", &two)
+	assert.Equal(t, ok, true)
+
+	ok = ctx.GetBeanByName("another_two", &two)
+	assert.Equal(t, ok, false)
+}
+
+func TestConditional_ConditionalOnMissingBean(t *testing.T) {
+	ctx := SpringCore.NewDefaultSpringContext()
+
+	ctx.RegisterBean(&BeanZero{5})
+	ctx.RegisterBean(new(BeanOne))
+
+	ctx.RegisterBean(new(BeanTwo)).ConditionalOnBean("*SpringCore_test.BeanOne")
+	ctx.RegisterNameBean("another_two", new(BeanTwo)).ConditionalOnMissingBean("BeanOne")
+
+	ctx.AutoWireBeans()
+
+	var two *BeanTwo
+
+	assert.Panic(t, func() {
+		ctx.GetBeanByName("", &two)
+	}, "找到多个符合条件的值")
+
+	ok := ctx.GetBeanByName("another_two", &two)
+	assert.Equal(t, ok, true)
+}

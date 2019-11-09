@@ -21,6 +21,7 @@ package SpringCore
 
 import (
 	"reflect"
+	"strings"
 )
 
 //
@@ -54,6 +55,34 @@ type BeanDefinition struct {
 	Type  reflect.Type  // Bean 反射得到的类型
 	Value reflect.Value // Bean 反射得到的值
 	cond  *Conditional  // Bean 注册需要满足的条件
+}
+
+//
+// 将 SpringBean 转换为 BeanDefinition 对象
+//
+func ToBeanDefinition(name string, bean SpringBean) *BeanDefinition {
+
+	t := reflect.TypeOf(bean)
+
+	// 检查 Bean 的类型，只能注册指针或者数组类型的 Bean
+	if t.Kind() != reflect.Ptr && t.Kind() != reflect.Slice && t.Kind() != reflect.Map {
+		panic("bean must be pointer or slice or map")
+	}
+
+	v := reflect.ValueOf(bean)
+
+	// 生成默认名称
+	if name == "" {
+		name = t.String()
+	}
+
+	return &BeanDefinition{
+		Init:  Uninitialized,
+		Name:  name,
+		Bean:  bean,
+		Type:  t,
+		Value: v,
+	}
 }
 
 //
@@ -114,23 +143,17 @@ type SpringContext interface {
 	// 注册单例 Bean，使用 BeanDefinition 对象，重复注册会 panic。
 	RegisterBeanDefinition(beanDefinition *BeanDefinition) *Conditional
 
-	// 根据类型获取单例 Bean，多于 1 个会 panic，找不到也会 panic。
+	// 根据类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 	// 什么情况下会多于 1 个？假设 StructA 实现了 InterfaceT，而且用户在注
 	// 册时使用了 StructA 的指针注册多个 Bean，如果在获取时使用 InterfaceT,
 	// 则必然出现多于 1 个的情况。
-	GetBean(i interface{})
+	GetBean(i interface{}) bool
 
-	// 根据类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
-	FindBean(i interface{}) bool
-
-	// 根据名称和类型获取单例 Bean，多于 1 个会 panic，找不到也会 panic。
+	// 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 	// 什么情况下会多于 1 个？假设 StructA 和 StructB 都实现了 InterfaceT，
 	// 而且用户在注册时使用了相同的名称分别注册了 StructA 和 StructB 的 Bean，
 	// 这时候如果使用 InterfaceT 去获取，就会出现多于 1 个的情况。
-	GetBeanByName(beanId string, i interface{})
-
-	// 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
-	FindBeanByName(beanId string, i interface{}) bool
+	GetBeanByName(beanId string, i interface{}) bool
 
 	// 收集数组或指针定义的所有符合条件的 Bean 对象，收集到返回 true，否则返回 false。
 	// 什么情况下可以使用此功能？假设 HandlerA 和 HandlerB 都实现了 HandlerT 接口，
@@ -138,11 +161,11 @@ type SpringContext interface {
 	// 和 HandlerB 对象，那么他可以通过 []HandlerT 即数组的方式获取到所有 Bean。
 	CollectBeans(i interface{}) bool
 
-	// 收集数组或指针定义的所有符合条件的 Bean 对象，收集不到会 panic。
-	MustCollectBeans(i interface{})
+	// 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
+	FindBeanByName(beanId string) (interface{}, bool)
 
 	// 获取所有 Bean 的定义，一般仅供调试使用。
-	GetAllBeansDefinition() []*BeanDefinition
+	GetAllBeanDefinitions() []*BeanDefinition
 
 	// 自动绑定所有的 SpringBean
 	AutoWireBeans()
@@ -152,4 +175,24 @@ type SpringContext interface {
 
 	// 注册类型转换器，用于属性绑定，函数原型 func(string)struct
 	RegisterTypeConverter(fn interface{})
+}
+
+//
+// 解析 BeanId 的内容，"TypeName:BeanName?" 或者 "[]?"
+//
+func ParseBeanId(beanId string) (typeName string, beanName string, nullable bool) {
+
+	if ss := strings.Split(beanId, ":"); len(ss) > 1 {
+		typeName = ss[0]
+		beanName = ss[1]
+	} else {
+		beanName = ss[0]
+	}
+
+	if strings.HasSuffix(beanName, "?") {
+		beanName = beanName[:len(beanName)-1]
+		nullable = true
+	}
+
+	return
 }
