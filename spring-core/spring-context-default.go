@@ -482,16 +482,34 @@ func (ctx *DefaultSpringContext) handleTagAutowire(parentValue reflect.Value, f 
 	}
 }
 
-func (ctx *DefaultSpringContext) subStructValue(prefix string, f reflect.StructField, fv reflect.Value) {
-	ft := f.Type
-	for i := 0; i < ft.NumField(); i++ {
-		it := ft.Field(i)
-		iv := fv.Field(i)
-		ctx.handleTagValue(prefix, it, iv, "")
+type PropertyHolder interface {
+	GetDefaultProperty(name string, defaultValue interface{}) (interface{}, bool)
+}
+
+type MapPropertyHolder struct {
+	m map[interface{}]interface{}
+}
+
+func NewMapPropertyHolder(m map[interface{}]interface{}) *MapPropertyHolder {
+	return &MapPropertyHolder{
+		m: m,
 	}
 }
 
-func (ctx *DefaultSpringContext) handleTagValue(prefix string, f reflect.StructField, fv reflect.Value, fName string) {
+func (p *MapPropertyHolder) GetDefaultProperty(name string, defaultValue interface{}) (interface{}, bool) {
+	v, ok := p.m[name]
+	return v, ok
+}
+
+func subStructValue(prop PropertyHolder, prefix string, ft reflect.Type, fv reflect.Value) {
+	for i := 0; i < ft.NumField(); i++ {
+		it := ft.Field(i)
+		iv := fv.Field(i)
+		handleTagValue(prop, prefix, it, iv, "")
+	}
+}
+
+func handleTagValue(prop PropertyHolder, prefix string, f reflect.StructField, fv reflect.Value, fName string) {
 	tagValue, ok := f.Tag.Lookup("value")
 	if !ok { // 没有 value 标签
 		return
@@ -529,7 +547,7 @@ func (ctx *DefaultSpringContext) handleTagValue(prefix string, f reflect.StructF
 
 	// 检查是否有默认值
 	checkDefaultProperty := func() {
-		if prop, ok := ctx.GetDefaultProperty(propName, ""); ok {
+		if prop, ok := prop.GetDefaultProperty(propName, ""); ok {
 			propValue = prop
 		} else {
 			if len(ss) < 2 {
@@ -556,7 +574,7 @@ func (ctx *DefaultSpringContext) handleTagValue(prefix string, f reflect.StructF
 			panic(fName + " 结构体属性不能指定默认值")
 		}
 
-		ctx.subStructValue(propName, f, fv)
+		subStructValue(prop, propName, f.Type, fv)
 		return
 	}
 
@@ -591,6 +609,7 @@ func (ctx *DefaultSpringContext) handleTagValue(prefix string, f reflect.StructF
 				fv.Set(reflect.ValueOf(i))
 			default:
 				if fn, ok := typeConverters[elemType]; ok {
+					// 首先处理使用类型转换器的场景
 
 					v := reflect.ValueOf(fn)
 					s0 := cast.ToStringSlice(propValue)
@@ -602,8 +621,27 @@ func (ctx *DefaultSpringContext) handleTagValue(prefix string, f reflect.StructF
 					}
 
 					fv.Set(sv)
-				} else {
-					panic(fName + " unsupported type " + elemKind.String())
+
+				} else { // 然后处理结构体嵌套的场景
+
+					if s, ok := propValue.([]interface{}); ok {
+						result := reflect.MakeSlice(f.Type, len(s), len(s))
+
+						for i, si := range s {
+							if sv, ok := si.(map[interface{}]interface{}); ok {
+								ev := reflect.New(elemType)
+								subStructValue(NewMapPropertyHolder(sv), "", elemType, ev.Elem())
+								result.Index(i).Set(ev.Elem())
+							} else {
+								panic(fmt.Sprintf("property %s isn't []map[string]interface{}", propName))
+							}
+						}
+
+						fv.Set(result)
+
+					} else {
+						panic(fmt.Sprintf("property %s isn't []map[string]interface{}", propName))
+					}
 				}
 			}
 		}
@@ -643,7 +681,7 @@ func (ctx *DefaultSpringContext) WireBeanDefinition(beanDefinition *BeanDefiniti
 				fName := t.Name() + ".$" + f.Name
 
 				// 处理 value 标签
-				ctx.handleTagValue("", f, fv, fName)
+				handleTagValue(ctx, "", f, fv, fName)
 
 				// 处理 autowire 标签
 				ctx.handleTagAutowire(sv, f, fv, fName)

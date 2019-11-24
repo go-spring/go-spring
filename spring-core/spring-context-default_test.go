@@ -435,6 +435,18 @@ func PointConverter(val string) Point {
 	return Point{x, y}
 }
 
+type DB struct {
+	UserName string `value:"${username}"`
+	Password string `value:"${password}"`
+	Url      string `value:"${url}"`
+	Port     string `value:"${port}"`
+	DB       string `value:"${db}"`
+}
+
+type DbConfig struct {
+	DB []DB `value:"${db}"`
+}
+
 func TestDefaultSpringContext_TypeConverter(t *testing.T) {
 	ctx := SpringCore.NewDefaultSpringContext()
 	ctx.LoadProperties("testdata/config/application.yaml")
@@ -451,12 +463,17 @@ func TestDefaultSpringContext_TypeConverter(t *testing.T) {
 
 	ctx.SetProperty("point", "(7,5)")
 
+	dbConfig := &DbConfig{}
+	ctx.RegisterBean(dbConfig)
+
 	ctx.AutoWireBeans()
 
 	assert.Equal(t, b.EnvType, ENV_TEST)
 
 	fmt.Printf("%+v\n", b)
 	fmt.Printf("%+v\n", p)
+
+	fmt.Printf("%+v\n", dbConfig)
 }
 
 type Grouper interface {
