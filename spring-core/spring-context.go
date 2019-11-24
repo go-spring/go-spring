@@ -19,111 +19,6 @@
 //
 package SpringCore
 
-import (
-	"reflect"
-	"strings"
-)
-
-//
-// 定义 SpringBean 类型
-//
-type SpringBean interface{}
-
-//
-// SpringBean 初始化接口
-//
-type BeanInitialization interface {
-	InitBean(ctx SpringContext)
-}
-
-//
-// SpringBean 初始化状态值
-//
-const (
-	Uninitialized = iota // 还未初始化
-	Initializing         // 正在初始化
-	Initialized          // 完成初始化
-)
-
-//
-// 定义 BeanDefinition 类型
-//
-type BeanDefinition struct {
-	Bean  SpringBean    // Bean 对象
-	Name  string        // Bean 名称，可能为空
-	Init  int           // Bean 初始化状态
-	Type  reflect.Type  // Bean 反射得到的类型
-	Value reflect.Value // Bean 反射得到的值
-	cond  *Conditional  // Bean 注册需要满足的条件
-}
-
-//
-// 将 SpringBean 转换为 BeanDefinition 对象
-//
-func ToBeanDefinition(name string, bean SpringBean) *BeanDefinition {
-
-	t := reflect.TypeOf(bean)
-
-	// 检查 Bean 的类型，只能注册指针或者数组类型的 Bean
-	if t.Kind() != reflect.Ptr && t.Kind() != reflect.Slice && t.Kind() != reflect.Map {
-		panic("bean must be pointer or slice or map")
-	}
-
-	v := reflect.ValueOf(bean)
-
-	// 生成默认名称
-	if name == "" {
-		name = t.String()
-	}
-
-	return &BeanDefinition{
-		Init:  Uninitialized,
-		Name:  name,
-		Bean:  bean,
-		Type:  t,
-		Value: v,
-	}
-}
-
-//
-// 获取原始类型的全限定名，golang 允许不同的路径下存在相同的包，故此有全限定名的需求。形如
-// "github.com/go-spring/go-spring/spring-core/SpringCore.DefaultSpringContext"
-//
-func TypeName(t reflect.Type) string {
-
-	for {
-		if t.Kind() != reflect.Ptr && t.Kind() != reflect.Slice {
-			break
-		} else {
-			t = t.Elem()
-		}
-	}
-
-	if pkgPath := t.PkgPath(); pkgPath != "" {
-		return pkgPath + "/" + t.String()
-	} else {
-		return t.String()
-	}
-}
-
-//
-// 测试类型全限定名和 Bean 名称是否都能匹配。
-//
-func (bean *BeanDefinition) Match(typeName string, beanName string) bool {
-
-	typeIsSame := false
-	if typeName == "" || TypeName(bean.Type) == typeName {
-		typeIsSame = true
-	}
-
-	nameIsSame := false
-	if beanName == "" || bean.Name == beanName {
-		nameIsSame = true
-	}
-
-	return typeIsSame && nameIsSame
-}
-
 //
 // 定义 IoC 容器接口，Bean 的注册规则：
 //   1. 单例 Bean 只能注册指针和数组。
@@ -131,6 +26,13 @@ func (bean *BeanDefinition) Match(typeName string, beanName string) bool {
 //   3. 原型 Bean 只能通过 BeanFactory 的形式使用，参见测试用例。
 //
 type SpringContext interface {
+	// SpringContext 的工作过程分为三个阶段：
+	// 1) 加载 Properties 文件，
+	// 2) 收集 Bean 列表，
+	// 3) 执行自动绑定，又分为两个小阶段：
+	//    3.1) 判别 Bean 的注册条件，
+	//    3.2) 执行 Bean 和 Property 绑定。
+
 	// 属性值列表接口
 	Properties
 
@@ -142,6 +44,12 @@ type SpringContext interface {
 
 	// 注册单例 Bean，使用 BeanDefinition 对象，重复注册会 panic。
 	RegisterBeanDefinition(beanDefinition *BeanDefinition) *Conditional
+
+	// 执行自动绑定过程
+	AutoWireBeans()
+
+	// 获取所有 Bean 的定义，一般仅供调试使用。
+	GetAllBeanDefinitions() []*BeanDefinition
 
 	// 根据类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 	// 什么情况下会多于 1 个？假设 StructA 实现了 InterfaceT，而且用户在注
@@ -164,35 +72,6 @@ type SpringContext interface {
 	// 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 	FindBeanByName(beanId string) (interface{}, bool)
 
-	// 获取所有 Bean 的定义，一般仅供调试使用。
-	GetAllBeanDefinitions() []*BeanDefinition
-
-	// 自动绑定所有的 SpringBean
-	AutoWireBeans()
-
 	// 绑定外部指定的 SpringBean
 	WireBean(bean SpringBean) error
-
-	// 注册类型转换器，用于属性绑定，函数原型 func(string)struct
-	RegisterTypeConverter(fn interface{})
-}
-
-//
-// 解析 BeanId 的内容，"TypeName:BeanName?" 或者 "[]?"
-//
-func ParseBeanId(beanId string) (typeName string, beanName string, nullable bool) {
-
-	if ss := strings.Split(beanId, ":"); len(ss) > 1 {
-		typeName = ss[0]
-		beanName = ss[1]
-	} else {
-		beanName = ss[0]
-	}
-
-	if strings.HasSuffix(beanName, "?") {
-		beanName = beanName[:len(beanName)-1]
-		nullable = true
-	}
-
-	return
 }

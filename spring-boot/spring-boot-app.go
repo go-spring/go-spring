@@ -22,6 +22,7 @@ package SpringBoot
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
 const (
@@ -33,7 +34,7 @@ const (
 //
 type Application struct {
 	AppContext     ApplicationContext // 应用上下文
-	ConfigLocation string             // 配置文件目录
+	ConfigLocation []string           // 配置文件目录
 }
 
 //
@@ -47,7 +48,7 @@ type ApplicationEvent interface {
 //
 // 工厂函数
 //
-func NewApplication(configLocation string) *Application {
+func NewApplication(configLocation ...string) *Application {
 	return &Application{
 		AppContext:     NewDefaultApplicationContext(),
 		ConfigLocation: configLocation,
@@ -98,26 +99,22 @@ func (app *Application) loadConfigFiles() {
 }
 
 func (app *Application) loadProfileConfig(profile string) {
+	for _, configLocation := range app.ConfigLocation {
 
-	filename := "application"
-	if profile != "" {
-		filename += "-" + profile
-	}
+		var result map[string]interface{}
 
-	// 从预定义的文件中加载属性列表
-	for _, ext := range []string{".properties", ".yaml", ".toml"} {
-		app.AppContext.LoadProperties(app.ConfigLocation + filename + ext)
-	}
+		if ss := strings.Split(configLocation, ":"); len(ss) == 1 {
+			result = NewDefaultPropertySource(ss[0]).Load(profile)
+		} else {
+			switch ss[0] {
+			case "k8s":
+				result = NewConfigMapPropertySource(ss[1]).Load(profile)
+			}
+		}
 
-	var pss []PropertySource
-	if app.AppContext.CollectBeans(&pss) {
-
-		// 从用户自定义的属性源中加载属性列表
-		for _, ps := range pss {
-			if r := ps.Load(app.ConfigLocation, profile); r != nil {
-				for k, v := range r {
-					app.AppContext.SetProperty(k, v)
-				}
+		if result != nil {
+			for k, v := range result {
+				app.AppContext.SetProperty(k, v)
 			}
 		}
 	}

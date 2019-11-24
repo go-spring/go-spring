@@ -38,14 +38,11 @@ func init() {
 			fmt.Println(k + "=" + fmt.Sprint(v))
 		}
 	})
-
-	configMap := SpringBoot.NewConfigMapPropertySource("config-map.yaml")
-	SpringBoot.RegisterBean(configMap)
 }
 
 func TestRunApplication(t *testing.T) {
 	os.Setenv(SpringBoot.SPRING_PROFILE, "test")
-	SpringBoot.RunApplication("testdata/config/")
+	SpringBoot.RunApplication("testdata/config/", "k8s:testdata/config/config-map.yaml")
 }
 
 ////////////////// MyModule ///////////////////

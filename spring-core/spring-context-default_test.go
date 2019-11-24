@@ -33,12 +33,9 @@ import (
 
 func TestDefaultSpringContext(t *testing.T) {
 
-	ctx := SpringCore.NewDefaultSpringContext()
+	t.Run("int", func(t *testing.T) {
+		ctx := SpringCore.NewDefaultSpringContext()
 
-	/////////////////////////////////////////
-	// 基础数据类型，int，string，float，complex
-
-	{
 		e := int(3)
 		a := []int{3}
 
@@ -58,6 +55,8 @@ func TestDefaultSpringContext(t *testing.T) {
 
 		ctx.RegisterBean(a)
 		ctx.RegisterBean(&a)
+
+		ctx.AutoWireBeans()
 
 		// 找到多个符合条件的值
 		if false {
@@ -92,12 +91,14 @@ func TestDefaultSpringContext(t *testing.T) {
 			ctx.GetBean(&i)
 			fmt.Println(i)
 		}
-	}
+	})
 
 	/////////////////////////////////////////
 	// 自定义数据类型
 
-	{
+	t.Run("pkg1.SamePkg", func(t *testing.T) {
+		ctx := SpringCore.NewDefaultSpringContext()
+
 		e := pkg1.SamePkg{}
 		a := []pkg1.SamePkg{{}}
 		p := []*pkg1.SamePkg{{}}
@@ -117,9 +118,13 @@ func TestDefaultSpringContext(t *testing.T) {
 		ctx.RegisterBean(&a)
 		ctx.RegisterBean(p)
 		ctx.RegisterBean(&p)
-	}
 
-	{
+		ctx.AutoWireBeans()
+	})
+
+	t.Run("", func(t *testing.T) {
+		ctx := SpringCore.NewDefaultSpringContext()
+
 		e := pkg2.SamePkg{}
 		a := []pkg2.SamePkg{{}}
 		p := []*pkg2.SamePkg{{}}
@@ -142,19 +147,9 @@ func TestDefaultSpringContext(t *testing.T) {
 		ctx.RegisterBean(&p)
 
 		ctx.RegisterNameBean("i5", &e)
-	}
 
-	if false {
-		var i SpringCore.SpringBean
-		ctx.GetBean(&i)
-		fmt.Println(i)
-	}
-
-	{
-		var i SpringCore.SpringBean
-		ctx.GetBeanByName("i5", &i)
-		fmt.Println(i)
-	}
+		ctx.AutoWireBeans()
+	})
 }
 
 type Binding struct {
@@ -452,23 +447,7 @@ func TestDefaultSpringContext_TypeConverter(t *testing.T) {
 	p := &PointBean{}
 	ctx.RegisterBean(p)
 
-	if false { // 不是函数
-		ctx.RegisterTypeConverter(3)
-	}
-
-	if false { // 参数太多
-		ctx.RegisterTypeConverter(func(_ string, _ string) Point {
-			return Point{}
-		})
-	}
-
-	if false { // 返回值太多
-		ctx.RegisterTypeConverter(func(_ string) (Point, Point) {
-			return Point{}, Point{}
-		})
-	}
-
-	ctx.RegisterTypeConverter(PointConverter)
+	SpringCore.RegisterTypeConverter(PointConverter)
 
 	ctx.SetProperty("point", "(7,5)")
 
@@ -608,6 +587,8 @@ func TestDefaultSpringContext_GetBean(t *testing.T) {
 	ctx.RegisterBean(new(BeanOne))
 	ctx.RegisterBean(new(BeanTwo))
 
+	ctx.AutoWireBeans()
+
 	var two *BeanTwo
 	ok := ctx.GetBean(&two)
 	assert.Equal(t, ok, true)
@@ -625,6 +606,8 @@ func TestDefaultSpringContext_GetBeanByName(t *testing.T) {
 	ctx.RegisterBean(&BeanZero{5})
 	ctx.RegisterBean(new(BeanOne))
 	ctx.RegisterBean(new(BeanTwo))
+
+	ctx.AutoWireBeans()
 
 	var two *BeanTwo
 	ok := ctx.GetBeanByName("", &two)

@@ -29,7 +29,7 @@ var ctx = SpringCore.NewDefaultSpringContext()
 //
 // 快速启动 SpringBoot 应用。
 //
-func RunApplication(configLocation string) {
+func RunApplication(configLocation ...string) {
 
 	appCtx := &DefaultApplicationContext{
 		DefaultSpringContext: ctx,
@@ -197,11 +197,4 @@ func AutoWireBeans() {
 //
 func WireBean(bean SpringCore.SpringBean) error {
 	return ctx.WireBean(bean)
-}
-
-//
-// 注册类型转换器，用于属性绑定，函数原型 func(string)struct
-//
-func RegisterTypeConverter(fn interface{}) {
-	ctx.RegisterTypeConverter(fn)
 }

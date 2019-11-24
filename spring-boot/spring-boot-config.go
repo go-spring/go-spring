@@ -30,33 +30,67 @@ import (
 // 属性源
 //
 type PropertySource interface {
-	// 加载属性文件，path 配置文件目录，profile 配置文件剖面。
-	Load(path string, profile string) map[string]interface{}
+	// 属性源的名称
+	Name() string
+
+	// 加载属性文件，profile 配置文件剖面。
+	Load(profile string) map[string]interface{}
 }
 
 //
-// 基于普通 map 的属性源
+// 基于默认配置文件的属性源
 //
-type MapPropertySource struct {
-	profile    string
-	properties map[string]interface{}
+type DefaultPropertySource struct {
+	fileLocation string
 }
 
 //
 // 构造函数
 //
-func NewMapPropertySource(profile string, properties map[string]interface{}) *MapPropertySource {
-	return &MapPropertySource{
-		profile:    profile,
-		properties: properties,
+func NewDefaultPropertySource(fileLocation string) *DefaultPropertySource {
+	return &DefaultPropertySource{
+		fileLocation: fileLocation,
 	}
 }
 
-func (p *MapPropertySource) Load(path string, profile string) map[string]interface{} {
-	if profile == p.profile {
-		return p.properties
+func (p *DefaultPropertySource) Name() string {
+	return ""
+}
+
+func (p *DefaultPropertySource) Load(profile string) map[string]interface{} {
+
+	fileNamePrefix := "application"
+	if profile != "" {
+		fileNamePrefix += "-" + profile
 	}
-	return nil
+
+	result := make(map[string]interface{})
+
+	// 从预定义的文件中加载属性列表
+	for _, ext := range []string{".properties", ".yaml", ".toml"} {
+
+		filename := filepath.Join(p.fileLocation, fileNamePrefix+ext)
+		if _, err := os.Stat(filename); err != nil {
+			continue // 这里不需要警告
+		}
+
+		fmt.Println(">>> load properties from", filename)
+
+		v := viper.New()
+		v.SetConfigFile(filename)
+		v.ReadInConfig()
+
+		keys := v.AllKeys()
+		sort.Strings(keys)
+
+		for _, k := range keys {
+			v := v.Get(k)
+			result[k] = v
+			fmt.Printf("%s=%v\n", k, v)
+		}
+	}
+
+	return result
 }
 
 //
@@ -75,21 +109,14 @@ func NewConfigMapPropertySource(filename string) *ConfigMapPropertySource {
 	}
 }
 
-func (p *ConfigMapPropertySource) Load(path string, profile string) map[string]interface{} {
+func (p *ConfigMapPropertySource) Name() string {
+	return "k8s"
+}
 
-	var configMapFileName string
-	if filepath.IsAbs(p.filename) {
-		configMapFileName = p.filename
-	} else {
-		configMapFileName = filepath.Join(path, p.filename)
-	}
-
-	if _, err := os.Stat(configMapFileName); err != nil {
-		panic(err)
-	}
+func (p *ConfigMapPropertySource) Load(profile string) map[string]interface{} {
 
 	v := viper.New()
-	v.SetConfigFile(configMapFileName)
+	v.SetConfigFile(p.filename)
 	v.ReadInConfig()
 
 	d := v.Sub("data")
@@ -106,7 +133,7 @@ func (p *ConfigMapPropertySource) Load(path string, profile string) map[string]i
 
 	for _, ext := range []string{".properties", ".yaml", ".toml"} {
 		if key := profileFileName + ext; d.IsSet(key) {
-			fmt.Printf(">>> load properties from config-map %s:%s\n", configMapFileName, key)
+			fmt.Printf(">>> load properties from config-map %s:%s\n", p.filename, key)
 
 			val := d.GetString(key)
 			if val == "" {

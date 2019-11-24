@@ -82,10 +82,9 @@ type DefaultSpringContext struct {
 	// 属性值列表接口
 	*DefaultProperties
 
-	Frozen        bool                            // 冻结 Bean 注册
-	BeanMap       map[BeanKey]*BeanDefinition     // 所有 Bean 的集合
-	BeanCache     map[reflect.Type]*BeanCacheItem // Bean 的分组缓存
-	TypeConverter map[reflect.Type]interface{}    // 类型转换器的集合
+	BeanMap   map[BeanKey]*BeanDefinition     // 所有 Bean 的集合
+	BeanCache map[reflect.Type]*BeanCacheItem // Bean 的分组缓存
+	autoWired bool                            // 已经执行自动绑定
 }
 
 //
@@ -94,10 +93,8 @@ type DefaultSpringContext struct {
 func NewDefaultSpringContext() *DefaultSpringContext {
 	return &DefaultSpringContext{
 		DefaultProperties: NewDefaultProperties(),
-		Frozen:            false,
 		BeanMap:           make(map[BeanKey]*BeanDefinition),
 		BeanCache:         make(map[reflect.Type]*BeanCacheItem),
-		TypeConverter:     make(map[reflect.Type]interface{}),
 	}
 }
 
@@ -130,7 +127,7 @@ func (ctx *DefaultSpringContext) RegisterNameBean(name string, bean SpringBean) 
 //
 func (ctx *DefaultSpringContext) RegisterBeanDefinition(d *BeanDefinition) *Conditional {
 
-	if ctx.Frozen { // 注册已被冻结
+	if ctx.autoWired { // 注册已被冻结
 		panic("bean registration frozen")
 	}
 
@@ -163,6 +160,10 @@ func (ctx *DefaultSpringContext) GetBean(i interface{}) bool {
 // 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 //
 func (ctx *DefaultSpringContext) GetBeanByName(beanId string, i interface{}) bool {
+
+	if !ctx.autoWired {
+		panic("should call after ctx.AutoWireBeans()")
+	}
 
 	// 确保存在可空标记，抑制 panic 效果。
 	if beanId == "" || beanId[len(beanId)-1] != '?' {
@@ -265,6 +266,11 @@ func (ctx *DefaultSpringContext) findBeanByName(beanId string, parentValue refle
 // 收集数组或指针定义的所有符合条件的 Bean 对象，收集到返回 true，否则返回 false。
 //
 func (ctx *DefaultSpringContext) CollectBeans(i interface{}) bool {
+
+	if !ctx.autoWired {
+		panic("should call after ctx.AutoWireBeans()")
+	}
+
 	it := reflect.TypeOf(i)
 
 	if it.Kind() != reflect.Ptr {
@@ -355,6 +361,7 @@ func (ctx *DefaultSpringContext) FindBeanByName(beanId string) (interface{}, boo
 
 	var (
 		count  int
+		key    BeanKey
 		result *BeanDefinition
 	)
 
@@ -374,11 +381,20 @@ func (ctx *DefaultSpringContext) FindBeanByName(beanId string) (interface{}, boo
 			panic("找到多个符合条件的值")
 		}
 
+		if result.Status < BeanStatus_Resolved {
+			if !result.cond.Matches(ctx) {
+				delete(ctx.BeanMap, key)
+				return nil, false
+			}
+		}
+
 		// 恰好 1 个
 		return result.Value.Interface(), true
 	}
 
-	for _, bean := range ctx.BeanMap {
+	var bean *BeanDefinition
+
+	for key, bean = range ctx.BeanMap {
 		if bean.Match(typeName, beanName) {
 			result = bean
 			count++
@@ -407,7 +423,7 @@ func (ctx *DefaultSpringContext) AutoWireBeans() {
 	// 不再接受 Bean 注册，因为性能的原因使用了缓存，并且在 AutoWireBeans 的过程中
 	// 逐步建立起这个缓存，而随着缓存的建立，绑定的速度会越来越快，从而减少性能的损失。
 
-	ctx.Frozen = true
+	ctx.autoWired = true
 
 	for key, beanDefinition := range ctx.BeanMap {
 
@@ -416,6 +432,8 @@ func (ctx *DefaultSpringContext) AutoWireBeans() {
 			delete(ctx.BeanMap, key)
 			continue
 		}
+
+		beanDefinition.Status = BeanStatus_Resolved
 
 		// 将符合注册条件的 Bean 放入到缓存里面
 		fmt.Printf("register bean %s:%s\n", TypeName(beanDefinition.Type), beanDefinition.Name)
@@ -524,7 +542,7 @@ func (ctx *DefaultSpringContext) handleTagValue(prefix string, f reflect.StructF
 	if fvk == reflect.Struct {
 
 		// 存在类型转换器的情况下优先使用属性值绑定，否则才考虑属性嵌套
-		if fn, ok := ctx.TypeConverter[f.Type]; ok {
+		if fn, ok := typeConverters[f.Type]; ok {
 
 			checkDefaultProperty()
 
@@ -572,7 +590,7 @@ func (ctx *DefaultSpringContext) handleTagValue(prefix string, f reflect.StructF
 				i := cast.ToStringSlice(propValue)
 				fv.Set(reflect.ValueOf(i))
 			default:
-				if fn, ok := ctx.TypeConverter[elemType]; ok {
+				if fn, ok := typeConverters[elemType]; ok {
 
 					v := reflect.ValueOf(fn)
 					s0 := cast.ToStringSlice(propValue)
@@ -600,11 +618,11 @@ func (ctx *DefaultSpringContext) handleTagValue(prefix string, f reflect.StructF
 func (ctx *DefaultSpringContext) WireBeanDefinition(beanDefinition *BeanDefinition) error {
 
 	// 解决循环依赖问题
-	if beanDefinition.Init != Uninitialized {
+	if beanDefinition.Status >= BeanStatus_Wiring {
 		return nil
 	}
 
-	beanDefinition.Init = Initializing
+	beanDefinition.Status = BeanStatus_Wiring
 
 	st := beanDefinition.Type
 
@@ -640,24 +658,6 @@ func (ctx *DefaultSpringContext) WireBeanDefinition(beanDefinition *BeanDefiniti
 		}
 	}
 
-	beanDefinition.Init = Initialized
+	beanDefinition.Status = BeanStatus_Wired
 	return nil
-}
-
-//
-// 注册类型转换器，用于属性绑定，函数原型 func(string)struct
-//
-func (ctx *DefaultSpringContext) RegisterTypeConverter(fn interface{}) {
-
-	t := reflect.TypeOf(fn)
-
-	if t.Kind() != reflect.Func || t.NumIn() != 1 || t.NumOut() != 1 {
-		panic("fn must be func(string)struct")
-	}
-
-	if t.In(0).Kind() != reflect.String || t.Out(0).Kind() != reflect.Struct {
-		panic("fn must be func(string)struct")
-	}
-
-	ctx.TypeConverter[t.Out(0)] = fn
 }

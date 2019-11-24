@@ -16,6 +16,10 @@
 
 package SpringCore
 
+import (
+	"reflect"
+)
+
 //
 // 定义属性值列表接口
 //
@@ -58,4 +62,30 @@ type Properties interface {
 
 	// 获取所有的属性值
 	GetAllProperties() map[string]interface{}
+}
+
+//
+// 类型转换器的集合
+//
+var typeConverters = make(map[reflect.Type]interface{})
+
+//
+// 注册类型转换器，用于属性绑定，函数原型 func(string)struct
+//
+func RegisterTypeConverter(fn interface{}) {
+
+	t := reflect.TypeOf(fn)
+
+	if t.Kind() != reflect.Func || t.NumIn() != 1 || t.NumOut() != 1 {
+		panic("fn must be func(string)struct")
+	}
+
+	in := t.In(0)
+	out := t.Out(0)
+
+	if in.Kind() != reflect.String || out.Kind() != reflect.Struct {
+		panic("fn must be func(string)struct")
+	}
+
+	typeConverters[out] = fn
 }

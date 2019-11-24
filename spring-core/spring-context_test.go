@@ -22,7 +22,6 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/go-spring/go-spring/spring-core"
 	pkg1 "github.com/go-spring/go-spring/spring-core/testdata/pkg/bar"
 	pkg2 "github.com/go-spring/go-spring/spring-core/testdata/pkg/foo"
 )
@@ -374,53 +373,6 @@ func TestReflectType(t *testing.T) {
 			// *[]io.Reader ptr  slice
 			fmt.Println(t, t.Kind(), t.Elem().Name(), t.Elem().Kind())
 		}
-	})
-}
-
-func TestTypeName(t *testing.T) {
-
-	t.Run("int", func(t *testing.T) {
-		i := int(3)
-
-		it := reflect.TypeOf(i)
-		// int int
-		fmt.Println(SpringCore.TypeName(it), it.String())
-
-		it = reflect.TypeOf(&i)
-		// int *int
-		fmt.Println(SpringCore.TypeName(it), it.String())
-
-		a := []int{3}
-
-		it = reflect.TypeOf(a)
-		// int []int
-		fmt.Println(SpringCore.TypeName(it), it.String())
-
-		it = reflect.TypeOf(&a)
-		// int *[]int
-		fmt.Println(SpringCore.TypeName(it), it.String())
-	})
-
-	t.Run("pkg2.SamePkg", func(t *testing.T) {
-		o := pkg2.SamePkg{}
-
-		it := reflect.TypeOf(o)
-		// .../testdata/pkg/foo/pkg.SamePkg pkg.SamePkg
-		fmt.Println(SpringCore.TypeName(it), it.String())
-
-		it = reflect.TypeOf(&o)
-		// .../testdata/pkg/foo/pkg.SamePkg *pkg.SamePkg
-		fmt.Println(SpringCore.TypeName(it), it.String())
-
-		a := []pkg2.SamePkg{{}}
-
-		it = reflect.TypeOf(a)
-		// .../testdata/pkg/foo/pkg.SamePkg []pkg.SamePkg
-		fmt.Println(SpringCore.TypeName(it), it.String())
-
-		it = reflect.TypeOf(&a)
-		// .../testdata/pkg/foo/pkg.SamePkg *[]pkg.SamePkg
-		fmt.Println(SpringCore.TypeName(it), it.String())
 	})
 }
 
