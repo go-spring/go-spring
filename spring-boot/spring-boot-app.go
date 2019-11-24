@@ -24,6 +24,10 @@ import (
 	"os"
 )
 
+const (
+	SPRING_PROFILE = "spring.profile"
+)
+
 //
 // 定义 SpringBoot 应用。
 //
@@ -85,19 +89,37 @@ func (app *Application) Start() {
 func (app *Application) loadConfigFiles() {
 
 	// 加载默认的应用配置文件，如 application.properties
-	filePath := app.ConfigLocation + "application"
-	app.loadConfigFiles0(filePath)
+	app.loadProfileConfig("")
 
 	// 加载用户设置的配置文件，如 application-test.properties
-	if env := os.Getenv("spring.profile"); len(env) > 0 {
-		filePath = fmt.Sprintf(app.ConfigLocation+"application-%s", env)
-		app.loadConfigFiles0(filePath)
+	if profile := os.Getenv(SPRING_PROFILE); profile != "" {
+		app.loadProfileConfig(profile)
 	}
 }
 
-func (app *Application) loadConfigFiles0(filePath string) {
+func (app *Application) loadProfileConfig(profile string) {
+
+	filename := "application"
+	if profile != "" {
+		filename += "-" + profile
+	}
+
+	// 从预定义的文件中加载属性列表
 	for _, ext := range []string{".properties", ".yaml", ".toml"} {
-		app.AppContext.LoadProperties(filePath + ext)
+		app.AppContext.LoadProperties(app.ConfigLocation + filename + ext)
+	}
+
+	var pss []PropertySource
+	if app.AppContext.CollectBeans(&pss) {
+
+		// 从用户自定义的属性源中加载属性列表
+		for _, ps := range pss {
+			if r := ps.Load(app.ConfigLocation, profile); r != nil {
+				for k, v := range r {
+					app.AppContext.SetProperty(k, v)
+				}
+			}
+		}
 	}
 }
 

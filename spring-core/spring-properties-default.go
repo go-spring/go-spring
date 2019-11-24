@@ -18,6 +18,7 @@ package SpringCore
 
 import (
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 
@@ -45,7 +46,12 @@ func NewDefaultProperties() *DefaultProperties {
 // 加载属性配置文件
 //
 func (p *DefaultProperties) LoadProperties(filename string) {
-	fmt.Println("load properties from", filename)
+
+	if _, err := os.Stat(filename); err != nil {
+		return // 这里不需要警告
+	}
+
+	fmt.Println(">>> load properties from", filename)
 
 	v := viper.New()
 	v.SetConfigFile(filename)

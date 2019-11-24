@@ -18,6 +18,7 @@ package SpringBoot_test
 
 import (
 	"fmt"
+	"os"
 	"testing"
 	"time"
 
@@ -32,13 +33,18 @@ func init() {
 
 	// 方法 2，如果需要属性值来创建 Bean 的时候非常有用。
 	SpringBoot.RegisterModule(func(ctx SpringCore.SpringContext) {
+		fmt.Println("get all properties:")
 		for k, v := range ctx.GetAllProperties() {
 			fmt.Println(k + "=" + fmt.Sprint(v))
 		}
 	})
+
+	configMap := SpringBoot.NewConfigMapPropertySource("config-map.yaml")
+	SpringBoot.RegisterBean(configMap)
 }
 
 func TestRunApplication(t *testing.T) {
+	os.Setenv(SpringBoot.SPRING_PROFILE, "test")
 	SpringBoot.RunApplication("testdata/config/")
 }
 
