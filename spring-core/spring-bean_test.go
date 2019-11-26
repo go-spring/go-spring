@@ -194,19 +194,19 @@ func TestToBeanDefinition(t *testing.T) {
 
 	bd := SpringCore.ToBeanDefinition("", new(int))
 	assert.Equal(t, bd.Name, "*int")
-	assert.Equal(t, bd.TypeName, "int")
+	assert.Equal(t, bd.TypeName(), "int")
 
 	bd = SpringCore.ToBeanDefinition("i", new(int))
 	assert.Equal(t, bd.Name, "i")
-	assert.Equal(t, bd.TypeName, "int")
+	assert.Equal(t, bd.TypeName(), "int")
 
 	bd = SpringCore.ToBeanDefinition("", new(pkg2.SamePkg))
 	assert.Equal(t, bd.Name, "*pkg.SamePkg")
-	assert.Equal(t, bd.TypeName, "github.com/go-spring/go-spring/spring-core/testdata/pkg/foo/pkg.SamePkg")
+	assert.Equal(t, bd.TypeName(), "github.com/go-spring/go-spring/spring-core/testdata/pkg/foo/pkg.SamePkg")
 
 	bd = SpringCore.ToBeanDefinition("pkg2", new(pkg2.SamePkg))
 	assert.Equal(t, bd.Name, "pkg2")
-	assert.Equal(t, bd.TypeName, "github.com/go-spring/go-spring/spring-core/testdata/pkg/foo/pkg.SamePkg")
+	assert.Equal(t, bd.TypeName(), "github.com/go-spring/go-spring/spring-core/testdata/pkg/foo/pkg.SamePkg")
 }
 
 func TestBeanDefinition_Match(t *testing.T) {
@@ -311,4 +311,52 @@ func TestParseBeanId(t *testing.T) {
 	assert.Equal(t, typeName, "int")
 	assert.Equal(t, beanName, "")
 	assert.Equal(t, nullable, true)
+}
+
+type Teacher struct {
+	Name string
+}
+
+type Student struct {
+	Teacher *Teacher
+	Room    string
+}
+
+// 入参可以进行注入或者属性绑定，返回值可以是 struct、map、slice 等。
+func NewStudent(teacher *Teacher, room string) Student {
+	return Student{
+		Teacher: teacher,
+		Room:    room,
+	}
+}
+
+// 入参可以进行注入或者属性绑定，返回值可以是 struct、map、slice 等。
+func NewPtrStudent(teacher *Teacher, room string) *Student {
+	return &Student{
+		Teacher: teacher,
+		Room:    room,
+	}
+}
+
+func TestNewConstructorBean(t *testing.T) {
+
+	bean := SpringCore.NewConstructorBean(NewStudent)
+	assert.Equal(t, bean.Type().String(), "*SpringCore_test.Student")
+
+	bean = SpringCore.NewConstructorBean(NewPtrStudent)
+	assert.Equal(t, bean.Type().String(), "*SpringCore_test.Student")
+
+	mapFn := func() map[int]string {
+		return make(map[int]string)
+	}
+
+	bean = SpringCore.NewConstructorBean(mapFn)
+	assert.Equal(t, bean.Type().String(), "map[int]string")
+
+	sliceFn := func() []int {
+		return make([]int, 1)
+	}
+
+	bean = SpringCore.NewConstructorBean(sliceFn)
+	assert.Equal(t, bean.Type().String(), "[]int")
 }

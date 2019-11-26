@@ -19,6 +19,7 @@ package SpringCore_test
 import (
 	"fmt"
 	"io"
+	"os"
 	"reflect"
 	"testing"
 
@@ -391,4 +392,12 @@ func TestRange(t *testing.T) {
 	}
 
 	fmt.Println("count:", i)
+}
+
+func TestGetEnv(t *testing.T) {
+
+	// \r 回车，从当前行的最前面开始输出，覆盖掉以前的内容
+	fmt.Println("hello\rworld")
+
+	fmt.Println(os.Getenv("GOPATH"), os.Getenv("GOROOT"))
 }

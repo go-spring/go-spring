@@ -18,6 +18,7 @@ package SpringCore_test
 
 import (
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -682,4 +683,61 @@ func TestDefaultSpringContext_FindBeanByName(t *testing.T) {
 	i, ok = ctx.FindBeanByName("xxx:*SpringCore_test.BeanTwo")
 	fmt.Println(SpringUtils.ToJson(i))
 	assert.Equal(t, ok, false)
+}
+
+func TestDefaultSpringContext_RegisterBeanFn(t *testing.T) {
+	ctx := SpringCore.NewDefaultSpringContext()
+
+	ctx.RegisterBean(&Teacher{"David"})
+	ctx.SetProperty("room", "Class 3 Grade 1")
+
+	ctx.RegisterNameBeanFn("st1", NewStudent, SpringCore.NewArrayTagList("", "${room}"))
+	ctx.RegisterNameBeanFn("st2", NewPtrStudent, SpringCore.NewArrayTagList("", "${room}"))
+
+	mapFn := func() map[int]string {
+		return map[int]string{
+			1: "ok",
+		}
+	}
+
+	ctx.RegisterBeanFn(mapFn)
+
+	sliceFn := func() []int {
+		return []int{1, 2}
+	}
+
+	ctx.RegisterBeanFn(sliceFn)
+
+	ctx.AutoWireBeans()
+
+	var st1 *Student
+	ok := ctx.GetBeanByName("st1", &st1)
+
+	assert.Equal(t, ok, true)
+	fmt.Println(SpringUtils.ToJson(st1))
+	assert.Equal(t, st1.Room, ctx.GetStringProperty("room"))
+
+	var st2 *Student
+	ok = ctx.GetBeanByName("st2", &st2)
+
+	assert.Equal(t, ok, true)
+	fmt.Println(SpringUtils.ToJson(st2))
+	assert.Equal(t, st2.Room, ctx.GetStringProperty("room"))
+
+	fmt.Printf("%x\n", reflect.ValueOf(st1).Pointer())
+	fmt.Printf("%x\n", reflect.ValueOf(st2).Pointer())
+
+	var m map[int]string
+	ok = ctx.GetBean(&m)
+
+	assert.Equal(t, ok, true)
+	fmt.Println(SpringUtils.ToJson(m))
+	assert.Equal(t, m[1], "ok")
+
+	var s []int
+	ok = ctx.GetBean(&s)
+
+	assert.Equal(t, ok, true)
+	fmt.Println(SpringUtils.ToJson(s))
+	assert.Equal(t, s[1], 2)
 }

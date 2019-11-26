@@ -110,15 +110,30 @@ func (ctx *DefaultSpringContext) getBeanCacheItem(t reflect.Type) (*BeanCacheIte
 //
 // 注册单例 Bean，不指定名称，重复注册会 panic。
 //
-func (ctx *DefaultSpringContext) RegisterBean(bean SpringBean) *Conditional {
+func (ctx *DefaultSpringContext) RegisterBean(bean interface{}) *Conditional {
 	return ctx.RegisterNameBean("", bean)
 }
 
 //
 // 注册单例 Bean，需指定名称，重复注册会 panic。
 //
-func (ctx *DefaultSpringContext) RegisterNameBean(name string, bean SpringBean) *Conditional {
+func (ctx *DefaultSpringContext) RegisterNameBean(name string, bean interface{}) *Conditional {
 	beanDefinition := ToBeanDefinition(name, bean)
+	return ctx.RegisterBeanDefinition(beanDefinition)
+}
+
+//
+// 通过构造函数注册单例 Bean，不指定名称，重复注册会 panic。
+//
+func (ctx *DefaultSpringContext) RegisterBeanFn(fn interface{}, tags ...TagList) *Conditional {
+	return ctx.RegisterNameBeanFn("", fn, tags...)
+}
+
+//
+// 通过构造函数注册单例 Bean，需指定名称，重复注册会 panic。
+//
+func (ctx *DefaultSpringContext) RegisterNameBeanFn(name string, fn interface{}, tags ...TagList) *Conditional {
+	beanDefinition := FnToBeanDefinition(name, fn, tags...)
 	return ctx.RegisterBeanDefinition(beanDefinition)
 }
 
@@ -134,7 +149,7 @@ func (ctx *DefaultSpringContext) RegisterBeanDefinition(d *BeanDefinition) *Cond
 	// Store the bean into BeanMap
 	{
 		k := BeanKey{
-			Type: d.Type,
+			Type: d.Type(),
 			Name: d.Name,
 		}
 
@@ -197,12 +212,12 @@ func (ctx *DefaultSpringContext) findBeanByName(beanId string, parentValue refle
 	found := func(bean *BeanDefinition) bool {
 
 		// 不能将自身赋给自身的字段
-		if bean.Value == parentValue {
+		if bean.Value() == parentValue {
 			return false
 		}
 
 		// 类型不相容
-		return bean.Type.AssignableTo(t)
+		return bean.Type().AssignableTo(t)
 	}
 
 	var (
@@ -230,7 +245,7 @@ func (ctx *DefaultSpringContext) findBeanByName(beanId string, parentValue refle
 		ctx.WireBeanDefinition(result)
 
 		// 恰好 1 个
-		fv.Set(result.Value)
+		fv.Set(result.Value())
 		return true
 	}
 
@@ -302,23 +317,23 @@ func (ctx *DefaultSpringContext) collectBeans(v reflect.Value) bool {
 		ev := reflect.New(t).Elem()
 
 		for _, d := range ctx.BeanMap {
-			dt := d.Type
+			dt := d.Type()
 
 			if dt.AssignableTo(et) { // Bean 自身符合条件
-				ev = reflect.Append(ev, d.Value)
+				ev = reflect.Append(ev, d.Value())
 
 			} else if dt.Kind() == reflect.Slice { // 找到一个数组
 				if dt.Elem().AssignableTo(et) {
 
 					// 数组扩容
-					size := ev.Len() + d.Value.Len()
+					size := ev.Len() + d.Value().Len()
 					newSlice := reflect.MakeSlice(t, size, size)
 
 					reflect.Copy(newSlice, ev)
 
 					// 拷贝新元素
-					for i := 0; i < d.Value.Len(); i++ {
-						newSlice.Index(i + ev.Len()).Set(d.Value.Index(i))
+					for i := 0; i < d.Value().Len(); i++ {
+						newSlice.Index(i + ev.Len()).Set(d.Value().Index(i))
 					}
 
 					// 完成扩容
@@ -381,7 +396,7 @@ func (ctx *DefaultSpringContext) FindBeanByName(beanId string) (interface{}, boo
 			panic("找到多个符合条件的值")
 		}
 
-		if result.Status < BeanStatus_Resolved {
+		if result.status < BeanStatus_Resolved {
 			if !result.cond.Matches(ctx) {
 				delete(ctx.BeanMap, key)
 				return nil, false
@@ -389,7 +404,7 @@ func (ctx *DefaultSpringContext) FindBeanByName(beanId string) (interface{}, boo
 		}
 
 		// 恰好 1 个
-		return result.Value.Interface(), true
+		return result.Value().Interface(), true
 	}
 
 	var bean *BeanDefinition
@@ -416,7 +431,7 @@ func (ctx *DefaultSpringContext) GetAllBeanDefinitions() []*BeanDefinition {
 }
 
 //
-// 自动绑定所有的 SpringBean
+// 自动绑定所有的 Bean
 //
 func (ctx *DefaultSpringContext) AutoWireBeans() {
 
@@ -433,27 +448,25 @@ func (ctx *DefaultSpringContext) AutoWireBeans() {
 			continue
 		}
 
-		beanDefinition.Status = BeanStatus_Resolved
+		beanDefinition.status = BeanStatus_Resolved
 
 		// 将符合注册条件的 Bean 放入到缓存里面
-		fmt.Printf("register bean %s:%s\n", TypeName(beanDefinition.Type), beanDefinition.Name)
-		item, _ := ctx.getBeanCacheItem(beanDefinition.Type)
+		fmt.Printf("register bean %s:%s\n", beanDefinition.TypeName(), beanDefinition.Name)
+		item, _ := ctx.getBeanCacheItem(beanDefinition.Type())
 		item.Store(beanDefinition)
 	}
 
 	for _, beanDefinition := range ctx.BeanMap {
-		if err := ctx.WireBeanDefinition(beanDefinition); err != nil {
-			panic(err)
-		}
+		ctx.WireBeanDefinition(beanDefinition)
 	}
 }
 
 //
-// 绑定外部指定的 SpringBean
+// 绑定外部指定的 Bean
 //
-func (ctx *DefaultSpringContext) WireBean(bean SpringBean) error {
+func (ctx *DefaultSpringContext) WireBean(bean interface{}) {
 	beanDefinition := ToBeanDefinition("", bean)
-	return ctx.WireBeanDefinition(beanDefinition)
+	ctx.WireBeanDefinition(beanDefinition)
 }
 
 func (ctx *DefaultSpringContext) handleTagAutowire(parentValue reflect.Value, f reflect.StructField, fv reflect.Value, fName string) {
@@ -504,16 +517,14 @@ func (p *MapPropertyHolder) GetDefaultProperty(name string, defaultValue interfa
 func subStructValue(prop PropertyHolder, prefix string, ft reflect.Type, fv reflect.Value) {
 	for i := 0; i < ft.NumField(); i++ {
 		it := ft.Field(i)
-		iv := fv.Field(i)
-		handleTagValue(prop, prefix, it, iv, "")
+		if tag, ok := it.Tag.Lookup("value"); ok {
+			iv := fv.Field(i)
+			handleTagValue(prop, prefix, it.Type, iv, "", tag)
+		}
 	}
 }
 
-func handleTagValue(prop PropertyHolder, prefix string, f reflect.StructField, fv reflect.Value, fName string) {
-	tagValue, ok := f.Tag.Lookup("value")
-	if !ok { // 没有 value 标签
-		return
-	}
+func handleTagValue(prop PropertyHolder, prefix string, ft reflect.Type, fv reflect.Value, fName string, tagValue string) {
 
 	// 检查语法是否正确
 	if !(strings.HasPrefix(tagValue, "${") && strings.HasSuffix(tagValue, "}")) {
@@ -560,7 +571,7 @@ func handleTagValue(prop PropertyHolder, prefix string, f reflect.StructField, f
 	if fvk == reflect.Struct {
 
 		// 存在类型转换器的情况下优先使用属性值绑定，否则才考虑属性嵌套
-		if fn, ok := typeConverters[f.Type]; ok {
+		if fn, ok := typeConverters[ft]; ok {
 
 			checkDefaultProperty()
 
@@ -574,7 +585,7 @@ func handleTagValue(prop PropertyHolder, prefix string, f reflect.StructField, f
 			panic(fName + " 结构体属性不能指定默认值")
 		}
 
-		subStructValue(prop, propName, f.Type, fv)
+		subStructValue(prop, propName, ft, fv)
 		return
 	}
 
@@ -613,7 +624,7 @@ func handleTagValue(prop PropertyHolder, prefix string, f reflect.StructField, f
 
 					v := reflect.ValueOf(fn)
 					s0 := cast.ToStringSlice(propValue)
-					sv := reflect.MakeSlice(f.Type, len(s0), len(s0))
+					sv := reflect.MakeSlice(ft, len(s0), len(s0))
 
 					for i, iv := range s0 {
 						res := v.Call([]reflect.Value{reflect.ValueOf(iv)})
@@ -625,7 +636,7 @@ func handleTagValue(prop PropertyHolder, prefix string, f reflect.StructField, f
 				} else { // 然后处理结构体嵌套的场景
 
 					if s, ok := propValue.([]interface{}); ok {
-						result := reflect.MakeSlice(f.Type, len(s), len(s))
+						result := reflect.MakeSlice(ft, len(s), len(s))
 
 						for i, si := range s {
 							if sv, ok := si.(map[interface{}]interface{}); ok {
@@ -651,18 +662,10 @@ func handleTagValue(prop PropertyHolder, prefix string, f reflect.StructField, f
 }
 
 //
-// 绑定 BeanDefinition 指定的 SpringBean
+// 对原始对象进行注入
 //
-func (ctx *DefaultSpringContext) WireBeanDefinition(beanDefinition *BeanDefinition) error {
-
-	// 解决循环依赖问题
-	if beanDefinition.Status >= BeanStatus_Wiring {
-		return nil
-	}
-
-	beanDefinition.Status = BeanStatus_Wiring
-
-	st := beanDefinition.Type
+func (ctx *DefaultSpringContext) wireOriginalBean(beanDefinition *BeanDefinition) {
+	st := beanDefinition.Type()
 
 	// 目标对象必须是结构体指针才能绑定
 	if st.Kind() == reflect.Ptr {
@@ -671,7 +674,7 @@ func (ctx *DefaultSpringContext) WireBeanDefinition(beanDefinition *BeanDefiniti
 
 			fmt.Printf("wire bean %s:%s\n", TypeName(t), beanDefinition.Name)
 
-			sv := beanDefinition.Value
+			sv := beanDefinition.Value()
 			v := sv.Elem()
 
 			for i := 0; i < t.NumField(); i++ {
@@ -681,21 +684,93 @@ func (ctx *DefaultSpringContext) WireBeanDefinition(beanDefinition *BeanDefiniti
 				fName := t.Name() + ".$" + f.Name
 
 				// 处理 value 标签
-				handleTagValue(ctx, "", f, fv, fName)
+				if tag, ok := f.Tag.Lookup("value"); ok {
+					handleTagValue(ctx, "", f.Type, fv, fName, tag)
+				}
 
 				// 处理 autowire 标签
 				ctx.handleTagAutowire(sv, f, fv, fName)
 			}
 
-			// 初始化当前的 SpringBean
-			if c, ok := beanDefinition.Bean.(BeanInitialization); ok {
+			// 初始化当前的 Bean
+			bean := beanDefinition.Bean()
+			if c, ok := bean.(BeanInitialization); ok {
 				c.InitBean(ctx)
 			}
 
 			fmt.Printf("success wire bean %s:%s\n", TypeName(t), beanDefinition.Name)
 		}
 	}
+}
 
-	beanDefinition.Status = BeanStatus_Wired
-	return nil
+//
+// 对构造函数进行注入
+//
+func (ctx *DefaultSpringContext) wireConstructorBean(beanDefinition *BeanDefinition) {
+
+	cBean := beanDefinition.SpringBean.(*ConstructorBean)
+	fnType := cBean.fnType
+	in := make([]reflect.Value, fnType.NumIn())
+
+	for i := 0; i < fnType.NumIn(); i++ {
+		for _, tag := range cBean.tags {
+			if s, ok := tag.Get(i); ok {
+				it := fnType.In(i)
+				iv := reflect.New(it).Elem()
+				{
+					if strings.HasPrefix(s, "$") {
+						handleTagValue(ctx, "", it, iv, "", s)
+					} else {
+						ctx.findBeanByName(s, EMPTY_VALUE, iv, "")
+					}
+				}
+				in[i] = iv
+				break
+			}
+		}
+	}
+
+	out := cBean.fnValue.Call(in)
+	val := out[0]
+
+	// 如果是结构体的话，转换成指针形式
+	if val.Type().Kind() == reflect.Struct {
+		cBean.rValue.Elem().Set(val)
+	} else {
+		cBean.rValue.Set(val)
+	}
+
+	cBean.bean = cBean.rValue.Interface()
+
+	// 初始化当前的 Bean
+	if c, ok := cBean.bean.(BeanInitialization); ok {
+		c.InitBean(ctx)
+	}
+
+	fmt.Printf("success wire constructor bean %s:%s\n", cBean.fnType.String(), beanDefinition.Name)
+}
+
+//
+// 绑定 BeanDefinition 指定的 Bean
+//
+func (ctx *DefaultSpringContext) WireBeanDefinition(beanDefinition *BeanDefinition) {
+
+	// 解决循环依赖问题
+	if beanDefinition.status >= BeanStatus_Wiring {
+		return
+	}
+
+	beanDefinition.status = BeanStatus_Wiring
+
+	if _, ok := beanDefinition.SpringBean.(*OriginalBean); ok {
+		ctx.wireOriginalBean(beanDefinition) // 原始对象
+
+	} else if _, ok := beanDefinition.SpringBean.(*ConstructorBean); ok {
+		ctx.wireConstructorBean(beanDefinition) // 构造函数
+
+	} else {
+		panic("unknown type spring bean")
+	}
+
+	beanDefinition.status = BeanStatus_Wired
 }

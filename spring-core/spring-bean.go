@@ -18,37 +18,124 @@ package SpringCore
 
 import (
 	"reflect"
-	"strings"
 )
 
 //
-// 定义 SpringBean 类型
+// 定义 SpringBean 接口
 //
-type SpringBean interface{}
-
-//
-// 检查是否为合法的 SpringBean 对象
-//
-func IsValidBean(bean SpringBean) (reflect.Type, bool) {
-	// 指针、Map、数组都是合法的 Bean，函数指针也应该可以视为一种 Bean
-	if bean != nil {
-		t := reflect.TypeOf(bean)
-		if k := t.Kind(); k == reflect.Ptr || k == reflect.Map || k == reflect.Slice {
-			return t, true
-		}
-	}
-	return nil, false
+type SpringBean interface {
+	Bean() interface{}
+	Type() reflect.Type
+	Value() reflect.Value
+	TypeName() string
 }
 
 //
-// 定义 SpringBean 初始化接口
+// 保存原始对象的 SpringBean
+//
+type OriginalBean struct {
+	bean     interface{}
+	rType    reflect.Type  // 类型
+	typeName string        // 原始类型的全限定名
+	rValue   reflect.Value // 值
+}
+
+//
+// 工厂函数
+//
+func NewOriginalBean(bean interface{}) *OriginalBean {
+
+	t, ok := IsValidBean(bean)
+	if !ok {
+		panic("bean must be pointer or slice or map")
+	}
+
+	return &OriginalBean{
+		bean:     bean,
+		rType:    t,
+		typeName: TypeName(t),
+		rValue:   reflect.ValueOf(bean),
+	}
+}
+
+func (b *OriginalBean) Bean() interface{} {
+	return b.bean
+}
+
+func (b *OriginalBean) Type() reflect.Type {
+	return b.rType
+}
+
+func (b *OriginalBean) Value() reflect.Value {
+	return b.rValue
+}
+
+func (b *OriginalBean) TypeName() string {
+	return b.typeName
+}
+
+//
+// 保存构造函数的 SpringBean
+//
+type ConstructorBean struct {
+	OriginalBean
+
+	fn      interface{}
+	fnType  reflect.Type
+	fnValue reflect.Value
+	tags    []TagList
+}
+
+//
+// 工厂函数
+//
+func NewConstructorBean(fn interface{}, tags ...TagList) *ConstructorBean {
+
+	fnType := reflect.TypeOf(fn)
+
+	if fnType.Kind() != reflect.Func {
+		panic("constructor must be function")
+	}
+
+	if fnType.NumOut() != 1 {
+		panic("constructor must be one out")
+	}
+
+	b := &ConstructorBean{
+		fn:      fn,
+		fnType:  fnType,
+		fnValue: reflect.ValueOf(fn),
+		tags:    tags,
+	}
+
+	t := fnType.Out(0)
+
+	v := reflect.New(t)
+	if k := t.Kind(); k == reflect.Ptr || k == reflect.Map || k == reflect.Slice {
+		v = v.Elem()
+	}
+
+	// 重新确定类型
+	t = v.Type()
+
+	// 赋值默认值
+	b.bean = v.Interface()
+	b.rType = t
+	b.typeName = TypeName(t)
+	b.rValue = v
+
+	return b
+}
+
+//
+// 定义 Bean 初始化接口
 //
 type BeanInitialization interface {
 	InitBean(ctx SpringContext)
 }
 
 //
-// 定义 SpringBean 的状态值
+// 定义 Bean 的状态值
 //
 type BeanStatus int
 
@@ -63,53 +150,25 @@ const (
 // 定义 BeanDefinition 类型
 //
 type BeanDefinition struct {
-	Bean     SpringBean    // 对象指针
-	Name     string        // 名称
-	Status   BeanStatus    // 状态
-	Type     reflect.Type  // 类型
-	TypeName string        // 原始类型的全限定名
-	Value    reflect.Value // 值
-	cond     *Conditional  // 注册条件
-}
+	SpringBean
 
-//
-// 获取原始类型的全限定名，golang 允许不同的路径下存在相同的包，故此有全限定名的需求。形如
-// "github.com/go-spring/go-spring/spring-core/SpringCore.DefaultSpringContext"
-//
-func TypeName(t reflect.Type) string {
-
-	if t == nil {
-		panic("type shouldn't be nil")
-	}
-
-	// Map 的全限定名太复杂，不予处理，而且 Map 作为注入对象要三思而后行！
-	for {
-		if k := t.Kind(); k != reflect.Ptr && k != reflect.Slice {
-			break
-		} else {
-			t = t.Elem()
-		}
-	}
-
-	if pkgPath := t.PkgPath(); pkgPath != "" {
-		return pkgPath + "/" + t.String()
-	} else {
-		return t.String()
-	}
+	Name   string       // 名称
+	status BeanStatus   // 状态
+	cond   *Conditional // 注册条件
 }
 
 //
 // 测试类型全限定名和 Bean 名称是否都能匹配。
 //
-func (bean *BeanDefinition) Match(typeName string, beanName string) bool {
+func (d *BeanDefinition) Match(typeName string, beanName string) bool {
 
 	typeIsSame := false
-	if typeName == "" || bean.TypeName == typeName {
+	if typeName == "" || d.TypeName() == typeName {
 		typeIsSame = true
 	}
 
 	nameIsSame := false
-	if beanName == "" || bean.Name == beanName {
+	if beanName == "" || d.Name == beanName {
 		nameIsSame = true
 	}
 
@@ -117,9 +176,9 @@ func (bean *BeanDefinition) Match(typeName string, beanName string) bool {
 }
 
 //
-// 将 SpringBean 转换为 BeanDefinition 对象
+// 将 Bean 转换为 BeanDefinition 对象
 //
-func ToBeanDefinition(name string, bean SpringBean) *BeanDefinition {
+func ToBeanDefinition(name string, bean interface{}) *BeanDefinition {
 
 	var (
 		ok bool
@@ -136,34 +195,27 @@ func ToBeanDefinition(name string, bean SpringBean) *BeanDefinition {
 	}
 
 	return &BeanDefinition{
-		Status:   BeanStatus_Default,
-		Name:     name,
-		Bean:     bean,
-		Type:     t,
-		TypeName: TypeName(t),
-		Value:    reflect.ValueOf(bean),
+		SpringBean: NewOriginalBean(bean),
+		Name:       name,
+		status:     BeanStatus_Default,
 	}
 }
 
 //
-// 解析 BeanId 的内容，"TypeName:BeanName?" 或者 "[]?"
+// 将构造函数转换为 BeanDefinition 对象
 //
-func ParseBeanId(beanId string) (typeName string, beanName string, nullable bool) {
+func FnToBeanDefinition(name string, fn interface{}, tags ...TagList) *BeanDefinition {
 
-	if ss := strings.Split(beanId, ":"); len(ss) > 1 {
-		typeName = ss[0]
-		beanName = ss[1]
-	} else {
-		beanName = ss[0]
+	bean := NewConstructorBean(fn, tags...)
+
+	// 生成默认名称
+	if name == "" {
+		name = bean.Type().String()
 	}
 
-	if strings.HasSuffix(beanName, "?") {
-		beanName = beanName[:len(beanName)-1]
-		nullable = true
+	return &BeanDefinition{
+		SpringBean: bean,
+		Name:       name,
+		status:     BeanStatus_Default,
 	}
-
-	if beanName == "[]" && typeName != "" {
-		panic("collection mode shouldn't have type")
-	}
-	return
 }

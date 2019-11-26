@@ -37,10 +37,16 @@ type SpringContext interface {
 	Properties
 
 	// 注册单例 Bean，不指定名称，重复注册会 panic。
-	RegisterBean(bean SpringBean) *Conditional
+	RegisterBean(bean interface{}) *Conditional
 
 	// 注册单例 Bean，需指定名称，重复注册会 panic。
-	RegisterNameBean(name string, bean SpringBean) *Conditional
+	RegisterNameBean(name string, bean interface{}) *Conditional
+
+	// 通过构造函数注册单例 Bean，不指定名称，重复注册会 panic。
+	RegisterBeanFn(fn interface{}, tags ...TagList) *Conditional
+
+	// 通过构造函数注册单例 Bean，需指定名称，重复注册会 panic。
+	RegisterNameBeanFn(name string, fn interface{}, tags ...TagList) *Conditional
 
 	// 注册单例 Bean，使用 BeanDefinition 对象，重复注册会 panic。
 	RegisterBeanDefinition(beanDefinition *BeanDefinition) *Conditional
@@ -72,6 +78,6 @@ type SpringContext interface {
 	// 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 	FindBeanByName(beanId string) (interface{}, bool)
 
-	// 绑定外部指定的 SpringBean
-	WireBean(bean SpringBean) error
+	// 绑定外部指定的 Bean
+	WireBean(bean interface{})
 }

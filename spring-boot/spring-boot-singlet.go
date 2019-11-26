@@ -55,14 +55,14 @@ func Exit() {
 //
 // 注册单例 Bean，不指定名称，重复注册会 panic。
 //
-func RegisterBean(bean SpringCore.SpringBean) *SpringCore.Conditional {
+func RegisterBean(bean interface{}) *SpringCore.Conditional {
 	return ctx.RegisterBean(bean)
 }
 
 //
 // 注册单例 Bean，需指定名称，重复注册会 panic。
 //
-func RegisterNameBean(name string, bean SpringCore.SpringBean) *SpringCore.Conditional {
+func RegisterNameBean(name string, bean interface{}) *SpringCore.Conditional {
 	return ctx.RegisterNameBean(name, bean)
 }
 
@@ -186,15 +186,15 @@ func GetAllProperties() map[string]interface{} {
 }
 
 //
-// 自动绑定所有的 SpringBean
+// 自动绑定所有的 Bean
 //
 func AutoWireBeans() {
 	ctx.AutoWireBeans()
 }
 
 //
-// 绑定外部指定的 SpringBean
+// 绑定外部指定的 Bean
 //
-func WireBean(bean SpringCore.SpringBean) error {
-	return ctx.WireBean(bean)
+func WireBean(bean interface{}) {
+	ctx.WireBean(bean)
 }
