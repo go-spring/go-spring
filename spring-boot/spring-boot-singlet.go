@@ -69,14 +69,14 @@ func RegisterNameBean(name string, bean interface{}) *SpringCore.Conditional {
 //
 // 通过构造函数注册单例 Bean，不指定名称，重复注册会 panic。
 //
-func RegisterBeanFn(fn interface{}, tags ...SpringCore.TagList) *SpringCore.Conditional {
+func RegisterBeanFn(fn interface{}, tags ...string) *SpringCore.Conditional {
 	return ctx.RegisterBeanFn(fn, tags...)
 }
 
 //
 // 通过构造函数注册单例 Bean，需指定名称，重复注册会 panic。
 //
-func RegisterNameBeanFn(name string, fn interface{}, tags ...SpringCore.TagList) *SpringCore.Conditional {
+func RegisterNameBeanFn(name string, fn interface{}, tags ...string) *SpringCore.Conditional {
 	return ctx.RegisterNameBeanFn(name, fn, tags...)
 }
 

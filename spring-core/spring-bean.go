@@ -18,6 +18,8 @@ package SpringCore
 
 import (
 	"reflect"
+	"strconv"
+	"strings"
 )
 
 //
@@ -83,13 +85,13 @@ type ConstructorBean struct {
 	fn      interface{}
 	fnType  reflect.Type
 	fnValue reflect.Value
-	tags    []TagList
+	tags    []string
 }
 
 //
-// 工厂函数
+// 工厂函数，所有 tag 都必须同时有或者同时没有序号。
 //
-func NewConstructorBean(fn interface{}, tags ...TagList) *ConstructorBean {
+func NewConstructorBean(fn interface{}, tags ...string) *ConstructorBean {
 
 	fnType := reflect.TypeOf(fn)
 
@@ -101,11 +103,50 @@ func NewConstructorBean(fn interface{}, tags ...TagList) *ConstructorBean {
 		panic("constructor must be one out")
 	}
 
+	fnTags := make([]string, fnType.NumIn())
+
+	if len(tags) > 0 {
+		indexed := false // 是否包含序号
+
+		if tag := tags[0]; tag != "" {
+			if i := strings.Index(tag, ":"); i > 0 {
+				_, err := strconv.Atoi(tag[:i])
+				indexed = err == nil
+			}
+		}
+
+		if indexed { // 有序号
+			for _, tag := range tags {
+				index := strings.Index(tag, ":")
+				if index <= 0 {
+					panic("tag \"" + tag + "\" should have index")
+				}
+				i, err := strconv.Atoi(tag[:index])
+				if err != nil {
+					panic("tag \"" + tag + "\" should have index")
+				}
+				fnTags[i] = tag[index+1:]
+			}
+
+		} else { // 无序号
+			for i, tag := range tags {
+				index := strings.Index(tag, ":")
+				if index > 0 {
+					_, err := strconv.Atoi(tag[:index])
+					if err == nil {
+						panic("tag \"" + tag + "\" should no index")
+					}
+				}
+				fnTags[i] = tag[index+1:]
+			}
+		}
+	}
+
 	b := &ConstructorBean{
 		fn:      fn,
 		fnType:  fnType,
 		fnValue: reflect.ValueOf(fn),
-		tags:    tags,
+		tags:    fnTags,
 	}
 
 	t := fnType.Out(0)
@@ -204,7 +245,7 @@ func ToBeanDefinition(name string, bean interface{}) *BeanDefinition {
 //
 // 将构造函数转换为 BeanDefinition 对象
 //
-func FnToBeanDefinition(name string, fn interface{}, tags ...TagList) *BeanDefinition {
+func FnToBeanDefinition(name string, fn interface{}, tags ...string) *BeanDefinition {
 
 	bean := NewConstructorBean(fn, tags...)
 

@@ -46,13 +46,10 @@ type ApplicationEvent interface {
 }
 
 //
-// 工厂函数
+// 定义命令行启动器接口。
 //
-func NewApplication(configLocation ...string) *Application {
-	return &Application{
-		AppContext:     NewDefaultApplicationContext(),
-		ConfigLocation: configLocation,
-	}
+type CommandLineRunner interface {
+	Run()
 }
 
 //
@@ -66,22 +63,23 @@ func (app *Application) Start() {
 	// 注册 ApplicationContext Bean 对象
 	app.AppContext.RegisterBean(app.AppContext)
 
-	// 初始化所有的 SpringBoot 模块
-	for _, fn := range modules {
-		fn(app.AppContext)
-	}
-
 	// 依赖注入、属性绑定、Bean 初始化
 	app.AppContext.AutoWireBeans()
+
+	// 执行命令行启动器
+	var runners []CommandLineRunner
+	app.AppContext.CollectBeans(&runners)
+
+	for _, r := range runners {
+		r.Run()
+	}
 
 	// 通知应用启动事件
 	var eventBeans []ApplicationEvent
 	app.AppContext.CollectBeans(&eventBeans)
 
-	if eventBeans != nil && len(eventBeans) > 0 {
-		for _, bean := range eventBeans {
-			bean.OnStartApplication(app.AppContext)
-		}
+	for _, bean := range eventBeans {
+		bean.OnStartApplication(app.AppContext)
 	}
 
 	fmt.Println("spring boot started")
@@ -129,10 +127,8 @@ func (app *Application) ShutDown() {
 	var eventBeans []ApplicationEvent
 	app.AppContext.CollectBeans(&eventBeans)
 
-	if eventBeans != nil && len(eventBeans) > 0 {
-		for _, bean := range eventBeans {
-			bean.OnStopApplication(app.AppContext)
-		}
+	for _, bean := range eventBeans {
+		bean.OnStopApplication(app.AppContext)
 	}
 
 	// 等待所有 goroutine 退出

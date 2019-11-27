@@ -340,6 +340,28 @@ func NewPtrStudent(teacher *Teacher, room string) *Student {
 
 func TestNewConstructorBean(t *testing.T) {
 
+	SpringCore.NewConstructorBean(NewStudent, "")
+	SpringCore.NewConstructorBean(NewStudent, "teacher")
+	SpringCore.NewConstructorBean(NewStudent, "${room}")
+
+	assert.Panic(t, func() {
+		SpringCore.NewConstructorBean(NewStudent, "", "1:teacher")
+	}, "tag \"1:teacher\" should no index")
+
+	assert.Panic(t, func() {
+		SpringCore.NewConstructorBean(NewStudent, "", "1:${room}")
+	}, "tag \"1:\\${room}\" should no index")
+
+	SpringCore.NewConstructorBean(NewStudent, "1:teacher")
+
+	assert.Panic(t, func() {
+		SpringCore.NewConstructorBean(NewStudent, "1:teacher", "")
+	}, "tag \"\" should have index")
+
+	assert.Panic(t, func() {
+		SpringCore.NewConstructorBean(NewStudent, "1:teacher", "${room}")
+	}, "tag \"\\${room}\" should have index")
+
 	bean := SpringCore.NewConstructorBean(NewStudent)
 	assert.Equal(t, bean.Type().String(), "*SpringCore_test.Student")
 

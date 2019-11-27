@@ -125,14 +125,14 @@ func (ctx *DefaultSpringContext) RegisterNameBean(name string, bean interface{})
 //
 // 通过构造函数注册单例 Bean，不指定名称，重复注册会 panic。
 //
-func (ctx *DefaultSpringContext) RegisterBeanFn(fn interface{}, tags ...TagList) *Conditional {
+func (ctx *DefaultSpringContext) RegisterBeanFn(fn interface{}, tags ...string) *Conditional {
 	return ctx.RegisterNameBeanFn("", fn, tags...)
 }
 
 //
 // 通过构造函数注册单例 Bean，需指定名称，重复注册会 panic。
 //
-func (ctx *DefaultSpringContext) RegisterNameBeanFn(name string, fn interface{}, tags ...TagList) *Conditional {
+func (ctx *DefaultSpringContext) RegisterNameBeanFn(name string, fn interface{}, tags ...string) *Conditional {
 	beanDefinition := FnToBeanDefinition(name, fn, tags...)
 	return ctx.RegisterBeanDefinition(beanDefinition)
 }
@@ -712,22 +712,17 @@ func (ctx *DefaultSpringContext) wireConstructorBean(beanDefinition *BeanDefinit
 	fnType := cBean.fnType
 	in := make([]reflect.Value, fnType.NumIn())
 
-	for i := 0; i < fnType.NumIn(); i++ {
-		for _, tag := range cBean.tags {
-			if s, ok := tag.Get(i); ok {
-				it := fnType.In(i)
-				iv := reflect.New(it).Elem()
-				{
-					if strings.HasPrefix(s, "$") {
-						handleTagValue(ctx, "", it, iv, "", s)
-					} else {
-						ctx.findBeanByName(s, EMPTY_VALUE, iv, "")
-					}
-				}
-				in[i] = iv
-				break
+	for i, tag := range cBean.tags {
+		it := fnType.In(i)
+		iv := reflect.New(it).Elem()
+		{
+			if strings.HasPrefix(tag, "$") {
+				handleTagValue(ctx, "", it, iv, "", tag)
+			} else {
+				ctx.findBeanByName(tag, EMPTY_VALUE, iv, "")
 			}
 		}
+		in[i] = iv
 	}
 
 	out := cBean.fnValue.Call(in)

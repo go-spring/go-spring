@@ -691,8 +691,8 @@ func TestDefaultSpringContext_RegisterBeanFn(t *testing.T) {
 	ctx.RegisterBean(&Teacher{"David"})
 	ctx.SetProperty("room", "Class 3 Grade 1")
 
-	ctx.RegisterNameBeanFn("st1", NewStudent, SpringCore.NewArrayTagList("", "${room}"))
-	ctx.RegisterNameBeanFn("st2", NewPtrStudent, SpringCore.NewArrayTagList("", "${room}"))
+	ctx.RegisterNameBeanFn("st1", NewStudent, "", "${room}")
+	ctx.RegisterNameBeanFn("st2", NewPtrStudent, "1:${room}")
 
 	mapFn := func() map[int]string {
 		return map[int]string{

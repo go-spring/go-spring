@@ -27,17 +27,8 @@ import (
 )
 
 func init() {
-
-	// 方法 1，通常情况下都能够满足要求。
-	SpringBoot.RegisterBean(&MyModule{"123"})
-
-	// 方法 2，如果需要属性值来创建 Bean 的时候非常有用。
-	SpringBoot.RegisterModule(func(ctx SpringCore.SpringContext) {
-		fmt.Println("get all properties:")
-		for k, v := range ctx.GetAllProperties() {
-			fmt.Println(k + "=" + fmt.Sprint(v))
-		}
-	})
+	SpringBoot.RegisterBean(new(MyRunner))
+	SpringBoot.RegisterBeanFn(NewMyModule, "${message}")
 }
 
 func TestRunApplication(t *testing.T) {
@@ -45,10 +36,29 @@ func TestRunApplication(t *testing.T) {
 	SpringBoot.RunApplication("testdata/config/", "k8s:testdata/config/config-map.yaml")
 }
 
+////////////////// MyRunner ///////////////////
+
+type MyRunner struct {
+	Ctx SpringCore.SpringContext `autowire:""`
+}
+
+func (r *MyRunner) Run() {
+	fmt.Println("get all properties:")
+	for k, v := range r.Ctx.GetAllProperties() {
+		fmt.Println(k + "=" + fmt.Sprint(v))
+	}
+}
+
 ////////////////// MyModule ///////////////////
 
 type MyModule struct {
-	id string
+	msg string
+}
+
+func NewMyModule(msg string) *MyModule {
+	return &MyModule{
+		msg: msg,
+	}
 }
 
 func (m *MyModule) OnStartApplication(ctx SpringBoot.ApplicationContext) {
@@ -56,7 +66,7 @@ func (m *MyModule) OnStartApplication(ctx SpringBoot.ApplicationContext) {
 
 	var e *MyModule
 	ctx.GetBean(&e)
-	fmt.Println(e)
+	fmt.Printf("event: %+v\n", e)
 
 	ctx.SafeGoroutine(Process)
 }
@@ -72,7 +82,7 @@ func Process() {
 
 	var m *MyModule
 	SpringBoot.GetBean(&m)
-	fmt.Println(m)
+	fmt.Printf("process: %+v\n", m)
 
 	time.Sleep(200 * time.Millisecond)
 

@@ -43,10 +43,10 @@ type SpringContext interface {
 	RegisterNameBean(name string, bean interface{}) *Conditional
 
 	// 通过构造函数注册单例 Bean，不指定名称，重复注册会 panic。
-	RegisterBeanFn(fn interface{}, tags ...TagList) *Conditional
+	RegisterBeanFn(fn interface{}, tags ...string) *Conditional
 
 	// 通过构造函数注册单例 Bean，需指定名称，重复注册会 panic。
-	RegisterNameBeanFn(name string, fn interface{}, tags ...TagList) *Conditional
+	RegisterNameBeanFn(name string, fn interface{}, tags ...string) *Conditional
 
 	// 注册单例 Bean，使用 BeanDefinition 对象，重复注册会 panic。
 	RegisterBeanDefinition(beanDefinition *BeanDefinition) *Conditional
