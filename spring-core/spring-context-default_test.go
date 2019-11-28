@@ -693,6 +693,8 @@ func TestDefaultSpringContext_RegisterBeanFn(t *testing.T) {
 
 	ctx.RegisterNameBeanFn("st1", NewStudent, "", "${room}")
 	ctx.RegisterNameBeanFn("st2", NewPtrStudent, "1:${room}")
+	ctx.RegisterNameBeanFn("st3", NewStudent, "?", "${room:=http://}")
+	ctx.RegisterNameBeanFn("st4", NewPtrStudent, "0:?", "1:${room:=4567}")
 
 	mapFn := func() map[int]string {
 		return map[int]string{
@@ -726,6 +728,20 @@ func TestDefaultSpringContext_RegisterBeanFn(t *testing.T) {
 
 	fmt.Printf("%x\n", reflect.ValueOf(st1).Pointer())
 	fmt.Printf("%x\n", reflect.ValueOf(st2).Pointer())
+
+	var st3 *Student
+	ok = ctx.GetBeanByName("st3", &st3)
+
+	assert.Equal(t, ok, true)
+	fmt.Println(SpringUtils.ToJson(st3))
+	assert.Equal(t, st3.Room, ctx.GetStringProperty("room"))
+
+	var st4 *Student
+	ok = ctx.GetBeanByName("st4", &st4)
+
+	assert.Equal(t, ok, true)
+	fmt.Println(SpringUtils.ToJson(st4))
+	assert.Equal(t, st4.Room, ctx.GetStringProperty("room"))
 
 	var m map[int]string
 	ok = ctx.GetBean(&m)

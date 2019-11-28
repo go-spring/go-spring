@@ -130,14 +130,13 @@ func NewConstructorBean(fn interface{}, tags ...string) *ConstructorBean {
 
 		} else { // 无序号
 			for i, tag := range tags {
-				index := strings.Index(tag, ":")
-				if index > 0 {
+				if index := strings.Index(tag, ":"); index > 0 {
 					_, err := strconv.Atoi(tag[:index])
 					if err == nil {
 						panic("tag \"" + tag + "\" should no index")
 					}
 				}
-				fnTags[i] = tag[index+1:]
+				fnTags[i] = tag
 			}
 		}
 	}
