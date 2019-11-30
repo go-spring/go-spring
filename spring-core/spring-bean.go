@@ -192,10 +192,11 @@ const (
 type BeanDefinition struct {
 	SpringBean
 
-	Name    string       // 名称
-	status  BeanStatus   // 状态
-	cond    *Conditional // 注册条件
-	profile string       // 运行环境
+	Name      string       // 名称
+	status    BeanStatus   // 状态
+	cond      *Conditional // 注册条件
+	profile   string       // 运行环境
+	dependsOn []string     // 非直接依赖
 }
 
 //

@@ -820,3 +820,30 @@ func TestDefaultSpringContext_Profile(t *testing.T) {
 		assert.Equal(t, ok, false)
 	})
 }
+
+type BeanFour struct{}
+
+func TestDefaultSpringContext_DependsOn(t *testing.T) {
+
+	t.Run("random", func(t *testing.T) {
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBean(&BeanZero{5})
+		ctx.RegisterBean(new(BeanOne))
+		ctx.RegisterBean(new(BeanFour))
+		ctx.AutoWireBeans()
+	})
+
+	t.Run("dependsOn", func(t *testing.T) {
+
+		dependsOn := []string{
+			"github.com/go-spring/go-spring/spring-core_test/SpringCore_test.BeanZero:*SpringCore_test.BeanZero",
+			"github.com/go-spring/go-spring/spring-core_test/SpringCore_test.BeanOne:*SpringCore_test.BeanOne",
+		}
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBean(&BeanZero{5})
+		ctx.RegisterBean(new(BeanOne))
+		ctx.RegisterBean(new(BeanFour)).DependsOn(dependsOn...)
+		ctx.AutoWireBeans()
+	})
+}

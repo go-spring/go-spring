@@ -63,3 +63,8 @@ func (annotation *Annotation) Profile(profile string) *Annotation {
 	annotation.bean.profile = profile
 	return annotation
 }
+
+func (annotation *Annotation) DependsOn(beanId ...string) *Annotation {
+	annotation.bean.dependsOn = beanId
+	return annotation
+}

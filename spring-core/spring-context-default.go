@@ -455,6 +455,13 @@ func (ctx *DefaultSpringContext) AutoWireBeans() {
 			continue
 		}
 
+		// 初始化当前 bean 不直接依赖的那些 bean
+		for _, beanId := range beanDefinition.dependsOn {
+			if _, ok := ctx.FindBeanByName(beanId); !ok {
+				panic("没有找到符合条件的 Bean")
+			}
+		}
+
 		beanDefinition.status = BeanStatus_Resolved
 
 		// 将符合注册条件的 Bean 放入到缓存里面
