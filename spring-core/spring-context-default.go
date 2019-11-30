@@ -110,14 +110,14 @@ func (ctx *DefaultSpringContext) getBeanCacheItem(t reflect.Type) (*BeanCacheIte
 //
 // 注册单例 Bean，不指定名称，重复注册会 panic。
 //
-func (ctx *DefaultSpringContext) RegisterBean(bean interface{}) *Conditional {
+func (ctx *DefaultSpringContext) RegisterBean(bean interface{}) *Annotation {
 	return ctx.RegisterNameBean("", bean)
 }
 
 //
 // 注册单例 Bean，需指定名称，重复注册会 panic。
 //
-func (ctx *DefaultSpringContext) RegisterNameBean(name string, bean interface{}) *Conditional {
+func (ctx *DefaultSpringContext) RegisterNameBean(name string, bean interface{}) *Annotation {
 	beanDefinition := ToBeanDefinition(name, bean)
 	return ctx.RegisterBeanDefinition(beanDefinition)
 }
@@ -125,14 +125,14 @@ func (ctx *DefaultSpringContext) RegisterNameBean(name string, bean interface{})
 //
 // 通过构造函数注册单例 Bean，不指定名称，重复注册会 panic。
 //
-func (ctx *DefaultSpringContext) RegisterBeanFn(fn interface{}, tags ...string) *Conditional {
+func (ctx *DefaultSpringContext) RegisterBeanFn(fn interface{}, tags ...string) *Annotation {
 	return ctx.RegisterNameBeanFn("", fn, tags...)
 }
 
 //
 // 通过构造函数注册单例 Bean，需指定名称，重复注册会 panic。
 //
-func (ctx *DefaultSpringContext) RegisterNameBeanFn(name string, fn interface{}, tags ...string) *Conditional {
+func (ctx *DefaultSpringContext) RegisterNameBeanFn(name string, fn interface{}, tags ...string) *Annotation {
 	beanDefinition := FnToBeanDefinition(name, fn, tags...)
 	return ctx.RegisterBeanDefinition(beanDefinition)
 }
@@ -140,7 +140,7 @@ func (ctx *DefaultSpringContext) RegisterNameBeanFn(name string, fn interface{},
 //
 // 注册单例 Bean，使用 BeanDefinition 对象，重复注册会 panic。
 //
-func (ctx *DefaultSpringContext) RegisterBeanDefinition(d *BeanDefinition) *Conditional {
+func (ctx *DefaultSpringContext) RegisterBeanDefinition(d *BeanDefinition) *Annotation {
 
 	if ctx.autoWired { // 注册已被冻结
 		panic("bean registration frozen")
@@ -161,7 +161,7 @@ func (ctx *DefaultSpringContext) RegisterBeanDefinition(d *BeanDefinition) *Cond
 	}
 
 	d.cond = NewConditional()
-	return d.cond
+	return NewAnnotation(d)
 }
 
 //

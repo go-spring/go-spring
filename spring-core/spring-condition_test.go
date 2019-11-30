@@ -42,10 +42,10 @@ func TestPropertyCondition(t *testing.T) {
 	ctx := SpringCore.NewDefaultSpringContext()
 	ctx.SetProperty("int", 3)
 
-	cond := SpringCore.NewPropertyCondition("int")
+	cond := SpringCore.NewPropertyCondition("int", "3")
 	assert.Equal(t, cond.Matches(ctx), true)
 
-	cond = SpringCore.NewPropertyCondition("bool")
+	cond = SpringCore.NewPropertyCondition("bool", "true")
 	assert.Equal(t, cond.Matches(ctx), false)
 }
 
@@ -61,10 +61,10 @@ func TestConditional(t *testing.T) {
 		cond.Matches(ctx)
 	}, "last op need a cond triggered")
 
-	cond = SpringCore.NewConditional().ConditionOnProperty("int")
+	cond = SpringCore.ConditionOnProperty("int", "3")
 	assert.Equal(t, cond.Matches(ctx), true)
 
-	cond = SpringCore.NewConditional().ConditionOnProperty("bool")
+	cond = SpringCore.ConditionOnProperty("bool", "false")
 	assert.Equal(t, cond.Matches(ctx), false)
 }
 

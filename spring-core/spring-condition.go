@@ -28,16 +28,21 @@ type Condition interface {
 }
 
 //
+// 定义 Condition 接口 Matches 方法的类型
+//
+type ConditionFunc func(ctx SpringContext) bool
+
+//
 // 基于方法的 Condition 实现
 //
 type FunctionCondition struct {
-	fn func(ctx SpringContext) bool
+	fn ConditionFunc
 }
 
 //
 // 工厂函数
 //
-func NewFunctionCondition(fn func(ctx SpringContext) bool) *FunctionCondition {
+func NewFunctionCondition(fn ConditionFunc) *FunctionCondition {
 	if fn == nil {
 		panic("fn can't be null")
 	}
@@ -52,19 +57,20 @@ func (c *FunctionCondition) Matches(ctx SpringContext) bool {
 // 基于 Property 的 Condition 实现
 //
 type PropertyCondition struct {
-	name string
+	name        string
+	havingValue string
 }
 
 //
 // 工厂函数
 //
-func NewPropertyCondition(name string) *PropertyCondition {
-	return &PropertyCondition{name}
+func NewPropertyCondition(name string, havingValue string) *PropertyCondition {
+	return &PropertyCondition{name, havingValue}
 }
 
 func (c *PropertyCondition) Matches(ctx SpringContext) bool {
-	_, ok := ctx.GetDefaultProperty(c.name, "")
-	return ok
+	val := ctx.GetStringProperty(c.name)
+	return val == c.havingValue
 }
 
 //
@@ -210,14 +216,22 @@ func (c *Conditional) And() *Conditional {
 	return c
 }
 
-func (c *Conditional) Group(cond *Conditional) *Conditional {
+func (c *Conditional) Conditional(cond *Conditional) *Conditional {
 	c.curr.cond = cond.node
 	return c
 }
 
-func (c *Conditional) ConditionOnProperty(name string) *Conditional {
-	c.curr.cond = NewPropertyCondition(name)
+func ConditionOnProperty(name string, havingValue string) *Conditional {
+	return NewConditional().ConditionOnProperty(name, havingValue)
+}
+
+func (c *Conditional) ConditionOnProperty(name string, havingValue string) *Conditional {
+	c.curr.cond = NewPropertyCondition(name, havingValue)
 	return c
+}
+
+func ConditionalOnBean(beanId string) *Conditional {
+	return NewConditional().ConditionalOnBean(beanId)
 }
 
 func (c *Conditional) ConditionalOnBean(beanId string) *Conditional {
@@ -225,16 +239,28 @@ func (c *Conditional) ConditionalOnBean(beanId string) *Conditional {
 	return c
 }
 
+func ConditionalOnMissingBean(beanId string) *Conditional {
+	return NewConditional().ConditionalOnMissingBean(beanId)
+}
+
 func (c *Conditional) ConditionalOnMissingBean(beanId string) *Conditional {
 	c.curr.cond = NewMissingBeanCondition(beanId)
 	return c
+}
+
+func ConditionalOnExpression(expression string) *Conditional {
+	return NewConditional().ConditionalOnExpression(expression)
 }
 
 func (c *Conditional) ConditionalOnExpression(expression string) *Conditional {
 	panic(SpringConst.UNIMPLEMENTED_METHOD)
 }
 
-func (c *Conditional) ConditionOnMatches(fn func(ctx SpringContext) bool) *Conditional {
+func ConditionOnMatches(fn ConditionFunc) *Conditional {
+	return NewConditional().ConditionOnMatches(fn)
+}
+
+func (c *Conditional) ConditionOnMatches(fn ConditionFunc) *Conditional {
 	c.curr.cond = NewFunctionCondition(fn)
 	return c
 }

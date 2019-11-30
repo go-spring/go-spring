@@ -55,35 +55,35 @@ func Exit() {
 //
 // 注册单例 Bean，不指定名称，重复注册会 panic。
 //
-func RegisterBean(bean interface{}) *SpringCore.Conditional {
+func RegisterBean(bean interface{}) *SpringCore.Annotation {
 	return ctx.RegisterBean(bean)
 }
 
 //
 // 注册单例 Bean，需指定名称，重复注册会 panic。
 //
-func RegisterNameBean(name string, bean interface{}) *SpringCore.Conditional {
+func RegisterNameBean(name string, bean interface{}) *SpringCore.Annotation {
 	return ctx.RegisterNameBean(name, bean)
 }
 
 //
 // 通过构造函数注册单例 Bean，不指定名称，重复注册会 panic。
 //
-func RegisterBeanFn(fn interface{}, tags ...string) *SpringCore.Conditional {
+func RegisterBeanFn(fn interface{}, tags ...string) *SpringCore.Annotation {
 	return ctx.RegisterBeanFn(fn, tags...)
 }
 
 //
 // 通过构造函数注册单例 Bean，需指定名称，重复注册会 panic。
 //
-func RegisterNameBeanFn(name string, fn interface{}, tags ...string) *SpringCore.Conditional {
+func RegisterNameBeanFn(name string, fn interface{}, tags ...string) *SpringCore.Annotation {
 	return ctx.RegisterNameBeanFn(name, fn, tags...)
 }
 
 //
 // 注册单例 Bean，使用 BeanDefinition 对象，重复注册会 panic。
 //
-func RegisterBeanDefinition(beanDefinition *SpringCore.BeanDefinition) *SpringCore.Conditional {
+func RegisterBeanDefinition(beanDefinition *SpringCore.BeanDefinition) *SpringCore.Annotation {
 	return ctx.RegisterBeanDefinition(beanDefinition)
 }
 
