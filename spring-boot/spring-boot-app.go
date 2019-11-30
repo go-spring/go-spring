@@ -21,7 +21,6 @@ package SpringBoot
 
 import (
 	"fmt"
-	"os"
 	"strings"
 )
 
@@ -91,7 +90,7 @@ func (app *Application) loadConfigFiles() {
 	app.loadProfileConfig("")
 
 	// 加载用户设置的配置文件，如 application-test.properties
-	if profile := os.Getenv(SPRING_PROFILE); profile != "" {
+	if profile := app.AppContext.GetProfile(); profile != "" {
 		app.loadProfileConfig(profile)
 	}
 }

@@ -759,3 +759,64 @@ func TestDefaultSpringContext_RegisterBeanFn(t *testing.T) {
 	fmt.Println(SpringUtils.ToJson(s))
 	assert.Equal(t, s[1], 2)
 }
+
+func TestDefaultSpringContext_Profile(t *testing.T) {
+
+	t.Run("bean:_ctx:", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBean(&BeanZero{5})
+		ctx.AutoWireBeans()
+
+		var b *BeanZero
+		ok := ctx.GetBean(&b)
+		assert.Equal(t, ok, true)
+	})
+
+	t.Run("bean:_ctx:test", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.SetProfile("test")
+		ctx.RegisterBean(&BeanZero{5})
+		ctx.AutoWireBeans()
+
+		var b *BeanZero
+		ok := ctx.GetBean(&b)
+		assert.Equal(t, ok, true)
+	})
+
+	t.Run("bean:test_ctx:", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBean(&BeanZero{5}).Profile("test")
+		ctx.AutoWireBeans()
+
+		var b *BeanZero
+		ok := ctx.GetBean(&b)
+		assert.Equal(t, ok, false)
+	})
+
+	t.Run("bean:test_ctx:test", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.SetProfile("test")
+		ctx.RegisterBean(&BeanZero{5}).Profile("test")
+		ctx.AutoWireBeans()
+
+		var b *BeanZero
+		ok := ctx.GetBean(&b)
+		assert.Equal(t, ok, true)
+	})
+
+	t.Run("bean:test_ctx:stable", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.SetProfile("stable")
+		ctx.RegisterBean(&BeanZero{5}).Profile("test")
+		ctx.AutoWireBeans()
+
+		var b *BeanZero
+		ok := ctx.GetBean(&b)
+		assert.Equal(t, ok, false)
+	})
+}

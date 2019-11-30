@@ -80,4 +80,10 @@ type SpringContext interface {
 
 	// 绑定外部指定的 Bean
 	WireBean(bean interface{})
+
+	// 获取运行环境
+	GetProfile() string
+
+	// 设置运行环境
+	SetProfile(profile string)
 }

@@ -17,6 +17,8 @@
 package SpringBoot
 
 import (
+	"os"
+
 	"github.com/go-spring/go-spring/boot-starter"
 	"github.com/go-spring/go-spring/spring-core"
 )
@@ -39,6 +41,9 @@ func RunApplication(configLocation ...string) {
 		AppContext:     appCtx,
 		ConfigLocation: configLocation,
 	}
+
+	profile := os.Getenv(SPRING_PROFILE)
+	ctx.SetProfile(profile)
 
 	BootStarter.Run(app)
 }

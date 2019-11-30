@@ -85,6 +85,7 @@ type DefaultSpringContext struct {
 	BeanMap   map[BeanKey]*BeanDefinition     // 所有 Bean 的集合
 	BeanCache map[reflect.Type]*BeanCacheItem // Bean 的分组缓存
 	autoWired bool                            // 已经执行自动绑定
+	profile   string                          // 运行环境
 }
 
 //
@@ -442,6 +443,12 @@ func (ctx *DefaultSpringContext) AutoWireBeans() {
 
 	for key, beanDefinition := range ctx.BeanMap {
 
+		// 检查是否符合运行环境，不符合的立即删除
+		if beanDefinition.profile != "" && beanDefinition.profile != ctx.profile {
+			delete(ctx.BeanMap, key)
+			continue
+		}
+
 		// 检查是否符合注册条件，不符合的立即删除
 		if !beanDefinition.cond.Matches(ctx) {
 			delete(ctx.BeanMap, key)
@@ -768,4 +775,18 @@ func (ctx *DefaultSpringContext) WireBeanDefinition(beanDefinition *BeanDefiniti
 	}
 
 	beanDefinition.status = BeanStatus_Wired
+}
+
+//
+// 获取运行环境
+//
+func (ctx *DefaultSpringContext) GetProfile() string {
+	return ctx.profile
+}
+
+//
+// 设置运行环境
+//
+func (ctx *DefaultSpringContext) SetProfile(profile string) {
+	ctx.profile = profile
 }

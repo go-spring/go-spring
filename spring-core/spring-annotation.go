@@ -58,3 +58,8 @@ func (annotation *Annotation) ConditionOnMatches(fn ConditionFunc) *Annotation {
 	annotation.bean.cond.ConditionOnMatches(fn)
 	return annotation
 }
+
+func (annotation *Annotation) Profile(profile string) *Annotation {
+	annotation.bean.profile = profile
+	return annotation
+}
