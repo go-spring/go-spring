@@ -197,6 +197,7 @@ type BeanDefinition struct {
 	cond      *Conditional // 注册条件
 	profile   string       // 运行环境
 	dependsOn []string     // 非直接依赖
+	primary   bool         // 主版本
 }
 
 //

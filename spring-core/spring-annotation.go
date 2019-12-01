@@ -68,3 +68,8 @@ func (annotation *Annotation) DependsOn(beanId ...string) *Annotation {
 	annotation.bean.dependsOn = beanId
 	return annotation
 }
+
+func (annotation *Annotation) Primary(primary bool) *Annotation {
+	annotation.bean.primary = primary
+	return annotation
+}

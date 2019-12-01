@@ -221,12 +221,10 @@ func (ctx *DefaultSpringContext) findBeanByName(beanId string, parentValue refle
 		return bean.Type().AssignableTo(t)
 	}
 
-	var (
-		count  int
-		result *BeanDefinition
-	)
+	result := make([]*BeanDefinition, 0)
 
 	checkResult := func() bool {
+		count := len(result)
 
 		// 没有找到
 		if count == 0 {
@@ -237,16 +235,29 @@ func (ctx *DefaultSpringContext) findBeanByName(beanId string, parentValue refle
 			}
 		}
 
-		// 多于 1 个
-		if count > 1 {
-			panic("找到多个符合条件的值")
+		var primaryBean *BeanDefinition
+
+		for _, bean := range result {
+			if bean.primary {
+				if primaryBean != nil {
+					panic("找到多个 primary bean")
+				}
+				primaryBean = bean
+			}
+		}
+
+		if primaryBean == nil {
+			if count > 1 {
+				panic("找到多个符合条件的值")
+			}
+			primaryBean = result[0]
 		}
 
 		// 对依赖项进行依赖注入
-		ctx.WireBeanDefinition(result)
+		ctx.WireBeanDefinition(primaryBean)
 
 		// 恰好 1 个
-		fv.Set(result.Value())
+		fv.Set(primaryBean.Value())
 		return true
 	}
 
@@ -257,8 +268,7 @@ func (ctx *DefaultSpringContext) findBeanByName(beanId string, parentValue refle
 			if found(bean) {
 				m.Store(bean)
 				if bean.Match(typeName, beanName) {
-					result = bean
-					count++
+					result = append(result, bean)
 				}
 			}
 		}
@@ -270,8 +280,7 @@ func (ctx *DefaultSpringContext) findBeanByName(beanId string, parentValue refle
 
 	for _, bean := range m.Named {
 		if found(bean) && bean.Match(typeName, beanName) {
-			result = bean
-			count++
+			result = append(result, bean)
 		}
 	}
 
@@ -368,6 +377,10 @@ func (ctx *DefaultSpringContext) collectBeans(v reflect.Value) bool {
 //
 func (ctx *DefaultSpringContext) FindBeanByName(beanId string) (interface{}, bool) {
 
+	if !ctx.autoWired {
+		panic("should call after ctx.AutoWireBeans()")
+	}
+
 	// 确保存在可空标记，抑制 panic 效果。
 	if beanId == "" || beanId[len(beanId)-1] != '?' {
 		beanId += "?"
@@ -377,7 +390,6 @@ func (ctx *DefaultSpringContext) FindBeanByName(beanId string) (interface{}, boo
 
 	var (
 		count  int
-		key    BeanKey
 		result *BeanDefinition
 	)
 
@@ -397,20 +409,13 @@ func (ctx *DefaultSpringContext) FindBeanByName(beanId string) (interface{}, boo
 			panic("找到多个符合条件的值")
 		}
 
-		if result.status < BeanStatus_Resolved {
-			if !result.cond.Matches(ctx) {
-				delete(ctx.BeanMap, key)
-				return nil, false
-			}
-		}
-
 		// 恰好 1 个
 		return result.Value().Interface(), true
 	}
 
 	var bean *BeanDefinition
 
-	for key, bean = range ctx.BeanMap {
+	for _, bean = range ctx.BeanMap {
 		if bean.Match(typeName, beanName) {
 			result = bean
 			count++

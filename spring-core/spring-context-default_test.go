@@ -662,6 +662,8 @@ func TestDefaultSpringContext_FindBeanByName(t *testing.T) {
 	ctx.RegisterBean(new(BeanOne))
 	ctx.RegisterBean(new(BeanTwo))
 
+	ctx.AutoWireBeans()
+
 	assert.Panic(t, func() {
 		ctx.FindBeanByName("")
 	}, "找到多个符合条件的值")
@@ -845,5 +847,54 @@ func TestDefaultSpringContext_DependsOn(t *testing.T) {
 		ctx.RegisterBean(new(BeanOne))
 		ctx.RegisterBean(new(BeanFour)).DependsOn(dependsOn...)
 		ctx.AutoWireBeans()
+	})
+}
+
+func TestDefaultSpringContext_Primary(t *testing.T) {
+
+	assert.Panic(t, func() {
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBean(&BeanZero{5})
+		ctx.RegisterBean(&BeanZero{6})
+		ctx.RegisterBean(new(BeanOne))
+		ctx.RegisterBean(new(BeanTwo))
+		ctx.AutoWireBeans()
+	}, "Bean 重复注册")
+
+	assert.Panic(t, func() {
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBean(&BeanZero{5})
+		// Primary 是在多个候选 bean 里面选择，而不是允许同名同类型的两个 bean
+		ctx.RegisterBean(&BeanZero{6}).Primary(true)
+		ctx.RegisterBean(new(BeanOne))
+		ctx.RegisterBean(new(BeanTwo))
+		ctx.AutoWireBeans()
+	}, "Bean 重复注册")
+
+	t.Run("not primary", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBean(&BeanZero{5})
+		ctx.RegisterBean(new(BeanOne))
+		ctx.RegisterBean(new(BeanTwo))
+		ctx.AutoWireBeans()
+
+		var b *BeanTwo
+		ctx.GetBean(&b)
+		assert.Equal(t, b.One.Zero.Int, 5)
+	})
+
+	t.Run("primary", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBean(&BeanZero{5})
+		ctx.RegisterNameBean("zero_6", &BeanZero{6}).Primary(true)
+		ctx.RegisterBean(new(BeanOne))
+		ctx.RegisterBean(new(BeanTwo))
+		ctx.AutoWireBeans()
+
+		var b *BeanTwo
+		ctx.GetBean(&b)
+		assert.Equal(t, b.One.Zero.Int, 6)
 	})
 }
