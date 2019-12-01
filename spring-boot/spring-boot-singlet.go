@@ -128,10 +128,10 @@ func GetAllBeanDefinitions() []*SpringCore.BeanDefinition {
 }
 
 //
-// 加载属性配置文件
+// 绑定外部指定的 Bean
 //
-func LoadProperties(filename string) {
-	ctx.LoadProperties(filename)
+func WireBean(bean interface{}) {
+	ctx.WireBean(bean)
 }
 
 //
@@ -202,18 +202,4 @@ func GetPrefixProperties(prefix string) map[string]interface{} {
 //
 func GetAllProperties() map[string]interface{} {
 	return ctx.GetAllProperties()
-}
-
-//
-// 自动绑定所有的 Bean
-//
-func AutoWireBeans() {
-	ctx.AutoWireBeans()
-}
-
-//
-// 绑定外部指定的 Bean
-//
-func WireBean(bean interface{}) {
-	ctx.WireBean(bean)
 }

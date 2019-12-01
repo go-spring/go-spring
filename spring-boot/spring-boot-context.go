@@ -49,15 +49,6 @@ type DefaultApplicationContext struct {
 }
 
 //
-// 工厂函数
-//
-func NewDefaultApplicationContext() *DefaultApplicationContext {
-	return &DefaultApplicationContext{
-		DefaultSpringContext: SpringCore.NewDefaultSpringContext(),
-	}
-}
-
-//
 // 安全地启动一个 goroutine。
 //
 func (ctx *DefaultApplicationContext) SafeGoroutine(fn GoFunc) {
