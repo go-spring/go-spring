@@ -1,6 +1,6 @@
 # Go-Spring
 
-Go-Spring 的目标是让 GoLang 程序员也能用上如 Java Spring 那般威力强大的编程框架。感谢 Java Spring。
+Go-Spring 的目标是让 GoLang 程序员也能用上如 Java Spring 那般威力强大的编程框架。
 
 特性：
 
@@ -25,9 +25,7 @@ import (
 )
 
 func init() {
-	SpringBoot.RegisterModule(func(ctx SpringCore.SpringContext) {
-		ctx.RegisterBean(new(Controller))
-	})
+	SpringBoot.RegisterBean(new(Controller))
 }
 
 type Controller struct{}
@@ -77,10 +75,6 @@ func main() {
 
 不依赖 Go-Spring 框架的独立的 MQ 模块。
 
-#### go-spring-singlet
-
-使用全局 SpringContext 变量改进后的 SpringBoot 框架。
-
 #### go-spring-boot-starter
 
 提供常见组件的启动器，实现开箱即用。
@@ -95,8 +89,11 @@ func main() {
 
 ### QQ 交流群
 
-<img src="https://raw.githubusercontent.com/go-spring/go-spring-website/master/qq(1).jpeg" width="140" height="*" />
-<img src="https://raw.githubusercontent.com/go-spring/go-spring-website/master/qq(2).jpeg" width="140" height="*" />
+<img src="https://raw.githubusercontent.com/go-spring/go-spring-website/master/qq(1).jpeg" width="140" height="*" /> <img src="https://raw.githubusercontent.com/go-spring/go-spring-website/master/qq(2).jpeg" width="140" height="*" />
+
+### 微信公众号
+
+<img src="https://raw.githubusercontent.com/go-spring/go-spring-website/master/go-spring-action.jpg" width="140" height="*" />
 
 ### License
 
