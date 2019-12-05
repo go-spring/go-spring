@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"reflect"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
@@ -29,7 +28,6 @@ import (
 	pkg1 "github.com/go-spring/go-spring/spring-core/testdata/pkg/bar"
 	pkg2 "github.com/go-spring/go-spring/spring-core/testdata/pkg/foo"
 	"github.com/magiconair/properties/assert"
-	"github.com/spf13/cast"
 )
 
 func TestDefaultSpringContext(t *testing.T) {
@@ -414,40 +412,6 @@ const (
 
 type EnvEnumBean struct {
 	EnvType EnvEnum `value:"${env.type}"`
-}
-
-type Point struct {
-	x int
-	y int
-}
-
-type PointBean struct {
-	Point        Point `value:"${point}"`
-	DefaultPoint Point `value:"${default_point:=(3,4)}"`
-
-	PointList []Point `value:"${point.list}"`
-}
-
-func PointConverter(val string) Point {
-	if !(strings.HasPrefix(val, "(") && strings.HasSuffix(val, ")")) {
-		panic("数据格式错误")
-	}
-	ss := strings.Split(val[1:len(val)-1], ",")
-	x := cast.ToInt(ss[0])
-	y := cast.ToInt(ss[1])
-	return Point{x, y}
-}
-
-type DB struct {
-	UserName string `value:"${username}"`
-	Password string `value:"${password}"`
-	Url      string `value:"${url}"`
-	Port     string `value:"${port}"`
-	DB       string `value:"${db}"`
-}
-
-type DbConfig struct {
-	DB []DB `value:"${db}"`
 }
 
 func TestDefaultSpringContext_TypeConverter(t *testing.T) {

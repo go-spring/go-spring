@@ -20,8 +20,6 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
-
-	"github.com/spf13/cast"
 )
 
 var (
@@ -514,172 +512,6 @@ func (ctx *DefaultSpringContext) handleTagAutowire(parentValue reflect.Value, f 
 	}
 }
 
-type PropertyHolder interface {
-	GetDefaultProperty(name string, defaultValue interface{}) (interface{}, bool)
-}
-
-type MapPropertyHolder struct {
-	m map[interface{}]interface{}
-}
-
-func NewMapPropertyHolder(m map[interface{}]interface{}) *MapPropertyHolder {
-	return &MapPropertyHolder{
-		m: m,
-	}
-}
-
-func (p *MapPropertyHolder) GetDefaultProperty(name string, defaultValue interface{}) (interface{}, bool) {
-	v, ok := p.m[name]
-	return v, ok
-}
-
-func subStructValue(prop PropertyHolder, prefix string, ft reflect.Type, fv reflect.Value) {
-	for i := 0; i < ft.NumField(); i++ {
-		it := ft.Field(i)
-		if tag, ok := it.Tag.Lookup("value"); ok {
-			iv := fv.Field(i)
-			handleTagValue(prop, prefix, it.Type, iv, "", tag)
-		}
-	}
-}
-
-func handleTagValue(prop PropertyHolder, prefix string, ft reflect.Type, fv reflect.Value, fName string, tagValue string) {
-
-	// 检查语法是否正确
-	if !(strings.HasPrefix(tagValue, "${") && strings.HasSuffix(tagValue, "}")) {
-		panic(fName + " 属性绑定的语法发生错误")
-	}
-
-	fvk := fv.Kind()
-
-	// 指针不能作为属性绑定的目标
-	if fvk == reflect.Ptr {
-		panic(fName + " 属性绑定的目标不能是指针")
-	}
-
-	ss := strings.Split(tagValue[2:len(tagValue)-1], ":=")
-
-	var (
-		propName  string
-		propValue interface{}
-	)
-
-	propName = ss[0]
-
-	// 属性名如果有前缀要加上前缀
-	if prefix != "" {
-		propName = prefix + "." + propName
-	}
-
-	if len(ss) > 1 {
-		propValue = ss[1]
-	}
-
-	// 检查是否有默认值
-	checkDefaultProperty := func() {
-		if prop, ok := prop.GetDefaultProperty(propName, ""); ok {
-			propValue = prop
-		} else {
-			if len(ss) < 2 {
-				panic("properties \"" + propName + "\" not config")
-			}
-		}
-	}
-
-	// 结构体不能指定默认值
-	if fvk == reflect.Struct {
-
-		// 存在类型转换器的情况下优先使用属性值绑定，否则才考虑属性嵌套
-		if fn, ok := typeConverters[ft]; ok {
-
-			checkDefaultProperty()
-
-			v := reflect.ValueOf(fn)
-			res := v.Call([]reflect.Value{reflect.ValueOf(propValue)})
-			fv.Set(res[0])
-			return
-		}
-
-		if len(ss) > 1 {
-			panic(fName + " 结构体属性不能指定默认值")
-		}
-
-		subStructValue(prop, propName, ft, fv)
-		return
-	}
-
-	checkDefaultProperty()
-
-	switch fv.Kind() {
-	case reflect.Uint64, reflect.Uint32, reflect.Uint16, reflect.Uint8, reflect.Uint:
-		u := cast.ToUint64(propValue)
-		fv.SetUint(u)
-	case reflect.Int64, reflect.Int32, reflect.Int16, reflect.Int8, reflect.Int:
-		i := cast.ToInt64(propValue)
-		fv.SetInt(i)
-	case reflect.Float64, reflect.Float32:
-		fv.SetFloat(cast.ToFloat64(propValue))
-	case reflect.String:
-		s := cast.ToString(propValue)
-		fv.SetString(s)
-	case reflect.Bool:
-		b := cast.ToBool(propValue)
-		fv.SetBool(b)
-	case reflect.Slice:
-		{
-			elemType := fv.Type().Elem()
-			elemKind := elemType.Kind()
-
-			switch elemKind {
-			case reflect.Int:
-				i := cast.ToIntSlice(propValue)
-				fv.Set(reflect.ValueOf(i))
-			case reflect.String:
-				i := cast.ToStringSlice(propValue)
-				fv.Set(reflect.ValueOf(i))
-			default:
-				if fn, ok := typeConverters[elemType]; ok {
-					// 首先处理使用类型转换器的场景
-
-					v := reflect.ValueOf(fn)
-					s0 := cast.ToStringSlice(propValue)
-					sv := reflect.MakeSlice(ft, len(s0), len(s0))
-
-					for i, iv := range s0 {
-						res := v.Call([]reflect.Value{reflect.ValueOf(iv)})
-						sv.Index(i).Set(res[0])
-					}
-
-					fv.Set(sv)
-
-				} else { // 然后处理结构体嵌套的场景
-
-					if s, ok := propValue.([]interface{}); ok {
-						result := reflect.MakeSlice(ft, len(s), len(s))
-
-						for i, si := range s {
-							if sv, ok := si.(map[interface{}]interface{}); ok {
-								ev := reflect.New(elemType)
-								subStructValue(NewMapPropertyHolder(sv), "", elemType, ev.Elem())
-								result.Index(i).Set(ev.Elem())
-							} else {
-								panic(fmt.Sprintf("property %s isn't []map[string]interface{}", propName))
-							}
-						}
-
-						fv.Set(result)
-
-					} else {
-						panic(fmt.Sprintf("property %s isn't []map[string]interface{}", propName))
-					}
-				}
-			}
-		}
-	default:
-		panic(fName + " unsupported type " + fvk.String())
-	}
-}
-
 //
 // 对原始对象进行注入
 //
@@ -704,7 +536,7 @@ func (ctx *DefaultSpringContext) wireOriginalBean(beanDefinition *BeanDefinition
 
 				// 处理 value 标签
 				if tag, ok := f.Tag.Lookup("value"); ok {
-					handleTagValue(ctx, "", f.Type, fv, fName, tag)
+					bindPropertyByTag(ctx, "", f.Type, fv, fName, tag)
 				}
 
 				// 处理 autowire 标签
@@ -736,7 +568,7 @@ func (ctx *DefaultSpringContext) wireConstructorBean(beanDefinition *BeanDefinit
 		iv := reflect.New(it).Elem()
 		{
 			if strings.HasPrefix(tag, "$") {
-				handleTagValue(ctx, "", it, iv, "", tag)
+				bindPropertyByTag(ctx, "", it, iv, "", tag)
 			} else {
 				ctx.findBeanByName(tag, EMPTY_VALUE, iv, "")
 			}

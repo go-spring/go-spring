@@ -21,47 +21,50 @@ import (
 )
 
 //
-// 定义属性值列表接口
+// 定义属性值接口
 //
 type Properties interface {
 	// 加载属性配置文件
 	LoadProperties(filename string)
 
-	// 获取属性值，属性名称不支持大小写。
+	// 获取属性值，属性名称统一转成小写。
 	GetProperty(name string) interface{}
 
-	// 获取布尔型属性值，属性名称不支持大小写。
+	// 获取布尔型属性值，属性名称统一转成小写。
 	GetBoolProperty(name string) bool
 
-	// 获取有符号整型属性值，属性名称不支持大小写。
+	// 获取有符号整型属性值，属性名称统一转成小写。
 	GetIntProperty(name string) int64
 
-	// 获取无符号整型属性值，属性名称不支持大小写。
+	// 获取无符号整型属性值，属性名称统一转成小写。
 	GetUintProperty(name string) uint64
 
-	// 获取浮点型属性值，属性名称不支持大小写。
+	// 获取浮点型属性值，属性名称统一转成小写。
 	GetFloatProperty(name string) float64
 
-	// 获取字符串型属性值，属性名称不支持大小写。
+	// 获取字符串型属性值，属性名称统一转成小写。
 	GetStringProperty(name string) string
 
-	// 获取字符串数组属性值，属性名称不支持大小写。
+	// 获取字符串数组属性值，属性名称统一转成小写。
 	GetStringSliceProperty(name string) []string
 
-	// 获取哈希表数组属性值，属性名称不支持大小写。
+	// 获取哈希表数组属性值，属性名称统一转成小写。
 	GetMapSliceProperty(name string) []map[string]interface{}
 
-	// 获取属性值，如果没有找到则使用指定的默认值，属性名称不支持大小写。
+	// 获取属性值，如果没有找到则使用指定的默认值，属性名称统一转成小写。
 	GetDefaultProperty(name string, defaultValue interface{}) (interface{}, bool)
 
-	// 设置属性值，属性名称不支持大小写。
+	// 设置属性值，属性名称统一转成小写。
 	SetProperty(name string, value interface{})
 
-	// 获取指定前缀的属性值集合，属性名称不支持大小写。
+	// 获取指定前缀的属性值集合，属性名称统一转成小写。
 	GetPrefixProperties(prefix string) map[string]interface{}
 
-	// 获取所有的属性值
+	// 获取所有的属性值，属性名称统一转成小写。
 	GetAllProperties() map[string]interface{}
+
+	// 根据类型获取属性值，属性名称统一转成小写。
+	BindProperty(name string, i interface{})
 }
 
 //

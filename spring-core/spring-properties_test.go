@@ -18,20 +18,57 @@ package SpringCore_test
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/go-spring/go-spring/spring-core"
 	"github.com/magiconair/properties/assert"
+	"github.com/spf13/cast"
 )
+
+func TestMap(t *testing.T) {
+	m := make(map[string]interface{})
+
+	// 使用判断模式
+	v, ok := m["aaa"]
+	fmt.Println(v, ok)
+
+	// 不存在时返回 nil
+	fmt.Println(m["aaa"])
+}
 
 func TestDefaultProperties_LoadProperties(t *testing.T) {
 
 	p := SpringCore.NewDefaultProperties()
 	p.LoadProperties("testdata/config/application.yaml")
+	p.LoadProperties("testdata/config/application.properties")
 
+	fmt.Println(">>> GetAllProperties")
 	for k, v := range p.GetAllProperties() {
 		fmt.Println(k, v)
 	}
+}
+
+type Point struct {
+	x int
+	y int
+}
+
+type PointBean struct {
+	Point        Point `value:"${point}"`
+	DefaultPoint Point `value:"${default_point:=(3,4)}"`
+
+	PointList []Point `value:"${point.list}"`
+}
+
+func PointConverter(val string) Point {
+	if !(strings.HasPrefix(val, "(") && strings.HasSuffix(val, ")")) {
+		panic("数据格式错误")
+	}
+	ss := strings.Split(val[1:len(val)-1], ",")
+	x := cast.ToInt(ss[0])
+	y := cast.ToInt(ss[1])
+	return Point{x, y}
 }
 
 func TestRegisterTypeConverter(t *testing.T) {
@@ -53,4 +90,100 @@ func TestRegisterTypeConverter(t *testing.T) {
 	}, "fn must be func\\(string\\)struct")
 
 	SpringCore.RegisterTypeConverter(PointConverter)
+}
+
+func TestDefaultProperties_GetProperty(t *testing.T) {
+	p := SpringCore.NewDefaultProperties()
+
+	p.SetProperty("Bool", true)
+	p.SetProperty("Int", 3)
+	p.SetProperty("Uint", 3)
+	p.SetProperty("Float", 3.0)
+	p.SetProperty("String", "3")
+	p.SetProperty("[]String", []string{"3"})
+	p.SetProperty("[]Map[String]Interface{}", []interface{}{
+		map[interface{}]interface{}{
+			"1": 2,
+		},
+	})
+
+	v := p.GetProperty("NULL")
+	assert.Equal(t, v, nil)
+
+	v, ok := p.GetDefaultProperty("NULL", "OK")
+	assert.Equal(t, ok, false)
+	assert.Equal(t, v, "OK")
+
+	v = p.GetProperty("INT")
+	assert.Equal(t, v, 3)
+
+	var v2 int
+	p.BindProperty("int", &v2)
+	assert.Equal(t, v2, 3)
+
+	b := p.GetBoolProperty("BOOL")
+	assert.Equal(t, b, true)
+
+	var b2 bool
+	p.BindProperty("bool", &b2)
+	assert.Equal(t, b2, true)
+
+	i := p.GetIntProperty("INT")
+	assert.Equal(t, i, int64(3))
+
+	u := p.GetUintProperty("UINT")
+	assert.Equal(t, u, uint64(3))
+
+	f := p.GetFloatProperty("FLOAT")
+	assert.Equal(t, f, 3.0)
+
+	s := p.GetStringProperty("STRING")
+	assert.Equal(t, s, "3")
+
+	ss := p.GetStringSliceProperty("[]STRING")
+	assert.Equal(t, ss, []string{"3"})
+
+	var ss2 []string
+	p.BindProperty("[]string", &ss2)
+	assert.Equal(t, ss2, []string{"3"})
+
+	m := p.GetMapSliceProperty("[]Map[String]Interface{}")
+	assert.Equal(t, fmt.Sprint(m), "[map[1:2]]")
+}
+
+func TestDefaultProperties_GetPrefixProperties(t *testing.T) {
+	p := SpringCore.NewDefaultProperties()
+	p.SetProperty("a.b.c", "3")
+	p.SetProperty("a.b.d", []string{"3"})
+	m := p.GetPrefixProperties("a.b")
+	assert.Equal(t, len(m), 2)
+	assert.Equal(t, m["a.b.c"], "3")
+	assert.Equal(t, m["a.b.d"], []string{"3"})
+}
+
+type DB struct {
+	UserName string `value:"${username}"`
+	Password string `value:"${password}"`
+	Url      string `value:"${url}"`
+	Port     string `value:"${port}"`
+	DB       string `value:"${db}"`
+}
+
+type DbConfig struct {
+	DB []DB `value:"${db}"`
+}
+
+func TestDefaultProperties_BindProperty(t *testing.T) {
+
+	p := SpringCore.NewDefaultProperties()
+	p.LoadProperties("testdata/config/application.yaml")
+
+	dbConfig1 := DbConfig{}
+	p.BindProperty("", &dbConfig1)
+
+	dbConfig2 := DbConfig{}
+	p.BindProperty("prefix", &dbConfig2)
+
+	// 实际上是取的两个节点，只是值是一样的而已
+	assert.Equal(t, dbConfig1, dbConfig2)
 }
