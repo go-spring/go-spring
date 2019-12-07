@@ -39,12 +39,16 @@ func TestDefaultSpringContext(t *testing.T) {
 		a := []int{3}
 
 		// 普通类型用属性注入
-		// ctx.RegisterBean(e)
+		assert.Panic(t, func() {
+			ctx.RegisterBean(e)
+		}, "bean must be ptr or slice or map or func")
 
 		ctx.RegisterBean(&e)
 
 		// 相同类型的匿名 bean 不能重复注册
-		// ctx.RegisterBean(&e)
+		assert.Panic(t, func() {
+			ctx.RegisterBean(&e)
+		}, "Bean 重复注册")
 
 		// 相同类型不同名称的 bean 都可注册
 		ctx.RegisterNameBean("i3", &e)
@@ -57,18 +61,23 @@ func TestDefaultSpringContext(t *testing.T) {
 
 		ctx.AutoWireBeans()
 
-		// 找到多个符合条件的值
-		if false {
+		assert.Panic(t, func() {
 			var i int
 			ctx.GetBean(&i)
-		}
+		}, "receiver \"\" must be ptr or slice or interface or map or func")
+
+		// 找到多个符合条件的值
+		assert.Panic(t, func() {
+			var i *int
+			ctx.GetBean(&i)
+		}, "找到多个符合条件的值")
 
 		// 入参不是可赋值的对象
-		if false {
+		assert.Panic(t, func() {
 			var i int
 			ctx.GetBeanByName("i3", &i)
 			fmt.Println(i)
-		}
+		}, "receiver \"\" must be ptr or slice or interface or map or func")
 
 		{
 			var i *int
@@ -103,7 +112,9 @@ func TestDefaultSpringContext(t *testing.T) {
 		p := []*pkg1.SamePkg{{}}
 
 		// 栈上的对象不能注册
-		// ctx.RegisterBean(e)
+		assert.Panic(t, func() {
+			ctx.RegisterBean(e)
+		}, "bean must be ptr or slice or map or func")
 
 		ctx.RegisterBean(&e)
 
@@ -129,7 +140,9 @@ func TestDefaultSpringContext(t *testing.T) {
 		p := []*pkg2.SamePkg{{}}
 
 		// 栈上的对象不能注册
-		// ctx.RegisterBean(e)
+		assert.Panic(t, func() {
+			ctx.RegisterBean(e)
+		}, "bean must be ptr or slice or map or func")
 
 		ctx.RegisterBean(&e)
 
@@ -151,11 +164,11 @@ func TestDefaultSpringContext(t *testing.T) {
 	})
 }
 
-type Binding struct {
+type TestBinding struct {
 	i int
 }
 
-func (b *Binding) String() string {
+func (b *TestBinding) String() string {
 	if b == nil {
 		return ""
 	} else {
@@ -163,7 +176,7 @@ func (b *Binding) String() string {
 	}
 }
 
-type Object struct {
+type TestObject struct {
 	// 基础类型指针
 	IntPtrByType *int `autowire:""`
 	IntPtrByName *int `autowire:"int_ptr"`
@@ -180,18 +193,18 @@ type Object struct {
 	IntPtrSliceByName []*int `autowire:"int_ptr_slice"`
 
 	// 自定义类型指针
-	StructByType *Binding `autowire:""`
-	StructByName *Binding `autowire:"struct_ptr"`
+	StructByType *TestBinding `autowire:""`
+	StructByName *TestBinding `autowire:"struct_ptr"`
 
 	// 自定义类型数组
-	StructSliceByType []Binding `autowire:""`
-	StructCollection  []Binding `autowire:"[]"`
-	StructSliceByName []Binding `autowire:"struct_slice"`
+	StructSliceByType []TestBinding `autowire:""`
+	StructCollection  []TestBinding `autowire:"[]"`
+	StructSliceByName []TestBinding `autowire:"struct_slice"`
 
 	// 自定义类型指针数组
-	StructPtrSliceByType []*Binding `autowire:""`
-	StructPtrCollection  []*Binding `autowire:"[]"`
-	StructPtrSliceByName []*Binding `autowire:"struct_ptr_slice"`
+	StructPtrSliceByType []*TestBinding `autowire:""`
+	StructPtrCollection  []*TestBinding `autowire:"[]"`
+	StructPtrSliceByName []*TestBinding `autowire:"struct_ptr_slice"`
 
 	// 接口
 	InterfaceByType fmt.Stringer `autowire:""`
@@ -211,18 +224,31 @@ type Object struct {
 }
 
 func TestDefaultSpringContext_AutoWireBeans(t *testing.T) {
+
+	t.Run("wired error", func(t *testing.T) {
+		ctx := SpringCore.NewDefaultSpringContext()
+
+		obj := &TestObject{}
+		ctx.RegisterBean(obj)
+
+		i := int(3)
+		ctx.RegisterNameBean("int_ptr", &i)
+
+		i2 := int(3)
+		ctx.RegisterNameBean("int_ptr_2", &i2)
+
+		assert.Panic(t, func() {
+			ctx.AutoWireBeans()
+		}, "TestObject.\\$IntPtrByType 找到多个符合条件的值")
+	})
+
 	ctx := SpringCore.NewDefaultSpringContext()
 
-	obj := &Object{}
+	obj := &TestObject{}
 	ctx.RegisterBean(obj)
 
 	i := int(3)
 	ctx.RegisterNameBean("int_ptr", &i)
-
-	if false {
-		i2 := int(3)
-		ctx.RegisterNameBean("int_ptr_2", &i2)
-	}
 
 	is := []int{1, 2, 3}
 	ctx.RegisterNameBean("int_slice", is)
@@ -234,17 +260,17 @@ func TestDefaultSpringContext_AutoWireBeans(t *testing.T) {
 	ips := []*int{&i2}
 	ctx.RegisterNameBean("int_ptr_slice", ips)
 
-	b := Binding{1}
+	b := TestBinding{1}
 	ctx.RegisterNameBean("struct_ptr", &b)
 
-	bs := []Binding{{10}}
+	bs := []TestBinding{{10}}
 	ctx.RegisterNameBean("struct_slice", bs)
 
-	b2 := Binding{2}
-	bps := []*Binding{&b2}
+	b2 := TestBinding{2}
+	bps := []*TestBinding{&b2}
 	ctx.RegisterNameBean("struct_ptr_slice", bps)
 
-	s := []fmt.Stringer{&Binding{3}}
+	s := []fmt.Stringer{&TestBinding{3}}
 	ctx.RegisterBean(s)
 
 	m := map[string]interface{}{
@@ -310,14 +336,6 @@ func TestDefaultSpringContext_ValueTag(t *testing.T) {
 	ctx.SetProperty("bool", true)
 
 	setting := &Setting{}
-
-	//ctx.RegisterBean(setting).ConditionOnMatches(func(ctx SpringCore.SpringContext) bool {
-	//	return false
-	//}).Or().ConditionOnProperty("bool")
-
-	//ctx.RegisterBean(setting).ConditionOnMatches(func(ctx SpringCore.SpringContext) bool {
-	//	return true
-	//}).And().ConditionOnProperty("bool")
 
 	ctx.RegisterBean(setting).Conditional(
 		SpringCore.ConditionOnProperty("bool", "true").And().Conditional(
@@ -529,9 +547,6 @@ func TestDefaultSpringContext_LoadProperties(t *testing.T) {
 	val1 := ctx.GetProperty("yaml.list")
 	assert.Equal(t, val1, []interface{}{1, 2})
 
-	//val2 := ctx.GetStringSliceProperty("properties.list")
-	//assert.Equal(t, val2, []string{"1", "2"})
-
 	val3 := ctx.GetStringSliceProperty("yaml.list")
 	assert.Equal(t, val3, []string{"1", "2"})
 
@@ -540,12 +555,6 @@ func TestDefaultSpringContext_LoadProperties(t *testing.T) {
 		{"name": "jim", "age": 12},
 		{"name": "bob", "age": 8},
 	})
-
-	//val5 := ctx.GetMapSliceProperty("properties.obj.list")
-	//assert.Equal(t, val5, []map[string]interface{}{
-	//	{"name": "jerry", "age": 2},
-	//	{"name": "tom", "age": 4},
-	//})
 }
 
 type BeanZero struct {
@@ -861,4 +870,20 @@ func TestDefaultSpringContext_Primary(t *testing.T) {
 		ctx.GetBean(&b)
 		assert.Equal(t, b.One.Zero.Int, 6)
 	})
+}
+
+type FuncObj struct {
+	Fn func(int) int `autowire:""`
+}
+
+func TestDefaultProperties_WireFunc(t *testing.T) {
+	ctx := SpringCore.NewDefaultSpringContext()
+	ctx.RegisterBean(func(int) int {
+		return 6
+	})
+	obj := new(FuncObj)
+	ctx.RegisterBean(obj)
+	ctx.AutoWireBeans()
+	i := obj.Fn(3)
+	assert.Equal(t, i, 6)
 }

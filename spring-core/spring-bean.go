@@ -26,6 +26,10 @@ var (
 	_VALID_BEAN_KINDS = []reflect.Kind{ // 哪些类型可以成为 Bean.
 		reflect.Ptr, reflect.Map, reflect.Slice, reflect.Func,
 	}
+
+	_VALID_RECEIVER_KINDS = []reflect.Kind{ // 哪些类型可以成为 Bean 的接收者
+		reflect.Ptr, reflect.Interface, reflect.Map, reflect.Slice, reflect.Func,
+	}
 )
 
 //

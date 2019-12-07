@@ -57,6 +57,16 @@ func Exit() {
 
 //////////////// SpringContext ////////////////////////
 
+// 获取运行环境
+func GetProfile() string {
+	return ctx.GetProfile()
+}
+
+// 设置运行环境
+func SetProfile(profile string) {
+	ctx.SetProfile(profile)
+}
+
 //
 // 注册单例 Bean，不指定名称，重复注册会 panic。
 //
@@ -202,4 +212,11 @@ func GetPrefixProperties(prefix string) map[string]interface{} {
 //
 func GetAllProperties() map[string]interface{} {
 	return ctx.GetAllProperties()
+}
+
+//
+// 根据类型获取属性值，属性名称统一转成小写。
+//
+func BindProperty(name string, i interface{}) {
+	ctx.BindProperty(name, i)
 }

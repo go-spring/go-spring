@@ -36,6 +36,12 @@ type SpringContext interface {
 	// 属性值列表接口
 	Properties
 
+	// 获取运行环境
+	GetProfile() string
+
+	// 设置运行环境
+	SetProfile(profile string)
+
 	// 注册单例 Bean，不指定名称，重复注册会 panic。
 	RegisterBean(bean interface{}) *Annotation
 
@@ -57,6 +63,9 @@ type SpringContext interface {
 	// 获取所有 Bean 的定义，一般仅供调试使用。
 	GetAllBeanDefinitions() []*BeanDefinition
 
+	// 绑定外部指定的 Bean
+	WireBean(bean interface{})
+
 	// 根据类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 	// 什么情况下会多于 1 个？假设 StructA 实现了 InterfaceT，而且用户在注
 	// 册时使用了 StructA 的指针注册多个 Bean，如果在获取时使用 InterfaceT,
@@ -77,13 +86,4 @@ type SpringContext interface {
 
 	// 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 	FindBeanByName(beanId string) (interface{}, bool)
-
-	// 绑定外部指定的 Bean
-	WireBean(bean interface{})
-
-	// 获取运行环境
-	GetProfile() string
-
-	// 设置运行环境
-	SetProfile(profile string)
 }
