@@ -202,12 +202,23 @@ func (p *MapPropertyHolder) GetDefaultProperty(name string, defaultValue interfa
 //
 // 对结构体进行属性值绑定
 //
-func bindStruct(prop PropertyHolder, prefix string, t reflect.Type, v reflect.Value) {
+func bindStruct(prop PropertyHolder, prefix string, t reflect.Type, v reflect.Value, field string) {
 	for i := 0; i < t.NumField(); i++ {
 		it := t.Field(i)
+		iv := v.Field(i)
+
+		subFieldName := field + ".$" + it.Name
+
+		if it.Anonymous { // 处理结构体嵌套的情况
+			if _, ok := it.Tag.Lookup("value"); ok {
+				panic(subFieldName + " 嵌套结构体上不允许有 value 标签")
+			}
+			bindStruct(prop, prefix, it.Type, iv, subFieldName)
+			continue
+		}
+
 		if tag, ok := it.Tag.Lookup("value"); ok {
-			iv := v.Field(i)
-			bindPropertyByTag(prop, prefix, it.Type, iv, "", tag)
+			bindPropertyByTag(prop, prefix, it.Type, iv, subFieldName, tag)
 		}
 	}
 }
@@ -261,7 +272,7 @@ func bindProperty(prop PropertyHolder, fieldType reflect.Type, fieldValue reflec
 			propValue = val
 		} else {
 			if propValue == nil {
-				panic("properties \"" + propName + "\" not config")
+				panic(fieldName + " properties \"" + propName + "\" not config")
 			}
 		}
 	}
@@ -285,7 +296,7 @@ func bindProperty(prop PropertyHolder, fieldType reflect.Type, fieldValue reflec
 			panic(fieldName + " 嵌套的结构体属性不能指定默认值")
 		}
 
-		bindStruct(prop, propName, fieldType, fieldValue)
+		bindStruct(prop, propName, fieldType, fieldValue, fieldName)
 		return
 	}
 
@@ -342,7 +353,7 @@ func bindProperty(prop PropertyHolder, fieldType reflect.Type, fieldValue reflec
 						for i, si := range s {
 							if sv, ok := si.(map[interface{}]interface{}); ok {
 								ev := reflect.New(elemType)
-								bindStruct(NewMapPropertyHolder(sv), "", elemType, ev.Elem())
+								bindStruct(NewMapPropertyHolder(sv), "", elemType, ev.Elem(), fieldName)
 								result.Index(i).Set(ev.Elem())
 							} else {
 								panic(fmt.Sprintf("property %s isn't []map[string]interface{}", propName))
@@ -370,5 +381,6 @@ func (p *DefaultProperties) BindProperty(name string, i interface{}) {
 	if v.Kind() != reflect.Ptr {
 		panic("参数 v 必须是一个指针")
 	}
-	bindProperty(p, v.Type().Elem(), v.Elem(), "", name, nil)
+	t := v.Type().Elem()
+	bindProperty(p, t, v.Elem(), t.Name(), name, nil)
 }

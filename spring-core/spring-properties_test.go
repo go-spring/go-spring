@@ -187,3 +187,58 @@ func TestDefaultProperties_BindProperty(t *testing.T) {
 	// 实际上是取的两个节点，只是值是一样的而已
 	assert.Equal(t, dbConfig1, dbConfig2)
 }
+
+type DBConnection struct {
+	UserName string `value:"${username}"`
+	Password string `value:"${password}"`
+	Url      string `value:"${url}"`
+	Port     string `value:"${port}"`
+}
+
+type ErrorNestedDB struct {
+	DBConnection `value:"${db}"` // 错误，不能有 tag
+	DB string    `value:"${db}"`
+}
+
+type ErrorNestedDbConfig struct {
+	DB []ErrorNestedDB `value:"${db}"`
+}
+
+type NestedDB struct {
+	DBConnection // 正确，不能有 tag
+	DB string `value:"${db}"`
+}
+
+type NestedDbConfig struct {
+	DB []NestedDB `value:"${db}"`
+}
+
+func TestDefaultProperties_GetAllProperties(t *testing.T) {
+
+	t.Run("error", func(t *testing.T) {
+
+		p := SpringCore.NewDefaultProperties()
+		p.LoadProperties("testdata/config/application.yaml")
+
+		assert.Panic(t, func() {
+			dbConfig1 := ErrorNestedDbConfig{}
+			p.BindProperty("", &dbConfig1)
+		}, "ErrorNestedDbConfig.\\$DB.\\$DBConnection 嵌套结构体上不允许有 value 标签")
+	})
+
+	t.Run("success", func(t *testing.T) {
+
+		p := SpringCore.NewDefaultProperties()
+		p.LoadProperties("testdata/config/application.yaml")
+
+		dbConfig1 := NestedDbConfig{}
+		p.BindProperty("", &dbConfig1)
+
+		dbConfig2 := NestedDbConfig{}
+		p.BindProperty("prefix", &dbConfig2)
+
+		// 实际上是取的两个节点，只是值是一样的而已
+		assert.Equal(t, dbConfig1, dbConfig2)
+		assert.Equal(t, len(dbConfig1.DB), 2)
+	})
+}
