@@ -49,25 +49,6 @@ func TestPropertyCondition(t *testing.T) {
 	assert.Equal(t, cond.Matches(ctx), false)
 }
 
-func TestConditional(t *testing.T) {
-	ctx := SpringCore.NewDefaultSpringContext()
-	ctx.SetProperty("int", 3)
-
-	cond := SpringCore.NewConditional()
-	assert.Equal(t, cond.Matches(ctx), true)
-
-	cond = SpringCore.NewConditional().And()
-	assert.Panic(t, func() {
-		cond.Matches(ctx)
-	}, "last op need a cond triggered")
-
-	cond = SpringCore.ConditionOnProperty("int", "3")
-	assert.Equal(t, cond.Matches(ctx), true)
-
-	cond = SpringCore.ConditionOnProperty("bool", "false")
-	assert.Equal(t, cond.Matches(ctx), false)
-}
-
 func TestConditional_ConditionalOnBean(t *testing.T) {
 	ctx := SpringCore.NewDefaultSpringContext()
 
@@ -75,7 +56,7 @@ func TestConditional_ConditionalOnBean(t *testing.T) {
 	ctx.RegisterBean(new(BeanOne))
 
 	ctx.RegisterBean(new(BeanTwo)).ConditionalOnBean("*SpringCore_test.BeanOne")
-	ctx.RegisterNameBean("another_two", new(BeanTwo)).ConditionalOnBean("BeanOne")
+	ctx.RegisterNameBean("another_two", new(BeanTwo)).ConditionalOnBean("Null")
 
 	ctx.AutoWireBeans()
 
@@ -93,17 +74,34 @@ func TestConditional_ConditionalOnMissingBean(t *testing.T) {
 	ctx.RegisterBean(&BeanZero{5})
 	ctx.RegisterBean(new(BeanOne))
 
-	ctx.RegisterBean(new(BeanTwo)).ConditionalOnBean("*SpringCore_test.BeanOne")
-	ctx.RegisterNameBean("another_two", new(BeanTwo)).ConditionalOnMissingBean("BeanOne")
+	ctx.RegisterBean(new(BeanTwo)).ConditionalOnMissingBean("*SpringCore_test.BeanOne")
+	ctx.RegisterNameBean("another_two", new(BeanTwo)).ConditionalOnMissingBean("Null")
 
 	ctx.AutoWireBeans()
 
 	var two *BeanTwo
-
-	assert.Panic(t, func() {
-		ctx.GetBeanByName("", &two)
-	}, "找到多个符合条件的值")
-
-	ok := ctx.GetBeanByName("another_two", &two)
+	ok := ctx.GetBeanByName("", &two)
 	assert.Equal(t, ok, true)
+
+	ok = ctx.GetBeanByName("another_two", &two)
+	assert.Equal(t, ok, true)
+}
+
+func TestConditional(t *testing.T) {
+	ctx := SpringCore.NewDefaultSpringContext()
+	ctx.SetProperty("int", 3)
+
+	cond := SpringCore.NewConditional()
+	assert.Equal(t, cond.Matches(ctx), true)
+
+	cond = SpringCore.NewConditional().And()
+	assert.Panic(t, func() {
+		cond.Matches(ctx)
+	}, "last op need a cond triggered")
+
+	cond = SpringCore.ConditionOnProperty("int", "3")
+	assert.Equal(t, cond.Matches(ctx), true)
+
+	cond = SpringCore.ConditionOnProperty("bool", "false")
+	assert.Equal(t, cond.Matches(ctx), false)
 }

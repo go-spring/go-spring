@@ -33,7 +33,7 @@ type Condition interface {
 type ConditionFunc func(ctx SpringContext) bool
 
 //
-// 基于方法的 Condition 实现
+// 基于 Matches 方法的 Condition 实现
 //
 type FunctionCondition struct {
 	fn ConditionFunc
@@ -54,7 +54,7 @@ func (c *FunctionCondition) Matches(ctx SpringContext) bool {
 }
 
 //
-// 基于 Property 的 Condition 实现
+// 基于属性值匹配的 Condition 实现
 //
 type PropertyCondition struct {
 	name        string
@@ -120,7 +120,7 @@ const (
 )
 
 //
-// 定义 Condition 链条节点
+// 实现多个 Condition 的组合
 //
 type ConditionNode struct {
 	next *ConditionNode // 下一个节点
@@ -163,7 +163,7 @@ func (c *ConditionNode) Matches(ctx SpringContext) bool {
 				return false
 			}
 		default:
-			panic("error op mode")
+			panic("error condition node op mode")
 		}
 
 	} else {
@@ -221,6 +221,9 @@ func (c *Conditional) Conditional(cond *Conditional) *Conditional {
 	return c
 }
 
+//
+// 创建基于属性值匹配的 Condition 实现
+//
 func ConditionOnProperty(name string, havingValue string) *Conditional {
 	return NewConditional().ConditionOnProperty(name, havingValue)
 }
@@ -230,6 +233,9 @@ func (c *Conditional) ConditionOnProperty(name string, havingValue string) *Cond
 	return c
 }
 
+//
+// 创建基于 Bean 的 Condition 实现
+//
 func ConditionalOnBean(beanId string) *Conditional {
 	return NewConditional().ConditionalOnBean(beanId)
 }
@@ -239,6 +245,9 @@ func (c *Conditional) ConditionalOnBean(beanId string) *Conditional {
 	return c
 }
 
+//
+// 创建基于 Missing Bean 的 Condition 实现
+//
 func ConditionalOnMissingBean(beanId string) *Conditional {
 	return NewConditional().ConditionalOnMissingBean(beanId)
 }
@@ -248,6 +257,9 @@ func (c *Conditional) ConditionalOnMissingBean(beanId string) *Conditional {
 	return c
 }
 
+//
+// 创建基于表达式的 Condition 实现
+//
 func ConditionalOnExpression(expression string) *Conditional {
 	return NewConditional().ConditionalOnExpression(expression)
 }
@@ -256,6 +268,9 @@ func (c *Conditional) ConditionalOnExpression(expression string) *Conditional {
 	panic(SpringConst.UNIMPLEMENTED_METHOD)
 }
 
+//
+// 创建基于 Matches 函数的 Condition 实现
+//
 func ConditionOnMatches(fn ConditionFunc) *Conditional {
 	return NewConditional().ConditionOnMatches(fn)
 }

@@ -28,8 +28,11 @@ func IsValidBean(bean interface{}) (reflect.Type, bool) {
 	// 指针、Map、数组都是合法的 Bean，函数指针也应该可以视为一种 Bean
 	if bean != nil {
 		t := reflect.TypeOf(bean)
-		if k := t.Kind(); k == reflect.Ptr || k == reflect.Map || k == reflect.Slice {
-			return t, true
+		k := t.Kind()
+		for i := range _VALID_BEAN_KINDS {
+			if _VALID_BEAN_KINDS[i] == k {
+				return t, true
+			}
 		}
 	}
 	return nil, false

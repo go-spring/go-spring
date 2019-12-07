@@ -22,6 +22,12 @@ import (
 	"strings"
 )
 
+var (
+	_VALID_BEAN_KINDS = []reflect.Kind{ // 哪些类型可以成为 Bean.
+		reflect.Ptr, reflect.Map, reflect.Slice, reflect.Func,
+	}
+)
+
 //
 // 定义 SpringBean 接口
 //
@@ -49,7 +55,7 @@ func NewOriginalBean(bean interface{}) *OriginalBean {
 
 	t, ok := IsValidBean(bean)
 	if !ok {
-		panic("bean must be pointer or slice or map")
+		panic("bean must be ptr or slice or map or func")
 	}
 
 	return &OriginalBean{
@@ -96,7 +102,7 @@ func NewConstructorBean(fn interface{}, tags ...string) *ConstructorBean {
 	fnType := reflect.TypeOf(fn)
 
 	if fnType.Kind() != reflect.Func {
-		panic("constructor must be function")
+		panic("constructor must be func")
 	}
 
 	if fnType.NumOut() != 1 {
@@ -141,30 +147,32 @@ func NewConstructorBean(fn interface{}, tags ...string) *ConstructorBean {
 		}
 	}
 
-	b := &ConstructorBean{
-		fn:      fn,
-		fnType:  fnType,
-		fnValue: reflect.ValueOf(fn),
-		tags:    fnTags,
-	}
-
 	t := fnType.Out(0)
-
+	k := t.Kind()
 	v := reflect.New(t)
-	if k := t.Kind(); k == reflect.Ptr || k == reflect.Map || k == reflect.Slice {
-		v = v.Elem()
+
+	for i := range _VALID_BEAN_KINDS {
+		if _VALID_BEAN_KINDS[i] == k {
+			v = v.Elem()
+			break
+		}
 	}
 
 	// 重新确定类型
 	t = v.Type()
 
-	// 赋值默认值
-	b.bean = v.Interface()
-	b.rType = t
-	b.typeName = TypeName(t)
-	b.rValue = v
-
-	return b
+	return &ConstructorBean{
+		OriginalBean: OriginalBean{
+			bean:     v.Interface(),
+			rType:    t,
+			typeName: TypeName(t),
+			rValue:   v,
+		},
+		fn:      fn,
+		fnType:  fnType,
+		fnValue: reflect.ValueOf(fn),
+		tags:    fnTags,
+	}
 }
 
 //
@@ -201,6 +209,23 @@ type BeanDefinition struct {
 }
 
 //
+// 工厂函数
+//
+func NewBeanDefinition(bean SpringBean, name string) *BeanDefinition {
+
+	// 生成默认名称
+	if name == "" {
+		name = bean.Type().String()
+	}
+
+	return &BeanDefinition{
+		SpringBean: bean,
+		Name:       name,
+		status:     BeanStatus_Default,
+	}
+}
+
+//
 // 测试类型全限定名和 Bean 名称是否都能匹配。
 //
 func (d *BeanDefinition) Match(typeName string, beanName string) bool {
@@ -221,44 +246,15 @@ func (d *BeanDefinition) Match(typeName string, beanName string) bool {
 //
 // 将 Bean 转换为 BeanDefinition 对象
 //
-func ToBeanDefinition(name string, bean interface{}) *BeanDefinition {
-
-	var (
-		ok bool
-		t  reflect.Type
-	)
-
-	if t, ok = IsValidBean(bean); !ok {
-		panic("bean must be pointer or slice or map")
-	}
-
-	// 生成默认名称
-	if name == "" {
-		name = t.String()
-	}
-
-	return &BeanDefinition{
-		SpringBean: NewOriginalBean(bean),
-		Name:       name,
-		status:     BeanStatus_Default,
-	}
+func ToBeanDefinition(name string, i interface{}) *BeanDefinition {
+	bean := NewOriginalBean(i)
+	return NewBeanDefinition(bean, name)
 }
 
 //
 // 将构造函数转换为 BeanDefinition 对象
 //
 func FnToBeanDefinition(name string, fn interface{}, tags ...string) *BeanDefinition {
-
 	bean := NewConstructorBean(fn, tags...)
-
-	// 生成默认名称
-	if name == "" {
-		name = bean.Type().String()
-	}
-
-	return &BeanDefinition{
-		SpringBean: bean,
-		Name:       name,
-		status:     BeanStatus_Default,
-	}
+	return NewBeanDefinition(bean, name)
 }

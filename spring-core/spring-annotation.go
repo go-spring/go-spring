@@ -29,46 +29,73 @@ func NewAnnotation(bean *BeanDefinition) *Annotation {
 	}
 }
 
+//
+// 设置 bean 注册需要满足的条件
+//
 func (annotation *Annotation) Conditional(cond *Conditional) *Annotation {
 	annotation.bean.cond.Conditional(cond)
 	return annotation
 }
 
+//
+// 指定的属性值匹配时注册当前 bean
+//
 func (annotation *Annotation) ConditionOnProperty(name string, havingValue string) *Annotation {
 	annotation.bean.cond.ConditionOnProperty(name, havingValue)
 	return annotation
 }
 
+//
+// 指定的 bean 存在时注册当前 bean
+//
 func (annotation *Annotation) ConditionalOnBean(beanId string) *Annotation {
 	annotation.bean.cond.ConditionalOnBean(beanId)
 	return annotation
 }
 
+//
+// 指定的 bean 不存在时注册当前 bean
+//
 func (annotation *Annotation) ConditionalOnMissingBean(beanId string) *Annotation {
 	annotation.bean.cond.ConditionalOnMissingBean(beanId)
 	return annotation
 }
 
+//
+// 设置 bean 注册需要满足的表达式条件
+//
 func (annotation *Annotation) ConditionalOnExpression(expression string) *Annotation {
 	annotation.bean.cond.ConditionalOnExpression(expression)
 	return annotation
 }
 
+//
+// 设置 bean 注册需要满足的函数条件
+//
 func (annotation *Annotation) ConditionOnMatches(fn ConditionFunc) *Annotation {
 	annotation.bean.cond.ConditionOnMatches(fn)
 	return annotation
 }
 
+//
+// 设置 bean 的运行环境
+//
 func (annotation *Annotation) Profile(profile string) *Annotation {
 	annotation.bean.profile = profile
 	return annotation
 }
 
+//
+// 设置 bean 的非直接依赖
+//
 func (annotation *Annotation) DependsOn(beanId ...string) *Annotation {
 	annotation.bean.dependsOn = beanId
 	return annotation
 }
 
+//
+// 设置 bean 为主版本
+//
 func (annotation *Annotation) Primary(primary bool) *Annotation {
 	annotation.bean.primary = primary
 	return annotation
