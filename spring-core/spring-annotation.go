@@ -16,6 +16,9 @@
 
 package SpringCore
 
+//
+// 设定 Bean 的各种元数据
+//
 type Annotation struct {
 	bean *BeanDefinition
 }
@@ -30,7 +33,7 @@ func NewAnnotation(bean *BeanDefinition) *Annotation {
 }
 
 //
-// 设置 bean 注册需要满足的条件
+// 设置一个 Condition
 //
 func (annotation *Annotation) ConditionOn(cond Condition) *Annotation {
 	annotation.bean.cond = cond
@@ -38,7 +41,7 @@ func (annotation *Annotation) ConditionOn(cond Condition) *Annotation {
 }
 
 //
-// 指定的属性值匹配时注册当前 bean
+// 设置一个 PropertyCondition
 //
 func (annotation *Annotation) ConditionOnProperty(name string, havingValue string) *Annotation {
 	annotation.bean.cond = NewPropertyCondition(name, havingValue)
@@ -46,7 +49,7 @@ func (annotation *Annotation) ConditionOnProperty(name string, havingValue strin
 }
 
 //
-// 指定的 bean 存在时注册当前 bean
+// 设置一个 BeanCondition
 //
 func (annotation *Annotation) ConditionOnBean(beanId string) *Annotation {
 	annotation.bean.cond = NewBeanCondition(beanId)
@@ -54,7 +57,7 @@ func (annotation *Annotation) ConditionOnBean(beanId string) *Annotation {
 }
 
 //
-// 指定的 bean 不存在时注册当前 bean
+// 设置一个 MissingBeanCondition
 //
 func (annotation *Annotation) ConditionOnMissingBean(beanId string) *Annotation {
 	annotation.bean.cond = NewMissingBeanCondition(beanId)
@@ -62,7 +65,7 @@ func (annotation *Annotation) ConditionOnMissingBean(beanId string) *Annotation 
 }
 
 //
-// 设置 bean 注册需要满足的表达式条件
+// 设置一个 ExpressionCondition
 //
 func (annotation *Annotation) ConditionOnExpression(expression string) *Annotation {
 	annotation.bean.cond = NewExpressionCondition(expression)
@@ -70,7 +73,7 @@ func (annotation *Annotation) ConditionOnExpression(expression string) *Annotati
 }
 
 //
-// 设置 bean 注册需要满足的函数条件
+// 设置一个 FunctionCondition
 //
 func (annotation *Annotation) ConditionOnMatches(fn ConditionFunc) *Annotation {
 	annotation.bean.cond = NewFunctionCondition(fn)
@@ -94,7 +97,7 @@ func (annotation *Annotation) DependsOn(beanId ...string) *Annotation {
 }
 
 //
-// 设置 bean 为主版本
+// 设置 bean 的优先级
 //
 func (annotation *Annotation) Primary(primary bool) *Annotation {
 	annotation.bean.primary = primary

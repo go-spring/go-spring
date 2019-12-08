@@ -295,12 +295,19 @@ func bindValue(prop PropertyHolder, fieldType reflect.Type, fieldValue reflect.V
 			elemKind := elemType.Kind()
 
 			switch elemKind {
-			case reflect.Int:
+			case reflect.Uint64, reflect.Uint32, reflect.Uint16, reflect.Uint8, reflect.Uint:
+				panic("暂未支持")
+			case reflect.Int64, reflect.Int32, reflect.Int16, reflect.Int8, reflect.Int:
 				i := cast.ToIntSlice(propValue)
 				fieldValue.Set(reflect.ValueOf(i))
+			case reflect.Float64, reflect.Float32:
+				panic("暂未支持")
 			case reflect.String:
 				i := cast.ToStringSlice(propValue)
 				fieldValue.Set(reflect.ValueOf(i))
+			case reflect.Bool:
+				b := cast.ToBoolSlice(propValue)
+				fieldValue.Set(reflect.ValueOf(b))
 			default:
 				if fn, ok := typeConverters[elemType]; ok {
 					// 首先处理使用类型转换器的场景

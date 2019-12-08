@@ -21,17 +21,18 @@ package SpringCore
 
 //
 // 定义 IoC 容器接口，Bean 的注册规则：
-//   1. 单例 Bean 只能注册指针和数组。
-//   2. 执行完 AutoWireBeans 后不能再注册 Bean（性能考虑）。
+//   1. 只能注册单例 Bean。
+//   2. AutoWireBeans 开始后不允许注册新的 Bean（性能考虑）。
 //   3. 原型 Bean 只能通过 BeanFactory 的形式使用，参见测试用例。
 //
 type SpringContext interface {
 	// SpringContext 的工作过程分为三个阶段：
 	// 1) 加载 Properties 文件，
-	// 2) 收集 Bean 列表，
-	// 3) 执行自动绑定，又分为两个小阶段：
-	//    3.1) 判别 Bean 的注册条件，
-	//    3.2) 执行 Bean 和 Property 绑定。
+	// 2) 注册 Bean 列表，
+	// 3) 自动绑定，又分为两个小阶段：
+	//    3.1) 判断 Bean 的注册条件，
+	//    3.2) 绑定 Bean 的非直接依赖项，
+	//    3.3) 绑定 Bean。
 
 	// 属性值列表接口
 	Properties

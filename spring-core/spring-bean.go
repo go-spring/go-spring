@@ -23,12 +23,20 @@ import (
 )
 
 var (
-	_VALID_BEAN_KINDS = []reflect.Kind{ // 哪些类型可以成为 Bean.
-		reflect.Ptr, reflect.Map, reflect.Slice, reflect.Func,
+	//
+	// 哪些类型的数据可以成为 Bean？一般来讲引用类型的数据都可以成为 Bean，
+	// 但是最好按照数据的真实类型去注册，所以 interface 类型不能成为 Bean。
+	//
+	_VALID_BEAN_KINDS = []reflect.Kind{
+		reflect.Ptr, reflect.Slice, reflect.Map, reflect.Func,
 	}
 
-	_VALID_RECEIVER_KINDS = []reflect.Kind{ // 哪些类型可以成为 Bean 的接收者
-		reflect.Ptr, reflect.Interface, reflect.Map, reflect.Slice, reflect.Func,
+	//
+	// 哪些类型可以成为 Bean 的接收者？除了使用 Bean 的真实类型去接收，还可
+	// 以使用 Bean 实现的 interface 去接收，而且推荐用 interface 去接收。
+	//
+	_VALID_RECEIVER_KINDS = []reflect.Kind{
+		reflect.Interface, reflect.Ptr, reflect.Slice, reflect.Map, reflect.Func,
 	}
 )
 

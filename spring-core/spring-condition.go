@@ -21,7 +21,7 @@ import (
 )
 
 //
-// 定义 Condition 接口
+// 定义 Condition 接口，当判断条件返回 true 时 Bean 才会真正注册到 IoC 容器。
 //
 type Condition interface {
 	Matches(ctx SpringContext) bool
