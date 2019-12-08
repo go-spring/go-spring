@@ -45,12 +45,6 @@ type Properties interface {
 	// 获取字符串型属性值，属性名称统一转成小写。
 	GetStringProperty(name string) string
 
-	// 获取字符串数组属性值，属性名称统一转成小写。
-	GetStringSliceProperty(name string) []string
-
-	// 获取哈希表数组属性值，属性名称统一转成小写。
-	GetMapSliceProperty(name string) []map[string]interface{}
-
 	// 获取属性值，如果没有找到则使用指定的默认值，属性名称统一转成小写。
 	GetDefaultProperty(name string, defaultValue interface{}) (interface{}, bool)
 

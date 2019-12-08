@@ -140,15 +140,9 @@ func TestDefaultProperties_GetProperty(t *testing.T) {
 	s := p.GetStringProperty("STRING")
 	assert.Equal(t, s, "3")
 
-	ss := p.GetStringSliceProperty("[]STRING")
-	assert.Equal(t, ss, []string{"3"})
-
 	var ss2 []string
 	p.BindProperty("[]string", &ss2)
 	assert.Equal(t, ss2, []string{"3"})
-
-	m := p.GetMapSliceProperty("[]Map[String]Interface{}")
-	assert.Equal(t, fmt.Sprint(m), "[map[1:2]]")
 }
 
 func TestDefaultProperties_GetPrefixProperties(t *testing.T) {

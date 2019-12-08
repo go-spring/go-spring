@@ -337,9 +337,9 @@ func TestDefaultSpringContext_ValueTag(t *testing.T) {
 
 	setting := &Setting{}
 
-	ctx.RegisterBean(setting).Conditional(
-		SpringCore.ConditionOnProperty("bool", "true").And().Conditional(
-			SpringCore.ConditionOnProperty("int", "3"),
+	ctx.RegisterBean(setting).ConditionOn(
+		SpringCore.NewConditional().OnProperty("bool", "true").And().OnCondition(
+			SpringCore.NewConditional().OnProperty("int", "3"),
 		),
 	)
 
@@ -546,15 +546,6 @@ func TestDefaultSpringContext_LoadProperties(t *testing.T) {
 
 	val1 := ctx.GetProperty("yaml.list")
 	assert.Equal(t, val1, []interface{}{1, 2})
-
-	val3 := ctx.GetStringSliceProperty("yaml.list")
-	assert.Equal(t, val3, []string{"1", "2"})
-
-	val4 := ctx.GetMapSliceProperty("yaml.obj.list")
-	assert.Equal(t, val4, []map[string]interface{}{
-		{"name": "jim", "age": 12},
-		{"name": "bob", "age": 8},
-	})
 }
 
 type BeanZero struct {
@@ -886,4 +877,42 @@ func TestDefaultProperties_WireFunc(t *testing.T) {
 	ctx.AutoWireBeans()
 	i := obj.Fn(3)
 	assert.Equal(t, i, 6)
+}
+
+func TestDefaultSpringContext_ConditionOnBean(t *testing.T) {
+	ctx := SpringCore.NewDefaultSpringContext()
+
+	ctx.RegisterBean(&BeanZero{5})
+	ctx.RegisterBean(new(BeanOne))
+
+	ctx.RegisterBean(new(BeanTwo)).ConditionOnBean("*SpringCore_test.BeanOne")
+	ctx.RegisterNameBean("another_two", new(BeanTwo)).ConditionOnBean("Null")
+
+	ctx.AutoWireBeans()
+
+	var two *BeanTwo
+	ok := ctx.GetBeanByName("", &two)
+	assert.Equal(t, ok, true)
+
+	ok = ctx.GetBeanByName("another_two", &two)
+	assert.Equal(t, ok, false)
+}
+
+func TestDefaultSpringContext_ConditionOnMissingBean(t *testing.T) {
+	ctx := SpringCore.NewDefaultSpringContext()
+
+	ctx.RegisterBean(&BeanZero{5})
+	ctx.RegisterBean(new(BeanOne))
+
+	ctx.RegisterBean(new(BeanTwo)).ConditionOnMissingBean("*SpringCore_test.BeanOne")
+	ctx.RegisterNameBean("another_two", new(BeanTwo)).ConditionOnMissingBean("Null")
+
+	ctx.AutoWireBeans()
+
+	var two *BeanTwo
+	ok := ctx.GetBeanByName("", &two)
+	assert.Equal(t, ok, true)
+
+	ok = ctx.GetBeanByName("another_two", &two)
+	assert.Equal(t, ok, true)
 }

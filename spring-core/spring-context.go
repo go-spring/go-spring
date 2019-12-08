@@ -60,9 +60,6 @@ type SpringContext interface {
 	// 执行自动绑定过程
 	AutoWireBeans()
 
-	// 获取所有 Bean 的定义，一般仅供调试使用。
-	GetAllBeanDefinitions() []*BeanDefinition
-
 	// 绑定外部指定的 Bean
 	WireBean(bean interface{})
 
@@ -86,4 +83,7 @@ type SpringContext interface {
 
 	// 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 	FindBeanByName(beanId string) (interface{}, bool)
+
+	// 获取所有 Bean 的定义，一般仅供调试使用。
+	GetAllBeanDefinitions() []*BeanDefinition
 }

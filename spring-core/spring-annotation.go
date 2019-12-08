@@ -32,8 +32,8 @@ func NewAnnotation(bean *BeanDefinition) *Annotation {
 //
 // 设置 bean 注册需要满足的条件
 //
-func (annotation *Annotation) Conditional(cond *Conditional) *Annotation {
-	annotation.bean.cond.Conditional(cond)
+func (annotation *Annotation) ConditionOn(cond Condition) *Annotation {
+	annotation.bean.cond = cond
 	return annotation
 }
 
@@ -41,31 +41,31 @@ func (annotation *Annotation) Conditional(cond *Conditional) *Annotation {
 // 指定的属性值匹配时注册当前 bean
 //
 func (annotation *Annotation) ConditionOnProperty(name string, havingValue string) *Annotation {
-	annotation.bean.cond.ConditionOnProperty(name, havingValue)
+	annotation.bean.cond = NewPropertyCondition(name, havingValue)
 	return annotation
 }
 
 //
 // 指定的 bean 存在时注册当前 bean
 //
-func (annotation *Annotation) ConditionalOnBean(beanId string) *Annotation {
-	annotation.bean.cond.ConditionalOnBean(beanId)
+func (annotation *Annotation) ConditionOnBean(beanId string) *Annotation {
+	annotation.bean.cond = NewBeanCondition(beanId)
 	return annotation
 }
 
 //
 // 指定的 bean 不存在时注册当前 bean
 //
-func (annotation *Annotation) ConditionalOnMissingBean(beanId string) *Annotation {
-	annotation.bean.cond.ConditionalOnMissingBean(beanId)
+func (annotation *Annotation) ConditionOnMissingBean(beanId string) *Annotation {
+	annotation.bean.cond = NewMissingBeanCondition(beanId)
 	return annotation
 }
 
 //
 // 设置 bean 注册需要满足的表达式条件
 //
-func (annotation *Annotation) ConditionalOnExpression(expression string) *Annotation {
-	annotation.bean.cond.ConditionalOnExpression(expression)
+func (annotation *Annotation) ConditionOnExpression(expression string) *Annotation {
+	annotation.bean.cond = NewExpressionCondition(expression)
 	return annotation
 }
 
@@ -73,7 +73,7 @@ func (annotation *Annotation) ConditionalOnExpression(expression string) *Annota
 // 设置 bean 注册需要满足的函数条件
 //
 func (annotation *Annotation) ConditionOnMatches(fn ConditionFunc) *Annotation {
-	annotation.bean.cond.ConditionOnMatches(fn)
+	annotation.bean.cond = NewFunctionCondition(fn)
 	return annotation
 }
 

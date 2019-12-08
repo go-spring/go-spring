@@ -49,59 +49,102 @@ func TestPropertyCondition(t *testing.T) {
 	assert.Equal(t, cond.Matches(ctx), false)
 }
 
-func TestConditional_ConditionalOnBean(t *testing.T) {
+func TestBeanCondition(t *testing.T) {
 	ctx := SpringCore.NewDefaultSpringContext()
 
 	ctx.RegisterBean(&BeanZero{5})
 	ctx.RegisterBean(new(BeanOne))
 
-	ctx.RegisterBean(new(BeanTwo)).ConditionalOnBean("*SpringCore_test.BeanOne")
-	ctx.RegisterNameBean("another_two", new(BeanTwo)).ConditionalOnBean("Null")
-
 	ctx.AutoWireBeans()
 
-	var two *BeanTwo
-	ok := ctx.GetBeanByName("", &two)
-	assert.Equal(t, ok, true)
+	cond := SpringCore.NewBeanCondition("*SpringCore_test.BeanOne")
+	assert.Equal(t, cond.Matches(ctx), true)
 
-	ok = ctx.GetBeanByName("another_two", &two)
-	assert.Equal(t, ok, false)
+	cond = SpringCore.NewBeanCondition("Null")
+	assert.Equal(t, cond.Matches(ctx), false)
 }
 
-func TestConditional_ConditionalOnMissingBean(t *testing.T) {
+func TestMissingBeanCondition(t *testing.T) {
 	ctx := SpringCore.NewDefaultSpringContext()
 
 	ctx.RegisterBean(&BeanZero{5})
 	ctx.RegisterBean(new(BeanOne))
 
-	ctx.RegisterBean(new(BeanTwo)).ConditionalOnMissingBean("*SpringCore_test.BeanOne")
-	ctx.RegisterNameBean("another_two", new(BeanTwo)).ConditionalOnMissingBean("Null")
-
 	ctx.AutoWireBeans()
 
-	var two *BeanTwo
-	ok := ctx.GetBeanByName("", &two)
-	assert.Equal(t, ok, true)
+	cond := SpringCore.NewMissingBeanCondition("*SpringCore_test.BeanOne")
+	assert.Equal(t, cond.Matches(ctx), false)
 
-	ok = ctx.GetBeanByName("another_two", &two)
-	assert.Equal(t, ok, true)
+	cond = SpringCore.NewMissingBeanCondition("Null")
+	assert.Equal(t, cond.Matches(ctx), true)
+}
+
+func TestExpressionCondition(t *testing.T) {
+
 }
 
 func TestConditional(t *testing.T) {
+
 	ctx := SpringCore.NewDefaultSpringContext()
+	ctx.SetProperty("bool", false)
 	ctx.SetProperty("int", 3)
+	ctx.AutoWireBeans()
 
 	cond := SpringCore.NewConditional()
 	assert.Equal(t, cond.Matches(ctx), true)
 
-	cond = SpringCore.NewConditional().And()
-	assert.Panic(t, func() {
-		cond.Matches(ctx)
-	}, "last op need a cond triggered")
-
-	cond = SpringCore.ConditionOnProperty("int", "3")
+	cond = SpringCore.NewConditional().OnProperty("int", "3")
 	assert.Equal(t, cond.Matches(ctx), true)
 
-	cond = SpringCore.ConditionOnProperty("bool", "false")
+	assert.Panic(t, func() {
+		cond = SpringCore.NewConditional().OnProperty("int", "3").OnBean("null")
+		assert.Equal(t, cond.Matches(ctx), true)
+	}, "condition already set")
+
+	assert.Panic(t, func() {
+		cond = SpringCore.NewConditional().OnProperty("int", "3").And()
+		assert.Equal(t, cond.Matches(ctx), true)
+	}, "last op need a cond triggered")
+
+	cond = SpringCore.NewConditional().
+		OnProperty("int", "3").
+		And().
+		OnProperty("bool", "false")
+	assert.Equal(t, cond.Matches(ctx), true)
+
+	cond = SpringCore.NewConditional().
+		OnProperty("int", "3").
+		And().
+		OnProperty("bool", "true")
 	assert.Equal(t, cond.Matches(ctx), false)
+
+	cond = SpringCore.NewConditional().
+		OnProperty("int", "2").
+		Or().
+		OnProperty("bool", "true")
+	assert.Equal(t, cond.Matches(ctx), false)
+
+	cond = SpringCore.NewConditional().
+		OnProperty("int", "2").
+		Or().
+		OnProperty("bool", "false")
+	assert.Equal(t, cond.Matches(ctx), true)
+
+	assert.Panic(t, func() {
+		cond = SpringCore.NewConditional().
+			OnProperty("int", "2").
+			Or().
+			OnProperty("bool", "false").
+			Or()
+		assert.Equal(t, cond.Matches(ctx), true)
+	}, "last op need a cond triggered")
+
+	assert.Panic(t, func() {
+		cond = SpringCore.NewConditional().
+			OnProperty("int", "2").
+			Or().
+			OnProperty("bool", "false").
+			OnProperty("bool", "false")
+		assert.Equal(t, cond.Matches(ctx), true)
+	}, "condition already set")
 }

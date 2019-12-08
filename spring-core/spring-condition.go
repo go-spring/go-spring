@@ -111,16 +111,34 @@ func (c *MissingBeanCondition) Matches(ctx SpringContext) bool {
 	return !ok
 }
 
+//
+// 基于表达式的 Condition 实现
+//
+type ExpressionCondition struct {
+	expression string
+}
+
+//
+// 工厂函数
+//
+func NewExpressionCondition(expression string) *ExpressionCondition {
+	return &ExpressionCondition{expression}
+}
+
+func (c *ExpressionCondition) Matches(ctx SpringContext) bool {
+	panic(SpringConst.UNIMPLEMENTED_METHOD)
+}
+
 type OpMode int
 
 const (
-	OpMode_None OpMode = 0
-	OpMode_Or   OpMode = 1
-	OpMode_And  OpMode = 2
+	OpMode_None = OpMode(0)
+	OpMode_Or   = OpMode(1)
+	OpMode_And  = OpMode(2)
 )
 
 //
-// 实现多个 Condition 的组合
+// 定义 Condition 表达式的节点
 //
 type ConditionNode struct {
 	next *ConditionNode // 下一个节点
@@ -172,7 +190,7 @@ func (c *ConditionNode) Matches(ctx SpringContext) bool {
 }
 
 //
-// 定义 Condition 服务
+// 定义 Condition 表达式
 //
 type Conditional struct {
 	node *ConditionNode
@@ -192,6 +210,12 @@ func NewConditional() *Conditional {
 
 func (c *Conditional) Matches(ctx SpringContext) bool {
 	return c.node.Matches(ctx)
+}
+
+func (c *Conditional) checkCondition() {
+	if c.curr.cond != nil {
+		panic("condition already set")
+	}
 }
 
 //
@@ -216,66 +240,38 @@ func (c *Conditional) And() *Conditional {
 	return c
 }
 
-func (c *Conditional) Conditional(cond *Conditional) *Conditional {
-	c.curr.cond = cond.node
+func (c *Conditional) OnCondition(cond Condition) *Conditional {
+	c.checkCondition()
+	c.curr.cond = cond
 	return c
 }
 
-//
-// 创建基于属性值匹配的 Condition 实现
-//
-func ConditionOnProperty(name string, havingValue string) *Conditional {
-	return NewConditional().ConditionOnProperty(name, havingValue)
-}
-
-func (c *Conditional) ConditionOnProperty(name string, havingValue string) *Conditional {
+func (c *Conditional) OnProperty(name string, havingValue string) *Conditional {
+	c.checkCondition()
 	c.curr.cond = NewPropertyCondition(name, havingValue)
 	return c
 }
 
-//
-// 创建基于 Bean 的 Condition 实现
-//
-func ConditionalOnBean(beanId string) *Conditional {
-	return NewConditional().ConditionalOnBean(beanId)
-}
-
-func (c *Conditional) ConditionalOnBean(beanId string) *Conditional {
+func (c *Conditional) OnBean(beanId string) *Conditional {
+	c.checkCondition()
 	c.curr.cond = NewBeanCondition(beanId)
 	return c
 }
 
-//
-// 创建基于 Missing Bean 的 Condition 实现
-//
-func ConditionalOnMissingBean(beanId string) *Conditional {
-	return NewConditional().ConditionalOnMissingBean(beanId)
-}
-
-func (c *Conditional) ConditionalOnMissingBean(beanId string) *Conditional {
+func (c *Conditional) OnMissingBean(beanId string) *Conditional {
+	c.checkCondition()
 	c.curr.cond = NewMissingBeanCondition(beanId)
 	return c
 }
 
-//
-// 创建基于表达式的 Condition 实现
-//
-func ConditionalOnExpression(expression string) *Conditional {
-	return NewConditional().ConditionalOnExpression(expression)
+func (c *Conditional) OnExpression(expression string) *Conditional {
+	c.checkCondition()
+	c.curr.cond = NewExpressionCondition(expression)
+	return c
 }
 
-func (c *Conditional) ConditionalOnExpression(expression string) *Conditional {
-	panic(SpringConst.UNIMPLEMENTED_METHOD)
-}
-
-//
-// 创建基于 Matches 函数的 Condition 实现
-//
-func ConditionOnMatches(fn ConditionFunc) *Conditional {
-	return NewConditional().ConditionOnMatches(fn)
-}
-
-func (c *Conditional) ConditionOnMatches(fn ConditionFunc) *Conditional {
+func (c *Conditional) OnMatches(fn ConditionFunc) *Conditional {
+	c.checkCondition()
 	c.curr.cond = NewFunctionCondition(fn)
 	return c
 }

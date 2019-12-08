@@ -180,22 +180,15 @@ func NewConstructorBean(fn interface{}, tags ...string) *ConstructorBean {
 }
 
 //
-// 定义 Bean 初始化接口
-//
-type BeanInitialization interface {
-	InitBean(ctx SpringContext)
-}
-
-//
 // 定义 Bean 的状态值
 //
 type BeanStatus int
 
 const (
-	BeanStatus_Default  BeanStatus = 0 // 默认状态
-	BeanStatus_Resolved BeanStatus = 1 // 已决议状态
-	BeanStatus_Wiring   BeanStatus = 2 // 正在绑定状态
-	BeanStatus_Wired    BeanStatus = 3 // 绑定完成状态
+	BeanStatus_Default  = BeanStatus(0) // 默认状态
+	BeanStatus_Resolved = BeanStatus(1) // 已决议状态
+	BeanStatus_Wiring   = BeanStatus(2) // 正在绑定状态
+	BeanStatus_Wired    = BeanStatus(3) // 绑定完成状态
 )
 
 //
@@ -204,12 +197,12 @@ const (
 type BeanDefinition struct {
 	SpringBean
 
-	Name      string       // 名称
-	status    BeanStatus   // 状态
-	cond      *Conditional // 注册条件
-	profile   string       // 运行环境
-	dependsOn []string     // 非直接依赖
-	primary   bool         // 主版本
+	Name      string     // 名称
+	status    BeanStatus // 状态
+	cond      Condition  // 注册条件
+	profile   string     // 运行环境
+	dependsOn []string   // 非直接依赖
+	primary   bool       // 主版本
 }
 
 //

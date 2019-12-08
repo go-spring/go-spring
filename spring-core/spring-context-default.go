@@ -165,7 +165,6 @@ func (ctx *DefaultSpringContext) RegisterBeanDefinition(d *BeanDefinition) *Anno
 		ctx.BeanMap[k] = d
 	}
 
-	d.cond = NewConditional()
 	return NewAnnotation(d)
 }
 
@@ -208,13 +207,13 @@ func (ctx *DefaultSpringContext) GetBeanByName(beanId string, i interface{}) boo
 
 	iv := reflect.ValueOf(i)
 
-	return ctx.findBeanByName(beanId, _EMPTY_VALUE, iv.Elem(), "")
+	return ctx.getBeanByName(beanId, _EMPTY_VALUE, iv.Elem(), "")
 }
 
 //
 // 查找 bean
 //
-func (ctx *DefaultSpringContext) findBeanByName(beanId string, parentValue reflect.Value, fv reflect.Value, field string) bool {
+func (ctx *DefaultSpringContext) getBeanByName(beanId string, parentValue reflect.Value, fv reflect.Value, field string) bool {
 	typeName, beanName, nullable := ParseBeanId(beanId)
 
 	t := fv.Type()
@@ -436,17 +435,6 @@ func (ctx *DefaultSpringContext) FindBeanByName(beanId string) (interface{}, boo
 }
 
 //
-// 获取所有 Bean 的定义，一般仅供调试使用。
-//
-func (ctx *DefaultSpringContext) GetAllBeanDefinitions() []*BeanDefinition {
-	result := make([]*BeanDefinition, 0)
-	for _, v := range ctx.BeanMap {
-		result = append(result, v)
-	}
-	return result
-}
-
-//
 // 自动绑定所有的 Bean
 //
 func (ctx *DefaultSpringContext) AutoWireBeans() {
@@ -466,7 +454,7 @@ func (ctx *DefaultSpringContext) AutoWireBeans() {
 		}
 
 		// 检查是否符合注册条件，不符合的立即删除
-		if !beanDefinition.cond.Matches(ctx) {
+		if beanDefinition.cond != nil && !beanDefinition.cond.Matches(ctx) {
 			delete(ctx.BeanMap, key)
 			continue
 		}
@@ -526,7 +514,7 @@ func (ctx *DefaultSpringContext) WireBeanDefinition(beanDefinition *BeanDefiniti
 	beanDefinition.status = BeanStatus_Wired
 }
 
-func (ctx *DefaultSpringContext) wireByBeanId(parentValue reflect.Value,
+func (ctx *DefaultSpringContext) wireStructField(parentValue reflect.Value,
 	fv reflect.Value, field string, beanId string) {
 
 	_, beanName, nullable := ParseBeanId(beanId)
@@ -545,7 +533,7 @@ func (ctx *DefaultSpringContext) wireByBeanId(parentValue reflect.Value,
 		}
 
 	} else { // 匹配模式，autowire:"" or autowire:"name"
-		ctx.findBeanByName(beanId, parentValue, fv, field)
+		ctx.getBeanByName(beanId, parentValue, fv, field)
 	}
 }
 
@@ -573,19 +561,13 @@ func (ctx *DefaultSpringContext) wireOriginalBean(beanDefinition *BeanDefinition
 
 				// 处理 value 标签
 				if tag, ok := f.Tag.Lookup("value"); ok {
-					bindPropertyByTag(ctx, "", f.Type, fv, fieldName, tag)
+					bindStructField(ctx, f.Type, fv, fieldName, "", tag)
 				}
 
 				// 处理 autowire 标签
 				if beanId, ok := f.Tag.Lookup("autowire"); ok {
-					ctx.wireByBeanId(sv, fv, fieldName, beanId)
+					ctx.wireStructField(sv, fv, fieldName, beanId)
 				}
-			}
-
-			// 初始化当前的 Bean
-			bean := beanDefinition.Bean()
-			if c, ok := bean.(BeanInitialization); ok {
-				c.InitBean(ctx)
 			}
 
 			fmt.Printf("success wire bean %s:%s\n", TypeName(t), beanDefinition.Name)
@@ -607,9 +589,9 @@ func (ctx *DefaultSpringContext) wireConstructorBean(beanDefinition *BeanDefinit
 		iv := reflect.New(it).Elem()
 		{
 			if strings.HasPrefix(tag, "$") {
-				bindPropertyByTag(ctx, "", it, iv, "", tag)
+				bindStructField(ctx, it, iv, "", "", tag)
 			} else {
-				ctx.findBeanByName(tag, _EMPTY_VALUE, iv, "")
+				ctx.getBeanByName(tag, _EMPTY_VALUE, iv, "")
 			}
 		}
 		in[i] = iv
@@ -627,10 +609,16 @@ func (ctx *DefaultSpringContext) wireConstructorBean(beanDefinition *BeanDefinit
 
 	cBean.bean = cBean.rValue.Interface()
 
-	// 初始化当前的 Bean
-	if c, ok := cBean.bean.(BeanInitialization); ok {
-		c.InitBean(ctx)
-	}
-
 	fmt.Printf("success wire constructor bean %s:%s\n", cBean.fnType.String(), beanDefinition.Name)
+}
+
+//
+// 获取所有 Bean 的定义，一般仅供调试使用。
+//
+func (ctx *DefaultSpringContext) GetAllBeanDefinitions() []*BeanDefinition {
+	result := make([]*BeanDefinition, 0)
+	for _, v := range ctx.BeanMap {
+		result = append(result, v)
+	}
+	return result
 }

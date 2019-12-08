@@ -103,6 +103,13 @@ func RegisterBeanDefinition(beanDefinition *SpringCore.BeanDefinition) *SpringCo
 }
 
 //
+// 绑定外部指定的 Bean
+//
+func WireBean(bean interface{}) {
+	ctx.WireBean(bean)
+}
+
+//
 // 根据类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 //
 func GetBean(i interface{}) bool {
@@ -135,13 +142,6 @@ func FindBeanByName(beanId string) (interface{}, bool) {
 //
 func GetAllBeanDefinitions() []*SpringCore.BeanDefinition {
 	return ctx.GetAllBeanDefinitions()
-}
-
-//
-// 绑定外部指定的 Bean
-//
-func WireBean(bean interface{}) {
-	ctx.WireBean(bean)
 }
 
 //

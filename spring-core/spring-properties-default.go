@@ -112,35 +112,6 @@ func (p *DefaultProperties) GetStringProperty(name string) string {
 }
 
 //
-// 获取字符串数组属性值，属性名称统一转成小写。
-//
-func (p *DefaultProperties) GetStringSliceProperty(name string) []string {
-	return cast.ToStringSlice(p.GetProperty(name))
-}
-
-//
-// 获取哈希表数组属性值，属性名称统一转成小写。
-//
-func (p *DefaultProperties) GetMapSliceProperty(name string) []map[string]interface{} {
-	v := p.GetProperty(name)
-	if s, ok := v.([]interface{}); ok {
-		var result []map[string]interface{}
-
-		for _, si := range s {
-			if sv, ok := si.(map[interface{}]interface{}); ok {
-				result = append(result, cast.ToStringMap(sv))
-			} else {
-				panic(fmt.Sprintf("property %s isn't []map[string]interface{}", name))
-			}
-		}
-
-		return result
-	} else {
-		panic(fmt.Sprintf("property %s isn't []map[string]interface{}", name))
-	}
-}
-
-//
 // 设置属性值，属性名称统一转成小写。
 //
 func (p *DefaultProperties) SetProperty(name string, value interface{}) {
@@ -200,37 +171,13 @@ func (p *MapPropertyHolder) GetDefaultProperty(name string, defaultValue interfa
 }
 
 //
-// 对结构体进行属性值绑定
-//
-func bindStruct(prop PropertyHolder, prefix string, t reflect.Type, v reflect.Value, field string) {
-	for i := 0; i < t.NumField(); i++ {
-		it := t.Field(i)
-		iv := v.Field(i)
-
-		subFieldName := field + ".$" + it.Name
-
-		if it.Anonymous { // 处理结构体嵌套的情况
-			if _, ok := it.Tag.Lookup("value"); ok {
-				panic(subFieldName + " 嵌套结构体上不允许有 value 标签")
-			}
-			bindStruct(prop, prefix, it.Type, iv, subFieldName)
-			continue
-		}
-
-		if tag, ok := it.Tag.Lookup("value"); ok {
-			bindPropertyByTag(prop, prefix, it.Type, iv, subFieldName, tag)
-		}
-	}
-}
-
-//
 // 对结构体的字段进行属性绑定
 //
-func bindPropertyByTag(prop PropertyHolder, prefix string, fieldType reflect.Type,
-	fieldValue reflect.Value, fieldName string, tagValue string) {
+func bindStructField(prop PropertyHolder, fieldType reflect.Type, fieldValue reflect.Value,
+	fieldName string, propNamePrefix string, propTag string) {
 
 	// 检查语法是否正确
-	if !(strings.HasPrefix(tagValue, "${") && strings.HasSuffix(tagValue, "}")) {
+	if !(strings.HasPrefix(propTag, "${") && strings.HasSuffix(propTag, "}")) {
 		panic(fieldName + " 属性绑定的语法发生错误")
 	}
 
@@ -239,69 +186,92 @@ func bindPropertyByTag(prop PropertyHolder, prefix string, fieldType reflect.Typ
 		panic(fieldName + " 属性绑定的目标不能是指针")
 	}
 
-	ss := strings.Split(tagValue[2:len(tagValue)-1], ":=")
+	ss := strings.Split(propTag[2:len(propTag)-1], ":=")
 
 	var (
-		propName  string
-		propValue interface{}
+		propName     string
+		defaultValue interface{}
 	)
 
 	propName = ss[0]
 
 	// 属性名如果有前缀要加上前缀
-	if prefix != "" {
-		propName = prefix + "." + propName
+	if propNamePrefix != "" {
+		propName = propNamePrefix + "." + propName
 	}
 
 	if len(ss) > 1 {
-		propValue = ss[1]
+		defaultValue = ss[1]
 	}
 
-	bindProperty(prop, fieldType, fieldValue, fieldName, propName, propValue)
+	bindValue(prop, fieldType, fieldValue, fieldName, propName, defaultValue)
+}
+
+//
+// 对结构体进行属性值绑定
+//
+func bindStruct(prop PropertyHolder, t reflect.Type, v reflect.Value,
+	fieldName string, propNamePrefix string) {
+
+	for i := 0; i < t.NumField(); i++ {
+		it := t.Field(i)
+		iv := v.Field(i)
+
+		subFieldName := fieldName + ".$" + it.Name
+
+		if it.Anonymous { // 处理结构体嵌套的情况
+			if _, ok := it.Tag.Lookup("value"); ok {
+				panic(subFieldName + " 嵌套结构体上不允许有 value 标签")
+			}
+			bindStruct(prop, it.Type, iv, subFieldName, propNamePrefix)
+			continue
+		}
+
+		if tag, ok := it.Tag.Lookup("value"); ok {
+			bindStructField(prop, it.Type, iv, subFieldName, propNamePrefix, tag)
+		}
+	}
 }
 
 //
 // 对任意 value 进行属性绑定
 //
-func bindProperty(prop PropertyHolder, fieldType reflect.Type, fieldValue reflect.Value,
-	fieldName string, propName string, propValue interface{}) {
+func bindValue(prop PropertyHolder, fieldType reflect.Type, fieldValue reflect.Value,
+	fieldName string, propName string, defaultValue interface{}) {
 
-	// 检查是否有默认值
-	checkDefaultProperty := func() {
-		if val, ok := prop.GetDefaultProperty(propName, ""); ok {
-			propValue = val
+	getPropValue := func() interface{} { // 获取属性值的局部函数
+		if val, ok := prop.GetDefaultProperty(propName, nil); ok {
+			return val
 		} else {
-			if propValue == nil {
-				panic(fieldName + " properties \"" + propName + "\" not config")
+			if defaultValue != nil {
+				return defaultValue
 			}
+			panic(fieldName + " properties \"" + propName + "\" not config")
 		}
 	}
 
-	// 嵌套的结构体属性不能指定默认值
 	if fieldValue.Kind() == reflect.Struct {
 
-		// 存在类型转换器的情况下优先使用属性值绑定，否则才考虑属性嵌套
+		// 存在类型转换器的情况下优先使用属性值绑定
 		if fn, ok := typeConverters[fieldType]; ok {
-
-			// 获取属性值
-			checkDefaultProperty()
-
+			propValue := getPropValue()
 			fnValue := reflect.ValueOf(fn)
 			res := fnValue.Call([]reflect.Value{reflect.ValueOf(propValue)})
 			fieldValue.Set(res[0])
 			return
 		}
 
-		if propValue != nil {
+		if defaultValue != nil {
 			panic(fieldName + " 嵌套的结构体属性不能指定默认值")
 		}
 
-		bindStruct(prop, propName, fieldType, fieldValue, fieldName)
+		// 然后才考虑结构体嵌套的属性绑定
+		bindStruct(prop, fieldType, fieldValue, fieldName, propName)
 		return
 	}
 
 	// 获取属性值
-	checkDefaultProperty()
+	propValue := getPropValue()
 
 	switch fieldValue.Kind() {
 	case reflect.Uint64, reflect.Uint32, reflect.Uint16, reflect.Uint8, reflect.Uint:
@@ -311,7 +281,8 @@ func bindProperty(prop PropertyHolder, fieldType reflect.Type, fieldValue reflec
 		i := cast.ToInt64(propValue)
 		fieldValue.SetInt(i)
 	case reflect.Float64, reflect.Float32:
-		fieldValue.SetFloat(cast.ToFloat64(propValue))
+		f := cast.ToFloat64(propValue)
+		fieldValue.SetFloat(f)
 	case reflect.String:
 		s := cast.ToString(propValue)
 		fieldValue.SetString(s)
@@ -353,7 +324,7 @@ func bindProperty(prop PropertyHolder, fieldType reflect.Type, fieldValue reflec
 						for i, si := range s {
 							if sv, ok := si.(map[interface{}]interface{}); ok {
 								ev := reflect.New(elemType)
-								bindStruct(NewMapPropertyHolder(sv), "", elemType, ev.Elem(), fieldName)
+								bindStruct(NewMapPropertyHolder(sv), elemType, ev.Elem(), fieldName, "")
 								result.Index(i).Set(ev.Elem())
 							} else {
 								panic(fmt.Sprintf("property %s isn't []map[string]interface{}", propName))
@@ -382,5 +353,5 @@ func (p *DefaultProperties) BindProperty(name string, i interface{}) {
 		panic("参数 v 必须是一个指针")
 	}
 	t := v.Type().Elem()
-	bindProperty(p, t, v.Elem(), t.Name(), name, nil)
+	bindValue(p, t, v.Elem(), t.Name(), name, nil)
 }
