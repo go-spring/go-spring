@@ -655,9 +655,10 @@ func TestDefaultSpringContext_FindBeanByName(t *testing.T) {
 
 func TestDefaultSpringContext_RegisterBeanFn(t *testing.T) {
 	ctx := SpringCore.NewDefaultSpringContext()
-
-	ctx.RegisterBean(&Teacher{"David"})
 	ctx.SetProperty("room", "Class 3 Grade 1")
+
+	// 用接口注册时实际使用的是原始类型
+	ctx.RegisterBean(Teacher(&historyTeacher{}))
 
 	ctx.RegisterNameBeanFn("st1", NewStudent, "", "${room}")
 	ctx.RegisterNameBeanFn("st2", NewPtrStudent, "1:${room}")
@@ -915,4 +916,58 @@ func TestDefaultSpringContext_ConditionOnMissingBean(t *testing.T) {
 
 	ok = ctx.GetBeanByName("another_two", &two)
 	assert.Equal(t, ok, true)
+}
+
+type Manager interface {
+	Cluster() string
+}
+
+func NewManager() Manager {
+	return localManager{}
+}
+
+func NewPtrManager() Manager {
+	return &localManager{}
+}
+
+type localManager struct {
+}
+
+func (m localManager) Cluster() string {
+	return "local"
+}
+
+func NewInt() int {
+	return 32
+}
+
+func TestDefaultSpringContext_RegisterBeanFn2(t *testing.T) {
+
+	t.Run("ptr manager", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBeanFn(NewPtrManager)
+		ctx.RegisterBeanFn(NewInt)
+		ctx.AutoWireBeans()
+
+		var m Manager
+		ctx.GetBean(&m)
+
+		var lm *localManager
+		ctx.GetBean(&lm)
+	})
+
+	t.Run("manager", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBeanFn(NewManager)
+		ctx.RegisterBeanFn(NewInt)
+		ctx.AutoWireBeans()
+
+		var m Manager
+		ctx.GetBean(&m)
+
+		var lm *localManager
+		ctx.GetBean(&lm)
+	})
 }

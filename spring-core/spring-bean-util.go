@@ -21,21 +21,22 @@ import (
 	"strings"
 )
 
-//
-// 检查是否为合法的 Bean 对象
-//
-func IsValidBean(bean interface{}) (reflect.Type, bool) {
-	// 指针、Map、数组都是合法的 Bean，函数指针也应该可以视为一种 Bean
-	if bean != nil {
-		t := reflect.TypeOf(bean)
-		k := t.Kind()
-		for i := range _VALID_BEAN_KINDS {
-			if _VALID_BEAN_KINDS[i] == k {
-				return t, true
-			}
+func IsValidBean(k reflect.Kind) bool {
+	for _, validKind := range _VALID_BEAN_KINDS {
+		if k == validKind {
+			return true
 		}
 	}
-	return nil, false
+	return false
+}
+
+func IsValidReceiver(k reflect.Kind) bool {
+	for _, validReceiver := range _VALID_RECEIVER_KINDS {
+		if k == validReceiver {
+			return true
+		}
+	}
+	return false
 }
 
 //

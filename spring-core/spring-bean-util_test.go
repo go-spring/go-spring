@@ -26,53 +26,6 @@ import (
 	"github.com/magiconair/properties/assert"
 )
 
-func TestIsValidBean(t *testing.T) {
-
-	// nil
-	_, ok := SpringCore.IsValidBean(nil)
-	assert.Equal(t, ok, false)
-
-	// bool
-	_, ok = SpringCore.IsValidBean(false)
-	assert.Equal(t, ok, false)
-
-	// int
-	_, ok = SpringCore.IsValidBean(3)
-	assert.Equal(t, ok, false)
-
-	// chan
-	_, ok = SpringCore.IsValidBean(make(chan int))
-	assert.Equal(t, ok, false)
-
-	// function
-	_, ok = SpringCore.IsValidBean(func() {})
-	assert.Equal(t, ok, true)
-
-	// map
-	_, ok = SpringCore.IsValidBean(make(map[string]int))
-	assert.Equal(t, ok, true)
-
-	// ptr
-	_, ok = SpringCore.IsValidBean(new(int))
-	assert.Equal(t, ok, true)
-
-	// func
-	_, ok = SpringCore.IsValidBean(&BeanZero{})
-	assert.Equal(t, ok, true)
-
-	// slice
-	_, ok = SpringCore.IsValidBean(make([]int, 0))
-	assert.Equal(t, ok, true)
-
-	// string
-	_, ok = SpringCore.IsValidBean("3")
-	assert.Equal(t, ok, false)
-
-	// struct
-	_, ok = SpringCore.IsValidBean(BeanZero{})
-	assert.Equal(t, ok, false)
-}
-
 func TestTypeName(t *testing.T) {
 
 	assert.Panic(t, func() {

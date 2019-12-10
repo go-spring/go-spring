@@ -22,23 +22,23 @@ import (
 	"strings"
 )
 
-var (
-	//
-	// 哪些类型的数据可以成为 Bean？一般来讲引用类型的数据都可以成为 Bean，
-	// 但是最好按照数据的真实类型去注册，所以 interface 类型不能成为 Bean。
-	//
-	_VALID_BEAN_KINDS = []reflect.Kind{
-		reflect.Ptr, reflect.Slice, reflect.Map, reflect.Func,
-	}
+//
+// 哪些类型的数据可以成为 Bean？一般来讲引用类型的数据都可以成为 Bean。
+// 当使用对象注册时，无论是否转成 interface 都能获取到对象的真实类型，
+// 当使用构造函数注册时，如果返回的是非引用类型会强制转成对应的引用类型，
+// 如果返回的是 interface 那么这种情况下会使用 interface 的类型注册。
+//
+var _VALID_BEAN_KINDS = []reflect.Kind{
+	reflect.Ptr, reflect.Interface, reflect.Slice, reflect.Map, reflect.Func,
+}
 
-	//
-	// 哪些类型可以成为 Bean 的接收者？除了使用 Bean 的真实类型去接收，还可
-	// 以使用 Bean 实现的 interface 去接收，而且推荐用 interface 去接收。
-	//
-	_VALID_RECEIVER_KINDS = []reflect.Kind{
-		reflect.Interface, reflect.Ptr, reflect.Slice, reflect.Map, reflect.Func,
-	}
-)
+//
+// 哪些类型可以成为 Bean 的接收者？除了使用 Bean 的真实类型去接收，还可
+// 以使用 Bean 实现的 interface 去接收，而且推荐用 interface 去接收。
+//
+var _VALID_RECEIVER_KINDS = []reflect.Kind{
+	reflect.Interface, reflect.Ptr, reflect.Slice, reflect.Map, reflect.Func,
+}
 
 //
 // 定义 SpringBean 接口
@@ -65,8 +65,13 @@ type OriginalBean struct {
 //
 func NewOriginalBean(bean interface{}) *OriginalBean {
 
-	t, ok := IsValidBean(bean)
-	if !ok {
+	if bean == nil {
+		panic("nil isn't valid bean")
+	}
+
+	t := reflect.TypeOf(bean)
+
+	if !IsValidBean(t.Kind()) {
 		panic("bean must be ptr or slice or map or func")
 	}
 
@@ -160,14 +165,12 @@ func NewConstructorBean(fn interface{}, tags ...string) *ConstructorBean {
 	}
 
 	t := fnType.Out(0)
-	k := t.Kind()
+
+	// 创建指针类型
 	v := reflect.New(t)
 
-	for i := range _VALID_BEAN_KINDS {
-		if _VALID_BEAN_KINDS[i] == k {
-			v = v.Elem()
-			break
-		}
+	if IsValidBean(t.Kind()) {
+		v = v.Elem()
 	}
 
 	// 重新确定类型

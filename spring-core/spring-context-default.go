@@ -217,19 +217,8 @@ func (ctx *DefaultSpringContext) getBeanByName(beanId string, parentValue reflec
 	typeName, beanName, nullable := ParseBeanId(beanId)
 
 	t := fv.Type()
-	k := t.Kind()
 
-	validReceiver := false
-
-	for i := range _VALID_RECEIVER_KINDS {
-		if _VALID_RECEIVER_KINDS[i] == k {
-			validReceiver = true
-			break
-		}
-	}
-
-	// 检查接收者的类型，接收者必须是指针、数组、接口、函数其中的一种，不能是原始类型。
-	if !validReceiver {
+	if !IsValidReceiver(t.Kind()) {
 		panic("receiver \"" + field + "\" must be ptr or slice or interface or map or func")
 	}
 
@@ -600,11 +589,10 @@ func (ctx *DefaultSpringContext) wireConstructorBean(beanDefinition *BeanDefinit
 	out := cBean.fnValue.Call(in)
 	val := out[0]
 
-	// 如果是结构体的话，转换成指针形式
-	if val.Type().Kind() == reflect.Struct {
-		cBean.rValue.Elem().Set(val)
-	} else {
+	if IsValidBean(val.Kind()) {
 		cBean.rValue.Set(val)
+	} else {
+		cBean.rValue.Elem().Set(val)
 	}
 
 	cBean.bean = cBean.rValue.Interface()
