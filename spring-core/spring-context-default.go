@@ -344,6 +344,7 @@ func (ctx *DefaultSpringContext) collectBeans(v reflect.Value) bool {
 			dt := d.Type()
 
 			if dt.AssignableTo(et) { // Bean 自身符合条件
+				ctx.WireBeanDefinition(d)
 				ev = reflect.Append(ev, d.Value())
 
 			} else if dt.Kind() == reflect.Slice { // 找到一个 Bean 数组
@@ -357,7 +358,17 @@ func (ctx *DefaultSpringContext) collectBeans(v reflect.Value) bool {
 
 					// 拷贝新元素
 					for i := 0; i < d.Value().Len(); i++ {
-						newSlice.Index(i + ev.Len()).Set(d.Value().Index(i))
+						di := d.Value().Index(i)
+
+						if di.Kind() == reflect.Struct {
+							ctx.wireValue(di.Addr())
+						} else if di.Kind() == reflect.Ptr {
+							if de := di.Elem(); de.Kind() == reflect.Struct {
+								ctx.wireValue(di)
+							}
+						}
+
+						newSlice.Index(i + ev.Len()).Set(di)
 					}
 
 					// 完成扩容
@@ -470,6 +481,18 @@ func (ctx *DefaultSpringContext) AutoWireBeans() {
 	}
 }
 
+func (ctx *DefaultSpringContext) wireValue(v reflect.Value) {
+	t := v.Type()
+	bean := &OriginalBean{
+		bean:     v.Interface(),
+		rType:    t,
+		typeName: TypeName(t),
+		rValue:   v,
+	}
+	d := NewBeanDefinition(bean, "")
+	ctx.WireBeanDefinition(d)
+}
+
 //
 // 绑定外部指定的 Bean
 //
@@ -498,6 +521,12 @@ func (ctx *DefaultSpringContext) WireBeanDefinition(beanDefinition *BeanDefiniti
 
 	} else {
 		panic("unknown spring bean type")
+	}
+
+	// 如果有则执行用户设置的初始化函数
+	if beanDefinition.initFunc != nil {
+		fnValue := reflect.ValueOf(beanDefinition.initFunc)
+		fnValue.Call([]reflect.Value{beanDefinition.Value()})
 	}
 
 	beanDefinition.status = BeanStatus_Wired
@@ -531,9 +560,38 @@ func (ctx *DefaultSpringContext) wireStructField(parentValue reflect.Value,
 //
 func (ctx *DefaultSpringContext) wireOriginalBean(beanDefinition *BeanDefinition) {
 	st := beanDefinition.Type()
+	sk := st.Kind()
 
-	// 目标对象必须是结构体指针才能绑定
-	if st.Kind() == reflect.Ptr {
+	if sk == reflect.Slice {
+		et := st.Elem()
+		ek := et.Kind()
+
+		if ek == reflect.Struct {
+
+			// 绑定结构体数组
+			v := beanDefinition.Value()
+			for i := 0; i < v.Len(); i++ {
+				iv := v.Index(i).Addr()
+				ctx.wireValue(iv)
+			}
+
+		} else if ek == reflect.Ptr {
+
+			it := et.Elem()
+			ik := it.Kind()
+
+			// 结构体指针数组
+			if ik == reflect.Struct {
+				v := beanDefinition.Value()
+				for p := 0; p < v.Len(); p++ {
+					pv := v.Index(p)
+					ctx.wireValue(pv)
+				}
+			}
+		}
+	}
+
+	if sk == reflect.Ptr {
 		t := st.Elem()
 		if t.Kind() == reflect.Struct {
 
@@ -551,6 +609,10 @@ func (ctx *DefaultSpringContext) wireOriginalBean(beanDefinition *BeanDefinition
 				// 处理 value 标签
 				if tag, ok := f.Tag.Lookup("value"); ok {
 					bindStructField(ctx, f.Type, fv, fieldName, "", tag)
+				} else {
+					if f.Type.Kind() == reflect.Struct {
+						bindStruct(ctx, f.Type, fv, fieldName, "")
+					}
 				}
 
 				// 处理 autowire 标签
@@ -570,7 +632,7 @@ func (ctx *DefaultSpringContext) wireOriginalBean(beanDefinition *BeanDefinition
 func (ctx *DefaultSpringContext) wireConstructorBean(beanDefinition *BeanDefinition) {
 
 	cBean := beanDefinition.SpringBean.(*ConstructorBean)
-	fnType := cBean.fnType
+	fnType := reflect.TypeOf(cBean.fn)
 	in := make([]reflect.Value, fnType.NumIn())
 
 	for i, tag := range cBean.tags {
@@ -586,7 +648,8 @@ func (ctx *DefaultSpringContext) wireConstructorBean(beanDefinition *BeanDefinit
 		in[i] = iv
 	}
 
-	out := cBean.fnValue.Call(in)
+	fnValue := reflect.ValueOf(cBean.fn)
+	out := fnValue.Call(in)
 	val := out[0]
 
 	if IsValidBean(val.Kind()) {
@@ -597,7 +660,7 @@ func (ctx *DefaultSpringContext) wireConstructorBean(beanDefinition *BeanDefinit
 
 	cBean.bean = cBean.rValue.Interface()
 
-	fmt.Printf("success wire constructor bean %s:%s\n", cBean.fnType.String(), beanDefinition.Name)
+	fmt.Printf("success wire constructor bean %s:%s\n", fnType.String(), beanDefinition.Name)
 }
 
 //

@@ -105,10 +105,8 @@ func (b *OriginalBean) TypeName() string {
 type ConstructorBean struct {
 	OriginalBean
 
-	fn      interface{}
-	fnType  reflect.Type
-	fnValue reflect.Value
-	tags    []string
+	fn   interface{}
+	tags []string
 }
 
 //
@@ -183,10 +181,8 @@ func NewConstructorBean(fn interface{}, tags ...string) *ConstructorBean {
 			typeName: TypeName(t),
 			rValue:   v,
 		},
-		fn:      fn,
-		fnType:  fnType,
-		fnValue: reflect.ValueOf(fn),
-		tags:    fnTags,
+		fn:   fn,
+		tags: fnTags,
 	}
 }
 
@@ -208,12 +204,13 @@ const (
 type BeanDefinition struct {
 	SpringBean
 
-	Name      string     // 名称
-	status    BeanStatus // 状态
-	cond      Condition  // 注册条件
-	profile   string     // 运行环境
-	dependsOn []string   // 非直接依赖
-	primary   bool       // 主版本
+	Name      string      // 名称
+	status    BeanStatus  // 状态
+	cond      Condition   // 注册条件
+	profile   string      // 运行环境
+	dependsOn []string    // 非直接依赖
+	primary   bool        // 主版本
+	initFunc  interface{} // 绑定结束的回调
 }
 
 //

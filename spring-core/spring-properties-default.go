@@ -229,6 +229,10 @@ func bindStruct(prop PropertyHolder, t reflect.Type, v reflect.Value,
 
 		if tag, ok := it.Tag.Lookup("value"); ok {
 			bindStructField(prop, it.Type, iv, subFieldName, propNamePrefix, tag)
+		} else {
+			if it.Type.Kind() == reflect.Struct {
+				bindStruct(prop, it.Type, iv, subFieldName, propNamePrefix)
+			}
 		}
 	}
 }

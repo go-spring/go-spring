@@ -375,6 +375,20 @@ func TestReflectType(t *testing.T) {
 			fmt.Println(t, t.Kind(), t.Elem().Name(), t.Elem().Kind())
 		}
 	})
+
+	{
+		var o pkg1.SamePkg
+		t := reflect.TypeOf(o)
+		// pkg.SamePkg SamePkg github.com/go-spring/go-spring/spring-core/testdata/pkg/bar
+		fmt.Println(t, t.Name(), t.PkgPath())
+	}
+
+	{
+		var o pkg2.SamePkg
+		t := reflect.TypeOf(o)
+		// pkg.SamePkg SamePkg github.com/go-spring/go-spring/spring-core/testdata/pkg/foo
+		fmt.Println(t, t.Name(), t.PkgPath())
+	}
 }
 
 func TestRange(t *testing.T) {

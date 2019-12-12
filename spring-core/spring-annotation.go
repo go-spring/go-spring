@@ -16,6 +16,10 @@
 
 package SpringCore
 
+import (
+	"reflect"
+)
+
 //
 // 设定 Bean 的各种元数据
 //
@@ -101,5 +105,25 @@ func (annotation *Annotation) DependsOn(beanId ...string) *Annotation {
 //
 func (annotation *Annotation) Primary(primary bool) *Annotation {
 	annotation.bean.primary = primary
+	return annotation
+}
+
+//
+// 设置 bean 绑定结束的回调
+//
+func (annotation *Annotation) InitFunc(fn interface{}) *Annotation {
+
+	fnType := reflect.TypeOf(fn)
+	fnValue := reflect.ValueOf(fn)
+
+	if fnValue.Kind() != reflect.Func || fnType.NumOut() > 0 || fnType.NumIn() != 1 {
+		panic("initFunc should be func(bean)")
+	}
+
+	if fnType.In(0) != annotation.bean.Type() {
+		panic("initFunc should be func(bean)")
+	}
+
+	annotation.bean.initFunc = fn
 	return annotation
 }

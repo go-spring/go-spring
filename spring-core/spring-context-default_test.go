@@ -971,3 +971,131 @@ func TestDefaultSpringContext_RegisterBeanFn2(t *testing.T) {
 		ctx.GetBean(&lm)
 	})
 }
+
+func TestRegisterBean_InitFunc(t *testing.T) {
+
+	t.Run("int", func(t *testing.T) {
+
+		assert.Panic(t, func() {
+			ctx := SpringCore.NewDefaultSpringContext()
+			ctx.RegisterBean(new(int)).InitFunc(func() {})
+		}, "initFunc should be func\\(bean\\)")
+
+		assert.Panic(t, func() {
+			ctx := SpringCore.NewDefaultSpringContext()
+			ctx.RegisterBean(new(int)).InitFunc(func() int { return 0 })
+		}, "initFunc should be func\\(bean\\)")
+
+		assert.Panic(t, func() {
+			ctx := SpringCore.NewDefaultSpringContext()
+			ctx.RegisterBean(new(int)).InitFunc(func(int) {})
+		}, "initFunc should be func\\(bean\\)")
+
+		assert.Panic(t, func() {
+			ctx := SpringCore.NewDefaultSpringContext()
+			ctx.RegisterBean(new(int)).InitFunc(func(int, int) {})
+		}, "initFunc should be func\\(bean\\)")
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBean(new(int)).InitFunc(func(i *int) { *i = 3 })
+		ctx.AutoWireBeans()
+
+		var i *int
+		ctx.GetBean(&i)
+		assert.Equal(t, *i, 3)
+	})
+}
+
+type RedisCluster struct {
+	Endpoints string `value:"${redis.endpoints}"`
+
+	RedisConfig struct {
+		Endpoints string `value:"${redis.endpoints}"`
+	}
+
+	Nested struct {
+		RedisConfig struct {
+			Endpoints string `value:"${redis.endpoints}"`
+		}
+	}
+}
+
+func TestDefaultSpringContext_ValueBinding(t *testing.T) {
+
+	ctx := SpringCore.NewDefaultSpringContext()
+	ctx.SetProperty("redis.endpoints", "redis://127.0.0.1:6379")
+	ctx.RegisterBean(new(RedisCluster))
+	ctx.AutoWireBeans()
+
+	var cluster *RedisCluster
+	ctx.GetBean(&cluster)
+	fmt.Println(cluster)
+
+	assert.Equal(t, cluster.Endpoints, cluster.RedisConfig.Endpoints)
+	assert.Equal(t, cluster.Endpoints, cluster.Nested.RedisConfig.Endpoints)
+}
+
+func TestDefaultSpringContext_CollectBeans(t *testing.T) {
+
+	ctx := SpringCore.NewDefaultSpringContext()
+	ctx.SetProperty("redis.endpoints", "redis://127.0.0.1:6379")
+
+	ctx.RegisterBean([]RedisCluster{{}}).DependsOn("*bool")
+
+	ctx.RegisterBean([]*RedisCluster{new(RedisCluster)}).
+		DependsOn("*int")
+
+	ctx.RegisterBean(new(RedisCluster)).
+		DependsOn("*int")
+
+	ctx.RegisterBean(new(int)).InitFunc(func(*int) {
+
+		var rcs []*RedisCluster
+		ctx.CollectBeans(&rcs)
+		fmt.Println(SpringUtils.ToJson(rcs))
+
+		assert.Equal(t, len(rcs), 2)
+		assert.Equal(t, rcs[0].Endpoints, "redis://127.0.0.1:6379")
+	})
+
+	ctx.RegisterBean(new(bool)).InitFunc(func(*bool) {
+
+		var rcs []RedisCluster
+		ctx.CollectBeans(&rcs)
+		fmt.Println(SpringUtils.ToJson(rcs))
+
+		assert.Equal(t, len(rcs), 1)
+		assert.Equal(t, rcs[0].Endpoints, "redis://127.0.0.1:6379")
+	})
+
+	ctx.AutoWireBeans()
+
+	var rcs []RedisCluster
+	ctx.GetBean(&rcs)
+	fmt.Println(SpringUtils.ToJson(rcs))
+}
+
+func TestDefaultSpringContext_WireSliceBean(t *testing.T) {
+
+	ctx := SpringCore.NewDefaultSpringContext()
+	ctx.SetProperty("redis.endpoints", "redis://127.0.0.1:6379")
+	ctx.RegisterBean([]*RedisCluster{new(RedisCluster)})
+	ctx.RegisterBean([]RedisCluster{{}})
+	ctx.AutoWireBeans()
+
+	{
+		var rcs []*RedisCluster
+		ctx.GetBean(&rcs)
+		fmt.Println(SpringUtils.ToJson(rcs))
+
+		assert.Equal(t, rcs[0].Endpoints, "redis://127.0.0.1:6379")
+	}
+
+	{
+		var rcs []RedisCluster
+		ctx.GetBean(&rcs)
+		fmt.Println(SpringUtils.ToJson(rcs))
+
+		assert.Equal(t, rcs[0].Endpoints, "redis://127.0.0.1:6379")
+	}
+}
