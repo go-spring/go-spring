@@ -239,6 +239,18 @@ func TestFnToBeanDefinition(t *testing.T) {
 	bd = SpringCore.FnToBeanDefinition("", interfaceFn)
 	assert.Equal(t, bd.Type().String(), "SpringCore_test.Teacher")
 	assert.Equal(t, bd.Value().Type().String(), "SpringCore_test.Teacher")
+
+	assert.Panic(t, func() {
+		bd = SpringCore.FnToBeanDefinition("", func() (*int, *int) {
+			return nil, nil
+		})
+		assert.Equal(t, bd.Type().String(), "*int")
+	}, "constructor must be \"func\\(...\\) bean\" or \"func\\(...\\) \\(bean, error\\)\"")
+
+	bd = SpringCore.FnToBeanDefinition("", func() (*int, error) {
+		return nil, nil
+	})
+	assert.Equal(t, bd.Type().String(), "*int")
 }
 
 func TestIsValidBean(t *testing.T) {

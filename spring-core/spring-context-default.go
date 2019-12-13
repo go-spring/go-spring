@@ -652,6 +652,12 @@ func (ctx *DefaultSpringContext) wireConstructorBean(beanDefinition *BeanDefinit
 	out := fnValue.Call(in)
 	val := out[0]
 
+	if len(out) == 2 {
+		if err := out[1].Interface(); err != nil {
+			panic(err)
+		}
+	}
+
 	if IsValidBean(val.Kind()) {
 		cBean.rValue.Set(val)
 	} else {

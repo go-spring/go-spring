@@ -17,6 +17,7 @@
 package SpringCore_test
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -926,6 +927,14 @@ func NewManager() Manager {
 	return localManager{}
 }
 
+func NewManagerRetError() (Manager, error) {
+	return localManager{}, errors.New("error")
+}
+
+func NewManagerRetErrorNil() (Manager, error) {
+	return localManager{}, nil
+}
+
 func NewPtrManager() Manager {
 	return &localManager{}
 }
@@ -969,6 +978,20 @@ func TestDefaultSpringContext_RegisterBeanFn2(t *testing.T) {
 
 		var lm *localManager
 		ctx.GetBean(&lm)
+	})
+
+	t.Run("manager return error", func(t *testing.T) {
+		assert.Panic(t, func() {
+			ctx := SpringCore.NewDefaultSpringContext()
+			ctx.RegisterBeanFn(NewManagerRetError)
+			ctx.AutoWireBeans()
+		}, "error")
+	})
+
+	t.Run("manager return error nil", func(t *testing.T) {
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBeanFn(NewManagerRetErrorNil)
+		ctx.AutoWireBeans()
 	})
 }
 

@@ -41,6 +41,11 @@ var _VALID_RECEIVER_KINDS = []reflect.Kind{
 }
 
 //
+// error 的类型
+//
+var ERROR_TYPE = reflect.TypeOf((*error)(nil)).Elem()
+
+//
 // 定义 SpringBean 接口
 //
 type SpringBean interface {
@@ -117,11 +122,17 @@ func NewConstructorBean(fn interface{}, tags ...string) *ConstructorBean {
 	fnType := reflect.TypeOf(fn)
 
 	if fnType.Kind() != reflect.Func {
-		panic("constructor must be func")
+		panic("constructor must be \"func(...) bean\" or \"func(...) (bean, error)\"")
 	}
 
-	if fnType.NumOut() != 1 {
-		panic("constructor must be one out")
+	if fnType.NumOut() < 1 || fnType.NumOut() > 2 {
+		panic("constructor must be \"func(...) bean\" or \"func(...) (bean, error)\"")
+	}
+
+	if fnType.NumOut() == 2 { // 第二个返回值必须是 error 类型
+		if !fnType.Out(1).Implements(ERROR_TYPE) {
+			panic("constructor must be \"func(...) bean\" or \"func(...) (bean, error)\"")
+		}
 	}
 
 	fnTags := make([]string, fnType.NumIn())
