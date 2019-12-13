@@ -47,8 +47,16 @@ func (annotation *Annotation) ConditionOn(cond Condition) *Annotation {
 //
 // 设置一个 PropertyCondition
 //
-func (annotation *Annotation) ConditionOnProperty(name string, havingValue string) *Annotation {
-	annotation.bean.cond = NewPropertyCondition(name, havingValue)
+func (annotation *Annotation) ConditionOnProperty(name string) *Annotation {
+	annotation.bean.cond = NewPropertyCondition(name)
+	return annotation
+}
+
+//
+// 设置一个 PropertyValueCondition
+//
+func (annotation *Annotation) ConditionOnPropertyValue(name string, havingValue string) *Annotation {
+	annotation.bean.cond = NewPropertyValueCondition(name, havingValue)
 	return annotation
 }
 

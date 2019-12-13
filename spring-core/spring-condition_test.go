@@ -42,10 +42,22 @@ func TestPropertyCondition(t *testing.T) {
 	ctx := SpringCore.NewDefaultSpringContext()
 	ctx.SetProperty("int", 3)
 
-	cond := SpringCore.NewPropertyCondition("int", "3")
+	cond := SpringCore.NewPropertyCondition("int")
 	assert.Equal(t, cond.Matches(ctx), true)
 
-	cond = SpringCore.NewPropertyCondition("bool", "true")
+	cond = SpringCore.NewPropertyCondition("bool")
+	assert.Equal(t, cond.Matches(ctx), false)
+}
+
+func TestPropertyValueCondition(t *testing.T) {
+
+	ctx := SpringCore.NewDefaultSpringContext()
+	ctx.SetProperty("int", 3)
+
+	cond := SpringCore.NewPropertyValueCondition("int", "3")
+	assert.Equal(t, cond.Matches(ctx), true)
+
+	cond = SpringCore.NewPropertyValueCondition("bool", "true")
 	assert.Equal(t, cond.Matches(ctx), false)
 }
 
@@ -93,58 +105,58 @@ func TestConditional(t *testing.T) {
 	cond := SpringCore.NewConditional()
 	assert.Equal(t, cond.Matches(ctx), true)
 
-	cond = SpringCore.NewConditional().OnProperty("int", "3")
+	cond = SpringCore.NewConditional().OnProperty("int")
 	assert.Equal(t, cond.Matches(ctx), true)
 
 	assert.Panic(t, func() {
-		cond = SpringCore.NewConditional().OnProperty("int", "3").OnBean("null")
+		cond = SpringCore.NewConditional().OnProperty("int").OnBean("null")
 		assert.Equal(t, cond.Matches(ctx), true)
 	}, "condition already set")
 
 	assert.Panic(t, func() {
-		cond = SpringCore.NewConditional().OnProperty("int", "3").And()
+		cond = SpringCore.NewConditional().OnProperty("int").And()
 		assert.Equal(t, cond.Matches(ctx), true)
 	}, "last op need a cond triggered")
 
 	cond = SpringCore.NewConditional().
-		OnProperty("int", "3").
+		OnPropertyValue("int", "3").
 		And().
-		OnProperty("bool", "false")
+		OnPropertyValue("bool", "false")
 	assert.Equal(t, cond.Matches(ctx), true)
 
 	cond = SpringCore.NewConditional().
-		OnProperty("int", "3").
+		OnPropertyValue("int", "3").
 		And().
-		OnProperty("bool", "true")
+		OnPropertyValue("bool", "true")
 	assert.Equal(t, cond.Matches(ctx), false)
 
 	cond = SpringCore.NewConditional().
-		OnProperty("int", "2").
+		OnPropertyValue("int", "2").
 		Or().
-		OnProperty("bool", "true")
+		OnPropertyValue("bool", "true")
 	assert.Equal(t, cond.Matches(ctx), false)
 
 	cond = SpringCore.NewConditional().
-		OnProperty("int", "2").
+		OnPropertyValue("int", "2").
 		Or().
-		OnProperty("bool", "false")
+		OnPropertyValue("bool", "false")
 	assert.Equal(t, cond.Matches(ctx), true)
 
 	assert.Panic(t, func() {
 		cond = SpringCore.NewConditional().
-			OnProperty("int", "2").
+			OnPropertyValue("int", "2").
 			Or().
-			OnProperty("bool", "false").
+			OnPropertyValue("bool", "false").
 			Or()
 		assert.Equal(t, cond.Matches(ctx), true)
 	}, "last op need a cond triggered")
 
 	assert.Panic(t, func() {
 		cond = SpringCore.NewConditional().
-			OnProperty("int", "2").
+			OnPropertyValue("int", "2").
 			Or().
-			OnProperty("bool", "false").
-			OnProperty("bool", "false")
+			OnPropertyValue("bool", "false").
+			OnPropertyValue("bool", "false")
 		assert.Equal(t, cond.Matches(ctx), true)
 	}, "condition already set")
 }

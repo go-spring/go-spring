@@ -54,9 +54,28 @@ func (c *FunctionCondition) Matches(ctx SpringContext) bool {
 }
 
 //
-// 基于属性值匹配的 Condition 实现
+// 基于属性值存在的 Condition 实现
 //
 type PropertyCondition struct {
+	name string
+}
+
+//
+// 工厂函数
+//
+func NewPropertyCondition(name string, ) *PropertyCondition {
+	return &PropertyCondition{name}
+}
+
+func (c *PropertyCondition) Matches(ctx SpringContext) bool {
+	_, ok := ctx.GetDefaultProperty(c.name, "")
+	return ok
+}
+
+//
+// 基于属性值匹配的 Condition 实现
+//
+type PropertyValueCondition struct {
 	name        string
 	havingValue string
 }
@@ -64,11 +83,11 @@ type PropertyCondition struct {
 //
 // 工厂函数
 //
-func NewPropertyCondition(name string, havingValue string) *PropertyCondition {
-	return &PropertyCondition{name, havingValue}
+func NewPropertyValueCondition(name string, havingValue string) *PropertyValueCondition {
+	return &PropertyValueCondition{name, havingValue}
 }
 
-func (c *PropertyCondition) Matches(ctx SpringContext) bool {
+func (c *PropertyValueCondition) Matches(ctx SpringContext) bool {
 	val := ctx.GetStringProperty(c.name)
 	return val == c.havingValue
 }
@@ -246,9 +265,15 @@ func (c *Conditional) OnCondition(cond Condition) *Conditional {
 	return c
 }
 
-func (c *Conditional) OnProperty(name string, havingValue string) *Conditional {
+func (c *Conditional) OnProperty(name string) *Conditional {
 	c.checkCondition()
-	c.curr.cond = NewPropertyCondition(name, havingValue)
+	c.curr.cond = NewPropertyCondition(name)
+	return c
+}
+
+func (c *Conditional) OnPropertyValue(name string, havingValue string) *Conditional {
+	c.checkCondition()
+	c.curr.cond = NewPropertyValueCondition(name, havingValue)
 	return c
 }
 

@@ -339,8 +339,8 @@ func TestDefaultSpringContext_ValueTag(t *testing.T) {
 	setting := &Setting{}
 
 	ctx.RegisterBean(setting).ConditionOn(
-		SpringCore.NewConditional().OnProperty("bool", "true").And().OnCondition(
-			SpringCore.NewConditional().OnProperty("int", "3"),
+		SpringCore.NewConditional().OnProperty("bool").And().OnCondition(
+			SpringCore.NewConditional().OnPropertyValue("int", "3"),
 		),
 	)
 
