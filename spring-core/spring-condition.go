@@ -17,7 +17,12 @@
 package SpringCore
 
 import (
+	"go/token"
+	"go/types"
+	"strings"
+
 	"github.com/go-spring/go-spring-parent/spring-const"
+	"github.com/spf13/cast"
 )
 
 //
@@ -63,7 +68,7 @@ type PropertyCondition struct {
 //
 // 工厂函数
 //
-func NewPropertyCondition(name string, ) *PropertyCondition {
+func NewPropertyCondition(name string) *PropertyCondition {
 	return &PropertyCondition{name}
 }
 
@@ -73,23 +78,59 @@ func (c *PropertyCondition) Matches(ctx SpringContext) bool {
 }
 
 //
-// 基于属性值匹配的 Condition 实现
+// 基于属性值不存在的 Condition 实现
 //
-type PropertyValueCondition struct {
-	name        string
-	havingValue string
+type MissingPropertyCondition struct {
+	name string
 }
 
 //
 // 工厂函数
 //
-func NewPropertyValueCondition(name string, havingValue string) *PropertyValueCondition {
+func NewMissingPropertyCondition(name string) *MissingPropertyCondition {
+	return &MissingPropertyCondition{name}
+}
+
+func (c *MissingPropertyCondition) Matches(ctx SpringContext) bool {
+	_, ok := ctx.GetDefaultProperty(c.name, "")
+	return !ok
+}
+
+//
+// 基于属性值匹配的 Condition 实现
+//
+type PropertyValueCondition struct {
+	name        string
+	havingValue interface{}
+}
+
+//
+// 工厂函数
+//
+func NewPropertyValueCondition(name string, havingValue interface{}) *PropertyValueCondition {
 	return &PropertyValueCondition{name, havingValue}
 }
 
 func (c *PropertyValueCondition) Matches(ctx SpringContext) bool {
-	val := ctx.GetStringProperty(c.name)
-	return val == c.havingValue
+	// 参考 /usr/local/go/src/go/types/eval_test.go 示例
+
+	val, ok := ctx.GetDefaultProperty(c.name, "")
+	if !ok { // 不存在直接返回 false
+		return false
+	}
+
+	// 不是字符串则直接比较
+	expectValue, ok := c.havingValue.(string)
+	if !ok {
+		return val == c.havingValue
+	}
+
+	expr := strings.Replace(expectValue, "$", cast.ToString(val), -1)
+	gotTv, err := types.Eval(token.NewFileSet(), nil, token.NoPos, expr)
+	if err != nil {
+		panic(err)
+	}
+	return gotTv.Value.String() == "true"
 }
 
 //
@@ -271,7 +312,13 @@ func (c *Conditional) OnProperty(name string) *Conditional {
 	return c
 }
 
-func (c *Conditional) OnPropertyValue(name string, havingValue string) *Conditional {
+func (c *Conditional) OnMissingProperty(name string) *Conditional {
+	c.checkCondition()
+	c.curr.cond = NewMissingPropertyCondition(name)
+	return c
+}
+
+func (c *Conditional) OnPropertyValue(name string, havingValue interface{}) *Conditional {
 	c.checkCondition()
 	c.curr.cond = NewPropertyValueCondition(name, havingValue)
 	return c

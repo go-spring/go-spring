@@ -53,9 +53,17 @@ func (annotation *Annotation) ConditionOnProperty(name string) *Annotation {
 }
 
 //
+// 设置一个 MissingPropertyCondition
+//
+func (annotation *Annotation) ConditionOnMissingProperty(name string) *Annotation {
+	annotation.bean.cond = NewMissingPropertyCondition(name)
+	return annotation
+}
+
+//
 // 设置一个 PropertyValueCondition
 //
-func (annotation *Annotation) ConditionOnPropertyValue(name string, havingValue string) *Annotation {
+func (annotation *Annotation) ConditionOnPropertyValue(name string, havingValue interface{}) *Annotation {
 	annotation.bean.cond = NewPropertyValueCondition(name, havingValue)
 	return annotation
 }
