@@ -135,16 +135,6 @@ func (ca *StringConstructorArg) Get(ctx SpringContext, fnType reflect.Type) []re
 }
 
 //
-// 另外一种形式: key 是 tag，value 是 fn
-//
-type MapOptionArg map[string]interface{}
-
-type OptionArg struct {
-	Fn  interface{}
-	Tag string
-}
-
-//
 // 基于 Option 模式的构造函数参数
 //
 type OptionConstructorArg struct {
@@ -156,6 +146,11 @@ func (ca *OptionConstructorArg) Get(ctx SpringContext, fnType reflect.Type) []re
 	args := make([]reflect.Value, 0)
 
 	for _, arg := range ca.options {
+
+		// 判断 Option 条件是否成立
+		if arg.Cond != nil && !arg.Cond.Matches(ctx) {
+			continue
+		}
 
 		optValue := reflect.ValueOf(arg.Fn)
 		optType := optValue.Type()

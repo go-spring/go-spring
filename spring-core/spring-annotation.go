@@ -36,10 +36,17 @@ func NewAnnotation(bean *BeanDefinition) *Annotation {
 	}
 }
 
+func (annotation *Annotation) checkCondition() {
+	if annotation.bean.cond != nil {
+		panic("condition already set")
+	}
+}
+
 //
 // 设置一个 Condition
 //
 func (annotation *Annotation) ConditionOn(cond Condition) *Annotation {
+	annotation.checkCondition()
 	annotation.bean.cond = cond
 	return annotation
 }
@@ -48,6 +55,7 @@ func (annotation *Annotation) ConditionOn(cond Condition) *Annotation {
 // 设置一个 PropertyCondition
 //
 func (annotation *Annotation) ConditionOnProperty(name string) *Annotation {
+	annotation.checkCondition()
 	annotation.bean.cond = NewPropertyCondition(name)
 	return annotation
 }
@@ -56,6 +64,7 @@ func (annotation *Annotation) ConditionOnProperty(name string) *Annotation {
 // 设置一个 MissingPropertyCondition
 //
 func (annotation *Annotation) ConditionOnMissingProperty(name string) *Annotation {
+	annotation.checkCondition()
 	annotation.bean.cond = NewMissingPropertyCondition(name)
 	return annotation
 }
@@ -64,6 +73,7 @@ func (annotation *Annotation) ConditionOnMissingProperty(name string) *Annotatio
 // 设置一个 PropertyValueCondition
 //
 func (annotation *Annotation) ConditionOnPropertyValue(name string, havingValue interface{}) *Annotation {
+	annotation.checkCondition()
 	annotation.bean.cond = NewPropertyValueCondition(name, havingValue)
 	return annotation
 }
@@ -72,6 +82,7 @@ func (annotation *Annotation) ConditionOnPropertyValue(name string, havingValue 
 // 设置一个 BeanCondition
 //
 func (annotation *Annotation) ConditionOnBean(beanId string) *Annotation {
+	annotation.checkCondition()
 	annotation.bean.cond = NewBeanCondition(beanId)
 	return annotation
 }
@@ -80,6 +91,7 @@ func (annotation *Annotation) ConditionOnBean(beanId string) *Annotation {
 // 设置一个 MissingBeanCondition
 //
 func (annotation *Annotation) ConditionOnMissingBean(beanId string) *Annotation {
+	annotation.checkCondition()
 	annotation.bean.cond = NewMissingBeanCondition(beanId)
 	return annotation
 }
@@ -88,6 +100,7 @@ func (annotation *Annotation) ConditionOnMissingBean(beanId string) *Annotation 
 // 设置一个 ExpressionCondition
 //
 func (annotation *Annotation) ConditionOnExpression(expression string) *Annotation {
+	annotation.checkCondition()
 	annotation.bean.cond = NewExpressionCondition(expression)
 	return annotation
 }
@@ -96,6 +109,7 @@ func (annotation *Annotation) ConditionOnExpression(expression string) *Annotati
 // 设置一个 FunctionCondition
 //
 func (annotation *Annotation) ConditionOnMatches(fn ConditionFunc) *Annotation {
+	annotation.checkCondition()
 	annotation.bean.cond = NewFunctionCondition(fn)
 	return annotation
 }
@@ -106,9 +120,16 @@ func (annotation *Annotation) ConditionOnMatches(fn ConditionFunc) *Annotation {
 func (annotation *Annotation) MapOptions(options []MapOptionArg) *Annotation {
 	args := make([]OptionArg, 0)
 	for _, optMap := range options {
-		for tag, fn := range optMap {
-			args = append(args, OptionArg{fn, tag})
+		var arg OptionArg
+		for k, v := range optMap {
+			if k == "cond" {
+				arg.Cond = v.(Condition)
+			} else {
+				arg.Tag = k
+				arg.Fn = v
+			}
 		}
+		args = append(args, arg)
 	}
 	return annotation.Options(args)
 }

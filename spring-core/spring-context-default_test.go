@@ -1218,6 +1218,23 @@ func TestMapOptionConstructorArg(t *testing.T) {
 		assert.Equal(t, cls.className, "二年级03班")
 	})
 
+	t.Run("option withClassName Condition", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBeanFn(NewClass).MapOptions([]SpringCore.MapOptionArg{
+			SpringCore.MapOptionArg{
+				"${class_name:=二年级03班}": withClassName,
+			}.ConditionOnProperty("class_name_enable"),
+		})
+		ctx.AutoWireBeans()
+
+		var cls *Class
+		ctx.GetBean(&cls)
+
+		assert.Equal(t, len(cls.students), 0)
+		assert.Equal(t, cls.className, "default")
+	})
+
 	t.Run("option withStudents", func(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
@@ -1277,7 +1294,7 @@ func TestOptionConstructorArg(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
 		ctx.RegisterBeanFn(NewClass).Options([]SpringCore.OptionArg{
-			{withClassName, "${class_name:=二年级03班}"},
+			SpringCore.NewOptionArg(withClassName, "${class_name:=二年级03班}"),
 		})
 		ctx.AutoWireBeans()
 
@@ -1288,12 +1305,29 @@ func TestOptionConstructorArg(t *testing.T) {
 		assert.Equal(t, cls.className, "二年级03班")
 	})
 
+	t.Run("option withClassName Condition", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBeanFn(NewClass).Options([]SpringCore.OptionArg{
+			SpringCore.NewOptionArg(
+				withClassName, "${class_name:=二年级03班}",
+			).ConditionOnProperty("class_name_enable"),
+		})
+		ctx.AutoWireBeans()
+
+		var cls *Class
+		ctx.GetBean(&cls)
+
+		assert.Equal(t, len(cls.students), 0)
+		assert.Equal(t, cls.className, "default")
+	})
+
 	t.Run("option withStudents", func(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
 		ctx.SetProperty("class_name", "二年级03班")
 		ctx.RegisterBeanFn(NewClass).Options([]SpringCore.OptionArg{
-			{withStudents, ""},
+			{withStudents, "", nil},
 		})
 		ctx.RegisterBean([]*Student{
 			new(Student), new(Student),
@@ -1312,8 +1346,8 @@ func TestOptionConstructorArg(t *testing.T) {
 		ctx := SpringCore.NewDefaultSpringContext()
 		ctx.SetProperty("class_name", "二年级06班")
 		ctx.RegisterBeanFn(NewClass).Options([]SpringCore.OptionArg{
-			{withStudents, ""},
-			{withClassName, "${class_name:=二年级03班}"},
+			SpringCore.NewOptionArg(withStudents, ""),
+			{withClassName, "${class_name:=二年级03班}", nil},
 		})
 		ctx.RegisterBean([]*Student{
 			new(Student), new(Student),
