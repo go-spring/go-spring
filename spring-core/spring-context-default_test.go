@@ -1122,3 +1122,138 @@ func TestDefaultSpringContext_WireSliceBean(t *testing.T) {
 		assert.Equal(t, rcs[0].Endpoints, "redis://127.0.0.1:6379")
 	}
 }
+
+var defaultClassOption = ClassOption{
+	className: "default",
+}
+
+type ClassOption struct {
+	className string
+	students  []*Student
+}
+
+type ClassOptionFunc func(opt *ClassOption)
+
+func withClassName(className string) ClassOptionFunc {
+	return func(opt *ClassOption) {
+		opt.className = className
+	}
+}
+
+func withStudents(students []*Student) ClassOptionFunc {
+	return func(opt *ClassOption) {
+		opt.students = students
+	}
+}
+
+type Class struct {
+	className string
+	students  []*Student
+}
+
+func NewClass(options ...ClassOptionFunc) Class {
+	opt := defaultClassOption
+	for _, fn := range options {
+		fn(&opt)
+	}
+	return Class{
+		className: opt.className,
+		students:  opt.students,
+	}
+}
+
+func TestOptionConstructorArg(t *testing.T) {
+
+	t.Run("basic", func(t *testing.T) {
+
+		students := []*Student{
+			new(Student), new(Student),
+		}
+
+		cls := NewClass()
+		assert.Equal(t, cls.className, "default")
+
+		cls = NewClass(withClassName("二年级03班"))
+		assert.Equal(t, len(cls.students), 0)
+		assert.Equal(t, cls.className, "二年级03班")
+
+		cls = NewClass(withStudents(students))
+		assert.Equal(t, cls.students, students)
+		assert.Equal(t, cls.className, "default")
+
+		cls = NewClass(withClassName("二年级03班"), withStudents(students))
+		assert.Equal(t, cls.className, "二年级03班")
+		assert.Equal(t, cls.students, students)
+
+		cls = NewClass(withStudents(students), withClassName("二年级03班"))
+		assert.Equal(t, cls.className, "二年级03班")
+		assert.Equal(t, cls.students, students)
+	})
+
+	t.Run("option default", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBeanFn(NewClass).Options(nil)
+		ctx.AutoWireBeans()
+
+		var cls *Class
+		ctx.GetBean(&cls)
+
+		assert.Equal(t, len(cls.students), 0)
+		assert.Equal(t, cls.className, "default")
+	})
+
+	t.Run("option withClassName", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBeanFn(NewClass).Options([]map[string]interface{}{
+			{"${class_name:=二年级03班}": withClassName},
+		})
+		ctx.AutoWireBeans()
+
+		var cls *Class
+		ctx.GetBean(&cls)
+
+		assert.Equal(t, len(cls.students), 0)
+		assert.Equal(t, cls.className, "二年级03班")
+	})
+
+	t.Run("option withStudents", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.SetProperty("class_name", "二年级03班")
+		ctx.RegisterBeanFn(NewClass).Options([]map[string]interface{}{
+			{"": withStudents},
+		})
+		ctx.RegisterBean([]*Student{
+			new(Student), new(Student),
+		})
+		ctx.AutoWireBeans()
+
+		var cls *Class
+		ctx.GetBean(&cls)
+
+		assert.Equal(t, len(cls.students), 2)
+		assert.Equal(t, cls.className, "default")
+	})
+
+	t.Run("option withStudents withClassName", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.SetProperty("class_name", "二年级06班")
+		ctx.RegisterBeanFn(NewClass).Options([]map[string]interface{}{
+			{"": withStudents},
+			{"${class_name:=二年级03班}": withClassName},
+		})
+		ctx.RegisterBean([]*Student{
+			new(Student), new(Student),
+		})
+		ctx.AutoWireBeans()
+
+		var cls *Class
+		ctx.GetBean(&cls)
+
+		assert.Equal(t, len(cls.students), 2)
+		assert.Equal(t, cls.className, "二年级06班")
+	})
+}

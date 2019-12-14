@@ -19,7 +19,6 @@ package SpringCore
 import (
 	"fmt"
 	"reflect"
-	"strings"
 )
 
 var (
@@ -630,28 +629,20 @@ func (ctx *DefaultSpringContext) wireOriginalBean(beanDefinition *BeanDefinition
 // 对构造函数进行注入
 //
 func (ctx *DefaultSpringContext) wireConstructorBean(beanDefinition *BeanDefinition) {
-
 	cBean := beanDefinition.SpringBean.(*ConstructorBean)
+
+	// 获取输入参数
 	fnType := reflect.TypeOf(cBean.fn)
-	in := make([]reflect.Value, fnType.NumIn())
+	in := cBean.arg.Get(ctx, fnType)
 
-	for i, tag := range cBean.tags {
-		it := fnType.In(i)
-		iv := reflect.New(it).Elem()
-		{
-			if strings.HasPrefix(tag, "$") {
-				bindStructField(ctx, it, iv, "", "", tag)
-			} else {
-				ctx.getBeanByName(tag, _EMPTY_VALUE, iv, "")
-			}
-		}
-		in[i] = iv
-	}
-
+	// 运行构造函数
 	fnValue := reflect.ValueOf(cBean.fn)
 	out := fnValue.Call(in)
+
+	// 获取第一个返回值
 	val := out[0]
 
+	// 检查是否有 error 返回
 	if len(out) == 2 {
 		if err := out[1].Interface(); err != nil {
 			panic(err)

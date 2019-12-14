@@ -104,14 +104,77 @@ func (b *OriginalBean) TypeName() string {
 	return b.typeName
 }
 
+type ConstructorArg interface {
+	Get(ctx SpringContext, fnType reflect.Type) []reflect.Value
+}
+
+//
+// 基于字符串 tag 的构造函数参数
+//
+type StringConstructorArg struct {
+	tags []string
+}
+
+func (ca *StringConstructorArg) Get(ctx SpringContext, fnType reflect.Type) []reflect.Value {
+	args := make([]reflect.Value, fnType.NumIn())
+	ctx0 := ctx.(*DefaultSpringContext)
+
+	for i, tag := range ca.tags {
+		it := fnType.In(i)
+		iv := reflect.New(it).Elem()
+
+		if strings.HasPrefix(tag, "$") {
+			bindStructField(ctx, it, iv, "", "", tag)
+		} else {
+			ctx0.getBeanByName(tag, _EMPTY_VALUE, iv, "")
+		}
+
+		args[i] = iv
+	}
+	return args
+}
+
+//
+// 基于 Option 模式的构造函数参数
+//
+type OptionConstructorArg struct {
+	options []map[string]interface{}
+}
+
+func (ca *OptionConstructorArg) Get(ctx SpringContext, fnType reflect.Type) []reflect.Value {
+	ctx0 := ctx.(*DefaultSpringContext)
+	args := make([]reflect.Value, 0)
+
+	for _, optMap := range ca.options {
+		for tag, opt := range optMap {
+
+			optValue := reflect.ValueOf(opt)
+			optType := optValue.Type()
+
+			it := optType.In(0)
+			iv := reflect.New(it).Elem()
+
+			if strings.HasPrefix(tag, "$") {
+				bindStructField(ctx, it, iv, "", "", tag)
+			} else {
+				ctx0.getBeanByName(tag, _EMPTY_VALUE, iv, "")
+			}
+
+			optOut := optValue.Call([]reflect.Value{iv})
+			args = append(args, optOut[0])
+		}
+	}
+	return args
+}
+
 //
 // 保存构造函数的 SpringBean
 //
 type ConstructorBean struct {
 	OriginalBean
 
-	fn   interface{}
-	tags []string
+	fn  interface{}
+	arg ConstructorArg
 }
 
 //
@@ -192,8 +255,8 @@ func NewConstructorBean(fn interface{}, tags ...string) *ConstructorBean {
 			typeName: TypeName(t),
 			rValue:   v,
 		},
-		fn:   fn,
-		tags: fnTags,
+		fn:  fn,
+		arg: &StringConstructorArg{fnTags},
 	}
 }
 

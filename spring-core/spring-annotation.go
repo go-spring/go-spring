@@ -101,6 +101,18 @@ func (annotation *Annotation) ConditionOnMatches(fn ConditionFunc) *Annotation {
 }
 
 //
+// 设置 Option 模式构造函数的参数绑定
+//
+func (annotation *Annotation) Options(options []map[string]interface{}) *Annotation {
+	cBean, ok := annotation.bean.SpringBean.(*ConstructorBean)
+	if !ok {
+		panic("只有构造函数 Bean 才能调用此方法")
+	}
+	cBean.arg = &OptionConstructorArg{options}
+	return annotation
+}
+
+//
 // 设置 bean 的运行环境
 //
 func (annotation *Annotation) Profile(profile string) *Annotation {
