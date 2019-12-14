@@ -135,34 +135,42 @@ func (ca *StringConstructorArg) Get(ctx SpringContext, fnType reflect.Type) []re
 }
 
 //
+// 另外一种形式: key 是 tag，value 是 fn
+//
+type MapOptionArg map[string]interface{}
+
+type OptionArg struct {
+	Fn  interface{}
+	Tag string
+}
+
+//
 // 基于 Option 模式的构造函数参数
 //
 type OptionConstructorArg struct {
-	options []map[string]interface{}
+	options []OptionArg
 }
 
 func (ca *OptionConstructorArg) Get(ctx SpringContext, fnType reflect.Type) []reflect.Value {
 	ctx0 := ctx.(*DefaultSpringContext)
 	args := make([]reflect.Value, 0)
 
-	for _, optMap := range ca.options {
-		for tag, opt := range optMap {
+	for _, arg := range ca.options {
 
-			optValue := reflect.ValueOf(opt)
-			optType := optValue.Type()
+		optValue := reflect.ValueOf(arg.Fn)
+		optType := optValue.Type()
 
-			it := optType.In(0)
-			iv := reflect.New(it).Elem()
+		it := optType.In(0)
+		iv := reflect.New(it).Elem()
 
-			if strings.HasPrefix(tag, "$") {
-				bindStructField(ctx, it, iv, "", "", tag)
-			} else {
-				ctx0.getBeanByName(tag, _EMPTY_VALUE, iv, "")
-			}
-
-			optOut := optValue.Call([]reflect.Value{iv})
-			args = append(args, optOut[0])
+		if strings.HasPrefix(arg.Tag, "$") {
+			bindStructField(ctx, it, iv, "", "", arg.Tag)
+		} else {
+			ctx0.getBeanByName(arg.Tag, _EMPTY_VALUE, iv, "")
 		}
+
+		optOut := optValue.Call([]reflect.Value{iv})
+		args = append(args, optOut[0])
 	}
 	return args
 }

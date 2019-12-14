@@ -103,7 +103,20 @@ func (annotation *Annotation) ConditionOnMatches(fn ConditionFunc) *Annotation {
 //
 // 设置 Option 模式构造函数的参数绑定
 //
-func (annotation *Annotation) Options(options []map[string]interface{}) *Annotation {
+func (annotation *Annotation) MapOptions(options []MapOptionArg) *Annotation {
+	args := make([]OptionArg, 0)
+	for _, optMap := range options {
+		for tag, fn := range optMap {
+			args = append(args, OptionArg{fn, tag})
+		}
+	}
+	return annotation.Options(args)
+}
+
+//
+// 设置 Option 模式构造函数的参数绑定
+//
+func (annotation *Annotation) Options(options []OptionArg) *Annotation {
 	cBean, ok := annotation.bean.SpringBean.(*ConstructorBean)
 	if !ok {
 		panic("只有构造函数 Bean 才能调用此方法")
