@@ -138,33 +138,78 @@ func (ca *StringConstructorArg) Get(ctx SpringContext, fnType reflect.Type) []re
 // 基于 Option 模式的构造函数参数
 //
 type OptionConstructorArg struct {
-	options []OptionArg
+	options []*OptionArg
 }
 
-func (ca *OptionConstructorArg) Get(ctx SpringContext, fnType reflect.Type) []reflect.Value {
+func (ca *OptionConstructorArg) Get(ctx SpringContext, _ reflect.Type) []reflect.Value {
 	ctx0 := ctx.(*DefaultSpringContext)
 	args := make([]reflect.Value, 0)
 
 	for _, arg := range ca.options {
 
 		// 判断 Option 条件是否成立
-		if arg.Cond != nil && !arg.Cond.Matches(ctx) {
+		if arg.cond != nil && !arg.cond.Matches(ctx) {
 			continue
 		}
 
 		optValue := reflect.ValueOf(arg.Fn)
 		optType := optValue.Type()
 
-		it := optType.In(0)
-		iv := reflect.New(it).Elem()
+		fnTags := make([]string, optType.NumIn())
 
-		if strings.HasPrefix(arg.Tag, "$") {
-			bindStructField(ctx, it, iv, "", "", arg.Tag)
-		} else {
-			ctx0.getBeanByName(arg.Tag, _EMPTY_VALUE, iv, "")
+		if len(arg.Tags) > 0 {
+			indexed := false // 是否包含序号
+
+			if tag := arg.Tags[0]; tag != "" {
+				if i := strings.Index(tag, ":"); i > 0 {
+					_, err := strconv.Atoi(tag[:i])
+					indexed = err == nil
+				}
+			}
+
+			if indexed { // 有序号
+				for _, tag := range arg.Tags {
+					index := strings.Index(tag, ":")
+					if index <= 0 {
+						panic("tag \"" + tag + "\" should have index")
+					}
+					i, err := strconv.Atoi(tag[:index])
+					if err != nil {
+						panic("tag \"" + tag + "\" should have index")
+					}
+					fnTags[i] = tag[index+1:]
+				}
+
+			} else { // 无序号
+				for i, tag := range arg.Tags {
+					if index := strings.Index(tag, ":"); index > 0 {
+						_, err := strconv.Atoi(tag[:index])
+						if err == nil {
+							panic("tag \"" + tag + "\" should no index")
+						}
+					}
+					fnTags[i] = tag
+				}
+			}
 		}
 
-		optOut := optValue.Call([]reflect.Value{iv})
+		optIn := make([]reflect.Value, optType.NumIn())
+
+		for i, tag := range fnTags {
+
+			it := optType.In(i)
+			iv := reflect.New(it).Elem()
+
+			if strings.HasPrefix(tag, "$") {
+				bindStructField(ctx, it, iv, "", "", tag)
+			} else {
+				ctx0.getBeanByName(tag, _EMPTY_VALUE, iv, "")
+			}
+
+			optIn[i] = iv
+		}
+
+		optOut := optValue.Call(optIn)
 		args = append(args, optOut[0])
 	}
 	return args
@@ -339,4 +384,168 @@ func ToBeanDefinition(name string, i interface{}) *BeanDefinition {
 func FnToBeanDefinition(name string, fn interface{}, tags ...string) *BeanDefinition {
 	bean := NewConstructorBean(fn, tags...)
 	return NewBeanDefinition(bean, name)
+}
+
+func (d *BeanDefinition) checkCondition() {
+	if d.cond != nil {
+		panic("condition already set")
+	}
+}
+
+//
+// 设置一个 Condition
+//
+func (d *BeanDefinition) ConditionOn(cond Condition) *BeanDefinition {
+	d.checkCondition()
+	d.cond = cond
+	return d
+}
+
+//
+// 设置一个 PropertyCondition
+//
+func (d *BeanDefinition) ConditionOnProperty(name string) *BeanDefinition {
+	d.checkCondition()
+	d.cond = NewPropertyCondition(name)
+	return d
+}
+
+//
+// 设置一个 MissingPropertyCondition
+//
+func (d *BeanDefinition) ConditionOnMissingProperty(name string) *BeanDefinition {
+	d.checkCondition()
+	d.cond = NewMissingPropertyCondition(name)
+	return d
+}
+
+//
+// 设置一个 PropertyValueCondition
+//
+func (d *BeanDefinition) ConditionOnPropertyValue(name string, havingValue interface{}) *BeanDefinition {
+	d.checkCondition()
+	d.cond = NewPropertyValueCondition(name, havingValue)
+	return d
+}
+
+//
+// 设置一个 BeanCondition
+//
+func (d *BeanDefinition) ConditionOnBean(beanId string) *BeanDefinition {
+	d.checkCondition()
+	d.cond = NewBeanCondition(beanId)
+	return d
+}
+
+//
+// 设置一个 MissingBeanCondition
+//
+func (d *BeanDefinition) ConditionOnMissingBean(beanId string) *BeanDefinition {
+	d.checkCondition()
+	d.cond = NewMissingBeanCondition(beanId)
+	return d
+}
+
+//
+// 设置一个 ExpressionCondition
+//
+func (d *BeanDefinition) ConditionOnExpression(expression string) *BeanDefinition {
+	d.checkCondition()
+	d.cond = NewExpressionCondition(expression)
+	return d
+}
+
+//
+// 设置一个 FunctionCondition
+//
+func (d *BeanDefinition) ConditionOnMatches(fn ConditionFunc) *BeanDefinition {
+	d.checkCondition()
+	d.cond = NewFunctionCondition(fn)
+	return d
+}
+
+//
+// 设置 Option 模式构造函数的参数绑定
+//
+func (d *BeanDefinition) Options(options ...*OptionArg) *BeanDefinition {
+	cBean, ok := d.SpringBean.(*ConstructorBean)
+	if !ok {
+		panic("只有构造函数 Bean 才能调用此方法")
+	}
+	cBean.arg = &OptionConstructorArg{options}
+	return d
+}
+
+//
+// 设置 bean 的运行环境
+//
+func (d *BeanDefinition) Profile(profile string) *BeanDefinition {
+	d.profile = profile
+	return d
+}
+
+//
+// 设置 bean 的非直接依赖
+//
+func (d *BeanDefinition) DependsOn(beanId ...string) *BeanDefinition {
+	d.dependsOn = beanId
+	return d
+}
+
+//
+// 设置 bean 的优先级
+//
+func (d *BeanDefinition) Primary(primary bool) *BeanDefinition {
+	d.primary = primary
+	return d
+}
+
+//
+// 设置 bean 绑定结束的回调
+//
+func (d *BeanDefinition) InitFunc(fn interface{}) *BeanDefinition {
+
+	fnType := reflect.TypeOf(fn)
+	fnValue := reflect.ValueOf(fn)
+
+	if fnValue.Kind() != reflect.Func || fnType.NumOut() > 0 || fnType.NumIn() != 1 {
+		panic("initFunc should be func(bean)")
+	}
+
+	if fnType.In(0) != d.Type() {
+		panic("initFunc should be func(bean)")
+	}
+
+	d.initFunc = fn
+	return d
+}
+
+//
+// 设置 Bean 应用自定义限制
+//
+func (d *BeanDefinition) Apply(c *Constriction) *BeanDefinition {
+
+	// 设置条件
+	if c.cond != nil {
+		d.checkCondition()
+		d.cond = c.cond
+	}
+
+	// 设置运行环境
+	if c.profile != "" {
+		if d.profile != "" {
+			panic("profile already set")
+		}
+		d.profile = c.profile
+	}
+
+	// 设置非直接依赖
+	if len(c.dependsOn) > 0 {
+		if len(d.dependsOn) > 0 {
+			panic("dependsOn already set")
+		}
+		d.dependsOn = c.dependsOn
+	}
+
+	return d
 }

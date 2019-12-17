@@ -16,18 +16,29 @@
 
 package SpringCore
 
+//
+// Option 模式绑定参数
+//
 type OptionArg struct {
-	Fn   interface{}
-	Tag  string
-	Cond Condition // 条件
+	Fn        interface{}
+	Tags      []string
+	cond      Condition // 判断条件
+	profile   string    // 运行环境
+	dependsOn []string  // 非直接依赖
 }
 
-func NewOptionArg(fn interface{}, tag string) OptionArg {
-	return OptionArg{fn, tag, nil}
+//
+// 构造函数
+//
+func NewOptionArg(fn interface{}, tags ...string) *OptionArg {
+	return &OptionArg{
+		Fn:   fn,
+		Tags: tags,
+	}
 }
 
 func (arg *OptionArg) checkCondition() {
-	if arg.Cond != nil {
+	if arg.cond != nil {
 		panic("condition already set")
 	}
 }
@@ -35,154 +46,117 @@ func (arg *OptionArg) checkCondition() {
 //
 // 设置一个 Condition
 //
-func (arg OptionArg) ConditionOn(cond Condition) OptionArg {
+func (arg *OptionArg) ConditionOn(cond Condition) *OptionArg {
 	arg.checkCondition()
-	arg.Cond = cond
+	arg.cond = cond
 	return arg
 }
 
 //
 // 设置一个 PropertyCondition
 //
-func (arg OptionArg) ConditionOnProperty(name string) OptionArg {
+func (arg *OptionArg) ConditionOnProperty(name string) *OptionArg {
 	arg.checkCondition()
-	arg.Cond = NewPropertyCondition(name)
+	arg.cond = NewPropertyCondition(name)
 	return arg
 }
 
 //
 // 设置一个 MissingPropertyCondition
 //
-func (arg OptionArg) ConditionOnMissingProperty(name string) OptionArg {
+func (arg *OptionArg) ConditionOnMissingProperty(name string) *OptionArg {
 	arg.checkCondition()
-	arg.Cond = NewMissingPropertyCondition(name)
+	arg.cond = NewMissingPropertyCondition(name)
 	return arg
 }
 
 //
 // 设置一个 PropertyValueCondition
 //
-func (arg OptionArg) ConditionOnPropertyValue(name string, havingValue interface{}) OptionArg {
+func (arg *OptionArg) ConditionOnPropertyValue(name string, havingValue interface{}) *OptionArg {
 	arg.checkCondition()
-	arg.Cond = NewPropertyValueCondition(name, havingValue)
+	arg.cond = NewPropertyValueCondition(name, havingValue)
 	return arg
 }
 
 //
 // 设置一个 BeanCondition
 //
-func (arg OptionArg) ConditionOnBean(beanId string) OptionArg {
+func (arg *OptionArg) ConditionOnBean(beanId string) *OptionArg {
 	arg.checkCondition()
-	arg.Cond = NewBeanCondition(beanId)
+	arg.cond = NewBeanCondition(beanId)
 	return arg
 }
 
 //
 // 设置一个 MissingBeanCondition
 //
-func (arg OptionArg) ConditionOnMissingBean(beanId string) OptionArg {
+func (arg *OptionArg) ConditionOnMissingBean(beanId string) *OptionArg {
 	arg.checkCondition()
-	arg.Cond = NewMissingBeanCondition(beanId)
+	arg.cond = NewMissingBeanCondition(beanId)
 	return arg
 }
 
 //
 // 设置一个 ExpressionCondition
 //
-func (arg OptionArg) ConditionOnExpression(expression string) OptionArg {
+func (arg *OptionArg) ConditionOnExpression(expression string) *OptionArg {
 	arg.checkCondition()
-	arg.Cond = NewExpressionCondition(expression)
+	arg.cond = NewExpressionCondition(expression)
 	return arg
 }
 
 //
 // 设置一个 FunctionCondition
 //
-func (arg OptionArg) ConditionOnMatches(fn ConditionFunc) OptionArg {
+func (arg *OptionArg) ConditionOnMatches(fn ConditionFunc) *OptionArg {
 	arg.checkCondition()
-	arg.Cond = NewFunctionCondition(fn)
+	arg.cond = NewFunctionCondition(fn)
 	return arg
 }
 
 //
-// 另外一种形式: key 是 tag，value 是 fn
+// 设置 bean 的运行环境
 //
-type MapOptionArg map[string]interface{}
+func (arg *OptionArg) Profile(profile string) *OptionArg {
+	arg.profile = profile
+	return arg
+}
 
-func (arg MapOptionArg) checkCondition() {
-	if cond, ok := arg["cond"]; ok && cond != nil {
-		panic("condition already set")
+//
+// 设置 bean 的非直接依赖
+//
+func (arg *OptionArg) DependsOn(beanId ...string) *OptionArg {
+	arg.dependsOn = beanId
+	return arg
+}
+
+//
+// 设置 Bean 应用自定义限制
+//
+func (arg *OptionArg) Apply(c *Constriction) *OptionArg {
+
+	// 设置条件
+	if c.cond != nil {
+		arg.checkCondition()
+		arg.cond = c.cond
 	}
-}
 
-//
-// 设置一个 Condition
-//
-func (arg MapOptionArg) ConditionOn(cond Condition) MapOptionArg {
-	arg.checkCondition()
-	arg["cond"] = cond
-	return arg
-}
+	// 设置运行环境
+	if c.profile != "" {
+		if arg.profile != "" {
+			panic("profile already set")
+		}
+		arg.profile = c.profile
+	}
 
-//
-// 设置一个 PropertyCondition
-//
-func (arg MapOptionArg) ConditionOnProperty(name string) MapOptionArg {
-	arg.checkCondition()
-	arg["cond"] = NewPropertyCondition(name)
-	return arg
-}
+	// 设置非直接依赖
+	if len(c.dependsOn) > 0 {
+		if len(arg.dependsOn) > 0 {
+			panic("dependsOn already set")
+		}
+		arg.dependsOn = c.dependsOn
+	}
 
-//
-// 设置一个 MissingPropertyCondition
-//
-func (arg MapOptionArg) ConditionOnMissingProperty(name string) MapOptionArg {
-	arg.checkCondition()
-	arg["cond"] = NewMissingPropertyCondition(name)
-	return arg
-}
-
-//
-// 设置一个 PropertyValueCondition
-//
-func (arg MapOptionArg) ConditionOnPropertyValue(name string, havingValue interface{}) MapOptionArg {
-	arg.checkCondition()
-	arg["cond"] = NewPropertyValueCondition(name, havingValue)
-	return arg
-}
-
-//
-// 设置一个 BeanCondition
-//
-func (arg MapOptionArg) ConditionOnBean(beanId string) MapOptionArg {
-	arg.checkCondition()
-	arg["cond"] = NewBeanCondition(beanId)
-	return arg
-}
-
-//
-// 设置一个 MissingBeanCondition
-//
-func (arg MapOptionArg) ConditionOnMissingBean(beanId string) MapOptionArg {
-	arg.checkCondition()
-	arg["cond"] = NewMissingBeanCondition(beanId)
-	return arg
-}
-
-//
-// 设置一个 ExpressionCondition
-//
-func (arg MapOptionArg) ConditionOnExpression(expression string) MapOptionArg {
-	arg.checkCondition()
-	arg["cond"] = NewExpressionCondition(expression)
-	return arg
-}
-
-//
-// 设置一个 FunctionCondition
-//
-func (arg MapOptionArg) ConditionOnMatches(fn ConditionFunc) MapOptionArg {
-	arg.checkCondition()
-	arg["cond"] = NewFunctionCondition(fn)
 	return arg
 }

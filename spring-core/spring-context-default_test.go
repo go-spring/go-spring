@@ -884,8 +884,10 @@ func TestDefaultProperties_WireFunc(t *testing.T) {
 func TestDefaultSpringContext_ConditionOnBean(t *testing.T) {
 	ctx := SpringCore.NewDefaultSpringContext()
 
-	ctx.RegisterBean(&BeanZero{5})
-	ctx.RegisterBean(new(BeanOne))
+	c := SpringCore.NewConstriction().ConditionOnMissingProperty("Null")
+
+	ctx.RegisterBean(&BeanZero{5}).Apply(c)
+	ctx.RegisterBean(new(BeanOne)).Apply(c)
 
 	ctx.RegisterBean(new(BeanTwo)).ConditionOnBean("*SpringCore_test.BeanOne")
 	ctx.RegisterNameBean("another_two", new(BeanTwo)).ConditionOnBean("Null")
@@ -1130,13 +1132,15 @@ var defaultClassOption = ClassOption{
 type ClassOption struct {
 	className string
 	students  []*Student
+	floor     int
 }
 
 type ClassOptionFunc func(opt *ClassOption)
 
-func withClassName(className string) ClassOptionFunc {
+func withClassName(className string, floor int) ClassOptionFunc {
 	return func(opt *ClassOption) {
 		opt.className = className
+		opt.floor = floor
 	}
 }
 
@@ -1148,6 +1152,7 @@ func withStudents(students []*Student) ClassOptionFunc {
 
 type Class struct {
 	className string
+	floor     int
 	students  []*Student
 }
 
@@ -1159,6 +1164,7 @@ func NewClass(options ...ClassOptionFunc) Class {
 	return Class{
 		className: opt.className,
 		students:  opt.students,
+		floor:     opt.floor,
 	}
 }
 
@@ -1171,108 +1177,25 @@ func TestOptionPattern(t *testing.T) {
 	cls := NewClass()
 	assert.Equal(t, cls.className, "default")
 
-	cls = NewClass(withClassName("二年级03班"))
+	cls = NewClass(withClassName("二年级03班", 3))
+	assert.Equal(t, cls.floor, 3)
 	assert.Equal(t, len(cls.students), 0)
 	assert.Equal(t, cls.className, "二年级03班")
 
 	cls = NewClass(withStudents(students))
+	assert.Equal(t, cls.floor, 0)
 	assert.Equal(t, cls.students, students)
 	assert.Equal(t, cls.className, "default")
 
-	cls = NewClass(withClassName("二年级03班"), withStudents(students))
+	cls = NewClass(withClassName("二年级03班", 3), withStudents(students))
 	assert.Equal(t, cls.className, "二年级03班")
 	assert.Equal(t, cls.students, students)
+	assert.Equal(t, cls.floor, 3)
 
-	cls = NewClass(withStudents(students), withClassName("二年级03班"))
+	cls = NewClass(withStudents(students), withClassName("二年级03班", 3))
 	assert.Equal(t, cls.className, "二年级03班")
 	assert.Equal(t, cls.students, students)
-}
-
-func TestMapOptionConstructorArg(t *testing.T) {
-
-	t.Run("option default", func(t *testing.T) {
-
-		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.RegisterBeanFn(NewClass).MapOptions(nil)
-		ctx.AutoWireBeans()
-
-		var cls *Class
-		ctx.GetBean(&cls)
-
-		assert.Equal(t, len(cls.students), 0)
-		assert.Equal(t, cls.className, "default")
-	})
-
-	t.Run("option withClassName", func(t *testing.T) {
-
-		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.RegisterBeanFn(NewClass).MapOptions([]SpringCore.MapOptionArg{
-			{"${class_name:=二年级03班}": withClassName},
-		})
-		ctx.AutoWireBeans()
-
-		var cls *Class
-		ctx.GetBean(&cls)
-
-		assert.Equal(t, len(cls.students), 0)
-		assert.Equal(t, cls.className, "二年级03班")
-	})
-
-	t.Run("option withClassName Condition", func(t *testing.T) {
-
-		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.RegisterBeanFn(NewClass).MapOptions([]SpringCore.MapOptionArg{
-			SpringCore.MapOptionArg{
-				"${class_name:=二年级03班}": withClassName,
-			}.ConditionOnProperty("class_name_enable"),
-		})
-		ctx.AutoWireBeans()
-
-		var cls *Class
-		ctx.GetBean(&cls)
-
-		assert.Equal(t, len(cls.students), 0)
-		assert.Equal(t, cls.className, "default")
-	})
-
-	t.Run("option withStudents", func(t *testing.T) {
-
-		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.SetProperty("class_name", "二年级03班")
-		ctx.RegisterBeanFn(NewClass).MapOptions([]SpringCore.MapOptionArg{
-			{"": withStudents},
-		})
-		ctx.RegisterBean([]*Student{
-			new(Student), new(Student),
-		})
-		ctx.AutoWireBeans()
-
-		var cls *Class
-		ctx.GetBean(&cls)
-
-		assert.Equal(t, len(cls.students), 2)
-		assert.Equal(t, cls.className, "default")
-	})
-
-	t.Run("option withStudents withClassName", func(t *testing.T) {
-
-		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.SetProperty("class_name", "二年级06班")
-		ctx.RegisterBeanFn(NewClass).MapOptions([]SpringCore.MapOptionArg{
-			{"": withStudents},
-			{"${class_name:=二年级03班}": withClassName},
-		})
-		ctx.RegisterBean([]*Student{
-			new(Student), new(Student),
-		})
-		ctx.AutoWireBeans()
-
-		var cls *Class
-		ctx.GetBean(&cls)
-
-		assert.Equal(t, len(cls.students), 2)
-		assert.Equal(t, cls.className, "二年级06班")
-	})
+	assert.Equal(t, cls.floor, 3)
 }
 
 func TestOptionConstructorArg(t *testing.T) {
@@ -1280,7 +1203,7 @@ func TestOptionConstructorArg(t *testing.T) {
 	t.Run("option default", func(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.RegisterBeanFn(NewClass).Options(nil)
+		ctx.RegisterBeanFn(NewClass).Options()
 		ctx.AutoWireBeans()
 
 		var cls *Class
@@ -1293,14 +1216,17 @@ func TestOptionConstructorArg(t *testing.T) {
 	t.Run("option withClassName", func(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.RegisterBeanFn(NewClass).Options([]SpringCore.OptionArg{
-			SpringCore.NewOptionArg(withClassName, "${class_name:=二年级03班}"),
-		})
+		ctx.RegisterBeanFn(NewClass).Options(
+			SpringCore.NewOptionArg(withClassName,
+				"${class_name:=二年级03班}",
+				"${class_floor:=3}"),
+		)
 		ctx.AutoWireBeans()
 
 		var cls *Class
 		ctx.GetBean(&cls)
 
+		assert.Equal(t, cls.floor, 3)
 		assert.Equal(t, len(cls.students), 0)
 		assert.Equal(t, cls.className, "二年级03班")
 	})
@@ -1308,16 +1234,39 @@ func TestOptionConstructorArg(t *testing.T) {
 	t.Run("option withClassName Condition", func(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.RegisterBeanFn(NewClass).Options([]SpringCore.OptionArg{
-			SpringCore.NewOptionArg(
-				withClassName, "${class_name:=二年级03班}",
+		ctx.SetProperty("class_floor", 2)
+		ctx.RegisterBeanFn(NewClass).Options(
+			SpringCore.NewOptionArg(withClassName,
+				"${class_name:=二年级03班}",
+				"${class_floor:=3}",
 			).ConditionOnProperty("class_name_enable"),
-		})
+		)
 		ctx.AutoWireBeans()
 
 		var cls *Class
 		ctx.GetBean(&cls)
 
+		assert.Equal(t, cls.floor, 0)
+		assert.Equal(t, len(cls.students), 0)
+		assert.Equal(t, cls.className, "default")
+	})
+
+	t.Run("option withClassName Apply", func(t *testing.T) {
+		c := SpringCore.NewConstriction().ConditionOnProperty("class_name_enable")
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBeanFn(NewClass).Options(
+			SpringCore.NewOptionArg(withClassName,
+				"${class_name:=二年级03班}",
+				"${class_floor:=3}",
+			).Apply(c),
+		)
+		ctx.AutoWireBeans()
+
+		var cls *Class
+		ctx.GetBean(&cls)
+
+		assert.Equal(t, cls.floor, 0)
 		assert.Equal(t, len(cls.students), 0)
 		assert.Equal(t, cls.className, "default")
 	})
@@ -1326,9 +1275,9 @@ func TestOptionConstructorArg(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
 		ctx.SetProperty("class_name", "二年级03班")
-		ctx.RegisterBeanFn(NewClass).Options([]SpringCore.OptionArg{
-			{withStudents, "", nil},
-		})
+		ctx.RegisterBeanFn(NewClass).Options(
+			SpringCore.NewOptionArg(withStudents, ""),
+		)
 		ctx.RegisterBean([]*Student{
 			new(Student), new(Student),
 		})
@@ -1337,6 +1286,7 @@ func TestOptionConstructorArg(t *testing.T) {
 		var cls *Class
 		ctx.GetBean(&cls)
 
+		assert.Equal(t, cls.floor, 0)
 		assert.Equal(t, len(cls.students), 2)
 		assert.Equal(t, cls.className, "default")
 	})
@@ -1345,10 +1295,14 @@ func TestOptionConstructorArg(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
 		ctx.SetProperty("class_name", "二年级06班")
-		ctx.RegisterBeanFn(NewClass).Options([]SpringCore.OptionArg{
+		ctx.RegisterBeanFn(NewClass).Options(
 			SpringCore.NewOptionArg(withStudents, ""),
-			{withClassName, "${class_name:=二年级03班}", nil},
-		})
+			SpringCore.NewOptionArg(
+				withClassName, // 故意写反
+				"1:${class_floor:=3}",
+				"0:${class_name:=二年级03班}",
+			),
+		)
 		ctx.RegisterBean([]*Student{
 			new(Student), new(Student),
 		})
@@ -1357,6 +1311,7 @@ func TestOptionConstructorArg(t *testing.T) {
 		var cls *Class
 		ctx.GetBean(&cls)
 
+		assert.Equal(t, cls.floor, 3)
 		assert.Equal(t, len(cls.students), 2)
 		assert.Equal(t, cls.className, "二年级06班")
 	})

@@ -114,37 +114,39 @@ func (ctx *DefaultSpringContext) SetProfile(profile string) {
 //
 // 注册单例 Bean，无需指定名称，重复注册会 panic。
 //
-func (ctx *DefaultSpringContext) RegisterBean(bean interface{}) *Annotation {
+func (ctx *DefaultSpringContext) RegisterBean(bean interface{}) *BeanDefinition {
 	return ctx.RegisterNameBean("", bean)
 }
 
 //
 // 注册单例 Bean，需要指定名称，重复注册会 panic。
 //
-func (ctx *DefaultSpringContext) RegisterNameBean(name string, bean interface{}) *Annotation {
+func (ctx *DefaultSpringContext) RegisterNameBean(name string, bean interface{}) *BeanDefinition {
 	beanDefinition := ToBeanDefinition(name, bean)
-	return ctx.RegisterBeanDefinition(beanDefinition)
+	ctx.registerBeanDefinition(beanDefinition)
+	return beanDefinition
 }
 
 //
 // 通过构造函数注册单例 Bean，无需指定名称，重复注册会 panic。
 //
-func (ctx *DefaultSpringContext) RegisterBeanFn(fn interface{}, tags ...string) *Annotation {
+func (ctx *DefaultSpringContext) RegisterBeanFn(fn interface{}, tags ...string) *BeanDefinition {
 	return ctx.RegisterNameBeanFn("", fn, tags...)
 }
 
 //
 // 通过构造函数注册单例 Bean，需要指定名称，重复注册会 panic。
 //
-func (ctx *DefaultSpringContext) RegisterNameBeanFn(name string, fn interface{}, tags ...string) *Annotation {
+func (ctx *DefaultSpringContext) RegisterNameBeanFn(name string, fn interface{}, tags ...string) *BeanDefinition {
 	beanDefinition := FnToBeanDefinition(name, fn, tags...)
-	return ctx.RegisterBeanDefinition(beanDefinition)
+	ctx.registerBeanDefinition(beanDefinition)
+	return beanDefinition
 }
 
 //
 // 注册单例 Bean，使用 BeanDefinition 对象，重复注册会 panic。
 //
-func (ctx *DefaultSpringContext) RegisterBeanDefinition(d *BeanDefinition) *Annotation {
+func (ctx *DefaultSpringContext) registerBeanDefinition(d *BeanDefinition) {
 
 	if ctx.autoWired { // 注册已被冻结
 		panic("bean registration frozen")
@@ -163,8 +165,6 @@ func (ctx *DefaultSpringContext) RegisterBeanDefinition(d *BeanDefinition) *Anno
 
 		ctx.BeanMap[k] = d
 	}
-
-	return NewAnnotation(d)
 }
 
 func (ctx *DefaultSpringContext) findCache(t reflect.Type) (*BeanCacheItem, bool) {
