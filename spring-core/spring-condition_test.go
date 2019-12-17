@@ -41,11 +41,18 @@ func TestPropertyCondition(t *testing.T) {
 
 	ctx := SpringCore.NewDefaultSpringContext()
 	ctx.SetProperty("int", 3)
+	ctx.SetProperty("parent.child", 0)
 
 	cond := SpringCore.NewPropertyCondition("int")
 	assert.Equal(t, cond.Matches(ctx), true)
 
 	cond = SpringCore.NewPropertyCondition("bool")
+	assert.Equal(t, cond.Matches(ctx), false)
+
+	cond = SpringCore.NewPropertyCondition("parent")
+	assert.Equal(t, cond.Matches(ctx), true)
+
+	cond = SpringCore.NewPropertyCondition("parent123")
 	assert.Equal(t, cond.Matches(ctx), false)
 }
 
@@ -53,11 +60,18 @@ func TestMissingPropertyCondition(t *testing.T) {
 
 	ctx := SpringCore.NewDefaultSpringContext()
 	ctx.SetProperty("int", 3)
+	ctx.SetProperty("parent.child", 0)
 
 	cond := SpringCore.NewMissingPropertyCondition("int")
 	assert.Equal(t, cond.Matches(ctx), false)
 
 	cond = SpringCore.NewMissingPropertyCondition("bool")
+	assert.Equal(t, cond.Matches(ctx), true)
+
+	cond = SpringCore.NewMissingPropertyCondition("parent")
+	assert.Equal(t, cond.Matches(ctx), false)
+
+	cond = SpringCore.NewMissingPropertyCondition("parent123")
 	assert.Equal(t, cond.Matches(ctx), true)
 }
 
