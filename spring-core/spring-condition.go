@@ -73,8 +73,7 @@ func NewPropertyCondition(name string) *PropertyCondition {
 }
 
 func (c *PropertyCondition) Matches(ctx SpringContext) bool {
-	_, ok := ctx.GetDefaultProperty(c.name, "")
-	return ok
+	return len(ctx.GetPrefixProperties(c.name)) > 0
 }
 
 //
@@ -92,8 +91,7 @@ func NewMissingPropertyCondition(name string) *MissingPropertyCondition {
 }
 
 func (c *MissingPropertyCondition) Matches(ctx SpringContext) bool {
-	_, ok := ctx.GetDefaultProperty(c.name, "")
-	return !ok
+	return len(ctx.GetPrefixProperties(c.name)) <= 0
 }
 
 //
