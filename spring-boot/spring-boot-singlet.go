@@ -96,6 +96,20 @@ func RegisterNameBeanFn(name string, fn interface{}, tags ...string) *SpringCore
 }
 
 //
+// 通过成员方法注册单例 Bean，不指定名称，重复注册会 panic。
+//
+func RegisterMethodBean(parent *SpringCore.BeanDefinition, method string, tags ...string) *SpringCore.BeanDefinition {
+	return ctx.RegisterMethodBean(parent, method, tags...)
+}
+
+//
+// 通过成员方法注册单例 Bean，需指定名称，重复注册会 panic。
+//
+func RegisterNameMethodBean(name string, parent *SpringCore.BeanDefinition, method string, tags ...string) *SpringCore.BeanDefinition {
+	return ctx.RegisterNameMethodBean(name, parent, method, tags...)
+}
+
+//
 // 绑定外部指定的 Bean
 //
 func WireBean(bean interface{}) {
