@@ -55,6 +55,12 @@ type SpringContext interface {
 	// 通过构造函数注册单例 Bean，需指定名称，重复注册会 panic。
 	RegisterNameBeanFn(name string, fn interface{}, tags ...string) *BeanDefinition
 
+	// 通过成员方法注册单例 Bean，不指定名称，重复注册会 panic。
+	RegisterMethodBean(parent *BeanDefinition, method string, tags ...string) *BeanDefinition
+
+	// 通过成员方法注册单例 Bean，需指定名称，重复注册会 panic。
+	RegisterNameMethodBean(name string, parent *BeanDefinition, method string, tags ...string) *BeanDefinition
+
 	// 执行自动绑定过程
 	AutoWireBeans()
 

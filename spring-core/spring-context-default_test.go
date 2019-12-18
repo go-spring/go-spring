@@ -1316,3 +1316,56 @@ func TestOptionConstructorArg(t *testing.T) {
 		assert.Equal(t, cls.className, "二年级06班")
 	})
 }
+
+type Server struct {
+	v string
+}
+
+type Consumer struct {
+	s *Server
+}
+
+func (s *Server) Consumer() *Consumer {
+	return &Consumer{s}
+}
+
+func TestDefaultSpringContext_RegisterMethodBean(t *testing.T) {
+
+	t.Run("method bean", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		parent := ctx.RegisterBean(new(Server))
+		ctx.RegisterMethodBean(parent, "Consumer")
+		ctx.AutoWireBeans()
+
+		var s *Server
+		ok := ctx.GetBean(&s)
+		assert.Equal(t, ok, true)
+
+		s.v = "1.0.0"
+
+		var c *Consumer
+		ok = ctx.GetBean(&c)
+		assert.Equal(t, ok, true)
+		assert.Equal(t, c.s.v, "1.0.0")
+	})
+
+	t.Run("method bean condition", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		parent := ctx.RegisterBean(new(Server))
+		ctx.RegisterMethodBean(parent, "Consumer").
+			ConditionOnProperty("consumer.enable")
+		ctx.AutoWireBeans()
+
+		var s *Server
+		ok := ctx.GetBean(&s)
+		assert.Equal(t, ok, true)
+
+		s.v = "1.0.0"
+
+		var c *Consumer
+		ok = ctx.GetBean(&c)
+		assert.Equal(t, ok, false)
+	})
+}

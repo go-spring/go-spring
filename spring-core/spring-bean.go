@@ -309,6 +309,102 @@ func NewConstructorBean(fn interface{}, tags ...string) *ConstructorBean {
 }
 
 //
+// 保存成员方法的 SpringBean
+//
+type MethodBean struct {
+	OriginalBean
+
+	method string
+	arg    ConstructorArg
+	parent *BeanDefinition
+}
+
+//
+// 工厂函数，所有 tag 都必须同时有或者同时没有序号。
+//
+func NewMethodBean(parent *BeanDefinition, method string, tags ...string) *MethodBean {
+
+	fnValue := parent.Value().MethodByName(method)
+	if !fnValue.IsValid() {
+		panic("找不到目标方法")
+	}
+
+	fnType := fnValue.Type()
+
+	if fnType.NumOut() < 1 || fnType.NumOut() > 2 {
+		panic("method must be \"func(...) bean\" or \"func(...) (bean, error)\"")
+	}
+
+	if fnType.NumOut() == 2 { // 第二个返回值必须是 error 类型
+		if !fnType.Out(1).Implements(ERROR_TYPE) {
+			panic("method must be \"func(...) bean\" or \"func(...) (bean, error)\"")
+		}
+	}
+
+	fnTags := make([]string, fnType.NumIn())
+
+	if len(tags) > 0 {
+		indexed := false // 是否包含序号
+
+		if tag := tags[0]; tag != "" {
+			if i := strings.Index(tag, ":"); i > 0 {
+				_, err := strconv.Atoi(tag[:i])
+				indexed = err == nil
+			}
+		}
+
+		if indexed { // 有序号
+			for _, tag := range tags {
+				index := strings.Index(tag, ":")
+				if index <= 0 {
+					panic("tag \"" + tag + "\" should have index")
+				}
+				i, err := strconv.Atoi(tag[:index])
+				if err != nil {
+					panic("tag \"" + tag + "\" should have index")
+				}
+				fnTags[i] = tag[index+1:]
+			}
+
+		} else { // 无序号
+			for i, tag := range tags {
+				if index := strings.Index(tag, ":"); index > 0 {
+					_, err := strconv.Atoi(tag[:index])
+					if err == nil {
+						panic("tag \"" + tag + "\" should no index")
+					}
+				}
+				fnTags[i] = tag
+			}
+		}
+	}
+
+	t := fnType.Out(0)
+
+	// 创建指针类型
+	v := reflect.New(t)
+
+	if IsValidBean(t.Kind()) {
+		v = v.Elem()
+	}
+
+	// 重新确定类型
+	t = v.Type()
+
+	return &MethodBean{
+		OriginalBean: OriginalBean{
+			bean:     v.Interface(),
+			rType:    t,
+			typeName: TypeName(t),
+			rValue:   v,
+		},
+		parent: parent,
+		method: method,
+		arg:    &StringConstructorArg{fnTags},
+	}
+}
+
+//
 // 定义 Bean 的状态值
 //
 type BeanStatus int
@@ -383,6 +479,14 @@ func ToBeanDefinition(name string, i interface{}) *BeanDefinition {
 //
 func FnToBeanDefinition(name string, fn interface{}, tags ...string) *BeanDefinition {
 	bean := NewConstructorBean(fn, tags...)
+	return NewBeanDefinition(bean, name)
+}
+
+//
+// 将成员方法转换为 BeanDefinition 对象
+//
+func MethodToBeanDefinition(name string, parent *BeanDefinition, method string, tags ...string) *BeanDefinition {
+	bean := NewMethodBean(parent, method, tags...)
 	return NewBeanDefinition(bean, name)
 }
 

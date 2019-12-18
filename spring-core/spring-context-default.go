@@ -144,6 +144,22 @@ func (ctx *DefaultSpringContext) RegisterNameBeanFn(name string, fn interface{},
 }
 
 //
+// 通过成员方法注册单例 Bean，不指定名称，重复注册会 panic。
+//
+func (ctx *DefaultSpringContext) RegisterMethodBean(parent *BeanDefinition, method string, tags ...string) *BeanDefinition {
+	return ctx.RegisterNameMethodBean("", parent, method, tags...)
+}
+
+//
+// 通过成员方法注册单例 Bean，需指定名称，重复注册会 panic。
+//
+func (ctx *DefaultSpringContext) RegisterNameMethodBean(name string, parent *BeanDefinition, method string, tags ...string) *BeanDefinition {
+	beanDefinition := MethodToBeanDefinition(name, parent, method, tags...)
+	ctx.registerBeanDefinition(beanDefinition)
+	return beanDefinition
+}
+
+//
 // 注册单例 Bean，使用 BeanDefinition 对象，重复注册会 panic。
 //
 func (ctx *DefaultSpringContext) registerBeanDefinition(d *BeanDefinition) {
@@ -430,6 +446,7 @@ func (ctx *DefaultSpringContext) FindBeanByName(beanId string) (interface{}, boo
 	}
 
 	// 恰好 1 个
+	ctx.WireBeanDefinition(result)
 	return result.Value().Interface(), true
 }
 
@@ -476,6 +493,11 @@ func (ctx *DefaultSpringContext) AutoWireBeans() {
 			}
 		}
 
+		// 如果是成员方法 Bean，需要首先初始化它的父 Bean
+		if mBean, ok := beanDefinition.SpringBean.(*MethodBean); ok {
+			ctx.WireBeanDefinition(mBean.parent)
+		}
+
 		ctx.WireBeanDefinition(beanDefinition)
 	}
 }
@@ -512,13 +534,14 @@ func (ctx *DefaultSpringContext) WireBeanDefinition(beanDefinition *BeanDefiniti
 
 	beanDefinition.status = BeanStatus_Wiring
 
-	if _, ok := beanDefinition.SpringBean.(*OriginalBean); ok {
-		ctx.wireOriginalBean(beanDefinition) // 原始对象
-
-	} else if _, ok := beanDefinition.SpringBean.(*ConstructorBean); ok {
-		ctx.wireConstructorBean(beanDefinition) // 构造函数
-
-	} else {
+	switch beanDefinition.SpringBean.(type) {
+	case *OriginalBean: // 原始对象
+		ctx.wireOriginalBean(beanDefinition)
+	case *ConstructorBean: // 构造函数
+		ctx.wireConstructorBean(beanDefinition)
+	case *MethodBean: // 成员方法
+		ctx.wireMethodBean(beanDefinition)
+	default:
 		panic("unknown spring bean type")
 	}
 
@@ -656,6 +679,39 @@ func (ctx *DefaultSpringContext) wireConstructorBean(beanDefinition *BeanDefinit
 	}
 
 	cBean.bean = cBean.rValue.Interface()
+
+	fmt.Printf("success wire constructor bean %s:%s\n", fnType.String(), beanDefinition.Name)
+}
+
+//
+// 对成员方法进行注入
+//
+func (ctx *DefaultSpringContext) wireMethodBean(beanDefinition *BeanDefinition) {
+	mBean := beanDefinition.SpringBean.(*MethodBean)
+
+	fnValue := mBean.parent.Value().MethodByName(mBean.method)
+	fnType := fnValue.Type()
+
+	in := mBean.arg.Get(ctx, fnType)
+	out := fnValue.Call(in)
+
+	// 获取第一个返回值
+	val := out[0]
+
+	// 检查是否有 error 返回
+	if len(out) == 2 {
+		if err := out[1].Interface(); err != nil {
+			panic(err)
+		}
+	}
+
+	if IsValidBean(val.Kind()) {
+		mBean.rValue.Set(val)
+	} else {
+		mBean.rValue.Elem().Set(val)
+	}
+
+	mBean.bean = mBean.rValue.Interface()
 
 	fmt.Printf("success wire constructor bean %s:%s\n", fnType.String(), beanDefinition.Name)
 }
