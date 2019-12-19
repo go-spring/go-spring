@@ -493,11 +493,6 @@ func (ctx *DefaultSpringContext) AutoWireBeans() {
 			}
 		}
 
-		// 如果是成员方法 Bean，需要首先初始化它的父 Bean
-		if mBean, ok := beanDefinition.SpringBean.(*MethodBean); ok {
-			ctx.WireBeanDefinition(mBean.parent)
-		}
-
 		ctx.WireBeanDefinition(beanDefinition)
 	}
 }
@@ -526,6 +521,11 @@ func (ctx *DefaultSpringContext) WireBean(bean interface{}) {
 // 绑定 BeanDefinition 指定的 Bean
 //
 func (ctx *DefaultSpringContext) WireBeanDefinition(beanDefinition *BeanDefinition) {
+
+	// 如果是成员方法 Bean，需要首先初始化它的父 Bean
+	if mBean, ok := beanDefinition.SpringBean.(*MethodBean); ok {
+		ctx.WireBeanDefinition(mBean.parent)
+	}
 
 	// 解决循环依赖问题
 	if beanDefinition.status >= BeanStatus_Wiring {
