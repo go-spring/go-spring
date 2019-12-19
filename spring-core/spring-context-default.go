@@ -282,8 +282,8 @@ func (ctx *DefaultSpringContext) getBeanByName(beanId string, parentValue reflec
 			primaryBean = result[0]
 		}
 
-		//首先对依赖项进行依赖注入
-		ctx.WireBeanDefinition(primaryBean)
+		// 依赖注入
+		ctx.wireBeanDefinition(primaryBean)
 
 		// 恰好 1 个
 		fv.Set(primaryBean.Value())
@@ -359,7 +359,7 @@ func (ctx *DefaultSpringContext) collectBeans(v reflect.Value) bool {
 			dt := d.Type()
 
 			if dt.AssignableTo(et) { // Bean 自身符合条件
-				ctx.WireBeanDefinition(d)
+				ctx.wireBeanDefinition(d)
 				ev = reflect.Append(ev, d.Value())
 
 			} else if dt.Kind() == reflect.Slice { // 找到一个 Bean 数组
@@ -414,6 +414,7 @@ func (ctx *DefaultSpringContext) collectBeans(v reflect.Value) bool {
 
 //
 // 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
+// 该方法不能保证 Bean 已经执行依赖注入和属性绑定，仅供查询 Bean 是否存在。
 //
 func (ctx *DefaultSpringContext) FindBeanByName(beanId string) (interface{}, bool) {
 
@@ -445,8 +446,8 @@ func (ctx *DefaultSpringContext) FindBeanByName(beanId string) (interface{}, boo
 		panic(beanId + " 找到多个符合条件的值")
 	}
 
-	// 恰好 1 个
-	ctx.WireBeanDefinition(result)
+	// 恰好 1 个 & 仅供查询无需绑定
+	// ctx.wireBeanDefinition(result)
 	return result.Value().Interface(), true
 }
 
@@ -478,7 +479,7 @@ func (ctx *DefaultSpringContext) AutoWireBeans() {
 		beanDefinition.status = BeanStatus_Resolved
 
 		// 将符合注册条件的 Bean 放入到缓存里面
-		fmt.Printf("register bean %s:%s\n", beanDefinition.TypeName(), beanDefinition.Name)
+		fmt.Printf("register bean \"%s\"\n", beanDefinition.BeanId())
 		item, _ := ctx.findCache(beanDefinition.Type())
 		item.Store(beanDefinition)
 	}
@@ -493,7 +494,7 @@ func (ctx *DefaultSpringContext) AutoWireBeans() {
 			}
 		}
 
-		ctx.WireBeanDefinition(beanDefinition)
+		ctx.wireBeanDefinition(beanDefinition)
 	}
 }
 
@@ -506,25 +507,30 @@ func (ctx *DefaultSpringContext) wireValue(v reflect.Value) {
 		rValue:   v,
 	}
 	d := NewBeanDefinition(bean, "")
-	ctx.WireBeanDefinition(d)
+	ctx.wireBeanDefinition(d)
 }
 
 //
 // 绑定外部指定的 Bean
 //
 func (ctx *DefaultSpringContext) WireBean(bean interface{}) {
+
+	if !ctx.autoWired {
+		panic("should call after ctx.AutoWireBeans()")
+	}
+
 	beanDefinition := ToBeanDefinition("", bean)
-	ctx.WireBeanDefinition(beanDefinition)
+	ctx.wireBeanDefinition(beanDefinition)
 }
 
 //
 // 绑定 BeanDefinition 指定的 Bean
 //
-func (ctx *DefaultSpringContext) WireBeanDefinition(beanDefinition *BeanDefinition) {
+func (ctx *DefaultSpringContext) wireBeanDefinition(beanDefinition *BeanDefinition) {
 
 	// 如果是成员方法 Bean，需要首先初始化它的父 Bean
 	if mBean, ok := beanDefinition.SpringBean.(*MethodBean); ok {
-		ctx.WireBeanDefinition(mBean.parent)
+		ctx.wireBeanDefinition(mBean.parent)
 	}
 
 	// 解决循环依赖问题
@@ -643,7 +649,7 @@ func (ctx *DefaultSpringContext) wireOriginalBean(beanDefinition *BeanDefinition
 				}
 			}
 
-			fmt.Printf("success wire bean %s:%s\n", TypeName(t), beanDefinition.Name)
+			fmt.Printf("success wire bean \"%s\"\n", beanDefinition.BeanId())
 		}
 	}
 }
@@ -680,7 +686,7 @@ func (ctx *DefaultSpringContext) wireConstructorBean(beanDefinition *BeanDefinit
 
 	cBean.bean = cBean.rValue.Interface()
 
-	fmt.Printf("success wire constructor bean %s:%s\n", fnType.String(), beanDefinition.Name)
+	fmt.Printf("success wire constructor bean \"%s\"\n", beanDefinition.BeanId())
 }
 
 //
@@ -713,7 +719,7 @@ func (ctx *DefaultSpringContext) wireMethodBean(beanDefinition *BeanDefinition) 
 
 	mBean.bean = mBean.rValue.Interface()
 
-	fmt.Printf("success wire constructor bean %s:%s\n", fnType.String(), beanDefinition.Name)
+	fmt.Printf("success wire method bean \"%s\"\n", beanDefinition.BeanId())
 }
 
 //

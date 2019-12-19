@@ -449,6 +449,13 @@ func NewBeanDefinition(bean SpringBean, name string) *BeanDefinition {
 }
 
 //
+// 获取 BeanId
+//
+func (d *BeanDefinition) BeanId() string {
+	return d.TypeName() + ":" + d.Name
+}
+
+//
 // 测试类型全限定名和 Bean 名称是否都能匹配。
 //
 func (d *BeanDefinition) Match(typeName string, beanName string) bool {

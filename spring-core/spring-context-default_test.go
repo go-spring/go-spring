@@ -903,22 +903,25 @@ func TestDefaultSpringContext_ConditionOnBean(t *testing.T) {
 }
 
 func TestDefaultSpringContext_ConditionOnMissingBean(t *testing.T) {
-	ctx := SpringCore.NewDefaultSpringContext()
 
-	ctx.RegisterBean(&BeanZero{5})
-	ctx.RegisterBean(new(BeanOne))
+	for i := 0; i < 50; i++ { // 测试 FindBeanByName 无需绑定
+		ctx := SpringCore.NewDefaultSpringContext()
 
-	ctx.RegisterBean(new(BeanTwo)).ConditionOnMissingBean("*SpringCore_test.BeanOne")
-	ctx.RegisterNameBean("another_two", new(BeanTwo)).ConditionOnMissingBean("Null")
+		ctx.RegisterBean(&BeanZero{5})
+		ctx.RegisterBean(new(BeanOne))
 
-	ctx.AutoWireBeans()
+		ctx.RegisterBean(new(BeanTwo)).ConditionOnMissingBean("*SpringCore_test.BeanOne")
+		ctx.RegisterNameBean("another_two", new(BeanTwo)).ConditionOnMissingBean("Null")
 
-	var two *BeanTwo
-	ok := ctx.GetBeanByName("", &two)
-	assert.Equal(t, ok, true)
+		ctx.AutoWireBeans()
 
-	ok = ctx.GetBeanByName("another_two", &two)
-	assert.Equal(t, ok, true)
+		var two *BeanTwo
+		ok := ctx.GetBeanByName("", &two)
+		assert.Equal(t, ok, true)
+
+		ok = ctx.GetBeanByName("another_two", &two)
+		assert.Equal(t, ok, true)
+	}
 }
 
 type Manager interface {
@@ -1150,21 +1153,33 @@ func withStudents(students []*Student) ClassOptionFunc {
 	}
 }
 
-type Class struct {
+type ClassRoom struct {
 	className string
 	floor     int
 	students  []*Student
+	desktop   Desktop
 }
 
-func NewClass(options ...ClassOptionFunc) Class {
+type Desktop interface {
+}
+
+type MetalDesktop struct {
+}
+
+func (cls *ClassRoom) Desktop() Desktop {
+	return cls.desktop
+}
+
+func NewClassRoom(options ...ClassOptionFunc) ClassRoom {
 	opt := defaultClassOption
 	for _, fn := range options {
 		fn(&opt)
 	}
-	return Class{
+	return ClassRoom{
 		className: opt.className,
 		students:  opt.students,
 		floor:     opt.floor,
+		desktop:   &MetalDesktop{},
 	}
 }
 
@@ -1174,25 +1189,25 @@ func TestOptionPattern(t *testing.T) {
 		new(Student), new(Student),
 	}
 
-	cls := NewClass()
+	cls := NewClassRoom()
 	assert.Equal(t, cls.className, "default")
 
-	cls = NewClass(withClassName("二年级03班", 3))
+	cls = NewClassRoom(withClassName("二年级03班", 3))
 	assert.Equal(t, cls.floor, 3)
 	assert.Equal(t, len(cls.students), 0)
 	assert.Equal(t, cls.className, "二年级03班")
 
-	cls = NewClass(withStudents(students))
+	cls = NewClassRoom(withStudents(students))
 	assert.Equal(t, cls.floor, 0)
 	assert.Equal(t, cls.students, students)
 	assert.Equal(t, cls.className, "default")
 
-	cls = NewClass(withClassName("二年级03班", 3), withStudents(students))
+	cls = NewClassRoom(withClassName("二年级03班", 3), withStudents(students))
 	assert.Equal(t, cls.className, "二年级03班")
 	assert.Equal(t, cls.students, students)
 	assert.Equal(t, cls.floor, 3)
 
-	cls = NewClass(withStudents(students), withClassName("二年级03班", 3))
+	cls = NewClassRoom(withStudents(students), withClassName("二年级03班", 3))
 	assert.Equal(t, cls.className, "二年级03班")
 	assert.Equal(t, cls.students, students)
 	assert.Equal(t, cls.floor, 3)
@@ -1203,10 +1218,10 @@ func TestOptionConstructorArg(t *testing.T) {
 	t.Run("option default", func(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.RegisterBeanFn(NewClass).Options()
+		ctx.RegisterBeanFn(NewClassRoom).Options()
 		ctx.AutoWireBeans()
 
-		var cls *Class
+		var cls *ClassRoom
 		ctx.GetBean(&cls)
 
 		assert.Equal(t, len(cls.students), 0)
@@ -1216,14 +1231,14 @@ func TestOptionConstructorArg(t *testing.T) {
 	t.Run("option withClassName", func(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.RegisterBeanFn(NewClass).Options(
+		ctx.RegisterBeanFn(NewClassRoom).Options(
 			SpringCore.NewOptionArg(withClassName,
 				"${class_name:=二年级03班}",
 				"${class_floor:=3}"),
 		)
 		ctx.AutoWireBeans()
 
-		var cls *Class
+		var cls *ClassRoom
 		ctx.GetBean(&cls)
 
 		assert.Equal(t, cls.floor, 3)
@@ -1235,7 +1250,7 @@ func TestOptionConstructorArg(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
 		ctx.SetProperty("class_floor", 2)
-		ctx.RegisterBeanFn(NewClass).Options(
+		ctx.RegisterBeanFn(NewClassRoom).Options(
 			SpringCore.NewOptionArg(withClassName,
 				"${class_name:=二年级03班}",
 				"${class_floor:=3}",
@@ -1243,7 +1258,7 @@ func TestOptionConstructorArg(t *testing.T) {
 		)
 		ctx.AutoWireBeans()
 
-		var cls *Class
+		var cls *ClassRoom
 		ctx.GetBean(&cls)
 
 		assert.Equal(t, cls.floor, 0)
@@ -1255,7 +1270,7 @@ func TestOptionConstructorArg(t *testing.T) {
 		c := SpringCore.NewConstriction().ConditionOnProperty("class_name_enable")
 
 		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.RegisterBeanFn(NewClass).Options(
+		ctx.RegisterBeanFn(NewClassRoom).Options(
 			SpringCore.NewOptionArg(withClassName,
 				"${class_name:=二年级03班}",
 				"${class_floor:=3}",
@@ -1263,7 +1278,7 @@ func TestOptionConstructorArg(t *testing.T) {
 		)
 		ctx.AutoWireBeans()
 
-		var cls *Class
+		var cls *ClassRoom
 		ctx.GetBean(&cls)
 
 		assert.Equal(t, cls.floor, 0)
@@ -1275,7 +1290,7 @@ func TestOptionConstructorArg(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
 		ctx.SetProperty("class_name", "二年级03班")
-		ctx.RegisterBeanFn(NewClass).Options(
+		ctx.RegisterBeanFn(NewClassRoom).Options(
 			SpringCore.NewOptionArg(withStudents, ""),
 		)
 		ctx.RegisterBean([]*Student{
@@ -1283,7 +1298,7 @@ func TestOptionConstructorArg(t *testing.T) {
 		})
 		ctx.AutoWireBeans()
 
-		var cls *Class
+		var cls *ClassRoom
 		ctx.GetBean(&cls)
 
 		assert.Equal(t, cls.floor, 0)
@@ -1295,7 +1310,7 @@ func TestOptionConstructorArg(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
 		ctx.SetProperty("class_name", "二年级06班")
-		ctx.RegisterBeanFn(NewClass).Options(
+		ctx.RegisterBeanFn(NewClassRoom).Options(
 			SpringCore.NewOptionArg(withStudents, ""),
 			SpringCore.NewOptionArg(
 				withClassName, // 故意写反
@@ -1308,7 +1323,7 @@ func TestOptionConstructorArg(t *testing.T) {
 		})
 		ctx.AutoWireBeans()
 
-		var cls *Class
+		var cls *ClassRoom
 		ctx.GetBean(&cls)
 
 		assert.Equal(t, cls.floor, 3)
@@ -1362,12 +1377,55 @@ func TestDefaultSpringContext_RegisterMethodBean(t *testing.T) {
 	})
 
 	t.Run("method bean wire to other bean", func(t *testing.T) {
+		ctx := SpringCore.NewDefaultSpringContext()
+
+		parent := ctx.RegisterBeanFn(NewServer).
+			DependsOn("*SpringCore_test.Service")
+
+		ctx.RegisterMethodBean(parent, "Consumer").
+			DependsOn("*SpringCore_test.Service")
+
+		ctx.RegisterBean(new(Service))
+		ctx.AutoWireBeans()
+
+		var s *Server
+		ok := ctx.GetBean(&s)
+		assert.Equal(t, ok, true)
+
+		s.v = "1.0.0"
+
+		var c *Consumer
+		ok = ctx.GetBean(&c)
+		assert.Equal(t, ok, true)
+		assert.Equal(t, c.s.v, "1.0.0")
+	})
+
+	t.Run("method bean condition (1)", func(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
-		parent := ctx.RegisterBeanFn(NewServer)
-		ctx.RegisterMethodBean(parent, "Consumer")
+		ctx.SetProperty("class_floor", 2)
+		parent := ctx.RegisterBeanFn(NewClassRoom).Options(
+			SpringCore.NewOptionArg(withClassName,
+				"${class_name:=二年级03班}",
+				"${class_floor:=3}",
+			),
+		)
+		ctx.RegisterMethodBean(parent, "Desktop")
+		ctx.AutoWireBeans()
 
-		ctx.WireBean(new(Service))
+		var cls *ClassRoom
+		ctx.GetBean(&cls)
+
+		assert.Equal(t, cls.floor, 2)
+		assert.Equal(t, len(cls.students), 0)
+		assert.Equal(t, cls.className, "二年级03班")
+
+		var d Desktop
+		ok := ctx.GetBean(&d)
+		assert.Equal(t, ok, true)
+
+		_, ok = d.(*MetalDesktop)
+		assert.Equal(t, ok, true)
 	})
 
 	t.Run("method bean condition", func(t *testing.T) {

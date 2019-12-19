@@ -86,6 +86,7 @@ type SpringContext interface {
 	CollectBeans(i interface{}) bool
 
 	// 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
+	// 该方法不能保证 Bean 已经执行依赖注入和属性绑定，仅供查询 Bean 是否存在。
 	FindBeanByName(beanId string) (interface{}, bool)
 
 	// 获取所有 Bean 的定义，一般仅供调试使用。
