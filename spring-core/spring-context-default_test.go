@@ -945,6 +945,7 @@ func NewPtrManager() Manager {
 }
 
 type localManager struct {
+	Version string `value:"${manager.version}"`
 }
 
 func (m localManager) Cluster() string {
@@ -960,34 +961,43 @@ func TestDefaultSpringContext_RegisterBeanFn2(t *testing.T) {
 	t.Run("ptr manager", func(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.SetProperty("manager.version", "1.0.0")
 		ctx.RegisterBeanFn(NewPtrManager)
 		ctx.RegisterBeanFn(NewInt)
 		ctx.AutoWireBeans()
 
 		var m Manager
-		ctx.GetBean(&m)
+		ok := ctx.GetBean(&m)
+		assert.Equal(t, ok, true)
 
+		// 因为用户是按照接口注册的，所以理论上在依赖
+		// 系统中用户并不关心接口对应的真实类型是什么。
 		var lm *localManager
-		ctx.GetBean(&lm)
+		ok = ctx.GetBean(&lm)
+		assert.Equal(t, ok, false)
 	})
 
 	t.Run("manager", func(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.SetProperty("manager.version", "1.0.0")
 		ctx.RegisterBeanFn(NewManager)
 		ctx.RegisterBeanFn(NewInt)
 		ctx.AutoWireBeans()
 
 		var m Manager
-		ctx.GetBean(&m)
+		ok := ctx.GetBean(&m)
+		assert.Equal(t, ok, true)
 
 		var lm *localManager
-		ctx.GetBean(&lm)
+		ok = ctx.GetBean(&lm)
+		assert.Equal(t, ok, false)
 	})
 
 	t.Run("manager return error", func(t *testing.T) {
 		assert.Panic(t, func() {
 			ctx := SpringCore.NewDefaultSpringContext()
+			ctx.SetProperty("manager.version", "1.0.0")
 			ctx.RegisterBeanFn(NewManagerRetError)
 			ctx.AutoWireBeans()
 		}, "error")
@@ -995,6 +1005,7 @@ func TestDefaultSpringContext_RegisterBeanFn2(t *testing.T) {
 
 	t.Run("manager return error nil", func(t *testing.T) {
 		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.SetProperty("manager.version", "1.0.0")
 		ctx.RegisterBeanFn(NewManagerRetErrorNil)
 		ctx.AutoWireBeans()
 	})
@@ -1448,4 +1459,22 @@ func TestDefaultSpringContext_RegisterMethodBean(t *testing.T) {
 		assert.Equal(t, ok, true)
 		assert.Equal(t, s.Version, "1.0.0")
 	})
+}
+
+func TestDefaultSpringContext_ParentNotRegister(t *testing.T) {
+
+	ctx := SpringCore.NewDefaultSpringContext()
+	parent := ctx.RegisterBeanFn(NewServer).
+		ConditionOnProperty("server.is.nil")
+	ctx.RegisterMethodBean(parent, "Consumer")
+
+	ctx.AutoWireBeans()
+
+	var s *Server
+	ok := ctx.GetBean(&s)
+	assert.Equal(t, ok, false)
+
+	var c *Consumer
+	ok = ctx.GetBean(&c)
+	assert.Equal(t, ok, false)
 }

@@ -414,6 +414,7 @@ const (
 	BeanStatus_Resolved = BeanStatus(1) // 已决议状态
 	BeanStatus_Wiring   = BeanStatus(2) // 正在绑定状态
 	BeanStatus_Wired    = BeanStatus(3) // 绑定完成状态
+	BeanStatus_Deleted  = BeanStatus(4) // 已删除状态
 )
 
 //

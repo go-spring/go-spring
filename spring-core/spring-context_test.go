@@ -415,3 +415,27 @@ func TestGetEnv(t *testing.T) {
 
 	fmt.Println(os.Getenv("GOPATH"), os.Getenv("GOROOT"))
 }
+
+func TestInterface(t *testing.T) {
+
+	fn := func() io.Reader {
+		return os.Stdout
+	}
+
+	fnType := reflect.TypeOf(fn)
+	// func() io.Reader
+	fmt.Println(fnType)
+
+	outType := fnType.Out(0)
+	// io.Reader
+	fmt.Println(outType)
+
+	fnValue := reflect.ValueOf(fn)
+	out := fnValue.Call([]reflect.Value{})
+
+	outValue := out[0]
+	// 0xc000010010 io.Reader
+	fmt.Println(outValue, outValue.Type())
+	// &{0xc0000a4000} *os.File
+	fmt.Println(outValue.Elem(), outValue.Elem().Type())
+}

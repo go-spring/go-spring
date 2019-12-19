@@ -452,6 +452,45 @@ func (ctx *DefaultSpringContext) FindBeanByName(beanId string) (interface{}, boo
 }
 
 //
+// 对 Bean 进行决议是否能够创建 Bean 的实例
+//
+func (ctx *DefaultSpringContext) resolveBean(beanDefinition *BeanDefinition) {
+
+	if beanDefinition.status != BeanStatus_Default {
+		return
+	}
+
+	checkIfDelete := func() bool {
+
+		// 检查是否符合运行环境，不符合的立即删除
+		if beanDefinition.profile != "" && beanDefinition.profile != ctx.profile {
+			return true
+		}
+
+		// 检查是否符合注册条件，不符合的立即删除
+		if beanDefinition.cond != nil && !beanDefinition.cond.Matches(ctx) {
+			return true
+		}
+
+		return false
+	}
+
+	if checkIfDelete() { // 是否应当删除该 Bean 的注册
+		key := BeanKey{beanDefinition.Type(), beanDefinition.Name}
+		beanDefinition.status = BeanStatus_Deleted
+		delete(ctx.BeanMap, key)
+		return
+	}
+
+	beanDefinition.status = BeanStatus_Resolved
+
+	// 将符合注册条件的 Bean 放入到缓存里面
+	fmt.Printf("register bean \"%s\"\n", beanDefinition.BeanId())
+	item, _ := ctx.findCache(beanDefinition.Type())
+	item.Store(beanDefinition)
+}
+
+//
 // 自动绑定所有的 Bean
 //
 func (ctx *DefaultSpringContext) AutoWireBeans() {
@@ -464,24 +503,19 @@ func (ctx *DefaultSpringContext) AutoWireBeans() {
 	// 首先决议当前 Bean 是否能够注册，否则会删除其注册信息
 	for key, beanDefinition := range ctx.BeanMap {
 
-		// 检查是否符合运行环境，不符合的立即删除
-		if beanDefinition.profile != "" && beanDefinition.profile != ctx.profile {
-			delete(ctx.BeanMap, key)
-			continue
+		// 如果是成员方法 Bean，需要首先决议它的父 Bean 是否能实例化
+		if mBean, ok := beanDefinition.SpringBean.(*MethodBean); ok {
+			ctx.resolveBean(mBean.parent)
+
+			// 父 Bean 已经被删除了，子 Bean 也不应该存在
+			if mBean.parent.status == BeanStatus_Deleted {
+				beanDefinition.status = BeanStatus_Deleted
+				delete(ctx.BeanMap, key)
+				continue
+			}
 		}
 
-		// 检查是否符合注册条件，不符合的立即删除
-		if beanDefinition.cond != nil && !beanDefinition.cond.Matches(ctx) {
-			delete(ctx.BeanMap, key)
-			continue
-		}
-
-		beanDefinition.status = BeanStatus_Resolved
-
-		// 将符合注册条件的 Bean 放入到缓存里面
-		fmt.Printf("register bean \"%s\"\n", beanDefinition.BeanId())
-		item, _ := ctx.findCache(beanDefinition.Type())
-		item.Store(beanDefinition)
+		ctx.resolveBean(beanDefinition)
 	}
 
 	// 然后执行 Bean 绑定
@@ -679,7 +713,14 @@ func (ctx *DefaultSpringContext) wireConstructorBean(beanDefinition *BeanDefinit
 	}
 
 	if IsValidBean(val.Kind()) {
-		cBean.rValue.Set(val)
+		// 如果实现接口的值是个结构体，那么需要转换成指针类型然后赋给接口
+		if val.Kind() == reflect.Interface && val.Elem().Kind() == reflect.Struct {
+			ptrVal := reflect.New(val.Elem().Type())
+			ptrVal.Elem().Set(val.Elem())
+			cBean.rValue.Set(ptrVal)
+		} else {
+			cBean.rValue.Set(val)
+		}
 	} else {
 		cBean.rValue.Elem().Set(val)
 	}
@@ -687,7 +728,11 @@ func (ctx *DefaultSpringContext) wireConstructorBean(beanDefinition *BeanDefinit
 	cBean.bean = cBean.rValue.Interface()
 
 	// 对返回值进行依赖注入
-	ctx.wireValue(cBean.Value())
+	if cBean.Type().Kind() == reflect.Interface {
+		ctx.wireValue(cBean.Value().Elem())
+	} else {
+		ctx.wireValue(cBean.Value())
+	}
 
 	fmt.Printf("success wire constructor bean \"%s\"\n", beanDefinition.BeanId())
 }
@@ -715,7 +760,14 @@ func (ctx *DefaultSpringContext) wireMethodBean(beanDefinition *BeanDefinition) 
 	}
 
 	if IsValidBean(val.Kind()) {
-		mBean.rValue.Set(val)
+		// 如果实现接口的值是个结构体，那么需要转换成指针类型然后赋给接口
+		if val.Kind() == reflect.Interface && val.Elem().Kind() == reflect.Struct {
+			ptrVal := reflect.New(val.Elem().Type())
+			ptrVal.Elem().Set(val.Elem())
+			mBean.rValue.Set(ptrVal)
+		} else {
+			mBean.rValue.Set(val)
+		}
 	} else {
 		mBean.rValue.Elem().Set(val)
 	}
@@ -723,7 +775,11 @@ func (ctx *DefaultSpringContext) wireMethodBean(beanDefinition *BeanDefinition) 
 	mBean.bean = mBean.rValue.Interface()
 
 	// 对返回值进行依赖注入
-	ctx.wireValue(mBean.Value())
+	if mBean.Type().Kind() == reflect.Interface {
+		ctx.wireValue(mBean.Value().Elem())
+	} else {
+		ctx.wireValue(mBean.Value())
+	}
 
 	fmt.Printf("success wire method bean \"%s\"\n", beanDefinition.BeanId())
 }
