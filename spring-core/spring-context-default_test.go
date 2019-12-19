@@ -1154,6 +1154,7 @@ func withStudents(students []*Student) ClassOptionFunc {
 }
 
 type ClassRoom struct {
+	President string `value:"${president}"`
 	className string
 	floor     int
 	students  []*Student
@@ -1218,6 +1219,7 @@ func TestOptionConstructorArg(t *testing.T) {
 	t.Run("option default", func(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.SetProperty("president", "CaiYuanPei")
 		ctx.RegisterBeanFn(NewClassRoom).Options()
 		ctx.AutoWireBeans()
 
@@ -1226,11 +1228,13 @@ func TestOptionConstructorArg(t *testing.T) {
 
 		assert.Equal(t, len(cls.students), 0)
 		assert.Equal(t, cls.className, "default")
+		assert.Equal(t, cls.President, "CaiYuanPei")
 	})
 
 	t.Run("option withClassName", func(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.SetProperty("president", "CaiYuanPei")
 		ctx.RegisterBeanFn(NewClassRoom).Options(
 			SpringCore.NewOptionArg(withClassName,
 				"${class_name:=二年级03班}",
@@ -1244,11 +1248,13 @@ func TestOptionConstructorArg(t *testing.T) {
 		assert.Equal(t, cls.floor, 3)
 		assert.Equal(t, len(cls.students), 0)
 		assert.Equal(t, cls.className, "二年级03班")
+		assert.Equal(t, cls.President, "CaiYuanPei")
 	})
 
 	t.Run("option withClassName Condition", func(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.SetProperty("president", "CaiYuanPei")
 		ctx.SetProperty("class_floor", 2)
 		ctx.RegisterBeanFn(NewClassRoom).Options(
 			SpringCore.NewOptionArg(withClassName,
@@ -1264,12 +1270,14 @@ func TestOptionConstructorArg(t *testing.T) {
 		assert.Equal(t, cls.floor, 0)
 		assert.Equal(t, len(cls.students), 0)
 		assert.Equal(t, cls.className, "default")
+		assert.Equal(t, cls.President, "CaiYuanPei")
 	})
 
 	t.Run("option withClassName Apply", func(t *testing.T) {
 		c := SpringCore.NewConstriction().ConditionOnProperty("class_name_enable")
 
 		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.SetProperty("president", "CaiYuanPei")
 		ctx.RegisterBeanFn(NewClassRoom).Options(
 			SpringCore.NewOptionArg(withClassName,
 				"${class_name:=二年级03班}",
@@ -1284,12 +1292,14 @@ func TestOptionConstructorArg(t *testing.T) {
 		assert.Equal(t, cls.floor, 0)
 		assert.Equal(t, len(cls.students), 0)
 		assert.Equal(t, cls.className, "default")
+		assert.Equal(t, cls.President, "CaiYuanPei")
 	})
 
 	t.Run("option withStudents", func(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
 		ctx.SetProperty("class_name", "二年级03班")
+		ctx.SetProperty("president", "CaiYuanPei")
 		ctx.RegisterBeanFn(NewClassRoom).Options(
 			SpringCore.NewOptionArg(withStudents, ""),
 		)
@@ -1304,12 +1314,14 @@ func TestOptionConstructorArg(t *testing.T) {
 		assert.Equal(t, cls.floor, 0)
 		assert.Equal(t, len(cls.students), 2)
 		assert.Equal(t, cls.className, "default")
+		assert.Equal(t, cls.President, "CaiYuanPei")
 	})
 
 	t.Run("option withStudents withClassName", func(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
 		ctx.SetProperty("class_name", "二年级06班")
+		ctx.SetProperty("president", "CaiYuanPei")
 		ctx.RegisterBeanFn(NewClassRoom).Options(
 			SpringCore.NewOptionArg(withStudents, ""),
 			SpringCore.NewOptionArg(
@@ -1329,11 +1341,12 @@ func TestOptionConstructorArg(t *testing.T) {
 		assert.Equal(t, cls.floor, 3)
 		assert.Equal(t, len(cls.students), 2)
 		assert.Equal(t, cls.className, "二年级06班")
+		assert.Equal(t, cls.President, "CaiYuanPei")
 	})
 }
 
 type Server struct {
-	v string
+	Version string `value:"${server.version}"`
 }
 
 func NewServer() *Server {
@@ -1360,6 +1373,7 @@ func TestDefaultSpringContext_RegisterMethodBean(t *testing.T) {
 	t.Run("method bean", func(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.SetProperty("server.version", "1.0.0")
 		parent := ctx.RegisterBean(new(Server))
 		ctx.RegisterMethodBean(parent, "Consumer")
 		ctx.AutoWireBeans()
@@ -1367,17 +1381,19 @@ func TestDefaultSpringContext_RegisterMethodBean(t *testing.T) {
 		var s *Server
 		ok := ctx.GetBean(&s)
 		assert.Equal(t, ok, true)
+		assert.Equal(t, s.Version, "1.0.0")
 
-		s.v = "1.0.0"
+		s.Version = "2.0.0"
 
 		var c *Consumer
 		ok = ctx.GetBean(&c)
 		assert.Equal(t, ok, true)
-		assert.Equal(t, c.s.v, "1.0.0")
+		assert.Equal(t, c.s.Version, "2.0.0")
 	})
 
 	t.Run("method bean wire to other bean", func(t *testing.T) {
 		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.SetProperty("server.version", "1.0.0")
 
 		parent := ctx.RegisterBeanFn(NewServer).
 			DependsOn("*SpringCore_test.Service")
@@ -1391,46 +1407,20 @@ func TestDefaultSpringContext_RegisterMethodBean(t *testing.T) {
 		var s *Server
 		ok := ctx.GetBean(&s)
 		assert.Equal(t, ok, true)
+		assert.Equal(t, s.Version, "1.0.0")
 
-		s.v = "1.0.0"
+		s.Version = "2.0.0"
 
 		var c *Consumer
 		ok = ctx.GetBean(&c)
 		assert.Equal(t, ok, true)
-		assert.Equal(t, c.s.v, "1.0.0")
-	})
-
-	t.Run("method bean condition (1)", func(t *testing.T) {
-
-		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.SetProperty("class_floor", 2)
-		parent := ctx.RegisterBeanFn(NewClassRoom).Options(
-			SpringCore.NewOptionArg(withClassName,
-				"${class_name:=二年级03班}",
-				"${class_floor:=3}",
-			),
-		)
-		ctx.RegisterMethodBean(parent, "Desktop")
-		ctx.AutoWireBeans()
-
-		var cls *ClassRoom
-		ctx.GetBean(&cls)
-
-		assert.Equal(t, cls.floor, 2)
-		assert.Equal(t, len(cls.students), 0)
-		assert.Equal(t, cls.className, "二年级03班")
-
-		var d Desktop
-		ok := ctx.GetBean(&d)
-		assert.Equal(t, ok, true)
-
-		_, ok = d.(*MetalDesktop)
-		assert.Equal(t, ok, true)
+		assert.Equal(t, c.s.Version, "2.0.0")
 	})
 
 	t.Run("method bean condition", func(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.SetProperty("server.version", "1.0.0")
 		parent := ctx.RegisterBean(new(Server))
 		ctx.RegisterMethodBean(parent, "Consumer").
 			ConditionOnProperty("consumer.enable")
@@ -1439,11 +1429,23 @@ func TestDefaultSpringContext_RegisterMethodBean(t *testing.T) {
 		var s *Server
 		ok := ctx.GetBean(&s)
 		assert.Equal(t, ok, true)
-
-		s.v = "1.0.0"
+		assert.Equal(t, s.Version, "1.0.0")
 
 		var c *Consumer
 		ok = ctx.GetBean(&c)
 		assert.Equal(t, ok, false)
+	})
+
+	t.Run("method bean autowire", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.SetProperty("server.version", "1.0.0")
+		ctx.RegisterBean(new(Server))
+		ctx.AutoWireBeans()
+
+		var s *Server
+		ok := ctx.GetBean(&s)
+		assert.Equal(t, ok, true)
+		assert.Equal(t, s.Version, "1.0.0")
 	})
 }

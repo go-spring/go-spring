@@ -686,6 +686,9 @@ func (ctx *DefaultSpringContext) wireConstructorBean(beanDefinition *BeanDefinit
 
 	cBean.bean = cBean.rValue.Interface()
 
+	// 对返回值进行依赖注入
+	ctx.wireValue(cBean.Value())
+
 	fmt.Printf("success wire constructor bean \"%s\"\n", beanDefinition.BeanId())
 }
 
@@ -718,6 +721,9 @@ func (ctx *DefaultSpringContext) wireMethodBean(beanDefinition *BeanDefinition) 
 	}
 
 	mBean.bean = mBean.rValue.Interface()
+
+	// 对返回值进行依赖注入
+	ctx.wireValue(mBean.Value())
 
 	fmt.Printf("success wire method bean \"%s\"\n", beanDefinition.BeanId())
 }
