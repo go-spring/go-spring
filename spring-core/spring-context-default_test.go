@@ -1321,11 +1321,22 @@ type Server struct {
 	v string
 }
 
+func NewServer() *Server {
+	return new(Server)
+}
+
 type Consumer struct {
 	s *Server
 }
 
+type Service struct {
+	Consumer *Consumer `autowire:""`
+}
+
 func (s *Server) Consumer() *Consumer {
+	if nil == s {
+		panic("Server is nil")
+	}
 	return &Consumer{s}
 }
 
@@ -1348,6 +1359,15 @@ func TestDefaultSpringContext_RegisterMethodBean(t *testing.T) {
 		ok = ctx.GetBean(&c)
 		assert.Equal(t, ok, true)
 		assert.Equal(t, c.s.v, "1.0.0")
+	})
+
+	t.Run("method bean wire to other bean", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		parent := ctx.RegisterBeanFn(NewServer)
+		ctx.RegisterMethodBean(parent, "Consumer")
+
+		ctx.WireBean(new(Service))
 	})
 
 	t.Run("method bean condition", func(t *testing.T) {
