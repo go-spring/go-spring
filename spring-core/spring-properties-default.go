@@ -22,10 +22,24 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/spf13/cast"
 	"github.com/spf13/viper"
 )
+
+func init() {
+
+	// string -> time.Duration
+	RegisterTypeConverter(func(v string) time.Duration {
+		return cast.ToDuration(v)
+	})
+
+	//  string -> time.Time
+	RegisterTypeConverter(func(v string) time.Time {
+		return cast.ToTime(v)
+	})
+}
 
 //
 // 定义 Properties 的默认版本
@@ -63,10 +77,10 @@ func (p *DefaultProperties) LoadProperties(filename string) {
 	keys := v.AllKeys()
 	sort.Strings(keys)
 
-	for _, k := range keys {
-		v := v.Get(k)
-		p.SetProperty(k, v)
-		fmt.Printf("%s=%v\n", k, v)
+	for _, key := range keys {
+		val := v.Get(key)
+		p.SetProperty(key, val)
+		fmt.Printf("%s=%v\n", key, val)
 	}
 }
 
@@ -256,16 +270,16 @@ func bindValue(prop PropertyHolder, fieldType reflect.Type, fieldValue reflect.V
 		}
 	}
 
-	if fieldValue.Kind() == reflect.Struct {
+	// 存在类型转换器的情况下结构体优先使用属性值绑定
+	if fn, ok := typeConverters[fieldType]; ok {
+		propValue := getPropValue()
+		fnValue := reflect.ValueOf(fn)
+		res := fnValue.Call([]reflect.Value{reflect.ValueOf(propValue)})
+		fieldValue.Set(res[0])
+		return
+	}
 
-		// 存在类型转换器的情况下优先使用属性值绑定
-		if fn, ok := typeConverters[fieldType]; ok {
-			propValue := getPropValue()
-			fnValue := reflect.ValueOf(fn)
-			res := fnValue.Call([]reflect.Value{reflect.ValueOf(propValue)})
-			fieldValue.Set(res[0])
-			return
-		}
+	if fieldValue.Kind() == reflect.Struct {
 
 		if defaultValue != nil {
 			panic(fieldName + " 嵌套的结构体属性不能指定默认值")
@@ -331,11 +345,11 @@ func bindValue(prop PropertyHolder, fieldType reflect.Type, fieldValue reflect.V
 
 				} else { // 然后处理结构体嵌套的场景
 
-					if s, ok := propValue.([]interface{}); ok {
+					if s, isArray := propValue.([]interface{}); isArray {
 						result := reflect.MakeSlice(fieldType, len(s), len(s))
 
 						for i, si := range s {
-							if sv, ok := si.(map[interface{}]interface{}); ok {
+							if sv, isMap := si.(map[interface{}]interface{}); isMap {
 								ev := reflect.New(elemType)
 								bindStruct(NewMapPropertyHolder(sv), elemType, ev.Elem(), fieldName, "")
 								result.Index(i).Set(ev.Elem())

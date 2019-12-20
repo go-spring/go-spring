@@ -1478,3 +1478,32 @@ func TestDefaultSpringContext_ParentNotRegister(t *testing.T) {
 	ok = ctx.GetBean(&c)
 	assert.Equal(t, ok, false)
 }
+
+func TestDefaultSpringContext_UserDefinedTypeProperty(t *testing.T) {
+
+	type level int
+
+	SpringCore.RegisterTypeConverter(func(v string) level {
+		switch v {
+		case "debug":
+			return 1
+		default:
+			panic("error level")
+		}
+	})
+
+	var config struct {
+		Duration time.Duration `value:"${duration}"`
+		Level    level         `value:"${level}"`
+		Time     time.Time     `value:"${time}"`
+	}
+
+	ctx := SpringCore.NewDefaultSpringContext()
+	ctx.SetProperty("time", "2018-12-20")
+	ctx.SetProperty("duration", "1h")
+	ctx.SetProperty("level", "debug")
+	ctx.RegisterBean(&config)
+	ctx.AutoWireBeans()
+
+	fmt.Println(config)
+}

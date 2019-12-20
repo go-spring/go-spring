@@ -75,19 +75,19 @@ func TestRegisterTypeConverter(t *testing.T) {
 
 	assert.Panic(t, func() { // 不是函数
 		SpringCore.RegisterTypeConverter(3)
-	}, "fn must be func\\(string\\)struct")
+	}, "fn must be func\\(string\\)type")
 
 	assert.Panic(t, func() { // 入参太多
 		SpringCore.RegisterTypeConverter(func(_ string, _ string) Point {
 			return Point{}
 		})
-	}, "fn must be func\\(string\\)struct")
+	}, "fn must be func\\(string\\)type")
 
 	assert.Panic(t, func() { // 返回值太多
 		SpringCore.RegisterTypeConverter(func(_ string) (Point, Point) {
 			return Point{}, Point{}
 		})
-	}, "fn must be func\\(string\\)struct")
+	}, "fn must be func\\(string\\)type")
 
 	SpringCore.RegisterTypeConverter(PointConverter)
 }

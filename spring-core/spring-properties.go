@@ -67,21 +67,31 @@ type Properties interface {
 var typeConverters = make(map[reflect.Type]interface{})
 
 //
-// 注册类型转换器，用于属性绑定，函数原型 func(string)struct
+// 注册类型转换器，用于属性绑定，函数原型 func(string)type
 //
 func RegisterTypeConverter(fn interface{}) {
 
 	t := reflect.TypeOf(fn)
 
 	if t.Kind() != reflect.Func || t.NumIn() != 1 || t.NumOut() != 1 {
-		panic("fn must be func(string)struct")
+		panic("fn must be func(string)type")
 	}
 
 	in := t.In(0)
 	out := t.Out(0)
 
-	if in.Kind() != reflect.String || out.Kind() != reflect.Struct {
-		panic("fn must be func(string)struct")
+	if in.Kind() != reflect.String ||
+		out.Kind() == reflect.Ptr ||
+		out.Kind() == reflect.Slice ||
+		out.Kind() == reflect.Map ||
+		out.Kind() == reflect.Func ||
+		out.Kind() == reflect.Interface ||
+		out.Kind() == reflect.UnsafePointer ||
+		out.Kind() == reflect.Chan ||
+		out.Kind() == reflect.Array ||
+		out.Kind() == reflect.Complex64 ||
+		out.Kind() == reflect.Complex128 {
+		panic("fn must be func(string)type")
 	}
 
 	typeConverters[out] = fn
