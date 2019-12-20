@@ -582,7 +582,7 @@ func TestDefaultSpringContext_GetBean(t *testing.T) {
 	ok = ctx.GetBean(&three)
 	assert.Equal(t, ok, false)
 
-	fmt.Printf(SpringUtils.ToJson(two))
+	fmt.Println(SpringUtils.ToJson(two))
 }
 
 func TestDefaultSpringContext_GetBeanByName(t *testing.T) {
@@ -617,7 +617,7 @@ func TestDefaultSpringContext_GetBeanByName(t *testing.T) {
 	ok = ctx.GetBeanByName("", &three)
 	assert.Equal(t, ok, false)
 
-	fmt.Printf(SpringUtils.ToJson(two))
+	fmt.Println(SpringUtils.ToJson(two))
 }
 
 func TestDefaultSpringContext_FindBeanByName(t *testing.T) {

@@ -78,7 +78,9 @@ func (p *DefaultPropertySource) Load(profile string) map[string]interface{} {
 
 		v := viper.New()
 		v.SetConfigFile(filename)
-		v.ReadInConfig()
+		if err := v.ReadInConfig(); err != nil {
+			panic(err)
+		}
 
 		keys := v.AllKeys()
 		sort.Strings(keys)
@@ -117,7 +119,9 @@ func (p *ConfigMapPropertySource) Load(profile string) map[string]interface{} {
 
 	v := viper.New()
 	v.SetConfigFile(p.filename)
-	v.ReadInConfig()
+	if err := v.ReadInConfig(); err != nil {
+		panic(err)
+	}
 
 	d := v.Sub("data")
 	if d == nil {
@@ -142,7 +146,9 @@ func (p *ConfigMapPropertySource) Load(profile string) map[string]interface{} {
 
 			v0 := viper.New()
 			v0.SetConfigType(ext[1:])
-			v0.ReadConfig(strings.NewReader(val))
+			if err := v0.ReadConfig(strings.NewReader(val)); err != nil {
+				panic(err)
+			}
 
 			v0Keys := v0.AllKeys()
 			sort.Strings(v0Keys)

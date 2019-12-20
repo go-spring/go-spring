@@ -109,10 +109,8 @@ func (app *Application) loadProfileConfig(profile string) {
 			}
 		}
 
-		if result != nil {
-			for k, v := range result {
-				app.AppContext.SetProperty(k, v)
-			}
+		for k, v := range result {
+			app.AppContext.SetProperty(k, v)
 		}
 	}
 }

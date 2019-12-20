@@ -56,7 +56,9 @@ func (p *DefaultProperties) LoadProperties(filename string) {
 
 	v := viper.New()
 	v.SetConfigFile(filename)
-	v.ReadInConfig()
+	if err := v.ReadInConfig(); err != nil {
+		panic(err)
+	}
 
 	keys := v.AllKeys()
 	sort.Strings(keys)
