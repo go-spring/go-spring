@@ -21,24 +21,6 @@ import (
 	"strings"
 )
 
-func IsValidBean(k reflect.Kind) bool {
-	for _, validKind := range _VALID_BEAN_KINDS {
-		if k == validKind {
-			return true
-		}
-	}
-	return false
-}
-
-func IsValidReceiver(k reflect.Kind) bool {
-	for _, validReceiver := range _VALID_RECEIVER_KINDS {
-		if k == validReceiver {
-			return true
-		}
-	}
-	return false
-}
-
 //
 // 获取原始类型的全限定名，golang 允许不同的路径下存在相同的包，故此有全限定名的需求。形如
 // "github.com/go-spring/go-spring/spring-core/SpringCore.DefaultSpringContext"

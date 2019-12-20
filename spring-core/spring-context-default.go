@@ -233,8 +233,8 @@ func (ctx *DefaultSpringContext) getBeanByName(beanId string, parentValue reflec
 
 	t := fv.Type()
 
-	if !IsValidReceiver(t.Kind()) {
-		panic("receiver \"" + field + "\" must be ptr or slice or interface or map or func")
+	if !IsRefType(t.Kind()) {
+		panic("receiver \"" + field + "\" must be ref type")
 	}
 
 	m, ok := ctx.findCache(t)
@@ -712,7 +712,7 @@ func (ctx *DefaultSpringContext) wireConstructorBean(beanDefinition *BeanDefinit
 		}
 	}
 
-	if IsValidBean(val.Kind()) {
+	if IsRefType(val.Kind()) {
 		// 如果实现接口的值是个结构体，那么需要转换成指针类型然后赋给接口
 		if val.Kind() == reflect.Interface && val.Elem().Kind() == reflect.Struct {
 			ptrVal := reflect.New(val.Elem().Type())
@@ -759,7 +759,7 @@ func (ctx *DefaultSpringContext) wireMethodBean(beanDefinition *BeanDefinition) 
 		}
 	}
 
-	if IsValidBean(val.Kind()) {
+	if IsRefType(val.Kind()) {
 		// 如果实现接口的值是个结构体，那么需要转换成指针类型然后赋给接口
 		if val.Kind() == reflect.Interface && val.Elem().Kind() == reflect.Struct {
 			ptrVal := reflect.New(val.Elem().Type())

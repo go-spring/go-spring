@@ -22,22 +22,61 @@ import (
 	"strings"
 )
 
-//
 // 哪些类型的数据可以成为 Bean？一般来讲引用类型的数据都可以成为 Bean。
 // 当使用对象注册时，无论是否转成 interface 都能获取到对象的真实类型，
 // 当使用构造函数注册时，如果返回的是非引用类型会强制转成对应的引用类型，
 // 如果返回的是 interface 那么这种情况下会使用 interface 的类型注册。
-//
-var _VALID_BEAN_KINDS = []reflect.Kind{
-	reflect.Ptr, reflect.Interface, reflect.Slice, reflect.Map, reflect.Func,
+
+// 哪些类型可以成为 Bean 的接收者？除了使用 Bean 的真实类型去接收，还可
+// 以使用 Bean 实现的 interface 去接收，而且推荐用 interface 去接收。
+
+const (
+	VAL_TYPE = 1 // 值类型
+	REF_TYPE = 2 // 引用类型
+)
+
+var KindType = []uint8{
+	0,        // Invalid
+	VAL_TYPE, // Bool
+	VAL_TYPE, // Int
+	VAL_TYPE, // Int8
+	VAL_TYPE, // Int16
+	VAL_TYPE, // Int32
+	VAL_TYPE, // Int64
+	VAL_TYPE, // Uint
+	VAL_TYPE, // Uint8
+	VAL_TYPE, // Uint16
+	VAL_TYPE, // Uint32
+	VAL_TYPE, // Uint64
+	0,        // Uintptr
+	VAL_TYPE, // Float32
+	VAL_TYPE, // Float64
+	VAL_TYPE, // Complex64
+	VAL_TYPE, // Complex128
+	REF_TYPE, // Array
+	REF_TYPE, // Chan
+	REF_TYPE, // Func
+	REF_TYPE, // Interface
+	REF_TYPE, // Map
+	REF_TYPE, // Ptr
+	REF_TYPE, // Slice
+	VAL_TYPE, // String
+	VAL_TYPE, // Struct
+	0,        // UnsafePointer
 }
 
 //
-// 哪些类型可以成为 Bean 的接收者？除了使用 Bean 的真实类型去接收，还可
-// 以使用 Bean 实现的 interface 去接收，而且推荐用 interface 去接收。
+// 是否是引用类型
 //
-var _VALID_RECEIVER_KINDS = []reflect.Kind{
-	reflect.Interface, reflect.Ptr, reflect.Slice, reflect.Map, reflect.Func,
+func IsRefType(k reflect.Kind) bool {
+	return KindType[k] == REF_TYPE
+}
+
+//
+// 是否是值类型
+//
+func IsValueType(k reflect.Kind) bool {
+	return KindType[k] == VAL_TYPE
 }
 
 //
@@ -76,8 +115,8 @@ func NewOriginalBean(bean interface{}) *OriginalBean {
 
 	t := reflect.TypeOf(bean)
 
-	if !IsValidBean(t.Kind()) {
-		panic("bean must be ptr or slice or map or func")
+	if !IsRefType(t.Kind()) {
+		panic("bean must be ref type")
 	}
 
 	return &OriginalBean{
@@ -289,7 +328,7 @@ func NewConstructorBean(fn interface{}, tags ...string) *ConstructorBean {
 	// 创建指针类型
 	v := reflect.New(t)
 
-	if IsValidBean(t.Kind()) {
+	if IsRefType(t.Kind()) {
 		v = v.Elem()
 	}
 
@@ -384,7 +423,7 @@ func NewMethodBean(parent *BeanDefinition, method string, tags ...string) *Metho
 	// 创建指针类型
 	v := reflect.New(t)
 
-	if IsValidBean(t.Kind()) {
+	if IsRefType(t.Kind()) {
 		v = v.Elem()
 	}
 

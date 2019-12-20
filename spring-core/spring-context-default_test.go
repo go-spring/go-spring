@@ -42,7 +42,7 @@ func TestDefaultSpringContext(t *testing.T) {
 		// 普通类型用属性注入
 		assert.Panic(t, func() {
 			ctx.RegisterBean(e)
-		}, "bean must be ptr or slice or map or func")
+		}, "bean must be ref type")
 
 		ctx.RegisterBean(&e)
 
@@ -65,7 +65,7 @@ func TestDefaultSpringContext(t *testing.T) {
 		assert.Panic(t, func() {
 			var i int
 			ctx.GetBean(&i)
-		}, "receiver \"\" must be ptr or slice or interface or map or func")
+		}, "receiver \"\" must be ref type")
 
 		// 找到多个符合条件的值
 		assert.Panic(t, func() {
@@ -78,7 +78,7 @@ func TestDefaultSpringContext(t *testing.T) {
 			var i int
 			ctx.GetBeanByName("i3", &i)
 			fmt.Println(i)
-		}, "receiver \"\" must be ptr or slice or interface or map or func")
+		}, "receiver \"\" must be ref type")
 
 		{
 			var i *int
@@ -115,7 +115,7 @@ func TestDefaultSpringContext(t *testing.T) {
 		// 栈上的对象不能注册
 		assert.Panic(t, func() {
 			ctx.RegisterBean(e)
-		}, "bean must be ptr or slice or map or func")
+		}, "bean must be ref type")
 
 		ctx.RegisterBean(&e)
 
@@ -133,7 +133,7 @@ func TestDefaultSpringContext(t *testing.T) {
 		ctx.AutoWireBeans()
 	})
 
-	t.Run("", func(t *testing.T) {
+	t.Run("pkg2.SamePkg", func(t *testing.T) {
 		ctx := SpringCore.NewDefaultSpringContext()
 
 		e := pkg2.SamePkg{}
@@ -143,7 +143,7 @@ func TestDefaultSpringContext(t *testing.T) {
 		// 栈上的对象不能注册
 		assert.Panic(t, func() {
 			ctx.RegisterBean(e)
-		}, "bean must be ptr or slice or map or func")
+		}, "bean must be ref type")
 
 		ctx.RegisterBean(&e)
 
@@ -1496,12 +1496,14 @@ func TestDefaultSpringContext_UserDefinedTypeProperty(t *testing.T) {
 		Duration time.Duration `value:"${duration}"`
 		Level    level         `value:"${level}"`
 		Time     time.Time     `value:"${time}"`
+		Complex  complex64 // `value:"${complex}"`
 	}
 
 	ctx := SpringCore.NewDefaultSpringContext()
 	ctx.SetProperty("time", "2018-12-20")
 	ctx.SetProperty("duration", "1h")
 	ctx.SetProperty("level", "debug")
+	ctx.SetProperty("complex", "1+i")
 	ctx.RegisterBean(&config)
 	ctx.AutoWireBeans()
 

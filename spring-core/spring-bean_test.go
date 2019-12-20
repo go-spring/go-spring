@@ -162,11 +162,11 @@ func TestToBeanDefinition(t *testing.T) {
 
 	assert.Panic(t, func() {
 		SpringCore.ToBeanDefinition("", 3)
-	}, "bean must be ptr or slice or map or func")
+	}, "bean must be ref type")
 
 	assert.Panic(t, func() {
 		SpringCore.ToBeanDefinition("", pkg2.SamePkg{})
-	}, "bean must be ptr or slice or map or func")
+	}, "bean must be ref type")
 
 	// 用接口类型注册时实际使用的是原始类型
 	bd := SpringCore.ToBeanDefinition("", io.Writer(os.Stdout))
@@ -263,17 +263,15 @@ func TestIsValidBean(t *testing.T) {
 	// bool
 	assert.Panic(t, func() {
 		SpringCore.NewOriginalBean(false)
-	}, "bean must be ptr or slice or map or func")
+	}, "bean must be ref type")
 
 	// int
 	assert.Panic(t, func() {
 		SpringCore.NewOriginalBean(3)
-	}, "bean must be ptr or slice or map or func")
+	}, "bean must be ref type")
 
 	// chan
-	assert.Panic(t, func() {
-		SpringCore.NewOriginalBean(make(chan int))
-	}, "bean must be ptr or slice or map or func")
+	SpringCore.NewOriginalBean(make(chan int))
 
 	// function
 	SpringCore.NewOriginalBean(func() {})
@@ -293,10 +291,10 @@ func TestIsValidBean(t *testing.T) {
 	// string
 	assert.Panic(t, func() {
 		SpringCore.NewOriginalBean("3")
-	}, "bean must be ptr or slice or map or func")
+	}, "bean must be ref type")
 
 	// struct
 	assert.Panic(t, func() {
 		SpringCore.NewOriginalBean(BeanZero{})
-	}, "bean must be ptr or slice or map or func")
+	}, "bean must be ref type")
 }
