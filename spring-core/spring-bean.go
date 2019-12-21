@@ -469,6 +469,9 @@ type BeanDefinition struct {
 
 	primary  bool        // 主版本
 	initFunc interface{} // 绑定结束的回调
+
+	file string // 注册点信息
+	line int    // 注册点信息
 }
 
 //

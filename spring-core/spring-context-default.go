@@ -19,6 +19,8 @@ package SpringCore
 import (
 	"fmt"
 	"reflect"
+	"runtime"
+	"strings"
 )
 
 var (
@@ -163,6 +165,16 @@ func (ctx *DefaultSpringContext) RegisterNameMethodBean(name string, parent *Bea
 // 注册单例 Bean，使用 BeanDefinition 对象，重复注册会 panic。
 //
 func (ctx *DefaultSpringContext) registerBeanDefinition(d *BeanDefinition) {
+
+	// 获取注册点信息
+	for i := 3; i < 10; i++ {
+		_, file, line, _ := runtime.Caller(i)
+		if !strings.Contains(file, "/go-spring/go-spring/spring-") || strings.HasSuffix(file, "_test.go") {
+			d.file = file
+			d.line = line
+			break
+		}
+	}
 
 	if ctx.autoWired { // 注册已被冻结
 		panic("bean registration frozen")
@@ -470,7 +482,7 @@ func (ctx *DefaultSpringContext) resolveBean(beanDefinition *BeanDefinition) {
 	beanDefinition.status = BeanStatus_Resolved
 
 	// 将符合注册条件的 Bean 放入到缓存里面
-	fmt.Printf("register bean \"%s\"\n", beanDefinition.BeanId())
+	fmt.Printf("register bean \"%s\" %s:%d\n", beanDefinition.BeanId(), beanDefinition.file, beanDefinition.line)
 	item, _ := ctx.findCache(beanDefinition.Type())
 	item.Store(beanDefinition)
 }
@@ -693,6 +705,7 @@ func (ctx *DefaultSpringContext) wireConstructorBean(beanDefinition *BeanDefinit
 	// 检查是否有 error 返回
 	if len(out) == 2 {
 		if err := out[1].Interface(); err != nil {
+			fmt.Printf("error: %s:%d\n", beanDefinition.file, beanDefinition.line)
 			panic(err)
 		}
 	}
@@ -740,6 +753,7 @@ func (ctx *DefaultSpringContext) wireMethodBean(beanDefinition *BeanDefinition) 
 	// 检查是否有 error 返回
 	if len(out) == 2 {
 		if err := out[1].Interface(); err != nil {
+			fmt.Printf("error: %s:%d\n", beanDefinition.file, beanDefinition.line)
 			panic(err)
 		}
 	}
