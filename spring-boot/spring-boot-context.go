@@ -43,7 +43,7 @@ type ApplicationContext interface {
 // 定义 ApplicationContext 的默认版本。
 //
 type DefaultApplicationContext struct {
-	*SpringCore.DefaultSpringContext
+	SpringCore.SpringContext
 
 	wg sync.WaitGroup
 }

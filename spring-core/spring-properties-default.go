@@ -42,25 +42,25 @@ func init() {
 }
 
 //
-// 定义 Properties 的默认版本
+// defaultProperties 定义 Properties 的默认版本
 //
-type DefaultProperties struct {
+type defaultProperties struct {
 	properties map[string]interface{}
 }
 
 //
-// 工厂函数
+// NewDefaultProperties 工厂函数
 //
-func NewDefaultProperties() *DefaultProperties {
-	return &DefaultProperties{
+func NewDefaultProperties() *defaultProperties {
+	return &defaultProperties{
 		properties: make(map[string]interface{}),
 	}
 }
 
 //
-// 加载属性配置文件
+// LoadProperties 加载属性配置文件
 //
-func (p *DefaultProperties) LoadProperties(filename string) {
+func (p *defaultProperties) LoadProperties(filename string) {
 
 	if _, err := os.Stat(filename); err != nil {
 		return // 这里不需要警告
@@ -85,60 +85,60 @@ func (p *DefaultProperties) LoadProperties(filename string) {
 }
 
 //
-// 获取属性值，属性名称统一转成小写。
+// GetProperty 获取属性值，属性名称统一转成小写。
 //
-func (p *DefaultProperties) GetProperty(name string) interface{} {
+func (p *defaultProperties) GetProperty(name string) interface{} {
 	name = strings.ToLower(name)
 	return p.properties[name]
 }
 
 //
-// 获取布尔型属性值，属性名称统一转成小写。
+// GetBoolProperty 获取布尔型属性值，属性名称统一转成小写。
 //
-func (p *DefaultProperties) GetBoolProperty(name string) bool {
+func (p *defaultProperties) GetBoolProperty(name string) bool {
 	return cast.ToBool(p.GetProperty(name))
 }
 
 //
-// 获取有符号整型属性值，属性名称统一转成小写。
+// GetIntProperty 获取有符号整型属性值，属性名称统一转成小写。
 //
-func (p *DefaultProperties) GetIntProperty(name string) int64 {
+func (p *defaultProperties) GetIntProperty(name string) int64 {
 	return cast.ToInt64(p.GetProperty(name))
 }
 
 //
-// 获取无符号整型属性值，属性名称统一转成小写。
+// GetUintProperty 获取无符号整型属性值，属性名称统一转成小写。
 //
-func (p *DefaultProperties) GetUintProperty(name string) uint64 {
+func (p *defaultProperties) GetUintProperty(name string) uint64 {
 	return cast.ToUint64(p.GetProperty(name))
 }
 
 //
-// 获取浮点型属性值，属性名称统一转成小写。
+// GetFloatProperty 获取浮点型属性值，属性名称统一转成小写。
 //
-func (p *DefaultProperties) GetFloatProperty(name string) float64 {
+func (p *defaultProperties) GetFloatProperty(name string) float64 {
 	return cast.ToFloat64(p.GetProperty(name))
 }
 
 //
-// 获取字符串型属性值，属性名称统一转成小写。
+// GetStringProperty 获取字符串型属性值，属性名称统一转成小写。
 //
-func (p *DefaultProperties) GetStringProperty(name string) string {
+func (p *defaultProperties) GetStringProperty(name string) string {
 	return cast.ToString(p.GetProperty(name))
 }
 
 //
-// 设置属性值，属性名称统一转成小写。
+// SetProperty 设置属性值，属性名称统一转成小写。
 //
-func (p *DefaultProperties) SetProperty(name string, value interface{}) {
+func (p *defaultProperties) SetProperty(name string, value interface{}) {
 	name = strings.ToLower(name)
 	p.properties[name] = value
 }
 
 //
-// 获取属性值，如果没有找到则使用指定的默认值
+// GetDefaultProperty 获取属性值，如果没有找到则使用指定的默认值
 //
-func (p *DefaultProperties) GetDefaultProperty(name string, defaultValue interface{}) (interface{}, bool) {
+func (p *defaultProperties) GetDefaultProperty(name string, defaultValue interface{}) (interface{}, bool) {
 	name = strings.ToLower(name)
 	if v, ok := p.properties[name]; ok {
 		return v, true
@@ -147,9 +147,9 @@ func (p *DefaultProperties) GetDefaultProperty(name string, defaultValue interfa
 }
 
 //
-// 获取指定前缀的属性值集合，属性名称统一转成小写。
+// GetPrefixProperties 获取指定前缀的属性值集合，属性名称统一转成小写。
 //
-func (p *DefaultProperties) GetPrefixProperties(prefix string) map[string]interface{} {
+func (p *defaultProperties) GetPrefixProperties(prefix string) map[string]interface{} {
 	prefix = strings.ToLower(prefix)
 	result := make(map[string]interface{})
 	for k, v := range p.properties {
@@ -161,35 +161,47 @@ func (p *DefaultProperties) GetPrefixProperties(prefix string) map[string]interf
 }
 
 //
-// 获取所有的属性值，属性名称统一转成小写。
+// GetAllProperties 获取所有的属性值，属性名称统一转成小写。
 //
-func (p *DefaultProperties) GetAllProperties() map[string]interface{} {
+func (p *defaultProperties) GetAllProperties() map[string]interface{} {
 	return p.properties
 }
 
-type PropertyHolder interface {
+//
+// propertyHolder
+//
+type propertyHolder interface {
 	GetDefaultProperty(name string, defaultValue interface{}) (interface{}, bool)
 }
 
-type MapPropertyHolder struct {
+//
+// mapPropertyHolder
+//
+type mapPropertyHolder struct {
 	m map[interface{}]interface{}
 }
 
-func NewMapPropertyHolder(m map[interface{}]interface{}) *MapPropertyHolder {
-	return &MapPropertyHolder{
+//
+// newMapPropertyHolder
+//
+func newMapPropertyHolder(m map[interface{}]interface{}) *mapPropertyHolder {
+	return &mapPropertyHolder{
 		m: m,
 	}
 }
 
-func (p *MapPropertyHolder) GetDefaultProperty(name string, defaultValue interface{}) (interface{}, bool) {
+//
+// GetDefaultProperty
+//
+func (p *mapPropertyHolder) GetDefaultProperty(name string, defaultValue interface{}) (interface{}, bool) {
 	v, ok := p.m[name]
 	return v, ok
 }
 
 //
-// 对结构体的字段进行属性绑定
+// bindStructField 对结构体的字段进行属性绑定
 //
-func bindStructField(prop PropertyHolder, fieldType reflect.Type, fieldValue reflect.Value,
+func bindStructField(prop propertyHolder, fieldType reflect.Type, fieldValue reflect.Value,
 	fieldName string, propNamePrefix string, propTag string) {
 
 	// 检查语法是否正确
@@ -224,9 +236,9 @@ func bindStructField(prop PropertyHolder, fieldType reflect.Type, fieldValue ref
 }
 
 //
-// 对结构体进行属性值绑定
+// bindStruct 对结构体进行属性值绑定
 //
-func bindStruct(prop PropertyHolder, t reflect.Type, v reflect.Value,
+func bindStruct(prop propertyHolder, t reflect.Type, v reflect.Value,
 	fieldName string, propNamePrefix string) {
 
 	for i := 0; i < t.NumField(); i++ {
@@ -254,9 +266,9 @@ func bindStruct(prop PropertyHolder, t reflect.Type, v reflect.Value,
 }
 
 //
-// 对任意 value 进行属性绑定
+// bindValue 对任意 value 进行属性绑定
 //
-func bindValue(prop PropertyHolder, fieldType reflect.Type, fieldValue reflect.Value,
+func bindValue(prop propertyHolder, fieldType reflect.Type, fieldValue reflect.Value,
 	fieldName string, propName string, defaultValue interface{}) {
 
 	getPropValue := func() interface{} { // 获取属性值的局部函数
@@ -351,7 +363,7 @@ func bindValue(prop PropertyHolder, fieldType reflect.Type, fieldValue reflect.V
 						for i, si := range s {
 							if sv, isMap := si.(map[interface{}]interface{}); isMap {
 								ev := reflect.New(elemType)
-								bindStruct(NewMapPropertyHolder(sv), elemType, ev.Elem(), fieldName, "")
+								bindStruct(newMapPropertyHolder(sv), elemType, ev.Elem(), fieldName, "")
 								result.Index(i).Set(ev.Elem())
 							} else {
 								panic(fmt.Sprintf("property %s isn't []map[string]interface{}", propName))
@@ -372,9 +384,9 @@ func bindValue(prop PropertyHolder, fieldType reflect.Type, fieldValue reflect.V
 }
 
 //
-// 根据类型获取属性值，属性名称统一转成小写。
+// BindProperty 根据类型获取属性值，属性名称统一转成小写。
 //
-func (p *DefaultProperties) BindProperty(name string, i interface{}) {
+func (p *defaultProperties) BindProperty(name string, i interface{}) {
 	v := reflect.ValueOf(i)
 	if v.Kind() != reflect.Ptr {
 		panic("参数 v 必须是一个指针")

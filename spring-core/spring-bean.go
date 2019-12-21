@@ -66,14 +66,14 @@ var KindType = []uint8{
 }
 
 //
-// 是否是引用类型
+// IsRefType 是否是引用类型
 //
 func IsRefType(k reflect.Kind) bool {
 	return KindType[k] == REF_TYPE
 }
 
 //
-// 是否是值类型
+// IsValueType 是否是值类型
 //
 func IsValueType(k reflect.Kind) bool {
 	return KindType[k] == VAL_TYPE
@@ -174,7 +174,7 @@ type stringConstructorArg struct {
 //
 func (ca *stringConstructorArg) Get(ctx SpringContext, fnType reflect.Type) []reflect.Value {
 	args := make([]reflect.Value, fnType.NumIn())
-	ctx0 := ctx.(*DefaultSpringContext)
+	ctx0 := ctx.(*defaultSpringContext)
 
 	for i, tag := range ca.tags {
 		it := fnType.In(i)
@@ -183,7 +183,7 @@ func (ca *stringConstructorArg) Get(ctx SpringContext, fnType reflect.Type) []re
 		if strings.HasPrefix(tag, "$") {
 			bindStructField(ctx, it, iv, "", "", tag)
 		} else {
-			ctx0.getBeanByName(tag, _EMPTY_VALUE, iv, "")
+			ctx0.getBeanByName(tag, emptyValue, iv, "")
 		}
 
 		args[i] = iv
@@ -195,14 +195,14 @@ func (ca *stringConstructorArg) Get(ctx SpringContext, fnType reflect.Type) []re
 // optionConstructorArg 基于 Option 模式的构造函数参数
 //
 type optionConstructorArg struct {
-	options []*OptionArg
+	options []*optionArg
 }
 
 //
 // Get
 //
 func (ca *optionConstructorArg) Get(ctx SpringContext, _ reflect.Type) []reflect.Value {
-	ctx0 := ctx.(*DefaultSpringContext)
+	ctx0 := ctx.(*defaultSpringContext)
 	args := make([]reflect.Value, 0)
 
 	for _, arg := range ca.options {
@@ -263,7 +263,7 @@ func (ca *optionConstructorArg) Get(ctx SpringContext, _ reflect.Type) []reflect
 			if strings.HasPrefix(tag, "$") {
 				bindStructField(ctx, it, iv, "", "", tag)
 			} else {
-				ctx0.getBeanByName(tag, _EMPTY_VALUE, iv, "")
+				ctx0.getBeanByName(tag, emptyValue, iv, "")
 			}
 
 			optIn[i] = iv
@@ -635,7 +635,7 @@ func (d *BeanDefinition) ConditionOnMatches(fn ConditionFunc) *BeanDefinition {
 //
 // Options 设置 Option 模式构造函数的参数绑定
 //
-func (d *BeanDefinition) Options(options ...*OptionArg) *BeanDefinition {
+func (d *BeanDefinition) Options(options ...*optionArg) *BeanDefinition {
 	cBean, ok := d.SpringBean.(*constructorBean)
 	if !ok {
 		panic("只有构造函数 Bean 才能调用此方法")

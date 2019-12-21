@@ -17,9 +17,9 @@
 package SpringCore
 
 //
-// Option 模式绑定参数
+// optionArg Option 模式绑定参数
 //
-type OptionArg struct {
+type optionArg struct {
 	Constriction
 
 	fn   interface{}
@@ -27,99 +27,99 @@ type OptionArg struct {
 }
 
 //
-// 构造函数
+// NewOptionArg 构造函数
 //
-func NewOptionArg(fn interface{}, tags ...string) *OptionArg {
-	return &OptionArg{
+func NewOptionArg(fn interface{}, tags ...string) *optionArg {
+	return &optionArg{
 		fn:   fn,
 		tags: tags,
 	}
 }
 
 //
-// 设置一个 Condition
+// ConditionOn 设置一个 Condition
 //
-func (arg *OptionArg) ConditionOn(cond Condition) *OptionArg {
+func (arg *optionArg) ConditionOn(cond Condition) *optionArg {
 	arg.Constriction.ConditionOn(cond)
 	return arg
 }
 
 //
-// 设置一个 PropertyCondition
+// ConditionOnProperty 设置一个 PropertyCondition
 //
-func (arg *OptionArg) ConditionOnProperty(name string) *OptionArg {
+func (arg *optionArg) ConditionOnProperty(name string) *optionArg {
 	arg.Constriction.ConditionOnProperty(name)
 	return arg
 }
 
 //
-// 设置一个 MissingPropertyCondition
+// ConditionOnMissingProperty 设置一个 MissingPropertyCondition
 //
-func (arg *OptionArg) ConditionOnMissingProperty(name string) *OptionArg {
+func (arg *optionArg) ConditionOnMissingProperty(name string) *optionArg {
 	arg.Constriction.ConditionOnMissingProperty(name)
 	return arg
 }
 
 //
-// 设置一个 PropertyValueCondition
+// ConditionOnPropertyValue 设置一个 PropertyValueCondition
 //
-func (arg *OptionArg) ConditionOnPropertyValue(name string, havingValue interface{}) *OptionArg {
+func (arg *optionArg) ConditionOnPropertyValue(name string, havingValue interface{}) *optionArg {
 	arg.Constriction.ConditionOnPropertyValue(name, havingValue)
 	return arg
 }
 
 //
-// 设置一个 BeanCondition
+// ConditionOnBean 设置一个 BeanCondition
 //
-func (arg *OptionArg) ConditionOnBean(beanId string) *OptionArg {
+func (arg *optionArg) ConditionOnBean(beanId string) *optionArg {
 	arg.Constriction.ConditionOnBean(beanId)
 	return arg
 }
 
 //
-// 设置一个 MissingBeanCondition
+// ConditionOnMissingBean 设置一个 MissingBeanCondition
 //
-func (arg *OptionArg) ConditionOnMissingBean(beanId string) *OptionArg {
+func (arg *optionArg) ConditionOnMissingBean(beanId string) *optionArg {
 	arg.Constriction.ConditionOnMissingBean(beanId)
 	return arg
 }
 
 //
-// 设置一个 ExpressionCondition
+// ConditionOnExpression 设置一个 ExpressionCondition
 //
-func (arg *OptionArg) ConditionOnExpression(expression string) *OptionArg {
+func (arg *optionArg) ConditionOnExpression(expression string) *optionArg {
 	arg.Constriction.ConditionOnExpression(expression)
 	return arg
 }
 
 //
-// 设置一个 FunctionCondition
+// ConditionOnMatches 设置一个 FunctionCondition
 //
-func (arg *OptionArg) ConditionOnMatches(fn ConditionFunc) *OptionArg {
+func (arg *optionArg) ConditionOnMatches(fn ConditionFunc) *optionArg {
 	arg.Constriction.ConditionOnMatches(fn)
 	return arg
 }
 
 //
-// 设置 bean 的运行环境
+// Profile 设置 bean 的运行环境
 //
-func (arg *OptionArg) Profile(profile string) *OptionArg {
+func (arg *optionArg) Profile(profile string) *optionArg {
 	arg.Constriction.Profile(profile)
 	return arg
 }
 
 //
-// 设置 bean 的非直接依赖
+// DependsOn 设置 bean 的非直接依赖
 //
-func (arg *OptionArg) DependsOn(beanId ...string) *OptionArg {
+func (arg *optionArg) DependsOn(beanId ...string) *optionArg {
 	arg.Constriction.DependsOn(beanId...)
 	return arg
 }
 
 //
-// 设置 Bean 应用自定义限制
+// Apply 设置 Bean 应用自定义限制
 //
-func (arg *OptionArg) Apply(c *Constriction) *OptionArg {
+func (arg *optionArg) Apply(c *Constriction) *optionArg {
 	arg.Constriction.Apply(c)
 	return arg
 }

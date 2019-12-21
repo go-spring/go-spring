@@ -22,8 +22,8 @@ import (
 )
 
 //
-// 获取原始类型的全限定名，golang 允许不同的路径下存在相同的包，故此有全限定名的需求。形如
-// "github.com/go-spring/go-spring/spring-core/SpringCore.DefaultSpringContext"
+// TypeName 获取原始类型的全限定名，golang 允许不同的路径下存在相同的包，故此有全限定名的需求。
+// 形如 "github.com/go-spring/go-spring/spring-core/SpringCore.DefaultSpringContext"
 //
 func TypeName(t reflect.Type) string {
 
@@ -48,7 +48,7 @@ func TypeName(t reflect.Type) string {
 }
 
 //
-// 解析 BeanId 的内容，"TypeName:BeanName?" 或者 "[]?"
+// ParseBeanId 解析 BeanId 的内容，"TypeName:BeanName?" 或者 "[]?"
 //
 func ParseBeanId(beanId string) (typeName string, beanName string, nullable bool) {
 
