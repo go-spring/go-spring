@@ -21,42 +21,11 @@ import (
 
 	"github.com/go-spring/go-spring-web/spring-web"
 	"github.com/go-spring/go-spring/spring-boot"
-	"github.com/go-spring/go-spring/spring-core"
 )
 
 func init() {
 	SpringBoot.RegisterBean(new(WebServerConfig))
 	SpringBoot.RegisterBean(new(WebServerStarter))
-}
-
-//
-// 定义 Web Bean 初始化接口
-//
-type WebBeanInitialization interface {
-	InitWebBean(c SpringWeb.WebContainer)
-}
-
-type WebContainerWrapper struct {
-	SpringWeb.WebContainer
-
-	ctx SpringCore.SpringContext
-}
-
-func NewWebContainerWrapper(c SpringWeb.WebContainer, ctx SpringCore.SpringContext) *WebContainerWrapper {
-	return &WebContainerWrapper{
-		WebContainer: c,
-		ctx:          ctx,
-	}
-}
-
-func (w *WebContainerWrapper) Filters(filterName ...string) []SpringWeb.Filter {
-	var result []SpringWeb.Filter
-	for _, s := range filterName {
-		var f SpringWeb.Filter
-		w.ctx.GetBeanByName(s, &f)
-		result = append(result, f)
-	}
-	return result
 }
 
 //
@@ -79,18 +48,6 @@ type WebServerStarter struct {
 	Server *SpringWeb.WebServer `autowire:"?"`
 }
 
-func (starter *WebServerStarter) initWebBeans(ctx SpringBoot.ApplicationContext,
-	c SpringWeb.WebContainer) {
-
-	var beans []WebBeanInitialization
-	ctx.CollectBeans(&beans)
-
-	// 初始化 Web Beans
-	for _, bean := range beans {
-		bean.InitWebBean(c)
-	}
-}
-
 func (starter *WebServerStarter) OnStartApplication(ctx SpringBoot.ApplicationContext) {
 
 	if starter.Server == nil { // 用户没有定制 Web 服务器
@@ -98,14 +55,14 @@ func (starter *WebServerStarter) OnStartApplication(ctx SpringBoot.ApplicationCo
 
 		// 启动 HTTP 容器
 		if starter.Config.EnableHTTP {
-			c := NewWebContainerWrapper(SpringWeb.WebContainerFactory(), ctx)
+			c := SpringWeb.WebContainerFactory()
 			c.SetPort(starter.Config.Port)
 			starter.Server.AddWebContainer(c)
 		}
 
 		// 启动 HTTPS 容器
 		if starter.Config.EnableHTTPS {
-			c := NewWebContainerWrapper(SpringWeb.WebContainerFactory(), ctx)
+			c := SpringWeb.WebContainerFactory()
 			c.SetCertFile(starter.Config.SSLCert)
 			c.SetKeyFile(starter.Config.SSLKey)
 			c.SetPort(starter.Config.SSLPort)
@@ -113,38 +70,37 @@ func (starter *WebServerStarter) OnStartApplication(ctx SpringBoot.ApplicationCo
 		}
 	}
 
-	wrappers := make([]SpringWeb.WebContainer, 0)
 	for _, c := range starter.Server.Containers {
-
-		w := NewWebContainerWrapper(c, ctx)
-		starter.initWebBeans(ctx, w)
-
 		for _, mapping := range SpringBoot.UrlMapping {
-			ports := mapping.Ports()
-			mapper := mapping.Mapper()
-			if len(ports) == 0 {
-				if mapping.GetResult(ctx) {
-					w.Mapping(mapper.Method(), mapper.Path(), mapper.Handler(), mapper.Filters()...)
-				}
 
-			} else {
+			mapper := mapping.Mapper
+			ports := mapping.Ports()
+
+			matches := func() bool {
 				for _, port := range ports {
-					for _, port0 := range w.GetPort() {
+					for _, port0 := range c.GetPort() {
 						if port == port0 { // 端口匹配
-							if mapping.GetResult(ctx) {
-								w.Mapping(mapper.Method(), mapper.Path(), mapper.Handler(), mapper.Filters()...)
-							}
-							break
+							return true
 						}
 					}
 				}
+				return false
+			}
+
+			if len(ports) == 0 || matches() {
+				if mapping.GetResult(ctx) {
+					filters := mapper.Filters()
+					for _, s := range mapping.FilterNames() {
+						var f SpringWeb.Filter
+						ctx.GetBeanByName(s, &f)
+						filters = append(filters, f)
+					}
+					c.Mapping(mapper.Method(), mapper.Path(), mapper.Handler(), filters...)
+				}
 			}
 		}
-
-		wrappers = append(wrappers, w)
 	}
 
-	starter.Server.Containers = wrappers
 	starter.Server.Start()
 }
 

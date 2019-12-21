@@ -30,7 +30,9 @@ var UrlMapping = make(map[string]*Mapping)
 // Mapping
 //
 type Mapping struct {
-	mapper SpringWeb.Mapper
+	SpringWeb.Mapper
+
+	filterNames []string // 过滤器列表
 
 	ports []int  // 允许注册到哪些端口上
 	doc   string // 接口的说明文档
@@ -43,15 +45,8 @@ type Mapping struct {
 //
 func NewMapping(mapper SpringWeb.Mapper) *Mapping {
 	return &Mapping{
-		mapper: mapper,
+		Mapper: mapper,
 	}
-}
-
-//
-// Mapper
-//
-func (m *Mapping) Mapper() SpringWeb.Mapper {
-	return m.mapper
 }
 
 //
@@ -80,6 +75,20 @@ func (m *Mapping) Doc() string {
 //
 func (m *Mapping) SetDoc(doc string) {
 	m.doc = doc
+}
+
+//
+// FilterNames
+//
+func (m *Mapping) FilterNames() []string {
+	return m.filterNames
+}
+
+//
+// SetFilterNames
+//
+func (m *Mapping) SetFilterNames(filterNames ...string) {
+	m.filterNames = filterNames
 }
 
 //
