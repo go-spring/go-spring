@@ -95,9 +95,9 @@ type SpringBean interface {
 }
 
 //
-// 保存原始对象的 SpringBean
+// originalBean 保存原始对象的 SpringBean
 //
-type OriginalBean struct {
+type originalBean struct {
 	bean     interface{}
 	rType    reflect.Type  // 类型
 	typeName string        // 原始类型的全限定名
@@ -105,9 +105,9 @@ type OriginalBean struct {
 }
 
 //
-// 工厂函数
+// newOriginalBean 工厂函数
 //
-func NewOriginalBean(bean interface{}) *OriginalBean {
+func newOriginalBean(bean interface{}) *originalBean {
 
 	if bean == nil {
 		panic("nil isn't valid bean")
@@ -119,7 +119,7 @@ func NewOriginalBean(bean interface{}) *OriginalBean {
 		panic("bean must be ref type")
 	}
 
-	return &OriginalBean{
+	return &originalBean{
 		bean:     bean,
 		rType:    t,
 		typeName: TypeName(t),
@@ -127,34 +127,52 @@ func NewOriginalBean(bean interface{}) *OriginalBean {
 	}
 }
 
-func (b *OriginalBean) Bean() interface{} {
+//
+// Bean
+//
+func (b *originalBean) Bean() interface{} {
 	return b.bean
 }
 
-func (b *OriginalBean) Type() reflect.Type {
+//
+// Type
+//
+func (b *originalBean) Type() reflect.Type {
 	return b.rType
 }
 
-func (b *OriginalBean) Value() reflect.Value {
+//
+// Value
+//
+func (b *originalBean) Value() reflect.Value {
 	return b.rValue
 }
 
-func (b *OriginalBean) TypeName() string {
+//
+// TypeName
+//
+func (b *originalBean) TypeName() string {
 	return b.typeName
 }
 
-type ConstructorArg interface {
+//
+// constructorArg
+//
+type constructorArg interface {
 	Get(ctx SpringContext, fnType reflect.Type) []reflect.Value
 }
 
 //
-// 基于字符串 tag 的构造函数参数
+// stringConstructorArg 基于字符串 tag 的构造函数参数
 //
-type StringConstructorArg struct {
+type stringConstructorArg struct {
 	tags []string
 }
 
-func (ca *StringConstructorArg) Get(ctx SpringContext, fnType reflect.Type) []reflect.Value {
+//
+// Get
+//
+func (ca *stringConstructorArg) Get(ctx SpringContext, fnType reflect.Type) []reflect.Value {
 	args := make([]reflect.Value, fnType.NumIn())
 	ctx0 := ctx.(*DefaultSpringContext)
 
@@ -174,13 +192,16 @@ func (ca *StringConstructorArg) Get(ctx SpringContext, fnType reflect.Type) []re
 }
 
 //
-// 基于 Option 模式的构造函数参数
+// optionConstructorArg 基于 Option 模式的构造函数参数
 //
-type OptionConstructorArg struct {
+type optionConstructorArg struct {
 	options []*OptionArg
 }
 
-func (ca *OptionConstructorArg) Get(ctx SpringContext, _ reflect.Type) []reflect.Value {
+//
+// Get
+//
+func (ca *optionConstructorArg) Get(ctx SpringContext, _ reflect.Type) []reflect.Value {
 	ctx0 := ctx.(*DefaultSpringContext)
 	args := make([]reflect.Value, 0)
 
@@ -255,19 +276,19 @@ func (ca *OptionConstructorArg) Get(ctx SpringContext, _ reflect.Type) []reflect
 }
 
 //
-// 保存构造函数的 SpringBean
+// constructorBean 保存构造函数的 SpringBean
 //
-type ConstructorBean struct {
-	OriginalBean
+type constructorBean struct {
+	originalBean
 
 	fn  interface{}
-	arg ConstructorArg
+	arg constructorArg
 }
 
 //
-// 工厂函数，所有 tag 都必须同时有或者同时没有序号。
+// newConstructorBean 工厂函数，所有 tag 都必须同时有或者同时没有序号。
 //
-func NewConstructorBean(fn interface{}, tags ...string) *ConstructorBean {
+func newConstructorBean(fn interface{}, tags ...string) *constructorBean {
 
 	fnType := reflect.TypeOf(fn)
 
@@ -335,33 +356,33 @@ func NewConstructorBean(fn interface{}, tags ...string) *ConstructorBean {
 	// 重新确定类型
 	t = v.Type()
 
-	return &ConstructorBean{
-		OriginalBean: OriginalBean{
+	return &constructorBean{
+		originalBean: originalBean{
 			bean:     v.Interface(),
 			rType:    t,
 			typeName: TypeName(t),
 			rValue:   v,
 		},
 		fn:  fn,
-		arg: &StringConstructorArg{fnTags},
+		arg: &stringConstructorArg{fnTags},
 	}
 }
 
 //
-// 保存成员方法的 SpringBean
+// methodBean 保存成员方法的 SpringBean
 //
-type MethodBean struct {
-	OriginalBean
+type methodBean struct {
+	originalBean
 
 	method string
-	arg    ConstructorArg
+	arg    constructorArg
 	parent *BeanDefinition
 }
 
 //
-// 工厂函数，所有 tag 都必须同时有或者同时没有序号。
+// newMethodBean 工厂函数，所有 tag 都必须同时有或者同时没有序号。
 //
-func NewMethodBean(parent *BeanDefinition, method string, tags ...string) *MethodBean {
+func newMethodBean(parent *BeanDefinition, method string, tags ...string) *methodBean {
 
 	fnValue := parent.Value().MethodByName(method)
 	if !fnValue.IsValid() {
@@ -430,8 +451,8 @@ func NewMethodBean(parent *BeanDefinition, method string, tags ...string) *Metho
 	// 重新确定类型
 	t = v.Type()
 
-	return &MethodBean{
-		OriginalBean: OriginalBean{
+	return &methodBean{
+		originalBean: originalBean{
 			bean:     v.Interface(),
 			rType:    t,
 			typeName: TypeName(t),
@@ -439,7 +460,7 @@ func NewMethodBean(parent *BeanDefinition, method string, tags ...string) *Metho
 		},
 		parent: parent,
 		method: method,
-		arg:    &StringConstructorArg{fnTags},
+		arg:    &stringConstructorArg{fnTags},
 	}
 }
 
@@ -457,12 +478,12 @@ const (
 )
 
 //
-// 定义 BeanDefinition 类型
+// BeanDefinition 定义 BeanDefinition 类型
 //
 type BeanDefinition struct {
 	SpringBean
 
-	Name   string     // 名称
+	name   string     // 名称
 	status BeanStatus // 状态
 
 	Constriction
@@ -475,9 +496,9 @@ type BeanDefinition struct {
 }
 
 //
-// 工厂函数
+// newBeanDefinition 工厂函数
 //
-func NewBeanDefinition(bean SpringBean, name string) *BeanDefinition {
+func newBeanDefinition(bean SpringBean, name string) *BeanDefinition {
 
 	// 生成默认名称
 	if name == "" {
@@ -486,20 +507,27 @@ func NewBeanDefinition(bean SpringBean, name string) *BeanDefinition {
 
 	return &BeanDefinition{
 		SpringBean: bean,
-		Name:       name,
+		name:       name,
 		status:     BeanStatus_Default,
 	}
 }
 
 //
-// 获取 BeanId
+// Name 获取 Name
 //
-func (d *BeanDefinition) BeanId() string {
-	return d.TypeName() + ":" + d.Name
+func (d *BeanDefinition) Name() string {
+	return d.name
 }
 
 //
-// 测试类型全限定名和 Bean 名称是否都能匹配。
+// BeanId 获取 BeanId
+//
+func (d *BeanDefinition) BeanId() string {
+	return d.TypeName() + ":" + d.name
+}
+
+//
+// Match 测试类型全限定名和 Bean 名称是否都能匹配。
 //
 func (d *BeanDefinition) Match(typeName string, beanName string) bool {
 
@@ -509,7 +537,7 @@ func (d *BeanDefinition) Match(typeName string, beanName string) bool {
 	}
 
 	nameIsSame := false
-	if beanName == "" || d.Name == beanName {
+	if beanName == "" || d.name == beanName {
 		nameIsSame = true
 	}
 
@@ -517,31 +545,31 @@ func (d *BeanDefinition) Match(typeName string, beanName string) bool {
 }
 
 //
-// 将 Bean 转换为 BeanDefinition 对象
+// ToBeanDefinition 将 Bean 转换为 BeanDefinition 对象
 //
 func ToBeanDefinition(name string, i interface{}) *BeanDefinition {
-	bean := NewOriginalBean(i)
-	return NewBeanDefinition(bean, name)
+	bean := newOriginalBean(i)
+	return newBeanDefinition(bean, name)
 }
 
 //
-// 将构造函数转换为 BeanDefinition 对象
+// FnToBeanDefinition 将构造函数转换为 BeanDefinition 对象
 //
 func FnToBeanDefinition(name string, fn interface{}, tags ...string) *BeanDefinition {
-	bean := NewConstructorBean(fn, tags...)
-	return NewBeanDefinition(bean, name)
+	bean := newConstructorBean(fn, tags...)
+	return newBeanDefinition(bean, name)
 }
 
 //
-// 将成员方法转换为 BeanDefinition 对象
+// MethodToBeanDefinition 将成员方法转换为 BeanDefinition 对象
 //
 func MethodToBeanDefinition(name string, parent *BeanDefinition, method string, tags ...string) *BeanDefinition {
-	bean := NewMethodBean(parent, method, tags...)
-	return NewBeanDefinition(bean, name)
+	bean := newMethodBean(parent, method, tags...)
+	return newBeanDefinition(bean, name)
 }
 
 //
-// 设置一个 Condition
+// ConditionOn 设置一个 Condition
 //
 func (d *BeanDefinition) ConditionOn(cond Condition) *BeanDefinition {
 	d.Constriction.ConditionOn(cond)
@@ -549,7 +577,7 @@ func (d *BeanDefinition) ConditionOn(cond Condition) *BeanDefinition {
 }
 
 //
-// 设置一个 PropertyCondition
+// ConditionOnProperty 设置一个 PropertyCondition
 //
 func (d *BeanDefinition) ConditionOnProperty(name string) *BeanDefinition {
 	d.Constriction.ConditionOnProperty(name)
@@ -557,7 +585,7 @@ func (d *BeanDefinition) ConditionOnProperty(name string) *BeanDefinition {
 }
 
 //
-// 设置一个 MissingPropertyCondition
+// ConditionOnMissingProperty 设置一个 MissingPropertyCondition
 //
 func (d *BeanDefinition) ConditionOnMissingProperty(name string) *BeanDefinition {
 	d.Constriction.ConditionOnMissingProperty(name)
@@ -565,7 +593,7 @@ func (d *BeanDefinition) ConditionOnMissingProperty(name string) *BeanDefinition
 }
 
 //
-// 设置一个 PropertyValueCondition
+// ConditionOnPropertyValue 设置一个 PropertyValueCondition
 //
 func (d *BeanDefinition) ConditionOnPropertyValue(name string, havingValue interface{}) *BeanDefinition {
 	d.Constriction.ConditionOnPropertyValue(name, havingValue)
@@ -573,7 +601,7 @@ func (d *BeanDefinition) ConditionOnPropertyValue(name string, havingValue inter
 }
 
 //
-// 设置一个 BeanCondition
+// ConditionOnBean 设置一个 BeanCondition
 //
 func (d *BeanDefinition) ConditionOnBean(beanId string) *BeanDefinition {
 	d.Constriction.ConditionOnBean(beanId)
@@ -581,7 +609,7 @@ func (d *BeanDefinition) ConditionOnBean(beanId string) *BeanDefinition {
 }
 
 //
-// 设置一个 MissingBeanCondition
+// ConditionOnMissingBean 设置一个 MissingBeanCondition
 //
 func (d *BeanDefinition) ConditionOnMissingBean(beanId string) *BeanDefinition {
 	d.Constriction.ConditionOnMissingBean(beanId)
@@ -589,7 +617,7 @@ func (d *BeanDefinition) ConditionOnMissingBean(beanId string) *BeanDefinition {
 }
 
 //
-// 设置一个 ExpressionCondition
+// ConditionOnExpression 设置一个 ExpressionCondition
 //
 func (d *BeanDefinition) ConditionOnExpression(expression string) *BeanDefinition {
 	d.Constriction.ConditionOnExpression(expression)
@@ -597,7 +625,7 @@ func (d *BeanDefinition) ConditionOnExpression(expression string) *BeanDefinitio
 }
 
 //
-// 设置一个 FunctionCondition
+// ConditionOnMatches 设置一个 FunctionCondition
 //
 func (d *BeanDefinition) ConditionOnMatches(fn ConditionFunc) *BeanDefinition {
 	d.Constriction.ConditionOnMatches(fn)
@@ -605,19 +633,19 @@ func (d *BeanDefinition) ConditionOnMatches(fn ConditionFunc) *BeanDefinition {
 }
 
 //
-// 设置 Option 模式构造函数的参数绑定
+// Options 设置 Option 模式构造函数的参数绑定
 //
 func (d *BeanDefinition) Options(options ...*OptionArg) *BeanDefinition {
-	cBean, ok := d.SpringBean.(*ConstructorBean)
+	cBean, ok := d.SpringBean.(*constructorBean)
 	if !ok {
 		panic("只有构造函数 Bean 才能调用此方法")
 	}
-	cBean.arg = &OptionConstructorArg{options}
+	cBean.arg = &optionConstructorArg{options}
 	return d
 }
 
 //
-// 设置 bean 的运行环境
+// Profile 设置 bean 的运行环境
 //
 func (d *BeanDefinition) Profile(profile string) *BeanDefinition {
 	d.Constriction.Profile(profile)
@@ -625,7 +653,7 @@ func (d *BeanDefinition) Profile(profile string) *BeanDefinition {
 }
 
 //
-// 设置 bean 的非直接依赖
+// DependsOn 设置 bean 的非直接依赖
 //
 func (d *BeanDefinition) DependsOn(beanId ...string) *BeanDefinition {
 	d.Constriction.DependsOn(beanId...)
@@ -633,7 +661,7 @@ func (d *BeanDefinition) DependsOn(beanId ...string) *BeanDefinition {
 }
 
 //
-// 设置 bean 的优先级
+// Primary 设置 bean 的优先级
 //
 func (d *BeanDefinition) Primary(primary bool) *BeanDefinition {
 	d.primary = primary
@@ -641,7 +669,7 @@ func (d *BeanDefinition) Primary(primary bool) *BeanDefinition {
 }
 
 //
-// 设置 bean 绑定结束的回调
+// InitFunc 设置 bean 绑定结束的回调
 //
 func (d *BeanDefinition) InitFunc(fn interface{}) *BeanDefinition {
 
@@ -661,7 +689,7 @@ func (d *BeanDefinition) InitFunc(fn interface{}) *BeanDefinition {
 }
 
 //
-// 设置 Bean 应用自定义限制
+// Apply 设置 Bean 应用自定义限制
 //
 func (d *BeanDefinition) Apply(c *Constriction) *BeanDefinition {
 	d.Constriction.Apply(c)

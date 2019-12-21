@@ -106,101 +106,6 @@ func NewPtrStudent(teacher Teacher, room string) *Student {
 	}
 }
 
-func TestNewConstructorBean(t *testing.T) {
-
-	SpringCore.NewConstructorBean(NewStudent, "")
-	SpringCore.NewConstructorBean(NewStudent, "teacher")
-	SpringCore.NewConstructorBean(NewStudent, "${room}")
-
-	assert.Panic(t, func() {
-		SpringCore.NewConstructorBean(NewStudent, "", "1:teacher")
-	}, "tag \"1:teacher\" should no index")
-
-	assert.Panic(t, func() {
-		SpringCore.NewConstructorBean(NewStudent, "", "1:${room}")
-	}, "tag \"1:\\${room}\" should no index")
-
-	SpringCore.NewConstructorBean(NewStudent, "1:teacher")
-
-	assert.Panic(t, func() {
-		SpringCore.NewConstructorBean(NewStudent, "1:teacher", "")
-	}, "tag \"\" should have index")
-
-	assert.Panic(t, func() {
-		SpringCore.NewConstructorBean(NewStudent, "1:teacher", "${room}")
-	}, "tag \"\\${room}\" should have index")
-
-	bean := SpringCore.NewConstructorBean(NewStudent)
-	assert.Equal(t, bean.Type().String(), "*SpringCore_test.Student")
-
-	bean = SpringCore.NewConstructorBean(NewPtrStudent)
-	assert.Equal(t, bean.Type().String(), "*SpringCore_test.Student")
-
-	mapFn := func() map[int]string {
-		return make(map[int]string)
-	}
-
-	bean = SpringCore.NewConstructorBean(mapFn)
-	assert.Equal(t, bean.Type().String(), "map[int]string")
-
-	sliceFn := func() []int {
-		return make([]int, 1)
-	}
-
-	bean = SpringCore.NewConstructorBean(sliceFn)
-	assert.Equal(t, bean.Type().String(), "[]int")
-
-	funcFn := func() func(int) {
-		return nil
-	}
-
-	bean = SpringCore.NewConstructorBean(funcFn)
-	assert.Equal(t, bean.Type().String(), "func(int)")
-}
-
-func TestToBeanDefinition(t *testing.T) {
-
-	assert.Panic(t, func() {
-		SpringCore.ToBeanDefinition("", 3)
-	}, "bean must be ref type")
-
-	assert.Panic(t, func() {
-		SpringCore.ToBeanDefinition("", pkg2.SamePkg{})
-	}, "bean must be ref type")
-
-	// 用接口类型注册时实际使用的是原始类型
-	bd := SpringCore.ToBeanDefinition("", io.Writer(os.Stdout))
-	assert.Equal(t, bd.Name, "*os.File")
-	assert.Equal(t, bd.TypeName(), "os/os.File")
-
-	bd = SpringCore.ToBeanDefinition("", &historyTeacher{})
-	assert.Equal(t, bd.Name, "*SpringCore_test.historyTeacher")
-	assert.Equal(t, bd.Type(), reflect.TypeOf(&historyTeacher{}))
-	assert.Equal(t, bd.TypeName(), "github.com/go-spring/go-spring/spring-core_test/SpringCore_test.historyTeacher")
-
-	// 用接口类型注册时实际使用的是原始类型
-	bd = SpringCore.ToBeanDefinition("", Teacher(&historyTeacher{}))
-	assert.Equal(t, bd.Name, "*SpringCore_test.historyTeacher")
-	assert.Equal(t, bd.Type(), reflect.TypeOf(&historyTeacher{}))
-	assert.Equal(t, bd.TypeName(), "github.com/go-spring/go-spring/spring-core_test/SpringCore_test.historyTeacher")
-
-	bd = SpringCore.ToBeanDefinition("", new(int))
-	assert.Equal(t, bd.Name, "*int")
-	assert.Equal(t, bd.TypeName(), "int")
-
-	bd = SpringCore.ToBeanDefinition("i", new(int))
-	assert.Equal(t, bd.Name, "i")
-	assert.Equal(t, bd.TypeName(), "int")
-
-	bd = SpringCore.ToBeanDefinition("", new(pkg2.SamePkg))
-	assert.Equal(t, bd.Name, "*pkg.SamePkg")
-	assert.Equal(t, bd.TypeName(), "github.com/go-spring/go-spring/spring-core/testdata/pkg/foo/pkg.SamePkg")
-
-	bd = SpringCore.ToBeanDefinition("pkg2", new(pkg2.SamePkg))
-	assert.Equal(t, bd.Name, "pkg2")
-	assert.Equal(t, bd.TypeName(), "github.com/go-spring/go-spring/spring-core/testdata/pkg/foo/pkg.SamePkg")
-}
-
 func TestFnToBeanDefinition(t *testing.T) {
 
 	bd := SpringCore.FnToBeanDefinition("", NewStudent)
@@ -253,48 +158,88 @@ func TestFnToBeanDefinition(t *testing.T) {
 	assert.Equal(t, bd.Type().String(), "*int")
 }
 
-func TestIsValidBean(t *testing.T) {
+func TestToBeanDefinition(t *testing.T) {
 
 	// nil
 	assert.Panic(t, func() {
-		SpringCore.NewOriginalBean(nil)
+		SpringCore.ToBeanDefinition("", nil)
 	}, "nil isn't valid bean")
 
 	// bool
 	assert.Panic(t, func() {
-		SpringCore.NewOriginalBean(false)
+		SpringCore.ToBeanDefinition("", false)
 	}, "bean must be ref type")
 
 	// int
 	assert.Panic(t, func() {
-		SpringCore.NewOriginalBean(3)
+		SpringCore.ToBeanDefinition("", 3)
 	}, "bean must be ref type")
 
 	// chan
-	SpringCore.NewOriginalBean(make(chan int))
+	SpringCore.ToBeanDefinition("", make(chan int))
 
 	// function
-	SpringCore.NewOriginalBean(func() {})
+	SpringCore.ToBeanDefinition("", func() {})
 
 	// map
-	SpringCore.NewOriginalBean(make(map[string]int))
+	SpringCore.ToBeanDefinition("", make(map[string]int))
 
 	// ptr
-	SpringCore.NewOriginalBean(new(int))
+	SpringCore.ToBeanDefinition("", new(int))
 
 	// func
-	SpringCore.NewOriginalBean(&BeanZero{})
+	SpringCore.ToBeanDefinition("", &BeanZero{})
 
 	// slice
-	SpringCore.NewOriginalBean(make([]int, 0))
+	SpringCore.ToBeanDefinition("", make([]int, 0))
 
 	// string
 	assert.Panic(t, func() {
-		SpringCore.NewOriginalBean("3")
+		SpringCore.ToBeanDefinition("", "3")
 	}, "bean must be ref type")
 
 	// struct
 	assert.Panic(t, func() {
-		SpringCore.NewOriginalBean(BeanZero{})
+		SpringCore.ToBeanDefinition("", BeanZero{})
 	}, "bean must be ref type")
+
+	assert.Panic(t, func() {
+		SpringCore.ToBeanDefinition("", 3)
+	}, "bean must be ref type")
+
+	assert.Panic(t, func() {
+		SpringCore.ToBeanDefinition("", pkg2.SamePkg{})
+	}, "bean must be ref type")
+
+	// 用接口类型注册时实际使用的是原始类型
+	bd := SpringCore.ToBeanDefinition("", io.Writer(os.Stdout))
+	assert.Equal(t, bd.Name(), "*os.File")
+	assert.Equal(t, bd.TypeName(), "os/os.File")
+
+	bd = SpringCore.ToBeanDefinition("", &historyTeacher{})
+	assert.Equal(t, bd.Name(), "*SpringCore_test.historyTeacher")
+	assert.Equal(t, bd.Type(), reflect.TypeOf(&historyTeacher{}))
+	assert.Equal(t, bd.TypeName(), "github.com/go-spring/go-spring/spring-core_test/SpringCore_test.historyTeacher")
+
+	// 用接口类型注册时实际使用的是原始类型
+	bd = SpringCore.ToBeanDefinition("", Teacher(&historyTeacher{}))
+	assert.Equal(t, bd.Name(), "*SpringCore_test.historyTeacher")
+	assert.Equal(t, bd.Type(), reflect.TypeOf(&historyTeacher{}))
+	assert.Equal(t, bd.TypeName(), "github.com/go-spring/go-spring/spring-core_test/SpringCore_test.historyTeacher")
+
+	bd = SpringCore.ToBeanDefinition("", new(int))
+	assert.Equal(t, bd.Name(), "*int")
+	assert.Equal(t, bd.TypeName(), "int")
+
+	bd = SpringCore.ToBeanDefinition("i", new(int))
+	assert.Equal(t, bd.Name(), "i")
+	assert.Equal(t, bd.TypeName(), "int")
+
+	bd = SpringCore.ToBeanDefinition("", new(pkg2.SamePkg))
+	assert.Equal(t, bd.Name(), "*pkg.SamePkg")
+	assert.Equal(t, bd.TypeName(), "github.com/go-spring/go-spring/spring-core/testdata/pkg/foo/pkg.SamePkg")
+
+	bd = SpringCore.ToBeanDefinition("pkg2", new(pkg2.SamePkg))
+	assert.Equal(t, bd.Name(), "pkg2")
+	assert.Equal(t, bd.TypeName(), "github.com/go-spring/go-spring/spring-core/testdata/pkg/foo/pkg.SamePkg")
 }

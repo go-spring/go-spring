@@ -58,10 +58,10 @@ func NewBeanCacheItem() *BeanCacheItem {
 }
 
 //
-// 将一个 Bean 存储到 CachedBeanMapItem 里
+// Store 将一个 Bean 存储到 CachedBeanMapItem 里
 //
 func (item *BeanCacheItem) Store(d *BeanDefinition) {
-	if d.Name == "" {
+	if d.name == "" {
 		panic("bean must have name")
 	}
 	item.Named = append(item.Named, d)
@@ -184,7 +184,7 @@ func (ctx *DefaultSpringContext) registerBeanDefinition(d *BeanDefinition) {
 	{
 		k := BeanKey{
 			Type: d.Type(),
-			Name: d.Name,
+			Name: d.name,
 		}
 
 		if _, ok := ctx.BeanMap[k]; ok {
@@ -464,7 +464,7 @@ func (ctx *DefaultSpringContext) FindBeanByName(beanId string) (interface{}, boo
 }
 
 //
-// 对 Bean 进行决议是否能够创建 Bean 的实例
+// resolveBean 对 Bean 进行决议是否能够创建 Bean 的实例
 //
 func (ctx *DefaultSpringContext) resolveBean(beanDefinition *BeanDefinition) {
 
@@ -473,7 +473,7 @@ func (ctx *DefaultSpringContext) resolveBean(beanDefinition *BeanDefinition) {
 	}
 
 	if ok := beanDefinition.GetResult(ctx); !ok { // 不满足则删除注册
-		key := BeanKey{beanDefinition.Type(), beanDefinition.Name}
+		key := BeanKey{beanDefinition.Type(), beanDefinition.name}
 		beanDefinition.status = BeanStatus_Deleted
 		delete(ctx.BeanMap, key)
 		return
@@ -501,7 +501,7 @@ func (ctx *DefaultSpringContext) AutoWireBeans() {
 	for key, beanDefinition := range ctx.BeanMap {
 
 		// 如果是成员方法 Bean，需要首先决议它的父 Bean 是否能实例化
-		if mBean, ok := beanDefinition.SpringBean.(*MethodBean); ok {
+		if mBean, ok := beanDefinition.SpringBean.(*methodBean); ok {
 			ctx.resolveBean(mBean.parent)
 
 			// 父 Bean 已经被删除了，子 Bean 也不应该存在
@@ -529,20 +529,23 @@ func (ctx *DefaultSpringContext) AutoWireBeans() {
 	}
 }
 
+//
+// wireValue
+//
 func (ctx *DefaultSpringContext) wireValue(v reflect.Value) {
 	t := v.Type()
-	bean := &OriginalBean{
+	bean := &originalBean{
 		bean:     v.Interface(),
 		rType:    t,
 		typeName: TypeName(t),
 		rValue:   v,
 	}
-	d := NewBeanDefinition(bean, "")
+	d := newBeanDefinition(bean, "")
 	ctx.wireBeanDefinition(d)
 }
 
 //
-// 绑定外部指定的 Bean
+// WireBean 绑定外部指定的 Bean
 //
 func (ctx *DefaultSpringContext) WireBean(bean interface{}) {
 
@@ -555,12 +558,12 @@ func (ctx *DefaultSpringContext) WireBean(bean interface{}) {
 }
 
 //
-// 绑定 BeanDefinition 指定的 Bean
+// wireBeanDefinition 绑定 BeanDefinition 指定的 Bean
 //
 func (ctx *DefaultSpringContext) wireBeanDefinition(beanDefinition *BeanDefinition) {
 
 	// 如果是成员方法 Bean，需要首先初始化它的父 Bean
-	if mBean, ok := beanDefinition.SpringBean.(*MethodBean); ok {
+	if mBean, ok := beanDefinition.SpringBean.(*methodBean); ok {
 		ctx.wireBeanDefinition(mBean.parent)
 	}
 
@@ -572,11 +575,11 @@ func (ctx *DefaultSpringContext) wireBeanDefinition(beanDefinition *BeanDefiniti
 	beanDefinition.status = BeanStatus_Wiring
 
 	switch beanDefinition.SpringBean.(type) {
-	case *OriginalBean: // 原始对象
+	case *originalBean: // 原始对象
 		ctx.wireOriginalBean(beanDefinition)
-	case *ConstructorBean: // 构造函数
+	case *constructorBean: // 构造函数
 		ctx.wireConstructorBean(beanDefinition)
-	case *MethodBean: // 成员方法
+	case *methodBean: // 成员方法
 		ctx.wireMethodBean(beanDefinition)
 	default:
 		panic("unknown spring bean type")
@@ -654,7 +657,7 @@ func (ctx *DefaultSpringContext) wireOriginalBean(beanDefinition *BeanDefinition
 		t := st.Elem()
 		if t.Kind() == reflect.Struct {
 
-			fmt.Printf("wire bean %s:%s\n", TypeName(t), beanDefinition.Name)
+			fmt.Printf("wire bean %s:%s\n", TypeName(t), beanDefinition.name)
 
 			sv := beanDefinition.Value()
 			v := sv.Elem()
@@ -686,10 +689,10 @@ func (ctx *DefaultSpringContext) wireOriginalBean(beanDefinition *BeanDefinition
 }
 
 //
-// 对构造函数进行注入
+// wireConstructorBean 对构造函数进行注入
 //
 func (ctx *DefaultSpringContext) wireConstructorBean(beanDefinition *BeanDefinition) {
-	cBean := beanDefinition.SpringBean.(*ConstructorBean)
+	cBean := beanDefinition.SpringBean.(*constructorBean)
 
 	// 获取输入参数
 	fnType := reflect.TypeOf(cBean.fn)
@@ -736,10 +739,10 @@ func (ctx *DefaultSpringContext) wireConstructorBean(beanDefinition *BeanDefinit
 }
 
 //
-// 对成员方法进行注入
+// wireMethodBean 对成员方法进行注入
 //
 func (ctx *DefaultSpringContext) wireMethodBean(beanDefinition *BeanDefinition) {
-	mBean := beanDefinition.SpringBean.(*MethodBean)
+	mBean := beanDefinition.SpringBean.(*methodBean)
 
 	fnValue := mBean.parent.Value().MethodByName(mBean.method)
 	fnType := fnValue.Type()
