@@ -20,11 +20,10 @@ package SpringCore
 // Option 模式绑定参数
 //
 type OptionArg struct {
-	Fn        interface{}
-	Tags      []string
-	cond      Condition // 判断条件
-	profile   string    // 运行环境
-	dependsOn []string  // 非直接依赖
+	Constriction
+
+	fn   interface{}
+	tags []string
 }
 
 //
@@ -32,14 +31,8 @@ type OptionArg struct {
 //
 func NewOptionArg(fn interface{}, tags ...string) *OptionArg {
 	return &OptionArg{
-		Fn:   fn,
-		Tags: tags,
-	}
-}
-
-func (arg *OptionArg) checkCondition() {
-	if arg.cond != nil {
-		panic("condition already set")
+		fn:   fn,
+		tags: tags,
 	}
 }
 
@@ -47,8 +40,7 @@ func (arg *OptionArg) checkCondition() {
 // 设置一个 Condition
 //
 func (arg *OptionArg) ConditionOn(cond Condition) *OptionArg {
-	arg.checkCondition()
-	arg.cond = cond
+	arg.Constriction.ConditionOn(cond)
 	return arg
 }
 
@@ -56,8 +48,7 @@ func (arg *OptionArg) ConditionOn(cond Condition) *OptionArg {
 // 设置一个 PropertyCondition
 //
 func (arg *OptionArg) ConditionOnProperty(name string) *OptionArg {
-	arg.checkCondition()
-	arg.cond = NewPropertyCondition(name)
+	arg.Constriction.ConditionOnProperty(name)
 	return arg
 }
 
@@ -65,8 +56,7 @@ func (arg *OptionArg) ConditionOnProperty(name string) *OptionArg {
 // 设置一个 MissingPropertyCondition
 //
 func (arg *OptionArg) ConditionOnMissingProperty(name string) *OptionArg {
-	arg.checkCondition()
-	arg.cond = NewMissingPropertyCondition(name)
+	arg.Constriction.ConditionOnMissingProperty(name)
 	return arg
 }
 
@@ -74,8 +64,7 @@ func (arg *OptionArg) ConditionOnMissingProperty(name string) *OptionArg {
 // 设置一个 PropertyValueCondition
 //
 func (arg *OptionArg) ConditionOnPropertyValue(name string, havingValue interface{}) *OptionArg {
-	arg.checkCondition()
-	arg.cond = NewPropertyValueCondition(name, havingValue)
+	arg.Constriction.ConditionOnPropertyValue(name, havingValue)
 	return arg
 }
 
@@ -83,8 +72,7 @@ func (arg *OptionArg) ConditionOnPropertyValue(name string, havingValue interfac
 // 设置一个 BeanCondition
 //
 func (arg *OptionArg) ConditionOnBean(beanId string) *OptionArg {
-	arg.checkCondition()
-	arg.cond = NewBeanCondition(beanId)
+	arg.Constriction.ConditionOnBean(beanId)
 	return arg
 }
 
@@ -92,8 +80,7 @@ func (arg *OptionArg) ConditionOnBean(beanId string) *OptionArg {
 // 设置一个 MissingBeanCondition
 //
 func (arg *OptionArg) ConditionOnMissingBean(beanId string) *OptionArg {
-	arg.checkCondition()
-	arg.cond = NewMissingBeanCondition(beanId)
+	arg.Constriction.ConditionOnMissingBean(beanId)
 	return arg
 }
 
@@ -101,8 +88,7 @@ func (arg *OptionArg) ConditionOnMissingBean(beanId string) *OptionArg {
 // 设置一个 ExpressionCondition
 //
 func (arg *OptionArg) ConditionOnExpression(expression string) *OptionArg {
-	arg.checkCondition()
-	arg.cond = NewExpressionCondition(expression)
+	arg.Constriction.ConditionOnExpression(expression)
 	return arg
 }
 
@@ -110,8 +96,7 @@ func (arg *OptionArg) ConditionOnExpression(expression string) *OptionArg {
 // 设置一个 FunctionCondition
 //
 func (arg *OptionArg) ConditionOnMatches(fn ConditionFunc) *OptionArg {
-	arg.checkCondition()
-	arg.cond = NewFunctionCondition(fn)
+	arg.Constriction.ConditionOnMatches(fn)
 	return arg
 }
 
@@ -119,7 +104,7 @@ func (arg *OptionArg) ConditionOnMatches(fn ConditionFunc) *OptionArg {
 // 设置 bean 的运行环境
 //
 func (arg *OptionArg) Profile(profile string) *OptionArg {
-	arg.profile = profile
+	arg.Constriction.Profile(profile)
 	return arg
 }
 
@@ -127,7 +112,7 @@ func (arg *OptionArg) Profile(profile string) *OptionArg {
 // 设置 bean 的非直接依赖
 //
 func (arg *OptionArg) DependsOn(beanId ...string) *OptionArg {
-	arg.dependsOn = beanId
+	arg.Constriction.DependsOn(beanId...)
 	return arg
 }
 
@@ -135,28 +120,6 @@ func (arg *OptionArg) DependsOn(beanId ...string) *OptionArg {
 // 设置 Bean 应用自定义限制
 //
 func (arg *OptionArg) Apply(c *Constriction) *OptionArg {
-
-	// 设置条件
-	if c.cond != nil {
-		arg.checkCondition()
-		arg.cond = c.cond
-	}
-
-	// 设置运行环境
-	if c.profile != "" {
-		if arg.profile != "" {
-			panic("profile already set")
-		}
-		arg.profile = c.profile
-	}
-
-	// 设置非直接依赖
-	if len(c.dependsOn) > 0 {
-		if len(arg.dependsOn) > 0 {
-			panic("dependsOn already set")
-		}
-		arg.dependsOn = c.dependsOn
-	}
-
+	arg.Constriction.Apply(c)
 	return arg
 }

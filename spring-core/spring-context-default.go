@@ -460,22 +460,7 @@ func (ctx *DefaultSpringContext) resolveBean(beanDefinition *BeanDefinition) {
 		return
 	}
 
-	checkIfDelete := func() bool {
-
-		// 检查是否符合运行环境，不符合的立即删除
-		if beanDefinition.profile != "" && beanDefinition.profile != ctx.profile {
-			return true
-		}
-
-		// 检查是否符合注册条件，不符合的立即删除
-		if beanDefinition.cond != nil && !beanDefinition.cond.Matches(ctx) {
-			return true
-		}
-
-		return false
-	}
-
-	if checkIfDelete() { // 是否应当删除该 Bean 的注册
+	if ok := beanDefinition.GetResult(ctx); !ok { // 不满足则删除注册
 		key := BeanKey{beanDefinition.Type(), beanDefinition.Name}
 		beanDefinition.status = BeanStatus_Deleted
 		delete(ctx.BeanMap, key)

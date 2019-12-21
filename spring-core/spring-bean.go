@@ -191,15 +191,15 @@ func (ca *OptionConstructorArg) Get(ctx SpringContext, _ reflect.Type) []reflect
 			continue
 		}
 
-		optValue := reflect.ValueOf(arg.Fn)
+		optValue := reflect.ValueOf(arg.fn)
 		optType := optValue.Type()
 
 		fnTags := make([]string, optType.NumIn())
 
-		if len(arg.Tags) > 0 {
+		if len(arg.tags) > 0 {
 			indexed := false // 是否包含序号
 
-			if tag := arg.Tags[0]; tag != "" {
+			if tag := arg.tags[0]; tag != "" {
 				if i := strings.Index(tag, ":"); i > 0 {
 					_, err := strconv.Atoi(tag[:i])
 					indexed = err == nil
@@ -207,7 +207,7 @@ func (ca *OptionConstructorArg) Get(ctx SpringContext, _ reflect.Type) []reflect
 			}
 
 			if indexed { // 有序号
-				for _, tag := range arg.Tags {
+				for _, tag := range arg.tags {
 					index := strings.Index(tag, ":")
 					if index <= 0 {
 						panic("tag \"" + tag + "\" should have index")
@@ -220,7 +220,7 @@ func (ca *OptionConstructorArg) Get(ctx SpringContext, _ reflect.Type) []reflect
 				}
 
 			} else { // 无序号
-				for i, tag := range arg.Tags {
+				for i, tag := range arg.tags {
 					if index := strings.Index(tag, ":"); index > 0 {
 						_, err := strconv.Atoi(tag[:index])
 						if err == nil {
@@ -462,13 +462,13 @@ const (
 type BeanDefinition struct {
 	SpringBean
 
-	Name      string      // 名称
-	status    BeanStatus  // 状态
-	cond      Condition   // 注册条件
-	profile   string      // 运行环境
-	dependsOn []string    // 非直接依赖
-	primary   bool        // 主版本
-	initFunc  interface{} // 绑定结束的回调
+	Name   string     // 名称
+	status BeanStatus // 状态
+
+	Constriction
+
+	primary  bool        // 主版本
+	initFunc interface{} // 绑定结束的回调
 }
 
 //
@@ -537,18 +537,11 @@ func MethodToBeanDefinition(name string, parent *BeanDefinition, method string, 
 	return NewBeanDefinition(bean, name)
 }
 
-func (d *BeanDefinition) checkCondition() {
-	if d.cond != nil {
-		panic("condition already set")
-	}
-}
-
 //
 // 设置一个 Condition
 //
 func (d *BeanDefinition) ConditionOn(cond Condition) *BeanDefinition {
-	d.checkCondition()
-	d.cond = cond
+	d.Constriction.ConditionOn(cond)
 	return d
 }
 
@@ -556,8 +549,7 @@ func (d *BeanDefinition) ConditionOn(cond Condition) *BeanDefinition {
 // 设置一个 PropertyCondition
 //
 func (d *BeanDefinition) ConditionOnProperty(name string) *BeanDefinition {
-	d.checkCondition()
-	d.cond = NewPropertyCondition(name)
+	d.Constriction.ConditionOnProperty(name)
 	return d
 }
 
@@ -565,8 +557,7 @@ func (d *BeanDefinition) ConditionOnProperty(name string) *BeanDefinition {
 // 设置一个 MissingPropertyCondition
 //
 func (d *BeanDefinition) ConditionOnMissingProperty(name string) *BeanDefinition {
-	d.checkCondition()
-	d.cond = NewMissingPropertyCondition(name)
+	d.Constriction.ConditionOnMissingProperty(name)
 	return d
 }
 
@@ -574,8 +565,7 @@ func (d *BeanDefinition) ConditionOnMissingProperty(name string) *BeanDefinition
 // 设置一个 PropertyValueCondition
 //
 func (d *BeanDefinition) ConditionOnPropertyValue(name string, havingValue interface{}) *BeanDefinition {
-	d.checkCondition()
-	d.cond = NewPropertyValueCondition(name, havingValue)
+	d.Constriction.ConditionOnPropertyValue(name, havingValue)
 	return d
 }
 
@@ -583,8 +573,7 @@ func (d *BeanDefinition) ConditionOnPropertyValue(name string, havingValue inter
 // 设置一个 BeanCondition
 //
 func (d *BeanDefinition) ConditionOnBean(beanId string) *BeanDefinition {
-	d.checkCondition()
-	d.cond = NewBeanCondition(beanId)
+	d.Constriction.ConditionOnBean(beanId)
 	return d
 }
 
@@ -592,8 +581,7 @@ func (d *BeanDefinition) ConditionOnBean(beanId string) *BeanDefinition {
 // 设置一个 MissingBeanCondition
 //
 func (d *BeanDefinition) ConditionOnMissingBean(beanId string) *BeanDefinition {
-	d.checkCondition()
-	d.cond = NewMissingBeanCondition(beanId)
+	d.Constriction.ConditionOnMissingBean(beanId)
 	return d
 }
 
@@ -601,8 +589,7 @@ func (d *BeanDefinition) ConditionOnMissingBean(beanId string) *BeanDefinition {
 // 设置一个 ExpressionCondition
 //
 func (d *BeanDefinition) ConditionOnExpression(expression string) *BeanDefinition {
-	d.checkCondition()
-	d.cond = NewExpressionCondition(expression)
+	d.Constriction.ConditionOnExpression(expression)
 	return d
 }
 
@@ -610,8 +597,7 @@ func (d *BeanDefinition) ConditionOnExpression(expression string) *BeanDefinitio
 // 设置一个 FunctionCondition
 //
 func (d *BeanDefinition) ConditionOnMatches(fn ConditionFunc) *BeanDefinition {
-	d.checkCondition()
-	d.cond = NewFunctionCondition(fn)
+	d.Constriction.ConditionOnMatches(fn)
 	return d
 }
 
@@ -631,7 +617,7 @@ func (d *BeanDefinition) Options(options ...*OptionArg) *BeanDefinition {
 // 设置 bean 的运行环境
 //
 func (d *BeanDefinition) Profile(profile string) *BeanDefinition {
-	d.profile = profile
+	d.Constriction.Profile(profile)
 	return d
 }
 
@@ -639,7 +625,7 @@ func (d *BeanDefinition) Profile(profile string) *BeanDefinition {
 // 设置 bean 的非直接依赖
 //
 func (d *BeanDefinition) DependsOn(beanId ...string) *BeanDefinition {
-	d.dependsOn = beanId
+	d.Constriction.DependsOn(beanId...)
 	return d
 }
 
@@ -675,28 +661,6 @@ func (d *BeanDefinition) InitFunc(fn interface{}) *BeanDefinition {
 // 设置 Bean 应用自定义限制
 //
 func (d *BeanDefinition) Apply(c *Constriction) *BeanDefinition {
-
-	// 设置条件
-	if c.cond != nil {
-		d.checkCondition()
-		d.cond = c.cond
-	}
-
-	// 设置运行环境
-	if c.profile != "" {
-		if d.profile != "" {
-			panic("profile already set")
-		}
-		d.profile = c.profile
-	}
-
-	// 设置非直接依赖
-	if len(c.dependsOn) > 0 {
-		if len(d.dependsOn) > 0 {
-			panic("dependsOn already set")
-		}
-		d.dependsOn = c.dependsOn
-	}
-
+	d.Constriction.Apply(c)
 	return d
 }

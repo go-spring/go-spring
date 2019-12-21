@@ -131,3 +131,45 @@ func (c *Constriction) DependsOn(beanId ...string) *Constriction {
 	c.dependsOn = beanId
 	return c
 }
+
+//
+// 应用自定义限制
+//
+func (c *Constriction) Apply(c0 *Constriction) *Constriction {
+
+	// 设置条件
+	if c0.cond != nil {
+		c.checkCondition()
+		c.cond = c0.cond
+	}
+
+	// 设置运行环境
+	if c0.profile != "" {
+		c.Profile(c0.profile)
+	}
+
+	// 设置非直接依赖
+	if len(c0.dependsOn) > 0 {
+		c.DependsOn(c0.dependsOn...)
+	}
+
+	return c
+}
+
+//
+// GetResult
+//
+func (c *Constriction) GetResult(ctx SpringContext) bool {
+
+	// 检查是否符合运行环境
+	if c.profile != "" && c.profile != ctx.GetProfile() {
+		return false
+	}
+
+	// 检查是否符合注册条件
+	if c.cond != nil && !c.cond.Matches(ctx) {
+		return false
+	}
+
+	return true
+}

@@ -18,15 +18,25 @@ package SpringBoot_test
 
 import (
 	"fmt"
+	"io/ioutil"
+	"net/http"
 	"os"
 	"testing"
 	"time"
 
+	"github.com/go-spring/go-spring-web/spring-web"
 	"github.com/go-spring/go-spring/spring-boot"
 	"github.com/go-spring/go-spring/spring-core"
+	_ "github.com/go-spring/go-spring/starter-echo"
+	_ "github.com/go-spring/go-spring/starter-web"
 )
 
 func init() {
+	SpringBoot.RegisterBean(new(MyController)).InitFunc(
+		func(c *MyController) {
+			SpringBoot.GetMapping("/ok", c.OK).
+				ConditionOnMissingProperty("ok_enable")
+		})
 	SpringBoot.RegisterBean(new(MyRunner))
 	SpringBoot.RegisterBeanFn(NewMyModule, "${message}")
 }
@@ -34,6 +44,15 @@ func init() {
 func TestRunApplication(t *testing.T) {
 	os.Setenv(SpringBoot.SPRING_PROFILE, "test")
 	SpringBoot.RunApplication("testdata/config/", "k8s:testdata/config/config-map.yaml")
+}
+
+////////////////// MyController ///////////////////
+
+type MyController struct {
+}
+
+func (c *MyController) OK(ctx SpringWeb.WebContext) {
+	ctx.JSONBlob(200, []byte("ok"))
 }
 
 ////////////////// MyRunner ///////////////////
@@ -85,6 +104,18 @@ func Process() {
 	fmt.Printf("process: %+v\n", m)
 
 	time.Sleep(200 * time.Millisecond)
+
+	if resp, err := http.Get("http://localhost:8080/ok"); err != nil {
+		panic(err)
+	} else {
+		if strResp, e := ioutil.ReadAll(resp.Body); e != nil {
+			panic(e)
+		} else {
+			if string(strResp) != "ok" {
+				panic("error")
+			}
+		}
+	}
 
 	SpringBoot.Exit()
 }
