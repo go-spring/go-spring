@@ -22,26 +22,19 @@ import (
 	"strings"
 )
 
-//
 // fnBindingArg 存储函数的参数绑定
-//
 type fnBindingArg interface {
-	//
 	// Get 获取函数参数的绑定值
-	//
+
 	Get(ctx SpringContext, fnType reflect.Type) []reflect.Value
 }
 
-//
 // fnStringBindingArg 存储一般函数的参数绑定
-//
 type fnStringBindingArg struct {
 	tags []string
 }
 
-//
 // Get 获取函数参数的绑定值
-//
 func (ca *fnStringBindingArg) Get(ctx SpringContext, fnType reflect.Type) []reflect.Value {
 	args := make([]reflect.Value, fnType.NumIn())
 	ctx0 := ctx.(*defaultSpringContext)
@@ -61,16 +54,12 @@ func (ca *fnStringBindingArg) Get(ctx SpringContext, fnType reflect.Type) []refl
 	return args
 }
 
-//
 // fnOptionBindingArg 存储 Option 模式函数的参数绑定
-//
 type fnOptionBindingArg struct {
 	options []*optionArg
 }
 
-//
 // Get 获取函数参数的绑定值
-//
 func (ca *fnOptionBindingArg) Get(ctx SpringContext, _ reflect.Type) []reflect.Value {
 	ctx0 := ctx.(*defaultSpringContext)
 	args := make([]reflect.Value, 0)
@@ -145,9 +134,7 @@ func (ca *fnOptionBindingArg) Get(ctx SpringContext, _ reflect.Type) []reflect.V
 	return args
 }
 
-//
 // optionArg Option 函数的绑定参数
-//
 type optionArg struct {
 	Constriction
 
@@ -155,9 +142,7 @@ type optionArg struct {
 	tags []string
 }
 
-//
 // NewOptionArg optionArg 的构造函数
-//
 func NewOptionArg(fn interface{}, tags ...string) *optionArg {
 	return &optionArg{
 		fn:   fn,
@@ -165,81 +150,61 @@ func NewOptionArg(fn interface{}, tags ...string) *optionArg {
 	}
 }
 
-//
 // ConditionOn 为 optionArg 设置一个 Condition
-//
 func (arg *optionArg) ConditionOn(cond Condition) *optionArg {
 	arg.Constriction.ConditionOn(cond)
 	return arg
 }
 
-//
 // ConditionOnProperty 为 optionArg 设置一个 PropertyCondition
-//
 func (arg *optionArg) ConditionOnProperty(name string) *optionArg {
 	arg.Constriction.ConditionOnProperty(name)
 	return arg
 }
 
-//
 // ConditionOnMissingProperty 为 optionArg 设置一个 MissingPropertyCondition
-//
 func (arg *optionArg) ConditionOnMissingProperty(name string) *optionArg {
 	arg.Constriction.ConditionOnMissingProperty(name)
 	return arg
 }
 
-//
 // ConditionOnPropertyValue 为 optionArg 设置一个 PropertyValueCondition
-//
 func (arg *optionArg) ConditionOnPropertyValue(name string, havingValue interface{}) *optionArg {
 	arg.Constriction.ConditionOnPropertyValue(name, havingValue)
 	return arg
 }
 
-//
 // ConditionOnBean 为 optionArg 设置一个 BeanCondition
-//
 func (arg *optionArg) ConditionOnBean(beanId string) *optionArg {
 	arg.Constriction.ConditionOnBean(beanId)
 	return arg
 }
 
-//
 // ConditionOnMissingBean 为 optionArg 设置一个 MissingBeanCondition
-//
 func (arg *optionArg) ConditionOnMissingBean(beanId string) *optionArg {
 	arg.Constriction.ConditionOnMissingBean(beanId)
 	return arg
 }
 
-//
 // ConditionOnExpression 为 optionArg 设置一个 ExpressionCondition
-//
 func (arg *optionArg) ConditionOnExpression(expression string) *optionArg {
 	arg.Constriction.ConditionOnExpression(expression)
 	return arg
 }
 
-//
 // ConditionOnMatches 为 optionArg 设置一个 FunctionCondition
-//
 func (arg *optionArg) ConditionOnMatches(fn ConditionFunc) *optionArg {
 	arg.Constriction.ConditionOnMatches(fn)
 	return arg
 }
 
-//
 // Profile 为 optionArg 设置运行环境
-//
 func (arg *optionArg) Profile(profile string) *optionArg {
 	arg.Constriction.Profile(profile)
 	return arg
 }
 
-//
 // Apply 为 optionArg 应用自定义限制
-//
 func (arg *optionArg) Apply(c *Constriction) *optionArg {
 	arg.Constriction.Apply(c)
 	return arg

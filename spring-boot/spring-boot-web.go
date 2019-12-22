@@ -21,14 +21,10 @@ import (
 	"github.com/go-spring/go-spring/spring-core"
 )
 
-//
 // UrlMapping
-//
 var UrlMapping = make(map[string]*Mapping)
 
-//
 // Mapping
-//
 type Mapping struct {
 	SpringWeb.Mapper
 
@@ -40,132 +36,98 @@ type Mapping struct {
 	SpringCore.Constriction
 }
 
-//
 // 构造函数
-//
 func NewMapping(mapper SpringWeb.Mapper) *Mapping {
 	return &Mapping{
 		Mapper: mapper,
 	}
 }
 
-//
 // Ports
-//
 func (m *Mapping) Ports() []int {
 	return m.ports
 }
 
-//
 // SetPorts
-//
 func (m *Mapping) SetPorts(ports []int) {
 	m.ports = ports
 }
 
-//
 // Doc
-//
 func (m *Mapping) Doc() string {
 	return m.doc
 }
 
-//
 // SetDoc
-//
 func (m *Mapping) SetDoc(doc string) {
 	m.doc = doc
 }
 
-//
 // FilterNames
-//
 func (m *Mapping) FilterNames() []string {
 	return m.filterNames
 }
 
-//
 // SetFilterNames
-//
 func (m *Mapping) SetFilterNames(filterNames ...string) {
 	m.filterNames = filterNames
 }
 
-//
 // 设置一个 Condition
-//
 func (m *Mapping) ConditionOn(cond SpringCore.Condition) *Mapping {
 	m.Constriction.ConditionOn(cond)
 	return m
 }
 
-//
 // 设置一个 PropertyCondition
-//
 func (m *Mapping) ConditionOnProperty(name string) *Mapping {
 	m.Constriction.ConditionOnProperty(name)
 	return m
 }
 
-//
 // 设置一个 MissingPropertyCondition
-//
 func (m *Mapping) ConditionOnMissingProperty(name string) *Mapping {
 	m.Constriction.ConditionOnMissingProperty(name)
 	return m
 }
 
-//
 // 设置一个 PropertyValueCondition
-//
 func (m *Mapping) ConditionOnPropertyValue(name string, havingValue interface{}) *Mapping {
 	m.Constriction.ConditionOnPropertyValue(name, havingValue)
 	return m
 }
 
-//
 // 设置一个 BeanCondition
-//
 func (m *Mapping) ConditionOnBean(beanId string) *Mapping {
 	m.Constriction.ConditionOnBean(beanId)
 	return m
 }
 
-//
 // 设置一个 MissingBeanCondition
-//
 func (m *Mapping) ConditionOnMissingBean(beanId string) *Mapping {
 	m.Constriction.ConditionOnMissingBean(beanId)
 	return m
 }
 
-//
 // 设置一个 ExpressionCondition
-//
 func (m *Mapping) ConditionOnExpression(expression string) *Mapping {
 	m.Constriction.ConditionOnExpression(expression)
 	return m
 }
 
-//
 // 设置一个 FunctionCondition
-//
 func (m *Mapping) ConditionOnMatches(fn SpringCore.ConditionFunc) *Mapping {
 	m.Constriction.ConditionOnMatches(fn)
 	return m
 }
 
-//
 // 设置 bean 的运行环境
-//
 func (m *Mapping) Profile(profile string) *Mapping {
 	m.Constriction.Profile(profile)
 	return m
 }
 
-//
 // RequestMapping
-//
 func RequestMapping(method string, path string, fn SpringWeb.Handler) *Mapping {
 	mapper := SpringWeb.NewMapper(method, path, fn, nil)
 	mapping := NewMapping(mapper)
@@ -173,37 +135,27 @@ func RequestMapping(method string, path string, fn SpringWeb.Handler) *Mapping {
 	return mapping
 }
 
-//
 // GetMapping
-//
 func GetMapping(path string, fn SpringWeb.Handler) *Mapping {
 	return RequestMapping("GET", path, fn)
 }
 
-//
 // PostMapping
-//
 func PostMapping(path string, fn SpringWeb.Handler) *Mapping {
 	return RequestMapping("POST", path, fn)
 }
 
-//
 // PutMapping
-//
 func PutMapping(path string, fn SpringWeb.Handler) *Mapping {
 	return RequestMapping("PUT", path, fn)
 }
 
-//
 // PatchMapping
-//
 func PatchMapping(path string, fn SpringWeb.Handler) *Mapping {
 	return RequestMapping("PATCH", path, fn)
 }
 
-//
 // DeleteMapping
-//
 func DeleteMapping(path string, fn SpringWeb.Handler) *Mapping {
 	return RequestMapping("DELETE", path, fn)
 }

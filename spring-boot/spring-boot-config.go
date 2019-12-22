@@ -26,9 +26,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-//
 // 属性源
-//
 type PropertySource interface {
 	// 属性源的名称
 	Name() string
@@ -37,16 +35,12 @@ type PropertySource interface {
 	Load(profile string) map[string]interface{}
 }
 
-//
 // 基于默认配置文件的属性源
-//
 type DefaultPropertySource struct {
 	fileLocation string
 }
 
-//
 // 构造函数
-//
 func NewDefaultPropertySource(fileLocation string) *DefaultPropertySource {
 	return &DefaultPropertySource{
 		fileLocation: fileLocation,
@@ -95,16 +89,12 @@ func (p *DefaultPropertySource) Load(profile string) map[string]interface{} {
 	return result
 }
 
-//
 // 基于 k8s ConfigMap 的属性源
-//
 type ConfigMapPropertySource struct {
 	filename string
 }
 
-//
 // 构造函数
-//
 func NewConfigMapPropertySource(filename string) *ConfigMapPropertySource {
 	return &ConfigMapPropertySource{
 		filename: filename,

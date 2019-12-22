@@ -14,17 +14,13 @@
  * limitations under the License.
  */
 
-//
 // 实现了一个完善的 IoC 容器。
-//
 package SpringCore
 
-//
 // 定义 IoC 容器接口，Bean 的注册规则：
 //   1. 只能注册单例 Bean。
 //   2. AutoWireBeans 开始后不允许注册新的 Bean（性能考虑）。
 //   3. 原型 Bean 只能通过 BeanFactory 的形式使用，参见测试用例。
-//
 type SpringContext interface {
 	// SpringContext 的工作过程分为三个阶段：
 	// 1) 加载 Properties 文件，

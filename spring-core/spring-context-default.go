@@ -27,17 +27,13 @@ var (
 	emptyValue = reflect.Value{}
 )
 
-//
 // beanKey defines a bean's unique key, type+name.
-//
 type beanKey struct {
 	Type reflect.Type
 	Name string
 }
 
-//
 // beanCacheItem defines a BeanCache's item.
-//
 type beanCacheItem struct {
 	// Different typed beans implemented same interface maybe
 	// have same name, so name can't be a map's key. therefor
@@ -48,18 +44,14 @@ type beanCacheItem struct {
 	Collect reflect.Value
 }
 
-//
 // newBeanCacheItem BeanCacheItem's factory method.
-//
 func newBeanCacheItem() *beanCacheItem {
 	return &beanCacheItem{
 		Named: make([]*BeanDefinition, 0),
 	}
 }
 
-//
 // Store 将一个 Bean 存储到 CachedBeanMapItem 里
-//
 func (item *beanCacheItem) Store(d *BeanDefinition) {
 	if d.name == "" {
 		panic("bean must have name")
@@ -67,16 +59,12 @@ func (item *beanCacheItem) Store(d *BeanDefinition) {
 	item.Named = append(item.Named, d)
 }
 
-//
 // StoreCollect 将收集到的 Bean 列表的值存储到 CachedBeanMapItem 里
-//
 func (item *beanCacheItem) StoreCollect(v reflect.Value) {
 	item.Collect = v
 }
 
-//
 // defaultSpringContext SpringContext 的默认版本
-//
 type defaultSpringContext struct {
 	// 属性值列表接口
 	Properties
@@ -88,9 +76,7 @@ type defaultSpringContext struct {
 	beanCache map[reflect.Type]*beanCacheItem // Bean 的缓存
 }
 
-//
 // NewDefaultSpringContext 工厂函数
-//
 func NewDefaultSpringContext() *defaultSpringContext {
 	return &defaultSpringContext{
 		Properties: NewDefaultProperties(),
@@ -99,71 +85,53 @@ func NewDefaultSpringContext() *defaultSpringContext {
 	}
 }
 
-//
 // GetProfile 获取运行环境
-//
 func (ctx *defaultSpringContext) GetProfile() string {
 	return ctx.profile
 }
 
-//
 // SetProfile 设置运行环境
-//
 func (ctx *defaultSpringContext) SetProfile(profile string) {
 	ctx.profile = profile
 }
 
-//
 // RegisterBean 注册单例 Bean，无需指定名称，重复注册会 panic。
-//
 func (ctx *defaultSpringContext) RegisterBean(bean interface{}) *BeanDefinition {
 	return ctx.RegisterNameBean("", bean)
 }
 
-//
 // RegisterNameBean 注册单例 Bean，需要指定名称，重复注册会 panic。
-//
 func (ctx *defaultSpringContext) RegisterNameBean(name string, bean interface{}) *BeanDefinition {
 	beanDefinition := ToBeanDefinition(name, bean)
 	ctx.registerBeanDefinition(beanDefinition)
 	return beanDefinition
 }
 
-//
 // RegisterBeanFn 通过构造函数注册单例 Bean，无需指定名称，重复注册会 panic。
-//
 func (ctx *defaultSpringContext) RegisterBeanFn(fn interface{}, tags ...string) *BeanDefinition {
 	return ctx.RegisterNameBeanFn("", fn, tags...)
 }
 
-//
 // RegisterNameBeanFn 通过构造函数注册单例 Bean，需要指定名称，重复注册会 panic。
-//
 func (ctx *defaultSpringContext) RegisterNameBeanFn(name string, fn interface{}, tags ...string) *BeanDefinition {
 	beanDefinition := FnToBeanDefinition(name, fn, tags...)
 	ctx.registerBeanDefinition(beanDefinition)
 	return beanDefinition
 }
 
-//
 // RegisterMethodBean 通过成员方法注册单例 Bean，不指定名称，重复注册会 panic。
-//
 func (ctx *defaultSpringContext) RegisterMethodBean(parent *BeanDefinition, method string, tags ...string) *BeanDefinition {
 	return ctx.RegisterNameMethodBean("", parent, method, tags...)
 }
 
-//
 // RegisterNameMethodBean 通过成员方法注册单例 Bean，需指定名称，重复注册会 panic。
-//
 func (ctx *defaultSpringContext) RegisterNameMethodBean(name string, parent *BeanDefinition, method string, tags ...string) *BeanDefinition {
 	beanDefinition := MethodToBeanDefinition(name, parent, method, tags...)
 	ctx.registerBeanDefinition(beanDefinition)
 	return beanDefinition
 }
 
-//
 // registerBeanDefinition 注册单例 Bean，使用 BeanDefinition 对象，重复注册会 panic。
-//
 func (ctx *defaultSpringContext) registerBeanDefinition(d *BeanDefinition) {
 
 	// 获取注册点信息
@@ -195,9 +163,7 @@ func (ctx *defaultSpringContext) registerBeanDefinition(d *BeanDefinition) {
 	}
 }
 
-//
 // findCache
-//
 func (ctx *defaultSpringContext) findCache(t reflect.Type) (*beanCacheItem, bool) {
 	c, ok := ctx.beanCache[t]
 	if !ok {
@@ -207,16 +173,12 @@ func (ctx *defaultSpringContext) findCache(t reflect.Type) (*beanCacheItem, bool
 	return c, ok
 }
 
-//
 // GetBean 根据类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
-//
 func (ctx *defaultSpringContext) GetBean(i interface{}) bool {
 	return ctx.GetBeanByName("?", i)
 }
 
-//
 // GetBeanByName 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
-//
 func (ctx *defaultSpringContext) GetBeanByName(beanId string, i interface{}) bool {
 
 	if !ctx.autoWired {
@@ -240,9 +202,7 @@ func (ctx *defaultSpringContext) GetBeanByName(beanId string, i interface{}) boo
 	return ctx.getBeanByName(beanId, emptyValue, iv.Elem(), "")
 }
 
-//
 // getBeanByName 查找 bean
-//
 func (ctx *defaultSpringContext) getBeanByName(beanId string, parentValue reflect.Value, fv reflect.Value, field string) bool {
 	typeName, beanName, nullable := ParseBeanId(beanId)
 
@@ -329,9 +289,7 @@ func (ctx *defaultSpringContext) getBeanByName(beanId string, parentValue reflec
 	return checkResult()
 }
 
-//
 // CollectBeans 收集数组或指针定义的所有符合条件的 Bean 对象，收集到返回 true，否则返回 false。
-//
 func (ctx *defaultSpringContext) CollectBeans(i interface{}) bool {
 
 	if !ctx.autoWired {
@@ -354,9 +312,7 @@ func (ctx *defaultSpringContext) CollectBeans(i interface{}) bool {
 	return ctx.collectBeans(ev)
 }
 
-//
 // collectBeans 收集 Bean
-//
 func (ctx *defaultSpringContext) collectBeans(v reflect.Value) bool {
 
 	t := v.Type()
@@ -427,10 +383,8 @@ func (ctx *defaultSpringContext) collectBeans(v reflect.Value) bool {
 	return false
 }
 
-//
 // FindBeanByName 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 // 该方法不能保证 Bean 已经执行依赖注入和属性绑定，仅供查询 Bean 是否存在。
-//
 func (ctx *defaultSpringContext) FindBeanByName(beanId string) (interface{}, bool) {
 
 	if !ctx.autoWired {
@@ -466,9 +420,7 @@ func (ctx *defaultSpringContext) FindBeanByName(beanId string) (interface{}, boo
 	return result.Value().Interface(), true
 }
 
-//
 // resolveBean 对 Bean 进行决议是否能够创建 Bean 的实例
-//
 func (ctx *defaultSpringContext) resolveBean(beanDefinition *BeanDefinition) {
 
 	if beanDefinition.status != beanStatus_Default {
@@ -490,9 +442,7 @@ func (ctx *defaultSpringContext) resolveBean(beanDefinition *BeanDefinition) {
 	item.Store(beanDefinition)
 }
 
-//
 // AutoWireBeans 自动绑定所有的 Bean
-//
 func (ctx *defaultSpringContext) AutoWireBeans() {
 
 	// 不再接受 Bean 注册，因为性能的原因使用了缓存，并且在 AutoWireBeans 的过程中
@@ -524,9 +474,7 @@ func (ctx *defaultSpringContext) AutoWireBeans() {
 	}
 }
 
-//
 // wireValue
-//
 func (ctx *defaultSpringContext) wireValue(v reflect.Value) {
 	t := v.Type()
 	bean := &originalBean{
@@ -539,9 +487,7 @@ func (ctx *defaultSpringContext) wireValue(v reflect.Value) {
 	ctx.wireBeanDefinition(d)
 }
 
-//
 // WireBean 绑定外部指定的 Bean
-//
 func (ctx *defaultSpringContext) WireBean(bean interface{}) {
 
 	if !ctx.autoWired {
@@ -552,9 +498,7 @@ func (ctx *defaultSpringContext) WireBean(bean interface{}) {
 	ctx.wireBeanDefinition(beanDefinition)
 }
 
-//
 // wireBeanDefinition 绑定 BeanDefinition 指定的 Bean
-//
 func (ctx *defaultSpringContext) wireBeanDefinition(beanDefinition *BeanDefinition) {
 
 	// 解决循环依赖问题
@@ -596,9 +540,7 @@ func (ctx *defaultSpringContext) wireBeanDefinition(beanDefinition *BeanDefiniti
 	beanDefinition.status = beanStatus_Wired
 }
 
-//
 // wireStructField
-//
 func (ctx *defaultSpringContext) wireStructField(parentValue reflect.Value,
 	fv reflect.Value, field string, beanId string) {
 
@@ -622,9 +564,7 @@ func (ctx *defaultSpringContext) wireStructField(parentValue reflect.Value,
 	}
 }
 
-//
 // wireOriginalBean 对原始对象进行注入
-//
 func (ctx *defaultSpringContext) wireOriginalBean(beanDefinition *BeanDefinition) {
 	st := beanDefinition.Type()
 	sk := st.Kind()
@@ -693,9 +633,7 @@ func (ctx *defaultSpringContext) wireOriginalBean(beanDefinition *BeanDefinition
 	}
 }
 
-//
 // wireConstructorBean 对构造函数进行注入
-//
 func (ctx *defaultSpringContext) wireConstructorBean(beanDefinition *BeanDefinition) {
 	cBean := beanDefinition.SpringBean.(*constructorBean)
 
@@ -743,9 +681,7 @@ func (ctx *defaultSpringContext) wireConstructorBean(beanDefinition *BeanDefinit
 	fmt.Printf("success wire constructor bean \"%s\"\n", beanDefinition.BeanId())
 }
 
-//
 // wireMethodBean 对成员方法进行注入
-//
 func (ctx *defaultSpringContext) wireMethodBean(beanDefinition *BeanDefinition) {
 	mBean := beanDefinition.SpringBean.(*methodBean)
 
@@ -791,9 +727,7 @@ func (ctx *defaultSpringContext) wireMethodBean(beanDefinition *BeanDefinition) 
 	fmt.Printf("success wire method bean \"%s\"\n", beanDefinition.BeanId())
 }
 
-//
 // GetAllBeanDefinitions 获取所有 Bean 的定义，一般仅供调试使用。
-//
 func (ctx *defaultSpringContext) GetAllBeanDefinitions() []*BeanDefinition {
 	result := make([]*BeanDefinition, 0)
 	for _, v := range ctx.beanMap {

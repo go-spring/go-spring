@@ -20,24 +20,18 @@ import (
 	"errors"
 )
 
-//
 // Constriction 设定一组约束条件
-//
 type Constriction struct {
 	cond    Condition // 判断条件
 	profile string    // 运行环境
 }
 
-//
-// NewConstriction 构造函数
-//
+// NewConstriction Constriction 的构造函数
 func NewConstriction() *Constriction {
 	return &Constriction{}
 }
 
-//
 // ConditionOn 为 Constriction 设置一个 Condition
-//
 func (c *Constriction) ConditionOn(cond Condition) *Constriction {
 	if c.cond != nil {
 		panic(errors.New("condition already set"))
@@ -46,58 +40,42 @@ func (c *Constriction) ConditionOn(cond Condition) *Constriction {
 	return c
 }
 
-//
 // ConditionOnProperty 为 Constriction 设置一个 PropertyCondition
-//
 func (c *Constriction) ConditionOnProperty(name string) *Constriction {
 	return c.ConditionOn(NewPropertyCondition(name))
 }
 
-//
 // ConditionOnMissingProperty 为 Constriction 设置一个 MissingPropertyCondition
-//
 func (c *Constriction) ConditionOnMissingProperty(name string) *Constriction {
 	return c.ConditionOn(NewMissingPropertyCondition(name))
 }
 
-//
 // ConditionOnPropertyValue 为 Constriction 设置一个 PropertyValueCondition
-//
 func (c *Constriction) ConditionOnPropertyValue(name string, havingValue interface{}) *Constriction {
 	return c.ConditionOn(NewPropertyValueCondition(name, havingValue))
 }
 
-//
 // ConditionOnBean 为 Constriction 设置一个 BeanCondition
-//
 func (c *Constriction) ConditionOnBean(beanId string) *Constriction {
 	return c.ConditionOn(NewBeanCondition(beanId))
 }
 
-//
 // ConditionOnMissingBean 为 Constriction 设置一个 MissingBeanCondition
-//
 func (c *Constriction) ConditionOnMissingBean(beanId string) *Constriction {
 	return c.ConditionOn(NewMissingBeanCondition(beanId))
 }
 
-//
 // ConditionOnExpression 为 Constriction 设置一个 ExpressionCondition
-//
 func (c *Constriction) ConditionOnExpression(expression string) *Constriction {
 	return c.ConditionOn(NewExpressionCondition(expression))
 }
 
-//
 // ConditionOnMatches 为 Constriction 设置一个 FunctionCondition
-//
 func (c *Constriction) ConditionOnMatches(fn ConditionFunc) *Constriction {
 	return c.ConditionOn(NewFunctionCondition(fn))
 }
 
-//
 // Profile 为 Constriction 设置运行环境
-//
 func (c *Constriction) Profile(profile string) *Constriction {
 	if c.profile != "" {
 		panic(errors.New("profile already set"))
@@ -106,9 +84,7 @@ func (c *Constriction) Profile(profile string) *Constriction {
 	return c
 }
 
-//
 // Apply 为 Constriction 应用自定义限制
-//
 func (c *Constriction) Apply(c0 *Constriction) *Constriction {
 
 	// 设置判断条件
@@ -124,9 +100,7 @@ func (c *Constriction) Apply(c0 *Constriction) *Constriction {
 	return c
 }
 
-//
 // GetResult 获取约束条件的结果
-//
 func (c *Constriction) GetResult(ctx SpringContext) bool {
 
 	// 检查是否符合运行环境

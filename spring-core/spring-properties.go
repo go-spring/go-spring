@@ -20,9 +20,7 @@ import (
 	"reflect"
 )
 
-//
 // 定义属性值接口
-//
 type Properties interface {
 	// 加载属性配置文件
 	LoadProperties(filename string)
@@ -61,14 +59,10 @@ type Properties interface {
 	BindProperty(name string, i interface{})
 }
 
-//
 // 类型转换器的集合
-//
 var typeConverters = make(map[reflect.Type]interface{})
 
-//
 // 注册类型转换器，用于属性绑定，函数原型 func(string)type
-//
 func RegisterTypeConverter(fn interface{}) {
 
 	t := reflect.TypeOf(fn)

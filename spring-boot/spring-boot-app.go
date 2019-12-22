@@ -14,9 +14,7 @@
  * limitations under the License.
  */
 
-//
 // 开箱即用的 Go-Spring 程序启动框架。
-//
 package SpringBoot
 
 import (
@@ -28,32 +26,24 @@ const (
 	SPRING_PROFILE = "spring.profile"
 )
 
-//
 // 定义 SpringBoot 应用。
-//
 type Application struct {
 	AppContext     ApplicationContext // 应用上下文
 	ConfigLocation []string           // 配置文件目录
 }
 
-//
 // 应用运行过程中的事件。
-//
 type ApplicationEvent interface {
 	OnStartApplication(ctx ApplicationContext) // 应用启动的事件
 	OnStopApplication(ctx ApplicationContext)  // 应用停止的事件
 }
 
-//
 // 定义命令行启动器接口。
-//
 type CommandLineRunner interface {
 	Run()
 }
 
-//
 // BootStarter.AppRunner.$Start
-//
 func (app *Application) Start() {
 
 	// 加载配置文件
@@ -115,9 +105,7 @@ func (app *Application) loadProfileConfig(profile string) {
 	}
 }
 
-//
 // BootStarter.AppRunner.$ShutDown
-//
 func (app *Application) ShutDown() {
 
 	// 通知应用停止事件

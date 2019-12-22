@@ -28,9 +28,7 @@ func init() {
 	SpringBoot.RegisterBean(new(WebServerStarter))
 }
 
-//
 // Web 服务器配置
-//
 type WebServerConfig struct {
 	EnableHTTP  bool   `value:"${web.server.enable:=true}"`      // 是否启用 HTTP
 	Port        int    `value:"${web.server.port:=8080}"`        // HTTP 端口
@@ -40,9 +38,7 @@ type WebServerConfig struct {
 	SSLKey      string `value:"${web.server.ssl.key:=}"`         // SSL 秘钥
 }
 
-//
 // Web 容器启动器
-//
 type WebServerStarter struct {
 	Config *WebServerConfig     `autowire:""`
 	Server *SpringWeb.WebServer `autowire:"?"`
