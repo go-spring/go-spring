@@ -471,18 +471,18 @@ func (ctx *defaultSpringContext) FindBeanByName(beanId string) (interface{}, boo
 //
 func (ctx *defaultSpringContext) resolveBean(beanDefinition *BeanDefinition) {
 
-	if beanDefinition.status != BeanStatus_Default {
+	if beanDefinition.status != beanStatus_Default {
 		return
 	}
 
 	if ok := beanDefinition.GetResult(ctx); !ok { // 不满足则删除注册
 		key := beanKey{beanDefinition.Type(), beanDefinition.name}
-		beanDefinition.status = BeanStatus_Deleted
+		beanDefinition.status = beanStatus_Deleted
 		delete(ctx.beanMap, key)
 		return
 	}
 
-	beanDefinition.status = BeanStatus_Resolved
+	beanDefinition.status = beanStatus_Resolved
 
 	// 将符合注册条件的 Bean 放入到缓存里面
 	fmt.Printf("register bean \"%s\" %s:%d\n", beanDefinition.BeanId(), beanDefinition.file, beanDefinition.line)
@@ -508,8 +508,8 @@ func (ctx *defaultSpringContext) AutoWireBeans() {
 			ctx.resolveBean(mBean.parent)
 
 			// 父 Bean 已经被删除了，子 Bean 也不应该存在
-			if mBean.parent.status == BeanStatus_Deleted {
-				beanDefinition.status = BeanStatus_Deleted
+			if mBean.parent.status == beanStatus_Deleted {
+				beanDefinition.status = beanStatus_Deleted
 				delete(ctx.beanMap, key)
 				continue
 			}
@@ -520,14 +520,6 @@ func (ctx *defaultSpringContext) AutoWireBeans() {
 
 	// 然后执行 Bean 绑定
 	for _, beanDefinition := range ctx.beanMap {
-
-		// 并且首先初始化当前 bean 不直接依赖的那些 bean
-		for _, beanId := range beanDefinition.dependsOn {
-			if _, ok := ctx.FindBeanByName(beanId); !ok {
-				panic(beanId + " 没有找到符合条件的 Bean")
-			}
-		}
-
 		ctx.wireBeanDefinition(beanDefinition)
 	}
 }
@@ -565,17 +557,24 @@ func (ctx *defaultSpringContext) WireBean(bean interface{}) {
 //
 func (ctx *defaultSpringContext) wireBeanDefinition(beanDefinition *BeanDefinition) {
 
+	// 解决循环依赖问题
+	if beanDefinition.status >= beanStatus_Wiring {
+		return
+	}
+
+	beanDefinition.status = beanStatus_Wiring
+
+	// 并且首先初始化当前 bean 不直接依赖的那些 bean
+	for _, beanId := range beanDefinition.dependsOn {
+		if _, ok := ctx.FindBeanByName(beanId); !ok {
+			panic(beanId + " 没有找到符合条件的 Bean")
+		}
+	}
+
 	// 如果是成员方法 Bean，需要首先初始化它的父 Bean
 	if mBean, ok := beanDefinition.SpringBean.(*methodBean); ok {
 		ctx.wireBeanDefinition(mBean.parent)
 	}
-
-	// 解决循环依赖问题
-	if beanDefinition.status >= BeanStatus_Wiring {
-		return
-	}
-
-	beanDefinition.status = BeanStatus_Wiring
 
 	switch beanDefinition.SpringBean.(type) {
 	case *originalBean: // 原始对象
@@ -594,7 +593,7 @@ func (ctx *defaultSpringContext) wireBeanDefinition(beanDefinition *BeanDefiniti
 		fnValue.Call([]reflect.Value{beanDefinition.Value()})
 	}
 
-	beanDefinition.status = BeanStatus_Wired
+	beanDefinition.status = beanStatus_Wired
 }
 
 //

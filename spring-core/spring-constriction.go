@@ -16,131 +16,104 @@
 
 package SpringCore
 
+import (
+	"errors"
+)
+
 //
-// 对 Bean 或者 Option 限制
+// Constriction 设定一组约束条件
 //
 type Constriction struct {
-	cond      Condition // 判断条件
-	profile   string    // 运行环境
-	dependsOn []string  // 非直接依赖
+	cond    Condition // 判断条件
+	profile string    // 运行环境
 }
 
 //
-// 构造函数
+// NewConstriction 构造函数
 //
 func NewConstriction() *Constriction {
 	return &Constriction{}
 }
 
-func (c *Constriction) checkCondition() {
-	if c.cond != nil {
-		panic("condition already set")
-	}
-}
-
 //
-// 设置一个 Condition
+// ConditionOn 为 Constriction 设置一个 Condition
 //
 func (c *Constriction) ConditionOn(cond Condition) *Constriction {
-	c.checkCondition()
+	if c.cond != nil {
+		panic(errors.New("condition already set"))
+	}
 	c.cond = cond
 	return c
 }
 
 //
-// 设置一个 PropertyCondition
+// ConditionOnProperty 为 Constriction 设置一个 PropertyCondition
 //
 func (c *Constriction) ConditionOnProperty(name string) *Constriction {
-	c.checkCondition()
-	c.cond = NewPropertyCondition(name)
-	return c
+	return c.ConditionOn(NewPropertyCondition(name))
 }
 
 //
-// 设置一个 MissingPropertyCondition
+// ConditionOnMissingProperty 为 Constriction 设置一个 MissingPropertyCondition
 //
 func (c *Constriction) ConditionOnMissingProperty(name string) *Constriction {
-	c.checkCondition()
-	c.cond = NewMissingPropertyCondition(name)
-	return c
+	return c.ConditionOn(NewMissingPropertyCondition(name))
 }
 
 //
-// 设置一个 PropertyValueCondition
+// ConditionOnPropertyValue 为 Constriction 设置一个 PropertyValueCondition
 //
 func (c *Constriction) ConditionOnPropertyValue(name string, havingValue interface{}) *Constriction {
-	c.checkCondition()
-	c.cond = NewPropertyValueCondition(name, havingValue)
-	return c
+	return c.ConditionOn(NewPropertyValueCondition(name, havingValue))
 }
 
 //
-// 设置一个 BeanCondition
+// ConditionOnBean 为 Constriction 设置一个 BeanCondition
 //
 func (c *Constriction) ConditionOnBean(beanId string) *Constriction {
-	c.checkCondition()
-	c.cond = NewBeanCondition(beanId)
-	return c
+	return c.ConditionOn(NewBeanCondition(beanId))
 }
 
 //
-// 设置一个 MissingBeanCondition
+// ConditionOnMissingBean 为 Constriction 设置一个 MissingBeanCondition
 //
 func (c *Constriction) ConditionOnMissingBean(beanId string) *Constriction {
-	c.checkCondition()
-	c.cond = NewMissingBeanCondition(beanId)
-	return c
+	return c.ConditionOn(NewMissingBeanCondition(beanId))
 }
 
 //
-// 设置一个 ExpressionCondition
+// ConditionOnExpression 为 Constriction 设置一个 ExpressionCondition
 //
 func (c *Constriction) ConditionOnExpression(expression string) *Constriction {
-	c.checkCondition()
-	c.cond = NewExpressionCondition(expression)
-	return c
+	return c.ConditionOn(NewExpressionCondition(expression))
 }
 
 //
-// 设置一个 FunctionCondition
+// ConditionOnMatches 为 Constriction 设置一个 FunctionCondition
 //
 func (c *Constriction) ConditionOnMatches(fn ConditionFunc) *Constriction {
-	c.checkCondition()
-	c.cond = NewFunctionCondition(fn)
-	return c
+	return c.ConditionOn(NewFunctionCondition(fn))
 }
 
 //
-// 设置 bean 的运行环境
+// Profile 为 Constriction 设置运行环境
 //
 func (c *Constriction) Profile(profile string) *Constriction {
 	if c.profile != "" {
-		panic("profile already set")
+		panic(errors.New("profile already set"))
 	}
 	c.profile = profile
 	return c
 }
 
 //
-// 设置 bean 的非直接依赖
-//
-func (c *Constriction) DependsOn(beanId ...string) *Constriction {
-	if len(c.dependsOn) > 0 {
-		panic("dependsOn already set")
-	}
-	c.dependsOn = beanId
-	return c
-}
-
-//
-// 应用自定义限制
+// Apply 为 Constriction 应用自定义限制
 //
 func (c *Constriction) Apply(c0 *Constriction) *Constriction {
 
-	// 设置条件
+	// 设置判断条件
 	if c0.cond != nil {
-		c.checkCondition()
-		c.cond = c0.cond
+		c.ConditionOn(c0.cond)
 	}
 
 	// 设置运行环境
@@ -148,16 +121,11 @@ func (c *Constriction) Apply(c0 *Constriction) *Constriction {
 		c.Profile(c0.profile)
 	}
 
-	// 设置非直接依赖
-	if len(c0.dependsOn) > 0 {
-		c.DependsOn(c0.dependsOn...)
-	}
-
 	return c
 }
 
 //
-// GetResult
+// GetResult 获取约束条件的结果
 //
 func (c *Constriction) GetResult(ctx SpringContext) bool {
 
@@ -166,7 +134,7 @@ func (c *Constriction) GetResult(ctx SpringContext) bool {
 		return false
 	}
 
-	// 检查是否符合注册条件
+	// 检查是否符合判断条件
 	if c.cond != nil && !c.cond.Matches(ctx) {
 		return false
 	}
