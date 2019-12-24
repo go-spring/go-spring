@@ -17,6 +17,8 @@
 package SpringCore
 
 import (
+	"container/list"
+	"errors"
 	"fmt"
 	"reflect"
 	"runtime"
@@ -64,6 +66,57 @@ func (item *beanCacheItem) StoreCollect(v reflect.Value) {
 	item.Collect = v
 }
 
+// wireStackItem wireStack 的 Item
+type wireStackItem struct {
+	bean  *BeanDefinition
+	field string // 字段名
+}
+
+// wireStack 存储正在进行 wire 的 bean
+type wireStack struct {
+	l *list.List
+}
+
+// newWireStack wireStack 的构造函数
+func newWireStack() wireStack {
+	return wireStack{
+		l: list.New(),
+	}
+}
+
+// pushBack 添加一个 item 到尾部
+func (s *wireStack) pushBack(bean *BeanDefinition) {
+	s.l.PushBack(&wireStackItem{
+		bean: bean,
+	})
+}
+
+// setField 设置最后一个元素的 field 字段值
+func (s *wireStack) setField(field string) {
+	item := s.l.Back().Value.(*wireStackItem)
+	item.field = field
+}
+
+// popBack 删除尾部的 item
+func (s *wireStack) popBack() {
+	s.l.Remove(s.l.Back())
+}
+
+// panic 检测到循环依赖
+func (s *wireStack) panic(bd *BeanDefinition) {
+	err := "found circle autowire: "
+	for e := s.l.Front(); e != nil; e = e.Next() {
+		frame := e.Value.(*wireStackItem)
+		if frame.field == "" {
+			err += frame.bean.name + " => "
+		} else {
+			err += frame.bean.name + ":$" + frame.field + " => "
+		}
+	}
+	err += bd.name
+	panic(errors.New(err))
+}
+
 // defaultSpringContext SpringContext 的默认版本
 type defaultSpringContext struct {
 	// 属性值列表接口
@@ -74,11 +127,14 @@ type defaultSpringContext struct {
 
 	beanMap   map[beanKey]*BeanDefinition     // Bean 的集合
 	beanCache map[reflect.Type]*beanCacheItem // Bean 的缓存
+
+	wireStack wireStack // 保存注入路径
 }
 
 // NewDefaultSpringContext 工厂函数
 func NewDefaultSpringContext() *defaultSpringContext {
 	return &defaultSpringContext{
+		wireStack:  newWireStack(),
 		Properties: NewDefaultProperties(),
 		beanMap:    make(map[beanKey]*BeanDefinition),
 		beanCache:  make(map[reflect.Type]*beanCacheItem),
@@ -385,7 +441,7 @@ func (ctx *defaultSpringContext) collectBeans(v reflect.Value) bool {
 
 // FindBeanByName 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 // 该方法不能保证 Bean 已经执行依赖注入和属性绑定，仅供查询 Bean 是否存在。
-func (ctx *defaultSpringContext) FindBeanByName(beanId string) (interface{}, bool) {
+func (ctx *defaultSpringContext) FindBeanByName(beanId string) (*BeanDefinition, bool) {
 
 	if !ctx.autoWired {
 		panic("should call after ctx.AutoWireBeans()")
@@ -400,8 +456,14 @@ func (ctx *defaultSpringContext) FindBeanByName(beanId string) (interface{}, boo
 
 	for _, bean := range ctx.beanMap {
 		if bean.Match(typeName, beanName) {
-			result = bean
-			count++
+
+			// 避免 Bean 还未解析
+			ctx.resolveBean(bean)
+
+			if bean.status != beanStatus_Deleted {
+				result = bean
+				count++
+			}
 		}
 	}
 
@@ -416,15 +478,29 @@ func (ctx *defaultSpringContext) FindBeanByName(beanId string) (interface{}, boo
 	}
 
 	// 恰好 1 个 & 仅供查询无需绑定
-	// ctx.wireBeanDefinition(result)
-	return result.Value().Interface(), true
+	return result, true
 }
 
 // resolveBean 对 Bean 进行决议是否能够创建 Bean 的实例
 func (ctx *defaultSpringContext) resolveBean(beanDefinition *BeanDefinition) {
 
-	if beanDefinition.status != beanStatus_Default {
+	if beanDefinition.status > beanStatus_Default {
 		return
+	}
+
+	beanDefinition.status = beanStatus_Resolving
+
+	// 如果是成员方法 Bean，需要首先决议它的父 Bean 是否能实例化
+	if mBean, ok := beanDefinition.SpringBean.(*methodBean); ok {
+		ctx.resolveBean(mBean.parent)
+
+		// 父 Bean 已经被删除了，子 Bean 也不应该存在
+		if mBean.parent.status == beanStatus_Deleted {
+			key := beanKey{beanDefinition.Type(), beanDefinition.name}
+			beanDefinition.status = beanStatus_Deleted
+			delete(ctx.beanMap, key)
+			return
+		}
 	}
 
 	if ok := beanDefinition.GetResult(ctx); !ok { // 不满足则删除注册
@@ -434,12 +510,12 @@ func (ctx *defaultSpringContext) resolveBean(beanDefinition *BeanDefinition) {
 		return
 	}
 
-	beanDefinition.status = beanStatus_Resolved
-
 	// 将符合注册条件的 Bean 放入到缓存里面
 	fmt.Printf("register bean \"%s\" %s:%d\n", beanDefinition.BeanId(), beanDefinition.file, beanDefinition.line)
 	item, _ := ctx.findCache(beanDefinition.Type())
 	item.Store(beanDefinition)
+
+	beanDefinition.status = beanStatus_Resolved
 }
 
 // AutoWireBeans 自动绑定所有的 Bean
@@ -451,20 +527,7 @@ func (ctx *defaultSpringContext) AutoWireBeans() {
 	ctx.autoWired = true
 
 	// 首先决议当前 Bean 是否能够注册，否则会删除其注册信息
-	for key, beanDefinition := range ctx.beanMap {
-
-		// 如果是成员方法 Bean，需要首先决议它的父 Bean 是否能实例化
-		if mBean, ok := beanDefinition.SpringBean.(*methodBean); ok {
-			ctx.resolveBean(mBean.parent)
-
-			// 父 Bean 已经被删除了，子 Bean 也不应该存在
-			if mBean.parent.status == beanStatus_Deleted {
-				beanDefinition.status = beanStatus_Deleted
-				delete(ctx.beanMap, key)
-				continue
-			}
-		}
-
+	for _, beanDefinition := range ctx.beanMap {
 		ctx.resolveBean(beanDefinition)
 	}
 
@@ -472,6 +535,17 @@ func (ctx *defaultSpringContext) AutoWireBeans() {
 	for _, beanDefinition := range ctx.beanMap {
 		ctx.wireBeanDefinition(beanDefinition)
 	}
+}
+
+// WireBean 绑定外部指定的 Bean
+func (ctx *defaultSpringContext) WireBean(bean interface{}) {
+
+	if !ctx.autoWired {
+		panic("should call after ctx.AutoWireBeans()")
+	}
+
+	beanDefinition := ToBeanDefinition("", bean)
+	ctx.wireBeanDefinition(beanDefinition)
 }
 
 // wireValue
@@ -487,31 +561,34 @@ func (ctx *defaultSpringContext) wireValue(v reflect.Value) {
 	ctx.wireBeanDefinition(d)
 }
 
-// WireBean 绑定外部指定的 Bean
-func (ctx *defaultSpringContext) WireBean(bean interface{}) {
-
-	if !ctx.autoWired {
-		panic("should call after ctx.AutoWireBeans()")
-	}
-
-	beanDefinition := ToBeanDefinition("", bean)
-	ctx.wireBeanDefinition(beanDefinition)
-}
-
 // wireBeanDefinition 绑定 BeanDefinition 指定的 Bean
 func (ctx *defaultSpringContext) wireBeanDefinition(beanDefinition *BeanDefinition) {
 
+	if beanDefinition.status == beanStatus_Deleted {
+		panic(errors.New("bean 已经被删除"))
+	}
+
 	// 解决循环依赖问题
-	if beanDefinition.status >= beanStatus_Wiring {
+	if beanDefinition.status == beanStatus_Wiring {
+		ctx.wireStack.panic(beanDefinition)
+		return
+	}
+
+	if beanDefinition.status == beanStatus_Wired {
 		return
 	}
 
 	beanDefinition.status = beanStatus_Wiring
 
+	// 将当前 bean 放入注入栈，以便检测循环依赖。
+	ctx.wireStack.pushBack(beanDefinition)
+
 	// 并且首先初始化当前 bean 不直接依赖的那些 bean
 	for _, beanId := range beanDefinition.dependsOn {
-		if _, ok := ctx.FindBeanByName(beanId); !ok {
+		if bean, ok := ctx.FindBeanByName(beanId); !ok {
 			panic(beanId + " 没有找到符合条件的 Bean")
+		} else {
+			ctx.wireBeanDefinition(bean)
 		}
 	}
 
@@ -536,6 +613,9 @@ func (ctx *defaultSpringContext) wireBeanDefinition(beanDefinition *BeanDefiniti
 		fnValue := reflect.ValueOf(beanDefinition.initFunc)
 		fnValue.Call([]reflect.Value{beanDefinition.Value()})
 	}
+
+	// 删除保存的注入帧
+	ctx.wireStack.popBack()
 
 	beanDefinition.status = beanStatus_Wired
 }
@@ -624,6 +704,7 @@ func (ctx *defaultSpringContext) wireOriginalBean(beanDefinition *BeanDefinition
 
 				// 处理 autowire 标签
 				if beanId, ok := f.Tag.Lookup("autowire"); ok {
+					ctx.wireStack.setField(f.Name)
 					ctx.wireStructField(sv, fv, fieldName, beanId)
 				}
 			}
@@ -633,63 +714,26 @@ func (ctx *defaultSpringContext) wireOriginalBean(beanDefinition *BeanDefinition
 	}
 }
 
-// wireConstructorBean 对构造函数进行注入
+// wireConstructorBean 对构造函数 Bean 进行注入
 func (ctx *defaultSpringContext) wireConstructorBean(beanDefinition *BeanDefinition) {
-	cBean := beanDefinition.SpringBean.(*constructorBean)
-
-	// 获取输入参数
-	fnType := reflect.TypeOf(cBean.fn)
-	in := cBean.arg.Get(ctx, fnType)
-
-	// 运行构造函数
-	fnValue := reflect.ValueOf(cBean.fn)
-	out := fnValue.Call(in)
-
-	// 获取第一个返回值
-	val := out[0]
-
-	// 检查是否有 error 返回
-	if len(out) == 2 {
-		if err := out[1].Interface(); err != nil {
-			fmt.Printf("error: %s:%d\n", beanDefinition.file, beanDefinition.line)
-			panic(err)
-		}
-	}
-
-	if IsRefType(val.Kind()) {
-		// 如果实现接口的值是个结构体，那么需要转换成指针类型然后赋给接口
-		if val.Kind() == reflect.Interface && val.Elem().Kind() == reflect.Struct {
-			ptrVal := reflect.New(val.Elem().Type())
-			ptrVal.Elem().Set(val.Elem())
-			cBean.rValue.Set(ptrVal)
-		} else {
-			cBean.rValue.Set(val)
-		}
-	} else {
-		cBean.rValue.Elem().Set(val)
-	}
-
-	cBean.bean = cBean.rValue.Interface()
-
-	// 对返回值进行依赖注入
-	if cBean.Type().Kind() == reflect.Interface {
-		ctx.wireValue(cBean.Value().Elem())
-	} else {
-		ctx.wireValue(cBean.Value())
-	}
-
+	bean := beanDefinition.SpringBean.(*constructorBean)
+	ctx.wireFunctionBean(&bean.functionBean, beanDefinition)
 	fmt.Printf("success wire constructor bean \"%s\"\n", beanDefinition.BeanId())
 }
 
-// wireMethodBean 对成员方法进行注入
+// wireMethodBean 对成员方法 Bean 进行注入
 func (ctx *defaultSpringContext) wireMethodBean(beanDefinition *BeanDefinition) {
-	mBean := beanDefinition.SpringBean.(*methodBean)
+	bean := beanDefinition.SpringBean.(*methodBean)
+	ctx.wireFunctionBean(&bean.functionBean, beanDefinition)
+	fmt.Printf("success wire method bean \"%s\"\n", beanDefinition.BeanId())
+}
 
-	fnValue := mBean.parent.Value().MethodByName(mBean.method)
-	fnType := fnValue.Type()
+// wireFunctionBean 对函数定义 Bean 进行注入
+func (ctx *defaultSpringContext) wireFunctionBean(bean *functionBean, beanDefinition *BeanDefinition) {
+	fnType := bean.fnValue.Type()
 
-	in := mBean.arg.Get(ctx, fnType)
-	out := fnValue.Call(in)
+	in := bean.arg.Get(ctx, fnType)
+	out := bean.fnValue.Call(in)
 
 	// 获取第一个返回值
 	val := out[0]
@@ -707,24 +751,22 @@ func (ctx *defaultSpringContext) wireMethodBean(beanDefinition *BeanDefinition) 
 		if val.Kind() == reflect.Interface && val.Elem().Kind() == reflect.Struct {
 			ptrVal := reflect.New(val.Elem().Type())
 			ptrVal.Elem().Set(val.Elem())
-			mBean.rValue.Set(ptrVal)
+			bean.rValue.Set(ptrVal)
 		} else {
-			mBean.rValue.Set(val)
+			bean.rValue.Set(val)
 		}
 	} else {
-		mBean.rValue.Elem().Set(val)
+		bean.rValue.Elem().Set(val)
 	}
 
-	mBean.bean = mBean.rValue.Interface()
+	bean.bean = bean.rValue.Interface()
 
 	// 对返回值进行依赖注入
-	if mBean.Type().Kind() == reflect.Interface {
-		ctx.wireValue(mBean.Value().Elem())
+	if bean.Type().Kind() == reflect.Interface {
+		ctx.wireValue(bean.Value().Elem())
 	} else {
-		ctx.wireValue(mBean.Value())
+		ctx.wireValue(bean.Value())
 	}
-
-	fmt.Printf("success wire method bean \"%s\"\n", beanDefinition.BeanId())
 }
 
 // GetAllBeanDefinitions 获取所有 Bean 的定义，一般仅供调试使用。

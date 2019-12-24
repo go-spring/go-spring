@@ -26,32 +26,34 @@ import (
 	"github.com/spf13/viper"
 )
 
-// 属性源
-type PropertySource interface {
-	// 属性源的名称
+// propertySource 属性源
+type propertySource interface {
+	// Name 返回属性源的名称
 	Name() string
 
-	// 加载属性文件，profile 配置文件剖面。
+	// Load 加载属性文件，profile 配置文件剖面。
 	Load(profile string) map[string]interface{}
 }
 
-// 基于默认配置文件的属性源
-type DefaultPropertySource struct {
-	fileLocation string
+// defaultPropertySource 基于默认配置文件的属性源
+type defaultPropertySource struct {
+	fileLocation string // 配置文件所在目录
 }
 
-// 构造函数
-func NewDefaultPropertySource(fileLocation string) *DefaultPropertySource {
-	return &DefaultPropertySource{
+// defaultPropertySource 的构造函数
+func NewDefaultPropertySource(fileLocation string) *defaultPropertySource {
+	return &defaultPropertySource{
 		fileLocation: fileLocation,
 	}
 }
 
-func (p *DefaultPropertySource) Name() string {
+// Name 返回属性源的名称
+func (p *defaultPropertySource) Name() string {
 	return ""
 }
 
-func (p *DefaultPropertySource) Load(profile string) map[string]interface{} {
+// Load 加载属性文件，profile 配置文件剖面。
+func (p *defaultPropertySource) Load(profile string) map[string]interface{} {
 
 	fileNamePrefix := "application"
 	if profile != "" {
@@ -79,33 +81,35 @@ func (p *DefaultPropertySource) Load(profile string) map[string]interface{} {
 		keys := v.AllKeys()
 		sort.Strings(keys)
 
-		for _, k := range keys {
-			v := v.Get(k)
-			result[k] = v
-			fmt.Printf("%s=%v\n", k, v)
+		for _, key := range keys {
+			val := v.Get(key)
+			result[key] = val
+			fmt.Printf("%s=%v\n", key, val)
 		}
 	}
 
 	return result
 }
 
-// 基于 k8s ConfigMap 的属性源
-type ConfigMapPropertySource struct {
-	filename string
+// configMapPropertySource 基于 k8s ConfigMap 的属性源
+type configMapPropertySource struct {
+	filename string // 配置文件名称
 }
 
-// 构造函数
-func NewConfigMapPropertySource(filename string) *ConfigMapPropertySource {
-	return &ConfigMapPropertySource{
+// configMapPropertySource 的构造函数
+func NewConfigMapPropertySource(filename string) *configMapPropertySource {
+	return &configMapPropertySource{
 		filename: filename,
 	}
 }
 
-func (p *ConfigMapPropertySource) Name() string {
+// Name 返回属性源的名称
+func (p *configMapPropertySource) Name() string {
 	return "k8s"
 }
 
-func (p *ConfigMapPropertySource) Load(profile string) map[string]interface{} {
+// Load 加载属性文件，profile 配置文件剖面。
+func (p *configMapPropertySource) Load(profile string) map[string]interface{} {
 
 	v := viper.New()
 	v.SetConfigFile(p.filename)

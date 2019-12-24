@@ -18,8 +18,8 @@ package SpringCore
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
-	"strconv"
 	"strings"
 )
 
@@ -160,72 +160,51 @@ func (b *originalBean) TypeName() string {
 	return b.typeName
 }
 
-// constructorBean 保存构造函数定义的 Bean 源
-type constructorBean struct {
+// functionBean 保存函数定义的 Bean 源
+type functionBean struct {
 	originalBean
 
-	fn  interface{}  // 构造函数
-	arg fnBindingArg // 构造函数的参数绑定
+	fnValue reflect.Value
+	arg     fnBindingArg // 参数绑定
 }
 
-// newConstructorBean constructorBean 的构造函数，所有 tag 都必须同时有或者同时没有序号。
-func newConstructorBean(fn interface{}, tags ...string) *constructorBean {
+// newFunctionBean functionBean 的构造函数
+func newFunctionBean(fnValue reflect.Value, tags []string) functionBean {
+	fnType := fnValue.Type()
 
-	fnType := reflect.TypeOf(fn)
+	// 检查是否是合法的 Bean 函数定义
+	validFuncType := func() bool {
 
-	if fnType.Kind() != reflect.Func || fnType.NumOut() < 1 || fnType.NumOut() > 2 {
-		panic(errors.New("constructor must be \"func(...) bean\" or \"func(...) (bean, error)\""))
+		// 必须是函数
+		if fnType.Kind() != reflect.Func {
+			return false
+		}
+
+		// 返回值是 1 个或者 2 个
+		if fnType.NumOut() < 1 || fnType.NumOut() > 2 {
+			return false
+		}
+
+		// 第 2 个返回值必须是 error 类型
+		if fnType.NumOut() == 2 {
+			if !fnType.Out(1).Implements(ErrorType) {
+				return false
+			}
+		}
+
+		return true
 	}
 
-	if fnType.NumOut() == 2 { // 第二个返回值必须是 error 类型
-		if !fnType.Out(1).Implements(ErrorType) {
-			panic(errors.New("constructor must be \"func(...) bean\" or \"func(...) (bean, error)\""))
-		}
-	}
-
-	fnTags := make([]string, fnType.NumIn())
-
-	if len(tags) > 0 {
-		indexed := false // 是否包含序号
-
-		if tag := tags[0]; tag != "" {
-			if i := strings.Index(tag, ":"); i > 0 {
-				_, err := strconv.Atoi(tag[:i])
-				indexed = err == nil
-			}
-		}
-
-		if indexed { // 有序号
-			for _, tag := range tags {
-				index := strings.Index(tag, ":")
-				if index <= 0 {
-					panic("tag \"" + tag + "\" should have index")
-				}
-				i, err := strconv.Atoi(tag[:index])
-				if err != nil {
-					panic("tag \"" + tag + "\" should have index")
-				}
-				fnTags[i] = tag[index+1:]
-			}
-
-		} else { // 无序号
-			for i, tag := range tags {
-				if index := strings.Index(tag, ":"); index > 0 {
-					_, err := strconv.Atoi(tag[:index])
-					if err == nil {
-						panic("tag \"" + tag + "\" should no index")
-					}
-				}
-				fnTags[i] = tag
-			}
-		}
+	if !validFuncType() {
+		t1 := "func(...) bean"
+		t2 := "func(...) (bean, error)"
+		panic(errors.New(fmt.Sprintf("func bean must be \"%s\" or \"%s\"", t1, t2)))
 	}
 
 	t := fnType.Out(0)
-
-	// 创建指针类型
 	v := reflect.New(t)
 
+	// 引用类型需要解一层指针
 	if IsRefType(t.Kind()) {
 		v = v.Elem()
 	}
@@ -233,25 +212,40 @@ func newConstructorBean(fn interface{}, tags ...string) *constructorBean {
 	// 重新确定类型
 	t = v.Type()
 
-	return &constructorBean{
+	return functionBean{
 		originalBean: originalBean{
 			bean:     v.Interface(),
 			rType:    t,
 			typeName: TypeName(t),
 			rValue:   v,
 		},
-		fn:  fn,
-		arg: &fnStringBindingArg{fnTags},
+		fnValue: fnValue,
+		arg:     newFnStringBindingArg(fnType, tags),
+	}
+}
+
+// constructorBean 保存构造函数定义的 Bean 源
+type constructorBean struct {
+	functionBean
+
+	fn interface{} // 构造函数
+}
+
+// newConstructorBean constructorBean 的构造函数，所有 tag 都必须同时有或者同时没有序号。
+func newConstructorBean(fn interface{}, tags ...string) *constructorBean {
+	fnValue := reflect.ValueOf(fn)
+	return &constructorBean{
+		functionBean: newFunctionBean(fnValue, tags),
+		fn:           fn,
 	}
 }
 
 // methodBean 保存成员方法定义的 Bean 源
 type methodBean struct {
-	originalBean
+	functionBean
 
 	parent *BeanDefinition // 父对象
 	method string          // 成员方法名称
-	arg    fnBindingArg    // 成员方法的参数绑定
 }
 
 // newMethodBean methodBean 的构造函数，所有 tag 都必须同时有或者同时没有序号。
@@ -260,81 +254,13 @@ func newMethodBean(parent *BeanDefinition, method string, tags ...string) *metho
 	fnValue := parent.Value().MethodByName(method)
 
 	if ok := fnValue.IsValid(); !ok {
-		panic(errors.New("can't find method"))
+		panic(errors.New("can't find method: " + method))
 	}
-
-	fnType := fnValue.Type()
-
-	if fnType.NumOut() < 1 || fnType.NumOut() > 2 {
-		panic(errors.New("method must be \"func(...) bean\" or \"func(...) (bean, error)\""))
-	}
-
-	if fnType.NumOut() == 2 { // 第二个返回值必须是 error 类型
-		if !fnType.Out(1).Implements(ErrorType) {
-			panic(errors.New("method must be \"func(...) bean\" or \"func(...) (bean, error)\""))
-		}
-	}
-
-	fnTags := make([]string, fnType.NumIn())
-
-	if len(tags) > 0 {
-		indexed := false // 是否包含序号
-
-		if tag := tags[0]; tag != "" {
-			if i := strings.Index(tag, ":"); i > 0 {
-				_, err := strconv.Atoi(tag[:i])
-				indexed = err == nil
-			}
-		}
-
-		if indexed { // 有序号
-			for _, tag := range tags {
-				index := strings.Index(tag, ":")
-				if index <= 0 {
-					panic("tag \"" + tag + "\" should have index")
-				}
-				i, err := strconv.Atoi(tag[:index])
-				if err != nil {
-					panic("tag \"" + tag + "\" should have index")
-				}
-				fnTags[i] = tag[index+1:]
-			}
-
-		} else { // 无序号
-			for i, tag := range tags {
-				if index := strings.Index(tag, ":"); index > 0 {
-					_, err := strconv.Atoi(tag[:index])
-					if err == nil {
-						panic("tag \"" + tag + "\" should no index")
-					}
-				}
-				fnTags[i] = tag
-			}
-		}
-	}
-
-	t := fnType.Out(0)
-
-	// 创建指针类型
-	v := reflect.New(t)
-
-	if IsRefType(t.Kind()) {
-		v = v.Elem()
-	}
-
-	// 重新确定类型
-	t = v.Type()
 
 	return &methodBean{
-		originalBean: originalBean{
-			bean:     v.Interface(),
-			rType:    t,
-			typeName: TypeName(t),
-			rValue:   v,
-		},
-		parent: parent,
-		method: method,
-		arg:    &fnStringBindingArg{fnTags},
+		functionBean: newFunctionBean(fnValue, tags),
+		parent:       parent,
+		method:       method,
 	}
 }
 
@@ -342,11 +268,12 @@ func newMethodBean(parent *BeanDefinition, method string, tags ...string) *metho
 type beanStatus int
 
 const (
-	beanStatus_Default  = beanStatus(0) // 默认状态
-	beanStatus_Resolved = beanStatus(1) // 已决议状态
-	beanStatus_Wiring   = beanStatus(2) // 正在绑定状态
-	beanStatus_Wired    = beanStatus(3) // 绑定完成状态
-	beanStatus_Deleted  = beanStatus(4) // 已删除状态
+	beanStatus_Default   = beanStatus(0) // 默认状态
+	beanStatus_Resolving = beanStatus(1) // 正在决议状态
+	beanStatus_Resolved  = beanStatus(2) // 已决议状态
+	beanStatus_Wiring    = beanStatus(3) // 正在绑定状态
+	beanStatus_Wired     = beanStatus(4) // 绑定完成状态
+	beanStatus_Deleted   = beanStatus(5) // 已删除状态
 )
 
 // BeanDefinition 存储 Bean 的详细定义
@@ -404,24 +331,6 @@ func (d *BeanDefinition) Match(typeName string, beanName string) bool {
 	}
 
 	return typeIsSame && nameIsSame
-}
-
-// ToBeanDefinition 将 Bean 转换为 BeanDefinition 对象
-func ToBeanDefinition(name string, i interface{}) *BeanDefinition {
-	bean := newOriginalBean(i)
-	return newBeanDefinition(bean, name)
-}
-
-// FnToBeanDefinition 将构造函数转换为 BeanDefinition 对象
-func FnToBeanDefinition(name string, fn interface{}, tags ...string) *BeanDefinition {
-	bean := newConstructorBean(fn, tags...)
-	return newBeanDefinition(bean, name)
-}
-
-// MethodToBeanDefinition 将成员方法转换为 BeanDefinition 对象
-func MethodToBeanDefinition(name string, parent *BeanDefinition, method string, tags ...string) *BeanDefinition {
-	bean := newMethodBean(parent, method, tags...)
-	return newBeanDefinition(bean, name)
 }
 
 // ConditionOn 为 Bean 设置一个 Condition
@@ -524,6 +433,24 @@ func (d *BeanDefinition) InitFunc(fn interface{}) *BeanDefinition {
 func (d *BeanDefinition) Apply(c *Constriction) *BeanDefinition {
 	d.Constriction.Apply(c)
 	return d
+}
+
+// ToBeanDefinition 将 Bean 转换为 BeanDefinition 对象
+func ToBeanDefinition(name string, i interface{}) *BeanDefinition {
+	bean := newOriginalBean(i)
+	return newBeanDefinition(bean, name)
+}
+
+// FnToBeanDefinition 将构造函数转换为 BeanDefinition 对象
+func FnToBeanDefinition(name string, fn interface{}, tags ...string) *BeanDefinition {
+	bean := newConstructorBean(fn, tags...)
+	return newBeanDefinition(bean, name)
+}
+
+// MethodToBeanDefinition 将成员方法转换为 BeanDefinition 对象
+func MethodToBeanDefinition(name string, parent *BeanDefinition, method string, tags ...string) *BeanDefinition {
+	bean := newMethodBean(parent, method, tags...)
+	return newBeanDefinition(bean, name)
 }
 
 // ParseBeanId 解析 BeanId 的内容，"TypeName:BeanName?" 或者 "[]?"

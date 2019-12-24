@@ -14,3 +14,5 @@
 .idea/
 vendor/
 .DS_Store
+covprofile
+coverage.html

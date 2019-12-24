@@ -151,7 +151,7 @@ func TestFnToBeanDefinition(t *testing.T) {
 			return nil, nil
 		})
 		assert.Equal(t, bd.Type().String(), "*int")
-	}, "constructor must be \"func\\(...\\) bean\" or \"func\\(...\\) \\(bean, error\\)\"")
+	}, "func bean must be \"func\\(...\\) bean\" or \"func\\(...\\) \\(bean, error\\)\"")
 
 	bd = SpringCore.FnToBeanDefinition("", func() (*int, error) {
 		return nil, nil

@@ -1079,13 +1079,9 @@ func TestDefaultSpringContext_CollectBeans(t *testing.T) {
 	ctx := SpringCore.NewDefaultSpringContext()
 	ctx.SetProperty("redis.endpoints", "redis://127.0.0.1:6379")
 
-	ctx.RegisterBean([]RedisCluster{{}}).DependsOn("*bool")
-
-	ctx.RegisterBean([]*RedisCluster{new(RedisCluster)}).
-		DependsOn("*int")
-
-	ctx.RegisterBean(new(RedisCluster)).
-		DependsOn("*int")
+	ctx.RegisterBean([]*RedisCluster{new(RedisCluster)})
+	ctx.RegisterBean([]RedisCluster{{}})
+	ctx.RegisterBean(new(RedisCluster))
 
 	ctx.RegisterBean(new(int)).InitFunc(func(*int) {
 
@@ -1368,15 +1364,15 @@ type Consumer struct {
 	s *Server
 }
 
-type Service struct {
-	Consumer *Consumer `autowire:""`
-}
-
 func (s *Server) Consumer() *Consumer {
 	if nil == s {
 		panic("Server is nil")
 	}
 	return &Consumer{s}
+}
+
+type Service struct {
+	Consumer *Consumer `autowire:""`
 }
 
 func TestDefaultSpringContext_RegisterMethodBean(t *testing.T) {
@@ -1406,11 +1402,10 @@ func TestDefaultSpringContext_RegisterMethodBean(t *testing.T) {
 		ctx := SpringCore.NewDefaultSpringContext()
 		ctx.SetProperty("server.version", "1.0.0")
 
-		parent := ctx.RegisterBeanFn(NewServer).
-			DependsOn("*SpringCore_test.Service")
+		parent := ctx.RegisterBeanFn(NewServer)
 
 		ctx.RegisterMethodBean(parent, "Consumer").
-			DependsOn("*SpringCore_test.Service")
+			DependsOn("*SpringCore_test.Server")
 
 		ctx.RegisterBean(new(Service))
 		ctx.AutoWireBeans()
@@ -1426,6 +1421,23 @@ func TestDefaultSpringContext_RegisterMethodBean(t *testing.T) {
 		ok = ctx.GetBean(&c)
 		assert.Equal(t, ok, true)
 		assert.Equal(t, c.s.Version, "2.0.0")
+	})
+
+	t.Run("circle autowire", func(t *testing.T) {
+		assert.Panic(t, func() {
+			ctx := SpringCore.NewDefaultSpringContext()
+			ctx.SetProperty("server.version", "1.0.0")
+
+			parent := ctx.RegisterBeanFn(NewServer).
+				DependsOn("*SpringCore_test.Service")
+
+			ctx.RegisterMethodBean(parent, "Consumer").
+				DependsOn("*SpringCore_test.Server")
+
+			ctx.RegisterBean(new(Service))
+			ctx.AutoWireBeans()
+
+		}, "found circle autowire: .*")
 	})
 
 	t.Run("method bean condition", func(t *testing.T) {
@@ -1508,4 +1520,15 @@ func TestDefaultSpringContext_UserDefinedTypeProperty(t *testing.T) {
 	ctx.AutoWireBeans()
 
 	fmt.Println(config)
+}
+
+func TestDefaultSpringContext_ChainConditionOnBean(t *testing.T) {
+	for i := 0; i < 20; i++ {
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBean(new(string)).ConditionOnBean("*bool")
+		ctx.RegisterBean(new(bool)).ConditionOnBean("*int")
+		ctx.RegisterBean(new(int)).ConditionOnBean("*float")
+		ctx.AutoWireBeans()
+		assert.Equal(t, len(ctx.GetAllBeanDefinitions()), 0)
+	}
 }

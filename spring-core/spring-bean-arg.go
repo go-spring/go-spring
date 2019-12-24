@@ -25,21 +25,62 @@ import (
 // fnBindingArg 存储函数的参数绑定
 type fnBindingArg interface {
 	// Get 获取函数参数的绑定值
-
 	Get(ctx SpringContext, fnType reflect.Type) []reflect.Value
 }
 
 // fnStringBindingArg 存储一般函数的参数绑定
 type fnStringBindingArg struct {
-	tags []string
+	fnTags []string
+}
+
+// newFnStringBindingArg fnStringBindingArg 的构造函数
+func newFnStringBindingArg(fnType reflect.Type, tags []string) *fnStringBindingArg {
+	fnTags := make([]string, fnType.NumIn())
+	if len(tags) > 0 {
+		indexed := false // 是否包含序号
+
+		if tag := tags[0]; tag != "" {
+			if i := strings.Index(tag, ":"); i > 0 {
+				_, err := strconv.Atoi(tag[:i])
+				indexed = err == nil
+			}
+		}
+
+		if indexed { // 有序号
+			for _, tag := range tags {
+				index := strings.Index(tag, ":")
+				if index <= 0 {
+					panic("tag \"" + tag + "\" should have index")
+				}
+				i, err := strconv.Atoi(tag[:index])
+				if err != nil {
+					panic("tag \"" + tag + "\" should have index")
+				}
+				fnTags[i] = tag[index+1:]
+			}
+
+		} else { // 无序号
+			for i, tag := range tags {
+				if index := strings.Index(tag, ":"); index > 0 {
+					_, err := strconv.Atoi(tag[:index])
+					if err == nil {
+						panic("tag \"" + tag + "\" should no index")
+					}
+				}
+				fnTags[i] = tag
+			}
+		}
+	}
+
+	return &fnStringBindingArg{fnTags}
 }
 
 // Get 获取函数参数的绑定值
 func (ca *fnStringBindingArg) Get(ctx SpringContext, fnType reflect.Type) []reflect.Value {
 	args := make([]reflect.Value, fnType.NumIn())
 	ctx0 := ctx.(*defaultSpringContext)
+	for i, tag := range ca.fnTags {
 
-	for i, tag := range ca.tags {
 		it := fnType.In(i)
 		iv := reflect.New(it).Elem()
 
@@ -61,75 +102,11 @@ type fnOptionBindingArg struct {
 
 // Get 获取函数参数的绑定值
 func (ca *fnOptionBindingArg) Get(ctx SpringContext, _ reflect.Type) []reflect.Value {
-	ctx0 := ctx.(*defaultSpringContext)
 	args := make([]reflect.Value, 0)
-
-	for _, arg := range ca.options {
-
-		// 判断 Option 条件是否成立
-		if arg.cond != nil && !arg.cond.Matches(ctx) {
-			continue
+	for _, option := range ca.options {
+		if arg := option.call(ctx); arg != emptyValue {
+			args = append(args, arg)
 		}
-
-		optValue := reflect.ValueOf(arg.fn)
-		optType := optValue.Type()
-
-		fnTags := make([]string, optType.NumIn())
-
-		if len(arg.tags) > 0 {
-			indexed := false // 是否包含序号
-
-			if tag := arg.tags[0]; tag != "" {
-				if i := strings.Index(tag, ":"); i > 0 {
-					_, err := strconv.Atoi(tag[:i])
-					indexed = err == nil
-				}
-			}
-
-			if indexed { // 有序号
-				for _, tag := range arg.tags {
-					index := strings.Index(tag, ":")
-					if index <= 0 {
-						panic("tag \"" + tag + "\" should have index")
-					}
-					i, err := strconv.Atoi(tag[:index])
-					if err != nil {
-						panic("tag \"" + tag + "\" should have index")
-					}
-					fnTags[i] = tag[index+1:]
-				}
-
-			} else { // 无序号
-				for i, tag := range arg.tags {
-					if index := strings.Index(tag, ":"); index > 0 {
-						_, err := strconv.Atoi(tag[:index])
-						if err == nil {
-							panic("tag \"" + tag + "\" should no index")
-						}
-					}
-					fnTags[i] = tag
-				}
-			}
-		}
-
-		optIn := make([]reflect.Value, optType.NumIn())
-
-		for i, tag := range fnTags {
-
-			it := optType.In(i)
-			iv := reflect.New(it).Elem()
-
-			if strings.HasPrefix(tag, "$") {
-				bindStructField(ctx, it, iv, "", "", tag)
-			} else {
-				ctx0.getBeanByName(tag, emptyValue, iv, "")
-			}
-
-			optIn[i] = iv
-		}
-
-		optOut := optValue.Call(optIn)
-		args = append(args, optOut[0])
 	}
 	return args
 }
@@ -138,15 +115,16 @@ func (ca *fnOptionBindingArg) Get(ctx SpringContext, _ reflect.Type) []reflect.V
 type optionArg struct {
 	Constriction
 
-	fn   interface{}
-	tags []string
+	fn  interface{}
+	arg fnBindingArg
 }
 
 // NewOptionArg optionArg 的构造函数
 func NewOptionArg(fn interface{}, tags ...string) *optionArg {
+	fnType := reflect.TypeOf(fn)
 	return &optionArg{
-		fn:   fn,
-		tags: tags,
+		fn:  fn,
+		arg: newFnStringBindingArg(fnType, tags),
 	}
 }
 
@@ -208,4 +186,19 @@ func (arg *optionArg) Profile(profile string) *optionArg {
 func (arg *optionArg) Apply(c *Constriction) *optionArg {
 	arg.Constriction.Apply(c)
 	return arg
+}
+
+func (arg *optionArg) call(ctx SpringContext) reflect.Value {
+
+	// 判断 Option 条件是否成立
+	if ok := arg.GetResult(ctx); !ok {
+		return emptyValue
+	}
+
+	optValue := reflect.ValueOf(arg.fn)
+	optType := optValue.Type()
+
+	optIn := arg.arg.Get(ctx, optType)
+	optOut := optValue.Call(optIn)
+	return optOut[0]
 }
