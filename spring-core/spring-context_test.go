@@ -439,3 +439,21 @@ func TestInterface(t *testing.T) {
 	// &{0xc0000a4000} *os.File
 	fmt.Println(outValue.Elem(), outValue.Elem().Type())
 }
+
+type callable interface {
+	call() int
+}
+
+type caller struct {
+	i int
+}
+
+func (c *caller) call() int {
+	return c.i
+}
+
+func TestInterfaceMethod(t *testing.T) {
+	var c callable
+	c = &caller{3}
+	fmt.Println(c.call())
+}

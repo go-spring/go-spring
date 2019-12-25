@@ -49,7 +49,7 @@ func TestDefaultSpringContext(t *testing.T) {
 		// 相同类型的匿名 bean 不能重复注册
 		assert.Panic(t, func() {
 			ctx.RegisterBean(&e)
-		}, "Bean 重复注册")
+		}, "重复注册 int:\\*int")
 
 		// 相同类型不同名称的 bean 都可注册
 		ctx.RegisterNameBean("i3", &e)
@@ -825,7 +825,7 @@ func TestDefaultSpringContext_Primary(t *testing.T) {
 		ctx.RegisterBean(new(BeanOne))
 		ctx.RegisterBean(new(BeanTwo))
 		ctx.AutoWireBeans()
-	}, "Bean 重复注册")
+	}, "重复注册 github.com/go-spring/go-spring/spring-core_test/SpringCore_test.BeanZero:\\*SpringCore_test.BeanZero")
 
 	assert.Panic(t, func() {
 		ctx := SpringCore.NewDefaultSpringContext()
@@ -835,7 +835,7 @@ func TestDefaultSpringContext_Primary(t *testing.T) {
 		ctx.RegisterBean(new(BeanOne))
 		ctx.RegisterBean(new(BeanTwo))
 		ctx.AutoWireBeans()
-	}, "Bean 重复注册")
+	}, "重复注册 github.com/go-spring/go-spring/spring-core_test/SpringCore_test.BeanZero:\\*SpringCore_test.BeanZero")
 
 	t.Run("not primary", func(t *testing.T) {
 

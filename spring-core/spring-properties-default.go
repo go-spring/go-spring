@@ -129,7 +129,7 @@ func (p *defaultProperties) GetPrefixProperties(prefix string) map[string]interf
 	prefix = strings.ToLower(prefix)
 	result := make(map[string]interface{})
 	for k, v := range p.properties {
-		if strings.HasPrefix(k, prefix) {
+		if strings.HasPrefix(k, prefix) { // TODO 更严格的匹配，节点必须完整匹配
 			result[k] = v
 		}
 	}

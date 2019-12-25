@@ -28,7 +28,7 @@ import (
 
 // Condition 定义一个判断条件
 type Condition interface {
-	// 成功返回 true，失败返回 false
+	// Matches 成功返回 true，失败返回 false
 	Matches(ctx SpringContext) bool
 }
 
@@ -80,7 +80,7 @@ func NewMissingPropertyCondition(name string) *missingPropertyCondition {
 
 // Matches 成功返回 true，失败返回 false
 func (c *missingPropertyCondition) Matches(ctx SpringContext) bool {
-	return len(ctx.GetPrefixProperties(c.name)) <= 0
+	return len(ctx.GetPrefixProperties(c.name)) == 0
 }
 
 // propertyValueCondition 基于属性值匹配的 Condition 实现
@@ -166,10 +166,10 @@ func NewExpressionCondition(expression string) *expressionCondition {
 
 // Matches 成功返回 true，失败返回 false
 func (c *expressionCondition) Matches(ctx SpringContext) bool {
-	panic(SpringConst.UNIMPLEMENTED_METHOD)
+	panic(errors.New(SpringConst.UNIMPLEMENTED_METHOD))
 }
 
-// 定义 conditionNode 的计算方式
+// opMode conditionNode 的计算方式
 type opMode int
 
 const (
@@ -178,7 +178,7 @@ const (
 	opMode_And  = opMode(2) // 且
 )
 
-// conditionNode 定义 Condition 计算的节点
+// conditionNode Condition 计算式的节点
 type conditionNode struct {
 	next *conditionNode // 下一个计算节点
 	op   opMode         // 计算方式
@@ -227,7 +227,7 @@ func (c *conditionNode) Matches(ctx SpringContext) bool {
 	}
 }
 
-// conditional 定义 Condition 计算式
+// conditional Condition 计算式
 type conditional struct {
 	node *conditionNode
 	curr *conditionNode

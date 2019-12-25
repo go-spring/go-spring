@@ -71,27 +71,27 @@ func RegisterNameBean(name string, bean interface{}) *SpringCore.BeanDefinition 
 	return ctx.RegisterNameBean(name, bean)
 }
 
-// RegisterBeanFn 通过构造函数注册单例 Bean，不指定名称，重复注册会 panic。
+// RegisterBeanFn 注册单例构造函数 Bean，不指定名称，重复注册会 panic。
 func RegisterBeanFn(fn interface{}, tags ...string) *SpringCore.BeanDefinition {
 	return ctx.RegisterBeanFn(fn, tags...)
 }
 
-// RegisterNameBeanFn 通过构造函数注册单例 Bean，需指定名称，重复注册会 panic。
+// RegisterNameBeanFn 注册单例构造函数 Bean，需指定名称，重复注册会 panic。
 func RegisterNameBeanFn(name string, fn interface{}, tags ...string) *SpringCore.BeanDefinition {
 	return ctx.RegisterNameBeanFn(name, fn, tags...)
 }
 
-// RegisterMethodBean 通过成员方法注册单例 Bean，不指定名称，重复注册会 panic。
+// RegisterMethodBean 注册成员方法单例 Bean，不指定名称，重复注册会 panic。
 func RegisterMethodBean(parent *SpringCore.BeanDefinition, method string, tags ...string) *SpringCore.BeanDefinition {
 	return ctx.RegisterMethodBean(parent, method, tags...)
 }
 
-// RegisterNameMethodBean 通过成员方法注册单例 Bean，需指定名称，重复注册会 panic。
+// RegisterNameMethodBean 注册成员方法单例 Bean，需指定名称，重复注册会 panic。
 func RegisterNameMethodBean(name string, parent *SpringCore.BeanDefinition, method string, tags ...string) *SpringCore.BeanDefinition {
 	return ctx.RegisterNameMethodBean(name, parent, method, tags...)
 }
 
-// WireBean 绑定外部指定的 Bean
+// WireBean 绑定外部的 Bean 源
 func WireBean(bean interface{}) {
 	ctx.WireBean(bean)
 }
@@ -112,7 +112,7 @@ func CollectBeans(i interface{}) bool {
 }
 
 // FindBeanByName 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
-func FindBeanByName(beanId string) (interface{}, bool) {
+func FindBeanByName(beanId string) (*SpringCore.BeanDefinition, bool) {
 	return ctx.FindBeanByName(beanId)
 }
 

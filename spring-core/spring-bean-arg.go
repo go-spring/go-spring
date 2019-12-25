@@ -17,6 +17,7 @@
 package SpringCore
 
 import (
+	"errors"
 	"reflect"
 	"strconv"
 	"strings"
@@ -36,6 +37,7 @@ type fnStringBindingArg struct {
 // newFnStringBindingArg fnStringBindingArg 的构造函数
 func newFnStringBindingArg(fnType reflect.Type, tags []string) *fnStringBindingArg {
 	fnTags := make([]string, fnType.NumIn())
+
 	if len(tags) > 0 {
 		indexed := false // 是否包含序号
 
@@ -50,11 +52,11 @@ func newFnStringBindingArg(fnType reflect.Type, tags []string) *fnStringBindingA
 			for _, tag := range tags {
 				index := strings.Index(tag, ":")
 				if index <= 0 {
-					panic("tag \"" + tag + "\" should have index")
+					panic(errors.New("tag \"" + tag + "\" should have index"))
 				}
 				i, err := strconv.Atoi(tag[:index])
 				if err != nil {
-					panic("tag \"" + tag + "\" should have index")
+					panic(errors.New("tag \"" + tag + "\" should have index"))
 				}
 				fnTags[i] = tag[index+1:]
 			}
@@ -64,7 +66,7 @@ func newFnStringBindingArg(fnType reflect.Type, tags []string) *fnStringBindingA
 				if index := strings.Index(tag, ":"); index > 0 {
 					_, err := strconv.Atoi(tag[:index])
 					if err == nil {
-						panic("tag \"" + tag + "\" should no index")
+						panic(errors.New("tag \"" + tag + "\" shouldn't have index"))
 					}
 				}
 				fnTags[i] = tag
@@ -87,7 +89,7 @@ func (ca *fnStringBindingArg) Get(ctx SpringContext, fnType reflect.Type) []refl
 		if strings.HasPrefix(tag, "$") {
 			bindStructField(ctx, it, iv, "", "", tag)
 		} else {
-			ctx0.getBeanByName(tag, emptyValue, iv, "")
+			ctx0.getBeanValue(tag, reflect.Value{}, iv, "")
 		}
 
 		args[i] = iv
@@ -104,7 +106,7 @@ type fnOptionBindingArg struct {
 func (ca *fnOptionBindingArg) Get(ctx SpringContext, _ reflect.Type) []reflect.Value {
 	args := make([]reflect.Value, 0)
 	for _, option := range ca.options {
-		if arg := option.call(ctx); arg != emptyValue {
+		if arg := option.call(ctx); arg.IsValid() {
 			args = append(args, arg)
 		}
 	}
@@ -122,6 +124,27 @@ type optionArg struct {
 // NewOptionArg optionArg 的构造函数
 func NewOptionArg(fn interface{}, tags ...string) *optionArg {
 	fnType := reflect.TypeOf(fn)
+
+	// 判断是否是合法的 Option 函数
+	validOptionFunc := func() bool {
+
+		// 必须是函数
+		if fnType.Kind() != reflect.Func {
+			return false
+		}
+
+		// 只能有一个返回值
+		if fnType.NumOut() != 1 {
+			return false
+		}
+
+		return true
+	}
+
+	if ok := validOptionFunc(); !ok {
+		panic(errors.New("option func must be func(...)option"))
+	}
+
 	return &optionArg{
 		fn:  fn,
 		arg: newFnStringBindingArg(fnType, tags),
@@ -188,17 +211,18 @@ func (arg *optionArg) Apply(c *Constriction) *optionArg {
 	return arg
 }
 
+// call 获取 optionArg 的运算值
 func (arg *optionArg) call(ctx SpringContext) reflect.Value {
 
 	// 判断 Option 条件是否成立
 	if ok := arg.GetResult(ctx); !ok {
-		return emptyValue
+		return reflect.Value{}
 	}
 
-	optValue := reflect.ValueOf(arg.fn)
-	optType := optValue.Type()
+	fnValue := reflect.ValueOf(arg.fn)
+	fnType := fnValue.Type()
 
-	optIn := arg.arg.Get(ctx, optType)
-	optOut := optValue.Call(optIn)
-	return optOut[0]
+	in := arg.arg.Get(ctx, fnType)
+	out := fnValue.Call(in)
+	return out[0]
 }

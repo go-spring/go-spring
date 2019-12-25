@@ -18,17 +18,14 @@
 package SpringCore
 
 // 定义 IoC 容器接口，Bean 的注册规则：
-//   1. 只能注册单例 Bean。
-//   2. AutoWireBeans 开始后不允许注册新的 Bean（性能考虑）。
-//   3. 原型 Bean 只能通过 BeanFactory 的形式使用，参见测试用例。
+//   1. AutoWireBeans 开始后不允许注册新的 Bean（性能考虑）
 type SpringContext interface {
 	// SpringContext 的工作过程分为三个阶段：
 	// 1) 加载 Properties 文件，
 	// 2) 注册 Bean 列表，
 	// 3) 自动绑定，又分为两个小阶段：
-	//    3.1) 判断 Bean 的注册条件，
-	//    3.2) 绑定 Bean 的非直接依赖项，
-	//    3.3) 绑定 Bean。
+	//    3.1) 解析 Bean，
+	//    3.2) 绑定 Bean。
 
 	// 属性值列表接口
 	Properties
@@ -45,22 +42,22 @@ type SpringContext interface {
 	// 注册单例 Bean，需指定名称，重复注册会 panic。
 	RegisterNameBean(name string, bean interface{}) *BeanDefinition
 
-	// 通过构造函数注册单例 Bean，不指定名称，重复注册会 panic。
+	// 注册单例构造函数 Bean，不指定名称，重复注册会 panic。
 	RegisterBeanFn(fn interface{}, tags ...string) *BeanDefinition
 
-	// 通过构造函数注册单例 Bean，需指定名称，重复注册会 panic。
+	// 注册单例构造函数 Bean，需指定名称，重复注册会 panic。
 	RegisterNameBeanFn(name string, fn interface{}, tags ...string) *BeanDefinition
 
-	// 通过成员方法注册单例 Bean，不指定名称，重复注册会 panic。
+	// 注册成员方法单例 Bean，不指定名称，重复注册会 panic。
 	RegisterMethodBean(parent *BeanDefinition, method string, tags ...string) *BeanDefinition
 
-	// 通过成员方法注册单例 Bean，需指定名称，重复注册会 panic。
+	// 注册成员方法单例 Bean，需指定名称，重复注册会 panic。
 	RegisterNameMethodBean(name string, parent *BeanDefinition, method string, tags ...string) *BeanDefinition
 
-	// 执行自动绑定过程
+	// 完成自动绑定
 	AutoWireBeans()
 
-	// 绑定外部指定的 Bean
+	// 绑定外部的 Bean 源
 	WireBean(bean interface{})
 
 	// 根据类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
@@ -82,7 +79,6 @@ type SpringContext interface {
 	CollectBeans(i interface{}) bool
 
 	// 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
-	// 该方法不能保证 Bean 已经执行依赖注入和属性绑定，仅供查询 Bean 是否存在。
 	FindBeanByName(beanId string) (*BeanDefinition, bool)
 
 	// 获取所有 Bean 的定义，一般仅供调试使用。

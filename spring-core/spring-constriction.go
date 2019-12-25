@@ -20,7 +20,7 @@ import (
 	"errors"
 )
 
-// Constriction 设定一组约束条件
+// Constriction 约束条件
 type Constriction struct {
 	cond    Condition // 判断条件
 	profile string    // 运行环境

@@ -20,16 +20,17 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"runtime"
 	"strings"
 )
 
 // 哪些类型的数据可以成为 Bean？一般来讲引用类型的数据都可以成为 Bean。
-// 当使用对象注册时，无论是否转成 interface 都能获取到对象的真实类型，
+// 当使用对象注册时，无论是否转成 Interface 都能获取到对象的真实类型，
 // 当使用构造函数注册时，如果返回的是非引用类型会强制转成对应的引用类型，
-// 如果返回的是 interface 那么这种情况下会使用 interface 的类型注册。
+// 如果返回的是 Interface 那么这种情况下会使用 Interface 的类型注册。
 
 // 哪些类型可以成为 Bean 的接收者？除了使用 Bean 的真实类型去接收，还可
-// 以使用 Bean 实现的 interface 去接收，而且推荐用 interface 去接收。
+// 以使用 Bean 实现的 Interface 去接收，而且推荐用 Interface 去接收。
 
 const (
 	valType = 1 // 值类型
@@ -76,12 +77,12 @@ func IsValueType(k reflect.Kind) bool {
 	return kindType[k] == valType
 }
 
-// TypeName 获取原始类型的全限定名，golang 允许不同的路径下存在相同的包，故此有全限定名的需求。
+// TypeName 返回原始类型的全限定名，golang 允许不同的路径下存在相同的包，故此有全限定名的需求。
 // 形如 "github.com/go-spring/go-spring/spring-core/SpringCore.DefaultSpringContext"
 func TypeName(t reflect.Type) string {
 
 	if t == nil {
-		panic("type shouldn't be nil")
+		panic(errors.New("type shouldn't be nil"))
 	}
 
 	// Map 的全限定名太复杂，不予处理，而且 Map 作为注入对象要三思而后行！
@@ -100,10 +101,10 @@ func TypeName(t reflect.Type) string {
 	}
 }
 
-// ErrorType 定义 error 的类型
+// ErrorType error 的类型
 var ErrorType = reflect.TypeOf((*error)(nil)).Elem()
 
-// SpringBean 定义 Bean 源的接口
+// SpringBean Bean 源接口
 type SpringBean interface {
 	Bean() interface{}    // 源
 	Type() reflect.Type   // 类型
@@ -111,7 +112,7 @@ type SpringBean interface {
 	TypeName() string     // 原始类型的全限定名
 }
 
-// originalBean 只保存 Bean 源
+// originalBean 原始 Bean 源
 type originalBean struct {
 	bean     interface{}   // 源
 	rType    reflect.Type  // 类型
@@ -155,17 +156,17 @@ func (b *originalBean) Value() reflect.Value {
 	return b.rValue
 }
 
-// TypeName 返回 Bean 的原始类型全限定名
+// TypeName 返回 Bean 的原始类型的全限定名
 func (b *originalBean) TypeName() string {
 	return b.typeName
 }
 
-// functionBean 保存函数定义的 Bean 源
+// functionBean 函数定义的 Bean 源
 type functionBean struct {
 	originalBean
 
-	fnValue reflect.Value
-	arg     fnBindingArg // 参数绑定
+	fnValue reflect.Value // 函数的值
+	arg     fnBindingArg  // 参数绑定
 }
 
 // newFunctionBean functionBean 的构造函数
@@ -180,7 +181,7 @@ func newFunctionBean(fnValue reflect.Value, tags []string) functionBean {
 			return false
 		}
 
-		// 返回值是 1 个或者 2 个
+		// 返回值必须是 1 个或者 2 个
 		if fnType.NumOut() < 1 || fnType.NumOut() > 2 {
 			return false
 		}
@@ -195,7 +196,7 @@ func newFunctionBean(fnValue reflect.Value, tags []string) functionBean {
 		return true
 	}
 
-	if !validFuncType() {
+	if ok := validFuncType(); !ok {
 		t1 := "func(...) bean"
 		t2 := "func(...) (bean, error)"
 		panic(errors.New(fmt.Sprintf("func bean must be \"%s\" or \"%s\"", t1, t2)))
@@ -209,7 +210,7 @@ func newFunctionBean(fnValue reflect.Value, tags []string) functionBean {
 		v = v.Elem()
 	}
 
-	// 重新确定类型
+	// 然后需要重新确定类型
 	t = v.Type()
 
 	return functionBean{
@@ -224,7 +225,7 @@ func newFunctionBean(fnValue reflect.Value, tags []string) functionBean {
 	}
 }
 
-// constructorBean 保存构造函数定义的 Bean 源
+// constructorBean 构造函数定义的 Bean 源
 type constructorBean struct {
 	functionBean
 
@@ -233,18 +234,17 @@ type constructorBean struct {
 
 // newConstructorBean constructorBean 的构造函数，所有 tag 都必须同时有或者同时没有序号。
 func newConstructorBean(fn interface{}, tags ...string) *constructorBean {
-	fnValue := reflect.ValueOf(fn)
 	return &constructorBean{
-		functionBean: newFunctionBean(fnValue, tags),
+		functionBean: newFunctionBean(reflect.ValueOf(fn), tags),
 		fn:           fn,
 	}
 }
 
-// methodBean 保存成员方法定义的 Bean 源
+// methodBean 成员方法定义的 Bean 源
 type methodBean struct {
 	functionBean
 
-	parent *BeanDefinition // 父对象
+	parent *BeanDefinition // 父对象的定义
 	method string          // 成员方法名称
 }
 
@@ -264,37 +264,50 @@ func newMethodBean(parent *BeanDefinition, method string, tags ...string) *metho
 	}
 }
 
-// 定义 Bean 的状态值
+// beanStatus Bean 的状态值
 type beanStatus int
 
 const (
 	beanStatus_Default   = beanStatus(0) // 默认状态
-	beanStatus_Resolving = beanStatus(1) // 正在决议状态
-	beanStatus_Resolved  = beanStatus(2) // 已决议状态
-	beanStatus_Wiring    = beanStatus(3) // 正在绑定状态
-	beanStatus_Wired     = beanStatus(4) // 绑定完成状态
-	beanStatus_Deleted   = beanStatus(5) // 已删除状态
+	beanStatus_Resolving = beanStatus(1) // 正在决议
+	beanStatus_Resolved  = beanStatus(2) // 已决议
+	beanStatus_Wiring    = beanStatus(3) // 正在绑定
+	beanStatus_Wired     = beanStatus(4) // 绑定完成
+	beanStatus_Deleted   = beanStatus(5) // 已删除
 )
 
-// BeanDefinition 存储 Bean 的详细定义
+// BeanDefinition Bean 的详细定义
 type BeanDefinition struct {
-	SpringBean
-
+	SpringBean        // 源
 	name   string     // 名称
 	status beanStatus // 状态
+	file   string     // 注册点所在文件
+	line   int        // 注册点所在行数
 
-	Constriction
+	Constriction       // 约束条件
+	primary   bool     // 主版本
+	dependsOn []string // 非直接依赖
 
-	primary   bool        // 主版本
-	dependsOn []string    // 非直接依赖
-	initFunc  interface{} // 绑定结束的回调
-
-	file string // 注册点信息
-	line int    // 注册点信息
+	initFunc interface{} // 绑定结束的回调
 }
 
 // newBeanDefinition BeanDefinition 的构造函数
 func newBeanDefinition(bean SpringBean, name string) *BeanDefinition {
+
+	var (
+		file string
+		line int
+	)
+
+	// 获取注册点信息
+	for i := 3; i < 10; i++ {
+		_, file0, line0, _ := runtime.Caller(i)
+		if !strings.Contains(file, "/go-spring/go-spring/spring-") || strings.HasSuffix(file, "_test.go") {
+			file = file0
+			line = line0
+			break
+		}
+	}
 
 	if name == "" { // 生成默认名称
 		name = bean.Type().String()
@@ -304,6 +317,8 @@ func newBeanDefinition(bean SpringBean, name string) *BeanDefinition {
 		SpringBean: bean,
 		name:       name,
 		status:     beanStatus_Default,
+		file:       file,
+		line:       line,
 	}
 }
 
@@ -317,7 +332,7 @@ func (d *BeanDefinition) BeanId() string {
 	return d.TypeName() + ":" + d.name
 }
 
-// Match 测试 Bean 的类型全限定名和 Bean 的名称是否都能匹配。
+// Match 测试 Bean 的类型全限定名和 Bean 的名称是否都匹配
 func (d *BeanDefinition) Match(typeName string, beanName string) bool {
 
 	typeIsSame := false
@@ -383,13 +398,14 @@ func (d *BeanDefinition) ConditionOnMatches(fn ConditionFunc) *BeanDefinition {
 
 // Options 设置 Option 模式函数的参数绑定
 func (d *BeanDefinition) Options(options ...*optionArg) *BeanDefinition {
-	switch b := d.SpringBean.(type) {
+	arg := &fnOptionBindingArg{options}
+	switch bean := d.SpringBean.(type) {
 	case *constructorBean:
-		b.arg = &fnOptionBindingArg{options}
+		bean.arg = arg
 	case *methodBean:
-		b.arg = &fnOptionBindingArg{options}
+		bean.arg = arg
 	default:
-		panic(errors.New("只有通过 func 定义的 Bean 才能调用此方法"))
+		panic(errors.New("只有 func Bean 才能调用此方法"))
 	}
 	return d
 }
@@ -415,13 +431,37 @@ func (d *BeanDefinition) Primary(primary bool) *BeanDefinition {
 	return d
 }
 
-// InitFunc 设置 Bean 绑定结束的回调
+// InitFunc 设置 Bean 的绑定结束回调
 func (d *BeanDefinition) InitFunc(fn interface{}) *BeanDefinition {
-
 	fnType := reflect.TypeOf(fn)
-	fnValue := reflect.ValueOf(fn)
 
-	if fnValue.Kind() != reflect.Func || fnType.NumOut() > 0 || fnType.NumIn() != 1 || fnType.In(0) != d.Type() {
+	// 判断是否是合法的回调函数
+	validInitFunc := func() bool {
+
+		// 必须是函数
+		if fnType.Kind() != reflect.Func {
+			return false
+		}
+
+		// 不能有返回值
+		if fnType.NumOut() > 0 {
+			return false
+		}
+
+		// 必须有一个输入参数
+		if fnType.NumIn() != 1 {
+			return false
+		}
+
+		// 输入参数必须是 Bean 的类型
+		if fnType.In(0) != d.Type() {
+			return false
+		}
+
+		return true
+	}
+
+	if ok := validInitFunc(); !ok {
 		panic(errors.New("initFunc should be func(bean)"))
 	}
 
