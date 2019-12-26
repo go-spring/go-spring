@@ -80,7 +80,6 @@ func newFnStringBindingArg(fnType reflect.Type, tags []string) *fnStringBindingA
 // Get 获取函数参数的绑定值
 func (ca *fnStringBindingArg) Get(ctx SpringContext, fnType reflect.Type) []reflect.Value {
 	args := make([]reflect.Value, fnType.NumIn())
-	ctx0 := ctx.(*defaultSpringContext)
 	for i, tag := range ca.fnTags {
 
 		it := fnType.In(i)
@@ -89,7 +88,7 @@ func (ca *fnStringBindingArg) Get(ctx SpringContext, fnType reflect.Type) []refl
 		if strings.HasPrefix(tag, "$") {
 			bindStructField(ctx, it, iv, "", "", tag)
 		} else {
-			ctx0.getBeanValue(tag, reflect.Value{}, iv, "")
+			ctx.GetBeanValue(tag, iv, )
 		}
 
 		args[i] = iv

@@ -23,35 +23,30 @@ import (
 	"github.com/go-spring/go-spring/spring-core"
 )
 
-// 全局的 SpringContext 变量。
+// ctx 全局的 SpringContext 变量
 var ctx = SpringCore.NewDefaultSpringContext()
 
-// RunApplication 快速启动 SpringBoot 应用。
+// RunApplication 快速启动 SpringBoot 应用
 func RunApplication(configLocation ...string) {
 
-	appCtx := &DefaultApplicationContext{
+	app := newApplication(&defaultApplicationContext{
 		SpringContext: ctx,
-	}
+	}, configLocation)
 
-	app := &Application{
-		AppContext:     appCtx,
-		ConfigLocation: configLocation,
-	}
-
-	profile := os.Getenv(SPRING_PROFILE)
+	profile := os.Getenv(SpringProfile)
 	ctx.SetProfile(profile)
 
 	BootStarter.Run(app)
 }
 
-// Exit 退出 SpringBoot 应用。
+// Exit 退出 SpringBoot 应用
 func Exit() {
 	BootStarter.Exit()
 }
 
 //////////////// SpringContext ////////////////////////
 
-// GetProfile 获取运行环境
+// GetProfile 返回运行环境
 func GetProfile() string {
 	return ctx.GetProfile()
 }
@@ -121,52 +116,52 @@ func GetAllBeanDefinitions() []*SpringCore.BeanDefinition {
 	return ctx.GetAllBeanDefinitions()
 }
 
-// GetProperty 获取属性值，属性名称不支持大小写。
+// GetProperty 返回属性值，属性名称统一转成小写。
 func GetProperty(name string) interface{} {
 	return ctx.GetProperty(name)
 }
 
-// GetBoolProperty 获取布尔型属性值，属性名称不支持大小写。
+// GetBoolProperty 返回布尔型属性值，属性名称统一转成小写。
 func GetBoolProperty(name string) bool {
 	return ctx.GetBoolProperty(name)
 }
 
-// GetIntProperty 获取有符号整型属性值，属性名称不支持大小写。
+// GetIntProperty 返回有符号整型属性值，属性名称统一转成小写。
 func GetIntProperty(name string) int64 {
 	return ctx.GetIntProperty(name)
 }
 
-// GetUintProperty 获取无符号整型属性值，属性名称不支持大小写。
+// GetUintProperty 返回无符号整型属性值，属性名称统一转成小写。
 func GetUintProperty(name string) uint64 {
 	return ctx.GetUintProperty(name)
 }
 
-// GetFloatProperty 获取浮点型属性值，属性名称不支持大小写。
+// GetFloatProperty 返回浮点型属性值，属性名称统一转成小写。
 func GetFloatProperty(name string) float64 {
 	return ctx.GetFloatProperty(name)
 }
 
-// GetStringProperty 获取字符串型属性值，属性名称不支持大小写。
+// GetStringProperty 返回字符串型属性值，属性名称统一转成小写。
 func GetStringProperty(name string) string {
 	return ctx.GetStringProperty(name)
 }
 
-// GetDefaultProperty 获取属性值，如果没有找到则使用指定的默认值，属性名称不支持大小写。
+// GetDefaultProperty 返回属性值，如果没有找到则使用指定的默认值，属性名称统一转成小写。
 func GetDefaultProperty(name string, defaultValue interface{}) (interface{}, bool) {
 	return ctx.GetDefaultProperty(name, defaultValue)
 }
 
-// SetProperty 设置属性值，属性名称不支持大小写。
+// SetProperty 设置属性值，属性名称统一转成小写。
 func SetProperty(name string, value interface{}) {
 	ctx.SetProperty(name, value)
 }
 
-// GetPrefixProperties 获取指定前缀的属性值集合，属性名称不支持大小写。
+// GetPrefixProperties 返回指定前缀的属性值集合，属性名称统一转成小写。
 func GetPrefixProperties(prefix string) map[string]interface{} {
 	return ctx.GetPrefixProperties(prefix)
 }
 
-// GetAllProperties 获取所有的属性值
+// GetAllProperties 返回所有的属性值，属性名称统一转成小写。
 func GetAllProperties() map[string]interface{} {
 	return ctx.GetAllProperties()
 }

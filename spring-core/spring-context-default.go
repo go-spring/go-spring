@@ -137,7 +137,7 @@ func NewDefaultSpringContext() *defaultSpringContext {
 	}
 }
 
-// GetProfile 获取运行环境
+// GetProfile 返回运行环境
 func (ctx *defaultSpringContext) GetProfile() string {
 	return ctx.profile
 }
@@ -205,6 +205,11 @@ func (ctx *defaultSpringContext) registerBeanDefinition(d *BeanDefinition) {
 // GetBean 根据类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 func (ctx *defaultSpringContext) GetBean(i interface{}) bool {
 	return ctx.GetBeanByName("?", i)
+}
+
+// GetBeanValue 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
+func (ctx *defaultSpringContext) GetBeanValue(beanId string, v reflect.Value) bool {
+	return ctx.getBeanValue(beanId, reflect.Value{}, v, "")
 }
 
 // GetBeanByName 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。

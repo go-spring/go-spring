@@ -17,6 +17,7 @@
 package SpringBoot_test
 
 import (
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -42,7 +43,7 @@ func init() {
 }
 
 func TestRunApplication(t *testing.T) {
-	os.Setenv(SpringBoot.SPRING_PROFILE, "test")
+	os.Setenv(SpringBoot.SpringProfile, "test")
 	SpringBoot.RunApplication("testdata/config/", "k8s:testdata/config/config-map.yaml")
 }
 
@@ -112,7 +113,7 @@ func Process() {
 			panic(e)
 		} else {
 			if string(strResp) != "ok" {
-				panic("error")
+				panic(errors.New("error"))
 			}
 		}
 	}

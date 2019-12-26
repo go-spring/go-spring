@@ -1366,7 +1366,7 @@ type Consumer struct {
 
 func (s *Server) Consumer() *Consumer {
 	if nil == s {
-		panic("Server is nil")
+		panic(errors.New("Server is nil"))
 	}
 	return &Consumer{s}
 }
@@ -1500,7 +1500,7 @@ func TestDefaultSpringContext_UserDefinedTypeProperty(t *testing.T) {
 		case "debug":
 			return 1
 		default:
-			panic("error level")
+			panic(errors.New("error level"))
 		}
 	})
 

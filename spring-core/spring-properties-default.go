@@ -17,8 +17,8 @@
 package SpringCore
 
 import (
+	"errors"
 	"fmt"
-	"os"
 	"reflect"
 	"sort"
 	"strings"
@@ -30,23 +30,23 @@ import (
 
 func init() {
 
-	// string -> time.Duration
+	// string -> time.Duration 转换器
 	RegisterTypeConverter(func(v string) time.Duration {
 		return cast.ToDuration(v)
 	})
 
-	//  string -> time.Time
+	//  string -> time.Time 转换器
 	RegisterTypeConverter(func(v string) time.Time {
 		return cast.ToTime(v)
 	})
 }
 
-// defaultProperties 定义 Properties 的默认版本
+// defaultProperties Properties 的默认版本
 type defaultProperties struct {
 	properties map[string]interface{}
 }
 
-// NewDefaultProperties 工厂函数
+// NewDefaultProperties defaultProperties 的构造函数
 func NewDefaultProperties() *defaultProperties {
 	return &defaultProperties{
 		properties: make(map[string]interface{}),
@@ -55,11 +55,6 @@ func NewDefaultProperties() *defaultProperties {
 
 // LoadProperties 加载属性配置文件
 func (p *defaultProperties) LoadProperties(filename string) {
-
-	if _, err := os.Stat(filename); err != nil {
-		return // 这里不需要警告
-	}
-
 	fmt.Println(">>> load properties from", filename)
 
 	v := viper.New()
@@ -78,33 +73,33 @@ func (p *defaultProperties) LoadProperties(filename string) {
 	}
 }
 
-// GetProperty 获取属性值，属性名称统一转成小写。
+// GetProperty 返回属性值，属性名称统一转成小写。
 func (p *defaultProperties) GetProperty(name string) interface{} {
 	name = strings.ToLower(name)
 	return p.properties[name]
 }
 
-// GetBoolProperty 获取布尔型属性值，属性名称统一转成小写。
+// GetBoolProperty 返回布尔型属性值，属性名称统一转成小写。
 func (p *defaultProperties) GetBoolProperty(name string) bool {
 	return cast.ToBool(p.GetProperty(name))
 }
 
-// GetIntProperty 获取有符号整型属性值，属性名称统一转成小写。
+// GetIntProperty 返回有符号整型属性值，属性名称统一转成小写。
 func (p *defaultProperties) GetIntProperty(name string) int64 {
 	return cast.ToInt64(p.GetProperty(name))
 }
 
-// GetUintProperty 获取无符号整型属性值，属性名称统一转成小写。
+// GetUintProperty 返回无符号整型属性值，属性名称统一转成小写。
 func (p *defaultProperties) GetUintProperty(name string) uint64 {
 	return cast.ToUint64(p.GetProperty(name))
 }
 
-// GetFloatProperty 获取浮点型属性值，属性名称统一转成小写。
+// GetFloatProperty 返回浮点型属性值，属性名称统一转成小写。
 func (p *defaultProperties) GetFloatProperty(name string) float64 {
 	return cast.ToFloat64(p.GetProperty(name))
 }
 
-// GetStringProperty 获取字符串型属性值，属性名称统一转成小写。
+// GetStringProperty 返回字符串型属性值，属性名称统一转成小写。
 func (p *defaultProperties) GetStringProperty(name string) string {
 	return cast.ToString(p.GetProperty(name))
 }
@@ -115,7 +110,7 @@ func (p *defaultProperties) SetProperty(name string, value interface{}) {
 	p.properties[name] = value
 }
 
-// GetDefaultProperty 获取属性值，如果没有找到则使用指定的默认值
+// GetDefaultProperty 返回属性值，如果没有找到则使用指定的默认值
 func (p *defaultProperties) GetDefaultProperty(name string, defaultValue interface{}) (interface{}, bool) {
 	name = strings.ToLower(name)
 	if v, ok := p.properties[name]; ok {
@@ -124,44 +119,73 @@ func (p *defaultProperties) GetDefaultProperty(name string, defaultValue interfa
 	return defaultValue, false
 }
 
-// GetPrefixProperties 获取指定前缀的属性值集合，属性名称统一转成小写。
+// GetPrefixProperties 返回指定前缀的属性值集合，属性名称统一转成小写。
 func (p *defaultProperties) GetPrefixProperties(prefix string) map[string]interface{} {
 	prefix = strings.ToLower(prefix)
 	result := make(map[string]interface{})
 	for k, v := range p.properties {
-		if strings.HasPrefix(k, prefix) { // TODO 更严格的匹配，节点必须完整匹配
+		if k == prefix || strings.HasPrefix(k, prefix+".") {
 			result[k] = v
 		}
 	}
 	return result
 }
 
-// GetAllProperties 获取所有的属性值，属性名称统一转成小写。
+// GetAllProperties 返回所有的属性值，属性名称统一转成小写。
 func (p *defaultProperties) GetAllProperties() map[string]interface{} {
 	return p.properties
 }
 
-// propertyHolder
+// propertyHolder 属性值列表容器
 type propertyHolder interface {
+	// GetDefaultProperty 返回属性值，如果没有找到则使用指定的默认值，属性名称统一转成小写。
 	GetDefaultProperty(name string, defaultValue interface{}) (interface{}, bool)
 }
 
-// mapPropertyHolder
+// mapPropertyHolder map 实现的属性值容器
 type mapPropertyHolder struct {
 	m map[interface{}]interface{}
 }
 
-// newMapPropertyHolder
+// newMapPropertyHolder mapPropertyHolder 的构造函数
 func newMapPropertyHolder(m map[interface{}]interface{}) *mapPropertyHolder {
 	return &mapPropertyHolder{
 		m: m,
 	}
 }
 
-// GetDefaultProperty
+// GetDefaultProperty 返回属性值，如果没有找到则使用指定的默认值，属性名称统一转成小写。
 func (p *mapPropertyHolder) GetDefaultProperty(name string, defaultValue interface{}) (interface{}, bool) {
 	v, ok := p.m[name]
 	return v, ok
+}
+
+// bindStruct 对结构体进行属性值绑定
+func bindStruct(prop propertyHolder, beanType reflect.Type, beanValue reflect.Value,
+	fieldName string, propNamePrefix string) {
+
+	for i := 0; i < beanType.NumField(); i++ {
+		it := beanType.Field(i)
+		iv := beanValue.Field(i)
+
+		subFieldName := fieldName + ".$" + it.Name
+
+		if it.Anonymous { // 处理结构体嵌套的情况
+			if _, ok := it.Tag.Lookup("value"); ok {
+				panic(errors.New(subFieldName + " 嵌套结构体上不允许有 value 标签"))
+			}
+			bindStruct(prop, it.Type, iv, subFieldName, propNamePrefix)
+			continue
+		}
+
+		if tag, ok := it.Tag.Lookup("value"); ok { // 处理有 value 标签字段
+			bindStructField(prop, it.Type, iv, subFieldName, propNamePrefix, tag)
+		} else {
+			if it.Type.Kind() == reflect.Struct { // 处理不带标签的结构体字段
+				bindStruct(prop, it.Type, iv, subFieldName, propNamePrefix)
+			}
+		}
+	}
 }
 
 // bindStructField 对结构体的字段进行属性绑定
@@ -170,12 +194,12 @@ func bindStructField(prop propertyHolder, fieldType reflect.Type, fieldValue ref
 
 	// 检查语法是否正确
 	if !(strings.HasPrefix(propTag, "${") && strings.HasSuffix(propTag, "}")) {
-		panic(fieldName + " 属性绑定的语法发生错误")
+		panic(errors.New(fieldName + " 属性绑定的语法发生错误"))
 	}
 
 	// 指针不能作为属性绑定的目标
 	if fieldValue.Kind() == reflect.Ptr {
-		panic(fieldName + " 属性绑定的目标不能是指针")
+		panic(errors.New(fieldName + " 属性绑定的目标不能是指针"))
 	}
 
 	ss := strings.Split(propTag[2:len(propTag)-1], ":=")
@@ -199,126 +223,95 @@ func bindStructField(prop propertyHolder, fieldType reflect.Type, fieldValue ref
 	bindValue(prop, fieldType, fieldValue, fieldName, propName, defaultValue)
 }
 
-// bindStruct 对结构体进行属性值绑定
-func bindStruct(prop propertyHolder, t reflect.Type, v reflect.Value,
-	fieldName string, propNamePrefix string) {
-
-	for i := 0; i < t.NumField(); i++ {
-		it := t.Field(i)
-		iv := v.Field(i)
-
-		subFieldName := fieldName + ".$" + it.Name
-
-		if it.Anonymous { // 处理结构体嵌套的情况
-			if _, ok := it.Tag.Lookup("value"); ok {
-				panic(subFieldName + " 嵌套结构体上不允许有 value 标签")
-			}
-			bindStruct(prop, it.Type, iv, subFieldName, propNamePrefix)
-			continue
-		}
-
-		if tag, ok := it.Tag.Lookup("value"); ok {
-			bindStructField(prop, it.Type, iv, subFieldName, propNamePrefix, tag)
-		} else {
-			if it.Type.Kind() == reflect.Struct {
-				bindStruct(prop, it.Type, iv, subFieldName, propNamePrefix)
-			}
-		}
-	}
-}
-
 // bindValue 对任意 value 进行属性绑定
-func bindValue(prop propertyHolder, fieldType reflect.Type, fieldValue reflect.Value,
+func bindValue(prop propertyHolder, beanType reflect.Type, beanValue reflect.Value,
 	fieldName string, propName string, defaultValue interface{}) {
 
-	getPropValue := func() interface{} { // 获取属性值的局部函数
+	getPropValue := func() interface{} { // 获取最终决定的属性值
 		if val, ok := prop.GetDefaultProperty(propName, nil); ok {
 			return val
 		} else {
 			if defaultValue != nil {
 				return defaultValue
 			}
-			panic(fieldName + " properties \"" + propName + "\" not config")
+			panic(errors.New(fieldName + " properties \"" + propName + "\" not config"))
 		}
 	}
 
 	// 存在类型转换器的情况下结构体优先使用属性值绑定
-	if fn, ok := typeConverters[fieldType]; ok {
+	if fn, ok := typeConverters[beanType]; ok {
 		propValue := getPropValue()
 		fnValue := reflect.ValueOf(fn)
 		res := fnValue.Call([]reflect.Value{reflect.ValueOf(propValue)})
-		fieldValue.Set(res[0])
+		beanValue.Set(res[0])
 		return
 	}
 
-	if fieldValue.Kind() == reflect.Struct {
-
-		if defaultValue != nil {
-			panic(fieldName + " 嵌套的结构体属性不能指定默认值")
+	if beanValue.Kind() == reflect.Struct {
+		if defaultValue != nil { // 结构体字段不能指定默认值
+			panic(errors.New(fieldName + " 结构体字段不能指定默认值"))
 		}
-
-		// 然后才考虑结构体嵌套的属性绑定
-		bindStruct(prop, fieldType, fieldValue, fieldName, propName)
+		bindStruct(prop, beanType, beanValue, fieldName, propName)
 		return
 	}
 
 	// 获取属性值
 	propValue := getPropValue()
 
-	switch fieldValue.Kind() {
+	switch beanValue.Kind() {
 	case reflect.Uint64, reflect.Uint32, reflect.Uint16, reflect.Uint8, reflect.Uint:
 		u := cast.ToUint64(propValue)
-		fieldValue.SetUint(u)
+		beanValue.SetUint(u)
 	case reflect.Int64, reflect.Int32, reflect.Int16, reflect.Int8, reflect.Int:
 		i := cast.ToInt64(propValue)
-		fieldValue.SetInt(i)
+		beanValue.SetInt(i)
 	case reflect.Float64, reflect.Float32:
 		f := cast.ToFloat64(propValue)
-		fieldValue.SetFloat(f)
+		beanValue.SetFloat(f)
 	case reflect.String:
 		s := cast.ToString(propValue)
-		fieldValue.SetString(s)
+		beanValue.SetString(s)
 	case reflect.Bool:
 		b := cast.ToBool(propValue)
-		fieldValue.SetBool(b)
+		beanValue.SetBool(b)
 	case reflect.Slice:
 		{
-			elemType := fieldValue.Type().Elem()
+			elemType := beanValue.Type().Elem()
 			elemKind := elemType.Kind()
 
 			switch elemKind {
 			case reflect.Uint64, reflect.Uint32, reflect.Uint16, reflect.Uint8, reflect.Uint:
-				panic("暂未支持")
+				panic(errors.New("暂未支持"))
 			case reflect.Int64, reflect.Int32, reflect.Int16, reflect.Int8, reflect.Int:
 				i := cast.ToIntSlice(propValue)
-				fieldValue.Set(reflect.ValueOf(i))
+				beanValue.Set(reflect.ValueOf(i))
 			case reflect.Float64, reflect.Float32:
-				panic("暂未支持")
+				panic(errors.New("暂未支持"))
 			case reflect.String:
 				i := cast.ToStringSlice(propValue)
-				fieldValue.Set(reflect.ValueOf(i))
+				beanValue.Set(reflect.ValueOf(i))
 			case reflect.Bool:
 				b := cast.ToBoolSlice(propValue)
-				fieldValue.Set(reflect.ValueOf(b))
+				beanValue.Set(reflect.ValueOf(b))
 			default:
 				if fn, ok := typeConverters[elemType]; ok {
 					// 首先处理使用类型转换器的场景
 
 					fnValue := reflect.ValueOf(fn)
 					s0 := cast.ToStringSlice(propValue)
-					sv := reflect.MakeSlice(fieldType, len(s0), len(s0))
+					sv := reflect.MakeSlice(beanType, len(s0), len(s0))
 
 					for i, iv := range s0 {
 						res := fnValue.Call([]reflect.Value{reflect.ValueOf(iv)})
 						sv.Index(i).Set(res[0])
 					}
 
-					fieldValue.Set(sv)
+					beanValue.Set(sv)
 
-				} else { // 然后处理结构体嵌套的场景
+				} else { // 然后处理结构体字段的场景
 
 					if s, isArray := propValue.([]interface{}); isArray {
-						result := reflect.MakeSlice(fieldType, len(s), len(s))
+						result := reflect.MakeSlice(beanType, len(s), len(s))
 
 						for i, si := range s {
 							if sv, isMap := si.(map[interface{}]interface{}); isMap {
@@ -326,20 +319,20 @@ func bindValue(prop propertyHolder, fieldType reflect.Type, fieldValue reflect.V
 								bindStruct(newMapPropertyHolder(sv), elemType, ev.Elem(), fieldName, "")
 								result.Index(i).Set(ev.Elem())
 							} else {
-								panic(fmt.Sprintf("property %s isn't []map[string]interface{}", propName))
+								panic(errors.New(fmt.Sprintf("property %s isn't []map[string]interface{}", propName)))
 							}
 						}
 
-						fieldValue.Set(result)
+						beanValue.Set(result)
 
 					} else {
-						panic(fmt.Sprintf("property %s isn't []map[string]interface{}", propName))
+						panic(errors.New(fmt.Sprintf("property %s isn't []map[string]interface{}", propName)))
 					}
 				}
 			}
 		}
 	default:
-		panic(fieldName + " unsupported type " + fieldValue.Kind().String())
+		panic(errors.New(fieldName + " unsupported type " + beanValue.Kind().String()))
 	}
 }
 
@@ -347,7 +340,7 @@ func bindValue(prop propertyHolder, fieldType reflect.Type, fieldValue reflect.V
 func (p *defaultProperties) BindProperty(name string, i interface{}) {
 	v := reflect.ValueOf(i)
 	if v.Kind() != reflect.Ptr {
-		panic("参数 v 必须是一个指针")
+		panic(errors.New("参数 v 必须是一个指针"))
 	}
 	t := v.Type().Elem()
 	bindValue(p, t, v.Elem(), t.Name(), name, nil)

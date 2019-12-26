@@ -40,7 +40,7 @@ type defaultPropertySource struct {
 	fileLocation string // 配置文件所在目录
 }
 
-// defaultPropertySource 的构造函数
+// NewDefaultPropertySource defaultPropertySource 的构造函数
 func NewDefaultPropertySource(fileLocation string) *defaultPropertySource {
 	return &defaultPropertySource{
 		fileLocation: fileLocation,
@@ -96,7 +96,7 @@ type configMapPropertySource struct {
 	filename string // 配置文件名称
 }
 
-// configMapPropertySource 的构造函数
+// NewConfigMapPropertySource configMapPropertySource 的构造函数
 func NewConfigMapPropertySource(filename string) *configMapPropertySource {
 	return &configMapPropertySource{
 		filename: filename,

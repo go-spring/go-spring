@@ -23,33 +23,41 @@ import (
 )
 
 const (
-	SPRING_PROFILE = "spring.profile"
+	SpringProfile = "spring.profile" // 运行环境
 )
 
-// 定义 SpringBoot 应用。
-type Application struct {
+// application SpringBoot 应用
+type application struct {
 	AppContext     ApplicationContext // 应用上下文
 	ConfigLocation []string           // 配置文件目录
 }
 
-// 应用运行过程中的事件。
+// newApplication application 的构造函数
+func newApplication(appCtx ApplicationContext, cfgLocation []string) *application {
+	return &application{
+		AppContext:     appCtx,
+		ConfigLocation: cfgLocation,
+	}
+}
+
+// ApplicationEvent 应用运行过程中的事件
 type ApplicationEvent interface {
 	OnStartApplication(ctx ApplicationContext) // 应用启动的事件
 	OnStopApplication(ctx ApplicationContext)  // 应用停止的事件
 }
 
-// 定义命令行启动器接口。
+// CommandLineRunner 命令行启动器接口
 type CommandLineRunner interface {
 	Run()
 }
 
-// BootStarter.AppRunner.$Start
-func (app *Application) Start() {
+// Start 启动 SpringBoot 应用
+func (app *application) Start() {
 
 	// 加载配置文件
 	app.loadConfigFiles()
 
-	// 注册 ApplicationContext Bean 对象
+	// 注册 ApplicationContext
 	app.AppContext.RegisterBean(app.AppContext)
 
 	// 依赖注入、属性绑定、Bean 初始化
@@ -74,7 +82,7 @@ func (app *Application) Start() {
 	fmt.Println("spring boot started")
 }
 
-func (app *Application) loadConfigFiles() {
+func (app *application) loadConfigFiles() {
 
 	// 加载默认的应用配置文件，如 application.properties
 	app.loadProfileConfig("")
@@ -85,7 +93,7 @@ func (app *Application) loadConfigFiles() {
 	}
 }
 
-func (app *Application) loadProfileConfig(profile string) {
+func (app *application) loadProfileConfig(profile string) {
 	for _, configLocation := range app.ConfigLocation {
 
 		var result map[string]interface{}
@@ -105,8 +113,8 @@ func (app *Application) loadProfileConfig(profile string) {
 	}
 }
 
-// BootStarter.AppRunner.$ShutDown
-func (app *Application) ShutDown() {
+// ShutDown 停止 SpringBoot 应用
+func (app *application) ShutDown() {
 
 	// 通知应用停止事件
 	var eventBeans []ApplicationEvent

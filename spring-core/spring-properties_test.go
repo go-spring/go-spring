@@ -17,6 +17,7 @@
 package SpringCore_test
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -63,7 +64,7 @@ type PointBean struct {
 
 func PointConverter(val string) Point {
 	if !(strings.HasPrefix(val, "(") && strings.HasSuffix(val, ")")) {
-		panic("数据格式错误")
+		panic(errors.New("数据格式错误"))
 	}
 	ss := strings.Split(val[1:len(val)-1], ",")
 	x := cast.ToInt(ss[0])

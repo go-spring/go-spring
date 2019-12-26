@@ -17,7 +17,11 @@
 // 实现了一个完善的 IoC 容器。
 package SpringCore
 
-// 定义 IoC 容器接口，Bean 的注册规则：
+import (
+	"reflect"
+)
+
+// SpringContext 定义 IoC 容器接口，Bean 的注册规则：
 //   1. AutoWireBeans 开始后不允许注册新的 Bean（性能考虑）
 type SpringContext interface {
 	// SpringContext 的工作过程分为三个阶段：
@@ -30,57 +34,58 @@ type SpringContext interface {
 	// 属性值列表接口
 	Properties
 
-	// 获取运行环境
+	// GetProfile 返回运行环境
 	GetProfile() string
 
-	// 设置运行环境
+	// SetProfile 设置运行环境
 	SetProfile(profile string)
 
-	// 注册单例 Bean，不指定名称，重复注册会 panic。
+	// RegisterBean 注册单例 Bean，不指定名称，重复注册会 panic。
 	RegisterBean(bean interface{}) *BeanDefinition
 
-	// 注册单例 Bean，需指定名称，重复注册会 panic。
+	// RegisterNameBean 注册单例 Bean，需指定名称，重复注册会 panic。
 	RegisterNameBean(name string, bean interface{}) *BeanDefinition
 
-	// 注册单例构造函数 Bean，不指定名称，重复注册会 panic。
+	// RegisterBeanFn 注册单例构造函数 Bean，不指定名称，重复注册会 panic。
 	RegisterBeanFn(fn interface{}, tags ...string) *BeanDefinition
 
-	// 注册单例构造函数 Bean，需指定名称，重复注册会 panic。
+	// RegisterNameBeanFn 注册单例构造函数 Bean，需指定名称，重复注册会 panic。
 	RegisterNameBeanFn(name string, fn interface{}, tags ...string) *BeanDefinition
 
-	// 注册成员方法单例 Bean，不指定名称，重复注册会 panic。
+	// RegisterMethodBean 注册成员方法单例 Bean，不指定名称，重复注册会 panic。
 	RegisterMethodBean(parent *BeanDefinition, method string, tags ...string) *BeanDefinition
 
-	// 注册成员方法单例 Bean，需指定名称，重复注册会 panic。
+	// RegisterNameMethodBean 注册成员方法单例 Bean，需指定名称，重复注册会 panic。
 	RegisterNameMethodBean(name string, parent *BeanDefinition, method string, tags ...string) *BeanDefinition
 
-	// 完成自动绑定
+	// AutoWireBeans 完成自动绑定
 	AutoWireBeans()
 
-	// 绑定外部的 Bean 源
+	// WireBean 绑定外部的 Bean 源
 	WireBean(bean interface{})
 
-	// 根据类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
-	// 什么情况下会多于 1 个？假设 StructA 实现了 InterfaceT，而且用户在注
-	// 册时使用了 StructA 的指针注册多个 Bean，如果在获取时使用 InterfaceT,
-	// 则必然出现多于 1 个的情况。
+	// GetBean 根据类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
+	// 什么情况下会多于 1 个？假设 StructA 实现了 InterfaceT，而且用户在注册时使用了
+	// StructA 的指针注册多个 Bean，如果在获取时使用 InterfaceT,则必然出现多于 1 个的情况。
 	GetBean(i interface{}) bool
 
-	// 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
-	// 什么情况下会多于 1 个？假设 StructA 和 StructB 都实现了 InterfaceT，
-	// 而且用户在注册时使用了相同的名称分别注册了 StructA 和 StructB 的 Bean，
-	// 这时候如果使用 InterfaceT 去获取，就会出现多于 1 个的情况。
+	// GetBeanValue 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
+	GetBeanValue(beanId string, v reflect.Value) bool
+
+	// GetBeanByName 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
+	// 什么情况下会多于 1 个？假设 StructA 和 StructB 都实现了 InterfaceT，而且用户在注册时使用了相
+	// 同的名称分别注册了 StructA 和 StructB 的 Bean，这时候如果使用 InterfaceT 去获取，就会出现多于 1 个的情况。
 	GetBeanByName(beanId string, i interface{}) bool
 
-	// 收集数组或指针定义的所有符合条件的 Bean 对象，收集到返回 true，否则返回 false。
-	// 什么情况下可以使用此功能？假设 HandlerA 和 HandlerB 都实现了 HandlerT 接口，
-	// 而且用户分别注册了一个 HandlerA 和 HandlerB 对象，如果用户想要同时获取 HandlerA
-	// 和 HandlerB 对象，那么他可以通过 []HandlerT 即数组的方式获取到所有 Bean。
+	// CollectBeans 收集数组或指针定义的所有符合条件的 Bean 对象，收集到返回 true，否则返回 false。
+	// 什么情况下可以使用此功能？假设 HandlerA 和 HandlerB 都实现了 HandlerT 接口，而且用户分别注册
+	// 了一个 HandlerA 和 HandlerB 对象，如果用户想要同时获取 HandlerA 和 HandlerB 对象，那么他可
+	// 以通过 []HandlerT 即数组的方式获取到所有 Bean。
 	CollectBeans(i interface{}) bool
 
-	// 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
+	// FindBeanByName 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 	FindBeanByName(beanId string) (*BeanDefinition, bool)
 
-	// 获取所有 Bean 的定义，一般仅供调试使用。
+	// GetAllBeanDefinitions 获取所有 Bean 的定义，一般仅供调试使用。
 	GetAllBeanDefinitions() []*BeanDefinition
 }
