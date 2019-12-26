@@ -20,6 +20,7 @@
 package BootStarter
 
 import (
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -28,7 +29,7 @@ import (
 )
 
 //
-// 应用执行器。
+// AppRunner 应用执行器
 //
 type AppRunner interface {
 	Start()    // 启动执行器
@@ -38,7 +39,7 @@ type AppRunner interface {
 var exitChan chan struct{}
 
 //
-// 启动应用执行器。
+// Run 启动执行器
 //
 func Run(runner AppRunner) {
 
@@ -49,6 +50,7 @@ func Run(runner AppRunner) {
 		sig := make(chan os.Signal, 1)
 		signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 		<-sig
+		fmt.Println("got signal, program will exit")
 		Exit()
 	}()
 
@@ -58,7 +60,7 @@ func Run(runner AppRunner) {
 }
 
 //
-// 退出当前的应用程序。
+// Exit 关闭执行器
 //
 func Exit() {
 	SpringUtils.SafeCloseChan(exitChan)

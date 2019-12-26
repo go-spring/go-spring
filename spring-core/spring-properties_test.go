@@ -122,6 +122,14 @@ func TestDefaultProperties_GetProperty(t *testing.T) {
 	p.BindProperty("int", &v2)
 	assert.Equal(t, v2, 3)
 
+	var u2 uint
+	p.BindProperty("uint", &u2)
+	assert.Equal(t, u2, uint(3))
+
+	var f2 float32
+	p.BindProperty("Float", &f2)
+	assert.Equal(t, f2, float32(3))
+
 	b := p.GetBoolProperty("BOOL")
 	assert.Equal(t, b, true)
 
