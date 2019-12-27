@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"reflect"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -1437,20 +1438,45 @@ func TestDefaultSpringContext_RegisterMethodBean(t *testing.T) {
 	})
 
 	t.Run("circle autowire", func(t *testing.T) {
-		assert.Panic(t, func() {
-			ctx := SpringCore.NewDefaultSpringContext()
-			ctx.SetProperty("server.version", "1.0.0")
+		okCount := 0
+		errCount := 0
+		for i := 0; i < 20; i++ {
+			func() {
 
-			parent := ctx.RegisterBeanFn(NewServer).
-				DependsOn("*SpringCore_test.Service")
+				defer func() {
+					if err := recover(); err != nil {
+						errCount++
 
-			ctx.RegisterMethodBean(parent, "Consumer").
-				DependsOn("*SpringCore_test.Server")
+						var v string
+						switch  e := err.(type) {
+						case error:
+							v = e.Error()
+						case string:
+							v = e
+						}
 
-			ctx.RegisterBean(new(Service))
-			ctx.AutoWireBeans()
+						if !strings.HasPrefix(v, "found circle autowire: ") {
+							panic(errors.New("test error"))
+						}
+					} else {
+						okCount++
+					}
+				}()
 
-		}, "found circle autowire: .*")
+				ctx := SpringCore.NewDefaultSpringContext()
+				ctx.SetProperty("server.version", "1.0.0")
+
+				parent := ctx.RegisterBeanFn(NewServer).
+					DependsOn("*SpringCore_test.Service")
+
+				ctx.RegisterMethodBean(parent, "Consumer").
+					DependsOn("*SpringCore_test.Server")
+
+				ctx.RegisterBean(new(Service))
+				ctx.AutoWireBeans()
+			}()
+		}
+		fmt.Printf("ok:%d err:%d\n", okCount, errCount)
 	})
 
 	t.Run("method bean condition", func(t *testing.T) {

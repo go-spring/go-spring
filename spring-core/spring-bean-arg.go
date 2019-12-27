@@ -31,12 +31,15 @@ type fnBindingArg interface {
 
 // fnStringBindingArg 存储一般函数的参数绑定
 type fnStringBindingArg struct {
-	fnTags []string
+	fnTags [][]string
 }
 
 // newFnStringBindingArg fnStringBindingArg 的构造函数
 func newFnStringBindingArg(fnType reflect.Type, tags []string) *fnStringBindingArg {
-	fnTags := make([]string, fnType.NumIn())
+
+	fnTags := make([][]string, fnType.NumIn())
+	variadic := fnType.IsVariadic() // 可变参数
+	numIn := fnType.NumIn()
 
 	if len(tags) > 0 {
 		indexed := false // 是否包含序号
@@ -54,11 +57,21 @@ func newFnStringBindingArg(fnType reflect.Type, tags []string) *fnStringBindingA
 				if index <= 0 {
 					panic(errors.New("tag \"" + tag + "\" should have index"))
 				}
+
 				i, err := strconv.Atoi(tag[:index])
 				if err != nil {
 					panic(errors.New("tag \"" + tag + "\" should have index"))
 				}
-				fnTags[i] = tag[index+1:]
+
+				if i < 0 || i >= numIn {
+					panic(errors.New("error indexed tag \"" + tag + "\""))
+				}
+
+				if variadic && i == numIn-1 { // 处理可变参数
+					fnTags[i] = append(fnTags[i], tag[index+1:])
+				} else {
+					fnTags[i] = []string{tag[index+1:]}
+				}
 			}
 
 		} else { // 无序号
@@ -69,7 +82,12 @@ func newFnStringBindingArg(fnType reflect.Type, tags []string) *fnStringBindingA
 						panic(errors.New("tag \"" + tag + "\" shouldn't have index"))
 					}
 				}
-				fnTags[i] = tag
+
+				if variadic && i >= numIn-1 { // 处理可变参数
+					fnTags[numIn-1] = append(fnTags[numIn-1], tag)
+				} else {
+					fnTags[i] = []string{tag}
+				}
 			}
 		}
 	}
@@ -79,10 +97,9 @@ func newFnStringBindingArg(fnType reflect.Type, tags []string) *fnStringBindingA
 
 // Get 获取函数参数的绑定值
 func (ca *fnStringBindingArg) Get(ctx SpringContext, fnType reflect.Type) []reflect.Value {
-	args := make([]reflect.Value, fnType.NumIn())
-	for i, tag := range ca.fnTags {
+	args := make([]reflect.Value, 0)
 
-		it := fnType.In(i)
+	f := func(it reflect.Type, tag string) {
 		iv := reflect.New(it).Elem()
 
 		if strings.HasPrefix(tag, "$") {
@@ -91,8 +108,20 @@ func (ca *fnStringBindingArg) Get(ctx SpringContext, fnType reflect.Type) []refl
 			ctx.GetBeanValue(tag, iv, )
 		}
 
-		args[i] = iv
+		args = append(args, iv)
 	}
+
+	for i, tags := range ca.fnTags {
+		it := fnType.In(i)
+		if len(tags) == 0 {
+			f(it, "")
+		} else {
+			for _, tag := range tags {
+				f(it, tag)
+			}
+		}
+	}
+
 	return args
 }
 

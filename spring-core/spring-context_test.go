@@ -457,3 +457,25 @@ func TestInterfaceMethod(t *testing.T) {
 	c = &caller{3}
 	fmt.Println(c.call())
 }
+
+func TestVariadicFunction(t *testing.T) {
+
+	fn := func(a string, i ...int) {
+		fmt.Println(a, i)
+	}
+
+	typ := reflect.TypeOf(fn)
+	fmt.Println(typ, typ.IsVariadic())
+
+	for i := 0; i < typ.NumIn(); i++ {
+		in := typ.In(i)
+		fmt.Println(in)
+	}
+
+	fnValue := reflect.ValueOf(fn)
+	fnValue.Call([]reflect.Value{
+		reflect.ValueOf("string"),
+		reflect.ValueOf(3),
+		reflect.ValueOf(4),
+	})
+}

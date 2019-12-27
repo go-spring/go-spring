@@ -602,6 +602,8 @@ func (ctx *defaultSpringContext) wireBeanDefinition(beanDefinition *BeanDefiniti
 
 // wireOriginalBean 对原始对象进行注入
 func (ctx *defaultSpringContext) wireOriginalBean(beanDefinition *BeanDefinition) {
+	fmt.Printf("wire bean \"%s\"\n", beanDefinition.BeanId())
+
 	st := beanDefinition.Type()
 	sk := st.Kind()
 
@@ -632,7 +634,6 @@ func (ctx *defaultSpringContext) wireOriginalBean(beanDefinition *BeanDefinition
 	} else if sk == reflect.Ptr { // 处理指针 Bean
 		et := st.Elem()
 		if et.Kind() == reflect.Struct { // 结构体指针
-			fmt.Printf("wire bean \"%s\"\n", beanDefinition.BeanId())
 
 			sv := beanDefinition.Value()
 			ev := sv.Elem()
@@ -658,10 +659,10 @@ func (ctx *defaultSpringContext) wireOriginalBean(beanDefinition *BeanDefinition
 					ctx.wireStructField(sv, fv, fieldName, beanId)
 				}
 			}
-
-			fmt.Printf("success wire bean \"%s\"\n", beanDefinition.BeanId())
 		}
 	}
+
+	fmt.Printf("success wire bean \"%s\"\n", beanDefinition.BeanId())
 }
 
 // wireConstructorBean 对构造函数 Bean 进行注入
