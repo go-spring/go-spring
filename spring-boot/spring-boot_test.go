@@ -36,6 +36,7 @@ func init() {
 	SpringBoot.RegisterBean(new(MyController)).InitFunc(
 		func(c *MyController) {
 			SpringBoot.GetMapping("/ok", c.OK).
+				ConditionOnProfile("test").
 				ConditionOnMissingProperty("ok_enable")
 		})
 	SpringBoot.RegisterBean(new(MyRunner))

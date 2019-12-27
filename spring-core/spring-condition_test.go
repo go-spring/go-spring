@@ -144,10 +144,10 @@ func TestConditional(t *testing.T) {
 	cond = SpringCore.NewConditional().OnProperty("int")
 	assert.Equal(t, cond.Matches(ctx), true)
 
-	assert.Panic(t, func() {
-		cond = SpringCore.NewConditional().OnProperty("int").OnBean("null")
-		assert.Equal(t, cond.Matches(ctx), true)
-	}, "condition already set")
+	cond = SpringCore.NewConditional().
+		OnProperty("int").
+		OnBean("null")
+	assert.Equal(t, cond.Matches(ctx), false)
 
 	assert.Panic(t, func() {
 		cond = SpringCore.NewConditional().OnProperty("int").And()
@@ -187,12 +187,10 @@ func TestConditional(t *testing.T) {
 		assert.Equal(t, cond.Matches(ctx), true)
 	}, "last op need a cond triggered")
 
-	assert.Panic(t, func() {
-		cond = SpringCore.NewConditional().
-			OnPropertyValue("int", 2).
-			Or().
-			OnPropertyValue("bool", false).
-			OnPropertyValue("bool", false)
-		assert.Equal(t, cond.Matches(ctx), true)
-	}, "condition already set")
+	cond = SpringCore.NewConditional().
+		OnPropertyValue("int", 2).
+		Or().
+		OnPropertyValue("bool", false).
+		OnPropertyValue("bool", false)
+	assert.Equal(t, cond.Matches(ctx), true)
 }

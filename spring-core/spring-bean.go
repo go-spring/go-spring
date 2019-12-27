@@ -284,7 +284,8 @@ type BeanDefinition struct {
 	file   string     // 注册点所在文件
 	line   int        // 注册点所在行数
 
-	Constriction       // 约束条件
+	*Conditional // 判断条件
+
 	primary   bool     // 主版本
 	dependsOn []string // 非直接依赖
 
@@ -314,11 +315,12 @@ func newBeanDefinition(bean SpringBean, name string) *BeanDefinition {
 	}
 
 	return &BeanDefinition{
-		SpringBean: bean,
-		name:       name,
-		status:     beanStatus_Default,
-		file:       file,
-		line:       line,
+		SpringBean:  bean,
+		name:        name,
+		status:      beanStatus_Default,
+		file:        file,
+		line:        line,
+		Conditional: NewConditional(),
 	}
 }
 
@@ -348,51 +350,69 @@ func (d *BeanDefinition) Match(typeName string, beanName string) bool {
 	return typeIsSame && nameIsSame
 }
 
+// Or c=a||b
+func (d *BeanDefinition) Or() *BeanDefinition {
+	d.Conditional.Or()
+	return d
+}
+
+// And c=a&&b
+func (d *BeanDefinition) And() *BeanDefinition {
+	d.Conditional.And()
+	return d
+}
+
 // ConditionOn 为 Bean 设置一个 Condition
 func (d *BeanDefinition) ConditionOn(cond Condition) *BeanDefinition {
-	d.Constriction.ConditionOn(cond)
+	d.Conditional.OnCondition(cond)
 	return d
 }
 
 // ConditionOnProperty 为 Bean 设置一个 PropertyCondition
 func (d *BeanDefinition) ConditionOnProperty(name string) *BeanDefinition {
-	d.Constriction.ConditionOnProperty(name)
+	d.Conditional.OnProperty(name)
 	return d
 }
 
 // ConditionOnMissingProperty 为 Bean 设置一个 MissingPropertyCondition
 func (d *BeanDefinition) ConditionOnMissingProperty(name string) *BeanDefinition {
-	d.Constriction.ConditionOnMissingProperty(name)
+	d.Conditional.OnMissingProperty(name)
 	return d
 }
 
 // ConditionOnPropertyValue 为 Bean 设置一个 PropertyValueCondition
 func (d *BeanDefinition) ConditionOnPropertyValue(name string, havingValue interface{}) *BeanDefinition {
-	d.Constriction.ConditionOnPropertyValue(name, havingValue)
+	d.Conditional.OnPropertyValue(name, havingValue)
 	return d
 }
 
 // ConditionOnBean 为 Bean 设置一个 BeanCondition
 func (d *BeanDefinition) ConditionOnBean(beanId string) *BeanDefinition {
-	d.Constriction.ConditionOnBean(beanId)
+	d.Conditional.OnBean(beanId)
 	return d
 }
 
 // ConditionOnMissingBean 为 Bean 设置一个 MissingBeanCondition
 func (d *BeanDefinition) ConditionOnMissingBean(beanId string) *BeanDefinition {
-	d.Constriction.ConditionOnMissingBean(beanId)
+	d.Conditional.OnMissingBean(beanId)
 	return d
 }
 
 // ConditionOnExpression 为 Bean 设置一个 ExpressionCondition
 func (d *BeanDefinition) ConditionOnExpression(expression string) *BeanDefinition {
-	d.Constriction.ConditionOnExpression(expression)
+	d.Conditional.OnExpression(expression)
 	return d
 }
 
 // ConditionOnMatches 为 Bean 设置一个 FunctionCondition
 func (d *BeanDefinition) ConditionOnMatches(fn ConditionFunc) *BeanDefinition {
-	d.Constriction.ConditionOnMatches(fn)
+	d.Conditional.OnMatches(fn)
+	return d
+}
+
+// ConditionOnProfile 为 Bean 设置一个 ProfileCondition
+func (d *BeanDefinition) ConditionOnProfile(profile string) *BeanDefinition {
+	d.Conditional.OnProfile(profile)
 	return d
 }
 
@@ -407,12 +427,6 @@ func (d *BeanDefinition) Options(options ...*optionArg) *BeanDefinition {
 	default:
 		panic(errors.New("只有 func Bean 才能调用此方法"))
 	}
-	return d
-}
-
-// Profile 设置 Bean 的运行环境
-func (d *BeanDefinition) Profile(profile string) *BeanDefinition {
-	d.Constriction.Profile(profile)
 	return d
 }
 
@@ -466,12 +480,6 @@ func (d *BeanDefinition) InitFunc(fn interface{}) *BeanDefinition {
 	}
 
 	d.initFunc = fn
-	return d
-}
-
-// Apply 为 Bean 应用自定义限制
-func (d *BeanDefinition) Apply(c *Constriction) *BeanDefinition {
-	d.Constriction.Apply(c)
 	return d
 }
 

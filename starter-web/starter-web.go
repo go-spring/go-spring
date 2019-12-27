@@ -84,7 +84,7 @@ func (starter *WebServerStarter) OnStartApplication(ctx SpringBoot.ApplicationCo
 			}
 
 			if len(ports) == 0 || matches() {
-				if mapping.GetResult(ctx) {
+				if mapping.Matches(ctx) {
 					filters := mapper.Filters()
 					for _, s := range mapping.FilterNames() {
 						var f SpringWeb.Filter

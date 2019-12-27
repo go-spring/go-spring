@@ -488,7 +488,7 @@ func (ctx *defaultSpringContext) resolveBean(beanDefinition *BeanDefinition) {
 		}
 	}
 
-	if ok := beanDefinition.GetResult(ctx); !ok { // 不满足则删除注册
+	if ok := beanDefinition.Matches(ctx); !ok { // 不满足则删除注册
 		key := beanKey{beanDefinition.Type(), beanDefinition.name}
 		beanDefinition.status = beanStatus_Deleted
 		delete(ctx.beanMap, key)
@@ -547,7 +547,9 @@ func (ctx *defaultSpringContext) wireBeanDefinition(beanDefinition *BeanDefiniti
 
 	// 是否循环依赖
 	if beanDefinition.status == beanStatus_Wiring {
-		ctx.wiringStack.panic(beanDefinition)
+		if _, ok := beanDefinition.SpringBean.(*originalBean); !ok {
+			ctx.wiringStack.panic(beanDefinition)
+		}
 		return
 	}
 

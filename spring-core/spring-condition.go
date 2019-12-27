@@ -169,26 +169,95 @@ func (c *expressionCondition) Matches(ctx SpringContext) bool {
 	panic(errors.New(SpringConst.UNIMPLEMENTED_METHOD))
 }
 
-// opMode conditionNode 的计算方式
-type opMode int
+// profileCondition 基于运行环境匹配的 Condition 实现
+type profileCondition struct {
+	profile string
+}
+
+// NewProfileCondition profileCondition 的构造函数
+func NewProfileCondition(profile string) *profileCondition {
+	return &profileCondition{
+		profile: profile,
+	}
+}
+
+// Matches 成功返回 true，失败返回 false
+func (c *profileCondition) Matches(ctx SpringContext) bool {
+	if c.profile != "" && c.profile != ctx.GetProfile() {
+		return false
+	}
+	return true
+}
+
+// CondOperator conditionNode 的计算方式
+type CondOperator int
 
 const (
-	opMode_None = opMode(0) // 默认值
-	opMode_Or   = opMode(1) // 或
-	opMode_And  = opMode(2) // 且
+	ConditionDefault = CondOperator(0) // 默认值
+	ConditionOr      = CondOperator(1) // 或
+	ConditionAnd     = CondOperator(2) // 且
+	ConditionNone    = CondOperator(3) // 非
 )
+
+// conditions 基于条件组的 Condition 实现
+type conditions struct {
+	op   CondOperator
+	cond []Condition
+}
+
+// NewConditions conditions 的构造函数
+func NewConditions(op CondOperator, cond ...Condition) *conditions {
+	return &conditions{
+		op:   op,
+		cond: cond,
+	}
+}
+
+// Matches 成功返回 true，失败返回 false
+func (c *conditions) Matches(ctx SpringContext) bool {
+
+	if len(c.cond) == 0 {
+		panic(errors.New("no condition"))
+	}
+
+	switch c.op {
+	case ConditionOr:
+		for _, c0 := range c.cond {
+			if c0.Matches(ctx) {
+				return true
+			}
+		}
+		return false
+	case ConditionAnd:
+		for _, c0 := range c.cond {
+			if ok := c0.Matches(ctx); !ok {
+				return false
+			}
+		}
+		return true
+	case ConditionNone:
+		for _, c0 := range c.cond {
+			if c0.Matches(ctx) {
+				return false
+			}
+		}
+		return true
+	default:
+		panic(errors.New("error condition op mode"))
+	}
+}
 
 // conditionNode Condition 计算式的节点
 type conditionNode struct {
 	next *conditionNode // 下一个计算节点
-	op   opMode         // 计算方式
+	op   CondOperator   // 计算方式
 	cond Condition      // 条件
 }
 
 // newConditionNode conditionNode 的构造函数
 func newConditionNode() *conditionNode {
 	return &conditionNode{
-		op: opMode_None,
+		op: ConditionDefault,
 	}
 }
 
@@ -199,27 +268,27 @@ func (c *conditionNode) Matches(ctx SpringContext) bool {
 		panic(errors.New("last op need a cond triggered"))
 	}
 
-	if c.cond == nil && c.op == opMode_None {
+	if c.cond == nil && c.op == ConditionDefault {
 		return true
 	}
 
 	if r := c.cond.Matches(ctx); c.next != nil {
 
 		switch c.op {
-		case opMode_Or: // or
+		case ConditionOr: // or
 			if r {
 				return r
 			} else {
 				return c.next.Matches(ctx)
 			}
-		case opMode_And: // and
+		case ConditionAnd: // and
 			if r {
 				return c.next.Matches(ctx)
 			} else {
 				return false
 			}
 		default:
-			panic(errors.New("error condition node op mode"))
+			panic(errors.New("error condition op mode"))
 		}
 
 	} else {
@@ -227,84 +296,94 @@ func (c *conditionNode) Matches(ctx SpringContext) bool {
 	}
 }
 
-// conditional Condition 计算式
-type conditional struct {
-	node *conditionNode
+// Conditional Condition 计算式
+type Conditional struct {
+	head *conditionNode
 	curr *conditionNode
 }
 
-// NewConditional conditional 的构造函数
-func NewConditional() *conditional {
+// NewConditional Conditional 的构造函数
+func NewConditional() *Conditional {
 	node := newConditionNode()
-	return &conditional{
-		node: node,
+	return &Conditional{
+		head: node,
 		curr: node,
 	}
 }
 
+// Empty 返回表达式是否为空
+func (c *Conditional) Empty() bool {
+	return c.head == c.curr
+}
+
 // Matches 成功返回 true，失败返回 false
-func (c *conditional) Matches(ctx SpringContext) bool {
-	return c.node.Matches(ctx)
+func (c *Conditional) Matches(ctx SpringContext) bool {
+	return c.head.Matches(ctx)
 }
 
 // Or c=a||b
-func (c *conditional) Or() *conditional {
+func (c *Conditional) Or() *Conditional {
 	node := newConditionNode()
-	c.curr.op = opMode_Or
+	c.curr.op = ConditionOr
 	c.curr.next = node
 	c.curr = node
 	return c
 }
 
 // And c=a&&b
-func (c *conditional) And() *conditional {
+func (c *Conditional) And() *Conditional {
 	node := newConditionNode()
-	c.curr.op = opMode_And
+	c.curr.op = ConditionAnd
 	c.curr.next = node
 	c.curr = node
 	return c
 }
 
 // OnCondition 设置一个 Condition
-func (c *conditional) OnCondition(cond Condition) *conditional {
+func (c *Conditional) OnCondition(cond Condition) *Conditional {
 	if c.curr.cond != nil {
-		panic(errors.New("condition already set"))
+		c.And()
 	}
 	c.curr.cond = cond
 	return c
 }
 
 // OnProperty 设置一个 propertyCondition
-func (c *conditional) OnProperty(name string) *conditional {
+func (c *Conditional) OnProperty(name string) *Conditional {
 	return c.OnCondition(NewPropertyCondition(name))
 }
 
 // OnMissingProperty 设置一个 missingPropertyCondition
-func (c *conditional) OnMissingProperty(name string) *conditional {
+func (c *Conditional) OnMissingProperty(name string) *Conditional {
 	return c.OnCondition(NewMissingPropertyCondition(name))
 }
 
 // OnPropertyValue 设置一个 propertyValueCondition
-func (c *conditional) OnPropertyValue(name string, havingValue interface{}) *conditional {
+func (c *Conditional) OnPropertyValue(name string, havingValue interface{}) *Conditional {
 	return c.OnCondition(NewPropertyValueCondition(name, havingValue))
 }
 
 // OnBean 设置一个 beanCondition
-func (c *conditional) OnBean(beanId string) *conditional {
+func (c *Conditional) OnBean(beanId string) *Conditional {
 	return c.OnCondition(NewBeanCondition(beanId))
 }
 
 // OnMissingBean 设置一个 missingBeanCondition
-func (c *conditional) OnMissingBean(beanId string) *conditional {
+func (c *Conditional) OnMissingBean(beanId string) *Conditional {
 	return c.OnCondition(NewMissingBeanCondition(beanId))
 }
 
 // OnExpression 设置一个 expressionCondition
-func (c *conditional) OnExpression(expression string) *conditional {
+func (c *Conditional) OnExpression(expression string) *Conditional {
 	return c.OnCondition(NewExpressionCondition(expression))
 }
 
 // OnMatches 设置一个 functionCondition
-func (c *conditional) OnMatches(fn ConditionFunc) *conditional {
+func (c *Conditional) OnMatches(fn ConditionFunc) *Conditional {
 	return c.OnCondition(NewFunctionCondition(fn))
+}
+
+// OnProfile 设置一个 profileCondition
+func (c *Conditional) OnProfile(profile string) *Conditional {
+	return c.OnCondition(NewProfileCondition(profile))
 }

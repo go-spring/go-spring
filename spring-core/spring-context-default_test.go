@@ -756,7 +756,10 @@ func TestDefaultSpringContext_Profile(t *testing.T) {
 	t.Run("bean:test_ctx:", func(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.RegisterBean(&BeanZero{5}).Profile("test")
+		ctx.RegisterBean(&BeanZero{5}).
+			ConditionOnProfile("test").
+			And().
+			ConditionOnMissingBean("null")
 		ctx.AutoWireBeans()
 
 		var b *BeanZero
@@ -768,7 +771,7 @@ func TestDefaultSpringContext_Profile(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
 		ctx.SetProfile("test")
-		ctx.RegisterBean(&BeanZero{5}).Profile("test")
+		ctx.RegisterBean(&BeanZero{5}).ConditionOnProfile("test")
 		ctx.AutoWireBeans()
 
 		var b *BeanZero
@@ -780,7 +783,7 @@ func TestDefaultSpringContext_Profile(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
 		ctx.SetProfile("stable")
-		ctx.RegisterBean(&BeanZero{5}).Profile("test")
+		ctx.RegisterBean(&BeanZero{5}).ConditionOnProfile("test")
 		ctx.AutoWireBeans()
 
 		var b *BeanZero
@@ -884,10 +887,20 @@ func TestDefaultProperties_WireFunc(t *testing.T) {
 func TestDefaultSpringContext_ConditionOnBean(t *testing.T) {
 	ctx := SpringCore.NewDefaultSpringContext()
 
-	c := SpringCore.NewConstriction().ConditionOnMissingProperty("Null")
+	c := SpringCore.NewConditional().
+		OnMissingProperty("Null").
+		Or().
+		OnProfile("test")
 
-	ctx.RegisterBean(&BeanZero{5}).Apply(c)
-	ctx.RegisterBean(new(BeanOne)).Apply(c)
+	ctx.RegisterBean(&BeanZero{5}).
+		ConditionOn(c).
+		And().
+		ConditionOnMissingBean("null")
+
+	ctx.RegisterBean(new(BeanOne)).
+		ConditionOn(c).
+		And().
+		ConditionOnMissingBean("null")
 
 	ctx.RegisterBean(new(BeanTwo)).ConditionOnBean("*SpringCore_test.BeanOne")
 	ctx.RegisterNameBean("another_two", new(BeanTwo)).ConditionOnBean("Null")
@@ -1281,7 +1294,7 @@ func TestOptionConstructorArg(t *testing.T) {
 	})
 
 	t.Run("option withClassName Apply", func(t *testing.T) {
-		c := SpringCore.NewConstriction().ConditionOnProperty("class_name_enable")
+		c := SpringCore.NewConditional().OnProperty("class_name_enable")
 
 		ctx := SpringCore.NewDefaultSpringContext()
 		ctx.SetProperty("president", "CaiYuanPei")
@@ -1289,7 +1302,7 @@ func TestOptionConstructorArg(t *testing.T) {
 			SpringCore.NewOptionArg(withClassName,
 				"${class_name:=二年级03班}",
 				"${class_floor:=3}",
-			).Apply(c),
+			).ConditionOn(c),
 		)
 		ctx.AutoWireBeans()
 
@@ -1531,4 +1544,24 @@ func TestDefaultSpringContext_ChainConditionOnBean(t *testing.T) {
 		ctx.AutoWireBeans()
 		assert.Equal(t, len(ctx.GetAllBeanDefinitions()), 0)
 	}
+}
+
+type CircleA struct {
+	B *CircleB `autowire:""`
+}
+
+type CircleB struct {
+	C *CircleC `autowire:""`
+}
+
+type CircleC struct {
+	A *CircleA `autowire:""`
+}
+
+func TestDefaultSpringContext_CircleAutowire(t *testing.T) {
+	ctx := SpringCore.NewDefaultSpringContext()
+	ctx.RegisterBean(new(CircleA))
+	ctx.RegisterBean(new(CircleB))
+	ctx.RegisterBean(new(CircleC))
+	ctx.AutoWireBeans()
 }

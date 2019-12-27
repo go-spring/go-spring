@@ -33,13 +33,14 @@ type Mapping struct {
 	ports []int  // 允许注册到哪些端口上
 	doc   string // 接口的说明文档
 
-	SpringCore.Constriction
+	*SpringCore.Conditional // 判断条件
 }
 
 // 构造函数
 func NewMapping(mapper SpringWeb.Mapper) *Mapping {
 	return &Mapping{
-		Mapper: mapper,
+		Mapper:      mapper,
+		Conditional: SpringCore.NewConditional(),
 	}
 }
 
@@ -73,57 +74,69 @@ func (m *Mapping) SetFilterNames(filterNames ...string) {
 	m.filterNames = filterNames
 }
 
+// Or c=a||b
+func (m *Mapping) Or() *Mapping {
+	m.Conditional.Or()
+	return m
+}
+
+// And c=a&&b
+func (m *Mapping) And() *Mapping {
+	m.Conditional.And()
+	return m
+}
+
 // 设置一个 Condition
 func (m *Mapping) ConditionOn(cond SpringCore.Condition) *Mapping {
-	m.Constriction.ConditionOn(cond)
+	m.Conditional.OnCondition(cond)
 	return m
 }
 
 // 设置一个 PropertyCondition
 func (m *Mapping) ConditionOnProperty(name string) *Mapping {
-	m.Constriction.ConditionOnProperty(name)
+	m.Conditional.OnProperty(name)
 	return m
 }
 
 // 设置一个 MissingPropertyCondition
 func (m *Mapping) ConditionOnMissingProperty(name string) *Mapping {
-	m.Constriction.ConditionOnMissingProperty(name)
+	m.Conditional.OnMissingProperty(name)
 	return m
 }
 
 // 设置一个 PropertyValueCondition
 func (m *Mapping) ConditionOnPropertyValue(name string, havingValue interface{}) *Mapping {
-	m.Constriction.ConditionOnPropertyValue(name, havingValue)
+	m.Conditional.OnPropertyValue(name, havingValue)
 	return m
 }
 
 // 设置一个 BeanCondition
 func (m *Mapping) ConditionOnBean(beanId string) *Mapping {
-	m.Constriction.ConditionOnBean(beanId)
+	m.Conditional.OnBean(beanId)
 	return m
 }
 
 // 设置一个 MissingBeanCondition
 func (m *Mapping) ConditionOnMissingBean(beanId string) *Mapping {
-	m.Constriction.ConditionOnMissingBean(beanId)
+	m.Conditional.OnMissingBean(beanId)
 	return m
 }
 
 // 设置一个 ExpressionCondition
 func (m *Mapping) ConditionOnExpression(expression string) *Mapping {
-	m.Constriction.ConditionOnExpression(expression)
+	m.Conditional.OnExpression(expression)
 	return m
 }
 
 // 设置一个 FunctionCondition
 func (m *Mapping) ConditionOnMatches(fn SpringCore.ConditionFunc) *Mapping {
-	m.Constriction.ConditionOnMatches(fn)
+	m.Conditional.OnMatches(fn)
 	return m
 }
 
-// 设置 bean 的运行环境
-func (m *Mapping) Profile(profile string) *Mapping {
-	m.Constriction.Profile(profile)
+// ConditionOnProfile 设置一个 ProfileCondition
+func (m *Mapping) ConditionOnProfile(profile string) *Mapping {
+	m.Conditional.OnProfile(profile)
 	return m
 }
 
