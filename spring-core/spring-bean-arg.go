@@ -106,10 +106,14 @@ func getArgValue(ctx SpringContext, v reflect.Value, tag string) {
 
 // Get 获取函数参数的绑定值
 func (ca *fnStringBindingArg) Get(ctx SpringContext, fnType reflect.Type) []reflect.Value {
+
+	numIn := fnType.NumIn()
+	variadic := fnType.IsVariadic() // 可变参数
 	args := make([]reflect.Value, 0)
+
 	for i, tags := range ca.fnTags {
 		it := fnType.In(i)
-		if len(tags) < 2 {
+		if i < numIn-1 || (i == numIn-1 && !variadic) {
 			iv := reflect.New(it).Elem()
 			if len(tags) == 0 {
 				getArgValue(ctx, iv, "")
@@ -126,6 +130,7 @@ func (ca *fnStringBindingArg) Get(ctx SpringContext, fnType reflect.Type) []refl
 			}
 		}
 	}
+
 	return args
 }
 
