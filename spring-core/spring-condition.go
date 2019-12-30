@@ -189,24 +189,24 @@ func (c *profileCondition) Matches(ctx SpringContext) bool {
 	return true
 }
 
-// CondOperator conditionNode 的计算方式
-type CondOperator int
+// ConditionOp conditionNode 的计算方式
+type ConditionOp int
 
 const (
-	ConditionDefault = CondOperator(0) // 默认值
-	ConditionOr      = CondOperator(1) // 或
-	ConditionAnd     = CondOperator(2) // 且
-	ConditionNone    = CondOperator(3) // 非
+	ConditionDefault = ConditionOp(0) // 默认值
+	ConditionOr      = ConditionOp(1) // 或
+	ConditionAnd     = ConditionOp(2) // 且
+	ConditionNone    = ConditionOp(3) // 非
 )
 
 // conditions 基于条件组的 Condition 实现
 type conditions struct {
-	op   CondOperator
+	op   ConditionOp
 	cond []Condition
 }
 
 // NewConditions conditions 的构造函数
-func NewConditions(op CondOperator, cond ...Condition) *conditions {
+func NewConditions(op ConditionOp, cond ...Condition) *conditions {
 	return &conditions{
 		op:   op,
 		cond: cond,
@@ -250,7 +250,7 @@ func (c *conditions) Matches(ctx SpringContext) bool {
 // conditionNode Condition 计算式的节点
 type conditionNode struct {
 	next *conditionNode // 下一个计算节点
-	op   CondOperator   // 计算方式
+	op   ConditionOp    // 计算方式
 	cond Condition      // 条件
 }
 

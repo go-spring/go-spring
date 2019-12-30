@@ -1591,3 +1591,49 @@ func TestDefaultSpringContext_CircleAutowire(t *testing.T) {
 	ctx.RegisterBean(new(CircleC))
 	ctx.AutoWireBeans()
 }
+
+type Var struct {
+	name string
+}
+
+type VarOption struct {
+	v []*Var
+}
+
+type VarOptionFunc func(opt *VarOption)
+
+func withVar(v ...*Var) VarOptionFunc {
+	return func(opt *VarOption) {
+		opt.v = v
+	}
+}
+
+type VarObj struct {
+	v []*Var
+}
+
+func NewVarObj(options ...VarOptionFunc) *VarObj {
+	opt := new(VarOption)
+	for _, option := range options {
+		option(opt)
+	}
+	return &VarObj{opt.v}
+}
+
+func TestDefaultSpringContext_RegisterBean(t *testing.T) {
+
+	ctx := SpringCore.NewDefaultSpringContext()
+	ctx.RegisterNameBean("v1", &Var{"v1"})
+	ctx.RegisterNameBean("v2", &Var{"v2"})
+	ctx.RegisterBeanFn(NewVarObj).Options(
+		SpringCore.NewOptionArg(withVar, "v1", "v2"),
+	)
+	ctx.AutoWireBeans()
+
+	var obj *VarObj
+	ctx.GetBean(&obj)
+
+	assert.Equal(t, len(obj.v), 2)
+	assert.Equal(t, obj.v[0].name, "v1")
+	assert.Equal(t, obj.v[1].name, "v2")
+}

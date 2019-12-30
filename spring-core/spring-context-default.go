@@ -25,8 +25,8 @@ import (
 
 // beanKey Bean's unique key, type+name.
 type beanKey struct {
-	Type reflect.Type
-	Name string
+	rType reflect.Type
+	name  string
 }
 
 // beanCacheItem BeanCache's item.
@@ -34,30 +34,30 @@ type beanCacheItem struct {
 	// Different typed beans implemented same interface maybe
 	// have same name, so name can't be a map's key. therefor
 	// we use a list to store the cached beans.
-	Named []*BeanDefinition
+	named []*BeanDefinition
 
 	// 收集模式得到的 Bean 列表，一个类型只需收集一次。
-	Collect reflect.Value
+	collect reflect.Value
 }
 
 // newBeanCacheItem beanCacheItem 的构造函数
 func newBeanCacheItem() *beanCacheItem {
 	return &beanCacheItem{
-		Named: make([]*BeanDefinition, 0),
+		named: make([]*BeanDefinition, 0),
 	}
 }
 
 // Store 将一个 Bean 存储到 CachedBeanMapItem 里
-func (item *beanCacheItem) Store(d *BeanDefinition) {
+func (item *beanCacheItem) store(d *BeanDefinition) {
 	if d.name == "" {
 		panic(errors.New("bean must have name"))
 	}
-	item.Named = append(item.Named, d)
+	item.named = append(item.named, d)
 }
 
 // StoreCollect 将收集到的 Bean 列表的值存储到 CachedBeanMapItem 里
-func (item *beanCacheItem) StoreCollect(v reflect.Value) {
-	item.Collect = v
+func (item *beanCacheItem) storeCollect(v reflect.Value) {
+	item.collect = v
 }
 
 // wiringItem wiringStack 的 Item
@@ -191,8 +191,8 @@ func (ctx *defaultSpringContext) registerBeanDefinition(d *BeanDefinition) {
 	}
 
 	k := beanKey{
-		Type: d.Type(),
-		Name: d.name,
+		rType: d.Type(),
+		name:  d.name,
 	}
 
 	if _, ok := ctx.beanMap[k]; ok {
@@ -313,7 +313,7 @@ func (ctx *defaultSpringContext) getBeanValue(beanId string, parentValue reflect
 
 		for _, bean := range ctx.beanMap {
 			if found(bean) {
-				m.Store(bean)
+				m.store(bean)
 				if bean.Match(typeName, beanName) {
 					result = append(result, bean)
 				}
@@ -322,7 +322,7 @@ func (ctx *defaultSpringContext) getBeanValue(beanId string, parentValue reflect
 
 	} else { // 命中缓存，则从缓存中查询
 
-		for _, bean := range m.Named {
+		for _, bean := range m.named {
 			if found(bean) && bean.Match(typeName, beanName) {
 				result = append(result, bean)
 			}
@@ -363,7 +363,7 @@ func (ctx *defaultSpringContext) collectBeans(v reflect.Value) bool {
 	m, ok := ctx.findCacheItem(t)
 
 	// 未命中缓存，或者还没有收集到数据，则从注册列表里面查询，并更新缓存
-	if !ok || !m.Collect.IsValid() {
+	if !ok || !m.collect.IsValid() {
 
 		// 创建一个空数组
 		ev := reflect.New(t).Elem()
@@ -406,7 +406,7 @@ func (ctx *defaultSpringContext) collectBeans(v reflect.Value) bool {
 		}
 
 		// 把查询结果缓存起来
-		m.StoreCollect(ev)
+		m.storeCollect(ev)
 
 		// 给外面的数组赋值
 		if ev.Len() > 0 {
@@ -418,8 +418,8 @@ func (ctx *defaultSpringContext) collectBeans(v reflect.Value) bool {
 
 	// 命中缓存，则从缓存中查询
 
-	if m.Collect.Len() > 0 {
-		v.Set(m.Collect)
+	if m.collect.Len() > 0 {
+		v.Set(m.collect)
 		return true
 	}
 	return false
@@ -476,7 +476,7 @@ func (ctx *defaultSpringContext) resolveBean(beanDefinition *BeanDefinition) {
 	beanDefinition.status = beanStatus_Resolving
 
 	// 如果是成员方法 Bean，需要首先决议它的父 Bean 是否能实例化
-	if mBean, ok := beanDefinition.SpringBean.(*methodBean); ok {
+	if mBean, ok := beanDefinition.bean.(*methodBean); ok {
 		ctx.resolveBean(mBean.parent)
 
 		// 父 Bean 已经被删除了，子 Bean 也不应该存在
@@ -498,7 +498,7 @@ func (ctx *defaultSpringContext) resolveBean(beanDefinition *BeanDefinition) {
 	// 将符合注册条件的 Bean 放入到缓存里面
 	fmt.Printf("register bean \"%s\" %s:%d\n", beanDefinition.BeanId(), beanDefinition.file, beanDefinition.line)
 	item, _ := ctx.findCacheItem(beanDefinition.Type())
-	item.Store(beanDefinition)
+	item.store(beanDefinition)
 
 	beanDefinition.status = beanStatus_Resolved
 }
@@ -547,7 +547,7 @@ func (ctx *defaultSpringContext) wireBeanDefinition(beanDefinition *BeanDefiniti
 
 	// 是否循环依赖
 	if beanDefinition.status == beanStatus_Wiring {
-		if _, ok := beanDefinition.SpringBean.(*originalBean); !ok {
+		if _, ok := beanDefinition.bean.(*originalBean); !ok {
 			ctx.wiringStack.panic(beanDefinition)
 		}
 		return
@@ -573,11 +573,11 @@ func (ctx *defaultSpringContext) wireBeanDefinition(beanDefinition *BeanDefiniti
 	}
 
 	// 如果是成员方法 Bean，需要首先初始化它的父 Bean
-	if mBean, ok := beanDefinition.SpringBean.(*methodBean); ok {
+	if mBean, ok := beanDefinition.bean.(*methodBean); ok {
 		ctx.wireBeanDefinition(mBean.parent)
 	}
 
-	switch beanDefinition.SpringBean.(type) {
+	switch beanDefinition.bean.(type) {
 	case *originalBean: // 原始对象
 		ctx.wireOriginalBean(beanDefinition)
 	case *constructorBean: // 构造函数
@@ -667,14 +667,14 @@ func (ctx *defaultSpringContext) wireOriginalBean(beanDefinition *BeanDefinition
 
 // wireConstructorBean 对构造函数 Bean 进行注入
 func (ctx *defaultSpringContext) wireConstructorBean(beanDefinition *BeanDefinition) {
-	bean := beanDefinition.SpringBean.(*constructorBean)
+	bean := beanDefinition.bean.(*constructorBean)
 	ctx.wireFunctionBean(&bean.functionBean, beanDefinition)
 	fmt.Printf("success wire constructor bean \"%s\"\n", beanDefinition.BeanId())
 }
 
 // wireMethodBean 对成员方法 Bean 进行注入
 func (ctx *defaultSpringContext) wireMethodBean(beanDefinition *BeanDefinition) {
-	bean := beanDefinition.SpringBean.(*methodBean)
+	bean := beanDefinition.bean.(*methodBean)
 	ctx.wireFunctionBean(&bean.functionBean, beanDefinition)
 	fmt.Printf("success wire method bean \"%s\"\n", beanDefinition.BeanId())
 }

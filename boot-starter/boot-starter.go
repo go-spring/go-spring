@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"syscall"
 
 	"github.com/go-spring/go-spring-parent/spring-utils"
 )
@@ -48,7 +47,7 @@ func Run(runner AppRunner) {
 	// 响应控制台的 Ctrl+C 及 kill 命令。
 	go func() {
 		sig := make(chan os.Signal, 1)
-		signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+		signal.Notify(sig, os.Interrupt, os.Kill)
 		<-sig
 		fmt.Println("got signal, program will exit")
 		Exit()

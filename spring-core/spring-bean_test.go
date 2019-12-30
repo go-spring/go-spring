@@ -17,6 +17,7 @@
 package SpringCore_test
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"reflect"
@@ -31,6 +32,7 @@ import (
 func TestBeanDefinition_Match(t *testing.T) {
 
 	bd := SpringCore.ToBeanDefinition("", new(int))
+	fmt.Println(bd.Caller())
 
 	ok := bd.Match("int", "*int")
 	assert.Equal(t, ok, true)
@@ -42,6 +44,7 @@ func TestBeanDefinition_Match(t *testing.T) {
 	assert.Equal(t, ok, true)
 
 	bd = SpringCore.ToBeanDefinition("i", new(int))
+	fmt.Println(bd.Caller())
 
 	ok = bd.Match("int", "i")
 	assert.Equal(t, ok, true)
@@ -53,6 +56,7 @@ func TestBeanDefinition_Match(t *testing.T) {
 	assert.Equal(t, ok, true)
 
 	bd = SpringCore.ToBeanDefinition("", new(pkg2.SamePkg))
+	fmt.Println(bd.Caller())
 
 	ok = bd.Match("github.com/go-spring/go-spring/spring-core/testdata/pkg/foo/pkg.SamePkg", "*pkg.SamePkg")
 	assert.Equal(t, ok, true)
@@ -64,6 +68,7 @@ func TestBeanDefinition_Match(t *testing.T) {
 	assert.Equal(t, ok, true)
 
 	bd = SpringCore.ToBeanDefinition("pkg2", new(pkg2.SamePkg))
+	fmt.Println(bd.Caller())
 
 	ok = bd.Match("github.com/go-spring/go-spring/spring-core/testdata/pkg/foo/pkg.SamePkg", "pkg2")
 	assert.Equal(t, ok, true)

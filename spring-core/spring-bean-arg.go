@@ -95,33 +95,37 @@ func newFnStringBindingArg(fnType reflect.Type, tags []string) *fnStringBindingA
 	return &fnStringBindingArg{fnTags}
 }
 
+// getArgValue 获取绑定参数值
+func getArgValue(ctx SpringContext, v reflect.Value, tag string) {
+	if strings.HasPrefix(tag, "$") {
+		bindStructField(ctx, v.Type(), v, "", "", tag)
+	} else {
+		ctx.GetBeanValue(tag, v)
+	}
+}
+
 // Get 获取函数参数的绑定值
 func (ca *fnStringBindingArg) Get(ctx SpringContext, fnType reflect.Type) []reflect.Value {
 	args := make([]reflect.Value, 0)
-
-	f := func(it reflect.Type, tag string) {
-		iv := reflect.New(it).Elem()
-
-		if strings.HasPrefix(tag, "$") {
-			bindStructField(ctx, it, iv, "", "", tag)
-		} else {
-			ctx.GetBeanValue(tag, iv, )
-		}
-
-		args = append(args, iv)
-	}
-
 	for i, tags := range ca.fnTags {
 		it := fnType.In(i)
-		if len(tags) == 0 {
-			f(it, "")
+		if len(tags) < 2 {
+			iv := reflect.New(it).Elem()
+			if len(tags) == 0 {
+				getArgValue(ctx, iv, "")
+			} else {
+				getArgValue(ctx, iv, tags[0])
+			}
+			args = append(args, iv)
 		} else {
+			et := it.Elem()
 			for _, tag := range tags {
-				f(it, tag)
+				ev := reflect.New(et).Elem()
+				getArgValue(ctx, ev, tag)
+				args = append(args, ev)
 			}
 		}
 	}
-
 	return args
 }
 
@@ -143,7 +147,7 @@ func (ca *fnOptionBindingArg) Get(ctx SpringContext, _ reflect.Type) []reflect.V
 
 // optionArg Option 函数的绑定参数
 type optionArg struct {
-	*Conditional // 判断条件
+	cond *Conditional // 判断条件
 
 	fn  interface{}
 	arg fnBindingArg
@@ -174,75 +178,75 @@ func NewOptionArg(fn interface{}, tags ...string) *optionArg {
 	}
 
 	return &optionArg{
-		Conditional: NewConditional(),
-		fn:          fn,
-		arg:         newFnStringBindingArg(fnType, tags),
+		cond: NewConditional(),
+		fn:   fn,
+		arg:  newFnStringBindingArg(fnType, tags),
 	}
 }
 
 // Or c=a||b
 func (arg *optionArg) Or() *optionArg {
-	arg.Conditional.Or()
+	arg.cond.Or()
 	return arg
 }
 
 // And c=a&&b
 func (arg *optionArg) And() *optionArg {
-	arg.Conditional.And()
+	arg.cond.And()
 	return arg
 }
 
 // ConditionOn 为 optionArg 设置一个 Condition
 func (arg *optionArg) ConditionOn(cond Condition) *optionArg {
-	arg.Conditional.OnCondition(cond)
+	arg.cond.OnCondition(cond)
 	return arg
 }
 
 // ConditionOnProperty 为 optionArg 设置一个 PropertyCondition
 func (arg *optionArg) ConditionOnProperty(name string) *optionArg {
-	arg.Conditional.OnProperty(name)
+	arg.cond.OnProperty(name)
 	return arg
 }
 
 // ConditionOnMissingProperty 为 optionArg 设置一个 MissingPropertyCondition
 func (arg *optionArg) ConditionOnMissingProperty(name string) *optionArg {
-	arg.Conditional.OnMissingProperty(name)
+	arg.cond.OnMissingProperty(name)
 	return arg
 }
 
 // ConditionOnPropertyValue 为 optionArg 设置一个 PropertyValueCondition
 func (arg *optionArg) ConditionOnPropertyValue(name string, havingValue interface{}) *optionArg {
-	arg.Conditional.OnPropertyValue(name, havingValue)
+	arg.cond.OnPropertyValue(name, havingValue)
 	return arg
 }
 
 // ConditionOnBean 为 optionArg 设置一个 BeanCondition
 func (arg *optionArg) ConditionOnBean(beanId string) *optionArg {
-	arg.Conditional.OnBean(beanId)
+	arg.cond.OnBean(beanId)
 	return arg
 }
 
 // ConditionOnMissingBean 为 optionArg 设置一个 MissingBeanCondition
 func (arg *optionArg) ConditionOnMissingBean(beanId string) *optionArg {
-	arg.Conditional.OnMissingBean(beanId)
+	arg.cond.OnMissingBean(beanId)
 	return arg
 }
 
 // ConditionOnExpression 为 optionArg 设置一个 ExpressionCondition
 func (arg *optionArg) ConditionOnExpression(expression string) *optionArg {
-	arg.Conditional.OnExpression(expression)
+	arg.cond.OnExpression(expression)
 	return arg
 }
 
 // ConditionOnMatches 为 optionArg 设置一个 FunctionCondition
 func (arg *optionArg) ConditionOnMatches(fn ConditionFunc) *optionArg {
-	arg.Conditional.OnMatches(fn)
+	arg.cond.OnMatches(fn)
 	return arg
 }
 
-// OnProfile 设置一个 ProfileCondition
-func (arg *optionArg) OnProfile(profile string) *optionArg {
-	arg.Conditional.OnProperty(profile)
+// ConditionOnProfile 设置一个 ProfileCondition
+func (arg *optionArg) ConditionOnProfile(profile string) *optionArg {
+	arg.cond.OnProperty(profile)
 	return arg
 }
 
@@ -250,7 +254,7 @@ func (arg *optionArg) OnProfile(profile string) *optionArg {
 func (arg *optionArg) call(ctx SpringContext) reflect.Value {
 
 	// 判断 Option 条件是否成立
-	if ok := arg.Conditional.Matches(ctx); !ok {
+	if ok := arg.cond.Matches(ctx); !ok {
 		return reflect.Value{}
 	}
 

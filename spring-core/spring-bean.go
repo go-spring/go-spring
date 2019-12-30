@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"reflect"
 	"runtime"
+	"strconv"
 	"strings"
 )
 
@@ -278,16 +279,16 @@ const (
 
 // BeanDefinition Bean 的详细定义
 type BeanDefinition struct {
-	SpringBean        // 源
+	bean   SpringBean // 源
 	name   string     // 名称
 	status beanStatus // 状态
-	file   string     // 注册点所在文件
-	line   int        // 注册点所在行数
 
-	*Conditional // 判断条件
+	file string // 注册点所在文件
+	line int    // 注册点所在行数
 
-	primary   bool     // 主版本
-	dependsOn []string // 非直接依赖
+	cond      *Conditional // 判断条件
+	primary   bool         // 主版本
+	dependsOn []string     // 非直接依赖
 
 	initFunc interface{} // 绑定结束的回调
 }
@@ -301,9 +302,9 @@ func newBeanDefinition(bean SpringBean, name string) *BeanDefinition {
 	)
 
 	// 获取注册点信息
-	for i := 3; i < 10; i++ {
+	for i := 2; i < 10; i++ {
 		_, file0, line0, _ := runtime.Caller(i)
-		if !strings.Contains(file, "/go-spring/go-spring/spring-") || strings.HasSuffix(file, "_test.go") {
+		if !strings.Contains(file0, "/go-spring/go-spring/spring-") || strings.HasSuffix(file0, "_test.go") {
 			file = file0
 			line = line0
 			break
@@ -315,13 +316,33 @@ func newBeanDefinition(bean SpringBean, name string) *BeanDefinition {
 	}
 
 	return &BeanDefinition{
-		SpringBean:  bean,
-		name:        name,
-		status:      beanStatus_Default,
-		file:        file,
-		line:        line,
-		Conditional: NewConditional(),
+		bean:   bean,
+		name:   name,
+		status: beanStatus_Default,
+		file:   file,
+		line:   line,
+		cond:   NewConditional(),
 	}
+}
+
+// Bean 返回 Bean 的源
+func (d *BeanDefinition) Bean() interface{} {
+	return d.bean.Bean()
+}
+
+// Type 返回 Bean 的类型
+func (d *BeanDefinition) Type() reflect.Type {
+	return d.bean.Type()
+}
+
+// Value 返回 Bean 的值
+func (d *BeanDefinition) Value() reflect.Value {
+	return d.bean.Value()
+}
+
+// TypeName 返回 Bean 的原始类型的全限定名
+func (d *BeanDefinition) TypeName() string {
+	return d.bean.TypeName()
 }
 
 // Name 返回 Bean 的名称
@@ -332,6 +353,11 @@ func (d *BeanDefinition) Name() string {
 // BeanId 返回 Bean 的 BeanId
 func (d *BeanDefinition) BeanId() string {
 	return d.TypeName() + ":" + d.name
+}
+
+// Caller 返回 Bean 的调用点
+func (d *BeanDefinition) Caller() string {
+	return d.file + ":" + strconv.Itoa(d.line)
 }
 
 // Match 测试 Bean 的类型全限定名和 Bean 的名称是否都匹配
@@ -352,74 +378,79 @@ func (d *BeanDefinition) Match(typeName string, beanName string) bool {
 
 // Or c=a||b
 func (d *BeanDefinition) Or() *BeanDefinition {
-	d.Conditional.Or()
+	d.cond.Or()
 	return d
 }
 
 // And c=a&&b
 func (d *BeanDefinition) And() *BeanDefinition {
-	d.Conditional.And()
+	d.cond.And()
 	return d
 }
 
 // ConditionOn 为 Bean 设置一个 Condition
 func (d *BeanDefinition) ConditionOn(cond Condition) *BeanDefinition {
-	d.Conditional.OnCondition(cond)
+	d.cond.OnCondition(cond)
 	return d
 }
 
 // ConditionOnProperty 为 Bean 设置一个 PropertyCondition
 func (d *BeanDefinition) ConditionOnProperty(name string) *BeanDefinition {
-	d.Conditional.OnProperty(name)
+	d.cond.OnProperty(name)
 	return d
 }
 
 // ConditionOnMissingProperty 为 Bean 设置一个 MissingPropertyCondition
 func (d *BeanDefinition) ConditionOnMissingProperty(name string) *BeanDefinition {
-	d.Conditional.OnMissingProperty(name)
+	d.cond.OnMissingProperty(name)
 	return d
 }
 
 // ConditionOnPropertyValue 为 Bean 设置一个 PropertyValueCondition
 func (d *BeanDefinition) ConditionOnPropertyValue(name string, havingValue interface{}) *BeanDefinition {
-	d.Conditional.OnPropertyValue(name, havingValue)
+	d.cond.OnPropertyValue(name, havingValue)
 	return d
 }
 
 // ConditionOnBean 为 Bean 设置一个 BeanCondition
 func (d *BeanDefinition) ConditionOnBean(beanId string) *BeanDefinition {
-	d.Conditional.OnBean(beanId)
+	d.cond.OnBean(beanId)
 	return d
 }
 
 // ConditionOnMissingBean 为 Bean 设置一个 MissingBeanCondition
 func (d *BeanDefinition) ConditionOnMissingBean(beanId string) *BeanDefinition {
-	d.Conditional.OnMissingBean(beanId)
+	d.cond.OnMissingBean(beanId)
 	return d
 }
 
 // ConditionOnExpression 为 Bean 设置一个 ExpressionCondition
 func (d *BeanDefinition) ConditionOnExpression(expression string) *BeanDefinition {
-	d.Conditional.OnExpression(expression)
+	d.cond.OnExpression(expression)
 	return d
 }
 
 // ConditionOnMatches 为 Bean 设置一个 FunctionCondition
 func (d *BeanDefinition) ConditionOnMatches(fn ConditionFunc) *BeanDefinition {
-	d.Conditional.OnMatches(fn)
+	d.cond.OnMatches(fn)
 	return d
 }
 
 // ConditionOnProfile 为 Bean 设置一个 ProfileCondition
 func (d *BeanDefinition) ConditionOnProfile(profile string) *BeanDefinition {
-	d.Conditional.OnProfile(profile)
+	d.cond.OnProfile(profile)
 	return d
+}
+
+// Matches 成功返回 true，失败返回 false
+func (d *BeanDefinition) Matches(ctx SpringContext) bool {
+	return d.cond.Matches(ctx)
 }
 
 // Options 设置 Option 模式函数的参数绑定
 func (d *BeanDefinition) Options(options ...*optionArg) *BeanDefinition {
 	arg := &fnOptionBindingArg{options}
-	switch bean := d.SpringBean.(type) {
+	switch bean := d.bean.(type) {
 	case *constructorBean:
 		bean.arg = arg
 	case *methodBean:
