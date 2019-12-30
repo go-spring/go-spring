@@ -1620,20 +1620,21 @@ func NewVarObj(options ...VarOptionFunc) *VarObj {
 	return &VarObj{opt.v}
 }
 
-func TestDefaultSpringContext_RegisterBean(t *testing.T) {
+func TestDefaultSpringContext_RegisterOptionBean(t *testing.T) {
+	t.Run("variadic option param", func(t *testing.T) {
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterNameBean("v1", &Var{"v1"})
+		ctx.RegisterNameBean("v2", &Var{"v2"})
+		ctx.RegisterBeanFn(NewVarObj).Options(
+			SpringCore.NewOptionArg(withVar, "v1", "v2"),
+		)
+		ctx.AutoWireBeans()
 
-	ctx := SpringCore.NewDefaultSpringContext()
-	ctx.RegisterNameBean("v1", &Var{"v1"})
-	ctx.RegisterNameBean("v2", &Var{"v2"})
-	ctx.RegisterBeanFn(NewVarObj).Options(
-		SpringCore.NewOptionArg(withVar, "v1", "v2"),
-	)
-	ctx.AutoWireBeans()
+		var obj *VarObj
+		ctx.GetBean(&obj)
 
-	var obj *VarObj
-	ctx.GetBean(&obj)
-
-	assert.Equal(t, len(obj.v), 2)
-	assert.Equal(t, obj.v[0].name, "v1")
-	assert.Equal(t, obj.v[1].name, "v2")
+		assert.Equal(t, len(obj.v), 2)
+		assert.Equal(t, obj.v[0].name, "v1")
+		assert.Equal(t, obj.v[1].name, "v2")
+	})
 }
