@@ -304,7 +304,7 @@ func newBeanDefinition(bean SpringBean, name string) *BeanDefinition {
 	// 获取注册点信息
 	for i := 2; i < 10; i++ {
 		_, file0, line0, _ := runtime.Caller(i)
-		if !strings.Contains(file0, "/go-spring/go-spring/spring-") || strings.HasSuffix(file0, "_test.go") {
+		if !strings.Contains(file0, "/spring-core/") || strings.HasSuffix(file0, "_test.go") {
 			file = file0
 			line = line0
 			break

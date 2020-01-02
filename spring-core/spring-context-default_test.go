@@ -1592,6 +1592,30 @@ func TestDefaultSpringContext_CircleAutowire(t *testing.T) {
 	ctx.AutoWireBeans()
 }
 
+type VarInterfaceOptionFunc func(opt *VarInterfaceOption)
+
+type VarInterfaceOption struct {
+	v []interface{}
+}
+
+func withVarInterface(v ...interface{}) VarInterfaceOptionFunc {
+	return func(opt *VarInterfaceOption) {
+		opt.v = v
+	}
+}
+
+type VarInterfaceObj struct {
+	v []interface{}
+}
+
+func NewVarInterfaceObj(options ...VarInterfaceOptionFunc) *VarInterfaceObj {
+	opt := new(VarInterfaceOption)
+	for _, option := range options {
+		option(opt)
+	}
+	return &VarInterfaceObj{opt.v}
+}
+
 type Var struct {
 	name string
 }
@@ -1653,5 +1677,35 @@ func TestDefaultSpringContext_RegisterOptionBean(t *testing.T) {
 		assert.Equal(t, len(obj.v), 2)
 		assert.Equal(t, obj.v[0].name, "v1")
 		assert.Equal(t, obj.v[1].name, "v2")
+	})
+
+	t.Run("variadic option interface param 1", func(t *testing.T) {
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterNameBean("v1", &Var{"v1"})
+		ctx.RegisterNameBean("v2", &Var{"v2"})
+		ctx.RegisterBeanFn(NewVarInterfaceObj).Options(
+			SpringCore.NewOptionArg(withVarInterface, "v1"),
+		)
+		ctx.AutoWireBeans()
+
+		var obj *VarInterfaceObj
+		ctx.GetBean(&obj)
+
+		assert.Equal(t, len(obj.v), 1)
+	})
+
+	t.Run("variadic option interface param 1", func(t *testing.T) {
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterNameBean("v1", &Var{"v1"})
+		ctx.RegisterNameBean("v2", &Var{"v2"})
+		ctx.RegisterBeanFn(NewVarInterfaceObj).Options(
+			SpringCore.NewOptionArg(withVarInterface, "v1", "v2"),
+		)
+		ctx.AutoWireBeans()
+
+		var obj *VarInterfaceObj
+		ctx.GetBean(&obj)
+
+		assert.Equal(t, len(obj.v), 2)
 	})
 }

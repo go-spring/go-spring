@@ -479,3 +479,14 @@ func TestVariadicFunction(t *testing.T) {
 		reflect.ValueOf(4),
 	})
 }
+
+func TestNilRecover(t *testing.T) {
+
+	defer func() {
+		if err := recover(); err != nil {
+			fmt.Println(err)
+		}
+	}()
+
+	((*caller)(nil)).call()
+}
