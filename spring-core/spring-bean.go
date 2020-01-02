@@ -304,11 +304,24 @@ func newBeanDefinition(bean SpringBean, name string) *BeanDefinition {
 	// 获取注册点信息
 	for i := 2; i < 10; i++ {
 		_, file0, line0, _ := runtime.Caller(i)
-		if !strings.Contains(file0, "/spring-core/") || strings.HasSuffix(file0, "_test.go") {
-			file = file0
-			line = line0
-			break
+
+		// 排除 spring-core 包下面所有的非 test 文件
+		if strings.Contains(file0, "/spring-core/") {
+			if !strings.HasSuffix(file0, "_test.go") {
+				continue
+			}
 		}
+
+		// 排除 spring-boot 包下面的 spring-boot-singlet.go 文件
+		if strings.Contains(file0, "/spring-boot/") {
+			if strings.HasSuffix(file0, "spring-boot-singlet.go") {
+				continue
+			}
+		}
+
+		file = file0
+		line = line0
+		break
 	}
 
 	if name == "" { // 生成默认名称
