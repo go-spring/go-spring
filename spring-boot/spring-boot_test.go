@@ -29,7 +29,6 @@ import (
 	"github.com/go-spring/go-spring/spring-boot"
 	"github.com/go-spring/go-spring/spring-core"
 	_ "github.com/go-spring/go-spring/starter-echo"
-	_ "github.com/go-spring/go-spring/starter-web"
 )
 
 func init() {

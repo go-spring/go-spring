@@ -28,7 +28,7 @@ func init() {
 	SpringBoot.RegisterBean(new(WebServerStarter))
 }
 
-// Web 服务器配置
+// WebServerConfig Web 服务器配置
 type WebServerConfig struct {
 	EnableHTTP  bool   `value:"${web.server.enable:=true}"`      // 是否启用 HTTP
 	Port        int    `value:"${web.server.port:=8080}"`        // HTTP 端口
@@ -38,68 +38,32 @@ type WebServerConfig struct {
 	SSLKey      string `value:"${web.server.ssl.key:=}"`         // SSL 秘钥
 }
 
-// Web 容器启动器
+// WebServerStarter Web 容器启动器
 type WebServerStarter struct {
-	Config *WebServerConfig     `autowire:""`
-	Server *SpringWeb.WebServer `autowire:"?"`
+	WebServer *SpringWeb.WebServer `autowire:""`
 }
 
 func (starter *WebServerStarter) OnStartApplication(ctx SpringBoot.ApplicationContext) {
 
-	if starter.Server == nil { // 用户没有定制 Web 服务器
-		starter.Server = SpringWeb.NewWebServer()
-
-		// 启动 HTTP 容器
-		if starter.Config.EnableHTTP {
-			c := SpringWeb.WebContainerFactory()
-			c.SetPort(starter.Config.Port)
-			starter.Server.AddWebContainer(c)
-		}
-
-		// 启动 HTTPS 容器
-		if starter.Config.EnableHTTPS {
-			c := SpringWeb.WebContainerFactory()
-			c.SetCertFile(starter.Config.SSLCert)
-			c.SetKeyFile(starter.Config.SSLKey)
-			c.SetPort(starter.Config.SSLPort)
-			starter.Server.AddWebContainer(c)
-		}
-	}
-
-	for _, c := range starter.Server.Containers {
-		for _, mapping := range SpringBoot.UrlMapping {
-
-			mapper := mapping.Mapper
-			ports := mapping.Ports()
-
-			matches := func() bool {
-				for _, port := range ports {
-					for _, port0 := range c.GetPort() {
-						if port == port0 { // 端口匹配
-							return true
-						}
-					}
-				}
-				return false
-			}
-
-			if len(ports) == 0 || matches() {
+	for _, c := range starter.WebServer.Containers {
+		for _, mapping := range SpringBoot.DefaultWebMapping.Mappings {
+			if mapping.Port() == 0 || mapping.Port() == c.GetPort() {
 				if mapping.Matches(ctx) {
-					filters := mapper.Filters()
+					filters := mapping.Filters()
 					for _, s := range mapping.FilterNames() {
 						var f SpringWeb.Filter
 						ctx.GetBeanByName(s, &f)
 						filters = append(filters, f)
 					}
-					c.Mapping(mapper.Method(), mapper.Path(), mapper.Handler(), filters...)
+					c.Request(mapping.Method(), mapping.Path(), mapping.Handler(), filters...)
 				}
 			}
 		}
 	}
 
-	starter.Server.Start()
+	starter.WebServer.Start()
 }
 
 func (starter *WebServerStarter) OnStopApplication(ctx SpringBoot.ApplicationContext) {
-	starter.Server.Stop(context.TODO())
+	starter.WebServer.Stop(context.Background())
 }

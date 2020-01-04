@@ -35,6 +35,10 @@ github.com/go-spring/go-spring-parent v1.0.0-alpha.0.20200104113626-906f612af3e2
 github.com/go-spring/go-spring-parent v1.0.0-alpha.0.20200104113626-906f612af3e2/go.mod h1:Zg3ANEYjqeAW8UMbKy5qkPYklEsQkhR73SuJiiSi2IU=
 github.com/go-spring/go-spring-web v0.0.0-20191221095130-011bcfb7c6b6 h1:pf45cW7Pjs2bYoflgwI9z3jHLo8vXTlzjwLz7Ysr25Y=
 github.com/go-spring/go-spring-web v0.0.0-20191221095130-011bcfb7c6b6/go.mod h1:R8B0N8nPuYuqlrt/yphpJGLKlx5NUM7M5x9qF6ZBwqE=
+github.com/go-spring/go-spring-web v0.0.0-20200104113915-28471cce86dd h1:82IPil68sA/bKi50UmkasKe/Tjf4d/F0fBJjI2cBc+Y=
+github.com/go-spring/go-spring-web v0.0.0-20200104113915-28471cce86dd/go.mod h1:H59whZ2/bgsGl+I/5Y/ACqhcBK0J/PhkLzFKexI7KUQ=
+github.com/go-spring/go-spring-web v0.0.0-20200104130905-c9a89617b23a h1:NOOlEuN7i9m+9AhsEKlN2T2XxRdhuJZFar/4a+zEEVI=
+github.com/go-spring/go-spring-web v0.0.0-20200104130905-c9a89617b23a/go.mod h1:H59whZ2/bgsGl+I/5Y/ACqhcBK0J/PhkLzFKexI7KUQ=
 github.com/go-stack/stack v1.8.0/go.mod h1:v0f6uXyyMGvRgIKkXu+yp6POWl0qKG85gN/melR3HDY=
 github.com/gogo/protobuf v1.1.1/go.mod h1:r8qH/GZQm5c6nD/R0oafs1akxWv10x8SbQlK7atdtwQ=
 github.com/gogo/protobuf v1.2.1/go.mod h1:hp+jE20tsWTFYpLwKvXlhS1hjn+gTNwPg2I6zVXpSg4=

@@ -19,10 +19,31 @@ package EchoStarter
 import (
 	"github.com/go-spring/go-spring-web/spring-echo"
 	"github.com/go-spring/go-spring-web/spring-web"
+	"github.com/go-spring/go-spring/spring-boot"
+	"github.com/go-spring/go-spring/starter-web"
 )
 
 func init() {
-	SpringWeb.RegisterWebContainerFactory(func() SpringWeb.WebContainer {
-		return SpringEcho.NewContainer()
-	})
+	SpringBoot.RegisterBeanFn(NewEchoWebServer)
+}
+
+// NewEchoWebServer 创建 echo 适配的 Web 服务器
+func NewEchoWebServer(config *WebStarter.WebServerConfig) *SpringWeb.WebServer {
+	webServer := SpringWeb.NewWebServer()
+
+	if config.EnableHTTP {
+		e := SpringEcho.NewContainer()
+		e.SetPort(config.Port)
+		webServer.AddWebContainer(e)
+	}
+
+	if config.EnableHTTPS {
+		e := SpringEcho.NewContainer()
+		e.SetPort(config.SSLPort)
+		e.SetKeyFile(config.SSLKey)
+		e.SetCertFile(config.SSLCert)
+		webServer.AddWebContainer(e)
+	}
+
+	return webServer
 }

@@ -84,7 +84,7 @@ func (p *defaultPropertySource) Load(profile string) map[string]interface{} {
 		for _, key := range keys {
 			val := v.Get(key)
 			result[key] = val
-			SpringLogger.Debugf("%s=%v\n", key, val)
+			SpringLogger.Debugf("%s=%v", key, val)
 		}
 	}
 
@@ -131,7 +131,7 @@ func (p *configMapPropertySource) Load(profile string) map[string]interface{} {
 
 	for _, ext := range []string{".properties", ".yaml", ".toml"} {
 		if key := profileFileName + ext; d.IsSet(key) {
-			SpringLogger.Debugf(">>> load properties from config-map %s:%s\n", p.filename, key)
+			SpringLogger.Debugf(">>> load properties from config-map %s:%s", p.filename, key)
 
 			val := d.GetString(key)
 			if val == "" {
@@ -150,7 +150,7 @@ func (p *configMapPropertySource) Load(profile string) map[string]interface{} {
 			for _, v0Key := range v0Keys {
 				v0Val := v0.Get(v0Key)
 				result[v0Key] = v0Val
-				SpringLogger.Debugf("%s=%v\n", v0Key, v0Val)
+				SpringLogger.Debugf("%s=%v", v0Key, v0Val)
 			}
 		}
 	}

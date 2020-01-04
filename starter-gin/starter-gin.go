@@ -19,10 +19,31 @@ package GinStarter
 import (
 	"github.com/go-spring/go-spring-web/spring-gin"
 	"github.com/go-spring/go-spring-web/spring-web"
+	"github.com/go-spring/go-spring/spring-boot"
+	"github.com/go-spring/go-spring/starter-web"
 )
 
 func init() {
-	SpringWeb.RegisterWebContainerFactory(func() SpringWeb.WebContainer {
-		return SpringGin.NewContainer()
-	})
+	SpringBoot.RegisterBeanFn(NewGinWebServer)
+}
+
+// NewGinWebServer 创建 gin 适配的 Web 服务器
+func NewGinWebServer(config *WebStarter.WebServerConfig) *SpringWeb.WebServer {
+	webServer := SpringWeb.NewWebServer()
+
+	if config.EnableHTTP {
+		e := SpringGin.NewContainer()
+		e.SetPort(config.Port)
+		webServer.AddWebContainer(e)
+	}
+
+	if config.EnableHTTPS {
+		e := SpringGin.NewContainer()
+		e.SetPort(config.SSLPort)
+		e.SetKeyFile(config.SSLKey)
+		e.SetCertFile(config.SSLCert)
+		webServer.AddWebContainer(e)
+	}
+
+	return webServer
 }

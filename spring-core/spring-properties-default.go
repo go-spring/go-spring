@@ -70,7 +70,7 @@ func (p *defaultProperties) LoadProperties(filename string) {
 	for _, key := range keys {
 		val := v.Get(key)
 		p.SetProperty(key, val)
-		SpringLogger.Debugf("%s=%v\n", key, val)
+		SpringLogger.Debugf("%s=%v", key, val)
 	}
 }
 
