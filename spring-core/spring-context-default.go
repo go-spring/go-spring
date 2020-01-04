@@ -19,8 +19,9 @@ package SpringCore
 import (
 	"container/list"
 	"errors"
-	"fmt"
 	"reflect"
+
+	"github.com/go-spring/go-spring-parent/spring-logger"
 )
 
 // beanKey Bean's unique key, type+name.
@@ -496,7 +497,7 @@ func (ctx *defaultSpringContext) resolveBean(beanDefinition *BeanDefinition) {
 	}
 
 	// 将符合注册条件的 Bean 放入到缓存里面
-	fmt.Printf("register bean \"%s\" %s:%d\n", beanDefinition.BeanId(), beanDefinition.file, beanDefinition.line)
+	SpringLogger.Debugf("register bean \"%s\" %s:%d\n", beanDefinition.BeanId(), beanDefinition.file, beanDefinition.line)
 	item, _ := ctx.findCacheItem(beanDefinition.Type())
 	item.store(beanDefinition)
 
@@ -602,7 +603,7 @@ func (ctx *defaultSpringContext) wireBeanDefinition(beanDefinition *BeanDefiniti
 
 // wireOriginalBean 对原始对象进行注入
 func (ctx *defaultSpringContext) wireOriginalBean(beanDefinition *BeanDefinition) {
-	fmt.Printf("wire bean \"%s\"\n", beanDefinition.BeanId())
+	SpringLogger.Debugf("wire bean \"%s\"\n", beanDefinition.BeanId())
 
 	st := beanDefinition.Type()
 	sk := st.Kind()
@@ -662,21 +663,21 @@ func (ctx *defaultSpringContext) wireOriginalBean(beanDefinition *BeanDefinition
 		}
 	}
 
-	fmt.Printf("success wire bean \"%s\"\n", beanDefinition.BeanId())
+	SpringLogger.Debugf("success wire bean \"%s\"\n", beanDefinition.BeanId())
 }
 
 // wireConstructorBean 对构造函数 Bean 进行注入
 func (ctx *defaultSpringContext) wireConstructorBean(beanDefinition *BeanDefinition) {
 	bean := beanDefinition.bean.(*constructorBean)
 	ctx.wireFunctionBean(&bean.functionBean, beanDefinition)
-	fmt.Printf("success wire constructor bean \"%s\"\n", beanDefinition.BeanId())
+	SpringLogger.Debugf("success wire constructor bean \"%s\"\n", beanDefinition.BeanId())
 }
 
 // wireMethodBean 对成员方法 Bean 进行注入
 func (ctx *defaultSpringContext) wireMethodBean(beanDefinition *BeanDefinition) {
 	bean := beanDefinition.bean.(*methodBean)
 	ctx.wireFunctionBean(&bean.functionBean, beanDefinition)
-	fmt.Printf("success wire method bean \"%s\"\n", beanDefinition.BeanId())
+	SpringLogger.Debugf("success wire method bean \"%s\"\n", beanDefinition.BeanId())
 }
 
 // wireFunctionBean 对函数定义 Bean 进行注入
@@ -692,7 +693,7 @@ func (ctx *defaultSpringContext) wireFunctionBean(bean *functionBean, beanDefini
 	// 检查是否有 error 返回
 	if len(out) == 2 {
 		if err := out[1].Interface(); err != nil {
-			fmt.Printf("bean error: %s:%d\n", beanDefinition.file, beanDefinition.line)
+			SpringLogger.Debugf("bean error: %s:%d\n", beanDefinition.file, beanDefinition.line)
 			panic(err)
 		}
 	}

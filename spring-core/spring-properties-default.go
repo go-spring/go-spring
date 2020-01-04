@@ -24,6 +24,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-spring/go-spring-parent/spring-logger"
 	"github.com/spf13/cast"
 	"github.com/spf13/viper"
 )
@@ -55,7 +56,7 @@ func NewDefaultProperties() *defaultProperties {
 
 // LoadProperties 加载属性配置文件
 func (p *defaultProperties) LoadProperties(filename string) {
-	fmt.Println(">>> load properties from", filename)
+	SpringLogger.Debug(">>> load properties from", filename)
 
 	v := viper.New()
 	v.SetConfigFile(filename)
@@ -69,7 +70,7 @@ func (p *defaultProperties) LoadProperties(filename string) {
 	for _, key := range keys {
 		val := v.Get(key)
 		p.SetProperty(key, val)
-		fmt.Printf("%s=%v\n", key, val)
+		SpringLogger.Debugf("%s=%v\n", key, val)
 	}
 }
 

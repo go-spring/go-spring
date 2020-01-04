@@ -20,10 +20,10 @@
 package BootStarter
 
 import (
-	"fmt"
 	"os"
 	"os/signal"
 
+	"github.com/go-spring/go-spring-parent/spring-logger"
 	"github.com/go-spring/go-spring-parent/spring-utils"
 )
 
@@ -49,7 +49,7 @@ func Run(runner AppRunner) {
 		sig := make(chan os.Signal, 1)
 		signal.Notify(sig, os.Interrupt, os.Kill)
 		<-sig
-		fmt.Println("got signal, program will exit")
+		SpringLogger.Info("got signal, program will exit")
 		Exit()
 	}()
 

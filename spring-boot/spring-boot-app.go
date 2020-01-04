@@ -18,8 +18,9 @@
 package SpringBoot
 
 import (
-	"fmt"
 	"strings"
+
+	"github.com/go-spring/go-spring-parent/spring-logger"
 )
 
 const (
@@ -79,7 +80,7 @@ func (app *application) Start() {
 		bean.OnStartApplication(app.AppContext)
 	}
 
-	fmt.Println("spring boot started")
+	SpringLogger.Info("spring boot started")
 }
 
 func (app *application) loadConfigFiles() {
@@ -127,5 +128,5 @@ func (app *application) ShutDown() {
 	// 等待所有 goroutine 退出
 	app.AppContext.Wait()
 
-	fmt.Println("spring boot exit")
+	SpringLogger.Info("spring boot exited")
 }

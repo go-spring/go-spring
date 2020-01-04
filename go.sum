@@ -31,6 +31,8 @@ github.com/go-logfmt/logfmt v0.3.0/go.mod h1:Qt1PoO58o5twSAckw1HlFXLmHsOX5/0LbT9
 github.com/go-logfmt/logfmt v0.4.0/go.mod h1:3RMwSq7FuexP4Kalkev3ejPJsZTpXXBr9+V4qmtdjCk=
 github.com/go-spring/go-spring-parent v1.0.0-alpha.0.20191103024245-cc7dade252d5 h1:vby9Da+Klw2fVusjkqYzThGo8YfYhI5M2LcVqTk8mto=
 github.com/go-spring/go-spring-parent v1.0.0-alpha.0.20191103024245-cc7dade252d5/go.mod h1:Zg3ANEYjqeAW8UMbKy5qkPYklEsQkhR73SuJiiSi2IU=
+github.com/go-spring/go-spring-parent v1.0.0-alpha.0.20200104113626-906f612af3e2 h1:2xNsdBy696jmRDMLojC8xLt8tssiGRsvF5N5FB8tvBU=
+github.com/go-spring/go-spring-parent v1.0.0-alpha.0.20200104113626-906f612af3e2/go.mod h1:Zg3ANEYjqeAW8UMbKy5qkPYklEsQkhR73SuJiiSi2IU=
 github.com/go-spring/go-spring-web v0.0.0-20191221095130-011bcfb7c6b6 h1:pf45cW7Pjs2bYoflgwI9z3jHLo8vXTlzjwLz7Ysr25Y=
 github.com/go-spring/go-spring-web v0.0.0-20191221095130-011bcfb7c6b6/go.mod h1:R8B0N8nPuYuqlrt/yphpJGLKlx5NUM7M5x9qF6ZBwqE=
 github.com/go-stack/stack v1.8.0/go.mod h1:v0f6uXyyMGvRgIKkXu+yp6POWl0qKG85gN/melR3HDY=

@@ -17,9 +17,9 @@
 package SpringBoot
 
 import (
-	"fmt"
 	"sync"
 
+	"github.com/go-spring/go-spring-parent/spring-logger"
 	"github.com/go-spring/go-spring/spring-core"
 )
 
@@ -49,7 +49,7 @@ func (ctx *defaultApplicationContext) SafeGoroutine(fn GoFunc) {
 
 		defer func() {
 			if err := recover(); err != nil {
-				fmt.Println(err)
+				SpringLogger.Error(err)
 			}
 		}()
 
