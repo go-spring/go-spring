@@ -27,10 +27,12 @@ github.com/gin-gonic/gin v1.4.0/go.mod h1:OW2EZn3DO8Ln9oIKOvM++LBO+5UPHJJDH72/q/
 github.com/go-kit/kit v0.8.0/go.mod h1:xBxKIO96dXMWWy0MnWVtmwkA9/13aqxPnvrjFYMA2as=
 github.com/go-logfmt/logfmt v0.3.0/go.mod h1:Qt1PoO58o5twSAckw1HlFXLmHsOX5/0LbT9GBnD5lWE=
 github.com/go-logfmt/logfmt v0.4.0/go.mod h1:3RMwSq7FuexP4Kalkev3ejPJsZTpXXBr9+V4qmtdjCk=
+github.com/go-redis/redis v6.15.6+incompatible h1:H9evprGPLI8+ci7fxQx6WNZHJSb7be8FqJQRhdQZ5Sg=
+github.com/go-redis/redis v6.15.6+incompatible/go.mod h1:NAIEuMOZ/fxfXJIrKDQDz8wamY7mA7PouImQ2Jvg6kA=
 github.com/go-spring/go-spring-parent v1.0.0-rc h1:CE0eBA2mmb+/3q/Xjbwp8+KvkfAyUcSSJh3UdQz2ovo=
 github.com/go-spring/go-spring-parent v1.0.0-rc/go.mod h1:Zg3ANEYjqeAW8UMbKy5qkPYklEsQkhR73SuJiiSi2IU=
-github.com/go-spring/go-spring-web v1.0.0-rc h1:PCCHeZSpPYdJx0G8XY32Upc8hh0TshYx9nqIjAzOAP4=
-github.com/go-spring/go-spring-web v1.0.0-rc/go.mod h1:m9FFyaHFyMAy/B1s3cqqV3OtXx27g2gI5AHi+W2y+O4=
+github.com/go-spring/go-spring-web v1.0.0-rc.0.20200105075953-bc8119f0face h1:lWjUtGsBLQT2iFQB7AuuW2s54itfRi50Bu1MTot6iYA=
+github.com/go-spring/go-spring-web v1.0.0-rc.0.20200105075953-bc8119f0face/go.mod h1:m9FFyaHFyMAy/B1s3cqqV3OtXx27g2gI5AHi+W2y+O4=
 github.com/go-stack/stack v1.8.0/go.mod h1:v0f6uXyyMGvRgIKkXu+yp6POWl0qKG85gN/melR3HDY=
 github.com/gogo/protobuf v1.1.1/go.mod h1:r8qH/GZQm5c6nD/R0oafs1akxWv10x8SbQlK7atdtwQ=
 github.com/gogo/protobuf v1.2.1/go.mod h1:hp+jE20tsWTFYpLwKvXlhS1hjn+gTNwPg2I6zVXpSg4=

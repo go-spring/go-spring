@@ -24,7 +24,6 @@ import (
 )
 
 func init() {
-	SpringBoot.RegisterBean(new(WebServerConfig))
 	SpringBoot.RegisterBean(new(WebServerStarter))
 }
 

@@ -25,10 +25,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-redis/redis"
+	"github.com/go-spring/go-spring-parent/spring-utils"
 	"github.com/go-spring/go-spring-web/spring-web"
 	"github.com/go-spring/go-spring/spring-boot"
 	"github.com/go-spring/go-spring/spring-core"
 	_ "github.com/go-spring/go-spring/starter-echo"
+	//_ "github.com/go-spring/go-spring/starter-gin"
+	_ "github.com/go-spring/go-spring/starter-go-redis"
 )
 
 func init() {
@@ -50,10 +54,18 @@ func TestRunApplication(t *testing.T) {
 ////////////////// MyController ///////////////////
 
 type MyController struct {
+	RedisClient *redis.Client `autowire:""`
 }
 
 func (c *MyController) OK(ctx SpringWeb.WebContext) {
-	ctx.JSONBlob(200, []byte("ok"))
+
+	err := c.RedisClient.Set("key", "ok", time.Second*10).Err()
+	SpringUtils.Panic(err).When(err != nil)
+
+	val, err := c.RedisClient.Get("key").Result()
+	SpringUtils.Panic(err).When(err != nil)
+
+	ctx.JSONBlob(200, []byte(val))
 }
 
 ////////////////// MyRunner ///////////////////
@@ -96,6 +108,7 @@ func (m *MyModule) OnStopApplication(ctx SpringBoot.ApplicationContext) {
 }
 
 func Process() {
+	defer SpringBoot.Exit()
 
 	defer fmt.Println("go stop")
 	fmt.Println("go start")
@@ -109,14 +122,13 @@ func Process() {
 	if resp, err := http.Get("http://localhost:8080/ok"); err != nil {
 		panic(err)
 	} else {
-		if strResp, e := ioutil.ReadAll(resp.Body); e != nil {
+		if body, e := ioutil.ReadAll(resp.Body); e != nil {
 			panic(e)
 		} else {
-			if string(strResp) != "ok" {
+			fmt.Printf("resp code=%d body=%s\n", resp.StatusCode, string(body))
+			if string(body) != "ok" {
 				panic(errors.New("error"))
 			}
 		}
 	}
-
-	SpringBoot.Exit()
 }

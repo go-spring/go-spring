@@ -279,6 +279,7 @@ func (ctx *defaultSpringContext) getBeanValue(beanId string, parentValue reflect
 			if nullable {
 				return false
 			} else {
+				// TODO 更详细的信息，比如 Bean 所在的行号
 				panic(errors.New(field + " 没有找到符合条件的 Bean"))
 			}
 		}

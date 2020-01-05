@@ -24,11 +24,11 @@ import (
 )
 
 func init() {
-	SpringBoot.RegisterBeanFn(NewEchoWebServer)
+	SpringBoot.RegisterBeanFn(NewEchoWebServer, "${}")
 }
 
 // NewEchoWebServer 创建 echo 适配的 Web 服务器
-func NewEchoWebServer(config *WebStarter.WebServerConfig) *SpringWeb.WebServer {
+func NewEchoWebServer(config WebStarter.WebServerConfig) *SpringWeb.WebServer {
 	webServer := SpringWeb.NewWebServer()
 
 	if config.EnableHTTP {
