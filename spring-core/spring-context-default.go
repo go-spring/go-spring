@@ -591,8 +591,8 @@ func (ctx *defaultSpringContext) wireBeanDefinition(beanDefinition *BeanDefiniti
 	}
 
 	// 如果有则执行用户设置的初始化函数
-	if beanDefinition.initFunc != nil {
-		fnValue := reflect.ValueOf(beanDefinition.initFunc)
+	if beanDefinition.init != nil {
+		fnValue := reflect.ValueOf(beanDefinition.init)
 		fnValue.Call([]reflect.Value{beanDefinition.Value()})
 	}
 
@@ -751,4 +751,15 @@ func (ctx *defaultSpringContext) GetAllBeanDefinitions() []*BeanDefinition {
 		result = append(result, v)
 	}
 	return result
+}
+
+// Close 关闭容器上下文，用于通知 Bean 销毁。
+func (ctx *defaultSpringContext) Close() {
+	for _, beanDefinition := range ctx.beanMap {
+		// 如果有则执行用户设置的销毁函数
+		if beanDefinition.destroy != nil {
+			fnValue := reflect.ValueOf(beanDefinition.destroy)
+			fnValue.Call([]reflect.Value{beanDefinition.Value()})
+		}
+	}
 }

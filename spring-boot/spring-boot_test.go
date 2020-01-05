@@ -31,12 +31,13 @@ import (
 	"github.com/go-spring/go-spring/spring-boot"
 	"github.com/go-spring/go-spring/spring-core"
 	_ "github.com/go-spring/go-spring/starter-echo"
-	//_ "github.com/go-spring/go-spring/starter-gin"
 	_ "github.com/go-spring/go-spring/starter-go-redis"
+	_ "github.com/go-spring/go-spring/starter-mysql-gorm"
+	"github.com/jinzhu/gorm"
 )
 
 func init() {
-	SpringBoot.RegisterBean(new(MyController)).InitFunc(
+	SpringBoot.RegisterBean(new(MyController)).Init(
 		func(c *MyController) {
 			SpringBoot.GetMapping("/ok", c.OK).
 				ConditionOnProfile("test").
@@ -48,6 +49,7 @@ func init() {
 
 func TestRunApplication(t *testing.T) {
 	os.Setenv(SpringBoot.SpringProfile, "test")
+	SpringBoot.SetProperty("db.url", "root:root@/information_schema?charset=utf8&parseTime=True&loc=Local")
 	SpringBoot.RunApplication("testdata/config/", "k8s:testdata/config/config-map.yaml")
 }
 
@@ -55,6 +57,7 @@ func TestRunApplication(t *testing.T) {
 
 type MyController struct {
 	RedisClient *redis.Client `autowire:""`
+	DB          *gorm.DB      `autowire:""`
 }
 
 func (c *MyController) OK(ctx SpringWeb.WebContext) {
@@ -64,6 +67,17 @@ func (c *MyController) OK(ctx SpringWeb.WebContext) {
 
 	val, err := c.RedisClient.Get("key").Result()
 	SpringUtils.Panic(err).When(err != nil)
+
+	rows, err := c.DB.Table("ENGINES").Select("ENGINE").Rows()
+	SpringUtils.Panic(err).When(err != nil)
+
+	defer rows.Close()
+
+	for rows.Next() {
+		var engine string
+		rows.Scan(&engine)
+		fmt.Println(engine)
+	}
 
 	ctx.JSONBlob(200, []byte(val))
 }

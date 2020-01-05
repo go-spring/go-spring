@@ -290,7 +290,8 @@ type BeanDefinition struct {
 	primary   bool         // 主版本
 	dependsOn []string     // 非直接依赖
 
-	initFunc interface{} // 绑定结束的回调
+	init    interface{} // 初始化的回调
+	destroy interface{} // 销毁时的回调
 }
 
 // newBeanDefinition BeanDefinition 的构造函数
@@ -489,41 +490,52 @@ func (d *BeanDefinition) Primary(primary bool) *BeanDefinition {
 	return d
 }
 
-// InitFunc 设置 Bean 的绑定结束回调
-func (d *BeanDefinition) InitFunc(fn interface{}) *BeanDefinition {
+// validLifeCycleFunc 判断是否是合法的用于 Bean 生命周期控制的回调函数
+func validLifeCycleFunc(fn interface{}, beanType reflect.Type) bool {
 	fnType := reflect.TypeOf(fn)
 
-	// 判断是否是合法的回调函数
-	validInitFunc := func() bool {
-
-		// 必须是函数
-		if fnType.Kind() != reflect.Func {
-			return false
-		}
-
-		// 不能有返回值
-		if fnType.NumOut() > 0 {
-			return false
-		}
-
-		// 必须有一个输入参数
-		if fnType.NumIn() != 1 {
-			return false
-		}
-
-		// 输入参数必须是 Bean 的类型
-		if fnType.In(0) != d.Type() {
-			return false
-		}
-
-		return true
+	// 必须是函数
+	if fnType.Kind() != reflect.Func {
+		return false
 	}
 
-	if ok := validInitFunc(); !ok {
-		panic(errors.New("initFunc should be func(bean)"))
+	// 不能有返回值
+	if fnType.NumOut() > 0 {
+		return false
 	}
 
-	d.initFunc = fn
+	// 必须有一个输入参数
+	if fnType.NumIn() != 1 {
+		return false
+	}
+
+	// 输入参数必须是 Bean 的类型
+	if fnType.In(0) != beanType {
+		return false
+	}
+
+	return true
+}
+
+// Init 设置 Bean 初始化的回调
+func (d *BeanDefinition) Init(fn interface{}) *BeanDefinition {
+
+	if ok := validLifeCycleFunc(fn, d.Type()); !ok {
+		panic(errors.New("init should be func(bean)"))
+	}
+
+	d.init = fn
+	return d
+}
+
+// Destroy 设置 Bean 销毁时的回调
+func (d *BeanDefinition) Destroy(fn interface{}) *BeanDefinition {
+
+	if ok := validLifeCycleFunc(fn, d.Type()); !ok {
+		panic(errors.New("destroy should be func(bean)"))
+	}
+
+	d.destroy = fn
 	return d
 }
 

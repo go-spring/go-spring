@@ -117,6 +117,9 @@ func (app *application) loadProfileConfig(profile string) {
 // ShutDown 停止 SpringBoot 应用
 func (app *application) ShutDown() {
 
+	// 通知 Bean 销毁
+	app.AppContext.Close()
+	
 	// 通知应用停止事件
 	var eventBeans []ApplicationEvent
 	app.AppContext.CollectBeans(&eventBeans)

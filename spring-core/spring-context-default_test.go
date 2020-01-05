@@ -1031,26 +1031,26 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 
 		assert.Panic(t, func() {
 			ctx := SpringCore.NewDefaultSpringContext()
-			ctx.RegisterBean(new(int)).InitFunc(func() {})
-		}, "initFunc should be func\\(bean\\)")
+			ctx.RegisterBean(new(int)).Init(func() {})
+		}, "init should be func\\(bean\\)")
 
 		assert.Panic(t, func() {
 			ctx := SpringCore.NewDefaultSpringContext()
-			ctx.RegisterBean(new(int)).InitFunc(func() int { return 0 })
-		}, "initFunc should be func\\(bean\\)")
+			ctx.RegisterBean(new(int)).Init(func() int { return 0 })
+		}, "init should be func\\(bean\\)")
 
 		assert.Panic(t, func() {
 			ctx := SpringCore.NewDefaultSpringContext()
-			ctx.RegisterBean(new(int)).InitFunc(func(int) {})
-		}, "initFunc should be func\\(bean\\)")
+			ctx.RegisterBean(new(int)).Init(func(int) {})
+		}, "init should be func\\(bean\\)")
 
 		assert.Panic(t, func() {
 			ctx := SpringCore.NewDefaultSpringContext()
-			ctx.RegisterBean(new(int)).InitFunc(func(int, int) {})
-		}, "initFunc should be func\\(bean\\)")
+			ctx.RegisterBean(new(int)).Init(func(int, int) {})
+		}, "init should be func\\(bean\\)")
 
 		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.RegisterBean(new(int)).InitFunc(func(i *int) { *i = 3 })
+		ctx.RegisterBean(new(int)).Init(func(i *int) { *i = 3 })
 		ctx.AutoWireBeans()
 
 		var i *int
@@ -1097,7 +1097,7 @@ func TestDefaultSpringContext_CollectBeans(t *testing.T) {
 	ctx.RegisterBean([]RedisCluster{{}})
 	ctx.RegisterBean(new(RedisCluster))
 
-	ctx.RegisterBean(new(int)).InitFunc(func(*int) {
+	ctx.RegisterBean(new(int)).Init(func(*int) {
 
 		var rcs []*RedisCluster
 		ctx.CollectBeans(&rcs)
@@ -1107,7 +1107,7 @@ func TestDefaultSpringContext_CollectBeans(t *testing.T) {
 		assert.Equal(t, rcs[0].Endpoints, "redis://127.0.0.1:6379")
 	})
 
-	ctx.RegisterBean(new(bool)).InitFunc(func(*bool) {
+	ctx.RegisterBean(new(bool)).Init(func(*bool) {
 
 		var rcs []RedisCluster
 		ctx.CollectBeans(&rcs)
@@ -1708,4 +1708,36 @@ func TestDefaultSpringContext_RegisterOptionBean(t *testing.T) {
 
 		assert.Equal(t, len(obj.v), 2)
 	})
+}
+
+func TestDefaultSpringContext_Close(t *testing.T) {
+
+	assert.Panic(t, func() {
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBean(new(int)).Destroy(func() {})
+	}, "destroy should be func\\(bean\\)")
+
+	assert.Panic(t, func() {
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBean(new(int)).Destroy(func() int { return 0 })
+	}, "destroy should be func\\(bean\\)")
+
+	assert.Panic(t, func() {
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBean(new(int)).Destroy(func(int) {})
+	}, "destroy should be func\\(bean\\)")
+
+	assert.Panic(t, func() {
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBean(new(int)).Destroy(func(int, int) {})
+	}, "destroy should be func\\(bean\\)")
+
+	called := false
+
+	ctx := SpringCore.NewDefaultSpringContext()
+	ctx.RegisterBean(new(int)).Destroy(func(i *int) { called = true })
+	ctx.AutoWireBeans()
+	ctx.Close()
+
+	assert.Equal(t, called, true)
 }

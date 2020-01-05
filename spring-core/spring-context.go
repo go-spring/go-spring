@@ -88,4 +88,7 @@ type SpringContext interface {
 
 	// GetAllBeanDefinitions 获取所有 Bean 的定义，一般仅供调试使用。
 	GetAllBeanDefinitions() []*BeanDefinition
+
+	// Close 关闭容器上下文，用于通知 Bean 销毁。
+	Close()
 }
