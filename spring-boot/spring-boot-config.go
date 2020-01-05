@@ -75,7 +75,7 @@ func (p *defaultPropertySource) Load(profile string) map[string]interface{} {
 		v := viper.New()
 		v.SetConfigFile(filename)
 		if err := v.ReadInConfig(); err != nil {
-			panic(err)
+			SpringLogger.Panic(err)
 		}
 
 		keys := v.AllKeys()
@@ -114,7 +114,7 @@ func (p *configMapPropertySource) Load(profile string) map[string]interface{} {
 	v := viper.New()
 	v.SetConfigFile(p.filename)
 	if err := v.ReadInConfig(); err != nil {
-		panic(err)
+		SpringLogger.Panic(err)
 	}
 
 	d := v.Sub("data")
@@ -141,7 +141,7 @@ func (p *configMapPropertySource) Load(profile string) map[string]interface{} {
 			v0 := viper.New()
 			v0.SetConfigType(ext[1:])
 			if err := v0.ReadConfig(strings.NewReader(val)); err != nil {
-				panic(err)
+				SpringLogger.Panic(err)
 			}
 
 			v0Keys := v0.AllKeys()

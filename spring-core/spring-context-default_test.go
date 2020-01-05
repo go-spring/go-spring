@@ -1380,7 +1380,7 @@ type Consumer struct {
 
 func (s *Server) Consumer() *Consumer {
 	if nil == s {
-		panic(errors.New("Server is nil"))
+		panic(errors.New("server is nil"))
 	}
 	return &Consumer{s}
 }
@@ -1455,7 +1455,7 @@ func TestDefaultSpringContext_RegisterMethodBean(t *testing.T) {
 							v = e
 						}
 
-						if !strings.HasPrefix(v, "found circle autowire: ") {
+						if !strings.Contains(v, "found circle autowire: ") {
 							panic(errors.New("test error"))
 						}
 					} else {
@@ -1740,4 +1740,12 @@ func TestDefaultSpringContext_Close(t *testing.T) {
 	ctx.Close()
 
 	assert.Equal(t, called, true)
+}
+
+func TestDefaultSpringContext_BeanNotFound(t *testing.T) {
+	assert.Panic(t, func() {
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBeanFn(func(i *int) bool { return false })
+		ctx.AutoWireBeans()
+	}, "没有找到符合条件的 Bean: ")
 }

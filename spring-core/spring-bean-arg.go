@@ -17,10 +17,11 @@
 package SpringCore
 
 import (
-	"errors"
 	"reflect"
 	"strconv"
 	"strings"
+
+	"github.com/go-spring/go-spring-parent/spring-logger"
 )
 
 // fnBindingArg 存储函数的参数绑定
@@ -55,16 +56,16 @@ func newFnStringBindingArg(fnType reflect.Type, tags []string) *fnStringBindingA
 			for _, tag := range tags {
 				index := strings.Index(tag, ":")
 				if index <= 0 {
-					panic(errors.New("tag \"" + tag + "\" should have index"))
+					SpringLogger.Panic("tag \"" + tag + "\" should have index")
 				}
 
 				i, err := strconv.Atoi(tag[:index])
 				if err != nil {
-					panic(errors.New("tag \"" + tag + "\" should have index"))
+					SpringLogger.Panic("tag \"" + tag + "\" should have index")
 				}
 
 				if i < 0 || i >= numIn {
-					panic(errors.New("error indexed tag \"" + tag + "\""))
+					SpringLogger.Panic("error indexed tag \"" + tag + "\"")
 				}
 
 				if variadic && i == numIn-1 { // 处理可变参数
@@ -79,7 +80,7 @@ func newFnStringBindingArg(fnType reflect.Type, tags []string) *fnStringBindingA
 				if index := strings.Index(tag, ":"); index > 0 {
 					_, err := strconv.Atoi(tag[:index])
 					if err == nil {
-						panic(errors.New("tag \"" + tag + "\" shouldn't have index"))
+						SpringLogger.Panic("tag \"" + tag + "\" shouldn't have index")
 					}
 				}
 
@@ -179,7 +180,7 @@ func NewOptionArg(fn interface{}, tags ...string) *optionArg {
 	}
 
 	if ok := validOptionFunc(); !ok {
-		panic(errors.New("option func must be func(...)option"))
+		SpringLogger.Panic("option func must be func(...)option")
 	}
 
 	return &optionArg{

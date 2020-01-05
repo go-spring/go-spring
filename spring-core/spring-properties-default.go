@@ -17,8 +17,6 @@
 package SpringCore
 
 import (
-	"errors"
-	"fmt"
 	"reflect"
 	"sort"
 	"strings"
@@ -61,7 +59,7 @@ func (p *defaultProperties) LoadProperties(filename string) {
 	v := viper.New()
 	v.SetConfigFile(filename)
 	if err := v.ReadInConfig(); err != nil {
-		panic(err)
+		SpringLogger.Panic(err)
 	}
 
 	keys := v.AllKeys()
@@ -173,7 +171,7 @@ func bindStruct(prop propertyHolder, beanType reflect.Type, beanValue reflect.Va
 
 		if it.Anonymous { // 处理结构体嵌套的情况
 			if _, ok := it.Tag.Lookup("value"); ok {
-				panic(errors.New(subFieldName + " 嵌套结构体上不允许有 value 标签"))
+				SpringLogger.Panic(subFieldName + " 嵌套结构体上不允许有 value 标签")
 			}
 			bindStruct(prop, it.Type, iv, subFieldName, propNamePrefix)
 			continue
@@ -195,12 +193,12 @@ func bindStructField(prop propertyHolder, fieldType reflect.Type, fieldValue ref
 
 	// 检查语法是否正确
 	if !(strings.HasPrefix(propTag, "${") && strings.HasSuffix(propTag, "}")) {
-		panic(errors.New(fieldName + " 属性绑定的语法发生错误"))
+		SpringLogger.Panic(fieldName + " 属性绑定的语法发生错误")
 	}
 
 	// 指针不能作为属性绑定的目标
 	if fieldValue.Kind() == reflect.Ptr {
-		panic(errors.New(fieldName + " 属性绑定的目标不能是指针"))
+		SpringLogger.Panic(fieldName + " 属性绑定的目标不能是指针")
 	}
 
 	ss := strings.Split(propTag[2:len(propTag)-1], ":=")
@@ -235,7 +233,8 @@ func bindValue(prop propertyHolder, beanType reflect.Type, beanValue reflect.Val
 			if defaultValue != nil {
 				return defaultValue
 			}
-			panic(errors.New(fieldName + " properties \"" + propName + "\" not config"))
+			SpringLogger.Panic(fieldName + " properties \"" + propName + "\" not config")
+			return nil
 		}
 	}
 
@@ -250,7 +249,7 @@ func bindValue(prop propertyHolder, beanType reflect.Type, beanValue reflect.Val
 
 	if beanValue.Kind() == reflect.Struct {
 		if defaultValue != nil { // 结构体字段不能指定默认值
-			panic(errors.New(fieldName + " 结构体字段不能指定默认值"))
+			SpringLogger.Panic(fieldName + " 结构体字段不能指定默认值")
 		}
 		bindStruct(prop, beanType, beanValue, fieldName, propName)
 		return
@@ -282,12 +281,12 @@ func bindValue(prop propertyHolder, beanType reflect.Type, beanValue reflect.Val
 
 			switch elemKind {
 			case reflect.Uint64, reflect.Uint32, reflect.Uint16, reflect.Uint8, reflect.Uint:
-				panic(errors.New("暂未支持"))
+				SpringLogger.Panic("暂未支持")
 			case reflect.Int64, reflect.Int32, reflect.Int16, reflect.Int8, reflect.Int:
 				i := cast.ToIntSlice(propValue)
 				beanValue.Set(reflect.ValueOf(i))
 			case reflect.Float64, reflect.Float32:
-				panic(errors.New("暂未支持"))
+				SpringLogger.Panic("暂未支持")
 			case reflect.String:
 				i := cast.ToStringSlice(propValue)
 				beanValue.Set(reflect.ValueOf(i))
@@ -320,20 +319,20 @@ func bindValue(prop propertyHolder, beanType reflect.Type, beanValue reflect.Val
 								bindStruct(newMapPropertyHolder(sv), elemType, ev.Elem(), fieldName, "")
 								result.Index(i).Set(ev.Elem())
 							} else {
-								panic(errors.New(fmt.Sprintf("property %s isn't []map[string]interface{}", propName)))
+								SpringLogger.Panicf("property %s isn't []map[string]interface{}", propName)
 							}
 						}
 
 						beanValue.Set(result)
 
 					} else {
-						panic(errors.New(fmt.Sprintf("property %s isn't []map[string]interface{}", propName)))
+						SpringLogger.Panicf("property %s isn't []map[string]interface{}", propName)
 					}
 				}
 			}
 		}
 	default:
-		panic(errors.New(fieldName + " unsupported type " + beanValue.Kind().String()))
+		SpringLogger.Panic(fieldName + " unsupported type " + beanValue.Kind().String())
 	}
 }
 
@@ -341,7 +340,7 @@ func bindValue(prop propertyHolder, beanType reflect.Type, beanValue reflect.Val
 func (p *defaultProperties) BindProperty(name string, i interface{}) {
 	v := reflect.ValueOf(i)
 	if v.Kind() != reflect.Ptr {
-		panic(errors.New("参数 v 必须是一个指针"))
+		SpringLogger.Panic("参数 v 必须是一个指针")
 	}
 	t := v.Type().Elem()
 	bindValue(p, t, v.Elem(), t.Name(), name, nil)

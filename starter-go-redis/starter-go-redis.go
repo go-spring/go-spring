@@ -29,11 +29,17 @@ func init() {
 }
 
 // NewGoRedisClient 创建 redis 客户端
-func NewGoRedisClient(config StarterRedis.RedisConfig) *redis.Client {
+func NewGoRedisClient(config StarterRedis.RedisConfig) (*redis.Client, error) {
+
 	address := fmt.Sprintf("%s:%d", config.Host, config.Port)
-	return redis.NewClient(&redis.Options{
+	client := redis.NewClient(&redis.Options{
 		Addr:     address,
 		Password: config.Password,
 		DB:       config.Database,
 	})
+
+	if err := client.Ping().Err(); err != nil {
+		return nil, err
+	}
+	return client, nil
 }

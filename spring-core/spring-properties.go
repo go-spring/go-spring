@@ -17,8 +17,9 @@
 package SpringCore
 
 import (
-	"errors"
 	"reflect"
+
+	"github.com/go-spring/go-spring-parent/spring-logger"
 )
 
 // 定义属性值接口
@@ -107,7 +108,7 @@ func RegisterTypeConverter(fn interface{}) {
 
 	if ok := validTypeConverter(); !ok {
 		ft := "func(string)type"
-		panic(errors.New("fn must be " + ft))
+		SpringLogger.Panic("fn must be " + ft)
 	}
 
 	typeConverters[outType] = fn

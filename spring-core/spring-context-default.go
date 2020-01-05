@@ -18,7 +18,7 @@ package SpringCore
 
 import (
 	"container/list"
-	"errors"
+	"fmt"
 	"reflect"
 
 	"github.com/go-spring/go-spring-parent/spring-logger"
@@ -51,7 +51,7 @@ func newBeanCacheItem() *beanCacheItem {
 // Store 将一个 Bean 存储到 CachedBeanMapItem 里
 func (item *beanCacheItem) store(d *BeanDefinition) {
 	if d.name == "" {
-		panic(errors.New("bean must have name"))
+		SpringLogger.Panic("bean must have name")
 	}
 	item.named = append(item.named, d)
 }
@@ -99,19 +99,25 @@ func (s *wiringStack) popBack() {
 	s.l.Remove(s.l.Back())
 }
 
-// panic 检测到循环依赖后抛出 panic
-func (s *wiringStack) panic(bean *BeanDefinition) {
-	err := "found circle autowire: "
+// path 返回依赖注入的路径
+func (s *wiringStack) path() (path string) {
 	for e := s.l.Front(); e != nil; e = e.Next() {
 		w := e.Value.(*wiringItem)
 		if w.field == "" {
-			err += w.bean.name + " => "
+			path += fmt.Sprintf("=> %s( %s ) ↩\n", w.bean.name, w.bean.Caller())
 		} else {
-			err += w.bean.name + ":$" + w.field + " => "
+			path += fmt.Sprintf("=> %s:$%s( %s ) ↩\n", w.bean.name, w.field, w.bean.Caller())
 		}
 	}
-	err += bean.name
-	panic(errors.New(err))
+	return path
+}
+
+// circle 检测到循环依赖后抛出 panic
+func (s *wiringStack) circle(bean *BeanDefinition) {
+	str := "found circle autowire: ↩\n"
+	str += s.path()
+	str += fmt.Sprintf("=> %s( %s ) ↩", bean.name, bean.Caller())
+	SpringLogger.Panic(str)
 }
 
 // defaultSpringContext SpringContext 的默认版本
@@ -188,7 +194,7 @@ func (ctx *defaultSpringContext) RegisterNameMethodBean(name string, parent *Bea
 func (ctx *defaultSpringContext) registerBeanDefinition(d *BeanDefinition) {
 
 	if ctx.autoWired { // 注册已被冻结
-		panic(errors.New("bean registration frozen"))
+		SpringLogger.Panic("bean registration frozen")
 	}
 
 	k := beanKey{
@@ -197,7 +203,7 @@ func (ctx *defaultSpringContext) registerBeanDefinition(d *BeanDefinition) {
 	}
 
 	if _, ok := ctx.beanMap[k]; ok {
-		panic(errors.New("重复注册 " + d.BeanId()))
+		SpringLogger.Panic("重复注册 " + d.BeanId())
 	}
 
 	ctx.beanMap[k] = d
@@ -217,7 +223,7 @@ func (ctx *defaultSpringContext) GetBeanValue(beanId string, v reflect.Value) bo
 func (ctx *defaultSpringContext) GetBeanByName(beanId string, i interface{}) bool {
 
 	if !ctx.autoWired {
-		panic(errors.New("should call after ctx.AutoWireBeans()"))
+		SpringLogger.Panic("should call after ctx.AutoWireBeans()")
 	}
 
 	// 确保存在可空标记，抑制 panic 效果。
@@ -229,7 +235,7 @@ func (ctx *defaultSpringContext) GetBeanByName(beanId string, i interface{}) boo
 
 	// 使用指针才能够对外赋值
 	if t.Kind() != reflect.Ptr {
-		panic(errors.New("i must be pointer"))
+		SpringLogger.Panic("i must be pointer")
 	}
 
 	v := reflect.ValueOf(i)
@@ -253,7 +259,7 @@ func (ctx *defaultSpringContext) getBeanValue(beanId string, parentValue reflect
 	beanType := beanValue.Type()
 
 	if ok := IsRefType(beanType.Kind()); !ok {
-		panic(errors.New("receiver \"" + field + "\" must be ref type"))
+		SpringLogger.Panic("receiver \"" + field + "\" must be ref type")
 	}
 
 	m, ok := ctx.findCacheItem(beanType)
@@ -279,8 +285,14 @@ func (ctx *defaultSpringContext) getBeanValue(beanId string, parentValue reflect
 			if nullable {
 				return false
 			} else {
-				// TODO 更详细的信息，比如 Bean 所在的行号
-				panic(errors.New(field + " 没有找到符合条件的 Bean"))
+				if field == "" {
+					str := "没有找到符合条件的 Bean: ↩\n"
+					str += ctx.wiringStack.path()
+					str += beanValue.Type().String() + " ↩"
+					SpringLogger.Panic(str)
+				} else {
+					SpringLogger.Panic(beanValue.Type().String() + " 没有找到符合条件的 Bean")
+				}
 			}
 		}
 
@@ -289,7 +301,7 @@ func (ctx *defaultSpringContext) getBeanValue(beanId string, parentValue reflect
 		for _, bean := range result {
 			if bean.primary {
 				if primaryBean != nil {
-					panic(errors.New(field + " 找到多个 primary bean"))
+					SpringLogger.Panic(field + " 找到多个 primary bean")
 				}
 				primaryBean = bean
 			}
@@ -297,7 +309,7 @@ func (ctx *defaultSpringContext) getBeanValue(beanId string, parentValue reflect
 
 		if primaryBean == nil {
 			if count > 1 {
-				panic(errors.New(field + " 找到多个符合条件的值"))
+				SpringLogger.Panic(field + " 找到多个符合条件的值")
 			}
 			primaryBean = result[0]
 		}
@@ -338,19 +350,19 @@ func (ctx *defaultSpringContext) getBeanValue(beanId string, parentValue reflect
 func (ctx *defaultSpringContext) CollectBeans(i interface{}) bool {
 
 	if !ctx.autoWired {
-		panic(errors.New("should call after ctx.AutoWireBeans()"))
+		SpringLogger.Panic("should call after ctx.AutoWireBeans()")
 	}
 
 	t := reflect.TypeOf(i)
 
 	if t.Kind() != reflect.Ptr {
-		panic(errors.New("i must be slice ptr"))
+		SpringLogger.Panic("i must be slice ptr")
 	}
 
 	et := t.Elem()
 
 	if et.Kind() != reflect.Slice {
-		panic(errors.New("i must be slice ptr"))
+		SpringLogger.Panic("i must be slice ptr")
 	}
 
 	return ctx.collectBeans(reflect.ValueOf(i).Elem())
@@ -431,7 +443,7 @@ func (ctx *defaultSpringContext) collectBeans(v reflect.Value) bool {
 func (ctx *defaultSpringContext) FindBeanByName(beanId string) (*BeanDefinition, bool) {
 
 	if !ctx.autoWired {
-		panic(errors.New("should call after ctx.AutoWireBeans()"))
+		SpringLogger.Panic("should call after ctx.AutoWireBeans()")
 	}
 
 	typeName, beanName, _ := ParseBeanId(beanId)
@@ -461,7 +473,7 @@ func (ctx *defaultSpringContext) FindBeanByName(beanId string) (*BeanDefinition,
 
 	// 多于 1 个
 	if count > 1 {
-		panic(errors.New(beanId + " 找到多个符合条件的值"))
+		SpringLogger.Panic(beanId + " 找到多个符合条件的值")
 	}
 
 	// 恰好 1 个 & 仅供查询无需绑定
@@ -512,7 +524,7 @@ func (ctx *defaultSpringContext) AutoWireBeans() {
 	// 逐步建立起这个缓存，而随着缓存的建立，绑定的速度会越来越快，从而减少性能的损失。
 
 	if ctx.autoWired {
-		panic(errors.New("ctx.AutoWireBeans() already called"))
+		SpringLogger.Panic("ctx.AutoWireBeans() already called")
 	}
 
 	ctx.autoWired = true
@@ -532,7 +544,7 @@ func (ctx *defaultSpringContext) AutoWireBeans() {
 func (ctx *defaultSpringContext) WireBean(bean interface{}) {
 
 	if !ctx.autoWired {
-		panic(errors.New("should call after ctx.AutoWireBeans()"))
+		SpringLogger.Panic("should call after ctx.AutoWireBeans()")
 	}
 
 	beanDefinition := ToBeanDefinition("", bean)
@@ -544,13 +556,13 @@ func (ctx *defaultSpringContext) wireBeanDefinition(beanDefinition *BeanDefiniti
 
 	// 是否已删除
 	if beanDefinition.status == beanStatus_Deleted {
-		panic(errors.New(beanDefinition.BeanId() + " 已经被删除"))
+		SpringLogger.Panic(beanDefinition.BeanId() + " 已经被删除")
 	}
 
 	// 是否循环依赖
 	if beanDefinition.status == beanStatus_Wiring {
 		if _, ok := beanDefinition.bean.(*originalBean); !ok {
-			ctx.wiringStack.panic(beanDefinition)
+			ctx.wiringStack.circle(beanDefinition)
 		}
 		return
 	}
@@ -568,7 +580,7 @@ func (ctx *defaultSpringContext) wireBeanDefinition(beanDefinition *BeanDefiniti
 	// 首先初始化当前 Bean 不直接依赖的那些 Bean
 	for _, beanId := range beanDefinition.dependsOn {
 		if bean, ok := ctx.FindBeanByName(beanId); !ok {
-			panic(errors.New(beanId + " 没有找到符合条件的 Bean"))
+			SpringLogger.Panic(beanId + " 没有找到符合条件的 Bean")
 		} else {
 			ctx.wireBeanDefinition(bean)
 		}
@@ -587,7 +599,7 @@ func (ctx *defaultSpringContext) wireBeanDefinition(beanDefinition *BeanDefiniti
 	case *methodBean: // 成员方法
 		ctx.wireMethodBean(beanDefinition)
 	default:
-		panic(errors.New("unknown spring bean type"))
+		SpringLogger.Panic("unknown spring bean type")
 	}
 
 	// 如果有则执行用户设置的初始化函数
@@ -694,8 +706,7 @@ func (ctx *defaultSpringContext) wireFunctionBean(bean *functionBean, beanDefini
 	// 检查是否有 error 返回
 	if len(out) == 2 {
 		if err := out[1].Interface(); err != nil {
-			SpringLogger.Debugf("bean error: %s:%d", beanDefinition.file, beanDefinition.line)
-			panic(err)
+			SpringLogger.Panic(beanDefinition.Caller(), err)
 		}
 	}
 
@@ -731,12 +742,12 @@ func (ctx *defaultSpringContext) wireStructField(parentValue reflect.Value,
 
 		// 收集模式的绑定对象必须是数组
 		if beanValue.Type().Kind() != reflect.Slice {
-			panic(errors.New(field + " must be slice when autowire []"))
+			SpringLogger.Panic(field + " must be slice when autowire []")
 		}
 
 		ok := ctx.collectBeans(beanValue)
 		if !ok && !nullable { // 没找到且不能为空则 panic
-			panic(errors.New(field + " 没有找到符合条件的 Bean"))
+			SpringLogger.Panic(field + " 没有找到符合条件的 Bean")
 		}
 
 	} else { // 匹配模式，autowire:"" or autowire:"name"

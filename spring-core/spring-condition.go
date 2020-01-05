@@ -17,12 +17,12 @@
 package SpringCore
 
 import (
-	"errors"
 	"go/token"
 	"go/types"
 	"strings"
 
 	"github.com/go-spring/go-spring-parent/spring-const"
+	"github.com/go-spring/go-spring-parent/spring-logger"
 	"github.com/spf13/cast"
 )
 
@@ -43,7 +43,7 @@ type functionCondition struct {
 // NewFunctionCondition functionCondition 的构造函数
 func NewFunctionCondition(fn ConditionFunc) *functionCondition {
 	if fn == nil {
-		panic(errors.New("fn can't be nil"))
+		SpringLogger.Panic("fn can't be nil")
 	}
 	return &functionCondition{fn}
 }
@@ -117,7 +117,7 @@ func (c *propertyValueCondition) Matches(ctx SpringContext) bool {
 	expr := strings.Replace(expectValue, "$", cast.ToString(val), -1)
 	gotTv, err := types.Eval(token.NewFileSet(), nil, token.NoPos, expr)
 	if err != nil {
-		panic(err)
+		SpringLogger.Panic(err)
 	}
 	return gotTv.Value.String() == "true"
 }
@@ -166,7 +166,8 @@ func NewExpressionCondition(expression string) *expressionCondition {
 
 // Matches 成功返回 true，失败返回 false
 func (c *expressionCondition) Matches(ctx SpringContext) bool {
-	panic(errors.New(SpringConst.UNIMPLEMENTED_METHOD))
+	SpringLogger.Panic(SpringConst.UNIMPLEMENTED_METHOD)
+	return false
 }
 
 // profileCondition 基于运行环境匹配的 Condition 实现
@@ -217,7 +218,7 @@ func NewConditions(op ConditionOp, cond ...Condition) *conditions {
 func (c *conditions) Matches(ctx SpringContext) bool {
 
 	if len(c.cond) == 0 {
-		panic(errors.New("no condition"))
+		SpringLogger.Panic("no condition")
 	}
 
 	switch c.op {
@@ -243,8 +244,10 @@ func (c *conditions) Matches(ctx SpringContext) bool {
 		}
 		return true
 	default:
-		panic(errors.New("error condition op mode"))
+		SpringLogger.Panic("error condition op mode")
 	}
+
+	return false
 }
 
 // conditionNode Condition 计算式的节点
@@ -265,7 +268,7 @@ func newConditionNode() *conditionNode {
 func (c *conditionNode) Matches(ctx SpringContext) bool {
 
 	if c.next != nil && c.next.cond == nil {
-		panic(errors.New("last op need a cond triggered"))
+		SpringLogger.Panic("last op need a cond triggered")
 	}
 
 	if c.cond == nil && c.op == ConditionDefault {
@@ -288,12 +291,14 @@ func (c *conditionNode) Matches(ctx SpringContext) bool {
 				return false
 			}
 		default:
-			panic(errors.New("error condition op mode"))
+			SpringLogger.Panic("error condition op mode")
 		}
 
 	} else {
 		return r
 	}
+
+	return false
 }
 
 // Conditional Condition 计算式

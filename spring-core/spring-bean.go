@@ -17,12 +17,12 @@
 package SpringCore
 
 import (
-	"errors"
-	"fmt"
 	"reflect"
 	"runtime"
 	"strconv"
 	"strings"
+
+	"github.com/go-spring/go-spring-parent/spring-logger"
 )
 
 // 哪些类型的数据可以成为 Bean？一般来讲引用类型的数据都可以成为 Bean。
@@ -83,7 +83,7 @@ func IsValueType(k reflect.Kind) bool {
 func TypeName(t reflect.Type) string {
 
 	if t == nil {
-		panic(errors.New("type shouldn't be nil"))
+		SpringLogger.Panic("type shouldn't be nil")
 	}
 
 	// Map 的全限定名太复杂，不予处理，而且 Map 作为注入对象要三思而后行！
@@ -125,13 +125,13 @@ type originalBean struct {
 func newOriginalBean(bean interface{}) *originalBean {
 
 	if bean == nil {
-		panic(errors.New("nil isn't valid bean"))
+		SpringLogger.Panic("nil isn't valid bean")
 	}
 
 	t := reflect.TypeOf(bean)
 
 	if ok := IsRefType(t.Kind()); !ok {
-		panic(errors.New("bean must be ref type"))
+		SpringLogger.Panic("bean must be ref type")
 	}
 
 	return &originalBean{
@@ -200,7 +200,7 @@ func newFunctionBean(fnValue reflect.Value, tags []string) functionBean {
 	if ok := validFuncType(); !ok {
 		t1 := "func(...) bean"
 		t2 := "func(...) (bean, error)"
-		panic(errors.New(fmt.Sprintf("func bean must be \"%s\" or \"%s\"", t1, t2)))
+		SpringLogger.Panicf("func bean must be \"%s\" or \"%s\"", t1, t2)
 	}
 
 	t := fnType.Out(0)
@@ -255,7 +255,7 @@ func newMethodBean(parent *BeanDefinition, method string, tags ...string) *metho
 	fnValue := parent.Value().MethodByName(method)
 
 	if ok := fnValue.IsValid(); !ok {
-		panic(errors.New("can't find method: " + method))
+		SpringLogger.Panic("can't find method: " + method)
 	}
 
 	return &methodBean{
@@ -369,7 +369,7 @@ func (d *BeanDefinition) BeanId() string {
 	return d.TypeName() + ":" + d.name
 }
 
-// Caller 返回 Bean 的调用点
+// Caller 返回 Bean 的注册点
 func (d *BeanDefinition) Caller() string {
 	return d.file + ":" + strconv.Itoa(d.line)
 }
@@ -470,7 +470,7 @@ func (d *BeanDefinition) Options(options ...*optionArg) *BeanDefinition {
 	case *methodBean:
 		bean.arg = arg
 	default:
-		panic(errors.New("只有 func Bean 才能调用此方法"))
+		SpringLogger.Panic("只有 func Bean 才能调用此方法")
 	}
 	return d
 }
@@ -478,7 +478,7 @@ func (d *BeanDefinition) Options(options ...*optionArg) *BeanDefinition {
 // DependsOn 设置 Bean 的非直接依赖
 func (d *BeanDefinition) DependsOn(beanIds ...string) *BeanDefinition {
 	if len(d.dependsOn) > 0 {
-		panic(errors.New("dependsOn already set"))
+		SpringLogger.Panic("dependsOn already set")
 	}
 	d.dependsOn = beanIds
 	return d
@@ -521,7 +521,7 @@ func validLifeCycleFunc(fn interface{}, beanType reflect.Type) bool {
 func (d *BeanDefinition) Init(fn interface{}) *BeanDefinition {
 
 	if ok := validLifeCycleFunc(fn, d.Type()); !ok {
-		panic(errors.New("init should be func(bean)"))
+		SpringLogger.Panic("init should be func(bean)")
 	}
 
 	d.init = fn
@@ -532,7 +532,7 @@ func (d *BeanDefinition) Init(fn interface{}) *BeanDefinition {
 func (d *BeanDefinition) Destroy(fn interface{}) *BeanDefinition {
 
 	if ok := validLifeCycleFunc(fn, d.Type()); !ok {
-		panic(errors.New("destroy should be func(bean)"))
+		SpringLogger.Panic("destroy should be func(bean)")
 	}
 
 	d.destroy = fn
@@ -573,7 +573,7 @@ func ParseBeanId(beanId string) (typeName string, beanName string, nullable bool
 	}
 
 	if beanName == "[]" && typeName != "" {
-		panic(errors.New("collection mode shouldn't have type"))
+		SpringLogger.Panic("collection mode shouldn't have type")
 	}
 	return
 }
