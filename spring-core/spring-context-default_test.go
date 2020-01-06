@@ -32,6 +32,17 @@ import (
 	"github.com/magiconair/properties/assert"
 )
 
+func TestDefaultSpringContext_RegisterBeanFrozen(t *testing.T) {
+	assert.Panic(t, func() {
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBean(new(int)).Init(func(i *int) {
+			// 不能在这里注册新的 Bean
+			ctx.RegisterBean(new(bool))
+		})
+		ctx.AutoWireBeans()
+	}, "bean registration frozen")
+}
+
 func TestDefaultSpringContext(t *testing.T) {
 
 	t.Run("int", func(t *testing.T) {
@@ -50,7 +61,7 @@ func TestDefaultSpringContext(t *testing.T) {
 		// 相同类型的匿名 bean 不能重复注册
 		assert.Panic(t, func() {
 			ctx.RegisterBean(&e)
-		}, "重复注册 int:\\*int")
+		}, "duplicate bean registration int:\\*int")
 
 		// 相同类型不同名称的 bean 都可注册
 		ctx.RegisterNameBean("i3", &e)
@@ -829,7 +840,7 @@ func TestDefaultSpringContext_Primary(t *testing.T) {
 		ctx.RegisterBean(new(BeanOne))
 		ctx.RegisterBean(new(BeanTwo))
 		ctx.AutoWireBeans()
-	}, "重复注册 github.com/go-spring/go-spring/spring-core_test/SpringCore_test.BeanZero:\\*SpringCore_test.BeanZero")
+	}, "duplicate bean registration github.com/go-spring/go-spring/spring-core_test/SpringCore_test.BeanZero:\\*SpringCore_test.BeanZero")
 
 	assert.Panic(t, func() {
 		ctx := SpringCore.NewDefaultSpringContext()
@@ -839,7 +850,7 @@ func TestDefaultSpringContext_Primary(t *testing.T) {
 		ctx.RegisterBean(new(BeanOne))
 		ctx.RegisterBean(new(BeanTwo))
 		ctx.AutoWireBeans()
-	}, "重复注册 github.com/go-spring/go-spring/spring-core_test/SpringCore_test.BeanZero:\\*SpringCore_test.BeanZero")
+	}, "duplicate bean registration github.com/go-spring/go-spring/spring-core_test/SpringCore_test.BeanZero:\\*SpringCore_test.BeanZero")
 
 	t.Run("not primary", func(t *testing.T) {
 
@@ -954,6 +965,10 @@ func NewManagerRetErrorNil() (Manager, error) {
 	return localManager{}, nil
 }
 
+func NewNullPtrManager() Manager {
+	return nil
+}
+
 func NewPtrManager() Manager {
 	return &localManager{}
 }
@@ -1014,7 +1029,7 @@ func TestDefaultSpringContext_RegisterBeanFn2(t *testing.T) {
 			ctx.SetProperty("manager.version", "1.0.0")
 			ctx.RegisterBeanFn(NewManagerRetError)
 			ctx.AutoWireBeans()
-		}, "error")
+		}, "return error")
 	})
 
 	t.Run("manager return error nil", func(t *testing.T) {
@@ -1022,6 +1037,15 @@ func TestDefaultSpringContext_RegisterBeanFn2(t *testing.T) {
 		ctx.SetProperty("manager.version", "1.0.0")
 		ctx.RegisterBeanFn(NewManagerRetErrorNil)
 		ctx.AutoWireBeans()
+	})
+
+	t.Run("manager return nil", func(t *testing.T) {
+		assert.Panic(t, func() {
+			ctx := SpringCore.NewDefaultSpringContext()
+			ctx.SetProperty("manager.version", "1.0.0")
+			ctx.RegisterBeanFn(NewNullPtrManager)
+			ctx.AutoWireBeans()
+		}, "return nil")
 	})
 }
 

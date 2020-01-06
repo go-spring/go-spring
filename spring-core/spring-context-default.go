@@ -50,9 +50,6 @@ func newBeanCacheItem() *beanCacheItem {
 
 // Store 将一个 Bean 存储到 CachedBeanMapItem 里
 func (item *beanCacheItem) store(d *BeanDefinition) {
-	if d.name == "" {
-		SpringLogger.Panic("bean must have name")
-	}
 	item.named = append(item.named, d)
 }
 
@@ -203,7 +200,7 @@ func (ctx *defaultSpringContext) registerBeanDefinition(d *BeanDefinition) {
 	}
 
 	if _, ok := ctx.beanMap[k]; ok {
-		SpringLogger.Panic("重复注册 " + d.BeanId())
+		SpringLogger.Panic("duplicate bean registration " + d.BeanId())
 	}
 
 	ctx.beanMap[k] = d
@@ -706,7 +703,7 @@ func (ctx *defaultSpringContext) wireFunctionBean(bean *functionBean, beanDefini
 	// 检查是否有 error 返回
 	if len(out) == 2 {
 		if err := out[1].Interface(); err != nil {
-			SpringLogger.Panic(beanDefinition.Caller(), err)
+			SpringLogger.Panic("function bean", beanDefinition.Caller(), "return error:", err)
 		}
 	}
 
@@ -723,7 +720,9 @@ func (ctx *defaultSpringContext) wireFunctionBean(bean *functionBean, beanDefini
 		bean.rValue.Elem().Set(val)
 	}
 
-	bean.bean = bean.rValue.Interface()
+	if bean.bean = bean.rValue.Interface(); bean.bean == nil {
+		SpringLogger.Panic("function bean", beanDefinition.Caller(), "return nil")
+	}
 
 	// 对返回值进行依赖注入
 	if bean.Type().Kind() == reflect.Interface {
