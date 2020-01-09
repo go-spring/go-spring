@@ -44,3 +44,8 @@ prefix:
       url: 1.1.1.1
       port: 3306
       db: db2
+
+camera:
+  floor1: camera_floor1
+  floor2: camera_floor2
+  floor3: camera_floor3

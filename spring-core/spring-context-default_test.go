@@ -1773,3 +1773,70 @@ func TestDefaultSpringContext_BeanNotFound(t *testing.T) {
 		ctx.AutoWireBeans()
 	}, "没有找到符合条件的 Bean: ")
 }
+
+type SubNestedAutowireBean struct {
+	Int *int `autowire:""`
+}
+
+type NestedAutowireBean struct {
+	SubNestedAutowireBean
+	*float32
+	bool
+}
+
+type PtrNestedAutowireBean struct {
+	*SubNestedAutowireBean
+	*float32
+	bool
+}
+
+type FieldNestedAutowireBean struct {
+	B SubNestedAutowireBean
+	*float32
+	bool
+}
+
+type PtrFieldNestedAutowireBean struct {
+	B *SubNestedAutowireBean
+	*float32
+	bool
+}
+
+func TestDefaultSpringContext_NestedAutowireBean(t *testing.T) {
+
+	ctx := SpringCore.NewDefaultSpringContext()
+	ctx.RegisterBeanFn(func() int { return 3 })
+	ctx.RegisterBean(new(NestedAutowireBean))
+	ctx.RegisterBean(&PtrNestedAutowireBean{
+		SubNestedAutowireBean: new(SubNestedAutowireBean),
+	})
+	ctx.RegisterBean(new(FieldNestedAutowireBean))
+	ctx.RegisterBean(&PtrFieldNestedAutowireBean{
+		B: new(SubNestedAutowireBean),
+	})
+	ctx.AutoWireBeans()
+
+	var b *NestedAutowireBean
+	ok := ctx.GetBean(&b)
+
+	assert.Equal(t, ok, true)
+	assert.Equal(t, *b.Int, 3)
+
+	var b0 *PtrNestedAutowireBean
+	ok = ctx.GetBean(&b0)
+
+	assert.Equal(t, ok, true)
+	assert.Equal(t, *b0.Int, 3)
+
+	var b1 *FieldNestedAutowireBean
+	ok = ctx.GetBean(&b1)
+
+	assert.Equal(t, ok, true)
+	assert.Equal(t, *b1.B.Int, 3)
+
+	var b2 *PtrFieldNestedAutowireBean
+	ok = ctx.GetBean(&b2)
+
+	assert.Equal(t, ok, true)
+	assert.Equal(t, *b2.B.Int, 3)
+}

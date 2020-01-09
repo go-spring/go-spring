@@ -17,6 +17,7 @@
 package SpringCore
 
 import (
+	"fmt"
 	"reflect"
 	"sort"
 	"strings"
@@ -135,32 +136,8 @@ func (p *defaultProperties) GetAllProperties() map[string]interface{} {
 	return p.properties
 }
 
-// propertyHolder 属性值列表容器
-type propertyHolder interface {
-	// GetDefaultProperty 返回属性值，如果没有找到则使用指定的默认值，属性名称统一转成小写。
-	GetDefaultProperty(name string, defaultValue interface{}) (interface{}, bool)
-}
-
-// mapPropertyHolder map 实现的属性值容器
-type mapPropertyHolder struct {
-	m map[interface{}]interface{}
-}
-
-// newMapPropertyHolder mapPropertyHolder 的构造函数
-func newMapPropertyHolder(m map[interface{}]interface{}) *mapPropertyHolder {
-	return &mapPropertyHolder{
-		m: m,
-	}
-}
-
-// GetDefaultProperty 返回属性值，如果没有找到则使用指定的默认值，属性名称统一转成小写。
-func (p *mapPropertyHolder) GetDefaultProperty(name string, defaultValue interface{}) (interface{}, bool) {
-	v, ok := p.m[name]
-	return v, ok
-}
-
 // bindStruct 对结构体进行属性值绑定
-func bindStruct(prop propertyHolder, beanType reflect.Type, beanValue reflect.Value,
+func bindStruct(prop Properties, beanType reflect.Type, beanValue reflect.Value,
 	fieldName string, propNamePrefix string) {
 
 	for i := 0; i < beanType.NumField(); i++ {
@@ -188,7 +165,7 @@ func bindStruct(prop propertyHolder, beanType reflect.Type, beanValue reflect.Va
 }
 
 // bindStructField 对结构体的字段进行属性绑定
-func bindStructField(prop propertyHolder, fieldType reflect.Type, fieldValue reflect.Value,
+func bindStructField(prop Properties, fieldType reflect.Type, fieldValue reflect.Value,
 	fieldName string, propNamePrefix string, propTag string) {
 
 	// 检查语法是否正确
@@ -223,7 +200,7 @@ func bindStructField(prop propertyHolder, fieldType reflect.Type, fieldValue ref
 }
 
 // bindValue 对任意 value 进行属性绑定
-func bindValue(prop propertyHolder, beanType reflect.Type, beanValue reflect.Value,
+func bindValue(prop Properties, beanType reflect.Type, beanValue reflect.Value,
 	fieldName string, propName string, defaultValue interface{}) {
 
 	getPropValue := func() interface{} { // 获取最终决定的属性值
@@ -233,6 +210,12 @@ func bindValue(prop propertyHolder, beanType reflect.Type, beanValue reflect.Val
 			if defaultValue != nil {
 				return defaultValue
 			}
+
+			// 尝试找一下具有相同前缀的属性值的列表
+			if prefixValue := prop.GetPrefixProperties(propName); len(prefixValue) > 0 {
+				return prefixValue
+			}
+
 			SpringLogger.Panic(fieldName + " properties \"" + propName + "\" not config")
 			return nil
 		}
@@ -314,9 +297,9 @@ func bindValue(prop propertyHolder, beanType reflect.Type, beanValue reflect.Val
 						result := reflect.MakeSlice(beanType, len(s), len(s))
 
 						for i, si := range s {
-							if sv, isMap := si.(map[interface{}]interface{}); isMap {
+							if sv, err := cast.ToStringMapE(si); err == nil {
 								ev := reflect.New(elemType)
-								bindStruct(newMapPropertyHolder(sv), elemType, ev.Elem(), fieldName, "")
+								bindStruct(&defaultProperties{sv}, elemType, ev.Elem(), fieldName, "")
 								result.Index(i).Set(ev.Elem())
 							} else {
 								SpringLogger.Panicf("property %s isn't []map[string]interface{}", propName)
@@ -331,6 +314,8 @@ func bindValue(prop propertyHolder, beanType reflect.Type, beanValue reflect.Val
 				}
 			}
 		}
+	case reflect.Map:
+		fmt.Println("TODO")
 	default:
 		SpringLogger.Panic(fieldName + " unsupported type " + beanValue.Kind().String())
 	}

@@ -245,3 +245,27 @@ func TestDefaultProperties_GetAllProperties(t *testing.T) {
 		assert.Equal(t, len(dbConfig1.DB), 2)
 	})
 }
+
+// TODO lvan100
+//func TestDefaultProperties_GetStringMapStringProperty(t *testing.T) {
+//
+//	t.Run("set property", func(t *testing.T) {
+//
+//		p := SpringCore.NewDefaultProperties()
+//		p.SetProperty("a.b1", "b1")
+//		p.SetProperty("a.b2", "b2")
+//		p.SetProperty("a.b3", "b3")
+//
+//		var m map[string]string
+//		p.BindProperty("a", &m)
+//	})
+//
+//	t.Run("load from file", func(t *testing.T) {
+//
+//		p := SpringCore.NewDefaultProperties()
+//		p.LoadProperties("testdata/config/application.yaml")
+//
+//		var m map[string]string
+//		p.BindProperty("ya", &m)
+//	})
+//}
