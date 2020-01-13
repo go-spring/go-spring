@@ -49,3 +49,32 @@ camera:
   floor1: camera_floor1
   floor2: camera_floor2
   floor3: camera_floor3
+
+db_map:
+  d1:
+    username: root
+    password: 123456
+    url: 1.1.1.1
+    port: 3306
+    db: db1
+  d2:
+    username: root
+    password: 123456
+    url: 1.1.1.1
+    port: 3306
+    db: db2
+
+prefix_map:
+  db_map:
+    d1:
+      username: root
+      password: 123456
+      url: 1.1.1.1
+      port: 3306
+      db: db1
+    d2:
+      username: root
+      password: 123456
+      url: 1.1.1.1
+      port: 3306
+      db: db2

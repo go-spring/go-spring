@@ -17,7 +17,6 @@
 package SpringCore
 
 import (
-	"fmt"
 	"reflect"
 	"sort"
 	"strings"
@@ -315,7 +314,85 @@ func bindValue(prop Properties, beanType reflect.Type, beanValue reflect.Value,
 			}
 		}
 	case reflect.Map:
-		fmt.Println("TODO")
+		if beanType.Key().Kind() != reflect.String {
+			SpringLogger.Panicf("field %s isn't map[string]interface{}", fieldName)
+		}
+
+		elemType := beanType.Elem()
+		elemKind := elemType.Kind()
+
+		switch elemKind {
+		case reflect.Uint64, reflect.Uint32, reflect.Uint16, reflect.Uint8, reflect.Uint:
+			SpringLogger.Panic("暂未支持")
+		case reflect.Int64, reflect.Int32, reflect.Int16, reflect.Int8, reflect.Int:
+			SpringLogger.Panic("暂未支持")
+		case reflect.Float64, reflect.Float32:
+			SpringLogger.Panic("暂未支持")
+		case reflect.String:
+			if mapValue, err := cast.ToStringMapStringE(propValue); err == nil {
+				trimKey := propName + "."
+				result := make(map[string]string)
+				for k0, v0 := range mapValue {
+					k0 = strings.TrimPrefix(k0, trimKey)
+					result[k0] = v0
+				}
+				beanValue.Set(reflect.ValueOf(result))
+			} else {
+				SpringLogger.Panicf("property %s isn't map[string]string", propName)
+			}
+		case reflect.Bool:
+			SpringLogger.Panic("暂未支持")
+		default:
+			if fn, ok := typeConverters[elemType]; ok {
+				// 首先处理使用类型转换器的场景
+
+				if mapValue, err := cast.ToStringMapStringE(propValue); err == nil {
+					trimKey := propName + "."
+					fnValue := reflect.ValueOf(fn)
+					result := reflect.MakeMap(beanType)
+					for k0, v0 := range mapValue {
+						res := fnValue.Call([]reflect.Value{reflect.ValueOf(v0)})
+						k0 = strings.TrimPrefix(k0, trimKey)
+						result.SetMapIndex(reflect.ValueOf(k0), res[0])
+					}
+					beanValue.Set(result)
+				} else {
+					SpringLogger.Panicf("property %s isn't map[string]string", propName)
+				}
+
+			} else { // 然后处理结构体字段的场景
+
+				if mapValue, err := cast.ToStringMapE(propValue); err == nil {
+
+					temp := make(map[string]map[string]interface{})
+					trimKey := propName + "."
+
+					var ok bool
+					for k0, v0 := range mapValue {
+						k0 = strings.TrimPrefix(k0, trimKey)
+						sk := strings.Split(k0, ".")
+						var item map[string]interface{}
+						if item, ok = temp[sk[0]]; !ok {
+							item = make(map[string]interface{})
+							temp[sk[0]] = item
+						}
+						item[sk[1]] = v0
+					}
+
+					result := reflect.MakeMapWithSize(beanType, len(temp))
+					for k1, v1 := range temp {
+						ev := reflect.New(elemType)
+						bindStruct(&defaultProperties{v1}, elemType, ev.Elem(), fieldName, "")
+						result.SetMapIndex(reflect.ValueOf(k1), ev.Elem())
+					}
+
+					beanValue.Set(result)
+
+				} else {
+					SpringLogger.Panicf("property %s isn't map[string]map[string]interface{}", propName)
+				}
+			}
+		}
 	default:
 		SpringLogger.Panic(fieldName + " unsupported type " + beanValue.Kind().String())
 	}

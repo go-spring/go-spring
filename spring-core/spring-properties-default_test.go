@@ -246,26 +246,68 @@ func TestDefaultProperties_GetAllProperties(t *testing.T) {
 	})
 }
 
-// TODO lvan100
-//func TestDefaultProperties_GetStringMapStringProperty(t *testing.T) {
-//
-//	t.Run("set property", func(t *testing.T) {
-//
-//		p := SpringCore.NewDefaultProperties()
-//		p.SetProperty("a.b1", "b1")
-//		p.SetProperty("a.b2", "b2")
-//		p.SetProperty("a.b3", "b3")
-//
-//		var m map[string]string
-//		p.BindProperty("a", &m)
-//	})
-//
-//	t.Run("load from file", func(t *testing.T) {
-//
-//		p := SpringCore.NewDefaultProperties()
-//		p.LoadProperties("testdata/config/application.yaml")
-//
-//		var m map[string]string
-//		p.BindProperty("ya", &m)
-//	})
-//}
+type NestedDbMapConfig struct {
+	DB map[string]NestedDB `value:"${db_map}"`
+}
+
+func TestDefaultProperties_GetStringMapStringProperty(t *testing.T) {
+
+	t.Run("set property", func(t *testing.T) {
+
+		p := SpringCore.NewDefaultProperties()
+		p.SetProperty("a.b1", "b1")
+		p.SetProperty("a.b2", "b2")
+		p.SetProperty("a.b3", "b3")
+
+		var m map[string]string
+		p.BindProperty("a", &m)
+
+		assert.Equal(t, len(m), 3)
+		assert.Equal(t, m["b1"], "b1")
+	})
+
+	t.Run("set property converter", func(t *testing.T) {
+		SpringCore.RegisterTypeConverter(PointConverter)
+
+		p := SpringCore.NewDefaultProperties()
+		p.SetProperty("a.p1", "(1,2)")
+		p.SetProperty("a.p2", "(3,4)")
+		p.SetProperty("a.p3", "(5,6)")
+
+		var m map[string]Point
+		p.BindProperty("a", &m)
+
+		assert.Equal(t, len(m), 3)
+		assert.Equal(t, m["p1"], Point{1, 2})
+	})
+
+	t.Run("load from file", func(t *testing.T) {
+
+		p := SpringCore.NewDefaultProperties()
+		p.LoadProperties("testdata/config/application.yaml")
+
+		var m map[string]string
+		p.BindProperty("camera", &m)
+
+		assert.Equal(t, len(m), 3)
+		assert.Equal(t, m["floor1"], "camera_floor1")
+	})
+
+	t.Run("load from file struct", func(t *testing.T) {
+
+		p := SpringCore.NewDefaultProperties()
+		p.LoadProperties("testdata/config/application.yaml")
+
+		var m map[string]NestedDB
+		p.BindProperty("db_map", &m)
+
+		assert.Equal(t, len(m), 2)
+		assert.Equal(t, m["d1"].DB, "db1")
+
+		dbConfig2 := NestedDbMapConfig{}
+		p.BindProperty("prefix_map", &dbConfig2)
+
+		assert.Equal(t, len(dbConfig2.DB), 2)
+		assert.Equal(t, dbConfig2.DB["d1"].DB, "db1")
+	})
+}
