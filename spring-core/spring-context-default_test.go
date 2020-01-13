@@ -1840,3 +1840,33 @@ func TestDefaultSpringContext_NestedAutowireBean(t *testing.T) {
 	assert.Equal(t, ok, true)
 	assert.Equal(t, b2.B.Int, (*int)(nil))
 }
+
+type baseChannel struct {
+	Int        *int `autowire:""`
+	AutoCreate bool `value:"${auto-create}"`
+}
+
+type wxChannel struct {
+	baseChannel `value:"${sdk.wx}"`
+
+	// 支持对私有字段注入，但是不推荐！代码扫描请忽略这行。
+	int *int `autowire:""`
+}
+
+func TestDefaultSpringContext_NestValueField(t *testing.T) {
+
+	ctx := SpringCore.NewDefaultSpringContext()
+	ctx.SetProperty("sdk.wx.auto-create", true)
+	ctx.RegisterBeanFn(func() int { return 3 })
+	ctx.RegisterBean(new(wxChannel))
+	ctx.AutoWireBeans()
+
+	var c *wxChannel
+	ok := ctx.GetBean(&c)
+
+	assert.Equal(t, ok, true)
+	assert.Equal(t, *c.Int, 3)
+	assert.Equal(t, *c.int, 3)
+	assert.Equal(t, c.Int, c.int)
+	assert.Equal(t, c.AutoCreate, true)
+}

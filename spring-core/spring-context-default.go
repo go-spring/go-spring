@@ -313,10 +313,11 @@ func (ctx *defaultSpringContext) getBeanValue(beanId string, parentValue reflect
 		}
 
 		// 依赖注入
-		ctx.wireBeanDefinition(primaryBean)
+		ctx.wireBeanDefinition(primaryBean, false)
 
 		// 恰好 1 个
-		beanValue.Set(primaryBean.Value())
+		v := SpringUtils.ValuePatch(beanValue)
+		v.Set(primaryBean.Value())
 		return true
 	}
 
@@ -384,7 +385,7 @@ func (ctx *defaultSpringContext) collectBeans(v reflect.Value) bool {
 			dt := d.Type()
 
 			if dt.AssignableTo(et) { // Bean 自身符合条件
-				ctx.wireBeanDefinition(d)
+				ctx.wireBeanDefinition(d, false)
 				ev = reflect.Append(ev, d.Value())
 
 			} else if dt.Kind() == reflect.Slice { // 找到一个 Bean 数组
@@ -422,6 +423,7 @@ func (ctx *defaultSpringContext) collectBeans(v reflect.Value) bool {
 
 		// 给外面的数组赋值
 		if ev.Len() > 0 {
+			v = SpringUtils.ValuePatch(v)
 			v.Set(ev)
 			return true
 		}
@@ -431,6 +433,7 @@ func (ctx *defaultSpringContext) collectBeans(v reflect.Value) bool {
 	// 命中缓存，则从缓存中查询
 
 	if m.collect.Len() > 0 {
+		v = SpringUtils.ValuePatch(v)
 		v.Set(m.collect)
 		return true
 	}
@@ -534,23 +537,26 @@ func (ctx *defaultSpringContext) AutoWireBeans() {
 
 	// 然后执行 Bean 绑定
 	for _, beanDefinition := range ctx.beanMap {
-		ctx.wireBeanDefinition(beanDefinition)
+		ctx.wireBeanDefinition(beanDefinition, false)
 	}
 }
 
 // WireBean 绑定外部的 Bean 源
 func (ctx *defaultSpringContext) WireBean(bean interface{}) {
-
 	if !ctx.autoWired {
 		SpringLogger.Panic("should call after ctx.AutoWireBeans()")
 	}
+	ctx.wireBean(bean, false)
+}
 
+// WireBean 绑定外部的 Bean 源
+func (ctx *defaultSpringContext) wireBean(bean interface{}, onlyAutoWire bool) {
 	beanDefinition := ToBeanDefinition("", bean)
-	ctx.wireBeanDefinition(beanDefinition)
+	ctx.wireBeanDefinition(beanDefinition, onlyAutoWire)
 }
 
 // wireBeanDefinition 绑定 BeanDefinition 指定的 Bean
-func (ctx *defaultSpringContext) wireBeanDefinition(beanDefinition *BeanDefinition) {
+func (ctx *defaultSpringContext) wireBeanDefinition(beanDefinition *BeanDefinition, onlyAutoWire bool) {
 
 	// 是否已删除
 	if beanDefinition.status == beanStatus_Deleted {
@@ -580,18 +586,18 @@ func (ctx *defaultSpringContext) wireBeanDefinition(beanDefinition *BeanDefiniti
 		if bean, ok := ctx.FindBeanByName(beanId); !ok {
 			SpringLogger.Panic(beanId + " 没有找到符合条件的 Bean")
 		} else {
-			ctx.wireBeanDefinition(bean)
+			ctx.wireBeanDefinition(bean, false)
 		}
 	}
 
 	// 如果是成员方法 Bean，需要首先初始化它的父 Bean
 	if mBean, ok := beanDefinition.bean.(*methodBean); ok {
-		ctx.wireBeanDefinition(mBean.parent)
+		ctx.wireBeanDefinition(mBean.parent, false)
 	}
 
 	switch beanDefinition.bean.(type) {
 	case *originalBean: // 原始对象
-		ctx.wireOriginalBean(beanDefinition)
+		ctx.wireOriginalBean(beanDefinition, onlyAutoWire)
 	case *constructorBean: // 构造函数
 		ctx.wireConstructorBean(beanDefinition)
 	case *methodBean: // 成员方法
@@ -613,7 +619,7 @@ func (ctx *defaultSpringContext) wireBeanDefinition(beanDefinition *BeanDefiniti
 }
 
 // wireOriginalBean 对原始对象进行注入
-func (ctx *defaultSpringContext) wireOriginalBean(beanDefinition *BeanDefinition) {
+func (ctx *defaultSpringContext) wireOriginalBean(beanDefinition *BeanDefinition, onlyAutoWire bool) {
 	SpringLogger.Debugf("wire bean \"%s\"", beanDefinition.BeanId())
 
 	st := beanDefinition.Type()
@@ -651,14 +657,21 @@ func (ctx *defaultSpringContext) wireOriginalBean(beanDefinition *BeanDefinition
 			ev := sv.Elem()
 
 			for i := 0; i < et.NumField(); i++ {
+				// 字段包含 value 标签时嵌套处理只注入变量
+				fieldOnlyAutoWire := false
+
 				ft := et.Field(i)
 				fv := ev.Field(i)
 
 				fieldName := et.Name() + ".$" + ft.Name
 
 				// 处理 value 标签
-				if tag, ok := ft.Tag.Lookup("value"); ok {
-					bindStructField(ctx, ft.Type, fv, fieldName, "", tag)
+				if !onlyAutoWire {
+					// 避免父结构体有 value 标签重新解析导致失败的情况
+					if tag, ok := ft.Tag.Lookup("value"); ok {
+						fieldOnlyAutoWire = true
+						bindStructField(ctx, ft.Type, fv, fieldName, "", tag)
+					}
 				}
 
 				// 处理 autowire 标签
@@ -671,7 +684,7 @@ func (ctx *defaultSpringContext) wireOriginalBean(beanDefinition *BeanDefinition
 				if ft.Type.Kind() == reflect.Struct {
 					// 开放私有字段，但是不会更新原属性
 					fv0 := SpringUtils.ValuePatch(fv)
-					ctx.WireBean(fv0.Addr().Interface())
+					ctx.wireBean(fv0.Addr().Interface(), fieldOnlyAutoWire)
 				}
 			}
 		}
