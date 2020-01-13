@@ -22,6 +22,7 @@ import (
 	"reflect"
 
 	"github.com/go-spring/go-spring-parent/spring-logger"
+	"github.com/go-spring/go-spring-parent/spring-utils"
 )
 
 // beanKey Bean's unique key, type+name.
@@ -658,30 +659,19 @@ func (ctx *defaultSpringContext) wireOriginalBean(beanDefinition *BeanDefinition
 				// 处理 value 标签
 				if tag, ok := ft.Tag.Lookup("value"); ok {
 					bindStructField(ctx, ft.Type, fv, fieldName, "", tag)
-					continue
 				}
 
 				// 处理 autowire 标签
 				if beanId, ok := ft.Tag.Lookup("autowire"); ok {
 					ctx.wiringStack.setField(ft.Name)
 					ctx.wireStructField(sv, fv, fieldName, beanId)
-					continue
 				}
 
-				// 处理那些没有注解的字段
-				if fv.CanAddr() && fv.CanSet() {
-
-					// 对嵌套的结构体或者没有注解的结构体进行注入
-					if ft.Type.Kind() == reflect.Struct {
-						ctx.WireBean(fv.Addr().Interface())
-						continue
-					}
-
-					// 对嵌套的指针结构体或者没有注解的指针结构体进行注入
-					if ft.Type.Kind() == reflect.Ptr && ft.Type.Elem().Kind() == reflect.Struct && !fv.IsNil() {
-						ctx.WireBean(fv.Interface())
-						continue
-					}
+				// 处理结构体类型的字段，防止递归所以不支持指针结构体字段
+				if ft.Type.Kind() == reflect.Struct {
+					// 开放私有字段，但是不会更新原属性
+					fv0 := SpringUtils.ValuePatch(fv)
+					ctx.WireBean(fv0.Addr().Interface())
 				}
 			}
 		}

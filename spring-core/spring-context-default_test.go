@@ -1785,7 +1785,7 @@ type NestedAutowireBean struct {
 }
 
 type PtrNestedAutowireBean struct {
-	*SubNestedAutowireBean
+	*SubNestedAutowireBean // 不处理
 	*float32
 	bool
 }
@@ -1797,7 +1797,7 @@ type FieldNestedAutowireBean struct {
 }
 
 type PtrFieldNestedAutowireBean struct {
-	B *SubNestedAutowireBean
+	B *SubNestedAutowireBean // 不处理
 	*float32
 	bool
 }
@@ -1826,7 +1826,7 @@ func TestDefaultSpringContext_NestedAutowireBean(t *testing.T) {
 	ok = ctx.GetBean(&b0)
 
 	assert.Equal(t, ok, true)
-	assert.Equal(t, *b0.Int, 3)
+	assert.Equal(t, b0.Int, (*int)(nil))
 
 	var b1 *FieldNestedAutowireBean
 	ok = ctx.GetBean(&b1)
@@ -1838,5 +1838,5 @@ func TestDefaultSpringContext_NestedAutowireBean(t *testing.T) {
 	ok = ctx.GetBean(&b2)
 
 	assert.Equal(t, ok, true)
-	assert.Equal(t, *b2.B.Int, 3)
+	assert.Equal(t, b2.B.Int, (*int)(nil))
 }
