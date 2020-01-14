@@ -18,12 +18,14 @@
 package SpringBoot
 
 import (
+	"os"
 	"strings"
 
 	"github.com/go-spring/go-spring-parent/spring-logger"
 )
 
 const (
+	SpringAccess  = "spring.access"  // all 允许注入私有字段
 	SpringProfile = "spring.profile" // 运行环境
 )
 
@@ -55,6 +57,9 @@ type CommandLineRunner interface {
 // Start 启动 SpringBoot 应用
 func (app *application) Start() {
 
+	// 加载系统环境变量
+	app.loadSystemEnv()
+
 	// 加载配置文件
 	app.loadConfigFiles()
 
@@ -81,6 +86,17 @@ func (app *application) Start() {
 	}
 
 	SpringLogger.Info("spring boot started")
+}
+
+func (app *application) loadSystemEnv() {
+	SpringLogger.Debugf(">>> load system env")
+	for _, env := range os.Environ() {
+		if i := strings.Index(env, "="); i > 0 {
+			k, v := env[0:i], env[i+1:]
+			SpringLogger.Debugf("%s=%v", k, v)
+			app.AppContext.SetProperty(k, v)
+		}
+	}
 }
 
 func (app *application) loadConfigFiles() {
@@ -119,7 +135,7 @@ func (app *application) ShutDown() {
 
 	// 通知 Bean 销毁
 	app.AppContext.Close()
-	
+
 	// 通知应用停止事件
 	var eventBeans []ApplicationEvent
 	app.AppContext.CollectBeans(&eventBeans)

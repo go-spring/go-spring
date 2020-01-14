@@ -1844,6 +1844,7 @@ func TestDefaultSpringContext_NestedAutowireBean(t *testing.T) {
 type baseChannel struct {
 	Int        *int `autowire:""`
 	AutoCreate bool `value:"${auto-create}"`
+	enable     bool `value:"${enable:=false}"`
 }
 
 type wxChannel struct {
@@ -1857,8 +1858,10 @@ func TestDefaultSpringContext_NestValueField(t *testing.T) {
 
 	ctx := SpringCore.NewDefaultSpringContext()
 	ctx.SetProperty("sdk.wx.auto-create", true)
+	ctx.SetProperty("sdk.wx.enable", true)
 	ctx.RegisterBeanFn(func() int { return 3 })
 	ctx.RegisterBean(new(wxChannel))
+	ctx.SetAllAccess(true)
 	ctx.AutoWireBeans()
 
 	var c *wxChannel
@@ -1868,5 +1871,6 @@ func TestDefaultSpringContext_NestValueField(t *testing.T) {
 	assert.Equal(t, *c.Int, 3)
 	assert.Equal(t, *c.int, 3)
 	assert.Equal(t, c.Int, c.int)
+	assert.Equal(t, c.enable, true)
 	assert.Equal(t, c.AutoCreate, true)
 }

@@ -59,6 +59,9 @@ type Properties interface {
 
 	// BindProperty 根据类型获取属性值，属性名称统一转成小写。
 	BindProperty(name string, i interface{})
+
+	// BindPropertyIf 根据类型获取属性值，属性名称统一转成小写。
+	BindPropertyIf(name string, i interface{}, allAccess bool)
 }
 
 // typeConverters 类型转换器集合

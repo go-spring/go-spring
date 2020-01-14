@@ -125,6 +125,7 @@ type defaultSpringContext struct {
 
 	profile   string // 运行环境
 	autoWired bool   // 已经开始自动绑定
+	allAccess bool   // 允许注入私有字段
 
 	beanMap   map[beanKey]*BeanDefinition     // Bean 的集合
 	beanCache map[reflect.Type]*beanCacheItem // Bean 的缓存
@@ -150,6 +151,16 @@ func (ctx *defaultSpringContext) GetProfile() string {
 // SetProfile 设置运行环境
 func (ctx *defaultSpringContext) SetProfile(profile string) {
 	ctx.profile = profile
+}
+
+// AllAccess 返回是否允许访问私有字段
+func (ctx *defaultSpringContext) AllAccess() bool {
+	return ctx.allAccess
+}
+
+// SetAllAccess 设置是否允许访问私有字段
+func (ctx *defaultSpringContext) SetAllAccess(allAccess bool) {
+	ctx.allAccess = allAccess
 }
 
 // RegisterBean 注册单例 Bean，不指定名称，重复注册会 panic。
@@ -316,7 +327,7 @@ func (ctx *defaultSpringContext) getBeanValue(beanId string, parentValue reflect
 		ctx.wireBeanDefinition(primaryBean, false)
 
 		// 恰好 1 个
-		v := SpringUtils.ValuePatch(beanValue)
+		v := SpringUtils.ValuePatchIf(beanValue, ctx.allAccess)
 		v.Set(primaryBean.Value())
 		return true
 	}
@@ -423,7 +434,7 @@ func (ctx *defaultSpringContext) collectBeans(v reflect.Value) bool {
 
 		// 给外面的数组赋值
 		if ev.Len() > 0 {
-			v = SpringUtils.ValuePatch(v)
+			v = SpringUtils.ValuePatchIf(v, ctx.allAccess)
 			v.Set(ev)
 			return true
 		}
@@ -433,7 +444,7 @@ func (ctx *defaultSpringContext) collectBeans(v reflect.Value) bool {
 	// 命中缓存，则从缓存中查询
 
 	if m.collect.Len() > 0 {
-		v = SpringUtils.ValuePatch(v)
+		v = SpringUtils.ValuePatchIf(v, ctx.allAccess)
 		v.Set(m.collect)
 		return true
 	}
@@ -670,7 +681,7 @@ func (ctx *defaultSpringContext) wireOriginalBean(beanDefinition *BeanDefinition
 					// 避免父结构体有 value 标签重新解析导致失败的情况
 					if tag, ok := ft.Tag.Lookup("value"); ok {
 						fieldOnlyAutoWire = true
-						bindStructField(ctx, ft.Type, fv, fieldName, "", tag)
+						bindStructField(ctx, ft.Type, fv, fieldName, "", tag, ctx.allAccess)
 					}
 				}
 
@@ -683,8 +694,10 @@ func (ctx *defaultSpringContext) wireOriginalBean(beanDefinition *BeanDefinition
 				// 处理结构体类型的字段，防止递归所以不支持指针结构体字段
 				if ft.Type.Kind() == reflect.Struct {
 					// 开放私有字段，但是不会更新原属性
-					fv0 := SpringUtils.ValuePatch(fv)
-					ctx.wireBean(fv0.Addr().Interface(), fieldOnlyAutoWire)
+					fv0 := SpringUtils.ValuePatchIf(fv, ctx.allAccess)
+					if fv0.CanSet() {
+						ctx.wireBean(fv0.Addr().Interface(), fieldOnlyAutoWire)
+					}
 				}
 			}
 		}

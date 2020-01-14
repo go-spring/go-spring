@@ -33,8 +33,15 @@ func RunApplication(configLocation ...string) {
 		SpringContext: ctx,
 	}, configLocation)
 
-	profile := os.Getenv(SpringProfile)
-	ctx.SetProfile(profile)
+	// 设置运行环境
+	if profile, ok := os.LookupEnv(SpringProfile); ok {
+		ctx.SetProfile(profile)
+	}
+
+	// 设置是否允许注入私有字段
+	if access, ok := os.LookupEnv(SpringAccess); ok {
+		ctx.SetAllAccess(access == "all")
+	}
 
 	BootStarter.Run(app)
 }
@@ -54,6 +61,16 @@ func GetProfile() string {
 // SetProfile 设置运行环境
 func SetProfile(profile string) {
 	ctx.SetProfile(profile)
+}
+
+// AllAccess 返回是否允许访问私有字段
+func AllAccess() bool {
+	return ctx.AllAccess()
+}
+
+// SetAllAccess 设置是否允许访问私有字段
+func SetAllAccess(allAccess bool) {
+	ctx.SetAllAccess(allAccess)
 }
 
 // RegisterBean 注册单例 Bean，不指定名称，重复注册会 panic。
@@ -169,4 +186,9 @@ func GetAllProperties() map[string]interface{} {
 // BindProperty 根据类型获取属性值，属性名称统一转成小写。
 func BindProperty(name string, i interface{}) {
 	ctx.BindProperty(name, i)
+}
+
+// BindPropertyIf 根据类型获取属性值，属性名称统一转成小写。
+func BindPropertyIf(name string, i interface{}, allAccess bool) {
+	ctx.BindPropertyIf(name, i, allAccess)
 }
