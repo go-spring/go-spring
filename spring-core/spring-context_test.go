@@ -453,8 +453,7 @@ func (c *caller) call() int {
 }
 
 func TestInterfaceMethod(t *testing.T) {
-	var c callable
-	c = &caller{3}
+	c := callable(&caller{3})
 	fmt.Println(c.call())
 }
 

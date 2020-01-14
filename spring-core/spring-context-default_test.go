@@ -1780,26 +1780,26 @@ type SubNestedAutowireBean struct {
 
 type NestedAutowireBean struct {
 	SubNestedAutowireBean
-	*float32
-	bool
+	_ *float32
+	_ bool
 }
 
 type PtrNestedAutowireBean struct {
 	*SubNestedAutowireBean // 不处理
-	*float32
-	bool
+	_ *float32
+	_ bool
 }
 
 type FieldNestedAutowireBean struct {
 	B SubNestedAutowireBean
-	*float32
-	bool
+	_ *float32
+	_ bool
 }
 
 type PtrFieldNestedAutowireBean struct {
 	B *SubNestedAutowireBean // 不处理
-	*float32
-	bool
+	_ *float32
+	_ bool
 }
 
 func TestDefaultSpringContext_NestedAutowireBean(t *testing.T) {

@@ -75,7 +75,7 @@ func (c *MyController) OK(ctx SpringWeb.WebContext) {
 
 	for rows.Next() {
 		var engine string
-		rows.Scan(&engine)
+		_ = rows.Scan(&engine)
 		fmt.Println(engine)
 	}
 
