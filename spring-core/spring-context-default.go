@@ -225,6 +225,9 @@ func (ctx *defaultSpringContext) GetBean(i interface{}) bool {
 
 // GetBeanValue 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 func (ctx *defaultSpringContext) GetBeanValue(beanId string, v reflect.Value) bool {
+	if !ctx.autoWired {
+		SpringLogger.Panic("should call after ctx.AutoWireBeans()")
+	}
 	return ctx.getBeanValue(beanId, reflect.Value{}, v, "")
 }
 
@@ -376,6 +379,14 @@ func (ctx *defaultSpringContext) CollectBeans(i interface{}) bool {
 	}
 
 	return ctx.collectBeans(reflect.ValueOf(i).Elem())
+}
+
+// CollectValues 收集数组或指针定义的所有符合条件的 Bean 对象，收集到返回 true，否则返回 false。
+func (ctx *defaultSpringContext) CollectValue(v reflect.Value) bool {
+	if !ctx.autoWired {
+		SpringLogger.Panic("should call after ctx.AutoWireBeans()")
+	}
+	return ctx.collectBeans(v)
 }
 
 // collectBeans 收集符合条件的 Bean 源

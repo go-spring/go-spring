@@ -98,10 +98,14 @@ func newFnStringBindingArg(fnType reflect.Type, tags []string) *fnStringBindingA
 
 // getArgValue 获取绑定参数值
 func getArgValue(ctx SpringContext, v reflect.Value, tag string) {
-	if strings.HasPrefix(tag, "$") {
+	if strings.HasPrefix(tag, "$") { // ${} 属性绑定
 		bindStructField(ctx, v.Type(), v, "", "", tag, ctx.AllAccess())
 	} else {
-		ctx.GetBeanValue(tag, v)
+		if _, beanName, _ := ParseBeanId(tag); beanName == "[]" {
+			ctx.CollectValue(v)
+		} else {
+			ctx.GetBeanValue(tag, v)
+		}
 	}
 }
 

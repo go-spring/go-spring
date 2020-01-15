@@ -89,6 +89,9 @@ type SpringContext interface {
 	// 以通过 []HandlerT 即数组的方式获取到所有 Bean。
 	CollectBeans(i interface{}) bool
 
+	// CollectValues 收集数组或指针定义的所有符合条件的 Bean 对象，收集到返回 true，否则返回 false。
+	CollectValue(v reflect.Value) bool
+
 	// FindBeanByName 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 	FindBeanByName(beanId string) (*BeanDefinition, bool)
 

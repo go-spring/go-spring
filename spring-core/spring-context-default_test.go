@@ -1874,3 +1874,16 @@ func TestDefaultSpringContext_NestValueField(t *testing.T) {
 	assert.Equal(t, c.enable, true)
 	assert.Equal(t, c.AutoCreate, true)
 }
+
+func TestDefaultSpringContext_FnArgCollectBean(t *testing.T) {
+	ctx := SpringCore.NewDefaultSpringContext()
+	ctx.RegisterNameBeanFn("i1", func() int { return 3 })
+	ctx.RegisterNameBeanFn("i2", func() int { return 4 })
+	ctx.RegisterBeanFn(func(i []*int) bool {
+		for _, e := range i {
+			fmt.Println(*e)
+		}
+		return false
+	}, "[]")
+	ctx.AutoWireBeans()
+}
