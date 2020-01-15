@@ -85,6 +85,13 @@ type Teacher interface {
 }
 
 type historyTeacher struct {
+	name string
+}
+
+func newHistoryTeacher(name string) *historyTeacher {
+	return &historyTeacher{
+		name: name,
+	}
 }
 
 func (t *historyTeacher) Course() string {
@@ -146,7 +153,7 @@ func TestFnToBeanDefinition(t *testing.T) {
 	assert.Equal(t, bd.Type().String(), "*int")
 	assert.Equal(t, bd.Value().Type().String(), "*int")
 
-	interfaceFn := func() Teacher { return &historyTeacher{} }
+	interfaceFn := func(name string) Teacher { return newHistoryTeacher(name) }
 	bd = SpringCore.FnToBeanDefinition("", interfaceFn)
 	assert.Equal(t, bd.Type().String(), "SpringCore_test.Teacher")
 	assert.Equal(t, bd.Value().Type().String(), "SpringCore_test.Teacher")
@@ -222,15 +229,15 @@ func TestToBeanDefinition(t *testing.T) {
 	assert.Equal(t, bd.Name(), "*os.File")
 	assert.Equal(t, bd.TypeName(), "os/os.File")
 
-	bd = SpringCore.ToBeanDefinition("", &historyTeacher{})
+	bd = SpringCore.ToBeanDefinition("", newHistoryTeacher(""))
 	assert.Equal(t, bd.Name(), "*SpringCore_test.historyTeacher")
-	assert.Equal(t, bd.Type(), reflect.TypeOf(&historyTeacher{}))
+	assert.Equal(t, bd.Type(), reflect.TypeOf(newHistoryTeacher("")))
 	assert.Equal(t, bd.TypeName(), "github.com/go-spring/go-spring/spring-core_test/SpringCore_test.historyTeacher")
 
 	// 用接口类型注册时实际使用的是原始类型
-	bd = SpringCore.ToBeanDefinition("", Teacher(&historyTeacher{}))
+	bd = SpringCore.ToBeanDefinition("", Teacher(newHistoryTeacher("")))
 	assert.Equal(t, bd.Name(), "*SpringCore_test.historyTeacher")
-	assert.Equal(t, bd.Type(), reflect.TypeOf(&historyTeacher{}))
+	assert.Equal(t, bd.Type(), reflect.TypeOf(newHistoryTeacher("")))
 	assert.Equal(t, bd.TypeName(), "github.com/go-spring/go-spring/spring-core_test/SpringCore_test.historyTeacher")
 
 	bd = SpringCore.ToBeanDefinition("", new(int))

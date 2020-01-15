@@ -671,7 +671,7 @@ func TestDefaultSpringContext_RegisterBeanFn(t *testing.T) {
 	ctx.SetProperty("room", "Class 3 Grade 1")
 
 	// 用接口注册时实际使用的是原始类型
-	ctx.RegisterBean(Teacher(&historyTeacher{}))
+	ctx.RegisterBean(Teacher(newHistoryTeacher("")))
 
 	ctx.RegisterNameBeanFn("st1", NewStudent, "", "${room}")
 	ctx.RegisterNameBeanFn("st2", NewPtrStudent, "1:${room}")
@@ -1876,14 +1876,30 @@ func TestDefaultSpringContext_NestValueField(t *testing.T) {
 }
 
 func TestDefaultSpringContext_FnArgCollectBean(t *testing.T) {
-	ctx := SpringCore.NewDefaultSpringContext()
-	ctx.RegisterNameBeanFn("i1", func() int { return 3 })
-	ctx.RegisterNameBeanFn("i2", func() int { return 4 })
-	ctx.RegisterBeanFn(func(i []*int) bool {
-		for _, e := range i {
-			fmt.Println(*e)
-		}
-		return false
-	}, "[]")
-	ctx.AutoWireBeans()
+
+	t.Run("base type", func(t *testing.T) {
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterNameBeanFn("i1", func() int { return 3 })
+		ctx.RegisterNameBeanFn("i2", func() int { return 4 })
+		ctx.RegisterBeanFn(func(i []*int) bool {
+			for _, e := range i {
+				fmt.Println(*e)
+			}
+			return false
+		}, "[]")
+		ctx.AutoWireBeans()
+	})
+
+	t.Run("interface type", func(t *testing.T) {
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterNameBean("t1", newHistoryTeacher("t1"))
+		ctx.RegisterNameBean("t2", newHistoryTeacher("t2"))
+		ctx.RegisterBeanFn(func(teachers []Teacher) bool {
+			for _, teacher := range teachers {
+				fmt.Println(teacher.(*historyTeacher).name)
+			}
+			return false
+		}, "[]")
+		ctx.AutoWireBeans()
+	})
 }
