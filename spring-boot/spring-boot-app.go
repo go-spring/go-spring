@@ -51,7 +51,7 @@ type ApplicationEvent interface {
 
 // CommandLineRunner 命令行启动器接口
 type CommandLineRunner interface {
-	Run()
+	Run(ctx ApplicationContext)
 }
 
 // Start 启动 SpringBoot 应用
@@ -74,7 +74,7 @@ func (app *application) Start() {
 	app.AppContext.CollectBeans(&runners)
 
 	for _, r := range runners {
-		r.Run()
+		r.Run(app.AppContext)
 	}
 
 	// 通知应用启动事件

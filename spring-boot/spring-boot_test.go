@@ -29,7 +29,6 @@ import (
 	"github.com/go-spring/go-spring-parent/spring-utils"
 	"github.com/go-spring/go-spring-web/spring-web"
 	"github.com/go-spring/go-spring/spring-boot"
-	"github.com/go-spring/go-spring/spring-core"
 	_ "github.com/go-spring/go-spring/starter-echo"
 	_ "github.com/go-spring/go-spring/starter-go-redis"
 	_ "github.com/go-spring/go-spring/starter-mysql-gorm"
@@ -85,14 +84,15 @@ func (c *MyController) OK(ctx SpringWeb.WebContext) {
 ////////////////// MyRunner ///////////////////
 
 type MyRunner struct {
-	Ctx SpringCore.SpringContext `autowire:""`
 }
 
-func (r *MyRunner) Run() {
-	fmt.Println("get all properties:")
-	for k, v := range r.Ctx.GetAllProperties() {
-		fmt.Println(k + "=" + fmt.Sprint(v))
-	}
+func (_ *MyRunner) Run(ctx SpringBoot.ApplicationContext) {
+	ctx.SafeGoroutine(func() {
+		fmt.Println("get all properties:")
+		for k, v := range ctx.GetAllProperties() {
+			fmt.Println(k + "=" + fmt.Sprint(v))
+		}
+	})
 }
 
 ////////////////// MyModule ///////////////////

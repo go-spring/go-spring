@@ -18,6 +18,7 @@
 package SpringCore
 
 import (
+	"context"
 	"reflect"
 )
 
@@ -33,6 +34,9 @@ type SpringContext interface {
 
 	// 属性值列表接口
 	Properties
+
+	// 上下文接口
+	context.Context
 
 	// GetProfile 返回运行环境
 	GetProfile() string
@@ -98,6 +102,6 @@ type SpringContext interface {
 	// GetAllBeanDefinitions 获取所有 Bean 的定义，一般仅供调试使用。
 	GetAllBeanDefinitions() []*BeanDefinition
 
-	// Close 关闭容器上下文，用于通知 Bean 销毁。
+	// Close 关闭容器上下文，用于通知 Bean 销毁等。
 	Close()
 }

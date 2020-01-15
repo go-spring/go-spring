@@ -22,6 +22,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1756,14 +1757,35 @@ func TestDefaultSpringContext_Close(t *testing.T) {
 		ctx.RegisterBean(new(int)).Destroy(func(int, int) {})
 	}, "destroy should be func\\(bean\\)")
 
-	called := false
+	t.Run("call destroy", func(t *testing.T) {
+		called := false
 
-	ctx := SpringCore.NewDefaultSpringContext()
-	ctx.RegisterBean(new(int)).Destroy(func(i *int) { called = true })
-	ctx.AutoWireBeans()
-	ctx.Close()
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBean(new(int)).Destroy(func(i *int) { called = true })
+		ctx.AutoWireBeans()
+		ctx.Close()
 
-	assert.Equal(t, called, true)
+		assert.Equal(t, called, true)
+	})
+
+	t.Run("context done", func(t *testing.T) {
+		var wg sync.WaitGroup
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBean(new(int)).Init(func(i *int) {
+			wg.Add(1)
+			go func() {
+				select {
+				case <-ctx.Done():
+					wg.Done()
+					return
+				default:
+				}
+			}()
+		})
+		ctx.AutoWireBeans()
+		ctx.Close()
+		wg.Wait()
+	})
 }
 
 func TestDefaultSpringContext_BeanNotFound(t *testing.T) {

@@ -18,6 +18,7 @@ package SpringCore
 
 import (
 	"container/list"
+	"context"
 	"fmt"
 	"reflect"
 
@@ -123,6 +124,10 @@ type defaultSpringContext struct {
 	// 属性值列表接口
 	Properties
 
+	// 上下文接口
+	context.Context
+	cancel context.CancelFunc
+
 	profile   string // 运行环境
 	autoWired bool   // 已经开始自动绑定
 	allAccess bool   // 允许注入私有字段
@@ -135,7 +140,10 @@ type defaultSpringContext struct {
 
 // NewDefaultSpringContext defaultSpringContext 的构造函数
 func NewDefaultSpringContext() *defaultSpringContext {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &defaultSpringContext{
+		Context:     ctx,
+		cancel:      cancel,
 		wiringStack: newWiringStack(),
 		Properties:  NewDefaultProperties(),
 		beanMap:     make(map[beanKey]*BeanDefinition),
@@ -804,13 +812,17 @@ func (ctx *defaultSpringContext) GetAllBeanDefinitions() []*BeanDefinition {
 	return result
 }
 
-// Close 关闭容器上下文，用于通知 Bean 销毁。
+// Close 关闭容器上下文，用于通知 Bean 销毁等。
 func (ctx *defaultSpringContext) Close() {
+
+	// 执行销毁函数
 	for _, beanDefinition := range ctx.beanMap {
-		// 如果有则执行用户设置的销毁函数
 		if beanDefinition.destroy != nil {
 			fnValue := reflect.ValueOf(beanDefinition.destroy)
 			fnValue.Call([]reflect.Value{beanDefinition.Value()})
 		}
 	}
+
+	// 上下文结束
+	ctx.cancel()
 }

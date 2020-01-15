@@ -45,16 +45,15 @@ type defaultApplicationContext struct {
 
 // SafeGoroutine 安全地启动一个 goroutine
 func (ctx *defaultApplicationContext) SafeGoroutine(fn GoFunc) {
+	ctx.wg.Add(1)
 	go func() {
+		defer ctx.wg.Done()
 
 		defer func() {
 			if err := recover(); err != nil {
 				SpringLogger.Error(err)
 			}
 		}()
-
-		ctx.wg.Add(1)
-		defer ctx.wg.Done()
 
 		fn()
 	}()
