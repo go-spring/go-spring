@@ -17,6 +17,7 @@
 package SpringCore
 
 import (
+	"errors"
 	"reflect"
 	"runtime"
 	"strconv"
@@ -265,6 +266,46 @@ func newMethodBean(parent *BeanDefinition, method string, tags ...string) *metho
 	}
 }
 
+// fakeMethodBean 延迟创建的 Method Bean
+type fakeMethodBean struct {
+	// parent 选择器:
+	// *BeanDefinition 表示直接使用 parent 对象;
+	// string 类型值表示根据 BeanId 查询 parent 对象;
+	// (Type)(nil) 类型值表示根据类型查询 parent 对象。
+	selector interface{}
+
+	// 成员方法名称
+	method string
+
+	// 成员方法标签
+	tags []string
+}
+
+// newFakeMethodBean fakeMethodBean 的构造函数
+func newFakeMethodBean(selector interface{}, method string, tags ...string) *fakeMethodBean {
+	return &fakeMethodBean{
+		selector: selector,
+		method:   method,
+		tags:     tags,
+	}
+}
+
+func (b *fakeMethodBean) Bean() interface{} {
+	panic(errors.New("shouldn't call this method"))
+}
+
+func (b *fakeMethodBean) Type() reflect.Type {
+	panic(errors.New("shouldn't call this method"))
+}
+
+func (b *fakeMethodBean) Value() reflect.Value {
+	panic(errors.New("shouldn't call this method"))
+}
+
+func (b *fakeMethodBean) TypeName() string {
+	panic(errors.New("shouldn't call this method"))
+}
+
 // beanStatus Bean 的状态值
 type beanStatus int
 
@@ -325,8 +366,10 @@ func newBeanDefinition(bean SpringBean, name string) *BeanDefinition {
 		break
 	}
 
-	if name == "" { // 生成默认名称
-		name = bean.Type().String()
+	if _, ok := bean.(*fakeMethodBean); !ok {
+		if name == "" { // 生成默认名称
+			name = bean.Type().String()
+		}
 	}
 
 	return &BeanDefinition{
@@ -552,8 +595,8 @@ func FnToBeanDefinition(name string, fn interface{}, tags ...string) *BeanDefini
 }
 
 // MethodToBeanDefinition 将成员方法转换为 BeanDefinition 对象
-func MethodToBeanDefinition(name string, parent *BeanDefinition, method string, tags ...string) *BeanDefinition {
-	bean := newMethodBean(parent, method, tags...)
+func MethodToBeanDefinition(name string, selector interface{}, method string, tags ...string) *BeanDefinition {
+	bean := newFakeMethodBean(selector, method, tags...)
 	return newBeanDefinition(bean, name)
 }
 

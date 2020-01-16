@@ -1535,6 +1535,48 @@ func TestDefaultSpringContext_RegisterMethodBean(t *testing.T) {
 		assert.Equal(t, ok, true)
 		assert.Equal(t, s.Version, "1.0.0")
 	})
+
+	t.Run("method bean selector type", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.SetProperty("server.version", "1.0.0")
+		ctx.RegisterBean(new(Server))
+		ctx.RegisterMethodBean((*Server)(nil), "Consumer")
+		ctx.AutoWireBeans()
+
+		var s *Server
+		ok := ctx.GetBean(&s)
+		assert.Equal(t, ok, true)
+		assert.Equal(t, s.Version, "1.0.0")
+
+		s.Version = "2.0.0"
+
+		var c *Consumer
+		ok = ctx.GetBean(&c)
+		assert.Equal(t, ok, true)
+		assert.Equal(t, c.s.Version, "2.0.0")
+	})
+
+	t.Run("method bean selector beanId", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.SetProperty("server.version", "1.0.0")
+		ctx.RegisterBean(new(Server))
+		ctx.RegisterMethodBean("*SpringCore_test.Server", "Consumer")
+		ctx.AutoWireBeans()
+
+		var s *Server
+		ok := ctx.GetBean(&s)
+		assert.Equal(t, ok, true)
+		assert.Equal(t, s.Version, "1.0.0")
+
+		s.Version = "2.0.0"
+
+		var c *Consumer
+		ok = ctx.GetBean(&c)
+		assert.Equal(t, ok, true)
+		assert.Equal(t, c.s.Version, "2.0.0")
+	})
 }
 
 func TestDefaultSpringContext_ParentNotRegister(t *testing.T) {

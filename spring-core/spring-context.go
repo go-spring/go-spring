@@ -63,10 +63,12 @@ type SpringContext interface {
 	RegisterNameBeanFn(name string, fn interface{}, tags ...string) *BeanDefinition
 
 	// RegisterMethodBean 注册成员方法单例 Bean，不指定名称，重复注册会 panic。
-	RegisterMethodBean(parent *BeanDefinition, method string, tags ...string) *BeanDefinition
+	// selector 可以是 *BeanDefinition，可以是 BeanId，还可以是 (Type)(nil) 变量。
+	RegisterMethodBean(selector interface{}, method string, tags ...string) *BeanDefinition
 
 	// RegisterNameMethodBean 注册成员方法单例 Bean，需指定名称，重复注册会 panic。
-	RegisterNameMethodBean(name string, parent *BeanDefinition, method string, tags ...string) *BeanDefinition
+	// selector 可以是 *BeanDefinition，可以是 BeanId，还可以是 (Type)(nil) 变量。
+	RegisterNameMethodBean(name string, selector interface{}, method string, tags ...string) *BeanDefinition
 
 	// AutoWireBeans 完成自动绑定
 	AutoWireBeans()

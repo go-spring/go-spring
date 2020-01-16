@@ -416,7 +416,37 @@ func TestGetEnv(t *testing.T) {
 	fmt.Println(os.Getenv("GOPATH"), os.Getenv("GOROOT"))
 }
 
+type Runner interface {
+	Run()
+}
+
+type RunStringer struct {
+}
+
+func NewRunStringer() fmt.Stringer {
+	return &RunStringer{}
+}
+
+func (rs *RunStringer) String() string {
+	return "RunStringer"
+}
+
+func (rs *RunStringer) Run() {
+	fmt.Println("RunStringer")
+}
+
 func TestInterface(t *testing.T) {
+
+	t.Run("interface type", func(t *testing.T) {
+		fnValue := reflect.ValueOf(NewRunStringer)
+		fmt.Println(fnValue.Type())
+		retValue := fnValue.Call([]reflect.Value{})[0]
+		fmt.Println(retValue.Type(), retValue.Elem().Type())
+		r := new(Runner)
+		fmt.Println(reflect.TypeOf(r).Elem())
+		ok := retValue.Elem().Type().AssignableTo(reflect.TypeOf(r).Elem())
+		fmt.Println(ok)
+	})
 
 	fn := func() io.Reader {
 		return os.Stdout

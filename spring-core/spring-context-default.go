@@ -136,6 +136,8 @@ type defaultSpringContext struct {
 	beanCache map[reflect.Type]*beanCacheItem // Bean 的缓存
 
 	wiringStack wiringStack // 保存正在进行绑定的 Bean 列表
+
+	methodBeans []*BeanDefinition // 延迟创建的 Method Bean 的集合
 }
 
 // NewDefaultSpringContext defaultSpringContext 的构造函数
@@ -146,6 +148,7 @@ func NewDefaultSpringContext() *defaultSpringContext {
 		cancel:      cancel,
 		wiringStack: newWiringStack(),
 		Properties:  NewDefaultProperties(),
+		methodBeans: make([]*BeanDefinition, 0),
 		beanMap:     make(map[beanKey]*BeanDefinition),
 		beanCache:   make(map[reflect.Type]*beanCacheItem),
 	}
@@ -196,14 +199,21 @@ func (ctx *defaultSpringContext) RegisterNameBeanFn(name string, fn interface{},
 }
 
 // RegisterMethodBean 注册成员方法单例 Bean，不指定名称，重复注册会 panic。
-func (ctx *defaultSpringContext) RegisterMethodBean(parent *BeanDefinition, method string, tags ...string) *BeanDefinition {
-	return ctx.RegisterNameMethodBean("", parent, method, tags...)
+// selector 可以是 *BeanDefinition，可以是 BeanId，还可以是 (Type)(nil) 变量。
+func (ctx *defaultSpringContext) RegisterMethodBean(selector interface{}, method string, tags ...string) *BeanDefinition {
+	return ctx.RegisterNameMethodBean("", selector, method, tags...)
 }
 
 // RegisterNameMethodBean 注册成员方法单例 Bean，需指定名称，重复注册会 panic。
-func (ctx *defaultSpringContext) RegisterNameMethodBean(name string, parent *BeanDefinition, method string, tags ...string) *BeanDefinition {
-	beanDefinition := MethodToBeanDefinition(name, parent, method, tags...)
-	ctx.registerBeanDefinition(beanDefinition)
+// selector 可以是 *BeanDefinition，可以是 BeanId，还可以是 (Type)(nil) 变量。
+func (ctx *defaultSpringContext) RegisterNameMethodBean(name string, selector interface{}, method string, tags ...string) *BeanDefinition {
+
+	if ctx.autoWired { // 注册已被冻结
+		SpringLogger.Panic("bean registration frozen")
+	}
+
+	beanDefinition := MethodToBeanDefinition(name, selector, method, tags...)
+	ctx.methodBeans = append(ctx.methodBeans, beanDefinition)
 	return beanDefinition
 }
 
@@ -556,6 +566,44 @@ func (ctx *defaultSpringContext) AutoWireBeans() {
 
 	if ctx.autoWired {
 		SpringLogger.Panic("ctx.AutoWireBeans() already called")
+	}
+
+	// 注册所有的 Method Bean
+	for _, beanDefinition := range ctx.methodBeans {
+		bean := beanDefinition.bean.(*fakeMethodBean)
+
+		var (
+			count  int
+			parent *BeanDefinition
+		)
+
+		switch e := bean.selector.(type) {
+		case *BeanDefinition:
+			parent = e
+		case string:
+			{
+				typeName, beanName, _ := ParseBeanId(e)
+				for _, b := range ctx.beanMap {
+					if b.Match(typeName, beanName) {
+						parent = b
+						count++
+					}
+				}
+			}
+		default:
+			{
+				t := reflect.TypeOf(e) // 类型精确匹配
+				for _, b := range ctx.beanMap {
+					if b.Type() == t {
+						parent = b
+						count++
+					}
+				}
+			}
+		}
+
+		beanDefinition.bean = newMethodBean(parent, bean.method, bean.tags...)
+		ctx.registerBeanDefinition(beanDefinition)
 	}
 
 	ctx.autoWired = true
