@@ -212,6 +212,12 @@ func (arg *optionArg) ConditionOn(cond Condition) *optionArg {
 	return arg
 }
 
+// ConditionNot 为 optionArg 设置一个取反的 Condition
+func (arg *optionArg) ConditionNot(cond Condition) *optionArg {
+	arg.cond.OnConditionNot(cond)
+	return arg
+}
+
 // ConditionOnProperty 为 optionArg 设置一个 PropertyCondition
 func (arg *optionArg) ConditionOnProperty(name string) *optionArg {
 	arg.cond.OnProperty(name)

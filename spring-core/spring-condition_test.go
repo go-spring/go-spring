@@ -194,3 +194,26 @@ func TestConditional(t *testing.T) {
 		OnPropertyValue("bool", false)
 	assert.Equal(t, cond.Matches(ctx), true)
 }
+
+func TestNotCondition(t *testing.T) {
+
+	ctx := SpringCore.NewDefaultSpringContext()
+	ctx.SetProfile("test")
+	ctx.AutoWireBeans()
+
+	profileCond := SpringCore.NewProfileCondition("test")
+	assert.Equal(t, profileCond.Matches(ctx), true)
+
+	notCond := SpringCore.NewNotCondition(profileCond)
+	assert.Equal(t, notCond.Matches(ctx), false)
+
+	cond := SpringCore.NewConditional().
+		OnPropertyValue("int", 2).
+		OnConditionNot(profileCond)
+	assert.Equal(t, cond.Matches(ctx), false)
+
+	cond = SpringCore.NewConditional().
+		OnProfile("test").
+		OnConditionNot(profileCond)
+	assert.Equal(t, cond.Matches(ctx), false)
+}

@@ -451,6 +451,12 @@ func (d *BeanDefinition) ConditionOn(cond Condition) *BeanDefinition {
 	return d
 }
 
+// ConditionNot 为 Bean 设置一个取反的 Condition
+func (d *BeanDefinition) ConditionNot(cond Condition) *BeanDefinition {
+	d.cond.OnConditionNot(cond)
+	return d
+}
+
 // ConditionOnProperty 为 Bean 设置一个 PropertyCondition
 func (d *BeanDefinition) ConditionOnProperty(name string) *BeanDefinition {
 	d.cond.OnProperty(name)

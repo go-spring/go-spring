@@ -42,15 +42,27 @@ type functionCondition struct {
 
 // NewFunctionCondition functionCondition 的构造函数
 func NewFunctionCondition(fn ConditionFunc) *functionCondition {
-	if fn == nil {
-		SpringLogger.Panic("fn can't be nil")
-	}
 	return &functionCondition{fn}
 }
 
 // Matches 成功返回 true，失败返回 false
 func (c *functionCondition) Matches(ctx SpringContext) bool {
 	return c.fn(ctx)
+}
+
+// notCondition 对 Condition 取反的 Condition 实现
+type notCondition struct {
+	cond Condition
+}
+
+// NewNotCondition notCondition 的构造函数
+func NewNotCondition(cond Condition) *notCondition {
+	return &notCondition{cond}
+}
+
+// Matches 成功返回 true，失败返回 false
+func (c *notCondition) Matches(ctx SpringContext) bool {
+	return !c.cond.Matches(ctx)
 }
 
 // propertyCondition 基于属性值存在的 Condition 实现
@@ -351,6 +363,11 @@ func (c *Conditional) OnCondition(cond Condition) *Conditional {
 	}
 	c.curr.cond = cond
 	return c
+}
+
+// OnConditionNot 设置一个取反的 Condition
+func (c *Conditional) OnConditionNot(cond Condition) *Conditional {
+	return c.OnCondition(NewNotCondition(cond))
 }
 
 // OnProperty 设置一个 propertyCondition

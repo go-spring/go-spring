@@ -141,6 +141,12 @@ func (m *Mapping) ConditionOn(cond SpringCore.Condition) *Mapping {
 	return m
 }
 
+// ConditionNot 设置一个取反的 Condition
+func (m *Mapping) ConditionNot(cond SpringCore.Condition) *Mapping {
+	m.cond.OnConditionNot(cond)
+	return m
+}
+
 // ConditionOnProperty 设置一个 PropertyCondition
 func (m *Mapping) ConditionOnProperty(name string) *Mapping {
 	m.cond.OnProperty(name)
@@ -246,6 +252,12 @@ func (r *Router) And() *Router {
 // ConditionOn 设置一个 Condition
 func (r *Router) ConditionOn(cond SpringCore.Condition) *Router {
 	r.cond.OnCondition(cond)
+	return r
+}
+
+// ConditionNot 设置一个取反的 Condition
+func (r *Router) ConditionNot(cond SpringCore.Condition) *Router {
+	r.cond.OnConditionNot(cond)
 	return r
 }
 
