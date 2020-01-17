@@ -19,6 +19,7 @@ package SpringCore
 import (
 	"container/list"
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 
@@ -207,6 +208,10 @@ func (ctx *defaultSpringContext) RegisterMethodBean(selector interface{}, method
 // RegisterNameMethodBean 注册成员方法单例 Bean，需指定名称，重复注册会 panic。
 // selector 可以是 *BeanDefinition，可以是 BeanId，还可以是 (Type)(nil) 变量。
 func (ctx *defaultSpringContext) RegisterNameMethodBean(name string, selector interface{}, method string, tags ...string) *BeanDefinition {
+
+	if selector == nil {
+		panic(errors.New("selector can't be nil"))
+	}
 
 	if ctx.autoWired { // 注册已被冻结
 		SpringLogger.Panic("bean registration frozen")
@@ -589,6 +594,10 @@ func (ctx *defaultSpringContext) AutoWireBeans() {
 						count++
 					}
 				}
+
+				if parent == nil {
+					panic(errors.New("can't find parent bean \"" + e + "\""))
+				}
 			}
 		default:
 			{
@@ -598,6 +607,10 @@ func (ctx *defaultSpringContext) AutoWireBeans() {
 						parent = b
 						count++
 					}
+				}
+
+				if parent == nil {
+					panic(errors.New("can't find parent bean \"" + t.String() + "\""))
 				}
 			}
 		}

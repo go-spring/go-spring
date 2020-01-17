@@ -1557,6 +1557,34 @@ func TestDefaultSpringContext_RegisterMethodBean(t *testing.T) {
 		assert.Equal(t, c.s.Version, "2.0.0")
 	})
 
+	t.Run("method bean selector type error", func(t *testing.T) {
+
+		assert.Panic(t, func() {
+			ctx := SpringCore.NewDefaultSpringContext()
+			ctx.SetProperty("server.version", "1.0.0")
+			ctx.RegisterBean(new(Server))
+			ctx.RegisterMethodBean((fmt.Stringer)(nil), "Consumer")
+			ctx.AutoWireBeans()
+		}, "selector can't be nil")
+
+		assert.Panic(t, func() {
+			ctx := SpringCore.NewDefaultSpringContext()
+			ctx.SetProperty("server.version", "1.0.0")
+			ctx.RegisterBean(new(Server))
+			ctx.RegisterMethodBean((*int)(nil), "Consumer")
+			ctx.AutoWireBeans()
+		}, "can't find parent bean \"\\*int\"")
+
+		assert.Panic(t, func() {
+			ctx := SpringCore.NewDefaultSpringContext()
+			ctx.SetProperty("server.version", "1.0.0")
+			ctx.RegisterBean(new(int))
+			ctx.RegisterBean(new(Server))
+			ctx.RegisterMethodBean((*int)(nil), "Consumer")
+			ctx.AutoWireBeans()
+		}, "can't find method: Consumer")
+	})
+
 	t.Run("method bean selector beanId", func(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
@@ -1576,6 +1604,16 @@ func TestDefaultSpringContext_RegisterMethodBean(t *testing.T) {
 		ok = ctx.GetBean(&c)
 		assert.Equal(t, ok, true)
 		assert.Equal(t, c.s.Version, "2.0.0")
+	})
+
+	t.Run("method bean selector beanId error", func(t *testing.T) {
+		assert.Panic(t, func() {
+			ctx := SpringCore.NewDefaultSpringContext()
+			ctx.SetProperty("server.version", "1.0.0")
+			ctx.RegisterBean(new(Server))
+			ctx.RegisterMethodBean("NULL", "Consumer")
+			ctx.AutoWireBeans()
+		}, "can't find parent bean \"NULL\"")
 	})
 }
 
