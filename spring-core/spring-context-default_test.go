@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -1663,7 +1664,7 @@ func TestDefaultSpringContext_UserDefinedTypeProperty(t *testing.T) {
 	ctx.RegisterBean(&config)
 	ctx.AutoWireBeans()
 
-	fmt.Println(config)
+	fmt.Printf("%+v\n", config)
 }
 
 func TestDefaultSpringContext_ChainConditionOnBean(t *testing.T) {
@@ -1690,6 +1691,7 @@ type CircleC struct {
 }
 
 func TestDefaultSpringContext_CircleAutowire(t *testing.T) {
+	// 直接创建的 Bean 直接发生循环依赖是没有关系的。
 	ctx := SpringCore.NewDefaultSpringContext()
 	ctx.RegisterBean(new(CircleA))
 	ctx.RegisterBean(new(CircleB))
@@ -1817,25 +1819,28 @@ func TestDefaultSpringContext_RegisterOptionBean(t *testing.T) {
 
 func TestDefaultSpringContext_Close(t *testing.T) {
 
-	assert.Panic(t, func() {
-		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.RegisterBean(new(int)).Destroy(func() {})
-	}, "destroy should be func\\(bean\\)")
+	t.Run("destroy type", func(t *testing.T) {
 
-	assert.Panic(t, func() {
-		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.RegisterBean(new(int)).Destroy(func() int { return 0 })
-	}, "destroy should be func\\(bean\\)")
+		assert.Panic(t, func() {
+			ctx := SpringCore.NewDefaultSpringContext()
+			ctx.RegisterBean(new(int)).Destroy(func() {})
+		}, "destroy should be func\\(bean\\)")
 
-	assert.Panic(t, func() {
-		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.RegisterBean(new(int)).Destroy(func(int) {})
-	}, "destroy should be func\\(bean\\)")
+		assert.Panic(t, func() {
+			ctx := SpringCore.NewDefaultSpringContext()
+			ctx.RegisterBean(new(int)).Destroy(func() int { return 0 })
+		}, "destroy should be func\\(bean\\)")
 
-	assert.Panic(t, func() {
-		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.RegisterBean(new(int)).Destroy(func(int, int) {})
-	}, "destroy should be func\\(bean\\)")
+		assert.Panic(t, func() {
+			ctx := SpringCore.NewDefaultSpringContext()
+			ctx.RegisterBean(new(int)).Destroy(func(int) {})
+		}, "destroy should be func\\(bean\\)")
+
+		assert.Panic(t, func() {
+			ctx := SpringCore.NewDefaultSpringContext()
+			ctx.RegisterBean(new(int)).Destroy(func(int, int) {})
+		}, "destroy should be func\\(bean\\)")
+	})
 
 	t.Run("call destroy", func(t *testing.T) {
 		called := false
@@ -1854,11 +1859,14 @@ func TestDefaultSpringContext_Close(t *testing.T) {
 		ctx.RegisterBean(new(int)).Init(func(i *int) {
 			wg.Add(1)
 			go func() {
-				select {
-				case <-ctx.Done():
-					wg.Done()
-					return
-				default:
+				for {
+					select {
+					case <-ctx.Done():
+						wg.Done()
+						return
+					default:
+						time.Sleep(time.Millisecond * 5)
+					}
 				}
 			}()
 		})
@@ -1984,9 +1992,12 @@ func TestDefaultSpringContext_FnArgCollectBean(t *testing.T) {
 		ctx.RegisterNameBeanFn("i1", func() int { return 3 })
 		ctx.RegisterNameBeanFn("i2", func() int { return 4 })
 		ctx.RegisterBeanFn(func(i []*int) bool {
+			nums := make([]int, 0)
 			for _, e := range i {
-				fmt.Println(*e)
+				nums = append(nums, *e)
 			}
+			sort.Ints(nums)
+			assert.Equal(t, nums, []int{3, 4})
 			return false
 		}, "[]")
 		ctx.AutoWireBeans()
@@ -1997,9 +2008,12 @@ func TestDefaultSpringContext_FnArgCollectBean(t *testing.T) {
 		ctx.RegisterNameBean("t1", newHistoryTeacher("t1"))
 		ctx.RegisterNameBean("t2", newHistoryTeacher("t2"))
 		ctx.RegisterBeanFn(func(teachers []Teacher) bool {
+			names := make([]string, 0)
 			for _, teacher := range teachers {
-				fmt.Println(teacher.(*historyTeacher).name)
+				names = append(names, teacher.(*historyTeacher).name)
 			}
+			sort.Strings(names)
+			assert.Equal(t, names, []string{"t1", "t2"})
 			return false
 		}, "[]")
 		ctx.AutoWireBeans()

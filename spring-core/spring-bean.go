@@ -18,6 +18,7 @@ package SpringCore
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 	"runtime"
 	"strconv"
@@ -112,6 +113,7 @@ type SpringBean interface {
 	Type() reflect.Type   // 类型
 	Value() reflect.Value // 值
 	TypeName() string     // 原始类型的全限定名
+	beanClass() string    // SpringBean 的实现类型
 }
 
 // originalBean 原始 Bean 源
@@ -123,23 +125,19 @@ type originalBean struct {
 }
 
 // newOriginalBean originalBean 的构造函数
-func newOriginalBean(bean interface{}) *originalBean {
+func newOriginalBean(v reflect.Value) *originalBean {
 
-	if bean == nil {
-		SpringLogger.Panic("nil isn't valid bean")
-	}
-
-	t := reflect.TypeOf(bean)
+	t := v.Type()
 
 	if ok := IsRefType(t.Kind()); !ok {
 		SpringLogger.Panic("bean must be ref type")
 	}
 
 	return &originalBean{
-		bean:     bean,
+		bean:     v.Interface(),
 		rType:    t,
 		typeName: TypeName(t),
-		rValue:   reflect.ValueOf(bean),
+		rValue:   v,
 	}
 }
 
@@ -161,6 +159,11 @@ func (b *originalBean) Value() reflect.Value {
 // TypeName 返回 Bean 的原始类型的全限定名
 func (b *originalBean) TypeName() string {
 	return b.typeName
+}
+
+// beanClass 返回 SpringBean 的实现类型
+func (b *originalBean) beanClass() string {
+	return "bean"
 }
 
 // functionBean 函数定义的 Bean 源
@@ -242,6 +245,11 @@ func newConstructorBean(fn interface{}, tags ...string) *constructorBean {
 	}
 }
 
+// beanClass 返回 SpringBean 的实现类型
+func (b *constructorBean) beanClass() string {
+	return "constructor bean"
+}
+
 // methodBean 成员方法定义的 Bean 源
 type methodBean struct {
 	functionBean
@@ -266,6 +274,11 @@ func newMethodBean(parent *BeanDefinition, method string, tags ...string) *metho
 	}
 }
 
+// beanClass 返回 SpringBean 的实现类型
+func (b *methodBean) beanClass() string {
+	return "method bean"
+}
+
 // fakeMethodBean 延迟创建的 Method Bean
 type fakeMethodBean struct {
 	// parent 选择器:
@@ -288,6 +301,11 @@ func newFakeMethodBean(selector interface{}, method string, tags ...string) *fak
 		method:   method,
 		tags:     tags,
 	}
+}
+
+// beanClass 返回 SpringBean 的实现类型
+func (b *fakeMethodBean) beanClass() string {
+	return "fake method bean"
 }
 
 func (b *fakeMethodBean) Bean() interface{} {
@@ -317,6 +335,29 @@ const (
 	beanStatus_Wired     = beanStatus(4) // 绑定完成
 	beanStatus_Deleted   = beanStatus(5) // 已删除
 )
+
+// beanDefinition 对 BeanDefinition 的抽象接口
+type beanDefinition interface {
+	Bean() interface{}    // 源
+	Type() reflect.Type   // 类型
+	Value() reflect.Value // 值
+	TypeName() string     // 原始类型的全限定名
+
+	Name() string   // 返回 Bean 的名称
+	BeanId() string // 返回 Bean 的 BeanId
+	Caller() string // 返回 Bean 的注册点
+
+	springBean() SpringBean      // 返回 SpringBean 对象
+	getStatus() beanStatus       // 返回 Bean 的状态值
+	setStatus(status beanStatus) // 设置 Bean 的状态值
+	getDependsOn() []string      // 返回 Bean 的非直接依赖项
+	getInit() interface{}        // 返回 Bean 的初始化函数
+	getDestroy() interface{}     // 返回 Bean 的销毁函数
+
+	description() string // 返回 Bean 的详细描述
+	getFile() string     // 返回 Bean 注册点所在文件的名称
+	getLine() int        // 返回 Bean 注册点所在文件的行数
+}
 
 // BeanDefinition Bean 的详细定义
 type BeanDefinition struct {
@@ -412,9 +453,54 @@ func (d *BeanDefinition) BeanId() string {
 	return d.TypeName() + ":" + d.name
 }
 
+// springBean 返回 SpringBean 对象
+func (d *BeanDefinition) springBean() SpringBean {
+	return d.bean
+}
+
+// getStatus 返回 Bean 的状态值
+func (d *BeanDefinition) getStatus() beanStatus {
+	return d.status
+}
+
+// setStatus 设置 Bean 的状态值
+func (d *BeanDefinition) setStatus(status beanStatus) {
+	d.status = status
+}
+
+// getDependsOn 返回 Bean 的非直接依赖项
+func (d *BeanDefinition) getDependsOn() []string {
+	return d.dependsOn
+}
+
+// getInit 返回 Bean 的初始化函数
+func (d *BeanDefinition) getInit() interface{} {
+	return d.init
+}
+
+// getDestroy 返回 Bean 的销毁函数
+func (d *BeanDefinition) getDestroy() interface{} {
+	return d.destroy
+}
+
+// getFile 返回 Bean 注册点所在文件的名称
+func (d *BeanDefinition) getFile() string {
+	return d.file
+}
+
+// getLine 返回 Bean 注册点所在文件的行数
+func (d *BeanDefinition) getLine() int {
+	return d.line
+}
+
 // Caller 返回 Bean 的注册点
 func (d *BeanDefinition) Caller() string {
 	return d.file + ":" + strconv.Itoa(d.line)
+}
+
+// description 返回 Bean 的详细描述
+func (d *BeanDefinition) description() string {
+	return fmt.Sprintf("%s \"%s\" %s", d.bean.beanClass(), d.name, d.Caller())
 }
 
 // Match 测试 Bean 的类型全限定名和 Bean 的名称是否都匹配
@@ -590,7 +676,15 @@ func (d *BeanDefinition) Destroy(fn interface{}) *BeanDefinition {
 
 // ToBeanDefinition 将 Bean 转换为 BeanDefinition 对象
 func ToBeanDefinition(name string, i interface{}) *BeanDefinition {
-	bean := newOriginalBean(i)
+	return ValueToBeanDefinition(name, reflect.ValueOf(i))
+}
+
+// ValueToBeanDefinition 将 Value 转换为 BeanDefinition 对象
+func ValueToBeanDefinition(name string, v reflect.Value) *BeanDefinition {
+	if !v.IsValid() {
+		SpringLogger.Panic("bean can't be nil")
+	}
+	bean := newOriginalBean(v)
 	return newBeanDefinition(bean, name)
 }
 

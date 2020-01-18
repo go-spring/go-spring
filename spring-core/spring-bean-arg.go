@@ -17,21 +17,29 @@
 package SpringCore
 
 import (
+	"fmt"
 	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
 
 	"github.com/go-spring/go-spring-parent/spring-logger"
 )
 
+// describable 可描述对象
+type describable interface {
+	description() string
+}
+
 // fnBindingArg 存储函数的参数绑定
 type fnBindingArg interface {
 	// Get 获取函数参数的绑定值
-	Get(ctx SpringContext, fnType reflect.Type) []reflect.Value
+	Get(descriptor describable, ctx SpringContext) []reflect.Value
 }
 
 // fnStringBindingArg 存储一般函数的参数绑定
 type fnStringBindingArg struct {
+	fnType reflect.Type
 	fnTags [][]string
 }
 
@@ -93,25 +101,13 @@ func newFnStringBindingArg(fnType reflect.Type, tags []string) *fnStringBindingA
 		}
 	}
 
-	return &fnStringBindingArg{fnTags}
-}
-
-// getArgValue 获取绑定参数值
-func getArgValue(ctx SpringContext, v reflect.Value, tag string) {
-	if strings.HasPrefix(tag, "$") { // ${} 属性绑定
-		bindStructField(ctx, v.Type(), v, "", "", tag, ctx.AllAccess())
-	} else {
-		if _, beanName, _ := ParseBeanId(tag); beanName == "[]" {
-			ctx.CollectValue(v)
-		} else {
-			ctx.GetBeanValue(tag, v)
-		}
-	}
+	return &fnStringBindingArg{fnType, fnTags}
 }
 
 // Get 获取函数参数的绑定值
-func (ca *fnStringBindingArg) Get(ctx SpringContext, fnType reflect.Type) []reflect.Value {
+func (ca *fnStringBindingArg) Get(descriptor describable, ctx SpringContext) []reflect.Value {
 
+	fnType := ca.fnType
 	numIn := fnType.NumIn()
 	variadic := fnType.IsVariadic() // 可变参数
 	args := make([]reflect.Value, 0)
@@ -121,16 +117,16 @@ func (ca *fnStringBindingArg) Get(ctx SpringContext, fnType reflect.Type) []refl
 		if i < numIn-1 || (i == numIn-1 && !variadic) {
 			iv := reflect.New(it).Elem()
 			if len(tags) == 0 {
-				getArgValue(ctx, iv, "")
+				ca.getArgValue(descriptor, ctx, iv, "")
 			} else {
-				getArgValue(ctx, iv, tags[0])
+				ca.getArgValue(descriptor, ctx, iv, tags[0])
 			}
 			args = append(args, iv)
 		} else {
 			et := it.Elem()
 			for _, tag := range tags {
 				ev := reflect.New(et).Elem()
-				getArgValue(ctx, ev, tag)
+				ca.getArgValue(descriptor, ctx, ev, tag)
 				args = append(args, ev)
 			}
 		}
@@ -139,13 +135,27 @@ func (ca *fnStringBindingArg) Get(ctx SpringContext, fnType reflect.Type) []refl
 	return args
 }
 
+// getArgValue 获取绑定参数值
+func (ca *fnStringBindingArg) getArgValue(descriptor describable, ctx SpringContext, v reflect.Value, tag string) {
+
+	description := fmt.Sprintf("tag:\"%s\" %s", tag, descriptor.description())
+	defer SpringLogger.Debugf("get value success %s", description)
+	SpringLogger.Debugf("get value %s", description)
+
+	if strings.HasPrefix(tag, "$") { // ${} 属性绑定
+		bindStructField(ctx, v.Type(), v, "", "", tag, ctx.AllAccess())
+	} else {
+		ctx.GetBeanValue(tag, v)
+	}
+}
+
 // fnOptionBindingArg 存储 Option 模式函数的参数绑定
 type fnOptionBindingArg struct {
 	options []*optionArg
 }
 
 // Get 获取函数参数的绑定值
-func (ca *fnOptionBindingArg) Get(ctx SpringContext, _ reflect.Type) []reflect.Value {
+func (ca *fnOptionBindingArg) Get(_ describable, ctx SpringContext) []reflect.Value {
 	args := make([]reflect.Value, 0)
 	for _, option := range ca.options {
 		if arg := option.call(ctx); arg.IsValid() {
@@ -161,10 +171,35 @@ type optionArg struct {
 
 	fn  interface{}
 	arg fnBindingArg
+
+	file string // 注册点所在文件
+	line int    // 注册点所在行数
 }
 
 // NewOptionArg optionArg 的构造函数
 func NewOptionArg(fn interface{}, tags ...string) *optionArg {
+
+	var (
+		file string
+		line int
+	)
+
+	// 获取注册点信息
+	for i := 1; i < 10; i++ {
+		_, file0, line0, _ := runtime.Caller(i)
+
+		// 排除 spring-core 包下面所有的非 test 文件
+		if strings.Contains(file0, "/spring-core/") {
+			if !strings.HasSuffix(file0, "_test.go") {
+				continue
+			}
+		}
+
+		file = file0
+		line = line0
+		break
+	}
+
 	fnType := reflect.TypeOf(fn)
 
 	// 判断是否是合法的 Option 函数
@@ -191,6 +226,8 @@ func NewOptionArg(fn interface{}, tags ...string) *optionArg {
 		cond: NewConditional(),
 		fn:   fn,
 		arg:  newFnStringBindingArg(fnType, tags),
+		file: file,
+		line: line,
 	}
 }
 
@@ -275,9 +312,11 @@ func (arg *optionArg) call(ctx SpringContext) reflect.Value {
 	}
 
 	fnValue := reflect.ValueOf(arg.fn)
-	fnType := fnValue.Type()
-
-	in := arg.arg.Get(ctx, fnType)
+	in := arg.arg.Get(arg, ctx)
 	out := fnValue.Call(in)
 	return out[0]
+}
+
+func (arg *optionArg) description() string {
+	return fmt.Sprintf("option arg %s:%d", arg.file, arg.line)
 }

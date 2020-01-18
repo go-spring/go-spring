@@ -176,7 +176,7 @@ func TestToBeanDefinition(t *testing.T) {
 	// nil
 	assert.Panic(t, func() {
 		SpringCore.ToBeanDefinition("", nil)
-	}, "nil isn't valid bean")
+	}, "bean can't be nil")
 
 	// bool
 	assert.Panic(t, func() {
