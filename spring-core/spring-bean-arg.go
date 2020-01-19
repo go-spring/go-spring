@@ -139,7 +139,6 @@ func (ca *fnStringBindingArg) Get(descriptor describable, ctx SpringContext) []r
 func (ca *fnStringBindingArg) getArgValue(descriptor describable, ctx SpringContext, v reflect.Value, tag string) {
 
 	description := fmt.Sprintf("tag:\"%s\" %s", tag, descriptor.description())
-	defer SpringLogger.Debugf("get value success %s", description)
 	SpringLogger.Debugf("get value %s", description)
 
 	if strings.HasPrefix(tag, "$") { // ${} 属性绑定
@@ -147,6 +146,8 @@ func (ca *fnStringBindingArg) getArgValue(descriptor describable, ctx SpringCont
 	} else {
 		ctx.GetBeanValue(tag, v)
 	}
+
+	SpringLogger.Debugf("get value success %s", description)
 }
 
 // fnOptionBindingArg 存储 Option 模式函数的参数绑定

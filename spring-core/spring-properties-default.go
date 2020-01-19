@@ -319,7 +319,7 @@ func bindValue(prop Properties, beanType reflect.Type, beanValue reflect.Value,
 		}
 	case reflect.Map:
 		if beanType.Key().Kind() != reflect.String {
-			SpringLogger.Panicf("field %s isn't map[string]interface{}", fieldName)
+			SpringLogger.Panicf("field: %s isn't map[string]interface{}", fieldName)
 		}
 
 		elemType := beanType.Elem()

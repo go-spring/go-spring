@@ -42,7 +42,7 @@ func TestDefaultSpringContext_RegisterBeanFrozen(t *testing.T) {
 			ctx.RegisterBean(new(bool))
 		})
 		ctx.AutoWireBeans()
-	}, "bean registration frozen")
+	}, "bean registration have been frozen")
 }
 
 func TestDefaultSpringContext(t *testing.T) {
@@ -63,7 +63,7 @@ func TestDefaultSpringContext(t *testing.T) {
 		// 相同类型的匿名 bean 不能重复注册
 		assert.Panic(t, func() {
 			ctx.RegisterBean(&e)
-		}, "duplicate bean registration int:\\*int")
+		}, "duplicate registration, bean: \"int:\\*int\"")
 
 		// 相同类型不同名称的 bean 都可注册
 		ctx.RegisterNameBean("i3", &e)
@@ -79,20 +79,20 @@ func TestDefaultSpringContext(t *testing.T) {
 		assert.Panic(t, func() {
 			var i int
 			ctx.GetBean(&i)
-		}, "receiver \"\" must be ref type")
+		}, "receiver must be ref type, bean: \"\\?\" field: ")
 
 		// 找到多个符合条件的值
 		assert.Panic(t, func() {
 			var i *int
 			ctx.GetBean(&i)
-		}, "找到多个符合条件的值")
+		}, "found 3 beans, bean: \"\\?\" field:  type: \\*int")
 
 		// 入参不是可赋值的对象
 		assert.Panic(t, func() {
 			var i int
 			ctx.GetBeanByName("i3", &i)
 			fmt.Println(i)
-		}, "receiver \"\" must be ref type")
+		}, "receiver must be ref type, bean: \"i3\\?\" field: ")
 
 		{
 			var i *int
@@ -254,7 +254,7 @@ func TestDefaultSpringContext_AutoWireBeans(t *testing.T) {
 
 		assert.Panic(t, func() {
 			ctx.AutoWireBeans()
-		}, "TestObject.\\$IntPtrByType 找到多个符合条件的值")
+		}, "found 2 beans, bean: \"\" field: TestObject.\\$IntPtrByType type: \\*int")
 	})
 
 	ctx := SpringCore.NewDefaultSpringContext()
@@ -645,7 +645,7 @@ func TestDefaultSpringContext_FindBeanByName(t *testing.T) {
 
 	assert.Panic(t, func() {
 		ctx.FindBeanByName("")
-	}, "找到多个符合条件的值")
+	}, "found 3 beans, bean: \"\"")
 
 	i, ok := ctx.FindBeanByName("*SpringCore_test.BeanTwo")
 	fmt.Println(SpringUtils.ToJson(i))
@@ -835,24 +835,27 @@ func TestDefaultSpringContext_DependsOn(t *testing.T) {
 
 func TestDefaultSpringContext_Primary(t *testing.T) {
 
-	assert.Panic(t, func() {
-		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.RegisterBean(&BeanZero{5})
-		ctx.RegisterBean(&BeanZero{6})
-		ctx.RegisterBean(new(BeanOne))
-		ctx.RegisterBean(new(BeanTwo))
-		ctx.AutoWireBeans()
-	}, "duplicate bean registration github.com/go-spring/go-spring/spring-core_test/SpringCore_test.BeanZero:\\*SpringCore_test.BeanZero")
+	t.Run("duplicate", func(t *testing.T) {
 
-	assert.Panic(t, func() {
-		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.RegisterBean(&BeanZero{5})
-		// Primary 是在多个候选 bean 里面选择，而不是允许同名同类型的两个 bean
-		ctx.RegisterBean(&BeanZero{6}).Primary(true)
-		ctx.RegisterBean(new(BeanOne))
-		ctx.RegisterBean(new(BeanTwo))
-		ctx.AutoWireBeans()
-	}, "duplicate bean registration github.com/go-spring/go-spring/spring-core_test/SpringCore_test.BeanZero:\\*SpringCore_test.BeanZero")
+		assert.Panic(t, func() {
+			ctx := SpringCore.NewDefaultSpringContext()
+			ctx.RegisterBean(&BeanZero{5})
+			ctx.RegisterBean(&BeanZero{6})
+			ctx.RegisterBean(new(BeanOne))
+			ctx.RegisterBean(new(BeanTwo))
+			ctx.AutoWireBeans()
+		}, "duplicate registration, bean: ")
+
+		assert.Panic(t, func() {
+			ctx := SpringCore.NewDefaultSpringContext()
+			ctx.RegisterBean(&BeanZero{5})
+			// Primary 是在多个候选 bean 里面选择，而不是允许同名同类型的两个 bean
+			ctx.RegisterBean(&BeanZero{6}).Primary(true)
+			ctx.RegisterBean(new(BeanOne))
+			ctx.RegisterBean(new(BeanTwo))
+			ctx.AutoWireBeans()
+		}, "duplicate registration, bean: ")
+	})
 
 	t.Run("not primary", func(t *testing.T) {
 
@@ -1481,7 +1484,7 @@ func TestDefaultSpringContext_RegisterMethodBean(t *testing.T) {
 							v = e
 						}
 
-						if !strings.Contains(v, "found circle autowire: ") {
+						if !strings.Contains(v, "found circle autowire") {
 							panic(errors.New("test error"))
 						}
 					} else {
@@ -1574,7 +1577,7 @@ func TestDefaultSpringContext_RegisterMethodBean(t *testing.T) {
 			ctx.RegisterBean(new(Server))
 			ctx.RegisterMethodBean((*int)(nil), "Consumer")
 			ctx.AutoWireBeans()
-		}, "can't find parent bean \"\\*int\"")
+		}, "can't find parent bean: \"\\*int\"")
 
 		assert.Panic(t, func() {
 			ctx := SpringCore.NewDefaultSpringContext()
@@ -1614,7 +1617,7 @@ func TestDefaultSpringContext_RegisterMethodBean(t *testing.T) {
 			ctx.RegisterBean(new(Server))
 			ctx.RegisterMethodBean("NULL", "Consumer")
 			ctx.AutoWireBeans()
-		}, "can't find parent bean \"NULL\"")
+		}, "can't find parent bean: \"NULL\"")
 	})
 }
 
@@ -1881,7 +1884,7 @@ func TestDefaultSpringContext_BeanNotFound(t *testing.T) {
 		ctx := SpringCore.NewDefaultSpringContext()
 		ctx.RegisterBeanFn(func(i *int) bool { return false })
 		ctx.AutoWireBeans()
-	}, "没有找到符合条件的 Bean: ")
+	}, "can't find bean, bean: \"\" field:  type: \\*int")
 }
 
 type SubNestedAutowireBean struct {
