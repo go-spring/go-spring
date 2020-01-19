@@ -2019,3 +2019,30 @@ func TestDefaultSpringContext_FnArgCollectBean(t *testing.T) {
 		ctx.AutoWireBeans()
 	})
 }
+
+type filter interface {
+	Filter(input string) string
+}
+
+type filterImpl struct {
+}
+
+func (_ *filterImpl) Filter(input string) string {
+	return input
+}
+
+func TestDefaultSpringContext_BeanCache(t *testing.T) {
+
+	var service struct {
+		F1 filter `autowire:"f1"`
+		F2 filter `autowire:"f2"`
+	}
+
+	ctx := SpringCore.NewDefaultSpringContext()
+	ctx.RegisterNameBeanFn("f1", func() filter {
+		return new(filterImpl)
+	})
+	ctx.RegisterNameBean("f2", new(filterImpl))
+	ctx.RegisterBean(&service)
+	ctx.AutoWireBeans()
+}

@@ -17,6 +17,7 @@
 package SpringBoot_test
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -25,6 +26,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/go-redis/redis"
 	"github.com/go-spring/go-spring-parent/spring-utils"
 	"github.com/go-spring/go-spring-web/spring-web"
@@ -42,8 +44,23 @@ func init() {
 				ConditionOnProfile("test").
 				ConditionOnMissingProperty("ok_enable")
 		})
+
 	SpringBoot.RegisterBean(new(MyRunner))
 	SpringBoot.RegisterBeanFn(NewMyModule, "${message}")
+
+	SpringBoot.RegisterBeanFn(func() (*sql.DB, error) {
+		if db, mock, err := sqlmock.New(); err != nil {
+			panic(err)
+		} else {
+			mock.ExpectQuery("SELECT ENGINE FROM `ENGINES`").WillReturnRows(
+				mock.NewRows([]string{"ENGINE"}).AddRow("sql-mock"),
+			)
+			return db, err
+		}
+	}).Destroy(func(db *sql.DB) {
+		fmt.Println("close sql db")
+		db.Close()
+	})
 }
 
 func TestRunApplication(t *testing.T) {
@@ -70,12 +87,23 @@ func (c *MyController) OK(ctx SpringWeb.WebContext) {
 	rows, err := c.DB.Table("ENGINES").Select("ENGINE").Rows()
 	SpringUtils.Panic(err).When(err != nil)
 
-	defer rows.Close()
+	count := 0
 
+	defer rows.Close()
 	for rows.Next() {
+		count++
+
 		var engine string
 		_ = rows.Scan(&engine)
 		fmt.Println(engine)
+
+		if engine != "sql-mock" {
+			panic(errors.New("error"))
+		}
+	}
+
+	if count != 1 {
+		panic(errors.New("error"))
 	}
 
 	ctx.JSONBlob(200, []byte(val))

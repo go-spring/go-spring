@@ -40,8 +40,14 @@ type beanCacheItem struct {
 	// we use a list to store the cached beans.
 	named []*BeanDefinition
 
+	// 是否已遍历所有 Bean 从而锁定 Cache 的结果。
+	namedLock bool
+
 	// 收集模式得到的 Bean 列表，一个类型只需收集一次。
 	collect reflect.Value
+
+	// 是否已遍历所有 Bean 从而锁定 Cache 的结果。
+	collectLock bool
 }
 
 // newBeanCacheItem beanCacheItem 的构造函数
@@ -53,6 +59,11 @@ func newBeanCacheItem() *beanCacheItem {
 
 // Store 将一个 Bean 存储到 CachedBeanMapItem 里
 func (item *beanCacheItem) store(d *BeanDefinition) {
+	for _, bean := range item.named {
+		if d == bean { // 已经存在了
+			return
+		}
+	}
 	item.named = append(item.named, d)
 }
 
@@ -251,13 +262,13 @@ func (ctx *defaultSpringContext) GetBeanByName(beanId string, i interface{}) boo
 }
 
 // findCacheItem 查找指定类型的缓存项
-func (ctx *defaultSpringContext) findCacheItem(t reflect.Type) (*beanCacheItem, bool) {
+func (ctx *defaultSpringContext) findCacheItem(t reflect.Type) *beanCacheItem {
 	c, ok := ctx.beanCache[t]
 	if !ok {
 		c = newBeanCacheItem()
 		ctx.beanCache[t] = c
 	}
-	return c, ok
+	return c
 }
 
 // getBeanValue 根据 BeanId 查找 Bean 并返回 Bean 源的值
@@ -269,7 +280,7 @@ func (ctx *defaultSpringContext) getBeanValue(beanId string, parentValue reflect
 		SpringLogger.Panic("receiver \"" + field + "\" must be ref type")
 	}
 
-	m, ok := ctx.findCacheItem(beanType)
+	m := ctx.findCacheItem(beanType)
 
 	found := func(bean *BeanDefinition) bool {
 
@@ -331,7 +342,8 @@ func (ctx *defaultSpringContext) getBeanValue(beanId string, parentValue reflect
 	}
 
 	// 未命中缓存，则从注册列表里面查询，并更新缓存
-	if !ok {
+	if !m.namedLock {
+		m.namedLock = true
 
 		for _, bean := range ctx.beanMap {
 			if found(bean) {
@@ -423,10 +435,11 @@ func (ctx *defaultSpringContext) collectBeans(v reflect.Value) bool {
 	t := v.Type()
 	et := t.Elem()
 
-	m, ok := ctx.findCacheItem(t)
+	m := ctx.findCacheItem(t)
 
-	// 未命中缓存，或者还没有收集到数据，则从注册列表里面查询，并更新缓存
-	if !ok || !m.collect.IsValid() {
+	// 未命中缓存，则从注册列表里面查询，并更新缓存
+	if !m.collectLock {
+		m.collectLock = true
 
 		// 创建一个空数组
 		ev := reflect.New(t).Elem()
@@ -536,8 +549,8 @@ func (ctx *defaultSpringContext) resolveBean(bd *BeanDefinition) {
 	}
 
 	// 将符合注册条件的 Bean 放入到缓存里面
-	SpringLogger.Debugf("register bean \"%s\" %s", bd.Name(), bd.Caller())
-	item, _ := ctx.findCacheItem(bd.Type())
+	SpringLogger.Debugf("register bean \"%s\" %s", bd.BeanId(), bd.Caller())
+	item := ctx.findCacheItem(bd.Type())
 	item.store(bd)
 
 	bd.status = beanStatus_Resolved
