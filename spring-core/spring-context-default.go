@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"sync"
 
 	"github.com/go-spring/go-spring-parent/spring-logger"
 	"github.com/go-spring/go-spring-parent/spring-utils"
@@ -43,11 +44,17 @@ type beanCacheItem struct {
 	// 是否已遍历所有 Bean 从而锁定 Cache 的结果。
 	namedLock bool
 
+	// 写锁
+	namedMutex sync.Mutex
+
 	// 收集模式得到的 Bean 列表，一个类型只需收集一次。
 	collect reflect.Value
 
 	// 是否已遍历所有 Bean 从而锁定 Cache 的结果。
 	collectLock bool
+
+	// 写锁
+	collectMutex sync.Mutex
 }
 
 // newBeanCacheItem beanCacheItem 的构造函数
@@ -57,19 +64,40 @@ func newBeanCacheItem() *beanCacheItem {
 	}
 }
 
-// Store 将一个 Bean 存储到 CachedBeanMapItem 里
-func (item *beanCacheItem) store(d *BeanDefinition) {
+// find 返回元素是否已经存在
+func (item *beanCacheItem) find(d *BeanDefinition) bool {
 	for _, bean := range item.named {
 		if d == bean { // 已经存在了
-			return
+			return true
 		}
 	}
-	item.named = append(item.named, d)
+	return false
+}
+
+// Store 将一个 Bean 存储到 CachedBeanMapItem 里
+func (item *beanCacheItem) store(d *BeanDefinition, openWLock bool) {
+	if openWLock { // 是否打开写锁
+		if ok := item.find(d); !ok { // 双重检查减少锁的使用
+			defer item.namedMutex.Unlock()
+			item.namedMutex.Lock()
+			if o := item.find(d); !o {
+				item.named = append(item.named, d)
+			}
+		}
+	} else {
+		item.named = append(item.named, d)
+	}
 }
 
 // StoreCollect 将收集到的 Bean 列表的值存储到 CachedBeanMapItem 里
-func (item *beanCacheItem) storeCollect(v reflect.Value) {
-	item.collect = v
+func (item *beanCacheItem) storeCollect(v reflect.Value, openWLock bool) {
+	if openWLock { // 是否打开写锁
+		defer item.collectMutex.Unlock()
+		item.collectMutex.Lock()
+		item.collect = v
+	} else {
+		item.collect = v
+	}
 }
 
 // wiringStack 存储正在进行绑定的 Bean
@@ -115,6 +143,7 @@ type defaultSpringContext struct {
 	profile   string // 运行环境
 	autoWired bool   // 已经开始自动绑定
 	allAccess bool   // 允许注入私有字段
+	openWLock bool   // 打开 cache 写锁
 
 	beanMap   map[beanKey]*BeanDefinition     // Bean 的集合
 	beanCache map[reflect.Type]*beanCacheItem // Bean 的缓存
@@ -352,7 +381,7 @@ func (ctx *defaultSpringContext) getBeanValue(beanId string, parentValue reflect
 
 		for _, bean := range ctx.beanMap {
 			if found(bean) {
-				m.store(bean)
+				m.store(bean, ctx.openWLock)
 				if bean.Match(typeName, beanName) {
 					result = append(result, bean)
 				}
@@ -496,7 +525,7 @@ func (ctx *defaultSpringContext) collectBeans(v reflect.Value) bool {
 		}
 
 		// 把查询结果缓存起来
-		m.storeCollect(ev)
+		m.storeCollect(ev, ctx.openWLock)
 
 		// 给外面的数组赋值
 		if ev.Len() > 0 {
@@ -561,7 +590,12 @@ func (ctx *defaultSpringContext) resolveBean(bd *BeanDefinition) {
 	// 将符合注册条件的 Bean 放入到缓存里面
 	SpringLogger.Debugf("register bean \"%s\" %s", bd.BeanId(), bd.Caller())
 	item := ctx.findCacheItem(bd.Type())
-	item.store(bd)
+	item.store(bd, ctx.openWLock)
+
+	// 具体类型无需遍历所有 Bean，因此锁定 named 字段
+	if bd.Type().Kind() != reflect.Interface {
+		item.namedLock = true
+	}
 
 	bd.status = beanStatus_Resolved
 }
@@ -641,6 +675,9 @@ func (ctx *defaultSpringContext) AutoWireBeans() {
 	for _, bd := range ctx.beanMap {
 		ctx.wireBeanDefinition(bd, false)
 	}
+
+	// 打开 cache 写锁
+	ctx.openWLock = true
 }
 
 // WireBean 绑定外部的 Bean 源
