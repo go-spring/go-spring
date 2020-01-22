@@ -24,7 +24,7 @@ import (
 )
 
 func init() {
-	SpringBoot.RegisterBean(new(WebServerStarter))
+	SpringBoot.RegisterNameBean("std-web-server", new(WebServerStarter))
 }
 
 // WebServerConfig Web 服务器配置

@@ -400,27 +400,58 @@ func (ctx *defaultSpringContext) getBeanValue(beanId string, parentValue reflect
 	return checkResult()
 }
 
-// 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
+// FindBeanByName 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 func (ctx *defaultSpringContext) FindBeanByName(beanId string) (*BeanDefinition, bool) {
+	return ctx.FindBean(beanId)
+}
+
+// FindBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
+// selector 可以是 BeanId，还可以是 (Type)(nil) 变量。
+func (ctx *defaultSpringContext) FindBean(selector interface{}) (*BeanDefinition, bool) {
 
 	ctx.checkAutoWired()
 
-	var (
-		typeName string
-		beanName string
-		result   []*BeanDefinition
-	)
+	finder := func(fn func(*BeanDefinition) bool) (result []*BeanDefinition) {
+		for _, bean := range ctx.beanMap {
+			if fn(bean) {
 
-	typeName, beanName, _ = ParseBeanId(beanId)
-	for _, bean := range ctx.beanMap {
-		if bean.Match(typeName, beanName) {
+				// 如果 Bean 正在解析则跳过 TODO 是否在注入堆栈
+				if bean.status == beanStatus_Resolving {
+					continue
+				}
 
-			// 避免 Bean 还未解析
-			ctx.resolveBean(bean)
+				// 避免 Bean 还未解析
+				ctx.resolveBean(bean)
 
-			if bean.status != beanStatus_Deleted {
-				result = append(result, bean)
+				if bean.status != beanStatus_Deleted {
+					result = append(result, bean)
+				}
 			}
+		}
+		return
+	}
+
+	var result []*BeanDefinition
+
+	switch o := selector.(type) {
+	case string:
+		typeName, beanName, _ := ParseBeanId(o)
+		result = finder(func(b *BeanDefinition) bool {
+			return b.Match(typeName, beanName)
+		})
+	default:
+		{
+			t := reflect.TypeOf(o) // map、slice 等不是指针类型
+			if t.Kind() == reflect.Ptr {
+				e := t.Elem()
+				if e.Kind() == reflect.Interface {
+					t = e // 接口类型去掉指针
+				}
+			}
+
+			result = finder(func(b *BeanDefinition) bool {
+				return b.Type().AssignableTo(t)
+			})
 		}
 	}
 
@@ -433,7 +464,7 @@ func (ctx *defaultSpringContext) FindBeanByName(beanId string) (*BeanDefinition,
 
 	// 多于 1 个
 	if count > 1 {
-		msg := fmt.Sprintf("found %d beans, bean: \"%s\" [", len(result), beanId)
+		msg := fmt.Sprintf("found %d beans, bean: \"%v\" [", len(result), selector)
 		for _, b := range result {
 			msg += "( " + b.description() + " ), "
 		}

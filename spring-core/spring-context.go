@@ -89,6 +89,10 @@ type SpringContext interface {
 	// FindBeanByName 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 	FindBeanByName(beanId string) (*BeanDefinition, bool)
 
+	// FindBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
+	// selector 可以是 BeanId，还可以是 (Type)(nil) 变量。
+	FindBean(selector interface{}) (*BeanDefinition, bool)
+
 	// CollectBeans 收集数组或指针定义的所有符合条件的 Bean 对象，收集到返回 true，否则返回 false。
 	// 什么情况下可以使用此功能？假设 HandlerA 和 HandlerB 都实现了 HandlerT 接口，而且用户分别注册
 	// 了一个 HandlerA 和 HandlerB 对象，如果用户想要同时获取 HandlerA 和 HandlerB 对象，那么他可

@@ -136,33 +136,33 @@ func (c *propertyValueCondition) Matches(ctx SpringContext) bool {
 
 // beanCondition 基于 Bean 存在的 Condition 实现
 type beanCondition struct {
-	beanId string
+	selector interface{}
 }
 
 // NewBeanCondition beanCondition 的构造函数
-func NewBeanCondition(beanId string) *beanCondition {
-	return &beanCondition{beanId}
+func NewBeanCondition(selector interface{}) *beanCondition {
+	return &beanCondition{selector}
 }
 
 // Matches 成功返回 true，失败返回 false
 func (c *beanCondition) Matches(ctx SpringContext) bool {
-	_, ok := ctx.FindBeanByName(c.beanId)
+	_, ok := ctx.FindBean(c.selector)
 	return ok
 }
 
 // missingBeanCondition 基于 Bean 不能存在的 Condition 实现
 type missingBeanCondition struct {
-	beanId string
+	selector interface{}
 }
 
 // NewMissingBeanCondition missingBeanCondition 的构造函数
-func NewMissingBeanCondition(beanId string) *missingBeanCondition {
-	return &missingBeanCondition{beanId}
+func NewMissingBeanCondition(selector interface{}) *missingBeanCondition {
+	return &missingBeanCondition{selector}
 }
 
 // Matches 成功返回 true，失败返回 false
 func (c *missingBeanCondition) Matches(ctx SpringContext) bool {
-	_, ok := ctx.FindBeanByName(c.beanId)
+	_, ok := ctx.FindBean(c.selector)
 	return !ok
 }
 
@@ -386,13 +386,13 @@ func (c *Conditional) OnPropertyValue(name string, havingValue interface{}) *Con
 }
 
 // OnBean 设置一个 beanCondition
-func (c *Conditional) OnBean(beanId string) *Conditional {
-	return c.OnCondition(NewBeanCondition(beanId))
+func (c *Conditional) OnBean(selector interface{}) *Conditional {
+	return c.OnCondition(NewBeanCondition(selector))
 }
 
 // OnMissingBean 设置一个 missingBeanCondition
-func (c *Conditional) OnMissingBean(beanId string) *Conditional {
-	return c.OnCondition(NewMissingBeanCondition(beanId))
+func (c *Conditional) OnMissingBean(selector interface{}) *Conditional {
+	return c.OnCondition(NewMissingBeanCondition(selector))
 }
 
 // OnExpression 设置一个 expressionCondition

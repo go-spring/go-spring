@@ -29,12 +29,12 @@ import (
 func init() {
 
 	// 如果没有 fromDB 名称的 *gorm.DB 对象则创建 fromConfig 名称的 *gorm.DB 对象
-	SpringBoot.RegisterNameBeanFn("fromConfig", fromConfig, "${}").
-		ConditionOnMissingBean(":fromDB").
+	SpringBoot.RegisterNameBeanFn("std-gorm-mysql-from-config", fromConfig, "${}").
+		ConditionOnMissingBean("github.com/jinzhu/gorm/gorm.DB:").
 		Destroy(closeDB)
 
 	// 如果已经有 *sql.DB 对象则创建fromDB 名称的 *gorm.DB 对象
-	SpringBoot.RegisterNameBeanFn("fromDB", fromDB).
+	SpringBoot.RegisterNameBeanFn("std-gorm-mysql-from-db", fromDB).
 		ConditionOnBean("database/sql/sql.DB:").
 		Destroy(closeDB)
 }

@@ -166,14 +166,14 @@ func (m *Mapping) ConditionOnPropertyValue(name string, havingValue interface{})
 }
 
 // ConditionOnBean 设置一个 BeanCondition
-func (m *Mapping) ConditionOnBean(beanId string) *Mapping {
-	m.cond.OnBean(beanId)
+func (m *Mapping) ConditionOnBean(selector interface{}) *Mapping {
+	m.cond.OnBean(selector)
 	return m
 }
 
 // ConditionOnMissingBean 设置一个 MissingBeanCondition
-func (m *Mapping) ConditionOnMissingBean(beanId string) *Mapping {
-	m.cond.OnMissingBean(beanId)
+func (m *Mapping) ConditionOnMissingBean(selector interface{}) *Mapping {
+	m.cond.OnMissingBean(selector)
 	return m
 }
 
@@ -280,14 +280,14 @@ func (r *Router) ConditionOnPropertyValue(name string, havingValue interface{}) 
 }
 
 // ConditionOnBean 设置一个 BeanCondition
-func (r *Router) ConditionOnBean(beanId string) *Router {
-	r.cond.OnBean(beanId)
+func (r *Router) ConditionOnBean(selector interface{}) *Router {
+	r.cond.OnBean(selector)
 	return r
 }
 
 // ConditionOnMissingBean 设置一个 MissingBeanCondition
-func (r *Router) ConditionOnMissingBean(beanId string) *Router {
-	r.cond.OnMissingBean(beanId)
+func (r *Router) ConditionOnMissingBean(selector interface{}) *Router {
+	r.cond.OnMissingBean(selector)
 	return r
 }
 

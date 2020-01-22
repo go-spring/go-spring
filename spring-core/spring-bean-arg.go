@@ -275,14 +275,14 @@ func (arg *optionArg) ConditionOnPropertyValue(name string, havingValue interfac
 }
 
 // ConditionOnBean 为 optionArg 设置一个 BeanCondition
-func (arg *optionArg) ConditionOnBean(beanId string) *optionArg {
-	arg.cond.OnBean(beanId)
+func (arg *optionArg) ConditionOnBean(selector interface{}) *optionArg {
+	arg.cond.OnBean(selector)
 	return arg
 }
 
 // ConditionOnMissingBean 为 optionArg 设置一个 MissingBeanCondition
-func (arg *optionArg) ConditionOnMissingBean(beanId string) *optionArg {
-	arg.cond.OnMissingBean(beanId)
+func (arg *optionArg) ConditionOnMissingBean(selector interface{}) *optionArg {
+	arg.cond.OnMissingBean(selector)
 	return arg
 }
 

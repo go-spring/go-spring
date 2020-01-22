@@ -14,33 +14,25 @@
  * limitations under the License.
  */
 
-package StarterGoRedis
+package StarterMySqlMock
 
 import (
+	"database/sql"
 	"fmt"
 
-	"github.com/go-redis/redis"
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/go-spring/go-spring/spring-boot"
-	"github.com/go-spring/go-spring/starter-redis"
 )
 
 func init() {
-	SpringBoot.RegisterNameBeanFn("std-go-redis-client", NewGoRedisClient, "${}").
-		ConditionOnMissingBean((*redis.Cmdable)(nil))
-}
-
-// NewGoRedisClient 创建 redis 客户端
-func NewGoRedisClient(config StarterRedis.RedisConfig) (redis.Cmdable, error) {
-
-	address := fmt.Sprintf("%s:%d", config.Host, config.Port)
-	client := redis.NewClient(&redis.Options{
-		Addr:     address,
-		Password: config.Password,
-		DB:       config.Database,
+	SpringBoot.RegisterNameBeanFn("mock-mysql-db", func(fn func(sqlmock.Sqlmock)) (*sql.DB, error) {
+		db, mock, err := sqlmock.New()
+		if err == nil {
+			fn(mock)
+		}
+		return db, err
+	}).Destroy(func(db *sql.DB) {
+		fmt.Println("close sql db")
+		db.Close()
 	})
-
-	if err := client.Ping().Err(); err != nil {
-		return nil, err
-	}
-	return client, nil
 }

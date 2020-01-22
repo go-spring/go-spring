@@ -17,7 +17,6 @@
 package SpringBoot_test
 
 import (
-	"database/sql"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -27,13 +26,16 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/elliotchance/redismock"
 	"github.com/go-redis/redis"
 	"github.com/go-spring/go-spring-parent/spring-utils"
 	"github.com/go-spring/go-spring-web/spring-web"
 	"github.com/go-spring/go-spring/spring-boot"
 	_ "github.com/go-spring/go-spring/starter-echo"
 	_ "github.com/go-spring/go-spring/starter-go-redis"
+	_ "github.com/go-spring/go-spring/starter-go-redis-mock"
 	_ "github.com/go-spring/go-spring/starter-mysql-gorm"
+	_ "github.com/go-spring/go-spring/starter-mysql-mock"
 	"github.com/jinzhu/gorm"
 )
 
@@ -48,18 +50,15 @@ func init() {
 	SpringBoot.RegisterBean(new(MyRunner))
 	SpringBoot.RegisterBeanFn(NewMyModule, "${message}")
 
-	SpringBoot.RegisterBeanFn(func() (*sql.DB, error) {
-		if db, mock, err := sqlmock.New(); err != nil {
-			panic(err)
-		} else {
-			mock.ExpectQuery("SELECT ENGINE FROM `ENGINES`").WillReturnRows(
-				mock.NewRows([]string{"ENGINE"}).AddRow("sql-mock"),
-			)
-			return db, err
-		}
-	}).Destroy(func(db *sql.DB) {
-		fmt.Println("close sql db")
-		db.Close()
+	SpringBoot.RegisterBean(func(mock sqlmock.Sqlmock) {
+		mock.ExpectQuery("SELECT ENGINE FROM `ENGINES`").WillReturnRows(
+			mock.NewRows([]string{"ENGINE"}).AddRow("sql-mock"),
+		)
+	})
+
+	SpringBoot.RegisterBean(func(mock *redismock.ClientMock) {
+		mock.On("Set", "key", "ok", time.Second*10).Return(redis.NewStatusResult("", nil))
+		mock.On("Get", "key").Return(redis.NewStringResult("ok", nil))
 	})
 }
 
@@ -72,7 +71,7 @@ func TestRunApplication(t *testing.T) {
 ////////////////// MyController ///////////////////
 
 type MyController struct {
-	RedisClient *redis.Client `autowire:""`
+	RedisClient redis.Cmdable `autowire:""`
 	DB          *gorm.DB      `autowire:""`
 }
 

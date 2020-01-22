@@ -14,33 +14,19 @@
  * limitations under the License.
  */
 
-package StarterGoRedis
+package StarterGoRedisMock
 
 import (
-	"fmt"
-
+	"github.com/elliotchance/redismock"
 	"github.com/go-redis/redis"
 	"github.com/go-spring/go-spring/spring-boot"
-	"github.com/go-spring/go-spring/starter-redis"
 )
 
 func init() {
-	SpringBoot.RegisterNameBeanFn("std-go-redis-client", NewGoRedisClient, "${}").
-		ConditionOnMissingBean((*redis.Cmdable)(nil))
-}
-
-// NewGoRedisClient 创建 redis 客户端
-func NewGoRedisClient(config StarterRedis.RedisConfig) (redis.Cmdable, error) {
-
-	address := fmt.Sprintf("%s:%d", config.Host, config.Port)
-	client := redis.NewClient(&redis.Options{
-		Addr:     address,
-		Password: config.Password,
-		DB:       config.Database,
-	})
-
-	if err := client.Ping().Err(); err != nil {
-		return nil, err
-	}
-	return client, nil
+	SpringBoot.RegisterNameBeanFn("mock-go-redis-client",
+		func(fn func(*redismock.ClientMock)) redis.Cmdable {
+			mock := redismock.NewMock()
+			fn(mock)
+			return mock
+		})
 }

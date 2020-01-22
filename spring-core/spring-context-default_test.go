@@ -666,6 +666,15 @@ func TestDefaultSpringContext_FindBeanByName(t *testing.T) {
 	i, ok = ctx.FindBeanByName("xxx:*SpringCore_test.BeanTwo")
 	fmt.Println(SpringUtils.ToJson(i))
 	assert.Equal(t, ok, false)
+
+	i, ok = ctx.FindBean("*SpringCore_test.BeanTwo")
+	fmt.Println(SpringUtils.ToJson(i))
+	assert.Equal(t, ok, true)
+
+	i, ok = ctx.FindBean((*BeanTwo)(nil))
+	fmt.Println(SpringUtils.ToJson(i))
+	assert.Equal(t, ok, true)
+
 }
 
 func TestDefaultSpringContext_RegisterBeanFn(t *testing.T) {

@@ -130,6 +130,12 @@ func FindBeanByName(beanId string) (*SpringCore.BeanDefinition, bool) {
 	return ctx.FindBeanByName(beanId)
 }
 
+// FindBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
+// selector 可以是 BeanId，还可以是 (Type)(nil) 变量。
+func FindBean(selector interface{}) (*SpringCore.BeanDefinition, bool) {
+	return ctx.FindBean(selector)
+}
+
 // GetAllBeanDefinitions 获取所有 Bean 的定义，一般仅供调试使用。
 func GetAllBeanDefinitions() []*SpringCore.BeanDefinition {
 	return ctx.GetAllBeanDefinitions()

@@ -562,14 +562,14 @@ func (d *BeanDefinition) ConditionOnPropertyValue(name string, havingValue inter
 }
 
 // ConditionOnBean 为 Bean 设置一个 BeanCondition
-func (d *BeanDefinition) ConditionOnBean(beanId string) *BeanDefinition {
-	d.cond.OnBean(beanId)
+func (d *BeanDefinition) ConditionOnBean(selector interface{}) *BeanDefinition {
+	d.cond.OnBean(selector)
 	return d
 }
 
 // ConditionOnMissingBean 为 Bean 设置一个 MissingBeanCondition
-func (d *BeanDefinition) ConditionOnMissingBean(beanId string) *BeanDefinition {
-	d.cond.OnMissingBean(beanId)
+func (d *BeanDefinition) ConditionOnMissingBean(selector interface{}) *BeanDefinition {
+	d.cond.OnMissingBean(selector)
 	return d
 }
 
