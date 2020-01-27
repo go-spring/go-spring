@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	"github.com/go-spring/go-spring-parent/spring-logger"
+	"github.com/go-spring/go-spring/spring-core"
 )
 
 const (
@@ -64,7 +65,7 @@ func (app *application) Start() {
 	app.loadConfigFiles()
 
 	// 注册 ApplicationContext
-	app.AppContext.RegisterBean(app.AppContext)
+	app.AppContext.RegisterBean(app.AppContext).AsInterface((*ApplicationContext)(nil), (*SpringCore.SpringContext)(nil))
 
 	// 依赖注入、属性绑定、Bean 初始化
 	app.AppContext.AutoWireBeans()

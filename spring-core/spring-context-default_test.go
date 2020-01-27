@@ -276,7 +276,7 @@ func TestDefaultSpringContext_AutoWireBeans(t *testing.T) {
 	ctx.RegisterNameBean("int_ptr_slice", ips)
 
 	b := TestBinding{1}
-	ctx.RegisterNameBean("struct_ptr", &b)
+	ctx.RegisterNameBean("struct_ptr", &b).AsInterface((*fmt.Stringer)(nil))
 
 	bs := []TestBinding{{10}}
 	ctx.RegisterNameBean("struct_slice", bs)
@@ -414,7 +414,7 @@ func (s *PrototypeBeanService) Service(name string) {
 
 func TestDefaultSpringContext_PrototypeBean(t *testing.T) {
 	ctx := SpringCore.NewDefaultSpringContext()
-	ctx.RegisterBean(ctx)
+	ctx.RegisterBean(ctx).AsInterface((*SpringCore.SpringContext)(nil))
 
 	gs := &GreetingService{}
 	ctx.RegisterBean(gs)
@@ -494,7 +494,7 @@ type ProxyGrouper struct {
 func TestDefaultSpringContext_NestedBean(t *testing.T) {
 	ctx := SpringCore.NewDefaultSpringContext()
 
-	ctx.RegisterBean(new(MyGrouper))
+	ctx.RegisterBean(new(MyGrouper)).AsInterface((*Grouper)(nil))
 	ctx.RegisterBean(new(ProxyGrouper))
 
 	ctx.AutoWireBeans()
@@ -514,8 +514,8 @@ func TestDefaultSpringContext_SameNameBean(t *testing.T) {
 
 	ctx.RegisterBean(new(SamePkgHolder))
 
-	ctx.RegisterBean(&pkg1.SamePkg{})
-	ctx.RegisterBean(&pkg2.SamePkg{})
+	ctx.RegisterBean(&pkg1.SamePkg{}).AsInterface((*Pkg)(nil))
+	ctx.RegisterBean(&pkg2.SamePkg{}).AsInterface((*Pkg)(nil))
 
 	ctx.AutoWireBeans()
 }
@@ -542,8 +542,8 @@ type DiffPkgHolder struct {
 func TestDefaultSpringContext_DiffNameBean(t *testing.T) {
 	ctx := SpringCore.NewDefaultSpringContext()
 
-	ctx.RegisterNameBean("same", &DiffPkgOne{})
-	ctx.RegisterNameBean("same", &DiffPkgTwo{})
+	ctx.RegisterNameBean("same", &DiffPkgOne{}).AsInterface((*Pkg)(nil))
+	ctx.RegisterNameBean("same", &DiffPkgTwo{}).AsInterface((*Pkg)(nil))
 
 	ctx.RegisterBean(new(DiffPkgHolder))
 
@@ -682,7 +682,7 @@ func TestDefaultSpringContext_RegisterBeanFn(t *testing.T) {
 	ctx.SetProperty("room", "Class 3 Grade 1")
 
 	// 用接口注册时实际使用的是原始类型
-	ctx.RegisterBean(Teacher(newHistoryTeacher("")))
+	ctx.RegisterBean(Teacher(newHistoryTeacher(""))).AsInterface((*Teacher)(nil))
 
 	ctx.RegisterNameBeanFn("st1", NewStudent, "", "${room}")
 	ctx.RegisterNameBeanFn("st2", NewPtrStudent, "1:${room}")
@@ -1800,8 +1800,8 @@ func TestDefaultSpringContext_RegisterOptionBean(t *testing.T) {
 
 	t.Run("variadic option interface param 1", func(t *testing.T) {
 		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.RegisterNameBean("v1", &Var{"v1"})
-		ctx.RegisterNameBean("v2", &Var{"v2"})
+		ctx.RegisterNameBean("v1", &Var{"v1"}).AsInterface((*interface{})(nil))
+		ctx.RegisterNameBean("v2", &Var{"v2"}).AsInterface((*interface{})(nil))
 		ctx.RegisterBeanFn(NewVarInterfaceObj).Options(
 			SpringCore.NewOptionArg(withVarInterface, "v1"),
 		)
@@ -1815,8 +1815,8 @@ func TestDefaultSpringContext_RegisterOptionBean(t *testing.T) {
 
 	t.Run("variadic option interface param 1", func(t *testing.T) {
 		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.RegisterNameBean("v1", &Var{"v1"})
-		ctx.RegisterNameBean("v2", &Var{"v2"})
+		ctx.RegisterNameBean("v1", &Var{"v1"}).AsInterface((*interface{})(nil))
+		ctx.RegisterNameBean("v2", &Var{"v2"}).AsInterface((*interface{})(nil))
 		ctx.RegisterBeanFn(NewVarInterfaceObj).Options(
 			SpringCore.NewOptionArg(withVarInterface, "v1", "v2"),
 		)
@@ -2017,8 +2017,8 @@ func TestDefaultSpringContext_FnArgCollectBean(t *testing.T) {
 
 	t.Run("interface type", func(t *testing.T) {
 		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.RegisterNameBean("t1", newHistoryTeacher("t1"))
-		ctx.RegisterNameBean("t2", newHistoryTeacher("t2"))
+		ctx.RegisterNameBean("t1", newHistoryTeacher("t1")).AsInterface((*Teacher)(nil))
+		ctx.RegisterNameBean("t2", newHistoryTeacher("t2")).AsInterface((*Teacher)(nil))
 		ctx.RegisterBeanFn(func(teachers []Teacher) bool {
 			names := make([]string, 0)
 			for _, teacher := range teachers {
@@ -2045,6 +2045,14 @@ func (_ *filterImpl) Filter(input string) string {
 
 func TestDefaultSpringContext_BeanCache(t *testing.T) {
 
+	t.Run("not implement interface", func(t *testing.T) {
+		assert.Panic(t, func() {
+			ctx := SpringCore.NewDefaultSpringContext()
+			ctx.RegisterBean(new(int)).AsInterface((*filter)(nil))
+			ctx.AutoWireBeans()
+		}, "not implement SpringCore_test.filter interface")
+	})
+
 	var service struct {
 		F1 filter `autowire:"f1"`
 		F2 filter `autowire:"f2"`
@@ -2054,7 +2062,7 @@ func TestDefaultSpringContext_BeanCache(t *testing.T) {
 	ctx.RegisterNameBeanFn("f1", func() filter {
 		return new(filterImpl)
 	})
-	ctx.RegisterNameBean("f2", new(filterImpl))
+	ctx.RegisterNameBean("f2", new(filterImpl)).AsInterface((*filter)(nil))
 	ctx.RegisterBean(&service)
 	ctx.AutoWireBeans()
 }

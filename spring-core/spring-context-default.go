@@ -22,7 +22,6 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"sync"
 
 	"github.com/go-spring/go-spring-parent/spring-logger"
 	"github.com/go-spring/go-spring-parent/spring-utils"
@@ -36,68 +35,18 @@ type beanKey struct {
 
 // beanCacheItem BeanCache's item.
 type beanCacheItem struct {
-	// Different typed beans implemented same interface maybe
-	// have same name, so name can't be a map's key. therefor
-	// we use a list to store the cached beans.
-	named []*BeanDefinition
-
-	// 是否已遍历所有 Bean 从而锁定 Cache 的结果。
-	namedLock bool
-
-	// 写锁
-	namedMutex sync.Mutex
-
-	// 收集模式得到的 Bean 列表，一个类型只需收集一次。
-	collect reflect.Value
-
-	// 是否已遍历所有 Bean 从而锁定 Cache 的结果。
-	collectLock bool
-
-	// 写锁
-	collectMutex sync.Mutex
+	beans []*BeanDefinition
 }
 
 // newBeanCacheItem beanCacheItem 的构造函数
 func newBeanCacheItem() *beanCacheItem {
 	return &beanCacheItem{
-		named: make([]*BeanDefinition, 0),
+		beans: make([]*BeanDefinition, 0),
 	}
 }
 
-// find 返回元素是否已经存在
-func (item *beanCacheItem) find(d *BeanDefinition) bool {
-	for _, bean := range item.named {
-		if d == bean { // 已经存在了
-			return true
-		}
-	}
-	return false
-}
-
-// Store 将一个 Bean 存储到 CachedBeanMapItem 里
-func (item *beanCacheItem) store(d *BeanDefinition, openWLock bool) {
-	if openWLock { // 是否打开写锁
-		if ok := item.find(d); !ok { // 双重检查减少锁的使用
-			defer item.namedMutex.Unlock()
-			item.namedMutex.Lock()
-			if o := item.find(d); !o {
-				item.named = append(item.named, d)
-			}
-		}
-	} else {
-		item.named = append(item.named, d)
-	}
-}
-
-// StoreCollect 将收集到的 Bean 列表的值存储到 CachedBeanMapItem 里
-func (item *beanCacheItem) storeCollect(v reflect.Value, openWLock bool) {
-	if openWLock { // 是否打开写锁
-		defer item.collectMutex.Unlock()
-		item.collectMutex.Lock()
-		item.collect = v
-	} else {
-		item.collect = v
-	}
+func (item *beanCacheItem) store(d *BeanDefinition) {
+	item.beans = append(item.beans, d)
 }
 
 // wiringStack 存储正在进行绑定的 Bean
@@ -143,7 +92,6 @@ type defaultSpringContext struct {
 	profile   string // 运行环境
 	autoWired bool   // 已经开始自动绑定
 	allAccess bool   // 允许注入私有字段
-	openWLock bool   // 打开 cache 写锁
 
 	beanMap   map[beanKey]*BeanDefinition     // Bean 的集合
 	beanCache map[reflect.Type]*beanCacheItem // Bean 的缓存
@@ -257,7 +205,7 @@ func (ctx *defaultSpringContext) registerBeanDefinition(d *BeanDefinition) {
 	}
 
 	if _, ok := ctx.beanMap[k]; ok {
-		panic(errors.New(fmt.Sprintf("duplicate registration, bean: \"%s\"", d.BeanId())))
+		panic(fmt.Errorf("duplicate registration, bean: \"%s\"", d.BeanId()))
 	}
 
 	ctx.beanMap[k] = d
@@ -307,97 +255,66 @@ func (ctx *defaultSpringContext) getBeanValue(beanId string, parentValue reflect
 	beanType := beanValue.Type()
 
 	if ok := IsRefType(beanType.Kind()); !ok {
-		panic(errors.New(fmt.Sprintf("receiver must be ref type, bean: \"%s\" field: %s", beanId, field)))
-	}
-
-	m := ctx.findCacheItem(beanType)
-
-	found := func(bean *BeanDefinition) bool {
-
-		// 不能将自身赋给自身的字段
-		if bean.Value() == parentValue {
-			return false
-		}
-
-		// 类型必须相容
-		return bean.Type().AssignableTo(beanType)
+		panic(fmt.Errorf("receiver must be ref type, bean: \"%s\" field: %s", beanId, field))
 	}
 
 	var result []*BeanDefinition
 
-	checkResult := func() bool {
-		count := len(result)
-
-		// 没有找到
-		if count == 0 {
-			if nullable {
-				return false
-			} else {
-				panic(errors.New(fmt.Sprintf("can't find bean, bean: \"%s\" field: %s type: %s", beanId, field, beanType)))
-			}
+	m := ctx.findCacheItem(beanType)
+	for _, bean := range m.beans {
+		// 不能将自身赋给自身的字段 && 类型必须相容 && 类型全限定名匹配
+		if bean.Value() != parentValue && bean.Type().AssignableTo(beanType) && bean.Match(typeName, beanName) {
+			result = append(result, bean)
 		}
+	}
 
-		var primaryBeans []*BeanDefinition
+	count := len(result)
 
-		for _, bean := range result {
-			if bean.primary {
-				primaryBeans = append(primaryBeans, bean)
-			}
+	// 没有找到
+	if count == 0 {
+		if nullable {
+			return false
+		} else {
+			panic(fmt.Errorf("can't find bean, bean: \"%s\" field: %s type: %s", beanId, field, beanType))
 		}
+	}
 
-		if len(primaryBeans) > 1 {
-			msg := fmt.Sprintf("found %d primary beans, bean: \"%s\" field: %s type: %s [", len(primaryBeans), beanId, field, beanType)
-			for _, b := range primaryBeans {
+	var primaryBeans []*BeanDefinition
+
+	for _, bean := range result {
+		if bean.primary {
+			primaryBeans = append(primaryBeans, bean)
+		}
+	}
+
+	if len(primaryBeans) > 1 {
+		msg := fmt.Sprintf("found %d primary beans, bean: \"%s\" field: %s type: %s [", len(primaryBeans), beanId, field, beanType)
+		for _, b := range primaryBeans {
+			msg += "( " + b.description() + " ), "
+		}
+		msg = msg[:len(msg)-2] + "]"
+		panic(errors.New(msg))
+	}
+
+	if len(primaryBeans) == 0 {
+		if count > 1 {
+			msg := fmt.Sprintf("found %d beans, bean: \"%s\" field: %s type: %s [", len(result), beanId, field, beanType)
+			for _, b := range result {
 				msg += "( " + b.description() + " ), "
 			}
 			msg = msg[:len(msg)-2] + "]"
 			panic(errors.New(msg))
 		}
-
-		if len(primaryBeans) == 0 {
-			if count > 1 {
-				msg := fmt.Sprintf("found %d beans, bean: \"%s\" field: %s type: %s [", len(result), beanId, field, beanType)
-				for _, b := range result {
-					msg += "( " + b.description() + " ), "
-				}
-				msg = msg[:len(msg)-2] + "]"
-				panic(errors.New(msg))
-			}
-			primaryBeans = append(primaryBeans, result[0])
-		}
-
-		// 依赖注入
-		ctx.wireBeanDefinition(primaryBeans[0], false)
-
-		// 恰好 1 个
-		v := SpringUtils.ValuePatchIf(beanValue, ctx.allAccess)
-		v.Set(primaryBeans[0].Value())
-		return true
+		primaryBeans = append(primaryBeans, result[0])
 	}
 
-	// 未命中缓存，则从注册列表里面查询，并更新缓存
-	if !m.namedLock {
-		m.namedLock = true
+	// 依赖注入
+	ctx.wireBeanDefinition(primaryBeans[0], false)
 
-		for _, bean := range ctx.beanMap {
-			if found(bean) {
-				m.store(bean, ctx.openWLock)
-				if bean.Match(typeName, beanName) {
-					result = append(result, bean)
-				}
-			}
-		}
-
-	} else { // 命中缓存，则从缓存中查询
-
-		for _, bean := range m.named {
-			if found(bean) && bean.Match(typeName, beanName) {
-				result = append(result, bean)
-			}
-		}
-	}
-
-	return checkResult()
+	// 恰好 1 个
+	v := SpringUtils.ValuePatchIf(beanValue, ctx.allAccess)
+	v.Set(primaryBeans[0].Value())
+	return true
 }
 
 // FindBeanByName 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
@@ -415,7 +332,7 @@ func (ctx *defaultSpringContext) FindBean(selector interface{}) (*BeanDefinition
 		for _, bean := range ctx.beanMap {
 			if fn(bean) {
 
-				// 如果 Bean 正在解析则跳过 TODO 是否在注入堆栈
+				// 如果 Bean 正在解析则跳过
 				if bean.status == beanStatus_Resolving {
 					continue
 				}
@@ -500,78 +417,59 @@ func (ctx *defaultSpringContext) CollectBeans(i interface{}) bool {
 func (ctx *defaultSpringContext) collectBeans(v reflect.Value) bool {
 
 	t := v.Type()
-	et := t.Elem()
+	ev := reflect.New(t).Elem()
 
-	m := ctx.findCacheItem(t)
+	// 查找数组类型
+	{
+		m := ctx.findCacheItem(t)
+		for _, d := range m.beans {
 
-	// 未命中缓存，则从注册列表里面查询，并更新缓存
-	if !m.collectLock {
-		m.collectLock = true
+			// 数组扩容，提高内存分配性能
+			size := ev.Len() + d.Value().Len()
+			newSlice := reflect.MakeSlice(t, size, size)
 
-		// 创建一个空数组
-		ev := reflect.New(t).Elem()
+			reflect.Copy(newSlice, ev)
 
-		for _, d := range ctx.beanMap {
-			dt := d.Type()
+			// 拷贝新元素
+			for i := 0; i < d.Value().Len(); i++ {
+				di := d.Value().Index(i)
 
-			if dt.AssignableTo(et) { // Bean 自身符合条件
-				ctx.wireBeanDefinition(d, false)
-				ev = reflect.Append(ev, d.Value())
+				if di.Kind() == reflect.Struct {
+					bd := ValueToBeanDefinition("", di.Addr())
+					bd.file = d.getFile()
+					bd.line = d.getLine()
+					ctx.wireBeanDefinition(bd, false)
 
-			} else if dt.Kind() == reflect.Slice { // 找到一个 Bean 数组
-				if dt.Elem().AssignableTo(et) {
-
-					// 数组扩容
-					size := ev.Len() + d.Value().Len()
-					newSlice := reflect.MakeSlice(t, size, size)
-
-					reflect.Copy(newSlice, ev)
-
-					// 拷贝新元素
-					for i := 0; i < d.Value().Len(); i++ {
-						di := d.Value().Index(i)
-
-						if di.Kind() == reflect.Struct {
-							bd := ValueToBeanDefinition("", di.Addr())
-							bd.file = d.getFile()
-							bd.line = d.getLine()
-							ctx.wireBeanDefinition(bd, false)
-
-						} else if di.Kind() == reflect.Ptr {
-							if de := di.Elem(); de.Kind() == reflect.Struct {
-								bd := ValueToBeanDefinition("", di)
-								bd.file = d.getFile()
-								bd.line = d.getLine()
-								ctx.wireBeanDefinition(bd, false)
-							}
-						}
-
-						newSlice.Index(i + ev.Len()).Set(di)
+				} else if di.Kind() == reflect.Ptr {
+					if de := di.Elem(); de.Kind() == reflect.Struct {
+						bd := ValueToBeanDefinition("", di)
+						bd.file = d.getFile()
+						bd.line = d.getLine()
+						ctx.wireBeanDefinition(bd, false)
 					}
-
-					// 完成扩容
-					ev = newSlice
 				}
+
+				newSlice.Index(i + ev.Len()).Set(di)
 			}
-		}
 
-		// 把查询结果缓存起来
-		m.storeCollect(ev, ctx.openWLock)
-
-		// 给外面的数组赋值
-		if ev.Len() > 0 {
-			v = SpringUtils.ValuePatchIf(v, ctx.allAccess)
-			v.Set(ev)
-			return true
+			// 完成扩容
+			ev = newSlice
 		}
-		return false
 	}
 
-	// 命中缓存，则从缓存中查询
+	// 查找单例类型
+	{
+		et := t.Elem()
+		m := ctx.findCacheItem(et)
+		for _, d := range m.beans {
+			ctx.wireBeanDefinition(d, false)
+			ev = reflect.Append(ev, d.Value())
+		}
+	}
 
-	if m.collect.Len() > 0 {
+	if ev.Len() > 0 {
 		v = SpringUtils.ValuePatchIf(v, ctx.allAccess)
-		v.Set(m.collect)
+		v.Set(ev)
 		return true
 	}
 	return false
@@ -621,11 +519,18 @@ func (ctx *defaultSpringContext) resolveBean(bd *BeanDefinition) {
 	// 将符合注册条件的 Bean 放入到缓存里面
 	SpringLogger.Debugf("register bean \"%s\" %s", bd.BeanId(), bd.Caller())
 	item := ctx.findCacheItem(bd.Type())
-	item.store(bd, ctx.openWLock)
+	item.store(bd)
 
-	// 具体类型无需遍历所有 Bean，因此锁定 named 字段
-	if bd.Type().Kind() != reflect.Interface {
-		item.namedLock = true
+	// 按照导出类型放入缓存
+	for _, t := range bd.exports {
+
+		// 检查是否实现了导出接口
+		if ok := bd.Type().Implements(t); !ok {
+			panic(fmt.Errorf("%s not implement %s interface", bd.description(), t.String()))
+		}
+
+		m := ctx.findCacheItem(t)
+		m.store(bd)
 	}
 
 	bd.status = beanStatus_Resolved
@@ -663,7 +568,7 @@ func (ctx *defaultSpringContext) AutoWireBeans() {
 					}
 				}
 				if parent == nil {
-					panic(errors.New(fmt.Sprintf("can't find parent bean: \"%s\"", e)))
+					panic(fmt.Errorf("can't find parent bean: \"%s\"", e))
 				}
 			}
 		default:
@@ -676,7 +581,7 @@ func (ctx *defaultSpringContext) AutoWireBeans() {
 					}
 				}
 				if parent == nil {
-					panic(errors.New(fmt.Sprintf("can't find parent bean: \"%s\"", t.String())))
+					panic(fmt.Errorf("can't find parent bean: \"%s\"", t.String()))
 				}
 			}
 		}
@@ -706,9 +611,6 @@ func (ctx *defaultSpringContext) AutoWireBeans() {
 	for _, bd := range ctx.beanMap {
 		ctx.wireBeanDefinition(bd, false)
 	}
-
-	// 打开 cache 写锁
-	ctx.openWLock = true
 }
 
 // WireBean 绑定外部的 Bean 源
@@ -747,7 +649,7 @@ func (ctx *defaultSpringContext) wireBeanDefinition(bd beanDefinition, onlyAutoW
 
 	// 是否已删除
 	if bd.getStatus() == beanStatus_Deleted {
-		panic(errors.New(fmt.Sprintf("bean: \"%s\" have been deleted", bd.BeanId())))
+		panic(fmt.Errorf("bean: \"%s\" have been deleted", bd.BeanId()))
 	}
 
 	// 是否已绑定
@@ -773,7 +675,7 @@ func (ctx *defaultSpringContext) wireBeanDefinition(bd beanDefinition, onlyAutoW
 	// 首先初始化当前 Bean 不直接依赖的那些 Bean
 	for _, beanId := range bd.getDependsOn() {
 		if bean, ok := ctx.FindBeanByName(beanId); !ok {
-			panic(errors.New(fmt.Sprintf("can't find bean: \"%s\"", beanId)))
+			panic(fmt.Errorf("can't find bean: \"%s\"", beanId))
 		} else {
 			ctx.wireBeanDefinition(bean, false)
 		}
@@ -910,7 +812,7 @@ func (ctx *defaultSpringContext) wireFunctionBean(bean *functionBean, bd beanDef
 	// 检查是否有 error 返回
 	if len(out) == 2 {
 		if err := out[1].Interface(); err != nil {
-			panic(errors.New(fmt.Sprintf("function bean: \"%s\" return error: %v", bd.Caller(), err)))
+			panic(fmt.Errorf("function bean: \"%s\" return error: %v", bd.Caller(), err))
 		}
 	}
 
@@ -928,7 +830,7 @@ func (ctx *defaultSpringContext) wireFunctionBean(bean *functionBean, bd beanDef
 	}
 
 	if bean.bean = bean.rValue.Interface(); bean.bean == nil {
-		panic(errors.New(fmt.Sprintf("function bean: \"%s\" return nil", bd.Caller())))
+		panic(fmt.Errorf("function bean: \"%s\" return nil", bd.Caller()))
 	}
 
 	// 对返回值进行依赖注入
@@ -957,12 +859,12 @@ func (ctx *defaultSpringContext) wireStructField(parentValue reflect.Value,
 
 		// 收集模式的绑定对象必须是数组
 		if beanValue.Type().Kind() != reflect.Slice {
-			panic(errors.New(fmt.Sprintf("field: %s should be slice", field)))
+			panic(fmt.Errorf("field: %s should be slice", field))
 		}
 
 		ok := ctx.collectBeans(beanValue)
 		if !ok && !nullable { // 没找到且不能为空则 panic
-			panic(errors.New(fmt.Sprintf("can't find bean: \"%s\" field: %s", beanId, field)))
+			panic(fmt.Errorf("can't find bean: \"%s\" field: %s", beanId, field))
 		}
 
 	} else { // 匹配模式，autowire:"" or autowire:"name"

@@ -374,6 +374,8 @@ type BeanDefinition struct {
 
 	init    interface{} // 初始化的回调
 	destroy interface{} // 销毁时的回调
+
+	exports []reflect.Type // 导出接口类型
 }
 
 // newBeanDefinition BeanDefinition 的构造函数
@@ -671,6 +673,19 @@ func (d *BeanDefinition) Destroy(fn interface{}) *BeanDefinition {
 	}
 
 	d.destroy = fn
+	return d
+}
+
+// AsInterface 指定 Bean 的导出接口
+func (d *BeanDefinition) AsInterface(exports ...interface{}) *BeanDefinition {
+	for _, o := range exports {
+		t := reflect.TypeOf(o)
+		if t.Kind() == reflect.Ptr && t.Elem().Kind() == reflect.Interface {
+			d.exports = append(d.exports, t.Elem())
+		} else {
+			panic(errors.New("must export interface type"))
+		}
+	}
 	return d
 }
 

@@ -47,8 +47,8 @@ func init() {
 				ConditionOnMissingProperty("ok_enable")
 		})
 
-	SpringBoot.RegisterBean(new(MyRunner))
-	SpringBoot.RegisterBeanFn(NewMyModule, "${message}")
+	SpringBoot.RegisterBean(new(MyRunner)).AsInterface((*SpringBoot.CommandLineRunner)(nil))
+	SpringBoot.RegisterBeanFn(NewMyModule, "${message}").AsInterface((*SpringBoot.ApplicationEvent)(nil))
 
 	SpringBoot.RegisterBean(func(mock sqlmock.Sqlmock) {
 		mock.ExpectQuery("SELECT ENGINE FROM `ENGINES`").WillReturnRows(

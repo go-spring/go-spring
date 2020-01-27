@@ -131,7 +131,7 @@ func FindBeanByName(beanId string) (*SpringCore.BeanDefinition, bool) {
 }
 
 // FindBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
-// selector 可以是 BeanId，还可以是 (Type)(nil) 变量。
+// selector 可以是 BeanId，还可以是 (Type)(nil) 变量，Type 为接口类型时带指针。
 func FindBean(selector interface{}) (*SpringCore.BeanDefinition, bool) {
 	return ctx.FindBean(selector)
 }
