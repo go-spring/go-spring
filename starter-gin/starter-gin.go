@@ -24,7 +24,7 @@ import (
 )
 
 func init() {
-	SpringBoot.RegisterBeanFn(NewGinWebServer, "${}")
+	SpringBoot.RegisterBeanFn(NewGinWebServer)
 }
 
 // NewGinWebServer 创建 gin 适配的 Web 服务器

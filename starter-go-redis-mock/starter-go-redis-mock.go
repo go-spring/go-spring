@@ -23,10 +23,12 @@ import (
 )
 
 func init() {
-	SpringBoot.RegisterNameBeanFn("mock-go-redis-client",
-		func(fn func(*redismock.ClientMock)) redis.Cmdable {
-			mock := redismock.NewMock()
-			fn(mock)
-			return mock
-		})
+	SpringBoot.RegisterNameBeanFn("mock-go-redis-client", mockRedis)
+}
+
+// mockRedis 创建 Mock Redis
+func mockRedis(fn func(*redismock.ClientMock)) redis.Cmdable {
+	mock := redismock.NewMock()
+	fn(mock)
+	return mock
 }

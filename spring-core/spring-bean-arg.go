@@ -141,7 +141,10 @@ func (ca *fnStringBindingArg) getArgValue(descriptor describable, ctx SpringCont
 	description := fmt.Sprintf("tag:\"%s\" %s", tag, descriptor.description())
 	SpringLogger.Debugf("get value %s", description)
 
-	if strings.HasPrefix(tag, "$") { // ${} 属性绑定
+	if strings.HasPrefix(tag, "${") || v.Type().Kind() == reflect.Struct { // ${x:=y} 属性绑定
+		if tag == "" { // 如果是结构体，尝试使用结构体属性绑定语法。
+			tag = "${}"
+		}
 		bindStructField(ctx, v.Type(), v, "", "", tag, ctx.AllAccess())
 	} else {
 		ctx.GetBeanValue(tag, v)

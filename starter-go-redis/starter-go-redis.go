@@ -25,7 +25,7 @@ import (
 )
 
 func init() {
-	SpringBoot.RegisterNameBeanFn("std-go-redis-client", NewGoRedisClient, "${}").
+	SpringBoot.RegisterNameBeanFn("std-go-redis-client", NewGoRedisClient).
 		ConditionOnMissingBean((*redis.Cmdable)(nil))
 }
 

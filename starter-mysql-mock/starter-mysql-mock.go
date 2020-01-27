@@ -18,21 +18,27 @@ package StarterMySqlMock
 
 import (
 	"database/sql"
-	"fmt"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/go-spring/go-spring-parent/spring-logger"
 	"github.com/go-spring/go-spring/spring-boot"
 )
 
 func init() {
-	SpringBoot.RegisterNameBeanFn("mock-mysql-db", func(fn func(sqlmock.Sqlmock)) (*sql.DB, error) {
-		db, mock, err := sqlmock.New()
-		if err == nil {
-			fn(mock)
-		}
-		return db, err
-	}).Destroy(func(db *sql.DB) {
-		fmt.Println("close sql db")
-		db.Close()
-	})
+	SpringBoot.RegisterNameBeanFn("mock-mysql-db", mockDB).Destroy(destroy)
+}
+
+// mockDB 创建 Mock DB
+func mockDB(fn func(sqlmock.Sqlmock)) (*sql.DB, error) {
+	db, mock, err := sqlmock.New()
+	if err == nil {
+		fn(mock)
+	}
+	return db, err
+}
+
+// destroy 关闭 DB 连接
+func destroy(db *sql.DB) {
+	SpringLogger.Info("close sql db")
+	db.Close()
 }
