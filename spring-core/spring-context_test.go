@@ -507,6 +507,12 @@ func TestVariadicFunction(t *testing.T) {
 		reflect.ValueOf(3),
 		reflect.ValueOf(4),
 	})
+
+	c := caller{6}
+	fmt.Println((*caller).call(&c))
+
+	typ = reflect.TypeOf((*caller).call)
+	fmt.Println(typ)
 }
 
 func TestNilRecover(t *testing.T) {

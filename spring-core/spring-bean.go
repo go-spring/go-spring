@@ -170,13 +170,11 @@ func (b *originalBean) beanClass() string {
 type functionBean struct {
 	originalBean
 
-	fnValue reflect.Value // 函数的值
-	arg     fnBindingArg  // 参数绑定
+	arg fnBindingArg // 参数绑定
 }
 
 // newFunctionBean functionBean 的构造函数
-func newFunctionBean(fnValue reflect.Value, tags []string) functionBean {
-	fnType := fnValue.Type()
+func newFunctionBean(fnType reflect.Type, method bool, tags []string) functionBean {
 
 	// 检查是否是合法的 Bean 函数定义
 	validFuncType := func() bool {
@@ -225,8 +223,7 @@ func newFunctionBean(fnValue reflect.Value, tags []string) functionBean {
 			typeName: TypeName(t),
 			rValue:   v,
 		},
-		fnValue: fnValue,
-		arg:     newFnStringBindingArg(fnType, tags),
+		arg: newFnStringBindingArg(fnType, method, tags),
 	}
 }
 
@@ -240,7 +237,7 @@ type constructorBean struct {
 // newConstructorBean constructorBean 的构造函数，所有 tag 都必须同时有或者同时没有序号。
 func newConstructorBean(fn interface{}, tags ...string) *constructorBean {
 	return &constructorBean{
-		functionBean: newFunctionBean(reflect.ValueOf(fn), tags),
+		functionBean: newFunctionBean(reflect.TypeOf(fn), false, tags),
 		fn:           fn,
 	}
 }
@@ -260,15 +257,22 @@ type methodBean struct {
 
 // newMethodBean methodBean 的构造函数，所有 tag 都必须同时有或者同时没有序号。
 func newMethodBean(parent *BeanDefinition, method string, tags ...string) *methodBean {
+	var fnType reflect.Type
 
-	fnValue := parent.Value().MethodByName(method)
+	t := parent.Type()
+	for i := 0; i < t.NumMethod(); i++ {
+		if m := t.Method(i); m.Name == method {
+			fnType = m.Type
+			break
+		}
+	}
 
-	if ok := fnValue.IsValid(); !ok {
+	if fnType == nil {
 		SpringLogger.Panic("can't find method: " + method)
 	}
 
 	return &methodBean{
-		functionBean: newFunctionBean(fnValue, tags),
+		functionBean: newFunctionBean(fnType, true, tags),
 		parent:       parent,
 		method:       method,
 	}

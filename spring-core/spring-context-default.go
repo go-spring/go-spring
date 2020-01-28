@@ -194,6 +194,33 @@ func (ctx *defaultSpringContext) RegisterNameMethodBean(name string, selector in
 	return bd
 }
 
+// RegisterMethodBeanFn 注册成员方法单例 Bean，不指定名称，重复注册会 panic。
+func (ctx *defaultSpringContext) RegisterMethodBeanFn(method interface{}, tags ...string) *BeanDefinition {
+	return ctx.RegisterNameMethodBeanFn("", method, tags...)
+}
+
+// RegisterNameMethodBeanFn 注册成员方法单例 Bean，需指定名称，重复注册会 panic。
+func (ctx *defaultSpringContext) RegisterNameMethodBeanFn(name string, method interface{}, tags ...string) *BeanDefinition {
+
+	ctx.checkRegistration()
+
+	t := reflect.TypeOf(method)
+	o := t.In(0)
+
+	var methodName string
+
+	for i := 0; i < o.NumMethod(); i++ {
+		if m := o.Method(i); m.Type == t {
+			methodName = m.Name
+			break
+		}
+	}
+
+	bd := MethodToBeanDefinition(name, o, methodName, tags...)
+	ctx.methodBeans = append(ctx.methodBeans, bd)
+	return bd
+}
+
 // registerBeanDefinition 注册单例 BeanDefinition，重复注册会 panic。
 func (ctx *defaultSpringContext) registerBeanDefinition(d *BeanDefinition) {
 
@@ -571,9 +598,25 @@ func (ctx *defaultSpringContext) AutoWireBeans() {
 					panic(fmt.Errorf("can't find parent bean: \"%s\"", e))
 				}
 			}
+		case reflect.Type:
+			{
+				for _, b := range ctx.beanMap {
+					if b.Type() == e {
+						parent = b
+						count++
+					}
+				}
+				if parent == nil {
+					panic(fmt.Errorf("can't find parent bean: \"%s\"", e.String()))
+				}
+			}
 		default:
 			{
-				t := reflect.TypeOf(e) // 类型精确匹配
+				t := reflect.TypeOf(e)
+				// 如果是接口类型需要解除外层指针
+				if t.Kind() == reflect.Ptr && t.Elem().Kind() == reflect.Interface {
+					t = t.Elem()
+				}
 				for _, b := range ctx.beanMap {
 					if b.Type() == t {
 						parent = b
@@ -690,9 +733,11 @@ func (ctx *defaultSpringContext) wireBeanDefinition(bd beanDefinition, onlyAutoW
 	case *originalBean: // 原始对象
 		ctx.wireOriginalBean(bd, onlyAutoWire)
 	case *constructorBean: // 构造函数
-		ctx.wireFunctionBean(&bean.functionBean, bd)
+		fnValue := reflect.ValueOf(bean.fn)
+		ctx.wireFunctionBean(fnValue, &bean.functionBean, bd)
 	case *methodBean: // 成员方法
-		ctx.wireFunctionBean(&bean.functionBean, bd)
+		fnValue := bean.parent.Value().MethodByName(bean.method)
+		ctx.wireFunctionBean(fnValue, &bean.functionBean, bd)
 	default:
 		panic(errors.New("unknown spring bean type"))
 	}
@@ -801,10 +846,10 @@ func (ctx *defaultSpringContext) wireOriginalBean(bd beanDefinition, onlyAutoWir
 }
 
 // wireFunctionBean 对函数定义 Bean 进行注入
-func (ctx *defaultSpringContext) wireFunctionBean(bean *functionBean, bd beanDefinition) {
+func (ctx *defaultSpringContext) wireFunctionBean(fnValue reflect.Value, bean *functionBean, bd beanDefinition) {
 
 	in := bean.arg.Get(bd, ctx)
-	out := bean.fnValue.Call(in)
+	out := fnValue.Call(in)
 
 	// 获取第一个返回值
 	val := out[0]

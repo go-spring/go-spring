@@ -41,14 +41,19 @@ type fnBindingArg interface {
 type fnStringBindingArg struct {
 	fnType reflect.Type
 	fnTags [][]string
+	method bool
 }
 
 // newFnStringBindingArg fnStringBindingArg 的构造函数
-func newFnStringBindingArg(fnType reflect.Type, tags []string) *fnStringBindingArg {
+func newFnStringBindingArg(fnType reflect.Type, method bool, tags []string) *fnStringBindingArg {
 
-	fnTags := make([][]string, fnType.NumIn())
-	variadic := fnType.IsVariadic() // 可变参数
 	numIn := fnType.NumIn()
+	if method && numIn > 0 {
+		numIn -= 1
+	}
+
+	fnTags := make([][]string, numIn)
+	variadic := fnType.IsVariadic() // 可变参数
 
 	if len(tags) > 0 {
 		indexed := false // 是否包含序号
@@ -101,19 +106,30 @@ func newFnStringBindingArg(fnType reflect.Type, tags []string) *fnStringBindingA
 		}
 	}
 
-	return &fnStringBindingArg{fnType, fnTags}
+	return &fnStringBindingArg{fnType, fnTags, method}
 }
 
 // Get 获取函数参数的绑定值
 func (ca *fnStringBindingArg) Get(descriptor describable, ctx SpringContext) []reflect.Value {
 
 	fnType := ca.fnType
-	numIn := fnType.NumIn()
-	variadic := fnType.IsVariadic() // 可变参数
+	variadic := fnType.IsVariadic()
 	args := make([]reflect.Value, 0)
 
+	numIn := fnType.NumIn()
+	if ca.method && numIn > 0 {
+		numIn -= 1
+	}
+
 	for i, tags := range ca.fnTags {
-		it := fnType.In(i)
+
+		var it reflect.Type
+		if ca.method {
+			it = fnType.In(i + 1)
+		} else {
+			it = fnType.In(i)
+		}
+
 		if i < numIn-1 || (i == numIn-1 && !variadic) {
 			iv := reflect.New(it).Elem()
 			if len(tags) == 0 {
@@ -229,7 +245,7 @@ func NewOptionArg(fn interface{}, tags ...string) *optionArg {
 	return &optionArg{
 		cond: NewConditional(),
 		fn:   fn,
-		arg:  newFnStringBindingArg(fnType, tags),
+		arg:  newFnStringBindingArg(fnType, false, tags),
 		file: file,
 		line: line,
 	}
