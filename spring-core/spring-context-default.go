@@ -182,12 +182,11 @@ func (ctx *defaultSpringContext) RegisterMethodBean(selector interface{}, method
 // RegisterNameMethodBean 注册成员方法单例 Bean，需指定名称，重复注册会 panic。
 // selector 可以是 *BeanDefinition，可以是 BeanId，还可以是 (Type)(nil) 变量。
 func (ctx *defaultSpringContext) RegisterNameMethodBean(name string, selector interface{}, method string, tags ...string) *BeanDefinition {
+	ctx.checkRegistration()
 
 	if selector == nil || selector == "" {
 		panic(errors.New("selector can't be nil or empty"))
 	}
-
-	ctx.checkRegistration()
 
 	bd := MethodToBeanDefinition(name, selector, method, tags...)
 	ctx.methodBeans = append(ctx.methodBeans, bd)
@@ -201,7 +200,6 @@ func (ctx *defaultSpringContext) RegisterMethodBeanFn(method interface{}, tags .
 
 // RegisterNameMethodBeanFn 注册成员方法单例 Bean，需指定名称，重复注册会 panic。
 func (ctx *defaultSpringContext) RegisterNameMethodBeanFn(name string, method interface{}, tags ...string) *BeanDefinition {
-
 	ctx.checkRegistration()
 
 	t := reflect.TypeOf(method)
@@ -221,9 +219,8 @@ func (ctx *defaultSpringContext) RegisterNameMethodBeanFn(name string, method in
 	return bd
 }
 
-// registerBeanDefinition 注册单例 BeanDefinition，重复注册会 panic。
+// registerBeanDefinition 注册 BeanDefinition，重复注册会 panic。
 func (ctx *defaultSpringContext) registerBeanDefinition(d *BeanDefinition) {
-
 	ctx.checkRegistration()
 
 	k := beanKey{
@@ -238,6 +235,13 @@ func (ctx *defaultSpringContext) registerBeanDefinition(d *BeanDefinition) {
 	ctx.beanMap[k] = d
 }
 
+// deleteBeanDefinition 删除 BeanDefinition。
+func (ctx *defaultSpringContext) deleteBeanDefinition(bd *BeanDefinition) {
+	key := beanKey{bd.Type(), bd.name}
+	bd.status = beanStatus_Deleted
+	delete(ctx.beanMap, key)
+}
+
 // GetBean 根据类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 func (ctx *defaultSpringContext) GetBean(i interface{}) bool {
 	return ctx.GetBeanByName("?", i)
@@ -245,7 +249,6 @@ func (ctx *defaultSpringContext) GetBean(i interface{}) bool {
 
 // GetBeanByName 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 func (ctx *defaultSpringContext) GetBeanByName(beanId string, i interface{}) bool {
-
 	ctx.checkAutoWired()
 
 	// 确保存在可空标记，抑制 panic 效果。
@@ -350,9 +353,8 @@ func (ctx *defaultSpringContext) FindBeanByName(beanId string) (*BeanDefinition,
 }
 
 // FindBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
-// selector 可以是 BeanId，还可以是 (Type)(nil) 变量。
+// selector 可以是 BeanId，还可以是 (Type)(nil) 变量，Type 为接口类型时带指针。
 func (ctx *defaultSpringContext) FindBean(selector interface{}) (*BeanDefinition, bool) {
-
 	ctx.checkAutoWired()
 
 	finder := func(fn func(*BeanDefinition) bool) (result []*BeanDefinition) {
@@ -422,7 +424,6 @@ func (ctx *defaultSpringContext) FindBean(selector interface{}) (*BeanDefinition
 
 // CollectBeans 收集数组或指针定义的所有符合条件的 Bean 对象，收集到返回 true，否则返回 false。
 func (ctx *defaultSpringContext) CollectBeans(i interface{}) bool {
-
 	ctx.checkAutoWired()
 
 	t := reflect.TypeOf(i)
@@ -504,7 +505,6 @@ func (ctx *defaultSpringContext) collectBeans(v reflect.Value) bool {
 
 // GetBeanValue 根据 beanId 获取符合条件的 Bean 对象，成功返回 true，否则返回 false。
 func (ctx *defaultSpringContext) GetBeanValue(beanId string, v reflect.Value) bool {
-
 	ctx.checkAutoWired()
 
 	if _, beanName, _ := ParseBeanId(beanId); beanName == "[]" {
@@ -529,17 +529,13 @@ func (ctx *defaultSpringContext) resolveBean(bd *BeanDefinition) {
 
 		// 父 Bean 已经被删除了，子 Bean 也不应该存在
 		if mBean.parent.status == beanStatus_Deleted {
-			key := beanKey{bd.Type(), bd.name}
-			bd.status = beanStatus_Deleted
-			delete(ctx.beanMap, key)
+			ctx.deleteBeanDefinition(bd)
 			return
 		}
 	}
 
 	if ok := bd.Matches(ctx); !ok { // 不满足则删除注册
-		key := beanKey{bd.Type(), bd.name}
-		bd.status = beanStatus_Deleted
-		delete(ctx.beanMap, key)
+		ctx.deleteBeanDefinition(bd)
 		return
 	}
 
@@ -575,61 +571,56 @@ func (ctx *defaultSpringContext) AutoWireBeans() {
 
 	// 注册所有的 Method Bean
 	for _, bd := range ctx.methodBeans {
-		bean := bd.bean.(*fakeMethodBean)
 
 		var (
-			count  int
-			parent *BeanDefinition
+			selector string
+			result   []*BeanDefinition
+			filter   func(*BeanDefinition) bool
 		)
 
+		bean := bd.bean.(*fakeMethodBean)
 		switch e := bean.selector.(type) {
 		case *BeanDefinition:
-			parent = e
+			selector = e.BeanId()
+			result = append(result, e)
 		case string:
-			{
-				typeName, beanName, _ := ParseBeanId(e)
-				for _, b := range ctx.beanMap {
-					if b.Match(typeName, beanName) {
-						parent = b
-						count++
-					}
-				}
-				if parent == nil {
-					panic(fmt.Errorf("can't find parent bean: \"%s\"", e))
-				}
+			selector = e
+			typeName, beanName, _ := ParseBeanId(e)
+			filter = func(b *BeanDefinition) bool {
+				return b.Match(typeName, beanName)
 			}
 		case reflect.Type:
-			{
-				for _, b := range ctx.beanMap {
-					if b.Type() == e {
-						parent = b
-						count++
-					}
-				}
-				if parent == nil {
-					panic(fmt.Errorf("can't find parent bean: \"%s\"", e.String()))
-				}
+			selector = e.String()
+			filter = func(b *BeanDefinition) bool {
+				return b.Type() == e
 			}
 		default:
-			{
-				t := reflect.TypeOf(e)
-				// 如果是接口类型需要解除外层指针
-				if t.Kind() == reflect.Ptr && t.Elem().Kind() == reflect.Interface {
-					t = t.Elem()
-				}
-				for _, b := range ctx.beanMap {
-					if b.Type() == t {
-						parent = b
-						count++
-					}
-				}
-				if parent == nil {
-					panic(fmt.Errorf("can't find parent bean: \"%s\"", t.String()))
+			t := reflect.TypeOf(e)
+			// 如果是接口类型需要解除外层指针
+			if t.Kind() == reflect.Ptr && t.Elem().Kind() == reflect.Interface {
+				t = t.Elem()
+			}
+			selector = t.String()
+			filter = func(b *BeanDefinition) bool {
+				return b.Type() == t
+			}
+		}
+
+		if filter != nil {
+			for _, b := range ctx.beanMap {
+				if filter(b) {
+					result = append(result, b)
 				}
 			}
 		}
 
-		bd.bean = newMethodBean(parent, bean.method, bean.tags...)
+		if l := len(result); l == 0 {
+			panic(fmt.Errorf("can't find parent bean: \"%s\"", selector))
+		} else if l > 1 {
+			panic(fmt.Errorf("found %d parent bean: \"%s\"", l, selector))
+		}
+
+		bd.bean = newMethodBean(result[0], bean.method, bean.tags...)
 		if bd.name == "" { // 使用默认名称
 			bd.name = bd.bean.Type().String()
 		}
@@ -658,7 +649,6 @@ func (ctx *defaultSpringContext) AutoWireBeans() {
 
 // WireBean 绑定外部的 Bean 源
 func (ctx *defaultSpringContext) WireBean(bean interface{}) {
-
 	ctx.checkAutoWired()
 
 	bd := ToBeanDefinition("", bean)
@@ -917,8 +907,8 @@ func (ctx *defaultSpringContext) wireStructField(parentValue reflect.Value,
 	}
 }
 
-// GetAllBeanDefinitions 获取所有 Bean 的定义，一般仅供调试使用。
-func (ctx *defaultSpringContext) GetAllBeanDefinitions() []*BeanDefinition {
+// GetBeanDefinitions 获取所有 Bean 的定义，一般仅供调试使用。
+func (ctx *defaultSpringContext) GetBeanDefinitions() []*BeanDefinition {
 	result := make([]*BeanDefinition, 0)
 	for _, v := range ctx.beanMap {
 		result = append(result, v)

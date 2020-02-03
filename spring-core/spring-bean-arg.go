@@ -41,14 +41,16 @@ type fnBindingArg interface {
 type fnStringBindingArg struct {
 	fnType reflect.Type
 	fnTags [][]string
-	method bool
+
+	// 函数类型是否包含接收者
+	withReceiver bool
 }
 
 // newFnStringBindingArg fnStringBindingArg 的构造函数
-func newFnStringBindingArg(fnType reflect.Type, method bool, tags []string) *fnStringBindingArg {
+func newFnStringBindingArg(fnType reflect.Type, withReceiver bool, tags []string) *fnStringBindingArg {
 
 	numIn := fnType.NumIn()
-	if method && numIn > 0 {
+	if withReceiver {
 		numIn -= 1
 	}
 
@@ -106,7 +108,7 @@ func newFnStringBindingArg(fnType reflect.Type, method bool, tags []string) *fnS
 		}
 	}
 
-	return &fnStringBindingArg{fnType, fnTags, method}
+	return &fnStringBindingArg{fnType, fnTags, withReceiver}
 }
 
 // Get 获取函数参数的绑定值
@@ -117,14 +119,14 @@ func (ca *fnStringBindingArg) Get(descriptor describable, ctx SpringContext) []r
 	args := make([]reflect.Value, 0)
 
 	numIn := fnType.NumIn()
-	if ca.method && numIn > 0 {
+	if ca.withReceiver {
 		numIn -= 1
 	}
 
 	for i, tags := range ca.fnTags {
 
 		var it reflect.Type
-		if ca.method {
+		if ca.withReceiver {
 			it = fnType.In(i + 1)
 		} else {
 			it = fnType.In(i)
@@ -196,6 +198,22 @@ type optionArg struct {
 	line int    // 注册点所在行数
 }
 
+// 判断是否是合法的 Option 函数
+func validOptionFunc(fnType reflect.Type) bool {
+
+	// 必须是函数
+	if fnType.Kind() != reflect.Func {
+		return false
+	}
+
+	// 只能有一个返回值
+	if fnType.NumOut() != 1 {
+		return false
+	}
+
+	return true
+}
+
 // NewOptionArg optionArg 的构造函数
 func NewOptionArg(fn interface{}, tags ...string) *optionArg {
 
@@ -222,23 +240,7 @@ func NewOptionArg(fn interface{}, tags ...string) *optionArg {
 
 	fnType := reflect.TypeOf(fn)
 
-	// 判断是否是合法的 Option 函数
-	validOptionFunc := func() bool {
-
-		// 必须是函数
-		if fnType.Kind() != reflect.Func {
-			return false
-		}
-
-		// 只能有一个返回值
-		if fnType.NumOut() != 1 {
-			return false
-		}
-
-		return true
-	}
-
-	if ok := validOptionFunc(); !ok {
+	if ok := validOptionFunc(fnType); !ok {
 		SpringLogger.Panic("option func must be func(...)option")
 	}
 

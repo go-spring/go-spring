@@ -207,9 +207,9 @@ type ConditionOp int
 
 const (
 	ConditionDefault = ConditionOp(0) // 默认值
-	ConditionOr      = ConditionOp(1) // 或
-	ConditionAnd     = ConditionOp(2) // 且
-	ConditionNone    = ConditionOp(3) // 非
+	ConditionOr      = ConditionOp(1) // 至少一个满足
+	ConditionAnd     = ConditionOp(2) // 所有都要满足
+	ConditionNone    = ConditionOp(3) // 没有一个满足
 )
 
 // conditions 基于条件组的 Condition 实现

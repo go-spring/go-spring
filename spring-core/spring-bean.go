@@ -27,14 +27,6 @@ import (
 	"github.com/go-spring/go-spring-parent/spring-logger"
 )
 
-// 哪些类型的数据可以成为 Bean？一般来讲引用类型的数据都可以成为 Bean。
-// 当使用对象注册时，无论是否转成 Interface 都能获取到对象的真实类型，
-// 当使用构造函数注册时，如果返回的是非引用类型会强制转成对应的引用类型，
-// 如果返回的是 Interface 那么这种情况下会使用 Interface 的类型注册。
-
-// 哪些类型可以成为 Bean 的接收者？除了使用 Bean 的真实类型去接收，还可
-// 以使用 Bean 实现的 Interface 去接收，而且推荐用 Interface 去接收。
-
 const (
 	valType = 1 // 值类型
 	refType = 2 // 引用类型
@@ -97,7 +89,7 @@ func TypeName(t reflect.Type) string {
 		}
 	}
 
-	if pkgPath := t.PkgPath(); pkgPath != "" {
+	if pkgPath := t.PkgPath(); pkgPath != "" { // 内置类型的路径为空
 		return pkgPath + "/" + t.String()
 	} else {
 		return t.String()
@@ -173,33 +165,34 @@ type functionBean struct {
 	arg fnBindingArg // 参数绑定
 }
 
-// newFunctionBean functionBean 的构造函数
-func newFunctionBean(fnType reflect.Type, method bool, tags []string) functionBean {
+// IsFuncBeanType 返回是否是合法的函数 Bean 类型
+func IsFuncBeanType(fnType reflect.Type) bool {
 
-	// 检查是否是合法的 Bean 函数定义
-	validFuncType := func() bool {
-
-		// 必须是函数
-		if fnType.Kind() != reflect.Func {
-			return false
-		}
-
-		// 返回值必须是 1 个或者 2 个
-		if fnType.NumOut() < 1 || fnType.NumOut() > 2 {
-			return false
-		}
-
-		// 第 2 个返回值必须是 error 类型
-		if fnType.NumOut() == 2 {
-			if !fnType.Out(1).Implements(ErrorType) {
-				return false
-			}
-		}
-
-		return true
+	// 必须是函数
+	if fnType.Kind() != reflect.Func {
+		return false
 	}
 
-	if ok := validFuncType(); !ok {
+	// 返回值必须是 1 个或者 2 个
+	if fnType.NumOut() < 1 || fnType.NumOut() > 2 {
+		return false
+	}
+
+	// 第 2 个返回值必须是 error 类型
+	if fnType.NumOut() == 2 {
+		if !fnType.Out(1).Implements(ErrorType) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// newFunctionBean functionBean 的构造函数
+func newFunctionBean(fnType reflect.Type, withReceiver bool, tags []string) functionBean {
+
+	// 检查是否是合法的函数 Bean 类型
+	if ok := IsFuncBeanType(fnType); !ok {
 		t1 := "func(...) bean"
 		t2 := "func(...) (bean, error)"
 		SpringLogger.Panicf("func bean must be \"%s\" or \"%s\"", t1, t2)
@@ -223,7 +216,7 @@ func newFunctionBean(fnType reflect.Type, method bool, tags []string) functionBe
 			typeName: TypeName(t),
 			rValue:   v,
 		},
-		arg: newFnStringBindingArg(fnType, method, tags),
+		arg: newFnStringBindingArg(fnType, withReceiver, tags),
 	}
 }
 
@@ -271,8 +264,13 @@ func newMethodBean(parent *BeanDefinition, method string, tags ...string) *metho
 		SpringLogger.Panic("can't find method: " + method)
 	}
 
+	withReceiver := false
+	if t.Kind() != reflect.Interface {
+		withReceiver = true
+	}
+
 	return &methodBean{
-		functionBean: newFunctionBean(fnType, true, tags),
+		functionBean: newFunctionBean(fnType, withReceiver, tags),
 		parent:       parent,
 		method:       method,
 	}
@@ -288,7 +286,8 @@ type fakeMethodBean struct {
 	// parent 选择器:
 	// *BeanDefinition 表示直接使用 parent 对象;
 	// string 类型值表示根据 BeanId 查询 parent 对象;
-	// (Type)(nil) 类型值表示根据类型查询 parent 对象。
+	// (Type)(nil) 类型值表示根据类型查询 parent 对象；
+	// reflect.Type 类型值表示根据类型查询 parent 对象。
 	selector interface{}
 
 	// 成员方法名称
@@ -307,11 +306,6 @@ func newFakeMethodBean(selector interface{}, method string, tags ...string) *fak
 	}
 }
 
-// beanClass 返回 SpringBean 的实现类型
-func (b *fakeMethodBean) beanClass() string {
-	return "fake method bean"
-}
-
 func (b *fakeMethodBean) Bean() interface{} {
 	panic(errors.New("shouldn't call this method"))
 }
@@ -326,6 +320,11 @@ func (b *fakeMethodBean) Value() reflect.Value {
 
 func (b *fakeMethodBean) TypeName() string {
 	panic(errors.New("shouldn't call this method"))
+}
+
+// beanClass 返回 SpringBean 的实现类型
+func (b *fakeMethodBean) beanClass() string {
+	return "fake method bean"
 }
 
 // beanStatus Bean 的状态值
@@ -357,10 +356,9 @@ type beanDefinition interface {
 	getDependsOn() []string      // 返回 Bean 的非直接依赖项
 	getInit() interface{}        // 返回 Bean 的初始化函数
 	getDestroy() interface{}     // 返回 Bean 的销毁函数
-
-	description() string // 返回 Bean 的详细描述
-	getFile() string     // 返回 Bean 注册点所在文件的名称
-	getLine() int        // 返回 Bean 注册点所在文件的行数
+	getFile() string             // 返回 Bean 注册点所在文件的名称
+	getLine() int                // 返回 Bean 注册点所在文件的行数
+	description() string         // 返回 Bean 的详细描述
 }
 
 // BeanDefinition Bean 的详细定义
@@ -459,6 +457,11 @@ func (d *BeanDefinition) BeanId() string {
 	return d.TypeName() + ":" + d.name
 }
 
+// Caller 返回 Bean 的注册点
+func (d *BeanDefinition) Caller() string {
+	return d.file + ":" + strconv.Itoa(d.line)
+}
+
 // springBean 返回 SpringBean 对象
 func (d *BeanDefinition) springBean() SpringBean {
 	return d.bean
@@ -497,11 +500,6 @@ func (d *BeanDefinition) getFile() string {
 // getLine 返回 Bean 注册点所在文件的行数
 func (d *BeanDefinition) getLine() int {
 	return d.line
-}
-
-// Caller 返回 Bean 的注册点
-func (d *BeanDefinition) Caller() string {
-	return d.file + ":" + strconv.Itoa(d.line)
 }
 
 // description 返回 Bean 的详细描述

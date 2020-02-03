@@ -108,8 +108,8 @@ type SpringContext interface {
 	// GetBeanValue 根据 beanId 获取符合条件的 Bean 对象，成功返回 true，否则返回 false。
 	GetBeanValue(beanId string, v reflect.Value) bool
 
-	// GetAllBeanDefinitions 获取所有 Bean 的定义，一般仅供调试使用。
-	GetAllBeanDefinitions() []*BeanDefinition
+	// GetBeanDefinitions 获取所有 Bean 的定义，一般仅供调试使用。
+	GetBeanDefinitions() []*BeanDefinition
 
 	// Close 关闭容器上下文，用于通知 Bean 销毁等。
 	Close()

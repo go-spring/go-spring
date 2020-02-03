@@ -26,14 +26,12 @@ import (
 func TestFunctionCondition(t *testing.T) {
 	ctx := SpringCore.NewDefaultSpringContext()
 
-	cond := SpringCore.NewFunctionCondition(func(ctx SpringCore.SpringContext) bool {
-		return true
-	})
+	fn := func(ctx SpringCore.SpringContext) bool { return true }
+	cond := SpringCore.NewFunctionCondition(fn)
 	assert.Equal(t, cond.Matches(ctx), true)
 
-	cond = SpringCore.NewFunctionCondition(func(ctx SpringCore.SpringContext) bool {
-		return false
-	})
+	fn = func(ctx SpringCore.SpringContext) bool { return false }
+	cond = SpringCore.NewFunctionCondition(fn)
 	assert.Equal(t, cond.Matches(ctx), false)
 }
 
@@ -98,11 +96,10 @@ func TestPropertyValueCondition(t *testing.T) {
 }
 
 func TestBeanCondition(t *testing.T) {
-	ctx := SpringCore.NewDefaultSpringContext()
 
+	ctx := SpringCore.NewDefaultSpringContext()
 	ctx.RegisterBean(&BeanZero{5})
 	ctx.RegisterBean(new(BeanOne))
-
 	ctx.AutoWireBeans()
 
 	cond := SpringCore.NewBeanCondition("*SpringCore_test.BeanOne")
@@ -113,11 +110,10 @@ func TestBeanCondition(t *testing.T) {
 }
 
 func TestMissingBeanCondition(t *testing.T) {
-	ctx := SpringCore.NewDefaultSpringContext()
 
+	ctx := SpringCore.NewDefaultSpringContext()
 	ctx.RegisterBean(&BeanZero{5})
 	ctx.RegisterBean(new(BeanOne))
-
 	ctx.AutoWireBeans()
 
 	cond := SpringCore.NewMissingBeanCondition("*SpringCore_test.BeanOne")

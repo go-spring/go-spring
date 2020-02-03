@@ -1406,6 +1406,7 @@ func TestOptionConstructorArg(t *testing.T) {
 
 type ServerInterface interface {
 	Consumer() *Consumer
+	ConsumerArg(i int) *Consumer
 }
 
 type Server struct {
@@ -1769,8 +1770,27 @@ func TestDefaultSpringContext_RegisterMethodBeanFn(t *testing.T) {
 		assert.Equal(t, ok, false)
 	})
 
-	t.Run("interface method bean", func(t *testing.T) {
+	t.Run("interface method bean arg", func(t *testing.T) {
 
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.SetProperty("server.version", "1.0.0")
+		parent := ctx.RegisterBeanFn(NewServer)
+		ctx.RegisterMethodBean(parent, "ConsumerArg", "${i:=9}")
+		ctx.AutoWireBeans()
+
+		var si ServerInterface
+		ok := ctx.GetBean(&si)
+		assert.Equal(t, ok, true)
+
+		s := si.(*Server)
+		assert.Equal(t, s.Version, "1.0.0")
+
+		s.Version = "2.0.0"
+
+		var c *Consumer
+		ok = ctx.GetBean(&c)
+		assert.Equal(t, ok, true)
+		assert.Equal(t, c.s.Version, "2.0.0")
 	})
 }
 
@@ -1830,7 +1850,7 @@ func TestDefaultSpringContext_ChainConditionOnBean(t *testing.T) {
 		ctx.RegisterBean(new(bool)).ConditionOnBean("*int")
 		ctx.RegisterBean(new(int)).ConditionOnBean("*float")
 		ctx.AutoWireBeans()
-		assert.Equal(t, len(ctx.GetAllBeanDefinitions()), 0)
+		assert.Equal(t, len(ctx.GetBeanDefinitions()), 0)
 	}
 }
 

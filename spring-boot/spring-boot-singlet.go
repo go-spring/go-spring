@@ -146,9 +146,9 @@ func FindBean(selector interface{}) (*SpringCore.BeanDefinition, bool) {
 	return ctx.FindBean(selector)
 }
 
-// GetAllBeanDefinitions 获取所有 Bean 的定义，一般仅供调试使用。
-func GetAllBeanDefinitions() []*SpringCore.BeanDefinition {
-	return ctx.GetAllBeanDefinitions()
+// GetBeanDefinitions 获取所有 Bean 的定义，一般仅供调试使用。
+func GetBeanDefinitions() []*SpringCore.BeanDefinition {
+	return ctx.GetBeanDefinitions()
 }
 
 // GetProperty 返回属性值，属性名称统一转成小写。
