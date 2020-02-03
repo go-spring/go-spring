@@ -22,6 +22,18 @@ import (
 	"reflect"
 )
 
+// ContextEvent 定义 SpringContext 事件类型
+type ContextEvent int
+
+const (
+	ContextEvent_ResolveStart  = ContextEvent(0) // 开始解析 Bean 的过程
+	ContextEvent_ResolveEnd    = ContextEvent(1) // 结束解析 Bean 的过程
+	ContextEvent_AutoWireStart = ContextEvent(2) // 开始注入 Bean 的过程
+	ContextEvent_AutoWireEnd   = ContextEvent(3) // 结束注入 Bean 的过程
+	ContextEvent_CloseStart    = ContextEvent(4) // 开始关闭 Context 的过程
+	ContextEvent_CloseEnd      = ContextEvent(5) // 结束关闭 Context 的过程
+)
+
 // SpringContext 定义 IoC 容器接口，Bean 的注册规则：
 //   1. AutoWireBeans 开始后不允许注册新的 Bean（性能考虑）
 type SpringContext interface {
@@ -49,6 +61,9 @@ type SpringContext interface {
 
 	// SetAllAccess 设置是否允许访问私有字段
 	SetAllAccess(allAccess bool)
+
+	// SetEventNotify 设置 Context 事件通知函数
+	SetEventNotify(notify func(event ContextEvent))
 
 	// RegisterBean 注册单例 Bean，不指定名称，重复注册会 panic。
 	RegisterBean(bean interface{}) *BeanDefinition

@@ -93,12 +93,13 @@ type defaultSpringContext struct {
 	autoWired bool   // 已经开始自动绑定
 	allAccess bool   // 允许注入私有字段
 
-	beanMap   map[beanKey]*BeanDefinition     // Bean 的集合
-	beanCache map[reflect.Type]*beanCacheItem // Bean 的缓存
+	eventNotify func(event ContextEvent) // 事件通知函数
+
+	beanMap     map[beanKey]*BeanDefinition     // Bean 的集合
+	beanCache   map[reflect.Type]*beanCacheItem // Bean 的缓存
+	methodBeans []*BeanDefinition               // 方法 Beans
 
 	wiringStack wiringStack // 保存正在进行绑定的 Bean 列表
-
-	methodBeans []*BeanDefinition // 延迟创建的 Method Bean 的集合
 }
 
 // NewDefaultSpringContext defaultSpringContext 的构造函数
@@ -133,6 +134,11 @@ func (ctx *defaultSpringContext) AllAccess() bool {
 // SetAllAccess 设置是否允许访问私有字段
 func (ctx *defaultSpringContext) SetAllAccess(allAccess bool) {
 	ctx.allAccess = allAccess
+}
+
+// SetEventNotify 设置 Context 事件通知函数
+func (ctx *defaultSpringContext) SetEventNotify(notify func(event ContextEvent)) {
+	ctx.eventNotify = notify
 }
 
 // checkRegistration 检查注册是否已被冻结
@@ -629,9 +635,17 @@ func (ctx *defaultSpringContext) AutoWireBeans() {
 
 	ctx.autoWired = true
 
+	if ctx.eventNotify != nil {
+		ctx.eventNotify(ContextEvent_ResolveStart)
+	}
+
 	// 首先决议 Bean 是否能够注册，否则会删除其注册信息
 	for _, bd := range ctx.beanMap {
 		ctx.resolveBean(bd)
+	}
+
+	if ctx.eventNotify != nil {
+		ctx.eventNotify(ContextEvent_ResolveEnd)
 	}
 
 	defer func() { // 捕获自动注入过程中的异常，打印错误日志然后重新抛出
@@ -641,9 +655,17 @@ func (ctx *defaultSpringContext) AutoWireBeans() {
 		}
 	}()
 
+	if ctx.eventNotify != nil {
+		ctx.eventNotify(ContextEvent_AutoWireStart)
+	}
+
 	// 然后执行 Bean 绑定
 	for _, bd := range ctx.beanMap {
 		ctx.wireBeanDefinition(bd, false)
+	}
+
+	if ctx.eventNotify != nil {
+		ctx.eventNotify(ContextEvent_AutoWireEnd)
 	}
 }
 
@@ -919,6 +941,10 @@ func (ctx *defaultSpringContext) GetBeanDefinitions() []*BeanDefinition {
 // Close 关闭容器上下文，用于通知 Bean 销毁等。
 func (ctx *defaultSpringContext) Close() {
 
+	if ctx.eventNotify != nil {
+		ctx.eventNotify(ContextEvent_CloseStart)
+	}
+
 	// 执行销毁函数
 	for _, bd := range ctx.beanMap {
 		if bd.destroy != nil {
@@ -929,4 +955,8 @@ func (ctx *defaultSpringContext) Close() {
 
 	// 上下文结束
 	ctx.cancel()
+
+	if ctx.eventNotify != nil {
+		ctx.eventNotify(ContextEvent_CloseEnd)
+	}
 }
