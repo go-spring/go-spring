@@ -26,7 +26,7 @@ import (
 )
 
 const (
-	SpringAccess  = "spring.access"  // all 允许注入私有字段
+	SpringAccess  = "spring.access"  // "all" 为允许注入私有字段
 	SpringProfile = "spring.profile" // 运行环境
 )
 

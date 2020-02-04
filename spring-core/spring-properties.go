@@ -17,18 +17,20 @@
 package SpringCore
 
 import (
+	"errors"
 	"io"
 	"reflect"
-
-	"github.com/go-spring/go-spring-parent/spring-logger"
+	"time"
 )
 
 // 定义属性值接口
 type Properties interface {
-	// LoadProperties 加载属性配置文件
+	// LoadProperties 加载属性配置文件，
+	// 支持 properties、yaml 和 toml 三种文件格式。
 	LoadProperties(filename string)
 
-	// ReadProperties 读取属性配置文件
+	// ReadProperties 读取属性配置文件，
+	// 支持 properties、yaml 和 toml 三种文件格式。
 	ReadProperties(reader io.Reader, configType string)
 
 	// GetProperty 返回属性值，属性名称统一转成小写。
@@ -49,6 +51,12 @@ type Properties interface {
 	// GetStringProperty 返回字符串型属性值，属性名称统一转成小写。
 	GetStringProperty(name string) string
 
+	// GetDurationProperty 返回 Duration 类型属性值，属性名称统一转成小写。
+	GetDurationProperty(name string) time.Duration
+
+	// GetTimeProperty 返回 Time 类型的属性值，属性名称统一转成小写。
+	GetTimeProperty(name string) time.Time
+
 	// GetDefaultProperty 返回属性值，如果没有找到则使用指定的默认值，属性名称统一转成小写。
 	GetDefaultProperty(name string, defaultValue interface{}) (interface{}, bool)
 
@@ -58,8 +66,8 @@ type Properties interface {
 	// GetPrefixProperties 返回指定前缀的属性值集合，属性名称统一转成小写。
 	GetPrefixProperties(prefix string) map[string]interface{}
 
-	// GetAllProperties 返回所有的属性值，属性名称统一转成小写。
-	GetAllProperties() map[string]interface{}
+	// GetProperties 返回所有的属性值，属性名称统一转成小写。
+	GetProperties() map[string]interface{}
 
 	// BindProperty 根据类型获取属性值，属性名称统一转成小写。
 	BindProperty(name string, i interface{})
@@ -71,52 +79,48 @@ type Properties interface {
 // typeConverters 类型转换器集合
 var typeConverters = make(map[reflect.Type]interface{})
 
+// IsValidConverter 返回是否是合法的类型转换器
+func IsValidConverter(t reflect.Type) bool {
+
+	// 必须是函数
+	if t.Kind() != reflect.Func {
+		return false
+	}
+
+	// 只能有一个输入参数
+	if t.NumIn() != 1 {
+		return false
+	}
+
+	// 只能有一个输出参数
+	if t.NumOut() != 1 {
+		return false
+	}
+
+	inType := t.In(0)
+	outType := t.Out(0)
+
+	// 输入参数必须是字符串类型
+	if inType.Kind() != reflect.String {
+		return false
+	}
+
+	// 输出参数必须是值类型
+	if ok := IsValueType(outType.Kind()); !ok {
+		return false
+	}
+
+	return true
+}
+
 // RegisterTypeConverter 注册类型转换器，用于属性绑定，函数原型 func(string)type
 func RegisterTypeConverter(fn interface{}) {
 	t := reflect.TypeOf(fn)
 
-	var (
-		outType reflect.Type
-	)
-
-	// 判断是否是合法的类型转换器
-	validTypeConverter := func() bool {
-
-		// 必须是函数
-		if t.Kind() != reflect.Func {
-			return false
-		}
-
-		// 只能有一个输入参数
-		if t.NumIn() != 1 {
-			return false
-		}
-
-		// 只能有一个输出参数
-		if t.NumOut() != 1 {
-			return false
-		}
-
-		inType := t.In(0)
-		outType = t.Out(0)
-
-		// 输入参数必须是字符串类型
-		if inType.Kind() != reflect.String {
-			return false
-		}
-
-		// 输出参数必须是值类型
-		if ok := IsValueType(outType.Kind()); !ok {
-			return false
-		}
-
-		return true
-	}
-
-	if ok := validTypeConverter(); !ok {
+	if ok := IsValidConverter(t); !ok {
 		ft := "func(string)type"
-		SpringLogger.Panic("fn must be " + ft)
+		panic(errors.New("fn must be " + ft))
 	}
 
-	typeConverters[outType] = fn
+	typeConverters[t.Out(0)] = fn
 }

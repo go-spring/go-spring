@@ -31,14 +31,20 @@ import (
 
 func init() {
 
-	// string -> time.Duration 转换器
+	// string -> time.Duration converter
+	// time units are "ns", "us" (or "µs"), "ms", "s", "m", "h"。
 	RegisterTypeConverter(func(v string) time.Duration {
-		return cast.ToDuration(v)
+		r, err := cast.ToDurationE(v)
+		SpringUtils.Panic(err).When(err != nil)
+		return r
 	})
 
-	//  string -> time.Time 转换器
+	// string -> time.Time converter
+	// 支持非常多的日期格式，参见 cast.StringToDate。
 	RegisterTypeConverter(func(v string) time.Time {
-		return cast.ToTime(v)
+		r, err := cast.ToTimeE(v)
+		SpringUtils.Panic(err).When(err != nil)
+		return r
 	})
 }
 
@@ -71,7 +77,7 @@ func (p *defaultProperties) readProperties(r func(*viper.Viper) error) {
 	}
 }
 
-// LoadProperties 加载属性配置文件
+// LoadProperties 加载属性配置文件，支持 properties、yaml 和 toml 三种文件格式。
 func (p *defaultProperties) LoadProperties(filename string) {
 	SpringLogger.Debug(">>> load properties from file: ", filename)
 
@@ -81,7 +87,7 @@ func (p *defaultProperties) LoadProperties(filename string) {
 	})
 }
 
-// ReadProperties 加载属性配置文件
+// ReadProperties 读取属性配置文件，支持 properties、yaml 和 toml 三种文件格式。
 func (p *defaultProperties) ReadProperties(reader io.Reader, configType string) {
 	SpringLogger.Debug(">>> load properties from reader type: ", configType)
 
@@ -122,6 +128,16 @@ func (p *defaultProperties) GetStringProperty(name string) string {
 	return cast.ToString(p.GetProperty(name))
 }
 
+// GetDurationProperty 返回 Duration 类型属性值，属性名称统一转成小写。
+func (p *defaultProperties) GetDurationProperty(name string) time.Duration {
+	return cast.ToDuration(p.GetProperty(name))
+}
+
+// GetTimeProperty 返回 Time 类型的属性值，属性名称统一转成小写。
+func (p *defaultProperties) GetTimeProperty(name string) time.Time {
+	return cast.ToTime(p.GetProperty(name))
+}
+
 // SetProperty 设置属性值，属性名称统一转成小写。
 func (p *defaultProperties) SetProperty(name string, value interface{}) {
 	name = strings.ToLower(name)
@@ -149,8 +165,8 @@ func (p *defaultProperties) GetPrefixProperties(prefix string) map[string]interf
 	return result
 }
 
-// GetAllProperties 返回所有的属性值，属性名称统一转成小写。
-func (p *defaultProperties) GetAllProperties() map[string]interface{} {
+// GetProperties 返回所有的属性值，属性名称统一转成小写。
+func (p *defaultProperties) GetProperties() map[string]interface{} {
 	return p.properties
 }
 

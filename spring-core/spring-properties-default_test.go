@@ -23,6 +23,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-spring/go-spring/spring-core"
 	"github.com/magiconair/properties/assert"
@@ -35,8 +36,8 @@ func TestDefaultProperties_LoadProperties(t *testing.T) {
 	p.LoadProperties("testdata/config/application.yaml")
 	p.LoadProperties("testdata/config/application.properties")
 
-	fmt.Println(">>> GetAllProperties")
-	for k, v := range p.GetAllProperties() {
+	fmt.Println(">>> Get All Properties")
+	for k, v := range p.GetProperties() {
 		fmt.Println(k, v)
 	}
 }
@@ -545,7 +546,9 @@ func TestDefaultProperties_GetProperty(t *testing.T) {
 	p.SetProperty("Uint", 3)
 	p.SetProperty("Float", 3.0)
 	p.SetProperty("String", "3")
+	p.SetProperty("Duration", "3s")
 	p.SetProperty("[]String", []string{"3"})
+	p.SetProperty("Time", "2020-02-04 20:02:04")
 	p.SetProperty("[]Map[String]Interface{}", []interface{}{
 		map[interface{}]interface{}{
 			"1": 2,
@@ -592,6 +595,12 @@ func TestDefaultProperties_GetProperty(t *testing.T) {
 
 	s := p.GetStringProperty("STRING")
 	assert.Equal(t, s, "3")
+
+	d := p.GetDurationProperty("DURATION")
+	assert.Equal(t, d, time.Second*3)
+
+	ti := p.GetTimeProperty("Time")
+	assert.Equal(t, ti, time.Date(2020, 02, 04, 20, 02, 04, 0, time.UTC))
 
 	var ss2 []string
 	p.BindProperty("[]string", &ss2)

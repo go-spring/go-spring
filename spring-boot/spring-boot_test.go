@@ -116,7 +116,7 @@ type MyRunner struct {
 func (_ *MyRunner) Run(ctx SpringBoot.ApplicationContext) {
 	ctx.SafeGoroutine(func() {
 		fmt.Println("get all properties:")
-		for k, v := range ctx.GetAllProperties() {
+		for k, v := range ctx.GetProperties() {
 			fmt.Println(k + "=" + fmt.Sprint(v))
 		}
 	})

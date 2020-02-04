@@ -18,6 +18,7 @@ package SpringBoot
 
 import (
 	"os"
+	"time"
 
 	"github.com/go-spring/go-spring/boot-starter"
 	"github.com/go-spring/go-spring/spring-core"
@@ -186,6 +187,16 @@ func GetStringProperty(name string) string {
 	return ctx.GetStringProperty(name)
 }
 
+// GetDurationProperty 返回 Duration 类型属性值，属性名称统一转成小写。
+func GetDurationProperty(name string) time.Duration {
+	return ctx.GetDurationProperty(name)
+}
+
+// GetTimeProperty 返回 Time 类型的属性值，属性名称统一转成小写。
+func GetTimeProperty(name string) time.Time {
+	return ctx.GetTimeProperty(name)
+}
+
 // GetDefaultProperty 返回属性值，如果没有找到则使用指定的默认值，属性名称统一转成小写。
 func GetDefaultProperty(name string, defaultValue interface{}) (interface{}, bool) {
 	return ctx.GetDefaultProperty(name, defaultValue)
@@ -201,9 +212,9 @@ func GetPrefixProperties(prefix string) map[string]interface{} {
 	return ctx.GetPrefixProperties(prefix)
 }
 
-// GetAllProperties 返回所有的属性值，属性名称统一转成小写。
-func GetAllProperties() map[string]interface{} {
-	return ctx.GetAllProperties()
+// GetProperties 返回所有的属性值，属性名称统一转成小写。
+func GetProperties() map[string]interface{} {
+	return ctx.GetProperties()
 }
 
 // BindProperty 根据类型获取属性值，属性名称统一转成小写。
