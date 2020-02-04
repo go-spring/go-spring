@@ -17,6 +17,7 @@
 package SpringCore
 
 import (
+	"io"
 	"reflect"
 	"sort"
 	"strings"
@@ -53,13 +54,10 @@ func NewDefaultProperties() *defaultProperties {
 	}
 }
 
-// LoadProperties 加载属性配置文件
-func (p *defaultProperties) LoadProperties(filename string) {
-	SpringLogger.Debug(">>> load properties from", filename)
-
+func (p *defaultProperties) readProperties(r func(*viper.Viper) error) {
 	v := viper.New()
-	v.SetConfigFile(filename)
-	if err := v.ReadInConfig(); err != nil {
+
+	if err := r(v); err != nil {
 		SpringLogger.Panic(err)
 	}
 
@@ -71,6 +69,26 @@ func (p *defaultProperties) LoadProperties(filename string) {
 		p.SetProperty(key, val)
 		SpringLogger.Debugf("%s=%v", key, val)
 	}
+}
+
+// LoadProperties 加载属性配置文件
+func (p *defaultProperties) LoadProperties(filename string) {
+	SpringLogger.Debug(">>> load properties from file: ", filename)
+
+	p.readProperties(func(v *viper.Viper) error {
+		v.SetConfigFile(filename)
+		return v.ReadInConfig()
+	})
+}
+
+// ReadProperties 加载属性配置文件
+func (p *defaultProperties) ReadProperties(reader io.Reader, configType string) {
+	SpringLogger.Debug(">>> load properties from reader type: ", configType)
+
+	p.readProperties(func(v *viper.Viper) error {
+		v.SetConfigType(configType)
+		return v.ReadConfig(reader)
+	})
 }
 
 // GetProperty 返回属性值，属性名称统一转成小写。

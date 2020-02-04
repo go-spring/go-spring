@@ -19,6 +19,7 @@ package SpringCore_test
 import (
 	"errors"
 	"fmt"
+	"image"
 	"reflect"
 	"sort"
 	"strconv"
@@ -445,6 +446,12 @@ const (
 
 type EnvEnumBean struct {
 	EnvType EnvEnum `value:"${env.type}"`
+}
+
+type PointBean struct {
+	Point        image.Point   `value:"${point}"`
+	DefaultPoint image.Point   `value:"${default_point:=(3,4)}"`
+	PointList    []image.Point `value:"${point.list}"`
 }
 
 func TestDefaultSpringContext_TypeConverter(t *testing.T) {

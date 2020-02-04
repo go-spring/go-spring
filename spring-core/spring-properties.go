@@ -17,6 +17,7 @@
 package SpringCore
 
 import (
+	"io"
 	"reflect"
 
 	"github.com/go-spring/go-spring-parent/spring-logger"
@@ -26,6 +27,9 @@ import (
 type Properties interface {
 	// LoadProperties 加载属性配置文件
 	LoadProperties(filename string)
+
+	// ReadProperties 读取属性配置文件
+	ReadProperties(reader io.Reader, configType string)
 
 	// GetProperty 返回属性值，属性名称统一转成小写。
 	GetProperty(name string) interface{}

@@ -19,6 +19,8 @@ package SpringCore_test
 import (
 	"errors"
 	"fmt"
+	"image"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -26,17 +28,6 @@ import (
 	"github.com/magiconair/properties/assert"
 	"github.com/spf13/cast"
 )
-
-func TestMap(t *testing.T) {
-	m := make(map[string]interface{})
-
-	// 使用判断模式
-	v, ok := m["aaa"]
-	fmt.Println(v, ok)
-
-	// 不存在时返回 nil
-	fmt.Println(m["aaa"])
-}
 
 func TestDefaultProperties_LoadProperties(t *testing.T) {
 
@@ -50,26 +41,471 @@ func TestDefaultProperties_LoadProperties(t *testing.T) {
 	}
 }
 
-type Point struct {
-	x int
-	y int
+func TestDefaultProperties_ReadProperties_Properties(t *testing.T) {
+
+	t.Run("basic type", func(t *testing.T) {
+
+		data := []struct {
+			key  string
+			str  string
+			val  interface{}
+			kind reflect.Kind
+		}{
+			{"bool", "bool=false", "false", reflect.String},
+			{"int", "int=3", "3", reflect.String},
+			{"float", "float=3.0", "3.0", reflect.String},
+			{"string", "string=\"3\"", "\"3\"", reflect.String},
+			{"string", "string=hello", "hello", reflect.String},
+			{"date", "date=2018-02-17", "2018-02-17", reflect.String},
+			{"time", "time=2018-02-17T15:02:31+08:00", "2018-02-17T15:02:31+08:00", reflect.String},
+		}
+
+		for _, d := range data {
+			p := SpringCore.NewDefaultProperties()
+			r := strings.NewReader(d.str)
+			p.ReadProperties(r, "properties")
+			v := p.GetProperty(d.key)
+			assert.Equal(t, v, d.val)
+		}
+	})
+
+	t.Run("array", func(t *testing.T) {
+
+		data := []struct {
+			key  string
+			str  string
+			val  interface{}
+			kind reflect.Kind
+		}{
+			{"bool[0]", "bool[0]=false", "false", reflect.String},
+			{"int[0]", "int[0]=3", "3", reflect.String},
+			{"float[0]", "float[0]=3.0", "3.0", reflect.String},
+			{"string[0]", "string[0]=\"3\"", "\"3\"", reflect.String},
+			{"string[0]", "string[0]=hello", "hello", reflect.String},
+		}
+
+		for _, d := range data {
+			p := SpringCore.NewDefaultProperties()
+			r := strings.NewReader(d.str)
+			p.ReadProperties(r, "properties")
+			v := p.GetProperty(d.key)
+			assert.Equal(t, v, d.val)
+		}
+	})
+
+	t.Run("map", func(t *testing.T) {
+
+		str := `
+          map.bool=false
+          map.int=3
+          map.float=3.0
+          map.string=hello
+        `
+
+		data := map[string]interface{}{
+			"map.bool":   "false",
+			"map.float":  "3.0",
+			"map.int":    "3",
+			"map.string": "hello",
+		}
+
+		p := SpringCore.NewDefaultProperties()
+		r := strings.NewReader(str)
+		p.ReadProperties(r, "properties")
+
+		for k, expect := range data {
+			v := p.GetProperty(k)
+			assert.Equal(t, v, expect)
+		}
+	})
+
+	t.Run("array struct", func(t *testing.T) {
+
+		str := `
+          array[0].bool=false
+          array[0].int=3
+          array[0].float=3.0
+          array[0].string=hello
+          array[1].bool=true
+          array[1].int=20
+          array[1].float=0.2
+          array[1].string=hello
+        `
+
+		p := SpringCore.NewDefaultProperties()
+		r := strings.NewReader(str)
+		p.ReadProperties(r, "properties")
+
+		data := map[string]interface{}{
+			"array[0].bool":   "false",
+			"array[0].int":    "3",
+			"array[0].float":  "3.0",
+			"array[0].string": "hello",
+			"array[1].bool":   "true",
+			"array[1].int":    "20",
+			"array[1].float":  "0.2",
+			"array[1].string": "hello",
+		}
+
+		for k, expect := range data {
+			v := p.GetProperty(k)
+			assert.Equal(t, v, expect)
+		}
+	})
+
+	t.Run("map struct", func(t *testing.T) {
+
+		str := `
+          map.k1.bool: false
+          map.k1.int: 3
+          map.k1.float: 3.0
+          map.k1.string: hello
+          map.k2.bool: true
+          map.k2.int: 20
+          map.k2.float: 0.2
+          map.k2.string: hello
+        `
+
+		data := map[string]interface{}{
+			"map.k1.bool":   "false",
+			"map.k1.float":  "3.0",
+			"map.k1.int":    "3",
+			"map.k1.string": "hello",
+			"map.k2.bool":   "true",
+			"map.k2.float":  "0.2",
+			"map.k2.int":    "20",
+			"map.k2.string": "hello",
+		}
+
+		p := SpringCore.NewDefaultProperties()
+		r := strings.NewReader(str)
+		p.ReadProperties(r, "properties")
+
+		for k, expect := range data {
+			v := p.GetProperty(k)
+			assert.Equal(t, v, expect)
+		}
+	})
 }
 
-type PointBean struct {
-	Point        Point `value:"${point}"`
-	DefaultPoint Point `value:"${default_point:=(3,4)}"`
+func TestDefaultProperties_ReadProperties_Yaml(t *testing.T) {
 
-	PointList []Point `value:"${point.list}"`
+	t.Run("basic type", func(t *testing.T) {
+
+		data := []struct {
+			key  string
+			str  string
+			val  interface{}
+			kind reflect.Kind
+		}{
+			{"bool", "bool: false", false, reflect.Bool},
+			{"int", "int: 3", int(3), reflect.Int}, // yaml 是 int，toml 是 int64。
+			{"float", "float: 3.0", float64(3.0), reflect.Float64},
+			{"string", "string: \"3\"", "3", reflect.String},
+			{"string", "string: hello", "hello", reflect.String},
+			{"date", "date: 2018-02-17", "2018-02-17", reflect.String},
+			{"time", "time: 2018-02-17T15:02:31+08:00", "2018-02-17T15:02:31+08:00", reflect.String},
+		}
+
+		for _, d := range data {
+			p := SpringCore.NewDefaultProperties()
+			r := strings.NewReader(d.str)
+			p.ReadProperties(r, "yaml")
+			v := p.GetProperty(d.key)
+			assert.Equal(t, v, d.val)
+		}
+	})
+
+	t.Run("array", func(t *testing.T) {
+
+		data := []struct {
+			key  string
+			str  string
+			val  interface{}
+			kind reflect.Kind
+		}{
+			{"bool", "bool: [false]", []interface{}{false}, reflect.Bool},
+			{"int", "int: [3]", []interface{}{3}, reflect.Int},
+			{"float", "float: [3.0]", []interface{}{3.0}, reflect.Float64},
+			{"string", "string: [\"3\"]", []interface{}{"3"}, reflect.String},
+			{"string", "string: [hello]", []interface{}{"hello"}, reflect.String},
+		}
+
+		for _, d := range data {
+			p := SpringCore.NewDefaultProperties()
+			r := strings.NewReader(d.str)
+			p.ReadProperties(r, "yaml")
+			v := p.GetProperty(d.key)
+			assert.Equal(t, v, d.val)
+		}
+	})
+
+	t.Run("map", func(t *testing.T) {
+
+		str := `
+          map: 
+              bool: false
+              int: 3
+              float: 3.0
+              string: hello
+        `
+
+		data := map[string]interface{}{
+			"map.bool":   false,
+			"map.float":  3.0,
+			"map.int":    3,
+			"map.string": "hello",
+		}
+
+		p := SpringCore.NewDefaultProperties()
+		r := strings.NewReader(str)
+		p.ReadProperties(r, "yaml")
+
+		for k, expect := range data {
+			v := p.GetProperty(k)
+			assert.Equal(t, v, expect)
+		}
+	})
+
+	t.Run("array struct", func(t *testing.T) {
+
+		str := `
+          array: 
+              -
+                  bool: false
+                  int: 3
+                  float: 3.0
+                  string: hello
+              -
+                  bool: true
+                  int: 20
+                  float: 0.2
+                  string: hello
+        `
+
+		p := SpringCore.NewDefaultProperties()
+		r := strings.NewReader(str)
+		p.ReadProperties(r, "yaml")
+
+		v := p.GetProperty("array")
+		expect := []interface{}{
+			map[interface{}]interface{}{ // yaml 是 map[interface{}]interface{}，toml 是 map[string]interface{}
+				"bool": false,
+				"int": 3,
+				"float": 3.0,
+				"string": "hello",
+			},
+			map[interface{}]interface{}{
+				"bool":   true,
+				"int":    20,
+				"float":  0.2,
+				"string": "hello",
+			},
+		}
+		assert.Equal(t, v, expect)
+	})
+
+	t.Run("map struct", func(t *testing.T) {
+
+		str := `
+          map: 
+              k1: 
+                  bool: false
+                  int: 3
+                  float: 3.0
+                  string: hello
+              k2: 
+                  bool: true
+                  int: 20
+                  float: 0.2
+                  string: hello
+        `
+
+		data := map[string]interface{}{
+			"map.k1.bool":   false,
+			"map.k1.float":  3.0,
+			"map.k1.int":    3,
+			"map.k1.string": "hello",
+			"map.k2.bool":   true,
+			"map.k2.float":  0.2,
+			"map.k2.int":    20,
+			"map.k2.string": "hello",
+		}
+
+		p := SpringCore.NewDefaultProperties()
+		r := strings.NewReader(str)
+		p.ReadProperties(r, "yaml")
+
+		for k, expect := range data {
+			v := p.GetProperty(k)
+			assert.Equal(t, v, expect)
+		}
+	})
 }
 
-func PointConverter(val string) Point {
+func TestDefaultProperties_ReadProperties_Toml(t *testing.T) {
+
+	t.Run("basic type", func(t *testing.T) {
+
+		data := []struct {
+			key  string
+			str  string
+			val  interface{}
+			kind reflect.Kind
+		}{
+			{"bool", "bool=false", false, reflect.Bool},
+			{"int", "int=3", int64(3), reflect.Int64}, // yaml 是 int，toml 是 int64。
+			{"float", "float=3.0", 3.0, reflect.Float64},
+			{"string", "string=\"3\"", "3", reflect.String},
+			{"string", "string=\"hello\"", "hello", reflect.String},
+			{"date", "date=\"2018-02-17\"", "2018-02-17", reflect.String},
+			{"time", "time=\"2018-02-17T15:02:31+08:00\"", "2018-02-17T15:02:31+08:00", reflect.String},
+		}
+
+		for _, d := range data {
+			p := SpringCore.NewDefaultProperties()
+			r := strings.NewReader(d.str)
+			p.ReadProperties(r, "toml")
+			v := p.GetProperty(d.key)
+			assert.Equal(t, v, d.val)
+		}
+	})
+
+	t.Run("array", func(t *testing.T) {
+
+		data := []struct {
+			key  string
+			str  string
+			val  interface{}
+			kind reflect.Kind
+		}{
+			{"bool", "bool=[false]", []interface{}{false}, reflect.Bool},
+			{"int", "int=[3]", []interface{}{int64(3)}, reflect.Int},
+			{"float", "float=[3.0]", []interface{}{3.0}, reflect.Float64},
+			{"string", "string=[\"3\"]", []interface{}{"3"}, reflect.String},
+			{"string", "string=[\"hello\"]", []interface{}{"hello"}, reflect.String},
+		}
+
+		for _, d := range data {
+			p := SpringCore.NewDefaultProperties()
+			r := strings.NewReader(d.str)
+			p.ReadProperties(r, "toml")
+			v := p.GetProperty(d.key)
+			assert.Equal(t, v, d.val)
+		}
+	})
+
+	t.Run("map", func(t *testing.T) {
+
+		str := `
+          [map]
+          bool=false
+          int=3
+          float=3.0
+          string="hello"
+        `
+
+		data := map[string]interface{}{
+			"map.bool":   false,
+			"map.float":  3.0,
+			"map.int":    int64(3),
+			"map.string": "hello",
+		}
+
+		p := SpringCore.NewDefaultProperties()
+		r := strings.NewReader(str)
+		p.ReadProperties(r, "toml")
+
+		for k, expect := range data {
+			v := p.GetProperty(k)
+			assert.Equal(t, v, expect)
+		}
+	})
+
+	t.Run("array struct", func(t *testing.T) {
+
+		str := `
+          [[array]]
+          bool=false
+          int=3
+          float=3.0
+          string="hello"
+
+          [[array]]
+          bool=true
+          int=20
+          float=0.2
+          string="hello"
+        `
+
+		p := SpringCore.NewDefaultProperties()
+		r := strings.NewReader(str)
+		p.ReadProperties(r, "toml")
+
+		v := p.GetProperty("array")
+		expect := []interface{}{
+			map[string]interface{}{ // yaml 是 map[interface{}]interface{}，toml 是 map[string]interface{}
+				"bool": false,
+				"int": int64(3),
+				"float": float64(3.0),
+				"string": "hello",
+			},
+			map[string]interface{}{
+				"bool":   true,
+				"int":    int64(20),
+				"float":  float64(0.2),
+				"string": "hello",
+			},
+		}
+		assert.Equal(t, v, expect)
+	})
+
+	t.Run("map struct", func(t *testing.T) {
+
+		str := `
+          [map.k1]
+          bool=false
+          int=3
+          float=3.0
+          string="hello"
+          
+          [map.k2]
+          bool=true
+          int=20
+          float=0.2
+          string="hello"
+        `
+
+		data := map[string]interface{}{
+			"map.k1.bool":   false,
+			"map.k1.float":  float64(3.0),
+			"map.k1.int":    int64(3),
+			"map.k1.string": "hello",
+			"map.k2.bool":   true,
+			"map.k2.float":  float64(0.2),
+			"map.k2.int":    int64(20),
+			"map.k2.string": "hello",
+		}
+
+		p := SpringCore.NewDefaultProperties()
+		r := strings.NewReader(str)
+		p.ReadProperties(r, "toml")
+
+		for k, expect := range data {
+			v := p.GetProperty(k)
+			assert.Equal(t, v, expect)
+		}
+	})
+}
+
+func PointConverter(val string) image.Point {
 	if !(strings.HasPrefix(val, "(") && strings.HasSuffix(val, ")")) {
 		panic(errors.New("数据格式错误"))
 	}
 	ss := strings.Split(val[1:len(val)-1], ",")
 	x := cast.ToInt(ss[0])
 	y := cast.ToInt(ss[1])
-	return Point{x, y}
+	return image.Point{X: x, Y: y}
 }
 
 func TestRegisterTypeConverter(t *testing.T) {
@@ -79,14 +515,14 @@ func TestRegisterTypeConverter(t *testing.T) {
 	}, "fn must be func\\(string\\)type")
 
 	assert.Panic(t, func() { // 入参太多
-		SpringCore.RegisterTypeConverter(func(_ string, _ string) Point {
-			return Point{}
+		SpringCore.RegisterTypeConverter(func(_ string, _ string) image.Point {
+			return image.Point{}
 		})
 	}, "fn must be func\\(string\\)type")
 
 	assert.Panic(t, func() { // 返回值太多
-		SpringCore.RegisterTypeConverter(func(_ string) (Point, Point) {
-			return Point{}, Point{}
+		SpringCore.RegisterTypeConverter(func(_ string) (image.Point, image.Point) {
+			return image.Point{}, image.Point{}
 		})
 	}, "fn must be func\\(string\\)type")
 
@@ -95,6 +531,14 @@ func TestRegisterTypeConverter(t *testing.T) {
 
 func TestDefaultProperties_GetProperty(t *testing.T) {
 	p := SpringCore.NewDefaultProperties()
+
+	p.SetProperty("a.b.c", "3")
+	p.SetProperty("a.b.d", []string{"3"})
+
+	m := p.GetPrefixProperties("a.b")
+	assert.Equal(t, len(m), 2)
+	assert.Equal(t, m["a.b.c"], "3")
+	assert.Equal(t, m["a.b.d"], []string{"3"})
 
 	p.SetProperty("Bool", true)
 	p.SetProperty("Int", 3)
@@ -154,16 +598,6 @@ func TestDefaultProperties_GetProperty(t *testing.T) {
 	assert.Equal(t, ss2, []string{"3"})
 }
 
-func TestDefaultProperties_GetPrefixProperties(t *testing.T) {
-	p := SpringCore.NewDefaultProperties()
-	p.SetProperty("a.b.c", "3")
-	p.SetProperty("a.b.d", []string{"3"})
-	m := p.GetPrefixProperties("a.b")
-	assert.Equal(t, len(m), 2)
-	assert.Equal(t, m["a.b.c"], "3")
-	assert.Equal(t, m["a.b.d"], []string{"3"})
-}
-
 type DB struct {
 	UserName string `value:"${username}"`
 	Password string `value:"${password}"`
@@ -174,21 +608,6 @@ type DB struct {
 
 type DbConfig struct {
 	DB []DB `value:"${db}"`
-}
-
-func TestDefaultProperties_BindProperty(t *testing.T) {
-
-	p := SpringCore.NewDefaultProperties()
-	p.LoadProperties("testdata/config/application.yaml")
-
-	dbConfig1 := DbConfig{}
-	p.BindProperty("", &dbConfig1)
-
-	dbConfig2 := DbConfig{}
-	p.BindProperty("prefix", &dbConfig2)
-
-	// 实际上是取的两个节点，只是值是一样的而已
-	assert.Equal(t, dbConfig1, dbConfig2)
 }
 
 type DBConnection struct {
@@ -216,9 +635,23 @@ type NestedDbConfig struct {
 	DB []NestedDB `value:"${db}"`
 }
 
-func TestDefaultProperties_GetAllProperties(t *testing.T) {
+func TestDefaultProperties_BindProperty(t *testing.T) {
 
-	t.Run("error", func(t *testing.T) {
+	t.Run("simple bind", func(t *testing.T) {
+		p := SpringCore.NewDefaultProperties()
+		p.LoadProperties("testdata/config/application.yaml")
+
+		dbConfig1 := DbConfig{}
+		p.BindProperty("", &dbConfig1)
+
+		dbConfig2 := DbConfig{}
+		p.BindProperty("prefix", &dbConfig2)
+
+		// 实际上是取的两个节点，只是值是一样的而已
+		assert.Equal(t, dbConfig1, dbConfig2)
+	})
+
+	t.Run("struct bind error", func(t *testing.T) {
 
 		p := SpringCore.NewDefaultProperties()
 		p.LoadProperties("testdata/config/application.yaml")
@@ -229,7 +662,7 @@ func TestDefaultProperties_GetAllProperties(t *testing.T) {
 		}, "ErrorNestedDbConfig.\\$DB.\\$DBConnection 嵌套结构体上不允许有 value 标签")
 	})
 
-	t.Run("success", func(t *testing.T) {
+	t.Run("struct bind success", func(t *testing.T) {
 
 		p := SpringCore.NewDefaultProperties()
 		p.LoadProperties("testdata/config/application.yaml")
@@ -250,9 +683,9 @@ type NestedDbMapConfig struct {
 	DB map[string]NestedDB `value:"${db_map}"`
 }
 
-func TestDefaultProperties_GetStringMapStringProperty(t *testing.T) {
+func TestDefaultProperties_StringMapString(t *testing.T) {
 
-	t.Run("set property", func(t *testing.T) {
+	t.Run("simple bind", func(t *testing.T) {
 
 		p := SpringCore.NewDefaultProperties()
 		p.SetProperty("a.b1", "b1")
@@ -266,7 +699,7 @@ func TestDefaultProperties_GetStringMapStringProperty(t *testing.T) {
 		assert.Equal(t, m["b1"], "b1")
 	})
 
-	t.Run("set property converter", func(t *testing.T) {
+	t.Run("converter bind", func(t *testing.T) {
 		SpringCore.RegisterTypeConverter(PointConverter)
 
 		p := SpringCore.NewDefaultProperties()
@@ -274,14 +707,14 @@ func TestDefaultProperties_GetStringMapStringProperty(t *testing.T) {
 		p.SetProperty("a.p2", "(3,4)")
 		p.SetProperty("a.p3", "(5,6)")
 
-		var m map[string]Point
+		var m map[string]image.Point
 		p.BindProperty("a", &m)
 
 		assert.Equal(t, len(m), 3)
-		assert.Equal(t, m["p1"], Point{1, 2})
+		assert.Equal(t, m["p1"], image.Point{1, 2})
 	})
 
-	t.Run("load from file", func(t *testing.T) {
+	t.Run("simple bind from file", func(t *testing.T) {
 
 		p := SpringCore.NewDefaultProperties()
 		p.LoadProperties("testdata/config/application.yaml")
@@ -293,7 +726,7 @@ func TestDefaultProperties_GetStringMapStringProperty(t *testing.T) {
 		assert.Equal(t, m["floor1"], "camera_floor1")
 	})
 
-	t.Run("load from file struct", func(t *testing.T) {
+	t.Run("struct bind from file", func(t *testing.T) {
 
 		p := SpringCore.NewDefaultProperties()
 		p.LoadProperties("testdata/config/application.yaml")
