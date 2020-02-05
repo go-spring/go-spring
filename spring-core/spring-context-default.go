@@ -830,7 +830,7 @@ func (ctx *defaultSpringContext) wireOriginalBean(bd beanDefinition, onlyAutoWir
 					// 避免父结构体有 value 标签重新解析导致失败的情况
 					if tag, ok := ft.Tag.Lookup("value"); ok {
 						fieldOnlyAutoWire = true
-						bindStructField(ctx, ft.Type, fv, fieldName, "", tag, ctx.allAccess)
+						bindStructField(ctx, ft.Type, fv, fieldName, "", tag, ctx.allAccess, "")
 					}
 				}
 

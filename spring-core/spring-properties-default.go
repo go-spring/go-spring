@@ -17,6 +17,7 @@
 package SpringCore
 
 import (
+	"fmt"
 	"io"
 	"reflect"
 	"sort"
@@ -172,7 +173,7 @@ func (p *defaultProperties) GetProperties() map[string]interface{} {
 
 // bindStruct 对结构体进行属性值绑定
 func bindStruct(prop Properties, beanType reflect.Type, beanValue reflect.Value,
-	fieldName string, propNamePrefix string, allAccess bool) {
+	fieldName string, propNamePrefix string, allAccess bool, fullPropName string) {
 
 	// 遍历结构体的所有字段
 	for i := 0; i < beanType.NumField(); i++ {
@@ -184,18 +185,19 @@ func bindStruct(prop Properties, beanType reflect.Type, beanValue reflect.Value,
 		subFieldName := fieldName + ".$" + it.Name
 
 		if it.Anonymous { // 处理结构体嵌套的情况
-			if _, ok := it.Tag.Lookup("value"); ok {
-				SpringLogger.Panic(subFieldName + " 嵌套结构体上不允许有 value 标签")
+			if tag, ok := it.Tag.Lookup("value"); ok { // 处理有 value 标签字段的情况
+				bindStructField(prop, it.Type, iv, subFieldName, propNamePrefix, tag, allAccess, fullPropName)
+			} else {
+				bindStruct(prop, it.Type, iv, subFieldName, propNamePrefix, allAccess, fullPropName)
 			}
-			bindStruct(prop, it.Type, iv, subFieldName, propNamePrefix, allAccess)
 			continue
 		}
 
 		if tag, ok := it.Tag.Lookup("value"); ok { // 处理有 value 标签字段
-			bindStructField(prop, it.Type, iv, subFieldName, propNamePrefix, tag, allAccess)
+			bindStructField(prop, it.Type, iv, subFieldName, propNamePrefix, tag, allAccess, fullPropName)
 		} else {
 			if it.Type.Kind() == reflect.Struct { // 处理不带标签的结构体字段
-				bindStruct(prop, it.Type, iv, subFieldName, propNamePrefix, allAccess)
+				bindStruct(prop, it.Type, iv, subFieldName, propNamePrefix, allAccess, fullPropName)
 			}
 		}
 	}
@@ -203,7 +205,7 @@ func bindStruct(prop Properties, beanType reflect.Type, beanValue reflect.Value,
 
 // bindStructField 对结构体的字段进行属性绑定
 func bindStructField(prop Properties, fieldType reflect.Type, fieldValue reflect.Value,
-	fieldName string, propNamePrefix string, propTag string, allAccess bool) {
+	fieldName string, propNamePrefix string, propTag string, allAccess bool, fullPropName string) {
 
 	// 检查语法是否正确
 	if !(strings.HasPrefix(propTag, "${") && strings.HasSuffix(propTag, "}")) {
@@ -224,6 +226,15 @@ func bindStructField(prop Properties, fieldType reflect.Type, fieldValue reflect
 
 	propName = ss[0]
 
+	// 使用最短属性名
+	if fullPropName == "" {
+		fullPropName = propName
+	} else {
+		if propName != "" {
+			fullPropName = fullPropName + "." + propName
+		}
+	}
+
 	// 属性名如果有前缀要加上前缀
 	if propNamePrefix != "" {
 		propName = propNamePrefix + "." + propName
@@ -233,12 +244,12 @@ func bindStructField(prop Properties, fieldType reflect.Type, fieldValue reflect
 		defaultValue = ss[1]
 	}
 
-	bindValue(prop, fieldType, fieldValue, fieldName, propName, defaultValue, allAccess)
+	bindValue(prop, fieldType, fieldValue, fieldName, propName, defaultValue, allAccess, fullPropName)
 }
 
-// bindValue 对任意 value 进行属性绑定
+// bindValue 对任意 value 进行属性绑定 TODO 属性全称
 func bindValue(prop Properties, beanType reflect.Type, beanValue reflect.Value,
-	fieldName string, propName string, defaultValue interface{}, allAccess bool) {
+	fieldName string, propName string, defaultValue interface{}, allAccess bool, fullPropName string) {
 
 	getPropValue := func() interface{} { // 获取最终决定的属性值
 		if val, ok := prop.GetDefaultProperty(propName, nil); ok {
@@ -253,7 +264,7 @@ func bindValue(prop Properties, beanType reflect.Type, beanValue reflect.Value,
 				return prefixValue
 			}
 
-			SpringLogger.Panic(fieldName + " properties \"" + propName + "\" not config")
+			SpringLogger.Panic(fieldName + " properties \"" + fullPropName + "\" not config")
 			return nil
 		}
 	}
@@ -268,10 +279,10 @@ func bindValue(prop Properties, beanType reflect.Type, beanValue reflect.Value,
 	}
 
 	if beanValue.Kind() == reflect.Struct {
-		if defaultValue != nil { // 结构体字段不能指定默认值
+		if defaultValue != nil { // 结构体字段不能指定默认值 TODO 有值类型转换器的可以
 			SpringLogger.Panic(fieldName + " 结构体字段不能指定默认值")
 		}
-		bindStruct(prop, beanType, beanValue, fieldName, propName, allAccess)
+		bindStruct(prop, beanType, beanValue, fieldName, propName, allAccess, fullPropName)
 		return
 	}
 
@@ -336,17 +347,18 @@ func bindValue(prop Properties, beanType reflect.Type, beanValue reflect.Value,
 						for i, si := range s {
 							if sv, err := cast.ToStringMapE(si); err == nil {
 								ev := reflect.New(elemType)
-								bindStruct(&defaultProperties{sv}, elemType, ev.Elem(), fieldName, "", allAccess)
+								subPropName := fmt.Sprintf("%s[%d]", propName, i)
+								bindStruct(&defaultProperties{sv}, elemType, ev.Elem(), fieldName, "", allAccess, subPropName)
 								result.Index(i).Set(ev.Elem())
 							} else {
-								SpringLogger.Panicf("property %s isn't []map[string]interface{}", propName)
+								SpringLogger.Panicf("property %s isn't []map[string]interface{}", fullPropName)
 							}
 						}
 
 						beanValue.Set(result)
 
 					} else {
-						SpringLogger.Panicf("property %s isn't []map[string]interface{}", propName)
+						SpringLogger.Panicf("property %s isn't []map[string]interface{}", fullPropName)
 					}
 				}
 			}
@@ -376,7 +388,7 @@ func bindValue(prop Properties, beanType reflect.Type, beanValue reflect.Value,
 				}
 				beanValue.Set(reflect.ValueOf(result))
 			} else {
-				SpringLogger.Panicf("property %s isn't map[string]string", propName)
+				SpringLogger.Panicf("property %s isn't map[string]string", fullPropName)
 			}
 		case reflect.Bool:
 			SpringLogger.Panic("暂未支持")
@@ -395,7 +407,7 @@ func bindValue(prop Properties, beanType reflect.Type, beanValue reflect.Value,
 					}
 					beanValue.Set(result)
 				} else {
-					SpringLogger.Panicf("property %s isn't map[string]string", propName)
+					SpringLogger.Panicf("property %s isn't map[string]string", fullPropName)
 				}
 
 			} else { // 然后处理结构体字段的场景
@@ -419,14 +431,15 @@ func bindValue(prop Properties, beanType reflect.Type, beanValue reflect.Value,
 					result := reflect.MakeMapWithSize(beanType, len(temp))
 					for k1, v1 := range temp {
 						ev := reflect.New(elemType)
-						bindStruct(&defaultProperties{v1}, elemType, ev.Elem(), fieldName, "", allAccess)
+						subPropName := fmt.Sprintf("%s.%s", propName, k1)
+						bindStruct(&defaultProperties{v1}, elemType, ev.Elem(), fieldName, "", allAccess, subPropName)
 						result.SetMapIndex(reflect.ValueOf(k1), ev.Elem())
 					}
 
 					beanValue.Set(result)
 
 				} else {
-					SpringLogger.Panicf("property %s isn't map[string]map[string]interface{}", propName)
+					SpringLogger.Panicf("property %s isn't map[string]map[string]interface{}", fullPropName)
 				}
 			}
 		}
@@ -443,9 +456,17 @@ func (p *defaultProperties) BindProperty(name string, i interface{}) {
 // BindPropertyIf 根据类型获取属性值，属性名称统一转成小写。
 func (p *defaultProperties) BindPropertyIf(name string, i interface{}, allAccess bool) {
 	v := reflect.ValueOf(i)
+
 	if v.Kind() != reflect.Ptr {
 		SpringLogger.Panic("参数 v 必须是一个指针")
 	}
+
 	t := v.Type().Elem()
-	bindValue(p, t, v.Elem(), t.Name(), name, nil, allAccess)
+
+	s := t.Name() // 当绑定对象是 map 或者 slice 时，取元素的类型名
+	if s == "" && (t.Kind() == reflect.Map || t.Kind() == reflect.Slice) {
+		s = t.Elem().Name()
+	}
+
+	bindValue(p, t, v.Elem(), s, name, nil, allAccess, name)
 }

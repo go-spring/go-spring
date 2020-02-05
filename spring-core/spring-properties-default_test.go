@@ -626,13 +626,19 @@ type DBConnection struct {
 	Port     string `value:"${port}"`
 }
 
-type ErrorNestedDB struct {
-	DBConnection `value:"${db}"` // 错误，不能有 tag
+type UntaggedNestedDB struct {
+	DBConnection `value:"${}"`
 	DB string    `value:"${db}"`
 }
 
-type ErrorNestedDbConfig struct {
-	DB []ErrorNestedDB `value:"${db}"`
+type TaggedNestedDB struct {
+	DBConnection `value:"${tag}"`
+	DB string    `value:"${db}"`
+}
+
+type TagNestedDbConfig struct {
+	DB0 []TaggedNestedDB   `value:"${tagged.db}"`
+	DB1 []UntaggedNestedDB `value:"${db}"`
 }
 
 type NestedDB struct {
@@ -660,18 +666,18 @@ func TestDefaultProperties_BindProperty(t *testing.T) {
 		assert.Equal(t, dbConfig1, dbConfig2)
 	})
 
-	t.Run("struct bind error", func(t *testing.T) {
+	t.Run("struct bind with tag", func(t *testing.T) {
 
 		p := SpringCore.NewDefaultProperties()
 		p.LoadProperties("testdata/config/application.yaml")
 
-		assert.Panic(t, func() {
-			dbConfig1 := ErrorNestedDbConfig{}
-			p.BindProperty("", &dbConfig1)
-		}, "ErrorNestedDbConfig.\\$DB.\\$DBConnection 嵌套结构体上不允许有 value 标签")
+		dbConfig := TagNestedDbConfig{}
+		p.BindProperty("", &dbConfig)
+
+		fmt.Println(dbConfig)
 	})
 
-	t.Run("struct bind success", func(t *testing.T) {
+	t.Run("struct bind without tag", func(t *testing.T) {
 
 		p := SpringCore.NewDefaultProperties()
 		p.LoadProperties("testdata/config/application.yaml")
