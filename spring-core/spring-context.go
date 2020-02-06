@@ -33,6 +33,17 @@ const (
 	ContextEvent_CloseEnd      = ContextEvent(5) // 结束关闭 Context 的过程
 )
 
+// WiringEvent 注入堆栈的事件
+type WiringEvent int
+
+const (
+	WiringEvent_Push = WiringEvent(1) // 入栈事件
+	WiringEvent_Pop  = WiringEvent(2) // 出栈事件
+)
+
+// WiringWatcher 注入过程监视器
+type WiringWatcher func(bd IBeanDefinition, event WiringEvent)
+
 // SpringContext 定义 IoC 容器接口，Bean 的注册规则：
 //   1. AutoWireBeans 开始后不允许注册新的 Bean（性能考虑）
 type SpringContext interface {
@@ -89,20 +100,20 @@ type SpringContext interface {
 	RegisterNameMethodBean(name string, selector interface{}, method string, tags ...string) *BeanDefinition
 
 	// AutoWireBeans 完成自动绑定
-	AutoWireBeans()
+	AutoWireBeans(watcher ...WiringWatcher)
 
 	// WireBean 绑定外部的 Bean 源
-	WireBean(bean interface{})
+	WireBean(bean interface{}, watcher ...WiringWatcher)
 
 	// GetBean 根据类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 	// 什么情况下会多于 1 个？假设 StructA 实现了 InterfaceT，而且用户在注册时使用了
 	// StructA 的指针注册多个 Bean，如果在获取时使用 InterfaceT,则必然出现多于 1 个的情况。
-	GetBean(i interface{}) bool
+	GetBean(i interface{}, watcher ...WiringWatcher) bool
 
 	// GetBeanByName 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 	// 什么情况下会多于 1 个？假设 StructA 和 StructB 都实现了 InterfaceT，而且用户在注册时使用了相
 	// 同的名称分别注册了 StructA 和 StructB 的 Bean，这时候如果使用 InterfaceT 去获取，就会出现多于 1 个的情况。
-	GetBeanByName(beanId string, i interface{}) bool
+	GetBeanByName(beanId string, i interface{}, watcher ...WiringWatcher) bool
 
 	// FindBeanByName 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 	FindBeanByName(beanId string) (*BeanDefinition, bool)
@@ -115,7 +126,7 @@ type SpringContext interface {
 	// 什么情况下可以使用此功能？假设 HandlerA 和 HandlerB 都实现了 HandlerT 接口，而且用户分别注册
 	// 了一个 HandlerA 和 HandlerB 对象，如果用户想要同时获取 HandlerA 和 HandlerB 对象，那么他可
 	// 以通过 []HandlerT 即数组的方式获取到所有 Bean。
-	CollectBeans(i interface{}) bool
+	CollectBeans(i interface{}, watcher ...WiringWatcher) bool
 
 	// GetBeanDefinitions 获取所有 Bean 的定义，一般仅供调试使用。
 	GetBeanDefinitions() []*BeanDefinition

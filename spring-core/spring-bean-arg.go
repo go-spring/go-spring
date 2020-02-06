@@ -28,7 +28,7 @@ import (
 
 // describable 可描述对象
 type describable interface {
-	description() string
+	Description() string
 }
 
 // fnBindingArg 存储函数的参数绑定
@@ -156,7 +156,7 @@ func (ca *fnStringBindingArg) Get(descriptor describable, beanAssembly beanAssem
 // getArgValue 获取绑定参数值
 func (ca *fnStringBindingArg) getArgValue(descriptor describable, beanAssembly beanAssembly, v reflect.Value, tag string) {
 
-	description := fmt.Sprintf("tag:\"%s\" %s", tag, descriptor.description())
+	description := fmt.Sprintf("tag:\"%s\" %s", tag, descriptor.Description())
 	SpringLogger.Debugf("get value %s", description)
 
 	if strings.HasPrefix(tag, "${") || v.Type().Kind() == reflect.Struct { // ${x:=y} 属性绑定
@@ -343,6 +343,6 @@ func (arg *optionArg) call(beanAssembly beanAssembly) reflect.Value {
 	return out[0]
 }
 
-func (arg *optionArg) description() string {
+func (arg *optionArg) Description() string {
 	return fmt.Sprintf("option arg %s:%d", arg.file, arg.line)
 }

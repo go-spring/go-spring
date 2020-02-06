@@ -338,16 +338,17 @@ const (
 	beanStatus_Deleted   = beanStatus(5) // 已删除
 )
 
-// beanDefinition 对 BeanDefinition 的抽象接口
-type beanDefinition interface {
+// IBeanDefinition 对 BeanDefinition 的抽象接口
+type IBeanDefinition interface {
 	Bean() interface{}    // 源
 	Type() reflect.Type   // 类型
 	Value() reflect.Value // 值
 	TypeName() string     // 原始类型的全限定名
 
-	Name() string   // 返回 Bean 的名称
-	BeanId() string // 返回 Bean 的 BeanId
-	Caller() string // 返回 Bean 的注册点
+	Name() string        // 返回 Bean 的名称
+	BeanId() string      // 返回 Bean 的 BeanId
+	Caller() string      // 返回 Bean 的注册点
+	Description() string // 返回 Bean 的详细描述
 
 	springBean() SpringBean      // 返回 SpringBean 对象
 	getStatus() beanStatus       // 返回 Bean 的状态值
@@ -357,7 +358,6 @@ type beanDefinition interface {
 	getDestroy() interface{}     // 返回 Bean 的销毁函数
 	getFile() string             // 返回 Bean 注册点所在文件的名称
 	getLine() int                // 返回 Bean 注册点所在文件的行数
-	description() string         // 返回 Bean 的详细描述
 }
 
 // BeanDefinition Bean 的详细定义
@@ -501,8 +501,8 @@ func (d *BeanDefinition) getLine() int {
 	return d.line
 }
 
-// description 返回 Bean 的详细描述
-func (d *BeanDefinition) description() string {
+// Description 返回 Bean 的详细描述
+func (d *BeanDefinition) Description() string {
 	return fmt.Sprintf("%s \"%s\" %s", d.bean.beanClass(), d.name, d.Caller())
 }
 

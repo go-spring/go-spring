@@ -2100,16 +2100,42 @@ func TestDefaultSpringContext_BeanCache(t *testing.T) {
 		}, "not implement SpringCore_test.filter interface")
 	})
 
-	var service struct {
-		F1 filter `autowire:"f1"`
-		F2 filter `autowire:"f2"`
-	}
+	t.Run("implement interface", func(t *testing.T) {
 
-	ctx := SpringCore.NewDefaultSpringContext()
-	ctx.RegisterNameBeanFn("f1", func() filter {
-		return new(filterImpl)
+		var server struct {
+			F1 filter `autowire:"f1"`
+			F2 filter `autowire:"f2"`
+		}
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterNameBeanFn("f1", func() filter { return new(filterImpl) })
+		ctx.RegisterNameBean("f2", new(filterImpl)).AsInterface((*filter)(nil))
+		ctx.RegisterBean(&server)
+
+		ctx.Sort = true
+
+		wiringStack := []struct {
+			event       SpringCore.WiringEvent
+			description string
+		}{
+			{SpringCore.WiringEvent_Push, `constructor bean "f1" /Users/didi/GitHub/go-spring/go-spring/spring-core/spring-context-default_test.go:`},
+			{SpringCore.WiringEvent_Push, `constructor bean value /Users/didi/GitHub/go-spring/go-spring/spring-core/spring-context-default_test.go:`},
+			{SpringCore.WiringEvent_Pop, `constructor bean value /Users/didi/GitHub/go-spring/go-spring/spring-core/spring-context-default_test.go:`},
+			{SpringCore.WiringEvent_Pop, `constructor bean "f1" /Users/didi/GitHub/go-spring/go-spring/spring-core/spring-context-default_test.go:`},
+			{SpringCore.WiringEvent_Push, `bean "f2" /Users/didi/GitHub/go-spring/go-spring/spring-core/spring-context-default_test.go:`},
+			{SpringCore.WiringEvent_Pop, `bean "f2" /Users/didi/GitHub/go-spring/go-spring/spring-core/spring-context-default_test.go:`},
+			{SpringCore.WiringEvent_Push, `bean "*struct { F1 SpringCore_test.filter "autowire:\"f1\""; F2 SpringCore_test.filter "autowire:\"f2\"" }" /Users/didi/GitHub/go-spring/go-spring/spring-core/spring-context-default_test.go:`},
+			{SpringCore.WiringEvent_Pop, `bean "*struct { F1 SpringCore_test.filter "autowire:\"f1\""; F2 SpringCore_test.filter "autowire:\"f2\"" }" /Users/didi/GitHub/go-spring/go-spring/spring-core/spring-context-default_test.go:`},
+		}
+
+		index := 0
+		ctx.AutoWireBeans(func(bd SpringCore.IBeanDefinition, event SpringCore.WiringEvent) {
+			w := wiringStack[index]
+			assert.Equal(t, event, w.event)
+			if !strings.HasPrefix(bd.Description(), w.description) {
+				t.Errorf("expect %s but %s", w.description, bd.Description())
+			}
+			index++
+		})
 	})
-	ctx.RegisterNameBean("f2", new(filterImpl)).AsInterface((*filter)(nil))
-	ctx.RegisterBean(&service)
-	ctx.AutoWireBeans()
 }
