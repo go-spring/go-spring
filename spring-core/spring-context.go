@@ -78,17 +78,15 @@ type SpringContext interface {
 
 	// RegisterMethodBean 注册成员方法单例 Bean，不指定名称，重复注册会 panic。
 	// selector 可以是 *BeanDefinition，可以是 BeanId，还可以是 (Type)(nil) 变量。
+	// 必须给定方法名而不能通过遍历方法列表比较方法类型的方式获得函数名，因为不同方法的类型可能相同。
+	// 而且 interface 的方法类型不带 receiver 而成员方法的类型带有 receiver，两者类型不好匹配。
 	RegisterMethodBean(selector interface{}, method string, tags ...string) *BeanDefinition
 
 	// RegisterNameMethodBean 注册成员方法单例 Bean，需指定名称，重复注册会 panic。
 	// selector 可以是 *BeanDefinition，可以是 BeanId，还可以是 (Type)(nil) 变量。
+	// 必须给定方法名而不能通过遍历方法列表比较方法类型的方式获得函数名，因为不同方法的类型可能相同。
+	// 而且 interface 的方法类型不带 receiver 而成员方法的类型带有 receiver，两者类型不好匹配。
 	RegisterNameMethodBean(name string, selector interface{}, method string, tags ...string) *BeanDefinition
-
-	// RegisterMethodBeanFn 注册成员方法单例 Bean，不指定名称，重复注册会 panic。
-	RegisterMethodBeanFn(method interface{}, tags ...string) *BeanDefinition
-
-	// RegisterNameMethodBeanFn 注册成员方法单例 Bean，需指定名称，重复注册会 panic。
-	RegisterNameMethodBeanFn(name string, method interface{}, tags ...string) *BeanDefinition
 
 	// AutoWireBeans 完成自动绑定
 	AutoWireBeans()

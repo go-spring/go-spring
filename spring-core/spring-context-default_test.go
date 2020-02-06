@@ -1413,6 +1413,7 @@ func TestOptionConstructorArg(t *testing.T) {
 
 type ServerInterface interface {
 	Consumer() *Consumer
+	ConsumerT() *Consumer
 	ConsumerArg(i int) *Consumer
 }
 
@@ -1420,7 +1421,7 @@ type Server struct {
 	Version string `value:"${server.version}"`
 }
 
-func NewServer() ServerInterface {
+func NewServerInterface() ServerInterface {
 	return new(Server)
 }
 
@@ -1433,6 +1434,10 @@ func (s *Server) Consumer() *Consumer {
 		panic(errors.New("server is nil"))
 	}
 	return &Consumer{s}
+}
+
+func (s *Server) ConsumerT() *Consumer {
+	return s.Consumer()
 }
 
 func (s *Server) ConsumerArg(i int) *Consumer {
@@ -1494,7 +1499,7 @@ func TestDefaultSpringContext_RegisterMethodBean(t *testing.T) {
 		ctx := SpringCore.NewDefaultSpringContext()
 		ctx.SetProperty("server.version", "1.0.0")
 
-		parent := ctx.RegisterBeanFn(NewServer)
+		parent := ctx.RegisterBeanFn(NewServerInterface)
 
 		ctx.RegisterMethodBean(parent, "Consumer").
 			DependsOn("SpringCore_test.ServerInterface")
@@ -1528,7 +1533,7 @@ func TestDefaultSpringContext_RegisterMethodBean(t *testing.T) {
 						errCount++
 
 						var v string
-						switch  e := err.(type) {
+						switch e := err.(type) {
 						case error:
 							v = e.Error()
 						case string:
@@ -1672,139 +1677,10 @@ func TestDefaultSpringContext_RegisterMethodBean(t *testing.T) {
 	})
 }
 
-func TestDefaultSpringContext_RegisterMethodBeanFn(t *testing.T) {
-
-	t.Run("fn method bean", func(t *testing.T) {
-
-		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.SetProperty("server.version", "1.0.0")
-		ctx.RegisterBean(new(Server))
-		ctx.RegisterMethodBeanFn((*Server).Consumer)
-		ctx.AutoWireBeans()
-
-		var s *Server
-		ok := ctx.GetBean(&s)
-		assert.Equal(t, ok, true)
-		assert.Equal(t, s.Version, "1.0.0")
-
-		s.Version = "2.0.0"
-
-		var c *Consumer
-		ok = ctx.GetBean(&c)
-		assert.Equal(t, ok, true)
-		assert.Equal(t, c.s.Version, "2.0.0")
-	})
-
-	t.Run("fn method bean wire to other bean", func(t *testing.T) {
-
-		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.SetProperty("server.version", "1.0.0")
-		ctx.RegisterBean(new(Server))
-		ctx.RegisterMethodBeanFn((*Server).Consumer).DependsOn("*SpringCore_test.Server")
-		ctx.RegisterBean(new(Service))
-		ctx.AutoWireBeans()
-
-		var s *Server
-		ok := ctx.GetBean(&s)
-		assert.Equal(t, ok, true)
-		assert.Equal(t, s.Version, "1.0.0")
-
-		s.Version = "2.0.0"
-
-		var c *Consumer
-		ok = ctx.GetBean(&c)
-		assert.Equal(t, ok, true)
-		assert.Equal(t, c.s.Version, "2.0.0")
-	})
-
-	t.Run("fn method bean circle autowire", func(t *testing.T) {
-		okCount := 0
-		errCount := 0
-		for i := 0; i < 20; i++ {
-			func() {
-
-				defer func() {
-					if err := recover(); err != nil {
-						errCount++
-
-						var v string
-						switch  e := err.(type) {
-						case error:
-							v = e.Error()
-						case string:
-							v = e
-						}
-
-						if !strings.Contains(v, "found circle autowire") {
-							//panic(errors.New("test error"))
-						}
-					} else {
-						okCount++
-					}
-				}()
-
-				ctx := SpringCore.NewDefaultSpringContext()
-				ctx.SetProperty("server.version", "1.0.0")
-
-				ctx.RegisterBeanFn(NewServer).
-					DependsOn("*SpringCore_test.Service")
-
-				ctx.RegisterMethodBeanFn((*Server).Consumer).
-					DependsOn("SpringCore_test.ServerInterface")
-
-				ctx.RegisterBean(new(Service))
-				ctx.AutoWireBeans()
-			}()
-		}
-		fmt.Printf("ok:%d err:%d\n", okCount, errCount)
-	})
-
-	t.Run("fn method bean condition", func(t *testing.T) {
-
-		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.SetProperty("server.version", "1.0.0")
-		ctx.RegisterBean(new(Server))
-		ctx.RegisterMethodBeanFn((*Server).Consumer).ConditionOnProperty("consumer.enable")
-		ctx.AutoWireBeans()
-
-		var s *Server
-		ok := ctx.GetBean(&s)
-		assert.Equal(t, ok, true)
-		assert.Equal(t, s.Version, "1.0.0")
-
-		var c *Consumer
-		ok = ctx.GetBean(&c)
-		assert.Equal(t, ok, false)
-	})
-
-	t.Run("interface method bean arg", func(t *testing.T) {
-
-		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.SetProperty("server.version", "1.0.0")
-		parent := ctx.RegisterBeanFn(NewServer)
-		ctx.RegisterMethodBean(parent, "ConsumerArg", "${i:=9}")
-		ctx.AutoWireBeans()
-
-		var si ServerInterface
-		ok := ctx.GetBean(&si)
-		assert.Equal(t, ok, true)
-
-		s := si.(*Server)
-		assert.Equal(t, s.Version, "1.0.0")
-
-		s.Version = "2.0.0"
-
-		var c *Consumer
-		ok = ctx.GetBean(&c)
-		assert.Equal(t, ok, true)
-		assert.Equal(t, c.s.Version, "2.0.0")
-	})
-}
-
 func TestDefaultSpringContext_ParentNotRegister(t *testing.T) {
 
 	ctx := SpringCore.NewDefaultSpringContext()
-	parent := ctx.RegisterBeanFn(NewServer).
+	parent := ctx.RegisterBeanFn(NewServerInterface).
 		ConditionOnProperty("server.is.nil")
 	ctx.RegisterMethodBean(parent, "Consumer")
 
@@ -1836,7 +1712,7 @@ func TestDefaultSpringContext_UserDefinedTypeProperty(t *testing.T) {
 		Duration time.Duration `value:"${duration}"`
 		Level    level         `value:"${level}"`
 		Time     time.Time     `value:"${time}"`
-		Complex  complex64 // `value:"${complex}"`
+		Complex  complex64     // `value:"${complex}"`
 	}
 
 	ctx := SpringCore.NewDefaultSpringContext()
@@ -2079,8 +1955,8 @@ type NestedAutowireBean struct {
 
 type PtrNestedAutowireBean struct {
 	*SubNestedAutowireBean // 不处理
-	_ *float32
-	_ bool
+	_                      *float32
+	_                      bool
 }
 
 type FieldNestedAutowireBean struct {

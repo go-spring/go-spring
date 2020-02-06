@@ -592,12 +592,16 @@ func (ctx *defaultSpringContext) RegisterNameBeanFn(name string, fn interface{},
 
 // RegisterMethodBean 注册成员方法单例 Bean，不指定名称，重复注册会 panic。
 // selector 可以是 *BeanDefinition，可以是 BeanId，还可以是 (Type)(nil) 变量。
+// 必须给定方法名而不能通过遍历方法列表比较方法类型的方式获得函数名，因为不同方法的类型可能相同。
+// 而且 interface 的方法类型不带 receiver 而成员方法的类型带有 receiver，两者类型不好匹配。
 func (ctx *defaultSpringContext) RegisterMethodBean(selector interface{}, method string, tags ...string) *BeanDefinition {
 	return ctx.RegisterNameMethodBean("", selector, method, tags...)
 }
 
 // RegisterNameMethodBean 注册成员方法单例 Bean，需指定名称，重复注册会 panic。
 // selector 可以是 *BeanDefinition，可以是 BeanId，还可以是 (Type)(nil) 变量。
+// 必须给定方法名而不能通过遍历方法列表比较方法类型的方式获得函数名，因为不同方法的类型可能相同。
+// 而且 interface 的方法类型不带 receiver 而成员方法的类型带有 receiver，两者类型不好匹配。
 func (ctx *defaultSpringContext) RegisterNameMethodBean(name string, selector interface{}, method string, tags ...string) *BeanDefinition {
 	ctx.checkRegistration()
 
@@ -606,32 +610,6 @@ func (ctx *defaultSpringContext) RegisterNameMethodBean(name string, selector in
 	}
 
 	bd := MethodToBeanDefinition(name, selector, method, tags...)
-	ctx.methodBeans = append(ctx.methodBeans, bd)
-	return bd
-}
-
-// RegisterMethodBeanFn 注册成员方法单例 Bean，不指定名称，重复注册会 panic。
-func (ctx *defaultSpringContext) RegisterMethodBeanFn(method interface{}, tags ...string) *BeanDefinition {
-	return ctx.RegisterNameMethodBeanFn("", method, tags...)
-}
-
-// RegisterNameMethodBeanFn 注册成员方法单例 Bean，需指定名称，重复注册会 panic。
-func (ctx *defaultSpringContext) RegisterNameMethodBeanFn(name string, method interface{}, tags ...string) *BeanDefinition {
-	ctx.checkRegistration()
-
-	t := reflect.TypeOf(method)
-	o := t.In(0)
-
-	var methodName string
-
-	for i := 0; i < o.NumMethod(); i++ {
-		if m := o.Method(i); m.Type == t {
-			methodName = m.Name
-			break
-		}
-	}
-
-	bd := MethodToBeanDefinition(name, o, methodName, tags...)
 	ctx.methodBeans = append(ctx.methodBeans, bd)
 	return bd
 }
@@ -865,11 +843,6 @@ func (ctx *defaultSpringContext) AutoWireBeans() {
 			typeName, beanName, _ := ParseBeanId(e)
 			filter = func(b *BeanDefinition) bool {
 				return b.Match(typeName, beanName)
-			}
-		case reflect.Type:
-			selector = e.String()
-			filter = func(b *BeanDefinition) bool {
-				return b.Type() == e
 			}
 		default:
 			t := reflect.TypeOf(e)

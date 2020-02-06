@@ -101,24 +101,18 @@ func RegisterNameBeanFn(name string, fn interface{}, tags ...string) *SpringCore
 
 // RegisterMethodBean 注册成员方法单例 Bean，不指定名称，重复注册会 panic。
 // selector 可以是 *BeanDefinition，可以是 BeanId，还可以是 (Type)(nil) 变量。
+// 必须给定方法名而不能通过遍历方法列表比较方法类型的方式获得函数名，因为不同方法的类型可能相同。
+// 而且 interface 的方法类型不带 receiver 而成员方法的类型带有 receiver，两者类型不好匹配。
 func RegisterMethodBean(selector interface{}, method string, tags ...string) *SpringCore.BeanDefinition {
 	return ctx.RegisterMethodBean(selector, method, tags...)
 }
 
 // RegisterNameMethodBean 注册成员方法单例 Bean，需指定名称，重复注册会 panic。
 // selector 可以是 *BeanDefinition，可以是 BeanId，还可以是 (Type)(nil) 变量。
+// 必须给定方法名而不能通过遍历方法列表比较方法类型的方式获得函数名，因为不同方法的类型可能相同。
+// 而且 interface 的方法类型不带 receiver 而成员方法的类型带有 receiver，两者类型不好匹配。
 func RegisterNameMethodBean(name string, selector interface{}, method string, tags ...string) *SpringCore.BeanDefinition {
 	return ctx.RegisterNameMethodBean(name, selector, method, tags...)
-}
-
-// RegisterMethodBeanFn 注册成员方法单例 Bean，不指定名称，重复注册会 panic。
-func RegisterMethodBeanFn(method interface{}, tags ...string) *SpringCore.BeanDefinition {
-	return ctx.RegisterMethodBeanFn(method, tags...)
-}
-
-// RegisterNameMethodBeanFn 注册成员方法单例 Bean，需指定名称，重复注册会 panic。
-func RegisterNameMethodBeanFn(name string, method interface{}, tags ...string) *SpringCore.BeanDefinition {
-	return ctx.RegisterNameMethodBeanFn(name, method, tags...)
 }
 
 // WireBean 绑定外部的 Bean 源

@@ -165,4 +165,7 @@ func TestVariadicFunction(t *testing.T) {
 
 	typ = reflect.TypeOf((*caller).call)
 	fmt.Println(typ)
+
+	var arr []int
+	fmt.Println(len(arr))
 }
