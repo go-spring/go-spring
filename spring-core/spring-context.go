@@ -19,7 +19,6 @@ package SpringCore
 
 import (
 	"context"
-	"reflect"
 )
 
 // ContextEvent 定义 SpringContext 事件类型
@@ -119,9 +118,6 @@ type SpringContext interface {
 	// 了一个 HandlerA 和 HandlerB 对象，如果用户想要同时获取 HandlerA 和 HandlerB 对象，那么他可
 	// 以通过 []HandlerT 即数组的方式获取到所有 Bean。
 	CollectBeans(i interface{}) bool
-
-	// GetBeanValue 根据 beanId 获取符合条件的 Bean 对象，成功返回 true，否则返回 false。
-	GetBeanValue(beanId string, v reflect.Value) bool
 
 	// GetBeanDefinitions 获取所有 Bean 的定义，一般仅供调试使用。
 	GetBeanDefinitions() []*BeanDefinition

@@ -34,7 +34,7 @@ type describable interface {
 // fnBindingArg 存储函数的参数绑定
 type fnBindingArg interface {
 	// Get 获取函数参数的绑定值
-	Get(descriptor describable, ctx SpringContext) []reflect.Value
+	Get(descriptor describable, beanAssembly beanAssembly) []reflect.Value
 }
 
 // fnStringBindingArg 存储一般函数的参数绑定
@@ -112,7 +112,7 @@ func newFnStringBindingArg(fnType reflect.Type, withReceiver bool, tags []string
 }
 
 // Get 获取函数参数的绑定值
-func (ca *fnStringBindingArg) Get(descriptor describable, ctx SpringContext) []reflect.Value {
+func (ca *fnStringBindingArg) Get(descriptor describable, beanAssembly beanAssembly) []reflect.Value {
 
 	fnType := ca.fnType
 	variadic := fnType.IsVariadic()
@@ -135,16 +135,16 @@ func (ca *fnStringBindingArg) Get(descriptor describable, ctx SpringContext) []r
 		if i < numIn-1 || (i == numIn-1 && !variadic) {
 			iv := reflect.New(it).Elem()
 			if len(tags) == 0 {
-				ca.getArgValue(descriptor, ctx, iv, "")
+				ca.getArgValue(descriptor, beanAssembly, iv, "")
 			} else {
-				ca.getArgValue(descriptor, ctx, iv, tags[0])
+				ca.getArgValue(descriptor, beanAssembly, iv, tags[0])
 			}
 			args = append(args, iv)
 		} else {
 			et := it.Elem()
 			for _, tag := range tags {
 				ev := reflect.New(et).Elem()
-				ca.getArgValue(descriptor, ctx, ev, tag)
+				ca.getArgValue(descriptor, beanAssembly, ev, tag)
 				args = append(args, ev)
 			}
 		}
@@ -154,7 +154,7 @@ func (ca *fnStringBindingArg) Get(descriptor describable, ctx SpringContext) []r
 }
 
 // getArgValue 获取绑定参数值
-func (ca *fnStringBindingArg) getArgValue(descriptor describable, ctx SpringContext, v reflect.Value, tag string) {
+func (ca *fnStringBindingArg) getArgValue(descriptor describable, beanAssembly beanAssembly, v reflect.Value, tag string) {
 
 	description := fmt.Sprintf("tag:\"%s\" %s", tag, descriptor.description())
 	SpringLogger.Debugf("get value %s", description)
@@ -163,9 +163,13 @@ func (ca *fnStringBindingArg) getArgValue(descriptor describable, ctx SpringCont
 		if tag == "" { // 如果是结构体，尝试使用结构体属性绑定语法。
 			tag = "${}"
 		}
-		bindStructField(ctx, v.Type(), v, "", "", tag, ctx.AllAccess(), "")
+		bindStructField(beanAssembly.SpringContext(), v.Type(), v, "", "", tag, beanAssembly.SpringContext().AllAccess(), "")
 	} else {
-		ctx.GetBeanValue(tag, v)
+		if _, beanName, _ := ParseBeanId(tag); beanName == "[]" {
+			beanAssembly.collectBeans(v)
+		} else {
+			beanAssembly.getBeanValue(tag, reflect.Value{}, v, "")
+		}
 	}
 
 	SpringLogger.Debugf("get value success %s", description)
@@ -177,10 +181,10 @@ type fnOptionBindingArg struct {
 }
 
 // Get 获取函数参数的绑定值
-func (ca *fnOptionBindingArg) Get(_ describable, ctx SpringContext) []reflect.Value {
+func (ca *fnOptionBindingArg) Get(_ describable, beanAssembly beanAssembly) []reflect.Value {
 	args := make([]reflect.Value, 0)
 	for _, option := range ca.options {
-		if arg := option.call(ctx); arg.IsValid() {
+		if arg := option.call(beanAssembly); arg.IsValid() {
 			args = append(args, arg)
 		}
 	}
@@ -326,15 +330,15 @@ func (arg *optionArg) ConditionOnProfile(profile string) *optionArg {
 }
 
 // call 获取 optionArg 的运算值
-func (arg *optionArg) call(ctx SpringContext) reflect.Value {
+func (arg *optionArg) call(beanAssembly beanAssembly) reflect.Value {
 
 	// 判断 Option 条件是否成立
-	if ok := arg.cond.Matches(ctx); !ok {
+	if ok := arg.cond.Matches(beanAssembly.SpringContext()); !ok {
 		return reflect.Value{}
 	}
 
 	fnValue := reflect.ValueOf(arg.fn)
-	in := arg.arg.Get(arg, ctx)
+	in := arg.arg.Get(arg, beanAssembly)
 	out := fnValue.Call(in)
 	return out[0]
 }
