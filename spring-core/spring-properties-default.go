@@ -74,7 +74,7 @@ func (p *defaultProperties) readProperties(r func(*viper.Viper) error) {
 	for _, key := range keys {
 		val := v.Get(key)
 		p.SetProperty(key, val)
-		SpringLogger.Debugf("%s=%v", key, val)
+		SpringLogger.Tracef("%s=%v", key, val)
 	}
 }
 

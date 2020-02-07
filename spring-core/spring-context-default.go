@@ -47,7 +47,7 @@ func newBeanCacheItem() *beanCacheItem {
 }
 
 func (item *beanCacheItem) store(t reflect.Type, bd *BeanDefinition) {
-	SpringLogger.Debugf("register bean type(%s) beanId(%s) %s", t.String(), bd.BeanId(), bd.Caller())
+	SpringLogger.Debugf("register bean type:\"%s\" beanId:\"%s\" %s", t.String(), bd.BeanId(), bd.Caller())
 	item.beans = append(item.beans, bd)
 }
 
@@ -64,9 +64,9 @@ func newWiringStack(watcher []WiringWatcher) *wiringStack {
 		watcher = append(watcher, func(bd IBeanDefinition, event WiringEvent) {
 			switch event {
 			case WiringEvent_Push:
-				SpringLogger.Debugf("wiring %s", bd.Description())
+				SpringLogger.Tracef("wiring %s", bd.Description())
 			case WiringEvent_Pop:
-				SpringLogger.Debugf("wired %s", bd.Description())
+				SpringLogger.Tracef("wired %s", bd.Description())
 			}
 		})
 	}

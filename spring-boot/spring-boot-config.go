@@ -70,7 +70,7 @@ func (p *defaultPropertySource) Load(profile string) map[string]interface{} {
 			continue // 这里不需要警告
 		}
 
-		SpringLogger.Debug(">>> load properties from", filename)
+		SpringLogger.Debug(">>> load properties from file ", filename)
 
 		v := viper.New()
 		v.SetConfigFile(filename)
@@ -84,7 +84,7 @@ func (p *defaultPropertySource) Load(profile string) map[string]interface{} {
 		for _, key := range keys {
 			val := v.Get(key)
 			result[key] = val
-			SpringLogger.Debugf("%s=%v", key, val)
+			SpringLogger.Tracef("%s=%v", key, val)
 		}
 	}
 
@@ -150,7 +150,7 @@ func (p *configMapPropertySource) Load(profile string) map[string]interface{} {
 			for _, v0Key := range v0Keys {
 				v0Val := v0.Get(v0Key)
 				result[v0Key] = v0Val
-				SpringLogger.Debugf("%s=%v", v0Key, v0Val)
+				SpringLogger.Tracef("%s=%v", v0Key, v0Val)
 			}
 		}
 	}

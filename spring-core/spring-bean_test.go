@@ -85,25 +85,25 @@ func TestIsValueType(t *testing.T) {
 		i interface{}
 		v bool
 	}{
-		{true, true},                                  // Bool
-		{int(1), true},                                // Int
-		{int8(1), true},                               // Int8
-		{int16(1), true},                              // Int16
-		{int32(1), true},                              // Int32
-		{int64(1), true},                              // Int64
-		{uint(1), true},                               // Uint
-		{uint8(1), true},                              // Uint8
-		{uint16(1), true},                             // Uint16
-		{uint32(1), true},                             // Uint32
-		{uint64(1), true},                             // Uint64
-		{uintptr(0), false},                           // Uintptr
-		{float32(1), true},                            // Float32
-		{float64(1), true},                            // Float64
-		{complex64(1), true},                          // Complex64
-		{complex128(1), true},                         // Complex128
-		{[1]int{0}, false},                            // Array
-		{make(chan struct{}), false},                  // Chan
-		{func() {}, false},                            // Func
+		{true, true},                 // Bool
+		{int(1), true},               // Int
+		{int8(1), true},              // Int8
+		{int16(1), true},             // Int16
+		{int32(1), true},             // Int32
+		{int64(1), true},             // Int64
+		{uint(1), true},              // Uint
+		{uint8(1), true},             // Uint8
+		{uint16(1), true},            // Uint16
+		{uint32(1), true},            // Uint32
+		{uint64(1), true},            // Uint64
+		{uintptr(0), false},          // Uintptr
+		{float32(1), true},           // Float32
+		{float64(1), true},           // Float64
+		{complex64(1), true},         // Complex64
+		{complex128(1), true},        // Complex128
+		{[1]int{0}, false},           // Array
+		{make(chan struct{}), false}, // Chan
+		{func() {}, false},           // Func
 		{reflect.TypeOf((*error)(nil)).Elem(), false}, // Interface
 		{make(map[int]int), false},                    // Map
 		{new(int), false},                             // Ptr
@@ -520,7 +520,7 @@ func TestFnToBeanDefinition(t *testing.T) {
 	assert.Panic(t, func() {
 		bd = SpringCore.FnToBeanDefinition("", func() (*int, *int) { return nil, nil })
 		assert.Equal(t, bd.Type().String(), "*int")
-	}, "func bean must be \"func\\(...\\) bean\" or \"func\\(...\\) \\(bean, error\\)\"")
+	}, "func bean must be func\\(...\\)bean or func\\(...\\)\\(bean, error\\)")
 
 	bd = SpringCore.FnToBeanDefinition("", func() (*int, error) { return nil, nil })
 	assert.Equal(t, bd.Type().String(), "*int")

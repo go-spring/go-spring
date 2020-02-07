@@ -28,12 +28,17 @@ import (
 	"testing"
 	"time"
 
+	SpringLogger "github.com/go-spring/go-spring-parent/spring-logger"
 	"github.com/go-spring/go-spring-parent/spring-utils"
 	"github.com/go-spring/go-spring/spring-core"
 	pkg1 "github.com/go-spring/go-spring/spring-core/testdata/pkg/bar"
 	pkg2 "github.com/go-spring/go-spring/spring-core/testdata/pkg/foo"
 	"github.com/magiconair/properties/assert"
 )
+
+func init() {
+	SpringLogger.SetLogger(&SpringLogger.Console{})
+}
 
 func TestDefaultSpringContext_RegisterBeanFrozen(t *testing.T) {
 	assert.Panic(t, func() {

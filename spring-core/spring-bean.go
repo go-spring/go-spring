@@ -193,9 +193,9 @@ func newFunctionBean(fnType reflect.Type, withReceiver bool, tags []string) func
 
 	// 检查是否是合法的函数 Bean 类型
 	if ok := IsFuncBeanType(fnType); !ok {
-		t1 := "func(...) bean"
-		t2 := "func(...) (bean, error)"
-		SpringLogger.Panicf("func bean must be \"%s\" or \"%s\"", t1, t2)
+		t1 := "func(...)bean"
+		t2 := "func(...)(bean, error)"
+		SpringLogger.Panicf("func bean must be %s or %s", t1, t2)
 	}
 
 	t := fnType.Out(0)
@@ -261,7 +261,7 @@ func newMethodBean(parent *BeanDefinition, method string, tags ...string) *metho
 	}
 
 	if fnType == nil {
-		SpringLogger.Panic("can't find method: " + method)
+		SpringLogger.Panic("can't find method: ", method)
 	}
 
 	withReceiver := false

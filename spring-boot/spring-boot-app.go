@@ -95,7 +95,7 @@ func (app *application) loadSystemEnv() {
 		if i := strings.Index(env, "="); i > 0 {
 			k, v := env[0:i], env[i+1:]
 			k = strings.ToLower(k)
-			SpringLogger.Debugf("%s=%v", k, v)
+			SpringLogger.Tracef("%s=%v", k, v)
 			app.AppContext.SetProperty(k, v)
 		}
 	}
