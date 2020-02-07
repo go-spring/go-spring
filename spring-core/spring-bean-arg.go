@@ -26,15 +26,15 @@ import (
 	"github.com/go-spring/go-spring-parent/spring-logger"
 )
 
-// describable 可描述对象
-type describable interface {
-	Description() string
+// caller 注册点信息
+type caller interface {
+	Caller() string
 }
 
 // fnBindingArg 存储函数的参数绑定
 type fnBindingArg interface {
 	// Get 获取函数参数的绑定值
-	Get(fn describable, beanAssembly beanAssembly) []reflect.Value
+	Get(caller caller, beanAssembly beanAssembly) []reflect.Value
 }
 
 // fnStringBindingArg 存储一般函数的参数绑定
@@ -62,8 +62,9 @@ func newFnStringBindingArg(fnType reflect.Type, withReceiver bool, tags []string
 
 		if tag := tags[0]; tag != "" {
 			if i := strings.Index(tag, ":"); i > 0 {
-				_, err := strconv.Atoi(tag[:i])
-				indexed = err == nil
+				if _, err := strconv.Atoi(tag[:i]); err == nil {
+					indexed = true
+				}
 			}
 		}
 
@@ -80,21 +81,20 @@ func newFnStringBindingArg(fnType reflect.Type, withReceiver bool, tags []string
 				}
 
 				if i < 0 || i >= numIn {
-					SpringLogger.Panicf("error indexed tag \"%s\"", tag)
+					SpringLogger.Panicf("indexed tag \"%s\" overflow", tag)
 				}
 
-				if variadic && i == numIn-1 { // 处理可变参数
-					fnTags[i] = append(fnTags[i], tag[index+1:])
-				} else {
-					fnTags[i] = []string{tag[index+1:]}
+				fnTags[i] = append(fnTags[i], tag[index+1:])
+
+				if len(fnTags[i]) > 1 && (!variadic || i < numIn-1) {
+					SpringLogger.Panicf("index %d has %d tags", i, len(fnTags[i]))
 				}
 			}
 
 		} else { // 无序号
 			for i, tag := range tags {
 				if index := strings.Index(tag, ":"); index > 0 {
-					_, err := strconv.Atoi(tag[:index])
-					if err == nil {
+					if _, err := strconv.Atoi(tag[:index]); err == nil {
 						SpringLogger.Panic("tag \"%s\" shouldn't have index", tag)
 					}
 				}
@@ -103,6 +103,9 @@ func newFnStringBindingArg(fnType reflect.Type, withReceiver bool, tags []string
 					fnTags[numIn-1] = append(fnTags[numIn-1], tag)
 				} else {
 					fnTags[i] = []string{tag}
+					if i >= numIn {
+						SpringLogger.Panicf("tag %d:\"%s\" overflow", i, tag)
+					}
 				}
 			}
 		}
@@ -112,51 +115,51 @@ func newFnStringBindingArg(fnType reflect.Type, withReceiver bool, tags []string
 }
 
 // Get 获取函数参数的绑定值
-func (ca *fnStringBindingArg) Get(fn describable, beanAssembly beanAssembly) []reflect.Value {
-
-	fnType := ca.fnType
-	variadic := fnType.IsVariadic()
-	args := make([]reflect.Value, 0)
+func (arg *fnStringBindingArg) Get(caller caller, beanAssembly beanAssembly) []reflect.Value {
+	fnType := arg.fnType
 
 	numIn := fnType.NumIn()
-	if ca.withReceiver {
+	if arg.withReceiver {
 		numIn -= 1
 	}
 
-	for i, tags := range ca.fnTags {
+	variadic := fnType.IsVariadic()
+	result := make([]reflect.Value, 0)
+
+	for i, tags := range arg.fnTags {
 
 		var it reflect.Type
-		if ca.withReceiver {
+		if arg.withReceiver {
 			it = fnType.In(i + 1)
 		} else {
 			it = fnType.In(i)
 		}
 
-		if i < numIn-1 || (i == numIn-1 && !variadic) {
-			iv := reflect.New(it).Elem()
-			if len(tags) == 0 {
-				ca.getArgValue(fn, beanAssembly, iv, "")
-			} else {
-				ca.getArgValue(fn, beanAssembly, iv, tags[0])
-			}
-			args = append(args, iv)
-		} else {
+		if variadic && i == numIn-1 { // 可变参数
 			et := it.Elem()
 			for _, tag := range tags {
 				ev := reflect.New(et).Elem()
-				ca.getArgValue(fn, beanAssembly, ev, tag)
-				args = append(args, ev)
+				arg.getArgValue(caller, beanAssembly, ev, tag)
+				result = append(result, ev)
 			}
+		} else {
+			iv := reflect.New(it).Elem()
+			if len(tags) == 0 {
+				arg.getArgValue(caller, beanAssembly, iv, "")
+			} else {
+				arg.getArgValue(caller, beanAssembly, iv, tags[0])
+			}
+			result = append(result, iv)
 		}
 	}
 
-	return args
+	return result
 }
 
 // getArgValue 获取绑定参数值
-func (ca *fnStringBindingArg) getArgValue(fn describable, beanAssembly beanAssembly, v reflect.Value, tag string) {
+func (arg *fnStringBindingArg) getArgValue(caller caller, beanAssembly beanAssembly, v reflect.Value, tag string) {
 
-	description := fmt.Sprintf("tag:\"%s\" %s", tag, fn.Description())
+	description := fmt.Sprintf("tag:\"%s\" %s", tag, caller.Caller())
 	SpringLogger.Tracef("get value %s", description)
 
 	if strings.HasPrefix(tag, "${") || v.Type().Kind() == reflect.Struct { // ${x:=y} 属性绑定
@@ -168,7 +171,7 @@ func (ca *fnStringBindingArg) getArgValue(fn describable, beanAssembly beanAssem
 		if _, beanName, _ := ParseBeanId(tag); beanName == "[]" {
 			beanAssembly.collectBeans(v)
 		} else {
-			beanAssembly.getBeanValue(tag, reflect.Value{}, v, "")
+			beanAssembly.getBeanValue(v, tag, reflect.Value{}, "")
 		}
 	}
 
@@ -181,14 +184,14 @@ type fnOptionBindingArg struct {
 }
 
 // Get 获取函数参数的绑定值
-func (ca *fnOptionBindingArg) Get(_ describable, beanAssembly beanAssembly) []reflect.Value {
-	args := make([]reflect.Value, 0)
-	for _, option := range ca.options {
-		if arg := option.call(beanAssembly); arg.IsValid() {
-			args = append(args, arg)
+func (arg *fnOptionBindingArg) Get(_ caller, beanAssembly beanAssembly) []reflect.Value {
+	result := make([]reflect.Value, 0)
+	for _, option := range arg.options {
+		if v, ok := option.call(beanAssembly); ok {
+			result = append(result, v)
 		}
 	}
-	return args
+	return result
 }
 
 // optionArg Option 函数的绑定参数
@@ -255,6 +258,10 @@ func NewOptionArg(fn interface{}, tags ...string) *optionArg {
 		file: file,
 		line: line,
 	}
+}
+
+func (arg *optionArg) Caller() string {
+	return fmt.Sprintf("%s:%d", arg.file, arg.line)
 }
 
 // Or c=a||b
@@ -330,21 +337,17 @@ func (arg *optionArg) ConditionOnProfile(profile string) *optionArg {
 }
 
 // call 获取 optionArg 的运算值
-func (arg *optionArg) call(beanAssembly beanAssembly) (v reflect.Value) {
-	SpringLogger.Tracef("call option func %s", arg.Description())
+func (arg *optionArg) call(beanAssembly beanAssembly) (v reflect.Value, ok bool) {
+	SpringLogger.Tracef("call option func %s", arg.Caller())
 
 	// 判断 Option 条件是否成立
-	if ok := arg.cond.Matches(beanAssembly.SpringContext()); ok {
+	if ok = arg.cond.Matches(beanAssembly.SpringContext()); ok {
 		fnValue := reflect.ValueOf(arg.fn)
 		in := arg.arg.Get(arg, beanAssembly)
 		out := fnValue.Call(in)
 		v = out[0]
 	}
 
-	SpringLogger.Tracef("call option func success %s", arg.Description())
+	SpringLogger.Tracef("call option func success %s", arg.Caller())
 	return
-}
-
-func (arg *optionArg) Description() string {
-	return fmt.Sprintf("%s:%d", arg.file, arg.line)
 }

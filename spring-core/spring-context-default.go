@@ -108,7 +108,7 @@ func (s *wiringStack) path() (path string) {
 type beanAssembly interface {
 	SpringContext() SpringContext
 	collectBeans(v reflect.Value) bool
-	getBeanValue(beanId string, parentValue reflect.Value, beanValue reflect.Value, field string) bool
+	getBeanValue(v reflect.Value, beanId string, parentValue reflect.Value, field string) bool
 }
 
 // defaultBeanAssembly beanAssembly 的默认版本
@@ -143,10 +143,10 @@ func (beanAssembly *defaultBeanAssembly) getCacheItem(t reflect.Type) *beanCache
 }
 
 // getBeanValue 根据 BeanId 查找 Bean 并返回 Bean 源的值
-func (beanAssembly *defaultBeanAssembly) getBeanValue(beanId string, parentValue reflect.Value, beanValue reflect.Value, field string) bool {
+func (beanAssembly *defaultBeanAssembly) getBeanValue(v reflect.Value, beanId string, parentValue reflect.Value, field string) bool {
 
 	typeName, beanName, nullable := ParseBeanId(beanId)
-	beanType := beanValue.Type()
+	beanType := v.Type()
 
 	if ok := IsRefType(beanType.Kind()); !ok {
 		panic(fmt.Errorf("receiver must be ref type, bean: \"%s\" field: %s", beanId, field))
@@ -206,8 +206,8 @@ func (beanAssembly *defaultBeanAssembly) getBeanValue(beanId string, parentValue
 	beanAssembly.wireBeanDefinition(primaryBeans[0], false)
 
 	// 恰好 1 个
-	v := SpringUtils.ValuePatchIf(beanValue, beanAssembly.springContext.AllAccess())
-	v.Set(primaryBeans[0].Value())
+	v0 := SpringUtils.ValuePatchIf(v, beanAssembly.springContext.AllAccess())
+	v0.Set(primaryBeans[0].Value())
 	return true
 }
 
@@ -517,7 +517,7 @@ func (beanAssembly *defaultBeanAssembly) wireStructField(parentValue reflect.Val
 		}
 
 	} else { // 匹配模式，autowire:"" or autowire:"name"
-		beanAssembly.getBeanValue(beanId, parentValue, beanValue, field)
+		beanAssembly.getBeanValue(beanValue, beanId, parentValue, field)
 	}
 }
 
@@ -690,7 +690,7 @@ func (ctx *defaultSpringContext) GetBeanByName(beanId string, i interface{}, wat
 	v := reflect.ValueOf(i)
 
 	w := newDefaultBeanAssembly(ctx, ctx.beanCache, watcher)
-	return w.getBeanValue(beanId, reflect.Value{}, v.Elem(), "")
+	return w.getBeanValue(v.Elem(), beanId, reflect.Value{}, "")
 }
 
 // FindBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
