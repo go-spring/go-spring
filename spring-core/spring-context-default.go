@@ -46,8 +46,9 @@ func newBeanCacheItem() *beanCacheItem {
 	}
 }
 
-func (item *beanCacheItem) store(d *BeanDefinition) {
-	item.beans = append(item.beans, d)
+func (item *beanCacheItem) store(t reflect.Type, bd *BeanDefinition) {
+	SpringLogger.Debugf("register bean type(%s) beanId(%s) %s", t.String(), bd.BeanId(), bd.Caller())
+	item.beans = append(item.beans, bd)
 }
 
 // wiringStack 存储绑定中的 Bean
@@ -580,6 +581,13 @@ func (ctx *defaultSpringContext) SetEventNotify(notify func(event ContextEvent))
 	ctx.eventNotify = notify
 }
 
+// checkAutoWired 检查是否已调用 AutoWireBeans 方法
+func (ctx *defaultSpringContext) checkAutoWired() {
+	if !ctx.autoWired {
+		panic(errors.New("should call after ctx.AutoWireBeans()"))
+	}
+}
+
 // checkRegistration 检查注册是否已被冻结
 func (ctx *defaultSpringContext) checkRegistration() {
 	if ctx.autoWired {
@@ -587,11 +595,27 @@ func (ctx *defaultSpringContext) checkRegistration() {
 	}
 }
 
-// checkAutoWired 检查是否已调用 AutoWireBeans 方法
-func (ctx *defaultSpringContext) checkAutoWired() {
-	if !ctx.autoWired {
-		panic(errors.New("should call after ctx.AutoWireBeans()"))
+// deleteBeanDefinition 删除 BeanDefinition。
+func (ctx *defaultSpringContext) deleteBeanDefinition(bd *BeanDefinition) {
+	key := beanKey{bd.Type(), bd.name}
+	bd.status = beanStatus_Deleted
+	delete(ctx.beanMap, key)
+}
+
+// registerBeanDefinition 注册 BeanDefinition，重复注册会 panic。
+func (ctx *defaultSpringContext) registerBeanDefinition(d *BeanDefinition) {
+	ctx.checkRegistration()
+
+	k := beanKey{
+		rType: d.Type(),
+		name:  d.name,
 	}
+
+	if _, ok := ctx.beanMap[k]; ok {
+		panic(fmt.Errorf("duplicate registration, bean: \"%s\"", d.BeanId()))
+	}
+
+	ctx.beanMap[k] = d
 }
 
 // RegisterBean 注册单例 Bean，不指定名称，重复注册会 panic。
@@ -642,29 +666,6 @@ func (ctx *defaultSpringContext) RegisterNameMethodBean(name string, selector in
 	return bd
 }
 
-// registerBeanDefinition 注册 BeanDefinition，重复注册会 panic。
-func (ctx *defaultSpringContext) registerBeanDefinition(d *BeanDefinition) {
-	ctx.checkRegistration()
-
-	k := beanKey{
-		rType: d.Type(),
-		name:  d.name,
-	}
-
-	if _, ok := ctx.beanMap[k]; ok {
-		panic(fmt.Errorf("duplicate registration, bean: \"%s\"", d.BeanId()))
-	}
-
-	ctx.beanMap[k] = d
-}
-
-// deleteBeanDefinition 删除 BeanDefinition。
-func (ctx *defaultSpringContext) deleteBeanDefinition(bd *BeanDefinition) {
-	key := beanKey{bd.Type(), bd.name}
-	bd.status = beanStatus_Deleted
-	delete(ctx.beanMap, key)
-}
-
 // GetBean 根据类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 func (ctx *defaultSpringContext) GetBean(i interface{}, watcher ...WiringWatcher) bool {
 	return ctx.GetBeanByName("?", i, watcher...)
@@ -690,21 +691,6 @@ func (ctx *defaultSpringContext) GetBeanByName(beanId string, i interface{}, wat
 
 	w := newDefaultBeanAssembly(ctx, ctx.beanCache, watcher)
 	return w.getBeanValue(beanId, reflect.Value{}, v.Elem(), "")
-}
-
-// findCacheItem 查找指定类型的缓存项
-func (ctx *defaultSpringContext) findCacheItem(t reflect.Type) *beanCacheItem {
-	c, ok := ctx.beanCache[t]
-	if !ok {
-		c = newBeanCacheItem()
-		ctx.beanCache[t] = c
-	}
-	return c
-}
-
-// FindBeanByName 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
-func (ctx *defaultSpringContext) FindBeanByName(beanId string) (*BeanDefinition, bool) {
-	return ctx.FindBean(beanId)
 }
 
 // FindBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
@@ -777,6 +763,11 @@ func (ctx *defaultSpringContext) FindBean(selector interface{}) (*BeanDefinition
 	return result[0], true
 }
 
+// FindBeanByName 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
+func (ctx *defaultSpringContext) FindBeanByName(beanId string) (*BeanDefinition, bool) {
+	return ctx.FindBean(beanId)
+}
+
 // CollectBeans 收集数组或指针定义的所有符合条件的 Bean 对象，收集到返回 true，否则返回 false。
 func (ctx *defaultSpringContext) CollectBeans(i interface{}, watcher ...WiringWatcher) bool {
 	ctx.checkAutoWired()
@@ -795,6 +786,16 @@ func (ctx *defaultSpringContext) CollectBeans(i interface{}, watcher ...WiringWa
 
 	w := newDefaultBeanAssembly(ctx, ctx.beanCache, watcher)
 	return w.collectBeans(reflect.ValueOf(i).Elem())
+}
+
+// findCacheItem 查找指定类型的缓存项
+func (ctx *defaultSpringContext) findCacheItem(t reflect.Type) *beanCacheItem {
+	c, ok := ctx.beanCache[t]
+	if !ok {
+		c = newBeanCacheItem()
+		ctx.beanCache[t] = c
+	}
+	return c
 }
 
 // resolveBean 对 Bean 进行决议是否能够创建 Bean 的实例
@@ -823,9 +824,8 @@ func (ctx *defaultSpringContext) resolveBean(bd *BeanDefinition) {
 	}
 
 	// 将符合注册条件的 Bean 放入到缓存里面
-	SpringLogger.Debugf("register bean \"%s\" %s", bd.BeanId(), bd.Caller())
 	item := ctx.findCacheItem(bd.Type())
-	item.store(bd)
+	item.store(bd.Type(), bd)
 
 	// 按照导出类型放入缓存
 	for _, t := range bd.exports {
@@ -836,7 +836,7 @@ func (ctx *defaultSpringContext) resolveBean(bd *BeanDefinition) {
 		}
 
 		m := ctx.findCacheItem(t)
-		m.store(bd)
+		m.store(t, bd)
 	}
 
 	bd.status = beanStatus_Resolved

@@ -30,6 +30,17 @@ const (
 	SpringProfile = "spring.profile" // 运行环境
 )
 
+// CommandLineRunner 命令行启动器接口
+type CommandLineRunner interface {
+	Run(ctx ApplicationContext)
+}
+
+// ApplicationEvent 应用运行过程中的事件
+type ApplicationEvent interface {
+	OnStartApplication(ctx ApplicationContext) // 应用启动的事件
+	OnStopApplication(ctx ApplicationContext)  // 应用停止的事件
+}
+
 // application SpringBoot 应用
 type application struct {
 	AppContext     ApplicationContext // 应用上下文
@@ -42,17 +53,6 @@ func newApplication(appCtx ApplicationContext, cfgLocation []string) *applicatio
 		AppContext:     appCtx,
 		ConfigLocation: cfgLocation,
 	}
-}
-
-// ApplicationEvent 应用运行过程中的事件
-type ApplicationEvent interface {
-	OnStartApplication(ctx ApplicationContext) // 应用启动的事件
-	OnStopApplication(ctx ApplicationContext)  // 应用停止的事件
-}
-
-// CommandLineRunner 命令行启动器接口
-type CommandLineRunner interface {
-	Run(ctx ApplicationContext)
 }
 
 // Start 启动 SpringBoot 应用
