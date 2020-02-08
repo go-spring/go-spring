@@ -34,34 +34,34 @@ type Properties interface {
 	ReadProperties(reader io.Reader, configType string)
 
 	// GetProperty 返回属性值，属性名称统一转成小写。
-	GetProperty(name string) interface{}
+	GetProperty(key string) interface{}
 
 	// GetBoolProperty 返回布尔型属性值，属性名称统一转成小写。
-	GetBoolProperty(name string) bool
+	GetBoolProperty(key string) bool
 
 	// GetIntProperty 返回有符号整型属性值，属性名称统一转成小写。
-	GetIntProperty(name string) int64
+	GetIntProperty(key string) int64
 
 	// GetUintProperty 返回无符号整型属性值，属性名称统一转成小写。
-	GetUintProperty(name string) uint64
+	GetUintProperty(key string) uint64
 
 	// GetFloatProperty 返回浮点型属性值，属性名称统一转成小写。
-	GetFloatProperty(name string) float64
+	GetFloatProperty(key string) float64
 
 	// GetStringProperty 返回字符串型属性值，属性名称统一转成小写。
-	GetStringProperty(name string) string
+	GetStringProperty(key string) string
 
 	// GetDurationProperty 返回 Duration 类型属性值，属性名称统一转成小写。
-	GetDurationProperty(name string) time.Duration
+	GetDurationProperty(key string) time.Duration
 
 	// GetTimeProperty 返回 Time 类型的属性值，属性名称统一转成小写。
-	GetTimeProperty(name string) time.Time
+	GetTimeProperty(key string) time.Time
 
 	// GetDefaultProperty 返回属性值，如果没有找到则使用指定的默认值，属性名称统一转成小写。
-	GetDefaultProperty(name string, defaultValue interface{}) (interface{}, bool)
+	GetDefaultProperty(key string, defaultValue interface{}) (interface{}, bool)
 
 	// SetProperty 设置属性值，属性名称统一转成小写。
-	SetProperty(name string, value interface{})
+	SetProperty(key string, value interface{})
 
 	// GetPrefixProperties 返回指定前缀的属性值集合，属性名称统一转成小写。
 	GetPrefixProperties(prefix string) map[string]interface{}
@@ -70,10 +70,10 @@ type Properties interface {
 	GetProperties() map[string]interface{}
 
 	// BindProperty 根据类型获取属性值，属性名称统一转成小写。
-	BindProperty(name string, i interface{})
+	BindProperty(key string, i interface{})
 
 	// BindPropertyIf 根据类型获取属性值，属性名称统一转成小写。
-	BindPropertyIf(name string, i interface{}, allAccess bool)
+	BindPropertyIf(key string, i interface{}, allAccess bool)
 }
 
 // typeConverters 类型转换器集合

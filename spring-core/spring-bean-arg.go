@@ -166,7 +166,9 @@ func (arg *fnStringBindingArg) getArgValue(beanAssembly beanAssembly, caller cal
 		if tag == "" { // 如果是结构体，尝试使用结构体属性绑定语法。
 			tag = "${}"
 		}
-		bindStructField(beanAssembly.springContext(), v.Type(), v, "", "", tag, beanAssembly.springContext().AllAccess(), "")
+		bindStructField(beanAssembly.springContext(), v, tag, bindOption{
+			allAccess: beanAssembly.springContext().AllAccess(),
+		})
 	} else {
 		if _, beanName, _ := ParseBeanId(tag); beanName == "[]" {
 			beanAssembly.collectBeans(v)

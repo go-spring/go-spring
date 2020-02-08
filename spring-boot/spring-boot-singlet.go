@@ -152,53 +152,53 @@ func GetBeanDefinitions() []*SpringCore.BeanDefinition {
 }
 
 // GetProperty 返回属性值，属性名称统一转成小写。
-func GetProperty(name string) interface{} {
-	return ctx.GetProperty(name)
+func GetProperty(key string) interface{} {
+	return ctx.GetProperty(key)
 }
 
 // GetBoolProperty 返回布尔型属性值，属性名称统一转成小写。
-func GetBoolProperty(name string) bool {
-	return ctx.GetBoolProperty(name)
+func GetBoolProperty(key string) bool {
+	return ctx.GetBoolProperty(key)
 }
 
 // GetIntProperty 返回有符号整型属性值，属性名称统一转成小写。
-func GetIntProperty(name string) int64 {
-	return ctx.GetIntProperty(name)
+func GetIntProperty(key string) int64 {
+	return ctx.GetIntProperty(key)
 }
 
 // GetUintProperty 返回无符号整型属性值，属性名称统一转成小写。
-func GetUintProperty(name string) uint64 {
-	return ctx.GetUintProperty(name)
+func GetUintProperty(key string) uint64 {
+	return ctx.GetUintProperty(key)
 }
 
 // GetFloatProperty 返回浮点型属性值，属性名称统一转成小写。
-func GetFloatProperty(name string) float64 {
-	return ctx.GetFloatProperty(name)
+func GetFloatProperty(key string) float64 {
+	return ctx.GetFloatProperty(key)
 }
 
 // GetStringProperty 返回字符串型属性值，属性名称统一转成小写。
-func GetStringProperty(name string) string {
-	return ctx.GetStringProperty(name)
+func GetStringProperty(key string) string {
+	return ctx.GetStringProperty(key)
 }
 
 // GetDurationProperty 返回 Duration 类型属性值，属性名称统一转成小写。
-func GetDurationProperty(name string) time.Duration {
-	return ctx.GetDurationProperty(name)
+func GetDurationProperty(key string) time.Duration {
+	return ctx.GetDurationProperty(key)
 }
 
 // GetTimeProperty 返回 Time 类型的属性值，属性名称统一转成小写。
-func GetTimeProperty(name string) time.Time {
-	return ctx.GetTimeProperty(name)
+func GetTimeProperty(key string) time.Time {
+	return ctx.GetTimeProperty(key)
 }
 
 // GetDefaultProperty 返回属性值，如果没有找到则使用指定的默认值，属性名称统一转成小写。
-func GetDefaultProperty(name string, defaultValue interface{}) (interface{}, bool) {
-	return ctx.GetDefaultProperty(name, defaultValue)
+func GetDefaultProperty(key string, defaultValue interface{}) (interface{}, bool) {
+	return ctx.GetDefaultProperty(key, defaultValue)
 }
 
 // SetProperty 设置属性值，属性名称统一转成小写。
-func SetProperty(name string, value interface{}) {
-	ctx.SetProperty(name, value)
+func SetProperty(key string, value interface{}) {
+	ctx.SetProperty(key, value)
 }
 
 // GetPrefixProperties 返回指定前缀的属性值集合，属性名称统一转成小写。
@@ -212,11 +212,11 @@ func GetProperties() map[string]interface{} {
 }
 
 // BindProperty 根据类型获取属性值，属性名称统一转成小写。
-func BindProperty(name string, i interface{}) {
-	ctx.BindProperty(name, i)
+func BindProperty(key string, i interface{}) {
+	ctx.BindProperty(key, i)
 }
 
 // BindPropertyIf 根据类型获取属性值，属性名称统一转成小写。
-func BindPropertyIf(name string, i interface{}, allAccess bool) {
-	ctx.BindPropertyIf(name, i, allAccess)
+func BindPropertyIf(key string, i interface{}, allAccess bool) {
+	ctx.BindPropertyIf(key, i, allAccess)
 }

@@ -400,7 +400,11 @@ func (beanAssembly *defaultBeanAssembly) wireObjectBean(bd IBeanDefinition, only
 					// 避免父结构体有 value 标签重新解析导致失败的情况
 					if tag, ok := ft.Tag.Lookup("value"); ok {
 						fieldOnlyAutoWire = true
-						bindStructField(beanAssembly.springCtx, ft.Type, fv, fieldName, "", tag, beanAssembly.springCtx.AllAccess(), "")
+						bindStructField(beanAssembly.springCtx, fv, tag,
+							bindOption{
+								fieldName: fieldName,
+								allAccess: beanAssembly.springCtx.AllAccess(),
+							})
 					}
 				}
 
@@ -919,7 +923,7 @@ func (ctx *defaultSpringContext) AutoWireBeans(watchers ...WiringWatcher) {
 		}
 
 		beanIds := make([]string, 0)
-		for s, _ := range beanKeyMap {
+		for s := range beanKeyMap {
 			beanIds = append(beanIds, s)
 		}
 
