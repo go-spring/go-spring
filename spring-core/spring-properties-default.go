@@ -62,12 +62,11 @@ func NewDefaultProperties() *defaultProperties {
 	}
 }
 
-func (p *defaultProperties) readProperties(r func(*viper.Viper) error) {
+func (p *defaultProperties) readProperties(reader func(*viper.Viper) error) {
 
 	v := viper.New()
-	if err := r(v); err != nil {
-		panic(err)
-	}
+	err := reader(v)
+	SpringUtils.Panic(err).When(err != nil)
 
 	keys := v.AllKeys()
 	sort.Strings(keys)
@@ -250,24 +249,26 @@ func bindStructField(p Properties, v reflect.Value, tag string, opt bindOption) 
 }
 
 // bindValue 对任意 value 进行属性绑定
-func bindValue(p Properties, v reflect.Value, propName string,
-	defaultValue interface{}, opt bindOption) {
+func bindValue(p Properties, v reflect.Value, key string, def interface{}, opt bindOption) {
 
-	getPropValue := func() interface{} { // 获取最终决定的属性值
-		if val, ok := p.GetDefaultProperty(propName, nil); ok {
+	getPropValue := func() interface{} {
+
+		// 属性值存在则使用设置的属性值
+		if val, ok := p.GetDefaultProperty(key, nil); ok {
 			return val
-		} else {
-			if defaultValue != nil {
-				return defaultValue
-			}
-
-			// 尝试找一下具有相同前缀的属性值的列表
-			if prefixValue := p.GetPrefixProperties(propName); len(prefixValue) > 0 {
-				return prefixValue
-			}
-
-			panic(fmt.Errorf("%s properties \"%s\" not config", opt.fieldName, opt.fullPropName))
 		}
+
+		// 否则尝试使用默认值
+		if def != nil {
+			return def
+		}
+
+		// 获取具有前缀的属性值
+		if prefixValue := p.GetPrefixProperties(key); len(prefixValue) > 0 {
+			return prefixValue
+		}
+
+		panic(fmt.Errorf("%s properties \"%s\" not config", opt.fieldName, opt.fullPropName))
 	}
 
 	t := v.Type()
@@ -283,17 +284,18 @@ func bindValue(p Properties, v reflect.Value, propName string,
 	}
 
 	if k == reflect.Struct {
-		if defaultValue != nil { // 前面已经校验过是否存在值类型转换器
+		if def == nil {
+			opt0 := bindOption{
+				propNamePrefix: key,
+				fullPropName:   opt.fullPropName,
+				fieldName:      opt.fieldName,
+				allAccess:      opt.allAccess,
+			}
+			bindStruct(p, v, opt0)
+			return
+		} else { // 前面已经校验过是否存在值类型转换器
 			panic(fmt.Errorf("%s 结构体字段不能指定默认值", opt.fieldName))
 		}
-
-		bindStruct(p, v, bindOption{
-			propNamePrefix: propName,
-			fullPropName:   opt.fullPropName,
-			fieldName:      opt.fieldName,
-			allAccess:      opt.allAccess,
-		})
-		return
 	}
 
 	// 获取属性值
@@ -301,73 +303,99 @@ func bindValue(p Properties, v reflect.Value, propName string,
 
 	switch k {
 	case reflect.Uint64, reflect.Uint32, reflect.Uint16, reflect.Uint8, reflect.Uint:
-		u := cast.ToUint64(propValue)
-		v.SetUint(u)
+		if u, err := cast.ToUint64E(propValue); err == nil {
+			v.SetUint(u)
+		} else {
+			panic(fmt.Errorf("property value %s isn't uint type", opt.fullPropName))
+		}
 	case reflect.Int64, reflect.Int32, reflect.Int16, reflect.Int8, reflect.Int:
-		i := cast.ToInt64(propValue)
-		v.SetInt(i)
+		if i, err := cast.ToInt64E(propValue); err == nil {
+			v.SetInt(i)
+		} else {
+			panic(fmt.Errorf("property value %s isn't int type", opt.fullPropName))
+		}
 	case reflect.Float64, reflect.Float32:
-		f := cast.ToFloat64(propValue)
-		v.SetFloat(f)
+		if f, err := cast.ToFloat64E(propValue); err == nil {
+			v.SetFloat(f)
+		} else {
+			panic(fmt.Errorf("property value %s isn't float type", opt.fullPropName))
+		}
 	case reflect.String:
-		s := cast.ToString(propValue)
-		v.SetString(s)
+		if s, err := cast.ToStringE(propValue); err == nil {
+			v.SetString(s)
+		} else {
+			panic(fmt.Errorf("property value %s isn't string type", opt.fullPropName))
+		}
 	case reflect.Bool:
-		b := cast.ToBool(propValue)
-		v.SetBool(b)
+		if b, err := cast.ToBoolE(propValue); err == nil {
+			v.SetBool(b)
+		} else {
+			panic(fmt.Errorf("property value %s isn't bool type", opt.fullPropName))
+		}
 	case reflect.Slice:
-		{
-			elemType := v.Type().Elem()
-			elemKind := elemType.Kind()
+		elemType := v.Type().Elem()
+		elemKind := elemType.Kind()
 
-			switch elemKind {
-			case reflect.Uint64, reflect.Uint32, reflect.Uint16, reflect.Uint8, reflect.Uint:
-				panic(errors.New("暂未支持"))
-			case reflect.Int64, reflect.Int32, reflect.Int16, reflect.Int8, reflect.Int:
-				i := cast.ToIntSlice(propValue)
+		switch elemKind {
+		case reflect.Uint64, reflect.Uint32, reflect.Uint16, reflect.Uint8, reflect.Uint:
+			panic(errors.New("暂未支持"))
+		case reflect.Int64, reflect.Int32, reflect.Int16, reflect.Int8, reflect.Int:
+			if i, err := cast.ToIntSliceE(propValue); err == nil {
 				v.Set(reflect.ValueOf(i))
-			case reflect.Float64, reflect.Float32:
-				panic(errors.New("暂未支持"))
-			case reflect.String:
-				i := cast.ToStringSlice(propValue)
+			} else {
+				panic(fmt.Errorf("property value %s isn't []int type", opt.fullPropName))
+			}
+		case reflect.Float64, reflect.Float32:
+			panic(errors.New("暂未支持"))
+		case reflect.String:
+			if i, err := cast.ToStringSliceE(propValue); err == nil {
 				v.Set(reflect.ValueOf(i))
-			case reflect.Bool:
-				b := cast.ToBoolSlice(propValue)
+			} else {
+				panic(fmt.Errorf("property value %s isn't []string type", opt.fullPropName))
+			}
+		case reflect.Bool:
+			if b, err := cast.ToBoolSliceE(propValue); err == nil {
 				v.Set(reflect.ValueOf(b))
-			default:
-				if fn, ok := typeConverters[elemType]; ok { // 首先处理使用类型转换器的场景
-					fnValue := reflect.ValueOf(fn)
-					s0 := cast.ToStringSlice(propValue)
+			} else {
+				panic(fmt.Errorf("property value %s isn't []bool type", opt.fullPropName))
+			}
+		default:
+			// 首先处理使用类型转换器的场景
+			if fn, ok := typeConverters[elemType]; ok {
+				if s0, err := cast.ToStringSliceE(propValue); err == nil {
 					sv := reflect.MakeSlice(t, len(s0), len(s0))
+					fnValue := reflect.ValueOf(fn)
 					for i, iv := range s0 {
 						res := fnValue.Call([]reflect.Value{reflect.ValueOf(iv)})
 						sv.Index(i).Set(res[0])
 					}
 					v.Set(sv)
+					return
+				} else {
+					panic(fmt.Errorf("property value %s isn't []string type", opt.fullPropName))
+				}
+			}
 
-				} else { // 然后处理结构体字段的场景
-					if s, isArray := propValue.([]interface{}); isArray {
-						result := reflect.MakeSlice(t, len(s), len(s))
-						for i, si := range s {
-							if sv, err := cast.ToStringMapE(si); err == nil {
-								ev := reflect.New(elemType)
-								subPropName := fmt.Sprintf("%s[%d]", propName, i)
-								bindStruct(&defaultProperties{sv}, ev.Elem(),
-									bindOption{
-										fieldName:    opt.fieldName,
-										fullPropName: subPropName,
-										allAccess:    opt.allAccess,
-									})
-								result.Index(i).Set(ev.Elem())
-							} else {
-								panic(fmt.Errorf("property %s isn't []map[string]interface{}", opt.fullPropName))
-							}
-						}
-						v.Set(result)
+			// 然后处理结构体字段的场景
+			if s, ok := propValue.([]interface{}); ok {
+				result := reflect.MakeSlice(t, len(s), len(s))
+				for i, si := range s {
+					if sv, err := cast.ToStringMapE(si); err == nil {
+						ev := reflect.New(elemType)
+						subFullPropName := fmt.Sprintf("%s[%d]", key, i)
+						bindStruct(&defaultProperties{sv}, ev.Elem(), bindOption{
+							fullPropName: subFullPropName,
+							fieldName:    opt.fieldName,
+							allAccess:    opt.allAccess,
+						})
+						result.Index(i).Set(ev.Elem())
 					} else {
-						panic(fmt.Errorf("property %s isn't []map[string]interface{}", opt.fullPropName))
+						panic(fmt.Errorf("property value %s isn't []map[string]interface{}", opt.fullPropName))
 					}
 				}
+				v.Set(result)
+			} else {
+				panic(fmt.Errorf("property value %s isn't []map[string]interface{}", opt.fullPropName))
 			}
 		}
 	case reflect.Map:
@@ -389,7 +417,7 @@ func bindValue(p Properties, v reflect.Value, propName string,
 			panic(errors.New("暂未支持"))
 		case reflect.String:
 			if mapValue, err := cast.ToStringMapStringE(propValue); err == nil {
-				prefix := propName + "."
+				prefix := key + "."
 				result := make(map[string]string)
 				for k0, v0 := range mapValue {
 					k0 = strings.TrimPrefix(k0, prefix)
@@ -397,12 +425,13 @@ func bindValue(p Properties, v reflect.Value, propName string,
 				}
 				v.Set(reflect.ValueOf(result))
 			} else {
-				panic(fmt.Errorf("property %s isn't map[string]string", opt.fullPropName))
+				panic(fmt.Errorf("property value %s isn't map[string]string", opt.fullPropName))
 			}
 		default:
-			if fn, ok := typeConverters[elemType]; ok { // 首先处理使用类型转换器的场景
+			// 首先处理使用类型转换器的场景
+			if fn, ok := typeConverters[elemType]; ok {
 				if mapValue, err := cast.ToStringMapStringE(propValue); err == nil {
-					prefix := propName + "."
+					prefix := key + "."
 					fnValue := reflect.ValueOf(fn)
 					result := reflect.MakeMap(t)
 					for k0, v0 := range mapValue {
@@ -411,43 +440,45 @@ func bindValue(p Properties, v reflect.Value, propName string,
 						result.SetMapIndex(reflect.ValueOf(k0), res[0])
 					}
 					v.Set(result)
+					return
 				} else {
-					panic(fmt.Errorf("property %s isn't map[string]string", opt.fullPropName))
+					panic(fmt.Errorf("property value %s isn't map[string]string", opt.fullPropName))
+				}
+			}
+
+			// 然后处理结构体字段的场景
+			if mapValue, err := cast.ToStringMapE(propValue); err == nil {
+				temp := make(map[string]map[string]interface{})
+				trimKey := key + "."
+				var ok bool
+
+				// 将一维 map 变成二维 map
+				for k0, v0 := range mapValue {
+					k0 = strings.TrimPrefix(k0, trimKey)
+					sk := strings.Split(k0, ".")
+					var item map[string]interface{}
+					if item, ok = temp[sk[0]]; !ok {
+						item = make(map[string]interface{})
+						temp[sk[0]] = item
+					}
+					item[sk[1]] = v0
 				}
 
-			} else { // 然后处理结构体字段的场景
-				if mapValue, err := cast.ToStringMapE(propValue); err == nil {
-					temp := make(map[string]map[string]interface{})
-					trimKey := propName + "."
-
-					for k0, v0 := range mapValue {
-						k0 = strings.TrimPrefix(k0, trimKey)
-						sk := strings.Split(k0, ".")
-						var item map[string]interface{}
-						if item, ok = temp[sk[0]]; !ok {
-							item = make(map[string]interface{})
-							temp[sk[0]] = item
-						}
-						item[sk[1]] = v0
-					}
-
-					result := reflect.MakeMapWithSize(t, len(temp))
-					for k1, v1 := range temp {
-						ev := reflect.New(elemType)
-						subPropName := fmt.Sprintf("%s.%s", propName, k1)
-						bindStruct(&defaultProperties{v1}, ev.Elem(),
-							bindOption{
-								fieldName:    opt.fieldName,
-								fullPropName: subPropName,
-								allAccess:    opt.allAccess,
-							})
-						result.SetMapIndex(reflect.ValueOf(k1), ev.Elem())
-					}
-
-					v.Set(result)
-				} else {
-					panic(fmt.Errorf("property %s isn't map[string]map[string]interface{}", opt.fullPropName))
+				result := reflect.MakeMapWithSize(t, len(temp))
+				for k1, v1 := range temp {
+					ev := reflect.New(elemType)
+					subFullPropName := fmt.Sprintf("%s.%s", key, k1)
+					bindStruct(&defaultProperties{v1}, ev.Elem(), bindOption{
+						fullPropName: subFullPropName,
+						fieldName:    opt.fieldName,
+						allAccess:    opt.allAccess,
+					})
+					result.SetMapIndex(reflect.ValueOf(k1), ev.Elem())
 				}
+
+				v.Set(result)
+			} else {
+				panic(fmt.Errorf("property value %s isn't map[string]map[string]interface{}", opt.fullPropName))
 			}
 		}
 	default:
