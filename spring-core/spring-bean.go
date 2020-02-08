@@ -21,10 +21,7 @@ import (
 	"fmt"
 	"reflect"
 	"runtime"
-	"strconv"
 	"strings"
-
-	"github.com/go-spring/go-spring-parent/spring-logger"
 )
 
 const (
@@ -77,7 +74,7 @@ func IsValueType(k reflect.Kind) bool {
 func TypeName(t reflect.Type) string {
 
 	if t == nil {
-		SpringLogger.Panic("type shouldn't be nil")
+		panic(errors.New("type shouldn't be nil"))
 	}
 
 	// Map 的全限定名太复杂，不予处理，而且 Map 作为注入对象要三思而后行！
@@ -96,8 +93,8 @@ func TypeName(t reflect.Type) string {
 	}
 }
 
-// ErrorType error 的类型
-var ErrorType = reflect.TypeOf((*error)(nil)).Elem()
+// errorType error 的类型
+var errorType = reflect.TypeOf((*error)(nil)).Elem()
 
 // SpringBean Bean 源接口
 type SpringBean interface {
@@ -108,24 +105,24 @@ type SpringBean interface {
 	beanClass() string    // SpringBean 的实现类型
 }
 
-// originalBean 原始 Bean 源
-type originalBean struct {
+// objectBean 原始 Bean 源
+type objectBean struct {
 	bean     interface{}   // 源
 	rType    reflect.Type  // 类型
 	rValue   reflect.Value // 值
 	typeName string        // 原始类型的全限定名
 }
 
-// newOriginalBean originalBean 的构造函数
-func newOriginalBean(v reflect.Value) *originalBean {
+// newObjectBean objectBean 的构造函数
+func newObjectBean(v reflect.Value) *objectBean {
 
 	t := v.Type()
 
 	if ok := IsRefType(t.Kind()); !ok {
-		SpringLogger.Panic("bean must be ref type")
+		panic(errors.New("bean must be ref type"))
 	}
 
-	return &originalBean{
+	return &objectBean{
 		bean:     v.Interface(),
 		rType:    t,
 		typeName: TypeName(t),
@@ -134,33 +131,33 @@ func newOriginalBean(v reflect.Value) *originalBean {
 }
 
 // Bean 返回 Bean 的源
-func (b *originalBean) Bean() interface{} {
+func (b *objectBean) Bean() interface{} {
 	return b.bean
 }
 
 // Type 返回 Bean 的类型
-func (b *originalBean) Type() reflect.Type {
+func (b *objectBean) Type() reflect.Type {
 	return b.rType
 }
 
 // Value 返回 Bean 的值
-func (b *originalBean) Value() reflect.Value {
+func (b *objectBean) Value() reflect.Value {
 	return b.rValue
 }
 
 // TypeName 返回 Bean 的原始类型的全限定名
-func (b *originalBean) TypeName() string {
+func (b *objectBean) TypeName() string {
 	return b.typeName
 }
 
 // beanClass 返回 SpringBean 的实现类型
-func (b *originalBean) beanClass() string {
-	return "bean"
+func (b *objectBean) beanClass() string {
+	return "object bean"
 }
 
 // functionBean 函数定义的 Bean 源
 type functionBean struct {
-	originalBean
+	objectBean
 
 	arg fnBindingArg // 参数绑定
 }
@@ -180,7 +177,7 @@ func IsFuncBeanType(fnType reflect.Type) bool {
 
 	// 第 2 个返回值必须是 error 类型
 	if fnType.NumOut() == 2 {
-		if !fnType.Out(1).Implements(ErrorType) {
+		if !fnType.Out(1).Implements(errorType) {
 			return false
 		}
 	}
@@ -195,7 +192,7 @@ func newFunctionBean(fnType reflect.Type, withReceiver bool, tags []string) func
 	if ok := IsFuncBeanType(fnType); !ok {
 		t1 := "func(...)bean"
 		t2 := "func(...)(bean, error)"
-		SpringLogger.Panicf("func bean must be %s or %s", t1, t2)
+		panic(fmt.Errorf("func bean must be %s or %s", t1, t2))
 	}
 
 	t := fnType.Out(0)
@@ -210,7 +207,7 @@ func newFunctionBean(fnType reflect.Type, withReceiver bool, tags []string) func
 	t = v.Type()
 
 	return functionBean{
-		originalBean: originalBean{
+		objectBean: objectBean{
 			bean:     v.Interface(),
 			rType:    t,
 			typeName: TypeName(t),
@@ -253,15 +250,10 @@ func newMethodBean(parent *BeanDefinition, method string, tags ...string) *metho
 	var fnType reflect.Type
 
 	t := parent.Type()
-	for i := 0; i < t.NumMethod(); i++ {
-		if m := t.Method(i); m.Name == method {
-			fnType = m.Type
-			break
-		}
-	}
-
-	if fnType == nil {
-		SpringLogger.Panic("can't find method: ", method)
+	if m, ok := t.MethodByName(method); ok {
+		fnType = m.Type
+	} else {
+		panic(fmt.Errorf("can't find method: %s", method))
 	}
 
 	withReceiver := false
@@ -353,7 +345,7 @@ type IBeanDefinition interface {
 	springBean() SpringBean      // 返回 SpringBean 对象
 	getStatus() beanStatus       // 返回 Bean 的状态值
 	setStatus(status beanStatus) // 设置 Bean 的状态值
-	getDependsOn() []string      // 返回 Bean 的非直接依赖项
+	getDependsOn() []interface{} // 返回 Bean 的非直接依赖项
 	getInit() interface{}        // 返回 Bean 的初始化函数
 	getDestroy() interface{}     // 返回 Bean 的销毁函数
 	getFile() string             // 返回 Bean 注册点所在文件的名称
@@ -369,9 +361,9 @@ type BeanDefinition struct {
 	file string // 注册点所在文件
 	line int    // 注册点所在行数
 
-	cond      *Conditional // 判断条件
-	primary   bool         // 主版本
-	dependsOn []string     // 非直接依赖
+	cond      *Conditional  // 判断条件
+	primary   bool          // 主版本
+	dependsOn []interface{} // 非直接依赖
 
 	init    interface{} // 初始化的回调
 	destroy interface{} // 销毁时的回调
@@ -380,7 +372,7 @@ type BeanDefinition struct {
 }
 
 // newBeanDefinition BeanDefinition 的构造函数
-func newBeanDefinition(bean SpringBean, name string) *BeanDefinition {
+func newBeanDefinition(name string, bean SpringBean) *BeanDefinition {
 
 	var (
 		file string
@@ -453,12 +445,12 @@ func (d *BeanDefinition) Name() string {
 
 // BeanId 返回 Bean 的 BeanId
 func (d *BeanDefinition) BeanId() string {
-	return d.TypeName() + ":" + d.name
+	return fmt.Sprintf("%s:%s", d.TypeName(), d.name)
 }
 
 // Caller 返回 Bean 的注册点
 func (d *BeanDefinition) Caller() string {
-	return d.file + ":" + strconv.Itoa(d.line)
+	return fmt.Sprintf("%s:%d", d.file, d.line)
 }
 
 // springBean 返回 SpringBean 对象
@@ -477,7 +469,7 @@ func (d *BeanDefinition) setStatus(status beanStatus) {
 }
 
 // getDependsOn 返回 Bean 的非直接依赖项
-func (d *BeanDefinition) getDependsOn() []string {
+func (d *BeanDefinition) getDependsOn() []interface{} {
 	return d.dependsOn
 }
 
@@ -608,17 +600,14 @@ func (d *BeanDefinition) Options(options ...*optionArg) *BeanDefinition {
 	case *methodBean:
 		bean.arg = arg
 	default:
-		SpringLogger.Panic("只有 func Bean 才能调用此方法")
+		panic(errors.New("只有 func Bean 才能调用此方法"))
 	}
 	return d
 }
 
 // DependsOn 设置 Bean 的非直接依赖
-func (d *BeanDefinition) DependsOn(beanIds ...string) *BeanDefinition {
-	if len(d.dependsOn) > 0 {
-		SpringLogger.Panic("dependsOn already set")
-	}
-	d.dependsOn = beanIds
+func (d *BeanDefinition) DependsOn(selector ...interface{}) *BeanDefinition {
+	d.dependsOn = append(d.dependsOn, selector...)
 	return d
 }
 
@@ -659,7 +648,7 @@ func validLifeCycleFunc(fn interface{}, beanType reflect.Type) bool {
 func (d *BeanDefinition) Init(fn interface{}) *BeanDefinition {
 
 	if ok := validLifeCycleFunc(fn, d.Type()); !ok {
-		SpringLogger.Panic("init should be func(bean)")
+		panic(errors.New("init should be func(bean)"))
 	}
 
 	d.init = fn
@@ -670,7 +659,7 @@ func (d *BeanDefinition) Init(fn interface{}) *BeanDefinition {
 func (d *BeanDefinition) Destroy(fn interface{}) *BeanDefinition {
 
 	if ok := validLifeCycleFunc(fn, d.Type()); !ok {
-		SpringLogger.Panic("destroy should be func(bean)")
+		panic(errors.New("destroy should be func(bean)"))
 	}
 
 	d.destroy = fn
@@ -697,23 +686,23 @@ func ToBeanDefinition(name string, i interface{}) *BeanDefinition {
 
 // ValueToBeanDefinition 将 Value 转换为 BeanDefinition 对象
 func ValueToBeanDefinition(name string, v reflect.Value) *BeanDefinition {
-	if !v.IsValid() {
-		SpringLogger.Panic("bean can't be nil")
+	if ok := v.IsValid(); !ok {
+		panic(errors.New("bean can't be nil"))
 	}
-	bean := newOriginalBean(v)
-	return newBeanDefinition(bean, name)
+	bean := newObjectBean(v)
+	return newBeanDefinition(name, bean)
 }
 
 // FnToBeanDefinition 将构造函数转换为 BeanDefinition 对象
 func FnToBeanDefinition(name string, fn interface{}, tags ...string) *BeanDefinition {
 	bean := newConstructorBean(fn, tags...)
-	return newBeanDefinition(bean, name)
+	return newBeanDefinition(name, bean)
 }
 
 // MethodToBeanDefinition 将成员方法转换为 BeanDefinition 对象
 func MethodToBeanDefinition(name string, selector interface{}, method string, tags ...string) *BeanDefinition {
 	bean := newFakeMethodBean(selector, method, tags...)
-	return newBeanDefinition(bean, name)
+	return newBeanDefinition(name, bean)
 }
 
 // ParseBeanId 解析 BeanId 的内容，"TypeName:BeanName?" 或者 "[]?"
@@ -732,7 +721,7 @@ func ParseBeanId(beanId string) (typeName string, beanName string, nullable bool
 	}
 
 	if beanName == "[]" && typeName != "" {
-		SpringLogger.Panic("collection mode shouldn't have type")
+		panic(errors.New("collection mode shouldn't have type"))
 	}
 	return
 }

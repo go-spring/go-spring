@@ -841,9 +841,9 @@ func TestDefaultSpringContext_DependsOn(t *testing.T) {
 
 	t.Run("dependsOn", func(t *testing.T) {
 
-		dependsOn := []string{
+		dependsOn := []interface{}{
+			(*BeanOne)(nil), // 通过类型定义查找
 			"github.com/go-spring/go-spring/spring-core_test/SpringCore_test.BeanZero:*SpringCore_test.BeanZero",
-			"github.com/go-spring/go-spring/spring-core_test/SpringCore_test.BeanOne:*SpringCore_test.BeanOne",
 		}
 
 		ctx := SpringCore.NewDefaultSpringContext()
@@ -955,7 +955,7 @@ func TestDefaultSpringContext_ConditionOnBean(t *testing.T) {
 
 func TestDefaultSpringContext_ConditionOnMissingBean(t *testing.T) {
 
-	for i := 0; i < 50; i++ { // 测试 FindBeanByName 无需绑定
+	for i := 0; i < 20; i++ { // 测试 FindBeanByName 无需绑定，不要排序
 		ctx := SpringCore.NewDefaultSpringContext()
 
 		ctx.RegisterBean(&BeanZero{5})
@@ -1530,7 +1530,7 @@ func TestDefaultSpringContext_RegisterMethodBean(t *testing.T) {
 	t.Run("circle autowire", func(t *testing.T) {
 		okCount := 0
 		errCount := 0
-		for i := 0; i < 20; i++ {
+		for i := 0; i < 20; i++ { // 不要排序
 			func() {
 
 				defer func() {
@@ -1732,7 +1732,7 @@ func TestDefaultSpringContext_UserDefinedTypeProperty(t *testing.T) {
 }
 
 func TestDefaultSpringContext_ChainConditionOnBean(t *testing.T) {
-	for i := 0; i < 20; i++ {
+	for i := 0; i < 20; i++ { // 不要排序
 		ctx := SpringCore.NewDefaultSpringContext()
 		ctx.RegisterBean(new(string)).ConditionOnBean("*bool")
 		ctx.RegisterBean(new(bool)).ConditionOnBean("*int")
@@ -2127,10 +2127,10 @@ func TestDefaultSpringContext_BeanCache(t *testing.T) {
 			{SpringCore.WiringEvent_Push, `constructor bean value /Users/didi/GitHub/go-spring/go-spring/spring-core/spring-context-default_test.go:`},
 			{SpringCore.WiringEvent_Pop, `constructor bean value /Users/didi/GitHub/go-spring/go-spring/spring-core/spring-context-default_test.go:`},
 			{SpringCore.WiringEvent_Pop, `constructor bean "f1" /Users/didi/GitHub/go-spring/go-spring/spring-core/spring-context-default_test.go:`},
-			{SpringCore.WiringEvent_Push, `bean "f2" /Users/didi/GitHub/go-spring/go-spring/spring-core/spring-context-default_test.go:`},
-			{SpringCore.WiringEvent_Pop, `bean "f2" /Users/didi/GitHub/go-spring/go-spring/spring-core/spring-context-default_test.go:`},
-			{SpringCore.WiringEvent_Push, `bean "*struct { F1 SpringCore_test.filter "autowire:\"f1\""; F2 SpringCore_test.filter "autowire:\"f2\"" }" /Users/didi/GitHub/go-spring/go-spring/spring-core/spring-context-default_test.go:`},
-			{SpringCore.WiringEvent_Pop, `bean "*struct { F1 SpringCore_test.filter "autowire:\"f1\""; F2 SpringCore_test.filter "autowire:\"f2\"" }" /Users/didi/GitHub/go-spring/go-spring/spring-core/spring-context-default_test.go:`},
+			{SpringCore.WiringEvent_Push, `object bean "f2" /Users/didi/GitHub/go-spring/go-spring/spring-core/spring-context-default_test.go:`},
+			{SpringCore.WiringEvent_Pop, `object bean "f2" /Users/didi/GitHub/go-spring/go-spring/spring-core/spring-context-default_test.go:`},
+			{SpringCore.WiringEvent_Push, `object bean "*struct { F1 SpringCore_test.filter "autowire:\"f1\""; F2 SpringCore_test.filter "autowire:\"f2\"" }" /Users/didi/GitHub/go-spring/go-spring/spring-core/spring-context-default_test.go:`},
+			{SpringCore.WiringEvent_Pop, `object bean "*struct { F1 SpringCore_test.filter "autowire:\"f1\""; F2 SpringCore_test.filter "autowire:\"f2\"" }" /Users/didi/GitHub/go-spring/go-spring/spring-core/spring-context-default_test.go:`},
 		}
 
 		index := 0

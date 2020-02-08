@@ -313,7 +313,7 @@ func (beanAssembly *defaultBeanAssembly) wireBeanDefinition(bd IBeanDefinition, 
 
 	// 是否循环依赖
 	if bd.getStatus() == beanStatus_Wiring {
-		if _, ok := bd.springBean().(*originalBean); !ok {
+		if _, ok := bd.springBean().(*objectBean); !ok {
 			panic(errors.New("found circle autowire"))
 		}
 		return
@@ -322,9 +322,9 @@ func (beanAssembly *defaultBeanAssembly) wireBeanDefinition(bd IBeanDefinition, 
 	bd.setStatus(beanStatus_Wiring)
 
 	// 首先初始化当前 Bean 不直接依赖的那些 Bean
-	for _, beanId := range bd.getDependsOn() {
-		if bean, ok := beanAssembly.springContext.FindBeanByName(beanId); !ok {
-			panic(fmt.Errorf("can't find bean: \"%s\"", beanId))
+	for _, selector := range bd.getDependsOn() {
+		if bean, ok := beanAssembly.springContext.FindBean(selector); !ok {
+			panic(fmt.Errorf("can't find bean: \"%v\"", selector))
 		} else {
 			beanAssembly.wireBeanDefinition(bean, false)
 		}
@@ -336,8 +336,8 @@ func (beanAssembly *defaultBeanAssembly) wireBeanDefinition(bd IBeanDefinition, 
 	}
 
 	switch bean := bd.springBean().(type) {
-	case *originalBean: // 原始对象
-		beanAssembly.wireOriginalBean(bd, onlyAutoWire)
+	case *objectBean: // 原始对象
+		beanAssembly.wireObjectBean(bd, onlyAutoWire)
 	case *constructorBean: // 构造函数
 		fnValue := reflect.ValueOf(bean.fn)
 		beanAssembly.wireFunctionBean(fnValue, &bean.functionBean, bd)
@@ -360,8 +360,8 @@ func (beanAssembly *defaultBeanAssembly) wireBeanDefinition(bd IBeanDefinition, 
 	bd.setStatus(beanStatus_Wired)
 }
 
-// wireOriginalBean 对原始对象进行注入
-func (beanAssembly *defaultBeanAssembly) wireOriginalBean(bd IBeanDefinition, onlyAutoWire bool) {
+// wireObjectBean 对原始对象进行注入
+func (beanAssembly *defaultBeanAssembly) wireObjectBean(bd IBeanDefinition, onlyAutoWire bool) {
 
 	st := bd.Type()
 	sk := st.Kind()
@@ -452,7 +452,7 @@ func (beanAssembly *defaultBeanAssembly) wireOriginalBean(bd IBeanDefinition, on
 // wireFunctionBean 对函数定义 Bean 进行注入
 func (beanAssembly *defaultBeanAssembly) wireFunctionBean(fnValue reflect.Value, bean *functionBean, bd IBeanDefinition) {
 
-	in := bean.arg.Get(bd, beanAssembly)
+	in := bean.arg.Get(beanAssembly, bd)
 	out := fnValue.Call(in)
 
 	// 获取第一个返回值
@@ -491,9 +491,9 @@ func (beanAssembly *defaultBeanAssembly) wireFunctionBean(fnValue reflect.Value,
 	}
 
 	if bean.Type().Kind() == reflect.Interface {
-		b.bean = newOriginalBean(bean.Value().Elem())
+		b.bean = newObjectBean(bean.Value().Elem())
 	} else {
-		b.bean = newOriginalBean(bean.Value())
+		b.bean = newObjectBean(bean.Value())
 	}
 
 	beanAssembly.wireBeanDefinition(&delegateBeanDefinition{b, bd}, false)

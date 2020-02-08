@@ -34,7 +34,7 @@ type caller interface {
 // fnBindingArg 存储函数的参数绑定
 type fnBindingArg interface {
 	// Get 获取函数参数的绑定值
-	Get(caller caller, beanAssembly beanAssembly) []reflect.Value
+	Get(beanAssembly beanAssembly, caller caller) []reflect.Value
 }
 
 // fnStringBindingArg 存储一般函数的参数绑定
@@ -54,8 +54,8 @@ func newFnStringBindingArg(fnType reflect.Type, withReceiver bool, tags []string
 		numIn -= 1
 	}
 
+	variadic := fnType.IsVariadic()
 	fnTags := make([][]string, numIn)
-	variadic := fnType.IsVariadic() // 可变参数
 
 	if len(tags) > 0 {
 		indexed := false // 是否包含序号
@@ -115,7 +115,7 @@ func newFnStringBindingArg(fnType reflect.Type, withReceiver bool, tags []string
 }
 
 // Get 获取函数参数的绑定值
-func (arg *fnStringBindingArg) Get(caller caller, beanAssembly beanAssembly) []reflect.Value {
+func (arg *fnStringBindingArg) Get(beanAssembly beanAssembly, caller caller) []reflect.Value {
 	fnType := arg.fnType
 
 	numIn := fnType.NumIn()
@@ -139,15 +139,15 @@ func (arg *fnStringBindingArg) Get(caller caller, beanAssembly beanAssembly) []r
 			et := it.Elem()
 			for _, tag := range tags {
 				ev := reflect.New(et).Elem()
-				arg.getArgValue(caller, beanAssembly, ev, tag)
+				arg.getArgValue(beanAssembly, caller, ev, tag)
 				result = append(result, ev)
 			}
 		} else {
 			iv := reflect.New(it).Elem()
 			if len(tags) == 0 {
-				arg.getArgValue(caller, beanAssembly, iv, "")
+				arg.getArgValue(beanAssembly, caller, iv, "")
 			} else {
-				arg.getArgValue(caller, beanAssembly, iv, tags[0])
+				arg.getArgValue(beanAssembly, caller, iv, tags[0])
 			}
 			result = append(result, iv)
 		}
@@ -157,7 +157,7 @@ func (arg *fnStringBindingArg) Get(caller caller, beanAssembly beanAssembly) []r
 }
 
 // getArgValue 获取绑定参数值
-func (arg *fnStringBindingArg) getArgValue(caller caller, beanAssembly beanAssembly, v reflect.Value, tag string) {
+func (arg *fnStringBindingArg) getArgValue(beanAssembly beanAssembly, caller caller, v reflect.Value, tag string) {
 
 	description := fmt.Sprintf("tag:\"%s\" %s", tag, caller.Caller())
 	SpringLogger.Tracef("get value %s", description)
@@ -184,7 +184,7 @@ type fnOptionBindingArg struct {
 }
 
 // Get 获取函数参数的绑定值
-func (arg *fnOptionBindingArg) Get(_ caller, beanAssembly beanAssembly) []reflect.Value {
+func (arg *fnOptionBindingArg) Get(beanAssembly beanAssembly, _ caller) []reflect.Value {
 	result := make([]reflect.Value, 0)
 	for _, option := range arg.options {
 		if v, ok := option.call(beanAssembly); ok {
@@ -343,7 +343,7 @@ func (arg *optionArg) call(beanAssembly beanAssembly) (v reflect.Value, ok bool)
 	// 判断 Option 条件是否成立
 	if ok = arg.cond.Matches(beanAssembly.SpringContext()); ok {
 		fnValue := reflect.ValueOf(arg.fn)
-		in := arg.arg.Get(arg, beanAssembly)
+		in := arg.arg.Get(beanAssembly, arg)
 		out := fnValue.Call(in)
 		v = out[0]
 	}
