@@ -2144,3 +2144,19 @@ func TestDefaultSpringContext_BeanCache(t *testing.T) {
 		})
 	})
 }
+
+type IntInterface interface {
+	Value() int
+}
+
+type Integer int
+
+func (i Integer) Value() int {
+	return int(i)
+}
+
+func TestDefaultSpringContext_IntInterface(t *testing.T) {
+	ctx := SpringCore.NewDefaultSpringContext()
+	ctx.RegisterBeanFn(func() IntInterface { return Integer(5) })
+	ctx.AutoWireBeans()
+}

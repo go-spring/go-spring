@@ -53,15 +53,15 @@ func (item *beanCacheItem) store(t reflect.Type, bd *BeanDefinition) {
 
 // wiringStack 存储绑定中的 Bean
 type wiringStack struct {
-	stack   *list.List
-	watcher []WiringWatcher
+	stack    *list.List
+	watchers []WiringWatcher
 }
 
 // newWiringStack wiringStack 的构造函数
-func newWiringStack(watcher []WiringWatcher) *wiringStack {
+func newWiringStack(watchers []WiringWatcher) *wiringStack {
 
-	if len(watcher) == 0 { // 添加默认的注入监视器
-		watcher = append(watcher, func(bd IBeanDefinition, event WiringEvent) {
+	if len(watchers) == 0 { // 添加默认的注入监视器
+		watchers = append(watchers, func(bd IBeanDefinition, event WiringEvent) {
 			switch event {
 			case WiringEvent_Push:
 				SpringLogger.Tracef("wiring %s", bd.Description())
@@ -72,8 +72,8 @@ func newWiringStack(watcher []WiringWatcher) *wiringStack {
 	}
 
 	return &wiringStack{
-		stack:   list.New(),
-		watcher: watcher,
+		stack:    list.New(),
+		watchers: watchers,
 	}
 }
 
@@ -81,7 +81,7 @@ func newWiringStack(watcher []WiringWatcher) *wiringStack {
 func (s *wiringStack) pushBack(bd IBeanDefinition) {
 	s.stack.PushBack(bd)
 
-	for _, w := range s.watcher {
+	for _, w := range s.watchers {
 		w(bd, WiringEvent_Push)
 	}
 }
@@ -90,7 +90,7 @@ func (s *wiringStack) pushBack(bd IBeanDefinition) {
 func (s *wiringStack) popBack() {
 	e := s.stack.Remove(s.stack.Back())
 
-	for _, w := range s.watcher {
+	for _, w := range s.watchers {
 		w(e.(IBeanDefinition), WiringEvent_Pop)
 	}
 }
@@ -106,58 +106,54 @@ func (s *wiringStack) path() (path string) {
 
 // beanAssembly Bean 组装车间
 type beanAssembly interface {
-	SpringContext() SpringContext
+	springContext() SpringContext
 	collectBeans(v reflect.Value) bool
-	getBeanValue(v reflect.Value, beanId string, parentValue reflect.Value, field string) bool
+	getBeanValue(v reflect.Value, beanId string, parent reflect.Value, field string) bool
 }
 
 // defaultBeanAssembly beanAssembly 的默认版本
 type defaultBeanAssembly struct {
-	springContext SpringContext
-	beanCache     map[reflect.Type]*beanCacheItem
-	wiringStack   *wiringStack
+	springCtx   *defaultSpringContext
+	wiringStack *wiringStack
 }
 
 // newDefaultBeanAssembly defaultBeanAssembly 的构造函数
-func newDefaultBeanAssembly(springContext SpringContext,
-	beanCache map[reflect.Type]*beanCacheItem,
-	watcher []WiringWatcher) *defaultBeanAssembly {
+func newDefaultBeanAssembly(springContext *defaultSpringContext,
+	watchers []WiringWatcher) *defaultBeanAssembly {
 
 	return &defaultBeanAssembly{
-		springContext: springContext,
-		beanCache:     beanCache,
-		wiringStack:   newWiringStack(watcher),
+		springCtx:   springContext,
+		wiringStack: newWiringStack(watchers),
 	}
 }
 
-func (beanAssembly *defaultBeanAssembly) SpringContext() SpringContext {
-	return beanAssembly.springContext
+func (beanAssembly *defaultBeanAssembly) springContext() SpringContext {
+	return beanAssembly.springCtx
 }
 
 // getCacheItem 获取指定类型的缓存项，返回值不会为 nil。
 func (beanAssembly *defaultBeanAssembly) getCacheItem(t reflect.Type) *beanCacheItem {
-	if c, ok := beanAssembly.beanCache[t]; ok {
+	if c, ok := beanAssembly.springCtx.beanCache[t]; ok {
 		return c
 	}
 	return newBeanCacheItem()
 }
 
 // getBeanValue 根据 BeanId 查找 Bean 并返回 Bean 源的值
-func (beanAssembly *defaultBeanAssembly) getBeanValue(v reflect.Value, beanId string, parentValue reflect.Value, field string) bool {
+func (beanAssembly *defaultBeanAssembly) getBeanValue(v reflect.Value, beanId string, parent reflect.Value, field string) bool {
 
-	typeName, beanName, nullable := ParseBeanId(beanId)
 	beanType := v.Type()
-
 	if ok := IsRefType(beanType.Kind()); !ok {
 		panic(fmt.Errorf("receiver must be ref type, bean: \"%s\" field: %s", beanId, field))
 	}
 
 	result := make([]*BeanDefinition, 0)
 
+	typeName, beanName, nullable := ParseBeanId(beanId)
 	m := beanAssembly.getCacheItem(beanType)
 	for _, bean := range m.beans {
-		// 不能将自身赋给自身的字段 && 类型必须相容 && 类型全限定名匹配
-		if bean.Value() != parentValue && bean.Type().AssignableTo(beanType) && bean.Match(typeName, beanName) {
+		// 不能将自身赋给自身的字段 && 类型全限定名匹配
+		if bean.Value() != parent && bean.Match(typeName, beanName) {
 			result = append(result, bean)
 		}
 	}
@@ -206,7 +202,7 @@ func (beanAssembly *defaultBeanAssembly) getBeanValue(v reflect.Value, beanId st
 	beanAssembly.wireBeanDefinition(primaryBeans[0], false)
 
 	// 恰好 1 个
-	v0 := SpringUtils.ValuePatchIf(v, beanAssembly.springContext.AllAccess())
+	v0 := SpringUtils.ValuePatchIf(v, beanAssembly.springCtx.AllAccess())
 	v0.Set(primaryBeans[0].Value())
 	return true
 }
@@ -221,14 +217,6 @@ func (beanAssembly *defaultBeanAssembly) collectBeans(v reflect.Value) bool {
 	{
 		m := beanAssembly.getCacheItem(t)
 		for _, d := range m.beans {
-
-			// 数组扩容，提高内存分配性能
-			size := ev.Len() + d.Value().Len()
-			newSlice := reflect.MakeSlice(t, size, size)
-
-			reflect.Copy(newSlice, ev)
-
-			// 拷贝新元素
 			for i := 0; i < d.Value().Len(); i++ {
 				di := d.Value().Index(i)
 
@@ -247,11 +235,8 @@ func (beanAssembly *defaultBeanAssembly) collectBeans(v reflect.Value) bool {
 					}
 				}
 
-				newSlice.Index(i + ev.Len()).Set(di)
+				ev = reflect.Append(ev, di)
 			}
-
-			// 完成扩容
-			ev = newSlice
 		}
 	}
 
@@ -266,7 +251,7 @@ func (beanAssembly *defaultBeanAssembly) collectBeans(v reflect.Value) bool {
 	}
 
 	if ev.Len() > 0 {
-		v = SpringUtils.ValuePatchIf(v, beanAssembly.springContext.AllAccess())
+		v = SpringUtils.ValuePatchIf(v, beanAssembly.springCtx.AllAccess())
 		v.Set(ev)
 		return true
 	}
@@ -323,7 +308,7 @@ func (beanAssembly *defaultBeanAssembly) wireBeanDefinition(bd IBeanDefinition, 
 
 	// 首先初始化当前 Bean 不直接依赖的那些 Bean
 	for _, selector := range bd.getDependsOn() {
-		if bean, ok := beanAssembly.springContext.FindBean(selector); !ok {
+		if bean, ok := beanAssembly.springCtx.FindBean(selector); !ok {
 			panic(fmt.Errorf("can't find bean: \"%v\"", selector))
 		} else {
 			beanAssembly.wireBeanDefinition(bean, false)
@@ -354,23 +339,19 @@ func (beanAssembly *defaultBeanAssembly) wireBeanDefinition(bd IBeanDefinition, 
 		fnValue.Call([]reflect.Value{bd.Value()})
 	}
 
+	bd.setStatus(beanStatus_Wired)
+
 	// 删除保存的注入帧
 	beanAssembly.wiringStack.popBack()
-
-	bd.setStatus(beanStatus_Wired)
 }
 
 // wireObjectBean 对原始对象进行注入
 func (beanAssembly *defaultBeanAssembly) wireObjectBean(bd IBeanDefinition, onlyAutoWire bool) {
 
 	st := bd.Type()
-	sk := st.Kind()
-
-	if sk == reflect.Slice { // 处理数组 Bean
+	if sk := st.Kind(); sk == reflect.Slice { // 处理数组 Bean
 		et := st.Elem()
-		ek := et.Kind()
-
-		if ek == reflect.Struct { // 结构体数组
+		if ek := et.Kind(); ek == reflect.Struct { // 结构体数组
 			v := bd.Value()
 			for i := 0; i < v.Len(); i++ {
 				iv := v.Index(i).Addr()
@@ -382,9 +363,7 @@ func (beanAssembly *defaultBeanAssembly) wireObjectBean(bd IBeanDefinition, only
 
 		} else if ek == reflect.Ptr { // 指针数组
 			it := et.Elem()
-			ik := it.Kind()
-
-			if ik == reflect.Struct { // 结构体指针数组
+			if ik := it.Kind(); ik == reflect.Struct { // 结构体指针数组
 				v := bd.Value()
 				for p := 0; p < v.Len(); p++ {
 					pv := v.Index(p)
@@ -397,8 +376,7 @@ func (beanAssembly *defaultBeanAssembly) wireObjectBean(bd IBeanDefinition, only
 		}
 
 	} else if sk == reflect.Ptr { // 处理指针 Bean
-		et := st.Elem()
-		if et.Kind() == reflect.Struct { // 结构体指针
+		if et := st.Elem(); et.Kind() == reflect.Struct { // 结构体指针
 
 			var etName string
 			if etName = et.Name(); etName == "" {
@@ -422,7 +400,7 @@ func (beanAssembly *defaultBeanAssembly) wireObjectBean(bd IBeanDefinition, only
 					// 避免父结构体有 value 标签重新解析导致失败的情况
 					if tag, ok := ft.Tag.Lookup("value"); ok {
 						fieldOnlyAutoWire = true
-						bindStructField(beanAssembly.springContext, ft.Type, fv, fieldName, "", tag, beanAssembly.springContext.AllAccess(), "")
+						bindStructField(beanAssembly.springCtx, ft.Type, fv, fieldName, "", tag, beanAssembly.springCtx.AllAccess(), "")
 					}
 				}
 
@@ -434,7 +412,7 @@ func (beanAssembly *defaultBeanAssembly) wireObjectBean(bd IBeanDefinition, only
 				// 处理结构体类型的字段，防止递归所以不支持指针结构体字段
 				if ft.Type.Kind() == reflect.Struct {
 					// 开放私有字段，但是不会更新原属性
-					fv0 := SpringUtils.ValuePatchIf(fv, beanAssembly.springContext.AllAccess())
+					fv0 := SpringUtils.ValuePatchIf(fv, beanAssembly.springCtx.AllAccess())
 					if fv0.CanSet() {
 
 						b := ValueToBeanDefinition("", fv0.Addr())
@@ -466,8 +444,8 @@ func (beanAssembly *defaultBeanAssembly) wireFunctionBean(fnValue reflect.Value,
 	}
 
 	if IsRefType(val.Kind()) {
-		// 如果实现接口的值是个结构体，那么需要转换成指针类型然后赋给接口
-		if val.Kind() == reflect.Interface && val.Elem().Kind() == reflect.Struct {
+		// 如果实现接口的是值类型，那么需要转换成指针类型然后赋给接口
+		if val.Kind() == reflect.Interface && IsValueType(val.Elem().Kind()) {
 			ptrVal := reflect.New(val.Elem().Type())
 			ptrVal.Elem().Set(val.Elem())
 			bean.rValue.Set(ptrVal)
@@ -667,12 +645,12 @@ func (ctx *defaultSpringContext) RegisterNameMethodBean(name string, selector in
 }
 
 // GetBean 根据类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
-func (ctx *defaultSpringContext) GetBean(i interface{}, watcher ...WiringWatcher) bool {
-	return ctx.GetBeanByName("?", i, watcher...)
+func (ctx *defaultSpringContext) GetBean(i interface{}, watchers ...WiringWatcher) bool {
+	return ctx.GetBeanByName("?", i, watchers...)
 }
 
 // GetBeanByName 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
-func (ctx *defaultSpringContext) GetBeanByName(beanId string, i interface{}, watcher ...WiringWatcher) bool {
+func (ctx *defaultSpringContext) GetBeanByName(beanId string, i interface{}, watchers ...WiringWatcher) bool {
 	ctx.checkAutoWired()
 
 	// 确保存在可空标记，抑制 panic 效果。
@@ -689,7 +667,7 @@ func (ctx *defaultSpringContext) GetBeanByName(beanId string, i interface{}, wat
 
 	v := reflect.ValueOf(i)
 
-	w := newDefaultBeanAssembly(ctx, ctx.beanCache, watcher)
+	w := newDefaultBeanAssembly(ctx, watchers)
 	return w.getBeanValue(v.Elem(), beanId, reflect.Value{}, "")
 }
 
@@ -769,7 +747,7 @@ func (ctx *defaultSpringContext) FindBeanByName(beanId string) (*BeanDefinition,
 }
 
 // CollectBeans 收集数组或指针定义的所有符合条件的 Bean 对象，收集到返回 true，否则返回 false。
-func (ctx *defaultSpringContext) CollectBeans(i interface{}, watcher ...WiringWatcher) bool {
+func (ctx *defaultSpringContext) CollectBeans(i interface{}, watchers ...WiringWatcher) bool {
 	ctx.checkAutoWired()
 
 	t := reflect.TypeOf(i)
@@ -784,7 +762,7 @@ func (ctx *defaultSpringContext) CollectBeans(i interface{}, watcher ...WiringWa
 		panic(errors.New("i must be slice ptr"))
 	}
 
-	w := newDefaultBeanAssembly(ctx, ctx.beanCache, watcher)
+	w := newDefaultBeanAssembly(ctx, watchers)
 	return w.collectBeans(reflect.ValueOf(i).Elem())
 }
 
@@ -843,7 +821,7 @@ func (ctx *defaultSpringContext) resolveBean(bd *BeanDefinition) {
 }
 
 // AutoWireBeans 完成自动绑定
-func (ctx *defaultSpringContext) AutoWireBeans(watcher ...WiringWatcher) {
+func (ctx *defaultSpringContext) AutoWireBeans(watchers ...WiringWatcher) {
 
 	// 不再接受 Bean 注册，因为性能的原因使用了缓存，并且在 AutoWireBeans 的过程中
 	// 逐步建立起这个缓存，而随着缓存的建立，绑定的速度会越来越快，从而减少性能的损失。
@@ -921,7 +899,7 @@ func (ctx *defaultSpringContext) AutoWireBeans(watcher ...WiringWatcher) {
 		ctx.eventNotify(ContextEvent_ResolveEnd)
 	}
 
-	w := newDefaultBeanAssembly(ctx, ctx.beanCache, watcher)
+	w := newDefaultBeanAssembly(ctx, watchers)
 
 	if ctx.eventNotify != nil {
 		ctx.eventNotify(ContextEvent_AutoWireStart)
@@ -965,10 +943,10 @@ func (ctx *defaultSpringContext) AutoWireBeans(watcher ...WiringWatcher) {
 }
 
 // WireBean 绑定外部的 Bean 源
-func (ctx *defaultSpringContext) WireBean(bean interface{}, watcher ...WiringWatcher) {
+func (ctx *defaultSpringContext) WireBean(bean interface{}, watchers ...WiringWatcher) {
 	ctx.checkAutoWired()
 
-	w := newDefaultBeanAssembly(ctx, ctx.beanCache, watcher)
+	w := newDefaultBeanAssembly(ctx, watchers)
 	bd := ToBeanDefinition("", bean)
 	w.wireBeanDefinition(bd, false)
 }

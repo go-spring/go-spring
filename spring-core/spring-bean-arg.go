@@ -166,7 +166,7 @@ func (arg *fnStringBindingArg) getArgValue(beanAssembly beanAssembly, caller cal
 		if tag == "" { // 如果是结构体，尝试使用结构体属性绑定语法。
 			tag = "${}"
 		}
-		bindStructField(beanAssembly.SpringContext(), v.Type(), v, "", "", tag, beanAssembly.SpringContext().AllAccess(), "")
+		bindStructField(beanAssembly.springContext(), v.Type(), v, "", "", tag, beanAssembly.springContext().AllAccess(), "")
 	} else {
 		if _, beanName, _ := ParseBeanId(tag); beanName == "[]" {
 			beanAssembly.collectBeans(v)
@@ -341,7 +341,7 @@ func (arg *optionArg) call(beanAssembly beanAssembly) (v reflect.Value, ok bool)
 	SpringLogger.Tracef("call option func %s", arg.Caller())
 
 	// 判断 Option 条件是否成立
-	if ok = arg.cond.Matches(beanAssembly.SpringContext()); ok {
+	if ok = arg.cond.Matches(beanAssembly.springContext()); ok {
 		fnValue := reflect.ValueOf(arg.fn)
 		in := arg.arg.Get(beanAssembly, arg)
 		out := fnValue.Call(in)
