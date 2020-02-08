@@ -17,12 +17,12 @@
 package SpringCore
 
 import (
+	"errors"
 	"go/token"
 	"go/types"
 	"strings"
 
 	"github.com/go-spring/go-spring-parent/spring-const"
-	"github.com/go-spring/go-spring-parent/spring-logger"
 	"github.com/spf13/cast"
 )
 
@@ -127,11 +127,11 @@ func (c *propertyValueCondition) Matches(ctx SpringContext) bool {
 	}
 
 	expr := strings.Replace(expectValue, "$", cast.ToString(val), -1)
-	gotTv, err := types.Eval(token.NewFileSet(), nil, token.NoPos, expr)
-	if err != nil {
-		SpringLogger.Panic(err)
+	if ret, err := types.Eval(token.NewFileSet(), nil, token.NoPos, expr); err == nil {
+		return ret.Value.String() == "true"
+	} else {
+		panic(err)
 	}
-	return gotTv.Value.String() == "true"
 }
 
 // beanCondition 基于 Bean 存在的 Condition 实现
@@ -178,8 +178,7 @@ func NewExpressionCondition(expression string) *expressionCondition {
 
 // Matches 成功返回 true，失败返回 false
 func (c *expressionCondition) Matches(ctx SpringContext) bool {
-	SpringLogger.Panic(SpringConst.UNIMPLEMENTED_METHOD)
-	return false
+	panic(errors.New(SpringConst.UNIMPLEMENTED_METHOD))
 }
 
 // profileCondition 基于运行环境匹配的 Condition 实现
@@ -189,9 +188,7 @@ type profileCondition struct {
 
 // NewProfileCondition profileCondition 的构造函数
 func NewProfileCondition(profile string) *profileCondition {
-	return &profileCondition{
-		profile: profile,
-	}
+	return &profileCondition{profile}
 }
 
 // Matches 成功返回 true，失败返回 false
@@ -206,10 +203,9 @@ func (c *profileCondition) Matches(ctx SpringContext) bool {
 type ConditionOp int
 
 const (
-	ConditionDefault = ConditionOp(0) // 默认值
-	ConditionOr      = ConditionOp(1) // 至少一个满足
-	ConditionAnd     = ConditionOp(2) // 所有都要满足
-	ConditionNone    = ConditionOp(3) // 没有一个满足
+	ConditionOr   = ConditionOp(1) // 至少一个满足
+	ConditionAnd  = ConditionOp(2) // 所有都要满足
+	ConditionNone = ConditionOp(3) // 没有一个满足
 )
 
 // conditions 基于条件组的 Condition 实现
@@ -230,7 +226,7 @@ func NewConditions(op ConditionOp, cond ...Condition) *conditions {
 func (c *conditions) Matches(ctx SpringContext) bool {
 
 	if len(c.cond) == 0 {
-		SpringLogger.Panic("no condition")
+		panic(errors.New("no condition"))
 	}
 
 	switch c.op {
@@ -255,36 +251,32 @@ func (c *conditions) Matches(ctx SpringContext) bool {
 			}
 		}
 		return true
-	default:
-		SpringLogger.Panic("error condition op mode")
 	}
 
-	return false
+	panic(errors.New("error condition op mode"))
 }
 
-// conditionNode Condition 计算式的节点
+// conditionNode Condition 计算式节点，返回值是 'cond op next'
 type conditionNode struct {
-	next *conditionNode // 下一个计算节点
-	op   ConditionOp    // 计算方式
 	cond Condition      // 条件
+	op   ConditionOp    // 计算方式
+	next *conditionNode // 下一个计算节点
 }
 
 // newConditionNode conditionNode 的构造函数
 func newConditionNode() *conditionNode {
-	return &conditionNode{
-		op: ConditionDefault,
-	}
+	return &conditionNode{}
 }
 
 // Matches 成功返回 true，失败返回 false
 func (c *conditionNode) Matches(ctx SpringContext) bool {
 
-	if c.next != nil && c.next.cond == nil {
-		SpringLogger.Panic("last op need a cond triggered")
+	if c.cond == nil { // 空节点返回 true
+		return true
 	}
 
-	if c.cond == nil && c.op == ConditionDefault {
-		return true
+	if c.next != nil && c.next.cond == nil {
+		panic(errors.New("last op need a cond triggered"))
 	}
 
 	if r := c.cond.Matches(ctx); c.next != nil {
@@ -303,14 +295,12 @@ func (c *conditionNode) Matches(ctx SpringContext) bool {
 				return false
 			}
 		default:
-			SpringLogger.Panic("error condition op mode")
+			panic(errors.New("error condition op mode"))
 		}
 
 	} else {
 		return r
 	}
-
-	return false
 }
 
 // Conditional Condition 计算式
