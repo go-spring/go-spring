@@ -40,5 +40,7 @@ func mockDB(fn func(sqlmock.Sqlmock)) (*sql.DB, error) {
 // destroy 关闭 DB 连接
 func destroy(db *sql.DB) {
 	SpringLogger.Info("close sql db")
-	db.Close()
+	if err := db.Close(); err != nil {
+		SpringLogger.Error(err)
+	}
 }

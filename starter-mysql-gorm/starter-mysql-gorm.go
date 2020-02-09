@@ -54,5 +54,7 @@ func fromDB(db *sql.DB) (*gorm.DB, error) {
 // closeDB 关闭 *gorm.DB 客户端
 func closeDB(db *gorm.DB) {
 	SpringLogger.Info("close gorm mysql")
-	db.Close()
+	if err := db.Close(); err != nil {
+		SpringLogger.Error(err)
+	}
 }

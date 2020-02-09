@@ -291,9 +291,9 @@ func TestDefaultProperties_ReadProperties_Yaml(t *testing.T) {
 		v := p.GetProperty("array")
 		expect := []interface{}{
 			map[interface{}]interface{}{ // yaml 是 map[interface{}]interface{}，toml 是 map[string]interface{}
-				"bool": false,
-				"int": 3,
-				"float": 3.0,
+				"bool":   false,
+				"int":    3,
+				"float":  3.0,
 				"string": "hello",
 			},
 			map[interface{}]interface{}{
@@ -446,9 +446,9 @@ func TestDefaultProperties_ReadProperties_Toml(t *testing.T) {
 		v := p.GetProperty("array")
 		expect := []interface{}{
 			map[string]interface{}{ // yaml 是 map[interface{}]interface{}，toml 是 map[string]interface{}
-				"bool": false,
-				"int": int64(3),
-				"float": float64(3.0),
+				"bool":   false,
+				"int":    int64(3),
+				"float":  float64(3.0),
 				"string": "hello",
 			},
 			map[string]interface{}{
@@ -628,12 +628,12 @@ type DBConnection struct {
 
 type UntaggedNestedDB struct {
 	DBConnection `value:"${}"`
-	DB string    `value:"${db}"`
+	DB           string `value:"${db}"`
 }
 
 type TaggedNestedDB struct {
 	DBConnection `value:"${tag}"`
-	DB string    `value:"${db}"`
+	DB           string `value:"${db}"`
 }
 
 type TagNestedDbConfig struct {
@@ -642,8 +642,8 @@ type TagNestedDbConfig struct {
 }
 
 type NestedDB struct {
-	DBConnection // 正确，不能有 tag
-	DB string `value:"${db}"`
+	DBConnection        // 正确，不能有 tag
+	DB           string `value:"${db}"`
 }
 
 type NestedDbConfig struct {
@@ -726,7 +726,7 @@ func TestDefaultProperties_StringMapString(t *testing.T) {
 		p.BindProperty("a", &m)
 
 		assert.Equal(t, len(m), 3)
-		assert.Equal(t, m["p1"], image.Point{1, 2})
+		assert.Equal(t, m["p1"], image.Pt(1, 2))
 	})
 
 	t.Run("simple bind from file", func(t *testing.T) {

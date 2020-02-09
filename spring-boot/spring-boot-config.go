@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	"github.com/go-spring/go-spring-parent/spring-logger"
+	SpringUtils "github.com/go-spring/go-spring-parent/spring-utils"
 	"github.com/spf13/viper"
 )
 
@@ -74,9 +75,9 @@ func (p *defaultPropertySource) Load(profile string) map[string]interface{} {
 
 		v := viper.New()
 		v.SetConfigFile(filename)
-		if err := v.ReadInConfig(); err != nil {
-			SpringLogger.Panic(err)
-		}
+
+		err := v.ReadInConfig()
+		SpringUtils.Panic(err).When(err != nil)
 
 		keys := v.AllKeys()
 		sort.Strings(keys)
@@ -113,9 +114,9 @@ func (p *configMapPropertySource) Load(profile string) map[string]interface{} {
 
 	v := viper.New()
 	v.SetConfigFile(p.filename)
-	if err := v.ReadInConfig(); err != nil {
-		SpringLogger.Panic(err)
-	}
+
+	err := v.ReadInConfig()
+	SpringUtils.Panic(err).When(err != nil)
 
 	d := v.Sub("data")
 	if d == nil {
@@ -140,9 +141,9 @@ func (p *configMapPropertySource) Load(profile string) map[string]interface{} {
 
 			v0 := viper.New()
 			v0.SetConfigType(ext[1:])
-			if err := v0.ReadConfig(strings.NewReader(val)); err != nil {
-				SpringLogger.Panic(err)
-			}
+
+			err = v0.ReadConfig(strings.NewReader(val))
+			SpringUtils.Panic(err).When(err != nil)
 
 			v0Keys := v0.AllKeys()
 			sort.Strings(v0Keys)

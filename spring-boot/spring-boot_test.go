@@ -63,7 +63,7 @@ func init() {
 }
 
 func TestRunApplication(t *testing.T) {
-	os.Setenv(SpringBoot.SpringProfile, "test")
+	_ = os.Setenv(SpringBoot.SpringProfile, "test")
 	SpringBoot.SetProperty("db.url", "root:root@/information_schema?charset=utf8&parseTime=True&loc=Local")
 	SpringBoot.RunApplication("testdata/config/", "k8s:testdata/config/config-map.yaml")
 }
@@ -85,10 +85,10 @@ func (c *MyController) OK(ctx SpringWeb.WebContext) {
 
 	rows, err := c.DB.Table("ENGINES").Select("ENGINE").Rows()
 	SpringUtils.Panic(err).When(err != nil)
+	defer rows.Close()
 
 	count := 0
 
-	defer rows.Close()
 	for rows.Next() {
 		count++
 
