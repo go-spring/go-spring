@@ -1,4 +1,4 @@
-# Go-Spring
+<img src="https://raw.githubusercontent.com/go-spring/go-spring/master/logo@h.png" width="140" height="*" /><br/>
 
 Go-Spring 的愿景是让 GoLang 程序员也能用上如 Java Spring 那般威力强大的编程框架。🎉 wiki 已更新 🎉。
 
