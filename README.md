@@ -1,4 +1,10 @@
-<img src="https://raw.githubusercontent.com/go-spring/go-spring/master/logo@h.png" width="140" height="*" /><br/>
+<div>    
+ <img src="https://raw.githubusercontent.com/go-spring/go-spring/master/logo@h.png" width="140" height="*" alt="logo"/>
+ <br/>
+ <img src="https://img.shields.io/github/license/go-spring/go-spring" alt="license"/>
+ <img src="https://img.shields.io/github/go-mod/go-version/go-spring/go-spring" alt="go-version"/>
+ <img src="https://img.shields.io/github/v/release/go-spring/go-spring?include_prereleases" alt="release"/>
+</div>
 
 Go-Spring 的愿景是让 GoLang 程序员也能用上如 Java Spring 那般威力强大的编程框架。🎉 wiki 已更新 🎉。
 
