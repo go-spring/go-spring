@@ -58,7 +58,7 @@ type Properties interface {
 	GetTimeProperty(key string) time.Time
 
 	// GetDefaultProperty 返回属性值，如果没有找到则使用指定的默认值，属性名称统一转成小写。
-	GetDefaultProperty(key string, defaultValue interface{}) (interface{}, bool)
+	GetDefaultProperty(key string, def interface{}) (interface{}, bool)
 
 	// SetProperty 设置属性值，属性名称统一转成小写。
 	SetProperty(key string, value interface{})
@@ -115,12 +115,9 @@ func IsValidConverter(t reflect.Type) bool {
 
 // RegisterTypeConverter 注册类型转换器，用于属性绑定，函数原型 func(string)type
 func RegisterTypeConverter(fn interface{}) {
-	t := reflect.TypeOf(fn)
-
-	if ok := IsValidConverter(t); !ok {
-		ft := "func(string)type"
-		panic(errors.New("fn must be " + ft))
+	if t := reflect.TypeOf(fn); !IsValidConverter(t) {
+		panic(errors.New("fn must be func(string)type"))
+	} else {
+		typeConverters[t.Out(0)] = fn
 	}
-
-	typeConverters[t.Out(0)] = fn
 }

@@ -144,11 +144,11 @@ func (p *defaultProperties) SetProperty(key string, value interface{}) {
 }
 
 // GetDefaultProperty 返回属性值，如果没有找到则使用指定的默认值
-func (p *defaultProperties) GetDefaultProperty(key string, defaultValue interface{}) (interface{}, bool) {
+func (p *defaultProperties) GetDefaultProperty(key string, def interface{}) (interface{}, bool) {
 	if v, ok := p.properties[strings.ToLower(key)]; ok {
 		return v, true
 	}
-	return defaultValue, false
+	return def, false
 }
 
 // GetPrefixProperties 返回指定前缀的属性值集合，属性名称统一转成小写。
@@ -223,29 +223,29 @@ func bindStructField(p Properties, v reflect.Value, tag string, opt bindOption) 
 	ss := strings.Split(tag[2:len(tag)-1], ":=")
 
 	var (
-		propName     string
-		defaultValue interface{}
+		key string
+		def interface{}
 	)
 
-	propName = ss[0]
+	key = ss[0]
 
 	// 此处使用最短属性名
 	if opt.fullPropName == "" {
-		opt.fullPropName = propName
-	} else if propName != "" {
-		opt.fullPropName = opt.fullPropName + "." + propName
+		opt.fullPropName = key
+	} else if key != "" {
+		opt.fullPropName = opt.fullPropName + "." + key
 	}
 
 	// 属性名如果有前缀要加上前缀
 	if opt.propNamePrefix != "" {
-		propName = opt.propNamePrefix + "." + propName
+		key = opt.propNamePrefix + "." + key
 	}
 
 	if len(ss) > 1 {
-		defaultValue = ss[1] // 此处无需转换成具体类型
+		def = ss[1] // 此处无需转换成具体类型
 	}
 
-	bindValue(p, v, propName, defaultValue, opt)
+	bindValue(p, v, key, def, opt)
 }
 
 // bindValue 对任意 value 进行属性绑定

@@ -115,18 +115,15 @@ type objectBean struct {
 
 // newObjectBean objectBean 的构造函数
 func newObjectBean(v reflect.Value) *objectBean {
-
-	t := v.Type()
-
-	if ok := IsRefType(t.Kind()); !ok {
+	if t := v.Type(); !IsRefType(t.Kind()) {
 		panic(errors.New("bean must be ref type"))
-	}
-
-	return &objectBean{
-		bean:     v.Interface(),
-		rType:    t,
-		typeName: TypeName(t),
-		rValue:   v,
+	} else {
+		return &objectBean{
+			bean:     v.Interface(),
+			rType:    t,
+			typeName: TypeName(t),
+			rValue:   v,
+		}
 	}
 }
 

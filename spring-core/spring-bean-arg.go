@@ -17,6 +17,7 @@
 package SpringCore
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"runtime"
@@ -72,22 +73,22 @@ func newFnStringBindingArg(fnType reflect.Type, withReceiver bool, tags []string
 			for _, tag := range tags {
 				index := strings.Index(tag, ":")
 				if index <= 0 {
-					SpringLogger.Panicf("tag:\"%s\" should have index", tag)
+					panic(fmt.Errorf("tag:\"%s\" should have index", tag))
 				}
 
 				i, err := strconv.Atoi(tag[:index])
 				if err != nil {
-					SpringLogger.Panicf("tag:\"%s\" should have index", tag)
+					panic(fmt.Errorf("tag:\"%s\" should have index", tag))
 				}
 
 				if i < 0 || i >= numIn {
-					SpringLogger.Panicf("indexed tag \"%s\" overflow", tag)
+					panic(fmt.Errorf("indexed tag \"%s\" overflow", tag))
 				}
 
 				fnTags[i] = append(fnTags[i], tag[index+1:])
 
 				if len(fnTags[i]) > 1 && (!variadic || i < numIn-1) {
-					SpringLogger.Panicf("index %d has %d tags", i, len(fnTags[i]))
+					panic(fmt.Errorf("index %d has %d tags", i, len(fnTags[i])))
 				}
 			}
 
@@ -95,7 +96,7 @@ func newFnStringBindingArg(fnType reflect.Type, withReceiver bool, tags []string
 			for i, tag := range tags {
 				if index := strings.Index(tag, ":"); index > 0 {
 					if _, err := strconv.Atoi(tag[:index]); err == nil {
-						SpringLogger.Panic("tag \"%s\" shouldn't have index", tag)
+						panic(fmt.Errorf("tag \"%s\" shouldn't have index", tag))
 					}
 				}
 
@@ -104,7 +105,7 @@ func newFnStringBindingArg(fnType reflect.Type, withReceiver bool, tags []string
 				} else {
 					fnTags[i] = []string{tag}
 					if i >= numIn {
-						SpringLogger.Panicf("tag %d:\"%s\" overflow", i, tag)
+						panic(fmt.Errorf("tag %d:\"%s\" overflow", i, tag))
 					}
 				}
 			}
@@ -136,19 +137,19 @@ func (arg *fnStringBindingArg) Get(beanAssembly beanAssembly, caller caller) []r
 		}
 
 		if variadic && i == numIn-1 { // 可变参数
-			et := it.Elem()
+			et := it.Elem() // 数组类型
 			for _, tag := range tags {
 				ev := reflect.New(et).Elem()
-				arg.getArgValue(beanAssembly, caller, ev, tag)
+				arg.getArgValue(ev, tag, beanAssembly, caller)
 				result = append(result, ev)
 			}
 		} else {
-			iv := reflect.New(it).Elem()
-			if len(tags) == 0 {
-				arg.getArgValue(beanAssembly, caller, iv, "")
-			} else {
-				arg.getArgValue(beanAssembly, caller, iv, tags[0])
+			var tag string
+			if len(tags) > 0 {
+				tag = tags[0]
 			}
+			iv := reflect.New(it).Elem()
+			arg.getArgValue(iv, tag, beanAssembly, caller)
 			result = append(result, iv)
 		}
 	}
@@ -157,7 +158,7 @@ func (arg *fnStringBindingArg) Get(beanAssembly beanAssembly, caller caller) []r
 }
 
 // getArgValue 获取绑定参数值
-func (arg *fnStringBindingArg) getArgValue(beanAssembly beanAssembly, caller caller, v reflect.Value, tag string) {
+func (arg *fnStringBindingArg) getArgValue(v reflect.Value, tag string, beanAssembly beanAssembly, caller caller) {
 
 	description := fmt.Sprintf("tag:\"%s\" %s", tag, caller.Caller())
 	SpringLogger.Tracef("get value %s", description)
@@ -250,7 +251,7 @@ func NewOptionArg(fn interface{}, tags ...string) *optionArg {
 	fnType := reflect.TypeOf(fn)
 
 	if ok := validOptionFunc(fnType); !ok {
-		SpringLogger.Panic("option func must be func(...)option")
+		panic(errors.New("option func must be func(...)option"))
 	}
 
 	return &optionArg{

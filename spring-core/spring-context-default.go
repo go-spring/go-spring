@@ -30,8 +30,8 @@ import (
 
 // beanKey Bean's unique key, type+name.
 type beanKey struct {
-	rType reflect.Type
-	name  string
+	name string
+	typ  reflect.Type
 }
 
 // beanCacheItem BeanCache's item.
@@ -219,22 +219,13 @@ func (beanAssembly *defaultBeanAssembly) collectBeans(v reflect.Value) bool {
 		for _, d := range m.beans {
 			for i := 0; i < d.Value().Len(); i++ {
 				di := d.Value().Index(i)
-
 				if di.Kind() == reflect.Struct {
-					bd := ValueToBeanDefinition("", di.Addr())
-					bd.file = d.getFile()
-					bd.line = d.getLine()
-					beanAssembly.wireBeanDefinition(bd, false)
-
+					beanAssembly.wireSliceItem(di.Addr(), d)
 				} else if di.Kind() == reflect.Ptr {
 					if de := di.Elem(); de.Kind() == reflect.Struct {
-						bd := ValueToBeanDefinition("", di)
-						bd.file = d.getFile()
-						bd.line = d.getLine()
-						beanAssembly.wireBeanDefinition(bd, false)
+						beanAssembly.wireSliceItem(di, d)
 					}
 				}
-
 				ev = reflect.Append(ev, di)
 			}
 		}
@@ -278,6 +269,14 @@ type delegateBeanDefinition struct {
 // Description 返回 Bean 的详细描述
 func (d *delegateBeanDefinition) Description() string {
 	return fmt.Sprintf("%s value %s", d.delegate.springBean().beanClass(), d.delegate.Caller())
+}
+
+// wireSliceItem 注入 slice 的元素值
+func (beanAssembly *defaultBeanAssembly) wireSliceItem(v reflect.Value, d IBeanDefinition) {
+	bd := ValueToBeanDefinition("", v)
+	bd.file = d.getFile()
+	bd.line = d.getLine()
+	beanAssembly.wireBeanDefinition(bd, false)
 }
 
 // wireBeanDefinition 绑定 BeanDefinition 指定的 Bean
@@ -347,35 +346,27 @@ func (beanAssembly *defaultBeanAssembly) wireBeanDefinition(bd IBeanDefinition, 
 
 // wireObjectBean 对原始对象进行注入
 func (beanAssembly *defaultBeanAssembly) wireObjectBean(bd IBeanDefinition, onlyAutoWire bool) {
-
 	st := bd.Type()
-	if sk := st.Kind(); sk == reflect.Slice { // 处理数组 Bean
+	switch sk := st.Kind(); sk {
+	case reflect.Slice:
 		et := st.Elem()
 		if ek := et.Kind(); ek == reflect.Struct { // 结构体数组
 			v := bd.Value()
 			for i := 0; i < v.Len(); i++ {
 				iv := v.Index(i).Addr()
-				b := ValueToBeanDefinition("", iv)
-				b.file = bd.getFile()
-				b.line = bd.getLine()
-				beanAssembly.wireBeanDefinition(b, false)
+				beanAssembly.wireSliceItem(iv, bd)
 			}
-
 		} else if ek == reflect.Ptr { // 指针数组
 			it := et.Elem()
 			if ik := it.Kind(); ik == reflect.Struct { // 结构体指针数组
 				v := bd.Value()
 				for p := 0; p < v.Len(); p++ {
 					pv := v.Index(p)
-					b := ValueToBeanDefinition("", pv)
-					b.file = bd.getFile()
-					b.line = bd.getLine()
-					beanAssembly.wireBeanDefinition(b, false)
+					beanAssembly.wireSliceItem(pv, bd)
 				}
 			}
 		}
-
-	} else if sk == reflect.Ptr { // 处理指针 Bean
+	case reflect.Ptr:
 		if et := st.Elem(); et.Kind() == reflect.Struct { // 结构体指针
 
 			var etName string
@@ -400,17 +391,16 @@ func (beanAssembly *defaultBeanAssembly) wireObjectBean(bd IBeanDefinition, only
 					// 避免父结构体有 value 标签重新解析导致失败的情况
 					if tag, ok := ft.Tag.Lookup("value"); ok {
 						fieldOnlyAutoWire = true
-						bindStructField(beanAssembly.springCtx, fv, tag,
-							bindOption{
-								fieldName: fieldName,
-								allAccess: beanAssembly.springCtx.AllAccess(),
-							})
+						bindStructField(beanAssembly.springCtx, fv, tag, bindOption{
+							fieldName: fieldName,
+							allAccess: beanAssembly.springCtx.AllAccess(),
+						})
 					}
 				}
 
 				// 处理 autowire 标签
 				if beanId, ok := ft.Tag.Lookup("autowire"); ok {
-					beanAssembly.wireStructField(sv, fv, fieldName, beanId)
+					beanAssembly.wireStructField(fv, beanId, sv, fieldName)
 				}
 
 				// 处理结构体类型的字段，防止递归所以不支持指针结构体字段
@@ -482,24 +472,24 @@ func (beanAssembly *defaultBeanAssembly) wireFunctionBean(fnValue reflect.Value,
 }
 
 // wireStructField 对结构体的字段进行绑定
-func (beanAssembly *defaultBeanAssembly) wireStructField(parentValue reflect.Value,
-	beanValue reflect.Value, field string, beanId string) {
+func (beanAssembly *defaultBeanAssembly) wireStructField(v reflect.Value,
+	beanId string, parent reflect.Value, field string) {
 
 	_, beanName, nullable := ParseBeanId(beanId)
 	if beanName == "[]" { // 收集模式，autowire:"[]"
 
 		// 收集模式的绑定对象必须是数组
-		if beanValue.Type().Kind() != reflect.Slice {
+		if v.Type().Kind() != reflect.Slice {
 			panic(fmt.Errorf("field: %s should be slice", field))
 		}
 
-		ok := beanAssembly.collectBeans(beanValue)
+		ok := beanAssembly.collectBeans(v)
 		if !ok && !nullable { // 没找到且不能为空则 panic
 			panic(fmt.Errorf("can't find bean: \"%s\" field: %s", beanId, field))
 		}
 
 	} else { // 匹配模式，autowire:"" or autowire:"name"
-		beanAssembly.getBeanValue(beanValue, beanId, parentValue, field)
+		beanAssembly.getBeanValue(v, beanId, parent, field)
 	}
 }
 
@@ -579,7 +569,7 @@ func (ctx *defaultSpringContext) checkRegistration() {
 
 // deleteBeanDefinition 删除 BeanDefinition。
 func (ctx *defaultSpringContext) deleteBeanDefinition(bd *BeanDefinition) {
-	key := beanKey{bd.Type(), bd.name}
+	key := beanKey{bd.name, bd.Type()}
 	bd.status = beanStatus_Deleted
 	delete(ctx.beanMap, key)
 }
@@ -588,11 +578,7 @@ func (ctx *defaultSpringContext) deleteBeanDefinition(bd *BeanDefinition) {
 func (ctx *defaultSpringContext) registerBeanDefinition(d *BeanDefinition) {
 	ctx.checkRegistration()
 
-	k := beanKey{
-		rType: d.Type(),
-		name:  d.name,
-	}
-
+	k := beanKey{d.name, d.Type()}
 	if _, ok := ctx.beanMap[k]; ok {
 		panic(fmt.Errorf("duplicate registration, bean: \"%s\"", d.BeanId()))
 	}
@@ -670,7 +656,6 @@ func (ctx *defaultSpringContext) GetBeanByName(beanId string, i interface{}, wat
 	}
 
 	v := reflect.ValueOf(i)
-
 	w := newDefaultBeanAssembly(ctx, watchers)
 	return w.getBeanValue(v.Elem(), beanId, reflect.Value{}, "")
 }
@@ -824,24 +809,13 @@ func (ctx *defaultSpringContext) resolveBean(bd *BeanDefinition) {
 	bd.status = beanStatus_Resolved
 }
 
-// AutoWireBeans 完成自动绑定
-func (ctx *defaultSpringContext) AutoWireBeans(watchers ...WiringWatcher) {
-
-	// 不再接受 Bean 注册，因为性能的原因使用了缓存，并且在 AutoWireBeans 的过程中
-	// 逐步建立起这个缓存，而随着缓存的建立，绑定的速度会越来越快，从而减少性能的损失。
-
-	if ctx.autoWired {
-		panic(errors.New("ctx.AutoWireBeans() already called"))
-	}
-
-	// 注册所有的 Method Bean
+// registerMethodBeans 注册方法 Bean
+func (ctx *defaultSpringContext) registerMethodBeans() {
+	var (
+		selector string
+		filter   func(*BeanDefinition) bool
+	)
 	for _, bd := range ctx.methodBeans {
-
-		var (
-			selector string
-			filter   func(*BeanDefinition) bool
-		)
-
 		bean := bd.bean.(*fakeMethodBean)
 		result := make([]*BeanDefinition, 0)
 
@@ -887,6 +861,20 @@ func (ctx *defaultSpringContext) AutoWireBeans(watchers ...WiringWatcher) {
 		}
 		ctx.registerBeanDefinition(bd)
 	}
+}
+
+// AutoWireBeans 完成自动绑定
+func (ctx *defaultSpringContext) AutoWireBeans(watchers ...WiringWatcher) {
+
+	// 不再接受 Bean 注册，因为性能的原因使用了缓存，并且在 AutoWireBeans 的过程中
+	// 逐步建立起这个缓存，而随着缓存的建立，绑定的速度会越来越快，从而减少性能的损失。
+
+	if ctx.autoWired {
+		panic(errors.New("ctx.AutoWireBeans() already called"))
+	}
+
+	// 注册所有的 Method Bean
+	ctx.registerMethodBeans()
 
 	ctx.autoWired = true
 

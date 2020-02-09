@@ -192,8 +192,8 @@ func GetTimeProperty(key string) time.Time {
 }
 
 // GetDefaultProperty 返回属性值，如果没有找到则使用指定的默认值，属性名称统一转成小写。
-func GetDefaultProperty(key string, defaultValue interface{}) (interface{}, bool) {
-	return ctx.GetDefaultProperty(key, defaultValue)
+func GetDefaultProperty(key string, def interface{}) (interface{}, bool) {
+	return ctx.GetDefaultProperty(key, def)
 }
 
 // SetProperty 设置属性值，属性名称统一转成小写。
