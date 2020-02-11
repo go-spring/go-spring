@@ -39,6 +39,8 @@ github.com/go-redis/redis v6.15.6+incompatible/go.mod h1:NAIEuMOZ/fxfXJIrKDQDz8w
 github.com/go-spring/go-spring-parent v1.0.0-rc/go.mod h1:Zg3ANEYjqeAW8UMbKy5qkPYklEsQkhR73SuJiiSi2IU=
 github.com/go-spring/go-spring-parent v1.0.0-rc.0.20200207135011-a26cccf06a8a h1:3m6XgE+PbaxSJsgU4uMATQD+6CVJuN5JtdtHb0Cw5KI=
 github.com/go-spring/go-spring-parent v1.0.0-rc.0.20200207135011-a26cccf06a8a/go.mod h1:KzXpkn4lQbYXwwBnqeBlqloK2NP3HqsQuDSXkEJurGU=
+github.com/go-spring/go-spring-parent v1.0.0-rc.0.20200211080445-a0fbf828a508 h1:DWdJZ5gw6jtB0JzwKu1WjA9VK9gTx0BFRfO89Il281M=
+github.com/go-spring/go-spring-parent v1.0.0-rc.0.20200211080445-a0fbf828a508/go.mod h1:KzXpkn4lQbYXwwBnqeBlqloK2NP3HqsQuDSXkEJurGU=
 github.com/go-spring/go-spring-web v1.0.0-rc.0.20200105075953-bc8119f0face h1:lWjUtGsBLQT2iFQB7AuuW2s54itfRi50Bu1MTot6iYA=
 github.com/go-spring/go-spring-web v1.0.0-rc.0.20200105075953-bc8119f0face/go.mod h1:m9FFyaHFyMAy/B1s3cqqV3OtXx27g2gI5AHi+W2y+O4=
 github.com/go-sql-driver/mysql v1.4.1 h1:g24URVg0OFbNUTx9qqY1IRZ9D9z3iPyi5zKhQZpNwpA=

@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"sync"
 
 	"github.com/go-spring/go-spring-parent/spring-logger"
 	"github.com/go-spring/go-spring-parent/spring-utils"
@@ -133,10 +134,26 @@ func (beanAssembly *defaultBeanAssembly) springContext() SpringContext {
 
 // getCacheItem 获取指定类型的缓存项，返回值不会为 nil。
 func (beanAssembly *defaultBeanAssembly) getCacheItem(t reflect.Type) *beanCacheItem {
-	if c, ok := beanAssembly.springCtx.beanCache[t]; ok {
-		return c
+
+	// 查找目标类型对应的缓存
+	if c, ok := beanAssembly.springCtx.beanCache.Load(t); ok {
+		return c.(*beanCacheItem)
 	}
-	return newBeanCacheItem()
+
+	cache := newBeanCacheItem()
+
+	// 如果是接口则对所有 Bean 进行匹配
+	if t.Kind() == reflect.Interface {
+		for _, bd := range beanAssembly.springCtx.beanMap {
+			if bd.Type().AssignableTo(t) {
+				SpringLogger.Warnf("you should call AsInterface() on %s", bd.Description())
+				cache.store(t, bd)
+			}
+		}
+	}
+
+	beanAssembly.springCtx.beanCache.Store(t, cache)
+	return cache
 }
 
 // getBeanValue 根据 BeanId 查找 Bean 并返回 Bean 源的值
@@ -508,9 +525,11 @@ type defaultSpringContext struct {
 
 	eventNotify func(event ContextEvent) // 事件通知函数
 
-	beanMap     map[beanKey]*BeanDefinition     // Bean 的集合
-	beanCache   map[reflect.Type]*beanCacheItem // Bean 的缓存
-	methodBeans []*BeanDefinition               // 方法 Beans
+	beanMap     map[beanKey]*BeanDefinition // Bean 的集合
+	methodBeans []*BeanDefinition           // 方法 Beans
+
+	// Bean 的缓存，使用线程安全的 map 是考虑到运行时可能有并发操作
+	beanCache sync.Map
 
 	Sort bool // 自动注入期间是否按照 BeanId 进行排序并依次进行注入
 }
@@ -524,7 +543,6 @@ func NewDefaultSpringContext() *defaultSpringContext {
 		Properties:  NewDefaultProperties(),
 		methodBeans: make([]*BeanDefinition, 0),
 		beanMap:     make(map[beanKey]*BeanDefinition),
-		beanCache:   make(map[reflect.Type]*beanCacheItem),
 	}
 }
 
@@ -641,6 +659,8 @@ func (ctx *defaultSpringContext) GetBean(i interface{}, watchers ...WiringWatche
 
 // GetBeanByName 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 func (ctx *defaultSpringContext) GetBeanByName(beanId string, i interface{}, watchers ...WiringWatcher) bool {
+	SpringUtils.Panic(errors.New("i can't be nil")).When(i == nil)
+
 	ctx.checkAutoWired()
 
 	// 确保存在可空标记，抑制 panic 效果。
@@ -757,12 +777,8 @@ func (ctx *defaultSpringContext) CollectBeans(i interface{}, watchers ...WiringW
 
 // findCacheItem 查找指定类型的缓存项
 func (ctx *defaultSpringContext) findCacheItem(t reflect.Type) *beanCacheItem {
-	c, ok := ctx.beanCache[t]
-	if !ok {
-		c = newBeanCacheItem()
-		ctx.beanCache[t] = c
-	}
-	return c
+	c, _ := ctx.beanCache.LoadOrStore(t, newBeanCacheItem())
+	return c.(*beanCacheItem)
 }
 
 // resolveBean 对 Bean 进行决议是否能够创建 Bean 的实例

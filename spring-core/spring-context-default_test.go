@@ -2160,3 +2160,16 @@ func TestDefaultSpringContext_IntInterface(t *testing.T) {
 	ctx.RegisterBeanFn(func() IntInterface { return Integer(5) })
 	ctx.AutoWireBeans()
 }
+
+func TestDefaultSpringContext_WarnAsInterface(t *testing.T) {
+
+	ctx := SpringCore.NewDefaultSpringContext()
+	ctx.RegisterBeanFn(func() Integer { return Integer(5) })
+	ctx.AutoWireBeans()
+
+	var ii IntInterface
+	ok := ctx.GetBean(&ii)
+
+	assert.Equal(t, ok, true)
+	assert.Equal(t, ii.Value(), 5)
+}
