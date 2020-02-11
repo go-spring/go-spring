@@ -2163,19 +2163,40 @@ func TestDefaultSpringContext_IntInterface(t *testing.T) {
 
 func TestDefaultSpringContext_WarnAsInterface(t *testing.T) {
 
-	ctx := SpringCore.NewDefaultSpringContext()
-	ctx.RegisterBeanFn(func() Integer { return Integer(5) })
-	ctx.AutoWireBeans()
+	t.Run("warn", func(t *testing.T) {
 
-	var i IntInterface
-	ok := ctx.GetBean(&i)
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBeanFn(func() Integer { return Integer(5) })
+		ctx.Strict = false
+		ctx.AutoWireBeans()
 
-	assert.Equal(t, ok, true)
-	assert.Equal(t, i.Value(), 5)
+		var i IntInterface
+		ok := ctx.GetBean(&i)
 
-	var is []IntInterface
-	ok = ctx.CollectBeans(&is)
+		assert.Equal(t, ok, true)
+		assert.Equal(t, i.Value(), 5)
 
-	assert.Equal(t, ok, true)
-	assert.Equal(t, len(is), 1)
+		var is []IntInterface
+		ok = ctx.CollectBeans(&is)
+
+		assert.Equal(t, ok, true)
+		assert.Equal(t, len(is), 1)
+	})
+
+	t.Run("strict", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBeanFn(func() Integer { return Integer(5) })
+		ctx.AutoWireBeans()
+
+		var i IntInterface
+		ok := ctx.GetBean(&i)
+
+		assert.Equal(t, ok, false)
+
+		var is []IntInterface
+		ok = ctx.CollectBeans(&is)
+
+		assert.Equal(t, ok, false)
+	})
 }

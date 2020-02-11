@@ -18,6 +18,7 @@ package SpringBoot
 
 import (
 	"os"
+	"strings"
 	"time"
 
 	"github.com/go-spring/go-spring/boot-starter"
@@ -36,12 +37,17 @@ func RunApplication(configLocation ...string) {
 
 	// 设置运行环境
 	if profile, ok := os.LookupEnv(SpringProfile); ok {
-		ctx.SetProfile(profile)
+		ctx.SetProfile(strings.ToLower(profile))
 	}
 
 	// 设置是否允许注入私有字段
 	if access, ok := os.LookupEnv(SpringAccess); ok {
-		ctx.SetAllAccess(access == "all")
+		ctx.SetAllAccess(strings.ToLower(access) == "all")
+	}
+
+	// 设置是否使用严格模式
+	if strict, ok := os.LookupEnv(SpringStrict); ok {
+		ctx.Strict = strings.ToLower(strict) == "true"
 	}
 
 	BootStarter.Run(app)

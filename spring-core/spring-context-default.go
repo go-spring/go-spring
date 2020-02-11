@@ -158,6 +158,14 @@ func (beanAssembly *defaultBeanAssembly) springContext() SpringContext {
 func (beanAssembly *defaultBeanAssembly) getCacheItem(t reflect.Type) *beanCacheItem {
 	beanCache := &beanAssembly.springCtx.beanCache
 
+	// 严格模式下必须使用 AsInterface() 导出接口
+	if beanAssembly.springCtx.Strict {
+		if c, ok := beanCache.Load(t); ok {
+			return c.(*beanCacheItem)
+		}
+		return newBeanCacheItem()
+	}
+
 	// 处理具体类型
 	if k := t.Kind(); k != reflect.Interface {
 
@@ -585,7 +593,8 @@ type defaultSpringContext struct {
 	// 并发操作，另外 resolveBeans 的时候一步步的创建缓存。
 	beanCache sync.Map
 
-	Sort bool // 自动注入期间是否按照 BeanId 进行排序并依次进行注入
+	Sort   bool // 自动注入期间是否按照 BeanId 进行排序并依次进行注入
+	Strict bool // 严格模式，true 必须使用 AsInterface() 导出接口
 }
 
 // NewDefaultSpringContext defaultSpringContext 的构造函数
@@ -593,6 +602,7 @@ func NewDefaultSpringContext() *defaultSpringContext {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &defaultSpringContext{
 		Context:     ctx,
+		Strict:      true,
 		cancel:      cancel,
 		Properties:  NewDefaultProperties(),
 		methodBeans: make([]*BeanDefinition, 0),

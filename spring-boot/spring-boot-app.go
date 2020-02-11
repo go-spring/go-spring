@@ -28,6 +28,7 @@ import (
 const (
 	SpringAccess  = "spring.access"  // "all" 为允许注入私有字段
 	SpringProfile = "spring.profile" // 运行环境
+	SpringStrict  = "spring.strict"  // 严格模式，"true" 必须使用 AsInterface() 导出接口
 )
 
 // CommandLineRunner 命令行启动器接口
@@ -108,7 +109,7 @@ func (app *application) loadConfigFiles() {
 
 	// 加载用户设置的配置文件，如 application-test.properties
 	if profile := app.AppContext.GetProfile(); profile != "" {
-		app.loadProfileConfig(profile)
+		app.loadProfileConfig(strings.ToLower(profile))
 	}
 }
 

@@ -193,7 +193,7 @@ func NewProfileCondition(profile string) *profileCondition {
 
 // Matches 成功返回 true，失败返回 false
 func (c *profileCondition) Matches(ctx SpringContext) bool {
-	if c.profile != "" && c.profile != ctx.GetProfile() {
+	if c.profile != "" && c.profile != strings.ToLower(ctx.GetProfile()) {
 		return false
 	}
 	return true
