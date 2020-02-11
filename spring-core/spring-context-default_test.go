@@ -2167,9 +2167,15 @@ func TestDefaultSpringContext_WarnAsInterface(t *testing.T) {
 	ctx.RegisterBeanFn(func() Integer { return Integer(5) })
 	ctx.AutoWireBeans()
 
-	var ii IntInterface
-	ok := ctx.GetBean(&ii)
+	var i IntInterface
+	ok := ctx.GetBean(&i)
 
 	assert.Equal(t, ok, true)
-	assert.Equal(t, ii.Value(), 5)
+	assert.Equal(t, i.Value(), 5)
+
+	var is []IntInterface
+	ok = ctx.CollectBeans(&is)
+
+	assert.Equal(t, ok, true)
+	assert.Equal(t, len(is), 1)
 }

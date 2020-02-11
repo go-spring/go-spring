@@ -38,6 +38,7 @@ type beanKey struct {
 // beanCacheItem BeanCache's item.
 type beanCacheItem struct {
 	beans []*BeanDefinition
+	mark  int // 1 结果已锁定
 }
 
 // newBeanCacheItem beanCacheItem 的构造函数
@@ -47,9 +48,30 @@ func newBeanCacheItem() *beanCacheItem {
 	}
 }
 
-func (item *beanCacheItem) store(t reflect.Type, bd *BeanDefinition) {
+// copyTo 把现有元素拷贝到新缓存里
+func (item *beanCacheItem) copyTo(c *beanCacheItem) {
+	for _, bd := range item.beans {
+		c.beans = append(c.beans, bd)
+	}
+}
+
+// find 顺序查找元素在数组中的位置
+func (item *beanCacheItem) find(bd *BeanDefinition) int {
+	for i, b := range item.beans {
+		if b == bd {
+			return i
+		}
+	}
+	return -1
+}
+
+func (item *beanCacheItem) store(t reflect.Type, bd *BeanDefinition, check bool) bool {
+	if check && item.find(bd) >= 0 { // 预期数据量较少，因此未使用 map 进行存储。
+		return false
+	}
 	SpringLogger.Debugf("register bean type:\"%s\" beanId:\"%s\" %s", t.String(), bd.BeanId(), bd.Caller())
 	item.beans = append(item.beans, bd)
+	return true
 }
 
 // wiringStack 存储绑定中的 Bean
@@ -134,25 +156,56 @@ func (beanAssembly *defaultBeanAssembly) springContext() SpringContext {
 
 // getCacheItem 获取指定类型的缓存项，返回值不会为 nil。
 func (beanAssembly *defaultBeanAssembly) getCacheItem(t reflect.Type) *beanCacheItem {
+	beanCache := &beanAssembly.springCtx.beanCache
 
-	// 查找目标类型对应的缓存
-	if c, ok := beanAssembly.springCtx.beanCache.Load(t); ok {
-		return c.(*beanCacheItem)
+	// 处理具体类型
+	if k := t.Kind(); k != reflect.Interface {
+
+		// 如果缓存已存在则直接返回
+		if c, ok := beanCache.Load(t); ok {
+			return c.(*beanCacheItem)
+		}
+
+		// 如果是数组类型，则需要处理其元素类型
+		if k == reflect.Slice || k == reflect.Array {
+			beanAssembly.getCacheItem(t.Elem())
+		}
+
+		result := newBeanCacheItem()
+		beanCache.Store(t, result)
+		return result
 	}
 
-	cache := newBeanCacheItem()
+	// 处理接口类型
 
-	// 如果是接口则对所有 Bean 进行匹配
-	if t.Kind() == reflect.Interface {
-		for _, bd := range beanAssembly.springCtx.beanMap {
-			if bd.Type().AssignableTo(t) {
-				SpringLogger.Warnf("you should call AsInterface() on %s", bd.Description())
-				cache.store(t, bd)
-			}
+	var (
+		check bool
+		cache *beanCacheItem
+	)
+
+	if c, ok := beanCache.Load(t); ok {
+		item := c.(*beanCacheItem)
+		if item.mark == 1 {
+			return item
+		} else {
+			cache = newBeanCacheItem()
+			item.copyTo(cache)
+			check = true
+		}
+	} else {
+		cache = newBeanCacheItem()
+	}
+
+	// 锁定搜索结果
+	cache.mark = 1
+
+	for _, bd := range beanAssembly.springCtx.beanMap {
+		if bd.Type().AssignableTo(t) && cache.store(t, bd, check) && len(bd.exports) == 0 {
+			SpringLogger.Warnf("you should call AsInterface() on %s", bd.Description())
 		}
 	}
 
-	beanAssembly.springCtx.beanCache.Store(t, cache)
+	beanCache.Store(t, cache)
 	return cache
 }
 
@@ -528,7 +581,8 @@ type defaultSpringContext struct {
 	beanMap     map[beanKey]*BeanDefinition // Bean 的集合
 	methodBeans []*BeanDefinition           // 方法 Beans
 
-	// Bean 的缓存，使用线程安全的 map 是考虑到运行时可能有并发操作
+	// Bean 的缓存，使用线程安全的 map 是考虑到运行时可能有
+	// 并发操作，另外 resolveBeans 的时候一步步的创建缓存。
 	beanCache sync.Map
 
 	Sort bool // 自动注入期间是否按照 BeanId 进行排序并依次进行注入
@@ -808,7 +862,7 @@ func (ctx *defaultSpringContext) resolveBean(bd *BeanDefinition) {
 
 	// 将符合注册条件的 Bean 放入到缓存里面
 	item := ctx.findCacheItem(bd.Type())
-	item.store(bd.Type(), bd)
+	item.store(bd.Type(), bd, false)
 
 	// 按照导出类型放入缓存
 	for _, t := range bd.exports {
@@ -819,7 +873,7 @@ func (ctx *defaultSpringContext) resolveBean(bd *BeanDefinition) {
 		}
 
 		m := ctx.findCacheItem(t)
-		m.store(t, bd)
+		m.store(t, bd, false)
 	}
 
 	bd.status = beanStatus_Resolved
