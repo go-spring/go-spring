@@ -36,13 +36,10 @@ github.com/go-logfmt/logfmt v0.3.0/go.mod h1:Qt1PoO58o5twSAckw1HlFXLmHsOX5/0LbT9
 github.com/go-logfmt/logfmt v0.4.0/go.mod h1:3RMwSq7FuexP4Kalkev3ejPJsZTpXXBr9+V4qmtdjCk=
 github.com/go-redis/redis v6.15.6+incompatible h1:H9evprGPLI8+ci7fxQx6WNZHJSb7be8FqJQRhdQZ5Sg=
 github.com/go-redis/redis v6.15.6+incompatible/go.mod h1:NAIEuMOZ/fxfXJIrKDQDz8wamY7mA7PouImQ2Jvg6kA=
-github.com/go-spring/go-spring-parent v1.0.0-rc/go.mod h1:Zg3ANEYjqeAW8UMbKy5qkPYklEsQkhR73SuJiiSi2IU=
-github.com/go-spring/go-spring-parent v1.0.0-rc.0.20200207135011-a26cccf06a8a h1:3m6XgE+PbaxSJsgU4uMATQD+6CVJuN5JtdtHb0Cw5KI=
-github.com/go-spring/go-spring-parent v1.0.0-rc.0.20200207135011-a26cccf06a8a/go.mod h1:KzXpkn4lQbYXwwBnqeBlqloK2NP3HqsQuDSXkEJurGU=
-github.com/go-spring/go-spring-parent v1.0.0-rc.0.20200211080445-a0fbf828a508 h1:DWdJZ5gw6jtB0JzwKu1WjA9VK9gTx0BFRfO89Il281M=
-github.com/go-spring/go-spring-parent v1.0.0-rc.0.20200211080445-a0fbf828a508/go.mod h1:KzXpkn4lQbYXwwBnqeBlqloK2NP3HqsQuDSXkEJurGU=
-github.com/go-spring/go-spring-web v1.0.0-rc.0.20200105075953-bc8119f0face h1:lWjUtGsBLQT2iFQB7AuuW2s54itfRi50Bu1MTot6iYA=
-github.com/go-spring/go-spring-web v1.0.0-rc.0.20200105075953-bc8119f0face/go.mod h1:m9FFyaHFyMAy/B1s3cqqV3OtXx27g2gI5AHi+W2y+O4=
+github.com/go-spring/go-spring-parent v1.0.0-rc.0.20200212062707-cb7b3715b8ae h1:52mL797AqjeIYuXfRo80yCiPSI9wTeVggzg6rfA83ls=
+github.com/go-spring/go-spring-parent v1.0.0-rc.0.20200212062707-cb7b3715b8ae/go.mod h1:KzXpkn4lQbYXwwBnqeBlqloK2NP3HqsQuDSXkEJurGU=
+github.com/go-spring/go-spring-web v1.0.0-rc.0.20200212070829-65ff994d101c h1:3bfl6riEoygb1kic0VapwTo0yzn9KXmbHiXft7Owg0s=
+github.com/go-spring/go-spring-web v1.0.0-rc.0.20200212070829-65ff994d101c/go.mod h1:CHWoKYXbXSfrvcgiP/HZ/8benPBecBG7gJeP7tPfnZo=
 github.com/go-sql-driver/mysql v1.4.1 h1:g24URVg0OFbNUTx9qqY1IRZ9D9z3iPyi5zKhQZpNwpA=
 github.com/go-sql-driver/mysql v1.4.1/go.mod h1:zAC/RDZ24gD3HViQzih4MyKcchzm+sOG5ZlKdlhCg5w=
 github.com/go-stack/stack v1.8.0/go.mod h1:v0f6uXyyMGvRgIKkXu+yp6POWl0qKG85gN/melR3HDY=

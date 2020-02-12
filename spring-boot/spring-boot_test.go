@@ -18,7 +18,6 @@ package SpringBoot_test
 
 import (
 	"errors"
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -28,6 +27,7 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/elliotchance/redismock"
 	"github.com/go-redis/redis"
+	"github.com/go-spring/go-spring-parent/spring-logger"
 	"github.com/go-spring/go-spring-parent/spring-utils"
 	"github.com/go-spring/go-spring-web/spring-web"
 	"github.com/go-spring/go-spring/spring-boot"
@@ -40,12 +40,13 @@ import (
 )
 
 func init() {
-	SpringBoot.RegisterBean(new(MyController)).Init(
-		func(c *MyController) {
-			SpringBoot.GetMapping("/ok", c.OK).
-				ConditionOnProfile("test").
-				ConditionOnMissingProperty("ok_enable")
-		})
+	// SpringLogger.SetLogger(&SpringLogger.Console{})
+
+	SpringBoot.RegisterBean(new(MyController)).Init(func(c *MyController) {
+		SpringBoot.GetMapping("/ok", c.OK).
+			ConditionOnProfile("test").
+			ConditionOnMissingProperty("ok_enable")
+	})
 
 	SpringBoot.RegisterBean(new(MyRunner)).AsInterface((*SpringBoot.CommandLineRunner)(nil))
 	SpringBoot.RegisterBeanFn(NewMyModule, "${message}").AsInterface((*SpringBoot.ApplicationEvent)(nil))
@@ -94,7 +95,7 @@ func (c *MyController) OK(ctx SpringWeb.WebContext) {
 
 		var engine string
 		_ = rows.Scan(&engine)
-		fmt.Println(engine)
+		SpringLogger.Info(engine)
 
 		if engine != "sql-mock" {
 			panic(errors.New("error"))
@@ -115,9 +116,9 @@ type MyRunner struct {
 
 func (_ *MyRunner) Run(ctx SpringBoot.ApplicationContext) {
 	ctx.SafeGoroutine(func() {
-		fmt.Println("get all properties:")
+		SpringLogger.Trace("get all properties:")
 		for k, v := range ctx.GetProperties() {
-			fmt.Println(k + "=" + fmt.Sprint(v))
+			SpringLogger.Tracef("%v=%v", k, v)
 		}
 	})
 }
@@ -135,28 +136,28 @@ func NewMyModule(msg string) *MyModule {
 }
 
 func (m *MyModule) OnStartApplication(ctx SpringBoot.ApplicationContext) {
-	fmt.Println("MyModule start")
+	SpringLogger.Info("MyModule start")
 
 	var e *MyModule
 	ctx.GetBean(&e)
-	fmt.Printf("event: %+v\n", e)
+	SpringLogger.Infof("event: %+v", e)
 
 	ctx.SafeGoroutine(Process)
 }
 
 func (m *MyModule) OnStopApplication(ctx SpringBoot.ApplicationContext) {
-	fmt.Println("MyModule stop")
+	SpringLogger.Info("MyModule stop")
 }
 
 func Process() {
 	defer SpringBoot.Exit()
 
-	defer fmt.Println("go stop")
-	fmt.Println("go start")
+	defer SpringLogger.Info("go stop")
+	SpringLogger.Info("go start")
 
 	var m *MyModule
 	SpringBoot.GetBean(&m)
-	fmt.Printf("process: %+v\n", m)
+	SpringLogger.Infof("process: %+v", m)
 
 	time.Sleep(200 * time.Millisecond)
 
@@ -166,7 +167,7 @@ func Process() {
 		if body, e := ioutil.ReadAll(resp.Body); e != nil {
 			panic(e)
 		} else {
-			fmt.Printf("resp code=%d body=%s\n", resp.StatusCode, string(body))
+			SpringLogger.Infof("resp code=%d body=%s", resp.StatusCode, string(body))
 			if string(body) != "ok" {
 				panic(errors.New("error"))
 			}
