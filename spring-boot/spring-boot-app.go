@@ -26,9 +26,12 @@ import (
 )
 
 const (
-	SpringAccess  = "spring.access"  // "all" 为允许注入私有字段
-	SpringProfile = "spring.profile" // 运行环境
-	SpringStrict  = "spring.strict"  // 严格模式，"true" 必须使用 AsInterface() 导出接口
+	SpringAccess   = "spring.access" // "all" 为允许注入私有字段
+	SPRING_ACCESS  = "SPRING_ACCESS"
+	SpringProfile  = "spring.profile" // 运行环境
+	SPRING_PROFILE = "SPRING_PROFILE"
+	SpringStrict   = "spring.strict" // 严格模式，"true" 必须使用 AsInterface() 导出接口
+	SPRING_STRICT  = "SPRING_STRICT"
 )
 
 // CommandLineRunner 命令行启动器接口
@@ -44,15 +47,16 @@ type ApplicationEvent interface {
 
 // application SpringBoot 应用
 type application struct {
-	AppContext     ApplicationContext // 应用上下文
-	ConfigLocation []string           // 配置文件目录
+	appCtx      ApplicationContext // 应用上下文
+	cfgLocation []string           // 配置文件目录
+	configReady func()             // 配置文件已就绪
 }
 
 // newApplication application 的构造函数
 func newApplication(appCtx ApplicationContext, cfgLocation []string) *application {
 	return &application{
-		AppContext:     appCtx,
-		ConfigLocation: cfgLocation,
+		appCtx:      appCtx,
+		cfgLocation: cfgLocation,
 	}
 }
 
@@ -65,26 +69,33 @@ func (app *application) Start() {
 	// 加载配置文件
 	app.loadConfigFiles()
 
+	// 配置文件已就绪
+	if app.configReady != nil {
+		app.configReady()
+	}
+
 	// 注册 ApplicationContext
-	app.AppContext.RegisterBean(app.AppContext).AsInterface((*ApplicationContext)(nil), (*SpringCore.SpringContext)(nil))
+	app.appCtx.RegisterBean(app.appCtx).AsInterface(
+		(*ApplicationContext)(nil), (*SpringCore.SpringContext)(nil),
+	)
 
 	// 依赖注入、属性绑定、Bean 初始化
-	app.AppContext.AutoWireBeans()
+	app.appCtx.AutoWireBeans()
 
 	// 执行命令行启动器
 	var runners []CommandLineRunner
-	app.AppContext.CollectBeans(&runners)
+	app.appCtx.CollectBeans(&runners)
 
 	for _, r := range runners {
-		r.Run(app.AppContext)
+		r.Run(app.appCtx)
 	}
 
 	// 通知应用启动事件
 	var eventBeans []ApplicationEvent
-	app.AppContext.CollectBeans(&eventBeans)
+	app.appCtx.CollectBeans(&eventBeans)
 
 	for _, bean := range eventBeans {
-		bean.OnStartApplication(app.AppContext)
+		bean.OnStartApplication(app.appCtx)
 	}
 
 	SpringLogger.Info("spring boot started")
@@ -97,7 +108,7 @@ func (app *application) loadSystemEnv() {
 			k, v := env[0:i], env[i+1:]
 			k = strings.ToLower(k)
 			SpringLogger.Tracef("%s=%v", k, v)
-			app.AppContext.SetProperty(k, v)
+			app.appCtx.SetProperty(k, v)
 		}
 	}
 }
@@ -108,13 +119,13 @@ func (app *application) loadConfigFiles() {
 	app.loadProfileConfig("")
 
 	// 加载用户设置的配置文件，如 application-test.properties
-	if profile := app.AppContext.GetProfile(); profile != "" {
+	if profile := app.appCtx.GetProfile(); profile != "" {
 		app.loadProfileConfig(strings.ToLower(profile))
 	}
 }
 
 func (app *application) loadProfileConfig(profile string) {
-	for _, configLocation := range app.ConfigLocation {
+	for _, configLocation := range app.cfgLocation {
 
 		var result map[string]interface{}
 
@@ -128,7 +139,7 @@ func (app *application) loadProfileConfig(profile string) {
 		}
 
 		for k, v := range result {
-			app.AppContext.SetProperty(k, v)
+			app.appCtx.SetProperty(k, v)
 		}
 	}
 }
@@ -137,18 +148,18 @@ func (app *application) loadProfileConfig(profile string) {
 func (app *application) ShutDown() {
 
 	// 通知 Bean 销毁
-	app.AppContext.Close()
+	app.appCtx.Close()
 
 	// 通知应用停止事件
 	var eventBeans []ApplicationEvent
-	app.AppContext.CollectBeans(&eventBeans)
+	app.appCtx.CollectBeans(&eventBeans)
 
 	for _, bean := range eventBeans {
-		bean.OnStopApplication(app.AppContext)
+		bean.OnStopApplication(app.appCtx)
 	}
 
 	// 等待所有 goroutine 退出
-	app.AppContext.Wait()
+	app.appCtx.Wait()
 
 	SpringLogger.Info("spring boot exited")
 }

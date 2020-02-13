@@ -217,11 +217,24 @@ func (beanAssembly *defaultBeanAssembly) getCacheItem(t reflect.Type) *beanCache
 	return cache
 }
 
+func (_ *defaultBeanAssembly) getBeanType(v reflect.Value) (reflect.Type, bool) {
+	if v.IsValid() {
+		if beanType := v.Type(); IsRefType(beanType.Kind()) {
+			return beanType, true
+		}
+	}
+	return nil, false
+}
+
 // getBeanValue 根据 BeanId 查找 Bean 并返回 Bean 源的值
 func (beanAssembly *defaultBeanAssembly) getBeanValue(v reflect.Value, beanId string, parent reflect.Value, field string) bool {
 
-	beanType := v.Type()
-	if ok := IsRefType(beanType.Kind()); !ok {
+	var (
+		ok       bool
+		beanType reflect.Type
+	)
+
+	if beanType, ok = beanAssembly.getBeanType(v); !ok {
 		panic(fmt.Errorf("receiver must be ref type, bean: \"%s\" field: %s", beanId, field))
 	}
 

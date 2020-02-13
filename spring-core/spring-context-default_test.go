@@ -592,23 +592,65 @@ type BeanThree struct {
 }
 
 func TestDefaultSpringContext_GetBean(t *testing.T) {
-	ctx := SpringCore.NewDefaultSpringContext()
 
-	ctx.RegisterBean(&BeanZero{5})
-	ctx.RegisterBean(new(BeanOne))
-	ctx.RegisterBean(new(BeanTwo))
+	t.Run("success", func(t *testing.T) {
 
-	ctx.AutoWireBeans()
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBean(&BeanZero{5})
+		ctx.RegisterBean(new(BeanOne))
+		ctx.RegisterBean(new(BeanTwo))
+		ctx.AutoWireBeans()
 
-	var two *BeanTwo
-	ok := ctx.GetBean(&two)
-	assert.Equal(t, ok, true)
+		var two *BeanTwo
+		ok := ctx.GetBean(&two)
+		assert.Equal(t, ok, true)
 
-	var three *BeanThree
-	ok = ctx.GetBean(&three)
-	assert.Equal(t, ok, false)
+		var three *BeanThree
+		ok = ctx.GetBean(&three)
+		assert.Equal(t, ok, false)
 
-	fmt.Println(SpringUtils.ToJson(two))
+		fmt.Println(SpringUtils.ToJson(two))
+	})
+
+	t.Run("panic", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.AutoWireBeans()
+
+		assert.Panic(t, func() {
+			var i int
+			ctx.GetBean(i)
+		}, "i must be pointer")
+
+		assert.Panic(t, func() {
+			var i *int
+			ctx.GetBean(i)
+		}, "receiver must be ref type")
+
+		assert.Panic(t, func() {
+			i := new(int)
+			ctx.GetBean(i)
+		}, "receiver must be ref type")
+
+		var i *int
+		ctx.GetBean(&i)
+
+		assert.Panic(t, func() {
+			var is []int
+			ctx.GetBean(is)
+		}, "i must be pointer")
+
+		var a []int
+		ctx.GetBean(&a)
+
+		assert.Panic(t, func() {
+			var s fmt.Stringer
+			ctx.GetBean(s)
+		}, "i can't be nil")
+
+		var s fmt.Stringer
+		ctx.GetBean(&s)
+	})
 }
 
 func TestDefaultSpringContext_GetBeanByName(t *testing.T) {

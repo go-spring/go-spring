@@ -17,7 +17,6 @@
 package SpringBoot
 
 import (
-	"os"
 	"strings"
 	"time"
 
@@ -31,23 +30,36 @@ var ctx = SpringCore.NewDefaultSpringContext()
 // RunApplication 快速启动 SpringBoot 应用
 func RunApplication(configLocation ...string) {
 
+	// 当 key 有多个名称时，返回其中一个名称对应的值
+	getString := func(keys ...string) string {
+		for _, s := range keys {
+			if v := ctx.GetStringProperty(s); v != "" {
+				return v
+			}
+		}
+		return ""
+	}
+
 	app := newApplication(&defaultApplicationContext{
 		SpringContext: ctx,
 	}, configLocation)
 
-	// 设置运行环境
-	if profile, ok := os.LookupEnv(SpringProfile); ok {
-		ctx.SetProfile(strings.ToLower(profile))
-	}
+	app.configReady = func() {
 
-	// 设置是否允许注入私有字段
-	if access, ok := os.LookupEnv(SpringAccess); ok {
-		ctx.SetAllAccess(strings.ToLower(access) == "all")
-	}
+		// 设置运行环境
+		if profile := getString(SPRING_PROFILE, SpringProfile); profile != "" {
+			ctx.SetProfile(strings.ToLower(profile))
+		}
 
-	// 设置是否使用严格模式
-	if strict, ok := os.LookupEnv(SpringStrict); ok {
-		ctx.Strict = strings.ToLower(strict) == "true"
+		// 设置是否允许注入私有字段
+		if access := getString(SPRING_ACCESS, SpringAccess); access != "" {
+			ctx.SetAllAccess(strings.ToLower(access) == "all")
+		}
+
+		// 设置是否使用严格模式
+		if strict := getString(SPRING_STRICT, SpringStrict); strict != "" {
+			ctx.Strict = strings.ToLower(strict) == "true"
+		}
 	}
 
 	BootStarter.Run(app)
