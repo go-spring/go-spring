@@ -676,6 +676,15 @@ func (d *BeanDefinition) AsInterface(exports ...interface{}) *BeanDefinition {
 	return d
 }
 
+// IsNil 返回 reflect.Value 的值是否为 nil，比原生方法更安全
+func IsNil(v reflect.Value) bool {
+	switch v.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Ptr, reflect.Slice, reflect.UnsafePointer:
+		return v.IsNil()
+	}
+	return false
+}
+
 // ToBeanDefinition 将 Bean 转换为 BeanDefinition 对象
 func ToBeanDefinition(name string, i interface{}) *BeanDefinition {
 	return ValueToBeanDefinition(name, reflect.ValueOf(i))
@@ -683,7 +692,7 @@ func ToBeanDefinition(name string, i interface{}) *BeanDefinition {
 
 // ValueToBeanDefinition 将 Value 转换为 BeanDefinition 对象
 func ValueToBeanDefinition(name string, v reflect.Value) *BeanDefinition {
-	if ok := v.IsValid(); !ok {
+	if !v.IsValid() || IsNil(v) {
 		panic(errors.New("bean can't be nil"))
 	}
 	bean := newObjectBean(v)
