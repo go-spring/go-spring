@@ -26,6 +26,8 @@ import (
 )
 
 const (
+	DefaultConfigLocation = "config/" // 默认的配置文件路径
+
 	SpringAccess   = "spring.access" // "all" 为允许注入私有字段
 	SPRING_ACCESS  = "SPRING_ACCESS"
 	SpringProfile  = "spring.profile" // 运行环境
@@ -53,7 +55,10 @@ type application struct {
 }
 
 // newApplication application 的构造函数
-func newApplication(appCtx ApplicationContext, cfgLocation []string) *application {
+func newApplication(appCtx ApplicationContext, cfgLocation ...string) *application {
+	if len(cfgLocation) == 0 { // 没有的话用默认的配置文件路径
+		cfgLocation = append(cfgLocation, DefaultConfigLocation)
+	}
 	return &application{
 		appCtx:      appCtx,
 		cfgLocation: cfgLocation,
@@ -62,6 +67,11 @@ func newApplication(appCtx ApplicationContext, cfgLocation []string) *applicatio
 
 // Start 启动 SpringBoot 应用
 func (app *application) Start() {
+	// 配置项加载顺序优先级:
+	// 1.在此之前的代码设置
+	// 2.命令行参数(暂未支持)
+	// 3.系统环境变量
+	// 4.配置文件
 
 	// 加载系统环境变量
 	app.loadSystemEnv()
@@ -69,10 +79,8 @@ func (app *application) Start() {
 	// 加载配置文件
 	app.loadConfigFiles()
 
-	// 配置文件已就绪
-	if app.configReady != nil {
-		app.configReady()
-	}
+	// 准备上下文环境
+	app.prepare()
 
 	// 注册 ApplicationContext
 	app.appCtx.RegisterBean(app.appCtx).AsInterface(
@@ -119,7 +127,8 @@ func (app *application) loadConfigFiles() {
 	app.loadProfileConfig("")
 
 	// 加载用户设置的配置文件，如 application-test.properties
-	if profile := app.appCtx.GetProfile(); profile != "" {
+	keys := []string{SpringProfile, SPRING_PROFILE}
+	if profile := SpringCore.GetStringProperty(app.appCtx, keys...); profile != "" {
 		app.loadProfileConfig(strings.ToLower(profile))
 	}
 }
@@ -141,6 +150,27 @@ func (app *application) loadProfileConfig(profile string) {
 		for k, v := range result {
 			app.appCtx.SetProperty(k, v)
 		}
+	}
+}
+
+// prepare 准备上下文环境
+func (app *application) prepare() {
+
+	// 设置运行环境
+	keys := []string{SpringProfile, SPRING_PROFILE}
+	if profile := SpringCore.GetStringProperty(app.appCtx, keys...); profile != "" {
+		app.appCtx.SetProfile(strings.ToLower(profile))
+	}
+
+	// 设置是否允许注入私有字段
+	keys = []string{SpringAccess, SPRING_ACCESS}
+	if access := SpringCore.GetStringProperty(app.appCtx, keys...); access != "" {
+		app.appCtx.SetAllAccess(strings.ToLower(access) == "all")
+	}
+
+	// 配置文件已就绪
+	if app.configReady != nil {
+		app.configReady()
 	}
 }
 

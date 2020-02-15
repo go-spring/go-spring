@@ -20,7 +20,6 @@ import (
 	"errors"
 	"io/ioutil"
 	"net/http"
-	"os"
 	"testing"
 	"time"
 
@@ -64,7 +63,10 @@ func init() {
 }
 
 func TestRunApplication(t *testing.T) {
-	_ = os.Setenv(SpringBoot.SpringProfile, "test")
+
+	// 配置文件里面也指定了 spring.profile 的值
+	// _ = os.Setenv(SpringBoot.SpringProfile, "test")
+
 	SpringBoot.SetProperty("db.url", "root:root@/information_schema?charset=utf8&parseTime=True&loc=Local")
 	SpringBoot.RunApplication("testdata/config/", "k8s:testdata/config/config-map.yaml")
 }

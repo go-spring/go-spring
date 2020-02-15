@@ -121,3 +121,13 @@ func RegisterTypeConverter(fn interface{}) {
 		typeConverters[t.Out(0)] = fn
 	}
 }
+
+// GetStringProperty 返回最早找到的字符串型属性值，属性名称统一转成小写。
+func GetStringProperty(p Properties, keys ...string) string {
+	for _, k := range keys {
+		if s := p.GetStringProperty(k); s != "" {
+			return s
+		}
+	}
+	return ""
+}

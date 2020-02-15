@@ -30,34 +30,14 @@ var ctx = SpringCore.NewDefaultSpringContext()
 // RunApplication 快速启动 SpringBoot 应用
 func RunApplication(configLocation ...string) {
 
-	// 当 key 有多个名称时，返回其中一个名称对应的值
-	getString := func(keys ...string) string {
-		for _, s := range keys {
-			if v := ctx.GetStringProperty(s); v != "" {
-				return v
-			}
-		}
-		return ""
-	}
-
 	app := newApplication(&defaultApplicationContext{
 		SpringContext: ctx,
-	}, configLocation)
+	}, configLocation...)
 
 	app.configReady = func() {
-
-		// 设置运行环境
-		if profile := getString(SPRING_PROFILE, SpringProfile); profile != "" {
-			ctx.SetProfile(strings.ToLower(profile))
-		}
-
-		// 设置是否允许注入私有字段
-		if access := getString(SPRING_ACCESS, SpringAccess); access != "" {
-			ctx.SetAllAccess(strings.ToLower(access) == "all")
-		}
-
 		// 设置是否使用严格模式
-		if strict := getString(SPRING_STRICT, SpringStrict); strict != "" {
+		keys := []string{SPRING_STRICT, SpringStrict}
+		if strict := SpringCore.GetStringProperty(ctx, keys...); strict != "" {
 			ctx.Strict = strings.ToLower(strict) == "true"
 		}
 	}
