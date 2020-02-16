@@ -18,6 +18,7 @@
 package SpringBoot
 
 import (
+	"flag"
 	"os"
 	"strings"
 
@@ -34,6 +35,12 @@ const (
 	SPRING_PROFILE = "SPRING_PROFILE"
 	SpringStrict   = "spring.strict" // 严格模式，"true" 必须使用 AsInterface() 导出接口
 	SPRING_STRICT  = "SPRING_STRICT"
+)
+
+var (
+	_ = flag.String(SpringAccess, "", "")
+	_ = flag.String(SpringStrict, "", "")
+	_ = flag.String(SpringProfile, "", "")
 )
 
 // CommandLineRunner 命令行启动器接口
@@ -69,9 +76,12 @@ func newApplication(appCtx ApplicationContext, cfgLocation ...string) *applicati
 func (app *application) Start() {
 	// 配置项加载顺序优先级:
 	// 1.在此之前的代码设置
-	// 2.命令行参数(暂未支持)
+	// 2.命令行参数
 	// 3.系统环境变量
 	// 4.配置文件
+
+	// 加载命令行参数
+	app.loadCmdArgs()
 
 	// 加载系统环境变量
 	app.loadSystemEnv()
@@ -109,18 +119,35 @@ func (app *application) Start() {
 	SpringLogger.Info("spring boot started")
 }
 
-func (app *application) loadSystemEnv() {
-	SpringLogger.Debugf(">>> load system env")
-	for _, env := range os.Environ() {
-		if i := strings.Index(env, "="); i > 0 {
-			k, v := env[0:i], env[i+1:]
-			k = strings.ToLower(k)
+// loadCmdArgs 加载命令行参数
+func (app *application) loadCmdArgs() {
+	SpringLogger.Debugf(">>> load cmd args")
+	for i := 0; i < len(os.Args); i++ {
+		if arg := os.Args[i]; strings.HasPrefix(arg, "-") {
+			k, v := arg[1:], ""
+			if i < len(os.Args)-1 && !strings.HasPrefix(os.Args[i+1], "-") {
+				v = os.Args[i+1]
+				i++
+			}
 			SpringLogger.Tracef("%s=%v", k, v)
 			app.appCtx.SetProperty(k, v)
 		}
 	}
 }
 
+// loadSystemEnv 加载系统环境变量
+func (app *application) loadSystemEnv() {
+	SpringLogger.Debugf(">>> load system env")
+	for _, env := range os.Environ() {
+		if i := strings.Index(env, "="); i > 0 {
+			k, v := env[0:i], env[i+1:]
+			SpringLogger.Tracef("%s=%v", k, v)
+			app.appCtx.SetProperty(k, v)
+		}
+	}
+}
+
+// loadConfigFiles 加载配置文件
 func (app *application) loadConfigFiles() {
 
 	// 加载默认的应用配置文件，如 application.properties
@@ -148,6 +175,7 @@ func (app *application) loadProfileConfig(profile string) {
 		}
 
 		for k, v := range result {
+			SpringLogger.Tracef("%s=%v", k, v)
 			app.appCtx.SetProperty(k, v)
 		}
 	}

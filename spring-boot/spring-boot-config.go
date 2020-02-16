@@ -85,7 +85,6 @@ func (p *defaultPropertySource) Load(profile string) map[string]interface{} {
 		for _, key := range keys {
 			val := v.Get(key)
 			result[key] = val
-			SpringLogger.Tracef("%s=%v", key, val)
 		}
 	}
 
@@ -151,7 +150,6 @@ func (p *configMapPropertySource) Load(profile string) map[string]interface{} {
 			for _, v0Key := range v0Keys {
 				v0Val := v0.Get(v0Key)
 				result[v0Key] = v0Val
-				SpringLogger.Tracef("%s=%v", v0Key, v0Val)
 			}
 		}
 	}
