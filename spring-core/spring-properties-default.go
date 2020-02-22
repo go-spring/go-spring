@@ -99,43 +99,48 @@ func (p *defaultProperties) ReadProperties(reader io.Reader, configType string) 
 }
 
 // GetProperty 返回属性值，属性名称统一转成小写。
-func (p *defaultProperties) GetProperty(key string) interface{} {
-	return p.properties[strings.ToLower(key)]
+func (p *defaultProperties) GetProperty(keys ...string) interface{} {
+	for _, key := range keys {
+		if v, ok := p.properties[strings.ToLower(key)]; ok {
+			return v
+		}
+	}
+	return nil
 }
 
 // GetBoolProperty 返回布尔型属性值，属性名称统一转成小写。
-func (p *defaultProperties) GetBoolProperty(key string) bool {
-	return cast.ToBool(p.GetProperty(key))
+func (p *defaultProperties) GetBoolProperty(keys ...string) bool {
+	return cast.ToBool(p.GetProperty(keys...))
 }
 
 // GetIntProperty 返回有符号整型属性值，属性名称统一转成小写。
-func (p *defaultProperties) GetIntProperty(key string) int64 {
-	return cast.ToInt64(p.GetProperty(key))
+func (p *defaultProperties) GetIntProperty(keys ...string) int64 {
+	return cast.ToInt64(p.GetProperty(keys...))
 }
 
 // GetUintProperty 返回无符号整型属性值，属性名称统一转成小写。
-func (p *defaultProperties) GetUintProperty(key string) uint64 {
-	return cast.ToUint64(p.GetProperty(key))
+func (p *defaultProperties) GetUintProperty(keys ...string) uint64 {
+	return cast.ToUint64(p.GetProperty(keys...))
 }
 
 // GetFloatProperty 返回浮点型属性值，属性名称统一转成小写。
-func (p *defaultProperties) GetFloatProperty(key string) float64 {
-	return cast.ToFloat64(p.GetProperty(key))
+func (p *defaultProperties) GetFloatProperty(keys ...string) float64 {
+	return cast.ToFloat64(p.GetProperty(keys...))
 }
 
 // GetStringProperty 返回字符串型属性值，属性名称统一转成小写。
-func (p *defaultProperties) GetStringProperty(key string) string {
-	return cast.ToString(p.GetProperty(key))
+func (p *defaultProperties) GetStringProperty(keys ...string) string {
+	return cast.ToString(p.GetProperty(keys...))
 }
 
 // GetDurationProperty 返回 Duration 类型属性值，属性名称统一转成小写。
-func (p *defaultProperties) GetDurationProperty(key string) time.Duration {
-	return cast.ToDuration(p.GetProperty(key))
+func (p *defaultProperties) GetDurationProperty(keys ...string) time.Duration {
+	return cast.ToDuration(p.GetProperty(keys...))
 }
 
 // GetTimeProperty 返回 Time 类型的属性值，属性名称统一转成小写。
-func (p *defaultProperties) GetTimeProperty(key string) time.Time {
-	return cast.ToTime(p.GetProperty(key))
+func (p *defaultProperties) GetTimeProperty(keys ...string) time.Time {
+	return cast.ToTime(p.GetProperty(keys...))
 }
 
 // SetProperty 设置属性值，属性名称统一转成小写。

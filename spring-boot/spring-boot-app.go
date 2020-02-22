@@ -74,20 +74,6 @@ func newApplication(appCtx ApplicationContext, cfgLocation ...string) *applicati
 
 // Start 启动 SpringBoot 应用
 func (app *application) Start() {
-	// 配置项加载顺序优先级:
-	// 1.在此之前的代码设置
-	// 2.命令行参数
-	// 3.系统环境变量
-	// 4.配置文件
-
-	// 加载命令行参数
-	app.loadCmdArgs()
-
-	// 加载系统环境变量
-	app.loadSystemEnv()
-
-	// 加载配置文件
-	app.loadConfigFiles()
 
 	// 准备上下文环境
 	app.prepare()
@@ -120,8 +106,9 @@ func (app *application) Start() {
 }
 
 // loadCmdArgs 加载命令行参数
-func (app *application) loadCmdArgs() {
+func (_ *application) loadCmdArgs() SpringCore.Properties {
 	SpringLogger.Debugf(">>> load cmd args")
+	p := SpringCore.NewDefaultProperties()
 	for i := 0; i < len(os.Args); i++ {
 		if arg := os.Args[i]; strings.HasPrefix(arg, "-") {
 			k, v := arg[1:], ""
@@ -130,46 +117,31 @@ func (app *application) loadCmdArgs() {
 				i++
 			}
 			SpringLogger.Tracef("%s=%v", k, v)
-			app.appCtx.SetProperty(k, v)
+			p.SetProperty(k, v)
 		}
 	}
+	return p
 }
 
 // loadSystemEnv 加载系统环境变量
-func (app *application) loadSystemEnv() {
+func (_ *application) loadSystemEnv() SpringCore.Properties {
 	SpringLogger.Debugf(">>> load system env")
+	p := SpringCore.NewDefaultProperties()
 	for _, env := range os.Environ() {
 		if i := strings.Index(env, "="); i > 0 {
 			k, v := env[0:i], env[i+1:]
 			SpringLogger.Tracef("%s=%v", k, v)
-			app.appCtx.SetProperty(k, v)
+			p.SetProperty(k, v)
 		}
 	}
+	return p
 }
 
-// loadConfigFiles 加载配置文件
-func (app *application) loadConfigFiles() {
-
-	// 加载默认的应用配置文件，如 application.properties
-	app.loadProfileConfig("")
-
-	// 设置运行环境，会覆盖用户代码设置的 profile 值
-	keys := []string{SpringProfile, SPRING_PROFILE}
-	if profile := SpringCore.GetStringProperty(app.appCtx, keys...); profile != "" {
-		app.appCtx.SetProfile(strings.ToLower(profile))
-	}
-
-	// 加载用户设置的配置文件，如 application-test.properties
-	if profile := app.appCtx.GetProfile(); profile != "" {
-		app.loadProfileConfig(strings.ToLower(profile))
-	}
-}
-
-func (app *application) loadProfileConfig(profile string) {
+// loadProfileConfig 加载指定环境的配置文件
+func (app *application) loadProfileConfig(profile string) SpringCore.Properties {
+	var result map[string]interface{}
+	p := SpringCore.NewDefaultProperties()
 	for _, configLocation := range app.cfgLocation {
-
-		var result map[string]interface{}
-
 		if ss := strings.Split(configLocation, ":"); len(ss) == 1 {
 			result = NewDefaultPropertySource(ss[0]).Load(profile)
 		} else {
@@ -178,21 +150,70 @@ func (app *application) loadProfileConfig(profile string) {
 				result = NewConfigMapPropertySource(ss[1]).Load(profile)
 			}
 		}
-
 		for k, v := range result {
 			SpringLogger.Tracef("%s=%v", k, v)
-			app.appCtx.SetProperty(k, v)
+			p.SetProperty(k, v)
 		}
 	}
+	return p
 }
 
 // prepare 准备上下文环境
 func (app *application) prepare() {
+	// 配置项加载顺序优先级，从高到低:
+	// 1.代码设置
+	// 2.命令行参数
+	// 3.系统环境变量
+	// 4.application-profile.properties
+	// 5.application.properties
+	// 6.内部默认配置
+
+	// 加载默认的应用配置文件，如 application.properties
+	appConfig := app.loadProfileConfig("")
+
+	// 加载系统环境变量
+	sysEnv := app.loadSystemEnv()
+	p := SpringCore.NewPriorityProperties(appConfig)
+	for key, value := range sysEnv.GetProperties() {
+		p.SetProperty(key, value)
+	}
+
+	// 加载命令行参数
+	cmdArgs := app.loadCmdArgs()
+	p = SpringCore.NewPriorityProperties(p)
+	for key, value := range cmdArgs.GetProperties() {
+		p.SetProperty(key, value)
+	}
+
+	// 加载特定环境的配置文件，如 application-test.properties
+	profile := app.appCtx.GetProfile()
+	if profile == "" {
+		keys := []string{SpringProfile, SPRING_PROFILE}
+		profile = p.GetStringProperty(keys...)
+	}
+	if profile != "" {
+		app.appCtx.SetProfile(profile)
+		profileConfig := app.loadProfileConfig(profile)
+		p.InsertBefore(profileConfig, appConfig)
+	}
+
+	// 拷贝用户使用代码设置的属性值
+	p = SpringCore.NewPriorityProperties(p)
+	for key, value := range app.appCtx.GetProperties() {
+		p.SetProperty(key, value)
+	}
+
+	// 将重组后的属性值写入 SpringContext 属性列表
+	for key, value := range p.GetProperties() {
+		app.appCtx.SetProperty(key, value)
+	}
 
 	// 设置是否允许注入私有字段
-	keys := []string{SpringAccess, SPRING_ACCESS}
-	if access := SpringCore.GetStringProperty(app.appCtx, keys...); access != "" {
-		app.appCtx.SetAllAccess(strings.ToLower(access) == "all")
+	if ok := app.appCtx.AllAccess(); !ok {
+		keys := []string{SpringAccess, SPRING_ACCESS}
+		if access := app.appCtx.GetStringProperty(keys...); access != "" {
+			app.appCtx.SetAllAccess(strings.ToLower(access) == "all")
+		}
 	}
 
 	// 配置文件已就绪

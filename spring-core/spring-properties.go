@@ -34,28 +34,28 @@ type Properties interface {
 	ReadProperties(reader io.Reader, configType string)
 
 	// GetProperty 返回属性值，属性名称统一转成小写。
-	GetProperty(key string) interface{}
+	GetProperty(keys ...string) interface{}
 
 	// GetBoolProperty 返回布尔型属性值，属性名称统一转成小写。
-	GetBoolProperty(key string) bool
+	GetBoolProperty(keys ...string) bool
 
 	// GetIntProperty 返回有符号整型属性值，属性名称统一转成小写。
-	GetIntProperty(key string) int64
+	GetIntProperty(keys ...string) int64
 
 	// GetUintProperty 返回无符号整型属性值，属性名称统一转成小写。
-	GetUintProperty(key string) uint64
+	GetUintProperty(keys ...string) uint64
 
 	// GetFloatProperty 返回浮点型属性值，属性名称统一转成小写。
-	GetFloatProperty(key string) float64
+	GetFloatProperty(keys ...string) float64
 
 	// GetStringProperty 返回字符串型属性值，属性名称统一转成小写。
-	GetStringProperty(key string) string
+	GetStringProperty(keys ...string) string
 
 	// GetDurationProperty 返回 Duration 类型属性值，属性名称统一转成小写。
-	GetDurationProperty(key string) time.Duration
+	GetDurationProperty(keys ...string) time.Duration
 
 	// GetTimeProperty 返回 Time 类型的属性值，属性名称统一转成小写。
-	GetTimeProperty(key string) time.Time
+	GetTimeProperty(keys ...string) time.Time
 
 	// GetDefaultProperty 返回属性值，如果没有找到则使用指定的默认值，属性名称统一转成小写。
 	GetDefaultProperty(key string, def interface{}) (interface{}, bool)
@@ -120,14 +120,4 @@ func RegisterTypeConverter(fn interface{}) {
 	} else {
 		typeConverters[t.Out(0)] = fn
 	}
-}
-
-// GetStringProperty 返回最早找到的字符串型属性值，属性名称统一转成小写。
-func GetStringProperty(p Properties, keys ...string) string {
-	for _, k := range keys {
-		if s := p.GetStringProperty(k); s != "" {
-			return s
-		}
-	}
-	return ""
 }

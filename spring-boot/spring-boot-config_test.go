@@ -36,6 +36,7 @@ func startApplication(cfgLocation ...string) *application {
 func TestConfig(t *testing.T) {
 
 	t.Run("default config", func(t *testing.T) {
+		os.Clearenv()
 		app := startApplication()
 		assert.Equal(t, app.cfgLocation, []string{DefaultConfigLocation})
 		assert.Equal(t, app.appCtx.GetProfile(), "")
@@ -43,40 +44,44 @@ func TestConfig(t *testing.T) {
 	})
 
 	t.Run("config via env", func(t *testing.T) {
+		os.Clearenv()
 		_ = os.Setenv(SpringAccess, "all")
-		_ = os.Setenv(SpringProfile, "test")
+		_ = os.Setenv(SpringProfile, "dev")
 		app := startApplication("testdata/config/")
 		assert.Equal(t, app.appCtx.AllAccess(), true)
-		assert.Equal(t, app.appCtx.GetProfile(), "test")
+		assert.Equal(t, app.appCtx.GetProfile(), "dev")
 	})
 
 	t.Run("config via env 2", func(t *testing.T) {
+		os.Clearenv()
 		_ = os.Setenv(SPRING_ACCESS, "all")
-		_ = os.Setenv(SPRING_PROFILE, "test")
+		_ = os.Setenv(SPRING_PROFILE, "dev")
 		app := startApplication("testdata/config/")
 		assert.Equal(t, app.appCtx.AllAccess(), true)
-		assert.Equal(t, app.appCtx.GetProfile(), "test")
+		assert.Equal(t, app.appCtx.GetProfile(), "dev")
 	})
 
 	t.Run("profile via config", func(t *testing.T) {
+		os.Clearenv()
 		app := startApplication("testdata/config/")
 		assert.Equal(t, app.appCtx.AllAccess(), true)
 		assert.Equal(t, app.appCtx.GetProfile(), "test")
 	})
 
 	t.Run("profile via env&config", func(t *testing.T) {
+		os.Clearenv()
 		_ = os.Setenv(SpringAccess, "")
-		_ = os.Setenv(SpringProfile, "dev")
 		app := startApplication("testdata/config/")
-		assert.Equal(t, app.appCtx.AllAccess(), true)
+		assert.Equal(t, app.appCtx.AllAccess(), false)
 		assert.Equal(t, app.appCtx.GetProfile(), "test")
 	})
 
 	t.Run("profile via env&config 2", func(t *testing.T) {
+		os.Clearenv()
 		_ = os.Setenv(SPRING_ACCESS, "")
 		_ = os.Setenv(SPRING_PROFILE, "dev")
 		app := startApplication("testdata/config/")
 		assert.Equal(t, app.appCtx.AllAccess(), true)
-		assert.Equal(t, app.appCtx.GetProfile(), "test")
+		assert.Equal(t, app.appCtx.GetProfile(), "dev")
 	})
 }

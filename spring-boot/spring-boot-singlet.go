@@ -35,10 +35,11 @@ func RunApplication(configLocation ...string) {
 	}, configLocation...)
 
 	app.configReady = func() {
-		// 设置是否使用严格模式
-		keys := []string{SPRING_STRICT, SpringStrict}
-		if strict := SpringCore.GetStringProperty(ctx, keys...); strict != "" {
-			ctx.Strict = strings.ToLower(strict) == "true"
+		if ctx.Strict { // 设置是否使用严格模式，默认是严格模式
+			keys := []string{SPRING_STRICT, SpringStrict}
+			if strict := ctx.GetStringProperty(keys...); strict != "" {
+				ctx.Strict = strings.ToLower(strict) == "true"
+			}
 		}
 	}
 
@@ -150,43 +151,43 @@ func GetBeanDefinitions() []*SpringCore.BeanDefinition {
 }
 
 // GetProperty 返回属性值，属性名称统一转成小写。
-func GetProperty(key string) interface{} {
-	return ctx.GetProperty(key)
+func GetProperty(keys ...string) interface{} {
+	return ctx.GetProperty(keys...)
 }
 
 // GetBoolProperty 返回布尔型属性值，属性名称统一转成小写。
-func GetBoolProperty(key string) bool {
-	return ctx.GetBoolProperty(key)
+func GetBoolProperty(keys ...string) bool {
+	return ctx.GetBoolProperty(keys...)
 }
 
 // GetIntProperty 返回有符号整型属性值，属性名称统一转成小写。
-func GetIntProperty(key string) int64 {
-	return ctx.GetIntProperty(key)
+func GetIntProperty(keys ...string) int64 {
+	return ctx.GetIntProperty(keys...)
 }
 
 // GetUintProperty 返回无符号整型属性值，属性名称统一转成小写。
-func GetUintProperty(key string) uint64 {
-	return ctx.GetUintProperty(key)
+func GetUintProperty(keys ...string) uint64 {
+	return ctx.GetUintProperty(keys...)
 }
 
 // GetFloatProperty 返回浮点型属性值，属性名称统一转成小写。
-func GetFloatProperty(key string) float64 {
-	return ctx.GetFloatProperty(key)
+func GetFloatProperty(keys ...string) float64 {
+	return ctx.GetFloatProperty(keys...)
 }
 
 // GetStringProperty 返回字符串型属性值，属性名称统一转成小写。
-func GetStringProperty(key string) string {
-	return ctx.GetStringProperty(key)
+func GetStringProperty(keys ...string) string {
+	return ctx.GetStringProperty(keys...)
 }
 
 // GetDurationProperty 返回 Duration 类型属性值，属性名称统一转成小写。
-func GetDurationProperty(key string) time.Duration {
-	return ctx.GetDurationProperty(key)
+func GetDurationProperty(keys ...string) time.Duration {
+	return ctx.GetDurationProperty(keys...)
 }
 
 // GetTimeProperty 返回 Time 类型的属性值，属性名称统一转成小写。
-func GetTimeProperty(key string) time.Time {
-	return ctx.GetTimeProperty(key)
+func GetTimeProperty(keys ...string) time.Time {
+	return ctx.GetTimeProperty(keys...)
 }
 
 // GetDefaultProperty 返回属性值，如果没有找到则使用指定的默认值，属性名称统一转成小写。
