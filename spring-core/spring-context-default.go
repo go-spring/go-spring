@@ -50,9 +50,7 @@ func newBeanCacheItem() *beanCacheItem {
 
 // copyTo 把现有元素拷贝到新缓存里
 func (item *beanCacheItem) copyTo(c *beanCacheItem) {
-	for _, bd := range item.beans {
-		c.beans = append(c.beans, bd)
-	}
+	c.beans = append(c.beans, item.beans...)
 }
 
 // find 顺序查找元素在数组中的位置

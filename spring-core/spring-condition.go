@@ -178,7 +178,7 @@ func NewExpressionCondition(expression string) *expressionCondition {
 
 // Matches 成功返回 true，失败返回 false
 func (c *expressionCondition) Matches(ctx SpringContext) bool {
-	panic(errors.New(SpringConst.UNIMPLEMENTED_METHOD))
+	panic(SpringConst.UnimplementedMethod)
 }
 
 // profileCondition 基于运行环境匹配的 Condition 实现
