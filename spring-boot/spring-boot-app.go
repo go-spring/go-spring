@@ -153,9 +153,14 @@ func (app *application) loadConfigFiles() {
 	// 加载默认的应用配置文件，如 application.properties
 	app.loadProfileConfig("")
 
-	// 加载用户设置的配置文件，如 application-test.properties
+	// 设置运行环境，会覆盖用户代码设置的 profile 值
 	keys := []string{SpringProfile, SPRING_PROFILE}
 	if profile := SpringCore.GetStringProperty(app.appCtx, keys...); profile != "" {
+		app.appCtx.SetProfile(strings.ToLower(profile))
+	}
+
+	// 加载用户设置的配置文件，如 application-test.properties
+	if profile := app.appCtx.GetProfile(); profile != "" {
 		app.loadProfileConfig(strings.ToLower(profile))
 	}
 }
@@ -184,14 +189,8 @@ func (app *application) loadProfileConfig(profile string) {
 // prepare 准备上下文环境
 func (app *application) prepare() {
 
-	// 设置运行环境
-	keys := []string{SpringProfile, SPRING_PROFILE}
-	if profile := SpringCore.GetStringProperty(app.appCtx, keys...); profile != "" {
-		app.appCtx.SetProfile(strings.ToLower(profile))
-	}
-
 	// 设置是否允许注入私有字段
-	keys = []string{SpringAccess, SPRING_ACCESS}
+	keys := []string{SpringAccess, SPRING_ACCESS}
 	if access := SpringCore.GetStringProperty(app.appCtx, keys...); access != "" {
 		app.appCtx.SetAllAccess(strings.ToLower(access) == "all")
 	}
