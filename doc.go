@@ -57,9 +57,50 @@ Go-Spring 会在合适的时机调用这些函数创建 Bean 的数据。
 另外，为了简称大部分情况下函数 Bean 指的是构造函数 Bean，而成员方法 Bean 则简
 称为方法 Bean。这一点需要读者在后续章节注意分辨。
 
+3. 什么是 IoC 容器和 Bean 注入？
 
+举个例子，假设有一个结构体 Controller，包含了很多叫 Service 的字段，
 
+type Controller struct{
+  userService UserService
+  roleService RoleService
+  deptService DeptService
+  ...
+}
 
+现在想给 Controller 的这些 Service 字段赋值，传统方式是通过构造函数参数传入或
+者直接对字段进行赋值。但无论哪一种方式，当 Service 字段变多或者变少之后都会导致修
+改很多的代码，那么有没有办法可以减少这种修改呢？
+
+试着将这些 Service 的实例想象成服务提供方，将 Controller 的这些 Service 字段
+想象成服务消费方，这样只需要服务提供方说明自己的能力，服务消费方说明自己的需求，就可
+以设计一个服务平台来匹配这种供需关系。
+
+如果这种方案是可行的，稍微想象一下就能感受到这种方式带来的新力量！幸运的是，Go 语言
+提供了这种可能，通过反射机制很容易就能实现这种新的方式。
+
+在这种方式下，服务平台就是 IoC 容器，服务消费的过程就是 Bean 注入。而 Go-Spring
+就是 Go 语言中 IoC 容器的一个非常优秀的实现，后续章节会一点一点地揭开它的面纱。
+
+4. 初识 SpringContext
+
+SpringContext 是一个功能完善的 IoC 容器，是 Go-Spring 绝对的核心，其主要功能如下：
+
+RegisterBean 和 RegisterNameBean 注册对象 Bean；
+RegisterBeanFn 和 RegisterNameBeanFn 注册构造函数 Bean；
+RegisterMethodBean 和 RegisterNameMethodBean 注册成员方法 Bean。
+
+WireBean 对一个外部 Bean 执行注入过程；
+AutoWireBeans 对已注册的 Bean 执行注入过程。
+
+GetBean 和 GetBeanByName 获取一个 Bean，并确保已完成注入过程；
+FindBean 和 FindBeanByName 查找一个 Bean，但不保证已完成注入过程；
+CollectBeans 收集所有符合条件的 Bean，甚至包括符合条件的数组项，并确保均已完成注入过程。
+
+Close 关闭 IoC 容器，并向已注册的 Bean 发送 destroy 消息，用于执行资源清理等工作。
+
+实现 context.Context 接口，用于控制 goroutine 的生命周期。
+实现 Properties 接口，用于实现一系列和属性相关的操作，后面会有专门的章节详细讲解。
 
 
 
