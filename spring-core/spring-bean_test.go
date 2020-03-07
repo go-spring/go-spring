@@ -21,6 +21,7 @@ import (
 	"io"
 	"os"
 	"reflect"
+	"sync"
 	"testing"
 	"unsafe"
 
@@ -29,6 +30,170 @@ import (
 	pkg2 "github.com/go-spring/go-spring/spring-core/testdata/pkg/foo"
 	"github.com/magiconair/properties/assert"
 )
+
+type errorString struct {
+	s string
+}
+
+func (e *errorString) Error() string {
+	return e.s
+}
+
+func TestRef(t *testing.T) {
+	// 基本测试方法，首先创建第一个目标，然后赋值给第二个目标，这时候如果修改第一个目标
+	// 内部的状态，如果第二个值也能反映出这种修改，那么它是引用类型，否则它就是值类型。
+
+	// valType // Bool
+	var o1 bool
+	o1 = true
+	o2 := o1
+	o1 = false
+	if o2 == false {
+		fmt.Println("bool is ref type")
+	} else {
+		fmt.Println("bool is val type")
+	}
+
+	// valType // Int
+	// valType // Int8
+	// valType // Int16
+	// valType // Int32
+	// valType // Int64
+	// valType // Uint
+	// valType // Uint8
+	// valType // Uint16
+	// valType // Uint32
+	// valType // Uint64
+	// valType // Float32
+	// valType // Float64
+	var i1 int
+	i1 = 3
+	i2 := i1
+	i1 = 5
+	if i2 == 5 {
+		fmt.Println("int is ref type")
+	} else {
+		fmt.Println("int is val type")
+	}
+
+	// valType // Complex64
+	// valType // Complex128
+	var c1 complex64
+	c1 = complex(1, 1)
+	c2 := c1
+	c1 = complex(0, 0)
+	if real(c2) == 0 {
+		fmt.Println("complex64 is ref type")
+	} else {
+		fmt.Println("complex64 is val type")
+	}
+
+	// valType // Array
+	var arr1 [1]int
+	arr1[0] = 3
+	arr2 := arr1
+	arr1[0] = 5
+	if arr2[0] == 5 {
+		fmt.Println("array is ref type")
+	} else {
+		fmt.Println("array is val type")
+	}
+
+	// refType // Chan
+	var wg sync.WaitGroup
+	var ch1 chan struct{}
+	ch1 = make(chan struct{})
+	ch2 := ch1
+	wg.Add(1)
+	go func() {
+		<-ch2
+		wg.Done()
+	}()
+	ch1 <- struct{}{}
+	wg.Wait()
+
+	// refType // Func
+	ret := new(int)
+	var f1 func() int
+	f1 = func() int { return *ret }
+	f2 := f1
+	*ret = 3
+	if f2() == 3 {
+		fmt.Println("func is ref type")
+	} else {
+		fmt.Println("func is val type")
+	}
+
+	// refType // Interface
+	var e1 error
+	e1 = &errorString{"ok"}
+	e2 := e1
+	(e1.(*errorString)).s = "no"
+	if e2.Error() == "no" {
+		fmt.Println("error is ref type")
+	} else {
+		fmt.Println("error is val type")
+	}
+
+	// refType // Map
+	m1 := make(map[int]string)
+	m1[1] = "1"
+	m2 := m1
+	m1[1] = "3"
+	if m2[1] == "3" {
+		fmt.Println("map is ref type")
+	} else {
+		fmt.Println("map is val type")
+	}
+
+	type Int struct {
+		i int
+	}
+
+	// refType // Ptr
+	var ptr1 *Int
+	ptr1 = &Int{1}
+	ptr2 := ptr1
+	ptr1.i = 3
+	if ptr2.i == 3 {
+		fmt.Println("ptr is ref type")
+	} else {
+		fmt.Println("ptr is val type")
+	}
+
+	// refType // Slice
+	s1 := make([]int, 1)
+	s1[0] = 1
+	s2 := s1
+	s1[0] = 3
+	if s2[0] == 3 {
+		fmt.Println("slice is ref type")
+	} else {
+		fmt.Println("slice is val type")
+	}
+
+	// valType // String
+	var str1 string
+	str1 = "1"
+	str2 := str1
+	str1 = "3"
+	if str2 == "3" {
+		fmt.Println("string is ref type")
+	} else {
+		fmt.Println("string is val type")
+	}
+
+	// valType // Struct
+	var t1 Int
+	t1 = Int{1}
+	t2 := t1
+	t1.i = 3
+	if t2.i == 3 {
+		fmt.Println("struct is ref type")
+	} else {
+		fmt.Println("struct is val type")
+	}
+}
 
 func TestIsRefType(t *testing.T) {
 
@@ -52,7 +217,7 @@ func TestIsRefType(t *testing.T) {
 		{float64(1), false},                          // Float64
 		{complex64(1), false},                        // Complex64
 		{complex128(1), false},                       // Complex128
-		{[1]int{0}, true},                            // Array
+		{[1]int{0}, false},                           // Array
 		{make(chan struct{}), true},                  // Chan
 		{func() {}, true},                            // Func
 		{reflect.TypeOf((*error)(nil)).Elem(), true}, // Interface
@@ -101,7 +266,7 @@ func TestIsValueType(t *testing.T) {
 		{float64(1), true},           // Float64
 		{complex64(1), true},         // Complex64
 		{complex128(1), true},        // Complex128
-		{[1]int{0}, false},           // Array
+		{[1]int{0}, true},            // Array
 		{make(chan struct{}), false}, // Chan
 		{func() {}, false},           // Func
 		{reflect.TypeOf((*error)(nil)).Elem(), false}, // Interface
@@ -146,6 +311,8 @@ func TestTypeName(t *testing.T) {
 			reflect.TypeOf(new(int)):          {"int", "*int"},
 			reflect.TypeOf(make([]int, 0)):    {"int", "[]int"},
 			reflect.TypeOf(&[]int{3}):         {"int", "*[]int"},
+			reflect.TypeOf(make([]*int, 0)):   {"int", "[]*int"},
+			reflect.TypeOf(make([][]int, 0)):  {"int", "[][]int"},
 			reflect.TypeOf(make(map[int]int)): {"map[int]int", "map[int]int"},
 
 			reflect.TypeOf(int8(3)):             {"int8", "int8"},
@@ -397,6 +564,7 @@ func TestToBeanDefinition(t *testing.T) {
 	t.Run("bean must be ref type", func(t *testing.T) {
 
 		data := []func(){
+			func() { SpringCore.ToBeanDefinition("", [...]int{0}) },
 			func() { SpringCore.ToBeanDefinition("", false) },
 			func() { SpringCore.ToBeanDefinition("", 3) },
 			func() { SpringCore.ToBeanDefinition("", "3") },
@@ -416,7 +584,6 @@ func TestToBeanDefinition(t *testing.T) {
 		SpringCore.ToBeanDefinition("", new(int))
 		SpringCore.ToBeanDefinition("", &BeanZero{})
 		SpringCore.ToBeanDefinition("", make([]int, 0))
-		SpringCore.ToBeanDefinition("", [...]int{0})
 	})
 
 	t.Run("check name && typename", func(t *testing.T) {

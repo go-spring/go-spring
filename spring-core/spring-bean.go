@@ -47,7 +47,7 @@ var kindType = []uint8{
 	valType, // Float64
 	valType, // Complex64
 	valType, // Complex128
-	refType, // Array
+	valType, // Array
 	refType, // Chan
 	refType, // Func
 	refType, // Interface
