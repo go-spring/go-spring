@@ -7,7 +7,7 @@ require (
 	github.com/elliotchance/redismock v1.5.3
 	github.com/go-redis/redis v6.15.7+incompatible
 	github.com/go-spring/go-spring-parent v1.0.0
-	github.com/go-spring/go-spring-web v1.0.0
+	github.com/go-spring/go-spring-web v1.0.1-0.20200311023423-870627660031
 	github.com/jinzhu/gorm v1.9.12
 	github.com/magiconair/properties v1.8.1
 	github.com/spf13/cast v1.3.1

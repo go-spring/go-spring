@@ -17,6 +17,7 @@
 package SpringBoot_test
 
 import (
+	"container/list"
 	"errors"
 	"io/ioutil"
 	"net/http"
@@ -41,10 +42,22 @@ import (
 func init() {
 	// SpringLogger.SetLogger(&SpringLogger.Console{})
 
+	l := list.New()
+
+	SpringBoot.RegisterNameBean("f2", NewNumberFilter(2, l)).
+		AsInterface((*SpringWeb.Filter)(nil))
+
+	SpringBoot.RegisterNameBean("f5", NewNumberFilter(5, l)).
+		AsInterface((*SpringWeb.Filter)(nil))
+
+	SpringBoot.RegisterNameBean("f7", NewNumberFilter(7, l)).
+		AsInterface((*SpringWeb.Filter)(nil))
+
 	SpringBoot.RegisterBean(new(MyController)).Init(func(c *MyController) {
 		SpringBoot.GetMapping("/ok", c.OK).
 			ConditionOnProfile("test").
-			ConditionOnMissingProperty("ok_enable")
+			ConditionOnMissingProperty("ok_enable").
+			SetFilterNames("f2")
 	})
 
 	SpringBoot.RegisterBean(new(MyRunner)).AsInterface((*SpringBoot.CommandLineRunner)(nil))
@@ -69,6 +82,33 @@ func TestRunApplication(t *testing.T) {
 
 	SpringBoot.SetProperty("db.url", "root:root@/information_schema?charset=utf8&parseTime=True&loc=Local")
 	SpringBoot.RunApplication("testdata/config/", "k8s:testdata/config/config-map.yaml")
+}
+
+///////////////////// filter ////////////////////////
+
+type NumberFilter struct {
+	l *list.List
+	n int
+}
+
+func NewNumberFilter(n int, l *list.List) *NumberFilter {
+	return &NumberFilter{
+		l: l,
+		n: n,
+	}
+}
+
+func (f *NumberFilter) Invoke(ctx SpringWeb.WebContext, chain *SpringWeb.FilterChain) {
+
+	defer func() {
+		ctx.LogInfo("::after", f.n)
+		f.l.PushBack(f.n)
+	}()
+
+	ctx.LogInfo("::before", f.n)
+	f.l.PushBack(f.n)
+
+	chain.Next(ctx)
 }
 
 ////////////////// MyController ///////////////////
