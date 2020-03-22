@@ -54,10 +54,13 @@ func init() {
 		AsInterface((*SpringWeb.Filter)(nil))
 
 	SpringBoot.RegisterBean(new(MyController)).Init(func(c *MyController) {
+
 		SpringBoot.GetMapping("/ok", c.OK).
 			ConditionOnProfile("test").
-			ConditionOnMissingProperty("ok_enable").
 			SetFilterNames("f2")
+
+		SpringBoot.GetMapping("/echo", SpringWeb.BIND(c.Echo)).
+			SetFilterNames("f5")
 	})
 
 	SpringBoot.RegisterBean(new(MyRunner)).AsInterface((*SpringBoot.CommandLineRunner)(nil))
@@ -116,6 +119,18 @@ func (f *NumberFilter) Invoke(ctx SpringWeb.WebContext, chain *SpringWeb.FilterC
 type MyController struct {
 	RedisClient redis.Cmdable `autowire:""`
 	DB          *gorm.DB      `autowire:""`
+}
+
+type EchoRequest struct {
+	Str string `query:"str"`
+}
+
+type EchoResponse struct {
+	Echo string `json:"echo"`
+}
+
+func (s *MyController) Echo(request EchoRequest) *EchoResponse {
+	return &EchoResponse{"echo " + request.Str}
 }
 
 func (c *MyController) OK(ctx SpringWeb.WebContext) {
@@ -210,6 +225,19 @@ func Process() {
 			panic(e)
 		} else {
 			SpringLogger.Infof("resp code=%d body=%s", resp.StatusCode, string(body))
+			if string(body) != "ok" {
+				panic(errors.New("error"))
+			}
+		}
+	}
+
+	if resp, err := http.Get("http://localhost:8080/echo?str=echo"); err != nil {
+		panic(err)
+	} else {
+		if body, e := ioutil.ReadAll(resp.Body); e != nil {
+			panic(e)
+		} else {
+			SpringLogger.Infof("resp code=%d body=%s(echo add a \\n on text end)", resp.StatusCode, string(body))
 			if string(body) != "ok" {
 				panic(errors.New("error"))
 			}
