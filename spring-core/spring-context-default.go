@@ -539,7 +539,7 @@ func (beanAssembly *defaultBeanAssembly) wireFunctionBean(fnValue reflect.Value,
 		bean.rValue.Elem().Set(val)
 	}
 
-	if bean.bean = bean.rValue.Interface(); bean.bean == nil {
+	if bean.Value().IsNil() {
 		panic(fmt.Errorf("function bean: \"%s\" return nil", bd.Caller()))
 	}
 

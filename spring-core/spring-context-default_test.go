@@ -2057,10 +2057,23 @@ func TestDefaultSpringContext_NestedAutowireBean(t *testing.T) {
 	assert.Equal(t, b2.B.Int, (*int)(nil))
 }
 
+type BaseChannel struct {
+	Int        *int `autowire:""`
+	AutoCreate bool `value:"${auto-create}"`
+	Enable     bool `value:"${enable:=false}"`
+}
+
+type WXChannel struct {
+	BaseChannel `value:"${sdk.wx}"`
+	Int         *int `autowire:""`
+}
+
 type baseChannel struct {
 	Int        *int `autowire:""`
 	AutoCreate bool `value:"${auto-create}"`
-	enable     bool `value:"${enable:=false}"`
+
+	// 支持对私有字段注入，但是不推荐！代码扫描请忽略这行。
+	enable bool `value:"${enable:=false}"`
 }
 
 type wxChannel struct {
@@ -2072,23 +2085,47 @@ type wxChannel struct {
 
 func TestDefaultSpringContext_NestValueField(t *testing.T) {
 
-	ctx := SpringCore.NewDefaultSpringContext()
-	ctx.SetProperty("sdk.wx.auto-create", true)
-	ctx.SetProperty("sdk.wx.enable", true)
-	ctx.RegisterBeanFn(func() int { return 3 })
-	ctx.RegisterBean(new(wxChannel))
-	ctx.SetAllAccess(true)
-	ctx.AutoWireBeans()
+	t.Run("private", func(t *testing.T) {
 
-	var c *wxChannel
-	ok := ctx.GetBean(&c)
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.SetProperty("sdk.wx.auto-create", true)
+		ctx.SetProperty("sdk.wx.enable", true)
+		ctx.RegisterBeanFn(func() int { return 3 })
+		ctx.RegisterBean(new(wxChannel))
+		ctx.SetAllAccess(true)
+		ctx.AutoWireBeans()
 
-	assert.Equal(t, ok, true)
-	assert.Equal(t, *c.Int, 3)
-	assert.Equal(t, *c.int, 3)
-	assert.Equal(t, c.Int, c.int)
-	assert.Equal(t, c.enable, true)
-	assert.Equal(t, c.AutoCreate, true)
+		var c *wxChannel
+		ok := ctx.GetBean(&c)
+
+		assert.Equal(t, ok, true)
+		assert.Equal(t, *c.baseChannel.Int, 3)
+		assert.Equal(t, *c.int, 3)
+		assert.Equal(t, c.baseChannel.Int, c.int)
+		assert.Equal(t, c.enable, true)
+		assert.Equal(t, c.AutoCreate, true)
+	})
+
+	t.Run("public", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.SetProperty("sdk.wx.auto-create", true)
+		ctx.SetProperty("sdk.wx.enable", true)
+		ctx.RegisterBeanFn(func() int { return 3 })
+		ctx.RegisterBean(new(WXChannel))
+		//ctx.SetAllAccess(true)
+		ctx.AutoWireBeans()
+
+		var c *WXChannel
+		ok := ctx.GetBean(&c)
+
+		assert.Equal(t, ok, true)
+		assert.Equal(t, *c.BaseChannel.Int, 3)
+		assert.Equal(t, *c.Int, 3)
+		assert.Equal(t, c.BaseChannel.Int, c.Int)
+		assert.Equal(t, c.Enable, true)
+		assert.Equal(t, c.AutoCreate, true)
+	})
 }
 
 func TestDefaultSpringContext_FnArgCollectBean(t *testing.T) {

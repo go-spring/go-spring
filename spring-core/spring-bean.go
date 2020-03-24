@@ -107,7 +107,6 @@ type SpringBean interface {
 
 // objectBean 原始 Bean 源
 type objectBean struct {
-	bean     interface{}   // 源
 	rType    reflect.Type  // 类型
 	rValue   reflect.Value // 值
 	typeName string        // 原始类型的全限定名
@@ -119,7 +118,6 @@ func newObjectBean(v reflect.Value) *objectBean {
 		panic(errors.New("bean must be ref type"))
 	} else {
 		return &objectBean{
-			bean:     v.Interface(),
 			rType:    t,
 			typeName: TypeName(t),
 			rValue:   v,
@@ -129,7 +127,7 @@ func newObjectBean(v reflect.Value) *objectBean {
 
 // Bean 返回 Bean 的源
 func (b *objectBean) Bean() interface{} {
-	return b.bean
+	return b.rValue.Interface()
 }
 
 // Type 返回 Bean 的类型
@@ -205,7 +203,6 @@ func newFunctionBean(fnType reflect.Type, withReceiver bool, tags []string) func
 
 	return functionBean{
 		objectBean: objectBean{
-			bean:     v.Interface(),
 			rType:    t,
 			typeName: TypeName(t),
 			rValue:   v,
