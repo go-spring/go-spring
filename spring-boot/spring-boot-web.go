@@ -46,7 +46,6 @@ type Mapping struct {
 	port        int                     // 路由的端口
 	filterNames []string                // 过滤器列表
 	cond        *SpringCore.Conditional // 判断条件
-	doc         string                  // 接口文档
 }
 
 // NewMapping Mapping 的构造函数
@@ -55,6 +54,11 @@ func NewMapping(mapper *SpringWeb.Mapper) *Mapping {
 		mapper: mapper,
 		cond:   SpringCore.NewConditional(),
 	}
+}
+
+// Mapper 返回封装的 Mapper 对象
+func (m *Mapping) Mapper() *SpringWeb.Mapper {
+	return m.mapper
 }
 
 // Key 返回 Mapper 的标识符
@@ -96,17 +100,6 @@ func (m *Mapping) Port() int {
 // SetPort 设置路由的端口
 func (m *Mapping) SetPort(port int) *Mapping {
 	m.port = port
-	return m
-}
-
-// Doc 返回接口文档
-func (m *Mapping) Doc() string {
-	return m.doc
-}
-
-// SetDoc 设置接口文档
-func (m *Mapping) SetDoc(doc string) *Mapping {
-	m.doc = doc
 	return m
 }
 
@@ -196,6 +189,11 @@ func (m *Mapping) ConditionOnProfile(profile string) *Mapping {
 // Matches 成功返回 true，失败返回 false
 func (m *Mapping) Matches(ctx SpringCore.SpringContext) bool {
 	return m.cond.Matches(ctx)
+}
+
+// Swagger 生成并返回 Swagger 操作节点
+func (m *Mapping) Swagger() *SpringWeb.Operation {
+	return m.mapper.Swagger()
 }
 
 // Router 路由分组

@@ -54,7 +54,8 @@ func (starter *WebServerStarter) OnStartApplication(ctx SpringBoot.ApplicationCo
 						ctx.GetBeanByName(s, &f)
 						filters = append(filters, f)
 					}
-					c.Request(mapping.Method(), mapping.Path(), mapping.Handler(), filters...)
+					mapping.SetFilters(filters...)
+					c.AddMapper(mapping.Mapper())
 				}
 			}
 		}

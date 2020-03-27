@@ -53,14 +53,24 @@ func init() {
 	SpringBoot.RegisterNameBean("f7", NewNumberFilter(7, l)).
 		AsInterface((*SpringWeb.Filter)(nil))
 
+	// 全局函数设置整个应用的信息
+	SpringWeb.Swagger().SetDescription("spring boot test")
+
 	SpringBoot.RegisterBean(new(MyController)).Init(func(c *MyController) {
 
-		SpringBoot.GetMapping("/ok", c.OK).
-			ConditionOnProfile("test").
-			SetFilterNames("f2")
+		r := SpringBoot.Route("/api")
+		{
+			r.GET("/ok", c.OK).
+				ConditionOnProfile("test").
+				SetFilterNames("f2").
+				Swagger(). // 设置接口的信息
+				SetDescription("ok")
+		}
 
 		SpringBoot.GetMapping("/echo", SpringWeb.BIND(c.Echo)).
-			SetFilterNames("f5")
+			SetFilterNames("f5").
+			Swagger(). // 设置接口的信息
+			SetDescription("echo")
 	})
 
 	SpringBoot.RegisterBean(new(MyRunner)).AsInterface((*SpringBoot.CommandLineRunner)(nil))
@@ -143,7 +153,7 @@ func (c *MyController) OK(ctx SpringWeb.WebContext) {
 
 	rows, err := c.DB.Table("ENGINES").Select("ENGINE").Rows()
 	SpringUtils.Panic(err).When(err != nil)
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	count := 0
 
@@ -218,7 +228,7 @@ func Process() {
 
 	time.Sleep(200 * time.Millisecond)
 
-	if resp, err := http.Get("http://localhost:8080/ok"); err != nil {
+	if resp, err := http.Get("http://localhost:8080/api/ok"); err != nil {
 		panic(err)
 	} else {
 		if body, e := ioutil.ReadAll(resp.Body); e != nil {
@@ -231,6 +241,16 @@ func Process() {
 		}
 	}
 
+	if resp, err := http.Get("http://127.0.0.1:8080/swagger/doc.json"); err != nil {
+		panic(err)
+	} else {
+		if body, e := ioutil.ReadAll(resp.Body); e != nil {
+			panic(e)
+		} else {
+			SpringLogger.Infof("resp code=%d body=%s", resp.StatusCode, string(body))
+		}
+	}
+
 	if resp, err := http.Get("http://localhost:8080/echo?str=echo"); err != nil {
 		panic(err)
 	} else {
@@ -238,7 +258,7 @@ func Process() {
 			panic(e)
 		} else {
 			SpringLogger.Infof("resp code=%d body=%s(echo add a \\n on text end)", resp.StatusCode, string(body))
-			if string(body) != "ok" {
+			if string(body) != "{\"Code\":0,\"Msg\":\"SUCCESS\",\"Err\":\"\",\"Data\":{\"echo\":\"echo echo\"}}\n" {
 				panic(errors.New("error"))
 			}
 		}
