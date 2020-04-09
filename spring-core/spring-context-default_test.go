@@ -17,6 +17,7 @@
 package SpringCore_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"image"
@@ -2277,5 +2278,38 @@ func TestDefaultSpringContext_WarnAsInterface(t *testing.T) {
 		ok = ctx.CollectBeans(&is)
 
 		assert.Equal(t, ok, false)
+	})
+}
+
+type AppContext struct {
+	context.Context
+}
+
+func TestDefaultSpringContext_AutoExport(t *testing.T) {
+
+	t.Run("don't auto export", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBean(&AppContext{
+			Context: context.TODO(),
+		})
+		ctx.AutoWireBeans()
+
+		var x context.Context
+		ok := ctx.GetBean(&x)
+		assert.Equal(t, false, ok)
+	})
+
+	t.Run("auto export", func(t *testing.T) {
+		b := &AppContext{Context: context.TODO()}
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBean(b).AutoExport()
+		ctx.AutoWireBeans()
+
+		var x context.Context
+		ok := ctx.GetBean(&x)
+		assert.Equal(t, true, ok)
+		assert.Equal(t, b, x)
 	})
 }

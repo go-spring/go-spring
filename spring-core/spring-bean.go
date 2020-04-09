@@ -362,7 +362,8 @@ type BeanDefinition struct {
 	init    interface{} // 初始化的回调
 	destroy interface{} // 销毁时的回调
 
-	exports []reflect.Type // 导出接口类型
+	exports    []reflect.Type // 导出接口类型
+	autoExport bool           // 自动导出接口
 }
 
 // newBeanDefinition BeanDefinition 的构造函数
@@ -657,6 +658,12 @@ func (d *BeanDefinition) Destroy(fn interface{}) *BeanDefinition {
 	}
 
 	d.destroy = fn
+	return d
+}
+
+// AutoExport 设置自动导出接口
+func (d *BeanDefinition) AutoExport() *BeanDefinition {
+	d.autoExport = true
 	return d
 }
 

@@ -73,6 +73,11 @@ func SetAllAccess(allAccess bool) {
 	ctx.SetAllAccess(allAccess)
 }
 
+// UseStrictMode 设置是否使用严格模式
+func UseStrictMode(strict bool) {
+	ctx.Strict = strict
+}
+
 // SetEventNotify 设置 Context 事件通知函数
 func SetEventNotify(notify func(event SpringCore.ContextEvent)) {
 	ctx.SetEventNotify(notify)

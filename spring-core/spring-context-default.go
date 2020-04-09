@@ -856,6 +856,16 @@ func (ctx *defaultSpringContext) findCacheItem(t reflect.Type) *beanCacheItem {
 	return c.(*beanCacheItem)
 }
 
+// autoExport 自动导出 Bean 实现的接口
+func (ctx *defaultSpringContext) autoExport(bd *BeanDefinition, t reflect.Type) {
+	for i := 0; i < t.NumField(); i++ {
+		if f := t.Field(i); f.Anonymous && f.Type.Kind() == reflect.Interface {
+			m := ctx.findCacheItem(f.Type)
+			m.store(f.Type, bd, false)
+		}
+	}
+}
+
 // resolveBean 对 Bean 进行决议是否能够创建 Bean 的实例
 func (ctx *defaultSpringContext) resolveBean(bd *BeanDefinition) {
 
@@ -884,6 +894,14 @@ func (ctx *defaultSpringContext) resolveBean(bd *BeanDefinition) {
 	// 将符合注册条件的 Bean 放入到缓存里面
 	item := ctx.findCacheItem(bd.Type())
 	item.store(bd.Type(), bd, false)
+
+	// 自动导出接口，这种情况下应该只对于结构体才会有效
+	if bd.autoExport {
+		v := reflect.Indirect(bd.Value())
+		if v.Kind() == reflect.Struct {
+			ctx.autoExport(bd, v.Type())
+		}
+	}
 
 	// 按照导出类型放入缓存
 	for _, t := range bd.exports {
