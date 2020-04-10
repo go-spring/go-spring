@@ -513,7 +513,20 @@ func (beanAssembly *defaultBeanAssembly) wireObjectBean(bd IBeanDefinition, only
 // wireFunctionBean 对函数定义 Bean 进行注入
 func (beanAssembly *defaultBeanAssembly) wireFunctionBean(fnValue reflect.Value, bean *functionBean, bd IBeanDefinition) {
 
-	in := bean.arg.Get(beanAssembly, bd)
+	var in []reflect.Value
+
+	if bean.stringArg != nil {
+		if r := bean.stringArg.Get(beanAssembly, bd); len(r) > 0 {
+			in = append(in, r...)
+		}
+	}
+
+	if bean.optionArg != nil {
+		if r := bean.optionArg.Get(beanAssembly, bd); len(r) > 0 {
+			in = append(in, r...)
+		}
+	}
+
 	out := fnValue.Call(in)
 
 	// 获取第一个返回值

@@ -154,7 +154,8 @@ func (b *objectBean) beanClass() string {
 type functionBean struct {
 	objectBean
 
-	arg fnBindingArg // 参数绑定
+	stringArg *fnStringBindingArg // 普通参数绑定
+	optionArg *fnOptionBindingArg // Option 绑定
 }
 
 // IsFuncBeanType 返回是否是合法的函数 Bean 类型
@@ -207,7 +208,7 @@ func newFunctionBean(fnType reflect.Type, withReceiver bool, tags []string) func
 			typeName: TypeName(t),
 			rValue:   v,
 		},
-		arg: newFnStringBindingArg(fnType, withReceiver, tags),
+		stringArg: newFnStringBindingArg(fnType, withReceiver, tags),
 	}
 }
 
@@ -591,9 +592,9 @@ func (d *BeanDefinition) Options(options ...*optionArg) *BeanDefinition {
 	arg := &fnOptionBindingArg{options}
 	switch bean := d.bean.(type) {
 	case *constructorBean:
-		bean.arg = arg
+		bean.optionArg = arg
 	case *methodBean:
-		bean.arg = arg
+		bean.optionArg = arg
 	default:
 		panic(errors.New("只有 func Bean 才能调用此方法"))
 	}

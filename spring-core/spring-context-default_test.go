@@ -1848,23 +1848,25 @@ func withVar(v ...*Var) VarOptionFunc {
 
 type VarObj struct {
 	v []*Var
+	s string
 }
 
-func NewVarObj(options ...VarOptionFunc) *VarObj {
+func NewVarObj(s string, options ...VarOptionFunc) *VarObj {
 	opt := new(VarOption)
 	for _, option := range options {
 		option(opt)
 	}
-	return &VarObj{opt.v}
+	return &VarObj{opt.v, s}
 }
 
 func TestDefaultSpringContext_RegisterOptionBean(t *testing.T) {
 
 	t.Run("variadic option param 1", func(t *testing.T) {
 		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.SetProperty("var.obj", "description")
 		ctx.RegisterNameBean("v1", &Var{"v1"})
 		ctx.RegisterNameBean("v2", &Var{"v2"})
-		ctx.RegisterBeanFn(NewVarObj).Options(
+		ctx.RegisterBeanFn(NewVarObj, "${var.obj}").Options(
 			SpringCore.NewOptionArg(withVar, "v1"),
 		)
 		ctx.AutoWireBeans()
@@ -1874,13 +1876,15 @@ func TestDefaultSpringContext_RegisterOptionBean(t *testing.T) {
 
 		assert.Equal(t, len(obj.v), 1)
 		assert.Equal(t, obj.v[0].name, "v1")
+		assert.Equal(t, obj.s, "description")
 	})
 
 	t.Run("variadic option param 2", func(t *testing.T) {
 		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.SetProperty("var.obj", "description")
 		ctx.RegisterNameBean("v1", &Var{"v1"})
 		ctx.RegisterNameBean("v2", &Var{"v2"})
-		ctx.RegisterBeanFn(NewVarObj).Options(
+		ctx.RegisterBeanFn(NewVarObj, "${var.obj}").Options(
 			SpringCore.NewOptionArg(withVar, "v1", "v2"),
 		)
 		ctx.AutoWireBeans()
@@ -1891,6 +1895,7 @@ func TestDefaultSpringContext_RegisterOptionBean(t *testing.T) {
 		assert.Equal(t, len(obj.v), 2)
 		assert.Equal(t, obj.v[0].name, "v1")
 		assert.Equal(t, obj.v[1].name, "v2")
+		assert.Equal(t, obj.s, "description")
 	})
 
 	t.Run("variadic option interface param 1", func(t *testing.T) {
