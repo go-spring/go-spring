@@ -79,9 +79,7 @@ func (app *application) Start() {
 	app.prepare()
 
 	// 注册 ApplicationContext
-	app.appCtx.RegisterBean(app.appCtx).AsInterface(
-		(*ApplicationContext)(nil), (*SpringCore.SpringContext)(nil),
-	)
+	app.appCtx.RegisterBean(app.appCtx).Export((*SpringCore.SpringContext)(nil), (*ApplicationContext)(nil))
 
 	// 依赖注入、属性绑定、Bean 初始化
 	app.appCtx.AutoWireBeans()

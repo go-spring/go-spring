@@ -44,14 +44,9 @@ func init() {
 
 	l := list.New()
 
-	SpringBoot.RegisterNameBean("f2", NewNumberFilter(2, l)).
-		AsInterface((*SpringWeb.Filter)(nil))
-
-	SpringBoot.RegisterNameBean("f5", NewNumberFilter(5, l)).
-		AsInterface((*SpringWeb.Filter)(nil))
-
-	SpringBoot.RegisterNameBean("f7", NewNumberFilter(7, l)).
-		AsInterface((*SpringWeb.Filter)(nil))
+	SpringBoot.RegisterNameBean("f2", NewNumberFilter(2, l)).Export((*SpringWeb.Filter)(nil))
+	SpringBoot.RegisterNameBean("f5", NewNumberFilter(5, l)).Export((*SpringWeb.Filter)(nil))
+	SpringBoot.RegisterNameBean("f7", NewNumberFilter(7, l)).Export((*SpringWeb.Filter)(nil))
 
 	// 全局函数设置整个应用的信息
 	SpringWeb.Swagger().SetDescription("spring boot test")
@@ -73,8 +68,8 @@ func init() {
 			SetDescription("echo")
 	})
 
-	SpringBoot.RegisterBean(new(MyRunner)).AsInterface((*SpringBoot.CommandLineRunner)(nil))
-	SpringBoot.RegisterBeanFn(NewMyModule, "${message}").AsInterface((*SpringBoot.ApplicationEvent)(nil))
+	SpringBoot.RegisterBean(new(MyRunner)).Export((*SpringBoot.CommandLineRunner)(nil))
+	SpringBoot.RegisterBeanFn(NewMyModule, "${message}").Export((*SpringBoot.ApplicationEvent)(nil))
 
 	SpringBoot.RegisterBean(func(mock sqlmock.Sqlmock) {
 		mock.ExpectQuery("SELECT ENGINE FROM `ENGINES`").WillReturnRows(
@@ -127,8 +122,9 @@ func (f *NumberFilter) Invoke(ctx SpringWeb.WebContext, chain *SpringWeb.FilterC
 ////////////////// MyController ///////////////////
 
 type MyController struct {
-	RedisClient redis.Cmdable `autowire:""`
-	DB          *gorm.DB      `autowire:""`
+	RedisClient redis.Cmdable                 `autowire:""`
+	DB          *gorm.DB                      `autowire:""`
+	AppCtx      SpringBoot.ApplicationContext `autowire:""`
 }
 
 type EchoRequest struct {

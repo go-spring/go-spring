@@ -668,8 +668,17 @@ func (d *BeanDefinition) AutoExport() *BeanDefinition {
 	return d
 }
 
-// AsInterface 指定 Bean 的导出接口
+// Export 指定 Bean 的导出接口
+func (d *BeanDefinition) Export(exports ...interface{}) *BeanDefinition {
+	return d.export(exports...)
+}
+
+// Deprecated: Use "Export" instead.
 func (d *BeanDefinition) AsInterface(exports ...interface{}) *BeanDefinition {
+	return d.export(exports...)
+}
+
+func (d *BeanDefinition) export(exports ...interface{}) *BeanDefinition {
 	for _, o := range exports {
 		t := reflect.TypeOf(o)
 		if t.Kind() == reflect.Ptr && t.Elem().Kind() == reflect.Interface {
