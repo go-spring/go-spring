@@ -706,12 +706,31 @@ func ValueToBeanDefinition(name string, v reflect.Value) *BeanDefinition {
 
 // FnToBeanDefinition 将构造函数转换为 BeanDefinition 对象
 func FnToBeanDefinition(name string, fn interface{}, tags ...string) *BeanDefinition {
+
+	// 生成默认名称，取函数名，只针对具名函数，匿名函数还是使用 Bean 的类型名称
+	// 具名函数: github.com/go-spring/go-spring/spring-core_test.NewManager
+	// 匿名函数: github.com/go-spring/go-spring/spring-core_test.TestDefaultSpringContext_NestValueField.func1.1
+	if name == "" {
+		fnPtr := reflect.ValueOf(fn).Pointer()
+		fnInfo := runtime.FuncForPC(fnPtr)
+		s := strings.Split(fnInfo.Name(), "/")
+		ss := strings.Split(s[len(s)-1], ".")
+		if len(ss) == 2 {
+			name = "@" + ss[1]
+		}
+	}
+
 	bean := newConstructorBean(fn, tags...)
 	return newBeanDefinition(name, bean)
 }
 
 // MethodToBeanDefinition 将成员方法转换为 BeanDefinition 对象
 func MethodToBeanDefinition(name string, selector interface{}, method string, tags ...string) *BeanDefinition {
+
+	if name == "" { // 生成默认名称，取函数名
+		name = "@" + method
+	}
+
 	bean := newFakeMethodBean(selector, method, tags...)
 	return newBeanDefinition(name, bean)
 }

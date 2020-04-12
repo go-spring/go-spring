@@ -1079,8 +1079,13 @@ func TestDefaultSpringContext_RegisterBeanFn2(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
 		ctx.SetProperty("manager.version", "1.0.0")
-		ctx.RegisterBeanFn(NewManager)
-		ctx.RegisterBeanFn(NewInt)
+
+		bd := ctx.RegisterBeanFn(NewManager)
+		assert.Equal(t, bd.Name(), "@NewManager")
+
+		bd = ctx.RegisterBeanFn(NewInt)
+		assert.Equal(t, bd.Name(), "@NewInt")
+
 		ctx.AutoWireBeans()
 
 		var m Manager
@@ -1190,7 +1195,7 @@ func TestDefaultSpringContext_CollectBeans(t *testing.T) {
 	ctx.RegisterBean([]RedisCluster{{}})
 	ctx.RegisterBean(new(RedisCluster))
 
-	ctx.RegisterBean(new(int)).Init(func(*int) {
+	intBean := ctx.RegisterBean(new(int)).Init(func(*int) {
 
 		var rcs []*RedisCluster
 		ctx.CollectBeans(&rcs)
@@ -1199,6 +1204,7 @@ func TestDefaultSpringContext_CollectBeans(t *testing.T) {
 		assert.Equal(t, len(rcs), 2)
 		assert.Equal(t, rcs[0].Endpoints, "redis://127.0.0.1:6379")
 	})
+	assert.Equal(t, intBean.Name(), "*int")
 
 	ctx.RegisterBean(new(bool)).Init(func(*bool) {
 
@@ -1506,7 +1512,10 @@ func TestDefaultSpringContext_RegisterMethodBean(t *testing.T) {
 		ctx := SpringCore.NewDefaultSpringContext()
 		ctx.SetProperty("server.version", "1.0.0")
 		parent := ctx.RegisterBean(new(Server))
-		ctx.RegisterMethodBean(parent, "Consumer")
+
+		bd := ctx.RegisterMethodBean(parent, "Consumer")
+		assert.Equal(t, bd.Name(), "@Consumer")
+
 		ctx.AutoWireBeans()
 
 		var s *Server
@@ -1550,7 +1559,7 @@ func TestDefaultSpringContext_RegisterMethodBean(t *testing.T) {
 		parent := ctx.RegisterBeanFn(NewServerInterface)
 
 		ctx.RegisterMethodBean(parent, "Consumer").
-			DependsOn("SpringCore_test.ServerInterface")
+			DependsOn("@NewServerInterface")
 
 		ctx.RegisterBean(new(Service))
 		ctx.AutoWireBeans()
@@ -2096,7 +2105,10 @@ func TestDefaultSpringContext_NestValueField(t *testing.T) {
 		ctx := SpringCore.NewDefaultSpringContext()
 		ctx.SetProperty("sdk.wx.auto-create", true)
 		ctx.SetProperty("sdk.wx.enable", true)
-		ctx.RegisterBeanFn(func() int { return 3 })
+
+		bd := ctx.RegisterBeanFn(func() int { return 3 })
+		assert.Equal(t, bd.Name(), "*int")
+
 		ctx.RegisterBean(new(wxChannel))
 		ctx.SetAllAccess(true)
 		ctx.AutoWireBeans()
