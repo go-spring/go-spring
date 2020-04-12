@@ -399,3 +399,51 @@ func (c *Conditional) OnMatches(fn ConditionFunc) *Conditional {
 func (c *Conditional) OnProfile(profile string) *Conditional {
 	return c.OnCondition(NewProfileCondition(profile))
 }
+
+// WhenMatches 返回一个 runner 对象
+func (c *Conditional) WhenMatches(ctx SpringContext) Runner {
+	if c.Matches(ctx) {
+		return &runner{ctx: ctx}
+	}
+	return &emptyRunner{}
+}
+
+// OnProperty 返回设置了 propertyCondition 的 Conditional 对象
+func OnProperty(name string) *Conditional {
+	return NewConditional().OnCondition(NewPropertyCondition(name))
+}
+
+// OnMissingProperty 返回设置了 missingPropertyCondition 的 Conditional 对象
+func OnMissingProperty(name string) *Conditional {
+	return NewConditional().OnCondition(NewMissingPropertyCondition(name))
+}
+
+// OnPropertyValue 返回设置了 propertyValueCondition 的 Conditional 对象
+func OnPropertyValue(name string, havingValue interface{}) *Conditional {
+	return NewConditional().OnCondition(NewPropertyValueCondition(name, havingValue))
+}
+
+// OnBean 返回设置了 beanCondition 的 Conditional 对象
+func OnBean(selector interface{}) *Conditional {
+	return NewConditional().OnCondition(NewBeanCondition(selector))
+}
+
+// OnMissingBean 返回设置了 missingBeanCondition 的 Conditional 对象
+func OnMissingBean(selector interface{}) *Conditional {
+	return NewConditional().OnCondition(NewMissingBeanCondition(selector))
+}
+
+// OnExpression 返回设置了 expressionCondition 的 Conditional 对象
+func OnExpression(expression string) *Conditional {
+	return NewConditional().OnCondition(NewExpressionCondition(expression))
+}
+
+// OnMatches 返回设置了 functionCondition 的 Conditional 对象
+func OnMatches(fn ConditionFunc) *Conditional {
+	return NewConditional().OnCondition(NewFunctionCondition(fn))
+}
+
+// OnProfile 返回设置了 profileCondition 的 Conditional 对象
+func OnProfile(profile string) *Conditional {
+	return NewConditional().OnCondition(NewProfileCondition(profile))
+}

@@ -32,6 +32,14 @@ type caller interface {
 	Caller() string
 }
 
+type defaultCaller struct {
+	caller string
+}
+
+func (c *defaultCaller) Caller() string {
+	return c.caller
+}
+
 // fnBindingArg 存储函数的参数绑定
 type fnBindingArg interface {
 	// Get 获取函数参数的绑定值
