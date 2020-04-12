@@ -1096,3 +1096,19 @@ func (ctx *defaultSpringContext) Close() {
 		ctx.eventNotify(ContextEvent_CloseEnd)
 	}
 }
+
+// Run 立即执行一个一次性的任务
+func (ctx *defaultSpringContext) Run(fn interface{}, tags ...string) *runner {
+	ctx.checkAutoWired()
+
+	fnType := reflect.TypeOf(fn)
+	if fnType.Kind() != reflect.Func {
+		panic(errors.New("fn must be a func"))
+	}
+
+	return &runner{
+		ctx:       ctx,
+		fn:        fn,
+		stringArg: newFnStringBindingArg(fnType, false, tags),
+	}
+}

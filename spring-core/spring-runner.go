@@ -17,40 +17,54 @@
 package SpringCore
 
 import (
-	"errors"
 	"fmt"
 	"reflect"
 	"runtime"
 )
 
-type Runner interface {
-	Run(fn interface{}, tags ...string)
-}
-
-type emptyRunner struct{}
-
-func (r *emptyRunner) Run(fn interface{}, tags ...string) {}
-
+// runner 执行器
 type runner struct {
-	ctx SpringContext
+	ctx       *defaultSpringContext
+	fn        interface{}
+	stringArg *fnStringBindingArg // 普通参数绑定
+	optionArg *fnOptionBindingArg // Option 绑定
 }
 
-func (r *runner) Run(fn interface{}, tags ...string) {
+// Options 设置 Option 模式函数的参数绑定
+func (r *runner) Options(options ...*optionArg) *runner {
+	r.optionArg = &fnOptionBindingArg{options}
+	return r
+}
 
-	fnType := reflect.TypeOf(fn)
-	if fnType.Kind() != reflect.Func {
-		panic(errors.New("fn must be a func"))
+// When 参数为 true 时执行器运行
+func (r *runner) When(ok bool) {
+
+	if !ok {
+		return
 	}
 
-	_, file, line, _ := runtime.Caller(1)
+	fnValue := reflect.ValueOf(r.fn)
+	fnPtr := fnValue.Pointer()
+	fnInfo := runtime.FuncForPC(fnPtr)
+	file, line := fnInfo.FileLine(fnPtr)
 	strCaller := fmt.Sprintf("%s:%d", file, line)
 
-	arg := newFnStringBindingArg(fnType, false, tags)
-	if ctx, ok := r.ctx.(*defaultSpringContext); ok {
-		ctx.checkAutoWired() // 检查是否开始自动注入
+	a := &defaultBeanAssembly{springCtx: r.ctx}
+	c := &defaultCaller{caller: strCaller}
 
-		a := &defaultBeanAssembly{springCtx: ctx}
-		c := &defaultCaller{caller: strCaller}
-		reflect.ValueOf(fn).Call(arg.Get(a, c))
+	var in []reflect.Value
+
+	if r.stringArg != nil {
+		if v := r.stringArg.Get(a, c); len(v) > 0 {
+			in = append(in, v...)
+		}
 	}
+
+	if r.optionArg != nil {
+		if v := r.optionArg.Get(a, c); len(v) > 0 {
+			in = append(in, v...)
+		}
+	}
+
+	reflect.ValueOf(r.fn).Call(in)
 }

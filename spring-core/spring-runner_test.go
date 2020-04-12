@@ -26,62 +26,44 @@ import (
 
 func TestRunner_Run(t *testing.T) {
 
-	t.Run("not run before AutoWireBeans", func(t *testing.T) {
+	t.Run("before AutoWireBeans", func(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
 		ctx.RegisterBeanFn(func() int { return 3 })
 		ctx.SetProperty("version", "v0.0.1")
-
-		run := false
-		SpringCore.OnProfile("dev").WhenMatches(ctx).Run(func(i *int, version string) {
-			fmt.Println("version:", version)
-			fmt.Println("int:", *i)
-			run = true
-		}, "1:${version}")
-
-		assert.Equal(t, run, false)
-
-		ctx.AutoWireBeans()
-	})
-
-	t.Run("not run after AutoWireBeans", func(t *testing.T) {
-
-		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.RegisterBeanFn(func() int { return 3 })
-		ctx.SetProperty("version", "v0.0.1")
-		ctx.AutoWireBeans()
-
-		run := false
-		SpringCore.OnProfile("dev").WhenMatches(ctx).Run(func(i *int, version string) {
-			fmt.Println("version:", version)
-			fmt.Println("int:", *i)
-			run = true
-		}, "1:${version}")
-
-		assert.Equal(t, run, false)
-	})
-
-	t.Run("run before AutoWireBeans", func(t *testing.T) {
-
-		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.RegisterBeanFn(func() int { return 3 })
-		ctx.SetProperty("version", "v0.0.1")
-		ctx.SetProfile("dev")
 
 		assert.Panic(t, func() {
 			run := false
-			SpringCore.OnProfile("dev").WhenMatches(ctx).Run(func(i *int, version string) {
+			cond := SpringCore.OnProfile("dev")
+			ctx.Run(func(i *int, version string) {
 				fmt.Println("version:", version)
 				fmt.Println("int:", *i)
 				run = true
-			}, "1:${version}")
-			assert.Equal(t, run, true)
+			}, "1:${version}").When(cond.Matches(ctx))
+			assert.Equal(t, run, false)
 		}, "should call after ctx.AutoWireBeans()")
 
 		ctx.AutoWireBeans()
 	})
 
-	t.Run("run after AutoWireBeans", func(t *testing.T) {
+	t.Run("not run", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBeanFn(func() int { return 3 })
+		ctx.SetProperty("version", "v0.0.1")
+		ctx.AutoWireBeans()
+
+		run := false
+		cond := SpringCore.OnProfile("dev")
+		ctx.Run(func(i *int, version string) {
+			fmt.Println("version:", version)
+			fmt.Println("int:", *i)
+			run = true
+		}, "1:${version}").When(cond.Matches(ctx))
+		assert.Equal(t, run, false)
+	})
+
+	t.Run("run", func(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
 		ctx.RegisterBeanFn(func() int { return 3 })
@@ -90,12 +72,12 @@ func TestRunner_Run(t *testing.T) {
 		ctx.AutoWireBeans()
 
 		run := false
-		SpringCore.OnProfile("dev").WhenMatches(ctx).Run(func(i *int, version string) {
+		cond := SpringCore.OnProfile("dev")
+		ctx.Run(func(i *int, version string) {
 			fmt.Println("version:", version)
 			fmt.Println("int:", *i)
 			run = true
-		}, "1:${version}")
-
+		}, "1:${version}").When(cond.Matches(ctx))
 		assert.Equal(t, run, true)
 	})
 }

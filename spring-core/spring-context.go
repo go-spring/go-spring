@@ -133,4 +133,7 @@ type SpringContext interface {
 
 	// Close 关闭容器上下文，用于通知 Bean 销毁等。
 	Close()
+
+	// Run 立即执行一个一次性的任务
+	Run(fn interface{}, tags ...string) *runner
 }
