@@ -1098,7 +1098,7 @@ func (ctx *defaultSpringContext) Close() {
 }
 
 // Run 立即执行一个一次性的任务
-func (ctx *defaultSpringContext) Run(fn interface{}, tags ...string) *runner {
+func (ctx *defaultSpringContext) Run(fn interface{}, tags ...string) *Runner {
 	ctx.checkAutoWired()
 
 	fnType := reflect.TypeOf(fn)
@@ -1106,7 +1106,7 @@ func (ctx *defaultSpringContext) Run(fn interface{}, tags ...string) *runner {
 		panic(errors.New("fn must be a func"))
 	}
 
-	return &runner{
+	return &Runner{
 		ctx:       ctx,
 		fn:        fn,
 		stringArg: newFnStringBindingArg(fnType, false, tags),

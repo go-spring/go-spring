@@ -22,8 +22,8 @@ import (
 	"runtime"
 )
 
-// runner 执行器
-type runner struct {
+// Runner 执行器
+type Runner struct {
 	ctx       *defaultSpringContext
 	fn        interface{}
 	stringArg *fnStringBindingArg // 普通参数绑定
@@ -31,17 +31,27 @@ type runner struct {
 }
 
 // Options 设置 Option 模式函数的参数绑定
-func (r *runner) Options(options ...*optionArg) *runner {
+func (r *Runner) Options(options ...*optionArg) *Runner {
 	r.optionArg = &fnOptionBindingArg{options}
 	return r
 }
 
 // When 参数为 true 时执行器运行
-func (r *runner) When(ok bool) {
-
-	if !ok {
-		return
+func (r *Runner) When(ok bool) {
+	if ok {
+		r.run()
 	}
+}
+
+// On Condition 判断结果为 true 时执行器运行
+func (r *Runner) On(cond Condition) {
+	if cond.Matches(r.ctx) {
+		r.run()
+	}
+}
+
+// run 运行执行器
+func (r *Runner) run() {
 
 	fnValue := reflect.ValueOf(r.fn)
 	fnPtr := fnValue.Pointer()

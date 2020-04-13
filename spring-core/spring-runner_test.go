@@ -24,6 +24,12 @@ import (
 	"github.com/magiconair/properties/assert"
 )
 
+type fnArg struct {
+	f float32
+}
+
+type fnOption func(arg *fnArg)
+
 func TestRunner_Run(t *testing.T) {
 
 	t.Run("before AutoWireBeans", func(t *testing.T) {
@@ -63,7 +69,7 @@ func TestRunner_Run(t *testing.T) {
 		assert.Equal(t, run, false)
 	})
 
-	t.Run("run", func(t *testing.T) {
+	t.Run("run when", func(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
 		ctx.RegisterBeanFn(func() int { return 3 })
@@ -71,13 +77,31 @@ func TestRunner_Run(t *testing.T) {
 		ctx.SetProfile("dev")
 		ctx.AutoWireBeans()
 
-		run := false
 		cond := SpringCore.OnProfile("dev")
-		ctx.Run(func(i *int, version string) {
+
+		run := false
+		fn := func(i *int, version string, options ...fnOption) {
 			fmt.Println("version:", version)
 			fmt.Println("int:", *i)
 			run = true
-		}, "1:${version}").When(cond.Matches(ctx))
+
+			arg := &fnArg{}
+			for _, opt := range options {
+				opt(arg)
+			}
+			fmt.Println(arg.f)
+		}
+
+		ctx.Run(fn, "1:${version}").Options(
+			SpringCore.NewOptionArg(func(version string) fnOption {
+				return func(arg *fnArg) {
+					arg.f = 3.0
+				}
+			}, "0:${version}")).When(cond.Matches(ctx))
+		assert.Equal(t, run, true)
+
+		run = false
+		ctx.Run(fn, "1:${version}").On(cond)
 		assert.Equal(t, run, true)
 	})
 }

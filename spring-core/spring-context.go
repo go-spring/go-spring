@@ -135,5 +135,5 @@ type SpringContext interface {
 	Close()
 
 	// Run 立即执行一个一次性的任务
-	Run(fn interface{}, tags ...string) *runner
+	Run(fn interface{}, tags ...string) *Runner
 }

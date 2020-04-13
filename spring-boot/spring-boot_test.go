@@ -31,6 +31,7 @@ import (
 	"github.com/go-spring/go-spring-parent/spring-utils"
 	"github.com/go-spring/go-spring-web/spring-web"
 	"github.com/go-spring/go-spring/spring-boot"
+	"github.com/go-spring/go-spring/spring-core"
 	_ "github.com/go-spring/go-spring/starter-echo"
 	_ "github.com/go-spring/go-spring/starter-go-redis"
 	_ "github.com/go-spring/go-spring/starter-go-redis-mock"
@@ -184,6 +185,13 @@ func (_ *MyRunner) Run(ctx SpringBoot.ApplicationContext) {
 			SpringLogger.Tracef("%v=%v", k, v)
 		}
 	})
+
+	fn := func(ctx SpringBoot.ApplicationContext, version string) {
+		if version != "v0.0.1" {
+			panic(errors.New("error"))
+		}
+	}
+	ctx.Run(fn, "1:${version:=v0.0.1}").On(SpringCore.OnProfile("test"))
 }
 
 ////////////////// MyModule ///////////////////

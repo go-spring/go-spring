@@ -224,3 +224,8 @@ func BindProperty(key string, i interface{}) {
 func BindPropertyIf(key string, i interface{}, allAccess bool) {
 	ctx.BindPropertyIf(key, i, allAccess)
 }
+
+// Run 立即执行一个一次性的任务
+func Run(fn interface{}, tags ...string) *SpringCore.Runner {
+	return ctx.Run(fn, tags...)
+}
