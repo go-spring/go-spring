@@ -193,7 +193,7 @@ func (m *Mapping) Matches(ctx SpringCore.SpringContext) bool {
 
 // Swagger 生成并返回 Swagger 操作节点
 func (m *Mapping) Swagger() *SpringWeb.Operation {
-	return m.mapper.Swagger()
+	return m.mapper.Swagger("")
 }
 
 // Router 路由分组

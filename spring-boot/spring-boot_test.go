@@ -50,7 +50,7 @@ func init() {
 	SpringBoot.RegisterNameBean("f7", NewNumberFilter(7, l)).Export((*SpringWeb.Filter)(nil))
 
 	// 全局函数设置整个应用的信息
-	SpringWeb.Swagger().SetDescription("spring boot test")
+	SpringWeb.Swagger().WithDescription("spring boot test")
 
 	SpringBoot.RegisterBean(new(MyController)).Init(func(c *MyController) {
 
@@ -60,13 +60,13 @@ func init() {
 				ConditionOnProfile("test").
 				SetFilterNames("f2").
 				Swagger(). // 设置接口的信息
-				SetDescription("ok")
+				WithDescription("ok")
 		}
 
 		SpringBoot.GetMapping("/echo", SpringWeb.BIND(c.Echo)).
 			SetFilterNames("f5").
 			Swagger(). // 设置接口的信息
-			SetDescription("echo")
+			WithDescription("echo")
 	})
 
 	SpringBoot.RegisterBean(new(MyRunner)).Export((*SpringBoot.CommandLineRunner)(nil))
