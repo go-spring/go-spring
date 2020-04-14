@@ -229,3 +229,13 @@ func BindPropertyIf(key string, i interface{}, allAccess bool) {
 func Run(fn interface{}, tags ...string) *SpringCore.Runner {
 	return ctx.Run(fn, tags...)
 }
+
+// Config 注册一个配置函数
+func Config(fn interface{}, tags ...string) *SpringCore.Configer {
+	return ctx.Config(fn, tags...)
+}
+
+// ConfigWithName 注册一个配置函数，name 的作用：区分，排重，排顺序。
+func ConfigWithName(name string, fn interface{}, tags ...string) *SpringCore.Configer {
+	return ctx.ConfigWithName(name, fn, tags...)
+}

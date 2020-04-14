@@ -19,6 +19,7 @@ package SpringBoot_test
 import (
 	"container/list"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"testing"
@@ -48,6 +49,18 @@ func init() {
 	SpringBoot.RegisterNameBean("f2", NewNumberFilter(2, l)).Export((*SpringWeb.Filter)(nil))
 	SpringBoot.RegisterNameBean("f5", NewNumberFilter(5, l)).Export((*SpringWeb.Filter)(nil))
 	SpringBoot.RegisterNameBean("f7", NewNumberFilter(7, l)).Export((*SpringWeb.Filter)(nil))
+
+	SpringBoot.ConfigWithName("config_f2", func(filter *NumberFilter) {
+		fmt.Println("NumberFilter:", filter.n)
+	}, "f2")
+
+	SpringBoot.ConfigWithName("config_f5", func(filter *NumberFilter, appName string) {
+		fmt.Println("NumberFilter:", filter.n, "appName:", appName)
+	}, "f5", "${spring.application.name}")
+
+	SpringBoot.Config(func(filter *NumberFilter) {
+		fmt.Println("NumberFilter:", filter.n)
+	}, "f7")
 
 	// 全局函数设置整个应用的信息
 	SpringWeb.Swagger().WithDescription("spring boot test")

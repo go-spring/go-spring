@@ -2329,4 +2329,15 @@ func TestDefaultSpringContext_AutoExport(t *testing.T) {
 		assert.Equal(t, true, ok)
 		assert.Equal(t, b, x)
 	})
+
+	t.Run("auto export private", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBeanFn(pkg2.NewAppContext).AutoExport()
+		ctx.AutoWireBeans()
+
+		var x context.Context
+		ok := ctx.GetBean(&x)
+		assert.Equal(t, true, ok)
+	})
 }

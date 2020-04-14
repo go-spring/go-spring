@@ -17,6 +17,7 @@
 package SpringCore
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"runtime"
@@ -28,6 +29,21 @@ type Runner struct {
 	fn        interface{}
 	stringArg *fnStringBindingArg // 普通参数绑定
 	optionArg *fnOptionBindingArg // Option 绑定
+}
+
+// newRunner Runner 的构造函数
+func newRunner(ctx *defaultSpringContext, fn interface{}, tags []string) *Runner {
+
+	fnType := reflect.TypeOf(fn)
+	if fnType.Kind() != reflect.Func {
+		panic(errors.New("fn must be a func"))
+	}
+
+	return &Runner{
+		ctx:       ctx,
+		fn:        fn,
+		stringArg: newFnStringBindingArg(fnType, false, tags),
+	}
 }
 
 // Options 设置 Option 模式函数的参数绑定
@@ -59,7 +75,7 @@ func (r *Runner) run() {
 	file, line := fnInfo.FileLine(fnPtr)
 	strCaller := fmt.Sprintf("%s:%d", file, line)
 
-	a := &defaultBeanAssembly{springCtx: r.ctx}
+	a := newDefaultBeanAssembly(r.ctx, nil)
 	c := &defaultCaller{caller: strCaller}
 
 	var in []reflect.Value

@@ -136,4 +136,10 @@ type SpringContext interface {
 
 	// Run 立即执行一个一次性的任务
 	Run(fn interface{}, tags ...string) *Runner
+
+	// Config 注册一个配置函数
+	Config(fn interface{}, tags ...string) *Configer
+
+	// ConfigWithName 注册一个配置函数，name 的作用：区分，排重，排顺序。
+	ConfigWithName(name string, fn interface{}, tags ...string) *Configer
 }

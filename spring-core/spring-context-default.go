@@ -612,6 +612,7 @@ type defaultSpringContext struct {
 
 	beanMap     map[beanKey]*BeanDefinition // Bean 的集合
 	methodBeans []*BeanDefinition           // 方法 Beans
+	configers   map[beanKey]*Configer       // 配置方法集合
 
 	// Bean 的缓存，使用线程安全的 map 是考虑到运行时可能有
 	// 并发操作，另外 resolveBeans 的时候一步步的创建缓存。
@@ -631,6 +632,7 @@ func NewDefaultSpringContext() *defaultSpringContext {
 		Properties:  NewDefaultProperties(),
 		methodBeans: make([]*BeanDefinition, 0),
 		beanMap:     make(map[beanKey]*BeanDefinition),
+		configers:   make(map[beanKey]*Configer),
 	}
 }
 
@@ -910,9 +912,9 @@ func (ctx *defaultSpringContext) resolveBean(bd *BeanDefinition) {
 
 	// 自动导出接口，这种情况下应该只对于结构体才会有效
 	if bd.autoExport {
-		v := reflect.Indirect(bd.Value())
-		if v.Kind() == reflect.Struct {
-			ctx.autoExport(bd, v.Type())
+		t := SpringUtils.Indirect(bd.Type())
+		if t.Kind() == reflect.Struct {
+			ctx.autoExport(bd, t)
 		}
 	}
 
@@ -1004,6 +1006,12 @@ func (ctx *defaultSpringContext) AutoWireBeans(watchers ...WiringWatcher) {
 		ctx.eventNotify(ContextEvent_ResolveStart)
 	}
 
+	for k, configer := range ctx.configers {
+		if ok := configer.Matches(ctx); !ok {
+			delete(ctx.configers, k)
+		}
+	}
+
 	// 首先决议 Bean 是否能够注册，否则会删除其注册信息
 	for _, bd := range ctx.beanMap {
 		ctx.resolveBean(bd)
@@ -1025,6 +1033,11 @@ func (ctx *defaultSpringContext) AutoWireBeans(watchers ...WiringWatcher) {
 			panic(err)
 		}
 	}()
+
+	// 执行配置函数，过程中会自动完成部分注入
+	for _, configer := range ctx.configers {
+		configer.run(ctx)
+	}
 
 	if ctx.Sort { // 自动注入期间是否排序注入
 		beanKeyMap := map[string]beanKey{}
@@ -1100,15 +1113,19 @@ func (ctx *defaultSpringContext) Close() {
 // Run 立即执行一个一次性的任务
 func (ctx *defaultSpringContext) Run(fn interface{}, tags ...string) *Runner {
 	ctx.checkAutoWired()
+	return newRunner(ctx, fn, tags)
+}
 
-	fnType := reflect.TypeOf(fn)
-	if fnType.Kind() != reflect.Func {
-		panic(errors.New("fn must be a func"))
-	}
+// Config 注册一个配置函数
+func (ctx *defaultSpringContext) Config(fn interface{}, tags ...string) *Configer {
+	configer := NewConfiger(fn, tags)
+	ctx.configers[beanKey{typ: reflect.TypeOf(fn)}] = configer
+	return configer
+}
 
-	return &Runner{
-		ctx:       ctx,
-		fn:        fn,
-		stringArg: newFnStringBindingArg(fnType, false, tags),
-	}
+// ConfigWithName 注册一个配置函数，name 的作用：区分，排重，排顺序。
+func (ctx *defaultSpringContext) ConfigWithName(name string, fn interface{}, tags ...string) *Configer {
+	configer := NewConfiger(fn, tags)
+	ctx.configers[beanKey{name: name, typ: reflect.TypeOf(fn)}] = configer
+	return configer
 }

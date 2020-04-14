@@ -17,6 +17,7 @@
 package pkg
 
 import (
+	"context"
 	"fmt"
 )
 
@@ -28,4 +29,14 @@ type SamePkg struct {
 
 func (p *SamePkg) Package() {
 	fmt.Println("github.com/go-spring/go-spring/spring-core/testdata/pkg/foo/pkg.SamePkg")
+}
+
+type appContext struct {
+	context.Context
+}
+
+func NewAppContext() *appContext {
+	return &appContext{
+		Context: context.TODO(),
+	}
 }
