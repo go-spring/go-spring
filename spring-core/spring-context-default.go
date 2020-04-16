@@ -612,7 +612,7 @@ type defaultSpringContext struct {
 
 	beanMap     map[beanKey]*BeanDefinition // Bean 的集合
 	methodBeans []*BeanDefinition           // 方法 Beans
-	configers   map[beanKey]*Configer       // 配置方法集合
+	configers   *list.List                  // 配置方法集合
 
 	// Bean 的缓存，使用线程安全的 map 是考虑到运行时可能有
 	// 并发操作，另外 resolveBeans 的时候一步步的创建缓存。
@@ -632,7 +632,7 @@ func NewDefaultSpringContext() *defaultSpringContext {
 		Properties:  NewDefaultProperties(),
 		methodBeans: make([]*BeanDefinition, 0),
 		beanMap:     make(map[beanKey]*BeanDefinition),
-		configers:   make(map[beanKey]*Configer),
+		configers:   list.New(),
 	}
 }
 
@@ -1006,11 +1006,16 @@ func (ctx *defaultSpringContext) AutoWireBeans(watchers ...WiringWatcher) {
 		ctx.eventNotify(ContextEvent_ResolveStart)
 	}
 
-	for k, configer := range ctx.configers {
+	// 对 config 函数进行决议
+	for e := ctx.configers.Front(); e != nil; e = e.Next() {
+		configer := e.Value.(*Configer)
 		if ok := configer.Matches(ctx); !ok {
-			delete(ctx.configers, k)
+			ctx.configers.Remove(e)
 		}
 	}
+
+	// 对 config 函数进行排序
+	ctx.configers = sortConfigers(ctx.configers)
 
 	// 首先决议 Bean 是否能够注册，否则会删除其注册信息
 	for _, bd := range ctx.beanMap {
@@ -1035,7 +1040,8 @@ func (ctx *defaultSpringContext) AutoWireBeans(watchers ...WiringWatcher) {
 	}()
 
 	// 执行配置函数，过程中会自动完成部分注入
-	for _, configer := range ctx.configers {
+	for e := ctx.configers.Front(); e != nil; e = e.Next() {
+		configer := e.Value.(*Configer)
 		configer.run(ctx)
 	}
 
@@ -1118,14 +1124,14 @@ func (ctx *defaultSpringContext) Run(fn interface{}, tags ...string) *Runner {
 
 // Config 注册一个配置函数
 func (ctx *defaultSpringContext) Config(fn interface{}, tags ...string) *Configer {
-	configer := NewConfiger(fn, tags)
-	ctx.configers[beanKey{typ: reflect.TypeOf(fn)}] = configer
+	configer := newConfiger("", fn, tags)
+	ctx.configers.PushBack(configer)
 	return configer
 }
 
 // ConfigWithName 注册一个配置函数，name 的作用：区分，排重，排顺序。
 func (ctx *defaultSpringContext) ConfigWithName(name string, fn interface{}, tags ...string) *Configer {
-	configer := NewConfiger(fn, tags)
-	ctx.configers[beanKey{name: name, typ: reflect.TypeOf(fn)}] = configer
+	configer := newConfiger(name, fn, tags)
+	ctx.configers.PushBack(configer)
 	return configer
 }

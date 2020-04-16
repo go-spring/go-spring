@@ -17,22 +17,27 @@
 package SpringCore
 
 import (
+	"container/list"
 	"errors"
 	"fmt"
 	"reflect"
 	"runtime"
+	"strings"
 )
 
 // Configer 封装配置函数
 type Configer struct {
+	name      string
 	fn        interface{}
 	stringArg *fnStringBindingArg // 普通参数绑定
 	optionArg *fnOptionBindingArg // Option 绑定
 	cond      *Conditional        // 判断条件
+	before    []string
+	after     []string
 }
 
 // newConfiger Configer 的构造函数
-func NewConfiger(fn interface{}, tags []string) *Configer {
+func newConfiger(name string, fn interface{}, tags []string) *Configer {
 
 	fnType := reflect.TypeOf(fn)
 	if fnType.Kind() != reflect.Func {
@@ -40,6 +45,7 @@ func NewConfiger(fn interface{}, tags []string) *Configer {
 	}
 
 	return &Configer{
+		name:      name,
 		fn:        fn,
 		stringArg: newFnStringBindingArg(fnType, false, tags),
 		cond:      NewConditional(),
@@ -156,4 +162,112 @@ func (c *Configer) run(ctx *defaultSpringContext) {
 	}
 
 	reflect.ValueOf(c.fn).Call(in)
+}
+
+// Before 在某个 Configer 之前执行
+func (c *Configer) Before(configers ...string) *Configer {
+	c.before = configers
+	return c
+}
+
+// After 在某个 Configer 之后执行
+func (c *Configer) After(configers ...string) *Configer {
+	c.after = configers
+	return c
+}
+
+// sortConfigers 对 Configer 列表进行排序
+func sortConfigers(configers *list.List) *list.List {
+	toSort := list.New()
+	toSort.PushBackList(configers)
+	sorted := list.New()
+	processing := list.New()
+	for toSort.Len() > 0 {
+		sortConfigersByAfter(configers, toSort, sorted, processing, nil)
+	}
+	return sorted
+}
+
+// sortConfigersByAfter 每次选出依赖联调最前端的元素
+func sortConfigersByAfter(configers *list.List, toSort *list.List, sorted *list.List, processing *list.List, current *Configer) {
+	if current == nil {
+		current = (toSort.Remove(toSort.Front())).(*Configer)
+	}
+	processing.PushBack(current)
+	for e := getBeforeConfigers(configers, current).Front(); e != nil; e = e.Next() {
+		c := e.Value.(*Configer)
+
+		// 自己不可能是自己前面的元素，除非出现了循环依赖
+		for p := processing.Front(); p != nil; p = p.Next() {
+			if pc := p.Value.(*Configer); pc == c {
+				// 打印循环依赖的路径
+				sb := strings.Builder{}
+				for t := p; t != nil; t = t.Next() {
+					sb.WriteString(t.Value.(*Configer).name)
+					sb.WriteString(" -> ")
+				}
+				sb.WriteString(pc.name)
+				panic(fmt.Errorf("found cycle config: %s", sb.String()))
+			}
+		}
+
+		inSorted := false
+		for p := sorted.Front(); p != nil; p = p.Next() {
+			if pc := p.Value.(*Configer); pc == c {
+				inSorted = true
+				break
+			}
+		}
+
+		inToSort := false
+		for p := toSort.Front(); p != nil; p = p.Next() {
+			if pc := p.Value.(*Configer); pc == c {
+				inToSort = true
+				break
+			}
+		}
+
+		if !inSorted && inToSort { // 如果已经排好序了就不用管了
+			sortConfigersByAfter(configers, toSort, sorted, processing, c)
+		}
+	}
+
+	for p := processing.Front(); p != nil; p = p.Next() {
+		if pc := p.Value.(*Configer); pc == current {
+			processing.Remove(p)
+			break
+		}
+	}
+
+	for p := toSort.Front(); p != nil; p = p.Next() {
+		if pc := p.Value.(*Configer); pc == current {
+			toSort.Remove(p)
+			break
+		}
+	}
+
+	sorted.PushBack(current)
+}
+
+// getBeforeConfigers 获取当前 Configer 依赖的 Configer 列表
+func getBeforeConfigers(configers *list.List, current *Configer) *list.List {
+	result := list.New()
+	for e := configers.Front(); e != nil; e = e.Next() {
+		c := e.Value.(*Configer)
+
+		// 检查是否在当前 Configer 的前面
+		for _, name := range c.before {
+			if current.name == name {
+				result.PushBack(c)
+			}
+		}
+
+		// 检查是否在当前 Configer 的前面
+		for _, name := range current.after {
+			if c.name == name {
+				result.PushBack(c)
+			}
+		}
+	}
+	return result
 }

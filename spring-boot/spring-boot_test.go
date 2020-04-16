@@ -56,11 +56,11 @@ func init() {
 
 	SpringBoot.ConfigWithName("config_f5", func(filter *NumberFilter, appName string) {
 		fmt.Println("NumberFilter:", filter.n, "appName:", appName)
-	}, "f5", "${spring.application.name}")
+	}, "f5", "${spring.application.name}").After("config_f2")
 
 	SpringBoot.Config(func(filter *NumberFilter) {
 		fmt.Println("NumberFilter:", filter.n)
-	}, "f7")
+	}, "f7").Before("config_f2")
 
 	// 全局函数设置整个应用的信息
 	SpringWeb.Swagger().WithDescription("spring boot test")
