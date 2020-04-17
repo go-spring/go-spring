@@ -27,6 +27,14 @@ import (
 // ctx 全局的 SpringContext 变量
 var ctx = SpringCore.NewDefaultSpringContext()
 
+// expectSysProperties 期望从系统环境变量中获取到的属性
+var expectSysProperties = []string{`.*`}
+
+// ExpectSysProperties 期望从系统环境变量中获取到的属性，支持正则表达式
+func ExpectSysProperties(pattern ...string) {
+	expectSysProperties = pattern
+}
+
 // RunApplication 快速启动 SpringBoot 应用
 func RunApplication(configLocation ...string) {
 

@@ -20,6 +20,7 @@ package SpringBoot
 import (
 	"flag"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/go-spring/go-spring-parent/spring-logger"
@@ -123,13 +124,28 @@ func (_ *application) loadCmdArgs() SpringCore.Properties {
 
 // loadSystemEnv 加载系统环境变量
 func (_ *application) loadSystemEnv() SpringCore.Properties {
+
+	var rex []*regexp.Regexp
+	for _, v := range expectSysProperties {
+		if exp, err := regexp.Compile(v); err != nil {
+			panic(err)
+		} else {
+			rex = append(rex, exp)
+		}
+	}
+
 	SpringLogger.Debugf(">>> load system env")
 	p := SpringCore.NewDefaultProperties()
 	for _, env := range os.Environ() {
 		if i := strings.Index(env, "="); i > 0 {
 			k, v := env[0:i], env[i+1:]
-			SpringLogger.Tracef("%s=%v", k, v)
-			p.SetProperty(k, v)
+			for _, r := range rex {
+				if r.MatchString(k) {
+					SpringLogger.Tracef("%s=%v", k, v)
+					p.SetProperty(k, v)
+					break
+				}
+			}
 		}
 	}
 	return p

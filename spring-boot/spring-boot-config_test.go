@@ -17,6 +17,7 @@
 package SpringBoot
 
 import (
+	"fmt"
 	"os"
 	"testing"
 
@@ -83,5 +84,20 @@ func TestConfig(t *testing.T) {
 		app := startApplication("testdata/config/")
 		assert.Equal(t, app.appCtx.AllAccess(), true)
 		assert.Equal(t, app.appCtx.GetProfile(), "dev")
+	})
+
+	t.Run("default expect system properties", func(t *testing.T) {
+		app := startApplication("testdata/config/")
+		for k, v := range app.appCtx.GetProperties() {
+			fmt.Println(k, v)
+		}
+	})
+
+	t.Run("filter all system properties", func(t *testing.T) {
+		ExpectSysProperties("^$") // 不加载任何系统环境变量
+		app := startApplication("testdata/config/")
+		for k, v := range app.appCtx.GetProperties() {
+			fmt.Println(k, v)
+		}
 	})
 }

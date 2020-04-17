@@ -102,6 +102,9 @@ func TestRunApplication(t *testing.T) {
 	// 配置文件里面也指定了 spring.profile 的值
 	// _ = os.Setenv(SpringBoot.SpringProfile, "test")
 
+	// 过滤系统环境变量
+	SpringBoot.ExpectSysProperties("GOPATH")
+
 	SpringBoot.SetProperty("db.url", "root:root@/information_schema?charset=utf8&parseTime=True&loc=Local")
 	SpringBoot.RunApplication("testdata/config/", "k8s:testdata/config/config-map.yaml")
 }
