@@ -71,7 +71,7 @@ func (p *defaultPropertySource) Load(profile string) map[string]interface{} {
 			continue // 这里不需要警告
 		}
 
-		SpringLogger.Info(">>> load properties from file ", filename)
+		SpringLogger.Info("load properties from file ", filename)
 
 		v := viper.New()
 		v.SetConfigFile(filename)
@@ -131,7 +131,7 @@ func (p *configMapPropertySource) Load(profile string) map[string]interface{} {
 
 	for _, ext := range []string{".properties", ".yaml", ".toml"} {
 		if key := profileFileName + ext; d.IsSet(key) {
-			SpringLogger.Info(">>> load properties from config-map %s:%s", p.filename, key)
+			SpringLogger.Infof("load properties from config-map %s:%s", p.filename, key)
 
 			val := d.GetString(key)
 			if val == "" {
