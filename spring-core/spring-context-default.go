@@ -22,7 +22,9 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"runtime"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/go-spring/go-spring-parent/spring-logger"
@@ -742,6 +744,31 @@ func (ctx *defaultSpringContext) RegisterNameMethodBean(name string, selector in
 	return bd
 }
 
+// @Incubate 注册成员方法单例 Bean，不指定名称，重复注册会 panic。
+func (ctx *defaultSpringContext) RegisterMethodBeanFn(method interface{}, tags ...string) *BeanDefinition {
+	return ctx.RegisterNameMethodBeanFn("", method, tags...)
+}
+
+// @Incubate 注册成员方法单例 Bean，需指定名称，重复注册会 panic。
+func (ctx *defaultSpringContext) RegisterNameMethodBeanFn(name string, method interface{}, tags ...string) *BeanDefinition {
+
+	var methodName string
+	{
+		fnPtr := reflect.ValueOf(method).Pointer()
+		fnInfo := runtime.FuncForPC(fnPtr)
+		s := strings.Split(fnInfo.Name(), "/")
+		ss := strings.Split(s[len(s)-1], ".")
+		if len(ss) == 3 {
+			methodName = ss[2]
+		} else {
+			panic(errors.New("error method func"))
+		}
+	}
+
+	receiver := reflect.TypeOf(method).In(0)
+	return ctx.RegisterNameMethodBean("", receiver, methodName, tags...)
+}
+
 // GetBean 根据类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 func (ctx *defaultSpringContext) GetBean(i interface{}, watchers ...WiringWatcher) bool {
 	return ctx.GetBeanByName("?", i, watchers...)
@@ -952,6 +979,11 @@ func (ctx *defaultSpringContext) registerMethodBeans() {
 			typeName, beanName, _ := ParseBeanId(e)
 			filter = func(b *BeanDefinition) bool {
 				return b.Match(typeName, beanName)
+			}
+		case reflect.Type:
+			selector = e.String()
+			filter = func(b *BeanDefinition) bool {
+				return b.Type() == e
 			}
 		default:
 			t := reflect.TypeOf(e)

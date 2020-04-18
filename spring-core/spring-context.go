@@ -99,6 +99,12 @@ type SpringContext interface {
 	// 而且 interface 的方法类型不带 receiver 而成员方法的类型带有 receiver，两者类型不好匹配。
 	RegisterNameMethodBean(name string, selector interface{}, method string, tags ...string) *BeanDefinition
 
+	// @Incubate 注册成员方法单例 Bean，不指定名称，重复注册会 panic。
+	RegisterMethodBeanFn(method interface{}, tags ...string) *BeanDefinition
+
+	// @Incubate 注册成员方法单例 Bean，需指定名称，重复注册会 panic。
+	RegisterNameMethodBeanFn(name string, method interface{}, tags ...string) *BeanDefinition
+
 	// AutoWireBeans 完成自动绑定
 	AutoWireBeans(watchers ...WiringWatcher)
 

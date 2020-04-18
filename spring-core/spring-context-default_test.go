@@ -1734,6 +1734,237 @@ func TestDefaultSpringContext_RegisterMethodBean(t *testing.T) {
 	})
 }
 
+func TestDefaultSpringContext_RegisterMethodBeanFn(t *testing.T) {
+
+	t.Run("fn method bean", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.SetProperty("server.version", "1.0.0")
+		ctx.RegisterBeanFn(NewServerInterface)
+
+		bd := ctx.RegisterMethodBeanFn(ServerInterface.ConsumerT)
+		assert.Equal(t, bd.Name(), "@ConsumerT")
+
+		ctx.AutoWireBeans()
+
+		var si ServerInterface
+		ok := ctx.GetBean(&si)
+		assert.Equal(t, ok, true)
+
+		s := si.(*Server)
+		assert.Equal(t, s.Version, "1.0.0")
+
+		s.Version = "2.0.0"
+
+		var c *Consumer
+		ok = ctx.GetBean(&c)
+		assert.Equal(t, ok, true)
+		assert.Equal(t, c.s.Version, "2.0.0")
+	})
+
+	t.Run("fn method bean arg", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.SetProperty("server.version", "1.0.0")
+		ctx.RegisterBeanFn(NewServerInterface)
+		ctx.RegisterMethodBeanFn(ServerInterface.ConsumerArg, "${i:=9}")
+		ctx.AutoWireBeans()
+
+		var si ServerInterface
+		ok := ctx.GetBean(&si)
+		assert.Equal(t, ok, true)
+
+		s := si.(*Server)
+		assert.Equal(t, s.Version, "1.0.0")
+
+		s.Version = "2.0.0"
+
+		var c *Consumer
+		ok = ctx.GetBean(&c)
+		assert.Equal(t, ok, true)
+		assert.Equal(t, c.s.Version, "2.0.0")
+	})
+
+	t.Run("fn method bean wire to other bean", func(t *testing.T) {
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.SetProperty("server.version", "1.0.0")
+		ctx.RegisterBeanFn(NewServerInterface)
+		ctx.RegisterMethodBeanFn(ServerInterface.Consumer).DependsOn("@NewServerInterface")
+		ctx.RegisterBean(new(Service))
+		ctx.AutoWireBeans()
+
+		var si ServerInterface
+		ok := ctx.GetBean(&si)
+		assert.Equal(t, ok, true)
+
+		s := si.(*Server)
+		assert.Equal(t, s.Version, "1.0.0")
+
+		s.Version = "2.0.0"
+
+		var c *Consumer
+		ok = ctx.GetBean(&c)
+		assert.Equal(t, ok, true)
+		assert.Equal(t, c.s.Version, "2.0.0")
+	})
+
+	t.Run("fn circle autowire", func(t *testing.T) {
+		okCount := 0
+		errCount := 0
+		for i := 0; i < 20; i++ { // 不要排序
+			func() {
+
+				defer func() {
+					if err := recover(); err != nil {
+						errCount++
+
+						var v string
+						switch e := err.(type) {
+						case error:
+							v = e.Error()
+						case string:
+							v = e
+						}
+
+						if !strings.Contains(v, "found circle autowire") {
+							panic(errors.New("test error"))
+						}
+					} else {
+						okCount++
+					}
+				}()
+
+				ctx := SpringCore.NewDefaultSpringContext()
+				ctx.SetProperty("server.version", "1.0.0")
+				ctx.RegisterBeanFn(NewServerInterface).DependsOn("*SpringCore_test.Service")
+				ctx.RegisterMethodBeanFn(ServerInterface.Consumer).DependsOn("@NewServerInterface")
+				ctx.RegisterBean(new(Service))
+				ctx.AutoWireBeans()
+			}()
+		}
+		fmt.Printf("ok:%d err:%d\n", okCount, errCount)
+	})
+
+	t.Run("fn method bean condition", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.SetProperty("server.version", "1.0.0")
+		ctx.RegisterBeanFn(NewServerInterface)
+		ctx.RegisterMethodBeanFn(ServerInterface.ConsumerT).ConditionOnProperty("consumer.enable")
+		ctx.AutoWireBeans()
+
+		var si ServerInterface
+		ok := ctx.GetBean(&si)
+		assert.Equal(t, ok, true)
+
+		s := si.(*Server)
+		assert.Equal(t, s.Version, "1.0.0")
+
+		var c *Consumer
+		ok = ctx.GetBean(&c)
+		assert.Equal(t, ok, false)
+	})
+
+	t.Run("fn method bean autowire", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.SetProperty("server.version", "1.0.0")
+		ctx.RegisterBeanFn(NewServerInterface)
+		ctx.AutoWireBeans()
+
+		var si ServerInterface
+		ok := ctx.GetBean(&si)
+		assert.Equal(t, ok, true)
+
+		s := si.(*Server)
+		assert.Equal(t, s.Version, "1.0.0")
+	})
+
+	t.Run("fn method bean selector type", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.SetProperty("server.version", "1.0.0")
+		ctx.RegisterBeanFn(NewServerInterface)
+		ctx.RegisterMethodBeanFn(ServerInterface.ConsumerT)
+		ctx.AutoWireBeans()
+
+		var si ServerInterface
+		ok := ctx.GetBean(&si)
+		assert.Equal(t, ok, true)
+
+		s := si.(*Server)
+		assert.Equal(t, s.Version, "1.0.0")
+
+		s.Version = "2.0.0"
+
+		var c *Consumer
+		ok = ctx.GetBean(&c)
+		assert.Equal(t, ok, true)
+		assert.Equal(t, c.s.Version, "2.0.0")
+	})
+
+	t.Run("fn method bean selector type error", func(t *testing.T) {
+
+		assert.Panic(t, func() {
+			ctx := SpringCore.NewDefaultSpringContext()
+			ctx.SetProperty("server.version", "1.0.0")
+			ctx.RegisterBeanFn(NewServerInterface)
+			ctx.RegisterMethodBean((fmt.Stringer)(nil), "Consumer")
+			ctx.AutoWireBeans()
+		}, "selector can't be nil or empty")
+
+		assert.Panic(t, func() {
+			ctx := SpringCore.NewDefaultSpringContext()
+			ctx.SetProperty("server.version", "1.0.0")
+			ctx.RegisterBeanFn(NewServerInterface)
+			ctx.RegisterMethodBean((*int)(nil), "Consumer")
+			ctx.AutoWireBeans()
+		}, "can't find parent bean: \"\\*int\"")
+
+		assert.Panic(t, func() {
+			ctx := SpringCore.NewDefaultSpringContext()
+			ctx.SetProperty("server.version", "1.0.0")
+			ctx.RegisterBean(new(int))
+			ctx.RegisterBeanFn(NewServerInterface)
+			ctx.RegisterMethodBean((*int)(nil), "Consumer")
+			ctx.AutoWireBeans()
+		}, "can't find method: Consumer")
+	})
+
+	t.Run("fn method bean selector beanId", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.SetProperty("server.version", "1.0.0")
+		ctx.RegisterBeanFn(NewServerInterface)
+		ctx.RegisterMethodBean("@NewServerInterface", "Consumer")
+		ctx.AutoWireBeans()
+
+		var si ServerInterface
+		ok := ctx.GetBean(&si)
+		assert.Equal(t, ok, true)
+
+		s := si.(*Server)
+		assert.Equal(t, s.Version, "1.0.0")
+
+		s.Version = "2.0.0"
+
+		var c *Consumer
+		ok = ctx.GetBean(&c)
+		assert.Equal(t, ok, true)
+		assert.Equal(t, c.s.Version, "2.0.0")
+	})
+
+	t.Run("fn method bean selector beanId error", func(t *testing.T) {
+		assert.Panic(t, func() {
+			ctx := SpringCore.NewDefaultSpringContext()
+			ctx.SetProperty("server.version", "1.0.0")
+			ctx.RegisterBeanFn(NewServerInterface)
+			ctx.RegisterMethodBean("NULL", "Consumer")
+			ctx.AutoWireBeans()
+		}, "can't find parent bean: \"NULL\"")
+	})
+}
+
 func TestDefaultSpringContext_ParentNotRegister(t *testing.T) {
 
 	ctx := SpringCore.NewDefaultSpringContext()
