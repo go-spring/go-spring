@@ -32,7 +32,7 @@ func (p *SamePkg) Package() {
 }
 
 type appContext struct {
-	context.Context
+	context.Context `export:""`
 }
 
 func NewAppContext() *appContext {

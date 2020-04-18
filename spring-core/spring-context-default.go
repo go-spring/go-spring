@@ -901,9 +901,12 @@ func (ctx *defaultSpringContext) findCacheItem(t reflect.Type) *beanCacheItem {
 // autoExport 自动导出 Bean 实现的接口
 func (ctx *defaultSpringContext) autoExport(bd *BeanDefinition, t reflect.Type) {
 	for i := 0; i < t.NumField(); i++ {
-		if f := t.Field(i); f.Anonymous && f.Type.Kind() == reflect.Interface {
-			m := ctx.findCacheItem(f.Type)
-			m.store(f.Type, bd, false)
+		if f := t.Field(i); f.Anonymous {
+			_, ok := f.Tag.Lookup("export")
+			if ok && f.Type.Kind() == reflect.Interface {
+				m := ctx.findCacheItem(f.Type)
+				m.store(f.Type, bd, false)
+			}
 		}
 	}
 }

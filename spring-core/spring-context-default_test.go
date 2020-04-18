@@ -2530,7 +2530,11 @@ func TestDefaultSpringContext_WarnAsInterface(t *testing.T) {
 }
 
 type AppContext struct {
-	context.Context
+	context.Context `export:""`
+}
+
+func (_ *AppContext) String() string {
+	return ""
 }
 
 func TestDefaultSpringContext_AutoExport(t *testing.T) {
@@ -2540,7 +2544,7 @@ func TestDefaultSpringContext_AutoExport(t *testing.T) {
 		ctx := SpringCore.NewDefaultSpringContext()
 		ctx.RegisterBean(&AppContext{
 			Context: context.TODO(),
-		})
+		}).AutoExport(false)
 		ctx.AutoWireBeans()
 
 		var x context.Context
@@ -2552,7 +2556,7 @@ func TestDefaultSpringContext_AutoExport(t *testing.T) {
 		b := &AppContext{Context: context.TODO()}
 
 		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.RegisterBean(b).AutoExport()
+		ctx.RegisterBean(b)
 		ctx.AutoWireBeans()
 
 		var x context.Context
@@ -2564,11 +2568,37 @@ func TestDefaultSpringContext_AutoExport(t *testing.T) {
 	t.Run("auto export private", func(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.RegisterBeanFn(pkg2.NewAppContext).AutoExport()
+		ctx.RegisterBeanFn(pkg2.NewAppContext)
 		ctx.AutoWireBeans()
 
 		var x context.Context
 		ok := ctx.GetBean(&x)
 		assert.Equal(t, true, ok)
+	})
+
+	t.Run("close & re-export", func(t *testing.T) {
+		b := &AppContext{Context: context.TODO()}
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBean(b).AutoExport(false).Export((*fmt.Stringer)(nil))
+		ctx.AutoWireBeans()
+
+		var x fmt.Stringer
+		ok := ctx.GetBean(&x)
+		assert.Equal(t, true, ok)
+		assert.Equal(t, b, x)
+	})
+
+	t.Run("auto export & export", func(t *testing.T) {
+		b := &AppContext{Context: context.TODO()}
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBean(b).Export((*fmt.Stringer)(nil))
+		ctx.AutoWireBeans()
+
+		var x fmt.Stringer
+		ok := ctx.GetBean(&x)
+		assert.Equal(t, true, ok)
+		assert.Equal(t, b, x)
 	})
 }

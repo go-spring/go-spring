@@ -405,12 +405,13 @@ func newBeanDefinition(name string, bean SpringBean) *BeanDefinition {
 	}
 
 	return &BeanDefinition{
-		bean:   bean,
-		name:   name,
-		status: beanStatus_Default,
-		file:   file,
-		line:   line,
-		cond:   NewConditional(),
+		bean:       bean,
+		name:       name,
+		status:     beanStatus_Default,
+		file:       file,
+		line:       line,
+		cond:       NewConditional(),
+		autoExport: true,
 	}
 }
 
@@ -662,9 +663,9 @@ func (d *BeanDefinition) Destroy(fn interface{}) *BeanDefinition {
 	return d
 }
 
-// AutoExport 设置自动导出接口
-func (d *BeanDefinition) AutoExport() *BeanDefinition {
-	d.autoExport = true
+// AutoExport 设置是否自动导出接口
+func (d *BeanDefinition) AutoExport(enable bool) *BeanDefinition {
+	d.autoExport = enable
 	return d
 }
 
