@@ -200,48 +200,48 @@ func (b *TestBinding) String() string {
 
 type TestObject struct {
 	// 基础类型指针
-	IntPtrByType *int `autowire:""`
+	IntPtrByType *int `inject:""`
 	IntPtrByName *int `autowire:"int_ptr"`
 
 	// 基础类型数组
 	//IntSliceByType []int `autowire:""`
-	IntCollection   []int `autowire:"[]"`
+	IntCollection   []int `inject:"[]"`
 	IntSliceByName  []int `autowire:"int_slice"`
 	IntSliceByName2 []int `autowire:"int_slice_2"`
 
 	// 基础类型指针数组
-	IntPtrSliceByType []*int `autowire:""`
+	IntPtrSliceByType []*int `inject:""`
 	IntPtrCollection  []*int `autowire:"[]"`
 	IntPtrSliceByName []*int `autowire:"int_ptr_slice"`
 
 	// 自定义类型指针
-	StructByType *TestBinding `autowire:""`
+	StructByType *TestBinding `inject:""`
 	StructByName *TestBinding `autowire:"struct_ptr"`
 
 	// 自定义类型数组
-	StructSliceByType []TestBinding `autowire:""`
+	StructSliceByType []TestBinding `inject:""`
 	StructCollection  []TestBinding `autowire:"[]"`
 	StructSliceByName []TestBinding `autowire:"struct_slice"`
 
 	// 自定义类型指针数组
-	StructPtrSliceByType []*TestBinding `autowire:""`
+	StructPtrSliceByType []*TestBinding `inject:""`
 	StructPtrCollection  []*TestBinding `autowire:"[]"`
 	StructPtrSliceByName []*TestBinding `autowire:"struct_ptr_slice"`
 
 	// 接口
-	InterfaceByType fmt.Stringer `autowire:""`
+	InterfaceByType fmt.Stringer `inject:""`
 	InterfaceByName fmt.Stringer `autowire:"struct_ptr"`
 
 	// 接口数组
 	InterfaceSliceByType []fmt.Stringer `autowire:""`
 
-	InterfaceCollection  []fmt.Stringer `autowire:"[]"`
+	InterfaceCollection  []fmt.Stringer `inject:"[]"`
 	InterfaceCollection2 []fmt.Stringer `autowire:"[]"`
 
 	// 指定名称时使用精确匹配模式，不对数组元素进行转换，即便能做到似乎也无意义
 	InterfaceSliceByName []fmt.Stringer `autowire:"struct_ptr_slice?"`
 
-	MapTyType map[string]interface{} `autowire:""`
+	MapTyType map[string]interface{} `inject:""`
 	MapByName map[string]interface{} `autowire:"map"`
 }
 
@@ -607,6 +607,9 @@ func TestDefaultSpringContext_GetBean(t *testing.T) {
 		assert.Equal(t, ok, true)
 
 		var three *BeanThree
+		ok = ctx.GetBean(&three)
+		assert.Equal(t, ok, false)
+
 		ok = ctx.GetBean(&three)
 		assert.Equal(t, ok, false)
 
@@ -2489,7 +2492,7 @@ func TestDefaultSpringContext_IntInterface(t *testing.T) {
 	ctx.AutoWireBeans()
 }
 
-func TestDefaultSpringContext_WarnAsInterface(t *testing.T) {
+func TestDefaultSpringContext_WarnExport(t *testing.T) {
 
 	t.Run("warn", func(t *testing.T) {
 

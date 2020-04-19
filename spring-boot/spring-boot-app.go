@@ -34,7 +34,7 @@ const (
 	SPRING_ACCESS  = "SPRING_ACCESS"
 	SpringProfile  = "spring.profile" // 运行环境
 	SPRING_PROFILE = "SPRING_PROFILE"
-	SpringStrict   = "spring.strict" // 严格模式，"true" 必须使用 AsInterface() 导出接口
+	SpringStrict   = "spring.strict" // 严格模式，"true" 必须使用 Export() 导出接口
 	SPRING_STRICT  = "SPRING_STRICT"
 )
 

@@ -158,25 +158,12 @@ func (beanAssembly *defaultBeanAssembly) springContext() SpringContext {
 func (beanAssembly *defaultBeanAssembly) getCacheItem(t reflect.Type) *beanCacheItem {
 	beanCache := &beanAssembly.springCtx.beanCache
 
-	// 严格模式下必须使用 AsInterface() 导出接口
-	if beanAssembly.springCtx.Strict {
-		if c, ok := beanCache.Load(t); ok {
-			return c.(*beanCacheItem)
-		}
-		return newBeanCacheItem()
-	}
-
-	// 处理具体类型
-	if k := t.Kind(); k != reflect.Interface {
+	// 严格模式下所有 Bean 都在决议阶段缓存完成；非严格模式下只能直接查找具体类型。
+	if k := t.Kind(); beanAssembly.springCtx.Strict || k != reflect.Interface {
 
 		// 如果缓存已存在则直接返回
 		if c, ok := beanCache.Load(t); ok {
 			return c.(*beanCacheItem)
-		}
-
-		// 如果是数组类型，则需要处理其元素类型
-		if k == reflect.Slice || k == reflect.Array {
-			beanAssembly.getCacheItem(t.Elem())
 		}
 
 		result := newBeanCacheItem()
@@ -184,7 +171,7 @@ func (beanAssembly *defaultBeanAssembly) getCacheItem(t reflect.Type) *beanCache
 		return result
 	}
 
-	// 处理接口类型
+	// 非严格模式下处理接口类型需要遍历所有 Bean
 
 	var (
 		check bool
@@ -196,6 +183,7 @@ func (beanAssembly *defaultBeanAssembly) getCacheItem(t reflect.Type) *beanCache
 		if item.mark == 1 {
 			return item
 		} else {
+			// 也许能找到更多的 Bean，因此把原来的结果缓存起来。
 			cache = newBeanCacheItem()
 			item.copyTo(cache)
 			check = true
@@ -209,7 +197,7 @@ func (beanAssembly *defaultBeanAssembly) getCacheItem(t reflect.Type) *beanCache
 
 	for _, bd := range beanAssembly.springCtx.beanMap {
 		if bd.Type().AssignableTo(t) && cache.store(t, bd, check) && len(bd.exports) == 0 {
-			SpringLogger.Warnf("you should call AsInterface() on %s", bd.Description())
+			SpringLogger.Warnf("you should call Export() on %s", bd.Description())
 		}
 	}
 
@@ -324,11 +312,12 @@ func (beanAssembly *defaultBeanAssembly) collectBeans(v reflect.Value) bool {
 
 	// 查找单例类型
 	{
-		et := t.Elem()
-		m := beanAssembly.getCacheItem(et)
-		for _, d := range m.beans {
-			beanAssembly.wireBeanDefinition(d, false)
-			ev = reflect.Append(ev, d.Value())
+		if et := t.Elem(); IsRefType(et.Kind()) {
+			m := beanAssembly.getCacheItem(et)
+			for _, d := range m.beans {
+				beanAssembly.wireBeanDefinition(d, false)
+				ev = reflect.Append(ev, d.Value())
+			}
 		}
 	}
 
@@ -494,6 +483,11 @@ func (beanAssembly *defaultBeanAssembly) wireObjectBean(bd IBeanDefinition, only
 					beanAssembly.wireStructField(fv, beanId, sv, fieldName)
 				}
 
+				// 处理 inject 标签
+				if beanId, ok := ft.Tag.Lookup("inject"); ok {
+					beanAssembly.wireStructField(fv, beanId, sv, fieldName)
+				}
+
 				// 处理结构体类型的字段，防止递归所以不支持指针结构体字段
 				if ft.Type.Kind() == reflect.Struct {
 					// 开放私有字段，但是不会更新原属性
@@ -621,7 +615,7 @@ type defaultSpringContext struct {
 	beanCache sync.Map
 
 	Sort   bool // 自动注入期间是否按照 BeanId 进行排序并依次进行注入
-	Strict bool // 严格模式，true 必须使用 AsInterface() 导出接口
+	Strict bool // 严格模式，true 必须使用 Export() 导出接口
 }
 
 // NewDefaultSpringContext defaultSpringContext 的构造函数
