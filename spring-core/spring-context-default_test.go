@@ -2604,4 +2604,24 @@ func TestDefaultSpringContext_AutoExport(t *testing.T) {
 		assert.Equal(t, true, ok)
 		assert.Equal(t, b, x)
 	})
+
+	t.Run("unexported but have name", func(t *testing.T) {
+		b := &AppContext{Context: context.TODO()}
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBean(&struct {
+			Stringer fmt.Stringer `autowire:"B"`
+		}{})
+		ctx.RegisterNameBean("B", b)
+		ctx.AutoWireBeans()
+	})
+
+	t.Run("export and have name", func(t *testing.T) {
+		b := &AppContext{Context: context.TODO()}
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBean(&struct {
+			Stringer fmt.Stringer `autowire:"B"`
+		}{})
+		ctx.RegisterNameBean("B", b).Export((*fmt.Stringer)(nil))
+		ctx.AutoWireBeans()
+	})
 }

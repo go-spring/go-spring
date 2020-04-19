@@ -156,7 +156,7 @@ func (beanAssembly *defaultBeanAssembly) springContext() SpringContext {
 
 // getCacheItem 获取指定类型的缓存项，返回值不会为 nil。
 func (beanAssembly *defaultBeanAssembly) getCacheItem(t reflect.Type) *beanCacheItem {
-	beanCache := &beanAssembly.springCtx.beanCache
+	beanCache := &beanAssembly.springCtx.beanCacheByType
 
 	// 严格模式下所有 Bean 都在决议阶段缓存完成；非严格模式下只能直接查找具体类型。
 	if k := t.Kind(); beanAssembly.springCtx.Strict || k != reflect.Interface {
@@ -205,15 +205,6 @@ func (beanAssembly *defaultBeanAssembly) getCacheItem(t reflect.Type) *beanCache
 	return cache
 }
 
-func (_ *defaultBeanAssembly) getBeanType(v reflect.Value) (reflect.Type, bool) {
-	if v.IsValid() {
-		if beanType := v.Type(); IsRefType(beanType.Kind()) {
-			return beanType, true
-		}
-	}
-	return nil, false
-}
-
 // getBeanValue 根据 BeanId 查找 Bean 并返回 Bean 源的值
 func (beanAssembly *defaultBeanAssembly) getBeanValue(v reflect.Value, beanId string, parent reflect.Value, field string) bool {
 
@@ -222,7 +213,7 @@ func (beanAssembly *defaultBeanAssembly) getBeanValue(v reflect.Value, beanId st
 		beanType reflect.Type
 	)
 
-	if beanType, ok = beanAssembly.getBeanType(v); !ok {
+	if beanType, ok = ValidBeanValue(v); !ok {
 		panic(fmt.Errorf("receiver must be ref type, bean: \"%s\" field: %s", beanId, field))
 	}
 
@@ -234,6 +225,29 @@ func (beanAssembly *defaultBeanAssembly) getBeanValue(v reflect.Value, beanId st
 		// 不能将自身赋给自身的字段 && 类型全限定名匹配
 		if bean.Value() != parent && bean.Match(typeName, beanName) {
 			result = append(result, bean)
+		}
+	}
+
+	// 严格模式下对接口匹配开个绿灯，如果指定了 Bean 名称则尝试通过名称获取以防没有通过 Export 显示导出接口
+	if beanType.Kind() == reflect.Interface && beanAssembly.springCtx.Strict && beanName != "" {
+		beanCache := beanAssembly.springCtx.beanCacheByName
+		if cache, o := beanCache[beanName]; o {
+			for _, b := range cache {
+				// 不能将自身赋给自身的字段 && 类型匹配
+				if b.Value() != parent && b.Type().AssignableTo(beanType) && b.Match(typeName, beanName) {
+					found := false // 排重
+					for _, r := range result {
+						if r == b {
+							found = true
+							break
+						}
+					}
+					if !found {
+						result = append(result, b)
+						SpringLogger.Warnf("you should call Export() on %s", b.Description())
+					}
+				}
+			}
 		}
 	}
 
@@ -611,8 +625,9 @@ type defaultSpringContext struct {
 	configers   *list.List                  // 配置方法集合
 
 	// Bean 的缓存，使用线程安全的 map 是考虑到运行时可能有
-	// 并发操作，另外 resolveBeans 的时候一步步的创建缓存。
-	beanCache sync.Map
+	// 并发操作，另外 resolveBeans 的时候一步步地创建缓存。
+	beanCacheByType sync.Map
+	beanCacheByName map[string][]*BeanDefinition
 
 	Sort   bool // 自动注入期间是否按照 BeanId 进行排序并依次进行注入
 	Strict bool // 严格模式，true 必须使用 Export() 导出接口
@@ -622,13 +637,14 @@ type defaultSpringContext struct {
 func NewDefaultSpringContext() *defaultSpringContext {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &defaultSpringContext{
-		Context:     ctx,
-		Strict:      true,
-		cancel:      cancel,
-		Properties:  NewDefaultProperties(),
-		methodBeans: make([]*BeanDefinition, 0),
-		beanMap:     make(map[beanKey]*BeanDefinition),
-		configers:   list.New(),
+		Context:         ctx,
+		Strict:          true,
+		cancel:          cancel,
+		Properties:      NewDefaultProperties(),
+		methodBeans:     make([]*BeanDefinition, 0),
+		beanMap:         make(map[beanKey]*BeanDefinition),
+		configers:       list.New(),
+		beanCacheByName: make(map[string][]*BeanDefinition),
 	}
 }
 
@@ -888,7 +904,7 @@ func (ctx *defaultSpringContext) CollectBeans(i interface{}, watchers ...WiringW
 
 // findCacheItem 查找指定类型的缓存项
 func (ctx *defaultSpringContext) findCacheItem(t reflect.Type) *beanCacheItem {
-	c, _ := ctx.beanCache.LoadOrStore(t, newBeanCacheItem())
+	c, _ := ctx.beanCacheByType.LoadOrStore(t, newBeanCacheItem())
 	return c.(*beanCacheItem)
 }
 
@@ -952,6 +968,16 @@ func (ctx *defaultSpringContext) resolveBean(bd *BeanDefinition) {
 
 		m := ctx.findCacheItem(t)
 		m.store(t, bd, false)
+	}
+
+	// 按照 Bean 的名字进行缓存
+	{
+		var cacheItem []*BeanDefinition
+		if cache, ok := ctx.beanCacheByName[bd.name]; ok {
+			cacheItem = append(cacheItem, cache...)
+		}
+		cacheItem = append(cacheItem, bd)
+		ctx.beanCacheByName[bd.name] = cacheItem
 	}
 
 	bd.status = beanStatus_Resolved

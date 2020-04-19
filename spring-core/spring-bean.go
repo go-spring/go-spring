@@ -765,3 +765,13 @@ func ParseBeanId(beanId string) (typeName string, beanName string, nullable bool
 	}
 	return
 }
+
+// ValidBeanValue 返回是否是合法的 Bean 值
+func ValidBeanValue(v reflect.Value) (reflect.Type, bool) {
+	if v.IsValid() {
+		if beanType := v.Type(); IsRefType(beanType.Kind()) {
+			return beanType, true
+		}
+	}
+	return nil, false
+}
