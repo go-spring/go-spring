@@ -30,6 +30,10 @@ type runnable struct {
 	fn        interface{}
 	stringArg *fnStringBindingArg // 普通参数绑定
 	optionArg *fnOptionBindingArg // Option 绑定
+
+	// 函数类型是否包含接收者
+	withReceiver bool
+	receiver     reflect.Value
 }
 
 // run 运行执行器
@@ -45,6 +49,10 @@ func (r *runnable) run(ctx *defaultSpringContext) {
 	cr := &defaultCaller{caller: strCaller}
 
 	var in []reflect.Value
+
+	if r.withReceiver {
+		in = append(in, r.receiver)
+	}
 
 	if r.stringArg != nil {
 		if v := r.stringArg.Get(a, cr); len(v) > 0 {

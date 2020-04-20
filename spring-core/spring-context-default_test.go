@@ -1127,8 +1127,8 @@ func TestDefaultSpringContext_RegisterBeanFn2(t *testing.T) {
 }
 
 type destroyable interface {
-	Init()
-	Destroy()
+	Init(s string)
+	Destroy(s string)
 }
 
 type callDestroy struct {
@@ -1136,11 +1136,11 @@ type callDestroy struct {
 	destroyed bool
 }
 
-func (d *callDestroy) Init() {
+func (d *callDestroy) Init(s string) {
 	d.inited = true
 }
 
-func (d *callDestroy) Destroy() {
+func (d *callDestroy) Destroy(s string) {
 	d.destroyed = true
 }
 
@@ -1180,7 +1180,8 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 	t.Run("call init method", func(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.RegisterBean(new(callDestroy)).Init((*callDestroy).Init)
+		ctx.SetProperty("version", "v0.0.1")
+		ctx.RegisterBean(new(callDestroy)).Init((*callDestroy).Init, "${version}")
 		ctx.AutoWireBeans()
 
 		var d *callDestroy
@@ -1195,7 +1196,8 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 	t.Run("call interface init method", func(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.RegisterBeanFn(func() destroyable { return new(callDestroy) }).Init(destroyable.Init)
+		ctx.SetProperty("version", "v0.0.1")
+		ctx.RegisterBeanFn(func() destroyable { return new(callDestroy) }).Init(destroyable.Init, "${version}")
 		ctx.AutoWireBeans()
 
 		var d destroyable
@@ -2259,7 +2261,8 @@ func TestDefaultSpringContext_Close(t *testing.T) {
 	t.Run("call destroy method", func(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.RegisterBean(new(callDestroy)).Destroy((*callDestroy).Destroy)
+		ctx.SetProperty("version", "v0.0.1")
+		ctx.RegisterBean(new(callDestroy)).Destroy((*callDestroy).Destroy, "${version}")
 		ctx.AutoWireBeans()
 
 		var d *callDestroy
@@ -2274,7 +2277,8 @@ func TestDefaultSpringContext_Close(t *testing.T) {
 	t.Run("call interface destroy method", func(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.RegisterBeanFn(func() destroyable { return new(callDestroy) }).Destroy(destroyable.Destroy)
+		ctx.SetProperty("version", "v0.0.1")
+		ctx.RegisterBeanFn(func() destroyable { return new(callDestroy) }).Destroy(destroyable.Destroy, "${version}")
 		ctx.AutoWireBeans()
 
 		var d destroyable

@@ -341,8 +341,8 @@ type IBeanDefinition interface {
 	getStatus() beanStatus       // 返回 Bean 的状态值
 	setStatus(status beanStatus) // 设置 Bean 的状态值
 	getDependsOn() []interface{} // 返回 Bean 的非直接依赖项
-	getInit() interface{}        // 返回 Bean 的初始化函数
-	getDestroy() interface{}     // 返回 Bean 的销毁函数
+	getInit() *runnable          // 返回 Bean 的初始化函数
+	getDestroy() *runnable       // 返回 Bean 的销毁函数
 	getFile() string             // 返回 Bean 注册点所在文件的名称
 	getLine() int                // 返回 Bean 注册点所在文件的行数
 }
@@ -360,8 +360,8 @@ type BeanDefinition struct {
 	primary   bool          // 主版本
 	dependsOn []interface{} // 非直接依赖
 
-	init    interface{} // 初始化的回调
-	destroy interface{} // 销毁时的回调
+	init    *runnable // 初始化的回调
+	destroy *runnable // 销毁时的回调
 
 	exports    []reflect.Type // 导出接口类型
 	autoExport bool           // 自动导出接口
@@ -471,12 +471,12 @@ func (d *BeanDefinition) getDependsOn() []interface{} {
 }
 
 // getInit 返回 Bean 的初始化函数
-func (d *BeanDefinition) getInit() interface{} {
+func (d *BeanDefinition) getInit() *runnable {
 	return d.init
 }
 
 // getDestroy 返回 Bean 的销毁函数
-func (d *BeanDefinition) getDestroy() interface{} {
+func (d *BeanDefinition) getDestroy() *runnable {
 	return d.destroy
 }
 
@@ -615,51 +615,65 @@ func (d *BeanDefinition) Primary(primary bool) *BeanDefinition {
 }
 
 // validLifeCycleFunc 判断是否是合法的用于 Bean 生命周期控制的回调函数
-func validLifeCycleFunc(fn interface{}, beanType reflect.Type) bool {
+func validLifeCycleFunc(fn interface{}, beanType reflect.Type) (reflect.Type, bool) {
 	fnType := reflect.TypeOf(fn)
 
 	// 必须是函数
 	if fnType.Kind() != reflect.Func {
-		return false
+		return nil, false
 	}
 
 	// 不能有返回值
 	if fnType.NumOut() > 0 {
-		return false
+		return nil, false
 	}
 
-	// 必须有一个输入参数
-	if fnType.NumIn() != 1 {
-		return false
+	// 有至少一个输入参数
+	if fnType.NumIn() < 1 {
+		return nil, false
 	}
 
-	// 输入参数必须是 Bean 的类型
+	// 第一个入参必须是 Bean 的类型 TODO 兼容类型也可以？
 	if fnType.In(0) != beanType {
-		return false
+		return nil, false
 	}
 
-	return true
+	return fnType, true
 }
 
 // Init 设置 Bean 初始化的回调
-func (d *BeanDefinition) Init(fn interface{}) *BeanDefinition {
+func (d *BeanDefinition) Init(fn interface{}, tags ...string) *BeanDefinition {
 
-	if ok := validLifeCycleFunc(fn, d.Type()); !ok {
+	fnType, ok := validLifeCycleFunc(fn, d.Type())
+	if !ok {
 		panic(errors.New("init should be func(bean)"))
 	}
 
-	d.init = fn
+	d.init = &runnable{
+		fn:           fn,
+		stringArg:    newFnStringBindingArg(fnType, true, tags),
+		withReceiver: true,
+		receiver:     d.Value(),
+	}
+
 	return d
 }
 
 // Destroy 设置 Bean 销毁时的回调
-func (d *BeanDefinition) Destroy(fn interface{}) *BeanDefinition {
+func (d *BeanDefinition) Destroy(fn interface{}, tags ...string) *BeanDefinition {
 
-	if ok := validLifeCycleFunc(fn, d.Type()); !ok {
+	fnType, ok := validLifeCycleFunc(fn, d.Type())
+	if !ok {
 		panic(errors.New("destroy should be func(bean)"))
 	}
 
-	d.destroy = fn
+	d.destroy = &runnable{
+		fn:           fn,
+		stringArg:    newFnStringBindingArg(fnType, true, tags),
+		withReceiver: true,
+		receiver:     d.Value(),
+	}
+
 	return d
 }
 
