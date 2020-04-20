@@ -1126,6 +1126,24 @@ func TestDefaultSpringContext_RegisterBeanFn2(t *testing.T) {
 	})
 }
 
+type destroyable interface {
+	Init()
+	Destroy()
+}
+
+type callDestroy struct {
+	inited    bool
+	destroyed bool
+}
+
+func (d *callDestroy) Init() {
+	d.inited = true
+}
+
+func (d *callDestroy) Destroy() {
+	d.destroyed = true
+}
+
 func TestRegisterBean_InitFunc(t *testing.T) {
 
 	t.Run("int", func(t *testing.T) {
@@ -1157,6 +1175,36 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 		var i *int
 		ctx.GetBean(&i)
 		assert.Equal(t, *i, 3)
+	})
+
+	t.Run("call init method", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBean(new(callDestroy)).Init((*callDestroy).Init)
+		ctx.AutoWireBeans()
+
+		var d *callDestroy
+		ok := ctx.GetBean(&d)
+
+		ctx.Close()
+
+		assert.Equal(t, ok, true)
+		assert.Equal(t, d.inited, true)
+	})
+
+	t.Run("call interface init method", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBeanFn(func() destroyable { return new(callDestroy) }).Init(destroyable.Init)
+		ctx.AutoWireBeans()
+
+		var d destroyable
+		ok := ctx.GetBean(&d)
+
+		ctx.Close()
+
+		assert.Equal(t, ok, true)
+		assert.Equal(t, d.(*callDestroy).inited, true)
 	})
 }
 
@@ -2197,7 +2245,7 @@ func TestDefaultSpringContext_Close(t *testing.T) {
 		}, "destroy should be func\\(bean\\)")
 	})
 
-	t.Run("call destroy", func(t *testing.T) {
+	t.Run("call destroy fn", func(t *testing.T) {
 		called := false
 
 		ctx := SpringCore.NewDefaultSpringContext()
@@ -2206,6 +2254,36 @@ func TestDefaultSpringContext_Close(t *testing.T) {
 		ctx.Close()
 
 		assert.Equal(t, called, true)
+	})
+
+	t.Run("call destroy method", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBean(new(callDestroy)).Destroy((*callDestroy).Destroy)
+		ctx.AutoWireBeans()
+
+		var d *callDestroy
+		ok := ctx.GetBean(&d)
+
+		ctx.Close()
+
+		assert.Equal(t, ok, true)
+		assert.Equal(t, d.destroyed, true)
+	})
+
+	t.Run("call interface destroy method", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBeanFn(func() destroyable { return new(callDestroy) }).Destroy(destroyable.Destroy)
+		ctx.AutoWireBeans()
+
+		var d destroyable
+		ok := ctx.GetBean(&d)
+
+		ctx.Close()
+
+		assert.Equal(t, ok, true)
+		assert.Equal(t, d.(*callDestroy).destroyed, true)
 	})
 
 	t.Run("context done", func(t *testing.T) {
