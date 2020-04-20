@@ -18,17 +18,13 @@ package SpringCore
 
 import (
 	"errors"
-	"fmt"
 	"reflect"
-	"runtime"
 )
 
 // Runner 执行器
 type Runner struct {
-	ctx       *defaultSpringContext
-	fn        interface{}
-	stringArg *fnStringBindingArg // 普通参数绑定
-	optionArg *fnOptionBindingArg // Option 绑定
+	runnable
+	ctx *defaultSpringContext
 }
 
 // newRunner Runner 的构造函数
@@ -40,9 +36,11 @@ func newRunner(ctx *defaultSpringContext, fn interface{}, tags []string) *Runner
 	}
 
 	return &Runner{
-		ctx:       ctx,
-		fn:        fn,
-		stringArg: newFnStringBindingArg(fnType, false, tags),
+		ctx: ctx,
+		runnable: runnable{
+			fn:        fn,
+			stringArg: newFnStringBindingArg(fnType, false, tags),
+		},
 	}
 }
 
@@ -55,42 +53,13 @@ func (r *Runner) Options(options ...*optionArg) *Runner {
 // When 参数为 true 时执行器运行
 func (r *Runner) When(ok bool) {
 	if ok {
-		r.run()
+		r.run(r.ctx)
 	}
 }
 
 // On Condition 判断结果为 true 时执行器运行
 func (r *Runner) On(cond Condition) {
 	if cond.Matches(r.ctx) {
-		r.run()
+		r.run(r.ctx)
 	}
-}
-
-// run 运行执行器
-func (r *Runner) run() {
-
-	fnValue := reflect.ValueOf(r.fn)
-	fnPtr := fnValue.Pointer()
-	fnInfo := runtime.FuncForPC(fnPtr)
-	file, line := fnInfo.FileLine(fnPtr)
-	strCaller := fmt.Sprintf("%s:%d", file, line)
-
-	a := newDefaultBeanAssembly(r.ctx, nil)
-	c := &defaultCaller{caller: strCaller}
-
-	var in []reflect.Value
-
-	if r.stringArg != nil {
-		if v := r.stringArg.Get(a, c); len(v) > 0 {
-			in = append(in, v...)
-		}
-	}
-
-	if r.optionArg != nil {
-		if v := r.optionArg.Get(a, c); len(v) > 0 {
-			in = append(in, v...)
-		}
-	}
-
-	reflect.ValueOf(r.fn).Call(in)
 }

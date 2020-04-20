@@ -25,15 +25,49 @@ import (
 	"strings"
 )
 
-// Configer 封装配置函数
-type Configer struct {
-	name      string
+// runnable 不带返回值的执行器
+type runnable struct {
 	fn        interface{}
 	stringArg *fnStringBindingArg // 普通参数绑定
 	optionArg *fnOptionBindingArg // Option 绑定
-	cond      *Conditional        // 判断条件
-	before    []string
-	after     []string
+}
+
+// run 运行执行器
+func (r *runnable) run(ctx *defaultSpringContext) {
+
+	fnValue := reflect.ValueOf(r.fn)
+	fnPtr := fnValue.Pointer()
+	fnInfo := runtime.FuncForPC(fnPtr)
+	file, line := fnInfo.FileLine(fnPtr)
+	strCaller := fmt.Sprintf("%s:%d", file, line)
+
+	a := newDefaultBeanAssembly(ctx, nil)
+	cr := &defaultCaller{caller: strCaller}
+
+	var in []reflect.Value
+
+	if r.stringArg != nil {
+		if v := r.stringArg.Get(a, cr); len(v) > 0 {
+			in = append(in, v...)
+		}
+	}
+
+	if r.optionArg != nil {
+		if v := r.optionArg.Get(a, cr); len(v) > 0 {
+			in = append(in, v...)
+		}
+	}
+
+	reflect.ValueOf(r.fn).Call(in)
+}
+
+// Configer 封装配置函数
+type Configer struct {
+	runnable
+	name   string
+	cond   *Conditional // 判断条件
+	before []string
+	after  []string
 }
 
 // newConfiger Configer 的构造函数
@@ -45,10 +79,12 @@ func newConfiger(name string, fn interface{}, tags []string) *Configer {
 	}
 
 	return &Configer{
-		name:      name,
-		fn:        fn,
-		stringArg: newFnStringBindingArg(fnType, false, tags),
-		cond:      NewConditional(),
+		name: name,
+		runnable: runnable{
+			fn:        fn,
+			stringArg: newFnStringBindingArg(fnType, false, tags),
+		},
+		cond: NewConditional(),
 	}
 }
 
@@ -133,35 +169,6 @@ func (c *Configer) ConditionOnProfile(profile string) *Configer {
 // Matches 成功返回 true，失败返回 false
 func (c *Configer) Matches(ctx SpringContext) bool {
 	return c.cond.Matches(ctx)
-}
-
-// run 运行执行器
-func (c *Configer) run(ctx *defaultSpringContext) {
-
-	fnValue := reflect.ValueOf(c.fn)
-	fnPtr := fnValue.Pointer()
-	fnInfo := runtime.FuncForPC(fnPtr)
-	file, line := fnInfo.FileLine(fnPtr)
-	strCaller := fmt.Sprintf("%s:%d", file, line)
-
-	a := newDefaultBeanAssembly(ctx, nil)
-	cr := &defaultCaller{caller: strCaller}
-
-	var in []reflect.Value
-
-	if c.stringArg != nil {
-		if v := c.stringArg.Get(a, cr); len(v) > 0 {
-			in = append(in, v...)
-		}
-	}
-
-	if c.optionArg != nil {
-		if v := c.optionArg.Get(a, cr); len(v) > 0 {
-			in = append(in, v...)
-		}
-	}
-
-	reflect.ValueOf(c.fn).Call(in)
 }
 
 // Before 在某个 Configer 之前执行
