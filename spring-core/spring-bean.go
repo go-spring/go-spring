@@ -637,7 +637,7 @@ func validLifeCycleFunc(fn interface{}, beanType reflect.Type) (reflect.Type, bo
 		return nil, false
 	}
 
-	// 第一个入参必须是 Bean 的类型 TODO 兼容类型也可以？
+	// 第一个入参必须是 Bean 的类型
 	if fnType.In(0) != beanType {
 		return nil, false
 	}
@@ -668,7 +668,7 @@ func (d *BeanDefinition) Destroy(fn interface{}, tags ...string) *BeanDefinition
 
 	fnType, ok := validLifeCycleFunc(fn, d.Type())
 	if !ok {
-		panic(errors.New("destroy should be func(bean) or func(bean)error")) //TODO
+		panic(errors.New("destroy should be func(bean) or func(bean)error"))
 	}
 
 	d.destroy = &runnable{

@@ -1172,6 +1172,14 @@ func (d *callDestroy) DestroyWithError(i int) error {
 	return errors.New("error")
 }
 
+type nestedCallDestroy struct {
+	callDestroy
+}
+
+type nestedDestroyable struct {
+	destroyable
+}
+
 func TestRegisterBean_InitFunc(t *testing.T) {
 
 	t.Run("int", func(t *testing.T) {
@@ -1179,22 +1187,22 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 		assert.Panic(t, func() {
 			ctx := SpringCore.NewDefaultSpringContext()
 			ctx.RegisterBean(new(int)).Init(func() {})
-		}, "init should be func\\(bean\\)")
+		}, "init should be func\\(bean\\) or func\\(bean\\)error")
 
 		assert.Panic(t, func() {
 			ctx := SpringCore.NewDefaultSpringContext()
 			ctx.RegisterBean(new(int)).Init(func() int { return 0 })
-		}, "init should be func\\(bean\\)")
+		}, "init should be func\\(bean\\) or func\\(bean\\)error")
 
 		assert.Panic(t, func() {
 			ctx := SpringCore.NewDefaultSpringContext()
 			ctx.RegisterBean(new(int)).Init(func(int) {})
-		}, "init should be func\\(bean\\)")
+		}, "init should be func\\(bean\\) or func\\(bean\\)error")
 
 		assert.Panic(t, func() {
 			ctx := SpringCore.NewDefaultSpringContext()
 			ctx.RegisterBean(new(int)).Init(func(int, int) {})
-		}, "init should be func\\(bean\\)")
+		}, "init should be func\\(bean\\) or func\\(bean\\)error")
 
 		ctx := SpringCore.NewDefaultSpringContext()
 		ctx.RegisterBean(new(int)).Init(func(i *int) { *i = 3 })
@@ -1311,6 +1319,38 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 
 		assert.Equal(t, ok, true)
 		assert.Equal(t, d.(*callDestroy).inited, true)
+	})
+
+	t.Run("call nested init method", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBean(new(nestedCallDestroy)).Init((*nestedCallDestroy).Init)
+		ctx.AutoWireBeans()
+
+		var d *nestedCallDestroy
+		ok := ctx.GetBean(&d)
+
+		ctx.Close()
+
+		assert.Equal(t, ok, true)
+		assert.Equal(t, d.inited, true)
+	})
+
+	t.Run("call nested interface init method", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBean(&nestedDestroyable{
+			destroyable: new(callDestroy),
+		}).Init((*nestedDestroyable).Init)
+		ctx.AutoWireBeans()
+
+		var d *nestedDestroyable
+		ok := ctx.GetBean(&d)
+
+		ctx.Close()
+
+		assert.Equal(t, ok, true)
+		assert.Equal(t, d.destroyable.(*callDestroy).inited, true)
 	})
 }
 
@@ -2333,22 +2373,22 @@ func TestDefaultSpringContext_Close(t *testing.T) {
 		assert.Panic(t, func() {
 			ctx := SpringCore.NewDefaultSpringContext()
 			ctx.RegisterBean(new(int)).Destroy(func() {})
-		}, "destroy should be func\\(bean\\)")
+		}, "destroy should be func\\(bean\\) or func\\(bean\\)error")
 
 		assert.Panic(t, func() {
 			ctx := SpringCore.NewDefaultSpringContext()
 			ctx.RegisterBean(new(int)).Destroy(func() int { return 0 })
-		}, "destroy should be func\\(bean\\)")
+		}, "destroy should be func\\(bean\\) or func\\(bean\\)error")
 
 		assert.Panic(t, func() {
 			ctx := SpringCore.NewDefaultSpringContext()
 			ctx.RegisterBean(new(int)).Destroy(func(int) {})
-		}, "destroy should be func\\(bean\\)")
+		}, "destroy should be func\\(bean\\) or func\\(bean\\)error")
 
 		assert.Panic(t, func() {
 			ctx := SpringCore.NewDefaultSpringContext()
 			ctx.RegisterBean(new(int)).Destroy(func(int, int) {})
-		}, "destroy should be func\\(bean\\)")
+		}, "destroy should be func\\(bean\\) or func\\(bean\\)error")
 	})
 
 	t.Run("call destroy fn", func(t *testing.T) {
