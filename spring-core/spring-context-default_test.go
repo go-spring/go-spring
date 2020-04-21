@@ -1127,8 +1127,12 @@ func TestDefaultSpringContext_RegisterBeanFn2(t *testing.T) {
 }
 
 type destroyable interface {
-	Init(s string)
-	Destroy(s string)
+	Init()
+	Destroy()
+	InitWithArg(s string)
+	DestroyWithArg(s string)
+	InitWithError(i int) error
+	DestroyWithError(i int) error
 }
 
 type callDestroy struct {
@@ -1136,12 +1140,36 @@ type callDestroy struct {
 	destroyed bool
 }
 
-func (d *callDestroy) Init(s string) {
+func (d *callDestroy) Init() {
 	d.inited = true
 }
 
-func (d *callDestroy) Destroy(s string) {
+func (d *callDestroy) Destroy() {
 	d.destroyed = true
+}
+
+func (d *callDestroy) InitWithArg(s string) {
+	d.inited = true
+}
+
+func (d *callDestroy) DestroyWithArg(s string) {
+	d.destroyed = true
+}
+
+func (d *callDestroy) InitWithError(i int) error {
+	if i == 0 {
+		d.inited = true
+		return nil
+	}
+	return errors.New("error")
+}
+
+func (d *callDestroy) DestroyWithError(i int) error {
+	if i == 0 {
+		d.destroyed = true
+		return nil
+	}
+	return errors.New("error")
 }
 
 func TestRegisterBean_InitFunc(t *testing.T) {
@@ -1180,8 +1208,46 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 	t.Run("call init method", func(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBean(new(callDestroy)).Init((*callDestroy).Init)
+		ctx.AutoWireBeans()
+
+		var d *callDestroy
+		ok := ctx.GetBean(&d)
+
+		ctx.Close()
+
+		assert.Equal(t, ok, true)
+		assert.Equal(t, d.inited, true)
+	})
+
+	t.Run("call init method with arg", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
 		ctx.SetProperty("version", "v0.0.1")
-		ctx.RegisterBean(new(callDestroy)).Init((*callDestroy).Init, "${version}")
+		ctx.RegisterBean(new(callDestroy)).Init((*callDestroy).InitWithArg, "${version}")
+		ctx.AutoWireBeans()
+
+		var d *callDestroy
+		ok := ctx.GetBean(&d)
+
+		ctx.Close()
+
+		assert.Equal(t, ok, true)
+		assert.Equal(t, d.inited, true)
+	})
+
+	t.Run("call init method with error", func(t *testing.T) {
+
+		assert.Panic(t, func() {
+			ctx := SpringCore.NewDefaultSpringContext()
+			ctx.SetProperty("int", 1)
+			ctx.RegisterBean(new(callDestroy)).Init((*callDestroy).InitWithError, "${int}")
+			ctx.AutoWireBeans()
+		}, "error")
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.SetProperty("int", 0)
+		ctx.RegisterBean(new(callDestroy)).Init((*callDestroy).InitWithError, "${int}")
 		ctx.AutoWireBeans()
 
 		var d *callDestroy
@@ -1196,8 +1262,46 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 	t.Run("call interface init method", func(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBeanFn(func() destroyable { return new(callDestroy) }).Init(destroyable.Init)
+		ctx.AutoWireBeans()
+
+		var d destroyable
+		ok := ctx.GetBean(&d)
+
+		ctx.Close()
+
+		assert.Equal(t, ok, true)
+		assert.Equal(t, d.(*callDestroy).inited, true)
+	})
+
+	t.Run("call interface init method with arg", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
 		ctx.SetProperty("version", "v0.0.1")
-		ctx.RegisterBeanFn(func() destroyable { return new(callDestroy) }).Init(destroyable.Init, "${version}")
+		ctx.RegisterBeanFn(func() destroyable { return new(callDestroy) }).Init(destroyable.InitWithArg, "${version}")
+		ctx.AutoWireBeans()
+
+		var d destroyable
+		ok := ctx.GetBean(&d)
+
+		ctx.Close()
+
+		assert.Equal(t, ok, true)
+		assert.Equal(t, d.(*callDestroy).inited, true)
+	})
+
+	t.Run("call interface init method with error", func(t *testing.T) {
+
+		assert.Panic(t, func() {
+			ctx := SpringCore.NewDefaultSpringContext()
+			ctx.SetProperty("int", 1)
+			ctx.RegisterBeanFn(func() destroyable { return new(callDestroy) }).Init(destroyable.InitWithError, "${int}")
+			ctx.AutoWireBeans()
+		}, "error")
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.SetProperty("int", 0)
+		ctx.RegisterBeanFn(func() destroyable { return new(callDestroy) }).Init(destroyable.InitWithError, "${int}")
 		ctx.AutoWireBeans()
 
 		var d destroyable
@@ -2261,8 +2365,7 @@ func TestDefaultSpringContext_Close(t *testing.T) {
 	t.Run("call destroy method", func(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.SetProperty("version", "v0.0.1")
-		ctx.RegisterBean(new(callDestroy)).Destroy((*callDestroy).Destroy, "${version}")
+		ctx.RegisterBean(new(callDestroy)).Destroy((*callDestroy).Destroy)
 		ctx.AutoWireBeans()
 
 		var d *callDestroy
@@ -2274,11 +2377,61 @@ func TestDefaultSpringContext_Close(t *testing.T) {
 		assert.Equal(t, d.destroyed, true)
 	})
 
-	t.Run("call interface destroy method", func(t *testing.T) {
+	t.Run("call destroy method with arg", func(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
 		ctx.SetProperty("version", "v0.0.1")
-		ctx.RegisterBeanFn(func() destroyable { return new(callDestroy) }).Destroy(destroyable.Destroy, "${version}")
+		ctx.RegisterBean(new(callDestroy)).Destroy((*callDestroy).DestroyWithArg, "${version}")
+		ctx.AutoWireBeans()
+
+		var d *callDestroy
+		ok := ctx.GetBean(&d)
+
+		ctx.Close()
+
+		assert.Equal(t, ok, true)
+		assert.Equal(t, d.destroyed, true)
+	})
+
+	t.Run("call destroy method with error", func(t *testing.T) {
+
+		// error
+		{
+			ctx := SpringCore.NewDefaultSpringContext()
+			ctx.SetProperty("int", 1)
+			ctx.RegisterBean(new(callDestroy)).Destroy((*callDestroy).DestroyWithError, "${int}")
+			ctx.AutoWireBeans()
+
+			var d *callDestroy
+			ok := ctx.GetBean(&d)
+
+			ctx.Close()
+
+			assert.Equal(t, ok, true)
+			assert.Equal(t, d.destroyed, false)
+		}
+
+		// nil
+		{
+			ctx := SpringCore.NewDefaultSpringContext()
+			ctx.SetProperty("int", 0)
+			ctx.RegisterBean(new(callDestroy)).Destroy((*callDestroy).DestroyWithError, "${int}")
+			ctx.AutoWireBeans()
+
+			var d *callDestroy
+			ok := ctx.GetBean(&d)
+
+			ctx.Close()
+
+			assert.Equal(t, ok, true)
+			assert.Equal(t, d.destroyed, true)
+		}
+	})
+
+	t.Run("call interface destroy method", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBeanFn(func() destroyable { return new(callDestroy) }).Destroy(destroyable.Destroy)
 		ctx.AutoWireBeans()
 
 		var d destroyable
@@ -2288,6 +2441,57 @@ func TestDefaultSpringContext_Close(t *testing.T) {
 
 		assert.Equal(t, ok, true)
 		assert.Equal(t, d.(*callDestroy).destroyed, true)
+	})
+
+	t.Run("call interface destroy method with arg", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.SetProperty("version", "v0.0.1")
+		ctx.RegisterBeanFn(func() destroyable { return new(callDestroy) }).Destroy(destroyable.DestroyWithArg, "${version}")
+		ctx.AutoWireBeans()
+
+		var d destroyable
+		ok := ctx.GetBean(&d)
+
+		ctx.Close()
+
+		assert.Equal(t, ok, true)
+		assert.Equal(t, d.(*callDestroy).destroyed, true)
+	})
+
+	t.Run("call interface destroy method with error", func(t *testing.T) {
+
+		// error
+		{
+			ctx := SpringCore.NewDefaultSpringContext()
+			ctx.SetProperty("int", 1)
+			ctx.RegisterBeanFn(func() destroyable { return new(callDestroy) }).Destroy(destroyable.DestroyWithError, "${int}")
+			ctx.AutoWireBeans()
+
+			var d destroyable
+			ok := ctx.GetBean(&d)
+
+			ctx.Close()
+
+			assert.Equal(t, ok, true)
+			assert.Equal(t, d.(*callDestroy).destroyed, false)
+		}
+
+		// nil
+		{
+			ctx := SpringCore.NewDefaultSpringContext()
+			ctx.SetProperty("int", 0)
+			ctx.RegisterBeanFn(func() destroyable { return new(callDestroy) }).Destroy(destroyable.DestroyWithError, "${int}")
+			ctx.AutoWireBeans()
+
+			var d destroyable
+			ok := ctx.GetBean(&d)
+
+			ctx.Close()
+
+			assert.Equal(t, ok, true)
+			assert.Equal(t, d.(*callDestroy).destroyed, true)
+		}
 	})
 
 	t.Run("context done", func(t *testing.T) {

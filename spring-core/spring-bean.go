@@ -623,9 +623,13 @@ func validLifeCycleFunc(fn interface{}, beanType reflect.Type) (reflect.Type, bo
 		return nil, false
 	}
 
-	// 不能有返回值
-	if fnType.NumOut() > 0 {
+	// 无返回值，或者只返回 error
+	if numOut := fnType.NumOut(); numOut > 1 {
 		return nil, false
+	} else if numOut == 1 {
+		if out := fnType.Out(0); out != errorType {
+			return nil, false
+		}
 	}
 
 	// 有至少一个输入参数
@@ -646,7 +650,7 @@ func (d *BeanDefinition) Init(fn interface{}, tags ...string) *BeanDefinition {
 
 	fnType, ok := validLifeCycleFunc(fn, d.Type())
 	if !ok {
-		panic(errors.New("init should be func(bean)"))
+		panic(errors.New("init should be func(bean) or func(bean)error"))
 	}
 
 	d.init = &runnable{
@@ -664,7 +668,7 @@ func (d *BeanDefinition) Destroy(fn interface{}, tags ...string) *BeanDefinition
 
 	fnType, ok := validLifeCycleFunc(fn, d.Type())
 	if !ok {
-		panic(errors.New("destroy should be func(bean)"))
+		panic(errors.New("destroy should be func(bean) or func(bean)error")) //TODO
 	}
 
 	d.destroy = &runnable{

@@ -428,7 +428,9 @@ func (beanAssembly *defaultBeanAssembly) wireBeanDefinition(bd IBeanDefinition, 
 
 	// 如果有则执行用户设置的初始化函数
 	if init := bd.getInit(); init != nil {
-		init.run(beanAssembly.springCtx)
+		if err := init.run(beanAssembly.springCtx); err != nil {
+			panic(err)
+		}
 	}
 
 	bd.setStatus(beanStatus_Wired)
@@ -1157,7 +1159,9 @@ func (ctx *defaultSpringContext) Close() {
 	// 执行销毁函数
 	for _, bd := range ctx.beanMap {
 		if bd.destroy != nil {
-			bd.destroy.run(ctx)
+			if err := bd.destroy.run(ctx); err != nil {
+				SpringLogger.Error(err)
+			}
 		}
 	}
 

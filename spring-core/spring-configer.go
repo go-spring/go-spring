@@ -37,7 +37,7 @@ type runnable struct {
 }
 
 // run 运行执行器
-func (r *runnable) run(ctx *defaultSpringContext) {
+func (r *runnable) run(ctx *defaultSpringContext) error {
 
 	fnValue := reflect.ValueOf(r.fn)
 	fnPtr := fnValue.Pointer()
@@ -66,7 +66,21 @@ func (r *runnable) run(ctx *defaultSpringContext) {
 		}
 	}
 
-	reflect.ValueOf(r.fn).Call(in)
+	out := reflect.ValueOf(r.fn).Call(in)
+
+	if n := len(out); n == 0 {
+		return nil
+	} else if n == 1 {
+		if o := out[0]; o.Type() == errorType {
+			if i := o.Interface(); i == nil {
+				return nil
+			} else {
+				return i.(error)
+			}
+		}
+	}
+
+	panic(errors.New("error func type"))
 }
 
 // Configer 封装配置函数
