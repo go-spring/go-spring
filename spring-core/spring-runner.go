@@ -51,15 +51,17 @@ func (r *Runner) Options(options ...*optionArg) *Runner {
 }
 
 // When 参数为 true 时执行器运行
-func (r *Runner) When(ok bool) {
+func (r *Runner) When(ok bool) error {
 	if ok {
-		r.run(r.ctx)
+		return r.run(r.ctx)
 	}
+	return nil
 }
 
 // On Condition 判断结果为 true 时执行器运行
-func (r *Runner) On(cond Condition) {
+func (r *Runner) On(cond Condition) error {
 	if cond.Matches(r.ctx) {
-		r.run(r.ctx)
+		return r.run(r.ctx)
 	}
+	return nil
 }

@@ -207,7 +207,7 @@ func (_ *MyRunner) Run(ctx SpringBoot.ApplicationContext) {
 			panic(errors.New("error"))
 		}
 	}
-	ctx.Run(fn, "1:${version:=v0.0.1}").On(SpringCore.OnProfile("test"))
+	_ = ctx.Run(fn, "1:${version:=v0.0.1}").On(SpringCore.OnProfile("test"))
 }
 
 ////////////////// MyModule ///////////////////

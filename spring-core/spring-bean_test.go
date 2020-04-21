@@ -49,9 +49,9 @@ func TestRef(t *testing.T) {
 	o2 := o1
 	o1 = false
 	if o2 == false {
-		fmt.Println("bool is ref type")
+		fmt.Printf("%v==%v bool is ref type\n", o1, o2)
 	} else {
-		fmt.Println("bool is val type")
+		fmt.Printf("%v!=%v bool is val type\n", o1, o2)
 	}
 
 	// valType // Int
@@ -71,9 +71,9 @@ func TestRef(t *testing.T) {
 	i2 := i1
 	i1 = 5
 	if i2 == 5 {
-		fmt.Println("int is ref type")
+		fmt.Printf("%v==%v int is ref type\n", i1, i2)
 	} else {
-		fmt.Println("int is val type")
+		fmt.Printf("%v!=%v int is val type\n", i1, i2)
 	}
 
 	// valType // Complex64
@@ -83,9 +83,9 @@ func TestRef(t *testing.T) {
 	c2 := c1
 	c1 = complex(0, 0)
 	if real(c2) == 0 {
-		fmt.Println("complex64 is ref type")
+		fmt.Printf("%v==%v complex64 is ref type\n", c1, c2)
 	} else {
-		fmt.Println("complex64 is val type")
+		fmt.Printf("%v!=%v complex64 is val type\n", c1, c2)
 	}
 
 	// valType // Array
@@ -94,15 +94,14 @@ func TestRef(t *testing.T) {
 	arr2 := arr1
 	arr1[0] = 5
 	if arr2[0] == 5 {
-		fmt.Println("array is ref type")
+		fmt.Printf("%v==%v array is ref type\n", arr1, arr2)
 	} else {
-		fmt.Println("array is val type")
+		fmt.Printf("%v!=%v array is val type\n", arr1, arr2)
 	}
 
 	// refType // Chan
 	var wg sync.WaitGroup
-	var ch1 chan struct{}
-	ch1 = make(chan struct{})
+	ch1 := make(chan struct{})
 	ch2 := ch1
 	wg.Add(1)
 	go func() {
@@ -114,25 +113,23 @@ func TestRef(t *testing.T) {
 
 	// refType // Func
 	ret := new(int)
-	var f1 func() int
-	f1 = func() int { return *ret }
+	f1 := func() int { return *ret }
 	f2 := f1
 	*ret = 3
 	if f2() == 3 {
-		fmt.Println("func is ref type")
+		fmt.Printf("%p==%p func is ref type\n", f1, f2)
 	} else {
-		fmt.Println("func is val type")
+		fmt.Printf("%p!=%p func is val type\n", f1, f2)
 	}
 
 	// refType // Interface
-	var e1 error
-	e1 = &errorString{"ok"}
+	e1 := &errorString{"ok"}
 	e2 := e1
-	(e1.(*errorString)).s = "no"
+	e1.s = "no"
 	if e2.Error() == "no" {
-		fmt.Println("error is ref type")
+		fmt.Printf("%v==%v error is ref type\n", e1, e2)
 	} else {
-		fmt.Println("error is val type")
+		fmt.Printf("%v!=%v error is val type\n", e1, e2)
 	}
 
 	// refType // Map
@@ -141,9 +138,9 @@ func TestRef(t *testing.T) {
 	m2 := m1
 	m1[1] = "3"
 	if m2[1] == "3" {
-		fmt.Println("map is ref type")
+		fmt.Printf("%v==%v map is ref type\n", m1, m2)
 	} else {
-		fmt.Println("map is val type")
+		fmt.Printf("%v!=%v map is val type\n", m1, m2)
 	}
 
 	type Int struct {
@@ -151,14 +148,13 @@ func TestRef(t *testing.T) {
 	}
 
 	// refType // Ptr
-	var ptr1 *Int
-	ptr1 = &Int{1}
+	ptr1 := &Int{1}
 	ptr2 := ptr1
 	ptr1.i = 3
 	if ptr2.i == 3 {
-		fmt.Println("ptr is ref type")
+		fmt.Printf("%v==%v ptr is ref type\n", ptr1, ptr2)
 	} else {
-		fmt.Println("ptr is val type")
+		fmt.Printf("%v!=%v ptr is val type\n", ptr1, ptr2)
 	}
 
 	// refType // Slice
@@ -167,9 +163,9 @@ func TestRef(t *testing.T) {
 	s2 := s1
 	s1[0] = 3
 	if s2[0] == 3 {
-		fmt.Println("slice is ref type")
+		fmt.Printf("%v==%v slice is ref type\n", s1, s2)
 	} else {
-		fmt.Println("slice is val type")
+		fmt.Printf("%v!=%v slice is val type\n", s1, s2)
 	}
 
 	// valType // String
@@ -178,20 +174,19 @@ func TestRef(t *testing.T) {
 	str2 := str1
 	str1 = "3"
 	if str2 == "3" {
-		fmt.Println("string is ref type")
+		fmt.Printf("%v==%v string is ref type\n", str1, str2)
 	} else {
-		fmt.Println("string is val type")
+		fmt.Printf("%v!=%v string is val type\n", str1, str2)
 	}
 
 	// valType // Struct
-	var t1 Int
-	t1 = Int{1}
+	t1 := Int{1}
 	t2 := t1
 	t1.i = 3
 	if t2.i == 3 {
-		fmt.Println("struct is ref type")
+		fmt.Printf("%v==%v struct is ref type\n", t1, t2)
 	} else {
-		fmt.Println("struct is val type")
+		fmt.Printf("%v!=%v struct is val type\n", t1, t2)
 	}
 }
 

@@ -1098,7 +1098,9 @@ func (ctx *defaultSpringContext) AutoWireBeans(watchers ...WiringWatcher) {
 	// 执行配置函数，过程中会自动完成部分注入
 	for e := ctx.configers.Front(); e != nil; e = e.Next() {
 		configer := e.Value.(*Configer)
-		configer.run(ctx)
+		if err := configer.run(ctx); err != nil {
+			panic(err)
+		}
 	}
 
 	if ctx.Sort { // 自动注入期间是否排序注入

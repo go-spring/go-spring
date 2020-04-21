@@ -41,7 +41,7 @@ func TestRunner_Run(t *testing.T) {
 		assert.Panic(t, func() {
 			run := false
 			cond := SpringCore.OnProfile("dev")
-			ctx.Run(func(i *int, version string) {
+			_ = ctx.Run(func(i *int, version string) {
 				fmt.Println("version:", version)
 				fmt.Println("int:", *i)
 				run = true
@@ -61,7 +61,7 @@ func TestRunner_Run(t *testing.T) {
 
 		run := false
 		cond := SpringCore.OnProfile("dev")
-		ctx.Run(func(i *int, version string) {
+		_ = ctx.Run(func(i *int, version string) {
 			fmt.Println("version:", version)
 			fmt.Println("int:", *i)
 			run = true
@@ -92,7 +92,7 @@ func TestRunner_Run(t *testing.T) {
 			fmt.Println(arg.f)
 		}
 
-		ctx.Run(fn, "1:${version}").Options(
+		_ = ctx.Run(fn, "1:${version}").Options(
 			SpringCore.NewOptionArg(func(version string) fnOption {
 				return func(arg *fnArg) {
 					arg.f = 3.0
@@ -101,7 +101,7 @@ func TestRunner_Run(t *testing.T) {
 		assert.Equal(t, run, true)
 
 		run = false
-		ctx.Run(fn, "1:${version}").On(cond)
+		_ = ctx.Run(fn, "1:${version}").On(cond)
 		assert.Equal(t, run, true)
 	})
 }
