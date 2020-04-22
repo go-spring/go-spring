@@ -911,15 +911,33 @@ func (ctx *defaultSpringContext) findCacheItem(t reflect.Type) *beanCacheItem {
 
 // autoExport 自动导出 Bean 实现的接口
 func (ctx *defaultSpringContext) autoExport(bd *BeanDefinition, t reflect.Type) {
+
 	for i := 0; i < t.NumField(); i++ {
-		if f := t.Field(i); f.Anonymous {
-			_, ok := f.Tag.Lookup("export")
-			if ok && f.Type.Kind() == reflect.Interface {
-				m := ctx.findCacheItem(f.Type)
-				m.store(f.Type, bd, false)
-			}
+		f := t.Field(i)
+
+		_, export := f.Tag.Lookup("export")
+		if !export { // 无需导出
+			continue
 		}
+
+		if f.Type.Kind() != reflect.Interface {
+			panic(errors.New("export can only use on interface"))
+		}
+
+		_, inject := f.Tag.Lookup("inject")
+		_, autowire := f.Tag.Lookup("autowire")
+
+		// 不能导出需要注入的接口，因为会重复注册
+		if export && (inject || autowire) {
+			panic(errors.New("inject or autowire can't use with export"))
+		}
+
+		// 不限定导出接口字段必须是空白标识符，但建议使用空白标识符
+		bd.export(f.Type)
+
+		// TODO 嵌套的情况
 	}
+	return
 }
 
 // resolveBean 对 Bean 进行决议是否能够创建 Bean 的实例
@@ -953,14 +971,13 @@ func (ctx *defaultSpringContext) resolveBean(bd *BeanDefinition) {
 
 	// 自动导出接口，这种情况下应该只对于结构体才会有效
 	if bd.autoExport {
-		t := SpringUtils.Indirect(bd.Type())
-		if t.Kind() == reflect.Struct {
+		if t := SpringUtils.Indirect(bd.Type()); t.Kind() == reflect.Struct {
 			ctx.autoExport(bd, t)
 		}
 	}
 
 	// 按照导出类型放入缓存
-	for _, t := range bd.exports {
+	for t := range bd.exports {
 
 		// 检查是否实现了导出接口
 		if ok := bd.Type().Implements(t); !ok {

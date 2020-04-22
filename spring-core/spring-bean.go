@@ -22,6 +22,8 @@ import (
 	"reflect"
 	"runtime"
 	"strings"
+
+	"github.com/go-spring/go-spring-parent/spring-utils"
 )
 
 const (
@@ -363,8 +365,8 @@ type BeanDefinition struct {
 	init    *runnable // 初始化的回调
 	destroy *runnable // 销毁时的回调
 
-	exports    []reflect.Type // 导出接口类型
-	autoExport bool           // 自动导出接口
+	exports    map[reflect.Type]struct{} // 导出接口类型
+	autoExport bool                      // 自动导出接口
 }
 
 // newBeanDefinition BeanDefinition 的构造函数
@@ -411,6 +413,7 @@ func newBeanDefinition(name string, bean SpringBean) *BeanDefinition {
 		file:       file,
 		line:       line,
 		cond:       NewConditional(),
+		exports:    make(map[reflect.Type]struct{}),
 		autoExport: true,
 	}
 }
@@ -698,10 +701,17 @@ func (d *BeanDefinition) AsInterface(exports ...interface{}) *BeanDefinition {
 }
 
 func (d *BeanDefinition) export(exports ...interface{}) *BeanDefinition {
-	for _, o := range exports {
-		t := reflect.TypeOf(o)
-		if t.Kind() == reflect.Ptr && t.Elem().Kind() == reflect.Interface {
-			d.exports = append(d.exports, t.Elem())
+	for _, o := range exports { // 使用 map 进行自动排重
+
+		var t reflect.Type
+		if m, ok := o.(reflect.Type); ok {
+			t = m
+		} else {
+			t = SpringUtils.Indirect(reflect.TypeOf(o))
+		}
+
+		if t.Kind() == reflect.Interface {
+			d.exports[t] = struct{}{}
 		} else {
 			panic(errors.New("must export interface type"))
 		}

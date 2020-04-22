@@ -2859,10 +2859,17 @@ func TestDefaultSpringContext_WarnExport(t *testing.T) {
 }
 
 type AppContext struct {
+	// 这种导出方式建议写在最上面
+	_ fmt.Stringer `export:""`
+
 	context.Context `export:""`
 }
 
 func (_ *AppContext) String() string {
+	return ""
+}
+
+func (_ *AppContext) Error() string {
 	return ""
 }
 
@@ -2892,6 +2899,11 @@ func TestDefaultSpringContext_AutoExport(t *testing.T) {
 		ok := ctx.GetBean(&x)
 		assert.Equal(t, true, ok)
 		assert.Equal(t, b, x)
+
+		var s fmt.Stringer
+		ok = ctx.GetBean(&s)
+		assert.Equal(t, true, ok)
+		assert.Equal(t, b, s)
 	})
 
 	t.Run("auto export private", func(t *testing.T) {
@@ -2903,6 +2915,10 @@ func TestDefaultSpringContext_AutoExport(t *testing.T) {
 		var x context.Context
 		ok := ctx.GetBean(&x)
 		assert.Equal(t, true, ok)
+
+		var s fmt.Stringer
+		ok = ctx.GetBean(&s)
+		assert.Equal(t, true, ok)
 	})
 
 	t.Run("close & re-export", func(t *testing.T) {
@@ -2912,10 +2928,14 @@ func TestDefaultSpringContext_AutoExport(t *testing.T) {
 		ctx.RegisterBean(b).AutoExport(false).Export((*fmt.Stringer)(nil))
 		ctx.AutoWireBeans()
 
-		var x fmt.Stringer
+		var x context.Context
 		ok := ctx.GetBean(&x)
+		assert.Equal(t, false, ok)
+
+		var s fmt.Stringer
+		ok = ctx.GetBean(&s)
 		assert.Equal(t, true, ok)
-		assert.Equal(t, b, x)
+		assert.Equal(t, b, s)
 	})
 
 	t.Run("auto export & export", func(t *testing.T) {
@@ -2925,29 +2945,53 @@ func TestDefaultSpringContext_AutoExport(t *testing.T) {
 		ctx.RegisterBean(b).Export((*fmt.Stringer)(nil))
 		ctx.AutoWireBeans()
 
-		var x fmt.Stringer
+		var x context.Context
 		ok := ctx.GetBean(&x)
 		assert.Equal(t, true, ok)
 		assert.Equal(t, b, x)
+
+		var s fmt.Stringer
+		ok = ctx.GetBean(&s)
+		assert.Equal(t, true, ok)
+		assert.Equal(t, b, s)
 	})
 
-	t.Run("unexported but have name", func(t *testing.T) {
+	t.Run("unexported but auto match", func(t *testing.T) {
 		b := &AppContext{Context: context.TODO()}
 		ctx := SpringCore.NewDefaultSpringContext()
 		ctx.RegisterBean(&struct {
-			Stringer fmt.Stringer `autowire:"B"`
+			Error error `autowire:"e"`
 		}{})
-		ctx.RegisterNameBean("B", b)
+		ctx.RegisterNameBean("e", b)
 		ctx.AutoWireBeans()
 	})
 
-	t.Run("export and have name", func(t *testing.T) {
+	t.Run("export and match directly", func(t *testing.T) {
 		b := &AppContext{Context: context.TODO()}
 		ctx := SpringCore.NewDefaultSpringContext()
 		ctx.RegisterBean(&struct {
-			Stringer fmt.Stringer `autowire:"B"`
+			Error error `autowire:"e"`
 		}{})
-		ctx.RegisterNameBean("B", b).Export((*fmt.Stringer)(nil))
+		ctx.RegisterNameBean("e", b).Export((*error)(nil))
 		ctx.AutoWireBeans()
+	})
+
+	t.Run("panics", func(t *testing.T) {
+
+		assert.Panic(t, func() {
+			ctx := SpringCore.NewDefaultSpringContext()
+			ctx.RegisterBean(&struct {
+				_ *int `export:""`
+			}{})
+			ctx.AutoWireBeans()
+		}, "export can only use on interface")
+
+		assert.Panic(t, func() {
+			ctx := SpringCore.NewDefaultSpringContext()
+			ctx.RegisterBean(&struct {
+				_ Runner `export:"" autowire:""`
+			}{})
+			ctx.AutoWireBeans()
+		}, "inject or autowire can't use with export")
 	})
 }

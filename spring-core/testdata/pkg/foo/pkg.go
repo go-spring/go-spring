@@ -32,6 +32,9 @@ func (p *SamePkg) Package() {
 }
 
 type appContext struct {
+	// 这种导出方式建议写在最上面
+	_ fmt.Stringer `export:""`
+
 	context.Context `export:""`
 }
 
@@ -39,4 +42,8 @@ func NewAppContext() *appContext {
 	return &appContext{
 		Context: context.TODO(),
 	}
+}
+
+func (_ *appContext) String() string {
+	return ""
 }
