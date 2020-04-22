@@ -916,16 +916,27 @@ func (ctx *defaultSpringContext) autoExport(bd *BeanDefinition, t reflect.Type) 
 		f := t.Field(i)
 
 		_, export := f.Tag.Lookup("export")
-		if !export { // 无需导出
+		_, inject := f.Tag.Lookup("inject")
+		_, autowire := f.Tag.Lookup("autowire")
+
+		if !export {
+
+			// 嵌套才能递归；有注入标记的也不进行递归
+			if !f.Anonymous || inject || autowire {
+				continue
+			}
+
+			// 只处理结构体情况的递归，暂时不考虑接口的情况
+			if m := SpringUtils.Indirect(f.Type); m.Kind() == reflect.Struct {
+				ctx.autoExport(bd, m)
+			}
+
 			continue
 		}
 
 		if f.Type.Kind() != reflect.Interface {
 			panic(errors.New("export can only use on interface"))
 		}
-
-		_, inject := f.Tag.Lookup("inject")
-		_, autowire := f.Tag.Lookup("autowire")
 
 		// 不能导出需要注入的接口，因为会重复注册
 		if export && (inject || autowire) {
@@ -934,8 +945,6 @@ func (ctx *defaultSpringContext) autoExport(bd *BeanDefinition, t reflect.Type) 
 
 		// 不限定导出接口字段必须是空白标识符，但建议使用空白标识符
 		bd.export(f.Type)
-
-		// TODO 嵌套的情况
 	}
 	return
 }

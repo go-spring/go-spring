@@ -2858,11 +2858,38 @@ func TestDefaultSpringContext_WarnExport(t *testing.T) {
 	})
 }
 
+type ptrBaseInterface interface {
+	PtrBase()
+}
+
+type ptrBaseContext struct {
+	_ ptrBaseInterface `export:""`
+}
+
+func (_ *ptrBaseContext) PtrBase() {
+
+}
+
+type baseInterface interface {
+	Base()
+}
+
+type baseContext struct {
+	_ baseInterface `export:""`
+}
+
+func (_ *baseContext) Base() {
+
+}
+
 type AppContext struct {
 	// 这种导出方式建议写在最上面
 	_ fmt.Stringer `export:""`
 
 	context.Context `export:""`
+
+	*ptrBaseContext
+	baseContext
 }
 
 func (_ *AppContext) String() string {
@@ -2889,7 +2916,11 @@ func TestDefaultSpringContext_AutoExport(t *testing.T) {
 	})
 
 	t.Run("auto export", func(t *testing.T) {
-		b := &AppContext{Context: context.TODO()}
+
+		b := &AppContext{
+			Context:        context.TODO(),
+			ptrBaseContext: &ptrBaseContext{},
+		}
 
 		ctx := SpringCore.NewDefaultSpringContext()
 		ctx.RegisterBean(b)
@@ -2904,6 +2935,16 @@ func TestDefaultSpringContext_AutoExport(t *testing.T) {
 		ok = ctx.GetBean(&s)
 		assert.Equal(t, true, ok)
 		assert.Equal(t, b, s)
+
+		var pbi ptrBaseInterface
+		ok = ctx.GetBean(&pbi)
+		assert.Equal(t, true, ok)
+		assert.Equal(t, b, pbi)
+
+		var bi baseInterface
+		ok = ctx.GetBean(&bi)
+		assert.Equal(t, true, ok)
+		assert.Equal(t, b, bi)
 	})
 
 	t.Run("auto export private", func(t *testing.T) {
