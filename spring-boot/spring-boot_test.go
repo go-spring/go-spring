@@ -46,9 +46,9 @@ func init() {
 
 	l := list.New()
 
-	SpringBoot.RegisterNameBean("f2", NewNumberFilter(2, l)).Export((*SpringWeb.Filter)(nil))
-	SpringBoot.RegisterNameBean("f5", NewNumberFilter(5, l)).Export((*SpringWeb.Filter)(nil))
-	SpringBoot.RegisterNameBean("f7", NewNumberFilter(7, l)).Export((*SpringWeb.Filter)(nil))
+	SpringBoot.RegisterNameBean("f2", NewNumberFilter(2, l))
+	SpringBoot.RegisterNameBean("f5", NewNumberFilter(5, l))
+	SpringBoot.RegisterNameBean("f7", NewNumberFilter(7, l))
 
 	SpringBoot.ConfigWithName("config_f2", func(filter *NumberFilter) {
 		fmt.Println("NumberFilter:", filter.n)
@@ -82,8 +82,8 @@ func init() {
 			WithDescription("echo")
 	})
 
-	SpringBoot.RegisterBean(new(MyRunner)).Export((*SpringBoot.CommandLineRunner)(nil))
-	SpringBoot.RegisterBeanFn(NewMyModule, "${message}").Export((*SpringBoot.ApplicationEvent)(nil))
+	SpringBoot.RegisterBean(new(MyRunner))
+	SpringBoot.RegisterBeanFn(NewMyModule, "${message}")
 
 	SpringBoot.RegisterBean(func(mock sqlmock.Sqlmock) {
 		mock.ExpectQuery("SELECT ENGINE FROM `ENGINES`").WillReturnRows(
@@ -112,6 +112,8 @@ func TestRunApplication(t *testing.T) {
 ///////////////////// filter ////////////////////////
 
 type NumberFilter struct {
+	_ SpringWeb.Filter `export:""`
+
 	l *list.List
 	n int
 }
@@ -192,6 +194,7 @@ func (c *MyController) OK(ctx SpringWeb.WebContext) {
 ////////////////// MyRunner ///////////////////
 
 type MyRunner struct {
+	_ SpringBoot.CommandLineRunner `export:""`
 }
 
 func (_ *MyRunner) Run(ctx SpringBoot.ApplicationContext) {
@@ -213,6 +216,8 @@ func (_ *MyRunner) Run(ctx SpringBoot.ApplicationContext) {
 ////////////////// MyModule ///////////////////
 
 type MyModule struct {
+	_ SpringBoot.ApplicationEvent `export:""`
+
 	msg string
 }
 

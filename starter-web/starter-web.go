@@ -24,7 +24,7 @@ import (
 )
 
 func init() {
-	SpringBoot.RegisterNameBean("std-web-server", new(WebServerStarter)).Export((*SpringBoot.ApplicationEvent)(nil))
+	SpringBoot.RegisterNameBean("std-web-server", new(WebServerStarter))
 }
 
 // WebServerConfig Web 服务器配置
@@ -39,6 +39,8 @@ type WebServerConfig struct {
 
 // WebServerStarter Web 容器启动器
 type WebServerStarter struct {
+	_ SpringBoot.ApplicationEvent `export:""`
+
 	WebServer *SpringWeb.WebServer `autowire:""`
 }
 

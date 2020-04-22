@@ -38,7 +38,11 @@ type ApplicationContext interface {
 
 // defaultApplicationContext ApplicationContext 的默认版本
 type defaultApplicationContext struct {
-	SpringCore.SpringContext
+	// 空白标识符导出
+	_ ApplicationContext `export:""`
+
+	// 匿名字段导出
+	SpringCore.SpringContext `export:""`
 
 	wg sync.WaitGroup
 }
