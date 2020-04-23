@@ -3036,3 +3036,15 @@ func TestDefaultSpringContext_AutoExport(t *testing.T) {
 		}, "inject or autowire can't use with export")
 	})
 }
+
+func TestDefaultSpringContext_Properties(t *testing.T) {
+	t.Run("array properties", func(t *testing.T) {
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.RegisterBeanFn(func(intArray []int, strArray []string, boolArray []bool, timeArray []time.Time) *int {
+			fmt.Println(intArray, strArray, boolArray, timeArray)
+			return new(int)
+		}, "${int.array:=1,2,3}", "${string.array:=s1,s2,s3}", "${bool.array:=0,1,false,true}",
+			"${time.array:=2006-01-02T15:04:05Z,01 Jan 2020,2020-01-01 00:00:00}")
+		ctx.AutoWireBeans()
+	})
+}

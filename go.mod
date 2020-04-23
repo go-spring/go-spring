@@ -11,5 +11,5 @@ require (
 	github.com/jinzhu/gorm v1.9.12
 	github.com/magiconair/properties v1.8.1
 	github.com/spf13/cast v1.3.1
-	github.com/spf13/viper v1.6.2
+	github.com/spf13/viper v1.6.3
 )

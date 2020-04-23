@@ -341,6 +341,11 @@ func bindValue(p Properties, v reflect.Value, key string, def interface{}, opt b
 		elemType := v.Type().Elem()
 		elemKind := elemType.Kind()
 
+		// 如果是字符串的话，尝试按照逗号进行切割
+		if s, ok := propValue.(string); ok {
+			propValue = strings.Split(s, ",")
+		}
+
 		switch elemKind {
 		case reflect.Uint64, reflect.Uint32, reflect.Uint16, reflect.Uint8, reflect.Uint:
 			panic(errors.New("暂未支持"))
