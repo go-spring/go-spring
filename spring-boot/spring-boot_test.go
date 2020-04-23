@@ -52,7 +52,7 @@ func init() {
 
 	SpringBoot.ConfigWithName("config_f2", func(filter *NumberFilter) {
 		fmt.Println("NumberFilter:", filter.n)
-	}, "f2")
+	}, "f2").ConditionOnPropertyValue("f2.enable", true)
 
 	SpringBoot.ConfigWithName("config_f5", func(filter *NumberFilter, appName string) {
 		fmt.Println("NumberFilter:", filter.n, "appName:", appName)
@@ -60,7 +60,7 @@ func init() {
 
 	SpringBoot.Config(func(filter *NumberFilter) {
 		fmt.Println("NumberFilter:", filter.n)
-	}, "f7").Before("config_f2")
+	}, "f7").Before("config_f2").ConditionOnPropertyValue("f7.enable", true)
 
 	// 全局函数设置整个应用的信息
 	SpringWeb.Swagger().WithDescription("spring boot test")

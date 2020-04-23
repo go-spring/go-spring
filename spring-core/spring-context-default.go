@@ -1089,11 +1089,13 @@ func (ctx *defaultSpringContext) AutoWireBeans(watchers ...WiringWatcher) {
 	}
 
 	// 对 config 函数进行决议
-	for e := ctx.configers.Front(); e != nil; e = e.Next() {
+	for e := ctx.configers.Front(); e != nil; {
+		next := e.Next()
 		configer := e.Value.(*Configer)
 		if ok := configer.Matches(ctx); !ok {
 			ctx.configers.Remove(e)
 		}
+		e = next
 	}
 
 	// 对 config 函数进行排序
