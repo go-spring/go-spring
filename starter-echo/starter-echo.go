@@ -24,7 +24,7 @@ import (
 )
 
 func init() {
-	SpringBoot.RegisterBeanFn(NewEchoWebServer)
+	SpringBoot.RegisterBeanFn(NewEchoWebServer).ConditionOnMissingBean(WebStarter.WebServer)
 }
 
 // NewEchoWebServer 创建 echo 适配的 Web 服务器

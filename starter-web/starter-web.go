@@ -23,8 +23,11 @@ import (
 	"github.com/go-spring/go-spring/spring-boot"
 )
 
+// WebServer SpringWeb.WebServer 的类型描述符
+const WebServer = "github.com/go-spring/go-spring-web/spring-web/SpringWeb.WebServer:"
+
 func init() {
-	SpringBoot.RegisterNameBean("std-web-server", new(WebServerStarter))
+	SpringBoot.RegisterNameBean("web-server-starter", new(WebServerStarter))
 }
 
 // WebServerConfig Web 服务器配置
