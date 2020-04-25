@@ -46,7 +46,8 @@ type WebServerConfig struct {
 type WebServerStarter struct {
 	_ SpringBoot.ApplicationEvent `export:""`
 
-	WebServer *SpringWeb.WebServer `autowire:""`
+	WebServer   *SpringWeb.WebServer `autowire:""`
+	filterNames []string             // 过滤器列表
 }
 
 func (starter *WebServerStarter) OnStartApplication(ctx SpringBoot.ApplicationContext) {
@@ -54,20 +55,31 @@ func (starter *WebServerStarter) OnStartApplication(ctx SpringBoot.ApplicationCo
 	for _, c := range starter.WebServer.Containers {
 		for _, mapping := range SpringBoot.DefaultWebMapping.Mappings {
 			ports := mapping.Ports()
-			if len(ports) == 0 || SpringUtils.ContainsInt(ports, c.GetPort()) >= 0 {
-				if mapping.Matches(ctx) {
-					filters := mapping.Filters()
-					for _, s := range mapping.FilterNames() {
-						var f SpringWeb.Filter
-						if ok := ctx.GetBeanByName(s, &f); !ok {
-							panic(errors.New("can't get filter " + s))
-						}
-						filters = append(filters, f)
-					}
-					mapping.SetFilters(filters...)
-					c.AddMapper(mapping.Mapper())
-				}
+
+			// 路由的端口不匹配
+			if len(ports) > 0 && SpringUtils.ContainsInt(ports, c.GetPort()) < 0 {
+				continue
 			}
+
+			// 路由的条件不匹配
+			if ok := mapping.Matches(ctx); !ok {
+				continue
+			}
+
+			filters := mapping.Filters()
+
+			// 组合 Starter 和 Router、Mapper 的过滤器列表
+			filterNames := append(starter.filterNames, mapping.FilterNames()...)
+			for _, s := range filterNames {
+				var f SpringWeb.Filter
+				if ok := ctx.GetBeanByName(s, &f); !ok {
+					panic(errors.New("can't get filter " + s))
+				}
+				filters = append(filters, f)
+			}
+
+			mapping.SetFilters(filters...)
+			c.AddMapper(mapping.Mapper())
 		}
 	}
 
@@ -76,4 +88,9 @@ func (starter *WebServerStarter) OnStartApplication(ctx SpringBoot.ApplicationCo
 
 func (starter *WebServerStarter) OnStopApplication(ctx SpringBoot.ApplicationContext) {
 	starter.WebServer.Stop(context.Background())
+}
+
+// SetFilterNames 设置过滤器列表
+func (starter *WebServerStarter) SetFilterNames(filterNames ...string) {
+	starter.filterNames = filterNames
 }

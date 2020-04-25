@@ -38,6 +38,7 @@ import (
 	_ "github.com/go-spring/go-spring/starter-go-redis-mock"
 	_ "github.com/go-spring/go-spring/starter-mysql-gorm"
 	_ "github.com/go-spring/go-spring/starter-mysql-mock"
+	"github.com/go-spring/go-spring/starter-web"
 	"github.com/jinzhu/gorm"
 )
 
@@ -70,6 +71,9 @@ func init() {
 
 	// 注册过滤器
 	{
+		// 注册一个名为 "starter" 的过滤器
+		SpringBoot.RegisterNameBean("starter", NewStringFilter("starter"))
+
 		// 注册一个名为 "@router" 的过滤器 TODO Bean 名称不能含有冒号
 		SpringBoot.RegisterNameBean("@router", NewStringFilter("@router"))
 
@@ -100,6 +104,10 @@ func init() {
 			SetFilterNames("@router//echo").
 			Swagger(). // 设置接口的信息
 			WithDescription("echo")
+	})
+
+	SpringBoot.Config(func(starter *WebStarter.WebServerStarter) {
+		starter.SetFilterNames("starter")
 	})
 
 	SpringBoot.RegisterBean(new(MyRunner))
