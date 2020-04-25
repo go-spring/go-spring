@@ -110,7 +110,7 @@ func (m *Mapping) FilterNames() []string {
 
 // SetFilterNames 设置过滤器列表
 func (m *Mapping) SetFilterNames(filterNames ...string) *Mapping {
-	m.filterNames = filterNames
+	m.filterNames = append(m.filterNames, filterNames...)
 	return m
 }
 

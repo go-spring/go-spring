@@ -44,34 +44,51 @@ import (
 func init() {
 	// SpringLogger.SetLogger(&SpringLogger.Console{})
 
-	l := list.New()
+	// 测试 Config 系列函数的功能
+	{
+		l := list.New()
 
-	SpringBoot.RegisterNameBean("f2", NewNumberFilter(2, l))
-	SpringBoot.RegisterNameBean("f5", NewNumberFilter(5, l))
-	SpringBoot.RegisterNameBean("f7", NewNumberFilter(7, l))
+		SpringBoot.RegisterNameBean("f2", NewNumberFilter(2, l))
+		SpringBoot.RegisterNameBean("f5", NewNumberFilter(5, l))
+		SpringBoot.RegisterNameBean("f7", NewNumberFilter(7, l))
 
-	SpringBoot.ConfigWithName("config_f2", func(filter *NumberFilter) {
-		fmt.Println("NumberFilter:", filter.n)
-	}, "f2").ConditionOnPropertyValue("f2.enable", true)
+		SpringBoot.ConfigWithName("config_f2", func(filter *NumberFilter) {
+			fmt.Println("NumberFilter:", filter.n)
+		}, "f2").ConditionOnPropertyValue("f2.enable", true)
 
-	SpringBoot.ConfigWithName("config_f5", func(filter *NumberFilter, appName string) {
-		fmt.Println("NumberFilter:", filter.n, "appName:", appName)
-	}, "f5", "${spring.application.name}").After("config_f2")
+		SpringBoot.ConfigWithName("config_f5", func(filter *NumberFilter, appName string) {
+			fmt.Println("NumberFilter:", filter.n, "appName:", appName)
+		}, "f5", "${spring.application.name}").After("config_f2")
 
-	SpringBoot.Config(func(filter *NumberFilter) {
-		fmt.Println("NumberFilter:", filter.n)
-	}, "f7").Before("config_f2").ConditionOnPropertyValue("f7.enable", true)
+		SpringBoot.Config(func(filter *NumberFilter) {
+			fmt.Println("NumberFilter:", filter.n)
+		}, "f7").Before("config_f2").ConditionOnPropertyValue("f7.enable", true)
+	}
 
 	// 全局函数设置整个应用的信息
 	SpringWeb.Swagger().WithDescription("spring boot test")
 
+	// 注册过滤器
+	{
+		// 注册一个名为 "@router" 的过滤器 TODO Bean 名称不能含有冒号
+		SpringBoot.RegisterNameBean("@router", NewStringFilter("@router"))
+
+		// 注册一个名为 "@router//ok" 的过滤器
+		SpringBoot.RegisterNameBean("@router//ok", NewStringFilter("@router//ok"))
+
+		// 注册一个名为 "@router//echo" 的过滤器
+		SpringBoot.RegisterNameBean("@router//echo", NewStringFilter("@router//echo"))
+	}
+
 	SpringBoot.RegisterBean(new(MyController)).Init(func(c *MyController) {
 
-		r := SpringBoot.Route("/api")
+		// 使用 "@router" 名称的过滤器
+		r := SpringBoot.Route("/api").SetFilterNames("@router")
+
 		{
 			r.GET("/ok", c.OK).
 				ConditionOnProfile("test").
-				SetFilterNames("f2").
+				SetFilterNames("@router//ok").
 				Swagger(). // 设置接口的信息
 				WithDescription("ok")
 
@@ -80,7 +97,7 @@ func init() {
 		}
 
 		SpringBoot.GetMapping("/echo", SpringWeb.BIND(c.Echo)).
-			SetFilterNames("f5").
+			SetFilterNames("@router//echo").
 			Swagger(). // 设置接口的信息
 			WithDescription("echo")
 	})
@@ -137,6 +154,24 @@ func (f *NumberFilter) Invoke(ctx SpringWeb.WebContext, chain *SpringWeb.FilterC
 
 	ctx.LogInfo("::before", f.n)
 	f.l.PushBack(f.n)
+
+	chain.Next(ctx)
+}
+
+type StringFilter struct {
+	_ SpringWeb.Filter `export:""`
+
+	s string
+}
+
+func NewStringFilter(s string) *StringFilter {
+	return &StringFilter{s: s}
+}
+
+func (f *StringFilter) Invoke(ctx SpringWeb.WebContext, chain *SpringWeb.FilterChain) {
+
+	defer ctx.LogInfo("after ", f.s)
+	ctx.LogInfo("before ", f.s)
 
 	chain.Next(ctx)
 }

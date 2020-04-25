@@ -18,6 +18,7 @@ package WebStarter
 
 import (
 	"context"
+	"errors"
 
 	"github.com/go-spring/go-spring-parent/spring-utils"
 	"github.com/go-spring/go-spring-web/spring-web"
@@ -58,7 +59,9 @@ func (starter *WebServerStarter) OnStartApplication(ctx SpringBoot.ApplicationCo
 					filters := mapping.Filters()
 					for _, s := range mapping.FilterNames() {
 						var f SpringWeb.Filter
-						ctx.GetBeanByName(s, &f)
+						if ok := ctx.GetBeanByName(s, &f); !ok {
+							panic(errors.New("can't get filter " + s))
+						}
 						filters = append(filters, f)
 					}
 					mapping.SetFilters(filters...)
