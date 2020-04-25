@@ -43,7 +43,7 @@ func (m *WebMapping) Request(method uint32, path string, fn SpringWeb.Handler) *
 // Mapping 封装 Web 路由映射
 type Mapping struct {
 	mapper      *SpringWeb.Mapper       // 路由映射器
-	port        int                     // 路由的端口
+	ports       []int                   // 路由期望的端口
 	filterNames []string                // 过滤器列表
 	cond        *SpringCore.Conditional // 判断条件
 }
@@ -92,14 +92,14 @@ func (m *Mapping) SetFilters(filters ...SpringWeb.Filter) *Mapping {
 	return m
 }
 
-// Port 返回路由的端口
-func (m *Mapping) Port() int {
-	return m.port
+// Ports 返回路由期望的端口
+func (m *Mapping) Ports() []int {
+	return m.ports
 }
 
-// SetPort 设置路由的端口
-func (m *Mapping) SetPort(port int) *Mapping {
-	m.port = port
+// OnPorts 设置路由期望的端口
+func (m *Mapping) OnPorts(ports ...int) *Mapping {
+	m.ports = ports
 	return m
 }
 
@@ -201,7 +201,7 @@ type Router struct {
 	mapping     *WebMapping
 	basePath    string
 	filters     []SpringWeb.Filter
-	port        int                     // 路由的端口
+	ports       []int                   // 路由期望的端口
 	filterNames []string                // 过滤器列表
 	cond        *SpringCore.Conditional // 判断条件
 }
@@ -221,9 +221,9 @@ func (r *Router) SetFilters(filters ...SpringWeb.Filter) *Router {
 	return r
 }
 
-// SetPort 设置路由的端口
-func (r *Router) SetPort(port int) *Router {
-	r.port = port
+// OnPorts 设置路由期望的端口
+func (r *Router) OnPorts(ports ...int) *Router {
+	r.ports = ports
 	return r
 }
 
@@ -308,7 +308,7 @@ func (r *Router) ConditionOnProfile(profile string) *Router {
 // Request 注册任意 HTTP 方法处理函数
 func (r *Router) Request(method uint32, path string, fn SpringWeb.Handler) *Mapping {
 	return r.mapping.Request(method, r.basePath+path, fn).
-		SetPort(r.port).SetFilters(r.filters...).
+		OnPorts(r.ports...).SetFilters(r.filters...).
 		SetFilterNames(r.filterNames...).
 		ConditionOn(r.cond)
 }

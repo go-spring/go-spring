@@ -19,6 +19,7 @@ package WebStarter
 import (
 	"context"
 
+	"github.com/go-spring/go-spring-parent/spring-utils"
 	"github.com/go-spring/go-spring-web/spring-web"
 	"github.com/go-spring/go-spring/spring-boot"
 )
@@ -51,7 +52,8 @@ func (starter *WebServerStarter) OnStartApplication(ctx SpringBoot.ApplicationCo
 
 	for _, c := range starter.WebServer.Containers {
 		for _, mapping := range SpringBoot.DefaultWebMapping.Mappings {
-			if mapping.Port() == 0 || mapping.Port() == c.GetPort() {
+			ports := mapping.Ports()
+			if len(ports) == 0 || SpringUtils.ContainsInt(ports, c.GetPort()) >= 0 {
 				if mapping.Matches(ctx) {
 					filters := mapping.Filters()
 					for _, s := range mapping.FilterNames() {

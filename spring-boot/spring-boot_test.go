@@ -74,6 +74,9 @@ func init() {
 				SetFilterNames("f2").
 				Swagger(). // 设置接口的信息
 				WithDescription("ok")
+
+			// 该接口不会注册，因为没有匹配的端口
+			r.GET("/nil", c.OK).OnPorts(9999)
 		}
 
 		SpringBoot.GetMapping("/echo", SpringWeb.BIND(c.Echo)).
