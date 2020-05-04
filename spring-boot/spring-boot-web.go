@@ -39,7 +39,7 @@ func NewWebMapping() *WebMapping {
 }
 
 // Request 路由注册
-func (m *WebMapping) Request(method uint32, path string, fn interface{}) *Mapping {
+func (m *WebMapping) Request(method uint32, path string, fn interface{}, filters []SpringWeb.Filter) *Mapping {
 	var handler interface{}
 
 	fnType := reflect.TypeOf(fn)
@@ -74,7 +74,7 @@ func (m *WebMapping) Request(method uint32, path string, fn interface{}) *Mappin
 		}
 	}
 
-	mapping := NewMapping(method, path, handler)
+	mapping := NewMapping(method, path, handler, filters)
 	m.Mappings[mapping.Key()] = mapping
 	return mapping
 }
@@ -94,10 +94,10 @@ type Mapping struct {
 }
 
 // NewMapping Mapping 的构造函数
-func NewMapping(method uint32, path string, handler interface{}) *Mapping {
+func NewMapping(method uint32, path string, handler interface{}, filters []SpringWeb.Filter) *Mapping {
 	return &Mapping{
 		handler: handler,
-		mapper:  SpringWeb.NewMapper(method, path, nil, nil),
+		mapper:  SpringWeb.NewMapper(method, path, nil, filters),
 		cond:    SpringCore.NewConditional(),
 	}
 }
@@ -130,12 +130,6 @@ func (m *Mapping) Handler() interface{} {
 // Filters 返回 Mapper 的过滤器列表
 func (m *Mapping) Filters() []SpringWeb.Filter {
 	return m.mapper.Filters()
-}
-
-// Filters 设置 Mapper 的过滤器列表
-func (m *Mapping) SetFilters(filters ...SpringWeb.Filter) *Mapping {
-	m.mapper.SetFilters(filters)
-	return m
 }
 
 // Ports 返回路由期望的端口
@@ -352,46 +346,46 @@ func (r *Router) ConditionOnProfile(profile string) *Router {
 }
 
 // Request 注册任意 HTTP 方法处理函数
-func (r *Router) Request(method uint32, path string, fn interface{}) *Mapping {
-	return r.mapping.Request(method, r.basePath+path, fn).
-		OnPorts(r.ports...).SetFilters(r.filters...).
+func (r *Router) Request(method uint32, path string, fn interface{}, filters ...SpringWeb.Filter) *Mapping {
+	return r.mapping.Request(method, r.basePath+path, fn, filters).
 		SetFilterNames(r.filterNames...).
-		ConditionOn(r.cond)
+		ConditionOn(r.cond).
+		OnPorts(r.ports...)
 }
 
 // GET 注册 GET 方法处理函数
-func (r *Router) GET(path string, fn interface{}) *Mapping {
-	return r.Request(SpringWeb.MethodGet, path, fn)
+func (r *Router) GET(path string, fn interface{}, filters ...SpringWeb.Filter) *Mapping {
+	return r.Request(SpringWeb.MethodGet, path, fn, filters...)
 }
 
 // POST 注册 POST 方法处理函数
-func (r *Router) POST(path string, fn interface{}) *Mapping {
-	return r.Request(SpringWeb.MethodPost, path, fn)
+func (r *Router) POST(path string, fn interface{}, filters ...SpringWeb.Filter) *Mapping {
+	return r.Request(SpringWeb.MethodPost, path, fn, filters...)
 }
 
 // PATCH 注册 PATCH 方法处理函数
-func (r *Router) PATCH(path string, fn interface{}) *Mapping {
-	return r.Request(SpringWeb.MethodPatch, path, fn)
+func (r *Router) PATCH(path string, fn interface{}, filters ...SpringWeb.Filter) *Mapping {
+	return r.Request(SpringWeb.MethodPatch, path, fn, filters...)
 }
 
 // PUT 注册 PUT 方法处理函数
-func (r *Router) PUT(path string, fn interface{}) *Mapping {
-	return r.Request(SpringWeb.MethodPut, path, fn)
+func (r *Router) PUT(path string, fn interface{}, filters ...SpringWeb.Filter) *Mapping {
+	return r.Request(SpringWeb.MethodPut, path, fn, filters...)
 }
 
 // DELETE 注册 DELETE 方法处理函数
-func (r *Router) DELETE(path string, fn interface{}) *Mapping {
-	return r.Request(SpringWeb.MethodDelete, path, fn)
+func (r *Router) DELETE(path string, fn interface{}, filters ...SpringWeb.Filter) *Mapping {
+	return r.Request(SpringWeb.MethodDelete, path, fn, filters...)
 }
 
 // HEAD 注册 HEAD 方法处理函数
-func (r *Router) HEAD(path string, fn interface{}) *Mapping {
-	return r.Request(SpringWeb.MethodHead, path, fn)
+func (r *Router) HEAD(path string, fn interface{}, filters ...SpringWeb.Filter) *Mapping {
+	return r.Request(SpringWeb.MethodHead, path, fn, filters...)
 }
 
 // OPTIONS 注册 OPTIONS 方法处理函数
-func (r *Router) OPTIONS(path string, fn interface{}) *Mapping {
-	return r.Request(SpringWeb.MethodOptions, path, fn)
+func (r *Router) OPTIONS(path string, fn interface{}, filters ...SpringWeb.Filter) *Mapping {
+	return r.Request(SpringWeb.MethodOptions, path, fn, filters...)
 }
 
 ///////////////////// 以下是全局函数 /////////////////////////////
@@ -405,31 +399,31 @@ func Route(basePath string) *Router {
 }
 
 // RequestMapping
-func RequestMapping(method uint32, path string, fn interface{}) *Mapping {
-	return DefaultWebMapping.Request(method, path, fn)
+func RequestMapping(method uint32, path string, fn interface{}, filters ...SpringWeb.Filter) *Mapping {
+	return DefaultWebMapping.Request(method, path, fn, filters)
 }
 
 // GetMapping
-func GetMapping(path string, fn interface{}) *Mapping {
-	return RequestMapping(SpringWeb.MethodGet, path, fn)
+func GetMapping(path string, fn interface{}, filters ...SpringWeb.Filter) *Mapping {
+	return RequestMapping(SpringWeb.MethodGet, path, fn, filters...)
 }
 
 // PostMapping
-func PostMapping(path string, fn interface{}) *Mapping {
-	return RequestMapping(SpringWeb.MethodPost, path, fn)
+func PostMapping(path string, fn interface{}, filters ...SpringWeb.Filter) *Mapping {
+	return RequestMapping(SpringWeb.MethodPost, path, fn, filters...)
 }
 
 // PutMapping
-func PutMapping(path string, fn interface{}) *Mapping {
-	return RequestMapping(SpringWeb.MethodPut, path, fn)
+func PutMapping(path string, fn interface{}, filters ...SpringWeb.Filter) *Mapping {
+	return RequestMapping(SpringWeb.MethodPut, path, fn, filters...)
 }
 
 // PatchMapping
-func PatchMapping(path string, fn interface{}) *Mapping {
-	return RequestMapping(SpringWeb.MethodPatch, path, fn)
+func PatchMapping(path string, fn interface{}, filters ...SpringWeb.Filter) *Mapping {
+	return RequestMapping(SpringWeb.MethodPatch, path, fn, filters...)
 }
 
 // DeleteMapping
-func DeleteMapping(path string, fn interface{}) *Mapping {
-	return RequestMapping(SpringWeb.MethodDelete, path, fn)
+func DeleteMapping(path string, fn interface{}, filters ...SpringWeb.Filter) *Mapping {
+	return RequestMapping(SpringWeb.MethodDelete, path, fn, filters...)
 }

@@ -9,6 +9,7 @@ require (
 	github.com/go-spring/go-spring-parent v1.0.4-0.20200504123106-150fd9f7a358
 	github.com/go-spring/go-spring-web v1.0.4-0.20200504123852-c6d1c3c65cde
 	github.com/jinzhu/gorm v1.9.12
+	github.com/labstack/echo v3.3.10+incompatible
 	github.com/magiconair/properties v1.8.1
 	github.com/spf13/cast v1.3.1
 	github.com/spf13/viper v1.6.3

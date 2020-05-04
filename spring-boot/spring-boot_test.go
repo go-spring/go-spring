@@ -30,6 +30,7 @@ import (
 	"github.com/go-redis/redis"
 	"github.com/go-spring/go-spring-parent/spring-logger"
 	"github.com/go-spring/go-spring-parent/spring-utils"
+	"github.com/go-spring/go-spring-web/spring-echo"
 	"github.com/go-spring/go-spring-web/spring-web"
 	"github.com/go-spring/go-spring/spring-boot"
 	"github.com/go-spring/go-spring/spring-core"
@@ -40,6 +41,8 @@ import (
 	_ "github.com/go-spring/go-spring/starter-mysql-mock"
 	"github.com/go-spring/go-spring/starter-web"
 	"github.com/jinzhu/gorm"
+	"github.com/labstack/echo"
+	"github.com/labstack/echo/middleware"
 )
 
 func init() {
@@ -90,7 +93,11 @@ func init() {
 	// 接受简单函数
 	r.GET("/func", func(ctx SpringWeb.WebContext) {
 		ctx.String(http.StatusOK, "func() return ok")
-	})
+	}, SpringEcho.Filter(middleware.KeyAuth(
+		func(key string, context echo.Context) (bool, error) {
+			return key == "key_auth", nil
+		})),
+	)
 
 	// 接受类型方法
 	r.GET("/method", (*MyController).Method)
@@ -345,4 +352,24 @@ func Process() {
 			}
 		}
 	}
+
+	if req, err := http.NewRequest("GET", "http://localhost:8080/api/func", nil); err != nil {
+		panic(err)
+	} else {
+		auth := middleware.DefaultKeyAuthConfig.AuthScheme + " " + "key_auth"
+		req.Header.Set(echo.HeaderAuthorization, auth)
+		if resp, e := http.DefaultClient.Do(req); e != nil {
+			panic(e)
+		} else {
+			if body, e0 := ioutil.ReadAll(resp.Body); e0 != nil {
+				panic(e0)
+			} else {
+				SpringLogger.Infof("resp code=%d body=%s", resp.StatusCode, string(body))
+				if string(body) != "ok" {
+					panic(errors.New("error"))
+				}
+			}
+		}
+	}
+
 }

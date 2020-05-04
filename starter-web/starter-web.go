@@ -79,8 +79,6 @@ func (starter *WebServerStarter) OnStartApplication(ctx SpringBoot.ApplicationCo
 				filters = append(filters, f)
 			}
 
-			mapping.SetFilters(filters...)
-
 			var mapper *SpringWeb.Mapper
 			switch handler := mapping.Handler().(type) {
 			case SpringWeb.Handler:
