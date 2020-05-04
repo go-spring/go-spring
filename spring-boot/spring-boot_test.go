@@ -84,21 +84,28 @@ func init() {
 		SpringBoot.RegisterNameBean("@router//echo", NewStringFilter("@router//echo"))
 	}
 
+	// 使用 "@router" 名称的过滤器
+	r := SpringBoot.Route("/api").SetFilterNames("@router")
+
+	// 接受简单函数
+	r.GET("/func", func(ctx SpringWeb.WebContext) {
+		ctx.String(http.StatusOK, "func() return ok")
+	})
+
+	// 接受类型方法
+	r.GET("/method", (*MyController).Method)
+
 	SpringBoot.RegisterBean(new(MyController)).Init(func(c *MyController) {
 
-		// 使用 "@router" 名称的过滤器
-		r := SpringBoot.Route("/api").SetFilterNames("@router")
+		// 接受对象方法
+		r.GET("/ok", c.OK).
+			ConditionOnProfile("test").
+			SetFilterNames("@router//ok").
+			Swagger(). // 设置接口的信息
+			WithDescription("ok")
 
-		{
-			r.GET("/ok", c.OK).
-				ConditionOnProfile("test").
-				SetFilterNames("@router//ok").
-				Swagger(). // 设置接口的信息
-				WithDescription("ok")
-
-			// 该接口不会注册，因为没有匹配的端口
-			r.GET("/nil", c.OK).OnPorts(9999)
-		}
+		// 该接口不会注册，因为没有匹配的端口
+		r.GET("/nil", c.OK).OnPorts(9999)
 
 		SpringBoot.GetMapping("/echo", SpringWeb.BIND(c.Echo)).
 			SetFilterNames("@router//echo").
@@ -153,7 +160,7 @@ func NewNumberFilter(n int, l *list.List) *NumberFilter {
 	}
 }
 
-func (f *NumberFilter) Invoke(ctx SpringWeb.WebContext, chain *SpringWeb.FilterChain) {
+func (f *NumberFilter) Invoke(ctx SpringWeb.WebContext, chain SpringWeb.FilterChain) {
 
 	defer func() {
 		ctx.LogInfo("::after", f.n)
@@ -176,7 +183,7 @@ func NewStringFilter(s string) *StringFilter {
 	return &StringFilter{s: s}
 }
 
-func (f *StringFilter) Invoke(ctx SpringWeb.WebContext, chain *SpringWeb.FilterChain) {
+func (f *StringFilter) Invoke(ctx SpringWeb.WebContext, chain SpringWeb.FilterChain) {
 
 	defer ctx.LogInfo("after ", f.s)
 	ctx.LogInfo("before ", f.s)
@@ -200,8 +207,12 @@ type EchoResponse struct {
 	Echo string `json:"echo"`
 }
 
-func (s *MyController) Echo(request EchoRequest) *EchoResponse {
+func (c *MyController) Echo(request EchoRequest) *EchoResponse {
 	return &EchoResponse{"echo " + request.Str}
+}
+
+func (c *MyController) Method(ctx SpringWeb.WebContext) {
+	ctx.String(http.StatusOK, "method() return ok")
 }
 
 func (c *MyController) OK(ctx SpringWeb.WebContext) {
