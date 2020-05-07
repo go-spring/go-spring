@@ -80,6 +80,8 @@ github.com/go-spring/go-spring-parent v1.0.4-0.20200429034909-1d508a266563 h1:Tw
 github.com/go-spring/go-spring-parent v1.0.4-0.20200429034909-1d508a266563/go.mod h1:KzXpkn4lQbYXwwBnqeBlqloK2NP3HqsQuDSXkEJurGU=
 github.com/go-spring/go-spring-parent v1.0.4-0.20200504123106-150fd9f7a358 h1:mKEVuGYvMeOpt1ZvDyjQdj1NRYr2nSoKdsyiTABo9u8=
 github.com/go-spring/go-spring-parent v1.0.4-0.20200504123106-150fd9f7a358/go.mod h1:KzXpkn4lQbYXwwBnqeBlqloK2NP3HqsQuDSXkEJurGU=
+github.com/go-spring/go-spring-parent v1.0.4-0.20200507131159-64515b0b88fc h1:q6owd+L4aAxAsnxhYeSpwW63//oX1aOLugemOIiKHYI=
+github.com/go-spring/go-spring-parent v1.0.4-0.20200507131159-64515b0b88fc/go.mod h1:/ABXFJozlTW7YrEs2U1EmTtWCG0gufSgDQnCfkOnkWs=
 github.com/go-spring/go-spring-web v1.0.4-0.20200425071923-a4f6da1709a1 h1:OSBmZL7j1oYva7aZ7LyjRB6Ed4D+IheyfshkGTs4mWk=
 github.com/go-spring/go-spring-web v1.0.4-0.20200425071923-a4f6da1709a1/go.mod h1:aUBBOeyDwvmUHRsyk68CN2gYJgzc4VoZssl7SeGSBzE=
 github.com/go-spring/go-spring-web v1.0.4-0.20200504123852-c6d1c3c65cde h1:EXLGVZRw1wtctfkOwFIoJ6g6x8cfhW1p9pGU6m+M8c4=

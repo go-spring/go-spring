@@ -3037,14 +3037,29 @@ func TestDefaultSpringContext_AutoExport(t *testing.T) {
 	})
 }
 
+type ArrayProperties struct {
+	Int      []int           `value:"${int.array:=1,2,3}"`
+	Int8     []int8          `value:"${int8.array:=1,2,3}"`
+	Int16    []int16         `value:"${int16.array:=1,2,3}"`
+	Int32    []int32         `value:"${int32.array:=1,2,3}"`
+	Int64    []int64         `value:"${int64.array:=1,2,3}"`
+	UInt     []uint          `value:"${uint.array:=1,2,3}"`
+	UInt8    []uint8         `value:"${uint8.array:=1,2,3}"`
+	UInt16   []uint16        `value:"${uint16.array:=1,2,3}"`
+	UInt32   []uint32        `value:"${uint32.array:=1,2,3}"`
+	UInt64   []uint64        `value:"${uint64.array:=1,2,3}"`
+	String   []string        `value:"${string.array:=s1,s2,s3}"`
+	Bool     []bool          `value:"${bool.array:=0,1,false,true}"`
+	Duration []time.Duration `value:"${duration.array:=1000ms,5s}"`
+	Time     []time.Time     `value:"${time.array:=2006-01-02T15:04:05Z,01 Jan 2020,2020-01-01 00:00:00}"`
+}
+
 func TestDefaultSpringContext_Properties(t *testing.T) {
 	t.Run("array properties", func(t *testing.T) {
 		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.RegisterBeanFn(func(intArray []int, strArray []string, boolArray []bool, timeArray []time.Time) *int {
-			fmt.Println(intArray, strArray, boolArray, timeArray)
-			return new(int)
-		}, "${int.array:=1,2,3}", "${string.array:=s1,s2,s3}", "${bool.array:=0,1,false,true}",
-			"${time.array:=2006-01-02T15:04:05Z,01 Jan 2020,2020-01-01 00:00:00}")
+		bd := ctx.RegisterBean(new(ArrayProperties))
 		ctx.AutoWireBeans()
+		p := bd.Bean().(*ArrayProperties)
+		assert.Equal(t, p.Duration, []time.Duration{time.Second, 5 * time.Second})
 	})
 }

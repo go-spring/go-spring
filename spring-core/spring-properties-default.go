@@ -346,11 +346,79 @@ func bindValue(p Properties, v reflect.Value, key string, def interface{}, opt b
 			propValue = strings.Split(s, ",")
 		}
 
+		// 处理使用类型转换器的场景
+		if fn, ok := typeConverters[elemType]; ok {
+			if s0, err := cast.ToStringSliceE(propValue); err == nil {
+				sv := reflect.MakeSlice(t, len(s0), len(s0))
+				fnValue := reflect.ValueOf(fn)
+				for i, iv := range s0 {
+					res := fnValue.Call([]reflect.Value{reflect.ValueOf(iv)})
+					sv.Index(i).Set(res[0])
+				}
+				v.Set(sv)
+				return
+			} else {
+				panic(fmt.Errorf("property value %s isn't []string type", opt.fullPropName))
+			}
+		}
+
 		switch elemKind {
-		case reflect.Uint64, reflect.Uint32, reflect.Uint16, reflect.Uint8, reflect.Uint:
-			panic(errors.New("暂未支持"))
-		case reflect.Int64, reflect.Int32, reflect.Int16, reflect.Int8, reflect.Int:
-			if i, err := cast.ToIntSliceE(propValue); err == nil {
+		case reflect.Uint64:
+			if i, err := SpringUtils.ToUint64SliceE(propValue); err == nil {
+				v.Set(reflect.ValueOf(i))
+			} else {
+				panic(fmt.Errorf("property value %s isn't []uint64 type", opt.fullPropName))
+			}
+		case reflect.Uint32:
+			if i, err := SpringUtils.ToUint32SliceE(propValue); err == nil {
+				v.Set(reflect.ValueOf(i))
+			} else {
+				panic(fmt.Errorf("property value %s isn't []uint32 type", opt.fullPropName))
+			}
+		case reflect.Uint16:
+			if i, err := SpringUtils.ToUint16SliceE(propValue); err == nil {
+				v.Set(reflect.ValueOf(i))
+			} else {
+				panic(fmt.Errorf("property value %s isn't []uint16 type", opt.fullPropName))
+			}
+		case reflect.Uint8:
+			if i, err := SpringUtils.ToUint8SliceE(propValue); err == nil {
+				v.Set(reflect.ValueOf(i))
+			} else {
+				panic(fmt.Errorf("property value %s isn't []uint8 type", opt.fullPropName))
+			}
+		case reflect.Uint:
+			if i, err := SpringUtils.ToUintSliceE(propValue); err == nil {
+				v.Set(reflect.ValueOf(i))
+			} else {
+				panic(fmt.Errorf("property value %s isn't []uint type", opt.fullPropName))
+			}
+		case reflect.Int64:
+			if i, err := SpringUtils.ToInt64SliceE(propValue); err == nil {
+				v.Set(reflect.ValueOf(i))
+			} else {
+				panic(fmt.Errorf("property value %s isn't []int64 type", opt.fullPropName))
+			}
+		case reflect.Int32:
+			if i, err := SpringUtils.ToInt32SliceE(propValue); err == nil {
+				v.Set(reflect.ValueOf(i))
+			} else {
+				panic(fmt.Errorf("property value %s isn't []int32 type", opt.fullPropName))
+			}
+		case reflect.Int16:
+			if i, err := SpringUtils.ToInt16SliceE(propValue); err == nil {
+				v.Set(reflect.ValueOf(i))
+			} else {
+				panic(fmt.Errorf("property value %s isn't []int16 type", opt.fullPropName))
+			}
+		case reflect.Int8:
+			if i, err := SpringUtils.ToInt8SliceE(propValue); err == nil {
+				v.Set(reflect.ValueOf(i))
+			} else {
+				panic(fmt.Errorf("property value %s isn't []int8 type", opt.fullPropName))
+			}
+		case reflect.Int:
+			if i, err := SpringUtils.ToIntSliceE(propValue); err == nil {
 				v.Set(reflect.ValueOf(i))
 			} else {
 				panic(fmt.Errorf("property value %s isn't []int type", opt.fullPropName))
@@ -370,23 +438,7 @@ func bindValue(p Properties, v reflect.Value, key string, def interface{}, opt b
 				panic(fmt.Errorf("property value %s isn't []bool type", opt.fullPropName))
 			}
 		default:
-			// 首先处理使用类型转换器的场景
-			if fn, ok := typeConverters[elemType]; ok {
-				if s0, err := cast.ToStringSliceE(propValue); err == nil {
-					sv := reflect.MakeSlice(t, len(s0), len(s0))
-					fnValue := reflect.ValueOf(fn)
-					for i, iv := range s0 {
-						res := fnValue.Call([]reflect.Value{reflect.ValueOf(iv)})
-						sv.Index(i).Set(res[0])
-					}
-					v.Set(sv)
-					return
-				} else {
-					panic(fmt.Errorf("property value %s isn't []string type", opt.fullPropName))
-				}
-			}
-
-			// 然后处理结构体字段的场景
+			// 处理结构体字段的场景
 			if s, ok := propValue.([]interface{}); ok {
 				result := reflect.MakeSlice(t, len(s), len(s))
 				for i, si := range s {
