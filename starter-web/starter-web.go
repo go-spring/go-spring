@@ -53,12 +53,13 @@ type WebServerStarter struct {
 
 func (starter *WebServerStarter) OnStartApplication(ctx SpringBoot.ApplicationContext) {
 
-	for _, c := range starter.WebServer.Containers {
+	for _, c := range starter.WebServer.Containers() {
 		for _, mapping := range SpringBoot.DefaultWebMapping.Mappings {
 			ports := mapping.Ports()
+			cfg := c.Config()
 
 			// 路由的端口不匹配
-			if len(ports) > 0 && SpringUtils.ContainsInt(ports, c.GetPort()) < 0 {
+			if len(ports) > 0 && SpringUtils.ContainsInt(ports, cfg.Port) < 0 {
 				continue
 			}
 

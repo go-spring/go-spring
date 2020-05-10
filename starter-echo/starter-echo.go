@@ -32,17 +32,22 @@ func NewEchoWebServer(config WebStarter.WebServerConfig) *SpringWeb.WebServer {
 	webServer := SpringWeb.NewWebServer()
 
 	if config.EnableHTTP {
-		e := SpringEcho.NewContainer()
-		e.SetPort(config.Port)
-		webServer.AddWebContainer(e)
+		cfg := SpringWeb.ContainerConfig{
+			Port: config.Port,
+		}
+		e := SpringEcho.NewContainer(cfg)
+		webServer.AddContainer(e)
 	}
 
 	if config.EnableHTTPS {
-		e := SpringEcho.NewContainer()
-		e.SetPort(config.SSLPort)
-		e.SetKeyFile(config.SSLKey)
-		e.SetCertFile(config.SSLCert)
-		webServer.AddWebContainer(e)
+		cfg := SpringWeb.ContainerConfig{
+			EnableSSL: true,
+			Port:      config.SSLPort,
+			KeyFile:   config.SSLKey,
+			CertFile:  config.SSLCert,
+		}
+		e := SpringEcho.NewContainer(cfg)
+		webServer.AddContainer(e)
 	}
 
 	return webServer

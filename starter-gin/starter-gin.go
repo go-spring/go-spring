@@ -32,17 +32,22 @@ func NewGinWebServer(config WebStarter.WebServerConfig) *SpringWeb.WebServer {
 	webServer := SpringWeb.NewWebServer()
 
 	if config.EnableHTTP {
-		e := SpringGin.NewContainer()
-		e.SetPort(config.Port)
-		webServer.AddWebContainer(e)
+		cfg := SpringWeb.ContainerConfig{
+			Port: config.Port,
+		}
+		e := SpringGin.NewContainer(cfg)
+		webServer.AddContainer(e)
 	}
 
 	if config.EnableHTTPS {
-		e := SpringGin.NewContainer()
-		e.SetPort(config.SSLPort)
-		e.SetKeyFile(config.SSLKey)
-		e.SetCertFile(config.SSLCert)
-		webServer.AddWebContainer(e)
+		cfg := SpringWeb.ContainerConfig{
+			EnableSSL: true,
+			Port:      config.SSLPort,
+			KeyFile:   config.SSLKey,
+			CertFile:  config.SSLCert,
+		}
+		e := SpringGin.NewContainer(cfg)
+		webServer.AddContainer(e)
 	}
 
 	return webServer
