@@ -84,7 +84,7 @@ func (starter *WebServerStarter) OnStartApplication(ctx SpringBoot.ApplicationCo
 			switch handler := mapping.Handler().(type) {
 			case SpringWeb.Handler:
 				mapper = SpringWeb.NewMapper(mapping.Method(), mapping.Path(), handler, filters)
-			case *SpringBoot.WebHandlerSelector:
+			case *SpringBoot.MethodHandler:
 				receiver := reflect.New(handler.Receiver)
 				if !ctx.GetBean(receiver.Interface()) {
 					panic(errors.New("can't find bean " + handler.Receiver.String()))

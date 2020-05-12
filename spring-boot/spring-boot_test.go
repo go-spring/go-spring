@@ -88,10 +88,10 @@ func init() {
 	}
 
 	// 使用 "@router" 名称的过滤器
-	r := SpringBoot.Route("/api").SetFilterNames("@router")
+	r := SpringBoot.Route("/api").WithFilters("@router")
 
 	// 接受简单函数
-	r.GET("/func", func(ctx SpringWeb.WebContext) {
+	r.GetMapping("/func", func(ctx SpringWeb.WebContext) {
 		ctx.String(http.StatusOK, "func() return ok")
 	}, SpringEcho.Filter(middleware.KeyAuth(
 		func(key string, context echo.Context) (bool, error) {
@@ -105,17 +105,17 @@ func init() {
 	SpringBoot.RegisterBean(new(MyController)).Init(func(c *MyController) {
 
 		// 接受对象方法
-		r.GET("/ok", c.OK).
+		r.GetMapping("/ok", c.OK).
 			ConditionOnProfile("test").
-			SetFilterNames("@router//ok").
+			WithFilters("@router//ok").
 			Swagger(). // 设置接口的信息
 			WithDescription("ok")
 
 		// 该接口不会注册，因为没有匹配的端口
-		r.GET("/nil", c.OK).OnPorts(9999)
+		r.GetMapping("/nil", c.OK).OnPorts(9999)
 
-		SpringBoot.GetMapping("/echo", SpringWeb.BIND(c.Echo)).
-			SetFilterNames("@router//echo").
+		SpringBoot.GetBinding("/echo", c.Echo).
+			WithFilters("@router//echo").
 			Swagger(). // 设置接口的信息
 			WithDescription("echo")
 	})
