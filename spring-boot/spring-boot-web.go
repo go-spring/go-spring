@@ -86,11 +86,10 @@ func (m *WebMapping) Request(method uint32, path string, fn interface{}, filters
 
 // Mapping 封装 Web 路由映射
 type Mapping struct {
-	handler     interface{}
-	mapper      *SpringWeb.Mapper       // 路由映射器
-	ports       []int                   // 路由期望的端口
-	filterNames []string                // 过滤器列表
-	cond        *SpringCore.Conditional // 判断条件
+	handler interface{}
+	mapper  *SpringWeb.Mapper       // 路由映射器
+	ports   []int                   // 路由端口
+	cond    *SpringCore.Conditional // 判断条件
 }
 
 // newMapping Mapping 的构造函数
@@ -141,17 +140,6 @@ func (m *Mapping) OnPorts(ports ...int) *Mapping {
 // Filters 返回 Mapper 的过滤器列表
 func (m *Mapping) Filters() []SpringWeb.Filter {
 	return m.mapper.Filters()
-}
-
-// FilterNames 返回过滤器列表
-func (m *Mapping) FilterNames() []string {
-	return m.filterNames
-}
-
-// WithFilters 添加过滤器列表
-func (m *Mapping) WithFilters(filterNames ...string) *Mapping {
-	m.filterNames = filterNames
-	return m
 }
 
 // Or c=a||b
@@ -238,12 +226,11 @@ func (m *Mapping) Swagger() *SpringWeb.Operation {
 
 // Router 路由分组
 type Router struct {
-	mapping     *WebMapping
-	basePath    string
-	filters     []SpringWeb.Filter
-	ports       []int                   // 路由期望的端口
-	filterNames []string                // 过滤器列表
-	cond        *SpringCore.Conditional // 判断条件
+	mapping  *WebMapping
+	basePath string
+	filters  []SpringWeb.Filter
+	ports    []int                   // 路由端口
+	cond     *SpringCore.Conditional // 判断条件
 }
 
 // newRouter Router 的构造函数
@@ -259,12 +246,6 @@ func newRouter(mapping *WebMapping, basePath string, filters []SpringWeb.Filter)
 // OnPorts 设置路由期望的端口
 func (r *Router) OnPorts(ports ...int) *Router {
 	r.ports = ports
-	return r
-}
-
-// WithFilters 添加过滤器列表
-func (r *Router) WithFilters(filterNames ...string) *Router {
-	r.filterNames = filterNames
 	return r
 }
 
@@ -342,8 +323,8 @@ func (r *Router) ConditionOnProfile(profile string) *Router {
 
 // Request 注册任意 HTTP 方法处理函数
 func (r *Router) Request(method uint32, path string, fn interface{}, filters ...SpringWeb.Filter) *Mapping {
+	filters = append(r.filters, filters...) // 组合 Router 和 Mapper 的过滤器列表
 	return r.mapping.Request(method, r.basePath+path, fn, filters).
-		WithFilters(r.filterNames...).
 		ConditionOn(r.cond).
 		OnPorts(r.ports...)
 }
@@ -491,4 +472,118 @@ func HEAD(path string, fn interface{}, filters ...SpringWeb.Filter) *Mapping {
 // OPTIONS 注册 OPTIONS 方法处理函数
 func OPTIONS(path string, fn interface{}, filters ...SpringWeb.Filter) *Mapping {
 	return Request(SpringWeb.MethodOptions, path, fn, filters...)
+}
+
+///////////////////// Web Filter //////////////////////
+
+// WebFilter 封装一个 SpringWeb.Filter 对象或者一个 Bean 选择器
+type WebFilter struct {
+	filter SpringWeb.Filter        // Filter 对象
+	bean   string                  // Bean 选择器
+	cond   *SpringCore.Conditional // 判断条件
+}
+
+// Filter 封装一个 SpringWeb.Filter 对象
+func Filter(filter SpringWeb.Filter) *WebFilter {
+	return &WebFilter{
+		filter: filter,
+		cond:   SpringCore.NewConditional(),
+	}
+}
+
+// FilterBean 封装一个 Bean 选择器
+func FilterBean(selector string) *WebFilter {
+	return &WebFilter{
+		bean: selector,
+		cond: SpringCore.NewConditional(),
+	}
+}
+
+func (f *WebFilter) Filter() SpringWeb.Filter {
+	return f.filter
+}
+
+func (f *WebFilter) FilterBean() string {
+	return f.bean
+}
+
+func (f *WebFilter) Invoke(ctx SpringWeb.WebContext, chain SpringWeb.FilterChain) {
+	panic(errors.New("shouldn't call this method"))
+}
+
+// Or c=a||b
+func (f *WebFilter) Or() *WebFilter {
+	f.cond.Or()
+	return f
+}
+
+// And c=a&&b
+func (f *WebFilter) And() *WebFilter {
+	f.cond.And()
+	return f
+}
+
+// ConditionOn 设置一个 Condition
+func (f *WebFilter) ConditionOn(cond SpringCore.Condition) *WebFilter {
+	f.cond.OnCondition(cond)
+	return f
+}
+
+// ConditionNot 设置一个取反的 Condition
+func (f *WebFilter) ConditionNot(cond SpringCore.Condition) *WebFilter {
+	f.cond.OnConditionNot(cond)
+	return f
+}
+
+// ConditionOnProperty 设置一个 PropertyCondition
+func (f *WebFilter) ConditionOnProperty(name string) *WebFilter {
+	f.cond.OnProperty(name)
+	return f
+}
+
+// ConditionOnMissingProperty 设置一个 MissingPropertyCondition
+func (f *WebFilter) ConditionOnMissingProperty(name string) *WebFilter {
+	f.cond.OnMissingProperty(name)
+	return f
+}
+
+// ConditionOnPropertyValue 设置一个 PropertyValueCondition
+func (f *WebFilter) ConditionOnPropertyValue(name string, havingValue interface{}) *WebFilter {
+	f.cond.OnPropertyValue(name, havingValue)
+	return f
+}
+
+// ConditionOnBean 设置一个 BeanCondition
+func (f *WebFilter) ConditionOnBean(selector interface{}) *WebFilter {
+	f.cond.OnBean(selector)
+	return f
+}
+
+// ConditionOnMissingBean 设置一个 MissingBeanCondition
+func (f *WebFilter) ConditionOnMissingBean(selector interface{}) *WebFilter {
+	f.cond.OnMissingBean(selector)
+	return f
+}
+
+// ConditionOnExpression 设置一个 ExpressionCondition
+func (f *WebFilter) ConditionOnExpression(expression string) *WebFilter {
+	f.cond.OnExpression(expression)
+	return f
+}
+
+// ConditionOnMatches 设置一个 FunctionCondition
+func (f *WebFilter) ConditionOnMatches(fn SpringCore.ConditionFunc) *WebFilter {
+	f.cond.OnMatches(fn)
+	return f
+}
+
+// ConditionOnProfile 设置一个 ProfileCondition
+func (f *WebFilter) ConditionOnProfile(profile string) *WebFilter {
+	f.cond.OnProfile(profile)
+	return f
+}
+
+// Matches 成功返回 true，失败返回 false
+func (f *WebFilter) Matches(ctx SpringCore.SpringContext) bool {
+	return f.cond.Matches(ctx)
 }

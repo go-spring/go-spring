@@ -47,8 +47,7 @@ type WebServerConfig struct {
 type WebServerStarter struct {
 	_ SpringBoot.ApplicationEvent `export:""`
 
-	WebServer   *SpringWeb.WebServer `autowire:""`
-	filterNames []string             // 过滤器列表
+	WebServer *SpringWeb.WebServer `autowire:""`
 }
 
 func (starter *WebServerStarter) OnStartApplication(ctx SpringBoot.ApplicationContext) {
@@ -68,16 +67,26 @@ func (starter *WebServerStarter) OnStartApplication(ctx SpringBoot.ApplicationCo
 				continue
 			}
 
-			filters := mapping.Filters()
+			var filters []SpringWeb.Filter
 
-			// 组合 Starter 和 Router、Mapper 的过滤器列表
-			filterNames := append(starter.filterNames, mapping.FilterNames()...)
-			for _, s := range filterNames {
-				var f SpringWeb.Filter
-				if ok := ctx.GetBeanByName(s, &f); !ok {
-					panic(errors.New("can't get filter " + s))
+			for _, filter := range mapping.Filters() {
+				switch wf := filter.(type) {
+				case *SpringBoot.WebFilter:
+					if wf.Matches(ctx) { // 满足匹配条件
+						if f := wf.Filter(); f != nil {
+							filters = append(filters, f)
+						}
+						if b := wf.FilterBean(); b != "" {
+							var bf SpringWeb.Filter
+							if ok := ctx.GetBeanByName(b, &bf); !ok {
+								panic(errors.New("can't get filter " + b))
+							}
+							filters = append(filters, bf)
+						}
+					}
+				default:
+					filters = append(filters, filter)
 				}
-				filters = append(filters, f)
 			}
 
 			var mapper *SpringWeb.Mapper
@@ -102,9 +111,4 @@ func (starter *WebServerStarter) OnStartApplication(ctx SpringBoot.ApplicationCo
 
 func (starter *WebServerStarter) OnStopApplication(ctx SpringBoot.ApplicationContext) {
 	starter.WebServer.Stop(context.Background())
-}
-
-// SetFilterNames 设置过滤器列表
-func (starter *WebServerStarter) SetFilterNames(filterNames ...string) {
-	starter.filterNames = filterNames
 }

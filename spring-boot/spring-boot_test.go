@@ -39,7 +39,6 @@ import (
 	_ "github.com/go-spring/go-spring/starter-go-redis-mock"
 	_ "github.com/go-spring/go-spring/starter-mysql-gorm"
 	_ "github.com/go-spring/go-spring/starter-mysql-mock"
-	"github.com/go-spring/go-spring/starter-web"
 	"github.com/jinzhu/gorm"
 	"github.com/labstack/echo"
 	"github.com/labstack/echo/middleware"
@@ -87,41 +86,42 @@ func init() {
 		SpringBoot.RegisterNameBean("@router//echo", NewStringFilter("@router//echo"))
 	}
 
-	// 使用 "@router" 名称的过滤器
-	r := SpringBoot.Route("/api").WithFilters("@router")
+	// 使用 "@router" 名称的过滤器，需要使用 SpringBoot.FilterBean 封装
+	r := SpringBoot.Route("/api", SpringBoot.FilterBean("@router"))
 
-	// 接受简单函数
+	// 接受简单函数，可以使用 SpringBoot.Filter 封装
 	r.GetMapping("/func", func(ctx SpringWeb.WebContext) {
 		ctx.String(http.StatusOK, "func() return ok")
-	}, SpringEcho.Filter(middleware.KeyAuth(
+	}, SpringBoot.Filter(SpringEcho.Filter(middleware.KeyAuth(
 		func(key string, context echo.Context) (bool, error) {
 			return key == "key_auth", nil
-		})),
+		}))).ConditionOnPropertyValue("key_auth", true),
 	)
 
-	// 接受类型方法
-	r.GET("/method", (*MyController).Method)
+	// 接受类型方法，也可以不使用 SpringBoot.Filter 封装
+	r.GET("/method", (*MyController).Method, SpringEcho.Filter(
+		func(next echo.HandlerFunc) echo.HandlerFunc {
+			return func(echoCtx echo.Context) error {
+				webCtx := SpringEcho.WebContext(echoCtx)
+				webCtx.LogInfo("call method")
+				return nil
+			}
+		}))
 
 	SpringBoot.RegisterBean(new(MyController)).Init(func(c *MyController) {
 
 		// 接受对象方法
-		r.GetMapping("/ok", c.OK).
+		r.GetMapping("/ok", c.OK, SpringBoot.FilterBean("@router//ok")).
 			ConditionOnProfile("test").
-			WithFilters("@router//ok").
 			Swagger(). // 设置接口的信息
 			WithDescription("ok")
 
 		// 该接口不会注册，因为没有匹配的端口
 		r.GetMapping("/nil", c.OK).OnPorts(9999)
 
-		SpringBoot.GetBinding("/echo", c.Echo).
-			WithFilters("@router//echo").
+		SpringBoot.GetBinding("/echo", c.Echo, SpringBoot.FilterBean("@router//echo")).
 			Swagger(). // 设置接口的信息
 			WithDescription("echo")
-	})
-
-	SpringBoot.Config(func(starter *WebStarter.WebServerStarter) {
-		starter.SetFilterNames("starter")
 	})
 
 	SpringBoot.RegisterBean(new(MyRunner))
@@ -146,6 +146,9 @@ func TestRunApplication(t *testing.T) {
 
 	// 过滤系统环境变量
 	SpringBoot.ExpectSysProperties("GOPATH")
+
+	// 设置过滤器是否启用
+	SpringBoot.SetProperty("key_auth", false)
 
 	SpringBoot.SetProperty("db.url", "root:root@/information_schema?charset=utf8&parseTime=True&loc=Local")
 	SpringBoot.RunApplication("testdata/config/", "k8s:testdata/config/config-map.yaml")

@@ -360,8 +360,13 @@ func (c *Conditional) OnConditionNot(cond Condition) *Conditional {
 	return c.OnCondition(NewNotCondition(cond))
 }
 
-// OnProperty 返回设置了 propertyCondition 的 Conditional 对象
+// Deprecated: Use "ConditionOnProperty" instead.
 func OnProperty(name string) *Conditional {
+	return NewConditional().OnCondition(NewPropertyCondition(name))
+}
+
+// ConditionOnProperty 返回设置了 propertyCondition 的 Conditional 对象
+func ConditionOnProperty(name string) *Conditional {
 	return NewConditional().OnCondition(NewPropertyCondition(name))
 }
 
@@ -370,8 +375,13 @@ func (c *Conditional) OnProperty(name string) *Conditional {
 	return c.OnCondition(NewPropertyCondition(name))
 }
 
-// OnMissingProperty 返回设置了 missingPropertyCondition 的 Conditional 对象
+// Deprecated: Use "ConditionOnMissingProperty" instead.
 func OnMissingProperty(name string) *Conditional {
+	return NewConditional().OnCondition(NewMissingPropertyCondition(name))
+}
+
+// ConditionOnMissingProperty 返回设置了 missingPropertyCondition 的 Conditional 对象
+func ConditionOnMissingProperty(name string) *Conditional {
 	return NewConditional().OnCondition(NewMissingPropertyCondition(name))
 }
 
@@ -380,8 +390,13 @@ func (c *Conditional) OnMissingProperty(name string) *Conditional {
 	return c.OnCondition(NewMissingPropertyCondition(name))
 }
 
-// OnPropertyValue 返回设置了 propertyValueCondition 的 Conditional 对象
+// Deprecated: Use "ConditionOnPropertyValue" instead.
 func OnPropertyValue(name string, havingValue interface{}) *Conditional {
+	return NewConditional().OnCondition(NewPropertyValueCondition(name, havingValue))
+}
+
+// ConditionOnPropertyValue 返回设置了 propertyValueCondition 的 Conditional 对象
+func ConditionOnPropertyValue(name string, havingValue interface{}) *Conditional {
 	return NewConditional().OnCondition(NewPropertyValueCondition(name, havingValue))
 }
 
@@ -390,8 +405,13 @@ func (c *Conditional) OnPropertyValue(name string, havingValue interface{}) *Con
 	return c.OnCondition(NewPropertyValueCondition(name, havingValue))
 }
 
-// OnBean 返回设置了 beanCondition 的 Conditional 对象
+// Deprecated: Use "ConditionOnBean" instead.
 func OnBean(selector interface{}) *Conditional {
+	return NewConditional().OnCondition(NewBeanCondition(selector))
+}
+
+// ConditionOnBean 返回设置了 beanCondition 的 Conditional 对象
+func ConditionOnBean(selector interface{}) *Conditional {
 	return NewConditional().OnCondition(NewBeanCondition(selector))
 }
 
@@ -400,8 +420,13 @@ func (c *Conditional) OnBean(selector interface{}) *Conditional {
 	return c.OnCondition(NewBeanCondition(selector))
 }
 
-// OnMissingBean 返回设置了 missingBeanCondition 的 Conditional 对象
+// Deprecated: Use "ConditionOnMissingBean" instead.
 func OnMissingBean(selector interface{}) *Conditional {
+	return NewConditional().OnCondition(NewMissingBeanCondition(selector))
+}
+
+// ConditionOnMissingBean 返回设置了 missingBeanCondition 的 Conditional 对象
+func ConditionOnMissingBean(selector interface{}) *Conditional {
 	return NewConditional().OnCondition(NewMissingBeanCondition(selector))
 }
 
@@ -410,8 +435,13 @@ func (c *Conditional) OnMissingBean(selector interface{}) *Conditional {
 	return c.OnCondition(NewMissingBeanCondition(selector))
 }
 
-// OnExpression 返回设置了 expressionCondition 的 Conditional 对象
+// Deprecated: Use "ConditionOnExpression" instead.
 func OnExpression(expression string) *Conditional {
+	return NewConditional().OnCondition(NewExpressionCondition(expression))
+}
+
+// ConditionOnExpression 返回设置了 expressionCondition 的 Conditional 对象
+func ConditionOnExpression(expression string) *Conditional {
 	return NewConditional().OnCondition(NewExpressionCondition(expression))
 }
 
@@ -420,8 +450,13 @@ func (c *Conditional) OnExpression(expression string) *Conditional {
 	return c.OnCondition(NewExpressionCondition(expression))
 }
 
-// OnMatches 返回设置了 functionCondition 的 Conditional 对象
+// Deprecated: Use "ConditionOnMatches" instead.
 func OnMatches(fn ConditionFunc) *Conditional {
+	return NewConditional().OnCondition(NewFunctionCondition(fn))
+}
+
+// ConditionOnMatches 返回设置了 functionCondition 的 Conditional 对象
+func ConditionOnMatches(fn ConditionFunc) *Conditional {
 	return NewConditional().OnCondition(NewFunctionCondition(fn))
 }
 
@@ -430,8 +465,13 @@ func (c *Conditional) OnMatches(fn ConditionFunc) *Conditional {
 	return c.OnCondition(NewFunctionCondition(fn))
 }
 
-// OnProfile 返回设置了 profileCondition 的 Conditional 对象
+// Deprecated: Use "ConditionOnProfile" instead.
 func OnProfile(profile string) *Conditional {
+	return NewConditional().OnCondition(NewProfileCondition(profile))
+}
+
+// ConditionOnProfile 返回设置了 profileCondition 的 Conditional 对象
+func ConditionOnProfile(profile string) *Conditional {
 	return NewConditional().OnCondition(NewProfileCondition(profile))
 }
 
