@@ -813,47 +813,38 @@ func (ctx *defaultSpringContext) GetBeanByName(beanId string, i interface{}, wat
 func (ctx *defaultSpringContext) FindBean(selector interface{}) (*BeanDefinition, bool) {
 	ctx.checkAutoWired()
 
-	finder := func(fn func(*BeanDefinition) bool) (result []*BeanDefinition) {
-		for _, bean := range ctx.beanMap {
-			if fn(bean) {
-
-				// 如果 Bean 正在解析则跳过
-				if bean.status == beanStatus_Resolving {
-					continue
-				}
-
-				// 避免 Bean 还未解析
-				ctx.resolveBean(bean)
-
-				if bean.status != beanStatus_Deleted {
-					result = append(result, bean)
-				}
+	var beanId string
+	switch s := selector.(type) {
+	case string:
+		beanId = s
+	default:
+		t := reflect.TypeOf(s) // map、slice 等不是指针类型
+		if t.Kind() == reflect.Ptr {
+			e := t.Elem()
+			if e.Kind() == reflect.Interface {
+				t = e // 接口类型去掉指针
 			}
 		}
-		return
+		beanId = TypeName(t) + ":"
 	}
 
-	var result []*BeanDefinition
+	typeName, beanName, _ := ParseBeanId(beanId)
 
-	switch o := selector.(type) {
-	case string:
-		typeName, beanName, _ := ParseBeanId(o)
-		result = finder(func(b *BeanDefinition) bool {
-			return b.Match(typeName, beanName)
-		})
-	default:
-		{
-			t := reflect.TypeOf(o) // map、slice 等不是指针类型
-			if t.Kind() == reflect.Ptr {
-				e := t.Elem()
-				if e.Kind() == reflect.Interface {
-					t = e // 接口类型去掉指针
-				}
+	result := make([]*BeanDefinition, 0)
+	for _, bean := range ctx.beanMap {
+		if bean.Match(typeName, beanName) {
+
+			// 如果 Bean 正在解析则跳过
+			if bean.status == beanStatus_Resolving {
+				continue
 			}
 
-			result = finder(func(b *BeanDefinition) bool {
-				return b.Type().AssignableTo(t)
-			})
+			// 避免 Bean 还未解析
+			ctx.resolveBean(bean)
+
+			if bean.status != beanStatus_Deleted {
+				result = append(result, bean)
+			}
 		}
 	}
 

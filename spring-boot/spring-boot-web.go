@@ -479,7 +479,7 @@ func OPTIONS(path string, fn interface{}, filters ...SpringWeb.Filter) *Mapping 
 // WebFilter 封装一个 SpringWeb.Filter 对象或者一个 Bean 选择器
 type WebFilter struct {
 	filter SpringWeb.Filter        // Filter 对象
-	bean   string                  // Bean 选择器
+	beanId string                  // Bean 选择器
 	cond   *SpringCore.Conditional // 判断条件
 }
 
@@ -492,10 +492,27 @@ func Filter(filter SpringWeb.Filter) *WebFilter {
 }
 
 // FilterBean 封装一个 Bean 选择器
-func FilterBean(selector string) *WebFilter {
+func FilterBean(selector interface{}) *WebFilter {
+
+	// TODO 重复代码
+	var beanId string
+	switch s := selector.(type) {
+	case string:
+		beanId = s
+	default:
+		t := reflect.TypeOf(s) // map、slice 等不是指针类型
+		if t.Kind() == reflect.Ptr {
+			e := t.Elem()
+			if e.Kind() == reflect.Interface {
+				t = e // 接口类型去掉指针
+			}
+		}
+		beanId = SpringCore.TypeName(t) + ":"
+	}
+
 	return &WebFilter{
-		bean: selector,
-		cond: SpringCore.NewConditional(),
+		beanId: beanId,
+		cond:   SpringCore.NewConditional(),
 	}
 }
 
@@ -504,7 +521,7 @@ func (f *WebFilter) Filter() SpringWeb.Filter {
 }
 
 func (f *WebFilter) FilterBean() string {
-	return f.bean
+	return f.beanId
 }
 
 func (f *WebFilter) Invoke(ctx SpringWeb.WebContext, chain SpringWeb.FilterChain) {

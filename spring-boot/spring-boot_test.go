@@ -73,6 +73,8 @@ func init() {
 
 	// 注册过滤器
 	{
+		SpringBoot.RegisterBean(new(SingleBeanFilter))
+
 		// 注册一个名为 "starter" 的过滤器
 		SpringBoot.RegisterNameBean("starter", NewStringFilter("starter"))
 
@@ -87,7 +89,8 @@ func init() {
 	}
 
 	// 使用 "@router" 名称的过滤器，需要使用 SpringBoot.FilterBean 封装
-	r := SpringBoot.Route("/api", SpringBoot.FilterBean("@router"))
+	r := SpringBoot.Route("/api", SpringBoot.FilterBean("@router"),
+		SpringBoot.FilterBean((*SingleBeanFilter)(nil)))
 
 	// 接受简单函数，可以使用 SpringBoot.Filter 封装
 	r.GetMapping("/func", func(ctx SpringWeb.WebContext) {
@@ -155,6 +158,15 @@ func TestRunApplication(t *testing.T) {
 }
 
 ///////////////////// filter ////////////////////////
+
+type SingleBeanFilter struct {
+	_ SpringWeb.Filter `export:""`
+}
+
+func (f *SingleBeanFilter) Invoke(ctx SpringWeb.WebContext, chain SpringWeb.FilterChain) {
+	ctx.LogInfo("::SingleBeanFilter")
+	chain.Next(ctx)
+}
 
 type NumberFilter struct {
 	_ SpringWeb.Filter `export:""`
