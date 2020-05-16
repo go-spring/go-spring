@@ -109,6 +109,37 @@ func TypeName(i interface{}) string {
 	}
 }
 
+// BeanId 返回一个字符串表示或者类型表示的 BeanId
+func BeanId(i interface{}) string {
+	switch s := i.(type) {
+	case string:
+		return s
+	default:
+		return TypeName(s) + ":"
+	}
+}
+
+// ParseBeanId 解析 BeanId 的内容，"TypeName:BeanName?" 或者 "[]?"
+func ParseBeanId(beanId string) (typeName string, beanName string, nullable bool) {
+
+	if ss := strings.Split(beanId, ":"); len(ss) > 1 {
+		typeName = ss[0]
+		beanName = ss[1]
+	} else {
+		beanName = ss[0]
+	}
+
+	if strings.HasSuffix(beanName, "?") {
+		beanName = beanName[:len(beanName)-1]
+		nullable = true
+	}
+
+	if beanName == "[]" && typeName != "" {
+		panic(errors.New("collection mode shouldn't have type"))
+	}
+	return
+}
+
 // errorType error 的类型
 var errorType = reflect.TypeOf((*error)(nil)).Elem()
 
@@ -785,27 +816,6 @@ func MethodToBeanDefinition(name string, selector interface{}, method string, ta
 
 	bean := newFakeMethodBean(selector, method, tags...)
 	return newBeanDefinition(name, bean)
-}
-
-// ParseBeanId 解析 BeanId 的内容，"TypeName:BeanName?" 或者 "[]?"
-func ParseBeanId(beanId string) (typeName string, beanName string, nullable bool) {
-
-	if ss := strings.Split(beanId, ":"); len(ss) > 1 {
-		typeName = ss[0]
-		beanName = ss[1]
-	} else {
-		beanName = ss[0]
-	}
-
-	if strings.HasSuffix(beanName, "?") {
-		beanName = beanName[:len(beanName)-1]
-		nullable = true
-	}
-
-	if beanName == "[]" && typeName != "" {
-		panic(errors.New("collection mode shouldn't have type"))
-	}
-	return
 }
 
 // ValidBeanValue 返回是否是合法的 Bean 值

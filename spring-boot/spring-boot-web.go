@@ -493,18 +493,8 @@ func Filter(filter SpringWeb.Filter) *WebFilter {
 
 // FilterBean 封装一个 Bean 选择器
 func FilterBean(selector interface{}) *WebFilter {
-
-	// TODO 重复代码
-	var beanId string
-	switch s := selector.(type) {
-	case string:
-		beanId = s
-	default:
-		beanId = SpringCore.TypeName(s) + ":"
-	}
-
 	return &WebFilter{
-		beanId: beanId,
+		beanId: SpringCore.BeanId(selector),
 		cond:   SpringCore.NewConditional(),
 	}
 }

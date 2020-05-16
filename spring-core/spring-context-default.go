@@ -774,15 +774,7 @@ func (ctx *defaultSpringContext) GetBeanByName(beanId string, i interface{}, wat
 func (ctx *defaultSpringContext) FindBean(selector interface{}) (*BeanDefinition, bool) {
 	ctx.checkAutoWired()
 
-	var beanId string
-	switch s := selector.(type) {
-	case string:
-		beanId = s
-	default:
-		beanId = TypeName(s) + ":"
-	}
-
-	typeName, beanName, _ := ParseBeanId(beanId)
+	typeName, beanName, _ := ParseBeanId(BeanId(selector))
 
 	result := make([]*BeanDefinition, 0)
 	for _, bean := range ctx.beanMap {
