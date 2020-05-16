@@ -500,14 +500,7 @@ func FilterBean(selector interface{}) *WebFilter {
 	case string:
 		beanId = s
 	default:
-		t := reflect.TypeOf(s) // map、slice 等不是指针类型
-		if t.Kind() == reflect.Ptr {
-			e := t.Elem()
-			if e.Kind() == reflect.Interface {
-				t = e // 接口类型去掉指针
-			}
-		}
-		beanId = SpringCore.TypeName(t) + ":"
+		beanId = SpringCore.TypeName(s) + ":"
 	}
 
 	return &WebFilter{

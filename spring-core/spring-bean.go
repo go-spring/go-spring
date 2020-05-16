@@ -73,10 +73,24 @@ func IsValueType(k reflect.Kind) bool {
 
 // TypeName 返回原始类型的全限定名，golang 允许不同的路径下存在相同的包，故此有全限定名的需求。
 // 形如 "github.com/go-spring/go-spring/spring-core/SpringCore.DefaultSpringContext"
-func TypeName(t reflect.Type) string {
+func TypeName(i interface{}) string {
 
-	if t == nil {
-		panic(errors.New("type shouldn't be nil"))
+	if i == nil {
+		panic(errors.New("shouldn't be nil"))
+	}
+
+	var t reflect.Type
+
+	switch it := i.(type) {
+	case reflect.Type:
+		t = it
+	default:
+		// map、slice 等不是指针类型
+		if t = reflect.TypeOf(it); t.Kind() == reflect.Ptr {
+			if e := t.Elem(); e.Kind() == reflect.Interface {
+				t = e // 接口类型去掉指针
+			}
+		}
 	}
 
 	// Map 的全限定名太复杂，不予处理，而且 Map 作为注入对象要三思而后行！

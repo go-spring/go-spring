@@ -293,7 +293,7 @@ func TestTypeName(t *testing.T) {
 	t.Run("nil", func(t *testing.T) {
 		assert.Panic(t, func() {
 			SpringCore.TypeName(reflect.TypeOf(nil))
-		}, "type shouldn't be nil")
+		}, "shouldn't be nil")
 	})
 
 	t.Run("type", func(t *testing.T) {

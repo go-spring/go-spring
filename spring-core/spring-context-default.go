@@ -779,14 +779,7 @@ func (ctx *defaultSpringContext) FindBean(selector interface{}) (*BeanDefinition
 	case string:
 		beanId = s
 	default:
-		t := reflect.TypeOf(s) // map、slice 等不是指针类型
-		if t.Kind() == reflect.Ptr {
-			e := t.Elem()
-			if e.Kind() == reflect.Interface {
-				t = e // 接口类型去掉指针
-			}
-		}
-		beanId = TypeName(t) + ":"
+		beanId = TypeName(s) + ":"
 	}
 
 	typeName, beanName, _ := ParseBeanId(beanId)
