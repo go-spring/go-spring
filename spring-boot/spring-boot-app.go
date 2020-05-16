@@ -34,13 +34,10 @@ const (
 	SPRING_ACCESS  = "SPRING_ACCESS"
 	SpringProfile  = "spring.profile" // 运行环境
 	SPRING_PROFILE = "SPRING_PROFILE"
-	SpringStrict   = "spring.strict" // 严格模式，"true" 必须使用 Export() 导出接口
-	SPRING_STRICT  = "SPRING_STRICT"
 )
 
 var (
 	_ = flag.String(SpringAccess, "", "")
-	_ = flag.String(SpringStrict, "", "")
 	_ = flag.String(SpringProfile, "", "")
 )
 

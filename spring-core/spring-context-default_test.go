@@ -2818,46 +2818,6 @@ func TestDefaultSpringContext_IntInterface(t *testing.T) {
 	ctx.AutoWireBeans()
 }
 
-func TestDefaultSpringContext_WarnExport(t *testing.T) {
-
-	t.Run("warn", func(t *testing.T) {
-
-		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.RegisterBeanFn(func() Integer { return Integer(5) })
-		ctx.Strict = false
-		ctx.AutoWireBeans()
-
-		var i IntInterface
-		ok := ctx.GetBean(&i)
-
-		assert.Equal(t, ok, true)
-		assert.Equal(t, i.Value(), 5)
-
-		var is []IntInterface
-		ok = ctx.CollectBeans(&is)
-
-		assert.Equal(t, ok, true)
-		assert.Equal(t, len(is), 1)
-	})
-
-	t.Run("strict", func(t *testing.T) {
-
-		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.RegisterBeanFn(func() Integer { return Integer(5) })
-		ctx.AutoWireBeans()
-
-		var i IntInterface
-		ok := ctx.GetBean(&i)
-
-		assert.Equal(t, ok, false)
-
-		var is []IntInterface
-		ok = ctx.CollectBeans(&is)
-
-		assert.Equal(t, ok, false)
-	})
-}
-
 type ptrBaseInterface interface {
 	PtrBase()
 }

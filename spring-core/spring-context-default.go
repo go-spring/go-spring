@@ -158,51 +158,14 @@ func (beanAssembly *defaultBeanAssembly) springContext() SpringContext {
 func (beanAssembly *defaultBeanAssembly) getCacheItem(t reflect.Type) *beanCacheItem {
 	beanCache := &beanAssembly.springCtx.beanCacheByType
 
-	// 严格模式下所有 Bean 都在决议阶段缓存完成；非严格模式下只能直接查找具体类型。
-	if k := t.Kind(); beanAssembly.springCtx.Strict || k != reflect.Interface {
-
-		// 如果缓存已存在则直接返回
-		if c, ok := beanCache.Load(t); ok {
-			return c.(*beanCacheItem)
-		}
-
-		result := newBeanCacheItem()
-		beanCache.Store(t, result)
-		return result
-	}
-
-	// 非严格模式下处理接口类型需要遍历所有 Bean
-
-	var (
-		check bool
-		cache *beanCacheItem
-	)
-
+	// 如果缓存已存在则直接返回
 	if c, ok := beanCache.Load(t); ok {
-		item := c.(*beanCacheItem)
-		if item.mark == 1 {
-			return item
-		} else {
-			// 也许能找到更多的 Bean，因此把原来的结果缓存起来。
-			cache = newBeanCacheItem()
-			item.copyTo(cache)
-			check = true
-		}
-	} else {
-		cache = newBeanCacheItem()
+		return c.(*beanCacheItem)
 	}
 
-	// 锁定搜索结果
-	cache.mark = 1
-
-	for _, bd := range beanAssembly.springCtx.beanMap {
-		if bd.Type().AssignableTo(t) && cache.store(t, bd, check) && len(bd.exports) == 0 {
-			SpringLogger.Warnf("you should call Export() on %s", bd.Description())
-		}
-	}
-
-	beanCache.Store(t, cache)
-	return cache
+	result := newBeanCacheItem()
+	beanCache.Store(t, result)
+	return result
 }
 
 // getBeanValue 根据 BeanId 查找 Bean 并返回 Bean 源的值
@@ -228,8 +191,8 @@ func (beanAssembly *defaultBeanAssembly) getBeanValue(v reflect.Value, beanId st
 		}
 	}
 
-	// 严格模式下对接口匹配开个绿灯，如果指定了 Bean 名称则尝试通过名称获取以防没有通过 Export 显示导出接口
-	if beanType.Kind() == reflect.Interface && beanAssembly.springCtx.Strict && beanName != "" {
+	// 对接口匹配开个绿灯，如果指定了 Bean 名称则尝试通过名称获取以防没有通过 Export 显示导出接口
+	if beanType.Kind() == reflect.Interface && beanName != "" {
 		beanCache := beanAssembly.springCtx.beanCacheByName
 		if cache, o := beanCache[beanName]; o {
 			for _, b := range cache {
@@ -630,8 +593,7 @@ type defaultSpringContext struct {
 	beanCacheByType sync.Map
 	beanCacheByName map[string][]*BeanDefinition
 
-	Sort   bool // 自动注入期间是否按照 BeanId 进行排序并依次进行注入
-	Strict bool // 严格模式，true 必须使用 Export() 导出接口
+	Sort bool // 自动注入期间是否按照 BeanId 进行排序并依次进行注入
 }
 
 // NewDefaultSpringContext defaultSpringContext 的构造函数
@@ -639,7 +601,6 @@ func NewDefaultSpringContext() *defaultSpringContext {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &defaultSpringContext{
 		Context:         ctx,
-		Strict:          true,
 		cancel:          cancel,
 		Properties:      NewDefaultProperties(),
 		methodBeans:     make([]*BeanDefinition, 0),

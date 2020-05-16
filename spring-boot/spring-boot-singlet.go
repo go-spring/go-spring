@@ -17,7 +17,6 @@
 package SpringBoot
 
 import (
-	"strings"
 	"time"
 
 	"github.com/go-spring/go-spring/boot-starter"
@@ -41,15 +40,6 @@ func RunApplication(configLocation ...string) {
 	app := newApplication(&defaultApplicationContext{
 		SpringContext: ctx,
 	}, configLocation...)
-
-	app.configReady = func() {
-		if ctx.Strict { // 设置是否使用严格模式，默认是严格模式
-			keys := []string{SPRING_STRICT, SpringStrict}
-			if strict := ctx.GetStringProperty(keys...); strict != "" {
-				ctx.Strict = strings.ToLower(strict) == "true"
-			}
-		}
-	}
 
 	BootStarter.Run(app)
 }
@@ -79,11 +69,6 @@ func AllAccess() bool {
 // SetAllAccess 设置是否允许访问私有字段
 func SetAllAccess(allAccess bool) {
 	ctx.SetAllAccess(allAccess)
-}
-
-// UseStrictMode 设置是否使用严格模式
-func UseStrictMode(strict bool) {
-	ctx.Strict = strict
 }
 
 // SetEventNotify 设置 Context 事件通知函数

@@ -18,7 +18,6 @@ package BootStarter_test
 
 import (
 	"fmt"
-	"reflect"
 	"testing"
 	"time"
 
@@ -47,36 +46,4 @@ func TestBootStarter(t *testing.T) {
 	}()
 
 	BootStarter.Run(new(MyApp))
-}
-
-type Condition struct {
-}
-
-func NewCondition() *Condition {
-	return &Condition{}
-}
-
-func (c *Condition) On() *Condition {
-	return c
-}
-
-type Constriction Condition
-
-func NewConstriction() *Constriction {
-	return &Constriction{}
-}
-
-func TestRetype(t *testing.T) {
-
-	t.Run("Condition", func(t *testing.T) {
-		c := NewCondition()
-		typ := reflect.TypeOf(c)
-		fmt.Println(typ, typ.NumMethod())
-	})
-
-	t.Run("Constriction", func(t *testing.T) {
-		c := NewConstriction()
-		typ := reflect.TypeOf(c)
-		fmt.Println(typ, typ.NumMethod())
-	})
 }

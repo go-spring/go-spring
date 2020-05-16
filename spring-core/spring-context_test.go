@@ -25,46 +25,218 @@ import (
 
 	pkg1 "github.com/go-spring/go-spring/spring-core/testdata/pkg/bar"
 	pkg2 "github.com/go-spring/go-spring/spring-core/testdata/pkg/foo"
+	"github.com/magiconair/properties/assert"
 )
 
 func TestReflectType(t *testing.T) {
+	// 测试结论：内置类型的 Name 和 PkgPath 都是空字符串。
 
-	data := []reflect.Type{
-		reflect.TypeOf(false),
-		reflect.TypeOf(new(bool)),
-		reflect.TypeOf(make([]bool, 0)),
-		reflect.TypeOf(int(3)),
-		reflect.TypeOf(new(int)),
-		reflect.TypeOf(make([]int, 0)),
-		reflect.TypeOf(uint(3)),
-		reflect.TypeOf(new(uint)),
-		reflect.TypeOf(make([]uint, 0)),
-		reflect.TypeOf(float32(3)),
-		reflect.TypeOf(new(float32)),
-		reflect.TypeOf(make([]float32, 0)),
-		reflect.TypeOf(complex64(3)),
-		reflect.TypeOf(new(complex64)),
-		reflect.TypeOf(make([]complex64, 0)),
-		reflect.TypeOf("3"),
-		reflect.TypeOf(new(string)),
-		reflect.TypeOf(make([]string, 0)),
-		reflect.TypeOf(map[int]int{}),
-		reflect.TypeOf(new(map[int]int)),
-		reflect.TypeOf(make([]map[int]int, 0)),
-		reflect.TypeOf(pkg1.SamePkg{}),
-		reflect.TypeOf(new(pkg1.SamePkg)),
-		reflect.TypeOf(make([]pkg1.SamePkg, 0)),
-		reflect.TypeOf(make([]*pkg1.SamePkg, 0)),
-		reflect.TypeOf(pkg2.SamePkg{}),
-		reflect.TypeOf(new(pkg2.SamePkg)),
-		reflect.TypeOf(make([]pkg2.SamePkg, 0)),
-		//reflect.TypeOf((io.Reader)(nil)),
-		reflect.TypeOf((*io.Reader)(nil)),
-		reflect.TypeOf((*io.Reader)(nil)).Elem(),
+	assert.Equal(t, reflect.TypeOf((io.Reader)(nil)), nil)
+
+	data := []struct {
+		typ     reflect.Type
+		kind    reflect.Kind
+		name    string
+		pkgPath string
+	}{
+		{
+			reflect.TypeOf(false),
+			reflect.Bool,
+			"bool",
+			"",
+		},
+		{
+			reflect.TypeOf(new(bool)),
+			reflect.Ptr,
+			"",
+			"",
+		},
+		{
+			reflect.TypeOf(make([]bool, 0)),
+			reflect.Slice,
+			"",
+			"",
+		},
+		{
+			reflect.TypeOf(int(3)),
+			reflect.Int,
+			"int",
+			"",
+		},
+		{
+			reflect.TypeOf(new(int)),
+			reflect.Ptr,
+			"",
+			"",
+		},
+		{
+			reflect.TypeOf(make([]int, 0)),
+			reflect.Slice,
+			"",
+			"",
+		},
+		{
+			reflect.TypeOf(uint(3)),
+			reflect.Uint,
+			"uint",
+			"",
+		},
+		{
+			reflect.TypeOf(new(uint)),
+			reflect.Ptr,
+			"",
+			"",
+		},
+		{
+			reflect.TypeOf(make([]uint, 0)),
+			reflect.Slice,
+			"",
+			"",
+		},
+		{
+			reflect.TypeOf(float32(3)),
+			reflect.Float32,
+			"float32",
+			"",
+		},
+		{
+			reflect.TypeOf(new(float32)),
+			reflect.Ptr,
+			"",
+			"",
+		},
+		{
+			reflect.TypeOf(make([]float32, 0)),
+			reflect.Slice,
+			"",
+			"",
+		},
+		{
+			reflect.TypeOf(complex64(3)),
+			reflect.Complex64,
+			"complex64",
+			"",
+		},
+		{
+			reflect.TypeOf(new(complex64)),
+			reflect.Ptr,
+			"",
+			"",
+		},
+		{
+			reflect.TypeOf(make([]complex64, 0)),
+			reflect.Slice,
+			"",
+			"",
+		},
+		{
+			reflect.TypeOf("3"),
+			reflect.String,
+			"string",
+			"",
+		},
+		{
+			reflect.TypeOf(new(string)),
+			reflect.Ptr,
+			"",
+			"",
+		},
+		{
+			reflect.TypeOf(make([]string, 0)),
+			reflect.Slice,
+			"",
+			"",
+		},
+		{
+			reflect.TypeOf(map[int]int{}),
+			reflect.Map,
+			"",
+			"",
+		},
+		{
+			reflect.TypeOf(new(map[int]int)),
+			reflect.Ptr,
+			"",
+			"",
+		},
+		{
+			reflect.TypeOf(make([]map[int]int, 0)),
+			reflect.Slice,
+			"",
+			"",
+		},
+		{
+			reflect.TypeOf(pkg1.SamePkg{}),
+			reflect.Struct,
+			"SamePkg",
+			"github.com/go-spring/go-spring/spring-core/testdata/pkg/bar",
+		},
+		{
+			reflect.TypeOf(new(pkg1.SamePkg)),
+			reflect.Ptr,
+			"",
+			"",
+		},
+		{
+			reflect.TypeOf(make([]pkg1.SamePkg, 0)),
+			reflect.Slice,
+			"",
+			"",
+		},
+		{
+			reflect.TypeOf(make([]*pkg1.SamePkg, 0)),
+			reflect.Slice,
+			"",
+			"",
+		},
+		{
+			reflect.TypeOf(pkg2.SamePkg{}),
+			reflect.Struct,
+			"SamePkg",
+			"github.com/go-spring/go-spring/spring-core/testdata/pkg/foo",
+		},
+		{
+			reflect.TypeOf(new(pkg2.SamePkg)),
+			reflect.Ptr,
+			"",
+			"",
+		},
+		{
+			reflect.TypeOf(make([]pkg2.SamePkg, 0)),
+			reflect.Slice,
+			"",
+			"",
+		},
+		{
+			reflect.TypeOf((*error)(nil)),
+			reflect.Ptr,
+			"",
+			"",
+		},
+		{
+			reflect.TypeOf((*error)(nil)).Elem(),
+			reflect.Interface,
+			"error",
+			"",
+		},
+		{
+			reflect.TypeOf((*io.Reader)(nil)),
+			reflect.Ptr,
+			"",
+			"",
+		},
+		{
+			reflect.TypeOf((*io.Reader)(nil)).Elem(),
+			reflect.Interface,
+			"Reader",
+			"io",
+		},
 	}
 
 	for _, d := range data {
-		fmt.Println(d, d.Kind(), d.Name())
+		assert.Equal(t, d.typ.Kind(), d.kind)
+		assert.Equal(t, d.typ.Name(), d.name)
+		assert.Equal(t, d.typ.PkgPath(), d.pkgPath)
 	}
 }
 
@@ -123,20 +295,20 @@ func TestInterface(t *testing.T) {
 }
 
 type callable interface {
-	call() int
+	Call() int
 }
 
 type caller struct {
 	i int
 }
 
-func (c *caller) call() int {
+func (c *caller) Call() int {
 	return c.i
 }
 
 func TestInterfaceMethod(t *testing.T) {
 	c := callable(&caller{3})
-	fmt.Println(c.call())
+	fmt.Println(c.Call())
 }
 
 func TestVariadicFunction(t *testing.T) {
@@ -161,11 +333,22 @@ func TestVariadicFunction(t *testing.T) {
 	})
 
 	c := caller{6}
-	fmt.Println((*caller).call(&c))
+	fmt.Println((*caller).Call(&c))
 
-	typ = reflect.TypeOf((*caller).call)
+	typ = reflect.TypeOf((*caller).Call)
 	fmt.Println(typ)
 
 	var arr []int
 	fmt.Println(len(arr))
+}
+
+type reCaller caller
+
+func TestNumMethod(t *testing.T) {
+
+	typ := reflect.TypeOf(new(caller))
+	assert.Equal(t, typ.NumMethod(), 1)
+
+	typ = reflect.TypeOf(new(reCaller))
+	assert.Equal(t, typ.NumMethod(), 0)
 }
