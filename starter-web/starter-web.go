@@ -71,17 +71,19 @@ func (starter *WebServerStarter) OnStartApplication(ctx SpringBoot.ApplicationCo
 
 			for _, filter := range mapping.Filters() {
 				switch wf := filter.(type) {
-				case *SpringBoot.WebFilter:
+				case *SpringBoot.ConditionalWebFilter:
 					if wf.CheckCondition(ctx) { // 满足匹配条件
-						if f := wf.Filter(); f != nil {
-							filters = append(filters, f)
+						if f := wf.Filter(); len(f) > 0 {
+							filters = append(filters, f...)
 						}
-						if b := wf.FilterBean(); b != "" {
-							var bf SpringWeb.Filter
-							if ok := ctx.GetBeanByName(b, &bf); !ok {
-								panic(errors.New("can't get filter " + b))
+						if b := wf.FilterBean(); len(b) > 0 {
+							for _, beanId := range b {
+								var bf SpringWeb.Filter
+								if ! ctx.GetBeanByName(beanId, &bf) {
+									panic(errors.New("can't get filter " + beanId))
+								}
+								filters = append(filters, bf)
 							}
-							filters = append(filters, bf)
 						}
 					}
 				default:

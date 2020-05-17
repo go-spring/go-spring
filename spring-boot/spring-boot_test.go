@@ -89,8 +89,7 @@ func init() {
 	}
 
 	// 使用 "@router" 名称的过滤器，需要使用 SpringBoot.FilterBean 封装
-	r := SpringBoot.Route("/api", SpringBoot.FilterBean("@router"),
-		SpringBoot.FilterBean((*SingleBeanFilter)(nil)))
+	r := SpringBoot.Route("/api", SpringBoot.FilterBean("@router", (*SingleBeanFilter)(nil)))
 
 	// 接受简单函数，可以使用 SpringBoot.Filter 封装
 	r.GetMapping("/func", func(ctx SpringWeb.WebContext) {
@@ -122,6 +121,7 @@ func init() {
 		// 该接口不会注册，因为没有匹配的端口
 		r.GetMapping("/nil", c.OK).OnPorts(9999)
 
+		// 注意这个接口不和任何 Router 绑定
 		SpringBoot.GetBinding("/echo", c.Echo, SpringBoot.FilterBean("@router//echo")).
 			Swagger(). // 设置接口的信息
 			WithDescription("echo")

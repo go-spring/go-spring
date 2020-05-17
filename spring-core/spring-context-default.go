@@ -39,7 +39,6 @@ type beanKey struct {
 // beanCacheItem BeanCache's item.
 type beanCacheItem struct {
 	beans []*BeanDefinition
-	mark  int // 1 结果已锁定
 }
 
 // newBeanCacheItem beanCacheItem 的构造函数
@@ -47,11 +46,6 @@ func newBeanCacheItem() *beanCacheItem {
 	return &beanCacheItem{
 		beans: make([]*BeanDefinition, 0),
 	}
-}
-
-// copyTo 把现有元素拷贝到新缓存里
-func (item *beanCacheItem) copyTo(c *beanCacheItem) {
-	c.beans = append(c.beans, item.beans...)
 }
 
 // find 顺序查找元素在数组中的位置

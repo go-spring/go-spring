@@ -31,8 +31,7 @@ type runnable struct {
 	stringArg *fnStringBindingArg // 普通参数绑定
 	optionArg *fnOptionBindingArg // Option 绑定
 
-	// 函数类型是否包含接收者
-	withReceiver bool
+	withReceiver bool // 函数类型是否包含接收者
 	receiver     reflect.Value
 }
 
@@ -45,7 +44,7 @@ func (r *runnable) run(ctx *defaultSpringContext) error {
 	file, line := fnInfo.FileLine(fnPtr)
 
 	fileAddr := &FileAddress{file, line}
-	beanAssembly := newDefaultBeanAssembly(ctx)
+	assembly := newDefaultBeanAssembly(ctx)
 
 	var in []reflect.Value
 
@@ -54,13 +53,13 @@ func (r *runnable) run(ctx *defaultSpringContext) error {
 	}
 
 	if r.stringArg != nil {
-		if v := r.stringArg.Get(beanAssembly, fileAddr); len(v) > 0 {
+		if v := r.stringArg.Get(assembly, fileAddr); len(v) > 0 {
 			in = append(in, v...)
 		}
 	}
 
 	if r.optionArg != nil {
-		if v := r.optionArg.Get(beanAssembly, fileAddr); len(v) > 0 {
+		if v := r.optionArg.Get(assembly, fileAddr); len(v) > 0 {
 			in = append(in, v...)
 		}
 	}

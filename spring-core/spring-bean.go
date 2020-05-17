@@ -315,7 +315,7 @@ type fakeMethodBean struct {
 	// parent 选择器:
 	// *BeanDefinition 表示直接使用 parent 对象;
 	// string 类型值表示根据 BeanId 查询 parent 对象;
-	// (Type)(nil) 类型值表示根据类型查询 parent 对象。
+	// (*Type)(nil) 类型值表示根据类型查询 parent 对象。
 	selector interface{}
 
 	// 成员方法名称

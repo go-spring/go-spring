@@ -111,7 +111,7 @@ type SpringContext interface {
 	GetBeanByName(beanId string, i interface{}) bool
 
 	// FindBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
-	// selector 可以是 BeanId，还可以是 (Type)(nil) 变量，Type 为接口类型时带指针。
+	// selector 可以是 BeanId，还可以是 (*Type)(nil) 变量，Type 为接口类型时带指针。
 	FindBean(selector interface{}) (*BeanDefinition, bool)
 
 	// FindBeanByName 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
