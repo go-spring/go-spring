@@ -138,11 +138,8 @@ func ParseBeanId(beanId string) (typeName string, beanName string, nullable bool
 	return
 }
 
-// ErrorType error 的反射类型
-var ErrorType = reflect.TypeOf((*error)(nil)).Elem()
-
-// SpringBean Bean 源接口
-type SpringBean interface {
+// springBean Bean 源接口
+type springBean interface {
 	Bean() interface{}    // 源
 	Type() reflect.Type   // 类型
 	Value() reflect.Value // 值
@@ -370,8 +367,8 @@ const (
 	beanStatus_Deleted   = beanStatus(5) // 已删除
 )
 
-// IBeanDefinition 对 BeanDefinition 的抽象接口
-type IBeanDefinition interface {
+// beanDefinition 对 BeanDefinition 的抽象接口
+type beanDefinition interface {
 	Bean() interface{}    // 源
 	Type() reflect.Type   // 类型
 	Value() reflect.Value // 值
@@ -379,10 +376,10 @@ type IBeanDefinition interface {
 
 	Name() string        // 返回 Bean 的名称
 	BeanId() string      // 返回 Bean 的 BeanId
-	Caller() string      // 返回 Bean 的注册点
+	FileLine() string    // 返回 Bean 的注册点
 	Description() string // 返回 Bean 的详细描述
 
-	springBean() SpringBean      // 返回 SpringBean 对象
+	springBean() springBean      // 返回 SpringBean 对象
 	getStatus() beanStatus       // 返回 Bean 的状态值
 	setStatus(status beanStatus) // 设置 Bean 的状态值
 	getDependsOn() []interface{} // 返回 Bean 的非直接依赖项
@@ -394,7 +391,7 @@ type IBeanDefinition interface {
 
 // BeanDefinition Bean 的详细定义
 type BeanDefinition struct {
-	bean   SpringBean // 源
+	bean   springBean // 源
 	name   string     // 名称
 	status beanStatus // 状态
 
@@ -412,7 +409,7 @@ type BeanDefinition struct {
 }
 
 // newBeanDefinition BeanDefinition 的构造函数
-func newBeanDefinition(name string, bean SpringBean) *BeanDefinition {
+func newBeanDefinition(name string, bean springBean) *BeanDefinition {
 
 	var (
 		file string
@@ -489,13 +486,13 @@ func (d *BeanDefinition) BeanId() string {
 	return fmt.Sprintf("%s:%s", d.TypeName(), d.name)
 }
 
-// Caller 返回 Bean 的注册点
-func (d *BeanDefinition) Caller() string {
+// FileLine 返回 Bean 注册点的文件行号
+func (d *BeanDefinition) FileLine() string {
 	return fmt.Sprintf("%s:%d", d.file, d.line)
 }
 
 // springBean 返回 SpringBean 对象
-func (d *BeanDefinition) springBean() SpringBean {
+func (d *BeanDefinition) springBean() springBean {
 	return d.bean
 }
 
@@ -536,7 +533,7 @@ func (d *BeanDefinition) getLine() int {
 
 // Description 返回 Bean 的详细描述
 func (d *BeanDefinition) Description() string {
-	return fmt.Sprintf("%s \"%s\" %s", d.bean.beanClass(), d.name, d.Caller())
+	return fmt.Sprintf("%s \"%s\" %s", d.bean.beanClass(), d.name, d.FileLine())
 }
 
 // Match 测试 Bean 的类型全限定名和 Bean 的名称是否都匹配

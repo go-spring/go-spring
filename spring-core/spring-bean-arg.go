@@ -27,23 +27,10 @@ import (
 	"github.com/go-spring/go-spring-parent/spring-logger"
 )
 
-// caller 注册点信息
-type caller interface {
-	Caller() string
-}
-
-type defaultCaller struct {
-	caller string
-}
-
-func (c *defaultCaller) Caller() string {
-	return c.caller
-}
-
 // fnBindingArg 存储函数的参数绑定
 type fnBindingArg interface {
 	// Get 获取函数参数的绑定值
-	Get(beanAssembly beanAssembly, caller caller) []reflect.Value
+	Get(beanAssembly beanAssembly, fileAddr FileAddr) []reflect.Value
 }
 
 // fnStringBindingArg 存储一般函数的参数绑定
@@ -124,7 +111,7 @@ func newFnStringBindingArg(fnType reflect.Type, withReceiver bool, tags []string
 }
 
 // Get 获取函数参数的绑定值
-func (arg *fnStringBindingArg) Get(beanAssembly beanAssembly, caller caller) []reflect.Value {
+func (arg *fnStringBindingArg) Get(beanAssembly beanAssembly, fileAddr FileAddr) []reflect.Value {
 	fnType := arg.fnType
 
 	numIn := fnType.NumIn()
@@ -148,7 +135,7 @@ func (arg *fnStringBindingArg) Get(beanAssembly beanAssembly, caller caller) []r
 			et := it.Elem() // 数组类型
 			for _, tag := range tags {
 				ev := reflect.New(et).Elem()
-				arg.getArgValue(ev, tag, beanAssembly, caller)
+				arg.getArgValue(ev, tag, beanAssembly, fileAddr)
 				result = append(result, ev)
 			}
 		} else {
@@ -157,7 +144,7 @@ func (arg *fnStringBindingArg) Get(beanAssembly beanAssembly, caller caller) []r
 				tag = tags[0]
 			}
 			iv := reflect.New(it).Elem()
-			arg.getArgValue(iv, tag, beanAssembly, caller)
+			arg.getArgValue(iv, tag, beanAssembly, fileAddr)
 			result = append(result, iv)
 		}
 	}
@@ -166,9 +153,9 @@ func (arg *fnStringBindingArg) Get(beanAssembly beanAssembly, caller caller) []r
 }
 
 // getArgValue 获取绑定参数值
-func (arg *fnStringBindingArg) getArgValue(v reflect.Value, tag string, beanAssembly beanAssembly, caller caller) {
+func (arg *fnStringBindingArg) getArgValue(v reflect.Value, tag string, beanAssembly beanAssembly, fileAddr FileAddr) {
 
-	description := fmt.Sprintf("tag:\"%s\" %s", tag, caller.Caller())
+	description := fmt.Sprintf("tag:\"%s\" %s", tag, fileAddr.FileLine())
 	SpringLogger.Tracef("get value %s", description)
 
 	if strings.HasPrefix(tag, "${") || v.Type().Kind() == reflect.Struct { // ${x:=y} 属性绑定
@@ -195,7 +182,7 @@ type fnOptionBindingArg struct {
 }
 
 // Get 获取函数参数的绑定值
-func (arg *fnOptionBindingArg) Get(beanAssembly beanAssembly, _ caller) []reflect.Value {
+func (arg *fnOptionBindingArg) Get(beanAssembly beanAssembly, fileAddr FileAddr) []reflect.Value {
 	result := make([]reflect.Value, 0)
 	for _, option := range arg.options {
 		if v, ok := option.call(beanAssembly); ok {
@@ -271,7 +258,7 @@ func NewOptionArg(fn interface{}, tags ...string) *optionArg {
 	}
 }
 
-func (arg *optionArg) Caller() string {
+func (arg *optionArg) FileLine() string {
 	return fmt.Sprintf("%s:%d", arg.file, arg.line)
 }
 
@@ -349,7 +336,7 @@ func (arg *optionArg) ConditionOnProfile(profile string) *optionArg {
 
 // call 获取 optionArg 的运算值
 func (arg *optionArg) call(beanAssembly beanAssembly) (v reflect.Value, ok bool) {
-	SpringLogger.Tracef("call option func %s", arg.Caller())
+	SpringLogger.Tracef("call option func %s", arg.FileLine())
 
 	// 判断 Option 条件是否成立
 	if ok = arg.cond.Matches(beanAssembly.springContext()); ok {
@@ -359,6 +346,6 @@ func (arg *optionArg) call(beanAssembly beanAssembly) (v reflect.Value, ok bool)
 		v = out[0]
 	}
 
-	SpringLogger.Tracef("call option func success %s", arg.Caller())
+	SpringLogger.Tracef("call option func success %s", arg.FileLine())
 	return
 }

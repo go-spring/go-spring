@@ -68,7 +68,7 @@ func (item *beanCacheItem) store(t reflect.Type, bd *BeanDefinition, check bool)
 	if check && item.find(bd) >= 0 { // 预期数据量较少，因此未使用 map 进行存储。
 		return false
 	}
-	SpringLogger.Debugf("register bean type:\"%s\" beanId:\"%s\" %s", t.String(), bd.BeanId(), bd.Caller())
+	SpringLogger.Debugf("register bean type:\"%s\" beanId:\"%s\" %s", t.String(), bd.BeanId(), bd.FileLine())
 	item.beans = append(item.beans, bd)
 	return true
 }
@@ -86,7 +86,7 @@ func newWiringStack() *wiringStack {
 }
 
 // pushBack 添加一个 Item 到尾部
-func (s *wiringStack) pushBack(bd IBeanDefinition) {
+func (s *wiringStack) pushBack(bd beanDefinition) {
 	s.stack.PushBack(bd)
 	SpringLogger.Tracef("wiring %s", bd.Description())
 }
@@ -94,13 +94,13 @@ func (s *wiringStack) pushBack(bd IBeanDefinition) {
 // popBack 删除尾部的 item
 func (s *wiringStack) popBack() {
 	e := s.stack.Remove(s.stack.Back())
-	SpringLogger.Tracef("wired %s", e.(IBeanDefinition).Description())
+	SpringLogger.Tracef("wired %s", e.(beanDefinition).Description())
 }
 
 // path 返回依赖注入的路径
 func (s *wiringStack) path() (path string) {
 	for e := s.stack.Front(); e != nil; e = e.Next() {
-		w := e.Value.(IBeanDefinition)
+		w := e.Value.(beanDefinition)
 		path += fmt.Sprintf("=> %s ↩\n", w.Description())
 	}
 	return path[:len(path)-1]
@@ -291,22 +291,22 @@ type fieldBeanDefinition struct {
 
 // Description 返回 Bean 的详细描述
 func (d *fieldBeanDefinition) Description() string {
-	return fmt.Sprintf("%s field: %s %s", d.bean.beanClass(), d.field, d.Caller())
+	return fmt.Sprintf("%s field: %s %s", d.bean.beanClass(), d.field, d.FileLine())
 }
 
 // delegateBeanDefinition 代理功能的 BeanDefinition 实现
 type delegateBeanDefinition struct {
 	*BeanDefinition
-	delegate IBeanDefinition // 代理项
+	delegate beanDefinition // 代理项
 }
 
 // Description 返回 Bean 的详细描述
 func (d *delegateBeanDefinition) Description() string {
-	return fmt.Sprintf("%s value %s", d.delegate.springBean().beanClass(), d.delegate.Caller())
+	return fmt.Sprintf("%s value %s", d.delegate.springBean().beanClass(), d.delegate.FileLine())
 }
 
 // wireSliceItem 注入 slice 的元素值
-func (beanAssembly *defaultBeanAssembly) wireSliceItem(v reflect.Value, d IBeanDefinition) {
+func (beanAssembly *defaultBeanAssembly) wireSliceItem(v reflect.Value, d beanDefinition) {
 	bd := ValueToBeanDefinition("", v)
 	bd.file = d.getFile()
 	bd.line = d.getLine()
@@ -314,7 +314,7 @@ func (beanAssembly *defaultBeanAssembly) wireSliceItem(v reflect.Value, d IBeanD
 }
 
 // wireBeanDefinition 绑定 BeanDefinition 指定的 Bean
-func (beanAssembly *defaultBeanAssembly) wireBeanDefinition(bd IBeanDefinition, onlyAutoWire bool) {
+func (beanAssembly *defaultBeanAssembly) wireBeanDefinition(bd beanDefinition, onlyAutoWire bool) {
 
 	// 是否已删除
 	if bd.getStatus() == beanStatus_Deleted {
@@ -380,7 +380,7 @@ func (beanAssembly *defaultBeanAssembly) wireBeanDefinition(bd IBeanDefinition, 
 }
 
 // wireObjectBean 对原始对象进行注入
-func (beanAssembly *defaultBeanAssembly) wireObjectBean(bd IBeanDefinition, onlyAutoWire bool) {
+func (beanAssembly *defaultBeanAssembly) wireObjectBean(bd beanDefinition, onlyAutoWire bool) {
 	st := bd.Type()
 	switch sk := st.Kind(); sk {
 	case reflect.Slice:
@@ -462,7 +462,7 @@ func (beanAssembly *defaultBeanAssembly) wireObjectBean(bd IBeanDefinition, only
 }
 
 // wireFunctionBean 对函数定义 Bean 进行注入
-func (beanAssembly *defaultBeanAssembly) wireFunctionBean(fnValue reflect.Value, bean *functionBean, bd IBeanDefinition) {
+func (beanAssembly *defaultBeanAssembly) wireFunctionBean(fnValue reflect.Value, bean *functionBean, bd beanDefinition) {
 
 	var in []reflect.Value
 
@@ -486,7 +486,7 @@ func (beanAssembly *defaultBeanAssembly) wireFunctionBean(fnValue reflect.Value,
 	// 检查是否有 error 返回
 	if len(out) == 2 {
 		if err := out[1].Interface(); err != nil {
-			panic(fmt.Errorf("function bean: \"%s\" return error: %v", bd.Caller(), err))
+			panic(fmt.Errorf("function bean: \"%s\" return error: %v", bd.FileLine(), err))
 		}
 	}
 
@@ -504,7 +504,7 @@ func (beanAssembly *defaultBeanAssembly) wireFunctionBean(fnValue reflect.Value,
 	}
 
 	if bean.Value().IsNil() {
-		panic(fmt.Errorf("function bean: \"%s\" return nil", bd.Caller()))
+		panic(fmt.Errorf("function bean: \"%s\" return nil", bd.FileLine()))
 	}
 
 	// 对返回值进行依赖注入
