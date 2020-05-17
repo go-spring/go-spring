@@ -26,10 +26,11 @@ import (
 	"github.com/go-spring/go-spring/spring-boot"
 )
 
-// WebServer SpringWeb.WebServer 的类型描述符
-const WebServer = "github.com/go-spring/go-spring-web/spring-web/SpringWeb.WebServer:"
-
 func init() {
+
+	SpringBoot.RegisterNameBean("web-server", SpringWeb.NewWebServer()).
+		ConditionOnMissingBean((*SpringWeb.WebServer)(nil))
+
 	SpringBoot.RegisterNameBean("web-server-starter", new(WebServerStarter))
 }
 
@@ -47,12 +48,57 @@ type WebServerConfig struct {
 type WebServerStarter struct {
 	_ SpringBoot.ApplicationEvent `export:""`
 
-	WebServer *SpringWeb.WebServer `autowire:""`
+	WebServer  *SpringWeb.WebServer     `autowire:""`
+	Containers []SpringWeb.WebContainer `autowire:"[]"`
 }
 
 func (starter *WebServerStarter) OnStartApplication(ctx SpringBoot.ApplicationContext) {
 
-	for _, c := range starter.WebServer.Containers() {
+	// 将收集到的 Web 容器赋值给 Web 服务器
+	starter.WebServer.AddContainer(starter.Containers...)
+
+	resolveFilters := func(filters []SpringWeb.Filter) (result []SpringWeb.Filter) {
+		for _, filter := range filters {
+			switch wf := filter.(type) {
+			case *SpringBoot.ConditionalWebFilter:
+				if wf.CheckCondition(ctx) { // 满足匹配条件
+					if f := wf.Filter(); len(f) > 0 {
+						result = append(result, f...)
+					}
+					if b := wf.FilterBean(); len(b) > 0 {
+						for _, beanId := range b {
+							var bf SpringWeb.Filter
+							if ! ctx.GetBeanByName(beanId, &bf) {
+								panic(errors.New("can't get filter " + beanId))
+							}
+							result = append(result, bf)
+						}
+					}
+				}
+			default:
+				result = append(result, filter)
+			}
+		}
+		return
+	}
+
+	// 处理 WebServer 的过滤器
+	{
+		filters := starter.WebServer.Filters()
+		resolved := resolveFilters(filters)
+		starter.WebServer.ResetFilters(resolved)
+	}
+
+	// 处理 WebContainer 的过滤器
+	{
+		for _, container := range starter.Containers {
+			filters := container.GetFilters()
+			resolved := resolveFilters(filters)
+			container.ResetFilters(resolved)
+		}
+	}
+
+	for _, c := range starter.Containers {
 		for _, mapping := range SpringBoot.DefaultWebMapping.Mappings {
 			ports := mapping.Ports()
 			cfg := c.Config()
@@ -67,29 +113,9 @@ func (starter *WebServerStarter) OnStartApplication(ctx SpringBoot.ApplicationCo
 				continue
 			}
 
-			var filters []SpringWeb.Filter
-
-			for _, filter := range mapping.Filters() {
-				switch wf := filter.(type) {
-				case *SpringBoot.ConditionalWebFilter:
-					if wf.CheckCondition(ctx) { // 满足匹配条件
-						if f := wf.Filter(); len(f) > 0 {
-							filters = append(filters, f...)
-						}
-						if b := wf.FilterBean(); len(b) > 0 {
-							for _, beanId := range b {
-								var bf SpringWeb.Filter
-								if ! ctx.GetBeanByName(beanId, &bf) {
-									panic(errors.New("can't get filter " + beanId))
-								}
-								filters = append(filters, bf)
-							}
-						}
-					}
-				default:
-					filters = append(filters, filter)
-				}
-			}
+			// 处理 Mapping 的过滤器
+			filters := mapping.Filters()
+			filters = resolveFilters(filters)
 
 			var mapper *SpringWeb.Mapper
 			switch handler := mapping.Handler().(type) {

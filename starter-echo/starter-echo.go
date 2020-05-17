@@ -20,35 +20,32 @@ import (
 	"github.com/go-spring/go-spring-web/spring-echo"
 	"github.com/go-spring/go-spring-web/spring-web"
 	"github.com/go-spring/go-spring/spring-boot"
+	"github.com/go-spring/go-spring/spring-core"
 	"github.com/go-spring/go-spring/starter-web"
 )
 
 func init() {
-	SpringBoot.RegisterBeanFn(NewEchoWebServer).ConditionOnMissingBean(WebStarter.WebServer)
-}
 
-// NewEchoWebServer 创建 echo 适配的 Web 服务器
-func NewEchoWebServer(config WebStarter.WebServerConfig) *SpringWeb.WebServer {
-	webServer := SpringWeb.NewWebServer()
-
-	if config.EnableHTTP {
-		cfg := SpringWeb.ContainerConfig{
+	SpringBoot.RegisterNameBeanFn("echo-web-container", func(config WebStarter.WebServerConfig) SpringWeb.WebContainer {
+		return SpringEcho.NewContainer(SpringWeb.ContainerConfig{
 			Port: config.Port,
-		}
-		e := SpringEcho.NewContainer(cfg)
-		webServer.AddContainer(e)
-	}
+		})
+	}).ConditionOnMatches(func(ctx SpringCore.SpringContext) bool {
+		var config WebStarter.WebServerConfig
+		ctx.BindProperty("", &config)
+		return config.EnableHTTP
+	})
 
-	if config.EnableHTTPS {
-		cfg := SpringWeb.ContainerConfig{
+	SpringBoot.RegisterNameBeanFn("echo-ssl-web-container", func(config WebStarter.WebServerConfig) SpringWeb.WebContainer {
+		return SpringEcho.NewContainer(SpringWeb.ContainerConfig{
 			EnableSSL: true,
 			Port:      config.SSLPort,
 			KeyFile:   config.SSLKey,
 			CertFile:  config.SSLCert,
-		}
-		e := SpringEcho.NewContainer(cfg)
-		webServer.AddContainer(e)
-	}
-
-	return webServer
+		})
+	}).ConditionOnMatches(func(ctx SpringCore.SpringContext) bool {
+		var config WebStarter.WebServerConfig
+		ctx.BindProperty("", &config)
+		return config.EnableHTTPS
+	})
 }

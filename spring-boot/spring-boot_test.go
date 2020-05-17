@@ -34,11 +34,11 @@ import (
 	"github.com/go-spring/go-spring-web/spring-web"
 	"github.com/go-spring/go-spring/spring-boot"
 	"github.com/go-spring/go-spring/spring-core"
-	_ "github.com/go-spring/go-spring/starter-echo"
 	_ "github.com/go-spring/go-spring/starter-go-redis"
 	_ "github.com/go-spring/go-spring/starter-go-redis-mock"
 	_ "github.com/go-spring/go-spring/starter-mysql-gorm"
 	_ "github.com/go-spring/go-spring/starter-mysql-mock"
+	"github.com/go-spring/go-spring/starter-web"
 	"github.com/jinzhu/gorm"
 	"github.com/labstack/echo"
 	"github.com/labstack/echo/middleware"
@@ -75,8 +75,11 @@ func init() {
 	{
 		SpringBoot.RegisterBean(new(SingleBeanFilter))
 
-		// 注册一个名为 "starter" 的过滤器
-		SpringBoot.RegisterNameBean("starter", NewStringFilter("starter"))
+		// 注册一个名为 "@server" 的过滤器
+		SpringBoot.RegisterNameBean("@server", NewStringFilter("@server"))
+
+		// 注册一个名为 "@container" 的过滤器
+		SpringBoot.RegisterNameBean("@container", NewStringFilter("@container"))
 
 		// 注册一个名为 "@router" 的过滤器 TODO Bean 名称不能含有冒号
 		SpringBoot.RegisterNameBean("@router", NewStringFilter("@router"))
@@ -139,6 +142,19 @@ func init() {
 	SpringBoot.RegisterBean(func(mock *redismock.ClientMock) {
 		mock.On("Set", "key", "ok", time.Second*10).Return(redis.NewStatusResult("", nil))
 		mock.On("Get", "key").Return(redis.NewStringResult("ok", nil))
+	})
+
+	SpringBoot.RegisterBeanFn(func(config WebStarter.WebServerConfig) SpringWeb.WebContainer {
+		cfg := SpringWeb.ContainerConfig{Port: config.Port}
+		c := SpringEcho.NewContainer(cfg)
+		c.AddFilter(SpringBoot.FilterBean("@container"))
+		return c
+	})
+
+	SpringBoot.RegisterBeanFn(func() *SpringWeb.WebServer {
+		return SpringWeb.NewWebServer().AddFilter(
+			SpringBoot.FilterBean("@server"),
+		)
 	})
 }
 

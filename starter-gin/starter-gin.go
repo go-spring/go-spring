@@ -20,35 +20,32 @@ import (
 	"github.com/go-spring/go-spring-web/spring-gin"
 	"github.com/go-spring/go-spring-web/spring-web"
 	"github.com/go-spring/go-spring/spring-boot"
+	"github.com/go-spring/go-spring/spring-core"
 	"github.com/go-spring/go-spring/starter-web"
 )
 
 func init() {
-	SpringBoot.RegisterBeanFn(NewGinWebServer).ConditionOnMissingBean(WebStarter.WebServer)
-}
 
-// NewGinWebServer 创建 gin 适配的 Web 服务器
-func NewGinWebServer(config WebStarter.WebServerConfig) *SpringWeb.WebServer {
-	webServer := SpringWeb.NewWebServer()
-
-	if config.EnableHTTP {
-		cfg := SpringWeb.ContainerConfig{
+	SpringBoot.RegisterNameBeanFn("gin-web-container", func(config WebStarter.WebServerConfig) SpringWeb.WebContainer {
+		return SpringGin.NewContainer(SpringWeb.ContainerConfig{
 			Port: config.Port,
-		}
-		e := SpringGin.NewContainer(cfg)
-		webServer.AddContainer(e)
-	}
+		})
+	}).ConditionOnMatches(func(ctx SpringCore.SpringContext) bool {
+		var config WebStarter.WebServerConfig
+		ctx.BindProperty("", &config)
+		return config.EnableHTTP
+	})
 
-	if config.EnableHTTPS {
-		cfg := SpringWeb.ContainerConfig{
+	SpringBoot.RegisterNameBeanFn("gin-ssl-web-container", func(config WebStarter.WebServerConfig) SpringWeb.WebContainer {
+		return SpringGin.NewContainer(SpringWeb.ContainerConfig{
 			EnableSSL: true,
 			Port:      config.SSLPort,
 			KeyFile:   config.SSLKey,
 			CertFile:  config.SSLCert,
-		}
-		e := SpringGin.NewContainer(cfg)
-		webServer.AddContainer(e)
-	}
-
-	return webServer
+		})
+	}).ConditionOnMatches(func(ctx SpringCore.SpringContext) bool {
+		var config WebStarter.WebServerConfig
+		ctx.BindProperty("", &config)
+		return config.EnableHTTPS
+	})
 }
