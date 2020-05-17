@@ -45,7 +45,7 @@ func (r *runnable) run(ctx *defaultSpringContext) error {
 	file, line := fnInfo.FileLine(fnPtr)
 	strCaller := fmt.Sprintf("%s:%d", file, line)
 
-	a := newDefaultBeanAssembly(ctx, nil)
+	a := newDefaultBeanAssembly(ctx)
 	cr := &defaultCaller{caller: strCaller}
 
 	var in []reflect.Value

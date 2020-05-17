@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"reflect"
 	"runtime"
-	"sort"
 	"strings"
 	"sync"
 
@@ -76,46 +75,26 @@ func (item *beanCacheItem) store(t reflect.Type, bd *BeanDefinition, check bool)
 
 // wiringStack 存储绑定中的 Bean
 type wiringStack struct {
-	stack    *list.List
-	watchers []WiringWatcher
+	stack *list.List
 }
 
 // newWiringStack wiringStack 的构造函数
-func newWiringStack(watchers []WiringWatcher) *wiringStack {
-
-	if len(watchers) == 0 { // 添加默认的注入监视器
-		watchers = append(watchers, func(bd IBeanDefinition, event WiringEvent) {
-			switch event {
-			case WiringEvent_Push:
-				SpringLogger.Tracef("wiring %s", bd.Description())
-			case WiringEvent_Pop:
-				SpringLogger.Tracef("wired %s", bd.Description())
-			}
-		})
-	}
-
+func newWiringStack() *wiringStack {
 	return &wiringStack{
-		stack:    list.New(),
-		watchers: watchers,
+		stack: list.New(),
 	}
 }
 
 // pushBack 添加一个 Item 到尾部
 func (s *wiringStack) pushBack(bd IBeanDefinition) {
 	s.stack.PushBack(bd)
-
-	for _, w := range s.watchers {
-		w(bd, WiringEvent_Push)
-	}
+	SpringLogger.Tracef("wiring %s", bd.Description())
 }
 
 // popBack 删除尾部的 item
 func (s *wiringStack) popBack() {
 	e := s.stack.Remove(s.stack.Back())
-
-	for _, w := range s.watchers {
-		w(e.(IBeanDefinition), WiringEvent_Pop)
-	}
+	SpringLogger.Tracef("wired %s", e.(IBeanDefinition).Description())
 }
 
 // path 返回依赖注入的路径
@@ -141,12 +120,10 @@ type defaultBeanAssembly struct {
 }
 
 // newDefaultBeanAssembly defaultBeanAssembly 的构造函数
-func newDefaultBeanAssembly(springContext *defaultSpringContext,
-	watchers []WiringWatcher) *defaultBeanAssembly {
-
+func newDefaultBeanAssembly(springContext *defaultSpringContext) *defaultBeanAssembly {
 	return &defaultBeanAssembly{
 		springCtx:   springContext,
-		wiringStack: newWiringStack(watchers),
+		wiringStack: newWiringStack(),
 	}
 }
 
@@ -592,8 +569,6 @@ type defaultSpringContext struct {
 	// 并发操作，另外 resolveBeans 的时候一步步地创建缓存。
 	beanCacheByType sync.Map
 	beanCacheByName map[string][]*BeanDefinition
-
-	Sort bool // 自动注入期间是否按照 BeanId 进行排序并依次进行注入
 }
 
 // NewDefaultSpringContext defaultSpringContext 的构造函数
@@ -742,12 +717,12 @@ func (ctx *defaultSpringContext) RegisterNameMethodBeanFn(name string, method in
 }
 
 // GetBean 根据类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
-func (ctx *defaultSpringContext) GetBean(i interface{}, watchers ...WiringWatcher) bool {
-	return ctx.GetBeanByName("?", i, watchers...)
+func (ctx *defaultSpringContext) GetBean(i interface{}) bool {
+	return ctx.GetBeanByName("?", i)
 }
 
 // GetBeanByName 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
-func (ctx *defaultSpringContext) GetBeanByName(beanId string, i interface{}, watchers ...WiringWatcher) bool {
+func (ctx *defaultSpringContext) GetBeanByName(beanId string, i interface{}) bool {
 	SpringUtils.Panic(errors.New("i can't be nil")).When(i == nil)
 
 	ctx.checkAutoWired()
@@ -765,7 +740,7 @@ func (ctx *defaultSpringContext) GetBeanByName(beanId string, i interface{}, wat
 	}
 
 	v := reflect.ValueOf(i)
-	w := newDefaultBeanAssembly(ctx, watchers)
+	w := newDefaultBeanAssembly(ctx)
 	return w.getBeanValue(v.Elem(), beanId, reflect.Value{}, "")
 }
 
@@ -821,7 +796,7 @@ func (ctx *defaultSpringContext) FindBeanByName(beanId string) (*BeanDefinition,
 }
 
 // CollectBeans 收集数组或指针定义的所有符合条件的 Bean 对象，收集到返回 true，否则返回 false。
-func (ctx *defaultSpringContext) CollectBeans(i interface{}, watchers ...WiringWatcher) bool {
+func (ctx *defaultSpringContext) CollectBeans(i interface{}) bool {
 	ctx.checkAutoWired()
 
 	t := reflect.TypeOf(i)
@@ -836,7 +811,7 @@ func (ctx *defaultSpringContext) CollectBeans(i interface{}, watchers ...WiringW
 		panic(errors.New("i must be slice ptr"))
 	}
 
-	w := newDefaultBeanAssembly(ctx, watchers)
+	w := newDefaultBeanAssembly(ctx)
 	return w.collectBeans(reflect.ValueOf(i).Elem())
 }
 
@@ -1007,7 +982,7 @@ func (ctx *defaultSpringContext) registerMethodBeans() {
 }
 
 // AutoWireBeans 完成自动绑定
-func (ctx *defaultSpringContext) AutoWireBeans(watchers ...WiringWatcher) {
+func (ctx *defaultSpringContext) AutoWireBeans() {
 
 	// 不再接受 Bean 注册，因为性能的原因使用了缓存，并且在 AutoWireBeans 的过程中
 	// 逐步建立起这个缓存，而随着缓存的建立，绑定的速度会越来越快，从而减少性能的损失。
@@ -1047,7 +1022,7 @@ func (ctx *defaultSpringContext) AutoWireBeans(watchers ...WiringWatcher) {
 		ctx.eventNotify(ContextEvent_ResolveEnd)
 	}
 
-	w := newDefaultBeanAssembly(ctx, watchers)
+	w := newDefaultBeanAssembly(ctx)
 
 	if ctx.eventNotify != nil {
 		ctx.eventNotify(ContextEvent_AutoWireStart)
@@ -1068,29 +1043,8 @@ func (ctx *defaultSpringContext) AutoWireBeans(watchers ...WiringWatcher) {
 		}
 	}
 
-	if ctx.Sort { // 自动注入期间是否排序注入
-		beanKeyMap := map[string]beanKey{}
-		for key, val := range ctx.beanMap {
-			beanKeyMap[val.BeanId()] = key
-		}
-
-		beanIds := make([]string, 0)
-		for s := range beanKeyMap {
-			beanIds = append(beanIds, s)
-		}
-
-		sort.Strings(beanIds)
-
-		for _, beanId := range beanIds {
-			key := beanKeyMap[beanId]
-			bd := ctx.beanMap[key]
-			w.wireBeanDefinition(bd, false)
-		}
-
-	} else {
-		for _, bd := range ctx.beanMap {
-			w.wireBeanDefinition(bd, false)
-		}
+	for _, bd := range ctx.beanMap {
+		w.wireBeanDefinition(bd, false)
 	}
 
 	if ctx.eventNotify != nil {
@@ -1099,10 +1053,10 @@ func (ctx *defaultSpringContext) AutoWireBeans(watchers ...WiringWatcher) {
 }
 
 // WireBean 绑定外部的 Bean 源
-func (ctx *defaultSpringContext) WireBean(bean interface{}, watchers ...WiringWatcher) {
+func (ctx *defaultSpringContext) WireBean(bean interface{}) {
 	ctx.checkAutoWired()
 
-	w := newDefaultBeanAssembly(ctx, watchers)
+	w := newDefaultBeanAssembly(ctx)
 	bd := ToBeanDefinition("", bean)
 	w.wireBeanDefinition(bd, false)
 }

@@ -2773,32 +2773,7 @@ func TestDefaultSpringContext_BeanCache(t *testing.T) {
 		ctx.RegisterNameBeanFn("f1", func() filter { return new(filterImpl) })
 		ctx.RegisterNameBean("f2", new(filterImpl)).Export((*filter)(nil))
 		ctx.RegisterBean(&server)
-
-		ctx.Sort = true
-
-		wiringStack := []struct {
-			event       SpringCore.WiringEvent
-			description string
-		}{
-			{SpringCore.WiringEvent_Push, `constructor bean "f1" /Users/didi/GitHub/go-spring/go-spring/spring-core/spring-context-default_test.go:`},
-			{SpringCore.WiringEvent_Push, `constructor bean value /Users/didi/GitHub/go-spring/go-spring/spring-core/spring-context-default_test.go:`},
-			{SpringCore.WiringEvent_Pop, `constructor bean value /Users/didi/GitHub/go-spring/go-spring/spring-core/spring-context-default_test.go:`},
-			{SpringCore.WiringEvent_Pop, `constructor bean "f1" /Users/didi/GitHub/go-spring/go-spring/spring-core/spring-context-default_test.go:`},
-			{SpringCore.WiringEvent_Push, `object bean "f2" /Users/didi/GitHub/go-spring/go-spring/spring-core/spring-context-default_test.go:`},
-			{SpringCore.WiringEvent_Pop, `object bean "f2" /Users/didi/GitHub/go-spring/go-spring/spring-core/spring-context-default_test.go:`},
-			{SpringCore.WiringEvent_Push, `object bean "*struct { F1 SpringCore_test.filter "autowire:\"f1\""; F2 SpringCore_test.filter "autowire:\"f2\"" }" /Users/didi/GitHub/go-spring/go-spring/spring-core/spring-context-default_test.go:`},
-			{SpringCore.WiringEvent_Pop, `object bean "*struct { F1 SpringCore_test.filter "autowire:\"f1\""; F2 SpringCore_test.filter "autowire:\"f2\"" }" /Users/didi/GitHub/go-spring/go-spring/spring-core/spring-context-default_test.go:`},
-		}
-
-		index := 0
-		ctx.AutoWireBeans(func(bd SpringCore.IBeanDefinition, event SpringCore.WiringEvent) {
-			w := wiringStack[index]
-			assert.Equal(t, event, w.event)
-			if !strings.HasPrefix(bd.Description(), w.description) {
-				t.Errorf("expect %s but %s", w.description, bd.Description())
-			}
-			index++
-		})
+		ctx.AutoWireBeans()
 	})
 }
 
