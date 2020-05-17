@@ -85,7 +85,7 @@ func TypeName(i interface{}) string {
 	case reflect.Type:
 		t = it
 	default:
-		// map、slice 等不是指针类型
+		// map、slice 等不是指针类型，it 形如 (*error)(nil)
 		if t = reflect.TypeOf(it); t.Kind() == reflect.Ptr {
 			if e := t.Elem(); e.Kind() == reflect.Interface {
 				t = e // 接口类型去掉指针
@@ -111,12 +111,10 @@ func TypeName(i interface{}) string {
 
 // BeanId 返回一个字符串表示或者类型表示的 BeanId
 func BeanId(i interface{}) string {
-	switch s := i.(type) {
-	case string:
+	if s, ok := i.(string); ok {
 		return s
-	default:
-		return TypeName(s) + ":"
 	}
+	return TypeName(i) + ":"
 }
 
 // ParseBeanId 解析 BeanId 的内容，"TypeName:BeanName?" 或者 "[]?"
@@ -140,8 +138,8 @@ func ParseBeanId(beanId string) (typeName string, beanName string, nullable bool
 	return
 }
 
-// errorType error 的类型
-var errorType = reflect.TypeOf((*error)(nil)).Elem()
+// ErrorType error 的反射类型
+var ErrorType = reflect.TypeOf((*error)(nil)).Elem()
 
 // SpringBean Bean 源接口
 type SpringBean interface {
@@ -166,8 +164,8 @@ func newObjectBean(v reflect.Value) *objectBean {
 	} else {
 		return &objectBean{
 			rType:    t,
-			typeName: TypeName(t),
 			rValue:   v,
+			typeName: TypeName(t),
 		}
 	}
 }
@@ -220,7 +218,7 @@ func IsFuncBeanType(fnType reflect.Type) bool {
 
 	// 第 2 个返回值必须是 error 类型
 	if fnType.NumOut() == 2 {
-		if !fnType.Out(1).Implements(errorType) {
+		if !fnType.Out(1).Implements(ErrorType) {
 			return false
 		}
 	}
@@ -252,8 +250,8 @@ func newFunctionBean(fnType reflect.Type, withReceiver bool, tags []string) func
 	return functionBean{
 		objectBean: objectBean{
 			rType:    t,
-			typeName: TypeName(t),
 			rValue:   v,
+			typeName: TypeName(t),
 		},
 		stringArg: newFnStringBindingArg(fnType, withReceiver, tags),
 	}
@@ -410,8 +408,7 @@ type BeanDefinition struct {
 	init    *runnable // 初始化的回调
 	destroy *runnable // 销毁时的回调
 
-	exports    map[reflect.Type]struct{} // 导出接口类型
-	autoExport bool                      // 自动导出接口
+	exports map[reflect.Type]struct{} // 导出接口类型
 }
 
 // newBeanDefinition BeanDefinition 的构造函数
@@ -452,14 +449,13 @@ func newBeanDefinition(name string, bean SpringBean) *BeanDefinition {
 	}
 
 	return &BeanDefinition{
-		bean:       bean,
-		name:       name,
-		status:     beanStatus_Default,
-		file:       file,
-		line:       line,
-		cond:       NewConditional(),
-		exports:    make(map[reflect.Type]struct{}),
-		autoExport: true,
+		bean:    bean,
+		name:    name,
+		status:  beanStatus_Default,
+		file:    file,
+		line:    line,
+		cond:    NewConditional(),
+		exports: make(map[reflect.Type]struct{}),
 	}
 }
 
@@ -631,8 +627,8 @@ func (d *BeanDefinition) ConditionOnProfile(profile string) *BeanDefinition {
 	return d
 }
 
-// Matches 成功返回 true，失败返回 false
-func (d *BeanDefinition) Matches(ctx SpringContext) bool {
+// checkCondition 检查 Condition 的执行结果，成功返回 true，失败返回 false
+func (d *BeanDefinition) checkCondition(ctx SpringContext) bool {
 	return d.cond.Matches(ctx)
 }
 
@@ -671,15 +667,6 @@ func validLifeCycleFunc(fn interface{}, beanType reflect.Type) (reflect.Type, bo
 		return nil, false
 	}
 
-	// 无返回值，或者只返回 error
-	if numOut := fnType.NumOut(); numOut > 1 {
-		return nil, false
-	} else if numOut == 1 {
-		if out := fnType.Out(0); out != errorType {
-			return nil, false
-		}
-	}
-
 	// 有至少一个输入参数
 	if fnType.NumIn() < 1 {
 		return nil, false
@@ -688,6 +675,15 @@ func validLifeCycleFunc(fn interface{}, beanType reflect.Type) (reflect.Type, bo
 	// 第一个入参必须是 Bean 的类型
 	if fnType.In(0) != beanType {
 		return nil, false
+	}
+
+	// 无返回值，或者只返回 error
+	if numOut := fnType.NumOut(); numOut > 1 {
+		return nil, false
+	} else if numOut == 1 {
+		if out := fnType.Out(0); out != ErrorType {
+			return nil, false
+		}
 	}
 
 	return fnType, true
@@ -729,23 +725,12 @@ func (d *BeanDefinition) Destroy(fn interface{}, tags ...string) *BeanDefinition
 	return d
 }
 
-// AutoExport 设置是否自动导出接口
-func (d *BeanDefinition) AutoExport(enable bool) *BeanDefinition {
-	d.autoExport = enable
-	return d
-}
-
 // Export 指定 Bean 的导出接口
 func (d *BeanDefinition) Export(exports ...interface{}) *BeanDefinition {
-	return d.export(exports...)
+	return d.export(exports)
 }
 
-// Deprecated: Use "Export" instead.
-func (d *BeanDefinition) AsInterface(exports ...interface{}) *BeanDefinition {
-	return d.export(exports...)
-}
-
-func (d *BeanDefinition) export(exports ...interface{}) *BeanDefinition {
+func (d *BeanDefinition) export(exports []interface{}) *BeanDefinition {
 	for _, o := range exports { // 使用 map 进行自动排重
 
 		var t reflect.Type

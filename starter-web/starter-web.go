@@ -63,7 +63,7 @@ func (starter *WebServerStarter) OnStartApplication(ctx SpringBoot.ApplicationCo
 			}
 
 			// 路由的条件不匹配
-			if ok := mapping.Matches(ctx); !ok {
+			if !mapping.CheckCondition(ctx) {
 				continue
 			}
 
@@ -72,7 +72,7 @@ func (starter *WebServerStarter) OnStartApplication(ctx SpringBoot.ApplicationCo
 			for _, filter := range mapping.Filters() {
 				switch wf := filter.(type) {
 				case *SpringBoot.WebFilter:
-					if wf.Matches(ctx) { // 满足匹配条件
+					if wf.CheckCondition(ctx) { // 满足匹配条件
 						if f := wf.Filter(); f != nil {
 							filters = append(filters, f)
 						}

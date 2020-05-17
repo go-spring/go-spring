@@ -71,7 +71,7 @@ func (r *runnable) run(ctx *defaultSpringContext) error {
 	if n := len(out); n == 0 {
 		return nil
 	} else if n == 1 {
-		if o := out[0]; o.Type() == errorType {
+		if o := out[0]; o.Type() == ErrorType {
 			if i := o.Interface(); i == nil {
 				return nil
 			} else {
@@ -188,8 +188,8 @@ func (c *Configer) ConditionOnProfile(profile string) *Configer {
 	return c
 }
 
-// Matches 成功返回 true，失败返回 false
-func (c *Configer) Matches(ctx SpringContext) bool {
+// checkCondition 成功返回 true，失败返回 false
+func (c *Configer) checkCondition(ctx SpringContext) bool {
 	return c.cond.Matches(ctx)
 }
 

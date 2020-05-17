@@ -856,7 +856,7 @@ func (ctx *defaultSpringContext) autoExport(bd *BeanDefinition, t reflect.Type) 
 		}
 
 		// 不限定导出接口字段必须是空白标识符，但建议使用空白标识符
-		bd.export(f.Type)
+		bd.Export(f.Type)
 	}
 	return
 }
@@ -881,7 +881,7 @@ func (ctx *defaultSpringContext) resolveBean(bd *BeanDefinition) {
 		}
 	}
 
-	if ok := bd.Matches(ctx); !ok { // 不满足则删除注册
+	if ok := bd.checkCondition(ctx); !ok { // 不满足则删除注册
 		ctx.deleteBeanDefinition(bd)
 		return
 	}
@@ -891,10 +891,8 @@ func (ctx *defaultSpringContext) resolveBean(bd *BeanDefinition) {
 	item.store(bd.Type(), bd, false)
 
 	// 自动导出接口，这种情况下应该只对于结构体才会有效
-	if bd.autoExport {
-		if t := SpringUtils.Indirect(bd.Type()); t.Kind() == reflect.Struct {
-			ctx.autoExport(bd, t)
-		}
+	if t := SpringUtils.Indirect(bd.Type()); t.Kind() == reflect.Struct {
+		ctx.autoExport(bd, t)
 	}
 
 	// 按照导出类型放入缓存
@@ -1004,7 +1002,7 @@ func (ctx *defaultSpringContext) AutoWireBeans() {
 	for e := ctx.configers.Front(); e != nil; {
 		next := e.Next()
 		configer := e.Value.(*Configer)
-		if ok := configer.Matches(ctx); !ok {
+		if ok := configer.checkCondition(ctx); !ok {
 			ctx.configers.Remove(e)
 		}
 		e = next

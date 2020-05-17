@@ -214,8 +214,8 @@ func (m *Mapping) ConditionOnProfile(profile string) *Mapping {
 	return m
 }
 
-// Matches 成功返回 true，失败返回 false
-func (m *Mapping) Matches(ctx SpringCore.SpringContext) bool {
+// CheckCondition 成功返回 true，失败返回 false
+func (m *Mapping) CheckCondition(ctx SpringCore.SpringContext) bool {
 	return m.cond.Matches(ctx)
 }
 
@@ -583,7 +583,7 @@ func (f *WebFilter) ConditionOnProfile(profile string) *WebFilter {
 	return f
 }
 
-// Matches 成功返回 true，失败返回 false
-func (f *WebFilter) Matches(ctx SpringCore.SpringContext) bool {
+// CheckCondition 成功返回 true，失败返回 false
+func (f *WebFilter) CheckCondition(ctx SpringCore.SpringContext) bool {
 	return f.cond.Matches(ctx)
 }

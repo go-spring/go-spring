@@ -2837,19 +2837,6 @@ func (_ *AppContext) Error() string {
 
 func TestDefaultSpringContext_AutoExport(t *testing.T) {
 
-	t.Run("don't auto export", func(t *testing.T) {
-
-		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.RegisterBean(&AppContext{
-			Context: context.TODO(),
-		}).AutoExport(false)
-		ctx.AutoWireBeans()
-
-		var x context.Context
-		ok := ctx.GetBean(&x)
-		assert.Equal(t, false, ok)
-	})
-
 	t.Run("auto export", func(t *testing.T) {
 
 		b := &AppContext{
@@ -2895,23 +2882,6 @@ func TestDefaultSpringContext_AutoExport(t *testing.T) {
 		var s fmt.Stringer
 		ok = ctx.GetBean(&s)
 		assert.Equal(t, true, ok)
-	})
-
-	t.Run("close & re-export", func(t *testing.T) {
-		b := &AppContext{Context: context.TODO()}
-
-		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.RegisterBean(b).AutoExport(false).Export((*fmt.Stringer)(nil))
-		ctx.AutoWireBeans()
-
-		var x context.Context
-		ok := ctx.GetBean(&x)
-		assert.Equal(t, false, ok)
-
-		var s fmt.Stringer
-		ok = ctx.GetBean(&s)
-		assert.Equal(t, true, ok)
-		assert.Equal(t, b, s)
 	})
 
 	t.Run("auto export & export", func(t *testing.T) {
