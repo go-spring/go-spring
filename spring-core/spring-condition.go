@@ -136,33 +136,33 @@ func (c *propertyValueCondition) Matches(ctx SpringContext) bool {
 
 // beanCondition 基于 Bean 存在的 Condition 实现
 type beanCondition struct {
-	selector interface{}
+	beanId string
 }
 
 // NewBeanCondition beanCondition 的构造函数
-func NewBeanCondition(selector interface{}) *beanCondition {
-	return &beanCondition{selector}
+func NewBeanCondition(selector BeanSelector) *beanCondition {
+	return &beanCondition{GetBeanId(selector)}
 }
 
 // Matches 成功返回 true，失败返回 false
 func (c *beanCondition) Matches(ctx SpringContext) bool {
-	_, ok := ctx.FindBean(c.selector)
+	_, ok := ctx.FindBeanByName(c.beanId)
 	return ok
 }
 
 // missingBeanCondition 基于 Bean 不能存在的 Condition 实现
 type missingBeanCondition struct {
-	selector interface{}
+	beanId string
 }
 
 // NewMissingBeanCondition missingBeanCondition 的构造函数
-func NewMissingBeanCondition(selector interface{}) *missingBeanCondition {
-	return &missingBeanCondition{selector}
+func NewMissingBeanCondition(selector BeanSelector) *missingBeanCondition {
+	return &missingBeanCondition{GetBeanId(selector)}
 }
 
 // Matches 成功返回 true，失败返回 false
 func (c *missingBeanCondition) Matches(ctx SpringContext) bool {
-	_, ok := ctx.FindBean(c.selector)
+	_, ok := ctx.FindBeanByName(c.beanId)
 	return !ok
 }
 
@@ -406,32 +406,32 @@ func (c *Conditional) OnPropertyValue(name string, havingValue interface{}) *Con
 }
 
 // Deprecated: Use "ConditionOnBean" instead.
-func OnBean(selector interface{}) *Conditional {
+func OnBean(selector BeanSelector) *Conditional {
 	return NewConditional().OnCondition(NewBeanCondition(selector))
 }
 
 // ConditionOnBean 返回设置了 beanCondition 的 Conditional 对象
-func ConditionOnBean(selector interface{}) *Conditional {
+func ConditionOnBean(selector BeanSelector) *Conditional {
 	return NewConditional().OnCondition(NewBeanCondition(selector))
 }
 
 // OnBean 设置一个 beanCondition
-func (c *Conditional) OnBean(selector interface{}) *Conditional {
+func (c *Conditional) OnBean(selector BeanSelector) *Conditional {
 	return c.OnCondition(NewBeanCondition(selector))
 }
 
 // Deprecated: Use "ConditionOnMissingBean" instead.
-func OnMissingBean(selector interface{}) *Conditional {
+func OnMissingBean(selector BeanSelector) *Conditional {
 	return NewConditional().OnCondition(NewMissingBeanCondition(selector))
 }
 
 // ConditionOnMissingBean 返回设置了 missingBeanCondition 的 Conditional 对象
-func ConditionOnMissingBean(selector interface{}) *Conditional {
+func ConditionOnMissingBean(selector BeanSelector) *Conditional {
 	return NewConditional().OnCondition(NewMissingBeanCondition(selector))
 }
 
 // OnMissingBean 设置一个 missingBeanCondition
-func (c *Conditional) OnMissingBean(selector interface{}) *Conditional {
+func (c *Conditional) OnMissingBean(selector BeanSelector) *Conditional {
 	return c.OnCondition(NewMissingBeanCondition(selector))
 }
 

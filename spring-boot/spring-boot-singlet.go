@@ -100,7 +100,7 @@ func RegisterNameBeanFn(name string, fn interface{}, tags ...string) *SpringCore
 // selector 可以是 *BeanDefinition，可以是 BeanId，还可以是 (Type)(nil) 变量。
 // 必须给定方法名而不能通过遍历方法列表比较方法类型的方式获得函数名，因为不同方法的类型可能相同。
 // 而且 interface 的方法类型不带 receiver 而成员方法的类型带有 receiver，两者类型不好匹配。
-func RegisterMethodBean(selector interface{}, method string, tags ...string) *SpringCore.BeanDefinition {
+func RegisterMethodBean(selector SpringCore.BeanSelector, method string, tags ...string) *SpringCore.BeanDefinition {
 	return ctx.RegisterMethodBean(selector, method, tags...)
 }
 
@@ -108,7 +108,7 @@ func RegisterMethodBean(selector interface{}, method string, tags ...string) *Sp
 // selector 可以是 *BeanDefinition，可以是 BeanId，还可以是 (Type)(nil) 变量。
 // 必须给定方法名而不能通过遍历方法列表比较方法类型的方式获得函数名，因为不同方法的类型可能相同。
 // 而且 interface 的方法类型不带 receiver 而成员方法的类型带有 receiver，两者类型不好匹配。
-func RegisterNameMethodBean(name string, selector interface{}, method string, tags ...string) *SpringCore.BeanDefinition {
+func RegisterNameMethodBean(name string, selector SpringCore.BeanSelector, method string, tags ...string) *SpringCore.BeanDefinition {
 	return ctx.RegisterNameMethodBean(name, selector, method, tags...)
 }
 
@@ -139,7 +139,7 @@ func GetBeanByName(beanId string, i interface{}) bool {
 
 // FindBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 // selector 可以是 BeanId，还可以是 (Type)(nil) 变量，Type 为接口类型时带指针。
-func FindBean(selector interface{}) (*SpringCore.BeanDefinition, bool) {
+func FindBean(selector SpringCore.BeanSelector) (*SpringCore.BeanDefinition, bool) {
 	return ctx.FindBean(selector)
 }
 

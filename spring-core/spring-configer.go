@@ -42,8 +42,8 @@ func (r *runnable) run(ctx *defaultSpringContext) error {
 	fnPtr := fnValue.Pointer()
 	fnInfo := runtime.FuncForPC(fnPtr)
 	file, line := fnInfo.FileLine(fnPtr)
+	fileLine := fmt.Sprintf("%s:%d", file, line)
 
-	fileAddr := &FileAddress{file, line}
 	assembly := newDefaultBeanAssembly(ctx)
 
 	var in []reflect.Value
@@ -53,13 +53,13 @@ func (r *runnable) run(ctx *defaultSpringContext) error {
 	}
 
 	if r.stringArg != nil {
-		if v := r.stringArg.Get(assembly, fileAddr); len(v) > 0 {
+		if v := r.stringArg.Get(assembly, fileLine); len(v) > 0 {
 			in = append(in, v...)
 		}
 	}
 
 	if r.optionArg != nil {
-		if v := r.optionArg.Get(assembly, fileAddr); len(v) > 0 {
+		if v := r.optionArg.Get(assembly, fileLine); len(v) > 0 {
 			in = append(in, v...)
 		}
 	}
@@ -69,7 +69,7 @@ func (r *runnable) run(ctx *defaultSpringContext) error {
 	if n := len(out); n == 0 {
 		return nil
 	} else if n == 1 {
-		if o := out[0]; o.Type() == ErrorType {
+		if o := out[0]; o.Type() == errorType {
 			if i := o.Interface(); i == nil {
 				return nil
 			} else {
@@ -157,13 +157,13 @@ func (c *Configer) ConditionOnPropertyValue(name string, havingValue interface{}
 }
 
 // ConditionOnBean 为 Bean 设置一个 BeanCondition
-func (c *Configer) ConditionOnBean(selector interface{}) *Configer {
+func (c *Configer) ConditionOnBean(selector BeanSelector) *Configer {
 	c.cond.OnBean(selector)
 	return c
 }
 
 // ConditionOnMissingBean 为 Bean 设置一个 MissingBeanCondition
-func (c *Configer) ConditionOnMissingBean(selector interface{}) *Configer {
+func (c *Configer) ConditionOnMissingBean(selector BeanSelector) *Configer {
 	c.cond.OnMissingBean(selector)
 	return c
 }

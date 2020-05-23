@@ -187,13 +187,13 @@ func (m *Mapping) ConditionOnPropertyValue(name string, havingValue interface{})
 }
 
 // ConditionOnBean 设置一个 BeanCondition
-func (m *Mapping) ConditionOnBean(selector interface{}) *Mapping {
+func (m *Mapping) ConditionOnBean(selector SpringCore.BeanSelector) *Mapping {
 	m.cond.OnBean(selector)
 	return m
 }
 
 // ConditionOnMissingBean 设置一个 MissingBeanCondition
-func (m *Mapping) ConditionOnMissingBean(selector interface{}) *Mapping {
+func (m *Mapping) ConditionOnMissingBean(selector SpringCore.BeanSelector) *Mapping {
 	m.cond.OnMissingBean(selector)
 	return m
 }
@@ -294,13 +294,13 @@ func (r *Router) ConditionOnPropertyValue(name string, havingValue interface{}) 
 }
 
 // ConditionOnBean 设置一个 BeanCondition
-func (r *Router) ConditionOnBean(selector interface{}) *Router {
+func (r *Router) ConditionOnBean(selector SpringCore.BeanSelector) *Router {
 	r.cond.OnBean(selector)
 	return r
 }
 
 // ConditionOnMissingBean 设置一个 MissingBeanCondition
-func (r *Router) ConditionOnMissingBean(selector interface{}) *Router {
+func (r *Router) ConditionOnMissingBean(selector SpringCore.BeanSelector) *Router {
 	r.cond.OnMissingBean(selector)
 	return r
 }
@@ -497,7 +497,7 @@ func Filter(filters ...SpringWeb.Filter) *ConditionalWebFilter {
 func FilterBean(selectors ...interface{}) *ConditionalWebFilter {
 	var beanIds []string
 	for _, s := range selectors {
-		beanIds = append(beanIds, SpringCore.BeanId(s))
+		beanIds = append(beanIds, SpringCore.GetBeanId(s))
 	}
 	return &ConditionalWebFilter{
 		beanIds: beanIds,
@@ -560,13 +560,13 @@ func (f *ConditionalWebFilter) ConditionOnPropertyValue(name string, havingValue
 }
 
 // ConditionOnBean 设置一个 BeanCondition
-func (f *ConditionalWebFilter) ConditionOnBean(selector interface{}) *ConditionalWebFilter {
+func (f *ConditionalWebFilter) ConditionOnBean(selector SpringCore.BeanSelector) *ConditionalWebFilter {
 	f.cond.OnBean(selector)
 	return f
 }
 
 // ConditionOnMissingBean 设置一个 MissingBeanCondition
-func (f *ConditionalWebFilter) ConditionOnMissingBean(selector interface{}) *ConditionalWebFilter {
+func (f *ConditionalWebFilter) ConditionOnMissingBean(selector SpringCore.BeanSelector) *ConditionalWebFilter {
 	f.cond.OnMissingBean(selector)
 	return f
 }

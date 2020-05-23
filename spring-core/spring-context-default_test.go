@@ -887,7 +887,7 @@ func TestDefaultSpringContext_DependsOn(t *testing.T) {
 
 	t.Run("dependsOn", func(t *testing.T) {
 
-		dependsOn := []interface{}{
+		dependsOn := []SpringCore.BeanSelector{
 			(*BeanOne)(nil), // 通过类型定义查找
 			"github.com/go-spring/go-spring/spring-core_test/SpringCore_test.BeanZero:*SpringCore_test.BeanZero",
 		}
@@ -1887,7 +1887,7 @@ func TestDefaultSpringContext_RegisterMethodBean(t *testing.T) {
 			ctx.RegisterBean(new(Server))
 			ctx.RegisterMethodBean((*int)(nil), "Consumer")
 			ctx.AutoWireBeans()
-		}, "can't find parent bean: \"\\*int\"")
+		}, "can't find parent bean: \"int:\"")
 
 		assert.Panic(t, func() {
 			ctx := SpringCore.NewDefaultSpringContext()
@@ -1896,7 +1896,7 @@ func TestDefaultSpringContext_RegisterMethodBean(t *testing.T) {
 			ctx.RegisterBean(new(Server))
 			ctx.RegisterMethodBean((*int)(nil), "Consumer")
 			ctx.AutoWireBeans()
-		}, "can't find method: Consumer")
+		}, "can't find method:Consumer on type:int")
 	})
 
 	t.Run("method bean selector beanId", func(t *testing.T) {
@@ -2116,7 +2116,7 @@ func TestDefaultSpringContext_RegisterMethodBeanFn(t *testing.T) {
 			ctx.RegisterBeanFn(NewServerInterface)
 			ctx.RegisterMethodBean((*int)(nil), "Consumer")
 			ctx.AutoWireBeans()
-		}, "can't find parent bean: \"\\*int\"")
+		}, "can't find parent bean: \"int:\"")
 
 		assert.Panic(t, func() {
 			ctx := SpringCore.NewDefaultSpringContext()
@@ -2125,7 +2125,7 @@ func TestDefaultSpringContext_RegisterMethodBeanFn(t *testing.T) {
 			ctx.RegisterBeanFn(NewServerInterface)
 			ctx.RegisterMethodBean((*int)(nil), "Consumer")
 			ctx.AutoWireBeans()
-		}, "can't find method: Consumer")
+		}, "can't find method:Consumer on type:int")
 	})
 
 	t.Run("fn method bean selector beanId", func(t *testing.T) {

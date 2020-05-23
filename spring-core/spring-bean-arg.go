@@ -30,7 +30,7 @@ import (
 // fnBindingArg 存储函数的参数绑定
 type fnBindingArg interface {
 	// Get 获取函数参数的绑定值
-	Get(beanAssembly beanAssembly, fileAddr FileAddr) []reflect.Value
+	Get(beanAssembly beanAssembly, fileLine string) []reflect.Value
 }
 
 // fnStringBindingArg 存储一般函数的参数绑定
@@ -111,7 +111,7 @@ func newFnStringBindingArg(fnType reflect.Type, withReceiver bool, tags []string
 }
 
 // Get 获取函数参数的绑定值
-func (arg *fnStringBindingArg) Get(beanAssembly beanAssembly, fileAddr FileAddr) []reflect.Value {
+func (arg *fnStringBindingArg) Get(beanAssembly beanAssembly, fileLine string) []reflect.Value {
 	fnType := arg.fnType
 
 	numIn := fnType.NumIn()
@@ -135,7 +135,7 @@ func (arg *fnStringBindingArg) Get(beanAssembly beanAssembly, fileAddr FileAddr)
 			et := it.Elem() // 数组类型
 			for _, tag := range tags {
 				ev := reflect.New(et).Elem()
-				arg.getArgValue(ev, tag, beanAssembly, fileAddr)
+				arg.getArgValue(ev, tag, beanAssembly, fileLine)
 				result = append(result, ev)
 			}
 		} else {
@@ -144,7 +144,7 @@ func (arg *fnStringBindingArg) Get(beanAssembly beanAssembly, fileAddr FileAddr)
 				tag = tags[0]
 			}
 			iv := reflect.New(it).Elem()
-			arg.getArgValue(iv, tag, beanAssembly, fileAddr)
+			arg.getArgValue(iv, tag, beanAssembly, fileLine)
 			result = append(result, iv)
 		}
 	}
@@ -153,9 +153,9 @@ func (arg *fnStringBindingArg) Get(beanAssembly beanAssembly, fileAddr FileAddr)
 }
 
 // getArgValue 获取绑定参数值
-func (arg *fnStringBindingArg) getArgValue(v reflect.Value, tag string, beanAssembly beanAssembly, fileAddr FileAddr) {
+func (arg *fnStringBindingArg) getArgValue(v reflect.Value, tag string, beanAssembly beanAssembly, fileLine string) {
 
-	description := fmt.Sprintf("tag:\"%s\" %s", tag, fileAddr.FileLine())
+	description := fmt.Sprintf("tag:\"%s\" %s", tag, fileLine)
 	SpringLogger.Tracef("get value %s", description)
 
 	if strings.HasPrefix(tag, "${") || v.Type().Kind() == reflect.Struct { // ${x:=y} 属性绑定
@@ -182,7 +182,7 @@ type fnOptionBindingArg struct {
 }
 
 // Get 获取函数参数的绑定值
-func (arg *fnOptionBindingArg) Get(beanAssembly beanAssembly, fileAddr FileAddr) []reflect.Value {
+func (arg *fnOptionBindingArg) Get(beanAssembly beanAssembly, fileLine string) []reflect.Value {
 	result := make([]reflect.Value, 0)
 	for _, option := range arg.options {
 		if v, ok := option.call(beanAssembly); ok {
@@ -305,13 +305,13 @@ func (arg *optionArg) ConditionOnPropertyValue(name string, havingValue interfac
 }
 
 // ConditionOnBean 为 optionArg 设置一个 BeanCondition
-func (arg *optionArg) ConditionOnBean(selector interface{}) *optionArg {
+func (arg *optionArg) ConditionOnBean(selector BeanSelector) *optionArg {
 	arg.cond.OnBean(selector)
 	return arg
 }
 
 // ConditionOnMissingBean 为 optionArg 设置一个 MissingBeanCondition
-func (arg *optionArg) ConditionOnMissingBean(selector interface{}) *optionArg {
+func (arg *optionArg) ConditionOnMissingBean(selector BeanSelector) *optionArg {
 	arg.cond.OnMissingBean(selector)
 	return arg
 }
@@ -341,7 +341,7 @@ func (arg *optionArg) call(beanAssembly beanAssembly) (v reflect.Value, ok bool)
 	// 判断 Option 条件是否成立
 	if ok = arg.cond.Matches(beanAssembly.springContext()); ok {
 		fnValue := reflect.ValueOf(arg.fn)
-		in := arg.arg.Get(beanAssembly, arg)
+		in := arg.arg.Get(beanAssembly, arg.FileLine())
 		out := fnValue.Call(in)
 		v = out[0]
 	}

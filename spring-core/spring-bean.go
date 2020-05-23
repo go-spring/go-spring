@@ -26,12 +26,15 @@ import (
 	"github.com/go-spring/go-spring-parent/spring-utils"
 )
 
+// errorType error 的反射类型
+var errorType = reflect.TypeOf((*error)(nil)).Elem()
+
 const (
 	valType = 1 // 值类型
 	refType = 2 // 引用类型
 )
 
-var kindType = []uint8{
+var kindTypes = []uint8{
 	0,       // Invalid
 	valType, // Bool
 	valType, // Int
@@ -63,71 +66,85 @@ var kindType = []uint8{
 
 // IsRefType 返回是否是引用类型
 func IsRefType(k reflect.Kind) bool {
-	return kindType[k] == refType
+	return kindTypes[k] == refType
 }
 
 // IsValueType 返回是否是值类型
 func IsValueType(k reflect.Kind) bool {
-	return kindType[k] == valType
+	return kindTypes[k] == valType
 }
 
-// TypeName 返回原始类型的全限定名，golang 允许不同的路径下存在相同的包，故此有全限定名的需求。
-// 形如 "github.com/go-spring/go-spring/spring-core/SpringCore.DefaultSpringContext"
-func TypeName(i interface{}) string {
+// TypeOrPtr 可以是一个 reflect.Type 对象或者一个形如 (*error)(nil) 的对象指针。
+type TypeOrPtr interface{}
 
-	if i == nil {
+// TypeName 返回原始类型的全限定名，golang 允许不同的路径下存在相同的包，故此有全限定名的需求，
+// 形如 "github.com/go-spring/go-spring/spring-core/SpringCore.BeanDefinition"。
+func TypeName(typOrPtr TypeOrPtr) string {
+
+	if typOrPtr == nil {
 		panic(errors.New("shouldn't be nil"))
 	}
 
-	var t reflect.Type
+	var typ reflect.Type
 
-	switch it := i.(type) {
+	switch t := typOrPtr.(type) {
 	case reflect.Type:
-		t = it
+		typ = t
 	default:
-		// map、slice 等不是指针类型，it 形如 (*error)(nil)
-		if t = reflect.TypeOf(it); t.Kind() == reflect.Ptr {
-			if e := t.Elem(); e.Kind() == reflect.Interface {
-				t = e // 接口类型去掉指针
+		// map、slice 等不是指针类型
+		if typ = reflect.TypeOf(t); typ.Kind() == reflect.Ptr {
+			if e := typ.Elem(); e.Kind() == reflect.Interface {
+				typ = e // 接口类型去掉指针
 			}
 		}
 	}
 
-	// Map 的全限定名太复杂，不予处理，而且 Map 作为注入对象要三思而后行！
 	for {
-		if k := t.Kind(); k != reflect.Ptr && k != reflect.Slice {
+		// Map 的全限定名太复杂，不予处理，而且 Map 作为注入对象要三思而后行！
+		if k := typ.Kind(); k != reflect.Ptr && k != reflect.Slice {
 			break
 		} else {
-			t = t.Elem()
+			typ = typ.Elem()
 		}
 	}
 
-	if pkgPath := t.PkgPath(); pkgPath != "" { // 内置类型的路径为空
-		return pkgPath + "/" + t.String()
-	} else {
-		return t.String()
+	if pkgPath := typ.PkgPath(); pkgPath != "" {
+		return pkgPath + "/" + typ.String()
+	} else { // 内置类型的路径为空
+		return typ.String()
 	}
 }
 
-// BeanId 返回一个字符串表示或者类型表示的 BeanId
-func BeanId(i interface{}) string {
-	if s, ok := i.(string); ok {
-		return s
+// BeanSelector Bean 选择器，可以是一个 BeanId 字符串，可以是一个 reflect.Type
+// 对象或者一个形如 (*error)(nil) 的对象指针，也可以是一个 *BeanDefinition 对象。
+type BeanSelector interface{ TypeOrPtr }
+
+// GetBeanId 获取一个 Bean 选择器表示的 BeanId。 BeanId 是一个 Bean 的唯一字
+// 符串表示形式，一般是 "TypeName:BeanName?"，其中TypeName 是类型全限定名，
+// BeanName 是 Bean 的名称，? 表示选择结果是否可以为空。这种表示方式还存在一个简化
+// 的规则，即 "BeanName?"。另外 BeanId 还有一种收集模式，形如 "[]?"，用于选择一
+// 组类型相同的 Bean。 TODO BeanId 概念还不是很清楚
+func GetBeanId(selector BeanSelector) string {
+	if beanId, ok := selector.(string); ok {
+		return beanId
 	}
-	return TypeName(i) + ":"
+	if bd, ok := selector.(*BeanDefinition); ok {
+		return bd.BeanId()
+	}
+	return TypeName(selector) + ":"
 }
 
-// ParseBeanId 解析 BeanId 的内容，"TypeName:BeanName?" 或者 "[]?"
+// ParseBeanId 解析 BeanId 的内容，返回类型全限定名、Bean 名称以及选择结果是否可以为空。
 func ParseBeanId(beanId string) (typeName string, beanName string, nullable bool) {
 
-	if ss := strings.Split(beanId, ":"); len(ss) > 1 {
+	if ss := strings.Split(beanId, ":"); len(ss) > 1 { // 完整形式
 		typeName = ss[0]
 		beanName = ss[1]
-	} else {
+	} else { // 简化形式
 		beanName = ss[0]
 	}
 
-	if strings.HasSuffix(beanName, "?") {
+	if strings.HasSuffix(beanName, "?") { // 是否可空
 		beanName = beanName[:len(beanName)-1]
 		nullable = true
 	}
@@ -138,32 +155,33 @@ func ParseBeanId(beanId string) (typeName string, beanName string, nullable bool
 	return
 }
 
-// springBean Bean 源接口
+// springBean 封装一个 Bean 的源、类型和值，根据注册形式的不同，Bean 分为对象 Bean
+// (objectBean)、构造函数 Bean (constructorBean) 和成员方法 Bean (methodBean)。
 type springBean interface {
 	Bean() interface{}    // 源
 	Type() reflect.Type   // 类型
 	Value() reflect.Value // 值
 	TypeName() string     // 原始类型的全限定名
-	beanClass() string    // SpringBean 的实现类型
+	beanClass() string    // springBean 具体类型的名称
 }
 
-// objectBean 原始 Bean 源
+// objectBean 以对象形式注册的 Bean
 type objectBean struct {
 	rType    reflect.Type  // 类型
 	rValue   reflect.Value // 值
 	typeName string        // 原始类型的全限定名
 }
 
-// newObjectBean objectBean 的构造函数
+// newObjectBean objectBean 的构造函数，入参必须是一个引用类型的值。
 func newObjectBean(v reflect.Value) *objectBean {
-	if t := v.Type(); !IsRefType(t.Kind()) {
-		panic(errors.New("bean must be ref type"))
-	} else {
+	if t := v.Type(); IsRefType(t.Kind()) {
 		return &objectBean{
 			rType:    t,
 			rValue:   v,
 			typeName: TypeName(t),
 		}
+	} else {
+		panic(errors.New("bean must be ref type"))
 	}
 }
 
@@ -182,25 +200,29 @@ func (b *objectBean) Value() reflect.Value {
 	return b.rValue
 }
 
-// TypeName 返回 Bean 的原始类型的全限定名
+// TypeName 返回 Bean 原始类型的全限定名
 func (b *objectBean) TypeName() string {
 	return b.typeName
 }
 
-// beanClass 返回 SpringBean 的实现类型
+// beanClass 返回 objectBean 的类型名称
 func (b *objectBean) beanClass() string {
 	return "object bean"
 }
 
-// functionBean 函数定义的 Bean 源
+// functionBean 以函数形式（构造函数或者成员方法）注册的 Bean
 type functionBean struct {
 	objectBean
 
-	stringArg *fnStringBindingArg // 普通参数绑定
-	optionArg *fnOptionBindingArg // Option 绑定
+	stringArg *fnStringBindingArg // 非 Option 参数的绑定
+	optionArg *fnOptionBindingArg // Option 参数的绑定
 }
 
-// IsFuncBeanType 返回是否是合法的函数 Bean 类型
+// IsFuncBeanType 返回以函数形式注册 Bean 的函数是否合法，一个合法
+// 的注册函数需要以下条件：入参可以有任意多个，而且支持 Option 形式和
+// 非 Option 形式，返回值只能有一个或者两个，第一个返回值必须是 Bean
+// 源，它可以是结构体等值类型也可以是指针等引用类型，为值类型时内部会自
+// 动转换为引用类型（获取可引用的地址），第二个返回值必须是 error 类型。
 func IsFuncBeanType(fnType reflect.Type) bool {
 
 	// 必须是函数
@@ -214,35 +236,37 @@ func IsFuncBeanType(fnType reflect.Type) bool {
 	}
 
 	// 第 2 个返回值必须是 error 类型
-	if fnType.NumOut() == 2 {
-		if !fnType.Out(1).Implements(ErrorType) {
-			return false
-		}
+	if fnType.NumOut() == 2 && !fnType.Out(1).Implements(errorType) {
+		return false
 	}
 
 	return true
 }
 
-// newFunctionBean functionBean 的构造函数
+// newFunctionBean functionBean 的构造函数，当 withReceiver 为 true 时 fnType 对应的函数指针
+// 其第一个参数视为接收者，也就是 fnType 对应的成员函数可以形如 Server.Consumer 的形式来表示。
+// tags 是 Bean 函数的非 Option 模式参数的绑定值，这使得函数也具有了和结构体 Tag 机制类似的能力。
+// tags 的值是结构体 tag 值的简化版，去掉了 tag 的名字，另外所有的 tag 必须同时有或者同时没有序号。
 func newFunctionBean(fnType reflect.Type, withReceiver bool, tags []string) functionBean {
 
-	// 检查是否是合法的函数 Bean 类型
-	if ok := IsFuncBeanType(fnType); !ok {
+	// 检查 Bean 的注册函数是否合法
+	if !IsFuncBeanType(fnType) {
 		t1 := "func(...)bean"
 		t2 := "func(...)(bean, error)"
 		panic(fmt.Errorf("func bean must be %s or %s", t1, t2))
 	}
 
-	t := fnType.Out(0)
-	v := reflect.New(t)
+	// 创建 Bean 的值
+	out := fnType.Out(0)
+	v := reflect.New(out)
 
-	// 引用类型需要解一层指针
-	if IsRefType(t.Kind()) {
+	// 引用类型去掉一层指针
+	if IsRefType(out.Kind()) {
 		v = v.Elem()
 	}
 
-	// 然后需要重新确定类型
-	t = v.Type()
+	// 获取 Bean 的类型
+	t := v.Type()
 
 	return functionBean{
 		objectBean: objectBean{
@@ -254,27 +278,27 @@ func newFunctionBean(fnType reflect.Type, withReceiver bool, tags []string) func
 	}
 }
 
-// constructorBean 构造函数定义的 Bean 源
+// constructorBean 以构造函数形式注册的 Bean
 type constructorBean struct {
 	functionBean
 
-	fn interface{} // 构造函数
+	fn interface{} // 构造函数的函数指针
 }
 
-// newConstructorBean constructorBean 的构造函数，所有 tag 都必须同时有或者同时没有序号。
-func newConstructorBean(fn interface{}, tags ...string) *constructorBean {
+// newConstructorBean constructorBean 的构造函数，所有 tag 必须同时有或者同时没有序号。
+func newConstructorBean(fn interface{}, tags []string) *constructorBean {
 	return &constructorBean{
 		functionBean: newFunctionBean(reflect.TypeOf(fn), false, tags),
 		fn:           fn,
 	}
 }
 
-// beanClass 返回 SpringBean 的实现类型
+// beanClass 返回 constructorBean 的类型名称
 func (b *constructorBean) beanClass() string {
 	return "constructor bean"
 }
 
-// methodBean 成员方法定义的 Bean 源
+// methodBean 以成员方法形式注册的 Bean
 type methodBean struct {
 	functionBean
 
@@ -282,41 +306,40 @@ type methodBean struct {
 	method string          // 成员方法名称
 }
 
-// newMethodBean methodBean 的构造函数，所有 tag 都必须同时有或者同时没有序号。
-func newMethodBean(parent *BeanDefinition, method string, tags ...string) *methodBean {
-	var fnType reflect.Type
+// newMethodBean methodBean 的构造函数，所有 tag 必须同时有或者同时没有序号。
+func newMethodBean(parent *BeanDefinition, methodName string, tags []string) *methodBean {
 
-	t := parent.Type()
-	if m, ok := t.MethodByName(method); ok {
-		fnType = m.Type
-	} else {
-		panic(fmt.Errorf("can't find method: %s", method))
+	parentType := parent.Type()
+	method, ok := parentType.MethodByName(methodName)
+	if !ok {
+		panic(fmt.Errorf("can't find method:%s on type:%s", methodName, TypeName(parentType)))
 	}
 
 	withReceiver := false
-	if t.Kind() != reflect.Interface {
+
+	// 接口的函数指针不包含接受者类型
+	if parentType.Kind() != reflect.Interface {
 		withReceiver = true
 	}
 
 	return &methodBean{
-		functionBean: newFunctionBean(fnType, withReceiver, tags),
+		functionBean: newFunctionBean(method.Type, withReceiver, tags),
 		parent:       parent,
-		method:       method,
+		method:       methodName,
 	}
 }
 
-// beanClass 返回 SpringBean 的实现类型
+// beanClass 返回 methodBean 的类型名称
 func (b *methodBean) beanClass() string {
 	return "method bean"
 }
 
-// fakeMethodBean 延迟创建的 Method Bean
+// fakeMethodBean 成员方法 Bean 不是在注册时就立即生成 methodBean
+// 对象，而是在所有 Bean 注册完成并且自动注入开始后才开始生成，在此之前
+// 使用 fakeMethodBean 对象进行占位。
 type fakeMethodBean struct {
-	// parent 选择器:
-	// *BeanDefinition 表示直接使用 parent 对象;
-	// string 类型值表示根据 BeanId 查询 parent 对象;
-	// (*Type)(nil) 类型值表示根据类型查询 parent 对象。
-	selector interface{}
+	// 父 Bean 的 BeanId
+	parent string
 
 	// 成员方法名称
 	method string
@@ -325,12 +348,12 @@ type fakeMethodBean struct {
 	tags []string
 }
 
-// newFakeMethodBean fakeMethodBean 的构造函数
-func newFakeMethodBean(selector interface{}, method string, tags ...string) *fakeMethodBean {
+// newFakeMethodBean fakeMethodBean 的构造函数，parent 是父 Bean 的 BeanId。
+func newFakeMethodBean(parent string, method string, tags []string) *fakeMethodBean {
 	return &fakeMethodBean{
-		selector: selector,
-		method:   method,
-		tags:     tags,
+		parent: parent,
+		method: method,
+		tags:   tags,
 	}
 }
 
@@ -367,7 +390,7 @@ const (
 	beanStatus_Deleted   = beanStatus(5) // 已删除
 )
 
-// beanDefinition 对 BeanDefinition 的抽象接口
+// beanDefinition BeanDefinition 的抽象接口
 type beanDefinition interface {
 	Bean() interface{}    // 源
 	Type() reflect.Type   // 类型
@@ -382,7 +405,7 @@ type beanDefinition interface {
 	springBean() springBean      // 返回 SpringBean 对象
 	getStatus() beanStatus       // 返回 Bean 的状态值
 	setStatus(status beanStatus) // 设置 Bean 的状态值
-	getDependsOn() []interface{} // 返回 Bean 的非直接依赖项
+	getDependsOn() []string      // 返回 Bean 的非直接依赖项
 	getInit() *runnable          // 返回 Bean 的初始化函数
 	getDestroy() *runnable       // 返回 Bean 的销毁函数
 	getFile() string             // 返回 Bean 注册点所在文件的名称
@@ -391,21 +414,21 @@ type beanDefinition interface {
 
 // BeanDefinition Bean 的详细定义
 type BeanDefinition struct {
-	bean   springBean // 源
-	name   string     // 名称
-	status beanStatus // 状态
+	bean   springBean
+	name   string     // Bean 的名称
+	status beanStatus // Bean 的状态
 
 	file string // 注册点所在文件
 	line int    // 注册点所在行数
 
-	cond      *Conditional  // 判断条件
-	primary   bool          // 主版本
-	dependsOn []interface{} // 非直接依赖
+	cond      *Conditional // 判断条件
+	primary   bool         // 是否为主版本
+	dependsOn []string     // 间接依赖
 
-	init    *runnable // 初始化的回调
+	init    *runnable // 初始化时的回调
 	destroy *runnable // 销毁时的回调
 
-	exports map[reflect.Type]struct{} // 导出接口类型
+	exports map[reflect.Type]struct{} // 导出的接口类型
 }
 
 // newBeanDefinition BeanDefinition 的构造函数
@@ -439,10 +462,9 @@ func newBeanDefinition(name string, bean springBean) *BeanDefinition {
 		break
 	}
 
-	if _, ok := bean.(*fakeMethodBean); !ok {
-		if name == "" { // 生成默认名称
-			name = bean.Type().String()
-		}
+	// 如果不是成员方法 Bean 当名称为空时生成默认的 Bean 名称
+	if _, ok := bean.(*fakeMethodBean); !ok && name == "" {
+		name = bean.Type().String()
 	}
 
 	return &BeanDefinition{
@@ -486,7 +508,7 @@ func (d *BeanDefinition) BeanId() string {
 	return fmt.Sprintf("%s:%s", d.TypeName(), d.name)
 }
 
-// FileLine 返回 Bean 注册点的文件行号
+// FileLine 返回 Bean 注册点的文件和行号
 func (d *BeanDefinition) FileLine() string {
 	return fmt.Sprintf("%s:%d", d.file, d.line)
 }
@@ -506,8 +528,8 @@ func (d *BeanDefinition) setStatus(status beanStatus) {
 	d.status = status
 }
 
-// getDependsOn 返回 Bean 的非直接依赖项
-func (d *BeanDefinition) getDependsOn() []interface{} {
+// getDependsOn 返回 Bean 的间接依赖
+func (d *BeanDefinition) getDependsOn() []string {
 	return d.dependsOn
 }
 
@@ -595,13 +617,13 @@ func (d *BeanDefinition) ConditionOnPropertyValue(name string, havingValue inter
 }
 
 // ConditionOnBean 为 Bean 设置一个 BeanCondition
-func (d *BeanDefinition) ConditionOnBean(selector interface{}) *BeanDefinition {
+func (d *BeanDefinition) ConditionOnBean(selector BeanSelector) *BeanDefinition {
 	d.cond.OnBean(selector)
 	return d
 }
 
 // ConditionOnMissingBean 为 Bean 设置一个 MissingBeanCondition
-func (d *BeanDefinition) ConditionOnMissingBean(selector interface{}) *BeanDefinition {
+func (d *BeanDefinition) ConditionOnMissingBean(selector BeanSelector) *BeanDefinition {
 	d.cond.OnMissingBean(selector)
 	return d
 }
@@ -638,14 +660,16 @@ func (d *BeanDefinition) Options(options ...*optionArg) *BeanDefinition {
 	case *methodBean:
 		bean.optionArg = arg
 	default:
-		panic(errors.New("只有 func Bean 才能调用此方法"))
+		panic(errors.New("error call"))
 	}
 	return d
 }
 
-// DependsOn 设置 Bean 的非直接依赖
-func (d *BeanDefinition) DependsOn(selector ...interface{}) *BeanDefinition {
-	d.dependsOn = append(d.dependsOn, selector...)
+// DependsOn 设置 Bean 的间接依赖
+func (d *BeanDefinition) DependsOn(selectors ...BeanSelector) *BeanDefinition {
+	for _, s := range selectors {
+		d.dependsOn = append(d.dependsOn, GetBeanId(s))
+	}
 	return d
 }
 
@@ -655,7 +679,8 @@ func (d *BeanDefinition) Primary(primary bool) *BeanDefinition {
 	return d
 }
 
-// validLifeCycleFunc 判断是否是合法的用于 Bean 生命周期控制的回调函数
+// validLifeCycleFunc 判断是否是合法的用于 Bean 生命周期控制的回调函数，生命周期函数的要求：
+// 有至少一个参数，且第一个参数的类型必须是 Bean 的类型，没有返回值或者只能返回 error 类型值。
 func validLifeCycleFunc(fn interface{}, beanType reflect.Type) (reflect.Type, bool) {
 	fnType := reflect.TypeOf(fn)
 
@@ -669,7 +694,7 @@ func validLifeCycleFunc(fn interface{}, beanType reflect.Type) (reflect.Type, bo
 		return nil, false
 	}
 
-	// 第一个入参必须是 Bean 的类型
+	// 第一个入参的类型必须是 Bean 的类型
 	if fnType.In(0) != beanType {
 		return nil, false
 	}
@@ -678,7 +703,7 @@ func validLifeCycleFunc(fn interface{}, beanType reflect.Type) (reflect.Type, bo
 	if numOut := fnType.NumOut(); numOut > 1 {
 		return nil, false
 	} else if numOut == 1 {
-		if out := fnType.Out(0); out != ErrorType {
+		if out := fnType.Out(0); out != errorType {
 			return nil, false
 		}
 	}
@@ -686,7 +711,7 @@ func validLifeCycleFunc(fn interface{}, beanType reflect.Type) (reflect.Type, bo
 	return fnType, true
 }
 
-// Init 设置 Bean 初始化的回调
+// Init 设置 Bean 初始化时的回调
 func (d *BeanDefinition) Init(fn interface{}, tags ...string) *BeanDefinition {
 
 	fnType, ok := validLifeCycleFunc(fn, d.Type())
@@ -696,9 +721,9 @@ func (d *BeanDefinition) Init(fn interface{}, tags ...string) *BeanDefinition {
 
 	d.init = &runnable{
 		fn:           fn,
-		stringArg:    newFnStringBindingArg(fnType, true, tags),
 		withReceiver: true,
 		receiver:     d.Value(),
+		stringArg:    newFnStringBindingArg(fnType, true, tags),
 	}
 
 	return d
@@ -714,31 +739,31 @@ func (d *BeanDefinition) Destroy(fn interface{}, tags ...string) *BeanDefinition
 
 	d.destroy = &runnable{
 		fn:           fn,
-		stringArg:    newFnStringBindingArg(fnType, true, tags),
 		withReceiver: true,
 		receiver:     d.Value(),
+		stringArg:    newFnStringBindingArg(fnType, true, tags),
 	}
 
 	return d
 }
 
-// Export 指定 Bean 的导出接口
-func (d *BeanDefinition) Export(exports ...interface{}) *BeanDefinition {
+// Export 显示指定 Bean 的导出接口
+func (d *BeanDefinition) Export(exports ...TypeOrPtr) *BeanDefinition {
 	return d.export(exports)
 }
 
-func (d *BeanDefinition) export(exports []interface{}) *BeanDefinition {
-	for _, o := range exports { // 使用 map 进行自动排重
+func (d *BeanDefinition) export(exports []TypeOrPtr) *BeanDefinition {
+	for _, o := range exports { // 使用 map 进行排重
 
-		var t reflect.Type
-		if m, ok := o.(reflect.Type); ok {
-			t = m
+		var typ reflect.Type
+		if t, ok := o.(reflect.Type); ok {
+			typ = t
 		} else {
-			t = SpringUtils.Indirect(reflect.TypeOf(o))
+			typ = SpringUtils.Indirect(reflect.TypeOf(o))
 		}
 
-		if t.Kind() == reflect.Interface {
-			d.exports[t] = struct{}{}
+		if typ.Kind() == reflect.Interface {
+			d.exports[typ] = struct{}{}
 		} else {
 			panic(errors.New("must export interface type"))
 		}
@@ -746,7 +771,7 @@ func (d *BeanDefinition) export(exports []interface{}) *BeanDefinition {
 	return d
 }
 
-// IsNil 返回 reflect.Value 的值是否为 nil，比原生方法更安全
+// IsNil 返回 reflect.Value 的值是否为 nil，比原生方法更安全 TODO 提升到 parent 模块
 func IsNil(v reflect.Value) bool {
 	switch v.Kind() {
 	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Ptr, reflect.Slice, reflect.UnsafePointer:
@@ -755,7 +780,7 @@ func IsNil(v reflect.Value) bool {
 	return false
 }
 
-// ToBeanDefinition 将 Bean 转换为 BeanDefinition 对象
+// ToBeanDefinition 将 Bean 源转换为 BeanDefinition 对象
 func ToBeanDefinition(name string, i interface{}) *BeanDefinition {
 	return ValueToBeanDefinition(name, reflect.ValueOf(i))
 }
@@ -765,42 +790,40 @@ func ValueToBeanDefinition(name string, v reflect.Value) *BeanDefinition {
 	if !v.IsValid() || IsNil(v) {
 		panic(errors.New("bean can't be nil"))
 	}
-	bean := newObjectBean(v)
-	return newBeanDefinition(name, bean)
+	return newBeanDefinition(name, newObjectBean(v))
 }
 
 // FnToBeanDefinition 将构造函数转换为 BeanDefinition 对象
 func FnToBeanDefinition(name string, fn interface{}, tags ...string) *BeanDefinition {
 
-	// 生成默认名称，取函数名，只针对具名函数，匿名函数还是使用 Bean 的类型名称
-	// 具名函数: github.com/go-spring/go-spring/spring-core_test.NewManager
-	// 匿名函数: github.com/go-spring/go-spring/spring-core_test.TestDefaultSpringContext_NestValueField.func1.1
+	// 具名函数取函数名作为默认名称，匿名函数还是使用 Bean 的类型名称
+	// 具名函数形如: .../go-spring/spring-core_test.NewManager
+	// 匿名函数形如: .../go-spring/spring-core_test.TestNestValueField.func1.1
 	if name == "" {
 		fnPtr := reflect.ValueOf(fn).Pointer()
 		fnInfo := runtime.FuncForPC(fnPtr)
 		s := strings.Split(fnInfo.Name(), "/")
 		ss := strings.Split(s[len(s)-1], ".")
-		if len(ss) == 2 {
+		if len(ss) == 2 { // 判断是具名函数
 			name = "@" + ss[1]
 		}
 	}
 
-	bean := newConstructorBean(fn, tags...)
-	return newBeanDefinition(name, bean)
+	return newBeanDefinition(name, newConstructorBean(fn, tags))
 }
 
 // MethodToBeanDefinition 将成员方法转换为 BeanDefinition 对象
-func MethodToBeanDefinition(name string, selector interface{}, method string, tags ...string) *BeanDefinition {
+func MethodToBeanDefinition(name string, selector BeanSelector, methodName string, tags ...string) *BeanDefinition {
+	parent := GetBeanId(selector)
 
-	if name == "" { // 生成默认名称，取函数名
-		name = "@" + method
+	if name == "" { // 取函数名作为默认名称
+		name = "@" + methodName
 	}
 
-	bean := newFakeMethodBean(selector, method, tags...)
-	return newBeanDefinition(name, bean)
+	return newBeanDefinition(name, newFakeMethodBean(parent, methodName, tags))
 }
 
-// ValidBeanValue 返回是否是合法的 Bean 值
+// ValidBeanValue 返回是否是合法的 Bean 值及其类型
 func ValidBeanValue(v reflect.Value) (reflect.Type, bool) {
 	if v.IsValid() {
 		if beanType := v.Type(); IsRefType(beanType.Kind()) {
@@ -808,4 +831,26 @@ func ValidBeanValue(v reflect.Value) (reflect.Type, bool) {
 		}
 	}
 	return nil, false
+}
+
+// fieldBeanDefinition 具有字段名的 BeanDefinition 实现
+type fieldBeanDefinition struct {
+	*BeanDefinition
+	field string // 字段名称
+}
+
+// Description 返回 Bean 的详细描述 TODO 需要完善
+func (d *fieldBeanDefinition) Description() string {
+	return fmt.Sprintf("%s field: %s %s", d.bean.beanClass(), d.field, d.FileLine())
+}
+
+// delegateBeanDefinition 代理功能的 BeanDefinition 实现 TODO 不是很明确
+type delegateBeanDefinition struct {
+	*BeanDefinition
+	delegate beanDefinition // 代理项
+}
+
+// Description 返回 Bean 的详细描述
+func (d *delegateBeanDefinition) Description() string {
+	return fmt.Sprintf("%s value %s", d.delegate.springBean().beanClass(), d.delegate.FileLine())
 }
