@@ -21,18 +21,6 @@ import (
 	"context"
 )
 
-// ContextEvent 定义 SpringContext 事件类型
-type ContextEvent int
-
-const (
-	ContextEvent_ResolveStart  = ContextEvent(0) // 开始解析 Bean 的过程
-	ContextEvent_ResolveEnd    = ContextEvent(1) // 结束解析 Bean 的过程
-	ContextEvent_AutoWireStart = ContextEvent(2) // 开始注入 Bean 的过程
-	ContextEvent_AutoWireEnd   = ContextEvent(3) // 结束注入 Bean 的过程
-	ContextEvent_CloseStart    = ContextEvent(4) // 开始关闭 Context 的过程
-	ContextEvent_CloseEnd      = ContextEvent(5) // 结束关闭 Context 的过程
-)
-
 // SpringContext 定义 IoC 容器接口，Bean 的注册规则：
 //   1. AutoWireBeans 开始后不允许注册新的 Bean（性能考虑）
 type SpringContext interface {
@@ -60,9 +48,6 @@ type SpringContext interface {
 
 	// SetAllAccess 设置是否允许访问私有字段
 	SetAllAccess(allAccess bool)
-
-	// SetEventNotify 设置 Context 事件通知函数
-	SetEventNotify(notify func(event ContextEvent))
 
 	// RegisterBean 注册单例 Bean，不指定名称，重复注册会 panic。
 	RegisterBean(bean interface{}) *BeanDefinition
@@ -108,20 +93,23 @@ type SpringContext interface {
 	// GetBeanByName 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 	// 什么情况下会多于 1 个？假设 StructA 和 StructB 都实现了 InterfaceT，而且用户在注册时使用了相
 	// 同的名称分别注册了 StructA 和 StructB 的 Bean，这时候如果使用 InterfaceT 去获取，就会出现多于 1 个的情况。
-	GetBeanByName(beanId string, i interface{}) bool
+	GetBeanByName(tag string, i interface{}) bool
 
 	// FindBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 	// selector 可以是 BeanId，还可以是 (*Type)(nil) 变量，Type 为接口类型时带指针。
 	FindBean(selector BeanSelector) (*BeanDefinition, bool)
 
 	// FindBeanByName 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
-	FindBeanByName(beanId string) (*BeanDefinition, bool)
+	FindBeanByName(tag string) (*BeanDefinition, bool)
 
 	// CollectBeans 收集数组或指针定义的所有符合条件的 Bean 对象，收集到返回 true，否则返回 false。
 	// 什么情况下可以使用此功能？假设 HandlerA 和 HandlerB 都实现了 HandlerT 接口，而且用户分别注册
 	// 了一个 HandlerA 和 HandlerB 对象，如果用户想要同时获取 HandlerA 和 HandlerB 对象，那么他可
 	// 以通过 []HandlerT 即数组的方式获取到所有 Bean。
 	CollectBeans(i interface{}) bool
+
+	// CollectBeansByName
+	CollectBeansByName(tag string, i interface{}) bool
 
 	// GetBeanDefinitions 获取所有 Bean 的定义，一般仅供调试使用。
 	GetBeanDefinitions() []*BeanDefinition

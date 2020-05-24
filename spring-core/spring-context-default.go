@@ -24,19 +24,23 @@ import (
 	"reflect"
 	"runtime"
 	"strings"
-	"sync"
 
 	"github.com/go-spring/go-spring-parent/spring-logger"
 	"github.com/go-spring/go-spring-parent/spring-utils"
 )
 
-// beanKey Bean's unique key, type+name.
+// beanKey Bean's unique key, with type and name.
 type beanKey struct {
-	name string
 	typ  reflect.Type
+	name string
 }
 
-// beanCacheItem BeanCache's item.
+// newBeanKey beanKey 的构造函数
+func newBeanKey(typ reflect.Type, name string) beanKey {
+	return beanKey{typ: typ, name: name}
+}
+
+// beanCacheItem BeanCache's item, for type cache or name cache.
 type beanCacheItem struct {
 	beans []*BeanDefinition
 }
@@ -48,23 +52,8 @@ func newBeanCacheItem() *beanCacheItem {
 	}
 }
 
-// find 顺序查找元素在数组中的位置
-func (item *beanCacheItem) find(bd *BeanDefinition) int {
-	for i, b := range item.beans {
-		if b == bd {
-			return i
-		}
-	}
-	return -1
-}
-
-func (item *beanCacheItem) store(t reflect.Type, bd *BeanDefinition, check bool) bool {
-	if check && item.find(bd) >= 0 { // 预期数据量较少，因此未使用 map 进行存储。
-		return false
-	}
-	SpringLogger.Debugf("register bean type:\"%s\" beanId:\"%s\" %s", t.String(), bd.BeanId(), bd.FileLine())
+func (item *beanCacheItem) store(bd *BeanDefinition) {
 	item.beans = append(item.beans, bd)
-	return true
 }
 
 // defaultSpringContext SpringContext 的默认版本
@@ -77,19 +66,15 @@ type defaultSpringContext struct {
 	cancel context.CancelFunc
 
 	profile   string // 运行环境
-	autoWired bool   // 已经开始自动绑定
-	allAccess bool   // 允许注入私有字段
-
-	eventNotify func(event ContextEvent) // 事件通知函数
+	autoWired bool   // 是否开始自动绑定
+	allAccess bool   // 是否允许注入私有字段
 
 	beanMap     map[beanKey]*BeanDefinition // Bean 的集合
 	methodBeans []*BeanDefinition           // 方法 Beans
 	configers   *list.List                  // 配置方法集合
 
-	// Bean 的缓存，使用线程安全的 map 是考虑到运行时可能有
-	// 并发操作，另外 resolveBeans 的时候一步步地创建缓存。
-	beanCacheByType sync.Map
-	beanCacheByName map[string][]*BeanDefinition
+	beanCacheByName map[string]*beanCacheItem
+	beanCacheByType map[reflect.Type]*beanCacheItem
 }
 
 // NewDefaultSpringContext defaultSpringContext 的构造函数
@@ -102,7 +87,8 @@ func NewDefaultSpringContext() *defaultSpringContext {
 		methodBeans:     make([]*BeanDefinition, 0),
 		beanMap:         make(map[beanKey]*BeanDefinition),
 		configers:       list.New(),
-		beanCacheByName: make(map[string][]*BeanDefinition),
+		beanCacheByName: make(map[string]*beanCacheItem),
+		beanCacheByType: make(map[reflect.Type]*beanCacheItem),
 	}
 }
 
@@ -126,11 +112,6 @@ func (ctx *defaultSpringContext) SetAllAccess(allAccess bool) {
 	ctx.allAccess = allAccess
 }
 
-// SetEventNotify 设置 Context 事件通知函数
-func (ctx *defaultSpringContext) SetEventNotify(notify func(event ContextEvent)) {
-	ctx.eventNotify = notify
-}
-
 // checkAutoWired 检查是否已调用 AutoWireBeans 方法
 func (ctx *defaultSpringContext) checkAutoWired() {
 	if !ctx.autoWired {
@@ -147,7 +128,7 @@ func (ctx *defaultSpringContext) checkRegistration() {
 
 // deleteBeanDefinition 删除 BeanDefinition。
 func (ctx *defaultSpringContext) deleteBeanDefinition(bd *BeanDefinition) {
-	key := beanKey{bd.name, bd.Type()}
+	key := beanKey{name: bd.name, typ: bd.Type()}
 	bd.status = beanStatus_Deleted
 	delete(ctx.beanMap, key)
 }
@@ -156,7 +137,7 @@ func (ctx *defaultSpringContext) deleteBeanDefinition(bd *BeanDefinition) {
 func (ctx *defaultSpringContext) registerBeanDefinition(d *BeanDefinition) {
 	ctx.checkRegistration()
 
-	k := beanKey{d.name, d.Type()}
+	k := beanKey{name: d.name, typ: d.Type()}
 	if _, ok := ctx.beanMap[k]; ok {
 		panic(fmt.Errorf("duplicate registration, bean: \"%s\"", d.BeanId()))
 	}
@@ -243,14 +224,14 @@ func (ctx *defaultSpringContext) GetBean(i interface{}) bool {
 }
 
 // GetBeanByName 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
-func (ctx *defaultSpringContext) GetBeanByName(beanId string, i interface{}) bool {
+func (ctx *defaultSpringContext) GetBeanByName(tag string, i interface{}) bool {
 	SpringUtils.Panic(errors.New("i can't be nil")).When(i == nil)
 
 	ctx.checkAutoWired()
 
 	// 确保存在可空标记，抑制 panic 效果。
-	if beanId == "" || beanId[len(beanId)-1] != '?' {
-		beanId += "?"
+	if tag == "" || tag[len(tag)-1] != '?' {
+		tag += "?"
 	}
 
 	t := reflect.TypeOf(i)
@@ -261,8 +242,9 @@ func (ctx *defaultSpringContext) GetBeanByName(beanId string, i interface{}) boo
 	}
 
 	v := reflect.ValueOf(i)
+	beanId := ParseBeanId(tag)
 	w := newDefaultBeanAssembly(ctx)
-	return w.getBeanValue(v.Elem(), ParseBeanId(beanId), reflect.Value{}, "")
+	return w.getBeanValue(v.Elem(), beanId, reflect.Value{}, "")
 }
 
 // FindBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
@@ -317,6 +299,11 @@ func (ctx *defaultSpringContext) FindBeanByName(tag string) (*BeanDefinition, bo
 
 // CollectBeans 收集数组或指针定义的所有符合条件的 Bean 对象，收集到返回 true，否则返回 false。
 func (ctx *defaultSpringContext) CollectBeans(i interface{}) bool {
+	return ctx.CollectBeansByName("[]?", i)
+}
+
+// CollectBeansByName
+func (ctx *defaultSpringContext) CollectBeansByName(tag string, i interface{}) bool {
 	ctx.checkAutoWired()
 
 	t := reflect.TypeOf(i)
@@ -331,14 +318,31 @@ func (ctx *defaultSpringContext) CollectBeans(i interface{}) bool {
 		panic(errors.New("i must be slice ptr"))
 	}
 
+	beanTag := ParseBeanTag(tag)
 	w := newDefaultBeanAssembly(ctx)
-	return w.collectBeans(reflect.ValueOf(i).Elem())
+	return w.collectBeans(reflect.ValueOf(i).Elem(), beanTag)
 }
 
-// findCacheItem 查找指定类型的缓存项
-func (ctx *defaultSpringContext) findCacheItem(t reflect.Type) *beanCacheItem {
-	c, _ := ctx.beanCacheByType.LoadOrStore(t, newBeanCacheItem())
-	return c.(*beanCacheItem)
+// getTypeCacheItem 查找指定类型的缓存项
+func (ctx *defaultSpringContext) getTypeCacheItem(typ reflect.Type) (item *beanCacheItem) {
+	if c, ok := ctx.beanCacheByType[typ]; !ok {
+		item = newBeanCacheItem()
+		ctx.beanCacheByType[typ] = item
+	} else {
+		item = c
+	}
+	return
+}
+
+// getNameCacheItem 查找指定类型的缓存项
+func (ctx *defaultSpringContext) getNameCacheItem(name string) (item *beanCacheItem) {
+	if c, ok := ctx.beanCacheByName[name]; !ok {
+		item = newBeanCacheItem()
+		ctx.beanCacheByName[name] = item
+	} else {
+		item = c
+	}
+	return
 }
 
 // autoExport 自动导出 Bean 实现的接口
@@ -407,8 +411,8 @@ func (ctx *defaultSpringContext) resolveBean(bd *BeanDefinition) {
 	}
 
 	// 将符合注册条件的 Bean 放入到缓存里面
-	item := ctx.findCacheItem(bd.Type())
-	item.store(bd.Type(), bd, false)
+	SpringLogger.Debugf("register bean type:\"%s\" beanId:\"%s\" %s", bd.Type().String(), bd.BeanId(), bd.FileLine())
+	ctx.getTypeCacheItem(bd.Type()).store(bd)
 
 	// 自动导出接口，这种情况下应该只对于结构体才会有效
 	if t := SpringUtils.Indirect(bd.Type()); t.Kind() == reflect.Struct {
@@ -423,19 +427,12 @@ func (ctx *defaultSpringContext) resolveBean(bd *BeanDefinition) {
 			panic(fmt.Errorf("%s not implement %s interface", bd.Description(), t.String()))
 		}
 
-		m := ctx.findCacheItem(t)
-		m.store(t, bd, false)
+		SpringLogger.Debugf("register bean type:\"%s\" beanId:\"%s\" %s", t.String(), bd.BeanId(), bd.FileLine())
+		ctx.getTypeCacheItem(t).store(bd)
 	}
 
 	// 按照 Bean 的名字进行缓存
-	{
-		var cacheItem []*BeanDefinition
-		if cache, ok := ctx.beanCacheByName[bd.name]; ok {
-			cacheItem = append(cacheItem, cache...)
-		}
-		cacheItem = append(cacheItem, bd)
-		ctx.beanCacheByName[bd.name] = cacheItem
-	}
+	ctx.getNameCacheItem(bd.name).store(bd)
 
 	bd.status = beanStatus_Resolved
 }
@@ -482,10 +479,6 @@ func (ctx *defaultSpringContext) AutoWireBeans() {
 
 	ctx.autoWired = true
 
-	if ctx.eventNotify != nil {
-		ctx.eventNotify(ContextEvent_ResolveStart)
-	}
-
 	// 对 config 函数进行决议
 	for e := ctx.configers.Front(); e != nil; {
 		next := e.Next()
@@ -504,15 +497,7 @@ func (ctx *defaultSpringContext) AutoWireBeans() {
 		ctx.resolveBean(bd)
 	}
 
-	if ctx.eventNotify != nil {
-		ctx.eventNotify(ContextEvent_ResolveEnd)
-	}
-
 	w := newDefaultBeanAssembly(ctx)
-
-	if ctx.eventNotify != nil {
-		ctx.eventNotify(ContextEvent_AutoWireStart)
-	}
 
 	defer func() { // 捕获自动注入过程中的异常，打印错误日志然后重新抛出
 		if err := recover(); err != nil {
@@ -531,10 +516,6 @@ func (ctx *defaultSpringContext) AutoWireBeans() {
 
 	for _, bd := range ctx.beanMap {
 		w.wireBeanDefinition(bd, false)
-	}
-
-	if ctx.eventNotify != nil {
-		ctx.eventNotify(ContextEvent_AutoWireEnd)
 	}
 }
 
@@ -559,10 +540,6 @@ func (ctx *defaultSpringContext) GetBeanDefinitions() []*BeanDefinition {
 // Close 关闭容器上下文，用于通知 Bean 销毁等。
 func (ctx *defaultSpringContext) Close() {
 
-	if ctx.eventNotify != nil {
-		ctx.eventNotify(ContextEvent_CloseStart)
-	}
-
 	// 执行销毁函数
 	for _, bd := range ctx.beanMap {
 		if bd.destroy != nil {
@@ -574,10 +551,6 @@ func (ctx *defaultSpringContext) Close() {
 
 	// 上下文结束
 	ctx.cancel()
-
-	if ctx.eventNotify != nil {
-		ctx.eventNotify(ContextEvent_CloseEnd)
-	}
 }
 
 // Run 立即执行一个一次性的任务

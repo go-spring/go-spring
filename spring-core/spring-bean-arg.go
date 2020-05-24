@@ -167,7 +167,7 @@ func (arg *fnStringBindingArg) getArgValue(v reflect.Value, tag string, beanAsse
 		})
 	} else {
 		if beanTag := ParseBeanTag(tag); beanTag.CollectMode {
-			beanAssembly.collectBeans(v)
+			beanAssembly.collectBeans(v, beanTag)
 		} else {
 			beanAssembly.getBeanValue(v, beanTag.Items[0], reflect.Value{}, "")
 		}

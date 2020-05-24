@@ -88,11 +88,6 @@ func SetAllAccess(allAccess bool) {
 	ctx.SetAllAccess(allAccess)
 }
 
-// SetEventNotify 设置 Context 事件通知函数
-func SetEventNotify(notify func(event SpringCore.ContextEvent)) {
-	ctx.SetEventNotify(notify)
-}
-
 // RegisterBean 注册单例 Bean，不指定名称，重复注册会 panic。
 func RegisterBean(bean interface{}) *SpringCore.BeanDefinition {
 	return ctx.RegisterBean(bean)
