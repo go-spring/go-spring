@@ -170,7 +170,13 @@ func TestRunApplication(t *testing.T) {
 	SpringBoot.SetProperty("key_auth", false)
 
 	SpringBoot.SetProperty("db.url", "root:root@/information_schema?charset=utf8&parseTime=True&loc=Local")
-	SpringBoot.RunApplication("testdata/config/", "k8s:testdata/config/config-map.yaml")
+
+	configLocations := []string{
+		"testdata/config/", "k8s:testdata/config/config-map.yaml",
+	}
+
+	// 等效 SpringBoot.RunApplication(configLocations...)
+	SpringBoot.NewApplication().Run(configLocations...)
 }
 
 ///////////////////// filter ////////////////////////

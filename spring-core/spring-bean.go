@@ -119,6 +119,31 @@ func TypeName(typOrPtr TypeOrPtr) string {
 // 对象或者一个形如 (*error)(nil) 的对象指针，也可以是一个 *BeanDefinition 对象。
 type BeanSelector interface{ TypeOrPtr }
 
+// BeanId
+type BeanId struct {
+	TypeName string
+	BeanName string
+	Nullable bool
+}
+
+func (b BeanId) String() (str string) {
+	if b.TypeName != "" {
+		str = b.TypeName + ":"
+	}
+	str += b.BeanName
+	if b.Nullable {
+		str += "?"
+	}
+	return
+}
+
+// BeanTag
+type BeanTag struct {
+	Items       []BeanId
+	Nullable    bool
+	CollectMode bool
+}
+
 // GetBeanId 获取一个 Bean 选择器表示的 BeanId。 BeanId 是一个 Bean 的唯一字
 // 符串表示形式，一般是 "TypeName:BeanName?"，其中TypeName 是类型全限定名，
 // BeanName 是 Bean 的名称，? 表示选择结果是否可以为空。这种表示方式还存在一个简化
@@ -134,23 +159,54 @@ func GetBeanId(selector BeanSelector) string {
 	return TypeName(selector) + ":"
 }
 
-// ParseBeanId 解析 BeanId 的内容，返回类型全限定名、Bean 名称以及选择结果是否可以为空。
-func ParseBeanId(beanId string) (typeName string, beanName string, nullable bool) {
+// ParseBeanId
+func ParseBeanId(str string) (beanId BeanId) {
+	if len(str) > 0 {
 
-	if ss := strings.Split(beanId, ":"); len(ss) > 1 { // 完整形式
-		typeName = ss[0]
-		beanName = ss[1]
-	} else { // 简化形式
-		beanName = ss[0]
+		// 字符串结尾是否有可空标记
+		if str[len(str)-1] == '?' {
+			beanId.Nullable = true
+			str = strings.TrimRight(str, "?")
+		}
+
+		if ss := strings.Split(str, ":"); len(ss) > 1 { // 完整形式
+			beanId.TypeName = ss[0]
+			beanId.BeanName = ss[1]
+		} else { // 简化形式
+			beanId.BeanName = ss[0]
+		}
 	}
+	return
+}
 
-	if strings.HasSuffix(beanName, "?") { // 是否可空
-		beanName = beanName[:len(beanName)-1]
-		nullable = true
-	}
+// ParseBeanTag
+func ParseBeanTag(tag string) (beanTag BeanTag) {
+	if len(tag) > 0 {
+		if tag[0] == '[' { // 收集模式
 
-	if beanName == "[]" && typeName != "" {
-		panic(errors.New("collection mode shouldn't have type"))
+			// 字符串结尾是否有可空标记
+			if tag[len(tag)-1] == '?' {
+				beanTag.Nullable = true
+				tag = strings.TrimRight(tag, "?")
+			}
+
+			if tag[len(tag)-1] != ']' {
+				panic(errors.New("error collection tag"))
+			}
+
+			beanTag.CollectMode = true
+
+			tag = strings.TrimRight(tag[1:], "]")
+			for _, id := range strings.Split(tag, ",") {
+				beanId := ParseBeanId(id) // 解析 BeanId
+				beanTag.Items = append(beanTag.Items, beanId)
+			}
+		} else {
+			beanId := ParseBeanId(tag) // 解析 BeanId
+			beanTag.Items = append(beanTag.Items, beanId)
+		}
+	} else {
+		beanTag.Items = append(beanTag.Items, BeanId{})
 	}
 	return
 }

@@ -262,7 +262,7 @@ func (ctx *defaultSpringContext) GetBeanByName(beanId string, i interface{}) boo
 
 	v := reflect.ValueOf(i)
 	w := newDefaultBeanAssembly(ctx)
-	return w.getBeanValue(v.Elem(), beanId, reflect.Value{}, "")
+	return w.getBeanValue(v.Elem(), ParseBeanId(beanId), reflect.Value{}, "")
 }
 
 // FindBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
@@ -272,14 +272,13 @@ func (ctx *defaultSpringContext) FindBean(selector BeanSelector) (*BeanDefinitio
 }
 
 // FindBeanByName 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
-func (ctx *defaultSpringContext) FindBeanByName(beanId string) (*BeanDefinition, bool) {
+func (ctx *defaultSpringContext) FindBeanByName(tag string) (*BeanDefinition, bool) {
 	ctx.checkAutoWired()
 
-	typeName, beanName, _ := ParseBeanId(beanId)
-
+	beanId := ParseBeanId(tag)
 	result := make([]*BeanDefinition, 0)
 	for _, bean := range ctx.beanMap {
-		if bean.Match(typeName, beanName) {
+		if bean.Match(beanId.TypeName, beanId.BeanName) {
 
 			// 如果 Bean 正在解析则跳过
 			if bean.status == beanStatus_Resolving {
@@ -304,7 +303,7 @@ func (ctx *defaultSpringContext) FindBeanByName(beanId string) (*BeanDefinition,
 
 	// 多于 1 个
 	if count > 1 {
-		msg := fmt.Sprintf("found %d beans, bean: \"%v\" [", len(result), beanId)
+		msg := fmt.Sprintf("found %d beans, bean: \"%s\" [", len(result), tag)
 		for _, b := range result {
 			msg += "( " + b.Description() + " ), "
 		}
@@ -445,12 +444,11 @@ func (ctx *defaultSpringContext) resolveBean(bd *BeanDefinition) {
 func (ctx *defaultSpringContext) registerMethodBeans() {
 	for _, bd := range ctx.methodBeans {
 		bean := bd.bean.(*fakeMethodBean)
+		beanId := ParseBeanId(bean.parent)
 		result := make([]*BeanDefinition, 0)
 
-		typeName, beanName, _ := ParseBeanId(bean.parent)
-
 		for _, b := range ctx.beanMap {
-			if b.Match(typeName, beanName) {
+			if b.Match(beanId.TypeName, beanId.BeanName) {
 				result = append(result, b)
 			}
 		}

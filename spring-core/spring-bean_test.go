@@ -494,15 +494,11 @@ func TestParseBeanId(t *testing.T) {
 	}
 
 	for k, v := range data {
-		typeName, beanName, nullable := SpringCore.ParseBeanId(k)
-		assert.Equal(t, typeName, v.typeName)
-		assert.Equal(t, beanName, v.beanName)
-		assert.Equal(t, nullable, v.nullable)
+		beanId := SpringCore.ParseBeanId(k)
+		assert.Equal(t, beanId.TypeName, v.typeName)
+		assert.Equal(t, beanId.BeanName, v.beanName)
+		assert.Equal(t, beanId.Nullable, v.nullable)
 	}
-
-	assert.Panic(t, func() {
-		SpringCore.ParseBeanId("int:[]?")
-	}, "collection mode shouldn't have type")
 }
 
 func TestBeanDefinition_Match(t *testing.T) {

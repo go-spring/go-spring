@@ -166,10 +166,10 @@ func (arg *fnStringBindingArg) getArgValue(v reflect.Value, tag string, beanAsse
 			allAccess: beanAssembly.springContext().AllAccess(),
 		})
 	} else {
-		if _, beanName, _ := ParseBeanId(tag); beanName == "[]" {
+		if beanTag := ParseBeanTag(tag); beanTag.CollectMode {
 			beanAssembly.collectBeans(v)
 		} else {
-			beanAssembly.getBeanValue(v, tag, reflect.Value{}, "")
+			beanAssembly.getBeanValue(v, beanTag.Items[0], reflect.Value{}, "")
 		}
 	}
 

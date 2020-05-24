@@ -36,12 +36,29 @@ func ExpectSysProperties(pattern ...string) {
 
 // RunApplication 快速启动 SpringBoot 应用
 func RunApplication(configLocation ...string) {
+	BootStarter.Run(newApplication(
+		&defaultApplicationContext{
+			SpringContext: ctx,
+		}, configLocation...),
+	)
+}
 
-	app := newApplication(&defaultApplicationContext{
-		SpringContext: ctx,
-	}, configLocation...)
+// AppBuilder application 的构造器
+type AppBuilder struct {
+}
 
-	BootStarter.Run(app)
+// NewApplication AppBuilder 的构造函数
+func NewApplication() *AppBuilder {
+	return &AppBuilder{}
+}
+
+// Run 快速启动 SpringBoot 应用
+func (cfg *AppBuilder) Run(configLocation ...string) {
+	BootStarter.Run(newApplication(
+		&defaultApplicationContext{
+			SpringContext: ctx,
+		}, configLocation...),
+	)
 }
 
 // Exit 退出 SpringBoot 应用

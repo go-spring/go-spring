@@ -30,7 +30,7 @@ import (
 type beanAssembly interface {
 	springContext() SpringContext
 	collectBeans(v reflect.Value) bool
-	getBeanValue(v reflect.Value, beanId string, parent reflect.Value, field string) bool
+	getBeanValue(v reflect.Value, beanId BeanId, parent reflect.Value, field string) bool
 }
 
 // wiringStack 存储绑定中的 Bean
@@ -99,7 +99,7 @@ func (beanAssembly *defaultBeanAssembly) getCacheItem(t reflect.Type) *beanCache
 }
 
 // getBeanValue 根据 BeanId 查找 Bean 并返回 Bean 源的值
-func (beanAssembly *defaultBeanAssembly) getBeanValue(v reflect.Value, beanId string, parent reflect.Value, field string) bool {
+func (beanAssembly *defaultBeanAssembly) getBeanValue(v reflect.Value, beanId BeanId, parent reflect.Value, field string) bool {
 
 	var (
 		ok       bool
@@ -112,22 +112,21 @@ func (beanAssembly *defaultBeanAssembly) getBeanValue(v reflect.Value, beanId st
 
 	result := make([]*BeanDefinition, 0)
 
-	typeName, beanName, nullable := ParseBeanId(beanId)
 	m := beanAssembly.getCacheItem(beanType)
 	for _, bean := range m.beans {
 		// 不能将自身赋给自身的字段 && 类型全限定名匹配
-		if bean.Value() != parent && bean.Match(typeName, beanName) {
+		if bean.Value() != parent && bean.Match(beanId.TypeName, beanId.BeanName) {
 			result = append(result, bean)
 		}
 	}
 
 	// 对接口匹配开个绿灯，如果指定了 Bean 名称则尝试通过名称获取以防没有通过 Export 显示导出接口
-	if beanType.Kind() == reflect.Interface && beanName != "" {
+	if beanType.Kind() == reflect.Interface && beanId.BeanName != "" {
 		beanCache := beanAssembly.springCtx.beanCacheByName
-		if cache, o := beanCache[beanName]; o {
+		if cache, o := beanCache[beanId.BeanName]; o {
 			for _, b := range cache {
 				// 不能将自身赋给自身的字段 && 类型匹配
-				if b.Value() != parent && b.Type().AssignableTo(beanType) && b.Match(typeName, beanName) {
+				if b.Value() != parent && b.Type().AssignableTo(beanType) && b.Match(beanId.TypeName, beanId.BeanName) {
 					found := false // 排重
 					for _, r := range result {
 						if r == b {
@@ -148,7 +147,7 @@ func (beanAssembly *defaultBeanAssembly) getBeanValue(v reflect.Value, beanId st
 
 	// 没有找到
 	if count == 0 {
-		if nullable {
+		if beanId.Nullable {
 			return false
 		} else {
 			panic(fmt.Errorf("can't find bean, bean: \"%s\" field: %s type: %s", beanId, field, beanType))
@@ -457,10 +456,9 @@ func (beanAssembly *defaultBeanAssembly) wireFunctionBean(fnValue reflect.Value,
 
 // wireStructField 对结构体的字段进行绑定
 func (beanAssembly *defaultBeanAssembly) wireStructField(v reflect.Value,
-	beanId string, parent reflect.Value, field string) {
+	tag string, parent reflect.Value, field string) {
 
-	_, beanName, nullable := ParseBeanId(beanId)
-	if beanName == "[]" { // 收集模式，autowire:"[]"
+	if beanTag := ParseBeanTag(tag); beanTag.CollectMode { // 收集模式
 
 		// 收集模式的绑定对象必须是数组
 		if v.Type().Kind() != reflect.Slice {
@@ -468,11 +466,11 @@ func (beanAssembly *defaultBeanAssembly) wireStructField(v reflect.Value,
 		}
 
 		ok := beanAssembly.collectBeans(v)
-		if !ok && !nullable { // 没找到且不能为空则 panic
-			panic(fmt.Errorf("can't find bean: \"%s\" field: %s", beanId, field))
+		if !ok && !beanTag.Nullable { // 没找到且不能为空则 panic
+			panic(fmt.Errorf("can't find bean: \"%s\" field: %s", tag, field))
 		}
 
 	} else { // 匹配模式，autowire:"" or autowire:"name"
-		beanAssembly.getBeanValue(v, beanId, parent, field)
+		beanAssembly.getBeanValue(v, beanTag.Items[0], parent, field)
 	}
 }

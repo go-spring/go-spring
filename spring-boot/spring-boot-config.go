@@ -23,7 +23,7 @@ import (
 	"strings"
 
 	"github.com/go-spring/go-spring-parent/spring-logger"
-	SpringUtils "github.com/go-spring/go-spring-parent/spring-utils"
+	"github.com/go-spring/go-spring-parent/spring-utils"
 	"github.com/spf13/viper"
 )
 
