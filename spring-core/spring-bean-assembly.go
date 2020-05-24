@@ -284,7 +284,7 @@ func (beanAssembly *defaultBeanAssembly) wireBeanDefinition(bd beanDefinition, o
 
 	// 如果有则执行用户设置的初始化函数
 	if init := bd.getInit(); init != nil {
-		if err := init.run(beanAssembly.springCtx); err != nil {
+		if err := init.run(beanAssembly); err != nil {
 			panic(err)
 		}
 	}

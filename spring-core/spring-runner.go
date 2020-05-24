@@ -53,7 +53,7 @@ func (r *Runner) Options(options ...*optionArg) *Runner {
 // When 参数为 true 时执行器运行
 func (r *Runner) When(ok bool) error {
 	if ok {
-		return r.run(r.ctx)
+		return r.run(newDefaultBeanAssembly(r.ctx))
 	}
 	return nil
 }
@@ -61,7 +61,7 @@ func (r *Runner) When(ok bool) error {
 // On Condition 判断结果为 true 时执行器运行
 func (r *Runner) On(cond Condition) error {
 	if cond.Matches(r.ctx) {
-		return r.run(r.ctx)
+		return r.run(newDefaultBeanAssembly(r.ctx))
 	}
 	return nil
 }

@@ -36,15 +36,13 @@ type runnable struct {
 }
 
 // run 运行执行器
-func (r *runnable) run(ctx *defaultSpringContext) error {
+func (r *runnable) run(assembly *defaultBeanAssembly) error {
 
 	fnValue := reflect.ValueOf(r.fn)
 	fnPtr := fnValue.Pointer()
 	fnInfo := runtime.FuncForPC(fnPtr)
 	file, line := fnInfo.FileLine(fnPtr)
 	fileLine := fmt.Sprintf("%s:%d", file, line)
-
-	assembly := newDefaultBeanAssembly(ctx)
 
 	var in []reflect.Value
 

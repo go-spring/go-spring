@@ -71,10 +71,11 @@ type defaultSpringContext struct {
 
 	beanMap     map[beanKey]*BeanDefinition // Bean 的集合
 	methodBeans []*BeanDefinition           // 方法 Beans
-	configers   *list.List                  // 配置方法集合
 
 	beanCacheByName map[string]*beanCacheItem
 	beanCacheByType map[reflect.Type]*beanCacheItem
+
+	configers *list.List // 配置方法集合
 }
 
 // NewDefaultSpringContext defaultSpringContext 的构造函数
@@ -86,9 +87,9 @@ func NewDefaultSpringContext() *defaultSpringContext {
 		Properties:      NewDefaultProperties(),
 		methodBeans:     make([]*BeanDefinition, 0),
 		beanMap:         make(map[beanKey]*BeanDefinition),
-		configers:       list.New(),
 		beanCacheByName: make(map[string]*beanCacheItem),
 		beanCacheByType: make(map[reflect.Type]*beanCacheItem),
+		configers:       list.New(),
 	}
 }
 
@@ -128,21 +129,21 @@ func (ctx *defaultSpringContext) checkRegistration() {
 
 // deleteBeanDefinition 删除 BeanDefinition。
 func (ctx *defaultSpringContext) deleteBeanDefinition(bd *BeanDefinition) {
-	key := beanKey{name: bd.name, typ: bd.Type()}
+	key := newBeanKey(bd.Type(), bd.Name())
 	bd.status = beanStatus_Deleted
 	delete(ctx.beanMap, key)
 }
 
 // registerBeanDefinition 注册 BeanDefinition，重复注册会 panic。
-func (ctx *defaultSpringContext) registerBeanDefinition(d *BeanDefinition) {
+func (ctx *defaultSpringContext) registerBeanDefinition(bd *BeanDefinition) {
 	ctx.checkRegistration()
 
-	k := beanKey{name: d.name, typ: d.Type()}
-	if _, ok := ctx.beanMap[k]; ok {
-		panic(fmt.Errorf("duplicate registration, bean: \"%s\"", d.BeanId()))
+	key := newBeanKey(bd.Type(), bd.Name())
+	if _, ok := ctx.beanMap[key]; ok {
+		panic(fmt.Errorf("duplicate registration, bean: \"%s\"", bd.BeanId()))
 	}
 
-	ctx.beanMap[k] = d
+	ctx.beanMap[key] = bd
 }
 
 // RegisterBean 注册单例 Bean，不指定名称，重复注册会 panic。
@@ -184,11 +185,7 @@ func (ctx *defaultSpringContext) RegisterMethodBean(selector BeanSelector, metho
 func (ctx *defaultSpringContext) RegisterNameMethodBean(name string, selector BeanSelector, method string, tags ...string) *BeanDefinition {
 	ctx.checkRegistration()
 
-	if selector == nil || selector == "" {
-		panic(errors.New("selector can't be nil or empty"))
-	}
-
-	bd := MethodToBeanDefinition(name, selector, method, tags...)
+	bd := MethodToBeanDefinition(name, GetBeanId(selector), method, tags...)
 	ctx.methodBeans = append(ctx.methodBeans, bd)
 	return bd
 }
@@ -201,21 +198,21 @@ func (ctx *defaultSpringContext) RegisterMethodBeanFn(method interface{}, tags .
 // @Incubate 注册成员方法单例 Bean，需指定名称，重复注册会 panic。
 func (ctx *defaultSpringContext) RegisterNameMethodBeanFn(name string, method interface{}, tags ...string) *BeanDefinition {
 
-	var methodName string
+	var methodName string // 获取方法名
 	{
 		fnPtr := reflect.ValueOf(method).Pointer()
 		fnInfo := runtime.FuncForPC(fnPtr)
 		s := strings.Split(fnInfo.Name(), "/")
 		ss := strings.Split(s[len(s)-1], ".")
-		if len(ss) == 3 {
+		if len(ss) == 3 { // 包名.类型名.函数名
 			methodName = ss[2]
 		} else {
 			panic(errors.New("error method func"))
 		}
 	}
 
-	receiver := reflect.TypeOf(method).In(0)
-	return ctx.RegisterNameMethodBean("", receiver, methodName, tags...)
+	parent := reflect.TypeOf(method).In(0)
+	return ctx.RegisterNameMethodBean("", parent, methodName, tags...)
 }
 
 // GetBean 根据类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
@@ -229,20 +226,15 @@ func (ctx *defaultSpringContext) GetBeanByName(tag string, i interface{}) bool {
 
 	ctx.checkAutoWired()
 
-	// 确保存在可空标记，抑制 panic 效果。
-	if tag == "" || tag[len(tag)-1] != '?' {
-		tag += "?"
-	}
-
-	t := reflect.TypeOf(i)
-
 	// 使用指针才能够对外赋值
-	if t.Kind() != reflect.Ptr {
+	if reflect.TypeOf(i).Kind() != reflect.Ptr {
 		panic(errors.New("i must be pointer"))
 	}
 
-	v := reflect.ValueOf(i)
 	beanId := ParseBeanId(tag)
+	beanId.Nullable = true
+
+	v := reflect.ValueOf(i)
 	w := newDefaultBeanAssembly(ctx)
 	return w.getBeanValue(v.Elem(), beanId, reflect.Value{}, "")
 }
@@ -259,6 +251,7 @@ func (ctx *defaultSpringContext) FindBeanByName(tag string) (*BeanDefinition, bo
 
 	beanId := ParseBeanId(tag)
 	result := make([]*BeanDefinition, 0)
+
 	for _, bean := range ctx.beanMap {
 		if bean.Match(beanId.TypeName, beanId.BeanName) {
 
@@ -286,8 +279,8 @@ func (ctx *defaultSpringContext) FindBeanByName(tag string) (*BeanDefinition, bo
 	// 多于 1 个
 	if count > 1 {
 		msg := fmt.Sprintf("found %d beans, bean: \"%s\" [", len(result), tag)
-		for _, b := range result {
-			msg += "( " + b.Description() + " ), "
+		for _, bd := range result {
+			msg += "( " + bd.Description() + " ), "
 		}
 		msg = msg[:len(msg)-2] + "]"
 		panic(errors.New(msg))
@@ -306,19 +299,13 @@ func (ctx *defaultSpringContext) CollectBeans(i interface{}) bool {
 func (ctx *defaultSpringContext) CollectBeansByName(tag string, i interface{}) bool {
 	ctx.checkAutoWired()
 
-	t := reflect.TypeOf(i)
-
-	if t.Kind() != reflect.Ptr {
-		panic(errors.New("i must be slice ptr"))
-	}
-
-	et := t.Elem()
-
-	if et.Kind() != reflect.Slice {
+	if t := reflect.TypeOf(i); t.Kind() != reflect.Ptr || t.Elem().Kind() != reflect.Slice {
 		panic(errors.New("i must be slice ptr"))
 	}
 
 	beanTag := ParseBeanTag(tag)
+	beanTag.Nullable = true
+
 	w := newDefaultBeanAssembly(ctx)
 	return w.collectBeans(reflect.ValueOf(i).Elem(), beanTag)
 }
@@ -346,7 +333,7 @@ func (ctx *defaultSpringContext) getNameCacheItem(name string) (item *beanCacheI
 }
 
 // autoExport 自动导出 Bean 实现的接口
-func (ctx *defaultSpringContext) autoExport(bd *BeanDefinition, t reflect.Type) {
+func (ctx *defaultSpringContext) autoExport(t reflect.Type, bd *BeanDefinition) {
 
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
@@ -355,7 +342,7 @@ func (ctx *defaultSpringContext) autoExport(bd *BeanDefinition, t reflect.Type) 
 		_, inject := f.Tag.Lookup("inject")
 		_, autowire := f.Tag.Lookup("autowire")
 
-		if !export {
+		if !export { // 没有 export 标签
 
 			// 嵌套才能递归；有注入标记的也不进行递归
 			if !f.Anonymous || inject || autowire {
@@ -363,13 +350,15 @@ func (ctx *defaultSpringContext) autoExport(bd *BeanDefinition, t reflect.Type) 
 			}
 
 			// 只处理结构体情况的递归，暂时不考虑接口的情况
-			if m := SpringUtils.Indirect(f.Type); m.Kind() == reflect.Struct {
-				ctx.autoExport(bd, m)
+			typ := SpringUtils.Indirect(f.Type)
+			if typ.Kind() == reflect.Struct {
+				ctx.autoExport(typ, bd)
 			}
 
 			continue
 		}
 
+		// 有 export 标签的必须是接口类型
 		if f.Type.Kind() != reflect.Interface {
 			panic(errors.New("export can only use on interface"))
 		}
@@ -385,82 +374,126 @@ func (ctx *defaultSpringContext) autoExport(bd *BeanDefinition, t reflect.Type) 
 	return
 }
 
+func (ctx *defaultSpringContext) typeCache(typ reflect.Type, bd *BeanDefinition) {
+	SpringLogger.Debugf("register bean type:\"%s\" beanId:\"%s\" %s", typ.String(), bd.BeanId(), bd.FileLine())
+	ctx.getTypeCacheItem(typ).store(bd)
+}
+
+func (ctx *defaultSpringContext) nameCache(name string, bd *BeanDefinition) {
+	ctx.getNameCacheItem(name).store(bd)
+}
+
 // resolveBean 对 Bean 进行决议是否能够创建 Bean 的实例
 func (ctx *defaultSpringContext) resolveBean(bd *BeanDefinition) {
 
-	if bd.status > beanStatus_Default {
+	// 正在进行或者已经完成决议过程
+	if bd.status >= beanStatus_Resolving {
 		return
 	}
 
 	bd.status = beanStatus_Resolving
 
 	// 如果是成员方法 Bean，需要首先决议它的父 Bean 是否能实例化
-	if mBean, ok := bd.bean.(*methodBean); ok {
-		ctx.resolveBean(mBean.parent)
+	if b, ok := bd.bean.(*methodBean); ok {
+		ctx.resolveBean(b.parent)
 
 		// 父 Bean 已经被删除了，子 Bean 也不应该存在
-		if mBean.parent.status == beanStatus_Deleted {
+		if b.parent.status == beanStatus_Deleted {
 			ctx.deleteBeanDefinition(bd)
 			return
 		}
 	}
 
-	if ok := bd.checkCondition(ctx); !ok { // 不满足则删除注册
+	// 不满足判断条件的则标记为删除状态并删除其注册
+	if ok := bd.checkCondition(ctx); !ok {
 		ctx.deleteBeanDefinition(bd)
 		return
 	}
 
 	// 将符合注册条件的 Bean 放入到缓存里面
-	SpringLogger.Debugf("register bean type:\"%s\" beanId:\"%s\" %s", bd.Type().String(), bd.BeanId(), bd.FileLine())
-	ctx.getTypeCacheItem(bd.Type()).store(bd)
+	ctx.typeCache(bd.Type(), bd)
 
-	// 自动导出接口，这种情况下应该只对于结构体才会有效
-	if t := SpringUtils.Indirect(bd.Type()); t.Kind() == reflect.Struct {
-		ctx.autoExport(bd, t)
+	// 自动导出接口，这种情况仅对于结构体才会有效
+	if typ := SpringUtils.Indirect(bd.Type()); typ.Kind() == reflect.Struct {
+		ctx.autoExport(typ, bd)
 	}
 
 	// 按照导出类型放入缓存
 	for t := range bd.exports {
-
-		// 检查是否实现了导出接口
-		if ok := bd.Type().Implements(t); !ok {
+		if bd.Type().Implements(t) {
+			ctx.typeCache(t, bd)
+		} else {
 			panic(fmt.Errorf("%s not implement %s interface", bd.Description(), t.String()))
 		}
-
-		SpringLogger.Debugf("register bean type:\"%s\" beanId:\"%s\" %s", t.String(), bd.BeanId(), bd.FileLine())
-		ctx.getTypeCacheItem(t).store(bd)
 	}
 
 	// 按照 Bean 的名字进行缓存
-	ctx.getNameCacheItem(bd.name).store(bd)
+	ctx.nameCache(bd.name, bd)
 
 	bd.status = beanStatus_Resolved
 }
 
 // registerMethodBeans 注册方法 Bean
 func (ctx *defaultSpringContext) registerMethodBeans() {
+
 	for _, bd := range ctx.methodBeans {
 		bean := bd.bean.(*fakeMethodBean)
-		beanId := ParseBeanId(bean.parent)
+
+		parent := ParseBeanId(bean.parent)
 		result := make([]*BeanDefinition, 0)
 
-		for _, b := range ctx.beanMap {
-			if b.Match(beanId.TypeName, beanId.BeanName) {
-				result = append(result, b)
+		for _, d := range ctx.beanMap {
+			if d.Match(parent.TypeName, parent.BeanName) {
+				result = append(result, d)
 			}
 		}
 
-		if l := len(result); l == 0 {
+		if n := len(result); n == 0 {
 			panic(fmt.Errorf("can't find parent bean: \"%s\"", bean.parent))
-		} else if l > 1 {
-			panic(fmt.Errorf("found %d parent bean: \"%s\"", l, bean.parent))
+		} else if n > 1 {
+			panic(fmt.Errorf("found %d parent bean: \"%s\"", n, bean.parent))
 		}
 
 		bd.bean = newMethodBean(result[0], bean.method, bean.tags)
-		if bd.name == "" { // 使用默认名称
-			bd.name = bd.bean.Type().String()
-		}
 		ctx.registerBeanDefinition(bd)
+	}
+}
+
+// resolveBean 对 Bean 进行决议是否能够创建 Bean 的实例
+func (ctx *defaultSpringContext) resolveConfigers() {
+
+	// 对 config 函数进行决议
+	for e := ctx.configers.Front(); e != nil; {
+		next := e.Next()
+		configer := e.Value.(*Configer)
+		if ok := configer.checkCondition(ctx); !ok {
+			ctx.configers.Remove(e)
+		}
+		e = next
+	}
+
+	// 对 config 函数进行排序
+	ctx.configers = sortConfigers(ctx.configers)
+}
+
+func (ctx *defaultSpringContext) resolveBeans() {
+	for _, bd := range ctx.beanMap {
+		ctx.resolveBean(bd)
+	}
+}
+
+func (ctx *defaultSpringContext) wireConfigers(assembly *defaultBeanAssembly) {
+	for e := ctx.configers.Front(); e != nil; e = e.Next() {
+		configer := e.Value.(*Configer)
+		if err := configer.run(assembly); err != nil {
+			panic(err)
+		}
+	}
+}
+
+func (ctx *defaultSpringContext) wireBeans(assembly *defaultBeanAssembly) {
+	for _, bd := range ctx.beanMap {
+		assembly.wireBeanDefinition(bd, false)
 	}
 }
 
@@ -479,53 +512,29 @@ func (ctx *defaultSpringContext) AutoWireBeans() {
 
 	ctx.autoWired = true
 
-	// 对 config 函数进行决议
-	for e := ctx.configers.Front(); e != nil; {
-		next := e.Next()
-		configer := e.Value.(*Configer)
-		if ok := configer.checkCondition(ctx); !ok {
-			ctx.configers.Remove(e)
-		}
-		e = next
-	}
+	ctx.resolveConfigers()
+	ctx.resolveBeans()
 
-	// 对 config 函数进行排序
-	ctx.configers = sortConfigers(ctx.configers)
-
-	// 首先决议 Bean 是否能够注册，否则会删除其注册信息
-	for _, bd := range ctx.beanMap {
-		ctx.resolveBean(bd)
-	}
-
-	w := newDefaultBeanAssembly(ctx)
+	assembly := newDefaultBeanAssembly(ctx)
 
 	defer func() { // 捕获自动注入过程中的异常，打印错误日志然后重新抛出
 		if err := recover(); err != nil {
-			SpringLogger.Errorf("%v ↩\n%s", err, w.wiringStack.path())
+			SpringLogger.Errorf("%v ↩\n%s", err, assembly.wiringStack.path())
 			panic(err)
 		}
 	}()
 
-	// 执行配置函数，过程中会自动完成部分注入
-	for e := ctx.configers.Front(); e != nil; e = e.Next() {
-		configer := e.Value.(*Configer)
-		if err := configer.run(ctx); err != nil {
-			panic(err)
-		}
-	}
-
-	for _, bd := range ctx.beanMap {
-		w.wireBeanDefinition(bd, false)
-	}
+	ctx.wireConfigers(assembly)
+	ctx.wireBeans(assembly)
 }
 
 // WireBean 绑定外部的 Bean 源
 func (ctx *defaultSpringContext) WireBean(bean interface{}) {
 	ctx.checkAutoWired()
 
-	w := newDefaultBeanAssembly(ctx)
+	assembly := newDefaultBeanAssembly(ctx)
 	bd := ToBeanDefinition("", bean)
-	w.wireBeanDefinition(bd, false)
+	assembly.wireBeanDefinition(bd, false)
 }
 
 // GetBeanDefinitions 获取所有 Bean 的定义，一般仅供调试使用。
@@ -540,10 +549,19 @@ func (ctx *defaultSpringContext) GetBeanDefinitions() []*BeanDefinition {
 // Close 关闭容器上下文，用于通知 Bean 销毁等。
 func (ctx *defaultSpringContext) Close() {
 
+	assembly := newDefaultBeanAssembly(ctx) // TODO 全面捕获异常
+
+	defer func() { // 捕获自动注入过程中的异常，打印错误日志然后重新抛出
+		if err := recover(); err != nil {
+			SpringLogger.Errorf("%v ↩\n%s", err, assembly.wiringStack.path())
+			panic(err)
+		}
+	}()
+
 	// 执行销毁函数
 	for _, bd := range ctx.beanMap {
 		if bd.destroy != nil {
-			if err := bd.destroy.run(ctx); err != nil {
+			if err := bd.destroy.run(assembly); err != nil {
 				SpringLogger.Error(err)
 			}
 		}
@@ -561,9 +579,7 @@ func (ctx *defaultSpringContext) Run(fn interface{}, tags ...string) *Runner {
 
 // Config 注册一个配置函数
 func (ctx *defaultSpringContext) Config(fn interface{}, tags ...string) *Configer {
-	configer := newConfiger("", fn, tags)
-	ctx.configers.PushBack(configer)
-	return configer
+	return ctx.ConfigWithName("", fn, tags...)
 }
 
 // ConfigWithName 注册一个配置函数，name 的作用：区分，排重，排顺序。

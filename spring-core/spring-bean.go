@@ -150,6 +150,9 @@ type BeanTag struct {
 // 的规则，即 "BeanName?"。另外 BeanId 还有一种收集模式，形如 "[]?"，用于选择一
 // 组类型相同的 Bean。 TODO BeanId 概念还不是很清楚
 func GetBeanId(selector BeanSelector) string {
+	if selector == nil || selector == "" {
+		panic(errors.New("selector can't be nil or empty"))
+	}
 	if beanId, ok := selector.(string); ok {
 		return beanId
 	}
@@ -869,13 +872,10 @@ func FnToBeanDefinition(name string, fn interface{}, tags ...string) *BeanDefini
 }
 
 // MethodToBeanDefinition 将成员方法转换为 BeanDefinition 对象
-func MethodToBeanDefinition(name string, selector BeanSelector, methodName string, tags ...string) *BeanDefinition {
-	parent := GetBeanId(selector)
-
+func MethodToBeanDefinition(name string, parent string, methodName string, tags ...string) *BeanDefinition {
 	if name == "" { // 取函数名作为默认名称
 		name = "@" + methodName
 	}
-
 	return newBeanDefinition(name, newFakeMethodBean(parent, methodName, tags))
 }
 
