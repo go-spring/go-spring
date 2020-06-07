@@ -204,14 +204,13 @@ type TestObject struct {
 	IntPtrByName *int `autowire:"int_ptr"`
 
 	// 基础类型数组
-	//IntSliceByType []int `autowire:""`
-	IntCollection   []int `inject:"[]"`
-	IntSliceByName  []int `autowire:"int_slice"`
+	// IntSliceByType []int `autowire:""` // 多实例
+	IntSliceByName1 []int `autowire:"int_slice_1"`
 	IntSliceByName2 []int `autowire:"int_slice_2"`
 
 	// 基础类型指针数组
 	IntPtrSliceByType []*int `inject:""`
-	IntPtrCollection  []*int `autowire:"[]"`
+	IntPtrCollection  []*int `autowire:"[int_ptr]"`
 	IntPtrSliceByName []*int `autowire:"int_ptr_slice"`
 
 	// 自定义类型指针
@@ -220,7 +219,6 @@ type TestObject struct {
 
 	// 自定义类型数组
 	StructSliceByType []TestBinding `inject:""`
-	StructCollection  []TestBinding `autowire:"[]"`
 	StructSliceByName []TestBinding `autowire:"struct_slice"`
 
 	// 自定义类型指针数组
@@ -273,7 +271,7 @@ func TestDefaultSpringContext_AutoWireBeans(t *testing.T) {
 	ctx.RegisterNameBean("int_ptr", &i)
 
 	is := []int{1, 2, 3}
-	ctx.RegisterNameBean("int_slice", is)
+	ctx.RegisterNameBean("int_slice_1", is)
 
 	is2 := []int{2, 3, 4}
 	ctx.RegisterNameBean("int_slice_2", is2)
@@ -301,7 +299,16 @@ func TestDefaultSpringContext_AutoWireBeans(t *testing.T) {
 
 	ctx.RegisterNameBean("map", m)
 
+	f1 := float32(11.0)
+	ctx.RegisterNameBean("float_ptr_1", &f1)
+
+	f2 := float32(12.0)
+	ctx.RegisterNameBean("float_ptr_2", &f2)
+
 	ctx.AutoWireBeans()
+
+	var ff []*float32
+	ctx.CollectBeansByName("[float_ptr_2,float_ptr_1]", &ff)
 
 	fmt.Printf("%+v\n", obj)
 }
@@ -1403,21 +1410,14 @@ func TestDefaultSpringContext_CollectBeans(t *testing.T) {
 	})
 	assert.Equal(t, intBean.Name(), "*int")
 
-	ctx.RegisterBean(new(bool)).Init(func(*bool) {
-
-		var rcs []RedisCluster
-		ctx.CollectBeans(&rcs)
-		fmt.Println(SpringUtils.ToJson(rcs))
-
-		assert.Equal(t, len(rcs), 1)
-		assert.Equal(t, rcs[0].Endpoints, "redis://127.0.0.1:6379")
-	})
-
 	ctx.AutoWireBeans()
 
 	var rcs []RedisCluster
 	ctx.GetBean(&rcs)
 	fmt.Println(SpringUtils.ToJson(rcs))
+
+	assert.Equal(t, len(rcs), 1)
+	assert.Equal(t, rcs[0].Endpoints, "redis://127.0.0.1:6379")
 }
 
 func TestDefaultSpringContext_WireSliceBean(t *testing.T) {

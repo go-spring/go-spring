@@ -105,8 +105,7 @@ func (assembly *defaultBeanAssembly) getBeanValue(v reflect.Value, tag Singleton
 		}
 	}
 
-	// 对接口匹配开个绿灯，如果指定了 Bean 名称则尝试通过名称获取以防没有通过 Export 显示导出接口，
-	// 但是这种匹配方式的复杂度是 O(N)，因为需要遍历所有的 Bean，所以可能使用很简单不推荐这种方式。
+	// 扩展规则：如果指定了 Bean 名称则尝试通过名称获取以防没有通过 Export 显示导出接口
 	if beanType.Kind() == reflect.Interface && tag.BeanName != "" {
 		beanCache := assembly.springCtx.beanCacheByName
 		if cache, o := beanCache[tag.BeanName]; o {
@@ -176,42 +175,23 @@ func (assembly *defaultBeanAssembly) getBeanValue(v reflect.Value, tag Singleton
 	return true
 }
 
-// collectBeans 收集符合条件的 Bean
+// collectBeans 收集符合条件的 Bean，自动模式下不对结果排序，如果需要排序请使用指定模式。
 func (assembly *defaultBeanAssembly) collectBeans(v reflect.Value, tag CollectionTag) bool {
 
 	t := v.Type()
-	ev := reflect.New(t).Elem()
+	et := t.Elem()
 
-	// 查找数组类型
-	{
-		m := assembly.springCtx.getTypeCacheItem(t)
-		for _, d := range m.beans {
-
-			// 遍历数组元素
-			for i := 0; i < d.Value().Len(); i++ {
-				di := d.Value().Index(i)
-
-				if di.Kind() == reflect.Struct { // 结构体数组
-					assembly.wireSliceItem(di.Addr(), d)
-				} else if di.Kind() == reflect.Ptr { // 结构体指针数组
-					if de := di.Elem(); de.Kind() == reflect.Struct {
-						assembly.wireSliceItem(di, d)
-					}
-				}
-				ev = reflect.Append(ev, di)
-			}
-		}
+	// 收集模式的数组元素必须是引用类型，否则使用单例注入模式
+	if !IsRefType(et.Kind()) {
+		panic(errors.New("slice item in collection mode should be ref type"))
 	}
 
-	// 查找单例类型
-	{
-		if et := t.Elem(); IsRefType(et.Kind()) {
-			m := assembly.springCtx.getTypeCacheItem(et)
-			for _, d := range m.beans {
-				assembly.wireBeanDefinition(d, false)
-				ev = reflect.Append(ev, d.Value())
-			}
-		}
+	var ev reflect.Value
+
+	if len(tag.Items) == 0 { // 自动模式
+		ev = assembly.autoCollectBeans(t, et)
+	} else { // 指定模式
+		ev = assembly.collectAndSortBeans(t, et, tag)
 	}
 
 	if ev.Len() > 0 {
@@ -220,6 +200,75 @@ func (assembly *defaultBeanAssembly) collectBeans(v reflect.Value, tag Collectio
 		return true
 	}
 	return false
+}
+
+// collectAndSortBeans 收集符合条件的 Bean，并且根据指定的顺序对结果进行排序
+func (assembly *defaultBeanAssembly) collectAndSortBeans(t reflect.Type, et reflect.Type, tag CollectionTag) reflect.Value {
+	ev := reflect.MakeSlice(t, 0, len(tag.Items))
+
+	// 只在单例类型中查找，数组类型的元素是否排序无法判断
+	m := assembly.springCtx.getTypeCacheItem(et)
+	for _, item := range tag.Items {
+
+		var found []*BeanDefinition
+		for _, d := range m.beans {
+			if d.Match(item.TypeName, item.BeanName) {
+				found = append(found, d)
+			}
+		}
+
+		if len(found) > 1 {
+			msg := fmt.Sprintf("found %d beans, bean: \"%s\" type: %s [", len(found), item, et)
+			for _, b := range found {
+				msg += "( " + b.Description() + " ), "
+			}
+			msg = msg[:len(msg)-2] + "]"
+			panic(errors.New(msg))
+		}
+
+		if len(found) == 0 && !item.Nullable {
+			panic(fmt.Errorf("can't find bean, bean: \"%s\" type: %s", item, et))
+		}
+
+		if len(found) > 0 {
+			d := found[0]
+			assembly.wireBeanDefinition(d, false)
+			ev = reflect.Append(ev, d.Value())
+		}
+	}
+
+	return ev
+}
+
+// autoCollectBeans 收集符合条件的 Bean，不对结果排序是因为目前看起来没有必要
+func (assembly *defaultBeanAssembly) autoCollectBeans(t reflect.Type, et reflect.Type) reflect.Value {
+	ev := reflect.MakeSlice(t, 0, 0)
+
+	// 查找数组类型
+	for _, d := range assembly.springCtx.getTypeCacheItem(t).beans {
+
+		// 遍历数组元素
+		for i := 0; i < d.Value().Len(); i++ {
+			di := d.Value().Index(i)
+
+			if di.Kind() == reflect.Struct { // 结构体数组
+				assembly.wireSliceItem(di.Addr(), d)
+			} else if di.Kind() == reflect.Ptr { // 结构体指针数组
+				if de := di.Elem(); de.Kind() == reflect.Struct {
+					assembly.wireSliceItem(di, d)
+				}
+			}
+			ev = reflect.Append(ev, di)
+		}
+	}
+
+	// 查找单例类型
+	for _, d := range assembly.springCtx.getTypeCacheItem(et).beans {
+		assembly.wireBeanDefinition(d, false)
+		ev = reflect.Append(ev, d.Value())
+	}
+
+	return ev
 }
 
 // wireSliceItem 对 slice 的元素值进行注入
