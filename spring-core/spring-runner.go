@@ -21,13 +21,13 @@ import (
 	"reflect"
 )
 
-// Runner 执行器
+// Runner 立即执行器
 type Runner struct {
 	runnable
 	ctx *defaultSpringContext
 }
 
-// newRunner Runner 的构造函数
+// newRunner Runner 的构造函数，fn 不能返回 error 以外的其他值
 func newRunner(ctx *defaultSpringContext, fn interface{}, tags []string) *Runner {
 
 	fnType := reflect.TypeOf(fn)
@@ -50,7 +50,7 @@ func (r *Runner) Options(options ...*optionArg) *Runner {
 	return r
 }
 
-// When 参数为 true 时执行器运行
+// When 参数为 true 时执行器立即执行
 func (r *Runner) When(ok bool) error {
 	if ok {
 		return r.run(newDefaultBeanAssembly(r.ctx))
@@ -58,7 +58,7 @@ func (r *Runner) When(ok bool) error {
 	return nil
 }
 
-// On Condition 判断结果为 true 时执行器运行
+// On Condition 判断结果为 true 时执行器立即执行
 func (r *Runner) On(cond Condition) error {
 	if cond.Matches(r.ctx) {
 		return r.run(newDefaultBeanAssembly(r.ctx))

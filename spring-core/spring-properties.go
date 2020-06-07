@@ -23,7 +23,7 @@ import (
 	"time"
 )
 
-// 定义属性值接口
+// Properties 定义属性值接口
 type Properties interface {
 	// LoadProperties 加载属性配置文件，
 	// 支持 properties、yaml 和 toml 三种文件格式。

@@ -31,11 +31,8 @@ type priorityProperties struct {
 }
 
 // NewPriorityProperties priorityProperties 的构造函数
-func NewPriorityProperties(properties Properties) *priorityProperties {
-	return &priorityProperties{
-		curr: NewDefaultProperties(),
-		next: properties,
-	}
+func NewPriorityProperties(curr Properties, next Properties) *priorityProperties {
+	return &priorityProperties{curr: curr, next: next}
 }
 
 // LoadProperties 加载属性配置文件，支持 properties、yaml 和 toml 三种文件格式。
@@ -133,16 +130,37 @@ func (p *priorityProperties) BindPropertyIf(key string, i interface{}, allAccess
 }
 
 // InsertBefore 在 next 之前增加一层属性值列表
-func (p *priorityProperties) InsertBefore(properties Properties, next Properties) {
-	if p.next == next {
-		nxt := NewPriorityProperties(p.next)
-		for key, value := range properties.GetProperties() {
-			nxt.SetProperty(key, value)
-		}
+func (p *priorityProperties) InsertBefore(curr Properties, next Properties) bool {
+
+	// 如果插在最前面
+	if p.curr == next {
+		nxt := NewPriorityProperties(p.curr, p.next)
+		p.curr = curr
 		p.next = nxt
+		return true
+	}
+
+	// 如果插在中间
+	if p.next == next {
+		nxt := NewPriorityProperties(curr, p.next)
+		p.next = nxt
+		return true
+	}
+
+	// 否则只能插在尾部
+	if nxt, ok := p.next.(*priorityProperties); ok {
+		return nxt.InsertBefore(curr, next)
+	}
+
+	// 找不到插入点
+	return false
+}
+
+// Depth 返回深度值
+func (p *priorityProperties) Depth() int {
+	if nxt, ok := p.next.(*priorityProperties); ok {
+		return nxt.Depth() + 1
 	} else {
-		if nxt, ok := p.next.(*priorityProperties); ok {
-			nxt.InsertBefore(properties, next)
-		}
+		return 2
 	}
 }

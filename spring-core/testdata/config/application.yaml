@@ -4,11 +4,9 @@ yaml:
     - 2
   obj:
     list:
-      -
-        name: "jim"
+      - name: "jim"
         age: 12
-      -
-        name: "bob"
+      - name: "bob"
         age: 8
 
 point:
@@ -17,14 +15,12 @@ point:
     - (5,3)
 
 db:
-  -
-    username: root
+  - username: root
     password: 123456
     url: 1.1.1.1
     port: 3306
     db: db1
-  -
-    username: root
+  - username: root
     password: 123456
     url: 1.1.1.1
     port: 3306
@@ -32,14 +28,12 @@ db:
 
 tagged:
   db:
-    -
-      tag.username: root
+    - tag.username: root
       tag.password: 123456
       tag.url: 1.1.1.1
       tag.port: 3306
       db: db1
-    -
-      tag.username: root
+    - tag.username: root
       tag.password: 123456
       tag.url: 1.1.1.1
       tag.port: 3306
@@ -47,14 +41,12 @@ tagged:
 
 prefix:
   db:
-    -
-      username: root
+    - username: root
       password: 123456
       url: 1.1.1.1
       port: 3306
       db: db1
-    -
-      username: root
+    - username: root
       password: 123456
       url: 1.1.1.1
       port: 3306

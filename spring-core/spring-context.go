@@ -14,28 +14,26 @@
  * limitations under the License.
  */
 
-// 实现了一个完善的 IoC 容器。
+// 实现了一个功能完善的 IoC 容器。
 package SpringCore
 
 import (
 	"context"
 )
 
-// SpringContext 定义 IoC 容器接口，Bean 的注册规则：
-//   1. AutoWireBeans 开始后不允许注册新的 Bean（性能考虑）
+// SpringContext 定义 IoC 容器接口。
+//
+// 其工作过程分为三个大阶段：注册 Bean 列表、加载 Properties
+// 文件、自动绑定。自动绑定又分为两个小阶段：解析（决议）和绑定。
+//
+// 一条需要谨记的注册规则是 AutoWireBeans 开始后不允许注册新的
+// Bean，这样做是因为实现起来更简单而且性能更高。
 type SpringContext interface {
-	// SpringContext 的工作过程分为三个阶段：
-	// 1) 加载 Properties 文件，
-	// 2) 注册 Bean 列表，
-	// 3) 自动绑定，又分为两个小阶段：
-	//    3.1) 解析 Bean，
-	//    3.2) 绑定 Bean。
+	// 上下文接口
+	context.Context
 
 	// 属性值列表接口
 	Properties
-
-	// 上下文接口
-	context.Context
 
 	// GetProfile 返回运行环境
 	GetProfile() string

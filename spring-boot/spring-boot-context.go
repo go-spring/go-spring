@@ -36,7 +36,7 @@ type ApplicationContext interface {
 	Wait()
 }
 
-// defaultApplicationContext ApplicationContext 的默认版本
+// defaultApplicationContext ApplicationContext 的默认实现
 type defaultApplicationContext struct {
 	// 空白标识符导出
 	_ ApplicationContext `export:""`

@@ -239,9 +239,8 @@ func newObjectBean(v reflect.Value) *objectBean {
 			rValue:   v,
 			typeName: TypeName(t),
 		}
-	} else {
-		panic(errors.New("bean must be ref type"))
 	}
+	panic(errors.New("bean must be ref type"))
 }
 
 // Bean 返回 Bean 的源
@@ -273,7 +272,7 @@ func (b *objectBean) beanClass() string {
 type functionBean struct {
 	objectBean
 
-	stringArg *fnStringBindingArg // 非 Option 参数的绑定
+	stringArg *fnStringBindingArg // 一般形式参数的绑定
 	optionArg *fnOptionBindingArg // Option 参数的绑定
 }
 
@@ -880,24 +879,22 @@ func ValidBeanValue(v reflect.Value) (reflect.Type, bool) {
 	return nil, false
 }
 
-// fieldBeanDefinition 具有字段名的 BeanDefinition 实现
 type fieldBeanDefinition struct {
 	*BeanDefinition
 	field string // 字段名称
 }
 
-// Description 返回 Bean 的详细描述 TODO 需要完善
+// Description 返回 Bean 的详细描述
 func (d *fieldBeanDefinition) Description() string {
 	return fmt.Sprintf("%s field: %s %s", d.bean.beanClass(), d.field, d.FileLine())
 }
 
-// delegateBeanDefinition 代理功能的 BeanDefinition 实现 TODO 不是很明确
-type delegateBeanDefinition struct {
+type fnValueBeanDefinition struct {
 	*BeanDefinition
-	delegate beanDefinition // 代理项
+	f beanDefinition // 函数 Bean 定义
 }
 
 // Description 返回 Bean 的详细描述
-func (d *delegateBeanDefinition) Description() string {
-	return fmt.Sprintf("%s value %s", d.delegate.springBean().beanClass(), d.delegate.FileLine())
+func (d *fnValueBeanDefinition) Description() string {
+	return fmt.Sprintf("%s value %s", d.f.springBean().beanClass(), d.f.FileLine())
 }

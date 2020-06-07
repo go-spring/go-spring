@@ -33,7 +33,7 @@ import (
 
 func init() {
 
-	// string -> time.Duration converter
+	// 注册时长转换函数 string -> time.Duration converter
 	// time units are "ns", "us" (or "µs"), "ms", "s", "m", "h"。
 	RegisterTypeConverter(func(v string) time.Duration {
 		r, err := cast.ToDurationE(v)
@@ -41,7 +41,7 @@ func init() {
 		return r
 	})
 
-	// string -> time.Time converter
+	// 注册日期转换函数 string -> time.Time converter
 	// 支持非常多的日期格式，参见 cast.StringToDate。
 	RegisterTypeConverter(func(v string) time.Time {
 		r, err := cast.ToTimeE(v)
@@ -50,7 +50,7 @@ func init() {
 	})
 }
 
-// defaultProperties Properties 的默认版本
+// defaultProperties Properties 的默认实现
 type defaultProperties struct {
 	properties map[string]interface{}
 }
@@ -205,7 +205,7 @@ func bindStruct(p Properties, v reflect.Value, opt bindOption) {
 			continue
 		}
 
-		// 匿名嵌套需要处理，但是不是结构体的具名字段无需处理
+		// 匿名嵌套需要处理，不是结构体的具名字段无需处理
 		if ft.Anonymous || ft.Type.Kind() == reflect.Struct {
 			bindStruct(p, fv, subOpt)
 		}
@@ -213,10 +213,10 @@ func bindStruct(p Properties, v reflect.Value, opt bindOption) {
 }
 
 // bindStructField 对结构体的字段进行属性绑定
-func bindStructField(p Properties, v reflect.Value, strTag string, opt bindOption) {
+func bindStructField(p Properties, v reflect.Value, str string, opt bindOption) {
 
 	// 检查 tag 语法是否正确
-	if !(strings.HasPrefix(strTag, "${") && strings.HasSuffix(strTag, "}")) {
+	if !(strings.HasPrefix(str, "${") && strings.HasSuffix(str, "}")) {
 		panic(fmt.Errorf("%s 属性绑定的语法发生错误", opt.fieldName))
 	}
 
@@ -225,7 +225,7 @@ func bindStructField(p Properties, v reflect.Value, strTag string, opt bindOptio
 		panic(fmt.Errorf("%s 属性绑定的目标不能是指针", opt.fieldName))
 	}
 
-	ss := strings.Split(strTag[2:len(strTag)-1], ":=")
+	ss := strings.Split(str[2:len(str)-1], ":=")
 
 	var (
 		key string

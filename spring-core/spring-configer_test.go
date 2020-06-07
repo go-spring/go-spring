@@ -28,33 +28,43 @@ func TestSortConfigers(t *testing.T) {
 
 	t.Run("found cycle", func(t *testing.T) {
 		assert.Panic(t, func() {
+
 			f2 := newConfiger("f2", func() {}, []string{}).After("f5")
 			f5 := newConfiger("f5", func() {}, []string{}).After("f2")
 			f7 := newConfiger("", func() {}, []string{}).Before("f2")
+
 			configers := list.New()
 			configers.PushBack(f5)
 			configers.PushBack(f2)
 			configers.PushBack(f7)
+
 			sorted := sortConfigers(configers)
+
 			for e := sorted.Front(); e != nil; e = e.Next() {
 				fmt.Println(e.Value.(*Configer).name)
 			}
+
 		}, "found cycle config: f5 -> f2 -> f5")
 	})
 
 	t.Run("sorted", func(t *testing.T) {
+
 		f2 := newConfiger("f2", func() {}, []string{})
 		f5 := newConfiger("f5", func() {}, []string{}).After("f2")
 		f7 := newConfiger("", func() {}, []string{}).Before("f2")
+
 		configers := list.New()
 		configers.PushBack(f5)
 		configers.PushBack(f2)
 		configers.PushBack(f7)
+
 		sorted := sortConfigers(configers)
+
 		expect := list.New()
 		expect.PushBack(f7)
 		expect.PushBack(f2)
 		expect.PushBack(f5)
+
 		assert.Equal(t, sorted, expect)
 	})
 }

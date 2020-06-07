@@ -56,7 +56,7 @@ func (item *beanCacheItem) store(bd *BeanDefinition) {
 	item.beans = append(item.beans, bd)
 }
 
-// defaultSpringContext SpringContext 的默认版本
+// defaultSpringContext SpringContext 的默认实现
 type defaultSpringContext struct {
 	// 属性值列表接口
 	Properties
@@ -198,17 +198,16 @@ func (ctx *defaultSpringContext) RegisterMethodBeanFn(method interface{}, tags .
 // @Incubate 注册成员方法单例 Bean，需指定名称，重复注册会 panic。
 func (ctx *defaultSpringContext) RegisterNameMethodBeanFn(name string, method interface{}, tags ...string) *BeanDefinition {
 
-	var methodName string // 获取方法名
-	{
-		fnPtr := reflect.ValueOf(method).Pointer()
-		fnInfo := runtime.FuncForPC(fnPtr)
-		s := strings.Split(fnInfo.Name(), "/")
-		ss := strings.Split(s[len(s)-1], ".")
-		if len(ss) == 3 { // 包名.类型名.函数名
-			methodName = ss[2]
-		} else {
-			panic(errors.New("error method func"))
-		}
+	var methodName string
+
+	fnPtr := reflect.ValueOf(method).Pointer()
+	fnInfo := runtime.FuncForPC(fnPtr)
+	s := strings.Split(fnInfo.Name(), "/")
+	ss := strings.Split(s[len(s)-1], ".")
+	if len(ss) == 3 { // 包名.类型名.函数名
+		methodName = ss[2]
+	} else {
+		panic(errors.New("error method func"))
 	}
 
 	parent := reflect.TypeOf(method).In(0)

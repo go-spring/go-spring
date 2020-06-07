@@ -179,22 +179,23 @@ func (app *application) prepare() {
 	// 5.application.properties
 	// 6.内部默认配置
 
-	// 加载默认的应用配置文件，如 application.properties
+	// 将通过代码设置的属性值拷贝一份，第 1 层
+	apiConfig := SpringCore.NewDefaultProperties()
+	for k, v := range app.appCtx.GetProperties() {
+		apiConfig.SetProperty(k, v)
+	}
+
+	// 加载默认的应用配置文件，如 application.properties，第 5 层
 	appConfig := app.loadProfileConfig("")
+	p := SpringCore.NewPriorityProperties(apiConfig, appConfig)
 
-	// 加载系统环境变量
+	// 加载系统环境变量，第 3 层
 	sysEnv := app.loadSystemEnv()
-	p := SpringCore.NewPriorityProperties(appConfig)
-	for key, value := range sysEnv.GetProperties() {
-		p.SetProperty(key, value)
-	}
+	p.InsertBefore(sysEnv, appConfig)
 
-	// 加载命令行参数
+	// 加载命令行参数，第 2 层
 	cmdArgs := app.loadCmdArgs()
-	p = SpringCore.NewPriorityProperties(p)
-	for key, value := range cmdArgs.GetProperties() {
-		p.SetProperty(key, value)
-	}
+	p.InsertBefore(cmdArgs, sysEnv)
 
 	// 加载特定环境的配置文件，如 application-test.properties
 	profile := app.appCtx.GetProfile()
@@ -203,15 +204,9 @@ func (app *application) prepare() {
 		profile = p.GetStringProperty(keys...)
 	}
 	if profile != "" {
-		app.appCtx.SetProfile(profile)
+		app.appCtx.SetProfile(profile) // 第 4 层
 		profileConfig := app.loadProfileConfig(profile)
 		p.InsertBefore(profileConfig, appConfig)
-	}
-
-	// 拷贝用户使用代码设置的属性值
-	p = SpringCore.NewPriorityProperties(p)
-	for key, value := range app.appCtx.GetProperties() {
-		p.SetProperty(key, value)
 	}
 
 	// 将重组后的属性值写入 SpringContext 属性列表

@@ -29,27 +29,29 @@ import (
 
 // fnBindingArg 存储函数的参数绑定
 type fnBindingArg interface {
-	// Get 获取函数参数的绑定值
-	Get(beanAssembly beanAssembly, fileLine string) []reflect.Value
+	// Get 获取函数参数的绑定值，fileLine 是函数所在文件及其行号，日志使用
+	Get(assembly beanAssembly, fileLine string) []reflect.Value
 }
 
-// fnStringBindingArg 存储一般函数的参数绑定
+// fnStringBindingArg 存储一般的函数参数绑定，对应 Option 模式的函数参数
 type fnStringBindingArg struct {
 	fnType reflect.Type
-	fnTags [][]string
+	fnTags [][]string // 可能包含可变参数
 
-	// 函数类型是否包含接收者
-	withReceiver bool
+	withReceiver bool // 函数是否包含接收者，也可以假装第一个参数是接收者
 }
 
 // newFnStringBindingArg fnStringBindingArg 的构造函数
 func newFnStringBindingArg(fnType reflect.Type, withReceiver bool, tags []string) *fnStringBindingArg {
 
 	numIn := fnType.NumIn()
+
+	// 第一个参数是接收者
 	if withReceiver {
 		numIn -= 1
 	}
 
+	// 是否包含可变参数
 	variadic := fnType.IsVariadic()
 	fnTags := make([][]string, numIn)
 
@@ -66,6 +68,7 @@ func newFnStringBindingArg(fnType reflect.Type, withReceiver bool, tags []string
 
 		if indexed { // 有序号
 			for _, tag := range tags {
+
 				index := strings.Index(tag, ":")
 				if index <= 0 {
 					panic(fmt.Errorf("tag:\"%s\" should have index", tag))
@@ -89,6 +92,7 @@ func newFnStringBindingArg(fnType reflect.Type, withReceiver bool, tags []string
 
 		} else { // 无序号
 			for i, tag := range tags {
+
 				if index := strings.Index(tag, ":"); index > 0 {
 					if _, err := strconv.Atoi(tag[:index]); err == nil {
 						panic(fmt.Errorf("tag \"%s\" shouldn't have index", tag))
@@ -110,8 +114,8 @@ func newFnStringBindingArg(fnType reflect.Type, withReceiver bool, tags []string
 	return &fnStringBindingArg{fnType, fnTags, withReceiver}
 }
 
-// Get 获取函数参数的绑定值
-func (arg *fnStringBindingArg) Get(beanAssembly beanAssembly, fileLine string) []reflect.Value {
+// Get 获取函数参数的绑定值，fileLine 是函数所在文件及其行号，日志使用
+func (arg *fnStringBindingArg) Get(assembly beanAssembly, fileLine string) []reflect.Value {
 	fnType := arg.fnType
 
 	numIn := fnType.NumIn()
@@ -135,16 +139,16 @@ func (arg *fnStringBindingArg) Get(beanAssembly beanAssembly, fileLine string) [
 			et := it.Elem() // 数组类型
 			for _, tag := range tags {
 				ev := reflect.New(et).Elem()
-				arg.getArgValue(ev, tag, beanAssembly, fileLine)
+				arg.getArgValue(ev, tag, assembly, fileLine)
 				result = append(result, ev)
 			}
 		} else {
-			var strTag string
+			var tag string
 			if len(tags) > 0 {
-				strTag = tags[0]
+				tag = tags[0]
 			}
 			iv := reflect.New(it).Elem()
-			arg.getArgValue(iv, strTag, beanAssembly, fileLine)
+			arg.getArgValue(iv, tag, assembly, fileLine)
 			result = append(result, iv)
 		}
 	}
@@ -153,23 +157,22 @@ func (arg *fnStringBindingArg) Get(beanAssembly beanAssembly, fileLine string) [
 }
 
 // getArgValue 获取绑定参数值
-func (arg *fnStringBindingArg) getArgValue(v reflect.Value, strTag string, beanAssembly beanAssembly, fileLine string) {
+func (arg *fnStringBindingArg) getArgValue(v reflect.Value, tag string, assembly beanAssembly, fileLine string) {
 
-	description := fmt.Sprintf("tag:\"%s\" %s", strTag, fileLine)
+	description := fmt.Sprintf("tag:\"%s\" %s", tag, fileLine)
 	SpringLogger.Tracef("get value %s", description)
 
-	if strings.HasPrefix(strTag, "${") || v.Type().Kind() == reflect.Struct { // ${x:=y} 属性绑定
-		if strTag == "" { // 如果是结构体，尝试使用结构体属性绑定语法。
-			strTag = "${}"
+	if strings.HasPrefix(tag, "${") || IsValueType(v.Kind()) {
+		if tag == "" {
+			tag = "${}"
 		}
-		bindStructField(beanAssembly.springContext(), v, strTag, bindOption{
-			allAccess: beanAssembly.springContext().AllAccess(),
-		})
+		ctx := assembly.springContext()
+		bindStructField(ctx, v, tag, bindOption{allAccess: ctx.AllAccess()})
 	} else {
-		if CollectMode(strTag) {
-			beanAssembly.collectBeans(v, ParseCollectionTag(strTag))
+		if CollectMode(tag) {
+			assembly.collectBeans(v, ParseCollectionTag(tag))
 		} else {
-			beanAssembly.getBeanValue(v, ParseSingletonTag(strTag), reflect.Value{}, "")
+			assembly.getBeanValue(v, ParseSingletonTag(tag), reflect.Value{}, "")
 		}
 	}
 
@@ -181,11 +184,11 @@ type fnOptionBindingArg struct {
 	options []*optionArg
 }
 
-// Get 获取函数参数的绑定值
-func (arg *fnOptionBindingArg) Get(beanAssembly beanAssembly, fileLine string) []reflect.Value {
+// Get 获取函数参数的绑定值，fileLine 是函数所在文件及其行号，日志使用
+func (arg *fnOptionBindingArg) Get(assembly beanAssembly, fileLine string) []reflect.Value {
 	result := make([]reflect.Value, 0)
 	for _, option := range arg.options {
-		if v, ok := option.call(beanAssembly); ok {
+		if v, ok := option.call(assembly); ok {
 			result = append(result, v)
 		}
 	}
@@ -211,7 +214,7 @@ func validOptionFunc(fnType reflect.Type) bool {
 		return false
 	}
 
-	// 只能有一个返回值
+	// 只会有一个返回值
 	if fnType.NumOut() != 1 {
 		return false
 	}
@@ -244,7 +247,6 @@ func NewOptionArg(fn interface{}, tags ...string) *optionArg {
 	}
 
 	fnType := reflect.TypeOf(fn)
-
 	if ok := validOptionFunc(fnType); !ok {
 		panic(errors.New("option func must be func(...)option"))
 	}
@@ -335,13 +337,12 @@ func (arg *optionArg) ConditionOnProfile(profile string) *optionArg {
 }
 
 // call 获取 optionArg 的运算值
-func (arg *optionArg) call(beanAssembly beanAssembly) (v reflect.Value, ok bool) {
+func (arg *optionArg) call(assembly beanAssembly) (v reflect.Value, ok bool) {
 	SpringLogger.Tracef("call option func %s", arg.FileLine())
 
-	// 判断 Option 条件是否成立
-	if ok = arg.cond.Matches(beanAssembly.springContext()); ok {
+	if ok = arg.cond.Matches(assembly.springContext()); ok {
 		fnValue := reflect.ValueOf(arg.fn)
-		in := arg.arg.Get(beanAssembly, arg.FileLine())
+		in := arg.arg.Get(assembly, arg.FileLine())
 		out := fnValue.Call(in)
 		v = out[0]
 	}

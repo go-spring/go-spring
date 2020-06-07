@@ -25,25 +25,27 @@ import (
 	"strings"
 )
 
-// runnable 不带返回值的执行器
+// runnable 执行器，不能返回 error 以外的其他值
 type runnable struct {
 	fn        interface{}
 	stringArg *fnStringBindingArg // 普通参数绑定
 	optionArg *fnOptionBindingArg // Option 绑定
 
-	withReceiver bool // 函数类型是否包含接收者
-	receiver     reflect.Value
+	withReceiver bool          // 函数是否包含接收者，也可以假装第一个参数是接收者
+	receiver     reflect.Value // 接收者的值
 }
 
 // run 运行执行器
 func (r *runnable) run(assembly *defaultBeanAssembly) error {
 
+	// 获取函数定义所在的文件及其行号信息
 	fnValue := reflect.ValueOf(r.fn)
 	fnPtr := fnValue.Pointer()
 	fnInfo := runtime.FuncForPC(fnPtr)
 	file, line := fnInfo.FileLine(fnPtr)
 	fileLine := fmt.Sprintf("%s:%d", file, line)
 
+	// 组装 fn 调用所需的参数列表
 	var in []reflect.Value
 
 	if r.withReceiver {
@@ -62,8 +64,10 @@ func (r *runnable) run(assembly *defaultBeanAssembly) error {
 		}
 	}
 
+	// 调用 fn 函数
 	out := reflect.ValueOf(r.fn).Call(in)
 
+	// 获取 error 返回值
 	if n := len(out); n == 0 {
 		return nil
 	} else if n == 1 {
@@ -79,16 +83,16 @@ func (r *runnable) run(assembly *defaultBeanAssembly) error {
 	panic(errors.New("error func type"))
 }
 
-// Configer 封装配置函数
+// Configer 配置函数，不立即执行
 type Configer struct {
 	runnable
 	name   string
 	cond   *Conditional // 判断条件
-	before []string
-	after  []string
+	before []string     // 位于哪些配置函数之前
+	after  []string     // 位于哪些配置函数之后
 }
 
-// newConfiger Configer 的构造函数
+// newConfiger Configer 的构造函数，fn 不能返回 error 以外的其他值
 func newConfiger(name string, fn interface{}, tags []string) *Configer {
 
 	fnType := reflect.TypeOf(fn)
@@ -124,61 +128,61 @@ func (c *Configer) And() *Configer {
 	return c
 }
 
-// ConditionOn 为 Bean 设置一个 Condition
+// ConditionOn 为 Configer 设置一个 Condition
 func (c *Configer) ConditionOn(cond Condition) *Configer {
 	c.cond.OnCondition(cond)
 	return c
 }
 
-// ConditionNot 为 Bean 设置一个取反的 Condition
+// ConditionNot 为 Configer 设置一个取反的 Condition
 func (c *Configer) ConditionNot(cond Condition) *Configer {
 	c.cond.OnConditionNot(cond)
 	return c
 }
 
-// ConditionOnProperty 为 Bean 设置一个 PropertyCondition
+// ConditionOnProperty 为 Configer 设置一个 PropertyCondition
 func (c *Configer) ConditionOnProperty(name string) *Configer {
 	c.cond.OnProperty(name)
 	return c
 }
 
-// ConditionOnMissingProperty 为 Bean 设置一个 MissingPropertyCondition
+// ConditionOnMissingProperty 为 Configer 设置一个 MissingPropertyCondition
 func (c *Configer) ConditionOnMissingProperty(name string) *Configer {
 	c.cond.OnMissingProperty(name)
 	return c
 }
 
-// ConditionOnPropertyValue 为 Bean 设置一个 PropertyValueCondition
+// ConditionOnPropertyValue 为 Configer 设置一个 PropertyValueCondition
 func (c *Configer) ConditionOnPropertyValue(name string, havingValue interface{}) *Configer {
 	c.cond.OnPropertyValue(name, havingValue)
 	return c
 }
 
-// ConditionOnBean 为 Bean 设置一个 BeanCondition
+// ConditionOnBean 为 Configer 设置一个 BeanCondition
 func (c *Configer) ConditionOnBean(selector BeanSelector) *Configer {
 	c.cond.OnBean(selector)
 	return c
 }
 
-// ConditionOnMissingBean 为 Bean 设置一个 MissingBeanCondition
+// ConditionOnMissingBean 为 Configer 设置一个 MissingBeanCondition
 func (c *Configer) ConditionOnMissingBean(selector BeanSelector) *Configer {
 	c.cond.OnMissingBean(selector)
 	return c
 }
 
-// ConditionOnExpression 为 Bean 设置一个 ExpressionCondition
+// ConditionOnExpression 为 Configer 设置一个 ExpressionCondition
 func (c *Configer) ConditionOnExpression(expression string) *Configer {
 	c.cond.OnExpression(expression)
 	return c
 }
 
-// ConditionOnMatches 为 Bean 设置一个 FunctionCondition
+// ConditionOnMatches 为 Configer 设置一个 FunctionCondition
 func (c *Configer) ConditionOnMatches(fn ConditionFunc) *Configer {
 	c.cond.OnMatches(fn)
 	return c
 }
 
-// ConditionOnProfile 为 Bean 设置一个 ProfileCondition
+// ConditionOnProfile 为 Configer 设置一个 ProfileCondition
 func (c *Configer) ConditionOnProfile(profile string) *Configer {
 	c.cond.OnProfile(profile)
 	return c
@@ -189,13 +193,13 @@ func (c *Configer) checkCondition(ctx SpringContext) bool {
 	return c.cond.Matches(ctx)
 }
 
-// Before 在某个 Configer 之前执行
+// Before 设置当前 Configer 在某些 Configer 之前执行
 func (c *Configer) Before(configers ...string) *Configer {
 	c.before = configers
 	return c
 }
 
-// After 在某个 Configer 之后执行
+// After 设置当前 Configer 在某些 Configer 之后执行
 func (c *Configer) After(configers ...string) *Configer {
 	c.after = configers
 	return c
@@ -203,26 +207,38 @@ func (c *Configer) After(configers ...string) *Configer {
 
 // sortConfigers 对 Configer 列表进行排序
 func sortConfigers(configers *list.List) *list.List {
+
+	// 待排列表
 	toSort := list.New()
 	toSort.PushBackList(configers)
+
+	// 已排序列表
 	sorted := list.New()
+
+	// 正在处理的列表
 	processing := list.New()
-	for toSort.Len() > 0 {
+
+	for toSort.Len() > 0 { // 每次循环选出依赖链条最前端的元素
 		sortConfigersByAfter(configers, toSort, sorted, processing, nil)
 	}
 	return sorted
 }
 
-// sortConfigersByAfter 每次选出依赖联调最前端的元素
+// sortConfigersByAfter 选出依赖链条最前端的元素
 func sortConfigersByAfter(configers *list.List, toSort *list.List, sorted *list.List, processing *list.List, current *Configer) {
+
+	// 选出待排元素
 	if current == nil {
 		current = (toSort.Remove(toSort.Front())).(*Configer)
 	}
+
 	processing.PushBack(current)
+
+	// 遍历当前 Configer 依赖的 Configer 列表
 	for e := getBeforeConfigers(configers, current).Front(); e != nil; e = e.Next() {
 		c := e.Value.(*Configer)
 
-		// 自己不可能是自己前面的元素，除非出现了循环依赖
+		// 自己不可能是自己前面的元素，除非出现了循环依赖，因此抛出 Panic
 		for p := processing.Front(); p != nil; p = p.Next() {
 			if pc := p.Value.(*Configer); pc == c {
 				// 打印循环依赖的路径
@@ -252,26 +268,29 @@ func sortConfigersByAfter(configers *list.List, toSort *list.List, sorted *list.
 			}
 		}
 
-		if !inSorted && inToSort { // 如果已经排好序了就不用管了
+		if !inSorted && inToSort { // 递归处理当前 Configer 的依赖并进行排序
 			sortConfigersByAfter(configers, toSort, sorted, processing, c)
 		}
 	}
 
-	for p := processing.Front(); p != nil; p = p.Next() {
-		if pc := p.Value.(*Configer); pc == current {
-			processing.Remove(p)
-			break
+	// 排序完成，从正在排序、待排序列表删除，然后添加到已排序列表
+	{
+		for p := processing.Front(); p != nil; p = p.Next() {
+			if pc := p.Value.(*Configer); pc == current {
+				processing.Remove(p)
+				break
+			}
 		}
-	}
 
-	for p := toSort.Front(); p != nil; p = p.Next() {
-		if pc := p.Value.(*Configer); pc == current {
-			toSort.Remove(p)
-			break
+		for p := toSort.Front(); p != nil; p = p.Next() {
+			if pc := p.Value.(*Configer); pc == current {
+				toSort.Remove(p)
+				break
+			}
 		}
-	}
 
-	sorted.PushBack(current)
+		sorted.PushBack(current)
+	}
 }
 
 // getBeforeConfigers 获取当前 Configer 依赖的 Configer 列表
