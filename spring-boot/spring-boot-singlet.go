@@ -145,8 +145,8 @@ func GetBean(i interface{}) bool {
 }
 
 // GetBeanByName 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
-func GetBeanByName(beanId string, i interface{}) bool {
-	return ctx.GetBeanByName(beanId, i)
+func GetBeanByName(selector string, i interface{}) bool {
+	return ctx.GetBeanByName(selector, i)
 }
 
 // FindBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
@@ -156,8 +156,8 @@ func FindBean(selector SpringCore.BeanSelector) (*SpringCore.BeanDefinition, boo
 }
 
 // FindBeanByName 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
-func FindBeanByName(beanId string) (*SpringCore.BeanDefinition, bool) {
-	return ctx.FindBeanByName(beanId)
+func FindBeanByName(selector string) (*SpringCore.BeanDefinition, bool) {
+	return ctx.FindBeanByName(selector)
 }
 
 // CollectBeans 收集数组或指针定义的所有符合条件的 Bean 对象，收集到返回 true，否则返回 false。

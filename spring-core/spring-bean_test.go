@@ -25,6 +25,7 @@ import (
 	"testing"
 	"unsafe"
 
+	"github.com/go-spring/go-spring-parent/spring-utils"
 	"github.com/go-spring/go-spring/spring-core"
 	pkg1 "github.com/go-spring/go-spring/spring-core/testdata/pkg/bar"
 	pkg2 "github.com/go-spring/go-spring/spring-core/testdata/pkg/foo"
@@ -474,13 +475,9 @@ func TestIsFuncBeanType(t *testing.T) {
 	}
 }
 
-func TestParseBeanId(t *testing.T) {
+func TestParseSingletonTag(t *testing.T) {
 
-	data := map[string]struct {
-		typeName string
-		beanName string
-		nullable bool
-	}{
+	data := map[string]SpringCore.SingletonTag{
 		"[]":     {"", "[]", false},
 		"[]?":    {"", "[]", true},
 		"i":      {"", "i", false},
@@ -494,10 +491,21 @@ func TestParseBeanId(t *testing.T) {
 	}
 
 	for k, v := range data {
-		beanId := SpringCore.ParseBeanId(k)
-		assert.Equal(t, beanId.TypeName, v.typeName)
-		assert.Equal(t, beanId.BeanName, v.beanName)
-		assert.Equal(t, beanId.Nullable, v.nullable)
+		tag := SpringCore.ParseSingletonTag(k)
+		assert.Equal(t, tag, v)
+	}
+}
+
+func TestParseBeanTag(t *testing.T) {
+
+	data := map[string]SpringCore.CollectionTag{
+		"[]":  {[]SpringCore.SingletonTag{}, false},
+		"[]?": {[]SpringCore.SingletonTag{}, true},
+	}
+
+	for k, v := range data {
+		tag := SpringCore.ParseCollectionTag(k)
+		assert.Equal(t, tag, v)
 	}
 }
 
@@ -702,202 +710,202 @@ func TestValue(t *testing.T) {
 		var i int // 默认值
 		v := reflect.ValueOf(i)
 		// int 0 true false
-		fmt.Println(v.Kind(), v, v.IsValid(), SpringCore.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), SpringUtils.IsNil(v))
 
 		i = 3
 		v = reflect.ValueOf(i)
 		// int 3 true false
-		fmt.Println(v.Kind(), v, v.IsValid(), SpringCore.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), SpringUtils.IsNil(v))
 
 		var pi *int // 未赋值
 		v = reflect.ValueOf(pi)
 		// ptr <nil> true true ***
-		fmt.Println(v.Kind(), v, v.IsValid(), SpringCore.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), SpringUtils.IsNil(v))
 
 		pi = &i
 		v = reflect.ValueOf(pi)
 		// ptr 0xc0000a4e60 true false
-		fmt.Println(v.Kind(), v, v.IsValid(), SpringCore.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), SpringUtils.IsNil(v))
 	}
 
 	{
 		var a [3]int // 内存已分配
 		v := reflect.ValueOf(a)
 		// array [0 0 0] true false
-		fmt.Println(v.Kind(), v, v.IsValid(), SpringCore.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), SpringUtils.IsNil(v))
 
 		a = [3]int{0, 0, 0} // 全零值
 		v = reflect.ValueOf(a)
 		// array [0 0 0] true false
-		fmt.Println(v.Kind(), v, v.IsValid(), SpringCore.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), SpringUtils.IsNil(v))
 
 		a = [3]int{1, 0, 0} // 非全零值
 		v = reflect.ValueOf(a)
 		// array [1 0 0] true false
-		fmt.Println(v.Kind(), v, v.IsValid(), SpringCore.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), SpringUtils.IsNil(v))
 
 		var pa *[3]int // 未赋值
 		v = reflect.ValueOf(pa)
 		// ptr <nil> true true ***
-		fmt.Println(v.Kind(), v, v.IsValid(), SpringCore.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), SpringUtils.IsNil(v))
 
 		pa = &a
 		v = reflect.ValueOf(pa)
 		// ptr &[1 0 0] true false
-		fmt.Println(v.Kind(), v, v.IsValid(), SpringCore.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), SpringUtils.IsNil(v))
 	}
 
 	{
 		var c chan struct{} // 未赋值
 		v := reflect.ValueOf(c)
 		// chan <nil> true true ***
-		fmt.Println(v.Kind(), v, v.IsValid(), SpringCore.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), SpringUtils.IsNil(v))
 
 		c = make(chan struct{})
 		v = reflect.ValueOf(c)
 		// chan 0xc000086360 true false
-		fmt.Println(v.Kind(), v, v.IsValid(), SpringCore.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), SpringUtils.IsNil(v))
 
 		var pc *chan struct{} // 未赋值
 		v = reflect.ValueOf(pc)
 		// chan <nil> true true ***
-		fmt.Println(v.Kind(), v, v.IsValid(), SpringCore.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), SpringUtils.IsNil(v))
 
 		pc = &c
 		v = reflect.ValueOf(pc)
 		// ptr 0xc0000a00d8 true false
-		fmt.Println(v.Kind(), v, v.IsValid(), SpringCore.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), SpringUtils.IsNil(v))
 	}
 
 	{
 		var f func() // 未赋值
 		v := reflect.ValueOf(f)
 		// func <nil> true true ***
-		fmt.Println(v.Kind(), v, v.IsValid(), SpringCore.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), SpringUtils.IsNil(v))
 
 		f = func() {}
 		v = reflect.ValueOf(f)
 		// func 0x16d8810 true false
-		fmt.Println(v.Kind(), v, v.IsValid(), SpringCore.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), SpringUtils.IsNil(v))
 
 		var pf *func() // 未赋值
 		v = reflect.ValueOf(pf)
 		// ptr <nil> true true ***
-		fmt.Println(v.Kind(), v, v.IsValid(), SpringCore.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), SpringUtils.IsNil(v))
 
 		pf = &f
 		v = reflect.ValueOf(pf)
 		// ptr 0xc0000a00e0 true false
-		fmt.Println(v.Kind(), v, v.IsValid(), SpringCore.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), SpringUtils.IsNil(v))
 	}
 
 	{
 		var m map[string]string // 未赋值
 		v := reflect.ValueOf(m)
 		// map map[] true true ***
-		fmt.Println(v.Kind(), v, v.IsValid(), SpringCore.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), SpringUtils.IsNil(v))
 
 		m = map[string]string{}
 		v = reflect.ValueOf(m)
 		// map map[] true false
-		fmt.Println(v.Kind(), v, v.IsValid(), SpringCore.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), SpringUtils.IsNil(v))
 
 		m = map[string]string{"a": "1"}
 		v = reflect.ValueOf(m)
 		// map map[a:1] true false
-		fmt.Println(v.Kind(), v, v.IsValid(), SpringCore.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), SpringUtils.IsNil(v))
 
 		var pm *map[string]string // 未赋值
 		v = reflect.ValueOf(pm)
 		// ptr <nil> true true ***
-		fmt.Println(v.Kind(), v, v.IsValid(), SpringCore.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), SpringUtils.IsNil(v))
 
 		pm = &m
 		v = reflect.ValueOf(pm)
 		// ptr &map[a:1] true false
-		fmt.Println(v.Kind(), v, v.IsValid(), SpringCore.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), SpringUtils.IsNil(v))
 	}
 
 	{
 		var b []int // 未赋值
 		v := reflect.ValueOf(b)
 		// slice [] true true ***
-		fmt.Println(v.Kind(), v, v.IsValid(), SpringCore.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), SpringUtils.IsNil(v))
 
 		b = []int{}
 		v = reflect.ValueOf(b)
 		// slice [] true false
-		fmt.Println(v.Kind(), v, v.IsValid(), SpringCore.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), SpringUtils.IsNil(v))
 
 		b = []int{0, 0}
 		v = reflect.ValueOf(b)
 		// slice [0 0] true false
-		fmt.Println(v.Kind(), v, v.IsValid(), SpringCore.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), SpringUtils.IsNil(v))
 
 		b = []int{1, 0, 0}
 		v = reflect.ValueOf(b)
 		// slice [1 0 0] true false
-		fmt.Println(v.Kind(), v, v.IsValid(), SpringCore.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), SpringUtils.IsNil(v))
 
 		var pb *[]int // 未赋值
 		v = reflect.ValueOf(pb)
 		// ptr <nil> true true ***
-		fmt.Println(v.Kind(), v, v.IsValid(), SpringCore.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), SpringUtils.IsNil(v))
 
 		pb = &b
 		v = reflect.ValueOf(pb)
 		// ptr &[1 0 0] true false
-		fmt.Println(v.Kind(), v, v.IsValid(), SpringCore.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), SpringUtils.IsNil(v))
 	}
 
 	{
 		var s string // 默认值
 		v := reflect.ValueOf(s)
 		// string  true false
-		fmt.Println(v.Kind(), v, v.IsValid(), SpringCore.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), SpringUtils.IsNil(v))
 
 		s = "s"
 		v = reflect.ValueOf(s)
 		// string s true false
-		fmt.Println(v.Kind(), v, v.IsValid(), SpringCore.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), SpringUtils.IsNil(v))
 
 		var ps *string // 未赋值
 		v = reflect.ValueOf(ps)
 		// ptr <nil> true true ***
-		fmt.Println(v.Kind(), v, v.IsValid(), SpringCore.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), SpringUtils.IsNil(v))
 
 		ps = &s
 		v = reflect.ValueOf(ps)
 		// ptr 0xc0000974f0 true false
-		fmt.Println(v.Kind(), v, v.IsValid(), SpringCore.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), SpringUtils.IsNil(v))
 	}
 
 	{
 		var st struct{} // 默认值
 		v := reflect.ValueOf(st)
 		// struct {} true false
-		fmt.Println(v.Kind(), v, v.IsValid(), SpringCore.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), SpringUtils.IsNil(v))
 
 		var pst *struct{} // 未赋值
 		v = reflect.ValueOf(pst)
 		// ptr <nil> true true ***
-		fmt.Println(v.Kind(), v, v.IsValid(), SpringCore.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), SpringUtils.IsNil(v))
 
 		pst = &st
 		v = reflect.ValueOf(pst)
 		// ptr &{} true false
-		fmt.Println(v.Kind(), v, v.IsValid(), SpringCore.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), SpringUtils.IsNil(v))
 	}
 
 	{
 		var e error
 		v := reflect.ValueOf(e)
 		// invalid <invalid reflect.Value> false false ***
-		fmt.Println(v.Kind(), v, v.IsValid(), SpringCore.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), SpringUtils.IsNil(v))
 
 		e = fmt.Errorf("e")
 		v = reflect.ValueOf(e)
 		// ptr e true false
-		fmt.Println(v.Kind(), v, v.IsValid(), SpringCore.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), SpringUtils.IsNil(v))
 	}
 }

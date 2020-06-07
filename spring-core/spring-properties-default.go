@@ -213,10 +213,10 @@ func bindStruct(p Properties, v reflect.Value, opt bindOption) {
 }
 
 // bindStructField 对结构体的字段进行属性绑定
-func bindStructField(p Properties, v reflect.Value, tag string, opt bindOption) {
+func bindStructField(p Properties, v reflect.Value, strTag string, opt bindOption) {
 
 	// 检查 tag 语法是否正确
-	if !(strings.HasPrefix(tag, "${") && strings.HasSuffix(tag, "}")) {
+	if !(strings.HasPrefix(strTag, "${") && strings.HasSuffix(strTag, "}")) {
 		panic(fmt.Errorf("%s 属性绑定的语法发生错误", opt.fieldName))
 	}
 
@@ -225,7 +225,7 @@ func bindStructField(p Properties, v reflect.Value, tag string, opt bindOption) 
 		panic(fmt.Errorf("%s 属性绑定的目标不能是指针", opt.fieldName))
 	}
 
-	ss := strings.Split(tag[2:len(tag)-1], ":=")
+	ss := strings.Split(strTag[2:len(strTag)-1], ":=")
 
 	var (
 		key string

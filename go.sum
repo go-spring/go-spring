@@ -73,9 +73,13 @@ github.com/go-playground/validator/v10 v10.2.0 h1:KgJ0snyC2R9VXYN2rneOtQcw5aHQB1
 github.com/go-playground/validator/v10 v10.2.0/go.mod h1:uOYAAleCW8F/7oMFd6aG0GOhaH6EGOAJShg8Id5JGkI=
 github.com/go-redis/redis v6.15.7+incompatible h1:3skhDh95XQMpnqeqNftPkQD9jL9e5e36z/1SUm6dy1U=
 github.com/go-redis/redis v6.15.7+incompatible/go.mod h1:NAIEuMOZ/fxfXJIrKDQDz8wamY7mA7PouImQ2Jvg6kA=
+github.com/go-spring/go-spring-parent v0.0.0-20200603145423-c540a19d72be/go.mod h1:/ABXFJozlTW7YrEs2U1EmTtWCG0gufSgDQnCfkOnkWs=
+github.com/go-spring/go-spring-parent v1.0.4-0.20200506141212-6d85dd292cd2 h1:it9CGCHDHn4+qmIUs5p2YxdEa3jNAxid5q/2Zvbqtj4=
 github.com/go-spring/go-spring-parent v1.0.4-0.20200506141212-6d85dd292cd2/go.mod h1:KzXpkn4lQbYXwwBnqeBlqloK2NP3HqsQuDSXkEJurGU=
 github.com/go-spring/go-spring-parent v1.0.4-0.20200507131159-64515b0b88fc h1:q6owd+L4aAxAsnxhYeSpwW63//oX1aOLugemOIiKHYI=
 github.com/go-spring/go-spring-parent v1.0.4-0.20200507131159-64515b0b88fc/go.mod h1:/ABXFJozlTW7YrEs2U1EmTtWCG0gufSgDQnCfkOnkWs=
+github.com/go-spring/go-spring-parent v1.0.4-0.20200603145423-c540a19d72be h1:RNkZz46nQ7LnEo9el9EiIBUC3vCnuAX2CvYJcht8aSU=
+github.com/go-spring/go-spring-parent v1.0.4-0.20200603145423-c540a19d72be/go.mod h1:/ABXFJozlTW7YrEs2U1EmTtWCG0gufSgDQnCfkOnkWs=
 github.com/go-spring/go-spring-web v0.0.0-20200517131319-fc77dc647b8c h1:pXj3jG2w2+aYON5GxwbCmCla9lDW9GmVi79YB0eRF/k=
 github.com/go-spring/go-spring-web v0.0.0-20200517131319-fc77dc647b8c/go.mod h1:yBbzLrnGkx73SHMdZ2Ur3G0WL6MTc+Izo87S6eY+k5c=
 github.com/go-sql-driver/mysql v1.4.1 h1:g24URVg0OFbNUTx9qqY1IRZ9D9z3iPyi5zKhQZpNwpA=

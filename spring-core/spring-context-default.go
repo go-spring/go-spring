@@ -185,7 +185,7 @@ func (ctx *defaultSpringContext) RegisterMethodBean(selector BeanSelector, metho
 func (ctx *defaultSpringContext) RegisterNameMethodBean(name string, selector BeanSelector, method string, tags ...string) *BeanDefinition {
 	ctx.checkRegistration()
 
-	bd := MethodToBeanDefinition(name, GetBeanId(selector), method, tags...)
+	bd := MethodToBeanDefinition(name, BeanSelectorToString(selector), method, tags...)
 	ctx.methodBeans = append(ctx.methodBeans, bd)
 	return bd
 }
@@ -221,7 +221,7 @@ func (ctx *defaultSpringContext) GetBean(i interface{}) bool {
 }
 
 // GetBeanByName 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
-func (ctx *defaultSpringContext) GetBeanByName(tag string, i interface{}) bool {
+func (ctx *defaultSpringContext) GetBeanByName(selector string, i interface{}) bool {
 	SpringUtils.Panic(errors.New("i can't be nil")).When(i == nil)
 
 	ctx.checkAutoWired()
@@ -231,29 +231,29 @@ func (ctx *defaultSpringContext) GetBeanByName(tag string, i interface{}) bool {
 		panic(errors.New("i must be pointer"))
 	}
 
-	beanId := ParseBeanId(tag)
-	beanId.Nullable = true
+	tag := ParseSingletonTag(selector)
+	tag.Nullable = true
 
 	v := reflect.ValueOf(i)
 	w := newDefaultBeanAssembly(ctx)
-	return w.getBeanValue(v.Elem(), beanId, reflect.Value{}, "")
+	return w.getBeanValue(v.Elem(), tag, reflect.Value{}, "")
 }
 
 // FindBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 // selector 可以是 BeanId，还可以是 (Type)(nil) 变量，Type 为接口类型时带指针。
 func (ctx *defaultSpringContext) FindBean(selector BeanSelector) (*BeanDefinition, bool) {
-	return ctx.FindBeanByName(GetBeanId(selector))
+	return ctx.FindBeanByName(BeanSelectorToString(selector))
 }
 
 // FindBeanByName 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
-func (ctx *defaultSpringContext) FindBeanByName(tag string) (*BeanDefinition, bool) {
+func (ctx *defaultSpringContext) FindBeanByName(selector string) (*BeanDefinition, bool) {
 	ctx.checkAutoWired()
 
-	beanId := ParseBeanId(tag)
+	tag := ParseSingletonTag(selector)
 	result := make([]*BeanDefinition, 0)
 
 	for _, bean := range ctx.beanMap {
-		if bean.Match(beanId.TypeName, beanId.BeanName) {
+		if bean.Match(tag.TypeName, tag.BeanName) {
 
 			// 如果 Bean 正在解析则跳过
 			if bean.status == beanStatus_Resolving {
@@ -296,18 +296,15 @@ func (ctx *defaultSpringContext) CollectBeans(i interface{}) bool {
 }
 
 // CollectBeansByName
-func (ctx *defaultSpringContext) CollectBeansByName(tag string, i interface{}) bool {
+func (ctx *defaultSpringContext) CollectBeansByName(selector string, i interface{}) bool {
 	ctx.checkAutoWired()
 
 	if t := reflect.TypeOf(i); t.Kind() != reflect.Ptr || t.Elem().Kind() != reflect.Slice {
 		panic(errors.New("i must be slice ptr"))
 	}
 
-	beanTag := ParseBeanTag(tag)
-	beanTag.Nullable = true
-
 	w := newDefaultBeanAssembly(ctx)
-	return w.collectBeans(reflect.ValueOf(i).Elem(), beanTag)
+	return w.collectBeans(reflect.ValueOf(i).Elem(), ParseCollectionTag(selector))
 }
 
 // getTypeCacheItem 查找指定类型的缓存项
@@ -371,7 +368,6 @@ func (ctx *defaultSpringContext) autoExport(t reflect.Type, bd *BeanDefinition) 
 		// 不限定导出接口字段必须是空白标识符，但建议使用空白标识符
 		bd.Export(f.Type)
 	}
-	return
 }
 
 func (ctx *defaultSpringContext) typeCache(typ reflect.Type, bd *BeanDefinition) {
@@ -439,7 +435,7 @@ func (ctx *defaultSpringContext) registerMethodBeans() {
 	for _, bd := range ctx.methodBeans {
 		bean := bd.bean.(*fakeMethodBean)
 
-		parent := ParseBeanId(bean.parent)
+		parent := ParseSingletonTag(bean.parent)
 		result := make([]*BeanDefinition, 0)
 
 		for _, d := range ctx.beanMap {

@@ -40,7 +40,7 @@ func TestRunner_Run(t *testing.T) {
 
 		assert.Panic(t, func() {
 			run := false
-			cond := SpringCore.OnProfile("dev")
+			cond := SpringCore.ConditionOnProfile("dev")
 			_ = ctx.Run(func(i *int, version string) {
 				fmt.Println("version:", version)
 				fmt.Println("int:", *i)
@@ -60,7 +60,7 @@ func TestRunner_Run(t *testing.T) {
 		ctx.AutoWireBeans()
 
 		run := false
-		cond := SpringCore.OnProfile("dev")
+		cond := SpringCore.ConditionOnProfile("dev")
 		_ = ctx.Run(func(i *int, version string) {
 			fmt.Println("version:", version)
 			fmt.Println("int:", *i)
@@ -77,7 +77,7 @@ func TestRunner_Run(t *testing.T) {
 		ctx.SetProfile("dev")
 		ctx.AutoWireBeans()
 
-		cond := SpringCore.OnProfile("dev")
+		cond := SpringCore.ConditionOnProfile("dev")
 
 		run := false
 		fn := func(i *int, version string, options ...fnOption) {

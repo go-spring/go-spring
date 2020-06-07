@@ -139,12 +139,12 @@ func (arg *fnStringBindingArg) Get(beanAssembly beanAssembly, fileLine string) [
 				result = append(result, ev)
 			}
 		} else {
-			var tag string
+			var strTag string
 			if len(tags) > 0 {
-				tag = tags[0]
+				strTag = tags[0]
 			}
 			iv := reflect.New(it).Elem()
-			arg.getArgValue(iv, tag, beanAssembly, fileLine)
+			arg.getArgValue(iv, strTag, beanAssembly, fileLine)
 			result = append(result, iv)
 		}
 	}
@@ -153,23 +153,23 @@ func (arg *fnStringBindingArg) Get(beanAssembly beanAssembly, fileLine string) [
 }
 
 // getArgValue 获取绑定参数值
-func (arg *fnStringBindingArg) getArgValue(v reflect.Value, tag string, beanAssembly beanAssembly, fileLine string) {
+func (arg *fnStringBindingArg) getArgValue(v reflect.Value, strTag string, beanAssembly beanAssembly, fileLine string) {
 
-	description := fmt.Sprintf("tag:\"%s\" %s", tag, fileLine)
+	description := fmt.Sprintf("tag:\"%s\" %s", strTag, fileLine)
 	SpringLogger.Tracef("get value %s", description)
 
-	if strings.HasPrefix(tag, "${") || v.Type().Kind() == reflect.Struct { // ${x:=y} 属性绑定
-		if tag == "" { // 如果是结构体，尝试使用结构体属性绑定语法。
-			tag = "${}"
+	if strings.HasPrefix(strTag, "${") || v.Type().Kind() == reflect.Struct { // ${x:=y} 属性绑定
+		if strTag == "" { // 如果是结构体，尝试使用结构体属性绑定语法。
+			strTag = "${}"
 		}
-		bindStructField(beanAssembly.springContext(), v, tag, bindOption{
+		bindStructField(beanAssembly.springContext(), v, strTag, bindOption{
 			allAccess: beanAssembly.springContext().AllAccess(),
 		})
 	} else {
-		if beanTag := ParseBeanTag(tag); beanTag.CollectMode {
-			beanAssembly.collectBeans(v, beanTag)
+		if CollectMode(strTag) {
+			beanAssembly.collectBeans(v, ParseCollectionTag(strTag))
 		} else {
-			beanAssembly.getBeanValue(v, beanTag.Items[0], reflect.Value{}, "")
+			beanAssembly.getBeanValue(v, ParseSingletonTag(strTag), reflect.Value{}, "")
 		}
 	}
 

@@ -74,10 +74,10 @@ func IsValueType(k reflect.Kind) bool {
 	return kindTypes[k] == valType
 }
 
-// TypeOrPtr 可以是一个 reflect.Type 对象或者一个形如 (*error)(nil) 的对象指针。
+// TypeOrPtr 可以是 reflect.Type 对象或者形如 (*error)(nil) 的对象指针。
 type TypeOrPtr interface{}
 
-// TypeName 返回原始类型的全限定名，golang 允许不同的路径下存在相同的包，故此有全限定名的需求，
+// TypeName 返回原始类型的全限定名，Go 允许不同的路径下存在相同的包，故此有全限定名的需求，
 // 形如 "github.com/go-spring/go-spring/spring-core/SpringCore.BeanDefinition"。
 func TypeName(typOrPtr TypeOrPtr) string {
 
@@ -91,20 +91,14 @@ func TypeName(typOrPtr TypeOrPtr) string {
 	case reflect.Type:
 		typ = t
 	default:
-		// map、slice 等不是指针类型
-		if typ = reflect.TypeOf(t); typ.Kind() == reflect.Ptr {
-			if e := typ.Elem(); e.Kind() == reflect.Interface {
-				typ = e // 接口类型去掉指针
-			}
-		}
+		typ = reflect.TypeOf(t)
 	}
 
-	for {
-		// Map 的全限定名太复杂，不予处理，而且 Map 作为注入对象要三思而后行！
-		if k := typ.Kind(); k != reflect.Ptr && k != reflect.Slice {
-			break
-		} else {
+	for { // 去掉指针和数组的包装，以获得原始类型
+		if k := typ.Kind(); k == reflect.Ptr || k == reflect.Slice {
 			typ = typ.Elem()
+		} else {
+			break
 		}
 	}
 
@@ -115,101 +109,107 @@ func TypeName(typOrPtr TypeOrPtr) string {
 	}
 }
 
-// BeanSelector Bean 选择器，可以是一个 BeanId 字符串，可以是一个 reflect.Type
-// 对象或者一个形如 (*error)(nil) 的对象指针，也可以是一个 *BeanDefinition 对象。
-type BeanSelector interface{ TypeOrPtr }
+// BeanSelector Bean 选择器，可以是 BeanId 字符串，可以是 reflect.Type
+// 对象或者形如 (*error)(nil) 的对象指针，还可以是 *BeanDefinition 对象。
+type BeanSelector interface{}
 
-// BeanId
-type BeanId struct {
+// BeanSelectorToString 将 BeanSelector 转换为字符串格式。Bean 选择器
+// 字符串和 BeanId 字符串格式一样，但 TypeName、BeanName 中的一个可以为空。
+func BeanSelectorToString(selector BeanSelector) string {
+	if selector == nil || selector == "" {
+		panic(errors.New("selector can't be nil or empty"))
+	}
+	switch s := selector.(type) {
+	case string:
+		return s
+	case *BeanDefinition:
+		return s.BeanId()
+	}
+	return TypeName(selector) + ":"
+}
+
+// SingletonTag 单例模式注入 Tag 对应的分解形式
+type SingletonTag struct {
 	TypeName string
 	BeanName string
 	Nullable bool
 }
 
-func (b BeanId) String() (str string) {
-	if b.TypeName != "" {
-		str = b.TypeName + ":"
+func (tag SingletonTag) String() (str string) {
+	if tag.TypeName != "" {
+		str = tag.TypeName + ":"
 	}
-	str += b.BeanName
-	if b.Nullable {
+	str += tag.BeanName
+	if tag.Nullable {
 		str += "?"
 	}
 	return
 }
 
-// BeanTag
-type BeanTag struct {
-	Items       []BeanId
-	Nullable    bool
-	CollectMode bool
-}
-
-// GetBeanId 获取一个 Bean 选择器表示的 BeanId。 BeanId 是一个 Bean 的唯一字
-// 符串表示形式，一般是 "TypeName:BeanName?"，其中TypeName 是类型全限定名，
-// BeanName 是 Bean 的名称，? 表示选择结果是否可以为空。这种表示方式还存在一个简化
-// 的规则，即 "BeanName?"。另外 BeanId 还有一种收集模式，形如 "[]?"，用于选择一
-// 组类型相同的 Bean。 TODO BeanId 概念还不是很清楚
-func GetBeanId(selector BeanSelector) string {
-	if selector == nil || selector == "" {
-		panic(errors.New("selector can't be nil or empty"))
-	}
-	if beanId, ok := selector.(string); ok {
-		return beanId
-	}
-	if bd, ok := selector.(*BeanDefinition); ok {
-		return bd.BeanId()
-	}
-	return TypeName(selector) + ":"
-}
-
-// ParseBeanId
-func ParseBeanId(str string) (beanId BeanId) {
+// ParseSingletonTag 解析单例模式注入 Tag 字符串
+func ParseSingletonTag(str string) (tag SingletonTag) {
 	if len(str) > 0 {
 
 		// 字符串结尾是否有可空标记
 		if str[len(str)-1] == '?' {
-			beanId.Nullable = true
-			str = strings.TrimRight(str, "?")
+			tag.Nullable = true
+			str = str[:len(str)-1]
 		}
 
 		if ss := strings.Split(str, ":"); len(ss) > 1 { // 完整形式
-			beanId.TypeName = ss[0]
-			beanId.BeanName = ss[1]
+			tag.TypeName = ss[0]
+			tag.BeanName = ss[1]
 		} else { // 简化形式
-			beanId.BeanName = ss[0]
+			tag.BeanName = ss[0]
 		}
 	}
 	return
 }
 
-// ParseBeanTag
-func ParseBeanTag(tag string) (beanTag BeanTag) {
-	if len(tag) > 0 {
-		if tag[0] == '[' { // 收集模式
+// CollectionTag 收集模式注入 Tag 对应的分解形式
+type CollectionTag struct {
+	Items    []SingletonTag
+	Nullable bool
+}
 
-			// 字符串结尾是否有可空标记
-			if tag[len(tag)-1] == '?' {
-				beanTag.Nullable = true
-				tag = strings.TrimRight(tag, "?")
-			}
-
-			if tag[len(tag)-1] != ']' {
-				panic(errors.New("error collection tag"))
-			}
-
-			beanTag.CollectMode = true
-
-			tag = strings.TrimRight(tag[1:], "]")
-			for _, id := range strings.Split(tag, ",") {
-				beanId := ParseBeanId(id) // 解析 BeanId
-				beanTag.Items = append(beanTag.Items, beanId)
-			}
-		} else {
-			beanId := ParseBeanId(tag) // 解析 BeanId
-			beanTag.Items = append(beanTag.Items, beanId)
+func (tag CollectionTag) String() (str string) {
+	str += "["
+	for i, t := range tag.Items {
+		str += t.String()
+		if i < len(tag.Items)-1 {
+			str += ","
 		}
-	} else {
-		beanTag.Items = append(beanTag.Items, BeanId{})
+	}
+	str += "]"
+	if tag.Nullable {
+		str += "?"
+	}
+	return
+}
+
+// CollectMode 返回是否是收集模式
+func CollectMode(str string) bool {
+	return len(str) > 0 && str[0] == '['
+}
+
+// ParseCollectionTag 解析收集模式注入 Tag 字符串
+func ParseCollectionTag(str string) (tag CollectionTag) {
+	tag.Items = make([]SingletonTag, 0)
+
+	// 字符串结尾是否有可空标记
+	if str[len(str)-1] == '?' {
+		tag.Nullable = true
+		str = str[:len(str)-1]
+	}
+
+	if str[len(str)-1] != ']' {
+		panic(errors.New("error collection tag"))
+	}
+
+	if str = str[1 : len(str)-1]; len(str) > 0 {
+		for _, s := range strings.Split(str, ",") {
+			tag.Items = append(tag.Items, ParseSingletonTag(s))
+		}
 	}
 	return
 }
@@ -727,7 +727,7 @@ func (d *BeanDefinition) Options(options ...*optionArg) *BeanDefinition {
 // DependsOn 设置 Bean 的间接依赖
 func (d *BeanDefinition) DependsOn(selectors ...BeanSelector) *BeanDefinition {
 	for _, s := range selectors {
-		d.dependsOn = append(d.dependsOn, GetBeanId(s))
+		d.dependsOn = append(d.dependsOn, BeanSelectorToString(s))
 	}
 	return d
 }
@@ -830,15 +830,6 @@ func (d *BeanDefinition) export(exports []TypeOrPtr) *BeanDefinition {
 	return d
 }
 
-// IsNil 返回 reflect.Value 的值是否为 nil，比原生方法更安全 TODO 提升到 parent 模块
-func IsNil(v reflect.Value) bool {
-	switch v.Kind() {
-	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Ptr, reflect.Slice, reflect.UnsafePointer:
-		return v.IsNil()
-	}
-	return false
-}
-
 // ToBeanDefinition 将 Bean 源转换为 BeanDefinition 对象
 func ToBeanDefinition(name string, i interface{}) *BeanDefinition {
 	return ValueToBeanDefinition(name, reflect.ValueOf(i))
@@ -846,7 +837,7 @@ func ToBeanDefinition(name string, i interface{}) *BeanDefinition {
 
 // ValueToBeanDefinition 将 Value 转换为 BeanDefinition 对象
 func ValueToBeanDefinition(name string, v reflect.Value) *BeanDefinition {
-	if !v.IsValid() || IsNil(v) {
+	if !v.IsValid() || SpringUtils.IsNil(v) {
 		panic(errors.New("bean can't be nil"))
 	}
 	return newBeanDefinition(name, newObjectBean(v))

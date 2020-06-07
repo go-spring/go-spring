@@ -481,7 +481,7 @@ func OPTIONS(path string, fn interface{}, filters ...SpringWeb.Filter) *Mapping 
 // ConditionalWebFilter 为 SpringWeb.Filter 增加一个判断条件
 type ConditionalWebFilter struct {
 	filters []SpringWeb.Filter      // Filter 对象
-	beanIds []string                // Bean 选择器
+	beans   []string                // Bean 选择器
 	cond    *SpringCore.Conditional // 判断条件
 }
 
@@ -494,14 +494,14 @@ func Filter(filters ...SpringWeb.Filter) *ConditionalWebFilter {
 }
 
 // FilterBean 封装一个 Bean 选择器
-func FilterBean(selectors ...interface{}) *ConditionalWebFilter {
-	var beanIds []string
+func FilterBean(selectors ...SpringCore.BeanSelector) *ConditionalWebFilter {
+	var beans []string
 	for _, s := range selectors {
-		beanIds = append(beanIds, SpringCore.GetBeanId(s))
+		beans = append(beans, SpringCore.BeanSelectorToString(s))
 	}
 	return &ConditionalWebFilter{
-		beanIds: beanIds,
-		cond:    SpringCore.NewConditional(),
+		beans: beans,
+		cond:  SpringCore.NewConditional(),
 	}
 }
 
@@ -510,7 +510,7 @@ func (f *ConditionalWebFilter) Filter() []SpringWeb.Filter {
 }
 
 func (f *ConditionalWebFilter) FilterBean() []string {
-	return f.beanIds
+	return f.beans
 }
 
 func (f *ConditionalWebFilter) Invoke(ctx SpringWeb.WebContext, chain SpringWeb.FilterChain) {
