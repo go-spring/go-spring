@@ -700,7 +700,7 @@ type NestedDbMapConfig struct {
 
 func TestDefaultProperties_StringMapString(t *testing.T) {
 
-	t.Run("simple bind", func(t *testing.T) {
+	t.Run("simple map bind", func(t *testing.T) {
 
 		p := SpringCore.NewDefaultProperties()
 		p.SetProperty("a.b1", "b1")

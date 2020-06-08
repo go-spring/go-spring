@@ -253,35 +253,37 @@ func bindStructField(p Properties, v reflect.Value, str string, opt bindOption) 
 	bindValue(p, v, key, def, opt)
 }
 
-// bindValue 对任意 value 进行属性绑定
-func bindValue(p Properties, v reflect.Value, key string, def interface{}, opt bindOption) {
+func getPropertyValue(p Properties, k reflect.Kind, key string, def interface{}, opt bindOption) interface{} {
 
-	getPropValue := func() interface{} {
+	// 首先获取精确匹配的属性值
+	if val, ok := p.GetDefaultProperty(key, nil); ok {
+		return val
+	}
 
-		// 属性值存在则使用设置的属性值
-		if val, ok := p.GetDefaultProperty(key, nil); ok {
-			return val
-		}
-
-		// 否则尝试使用默认值
-		if def != nil {
-			return def
-		}
-
-		// 获取具有前缀的属性值
+	// Map 类型获取具有相同前缀的属性值
+	if k == reflect.Map {
 		if prefixValue := p.GetPrefixProperties(key); len(prefixValue) > 0 {
 			return prefixValue
 		}
-
-		panic(fmt.Errorf("%s properties \"%s\" not config", opt.fieldName, opt.fullPropName))
 	}
+
+	// 最后使用默认值
+	if def != nil {
+		return def
+	}
+
+	panic(fmt.Errorf("%s properties \"%s\" not config", opt.fieldName, opt.fullPropName))
+}
+
+// bindValue 对任意 value 进行属性绑定
+func bindValue(p Properties, v reflect.Value, key string, def interface{}, opt bindOption) {
 
 	t := v.Type()
 	k := t.Kind()
 
 	// 存在值类型转换器的情况下结构体优先使用属性值绑定
 	if fn, ok := typeConverters[t]; ok {
-		propValue := getPropValue()
+		propValue := getPropertyValue(p, k, key, def, opt)
 		fnValue := reflect.ValueOf(fn)
 		out := fnValue.Call([]reflect.Value{reflect.ValueOf(propValue)})
 		v.Set(out[0])
@@ -303,8 +305,7 @@ func bindValue(p Properties, v reflect.Value, key string, def interface{}, opt b
 		}
 	}
 
-	// 获取属性值
-	propValue := getPropValue()
+	propValue := getPropertyValue(p, k, key, def, opt)
 
 	switch k {
 	case reflect.Uint64, reflect.Uint32, reflect.Uint16, reflect.Uint8, reflect.Uint:

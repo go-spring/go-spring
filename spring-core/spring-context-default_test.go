@@ -2960,12 +2960,38 @@ type ArrayProperties struct {
 }
 
 func TestDefaultSpringContext_Properties(t *testing.T) {
+
 	t.Run("array properties", func(t *testing.T) {
 		ctx := SpringCore.NewDefaultSpringContext()
 		bd := ctx.RegisterBean(new(ArrayProperties))
 		ctx.AutoWireBeans()
 		p := bd.Bean().(*ArrayProperties)
 		assert.Equal(t, p.Duration, []time.Duration{time.Second, 5 * time.Second})
+	})
+
+	t.Run("map default value ", func(t *testing.T) {
+
+		obj := struct {
+			Int  int               `value:"${int:=5}"`
+			IntA int               `value:"${int.a:=5}"`
+			Map  map[string]string `value:"${map:={}}"`
+			MapA map[string]string `value:"${map_a:={}}"`
+		}{}
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.SetProperty("map_a.nba", "nba")
+		ctx.SetProperty("map_a.cba", "cba")
+		ctx.SetProperty("int.a", "3")
+		ctx.SetProperty("int.b", "4")
+		ctx.RegisterBean(&obj)
+		ctx.AutoWireBeans()
+
+		assert.Equal(t, obj.Int, 5)
+		assert.Equal(t, obj.IntA, 3)
+		assert.Equal(t, obj.Map, map[string]string{})
+		assert.Equal(t, obj.MapA, map[string]string{
+			"cba": "cba", "nba": "nba",
+		})
 	})
 }
 
