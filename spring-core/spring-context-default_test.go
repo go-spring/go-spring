@@ -201,7 +201,7 @@ func (b *TestBinding) String() string {
 type TestObject struct {
 	// 基础类型指针
 	IntPtrByType *int `inject:""`
-	IntPtrByName *int `autowire:"int_ptr"`
+	IntPtrByName *int `autowire:"${key_1:=int_ptr}"`
 
 	// 基础类型数组
 	// IntSliceByType []int `autowire:""` // 多实例
@@ -210,7 +210,7 @@ type TestObject struct {
 
 	// 基础类型指针数组
 	IntPtrSliceByType []*int `inject:""`
-	IntPtrCollection  []*int `autowire:"[int_ptr]"`
+	IntPtrCollection  []*int `autowire:"${key_2:=[int_ptr]}"`
 	IntPtrSliceByName []*int `autowire:"int_ptr_slice"`
 
 	// 自定义类型指针
@@ -2967,4 +2967,15 @@ func TestDefaultSpringContext_Properties(t *testing.T) {
 		p := bd.Bean().(*ArrayProperties)
 		assert.Equal(t, p.Duration, []time.Duration{time.Second, 5 * time.Second})
 	})
+}
+
+func TestFnStringBindingArg(t *testing.T) {
+	ctx := SpringCore.NewDefaultSpringContext()
+	ctx.RegisterBeanFn(func(i *int) bool {
+		fmt.Printf("i=%d\n", *i)
+		return false
+	}, "${key.name:=*int}")
+	i := 5
+	ctx.RegisterBean(&i)
+	ctx.AutoWireBeans()
 }

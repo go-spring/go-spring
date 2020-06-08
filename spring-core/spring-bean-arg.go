@@ -162,13 +162,25 @@ func (arg *fnStringBindingArg) getArgValue(v reflect.Value, tag string, assembly
 	description := fmt.Sprintf("tag:\"%s\" %s", tag, fileLine)
 	SpringLogger.Tracef("get value %s", description)
 
-	if strings.HasPrefix(tag, "${") || IsValueType(v.Kind()) {
+	if ctx := assembly.springContext(); IsValueType(v.Kind()) { // 值类型，采用属性绑定语法
+
 		if tag == "" {
 			tag = "${}"
 		}
-		ctx := assembly.springContext()
+		if !strings.HasPrefix(tag, "${") {
+			panic(errors.New("error value tag:" + tag))
+		}
 		bindStructField(ctx, v, tag, bindOption{allAccess: ctx.AllAccess()})
-	} else {
+
+	} else { // 引用类型，采用对象注入语法
+
+		if strings.HasPrefix(tag, "${") { // tag 预处理
+			s := new(string)
+			sv := reflect.ValueOf(s).Elem()
+			bindStructField(ctx, sv, tag, bindOption{})
+			tag = *s
+		}
+
 		if CollectMode(tag) {
 			assembly.collectBeans(v, ParseCollectionTag(tag))
 		} else {

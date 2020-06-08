@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/go-spring/go-spring-parent/spring-logger"
 	"github.com/go-spring/go-spring-parent/spring-utils"
@@ -495,6 +496,13 @@ func (assembly *defaultBeanAssembly) wireFunctionBean(fnValue reflect.Value, bea
 // wireStructField 对结构体的字段进行绑定
 func (assembly *defaultBeanAssembly) wireStructField(v reflect.Value, str string,
 	parent reflect.Value, field string) {
+
+	if strings.HasPrefix(str, "${") { // tag 预处理
+		s := new(string)
+		sv := reflect.ValueOf(s).Elem()
+		bindStructField(assembly.springCtx, sv, str, bindOption{})
+		str = *s
+	}
 
 	if CollectMode(str) { // 收集模式
 
