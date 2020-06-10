@@ -308,7 +308,7 @@ func (assembly *defaultBeanAssembly) wireBeanDefinition(bd beanDefinition, onlyA
 
 	// 首先初始化当前 Bean 不直接依赖的那些 Bean
 	for _, selector := range bd.getDependsOn() {
-		if bean, ok := assembly.springCtx.FindBeanByName(selector); !ok {
+		if bean, ok := assembly.springCtx.FindBean(selector); !ok {
 			panic(fmt.Errorf("can't find bean: \"%v\"", selector))
 		} else {
 			assembly.wireBeanDefinition(bean, false)

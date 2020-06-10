@@ -185,7 +185,11 @@ func (ctx *defaultSpringContext) RegisterMethodBean(selector BeanSelector, metho
 func (ctx *defaultSpringContext) RegisterNameMethodBean(name string, selector BeanSelector, method string, tags ...string) *BeanDefinition {
 	ctx.checkRegistration()
 
-	bd := MethodToBeanDefinition(name, BeanSelectorToString(selector), method, tags...)
+	if selector == nil || selector == "" {
+		panic(errors.New("selector can't be nil or empty"))
+	}
+
+	bd := MethodToBeanDefinition(name, selector, method, tags...)
 	ctx.methodBeans = append(ctx.methodBeans, bd)
 	return bd
 }
@@ -216,11 +220,11 @@ func (ctx *defaultSpringContext) RegisterNameMethodBeanFn(name string, method in
 
 // GetBean 根据类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 func (ctx *defaultSpringContext) GetBean(i interface{}) bool {
-	return ctx.GetBeanByName("?", i)
+	return ctx.GetBeanByTag(SingletonTag{Nullable: true}, i)
 }
 
 // GetBeanByName 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
-func (ctx *defaultSpringContext) GetBeanByName(selector string, i interface{}) bool {
+func (ctx *defaultSpringContext) GetBeanByTag(tag SingletonTag, i interface{}) bool {
 	SpringUtils.Panic(errors.New("i can't be nil")).When(i == nil)
 
 	ctx.checkAutoWired()
@@ -230,9 +234,6 @@ func (ctx *defaultSpringContext) GetBeanByName(selector string, i interface{}) b
 		panic(errors.New("i must be pointer"))
 	}
 
-	tag := ParseSingletonTag(selector)
-	tag.Nullable = true
-
 	v := reflect.ValueOf(i)
 	w := newDefaultBeanAssembly(ctx)
 	return w.getBeanValue(v.Elem(), tag, reflect.Value{}, "")
@@ -241,30 +242,63 @@ func (ctx *defaultSpringContext) GetBeanByName(selector string, i interface{}) b
 // FindBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 // selector 可以是 BeanId，还可以是 (Type)(nil) 变量，Type 为接口类型时带指针。
 func (ctx *defaultSpringContext) FindBean(selector BeanSelector) (*BeanDefinition, bool) {
-	return ctx.FindBeanByName(BeanSelectorToString(selector))
-}
-
-// FindBeanByName 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
-func (ctx *defaultSpringContext) FindBeanByName(selector string) (*BeanDefinition, bool) {
 	ctx.checkAutoWired()
 
-	tag := ParseSingletonTag(selector)
-	result := make([]*BeanDefinition, 0)
-
-	for _, bean := range ctx.beanMap {
-		if bean.Match(tag.TypeName, tag.BeanName) {
+	finder := func(fn func(*BeanDefinition) bool) (result []*BeanDefinition) {
+		for _, bean := range ctx.beanMap {
 
 			// 如果 Bean 正在解析则跳过
 			if bean.status == beanStatus_Resolving {
 				continue
 			}
 
-			// 避免 Bean 还未解析
-			ctx.resolveBean(bean)
+			if fn(bean) {
 
-			if bean.status != beanStatus_Deleted {
-				result = append(result, bean)
+				// 避免 Bean 还未解析
+				ctx.resolveBean(bean)
+
+				if bean.status != beanStatus_Deleted {
+					result = append(result, bean)
+				}
 			}
+		}
+		return
+	}
+
+	var result []*BeanDefinition
+
+	switch o := selector.(type) {
+	case string:
+		tag := ParseSingletonTag(o)
+		result = finder(func(b *BeanDefinition) bool {
+			return b.Match(tag.TypeName, tag.BeanName)
+		})
+	default:
+		{
+			t := reflect.TypeOf(o) // map、slice 等不是指针类型
+			if t.Kind() == reflect.Ptr {
+				e := t.Elem()
+				if e.Kind() == reflect.Interface {
+					t = e // 接口类型去掉指针
+				}
+			}
+
+			s := fmt.Sprintf("%s %s %d", t.PkgPath(), t.Name(), t.Kind())
+			fmt.Println(s)
+
+			result = finder(func(b *BeanDefinition) bool {
+				if beanType := b.Type(); beanType.AssignableTo(t) { // 类型兼容
+					if beanType == t || t.Kind() != reflect.Interface {
+						return true
+					}
+					for it := range b.exports { // 接口是否导出
+						if it == t {
+							return true
+						}
+					}
+				}
+				return false
+			})
 		}
 	}
 
@@ -277,9 +311,9 @@ func (ctx *defaultSpringContext) FindBeanByName(selector string) (*BeanDefinitio
 
 	// 多于 1 个
 	if count > 1 {
-		msg := fmt.Sprintf("found %d beans, bean: \"%s\" [", len(result), tag)
-		for _, bd := range result {
-			msg += "( " + bd.Description() + " ), "
+		msg := fmt.Sprintf("found %d beans, bean: \"%v\" [", len(result), selector)
+		for _, b := range result {
+			msg += "( " + b.Description() + " ), "
 		}
 		msg = msg[:len(msg)-2] + "]"
 		panic(errors.New(msg))
@@ -291,11 +325,10 @@ func (ctx *defaultSpringContext) FindBeanByName(selector string) (*BeanDefinitio
 
 // CollectBeans 收集数组或指针定义的所有符合条件的 Bean 对象，收集到返回 true，否则返回 false。
 func (ctx *defaultSpringContext) CollectBeans(i interface{}) bool {
-	return ctx.CollectBeansByName("[]?", i)
+	return ctx.CollectBeansByTag(CollectionTag{Nullable: true}, i)
 }
 
-// CollectBeansByName
-func (ctx *defaultSpringContext) CollectBeansByName(selector string, i interface{}) bool {
+func (ctx *defaultSpringContext) CollectBeansByTag(tag CollectionTag, i interface{}) bool {
 	ctx.checkAutoWired()
 
 	if t := reflect.TypeOf(i); t.Kind() != reflect.Ptr || t.Elem().Kind() != reflect.Slice {
@@ -303,7 +336,23 @@ func (ctx *defaultSpringContext) CollectBeansByName(selector string, i interface
 	}
 
 	w := newDefaultBeanAssembly(ctx)
-	return w.collectBeans(reflect.ValueOf(i).Elem(), ParseCollectionTag(selector))
+	return w.collectBeans(reflect.ValueOf(i).Elem(), tag)
+}
+
+func (ctx *defaultSpringContext) SelectBean(selector BeanSelector, i interface{}) bool {
+	var tag SingletonTag
+	if s, ok := selector.(string); ok { // TODO 完善之
+		tag = ParseSingletonTag(s)
+	} else {
+		tag = ParseSingletonTag(TypeName(selector) + ":")
+	}
+	tag.Nullable = true
+	return ctx.GetBeanByTag(tag, i)
+}
+
+// CollectBeansByName
+func (ctx *defaultSpringContext) SelectBeans(selector []BeanSelector, i interface{}) bool {
+	return ctx.CollectBeansByTag(CollectionTag{Nullable: true}, i) // TODO 完善之
 }
 
 // getTypeCacheItem 查找指定类型的缓存项
@@ -430,26 +479,59 @@ func (ctx *defaultSpringContext) resolveBean(bd *BeanDefinition) {
 
 // registerMethodBeans 注册方法 Bean
 func (ctx *defaultSpringContext) registerMethodBeans() {
-
+	var (
+		selector string
+		filter   func(*BeanDefinition) bool
+	)
 	for _, bd := range ctx.methodBeans {
 		bean := bd.bean.(*fakeMethodBean)
-
-		parent := ParseSingletonTag(bean.parent)
 		result := make([]*BeanDefinition, 0)
 
-		for _, d := range ctx.beanMap {
-			if d.Match(parent.TypeName, parent.BeanName) {
-				result = append(result, d)
+		switch e := bean.selector.(type) {
+		case *BeanDefinition:
+			selector = e.BeanId()
+			result = append(result, e)
+		case string:
+			selector = e
+			tag := ParseSingletonTag(e)
+			filter = func(b *BeanDefinition) bool {
+				return b.Match(tag.TypeName, tag.BeanName)
+			}
+		case reflect.Type:
+			selector = e.String()
+			filter = func(b *BeanDefinition) bool {
+				return b.Type() == e
+			}
+		default:
+			t := reflect.TypeOf(e)
+			// 如果是接口类型需要解除外层指针
+			if t.Kind() == reflect.Ptr && t.Elem().Kind() == reflect.Interface {
+				t = t.Elem()
+			}
+			selector = t.String()
+			filter = func(b *BeanDefinition) bool {
+				return b.Type() == t
 			}
 		}
 
-		if n := len(result); n == 0 {
-			panic(fmt.Errorf("can't find parent bean: \"%s\"", bean.parent))
-		} else if n > 1 {
-			panic(fmt.Errorf("found %d parent bean: \"%s\"", n, bean.parent))
+		if filter != nil {
+			for _, b := range ctx.beanMap {
+				if filter(b) {
+					result = append(result, b)
+				}
+			}
+		}
+
+		if l := len(result); l == 0 {
+			panic(fmt.Errorf("can't find parent bean: \"%s\"", selector))
+		} else if l > 1 {
+			panic(fmt.Errorf("found %d parent bean: \"%s\"", l, selector))
 		}
 
 		bd.bean = newMethodBean(result[0], bean.method, bean.tags)
+		if bd.name == "" { // 使用默认名称 TODO 确定是否可以删除
+			bd.name = bd.bean.Type().String()
+		}
 		ctx.registerBeanDefinition(bd)
 	}
 }

@@ -77,8 +77,6 @@ func (m *WebMapping) Request(method uint32, path string, fn interface{}, filters
 			Receiver:   fnType.In(0),
 			MethodName: methodName,
 		}
-
-		// TODO 验证是否可以进行类型转换
 	}
 
 	mapping := newMapping(method, path, handler, filters)
@@ -480,9 +478,9 @@ func OPTIONS(path string, fn interface{}, filters ...SpringWeb.Filter) *Mapping 
 
 // ConditionalWebFilter 为 SpringWeb.Filter 增加一个判断条件
 type ConditionalWebFilter struct {
-	filters []SpringWeb.Filter      // Filter 对象
-	beans   []string                // Bean 选择器
-	cond    *SpringCore.Conditional // 判断条件
+	filters []SpringWeb.Filter        // Filter 对象
+	beans   []SpringCore.BeanSelector // Bean 选择器
+	cond    *SpringCore.Conditional   // 判断条件
 }
 
 // Filter 封装一个 SpringWeb.Filter 对象
@@ -495,12 +493,8 @@ func Filter(filters ...SpringWeb.Filter) *ConditionalWebFilter {
 
 // FilterBean 封装一个 Bean 选择器
 func FilterBean(selectors ...SpringCore.BeanSelector) *ConditionalWebFilter {
-	var beans []string
-	for _, s := range selectors {
-		beans = append(beans, SpringCore.BeanSelectorToString(s))
-	}
 	return &ConditionalWebFilter{
-		beans: beans,
+		beans: selectors,
 		cond:  SpringCore.NewConditional(),
 	}
 }
@@ -509,7 +503,7 @@ func (f *ConditionalWebFilter) Filter() []SpringWeb.Filter {
 	return f.filters
 }
 
-func (f *ConditionalWebFilter) FilterBean() []string {
+func (f *ConditionalWebFilter) FilterBean() []SpringCore.BeanSelector {
 	return f.beans
 }
 

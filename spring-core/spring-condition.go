@@ -136,33 +136,33 @@ func (c *propertyValueCondition) Matches(ctx SpringContext) bool {
 
 // beanCondition 基于 Bean 存在的 Condition 实现
 type beanCondition struct {
-	selector string
+	selector BeanSelector
 }
 
 // NewBeanCondition beanCondition 的构造函数
 func NewBeanCondition(selector BeanSelector) *beanCondition {
-	return &beanCondition{BeanSelectorToString(selector)}
+	return &beanCondition{selector}
 }
 
 // Matches 成功返回 true，失败返回 false
 func (c *beanCondition) Matches(ctx SpringContext) bool {
-	_, ok := ctx.FindBeanByName(c.selector)
+	_, ok := ctx.FindBean(c.selector)
 	return ok
 }
 
 // missingBeanCondition 基于 Bean 不能存在的 Condition 实现
 type missingBeanCondition struct {
-	selector string
+	selector BeanSelector
 }
 
 // NewMissingBeanCondition missingBeanCondition 的构造函数
 func NewMissingBeanCondition(selector BeanSelector) *missingBeanCondition {
-	return &missingBeanCondition{BeanSelectorToString(selector)}
+	return &missingBeanCondition{selector}
 }
 
 // Matches 成功返回 true，失败返回 false
 func (c *missingBeanCondition) Matches(ctx SpringContext) bool {
-	_, ok := ctx.FindBeanByName(c.selector)
+	_, ok := ctx.FindBean(c.selector)
 	return !ok
 }
 

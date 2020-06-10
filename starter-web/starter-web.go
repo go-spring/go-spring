@@ -19,6 +19,7 @@ package WebStarter
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 
 	"github.com/go-spring/go-spring-parent/spring-utils"
@@ -68,8 +69,8 @@ func (starter *WebServerStarter) OnStartApplication(ctx SpringBoot.ApplicationCo
 					if b := wf.FilterBean(); len(b) > 0 {
 						for _, beanId := range b {
 							var bf SpringWeb.Filter
-							if ! ctx.GetBeanByName(beanId, &bf) {
-								panic(errors.New("can't get filter " + beanId))
+							if !ctx.SelectBean(beanId, &bf) {
+								panic(fmt.Errorf("can't get filter %v", beanId))
 							}
 							result = append(result, bf)
 						}

@@ -113,21 +113,6 @@ func TypeName(typOrPtr TypeOrPtr) string {
 // 对象或者形如 (*error)(nil) 的对象指针，还可以是 *BeanDefinition 对象。
 type BeanSelector interface{}
 
-// BeanSelectorToString 将 BeanSelector 转换为字符串格式。Bean 选择器
-// 字符串和 BeanId 字符串格式一样，但 TypeName、BeanName 中的一个可以为空。
-func BeanSelectorToString(selector BeanSelector) string {
-	if selector == nil || selector == "" {
-		panic(errors.New("selector can't be nil or empty"))
-	}
-	switch s := selector.(type) {
-	case string:
-		return s
-	case *BeanDefinition:
-		return s.BeanId()
-	}
-	return TypeName(selector) + ":"
-}
-
 // SingletonTag 单例模式注入 Tag 对应的分解形式
 type SingletonTag struct {
 	TypeName string
@@ -396,8 +381,8 @@ func (b *methodBean) beanClass() string {
 // 对象，而是在所有 Bean 注册完成并且自动注入开始后才开始生成，在此之前
 // 使用 fakeMethodBean 对象进行占位。
 type fakeMethodBean struct {
-	// 父 Bean 的 BeanId
-	parent string
+	// parent 选择器
+	selector BeanSelector
 
 	// 成员方法名称
 	method string
@@ -406,12 +391,12 @@ type fakeMethodBean struct {
 	tags []string
 }
 
-// newFakeMethodBean fakeMethodBean 的构造函数，parent 是父 Bean 的 BeanId。
-func newFakeMethodBean(parent string, method string, tags []string) *fakeMethodBean {
+// newFakeMethodBean fakeMethodBean 的构造函数
+func newFakeMethodBean(selector BeanSelector, method string, tags []string) *fakeMethodBean {
 	return &fakeMethodBean{
-		parent: parent,
-		method: method,
-		tags:   tags,
+		selector: selector,
+		method:   method,
+		tags:     tags,
 	}
 }
 
@@ -460,14 +445,14 @@ type beanDefinition interface {
 	FileLine() string    // 返回 Bean 的注册点
 	Description() string // 返回 Bean 的详细描述
 
-	springBean() springBean      // 返回 SpringBean 对象
-	getStatus() beanStatus       // 返回 Bean 的状态值
-	setStatus(status beanStatus) // 设置 Bean 的状态值
-	getDependsOn() []string      // 返回 Bean 的非直接依赖项
-	getInit() *runnable          // 返回 Bean 的初始化函数
-	getDestroy() *runnable       // 返回 Bean 的销毁函数
-	getFile() string             // 返回 Bean 注册点所在文件的名称
-	getLine() int                // 返回 Bean 注册点所在文件的行数
+	springBean() springBean       // 返回 SpringBean 对象
+	getStatus() beanStatus        // 返回 Bean 的状态值
+	setStatus(status beanStatus)  // 设置 Bean 的状态值
+	getDependsOn() []BeanSelector // 返回 Bean 的非直接依赖项
+	getInit() *runnable           // 返回 Bean 的初始化函数
+	getDestroy() *runnable        // 返回 Bean 的销毁函数
+	getFile() string              // 返回 Bean 注册点所在文件的名称
+	getLine() int                 // 返回 Bean 注册点所在文件的行数
 }
 
 // BeanDefinition Bean 的详细定义
@@ -479,9 +464,9 @@ type BeanDefinition struct {
 	file string // 注册点所在文件
 	line int    // 注册点所在行数
 
-	cond      *Conditional // 判断条件
-	primary   bool         // 是否为主版本
-	dependsOn []string     // 间接依赖
+	cond      *Conditional   // 判断条件
+	primary   bool           // 是否为主版本
+	dependsOn []BeanSelector // 间接依赖
 
 	init    *runnable // 初始化时的回调
 	destroy *runnable // 销毁时的回调
@@ -587,7 +572,7 @@ func (d *BeanDefinition) setStatus(status beanStatus) {
 }
 
 // getDependsOn 返回 Bean 的间接依赖
-func (d *BeanDefinition) getDependsOn() []string {
+func (d *BeanDefinition) getDependsOn() []BeanSelector {
 	return d.dependsOn
 }
 
@@ -725,9 +710,7 @@ func (d *BeanDefinition) Options(options ...*optionArg) *BeanDefinition {
 
 // DependsOn 设置 Bean 的间接依赖
 func (d *BeanDefinition) DependsOn(selectors ...BeanSelector) *BeanDefinition {
-	for _, s := range selectors {
-		d.dependsOn = append(d.dependsOn, BeanSelectorToString(s))
-	}
+	d.dependsOn = append(d.dependsOn, selectors...)
 	return d
 }
 
@@ -805,7 +788,7 @@ func (d *BeanDefinition) Destroy(fn interface{}, tags ...string) *BeanDefinition
 	return d
 }
 
-// Export 显示指定 Bean 的导出接口
+// Export 显式指定 Bean 的导出接口
 func (d *BeanDefinition) Export(exports ...TypeOrPtr) *BeanDefinition {
 	return d.export(exports)
 }
@@ -862,11 +845,11 @@ func FnToBeanDefinition(name string, fn interface{}, tags ...string) *BeanDefini
 }
 
 // MethodToBeanDefinition 将成员方法转换为 BeanDefinition 对象
-func MethodToBeanDefinition(name string, parent string, methodName string, tags ...string) *BeanDefinition {
-	if name == "" { // 取函数名作为默认名称
-		name = "@" + methodName
+func MethodToBeanDefinition(name string, selector BeanSelector, method string, tags ...string) *BeanDefinition {
+	if name == "" { // 生成默认名称，取函数名
+		name = "@" + method
 	}
-	return newBeanDefinition(name, newFakeMethodBean(parent, methodName, tags))
+	return newBeanDefinition(name, newFakeMethodBean(selector, method, tags))
 }
 
 // ValidBeanValue 返回是否是合法的 Bean 值及其类型
