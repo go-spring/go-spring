@@ -220,23 +220,7 @@ func (ctx *defaultSpringContext) RegisterNameMethodBeanFn(name string, method in
 
 // GetBean 根据类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 func (ctx *defaultSpringContext) GetBean(i interface{}) bool {
-	return ctx.GetBeanByTag(SingletonTag{Nullable: true}, i)
-}
-
-// GetBeanByName 根据名称和类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
-func (ctx *defaultSpringContext) GetBeanByTag(tag SingletonTag, i interface{}) bool {
-	SpringUtils.Panic(errors.New("i can't be nil")).When(i == nil)
-
-	ctx.checkAutoWired()
-
-	// 使用指针才能够对外赋值
-	if reflect.TypeOf(i).Kind() != reflect.Ptr {
-		panic(errors.New("i must be pointer"))
-	}
-
-	v := reflect.ValueOf(i)
-	w := newDefaultBeanAssembly(ctx)
-	return w.getBeanValue(v.Elem(), tag, reflect.Value{}, "")
+	return ctx.SelectBean("", i)
 }
 
 // FindBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
@@ -340,14 +324,18 @@ func (ctx *defaultSpringContext) CollectBeansByTag(tag CollectionTag, i interfac
 }
 
 func (ctx *defaultSpringContext) SelectBean(selector BeanSelector, i interface{}) bool {
-	var tag SingletonTag
-	if s, ok := selector.(string); ok { // TODO 完善之
-		tag = ParseSingletonTag(s)
-	} else {
-		tag = ParseSingletonTag(TypeName(selector) + ":")
+	SpringUtils.Panic(errors.New("i can't be nil")).When(i == nil)
+
+	ctx.checkAutoWired()
+
+	// 使用指针才能够对外赋值
+	if reflect.TypeOf(i).Kind() != reflect.Ptr {
+		panic(errors.New("i must be pointer"))
 	}
-	tag.Nullable = true
-	return ctx.GetBeanByTag(tag, i)
+
+	v := reflect.ValueOf(i)
+	w := newDefaultBeanAssembly(ctx)
+	return w.getBeanValue(v.Elem(), selector, true, reflect.Value{}, "")
 }
 
 // CollectBeansByName

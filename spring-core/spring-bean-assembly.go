@@ -31,7 +31,7 @@ import (
 type beanAssembly interface {
 	springContext() SpringContext
 	collectBeans(v reflect.Value, tag CollectionTag) bool
-	getBeanValue(v reflect.Value, tag SingletonTag, parent reflect.Value, field string) bool
+	getBeanValue(v reflect.Value, selector BeanSelector, nullable bool, parent reflect.Value, field string) bool
 }
 
 // wiringStack 注入堆栈
@@ -85,7 +85,14 @@ func (assembly *defaultBeanAssembly) springContext() SpringContext {
 }
 
 // getBeanValue 获取单例 Bean
-func (assembly *defaultBeanAssembly) getBeanValue(v reflect.Value, tag SingletonTag, parent reflect.Value, field string) bool {
+func (assembly *defaultBeanAssembly) getBeanValue(v reflect.Value, selector BeanSelector, nullable bool, parent reflect.Value, field string) bool {
+
+	var tag SingletonTag
+	if s, ok := selector.(string); ok { // TODO 完善之
+		tag = ParseSingletonTag(s)
+	} else {
+		tag = ParseSingletonTag(TypeName(selector) + ":")
+	}
 
 	var (
 		ok       bool
@@ -132,7 +139,7 @@ func (assembly *defaultBeanAssembly) getBeanValue(v reflect.Value, tag Singleton
 
 	// 没有找到
 	if len(result) == 0 {
-		if tag.Nullable {
+		if nullable || tag.Nullable {
 			return false
 		} else {
 			panic(fmt.Errorf("can't find bean, bean: \"%s\" field: %s type: %s", tag, field, beanType))
@@ -518,6 +525,6 @@ func (assembly *defaultBeanAssembly) wireStructField(v reflect.Value, str string
 		}
 
 	} else { // 匹配模式，autowire:"" or autowire:"name"
-		assembly.getBeanValue(v, ParseSingletonTag(str), parent, field)
+		assembly.getBeanValue(v, str, false, parent, field)
 	}
 }

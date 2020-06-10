@@ -86,20 +86,20 @@ func TestDefaultSpringContext(t *testing.T) {
 		assert.Panic(t, func() {
 			var i int
 			ctx.GetBean(&i)
-		}, "receiver must be ref type, bean: \"\\?\" field: ")
+		}, "receiver must be ref type, bean: \"\" field: ")
 
 		// 找到多个符合条件的值
 		assert.Panic(t, func() {
 			var i *int
 			ctx.GetBean(&i)
-		}, "found 3 beans, bean: \"\\?\" field:  type: \\*int")
+		}, "found 3 beans, bean: \"\" field:  type: \\*int")
 
 		// 入参不是可赋值的对象
 		assert.Panic(t, func() {
 			var i int
 			ctx.SelectBean("i3", &i)
 			fmt.Println(i)
-		}, "receiver must be ref type, bean: \"i3\\?\" field: ")
+		}, "receiver must be ref type, bean: \"i3\" field: ")
 
 		{
 			var i *int
