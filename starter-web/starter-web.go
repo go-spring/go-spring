@@ -131,6 +131,11 @@ func (starter *WebServerStarter) OnStartApplication(ctx SpringBoot.ApplicationCo
 				mapper = SpringWeb.NewMapper(mapping.Method(), mapping.Path(), h, filters)
 			}
 
+			// Add swagger to mapper
+			if mapper != nil {
+				mapper = mapper.WithSwagger(mapping.Mapper().GetSwagger())
+			}
+
 			c.AddMapper(mapper)
 		}
 	}
