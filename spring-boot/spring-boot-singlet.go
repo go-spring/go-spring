@@ -156,13 +156,13 @@ func CollectBeans(i interface{}) bool {
 }
 
 // SelectBean
-func SelectBean(selector SpringCore.BeanSelector, i interface{}) bool {
-	return ctx.SelectBean(selector, i)
+func SelectBean(i interface{}, selector SpringCore.BeanSelector) bool {
+	return ctx.SelectBean(i, selector)
 }
 
 // SelectBeans
-func SelectBeans(selector []SpringCore.BeanSelector, i interface{}) bool {
-	return ctx.SelectBeans(selector, i)
+func SelectBeans(i interface{}, selector ...SpringCore.BeanSelector) bool {
+	return ctx.SelectBeans(i, selector...)
 }
 
 // GetBeanDefinitions 获取所有 Bean 的定义，一般仅供调试使用。

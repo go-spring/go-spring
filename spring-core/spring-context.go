@@ -99,10 +99,10 @@ type SpringContext interface {
 	CollectBeans(i interface{}) bool
 
 	// SelectBean
-	SelectBean(selector BeanSelector, i interface{}) bool
+	SelectBean(i interface{}, selector BeanSelector) bool
 
 	// SelectBeans
-	SelectBeans(selector []BeanSelector, i interface{}) bool
+	SelectBeans(i interface{}, selector ...BeanSelector) bool
 
 	// GetBeanDefinitions 获取所有 Bean 的定义，一般仅供调试使用。
 	GetBeanDefinitions() []*BeanDefinition

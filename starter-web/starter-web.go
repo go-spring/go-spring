@@ -69,7 +69,7 @@ func (starter *WebServerStarter) OnStartApplication(ctx SpringBoot.ApplicationCo
 					if b := wf.FilterBean(); len(b) > 0 {
 						for _, beanId := range b {
 							var bf SpringWeb.Filter
-							if !ctx.SelectBean(beanId, &bf) {
+							if !ctx.SelectBean(&bf, beanId) {
 								panic(fmt.Errorf("can't get filter %v", beanId))
 							}
 							result = append(result, bf)

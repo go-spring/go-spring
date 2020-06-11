@@ -97,14 +97,14 @@ func TestDefaultSpringContext(t *testing.T) {
 		// 入参不是可赋值的对象
 		assert.Panic(t, func() {
 			var i int
-			ctx.SelectBean("i3", &i)
+			ctx.SelectBean(&i, "i3")
 			fmt.Println(i)
 		}, "receiver must be ref type, bean: \"i3\" field: ")
 
 		{
 			var i *int
 			// 直接使用缓存
-			ctx.SelectBean("i3", &i)
+			ctx.SelectBean(&i, "i3")
 			fmt.Println(*i)
 		}
 
@@ -308,7 +308,7 @@ func TestDefaultSpringContext_AutoWireBeans(t *testing.T) {
 	ctx.AutoWireBeans()
 
 	var ff []*float32
-	ctx.SelectBeans([]SpringCore.BeanSelector{"float_ptr_2", "float_ptr_1",}, &ff)
+	ctx.SelectBeans(&ff, "float_ptr_2", "float_ptr_1")
 
 	fmt.Printf("%+v\n", obj)
 }
@@ -681,26 +681,26 @@ func TestDefaultSpringContext_GetBeanByName(t *testing.T) {
 	ctx.AutoWireBeans()
 
 	var two *BeanTwo
-	ok := ctx.SelectBean("", &two)
+	ok := ctx.SelectBean(&two, "")
 	assert.Equal(t, ok, true)
 
-	ok = ctx.SelectBean("*SpringCore_test.BeanTwo", &two)
+	ok = ctx.SelectBean(&two, "*SpringCore_test.BeanTwo")
 	assert.Equal(t, ok, true)
 
-	ok = ctx.SelectBean("BeanTwo", &two)
+	ok = ctx.SelectBean(&two, "BeanTwo")
 	assert.Equal(t, ok, false)
 
-	ok = ctx.SelectBean(":*SpringCore_test.BeanTwo", &two)
+	ok = ctx.SelectBean(&two, ":*SpringCore_test.BeanTwo")
 	assert.Equal(t, ok, true)
 
-	ok = ctx.SelectBean("github.com/go-spring/go-spring/spring-core_test/SpringCore_test.BeanTwo:*SpringCore_test.BeanTwo", &two)
+	ok = ctx.SelectBean(&two, "github.com/go-spring/go-spring/spring-core_test/SpringCore_test.BeanTwo:*SpringCore_test.BeanTwo")
 	assert.Equal(t, ok, true)
 
-	ok = ctx.SelectBean("xxx:*SpringCore_test.BeanTwo", &two)
+	ok = ctx.SelectBean(&two, "xxx:*SpringCore_test.BeanTwo")
 	assert.Equal(t, ok, false)
 
 	var three *BeanThree
-	ok = ctx.SelectBean("", &three)
+	ok = ctx.SelectBean(&three, "")
 	assert.Equal(t, ok, false)
 
 	fmt.Println(SpringUtils.ToJson(two))
@@ -783,14 +783,14 @@ func TestDefaultSpringContext_RegisterBeanFn(t *testing.T) {
 	ctx.AutoWireBeans()
 
 	var st1 *Student
-	ok := ctx.SelectBean("st1", &st1)
+	ok := ctx.SelectBean(&st1, "st1")
 
 	assert.Equal(t, ok, true)
 	fmt.Println(SpringUtils.ToJson(st1))
 	assert.Equal(t, st1.Room, ctx.GetStringProperty("room"))
 
 	var st2 *Student
-	ok = ctx.SelectBean("st2", &st2)
+	ok = ctx.SelectBean(&st2, "st2")
 
 	assert.Equal(t, ok, true)
 	fmt.Println(SpringUtils.ToJson(st2))
@@ -800,14 +800,14 @@ func TestDefaultSpringContext_RegisterBeanFn(t *testing.T) {
 	fmt.Printf("%x\n", reflect.ValueOf(st2).Pointer())
 
 	var st3 *Student
-	ok = ctx.SelectBean("st3", &st3)
+	ok = ctx.SelectBean(&st3, "st3")
 
 	assert.Equal(t, ok, true)
 	fmt.Println(SpringUtils.ToJson(st3))
 	assert.Equal(t, st3.Room, ctx.GetStringProperty("room"))
 
 	var st4 *Student
-	ok = ctx.SelectBean("st4", &st4)
+	ok = ctx.SelectBean(&st4, "st4")
 
 	assert.Equal(t, ok, true)
 	fmt.Println(SpringUtils.ToJson(st4))
@@ -1011,10 +1011,10 @@ func TestDefaultSpringContext_ConditionOnBean(t *testing.T) {
 	ctx.AutoWireBeans()
 
 	var two *BeanTwo
-	ok := ctx.SelectBean("", &two)
+	ok := ctx.SelectBean(&two, "")
 	assert.Equal(t, ok, true)
 
-	ok = ctx.SelectBean("another_two", &two)
+	ok = ctx.SelectBean(&two, "another_two")
 	assert.Equal(t, ok, false)
 }
 
@@ -1032,10 +1032,10 @@ func TestDefaultSpringContext_ConditionOnMissingBean(t *testing.T) {
 		ctx.AutoWireBeans()
 
 		var two *BeanTwo
-		ok := ctx.SelectBean("", &two)
+		ok := ctx.SelectBean(&two, "")
 		assert.Equal(t, ok, true)
 
-		ok = ctx.SelectBean("another_two", &two)
+		ok = ctx.SelectBean(&two, "another_two")
 		assert.Equal(t, ok, true)
 	}
 }

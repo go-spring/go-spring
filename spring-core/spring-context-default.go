@@ -220,7 +220,7 @@ func (ctx *defaultSpringContext) RegisterNameMethodBeanFn(name string, method in
 
 // GetBean 根据类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 func (ctx *defaultSpringContext) GetBean(i interface{}) bool {
-	return ctx.SelectBean("", i)
+	return ctx.SelectBean(i, "")
 }
 
 // FindBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
@@ -323,7 +323,7 @@ func (ctx *defaultSpringContext) CollectBeansByTag(tag CollectionTag, i interfac
 	return w.collectBeans(reflect.ValueOf(i).Elem(), tag)
 }
 
-func (ctx *defaultSpringContext) SelectBean(selector BeanSelector, i interface{}) bool {
+func (ctx *defaultSpringContext) SelectBean(i interface{}, selector BeanSelector) bool {
 	SpringUtils.Panic(errors.New("i can't be nil")).When(i == nil)
 
 	ctx.checkAutoWired()
@@ -339,7 +339,7 @@ func (ctx *defaultSpringContext) SelectBean(selector BeanSelector, i interface{}
 }
 
 // CollectBeansByName
-func (ctx *defaultSpringContext) SelectBeans(selector []BeanSelector, i interface{}) bool {
+func (ctx *defaultSpringContext) SelectBeans(i interface{}, selector ...BeanSelector) bool {
 	return ctx.CollectBeansByTag(CollectionTag{Nullable: true}, i) // TODO 完善之
 }
 
