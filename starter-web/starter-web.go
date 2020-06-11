@@ -130,7 +130,7 @@ func (starter *WebServerStarter) OnStartApplication(ctx SpringBoot.ApplicationCo
 				h := SpringWeb.METHOD(receiver.Elem().Interface(), handler.MethodName)
 				mapper = SpringWeb.NewMapper(mapping.Method(), mapping.Path(), h, filters)
 			default:
-				panic(errors.New("error handler type"))
+				panic(errors.New("error handler type " + reflect.TypeOf(handler).String()))
 			}
 
 			c.AddMapper(mapper.WithSwagger(mapping.Swagger()))
