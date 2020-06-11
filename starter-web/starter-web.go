@@ -129,14 +129,11 @@ func (starter *WebServerStarter) OnStartApplication(ctx SpringBoot.ApplicationCo
 				}
 				h := SpringWeb.METHOD(receiver.Elem().Interface(), handler.MethodName)
 				mapper = SpringWeb.NewMapper(mapping.Method(), mapping.Path(), h, filters)
+			default:
+				panic(errors.New("error handler type"))
 			}
 
-			// Add swagger to mapper
-			if mapper != nil {
-				mapper = mapper.WithSwagger(mapping.Mapper().GetSwagger())
-			}
-
-			c.AddMapper(mapper)
+			c.AddMapper(mapper.WithSwagger(mapping.Swagger()))
 		}
 	}
 
