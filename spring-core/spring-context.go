@@ -86,7 +86,7 @@ type SpringContext interface {
 	// GetBean 根据类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 	// 什么情况下会多于 1 个？假设 StructA 实现了 InterfaceT，而且用户在注册时使用了
 	// StructA 的指针注册多个 Bean，如果在获取时使用 InterfaceT,则必然出现多于 1 个的情况。
-	GetBean(i interface{}) bool
+	GetBean(i interface{}, selector ...BeanSelector) bool
 
 	// FindBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 	// selector 可以是 BeanId，还可以是 (*Type)(nil) 变量，Type 为接口类型时带指针。
@@ -96,13 +96,7 @@ type SpringContext interface {
 	// 什么情况下可以使用此功能？假设 HandlerA 和 HandlerB 都实现了 HandlerT 接口，而且用户分别注册
 	// 了一个 HandlerA 和 HandlerB 对象，如果用户想要同时获取 HandlerA 和 HandlerB 对象，那么他可
 	// 以通过 []HandlerT 即数组的方式获取到所有 Bean。
-	CollectBeans(i interface{}) bool
-
-	// SelectBean
-	SelectBean(i interface{}, selector BeanSelector) bool
-
-	// SelectBeans
-	SelectBeans(i interface{}, selector ...BeanSelector) bool
+	CollectBeans(i interface{}, selectors ...BeanSelector) bool
 
 	// GetBeanDefinitions 获取所有 Bean 的定义，一般仅供调试使用。
 	GetBeanDefinitions() []*BeanDefinition

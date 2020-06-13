@@ -219,8 +219,38 @@ func (ctx *defaultSpringContext) RegisterNameMethodBeanFn(name string, method in
 }
 
 // GetBean 根据类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
-func (ctx *defaultSpringContext) GetBean(i interface{}) bool {
-	return ctx.SelectBean(i, "")
+func (ctx *defaultSpringContext) GetBean(i interface{}, selector ...BeanSelector) bool {
+	SpringUtils.Panic(errors.New("i can't be nil")).When(i == nil)
+
+	ctx.checkAutoWired()
+
+	// 使用指针才能够对外赋值
+	if reflect.TypeOf(i).Kind() != reflect.Ptr {
+		panic(errors.New("i must be pointer"))
+	}
+
+	s := BeanSelector("")
+	if len(selector) > 0 {
+		s = selector[0]
+	}
+
+	var tag SingletonTag
+
+	switch b := s.(type) {
+	case string:
+		tag = ParseSingletonTag(b)
+	case *BeanDefinition:
+		tag = ParseSingletonTag(b.BeanId())
+	case reflect.Type:
+		tag = ParseSingletonTag(TypeName(b))
+	default:
+		tag = ParseSingletonTag(TypeName(b) + ":")
+	}
+
+	tag.Nullable = true
+	v := reflect.ValueOf(i)
+	w := newDefaultBeanAssembly(ctx)
+	return w.getBeanValue(v.Elem(), tag, reflect.Value{}, "")
 }
 
 // FindBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
@@ -308,39 +338,32 @@ func (ctx *defaultSpringContext) FindBean(selector BeanSelector) (*BeanDefinitio
 }
 
 // CollectBeans 收集数组或指针定义的所有符合条件的 Bean 对象，收集到返回 true，否则返回 false。
-func (ctx *defaultSpringContext) CollectBeans(i interface{}) bool {
-	return ctx.CollectBeansByTag(CollectionTag{Nullable: true}, i)
-}
-
-func (ctx *defaultSpringContext) CollectBeansByTag(tag CollectionTag, i interface{}) bool {
+func (ctx *defaultSpringContext) CollectBeans(i interface{}, selectors ...BeanSelector) bool {
 	ctx.checkAutoWired()
 
 	if t := reflect.TypeOf(i); t.Kind() != reflect.Ptr || t.Elem().Kind() != reflect.Slice {
 		panic(errors.New("i must be slice ptr"))
 	}
 
-	w := newDefaultBeanAssembly(ctx)
-	return w.collectBeans(reflect.ValueOf(i).Elem(), tag)
-}
+	tag := CollectionTag{Nullable: true}
 
-func (ctx *defaultSpringContext) SelectBean(i interface{}, selector BeanSelector) bool {
-	SpringUtils.Panic(errors.New("i can't be nil")).When(i == nil)
-
-	ctx.checkAutoWired()
-
-	// 使用指针才能够对外赋值
-	if reflect.TypeOf(i).Kind() != reflect.Ptr {
-		panic(errors.New("i must be pointer"))
+	for _, selector := range selectors {
+		var tag0 SingletonTag
+		switch s := selector.(type) {
+		case string:
+			tag0 = ParseSingletonTag(s)
+		case *BeanDefinition:
+			tag0 = ParseSingletonTag(s.BeanId())
+		case reflect.Type:
+			tag0 = ParseSingletonTag(TypeName(s))
+		default:
+			tag0 = ParseSingletonTag(TypeName(s) + ":")
+		}
+		tag.Items = append(tag.Items, tag0)
 	}
 
-	v := reflect.ValueOf(i)
 	w := newDefaultBeanAssembly(ctx)
-	return w.getBeanValue(v.Elem(), selector, true, reflect.Value{}, "")
-}
-
-// CollectBeansByName
-func (ctx *defaultSpringContext) SelectBeans(i interface{}, selector ...BeanSelector) bool {
-	return ctx.CollectBeansByTag(CollectionTag{Nullable: true}, i) // TODO 完善之
+	return w.collectBeans(reflect.ValueOf(i).Elem(), tag)
 }
 
 // getTypeCacheItem 查找指定类型的缓存项

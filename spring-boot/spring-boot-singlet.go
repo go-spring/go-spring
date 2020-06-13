@@ -140,8 +140,8 @@ func WireBean(bean interface{}) {
 }
 
 // GetBean 根据类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
-func GetBean(i interface{}) bool {
-	return ctx.GetBean(i)
+func GetBean(i interface{}, selector ...SpringCore.BeanSelector) bool {
+	return ctx.GetBean(i, selector...)
 }
 
 // FindBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
@@ -151,18 +151,8 @@ func FindBean(selector SpringCore.BeanSelector) (*SpringCore.BeanDefinition, boo
 }
 
 // CollectBeans 收集数组或指针定义的所有符合条件的 Bean 对象，收集到返回 true，否则返回 false。
-func CollectBeans(i interface{}) bool {
-	return ctx.CollectBeans(i)
-}
-
-// SelectBean
-func SelectBean(i interface{}, selector SpringCore.BeanSelector) bool {
-	return ctx.SelectBean(i, selector)
-}
-
-// SelectBeans
-func SelectBeans(i interface{}, selector ...SpringCore.BeanSelector) bool {
-	return ctx.SelectBeans(i, selector...)
+func CollectBeans(i interface{}, selectors ...SpringCore.BeanSelector) bool {
+	return ctx.CollectBeans(i, selectors...)
 }
 
 // GetBeanDefinitions 获取所有 Bean 的定义，一般仅供调试使用。

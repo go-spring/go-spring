@@ -31,7 +31,7 @@ import (
 type beanAssembly interface {
 	springContext() SpringContext
 	collectBeans(v reflect.Value, tag CollectionTag) bool
-	getBeanValue(v reflect.Value, selector BeanSelector, nullable bool, parent reflect.Value, field string) bool
+	getBeanValue(v reflect.Value, tag SingletonTag, parent reflect.Value, field string) bool
 }
 
 // wiringStack 注入堆栈
@@ -85,14 +85,7 @@ func (assembly *defaultBeanAssembly) springContext() SpringContext {
 }
 
 // getBeanValue 获取单例 Bean
-func (assembly *defaultBeanAssembly) getBeanValue(v reflect.Value, selector BeanSelector, nullable bool, parent reflect.Value, field string) bool {
-
-	var tag SingletonTag
-	if s, ok := selector.(string); ok { // TODO 完善之
-		tag = ParseSingletonTag(s)
-	} else {
-		tag = ParseSingletonTag(TypeName(selector) + ":")
-	}
+func (assembly *defaultBeanAssembly) getBeanValue(v reflect.Value, tag SingletonTag, parent reflect.Value, field string) bool {
 
 	var (
 		ok       bool
@@ -139,7 +132,7 @@ func (assembly *defaultBeanAssembly) getBeanValue(v reflect.Value, selector Bean
 
 	// 没有找到
 	if len(result) == 0 {
-		if nullable || tag.Nullable {
+		if tag.Nullable {
 			return false
 		} else {
 			panic(fmt.Errorf("can't find bean, bean: \"%s\" field: %s type: %s", tag, field, beanType))
@@ -202,7 +195,7 @@ func (assembly *defaultBeanAssembly) collectBeans(v reflect.Value, tag Collectio
 		ev = assembly.collectAndSortBeans(t, et, tag)
 	}
 
-	if ev.Len() > 0 {
+	if ev.Len() > 0 { // TODO 找不到时是否 panic
 		v = SpringUtils.ValuePatchIf(v, assembly.springCtx.AllAccess())
 		v.Set(ev)
 		return true
@@ -525,6 +518,6 @@ func (assembly *defaultBeanAssembly) wireStructField(v reflect.Value, str string
 		}
 
 	} else { // 匹配模式，autowire:"" or autowire:"name"
-		assembly.getBeanValue(v, str, false, parent, field)
+		assembly.getBeanValue(v, ParseSingletonTag(str), parent, field)
 	}
 }
