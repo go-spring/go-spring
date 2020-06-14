@@ -41,7 +41,7 @@ type fnStringBindingArg struct {
 	withReceiver bool // 函数是否包含接收者，也可以假装第一个参数是接收者
 }
 
-// newFnStringBindingArg fnStringBindingArg 的构造函数
+// newFnStringBindingArg fnStringBindingArg 的构造函数，所有 tag 必须同时有或者同时没有序号。
 func newFnStringBindingArg(fnType reflect.Type, withReceiver bool, tags []string) *fnStringBindingArg {
 
 	numIn := fnType.NumIn()
@@ -116,9 +116,11 @@ func newFnStringBindingArg(fnType reflect.Type, withReceiver bool, tags []string
 
 // Get 获取函数参数的绑定值，fileLine 是函数所在文件及其行号，日志使用
 func (arg *fnStringBindingArg) Get(assembly beanAssembly, fileLine string) []reflect.Value {
-	fnType := arg.fnType
 
+	fnType := arg.fnType
 	numIn := fnType.NumIn()
+
+	// 第一个参数是接收者
 	if arg.withReceiver {
 		numIn -= 1
 	}
@@ -163,29 +165,14 @@ func (arg *fnStringBindingArg) getArgValue(v reflect.Value, tag string, assembly
 	SpringLogger.Tracef("get value %s", description)
 
 	if ctx := assembly.springContext(); IsValueType(v.Kind()) { // 值类型，采用属性绑定语法
-
 		if tag == "" {
 			tag = "${}"
 		}
-		if !strings.HasPrefix(tag, "${") {
-			panic(errors.New("error value tag:" + tag))
-		}
-		bindStructField(ctx, v, tag, bindOption{allAccess: ctx.AllAccess()})
-
+		bindStructField(ctx, v, tag, bindOption{
+			allAccess: ctx.AllAccess(),
+		})
 	} else { // 引用类型，采用对象注入语法
-
-		if strings.HasPrefix(tag, "${") { // tag 预处理
-			s := new(string)
-			sv := reflect.ValueOf(s).Elem()
-			bindStructField(ctx, sv, tag, bindOption{})
-			tag = *s
-		}
-
-		if CollectionMode(tag) { // 收集模式
-			assembly.collectBeans(v, ParseCollectionTag(tag))
-		} else {
-			assembly.getBeanValue(v, ParseSingletonTag(tag), reflect.Value{}, "")
-		}
+		assembly.wireStructField(v, tag, reflect.Value{}, "")
 	}
 
 	SpringLogger.Tracef("get value success %s", description)
@@ -218,23 +205,12 @@ type optionArg struct {
 	line int    // 注册点所在行数
 }
 
-// 判断是否是合法的 Option 函数
+// 判断是否是合法的 Option 函数，只能有一个返回值
 func validOptionFunc(fnType reflect.Type) bool {
-
-	// 必须是函数
-	if fnType.Kind() != reflect.Func {
-		return false
-	}
-
-	// 只会有一个返回值
-	if fnType.NumOut() != 1 {
-		return false
-	}
-
-	return true
+	return fnType.Kind() == reflect.Func && fnType.NumOut() == 1
 }
 
-// NewOptionArg optionArg 的构造函数
+// NewOptionArg optionArg 的构造函数，tags 是 Option 函数的一般参数绑定
 func NewOptionArg(fn interface{}, tags ...string) *optionArg {
 
 	var (

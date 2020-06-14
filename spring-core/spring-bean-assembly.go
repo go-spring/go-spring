@@ -30,7 +30,16 @@ import (
 // beanAssembly Bean 组装车间
 type beanAssembly interface {
 	springContext() SpringContext
-	collectBeans(v reflect.Value, tag CollectionTag) bool
+
+	// wireStructField 对结构体的字段进行绑定
+	wireStructField(v reflect.Value, tag string, parent reflect.Value, field string)
+
+	// collectBeans 收集符合要求的 Bean，结果可以是多个。自动模式下不对结
+	// 果排序，指定模式会对结果排序。当允许结果为空时返回 false，否则 panic
+	collectBeans(v reflect.Value, tag CollectionTag, field string) bool
+
+	// getBeanValue 获取符合要求的 Bean，并且确保 Bean 完成自动注入过程，
+	// 结果最多有一个，否则 panic，当允许结果为空时返回 false，否则 panic
 	getBeanValue(v reflect.Value, tag SingletonTag, parent reflect.Value, field string) bool
 }
 
@@ -84,7 +93,7 @@ func (assembly *defaultBeanAssembly) springContext() SpringContext {
 	return assembly.springCtx
 }
 
-// getBeanValue 获取单例 Bean
+// getBeanValue 获取符合要求的 Bean，并且确保 Bean 完成自动注入过程，结果最多有一个，否则 panic，当允许结果为空时返回 false，否则 panic
 func (assembly *defaultBeanAssembly) getBeanValue(v reflect.Value, tag SingletonTag, parent reflect.Value, field string) bool {
 
 	var (
@@ -96,42 +105,39 @@ func (assembly *defaultBeanAssembly) getBeanValue(v reflect.Value, tag Singleton
 		panic(fmt.Errorf("receiver must be ref type, bean: \"%s\" field: %s", tag, field))
 	}
 
-	result := make([]*BeanDefinition, 0)
+	foundBeans := make([]*BeanDefinition, 0)
 
-	m := assembly.springCtx.getTypeCacheItem(beanType)
-	for _, bean := range m.beans {
+	cache := assembly.springCtx.getTypeCacheItem(beanType)
+	for _, bean := range cache.beans {
 		// 不能将自身赋给自身的字段 && 类型全限定名匹配
 		if bean.Value() != parent && bean.Match(tag.TypeName, tag.BeanName) {
-			result = append(result, bean)
+			foundBeans = append(foundBeans, bean)
 		}
 	}
 
-	// 扩展规则：如果指定了 Bean 名称则尝试通过名称获取以防没有通过 Export 显示导出接口
+	// 扩展规则：如果指定了 Bean 名称则尝试通过名称获取以防没有通过 Export 显式导出接口
 	if beanType.Kind() == reflect.Interface && tag.BeanName != "" {
-		beanCache := assembly.springCtx.beanCacheByName
-		if cache, o := beanCache[tag.BeanName]; o {
-			// 遍历所有的 Bean
-			for _, b := range cache.beans {
-				// 不能将自身赋给自身的字段 && 类型匹配 && BeanName 匹配
-				if b.Value() != parent && b.Type().AssignableTo(beanType) && b.Match(tag.TypeName, tag.BeanName) {
-					found := false // 排重
-					for _, r := range result {
-						if r == b {
-							found = true
-							break
-						}
+		cache = assembly.springCtx.getNameCacheItem(tag.BeanName)
+		for _, b := range cache.beans {
+			// 不能将自身赋给自身的字段 && 类型匹配 && BeanName 匹配
+			if b.Value() != parent && b.Type().AssignableTo(beanType) && b.Match(tag.TypeName, tag.BeanName) {
+				found := false // 对结果进行排重
+				for _, r := range foundBeans {
+					if r == b {
+						found = true
+						break
 					}
-					if !found {
-						result = append(result, b)
-						SpringLogger.Warnf("you should call Export() on %s", b.Description())
-					}
+				}
+				if !found {
+					foundBeans = append(foundBeans, b)
+					SpringLogger.Warnf("you should call Export() on %s", b.Description())
 				}
 			}
 		}
 	}
 
-	// 没有找到
-	if len(result) == 0 {
+	// 没有找到，允许结果为空则返回 false，否则 panic
+	if len(foundBeans) == 0 {
 		if tag.Nullable {
 			return false
 		} else {
@@ -139,15 +145,16 @@ func (assembly *defaultBeanAssembly) getBeanValue(v reflect.Value, tag Singleton
 		}
 	}
 
+	// 看看结果中有没有设置成主版本的，优先使用
 	var primaryBeans []*BeanDefinition
 
-	for _, bean := range result {
+	for _, bean := range foundBeans {
 		if bean.primary {
 			primaryBeans = append(primaryBeans, bean)
 		}
 	}
 
-	if len(primaryBeans) > 1 {
+	if len(primaryBeans) > 1 { // 找到多于 1 个主版本则 panic
 		msg := fmt.Sprintf("found %d primary beans, bean: \"%s\" field: %s type: %s [", len(primaryBeans), tag, field, beanType)
 		for _, b := range primaryBeans {
 			msg += "( " + b.Description() + " ), "
@@ -156,68 +163,79 @@ func (assembly *defaultBeanAssembly) getBeanValue(v reflect.Value, tag Singleton
 		panic(errors.New(msg))
 	}
 
+	var result *BeanDefinition
+
 	if len(primaryBeans) == 0 {
-		if len(result) > 1 {
-			msg := fmt.Sprintf("found %d beans, bean: \"%s\" field: %s type: %s [", len(result), tag, field, beanType)
-			for _, b := range result {
+		if len(foundBeans) > 1 { // 找到过个符合条件的 Bean 并且没有一个是主版本则 panic
+			msg := fmt.Sprintf("found %d beans, bean: \"%s\" field: %s type: %s [", len(foundBeans), tag, field, beanType)
+			for _, b := range foundBeans {
 				msg += "( " + b.Description() + " ), "
 			}
 			msg = msg[:len(msg)-2] + "]"
 			panic(errors.New(msg))
 		}
-		primaryBeans = append(primaryBeans, result[0])
+		result = foundBeans[0]
+	} else {
+		result = primaryBeans[0]
 	}
 
-	// 依赖注入
-	assembly.wireBeanDefinition(primaryBeans[0], false)
+	// 对找到的 Bean 进行自动注入
+	assembly.wireBeanDefinition(result, false)
 
 	v0 := SpringUtils.ValuePatchIf(v, assembly.springCtx.AllAccess())
-	v0.Set(primaryBeans[0].Value())
+	v0.Set(result.Value())
 	return true
 }
 
-// collectBeans 收集符合条件的 Bean，自动模式下不对结果排序，如果需要排序请使用指定模式。
-func (assembly *defaultBeanAssembly) collectBeans(v reflect.Value, tag CollectionTag) bool {
+// collectBeans 收集符合要求的 Bean，结果可以是多个。自动模式下不对结果排序，指定模式会对结果排序。当允许结果为空时返回 false，否则 panic
+func (assembly *defaultBeanAssembly) collectBeans(v reflect.Value, tag CollectionTag, field string) bool {
 
 	t := v.Type()
 	et := t.Elem()
 
-	// 收集模式的数组元素必须是引用类型，否则使用单例注入模式
-	if !IsRefType(et.Kind()) {
+	if !IsRefType(et.Kind()) { // 收集模式的数组元素必须是引用类型
 		panic(errors.New("slice item in collection mode should be ref type"))
 	}
 
-	var ev reflect.Value
+	var result reflect.Value
 
 	if len(tag.Items) == 0 { // 自动模式
-		ev = assembly.autoCollectBeans(t, et)
+		result = assembly.autoCollectBeans(t, et)
 	} else { // 指定模式
-		ev = assembly.collectAndSortBeans(t, et, tag)
+		result = assembly.collectAndSortBeans(t, et, tag)
 	}
 
-	if ev.Len() > 0 { // TODO 找不到时是否 panic
+	if result.Len() > 0 { // 找到多个符合条件的结果
 		v = SpringUtils.ValuePatchIf(v, assembly.springCtx.AllAccess())
-		v.Set(ev)
+		v.Set(result)
 		return true
 	}
-	return false
+
+	// 没有找到，允许结果为空则返回 false，否则 panic
+	if tag.Nullable {
+		return false
+	} else {
+		panic(fmt.Errorf("can't collect any beans: \"%s\" field: %s", tag, field))
+	}
 }
 
 // collectAndSortBeans 收集符合条件的 Bean，并且根据指定的顺序对结果进行排序
 func (assembly *defaultBeanAssembly) collectAndSortBeans(t reflect.Type, et reflect.Type, tag CollectionTag) reflect.Value {
-	ev := reflect.MakeSlice(t, 0, len(tag.Items))
+	result := reflect.MakeSlice(t, 0, len(tag.Items))
 
 	// 只在单例类型中查找，数组类型的元素是否排序无法判断
-	m := assembly.springCtx.getTypeCacheItem(et)
+	cache := assembly.springCtx.getTypeCacheItem(et)
 	for _, item := range tag.Items {
 
+		// 查找符合条件的单例 Bean
 		var found []*BeanDefinition
-		for _, d := range m.beans {
+		for _, d := range cache.beans {
 			if d.Match(item.TypeName, item.BeanName) {
 				found = append(found, d)
 			}
 		}
 
+		// 如果找到多个则 panic
 		if len(found) > 1 {
 			msg := fmt.Sprintf("found %d beans, bean: \"%s\" type: %s [", len(found), item, et)
 			for _, b := range found {
@@ -227,6 +245,7 @@ func (assembly *defaultBeanAssembly) collectAndSortBeans(t reflect.Type, et refl
 			panic(errors.New(msg))
 		}
 
+		// 如果必须找到符合条件的 Bean 则在没有找到时 panic
 		if len(found) == 0 && !item.Nullable {
 			panic(fmt.Errorf("can't find bean, bean: \"%s\" type: %s", item, et))
 		}
@@ -234,24 +253,24 @@ func (assembly *defaultBeanAssembly) collectAndSortBeans(t reflect.Type, et refl
 		if len(found) > 0 {
 			d := found[0]
 			assembly.wireBeanDefinition(d, false)
-			ev = reflect.Append(ev, d.Value())
+			result = reflect.Append(result, d.Value())
 		}
 	}
 
-	return ev
+	return result // TODO 当收集接口类型的 Bean 时对于没有显式导出接口的 Bean 是否也需要收集？
 }
 
-// autoCollectBeans 收集符合条件的 Bean，不对结果排序是因为目前看起来没有必要
+// autoCollectBeans 收集符合条件的 Bean，不对结果进行排序，不排序是因为目前看起来没有必要
 func (assembly *defaultBeanAssembly) autoCollectBeans(t reflect.Type, et reflect.Type) reflect.Value {
-	ev := reflect.MakeSlice(t, 0, 0)
+	result := reflect.MakeSlice(t, 0, 0)
 
-	// 查找数组类型
-	for _, d := range assembly.springCtx.getTypeCacheItem(t).beans {
-
-		// 遍历数组元素
+	// 查找可以精确匹配的数组类型
+	cache := assembly.springCtx.getTypeCacheItem(t)
+	for _, d := range cache.beans {
 		for i := 0; i < d.Value().Len(); i++ {
 			di := d.Value().Index(i)
 
+			// 对数组的元素进行自动注入
 			if di.Kind() == reflect.Struct { // 结构体数组
 				assembly.wireSliceItem(di.Addr(), d)
 			} else if di.Kind() == reflect.Ptr { // 结构体指针数组
@@ -259,17 +278,21 @@ func (assembly *defaultBeanAssembly) autoCollectBeans(t reflect.Type, et reflect
 					assembly.wireSliceItem(di, d)
 				}
 			}
-			ev = reflect.Append(ev, di)
+
+			result = reflect.Append(result, di)
 		}
 	}
 
-	// 查找单例类型
-	for _, d := range assembly.springCtx.getTypeCacheItem(et).beans {
+	// 查找可以精确匹配的单例类型
+	cache = assembly.springCtx.getTypeCacheItem(et)
+	for _, d := range cache.beans {
+
+		// 对找到的 Bean 进行自动注入
 		assembly.wireBeanDefinition(d, false)
-		ev = reflect.Append(ev, d.Value())
+		result = reflect.Append(result, d.Value())
 	}
 
-	return ev
+	return result // TODO 当收集接口类型的 Bean 时对于没有显式导出接口的 Bean 是否也需要收集？
 }
 
 // wireSliceItem 对 slice 的元素值进行注入
@@ -280,15 +303,15 @@ func (assembly *defaultBeanAssembly) wireSliceItem(v reflect.Value, d beanDefini
 	assembly.wireBeanDefinition(bd, false)
 }
 
-// wireBeanDefinition 对特定的 BeanDefinition 进行注入
+// wireBeanDefinition 对特定的 BeanDefinition 进行注入，onlyAutoWire 是否只注入而不进行属性绑定
 func (assembly *defaultBeanAssembly) wireBeanDefinition(bd beanDefinition, onlyAutoWire bool) {
 
-	// 是否已删除
+	// Bean 是否已删除，已经删除的 Bean 不能再注入
 	if bd.getStatus() == beanStatus_Deleted {
 		panic(fmt.Errorf("bean: \"%s\" have been deleted", bd.BeanId()))
 	}
 
-	// 是否已绑定
+	// Bean 是否已注入，已经注入的 Bean 无需再注入
 	if bd.getStatus() == beanStatus_Wired {
 		return
 	}
@@ -296,7 +319,7 @@ func (assembly *defaultBeanAssembly) wireBeanDefinition(bd beanDefinition, onlyA
 	// 将当前 Bean 放入注入栈，以便检测循环依赖。
 	assembly.wiringStack.pushBack(bd)
 
-	// 是否循环依赖
+	// 正在注入的 Bean 再次注入则说明出现了循环依赖
 	if bd.getStatus() == beanStatus_Wiring {
 		if _, ok := bd.springBean().(*objectBean); !ok {
 			panic(errors.New("found circle autowire"))
@@ -306,7 +329,7 @@ func (assembly *defaultBeanAssembly) wireBeanDefinition(bd beanDefinition, onlyA
 
 	bd.setStatus(beanStatus_Wiring)
 
-	// 首先初始化当前 Bean 不直接依赖的那些 Bean
+	// 首先对当前 Bean 的间接依赖项进行自动注入
 	for _, selector := range bd.getDependsOn() {
 		if bean, ok := assembly.springCtx.FindBean(selector); !ok {
 			panic(fmt.Errorf("can't find bean: \"%v\"", selector))
@@ -315,11 +338,12 @@ func (assembly *defaultBeanAssembly) wireBeanDefinition(bd beanDefinition, onlyA
 		}
 	}
 
-	// 如果是成员方法 Bean，需要首先初始化它的父 Bean
+	// 如果是成员方法 Bean，需要首先对它的父 Bean 进行自动注入
 	if mBean, ok := bd.springBean().(*methodBean); ok {
 		assembly.wireBeanDefinition(mBean.parent, false)
 	}
 
+	// 对当前 Bean 进行自动注入
 	switch bean := bd.springBean().(type) {
 	case *objectBean:
 		assembly.wireObjectBean(bd, onlyAutoWire)
@@ -330,10 +354,10 @@ func (assembly *defaultBeanAssembly) wireBeanDefinition(bd beanDefinition, onlyA
 		fnValue := bean.parent.Value().MethodByName(bean.method)
 		assembly.wireFunctionBean(fnValue, &bean.functionBean, bd)
 	default:
-		panic(errors.New("unknown spring bean type"))
+		panic(errors.New("error spring bean type"))
 	}
 
-	// 如果有则执行用户设置的初始化函数
+	// 如果用户设置了初始化函数则执行初始化函数
 	if init := bd.getInit(); init != nil {
 		if err := init.run(assembly); err != nil {
 			panic(err)
@@ -369,10 +393,10 @@ func (assembly *defaultBeanAssembly) wireObjectBean(bd beanDefinition, onlyAutoW
 				}
 			}
 		}
-	case reflect.Ptr:
+	case reflect.Ptr: // 对普通对象进行注入
 		if et := st.Elem(); et.Kind() == reflect.Struct { // 结构体指针
 
-			var etName string
+			var etName string // 可能是内置类型
 			if etName = et.Name(); etName == "" {
 				etName = et.String()
 			}
@@ -380,8 +404,10 @@ func (assembly *defaultBeanAssembly) wireObjectBean(bd beanDefinition, onlyAutoW
 			sv := bd.Value()
 			ev := sv.Elem()
 
+			// 遍历 Bean 的每个字段，按照 tag 进行注入
 			for i := 0; i < et.NumField(); i++ {
-				// 避免父结构体有 value 标签时重新解析
+
+				// 避免父结构体有 value 标签时属性值重新解析
 				fieldOnlyAutoWire := false
 
 				ft := et.Field(i)
@@ -389,33 +415,34 @@ func (assembly *defaultBeanAssembly) wireObjectBean(bd beanDefinition, onlyAutoW
 
 				fieldName := etName + ".$" + ft.Name
 
-				if !onlyAutoWire {
+				if !onlyAutoWire { // 防止 value 再次解析
 					if tag, ok := ft.Tag.Lookup("value"); ok {
 						fieldOnlyAutoWire = true
 						bindStructField(assembly.springCtx, fv, tag, bindOption{
-							fieldName: fieldName,
 							allAccess: assembly.springCtx.AllAccess(),
+							fieldName: fieldName,
 						})
 					}
 				}
 
-				// 处理 autowire 标签
+				// 处理 autowire 标签，autowire 与 inject 等价
 				if beanId, ok := ft.Tag.Lookup("autowire"); ok {
 					assembly.wireStructField(fv, beanId, sv, fieldName)
 				}
 
-				// 处理 inject 标签
+				// 处理 inject 标签，inject 与 autowire 等价
 				if beanId, ok := ft.Tag.Lookup("inject"); ok {
 					assembly.wireStructField(fv, beanId, sv, fieldName)
 				}
 
-				// 处理结构体类型的字段，防止递归所以不支持指针结构体字段
+				// 只处理结构体类型的字段，防止递归所以不支持指针结构体字段
 				if ft.Type.Kind() == reflect.Struct {
 
-					// 开放私有字段，但是不会更新原有可见属性
+					// 开放私有字段，但是不会更新其原有可见属性
 					fv0 := SpringUtils.ValuePatchIf(fv, assembly.springCtx.AllAccess())
 					if fv0.CanSet() {
 
+						// 对 Bean 的结构体进行递归注入
 						b := ValueToBeanDefinition("", fv0.Addr())
 						b.file = bd.getFile()
 						b.line = bd.getLine()
@@ -429,19 +456,19 @@ func (assembly *defaultBeanAssembly) wireObjectBean(bd beanDefinition, onlyAutoW
 }
 
 // wireFunctionBean 对函数定义的 Bean 进行注入
-func (assembly *defaultBeanAssembly) wireFunctionBean(fnValue reflect.Value, bean *functionBean, bd beanDefinition) {
+func (assembly *defaultBeanAssembly) wireFunctionBean(fnValue reflect.Value, fnBean *functionBean, bd beanDefinition) {
 
 	// 获取输入参数
 	var in []reflect.Value
 
-	if bean.stringArg != nil {
-		if r := bean.stringArg.Get(assembly, bd.FileLine()); len(r) > 0 {
+	if fnBean.stringArg != nil {
+		if r := fnBean.stringArg.Get(assembly, bd.FileLine()); len(r) > 0 {
 			in = append(in, r...)
 		}
 	}
 
-	if bean.optionArg != nil {
-		if r := bean.optionArg.Get(assembly, bd.FileLine()); len(r) > 0 {
+	if fnBean.optionArg != nil {
+		if r := fnBean.optionArg.Get(assembly, bd.FileLine()); len(r) > 0 {
 			in = append(in, r...)
 		}
 	}
@@ -452,31 +479,31 @@ func (assembly *defaultBeanAssembly) wireFunctionBean(fnValue reflect.Value, bea
 	// 获取第一个返回值
 	val := out[0]
 
-	// 检查是否有 error 返回
-	if len(out) == 2 {
+	if len(out) == 2 { // 如果有 error 返回则 panic
 		if err := out[1].Interface(); err != nil {
 			panic(fmt.Errorf("function bean: \"%s\" return error: %v", bd.FileLine(), err))
 		}
 	}
 
+	// 将函数的返回值赋值给 Bean
 	if IsRefType(val.Kind()) {
-		// 如果实现接口的是值类型，那么需要转换成指针类型然后赋给接口
+		// 如果实现接口的是值类型，那么需要转换成指针类型然后再赋值给接口
 		if val.Kind() == reflect.Interface && IsValueType(val.Elem().Kind()) {
 			ptrVal := reflect.New(val.Elem().Type())
 			ptrVal.Elem().Set(val.Elem())
-			bean.rValue.Set(ptrVal)
+			fnBean.rValue.Set(ptrVal)
 		} else {
-			bean.rValue.Set(val)
+			fnBean.rValue.Set(val)
 		}
 	} else {
-		bean.rValue.Elem().Set(val)
+		fnBean.rValue.Elem().Set(val)
 	}
 
-	if bean.Value().IsNil() {
+	if fnBean.Value().IsNil() {
 		panic(fmt.Errorf("function bean: \"%s\" return nil", bd.FileLine()))
 	}
 
-	// 对返回值进行依赖注入
+	// 对函数的返回值进行自动注入
 	b := &BeanDefinition{
 		name:   bd.Name(),
 		status: beanStatus_Default,
@@ -484,40 +511,32 @@ func (assembly *defaultBeanAssembly) wireFunctionBean(fnValue reflect.Value, bea
 		line:   bd.getLine(),
 	}
 
-	if bean.Type().Kind() == reflect.Interface {
-		b.bean = newObjectBean(bean.Value().Elem())
+	if fnBean.Type().Kind() == reflect.Interface {
+		b.bean = newObjectBean(fnBean.Value().Elem())
 	} else {
-		b.bean = newObjectBean(bean.Value())
+		b.bean = newObjectBean(fnBean.Value())
 	}
 
 	assembly.wireBeanDefinition(&fnValueBeanDefinition{b, bd}, false)
 }
 
 // wireStructField 对结构体的字段进行绑定
-func (assembly *defaultBeanAssembly) wireStructField(v reflect.Value, str string,
-	parent reflect.Value, field string) {
+func (assembly *defaultBeanAssembly) wireStructField(v reflect.Value, tag string, parent reflect.Value, field string) {
 
-	if strings.HasPrefix(str, "${") { // tag 预处理
-		s := new(string)
-		sv := reflect.ValueOf(s).Elem()
-		bindStructField(assembly.springCtx, sv, str, bindOption{})
-		str = *s
+	// tag 预处理，Bean 名称可以通过属性值指定
+	if strings.HasPrefix(tag, "${") {
+		s := ""
+		sv := reflect.ValueOf(&s).Elem()
+		bindStructField(assembly.springCtx, sv, tag, bindOption{})
+		tag = s
 	}
 
-	if CollectionMode(str) { // 收集模式
-
-		// 收集模式的绑定对象必须是数组
-		if v.Type().Kind() != reflect.Slice {
+	if CollectionMode(tag) { // 收集模式
+		if v.Type().Kind() != reflect.Slice { // 绑定对象必须是数组
 			panic(fmt.Errorf("field: %s should be slice", field))
 		}
-
-		tag := ParseCollectionTag(str)
-		ok := assembly.collectBeans(v, tag)
-		if !ok && !tag.Nullable { // 没找到且不能为空则 panic
-			panic(fmt.Errorf("can't find bean: \"%s\" field: %s", tag, field))
-		}
-
-	} else { // 匹配模式，autowire:"" or autowire:"name"
-		assembly.getBeanValue(v, ParseSingletonTag(str), parent, field)
+		assembly.collectBeans(v, ParseCollectionTag(tag), field)
+	} else { // 单例模式
+		assembly.getBeanValue(v, ParseSingletonTag(tag), parent, field)
 	}
 }

@@ -770,7 +770,7 @@ func validLifeCycleFunc(fn interface{}, beanType reflect.Type) (reflect.Type, bo
 	return fnType, true
 }
 
-// Init 设置 Bean 的初始化函数
+// Init 设置 Bean 的初始化函数，tags 是初始化函数的一般参数绑定
 func (d *BeanDefinition) Init(fn interface{}, tags ...string) *BeanDefinition {
 
 	fnType, ok := validLifeCycleFunc(fn, d.Type())
@@ -788,7 +788,7 @@ func (d *BeanDefinition) Init(fn interface{}, tags ...string) *BeanDefinition {
 	return d
 }
 
-// Destroy 设置 Bean 的销毁函数
+// Destroy 设置 Bean 的销毁函数，tags 是销毁函数的一般参数绑定
 func (d *BeanDefinition) Destroy(fn interface{}, tags ...string) *BeanDefinition {
 
 	fnType, ok := validLifeCycleFunc(fn, d.Type())

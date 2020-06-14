@@ -341,7 +341,7 @@ func (ctx *defaultSpringContext) CollectBeans(i interface{}, selectors ...BeanSe
 	}
 
 	w := newDefaultBeanAssembly(ctx)
-	return w.collectBeans(reflect.ValueOf(i).Elem(), tag)
+	return w.collectBeans(reflect.ValueOf(i).Elem(), tag, "")
 }
 
 // getTypeCacheItem 查找指定类型的缓存项
