@@ -103,7 +103,7 @@ func (app *application) Start() {
 
 // loadCmdArgs 加载命令行参数
 func (_ *application) loadCmdArgs() SpringCore.Properties {
-	SpringLogger.Debugf(">>> load cmd args")
+	SpringLogger.Debugf("load cmd args")
 	p := SpringCore.NewDefaultProperties()
 	for i := 0; i < len(os.Args); i++ {
 		if arg := os.Args[i]; strings.HasPrefix(arg, "-") {
@@ -131,7 +131,7 @@ func (_ *application) loadSystemEnv() SpringCore.Properties {
 		}
 	}
 
-	SpringLogger.Debugf(">>> load system env")
+	SpringLogger.Debugf("load system env")
 	p := SpringCore.NewDefaultProperties()
 	for _, env := range os.Environ() {
 		if i := strings.Index(env, "="); i > 0 {

@@ -45,7 +45,7 @@ func (p *priorityProperties) ReadProperties(reader io.Reader, configType string)
 	p.curr.ReadProperties(reader, configType)
 }
 
-// GetProperty 返回属性值，属性名称统一转成小写。
+// GetProperty 返回 keys 中第一个存在的属性值，属性名称统一转成小写。
 func (p *priorityProperties) GetProperty(keys ...string) interface{} {
 	if v := p.curr.GetProperty(keys...); v == nil {
 		return p.next.GetProperty(keys...)
@@ -54,37 +54,37 @@ func (p *priorityProperties) GetProperty(keys ...string) interface{} {
 	}
 }
 
-// GetBoolProperty 返回布尔型属性值，属性名称统一转成小写。
+// GetBoolProperty 返回 keys 中第一个存在的布尔型属性值，属性名称统一转成小写。
 func (p *priorityProperties) GetBoolProperty(keys ...string) bool {
 	return cast.ToBool(p.GetProperty(keys...))
 }
 
-// GetIntProperty 返回有符号整型属性值，属性名称统一转成小写。
+// GetIntProperty 返回 keys 中第一个存在的有符号整型属性值，属性名称统一转成小写。
 func (p *priorityProperties) GetIntProperty(keys ...string) int64 {
 	return cast.ToInt64(p.GetProperty(keys...))
 }
 
-// GetUintProperty 返回无符号整型属性值，属性名称统一转成小写。
+// GetUintProperty 返回 keys 中第一个存在的无符号整型属性值，属性名称统一转成小写。
 func (p *priorityProperties) GetUintProperty(keys ...string) uint64 {
 	return cast.ToUint64(p.GetProperty(keys...))
 }
 
-// GetFloatProperty 返回浮点型属性值，属性名称统一转成小写。
+// GetFloatProperty 返回 keys 中第一个存在的浮点型属性值，属性名称统一转成小写。
 func (p *priorityProperties) GetFloatProperty(keys ...string) float64 {
 	return cast.ToFloat64(p.GetProperty(keys...))
 }
 
-// GetStringProperty 返回字符串型属性值，属性名称统一转成小写。
+// GetStringProperty 返回 keys 中第一个存在的字符串型属性值，属性名称统一转成小写。
 func (p *priorityProperties) GetStringProperty(keys ...string) string {
 	return cast.ToString(p.GetProperty(keys...))
 }
 
-// GetDurationProperty 返回 Duration 类型属性值，属性名称统一转成小写。
+// GetDurationProperty 返回 keys 中第一个存在的 Duration 类型属性值，属性名称统一转成小写。
 func (p *priorityProperties) GetDurationProperty(keys ...string) time.Duration {
 	return cast.ToDuration(p.GetProperty(keys...))
 }
 
-// GetTimeProperty 返回 Time 类型的属性值，属性名称统一转成小写。
+// GetTimeProperty 返回 keys 中第一个存在的 Time 类型的属性值，属性名称统一转成小写。
 func (p *priorityProperties) GetTimeProperty(keys ...string) time.Time {
 	return cast.ToTime(p.GetProperty(keys...))
 }
@@ -94,7 +94,7 @@ func (p *priorityProperties) SetProperty(key string, value interface{}) {
 	p.curr.SetProperty(key, value)
 }
 
-// GetDefaultProperty 返回属性值，如果没有找到则使用指定的默认值
+// GetDefaultProperty 返回属性值，如果没有找到则使用指定的默认值，属性名称统一转成小写。
 func (p *priorityProperties) GetDefaultProperty(key string, def interface{}) (interface{}, bool) {
 	if v, ok := p.curr.GetDefaultProperty(key, def); !ok {
 		return p.next.GetDefaultProperty(key, def)

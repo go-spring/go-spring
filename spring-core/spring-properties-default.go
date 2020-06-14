@@ -35,16 +35,16 @@ func init() {
 
 	// 注册时长转换函数 string -> time.Duration converter
 	// time units are "ns", "us" (or "µs"), "ms", "s", "m", "h"。
-	RegisterTypeConverter(func(v string) time.Duration {
-		r, err := cast.ToDurationE(v)
+	RegisterTypeConverter(func(s string) time.Duration {
+		r, err := cast.ToDurationE(s)
 		SpringUtils.Panic(err).When(err != nil)
 		return r
 	})
 
 	// 注册日期转换函数 string -> time.Time converter
 	// 支持非常多的日期格式，参见 cast.StringToDate。
-	RegisterTypeConverter(func(v string) time.Time {
-		r, err := cast.ToTimeE(v)
+	RegisterTypeConverter(func(s string) time.Time {
+		r, err := cast.ToTimeE(s)
 		SpringUtils.Panic(err).When(err != nil)
 		return r
 	})
@@ -80,7 +80,7 @@ func (p *defaultProperties) readProperties(reader func(*viper.Viper) error) {
 
 // LoadProperties 加载属性配置文件，支持 properties、yaml 和 toml 三种文件格式。
 func (p *defaultProperties) LoadProperties(filename string) {
-	SpringLogger.Debug(">>> load properties from file: ", filename)
+	SpringLogger.Debug("load properties from file: ", filename)
 
 	p.readProperties(func(v *viper.Viper) error {
 		v.SetConfigFile(filename)
@@ -90,7 +90,7 @@ func (p *defaultProperties) LoadProperties(filename string) {
 
 // ReadProperties 读取属性配置文件，支持 properties、yaml 和 toml 三种文件格式。
 func (p *defaultProperties) ReadProperties(reader io.Reader, configType string) {
-	SpringLogger.Debug(">>> load properties from reader type: ", configType)
+	SpringLogger.Debug("load properties from reader type: ", configType)
 
 	p.readProperties(func(v *viper.Viper) error {
 		v.SetConfigType(configType)
@@ -98,7 +98,7 @@ func (p *defaultProperties) ReadProperties(reader io.Reader, configType string) 
 	})
 }
 
-// GetProperty 返回属性值，属性名称统一转成小写。
+// GetProperty 返回 keys 中第一个存在的属性值，属性名称统一转成小写。
 func (p *defaultProperties) GetProperty(keys ...string) interface{} {
 	for _, key := range keys {
 		if v, ok := p.properties[strings.ToLower(key)]; ok {
@@ -108,37 +108,37 @@ func (p *defaultProperties) GetProperty(keys ...string) interface{} {
 	return nil
 }
 
-// GetBoolProperty 返回布尔型属性值，属性名称统一转成小写。
+// GetBoolProperty 返回 keys 中第一个存在的布尔型属性值，属性名称统一转成小写。
 func (p *defaultProperties) GetBoolProperty(keys ...string) bool {
 	return cast.ToBool(p.GetProperty(keys...))
 }
 
-// GetIntProperty 返回有符号整型属性值，属性名称统一转成小写。
+// GetIntProperty 返回 keys 中第一个存在的有符号整型属性值，属性名称统一转成小写。
 func (p *defaultProperties) GetIntProperty(keys ...string) int64 {
 	return cast.ToInt64(p.GetProperty(keys...))
 }
 
-// GetUintProperty 返回无符号整型属性值，属性名称统一转成小写。
+// GetUintProperty 返回 keys 中第一个存在的无符号整型属性值，属性名称统一转成小写。
 func (p *defaultProperties) GetUintProperty(keys ...string) uint64 {
 	return cast.ToUint64(p.GetProperty(keys...))
 }
 
-// GetFloatProperty 返回浮点型属性值，属性名称统一转成小写。
+// GetFloatProperty 返回 keys 中第一个存在的浮点型属性值，属性名称统一转成小写。
 func (p *defaultProperties) GetFloatProperty(keys ...string) float64 {
 	return cast.ToFloat64(p.GetProperty(keys...))
 }
 
-// GetStringProperty 返回字符串型属性值，属性名称统一转成小写。
+// GetStringProperty 返回 keys 中第一个存在的字符串型属性值，属性名称统一转成小写。
 func (p *defaultProperties) GetStringProperty(keys ...string) string {
 	return cast.ToString(p.GetProperty(keys...))
 }
 
-// GetDurationProperty 返回 Duration 类型属性值，属性名称统一转成小写。
+// GetDurationProperty 返回 keys 中第一个存在的 Duration 类型属性值，属性名称统一转成小写。
 func (p *defaultProperties) GetDurationProperty(keys ...string) time.Duration {
 	return cast.ToDuration(p.GetProperty(keys...))
 }
 
-// GetTimeProperty 返回 Time 类型的属性值，属性名称统一转成小写。
+// GetTimeProperty 返回 keys 中第一个存在的 Time 类型的属性值，属性名称统一转成小写。
 func (p *defaultProperties) GetTimeProperty(keys ...string) time.Time {
 	return cast.ToTime(p.GetProperty(keys...))
 }
@@ -148,7 +148,7 @@ func (p *defaultProperties) SetProperty(key string, value interface{}) {
 	p.properties[strings.ToLower(key)] = value
 }
 
-// GetDefaultProperty 返回属性值，如果没有找到则使用指定的默认值
+// GetDefaultProperty 返回属性值，如果没有找到则使用指定的默认值，属性名称统一转成小写。
 func (p *defaultProperties) GetDefaultProperty(key string, def interface{}) (interface{}, bool) {
 	if v, ok := p.properties[strings.ToLower(key)]; ok {
 		return v, true
@@ -247,7 +247,7 @@ func bindStructField(p Properties, v reflect.Value, str string, opt bindOption) 
 	}
 
 	if len(ss) > 1 {
-		def = ss[1] // 此处无需转换成具体类型
+		def = ss[1]
 	}
 
 	bindValue(p, v, key, def, opt)
@@ -260,8 +260,8 @@ func getPropertyValue(p Properties, k reflect.Kind, key string, def interface{},
 		return val
 	}
 
-	// Map 类型获取具有相同前缀的属性值
-	if k == reflect.Map {
+	// Map 和 Struct 类型获取具有相同前缀的属性值
+	if k == reflect.Map || k == reflect.Struct {
 		if prefixValue := p.GetPrefixProperties(key); len(prefixValue) > 0 {
 			return prefixValue
 		}
@@ -292,13 +292,12 @@ func bindValue(p Properties, v reflect.Value, key string, def interface{}, opt b
 
 	if k == reflect.Struct {
 		if def == nil {
-			opt0 := bindOption{
+			bindStruct(p, v, bindOption{
 				propNamePrefix: key,
 				fullPropName:   opt.fullPropName,
 				fieldName:      opt.fieldName,
 				allAccess:      opt.allAccess,
-			}
-			bindStruct(p, v, opt0)
+			})
 			return
 		} else { // 前面已经校验过是否存在值类型转换器
 			panic(fmt.Errorf("%s 结构体字段不能指定默认值", opt.fieldName))
@@ -469,6 +468,24 @@ func bindValue(p Properties, v reflect.Value, key string, def interface{}, opt b
 		elemType := t.Elem()
 		elemKind := elemType.Kind()
 
+		// 首先处理使用类型转换器的场景
+		if fn, ok := typeConverters[elemType]; ok {
+			if mapValue, err := cast.ToStringMapStringE(propValue); err == nil {
+				prefix := key + "."
+				fnValue := reflect.ValueOf(fn)
+				result := reflect.MakeMap(t)
+				for k0, v0 := range mapValue {
+					res := fnValue.Call([]reflect.Value{reflect.ValueOf(v0)})
+					k0 = strings.TrimPrefix(k0, prefix)
+					result.SetMapIndex(reflect.ValueOf(k0), res[0])
+				}
+				v.Set(result)
+				return
+			} else {
+				panic(fmt.Errorf("property value %s isn't map[string]string", opt.fullPropName))
+			}
+		}
+
 		switch elemKind {
 		case reflect.Uint64, reflect.Uint32, reflect.Uint16, reflect.Uint8, reflect.Uint:
 			panic(errors.New("暂未支持"))
@@ -491,25 +508,7 @@ func bindValue(p Properties, v reflect.Value, key string, def interface{}, opt b
 				panic(fmt.Errorf("property value %s isn't map[string]string", opt.fullPropName))
 			}
 		default:
-			// 首先处理使用类型转换器的场景
-			if fn, ok := typeConverters[elemType]; ok {
-				if mapValue, err := cast.ToStringMapStringE(propValue); err == nil {
-					prefix := key + "."
-					fnValue := reflect.ValueOf(fn)
-					result := reflect.MakeMap(t)
-					for k0, v0 := range mapValue {
-						res := fnValue.Call([]reflect.Value{reflect.ValueOf(v0)})
-						k0 = strings.TrimPrefix(k0, prefix)
-						result.SetMapIndex(reflect.ValueOf(k0), res[0])
-					}
-					v.Set(result)
-					return
-				} else {
-					panic(fmt.Errorf("property value %s isn't map[string]string", opt.fullPropName))
-				}
-			}
-
-			// 然后处理结构体字段的场景
+			// 处理结构体字段的场景
 			if mapValue, err := cast.ToStringMapE(propValue); err == nil {
 				temp := make(map[string]map[string]interface{})
 				trimKey := key + "."
@@ -556,14 +555,13 @@ func (p *defaultProperties) BindProperty(key string, i interface{}) {
 
 // BindPropertyIf 根据类型获取属性值，属性名称统一转成小写。
 func (p *defaultProperties) BindPropertyIf(key string, i interface{}, allAccess bool) {
-	v := reflect.ValueOf(i)
 
+	v := reflect.ValueOf(i)
 	if v.Kind() != reflect.Ptr {
 		panic(errors.New("参数 v 必须是一个指针"))
 	}
 
 	t := v.Type().Elem()
-
 	s := t.Name() // 当绑定对象是 map 或者 slice 时，取元素的类型名
 	if s == "" && (t.Kind() == reflect.Map || t.Kind() == reflect.Slice) {
 		s = t.Elem().Name()

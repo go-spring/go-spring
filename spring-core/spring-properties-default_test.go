@@ -36,7 +36,7 @@ func TestDefaultProperties_LoadProperties(t *testing.T) {
 	p.LoadProperties("testdata/config/application.yaml")
 	p.LoadProperties("testdata/config/application.properties")
 
-	fmt.Println(">>> Get All Properties")
+	fmt.Println("Get All Properties:")
 	for k, v := range p.GetProperties() {
 		fmt.Println(k, v)
 	}

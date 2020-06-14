@@ -21,14 +21,15 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"runtime"
 	"strings"
+
+	"github.com/go-spring/go-spring-parent/spring-utils"
 )
 
 // runnable 执行器，不能返回 error 以外的其他值
 type runnable struct {
 	fn        interface{}
-	stringArg *fnStringBindingArg // 普通参数绑定
+	stringArg *fnStringBindingArg // 一般参数绑定
 	optionArg *fnOptionBindingArg // Option 绑定
 
 	withReceiver bool          // 函数是否包含接收者，也可以假装第一个参数是接收者
@@ -39,10 +40,7 @@ type runnable struct {
 func (r *runnable) run(assembly *defaultBeanAssembly) error {
 
 	// 获取函数定义所在的文件及其行号信息
-	fnValue := reflect.ValueOf(r.fn)
-	fnPtr := fnValue.Pointer()
-	fnInfo := runtime.FuncForPC(fnPtr)
-	file, line := fnInfo.FileLine(fnPtr)
+	file, line, _ := SpringUtils.FileLine(r.fn)
 	fileLine := fmt.Sprintf("%s:%d", file, line)
 
 	// 组装 fn 调用所需的参数列表
@@ -195,13 +193,13 @@ func (c *Configer) checkCondition(ctx SpringContext) bool {
 
 // Before 设置当前 Configer 在某些 Configer 之前执行
 func (c *Configer) Before(configers ...string) *Configer {
-	c.before = configers
+	c.before = append(c.before, configers...)
 	return c
 }
 
 // After 设置当前 Configer 在某些 Configer 之后执行
 func (c *Configer) After(configers ...string) *Configer {
-	c.after = configers
+	c.after = append(c.after, configers...)
 	return c
 }
 
