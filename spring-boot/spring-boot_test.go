@@ -75,24 +75,24 @@ func init() {
 	{
 		SpringBoot.RegisterBean(new(SingleBeanFilter))
 
-		// 注册一个名为 "@server" 的过滤器
-		SpringBoot.RegisterNameBean("@server", NewStringFilter("@server"))
+		// 注册一个名为 "server" 的过滤器
+		SpringBoot.RegisterNameBean("server", NewStringFilter("server"))
 
-		// 注册一个名为 "@container" 的过滤器
-		SpringBoot.RegisterNameBean("@container", NewStringFilter("@container"))
+		// 注册一个名为 "container" 的过滤器
+		SpringBoot.RegisterNameBean("container", NewStringFilter("container"))
 
-		// 注册一个名为 "@router" 的过滤器 TODO Bean 名称不能含有冒号
-		SpringBoot.RegisterNameBean("@router", NewStringFilter("@router"))
+		// 注册一个名为 "router" 的过滤器 TODO Bean 名称不能含有冒号
+		SpringBoot.RegisterNameBean("router", NewStringFilter("router"))
 
-		// 注册一个名为 "@router//ok" 的过滤器
-		SpringBoot.RegisterNameBean("@router//ok", NewStringFilter("@router//ok"))
+		// 注册一个名为 "router//ok" 的过滤器
+		SpringBoot.RegisterNameBean("router//ok", NewStringFilter("router//ok"))
 
-		// 注册一个名为 "@router//echo" 的过滤器
-		SpringBoot.RegisterNameBean("@router//echo", NewStringFilter("@router//echo"))
+		// 注册一个名为 "router//echo" 的过滤器
+		SpringBoot.RegisterNameBean("router//echo", NewStringFilter("router//echo"))
 	}
 
-	// 使用 "@router" 名称的过滤器，需要使用 SpringBoot.FilterBean 封装
-	r := SpringBoot.Route("/api", SpringBoot.FilterBean("@router", (*SingleBeanFilter)(nil)))
+	// 使用 "router" 名称的过滤器，需要使用 SpringBoot.FilterBean 封装
+	r := SpringBoot.Route("/api", SpringBoot.FilterBean("router", (*SingleBeanFilter)(nil)))
 
 	// 接受简单函数，可以使用 SpringBoot.Filter 封装
 	r.GetMapping("/func", func(ctx SpringWeb.WebContext) {
@@ -116,7 +116,7 @@ func init() {
 	SpringBoot.RegisterBean(new(MyController)).Init(func(c *MyController) {
 
 		// 接受对象方法
-		r.GetMapping("/ok", c.OK, SpringBoot.FilterBean("@router//ok")).
+		r.GetMapping("/ok", c.OK, SpringBoot.FilterBean("router//ok")).
 			ConditionOnProfile("test").
 			Swagger(). // 设置接口的信息
 			WithDescription("ok")
@@ -125,7 +125,7 @@ func init() {
 		r.GetMapping("/nil", c.OK).OnPorts(9999)
 
 		// 注意这个接口不和任何 Router 绑定
-		SpringBoot.GetBinding("/echo", c.Echo, SpringBoot.FilterBean("@router//echo")).
+		SpringBoot.GetBinding("/echo", c.Echo, SpringBoot.FilterBean("router//echo")).
 			Swagger(). // 设置接口的信息
 			WithDescription("echo")
 	})
@@ -147,13 +147,13 @@ func init() {
 	SpringBoot.RegisterBeanFn(func(config WebStarter.WebServerConfig) SpringWeb.WebContainer {
 		cfg := SpringWeb.ContainerConfig{Port: config.Port}
 		c := SpringEcho.NewContainer(cfg)
-		c.AddFilter(SpringBoot.FilterBean("@container"))
+		c.AddFilter(SpringBoot.FilterBean("container"))
 		return c
 	})
 
 	SpringBoot.RegisterBeanFn(func() *SpringWeb.WebServer {
 		return SpringWeb.NewWebServer().AddFilter(
-			SpringBoot.FilterBean("@server"),
+			SpringBoot.FilterBean("server"),
 		)
 	})
 }

@@ -181,7 +181,7 @@ func (arg *fnStringBindingArg) getArgValue(v reflect.Value, tag string, assembly
 			tag = *s
 		}
 
-		if CollectMode(tag) {
+		if CollectionMode(tag) { // 收集模式
 			assembly.collectBeans(v, ParseCollectionTag(tag))
 		} else {
 			assembly.getBeanValue(v, ParseSingletonTag(tag), reflect.Value{}, "")

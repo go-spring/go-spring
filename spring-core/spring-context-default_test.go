@@ -329,7 +329,7 @@ type SubSetting struct {
 type Setting struct {
 	Int        int `value:"${int}"`
 	DefaultInt int `value:"${default.int:=2}"`
-	//IntPtr     *int `value:"${int}"` // 不支持指针
+	// IntPtr     *int `value:"${int}"` // 不支持指针
 
 	Uint        uint `value:"${uint}"`
 	DefaultUint uint `value:"${default.uint:=2}"`
@@ -337,7 +337,7 @@ type Setting struct {
 	Float        float32 `value:"${float}"`
 	DefaultFloat float32 `value:"${default.float:=2}"`
 
-	//Complex complex64 `value:"${complex}"` // 不支持复数
+	// Complex complex64 `value:"${complex}"` // 不支持复数
 
 	String        string `value:"${string}"`
 	DefaultString string `value:"${default.string:=2}"`
@@ -346,13 +346,13 @@ type Setting struct {
 	DefaultBool bool `value:"${default.bool:=false}"`
 
 	SubSetting SubSetting `value:"${sub}"`
-	//SubSettingPtr *SubSetting `value:"${sub}"` // 不支持指针
+	// SubSettingPtr *SubSetting `value:"${sub}"` // 不支持指针
 
 	SubSubSetting SubSubSetting `value:"${sub_sub}"`
 
 	IntSlice    []int    `value:"${int_slice}"`
 	StringSlice []string `value:"${string_slice}"`
-	//FloatSlice  []float64 `value:"${float_slice}"`
+	// FloatSlice  []float64 `value:"${float_slice}"`
 }
 
 func TestDefaultSpringContext_ValueTag(t *testing.T) {
@@ -379,7 +379,7 @@ func TestDefaultSpringContext_ValueTag(t *testing.T) {
 
 	ctx.SetProperty("int_slice", []int{1, 2})
 	ctx.SetProperty("string_slice", []string{"1", "2"})
-	//ctx.SetProperty("float_slice", []float64{1, 2})
+	// ctx.SetProperty("float_slice", []float64{1, 2})
 
 	ctx.AutoWireBeans()
 
@@ -526,7 +526,7 @@ type Pkg interface {
 }
 
 type SamePkgHolder struct {
-	//Pkg `autowire:""` // 这种方式会找到多个符合条件的 Bean
+	// Pkg `autowire:""` // 这种方式会找到多个符合条件的 Bean
 	Pkg `autowire:"github.com/go-spring/go-spring/spring-core/testdata/pkg/bar/pkg.SamePkg:*pkg.SamePkg"`
 }
 
@@ -556,7 +556,7 @@ func (d *DiffPkgTwo) Package() {
 }
 
 type DiffPkgHolder struct {
-	//Pkg `autowire:"same"` // 如果两个 Bean 不小心重名了，也会找到多个符合条件的 Bean
+	// Pkg `autowire:"same"` // 如果两个 Bean 不小心重名了，也会找到多个符合条件的 Bean
 	Pkg `autowire:"github.com/go-spring/go-spring/spring-core_test/SpringCore_test.DiffPkgTwo:same"`
 }
 
@@ -1112,10 +1112,10 @@ func TestDefaultSpringContext_RegisterBeanFn2(t *testing.T) {
 		ctx.SetProperty("manager.version", "1.0.0")
 
 		bd := ctx.RegisterBeanFn(NewManager)
-		assert.Equal(t, bd.Name(), "@NewManager")
+		assert.Equal(t, bd.Name(), "NewManager")
 
 		bd = ctx.RegisterBeanFn(NewInt)
-		assert.Equal(t, bd.Name(), "@NewInt")
+		assert.Equal(t, bd.Name(), "NewInt")
 
 		ctx.AutoWireBeans()
 
@@ -1732,7 +1732,7 @@ func TestDefaultSpringContext_RegisterMethodBean(t *testing.T) {
 		parent := ctx.RegisterBean(new(Server))
 
 		bd := ctx.RegisterMethodBean(parent, "Consumer")
-		assert.Equal(t, bd.Name(), "@Consumer")
+		assert.Equal(t, bd.Name(), "Consumer")
 
 		ctx.AutoWireBeans()
 
@@ -1777,7 +1777,7 @@ func TestDefaultSpringContext_RegisterMethodBean(t *testing.T) {
 		parent := ctx.RegisterBeanFn(NewServerInterface)
 
 		ctx.RegisterMethodBean(parent, "Consumer").
-			DependsOn("@NewServerInterface")
+			DependsOn("NewServerInterface")
 
 		ctx.RegisterBean(new(Service))
 		ctx.AutoWireBeans()
@@ -1917,7 +1917,7 @@ func TestDefaultSpringContext_RegisterMethodBean(t *testing.T) {
 			ctx.RegisterBean(new(Server))
 			ctx.RegisterMethodBean((*int)(nil), "Consumer")
 			ctx.AutoWireBeans()
-		}, "can't find method:Consumer on type:int")
+		}, "can't find method:Consumer on type:\\*int")
 	})
 
 	t.Run("method bean selector beanId", func(t *testing.T) {
@@ -1961,7 +1961,7 @@ func TestDefaultSpringContext_RegisterMethodBeanFn(t *testing.T) {
 		ctx.RegisterBeanFn(NewServerInterface)
 
 		bd := ctx.RegisterMethodBeanFn(ServerInterface.ConsumerT)
-		assert.Equal(t, bd.Name(), "@ConsumerT")
+		assert.Equal(t, bd.Name(), "ConsumerT")
 
 		ctx.AutoWireBeans()
 
@@ -2007,7 +2007,7 @@ func TestDefaultSpringContext_RegisterMethodBeanFn(t *testing.T) {
 		ctx := SpringCore.NewDefaultSpringContext()
 		ctx.SetProperty("server.version", "1.0.0")
 		ctx.RegisterBeanFn(NewServerInterface)
-		ctx.RegisterMethodBeanFn(ServerInterface.Consumer).DependsOn("@NewServerInterface")
+		ctx.RegisterMethodBeanFn(ServerInterface.Consumer).DependsOn("NewServerInterface")
 		ctx.RegisterBean(new(Service))
 		ctx.AutoWireBeans()
 
@@ -2055,7 +2055,7 @@ func TestDefaultSpringContext_RegisterMethodBeanFn(t *testing.T) {
 				ctx := SpringCore.NewDefaultSpringContext()
 				ctx.SetProperty("server.version", "1.0.0")
 				ctx.RegisterBeanFn(NewServerInterface).DependsOn("*SpringCore_test.Service")
-				ctx.RegisterMethodBeanFn(ServerInterface.Consumer).DependsOn("@NewServerInterface")
+				ctx.RegisterMethodBeanFn(ServerInterface.Consumer).DependsOn("NewServerInterface")
 				ctx.RegisterBean(new(Service))
 				ctx.AutoWireBeans()
 			}()
@@ -2146,7 +2146,7 @@ func TestDefaultSpringContext_RegisterMethodBeanFn(t *testing.T) {
 			ctx.RegisterBeanFn(NewServerInterface)
 			ctx.RegisterMethodBean((*int)(nil), "Consumer")
 			ctx.AutoWireBeans()
-		}, "can't find method:Consumer on type:int")
+		}, "can't find method:Consumer on type:\\*int")
 	})
 
 	t.Run("fn method bean selector beanId", func(t *testing.T) {
@@ -2154,7 +2154,7 @@ func TestDefaultSpringContext_RegisterMethodBeanFn(t *testing.T) {
 		ctx := SpringCore.NewDefaultSpringContext()
 		ctx.SetProperty("server.version", "1.0.0")
 		ctx.RegisterBeanFn(NewServerInterface)
-		ctx.RegisterMethodBean("@NewServerInterface", "Consumer")
+		ctx.RegisterMethodBean("NewServerInterface", "Consumer")
 		ctx.AutoWireBeans()
 
 		var si ServerInterface
@@ -2712,7 +2712,6 @@ func TestDefaultSpringContext_NestValueField(t *testing.T) {
 		ctx.SetProperty("sdk.wx.enable", true)
 		ctx.RegisterBeanFn(func() int { return 3 })
 		ctx.RegisterBean(new(WXChannel))
-		//ctx.SetAllAccess(true)
 		ctx.AutoWireBeans()
 
 		var c *WXChannel

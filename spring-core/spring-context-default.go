@@ -234,20 +234,9 @@ func (ctx *defaultSpringContext) GetBean(i interface{}, selector ...BeanSelector
 		s = selector[0]
 	}
 
-	var tag SingletonTag
-
-	switch b := s.(type) {
-	case string:
-		tag = ParseSingletonTag(b)
-	case *BeanDefinition:
-		tag = ParseSingletonTag(b.BeanId())
-	case reflect.Type:
-		tag = ParseSingletonTag(TypeName(b))
-	default:
-		tag = ParseSingletonTag(TypeName(b) + ":")
-	}
-
+	tag := ToSingletonTag(s)
 	tag.Nullable = true
+
 	v := reflect.ValueOf(i)
 	w := newDefaultBeanAssembly(ctx)
 	return w.getBeanValue(v.Elem(), tag, reflect.Value{}, "")
@@ -348,18 +337,7 @@ func (ctx *defaultSpringContext) CollectBeans(i interface{}, selectors ...BeanSe
 	tag := CollectionTag{Nullable: true}
 
 	for _, selector := range selectors {
-		var tag0 SingletonTag
-		switch s := selector.(type) {
-		case string:
-			tag0 = ParseSingletonTag(s)
-		case *BeanDefinition:
-			tag0 = ParseSingletonTag(s.BeanId())
-		case reflect.Type:
-			tag0 = ParseSingletonTag(TypeName(s))
-		default:
-			tag0 = ParseSingletonTag(TypeName(s) + ":")
-		}
-		tag.Items = append(tag.Items, tag0)
+		tag.Items = append(tag.Items, ToSingletonTag(selector))
 	}
 
 	w := newDefaultBeanAssembly(ctx)

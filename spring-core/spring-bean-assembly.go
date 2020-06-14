@@ -92,7 +92,7 @@ func (assembly *defaultBeanAssembly) getBeanValue(v reflect.Value, tag Singleton
 		beanType reflect.Type
 	)
 
-	if beanType, ok = ValidBeanValue(v); !ok {
+	if beanType, ok = validBean(v); !ok {
 		panic(fmt.Errorf("receiver must be ref type, bean: \"%s\" field: %s", tag, field))
 	}
 
@@ -504,7 +504,7 @@ func (assembly *defaultBeanAssembly) wireStructField(v reflect.Value, str string
 		str = *s
 	}
 
-	if CollectMode(str) { // 收集模式
+	if CollectionMode(str) { // 收集模式
 
 		// 收集模式的绑定对象必须是数组
 		if v.Type().Kind() != reflect.Slice {
