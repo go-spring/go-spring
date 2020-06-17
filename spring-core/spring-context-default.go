@@ -27,6 +27,7 @@ import (
 
 	"github.com/go-spring/go-spring-parent/spring-logger"
 	"github.com/go-spring/go-spring-parent/spring-utils"
+	"github.com/go-spring/go-spring/spring-core/sort"
 )
 
 // beanKey Bean's unique key, with type and name.
@@ -540,7 +541,7 @@ func (ctx *defaultSpringContext) resolveConfigers() {
 	}
 
 	// 对 config 函数进行排序
-	ctx.configers = sortConfigers(ctx.configers)
+	ctx.configers = sort.TripleSorting(ctx.configers, getBeforeConfigers)
 }
 
 func (ctx *defaultSpringContext) resolveBeans() {
@@ -572,7 +573,7 @@ func (ctx *defaultSpringContext) sortDestroyers() {
 	for _, destroyer := range ctx.destroyerMap {
 		ctx.destroyers.PushBack(destroyer)
 	}
-	ctx.destroyers = sortDestroyers(ctx.destroyers)
+	ctx.destroyers = sort.TripleSorting(ctx.destroyers, getBeforeDestroyers)
 }
 
 func (ctx *defaultSpringContext) wireBeans(assembly *defaultBeanAssembly) {

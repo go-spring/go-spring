@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/go-spring/go-spring/spring-core/sort"
 	"github.com/magiconair/properties/assert"
 )
 
@@ -38,13 +39,13 @@ func TestSortConfigers(t *testing.T) {
 			configers.PushBack(f2)
 			configers.PushBack(f7)
 
-			sorted := sortConfigers(configers)
+			sorted := sort.TripleSorting(configers, getBeforeConfigers)
 
 			for e := sorted.Front(); e != nil; e = e.Next() {
 				fmt.Println(e.Value.(*Configer).name)
 			}
 
-		}, "found cycle config: f5 -> f2 -> f5")
+		}, "found sorting cycle")
 	})
 
 	t.Run("sorted", func(t *testing.T) {
@@ -58,7 +59,7 @@ func TestSortConfigers(t *testing.T) {
 		configers.PushBack(f2)
 		configers.PushBack(f7)
 
-		sorted := sortConfigers(configers)
+		sorted := sort.TripleSorting(configers, getBeforeConfigers)
 
 		expect := list.New()
 		expect.PushBack(f7)

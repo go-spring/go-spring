@@ -21,7 +21,6 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"strings"
 
 	"github.com/go-spring/go-spring-parent/spring-utils"
 )
@@ -203,97 +202,10 @@ func (c *Configer) After(configers ...string) *Configer {
 	return c
 }
 
-// sortConfigers 对 Configer 列表进行排序
-func sortConfigers(configers *list.List) *list.List {
-
-	// 待排列表
-	toSort := list.New()
-	toSort.PushBackList(configers)
-
-	// 已排序列表
-	sorted := list.New()
-
-	// 正在处理的列表
-	processing := list.New()
-
-	for toSort.Len() > 0 { // 每次循环选出依赖链条最前端的元素
-		sortConfigersByAfter(configers, toSort, sorted, processing, nil)
-	}
-	return sorted
-}
-
-// sortConfigersByAfter 选出依赖链条最前端的元素
-func sortConfigersByAfter(configers *list.List, toSort *list.List, sorted *list.List, processing *list.List, current *Configer) {
-
-	// 选出待排元素
-	if current == nil {
-		current = (toSort.Remove(toSort.Front())).(*Configer)
-	}
-
-	processing.PushBack(current)
-
-	// 遍历当前 Configer 依赖的 Configer 列表
-	for e := getBeforeConfigers(configers, current).Front(); e != nil; e = e.Next() {
-		c := e.Value.(*Configer)
-
-		// 自己不可能是自己前面的元素，除非出现了循环依赖，因此抛出 Panic
-		for p := processing.Front(); p != nil; p = p.Next() {
-			if pc := p.Value.(*Configer); pc == c {
-				// 打印循环依赖的路径
-				sb := strings.Builder{}
-				for t := p; t != nil; t = t.Next() {
-					sb.WriteString(t.Value.(*Configer).name)
-					sb.WriteString(" -> ")
-				}
-				sb.WriteString(pc.name)
-				panic(fmt.Errorf("found cycle config: %s", sb.String()))
-			}
-		}
-
-		inSorted := false
-		for p := sorted.Front(); p != nil; p = p.Next() {
-			if pc := p.Value.(*Configer); pc == c {
-				inSorted = true
-				break
-			}
-		}
-
-		inToSort := false
-		for p := toSort.Front(); p != nil; p = p.Next() {
-			if pc := p.Value.(*Configer); pc == c {
-				inToSort = true
-				break
-			}
-		}
-
-		if !inSorted && inToSort { // 递归处理当前 Configer 的依赖并进行排序
-			sortConfigersByAfter(configers, toSort, sorted, processing, c)
-		}
-	}
-
-	// 排序完成，从正在排序、待排序列表删除，然后添加到已排序列表
-	{
-		for p := processing.Front(); p != nil; p = p.Next() {
-			if pc := p.Value.(*Configer); pc == current {
-				processing.Remove(p)
-				break
-			}
-		}
-
-		for p := toSort.Front(); p != nil; p = p.Next() {
-			if pc := p.Value.(*Configer); pc == current {
-				toSort.Remove(p)
-				break
-			}
-		}
-
-		sorted.PushBack(current)
-	}
-}
-
 // getBeforeConfigers 获取当前 Configer 依赖的 Configer 列表
-func getBeforeConfigers(configers *list.List, current *Configer) *list.List {
+func getBeforeConfigers(configers *list.List, i interface{}) *list.List {
 	result := list.New()
+	current := i.(*Configer)
 	for e := configers.Front(); e != nil; e = e.Next() {
 		c := e.Value.(*Configer)
 
