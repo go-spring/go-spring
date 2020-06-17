@@ -75,7 +75,9 @@ type defaultSpringContext struct {
 	beanCacheByName map[string]*beanCacheItem
 	beanCacheByType map[reflect.Type]*beanCacheItem
 
-	configers *list.List // 配置方法集合
+	configers    *list.List // 配置方法集合
+	destroyers   *list.List // 销毁函数集合
+	destroyerMap map[beanKey]*Destroyer
 }
 
 // NewDefaultSpringContext defaultSpringContext 的构造函数
@@ -90,6 +92,8 @@ func NewDefaultSpringContext() *defaultSpringContext {
 		beanCacheByName: make(map[string]*beanCacheItem),
 		beanCacheByType: make(map[reflect.Type]*beanCacheItem),
 		configers:       list.New(),
+		destroyers:      list.New(),
+		destroyerMap:    make(map[beanKey]*Destroyer),
 	}
 }
 
@@ -285,9 +289,6 @@ func (ctx *defaultSpringContext) FindBean(selector BeanSelector) (*BeanDefinitio
 					t = e // 接口类型去掉指针
 				}
 			}
-
-			s := fmt.Sprintf("%s %s %d", t.PkgPath(), t.Name(), t.Kind())
-			fmt.Println(s)
 
 			result = finder(func(b *BeanDefinition) bool {
 				if beanType := b.Type(); beanType.AssignableTo(t) { // 类型兼容
@@ -557,6 +558,23 @@ func (ctx *defaultSpringContext) wireConfigers(assembly *defaultBeanAssembly) {
 	}
 }
 
+func (ctx *defaultSpringContext) destroyer(bd *BeanDefinition) *Destroyer {
+	k := newBeanKey(bd.Type(), bd.Name())
+	d, ok := ctx.destroyerMap[k]
+	if !ok {
+		d = &Destroyer{bean: bd}
+		ctx.destroyerMap[k] = d
+	}
+	return d
+}
+
+func (ctx *defaultSpringContext) sortDestroyers() {
+	for _, destroyer := range ctx.destroyerMap {
+		ctx.destroyers.PushBack(destroyer)
+	}
+	ctx.destroyers = sortDestroyers(ctx.destroyers)
+}
+
 func (ctx *defaultSpringContext) wireBeans(assembly *defaultBeanAssembly) {
 	for _, bd := range ctx.beanMap {
 		assembly.wireBeanDefinition(bd, false)
@@ -592,6 +610,7 @@ func (ctx *defaultSpringContext) AutoWireBeans() {
 
 	ctx.wireConfigers(assembly)
 	ctx.wireBeans(assembly)
+	ctx.sortDestroyers()
 }
 
 // WireBean 绑定外部的 Bean 源
@@ -615,21 +634,13 @@ func (ctx *defaultSpringContext) GetBeanDefinitions() []*BeanDefinition {
 // Close 关闭容器上下文，用于通知 Bean 销毁等。
 func (ctx *defaultSpringContext) Close() {
 
-	assembly := newDefaultBeanAssembly(ctx) // TODO 全面捕获异常
-
-	defer func() { // 捕获自动注入过程中的异常，打印错误日志然后重新抛出
-		if err := recover(); err != nil {
-			SpringLogger.Errorf("%v ↩\n%s", err, assembly.wiringStack.path())
-			panic(err)
-		}
-	}()
+	assembly := newDefaultBeanAssembly(ctx)
 
 	// 执行销毁函数
-	for _, bd := range ctx.beanMap {
-		if bd.destroy != nil {
-			if err := bd.destroy.run(assembly); err != nil {
-				SpringLogger.Error(err)
-			}
+	for i := ctx.destroyers.Front(); i != nil; i = i.Next() {
+		d := i.Value.(*Destroyer)
+		if err := d.bean.destroy.run(assembly); err != nil {
+			SpringLogger.Error(err)
 		}
 	}
 

@@ -79,6 +79,7 @@ func (s *wiringStack) path() (path string) {
 type defaultBeanAssembly struct {
 	springCtx   *defaultSpringContext
 	wiringStack *wiringStack
+	destroys    *list.List // 具有销毁函数的 Bean 的堆栈
 }
 
 // newDefaultBeanAssembly defaultBeanAssembly 的构造函数
@@ -86,6 +87,7 @@ func newDefaultBeanAssembly(springContext *defaultSpringContext) *defaultBeanAss
 	return &defaultBeanAssembly{
 		springCtx:   springContext,
 		wiringStack: newWiringStack(),
+		destroys:    list.New(),
 	}
 }
 
@@ -309,6 +311,25 @@ func (assembly *defaultBeanAssembly) wireBeanDefinition(bd beanDefinition, onlyA
 	// Bean 是否已删除，已经删除的 Bean 不能再注入
 	if bd.getStatus() == beanStatus_Deleted {
 		panic(fmt.Errorf("bean: \"%s\" have been deleted", bd.BeanId()))
+	}
+
+	defer func() {
+		if bd.getDestroy() != nil {
+			assembly.destroys.Remove(assembly.destroys.Back())
+		}
+	}()
+
+	if bd.getDestroy() != nil {
+		if curr, ok := bd.(*BeanDefinition); ok {
+			destroyer := assembly.springCtx.destroyer(curr)
+			if i := assembly.destroys.Back(); i != nil {
+				prev := i.Value.(*BeanDefinition)
+				destroyer.After(prev)
+			}
+			assembly.destroys.PushBack(curr)
+		} else {
+			panic(errors.New("let me known when it happened"))
+		}
 	}
 
 	// Bean 是否已注入，已经注入的 Bean 无需再注入

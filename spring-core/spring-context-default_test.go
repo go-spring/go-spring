@@ -3026,3 +3026,55 @@ func TestFnStringBindingArg(t *testing.T) {
 	ctx.RegisterBean(&i)
 	ctx.AutoWireBeans()
 }
+
+type FirstDestroy struct {
+	T1 *Second1Destroy `autowire:""`
+	T2 *Second2Destroy `autowire:""`
+}
+
+type Second1Destroy struct {
+	T *ThirdDestroy `autowire:""`
+}
+
+type Second2Destroy struct {
+	T *ThirdDestroy `autowire:""`
+}
+
+type ThirdDestroy struct {
+}
+
+func TestDefaultSpringContext_Destroy(t *testing.T) {
+
+	destroyIndex := 0
+	destroyArray := []int{0, 0, 0, 0}
+
+	ctx := SpringCore.NewDefaultSpringContext()
+	ctx.RegisterBean(new(FirstDestroy)).Destroy(
+		func(_ *FirstDestroy) {
+			fmt.Println("::FirstDestroy")
+			destroyArray[destroyIndex] = 1
+			destroyIndex++
+		})
+	ctx.RegisterBean(new(ThirdDestroy)).Destroy(
+		func(_ *ThirdDestroy) {
+			fmt.Println("::ThirdDestroy")
+			destroyArray[destroyIndex] = 4
+			destroyIndex++
+		})
+	ctx.RegisterBean(new(Second2Destroy)).Destroy(
+		func(_ *Second2Destroy) {
+			fmt.Println("::Second2Destroy")
+			destroyArray[destroyIndex] = 2
+			destroyIndex++
+		})
+	ctx.RegisterBean(new(Second1Destroy)).Destroy(
+		func(_ *Second1Destroy) {
+			fmt.Println("::Second1Destroy")
+			destroyArray[destroyIndex] = 2
+			destroyIndex++
+		})
+	ctx.AutoWireBeans()
+	ctx.Close()
+
+	assert.Equal(t, destroyArray, []int{1, 2, 2, 4})
+}
