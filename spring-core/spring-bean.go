@@ -124,7 +124,7 @@ func TypeName(typOrPtr TypeOrPtr) string {
 type BeanSelector interface{}
 
 // ToSingletonTag 将 Bean 选择器转换为 SingletonTag 形式。注意该函数仅用
-// 于精确匹配的场景下，也就是说通过类型选择的时候类型必须是具体的，不能是接口。
+// 于精确匹配的场景下，也就是说通过类型选择的时候类型必须是具体的，而不能是接口。
 func ToSingletonTag(selector BeanSelector) SingletonTag {
 	switch s := selector.(type) {
 	case string:
@@ -159,16 +159,16 @@ func ParseSingletonTag(str string) (tag SingletonTag) {
 	if len(str) > 0 {
 
 		// 字符串结尾是否有可空标记
-		if str[len(str)-1] == '?' {
+		if n := len(str) - 1; str[n] == '?' {
 			tag.Nullable = true
-			str = str[:len(str)-1]
+			str = str[:n]
 		}
 
-		if ss := strings.Split(str, ":"); len(ss) > 1 { // 完整形式
-			tag.TypeName = ss[0]
-			tag.BeanName = ss[1]
+		if i := strings.Index(str, ":"); i > -1 { // 完整形式
+			tag.BeanName = str[i+1:]
+			tag.TypeName = str[:i]
 		} else { // 简化形式
-			tag.BeanName = ss[0]
+			tag.BeanName = str
 		}
 	}
 	return
@@ -205,9 +205,9 @@ func ParseCollectionTag(str string) (tag CollectionTag) {
 	tag.Items = make([]SingletonTag, 0)
 
 	// 字符串结尾是否有可空标记
-	if str[len(str)-1] == '?' {
+	if n := len(str) - 1; str[n] == '?' {
 		tag.Nullable = true
-		str = str[:len(str)-1]
+		str = str[:n]
 	}
 
 	if str[len(str)-1] != ']' {
@@ -743,18 +743,8 @@ func (d *BeanDefinition) Primary(primary bool) *BeanDefinition {
 func validLifeCycleFunc(fn interface{}, beanType reflect.Type) (reflect.Type, bool) {
 	fnType := reflect.TypeOf(fn)
 
-	// 必须是函数
-	if fnType.Kind() != reflect.Func {
-		return nil, false
-	}
-
-	// 至少一个输入参数
-	if fnType.NumIn() < 1 {
-		return nil, false
-	}
-
-	// 第一个入参的类型必须是 Bean 的类型
-	if fnType.In(0) != beanType {
+	// 必须是至少有一个输入参数而且第一个入参的类型必须是 Bean 的类型的函数
+	if fnType.Kind() != reflect.Func || fnType.NumIn() < 1 || fnType.In(0) != beanType {
 		return nil, false
 	}
 

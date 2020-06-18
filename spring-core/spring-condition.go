@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	"github.com/go-spring/go-spring-parent/spring-const"
+	"github.com/go-spring/go-spring-parent/spring-utils"
 	"github.com/spf13/cast"
 )
 
@@ -193,10 +194,7 @@ func NewProfileCondition(profile string) *profileCondition {
 
 // Matches 成功返回 true，失败返回 false
 func (c *profileCondition) Matches(ctx SpringContext) bool {
-	if c.profile != "" && c.profile != strings.ToLower(ctx.GetProfile()) {
-		return false
-	}
-	return true
+	return c.profile == "" || SpringUtils.EqualsIgnoreCase(c.profile, ctx.GetProfile())
 }
 
 // ConditionOp conditionNode 的计算方式

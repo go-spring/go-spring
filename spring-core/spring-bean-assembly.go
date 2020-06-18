@@ -319,6 +319,7 @@ func (assembly *defaultBeanAssembly) wireBeanDefinition(bd beanDefinition, onlyA
 		}
 	}()
 
+	// 如果有销毁函数则对其进行排序处理
 	if bd.getDestroy() != nil {
 		if curr, ok := bd.(*BeanDefinition); ok {
 			destroyer := assembly.springCtx.destroyer(curr)
@@ -552,8 +553,8 @@ func (assembly *defaultBeanAssembly) wireStructField(v reflect.Value, tag string
 		tag = s
 	}
 
-	if CollectionMode(tag) { // 收集模式
-		if v.Type().Kind() != reflect.Slice { // 绑定对象必须是数组
+	if CollectionMode(tag) { // 收集模式，绑定对象必须是数组
+		if v.Type().Kind() != reflect.Slice {
 			panic(fmt.Errorf("field: %s should be slice", field))
 		}
 		assembly.collectBeans(v, ParseCollectionTag(tag), field)
