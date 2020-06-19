@@ -81,7 +81,7 @@ func init() {
 		// 注册一个名为 "container" 的过滤器
 		SpringBoot.RegisterNameBean("container", NewStringFilter("container"))
 
-		// 注册一个名为 "router" 的过滤器 TODO Bean 名称不能含有冒号
+		// 注册一个名为 "router" 的过滤器
 		SpringBoot.RegisterNameBean("router", NewStringFilter("router"))
 
 		// 注册一个名为 "router//ok" 的过滤器

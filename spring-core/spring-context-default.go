@@ -77,7 +77,7 @@ type defaultSpringContext struct {
 
 	configers    *list.List // 配置方法集合
 	destroyers   *list.List // 销毁函数集合
-	destroyerMap map[beanKey]*Destroyer
+	destroyerMap map[beanKey]*destroyer
 }
 
 // NewDefaultSpringContext defaultSpringContext 的构造函数
@@ -93,7 +93,7 @@ func NewDefaultSpringContext() *defaultSpringContext {
 		beanCacheByType: make(map[reflect.Type]*beanCacheItem),
 		configers:       list.New(),
 		destroyers:      list.New(),
-		destroyerMap:    make(map[beanKey]*Destroyer),
+		destroyerMap:    make(map[beanKey]*destroyer),
 	}
 }
 
@@ -223,7 +223,7 @@ func (ctx *defaultSpringContext) RegisterNameMethodBeanFn(name string, method in
 }
 
 // GetBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
-// 它和 FindBean 的区别是它在调用之后能够保证返回的 Bean 已经完成了自动绑定过程。
+// 它和 FindBean 的区别是它在调用后能够保证返回的 Bean 已经完成了注入和绑定过程。
 func (ctx *defaultSpringContext) GetBean(i interface{}, selector ...BeanSelector) bool {
 
 	if i == nil {
@@ -251,7 +251,7 @@ func (ctx *defaultSpringContext) GetBean(i interface{}, selector ...BeanSelector
 }
 
 // FindBean 查询单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
-// 它和 GetBean 的区别是它在调用后不能保证返回的 Bean 已经完成了自动绑定过程。
+// 它和 GetBean 的区别是它在调用后不能保证返回的 Bean 已经完成了注入和绑定过程。
 func (ctx *defaultSpringContext) FindBean(selector BeanSelector) (*BeanDefinition, bool) {
 	ctx.checkAutoWired()
 
@@ -556,11 +556,11 @@ func (ctx *defaultSpringContext) runConfigers(assembly *defaultBeanAssembly) {
 	}
 }
 
-func (ctx *defaultSpringContext) destroyer(bd *BeanDefinition) *Destroyer {
+func (ctx *defaultSpringContext) destroyer(bd *BeanDefinition) *destroyer {
 	k := newBeanKey(bd.Type(), bd.Name())
 	d, ok := ctx.destroyerMap[k]
 	if !ok {
-		d = &Destroyer{bean: bd}
+		d = &destroyer{bean: bd}
 		ctx.destroyerMap[k] = d
 	}
 	return d
@@ -581,7 +581,7 @@ func (ctx *defaultSpringContext) wireBeans(assembly *defaultBeanAssembly) {
 	}
 }
 
-// AutoWireBeans 完成自动绑定 TODO 绑定和注入
+// AutoWireBeans 对所有 Bean 进行依赖注入和属性绑定
 func (ctx *defaultSpringContext) AutoWireBeans() {
 
 	if ctx.autoWired {
@@ -611,7 +611,7 @@ func (ctx *defaultSpringContext) AutoWireBeans() {
 	ctx.sortDestroyers()
 }
 
-// WireBean 绑定外部的 Bean 源
+// WireBean 对外部的 Bean 进行依赖注入和属性绑定
 func (ctx *defaultSpringContext) WireBean(i interface{}) {
 	ctx.checkAutoWired()
 
@@ -645,7 +645,7 @@ func (ctx *defaultSpringContext) Close() {
 
 	// 按照顺序执行销毁函数
 	for i := ctx.destroyers.Front(); i != nil; i = i.Next() {
-		d := i.Value.(*Destroyer)
+		d := i.Value.(*destroyer)
 		if err := d.bean.destroy.run(assembly); err != nil {
 			SpringLogger.Error(err)
 		}

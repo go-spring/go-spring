@@ -20,13 +20,14 @@ import (
 	"container/list"
 )
 
-// Destroyer 包含销毁函数的 BeanDefinition
-type Destroyer struct {
+// destroyer 保存具有销毁函数的 Bean 以及销毁函数的调用顺序
+type destroyer struct {
 	bean  *BeanDefinition
 	after []*BeanDefinition
 }
 
-func (d *Destroyer) After(b *BeanDefinition) *Destroyer {
+// After 添加一个在此之前调用的销毁函数
+func (d *destroyer) After(b *BeanDefinition) *destroyer {
 
 	for _, f := range d.after {
 		if f == b {
@@ -38,13 +39,13 @@ func (d *Destroyer) After(b *BeanDefinition) *Destroyer {
 	return d
 }
 
-// getBeforeDestroyers 获取当前 Destroyer 依赖的 Destroyer 列表
+// getBeforeDestroyers 获取排在当前 destroyer 前面的 destroyer 项
 func getBeforeDestroyers(destroyers *list.List, i interface{}) *list.List {
 	result := list.New()
-	current := i.(*Destroyer)
+	current := i.(*destroyer)
 	for e := destroyers.Front(); e != nil; e = e.Next() {
-		c := e.Value.(*Destroyer)
-		// 检查是否在当前 Configer 的前面
+		c := e.Value.(*destroyer)
+		// 检查是否在当前 destroyer 的前面
 		for _, bean := range current.after {
 			if c.bean == bean {
 				result.PushBack(c)

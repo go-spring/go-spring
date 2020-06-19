@@ -134,7 +134,7 @@ func RegisterNameMethodBeanFn(name string, method interface{}, tags ...string) *
 	return ctx.RegisterNameMethodBeanFn(name, method, tags...)
 }
 
-// WireBean 绑定外部的 Bean 源
+// WireBean 对外部的 Bean 进行依赖注入和属性绑定
 func WireBean(bean interface{}) {
 	ctx.WireBean(bean)
 }

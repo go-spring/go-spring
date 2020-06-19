@@ -76,18 +76,18 @@ type SpringContext interface {
 	// method 形如 ServerInterface.Consumer (接口) 或 (*Server).Consumer (类型)。
 	RegisterNameMethodBeanFn(name string, method interface{}, tags ...string) *BeanDefinition
 
-	// AutoWireBeans 完成自动绑定
+	// AutoWireBeans 对所有 Bean 进行依赖注入和属性绑定
 	AutoWireBeans()
 
-	// WireBean 绑定外部的 Bean 源
+	// WireBean 对外部的 Bean 进行依赖注入和属性绑定
 	WireBean(i interface{})
 
 	// GetBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
-	// 它和 FindBean 的区别是它在调用之后能够保证返回的 Bean 已经完成了自动绑定过程。
+	// 它和 FindBean 的区别是它在调用后能够保证返回的 Bean 已经完成了注入和绑定过程。
 	GetBean(i interface{}, selector ...BeanSelector) bool
 
 	// FindBean 查询单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
-	// 它和 GetBean 的区别是它在调用后不能保证返回的 Bean 已经完成了自动绑定过程。
+	// 它和 GetBean 的区别是它在调用后不能保证返回的 Bean 已经完成了注入和绑定过程。
 	FindBean(selector BeanSelector) (*BeanDefinition, bool)
 
 	// CollectBeans 收集数组或指针定义的所有符合条件的 Bean，收集到返回 true，否则返
