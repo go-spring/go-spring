@@ -19,6 +19,8 @@ package SpringCore
 import (
 	"errors"
 	"reflect"
+
+	"github.com/go-spring/go-spring-parent/spring-logger"
 )
 
 // Runner 立即执行器
@@ -53,7 +55,7 @@ func (r *Runner) Options(options ...*optionArg) *Runner {
 // When 参数为 true 时执行器立即执行
 func (r *Runner) When(ok bool) error {
 	if ok {
-		return r.run(newDefaultBeanAssembly(r.ctx))
+		return r.run()
 	}
 	return nil
 }
@@ -61,7 +63,20 @@ func (r *Runner) When(ok bool) error {
 // On Condition 判断结果为 true 时执行器立即执行
 func (r *Runner) On(cond Condition) error {
 	if cond.Matches(r.ctx) {
-		return r.run(newDefaultBeanAssembly(r.ctx))
+		return r.run()
 	}
 	return nil
+}
+
+func (r *Runner) run() error {
+	assembly := newDefaultBeanAssembly(r.ctx)
+
+	defer func() { // 捕获自动注入过程中的异常，打印错误日志然后重新抛出
+		if err := recover(); err != nil {
+			SpringLogger.Errorf("%v ↩\n%s", err, assembly.wiringStack.path())
+			panic(err)
+		}
+	}()
+
+	return r.runnable.run(assembly)
 }

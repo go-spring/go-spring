@@ -47,7 +47,7 @@ func TestRunner_Run(t *testing.T) {
 				run = true
 			}, "1:${version}").When(cond.Matches(ctx))
 			assert.Equal(t, run, false)
-		}, "should call after ctx.AutoWireBeans()")
+		}, "should call after AutoWireBeans")
 
 		ctx.AutoWireBeans()
 	})

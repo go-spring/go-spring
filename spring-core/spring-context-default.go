@@ -70,9 +70,8 @@ type defaultSpringContext struct {
 	autoWired bool   // 是否开始自动绑定
 	allAccess bool   // 是否允许注入私有字段
 
-	beanMap     map[beanKey]*BeanDefinition // Bean 的集合
-	methodBeans []*BeanDefinition           // 方法 Beans
-
+	beanMap         map[beanKey]*BeanDefinition // Bean 的集合
+	methodBeans     []*BeanDefinition           // 方法 Beans
 	beanCacheByName map[string]*beanCacheItem
 	beanCacheByType map[reflect.Type]*beanCacheItem
 
@@ -121,7 +120,7 @@ func (ctx *defaultSpringContext) SetAllAccess(allAccess bool) {
 // checkAutoWired 检查是否已调用 AutoWireBeans 方法
 func (ctx *defaultSpringContext) checkAutoWired() {
 	if !ctx.autoWired {
-		panic(errors.New("should call after ctx.AutoWireBeans()"))
+		panic(errors.New("should call after AutoWireBeans"))
 	}
 }
 
@@ -176,17 +175,15 @@ func (ctx *defaultSpringContext) RegisterNameBeanFn(name string, fn interface{},
 }
 
 // RegisterMethodBean 注册成员方法单例 Bean，不指定名称，重复注册会 panic。
-// selector 可以是 *BeanDefinition，可以是 BeanId，还可以是 (Type)(nil) 变量。
 // 必须给定方法名而不能通过遍历方法列表比较方法类型的方式获得函数名，因为不同方法的类型可能相同。
-// 而且 interface 的方法类型不带 receiver 而成员方法的类型带有 receiver，两者类型不好匹配。
+// 而且 interface 的方法类型不带 receiver 而成员方法的类型带有 receiver，两者类型也不好匹配。
 func (ctx *defaultSpringContext) RegisterMethodBean(selector BeanSelector, method string, tags ...string) *BeanDefinition {
 	return ctx.RegisterNameMethodBean("", selector, method, tags...)
 }
 
 // RegisterNameMethodBean 注册成员方法单例 Bean，需指定名称，重复注册会 panic。
-// selector 可以是 *BeanDefinition，可以是 BeanId，还可以是 (Type)(nil) 变量。
 // 必须给定方法名而不能通过遍历方法列表比较方法类型的方式获得函数名，因为不同方法的类型可能相同。
-// 而且 interface 的方法类型不带 receiver 而成员方法的类型带有 receiver，两者类型不好匹配。
+// 而且 interface 的方法类型不带 receiver 而成员方法的类型带有 receiver，两者类型也不好匹配。
 func (ctx *defaultSpringContext) RegisterNameMethodBean(name string, selector BeanSelector, method string, tags ...string) *BeanDefinition {
 	ctx.checkRegistration()
 
@@ -200,11 +197,13 @@ func (ctx *defaultSpringContext) RegisterNameMethodBean(name string, selector Be
 }
 
 // @Incubate 注册成员方法单例 Bean，不指定名称，重复注册会 panic。
+// method 形如 ServerInterface.Consumer (接口) 或 (*Server).Consumer (类型)。
 func (ctx *defaultSpringContext) RegisterMethodBeanFn(method interface{}, tags ...string) *BeanDefinition {
 	return ctx.RegisterNameMethodBeanFn("", method, tags...)
 }
 
 // @Incubate 注册成员方法单例 Bean，需指定名称，重复注册会 panic。
+// method 形如 ServerInterface.Consumer (接口) 或 (*Server).Consumer (类型)。
 func (ctx *defaultSpringContext) RegisterNameMethodBeanFn(name string, method interface{}, tags ...string) *BeanDefinition {
 
 	var methodName string
@@ -220,12 +219,16 @@ func (ctx *defaultSpringContext) RegisterNameMethodBeanFn(name string, method in
 	}
 
 	parent := reflect.TypeOf(method).In(0)
-	return ctx.RegisterNameMethodBean("", parent, methodName, tags...)
+	return ctx.RegisterNameMethodBean(name, parent, methodName, tags...)
 }
 
-// GetBean 根据类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
+// GetBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
+// 它和 FindBean 的区别是它在调用之后能够保证返回的 Bean 已经完成了自动绑定过程。
 func (ctx *defaultSpringContext) GetBean(i interface{}, selector ...BeanSelector) bool {
-	SpringUtils.Panic(errors.New("i can't be nil")).When(i == nil)
+
+	if i == nil {
+		panic(errors.New("i can't be nil"))
+	}
 
 	ctx.checkAutoWired()
 
@@ -247,24 +250,15 @@ func (ctx *defaultSpringContext) GetBean(i interface{}, selector ...BeanSelector
 	return w.getBeanValue(v.Elem(), tag, reflect.Value{}, "")
 }
 
-// FindBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
-// selector 可以是 BeanId，还可以是 (Type)(nil) 变量，Type 为接口类型时带指针。
+// FindBean 查询单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
+// 它和 GetBean 的区别是它在调用后不能保证返回的 Bean 已经完成了自动绑定过程。
 func (ctx *defaultSpringContext) FindBean(selector BeanSelector) (*BeanDefinition, bool) {
 	ctx.checkAutoWired()
 
 	finder := func(fn func(*BeanDefinition) bool) (result []*BeanDefinition) {
 		for _, bean := range ctx.beanMap {
-
-			// 如果 Bean 正在解析则跳过
-			if bean.status == beanStatus_Resolving {
-				continue
-			}
-
-			if fn(bean) {
-
-				// 避免 Bean 还未解析
-				ctx.resolveBean(bean)
-
+			if bean.status != beanStatus_Resolving && fn(bean) {
+				ctx.resolveBean(bean) // 避免 Bean 未被解析
 				if bean.status != beanStatus_Deleted {
 					result = append(result, bean)
 				}
@@ -285,21 +279,18 @@ func (ctx *defaultSpringContext) FindBean(selector BeanSelector) (*BeanDefinitio
 		{
 			t := reflect.TypeOf(o) // map、slice 等不是指针类型
 			if t.Kind() == reflect.Ptr {
-				e := t.Elem()
-				if e.Kind() == reflect.Interface {
+				if e := t.Elem(); e.Kind() == reflect.Interface {
 					t = e // 接口类型去掉指针
 				}
 			}
 
 			result = finder(func(b *BeanDefinition) bool {
-				if beanType := b.Type(); beanType.AssignableTo(t) { // 类型兼容
+				if beanType := b.Type(); beanType.AssignableTo(t) { // 必须类型兼容
 					if beanType == t || t.Kind() != reflect.Interface {
 						return true
 					}
-					for it := range b.exports { // 接口是否导出
-						if it == t {
-							return true
-						}
+					if _, ok := b.exports[t]; ok {
+						return true
 					}
 				}
 				return false
@@ -324,11 +315,17 @@ func (ctx *defaultSpringContext) FindBean(selector BeanSelector) (*BeanDefinitio
 		panic(errors.New(msg))
 	}
 
-	// 恰好 1 个 & 仅供查询无需绑定
+	// 恰好 1 个
 	return result[0], true
 }
 
-// CollectBeans 收集数组或指针定义的所有符合条件的 Bean 对象，收集到返回 true，否则返回 false。
+// CollectBeans 收集数组或指针定义的所有符合条件的 Bean，收集到返回 true，否则返
+// 回 false。该函数有两种模式:自动模式和指定模式。自动模式是指 selectors 参数为空，
+// 这时候不仅会收集符合条件的单例 Bean，还会收集符合条件的数组 Bean (是指数组的元素
+// 符合条件，然后把数组元素拆开一个个放到收集结果里面)。指定模式是指 selectors 参数
+// 不为空，这时候只会收集单例 Bean，而且要求这些单例 Bean 不仅需要满足收集条件，而且
+// 必须满足 selector 条件。另外，自动模式下不对收集结果进行排序，指定模式下根据
+// selectors 列表的顺序对收集结果进行排序。
 func (ctx *defaultSpringContext) CollectBeans(i interface{}, selectors ...BeanSelector) bool {
 	ctx.checkAutoWired()
 
@@ -347,25 +344,23 @@ func (ctx *defaultSpringContext) CollectBeans(i interface{}, selectors ...BeanSe
 }
 
 // getTypeCacheItem 查找指定类型的缓存项
-func (ctx *defaultSpringContext) getTypeCacheItem(typ reflect.Type) (item *beanCacheItem) {
-	if c, ok := ctx.beanCacheByType[typ]; !ok {
-		item = newBeanCacheItem()
-		ctx.beanCacheByType[typ] = item
-	} else {
-		item = c
+func (ctx *defaultSpringContext) getTypeCacheItem(typ reflect.Type) *beanCacheItem {
+	i, ok := ctx.beanCacheByType[typ]
+	if !ok {
+		i = newBeanCacheItem()
+		ctx.beanCacheByType[typ] = i
 	}
-	return
+	return i
 }
 
 // getNameCacheItem 查找指定类型的缓存项
-func (ctx *defaultSpringContext) getNameCacheItem(name string) (item *beanCacheItem) {
-	if c, ok := ctx.beanCacheByName[name]; !ok {
-		item = newBeanCacheItem()
-		ctx.beanCacheByName[name] = item
-	} else {
-		item = c
+func (ctx *defaultSpringContext) getNameCacheItem(name string) *beanCacheItem {
+	i, ok := ctx.beanCacheByName[name]
+	if !ok {
+		i = newBeanCacheItem()
+		ctx.beanCacheByName[name] = i
 	}
-	return
+	return i
 }
 
 // autoExport 自动导出 Bean 实现的接口
@@ -470,24 +465,26 @@ func (ctx *defaultSpringContext) resolveBean(bd *BeanDefinition) {
 
 // registerMethodBeans 注册方法 Bean
 func (ctx *defaultSpringContext) registerMethodBeans() {
+
 	var (
 		selector string
 		filter   func(*BeanDefinition) bool
 	)
+
 	for _, bd := range ctx.methodBeans {
 		bean := bd.bean.(*fakeMethodBean)
 		result := make([]*BeanDefinition, 0)
 
 		switch e := bean.selector.(type) {
-		case *BeanDefinition:
-			selector = e.BeanId()
-			result = append(result, e)
 		case string:
 			selector = e
 			tag := ParseSingletonTag(e)
 			filter = func(b *BeanDefinition) bool {
 				return b.Match(tag.TypeName, tag.BeanName)
 			}
+		case *BeanDefinition:
+			selector = e.BeanId()
+			result = append(result, e)
 		case reflect.Type:
 			selector = e.String()
 			filter = func(b *BeanDefinition) bool {
@@ -495,9 +492,10 @@ func (ctx *defaultSpringContext) registerMethodBeans() {
 			}
 		default:
 			t := reflect.TypeOf(e)
-			// 如果是接口类型需要解除外层指针
-			if t.Kind() == reflect.Ptr && t.Elem().Kind() == reflect.Interface {
-				t = t.Elem()
+			if t.Kind() == reflect.Ptr {
+				if et := t.Elem(); et.Kind() == reflect.Interface {
+					t = et // 接口类型去掉指针
+				}
 			}
 			selector = t.String()
 			filter = func(b *BeanDefinition) bool {
@@ -520,14 +518,11 @@ func (ctx *defaultSpringContext) registerMethodBeans() {
 		}
 
 		bd.bean = newMethodBean(result[0], bean.method, bean.tags)
-		if bd.name == "" { // 使用默认名称 TODO 确定是否可以删除
-			bd.name = bd.bean.Type().String()
-		}
 		ctx.registerBeanDefinition(bd)
 	}
 }
 
-// resolveBean 对 Bean 进行决议是否能够创建 Bean 的实例
+// resolveConfigers 对 Config 函数进行决议是否能够保留它
 func (ctx *defaultSpringContext) resolveConfigers() {
 
 	// 对 config 函数进行决议
@@ -544,13 +539,15 @@ func (ctx *defaultSpringContext) resolveConfigers() {
 	ctx.configers = sort.TripleSorting(ctx.configers, getBeforeConfigers)
 }
 
+// resolveBeans 对 Bean 进行决议是否能够创建 Bean 的实例
 func (ctx *defaultSpringContext) resolveBeans() {
 	for _, bd := range ctx.beanMap {
 		ctx.resolveBean(bd)
 	}
 }
 
-func (ctx *defaultSpringContext) wireConfigers(assembly *defaultBeanAssembly) {
+// runConfigers 执行 Config 函数
+func (ctx *defaultSpringContext) runConfigers(assembly *defaultBeanAssembly) {
 	for e := ctx.configers.Front(); e != nil; e = e.Next() {
 		configer := e.Value.(*Configer)
 		if err := configer.run(assembly); err != nil {
@@ -569,6 +566,7 @@ func (ctx *defaultSpringContext) destroyer(bd *BeanDefinition) *Destroyer {
 	return d
 }
 
+// sortDestroyers 对销毁函数进行排序
 func (ctx *defaultSpringContext) sortDestroyers() {
 	for _, destroyer := range ctx.destroyerMap {
 		ctx.destroyers.PushBack(destroyer)
@@ -576,20 +574,18 @@ func (ctx *defaultSpringContext) sortDestroyers() {
 	ctx.destroyers = sort.TripleSorting(ctx.destroyers, getBeforeDestroyers)
 }
 
+// wireBeans 对 Bean 执行自动注入
 func (ctx *defaultSpringContext) wireBeans(assembly *defaultBeanAssembly) {
 	for _, bd := range ctx.beanMap {
 		assembly.wireBeanDefinition(bd, false)
 	}
 }
 
-// AutoWireBeans 完成自动绑定
+// AutoWireBeans 完成自动绑定 TODO 绑定和注入
 func (ctx *defaultSpringContext) AutoWireBeans() {
 
-	// 不再接受 Bean 注册，因为性能的原因使用了缓存，并且在 AutoWireBeans 的过程中
-	// 逐步建立起这个缓存，而随着缓存的建立，绑定的速度会越来越快，从而减少性能的损失。
-
 	if ctx.autoWired {
-		panic(errors.New("ctx.AutoWireBeans() already called"))
+		panic(errors.New("AutoWireBeans already called"))
 	}
 
 	// 注册所有的 Method Bean
@@ -609,21 +605,30 @@ func (ctx *defaultSpringContext) AutoWireBeans() {
 		}
 	}()
 
-	ctx.wireConfigers(assembly)
+	ctx.runConfigers(assembly)
 	ctx.wireBeans(assembly)
+
 	ctx.sortDestroyers()
 }
 
 // WireBean 绑定外部的 Bean 源
-func (ctx *defaultSpringContext) WireBean(bean interface{}) {
+func (ctx *defaultSpringContext) WireBean(i interface{}) {
 	ctx.checkAutoWired()
 
 	assembly := newDefaultBeanAssembly(ctx)
-	bd := ToBeanDefinition("", bean)
+
+	defer func() { // 捕获自动注入过程中的异常，打印错误日志然后重新抛出
+		if err := recover(); err != nil {
+			SpringLogger.Errorf("%v ↩\n%s", err, assembly.wiringStack.path())
+			panic(err)
+		}
+	}()
+
+	bd := ToBeanDefinition("", i)
 	assembly.wireBeanDefinition(bd, false)
 }
 
-// GetBeanDefinitions 获取所有 Bean 的定义，一般仅供调试使用。
+// GetBeanDefinitions 获取所有 Bean 的定义，不能保证解析和注入，请谨慎使用该函数!
 func (ctx *defaultSpringContext) GetBeanDefinitions() []*BeanDefinition {
 	result := make([]*BeanDefinition, 0)
 	for _, v := range ctx.beanMap {
@@ -633,11 +638,12 @@ func (ctx *defaultSpringContext) GetBeanDefinitions() []*BeanDefinition {
 }
 
 // Close 关闭容器上下文，用于通知 Bean 销毁等。
+// 该函数可以确保 Bean 的销毁顺序和注入顺序相反。
 func (ctx *defaultSpringContext) Close() {
 
 	assembly := newDefaultBeanAssembly(ctx)
 
-	// 执行销毁函数
+	// 按照顺序执行销毁函数
 	for i := ctx.destroyers.Front(); i != nil; i = i.Next() {
 		d := i.Value.(*Destroyer)
 		if err := d.bean.destroy.run(assembly); err != nil {
@@ -660,7 +666,7 @@ func (ctx *defaultSpringContext) Config(fn interface{}, tags ...string) *Confige
 	return ctx.ConfigWithName("", fn, tags...)
 }
 
-// ConfigWithName 注册一个配置函数，name 的作用：区分，排重，排顺序。
+// ConfigWithName 注册一个配置函数，名称的作用是对 Config 进行排重和排顺序。
 func (ctx *defaultSpringContext) ConfigWithName(name string, fn interface{}, tags ...string) *Configer {
 	configer := newConfiger(name, fn, tags)
 	ctx.configers.PushBack(configer)

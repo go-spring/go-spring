@@ -803,8 +803,7 @@ func (d *BeanDefinition) Export(exports ...TypeOrPtr) *BeanDefinition {
 		var typ reflect.Type
 		if t, ok := o.(reflect.Type); ok {
 			typ = t
-		} else {
-			// 处理 (*error)(nil) 这种导出形式
+		} else { // 处理 (*error)(nil) 这种导出形式
 			typ = SpringUtils.Indirect(reflect.TypeOf(o))
 		}
 
