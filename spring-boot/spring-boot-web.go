@@ -50,16 +50,17 @@ func (m *WebMapping) Request(method uint32, path string, fn interface{}, filters
 	fnType := reflect.TypeOf(fn)
 	fnValue := reflect.ValueOf(fn)
 
-	if fnType.AssignableTo(SpringWeb.FnHandlerType) { // 可直接赋值
+	if fnType.AssignableTo(SpringWeb.FnHandlerType) { // func(WebContext)
 		v := fnValue.Convert(SpringWeb.FnHandlerType)
 		v = v.Convert(SpringWeb.HandlerType)
 		handler = v.Interface().(SpringWeb.Handler)
 
-	} else if fnType.AssignableTo(SpringWeb.HandlerType) { // 可直接赋值
+	} else if fnType.AssignableTo(SpringWeb.HandlerType) { // SpringWeb.Handler
 		v := fnValue.Convert(SpringWeb.HandlerType)
 		handler = v.Interface().(SpringWeb.Handler)
 
-	} else {
+	} else { // (*MyController).Method
+
 		fnPtr := fnValue.Pointer()
 		fnInfo := runtime.FuncForPC(fnPtr)
 		s := strings.Split(fnInfo.Name(), "/")
@@ -93,7 +94,9 @@ type Mapping struct {
 }
 
 // newMapping Mapping 的构造函数
-func newMapping(method uint32, path string, handler interface{}, filters []SpringWeb.Filter) *Mapping {
+func newMapping(method uint32, path string, handler interface{},
+	filters []SpringWeb.Filter) *Mapping {
+
 	return &Mapping{
 		handler: handler,
 		mapper:  SpringWeb.NewMapper(method, path, nil, filters),
@@ -179,8 +182,9 @@ func (m *Mapping) ConditionOnMissingProperty(name string) *Mapping {
 }
 
 // ConditionOnPropertyValue 设置一个 PropertyValueCondition
-func (m *Mapping) ConditionOnPropertyValue(name string, havingValue interface{}) *Mapping {
-	m.cond.OnPropertyValue(name, havingValue)
+func (m *Mapping) ConditionOnPropertyValue(name string, havingValue interface{},
+	options ...SpringCore.PropertyValueConditionOption) *Mapping {
+	m.cond.OnPropertyValue(name, havingValue, options...)
 	return m
 }
 
@@ -286,8 +290,9 @@ func (r *Router) ConditionOnMissingProperty(name string) *Router {
 }
 
 // ConditionOnPropertyValue 设置一个 PropertyValueCondition
-func (r *Router) ConditionOnPropertyValue(name string, havingValue interface{}) *Router {
-	r.cond.OnPropertyValue(name, havingValue)
+func (r *Router) ConditionOnPropertyValue(name string, havingValue interface{},
+	options ...SpringCore.PropertyValueConditionOption) *Router {
+	r.cond.OnPropertyValue(name, havingValue, options...)
 	return r
 }
 
@@ -394,7 +399,7 @@ func (r *Router) OPTIONS(path string, fn interface{}, filters ...SpringWeb.Filte
 	return r.Request(SpringWeb.MethodOptions, path, fn, filters...)
 }
 
-///////////////////// 以下是全局函数 /////////////////////////////
+///////////////////// 全局函数 /////////////////////////////
 
 // DefaultWebMapping 默认的 Web 路由映射表
 var DefaultWebMapping = NewWebMapping()
@@ -548,8 +553,9 @@ func (f *ConditionalWebFilter) ConditionOnMissingProperty(name string) *Conditio
 }
 
 // ConditionOnPropertyValue 设置一个 PropertyValueCondition
-func (f *ConditionalWebFilter) ConditionOnPropertyValue(name string, havingValue interface{}) *ConditionalWebFilter {
-	f.cond.OnPropertyValue(name, havingValue)
+func (f *ConditionalWebFilter) ConditionOnPropertyValue(name string, havingValue interface{},
+	options ...SpringCore.PropertyValueConditionOption) *ConditionalWebFilter {
+	f.cond.OnPropertyValue(name, havingValue, options...)
 	return f
 }
 

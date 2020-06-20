@@ -24,8 +24,7 @@ import (
 	"github.com/go-spring/go-spring/boot-starter"
 )
 
-type MyApp struct {
-}
+type MyApp struct{}
 
 func (app *MyApp) Start() {
 	fmt.Println("app start")

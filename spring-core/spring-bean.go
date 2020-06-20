@@ -672,8 +672,9 @@ func (d *BeanDefinition) ConditionOnMissingProperty(name string) *BeanDefinition
 }
 
 // ConditionOnPropertyValue 为 Bean 设置一个 PropertyValueCondition
-func (d *BeanDefinition) ConditionOnPropertyValue(name string, havingValue interface{}) *BeanDefinition {
-	d.cond.OnPropertyValue(name, havingValue)
+func (d *BeanDefinition) ConditionOnPropertyValue(name string, havingValue interface{},
+	options ...PropertyValueConditionOption) *BeanDefinition {
+	d.cond.OnPropertyValue(name, havingValue, options...)
 	return d
 }
 

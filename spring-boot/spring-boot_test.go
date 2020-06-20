@@ -47,14 +47,14 @@ import (
 func init() {
 	// SpringLogger.SetLogger(&SpringLogger.Console{})
 
+	l := list.New()
+
+	SpringBoot.RegisterNameBean("f2", NewNumberFilter(2, l))
+	SpringBoot.RegisterNameBean("f5", NewNumberFilter(5, l))
+	SpringBoot.RegisterNameBean("f7", NewNumberFilter(7, l))
+
 	// 测试 Config 系列函数的功能
 	{
-		l := list.New()
-
-		SpringBoot.RegisterNameBean("f2", NewNumberFilter(2, l))
-		SpringBoot.RegisterNameBean("f5", NewNumberFilter(5, l))
-		SpringBoot.RegisterNameBean("f7", NewNumberFilter(7, l))
-
 		SpringBoot.ConfigWithName("config_f2", func(filter *NumberFilter) {
 			fmt.Println("NumberFilter:", filter.n)
 		}, "f2").ConditionOnPropertyValue("f2.enable", true)
@@ -74,27 +74,17 @@ func init() {
 	// 注册过滤器
 	{
 		SpringBoot.RegisterBean(new(SingleBeanFilter))
-
-		// 注册一个名为 "server" 的过滤器
 		SpringBoot.RegisterNameBean("server", NewStringFilter("server"))
-
-		// 注册一个名为 "container" 的过滤器
 		SpringBoot.RegisterNameBean("container", NewStringFilter("container"))
-
-		// 注册一个名为 "router" 的过滤器
 		SpringBoot.RegisterNameBean("router", NewStringFilter("router"))
-
-		// 注册一个名为 "router//ok" 的过滤器
 		SpringBoot.RegisterNameBean("router//ok", NewStringFilter("router//ok"))
-
-		// 注册一个名为 "router//echo" 的过滤器
 		SpringBoot.RegisterNameBean("router//echo", NewStringFilter("router//echo"))
 	}
 
-	// 使用 "router" 名称的过滤器，需要使用 SpringBoot.FilterBean 封装
+	// 使用 "router" 名称的过滤器，需要使用 SpringBoot.FilterBean 封装，为了编译器能够进行类型检查
 	r := SpringBoot.Route("/api", SpringBoot.FilterBean("router", (*SingleBeanFilter)(nil)))
 
-	// 接受简单函数，可以使用 SpringBoot.Filter 封装
+	// 接受简单函数，可以使用 SpringBoot.Filter 封装，进而增加可用条件
 	r.GetMapping("/func", func(ctx SpringWeb.WebContext) {
 		ctx.String(http.StatusOK, "func() return ok")
 	}, SpringBoot.Filter(SpringEcho.Filter(middleware.KeyAuth(
@@ -299,6 +289,7 @@ type MyRunner struct {
 }
 
 func (_ *MyRunner) Run(ctx SpringBoot.ApplicationContext) {
+
 	ctx.SafeGoroutine(func() {
 		SpringLogger.Trace("get all properties:")
 		for k, v := range ctx.GetProperties() {
@@ -408,5 +399,4 @@ func Process() {
 			}
 		}
 	}
-
 }

@@ -21,20 +21,19 @@ import (
 	"fmt"
 )
 
-//
 // golang 允许不同的路径下存在相同的包，而且允许存在相同的包。
-//
-type SamePkg struct {
-}
+type SamePkg struct{}
 
 func (p *SamePkg) Package() {
 	fmt.Println("github.com/go-spring/go-spring/spring-core/testdata/pkg/foo/pkg.SamePkg")
 }
 
 type appContext struct {
+	// 导出 fmt.Stringer 接口
 	// 这种导出方式建议写在最上面
 	_ fmt.Stringer `export:""`
 
+	// 导出 context.Context 接口
 	context.Context `export:""`
 }
 

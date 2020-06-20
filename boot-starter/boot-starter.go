@@ -14,9 +14,6 @@
  * limitations under the License.
  */
 
-//
-// 实现了一个通用的 Go 程序启动器框架。
-//
 package BootStarter
 
 import (
@@ -28,9 +25,7 @@ import (
 	"github.com/go-spring/go-spring-parent/spring-utils"
 )
 
-//
 // AppRunner 应用执行器
-//
 type AppRunner interface {
 	Start()    // 启动执行器
 	ShutDown() // 关闭执行器
@@ -38,11 +33,8 @@ type AppRunner interface {
 
 var exitChan chan struct{}
 
-//
 // Run 启动执行器
-//
 func Run(runner AppRunner) {
-
 	exitChan = make(chan struct{})
 
 	// 响应控制台的 Ctrl+C 及 kill 命令。
@@ -59,9 +51,7 @@ func Run(runner AppRunner) {
 	runner.ShutDown()
 }
 
-//
 // Exit 关闭执行器
-//
 func Exit() {
 	SpringUtils.SafeCloseChan(exitChan)
 }

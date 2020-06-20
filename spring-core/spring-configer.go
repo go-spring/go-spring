@@ -150,8 +150,9 @@ func (c *Configer) ConditionOnMissingProperty(name string) *Configer {
 }
 
 // ConditionOnPropertyValue 为 Configer 设置一个 PropertyValueCondition
-func (c *Configer) ConditionOnPropertyValue(name string, havingValue interface{}) *Configer {
-	c.cond.OnPropertyValue(name, havingValue)
+func (c *Configer) ConditionOnPropertyValue(name string, havingValue interface{},
+	options ...PropertyValueConditionOption) *Configer {
+	c.cond.OnPropertyValue(name, havingValue, options...)
 	return c
 }
 

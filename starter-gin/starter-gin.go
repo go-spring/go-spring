@@ -30,11 +30,7 @@ func init() {
 		return SpringGin.NewContainer(SpringWeb.ContainerConfig{
 			Port: config.Port,
 		})
-	}).ConditionOnMatches(func(ctx SpringCore.SpringContext) bool {
-		var config WebStarter.WebServerConfig
-		ctx.BindProperty("", &config)
-		return config.EnableHTTP
-	})
+	}).ConditionOnPropertyValue("web.server.enable", true, SpringCore.MatchIfMissing(true))
 
 	SpringBoot.RegisterNameBeanFn("gin-ssl-web-container", func(config WebStarter.WebServerConfig) SpringWeb.WebContainer {
 		return SpringGin.NewContainer(SpringWeb.ContainerConfig{
@@ -43,9 +39,5 @@ func init() {
 			KeyFile:   config.SSLKey,
 			CertFile:  config.SSLCert,
 		})
-	}).ConditionOnMatches(func(ctx SpringCore.SpringContext) bool {
-		var config WebStarter.WebServerConfig
-		ctx.BindProperty("", &config)
-		return config.EnableHTTPS
-	})
+	}).ConditionOnPropertyValue("web.server.ssl.enable", true)
 }

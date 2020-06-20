@@ -322,10 +322,10 @@ func (assembly *defaultBeanAssembly) wireBeanDefinition(bd beanDefinition, onlyA
 	// 如果有销毁函数则对其进行排序处理
 	if bd.getDestroy() != nil {
 		if curr, ok := bd.(*BeanDefinition); ok {
-			destroyer := assembly.springCtx.destroyer(curr)
+			de := assembly.springCtx.destroyer(curr)
 			if i := assembly.destroys.Back(); i != nil {
 				prev := i.Value.(*BeanDefinition)
-				destroyer.After(prev)
+				de.After(prev)
 			}
 			assembly.destroys.PushBack(curr)
 		} else {

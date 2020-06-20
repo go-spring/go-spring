@@ -50,7 +50,7 @@ type WebServerStarter struct {
 	_ SpringBoot.ApplicationEvent `export:""`
 
 	WebServer  *SpringWeb.WebServer     `autowire:""`
-	Containers []SpringWeb.WebContainer `autowire:"[]"`
+	Containers []SpringWeb.WebContainer `autowire:"[]?"`
 }
 
 func (starter *WebServerStarter) OnStartApplication(ctx SpringBoot.ApplicationContext) {

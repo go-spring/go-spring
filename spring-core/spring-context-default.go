@@ -568,8 +568,8 @@ func (ctx *defaultSpringContext) destroyer(bd *BeanDefinition) *destroyer {
 
 // sortDestroyers 对销毁函数进行排序
 func (ctx *defaultSpringContext) sortDestroyers() {
-	for _, destroyer := range ctx.destroyerMap {
-		ctx.destroyers.PushBack(destroyer)
+	for _, d := range ctx.destroyerMap {
+		ctx.destroyers.PushBack(d)
 	}
 	ctx.destroyers = sort.TripleSorting(ctx.destroyers, getBeforeDestroyers)
 }

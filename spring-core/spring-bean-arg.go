@@ -289,8 +289,9 @@ func (arg *optionArg) ConditionOnMissingProperty(name string) *optionArg {
 }
 
 // ConditionOnPropertyValue 为 optionArg 设置一个 PropertyValueCondition
-func (arg *optionArg) ConditionOnPropertyValue(name string, havingValue interface{}) *optionArg {
-	arg.cond.OnPropertyValue(name, havingValue)
+func (arg *optionArg) ConditionOnPropertyValue(name string, havingValue interface{},
+	options ...PropertyValueConditionOption) *optionArg {
+	arg.cond.OnPropertyValue(name, havingValue, options...)
 	return arg
 }
 

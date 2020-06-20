@@ -98,13 +98,29 @@ func (c *missingPropertyCondition) Matches(ctx SpringContext) bool {
 
 // propertyValueCondition 基于属性值匹配的 Condition 实现
 type propertyValueCondition struct {
-	name        string
-	havingValue interface{}
+	name           string
+	havingValue    interface{}
+	matchIfMissing bool
+}
+
+type PropertyValueConditionOption func(*propertyValueCondition)
+
+// MatchIfMissing 当属性值不存在时是否匹配判断条件
+func MatchIfMissing(matchIfMissing bool) PropertyValueConditionOption {
+	return func(cond *propertyValueCondition) {
+		cond.matchIfMissing = matchIfMissing
+	}
 }
 
 // NewPropertyValueCondition propertyValueCondition 的构造函数
-func NewPropertyValueCondition(name string, havingValue interface{}) *propertyValueCondition {
-	return &propertyValueCondition{name, havingValue}
+func NewPropertyValueCondition(name string, havingValue interface{},
+	options ...PropertyValueConditionOption) *propertyValueCondition {
+
+	cond := &propertyValueCondition{name: name, havingValue: havingValue}
+	for _, option := range options {
+		option(cond)
+	}
+	return cond
 }
 
 // Matches 成功返回 true，失败返回 false
@@ -112,8 +128,8 @@ func (c *propertyValueCondition) Matches(ctx SpringContext) bool {
 	// 参考 /usr/local/go/src/go/types/eval_test.go 示例
 
 	val, ok := ctx.GetDefaultProperty(c.name, "")
-	if !ok { // 不存在直接返回 false
-		return false
+	if !ok { // 不存在返回默认值
+		return c.matchIfMissing
 	}
 
 	// 不是字符串则直接比较
@@ -394,13 +410,15 @@ func OnPropertyValue(name string, havingValue interface{}) *Conditional {
 }
 
 // ConditionOnPropertyValue 返回设置了 propertyValueCondition 的 Conditional 对象
-func ConditionOnPropertyValue(name string, havingValue interface{}) *Conditional {
-	return NewConditional().OnPropertyValue(name, havingValue)
+func ConditionOnPropertyValue(name string, havingValue interface{},
+	options ...PropertyValueConditionOption) *Conditional {
+	return NewConditional().OnPropertyValue(name, havingValue, options...)
 }
 
 // OnPropertyValue 设置一个 propertyValueCondition
-func (c *Conditional) OnPropertyValue(name string, havingValue interface{}) *Conditional {
-	return c.OnCondition(NewPropertyValueCondition(name, havingValue))
+func (c *Conditional) OnPropertyValue(name string, havingValue interface{},
+	options ...PropertyValueConditionOption) *Conditional {
+	return c.OnCondition(NewPropertyValueCondition(name, havingValue, options...))
 }
 
 // Deprecated: Use "ConditionOnBean" instead.

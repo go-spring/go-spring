@@ -169,6 +169,7 @@ func (app *application) loadProfileConfig(profile string) SpringCore.Properties 
 
 // prepare 准备上下文环境
 func (app *application) prepare() {
+
 	// 配置项加载顺序优先级，从高到低:
 	// 1.代码设置
 	// 2.命令行参数
