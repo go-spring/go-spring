@@ -109,27 +109,27 @@ func RegisterNameBeanFn(name string, fn interface{}, tags ...string) *SpringCore
 }
 
 // RegisterMethodBean 注册成员方法单例 Bean，不指定名称，重复注册会 panic。
-// selector 可以是 *BeanDefinition，可以是 BeanId，还可以是 (Type)(nil) 变量。
 // 必须给定方法名而不能通过遍历方法列表比较方法类型的方式获得函数名，因为不同方法的类型可能相同。
-// 而且 interface 的方法类型不带 receiver 而成员方法的类型带有 receiver，两者类型不好匹配。
+// 而且 interface 的方法类型不带 receiver 而成员方法的类型带有 receiver，两者类型也不好匹配。
 func RegisterMethodBean(selector SpringCore.BeanSelector, method string, tags ...string) *SpringCore.BeanDefinition {
 	return ctx.RegisterMethodBean(selector, method, tags...)
 }
 
 // RegisterNameMethodBean 注册成员方法单例 Bean，需指定名称，重复注册会 panic。
-// selector 可以是 *BeanDefinition，可以是 BeanId，还可以是 (Type)(nil) 变量。
 // 必须给定方法名而不能通过遍历方法列表比较方法类型的方式获得函数名，因为不同方法的类型可能相同。
-// 而且 interface 的方法类型不带 receiver 而成员方法的类型带有 receiver，两者类型不好匹配。
+// 而且 interface 的方法类型不带 receiver 而成员方法的类型带有 receiver，两者类型也不好匹配。
 func RegisterNameMethodBean(name string, selector SpringCore.BeanSelector, method string, tags ...string) *SpringCore.BeanDefinition {
 	return ctx.RegisterNameMethodBean(name, selector, method, tags...)
 }
 
 // @Incubate 注册成员方法单例 Bean，不指定名称，重复注册会 panic。
+// method 形如 ServerInterface.Consumer (接口) 或 (*Server).Consumer (类型)。
 func RegisterMethodBeanFn(method interface{}, tags ...string) *SpringCore.BeanDefinition {
 	return ctx.RegisterMethodBeanFn(method, tags...)
 }
 
 // @Incubate 注册成员方法单例 Bean，需指定名称，重复注册会 panic。
+// method 形如 ServerInterface.Consumer (接口) 或 (*Server).Consumer (类型)。
 func RegisterNameMethodBeanFn(name string, method interface{}, tags ...string) *SpringCore.BeanDefinition {
 	return ctx.RegisterNameMethodBeanFn(name, method, tags...)
 }
@@ -139,63 +139,70 @@ func WireBean(bean interface{}) {
 	ctx.WireBean(bean)
 }
 
-// GetBean 根据类型获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
+// GetBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
+// 它和 FindBean 的区别是它在调用后能够保证返回的 Bean 已经完成了注入和绑定过程。
 func GetBean(i interface{}, selector ...SpringCore.BeanSelector) bool {
 	return ctx.GetBean(i, selector...)
 }
 
-// FindBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
-// selector 可以是 BeanId，还可以是 (Type)(nil) 变量，Type 为接口类型时带指针。
+// FindBean 查询单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
+// 它和 GetBean 的区别是它在调用后不能保证返回的 Bean 已经完成了注入和绑定过程。
 func FindBean(selector SpringCore.BeanSelector) (*SpringCore.BeanDefinition, bool) {
 	return ctx.FindBean(selector)
 }
 
-// CollectBeans 收集数组或指针定义的所有符合条件的 Bean 对象，收集到返回 true，否则返回 false。
+// CollectBeans 收集数组或指针定义的所有符合条件的 Bean，收集到返回 true，否则返
+// 回 false。该函数有两种模式:自动模式和指定模式。自动模式是指 selectors 参数为空，
+// 这时候不仅会收集符合条件的单例 Bean，还会收集符合条件的数组 Bean (是指数组的元素
+// 符合条件，然后把数组元素拆开一个个放到收集结果里面)。指定模式是指 selectors 参数
+// 不为空，这时候只会收集单例 Bean，而且要求这些单例 Bean 不仅需要满足收集条件，而且
+// 必须满足 selector 条件。另外，自动模式下不对收集结果进行排序，指定模式下根据
+// selectors 列表的顺序对收集结果进行排序。
 func CollectBeans(i interface{}, selectors ...SpringCore.BeanSelector) bool {
 	return ctx.CollectBeans(i, selectors...)
 }
 
-// GetBeanDefinitions 获取所有 Bean 的定义，一般仅供调试使用。
+// GetBeanDefinitions 获取所有 Bean 的定义，不能保证解析和注入，请谨慎使用该函数!
 func GetBeanDefinitions() []*SpringCore.BeanDefinition {
 	return ctx.GetBeanDefinitions()
 }
 
-// GetProperty 返回属性值，属性名称统一转成小写。
+// GetProperty 返回 keys 中第一个存在的属性值，属性名称统一转成小写。
 func GetProperty(keys ...string) interface{} {
 	return ctx.GetProperty(keys...)
 }
 
-// GetBoolProperty 返回布尔型属性值，属性名称统一转成小写。
+// GetBoolProperty 返回 keys 中第一个存在的布尔型属性值，属性名称统一转成小写。
 func GetBoolProperty(keys ...string) bool {
 	return ctx.GetBoolProperty(keys...)
 }
 
-// GetIntProperty 返回有符号整型属性值，属性名称统一转成小写。
+// GetIntProperty 返回 keys 中第一个存在的有符号整型属性值，属性名称统一转成小写。
 func GetIntProperty(keys ...string) int64 {
 	return ctx.GetIntProperty(keys...)
 }
 
-// GetUintProperty 返回无符号整型属性值，属性名称统一转成小写。
+// GetUintProperty 返回 keys 中第一个存在的无符号整型属性值，属性名称统一转成小写。
 func GetUintProperty(keys ...string) uint64 {
 	return ctx.GetUintProperty(keys...)
 }
 
-// GetFloatProperty 返回浮点型属性值，属性名称统一转成小写。
+// GetFloatProperty 返回 keys 中第一个存在的浮点型属性值，属性名称统一转成小写。
 func GetFloatProperty(keys ...string) float64 {
 	return ctx.GetFloatProperty(keys...)
 }
 
-// GetStringProperty 返回字符串型属性值，属性名称统一转成小写。
+// GetStringProperty 返回 keys 中第一个存在的字符串型属性值，属性名称统一转成小写。
 func GetStringProperty(keys ...string) string {
 	return ctx.GetStringProperty(keys...)
 }
 
-// GetDurationProperty 返回 Duration 类型属性值，属性名称统一转成小写。
+// GetDurationProperty 返回 keys 中第一个存在的 Duration 类型属性值，属性名称统一转成小写。
 func GetDurationProperty(keys ...string) time.Duration {
 	return ctx.GetDurationProperty(keys...)
 }
 
-// GetTimeProperty 返回 Time 类型的属性值，属性名称统一转成小写。
+// GetTimeProperty 返回 keys 中第一个存在的 Time 类型的属性值，属性名称统一转成小写。
 func GetTimeProperty(keys ...string) time.Time {
 	return ctx.GetTimeProperty(keys...)
 }
@@ -240,7 +247,7 @@ func Config(fn interface{}, tags ...string) *SpringCore.Configer {
 	return ctx.Config(fn, tags...)
 }
 
-// ConfigWithName 注册一个配置函数，name 的作用：区分，排重，排顺序。
+// ConfigWithName 注册一个配置函数，名称的作用是对 Config 进行排重和排顺序。
 func ConfigWithName(name string, fn interface{}, tags ...string) *SpringCore.Configer {
 	return ctx.ConfigWithName(name, fn, tags...)
 }

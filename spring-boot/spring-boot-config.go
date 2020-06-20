@@ -133,26 +133,28 @@ func (p *configMapPropertySource) Load(profile string) map[string]interface{} {
 		if key := profileFileName + ext; d.IsSet(key) {
 			SpringLogger.Infof("load properties from config-map %s:%s", p.filename, key)
 
-			val := d.GetString(key)
-			if val == "" {
-				continue
-			}
-
-			v0 := viper.New()
-			v0.SetConfigType(ext[1:])
-
-			err = v0.ReadConfig(strings.NewReader(val))
-			SpringUtils.Panic(err).When(err != nil)
-
-			v0Keys := v0.AllKeys()
-			sort.Strings(v0Keys)
-
-			for _, v0Key := range v0Keys {
-				v0Val := v0.Get(v0Key)
-				result[v0Key] = v0Val
+			if val := d.GetString(key); val != "" {
+				p.read(ext, val, result)
 			}
 		}
 	}
 
 	return result
+}
+
+func (p *configMapPropertySource) read(ext string, str string, result map[string]interface{}) {
+
+	v := viper.New()
+	v.SetConfigType(ext[1:])
+
+	err := v.ReadConfig(strings.NewReader(str))
+	SpringUtils.Panic(err).When(err != nil)
+
+	keys := v.AllKeys()
+	sort.Strings(keys)
+
+	for _, key := range keys {
+		val := v.Get(key)
+		result[key] = val
+	}
 }

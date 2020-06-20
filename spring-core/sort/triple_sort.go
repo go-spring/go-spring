@@ -52,7 +52,7 @@ func tripleSortByAfter(sorting *list.List, toSort *list.List, sorted *list.List,
 	// 将当前元素标记为正在处理
 	processing.PushBack(current)
 
-	// 获取排在当前列表项前面的元素，然后依次对他们进行排序
+	// 获取排在当前元素前面的列表项，然后依次对它们进行排序
 	for e := fn(sorting, current).Front(); e != nil; e = e.Next() {
 		c := e.Value
 
@@ -77,5 +77,6 @@ func tripleSortByAfter(sorting *list.List, toSort *list.List, sorted *list.List,
 		toSort.Remove(e)
 	}
 
+	// 将当前元素标记为已完成
 	sorted.PushBack(current)
 }

@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-// 开箱即用的 Go-Spring 程序启动框架。
 package SpringBoot
 
 import (
@@ -37,8 +36,8 @@ const (
 )
 
 var (
-	_ = flag.String(SpringAccess, "", "")
-	_ = flag.String(SpringProfile, "", "")
+	_ = flag.String(SpringAccess, "", "是否允许注入私有字段")
+	_ = flag.String(SpringProfile, "", "设置运行环境")
 )
 
 // CommandLineRunner 命令行启动器接口
@@ -56,7 +55,7 @@ type ApplicationEvent interface {
 type application struct {
 	appCtx      ApplicationContext // 应用上下文
 	cfgLocation []string           // 配置文件目录
-	configReady func()             // 配置文件已就绪
+	eventBeans  []ApplicationEvent // 提前缓存，加速退出
 }
 
 // newApplication application 的构造函数
@@ -82,30 +81,29 @@ func (app *application) Start() {
 	// 依赖注入、属性绑定、Bean 初始化
 	app.appCtx.AutoWireBeans()
 
-	// 执行命令行启动器
 	var runners []CommandLineRunner
 	app.appCtx.CollectBeans(&runners)
 
+	// 执行命令行启动器
 	for _, r := range runners {
 		r.Run(app.appCtx)
 	}
 
-	// 通知应用启动事件
-	var eventBeans []ApplicationEvent
-	app.appCtx.CollectBeans(&eventBeans)
+	app.appCtx.CollectBeans(&app.eventBeans)
 
-	for _, bean := range eventBeans {
+	// 通知应用启动事件
+	for _, bean := range app.eventBeans {
 		bean.OnStartApplication(app.appCtx)
 	}
 
 	SpringLogger.Info("spring boot started")
 }
 
-// loadCmdArgs 加载命令行参数
+// loadCmdArgs 加载命令行参数，以短线定义的参数才有效。
 func (_ *application) loadCmdArgs() SpringCore.Properties {
 	SpringLogger.Debugf("load cmd args")
 	p := SpringCore.NewDefaultProperties()
-	for i := 0; i < len(os.Args); i++ {
+	for i := 0; i < len(os.Args); i++ { // 以短线定义的参数才有效
 		if arg := os.Args[i]; strings.HasPrefix(arg, "-") {
 			k, v := arg[1:], ""
 			if i < len(os.Args)-1 && !strings.HasPrefix(os.Args[i+1], "-") {
@@ -119,7 +117,7 @@ func (_ *application) loadCmdArgs() SpringCore.Properties {
 	return p
 }
 
-// loadSystemEnv 加载系统环境变量
+// loadSystemEnv 加载系统环境变量，用户可以自定义有效环境变量的正则匹配
 func (_ *application) loadSystemEnv() SpringCore.Properties {
 
 	var rex []*regexp.Regexp
@@ -137,7 +135,7 @@ func (_ *application) loadSystemEnv() SpringCore.Properties {
 		if i := strings.Index(env, "="); i > 0 {
 			k, v := env[0:i], env[i+1:]
 			for _, r := range rex {
-				if r.MatchString(k) {
+				if r.MatchString(k) { // 符合匹配规则的才有效
 					SpringLogger.Tracef("%s=%v", k, v)
 					p.SetProperty(k, v)
 					break
@@ -150,14 +148,14 @@ func (_ *application) loadSystemEnv() SpringCore.Properties {
 
 // loadProfileConfig 加载指定环境的配置文件
 func (app *application) loadProfileConfig(profile string) SpringCore.Properties {
-	var result map[string]interface{}
 	p := SpringCore.NewDefaultProperties()
 	for _, configLocation := range app.cfgLocation {
+		var result map[string]interface{}
 		if ss := strings.Split(configLocation, ":"); len(ss) == 1 {
 			result = NewDefaultPropertySource(ss[0]).Load(profile)
 		} else {
 			switch ss[0] {
-			case "k8s":
+			case "k8s": // "k8s:testdata/config/config-map.yaml"
 				result = NewConfigMapPropertySource(ss[1]).Load(profile)
 			}
 		}
@@ -221,11 +219,6 @@ func (app *application) prepare() {
 			app.appCtx.SetAllAccess(strings.ToLower(access) == "all")
 		}
 	}
-
-	// 配置文件已就绪
-	if app.configReady != nil {
-		app.configReady()
-	}
 }
 
 // ShutDown 停止 SpringBoot 应用
@@ -235,10 +228,7 @@ func (app *application) ShutDown() {
 	app.appCtx.Close()
 
 	// 通知应用停止事件
-	var eventBeans []ApplicationEvent
-	app.appCtx.CollectBeans(&eventBeans)
-
-	for _, bean := range eventBeans {
+	for _, bean := range app.eventBeans {
 		bean.OnStopApplication(app.appCtx)
 	}
 
