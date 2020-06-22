@@ -63,7 +63,7 @@ type defaultSpringContext struct {
 	Properties
 
 	// 上下文接口
-	context.Context
+	ctx    context.Context
 	cancel context.CancelFunc
 
 	profile   string // 运行环境
@@ -84,7 +84,7 @@ type defaultSpringContext struct {
 func NewDefaultSpringContext() *defaultSpringContext {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &defaultSpringContext{
-		Context:         ctx,
+		ctx:             ctx,
 		cancel:          cancel,
 		Properties:      NewDefaultProperties(),
 		methodBeans:     make([]*BeanDefinition, 0),
@@ -95,6 +95,11 @@ func NewDefaultSpringContext() *defaultSpringContext {
 		destroyers:      list.New(),
 		destroyerMap:    make(map[beanKey]*destroyer),
 	}
+}
+
+// Context 返回上下文接口
+func (ctx *defaultSpringContext) Context() context.Context {
+	return ctx.ctx
 }
 
 // GetProfile 返回运行环境

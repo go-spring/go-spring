@@ -2563,7 +2563,7 @@ func TestDefaultSpringContext_Close(t *testing.T) {
 			go func() {
 				for {
 					select {
-					case <-ctx.Done():
+					case <-ctx.Context().Done():
 						wg.Done()
 						return
 					default:

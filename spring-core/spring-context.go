@@ -28,11 +28,12 @@ import (
 // 一条需要谨记的注册规则是: AutoWireBeans 调用后就不能再注册新
 // 的 Bean 了，这样做是因为实现起来更简单而且性能更高。
 type SpringContext interface {
-	// 上下文接口
-	context.Context
 
 	// 属性值列表接口
 	Properties
+
+	// Context 返回上下文接口
+	Context() context.Context
 
 	// GetProfile 返回运行环境
 	GetProfile() string
