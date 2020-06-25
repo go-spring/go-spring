@@ -18,6 +18,7 @@ package SpringBoot_test
 
 import (
 	"container/list"
+	"context"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -118,6 +119,22 @@ func init() {
 		SpringBoot.GetBinding("/echo", c.Echo, SpringBoot.FilterBean("router//echo")).
 			Swagger(). // 设置接口的信息
 			WithDescription("echo")
+
+		SpringBoot.Go(func(ctx context.Context) {
+			defer SpringLogger.Info("exit after waiting in ::Go")
+
+			ticker := time.NewTicker(10 * time.Millisecond)
+			defer ticker.Stop()
+
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					SpringLogger.Info("::Go")
+				}
+			}
+		})
 	})
 
 	SpringBoot.RegisterBean(new(MyRunner))
@@ -288,11 +305,11 @@ type MyRunner struct {
 	_ SpringBoot.CommandLineRunner `export:""`
 }
 
-func (_ *MyRunner) Run(ctx SpringBoot.ApplicationContext) {
+func (_ *MyRunner) Run(appCtx SpringBoot.ApplicationContext) {
 
-	ctx.SafeGoroutine(func() {
+	appCtx.SafeGoroutine(func() {
 		SpringLogger.Trace("get all properties:")
-		for k, v := range ctx.GetProperties() {
+		for k, v := range appCtx.GetProperties() {
 			SpringLogger.Tracef("%v=%v", k, v)
 		}
 		SpringLogger.Info("exit right now in MyRunner::Run")
@@ -303,9 +320,9 @@ func (_ *MyRunner) Run(ctx SpringBoot.ApplicationContext) {
 			panic(errors.New("error"))
 		}
 	}
-	_ = ctx.Run(fn, "1:${version:=v0.0.1}").On(SpringCore.ConditionOnProfile("test"))
+	_ = appCtx.Run(fn, "1:${version:=v0.0.1}").On(SpringCore.ConditionOnProfile("test"))
 
-	ctx.SafeGoroutine(func() {
+	appCtx.SafeGoroutine(func() {
 		defer SpringLogger.Info("exit after waiting in MyRunner::Run")
 
 		ticker := time.NewTicker(10 * time.Millisecond)
@@ -313,7 +330,7 @@ func (_ *MyRunner) Run(ctx SpringBoot.ApplicationContext) {
 
 		for {
 			select {
-			case <-ctx.Context().Done():
+			case <-appCtx.Context().Done():
 				return
 			case <-ticker.C:
 				SpringLogger.Info("MyRunner::Run")
@@ -336,17 +353,17 @@ func NewMyModule(msg string) *MyModule {
 	}
 }
 
-func (m *MyModule) OnStartApplication(ctx SpringBoot.ApplicationContext) {
+func (m *MyModule) OnStartApplication(appCtx SpringBoot.ApplicationContext) {
 	SpringLogger.Info("MyModule start")
 
 	var e *MyModule
-	ctx.GetBean(&e)
+	appCtx.GetBean(&e)
 	SpringLogger.Infof("event: %+v", e)
 
-	ctx.SafeGoroutine(Process)
+	appCtx.SafeGoroutine(Process)
 }
 
-func (m *MyModule) OnStopApplication(ctx SpringBoot.ApplicationContext) {
+func (m *MyModule) OnStopApplication(appCtx SpringBoot.ApplicationContext) {
 	SpringLogger.Info("MyModule stop")
 }
 

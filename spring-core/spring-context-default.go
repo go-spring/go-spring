@@ -664,10 +664,15 @@ func (ctx *defaultSpringContext) Close(beforeDestroy ...func()) {
 	}
 }
 
-// Run 立即执行一个一次性的任务
+// Run 根据条件判断是否立即执行一个一次性的任务
 func (ctx *defaultSpringContext) Run(fn interface{}, tags ...string) *Runner {
 	ctx.checkAutoWired()
 	return newRunner(ctx, fn, tags)
+}
+
+// RunNow 立即执行一个一次性的任务
+func (ctx *defaultSpringContext) RunNow(fn interface{}, tags ...string) error {
+	return ctx.Run(fn, tags...).When(true)
 }
 
 // Config 注册一个配置函数

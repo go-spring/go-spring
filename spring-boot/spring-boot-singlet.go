@@ -17,6 +17,7 @@
 package SpringBoot
 
 import (
+	"context"
 	"time"
 
 	"github.com/go-spring/go-spring/boot-starter"
@@ -237,9 +238,14 @@ func BindPropertyIf(key string, i interface{}, allAccess bool) {
 	ctx.BindPropertyIf(key, i, allAccess)
 }
 
-// Run 立即执行一个一次性的任务
+// Run 根据条件判断是否立即执行一个一次性的任务
 func Run(fn interface{}, tags ...string) *SpringCore.Runner {
 	return ctx.Run(fn, tags...)
+}
+
+// RunNow 立即执行一个一次性的任务
+func RunNow(fn interface{}, tags ...string) error {
+	return ctx.RunNow(fn, tags...)
 }
 
 // Config 注册一个配置函数
@@ -250,4 +256,17 @@ func Config(fn interface{}, tags ...string) *SpringCore.Configer {
 // ConfigWithName 注册一个配置函数，名称的作用是对 Config 进行排重和排顺序。
 func ConfigWithName(name string, fn interface{}, tags ...string) *SpringCore.Configer {
 	return ctx.ConfigWithName(name, fn, tags...)
+}
+
+//////////////// ApplicationContext ////////////////////////
+
+type GoFuncWithContext func(context.Context)
+
+// Go 安全地启动一个 goroutine
+func Go(fn GoFuncWithContext) {
+	_ = ctx.RunNow(func(appCtx ApplicationContext) {
+		appCtx.SafeGoroutine(func() {
+			fn(appCtx.Context())
+		})
+	})
 }
