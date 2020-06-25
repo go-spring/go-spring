@@ -295,6 +295,7 @@ func (_ *MyRunner) Run(ctx SpringBoot.ApplicationContext) {
 		for k, v := range ctx.GetProperties() {
 			SpringLogger.Tracef("%v=%v", k, v)
 		}
+		SpringLogger.Info("exit right now in MyRunner::Run")
 	})
 
 	fn := func(ctx SpringBoot.ApplicationContext, version string) {
@@ -303,6 +304,22 @@ func (_ *MyRunner) Run(ctx SpringBoot.ApplicationContext) {
 		}
 	}
 	_ = ctx.Run(fn, "1:${version:=v0.0.1}").On(SpringCore.ConditionOnProfile("test"))
+
+	ctx.SafeGoroutine(func() {
+		defer SpringLogger.Info("exit after waiting in MyRunner::Run")
+
+		ticker := time.NewTicker(10 * time.Millisecond)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Context().Done():
+				return
+			case <-ticker.C:
+				SpringLogger.Info("MyRunner::Run")
+			}
+		}
+	})
 }
 
 ////////////////// MyModule ///////////////////

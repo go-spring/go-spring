@@ -642,9 +642,16 @@ func (ctx *defaultSpringContext) GetBeanDefinitions() []*BeanDefinition {
 	return result
 }
 
-// Close 关闭容器上下文，用于通知 Bean 销毁等。
-// 该函数可以确保 Bean 的销毁顺序和注入顺序相反。
-func (ctx *defaultSpringContext) Close() {
+// Close 关闭容器上下文，用于通知 Bean 销毁等，该函数可以确保 Bean 的销毁顺序和注入顺序相反。
+func (ctx *defaultSpringContext) Close(beforeDestroy ...func()) {
+
+	// 上下文结束
+	ctx.cancel()
+
+	// 调用 destroy 之前的钩子函数
+	for _, f := range beforeDestroy {
+		f()
+	}
 
 	assembly := newDefaultBeanAssembly(ctx)
 
@@ -655,9 +662,6 @@ func (ctx *defaultSpringContext) Close() {
 			SpringLogger.Error(err)
 		}
 	}
-
-	// 上下文结束
-	ctx.cancel()
 }
 
 // Run 立即执行一个一次性的任务

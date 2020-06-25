@@ -105,7 +105,7 @@ type SpringContext interface {
 
 	// Close 关闭容器上下文，用于通知 Bean 销毁等。
 	// 该函数可以确保 Bean 的销毁顺序和注入顺序相反。
-	Close()
+	Close(beforeDestroy ...func())
 
 	// Run 立即执行一个一次性的任务
 	Run(fn interface{}, tags ...string) *Runner

@@ -222,11 +222,7 @@ func (app *application) prepare() {
 	}
 }
 
-// ShutDown 停止 SpringBoot 应用
-func (app *application) ShutDown() {
-
-	// 通知 Bean 销毁
-	app.appCtx.Close()
+func (app *application) stopApplication() {
 
 	// 通知应用停止事件
 	for _, bean := range app.eventBeans {
@@ -235,6 +231,24 @@ func (app *application) ShutDown() {
 
 	// 等待所有 goroutine 退出
 	app.appCtx.Wait()
+
+	SpringLogger.Info("safe goroutines exited")
+}
+
+// ShutDown 停止 SpringBoot 应用
+func (app *application) ShutDown() {
+
+	SpringLogger.Info("spring boot exiting")
+
+	// OnStopApplication 是否需要有 Timeout 的 Context？
+	// 仔细想想没有必要，程序想要优雅退出就得一直等，等到所有工作
+	// 做完，用户如果等不急了可以使用 kill -9 进行硬杀，也就是
+	// 是否优雅退出取决于用户。这样的话，OnStopApplication 不
+	// 依赖 appCtx 的 Context，就只需要考虑 SafeGoroutine
+	// 的退出了，而这只需要 Context 一 cancel 也就完事了。
+
+	// 通知 Bean 销毁
+	app.appCtx.Close(app.stopApplication)
 
 	SpringLogger.Info("spring boot exited")
 }
