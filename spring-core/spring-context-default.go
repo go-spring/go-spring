@@ -24,6 +24,7 @@ import (
 	"reflect"
 	"runtime"
 	"strings"
+	"sync"
 
 	"github.com/go-spring/go-spring-parent/spring-logger"
 	"github.com/go-spring/go-spring-parent/spring-utils"
@@ -63,6 +64,7 @@ type defaultSpringContext struct {
 	Properties
 
 	// 上下文接口
+	wg     sync.WaitGroup
 	ctx    context.Context
 	cancel context.CancelFunc
 
@@ -653,6 +655,11 @@ func (ctx *defaultSpringContext) Close(beforeDestroy ...func()) {
 		f()
 	}
 
+	// 等待 safe goroutines 全部退出
+	ctx.wg.Wait()
+
+	SpringLogger.Info("safe goroutines exited")
+
 	assembly := newDefaultBeanAssembly(ctx)
 
 	// 按照顺序执行销毁函数
@@ -685,4 +692,20 @@ func (ctx *defaultSpringContext) ConfigWithName(name string, fn interface{}, tag
 	configer := newConfiger(name, fn, tags)
 	ctx.configers.PushBack(configer)
 	return configer
+}
+
+// SafeGoroutine 安全地启动一个 goroutine
+func (ctx *defaultSpringContext) SafeGoroutine(fn GoFunc) {
+	ctx.wg.Add(1)
+	go func() {
+		defer ctx.wg.Done()
+
+		defer func() {
+			if err := recover(); err != nil {
+				SpringLogger.Error(err)
+			}
+		}()
+
+		fn()
+	}()
 }

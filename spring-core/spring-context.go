@@ -20,6 +20,8 @@ import (
 	"context"
 )
 
+type GoFunc func()
+
 // SpringContext 定义了 IoC 容器接口。
 //
 // 它的工作过程可以分为三个大的阶段：注册 Bean 列表、加载属性配置
@@ -118,4 +120,7 @@ type SpringContext interface {
 
 	// ConfigWithName 注册一个配置函数，名称的作用是对 Config 进行排重和排顺序。
 	ConfigWithName(name string, fn interface{}, tags ...string) *Configer
+
+	// SafeGoroutine 安全地启动一个 goroutine
+	SafeGoroutine(fn GoFunc)
 }

@@ -17,23 +17,12 @@
 package SpringBoot
 
 import (
-	"sync"
-
-	"github.com/go-spring/go-spring-parent/spring-logger"
 	"github.com/go-spring/go-spring/spring-core"
 )
-
-type GoFunc func()
 
 // ApplicationContext Application 上下文
 type ApplicationContext interface {
 	SpringCore.SpringContext
-
-	// SafeGoroutine 安全地启动一个 goroutine
-	SafeGoroutine(fn GoFunc)
-
-	// Wait 等待所有 goroutine 退出
-	Wait()
 }
 
 // defaultApplicationContext ApplicationContext 的默认实现
@@ -43,27 +32,4 @@ type defaultApplicationContext struct {
 
 	// 导出 SpringCore.SpringContext 接口
 	SpringCore.SpringContext `export:""`
-
-	wg sync.WaitGroup
-}
-
-// SafeGoroutine 安全地启动一个 goroutine
-func (ctx *defaultApplicationContext) SafeGoroutine(fn GoFunc) {
-	ctx.wg.Add(1)
-	go func() {
-		defer ctx.wg.Done()
-
-		defer func() {
-			if err := recover(); err != nil {
-				SpringLogger.Error(err)
-			}
-		}()
-
-		fn()
-	}()
-}
-
-// Wait 等待所有 goroutine 安全地退出
-func (ctx *defaultApplicationContext) Wait() {
-	ctx.wg.Wait()
 }

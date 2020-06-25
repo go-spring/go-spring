@@ -223,16 +223,9 @@ func (app *application) prepare() {
 }
 
 func (app *application) stopApplication() {
-
-	// 通知应用停止事件
 	for _, bean := range app.eventBeans {
 		bean.OnStopApplication(app.appCtx)
 	}
-
-	// 等待所有 goroutine 退出
-	app.appCtx.Wait()
-
-	SpringLogger.Info("safe goroutines exited")
 }
 
 // ShutDown 停止 SpringBoot 应用

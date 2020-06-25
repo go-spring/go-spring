@@ -258,15 +258,9 @@ func ConfigWithName(name string, fn interface{}, tags ...string) *SpringCore.Con
 	return ctx.ConfigWithName(name, fn, tags...)
 }
 
-//////////////// ApplicationContext ////////////////////////
-
 type GoFuncWithContext func(context.Context)
 
 // Go 安全地启动一个 goroutine
 func Go(fn GoFuncWithContext) {
-	_ = ctx.RunNow(func(appCtx ApplicationContext) {
-		appCtx.SafeGoroutine(func() {
-			fn(appCtx.Context())
-		})
-	})
+	ctx.SafeGoroutine(func() { fn(ctx.Context()) })
 }
