@@ -28,7 +28,7 @@ Go-Spring 不仅实现了如 Java Spring 那般功能强大的 IoC 容器，还�
 | `@Profile` 							| `ConditionOnProfile()` 		|
 | `@Primary` 							| `Primary()` 					|
 | `@DependsOn` 							| `DependsOn()` 				|
-| `ConstructorBinding` 					| `RegisterBeanFn()` 			|
+| `@ConstructorBinding` 				| `RegisterBeanFn()` 			|
 | `@ComponentScan` `@Indexed` 			| Package Import 				|
 | `@Conditional` 						| `NewConditional()` 			|
 | `@ConditionalOnExpression` 			| `NewExpressionCondition()` 	|
