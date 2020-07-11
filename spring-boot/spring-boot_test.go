@@ -69,9 +69,6 @@ func init() {
 		}, "f7").Before("config_f2").ConditionOnPropertyValue("f7.enable", true)
 	}
 
-	// 全局函数设置整个应用的信息
-	SpringWeb.Swagger().WithDescription("spring boot test")
-
 	// 注册过滤器
 	{
 		SpringBoot.RegisterBean(new(SingleBeanFilter))
@@ -155,6 +152,7 @@ func init() {
 		cfg := SpringWeb.ContainerConfig{Port: config.Port}
 		c := SpringEcho.NewContainer(cfg)
 		c.AddFilter(SpringBoot.FilterBean("container"))
+		c.Swagger().WithDescription("spring boot test")
 		return c
 	})
 

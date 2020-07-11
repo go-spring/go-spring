@@ -384,9 +384,39 @@ func (r *Router) PUT(path string, fn interface{}, filters ...SpringWeb.Filter) *
 	return r.Request(SpringWeb.MethodPut, path, fn, filters...)
 }
 
+// HandlePut 注册 PUT 方法处理函数
+func (r *Router) HandlePut(path string, fn SpringWeb.Handler, filters ...SpringWeb.Filter) *Mapping {
+	return r.Request(SpringWeb.MethodPut, path, fn, filters...)
+}
+
+// PutMapping 注册 PUT 方法处理函数
+func (r *Router) PutMapping(path string, fn SpringWeb.HandlerFunc, filters ...SpringWeb.Filter) *Mapping {
+	return r.Request(SpringWeb.MethodPut, path, SpringWeb.FUNC(fn), filters...)
+}
+
+// PutBinding 注册 PUT 方法处理函数
+func (r *Router) PutBinding(path string, fn interface{}, filters ...SpringWeb.Filter) *Mapping {
+	return r.Request(SpringWeb.MethodPut, path, SpringWeb.BIND(fn), filters...)
+}
+
 // DELETE 注册 DELETE 方法处理函数
 func (r *Router) DELETE(path string, fn interface{}, filters ...SpringWeb.Filter) *Mapping {
 	return r.Request(SpringWeb.MethodDelete, path, fn, filters...)
+}
+
+// HandleDelete 注册 DELETE 方法处理函数
+func (r *Router) HandleDelete(path string, fn SpringWeb.Handler, filters ...SpringWeb.Filter) *Mapping {
+	return r.Request(SpringWeb.MethodDelete, path, fn, filters...)
+}
+
+// DeleteMapping 注册 DELETE 方法处理函数
+func (r *Router) DeleteMapping(path string, fn SpringWeb.HandlerFunc, filters ...SpringWeb.Filter) *Mapping {
+	return r.Request(SpringWeb.MethodDelete, path, SpringWeb.FUNC(fn), filters...)
+}
+
+// DeleteBinding 注册 DELETE 方法处理函数
+func (r *Router) DeleteBinding(path string, fn interface{}, filters ...SpringWeb.Filter) *Mapping {
+	return r.Request(SpringWeb.MethodDelete, path, SpringWeb.BIND(fn), filters...)
 }
 
 // HEAD 注册 HEAD 方法处理函数
@@ -459,6 +489,21 @@ func PUT(path string, fn interface{}, filters ...SpringWeb.Filter) *Mapping {
 	return Request(SpringWeb.MethodPut, path, fn, filters...)
 }
 
+// HandlePut 注册 PUT 方法处理函数
+func HandlePut(path string, fn SpringWeb.Handler, filters ...SpringWeb.Filter) *Mapping {
+	return Request(SpringWeb.MethodPut, path, fn, filters...)
+}
+
+// PutMapping 注册 PUT 方法处理函数
+func PutMapping(path string, fn SpringWeb.HandlerFunc, filters ...SpringWeb.Filter) *Mapping {
+	return Request(SpringWeb.MethodPut, path, SpringWeb.FUNC(fn), filters...)
+}
+
+// PutBinding 注册 PUT 方法处理函数
+func PutBinding(path string, fn interface{}, filters ...SpringWeb.Filter) *Mapping {
+	return Request(SpringWeb.MethodPut, path, SpringWeb.BIND(fn), filters...)
+}
+
 // PATCH 注册 PATCH 方法处理函数
 func PATCH(path string, fn interface{}, filters ...SpringWeb.Filter) *Mapping {
 	return Request(SpringWeb.MethodPatch, path, fn, filters...)
@@ -467,6 +512,21 @@ func PATCH(path string, fn interface{}, filters ...SpringWeb.Filter) *Mapping {
 // DELETE 注册 DELETE 方法处理函数
 func DELETE(path string, fn interface{}, filters ...SpringWeb.Filter) *Mapping {
 	return Request(SpringWeb.MethodDelete, path, fn, filters...)
+}
+
+// HandleDelete 注册 DELETE 方法处理函数
+func HandleDelete(path string, fn SpringWeb.Handler, filters ...SpringWeb.Filter) *Mapping {
+	return Request(SpringWeb.MethodDelete, path, fn, filters...)
+}
+
+// DeleteMapping 注册 DELETE 方法处理函数
+func DeleteMapping(path string, fn SpringWeb.HandlerFunc, filters ...SpringWeb.Filter) *Mapping {
+	return Request(SpringWeb.MethodDelete, path, SpringWeb.FUNC(fn), filters...)
+}
+
+// DeleteBinding 注册 DELETE 方法处理函数
+func DeleteBinding(path string, fn interface{}, filters ...SpringWeb.Filter) *Mapping {
+	return Request(SpringWeb.MethodDelete, path, SpringWeb.BIND(fn), filters...)
 }
 
 // HEAD 注册 HEAD 方法处理函数
