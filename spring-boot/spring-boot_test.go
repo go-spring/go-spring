@@ -35,6 +35,7 @@ import (
 	"github.com/go-spring/go-spring-web/spring-web"
 	"github.com/go-spring/go-spring/spring-boot"
 	"github.com/go-spring/go-spring/spring-core"
+	//_ "github.com/go-spring/go-spring/starter-go-mongo"
 	_ "github.com/go-spring/go-spring/starter-go-redis"
 	_ "github.com/go-spring/go-spring/starter-go-redis-mock"
 	_ "github.com/go-spring/go-spring/starter-mysql-gorm"
@@ -43,6 +44,7 @@ import (
 	"github.com/jinzhu/gorm"
 	"github.com/labstack/echo"
 	"github.com/labstack/echo/middleware"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 func init() {
@@ -244,6 +246,7 @@ func (f *StringFilter) Invoke(ctx SpringWeb.WebContext, chain SpringWeb.FilterCh
 
 type MyController struct {
 	RedisClient redis.Cmdable                 `autowire:""`
+	MongoClient *mongo.Client                 `autowire:"?"`
 	DB          *gorm.DB                      `autowire:""`
 	AppCtx      SpringBoot.ApplicationContext `autowire:""`
 }
@@ -257,6 +260,9 @@ type EchoResponse struct {
 }
 
 func (c *MyController) Echo(request EchoRequest) *EchoResponse {
+	if c.MongoClient != nil {
+		fmt.Println(c.MongoClient.Database("db0").Name())
+	}
 	return &EchoResponse{"echo " + request.Str}
 }
 

@@ -14,16 +14,9 @@
  * limitations under the License.
  */
 
-package StarterGoMongo
+package StarterMongo
 
-import (
-	"github.com/go-spring/go-spring/spring-boot"
-	"github.com/go-spring/go-spring/starter-go-mongo/go-mongo-factory"
-	"go.mongodb.org/mongo-driver/mongo"
-)
-
-func init() {
-	SpringBoot.RegisterNameBeanFn("std-go-mongo-client", GoMongoFactory.NewClient).
-		ConditionOnMissingBean((*mongo.Client)(nil)).
-		Destroy(GoMongoFactory.CloseClient)
+// MongoConfig mongo 配置
+type MongoConfig struct {
+	Url string `value:"${mongo.url:=mongodb://localhost}"`
 }
