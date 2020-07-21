@@ -190,9 +190,14 @@ func TestRunApplication(t *testing.T) {
 
 type SingleBeanFilter struct {
 	_ SpringWeb.Filter `export:""`
+
+	DefaultValue string `value:"${default-value:=default}"`
 }
 
 func (f *SingleBeanFilter) Invoke(ctx SpringWeb.WebContext, chain SpringWeb.FilterChain) {
+	if f.DefaultValue != "app-test" {
+		panic(fmt.Errorf("${default-value} expect 'app-test' but '%s'", f.DefaultValue))
+	}
 	ctx.LogInfo("::SingleBeanFilter")
 	chain.Next(ctx)
 }

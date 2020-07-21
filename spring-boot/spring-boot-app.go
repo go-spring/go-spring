@@ -18,6 +18,7 @@ package SpringBoot
 
 import (
 	"flag"
+	"fmt"
 	"os"
 	"regexp"
 	"strings"
@@ -167,6 +168,21 @@ func (app *application) loadProfileConfig(profile string) SpringCore.Properties 
 	return p
 }
 
+// ResolveProperty 解析属性值，查看其是否具有引用关系
+func ResolveProperty(properties map[string]interface{}, key string, value interface{}) interface{} {
+	if s, ok := value.(string); ok && strings.HasPrefix(s, "${") {
+		refKey := s[2 : len(s)-1]
+		if refValue, ok := properties[refKey]; !ok {
+			panic(fmt.Errorf("properties \"%s\" not config", refKey))
+		} else {
+			refValue = ResolveProperty(properties, refKey, refValue)
+			properties[key] = refValue
+			return refValue
+		}
+	}
+	return value
+}
+
 // prepare 准备上下文环境
 func (app *application) prepare() {
 
@@ -209,7 +225,9 @@ func (app *application) prepare() {
 	}
 
 	// 将重组后的属性值写入 SpringContext 属性列表
-	for key, value := range p.GetProperties() {
+	properties := p.GetProperties()
+	for key, value := range properties {
+		value = ResolveProperty(properties, key, value)
 		app.appCtx.SetProperty(key, value)
 	}
 

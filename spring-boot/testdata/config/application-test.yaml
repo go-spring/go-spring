@@ -1,1 +1,3 @@
 spring.application.name: test.yaml
+
+default-value-ref: app-test

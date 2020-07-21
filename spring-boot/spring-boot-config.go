@@ -19,8 +19,6 @@ package SpringBoot
 import (
 	"os"
 	"path/filepath"
-	"sort"
-	"strings"
 
 	"github.com/go-spring/go-spring-parent/spring-logger"
 	"github.com/go-spring/go-spring-parent/spring-utils"
@@ -63,8 +61,8 @@ func (p *defaultPropertySource) Load(profile string) map[string]interface{} {
 
 	result := make(map[string]interface{})
 
-	// 从预定义的文件中加载属性列表
-	for _, ext := range []string{".properties", ".yaml", ".toml"} {
+	// 从预定义的文件格式中加载属性值列表
+	for ext, reader := range configReaders {
 
 		filename := filepath.Join(p.fileLocation, fileNamePrefix+ext)
 		if _, err := os.Stat(filename); err != nil {
@@ -72,20 +70,7 @@ func (p *defaultPropertySource) Load(profile string) map[string]interface{} {
 		}
 
 		SpringLogger.Info("load properties from file ", filename)
-
-		v := viper.New()
-		v.SetConfigFile(filename)
-
-		err := v.ReadInConfig()
-		SpringUtils.Panic(err).When(err != nil)
-
-		keys := v.AllKeys()
-		sort.Strings(keys)
-
-		for _, key := range keys {
-			val := v.Get(key)
-			result[key] = val
-		}
+		reader.ReadFile(filename, result)
 	}
 
 	return result
@@ -129,32 +114,16 @@ func (p *configMapPropertySource) Load(profile string) map[string]interface{} {
 
 	result := make(map[string]interface{})
 
-	for _, ext := range []string{".properties", ".yaml", ".toml"} {
+	// 从预定义的文件格式中加载属性值列表
+	for ext, reader := range configReaders {
 		if key := profileFileName + ext; d.IsSet(key) {
 			SpringLogger.Infof("load properties from config-map %s:%s", p.filename, key)
 
 			if val := d.GetString(key); val != "" {
-				p.read(ext, val, result)
+				reader.ReadBuffer([]byte(val), result)
 			}
 		}
 	}
 
 	return result
-}
-
-func (p *configMapPropertySource) read(ext string, str string, result map[string]interface{}) {
-
-	v := viper.New()
-	v.SetConfigType(ext[1:])
-
-	err := v.ReadConfig(strings.NewReader(str))
-	SpringUtils.Panic(err).When(err != nil)
-
-	keys := v.AllKeys()
-	sort.Strings(keys)
-
-	for _, key := range keys {
-		val := v.Get(key)
-		result[key] = val
-	}
 }
