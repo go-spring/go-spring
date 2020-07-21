@@ -18,8 +18,9 @@ package GoRedisFactory
 
 import (
 	"fmt"
+
 	"github.com/go-redis/redis"
-	StarterRedis "github.com/go-spring/go-spring/starter-redis"
+	"github.com/go-spring/go-spring/starter-redis"
 )
 
 // NewGoRedisClient 创建 redis 客户端
