@@ -156,6 +156,12 @@ func (c *Configer) ConditionOnPropertyValue(name string, havingValue interface{}
 	return c
 }
 
+// ConditionOnOptionalPropertyValue 为 Configer 设置一个 PropertyValueCondition，当属性值不存在时默认条件成立
+func (c *Configer) ConditionOnOptionalPropertyValue(name string, havingValue interface{}) *Configer {
+	c.cond.OnOptionalPropertyValue(name, havingValue)
+	return c
+}
+
 // ConditionOnBean 为 Configer 设置一个 BeanCondition
 func (c *Configer) ConditionOnBean(selector BeanSelector) *Configer {
 	c.cond.OnBean(selector)

@@ -30,9 +30,12 @@ import (
 func init() {
 
 	SpringBoot.RegisterNameBean("web-server", SpringWeb.NewWebServer()).
-		ConditionOnMissingBean((*SpringWeb.WebServer)(nil))
+		ConditionOnMissingBean((*SpringWeb.WebServer)(nil)).
+		ConditionOnOptionalPropertyValue("web-server.enable", true)
 
-	SpringBoot.RegisterNameBean("web-server-starter", new(WebServerStarter))
+	SpringBoot.RegisterNameBean("web-server-starter", new(WebServerStarter)).
+		ConditionOnMissingBean((*WebServerStarter)(nil)).
+		ConditionOnOptionalPropertyValue("web-server-starter.enable", true)
 }
 
 // WebServerConfig Web 服务器配置

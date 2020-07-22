@@ -420,6 +420,16 @@ func (c *Conditional) OnPropertyValue(name string, havingValue interface{},
 	return c.OnCondition(NewPropertyValueCondition(name, havingValue, options...))
 }
 
+// ConditionOnOptionalPropertyValue 返回属性值不存在时默认条件成立的 Conditional 对象
+func ConditionOnOptionalPropertyValue(name string, havingValue interface{}) *Conditional {
+	return NewConditional().OnOptionalPropertyValue(name, havingValue)
+}
+
+// OnOptionalPropertyValue 设置一个 propertyValueCondition，当属性值不存在时默认条件成立
+func (c *Conditional) OnOptionalPropertyValue(name string, havingValue interface{}) *Conditional {
+	return c.OnCondition(NewPropertyValueCondition(name, havingValue, MatchIfMissing(true)))
+}
+
 // Deprecated: Use "ConditionOnBean" instead.
 func OnBean(selector BeanSelector) *Conditional {
 	return ConditionOnBean(selector)

@@ -295,6 +295,12 @@ func (arg *optionArg) ConditionOnPropertyValue(name string, havingValue interfac
 	return arg
 }
 
+// ConditionOnOptionalPropertyValue 为 optionArg 设置一个 PropertyValueCondition，当属性值不存在时默认条件成立
+func (arg *optionArg) ConditionOnOptionalPropertyValue(name string, havingValue interface{}) *optionArg {
+	arg.cond.OnOptionalPropertyValue(name, havingValue)
+	return arg
+}
+
 // ConditionOnBean 为 optionArg 设置一个 BeanCondition
 func (arg *optionArg) ConditionOnBean(selector BeanSelector) *optionArg {
 	arg.cond.OnBean(selector)

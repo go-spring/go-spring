@@ -678,6 +678,12 @@ func (d *BeanDefinition) ConditionOnPropertyValue(name string, havingValue inter
 	return d
 }
 
+// ConditionOnOptionalPropertyValue 为 Bean 设置一个 PropertyValueCondition，当属性值不存在时默认条件成立
+func (d *BeanDefinition) ConditionOnOptionalPropertyValue(name string, havingValue interface{}) *BeanDefinition {
+	d.cond.OnOptionalPropertyValue(name, havingValue)
+	return d
+}
+
 // ConditionOnBean 为 Bean 设置一个 BeanCondition
 func (d *BeanDefinition) ConditionOnBean(selector BeanSelector) *BeanDefinition {
 	d.cond.OnBean(selector)

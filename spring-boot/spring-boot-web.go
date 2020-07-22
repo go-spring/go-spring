@@ -188,6 +188,12 @@ func (m *Mapping) ConditionOnPropertyValue(name string, havingValue interface{},
 	return m
 }
 
+// ConditionOnOptionalPropertyValue 设置一个 PropertyValueCondition，当属性值不存在时默认条件成立
+func (m *Mapping) ConditionOnOptionalPropertyValue(name string, havingValue interface{}) *Mapping {
+	m.cond.OnOptionalPropertyValue(name, havingValue)
+	return m
+}
+
 // ConditionOnBean 设置一个 BeanCondition
 func (m *Mapping) ConditionOnBean(selector SpringCore.BeanSelector) *Mapping {
 	m.cond.OnBean(selector)
@@ -293,6 +299,12 @@ func (r *Router) ConditionOnMissingProperty(name string) *Router {
 func (r *Router) ConditionOnPropertyValue(name string, havingValue interface{},
 	options ...SpringCore.PropertyValueConditionOption) *Router {
 	r.cond.OnPropertyValue(name, havingValue, options...)
+	return r
+}
+
+// ConditionOnOptionalPropertyValue 设置一个 PropertyValueCondition，当属性值不存在时默认条件成立
+func (r *Router) ConditionOnOptionalPropertyValue(name string, havingValue interface{}) *Router {
+	r.cond.OnOptionalPropertyValue(name, havingValue)
 	return r
 }
 
@@ -616,6 +628,12 @@ func (f *ConditionalWebFilter) ConditionOnMissingProperty(name string) *Conditio
 func (f *ConditionalWebFilter) ConditionOnPropertyValue(name string, havingValue interface{},
 	options ...SpringCore.PropertyValueConditionOption) *ConditionalWebFilter {
 	f.cond.OnPropertyValue(name, havingValue, options...)
+	return f
+}
+
+// ConditionOnOptionalPropertyValue 设置一个 PropertyValueCondition，当属性值不存在时默认条件成立
+func (f *ConditionalWebFilter) ConditionOnOptionalPropertyValue(name string, havingValue interface{}) *ConditionalWebFilter {
+	f.cond.OnOptionalPropertyValue(name, havingValue)
 	return f
 }
 

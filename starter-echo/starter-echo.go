@@ -20,19 +20,18 @@ import (
 	"github.com/go-spring/go-spring-web/spring-echo"
 	"github.com/go-spring/go-spring-web/spring-web"
 	"github.com/go-spring/go-spring/spring-boot"
-	"github.com/go-spring/go-spring/spring-core"
 	"github.com/go-spring/go-spring/starter-web"
 )
 
 func init() {
 
-	SpringBoot.RegisterNameBeanFn("echo-web-container", func(config WebStarter.WebServerConfig) SpringWeb.WebContainer {
+	SpringBoot.RegisterNameBeanFn("web-container", func(config WebStarter.WebServerConfig) SpringWeb.WebContainer {
 		return SpringEcho.NewContainer(SpringWeb.ContainerConfig{
 			Port: config.Port,
 		})
-	}).ConditionOnPropertyValue("web.server.enable", true, SpringCore.MatchIfMissing(true))
+	}).ConditionOnOptionalPropertyValue("web.server.enable", true)
 
-	SpringBoot.RegisterNameBeanFn("echo-ssl-web-container", func(config WebStarter.WebServerConfig) SpringWeb.WebContainer {
+	SpringBoot.RegisterNameBeanFn("ssl-web-container", func(config WebStarter.WebServerConfig) SpringWeb.WebContainer {
 		return SpringEcho.NewContainer(SpringWeb.ContainerConfig{
 			EnableSSL: true,
 			Port:      config.SSLPort,
