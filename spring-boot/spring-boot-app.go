@@ -19,7 +19,9 @@ package SpringBoot
 import (
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"os"
+	"path"
 	"regexp"
 	"strings"
 
@@ -73,6 +75,9 @@ func newApplication(appCtx ApplicationContext, cfgLocation ...string) *applicati
 // Start 启动 SpringBoot 应用
 func (app *application) Start() {
 
+	// 打印 banner 内容
+	app.printBanner()
+
 	// 准备上下文环境
 	app.prepare()
 
@@ -98,6 +103,30 @@ func (app *application) Start() {
 	}
 
 	SpringLogger.Info("spring boot started")
+}
+
+// printBanner 查找 banner 文件然后将其打印到控制台
+func (app *application) printBanner() {
+	printDefaultBanner := true
+
+	for _, configLocation := range app.cfgLocation {
+		if stat, err := os.Stat(configLocation); err == nil && stat.IsDir() {
+			f := path.Join(configLocation, "banner.txt")
+			if stat, err = os.Stat(f); err == nil && !stat.IsDir() {
+				if banner, err := ioutil.ReadFile(f); err == nil {
+					printBanner(string(banner))
+					printDefaultBanner = false
+					break
+				} else {
+					panic(err)
+				}
+			}
+		}
+	}
+
+	if printDefaultBanner {
+		printBanner(defaultBanner)
+	}
 }
 
 // loadCmdArgs 加载命令行参数，以短线定义的参数才有效。
@@ -168,14 +197,14 @@ func (app *application) loadProfileConfig(profile string) SpringCore.Properties 
 	return p
 }
 
-// ResolveProperty 解析属性值，查看其是否具有引用关系
-func ResolveProperty(properties map[string]interface{}, key string, value interface{}) interface{} {
+// resolveProperty 解析属性值，查看其是否具有引用关系
+func resolveProperty(properties map[string]interface{}, key string, value interface{}) interface{} {
 	if s, ok := value.(string); ok && strings.HasPrefix(s, "${") {
 		refKey := s[2 : len(s)-1]
 		if refValue, ok := properties[refKey]; !ok {
 			panic(fmt.Errorf("properties \"%s\" not config", refKey))
 		} else {
-			refValue = ResolveProperty(properties, refKey, refValue)
+			refValue = resolveProperty(properties, refKey, refValue)
 			properties[key] = refValue
 			return refValue
 		}
@@ -227,7 +256,7 @@ func (app *application) prepare() {
 	// 将重组后的属性值写入 SpringContext 属性列表
 	properties := p.GetProperties()
 	for key, value := range properties {
-		value = ResolveProperty(properties, key, value)
+		value = resolveProperty(properties, key, value)
 		app.appCtx.SetProperty(key, value)
 	}
 

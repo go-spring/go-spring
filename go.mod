@@ -10,6 +10,7 @@ require (
 	github.com/go-spring/go-spring-web v1.0.5-0.20200711043336-1c38fc901565
 	github.com/jinzhu/gorm v1.9.12
 	github.com/labstack/echo v3.3.10+incompatible
+	github.com/labstack/gommon v0.3.0
 	github.com/magiconair/properties v1.8.1
 	github.com/spf13/cast v1.3.1
 	github.com/spf13/viper v1.6.3
