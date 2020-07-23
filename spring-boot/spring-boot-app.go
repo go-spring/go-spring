@@ -56,9 +56,10 @@ type ApplicationEvent interface {
 
 // application SpringBoot 应用
 type application struct {
-	appCtx      ApplicationContext // 应用上下文
-	cfgLocation []string           // 配置文件目录
-	eventBeans  []ApplicationEvent // 提前缓存，加速退出
+	appCtx      ApplicationContext  // 应用上下文
+	cfgLocation []string            // 配置文件目录
+	eventBeans  []ApplicationEvent  // 提前缓存，加速退出
+	Runners     []CommandLineRunner `autowire:"${command-line-runner.collection:=[]}"`
 }
 
 // newApplication application 的构造函数
@@ -82,16 +83,14 @@ func (app *application) Start() {
 	app.prepare()
 
 	// 注册 ApplicationContext
+	app.appCtx.RegisterBean(app)
 	app.appCtx.RegisterBean(app.appCtx)
 
 	// 依赖注入、属性绑定、Bean 初始化
 	app.appCtx.AutoWireBeans()
 
-	var runners []CommandLineRunner
-	app.appCtx.CollectBeans(&runners)
-
 	// 执行命令行启动器
-	for _, r := range runners {
+	for _, r := range app.Runners {
 		r.Run(app.appCtx)
 	}
 
@@ -113,12 +112,12 @@ func (app *application) printBanner() {
 		if stat, err := os.Stat(configLocation); err == nil && stat.IsDir() {
 			f := path.Join(configLocation, "banner.txt")
 			if stat, err = os.Stat(f); err == nil && !stat.IsDir() {
-				if banner, err := ioutil.ReadFile(f); err == nil {
+				if banner, e := ioutil.ReadFile(f); e == nil {
 					printBanner(string(banner))
 					printDefaultBanner = false
 					break
 				} else {
-					panic(err)
+					panic(e)
 				}
 			}
 		}

@@ -1,3 +1,7 @@
 spring.application.name: test.yaml
 
 default-value-ref: app-test
+
+# 设置 runner 收集顺序
+command-line-runner:
+  collection: "[*SpringBoot_test.MyRunner]"
