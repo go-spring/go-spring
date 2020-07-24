@@ -58,8 +58,8 @@ type ApplicationEvent interface {
 type application struct {
 	appCtx      ApplicationContext  // 应用上下文
 	cfgLocation []string            // 配置文件目录
-	eventBeans  []ApplicationEvent  // 提前缓存，加速退出
-	Runners     []CommandLineRunner `autowire:"${command-line-runner.collection:=[]}"`
+	Events      []ApplicationEvent  `autowire:"${application-event.collection:=[]?}"`
+	Runners     []CommandLineRunner `autowire:"${command-line-runner.collection:=[]?}"`
 }
 
 // newApplication application 的构造函数
@@ -94,10 +94,8 @@ func (app *application) Start() {
 		r.Run(app.appCtx)
 	}
 
-	app.appCtx.CollectBeans(&app.eventBeans)
-
 	// 通知应用启动事件
-	for _, bean := range app.eventBeans {
+	for _, bean := range app.Events {
 		bean.OnStartApplication(app.appCtx)
 	}
 
@@ -269,7 +267,7 @@ func (app *application) prepare() {
 }
 
 func (app *application) stopApplication() {
-	for _, bean := range app.eventBeans {
+	for _, bean := range app.Events {
 		bean.OnStopApplication(app.appCtx)
 	}
 }

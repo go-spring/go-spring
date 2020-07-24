@@ -1413,6 +1413,66 @@ func TestDefaultSpringContext_ValueBinding(t *testing.T) {
 
 func TestDefaultSpringContext_CollectBeans(t *testing.T) {
 
+	t.Run("more than one *", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.SetProperty("redis.endpoints", "redis://127.0.0.1:6379")
+		ctx.RegisterNameBean("one", new(RedisCluster))
+		ctx.RegisterBean(new(RedisCluster))
+		ctx.AutoWireBeans()
+
+		assert.Panic(t, func() {
+			var rcs []*RedisCluster
+			ctx.CollectBeans(&rcs, "*", "*")
+		}, "more than one \\* in collection \\[\\*,\\*]\\?")
+	})
+
+	t.Run("before *", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.SetProperty("redis.endpoints", "redis://127.0.0.1:6379")
+		d1 := ctx.RegisterNameBean("one", new(RedisCluster))
+		d2 := ctx.RegisterBean(new(RedisCluster))
+		ctx.AutoWireBeans()
+
+		var rcs []*RedisCluster
+		ctx.CollectBeans(&rcs, "one", "*")
+
+		assert.Equal(t, len(rcs), 2)
+		assert.Equal(t, rcs[0], d1.Bean())
+		assert.Equal(t, rcs[1], d2.Bean())
+	})
+
+	t.Run("after *", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.SetProperty("redis.endpoints", "redis://127.0.0.1:6379")
+		d1 := ctx.RegisterNameBean("one", new(RedisCluster))
+		d2 := ctx.RegisterBean(new(RedisCluster))
+		ctx.AutoWireBeans()
+
+		var rcs []*RedisCluster
+		ctx.CollectBeans(&rcs, "one", "*")
+
+		assert.Equal(t, len(rcs), 2)
+		assert.Equal(t, rcs[1], d1.Bean())
+		assert.Equal(t, rcs[0], d2.Bean())
+	})
+
+	t.Run("only *", func(t *testing.T) {
+
+		ctx := SpringCore.NewDefaultSpringContext()
+		ctx.SetProperty("redis.endpoints", "redis://127.0.0.1:6379")
+		ctx.RegisterNameBean("one", new(RedisCluster))
+		ctx.RegisterBean(new(RedisCluster))
+		ctx.AutoWireBeans()
+
+		var rcs []*RedisCluster
+		ctx.CollectBeans(&rcs, "*")
+
+		assert.Equal(t, len(rcs), 2)
+	})
+
 	ctx := SpringCore.NewDefaultSpringContext()
 	ctx.SetProperty("redis.endpoints", "redis://127.0.0.1:6379")
 

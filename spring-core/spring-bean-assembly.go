@@ -221,43 +221,93 @@ func (assembly *defaultBeanAssembly) collectBeans(v reflect.Value, tag Collectio
 	}
 }
 
+// findBeanFromCache 返回找到的符合条件的 Bean 在数组中的索引，找不到返回 -1。
+func (assembly *defaultBeanAssembly) findBeanFromCache(beans []*BeanDefinition, tag SingletonTag, et reflect.Type) int {
+
+	// 保存符合条件的 Bean 的索引
+	var found []int
+
+	// 查找符合条件的单例 Bean
+	for i, d := range beans {
+		if d.Match(tag.TypeName, tag.BeanName) {
+			found = append(found, i)
+		}
+	}
+
+	// 如果找到多个则 panic
+	if len(found) > 1 {
+		msg := fmt.Sprintf("found %d beans, bean: \"%s\" type: %s [", len(found), tag, et)
+		for _, i := range found {
+			msg += "( " + beans[i].Description() + " ), "
+		}
+		msg = msg[:len(msg)-2] + "]"
+		panic(errors.New(msg))
+	}
+
+	// 如果必须找到符合条件的 Bean 则在没有找到时 panic
+	if len(found) == 0 && !tag.Nullable {
+		panic(fmt.Errorf("can't find bean, bean: \"%s\" type: %s", tag, et))
+	}
+
+	if len(found) > 0 {
+		i := found[0]
+		assembly.wireBeanDefinition(beans[i], false)
+		return i
+	}
+	return -1
+}
+
 // collectAndSortBeans 收集符合条件的 Bean，并且根据指定的顺序对结果进行排序
 func (assembly *defaultBeanAssembly) collectAndSortBeans(t reflect.Type, et reflect.Type, tag CollectionTag) reflect.Value {
-	result := reflect.MakeSlice(t, 0, len(tag.Items))
+
+	foundAny := false
+	any := reflect.MakeSlice(t, 0, len(tag.Items))
+	afterAny := reflect.MakeSlice(t, 0, len(tag.Items))
+	beforeAny := reflect.MakeSlice(t, 0, len(tag.Items))
 
 	// 只在单例类型中查找，数组类型的元素是否排序无法判断
 	cache := assembly.springCtx.getTypeCacheItem(et)
+
+	var beans []*BeanDefinition
+	beans = append(beans, cache.beans...)
+
 	for _, item := range tag.Items {
 
-		// 查找符合条件的单例 Bean
-		var found []*BeanDefinition
-		for _, d := range cache.beans {
-			if d.Match(item.TypeName, item.BeanName) {
-				found = append(found, d)
+		// 是否遇到了"无序"标记
+		if item.BeanName == "*" {
+			if foundAny {
+				panic(errors.New("more than one * in collection " + tag.String()))
 			}
+			foundAny = true
+			continue
 		}
 
-		// 如果找到多个则 panic
-		if len(found) > 1 {
-			msg := fmt.Sprintf("found %d beans, bean: \"%s\" type: %s [", len(found), item, et)
-			for _, b := range found {
-				msg += "( " + b.Description() + " ), "
+		if i := assembly.findBeanFromCache(beans, item, et); i >= 0 {
+			v := beans[i].Value()
+			beans = append(beans[:i], beans[i+1:]...)
+			if foundAny {
+				afterAny = reflect.Append(afterAny, v)
+			} else {
+				beforeAny = reflect.Append(beforeAny, v)
 			}
-			msg = msg[:len(msg)-2] + "]"
-			panic(errors.New(msg))
-		}
-
-		// 如果必须找到符合条件的 Bean 则在没有找到时 panic
-		if len(found) == 0 && !item.Nullable {
-			panic(fmt.Errorf("can't find bean, bean: \"%s\" type: %s", item, et))
-		}
-
-		if len(found) > 0 {
-			d := found[0]
-			assembly.wireBeanDefinition(d, false)
-			result = reflect.Append(result, d.Value())
 		}
 	}
+
+	if foundAny {
+		for _, d := range beans {
+			any = reflect.Append(any, d.Value())
+		}
+	}
+
+	n := beforeAny.Len() + any.Len() + afterAny.Len()
+	result := reflect.MakeSlice(t, n, n)
+
+	i := 0
+	reflect.Copy(result.Slice(i, i+beforeAny.Len()), beforeAny)
+	i += beforeAny.Len()
+	reflect.Copy(result.Slice(i, i+any.Len()), any)
+	i += any.Len()
+	reflect.Copy(result.Slice(i, i+afterAny.Len()), afterAny)
 
 	return result // TODO 当收集接口类型的 Bean 时对于没有显式导出接口的 Bean 是否也需要收集？
 }
