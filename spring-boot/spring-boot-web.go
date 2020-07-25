@@ -671,3 +671,25 @@ func (f *ConditionalWebFilter) ConditionOnProfile(profile string) *ConditionalWe
 func (f *ConditionalWebFilter) CheckCondition(ctx SpringCore.SpringContext) bool {
 	return f.cond.Matches(ctx)
 }
+
+/////////////////// Web Filter Register /////////////////////
+
+// RegisterFilter 注册 Web Filter 对象 Bean，不指定名称，重复注册会 panic。
+func RegisterFilter(bean interface{}) *SpringCore.BeanDefinition {
+	return ctx.RegisterBean(bean).Export((*SpringWeb.Filter)(nil))
+}
+
+// RegisterNameFilter 注册 Web Filter 对象 Bean，需指定名称，重复注册会 panic。
+func RegisterNameFilter(name string, bean interface{}) *SpringCore.BeanDefinition {
+	return ctx.RegisterNameBean(name, bean).Export((*SpringWeb.Filter)(nil))
+}
+
+// RegisterFilterFn 注册 Web Filter 构造函数 Bean，不指定名称，重复注册会 panic。
+func RegisterFilterFn(fn interface{}, tags ...string) *SpringCore.BeanDefinition {
+	return ctx.RegisterBeanFn(fn, tags...).Export((*SpringWeb.Filter)(nil))
+}
+
+// RegisterNameFilterFn 注册 Web Filter 构造函数 Bean，需指定名称，重复注册会 panic。
+func RegisterNameFilterFn(name string, fn interface{}, tags ...string) *SpringCore.BeanDefinition {
+	return ctx.RegisterNameBeanFn(name, fn, tags...).Export((*SpringWeb.Filter)(nil))
+}

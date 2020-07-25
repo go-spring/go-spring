@@ -23,6 +23,8 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"os"
+	"path"
 	"testing"
 	"time"
 
@@ -33,6 +35,7 @@ import (
 	"github.com/go-spring/go-spring-parent/spring-utils"
 	"github.com/go-spring/go-spring-web/spring-echo"
 	"github.com/go-spring/go-spring-web/spring-web"
+	"github.com/go-spring/go-spring-web/static-filter"
 	"github.com/go-spring/go-spring/spring-boot"
 	"github.com/go-spring/go-spring/spring-core"
 	//_ "github.com/go-spring/go-spring/starter-go-mongo"
@@ -161,8 +164,11 @@ func init() {
 	SpringBoot.RegisterBeanFn(func() *SpringWeb.WebServer {
 		return SpringWeb.NewWebServer().AddFilter(
 			SpringBoot.FilterBean("server"),
+			SpringBoot.FilterBean((*StaticFilter.StaticFilter)(nil)),
 		)
 	})
+
+	SpringBoot.RegisterFilterFn(StaticFilter.New, "${static.root:=/}", "${static.url-prefix:=/static}")
 }
 
 func TestRunApplication(t *testing.T) {
@@ -177,6 +183,9 @@ func TestRunApplication(t *testing.T) {
 	SpringBoot.SetProperty("key_auth", false)
 
 	SpringBoot.SetProperty("db.url", "root:root@/information_schema?charset=utf8&parseTime=True&loc=Local")
+
+	dir, _ := os.Getwd()
+	SpringBoot.SetProperty("static.root", path.Dir(dir))
 
 	configLocations := []string{
 		"testdata/config/", "k8s:testdata/config/config-map.yaml",
@@ -418,7 +427,7 @@ func Process() {
 			panic(e)
 		} else {
 			SpringLogger.Infof("resp code=%d body=%s(echo add a \\n on text end)", resp.StatusCode, string(body))
-			if string(body) != "{\"Code\":0,\"Msg\":\"SUCCESS\",\"Err\":\"\",\"Data\":{\"echo\":\"echo echo\"}}\n" {
+			if string(body) != "{\"code\":200,\"msg\":\"SUCCESS\",\"data\":{\"echo\":\"echo echo\"}}\n" {
 				panic(errors.New("error"))
 			}
 		}
@@ -436,10 +445,20 @@ func Process() {
 				panic(e0)
 			} else {
 				SpringLogger.Infof("resp code=%d body=%s", resp.StatusCode, string(body))
-				if string(body) != "ok" {
+				if string(body) != "func() return ok" {
 					panic(errors.New("error"))
 				}
 			}
+		}
+	}
+
+	if resp, err := http.Get("http://127.0.0.1:8080/static/go.mod"); err != nil {
+		panic(err)
+	} else {
+		if body, e := ioutil.ReadAll(resp.Body); e != nil {
+			panic(e)
+		} else {
+			SpringLogger.Infof("resp code=%d body=%s", resp.StatusCode, string(body))
 		}
 	}
 }
