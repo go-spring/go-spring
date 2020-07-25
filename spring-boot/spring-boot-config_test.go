@@ -30,6 +30,8 @@ func startApplication(cfgLocation ...string) *application {
 	app := newApplication(&defaultApplicationContext{
 		SpringContext: SpringCore.NewDefaultSpringContext(),
 	}, cfgLocation...)
+	app.appCtx.SetProperty("application-event.collection", "[]?")
+	app.appCtx.SetProperty("command-line-runner.collection", "[]?")
 	app.Start()
 	return app
 }

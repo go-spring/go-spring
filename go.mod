@@ -15,4 +15,6 @@ require (
 	github.com/spf13/cast v1.3.1
 	github.com/spf13/viper v1.6.3
 	go.mongodb.org/mongo-driver v1.3.5
+	google.golang.org/grpc v1.30.0
+	honnef.co/go/tools v0.0.0-20190523083050-ea95bdfd59fc // indirect
 )
