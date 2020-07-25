@@ -20,6 +20,8 @@ import (
 	"fmt"
 	"net"
 	"reflect"
+	"runtime"
+	"strings"
 
 	"github.com/go-spring/go-spring-parent/spring-logger"
 	"github.com/go-spring/go-spring-parent/spring-utils"
@@ -57,10 +59,27 @@ func (starter *GRpcServerStarter) OnStartApplication(ctx SpringBoot.ApplicationC
 	lis, err := net.Listen("tcp", addr)
 	SpringUtils.Panic(err).When(err != nil)
 
+	srvMap := make(map[string]reflect.Value)
+
 	v := reflect.ValueOf(starter.server)
 	for fn, server := range SpringBoot.GRpcServerMap {
 		if server.CheckCondition(ctx) {
-			fn.Call([]reflect.Value{v, reflect.ValueOf(server.Server())})
+			ctx.WireBean(server.Server()) // 对 gRPC 服务对象进行注入
+			srv := reflect.ValueOf(server.Server())
+			fn.Call([]reflect.Value{v, srv}) // 调用 gRPC 的服务注册函数
+			tName := strings.TrimSuffix(fn.Type().In(1).String(), "Server")
+			srvMap[tName] = srv
+		}
+	}
+
+	for service, info := range starter.server.GetServiceInfo() {
+		srv := srvMap[service]
+		for _, method := range info.Methods {
+			m, _ := srv.Type().MethodByName(method.Name)
+			fnPtr := m.Func.Pointer()
+			fnInfo := runtime.FuncForPC(fnPtr)
+			file, line := fnInfo.FileLine(fnPtr)
+			SpringLogger.Infof("/%s/%s %s:%d", service, method.Name, file, line)
 		}
 	}
 
