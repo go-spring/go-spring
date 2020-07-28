@@ -18,9 +18,7 @@ package WebStarter
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"reflect"
 
 	"github.com/go-spring/go-spring-parent/spring-utils"
 	"github.com/go-spring/go-spring-web/spring-web"
@@ -121,21 +119,7 @@ func (starter *WebServerStarter) OnStartApplication(ctx SpringBoot.ApplicationCo
 			filters := mapping.Filters()
 			filters = resolveFilters(filters)
 
-			var mapper *SpringWeb.Mapper
-			switch handler := mapping.Handler().(type) {
-			case SpringWeb.Handler:
-				mapper = SpringWeb.NewMapper(mapping.Method(), mapping.Path(), handler, filters)
-			case *SpringBoot.MethodHandler:
-				receiver := reflect.New(handler.Receiver)
-				if !ctx.GetBean(receiver.Interface()) {
-					panic(errors.New("can't find bean " + handler.Receiver.String()))
-				}
-				h := SpringWeb.METHOD(receiver.Elem().Interface(), handler.MethodName)
-				mapper = SpringWeb.NewMapper(mapping.Method(), mapping.Path(), h, filters)
-			default:
-				panic(errors.New("error handler type " + reflect.TypeOf(handler).String()))
-			}
-
+			mapper := SpringWeb.NewMapper(mapping.Method(), mapping.Path(), mapping.Handler(), filters)
 			c.AddMapper(mapper.WithSwagger(mapping.Swagger()))
 		}
 	}

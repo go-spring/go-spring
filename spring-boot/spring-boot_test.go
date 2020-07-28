@@ -96,16 +96,6 @@ func init() {
 		}))).ConditionOnPropertyValue("key_auth", true),
 	)
 
-	// 接受类型方法，也可以不使用 SpringBoot.Filter 封装
-	r.GET("/method", (*MyController).Method, SpringEcho.Filter(
-		func(next echo.HandlerFunc) echo.HandlerFunc {
-			return func(echoCtx echo.Context) error {
-				webCtx := SpringEcho.WebContext(echoCtx)
-				webCtx.LogInfo("call method")
-				return nil
-			}
-		}))
-
 	SpringBoot.RegisterBean(new(MyController)).Init(func(c *MyController) {
 
 		// 接受对象方法
@@ -273,15 +263,11 @@ type EchoResponse struct {
 	Echo string `json:"echo"`
 }
 
-func (c *MyController) Echo(request EchoRequest) *EchoResponse {
+func (c *MyController) Echo(ctx context.Context, request *EchoRequest) *EchoResponse {
 	if c.MongoClient != nil {
 		fmt.Println(c.MongoClient.Database("db0").Name())
 	}
 	return &EchoResponse{"echo " + request.Str}
-}
-
-func (c *MyController) Method(ctx SpringWeb.WebContext) {
-	ctx.String(http.StatusOK, "method() return ok")
 }
 
 func (c *MyController) OK(ctx SpringWeb.WebContext) {
