@@ -79,7 +79,7 @@ func (starter *GRpcServerStarter) OnStartApplication(ctx SpringBoot.ApplicationC
 			fnPtr := m.Func.Pointer()
 			fnInfo := runtime.FuncForPC(fnPtr)
 			file, line := fnInfo.FileLine(fnPtr)
-			SpringLogger.Infof("/%s/%s %s:%d", service, method.Name, file, line)
+			SpringLogger.Infof("/%s/%s %s:%d ", service, method.Name, file, line)
 		}
 	}
 

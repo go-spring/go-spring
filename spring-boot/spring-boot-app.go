@@ -126,7 +126,7 @@ func (app *application) printBanner() {
 	}
 }
 
-// loadCmdArgs 加载命令行参数，以短线定义的参数才有效。
+// loadCmdArgs 加载命令行参数，形如 -name value 的参数才有效。
 func (_ *application) loadCmdArgs() SpringCore.Properties {
 	SpringLogger.Debugf("load cmd args")
 	p := SpringCore.NewDefaultProperties()

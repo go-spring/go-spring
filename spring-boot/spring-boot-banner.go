@@ -35,9 +35,33 @@ const defaultBanner = `
 (_______)(_______)       \_______)|/       |/   \__/\_______/|/    )_)(_______)
 `
 
+// version 版本信息
+const version = `go-spring@v1.0.4    http://go-spring.com/`
+
 // printBanner 打印 banner 到控制台
 func printBanner(banner string) {
+
+	// 确保 banner 前面有空行
+	if banner[0] != '\n' {
+		fmt.Println()
+	}
+
+	maxLength := 0
 	for _, s := range strings.Split(banner, "\n") {
 		fmt.Println(color.Cyan(s))
+		if len(s) > maxLength {
+			maxLength = len(s)
+		}
 	}
+
+	// 确保 banner 后面有空行
+	if banner[len(banner)-1] != '\n' {
+		fmt.Println()
+	}
+
+	padding := make([]byte, (maxLength-len(version))/2)
+	for i := range padding {
+		padding[i] = ' '
+	}
+	fmt.Println(string(padding) + version + "\n")
 }
