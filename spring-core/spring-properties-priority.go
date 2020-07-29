@@ -95,9 +95,9 @@ func (p *priorityProperties) SetProperty(key string, value interface{}) {
 }
 
 // GetDefaultProperty 返回属性值，如果没有找到则使用指定的默认值，属性名称统一转成小写。
-func (p *priorityProperties) GetDefaultProperty(key string, def interface{}) (interface{}, bool) {
-	if v, ok := p.curr.GetDefaultProperty(key, def); !ok {
-		return p.next.GetDefaultProperty(key, def)
+func (p *priorityProperties) GetDefaultProperty(key string, defaultValue interface{}) (interface{}, bool) {
+	if v, ok := p.curr.GetDefaultProperty(key, defaultValue); !ok {
+		return p.next.GetDefaultProperty(key, defaultValue)
 	} else {
 		return v, ok
 	}
