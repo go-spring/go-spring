@@ -168,6 +168,25 @@ func (p *defaultProperties) GetPrefixProperties(prefix string) map[string]interf
 	return result
 }
 
+// GetGroupedProperties 返回指定前缀的属性值集合并进行分组，属性名称统一转成小写。
+func (p *defaultProperties) GetGroupedProperties(prefix string) map[string]map[string]interface{} {
+	prefix = strings.ToLower(prefix) + "."
+	result := make(map[string]map[string]interface{})
+	for k, v := range p.properties {
+		if strings.HasPrefix(k, prefix) { // 形如 PREFIX.GROUP.PROPERTY
+			ss := strings.SplitN(k[len(prefix):], ".", 2)
+			group := ss[0]
+			m, ok := result[group]
+			if !ok {
+				m = make(map[string]interface{})
+				result[group] = m
+			}
+			m[k] = v
+		}
+	}
+	return result
+}
+
 // GetProperties 返回所有的属性值，属性名称统一转成小写。
 func (p *defaultProperties) GetProperties() map[string]interface{} {
 	return p.properties

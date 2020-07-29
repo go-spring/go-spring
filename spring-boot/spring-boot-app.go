@@ -82,6 +82,11 @@ func (app *application) Start() {
 	// 准备上下文环境
 	app.prepare()
 
+	// 执行所有 app.prepare() 之后执行的扩展点
+	for _, fn := range listOfAfterPrepare {
+		fn(app.appCtx)
+	}
+
 	// 注册 ApplicationContext
 	app.appCtx.RegisterBean(app)
 	app.appCtx.RegisterBean(app.appCtx)

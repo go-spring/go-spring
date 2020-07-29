@@ -22,7 +22,6 @@ import (
 
 	"github.com/go-spring/go-spring-parent/spring-utils"
 	"github.com/go-spring/go-spring/spring-core"
-	"google.golang.org/grpc"
 )
 
 ///////////////////// gRPC Server //////////////////////
@@ -145,18 +144,6 @@ func (s *GRpcServer) CheckCondition(ctx SpringCore.SpringContext) bool {
 }
 
 ///////////////////// gRPC Client //////////////////////
-
-// GRpcEndpointConfig gRPC 服务端点配置
-type GRpcEndpointConfig struct {
-	Address string `value:"${address:=127.0.0.1:9090}"` // gRPC 服务器地址
-}
-
-// RegisterGRpcEndpoint 注册 gRPC 服务端点，endpoint 是服务端点的名称
-func RegisterGRpcEndpoint(endpoint string) *SpringCore.BeanDefinition {
-	return RegisterNameBeanFn(endpoint, func(config GRpcEndpointConfig) (grpc.ClientConnInterface, error) {
-		return grpc.Dial(config.Address, grpc.WithInsecure())
-	}, fmt.Sprintf("${grpc.endpoint.%s}", endpoint))
-}
 
 // RegisterGRpcClient 注册 gRPC 服务客户端，fn 是 gRPC 自动生成的客户端构造函数
 func RegisterGRpcClient(fn interface{}, endpoint string) *SpringCore.BeanDefinition {

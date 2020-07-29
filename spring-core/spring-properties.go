@@ -66,6 +66,9 @@ type Properties interface {
 	// GetPrefixProperties 返回指定前缀的属性值集合，属性名称统一转成小写。
 	GetPrefixProperties(prefix string) map[string]interface{}
 
+	// GetGroupedProperties 返回指定前缀的属性值集合并进行分组，属性名称统一转成小写。
+	GetGroupedProperties(prefix string) map[string]map[string]interface{}
+
 	// GetProperties 返回所有的属性值，属性名称统一转成小写。
 	GetProperties() map[string]interface{}
 

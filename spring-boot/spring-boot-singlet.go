@@ -67,6 +67,17 @@ func Exit() {
 	BootStarter.Exit()
 }
 
+// AfterPrepareFunc app.prepare() 执行完成之后的扩展点
+type AfterPrepareFunc func(ctx SpringCore.SpringContext)
+
+// afterPrepare app.prepare() 执行完成之后的扩展点的集合
+var listOfAfterPrepare []AfterPrepareFunc
+
+// AfterPrepare 注册一个 app.prepare() 执行完成之后的扩展点
+func AfterPrepare(fn AfterPrepareFunc) {
+	listOfAfterPrepare = append(listOfAfterPrepare, fn)
+}
+
 //////////////// SpringContext ////////////////////////
 
 // GetProfile 返回运行环境
