@@ -113,7 +113,7 @@ func main() {
 {"code":200,"msg":"SUCCESS","data":"/Users/didi/go"}
 ```
 
-更多示例： https://github.com/go-spring/go-spring-boot-demo
+更多示例： https://github.com/go-spring/go-spring/examples
 
 ### 项目成员
 

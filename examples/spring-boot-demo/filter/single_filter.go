@@ -14,4 +14,29 @@
  * limitations under the License.
  */
 
-package SpringBoot
+package filter
+
+import (
+	"fmt"
+
+	"github.com/go-spring/go-spring-web/spring-web"
+	"github.com/go-spring/go-spring/spring-boot"
+)
+
+func init() {
+	SpringBoot.RegisterBean(new(SingleBeanFilter))
+}
+
+type SingleBeanFilter struct {
+	_ SpringWeb.Filter `export:""`
+
+	DefaultValue string `value:"${default-value:=default}"`
+}
+
+func (f *SingleBeanFilter) Invoke(ctx SpringWeb.WebContext, chain SpringWeb.FilterChain) {
+	if f.DefaultValue != "app-test" {
+		panic(fmt.Errorf("${default-value} expect 'app-test' but '%s'", f.DefaultValue))
+	}
+	ctx.LogInfo("::SingleBeanFilter")
+	chain.Next(ctx)
+}
