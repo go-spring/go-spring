@@ -18,6 +18,7 @@ package SpringBoot
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/go-spring/go-spring-web/spring-web"
@@ -26,8 +27,9 @@ import (
 )
 
 var g = &struct {
-	config *ApplicationConfig
-	ctx    SpringCore.SpringContext
+	running bool
+	config  *ApplicationConfig
+	ctx     SpringCore.SpringContext
 }{
 	config: defaultApplicationConfig(),
 	ctx:    SpringCore.NewDefaultSpringContext(),
@@ -53,6 +55,10 @@ func NewApplication() *AppBuilder {
 
 // Run 快速启动 SpringBoot 应用
 func (cfg *AppBuilder) Run(configLocation ...string) {
+
+	defer func() { g.running = false }()
+	g.running = true
+
 	BootStarter.Run(newApplication(&defaultApplicationContext{
 		SpringContext: g.ctx,
 	}, *g.config, configLocation...))
@@ -69,6 +75,13 @@ func Exit() {
 }
 
 //////////////// SpringContext ////////////////////////
+
+func checkRunning() {
+	if g.running {
+		// 这条限制的原因是为了让代码更好看，例如在 AfterPrepare 中注册 Bean
+		panic(errors.New("use SpringContext when you can capture it"))
+	}
+}
 
 // GetProfile 返回运行环境
 func GetProfile() string {
@@ -92,21 +105,25 @@ func SetAllAccess(allAccess bool) {
 
 // RegisterBean 注册单例 Bean，不指定名称，重复注册会 panic。
 func RegisterBean(bean interface{}) *SpringCore.BeanDefinition {
+	checkRunning()
 	return g.ctx.RegisterBean(bean)
 }
 
 // RegisterNameBean 注册单例 Bean，需指定名称，重复注册会 panic。
 func RegisterNameBean(name string, bean interface{}) *SpringCore.BeanDefinition {
+	checkRunning()
 	return g.ctx.RegisterNameBean(name, bean)
 }
 
 // RegisterBeanFn 注册单例构造函数 Bean，不指定名称，重复注册会 panic。
 func RegisterBeanFn(fn interface{}, tags ...string) *SpringCore.BeanDefinition {
+	checkRunning()
 	return g.ctx.RegisterBeanFn(fn, tags...)
 }
 
 // RegisterNameBeanFn 注册单例构造函数 Bean，需指定名称，重复注册会 panic。
 func RegisterNameBeanFn(name string, fn interface{}, tags ...string) *SpringCore.BeanDefinition {
+	checkRunning()
 	return g.ctx.RegisterNameBeanFn(name, fn, tags...)
 }
 
@@ -114,6 +131,7 @@ func RegisterNameBeanFn(name string, fn interface{}, tags ...string) *SpringCore
 // 必须给定方法名而不能通过遍历方法列表比较方法类型的方式获得函数名，因为不同方法的类型可能相同。
 // 而且 interface 的方法类型不带 receiver 而成员方法的类型带有 receiver，两者类型也不好匹配。
 func RegisterMethodBean(selector SpringCore.BeanSelector, method string, tags ...string) *SpringCore.BeanDefinition {
+	checkRunning()
 	return g.ctx.RegisterMethodBean(selector, method, tags...)
 }
 
@@ -121,18 +139,21 @@ func RegisterMethodBean(selector SpringCore.BeanSelector, method string, tags ..
 // 必须给定方法名而不能通过遍历方法列表比较方法类型的方式获得函数名，因为不同方法的类型可能相同。
 // 而且 interface 的方法类型不带 receiver 而成员方法的类型带有 receiver，两者类型也不好匹配。
 func RegisterNameMethodBean(name string, selector SpringCore.BeanSelector, method string, tags ...string) *SpringCore.BeanDefinition {
+	checkRunning()
 	return g.ctx.RegisterNameMethodBean(name, selector, method, tags...)
 }
 
 // @Incubate 注册成员方法单例 Bean，不指定名称，重复注册会 panic。
 // method 形如 ServerInterface.Consumer (接口) 或 (*Server).Consumer (类型)。
 func RegisterMethodBeanFn(method interface{}, tags ...string) *SpringCore.BeanDefinition {
+	checkRunning()
 	return g.ctx.RegisterMethodBeanFn(method, tags...)
 }
 
 // @Incubate 注册成员方法单例 Bean，需指定名称，重复注册会 panic。
 // method 形如 ServerInterface.Consumer (接口) 或 (*Server).Consumer (类型)。
 func RegisterNameMethodBeanFn(name string, method interface{}, tags ...string) *SpringCore.BeanDefinition {
+	checkRunning()
 	return g.ctx.RegisterNameMethodBeanFn(name, method, tags...)
 }
 
@@ -216,6 +237,7 @@ func GetDefaultProperty(key string, def interface{}) (interface{}, bool) {
 
 // SetProperty 设置属性值，属性名称统一转成小写。
 func SetProperty(key string, value interface{}) {
+	checkRunning()
 	g.ctx.SetProperty(key, value)
 }
 
@@ -270,20 +292,24 @@ func Go(fn GoFuncWithContext) {
 
 // RegisterFilter 注册 Web Filter 对象 Bean，不指定名称，重复注册会 panic。
 func RegisterFilter(bean interface{}) *SpringCore.BeanDefinition {
+	checkRunning()
 	return g.ctx.RegisterBean(bean).Export((*SpringWeb.Filter)(nil))
 }
 
 // RegisterNameFilter 注册 Web Filter 对象 Bean，需指定名称，重复注册会 panic。
 func RegisterNameFilter(name string, bean interface{}) *SpringCore.BeanDefinition {
+	checkRunning()
 	return g.ctx.RegisterNameBean(name, bean).Export((*SpringWeb.Filter)(nil))
 }
 
 // RegisterFilterFn 注册 Web Filter 构造函数 Bean，不指定名称，重复注册会 panic。
 func RegisterFilterFn(fn interface{}, tags ...string) *SpringCore.BeanDefinition {
+	checkRunning()
 	return g.ctx.RegisterBeanFn(fn, tags...).Export((*SpringWeb.Filter)(nil))
 }
 
 // RegisterNameFilterFn 注册 Web Filter 构造函数 Bean，需指定名称，重复注册会 panic。
 func RegisterNameFilterFn(name string, fn interface{}, tags ...string) *SpringCore.BeanDefinition {
+	checkRunning()
 	return g.ctx.RegisterNameBeanFn(name, fn, tags...).Export((*SpringWeb.Filter)(nil))
 }

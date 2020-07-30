@@ -29,7 +29,8 @@ const GRPC_ENDPOINT_PREFIX = "grpc.endpoint"
 func init() {
 	SpringBoot.AfterPrepare(func(ctx SpringCore.SpringContext) {
 		for endpoint := range ctx.GetGroupedProperties(GRPC_ENDPOINT_PREFIX) {
-			RegisterGRpcEndpoint(endpoint)
+			tag := fmt.Sprintf("${%s.%s}", GRPC_ENDPOINT_PREFIX, endpoint)
+			ctx.RegisterNameBeanFn(endpoint, newClientConnInterface, tag)
 		}
 	})
 }
@@ -37,12 +38,6 @@ func init() {
 // GRpcEndpointConfig gRPC 服务端点配置
 type GRpcEndpointConfig struct {
 	Address string `value:"${address:=127.0.0.1:9090}"` // gRPC 服务器地址
-}
-
-// RegisterGRpcEndpoint 注册 gRPC 服务端点，endpoint 是服务端点的名称
-func RegisterGRpcEndpoint(endpoint string) *SpringCore.BeanDefinition {
-	tag := fmt.Sprintf("${%s.%s}", GRPC_ENDPOINT_PREFIX, endpoint)
-	return SpringBoot.RegisterNameBeanFn(endpoint, newClientConnInterface, tag)
 }
 
 // newClientConnInterface 根据配置创建 grpc.ClientConnInterface 对象
