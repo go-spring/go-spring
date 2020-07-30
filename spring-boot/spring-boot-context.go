@@ -20,7 +20,10 @@ import (
 	"github.com/go-spring/go-spring/spring-core"
 )
 
-// ApplicationContext Application 上下文
+// ApplicationContext Application 上下文，这个接口现在只是继承
+// 了 SpringContext 并没有添加新的功能，为什么不去掉它呢？第一个肯
+// 定历史原因，另外不能排除未来可能添加新功能，然后从领域模型角度考虑
+// 使用 ApplicationContext 对应 ApplicationEvent 也更为合理。
 type ApplicationContext interface {
 	SpringCore.SpringContext
 }

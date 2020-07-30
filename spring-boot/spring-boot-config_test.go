@@ -29,7 +29,7 @@ func startApplication(cfgLocation ...string) *application {
 	// SpringLogger.SetLogger(&SpringLogger.Console{})
 	app := newApplication(&defaultApplicationContext{
 		SpringContext: SpringCore.NewDefaultSpringContext(),
-	}, cfgLocation...)
+	}, *defaultApplicationConfig(), cfgLocation...)
 	app.appCtx.SetProperty("application-event.collection", "[]?")
 	app.appCtx.SetProperty("command-line-runner.collection", "[]?")
 	app.Start()

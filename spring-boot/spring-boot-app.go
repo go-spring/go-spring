@@ -43,6 +43,25 @@ var (
 	_ = flag.String(SpringProfile, "", "设置运行环境")
 )
 
+// AfterPrepareFunc 定义 app.prepare() 执行完成之后的扩展点
+type AfterPrepareFunc func(ctx SpringCore.SpringContext)
+
+// ApplicationConfig 应用程序的配置
+type ApplicationConfig struct {
+
+	// 期望从系统环境变量中获取到的属性，支持正则表达式
+	expectSysProperties []string
+
+	// app.prepare() 执行完成之后的扩展点的集合
+	listOfAfterPrepare []AfterPrepareFunc
+}
+
+func defaultApplicationConfig() *ApplicationConfig {
+	return &ApplicationConfig{
+		expectSysProperties: []string{`.*`},
+	}
+}
+
 // CommandLineRunner 命令行启动器接口
 type CommandLineRunner interface {
 	Run(ctx ApplicationContext)
@@ -57,17 +76,23 @@ type ApplicationEvent interface {
 // application SpringBoot 应用
 type application struct {
 	appCtx      ApplicationContext  // 应用上下文
+	config      ApplicationConfig   // 应用程序配置
 	cfgLocation []string            // 配置文件目录
 	Events      []ApplicationEvent  `autowire:"${application-event.collection:=[]?}"`
 	Runners     []CommandLineRunner `autowire:"${command-line-runner.collection:=[]?}"`
 }
 
 // newApplication application 的构造函数
-func newApplication(appCtx ApplicationContext, cfgLocation ...string) *application {
-	if len(cfgLocation) == 0 { // 没有的话用默认的配置文件路径
+func newApplication(appCtx ApplicationContext, config ApplicationConfig,
+	cfgLocation ...string) *application {
+
+	// 使用默认的配置文件路径
+	if len(cfgLocation) == 0 {
 		cfgLocation = append(cfgLocation, DefaultConfigLocation)
 	}
+
 	return &application{
+		config:      config,
 		appCtx:      appCtx,
 		cfgLocation: cfgLocation,
 	}
@@ -83,7 +108,7 @@ func (app *application) Start() {
 	app.prepare()
 
 	// 执行所有 app.prepare() 之后执行的扩展点
-	for _, fn := range listOfAfterPrepare {
+	for _, fn := range app.config.listOfAfterPrepare {
 		fn(app.appCtx)
 	}
 
@@ -150,10 +175,10 @@ func (_ *application) loadCmdArgs() SpringCore.Properties {
 }
 
 // loadSystemEnv 加载系统环境变量，用户可以自定义有效环境变量的正则匹配
-func (_ *application) loadSystemEnv() SpringCore.Properties {
+func (app *application) loadSystemEnv() SpringCore.Properties {
 
 	var rex []*regexp.Regexp
-	for _, v := range expectSysProperties {
+	for _, v := range app.config.expectSysProperties {
 		if exp, err := regexp.Compile(v); err != nil {
 			panic(err)
 		} else {
