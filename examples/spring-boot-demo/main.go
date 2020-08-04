@@ -26,9 +26,7 @@ import (
 	_ "github.com/go-spring/go-spring/examples/spring-boot-demo/server"
 	"github.com/go-spring/go-spring/spring-boot"
 	_ "github.com/go-spring/go-spring/starter-go-redis"
-	_ "github.com/go-spring/go-spring/starter-go-redis-mock"
 	_ "github.com/go-spring/go-spring/starter-mysql-gorm"
-	_ "github.com/go-spring/go-spring/starter-mysql-mock"
 )
 
 func init() {

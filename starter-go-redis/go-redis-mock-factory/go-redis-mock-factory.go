@@ -14,11 +14,18 @@
  * limitations under the License.
  */
 
-package StarterElasticsearch
+package GoRedisMockFactory
 
-// ElasticsearchConfig elasticsearch 配置
-type ElasticsearchConfig struct {
-	Addresses string `value:"${elasticsearch.addresses:=http://localhost:9200}"`
-	Username  string `value:"${elasticsearch.username:=}"`
-	Password  string `value:"${elasticsearch.password:=}"`
+import (
+	"github.com/elliotchance/redismock"
+	"github.com/go-redis/redis"
+)
+
+// MockRedisClient 创建 Redis Mock 客户端
+func MockRedisClient(fn func(*redismock.ClientMock)) func() redis.Cmdable {
+	return func() redis.Cmdable {
+		mock := redismock.NewMock()
+		fn(mock)
+		return mock
+	}
 }

@@ -14,15 +14,23 @@
  * limitations under the License.
  */
 
-package StarterGoElasticsearch
+package GoSqlMockFactory
 
 import (
-	"github.com/elastic/go-elasticsearch/v8"
-	"github.com/go-spring/go-spring/spring-boot"
-	"github.com/go-spring/go-spring/starter-go-elasticsearch/go-elasticsearch-factory"
+	"database/sql"
+
+	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/go-spring/go-spring-parent/spring-logger"
 )
 
-func init() {
-	SpringBoot.RegisterNameBeanFn("std-go-elasticsearch-client", GoElasticsearchFactory.NewClient).
-		ConditionOnMissingBean((*elasticsearch.Client)(nil))
+// MockDB 创建 Mock DB
+func MockDB(fn func(sqlmock.Sqlmock)) func() (*sql.DB, error) {
+	return func() (*sql.DB, error) {
+		SpringLogger.Info("create sqlmock db")
+		db, mock, err := sqlmock.New()
+		if err == nil {
+			fn(mock)
+		}
+		return db, err
+	}
 }

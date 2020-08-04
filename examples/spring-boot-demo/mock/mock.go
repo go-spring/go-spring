@@ -23,18 +23,20 @@ import (
 	"github.com/elliotchance/redismock"
 	"github.com/go-redis/redis"
 	"github.com/go-spring/go-spring/spring-boot"
+	"github.com/go-spring/go-spring/starter-db/go-sqlmock-factory"
+	"github.com/go-spring/go-spring/starter-go-redis/go-redis-mock-factory"
 )
 
 func init() {
 
-	SpringBoot.RegisterBean(func(mock sqlmock.Sqlmock) {
+	SpringBoot.RegisterBeanFn(GoSqlMockFactory.MockDB(func(mock sqlmock.Sqlmock) {
 		mock.ExpectQuery("SELECT ENGINE FROM `ENGINES`").WillReturnRows(
 			mock.NewRows([]string{"ENGINE"}).AddRow("sql-mock"),
 		)
-	})
+	}))
 
-	SpringBoot.RegisterBean(func(mock *redismock.ClientMock) {
+	SpringBoot.RegisterBeanFn(GoRedisMockFactory.MockRedisClient(func(mock *redismock.ClientMock) {
 		mock.On("Set", "key", "ok", time.Second*10).Return(redis.NewStatusResult("", nil))
 		mock.On("Get", "key").Return(redis.NewStringResult("ok", nil))
-	})
+	}))
 }
