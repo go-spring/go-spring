@@ -16,7 +16,7 @@
 
 package StarterMongo
 
-// MongoConfig mongo 配置
-type MongoConfig struct {
+// Config MongoDB 配置
+type Config struct {
 	Url string `value:"${mongo.url:=mongodb://localhost}"`
 }

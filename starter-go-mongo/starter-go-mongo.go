@@ -23,7 +23,7 @@ import (
 )
 
 func init() {
-	SpringBoot.RegisterNameBeanFn("std-go-mongo-client", GoMongoFactory.NewClient).
+	SpringBoot.RegisterNameBeanFn("go-mongo-client", GoMongoFactory.NewClient).
 		ConditionOnMissingBean((*mongo.Client)(nil)).
 		Destroy(GoMongoFactory.CloseClient)
 }

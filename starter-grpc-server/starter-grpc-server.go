@@ -17,79 +17,10 @@
 package StarterGrpcServer
 
 import (
-	"fmt"
-	"net"
-	"reflect"
-	"runtime"
-	"strings"
-
-	"github.com/go-spring/go-spring-parent/spring-logger"
-	"github.com/go-spring/go-spring-parent/spring-utils"
 	"github.com/go-spring/go-spring/spring-boot"
-	"google.golang.org/grpc"
+	"github.com/go-spring/go-spring/starter-grpc-server/grpc-server-factory"
 )
 
 func init() {
-	SpringBoot.RegisterBeanFn(NewGRpcServerStarter)
-}
-
-// GRpcServerConfig gRPC 服务器配置
-type GRpcServerConfig struct {
-	Port int `value:"${grpc.server.port:=9090}"` // gRPC 端口
-}
-
-// GRpcServerStarter gRPC 服务器启动器
-type GRpcServerStarter struct {
-	_ SpringBoot.ApplicationEvent `export:""`
-
-	Config GRpcServerConfig `value:"${}"`
-	server *grpc.Server
-}
-
-// NewGRpcServerStarter GRpcServerStarter 的构造函数
-func NewGRpcServerStarter() *GRpcServerStarter {
-	return &GRpcServerStarter{
-		server: grpc.NewServer(),
-	}
-}
-
-func (starter *GRpcServerStarter) OnStartApplication(ctx SpringBoot.ApplicationContext) {
-
-	addr := fmt.Sprintf(":%d", starter.Config.Port)
-	lis, err := net.Listen("tcp", addr)
-	SpringUtils.Panic(err).When(err != nil)
-
-	srvMap := make(map[string]reflect.Value)
-
-	v := reflect.ValueOf(starter.server)
-	for fn, server := range SpringBoot.GRpcServerMap {
-		if server.CheckCondition(ctx) {
-			ctx.WireBean(server.Server()) // 对 gRPC 服务对象进行注入
-			srv := reflect.ValueOf(server.Server())
-			fn.Call([]reflect.Value{v, srv}) // 调用 gRPC 的服务注册函数
-			tName := strings.TrimSuffix(fn.Type().In(1).String(), "Server")
-			srvMap[tName] = srv
-		}
-	}
-
-	for service, info := range starter.server.GetServiceInfo() {
-		srv := srvMap[service]
-		for _, method := range info.Methods {
-			m, _ := srv.Type().MethodByName(method.Name)
-			fnPtr := m.Func.Pointer()
-			fnInfo := runtime.FuncForPC(fnPtr)
-			file, line := fnInfo.FileLine(fnPtr)
-			SpringLogger.Infof("/%s/%s %s:%d ", service, method.Name, file, line)
-		}
-	}
-
-	ctx.SafeGoroutine(func() {
-		if err = starter.server.Serve(lis); err != nil {
-			SpringLogger.Error(err)
-		}
-	})
-}
-
-func (starter *GRpcServerStarter) OnStopApplication(ctx SpringBoot.ApplicationContext) {
-	starter.server.GracefulStop()
+	SpringBoot.RegisterNameBeanFn("grpc-server-starter", GrpcServerFactory.NewStarter)
 }

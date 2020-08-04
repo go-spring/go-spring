@@ -14,27 +14,14 @@
  * limitations under the License.
  */
 
-package GoRedisFactory
+package StarterGrpc
 
-import (
-	"fmt"
+// ServerConfig gRPC 服务器配置
+type ServerConfig struct {
+	Port int `value:"${grpc.server.port:=9090}"` // gRPC 端口
+}
 
-	"github.com/go-redis/redis"
-	"github.com/go-spring/go-spring/starter-redis"
-)
-
-// NewClient 创建 Redis 客户端
-func NewClient(config StarterRedis.Config) (redis.Cmdable, error) {
-
-	address := fmt.Sprintf("%s:%d", config.Host, config.Port)
-	client := redis.NewClient(&redis.Options{
-		Addr:     address,
-		Password: config.Password,
-		DB:       config.Database,
-	})
-
-	if err := client.Ping().Err(); err != nil {
-		return nil, err
-	}
-	return client, nil
+// EndpointConfig gRPC 服务端点配置
+type EndpointConfig struct {
+	Address string `value:"${address:=127.0.0.1:9090}"` // gRPC 服务器地址
 }

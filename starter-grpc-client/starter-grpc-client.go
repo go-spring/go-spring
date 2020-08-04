@@ -21,7 +21,7 @@ import (
 
 	"github.com/go-spring/go-spring/spring-boot"
 	"github.com/go-spring/go-spring/spring-core"
-	"google.golang.org/grpc"
+	"github.com/go-spring/go-spring/starter-grpc-client/grpc-client-factory"
 )
 
 const GRPC_ENDPOINT_PREFIX = "grpc.endpoint"
@@ -30,17 +30,7 @@ func init() {
 	SpringBoot.AfterPrepare(func(ctx SpringCore.SpringContext) {
 		for endpoint := range ctx.GetGroupedProperties(GRPC_ENDPOINT_PREFIX) {
 			tag := fmt.Sprintf("${%s.%s}", GRPC_ENDPOINT_PREFIX, endpoint)
-			ctx.RegisterNameBeanFn(endpoint, newClientConnInterface, tag)
+			ctx.RegisterNameBeanFn(endpoint, GrpcClientFactory.NewClientConnInterface, tag)
 		}
 	})
-}
-
-// GRpcEndpointConfig gRPC 服务端点配置
-type GRpcEndpointConfig struct {
-	Address string `value:"${address:=127.0.0.1:9090}"` // gRPC 服务器地址
-}
-
-// newClientConnInterface 根据配置创建 grpc.ClientConnInterface 对象
-func newClientConnInterface(config GRpcEndpointConfig) (grpc.ClientConnInterface, error) {
-	return grpc.Dial(config.Address, grpc.WithInsecure())
 }

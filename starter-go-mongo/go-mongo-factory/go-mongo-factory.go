@@ -26,9 +26,9 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/readpref"
 )
 
-// NewClient 创建 mongo 客户端
-func NewClient(config StarterMongo.MongoConfig) (*mongo.Client, error) {
-	SpringLogger.Info("open mongo ", config.Url)
+// NewClient 创建 MongoDB 客户端
+func NewClient(config StarterMongo.Config) (*mongo.Client, error) {
+	SpringLogger.Info("open mongo db ", config.Url)
 	ctx := context.Background()
 
 	client, err := mongo.Connect(ctx, options.Client().ApplyURI(config.Url))
@@ -42,9 +42,9 @@ func NewClient(config StarterMongo.MongoConfig) (*mongo.Client, error) {
 	return client, err
 }
 
-// CloseClient 关闭 mongo 客户端
+// CloseClient 关闭 MongoDB 客户端
 func CloseClient(client *mongo.Client) {
-	SpringLogger.Info("close mongo")
+	SpringLogger.Info("close mongo db")
 	if err := client.Disconnect(context.Background()); err != nil {
 		SpringLogger.Error(err)
 	}

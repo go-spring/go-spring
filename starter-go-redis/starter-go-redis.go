@@ -23,6 +23,6 @@ import (
 )
 
 func init() {
-	SpringBoot.RegisterNameBeanFn("std-go-redis-client", GoRedisFactory.NewGoRedisClient).
+	SpringBoot.RegisterNameBeanFn("go-redis-client", GoRedisFactory.NewClient).
 		ConditionOnMissingBean((*redis.Cmdable)(nil))
 }
