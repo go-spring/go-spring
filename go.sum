@@ -78,6 +78,9 @@ github.com/go-playground/validator/v10 v10.2.0 h1:KgJ0snyC2R9VXYN2rneOtQcw5aHQB1
 github.com/go-playground/validator/v10 v10.2.0/go.mod h1:uOYAAleCW8F/7oMFd6aG0GOhaH6EGOAJShg8Id5JGkI=
 github.com/go-redis/redis v6.15.7+incompatible h1:3skhDh95XQMpnqeqNftPkQD9jL9e5e36z/1SUm6dy1U=
 github.com/go-redis/redis v6.15.7+incompatible/go.mod h1:NAIEuMOZ/fxfXJIrKDQDz8wamY7mA7PouImQ2Jvg6kA=
+github.com/go-spring/go-spring-message v0.0.0-20200804062047-74c85dce537a h1:fdmFCs9kDnZfWtPu7Kc9k3XLQLI/f1MWE8MmhU9IoOY=
+github.com/go-spring/go-spring-message v0.0.0-20200804062047-74c85dce537a/go.mod h1:bwTjvo4/MBDTKkkR0DTa1fFGf39YnSVs+uty9IGQ/yo=
+github.com/go-spring/go-spring-parent v1.0.4-0.20200615061648-3687ec727ddf/go.mod h1:/ABXFJozlTW7YrEs2U1EmTtWCG0gufSgDQnCfkOnkWs=
 github.com/go-spring/go-spring-parent v1.0.4/go.mod h1:/ABXFJozlTW7YrEs2U1EmTtWCG0gufSgDQnCfkOnkWs=
 github.com/go-spring/go-spring-parent v1.0.5-0.20200630104937-81458ffbf0a5 h1:uBCwCMMK8bfQE5+q2LtnWk4eslCXHc+bvgCbcBxcxcc=
 github.com/go-spring/go-spring-parent v1.0.5-0.20200630104937-81458ffbf0a5/go.mod h1:/ABXFJozlTW7YrEs2U1EmTtWCG0gufSgDQnCfkOnkWs=
