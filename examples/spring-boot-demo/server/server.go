@@ -44,7 +44,7 @@ func init() {
 		}, "f7").Before("config_f2").ConditionOnPropertyValue("f7.enable", true)
 	}
 
-	SpringBoot.RegisterBeanFn(func(config WebStarter.WebServerConfig) SpringWeb.WebContainer {
+	SpringBoot.RegisterBeanFn(func(config StarterWeb.WebServerConfig) SpringWeb.WebContainer {
 		cfg := SpringWeb.ContainerConfig{Port: config.Port}
 		c := SpringEcho.NewContainer(cfg)
 		c.AddFilter(SpringBoot.FilterBean("container"))

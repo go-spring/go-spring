@@ -36,7 +36,7 @@ func NewClient(config StarterMongo.MongoConfig) (*mongo.Client, error) {
 		return nil, err
 	}
 
-	if err := client.Ping(ctx, readpref.Primary()); err != nil {
+	if err = client.Ping(ctx, readpref.Primary()); err != nil {
 		return nil, err
 	}
 	return client, err

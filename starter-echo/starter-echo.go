@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package EchoStarter
+package StarterEcho
 
 import (
 	"github.com/go-spring/go-spring-web/spring-echo"
@@ -25,13 +25,13 @@ import (
 
 func init() {
 
-	SpringBoot.RegisterNameBeanFn("web-container", func(config WebStarter.WebServerConfig) SpringWeb.WebContainer {
+	SpringBoot.RegisterNameBeanFn("web-container", func(config StarterWeb.WebServerConfig) SpringWeb.WebContainer {
 		return SpringEcho.NewContainer(SpringWeb.ContainerConfig{
 			Port: config.Port,
 		})
 	}).ConditionOnOptionalPropertyValue("web.server.enable", true)
 
-	SpringBoot.RegisterNameBeanFn("ssl-web-container", func(config WebStarter.WebServerConfig) SpringWeb.WebContainer {
+	SpringBoot.RegisterNameBeanFn("ssl-web-container", func(config StarterWeb.WebServerConfig) SpringWeb.WebContainer {
 		return SpringEcho.NewContainer(SpringWeb.ContainerConfig{
 			EnableSSL: true,
 			Port:      config.SSLPort,

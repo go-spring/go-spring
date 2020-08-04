@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package WebStarter
+package StarterWeb
 
 import (
 	"context"
