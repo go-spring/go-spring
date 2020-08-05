@@ -272,6 +272,19 @@ func bindStructField(p Properties, v reflect.Value, str string, opt bindOption) 
 	bindValue(p, v, key, def, opt)
 }
 
+// resolveProperty 解析属性值，查看其是否具有引用关系
+func resolveProperty(p Properties, _ string, value interface{}) interface{} {
+	if s, o := value.(string); o && strings.HasPrefix(s, "${") {
+		refKey := s[2 : len(s)-1]
+		if refValue, ok := p.GetDefaultProperty(refKey, nil); !ok {
+			panic(fmt.Errorf("property \"%s\" not config", refKey))
+		} else {
+			return resolveProperty(p, refKey, refValue)
+		}
+	}
+	return value
+}
+
 func getPropertyValue(p Properties, k reflect.Kind, key string, def interface{}, opt bindOption) interface{} {
 
 	// 首先获取精确匹配的属性值
@@ -286,9 +299,9 @@ func getPropertyValue(p Properties, k reflect.Kind, key string, def interface{},
 		}
 	}
 
-	// 最后使用默认值
+	// 最后使用默认值，需要解析配置引用语法
 	if def != nil {
-		return def
+		return resolveProperty(p, key, def)
 	}
 
 	panic(fmt.Errorf("%s properties \"%s\" not config", opt.fieldName, opt.fullPropName))

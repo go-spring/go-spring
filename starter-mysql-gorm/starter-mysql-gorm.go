@@ -41,7 +41,7 @@ func init() {
 
 // fromConfig 从配置文件创建 *gorm.DB 客户端
 func fromConfig(config StarterDB.DBConfig) (*gorm.DB, error) {
-	SpringLogger.Info("open gorm mysql", config.Url)
+	SpringLogger.Info("open gorm mysql ", config.Url)
 	return gorm.Open("mysql", config.Url)
 }
 

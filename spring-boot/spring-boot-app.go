@@ -226,10 +226,10 @@ func (app *application) loadProfileConfig(profile string) SpringCore.Properties 
 
 // resolveProperty 解析属性值，查看其是否具有引用关系
 func resolveProperty(properties map[string]interface{}, key string, value interface{}) interface{} {
-	if s, ok := value.(string); ok && strings.HasPrefix(s, "${") {
+	if s, o := value.(string); o && strings.HasPrefix(s, "${") {
 		refKey := s[2 : len(s)-1]
 		if refValue, ok := properties[refKey]; !ok {
-			panic(fmt.Errorf("properties \"%s\" not config", refKey))
+			panic(fmt.Errorf("property \"%s\" not config", refKey))
 		} else {
 			refValue = resolveProperty(properties, refKey, refValue)
 			properties[key] = refValue

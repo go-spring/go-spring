@@ -759,3 +759,34 @@ func TestDefaultProperties_StringMapString(t *testing.T) {
 		assert.Equal(t, dbConfig2.DB["d1"].DB, "db1")
 	})
 }
+
+func TestDefaultProperties_ConfigRef(t *testing.T) {
+
+	var httpLog struct {
+		Dir string `value:"${dir:=${app.dir}}"`
+	}
+
+	var mqLog struct {
+		Dir string `value:"${dir:=${app.dir}}"`
+	}
+
+	t.Run("not config", func(t *testing.T) {
+		assert.Panic(t, func() {
+			p := SpringCore.NewDefaultProperties()
+			p.BindProperty("", &httpLog)
+		}, "property \\\"app.dir\\\" not config")
+	})
+
+	t.Run("config", func(t *testing.T) {
+		p := SpringCore.NewDefaultProperties()
+
+		appDir := "/home/log"
+		p.SetProperty("app.dir", appDir)
+
+		p.BindProperty("", &httpLog)
+		assert.Equal(t, httpLog.Dir, appDir)
+
+		p.BindProperty("", &mqLog)
+		assert.Equal(t, mqLog.Dir, appDir)
+	})
+}
