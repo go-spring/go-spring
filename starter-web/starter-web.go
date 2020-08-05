@@ -18,11 +18,11 @@ package StarterWeb
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/go-spring/go-spring-parent/spring-utils"
 	"github.com/go-spring/go-spring-web/spring-web"
 	"github.com/go-spring/go-spring/spring-boot"
+	"github.com/go-spring/go-spring/spring-core"
 )
 
 // 一般来讲，Starter 包里面只允许包含 init 函数，但是 Web 包比较特殊，它必须配
@@ -50,7 +50,7 @@ type WebServerConfig struct {
 	SSLKey      string `value:"${web.server.ssl.key:=}"`         // SSL 秘钥
 }
 
-// WebServerStarter Web 容器启动器
+// WebServerStarter Web 服务器启动器
 type WebServerStarter struct {
 	_ SpringBoot.ApplicationEvent `export:""`
 
@@ -63,72 +63,48 @@ func (starter *WebServerStarter) OnStartApplication(ctx SpringBoot.ApplicationCo
 	// 将收集到的 Web 容器赋值给 Web 服务器
 	starter.WebServer.AddContainer(starter.Containers...)
 
-	resolveFilters := func(filters []SpringWeb.Filter) (result []SpringWeb.Filter) {
-		for _, filter := range filters {
-			switch wf := filter.(type) {
-			case *SpringBoot.ConditionalWebFilter:
-				if wf.CheckCondition(ctx) { // 满足匹配条件
-					if f := wf.Filter(); len(f) > 0 {
-						result = append(result, f...)
-					}
-					if b := wf.FilterBean(); len(b) > 0 {
-						for _, beanId := range b {
-							var bf SpringWeb.Filter
-							if !ctx.GetBean(&bf, beanId) {
-								panic(fmt.Errorf("can't get filter %v", beanId))
-							}
-							result = append(result, bf)
-						}
-					}
-				}
-			default:
-				result = append(result, filter)
-			}
-		}
-		return
-	}
-
-	// 处理 WebServer 的过滤器
-	{
-		filters := starter.WebServer.Filters()
-		resolved := resolveFilters(filters)
-		starter.WebServer.ResetFilters(resolved)
-	}
-
-	// 处理 WebContainer 的过滤器
-	{
-		for _, container := range starter.Containers {
-			filters := container.GetFilters()
-			resolved := resolveFilters(filters)
-			container.ResetFilters(resolved)
-		}
-	}
+	// 处理 WebServer 级别的过滤器，排除不满足条件的过滤器
+	starter.WebServer.ResetFilters(starter.resolveFilters(ctx, starter.WebServer.Filters()))
 
 	for _, c := range starter.Containers {
-		for _, mapping := range SpringBoot.DefaultWebMapping.Mappings {
-			ports := mapping.Ports()
-			cfg := c.Config()
 
-			// 路由的端口不匹配
-			if len(ports) > 0 && SpringUtils.ContainsInt(ports, cfg.Port) < 0 {
+		// 处理 WebContainer 级别的过滤器，排除不满足条件的过滤器
+		c.ResetFilters(starter.resolveFilters(ctx, c.GetFilters()))
+
+		for _, mapping := range SpringBoot.DefaultWebMapping.Mappings {
+
+			// 查看路由的端口是否匹配
+			ports := mapping.Ports()
+			if len(ports) > 0 && SpringUtils.ContainsInt(ports, c.Config().Port) < 0 {
 				continue
 			}
 
-			// 路由的条件不匹配
+			// 查看路由的条件是否匹配
 			if !mapping.CheckCondition(ctx) {
 				continue
 			}
 
-			// 处理 Mapping 的过滤器
-			filters := mapping.Filters()
-			filters = resolveFilters(filters)
-
+			// 处理 Mapping 级别的过滤器，排除不满足条件的过滤器
+			filters := starter.resolveFilters(ctx, mapping.Filters())
 			mapper := SpringWeb.NewMapper(mapping.Method(), mapping.Path(), mapping.Handler(), filters)
 			c.AddMapper(mapper.WithSwagger(mapping.Swagger()))
 		}
 	}
 
 	starter.WebServer.Start()
+}
+
+func (starter *WebServerStarter) resolveFilters(ctx SpringCore.SpringContext, filters []SpringWeb.Filter) []SpringWeb.Filter {
+	var result []SpringWeb.Filter
+	for _, filter := range filters {
+		switch f := filter.(type) {
+		case *SpringBoot.ConditionalWebFilter:
+			result = append(result, f.ResolveFilters(ctx)...)
+		default:
+			result = append(result, f)
+		}
+	}
+	return result
 }
 
 func (starter *WebServerStarter) OnStopApplication(ctx SpringBoot.ApplicationContext) {

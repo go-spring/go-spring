@@ -18,6 +18,7 @@ package SpringBoot
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/go-spring/go-spring-web/spring-web"
 	"github.com/go-spring/go-spring/spring-core"
@@ -438,35 +439,57 @@ func DeleteBinding(path string, fn interface{}, filters ...SpringWeb.Filter) *Ma
 
 ///////////////////// Web Filter //////////////////////
 
+// WebFilterArray 首字母小写太难看，因此不管它是否真正需要公开
+type WebFilterArray interface {
+	Get(ctx SpringCore.SpringContext) []SpringWeb.Filter
+}
+
+// WebFilterArray 首字母小写太难看，因此不管它是否真正需要公开
+type WebFilterArrayImpl struct {
+	filters []SpringWeb.Filter
+}
+
+func (l *WebFilterArrayImpl) Get(ctx SpringCore.SpringContext) []SpringWeb.Filter {
+	return l.filters
+}
+
+// WebFilterArray 首字母小写太难看，因此不管它是否真正需要公开
+type WebFilterBeanArrayImpl struct {
+	beans []SpringCore.BeanSelector
+}
+
+func (l *WebFilterBeanArrayImpl) Get(ctx SpringCore.SpringContext) []SpringWeb.Filter {
+	var result []SpringWeb.Filter
+	for _, beanId := range l.beans {
+		var filter SpringWeb.Filter
+		if !ctx.GetBean(&filter, beanId) {
+			panic(fmt.Errorf("can't get filter %v", beanId))
+		}
+		result = append(result, filter)
+	}
+	return result
+}
+
 // ConditionalWebFilter 为 SpringWeb.Filter 增加一个判断条件
 type ConditionalWebFilter struct {
-	filters []SpringWeb.Filter        // Filter 对象
-	beans   []SpringCore.BeanSelector // Bean 选择器
-	cond    *SpringCore.Conditional   // 判断条件
+	cond *SpringCore.Conditional // 判断条件
+	list WebFilterArray
 }
 
 // Filter 封装一个 SpringWeb.Filter 对象
 func Filter(filters ...SpringWeb.Filter) *ConditionalWebFilter {
 	return &ConditionalWebFilter{
-		filters: filters,
-		cond:    SpringCore.NewConditional(),
+		cond: SpringCore.NewConditional(),
+		list: &WebFilterArrayImpl{filters},
 	}
 }
 
 // FilterBean 封装一个 Bean 选择器
 func FilterBean(selectors ...SpringCore.BeanSelector) *ConditionalWebFilter {
 	return &ConditionalWebFilter{
-		beans: selectors,
-		cond:  SpringCore.NewConditional(),
+		cond: SpringCore.NewConditional(),
+		list: &WebFilterBeanArrayImpl{selectors},
 	}
-}
-
-func (f *ConditionalWebFilter) Filter() []SpringWeb.Filter {
-	return f.filters
-}
-
-func (f *ConditionalWebFilter) FilterBean() []SpringCore.BeanSelector {
-	return f.beans
 }
 
 func (f *ConditionalWebFilter) Invoke(ctx SpringWeb.WebContext, chain SpringWeb.FilterChain) {
@@ -552,7 +575,9 @@ func (f *ConditionalWebFilter) ConditionOnProfile(profile string) *ConditionalWe
 	return f
 }
 
-// CheckCondition 成功返回 true，失败返回 false
-func (f *ConditionalWebFilter) CheckCondition(ctx SpringCore.SpringContext) bool {
-	return f.cond.Matches(ctx)
+func (f *ConditionalWebFilter) ResolveFilters(ctx SpringCore.SpringContext) []SpringWeb.Filter {
+	if f.cond.Matches(ctx) {
+		return f.list.Get(ctx)
+	}
+	return nil
 }
