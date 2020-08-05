@@ -24,12 +24,13 @@ import (
 	"github.com/go-spring/go-spring/starter-grpc-client/grpc-client-factory"
 )
 
-const GRPC_ENDPOINT_PREFIX = "grpc.endpoint"
+// NOTE: 为了避免该变量被导出，所以使用了小写模式。
+const grpc_endpoint_prefix = "grpc.endpoint"
 
 func init() {
 	SpringBoot.AfterPrepare(func(ctx SpringCore.SpringContext) {
-		for endpoint := range ctx.GetGroupedProperties(GRPC_ENDPOINT_PREFIX) {
-			tag := fmt.Sprintf("${%s.%s}", GRPC_ENDPOINT_PREFIX, endpoint)
+		for endpoint := range ctx.GetGroupedProperties(grpc_endpoint_prefix) {
+			tag := fmt.Sprintf("${%s.%s}", grpc_endpoint_prefix, endpoint)
 			ctx.RegisterNameBeanFn(endpoint, GrpcClientFactory.NewClientConnInterface, tag)
 		}
 	})
