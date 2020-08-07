@@ -18,9 +18,9 @@ package SpringBoot
 
 import (
 	"context"
-	"errors"
 	"time"
 
+	"github.com/go-spring/go-spring-parent/spring-logger"
 	"github.com/go-spring/go-spring-web/spring-web"
 	"github.com/go-spring/go-spring/boot-starter"
 	"github.com/go-spring/go-spring/spring-core"
@@ -79,7 +79,7 @@ func Exit() {
 func checkRunning() {
 	if g.running {
 		// 这条限制的原因是为了让代码更好看，例如在 AfterPrepare 中注册 Bean
-		panic(errors.New("use SpringContext when you can capture it"))
+		SpringLogger.Warn("use SpringContext when you can capture it")
 	}
 }
 

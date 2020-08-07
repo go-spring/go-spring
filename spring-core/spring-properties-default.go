@@ -231,6 +231,19 @@ func bindStruct(p Properties, v reflect.Value, opt bindOption) {
 	}
 }
 
+// parsePropertyTag 解析属性值标签
+func parsePropertyTag(str string) (key string, def interface{}) {
+	if i := strings.Index(str, ":="); i == 0 {
+		panic(fmt.Errorf("error property tag %s", str))
+	} else if i > 0 {
+		key = str[:i]
+		def = str[i+2:]
+	} else {
+		key = str
+	}
+	return
+}
+
 // bindStructField 对结构体的字段进行属性绑定
 func bindStructField(p Properties, v reflect.Value, str string, opt bindOption) {
 
@@ -244,14 +257,7 @@ func bindStructField(p Properties, v reflect.Value, str string, opt bindOption) 
 		panic(fmt.Errorf("%s 属性绑定的目标不能是指针", opt.fieldName))
 	}
 
-	ss := strings.Split(str[2:len(str)-1], ":=")
-
-	var (
-		key string
-		def interface{}
-	)
-
-	key = ss[0]
+	key, def := parsePropertyTag(str[2 : len(str)-1])
 
 	// 此处使用最短属性名
 	if opt.fullPropName == "" {
@@ -265,24 +271,24 @@ func bindStructField(p Properties, v reflect.Value, str string, opt bindOption) 
 		key = opt.propNamePrefix + "." + key
 	}
 
-	if len(ss) > 1 {
-		def = ss[1]
-	}
-
 	bindValue(p, v, key, def, opt)
 }
 
 // resolveProperty 解析属性值，查看其是否具有引用关系
 func resolveProperty(p Properties, _ string, value interface{}) interface{} {
-	if s, o := value.(string); o && strings.HasPrefix(s, "${") {
-		refKey := s[2 : len(s)-1]
-		if refValue, ok := p.GetDefaultProperty(refKey, nil); !ok {
-			panic(fmt.Errorf("property \"%s\" not config", refKey))
-		} else {
-			return resolveProperty(p, refKey, refValue)
-		}
+	str, ok := value.(string)
+
+	// 不是字符串或者没有使用配置引用语法
+	if !ok || !strings.HasPrefix(str, "${") {
+		return value
 	}
-	return value
+
+	key, def := parsePropertyTag(str[2 : len(str)-1])
+	if val, _ := p.GetDefaultProperty(key, def); val != nil {
+		return resolveProperty(p, key, val)
+	}
+
+	panic(fmt.Errorf("property \"%s\" not config", key))
 }
 
 func getPropertyValue(p Properties, k reflect.Kind, key string, def interface{}, opt bindOption) interface{} {

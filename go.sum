@@ -81,9 +81,12 @@ github.com/go-redis/redis v6.15.7+incompatible/go.mod h1:NAIEuMOZ/fxfXJIrKDQDz8w
 github.com/go-spring/go-spring-message v0.0.0-20200804062047-74c85dce537a h1:fdmFCs9kDnZfWtPu7Kc9k3XLQLI/f1MWE8MmhU9IoOY=
 github.com/go-spring/go-spring-message v0.0.0-20200804062047-74c85dce537a/go.mod h1:bwTjvo4/MBDTKkkR0DTa1fFGf39YnSVs+uty9IGQ/yo=
 github.com/go-spring/go-spring-parent v1.0.4-0.20200615061648-3687ec727ddf/go.mod h1:/ABXFJozlTW7YrEs2U1EmTtWCG0gufSgDQnCfkOnkWs=
+github.com/go-spring/go-spring-parent v1.0.4 h1:mBFVow49HNqY3GKLqR0QPfMECG15nadF/KMGItNgGYI=
 github.com/go-spring/go-spring-parent v1.0.4/go.mod h1:/ABXFJozlTW7YrEs2U1EmTtWCG0gufSgDQnCfkOnkWs=
 github.com/go-spring/go-spring-parent v1.0.5-0.20200630104937-81458ffbf0a5 h1:uBCwCMMK8bfQE5+q2LtnWk4eslCXHc+bvgCbcBxcxcc=
 github.com/go-spring/go-spring-parent v1.0.5-0.20200630104937-81458ffbf0a5/go.mod h1:/ABXFJozlTW7YrEs2U1EmTtWCG0gufSgDQnCfkOnkWs=
+github.com/go-spring/go-spring-parent v1.0.5-0.20200807023228-0cde18dccd0b h1:McsaPjLQQeLZTKYbPaGSfvS8wrgw85kov3rCILQhy90=
+github.com/go-spring/go-spring-parent v1.0.5-0.20200807023228-0cde18dccd0b/go.mod h1:/ABXFJozlTW7YrEs2U1EmTtWCG0gufSgDQnCfkOnkWs=
 github.com/go-spring/go-spring-web v1.0.5-0.20200728074725-184d33cc7310 h1:D9btb1yqq5CuWFdFaYVxOYUhQZhIWyDACqpABFaKIQg=
 github.com/go-spring/go-spring-web v1.0.5-0.20200728074725-184d33cc7310/go.mod h1:gzpy4ZbwibCgaNqvnKxgAgylut4T2QA4XqpXAQwrELc=
 github.com/go-sql-driver/mysql v1.4.1 h1:g24URVg0OFbNUTx9qqY1IRZ9D9z3iPyi5zKhQZpNwpA=

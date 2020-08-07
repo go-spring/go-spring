@@ -762,13 +762,14 @@ func TestDefaultProperties_StringMapString(t *testing.T) {
 
 func TestDefaultProperties_ConfigRef(t *testing.T) {
 
-	var httpLog struct {
-		Dir string `value:"${dir:=${app.dir}}"`
+	type fileLog struct {
+		Dir             string `value:"${dir:=${app.dir}}"`
+		NestedDir       string `value:"${nested.dir:=${nested.app.dir:=./log}}"`
+		NestedNestedDir string `value:"${nested.dir:=${nested.app.dir:=${nested.nested.app.dir:=./log}}}"`
 	}
 
-	var mqLog struct {
-		Dir string `value:"${dir:=${app.dir}}"`
-	}
+	var mqLog struct{ fileLog }
+	var httpLog struct{ fileLog }
 
 	t.Run("not config", func(t *testing.T) {
 		assert.Panic(t, func() {
@@ -785,8 +786,12 @@ func TestDefaultProperties_ConfigRef(t *testing.T) {
 
 		p.BindProperty("", &httpLog)
 		assert.Equal(t, httpLog.Dir, appDir)
+		assert.Equal(t, httpLog.NestedDir, "./log")
+		assert.Equal(t, httpLog.NestedNestedDir, "./log")
 
 		p.BindProperty("", &mqLog)
 		assert.Equal(t, mqLog.Dir, appDir)
+		assert.Equal(t, mqLog.NestedDir, "./log")
+		assert.Equal(t, mqLog.NestedNestedDir, "./log")
 	})
 }
