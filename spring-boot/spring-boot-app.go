@@ -208,12 +208,13 @@ func (app *application) loadProfileConfig(profile string) SpringCore.Properties 
 	p := SpringCore.NewDefaultProperties()
 	for _, configLocation := range app.cfgLocation {
 		var result map[string]interface{}
-		if ss := strings.Split(configLocation, ":"); len(ss) == 1 {
-			result = NewDefaultPropertySource(ss[0]).Load(profile)
+		if ss := strings.SplitN(configLocation, ":", 2); len(ss) == 1 {
+			result = new(defaultPropertySource).Load(ss[0], profile)
 		} else {
-			switch ss[0] {
-			case "k8s": // "k8s:testdata/config/config-map.yaml"
-				result = NewConfigMapPropertySource(ss[1]).Load(profile)
+			if ps, ok := propertySources[ss[0]]; ok {
+				result = ps.Load(ss[1], profile)
+			} else {
+				panic(fmt.Errorf("unsupported config scheme %s", ss[0]))
 			}
 		}
 		for k, v := range result {
