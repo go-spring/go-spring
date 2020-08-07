@@ -62,9 +62,9 @@ func (p *defaultPropertySource) Load(profile string) map[string]interface{} {
 	result := make(map[string]interface{})
 
 	// 从预定义的文件格式中加载属性值列表
-	for ext, reader := range configReaders {
+	for _, reader := range configReaders {
 
-		filename := filepath.Join(p.fileLocation, fileNamePrefix+ext)
+		filename := filepath.Join(p.fileLocation, fileNamePrefix+reader.FileExt())
 		if _, err := os.Stat(filename); err != nil {
 			continue // 这里不需要警告
 		}
@@ -115,8 +115,8 @@ func (p *configMapPropertySource) Load(profile string) map[string]interface{} {
 	result := make(map[string]interface{})
 
 	// 从预定义的文件格式中加载属性值列表
-	for ext, reader := range configReaders {
-		if key := profileFileName + ext; d.IsSet(key) {
+	for _, reader := range configReaders {
+		if key := profileFileName + reader.FileExt(); d.IsSet(key) {
 			SpringLogger.Infof("load properties from config-map %s:%s", p.filename, key)
 
 			if val := d.GetString(key); val != "" {

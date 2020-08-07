@@ -21,6 +21,7 @@ import (
 
 	_ "github.com/go-spring/go-spring/examples/spring-boot-demo/api"
 	_ "github.com/go-spring/go-spring/examples/spring-boot-demo/app"
+	_ "github.com/go-spring/go-spring/examples/spring-boot-demo/extension"
 	_ "github.com/go-spring/go-spring/examples/spring-boot-demo/filter"
 	_ "github.com/go-spring/go-spring/examples/spring-boot-demo/mock"
 	_ "github.com/go-spring/go-spring/examples/spring-boot-demo/server"
