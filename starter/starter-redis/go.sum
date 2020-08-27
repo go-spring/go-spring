@@ -1,0 +1,7 @@
+github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
+github.com/go-spring/spring-utils v0.0.0-20200809010418-ad9c325fc2db h1:agxZmTXJ5gDrBb7VgEKh2kdUwYtehHHizqpOPkFURfM=
+github.com/go-spring/spring-utils v0.0.0-20200809010418-ad9c325fc2db/go.mod h1:nt7zbJs5DiOCoi548jzBC06reyS0apM6YchDY0eMbjM=
+github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
+github.com/spf13/cast v1.3.1 h1:nFm6S0SMdyzrzcmThSipiEubIDy8WEXKNZ0UOgiRpng=
+github.com/spf13/cast v1.3.1/go.mod h1:Qx5cxh0v+4UWYiBimWS+eyWzqEqokIECu5etghLkUJE=
+github.com/stretchr/testify v1.2.2/go.mod h1:a8OnRcib4nhh0OaRAV+Yts87kKdq0PP7pXfy6kDkUVs=
