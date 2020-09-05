@@ -43,7 +43,7 @@ func init() {
 
 func TestDefaultSpringContext_RegisterBeanFrozen(t *testing.T) {
 	assert.Panic(t, func() {
-		ctx := SpringCore.NewDefaultSpringContext()
+		ctx := SpringCore.DefaultApplicationContext()
 		ctx.RegisterBean(new(int)).Init(func(i *int) {
 			// 不能在这里注册新的 Bean
 			ctx.RegisterBean(new(bool))
@@ -55,7 +55,7 @@ func TestDefaultSpringContext_RegisterBeanFrozen(t *testing.T) {
 func TestDefaultSpringContext(t *testing.T) {
 
 	t.Run("int", func(t *testing.T) {
-		ctx := SpringCore.NewDefaultSpringContext()
+		ctx := SpringCore.DefaultApplicationContext()
 
 		e := int(3)
 		a := []int{3}

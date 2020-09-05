@@ -25,12 +25,15 @@ github.com/go-logfmt/logfmt v0.3.0/go.mod h1:Qt1PoO58o5twSAckw1HlFXLmHsOX5/0LbT9
 github.com/go-logfmt/logfmt v0.4.0/go.mod h1:3RMwSq7FuexP4Kalkev3ejPJsZTpXXBr9+V4qmtdjCk=
 github.com/go-spring/spring-const v0.0.0-20200809010018-216088f08c7a h1:83weDH4e7lKkibRNCZx80HT36pwkH1FRaV/fIWPfa4A=
 github.com/go-spring/spring-const v0.0.0-20200809010018-216088f08c7a/go.mod h1:WBXCBvxv5cf0RIqnEB3wxoZ2y1G3XIUEYk7i5KDXInw=
+github.com/go-spring/spring-const v1.0.5-rc1 h1:P9z23RoPiPnTVVcxxNlKZaswLGt8e8TntIPFGVE4DOU=
 github.com/go-spring/spring-const v1.0.5-rc1/go.mod h1:WBXCBvxv5cf0RIqnEB3wxoZ2y1G3XIUEYk7i5KDXInw=
 github.com/go-spring/spring-logger v0.0.0-20200809011130-4fc0ca70bbdb h1:CPKNDKNTZcPiN3VOwZOXv4vSO/zBQG4a1cuzdudu2l0=
 github.com/go-spring/spring-logger v0.0.0-20200809011130-4fc0ca70bbdb/go.mod h1:eZENHurOPb4+c586XBNv+M2HzWSAbRQLCNu49t8xsSc=
+github.com/go-spring/spring-logger v1.0.5-rc1 h1:cWy9IobhOEB//1XYOXTK5SKCoPmD95MTjL9c+fSlHMc=
 github.com/go-spring/spring-logger v1.0.5-rc1/go.mod h1:eZENHurOPb4+c586XBNv+M2HzWSAbRQLCNu49t8xsSc=
 github.com/go-spring/spring-utils v0.0.0-20200809010418-ad9c325fc2db h1:agxZmTXJ5gDrBb7VgEKh2kdUwYtehHHizqpOPkFURfM=
 github.com/go-spring/spring-utils v0.0.0-20200809010418-ad9c325fc2db/go.mod h1:nt7zbJs5DiOCoi548jzBC06reyS0apM6YchDY0eMbjM=
+github.com/go-spring/spring-utils v1.0.5-rc1 h1:wO7hMgivCUKsWUxCFrpVf0tc2kUG97ZY+1mc6cwuhGw=
 github.com/go-spring/spring-utils v1.0.5-rc1/go.mod h1:nt7zbJs5DiOCoi548jzBC06reyS0apM6YchDY0eMbjM=
 github.com/go-stack/stack v1.8.0/go.mod h1:v0f6uXyyMGvRgIKkXu+yp6POWl0qKG85gN/melR3HDY=
 github.com/gogo/protobuf v1.1.1/go.mod h1:r8qH/GZQm5c6nD/R0oafs1akxWv10x8SbQlK7atdtwQ=
