@@ -28,6 +28,18 @@ import (
 // WebContextKey WebContext 和 NativeContext 相互转换的 Key
 const WebContextKey = "@WebCtx"
 
+// ResponseWriter Override http.ResponseWriter to supply more method.
+type ResponseWriter interface {
+	http.ResponseWriter
+
+	// Returns the HTTP response status code of the current request.
+	Status() int
+
+	// Returns the number of bytes already written into the response http body.
+	// See Written()
+	Size() int
+}
+
 // WebContext 上下文接口，设计理念：为社区中优秀的 Web 服务器提供一个抽象层，
 // 使得底层可以灵活切换，因此在功能上取这些 Web 服务器功能的交集，同时提供获取
 // 底层对象的接口，以便在不能满足用户要求的时候使用底层实现的能力，当然要慎用。
@@ -133,7 +145,7 @@ type WebContext interface {
 	// Response Part
 
 	// ResponseWriter returns `http.ResponseWriter`.
-	ResponseWriter() http.ResponseWriter
+	ResponseWriter() ResponseWriter
 
 	// Status sets the HTTP response code.
 	Status(code int)
