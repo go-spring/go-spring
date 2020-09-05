@@ -49,6 +49,22 @@ func WebContext(ginCtx *gin.Context) SpringWeb.WebContext {
 	return nil
 }
 
+// responseWriter SpringWeb.ResponseWriter 的 gin 适配.
+type responseWriter struct {
+	gin.ResponseWriter
+}
+
+// Returns the HTTP response status code of the current request.
+func (r *responseWriter) Status() int {
+	return r.ResponseWriter.Status()
+}
+
+// Returns the number of bytes already written into the response http body.
+// See Written()
+func (r *responseWriter) Size() int {
+	return r.ResponseWriter.Size()
+}
+
 // Context 适配 gin 的 Web 上下文
 type Context struct {
 	// LoggerContext 日志接口上下文
@@ -291,8 +307,8 @@ func (ctx *Context) Bind(i interface{}) error {
 }
 
 // ResponseWriter returns `http.ResponseWriter`.
-func (ctx *Context) ResponseWriter() http.ResponseWriter {
-	return ctx.ginContext.Writer
+func (ctx *Context) ResponseWriter() SpringWeb.ResponseWriter {
+	return &responseWriter{ctx.ginContext.Writer}
 }
 
 // Status sets the HTTP response code.
