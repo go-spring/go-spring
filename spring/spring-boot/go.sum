@@ -70,6 +70,8 @@ github.com/go-spring/spring-core v0.0.0-20200809014812-601eeb08c16c h1:Gz9IMCDYW
 github.com/go-spring/spring-core v0.0.0-20200809014812-601eeb08c16c/go.mod h1:DppbuOHLatsdDx825sxH+bMWLIJQTSUSMEztVrvcz4I=
 github.com/go-spring/spring-core v1.0.5-rc1 h1:D1fWHWBbOFhKxjvghPCnC9Jc8liuIMzWCtCwEVyUR88=
 github.com/go-spring/spring-core v1.0.5-rc1/go.mod h1:qr095MTdkWQx2mjiuWsrPTarGU5U6g+EeqyWkYtlCps=
+github.com/go-spring/spring-core v1.0.5-rc1.0.20200905151159-43bb666695d5 h1:TCQJbFTxOzFU5rGTdCQ5/SvMr5K8ap90aL6e4Pm9nO4=
+github.com/go-spring/spring-core v1.0.5-rc1.0.20200905151159-43bb666695d5/go.mod h1:qr095MTdkWQx2mjiuWsrPTarGU5U6g+EeqyWkYtlCps=
 github.com/go-spring/spring-error v0.0.0-20200809010656-5e236d14fdc0 h1:lSiqEsY/k3/eeiSkyH0nV/+YAJnJsfnxYgtSuAi9MhU=
 github.com/go-spring/spring-error v0.0.0-20200809010656-5e236d14fdc0/go.mod h1:QExcM5Try3lu4c/sapGf05Z/SveILbVJ3SEw+He8Q10=
 github.com/go-spring/spring-error v1.0.5-rc1 h1:hLHPUDGSZgXAGNqdgRAsvabgfr9REVbEKvUsc0xEzA8=
@@ -92,6 +94,8 @@ github.com/go-spring/spring-web v0.0.0-20200809012928-e89b3ea05c5c h1:UQAxfAWf54
 github.com/go-spring/spring-web v0.0.0-20200809012928-e89b3ea05c5c/go.mod h1:QzpVp98W2BtcmgmdG1MZQhfW0GY2koSmfJ4G+IrAdbY=
 github.com/go-spring/spring-web v1.0.5-rc1 h1:srF8LuB7om5y6qyOFvCFx03qVMfHZWbV4a0hhsnCtbk=
 github.com/go-spring/spring-web v1.0.5-rc1/go.mod h1:8f88JI0+0r6z5oy1pOuHGBuEXDgO4oRJYJd/0YDiqso=
+github.com/go-spring/spring-web v1.0.5-rc1.0.20200905145629-90374a3dab2f h1:jrIUmY2CT3oKGJ2H+62fOey/ovKWKs4XAyu5/trDzoQ=
+github.com/go-spring/spring-web v1.0.5-rc1.0.20200905145629-90374a3dab2f/go.mod h1:8f88JI0+0r6z5oy1pOuHGBuEXDgO4oRJYJd/0YDiqso=
 github.com/go-stack/stack v1.8.0/go.mod h1:v0f6uXyyMGvRgIKkXu+yp6POWl0qKG85gN/melR3HDY=
 github.com/gogo/protobuf v1.1.1/go.mod h1:r8qH/GZQm5c6nD/R0oafs1akxWv10x8SbQlK7atdtwQ=
 github.com/gogo/protobuf v1.2.1/go.mod h1:hp+jE20tsWTFYpLwKvXlhS1hjn+gTNwPg2I6zVXpSg4=

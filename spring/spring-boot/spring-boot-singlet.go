@@ -59,9 +59,7 @@ func (cfg *AppBuilder) Run(configLocation ...string) {
 	defer func() { g.running = false }()
 	g.running = true
 
-	BootStarter.Run(newApplication(&defaultApplicationContext{
-		SpringContext: g.ctx,
-	}, *g.config, configLocation...))
+	BootStarter.Run(newApplication(g.ctx, *g.config, configLocation...))
 }
 
 // RunApplication 快速启动 SpringBoot 应用

@@ -112,11 +112,16 @@ func (app *application) Start() {
 		fn(app.appCtx)
 	}
 
-	// 注册 ApplicationContext
-	app.appCtx.RegisterBean(app)
-	app.appCtx.RegisterBean(app.appCtx)
+	// 注册 ApplicationContext 接口
+	app.appCtx.RegisterBean(app.appCtx).Export(
+		(*SpringCore.SpringContext)(nil),
+		(*ApplicationContext)(nil),
+	)
 
-	// 依赖注入、属性绑定、Bean 初始化
+	// 注入 Events、Runners 等
+	app.appCtx.RegisterBean(app)
+
+	// 依赖注入、属性绑定、初始化
 	app.appCtx.AutoWireBeans()
 
 	// 执行命令行启动器

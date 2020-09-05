@@ -27,9 +27,8 @@ import (
 
 func startApplication(cfgLocation ...string) *application {
 	// SpringLogger.SetLogger(&SpringLogger.Console{})
-	app := newApplication(&defaultApplicationContext{
-		SpringContext: SpringCore.NewDefaultSpringContext(),
-	}, *defaultApplicationConfig(), cfgLocation...)
+	app := newApplication(SpringCore.NewDefaultSpringContext(),
+		*defaultApplicationConfig(), cfgLocation...)
 	app.appCtx.SetProperty("application-event.collection", "[]?")
 	app.appCtx.SetProperty("command-line-runner.collection", "[]?")
 	app.Start()
