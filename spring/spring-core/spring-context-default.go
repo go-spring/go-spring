@@ -525,6 +525,12 @@ func (ctx *defaultSpringContext) registerMethodBeans() {
 		}
 
 		bd.bean = newMethodBean(result[0], bean.method, bean.tags)
+
+		// 统一使用 Bean 的类型字符串作为 Bean 的默认名称!
+		if bd.name == "" {
+			bd.name = bd.bean.Type().String()
+		}
+
 		ctx.registerBeanDefinition(bd)
 	}
 }

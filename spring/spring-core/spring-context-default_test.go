@@ -1112,10 +1112,10 @@ func TestDefaultSpringContext_RegisterBeanFn2(t *testing.T) {
 		ctx.SetProperty("manager.version", "1.0.0")
 
 		bd := ctx.RegisterBeanFn(NewManager)
-		assert.Equal(t, bd.Name(), "NewManager")
+		assert.Equal(t, bd.Name(), "SpringCore_test.Manager")
 
 		bd = ctx.RegisterBeanFn(NewInt)
-		assert.Equal(t, bd.Name(), "NewInt")
+		assert.Equal(t, bd.Name(), "*int")
 
 		ctx.AutoWireBeans()
 
@@ -1791,10 +1791,10 @@ func TestDefaultSpringContext_RegisterMethodBean(t *testing.T) {
 		ctx.SetProperty("server.version", "1.0.0")
 		parent := ctx.RegisterBean(new(Server))
 
+		// Method Bean 的默认名称要等到 Bean 真正注册的时候才能获取到
 		bd := ctx.RegisterMethodBean(parent, "Consumer")
-		assert.Equal(t, bd.Name(), "Consumer")
-
 		ctx.AutoWireBeans()
+		assert.Equal(t, bd.Name(), "*SpringCore_test.Consumer")
 
 		var s *Server
 		ok := ctx.GetBean(&s)
@@ -1834,11 +1834,14 @@ func TestDefaultSpringContext_RegisterMethodBean(t *testing.T) {
 		ctx := SpringCore.NewDefaultSpringContext()
 		ctx.SetProperty("server.version", "1.0.0")
 
+		// Name is SpringCore_test.ServerInterface
 		parent := ctx.RegisterBeanFn(NewServerInterface)
 
+		// Name is *SpringCore_test.Consumer
 		ctx.RegisterMethodBean(parent, "Consumer").
-			DependsOn("NewServerInterface")
+			DependsOn("SpringCore_test.ServerInterface")
 
+		// Name is *SpringCore_test.Service
 		ctx.RegisterBean(new(Service))
 		ctx.AutoWireBeans()
 
@@ -2018,12 +2021,13 @@ func TestDefaultSpringContext_RegisterMethodBeanFn(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
 		ctx.SetProperty("server.version", "1.0.0")
+		// Name is SpringCore_test.ServerInterface
 		ctx.RegisterBeanFn(NewServerInterface)
 
+		// Method Bean 的默认名称要等到 Bean 真正注册的时候才能获取到
 		bd := ctx.RegisterMethodBeanFn(ServerInterface.ConsumerT)
-		assert.Equal(t, bd.Name(), "ConsumerT")
-
 		ctx.AutoWireBeans()
+		assert.Equal(t, bd.Name(), "*SpringCore_test.Consumer")
 
 		var si ServerInterface
 		ok := ctx.GetBean(&si)
@@ -2044,6 +2048,7 @@ func TestDefaultSpringContext_RegisterMethodBeanFn(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
 		ctx.SetProperty("server.version", "1.0.0")
+		// Name is SpringCore_test.ServerInterface
 		ctx.RegisterBeanFn(NewServerInterface)
 		ctx.RegisterMethodBeanFn(ServerInterface.ConsumerArg, "${i:=9}")
 		ctx.AutoWireBeans()
@@ -2066,8 +2071,12 @@ func TestDefaultSpringContext_RegisterMethodBeanFn(t *testing.T) {
 	t.Run("fn method bean wire to other bean", func(t *testing.T) {
 		ctx := SpringCore.NewDefaultSpringContext()
 		ctx.SetProperty("server.version", "1.0.0")
+		// Name is SpringCore_test.ServerInterface
 		ctx.RegisterBeanFn(NewServerInterface)
-		ctx.RegisterMethodBeanFn(ServerInterface.Consumer).DependsOn("NewServerInterface")
+		// Name is *SpringCore_test.Consumer
+		ctx.RegisterMethodBeanFn(ServerInterface.Consumer).
+			DependsOn("SpringCore_test.ServerInterface")
+		// Name is *SpringCore_test.Service
 		ctx.RegisterBean(new(Service))
 		ctx.AutoWireBeans()
 
@@ -2114,8 +2123,13 @@ func TestDefaultSpringContext_RegisterMethodBeanFn(t *testing.T) {
 
 				ctx := SpringCore.NewDefaultSpringContext()
 				ctx.SetProperty("server.version", "1.0.0")
-				ctx.RegisterBeanFn(NewServerInterface).DependsOn("*SpringCore_test.Service")
-				ctx.RegisterMethodBeanFn(ServerInterface.Consumer).DependsOn("NewServerInterface")
+				// Name is SpringCore_test.ServerInterface
+				ctx.RegisterBeanFn(NewServerInterface).
+					DependsOn("*SpringCore_test.Service")
+				// Name is *SpringCore_test.Consumer
+				ctx.RegisterMethodBeanFn(ServerInterface.Consumer).
+					DependsOn("SpringCore_test.ServerInterface")
+				// Name is *SpringCore_test.Service
 				ctx.RegisterBean(new(Service))
 				ctx.AutoWireBeans()
 			}()
@@ -2127,6 +2141,7 @@ func TestDefaultSpringContext_RegisterMethodBeanFn(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
 		ctx.SetProperty("server.version", "1.0.0")
+		// Name is SpringCore_test.ServerInterface
 		ctx.RegisterBeanFn(NewServerInterface)
 		ctx.RegisterMethodBeanFn(ServerInterface.ConsumerT).ConditionOnProperty("consumer.enable")
 		ctx.AutoWireBeans()
@@ -2147,6 +2162,7 @@ func TestDefaultSpringContext_RegisterMethodBeanFn(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
 		ctx.SetProperty("server.version", "1.0.0")
+		// Name is SpringCore_test.ServerInterface
 		ctx.RegisterBeanFn(NewServerInterface)
 		ctx.AutoWireBeans()
 
@@ -2162,6 +2178,7 @@ func TestDefaultSpringContext_RegisterMethodBeanFn(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
 		ctx.SetProperty("server.version", "1.0.0")
+		// Name is SpringCore_test.ServerInterface
 		ctx.RegisterBeanFn(NewServerInterface)
 		ctx.RegisterMethodBeanFn(ServerInterface.ConsumerT)
 		ctx.AutoWireBeans()
@@ -2186,6 +2203,7 @@ func TestDefaultSpringContext_RegisterMethodBeanFn(t *testing.T) {
 		assert.Panic(t, func() {
 			ctx := SpringCore.NewDefaultSpringContext()
 			ctx.SetProperty("server.version", "1.0.0")
+			// Name is SpringCore_test.ServerInterface
 			ctx.RegisterBeanFn(NewServerInterface)
 			ctx.RegisterMethodBean((fmt.Stringer)(nil), "Consumer")
 			ctx.AutoWireBeans()
@@ -2194,6 +2212,7 @@ func TestDefaultSpringContext_RegisterMethodBeanFn(t *testing.T) {
 		assert.Panic(t, func() {
 			ctx := SpringCore.NewDefaultSpringContext()
 			ctx.SetProperty("server.version", "1.0.0")
+			// Name is SpringCore_test.ServerInterface
 			ctx.RegisterBeanFn(NewServerInterface)
 			ctx.RegisterMethodBean((*int)(nil), "Consumer")
 			ctx.AutoWireBeans()
@@ -2203,6 +2222,7 @@ func TestDefaultSpringContext_RegisterMethodBeanFn(t *testing.T) {
 			ctx := SpringCore.NewDefaultSpringContext()
 			ctx.SetProperty("server.version", "1.0.0")
 			ctx.RegisterBean(new(int))
+			// Name is SpringCore_test.ServerInterface
 			ctx.RegisterBeanFn(NewServerInterface)
 			ctx.RegisterMethodBean((*int)(nil), "Consumer")
 			ctx.AutoWireBeans()
@@ -2213,8 +2233,9 @@ func TestDefaultSpringContext_RegisterMethodBeanFn(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
 		ctx.SetProperty("server.version", "1.0.0")
+		// Name is SpringCore_test.ServerInterface
 		ctx.RegisterBeanFn(NewServerInterface)
-		ctx.RegisterMethodBean("NewServerInterface", "Consumer")
+		ctx.RegisterMethodBean("SpringCore_test.ServerInterface", "Consumer")
 		ctx.AutoWireBeans()
 
 		var si ServerInterface
@@ -2236,6 +2257,7 @@ func TestDefaultSpringContext_RegisterMethodBeanFn(t *testing.T) {
 		assert.Panic(t, func() {
 			ctx := SpringCore.NewDefaultSpringContext()
 			ctx.SetProperty("server.version", "1.0.0")
+			// Name is SpringCore_test.ServerInterface
 			ctx.RegisterBeanFn(NewServerInterface)
 			ctx.RegisterMethodBean("NULL", "Consumer")
 			ctx.AutoWireBeans()
@@ -2246,6 +2268,7 @@ func TestDefaultSpringContext_RegisterMethodBeanFn(t *testing.T) {
 func TestDefaultSpringContext_ParentNotRegister(t *testing.T) {
 
 	ctx := SpringCore.NewDefaultSpringContext()
+	// Name is SpringCore_test.ServerInterface
 	parent := ctx.RegisterBeanFn(NewServerInterface).
 		ConditionOnProperty("server.is.nil")
 	ctx.RegisterMethodBean(parent, "Consumer")
@@ -3137,4 +3160,44 @@ func TestDefaultSpringContext_Destroy(t *testing.T) {
 	ctx.Close()
 
 	assert.Equal(t, destroyArray, []int{1, 2, 2, 4})
+}
+
+type Registry interface {
+	got()
+}
+
+type registry struct{}
+
+func (r *registry) got() {}
+
+func NewRegistry() *registry {
+	return &registry{}
+}
+
+func NewRegistryInterface() Registry {
+	return &registry{}
+}
+
+var DefaultRegistry Registry = NewRegistry()
+
+type registryFactory struct{}
+
+func (f *registryFactory) Create() Registry { return NewRegistry() }
+
+func TestDefaultSpringContext_NameEquivalence(t *testing.T) {
+
+	assert.Panic(t, func() {
+		ctx := SpringCore.DefaultApplicationContext()
+		ctx.RegisterBean(DefaultRegistry)
+		ctx.RegisterBeanFn(NewRegistry)
+		ctx.AutoWireBeans()
+	}, `duplicate registration, bean: `)
+
+	assert.Panic(t, func() {
+		ctx := SpringCore.DefaultApplicationContext()
+		bd := ctx.RegisterBean(&registryFactory{})
+		ctx.RegisterMethodBean(bd, "Create")
+		ctx.RegisterBeanFn(NewRegistryInterface)
+		ctx.AutoWireBeans()
+	}, `duplicate registration, bean: `)
 }

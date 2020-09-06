@@ -523,7 +523,7 @@ func newBeanDefinition(name string, bean springBean) *BeanDefinition {
 		break
 	}
 
-	// 如果不是成员方法 Bean 当名称为空时生成默认的 Bean 名称
+	// 统一使用 Bean 的类型字符串作为 Bean 的默认名称!
 	if _, ok := bean.(*fakeMethodBean); !ok && name == "" {
 		name = bean.Type().String()
 	}
@@ -838,28 +838,11 @@ func ValueToBeanDefinition(name string, v reflect.Value) *BeanDefinition {
 
 // FnToBeanDefinition 将构造函数转换为 BeanDefinition 对象
 func FnToBeanDefinition(name string, fn interface{}, tags ...string) *BeanDefinition {
-
-	// 具名函数取函数名作为默认名称，匿名函数还是使用 Bean 的类型名称
-	// 具名函数形如: .../go-spring/spring-core_test.NewManager
-	// 匿名函数形如: .../go-spring/spring-core_test.TestNestValueField.func1.1
-	if name == "" {
-		fnPtr := reflect.ValueOf(fn).Pointer()
-		fnInfo := runtime.FuncForPC(fnPtr)
-		s := strings.Split(fnInfo.Name(), "/")
-		ss := strings.Split(s[len(s)-1], ".")
-		if len(ss) == 2 { // 判断是具名函数
-			name = ss[1]
-		}
-	}
-
 	return newBeanDefinition(name, newConstructorBean(fn, tags))
 }
 
 // MethodToBeanDefinition 将成员方法转换为 BeanDefinition 对象
 func MethodToBeanDefinition(name string, selector BeanSelector, method string, tags ...string) *BeanDefinition {
-	if name == "" { // 生成默认名称，取函数名
-		name = method
-	}
 	return newBeanDefinition(name, newFakeMethodBean(selector, method, tags))
 }
 
