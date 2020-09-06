@@ -23,7 +23,7 @@ import (
 	"github.com/labstack/gommon/color"
 )
 
-// defaultBanner 默认的 banner 字符
+// defaultBanner 默认的 Banner 字符
 const defaultBanner = `
  _______  _______         _______  _______  _______ _________ _        _______ 
 (  ____ \(  ___  )       (  ____ \(  ____ )(  ____ )\__   __/( (    /|(  ____ \
@@ -38,10 +38,25 @@ const defaultBanner = `
 // version 版本信息
 const version = `go-spring@v1.0.4    http://go-spring.com/`
 
-// printBanner 打印 banner 到控制台
+type BannerMode int
+
+const (
+	BannerModeOff     BannerMode = 0
+	BannerModeConsole BannerMode = 1
+)
+
+// customBanner 自定义 Banner 字符串
+var customBanner = ""
+
+// SetBanner 设置自定义 Banner 字符串
+func SetBanner(banner string) {
+	customBanner = banner
+}
+
+// printBanner 打印 Banner 到控制台
 func printBanner(banner string) {
 
-	// 确保 banner 前面有空行
+	// 确保 Banner 前面有空行
 	if banner[0] != '\n' {
 		fmt.Println()
 	}
@@ -54,14 +69,17 @@ func printBanner(banner string) {
 		}
 	}
 
-	// 确保 banner 后面有空行
+	// 确保 Banner 后面有空行
 	if banner[len(banner)-1] != '\n' {
 		fmt.Println()
 	}
 
-	padding := make([]byte, (maxLength-len(version))/2)
-	for i := range padding {
-		padding[i] = ' '
+	var padding []byte
+	if n := (maxLength - len(version)) / 2; n > 0 {
+		padding = make([]byte, n)
+		for i := range padding {
+			padding[i] = ' '
+		}
 	}
 	fmt.Println(string(padding) + version + "\n")
 }

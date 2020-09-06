@@ -35,6 +35,11 @@ var g = &struct {
 	ctx:    SpringCore.NewDefaultSpringContext(),
 }
 
+// SetBannerMode 设置 Banner 的显式模式
+func SetBannerMode(mode BannerMode) {
+	g.config.bannerMode = mode
+}
+
 // ExpectSysProperties 期望从系统环境变量中获取到的属性，支持正则表达式
 func ExpectSysProperties(pattern ...string) {
 	g.config.expectSysProperties = pattern

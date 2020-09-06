@@ -49,6 +49,9 @@ type AfterPrepareFunc func(ctx SpringCore.SpringContext)
 // ApplicationConfig 应用程序的配置
 type ApplicationConfig struct {
 
+	// Banner 的显式模式
+	bannerMode BannerMode
+
 	// 期望从系统环境变量中获取到的属性，支持正则表达式
 	expectSysProperties []string
 
@@ -58,6 +61,7 @@ type ApplicationConfig struct {
 
 func defaultApplicationConfig() *ApplicationConfig {
 	return &ApplicationConfig{
+		bannerMode:          BannerModeConsole,
 		expectSysProperties: []string{`.*`},
 	}
 }
@@ -101,8 +105,10 @@ func newApplication(appCtx ApplicationContext, config ApplicationConfig,
 // Start 启动 SpringBoot 应用
 func (app *application) Start() {
 
-	// 打印 banner 内容
-	app.printBanner()
+	// 打印 Banner 内容
+	if app.config.bannerMode != BannerModeOff {
+		app.printBanner()
+	}
 
 	// 准备上下文环境
 	app.prepare()
@@ -137,28 +143,35 @@ func (app *application) Start() {
 	SpringLogger.Info("spring boot started")
 }
 
-// printBanner 查找 banner 文件然后将其打印到控制台
+// printBanner 查找 Banner 文件然后将其打印到控制台
 func (app *application) printBanner() {
-	printDefaultBanner := true
 
-	for _, configLocation := range app.cfgLocation {
-		if stat, err := os.Stat(configLocation); err == nil && stat.IsDir() {
-			f := path.Join(configLocation, "banner.txt")
-			if stat, err = os.Stat(f); err == nil && !stat.IsDir() {
-				if banner, e := ioutil.ReadFile(f); e == nil {
-					printBanner(string(banner))
-					printDefaultBanner = false
-					break
-				} else {
-					panic(e)
+	// 优先使用自定义 Banner
+	banner := customBanner
+
+	// 然后是文件中的 Banner
+	if banner == "" {
+		for _, configLocation := range app.cfgLocation {
+			if stat, err := os.Stat(configLocation); err == nil && stat.IsDir() {
+				f := path.Join(configLocation, "banner.txt")
+				if stat, err = os.Stat(f); err == nil && !stat.IsDir() {
+					if s, e := ioutil.ReadFile(f); e == nil {
+						banner = string(s)
+						break
+					} else {
+						panic(e)
+					}
 				}
 			}
 		}
 	}
 
-	if printDefaultBanner {
-		printBanner(defaultBanner)
+	// 最后是默认的 Banner
+	if banner == "" {
+		banner = defaultBanner
 	}
+
+	printBanner(banner)
 }
 
 // loadCmdArgs 加载命令行参数，形如 -name value 的参数才有效。
