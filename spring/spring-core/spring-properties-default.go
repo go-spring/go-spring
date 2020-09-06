@@ -233,14 +233,11 @@ func bindStruct(p Properties, v reflect.Value, opt bindOption) {
 
 // parsePropertyTag 解析属性值标签
 func parsePropertyTag(str string) (key string, def interface{}) {
-	if i := strings.Index(str, ":="); i == 0 {
-		panic(fmt.Errorf("error property tag %s", str))
-	} else if i > 0 {
-		key = str[:i]
-		def = str[i+2:]
-	} else {
-		key = str
+	ss := strings.SplitN(str, ":=", 2)
+	if len(ss) > 1 {
+		def = ss[1]
 	}
+	key = ss[0]
 	return
 }
 

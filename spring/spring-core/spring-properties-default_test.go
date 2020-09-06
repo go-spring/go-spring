@@ -200,8 +200,8 @@ func TestDefaultProperties_ReadProperties_Yaml(t *testing.T) {
 			kind reflect.Kind
 		}{
 			{"bool", "bool: false", false, reflect.Bool},
-			{"int", "int: 3", int(3), reflect.Int}, // yaml 是 int，toml 是 int64。
-			{"float", "float: 3.0", float64(3.0), reflect.Float64},
+			{"int", "int: 3", 3 /*int*/, reflect.Int}, // yaml 是 int，toml 是 int64。
+			{"float", "float: 3.0", 3.0 /*float64*/, reflect.Float64},
 			{"string", "string: \"3\"", "3", reflect.String},
 			{"string", "string: hello", "hello", reflect.String},
 			{"date", "date: 2018-02-17", "2018-02-17", reflect.String},
@@ -448,13 +448,13 @@ func TestDefaultProperties_ReadProperties_Toml(t *testing.T) {
 			map[string]interface{}{ // yaml 是 map[interface{}]interface{}，toml 是 map[string]interface{}
 				"bool":   false,
 				"int":    int64(3),
-				"float":  float64(3.0),
+				"float":  3.0, /*float64*/
 				"string": "hello",
 			},
 			map[string]interface{}{
 				"bool":   true,
 				"int":    int64(20),
-				"float":  float64(0.2),
+				"float":  0.2, /*float64*/
 				"string": "hello",
 			},
 		}
@@ -479,11 +479,11 @@ func TestDefaultProperties_ReadProperties_Toml(t *testing.T) {
 
 		data := map[string]interface{}{
 			"map.k1.bool":   false,
-			"map.k1.float":  float64(3.0),
+			"map.k1.float":  3.0, /*float64*/
 			"map.k1.int":    int64(3),
 			"map.k1.string": "hello",
 			"map.k2.bool":   true,
-			"map.k2.float":  float64(0.2),
+			"map.k2.float":  0.2, /*float64*/
 			"map.k2.int":    int64(20),
 			"map.k2.string": "hello",
 		}
@@ -765,6 +765,7 @@ func TestDefaultProperties_ConfigRef(t *testing.T) {
 	type fileLog struct {
 		Dir             string `value:"${dir:=${app.dir}}"`
 		NestedDir       string `value:"${nested.dir:=${nested.app.dir:=./log}}"`
+		NestedEmptyDir  string `value:"${nested.dir:=${nested.app.dir:=}}"`
 		NestedNestedDir string `value:"${nested.dir:=${nested.app.dir:=${nested.nested.app.dir:=./log}}}"`
 	}
 
@@ -787,11 +788,22 @@ func TestDefaultProperties_ConfigRef(t *testing.T) {
 		p.BindProperty("", &httpLog)
 		assert.Equal(t, httpLog.Dir, appDir)
 		assert.Equal(t, httpLog.NestedDir, "./log")
+		assert.Equal(t, httpLog.NestedEmptyDir, "")
 		assert.Equal(t, httpLog.NestedNestedDir, "./log")
 
 		p.BindProperty("", &mqLog)
 		assert.Equal(t, mqLog.Dir, appDir)
 		assert.Equal(t, mqLog.NestedDir, "./log")
+		assert.Equal(t, mqLog.NestedEmptyDir, "")
 		assert.Equal(t, mqLog.NestedNestedDir, "./log")
 	})
+}
+
+func TestDefaultProperties_KeyCanBeEmpty(t *testing.T) {
+	p := SpringCore.NewDefaultProperties()
+	var s struct {
+		KeyIsEmpty string `value:"${:=kie}"`
+	}
+	p.BindProperty("", &s)
+	assert.Equal(t, s.KeyIsEmpty, "kie")
 }
