@@ -71,57 +71,57 @@ func (c *DefaultLoggerContext) Logger(tags ...string) StdLogger {
 }
 
 func (c *DefaultLoggerContext) LogTrace(args ...interface{}) {
-	c.logger(false).Trace(args...)
+	c.logger(false).Output(1, TraceLevel, args...)
 }
 
 func (c *DefaultLoggerContext) LogTracef(format string, args ...interface{}) {
-	c.logger(false).Tracef(format, args...)
+	c.logger(false).Outputf(1, TraceLevel, format, args...)
 }
 
 func (c *DefaultLoggerContext) LogDebug(args ...interface{}) {
-	c.logger(false).Debug(args...)
+	c.logger(false).Output(1, DebugLevel, args...)
 }
 
 func (c *DefaultLoggerContext) LogDebugf(format string, args ...interface{}) {
-	c.logger(false).Debugf(format, args...)
+	c.logger(false).Outputf(1, DebugLevel, format, args...)
 }
 
 func (c *DefaultLoggerContext) LogInfo(args ...interface{}) {
-	c.logger(false).Info(args...)
+	c.logger(false).Output(1, InfoLevel, args...)
 }
 
 func (c *DefaultLoggerContext) LogInfof(format string, args ...interface{}) {
-	c.logger(false).Infof(format, args...)
+	c.logger(false).Outputf(1, InfoLevel, format, args...)
 }
 
 func (c *DefaultLoggerContext) LogWarn(args ...interface{}) {
-	c.logger(false).Warn(args...)
+	c.logger(false).Output(1, WarnLevel, args...)
 }
 
 func (c *DefaultLoggerContext) LogWarnf(format string, args ...interface{}) {
-	c.logger(false).Warnf(format, args...)
+	c.logger(false).Outputf(1, WarnLevel, format, args...)
 }
 
 func (c *DefaultLoggerContext) LogError(args ...interface{}) {
-	c.logger(false).Error(args...)
+	c.logger(false).Output(1, ErrorLevel, args...)
 }
 
 func (c *DefaultLoggerContext) LogErrorf(format string, args ...interface{}) {
-	c.logger(false).Errorf(format, args...)
+	c.logger(false).Outputf(1, ErrorLevel, format, args...)
 }
 
 func (c *DefaultLoggerContext) LogPanic(args ...interface{}) {
-	c.logger(false).Panic(args...)
+	c.logger(false).Output(1, PanicLevel, args...)
 }
 
 func (c *DefaultLoggerContext) LogPanicf(format string, args ...interface{}) {
-	c.logger(false).Panicf(format, args...)
+	c.logger(false).Outputf(1, PanicLevel, format, args...)
 }
 
 func (c *DefaultLoggerContext) LogFatal(args ...interface{}) {
-	c.logger(false).Fatal(args...)
+	c.logger(false).Output(1, FatalLevel, args...)
 }
 
 func (c *DefaultLoggerContext) LogFatalf(format string, args ...interface{}) {
-	c.logger(false).Fatalf(format, args...)
+	c.logger(false).Outputf(1, FatalLevel, format, args...)
 }

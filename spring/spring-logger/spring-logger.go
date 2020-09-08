@@ -16,8 +16,46 @@
 
 package SpringLogger
 
+// Level 日志输出级别
+type Level uint32
+
+const (
+	TraceLevel Level = iota
+	DebugLevel
+	InfoLevel
+	WarnLevel
+	ErrorLevel
+	PanicLevel
+	FatalLevel
+)
+
+// LevelToString 返回 Level 对应的字符串
+func LevelToString(l Level) string {
+	switch l {
+	case TraceLevel:
+		return "trace"
+	case DebugLevel:
+		return "debug"
+	case InfoLevel:
+		return "info"
+	case WarnLevel:
+		return "warn"
+	case ErrorLevel:
+		return "error"
+	case PanicLevel:
+		return "panic"
+	case FatalLevel:
+		return "fatal"
+	}
+	return ""
+}
+
 // StdLogger 标准的 Logger 接口
 type StdLogger interface {
+
+	// SetLevel 设置日志的输出级别，请确保线程安全
+	SetLevel(level Level)
+
 	Trace(args ...interface{})
 	Tracef(format string, args ...interface{})
 
@@ -41,6 +79,10 @@ type StdLogger interface {
 
 	Print(args ...interface{})
 	Printf(format string, args ...interface{})
+
+	// skip 是相对于 Output & Outputf 的调用栈深度
+	Output(skip int, level Level, args ...interface{})
+	Outputf(skip int, level Level, format string, args ...interface{})
 }
 
 // PrefixLogger 带前缀名的 Logger 接口
@@ -69,69 +111,83 @@ type PrefixLogger interface {
 
 // 为了平衡调用栈的深度，增加一个 StdLogger 包装类
 type StdLoggerWrapper struct {
-	l StdLogger
+	StdLogger
+}
+
+func (w *StdLoggerWrapper) SetLevel(level Level) {
+	w.StdLogger.SetLevel(level)
 }
 
 func (w *StdLoggerWrapper) Trace(args ...interface{}) {
-	w.l.Trace(args...)
+	w.StdLogger.Output(1, TraceLevel, args...)
 }
 
 func (w *StdLoggerWrapper) Tracef(format string, args ...interface{}) {
-	w.l.Tracef(format, args...)
+	w.StdLogger.Outputf(1, TraceLevel, format, args...)
 }
 
 func (w *StdLoggerWrapper) Debug(args ...interface{}) {
-	w.l.Debug(args...)
+	w.StdLogger.Output(1, DebugLevel, args...)
 }
 
 func (w *StdLoggerWrapper) Debugf(format string, args ...interface{}) {
-	w.l.Debugf(format, args...)
+	w.StdLogger.Outputf(1, DebugLevel, format, args...)
 }
 
 func (w *StdLoggerWrapper) Info(args ...interface{}) {
-	w.l.Info(args...)
+	w.StdLogger.Output(1, InfoLevel, args...)
 }
 
 func (w *StdLoggerWrapper) Infof(format string, args ...interface{}) {
-	w.l.Infof(format, args...)
+	w.StdLogger.Outputf(1, InfoLevel, format, args...)
 }
 
 func (w *StdLoggerWrapper) Warn(args ...interface{}) {
-	w.l.Warn(args...)
+	w.StdLogger.Output(1, WarnLevel, args...)
 }
 
 func (w *StdLoggerWrapper) Warnf(format string, args ...interface{}) {
-	w.l.Warnf(format, args...)
+	w.StdLogger.Outputf(1, WarnLevel, format, args...)
 }
 
 func (w *StdLoggerWrapper) Error(args ...interface{}) {
-	w.l.Error(args...)
+	w.StdLogger.Output(1, ErrorLevel, args...)
 }
 
 func (w *StdLoggerWrapper) Errorf(format string, args ...interface{}) {
-	w.l.Errorf(format, args...)
+	w.StdLogger.Outputf(1, ErrorLevel, format, args...)
 }
 
 func (w *StdLoggerWrapper) Panic(args ...interface{}) {
-	w.l.Panic(args...)
+	w.StdLogger.Output(1, PanicLevel, args...)
 }
 
 func (w *StdLoggerWrapper) Panicf(format string, args ...interface{}) {
-	w.l.Panicf(format, args...)
+	w.StdLogger.Outputf(1, PanicLevel, format, args...)
 }
 
 func (w *StdLoggerWrapper) Fatal(args ...interface{}) {
-	w.l.Fatal(args...)
+	w.StdLogger.Output(1, FatalLevel, args...)
 }
 
 func (w *StdLoggerWrapper) Fatalf(format string, args ...interface{}) {
-	w.l.Fatalf(format, args...)
+	w.StdLogger.Outputf(1, FatalLevel, format, args...)
 }
 
 func (w *StdLoggerWrapper) Print(args ...interface{}) {
-	w.l.Print(args...)
+	w.StdLogger.Print(args...)
 }
 
 func (w *StdLoggerWrapper) Printf(format string, args ...interface{}) {
-	w.l.Printf(format, args...)
+	w.StdLogger.Printf(format, args...)
+}
+
+// Output 自定义日志级别和调用栈深度，skip 是相对于 Output 的调用栈深度
+func (w *StdLoggerWrapper) Output(skip int, level Level, args ...interface{}) {
+	w.StdLogger.Output(skip+1, level, args...)
+}
+
+// Outputf 自定义日志级别和调用栈深度，skip 是相对于 Outputf 的调用栈深度
+func (w *StdLoggerWrapper) Outputf(skip int, level Level, format string, args ...interface{}) {
+	w.StdLogger.Outputf(skip+1, level, format, args...)
 }
