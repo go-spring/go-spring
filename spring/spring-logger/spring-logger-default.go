@@ -246,14 +246,14 @@ func (c *Console) Printf(format string, args ...interface{}) {
 // Output 自定义日志级别和调用栈深度，skip 是相对于 Output 的调用栈深度
 func (c *Console) Output(skip int, level Level, args ...interface{}) {
 	if c.level <= level {
-		c.log(skip, level, fmt.Sprint(args...))
+		c.log(skip+1, level, fmt.Sprint(args...))
 	}
 }
 
 // Outputf 自定义日志级别和调用栈深度，skip 是相对于 Output 的调用栈深度
 func (c *Console) Outputf(skip int, level Level, format string, args ...interface{}) {
 	if c.level <= level {
-		c.log(skip, level, fmt.Sprintf(format, args...))
+		c.log(skip+1, level, fmt.Sprintf(format, args...))
 	}
 }
 
@@ -266,7 +266,7 @@ func (c *Console) log(skip int, level Level, msg string) {
 		strLevel = color.Yellow(strLevel)
 	}
 
-	_, file, line, _ := runtime.Caller(skip + 2)
+	_, file, line, _ := runtime.Caller(skip + 1)
 	dir, filename := path.Split(file)
 	filename = path.Join(path.Base(dir), filename)
 	fmt.Printf("[%s] %s:%d %s\n", strLevel, filename, line, msg)
