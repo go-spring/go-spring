@@ -63,7 +63,7 @@ func TestConsole(t *testing.T) {
 	// c.Fatalf("a=%d", 1)
 
 	c.Print("a", "=", "1")
-	c.Printf("a=%d", 1)
+	c.Printf("a=%d\n", 1)
 
 	c.Output(0, SpringLogger.InfoLevel, "a=1")
 	c.Outputf(0, SpringLogger.InfoLevel, "a=%d", 1)
@@ -153,7 +153,7 @@ func TestStdLoggerWrapper(t *testing.T) {
 	// c.Fatalf("a=%d", 1)
 
 	c.Print("a", "=", "1")
-	c.Printf("a=%d", 1)
+	c.Printf("a=%d\n", 1)
 
 	c.Output(0, SpringLogger.InfoLevel, "a=1")
 	c.Outputf(0, SpringLogger.InfoLevel, "a=%d", 1)
