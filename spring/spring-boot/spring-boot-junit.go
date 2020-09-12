@@ -37,6 +37,7 @@ type JUnitRunner struct {
 
 func (r *JUnitRunner) Run(ctx ApplicationContext) {
 	ctx.SafeGoroutine(func() {
+		time.Sleep(r.waiting)
 		for _, suite := range r.Suites {
 			suite.Test(r.t)
 		}
