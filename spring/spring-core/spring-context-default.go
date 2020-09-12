@@ -164,7 +164,7 @@ func (ctx *defaultSpringContext) RegisterBean(bean interface{}) *BeanDefinition 
 
 // RegisterNameBean 注册单例 Bean，需要指定名称，重复注册会 panic。
 func (ctx *defaultSpringContext) RegisterNameBean(name string, bean interface{}) *BeanDefinition {
-	bd := ToBeanDefinition(bean).WithName(name)
+	bd := ObjectBean(bean).WithName(name)
 	ctx.registerBeanDefinition(bd)
 	return bd
 }
@@ -176,7 +176,7 @@ func (ctx *defaultSpringContext) RegisterBeanFn(fn interface{}, tags ...string) 
 
 // RegisterNameBeanFn 注册单例构造函数 Bean，需指定名称，重复注册会 panic。
 func (ctx *defaultSpringContext) RegisterNameBeanFn(name string, fn interface{}, tags ...string) *BeanDefinition {
-	bd := FnToBeanDefinition(fn, tags...).WithName(name)
+	bd := ConstructorBean(fn, tags...).WithName(name)
 	ctx.registerBeanDefinition(bd)
 	return bd
 }
@@ -198,7 +198,7 @@ func (ctx *defaultSpringContext) RegisterNameMethodBean(name string, selector Be
 		panic(errors.New("selector can't be nil or empty"))
 	}
 
-	bd := MethodToBeanDefinition(selector, method, tags...).WithName(name)
+	bd := MethodBean(selector, method, tags...).WithName(name)
 	ctx.methodBeans = append(ctx.methodBeans, bd)
 	return bd
 }
@@ -631,8 +631,7 @@ func (ctx *defaultSpringContext) WireBean(i interface{}) {
 		}
 	}()
 
-	bd := ToBeanDefinition(i)
-	assembly.wireBeanDefinition(bd, false)
+	assembly.wireBeanDefinition(ObjectBean(i), false)
 }
 
 // GetBeanDefinitions 获取所有 Bean 的定义，不能保证解析和注入，请谨慎使用该函数!

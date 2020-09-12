@@ -828,11 +828,6 @@ func (d *BeanDefinition) Export(exports ...TypeOrPtr) *BeanDefinition {
 	return d
 }
 
-// ToBeanDefinition 将 Bean 转换为 BeanDefinition 对象
-func ToBeanDefinition(i interface{}) *BeanDefinition {
-	return ValueToBeanDefinition(reflect.ValueOf(i))
-}
-
 // ValueToBeanDefinition 将 Value 转换为 BeanDefinition 对象
 func ValueToBeanDefinition(v reflect.Value) *BeanDefinition {
 	if !v.IsValid() || SpringUtils.IsNil(v) {
@@ -841,13 +836,18 @@ func ValueToBeanDefinition(v reflect.Value) *BeanDefinition {
 	return newBeanDefinition(newObjectBean(v))
 }
 
-// FnToBeanDefinition 将构造函数转换为 BeanDefinition 对象
-func FnToBeanDefinition(fn interface{}, tags ...string) *BeanDefinition {
+// ObjectBean 将 Bean 转换为 BeanDefinition 对象
+func ObjectBean(i interface{}) *BeanDefinition {
+	return ValueToBeanDefinition(reflect.ValueOf(i))
+}
+
+// ConstructorBean 将构造函数转换为 BeanDefinition 对象
+func ConstructorBean(fn interface{}, tags ...string) *BeanDefinition {
 	return newBeanDefinition(newConstructorBean(fn, tags))
 }
 
-// MethodToBeanDefinition 将成员方法转换为 BeanDefinition 对象
-func MethodToBeanDefinition(selector BeanSelector, method string, tags ...string) *BeanDefinition {
+// MethodBean 将成员方法转换为 BeanDefinition 对象
+func MethodBean(selector BeanSelector, method string, tags ...string) *BeanDefinition {
 	return newBeanDefinition(newFakeMethodBean(selector, method, tags))
 }
 
