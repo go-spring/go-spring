@@ -848,6 +848,9 @@ func ConstructorBean(fn interface{}, tags ...string) *BeanDefinition {
 
 // MethodBean 将成员方法转换为 BeanDefinition 对象
 func MethodBean(selector BeanSelector, method string, tags ...string) *BeanDefinition {
+	if selector == nil || selector == "" {
+		panic(errors.New("selector can't be nil or empty"))
+	}
 	return newBeanDefinition(newFakeMethodBean(selector, method, tags))
 }
 

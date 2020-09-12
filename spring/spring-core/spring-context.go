@@ -81,6 +81,9 @@ type SpringContext interface {
 	// method 形如 ServerInterface.Consumer (接口) 或 (*Server).Consumer (类型)。
 	RegisterNameMethodBeanFn(name string, method interface{}, tags ...string) *BeanDefinition
 
+	// RegisterBeanDefinition 注册 BeanDefinition 对象，如果需要 Name 请在调用之前准备好。
+	RegisterBeanDefinition(bd *BeanDefinition) *BeanDefinition
+
 	// AutoWireBeans 对所有 Bean 进行依赖注入和属性绑定
 	AutoWireBeans()
 
