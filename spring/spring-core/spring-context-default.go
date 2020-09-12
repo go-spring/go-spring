@@ -465,7 +465,7 @@ func (ctx *defaultSpringContext) resolveBean(bd *BeanDefinition) {
 	}
 
 	// 按照 Bean 的名字进行缓存
-	ctx.nameCache(bd.name, bd)
+	ctx.nameCache(bd.Name(), bd)
 
 	bd.status = beanStatus_Resolved
 }
@@ -525,12 +525,6 @@ func (ctx *defaultSpringContext) registerMethodBeans() {
 		}
 
 		bd.bean = newMethodBean(result[0], bean.method, bean.tags)
-
-		// 统一使用 Bean 的类型字符串作为 Bean 的默认名称!
-		if bd.name == "" {
-			bd.name = bd.bean.Type().String()
-		}
-
 		ctx.registerBeanDefinition(bd)
 	}
 }

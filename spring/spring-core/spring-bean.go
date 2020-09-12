@@ -476,7 +476,7 @@ type beanDefinition interface {
 // BeanDefinition 用于存储 Bean 的各种元数据
 type BeanDefinition struct {
 	bean   springBean // Bean 的注册形式
-	name   string     // Bean 的名称
+	name   string     // Bean 的名称，请勿直接使用该字段!
 	status beanStatus // Bean 的状态
 
 	file string // 注册点所在文件
@@ -523,11 +523,6 @@ func newBeanDefinition(name string, bean springBean) *BeanDefinition {
 		break
 	}
 
-	// 统一使用 Bean 的类型字符串作为 Bean 的默认名称!
-	if _, ok := bean.(*fakeMethodBean); !ok && name == "" {
-		name = bean.Type().String()
-	}
-
 	return &BeanDefinition{
 		bean:    bean,
 		name:    name,
@@ -561,12 +556,17 @@ func (d *BeanDefinition) TypeName() string {
 
 // Name 返回 Bean 的名称
 func (d *BeanDefinition) Name() string {
+	_, ok := d.bean.(*fakeMethodBean)
+	if !ok && d.name == "" {
+		// 统一使用类型字符串作为默认名称!
+		d.name = d.bean.Type().String()
+	}
 	return d.name
 }
 
 // BeanId 返回 Bean 的唯一 ID
 func (d *BeanDefinition) BeanId() string {
-	return fmt.Sprintf("%s:%s", d.TypeName(), d.name)
+	return fmt.Sprintf("%s:%s", d.TypeName(), d.Name())
 }
 
 // FileLine 返回 Bean 的注册点
@@ -616,7 +616,7 @@ func (d *BeanDefinition) getLine() int {
 
 // Description 返回 Bean 的详细描述
 func (d *BeanDefinition) Description() string {
-	return fmt.Sprintf("%s \"%s\" %s", d.bean.beanClass(), d.name, d.FileLine())
+	return fmt.Sprintf("%s \"%s\" %s", d.bean.beanClass(), d.Name(), d.FileLine())
 }
 
 // Match 测试 Bean 的类型全限定名和 Bean 的名称是否都匹配
@@ -628,7 +628,7 @@ func (d *BeanDefinition) Match(typeName string, beanName string) bool {
 	}
 
 	nameIsSame := false
-	if beanName == "" || d.name == beanName {
+	if beanName == "" || d.Name() == beanName {
 		nameIsSame = true
 	}
 
