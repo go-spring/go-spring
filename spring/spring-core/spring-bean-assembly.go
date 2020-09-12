@@ -349,7 +349,7 @@ func (assembly *defaultBeanAssembly) autoCollectBeans(t reflect.Type, et reflect
 
 // wireSliceItem 对 slice 的元素值进行注入
 func (assembly *defaultBeanAssembly) wireSliceItem(v reflect.Value, d beanDefinition) {
-	bd := ValueToBeanDefinition("", v)
+	bd := ValueToBeanDefinition(v)
 	bd.file = d.getFile()
 	bd.line = d.getLine()
 	assembly.wireBeanDefinition(bd, false)
@@ -515,7 +515,7 @@ func (assembly *defaultBeanAssembly) wireObjectBean(bd beanDefinition, onlyAutoW
 					if fv0.CanSet() {
 
 						// 对 Bean 的结构体进行递归注入
-						b := ValueToBeanDefinition("", fv0.Addr())
+						b := ValueToBeanDefinition(fv0.Addr())
 						b.file = bd.getFile()
 						b.line = bd.getLine()
 						fbd := &fieldBeanDefinition{b, fieldName}

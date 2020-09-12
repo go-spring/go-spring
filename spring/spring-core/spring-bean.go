@@ -493,7 +493,7 @@ type BeanDefinition struct {
 }
 
 // newBeanDefinition BeanDefinition 的构造函数
-func newBeanDefinition(name string, bean springBean) *BeanDefinition {
+func newBeanDefinition(bean springBean) *BeanDefinition {
 
 	var (
 		file string
@@ -525,7 +525,6 @@ func newBeanDefinition(name string, bean springBean) *BeanDefinition {
 
 	return &BeanDefinition{
 		bean:    bean,
-		name:    name,
 		status:  beanStatus_Default,
 		file:    file,
 		line:    line,
@@ -633,6 +632,12 @@ func (d *BeanDefinition) Match(typeName string, beanName string) bool {
 	}
 
 	return typeIsSame && nameIsSame
+}
+
+// WithName 设置 Bean 的名称
+func (d *BeanDefinition) WithName(name string) *BeanDefinition {
+	d.name = name
+	return d
 }
 
 // Or c=a||b
@@ -824,26 +829,26 @@ func (d *BeanDefinition) Export(exports ...TypeOrPtr) *BeanDefinition {
 }
 
 // ToBeanDefinition 将 Bean 转换为 BeanDefinition 对象
-func ToBeanDefinition(name string, i interface{}) *BeanDefinition {
-	return ValueToBeanDefinition(name, reflect.ValueOf(i))
+func ToBeanDefinition(i interface{}) *BeanDefinition {
+	return ValueToBeanDefinition(reflect.ValueOf(i))
 }
 
 // ValueToBeanDefinition 将 Value 转换为 BeanDefinition 对象
-func ValueToBeanDefinition(name string, v reflect.Value) *BeanDefinition {
+func ValueToBeanDefinition(v reflect.Value) *BeanDefinition {
 	if !v.IsValid() || SpringUtils.IsNil(v) {
 		panic(errors.New("bean can't be nil"))
 	}
-	return newBeanDefinition(name, newObjectBean(v))
+	return newBeanDefinition(newObjectBean(v))
 }
 
 // FnToBeanDefinition 将构造函数转换为 BeanDefinition 对象
-func FnToBeanDefinition(name string, fn interface{}, tags ...string) *BeanDefinition {
-	return newBeanDefinition(name, newConstructorBean(fn, tags))
+func FnToBeanDefinition(fn interface{}, tags ...string) *BeanDefinition {
+	return newBeanDefinition(newConstructorBean(fn, tags))
 }
 
 // MethodToBeanDefinition 将成员方法转换为 BeanDefinition 对象
-func MethodToBeanDefinition(name string, selector BeanSelector, method string, tags ...string) *BeanDefinition {
-	return newBeanDefinition(name, newFakeMethodBean(selector, method, tags))
+func MethodToBeanDefinition(selector BeanSelector, method string, tags ...string) *BeanDefinition {
+	return newBeanDefinition(newFakeMethodBean(selector, method, tags))
 }
 
 type fieldBeanDefinition struct {
