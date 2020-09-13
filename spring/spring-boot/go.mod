@@ -8,7 +8,7 @@ require (
 	github.com/go-spring/spring-logger v1.0.5-rc1
 	github.com/go-spring/spring-message v1.0.5-rc1
 	github.com/go-spring/spring-utils v1.0.5-rc1
-	github.com/go-spring/spring-web v1.0.5-rc1.0.20200905145629-90374a3dab2f
+	github.com/go-spring/spring-web v1.0.5-rc1.0.20200913004604-637a4f104964
 	github.com/labstack/gommon v0.3.0
 	github.com/magiconair/properties v1.8.1
 	github.com/pkg/errors v0.8.1 // indirect
