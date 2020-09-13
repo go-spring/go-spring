@@ -476,7 +476,7 @@ type beanDefinition interface {
 // BeanDefinition 用于存储 Bean 的各种元数据
 type BeanDefinition struct {
 	bean   springBean // Bean 的注册形式
-	name   string     // Bean 的名称
+	name   string     // Bean 的名称，请勿直接使用该字段!
 	status beanStatus // Bean 的状态
 
 	file string // 注册点所在文件
@@ -493,7 +493,7 @@ type BeanDefinition struct {
 }
 
 // newBeanDefinition BeanDefinition 的构造函数
-func newBeanDefinition(name string, bean springBean) *BeanDefinition {
+func newBeanDefinition(bean springBean) *BeanDefinition {
 
 	var (
 		file string
@@ -523,14 +523,8 @@ func newBeanDefinition(name string, bean springBean) *BeanDefinition {
 		break
 	}
 
-	// 统一使用 Bean 的类型字符串作为 Bean 的默认名称!
-	if _, ok := bean.(*fakeMethodBean); !ok && name == "" {
-		name = bean.Type().String()
-	}
-
 	return &BeanDefinition{
 		bean:    bean,
-		name:    name,
 		status:  beanStatus_Default,
 		file:    file,
 		line:    line,
@@ -561,12 +555,17 @@ func (d *BeanDefinition) TypeName() string {
 
 // Name 返回 Bean 的名称
 func (d *BeanDefinition) Name() string {
+	_, ok := d.bean.(*fakeMethodBean)
+	if !ok && d.name == "" {
+		// 统一使用类型字符串作为默认名称!
+		d.name = d.bean.Type().String()
+	}
 	return d.name
 }
 
 // BeanId 返回 Bean 的唯一 ID
 func (d *BeanDefinition) BeanId() string {
-	return fmt.Sprintf("%s:%s", d.TypeName(), d.name)
+	return fmt.Sprintf("%s:%s", d.TypeName(), d.Name())
 }
 
 // FileLine 返回 Bean 的注册点
@@ -616,7 +615,7 @@ func (d *BeanDefinition) getLine() int {
 
 // Description 返回 Bean 的详细描述
 func (d *BeanDefinition) Description() string {
-	return fmt.Sprintf("%s \"%s\" %s", d.bean.beanClass(), d.name, d.FileLine())
+	return fmt.Sprintf("%s \"%s\" %s", d.bean.beanClass(), d.Name(), d.FileLine())
 }
 
 // Match 测试 Bean 的类型全限定名和 Bean 的名称是否都匹配
@@ -628,11 +627,17 @@ func (d *BeanDefinition) Match(typeName string, beanName string) bool {
 	}
 
 	nameIsSame := false
-	if beanName == "" || d.name == beanName {
+	if beanName == "" || d.Name() == beanName {
 		nameIsSame = true
 	}
 
 	return typeIsSame && nameIsSame
+}
+
+// WithName 设置 Bean 的名称
+func (d *BeanDefinition) WithName(name string) *BeanDefinition {
+	d.name = name
+	return d
 }
 
 // Or c=a||b
@@ -823,27 +828,30 @@ func (d *BeanDefinition) Export(exports ...TypeOrPtr) *BeanDefinition {
 	return d
 }
 
-// ToBeanDefinition 将 Bean 转换为 BeanDefinition 对象
-func ToBeanDefinition(name string, i interface{}) *BeanDefinition {
-	return ValueToBeanDefinition(name, reflect.ValueOf(i))
-}
-
 // ValueToBeanDefinition 将 Value 转换为 BeanDefinition 对象
-func ValueToBeanDefinition(name string, v reflect.Value) *BeanDefinition {
+func ValueToBeanDefinition(v reflect.Value) *BeanDefinition {
 	if !v.IsValid() || SpringUtils.IsNil(v) {
 		panic(errors.New("bean can't be nil"))
 	}
-	return newBeanDefinition(name, newObjectBean(v))
+	return newBeanDefinition(newObjectBean(v))
 }
 
-// FnToBeanDefinition 将构造函数转换为 BeanDefinition 对象
-func FnToBeanDefinition(name string, fn interface{}, tags ...string) *BeanDefinition {
-	return newBeanDefinition(name, newConstructorBean(fn, tags))
+// ObjectBean 将 Bean 转换为 BeanDefinition 对象
+func ObjectBean(i interface{}) *BeanDefinition {
+	return ValueToBeanDefinition(reflect.ValueOf(i))
 }
 
-// MethodToBeanDefinition 将成员方法转换为 BeanDefinition 对象
-func MethodToBeanDefinition(name string, selector BeanSelector, method string, tags ...string) *BeanDefinition {
-	return newBeanDefinition(name, newFakeMethodBean(selector, method, tags))
+// ConstructorBean 将构造函数转换为 BeanDefinition 对象
+func ConstructorBean(fn interface{}, tags ...string) *BeanDefinition {
+	return newBeanDefinition(newConstructorBean(fn, tags))
+}
+
+// MethodBean 将成员方法转换为 BeanDefinition 对象
+func MethodBean(selector BeanSelector, method string, tags ...string) *BeanDefinition {
+	if selector == nil || selector == "" {
+		panic(errors.New("selector can't be nil or empty"))
+	}
+	return newBeanDefinition(newFakeMethodBean(selector, method, tags))
 }
 
 type fieldBeanDefinition struct {

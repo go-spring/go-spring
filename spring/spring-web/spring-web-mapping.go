@@ -22,6 +22,12 @@ type UrlRegister interface {
 	// Request 注册任意 HTTP 方法处理函数
 	Request(method uint32, path string, fn Handler, filters ...Filter) *Mapper
 
+	// RequestMapping 注册任意 HTTP 方法处理函数
+	RequestMapping(method uint32, path string, fn HandlerFunc, filters ...Filter) *Mapper
+
+	// RequestBinding 注册任意 HTTP 方法处理函数
+	RequestBinding(method uint32, path string, fn interface{}, filters ...Filter) *Mapper
+
 	// HandleGet 注册 GET 方法处理函数
 	HandleGet(path string, fn Handler, filters ...Filter) *Mapper
 
@@ -67,6 +73,16 @@ type defaultUrlRegister struct {
 // Request 注册任意 HTTP 方法处理函数
 func (r *defaultUrlRegister) Request(method uint32, path string, fn Handler, filters ...Filter) *Mapper {
 	return r.request(method, path, fn, filters)
+}
+
+// RequestMapping 注册任意 HTTP 方法处理函数
+func (r *defaultUrlRegister) RequestMapping(method uint32, path string, fn HandlerFunc, filters ...Filter) *Mapper {
+	return r.request(method, path, FUNC(fn), filters)
+}
+
+// RequestBinding 注册任意 HTTP 方法处理函数
+func (r *defaultUrlRegister) RequestBinding(method uint32, path string, fn interface{}, filters ...Filter) *Mapper {
+	return r.request(method, path, BIND(fn), filters)
 }
 
 // HandleGet 注册 GET 方法处理函数

@@ -302,6 +302,16 @@ func (r *Router) Request(method uint32, path string, fn SpringWeb.Handler, filte
 		OnPorts(r.ports...)
 }
 
+// RequestMapping 注册任意 HTTP 方法处理函数
+func (r *Router) RequestMapping(method uint32, path string, fn SpringWeb.HandlerFunc, filters ...SpringWeb.Filter) *Mapping {
+	return r.Request(method, path, SpringWeb.FUNC(fn), filters...)
+}
+
+// RequestBinding 注册任意 HTTP 方法处理函数
+func (r *Router) RequestBinding(method uint32, path string, fn interface{}, filters ...SpringWeb.Filter) *Mapping {
+	return r.Request(method, path, SpringWeb.BIND(fn), filters...)
+}
+
 // HandleGet 注册 GET 方法处理函数
 func (r *Router) HandleGet(path string, fn SpringWeb.Handler, filters ...SpringWeb.Filter) *Mapping {
 	return r.Request(SpringWeb.MethodGet, path, fn, filters...)
@@ -375,6 +385,16 @@ func Route(basePath string, filters ...SpringWeb.Filter) *Router {
 // Request 注册任意 HTTP 方法处理函数
 func Request(method uint32, path string, fn SpringWeb.Handler, filters ...SpringWeb.Filter) *Mapping {
 	return DefaultWebMapping.Request(method, path, fn, filters)
+}
+
+// RequestMapping 注册任意 HTTP 方法处理函数
+func RequestMapping(method uint32, path string, fn SpringWeb.HandlerFunc, filters ...SpringWeb.Filter) *Mapping {
+	return DefaultWebMapping.Request(method, path, SpringWeb.FUNC(fn), filters)
+}
+
+// RequestBinding 注册任意 HTTP 方法处理函数
+func RequestBinding(method uint32, path string, fn interface{}, filters ...SpringWeb.Filter) *Mapping {
+	return DefaultWebMapping.Request(method, path, SpringWeb.BIND(fn), filters)
 }
 
 // HandleGet 注册 GET 方法处理函数

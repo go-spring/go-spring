@@ -160,6 +160,12 @@ func RegisterNameMethodBeanFn(name string, method interface{}, tags ...string) *
 	return g.ctx.RegisterNameMethodBeanFn(name, method, tags...)
 }
 
+// RegisterBeanDefinition 注册 BeanDefinition 对象，如果需要 Name 请在调用之前准备好。
+func RegisterBeanDefinition(bd *SpringCore.BeanDefinition) *SpringCore.BeanDefinition {
+	checkRunning()
+	return g.ctx.RegisterBeanDefinition(bd)
+}
+
 // WireBean 对外部的 Bean 进行依赖注入和属性绑定
 func WireBean(bean interface{}) {
 	g.ctx.WireBean(bean)
@@ -293,26 +299,7 @@ func Go(fn GoFuncWithContext) {
 
 /////////////////// Web Filter Register /////////////////////
 
-// RegisterFilter 注册 Web Filter 对象 Bean，不指定名称，重复注册会 panic。
-func RegisterFilter(bean interface{}) *SpringCore.BeanDefinition {
-	checkRunning()
-	return g.ctx.RegisterBean(bean).Export((*SpringWeb.Filter)(nil))
-}
-
-// RegisterNameFilter 注册 Web Filter 对象 Bean，需指定名称，重复注册会 panic。
-func RegisterNameFilter(name string, bean interface{}) *SpringCore.BeanDefinition {
-	checkRunning()
-	return g.ctx.RegisterNameBean(name, bean).Export((*SpringWeb.Filter)(nil))
-}
-
-// RegisterFilterFn 注册 Web Filter 构造函数 Bean，不指定名称，重复注册会 panic。
-func RegisterFilterFn(fn interface{}, tags ...string) *SpringCore.BeanDefinition {
-	checkRunning()
-	return g.ctx.RegisterBeanFn(fn, tags...).Export((*SpringWeb.Filter)(nil))
-}
-
-// RegisterNameFilterFn 注册 Web Filter 构造函数 Bean，需指定名称，重复注册会 panic。
-func RegisterNameFilterFn(name string, fn interface{}, tags ...string) *SpringCore.BeanDefinition {
-	checkRunning()
-	return g.ctx.RegisterNameBeanFn(name, fn, tags...).Export((*SpringWeb.Filter)(nil))
+// RegisterFilter 注册 Web Filter 对象 Bean，如果需要 Name 请在调用之前准备好。
+func RegisterFilter(bd *SpringCore.BeanDefinition) *SpringCore.BeanDefinition {
+	return RegisterBeanDefinition(bd).Export((*SpringWeb.Filter)(nil))
 }
