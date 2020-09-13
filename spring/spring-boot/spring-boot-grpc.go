@@ -29,29 +29,37 @@ import (
 // GRpcServerMap gRPC 服务列表
 var GRpcServerMap = make(map[reflect.Value]*GRpcServer)
 
-// RegisterGRpcServer 注册 gRPC 服务，fn 是 gRPC 自动生成的服务注册函数
-func RegisterGRpcServer(fn interface{}, server interface{}) *GRpcServer {
+// RegisterGRpcServer 注册 gRPC 服务提供者，fn 是 gRPC 自动生成的服务注册函数，serviceName 是服务名称，
+// 必须对应 *_grpc.pg.go 文件里面 grpc.ServiceDesc 的 ServiceName 字段，server 是服务具体提供者对象。
+func RegisterGRpcServer(fn interface{}, serviceName string, server interface{}) *GRpcServer {
 	v := reflect.ValueOf(fn)
 	if _, ok := GRpcServerMap[v]; ok {
 		_, _, fnName := SpringUtils.FileLine(fn)
 		panic(fmt.Errorf("duplicate registration, gRpcServer: %s", fnName))
 	}
-	s := newGRpcServer(server)
+	s := newGRpcServer(serviceName, server)
 	GRpcServerMap[v] = s
 	return s
 }
 
 type GRpcServer struct {
-	server interface{}             // 服务对象
-	cond   *SpringCore.Conditional // 判断条件
+	server      interface{}             // 服务对象
+	serviceName string                  // 服务名称
+	cond        *SpringCore.Conditional // 判断条件
 }
 
 // newGRpcServer GRpcServer 的构造函数
-func newGRpcServer(server interface{}) *GRpcServer {
+func newGRpcServer(serviceName string, server interface{}) *GRpcServer {
 	return &GRpcServer{
-		server: server,
-		cond:   SpringCore.NewConditional(),
+		server:      server,
+		serviceName: serviceName,
+		cond:        SpringCore.NewConditional(),
 	}
+}
+
+// ServiceName 返回服务名称
+func (s *GRpcServer) ServiceName() string {
+	return s.serviceName
 }
 
 // Server 返回服务对象
