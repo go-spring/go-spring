@@ -21,7 +21,6 @@ import (
 	"net"
 	"reflect"
 	"runtime"
-	"strings"
 
 	"github.com/go-spring/spring-boot"
 	"github.com/go-spring/spring-logger"
@@ -56,8 +55,7 @@ func (starter *Starter) OnStartApplication(ctx SpringBoot.ApplicationContext) {
 			ctx.WireBean(server.Server()) // 对 gRPC 服务对象进行注入
 			srv := reflect.ValueOf(server.Server())
 			fn.Call([]reflect.Value{v, srv}) // 调用 gRPC 的服务注册函数
-			tName := strings.TrimSuffix(fn.Type().In(1).String(), "Server")
-			srvMap[tName] = srv
+			srvMap[server.ServiceName()] = srv
 		}
 	}
 
