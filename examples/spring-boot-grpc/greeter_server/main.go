@@ -29,8 +29,10 @@ import (
 )
 
 func init() {
-	SpringBoot.RegisterGRpcServer(pb.RegisterGreeterServer, new(GreeterServer)).
-		ConditionOnOptionalPropertyValue("greeter-server.enable", true)
+	SpringBoot.RegisterGRpcServer(pb.RegisterGreeterServer,
+		"helloworld.Greeter",
+		new(GreeterServer),
+	).ConditionOnOptionalPropertyValue("greeter-server.enable", true)
 }
 
 type GreeterServer struct {

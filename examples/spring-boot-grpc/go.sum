@@ -73,6 +73,8 @@ github.com/go-spring/boot-starter v0.0.0-20200808142234-b000c10161b2/go.mod h1:3
 github.com/go-spring/spring-boot v1.0.5-rc1/go.mod h1:+WE5xuec0Pej78qPE0/3ke+BKKl3YjmhblHtj/1sc9E=
 github.com/go-spring/spring-boot v1.0.5-rc1.0.20200912144533-c0f6e1b2fd06 h1:qULAk+6BhXnuIm3HOB1DkuBzq9sUpwiTMk+IBFiSK00=
 github.com/go-spring/spring-boot v1.0.5-rc1.0.20200912144533-c0f6e1b2fd06/go.mod h1:Fu4/XCAWqBKvgI1tz1lc5lUl9QRQWNNj1p2cCuyhZhc=
+github.com/go-spring/spring-boot v1.0.5-rc1.0.20200913072102-eda9757a85a9 h1:4vdPucAWXakqUX+EmWxl53imHEc4ejQeix+57JeM91E=
+github.com/go-spring/spring-boot v1.0.5-rc1.0.20200913072102-eda9757a85a9/go.mod h1:PmoI/HkRUnfWxnOpz4AI9IzVvlZ9r7lp5atGdDJc2aQ=
 github.com/go-spring/spring-const v1.0.5-rc1 h1:P9z23RoPiPnTVVcxxNlKZaswLGt8e8TntIPFGVE4DOU=
 github.com/go-spring/spring-const v1.0.5-rc1/go.mod h1:WBXCBvxv5cf0RIqnEB3wxoZ2y1G3XIUEYk7i5KDXInw=
 github.com/go-spring/spring-core v1.0.5-rc1/go.mod h1:qr095MTdkWQx2mjiuWsrPTarGU5U6g+EeqyWkYtlCps=
@@ -105,6 +107,8 @@ github.com/go-spring/starter-grpc-client v1.0.5-rc1 h1:BBYB5z6quIYKp8kIRaeXTqTS7
 github.com/go-spring/starter-grpc-client v1.0.5-rc1/go.mod h1:+PzTRhBZelvg4uYmZeu8PhBVwkE/Mtq87OZG3EAs8ig=
 github.com/go-spring/starter-grpc-server v1.0.5-rc1 h1:ZbMlOBOgEUSSC41YaPckOBTE8HfuMyz271vZuRuek+E=
 github.com/go-spring/starter-grpc-server v1.0.5-rc1/go.mod h1:k0rh3qtu+7mIhEwSvfZyxdaLGrIT15edxHGW+Iw/Owg=
+github.com/go-spring/starter-grpc-server v1.0.5-rc1.0.20200913072429-ad34265d0f2f h1:rRiMUYmImAnCwfTCDKn716MwUYJvxiXy0raa83u1Z8I=
+github.com/go-spring/starter-grpc-server v1.0.5-rc1.0.20200913072429-ad34265d0f2f/go.mod h1:/cPIN3OcW3DSmfRE0kleCdtnZcHMB4qIWgW8OI1hJMY=
 github.com/go-spring/starter-web v1.0.5-rc1 h1:iYCezpqnNLPj6tP+msX3hPAnZvYlPeiTyLSDrZoZNkw=
 github.com/go-spring/starter-web v1.0.5-rc1/go.mod h1:QwqwrTPJpS8h7haU52TQmWNaIladwa7A1UqlR5rBY2E=
 github.com/go-stack/stack v1.8.0/go.mod h1:v0f6uXyyMGvRgIKkXu+yp6POWl0qKG85gN/melR3HDY=
