@@ -1,0 +1,93 @@
+Release History:
+
+v1.0.4 2020-06-23
+
+    该版本最大的特点是引入 BeanSelector (选择器) 和 Bean Tag，进而统一了
+    GetBean、FindBean 和 CollectBeans 三大函数的关系。其他改动点如下：
+
+    1. 解决了 WebServer 重复注册的问题，实现了路由注册时的多端口匹配机制，支
+    持 Receiver 方法注册路由，整合了 Filter 和 Condition 机制，可以更好的
+    打印 URL 注册信息，支持 Server、Container、Router、Mapper 四重级别的
+    过滤器；
+
+    2. 支持更多种数组值的绑定，收集模式支持指定 Bean 选择器，扩展 ${} 的语法，
+    当引用类型遇见 ${} 时首先获取对应的属性值，然后使用获取到的属性值当做 tag
+    进行 Bean 的筛选；
+
+    3. 删除非严格模式，删除注入过程中 Bean 排序和堆栈 Watch 功能，删除关闭
+    自动导出功能的函数，删除事件通知函数；
+
+    4. 支持 destroy 函数按顺序依次调用，修复 Map 属性值优先返回默认值的 BUG，
+    等等。
+
+v1.0.3 2020-04-24
+
+    1. Bean 规则：使用具名函数的函数名作为函数 Bean 的默认名称，函数 Bean
+    支持普通参数和 Option 参数同时使用，支持 inject 作为注入关键字，支持
+    export 标签自动导出 Bean 实现的接口，Init 和 Destroy 支持更复杂的函数
+    形式（多入参、接口函数等），严格模式下指定注入 Bean 的名称以防没有显示导出
+    接口；
+
+    2. API 变化：增加关闭严格模式的 API 接口，推荐使用 Export 接口替换
+    AsInterface 接口，增加一种基于 Condition 的即时运行机制（支持参数注入），
+    支持 Config 配置函数，实验性支持 RegisterMethodBeanFn()；
+
+    3. 配置化：增加系统环境变量过滤功能，支持 int、string、bool 及自定义值类
+    型的数组默认值；
+
+    4. Web 模块：增加 Swagger Doc 功能（实验性支持），等等。
+
+v1.0.2 2020-03-24
+
+    优化 SpringBean 存储；RequestMapping 支持方法组合，增加封装 Bind 操
+    作的 Web RPC 适配函数；array 定义为值类型。
+
+v1.0.1 2020-02-23
+
+    1. 重新设计 Bean 注册机制，可以在严格模式和非严格模式两种模式下工作，严格
+    模式下必须使用 AsInterface() 导出接口，并且严格模式下能大幅提高 Bean
+    查找效率，实现线程安全地对注入堆栈变化过程的监控。
+
+    2. SpringContext 实现了 context.Context 接口，添加了事件通知机制，
+    新增了 Close 函数，配合 Bean 销毁回调，可以实现更多资源清理工作。
+
+    3. 属性值列表新增系统环境变量和命令行参数支持，参数覆盖的优先级是命令行->
+    系统环境变量->应用配置文件；添加获取 Duration 和 Time 属性值的方法，
+    支持 Map 类型值的属性绑定，支持嵌套属性使用 value 标签，函数参数属性绑定
+    支持空串参数，函数参数支持收集模式。
+
+    4. 支持对私有字段的注入，支持对没有 Tag 的结构体字段进行注入，支持对私有
+    字段注入功能打开或关闭；
+
+    5. 更新 parent、web 框架，增加 starter-go-redis、starter-mysql-
+    gorm 模块，实现了 MySQL 和 Redis 的 Mock 注入框架。
+
+    6. 增加对 condition 取反的 condition，go-spring 自身的环境变量支持
+    文件配置，更完善的单元测试，增加优秀贡献者名单，等等。
+
+v1.0.0-rc 2020-01-04
+
+    支持无 tag 的属性绑定；实现结构体数组及结构体指针数组元素的注入；构造函数
+    支持一个或包含 error 的两个返回值；Condition 支持属性值是否存在及属性值
+    匹配两种模式；PropertyCondition 支持简单的表达式；支持注册 Option 模
+    式的构造函数 Bean；支持成员方法 Bean；对构造函数 Bean 和成员方法 Bean
+    自动注入；函数返回值是接口类型时对真实类型进行注入；支持任意自定义值类型转换
+    器；扩充 Bean 的数据类型；新的 URL 注册机制，并且支持按名称设置 Filter；
+    Bean & OptionArg 支持可变参数函数。
+
+v1.0.0-beta 2019-12-08
+
+    支持 Map、数组类型的属性绑定；实现简单的 Condition 机制；支持加载 k8s
+    config-map 格式的属性源；支持结构体数组属性的嵌套解析；支持通过构造函数
+    注册 Bean；去除回调风格的 Module 机制；使用更简单的构造函数 tag 机制；
+    增加运行时环境参数规则匹配；实现 DependsOn 机制；支持 Primary 对多个
+    候选 Bean 进行优先选择；增加 BindProperty 和 BindPropertyIf 接口；
+    支持自定义值类型的结构体嵌套的属性绑定。
+
+v1.0.0-alpha 2019-10-27
+
+    发布 1.0.0 Alpha 版。引入 Singlet API，简化 Boot 框架使用；实现类型
+    转换器，结构体可以作为属性值进行注入；实现全限定名语法，支持复杂场景；属性
+    绑定支持结构体嵌套；实现了流式风格的 Web 路由分组函数；Autowire 引入可空
+    语法；增加 FindBean 函数；简化项目管理的复杂度；引入 "[]" 收集模式语法；
+    引入 Web 过滤器；支持数组注入，等等。
