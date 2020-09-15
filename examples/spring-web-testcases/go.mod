@@ -1,4 +1,4 @@
-module github.com/go-spring/examples/spring-boot-junit
+module github.com/go-spring/examples/spring-web-testcases
 
 go 1.12
 
