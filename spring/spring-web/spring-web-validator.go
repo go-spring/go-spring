@@ -16,53 +16,19 @@
 
 package SpringWeb
 
-import (
-	"reflect"
-
-	"github.com/go-playground/validator/v10"
-	"github.com/go-spring/spring-utils"
-)
-
-// WebValidator 适配 gin 和 echo 的校验器接口
+// WebValidator 参数校验器接口
 type WebValidator interface {
 	Engine() interface{}
 	Validate(i interface{}) error
-	ValidateStruct(i interface{}) error
 }
 
-// Validator 全局参数校验器，没有啥好办法不做成全局变量
-var Validator WebValidator = NewBuiltInValidator()
+// Validator 全局参数校验器
+var Validator WebValidator
 
-// BuiltInValidator 内置的参数校验器
-type BuiltInValidator struct {
-	validator *validator.Validate
-}
-
-// NewBuiltInValidator BuiltInValidator 的构造函数
-func NewBuiltInValidator() *BuiltInValidator {
-	return &BuiltInValidator{validator: validator.New()}
-}
-
-func (v *BuiltInValidator) Engine() interface{} {
-	return v.validator
-}
-
-// Validate echo 的参数校验接口
-func (v *BuiltInValidator) Validate(i interface{}) error {
-	return v.validateStruct(i)
-}
-
-// ValidateStruct gin 的参数校验接口
-func (v *BuiltInValidator) ValidateStruct(i interface{}) error {
-	return v.validateStruct(i)
-}
-
-// validateStruct receives any kind of type, but only performed struct or pointer to struct type.
-func (v *BuiltInValidator) validateStruct(i interface{}) error {
-	if SpringUtils.Indirect(reflect.TypeOf(i)).Kind() == reflect.Struct {
-		if err := v.validator.Struct(i); err != nil {
-			return err
-		}
+// Validate 参数校验
+func Validate(i interface{}) error {
+	if Validator != nil {
+		return Validator.Validate(i)
 	}
 	return nil
 }
