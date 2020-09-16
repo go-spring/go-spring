@@ -31,6 +31,7 @@ import (
 	"github.com/go-spring/examples/testcases"
 	"github.com/go-spring/spring-echo"
 	"github.com/go-spring/spring-gin"
+	"github.com/go-spring/spring-utils"
 	"github.com/go-spring/spring-web"
 	"github.com/labstack/echo"
 	"github.com/labstack/echo/middleware"
@@ -191,7 +192,8 @@ func TestWebContainer(t *testing.T) {
 			assert.Equal(t, "anything", webCtx.PathParam("*"))
 			assert.Equal(t, []string{"*"}, webCtx.PathParamNames())
 			assert.Equal(t, []string{"anything"}, webCtx.PathParamValues())
-			webCtx.JSON(http.StatusOK, webCtx.PathParam("*"))
+			err := webCtx.JSON(http.StatusOK, webCtx.PathParam("*"))
+			SpringUtils.Panic(err).When(err != nil)
 		})
 
 		c.GetMapping("/wild_2/*none", func(webCtx SpringWeb.WebContext) {
@@ -199,14 +201,16 @@ func TestWebContainer(t *testing.T) {
 			assert.Equal(t, "anything", webCtx.PathParam("none"))
 			assert.Equal(t, []string{"*"}, webCtx.PathParamNames())
 			assert.Equal(t, []string{"anything"}, webCtx.PathParamValues())
-			webCtx.JSON(http.StatusOK, webCtx.PathParam("*"))
+			err := webCtx.JSON(http.StatusOK, webCtx.PathParam("*"))
+			SpringUtils.Panic(err).When(err != nil)
 		})
 
 		c.GetMapping("/wild_3/{*}", func(webCtx SpringWeb.WebContext) {
 			assert.Equal(t, "anything", webCtx.PathParam("*"))
 			assert.Equal(t, []string{"*"}, webCtx.PathParamNames())
 			assert.Equal(t, []string{"anything"}, webCtx.PathParamValues())
-			webCtx.JSON(http.StatusOK, webCtx.PathParam("*"))
+			err := webCtx.JSON(http.StatusOK, webCtx.PathParam("*"))
+			SpringUtils.Panic(err).When(err != nil)
 		})
 
 		c.Request(SpringWeb.MethodGetPost, "/empty", SpringWeb.BIND(s.Empty))
@@ -324,9 +328,8 @@ func TestEchoServer(t *testing.T) {
 				assert.Equal(t, "echo", webCtx.PathParam("*"))
 				assert.Equal(t, []string{"*"}, webCtx.PathParamNames())
 				assert.Equal(t, []string{"echo"}, webCtx.PathParamValues())
-				webCtx.JSON(http.StatusOK, map[string]string{
-					"a": "1",
-				})
+				err := webCtx.JSON(http.StatusOK, map[string]string{"a": "1"})
+				SpringUtils.Panic(err).When(err != nil)
 			}), "", nil))
 
 		testRun(e)
@@ -384,9 +387,8 @@ func TestGinServer(t *testing.T) {
 				assert.Equal(t, "gin", webCtx.PathParam("*"))
 				assert.Equal(t, []string{"*"}, webCtx.PathParamNames())
 				assert.Equal(t, []string{"gin"}, webCtx.PathParamValues())
-				webCtx.JSON(http.StatusOK, map[string]string{
-					"a": "1",
-				})
+				err := webCtx.JSON(http.StatusOK, map[string]string{"a": "1"})
+				SpringUtils.Panic(err).When(err != nil)
 			}), SpringWeb.DefaultWildCardName, nil)...)
 
 		testRun(g)

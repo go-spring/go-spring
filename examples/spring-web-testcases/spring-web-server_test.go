@@ -28,6 +28,7 @@ import (
 	"github.com/go-spring/examples/testcases"
 	"github.com/go-spring/spring-echo"
 	"github.com/go-spring/spring-gin"
+	"github.com/go-spring/spring-utils"
 	"github.com/go-spring/spring-web"
 )
 
@@ -41,7 +42,8 @@ func TestWebServer(t *testing.T) {
 	// 可用于全局的路由分组
 	r := SpringWeb.NewRouter("/v1", testcases.NewStringFilter("@router"))
 	r.GetMapping("/router", func(ctx SpringWeb.WebContext) {
-		ctx.String(http.StatusOK, "router:ok")
+		err := ctx.String(http.StatusOK, "router:ok")
+		SpringUtils.Panic(err).When(err != nil)
 	}, testcases.NewStringFilter("@router:/router"))
 
 	// 添加第一个 Web 容器

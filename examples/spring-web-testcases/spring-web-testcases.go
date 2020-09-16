@@ -119,7 +119,8 @@ func (s *Service) Get(ctx SpringWeb.WebContext) {
 	val := s.store[key]
 	ctx.LogInfo("/get ", "val=", val)
 
-	ctx.String(http.StatusOK, val)
+	err := ctx.String(http.StatusOK, val)
+	SpringUtils.Panic(err).When(err != nil)
 }
 
 func (s *Service) Set(ctx SpringWeb.WebContext) {

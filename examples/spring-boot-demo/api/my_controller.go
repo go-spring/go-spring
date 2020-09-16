@@ -45,7 +45,8 @@ func init() {
 
 	// 接受简单函数，可以使用 SpringBoot.Filter 封装，进而增加可用条件
 	r.GetMapping("/func", func(ctx SpringWeb.WebContext) {
-		ctx.String(http.StatusOK, "func() return ok")
+		err := ctx.String(http.StatusOK, "func() return ok")
+		SpringUtils.Panic(err).When(err != nil)
 	}, SpringBoot.Filter(SpringEcho.Filter(middleware.KeyAuth(
 		func(key string, context echo.Context) (bool, error) {
 			return key == "key_auth", nil
@@ -138,5 +139,6 @@ func (c *MyController) OK(ctx SpringWeb.WebContext) {
 		panic(errors.New("error"))
 	}
 
-	ctx.JSONBlob(200, []byte(val))
+	err = ctx.JSONBlob(200, []byte(val))
+	SpringUtils.Panic(err).When(err != nil)
 }
