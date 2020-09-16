@@ -22,6 +22,27 @@ import (
 	"runtime"
 )
 
+type withCause struct {
+	cause interface{}
+}
+
+// WithCause 封装一个异常源
+func WithCause(r interface{}) error {
+	return &withCause{cause: r}
+}
+
+func (c *withCause) Error() string {
+	return fmt.Sprint(c.cause)
+}
+
+// Cause 获取封装的异常源
+func Cause(err error) interface{} {
+	if c, ok := err.(*withCause); ok {
+		return c.cause
+	}
+	return err
+}
+
 // ErrorToString 获取 error 的字符串
 func ErrorToString(err error) string {
 	if err == nil {
