@@ -336,195 +336,205 @@ func (ctx *Context) NoContent(code int) {
 }
 
 // String writes the given string into the response body.
-func (ctx *Context) String(code int, format string, values ...interface{}) {
+func (ctx *Context) String(code int, format string, values ...interface{}) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = SpringUtils.WithCause(r)
+		}
+	}()
 	ctx.ginContext.String(code, fmt.Sprintf(format, values...))
+	return
 }
 
 // HTML sends an HTTP response with status code.
-func (ctx *Context) HTML(code int, html string) {
-	ctx.Blob(code, SpringWeb.MIMETextHTMLCharsetUTF8, []byte(html))
+func (ctx *Context) HTML(code int, html string) error {
+	return ctx.Blob(code, SpringWeb.MIMETextHTMLCharsetUTF8, []byte(html))
 }
 
 // HTMLBlob sends an HTTP blob response with status code.
-func (ctx *Context) HTMLBlob(code int, b []byte) {
-	ctx.Blob(code, SpringWeb.MIMETextHTMLCharsetUTF8, b)
+func (ctx *Context) HTMLBlob(code int, b []byte) error {
+	return ctx.Blob(code, SpringWeb.MIMETextHTMLCharsetUTF8, b)
 }
 
 // JSON sends a JSON response with status code.
-func (ctx *Context) JSON(code int, i interface{}) {
-	ctx.ginContext.JSON(code, i)
+func (ctx *Context) JSON(code int, i interface{}) error {
+	b, err := json.Marshal(i)
+	if err != nil {
+		return err
+	}
+	return ctx.Blob(code, SpringWeb.MIMEApplicationJSONCharsetUTF8, b)
 }
 
 // JSONPretty sends a pretty-print JSON with status code.
-func (ctx *Context) JSONPretty(code int, i interface{}, indent string) {
-
+func (ctx *Context) JSONPretty(code int, i interface{}, indent string) error {
 	b, err := json.MarshalIndent(i, "", indent)
-	SpringUtils.Panic(err).When(err != nil)
-
-	ctx.Blob(code, SpringWeb.MIMEApplicationJSONCharsetUTF8, b)
+	if err != nil {
+		return err
+	}
+	return ctx.Blob(code, SpringWeb.MIMEApplicationJSONCharsetUTF8, b)
 }
 
 // JSONBlob sends a JSON blob response with status code.
-func (ctx *Context) JSONBlob(code int, b []byte) {
-	ctx.Blob(code, SpringWeb.MIMEApplicationJSONCharsetUTF8, b)
+func (ctx *Context) JSONBlob(code int, b []byte) error {
+	return ctx.Blob(code, SpringWeb.MIMEApplicationJSONCharsetUTF8, b)
 }
 
 func (ctx *Context) jsonPBlob(code int, callback string, data func(http.ResponseWriter) error) error {
 	// NOTE: 这一段逻辑使用了 echo 的实现
+	rw := ctx.ginContext.Writer
 
 	ctx.Header(SpringWeb.HeaderContentType, SpringWeb.MIMEApplicationJavaScriptCharsetUTF8)
 	ctx.Status(code)
 
-	response := ctx.ginContext.Writer
-
-	if _, err := response.Write([]byte(callback + "(")); err != nil {
+	_, err := rw.Write([]byte(callback + "("))
+	if err != nil {
 		return err
 	}
 
-	if err := data(response); err != nil {
+	err = data(rw)
+	if err != nil {
 		return err
 	}
 
-	if _, err := response.Write([]byte(");")); err != nil {
-		return err
-	}
-	return nil
+	_, err = rw.Write([]byte(");"))
+	return err
 }
 
 // JSONP sends a JSONP response with status code.
-func (ctx *Context) JSONP(code int, callback string, i interface{}) {
-
-	err := ctx.jsonPBlob(code, callback, func(response http.ResponseWriter) error {
-
+func (ctx *Context) JSONP(code int, callback string, i interface{}) error {
+	return ctx.jsonPBlob(code, callback, func(response http.ResponseWriter) error {
 		enc := json.NewEncoder(response)
-
-		_, pretty := ctx.QueryParams()["pretty"]
-		if pretty {
+		if _, pretty := ctx.QueryParams()["pretty"]; pretty {
 			enc.SetIndent("", "  ")
 		}
-
-		if err := enc.Encode(i); err != nil {
-			return err
-		}
-		return nil
+		return enc.Encode(i)
 	})
-
-	SpringUtils.Panic(err).When(err != nil)
 }
 
 // JSONPBlob sends a JSONP blob response with status code.
-func (ctx *Context) JSONPBlob(code int, callback string, b []byte) {
-
-	err := ctx.jsonPBlob(code, callback, func(response http.ResponseWriter) error {
-		if _, err := response.Write(b); err != nil {
-			return err
-		}
-		return nil
+func (ctx *Context) JSONPBlob(code int, callback string, b []byte) error {
+	return ctx.jsonPBlob(code, callback, func(response http.ResponseWriter) error {
+		_, err := response.Write(b)
+		return err
 	})
-
-	SpringUtils.Panic(err).When(err != nil)
 }
 
 // XML sends an XML response with status code.
-func (ctx *Context) XML(code int, i interface{}) {
+func (ctx *Context) XML(code int, i interface{}) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = SpringUtils.WithCause(r)
+		}
+	}()
 	ctx.ginContext.XML(code, i)
+	return
 }
 
 func (ctx *Context) xmlBlob(code int, data func(http.ResponseWriter) error) error {
 	// NOTE: 这一段逻辑使用了 echo 的实现
+	rw := ctx.ginContext.Writer
 
 	ctx.Header(SpringWeb.HeaderContentType, SpringWeb.MIMEApplicationJavaScriptCharsetUTF8)
 	ctx.Status(code)
 
-	response := ctx.ginContext.Writer
-
-	if _, err := response.Write([]byte(xml.Header)); err != nil {
+	_, err := rw.Write([]byte(xml.Header))
+	if err != nil {
 		return err
 	}
 
-	return data(response)
+	return data(rw)
 }
 
 // XMLPretty sends a pretty-print XML with status code.
-func (ctx *Context) XMLPretty(code int, i interface{}, indent string) {
-
-	err := ctx.xmlBlob(code, func(response http.ResponseWriter) error {
-
-		enc := xml.NewEncoder(response)
+func (ctx *Context) XMLPretty(code int, i interface{}, indent string) error {
+	return ctx.xmlBlob(code, func(rw http.ResponseWriter) error {
+		enc := xml.NewEncoder(rw)
 		if indent != "" {
 			enc.Indent("", indent)
 		}
-
 		return enc.Encode(i)
 	})
-
-	SpringUtils.Panic(err).When(err != nil)
 }
 
 // XMLBlob sends an XML blob response with status code.
-func (ctx *Context) XMLBlob(code int, b []byte) {
-
-	err := ctx.xmlBlob(code, func(response http.ResponseWriter) error {
-		_, err := response.Write(b)
+func (ctx *Context) XMLBlob(code int, b []byte) error {
+	return ctx.xmlBlob(code, func(rw http.ResponseWriter) error {
+		_, err := rw.Write(b)
 		return err
 	})
-
-	SpringUtils.Panic(err).When(err != nil)
 }
 
 // Blob sends a blob response with status code and content type.
-func (ctx *Context) Blob(code int, contentType string, b []byte) {
+func (ctx *Context) Blob(code int, contentType string, b []byte) error {
 	// NOTE: 这一段逻辑使用了 echo 的实现
+	rw := ctx.ginContext.Writer
 
 	ctx.Header(SpringWeb.HeaderContentType, contentType)
 	ctx.Status(code)
 
-	response := ctx.ginContext.Writer
-
-	_, err := response.Write(b)
-	SpringUtils.Panic(err).When(err != nil)
+	_, err := rw.Write(b)
+	return err
 }
 
 // Stream sends a streaming response with status code and content type.
-func (ctx *Context) Stream(code int, contentType string, r io.Reader) {
+func (ctx *Context) Stream(code int, contentType string, r io.Reader) error {
 	// NOTE: 这一段逻辑使用了 echo 的实现
+	rw := ctx.ginContext.Writer
 
 	ctx.Header(SpringWeb.HeaderContentType, contentType)
 	ctx.Status(code)
 
-	_, err := io.Copy(ctx.ginContext.Writer, r)
-	SpringUtils.Panic(err).When(err != nil)
+	_, err := io.Copy(rw, r)
+	return err
 }
 
-func (ctx *Context) contentDisposition(file, name, dispositionType string) {
+func (ctx *Context) contentDisposition(file, name, dispositionType string) error {
 	// NOTE: 这一段逻辑使用了 echo 的实现
 
 	s := fmt.Sprintf("%s; filename=%q", dispositionType, name)
 	ctx.Header(SpringWeb.HeaderContentDisposition, s)
-	ctx.File(file)
+	return ctx.File(file)
 }
 
 // File sends a response with the content of the file.
-func (ctx *Context) File(file string) {
+func (ctx *Context) File(file string) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = SpringUtils.WithCause(r)
+		}
+	}()
 	ctx.ginContext.File(file)
+	return
 }
 
 // Attachment sends a response as attachment.
-func (ctx *Context) Attachment(file string, name string) {
-	ctx.contentDisposition(file, name, "attachment")
+func (ctx *Context) Attachment(file string, name string) error {
+	return ctx.contentDisposition(file, name, "attachment")
 }
 
 // Inline sends a response as inline.
-func (ctx *Context) Inline(file string, name string) {
-	ctx.contentDisposition(file, name, "inline")
+func (ctx *Context) Inline(file string, name string) error {
+	return ctx.contentDisposition(file, name, "inline")
 }
 
 // Redirect redirects the request to a provided URL with status code.
-func (ctx *Context) Redirect(code int, url string) {
+func (ctx *Context) Redirect(code int, url string) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = SpringUtils.WithCause(r)
+		}
+	}()
 	ctx.ginContext.Redirect(code, url)
+	return
 }
 
 // SSEvent writes a Server-Sent Event into the body stream.
-func (ctx *Context) SSEvent(name string, message interface{}) {
+func (ctx *Context) SSEvent(name string, message interface{}) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = SpringUtils.WithCause(r)
+		}
+	}()
 	ctx.ginContext.SSEvent(name, message)
+	return
 }
