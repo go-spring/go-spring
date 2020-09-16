@@ -25,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-spring/examples/testcases"
 	"github.com/go-spring/spring-echo"
 	"github.com/go-spring/spring-gin"
 	"github.com/go-spring/spring-web"
@@ -33,15 +34,15 @@ import (
 func TestWebServer(t *testing.T) {
 
 	server := SpringWeb.NewWebServer()
-	server.AddFilter(NewStringFilter("web_server"))
+	server.AddFilter(testcases.NewStringFilter("web_server"))
 
-	s := NewService()
+	s := testcases.NewService()
 
 	// 可用于全局的路由分组
-	r := SpringWeb.NewRouter("/v1", NewStringFilter("@router"))
+	r := SpringWeb.NewRouter("/v1", testcases.NewStringFilter("@router"))
 	r.GetMapping("/router", func(ctx SpringWeb.WebContext) {
 		ctx.String(http.StatusOK, "router:ok")
-	}, NewStringFilter("@router:/router"))
+	}, testcases.NewStringFilter("@router:/router"))
 
 	// 添加第一个 Web 容器
 	{
@@ -50,8 +51,8 @@ func TestWebServer(t *testing.T) {
 		server.AddContainer(g)
 		g.AddRouter(r)
 
-		g.AddFilter(NewStringFilter("gin"))
-		g.GetMapping("/get", s.Get, NewStringFilter("gin:/get"))
+		g.AddFilter(testcases.NewStringFilter("gin"))
+		g.GetMapping("/get", s.Get, testcases.NewStringFilter("gin:/get"))
 	}
 
 	// 添加第二个 Web 容器
@@ -61,11 +62,11 @@ func TestWebServer(t *testing.T) {
 		server.AddContainer(e)
 		e.AddRouter(r)
 
-		e.AddFilter(NewStringFilter("echo"))
-		r0 := e.Route("", NewStringFilter("echo:route"))
+		e.AddFilter(testcases.NewStringFilter("echo"))
+		r0 := e.Route("", testcases.NewStringFilter("echo:route"))
 		{
-			r0.PostMapping("/set", s.Set, NewStringFilter("echo:route:/set"))
-			r0.GetMapping("/panic", s.Panic, NewStringFilter("echo:route:/panic"))
+			r0.PostMapping("/set", s.Set, testcases.NewStringFilter("echo:route:/set"))
+			r0.GetMapping("/panic", s.Panic, testcases.NewStringFilter("echo:route:/panic"))
 		}
 	}
 

@@ -21,6 +21,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/go-spring/examples/testcases"
 	"github.com/go-spring/spring-echo"
 	"github.com/go-spring/spring-logger"
 	"github.com/go-spring/spring-utils"
@@ -38,8 +39,8 @@ func TestFilterChain(t *testing.T) {
 	l := list.New()
 
 	filters := []SpringWeb.Filter{
-		NewNumberFilter(2, l),
-		NewNumberFilter(5, l),
+		testcases.NewNumberFilter(2, l),
+		testcases.NewNumberFilter(5, l),
 	}
 
 	chain := SpringWeb.NewDefaultFilterChain(filters)

@@ -24,6 +24,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-spring/examples/testcases"
 	"github.com/go-spring/spring-echo"
 	"github.com/go-spring/spring-gin"
 	"github.com/go-spring/spring-web"
@@ -31,12 +32,15 @@ import (
 
 func TestRpc(t *testing.T) {
 
+	SpringWeb.Validator = SpringWeb.NewDefaultValidator()
+	defer func() { SpringWeb.Validator = nil }()
+
 	testContainer := func(c SpringWeb.WebContainer) {
 
 		server := SpringWeb.NewWebServer()
 		server.AddContainer(c)
 
-		rc := new(RpcService)
+		rc := new(testcases.RpcService)
 		c.GetBinding("/echo", rc.Echo)
 
 		// 启动 web 服务器
@@ -44,6 +48,15 @@ func TestRpc(t *testing.T) {
 
 		time.Sleep(time.Millisecond * 100)
 		fmt.Println()
+
+		{
+			resp, _ := http.Get("http://127.0.0.1:9090/echo?str=")
+			body, _ := ioutil.ReadAll(resp.Body)
+			fmt.Println("code:", resp.StatusCode, "||", "resp:", string(body))
+			if body[len(body)-1] != '\n' { // echo 的返回值多一个换行符
+				fmt.Println()
+			}
+		}
 
 		for i := 0; i < 20; i++ { // 多次测试 echo 和 gin 的性能确实差不多
 			resp, _ := http.Get("http://127.0.0.1:9090/echo?str=echo")

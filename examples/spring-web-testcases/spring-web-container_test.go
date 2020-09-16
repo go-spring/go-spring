@@ -28,6 +28,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-openapi/spec"
+	"github.com/go-spring/examples/testcases"
 	"github.com/go-spring/spring-echo"
 	"github.com/go-spring/spring-gin"
 	"github.com/go-spring/spring-web"
@@ -50,7 +51,7 @@ func TestWebContainer(t *testing.T) {
 				SetProperty("age", *spec.Int32Property()))
 
 		// 添加容器过滤器，这些过滤器在路由未注册时也仍会执行
-		c.AddFilter(&LogFilter{}, &GlobalInterruptFilter{})
+		c.AddFilter(&testcases.LogFilter{}, &testcases.GlobalInterruptFilter{})
 
 		// 启动 web 服务器
 		c.Start()
@@ -142,11 +143,11 @@ func TestWebContainer(t *testing.T) {
 	prepare := func(c SpringWeb.WebContainer) SpringWeb.WebContainer {
 
 		l := list.New()
-		f2 := NewNumberFilter(2, l)
-		f5 := NewNumberFilter(5, l)
-		f7 := NewNumberFilter(7, l)
+		f2 := testcases.NewNumberFilter(2, l)
+		f5 := testcases.NewNumberFilter(5, l)
+		f7 := testcases.NewNumberFilter(7, l)
 
-		s := NewService()
+		s := testcases.NewService()
 
 		c.GetMapping("/get", s.Get, f5).Swagger("").
 			WithDescription("get").
@@ -158,7 +159,7 @@ func TestWebContainer(t *testing.T) {
 				AddExample(SpringWeb.MIMEApplicationJSON, 2))
 
 		c.GetMapping("/global_interrupt", s.Get)
-		c.GetMapping("/interrupt", s.Get, f5, &InterruptFilter{})
+		c.GetMapping("/interrupt", s.Get, f5, &testcases.InterruptFilter{})
 
 		// 障眼法
 		r := c.Route("/v1", f2, f7)

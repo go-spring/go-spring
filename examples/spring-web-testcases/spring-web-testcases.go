@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package testcases_test
+package testcases
 
 import (
 	"container/list"
