@@ -303,7 +303,11 @@ func (ctx *Context) Cookies() []*http.Cookie {
 
 // Bind binds the request body into provided type `i`.
 func (ctx *Context) Bind(i interface{}) error {
-	return ctx.ginContext.ShouldBind(i)
+	err := ctx.ginContext.ShouldBind(i)
+	if err != nil {
+		return err
+	}
+	return SpringWeb.Validate(i)
 }
 
 // ResponseWriter returns `http.ResponseWriter`.

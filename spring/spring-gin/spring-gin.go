@@ -29,7 +29,7 @@ import (
 
 func init() {
 	gin.SetMode(gin.ReleaseMode)
-	binding.Validator = SpringWeb.Validator
+	binding.Validator = nil // 关闭 gin 的校验器
 }
 
 type route struct {
