@@ -310,6 +310,16 @@ func (ctx *Context) Bind(i interface{}) error {
 	return SpringWeb.Validate(i)
 }
 
+// IsAborted 当前处理过程是否终止，为了适配 gin 的模型，未来底层统一了会去掉.
+func (ctx *Context) IsAborted() bool {
+	return ctx.ginContext.IsAborted()
+}
+
+// Abort 终止当前处理过程，为了适配 gin 的模型，未来底层统一了会去掉.
+func (ctx *Context) Abort() {
+	ctx.ginContext.Abort()
+}
+
 // ResponseWriter returns `http.ResponseWriter`.
 func (ctx *Context) ResponseWriter() SpringWeb.ResponseWriter {
 	return &responseWriter{ctx.ginContext.Writer}
