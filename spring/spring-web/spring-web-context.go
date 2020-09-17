@@ -144,6 +144,12 @@ type WebContext interface {
 	/////////////////////////////////////////
 	// Response Part
 
+	// IsAborted 当前处理过程是否终止，为了适配 gin 的模型，未来底层统一了会去掉.
+	IsAborted() bool
+
+	// Abort 终止当前处理过程，为了适配 gin 的模型，未来底层统一了会去掉.
+	Abort()
+
 	// ResponseWriter returns `http.ResponseWriter`.
 	ResponseWriter() ResponseWriter
 
