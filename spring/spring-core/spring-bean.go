@@ -367,14 +367,14 @@ func (b *constructorBean) beanClass() string {
 type methodBean struct {
 	functionBean
 
-	parent *BeanDefinition // 父对象的定义
-	method string          // 成员方法名称
+	parent []*BeanDefinition // 父对象的定义
+	method string            // 成员方法名称
 }
 
 // newMethodBean methodBean 的构造函数，所有 tag 必须同时有或者同时没有序号。
-func newMethodBean(parent *BeanDefinition, method string, tags []string) *methodBean {
+func newMethodBean(parent []*BeanDefinition, method string, tags []string) *methodBean {
 
-	parentType := parent.Type()
+	parentType := parent[0].Type()
 	m, ok := parentType.MethodByName(method)
 	if !ok {
 		panic(fmt.Errorf("can't find method:%s on type:%s", method, parentType.String()))

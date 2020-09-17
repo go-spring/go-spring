@@ -431,10 +431,20 @@ func (ctx *defaultSpringContext) resolveBean(bd *BeanDefinition) {
 
 	// 如果是成员方法 Bean，需要首先决议它的父 Bean 是否能实例化
 	if b, ok := bd.bean.(*methodBean); ok {
-		ctx.resolveBean(b.parent)
+
+		for i := 0; ; i++ {
+			parent := b.parent[i]
+			ctx.resolveBean(parent)
+			if parent.status == beanStatus_Deleted {
+				b.parent = append(b.parent[:i], b.parent[i+1:]...)
+			}
+			if i >= len(b.parent)-1 { // 每轮都要重新获取长度
+				break
+			}
+		}
 
 		// 父 Bean 已经被删除了，子 Bean 也不应该存在
-		if b.parent.status == beanStatus_Deleted {
+		if len(b.parent) == 0 {
 			ctx.deleteBeanDefinition(bd)
 			return
 		}
@@ -517,13 +527,11 @@ func (ctx *defaultSpringContext) registerMethodBeans() {
 			}
 		}
 
-		if l := len(result); l == 0 {
+		if len(result) == 0 {
 			panic(fmt.Errorf("can't find parent bean: \"%s\"", selector))
-		} else if l > 1 {
-			panic(fmt.Errorf("found %d parent bean: \"%s\"", l, selector))
 		}
 
-		bd.bean = newMethodBean(result[0], bean.method, bean.tags)
+		bd.bean = newMethodBean(result, bean.method, bean.tags)
 		ctx.registerBeanDefinition(bd)
 	}
 }

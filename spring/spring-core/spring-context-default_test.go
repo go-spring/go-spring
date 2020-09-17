@@ -2013,6 +2013,17 @@ func TestDefaultSpringContext_RegisterMethodBean(t *testing.T) {
 			ctx.AutoWireBeans()
 		}, "can't find parent bean: \"NULL\"")
 	})
+
+	t.Run("found 2 parent bean", func(t *testing.T) {
+		assert.Panic(t, func() {
+			ctx := SpringCore.NewDefaultSpringContext()
+			ctx.SetProperty("server.version", "1.0.0")
+			ctx.RegisterNameBean("s1", new(Server))
+			ctx.RegisterNameBean("s2", new(Server))
+			ctx.RegisterMethodBeanFn((*Server).Consumer)
+			ctx.AutoWireBeans()
+		}, "found 2 parent bean")
+	})
 }
 
 func TestDefaultSpringContext_RegisterMethodBeanFn(t *testing.T) {
