@@ -73,6 +73,9 @@ type Context struct {
 
 	// wildCardName 通配符的名称
 	wildCardName string
+
+	// aborted 处理过程是否终止
+	aborted bool
 }
 
 // NewContext Context 的构造函数
@@ -268,6 +271,16 @@ func (ctx *Context) Bind(i interface{}) error {
 		return err
 	}
 	return SpringWeb.Validate(i)
+}
+
+// IsAborted 当前处理过程是否终止，为了适配 gin 的模型，未来底层统一了会去掉.
+func (ctx *Context) IsAborted() bool {
+	return ctx.aborted
+}
+
+// Abort 终止当前处理过程，为了适配 gin 的模型，未来底层统一了会去掉.
+func (ctx *Context) Abort() {
+	ctx.aborted = true
 }
 
 // ResponseWriter returns `http.ResponseWriter`.
