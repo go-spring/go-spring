@@ -2,7 +2,6 @@
  <img src="https://raw.githubusercontent.com/go-spring/go-spring/master/logo@h.png" width="140" height="*" alt="logo"/>
  <br/>
  <img src="https://img.shields.io/github/license/go-spring/go-spring" alt="license"/>
- <img src="https://img.shields.io/github/go-mod/go-version/go-spring/go-spring" alt="go-version"/>
  <img src="https://img.shields.io/github/v/release/go-spring/go-spring?include_prereleases" alt="release"/>
 </div>
 
@@ -134,6 +133,7 @@ func main() {
 ### QQ 交流群
 
 <img src="https://raw.githubusercontent.com/go-spring/go-spring-website/master/qq(1).jpeg" width="140" height="*" />
+<br>QQ群号:721077608
 
 ### 微信公众号
 
