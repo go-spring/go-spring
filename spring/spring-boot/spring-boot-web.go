@@ -19,6 +19,7 @@ package SpringBoot
 import (
 	"errors"
 	"fmt"
+	"path"
 
 	"github.com/go-spring/spring-core"
 	"github.com/go-spring/spring-web"
@@ -204,6 +205,17 @@ func newRouter(mapping *WebMapping, basePath string, filters []SpringWeb.Filter)
 	return &Router{
 		mapping:  mapping,
 		basePath: basePath,
+		filters:  filters,
+		cond:     SpringCore.NewConditional(),
+	}
+}
+
+// Route 设置子路由
+func (r *Router) Route(basePath string, filters ...SpringWeb.Filter) *Router {
+	filters = append(r.filters, filters...)
+	return &Router{
+		mapping:  r.mapping,
+		basePath: path.Join(r.basePath, basePath),
 		filters:  filters,
 		cond:     SpringCore.NewConditional(),
 	}
