@@ -135,6 +135,13 @@ func (c *Container) Start() {
 		} else {
 			err = c.httpServer.ListenAndServe()
 		}
+
+		if err != nil && err != http.ErrServerClosed {
+			if fn := c.GetErrorCallback(); fn != nil {
+				fn(err)
+			}
+		}
+
 		SpringLogger.Infof("exit gin server on %s return %s", c.Address(), SpringUtils.ErrorToString(err))
 	}()
 }
