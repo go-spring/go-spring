@@ -30,6 +30,7 @@ import (
 	"github.com/go-spring/spring-gin"
 	"github.com/go-spring/spring-utils"
 	"github.com/go-spring/spring-web"
+	"github.com/magiconair/properties/assert"
 )
 
 func TestWebServer(t *testing.T) {
@@ -112,4 +113,25 @@ func TestWebServer(t *testing.T) {
 	server.Stop(context.TODO())
 
 	time.Sleep(time.Millisecond * 50)
+}
+
+func TestWebServer_ErrorCallback(t *testing.T) {
+	server := SpringWeb.NewWebServer()
+	server.AddContainer(SpringEcho.NewContainer(SpringWeb.ContainerConfig{Port: 8080}))
+	server.AddContainer(SpringEcho.NewContainer(SpringWeb.ContainerConfig{Port: 8080}))
+	server.AddContainer(SpringGin.NewContainer(SpringWeb.ContainerConfig{Port: 9090}))
+	server.AddContainer(SpringGin.NewContainer(SpringWeb.ContainerConfig{Port: 9090}))
+	got8080Error, got9090Error := false, false
+	server.SetErrorCallback(func(err error) {
+		if err.Error() == "listen tcp :8080: bind: address already in use" {
+			got8080Error = true
+		}
+		if err.Error() == "listen tcp :9090: bind: address already in use" {
+			got9090Error = true
+		}
+	})
+	server.Start()
+	time.Sleep(10 * time.Millisecond)
+	assert.Equal(t, got8080Error && got9090Error, true)
+	server.Stop(context.Background())
 }
