@@ -44,3 +44,9 @@ func (r *Router) request(method uint32, path string, fn Handler, filters []Filte
 	filters = append(r.filters, filters...)
 	return r.mapping.Request(method, r.basePath+path, fn, filters...)
 }
+
+// Route 返回和 Mapping 绑定的路由分组
+func (r *Router) Route(basePath string, filters ...Filter) *Router {
+	filters = append(r.filters, filters...)
+	return routerWithMapping(r.mapping, r.basePath+basePath, filters)
+}
