@@ -293,6 +293,14 @@ func (ctx *Context) Status(code int) {
 	ctx.echoContext.Response().WriteHeader(code)
 }
 
+// GetStatusCode return HTTP response code
+func (ctx *Context) GetStatusCode() int {
+	if ctx.echoContext.Response().Committed {
+		return ctx.echoContext.Response().Status
+	}
+	return http.StatusOK
+}
+
 // Header is a intelligent shortcut for c.Writer.Header().Set(key, value).
 func (ctx *Context) Header(key, value string) {
 	ctx.echoContext.Response().Header().Set(key, value)
@@ -304,73 +312,73 @@ func (ctx *Context) SetCookie(cookie *http.Cookie) {
 }
 
 // NoContent sends a response with no body and a status code.
-func (ctx *Context) NoContent(code int) {
-	_ = ctx.echoContext.NoContent(code)
+func (ctx *Context) NoContent() {
+	_ = ctx.echoContext.NoContent(ctx.GetStatusCode())
 }
 
 // String writes the given string into the response body.
-func (ctx *Context) String(code int, format string, values ...interface{}) error {
-	return ctx.echoContext.String(code, fmt.Sprintf(format, values...))
+func (ctx *Context) String(format string, values ...interface{}) error {
+	return ctx.echoContext.String(ctx.GetStatusCode(), fmt.Sprintf(format, values...))
 }
 
-// HTML sends an HTTP response with status code.
-func (ctx *Context) HTML(code int, html string) error {
-	return ctx.echoContext.HTML(code, html)
+// HTML sends an HTTP response.
+func (ctx *Context) HTML(html string) error {
+	return ctx.echoContext.HTML(ctx.GetStatusCode(), html)
 }
 
-// HTMLBlob sends an HTTP blob response with status code.
-func (ctx *Context) HTMLBlob(code int, b []byte) error {
-	return ctx.echoContext.HTMLBlob(code, b)
+// HTMLBlob sends an HTTP blob response.
+func (ctx *Context) HTMLBlob(b []byte) error {
+	return ctx.echoContext.HTMLBlob(ctx.GetStatusCode(), b)
 }
 
-// JSON sends a JSON response with status code.
-func (ctx *Context) JSON(code int, i interface{}) error {
-	return ctx.echoContext.JSON(code, i)
+// JSON sends a JSON response.
+func (ctx *Context) JSON(i interface{}) error {
+	return ctx.echoContext.JSON(ctx.GetStatusCode(), i)
 }
 
-// JSONPretty sends a pretty-print JSON with status code.
-func (ctx *Context) JSONPretty(code int, i interface{}, indent string) error {
-	return ctx.echoContext.JSONPretty(code, i, indent)
+// JSONPretty sends a pretty-print JSON.
+func (ctx *Context) JSONPretty(i interface{}, indent string) error {
+	return ctx.echoContext.JSONPretty(ctx.GetStatusCode(), i, indent)
 }
 
-// JSONBlob sends a JSON blob response with status code.
-func (ctx *Context) JSONBlob(code int, b []byte) error {
-	return ctx.echoContext.JSONBlob(code, b)
+// JSONBlob sends a JSON blob response.
+func (ctx *Context) JSONBlob(b []byte) error {
+	return ctx.echoContext.JSONBlob(ctx.GetStatusCode(), b)
 }
 
-// JSONP sends a JSONP response with status code.
-func (ctx *Context) JSONP(code int, callback string, i interface{}) error {
-	return ctx.echoContext.JSONP(code, callback, i)
+// JSONP sends a JSONP response.
+func (ctx *Context) JSONP(callback string, i interface{}) error {
+	return ctx.echoContext.JSONP(ctx.GetStatusCode(), callback, i)
 }
 
-// JSONPBlob sends a JSONP blob response with status code.
-func (ctx *Context) JSONPBlob(code int, callback string, b []byte) error {
-	return ctx.echoContext.JSONPBlob(code, callback, b)
+// JSONPBlob sends a JSONP blob response.
+func (ctx *Context) JSONPBlob(callback string, b []byte) error {
+	return ctx.echoContext.JSONPBlob(ctx.GetStatusCode(), callback, b)
 }
 
-// XML sends an XML response with status code.
-func (ctx *Context) XML(code int, i interface{}) error {
-	return ctx.echoContext.XML(code, i)
+// XML sends an XML response.
+func (ctx *Context) XML(i interface{}) error {
+	return ctx.echoContext.XML(ctx.GetStatusCode(), i)
 }
 
-// XMLPretty sends a pretty-print XML with status code.
-func (ctx *Context) XMLPretty(code int, i interface{}, indent string) error {
-	return ctx.echoContext.XMLPretty(code, i, indent)
+// XMLPretty sends a pretty-print XML.
+func (ctx *Context) XMLPretty(i interface{}, indent string) error {
+	return ctx.echoContext.XMLPretty(ctx.GetStatusCode(), i, indent)
 }
 
-// XMLBlob sends an XML blob response with status code.
-func (ctx *Context) XMLBlob(code int, b []byte) error {
-	return ctx.echoContext.XMLBlob(code, b)
+// XMLBlob sends an XML blob response.
+func (ctx *Context) XMLBlob(b []byte) error {
+	return ctx.echoContext.XMLBlob(ctx.GetStatusCode(), b)
 }
 
-// Blob sends a blob response with status code and content type.
-func (ctx *Context) Blob(code int, contentType string, b []byte) error {
-	return ctx.echoContext.Blob(code, contentType, b)
+// Blob sends a blob response and content type.
+func (ctx *Context) Blob(contentType string, b []byte) error {
+	return ctx.echoContext.Blob(ctx.GetStatusCode(), contentType, b)
 }
 
-// Stream sends a streaming response with status code and content type.
-func (ctx *Context) Stream(code int, contentType string, r io.Reader) error {
-	return ctx.echoContext.Stream(code, contentType, r)
+// Stream sends a streaming response and content type.
+func (ctx *Context) Stream(contentType string, r io.Reader) error {
+	return ctx.echoContext.Stream(ctx.GetStatusCode(), contentType, r)
 }
 
 // File sends a response with the content of the file.
@@ -388,8 +396,12 @@ func (ctx *Context) Inline(file string, name string) error {
 	return ctx.echoContext.Inline(file, name)
 }
 
-// Redirect redirects the request to a provided URL with status code.
-func (ctx *Context) Redirect(code int, url string) error {
+// Redirect redirects the request to a provided URL.
+func (ctx *Context) Redirect(url string) error {
+	code := ctx.GetStatusCode()
+	if code == http.StatusOK {
+		code = http.StatusMovedPermanently
+	}
 	return ctx.echoContext.Redirect(code, url)
 }
 

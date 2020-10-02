@@ -156,6 +156,9 @@ type WebContext interface {
 	// Status sets the HTTP response code.
 	Status(code int)
 
+	// GetStatusCode return HTTP response code
+	GetStatusCode() int
+
 	// Header is a intelligent shortcut for c.Writer.Header().Set(key, value).
 	// It writes a header in the response.
 	// If value == "", this method removes the header `c.Writer.Header().Del(key)`
@@ -165,48 +168,48 @@ type WebContext interface {
 	SetCookie(cookie *http.Cookie)
 
 	// NoContent sends a response with no body and a status code.
-	NoContent(code int)
+	NoContent()
 
 	// String writes the given string into the response body.
-	String(code int, format string, values ...interface{}) error
+	String(format string, values ...interface{}) error
 
-	// HTML sends an HTTP response with status code.
-	HTML(code int, html string) error
+	// HTML sends an HTTP response.
+	HTML(html string) error
 
-	// HTMLBlob sends an HTTP blob response with status code.
-	HTMLBlob(code int, b []byte) error
+	// HTMLBlob sends an HTTP blob response.
+	HTMLBlob(b []byte) error
 
-	// JSON sends a JSON response with status code.
-	JSON(code int, i interface{}) error
+	// JSON sends a JSON response.
+	JSON(i interface{}) error
 
-	// JSONPretty sends a pretty-print JSON with status code.
-	JSONPretty(code int, i interface{}, indent string) error
+	// JSONPretty sends a pretty-print JSON.
+	JSONPretty(i interface{}, indent string) error
 
-	// JSONBlob sends a JSON blob response with status code.
-	JSONBlob(code int, b []byte) error
+	// JSONBlob sends a JSON blob response.
+	JSONBlob(b []byte) error
 
-	// JSONP sends a JSONP response with status code. It uses `callback`
+	// JSONP sends a JSONP response. It uses `callback`
 	// to construct the JSONP payload.
-	JSONP(code int, callback string, i interface{}) error
+	JSONP(callback string, i interface{}) error
 
-	// JSONPBlob sends a JSONP blob response with status code. It uses
+	// JSONPBlob sends a JSONP blob response. It uses
 	// `callback` to construct the JSONP payload.
-	JSONPBlob(code int, callback string, b []byte) error
+	JSONPBlob(callback string, b []byte) error
 
-	// XML sends an XML response with status code.
-	XML(code int, i interface{}) error
+	// XML sends an XML response.
+	XML(i interface{}) error
 
-	// XMLPretty sends a pretty-print XML with status code.
-	XMLPretty(code int, i interface{}, indent string) error
+	// XMLPretty sends a pretty-print XML.
+	XMLPretty(i interface{}, indent string) error
 
-	// XMLBlob sends an XML blob response with status code.
-	XMLBlob(code int, b []byte) error
+	// XMLBlob sends an XML blob response.
+	XMLBlob(b []byte) error
 
-	// Blob sends a blob response with status code and content type.
-	Blob(code int, contentType string, b []byte) error
+	// Blob sends a blob response content type.
+	Blob(contentType string, b []byte) error
 
-	// Stream sends a streaming response with status code and content type.
-	Stream(code int, contentType string, r io.Reader) error
+	// Stream sends a streaming response and content type.
+	Stream(contentType string, r io.Reader) error
 
 	// File sends a response with the content of the file.
 	File(file string) error
@@ -217,8 +220,8 @@ type WebContext interface {
 	// Inline sends a response as inline, opening the file in the browser.
 	Inline(file string, name string) error
 
-	// Redirect redirects the request to a provided URL with status code.
-	Redirect(code int, url string) error
+	// Redirect redirects the request to a provided URL.
+	Redirect(url string) error
 
 	// SSEvent writes a Server-Sent Event into the body stream.
 	SSEvent(name string, message interface{}) error

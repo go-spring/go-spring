@@ -233,7 +233,7 @@ func (c *BaseWebContainer) PreStart() {
 		c.GetMapping("/swagger/*", func(webCtx WebContext) {
 			if webCtx.PathParam("*") == "doc.json" {
 				webCtx.Header(HeaderContentType, MIMEApplicationJSONCharsetUTF8)
-				webCtx.String(http.StatusOK, doc)
+				webCtx.String(doc)
 			} else {
 				hSwagger(webCtx.ResponseWriter(), webCtx.Request())
 			}

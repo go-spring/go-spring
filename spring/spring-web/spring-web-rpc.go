@@ -20,7 +20,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"reflect"
 
 	"github.com/go-spring/spring-error"
@@ -106,10 +105,10 @@ func defaultRpcInvoke(webCtx WebContext, fn func(WebContext) interface{}) {
 				}
 				result = SpringError.ERROR.Error(err)
 			}
-			webCtx.JSON(http.StatusOK, result)
+			webCtx.JSON(result)
 		}
 	}()
 
 	result := SpringError.SUCCESS.Data(fn(webCtx))
-	webCtx.JSON(http.StatusOK, result)
+	webCtx.JSON(result)
 }
