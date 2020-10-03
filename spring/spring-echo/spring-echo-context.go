@@ -76,6 +76,9 @@ type Context struct {
 
 	// aborted 处理过程是否终止
 	aborted bool
+
+	// HTTP response code
+	statusCode int
 }
 
 // NewContext Context 的构造函数
@@ -89,6 +92,7 @@ func NewContext(fn SpringWeb.Handler, wildCardName string, echoCtx echo.Context)
 		echoContext:   echoCtx,
 		handlerFunc:   fn,
 		wildCardName:  wildCardName,
+		statusCode:    http.StatusOK,
 	}
 
 	webCtx.Set(SpringWeb.WebContextKey, webCtx)
@@ -290,15 +294,11 @@ func (ctx *Context) ResponseWriter() SpringWeb.ResponseWriter {
 
 // Status sets the HTTP response code.
 func (ctx *Context) Status(code int) {
-	ctx.echoContext.Response().WriteHeader(code)
-}
-
-// GetStatusCode return HTTP response code
-func (ctx *Context) GetStatusCode() int {
-	if ctx.echoContext.Response().Committed {
-		return ctx.echoContext.Response().Status
+	// see package net/http/server.go checkWriteHeaderCode
+	if code < 100 || code > 999 {
+		panic(fmt.Sprintf("invalid WriteHeader code %v", code))
 	}
-	return http.StatusOK
+	ctx.statusCode = code
 }
 
 // Header is a intelligent shortcut for c.Writer.Header().Set(key, value).
@@ -313,72 +313,72 @@ func (ctx *Context) SetCookie(cookie *http.Cookie) {
 
 // NoContent sends a response with no body and a status code.
 func (ctx *Context) NoContent() {
-	_ = ctx.echoContext.NoContent(ctx.GetStatusCode())
+	_ = ctx.echoContext.NoContent(ctx.statusCode)
 }
 
 // String writes the given string into the response body.
 func (ctx *Context) String(format string, values ...interface{}) error {
-	return ctx.echoContext.String(ctx.GetStatusCode(), fmt.Sprintf(format, values...))
+	return ctx.echoContext.String(ctx.statusCode, fmt.Sprintf(format, values...))
 }
 
 // HTML sends an HTTP response.
 func (ctx *Context) HTML(html string) error {
-	return ctx.echoContext.HTML(ctx.GetStatusCode(), html)
+	return ctx.echoContext.HTML(ctx.statusCode, html)
 }
 
 // HTMLBlob sends an HTTP blob response.
 func (ctx *Context) HTMLBlob(b []byte) error {
-	return ctx.echoContext.HTMLBlob(ctx.GetStatusCode(), b)
+	return ctx.echoContext.HTMLBlob(ctx.statusCode, b)
 }
 
 // JSON sends a JSON response.
 func (ctx *Context) JSON(i interface{}) error {
-	return ctx.echoContext.JSON(ctx.GetStatusCode(), i)
+	return ctx.echoContext.JSON(ctx.statusCode, i)
 }
 
 // JSONPretty sends a pretty-print JSON.
 func (ctx *Context) JSONPretty(i interface{}, indent string) error {
-	return ctx.echoContext.JSONPretty(ctx.GetStatusCode(), i, indent)
+	return ctx.echoContext.JSONPretty(ctx.statusCode, i, indent)
 }
 
 // JSONBlob sends a JSON blob response.
 func (ctx *Context) JSONBlob(b []byte) error {
-	return ctx.echoContext.JSONBlob(ctx.GetStatusCode(), b)
+	return ctx.echoContext.JSONBlob(ctx.statusCode, b)
 }
 
 // JSONP sends a JSONP response.
 func (ctx *Context) JSONP(callback string, i interface{}) error {
-	return ctx.echoContext.JSONP(ctx.GetStatusCode(), callback, i)
+	return ctx.echoContext.JSONP(ctx.statusCode, callback, i)
 }
 
 // JSONPBlob sends a JSONP blob response.
 func (ctx *Context) JSONPBlob(callback string, b []byte) error {
-	return ctx.echoContext.JSONPBlob(ctx.GetStatusCode(), callback, b)
+	return ctx.echoContext.JSONPBlob(ctx.statusCode, callback, b)
 }
 
 // XML sends an XML response.
 func (ctx *Context) XML(i interface{}) error {
-	return ctx.echoContext.XML(ctx.GetStatusCode(), i)
+	return ctx.echoContext.XML(ctx.statusCode, i)
 }
 
 // XMLPretty sends a pretty-print XML.
 func (ctx *Context) XMLPretty(i interface{}, indent string) error {
-	return ctx.echoContext.XMLPretty(ctx.GetStatusCode(), i, indent)
+	return ctx.echoContext.XMLPretty(ctx.statusCode, i, indent)
 }
 
 // XMLBlob sends an XML blob response.
 func (ctx *Context) XMLBlob(b []byte) error {
-	return ctx.echoContext.XMLBlob(ctx.GetStatusCode(), b)
+	return ctx.echoContext.XMLBlob(ctx.statusCode, b)
 }
 
 // Blob sends a blob response and content type.
 func (ctx *Context) Blob(contentType string, b []byte) error {
-	return ctx.echoContext.Blob(ctx.GetStatusCode(), contentType, b)
+	return ctx.echoContext.Blob(ctx.statusCode, contentType, b)
 }
 
 // Stream sends a streaming response and content type.
 func (ctx *Context) Stream(contentType string, r io.Reader) error {
-	return ctx.echoContext.Stream(ctx.GetStatusCode(), contentType, r)
+	return ctx.echoContext.Stream(ctx.statusCode, contentType, r)
 }
 
 // File sends a response with the content of the file.
@@ -397,11 +397,7 @@ func (ctx *Context) Inline(file string, name string) error {
 }
 
 // Redirect redirects the request to a provided URL.
-func (ctx *Context) Redirect(url string) error {
-	code := ctx.GetStatusCode()
-	if code == http.StatusOK {
-		code = http.StatusMovedPermanently
-	}
+func (ctx *Context) Redirect(code int, url string) error {
 	return ctx.echoContext.Redirect(code, url)
 }
 

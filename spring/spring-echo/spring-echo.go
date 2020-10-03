@@ -71,7 +71,7 @@ func (c *Container) Start() {
 	}
 
 	if f := c.GetRecoveryFilter(); f != nil {
-		cFilters = append(cFilters, f)
+		cFilters = append(cFilters, &recoveryFilterAdapter{})
 	}
 
 	cFilters = append(cFilters, c.GetFilters()...)
@@ -149,6 +149,22 @@ func HandlerWrapper(fn SpringWeb.Handler, wildCardName string, filters []SpringW
 		SpringWeb.InvokeHandler(webCtx, fn, filters)
 		return nil
 	}
+}
+
+// recoveryFilterAdapter 对 echo 的恢复组件适配
+type recoveryFilterAdapter struct {
+}
+
+func (f *recoveryFilterAdapter) Invoke(webCtx SpringWeb.WebContext, chain SpringWeb.FilterChain) {
+	defer func() {
+		if err := recover(); err != nil {
+			httpError := err.(*echo.HTTPError)
+			webCtx.Status(httpError.Code)
+			webCtx.String("%d %s", httpError.Code, httpError.Message)
+		}
+	}()
+
+	chain.Next(webCtx)
 }
 
 /////////////////// handler //////////////////////

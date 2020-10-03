@@ -156,9 +156,6 @@ type WebContext interface {
 	// Status sets the HTTP response code.
 	Status(code int)
 
-	// GetStatusCode return HTTP response code
-	GetStatusCode() int
-
 	// Header is a intelligent shortcut for c.Writer.Header().Set(key, value).
 	// It writes a header in the response.
 	// If value == "", this method removes the header `c.Writer.Header().Del(key)`
@@ -220,8 +217,8 @@ type WebContext interface {
 	// Inline sends a response as inline, opening the file in the browser.
 	Inline(file string, name string) error
 
-	// Redirect redirects the request to a provided URL.
-	Redirect(url string) error
+	// Redirect redirects the request to a provided URL with HTTP response code.
+	Redirect(code int, url string) error
 
 	// SSEvent writes a Server-Sent Event into the body stream.
 	SSEvent(name string, message interface{}) error

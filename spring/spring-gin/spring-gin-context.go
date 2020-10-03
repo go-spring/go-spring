@@ -81,6 +81,9 @@ type Context struct {
 
 	// wildCardName 通配符名称
 	wildCardName string
+
+	// HTTP response code
+	statusCode int
 }
 
 // NewContext Context 的构造函数
@@ -94,6 +97,7 @@ func NewContext(fn SpringWeb.Handler, wildCardName string, ginCtx *gin.Context) 
 		ginContext:    ginCtx,
 		handlerFunc:   fn,
 		wildCardName:  wildCardName,
+		statusCode:    http.StatusOK,
 	}
 
 	webCtx.Set(SpringWeb.WebContextKey, webCtx)
@@ -327,15 +331,11 @@ func (ctx *Context) ResponseWriter() SpringWeb.ResponseWriter {
 
 // Status sets the HTTP response code.
 func (ctx *Context) Status(code int) {
-	ctx.ginContext.Status(code)
-}
-
-// GetStatusCode return HTTP response code
-func (ctx *Context) GetStatusCode() int {
-	if !ctx.ginContext.Writer.Written() {
-		return ctx.ginContext.Writer.Status()
+	// see package net/http/server.go checkWriteHeaderCode
+	if code < 100 || code > 999 {
+		panic(fmt.Sprintf("invalid WriteHeader code %v", code))
 	}
-	return http.StatusOK
+	ctx.statusCode = code
 }
 
 // Header is a intelligent shortcut for c.Writer.Header().Set(key, value).
@@ -350,7 +350,7 @@ func (ctx *Context) SetCookie(cookie *http.Cookie) {
 
 // NoContent sends a response with no body and a status code.
 func (ctx *Context) NoContent() {
-	ctx.Status(ctx.GetStatusCode())
+	ctx.ResponseWriter().WriteHeader(ctx.statusCode)
 }
 
 // String writes the given string into the response body.
@@ -360,7 +360,7 @@ func (ctx *Context) String(format string, values ...interface{}) (err error) {
 			err = SpringUtils.WithCause(r)
 		}
 	}()
-	ctx.ginContext.String(ctx.GetStatusCode(), fmt.Sprintf(format, values...))
+	ctx.ginContext.String(ctx.statusCode, fmt.Sprintf(format, values...))
 	return
 }
 
@@ -402,7 +402,7 @@ func (ctx *Context) jsonPBlob(callback string, data func(http.ResponseWriter) er
 	rw := ctx.ginContext.Writer
 
 	ctx.Header(SpringWeb.HeaderContentType, SpringWeb.MIMEApplicationJavaScriptCharsetUTF8)
-	ctx.Status(ctx.GetStatusCode())
+	ctx.Status(ctx.statusCode)
 
 	_, err := rw.Write([]byte(callback + "("))
 	if err != nil {
@@ -444,7 +444,7 @@ func (ctx *Context) XML(i interface{}) (err error) {
 			err = SpringUtils.WithCause(r)
 		}
 	}()
-	ctx.ginContext.XML(ctx.GetStatusCode(), i)
+	ctx.ginContext.XML(ctx.statusCode, i)
 	return
 }
 
@@ -453,7 +453,7 @@ func (ctx *Context) xmlBlob(data func(http.ResponseWriter) error) error {
 	rw := ctx.ginContext.Writer
 
 	ctx.Header(SpringWeb.HeaderContentType, SpringWeb.MIMEApplicationJavaScriptCharsetUTF8)
-	ctx.Status(ctx.GetStatusCode())
+	ctx.Status(ctx.statusCode)
 
 	_, err := rw.Write([]byte(xml.Header))
 	if err != nil {
@@ -488,7 +488,7 @@ func (ctx *Context) Blob(contentType string, b []byte) error {
 	rw := ctx.ginContext.Writer
 
 	ctx.Header(SpringWeb.HeaderContentType, contentType)
-	ctx.Status(ctx.GetStatusCode())
+	ctx.Status(ctx.statusCode)
 
 	_, err := rw.Write(b)
 	return err
@@ -500,7 +500,7 @@ func (ctx *Context) Stream(contentType string, r io.Reader) error {
 	rw := ctx.ginContext.Writer
 
 	ctx.Header(SpringWeb.HeaderContentType, contentType)
-	ctx.Status(ctx.GetStatusCode())
+	ctx.Status(ctx.statusCode)
 
 	_, err := io.Copy(rw, r)
 	return err
@@ -536,16 +536,12 @@ func (ctx *Context) Inline(file string, name string) error {
 }
 
 // Redirect redirects the request to a provided URL.
-func (ctx *Context) Redirect(url string) (err error) {
+func (ctx *Context) Redirect(code int, url string) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = SpringUtils.WithCause(r)
 		}
 	}()
-	code := ctx.GetStatusCode()
-	if code == http.StatusOK {
-		code = http.StatusMovedPermanently
-	}
 	ctx.ginContext.Redirect(code, url)
 	return
 }
