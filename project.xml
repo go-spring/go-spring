@@ -4,130 +4,162 @@
         <name>spring-const</name>
         <dir>spring/spring-const</dir>
         <url>https://github.com/go-spring/spring-const.git</url>
+        <branch>master</branch>
     </project>
     <project>
         <name>spring-utils</name>
         <dir>spring/spring-utils</dir>
         <url>https://github.com/go-spring/spring-utils.git</url>
+        <branch>master</branch>
     </project>
     <project>
         <name>spring-error</name>
         <dir>spring/spring-error</dir>
         <url>https://github.com/go-spring/spring-error.git</url>
+        <branch>master</branch>
     </project>
     <project>
         <name>spring-test</name>
         <dir>spring/spring-test</dir>
         <url>https://github.com/go-spring/spring-test.git</url>
+        <branch>master</branch>
     </project>
     <project>
         <name>spring-logger</name>
         <dir>spring/spring-logger</dir>
         <url>https://github.com/go-spring/spring-logger.git</url>
+        <branch>master</branch>
     </project>
     <project>
         <name>spring-message</name>
         <dir>spring/spring-message</dir>
         <url>https://github.com/go-spring/spring-message.git</url>
+        <branch>master</branch>
     </project>
     <project>
         <name>spring-rocketmq</name>
         <dir>spring/spring-rocketmq</dir>
         <url>https://github.com/go-spring/spring-rocketmq.git</url>
+        <branch>master</branch>
     </project>
     <project>
         <name>spring-rabbitmq</name>
         <dir>spring/spring-rabbitmq</dir>
         <url>https://github.com/go-spring/spring-rabbitmq.git</url>
+        <branch>master</branch>
     </project>
     <project>
         <name>spring-kafka</name>
         <dir>spring/spring-kafka</dir>
         <url>https://github.com/go-spring/spring-kafka.git</url>
+        <branch>master</branch>
     </project>
     <project>
         <name>spring-web</name>
         <dir>spring/spring-web</dir>
         <url>https://github.com/go-spring/spring-web.git</url>
+        <branch>master</branch>
     </project>
     <project>
         <name>spring-gin</name>
         <dir>spring/spring-gin</dir>
         <url>https://github.com/go-spring/spring-gin.git</url>
+        <branch>master</branch>
     </project>
     <project>
         <name>spring-echo</name>
         <dir>spring/spring-echo</dir>
         <url>https://github.com/go-spring/spring-echo.git</url>
+        <branch>master</branch>
     </project>
     <project>
         <name>spring-core</name>
         <dir>spring/spring-core</dir>
         <url>https://github.com/go-spring/spring-core.git</url>
+        <branch>master</branch>
     </project>
     <project>
         <name>spring-boot</name>
         <dir>spring/spring-boot</dir>
         <url>https://github.com/go-spring/spring-boot.git</url>
+        <branch>master</branch>
     </project>
     <project>
         <name>starter-web</name>
         <dir>starter/starter-web</dir>
         <url>https://github.com/go-spring/starter-web.git</url>
+        <branch>master</branch>
     </project>
     <project>
         <name>starter-gin</name>
         <dir>starter/starter-gin</dir>
         <url>https://github.com/go-spring/starter-gin.git</url>
+        <branch>master</branch>
     </project>
     <project>
         <name>starter-echo</name>
         <dir>starter/starter-echo</dir>
         <url>https://github.com/go-spring/starter-echo.git</url>
+        <branch>master</branch>
     </project>
     <project>
         <name>starter-redis</name>
         <dir>starter/starter-redis</dir>
         <url>https://github.com/go-spring/starter-redis.git</url>
+        <branch>master</branch>
     </project>
     <project>
         <name>starter-go-redis</name>
         <dir>starter/starter-go-redis</dir>
         <url>https://github.com/go-spring/starter-go-redis.git</url>
+        <branch>master</branch>
     </project>
     <project>
         <name>starter-db</name>
         <dir>starter/starter-db</dir>
         <url>https://github.com/go-spring/starter-db.git</url>
+        <branch>master</branch>
     </project>
     <project>
         <name>starter-mysql-gorm</name>
         <dir>starter/starter-mysql-gorm</dir>
         <url>https://github.com/go-spring/starter-mysql-gorm.git</url>
+        <branch>master</branch>
     </project>
     <project>
         <name>starter-mongo</name>
         <dir>starter/starter-mongo</dir>
         <url>https://github.com/go-spring/starter-mongo.git</url>
+        <branch>master</branch>
     </project>
     <project>
         <name>starter-go-mongo</name>
         <dir>starter/starter-go-mongo</dir>
         <url>https://github.com/go-spring/starter-go-mongo.git</url>
+        <branch>master</branch>
     </project>
     <project>
         <name>starter-grpc</name>
         <dir>starter/starter-grpc</dir>
         <url>https://github.com/go-spring/starter-grpc.git</url>
+        <branch>master</branch>
     </project>
     <project>
         <name>starter-grpc-client</name>
         <dir>starter/starter-grpc-client</dir>
         <url>https://github.com/go-spring/starter-grpc-client.git</url>
+        <branch>master</branch>
     </project>
     <project>
         <name>starter-grpc-server</name>
         <dir>starter/starter-grpc-server</dir>
         <url>https://github.com/go-spring/starter-grpc-server.git</url>
+        <branch>master</branch>
+    </project>
+    <project>
+        <name>starter-rabbitmq</name>
+        <dir>starter/starter-rabbitmq</dir>
+        <url>https://github.com/go-spring/starter-rabbitmq.git</url>
+        <branch>main</branch>
     </project>
 </projects>
