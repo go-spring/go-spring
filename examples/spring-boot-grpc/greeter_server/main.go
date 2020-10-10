@@ -25,7 +25,7 @@ import (
 
 	pb "github.com/go-spring/examples/spring-boot-grpc/helloworld"
 	"github.com/go-spring/spring-boot"
-	_ "github.com/go-spring/starter-grpc-server"
+	_ "github.com/go-spring/starter-grpc/server"
 )
 
 func init() {

@@ -126,6 +126,8 @@ github.com/go-spring/starter-grpc v1.0.5-rc1 h1:dCr5qdCJTkVw0mvCe18fk5LItg5IP+iR
 github.com/go-spring/starter-grpc v1.0.5-rc1/go.mod h1:od7f1lf/xFUN6YznCB+6LTH54Lau0g4WGJSUPvZ1o7I=
 github.com/go-spring/starter-grpc v1.0.5-rc2 h1:ZO1x/8sf6xhOnsyLOxx0lTo/sRhp9iFcwRnSE1dxwXU=
 github.com/go-spring/starter-grpc v1.0.5-rc2/go.mod h1:od7f1lf/xFUN6YznCB+6LTH54Lau0g4WGJSUPvZ1o7I=
+github.com/go-spring/starter-grpc v1.0.5-rc2.0.20201010133933-1b3dd81c879f h1:xRUyPY0uZDuGAgW5yxB6qMFUYWjTKaMV/0EKnCePV0c=
+github.com/go-spring/starter-grpc v1.0.5-rc2.0.20201010133933-1b3dd81c879f/go.mod h1:YZIaQSep3cCdzNyagfVLjvDag6JU5aTsL4Rsi1rklNk=
 github.com/go-spring/starter-grpc-client v1.0.5-rc1 h1:BBYB5z6quIYKp8kIRaeXTqTS7JJMxKon5PLVlGnYQQQ=
 github.com/go-spring/starter-grpc-client v1.0.5-rc1/go.mod h1:+PzTRhBZelvg4uYmZeu8PhBVwkE/Mtq87OZG3EAs8ig=
 github.com/go-spring/starter-grpc-client v1.0.5-rc2 h1:xWs40P0TczEKEEEIY/Ed1Ph1kWyawYCIsUIbc2LOo1E=

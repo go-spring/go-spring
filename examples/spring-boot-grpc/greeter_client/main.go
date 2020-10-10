@@ -27,7 +27,7 @@ import (
 	"github.com/go-spring/spring-error"
 	"github.com/go-spring/spring-web"
 	_ "github.com/go-spring/starter-gin"
-	_ "github.com/go-spring/starter-grpc-client"
+	_ "github.com/go-spring/starter-grpc/client"
 )
 
 const (
