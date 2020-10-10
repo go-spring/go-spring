@@ -145,18 +145,6 @@
         <branch>master</branch>
     </project>
     <project>
-        <name>starter-grpc-client</name>
-        <dir>starter/starter-grpc-client</dir>
-        <url>https://github.com/go-spring/starter-grpc-client.git</url>
-        <branch>master</branch>
-    </project>
-    <project>
-        <name>starter-grpc-server</name>
-        <dir>starter/starter-grpc-server</dir>
-        <url>https://github.com/go-spring/starter-grpc-server.git</url>
-        <branch>master</branch>
-    </project>
-    <project>
         <name>starter-rabbitmq</name>
         <dir>starter/starter-rabbitmq</dir>
         <url>https://github.com/go-spring/starter-rabbitmq.git</url>
