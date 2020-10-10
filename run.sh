@@ -25,6 +25,9 @@ function run(){
           "test")
             # 执行当前目录及子目录下的测试用例
             go test -count=1 ./... ;;
+          "lint")
+            # https://github.com/golangci/golangci-lint
+            golangci-lint run ;;
           *)
             ;;
         esac
@@ -33,5 +36,5 @@ function run(){
   done
 }
 
-# 命令包括: test.
+# 命令包括: test、lint.
 run $(pwd) $1
