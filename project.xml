@@ -121,12 +121,6 @@
         <branch>master</branch>
     </project>
     <project>
-        <name>starter-mysql-gorm</name>
-        <dir>starter/starter-mysql-gorm</dir>
-        <url>https://github.com/go-spring/starter-mysql-gorm.git</url>
-        <branch>master</branch>
-    </project>
-    <project>
         <name>starter-mongo</name>
         <dir>starter/starter-mongo</dir>
         <url>https://github.com/go-spring/starter-mongo.git</url>
@@ -148,6 +142,12 @@
         <name>starter-rabbitmq</name>
         <dir>starter/starter-rabbitmq</dir>
         <url>https://github.com/go-spring/starter-rabbitmq.git</url>
+        <branch>main</branch>
+    </project>
+    <project>
+        <name>starter-gorm</name>
+        <dir>starter/starter-gorm</dir>
+        <url>https://github.com/go-spring/starter-gorm.git</url>
         <branch>main</branch>
     </project>
 </projects>

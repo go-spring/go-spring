@@ -1,4 +1,4 @@
-module github.com/go-spring/starter-mysql-gorm
+module github.com/go-spring/starter-gorm
 
 go 1.12
 
