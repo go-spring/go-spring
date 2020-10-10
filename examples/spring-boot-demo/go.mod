@@ -14,7 +14,7 @@ require (
 	github.com/go-spring/spring-web v1.0.5-rc2
 	github.com/go-spring/starter-db v1.0.5-rc2
 	github.com/go-spring/starter-go-redis v1.0.5-rc2
-	github.com/go-spring/starter-mysql-gorm v1.0.5-rc2
+	github.com/go-spring/starter-gorm v0.0.0-20201010143008-2cd2ef790cb8
 	github.com/go-spring/starter-web v1.0.5-rc2
 	github.com/jinzhu/gorm v1.9.15
 	github.com/labstack/echo v3.3.10+incompatible

@@ -27,7 +27,7 @@ import (
 	_ "github.com/go-spring/examples/spring-boot-demo/server"
 	"github.com/go-spring/spring-boot"
 	_ "github.com/go-spring/starter-go-redis"
-	_ "github.com/go-spring/starter-mysql-gorm"
+	_ "github.com/go-spring/starter-gorm/mysql"
 )
 
 func init() {

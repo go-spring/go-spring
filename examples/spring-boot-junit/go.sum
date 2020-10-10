@@ -105,7 +105,6 @@ github.com/go-spring/spring-web v1.0.5-rc1.0.20200905145629-90374a3dab2f/go.mod 
 github.com/go-spring/spring-web v1.0.5-rc2/go.mod h1:tem+kMW+3dkPCUI9+jXrxXRnAFBUPgFW5QEh73Hxock=
 github.com/go-spring/starter-db v1.0.5-rc1/go.mod h1:DRJQgWz94Z7JI72srxb12aKrVrJwzrIRqaWf+yGF/3Y=
 github.com/go-spring/starter-go-redis v1.0.5-rc1/go.mod h1:TK/UTJQ/3HIKQKowe9cJDdMAsbbsvI5F6iwgvnm8Ghs=
-github.com/go-spring/starter-mysql-gorm v1.0.5-rc1/go.mod h1:Jvvq8pz05Y0aRMx5eRY3OFN7hqTcQAlendfDv8bhqTM=
 github.com/go-spring/starter-redis v1.0.5-rc1/go.mod h1:gLp6to6BhXj6REFrcXQYxsccxxsu4PC+uZ81DIdP5Ug=
 github.com/go-spring/starter-web v1.0.5-rc1/go.mod h1:QwqwrTPJpS8h7haU52TQmWNaIladwa7A1UqlR5rBY2E=
 github.com/go-sql-driver/mysql v1.5.0/go.mod h1:DCzpHaOWr8IXmIStZouvnhqoel9Qv2LBy8hT2VhHyBg=
