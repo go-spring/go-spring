@@ -1,5 +1,83 @@
 Release History:
 
+v1.0.5 2020-10-11
+
+    使用主项目和子项目的方式管理各个模块的代码，开发都在主项目上，子项目的代码
+    和主项目保持同步，这种方式实现了更简单的包名称。
+
+    Framework
+
+    1. 实现更合理的进程退出顺序，更符合 Bean 的生命周期，Register -> Init
+       -> OnStartApplication -> OnStopApplication -> Destory；
+
+    2. SafeGoroutine 函数提取到 SpringContext 接口，同时提供全局的
+       SpringBoot.Go 函数，可以安全的启动一个 Goroutine；
+
+    3. Conditional 增加 OnOptionalPropertyValue 函数，当属性值不存在时默
+       认条件成立；
+
+    4. 属性值的 Key 可以为空，形如 value:"${:=kie}"，Bug is Feature；
+
+    5. 增加 Banner 启动图案，同时打印 Go-Spring 的版本信息，可以通过 API 设
+       置 Banner 的内容以及是否显示 Banner；
+
+    6. 全面引入属性值引用语法，从而依赖注入的对象可以通过配置项进行指定，结构体字
+       段的默认属性值也支持引用语法，而且支持多层嵌套；
+
+    7. 收集语法支持指定顺序，例如 [*,web-server-starter]，在此基础上实现了
+       command-line-runner.collection 配置项对 Runners 的排序；
+
+    8. 规范 starter 包的命名规则、包结构、Bean 名称等；
+
+    9. 支持自定义配置文件读取器，支持基于 scheme 的属性源扩展，方便用户对配置项
+       的来源进行扩展；
+
+    10. 在配置文件解析完成之后增加一个扩展点，增加获取具有相同前缀的属性分组的接口；
+    11. Method Bean 支持注册多个 parent 但最终只有一个有效，否则抛出 panic；
+    12. 统一使用 Bean 的类型字符串作为 Bean 的默认名称；
+
+    13. 增加 RegisterBeanDefinition 函数统一 Bean 的注册过程，同时简化了 Bean
+        的构造函数；
+
+    14. Web 容器运行过程中自身发生错误的话会自动退出程序，例如端口占用错误等；
+    15. 重塑日志接口，解决调用点文件名称及行号信息不准确的 BUG；
+
+    Web
+
+    1. 增加 Request、Put 和 Delete 的函数扩展 (RequestMapping、RequestBinding、
+       PutMapping、PutBinding、DeleteMapping、DeleteBinding)；
+
+    2. 参数校验器 WebValidator 和 WebContainer 的内置实现进行分离，用户可以使用
+       SpringWeb 提供的参数校验器，也可以实现自己的参数校验器；
+
+    3. 去掉 SpringWeb.METHOD 函数，重新规范 SpringWeb.BIND 处理函数的格式，和一
+       般函数的写法保持一致；
+
+    4. ResponseWriter 函数返回增强的 http.ResponseWriter 接口，可以在中间件内获
+       取已经设置的 HTTP 返回码；
+
+    5. 所有的 Response 函数都返回 error 值，SpringWeb 框架保证自身不会抛出 panic；
+    6. 增加 Abort 函数，可以在中间件内中断请求，这种方式比 panic 更友好；
+    7. 新增 Route 方法，支持路由分组嵌套；
+
+    8. WebContainer 可以通过回调获取容器自身运行过程中产生的错误；
+
+    MongoDB [新增]
+
+    1. 新增 MongoDB 客户端启动器；
+
+    gRPC [新增]
+
+    1. 新增 gRPC 服务端和客户端启动器；
+
+    Message [新增]
+
+    1. 新增 RabbitMQ 生产者和消费者启动器；
+
+    JUnit [新增]
+
+    1. 实现了一个简单的适应 Go-Spring 风格的测试框架。
+
 v1.0.4 2020-06-23
 
     该版本最大的特点是引入 BeanSelector (选择器) 和 Bean Tag，进而统一了

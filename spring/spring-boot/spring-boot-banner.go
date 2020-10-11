@@ -36,7 +36,7 @@ const defaultBanner = `
 `
 
 // version 版本信息
-const version = `go-spring@v1.0.5-rc2    http://go-spring.com/`
+const version = `go-spring@v1.0.5    http://go-spring.com/`
 
 type BannerMode int
 
