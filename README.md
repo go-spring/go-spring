@@ -2,6 +2,7 @@
  <img src="https://raw.githubusercontent.com/go-spring/go-spring/master/logo@h.png" width="140" height="*" alt="logo"/>
  <br/>
  <img src="https://img.shields.io/github/license/go-spring/go-spring" alt="license"/>
+ <img src="https://img.shields.io/github/go-mod/go-version/go-spring/spring-boot" alt="go-version"/>
  <img src="https://img.shields.io/github/v/release/go-spring/go-spring?include_prereleases" alt="release"/>
 </div>
 
@@ -118,7 +119,7 @@ func main() {
 
 #### 发起者(负责人)
 
-[lvan100 (LiangHuan)](https://github.com/lvan100)
+[@lvan100 (LiangHuan)](https://github.com/lvan100)
 
 #### 优秀贡献者
 
