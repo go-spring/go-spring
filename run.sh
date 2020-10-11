@@ -36,5 +36,39 @@ function run(){
   done
 }
 
-# 命令包括: test、lint.
-run $(pwd) $1
+# 启动项目的 doc 页面
+function doc() {
+
+  project=$2
+  array=(${project//-/ })
+  dir=${array[0]}
+  if [[ $dir != "spring" && $dir != "starter" ]]; then
+    exit
+  fi
+
+  WORKSPACE=$1"/"$dir"/"$project
+  echo $WORKSPACE
+  echo ";; 首次启动加载时间较长，请耐心等待并手动刷新 doc 页面"
+
+  MODULE_NAME=$project
+  PACKAGE_PATH=github.com/go-spring
+  export GOPATH=/tmp/godoc-${MODULE_NAME}
+  MODULE_PATH=${GOPATH}/src/${PACKAGE_PATH}
+
+  rm -rf $MODULE_PATH/$MODULE_NAME &> /dev/null
+  mkdir -p $GOPATH/bin
+  mkdir -p $MODULE_PATH
+  ln -sf $WORKSPACE ${MODULE_PATH}/${MODULE_NAME}
+
+  cd $MODULE_PATH/$MODULE_NAME
+  python -m webbrowser "http://localhost:6060/pkg/github.com/go-spring/"${MODULE_NAME}
+  godoc
+}
+
+# 命令包括: test、lint、doc.
+case $1 in
+  "doc")
+    doc $(pwd) $2;;
+  *)
+    run $(pwd) $1 ;;
+esac
