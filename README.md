@@ -119,7 +119,7 @@ func main() {
 
 #### 发起者(负责人)
 
-[lvan100 (LiangHuan)](https://github.com/lvan100)
+[@lvan100 (LiangHuan)](https://github.com/lvan100)
 
 #### 优秀贡献者
 
