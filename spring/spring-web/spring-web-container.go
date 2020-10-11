@@ -80,6 +80,12 @@ type WebContainer interface {
 	// SetRecoveryFilter 设置 Recovery Filter
 	SetRecoveryFilter(filter Filter)
 
+	// GetErrorCallback 返回容器自身的错误回调
+	GetErrorCallback() func(error)
+
+	// SetErrorCallback 设置容器自身的错误回调
+	SetErrorCallback(fn func(error))
+
 	// AddRouter 添加新的路由信息
 	AddRouter(router *Router)
 
@@ -108,9 +114,10 @@ type BaseWebContainer struct {
 	enableSwag bool     // 是否启用 Swagger 功能
 	swagger    *Swagger // 和容器绑定的 Swagger 对象
 
-	filters        []Filter // 其他过滤器
-	loggerFilter   Filter   // 日志过滤器
-	recoveryFilter Filter   // 恢复过滤器
+	filters        []Filter    // 其他过滤器
+	loggerFilter   Filter      // 日志过滤器
+	recoveryFilter Filter      // 恢复过滤器
+	errorCallback  func(error) // 容器自身的错误回调
 }
 
 // NewBaseWebContainer BaseWebContainer 的构造函数
@@ -167,6 +174,16 @@ func (c *BaseWebContainer) GetRecoveryFilter() Filter {
 // 设置 Recovery Filter
 func (c *BaseWebContainer) SetRecoveryFilter(filter Filter) {
 	c.recoveryFilter = filter
+}
+
+// GetErrorCallback 返回容器自身的错误回调
+func (c *BaseWebContainer) GetErrorCallback() func(error) {
+	return c.errorCallback
+}
+
+// SetErrorCallback 设置容器自身的错误回调
+func (c *BaseWebContainer) SetErrorCallback(fn func(error)) {
+	c.errorCallback = fn
 }
 
 // AddRouter 添加新的路由信息

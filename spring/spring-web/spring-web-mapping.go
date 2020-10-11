@@ -16,8 +16,15 @@
 
 package SpringWeb
 
+import (
+	"github.com/go-spring/spring-const"
+)
+
 // UrlRegister 路由注册接口
 type UrlRegister interface {
+
+	// Route 返回和 Mapping 绑定的路由分组
+	Route(basePath string, filters ...Filter) *Router
 
 	// Request 注册任意 HTTP 方法处理函数
 	Request(method uint32, path string, fn Handler, filters ...Filter) *Mapper
@@ -68,6 +75,11 @@ type UrlRegister interface {
 // defaultUrlRegister 路由注册接口的默认实现
 type defaultUrlRegister struct {
 	request func(method uint32, path string, fn Handler, filters []Filter) *Mapper
+}
+
+// Route 返回和 Mapping 绑定的路由分组
+func (r *defaultUrlRegister) Route(basePath string, filters ...Filter) *Router {
+	panic(SpringConst.UnimplementedMethod)
 }
 
 // Request 注册任意 HTTP 方法处理函数
@@ -154,9 +166,6 @@ type WebMapping interface {
 
 	// AddMapper 添加一个 Mapper
 	AddMapper(m *Mapper) *Mapper
-
-	// Route 返回和 Mapping 绑定的路由分组
-	Route(basePath string, filters ...Filter) *Router
 }
 
 // defaultWebMapping 路由表的默认实现

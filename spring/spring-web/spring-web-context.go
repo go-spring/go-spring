@@ -144,6 +144,12 @@ type WebContext interface {
 	/////////////////////////////////////////
 	// Response Part
 
+	// IsAborted 当前处理过程是否终止，为了适配 gin 的模型，未来底层统一了会去掉.
+	IsAborted() bool
+
+	// Abort 终止当前处理过程，为了适配 gin 的模型，未来底层统一了会去掉.
+	Abort()
+
 	// ResponseWriter returns `http.ResponseWriter`.
 	ResponseWriter() ResponseWriter
 
@@ -162,59 +168,58 @@ type WebContext interface {
 	NoContent(code int)
 
 	// String writes the given string into the response body.
-	String(code int, format string, values ...interface{})
+	String(code int, format string, values ...interface{}) error
 
 	// HTML sends an HTTP response with status code.
-	HTML(code int, html string)
+	HTML(code int, html string) error
 
 	// HTMLBlob sends an HTTP blob response with status code.
-	HTMLBlob(code int, b []byte)
+	HTMLBlob(code int, b []byte) error
 
 	// JSON sends a JSON response with status code.
-	JSON(code int, i interface{})
+	JSON(code int, i interface{}) error
 
 	// JSONPretty sends a pretty-print JSON with status code.
-	JSONPretty(code int, i interface{}, indent string)
+	JSONPretty(code int, i interface{}, indent string) error
 
 	// JSONBlob sends a JSON blob response with status code.
-	JSONBlob(code int, b []byte)
+	JSONBlob(code int, b []byte) error
 
 	// JSONP sends a JSONP response with status code. It uses `callback`
 	// to construct the JSONP payload.
-	JSONP(code int, callback string, i interface{})
+	JSONP(code int, callback string, i interface{}) error
 
 	// JSONPBlob sends a JSONP blob response with status code. It uses
 	// `callback` to construct the JSONP payload.
-	JSONPBlob(code int, callback string, b []byte)
+	JSONPBlob(code int, callback string, b []byte) error
 
 	// XML sends an XML response with status code.
-	XML(code int, i interface{})
+	XML(code int, i interface{}) error
 
 	// XMLPretty sends a pretty-print XML with status code.
-	XMLPretty(code int, i interface{}, indent string)
+	XMLPretty(code int, i interface{}, indent string) error
 
 	// XMLBlob sends an XML blob response with status code.
-	XMLBlob(code int, b []byte)
+	XMLBlob(code int, b []byte) error
 
 	// Blob sends a blob response with status code and content type.
-	Blob(code int, contentType string, b []byte)
+	Blob(code int, contentType string, b []byte) error
 
 	// Stream sends a streaming response with status code and content type.
-	Stream(code int, contentType string, r io.Reader)
+	Stream(code int, contentType string, r io.Reader) error
 
 	// File sends a response with the content of the file.
-	File(file string)
+	File(file string) error
 
-	// Attachment sends a response as attachment, prompting client to save the
-	// file.
-	Attachment(file string, name string)
+	// Attachment sends a response as attachment, prompting client to save the file.
+	Attachment(file string, name string) error
 
 	// Inline sends a response as inline, opening the file in the browser.
-	Inline(file string, name string)
+	Inline(file string, name string) error
 
 	// Redirect redirects the request to a provided URL with status code.
-	Redirect(code int, url string)
+	Redirect(code int, url string) error
 
 	// SSEvent writes a Server-Sent Event into the body stream.
-	SSEvent(name string, message interface{})
+	SSEvent(name string, message interface{}) error
 }

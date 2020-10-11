@@ -91,6 +91,11 @@ func (starter *WebServerStarter) OnStartApplication(ctx SpringBoot.ApplicationCo
 		}
 	}
 
+	// 容器运行过程中自身发生错误的退出程序，尤其像端口占用这种错误
+	starter.WebServer.SetErrorCallback(func(err error) {
+		SpringBoot.Exit()
+	})
+
 	starter.WebServer.Start()
 }
 

@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/go-spring/spring-utils"
+	"github.com/magiconair/properties/assert"
 )
 
 func TestPanicCond_When(t *testing.T) {
@@ -39,5 +40,44 @@ func TestPanicCond_When(t *testing.T) {
 			fmt.Println(recover().(error).Error())
 		}()
 		SpringUtils.Panicf("reason: %s", "panicf").When(true)
+	})
+}
+
+func TestWithCause(t *testing.T) {
+
+	t.Run("", func(t *testing.T) {
+		err := SpringUtils.WithCause("this is a string")
+		v := SpringUtils.Cause(err)
+		assert.Equal(t, fmt.Sprint(v), "this is a string")
+	})
+
+	t.Run("", func(t *testing.T) {
+		err := SpringUtils.WithCause(errors.New("123"))
+		v := SpringUtils.Cause(err)
+		assert.Equal(t, fmt.Sprint(v), "123")
+	})
+}
+
+func panic2Error(v interface{}) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = SpringUtils.WithCause(r)
+		}
+	}()
+	panic(v)
+}
+
+func TestPanic2Error(t *testing.T) {
+
+	t.Run("", func(t *testing.T) {
+		err := panic2Error("this is a string")
+		v := SpringUtils.Cause(err)
+		assert.Equal(t, fmt.Sprint(v), "this is a string")
+	})
+
+	t.Run("", func(t *testing.T) {
+		err := panic2Error(errors.New("123"))
+		v := SpringUtils.Cause(err)
+		assert.Equal(t, fmt.Sprint(v), "123")
 	})
 }

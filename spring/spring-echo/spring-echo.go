@@ -18,6 +18,7 @@ package SpringEcho
 
 import (
 	"context"
+	"net/http"
 
 	"github.com/go-spring/spring-logger"
 	"github.com/go-spring/spring-utils"
@@ -111,19 +112,23 @@ func (c *Container) Start() {
 		}
 	}
 
-	// 设置参数校验器
-	c.echoServer.Validator = SpringWeb.Validator
-
 	// 启动 echo 容器
 	go func() {
+		var err error
 		// TODO 应用 ReadTimeout 和 WriteTimeout。
 
-		var err error
 		if cfg := c.Config(); cfg.EnableSSL {
 			err = c.echoServer.StartTLS(c.Address(), cfg.CertFile, cfg.KeyFile)
 		} else {
 			err = c.echoServer.Start(c.Address())
 		}
+
+		if err != nil && err != http.ErrServerClosed {
+			if fn := c.GetErrorCallback(); fn != nil {
+				fn(err)
+			}
+		}
+
 		SpringLogger.Infof("exit echo server on %s return %s", c.Address(), SpringUtils.ErrorToString(err))
 	}()
 }

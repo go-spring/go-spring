@@ -92,7 +92,7 @@ func (m *Mapping) Ports() []int {
 
 // OnPorts 设置路由期望的端口
 func (m *Mapping) OnPorts(ports ...int) *Mapping {
-	m.ports = ports
+	m.ports = append(m.ports, ports...)
 	return m
 }
 
@@ -209,9 +209,20 @@ func newRouter(mapping *WebMapping, basePath string, filters []SpringWeb.Filter)
 	}
 }
 
+// Route 创建子路由分组
+func (r *Router) Route(basePath string, filters ...SpringWeb.Filter) *Router {
+	return &Router{
+		mapping:  r.mapping,
+		basePath: r.basePath + basePath,
+		filters:  append(r.filters, filters...),
+		ports:    r.ports,
+		cond:     r.cond,
+	}
+}
+
 // OnPorts 设置路由期望的端口
 func (r *Router) OnPorts(ports ...int) *Router {
-	r.ports = ports
+	r.ports = append(r.ports, ports...)
 	return r
 }
 

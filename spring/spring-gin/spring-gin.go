@@ -29,7 +29,7 @@ import (
 
 func init() {
 	gin.SetMode(gin.ReleaseMode)
-	binding.Validator = SpringWeb.Validator
+	binding.Validator = nil // 关闭 gin 的校验器
 }
 
 type route struct {
@@ -135,6 +135,13 @@ func (c *Container) Start() {
 		} else {
 			err = c.httpServer.ListenAndServe()
 		}
+
+		if err != nil && err != http.ErrServerClosed {
+			if fn := c.GetErrorCallback(); fn != nil {
+				fn(err)
+			}
+		}
+
 		SpringLogger.Infof("exit gin server on %s return %s", c.Address(), SpringUtils.ErrorToString(err))
 	}()
 }

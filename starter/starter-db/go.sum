@@ -4,6 +4,10 @@ github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSs
 github.com/go-spring/spring-logger v0.0.0-20200809011130-4fc0ca70bbdb h1:CPKNDKNTZcPiN3VOwZOXv4vSO/zBQG4a1cuzdudu2l0=
 github.com/go-spring/spring-logger v0.0.0-20200809011130-4fc0ca70bbdb/go.mod h1:eZENHurOPb4+c586XBNv+M2HzWSAbRQLCNu49t8xsSc=
 github.com/go-spring/spring-logger v1.0.5-rc1/go.mod h1:eZENHurOPb4+c586XBNv+M2HzWSAbRQLCNu49t8xsSc=
+github.com/go-spring/spring-logger v1.0.5-rc2 h1:PsqZc98UMk4f0vk8hrxfl6m5W63g/K9WPbNRIRTzg6A=
+github.com/go-spring/spring-logger v1.0.5-rc2/go.mod h1:eZENHurOPb4+c586XBNv+M2HzWSAbRQLCNu49t8xsSc=
+github.com/go-spring/spring-logger v1.0.5 h1:BRf3/i3Tj+nSvP6QwdygDSG+eI9taRMRa9JOlkQ/1p8=
+github.com/go-spring/spring-logger v1.0.5/go.mod h1:eZENHurOPb4+c586XBNv+M2HzWSAbRQLCNu49t8xsSc=
 github.com/labstack/gommon v0.3.0 h1:JEeO0bvc78PKdyHxloTKiF8BD5iGrH8T6MSeGvSgob0=
 github.com/labstack/gommon v0.3.0/go.mod h1:MULnywXg0yavhxWKc+lOruYdAhDwPK9wf0OL7NoOu+k=
 github.com/mattn/go-colorable v0.1.2 h1:/bC9yWikZXAL9uJdulbSfyVNIR3n3trXl+v8+1sx8mU=

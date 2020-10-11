@@ -27,7 +27,6 @@ import (
 
 	"github.com/go-spring/spring-const"
 	"github.com/go-spring/spring-logger"
-	"github.com/go-spring/spring-utils"
 	"github.com/go-spring/spring-web"
 	"github.com/labstack/echo"
 )
@@ -74,6 +73,9 @@ type Context struct {
 
 	// wildCardName 通配符的名称
 	wildCardName string
+
+	// aborted 处理过程是否终止
+	aborted bool
 }
 
 // NewContext Context 的构造函数
@@ -261,16 +263,24 @@ func (ctx *Context) Cookies() []*http.Cookie {
 // Bind binds the request body into provided type `i`.
 func (ctx *Context) Bind(i interface{}) error {
 
-	// 这里不仅是为了和 gin 保持统一，而且也不能禁止 post 空数据，可以通过 validator 检测是否正常
 	if req := ctx.Request(); req.ContentLength == 0 && req.Method == http.MethodPost {
-		return ctx.echoContext.Validate(i)
+		return nil
 	}
 
-	if err := ctx.echoContext.Bind(i); err == nil {
-		return ctx.echoContext.Validate(i)
-	} else {
+	if err := ctx.echoContext.Bind(i); err != nil {
 		return err
 	}
+	return SpringWeb.Validate(i)
+}
+
+// IsAborted 当前处理过程是否终止，为了适配 gin 的模型，未来底层统一了会去掉.
+func (ctx *Context) IsAborted() bool {
+	return ctx.aborted
+}
+
+// Abort 终止当前处理过程，为了适配 gin 的模型，未来底层统一了会去掉.
+func (ctx *Context) Abort() {
+	ctx.aborted = true
 }
 
 // ResponseWriter returns `http.ResponseWriter`.
@@ -295,113 +305,95 @@ func (ctx *Context) SetCookie(cookie *http.Cookie) {
 
 // NoContent sends a response with no body and a status code.
 func (ctx *Context) NoContent(code int) {
-	err := ctx.echoContext.NoContent(code)
-	SpringUtils.Panic(err).When(err != nil)
+	_ = ctx.echoContext.NoContent(code)
 }
 
 // String writes the given string into the response body.
-func (ctx *Context) String(code int, format string, values ...interface{}) {
-	err := ctx.echoContext.String(code, fmt.Sprintf(format, values...))
-	SpringUtils.Panic(err).When(err != nil)
+func (ctx *Context) String(code int, format string, values ...interface{}) error {
+	return ctx.echoContext.String(code, fmt.Sprintf(format, values...))
 }
 
 // HTML sends an HTTP response with status code.
-func (ctx *Context) HTML(code int, html string) {
-	err := ctx.echoContext.HTML(code, html)
-	SpringUtils.Panic(err).When(err != nil)
+func (ctx *Context) HTML(code int, html string) error {
+	return ctx.echoContext.HTML(code, html)
 }
 
 // HTMLBlob sends an HTTP blob response with status code.
-func (ctx *Context) HTMLBlob(code int, b []byte) {
-	err := ctx.echoContext.HTMLBlob(code, b)
-	SpringUtils.Panic(err).When(err != nil)
+func (ctx *Context) HTMLBlob(code int, b []byte) error {
+	return ctx.echoContext.HTMLBlob(code, b)
 }
 
 // JSON sends a JSON response with status code.
-func (ctx *Context) JSON(code int, i interface{}) {
-	err := ctx.echoContext.JSON(code, i)
-	SpringUtils.Panic(err).When(err != nil)
+func (ctx *Context) JSON(code int, i interface{}) error {
+	return ctx.echoContext.JSON(code, i)
 }
 
 // JSONPretty sends a pretty-print JSON with status code.
-func (ctx *Context) JSONPretty(code int, i interface{}, indent string) {
-	err := ctx.echoContext.JSONPretty(code, i, indent)
-	SpringUtils.Panic(err).When(err != nil)
+func (ctx *Context) JSONPretty(code int, i interface{}, indent string) error {
+	return ctx.echoContext.JSONPretty(code, i, indent)
 }
 
 // JSONBlob sends a JSON blob response with status code.
-func (ctx *Context) JSONBlob(code int, b []byte) {
-	err := ctx.echoContext.JSONBlob(code, b)
-	SpringUtils.Panic(err).When(err != nil)
+func (ctx *Context) JSONBlob(code int, b []byte) error {
+	return ctx.echoContext.JSONBlob(code, b)
 }
 
 // JSONP sends a JSONP response with status code.
-func (ctx *Context) JSONP(code int, callback string, i interface{}) {
-	err := ctx.echoContext.JSONP(code, callback, i)
-	SpringUtils.Panic(err).When(err != nil)
+func (ctx *Context) JSONP(code int, callback string, i interface{}) error {
+	return ctx.echoContext.JSONP(code, callback, i)
 }
 
 // JSONPBlob sends a JSONP blob response with status code.
-func (ctx *Context) JSONPBlob(code int, callback string, b []byte) {
-	err := ctx.echoContext.JSONPBlob(code, callback, b)
-	SpringUtils.Panic(err).When(err != nil)
+func (ctx *Context) JSONPBlob(code int, callback string, b []byte) error {
+	return ctx.echoContext.JSONPBlob(code, callback, b)
 }
 
 // XML sends an XML response with status code.
-func (ctx *Context) XML(code int, i interface{}) {
-	err := ctx.echoContext.XML(code, i)
-	SpringUtils.Panic(err).When(err != nil)
+func (ctx *Context) XML(code int, i interface{}) error {
+	return ctx.echoContext.XML(code, i)
 }
 
 // XMLPretty sends a pretty-print XML with status code.
-func (ctx *Context) XMLPretty(code int, i interface{}, indent string) {
-	err := ctx.echoContext.XMLPretty(code, i, indent)
-	SpringUtils.Panic(err).When(err != nil)
+func (ctx *Context) XMLPretty(code int, i interface{}, indent string) error {
+	return ctx.echoContext.XMLPretty(code, i, indent)
 }
 
 // XMLBlob sends an XML blob response with status code.
-func (ctx *Context) XMLBlob(code int, b []byte) {
-	err := ctx.echoContext.XMLBlob(code, b)
-	SpringUtils.Panic(err).When(err != nil)
+func (ctx *Context) XMLBlob(code int, b []byte) error {
+	return ctx.echoContext.XMLBlob(code, b)
 }
 
 // Blob sends a blob response with status code and content type.
-func (ctx *Context) Blob(code int, contentType string, b []byte) {
-	err := ctx.echoContext.Blob(code, contentType, b)
-	SpringUtils.Panic(err).When(err != nil)
+func (ctx *Context) Blob(code int, contentType string, b []byte) error {
+	return ctx.echoContext.Blob(code, contentType, b)
 }
 
 // Stream sends a streaming response with status code and content type.
-func (ctx *Context) Stream(code int, contentType string, r io.Reader) {
-	err := ctx.echoContext.Stream(code, contentType, r)
-	SpringUtils.Panic(err).When(err != nil)
+func (ctx *Context) Stream(code int, contentType string, r io.Reader) error {
+	return ctx.echoContext.Stream(code, contentType, r)
 }
 
 // File sends a response with the content of the file.
-func (ctx *Context) File(file string) {
-	err := ctx.echoContext.File(file)
-	SpringUtils.Panic(err).When(err != nil)
+func (ctx *Context) File(file string) error {
+	return ctx.echoContext.File(file)
 }
 
 // Attachment sends a response as attachment
-func (ctx *Context) Attachment(file string, name string) {
-	err := ctx.echoContext.Attachment(file, name)
-	SpringUtils.Panic(err).When(err != nil)
+func (ctx *Context) Attachment(file string, name string) error {
+	return ctx.echoContext.Attachment(file, name)
 }
 
 // Inline sends a response as inline
-func (ctx *Context) Inline(file string, name string) {
-	err := ctx.echoContext.Inline(file, name)
-	SpringUtils.Panic(err).When(err != nil)
+func (ctx *Context) Inline(file string, name string) error {
+	return ctx.echoContext.Inline(file, name)
 }
 
 // Redirect redirects the request to a provided URL with status code.
-func (ctx *Context) Redirect(code int, url string) {
-	err := ctx.echoContext.Redirect(code, url)
-	SpringUtils.Panic(err).When(err != nil)
+func (ctx *Context) Redirect(code int, url string) error {
+	return ctx.echoContext.Redirect(code, url)
 }
 
 // SSEvent writes a Server-Sent Event into the body stream.
-func (ctx *Context) SSEvent(name string, message interface{}) {
+func (ctx *Context) SSEvent(name string, message interface{}) error {
 	panic(SpringConst.UnimplementedMethod)
 }
