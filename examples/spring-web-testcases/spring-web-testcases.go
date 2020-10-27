@@ -33,6 +33,17 @@ type LogFilter struct{}
 
 func (f *LogFilter) Invoke(ctx SpringWeb.WebContext, chain SpringWeb.FilterChain) {
 
+	defer func() {
+		if req := ctx.Path(); len(req) > 0 {
+			body := string(ctx.ResponseWriter().Body())
+			if strings.Index(req, "*") > 0 {
+				fmt.Println(req, "->", ctx.Request().URL, "resp="+body)
+			} else {
+				fmt.Println(req, "resp="+body)
+			}
+		}
+	}()
+
 	if strings.Index(ctx.Path(), "*") > 0 {
 		fmt.Println(ctx.Path(), "->", ctx.Request().URL)
 	} else {
