@@ -49,20 +49,30 @@ func WebContext(ginCtx *gin.Context) SpringWeb.WebContext {
 	return nil
 }
 
-// responseWriter SpringWeb.ResponseWriter 的 gin 适配.
+// 同时继承了 SpringWeb.ResponseWriter 接口
 type responseWriter struct {
 	gin.ResponseWriter
+	writer *SpringWeb.BufferedResponseWriter
 }
 
-// Returns the HTTP response status code of the current request.
-func (r *responseWriter) Status() int {
-	return r.ResponseWriter.Status()
+func (w *responseWriter) Status() int {
+	return w.writer.Status()
 }
 
-// Returns the number of bytes already written into the response http body.
-// See Written()
-func (r *responseWriter) Size() int {
-	return r.ResponseWriter.Size()
+func (w *responseWriter) Size() int {
+	return w.writer.Size()
+}
+
+func (w *responseWriter) Body() []byte {
+	return w.writer.Body()
+}
+
+func (w *responseWriter) WriteHeader(statusCode int) {
+	w.writer.WriteHeader(statusCode)
+}
+
+func (w *responseWriter) Write(data []byte) (n int, err error) {
+	return w.writer.Write(data)
 }
 
 // Context 适配 gin 的 Web 上下文
@@ -86,6 +96,13 @@ type Context struct {
 // NewContext Context 的构造函数
 func NewContext(fn SpringWeb.Handler, wildCardName string, ginCtx *gin.Context) *Context {
 
+	ginCtx.Writer = &responseWriter{
+		writer: &SpringWeb.BufferedResponseWriter{
+			ResponseWriter: ginCtx.Writer,
+		},
+		ResponseWriter: ginCtx.Writer,
+	}
+
 	ctx := ginCtx.Request.Context()
 	logCtx := SpringLogger.NewDefaultLoggerContext(ctx)
 
@@ -98,6 +115,11 @@ func NewContext(fn SpringWeb.Handler, wildCardName string, ginCtx *gin.Context) 
 
 	webCtx.Set(SpringWeb.WebContextKey, webCtx)
 	return webCtx
+}
+
+// SetLoggerContext 设置日志接口上下文对象
+func (ctx *Context) SetLoggerContext(logCtx SpringLogger.LoggerContext) {
+	ctx.LoggerContext = logCtx
 }
 
 // NativeContext 返回封装的底层上下文对象
@@ -322,7 +344,7 @@ func (ctx *Context) Abort() {
 
 // ResponseWriter returns `http.ResponseWriter`.
 func (ctx *Context) ResponseWriter() SpringWeb.ResponseWriter {
-	return &responseWriter{ctx.ginContext.Writer}
+	return ctx.ginContext.Writer.(*responseWriter)
 }
 
 // Status sets the HTTP response code.
