@@ -44,22 +44,6 @@ func WebContext(echoCtx echo.Context) SpringWeb.WebContext {
 	return nil
 }
 
-// responseWriter SpringWeb.ResponseWriter 的 echo 适配.
-type responseWriter struct {
-	*echo.Response
-}
-
-// Returns the HTTP response status code of the current request.
-func (r *responseWriter) Status() int {
-	return r.Response.Status
-}
-
-// Returns the number of bytes already written into the response http body.
-// See Written()
-func (r *responseWriter) Size() int {
-	return int(r.Response.Size)
-}
-
 // Context 适配 echo 的 Web 上下文
 type Context struct {
 	// LoggerContext 日志接口上下文
@@ -81,6 +65,10 @@ type Context struct {
 // NewContext Context 的构造函数
 func NewContext(fn SpringWeb.Handler, wildCardName string, echoCtx echo.Context) *Context {
 
+	echoCtx.Response().Writer = &SpringWeb.BufferedResponseWriter{
+		ResponseWriter: echoCtx.Response().Writer,
+	}
+
 	ctx := echoCtx.Request().Context()
 	logCtx := SpringLogger.NewDefaultLoggerContext(ctx)
 
@@ -93,6 +81,11 @@ func NewContext(fn SpringWeb.Handler, wildCardName string, echoCtx echo.Context)
 
 	webCtx.Set(SpringWeb.WebContextKey, webCtx)
 	return webCtx
+}
+
+// SetLoggerContext 设置日志接口上下文对象
+func (ctx *Context) SetLoggerContext(logCtx SpringLogger.LoggerContext) {
+	ctx.LoggerContext = logCtx
 }
 
 // NativeContext 返回封装的底层上下文对象
@@ -285,7 +278,8 @@ func (ctx *Context) Abort() {
 
 // ResponseWriter returns `http.ResponseWriter`.
 func (ctx *Context) ResponseWriter() SpringWeb.ResponseWriter {
-	return &responseWriter{ctx.echoContext.Response()}
+	writer := ctx.echoContext.Response().Writer
+	return writer.(*SpringWeb.BufferedResponseWriter)
 }
 
 // Status sets the HTTP response code.
