@@ -17,10 +17,12 @@
 package SpringWeb
 
 import (
+	"bytes"
 	"io"
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/go-spring/spring-logger"
 )
@@ -36,8 +38,10 @@ type ResponseWriter interface {
 	Status() int
 
 	// Returns the number of bytes already written into the response http body.
-	// See Written()
 	Size() int
+
+	// 返回发送给客户端的数据，当前仅支持 MIMEApplicationJSON 格式.
+	Body() []byte
 }
 
 // WebContext 上下文接口，设计理念：为社区中优秀的 Web 服务器提供一个抽象层，
@@ -49,6 +53,9 @@ type WebContext interface {
 
 	// LoggerContext 日志接口上下文
 	SpringLogger.LoggerContext
+
+	// SetLoggerContext 设置日志接口上下文对象
+	SetLoggerContext(logCtx SpringLogger.LoggerContext)
 
 	// NativeContext 返回封装的底层上下文对象
 	NativeContext() interface{}
@@ -222,4 +229,51 @@ type WebContext interface {
 
 	// SSEvent writes a Server-Sent Event into the body stream.
 	SSEvent(name string, message interface{}) error
+}
+
+// BufferedResponseWriter http.ResponseWriter 的一种增强型实现.
+type BufferedResponseWriter struct {
+	http.ResponseWriter
+	buffer bytes.Buffer
+	status int
+	size   int
+}
+
+func (w *BufferedResponseWriter) Status() int {
+	return w.status
+}
+
+func (w *BufferedResponseWriter) Size() int {
+	return w.size
+}
+
+func (w *BufferedResponseWriter) Body() []byte {
+	return w.buffer.Bytes()
+}
+
+func (w *BufferedResponseWriter) WriteHeader(statusCode int) {
+	if statusCode > 0 { // TODO 加重复设置的告警日志
+		w.ResponseWriter.WriteHeader(statusCode)
+		w.status = statusCode
+	}
+}
+
+func filterFlags(content string) string {
+	for i, char := range strings.ToLower(content) {
+		if char == ' ' || char == ';' {
+			return content[:i]
+		}
+	}
+	return content
+}
+
+func (w *BufferedResponseWriter) Write(data []byte) (n int, err error) {
+	if n, err = w.ResponseWriter.Write(data); err == nil {
+		contentType := w.ResponseWriter.Header().Get(HeaderContentType)
+		if filterFlags(contentType) == MIMEApplicationJSON {
+			w.buffer.Write(data[:n])
+		}
+	}
+	w.size += n
+	return
 }

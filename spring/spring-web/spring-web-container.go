@@ -335,5 +335,6 @@ type loggerFilter struct{}
 func (f *loggerFilter) Invoke(ctx WebContext, chain FilterChain) {
 	start := time.Now()
 	chain.Next(ctx)
-	ctx.LogInfo("cost: ", time.Since(start))
+	w := ctx.ResponseWriter() // TODO echo 返回的 Json 数据有换行符，想办法去掉它
+	ctx.LogInfof("cost:%v resp:%s size:%d", time.Since(start), string(w.Body()), w.Size())
 }
