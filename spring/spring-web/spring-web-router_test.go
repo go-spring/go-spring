@@ -23,19 +23,20 @@ import (
 )
 
 func TestRouter_Route(t *testing.T) {
-	root := NewRouter("/root", &loggerFilter{}, &recoveryFilter{})
+	// TODO 将第二个 loggerFilter 改为其他类型的 Filter
+	root := NewRouter("/root", &loggerFilter{}, &loggerFilter{})
 
-	get := root.GetMapping("/get", nil, &loggerFilter{}, &recoveryFilter{})
+	get := root.GetMapping("/get", nil, &loggerFilter{}, &loggerFilter{})
 	assert.Equal(t, get.path, "/root/get")
 	assert.Equal(t, len(get.filters), 4)
 
-	sub := root.Route("/sub", &loggerFilter{}, &recoveryFilter{})
-	subGet := sub.GetMapping("/get", nil, &loggerFilter{}, &recoveryFilter{})
+	sub := root.Route("/sub", &loggerFilter{}, &loggerFilter{})
+	subGet := sub.GetMapping("/get", nil, &loggerFilter{}, &loggerFilter{})
 	assert.Equal(t, subGet.path, "/root/sub/get")
 	assert.Equal(t, len(subGet.filters), 6)
 
-	subSub := sub.Route("/sub", &loggerFilter{}, &recoveryFilter{})
-	subSubGet := subSub.GetMapping("/get", nil, &loggerFilter{}, &recoveryFilter{})
+	subSub := sub.Route("/sub", &loggerFilter{}, &loggerFilter{})
+	subSubGet := subSub.GetMapping("/get", nil, &loggerFilter{}, &loggerFilter{})
 	assert.Equal(t, subSubGet.path, "/root/sub/sub/get")
 	assert.Equal(t, len(subSubGet.filters), 8)
 }

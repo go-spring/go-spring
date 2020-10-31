@@ -24,11 +24,10 @@ import (
 
 // WebServer 一个 WebServer 包含多个 WebContainer
 type WebServer struct {
-	containers     []WebContainer // Web 容器列表
-	filters        []Filter       // 共用的普通过滤器
-	loggerFilter   Filter         // 共用的日志过滤器
-	recoveryFilter Filter         // 共用的恢复过滤器
-	errorCallback  func(error)    // 容器自身的错误回调
+	containers    []WebContainer // Web 容器列表
+	filters       []Filter       // 共用的普通过滤器
+	loggerFilter  Filter         // 共用的日志过滤器
+	errorCallback func(error)    // 容器自身的错误回调
 }
 
 // NewWebServer WebServer 的构造函数
@@ -63,17 +62,6 @@ func (s *WebServer) SetLoggerFilter(filter Filter) *WebServer {
 	return s
 }
 
-// GetRecoveryFilter 获取 Recovery Filter
-func (s *WebServer) GetRecoveryFilter() Filter {
-	return s.recoveryFilter
-}
-
-// SetRecoveryFilter 设置共用的恢复过滤器
-func (s *WebServer) SetRecoveryFilter(filter Filter) *WebServer {
-	s.recoveryFilter = filter
-	return s
-}
-
 // SetErrorCallback 设置容器自身的错误回调
 func (s *WebServer) SetErrorCallback(fn func(error)) *WebServer {
 	s.errorCallback = fn
@@ -98,11 +86,6 @@ func (s *WebServer) Start() {
 		// 如果 Container 使用的是默认值的话，Container 使用 Server 的日志过滤器
 		if s.loggerFilter != nil && c.GetLoggerFilter() == defaultLoggerFilter {
 			c.SetLoggerFilter(s.loggerFilter)
-		}
-
-		// 如果 Container 使用的是默认值的话，Container 使用 Server 的恢复过滤器
-		if s.recoveryFilter != nil && c.GetRecoveryFilter() == defaultRecoveryFilter {
-			c.SetRecoveryFilter(s.recoveryFilter)
 		}
 
 		// 添加 Server 的普通过滤器给 Container

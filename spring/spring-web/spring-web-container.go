@@ -74,12 +74,6 @@ type WebContainer interface {
 	// SetLoggerFilter 设置 Logger Filter
 	SetLoggerFilter(filter Filter)
 
-	// GetRecoveryFilter 获取 Recovery Filter
-	GetRecoveryFilter() Filter
-
-	// SetRecoveryFilter 设置 Recovery Filter
-	SetRecoveryFilter(filter Filter)
-
 	// GetErrorCallback 返回容器自身的错误回调
 	GetErrorCallback() func(error)
 
@@ -114,20 +108,18 @@ type BaseWebContainer struct {
 	enableSwag bool     // 是否启用 Swagger 功能
 	swagger    *Swagger // 和容器绑定的 Swagger 对象
 
-	filters        []Filter    // 其他过滤器
-	loggerFilter   Filter      // 日志过滤器
-	recoveryFilter Filter      // 恢复过滤器
-	errorCallback  func(error) // 容器自身的错误回调
+	filters       []Filter    // 其他过滤器
+	loggerFilter  Filter      // 日志过滤器
+	errorCallback func(error) // 容器自身的错误回调
 }
 
 // NewBaseWebContainer BaseWebContainer 的构造函数
 func NewBaseWebContainer(config ContainerConfig) *BaseWebContainer {
 	return &BaseWebContainer{
-		WebMapping:     NewDefaultWebMapping(),
-		config:         config,
-		enableSwag:     true,
-		loggerFilter:   defaultLoggerFilter,
-		recoveryFilter: defaultRecoveryFilter,
+		WebMapping:   NewDefaultWebMapping(),
+		config:       config,
+		enableSwag:   true,
+		loggerFilter: defaultLoggerFilter,
 	}
 }
 
@@ -164,16 +156,6 @@ func (c *BaseWebContainer) GetLoggerFilter() Filter {
 // SetLoggerFilter 设置 Logger Filter
 func (c *BaseWebContainer) SetLoggerFilter(filter Filter) {
 	c.loggerFilter = filter
-}
-
-// GetRecoveryFilter 获取 Recovery Filter
-func (c *BaseWebContainer) GetRecoveryFilter() Filter {
-	return c.recoveryFilter
-}
-
-// 设置 Recovery Filter
-func (c *BaseWebContainer) SetRecoveryFilter(filter Filter) {
-	c.recoveryFilter = filter
 }
 
 // GetErrorCallback 返回容器自身的错误回调
@@ -310,23 +292,6 @@ func WrapH(h http.Handler) Handler {
 
 /////////////////// Web Filters //////////////////////
 
-var defaultRecoveryFilter = &recoveryFilter{}
-
-// recoveryFilter 恢复过滤器
-type recoveryFilter struct{}
-
-func (f *recoveryFilter) Invoke(ctx WebContext, chain FilterChain) {
-
-	defer func() {
-		if err := recover(); err != nil {
-			ctx.LogError("[PANIC RECOVER] ", err)
-			ctx.Status(http.StatusInternalServerError)
-		}
-	}()
-
-	chain.Next(ctx)
-}
-
 var defaultLoggerFilter = &loggerFilter{}
 
 // loggerFilter 日志过滤器
@@ -336,5 +301,5 @@ func (f *loggerFilter) Invoke(ctx WebContext, chain FilterChain) {
 	start := time.Now()
 	chain.Next(ctx)
 	w := ctx.ResponseWriter() // TODO echo 返回的 Json 数据有换行符，想办法去掉它
-	ctx.LogInfof("cost:%v resp:%s size:%d", time.Since(start), string(w.Body()), w.Size())
+	ctx.LogInfof("cost:%v size:%d code:%d %s", time.Since(start), w.Size(), w.Status(), string(w.Body()))
 }

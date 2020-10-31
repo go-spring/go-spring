@@ -6,8 +6,7 @@ require (
 	github.com/go-openapi/spec v0.19.7
 	github.com/go-playground/validator/v10 v10.2.0
 	github.com/go-spring/spring-const v1.0.5
-	github.com/go-spring/spring-error v1.0.5
-	github.com/go-spring/spring-logger v1.0.5
+	github.com/go-spring/spring-logger v1.0.6-0.20201031071008-31db8609b202
 	github.com/go-spring/spring-test v1.0.5
 	github.com/go-spring/spring-utils v1.0.5
 	github.com/magiconair/properties v1.8.1

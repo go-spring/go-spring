@@ -18,7 +18,7 @@ package SpringWeb
 
 import (
 	"bytes"
-	"io"
+	"fmt"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -29,6 +29,49 @@ import (
 
 // WebContextKey WebContext 和 NativeContext 相互转换的 Key
 const WebContextKey = "@WebCtx"
+
+// ErrorHandler 用户自定义错误处理函数
+var ErrorHandler = defaultErrorHandler
+
+func defaultErrorHandler(webCtx WebContext, err *HttpError) {
+	defer func() {
+		if r := recover(); r != nil {
+			webCtx.LogError(r)
+		}
+	}()
+	webCtx.String(err.Code, err.Error())
+}
+
+// HttpError represents an error that occurred while handling a request.
+type HttpError struct {
+	Code     int         // HTTP 错误码
+	Message  interface{} // 自定义错误消息
+	Internal error       // 保存的原始异常
+}
+
+// NewHttpError creates a new HttpError instance.
+func NewHttpError(code int, message ...interface{}) *HttpError {
+	e := &HttpError{Code: code, Message: http.StatusText(code)}
+	if len(message) > 0 {
+		e.Message = message[0]
+	}
+	return e
+}
+
+// Error makes it compatible with `error` interface.
+func (e *HttpError) Error() string {
+	if e.Internal == nil {
+		return fmt.Sprintf("code=%d, message=%v", e.Code, e.Message)
+	} else {
+		return fmt.Sprintf("code=%d, message=%v, error=%s", e.Code, e.Message, e.Internal.Error())
+	}
+}
+
+// SetInternal sets error to HTTPError.Internal
+func (e *HttpError) SetInternal(err error) *HttpError {
+	e.Internal = err
+	return e
+}
 
 // ResponseWriter Override http.ResponseWriter to supply more method.
 type ResponseWriter interface {
@@ -151,12 +194,6 @@ type WebContext interface {
 	/////////////////////////////////////////
 	// Response Part
 
-	// IsAborted 当前处理过程是否终止，为了适配 gin 的模型，未来底层统一了会去掉.
-	IsAborted() bool
-
-	// Abort 终止当前处理过程，为了适配 gin 的模型，未来底层统一了会去掉.
-	Abort()
-
 	// ResponseWriter returns `http.ResponseWriter`.
 	ResponseWriter() ResponseWriter
 
@@ -171,64 +208,62 @@ type WebContext interface {
 	// SetCookie adds a `Set-Cookie` header in HTTP response.
 	SetCookie(cookie *http.Cookie)
 
-	// NoContent sends a response with no body and a status code.
+	// NoContent sends a response with no body and a status code. Maybe panic.
 	NoContent(code int)
 
-	// String writes the given string into the response body.
-	String(code int, format string, values ...interface{}) error
+	// String writes the given string into the response body. Maybe panic.
+	String(code int, format string, values ...interface{})
 
-	// HTML sends an HTTP response with status code.
-	HTML(code int, html string) error
+	// HTML sends an HTTP response with status code. Maybe panic.
+	HTML(code int, html string)
 
-	// HTMLBlob sends an HTTP blob response with status code.
-	HTMLBlob(code int, b []byte) error
+	// HTMLBlob sends an HTTP blob response with status code. Maybe panic.
+	HTMLBlob(code int, b []byte)
 
-	// JSON sends a JSON response with status code.
-	JSON(code int, i interface{}) error
+	// JSON sends a JSON response with status code. Maybe panic.
+	JSON(code int, i interface{})
 
-	// JSONPretty sends a pretty-print JSON with status code.
-	JSONPretty(code int, i interface{}, indent string) error
+	// JSONPretty sends a pretty-print JSON with status code. Maybe panic.
+	JSONPretty(code int, i interface{}, indent string)
 
-	// JSONBlob sends a JSON blob response with status code.
-	JSONBlob(code int, b []byte) error
+	// JSONBlob sends a JSON blob response with status code. Maybe panic.
+	JSONBlob(code int, b []byte)
 
 	// JSONP sends a JSONP response with status code. It uses `callback`
-	// to construct the JSONP payload.
-	JSONP(code int, callback string, i interface{}) error
+	// to construct the JSONP payload. Maybe panic.
+	JSONP(code int, callback string, i interface{})
 
 	// JSONPBlob sends a JSONP blob response with status code. It uses
-	// `callback` to construct the JSONP payload.
-	JSONPBlob(code int, callback string, b []byte) error
+	// `callback` to construct the JSONP payload. Maybe panic.
+	JSONPBlob(code int, callback string, b []byte)
 
-	// XML sends an XML response with status code.
-	XML(code int, i interface{}) error
+	// XML sends an XML response with status code. Maybe panic.
+	XML(code int, i interface{})
 
-	// XMLPretty sends a pretty-print XML with status code.
-	XMLPretty(code int, i interface{}, indent string) error
+	// XMLPretty sends a pretty-print XML with status code. Maybe panic.
+	XMLPretty(code int, i interface{}, indent string)
 
-	// XMLBlob sends an XML blob response with status code.
-	XMLBlob(code int, b []byte) error
+	// XMLBlob sends an XML blob response with status code. Maybe panic.
+	XMLBlob(code int, b []byte)
 
-	// Blob sends a blob response with status code and content type.
-	Blob(code int, contentType string, b []byte) error
+	// Blob sends a blob response with status code and content type. Maybe panic.
+	Blob(code int, contentType string, b []byte)
 
-	// Stream sends a streaming response with status code and content type.
-	Stream(code int, contentType string, r io.Reader) error
+	// File sends a response with the content of the file. Maybe panic.
+	File(file string)
 
-	// File sends a response with the content of the file.
-	File(file string) error
+	// Attachment sends a response as attachment, prompting client to
+	// save the file. Maybe panic.
+	Attachment(file string, name string)
 
-	// Attachment sends a response as attachment, prompting client to save the file.
-	Attachment(file string, name string) error
+	// Inline sends a response as inline, opening the file in the browser. Maybe panic.
+	Inline(file string, name string)
 
-	// Inline sends a response as inline, opening the file in the browser.
-	Inline(file string, name string) error
+	// Redirect redirects the request to a provided URL with status code. Maybe panic.
+	Redirect(code int, url string)
 
-	// Redirect redirects the request to a provided URL with status code.
-	Redirect(code int, url string) error
-
-	// SSEvent writes a Server-Sent Event into the body stream.
-	SSEvent(name string, message interface{}) error
+	// SSEvent writes a Server-Sent Event into the body stream. Maybe panic.
+	SSEvent(name string, message interface{})
 }
 
 // BufferedResponseWriter http.ResponseWriter 的一种增强型实现.
@@ -267,10 +302,19 @@ func filterFlags(content string) string {
 	return content
 }
 
+func canPrintResponse(response http.ResponseWriter) bool {
+	switch filterFlags(response.Header().Get(HeaderContentType)) {
+	case MIMEApplicationJSON, MIMEApplicationXML, MIMETextPlain, MIMETextXML:
+		return true
+	case MIMEApplicationJavaScript, MIMETextHTML:
+		return true
+	}
+	return false
+}
+
 func (w *BufferedResponseWriter) Write(data []byte) (n int, err error) {
 	if n, err = w.ResponseWriter.Write(data); err == nil {
-		contentType := w.ResponseWriter.Header().Get(HeaderContentType)
-		if filterFlags(contentType) == MIMEApplicationJSON {
+		if canPrintResponse(w.ResponseWriter) {
 			w.buffer.Write(data[:n])
 		}
 	}
