@@ -18,7 +18,12 @@ package SpringGin
 
 import (
 	"context"
+	"fmt"
+	"net"
 	"net/http"
+	"os"
+	"runtime/debug"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
@@ -71,14 +76,8 @@ func (c *Container) Start() {
 
 	var cFilters []SpringWeb.Filter
 
-	if f := c.GetLoggerFilter(); f != nil {
-		cFilters = append(cFilters, f)
-	}
-
-	if f := c.GetRecoveryFilter(); f != nil {
-		cFilters = append(cFilters, &recoveryFilterAdapter{f})
-	}
-
+	cFilters = append(cFilters, c.GetLoggerFilter())
+	cFilters = append(cFilters, &recoveryFilter{})
 	cFilters = append(cFilters, c.GetFilters()...)
 
 	// 添加容器级别的过滤器，这样在路由不存在时也会调用这些过滤器
@@ -179,18 +178,52 @@ func HandlerWrapper(fn SpringWeb.Handler, wildCardName string, filters []SpringW
 	return handlers
 }
 
-// recoveryFilterAdapter 对 gin 的恢复组件适配，增加中断过滤器列表的能力
-type recoveryFilterAdapter struct {
-	recoveryFilter SpringWeb.Filter
-}
+// recoveryFilter 适配 gin 的恢复过滤器
+type recoveryFilter struct{}
 
-func (f *recoveryFilterAdapter) Invoke(webCtx SpringWeb.WebContext, chain SpringWeb.FilterChain) {
-	f.recoveryFilter.Invoke(webCtx, chain)
-	// 如何判断 recoveryFilter 是否执行过 recover ？看起来
-	// 不用关心这个问题，如果有数据写往网络，就表明处理已结束，中断即可。
-	if ginCtx := GinContext(webCtx); ginCtx.Writer.Written() {
-		ginCtx.Abort()
-	}
+func (f *recoveryFilter) Invoke(webCtx SpringWeb.WebContext, chain SpringWeb.FilterChain) {
+
+	defer func() {
+		if err := recover(); err != nil {
+			webCtx.LogError(err, "\n", string(debug.Stack()))
+
+			// Check for a broken connection, as it is not really a
+			// condition that warrants a panic stack trace.
+			var brokenPipe bool
+			if ne, ok := err.(*net.OpError); ok {
+				if se, ok := ne.Err.(*os.SyscallError); ok {
+					if strings.Contains(strings.ToLower(se.Error()), "broken pipe") || strings.Contains(strings.ToLower(se.Error()), "connection reset by peer") {
+						brokenPipe = true
+					}
+				}
+			}
+
+			ginCtx := GinContext(webCtx)
+			ginCtx.Abort()
+
+			// If the connection is dead, we can't write a status to it.
+			if brokenPipe {
+				return
+			}
+
+			httpE := SpringWeb.HttpError{Code: http.StatusInternalServerError}
+
+			switch e := err.(type) {
+			case *SpringWeb.HttpError:
+				httpE = *e
+			case SpringWeb.HttpError:
+				httpE = e
+			case error:
+				httpE.Message = e.Error()
+			default:
+				httpE.Message = fmt.Sprintf("%+v", err)
+			}
+
+			SpringWeb.ErrorHandler(webCtx, &httpE)
+		}
+	}()
+
+	chain.Next(webCtx)
 }
 
 /////////////////// handler //////////////////////
