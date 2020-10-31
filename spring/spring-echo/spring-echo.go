@@ -18,7 +18,9 @@ package SpringEcho
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"runtime/debug"
 
 	"github.com/go-spring/spring-logger"
 	"github.com/go-spring/spring-utils"
@@ -66,14 +68,8 @@ func (c *Container) Start() {
 
 	var cFilters []SpringWeb.Filter
 
-	if f := c.GetLoggerFilter(); f != nil {
-		cFilters = append(cFilters, f)
-	}
-
-	if f := c.GetRecoveryFilter(); f != nil {
-		cFilters = append(cFilters, f)
-	}
-
+	cFilters = append(cFilters, c.GetLoggerFilter())
+	cFilters = append(cFilters, &recoveryFilter{})
 	cFilters = append(cFilters, c.GetFilters()...)
 
 	// 添加容器级别的过滤器，这样在路由不存在时也会调用这些过滤器
@@ -191,4 +187,45 @@ func (filter echoFilter) Invoke(ctx SpringWeb.WebContext, chain SpringWeb.Filter
 // Filter Web Echo 中间件适配器
 func Filter(fn echo.MiddlewareFunc) SpringWeb.Filter {
 	return echoFilter(fn)
+}
+
+// recoveryFilter 适配 echo 的恢复过滤器
+type recoveryFilter struct{}
+
+func (f *recoveryFilter) Invoke(webCtx SpringWeb.WebContext, chain SpringWeb.FilterChain) {
+
+	defer func() {
+		if err := recover(); err != nil {
+			webCtx.LogError(err, "\n", string(debug.Stack()))
+
+			httpE := SpringWeb.HttpError{Code: http.StatusInternalServerError}
+			switch e := err.(type) {
+			case *echo.HTTPError:
+				httpE.Internal = e.Internal
+				httpE.Message = e.Message
+				httpE.Code = e.Code
+			case *SpringWeb.HttpError:
+				httpE = *e
+			case SpringWeb.HttpError:
+				httpE = e
+			case error:
+				httpE.Message = e.Error()
+			default:
+				httpE.Message = fmt.Sprintf("%+v", err)
+			}
+
+			echoCtx := EchoContext(webCtx)
+			if !echoCtx.Response().Committed {
+				if echoCtx.Request().Method == http.MethodHead { // Issue #608
+					if err := echoCtx.NoContent(httpE.Code); err != nil {
+						webCtx.LogError(err)
+					}
+				} else {
+					SpringWeb.ErrorHandler(webCtx, &httpE)
+				}
+			}
+		}
+	}()
+
+	chain.Next(webCtx)
 }

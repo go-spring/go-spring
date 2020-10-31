@@ -57,9 +57,6 @@ type Context struct {
 
 	// wildCardName 通配符的名称
 	wildCardName string
-
-	// aborted 处理过程是否终止
-	aborted bool
 }
 
 // NewContext Context 的构造函数
@@ -266,16 +263,6 @@ func (ctx *Context) Bind(i interface{}) error {
 	return SpringWeb.Validate(i)
 }
 
-// IsAborted 当前处理过程是否终止，为了适配 gin 的模型，未来底层统一了会去掉.
-func (ctx *Context) IsAborted() bool {
-	return ctx.aborted
-}
-
-// Abort 终止当前处理过程，为了适配 gin 的模型，未来底层统一了会去掉.
-func (ctx *Context) Abort() {
-	ctx.aborted = true
-}
-
 // ResponseWriter returns `http.ResponseWriter`.
 func (ctx *Context) ResponseWriter() SpringWeb.ResponseWriter {
 	writer := ctx.echoContext.Response().Writer
@@ -299,95 +286,124 @@ func (ctx *Context) SetCookie(cookie *http.Cookie) {
 
 // NoContent sends a response with no body and a status code.
 func (ctx *Context) NoContent(code int) {
-	_ = ctx.echoContext.NoContent(code)
+	if err := ctx.echoContext.NoContent(code); err != nil {
+		panic(err)
+	}
 }
 
 // String writes the given string into the response body.
-func (ctx *Context) String(code int, format string, values ...interface{}) error {
-	return ctx.echoContext.String(code, fmt.Sprintf(format, values...))
+func (ctx *Context) String(code int, format string, values ...interface{}) {
+	if err := ctx.echoContext.String(code, fmt.Sprintf(format, values...)); err != nil {
+		panic(err)
+	}
 }
 
 // HTML sends an HTTP response with status code.
-func (ctx *Context) HTML(code int, html string) error {
-	return ctx.echoContext.HTML(code, html)
+func (ctx *Context) HTML(code int, html string) {
+	if err := ctx.echoContext.HTML(code, html); err != nil {
+		panic(err)
+	}
 }
 
 // HTMLBlob sends an HTTP blob response with status code.
-func (ctx *Context) HTMLBlob(code int, b []byte) error {
-	return ctx.echoContext.HTMLBlob(code, b)
+func (ctx *Context) HTMLBlob(code int, b []byte) {
+	if err := ctx.echoContext.HTMLBlob(code, b); err != nil {
+		panic(err)
+	}
 }
 
 // JSON sends a JSON response with status code.
-func (ctx *Context) JSON(code int, i interface{}) error {
-	return ctx.echoContext.JSON(code, i)
+func (ctx *Context) JSON(code int, i interface{}) {
+	if err := ctx.echoContext.JSON(code, i); err != nil {
+		panic(err)
+	}
 }
 
 // JSONPretty sends a pretty-print JSON with status code.
-func (ctx *Context) JSONPretty(code int, i interface{}, indent string) error {
-	return ctx.echoContext.JSONPretty(code, i, indent)
+func (ctx *Context) JSONPretty(code int, i interface{}, indent string) {
+	if err := ctx.echoContext.JSONPretty(code, i, indent); err != nil {
+		panic(err)
+	}
 }
 
 // JSONBlob sends a JSON blob response with status code.
-func (ctx *Context) JSONBlob(code int, b []byte) error {
-	return ctx.echoContext.JSONBlob(code, b)
+func (ctx *Context) JSONBlob(code int, b []byte) {
+	if err := ctx.echoContext.JSONBlob(code, b); err != nil {
+		panic(err)
+	}
 }
 
 // JSONP sends a JSONP response with status code.
-func (ctx *Context) JSONP(code int, callback string, i interface{}) error {
-	return ctx.echoContext.JSONP(code, callback, i)
+func (ctx *Context) JSONP(code int, callback string, i interface{}) {
+	if err := ctx.echoContext.JSONP(code, callback, i); err != nil {
+		panic(err)
+	}
 }
 
 // JSONPBlob sends a JSONP blob response with status code.
-func (ctx *Context) JSONPBlob(code int, callback string, b []byte) error {
-	return ctx.echoContext.JSONPBlob(code, callback, b)
+func (ctx *Context) JSONPBlob(code int, callback string, b []byte) {
+	if err := ctx.echoContext.JSONPBlob(code, callback, b); err != nil {
+		panic(err)
+	}
 }
 
 // XML sends an XML response with status code.
-func (ctx *Context) XML(code int, i interface{}) error {
-	return ctx.echoContext.XML(code, i)
+func (ctx *Context) XML(code int, i interface{}) {
+	if err := ctx.echoContext.XML(code, i); err != nil {
+		panic(err)
+	}
 }
 
 // XMLPretty sends a pretty-print XML with status code.
-func (ctx *Context) XMLPretty(code int, i interface{}, indent string) error {
-	return ctx.echoContext.XMLPretty(code, i, indent)
+func (ctx *Context) XMLPretty(code int, i interface{}, indent string) {
+	if err := ctx.echoContext.XMLPretty(code, i, indent); err != nil {
+		panic(err)
+	}
 }
 
 // XMLBlob sends an XML blob response with status code.
-func (ctx *Context) XMLBlob(code int, b []byte) error {
-	return ctx.echoContext.XMLBlob(code, b)
+func (ctx *Context) XMLBlob(code int, b []byte) {
+	if err := ctx.echoContext.XMLBlob(code, b); err != nil {
+		panic(err)
+	}
 }
 
 // Blob sends a blob response with status code and content type.
-func (ctx *Context) Blob(code int, contentType string, b []byte) error {
-	return ctx.echoContext.Blob(code, contentType, b)
-}
-
-// Stream sends a streaming response with status code and content type.
-func (ctx *Context) Stream(code int, contentType string, r io.Reader) error {
-	return ctx.echoContext.Stream(code, contentType, r)
+func (ctx *Context) Blob(code int, contentType string, b []byte) {
+	if err := ctx.echoContext.Blob(code, contentType, b); err != nil {
+		panic(err)
+	}
 }
 
 // File sends a response with the content of the file.
-func (ctx *Context) File(file string) error {
-	return ctx.echoContext.File(file)
+func (ctx *Context) File(file string) {
+	if err := ctx.echoContext.File(file); err != nil {
+		panic(err)
+	}
 }
 
 // Attachment sends a response as attachment
-func (ctx *Context) Attachment(file string, name string) error {
-	return ctx.echoContext.Attachment(file, name)
+func (ctx *Context) Attachment(file string, name string) {
+	if err := ctx.echoContext.Attachment(file, name); err != nil {
+		panic(err)
+	}
 }
 
 // Inline sends a response as inline
-func (ctx *Context) Inline(file string, name string) error {
-	return ctx.echoContext.Inline(file, name)
+func (ctx *Context) Inline(file string, name string) {
+	if err := ctx.echoContext.Inline(file, name); err != nil {
+		panic(err)
+	}
 }
 
 // Redirect redirects the request to a provided URL with status code.
-func (ctx *Context) Redirect(code int, url string) error {
-	return ctx.echoContext.Redirect(code, url)
+func (ctx *Context) Redirect(code int, url string) {
+	if err := ctx.echoContext.Redirect(code, url); err != nil {
+		panic(err)
+	}
 }
 
 // SSEvent writes a Server-Sent Event into the body stream.
-func (ctx *Context) SSEvent(name string, message interface{}) error {
+func (ctx *Context) SSEvent(name string, message interface{}) {
 	panic(SpringConst.UnimplementedMethod)
 }
