@@ -13,12 +13,6 @@
         <branch>master</branch>
     </project>
     <project>
-        <name>spring-error</name>
-        <dir>spring/spring-error</dir>
-        <url>https://github.com/go-spring/spring-error.git</url>
-        <branch>master</branch>
-    </project>
-    <project>
         <name>spring-test</name>
         <dir>spring/spring-test</dir>
         <url>https://github.com/go-spring/spring-test.git</url>
