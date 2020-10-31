@@ -28,9 +28,6 @@ type LoggerContext interface {
 	// PrefixLogger 带有前缀的 Logger 接口
 	PrefixLogger
 
-	// Context 获取标准 Context 对象
-	Context() context.Context
-
 	// Logger 获取标准 Logger 接口
 	Logger(tags ...string) StdLogger
 }
@@ -43,11 +40,6 @@ type DefaultLoggerContext struct {
 // NewDefaultLoggerContext DefaultLoggerContext 的构造函数
 func NewDefaultLoggerContext(ctx context.Context) *DefaultLoggerContext {
 	return &DefaultLoggerContext{ctx: ctx}
-}
-
-// Context 获取标准 Context 对象
-func (c *DefaultLoggerContext) Context() context.Context {
-	return c.ctx
 }
 
 func (c *DefaultLoggerContext) logger(wrapper bool, tags ...string) StdLogger {
