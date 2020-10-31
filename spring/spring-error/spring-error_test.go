@@ -16,39 +16,39 @@
 
 package SpringError_test
 
-import (
-	"fmt"
-	"testing"
-
-	"github.com/go-spring/spring-error"
-	"github.com/go-spring/spring-utils"
-)
-
-func TestRpcPanic(t *testing.T) {
-
-	r := SpringError.SUCCESS.Data("123")
-	fmt.Println(SpringUtils.ToJson(r))
-
-	t.Run("Panic", func(t *testing.T) {
-
-		defer func() {
-			err := recover()
-			fmt.Println(SpringUtils.ToJson(err))
-		}()
-
-		err := fmt.Errorf("reason: %s", "panic")
-		SpringError.ERROR.Panic(err).When(err != nil)
-	})
-
-	SpringError.ERROR.Panicf("reason: %s", "panicf").When(false)
-
-	t.Run("Panicf", func(t *testing.T) {
-
-		defer func() {
-			err := recover()
-			fmt.Println(SpringUtils.ToJson(err))
-		}()
-
-		SpringError.ERROR.Panicf("reason: %s", "panicf").When(true)
-	})
-}
+//import (
+//	"fmt"
+//	"testing"
+//
+//	"github.com/go-spring/spring-error"
+//	"github.com/go-spring/spring-utils"
+//)
+//
+//func TestRpcPanic(t *testing.T) {
+//
+//	r := SpringError.SUCCESS.Data("123")
+//	fmt.Println(SpringUtils.ToJson(r))
+//
+//	t.Run("Panic", func(t *testing.T) {
+//
+//		defer func() {
+//			err := recover()
+//			fmt.Println(SpringUtils.ToJson(err))
+//		}()
+//
+//		err := fmt.Errorf("reason: %s", "panic")
+//		SpringError.ERROR.Panic(err).When(err != nil)
+//	})
+//
+//	SpringError.ERROR.Panicf("reason: %s", "panicf").When(false)
+//
+//	t.Run("Panicf", func(t *testing.T) {
+//
+//		defer func() {
+//			err := recover()
+//			fmt.Println(SpringUtils.ToJson(err))
+//		}()
+//
+//		SpringError.ERROR.Panicf("reason: %s", "panicf").When(true)
+//	})
+//}
