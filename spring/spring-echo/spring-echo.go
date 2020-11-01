@@ -201,9 +201,9 @@ func (f *recoveryFilter) Invoke(webCtx SpringWeb.WebContext, chain SpringWeb.Fil
 			httpE := SpringWeb.HttpError{Code: http.StatusInternalServerError}
 			switch e := err.(type) {
 			case *echo.HTTPError:
-				httpE.Internal = e.Internal
-				httpE.Message = e.Message
 				httpE.Code = e.Code
+				httpE.Message = fmt.Sprintf("%v", e.Message)
+				httpE.Internal = e.Internal
 			case *SpringWeb.HttpError:
 				httpE = *e
 			case SpringWeb.HttpError:
@@ -211,7 +211,8 @@ func (f *recoveryFilter) Invoke(webCtx SpringWeb.WebContext, chain SpringWeb.Fil
 			case error:
 				httpE.Message = e.Error()
 			default:
-				httpE.Message = fmt.Sprintf("%+v", err)
+				httpE.Message = http.StatusText(httpE.Code)
+				httpE.Internal = err
 			}
 
 			echoCtx := EchoContext(webCtx)
