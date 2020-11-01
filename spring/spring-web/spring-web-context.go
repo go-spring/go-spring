@@ -31,29 +31,35 @@ import (
 const WebContextKey = "@WebCtx"
 
 // ErrorHandler 用户自定义错误处理函数
-var ErrorHandler = defaultErrorHandler
+var ErrorHandler = func(webCtx WebContext, err *HttpError) {
 
-func defaultErrorHandler(webCtx WebContext, err *HttpError) {
 	defer func() {
 		if r := recover(); r != nil {
 			webCtx.LogError(r)
 		}
 	}()
-	webCtx.String(err.Code, err.Error())
+
+	if err.Internal == nil {
+		webCtx.String(err.Code, err.Message)
+	} else {
+		webCtx.JSON(http.StatusOK, err.Internal)
+	}
 }
 
 // HttpError represents an error that occurred while handling a request.
 type HttpError struct {
 	Code     int         // HTTP 错误码
-	Message  interface{} // 自定义错误消息
-	Internal error       // 保存的原始异常
+	Message  string      // 自定义错误消息
+	Internal interface{} // 保存的原始异常
 }
 
 // NewHttpError creates a new HttpError instance.
-func NewHttpError(code int, message ...interface{}) *HttpError {
-	e := &HttpError{Code: code, Message: http.StatusText(code)}
+func NewHttpError(code int, message ...string) *HttpError {
+	e := &HttpError{Code: code}
 	if len(message) > 0 {
 		e.Message = message[0]
+	} else {
+		e.Message = http.StatusText(code)
 	}
 	return e
 }
@@ -61,9 +67,9 @@ func NewHttpError(code int, message ...interface{}) *HttpError {
 // Error makes it compatible with `error` interface.
 func (e *HttpError) Error() string {
 	if e.Internal == nil {
-		return fmt.Sprintf("code=%d, message=%v", e.Code, e.Message)
+		return fmt.Sprintf("code=%d, message=%s", e.Code, e.Message)
 	} else {
-		return fmt.Sprintf("code=%d, message=%v, error=%s", e.Code, e.Message, e.Internal.Error())
+		return fmt.Sprintf("code=%d, message=%s, error=%v", e.Code, e.Message, e.Internal)
 	}
 }
 

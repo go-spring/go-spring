@@ -88,10 +88,6 @@ func BIND(fn interface{}) Handler {
 }
 
 // RpcInvoke 可自定义的 rpc 执行函数
-var RpcInvoke = defaultRpcInvoke
-
-// defaultRpcInvoke 默认的 rpc 执行函数
-func defaultRpcInvoke(webCtx WebContext, fn func(WebContext) interface{}) {
-	webCtx.Header("Content-Type", "application/json")
+var RpcInvoke = func(webCtx WebContext, fn func(WebContext) interface{}) {
 	webCtx.JSON(http.StatusOK, fn(webCtx))
 }
