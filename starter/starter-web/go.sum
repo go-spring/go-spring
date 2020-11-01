@@ -143,6 +143,8 @@ github.com/go-spring/spring-web v1.0.6-0.20201027021050-5495e4900a9d h1:fE4xV2+h
 github.com/go-spring/spring-web v1.0.6-0.20201027021050-5495e4900a9d/go.mod h1:ATvsueweEfwQkpjBLG4e3qRSjaZgyhqQ2HoKOtbDXMI=
 github.com/go-spring/spring-web v1.0.6-0.20201031115249-b53448fed975 h1:lPO+QOPWQTF66wgHc95ZCqCnShAKPBY9bB4/K2n/DHg=
 github.com/go-spring/spring-web v1.0.6-0.20201031115249-b53448fed975/go.mod h1:6US0h0B+kvv7gzMlp0DHTSY9zMz1sv5Jj99haas4p0A=
+github.com/go-spring/spring-web v1.0.6-0.20201101110821-1624d622e94c h1:5g70Sf9Xr8Z2lSnFcethatXL0S3cXe761EhHIJwFFi4=
+github.com/go-spring/spring-web v1.0.6-0.20201101110821-1624d622e94c/go.mod h1:6US0h0B+kvv7gzMlp0DHTSY9zMz1sv5Jj99haas4p0A=
 github.com/go-stack/stack v1.8.0/go.mod h1:v0f6uXyyMGvRgIKkXu+yp6POWl0qKG85gN/melR3HDY=
 github.com/gogo/protobuf v1.1.1/go.mod h1:r8qH/GZQm5c6nD/R0oafs1akxWv10x8SbQlK7atdtwQ=
 github.com/gogo/protobuf v1.2.1/go.mod h1:hp+jE20tsWTFYpLwKvXlhS1hjn+gTNwPg2I6zVXpSg4=
