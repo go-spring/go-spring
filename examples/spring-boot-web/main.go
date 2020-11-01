@@ -20,42 +20,42 @@ type request struct{}
 
 func init() {
 
-	SpringWeb.ErrorHandler = func(webCtx SpringWeb.WebContext, err *SpringWeb.HttpError) {
-		defer func() {
-			if r := recover(); r != nil {
-				webCtx.LogError(r)
-			}
-		}()
-		webCtx.JSON(http.StatusOK, rpc.ERROR.Error(fmt.Errorf("%v", err.Message)))
-	}
-
-	SpringBoot.GetMapping("/mapping/error",
+	SpringBoot.GetMapping("/mapping/json/error",
 		func(webCtx SpringWeb.WebContext) {
 			webCtx.JSON(http.StatusOK, rpc.ERROR.Error(errors.New("this is an error")))
 		})
 
-	SpringBoot.GetMapping("/mapping/success",
+	SpringBoot.GetMapping("/mapping/json/success",
 		func(webCtx SpringWeb.WebContext) {
 			webCtx.JSON(http.StatusOK, rpc.SUCCESS.Data("ok"))
 		})
 
-	SpringBoot.GetMapping("/mapping/panic", func(webCtx SpringWeb.WebContext) {
-		panic(errors.New("this is a panic"))
+	SpringBoot.GetMapping("/mapping/panic/error", func(webCtx SpringWeb.WebContext) {
+		panic(errors.New("this is an error"))
 	})
 
-	SpringBoot.GetBinding("/binding/error",
+	SpringBoot.GetMapping("/mapping/panic/rpc_result", func(webCtx SpringWeb.WebContext) {
+		panic(rpc.ERROR.Error(errors.New("this is a rpc_result")))
+	})
+
+	SpringBoot.GetBinding("/binding/json/error",
 		func(ctx context.Context, req *request) *rpc.RpcResult {
 			return rpc.ERROR.Error(errors.New("this is an error"))
 		})
 
-	SpringBoot.GetBinding("/binding/success",
+	SpringBoot.GetBinding("/binding/json/success",
 		func(ctx context.Context, req *request) *rpc.RpcResult {
 			return rpc.SUCCESS.Data("ok")
 		})
 
-	SpringBoot.GetBinding("/binding/panic",
+	SpringBoot.GetBinding("/binding/panic/error",
 		func(ctx context.Context, req *request) *rpc.RpcResult {
-			panic(errors.New("this is a panic"))
+			panic(errors.New("this is an error"))
+		})
+
+	SpringBoot.GetBinding("/binding/panic/rpc_result",
+		func(ctx context.Context, req *request) *rpc.RpcResult {
+			panic(rpc.ERROR.Error(errors.New("this is a rpc_result")))
 		})
 }
 
@@ -75,12 +75,14 @@ func get(url string, expected string) {
 func main() {
 	go func() {
 		time.Sleep(20 * time.Millisecond)
-		get("http://127.0.0.1:8080/mapping/error", `{"code":-1,"msg":"ERROR","err":"this is an error"}`)
-		get("http://127.0.0.1:8080/mapping/success", `{"code":200,"msg":"SUCCESS","data":"ok"}`)
-		get("http://127.0.0.1:8080/mapping/panic", `{"code":-1,"msg":"ERROR","err":"this is a panic"}`)
-		get("http://127.0.0.1:8080/binding/error", `{"code":-1,"msg":"ERROR","err":"this is an error"}`)
-		get("http://127.0.0.1:8080/binding/success", `{"code":200,"msg":"SUCCESS","data":"ok"}`)
-		get("http://127.0.0.1:8080/binding/panic", `{"code":-1,"msg":"ERROR","err":"this is a panic"}`)
+		get("http://127.0.0.1:8080/mapping/json/error", `{"code":-1,"msg":"ERROR","err":"this is an error"}`)
+		get("http://127.0.0.1:8080/mapping/json/success", `{"code":200,"msg":"SUCCESS","data":"ok"}`)
+		get("http://127.0.0.1:8080/mapping/panic/error", `this is an error`)
+		get("http://127.0.0.1:8080/mapping/panic/rpc_result", `{"code":-1,"msg":"ERROR","err":"this is a rpc_result"}`)
+		get("http://127.0.0.1:8080/binding/json/error", `{"code":-1,"msg":"ERROR","err":"this is an error"}`)
+		get("http://127.0.0.1:8080/binding/json/success", `{"code":200,"msg":"SUCCESS","data":"ok"}`)
+		get("http://127.0.0.1:8080/binding/panic/error", `this is an error`)
+		get("http://127.0.0.1:8080/binding/panic/rpc_result", `{"code":-1,"msg":"ERROR","err":"this is a rpc_result"}`)
 		SpringBoot.Exit()
 	}()
 	SpringBoot.RunApplication()
