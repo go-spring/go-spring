@@ -18,7 +18,6 @@ package SpringGin
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -207,7 +206,6 @@ func (f *recoveryFilter) Invoke(webCtx SpringWeb.WebContext, chain SpringWeb.Fil
 			}
 
 			httpE := SpringWeb.HttpError{Code: http.StatusInternalServerError}
-
 			switch e := err.(type) {
 			case *SpringWeb.HttpError:
 				httpE = *e
@@ -216,7 +214,8 @@ func (f *recoveryFilter) Invoke(webCtx SpringWeb.WebContext, chain SpringWeb.Fil
 			case error:
 				httpE.Message = e.Error()
 			default:
-				httpE.Message = fmt.Sprintf("%+v", err)
+				httpE.Message = http.StatusText(httpE.Code)
+				httpE.Internal = err
 			}
 
 			SpringWeb.ErrorHandler(webCtx, &httpE)
