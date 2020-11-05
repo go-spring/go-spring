@@ -57,6 +57,9 @@ type Context struct {
 
 	// wildCardName 通配符的名称
 	wildCardName string
+
+	// statusCode 状态码
+	statusCode int
 }
 
 // NewContext Context 的构造函数
@@ -74,6 +77,7 @@ func NewContext(fn SpringWeb.Handler, wildCardName string, echoCtx echo.Context)
 		echoContext:   echoCtx,
 		handlerFunc:   fn,
 		wildCardName:  wildCardName,
+		statusCode:    http.StatusOK,
 	}
 
 	webCtx.Set(SpringWeb.WebContextKey, webCtx)
@@ -271,7 +275,7 @@ func (ctx *Context) ResponseWriter() SpringWeb.ResponseWriter {
 
 // Status sets the HTTP response code.
 func (ctx *Context) Status(code int) {
-	ctx.echoContext.Response().WriteHeader(code)
+	ctx.statusCode = code
 }
 
 // Header is a intelligent shortcut for c.Writer.Header().Set(key, value).
@@ -292,85 +296,85 @@ func (ctx *Context) NoContent(code int) {
 }
 
 // String writes the given string into the response body.
-func (ctx *Context) String(code int, format string, values ...interface{}) {
-	if err := ctx.echoContext.String(code, fmt.Sprintf(format, values...)); err != nil {
+func (ctx *Context) String(format string, values ...interface{}) {
+	if err := ctx.echoContext.String(ctx.statusCode, fmt.Sprintf(format, values...)); err != nil {
 		panic(err)
 	}
 }
 
-// HTML sends an HTTP response with status code.
-func (ctx *Context) HTML(code int, html string) {
-	if err := ctx.echoContext.HTML(code, html); err != nil {
+// HTML sends an HTTP response.
+func (ctx *Context) HTML(html string) {
+	if err := ctx.echoContext.HTML(ctx.statusCode, html); err != nil {
 		panic(err)
 	}
 }
 
-// HTMLBlob sends an HTTP blob response with status code.
-func (ctx *Context) HTMLBlob(code int, b []byte) {
-	if err := ctx.echoContext.HTMLBlob(code, b); err != nil {
+// HTMLBlob sends an HTTP blob response.
+func (ctx *Context) HTMLBlob(b []byte) {
+	if err := ctx.echoContext.HTMLBlob(ctx.statusCode, b); err != nil {
 		panic(err)
 	}
 }
 
-// JSON sends a JSON response with status code.
-func (ctx *Context) JSON(code int, i interface{}) {
-	if err := ctx.echoContext.JSON(code, i); err != nil {
+// JSON sends a JSON response.
+func (ctx *Context) JSON(i interface{}) {
+	if err := ctx.echoContext.JSON(ctx.statusCode, i); err != nil {
 		panic(err)
 	}
 }
 
-// JSONPretty sends a pretty-print JSON with status code.
-func (ctx *Context) JSONPretty(code int, i interface{}, indent string) {
-	if err := ctx.echoContext.JSONPretty(code, i, indent); err != nil {
+// JSONPretty sends a pretty-print JSON.
+func (ctx *Context) JSONPretty(i interface{}, indent string) {
+	if err := ctx.echoContext.JSONPretty(ctx.statusCode, i, indent); err != nil {
 		panic(err)
 	}
 }
 
-// JSONBlob sends a JSON blob response with status code.
-func (ctx *Context) JSONBlob(code int, b []byte) {
-	if err := ctx.echoContext.JSONBlob(code, b); err != nil {
+// JSONBlob sends a JSON blob response.
+func (ctx *Context) JSONBlob(b []byte) {
+	if err := ctx.echoContext.JSONBlob(ctx.statusCode, b); err != nil {
 		panic(err)
 	}
 }
 
-// JSONP sends a JSONP response with status code.
-func (ctx *Context) JSONP(code int, callback string, i interface{}) {
-	if err := ctx.echoContext.JSONP(code, callback, i); err != nil {
+// JSONP sends a JSONP response.
+func (ctx *Context) JSONP(callback string, i interface{}) {
+	if err := ctx.echoContext.JSONP(ctx.statusCode, callback, i); err != nil {
 		panic(err)
 	}
 }
 
-// JSONPBlob sends a JSONP blob response with status code.
-func (ctx *Context) JSONPBlob(code int, callback string, b []byte) {
-	if err := ctx.echoContext.JSONPBlob(code, callback, b); err != nil {
+// JSONPBlob sends a JSONP blob response.
+func (ctx *Context) JSONPBlob(callback string, b []byte) {
+	if err := ctx.echoContext.JSONPBlob(ctx.statusCode, callback, b); err != nil {
 		panic(err)
 	}
 }
 
-// XML sends an XML response with status code.
-func (ctx *Context) XML(code int, i interface{}) {
-	if err := ctx.echoContext.XML(code, i); err != nil {
+// XML sends an XML response.
+func (ctx *Context) XML(i interface{}) {
+	if err := ctx.echoContext.XML(ctx.statusCode, i); err != nil {
 		panic(err)
 	}
 }
 
-// XMLPretty sends a pretty-print XML with status code.
-func (ctx *Context) XMLPretty(code int, i interface{}, indent string) {
-	if err := ctx.echoContext.XMLPretty(code, i, indent); err != nil {
+// XMLPretty sends a pretty-print XML.
+func (ctx *Context) XMLPretty(i interface{}, indent string) {
+	if err := ctx.echoContext.XMLPretty(ctx.statusCode, i, indent); err != nil {
 		panic(err)
 	}
 }
 
-// XMLBlob sends an XML blob response with status code.
-func (ctx *Context) XMLBlob(code int, b []byte) {
-	if err := ctx.echoContext.XMLBlob(code, b); err != nil {
+// XMLBlob sends an XML blob response.
+func (ctx *Context) XMLBlob(b []byte) {
+	if err := ctx.echoContext.XMLBlob(ctx.statusCode, b); err != nil {
 		panic(err)
 	}
 }
 
-// Blob sends a blob response with status code and content type.
-func (ctx *Context) Blob(code int, contentType string, b []byte) {
-	if err := ctx.echoContext.Blob(code, contentType, b); err != nil {
+// Blob sends a blob response with content type.
+func (ctx *Context) Blob(contentType string, b []byte) {
+	if err := ctx.echoContext.Blob(ctx.statusCode, contentType, b); err != nil {
 		panic(err)
 	}
 }

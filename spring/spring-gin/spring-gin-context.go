@@ -89,6 +89,9 @@ type Context struct {
 
 	// wildCardName 通配符名称
 	wildCardName string
+
+	// statusCode 状态码
+	statusCode int
 }
 
 // NewContext Context 的构造函数
@@ -109,6 +112,7 @@ func NewContext(fn SpringWeb.Handler, wildCardName string, ginCtx *gin.Context) 
 		ginContext:    ginCtx,
 		handlerFunc:   fn,
 		wildCardName:  wildCardName,
+		statusCode:    http.StatusOK,
 	}
 
 	webCtx.Set(SpringWeb.WebContextKey, webCtx)
@@ -337,7 +341,7 @@ func (ctx *Context) ResponseWriter() SpringWeb.ResponseWriter {
 
 // Status sets the HTTP response code.
 func (ctx *Context) Status(code int) {
-	ctx.ginContext.Status(code)
+	ctx.statusCode = code
 }
 
 // Header is a intelligent shortcut for c.Writer.Header().Set(key, value).
@@ -356,37 +360,37 @@ func (ctx *Context) NoContent(code int) {
 }
 
 // String writes the given string into the response body.
-func (ctx *Context) String(code int, format string, values ...interface{}) {
-	ctx.ginContext.String(code, fmt.Sprintf(format, values...))
+func (ctx *Context) String(format string, values ...interface{}) {
+	ctx.ginContext.String(ctx.statusCode, fmt.Sprintf(format, values...))
 }
 
-// HTML sends an HTTP response with status code.
-func (ctx *Context) HTML(code int, html string) {
-	ctx.ginContext.Data(code, SpringWeb.MIMETextHTMLCharsetUTF8, []byte(html))
+// HTML sends an HTTP response.
+func (ctx *Context) HTML(html string) {
+	ctx.ginContext.Data(ctx.statusCode, SpringWeb.MIMETextHTMLCharsetUTF8, []byte(html))
 }
 
-// HTMLBlob sends an HTTP blob response with status code.
-func (ctx *Context) HTMLBlob(code int, b []byte) {
-	ctx.ginContext.Data(code, SpringWeb.MIMETextHTMLCharsetUTF8, b)
+// HTMLBlob sends an HTTP blob response.
+func (ctx *Context) HTMLBlob(b []byte) {
+	ctx.ginContext.Data(ctx.statusCode, SpringWeb.MIMETextHTMLCharsetUTF8, b)
 }
 
-// JSON sends a JSON response with status code.
-func (ctx *Context) JSON(code int, i interface{}) {
-	ctx.ginContext.JSON(code, i)
+// JSON sends a JSON response.
+func (ctx *Context) JSON(i interface{}) {
+	ctx.ginContext.JSON(ctx.statusCode, i)
 }
 
-// JSONPretty sends a pretty-print JSON with status code.
-func (ctx *Context) JSONPretty(code int, i interface{}, indent string) {
+// JSONPretty sends a pretty-print JSON.
+func (ctx *Context) JSONPretty(i interface{}, indent string) {
 	b, err := json.MarshalIndent(i, "", indent)
 	if err != nil {
 		panic(err)
 	}
-	ctx.ginContext.Data(code, SpringWeb.MIMEApplicationJSONCharsetUTF8, b)
+	ctx.ginContext.Data(ctx.statusCode, SpringWeb.MIMEApplicationJSONCharsetUTF8, b)
 }
 
-// JSONBlob sends a JSON blob response with status code.
-func (ctx *Context) JSONBlob(code int, b []byte) {
-	ctx.ginContext.Data(code, SpringWeb.MIMEApplicationJSONCharsetUTF8, b)
+// JSONBlob sends a JSON blob response.
+func (ctx *Context) JSONBlob(b []byte) {
+	ctx.ginContext.Data(ctx.statusCode, SpringWeb.MIMEApplicationJSONCharsetUTF8, b)
 }
 
 func (ctx *Context) jsonPBlob(code int, callback string, data func(http.ResponseWriter) error) {
@@ -408,9 +412,9 @@ func (ctx *Context) jsonPBlob(code int, callback string, data func(http.Response
 	}
 }
 
-// JSONP sends a JSONP response with status code.
-func (ctx *Context) JSONP(code int, callback string, i interface{}) {
-	ctx.jsonPBlob(code, callback, func(response http.ResponseWriter) error {
+// JSONP sends a JSONP response.
+func (ctx *Context) JSONP(callback string, i interface{}) {
+	ctx.jsonPBlob(ctx.statusCode, callback, func(response http.ResponseWriter) error {
 		enc := json.NewEncoder(response)
 		if _, pretty := ctx.QueryParams()["pretty"]; pretty {
 			enc.SetIndent("", "  ")
@@ -419,17 +423,17 @@ func (ctx *Context) JSONP(code int, callback string, i interface{}) {
 	})
 }
 
-// JSONPBlob sends a JSONP blob response with status code.
-func (ctx *Context) JSONPBlob(code int, callback string, b []byte) {
-	ctx.jsonPBlob(code, callback, func(response http.ResponseWriter) error {
+// JSONPBlob sends a JSONP blob response.
+func (ctx *Context) JSONPBlob(callback string, b []byte) {
+	ctx.jsonPBlob(ctx.statusCode, callback, func(response http.ResponseWriter) error {
 		_, err := response.Write(b)
 		return err
 	})
 }
 
-// XML sends an XML response with status code.
-func (ctx *Context) XML(code int, i interface{}) {
-	ctx.ginContext.XML(code, i)
+// XML sends an XML response.
+func (ctx *Context) XML(i interface{}) {
+	ctx.ginContext.XML(ctx.statusCode, i)
 }
 
 func (ctx *Context) xmlBlob(code int, data func(http.ResponseWriter) error) {
@@ -447,9 +451,9 @@ func (ctx *Context) xmlBlob(code int, data func(http.ResponseWriter) error) {
 	}
 }
 
-// XMLPretty sends a pretty-print XML with status code.
-func (ctx *Context) XMLPretty(code int, i interface{}, indent string) {
-	ctx.xmlBlob(code, func(rw http.ResponseWriter) error {
+// XMLPretty sends a pretty-print XML.
+func (ctx *Context) XMLPretty(i interface{}, indent string) {
+	ctx.xmlBlob(ctx.statusCode, func(rw http.ResponseWriter) error {
 		enc := xml.NewEncoder(rw)
 		if indent != "" {
 			enc.Indent("", indent)
@@ -458,17 +462,17 @@ func (ctx *Context) XMLPretty(code int, i interface{}, indent string) {
 	})
 }
 
-// XMLBlob sends an XML blob response with status code.
-func (ctx *Context) XMLBlob(code int, b []byte) {
-	ctx.xmlBlob(code, func(rw http.ResponseWriter) error {
+// XMLBlob sends an XML blob response.
+func (ctx *Context) XMLBlob(b []byte) {
+	ctx.xmlBlob(ctx.statusCode, func(rw http.ResponseWriter) error {
 		_, err := rw.Write(b)
 		return err
 	})
 }
 
-// Blob sends a blob response with status code and content type.
-func (ctx *Context) Blob(code int, contentType string, b []byte) {
-	ctx.ginContext.Data(code, contentType, b)
+// Blob sends a blob response with content type.
+func (ctx *Context) Blob(contentType string, b []byte) {
+	ctx.ginContext.Data(ctx.statusCode, contentType, b)
 }
 
 // File sends a response with the content of the file.

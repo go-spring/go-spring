@@ -19,7 +19,6 @@ package SpringWeb
 import (
 	"context"
 	"errors"
-	"net/http"
 	"reflect"
 
 	"github.com/go-spring/spring-utils"
@@ -89,5 +88,5 @@ func BIND(fn interface{}) Handler {
 
 // RpcInvoke 可自定义的 rpc 执行函数
 var RpcInvoke = func(webCtx WebContext, fn func(WebContext) interface{}) {
-	webCtx.JSON(http.StatusOK, fn(webCtx))
+	webCtx.JSON(fn(webCtx))
 }

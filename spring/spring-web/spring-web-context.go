@@ -40,9 +40,10 @@ var ErrorHandler = func(webCtx WebContext, err *HttpError) {
 	}()
 
 	if err.Internal == nil {
-		webCtx.String(err.Code, err.Message)
+		webCtx.Status(err.Code)
+		webCtx.String(err.Message)
 	} else {
-		webCtx.JSON(http.StatusOK, err.Internal)
+		webCtx.JSON(err.Internal)
 	}
 }
 
@@ -218,42 +219,42 @@ type WebContext interface {
 	NoContent(code int)
 
 	// String writes the given string into the response body. Maybe panic.
-	String(code int, format string, values ...interface{})
+	String(format string, values ...interface{})
 
-	// HTML sends an HTTP response with status code. Maybe panic.
-	HTML(code int, html string)
+	// HTML sends an HTTP response. Maybe panic.
+	HTML(html string)
 
-	// HTMLBlob sends an HTTP blob response with status code. Maybe panic.
-	HTMLBlob(code int, b []byte)
+	// HTMLBlob sends an HTTP blob response. Maybe panic.
+	HTMLBlob(b []byte)
 
-	// JSON sends a JSON response with status code. Maybe panic.
-	JSON(code int, i interface{})
+	// JSON sends a JSON response. Maybe panic.
+	JSON(i interface{})
 
-	// JSONPretty sends a pretty-print JSON with status code. Maybe panic.
-	JSONPretty(code int, i interface{}, indent string)
+	// JSONPretty sends a pretty-print JSON. Maybe panic.
+	JSONPretty(i interface{}, indent string)
 
-	// JSONBlob sends a JSON blob response with status code. Maybe panic.
-	JSONBlob(code int, b []byte)
+	// JSONBlob sends a JSON blob response. Maybe panic.
+	JSONBlob(b []byte)
 
-	// JSONP sends a JSONP response with status code. It uses `callback`
+	// JSONP sends a JSONP response. It uses `callback`
 	// to construct the JSONP payload. Maybe panic.
-	JSONP(code int, callback string, i interface{})
+	JSONP(callback string, i interface{})
 
-	// JSONPBlob sends a JSONP blob response with status code. It uses
+	// JSONPBlob sends a JSONP blob response. It uses
 	// `callback` to construct the JSONP payload. Maybe panic.
-	JSONPBlob(code int, callback string, b []byte)
+	JSONPBlob(callback string, b []byte)
 
 	// XML sends an XML response with status code. Maybe panic.
-	XML(code int, i interface{})
+	XML(i interface{})
 
 	// XMLPretty sends a pretty-print XML with status code. Maybe panic.
-	XMLPretty(code int, i interface{}, indent string)
+	XMLPretty(i interface{}, indent string)
 
 	// XMLBlob sends an XML blob response with status code. Maybe panic.
-	XMLBlob(code int, b []byte)
+	XMLBlob(b []byte)
 
 	// Blob sends a blob response with status code and content type. Maybe panic.
-	Blob(code int, contentType string, b []byte)
+	Blob(contentType string, b []byte)
 
 	// File sends a response with the content of the file. Maybe panic.
 	File(file string)
