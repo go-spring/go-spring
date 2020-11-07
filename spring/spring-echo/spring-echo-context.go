@@ -44,6 +44,28 @@ func WebContext(echoCtx echo.Context) SpringWeb.WebContext {
 	return nil
 }
 
+// 同时继承了 SpringWeb.ResponseWriter 接口
+type responseWriter struct {
+	*echo.Response
+	writer *SpringWeb.BufferedResponseWriter
+}
+
+func (w *responseWriter) Status() int {
+	return w.Response.Status
+}
+
+func (w *responseWriter) Size() int {
+	return w.writer.Size()
+}
+
+func (w *responseWriter) Body() []byte {
+	return w.writer.Body()
+}
+
+func (w *responseWriter) Write(data []byte) (n int, err error) {
+	return w.writer.Write(data)
+}
+
 // Context 适配 echo 的 Web 上下文
 type Context struct {
 	// LoggerContext 日志接口上下文
@@ -57,16 +79,16 @@ type Context struct {
 
 	// wildCardName 通配符的名称
 	wildCardName string
-
-	// statusCode 状态码
-	statusCode int
 }
 
 // NewContext Context 的构造函数
 func NewContext(fn SpringWeb.Handler, wildCardName string, echoCtx echo.Context) *Context {
 
-	echoCtx.Response().Writer = &SpringWeb.BufferedResponseWriter{
-		ResponseWriter: echoCtx.Response().Writer,
+	echoCtx.Response().Writer = &responseWriter{
+		writer: &SpringWeb.BufferedResponseWriter{
+			ResponseWriter: echoCtx.Response().Writer,
+		},
+		Response: echoCtx.Response(),
 	}
 
 	ctx := echoCtx.Request().Context()
@@ -77,7 +99,6 @@ func NewContext(fn SpringWeb.Handler, wildCardName string, echoCtx echo.Context)
 		echoContext:   echoCtx,
 		handlerFunc:   fn,
 		wildCardName:  wildCardName,
-		statusCode:    http.StatusOK,
 	}
 
 	webCtx.Set(SpringWeb.WebContextKey, webCtx)
@@ -269,13 +290,12 @@ func (ctx *Context) Bind(i interface{}) error {
 
 // ResponseWriter returns `http.ResponseWriter`.
 func (ctx *Context) ResponseWriter() SpringWeb.ResponseWriter {
-	writer := ctx.echoContext.Response().Writer
-	return writer.(*SpringWeb.BufferedResponseWriter)
+	return ctx.echoContext.Response().Writer.(*responseWriter)
 }
 
 // Status sets the HTTP response code.
 func (ctx *Context) Status(code int) {
-	ctx.statusCode = code
+	ctx.echoContext.Response().WriteHeader(code)
 }
 
 // Header is a intelligent shortcut for c.Writer.Header().Set(key, value).
@@ -297,84 +317,96 @@ func (ctx *Context) NoContent(code int) {
 
 // String writes the given string into the response body.
 func (ctx *Context) String(format string, values ...interface{}) {
-	if err := ctx.echoContext.String(ctx.statusCode, fmt.Sprintf(format, values...)); err != nil {
+	statusCode := ctx.echoContext.Response().Status
+	if err := ctx.echoContext.String(statusCode, fmt.Sprintf(format, values...)); err != nil {
 		panic(err)
 	}
 }
 
 // HTML sends an HTTP response.
 func (ctx *Context) HTML(html string) {
-	if err := ctx.echoContext.HTML(ctx.statusCode, html); err != nil {
+	statusCode := ctx.echoContext.Response().Status
+	if err := ctx.echoContext.HTML(statusCode, html); err != nil {
 		panic(err)
 	}
 }
 
 // HTMLBlob sends an HTTP blob response.
 func (ctx *Context) HTMLBlob(b []byte) {
-	if err := ctx.echoContext.HTMLBlob(ctx.statusCode, b); err != nil {
+	statusCode := ctx.echoContext.Response().Status
+	if err := ctx.echoContext.HTMLBlob(statusCode, b); err != nil {
 		panic(err)
 	}
 }
 
 // JSON sends a JSON response.
 func (ctx *Context) JSON(i interface{}) {
-	if err := ctx.echoContext.JSON(ctx.statusCode, i); err != nil {
+	statusCode := ctx.echoContext.Response().Status
+	if err := ctx.echoContext.JSON(statusCode, i); err != nil {
 		panic(err)
 	}
 }
 
 // JSONPretty sends a pretty-print JSON.
 func (ctx *Context) JSONPretty(i interface{}, indent string) {
-	if err := ctx.echoContext.JSONPretty(ctx.statusCode, i, indent); err != nil {
+	statusCode := ctx.echoContext.Response().Status
+	if err := ctx.echoContext.JSONPretty(statusCode, i, indent); err != nil {
 		panic(err)
 	}
 }
 
 // JSONBlob sends a JSON blob response.
 func (ctx *Context) JSONBlob(b []byte) {
-	if err := ctx.echoContext.JSONBlob(ctx.statusCode, b); err != nil {
+	statusCode := ctx.echoContext.Response().Status
+	if err := ctx.echoContext.JSONBlob(statusCode, b); err != nil {
 		panic(err)
 	}
 }
 
 // JSONP sends a JSONP response.
 func (ctx *Context) JSONP(callback string, i interface{}) {
-	if err := ctx.echoContext.JSONP(ctx.statusCode, callback, i); err != nil {
+	statusCode := ctx.echoContext.Response().Status
+	if err := ctx.echoContext.JSONP(statusCode, callback, i); err != nil {
 		panic(err)
 	}
 }
 
 // JSONPBlob sends a JSONP blob response.
 func (ctx *Context) JSONPBlob(callback string, b []byte) {
-	if err := ctx.echoContext.JSONPBlob(ctx.statusCode, callback, b); err != nil {
+	statusCode := ctx.echoContext.Response().Status
+	if err := ctx.echoContext.JSONPBlob(statusCode, callback, b); err != nil {
 		panic(err)
 	}
 }
 
 // XML sends an XML response.
 func (ctx *Context) XML(i interface{}) {
-	if err := ctx.echoContext.XML(ctx.statusCode, i); err != nil {
+	statusCode := ctx.echoContext.Response().Status
+	if err := ctx.echoContext.XML(statusCode, i); err != nil {
 		panic(err)
 	}
 }
 
 // XMLPretty sends a pretty-print XML.
 func (ctx *Context) XMLPretty(i interface{}, indent string) {
-	if err := ctx.echoContext.XMLPretty(ctx.statusCode, i, indent); err != nil {
+	statusCode := ctx.echoContext.Response().Status
+	if err := ctx.echoContext.XMLPretty(statusCode, i, indent); err != nil {
 		panic(err)
 	}
 }
 
 // XMLBlob sends an XML blob response.
 func (ctx *Context) XMLBlob(b []byte) {
-	if err := ctx.echoContext.XMLBlob(ctx.statusCode, b); err != nil {
+	statusCode := ctx.echoContext.Response().Status
+	if err := ctx.echoContext.XMLBlob(statusCode, b); err != nil {
 		panic(err)
 	}
 }
 
 // Blob sends a blob response with content type.
 func (ctx *Context) Blob(contentType string, b []byte) {
-	if err := ctx.echoContext.Blob(ctx.statusCode, contentType, b); err != nil {
+	statusCode := ctx.echoContext.Response().Status
+	if err := ctx.echoContext.Blob(statusCode, contentType, b); err != nil {
 		panic(err)
 	}
 }
