@@ -78,6 +78,8 @@ github.com/go-spring/spring-echo v1.0.6-0.20201101112508-3066dc99f4c9 h1:Fp0bN7V
 github.com/go-spring/spring-echo v1.0.6-0.20201101112508-3066dc99f4c9/go.mod h1:7AcRUNtlf4/8q4OFuFpwrdZzMtqAs/kUvToozfOsReI=
 github.com/go-spring/spring-echo v1.0.6-0.20201107040438-9a1bccd4b4b3 h1:l/raJdwA0BWEoDcoClkXvx01k1K8acPFb23p/fk5j6Y=
 github.com/go-spring/spring-echo v1.0.6-0.20201107040438-9a1bccd4b4b3/go.mod h1:XkaM8Cx9y4kaD+7SW7MT/uZiRiLDGC4q5XSFMTSNQOc=
+github.com/go-spring/spring-echo v1.0.6-0.20201107052756-a81d9ef9038c h1:rB62dDq9QyMdBviQVaiLrejWFgOxayiJZguveFpYnQU=
+github.com/go-spring/spring-echo v1.0.6-0.20201107052756-a81d9ef9038c/go.mod h1:XkaM8Cx9y4kaD+7SW7MT/uZiRiLDGC4q5XSFMTSNQOc=
 github.com/go-spring/spring-error v1.0.5/go.mod h1:QExcM5Try3lu4c/sapGf05Z/SveILbVJ3SEw+He8Q10=
 github.com/go-spring/spring-logger v1.0.5/go.mod h1:eZENHurOPb4+c586XBNv+M2HzWSAbRQLCNu49t8xsSc=
 github.com/go-spring/spring-logger v1.0.6-0.20201031071008-31db8609b202 h1:bQj7ugA+EmqOwbNTL10rw8TXYy85Sxb4c0SbsVdr+48=
