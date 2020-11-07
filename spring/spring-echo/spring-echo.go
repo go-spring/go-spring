@@ -202,7 +202,13 @@ func (f *recoveryFilter) Invoke(webCtx SpringWeb.WebContext, chain SpringWeb.Fil
 			switch e := err.(type) {
 			case *echo.HTTPError:
 				httpE.Code = e.Code
-				httpE.Message = fmt.Sprintf("%v", e.Message)
+				if e.Code == http.StatusNotFound {
+					httpE.Message = "404 page not found"
+				} else if e.Code == http.StatusMethodNotAllowed {
+					httpE.Message = "405 method not allowed"
+				} else {
+					httpE.Message = fmt.Sprintf("%v", e.Message)
+				}
 				httpE.Internal = e.Internal
 			case *SpringWeb.HttpError:
 				httpE = *e

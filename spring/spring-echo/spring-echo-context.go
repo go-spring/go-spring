@@ -17,6 +17,7 @@
 package SpringEcho
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -46,12 +47,24 @@ func WebContext(echoCtx echo.Context) SpringWeb.WebContext {
 
 // 同时继承了 SpringWeb.ResponseWriter 接口
 type responseWriter struct {
-	*echo.Response
-	writer *SpringWeb.BufferedResponseWriter
+	response *echo.Response
+	writer   *SpringWeb.BufferedResponseWriter
+}
+
+func (w *responseWriter) Header() http.Header {
+	return w.writer.Header()
+}
+
+func (w *responseWriter) Write(data []byte) (n int, err error) {
+	return w.writer.Write(data)
+}
+
+func (w *responseWriter) WriteHeader(code int) {
+	w.writer.WriteHeader(code)
 }
 
 func (w *responseWriter) Status() int {
-	return w.Response.Status
+	return w.response.Status
 }
 
 func (w *responseWriter) Size() int {
@@ -60,10 +73,6 @@ func (w *responseWriter) Size() int {
 
 func (w *responseWriter) Body() []byte {
 	return w.writer.Body()
-}
-
-func (w *responseWriter) Write(data []byte) (n int, err error) {
-	return w.writer.Write(data)
 }
 
 // Context 适配 echo 的 Web 上下文
@@ -88,7 +97,7 @@ func NewContext(fn SpringWeb.Handler, wildCardName string, echoCtx echo.Context)
 		writer: &SpringWeb.BufferedResponseWriter{
 			ResponseWriter: echoCtx.Response().Writer,
 		},
-		Response: echoCtx.Response(),
+		response: echoCtx.Response(),
 	}
 
 	ctx := echoCtx.Request().Context()
@@ -341,18 +350,20 @@ func (ctx *Context) HTMLBlob(b []byte) {
 
 // JSON sends a JSON response.
 func (ctx *Context) JSON(i interface{}) {
-	statusCode := ctx.echoContext.Response().Status
-	if err := ctx.echoContext.JSON(statusCode, i); err != nil {
+	b, err := json.Marshal(i)
+	if err != nil {
 		panic(err)
 	}
+	ctx.Blob(SpringWeb.MIMEApplicationJSONCharsetUTF8, b)
 }
 
 // JSONPretty sends a pretty-print JSON.
 func (ctx *Context) JSONPretty(i interface{}, indent string) {
-	statusCode := ctx.echoContext.Response().Status
-	if err := ctx.echoContext.JSONPretty(statusCode, i, indent); err != nil {
+	b, err := json.MarshalIndent(i, "", indent)
+	if err != nil {
 		panic(err)
 	}
+	ctx.Blob(SpringWeb.MIMEApplicationJSONCharsetUTF8, b)
 }
 
 // JSONBlob sends a JSON blob response.
