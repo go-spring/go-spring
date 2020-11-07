@@ -244,16 +244,16 @@ type WebContext interface {
 	// `callback` to construct the JSONP payload. Maybe panic.
 	JSONPBlob(callback string, b []byte)
 
-	// XML sends an XML response with status code. Maybe panic.
+	// XML sends an XML response. Maybe panic.
 	XML(i interface{})
 
-	// XMLPretty sends a pretty-print XML with status code. Maybe panic.
+	// XMLPretty sends a pretty-print XML. Maybe panic.
 	XMLPretty(i interface{}, indent string)
 
-	// XMLBlob sends an XML blob response with status code. Maybe panic.
+	// XMLBlob sends an XML blob response. Maybe panic.
 	XMLBlob(b []byte)
 
-	// Blob sends a blob response with status code and content type. Maybe panic.
+	// Blob sends a blob response and content type. Maybe panic.
 	Blob(contentType string, b []byte)
 
 	// File sends a response with the content of the file. Maybe panic.
@@ -277,12 +277,7 @@ type WebContext interface {
 type BufferedResponseWriter struct {
 	http.ResponseWriter
 	buffer bytes.Buffer
-	status int
 	size   int
-}
-
-func (w *BufferedResponseWriter) Status() int {
-	return w.status
 }
 
 func (w *BufferedResponseWriter) Size() int {
@@ -291,13 +286,6 @@ func (w *BufferedResponseWriter) Size() int {
 
 func (w *BufferedResponseWriter) Body() []byte {
 	return w.buffer.Bytes()
-}
-
-func (w *BufferedResponseWriter) WriteHeader(statusCode int) {
-	if statusCode > 0 { // TODO 加重复设置的告警日志
-		w.ResponseWriter.WriteHeader(statusCode)
-		w.status = statusCode
-	}
 }
 
 func filterFlags(content string) string {

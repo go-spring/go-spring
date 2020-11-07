@@ -214,8 +214,7 @@ func (c *BaseWebContainer) PreStart() {
 		// 注册 swagger-ui 和 doc.json 接口
 		c.GetMapping("/swagger/*", func(webCtx WebContext) {
 			if webCtx.PathParam("*") == "doc.json" {
-				webCtx.Header(HeaderContentType, MIMEApplicationJSONCharsetUTF8)
-				webCtx.String(doc)
+				webCtx.Blob(MIMEApplicationJSONCharsetUTF8, []byte(doc))
 			} else {
 				hSwagger(webCtx.ResponseWriter(), webCtx.Request())
 			}
