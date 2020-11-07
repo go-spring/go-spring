@@ -22,12 +22,12 @@ func init() {
 
 	SpringBoot.GetMapping("/mapping/json/error",
 		func(webCtx SpringWeb.WebContext) {
-			webCtx.JSON(http.StatusOK, rpc.ERROR.Error(errors.New("this is an error")))
+			webCtx.JSON(rpc.ERROR.Error(errors.New("this is an error")))
 		})
 
 	SpringBoot.GetMapping("/mapping/json/success",
 		func(webCtx SpringWeb.WebContext) {
-			webCtx.JSON(http.StatusOK, rpc.SUCCESS.Data("ok"))
+			webCtx.JSON(rpc.SUCCESS.Data("ok"))
 		})
 
 	SpringBoot.GetMapping("/mapping/panic/error", func(webCtx SpringWeb.WebContext) {
@@ -59,22 +59,34 @@ func init() {
 		})
 }
 
-func get(url string, expected string) {
-	response, err := http.Get(url)
+func read(response *http.Response, err error, expected string) {
 	if err != nil {
 		panic(err)
 	}
 	defer response.Body.Close()
 	b, _ := ioutil.ReadAll(response.Body)
-	fmt.Println(response.Status, string(b))
+	fmt.Println("status:", response.Status, "body:", string(b))
 	if string(b) != expected {
 		SpringLogger.Errorf("get %s but want %s", string(b), expected)
 	}
 }
 
+func get(url string, expected string) {
+	response, err := http.Get(url)
+	read(response, err, expected)
+}
+
+func postForm(url string, expected string) {
+	response, err := http.PostForm(url, nil)
+	read(response, err, expected)
+}
+
 func main() {
 	go func() {
 		time.Sleep(20 * time.Millisecond)
+		get("http://127.0.0.1:8080/404", `404 page not found`)
+		// TODO gin 需要开启 HandleMethodNotAllowed 才行
+		postForm("http://127.0.0.1:8080/mapping/json/error", `405 method not allowed`)
 		get("http://127.0.0.1:8080/mapping/json/error", `{"code":-1,"msg":"ERROR","err":"this is an error"}`)
 		get("http://127.0.0.1:8080/mapping/json/success", `{"code":200,"msg":"SUCCESS","data":"ok"}`)
 		get("http://127.0.0.1:8080/mapping/panic/error", `this is an error`)
