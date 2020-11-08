@@ -58,11 +58,6 @@ func NewContainer(config SpringWeb.ContainerConfig) *Container {
 	return c
 }
 
-// Deprecated: Filter 机制可完美替代中间件机制，不再需要定制化
-func (c *Container) SetGinEngine(e *gin.Engine) {
-	c.ginEngine = e
-}
-
 // Start 启动 Web 容器，非阻塞
 func (c *Container) Start() {
 
@@ -71,6 +66,7 @@ func (c *Container) Start() {
 	// 使用默认的 gin 引擎
 	if c.ginEngine == nil {
 		c.ginEngine = gin.New()
+		c.ginEngine.HandleMethodNotAllowed = true
 	}
 
 	var cFilters []SpringWeb.Filter
