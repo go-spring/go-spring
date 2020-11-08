@@ -8,12 +8,11 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-spring/examples/spring-boot-web/rpc"
 	"github.com/go-spring/spring-boot"
 	"github.com/go-spring/spring-logger"
 	"github.com/go-spring/spring-web"
-	//_ "github.com/go-spring/starter-echo"
-	_ "github.com/go-spring/starter-gin"
+	_ "github.com/go-spring/starter-echo"
+	//_ "github.com/go-spring/starter-gin"
 )
 
 type request struct{}
@@ -22,12 +21,12 @@ func init() {
 
 	SpringBoot.GetMapping("/mapping/json/error",
 		func(webCtx SpringWeb.WebContext) {
-			webCtx.JSON(rpc.ERROR.Error(errors.New("this is an error")))
+			webCtx.JSON(SpringWeb.ERROR.Error(errors.New("this is an error")))
 		})
 
 	SpringBoot.GetMapping("/mapping/json/success",
 		func(webCtx SpringWeb.WebContext) {
-			webCtx.JSON(rpc.SUCCESS.Data("ok"))
+			webCtx.JSON(SpringWeb.SUCCESS.Data("ok"))
 		})
 
 	SpringBoot.GetMapping("/mapping/panic/error", func(webCtx SpringWeb.WebContext) {
@@ -35,27 +34,30 @@ func init() {
 	})
 
 	SpringBoot.GetMapping("/mapping/panic/rpc_result", func(webCtx SpringWeb.WebContext) {
-		panic(rpc.ERROR.Error(errors.New("this is a rpc_result")))
+		panic(SpringWeb.ERROR.Error(errors.New("this is a rpc_result")))
 	})
 
 	SpringBoot.GetBinding("/binding/json/error",
-		func(ctx context.Context, req *request) *rpc.RpcResult {
-			return rpc.ERROR.Error(errors.New("this is an error"))
+		func(ctx context.Context, req *request) *SpringWeb.RpcResult {
+			return SpringWeb.ERROR.Error(errors.New("this is an error"))
 		})
 
 	SpringBoot.GetBinding("/binding/json/success",
-		func(ctx context.Context, req *request) *rpc.RpcResult {
-			return rpc.SUCCESS.Data("ok")
+		func(ctx context.Context, req *request) *SpringWeb.RpcResult {
+			return SpringWeb.SUCCESS.Data("ok")
 		})
 
 	SpringBoot.GetBinding("/binding/panic/error",
-		func(ctx context.Context, req *request) *rpc.RpcResult {
+		func(ctx context.Context, req *request) *SpringWeb.RpcResult {
 			panic(errors.New("this is an error"))
 		})
 
 	SpringBoot.GetBinding("/binding/panic/rpc_result",
-		func(ctx context.Context, req *request) *rpc.RpcResult {
-			panic(rpc.ERROR.Error(errors.New("this is a rpc_result")))
+		func(ctx context.Context, req *request) *SpringWeb.RpcResult {
+			err := errors.New("this is a rpc_result")
+			// SpringWeb.ERROR.Panic(err).When(true)
+			// TODO 上面的这行和下面的这行不等价，需处理
+			panic(SpringWeb.ERROR.Error(err))
 		})
 }
 
