@@ -79,26 +79,26 @@ func (r RpcError) ErrorWithData(err error, data interface{}) *RpcResult {
 	return &RpcResult{ErrorCode: ErrorCode(r), Err: err.Error(), Data: data}
 }
 
-func (r RpcError) error(err error) *RpcResult {
-	str := SpringUtils.ErrorWithFileLine(err, 3).Error()
+func (r RpcError) error(err error, skip int) *RpcResult {
+	str := SpringUtils.ErrorWithFileLine(err, skip).Error()
 	return &RpcResult{ErrorCode: ErrorCode(r), Err: str}
 }
 
 // Panic 抛出一个异常值
 func (r RpcError) Panic(err error) *SpringUtils.PanicCond {
 	return SpringUtils.NewPanicCond(func() interface{} {
-		return r.error(err)
+		return r.error(err, 4)
 	})
 }
 
 // Panicf 抛出一段需要格式化的错误字符串
 func (r RpcError) Panicf(format string, a ...interface{}) *SpringUtils.PanicCond {
 	return SpringUtils.NewPanicCond(func() interface{} {
-		return r.error(fmt.Errorf(format, a...))
+		return r.error(fmt.Errorf(format, a...), 4)
 	})
 }
 
 // PanicImmediately 立即抛出一个异常值
 func (r RpcError) PanicImmediately(err error) {
-	panic(r.error(err))
+	panic(r.error(err, 3))
 }
