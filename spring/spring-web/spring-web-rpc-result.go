@@ -71,34 +71,34 @@ func NewRpcError(code int32, msg string) RpcError {
 
 // Error 绑定一个错误
 func (r RpcError) Error(err error) *RpcResult {
-	return &RpcResult{ErrorCode: ErrorCode(r), Err: err.Error()}
+	return r.error(3, err, nil)
 }
 
 // ErrorWithData 绑定一个错误和一个值
 func (r RpcError) ErrorWithData(err error, data interface{}) *RpcResult {
-	return &RpcResult{ErrorCode: ErrorCode(r), Err: err.Error(), Data: data}
+	return r.error(3, err, data)
 }
 
-func (r RpcError) error(err error, skip int) *RpcResult {
+func (r RpcError) error(skip int, err error, data interface{}) *RpcResult {
 	str := SpringUtils.ErrorWithFileLine(err, skip).Error()
-	return &RpcResult{ErrorCode: ErrorCode(r), Err: str}
+	return &RpcResult{ErrorCode: ErrorCode(r), Err: str, Data: data}
 }
 
 // Panic 抛出一个异常值
 func (r RpcError) Panic(err error) *SpringUtils.PanicCond {
 	return SpringUtils.NewPanicCond(func() interface{} {
-		return r.error(err, 4)
+		return r.error(4, err, nil)
 	})
 }
 
 // Panicf 抛出一段需要格式化的错误字符串
 func (r RpcError) Panicf(format string, a ...interface{}) *SpringUtils.PanicCond {
 	return SpringUtils.NewPanicCond(func() interface{} {
-		return r.error(fmt.Errorf(format, a...), 4)
+		return r.error(4, fmt.Errorf(format, a...), nil)
 	})
 }
 
 // PanicImmediately 立即抛出一个异常值
 func (r RpcError) PanicImmediately(err error) {
-	panic(r.error(err, 3))
+	panic(r.error(3, err, nil))
 }
