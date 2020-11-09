@@ -56,7 +56,6 @@ func init() {
 		func(ctx context.Context, req *request) *SpringWeb.RpcResult {
 			err := errors.New("this is a rpc_result")
 			// SpringWeb.ERROR.Panic(err).When(true)
-			// TODO 上面的这行和下面的这行不等价，需处理
 			panic(SpringWeb.ERROR.Error(err))
 		})
 }
@@ -87,16 +86,15 @@ func main() {
 	go func() {
 		time.Sleep(20 * time.Millisecond)
 		get("http://127.0.0.1:8080/404", `404 page not found`)
-		// TODO gin 需要开启 HandleMethodNotAllowed 才行
 		postForm("http://127.0.0.1:8080/mapping/json/error", `405 method not allowed`)
-		get("http://127.0.0.1:8080/mapping/json/error", `{"code":-1,"msg":"ERROR","err":"this is an error"}`)
+		get("http://127.0.0.1:8080/mapping/json/error", `{"code":-1,"msg":"ERROR","err":"/Users/didi/GitHub/go-spring/go-spring/examples/spring-boot-web/main.go:24: this is an error"}`)
 		get("http://127.0.0.1:8080/mapping/json/success", `{"code":200,"msg":"SUCCESS","data":"ok"}`)
 		get("http://127.0.0.1:8080/mapping/panic/error", `this is an error`)
-		get("http://127.0.0.1:8080/mapping/panic/rpc_result", `{"code":-1,"msg":"ERROR","err":"this is a rpc_result"}`)
-		get("http://127.0.0.1:8080/binding/json/error", `{"code":-1,"msg":"ERROR","err":"this is an error"}`)
+		get("http://127.0.0.1:8080/mapping/panic/rpc_result", `{"code":-1,"msg":"ERROR","err":"/Users/didi/GitHub/go-spring/go-spring/examples/spring-boot-web/main.go:37: this is a rpc_result"}`)
+		get("http://127.0.0.1:8080/binding/json/error", `{"code":-1,"msg":"ERROR","err":"/Users/didi/GitHub/go-spring/go-spring/examples/spring-boot-web/main.go:42: this is an error"}`)
 		get("http://127.0.0.1:8080/binding/json/success", `{"code":200,"msg":"SUCCESS","data":"ok"}`)
 		get("http://127.0.0.1:8080/binding/panic/error", `this is an error`)
-		get("http://127.0.0.1:8080/binding/panic/rpc_result", `{"code":-1,"msg":"ERROR","err":"this is a rpc_result"}`)
+		get("http://127.0.0.1:8080/binding/panic/rpc_result", `{"code":-1,"msg":"ERROR","err":"/Users/didi/GitHub/go-spring/go-spring/examples/spring-boot-web/main.go:59: this is a rpc_result"}`)
 		SpringBoot.Exit()
 	}()
 	SpringBoot.RunApplication()

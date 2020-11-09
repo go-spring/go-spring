@@ -122,6 +122,8 @@ github.com/go-spring/spring-web v1.0.6-0.20201108110949-5bd0790d6a75 h1:c0siWBzX
 github.com/go-spring/spring-web v1.0.6-0.20201108110949-5bd0790d6a75/go.mod h1:6US0h0B+kvv7gzMlp0DHTSY9zMz1sv5Jj99haas4p0A=
 github.com/go-spring/spring-web v1.0.6-0.20201108114715-42b87560d8b7 h1:qOVoZjLDVXiXWeTMsiqiHBp5cSdDzhBEeuB7SGUL+Sw=
 github.com/go-spring/spring-web v1.0.6-0.20201108114715-42b87560d8b7/go.mod h1:6US0h0B+kvv7gzMlp0DHTSY9zMz1sv5Jj99haas4p0A=
+github.com/go-spring/spring-web v1.0.6-0.20201109120017-baa11539c3ba h1:1O+qJq38vis2jjZ5ParAScC8XrnM6qBPXCcRosWDq0A=
+github.com/go-spring/spring-web v1.0.6-0.20201109120017-baa11539c3ba/go.mod h1:6US0h0B+kvv7gzMlp0DHTSY9zMz1sv5Jj99haas4p0A=
 github.com/go-spring/starter-echo v1.0.5 h1:6MmJg+YKdd1d1R2PYJw9EUAelw+wZWzwQGFumYwra1M=
 github.com/go-spring/starter-echo v1.0.5/go.mod h1:wajly30XL9aQHSn7+O4MugUln0LjMv59O3TJtGdhJFo=
 github.com/go-spring/starter-echo v1.0.6-0.20201031125927-fed9b3a96b90 h1:b7XLyhgEVqJvxbNwBjweewElieMGNyhTJK+OsA5sn+4=
