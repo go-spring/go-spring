@@ -60,6 +60,8 @@ github.com/go-spring/spring-echo v1.0.5 h1:okRLd0d0M4MhvJI7CbqZgO7qX2BPrrZ/5C6Yb
 github.com/go-spring/spring-echo v1.0.5/go.mod h1:qf7WypwTMGDlCYEyaPY4jWMsbAoDERpmlZSUDet6DJI=
 github.com/go-spring/spring-echo v1.0.6-0.20201027022014-fd539cccca42 h1:LJwwcSOwXG0JlOnxpFRRmbsiadx2sJcJP+28UdycU3U=
 github.com/go-spring/spring-echo v1.0.6-0.20201027022014-fd539cccca42/go.mod h1:+C8jjiGBXliGUVBZDXLjWRcEmwz/l6WYZU5SP2SQBL0=
+github.com/go-spring/spring-echo v1.0.6-0.20201107052756-a81d9ef9038c h1:rB62dDq9QyMdBviQVaiLrejWFgOxayiJZguveFpYnQU=
+github.com/go-spring/spring-echo v1.0.6-0.20201107052756-a81d9ef9038c/go.mod h1:XkaM8Cx9y4kaD+7SW7MT/uZiRiLDGC4q5XSFMTSNQOc=
 github.com/go-spring/spring-error v1.0.5-rc1 h1:hLHPUDGSZgXAGNqdgRAsvabgfr9REVbEKvUsc0xEzA8=
 github.com/go-spring/spring-error v1.0.5-rc1/go.mod h1:QExcM5Try3lu4c/sapGf05Z/SveILbVJ3SEw+He8Q10=
 github.com/go-spring/spring-error v1.0.5-rc2 h1:W+DTokFS3tXQr6pbkxqea446XaBmrsTLwKU+uC3xgaE=
@@ -76,6 +78,8 @@ github.com/go-spring/spring-gin v1.0.5 h1:hozDs25esJVQ7RSiTu+foeT/ZQN2xMiw0PUznN
 github.com/go-spring/spring-gin v1.0.5/go.mod h1:SjIHf0vi/RP3YnLWsTsn4ZFRH7ytNiRRGwBSiHyPIds=
 github.com/go-spring/spring-gin v1.0.6-0.20201027021355-f9cca51e82c1 h1:L5EO010gFL1slaePkCTpgHD6TZdu6z5QJZ6RR34V9Z0=
 github.com/go-spring/spring-gin v1.0.6-0.20201027021355-f9cca51e82c1/go.mod h1:9lnZRlL10AfIK06oSYkquhnBkixLMfwwciuVXd83jn4=
+github.com/go-spring/spring-gin v1.0.6-0.20201108111449-37d99d74f73d h1:Sa3fDNIpWbJoCWrPCTtLrR1PqGSp1HHUxb2EJOn2yfg=
+github.com/go-spring/spring-gin v1.0.6-0.20201108111449-37d99d74f73d/go.mod h1:dstkKhpgDvHlFHDQwgZ9majVZku0XrXBjc2COpYTNNg=
 github.com/go-spring/spring-logger v1.0.5-rc1/go.mod h1:eZENHurOPb4+c586XBNv+M2HzWSAbRQLCNu49t8xsSc=
 github.com/go-spring/spring-logger v1.0.5-rc1.0.20200910151403-c698ac4b159e h1:ZgGo6AkVY6fQnl/dp5SOUsKwu0GFOzhZGoS+epO87pM=
 github.com/go-spring/spring-logger v1.0.5-rc1.0.20200910151403-c698ac4b159e/go.mod h1:eZENHurOPb4+c586XBNv+M2HzWSAbRQLCNu49t8xsSc=
@@ -83,6 +87,8 @@ github.com/go-spring/spring-logger v1.0.5-rc2 h1:PsqZc98UMk4f0vk8hrxfl6m5W63g/K9
 github.com/go-spring/spring-logger v1.0.5-rc2/go.mod h1:eZENHurOPb4+c586XBNv+M2HzWSAbRQLCNu49t8xsSc=
 github.com/go-spring/spring-logger v1.0.5 h1:BRf3/i3Tj+nSvP6QwdygDSG+eI9taRMRa9JOlkQ/1p8=
 github.com/go-spring/spring-logger v1.0.5/go.mod h1:eZENHurOPb4+c586XBNv+M2HzWSAbRQLCNu49t8xsSc=
+github.com/go-spring/spring-logger v1.0.6-0.20201031071008-31db8609b202 h1:bQj7ugA+EmqOwbNTL10rw8TXYy85Sxb4c0SbsVdr+48=
+github.com/go-spring/spring-logger v1.0.6-0.20201031071008-31db8609b202/go.mod h1:eZENHurOPb4+c586XBNv+M2HzWSAbRQLCNu49t8xsSc=
 github.com/go-spring/spring-test v1.0.5-rc1/go.mod h1:2VvzedBuXMxsGa3B3dQMxKMpYEthqL7CQTL5GacPHuc=
 github.com/go-spring/spring-test v1.0.5-rc2/go.mod h1:2VvzedBuXMxsGa3B3dQMxKMpYEthqL7CQTL5GacPHuc=
 github.com/go-spring/spring-test v1.0.5/go.mod h1:2VvzedBuXMxsGa3B3dQMxKMpYEthqL7CQTL5GacPHuc=
@@ -105,6 +111,10 @@ github.com/go-spring/spring-web v1.0.5 h1:8sSTCNBMBhFbGe1ZdXSgR9gtmo41Nr62kTNxE7
 github.com/go-spring/spring-web v1.0.5/go.mod h1:ATvsueweEfwQkpjBLG4e3qRSjaZgyhqQ2HoKOtbDXMI=
 github.com/go-spring/spring-web v1.0.6-0.20201027021050-5495e4900a9d h1:fE4xV2+ho2k91aWTufgamkuige91ZNE1F9Mjunq9TZU=
 github.com/go-spring/spring-web v1.0.6-0.20201027021050-5495e4900a9d/go.mod h1:ATvsueweEfwQkpjBLG4e3qRSjaZgyhqQ2HoKOtbDXMI=
+github.com/go-spring/spring-web v1.0.6-0.20201107033410-dcac39c6780f/go.mod h1:6US0h0B+kvv7gzMlp0DHTSY9zMz1sv5Jj99haas4p0A=
+github.com/go-spring/spring-web v1.0.6-0.20201108110949-5bd0790d6a75/go.mod h1:6US0h0B+kvv7gzMlp0DHTSY9zMz1sv5Jj99haas4p0A=
+github.com/go-spring/spring-web v1.0.6-0.20201109120017-baa11539c3ba h1:1O+qJq38vis2jjZ5ParAScC8XrnM6qBPXCcRosWDq0A=
+github.com/go-spring/spring-web v1.0.6-0.20201109120017-baa11539c3ba/go.mod h1:6US0h0B+kvv7gzMlp0DHTSY9zMz1sv5Jj99haas4p0A=
 github.com/golang/protobuf v1.2.0/go.mod h1:6lQm79b+lXiMfvg/cZm0SGofjICqVBUtrP5yJMmIC1U=
 github.com/golang/protobuf v1.3.1/go.mod h1:6lQm79b+lXiMfvg/cZm0SGofjICqVBUtrP5yJMmIC1U=
 github.com/golang/protobuf v1.3.3 h1:gyjaxf+svBWX08ZjK86iN9geUJF0H6gp2IRKX6Nf6/I=

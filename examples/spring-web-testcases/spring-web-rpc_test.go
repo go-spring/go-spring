@@ -28,6 +28,7 @@ import (
 	"github.com/go-spring/spring-echo"
 	"github.com/go-spring/spring-gin"
 	"github.com/go-spring/spring-web"
+	"github.com/magiconair/properties/assert"
 )
 
 func TestRpc(t *testing.T) {
@@ -52,19 +53,13 @@ func TestRpc(t *testing.T) {
 		{
 			resp, _ := http.Get("http://127.0.0.1:9090/echo?str=")
 			body, _ := ioutil.ReadAll(resp.Body)
-			fmt.Println("code:", resp.StatusCode, "||", "resp:", string(body))
-			if body[len(body)-1] != '\n' { // echo 的返回值多一个换行符
-				fmt.Println()
-			}
+			assert.Equal(t, string(body), `Key: 'EchoRequest.Str' Error:Field validation for 'Str' failed on the 'required' tag`)
 		}
 
 		for i := 0; i < 20; i++ { // 多次测试 echo 和 gin 的性能确实差不多
 			resp, _ := http.Get("http://127.0.0.1:9090/echo?str=echo")
 			body, _ := ioutil.ReadAll(resp.Body)
-			fmt.Println("code:", resp.StatusCode, "||", "resp:", string(body))
-			if body[len(body)-1] != '\n' { // echo 的返回值多一个换行符
-				fmt.Println()
-			}
+			assert.Equal(t, string(body), `{"code":200,"msg":"SUCCESS","data":{"echo":"echo echo"}}`)
 		}
 
 		server.Stop(context.TODO())

@@ -66,7 +66,7 @@ func TestContext_PanicString(t *testing.T) {
 	b, _ := ioutil.ReadAll(response.Body)
 	fmt.Println(response.Status, string(b))
 	assert.Equal(t, response.StatusCode, http.StatusOK)
-	assert.Equal(t, string(b), "\"this is an error\"\n")
+	assert.Equal(t, string(b), "\"this is an error\"")
 }
 
 func TestContext_PanicError(t *testing.T) {
@@ -122,7 +122,7 @@ func (f *dummyFilter) Invoke(webCtx SpringWeb.WebContext, chain SpringWeb.Filter
 func TestFilter_PanicWebHttpError(t *testing.T) {
 	c := SpringEcho.NewContainer(SpringWeb.ContainerConfig{Port: 8080})
 	c.GetMapping("/", func(webCtx SpringWeb.WebContext) {
-		webCtx.String(http.StatusOK, "OK!")
+		webCtx.String("OK!")
 	}, &dummyFilter{})
 	c.Start()
 	defer c.Stop(context.Background())

@@ -31,7 +31,6 @@ import (
 	"github.com/go-spring/examples/testcases"
 	"github.com/go-spring/spring-echo"
 	"github.com/go-spring/spring-gin"
-	"github.com/go-spring/spring-utils"
 	"github.com/go-spring/spring-web"
 	"github.com/labstack/echo"
 	"github.com/labstack/echo/middleware"
@@ -192,8 +191,7 @@ func TestWebContainer(t *testing.T) {
 			assert.Equal(t, "anything", webCtx.PathParam("*"))
 			assert.Equal(t, []string{"*"}, webCtx.PathParamNames())
 			assert.Equal(t, []string{"anything"}, webCtx.PathParamValues())
-			err := webCtx.JSON(http.StatusOK, webCtx.PathParam("*"))
-			SpringUtils.Panic(err).When(err != nil)
+			webCtx.JSON(webCtx.PathParam("*"))
 		})
 
 		c.GetMapping("/wild_2/*none", func(webCtx SpringWeb.WebContext) {
@@ -201,16 +199,14 @@ func TestWebContainer(t *testing.T) {
 			assert.Equal(t, "anything", webCtx.PathParam("none"))
 			assert.Equal(t, []string{"*"}, webCtx.PathParamNames())
 			assert.Equal(t, []string{"anything"}, webCtx.PathParamValues())
-			err := webCtx.JSON(http.StatusOK, webCtx.PathParam("*"))
-			SpringUtils.Panic(err).When(err != nil)
+			webCtx.JSON(webCtx.PathParam("*"))
 		})
 
 		c.GetMapping("/wild_3/{*}", func(webCtx SpringWeb.WebContext) {
 			assert.Equal(t, "anything", webCtx.PathParam("*"))
 			assert.Equal(t, []string{"*"}, webCtx.PathParamNames())
 			assert.Equal(t, []string{"anything"}, webCtx.PathParamValues())
-			err := webCtx.JSON(http.StatusOK, webCtx.PathParam("*"))
-			SpringUtils.Panic(err).When(err != nil)
+			webCtx.JSON(webCtx.PathParam("*"))
 		})
 
 		c.Request(SpringWeb.MethodGetPost, "/empty", SpringWeb.BIND(s.Empty))
@@ -225,10 +221,6 @@ func TestWebContainer(t *testing.T) {
 		// 使用 gin 原生的中间件
 		fLogger := SpringGin.Filter(gin.Logger())
 		c.SetLoggerFilter(fLogger)
-
-		// 使用 gin 原生的中间件
-		fRecover := SpringGin.Filter(gin.Recovery())
-		c.SetRecoveryFilter(fRecover)
 
 		return c
 	}
@@ -254,10 +246,6 @@ func TestWebContainer(t *testing.T) {
 		// 使用 echo 原生的中间件
 		fLogger := SpringEcho.Filter(middleware.Logger())
 		c.SetLoggerFilter(fLogger)
-
-		// 使用 echo 原生的中间件
-		fRecover := SpringEcho.Filter(middleware.Recover())
-		c.SetRecoveryFilter(fRecover)
 
 		return c
 	}
@@ -328,8 +316,7 @@ func TestEchoServer(t *testing.T) {
 				assert.Equal(t, "echo", webCtx.PathParam("*"))
 				assert.Equal(t, []string{"*"}, webCtx.PathParamNames())
 				assert.Equal(t, []string{"echo"}, webCtx.PathParamValues())
-				err := webCtx.JSON(http.StatusOK, map[string]string{"a": "1"})
-				SpringUtils.Panic(err).When(err != nil)
+				webCtx.JSON(map[string]string{"a": "1"})
 			}), "", nil))
 
 		testRun(e)
@@ -387,8 +374,7 @@ func TestGinServer(t *testing.T) {
 				assert.Equal(t, "gin", webCtx.PathParam("*"))
 				assert.Equal(t, []string{"*"}, webCtx.PathParamNames())
 				assert.Equal(t, []string{"gin"}, webCtx.PathParamValues())
-				err := webCtx.JSON(http.StatusOK, map[string]string{"a": "1"})
-				SpringUtils.Panic(err).When(err != nil)
+				webCtx.JSON(map[string]string{"a": "1"})
 			}), SpringWeb.DefaultWildCardName, nil)...)
 
 		testRun(g)

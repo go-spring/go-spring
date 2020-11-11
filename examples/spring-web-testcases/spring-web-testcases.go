@@ -130,8 +130,7 @@ func (s *Service) Get(ctx SpringWeb.WebContext) {
 	val := s.store[key]
 	ctx.LogInfo("/get ", "val=", val)
 
-	err := ctx.String(http.StatusOK, val)
-	SpringUtils.Panic(err).When(err != nil)
+	ctx.String(val)
 }
 
 func (s *Service) Set(ctx SpringWeb.WebContext) {
@@ -162,8 +161,8 @@ type EmptyRequest struct{}
 type EmptyResponse struct{}
 
 // Empty 验证 echo 和 gin 的 bind 功能，echo 的 bind 不允许空 body，spring-web 做了统一
-func (s *Service) Empty(ctx context.Context, request *EmptyRequest) *EmptyResponse {
-	return &EmptyResponse{}
+func (s *Service) Empty(ctx context.Context, request *EmptyRequest) *SpringWeb.RpcResult {
+	return SpringWeb.SUCCESS.Data(&EmptyResponse{})
 }
 
 ///////////////////// rpc service ////////////////////////
@@ -179,6 +178,6 @@ type EchoResponse struct {
 }
 
 // Echo BIND 的结构体参数形式
-func (s *RpcService) Echo(ctx context.Context, request *EchoRequest) *EchoResponse {
-	return &EchoResponse{"echo " + request.Str}
+func (s *RpcService) Echo(ctx context.Context, request *EchoRequest) *SpringWeb.RpcResult {
+	return SpringWeb.SUCCESS.Data(&EchoResponse{"echo " + request.Str})
 }

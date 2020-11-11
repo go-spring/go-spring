@@ -128,7 +128,7 @@ func (f *dummyFilter) Invoke(webCtx SpringWeb.WebContext, chain SpringWeb.Filter
 func TestFilter_PanicWebHttpError(t *testing.T) {
 	c := SpringGin.NewContainer(SpringWeb.ContainerConfig{Port: 8080})
 	c.GetMapping("/", func(webCtx SpringWeb.WebContext) {
-		webCtx.String(http.StatusOK, "OK!")
+		webCtx.String("OK!")
 	}, &dummyFilter{})
 	c.Start()
 	defer c.Stop(context.Background())

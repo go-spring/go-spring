@@ -99,8 +99,8 @@ func Process() {
 		if body, e := ioutil.ReadAll(resp.Body); e != nil {
 			panic(e)
 		} else {
-			SpringLogger.Infof("resp code=%d body=%s(echo add a \\n on text end)", resp.StatusCode, string(body))
-			if string(body) != "{\"code\":200,\"msg\":\"SUCCESS\",\"data\":{\"echo\":\"echo echo\"}}\n" {
+			SpringLogger.Infof("resp code=%d body=%s", resp.StatusCode, string(body))
+			if string(body) != "{\"code\":200,\"msg\":\"SUCCESS\",\"data\":{\"echo\":\"echo echo\"}}" {
 				panic(errors.New("error"))
 			}
 		}

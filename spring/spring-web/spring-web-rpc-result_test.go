@@ -36,21 +36,21 @@ func TestRpcError(t *testing.T) {
 
 	func() {
 		defer func() {
-			assert.Equal(t, SpringUtils.ToJson(recover()), `{"code":-1,"msg":"ERROR","err":"/Users/didi/GitHub/go-spring/go-spring/spring/spring-web/spring-web-rpc-result_test.go:39: this is an error"}`)
+			assert.Equal(t, SpringUtils.ToJson(recover()), `{"code":-1,"msg":"ERROR","err":"/Users/didi/GitHub/go-spring/go-spring/spring/spring-web/spring-web-rpc-result_test.go:41: this is an error"}`)
 		}()
 		SpringWeb.ERROR.Panic(err).When(err != nil)
 	}()
 
 	func() {
 		defer func() {
-			assert.Equal(t, SpringUtils.ToJson(recover()), `{"code":-1,"msg":"ERROR","err":"/Users/didi/GitHub/go-spring/go-spring/spring/spring-web/spring-web-rpc-result_test.go:44: this is an error"}`)
+			assert.Equal(t, SpringUtils.ToJson(recover()), `{"code":-1,"msg":"ERROR","err":"/Users/didi/GitHub/go-spring/go-spring/spring/spring-web/spring-web-rpc-result_test.go:48: this is an error"}`)
 		}()
 		SpringWeb.ERROR.Panicf(err.Error()).When(true)
 	}()
 
 	func() {
 		defer func() {
-			assert.Equal(t, SpringUtils.ToJson(recover()), `{"code":-1,"msg":"ERROR","err":"/Users/didi/GitHub/go-spring/go-spring/spring/spring-web/spring-web-rpc-result_test.go:49: this is an error"}`)
+			assert.Equal(t, SpringUtils.ToJson(recover()), `{"code":-1,"msg":"ERROR","err":"/Users/didi/GitHub/go-spring/go-spring/spring/spring-web/spring-web-rpc-result_test.go:55: this is an error"}`)
 		}()
 		SpringWeb.ERROR.PanicImmediately(err)
 	}()
