@@ -49,7 +49,7 @@ func (l Level) String() string {
 	return ""
 }
 
-// StdLogger 标准的 Logger 接口
+// StdLogger 标准日志输出接口
 type StdLogger interface {
 
 	// SetLevel 设置日志的输出级别，请确保线程安全
@@ -87,36 +87,12 @@ type StdLogger interface {
 	Print(args ...interface{})
 	Printf(format string, args ...interface{})
 
-	// 输出自定义级别的日志，skip 是相对于 Output & Outputf 的调用栈深度
+	// 输出自定义级别的日志，skip 是相对于当前函数的调用深度
 	Output(skip int, level Level, args ...interface{})
 	Outputf(skip int, level Level, format string, args ...interface{})
 }
 
-// PrefixLogger 带前缀名的 Logger 接口
-type PrefixLogger interface {
-	LogTrace(args ...interface{})
-	LogTracef(format string, args ...interface{})
-
-	LogDebug(args ...interface{})
-	LogDebugf(format string, args ...interface{})
-
-	LogInfo(args ...interface{})
-	LogInfof(format string, args ...interface{})
-
-	LogWarn(args ...interface{})
-	LogWarnf(format string, args ...interface{})
-
-	LogError(args ...interface{})
-	LogErrorf(format string, args ...interface{})
-
-	LogPanic(args ...interface{})
-	LogPanicf(format string, args ...interface{})
-
-	LogFatal(args ...interface{})
-	LogFatalf(format string, args ...interface{})
-}
-
-// 为了平衡调用栈的深度，增加一个 StdLogger 包装类
+// StdLoggerWrapper 平衡调用栈的深度
 type StdLoggerWrapper struct {
 	StdLogger
 }
@@ -189,12 +165,12 @@ func (w *StdLoggerWrapper) Printf(format string, args ...interface{}) {
 	w.StdLogger.Printf(format, args...)
 }
 
-// Output 自定义日志级别和调用栈深度，skip 是相对于 Output 的调用栈深度
+// Output 输出自定义级别的日志，skip 是相对于当前函数的调用深度
 func (w *StdLoggerWrapper) Output(skip int, level Level, args ...interface{}) {
 	w.StdLogger.Output(skip+1, level, args...)
 }
 
-// Outputf 自定义日志级别和调用栈深度，skip 是相对于 Outputf 的调用栈深度
+// Outputf 输出自定义级别的日志，skip 是相对于当前函数的调用深度
 func (w *StdLoggerWrapper) Outputf(skip int, level Level, format string, args ...interface{}) {
 	w.StdLogger.Outputf(skip+1, level, format, args...)
 }

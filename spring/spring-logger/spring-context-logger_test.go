@@ -38,7 +38,7 @@ func (_ *NativeLogger) CtxString(ctx context.Context) string {
 	return ""
 }
 
-// Printf 提供一个无需自定义调用栈深度的函数
+// Printf 提供一个不能自定义调用栈深度的函数
 func (l *NativeLogger) Printf(ctx context.Context, tag string, level string, format string, args ...interface{}) {
 	l.Outputf(1, ctx, tag, level, format, args...)
 }
@@ -76,7 +76,7 @@ func init() {
 	}
 }
 
-// nativeLogger 一般是一个全局日志变量
+// nativeLogger 全局的日志输出器
 var nativeLogger = &NativeLogger{}
 
 // ContextLogger 用户需要封装的日志组件
