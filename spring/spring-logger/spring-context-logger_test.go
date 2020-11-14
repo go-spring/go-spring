@@ -38,7 +38,7 @@ func (_ *NativeLogger) CtxString(ctx context.Context) string {
 	return ""
 }
 
-// Printf 提供一个不能自定义调用栈深度的函数
+// Printf 提供一个不能自定义调用栈深度的函数。
 func (l *NativeLogger) Printf(ctx context.Context, tag string, level string, format string, args ...interface{}) {
 	l.Outputf(1, ctx, tag, level, format, args...)
 }
@@ -70,16 +70,16 @@ func TestNativeLogger(t *testing.T) {
 /////////////////////// 模拟用户需要封装的日志组件 ///////////////////////
 
 func init() {
-	// 设置全局转换函数
+	// 设置全局转换函数。
 	SpringLogger.Logger = func(ctx context.Context, tags ...string) SpringLogger.StdLogger {
 		return &ContextLogger{ctx: ctx, tags: tags}
 	}
 }
 
-// nativeLogger 全局的日志输出器
+// nativeLogger 全局的日志输出器。
 var nativeLogger = &NativeLogger{}
 
-// ContextLogger 用户需要封装的日志组件
+// ContextLogger 用户需要封装的日志组件。
 type ContextLogger struct {
 	ctx  context.Context
 	tags []string

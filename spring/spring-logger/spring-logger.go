@@ -14,6 +14,9 @@
  * limitations under the License.
  */
 
+// 该包定义了一个标准的日志输出接口 StdLogger 和一个封装了 context.Context
+// 对象的日志输出接口 ContextLogger，并分别提供了默认实现 Console 和
+// DefaultContextLogger。
 package SpringLogger
 
 const (
@@ -26,7 +29,7 @@ const (
 	FatalLevel
 )
 
-// Level 日志输出级别
+// Level 日志输出级别。
 type Level uint32
 
 func (l Level) String() string {
@@ -49,50 +52,50 @@ func (l Level) String() string {
 	return ""
 }
 
-// StdLogger 标准日志输出接口
+// StdLogger 标准日志输出接口。
 type StdLogger interface {
 
-	// SetLevel 设置日志的输出级别，请确保线程安全
+	// SetLevel 设置日志的输出级别，请确保线程安全。
 	SetLevel(level Level)
 
-	// 输出 TRACE 级别的日志
+	// 输出 TRACE 级别的日志。
 	Trace(args ...interface{})
 	Tracef(format string, args ...interface{})
 
-	// 输出 DEBUG 级别的日志
+	// 输出 DEBUG 级别的日志。
 	Debug(args ...interface{})
 	Debugf(format string, args ...interface{})
 
-	// 输出 INFO 级别的日志
+	// 输出 INFO 级别的日志。
 	Info(args ...interface{})
 	Infof(format string, args ...interface{})
 
-	// 输出 WARN 级别的日志
+	// 输出 WARN 级别的日志。
 	Warn(args ...interface{})
 	Warnf(format string, args ...interface{})
 
-	// 输出 ERROR 级别的日志
+	// 输出 ERROR 级别的日志。
 	Error(args ...interface{})
 	Errorf(format string, args ...interface{})
 
-	// 输出 PANIC 级别的日志
+	// 输出 PANIC 级别的日志。
 	Panic(args ...interface{})
 	Panicf(format string, args ...interface{})
 
-	// 输出 FATAL 级别的日志
+	// 输出 FATAL 级别的日志。
 	Fatal(args ...interface{})
 	Fatalf(format string, args ...interface{})
 
-	// 将日志内容输出到控制台
+	// 将日志内容输出到控制台。
 	Print(args ...interface{})
 	Printf(format string, args ...interface{})
 
-	// 输出自定义级别的日志，skip 是相对于当前函数的调用深度
+	// 输出自定义级别的日志，skip 是相对于当前函数的调用深度。
 	Output(skip int, level Level, args ...interface{})
 	Outputf(skip int, level Level, format string, args ...interface{})
 }
 
-// StdLoggerWrapper 平衡调用栈的深度
+// StdLoggerWrapper 平衡调用栈的深度。
 type StdLoggerWrapper struct {
 	StdLogger
 }
@@ -165,12 +168,12 @@ func (w *StdLoggerWrapper) Printf(format string, args ...interface{}) {
 	w.StdLogger.Printf(format, args...)
 }
 
-// Output 输出自定义级别的日志，skip 是相对于当前函数的调用深度
+// Output 输出自定义级别的日志，skip 是相对于当前函数的调用深度。
 func (w *StdLoggerWrapper) Output(skip int, level Level, args ...interface{}) {
 	w.StdLogger.Output(skip+1, level, args...)
 }
 
-// Outputf 输出自定义级别的日志，skip 是相对于当前函数的调用深度
+// Outputf 输出自定义级别的日志，skip 是相对于当前函数的调用深度。
 func (w *StdLoggerWrapper) Outputf(skip int, level Level, format string, args ...interface{}) {
 	w.StdLogger.Outputf(skip+1, level, format, args...)
 }

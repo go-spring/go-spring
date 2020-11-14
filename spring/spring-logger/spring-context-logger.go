@@ -20,56 +20,56 @@ import (
 	"context"
 )
 
-// Deprecated: 为了和老版本兼容
+// Deprecated: 为了和老版本兼容。
 type LoggerContext = ContextLogger
 
-// Deprecated: 为了和老版本兼容
+// Deprecated: 为了和老版本兼容。
 var NewDefaultLoggerContext = NewDefaultContextLogger
 
-// Logger 返回封装了 context.Context 和自定义标签的 StdLogger 对象
+// Logger 返回封装了 context.Context 和自定义标签的 StdLogger 对象。
 var Logger func(ctx context.Context, tags ...string) StdLogger
 
-// ContextLogger 封装了 context.Context 对象的日志输出接口
+// ContextLogger 封装了 context.Context 对象的日志输出接口。
 type ContextLogger interface {
 
-	// Logger 返回封装了 context.Context 和自定义标签的 StdLogger 对象
+	// Logger 返回封装了 context.Context 和自定义标签的 StdLogger 对象。
 	Logger(tags ...string) StdLogger
 
-	// 输出 TRACE 级别的日志
+	// 输出 TRACE 级别的日志。
 	LogTrace(args ...interface{})
 	LogTracef(format string, args ...interface{})
 
-	// 输出 DEBUG 级别的日志
+	// 输出 DEBUG 级别的日志。
 	LogDebug(args ...interface{})
 	LogDebugf(format string, args ...interface{})
 
-	// 输出 INFO 级别的日志
+	// 输出 INFO 级别的日志。
 	LogInfo(args ...interface{})
 	LogInfof(format string, args ...interface{})
 
-	// 输出 WARN 级别的日志
+	// 输出 WARN 级别的日志。
 	LogWarn(args ...interface{})
 	LogWarnf(format string, args ...interface{})
 
-	// 输出 ERROR 级别的日志
+	// 输出 ERROR 级别的日志。
 	LogError(args ...interface{})
 	LogErrorf(format string, args ...interface{})
 
-	// 输出 PANIC 级别的日志
+	// 输出 PANIC 级别的日志。
 	LogPanic(args ...interface{})
 	LogPanicf(format string, args ...interface{})
 
-	// 输出 FATAL 级别的日志
+	// 输出 FATAL 级别的日志。
 	LogFatal(args ...interface{})
 	LogFatalf(format string, args ...interface{})
 }
 
-// DefaultContextLogger 默认的 ContextLogger 实现
+// DefaultContextLogger 默认的 ContextLogger 实现。
 type DefaultContextLogger struct {
 	ctx context.Context
 }
 
-// NewDefaultContextLogger DefaultContextLogger 的构造函数
+// NewDefaultContextLogger DefaultContextLogger 的构造函数。
 func NewDefaultContextLogger(ctx context.Context) *DefaultContextLogger {
 	return &DefaultContextLogger{ctx: ctx}
 }
@@ -89,7 +89,7 @@ func (c *DefaultContextLogger) logger(wrapper bool, tags ...string) StdLogger {
 	return l
 }
 
-// Logger 返回封装了 context.Context 和自定义标签的 StdLogger 对象
+// Logger 返回封装了 context.Context 和自定义标签的 StdLogger 对象。
 func (c *DefaultContextLogger) Logger(tags ...string) StdLogger {
 	return c.logger(true, tags...)
 }
