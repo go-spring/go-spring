@@ -1,6 +1,6 @@
 # spring-logger
 
-@[toc]
+@[TOC]
 
 ### *_Level_*
 
