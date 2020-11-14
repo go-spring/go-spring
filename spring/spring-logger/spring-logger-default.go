@@ -258,7 +258,7 @@ func (c *Console) Outputf(skip int, level Level, format string, args ...interfac
 }
 
 func (c *Console) log(skip int, level Level, msg string) {
-	strLevel := strings.ToUpper(LevelToString(level))
+	strLevel := strings.ToUpper(level.String())
 
 	if level >= ErrorLevel {
 		strLevel = color.Red(strLevel)
@@ -269,7 +269,7 @@ func (c *Console) log(skip int, level Level, msg string) {
 	_, file, line, _ := runtime.Caller(skip + 1)
 	dir, filename := path.Split(file)
 	filename = path.Join(path.Base(dir), filename)
-	fmt.Printf("[%s] %s:%d %s\n", strLevel, filename, line, msg)
+	fmt.Fprintf(os.Stdout, "[%s] %s:%d %s\n", strLevel, filename, line, msg)
 
 	switch level {
 	case PanicLevel:

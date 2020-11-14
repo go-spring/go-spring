@@ -163,7 +163,7 @@ func (l *ContextLogger) Print(args ...interface{}) {
 }
 
 func (l *ContextLogger) Outputf(skip int, level SpringLogger.Level, format string, args ...interface{}) {
-	levelString := strings.ToUpper(SpringLogger.LevelToString(level))
+	levelString := strings.ToUpper(level.String())
 	l.printf(skip+1, fmt.Sprintf("[%s]", levelString), format, args...)
 }
 

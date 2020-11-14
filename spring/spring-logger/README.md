@@ -1,5 +1,7 @@
 # spring-logger
 
+@[toc]
+
 ### *_Level_*
 
 	TraceLevel

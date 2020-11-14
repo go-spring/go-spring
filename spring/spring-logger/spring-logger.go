@@ -16,9 +16,6 @@
 
 package SpringLogger
 
-// Level 日志输出级别
-type Level uint32
-
 const (
 	TraceLevel Level = iota
 	DebugLevel
@@ -29,8 +26,10 @@ const (
 	FatalLevel
 )
 
-// LevelToString 返回 Level 对应的字符串
-func LevelToString(l Level) string {
+// Level 日志输出级别
+type Level uint32
+
+func (l Level) String() string {
 	switch l {
 	case TraceLevel:
 		return "trace"
@@ -56,31 +55,39 @@ type StdLogger interface {
 	// SetLevel 设置日志的输出级别，请确保线程安全
 	SetLevel(level Level)
 
+	// 输出 TRACE 级别的日志
 	Trace(args ...interface{})
 	Tracef(format string, args ...interface{})
 
+	// 输出 DEBUG 级别的日志
 	Debug(args ...interface{})
 	Debugf(format string, args ...interface{})
 
+	// 输出 INFO 级别的日志
 	Info(args ...interface{})
 	Infof(format string, args ...interface{})
 
+	// 输出 WARN 级别的日志
 	Warn(args ...interface{})
 	Warnf(format string, args ...interface{})
 
+	// 输出 ERROR 级别的日志
 	Error(args ...interface{})
 	Errorf(format string, args ...interface{})
 
+	// 输出 PANIC 级别的日志
 	Panic(args ...interface{})
 	Panicf(format string, args ...interface{})
 
+	// 输出 FATAL 级别的日志
 	Fatal(args ...interface{})
 	Fatalf(format string, args ...interface{})
 
+	// 将日志内容输出到控制台
 	Print(args ...interface{})
 	Printf(format string, args ...interface{})
 
-	// skip 是相对于 Output & Outputf 的调用栈深度
+	// 输出自定义级别的日志，skip 是相对于 Output & Outputf 的调用栈深度
 	Output(skip int, level Level, args ...interface{})
 	Outputf(skip int, level Level, format string, args ...interface{})
 }
