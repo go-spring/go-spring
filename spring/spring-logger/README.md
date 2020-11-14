@@ -2,7 +2,9 @@
 
 @[TOC]
 
-### *_Level_*
+[Level](#Level)
+
+### Level
 
 	TraceLevel
 	DebugLevel
