@@ -17,15 +17,11 @@
 package SpringLogger_test
 
 import (
-	"errors"
-	"fmt"
-
 	"github.com/go-spring/spring-logger"
 )
 
 func Example_stdLogger() {
 	SpringLogger.SetLogger(SpringLogger.NewConsole(SpringLogger.InfoLevel))
-	SpringLogger.SetLevel(SpringLogger.TraceLevel)
 
 	SpringLogger.Trace("a", "=", "1")
 	SpringLogger.Tracef("a=%d", 1)
@@ -41,25 +37,4 @@ func Example_stdLogger() {
 
 	SpringLogger.Error("a", "=", "1")
 	SpringLogger.Errorf("a=%d", 1)
-
-	func() {
-		defer func() { fmt.Println(recover()) }()
-		SpringLogger.Panic("error")
-	}()
-
-	func() {
-		defer func() { fmt.Println(recover()) }()
-		SpringLogger.Panic(errors.New("error"))
-	}()
-
-	func() {
-		defer func() { fmt.Println(recover()) }()
-		SpringLogger.Panicf("error: %d", 404)
-	}()
-
-	// SpringLogger.Fatal("a", "=", "1")
-	// SpringLogger.Fatalf("a=%d", 1)
-
-	SpringLogger.Output(0, SpringLogger.InfoLevel, "a=1")
-	SpringLogger.Outputf(0, SpringLogger.InfoLevel, "a=%d", 1)
 }

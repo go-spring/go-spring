@@ -18,134 +18,143 @@ package SpringLogger
 
 import (
 	"context"
+	"fmt"
+	"os"
 )
 
-// Deprecated: 为了和老版本兼容。
-type LoggerContext = ContextLogger
-
-// Deprecated: 为了和老版本兼容。
-var NewDefaultLoggerContext = NewDefaultContextLogger
-
-// Logger 返回封装了 context.Context 和自定义标签的 StdLogger 对象。
-var Logger func(ctx context.Context, tags ...string) StdLogger
-
-// ContextLogger 封装了 context.Context 对象的日志输出接口。
-type ContextLogger interface {
-
-	// Logger 返回封装了 context.Context 和自定义标签的 StdLogger 对象。
-	Logger(tags ...string) StdLogger
-
-	// 输出 TRACE 级别的日志。
-	LogTrace(args ...interface{})
-	LogTracef(format string, args ...interface{})
-
-	// 输出 DEBUG 级别的日志。
-	LogDebug(args ...interface{})
-	LogDebugf(format string, args ...interface{})
-
-	// 输出 INFO 级别的日志。
-	LogInfo(args ...interface{})
-	LogInfof(format string, args ...interface{})
-
-	// 输出 WARN 级别的日志。
-	LogWarn(args ...interface{})
-	LogWarnf(format string, args ...interface{})
-
-	// 输出 ERROR 级别的日志。
-	LogError(args ...interface{})
-	LogErrorf(format string, args ...interface{})
-
-	// 输出 PANIC 级别的日志。
-	LogPanic(args ...interface{})
-	LogPanicf(format string, args ...interface{})
-
-	// 输出 FATAL 级别的日志。
-	LogFatal(args ...interface{})
-	LogFatalf(format string, args ...interface{})
+// ContextOutput 为 ContextLogger 定制日志输出格式。
+type ContextOutput interface {
+	// 输出自定义级别的日志，skip 是相对于当前函数的调用深度。
+	Output(c *ContextLogger, skip int, level Level, args ...interface{})
+	Outputf(c *ContextLogger, skip int, level Level, format string, args ...interface{})
 }
 
-// DefaultContextLogger 默认的 ContextLogger 实现。
-type DefaultContextLogger struct {
-	ctx context.Context
+// DefaultContextOutput ContextOutput 的默认实现。
+type DefaultContextOutput struct{}
+
+func (c *DefaultContextOutput) Output(_ *ContextLogger, skip int, level Level, args ...interface{}) {
+	defaultLogger.Output(skip+1, level, args...)
 }
 
-// NewDefaultContextLogger DefaultContextLogger 的构造函数。
-func NewDefaultContextLogger(ctx context.Context) *DefaultContextLogger {
-	return &DefaultContextLogger{ctx: ctx}
+func (c *DefaultContextOutput) Outputf(_ *ContextLogger, skip int, level Level, format string, args ...interface{}) {
+	defaultLogger.Outputf(skip+1, level, format, args...)
 }
 
-func (c *DefaultContextLogger) logger(wrapper bool, tags ...string) StdLogger {
-	var l StdLogger
+var contextOutput ContextOutput = &DefaultContextOutput{}
 
-	if Logger != nil {
-		l = Logger(c.ctx, tags...)
+// RegisterContextOutput 注册全局 ContextOutput 对象
+func RegisterContextOutput(output ContextOutput) {
+	if output != nil {
+		contextOutput = output
+	}
+}
+
+// ContextLogger 封装了 context.Context 和自定义标签的 StdLogger 对象。
+type ContextLogger struct {
+	Ctx context.Context
+	Tag string
+}
+
+// WithContext ContextLogger 的构造函数，自定义标签可以为空。
+func WithContext(ctx context.Context, tag ...string) *ContextLogger {
+	if len(tag) == 0 {
+		return &ContextLogger{Ctx: ctx}
 	} else {
-		l = defaultLogger
+		return &ContextLogger{Ctx: ctx, Tag: tag[0]}
 	}
-
-	if wrapper {
-		return &StdLoggerWrapper{l}
-	}
-	return l
 }
 
-// Logger 返回封装了 context.Context 和自定义标签的 StdLogger 对象。
-func (c *DefaultContextLogger) Logger(tags ...string) StdLogger {
-	return c.logger(true, tags...)
+// WithTag 返回封装了 context.Context 和自定义标签的 StdLogger 对象。
+func (c *ContextLogger) WithTag(tag string) StdLogger {
+	return &ContextLogger{Ctx: c.Ctx, Tag: tag}
 }
 
-func (c *DefaultContextLogger) LogTrace(args ...interface{}) {
-	c.logger(false).Output(1, TraceLevel, args...)
+// Trace 输出 TRACE 级别的日志。
+func (c *ContextLogger) Trace(args ...interface{}) {
+	contextOutput.Output(c, 1, TraceLevel, args...)
 }
 
-func (c *DefaultContextLogger) LogTracef(format string, args ...interface{}) {
-	c.logger(false).Outputf(1, TraceLevel, format, args...)
+// Tracef 输出 TRACE 级别的日志。
+func (c *ContextLogger) Tracef(format string, args ...interface{}) {
+	contextOutput.Outputf(c, 1, TraceLevel, format, args...)
 }
 
-func (c *DefaultContextLogger) LogDebug(args ...interface{}) {
-	c.logger(false).Output(1, DebugLevel, args...)
+// Debug 输出 DEBUG 级别的日志。
+func (c *ContextLogger) Debug(args ...interface{}) {
+	contextOutput.Output(c, 1, DebugLevel, args...)
 }
 
-func (c *DefaultContextLogger) LogDebugf(format string, args ...interface{}) {
-	c.logger(false).Outputf(1, DebugLevel, format, args...)
+// Debugf 输出 DEBUG 级别的日志。
+func (c *ContextLogger) Debugf(format string, args ...interface{}) {
+	contextOutput.Outputf(c, 1, DebugLevel, format, args...)
 }
 
-func (c *DefaultContextLogger) LogInfo(args ...interface{}) {
-	c.logger(false).Output(1, InfoLevel, args...)
+// Info 输出 INFO 级别的日志。
+func (c *ContextLogger) Info(args ...interface{}) {
+	contextOutput.Output(c, 1, InfoLevel, args...)
 }
 
-func (c *DefaultContextLogger) LogInfof(format string, args ...interface{}) {
-	c.logger(false).Outputf(1, InfoLevel, format, args...)
+// Infof 输出 INFO 级别的日志。
+func (c *ContextLogger) Infof(format string, args ...interface{}) {
+	contextOutput.Outputf(c, 1, InfoLevel, format, args...)
 }
 
-func (c *DefaultContextLogger) LogWarn(args ...interface{}) {
-	c.logger(false).Output(1, WarnLevel, args...)
+// Warn 输出 WARN 级别的日志。
+func (c *ContextLogger) Warn(args ...interface{}) {
+	contextOutput.Output(c, 1, WarnLevel, args...)
 }
 
-func (c *DefaultContextLogger) LogWarnf(format string, args ...interface{}) {
-	c.logger(false).Outputf(1, WarnLevel, format, args...)
+// Warnf 输出 WARN 级别的日志。
+func (c *ContextLogger) Warnf(format string, args ...interface{}) {
+	contextOutput.Outputf(c, 1, WarnLevel, format, args...)
 }
 
-func (c *DefaultContextLogger) LogError(args ...interface{}) {
-	c.logger(false).Output(1, ErrorLevel, args...)
+// Error 输出 ERROR 级别的日志。
+func (c *ContextLogger) Error(args ...interface{}) {
+	contextOutput.Output(c, 1, ErrorLevel, args...)
 }
 
-func (c *DefaultContextLogger) LogErrorf(format string, args ...interface{}) {
-	c.logger(false).Outputf(1, ErrorLevel, format, args...)
+// Errorf 输出 ERROR 级别的日志。
+func (c *ContextLogger) Errorf(format string, args ...interface{}) {
+	contextOutput.Outputf(c, 1, ErrorLevel, format, args...)
 }
 
-func (c *DefaultContextLogger) LogPanic(args ...interface{}) {
-	c.logger(false).Output(1, PanicLevel, args...)
+// Panic 输出 PANIC 级别的日志。
+func (c *ContextLogger) Panic(args ...interface{}) {
+	contextOutput.Output(c, 1, PanicLevel, args...)
 }
 
-func (c *DefaultContextLogger) LogPanicf(format string, args ...interface{}) {
-	c.logger(false).Outputf(1, PanicLevel, format, args...)
+// Panicf 输出 PANIC 级别的日志。
+func (c *ContextLogger) Panicf(format string, args ...interface{}) {
+	contextOutput.Outputf(c, 1, PanicLevel, format, args...)
 }
 
-func (c *DefaultContextLogger) LogFatal(args ...interface{}) {
-	c.logger(false).Output(1, FatalLevel, args...)
+// Fatal 输出 FATAL 级别的日志。
+func (c *ContextLogger) Fatal(args ...interface{}) {
+	contextOutput.Output(c, 1, FatalLevel, args...)
 }
 
-func (c *DefaultContextLogger) LogFatalf(format string, args ...interface{}) {
-	c.logger(false).Outputf(1, FatalLevel, format, args...)
+// Fatalf 输出 FATAL 级别的日志。
+func (c *ContextLogger) Fatalf(format string, args ...interface{}) {
+	contextOutput.Outputf(c, 1, FatalLevel, format, args...)
+}
+
+// Print 将日志内容输出到控制台。
+func (c *ContextLogger) Print(args ...interface{}) {
+	fmt.Fprintln(os.Stdout, args...)
+}
+
+// Printf 将日志内容输出到控制台。
+func (c *ContextLogger) Printf(format string, args ...interface{}) {
+	fmt.Fprintf(os.Stdout, format, args...)
+}
+
+// Output 自定义日志级别和调用栈深度，skip 是相对于 Output 的调用栈深度。
+func (c *ContextLogger) Output(skip int, level Level, args ...interface{}) {
+	contextOutput.Output(c, skip+1, level, args...)
+}
+
+// Outputf 自定义日志级别和调用栈深度，skip 是相对于 Output 的调用栈深度。
+func (c *ContextLogger) Outputf(skip int, level Level, format string, args ...interface{}) {
+	contextOutput.Outputf(c, skip+1, level, format, args...)
 }

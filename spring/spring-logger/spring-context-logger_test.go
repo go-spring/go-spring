@@ -27,255 +27,170 @@ import (
 	"github.com/go-spring/spring-logger"
 )
 
-///////////////////////// 模拟用户已有的日志组件 /////////////////////////
+func TestDefaultContextOutput(t *testing.T) {
+	SpringLogger.RegisterContextOutput(&SpringLogger.DefaultContextOutput{})
+	ctx := context.WithValue(context.TODO(), "trace_id", "0689")
+
+	logger := SpringLogger.WithContext(ctx)
+	logger.Trace("level:", "trace")
+	logger.Tracef("level:%s", "trace")
+	logger.Debug("level:", "debug")
+	logger.Debugf("level:%s", "debug")
+	logger.Info("level:", "info")
+	logger.Infof("level:%s", "info")
+	logger.Warn("level:", "warn")
+	logger.Warnf("level:%s", "warn")
+	logger.Error("level:", "error")
+	logger.Errorf("level:%s", "error")
+
+	func() {
+		defer func() { fmt.Println(recover()) }()
+		logger.Panic("level:", "panic")
+	}()
+
+	func() {
+		defer func() { fmt.Println(recover()) }()
+		logger.Panicf("level:%s", "panic")
+	}()
+
+	// logger.Fatal("level:", "fatal")
+	// logger.Fatalf("level:%s", "fatal")
+
+	// 上面的代码在控制台上输出如下信息:
+	// [INFO] spring-logger/spring-context-logger_test.go:39 level:info
+	// [INFO] spring-logger/spring-context-logger_test.go:40 level:info
+	// [WARN] spring-logger/spring-context-logger_test.go:41 level:warn
+	// [WARN] spring-logger/spring-context-logger_test.go:42 level:warn
+	// [ERROR] spring-logger/spring-context-logger_test.go:43 level:error
+	// [ERROR] spring-logger/spring-context-logger_test.go:44 level:error
+	// [PANIC] spring-logger/spring-context-logger_test.go:48 level:panic
+	// [PANIC] spring-logger/spring-context-logger_test.go:53 level:panic
+
+	logger.WithTag("__in").Trace("level:", "trace")
+	logger.WithTag("__in").Tracef("level:%s", "trace")
+	logger.WithTag("__in").Debug("level:", "debug")
+	logger.WithTag("__in").Debugf("level:%s", "debug")
+	logger.WithTag("__in").Info("level:", "info")
+	logger.WithTag("__in").Infof("level:%s", "info")
+	logger.WithTag("__in").Warn("level:", "warn")
+	logger.WithTag("__in").Warnf("level:%s", "warn")
+	logger.WithTag("__in").Error("level:", "error")
+	logger.WithTag("__in").Errorf("level:%s", "error")
+
+	func() {
+		defer func() { fmt.Println(recover()) }()
+		logger.WithTag("__in").Panic("level:", "panic")
+	}()
+
+	func() {
+		defer func() { fmt.Println(recover()) }()
+		logger.WithTag("__in").Panicf("level:%s", "panic")
+	}()
+
+	//logger.WithTag("__in").Fatal("level:", "fatal")
+	//logger.WithTag("__in").Fatalf("level:%s", "fatal")
+
+	// 上面的代码在控制台上输出如下信息:
+	// [INFO] spring-logger/spring-context-logger_test.go:73 level:info
+	// [INFO] spring-logger/spring-context-logger_test.go:74 level:info
+	// [WARN] spring-logger/spring-context-logger_test.go:75 level:warn
+	// [WARN] spring-logger/spring-context-logger_test.go:76 level:warn
+	// [ERROR] spring-logger/spring-context-logger_test.go:77 level:error
+	// [ERROR] spring-logger/spring-context-logger_test.go:78 level:error
+	// [PANIC] spring-logger/spring-context-logger_test.go:82 level:panic
+	// [PANIC] spring-logger/spring-context-logger_test.go:87 level:panic
+}
 
 type NativeLogger struct{}
 
-func (_ *NativeLogger) CtxString(ctx context.Context) string {
-	if v := ctx.Value("trace_id"); v != nil {
-		return "trace_id:" + v.(string)
-	}
-	return ""
+func (l *NativeLogger) Output(c *SpringLogger.ContextLogger, skip int, level SpringLogger.Level, args ...interface{}) {
+	l.Outputf(c, skip+1, level, fmt.Sprint(args...))
 }
 
-// Printf 提供一个不能自定义调用栈深度的函数。
-func (l *NativeLogger) Printf(ctx context.Context, tag string, level string, format string, args ...interface{}) {
-	l.Outputf(1, ctx, tag, level, format, args...)
-}
+func (l *NativeLogger) Outputf(c *SpringLogger.ContextLogger, skip int, level SpringLogger.Level, format string, args ...interface{}) {
 
-// Outputf 提供一个可以自定义调用栈深度的函数，skip 是相对于 Outputf 的调用栈深度。
-func (l *NativeLogger) Outputf(callerSkip int, ctx context.Context, tag string, level string, format string, args ...interface{}) {
+	tag := c.Tag
 	if len(tag) > 0 {
 		tag += " "
 	}
-	_, file, line, _ := runtime.Caller(callerSkip + 1)
+
+	ctxString := func(ctx context.Context) string {
+		if v := ctx.Value("trace_id"); v != nil {
+			return "trace_id:" + v.(string)
+		}
+		return ""
+	}
+
+	_, file, line, _ := runtime.Caller(skip + 1)
 	_, file = filepath.Split(file)
-	str := fmt.Sprintf("%s %s:%d %s %s", level, file, line, l.CtxString(ctx), tag)
-	str += fmt.Sprintf(format, args...)
-	fmt.Println(str)
-}
-
-func TestNativeLogger(t *testing.T) {
-	ctx := context.WithValue(context.TODO(), "trace_id", "0689")
-
-	l := &NativeLogger{}
-	l.Printf(ctx, " _undef", "[DEBUG]", "level:%s", "debug")
-	l.Outputf(0, ctx, " _undef", "[DEBUG]", "level:%s", "debug")
-
-	// 上面的代码在控制台上输出如下信息:
-	// [DEBUG] spring-logger-context_test.go:62 trace_id:0689  _undef level:debug
-	// [DEBUG] spring-logger-context_test.go:63 trace_id:0689  _undef level:debug
-}
-
-/////////////////////// 模拟用户需要封装的日志组件 ///////////////////////
-
-func init() {
-	// 设置全局转换函数。
-	SpringLogger.Logger = func(ctx context.Context, tags ...string) SpringLogger.StdLogger {
-		return &ContextLogger{ctx: ctx, tags: tags}
-	}
-}
-
-// nativeLogger 全局的日志输出器。
-var nativeLogger = &NativeLogger{}
-
-// ContextLogger 用户需要封装的日志组件。
-type ContextLogger struct {
-	ctx  context.Context
-	tags []string
-}
-
-// printf 提供一个可以自定义调用栈深度的函数，skip 是相对于 printf 的调用栈深度。
-func (l *ContextLogger) printf(skip int, level string, format string, args ...interface{}) {
-	var tag string
-	if len(l.tags) > 0 {
-		tag = l.tags[0]
-	}
-	nativeLogger.Outputf(skip+1, l.ctx, tag, level, format, args...)
-}
-
-func (l *ContextLogger) SetLevel(level SpringLogger.Level) {}
-
-func (l *ContextLogger) Tracef(format string, args ...interface{}) {
-	l.printf(1, "[TRACE]", format, args...)
-}
-
-func (l *ContextLogger) Trace(args ...interface{}) {
-	fmt.Println(args...)
-}
-
-func (l *ContextLogger) Debugf(format string, args ...interface{}) {
-	l.printf(1, "[DEBUG]", format, args...)
-}
-
-func (l *ContextLogger) Debug(args ...interface{}) {
-	fmt.Println(args...)
-}
-
-func (l *ContextLogger) Infof(format string, args ...interface{}) {
-	l.printf(1, "[INFO]", format, args...)
-}
-
-func (l *ContextLogger) Info(args ...interface{}) {
-	fmt.Println(args...)
-}
-
-func (l *ContextLogger) Warnf(format string, args ...interface{}) {
-	l.printf(1, "[WARN]", format, args...)
-}
-
-func (l *ContextLogger) Warn(args ...interface{}) {
-	fmt.Println(args...)
-}
-
-func (l *ContextLogger) Errorf(format string, args ...interface{}) {
-	l.printf(1, "[ERROR]", format, args...)
-}
-
-func (l *ContextLogger) Error(args ...interface{}) {
-	fmt.Println(args...)
-}
-
-func (l *ContextLogger) Panicf(format string, args ...interface{}) {
-	str := fmt.Sprintf(format, args...)
-	l.printf(1, "[PANIC]", str)
-}
-
-func (l *ContextLogger) Panic(args ...interface{}) {
-	str := fmt.Sprint(args...)
-	fmt.Println(str)
-}
-
-func (l *ContextLogger) Fatalf(format string, args ...interface{}) {
-	l.printf(1, "[FATAL]", format, args...)
-}
-
-func (l *ContextLogger) Fatal(args ...interface{}) {
-	fmt.Println(args...)
-}
-
-func (l *ContextLogger) Printf(format string, args ...interface{}) {
-	fmt.Printf(format, args...)
-}
-
-func (l *ContextLogger) Print(args ...interface{}) {
-	fmt.Println(args...)
-}
-
-func (l *ContextLogger) Outputf(skip int, level SpringLogger.Level, format string, args ...interface{}) {
-	levelString := strings.ToUpper(level.String())
-	l.printf(skip+1, fmt.Sprintf("[%s]", levelString), format, args...)
-}
-
-func (l *ContextLogger) Output(skip int, level SpringLogger.Level, args ...interface{}) {
-	fmt.Println(args...)
+	str := fmt.Sprintf("[%s] %s:%d %s %s", strings.ToUpper(level.String()), file, line, ctxString(c.Ctx), tag)
+	fmt.Println(str + fmt.Sprintf(format, args...))
 }
 
 func TestContextLogger(t *testing.T) {
+	SpringLogger.RegisterContextOutput(&NativeLogger{})
 	ctx := context.WithValue(context.TODO(), "trace_id", "0689")
 
-	ctxLogger := &ContextLogger{ctx: ctx}
-	ctxLogger.Trace("level:", "trace")
-	ctxLogger.Tracef("level:%s", "trace")
-	ctxLogger.Debug("level:", "debug")
-	ctxLogger.Debugf("level:%s", "debug")
-	ctxLogger.Info("level:", "info")
-	ctxLogger.Infof("level:%s", "info")
-	ctxLogger.Warn("level:", "warn")
-	ctxLogger.Warnf("level:%s", "warn")
-	ctxLogger.Error("level:", "error")
-	ctxLogger.Errorf("level:%s", "error")
-	ctxLogger.Panic("level:", "panic")
-	ctxLogger.Panicf("level:%s", "panic")
-	ctxLogger.Fatal("level:", "fatal")
-	ctxLogger.Fatalf("level:%s", "fatal")
-	ctxLogger.Output(0, SpringLogger.InfoLevel, "level:", "info")
-	ctxLogger.Outputf(0, SpringLogger.InfoLevel, "level:%s", "info")
+	logger := SpringLogger.WithContext(ctx)
+	logger.Trace("level:", "trace")
+	logger.Tracef("level:%s", "trace")
+	logger.Debug("level:", "debug")
+	logger.Debugf("level:%s", "debug")
+	logger.Info("level:", "info")
+	logger.Infof("level:%s", "info")
+	logger.Warn("level:", "warn")
+	logger.Warnf("level:%s", "warn")
+	logger.Error("level:", "error")
+	logger.Errorf("level:%s", "error")
+	logger.Panic("level:", "panic")
+	logger.Panicf("level:%s", "panic")
+	logger.Fatal("level:", "fatal")
+	logger.Fatalf("level:%s", "fatal")
 
 	// 上面的代码在控制台上输出如下信息:
-	// level: trace
-	// [TRACE] spring-logger-context_test.go:179 trace_id:0689 level:trace
-	// level: debug
-	// [DEBUG] spring-logger-context_test.go:181 trace_id:0689 level:debug
-	// level: info
-	// [INFO] spring-logger-context_test.go:183 trace_id:0689 level:info
-	// level: warn
-	// [WARN] spring-logger-context_test.go:185 trace_id:0689 level:warn
-	// level: error
-	// [ERROR] spring-logger-context_test.go:187 trace_id:0689 level:error
-	// level:panic
-	// [PANIC] spring-logger-context_test.go:189 trace_id:0689 level:panic
-	// level: fatal
-	// [FATAL] spring-logger-context_test.go:191 trace_id:0689 level:fatal
-	// level: info
-	// [INFO] spring-logger-context_test.go:193 trace_id:0689 level:info
-}
+	// [TRACE] spring-context-logger_test.go:135 trace_id:0689 level:trace
+	// [TRACE] spring-context-logger_test.go:136 trace_id:0689 level:trace
+	// [DEBUG] spring-context-logger_test.go:137 trace_id:0689 level:debug
+	// [DEBUG] spring-context-logger_test.go:138 trace_id:0689 level:debug
+	// [INFO] spring-context-logger_test.go:139 trace_id:0689 level:info
+	// [INFO] spring-context-logger_test.go:140 trace_id:0689 level:info
+	// [WARN] spring-context-logger_test.go:141 trace_id:0689 level:warn
+	// [WARN] spring-context-logger_test.go:142 trace_id:0689 level:warn
+	// [ERROR] spring-context-logger_test.go:143 trace_id:0689 level:error
+	// [ERROR] spring-context-logger_test.go:144 trace_id:0689 level:error
+	// [PANIC] spring-context-logger_test.go:145 trace_id:0689 level:panic
+	// [PANIC] spring-context-logger_test.go:146 trace_id:0689 level:panic
+	// [FATAL] spring-context-logger_test.go:147 trace_id:0689 level:fatal
+	// [FATAL] spring-context-logger_test.go:148 trace_id:0689 level:fatal
 
-func TestDefaultTraceContext(t *testing.T) {
-	ctx := context.WithValue(context.TODO(), "trace_id", "0689")
-
-	tracer := SpringLogger.NewDefaultLoggerContext(ctx)
-	tracer.LogTrace("level:", "trace")
-	tracer.LogTracef("level:%s", "trace")
-	tracer.LogDebug("level:", "debug")
-	tracer.LogDebugf("level:%s", "debug")
-	tracer.LogInfo("level:", "info")
-	tracer.LogInfof("level:%s", "info")
-	tracer.LogWarn("level:", "warn")
-	tracer.LogWarnf("level:%s", "warn")
-	tracer.LogError("level:", "error")
-	tracer.LogErrorf("level:%s", "error")
-	tracer.LogPanic("level:", "panic")
-	tracer.LogPanicf("level:%s", "panic")
-	tracer.LogFatal("level:", "fatal")
-	tracer.LogFatalf("level:%s", "fatal")
+	logger.WithTag("__in").Trace("level:", "trace")
+	logger.WithTag("__in").Tracef("level:%s", "trace")
+	logger.WithTag("__in").Debug("level:", "debug")
+	logger.WithTag("__in").Debugf("level:%s", "debug")
+	logger.WithTag("__in").Info("level:", "info")
+	logger.WithTag("__in").Infof("level:%s", "info")
+	logger.WithTag("__in").Warn("level:", "warn")
+	logger.WithTag("__in").Warnf("level:%s", "warn")
+	logger.WithTag("__in").Error("level:", "error")
+	logger.WithTag("__in").Errorf("level:%s", "error")
+	logger.WithTag("__in").Panic("level:", "panic")
+	logger.WithTag("__in").Panicf("level:%s", "panic")
+	logger.WithTag("__in").Fatal("level:", "fatal")
+	logger.WithTag("__in").Fatalf("level:%s", "fatal")
 
 	// 上面的代码在控制台上输出如下信息:
-	// level: trace
-	// [TRACE] spring-logger-context_test.go:219 trace_id:0689 level:trace
-	// level: debug
-	// [DEBUG] spring-logger-context_test.go:221 trace_id:0689 level:debug
-	// level: info
-	// [INFO] spring-logger-context_test.go:223 trace_id:0689 level:info
-	// level: warn
-	// [WARN] spring-logger-context_test.go:225 trace_id:0689 level:warn
-	// level: error
-	// [ERROR] spring-logger-context_test.go:227 trace_id:0689 level:error
-	// level: panic
-	// [PANIC] spring-logger-context_test.go:229 trace_id:0689 level:panic
-	// level: fatal
-	// [FATAL] spring-logger-context_test.go:231 trace_id:0689 level:fatal
-
-	fmt.Println()
-
-	tracer.Logger("__in").Trace("level:", "trace")
-	tracer.Logger("__in").Tracef("level:%s", "trace")
-	tracer.Logger("__in").Debug("level:", "debug")
-	tracer.Logger("__in").Debugf("level:%s", "debug")
-	tracer.Logger("__in").Info("level:", "info")
-	tracer.Logger("__in").Infof("level:%s", "info")
-	tracer.Logger("__in").Warn("level:", "warn")
-	tracer.Logger("__in").Warnf("level:%s", "warn")
-	tracer.Logger("__in").Error("level:", "error")
-	tracer.Logger("__in").Errorf("level:%s", "error")
-	tracer.Logger("__in").Panic("level:", "panic")
-	tracer.Logger("__in").Panicf("level:%s", "panic")
-	tracer.Logger("__in").Fatal("level:", "fatal")
-	tracer.Logger("__in").Fatalf("level:%s", "fatal")
-
-	// 上面的代码在控制台上输出如下信息:
-	// level: trace
-	// [TRACE] spring-logger-context_test.go:252 trace_id:0689 __in level:trace
-	// level: debug
-	// [DEBUG] spring-logger-context_test.go:254 trace_id:0689 __in level:debug
-	// level: info
-	// [INFO] spring-logger-context_test.go:256 trace_id:0689 __in level:info
-	// level: warn
-	// [WARN] spring-logger-context_test.go:258 trace_id:0689 __in level:warn
-	// level: error
-	// [ERROR] spring-logger-context_test.go:260 trace_id:0689 __in level:error
-	// level: panic
-	// [PANIC] spring-logger-context_test.go:262 trace_id:0689 __in level:panic
-	// level: fatal
-	// [FATAL] spring-logger-context_test.go:264 trace_id:0689 __in level:fatal
+	// [TRACE] spring-context-logger_test.go:166 trace_id:0689 __in level:trace
+	// [TRACE] spring-context-logger_test.go:167 trace_id:0689 __in level:trace
+	// [DEBUG] spring-context-logger_test.go:168 trace_id:0689 __in level:debug
+	// [DEBUG] spring-context-logger_test.go:169 trace_id:0689 __in level:debug
+	// [INFO] spring-context-logger_test.go:170 trace_id:0689 __in level:info
+	// [INFO] spring-context-logger_test.go:171 trace_id:0689 __in level:info
+	// [WARN] spring-context-logger_test.go:172 trace_id:0689 __in level:warn
+	// [WARN] spring-context-logger_test.go:173 trace_id:0689 __in level:warn
+	// [ERROR] spring-context-logger_test.go:174 trace_id:0689 __in level:error
+	// [ERROR] spring-context-logger_test.go:175 trace_id:0689 __in level:error
+	// [PANIC] spring-context-logger_test.go:176 trace_id:0689 __in level:panic
+	// [PANIC] spring-context-logger_test.go:177 trace_id:0689 __in level:panic
+	// [FATAL] spring-context-logger_test.go:178 trace_id:0689 __in level:fatal
+	// [FATAL] spring-context-logger_test.go:179 trace_id:0689 __in level:fatal
 }
