@@ -26,8 +26,6 @@ import (
 	"path"
 	"runtime"
 	"strings"
-
-	"github.com/labstack/gommon/color"
 )
 
 const (
@@ -123,10 +121,10 @@ func NewConsole(level Level, output ...OutputFunc) *Console {
 	return &Console{level: level, output: func(skip int, level Level, msg string) {
 
 		strLevel := strings.ToUpper(level.String())
-		if level >= ErrorLevel { // TODO 去掉颜色依赖
-			strLevel = color.Red(strLevel)
+		if level >= ErrorLevel {
+			strLevel = fmt.Sprintf("\x1b[31m%s\x1b[0m", strLevel) // RED
 		} else if level == WarnLevel {
-			strLevel = color.Yellow(strLevel)
+			strLevel = fmt.Sprintf("\x1b[33m%s\x1b[0m", strLevel) // YELLOW
 		}
 
 		_, file, line, _ := runtime.Caller(skip + 1)
