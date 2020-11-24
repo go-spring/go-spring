@@ -29,20 +29,12 @@ const (
 	flagRO       = flagStickyRO | flagEmbedRO
 )
 
-// ValuePatch 开放 Value 的私有字段，但是不会更新外部传入的 Value。
-func ValuePatch(v reflect.Value) reflect.Value {
+// PatchValue 开放 Value 的私有字段，但是不会更新外部传入的 Value。
+func PatchValue(v reflect.Value) reflect.Value {
 	rv := reflect.ValueOf(&v)
 	flag := rv.Elem().FieldByName("flag")
 	ptrFlag := (*uintptr)(unsafe.Pointer(flag.UnsafeAddr()))
 	*ptrFlag = *ptrFlag &^ flagRO
-	return v
-}
-
-// ValuePatchIf allAccess 为 true 时开放 Value 的私有字段，但是不会更新外部传入的 Value。
-func ValuePatchIf(v reflect.Value, allAccess bool) reflect.Value {
-	if allAccess {
-		return ValuePatch(v)
-	}
 	return v
 }
 
@@ -70,7 +62,6 @@ func FileLine(fn interface{}) (file string, line int, fnName string) {
 
 	// 带 Receiver 的方法有 -fm 标记
 	s = strings.TrimRight(s, "-fm")
-
 	return file, line, s
 }
 
