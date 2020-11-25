@@ -296,9 +296,9 @@ var defaultLoggerFilter = &loggerFilter{}
 // loggerFilter 日志过滤器
 type loggerFilter struct{}
 
-func (f *loggerFilter) Invoke(ctx WebContext, chain FilterChain) {
+func (f *loggerFilter) Invoke(webCtx WebContext, chain FilterChain) {
 	start := time.Now()
-	chain.Next(ctx)
-	w := ctx.ResponseWriter() // TODO echo 返回的 Json 数据有换行符，想办法去掉它
-	ctx.LogInfof("cost:%v size:%d code:%d %s", time.Since(start), w.Size(), w.Status(), string(w.Body()))
+	chain.Next(webCtx)
+	w := webCtx.ResponseWriter()
+	SpringLogger.WithContext(webCtx.Context()).Infof("cost:%v size:%d code:%d %s", time.Since(start), w.Size(), w.Status(), string(w.Body()))
 }

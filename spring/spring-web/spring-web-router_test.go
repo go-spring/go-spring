@@ -19,7 +19,7 @@ package SpringWeb
 import (
 	"testing"
 
-	"github.com/magiconair/properties/assert"
+	"github.com/go-spring/spring-utils"
 )
 
 func TestRouter_Route(t *testing.T) {
@@ -27,16 +27,16 @@ func TestRouter_Route(t *testing.T) {
 	root := NewRouter("/root", &loggerFilter{}, &loggerFilter{})
 
 	get := root.GetMapping("/get", nil, &loggerFilter{}, &loggerFilter{})
-	assert.Equal(t, get.path, "/root/get")
-	assert.Equal(t, len(get.filters), 4)
+	SpringUtils.AssertEqual(t, get.path, "/root/get")
+	SpringUtils.AssertEqual(t, len(get.filters), 4)
 
 	sub := root.Route("/sub", &loggerFilter{}, &loggerFilter{})
 	subGet := sub.GetMapping("/get", nil, &loggerFilter{}, &loggerFilter{})
-	assert.Equal(t, subGet.path, "/root/sub/get")
-	assert.Equal(t, len(subGet.filters), 6)
+	SpringUtils.AssertEqual(t, subGet.path, "/root/sub/get")
+	SpringUtils.AssertEqual(t, len(subGet.filters), 6)
 
 	subSub := sub.Route("/sub", &loggerFilter{}, &loggerFilter{})
 	subSubGet := subSub.GetMapping("/get", nil, &loggerFilter{}, &loggerFilter{})
-	assert.Equal(t, subSubGet.path, "/root/sub/sub/get")
-	assert.Equal(t, len(subSubGet.filters), 8)
+	SpringUtils.AssertEqual(t, subSubGet.path, "/root/sub/sub/get")
+	SpringUtils.AssertEqual(t, len(subSubGet.filters), 8)
 }

@@ -22,35 +22,50 @@ import (
 
 	"github.com/go-spring/spring-utils"
 	"github.com/go-spring/spring-web"
-	"github.com/magiconair/properties/assert"
 )
 
 func TestRpcError(t *testing.T) {
 	err := errors.New("this is an error")
 
 	r1 := SpringWeb.ERROR.Error(err)
-	assert.Equal(t, SpringUtils.ToJson(r1), `{"code":-1,"msg":"ERROR","err":"/Users/didi/GitHub/go-spring/go-spring/spring/spring-web/spring-web-rpc-result_test.go:31: this is an error"}`)
+	SpringUtils.AssertEqual(t, r1, &SpringWeb.RpcResult{
+		ErrorCode: SpringWeb.ErrorCode(SpringWeb.ERROR),
+		Err:       "/Users/didi/GitHub/go-spring/go-spring/spring/spring-web/spring-web-rpc-result_test.go:30: this is an error",
+	})
 
-	r2 := SpringWeb.ERROR.ErrorWithData(err, "data")
-	assert.Equal(t, SpringUtils.ToJson(r2), `{"code":-1,"msg":"ERROR","err":"/Users/didi/GitHub/go-spring/go-spring/spring/spring-web/spring-web-rpc-result_test.go:34: this is an error","data":"data"}`)
+	r2 := SpringWeb.ERROR.ErrorWithData(err, "error_with_data")
+	SpringUtils.AssertEqual(t, r2, &SpringWeb.RpcResult{
+		ErrorCode: SpringWeb.ErrorCode(SpringWeb.ERROR),
+		Err:       "/Users/didi/GitHub/go-spring/go-spring/spring/spring-web/spring-web-rpc-result_test.go:36: this is an error",
+		Data:      "error_with_data",
+	})
 
 	func() {
 		defer func() {
-			assert.Equal(t, SpringUtils.ToJson(recover()), `{"code":-1,"msg":"ERROR","err":"/Users/didi/GitHub/go-spring/go-spring/spring/spring-web/spring-web-rpc-result_test.go:41: this is an error"}`)
+			SpringUtils.AssertEqual(t, recover(), &SpringWeb.RpcResult{
+				ErrorCode: SpringWeb.ErrorCode(SpringWeb.ERROR),
+				Err:       "/Users/didi/GitHub/go-spring/go-spring/spring/spring-web/spring-web-rpc-result_test.go:50: this is an error",
+			})
 		}()
 		SpringWeb.ERROR.Panic(err).When(err != nil)
 	}()
 
 	func() {
 		defer func() {
-			assert.Equal(t, SpringUtils.ToJson(recover()), `{"code":-1,"msg":"ERROR","err":"/Users/didi/GitHub/go-spring/go-spring/spring/spring-web/spring-web-rpc-result_test.go:48: this is an error"}`)
+			SpringUtils.AssertEqual(t, recover(), &SpringWeb.RpcResult{
+				ErrorCode: SpringWeb.ErrorCode(SpringWeb.ERROR),
+				Err:       "/Users/didi/GitHub/go-spring/go-spring/spring/spring-web/spring-web-rpc-result_test.go:60: this is an error",
+			})
 		}()
 		SpringWeb.ERROR.Panicf(err.Error()).When(true)
 	}()
 
 	func() {
 		defer func() {
-			assert.Equal(t, SpringUtils.ToJson(recover()), `{"code":-1,"msg":"ERROR","err":"/Users/didi/GitHub/go-spring/go-spring/spring/spring-web/spring-web-rpc-result_test.go:55: this is an error"}`)
+			SpringUtils.AssertEqual(t, recover(), &SpringWeb.RpcResult{
+				ErrorCode: SpringWeb.ErrorCode(SpringWeb.ERROR),
+				Err:       "/Users/didi/GitHub/go-spring/go-spring/spring/spring-web/spring-web-rpc-result_test.go:70: this is an error",
+			})
 		}()
 		SpringWeb.ERROR.PanicImmediately(err)
 	}()
