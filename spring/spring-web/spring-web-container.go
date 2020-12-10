@@ -22,9 +22,9 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-spring/spring-const"
 	"github.com/go-spring/spring-logger"
 	"github.com/go-spring/spring-utils"
-	"github.com/swaggo/http-swagger"
 )
 
 // HandlerFunc 标准 Web 处理函数
@@ -53,8 +53,8 @@ type ContainerConfig struct {
 
 // WebContainer Web 容器
 type WebContainer interface {
-	// WebMapping 路由表
-	WebMapping
+	// RootRouter 根路由
+	RootRouter
 
 	// Config 获取 Web 容器配置
 	Config() ContainerConfig
@@ -62,11 +62,11 @@ type WebContainer interface {
 	// GetFilters 返回过滤器列表
 	GetFilters() []Filter
 
-	// ResetFilters 重新设置过滤器列表
-	ResetFilters(filters []Filter)
-
 	// AddFilter 添加过滤器
 	AddFilter(filter ...Filter)
+
+	// SetFilters 设置过滤器列表
+	SetFilters(filters []Filter)
 
 	// GetLoggerFilter 获取 Logger Filter
 	GetLoggerFilter() Filter
@@ -74,160 +74,120 @@ type WebContainer interface {
 	// SetLoggerFilter 设置 Logger Filter
 	SetLoggerFilter(filter Filter)
 
-	// GetErrorCallback 返回容器自身的错误回调
-	GetErrorCallback() func(error)
-
-	// SetErrorCallback 设置容器自身的错误回调
-	SetErrorCallback(fn func(error))
-
 	// AddRouter 添加新的路由信息
-	AddRouter(router *Router)
-
-	// EnableSwagger 是否启用 Swagger 功能
-	EnableSwagger() bool
-
-	// SetEnableSwagger 设置是否启用 Swagger 功能
-	SetEnableSwagger(enable bool)
+	AddRouter(router RootRouter)
 
 	// Swagger 返回和容器绑定的 Swagger 对象
 	Swagger() *Swagger
 
-	// Start 启动 Web 容器，非阻塞
-	Start()
+	// Start 启动 Web 容器
+	Start() error
 
-	// Stop 停止 Web 容器，阻塞
-	Stop(ctx context.Context)
+	// Stop 停止 Web 容器
+	Stop(ctx context.Context) error
 }
 
-// BaseWebContainer WebContainer 的通用部分
-type BaseWebContainer struct {
-	WebMapping
+// AbstractContainer 抽象的 WebContainer 实现
+type AbstractContainer struct {
+	RootRouter
 
-	config ContainerConfig
-
-	enableSwag bool     // 是否启用 Swagger 功能
-	swagger    *Swagger // 和容器绑定的 Swagger 对象
-
-	filters       []Filter    // 其他过滤器
-	loggerFilter  Filter      // 日志过滤器
-	errorCallback func(error) // 容器自身的错误回调
+	config  ContainerConfig // 容器配置项
+	filters []Filter        // 其他过滤器
+	logger  Filter          // 日志过滤器
+	swagger *Swagger        // Swagger根
 }
 
-// NewBaseWebContainer BaseWebContainer 的构造函数
-func NewBaseWebContainer(config ContainerConfig) *BaseWebContainer {
-	return &BaseWebContainer{
-		WebMapping:   NewDefaultWebMapping(),
-		config:       config,
-		enableSwag:   true,
-		loggerFilter: defaultLoggerFilter,
+// NewAbstractContainer AbstractContainer 的构造函数
+func NewAbstractContainer(config ContainerConfig) *AbstractContainer {
+	return &AbstractContainer{
+		RootRouter: NewRootRouter(),
+		config:     config,
+		logger:     defaultLoggerFilter,
 	}
 }
 
 // Address 返回监听地址
-func (c *BaseWebContainer) Address() string {
+func (c *AbstractContainer) Address() string {
 	return fmt.Sprintf("%s:%d", c.config.IP, c.config.Port)
 }
 
 // Config 获取 Web 容器配置
-func (c *BaseWebContainer) Config() ContainerConfig {
+func (c *AbstractContainer) Config() ContainerConfig {
 	return c.config
 }
 
 // GetFilters 返回过滤器列表
-func (c *BaseWebContainer) GetFilters() []Filter {
+func (c *AbstractContainer) GetFilters() []Filter {
 	return c.filters
 }
 
-// ResetFilters 重新设置过滤器列表
-func (c *BaseWebContainer) ResetFilters(filters []Filter) {
-	c.filters = filters
-}
-
 // AddFilter 添加过滤器
-func (c *BaseWebContainer) AddFilter(filter ...Filter) {
+func (c *AbstractContainer) AddFilter(filter ...Filter) {
 	c.filters = append(c.filters, filter...)
 }
 
+// SetFilters 设置过滤器列表
+func (c *AbstractContainer) SetFilters(filters []Filter) {
+	c.filters = filters
+}
+
 // GetLoggerFilter 获取 Logger Filter
-func (c *BaseWebContainer) GetLoggerFilter() Filter {
-	return c.loggerFilter
+func (c *AbstractContainer) GetLoggerFilter() Filter {
+	return c.logger
 }
 
 // SetLoggerFilter 设置 Logger Filter
-func (c *BaseWebContainer) SetLoggerFilter(filter Filter) {
-	c.loggerFilter = filter
-}
-
-// GetErrorCallback 返回容器自身的错误回调
-func (c *BaseWebContainer) GetErrorCallback() func(error) {
-	return c.errorCallback
-}
-
-// SetErrorCallback 设置容器自身的错误回调
-func (c *BaseWebContainer) SetErrorCallback(fn func(error)) {
-	c.errorCallback = fn
+func (c *AbstractContainer) SetLoggerFilter(filter Filter) {
+	c.logger = filter
 }
 
 // AddRouter 添加新的路由信息
-func (c *BaseWebContainer) AddRouter(router *Router) {
-	for _, mapper := range router.mapping.Mappers() {
+func (c *AbstractContainer) AddRouter(router RootRouter) {
+	for _, mapper := range router.Mappers() {
 		c.AddMapper(mapper)
 	}
 }
 
-// EnableSwagger 是否启用 Swagger 功能
-func (c *BaseWebContainer) EnableSwagger() bool {
-	return c.enableSwag
-}
-
-// SetEnableSwagger 设置是否启用 Swagger 功能
-func (c *BaseWebContainer) SetEnableSwagger(enable bool) {
-	c.enableSwag = enable
-}
-
 // Swagger 返回和容器绑定的 Swagger 对象
-func (c *BaseWebContainer) Swagger() *Swagger {
-	if c.swagger == nil {
-		c.swagger = NewSwagger()
-	}
+func (c *AbstractContainer) Swagger() *Swagger {
+	c.swagger = NewSwagger()
 	return c.swagger
 }
 
-// PreStart 执行 Start 之前的准备工作
-func (c *BaseWebContainer) PreStart() {
+// SwaggerHandler Swagger 处理器
+type SwaggerHandler func(router RootRouter, doc string)
 
-	if c.enableSwag && c.swagger != nil {
+// swaggerHandler Swagger 处理器
+var swaggerHandler SwaggerHandler
 
-		// 注册 path 的 Operation
+// RegisterSwaggerHandler 注册 Swagger 处理器
+func RegisterSwaggerHandler(handler SwaggerHandler) {
+	swaggerHandler = handler
+}
+
+// Start 启动 Web 容器
+func (c *AbstractContainer) Start() error {
+	if c.swagger != nil && swaggerHandler != nil {
 		for _, mapper := range c.Mappers() {
 			if op := mapper.swagger; op != nil {
 				if err := op.parseBind(); err != nil {
-					panic(err)
+					return err
 				}
 				c.swagger.AddPath(mapper.Path(), mapper.Method(), op)
 			}
 		}
-
-		doc := c.swagger.ReadDoc()
-		hSwagger := httpSwagger.Handler(httpSwagger.URL("/swagger/doc.json"))
-
-		// 注册 swagger-ui 和 doc.json 接口
-		c.GetMapping("/swagger/*", func(webCtx WebContext) {
-			if webCtx.PathParam("*") == "doc.json" {
-				webCtx.Blob(MIMEApplicationJSONCharsetUTF8, []byte(doc))
-			} else {
-				hSwagger(webCtx.ResponseWriter(), webCtx.Request())
-			}
-		})
-
-		// 注册 redoc 接口
-		c.GetMapping("/redoc", ReDoc)
+		swaggerHandler(c.RootRouter, c.swagger.ReadDoc())
 	}
+	return nil
+}
 
+// Stop 停止 Web 容器
+func (c *AbstractContainer) Stop(ctx context.Context) error {
+	panic(SpringConst.UnimplementedMethod)
 }
 
 // PrintMapper 打印路由注册信息
-func (c *BaseWebContainer) PrintMapper(m *Mapper) {
+func (c *AbstractContainer) PrintMapper(m *Mapper) {
 	file, line, fnName := m.handler.FileLine()
 	SpringLogger.Infof("%v :%d %s -> %s:%d %s", GetMethod(m.method), c.config.Port, m.path, file, line, fnName)
 }
@@ -279,12 +239,12 @@ func HTTP(fn http.HandlerFunc) Handler {
 	return httpHandler(fn)
 }
 
-// WrapF 标准 Http 处理函数的辅助函数，兼容 gin 写法
+// WrapF 标准 Http 处理函数的辅助函数
 func WrapF(fn http.HandlerFunc) Handler {
 	return httpHandler(fn)
 }
 
-// WrapH 标准 Http 处理函数的辅助函数，兼容 gin 写法
+// WrapH 标准 Http 处理函数的辅助函数
 func WrapH(h http.Handler) Handler {
 	return httpHandler(h.ServeHTTP)
 }

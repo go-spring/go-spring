@@ -8,5 +8,4 @@ require (
 	github.com/go-spring/spring-const v1.0.5
 	github.com/go-spring/spring-logger v1.0.6-0.20201124021239-090e4c0d9eb1
 	github.com/go-spring/spring-utils v1.0.6-0.20201124071745-780ca87ed9dd
-	github.com/swaggo/http-swagger v0.0.0-20200308142732-58ac5e232fba
 )
