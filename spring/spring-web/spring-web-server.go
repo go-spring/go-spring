@@ -28,15 +28,10 @@ type WebServer struct {
 	containers []WebContainer // Web 容器列表
 	filters    []Filter       // 共用的普通过滤器
 	logger     Filter         // 共用的日志过滤器
-	errors     []error        // 错误列表
-	errLock    sync.Mutex
 }
 
 // NewWebServer WebServer 的构造函数
 func NewWebServer() *WebServer { return &WebServer{} }
-
-// Errors 获取错误列表
-func (s *WebServer) Errors() []error { return s.errors }
 
 // Filters 获取过滤器列表
 func (s *WebServer) Filters() []Filter { return s.filters }
@@ -68,17 +63,9 @@ func (s *WebServer) AddContainer(container ...WebContainer) *WebServer {
 	return s
 }
 
-func (s *WebServer) error(err error) {
-	if err != nil {
-		s.errLock.Lock()
-		defer s.errLock.Unlock()
-		s.errors = append(s.errors, err)
-	}
-}
-
-// Start 启动 Web 容器，非阻塞调用
-func (s *WebServer) Start() {
-	s.errors = make([]error, 0)
+// Start 启动 Web 容器
+func (s *WebServer) Start() chan error {
+	errChan := make(chan error)
 	for _, container := range s.containers {
 		c := container // 避免闭包延迟捕获
 
@@ -90,17 +77,30 @@ func (s *WebServer) Start() {
 		// 添加 Server 的普通过滤器给 Container
 		c.SetFilters(append(s.filters, c.GetFilters()...))
 
-		go func() { s.error(c.Start()) }()
+		go func() {
+			if err := c.Start(); err != nil {
+				errChan <- err
+			}
+		}()
 	}
+	return errChan
 }
 
-// Stop 停止 Web 容器，阻塞调用
-func (s *WebServer) Stop(ctx context.Context) {
-	s.errors = make([]error, 0)
+// Stop 停止 Web 容器
+func (s *WebServer) Stop(ctx context.Context) []error {
+	var l sync.Mutex
+	r := make([]error, 0)
 	var wg SpringUtils.WaitGroup
 	for _, container := range s.containers {
 		c := container // 避免延迟绑定
-		wg.Add(func() { s.error(c.Stop(ctx)) })
+		wg.Add(func() {
+			if err := c.Stop(ctx); err != nil {
+				l.Lock()
+				defer l.Unlock()
+				r = append(r, err)
+			}
+		})
 	}
 	wg.Wait()
+	return r
 }
