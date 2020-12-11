@@ -46,6 +46,8 @@ github.com/go-spring/spring-utils v1.0.6-0.20201124071745-780ca87ed9dd h1:3Wm952
 github.com/go-spring/spring-utils v1.0.6-0.20201124071745-780ca87ed9dd/go.mod h1:O9ipzL7xjafDIGLS1FhbFf0Ep7/AmgLXkxPpfDPS9Jg=
 github.com/go-spring/spring-web v1.0.6-0.20201210112559-c80282766334 h1:2z7Y37JpIvYecuHStUAlmVAFmBh1MyRVqwFzkAdh3X4=
 github.com/go-spring/spring-web v1.0.6-0.20201210112559-c80282766334/go.mod h1:ntmbn2V6/L0FiNgdni80nGJIrMXQ4JA1+Gl/We4csNc=
+github.com/go-spring/spring-web v1.0.6-0.20201211094808-cf7b4831ac62 h1:v4rHfW9PY4NOnRB4rp8NC9XEE8fTUc/6OYMMdFphnbM=
+github.com/go-spring/spring-web v1.0.6-0.20201211094808-cf7b4831ac62/go.mod h1:ntmbn2V6/L0FiNgdni80nGJIrMXQ4JA1+Gl/We4csNc=
 github.com/golang/protobuf v1.2.0/go.mod h1:6lQm79b+lXiMfvg/cZm0SGofjICqVBUtrP5yJMmIC1U=
 github.com/golang/protobuf v1.3.1/go.mod h1:6lQm79b+lXiMfvg/cZm0SGofjICqVBUtrP5yJMmIC1U=
 github.com/gorilla/mux v1.7.3/go.mod h1:1lud6UwP+6orDFRuTfBEV8e9/aOM/c4fVVCaMa2zaAs=
