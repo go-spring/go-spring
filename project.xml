@@ -138,4 +138,10 @@
         <url>https://github.com/go-spring/starter-gorm.git</url>
         <branch>main</branch>
     </project>
+    <project>
+        <name>spring-redoc</name>
+        <dir>spring/spring-redoc</dir>
+        <url>https://github.com/go-spring/spring-redoc.git</url>
+        <branch>main</branch>
+    </project>
 </projects>
