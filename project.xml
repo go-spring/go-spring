@@ -13,12 +13,6 @@
         <branch>master</branch>
     </project>
     <project>
-        <name>spring-test</name>
-        <dir>spring/spring-test</dir>
-        <url>https://github.com/go-spring/spring-test.git</url>
-        <branch>master</branch>
-    </project>
-    <project>
         <name>spring-logger</name>
         <dir>spring/spring-logger</dir>
         <url>https://github.com/go-spring/spring-logger.git</url>
@@ -142,6 +136,12 @@
         <name>starter-gorm</name>
         <dir>starter/starter-gorm</dir>
         <url>https://github.com/go-spring/starter-gorm.git</url>
+        <branch>main</branch>
+    </project>
+    <project>
+        <name>spring-redoc</name>
+        <dir>spring/spring-redoc</dir>
+        <url>https://github.com/go-spring/spring-redoc.git</url>
         <branch>main</branch>
     </project>
 </projects>

@@ -18,27 +18,23 @@ package SpringWeb
 
 import (
 	"context"
+	"sync"
 
 	"github.com/go-spring/spring-utils"
 )
 
 // WebServer 一个 WebServer 包含多个 WebContainer
 type WebServer struct {
-	containers    []WebContainer // Web 容器列表
-	filters       []Filter       // 共用的普通过滤器
-	loggerFilter  Filter         // 共用的日志过滤器
-	errorCallback func(error)    // 容器自身的错误回调
+	containers []WebContainer // Web 容器列表
+	filters    []Filter       // 共用的普通过滤器
+	logger     Filter         // 共用的日志过滤器
 }
 
 // NewWebServer WebServer 的构造函数
-func NewWebServer() *WebServer {
-	return &WebServer{}
-}
+func NewWebServer() *WebServer { return &WebServer{} }
 
 // Filters 获取过滤器列表
-func (s *WebServer) Filters() []Filter {
-	return s.filters
-}
+func (s *WebServer) Filters() []Filter { return s.filters }
 
 // AddFilter 添加共用的普通过滤器
 func (s *WebServer) AddFilter(filter ...Filter) *WebServer {
@@ -46,32 +42,20 @@ func (s *WebServer) AddFilter(filter ...Filter) *WebServer {
 	return s
 }
 
-// ResetFilters 重新设置过滤器列表
-func (s *WebServer) ResetFilters(filters []Filter) {
-	s.filters = filters
-}
+// SetFilters 设置过滤器列表
+func (s *WebServer) SetFilters(filters []Filter) { s.filters = filters }
 
 // GetLoggerFilter 获取 Logger Filter
-func (s *WebServer) GetLoggerFilter() Filter {
-	return s.loggerFilter
-}
+func (s *WebServer) GetLoggerFilter() Filter { return s.logger }
 
 // SetLoggerFilter 设置共用的日志过滤器
 func (s *WebServer) SetLoggerFilter(filter Filter) *WebServer {
-	s.loggerFilter = filter
-	return s
-}
-
-// SetErrorCallback 设置容器自身的错误回调
-func (s *WebServer) SetErrorCallback(fn func(error)) *WebServer {
-	s.errorCallback = fn
+	s.logger = filter
 	return s
 }
 
 // Containers 返回 WebContainer 实例列表
-func (s *WebServer) Containers() []WebContainer {
-	return s.containers
-}
+func (s *WebServer) Containers() []WebContainer { return s.containers }
 
 // AddContainer 添加 WebContainer 实例
 func (s *WebServer) AddContainer(container ...WebContainer) *WebServer {
@@ -79,30 +63,44 @@ func (s *WebServer) AddContainer(container ...WebContainer) *WebServer {
 	return s
 }
 
-// Start 启动 Web 容器，非阻塞调用
-func (s *WebServer) Start() {
-	for _, c := range s.containers {
+// Start 启动 Web 容器
+func (s *WebServer) Start() chan error {
+	errChan := make(chan error)
+	for _, container := range s.containers {
+		c := container // 避免闭包延迟捕获
 
 		// 如果 Container 使用的是默认值的话，Container 使用 Server 的日志过滤器
-		if s.loggerFilter != nil && c.GetLoggerFilter() == defaultLoggerFilter {
-			c.SetLoggerFilter(s.loggerFilter)
+		if s.logger != nil && c.GetLoggerFilter() == defaultLoggerFilter {
+			c.SetLoggerFilter(s.logger)
 		}
 
 		// 添加 Server 的普通过滤器给 Container
-		filters := append(s.filters, c.GetFilters()...)
-		c.ResetFilters(filters)
+		c.SetFilters(append(s.filters, c.GetFilters()...))
 
-		c.SetErrorCallback(s.errorCallback)
-		c.Start()
+		go func() {
+			if err := c.Start(); err != nil {
+				errChan <- err
+			}
+		}()
 	}
+	return errChan
 }
 
-// Stop 停止 Web 容器，阻塞调用
-func (s *WebServer) Stop(ctx context.Context) {
+// Stop 停止 Web 容器
+func (s *WebServer) Stop(ctx context.Context) []error {
+	var l sync.Mutex
+	r := make([]error, 0)
 	var wg SpringUtils.WaitGroup
 	for _, container := range s.containers {
 		c := container // 避免延迟绑定
-		wg.Add(func() { c.Stop(ctx) })
+		wg.Add(func() {
+			if err := c.Stop(ctx); err != nil {
+				l.Lock()
+				defer l.Unlock()
+				r = append(r, err)
+			}
+		})
 	}
 	wg.Wait()
+	return r
 }

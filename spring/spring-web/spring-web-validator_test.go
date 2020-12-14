@@ -19,8 +19,8 @@ package SpringWeb_test
 import (
 	"testing"
 
+	"github.com/go-spring/spring-utils"
 	"github.com/go-spring/spring-web"
-	"github.com/magiconair/properties/assert"
 )
 
 func TestValidate(t *testing.T) {
@@ -30,12 +30,12 @@ func TestValidate(t *testing.T) {
 	}{}
 
 	v.Str = "" // 不启用参数校验器
-	assert.Equal(t, SpringWeb.Validate(v), nil)
+	SpringUtils.AssertEqual(t, SpringWeb.Validate(v), nil)
 
 	SpringWeb.Validator = SpringWeb.NewDefaultValidator()
 	defer func() { SpringWeb.Validator = nil }()
 
-	assert.Panic(t, func() {
+	SpringUtils.AssertPanic(t, func() {
 		v.Str = ""
 		if err := SpringWeb.Validate(v); err != nil {
 			panic(err)
@@ -43,9 +43,9 @@ func TestValidate(t *testing.T) {
 	}, "'Str' Error:Field validation for 'Str' failed on the 'required' tag")
 
 	v.Str = "1234"
-	assert.Equal(t, SpringWeb.Validate(v), nil)
+	SpringUtils.AssertEqual(t, SpringWeb.Validate(v), nil)
 
-	assert.Panic(t, func() {
+	SpringUtils.AssertPanic(t, func() {
 		v.Str = "12345"
 		if err := SpringWeb.Validate(v); err != nil {
 			panic(err)

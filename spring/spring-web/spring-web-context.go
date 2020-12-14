@@ -18,6 +18,7 @@ package SpringWeb
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"mime/multipart"
 	"net/http"
@@ -35,7 +36,7 @@ var ErrorHandler = func(webCtx WebContext, err *HttpError) {
 
 	defer func() {
 		if r := recover(); r != nil {
-			webCtx.LogError(r)
+			SpringLogger.WithContext(webCtx.Context()).Error(r)
 		}
 	}()
 
@@ -98,14 +99,6 @@ type ResponseWriter interface {
 // 使得底层可以灵活切换，因此在功能上取这些 Web 服务器功能的交集，同时提供获取
 // 底层对象的接口，以便在不能满足用户要求的时候使用底层实现的能力，当然要慎用。
 type WebContext interface {
-	/////////////////////////////////////////
-	// 通用能力部分
-
-	// LoggerContext 日志接口上下文
-	SpringLogger.LoggerContext
-
-	// SetLoggerContext 设置日志接口上下文对象
-	SetLoggerContext(logCtx SpringLogger.LoggerContext)
 
 	// NativeContext 返回封装的底层上下文对象
 	NativeContext() interface{}
@@ -124,6 +117,9 @@ type WebContext interface {
 
 	// SetRequest sets `*http.Request`.
 	SetRequest(r *http.Request)
+
+	// Context 返回 Request 绑定的 context.Context 对象
+	Context() context.Context
 
 	// IsTLS returns true if HTTP connection is TLS otherwise false.
 	IsTLS() bool
