@@ -35,40 +35,36 @@ type route struct {
 
 // Container 适配 echo 的 Web 容器
 type Container struct {
-	*SpringWeb.BaseWebContainer
+	*SpringWeb.AbstractContainer
 	echoServer *echo.Echo
 	routes     map[string]route // 记录所有通过 spring echo 注册的路由
 }
 
 // NewContainer Container 的构造函数
 func NewContainer(config SpringWeb.ContainerConfig) *Container {
-	c := &Container{
-		BaseWebContainer: SpringWeb.NewBaseWebContainer(config),
-		routes:           make(map[string]route),
-	}
+	c := &Container{}
+	c.echoServer = echo.New()
+	c.echoServer.HideBanner = true
+	c.routes = make(map[string]route)
+	c.AbstractContainer = SpringWeb.NewAbstractContainer(config)
 	return c
 }
 
-// Deprecated: Filter 机制可完美替代中间件机制，不再需要定制化
-func (c *Container) SetEchoServer(e *echo.Echo) {
-	c.echoServer = e
-}
+// Start 启动 Web 容器
+func (c *Container) Start() error {
 
-// Start 启动 Web 容器，非阻塞
-func (c *Container) Start() {
-
-	c.PreStart()
-
-	// 使用默认的 echo 容器
-	if c.echoServer == nil {
-		e := echo.New()
-		e.HideBanner = true
-		c.echoServer = e
+	if err := c.AbstractContainer.Start(); err != nil {
+		return err
 	}
 
 	var cFilters []SpringWeb.Filter
 
-	cFilters = append(cFilters, c.GetLoggerFilter())
+	if loggerFilter := c.GetLoggerFilter(); loggerFilter != nil {
+		cFilters = append(cFilters, loggerFilter)
+	} else {
+		cFilters = append(cFilters, SpringWeb.GetLoggerFilter())
+	}
+
 	cFilters = append(cFilters, &recoveryFilter{})
 	cFilters = append(cFilters, c.GetFilters()...)
 
@@ -108,31 +104,23 @@ func (c *Container) Start() {
 		}
 	}
 
-	// 启动 echo 容器
-	go func() {
-		var err error
-		// TODO 应用 ReadTimeout 和 WriteTimeout。
+	var err error
 
-		if cfg := c.Config(); cfg.EnableSSL {
-			err = c.echoServer.StartTLS(c.Address(), cfg.CertFile, cfg.KeyFile)
-		} else {
-			err = c.echoServer.Start(c.Address())
-		}
+	if cfg := c.Config(); cfg.EnableSSL {
+		err = c.echoServer.StartTLS(c.Address(), cfg.CertFile, cfg.KeyFile)
+	} else {
+		err = c.echoServer.Start(c.Address())
+	}
 
-		if err != nil && err != http.ErrServerClosed {
-			if fn := c.GetErrorCallback(); fn != nil {
-				fn(err)
-			}
-		}
-
-		SpringLogger.Infof("exit echo server on %s return %s", c.Address(), SpringUtils.ErrorToString(err))
-	}()
+	SpringLogger.Infof("exit echo server on %s return %s", c.Address(), SpringUtils.ErrorToString(err))
+	return err
 }
 
-// Stop 停止 Web 容器，阻塞
-func (c *Container) Stop(ctx context.Context) {
+// Stop 停止 Web 容器
+func (c *Container) Stop(ctx context.Context) error {
 	err := c.echoServer.Shutdown(ctx)
 	SpringLogger.Infof("shutdown echo server on %s return %s", c.Address(), SpringUtils.ErrorToString(err))
+	return err
 }
 
 // HandlerWrapper Web 处理函数包装器
@@ -163,9 +151,7 @@ func (e echoHandler) FileLine() (file string, line int, fnName string) {
 }
 
 // Echo Web Echo 适配函数
-func Echo(fn echo.HandlerFunc) SpringWeb.Handler {
-	return echoHandler(fn)
-}
+func Echo(fn echo.HandlerFunc) SpringWeb.Handler { return echoHandler(fn) }
 
 /////////////////// filter //////////////////////
 
@@ -185,9 +171,7 @@ func (filter echoFilter) Invoke(ctx SpringWeb.WebContext, chain SpringWeb.Filter
 }
 
 // Filter Web Echo 中间件适配器
-func Filter(fn echo.MiddlewareFunc) SpringWeb.Filter {
-	return echoFilter(fn)
-}
+func Filter(fn echo.MiddlewareFunc) SpringWeb.Filter { return echoFilter(fn) }
 
 // recoveryFilter 适配 echo 的恢复过滤器
 type recoveryFilter struct{}
@@ -196,7 +180,9 @@ func (f *recoveryFilter) Invoke(webCtx SpringWeb.WebContext, chain SpringWeb.Fil
 
 	defer func() {
 		if err := recover(); err != nil {
-			webCtx.LogError(err, "\n", string(debug.Stack()))
+
+			ctxLogger := SpringLogger.WithContext(webCtx.Context())
+			ctxLogger.Error(err, "\n", string(debug.Stack()))
 
 			httpE := SpringWeb.HttpError{Code: http.StatusInternalServerError}
 			switch e := err.(type) {
@@ -225,7 +211,7 @@ func (f *recoveryFilter) Invoke(webCtx SpringWeb.WebContext, chain SpringWeb.Fil
 			if !echoCtx.Response().Committed {
 				if echoCtx.Request().Method == http.MethodHead { // Issue #608
 					if err := echoCtx.NoContent(httpE.Code); err != nil {
-						webCtx.LogError(err)
+						ctxLogger.Error(err)
 					}
 				} else {
 					SpringWeb.ErrorHandler(webCtx, &httpE)

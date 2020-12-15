@@ -17,6 +17,7 @@
 package SpringEcho
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -27,7 +28,6 @@ import (
 	"os"
 
 	"github.com/go-spring/spring-const"
-	"github.com/go-spring/spring-logger"
 	"github.com/go-spring/spring-web"
 	"github.com/labstack/echo"
 )
@@ -77,8 +77,6 @@ func (w *responseWriter) Body() []byte {
 
 // Context 适配 echo 的 Web 上下文
 type Context struct {
-	// LoggerContext 日志接口上下文
-	SpringLogger.LoggerContext
 
 	// echoContext echo 上下文对象
 	echoContext echo.Context
@@ -100,23 +98,14 @@ func NewContext(fn SpringWeb.Handler, wildCardName string, echoCtx echo.Context)
 		response: echoCtx.Response(),
 	}
 
-	ctx := echoCtx.Request().Context()
-	logCtx := SpringLogger.NewDefaultLoggerContext(ctx)
-
 	webCtx := &Context{
-		LoggerContext: logCtx,
-		echoContext:   echoCtx,
-		handlerFunc:   fn,
-		wildCardName:  wildCardName,
+		handlerFunc:  fn,
+		echoContext:  echoCtx,
+		wildCardName: wildCardName,
 	}
 
 	webCtx.Set(SpringWeb.WebContextKey, webCtx)
 	return webCtx
-}
-
-// SetLoggerContext 设置日志接口上下文对象
-func (ctx *Context) SetLoggerContext(logCtx SpringLogger.LoggerContext) {
-	ctx.LoggerContext = logCtx
 }
 
 // NativeContext 返回封装的底层上下文对象
@@ -142,6 +131,11 @@ func (ctx *Context) Request() *http.Request {
 // SetRequest sets `*http.Request`.
 func (ctx *Context) SetRequest(r *http.Request) {
 	ctx.echoContext.SetRequest(r)
+}
+
+// Context 返回 Request 绑定的 context.Context 对象
+func (ctx *Context) Context() context.Context {
+	return ctx.echoContext.Request().Context()
 }
 
 // IsTLS returns true if HTTP connection is TLS otherwise false.
