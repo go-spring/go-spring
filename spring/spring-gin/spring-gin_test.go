@@ -28,8 +28,8 @@ import (
 	"time"
 
 	"github.com/go-spring/spring-gin"
+	"github.com/go-spring/spring-utils"
 	"github.com/go-spring/spring-web"
-	"github.com/magiconair/properties/assert"
 )
 
 func TestContext_PanicSysError(t *testing.T) {
@@ -45,7 +45,7 @@ func TestContext_PanicSysError(t *testing.T) {
 			},
 		})
 	})
-	c.Start()
+	go c.Start()
 	defer c.Stop(context.Background())
 	time.Sleep(10 * time.Millisecond)
 	response, err := http.Get("http://127.0.0.1:8080/")
@@ -62,7 +62,7 @@ func TestContext_PanicString(t *testing.T) {
 	c.GetMapping("/", func(webCtx SpringWeb.WebContext) {
 		panic("this is an error")
 	})
-	c.Start()
+	go c.Start()
 	defer c.Stop(context.Background())
 	time.Sleep(10 * time.Millisecond)
 	response, err := http.Get("http://127.0.0.1:8080/")
@@ -72,8 +72,8 @@ func TestContext_PanicString(t *testing.T) {
 	defer response.Body.Close()
 	b, _ := ioutil.ReadAll(response.Body)
 	fmt.Println(response.Status, string(b))
-	assert.Equal(t, response.StatusCode, http.StatusOK)
-	assert.Equal(t, string(b), `"this is an error"`)
+	SpringUtils.AssertEqual(t, response.StatusCode, http.StatusOK)
+	SpringUtils.AssertEqual(t, string(b), `"this is an error"`)
 }
 
 func TestContext_PanicError(t *testing.T) {
@@ -81,7 +81,7 @@ func TestContext_PanicError(t *testing.T) {
 	c.GetMapping("/", func(webCtx SpringWeb.WebContext) {
 		panic(errors.New("this is an error"))
 	})
-	c.Start()
+	go c.Start()
 	defer c.Stop(context.Background())
 	time.Sleep(10 * time.Millisecond)
 	response, err := http.Get("http://127.0.0.1:8080/")
@@ -91,8 +91,8 @@ func TestContext_PanicError(t *testing.T) {
 	defer response.Body.Close()
 	b, _ := ioutil.ReadAll(response.Body)
 	fmt.Println(response.Status, string(b))
-	assert.Equal(t, response.StatusCode, http.StatusInternalServerError)
-	assert.Equal(t, string(b), `this is an error`)
+	SpringUtils.AssertEqual(t, response.StatusCode, http.StatusInternalServerError)
+	SpringUtils.AssertEqual(t, string(b), `this is an error`)
 }
 
 func TestContext_PanicWebHttpError(t *testing.T) {
@@ -103,7 +103,7 @@ func TestContext_PanicWebHttpError(t *testing.T) {
 			Message: http.StatusText(http.StatusNotFound),
 		})
 	})
-	c.Start()
+	go c.Start()
 	defer c.Stop(context.Background())
 	time.Sleep(10 * time.Millisecond)
 	response, err := http.Get("http://127.0.0.1:8080/")
@@ -113,7 +113,7 @@ func TestContext_PanicWebHttpError(t *testing.T) {
 	defer response.Body.Close()
 	b, _ := ioutil.ReadAll(response.Body)
 	fmt.Println(response.Status, string(b))
-	assert.Equal(t, response.StatusCode, http.StatusNotFound)
+	SpringUtils.AssertEqual(t, response.StatusCode, http.StatusNotFound)
 }
 
 type dummyFilter struct{}
@@ -130,7 +130,7 @@ func TestFilter_PanicWebHttpError(t *testing.T) {
 	c.GetMapping("/", func(webCtx SpringWeb.WebContext) {
 		webCtx.String("OK!")
 	}, &dummyFilter{})
-	c.Start()
+	go c.Start()
 	defer c.Stop(context.Background())
 	time.Sleep(10 * time.Millisecond)
 	response, err := http.Get("http://127.0.0.1:8080/")
@@ -140,5 +140,5 @@ func TestFilter_PanicWebHttpError(t *testing.T) {
 	defer response.Body.Close()
 	b, _ := ioutil.ReadAll(response.Body)
 	fmt.Println(response.Status, string(b))
-	assert.Equal(t, response.StatusCode, http.StatusMethodNotAllowed)
+	SpringUtils.AssertEqual(t, response.StatusCode, http.StatusMethodNotAllowed)
 }

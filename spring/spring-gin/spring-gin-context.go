@@ -17,6 +17,7 @@
 package SpringGin
 
 import (
+	"context"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
@@ -26,7 +27,6 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/go-spring/spring-logger"
 	"github.com/go-spring/spring-web"
 )
 
@@ -67,8 +67,6 @@ func (w *responseWriter) Write(data []byte) (n int, err error) {
 
 // Context 适配 gin 的 Web 上下文
 type Context struct {
-	// LoggerContext 日志接口上下文
-	SpringLogger.LoggerContext
 
 	// ginContext gin 上下文对象
 	ginContext *gin.Context
@@ -93,23 +91,14 @@ func NewContext(fn SpringWeb.Handler, wildCardName string, ginCtx *gin.Context) 
 		ResponseWriter: ginCtx.Writer,
 	}
 
-	ctx := ginCtx.Request.Context()
-	logCtx := SpringLogger.NewDefaultLoggerContext(ctx)
-
 	webCtx := &Context{
-		LoggerContext: logCtx,
-		ginContext:    ginCtx,
-		handlerFunc:   fn,
-		wildCardName:  wildCardName,
+		handlerFunc:  fn,
+		ginContext:   ginCtx,
+		wildCardName: wildCardName,
 	}
 
 	webCtx.Set(SpringWeb.WebContextKey, webCtx)
 	return webCtx
-}
-
-// SetLoggerContext 设置日志接口上下文对象
-func (ctx *Context) SetLoggerContext(logCtx SpringLogger.LoggerContext) {
-	ctx.LoggerContext = logCtx
 }
 
 // NativeContext 返回封装的底层上下文对象
@@ -135,6 +124,11 @@ func (ctx *Context) Request() *http.Request {
 // SetRequest sets `*http.Request`.
 func (ctx *Context) SetRequest(r *http.Request) {
 	ctx.ginContext.Request = r
+}
+
+// Context 返回 Request 绑定的 context.Context 对象
+func (ctx *Context) Context() context.Context {
+	return ctx.ginContext.Request.Context()
 }
 
 // IsTLS returns true if HTTP connection is TLS otherwise false.
