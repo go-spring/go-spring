@@ -129,19 +129,19 @@ func TestMapper_Key(t *testing.T) {
 }
 
 func TestRouter_Route(t *testing.T) {
-	root := NewRootRouter().Route("/root", &loggerFilter{}, &loggerFilter{})
+	root := NewRootRouter().Route("/root", loggerFilter, loggerFilter)
 
-	get := root.GetMapping("/get", nil, &loggerFilter{}, &loggerFilter{})
+	get := root.GetMapping("/get", nil, loggerFilter, loggerFilter)
 	SpringUtils.AssertEqual(t, get.path, "/root/get")
 	SpringUtils.AssertEqual(t, len(get.filters), 4)
 
-	sub := root.Route("/sub", &loggerFilter{}, &loggerFilter{})
-	subGet := sub.GetMapping("/get", nil, &loggerFilter{}, &loggerFilter{})
+	sub := root.Route("/sub", loggerFilter, loggerFilter)
+	subGet := sub.GetMapping("/get", nil, loggerFilter, loggerFilter)
 	SpringUtils.AssertEqual(t, subGet.path, "/root/sub/get")
 	SpringUtils.AssertEqual(t, len(subGet.filters), 6)
 
-	subSub := sub.Route("/sub", &loggerFilter{}, &loggerFilter{})
-	subSubGet := subSub.GetMapping("/get", nil, &loggerFilter{}, &loggerFilter{})
+	subSub := sub.Route("/sub", loggerFilter, loggerFilter)
+	subSubGet := subSub.GetMapping("/get", nil, loggerFilter, loggerFilter)
 	SpringUtils.AssertEqual(t, subSubGet.path, "/root/sub/sub/get")
 	SpringUtils.AssertEqual(t, len(subSubGet.filters), 8)
 }

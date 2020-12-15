@@ -70,9 +70,8 @@ func NewHttpError(code int, message ...string) *HttpError {
 func (e *HttpError) Error() string {
 	if e.Internal == nil {
 		return fmt.Sprintf("code=%d, message=%s", e.Code, e.Message)
-	} else {
-		return fmt.Sprintf("code=%d, message=%s, error=%v", e.Code, e.Message, e.Internal)
 	}
+	return fmt.Sprintf("code=%d, message=%s, error=%v", e.Code, e.Message, e.Internal)
 }
 
 // SetInternal sets error to HTTPError.Internal
@@ -276,13 +275,9 @@ type BufferedResponseWriter struct {
 	size   int
 }
 
-func (w *BufferedResponseWriter) Size() int {
-	return w.size
-}
+func (w *BufferedResponseWriter) Size() int { return w.size }
 
-func (w *BufferedResponseWriter) Body() []byte {
-	return w.buffer.Bytes()
-}
+func (w *BufferedResponseWriter) Body() []byte { return w.buffer.Bytes() }
 
 func filterFlags(content string) string {
 	for i, char := range strings.ToLower(content) {

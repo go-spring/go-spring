@@ -36,7 +36,7 @@ const (
 	JavaPathStyle = PathStyleEnum(2)
 )
 
-// DefaultWildCardName 默认统配符的名称
+// DefaultWildCardName 默认通配符的名称
 const DefaultWildCardName = "@_@"
 
 // pathStyle URL 地址风格

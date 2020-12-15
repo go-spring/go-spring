@@ -46,6 +46,7 @@ type ContainerConfig struct {
 	EnableSSL bool   // 使用 SSL
 	KeyFile   string // SSL 证书
 	CertFile  string // SSL 秘钥
+	BasePath  string // 根路径
 
 	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
@@ -99,11 +100,7 @@ type AbstractContainer struct {
 
 // NewAbstractContainer AbstractContainer 的构造函数
 func NewAbstractContainer(config ContainerConfig) *AbstractContainer {
-	return &AbstractContainer{
-		RootRouter: NewRootRouter(),
-		config:     config,
-		logger:     defaultLoggerFilter,
-	}
+	return &AbstractContainer{RootRouter: NewRootRouter(), config: config}
 }
 
 // Address 返回监听地址
@@ -210,18 +207,14 @@ func InvokeHandler(ctx WebContext, fn Handler, filters []Filter) {
 // fnHandler 封装 Web 处理函数
 type fnHandler HandlerFunc
 
-func (f fnHandler) Invoke(ctx WebContext) {
-	f(ctx)
-}
+func (f fnHandler) Invoke(ctx WebContext) { f(ctx) }
 
 func (f fnHandler) FileLine() (file string, line int, fnName string) {
 	return SpringUtils.FileLine(f)
 }
 
 // FUNC 标准 Web 处理函数的辅助函数
-func FUNC(fn HandlerFunc) Handler {
-	return fnHandler(fn)
-}
+func FUNC(fn HandlerFunc) Handler { return fnHandler(fn) }
 
 // httpHandler 标准 Http 处理函数
 type httpHandler http.HandlerFunc
@@ -235,30 +228,27 @@ func (h httpHandler) FileLine() (file string, line int, fnName string) {
 }
 
 // HTTP 标准 Http 处理函数的辅助函数
-func HTTP(fn http.HandlerFunc) Handler {
-	return httpHandler(fn)
-}
+func HTTP(fn http.HandlerFunc) Handler { return httpHandler(fn) }
 
 // WrapF 标准 Http 处理函数的辅助函数
-func WrapF(fn http.HandlerFunc) Handler {
-	return httpHandler(fn)
-}
+func WrapF(fn http.HandlerFunc) Handler { return httpHandler(fn) }
 
 // WrapH 标准 Http 处理函数的辅助函数
-func WrapH(h http.Handler) Handler {
-	return httpHandler(h.ServeHTTP)
-}
+func WrapH(h http.Handler) Handler { return httpHandler(h.ServeHTTP) }
 
 /////////////////// Web Filters //////////////////////
 
-var defaultLoggerFilter = &loggerFilter{}
+// GetLoggerFilter 获取全局的日志过滤器
+func GetLoggerFilter() Filter { return loggerFilter }
 
-// loggerFilter 日志过滤器
-type loggerFilter struct{}
+// SetLoggerFilter 设置全局的日志过滤器
+func SetLoggerFilter(filter Filter) { loggerFilter = filter }
 
-func (f *loggerFilter) Invoke(webCtx WebContext, chain FilterChain) {
+// loggerFilter 全局的日志过滤器，Container 如果没有设置日志过滤器则会使用全局的日志过滤器
+var loggerFilter = Filter(FuncFilter(func(webCtx WebContext, chain FilterChain) {
 	start := time.Now()
 	chain.Next(webCtx)
 	w := webCtx.ResponseWriter()
 	SpringLogger.WithContext(webCtx.Context()).Infof("cost:%v size:%d code:%d %s", time.Since(start), w.Size(), w.Status(), string(w.Body()))
-}
+
+}))
