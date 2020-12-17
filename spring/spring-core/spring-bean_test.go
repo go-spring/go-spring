@@ -29,7 +29,6 @@ import (
 	pkg1 "github.com/go-spring/spring-core/testdata/pkg/bar"
 	pkg2 "github.com/go-spring/spring-core/testdata/pkg/foo"
 	"github.com/go-spring/spring-utils"
-	"github.com/magiconair/properties/assert"
 )
 
 type errorString struct {
@@ -292,7 +291,7 @@ func TestIsValueType(t *testing.T) {
 func TestTypeName(t *testing.T) {
 
 	t.Run("nil", func(t *testing.T) {
-		assert.Panic(t, func() {
+		SpringUtils.AssertPanic(t, func() {
 			SpringCore.TypeName(reflect.TypeOf(nil))
 		}, "shouldn't be nil")
 	})
@@ -423,8 +422,8 @@ func TestTypeName(t *testing.T) {
 
 		for typ, v := range data {
 			typeName := SpringCore.TypeName(typ)
-			assert.Equal(t, typeName, v.typeName)
-			assert.Equal(t, typ.String(), v.baseName)
+			SpringUtils.AssertEqual(t, typeName, v.typeName)
+			SpringUtils.AssertEqual(t, typ.String(), v.baseName)
 		}
 
 		i := 3
@@ -433,8 +432,8 @@ func TestTypeName(t *testing.T) {
 		iPtrPtrPtr := &iPtrPtr
 		typ := reflect.TypeOf(iPtrPtrPtr)
 		typeName := SpringCore.TypeName(typ)
-		assert.Equal(t, typeName, "int")
-		assert.Equal(t, typ.String(), "***int")
+		SpringUtils.AssertEqual(t, typeName, "int")
+		SpringUtils.AssertEqual(t, typ.String(), "***int")
 	})
 }
 
@@ -471,7 +470,7 @@ func TestIsFuncBeanType(t *testing.T) {
 
 	for k, v := range data {
 		ok := SpringCore.IsFuncBeanType(k)
-		assert.Equal(t, ok, v)
+		SpringUtils.AssertEqual(t, ok, v)
 	}
 }
 
@@ -492,7 +491,7 @@ func TestParseSingletonTag(t *testing.T) {
 
 	for k, v := range data {
 		tag := SpringCore.ParseSingletonTag(k)
-		assert.Equal(t, tag, v)
+		SpringUtils.AssertEqual(t, tag, v)
 	}
 }
 
@@ -505,7 +504,7 @@ func TestParseBeanTag(t *testing.T) {
 
 	for k, v := range data {
 		tag := SpringCore.ParseCollectionTag(k)
-		assert.Equal(t, tag, v)
+		SpringUtils.AssertEqual(t, tag, v)
 	}
 }
 
@@ -542,16 +541,16 @@ func TestObjectBean(t *testing.T) {
 
 	t.Run("bean can't be nil", func(t *testing.T) {
 
-		assert.Panic(t, func() {
+		SpringUtils.AssertPanic(t, func() {
 			SpringCore.ObjectBean(nil)
 		}, "bean can't be nil")
 
-		assert.Panic(t, func() {
+		SpringUtils.AssertPanic(t, func() {
 			var i *int
 			SpringCore.ObjectBean(i)
 		}, "bean can't be nil")
 
-		assert.Panic(t, func() {
+		SpringUtils.AssertPanic(t, func() {
 			var m map[string]string
 			SpringCore.ObjectBean(m)
 		}, "bean can't be nil")
@@ -569,7 +568,7 @@ func TestObjectBean(t *testing.T) {
 		}
 
 		for _, fn := range data {
-			assert.Panic(t, fn, "bean must be ref type")
+			SpringUtils.AssertPanic(t, fn, "bean must be ref type")
 		}
 	})
 
@@ -617,8 +616,8 @@ func TestObjectBean(t *testing.T) {
 		}
 
 		for bd, v := range data {
-			assert.Equal(t, bd.Name(), v.name)
-			assert.Equal(t, bd.TypeName(), v.typeName)
+			SpringUtils.AssertEqual(t, bd.Name(), v.name)
+			SpringUtils.AssertEqual(t, bd.TypeName(), v.typeName)
 		}
 	})
 }
@@ -665,40 +664,40 @@ func NewPtrStudent(teacher Teacher, room string) *Student {
 func TestConstructorBean(t *testing.T) {
 
 	bd := SpringCore.ConstructorBean(NewStudent)
-	assert.Equal(t, bd.Type().String(), "*SpringCore_test.Student")
+	SpringUtils.AssertEqual(t, bd.Type().String(), "*SpringCore_test.Student")
 
 	bd = SpringCore.ConstructorBean(NewPtrStudent)
-	assert.Equal(t, bd.Type().String(), "*SpringCore_test.Student")
+	SpringUtils.AssertEqual(t, bd.Type().String(), "*SpringCore_test.Student")
 
 	mapFn := func() map[int]string { return make(map[int]string) }
 	bd = SpringCore.ConstructorBean(mapFn)
-	assert.Equal(t, bd.Type().String(), "map[int]string")
+	SpringUtils.AssertEqual(t, bd.Type().String(), "map[int]string")
 
 	sliceFn := func() []int { return make([]int, 1) }
 	bd = SpringCore.ConstructorBean(sliceFn)
-	assert.Equal(t, bd.Type().String(), "[]int")
+	SpringUtils.AssertEqual(t, bd.Type().String(), "[]int")
 
 	funcFn := func() func(int) { return nil }
 	bd = SpringCore.ConstructorBean(funcFn)
-	assert.Equal(t, bd.Type().String(), "func(int)")
+	SpringUtils.AssertEqual(t, bd.Type().String(), "func(int)")
 
 	intFn := func() int { return 0 }
 	bd = SpringCore.ConstructorBean(intFn)
-	assert.Equal(t, bd.Type().String(), "*int")
-	assert.Equal(t, bd.Value().Type().String(), "*int")
+	SpringUtils.AssertEqual(t, bd.Type().String(), "*int")
+	SpringUtils.AssertEqual(t, bd.Value().Type().String(), "*int")
 
 	interfaceFn := func(name string) Teacher { return newHistoryTeacher(name) }
 	bd = SpringCore.ConstructorBean(interfaceFn)
-	assert.Equal(t, bd.Type().String(), "SpringCore_test.Teacher")
-	assert.Equal(t, bd.Value().Type().String(), "SpringCore_test.Teacher")
+	SpringUtils.AssertEqual(t, bd.Type().String(), "SpringCore_test.Teacher")
+	SpringUtils.AssertEqual(t, bd.Value().Type().String(), "SpringCore_test.Teacher")
 
-	assert.Panic(t, func() {
+	SpringUtils.AssertPanic(t, func() {
 		bd = SpringCore.ConstructorBean(func() (*int, *int) { return nil, nil })
-		assert.Equal(t, bd.Type().String(), "*int")
+		SpringUtils.AssertEqual(t, bd.Type().String(), "*int")
 	}, "func bean must be func\\(...\\)bean or func\\(...\\)\\(bean, error\\)")
 
 	bd = SpringCore.ConstructorBean(func() (*int, error) { return nil, nil })
-	assert.Equal(t, bd.Type().String(), "*int")
+	SpringUtils.AssertEqual(t, bd.Type().String(), "*int")
 }
 
 func TestValue(t *testing.T) {
