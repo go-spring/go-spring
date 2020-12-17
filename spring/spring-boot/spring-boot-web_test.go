@@ -19,32 +19,29 @@ package SpringBoot
 import (
 	"testing"
 
-	"github.com/magiconair/properties/assert"
+	"github.com/go-spring/spring-utils"
 )
 
 func TestRouter_Route(t *testing.T) {
-	root := Route("/root", FilterBean("r1", "r2")).ConditionOnBean("r").OnPorts(9090)
+	root := Route("/root", FilterBean("r1", "r2")).ConditionOnBean("r")
 
-	get := root.GetMapping("/get", nil, FilterBean("g1", "g2")).ConditionOnBean("g").OnPorts(8080)
-	assert.Equal(t, get, DefaultWebMapping.Mappings[get.Key()])
-	assert.Equal(t, get.Ports(), []int{9090, 8080})
-	assert.Equal(t, get.Path(), "/root/get")
-	assert.Equal(t, len(get.Filters()), 2)
+	get := root.GetMapping("/get", nil, FilterBean("g1", "g2")).ConditionOnBean("g")
+	SpringUtils.AssertEqual(t, get, DefaultWebMapping.Mappings[get.Key()])
+	SpringUtils.AssertEqual(t, get.Path(), "/root/get")
+	SpringUtils.AssertEqual(t, len(get.Filters()), 2)
 	// TODO 校验 cond 字段是否正确
 
-	sub := root.Route("/sub", FilterBean("s1", "s2")).ConditionOnBean("s").OnPorts(7070)
-	subGet := sub.GetMapping("/get", nil, FilterBean("sg1", "sg2")).ConditionOnBean("sg").OnPorts(6060)
-	assert.Equal(t, subGet, DefaultWebMapping.Mappings[subGet.Key()])
-	assert.Equal(t, subGet.Ports(), []int{9090, 7070, 6060})
-	assert.Equal(t, subGet.Path(), "/root/sub/get")
-	assert.Equal(t, len(subGet.Filters()), 3)
+	sub := root.Route("/sub", FilterBean("s1", "s2")).ConditionOnBean("s")
+	subGet := sub.GetMapping("/get", nil, FilterBean("sg1", "sg2")).ConditionOnBean("sg")
+	SpringUtils.AssertEqual(t, subGet, DefaultWebMapping.Mappings[subGet.Key()])
+	SpringUtils.AssertEqual(t, subGet.Path(), "/root/sub/get")
+	SpringUtils.AssertEqual(t, len(subGet.Filters()), 3)
 	// ...
 
-	subSub := sub.Route("/sub", FilterBean("ss1", "ss2")).ConditionOnBean("ss").OnPorts(5050)
-	subSubGet := subSub.GetMapping("/get", nil, FilterBean("ssg1", "ssg2")).ConditionOnBean("ssg").OnPorts(4040)
-	assert.Equal(t, subSubGet, DefaultWebMapping.Mappings[subSubGet.Key()])
-	assert.Equal(t, subSubGet.Ports(), []int{9090, 7070, 5050, 4040})
-	assert.Equal(t, subSubGet.Path(), "/root/sub/sub/get")
-	assert.Equal(t, len(subSubGet.Filters()), 4)
+	subSub := sub.Route("/sub", FilterBean("ss1", "ss2")).ConditionOnBean("ss")
+	subSubGet := subSub.GetMapping("/get", nil, FilterBean("ssg1", "ssg2")).ConditionOnBean("ssg")
+	SpringUtils.AssertEqual(t, subSubGet, DefaultWebMapping.Mappings[subSubGet.Key()])
+	SpringUtils.AssertEqual(t, subSubGet.Path(), "/root/sub/sub/get")
+	SpringUtils.AssertEqual(t, len(subSubGet.Filters()), 4)
 	// ...
 }
