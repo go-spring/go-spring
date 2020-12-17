@@ -29,12 +29,14 @@ const (
 	flagRO       = flagStickyRO | flagEmbedRO
 )
 
-// PatchValue 开放 Value 的私有字段，但是不会更新外部传入的 Value。
-func PatchValue(v reflect.Value) reflect.Value {
-	rv := reflect.ValueOf(&v)
-	flag := rv.Elem().FieldByName("flag")
-	ptrFlag := (*uintptr)(unsafe.Pointer(flag.UnsafeAddr()))
-	*ptrFlag = *ptrFlag &^ flagRO
+// PatchValue allAccess 为 true 时开放 v 的私有字段，返回修改后的副本。
+func PatchValue(v reflect.Value, allAccess bool) reflect.Value {
+	if allAccess {
+		rv := reflect.ValueOf(&v)
+		flag := rv.Elem().FieldByName("flag")
+		ptrFlag := (*uintptr)(unsafe.Pointer(flag.UnsafeAddr()))
+		*ptrFlag = *ptrFlag &^ flagRO
+	}
 	return v
 }
 

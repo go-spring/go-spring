@@ -188,9 +188,9 @@ asserts that a got value matches a given regular expression.
 
 #### PatchValue
 
-开放 Value 的私有字段，但是不会更新外部传入的 Value。
+allAccess 为 true 时开放 v 的私有字段，返回修改后的副本。
 
-    func PatchValue(v reflect.Value) reflect.Value 
+    func PatchValue(v reflect.Value, allAccess bool) reflect.Value 
 
 #### Indirect
 
