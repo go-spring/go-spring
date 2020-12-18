@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package SpringError
+package SpringWeb
 
 import (
 	"fmt"
@@ -48,11 +48,6 @@ type RpcResult struct {
 	Data interface{} `json:"data,omitempty"` // 返回值
 }
 
-// NewRpcResult RpcResult 的构造函数
-func NewRpcResult(data interface{}) RpcResult {
-	return RpcResult{ErrorCode: DEFAULT, Data: data}
-}
-
 // RpcSuccess 定义一个 RPC 成功值
 type RpcSuccess ErrorCode
 
@@ -76,29 +71,35 @@ func NewRpcError(code int32, msg string) RpcError {
 
 // Error 绑定一个错误
 func (r RpcError) Error(err error) *RpcResult {
-	return &RpcResult{ErrorCode: ErrorCode(r), Err: err.Error()}
+	return r.error(1, err, nil)
 }
 
-func (r RpcError) error(err error) *RpcResult {
-	str := SpringUtils.ErrorWithFileLine(err, 3).Error()
-	return &RpcResult{ErrorCode: ErrorCode(r), Err: str}
+// ErrorWithData 绑定一个错误和一个值
+func (r RpcError) ErrorWithData(err error, data interface{}) *RpcResult {
+	return r.error(1, err, data)
+}
+
+// error skip 是相对于当前函数的调用深度
+func (r RpcError) error(skip int, err error, data interface{}) *RpcResult {
+	str := SpringUtils.ErrorWithFileLine(err, skip+1).Error()
+	return &RpcResult{ErrorCode: ErrorCode(r), Err: str, Data: data}
 }
 
 // Panic 抛出一个异常值
 func (r RpcError) Panic(err error) *SpringUtils.PanicCond {
 	return SpringUtils.NewPanicCond(func() interface{} {
-		return r.error(err)
+		return r.error(2, err, nil)
 	})
 }
 
 // Panicf 抛出一段需要格式化的错误字符串
 func (r RpcError) Panicf(format string, a ...interface{}) *SpringUtils.PanicCond {
 	return SpringUtils.NewPanicCond(func() interface{} {
-		return r.error(fmt.Errorf(format, a...))
+		return r.error(2, fmt.Errorf(format, a...), nil)
 	})
 }
 
 // PanicImmediately 立即抛出一个异常值
 func (r RpcError) PanicImmediately(err error) {
-	panic(r.error(err))
+	panic(r.error(1, err, nil))
 }

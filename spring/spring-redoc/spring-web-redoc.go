@@ -14,14 +14,35 @@
  * limitations under the License.
  */
 
-package SpringWeb
+package SpringRedoc
 
 import (
 	"html/template"
+
+	"github.com/go-spring/spring-web"
+	"github.com/swaggo/http-swagger"
 )
 
+func init() {
+	SpringWeb.RegisterSwaggerHandler(func(mapping SpringWeb.RootRouter, doc string) {
+		hSwagger := httpSwagger.Handler(httpSwagger.URL("/swagger/doc.json"))
+
+		// 注册 swagger-ui 和 doc.json 接口
+		mapping.GetMapping("/swagger/*", func(webCtx SpringWeb.WebContext) {
+			if webCtx.PathParam("*") == "doc.json" {
+				webCtx.Blob(SpringWeb.MIMEApplicationJSONCharsetUTF8, []byte(doc))
+			} else {
+				hSwagger(webCtx.ResponseWriter(), webCtx.Request())
+			}
+		})
+
+		// 注册 redoc 接口
+		mapping.GetMapping("/redoc", ReDoc)
+	})
+}
+
 // ReDoc redoc 响应函数
-func ReDoc(ctx WebContext) {
+func ReDoc(ctx SpringWeb.WebContext) {
 
 	index, err := template.New("redoc.html").Parse(redocTempl)
 	if err != nil {

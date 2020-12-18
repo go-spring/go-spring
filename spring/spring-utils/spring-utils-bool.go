@@ -17,10 +17,10 @@
 package SpringUtils
 
 // DefaultBool 将 nil 转换成 false 布尔值
-func DefaultBool(v interface{}) (bool, bool) {
+func DefaultBool(v interface{}) (b bool, ok bool) {
 	if v == nil {
 		return false, true
 	}
-	s, ok := v.(bool)
-	return s, ok
+	b, ok = v.(bool)
+	return b, ok
 }

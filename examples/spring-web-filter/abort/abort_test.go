@@ -39,8 +39,7 @@ func testAbort(t *testing.T, fn func() SpringWeb.WebContainer,
 	c.AddFilter(abort.NewPushFilter(1, false, s))
 	c.AddFilter(abort.NewPushFilter(2, testAbort, s))
 	c.GetMapping("/", func(webCtx SpringWeb.WebContext) {
-		err := webCtx.String(http.StatusOK, "hello world")
-		SpringUtils.Panic(err).When(err != nil)
+		webCtx.String("hello world")
 	})
 
 	c.Start()

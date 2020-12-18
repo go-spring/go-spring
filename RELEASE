@@ -98,6 +98,17 @@ v1.0.4 2020-06-23
     4. 支持 destroy 函数按顺序依次调用，修复 Map 属性值优先返回默认值的 BUG，
     等等。
 
+    Web
+
+    Handler 提升为接口，打印更丰富的路由信息；FilterChain 提升为接口，完美适
+    配 echo 和 gin 的中间件机制；全面统一 echo、gin 以及 {} 路由风格；全面实
+    现 WebServer、WebContainer、Router、Mapper 四个级别的 Filter 机制；
+    WebContainer 增加 ReadTimeout 和 WriteTimeout 配置；BIND 模式支持
+    WebContext 参数，支持无参和无返回值，RPC 处理函数可定制；增加 gin、echo
+    与 WebContext 之间的互转函数；改造 WebServer 流式接口；优化 Swagger
+    使用；减小 WebContainer 方法集；引入参数校验框架；修复 gin 路由的 BUG；
+    增加 WebContext.SetRequest 函数，等等。
+
 v1.0.3 2020-04-24
 
     1. Bean 规则：使用具名函数的函数名作为函数 Bean 的默认名称，函数 Bean
@@ -115,10 +126,21 @@ v1.0.3 2020-04-24
 
     4. Web 模块：增加 Swagger Doc 功能（实验性支持），等等。
 
+    Web
+
+    初步实现 Swagger 框架，集成 Swagger-UI 和 ReDoc，增加 Swg Petstore
+    官方示例，统一 Spring-Web 的路由规则，和 echo 保持一致，对gin 进行适配，
+    支持 {} 路由风格，等等。
+
 v1.0.2 2020-03-24
 
     优化 SpringBean 存储；RequestMapping 支持方法组合，增加封装 Bind 操
     作的 Web RPC 适配函数；array 定义为值类型。
+
+    Web
+
+    重新设计 Request 接口，支持方法组合，支持 Container 级别的 Filter 配置，
+    适配 echo 和 gin 原生 handler，增加封装 Bind 操作的 Web RPC 适配函数。
 
 v1.0.1 2020-02-23
 
@@ -143,6 +165,10 @@ v1.0.1 2020-02-23
     6. 增加对 condition 取反的 condition，go-spring 自身的环境变量支持
     文件配置，更完善的单元测试，增加优秀贡献者名单，等等。
 
+    Web
+
+    适配 echo、gin、http 标准框架函数，更新 gin 和 echo 版本，修复少量 BUG。
+
 v1.0.0-rc 2020-01-04
 
     支持无 tag 的属性绑定；实现结构体数组及结构体指针数组元素的注入；构造函数
@@ -152,6 +178,11 @@ v1.0.0-rc 2020-01-04
     自动注入；函数返回值是接口类型时对真实类型进行注入；支持任意自定义值类型转换
     器；扩充 Bean 的数据类型；新的 URL 注册机制，并且支持按名称设置 Filter；
     Bean & OptionArg 支持可变参数函数。
+
+    Web
+
+    初步搭建 SpringWeb 框架，适配 echo 和 gin 两个主流 http web 框架，适配
+    LoggerContext 接口，初步实现 Filter 机制，增加 RPC 适配函数，等等。
 
 v1.0.0-beta 2019-12-08
 

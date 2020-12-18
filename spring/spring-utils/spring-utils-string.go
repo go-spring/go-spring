@@ -16,20 +16,11 @@
 
 package SpringUtils
 
-import (
-	"strings"
-)
-
-// Deprecated: Use "strings.EqualFold" instead.
-func EqualsIgnoreCase(a, b string) bool {
-	return strings.EqualFold(a, b)
-}
-
 // DefaultString 将 nil 转换成空字符串
-func DefaultString(v interface{}) (string, bool) {
+func DefaultString(v interface{}) (s string, ok bool) {
 	if v == nil {
 		return "", true
 	}
-	s, ok := v.(string)
+	s, ok = v.(string)
 	return s, ok
 }

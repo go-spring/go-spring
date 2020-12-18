@@ -51,9 +51,17 @@ func ErrorToString(err error) string {
 	return err.Error()
 }
 
-// ErrorWithFileLine 返回错误发生的文件行号
-func ErrorWithFileLine(err error, skip int) error {
-	_, file, line, _ := runtime.Caller(skip)
+// ErrorWithFileLine 返回错误发生的文件行号，skip 是相对于当前函数的深度
+func ErrorWithFileLine(err error, skip ...int) error {
+	var (
+		file string
+		line int
+	)
+	if len(skip) > 0 {
+		_, file, line, _ = runtime.Caller(skip[0] + 1)
+	} else {
+		_, file, line, _ = runtime.Caller(1)
+	}
 	str := fmt.Sprintf("%s:%d", file, line)
 	if err != nil {
 		str += ": " + err.Error()

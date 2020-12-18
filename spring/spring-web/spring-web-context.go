@@ -17,16 +17,68 @@
 package SpringWeb
 
 import (
-	"io"
+	"bytes"
+	"context"
+	"fmt"
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/go-spring/spring-logger"
 )
 
 // WebContextKey WebContext 和 NativeContext 相互转换的 Key
 const WebContextKey = "@WebCtx"
+
+// ErrorHandler 用户自定义错误处理函数
+var ErrorHandler = func(webCtx WebContext, err *HttpError) {
+
+	defer func() {
+		if r := recover(); r != nil {
+			SpringLogger.WithContext(webCtx.Context()).Error(r)
+		}
+	}()
+
+	if err.Internal == nil {
+		webCtx.Status(err.Code)
+		webCtx.String(err.Message)
+	} else {
+		webCtx.JSON(err.Internal)
+	}
+}
+
+// HttpError represents an error that occurred while handling a request.
+type HttpError struct {
+	Code     int         // HTTP 错误码
+	Message  string      // 自定义错误消息
+	Internal interface{} // 保存的原始异常
+}
+
+// NewHttpError creates a new HttpError instance.
+func NewHttpError(code int, message ...string) *HttpError {
+	e := &HttpError{Code: code}
+	if len(message) > 0 {
+		e.Message = message[0]
+	} else {
+		e.Message = http.StatusText(code)
+	}
+	return e
+}
+
+// Error makes it compatible with `error` interface.
+func (e *HttpError) Error() string {
+	if e.Internal == nil {
+		return fmt.Sprintf("code=%d, message=%s", e.Code, e.Message)
+	}
+	return fmt.Sprintf("code=%d, message=%s, error=%v", e.Code, e.Message, e.Internal)
+}
+
+// SetInternal sets error to HTTPError.Internal
+func (e *HttpError) SetInternal(err error) *HttpError {
+	e.Internal = err
+	return e
+}
 
 // ResponseWriter Override http.ResponseWriter to supply more method.
 type ResponseWriter interface {
@@ -36,19 +88,16 @@ type ResponseWriter interface {
 	Status() int
 
 	// Returns the number of bytes already written into the response http body.
-	// See Written()
 	Size() int
+
+	// 返回发送给客户端的数据，当前仅支持 MIMEApplicationJSON 格式.
+	Body() []byte
 }
 
 // WebContext 上下文接口，设计理念：为社区中优秀的 Web 服务器提供一个抽象层，
 // 使得底层可以灵活切换，因此在功能上取这些 Web 服务器功能的交集，同时提供获取
 // 底层对象的接口，以便在不能满足用户要求的时候使用底层实现的能力，当然要慎用。
 type WebContext interface {
-	/////////////////////////////////////////
-	// 通用能力部分
-
-	// LoggerContext 日志接口上下文
-	SpringLogger.LoggerContext
 
 	// NativeContext 返回封装的底层上下文对象
 	NativeContext() interface{}
@@ -67,6 +116,9 @@ type WebContext interface {
 
 	// SetRequest sets `*http.Request`.
 	SetRequest(r *http.Request)
+
+	// Context 返回 Request 绑定的 context.Context 对象
+	Context() context.Context
 
 	// IsTLS returns true if HTTP connection is TLS otherwise false.
 	IsTLS() bool
@@ -144,12 +196,6 @@ type WebContext interface {
 	/////////////////////////////////////////
 	// Response Part
 
-	// IsAborted 当前处理过程是否终止，为了适配 gin 的模型，未来底层统一了会去掉.
-	IsAborted() bool
-
-	// Abort 终止当前处理过程，为了适配 gin 的模型，未来底层统一了会去掉.
-	Abort()
-
 	// ResponseWriter returns `http.ResponseWriter`.
 	ResponseWriter() ResponseWriter
 
@@ -164,62 +210,100 @@ type WebContext interface {
 	// SetCookie adds a `Set-Cookie` header in HTTP response.
 	SetCookie(cookie *http.Cookie)
 
-	// NoContent sends a response with no body and a status code.
+	// NoContent sends a response with no body and a status code. Maybe panic.
 	NoContent(code int)
 
-	// String writes the given string into the response body.
-	String(code int, format string, values ...interface{}) error
+	// String writes the given string into the response body. Maybe panic.
+	String(format string, values ...interface{})
 
-	// HTML sends an HTTP response with status code.
-	HTML(code int, html string) error
+	// HTML sends an HTTP response. Maybe panic.
+	HTML(html string)
 
-	// HTMLBlob sends an HTTP blob response with status code.
-	HTMLBlob(code int, b []byte) error
+	// HTMLBlob sends an HTTP blob response. Maybe panic.
+	HTMLBlob(b []byte)
 
-	// JSON sends a JSON response with status code.
-	JSON(code int, i interface{}) error
+	// JSON sends a JSON response. Maybe panic.
+	JSON(i interface{})
 
-	// JSONPretty sends a pretty-print JSON with status code.
-	JSONPretty(code int, i interface{}, indent string) error
+	// JSONPretty sends a pretty-print JSON. Maybe panic.
+	JSONPretty(i interface{}, indent string)
 
-	// JSONBlob sends a JSON blob response with status code.
-	JSONBlob(code int, b []byte) error
+	// JSONBlob sends a JSON blob response. Maybe panic.
+	JSONBlob(b []byte)
 
-	// JSONP sends a JSONP response with status code. It uses `callback`
-	// to construct the JSONP payload.
-	JSONP(code int, callback string, i interface{}) error
+	// JSONP sends a JSONP response. It uses `callback`
+	// to construct the JSONP payload. Maybe panic.
+	JSONP(callback string, i interface{})
 
-	// JSONPBlob sends a JSONP blob response with status code. It uses
-	// `callback` to construct the JSONP payload.
-	JSONPBlob(code int, callback string, b []byte) error
+	// JSONPBlob sends a JSONP blob response. It uses
+	// `callback` to construct the JSONP payload. Maybe panic.
+	JSONPBlob(callback string, b []byte)
 
-	// XML sends an XML response with status code.
-	XML(code int, i interface{}) error
+	// XML sends an XML response. Maybe panic.
+	XML(i interface{})
 
-	// XMLPretty sends a pretty-print XML with status code.
-	XMLPretty(code int, i interface{}, indent string) error
+	// XMLPretty sends a pretty-print XML. Maybe panic.
+	XMLPretty(i interface{}, indent string)
 
-	// XMLBlob sends an XML blob response with status code.
-	XMLBlob(code int, b []byte) error
+	// XMLBlob sends an XML blob response. Maybe panic.
+	XMLBlob(b []byte)
 
-	// Blob sends a blob response with status code and content type.
-	Blob(code int, contentType string, b []byte) error
+	// Blob sends a blob response and content type. Maybe panic.
+	Blob(contentType string, b []byte)
 
-	// Stream sends a streaming response with status code and content type.
-	Stream(code int, contentType string, r io.Reader) error
+	// File sends a response with the content of the file. Maybe panic.
+	File(file string)
 
-	// File sends a response with the content of the file.
-	File(file string) error
+	// Attachment sends a response as attachment, prompting client to
+	// save the file. Maybe panic.
+	Attachment(file string, name string)
 
-	// Attachment sends a response as attachment, prompting client to save the file.
-	Attachment(file string, name string) error
+	// Inline sends a response as inline, opening the file in the browser. Maybe panic.
+	Inline(file string, name string)
 
-	// Inline sends a response as inline, opening the file in the browser.
-	Inline(file string, name string) error
+	// Redirect redirects the request to a provided URL with status code. Maybe panic.
+	Redirect(code int, url string)
 
-	// Redirect redirects the request to a provided URL with status code.
-	Redirect(code int, url string) error
+	// SSEvent writes a Server-Sent Event into the body stream. Maybe panic.
+	SSEvent(name string, message interface{})
+}
 
-	// SSEvent writes a Server-Sent Event into the body stream.
-	SSEvent(name string, message interface{}) error
+// BufferedResponseWriter http.ResponseWriter 的一种增强型实现.
+type BufferedResponseWriter struct {
+	http.ResponseWriter
+	buffer bytes.Buffer
+	size   int
+}
+
+func (w *BufferedResponseWriter) Size() int { return w.size }
+
+func (w *BufferedResponseWriter) Body() []byte { return w.buffer.Bytes() }
+
+func filterFlags(content string) string {
+	for i, char := range strings.ToLower(content) {
+		if char == ' ' || char == ';' {
+			return content[:i]
+		}
+	}
+	return content
+}
+
+func canPrintResponse(response http.ResponseWriter) bool {
+	switch filterFlags(response.Header().Get(HeaderContentType)) {
+	case MIMEApplicationJSON, MIMEApplicationXML, MIMETextPlain, MIMETextXML:
+		return true
+	case MIMEApplicationJavaScript, MIMETextHTML:
+		return true
+	}
+	return false
+}
+
+func (w *BufferedResponseWriter) Write(data []byte) (n int, err error) {
+	if n, err = w.ResponseWriter.Write(data); err == nil {
+		if canPrintResponse(w.ResponseWriter) {
+			w.buffer.Write(data[:n])
+		}
+	}
+	w.size += n
+	return
 }

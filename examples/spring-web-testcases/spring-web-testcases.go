@@ -33,6 +33,17 @@ type LogFilter struct{}
 
 func (f *LogFilter) Invoke(ctx SpringWeb.WebContext, chain SpringWeb.FilterChain) {
 
+	defer func() {
+		if req := ctx.Path(); len(req) > 0 {
+			body := string(ctx.ResponseWriter().Body())
+			if strings.Index(req, "*") > 0 {
+				fmt.Println(req, "->", ctx.Request().URL, "resp="+body)
+			} else {
+				fmt.Println(req, "resp="+body)
+			}
+		}
+	}()
+
 	if strings.Index(ctx.Path(), "*") > 0 {
 		fmt.Println(ctx.Path(), "->", ctx.Request().URL)
 	} else {
@@ -119,8 +130,7 @@ func (s *Service) Get(ctx SpringWeb.WebContext) {
 	val := s.store[key]
 	ctx.LogInfo("/get ", "val=", val)
 
-	err := ctx.String(http.StatusOK, val)
-	SpringUtils.Panic(err).When(err != nil)
+	ctx.String(val)
 }
 
 func (s *Service) Set(ctx SpringWeb.WebContext) {
@@ -151,8 +161,8 @@ type EmptyRequest struct{}
 type EmptyResponse struct{}
 
 // Empty 验证 echo 和 gin 的 bind 功能，echo 的 bind 不允许空 body，spring-web 做了统一
-func (s *Service) Empty(ctx context.Context, request *EmptyRequest) *EmptyResponse {
-	return &EmptyResponse{}
+func (s *Service) Empty(ctx context.Context, request *EmptyRequest) *SpringWeb.RpcResult {
+	return SpringWeb.SUCCESS.Data(&EmptyResponse{})
 }
 
 ///////////////////// rpc service ////////////////////////
@@ -168,6 +178,6 @@ type EchoResponse struct {
 }
 
 // Echo BIND 的结构体参数形式
-func (s *RpcService) Echo(ctx context.Context, request *EchoRequest) *EchoResponse {
-	return &EchoResponse{"echo " + request.Str}
+func (s *RpcService) Echo(ctx context.Context, request *EchoRequest) *SpringWeb.RpcResult {
+	return SpringWeb.SUCCESS.Data(&EchoResponse{"echo " + request.Str})
 }

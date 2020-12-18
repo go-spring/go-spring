@@ -14,17 +14,27 @@
  * limitations under the License.
  */
 
-package SpringUtils
+package SpringLogger_test
 
 import (
-	"encoding/json"
+	"github.com/go-spring/spring-logger"
 )
 
-// ToJson 对象转 Json 字符串
-func ToJson(i interface{}) string {
-	bytes, err := json.Marshal(i)
-	if err != nil {
-		return ""
-	}
-	return string(bytes)
+func Example_stdLogger() {
+	SpringLogger.SetLogger(SpringLogger.NewConsole(SpringLogger.InfoLevel))
+
+	SpringLogger.Trace("a", "=", "1")
+	SpringLogger.Tracef("a=%d", 1)
+
+	SpringLogger.Debug("a", "=", "1")
+	SpringLogger.Debugf("a=%d", 1)
+
+	SpringLogger.Info("a", "=", "1")
+	SpringLogger.Infof("a=%d", 1)
+
+	SpringLogger.Warn("a", "=", "1")
+	SpringLogger.Warnf("a=%d", 1)
+
+	SpringLogger.Error("a", "=", "1")
+	SpringLogger.Errorf("a=%d", 1)
 }

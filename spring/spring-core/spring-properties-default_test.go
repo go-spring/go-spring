@@ -26,7 +26,7 @@ import (
 	"time"
 
 	"github.com/go-spring/spring-core"
-	"github.com/magiconair/properties/assert"
+	"github.com/go-spring/spring-utils"
 	"github.com/spf13/cast"
 )
 
@@ -66,7 +66,7 @@ func TestDefaultProperties_ReadProperties_Properties(t *testing.T) {
 			r := strings.NewReader(d.str)
 			p.ReadProperties(r, "properties")
 			v := p.GetProperty(d.key)
-			assert.Equal(t, v, d.val)
+			SpringUtils.AssertEqual(t, v, d.val)
 		}
 	})
 
@@ -90,7 +90,7 @@ func TestDefaultProperties_ReadProperties_Properties(t *testing.T) {
 			r := strings.NewReader(d.str)
 			p.ReadProperties(r, "properties")
 			v := p.GetProperty(d.key)
-			assert.Equal(t, v, d.val)
+			SpringUtils.AssertEqual(t, v, d.val)
 		}
 	})
 
@@ -116,7 +116,7 @@ func TestDefaultProperties_ReadProperties_Properties(t *testing.T) {
 
 		for k, expect := range data {
 			v := p.GetProperty(k)
-			assert.Equal(t, v, expect)
+			SpringUtils.AssertEqual(t, v, expect)
 		}
 	})
 
@@ -150,7 +150,7 @@ func TestDefaultProperties_ReadProperties_Properties(t *testing.T) {
 
 		for k, expect := range data {
 			v := p.GetProperty(k)
-			assert.Equal(t, v, expect)
+			SpringUtils.AssertEqual(t, v, expect)
 		}
 	})
 
@@ -184,7 +184,7 @@ func TestDefaultProperties_ReadProperties_Properties(t *testing.T) {
 
 		for k, expect := range data {
 			v := p.GetProperty(k)
-			assert.Equal(t, v, expect)
+			SpringUtils.AssertEqual(t, v, expect)
 		}
 	})
 }
@@ -213,7 +213,7 @@ func TestDefaultProperties_ReadProperties_Yaml(t *testing.T) {
 			r := strings.NewReader(d.str)
 			p.ReadProperties(r, "yaml")
 			v := p.GetProperty(d.key)
-			assert.Equal(t, v, d.val)
+			SpringUtils.AssertEqual(t, v, d.val)
 		}
 	})
 
@@ -237,7 +237,7 @@ func TestDefaultProperties_ReadProperties_Yaml(t *testing.T) {
 			r := strings.NewReader(d.str)
 			p.ReadProperties(r, "yaml")
 			v := p.GetProperty(d.key)
-			assert.Equal(t, v, d.val)
+			SpringUtils.AssertEqual(t, v, d.val)
 		}
 	})
 
@@ -264,7 +264,7 @@ func TestDefaultProperties_ReadProperties_Yaml(t *testing.T) {
 
 		for k, expect := range data {
 			v := p.GetProperty(k)
-			assert.Equal(t, v, expect)
+			SpringUtils.AssertEqual(t, v, expect)
 		}
 	})
 
@@ -303,7 +303,7 @@ func TestDefaultProperties_ReadProperties_Yaml(t *testing.T) {
 				"string": "hello",
 			},
 		}
-		assert.Equal(t, v, expect)
+		SpringUtils.AssertEqual(t, v, expect)
 	})
 
 	t.Run("map struct", func(t *testing.T) {
@@ -339,7 +339,7 @@ func TestDefaultProperties_ReadProperties_Yaml(t *testing.T) {
 
 		for k, expect := range data {
 			v := p.GetProperty(k)
-			assert.Equal(t, v, expect)
+			SpringUtils.AssertEqual(t, v, expect)
 		}
 	})
 }
@@ -368,7 +368,7 @@ func TestDefaultProperties_ReadProperties_Toml(t *testing.T) {
 			r := strings.NewReader(d.str)
 			p.ReadProperties(r, "toml")
 			v := p.GetProperty(d.key)
-			assert.Equal(t, v, d.val)
+			SpringUtils.AssertEqual(t, v, d.val)
 		}
 	})
 
@@ -392,7 +392,7 @@ func TestDefaultProperties_ReadProperties_Toml(t *testing.T) {
 			r := strings.NewReader(d.str)
 			p.ReadProperties(r, "toml")
 			v := p.GetProperty(d.key)
-			assert.Equal(t, v, d.val)
+			SpringUtils.AssertEqual(t, v, d.val)
 		}
 	})
 
@@ -419,7 +419,7 @@ func TestDefaultProperties_ReadProperties_Toml(t *testing.T) {
 
 		for k, expect := range data {
 			v := p.GetProperty(k)
-			assert.Equal(t, v, expect)
+			SpringUtils.AssertEqual(t, v, expect)
 		}
 	})
 
@@ -458,7 +458,7 @@ func TestDefaultProperties_ReadProperties_Toml(t *testing.T) {
 				"string": "hello",
 			},
 		}
-		assert.Equal(t, v, expect)
+		SpringUtils.AssertEqual(t, v, expect)
 	})
 
 	t.Run("map struct", func(t *testing.T) {
@@ -494,7 +494,7 @@ func TestDefaultProperties_ReadProperties_Toml(t *testing.T) {
 
 		for k, expect := range data {
 			v := p.GetProperty(k)
-			assert.Equal(t, v, expect)
+			SpringUtils.AssertEqual(t, v, expect)
 		}
 	})
 }
@@ -511,17 +511,17 @@ func PointConverter(val string) image.Point {
 
 func TestRegisterTypeConverter(t *testing.T) {
 
-	assert.Panic(t, func() { // 不是函数
+	SpringUtils.AssertPanic(t, func() { // 不是函数
 		SpringCore.RegisterTypeConverter(3)
 	}, "fn must be func\\(string\\)type")
 
-	assert.Panic(t, func() { // 入参太多
+	SpringUtils.AssertPanic(t, func() { // 入参太多
 		SpringCore.RegisterTypeConverter(func(_ string, _ string) image.Point {
 			return image.Point{}
 		})
 	}, "fn must be func\\(string\\)type")
 
-	assert.Panic(t, func() { // 返回值太多
+	SpringUtils.AssertPanic(t, func() { // 返回值太多
 		SpringCore.RegisterTypeConverter(func(_ string) (image.Point, image.Point) {
 			return image.Point{}, image.Point{}
 		})
@@ -537,9 +537,9 @@ func TestDefaultProperties_GetProperty(t *testing.T) {
 	p.SetProperty("a.b.d", []string{"3"})
 
 	m := p.GetPrefixProperties("a.b")
-	assert.Equal(t, len(m), 2)
-	assert.Equal(t, m["a.b.c"], "3")
-	assert.Equal(t, m["a.b.d"], []string{"3"})
+	SpringUtils.AssertEqual(t, len(m), 2)
+	SpringUtils.AssertEqual(t, m["a.b.c"], "3")
+	SpringUtils.AssertEqual(t, m["a.b.d"], []string{"3"})
 
 	p.SetProperty("Bool", true)
 	p.SetProperty("Int", 3)
@@ -556,55 +556,55 @@ func TestDefaultProperties_GetProperty(t *testing.T) {
 	})
 
 	v := p.GetProperty("NULL")
-	assert.Equal(t, v, nil)
+	SpringUtils.AssertEqual(t, v, nil)
 
 	v, ok := p.GetDefaultProperty("NULL", "OK")
-	assert.Equal(t, ok, false)
-	assert.Equal(t, v, "OK")
+	SpringUtils.AssertEqual(t, ok, false)
+	SpringUtils.AssertEqual(t, v, "OK")
 
 	v = p.GetProperty("INT")
-	assert.Equal(t, v, 3)
+	SpringUtils.AssertEqual(t, v, 3)
 
 	var v2 int
 	p.BindProperty("int", &v2)
-	assert.Equal(t, v2, 3)
+	SpringUtils.AssertEqual(t, v2, 3)
 
 	var u2 uint
 	p.BindProperty("uint", &u2)
-	assert.Equal(t, u2, uint(3))
+	SpringUtils.AssertEqual(t, u2, uint(3))
 
 	var f2 float32
 	p.BindProperty("Float", &f2)
-	assert.Equal(t, f2, float32(3))
+	SpringUtils.AssertEqual(t, f2, float32(3))
 
 	b := p.GetBoolProperty("BOOL")
-	assert.Equal(t, b, true)
+	SpringUtils.AssertEqual(t, b, true)
 
 	var b2 bool
 	p.BindProperty("bool", &b2)
-	assert.Equal(t, b2, true)
+	SpringUtils.AssertEqual(t, b2, true)
 
 	i := p.GetIntProperty("INT")
-	assert.Equal(t, i, int64(3))
+	SpringUtils.AssertEqual(t, i, int64(3))
 
 	u := p.GetUintProperty("UINT")
-	assert.Equal(t, u, uint64(3))
+	SpringUtils.AssertEqual(t, u, uint64(3))
 
 	f := p.GetFloatProperty("FLOAT")
-	assert.Equal(t, f, 3.0)
+	SpringUtils.AssertEqual(t, f, 3.0)
 
 	s := p.GetStringProperty("STRING")
-	assert.Equal(t, s, "3")
+	SpringUtils.AssertEqual(t, s, "3")
 
 	d := p.GetDurationProperty("DURATION")
-	assert.Equal(t, d, time.Second*3)
+	SpringUtils.AssertEqual(t, d, time.Second*3)
 
 	ti := p.GetTimeProperty("Time")
-	assert.Equal(t, ti, time.Date(2020, 02, 04, 20, 02, 04, 0, time.UTC))
+	SpringUtils.AssertEqual(t, ti, time.Date(2020, 02, 04, 20, 02, 04, 0, time.UTC))
 
 	var ss2 []string
 	p.BindProperty("[]string", &ss2)
-	assert.Equal(t, ss2, []string{"3"})
+	SpringUtils.AssertEqual(t, ss2, []string{"3"})
 }
 
 type DB struct {
@@ -663,7 +663,7 @@ func TestDefaultProperties_BindProperty(t *testing.T) {
 		p.BindProperty("prefix", &dbConfig2)
 
 		// 实际上是取的两个节点，只是值是一样的而已
-		assert.Equal(t, dbConfig1, dbConfig2)
+		SpringUtils.AssertEqual(t, dbConfig1, dbConfig2)
 	})
 
 	t.Run("struct bind with tag", func(t *testing.T) {
@@ -689,8 +689,8 @@ func TestDefaultProperties_BindProperty(t *testing.T) {
 		p.BindProperty("prefix", &dbConfig2)
 
 		// 实际上是取的两个节点，只是值是一样的而已
-		assert.Equal(t, dbConfig1, dbConfig2)
-		assert.Equal(t, len(dbConfig1.DB), 2)
+		SpringUtils.AssertEqual(t, dbConfig1, dbConfig2)
+		SpringUtils.AssertEqual(t, len(dbConfig1.DB), 2)
 	})
 }
 
@@ -710,8 +710,8 @@ func TestDefaultProperties_StringMapString(t *testing.T) {
 		var m map[string]string
 		p.BindProperty("a", &m)
 
-		assert.Equal(t, len(m), 3)
-		assert.Equal(t, m["b1"], "b1")
+		SpringUtils.AssertEqual(t, len(m), 3)
+		SpringUtils.AssertEqual(t, m["b1"], "b1")
 	})
 
 	t.Run("converter bind", func(t *testing.T) {
@@ -725,8 +725,8 @@ func TestDefaultProperties_StringMapString(t *testing.T) {
 		var m map[string]image.Point
 		p.BindProperty("a", &m)
 
-		assert.Equal(t, len(m), 3)
-		assert.Equal(t, m["p1"], image.Pt(1, 2))
+		SpringUtils.AssertEqual(t, len(m), 3)
+		SpringUtils.AssertEqual(t, m["p1"], image.Pt(1, 2))
 	})
 
 	t.Run("simple bind from file", func(t *testing.T) {
@@ -737,8 +737,8 @@ func TestDefaultProperties_StringMapString(t *testing.T) {
 		var m map[string]string
 		p.BindProperty("camera", &m)
 
-		assert.Equal(t, len(m), 3)
-		assert.Equal(t, m["floor1"], "camera_floor1")
+		SpringUtils.AssertEqual(t, len(m), 3)
+		SpringUtils.AssertEqual(t, m["floor1"], "camera_floor1")
 	})
 
 	t.Run("struct bind from file", func(t *testing.T) {
@@ -749,14 +749,14 @@ func TestDefaultProperties_StringMapString(t *testing.T) {
 		var m map[string]NestedDB
 		p.BindProperty("db_map", &m)
 
-		assert.Equal(t, len(m), 2)
-		assert.Equal(t, m["d1"].DB, "db1")
+		SpringUtils.AssertEqual(t, len(m), 2)
+		SpringUtils.AssertEqual(t, m["d1"].DB, "db1")
 
 		dbConfig2 := NestedDbMapConfig{}
 		p.BindProperty("prefix_map", &dbConfig2)
 
-		assert.Equal(t, len(dbConfig2.DB), 2)
-		assert.Equal(t, dbConfig2.DB["d1"].DB, "db1")
+		SpringUtils.AssertEqual(t, len(dbConfig2.DB), 2)
+		SpringUtils.AssertEqual(t, dbConfig2.DB["d1"].DB, "db1")
 	})
 }
 
@@ -773,7 +773,7 @@ func TestDefaultProperties_ConfigRef(t *testing.T) {
 	var httpLog struct{ fileLog }
 
 	t.Run("not config", func(t *testing.T) {
-		assert.Panic(t, func() {
+		SpringUtils.AssertPanic(t, func() {
 			p := SpringCore.NewDefaultProperties()
 			p.BindProperty("", &httpLog)
 		}, "property \\\"app.dir\\\" not config")
@@ -786,16 +786,16 @@ func TestDefaultProperties_ConfigRef(t *testing.T) {
 		p.SetProperty("app.dir", appDir)
 
 		p.BindProperty("", &httpLog)
-		assert.Equal(t, httpLog.Dir, appDir)
-		assert.Equal(t, httpLog.NestedDir, "./log")
-		assert.Equal(t, httpLog.NestedEmptyDir, "")
-		assert.Equal(t, httpLog.NestedNestedDir, "./log")
+		SpringUtils.AssertEqual(t, httpLog.Dir, appDir)
+		SpringUtils.AssertEqual(t, httpLog.NestedDir, "./log")
+		SpringUtils.AssertEqual(t, httpLog.NestedEmptyDir, "")
+		SpringUtils.AssertEqual(t, httpLog.NestedNestedDir, "./log")
 
 		p.BindProperty("", &mqLog)
-		assert.Equal(t, mqLog.Dir, appDir)
-		assert.Equal(t, mqLog.NestedDir, "./log")
-		assert.Equal(t, mqLog.NestedEmptyDir, "")
-		assert.Equal(t, mqLog.NestedNestedDir, "./log")
+		SpringUtils.AssertEqual(t, mqLog.Dir, appDir)
+		SpringUtils.AssertEqual(t, mqLog.NestedDir, "./log")
+		SpringUtils.AssertEqual(t, mqLog.NestedEmptyDir, "")
+		SpringUtils.AssertEqual(t, mqLog.NestedNestedDir, "./log")
 	})
 }
 
@@ -805,5 +805,5 @@ func TestDefaultProperties_KeyCanBeEmpty(t *testing.T) {
 		KeyIsEmpty string `value:"${:=kie}"`
 	}
 	p.BindProperty("", &s)
-	assert.Equal(t, s.KeyIsEmpty, "kie")
+	SpringUtils.AssertEqual(t, s.KeyIsEmpty, "kie")
 }

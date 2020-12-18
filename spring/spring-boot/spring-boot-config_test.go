@@ -22,7 +22,7 @@ import (
 	"testing"
 
 	"github.com/go-spring/spring-core"
-	"github.com/magiconair/properties/assert"
+	"github.com/go-spring/spring-utils"
 )
 
 func startApplication(cfgLocation ...string) *application {
@@ -40,9 +40,9 @@ func TestConfig(t *testing.T) {
 	t.Run("default config", func(t *testing.T) {
 		os.Clearenv()
 		app := startApplication()
-		assert.Equal(t, app.cfgLocation, []string{DefaultConfigLocation})
-		assert.Equal(t, app.appCtx.GetProfile(), "")
-		assert.Equal(t, app.appCtx.AllAccess(), false)
+		SpringUtils.AssertEqual(t, app.cfgLocation, []string{DefaultConfigLocation})
+		SpringUtils.AssertEqual(t, app.appCtx.GetProfile(), "")
+		SpringUtils.AssertEqual(t, app.appCtx.AllAccess(), false)
 	})
 
 	t.Run("config via env", func(t *testing.T) {
@@ -50,8 +50,8 @@ func TestConfig(t *testing.T) {
 		_ = os.Setenv(SpringAccess, "all")
 		_ = os.Setenv(SpringProfile, "dev")
 		app := startApplication("testdata/config/")
-		assert.Equal(t, app.appCtx.AllAccess(), true)
-		assert.Equal(t, app.appCtx.GetProfile(), "dev")
+		SpringUtils.AssertEqual(t, app.appCtx.AllAccess(), true)
+		SpringUtils.AssertEqual(t, app.appCtx.GetProfile(), "dev")
 	})
 
 	t.Run("config via env 2", func(t *testing.T) {
@@ -59,23 +59,23 @@ func TestConfig(t *testing.T) {
 		_ = os.Setenv(SPRING_ACCESS, "all")
 		_ = os.Setenv(SPRING_PROFILE, "dev")
 		app := startApplication("testdata/config/")
-		assert.Equal(t, app.appCtx.AllAccess(), true)
-		assert.Equal(t, app.appCtx.GetProfile(), "dev")
+		SpringUtils.AssertEqual(t, app.appCtx.AllAccess(), true)
+		SpringUtils.AssertEqual(t, app.appCtx.GetProfile(), "dev")
 	})
 
 	t.Run("profile via config", func(t *testing.T) {
 		os.Clearenv()
 		app := startApplication("testdata/config/")
-		assert.Equal(t, app.appCtx.AllAccess(), true)
-		assert.Equal(t, app.appCtx.GetProfile(), "test")
+		SpringUtils.AssertEqual(t, app.appCtx.AllAccess(), true)
+		SpringUtils.AssertEqual(t, app.appCtx.GetProfile(), "test")
 	})
 
 	t.Run("profile via env&config", func(t *testing.T) {
 		os.Clearenv()
 		_ = os.Setenv(SpringAccess, "")
 		app := startApplication("testdata/config/")
-		assert.Equal(t, app.appCtx.AllAccess(), false)
-		assert.Equal(t, app.appCtx.GetProfile(), "test")
+		SpringUtils.AssertEqual(t, app.appCtx.AllAccess(), false)
+		SpringUtils.AssertEqual(t, app.appCtx.GetProfile(), "test")
 	})
 
 	t.Run("profile via env&config 2", func(t *testing.T) {
@@ -83,8 +83,8 @@ func TestConfig(t *testing.T) {
 		_ = os.Setenv(SPRING_ACCESS, "")
 		_ = os.Setenv(SPRING_PROFILE, "dev")
 		app := startApplication("testdata/config/")
-		assert.Equal(t, app.appCtx.AllAccess(), true)
-		assert.Equal(t, app.appCtx.GetProfile(), "dev")
+		SpringUtils.AssertEqual(t, app.appCtx.AllAccess(), true)
+		SpringUtils.AssertEqual(t, app.appCtx.GetProfile(), "dev")
 	})
 
 	t.Run("default expect system properties", func(t *testing.T) {

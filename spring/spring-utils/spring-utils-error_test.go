@@ -22,7 +22,6 @@ import (
 	"testing"
 
 	"github.com/go-spring/spring-utils"
-	"github.com/magiconair/properties/assert"
 )
 
 func TestPanicCond_When(t *testing.T) {
@@ -30,14 +29,14 @@ func TestPanicCond_When(t *testing.T) {
 
 	t.Run("Panic", func(t *testing.T) {
 		defer func() {
-			fmt.Println(recover().(error).Error())
+			SpringUtils.AssertEqual(t, errors.New("reason: panic"), recover())
 		}()
 		SpringUtils.Panic(fmt.Errorf("reason: %s", "panic")).When(true)
 	})
 
 	t.Run("Panicf", func(t *testing.T) {
 		defer func() {
-			fmt.Println(recover().(error).Error())
+			SpringUtils.AssertEqual(t, errors.New("reason: panicf"), recover())
 		}()
 		SpringUtils.Panicf("reason: %s", "panicf").When(true)
 	})
@@ -45,16 +44,22 @@ func TestPanicCond_When(t *testing.T) {
 
 func TestWithCause(t *testing.T) {
 
-	t.Run("", func(t *testing.T) {
+	t.Run("cause is string", func(t *testing.T) {
 		err := SpringUtils.WithCause("this is a string")
 		v := SpringUtils.Cause(err)
-		assert.Equal(t, fmt.Sprint(v), "this is a string")
+		SpringUtils.AssertEqual(t, "this is a string", v)
 	})
 
-	t.Run("", func(t *testing.T) {
-		err := SpringUtils.WithCause(errors.New("123"))
+	t.Run("cause is error", func(t *testing.T) {
+		err := SpringUtils.WithCause(errors.New("this is an error"))
 		v := SpringUtils.Cause(err)
-		assert.Equal(t, fmt.Sprint(v), "123")
+		SpringUtils.AssertEqual(t, errors.New("this is an error"), v)
+	})
+
+	t.Run("cause is int", func(t *testing.T) {
+		err := SpringUtils.WithCause(123456)
+		v := SpringUtils.Cause(err)
+		SpringUtils.AssertEqual(t, 123456, v)
 	})
 }
 
@@ -69,15 +74,34 @@ func panic2Error(v interface{}) (err error) {
 
 func TestPanic2Error(t *testing.T) {
 
-	t.Run("", func(t *testing.T) {
+	t.Run("panic is string", func(t *testing.T) {
 		err := panic2Error("this is a string")
 		v := SpringUtils.Cause(err)
-		assert.Equal(t, fmt.Sprint(v), "this is a string")
+		SpringUtils.AssertEqual(t, "this is a string", v)
 	})
 
-	t.Run("", func(t *testing.T) {
-		err := panic2Error(errors.New("123"))
+	t.Run("panic is error", func(t *testing.T) {
+		err := panic2Error(errors.New("this is an error"))
 		v := SpringUtils.Cause(err)
-		assert.Equal(t, fmt.Sprint(v), "123")
+		SpringUtils.AssertEqual(t, errors.New("this is an error"), v)
 	})
+
+	t.Run("panic is int", func(t *testing.T) {
+		err := panic2Error(123456)
+		v := SpringUtils.Cause(err)
+		SpringUtils.AssertEqual(t, 123456, v)
+	})
+}
+
+func TestErrorWithFileLine(t *testing.T) {
+
+	err := SpringUtils.ErrorWithFileLine(errors.New("this is an error"))
+	SpringUtils.AssertMatches(t, ".*:98: this is an error", err.Error())
+
+	fnError := func(e error) error {
+		return SpringUtils.ErrorWithFileLine(e, 1)
+	}
+
+	err = fnError(errors.New("this is an error"))
+	SpringUtils.AssertMatches(t, ".*:105: this is an error", err.Error())
 }

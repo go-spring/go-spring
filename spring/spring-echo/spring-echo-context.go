@@ -17,6 +17,8 @@
 package SpringEcho
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -26,7 +28,6 @@ import (
 	"os"
 
 	"github.com/go-spring/spring-const"
-	"github.com/go-spring/spring-logger"
 	"github.com/go-spring/spring-web"
 	"github.com/labstack/echo"
 )
@@ -44,26 +45,38 @@ func WebContext(echoCtx echo.Context) SpringWeb.WebContext {
 	return nil
 }
 
-// responseWriter SpringWeb.ResponseWriter 的 echo 适配.
+// 同时继承了 SpringWeb.ResponseWriter 接口
 type responseWriter struct {
-	*echo.Response
+	response *echo.Response
+	writer   *SpringWeb.BufferedResponseWriter
 }
 
-// Returns the HTTP response status code of the current request.
-func (r *responseWriter) Status() int {
-	return r.Response.Status
+func (w *responseWriter) Header() http.Header {
+	return w.writer.Header()
 }
 
-// Returns the number of bytes already written into the response http body.
-// See Written()
-func (r *responseWriter) Size() int {
-	return int(r.Response.Size)
+func (w *responseWriter) Write(data []byte) (n int, err error) {
+	return w.writer.Write(data)
+}
+
+func (w *responseWriter) WriteHeader(code int) {
+	w.writer.WriteHeader(code)
+}
+
+func (w *responseWriter) Status() int {
+	return w.response.Status
+}
+
+func (w *responseWriter) Size() int {
+	return w.writer.Size()
+}
+
+func (w *responseWriter) Body() []byte {
+	return w.writer.Body()
 }
 
 // Context 适配 echo 的 Web 上下文
 type Context struct {
-	// LoggerContext 日志接口上下文
-	SpringLogger.LoggerContext
 
 	// echoContext echo 上下文对象
 	echoContext echo.Context
@@ -73,22 +86,22 @@ type Context struct {
 
 	// wildCardName 通配符的名称
 	wildCardName string
-
-	// aborted 处理过程是否终止
-	aborted bool
 }
 
 // NewContext Context 的构造函数
 func NewContext(fn SpringWeb.Handler, wildCardName string, echoCtx echo.Context) *Context {
 
-	ctx := echoCtx.Request().Context()
-	logCtx := SpringLogger.NewDefaultLoggerContext(ctx)
+	echoCtx.Response().Writer = &responseWriter{
+		writer: &SpringWeb.BufferedResponseWriter{
+			ResponseWriter: echoCtx.Response().Writer,
+		},
+		response: echoCtx.Response(),
+	}
 
 	webCtx := &Context{
-		LoggerContext: logCtx,
-		echoContext:   echoCtx,
-		handlerFunc:   fn,
-		wildCardName:  wildCardName,
+		handlerFunc:  fn,
+		echoContext:  echoCtx,
+		wildCardName: wildCardName,
 	}
 
 	webCtx.Set(SpringWeb.WebContextKey, webCtx)
@@ -118,6 +131,11 @@ func (ctx *Context) Request() *http.Request {
 // SetRequest sets `*http.Request`.
 func (ctx *Context) SetRequest(r *http.Request) {
 	ctx.echoContext.SetRequest(r)
+}
+
+// Context 返回 Request 绑定的 context.Context 对象
+func (ctx *Context) Context() context.Context {
+	return ctx.echoContext.Request().Context()
 }
 
 // IsTLS returns true if HTTP connection is TLS otherwise false.
@@ -273,19 +291,9 @@ func (ctx *Context) Bind(i interface{}) error {
 	return SpringWeb.Validate(i)
 }
 
-// IsAborted 当前处理过程是否终止，为了适配 gin 的模型，未来底层统一了会去掉.
-func (ctx *Context) IsAborted() bool {
-	return ctx.aborted
-}
-
-// Abort 终止当前处理过程，为了适配 gin 的模型，未来底层统一了会去掉.
-func (ctx *Context) Abort() {
-	ctx.aborted = true
-}
-
 // ResponseWriter returns `http.ResponseWriter`.
 func (ctx *Context) ResponseWriter() SpringWeb.ResponseWriter {
-	return &responseWriter{ctx.echoContext.Response()}
+	return ctx.echoContext.Response().Writer.(*responseWriter)
 }
 
 // Status sets the HTTP response code.
@@ -305,95 +313,138 @@ func (ctx *Context) SetCookie(cookie *http.Cookie) {
 
 // NoContent sends a response with no body and a status code.
 func (ctx *Context) NoContent(code int) {
-	_ = ctx.echoContext.NoContent(code)
+	if err := ctx.echoContext.NoContent(code); err != nil {
+		panic(err)
+	}
 }
 
 // String writes the given string into the response body.
-func (ctx *Context) String(code int, format string, values ...interface{}) error {
-	return ctx.echoContext.String(code, fmt.Sprintf(format, values...))
+func (ctx *Context) String(format string, values ...interface{}) {
+	statusCode := ctx.echoContext.Response().Status
+	if err := ctx.echoContext.String(statusCode, fmt.Sprintf(format, values...)); err != nil {
+		panic(err)
+	}
 }
 
-// HTML sends an HTTP response with status code.
-func (ctx *Context) HTML(code int, html string) error {
-	return ctx.echoContext.HTML(code, html)
+// HTML sends an HTTP response.
+func (ctx *Context) HTML(html string) {
+	statusCode := ctx.echoContext.Response().Status
+	if err := ctx.echoContext.HTML(statusCode, html); err != nil {
+		panic(err)
+	}
 }
 
-// HTMLBlob sends an HTTP blob response with status code.
-func (ctx *Context) HTMLBlob(code int, b []byte) error {
-	return ctx.echoContext.HTMLBlob(code, b)
+// HTMLBlob sends an HTTP blob response.
+func (ctx *Context) HTMLBlob(b []byte) {
+	statusCode := ctx.echoContext.Response().Status
+	if err := ctx.echoContext.HTMLBlob(statusCode, b); err != nil {
+		panic(err)
+	}
 }
 
-// JSON sends a JSON response with status code.
-func (ctx *Context) JSON(code int, i interface{}) error {
-	return ctx.echoContext.JSON(code, i)
+// JSON sends a JSON response.
+func (ctx *Context) JSON(i interface{}) {
+	b, err := json.Marshal(i)
+	if err != nil {
+		panic(err)
+	}
+	ctx.Blob(SpringWeb.MIMEApplicationJSONCharsetUTF8, b)
 }
 
-// JSONPretty sends a pretty-print JSON with status code.
-func (ctx *Context) JSONPretty(code int, i interface{}, indent string) error {
-	return ctx.echoContext.JSONPretty(code, i, indent)
+// JSONPretty sends a pretty-print JSON.
+func (ctx *Context) JSONPretty(i interface{}, indent string) {
+	b, err := json.MarshalIndent(i, "", indent)
+	if err != nil {
+		panic(err)
+	}
+	ctx.Blob(SpringWeb.MIMEApplicationJSONCharsetUTF8, b)
 }
 
-// JSONBlob sends a JSON blob response with status code.
-func (ctx *Context) JSONBlob(code int, b []byte) error {
-	return ctx.echoContext.JSONBlob(code, b)
+// JSONBlob sends a JSON blob response.
+func (ctx *Context) JSONBlob(b []byte) {
+	statusCode := ctx.echoContext.Response().Status
+	if err := ctx.echoContext.JSONBlob(statusCode, b); err != nil {
+		panic(err)
+	}
 }
 
-// JSONP sends a JSONP response with status code.
-func (ctx *Context) JSONP(code int, callback string, i interface{}) error {
-	return ctx.echoContext.JSONP(code, callback, i)
+// JSONP sends a JSONP response.
+func (ctx *Context) JSONP(callback string, i interface{}) {
+	statusCode := ctx.echoContext.Response().Status
+	if err := ctx.echoContext.JSONP(statusCode, callback, i); err != nil {
+		panic(err)
+	}
 }
 
-// JSONPBlob sends a JSONP blob response with status code.
-func (ctx *Context) JSONPBlob(code int, callback string, b []byte) error {
-	return ctx.echoContext.JSONPBlob(code, callback, b)
+// JSONPBlob sends a JSONP blob response.
+func (ctx *Context) JSONPBlob(callback string, b []byte) {
+	statusCode := ctx.echoContext.Response().Status
+	if err := ctx.echoContext.JSONPBlob(statusCode, callback, b); err != nil {
+		panic(err)
+	}
 }
 
-// XML sends an XML response with status code.
-func (ctx *Context) XML(code int, i interface{}) error {
-	return ctx.echoContext.XML(code, i)
+// XML sends an XML response.
+func (ctx *Context) XML(i interface{}) {
+	statusCode := ctx.echoContext.Response().Status
+	if err := ctx.echoContext.XML(statusCode, i); err != nil {
+		panic(err)
+	}
 }
 
-// XMLPretty sends a pretty-print XML with status code.
-func (ctx *Context) XMLPretty(code int, i interface{}, indent string) error {
-	return ctx.echoContext.XMLPretty(code, i, indent)
+// XMLPretty sends a pretty-print XML.
+func (ctx *Context) XMLPretty(i interface{}, indent string) {
+	statusCode := ctx.echoContext.Response().Status
+	if err := ctx.echoContext.XMLPretty(statusCode, i, indent); err != nil {
+		panic(err)
+	}
 }
 
-// XMLBlob sends an XML blob response with status code.
-func (ctx *Context) XMLBlob(code int, b []byte) error {
-	return ctx.echoContext.XMLBlob(code, b)
+// XMLBlob sends an XML blob response.
+func (ctx *Context) XMLBlob(b []byte) {
+	statusCode := ctx.echoContext.Response().Status
+	if err := ctx.echoContext.XMLBlob(statusCode, b); err != nil {
+		panic(err)
+	}
 }
 
-// Blob sends a blob response with status code and content type.
-func (ctx *Context) Blob(code int, contentType string, b []byte) error {
-	return ctx.echoContext.Blob(code, contentType, b)
-}
-
-// Stream sends a streaming response with status code and content type.
-func (ctx *Context) Stream(code int, contentType string, r io.Reader) error {
-	return ctx.echoContext.Stream(code, contentType, r)
+// Blob sends a blob response with content type.
+func (ctx *Context) Blob(contentType string, b []byte) {
+	statusCode := ctx.echoContext.Response().Status
+	if err := ctx.echoContext.Blob(statusCode, contentType, b); err != nil {
+		panic(err)
+	}
 }
 
 // File sends a response with the content of the file.
-func (ctx *Context) File(file string) error {
-	return ctx.echoContext.File(file)
+func (ctx *Context) File(file string) {
+	if err := ctx.echoContext.File(file); err != nil {
+		panic(err)
+	}
 }
 
 // Attachment sends a response as attachment
-func (ctx *Context) Attachment(file string, name string) error {
-	return ctx.echoContext.Attachment(file, name)
+func (ctx *Context) Attachment(file string, name string) {
+	if err := ctx.echoContext.Attachment(file, name); err != nil {
+		panic(err)
+	}
 }
 
 // Inline sends a response as inline
-func (ctx *Context) Inline(file string, name string) error {
-	return ctx.echoContext.Inline(file, name)
+func (ctx *Context) Inline(file string, name string) {
+	if err := ctx.echoContext.Inline(file, name); err != nil {
+		panic(err)
+	}
 }
 
 // Redirect redirects the request to a provided URL with status code.
-func (ctx *Context) Redirect(code int, url string) error {
-	return ctx.echoContext.Redirect(code, url)
+func (ctx *Context) Redirect(code int, url string) {
+	if err := ctx.echoContext.Redirect(code, url); err != nil {
+		panic(err)
+	}
 }
 
 // SSEvent writes a Server-Sent Event into the body stream.
-func (ctx *Context) SSEvent(name string, message interface{}) error {
+func (ctx *Context) SSEvent(name string, message interface{}) {
 	panic(SpringConst.UnimplementedMethod)
 }

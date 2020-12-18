@@ -20,7 +20,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"time"
 
 	"github.com/go-redis/redis"
@@ -45,8 +44,7 @@ func init() {
 
 	// 接受简单函数，可以使用 SpringBoot.Filter 封装，进而增加可用条件
 	r.GetMapping("/func", func(ctx SpringWeb.WebContext) {
-		err := ctx.String(http.StatusOK, "func() return ok")
-		SpringUtils.Panic(err).When(err != nil)
+		ctx.String("func() return ok")
 	}, SpringBoot.Filter(SpringEcho.Filter(middleware.KeyAuth(
 		func(key string, context echo.Context) (bool, error) {
 			return key == "key_auth", nil
@@ -102,11 +100,11 @@ type EchoResponse struct {
 	Echo string `json:"echo"`
 }
 
-func (c *MyController) Echo(ctx context.Context, request *EchoRequest) *EchoResponse {
+func (c *MyController) Echo(ctx context.Context, request *EchoRequest) *SpringWeb.RpcResult {
 	if c.MongoClient != nil {
 		fmt.Println(c.MongoClient.Database("db0").Name())
 	}
-	return &EchoResponse{"echo " + request.Str}
+	return SpringWeb.SUCCESS.Data(&EchoResponse{"echo " + request.Str})
 }
 
 func (c *MyController) OK(ctx SpringWeb.WebContext) {
@@ -139,6 +137,5 @@ func (c *MyController) OK(ctx SpringWeb.WebContext) {
 		panic(errors.New("error"))
 	}
 
-	err = ctx.JSONBlob(200, []byte(val))
-	SpringUtils.Panic(err).When(err != nil)
+	ctx.JSONBlob([]byte(val))
 }

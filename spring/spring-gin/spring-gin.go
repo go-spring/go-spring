@@ -18,7 +18,11 @@ package SpringGin
 
 import (
 	"context"
+	"net"
 	"net/http"
+	"os"
+	"runtime/debug"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
@@ -39,7 +43,7 @@ type route struct {
 
 // Container 适配 gin 的 Web 容器
 type Container struct {
-	*SpringWeb.BaseWebContainer
+	*SpringWeb.AbstractContainer
 	httpServer *http.Server
 	ginEngine  *gin.Engine
 	routes     map[string]route // 记录所有通过 spring gin 注册的路由
@@ -47,38 +51,30 @@ type Container struct {
 
 // NewContainer Container 的构造函数
 func NewContainer(config SpringWeb.ContainerConfig) *Container {
-	c := &Container{
-		BaseWebContainer: SpringWeb.NewBaseWebContainer(config),
-		routes:           make(map[string]route),
-	}
+	c := &Container{}
+	c.ginEngine = gin.New()
+	c.ginEngine.HandleMethodNotAllowed = true
+	c.routes = make(map[string]route)
+	c.AbstractContainer = SpringWeb.NewAbstractContainer(config)
 	return c
 }
 
-// Deprecated: Filter 机制可完美替代中间件机制，不再需要定制化
-func (c *Container) SetGinEngine(e *gin.Engine) {
-	c.ginEngine = e
-}
+// Start 启动 Web 容器
+func (c *Container) Start() error {
 
-// Start 启动 Web 容器，非阻塞
-func (c *Container) Start() {
-
-	c.PreStart()
-
-	// 使用默认的 gin 引擎
-	if c.ginEngine == nil {
-		c.ginEngine = gin.New()
+	if err := c.AbstractContainer.Start(); err != nil {
+		return err
 	}
 
 	var cFilters []SpringWeb.Filter
 
-	if f := c.GetLoggerFilter(); f != nil {
-		cFilters = append(cFilters, f)
+	if loggerFilter := c.GetLoggerFilter(); loggerFilter != nil {
+		cFilters = append(cFilters, loggerFilter)
+	} else {
+		cFilters = append(cFilters, SpringWeb.GetLoggerFilter())
 	}
 
-	if f := c.GetRecoveryFilter(); f != nil {
-		cFilters = append(cFilters, &recoveryFilterAdapter{f})
-	}
-
+	cFilters = append(cFilters, &recoveryFilter{})
 	cFilters = append(cFilters, c.GetFilters()...)
 
 	// 添加容器级别的过滤器，这样在路由不存在时也会调用这些过滤器
@@ -117,39 +113,33 @@ func (c *Container) Start() {
 		}
 	}
 
-	go func() {
-		var err error
-		cfg := c.Config()
+	var err error
+	cfg := c.Config()
 
-		c.httpServer = &http.Server{
-			Addr:         c.Address(),
-			Handler:      c.ginEngine,
-			ReadTimeout:  cfg.ReadTimeout,
-			WriteTimeout: cfg.WriteTimeout,
-		}
+	c.httpServer = &http.Server{
+		Addr:         c.Address(),
+		Handler:      c.ginEngine,
+		ReadTimeout:  cfg.ReadTimeout,
+		WriteTimeout: cfg.WriteTimeout,
+	}
 
-		SpringLogger.Info("⇨ http server started on ", c.Address())
+	SpringLogger.Info("⇨ http server started on ", c.Address())
 
-		if cfg.EnableSSL {
-			err = c.httpServer.ListenAndServeTLS(cfg.CertFile, cfg.KeyFile)
-		} else {
-			err = c.httpServer.ListenAndServe()
-		}
+	if cfg.EnableSSL {
+		err = c.httpServer.ListenAndServeTLS(cfg.CertFile, cfg.KeyFile)
+	} else {
+		err = c.httpServer.ListenAndServe()
+	}
 
-		if err != nil && err != http.ErrServerClosed {
-			if fn := c.GetErrorCallback(); fn != nil {
-				fn(err)
-			}
-		}
-
-		SpringLogger.Infof("exit gin server on %s return %s", c.Address(), SpringUtils.ErrorToString(err))
-	}()
+	SpringLogger.Infof("exit gin server on %s return %s", c.Address(), SpringUtils.ErrorToString(err))
+	return err
 }
 
-// Stop 停止 Web 容器，阻塞
-func (c *Container) Stop(ctx context.Context) {
+// Stop 停止 Web 容器
+func (c *Container) Stop(ctx context.Context) error {
 	err := c.httpServer.Shutdown(ctx)
 	SpringLogger.Infof("shutdown gin server on %s return %s", c.Address(), SpringUtils.ErrorToString(err))
+	return err
 }
 
 // HandlerWrapper Web 处理函数包装器
@@ -179,18 +169,54 @@ func HandlerWrapper(fn SpringWeb.Handler, wildCardName string, filters []SpringW
 	return handlers
 }
 
-// recoveryFilterAdapter 对 gin 的恢复组件适配，增加中断过滤器列表的能力
-type recoveryFilterAdapter struct {
-	recoveryFilter SpringWeb.Filter
-}
+// recoveryFilter 适配 gin 的恢复过滤器
+type recoveryFilter struct{}
 
-func (f *recoveryFilterAdapter) Invoke(webCtx SpringWeb.WebContext, chain SpringWeb.FilterChain) {
-	f.recoveryFilter.Invoke(webCtx, chain)
-	// 如何判断 recoveryFilter 是否执行过 recover ？看起来
-	// 不用关心这个问题，如果有数据写往网络，就表明处理已结束，中断即可。
-	if ginCtx := GinContext(webCtx); ginCtx.Writer.Written() {
-		ginCtx.Abort()
-	}
+func (f *recoveryFilter) Invoke(webCtx SpringWeb.WebContext, chain SpringWeb.FilterChain) {
+
+	defer func() {
+		if err := recover(); err != nil {
+
+			ctxLogger := SpringLogger.WithContext(webCtx.Context())
+			ctxLogger.Error(err, "\n", string(debug.Stack()))
+
+			// Check for a broken connection, as it is not really a
+			// condition that warrants a panic stack trace.
+			var brokenPipe bool
+			if ne, ok := err.(*net.OpError); ok {
+				if se, ok := ne.Err.(*os.SyscallError); ok {
+					if strings.Contains(strings.ToLower(se.Error()), "broken pipe") || strings.Contains(strings.ToLower(se.Error()), "connection reset by peer") {
+						brokenPipe = true
+					}
+				}
+			}
+
+			ginCtx := GinContext(webCtx)
+			ginCtx.Abort()
+
+			// If the connection is dead, we can't write a status to it.
+			if brokenPipe {
+				return
+			}
+
+			httpE := SpringWeb.HttpError{Code: http.StatusInternalServerError}
+			switch e := err.(type) {
+			case *SpringWeb.HttpError:
+				httpE = *e
+			case SpringWeb.HttpError:
+				httpE = e
+			case error:
+				httpE.Message = e.Error()
+			default:
+				httpE.Message = http.StatusText(httpE.Code)
+				httpE.Internal = err
+			}
+
+			SpringWeb.ErrorHandler(webCtx, &httpE)
+		}
+	}()
+
+	chain.Next(webCtx)
 }
 
 /////////////////// handler //////////////////////
@@ -207,9 +233,7 @@ func (g ginHandler) FileLine() (file string, line int, fnName string) {
 }
 
 // Gin Web Gin 适配函数
-func Gin(fn gin.HandlerFunc) SpringWeb.Handler {
-	return ginHandler(fn)
-}
+func Gin(fn gin.HandlerFunc) SpringWeb.Handler { return ginHandler(fn) }
 
 /////////////////// filter //////////////////////
 
@@ -221,9 +245,7 @@ func (filter ginFilter) Invoke(ctx SpringWeb.WebContext, _ SpringWeb.FilterChain
 }
 
 // Filter Web Gin 中间件适配器
-func Filter(fn gin.HandlerFunc) SpringWeb.Filter {
-	return ginFilter(fn)
-}
+func Filter(fn gin.HandlerFunc) SpringWeb.Filter { return ginFilter(fn) }
 
 // ginFilterChain gin 适配的过滤器链条
 type ginFilterChain struct {
@@ -231,6 +253,4 @@ type ginFilterChain struct {
 }
 
 // Next 内部调用 gin.Context 对象的 Next 函数驱动链条向后执行
-func (chain *ginFilterChain) Next(_ SpringWeb.WebContext) {
-	chain.ginCtx.Next()
-}
+func (chain *ginFilterChain) Next(_ SpringWeb.WebContext) { chain.ginCtx.Next() }

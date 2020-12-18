@@ -22,6 +22,13 @@ type Filter interface {
 	Invoke(ctx WebContext, chain FilterChain)
 }
 
+// FuncFilter 函数实现的过滤器
+type FuncFilter func(ctx WebContext, chain FilterChain)
+
+func (f FuncFilter) Invoke(ctx WebContext, chain FilterChain) {
+	f(ctx, chain)
+}
+
 // handlerFilter 包装 Web 处理接口的过滤器
 type handlerFilter struct {
 	fn Handler

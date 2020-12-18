@@ -23,8 +23,16 @@ import (
 	"github.com/go-spring/spring-web"
 )
 
-func TestMapper_Key(t *testing.T) {
-	fmt.Println(SpringWeb.NewMapper(SpringWeb.MethodAny, "/", nil, nil).Key())
-	fmt.Println(SpringWeb.NewMapper(SpringWeb.MethodGet, "/", nil, nil).Key())
-	fmt.Println(SpringWeb.NewMapper(SpringWeb.MethodGetPost, "/", nil, nil).Key())
+func TestFuncFilter(t *testing.T) {
+
+	funcFilter := SpringWeb.FuncFilter(func(ctx SpringWeb.WebContext, chain SpringWeb.FilterChain) {
+		fmt.Println("@FuncFilter")
+		chain.Next(ctx)
+	})
+
+	handlerFilter := SpringWeb.HandlerFilter(SpringWeb.FUNC(func(ctx SpringWeb.WebContext) {
+		fmt.Println("@HandlerFilter")
+	}))
+
+	SpringWeb.NewDefaultFilterChain([]SpringWeb.Filter{funcFilter, handlerFilter}).Next(nil)
 }

@@ -208,7 +208,7 @@ func bindStruct(p Properties, v reflect.Value, opt bindOption) {
 		fv := v.Field(i)
 
 		// 可能会开放私有字段
-		fv = SpringUtils.ValuePatchIf(fv, opt.allAccess)
+		fv = SpringUtils.PatchValue(fv, opt.allAccess)
 		subFieldName := opt.fieldName + ".$" + ft.Name
 
 		// 字段的绑定可选项
@@ -399,61 +399,61 @@ func bindValue(p Properties, v reflect.Value, key string, def interface{}, opt b
 
 		switch elemKind {
 		case reflect.Uint64:
-			if i, err := SpringUtils.ToUint64SliceE(propValue); err == nil {
+			if i, err := ToUint64SliceE(propValue); err == nil {
 				v.Set(reflect.ValueOf(i))
 			} else {
 				panic(fmt.Errorf("property value %s isn't []uint64 type", opt.fullPropName))
 			}
 		case reflect.Uint32:
-			if i, err := SpringUtils.ToUint32SliceE(propValue); err == nil {
+			if i, err := ToUint32SliceE(propValue); err == nil {
 				v.Set(reflect.ValueOf(i))
 			} else {
 				panic(fmt.Errorf("property value %s isn't []uint32 type", opt.fullPropName))
 			}
 		case reflect.Uint16:
-			if i, err := SpringUtils.ToUint16SliceE(propValue); err == nil {
+			if i, err := ToUint16SliceE(propValue); err == nil {
 				v.Set(reflect.ValueOf(i))
 			} else {
 				panic(fmt.Errorf("property value %s isn't []uint16 type", opt.fullPropName))
 			}
 		case reflect.Uint8:
-			if i, err := SpringUtils.ToUint8SliceE(propValue); err == nil {
+			if i, err := ToUint8SliceE(propValue); err == nil {
 				v.Set(reflect.ValueOf(i))
 			} else {
 				panic(fmt.Errorf("property value %s isn't []uint8 type", opt.fullPropName))
 			}
 		case reflect.Uint:
-			if i, err := SpringUtils.ToUintSliceE(propValue); err == nil {
+			if i, err := ToUintSliceE(propValue); err == nil {
 				v.Set(reflect.ValueOf(i))
 			} else {
 				panic(fmt.Errorf("property value %s isn't []uint type", opt.fullPropName))
 			}
 		case reflect.Int64:
-			if i, err := SpringUtils.ToInt64SliceE(propValue); err == nil {
+			if i, err := ToInt64SliceE(propValue); err == nil {
 				v.Set(reflect.ValueOf(i))
 			} else {
 				panic(fmt.Errorf("property value %s isn't []int64 type", opt.fullPropName))
 			}
 		case reflect.Int32:
-			if i, err := SpringUtils.ToInt32SliceE(propValue); err == nil {
+			if i, err := ToInt32SliceE(propValue); err == nil {
 				v.Set(reflect.ValueOf(i))
 			} else {
 				panic(fmt.Errorf("property value %s isn't []int32 type", opt.fullPropName))
 			}
 		case reflect.Int16:
-			if i, err := SpringUtils.ToInt16SliceE(propValue); err == nil {
+			if i, err := ToInt16SliceE(propValue); err == nil {
 				v.Set(reflect.ValueOf(i))
 			} else {
 				panic(fmt.Errorf("property value %s isn't []int16 type", opt.fullPropName))
 			}
 		case reflect.Int8:
-			if i, err := SpringUtils.ToInt8SliceE(propValue); err == nil {
+			if i, err := ToInt8SliceE(propValue); err == nil {
 				v.Set(reflect.ValueOf(i))
 			} else {
 				panic(fmt.Errorf("property value %s isn't []int8 type", opt.fullPropName))
 			}
 		case reflect.Int:
-			if i, err := SpringUtils.ToIntSliceE(propValue); err == nil {
+			if i, err := ToIntSliceE(propValue); err == nil {
 				v.Set(reflect.ValueOf(i))
 			} else {
 				panic(fmt.Errorf("property value %s isn't []int type", opt.fullPropName))

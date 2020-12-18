@@ -17,6 +17,7 @@
 package abort
 
 import (
+	"net/http"
 	"strconv"
 
 	"github.com/go-spring/spring-web"
@@ -42,17 +43,13 @@ func NewPushFilter(num int, abort bool, array *StringArray) *PushFilter {
 
 func (f *PushFilter) Invoke(ctx SpringWeb.WebContext, chain SpringWeb.FilterChain) {
 
-	defer func() { // 返回时没有中断则添加一个数
-		if !ctx.IsAborted() {
-			f.array.Push(strconv.Itoa(f.num))
-		}
-	}()
-
 	if f.abort { // 中断处理过程
-		ctx.Abort()
-		return
+		panic(SpringWeb.NewHttpError(http.StatusOK))
 	}
 
 	f.array.Push(strconv.Itoa(f.num))
 	chain.Next(ctx)
+
+	// 返回时没有中断则添加一个数
+	f.array.Push(strconv.Itoa(f.num))
 }

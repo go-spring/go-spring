@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package SpringUtils
+package SpringCore
 
 import (
 	"fmt"

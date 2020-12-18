@@ -18,6 +18,7 @@ package SpringCore_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"image"
@@ -32,17 +33,20 @@ import (
 	"github.com/go-spring/spring-core"
 	pkg1 "github.com/go-spring/spring-core/testdata/pkg/bar"
 	pkg2 "github.com/go-spring/spring-core/testdata/pkg/foo"
-	"github.com/go-spring/spring-logger"
 	"github.com/go-spring/spring-utils"
-	"github.com/magiconair/properties/assert"
 )
 
-func init() {
-	SpringLogger.SetLogger(&SpringLogger.Console{})
+// ToString 对象转 Json 字符串
+func ToString(i interface{}) string {
+	bytes, err := json.Marshal(i)
+	if err != nil {
+		return err.Error()
+	}
+	return string(bytes)
 }
 
 func TestDefaultSpringContext_RegisterBeanFrozen(t *testing.T) {
-	assert.Panic(t, func() {
+	SpringUtils.AssertPanic(t, func() {
 		ctx := SpringCore.DefaultApplicationContext()
 		ctx.RegisterBean(new(int)).Init(func(i *int) {
 			// 不能在这里注册新的 Bean
@@ -61,14 +65,14 @@ func TestDefaultSpringContext(t *testing.T) {
 		a := []int{3}
 
 		// 普通类型用属性注入
-		assert.Panic(t, func() {
+		SpringUtils.AssertPanic(t, func() {
 			ctx.RegisterBean(e)
 		}, "bean must be ref type")
 
 		ctx.RegisterBean(&e)
 
 		// 相同类型的匿名 bean 不能重复注册
-		assert.Panic(t, func() {
+		SpringUtils.AssertPanic(t, func() {
 			ctx.RegisterBean(&e)
 		}, "duplicate registration, bean: \"int:\\*int\"")
 
@@ -83,19 +87,19 @@ func TestDefaultSpringContext(t *testing.T) {
 
 		ctx.AutoWireBeans()
 
-		assert.Panic(t, func() {
+		SpringUtils.AssertPanic(t, func() {
 			var i int
 			ctx.GetBean(&i)
 		}, "receiver must be ref type, bean: \"\\?\" field: ")
 
 		// 找到多个符合条件的值
-		assert.Panic(t, func() {
+		SpringUtils.AssertPanic(t, func() {
 			var i *int
 			ctx.GetBean(&i)
 		}, "found 3 beans, bean: \"\\?\" field:  type: \\*int")
 
 		// 入参不是可赋值的对象
-		assert.Panic(t, func() {
+		SpringUtils.AssertPanic(t, func() {
 			var i int
 			ctx.GetBean(&i, "i3")
 			fmt.Println(i)
@@ -134,7 +138,7 @@ func TestDefaultSpringContext(t *testing.T) {
 		p := []*pkg1.SamePkg{{}}
 
 		// 栈上的对象不能注册
-		assert.Panic(t, func() {
+		SpringUtils.AssertPanic(t, func() {
 			ctx.RegisterBean(e)
 		}, "bean must be ref type")
 
@@ -162,7 +166,7 @@ func TestDefaultSpringContext(t *testing.T) {
 		p := []*pkg2.SamePkg{{}}
 
 		// 栈上的对象不能注册
-		assert.Panic(t, func() {
+		SpringUtils.AssertPanic(t, func() {
 			ctx.RegisterBean(e)
 		}, "bean must be ref type")
 
@@ -257,7 +261,7 @@ func TestDefaultSpringContext_AutoWireBeans(t *testing.T) {
 		i2 := int(3)
 		ctx.RegisterNameBean("int_ptr_2", &i2)
 
-		assert.Panic(t, func() {
+		SpringUtils.AssertPanic(t, func() {
 			ctx.AutoWireBeans()
 		}, "found 2 beans, bean: \"\" field: TestObject.\\$IntPtrByType type: \\*int")
 	})
@@ -309,7 +313,7 @@ func TestDefaultSpringContext_AutoWireBeans(t *testing.T) {
 
 	var ff []*float32
 	ctx.CollectBeans(&ff, "float_ptr_2", "float_ptr_1")
-	assert.Equal(t, ff, []*float32{&f2, &f1})
+	SpringUtils.AssertEqual(t, ff, []*float32{&f2, &f1})
 
 	fmt.Printf("%+v\n", obj)
 }
@@ -489,7 +493,7 @@ func TestDefaultSpringContext_TypeConverter(t *testing.T) {
 
 	ctx.AutoWireBeans()
 
-	assert.Equal(t, b.EnvType, ENV_TEST)
+	SpringUtils.AssertEqual(t, b.EnvType, ENV_TEST)
 
 	fmt.Printf("%+v\n", b)
 	fmt.Printf("%+v\n", p)
@@ -578,10 +582,10 @@ func TestDefaultSpringContext_LoadProperties(t *testing.T) {
 	ctx.LoadProperties("testdata/config/application.properties")
 
 	val0 := ctx.GetStringProperty("spring.application.name")
-	assert.Equal(t, val0, "test")
+	SpringUtils.AssertEqual(t, val0, "test")
 
 	val1 := ctx.GetProperty("yaml.list")
-	assert.Equal(t, val1, []interface{}{1, 2})
+	SpringUtils.AssertEqual(t, val1, []interface{}{1, 2})
 }
 
 type BeanZero struct {
@@ -614,17 +618,17 @@ func TestDefaultSpringContext_GetBean(t *testing.T) {
 		ctx := SpringCore.NewDefaultSpringContext()
 		ctx.AutoWireBeans()
 
-		assert.Panic(t, func() {
+		SpringUtils.AssertPanic(t, func() {
 			var i int
 			ctx.GetBean(i)
 		}, "i must be pointer")
 
-		assert.Panic(t, func() {
+		SpringUtils.AssertPanic(t, func() {
 			var i *int
 			ctx.GetBean(i)
 		}, "receiver must be ref type")
 
-		assert.Panic(t, func() {
+		SpringUtils.AssertPanic(t, func() {
 			i := new(int)
 			ctx.GetBean(i)
 		}, "receiver must be ref type")
@@ -632,7 +636,7 @@ func TestDefaultSpringContext_GetBean(t *testing.T) {
 		var i *int
 		ctx.GetBean(&i)
 
-		assert.Panic(t, func() {
+		SpringUtils.AssertPanic(t, func() {
 			var is []int
 			ctx.GetBean(is)
 		}, "i must be pointer")
@@ -640,7 +644,7 @@ func TestDefaultSpringContext_GetBean(t *testing.T) {
 		var a []int
 		ctx.GetBean(&a)
 
-		assert.Panic(t, func() {
+		SpringUtils.AssertPanic(t, func() {
 			var s fmt.Stringer
 			ctx.GetBean(s)
 		}, "i can't be nil")
@@ -659,59 +663,59 @@ func TestDefaultSpringContext_GetBean(t *testing.T) {
 
 		var two *BeanTwo
 		ok := ctx.GetBean(&two)
-		assert.Equal(t, ok, true)
+		SpringUtils.AssertEqual(t, ok, true)
 
 		var grouper Grouper
 		ok = ctx.GetBean(&grouper)
-		assert.Equal(t, ok, true)
+		SpringUtils.AssertEqual(t, ok, true)
 
 		ok = ctx.GetBean(&two, (*BeanTwo)(nil))
-		assert.Equal(t, ok, true)
+		SpringUtils.AssertEqual(t, ok, true)
 
 		ok = ctx.GetBean(&grouper, (*BeanTwo)(nil))
-		assert.Equal(t, ok, true)
+		SpringUtils.AssertEqual(t, ok, true)
 
 		ok = ctx.GetBean(&two, "")
-		assert.Equal(t, ok, true)
+		SpringUtils.AssertEqual(t, ok, true)
 
 		ok = ctx.GetBean(&grouper, "")
-		assert.Equal(t, ok, true)
+		SpringUtils.AssertEqual(t, ok, true)
 
 		ok = ctx.GetBean(&two, "*SpringCore_test.BeanTwo")
-		assert.Equal(t, ok, true)
+		SpringUtils.AssertEqual(t, ok, true)
 
 		ok = ctx.GetBean(&grouper, "*SpringCore_test.BeanTwo")
-		assert.Equal(t, ok, true)
+		SpringUtils.AssertEqual(t, ok, true)
 
 		ok = ctx.GetBean(&two, "BeanTwo")
-		assert.Equal(t, ok, false)
+		SpringUtils.AssertEqual(t, ok, false)
 
 		ok = ctx.GetBean(&grouper, "BeanTwo")
-		assert.Equal(t, ok, false)
+		SpringUtils.AssertEqual(t, ok, false)
 
 		ok = ctx.GetBean(&two, ":*SpringCore_test.BeanTwo")
-		assert.Equal(t, ok, true)
+		SpringUtils.AssertEqual(t, ok, true)
 
 		ok = ctx.GetBean(&grouper, ":*SpringCore_test.BeanTwo")
-		assert.Equal(t, ok, true)
+		SpringUtils.AssertEqual(t, ok, true)
 
 		ok = ctx.GetBean(&two, "github.com/go-spring/spring-core_test/SpringCore_test.BeanTwo:*SpringCore_test.BeanTwo")
-		assert.Equal(t, ok, true)
+		SpringUtils.AssertEqual(t, ok, true)
 
 		ok = ctx.GetBean(&grouper, "github.com/go-spring/spring-core_test/SpringCore_test.BeanTwo:*SpringCore_test.BeanTwo")
-		assert.Equal(t, ok, true)
+		SpringUtils.AssertEqual(t, ok, true)
 
 		ok = ctx.GetBean(&two, "xxx:*SpringCore_test.BeanTwo")
-		assert.Equal(t, ok, false)
+		SpringUtils.AssertEqual(t, ok, false)
 
 		ok = ctx.GetBean(&grouper, "xxx:*SpringCore_test.BeanTwo")
-		assert.Equal(t, ok, false)
+		SpringUtils.AssertEqual(t, ok, false)
 
 		var three *BeanThree
 		ok = ctx.GetBean(&three, "")
-		assert.Equal(t, ok, false)
+		SpringUtils.AssertEqual(t, ok, false)
 
-		fmt.Println(SpringUtils.ToJson(two))
+		fmt.Println(ToString(two))
 	})
 }
 
@@ -724,43 +728,43 @@ func TestDefaultSpringContext_FindBeanByName(t *testing.T) {
 
 	ctx.AutoWireBeans()
 
-	assert.Panic(t, func() {
+	SpringUtils.AssertPanic(t, func() {
 		ctx.FindBean("")
 	}, "found 3 beans, bean: \"\"")
 
 	i, ok := ctx.FindBean("*SpringCore_test.BeanTwo")
-	fmt.Println(SpringUtils.ToJson(i.Bean()))
-	assert.Equal(t, ok, true)
+	fmt.Println(ToString(i.Bean()))
+	SpringUtils.AssertEqual(t, ok, true)
 
 	i, ok = ctx.FindBean("BeanTwo")
-	fmt.Println(SpringUtils.ToJson(i))
-	assert.Equal(t, ok, false)
+	fmt.Println(ToString(i))
+	SpringUtils.AssertEqual(t, ok, false)
 
 	i, ok = ctx.FindBean(":*SpringCore_test.BeanTwo")
-	fmt.Println(SpringUtils.ToJson(i.Bean()))
-	assert.Equal(t, ok, true)
+	fmt.Println(ToString(i.Bean()))
+	SpringUtils.AssertEqual(t, ok, true)
 
 	i, ok = ctx.FindBean("github.com/go-spring/spring-core_test/SpringCore_test.BeanTwo:*SpringCore_test.BeanTwo")
-	fmt.Println(SpringUtils.ToJson(i.Bean()))
-	assert.Equal(t, ok, true)
+	fmt.Println(ToString(i.Bean()))
+	SpringUtils.AssertEqual(t, ok, true)
 
 	i, ok = ctx.FindBean("xxx:*SpringCore_test.BeanTwo")
-	fmt.Println(SpringUtils.ToJson(i))
-	assert.Equal(t, ok, false)
+	fmt.Println(ToString(i))
+	SpringUtils.AssertEqual(t, ok, false)
 
 	i, ok = ctx.FindBean("*SpringCore_test.BeanTwo")
-	fmt.Println(SpringUtils.ToJson(i.Bean()))
-	assert.Equal(t, ok, true)
+	fmt.Println(ToString(i.Bean()))
+	SpringUtils.AssertEqual(t, ok, true)
 
 	i, ok = ctx.FindBean((*BeanTwo)(nil))
-	fmt.Println(SpringUtils.ToJson(i.Bean()))
-	assert.Equal(t, ok, true)
+	fmt.Println(ToString(i.Bean()))
+	SpringUtils.AssertEqual(t, ok, true)
 
 	_, ok = ctx.FindBean((*fmt.Stringer)(nil))
-	assert.Equal(t, ok, false)
+	SpringUtils.AssertEqual(t, ok, false)
 
 	_, ok = ctx.FindBean((*Grouper)(nil))
-	assert.Equal(t, ok, false)
+	SpringUtils.AssertEqual(t, ok, false)
 }
 
 func TestDefaultSpringContext_RegisterBeanFn(t *testing.T) {
@@ -794,16 +798,16 @@ func TestDefaultSpringContext_RegisterBeanFn(t *testing.T) {
 	var st1 *Student
 	ok := ctx.GetBean(&st1, "st1")
 
-	assert.Equal(t, ok, true)
-	fmt.Println(SpringUtils.ToJson(st1))
-	assert.Equal(t, st1.Room, ctx.GetStringProperty("room"))
+	SpringUtils.AssertEqual(t, ok, true)
+	fmt.Println(ToString(st1))
+	SpringUtils.AssertEqual(t, st1.Room, ctx.GetStringProperty("room"))
 
 	var st2 *Student
 	ok = ctx.GetBean(&st2, "st2")
 
-	assert.Equal(t, ok, true)
-	fmt.Println(SpringUtils.ToJson(st2))
-	assert.Equal(t, st2.Room, ctx.GetStringProperty("room"))
+	SpringUtils.AssertEqual(t, ok, true)
+	fmt.Println(ToString(st2))
+	SpringUtils.AssertEqual(t, st2.Room, ctx.GetStringProperty("room"))
 
 	fmt.Printf("%x\n", reflect.ValueOf(st1).Pointer())
 	fmt.Printf("%x\n", reflect.ValueOf(st2).Pointer())
@@ -811,30 +815,30 @@ func TestDefaultSpringContext_RegisterBeanFn(t *testing.T) {
 	var st3 *Student
 	ok = ctx.GetBean(&st3, "st3")
 
-	assert.Equal(t, ok, true)
-	fmt.Println(SpringUtils.ToJson(st3))
-	assert.Equal(t, st3.Room, ctx.GetStringProperty("room"))
+	SpringUtils.AssertEqual(t, ok, true)
+	fmt.Println(ToString(st3))
+	SpringUtils.AssertEqual(t, st3.Room, ctx.GetStringProperty("room"))
 
 	var st4 *Student
 	ok = ctx.GetBean(&st4, "st4")
 
-	assert.Equal(t, ok, true)
-	fmt.Println(SpringUtils.ToJson(st4))
-	assert.Equal(t, st4.Room, ctx.GetStringProperty("room"))
+	SpringUtils.AssertEqual(t, ok, true)
+	fmt.Println(ToString(st4))
+	SpringUtils.AssertEqual(t, st4.Room, ctx.GetStringProperty("room"))
 
 	var m map[int]string
 	ok = ctx.GetBean(&m)
 
-	assert.Equal(t, ok, true)
-	fmt.Println(SpringUtils.ToJson(m))
-	assert.Equal(t, m[1], "ok")
+	SpringUtils.AssertEqual(t, ok, true)
+	fmt.Println(ToString(m))
+	SpringUtils.AssertEqual(t, m[1], "ok")
 
 	var s []int
 	ok = ctx.GetBean(&s)
 
-	assert.Equal(t, ok, true)
-	fmt.Println(SpringUtils.ToJson(s))
-	assert.Equal(t, s[1], 2)
+	SpringUtils.AssertEqual(t, ok, true)
+	fmt.Println(ToString(s))
+	SpringUtils.AssertEqual(t, s[1], 2)
 }
 
 func TestDefaultSpringContext_Profile(t *testing.T) {
@@ -847,7 +851,7 @@ func TestDefaultSpringContext_Profile(t *testing.T) {
 
 		var b *BeanZero
 		ok := ctx.GetBean(&b)
-		assert.Equal(t, ok, true)
+		SpringUtils.AssertEqual(t, ok, true)
 	})
 
 	t.Run("bean:_ctx:test", func(t *testing.T) {
@@ -859,7 +863,7 @@ func TestDefaultSpringContext_Profile(t *testing.T) {
 
 		var b *BeanZero
 		ok := ctx.GetBean(&b)
-		assert.Equal(t, ok, true)
+		SpringUtils.AssertEqual(t, ok, true)
 	})
 
 	t.Run("bean:test_ctx:", func(t *testing.T) {
@@ -873,7 +877,7 @@ func TestDefaultSpringContext_Profile(t *testing.T) {
 
 		var b *BeanZero
 		ok := ctx.GetBean(&b)
-		assert.Equal(t, ok, false)
+		SpringUtils.AssertEqual(t, ok, false)
 	})
 
 	t.Run("bean:test_ctx:test", func(t *testing.T) {
@@ -885,7 +889,7 @@ func TestDefaultSpringContext_Profile(t *testing.T) {
 
 		var b *BeanZero
 		ok := ctx.GetBean(&b)
-		assert.Equal(t, ok, true)
+		SpringUtils.AssertEqual(t, ok, true)
 	})
 
 	t.Run("bean:test_ctx:stable", func(t *testing.T) {
@@ -897,7 +901,7 @@ func TestDefaultSpringContext_Profile(t *testing.T) {
 
 		var b *BeanZero
 		ok := ctx.GetBean(&b)
-		assert.Equal(t, ok, false)
+		SpringUtils.AssertEqual(t, ok, false)
 	})
 }
 
@@ -932,7 +936,7 @@ func TestDefaultSpringContext_Primary(t *testing.T) {
 
 	t.Run("duplicate", func(t *testing.T) {
 
-		assert.Panic(t, func() {
+		SpringUtils.AssertPanic(t, func() {
 			ctx := SpringCore.NewDefaultSpringContext()
 			ctx.RegisterBean(&BeanZero{5})
 			ctx.RegisterBean(&BeanZero{6})
@@ -941,7 +945,7 @@ func TestDefaultSpringContext_Primary(t *testing.T) {
 			ctx.AutoWireBeans()
 		}, "duplicate registration, bean: ")
 
-		assert.Panic(t, func() {
+		SpringUtils.AssertPanic(t, func() {
 			ctx := SpringCore.NewDefaultSpringContext()
 			ctx.RegisterBean(&BeanZero{5})
 			// Primary 是在多个候选 bean 里面选择，而不是允许同名同类型的两个 bean
@@ -962,7 +966,7 @@ func TestDefaultSpringContext_Primary(t *testing.T) {
 
 		var b *BeanTwo
 		ctx.GetBean(&b)
-		assert.Equal(t, b.One.Zero.Int, 5)
+		SpringUtils.AssertEqual(t, b.One.Zero.Int, 5)
 	})
 
 	t.Run("primary", func(t *testing.T) {
@@ -976,7 +980,7 @@ func TestDefaultSpringContext_Primary(t *testing.T) {
 
 		var b *BeanTwo
 		ctx.GetBean(&b)
-		assert.Equal(t, b.One.Zero.Int, 6)
+		SpringUtils.AssertEqual(t, b.One.Zero.Int, 6)
 	})
 }
 
@@ -993,7 +997,7 @@ func TestDefaultProperties_WireFunc(t *testing.T) {
 	ctx.RegisterBean(obj)
 	ctx.AutoWireBeans()
 	i := obj.Fn(3)
-	assert.Equal(t, i, 6)
+	SpringUtils.AssertEqual(t, i, 6)
 }
 
 func TestDefaultSpringContext_ConditionOnBean(t *testing.T) {
@@ -1021,10 +1025,10 @@ func TestDefaultSpringContext_ConditionOnBean(t *testing.T) {
 
 	var two *BeanTwo
 	ok := ctx.GetBean(&two, "")
-	assert.Equal(t, ok, true)
+	SpringUtils.AssertEqual(t, ok, true)
 
 	ok = ctx.GetBean(&two, "another_two")
-	assert.Equal(t, ok, false)
+	SpringUtils.AssertEqual(t, ok, false)
 }
 
 func TestDefaultSpringContext_ConditionOnMissingBean(t *testing.T) {
@@ -1042,10 +1046,10 @@ func TestDefaultSpringContext_ConditionOnMissingBean(t *testing.T) {
 
 		var two *BeanTwo
 		ok := ctx.GetBean(&two, "")
-		assert.Equal(t, ok, true)
+		SpringUtils.AssertEqual(t, ok, true)
 
 		ok = ctx.GetBean(&two, "another_two")
-		assert.Equal(t, ok, true)
+		SpringUtils.AssertEqual(t, ok, true)
 	}
 }
 
@@ -1097,13 +1101,13 @@ func TestDefaultSpringContext_RegisterBeanFn2(t *testing.T) {
 
 		var m Manager
 		ok := ctx.GetBean(&m)
-		assert.Equal(t, ok, true)
+		SpringUtils.AssertEqual(t, ok, true)
 
 		// 因为用户是按照接口注册的，所以理论上在依赖
 		// 系统中用户并不关心接口对应的真实类型是什么。
 		var lm *localManager
 		ok = ctx.GetBean(&lm)
-		assert.Equal(t, ok, false)
+		SpringUtils.AssertEqual(t, ok, false)
 	})
 
 	t.Run("manager", func(t *testing.T) {
@@ -1112,24 +1116,24 @@ func TestDefaultSpringContext_RegisterBeanFn2(t *testing.T) {
 		ctx.SetProperty("manager.version", "1.0.0")
 
 		bd := ctx.RegisterBeanFn(NewManager)
-		assert.Equal(t, bd.Name(), "SpringCore_test.Manager")
+		SpringUtils.AssertEqual(t, bd.Name(), "SpringCore_test.Manager")
 
 		bd = ctx.RegisterBeanFn(NewInt)
-		assert.Equal(t, bd.Name(), "*int")
+		SpringUtils.AssertEqual(t, bd.Name(), "*int")
 
 		ctx.AutoWireBeans()
 
 		var m Manager
 		ok := ctx.GetBean(&m)
-		assert.Equal(t, ok, true)
+		SpringUtils.AssertEqual(t, ok, true)
 
 		var lm *localManager
 		ok = ctx.GetBean(&lm)
-		assert.Equal(t, ok, false)
+		SpringUtils.AssertEqual(t, ok, false)
 	})
 
 	t.Run("manager return error", func(t *testing.T) {
-		assert.Panic(t, func() {
+		SpringUtils.AssertPanic(t, func() {
 			ctx := SpringCore.NewDefaultSpringContext()
 			ctx.SetProperty("manager.version", "1.0.0")
 			ctx.RegisterBeanFn(NewManagerRetError)
@@ -1145,7 +1149,7 @@ func TestDefaultSpringContext_RegisterBeanFn2(t *testing.T) {
 	})
 
 	t.Run("manager return nil", func(t *testing.T) {
-		assert.Panic(t, func() {
+		SpringUtils.AssertPanic(t, func() {
 			ctx := SpringCore.NewDefaultSpringContext()
 			ctx.SetProperty("manager.version", "1.0.0")
 			ctx.RegisterBeanFn(NewNullPtrManager)
@@ -1212,22 +1216,22 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 
 	t.Run("int", func(t *testing.T) {
 
-		assert.Panic(t, func() {
+		SpringUtils.AssertPanic(t, func() {
 			ctx := SpringCore.NewDefaultSpringContext()
 			ctx.RegisterBean(new(int)).Init(func() {})
 		}, "init should be func\\(bean\\) or func\\(bean\\)error")
 
-		assert.Panic(t, func() {
+		SpringUtils.AssertPanic(t, func() {
 			ctx := SpringCore.NewDefaultSpringContext()
 			ctx.RegisterBean(new(int)).Init(func() int { return 0 })
 		}, "init should be func\\(bean\\) or func\\(bean\\)error")
 
-		assert.Panic(t, func() {
+		SpringUtils.AssertPanic(t, func() {
 			ctx := SpringCore.NewDefaultSpringContext()
 			ctx.RegisterBean(new(int)).Init(func(int) {})
 		}, "init should be func\\(bean\\) or func\\(bean\\)error")
 
-		assert.Panic(t, func() {
+		SpringUtils.AssertPanic(t, func() {
 			ctx := SpringCore.NewDefaultSpringContext()
 			ctx.RegisterBean(new(int)).Init(func(int, int) {})
 		}, "init should be func\\(bean\\) or func\\(bean\\)error")
@@ -1238,7 +1242,7 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 
 		var i *int
 		ctx.GetBean(&i)
-		assert.Equal(t, *i, 3)
+		SpringUtils.AssertEqual(t, *i, 3)
 	})
 
 	t.Run("call init method", func(t *testing.T) {
@@ -1252,8 +1256,8 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 
 		ctx.Close()
 
-		assert.Equal(t, ok, true)
-		assert.Equal(t, d.inited, true)
+		SpringUtils.AssertEqual(t, ok, true)
+		SpringUtils.AssertEqual(t, d.inited, true)
 	})
 
 	t.Run("call init method with arg", func(t *testing.T) {
@@ -1268,13 +1272,13 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 
 		ctx.Close()
 
-		assert.Equal(t, ok, true)
-		assert.Equal(t, d.inited, true)
+		SpringUtils.AssertEqual(t, ok, true)
+		SpringUtils.AssertEqual(t, d.inited, true)
 	})
 
 	t.Run("call init method with error", func(t *testing.T) {
 
-		assert.Panic(t, func() {
+		SpringUtils.AssertPanic(t, func() {
 			ctx := SpringCore.NewDefaultSpringContext()
 			ctx.SetProperty("int", 1)
 			ctx.RegisterBean(new(callDestroy)).Init((*callDestroy).InitWithError, "${int}")
@@ -1291,8 +1295,8 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 
 		ctx.Close()
 
-		assert.Equal(t, ok, true)
-		assert.Equal(t, d.inited, true)
+		SpringUtils.AssertEqual(t, ok, true)
+		SpringUtils.AssertEqual(t, d.inited, true)
 	})
 
 	t.Run("call interface init method", func(t *testing.T) {
@@ -1306,8 +1310,8 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 
 		ctx.Close()
 
-		assert.Equal(t, ok, true)
-		assert.Equal(t, d.(*callDestroy).inited, true)
+		SpringUtils.AssertEqual(t, ok, true)
+		SpringUtils.AssertEqual(t, d.(*callDestroy).inited, true)
 	})
 
 	t.Run("call interface init method with arg", func(t *testing.T) {
@@ -1322,13 +1326,13 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 
 		ctx.Close()
 
-		assert.Equal(t, ok, true)
-		assert.Equal(t, d.(*callDestroy).inited, true)
+		SpringUtils.AssertEqual(t, ok, true)
+		SpringUtils.AssertEqual(t, d.(*callDestroy).inited, true)
 	})
 
 	t.Run("call interface init method with error", func(t *testing.T) {
 
-		assert.Panic(t, func() {
+		SpringUtils.AssertPanic(t, func() {
 			ctx := SpringCore.NewDefaultSpringContext()
 			ctx.SetProperty("int", 1)
 			ctx.RegisterBeanFn(func() destroyable { return new(callDestroy) }).Init(destroyable.InitWithError, "${int}")
@@ -1345,8 +1349,8 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 
 		ctx.Close()
 
-		assert.Equal(t, ok, true)
-		assert.Equal(t, d.(*callDestroy).inited, true)
+		SpringUtils.AssertEqual(t, ok, true)
+		SpringUtils.AssertEqual(t, d.(*callDestroy).inited, true)
 	})
 
 	t.Run("call nested init method", func(t *testing.T) {
@@ -1360,8 +1364,8 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 
 		ctx.Close()
 
-		assert.Equal(t, ok, true)
-		assert.Equal(t, d.inited, true)
+		SpringUtils.AssertEqual(t, ok, true)
+		SpringUtils.AssertEqual(t, d.inited, true)
 	})
 
 	t.Run("call nested interface init method", func(t *testing.T) {
@@ -1377,8 +1381,8 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 
 		ctx.Close()
 
-		assert.Equal(t, ok, true)
-		assert.Equal(t, d.destroyable.(*callDestroy).inited, true)
+		SpringUtils.AssertEqual(t, ok, true)
+		SpringUtils.AssertEqual(t, d.destroyable.(*callDestroy).inited, true)
 	})
 }
 
@@ -1407,8 +1411,8 @@ func TestDefaultSpringContext_ValueBinding(t *testing.T) {
 	ctx.GetBean(&cluster)
 	fmt.Println(cluster)
 
-	assert.Equal(t, cluster.Endpoints, cluster.RedisConfig.Endpoints)
-	assert.Equal(t, cluster.Endpoints, cluster.Nested.RedisConfig.Endpoints)
+	SpringUtils.AssertEqual(t, cluster.Endpoints, cluster.RedisConfig.Endpoints)
+	SpringUtils.AssertEqual(t, cluster.Endpoints, cluster.Nested.RedisConfig.Endpoints)
 }
 
 func TestDefaultSpringContext_CollectBeans(t *testing.T) {
@@ -1421,7 +1425,7 @@ func TestDefaultSpringContext_CollectBeans(t *testing.T) {
 		ctx.RegisterBean(new(RedisCluster))
 		ctx.AutoWireBeans()
 
-		assert.Panic(t, func() {
+		SpringUtils.AssertPanic(t, func() {
 			var rcs []*RedisCluster
 			ctx.CollectBeans(&rcs, "*", "*")
 		}, "more than one \\* in collection \\[\\*,\\*]\\?")
@@ -1438,9 +1442,9 @@ func TestDefaultSpringContext_CollectBeans(t *testing.T) {
 		var rcs []*RedisCluster
 		ctx.CollectBeans(&rcs, "one", "*")
 
-		assert.Equal(t, len(rcs), 2)
-		assert.Equal(t, rcs[0], d1.Bean())
-		assert.Equal(t, rcs[1], d2.Bean())
+		SpringUtils.AssertEqual(t, len(rcs), 2)
+		SpringUtils.AssertEqual(t, rcs[0], d1.Bean())
+		SpringUtils.AssertEqual(t, rcs[1], d2.Bean())
 	})
 
 	t.Run("after *", func(t *testing.T) {
@@ -1454,9 +1458,9 @@ func TestDefaultSpringContext_CollectBeans(t *testing.T) {
 		var rcs []*RedisCluster
 		ctx.CollectBeans(&rcs, "one", "*")
 
-		assert.Equal(t, len(rcs), 2)
-		assert.Equal(t, rcs[1], d1.Bean())
-		assert.Equal(t, rcs[0], d2.Bean())
+		SpringUtils.AssertEqual(t, len(rcs), 2)
+		SpringUtils.AssertEqual(t, rcs[1], d1.Bean())
+		SpringUtils.AssertEqual(t, rcs[0], d2.Bean())
 	})
 
 	t.Run("only *", func(t *testing.T) {
@@ -1470,7 +1474,7 @@ func TestDefaultSpringContext_CollectBeans(t *testing.T) {
 		var rcs []*RedisCluster
 		ctx.CollectBeans(&rcs, "*")
 
-		assert.Equal(t, len(rcs), 2)
+		SpringUtils.AssertEqual(t, len(rcs), 2)
 	})
 
 	ctx := SpringCore.NewDefaultSpringContext()
@@ -1484,21 +1488,21 @@ func TestDefaultSpringContext_CollectBeans(t *testing.T) {
 
 		var rcs []*RedisCluster
 		ctx.CollectBeans(&rcs)
-		fmt.Println(SpringUtils.ToJson(rcs))
+		fmt.Println(ToString(rcs))
 
-		assert.Equal(t, len(rcs), 2)
-		assert.Equal(t, rcs[0].Endpoints, "redis://localhost:6379")
+		SpringUtils.AssertEqual(t, len(rcs), 2)
+		SpringUtils.AssertEqual(t, rcs[0].Endpoints, "redis://localhost:6379")
 	})
-	assert.Equal(t, intBean.Name(), "*int")
+	SpringUtils.AssertEqual(t, intBean.Name(), "*int")
 
 	ctx.AutoWireBeans()
 
 	var rcs []RedisCluster
 	ctx.GetBean(&rcs)
-	fmt.Println(SpringUtils.ToJson(rcs))
+	fmt.Println(ToString(rcs))
 
-	assert.Equal(t, len(rcs), 1)
-	assert.Equal(t, rcs[0].Endpoints, "redis://localhost:6379")
+	SpringUtils.AssertEqual(t, len(rcs), 1)
+	SpringUtils.AssertEqual(t, rcs[0].Endpoints, "redis://localhost:6379")
 }
 
 func TestDefaultSpringContext_WireSliceBean(t *testing.T) {
@@ -1512,17 +1516,17 @@ func TestDefaultSpringContext_WireSliceBean(t *testing.T) {
 	{
 		var rcs []*RedisCluster
 		ctx.GetBean(&rcs)
-		fmt.Println(SpringUtils.ToJson(rcs))
+		fmt.Println(ToString(rcs))
 
-		assert.Equal(t, rcs[0].Endpoints, "redis://localhost:6379")
+		SpringUtils.AssertEqual(t, rcs[0].Endpoints, "redis://localhost:6379")
 	}
 
 	{
 		var rcs []RedisCluster
 		ctx.GetBean(&rcs)
-		fmt.Println(SpringUtils.ToJson(rcs))
+		fmt.Println(ToString(rcs))
 
-		assert.Equal(t, rcs[0].Endpoints, "redis://localhost:6379")
+		SpringUtils.AssertEqual(t, rcs[0].Endpoints, "redis://localhost:6379")
 	}
 }
 
@@ -1589,27 +1593,27 @@ func TestOptionPattern(t *testing.T) {
 	}
 
 	cls := NewClassRoom()
-	assert.Equal(t, cls.className, "default")
+	SpringUtils.AssertEqual(t, cls.className, "default")
 
 	cls = NewClassRoom(withClassName("二年级03班", 3))
-	assert.Equal(t, cls.floor, 3)
-	assert.Equal(t, len(cls.students), 0)
-	assert.Equal(t, cls.className, "二年级03班")
+	SpringUtils.AssertEqual(t, cls.floor, 3)
+	SpringUtils.AssertEqual(t, len(cls.students), 0)
+	SpringUtils.AssertEqual(t, cls.className, "二年级03班")
 
 	cls = NewClassRoom(withStudents(students))
-	assert.Equal(t, cls.floor, 0)
-	assert.Equal(t, cls.students, students)
-	assert.Equal(t, cls.className, "default")
+	SpringUtils.AssertEqual(t, cls.floor, 0)
+	SpringUtils.AssertEqual(t, cls.students, students)
+	SpringUtils.AssertEqual(t, cls.className, "default")
 
 	cls = NewClassRoom(withClassName("二年级03班", 3), withStudents(students))
-	assert.Equal(t, cls.className, "二年级03班")
-	assert.Equal(t, cls.students, students)
-	assert.Equal(t, cls.floor, 3)
+	SpringUtils.AssertEqual(t, cls.className, "二年级03班")
+	SpringUtils.AssertEqual(t, cls.students, students)
+	SpringUtils.AssertEqual(t, cls.floor, 3)
 
 	cls = NewClassRoom(withStudents(students), withClassName("二年级03班", 3))
-	assert.Equal(t, cls.className, "二年级03班")
-	assert.Equal(t, cls.students, students)
-	assert.Equal(t, cls.floor, 3)
+	SpringUtils.AssertEqual(t, cls.className, "二年级03班")
+	SpringUtils.AssertEqual(t, cls.students, students)
+	SpringUtils.AssertEqual(t, cls.floor, 3)
 }
 
 func TestOptionConstructorArg(t *testing.T) {
@@ -1624,9 +1628,9 @@ func TestOptionConstructorArg(t *testing.T) {
 		var cls *ClassRoom
 		ctx.GetBean(&cls)
 
-		assert.Equal(t, len(cls.students), 0)
-		assert.Equal(t, cls.className, "default")
-		assert.Equal(t, cls.President, "CaiYuanPei")
+		SpringUtils.AssertEqual(t, len(cls.students), 0)
+		SpringUtils.AssertEqual(t, cls.className, "default")
+		SpringUtils.AssertEqual(t, cls.President, "CaiYuanPei")
 	})
 
 	t.Run("option withClassName", func(t *testing.T) {
@@ -1643,10 +1647,10 @@ func TestOptionConstructorArg(t *testing.T) {
 		var cls *ClassRoom
 		ctx.GetBean(&cls)
 
-		assert.Equal(t, cls.floor, 3)
-		assert.Equal(t, len(cls.students), 0)
-		assert.Equal(t, cls.className, "二年级03班")
-		assert.Equal(t, cls.President, "CaiYuanPei")
+		SpringUtils.AssertEqual(t, cls.floor, 3)
+		SpringUtils.AssertEqual(t, len(cls.students), 0)
+		SpringUtils.AssertEqual(t, cls.className, "二年级03班")
+		SpringUtils.AssertEqual(t, cls.President, "CaiYuanPei")
 	})
 
 	t.Run("option withClassName Condition", func(t *testing.T) {
@@ -1665,10 +1669,10 @@ func TestOptionConstructorArg(t *testing.T) {
 		var cls *ClassRoom
 		ctx.GetBean(&cls)
 
-		assert.Equal(t, cls.floor, 0)
-		assert.Equal(t, len(cls.students), 0)
-		assert.Equal(t, cls.className, "default")
-		assert.Equal(t, cls.President, "CaiYuanPei")
+		SpringUtils.AssertEqual(t, cls.floor, 0)
+		SpringUtils.AssertEqual(t, len(cls.students), 0)
+		SpringUtils.AssertEqual(t, cls.className, "default")
+		SpringUtils.AssertEqual(t, cls.President, "CaiYuanPei")
 	})
 
 	t.Run("option withClassName Apply", func(t *testing.T) {
@@ -1687,10 +1691,10 @@ func TestOptionConstructorArg(t *testing.T) {
 		var cls *ClassRoom
 		ctx.GetBean(&cls)
 
-		assert.Equal(t, cls.floor, 0)
-		assert.Equal(t, len(cls.students), 0)
-		assert.Equal(t, cls.className, "default")
-		assert.Equal(t, cls.President, "CaiYuanPei")
+		SpringUtils.AssertEqual(t, cls.floor, 0)
+		SpringUtils.AssertEqual(t, len(cls.students), 0)
+		SpringUtils.AssertEqual(t, cls.className, "default")
+		SpringUtils.AssertEqual(t, cls.President, "CaiYuanPei")
 	})
 
 	t.Run("option withStudents", func(t *testing.T) {
@@ -1709,10 +1713,10 @@ func TestOptionConstructorArg(t *testing.T) {
 		var cls *ClassRoom
 		ctx.GetBean(&cls)
 
-		assert.Equal(t, cls.floor, 0)
-		assert.Equal(t, len(cls.students), 2)
-		assert.Equal(t, cls.className, "default")
-		assert.Equal(t, cls.President, "CaiYuanPei")
+		SpringUtils.AssertEqual(t, cls.floor, 0)
+		SpringUtils.AssertEqual(t, len(cls.students), 2)
+		SpringUtils.AssertEqual(t, cls.className, "default")
+		SpringUtils.AssertEqual(t, cls.President, "CaiYuanPei")
 	})
 
 	t.Run("option withStudents withClassName", func(t *testing.T) {
@@ -1736,10 +1740,10 @@ func TestOptionConstructorArg(t *testing.T) {
 		var cls *ClassRoom
 		ctx.GetBean(&cls)
 
-		assert.Equal(t, cls.floor, 3)
-		assert.Equal(t, len(cls.students), 2)
-		assert.Equal(t, cls.className, "二年级06班")
-		assert.Equal(t, cls.President, "CaiYuanPei")
+		SpringUtils.AssertEqual(t, cls.floor, 3)
+		SpringUtils.AssertEqual(t, len(cls.students), 2)
+		SpringUtils.AssertEqual(t, cls.className, "二年级06班")
+		SpringUtils.AssertEqual(t, cls.President, "CaiYuanPei")
 	})
 }
 
@@ -1794,19 +1798,19 @@ func TestDefaultSpringContext_RegisterMethodBean(t *testing.T) {
 		// Method Bean 的默认名称要等到 Bean 真正注册的时候才能获取到
 		bd := ctx.RegisterMethodBean(parent, "Consumer")
 		ctx.AutoWireBeans()
-		assert.Equal(t, bd.Name(), "*SpringCore_test.Consumer")
+		SpringUtils.AssertEqual(t, bd.Name(), "*SpringCore_test.Consumer")
 
 		var s *Server
 		ok := ctx.GetBean(&s)
-		assert.Equal(t, ok, true)
-		assert.Equal(t, s.Version, "1.0.0")
+		SpringUtils.AssertEqual(t, ok, true)
+		SpringUtils.AssertEqual(t, s.Version, "1.0.0")
 
 		s.Version = "2.0.0"
 
 		var c *Consumer
 		ok = ctx.GetBean(&c)
-		assert.Equal(t, ok, true)
-		assert.Equal(t, c.s.Version, "2.0.0")
+		SpringUtils.AssertEqual(t, ok, true)
+		SpringUtils.AssertEqual(t, c.s.Version, "2.0.0")
 	})
 
 	t.Run("method bean arg", func(t *testing.T) {
@@ -1819,15 +1823,15 @@ func TestDefaultSpringContext_RegisterMethodBean(t *testing.T) {
 
 		var s *Server
 		ok := ctx.GetBean(&s)
-		assert.Equal(t, ok, true)
-		assert.Equal(t, s.Version, "1.0.0")
+		SpringUtils.AssertEqual(t, ok, true)
+		SpringUtils.AssertEqual(t, s.Version, "1.0.0")
 
 		s.Version = "2.0.0"
 
 		var c *Consumer
 		ok = ctx.GetBean(&c)
-		assert.Equal(t, ok, true)
-		assert.Equal(t, c.s.Version, "2.0.0")
+		SpringUtils.AssertEqual(t, ok, true)
+		SpringUtils.AssertEqual(t, c.s.Version, "2.0.0")
 	})
 
 	t.Run("method bean wire to other bean", func(t *testing.T) {
@@ -1847,17 +1851,17 @@ func TestDefaultSpringContext_RegisterMethodBean(t *testing.T) {
 
 		var si ServerInterface
 		ok := ctx.GetBean(&si)
-		assert.Equal(t, ok, true)
+		SpringUtils.AssertEqual(t, ok, true)
 
 		s := si.(*Server)
-		assert.Equal(t, s.Version, "1.0.0")
+		SpringUtils.AssertEqual(t, s.Version, "1.0.0")
 
 		s.Version = "2.0.0"
 
 		var c *Consumer
 		ok = ctx.GetBean(&c)
-		assert.Equal(t, ok, true)
-		assert.Equal(t, c.s.Version, "2.0.0")
+		SpringUtils.AssertEqual(t, ok, true)
+		SpringUtils.AssertEqual(t, c.s.Version, "2.0.0")
 	})
 
 	t.Run("circle autowire", func(t *testing.T) {
@@ -1913,12 +1917,12 @@ func TestDefaultSpringContext_RegisterMethodBean(t *testing.T) {
 
 		var s *Server
 		ok := ctx.GetBean(&s)
-		assert.Equal(t, ok, true)
-		assert.Equal(t, s.Version, "1.0.0")
+		SpringUtils.AssertEqual(t, ok, true)
+		SpringUtils.AssertEqual(t, s.Version, "1.0.0")
 
 		var c *Consumer
 		ok = ctx.GetBean(&c)
-		assert.Equal(t, ok, false)
+		SpringUtils.AssertEqual(t, ok, false)
 	})
 
 	t.Run("method bean autowire", func(t *testing.T) {
@@ -1930,8 +1934,8 @@ func TestDefaultSpringContext_RegisterMethodBean(t *testing.T) {
 
 		var s *Server
 		ok := ctx.GetBean(&s)
-		assert.Equal(t, ok, true)
-		assert.Equal(t, s.Version, "1.0.0")
+		SpringUtils.AssertEqual(t, ok, true)
+		SpringUtils.AssertEqual(t, s.Version, "1.0.0")
 	})
 
 	t.Run("method bean selector type", func(t *testing.T) {
@@ -1944,20 +1948,20 @@ func TestDefaultSpringContext_RegisterMethodBean(t *testing.T) {
 
 		var s *Server
 		ok := ctx.GetBean(&s)
-		assert.Equal(t, ok, true)
-		assert.Equal(t, s.Version, "1.0.0")
+		SpringUtils.AssertEqual(t, ok, true)
+		SpringUtils.AssertEqual(t, s.Version, "1.0.0")
 
 		s.Version = "2.0.0"
 
 		var c *Consumer
 		ok = ctx.GetBean(&c)
-		assert.Equal(t, ok, true)
-		assert.Equal(t, c.s.Version, "2.0.0")
+		SpringUtils.AssertEqual(t, ok, true)
+		SpringUtils.AssertEqual(t, c.s.Version, "2.0.0")
 	})
 
 	t.Run("method bean selector type error", func(t *testing.T) {
 
-		assert.Panic(t, func() {
+		SpringUtils.AssertPanic(t, func() {
 			ctx := SpringCore.NewDefaultSpringContext()
 			ctx.SetProperty("server.version", "1.0.0")
 			ctx.RegisterBean(new(Server))
@@ -1965,7 +1969,7 @@ func TestDefaultSpringContext_RegisterMethodBean(t *testing.T) {
 			ctx.AutoWireBeans()
 		}, "selector can't be nil or empty")
 
-		assert.Panic(t, func() {
+		SpringUtils.AssertPanic(t, func() {
 			ctx := SpringCore.NewDefaultSpringContext()
 			ctx.SetProperty("server.version", "1.0.0")
 			ctx.RegisterBean(new(Server))
@@ -1973,7 +1977,7 @@ func TestDefaultSpringContext_RegisterMethodBean(t *testing.T) {
 			ctx.AutoWireBeans()
 		}, "can't find parent bean: \"\\*int\"")
 
-		assert.Panic(t, func() {
+		SpringUtils.AssertPanic(t, func() {
 			ctx := SpringCore.NewDefaultSpringContext()
 			ctx.SetProperty("server.version", "1.0.0")
 			ctx.RegisterBean(new(int))
@@ -1993,19 +1997,19 @@ func TestDefaultSpringContext_RegisterMethodBean(t *testing.T) {
 
 		var s *Server
 		ok := ctx.GetBean(&s)
-		assert.Equal(t, ok, true)
-		assert.Equal(t, s.Version, "1.0.0")
+		SpringUtils.AssertEqual(t, ok, true)
+		SpringUtils.AssertEqual(t, s.Version, "1.0.0")
 
 		s.Version = "2.0.0"
 
 		var c *Consumer
 		ok = ctx.GetBean(&c)
-		assert.Equal(t, ok, true)
-		assert.Equal(t, c.s.Version, "2.0.0")
+		SpringUtils.AssertEqual(t, ok, true)
+		SpringUtils.AssertEqual(t, c.s.Version, "2.0.0")
 	})
 
 	t.Run("method bean selector beanId error", func(t *testing.T) {
-		assert.Panic(t, func() {
+		SpringUtils.AssertPanic(t, func() {
 			ctx := SpringCore.NewDefaultSpringContext()
 			ctx.SetProperty("server.version", "1.0.0")
 			ctx.RegisterBean(new(Server))
@@ -2015,7 +2019,7 @@ func TestDefaultSpringContext_RegisterMethodBean(t *testing.T) {
 	})
 
 	t.Run("found 2 parent bean", func(t *testing.T) {
-		assert.Panic(t, func() {
+		SpringUtils.AssertPanic(t, func() {
 			ctx := SpringCore.NewDefaultSpringContext()
 			ctx.SetProperty("server.version", "1.0.0")
 			ctx.RegisterNameBean("s1", new(Server))
@@ -2038,21 +2042,21 @@ func TestDefaultSpringContext_RegisterMethodBeanFn(t *testing.T) {
 		// Method Bean 的默认名称要等到 Bean 真正注册的时候才能获取到
 		bd := ctx.RegisterMethodBeanFn(ServerInterface.ConsumerT)
 		ctx.AutoWireBeans()
-		assert.Equal(t, bd.Name(), "*SpringCore_test.Consumer")
+		SpringUtils.AssertEqual(t, bd.Name(), "*SpringCore_test.Consumer")
 
 		var si ServerInterface
 		ok := ctx.GetBean(&si)
-		assert.Equal(t, ok, true)
+		SpringUtils.AssertEqual(t, ok, true)
 
 		s := si.(*Server)
-		assert.Equal(t, s.Version, "1.0.0")
+		SpringUtils.AssertEqual(t, s.Version, "1.0.0")
 
 		s.Version = "2.0.0"
 
 		var c *Consumer
 		ok = ctx.GetBean(&c)
-		assert.Equal(t, ok, true)
-		assert.Equal(t, c.s.Version, "2.0.0")
+		SpringUtils.AssertEqual(t, ok, true)
+		SpringUtils.AssertEqual(t, c.s.Version, "2.0.0")
 	})
 
 	t.Run("fn method bean arg", func(t *testing.T) {
@@ -2066,17 +2070,17 @@ func TestDefaultSpringContext_RegisterMethodBeanFn(t *testing.T) {
 
 		var si ServerInterface
 		ok := ctx.GetBean(&si)
-		assert.Equal(t, ok, true)
+		SpringUtils.AssertEqual(t, ok, true)
 
 		s := si.(*Server)
-		assert.Equal(t, s.Version, "1.0.0")
+		SpringUtils.AssertEqual(t, s.Version, "1.0.0")
 
 		s.Version = "2.0.0"
 
 		var c *Consumer
 		ok = ctx.GetBean(&c)
-		assert.Equal(t, ok, true)
-		assert.Equal(t, c.s.Version, "2.0.0")
+		SpringUtils.AssertEqual(t, ok, true)
+		SpringUtils.AssertEqual(t, c.s.Version, "2.0.0")
 	})
 
 	t.Run("fn method bean wire to other bean", func(t *testing.T) {
@@ -2093,17 +2097,17 @@ func TestDefaultSpringContext_RegisterMethodBeanFn(t *testing.T) {
 
 		var si ServerInterface
 		ok := ctx.GetBean(&si)
-		assert.Equal(t, ok, true)
+		SpringUtils.AssertEqual(t, ok, true)
 
 		s := si.(*Server)
-		assert.Equal(t, s.Version, "1.0.0")
+		SpringUtils.AssertEqual(t, s.Version, "1.0.0")
 
 		s.Version = "2.0.0"
 
 		var c *Consumer
 		ok = ctx.GetBean(&c)
-		assert.Equal(t, ok, true)
-		assert.Equal(t, c.s.Version, "2.0.0")
+		SpringUtils.AssertEqual(t, ok, true)
+		SpringUtils.AssertEqual(t, c.s.Version, "2.0.0")
 	})
 
 	t.Run("fn circle autowire", func(t *testing.T) {
@@ -2159,14 +2163,14 @@ func TestDefaultSpringContext_RegisterMethodBeanFn(t *testing.T) {
 
 		var si ServerInterface
 		ok := ctx.GetBean(&si)
-		assert.Equal(t, ok, true)
+		SpringUtils.AssertEqual(t, ok, true)
 
 		s := si.(*Server)
-		assert.Equal(t, s.Version, "1.0.0")
+		SpringUtils.AssertEqual(t, s.Version, "1.0.0")
 
 		var c *Consumer
 		ok = ctx.GetBean(&c)
-		assert.Equal(t, ok, false)
+		SpringUtils.AssertEqual(t, ok, false)
 	})
 
 	t.Run("fn method bean autowire", func(t *testing.T) {
@@ -2179,10 +2183,10 @@ func TestDefaultSpringContext_RegisterMethodBeanFn(t *testing.T) {
 
 		var si ServerInterface
 		ok := ctx.GetBean(&si)
-		assert.Equal(t, ok, true)
+		SpringUtils.AssertEqual(t, ok, true)
 
 		s := si.(*Server)
-		assert.Equal(t, s.Version, "1.0.0")
+		SpringUtils.AssertEqual(t, s.Version, "1.0.0")
 	})
 
 	t.Run("fn method bean selector type", func(t *testing.T) {
@@ -2196,22 +2200,22 @@ func TestDefaultSpringContext_RegisterMethodBeanFn(t *testing.T) {
 
 		var si ServerInterface
 		ok := ctx.GetBean(&si)
-		assert.Equal(t, ok, true)
+		SpringUtils.AssertEqual(t, ok, true)
 
 		s := si.(*Server)
-		assert.Equal(t, s.Version, "1.0.0")
+		SpringUtils.AssertEqual(t, s.Version, "1.0.0")
 
 		s.Version = "2.0.0"
 
 		var c *Consumer
 		ok = ctx.GetBean(&c)
-		assert.Equal(t, ok, true)
-		assert.Equal(t, c.s.Version, "2.0.0")
+		SpringUtils.AssertEqual(t, ok, true)
+		SpringUtils.AssertEqual(t, c.s.Version, "2.0.0")
 	})
 
 	t.Run("fn method bean selector type error", func(t *testing.T) {
 
-		assert.Panic(t, func() {
+		SpringUtils.AssertPanic(t, func() {
 			ctx := SpringCore.NewDefaultSpringContext()
 			ctx.SetProperty("server.version", "1.0.0")
 			// Name is SpringCore_test.ServerInterface
@@ -2220,7 +2224,7 @@ func TestDefaultSpringContext_RegisterMethodBeanFn(t *testing.T) {
 			ctx.AutoWireBeans()
 		}, "selector can't be nil or empty")
 
-		assert.Panic(t, func() {
+		SpringUtils.AssertPanic(t, func() {
 			ctx := SpringCore.NewDefaultSpringContext()
 			ctx.SetProperty("server.version", "1.0.0")
 			// Name is SpringCore_test.ServerInterface
@@ -2229,7 +2233,7 @@ func TestDefaultSpringContext_RegisterMethodBeanFn(t *testing.T) {
 			ctx.AutoWireBeans()
 		}, "can't find parent bean: \"\\*int\"")
 
-		assert.Panic(t, func() {
+		SpringUtils.AssertPanic(t, func() {
 			ctx := SpringCore.NewDefaultSpringContext()
 			ctx.SetProperty("server.version", "1.0.0")
 			ctx.RegisterBean(new(int))
@@ -2251,21 +2255,21 @@ func TestDefaultSpringContext_RegisterMethodBeanFn(t *testing.T) {
 
 		var si ServerInterface
 		ok := ctx.GetBean(&si)
-		assert.Equal(t, ok, true)
+		SpringUtils.AssertEqual(t, ok, true)
 
 		s := si.(*Server)
-		assert.Equal(t, s.Version, "1.0.0")
+		SpringUtils.AssertEqual(t, s.Version, "1.0.0")
 
 		s.Version = "2.0.0"
 
 		var c *Consumer
 		ok = ctx.GetBean(&c)
-		assert.Equal(t, ok, true)
-		assert.Equal(t, c.s.Version, "2.0.0")
+		SpringUtils.AssertEqual(t, ok, true)
+		SpringUtils.AssertEqual(t, c.s.Version, "2.0.0")
 	})
 
 	t.Run("fn method bean selector beanId error", func(t *testing.T) {
-		assert.Panic(t, func() {
+		SpringUtils.AssertPanic(t, func() {
 			ctx := SpringCore.NewDefaultSpringContext()
 			ctx.SetProperty("server.version", "1.0.0")
 			// Name is SpringCore_test.ServerInterface
@@ -2288,11 +2292,11 @@ func TestDefaultSpringContext_ParentNotRegister(t *testing.T) {
 
 	var s *Server
 	ok := ctx.GetBean(&s)
-	assert.Equal(t, ok, false)
+	SpringUtils.AssertEqual(t, ok, false)
 
 	var c *Consumer
 	ok = ctx.GetBean(&c)
-	assert.Equal(t, ok, false)
+	SpringUtils.AssertEqual(t, ok, false)
 }
 
 func TestDefaultSpringContext_UserDefinedTypeProperty(t *testing.T) {
@@ -2333,7 +2337,7 @@ func TestDefaultSpringContext_ChainConditionOnBean(t *testing.T) {
 		ctx.RegisterBean(new(bool)).ConditionOnBean("*int")
 		ctx.RegisterBean(new(int)).ConditionOnBean("*float")
 		ctx.AutoWireBeans()
-		assert.Equal(t, len(ctx.GetBeanDefinitions()), 0)
+		SpringUtils.AssertEqual(t, len(ctx.GetBeanDefinitions()), 0)
 	}
 }
 
@@ -2426,9 +2430,9 @@ func TestDefaultSpringContext_RegisterOptionBean(t *testing.T) {
 		var obj *VarObj
 		ctx.GetBean(&obj)
 
-		assert.Equal(t, len(obj.v), 1)
-		assert.Equal(t, obj.v[0].name, "v1")
-		assert.Equal(t, obj.s, "description")
+		SpringUtils.AssertEqual(t, len(obj.v), 1)
+		SpringUtils.AssertEqual(t, obj.v[0].name, "v1")
+		SpringUtils.AssertEqual(t, obj.s, "description")
 	})
 
 	t.Run("variadic option param 2", func(t *testing.T) {
@@ -2444,10 +2448,10 @@ func TestDefaultSpringContext_RegisterOptionBean(t *testing.T) {
 		var obj *VarObj
 		ctx.GetBean(&obj)
 
-		assert.Equal(t, len(obj.v), 2)
-		assert.Equal(t, obj.v[0].name, "v1")
-		assert.Equal(t, obj.v[1].name, "v2")
-		assert.Equal(t, obj.s, "description")
+		SpringUtils.AssertEqual(t, len(obj.v), 2)
+		SpringUtils.AssertEqual(t, obj.v[0].name, "v1")
+		SpringUtils.AssertEqual(t, obj.v[1].name, "v2")
+		SpringUtils.AssertEqual(t, obj.s, "description")
 	})
 
 	t.Run("variadic option interface param 1", func(t *testing.T) {
@@ -2462,7 +2466,7 @@ func TestDefaultSpringContext_RegisterOptionBean(t *testing.T) {
 		var obj *VarInterfaceObj
 		ctx.GetBean(&obj)
 
-		assert.Equal(t, len(obj.v), 1)
+		SpringUtils.AssertEqual(t, len(obj.v), 1)
 	})
 
 	t.Run("variadic option interface param 1", func(t *testing.T) {
@@ -2477,7 +2481,7 @@ func TestDefaultSpringContext_RegisterOptionBean(t *testing.T) {
 		var obj *VarInterfaceObj
 		ctx.GetBean(&obj)
 
-		assert.Equal(t, len(obj.v), 2)
+		SpringUtils.AssertEqual(t, len(obj.v), 2)
 	})
 }
 
@@ -2485,22 +2489,22 @@ func TestDefaultSpringContext_Close(t *testing.T) {
 
 	t.Run("destroy type", func(t *testing.T) {
 
-		assert.Panic(t, func() {
+		SpringUtils.AssertPanic(t, func() {
 			ctx := SpringCore.NewDefaultSpringContext()
 			ctx.RegisterBean(new(int)).Destroy(func() {})
 		}, "destroy should be func\\(bean\\) or func\\(bean\\)error")
 
-		assert.Panic(t, func() {
+		SpringUtils.AssertPanic(t, func() {
 			ctx := SpringCore.NewDefaultSpringContext()
 			ctx.RegisterBean(new(int)).Destroy(func() int { return 0 })
 		}, "destroy should be func\\(bean\\) or func\\(bean\\)error")
 
-		assert.Panic(t, func() {
+		SpringUtils.AssertPanic(t, func() {
 			ctx := SpringCore.NewDefaultSpringContext()
 			ctx.RegisterBean(new(int)).Destroy(func(int) {})
 		}, "destroy should be func\\(bean\\) or func\\(bean\\)error")
 
-		assert.Panic(t, func() {
+		SpringUtils.AssertPanic(t, func() {
 			ctx := SpringCore.NewDefaultSpringContext()
 			ctx.RegisterBean(new(int)).Destroy(func(int, int) {})
 		}, "destroy should be func\\(bean\\) or func\\(bean\\)error")
@@ -2514,7 +2518,7 @@ func TestDefaultSpringContext_Close(t *testing.T) {
 		ctx.AutoWireBeans()
 		ctx.Close()
 
-		assert.Equal(t, called, true)
+		SpringUtils.AssertEqual(t, called, true)
 	})
 
 	t.Run("call destroy method", func(t *testing.T) {
@@ -2528,8 +2532,8 @@ func TestDefaultSpringContext_Close(t *testing.T) {
 
 		ctx.Close()
 
-		assert.Equal(t, ok, true)
-		assert.Equal(t, d.destroyed, true)
+		SpringUtils.AssertEqual(t, ok, true)
+		SpringUtils.AssertEqual(t, d.destroyed, true)
 	})
 
 	t.Run("call destroy method with arg", func(t *testing.T) {
@@ -2544,8 +2548,8 @@ func TestDefaultSpringContext_Close(t *testing.T) {
 
 		ctx.Close()
 
-		assert.Equal(t, ok, true)
-		assert.Equal(t, d.destroyed, true)
+		SpringUtils.AssertEqual(t, ok, true)
+		SpringUtils.AssertEqual(t, d.destroyed, true)
 	})
 
 	t.Run("call destroy method with error", func(t *testing.T) {
@@ -2562,8 +2566,8 @@ func TestDefaultSpringContext_Close(t *testing.T) {
 
 			ctx.Close()
 
-			assert.Equal(t, ok, true)
-			assert.Equal(t, d.destroyed, false)
+			SpringUtils.AssertEqual(t, ok, true)
+			SpringUtils.AssertEqual(t, d.destroyed, false)
 		}
 
 		// nil
@@ -2578,8 +2582,8 @@ func TestDefaultSpringContext_Close(t *testing.T) {
 
 			ctx.Close()
 
-			assert.Equal(t, ok, true)
-			assert.Equal(t, d.destroyed, true)
+			SpringUtils.AssertEqual(t, ok, true)
+			SpringUtils.AssertEqual(t, d.destroyed, true)
 		}
 	})
 
@@ -2594,8 +2598,8 @@ func TestDefaultSpringContext_Close(t *testing.T) {
 
 		ctx.Close()
 
-		assert.Equal(t, ok, true)
-		assert.Equal(t, d.(*callDestroy).destroyed, true)
+		SpringUtils.AssertEqual(t, ok, true)
+		SpringUtils.AssertEqual(t, d.(*callDestroy).destroyed, true)
 	})
 
 	t.Run("call interface destroy method with arg", func(t *testing.T) {
@@ -2610,8 +2614,8 @@ func TestDefaultSpringContext_Close(t *testing.T) {
 
 		ctx.Close()
 
-		assert.Equal(t, ok, true)
-		assert.Equal(t, d.(*callDestroy).destroyed, true)
+		SpringUtils.AssertEqual(t, ok, true)
+		SpringUtils.AssertEqual(t, d.(*callDestroy).destroyed, true)
 	})
 
 	t.Run("call interface destroy method with error", func(t *testing.T) {
@@ -2628,8 +2632,8 @@ func TestDefaultSpringContext_Close(t *testing.T) {
 
 			ctx.Close()
 
-			assert.Equal(t, ok, true)
-			assert.Equal(t, d.(*callDestroy).destroyed, false)
+			SpringUtils.AssertEqual(t, ok, true)
+			SpringUtils.AssertEqual(t, d.(*callDestroy).destroyed, false)
 		}
 
 		// nil
@@ -2644,8 +2648,8 @@ func TestDefaultSpringContext_Close(t *testing.T) {
 
 			ctx.Close()
 
-			assert.Equal(t, ok, true)
-			assert.Equal(t, d.(*callDestroy).destroyed, true)
+			SpringUtils.AssertEqual(t, ok, true)
+			SpringUtils.AssertEqual(t, d.(*callDestroy).destroyed, true)
 		}
 	})
 
@@ -2673,7 +2677,7 @@ func TestDefaultSpringContext_Close(t *testing.T) {
 }
 
 func TestDefaultSpringContext_BeanNotFound(t *testing.T) {
-	assert.Panic(t, func() {
+	SpringUtils.AssertPanic(t, func() {
 		ctx := SpringCore.NewDefaultSpringContext()
 		ctx.RegisterBeanFn(func(i *int) bool { return false })
 		ctx.AutoWireBeans()
@@ -2725,26 +2729,26 @@ func TestDefaultSpringContext_NestedAutowireBean(t *testing.T) {
 	var b *NestedAutowireBean
 	ok := ctx.GetBean(&b)
 
-	assert.Equal(t, ok, true)
-	assert.Equal(t, *b.Int, 3)
+	SpringUtils.AssertEqual(t, ok, true)
+	SpringUtils.AssertEqual(t, *b.Int, 3)
 
 	var b0 *PtrNestedAutowireBean
 	ok = ctx.GetBean(&b0)
 
-	assert.Equal(t, ok, true)
-	assert.Equal(t, b0.Int, (*int)(nil))
+	SpringUtils.AssertEqual(t, ok, true)
+	SpringUtils.AssertEqual(t, b0.Int, (*int)(nil))
 
 	var b1 *FieldNestedAutowireBean
 	ok = ctx.GetBean(&b1)
 
-	assert.Equal(t, ok, true)
-	assert.Equal(t, *b1.B.Int, 3)
+	SpringUtils.AssertEqual(t, ok, true)
+	SpringUtils.AssertEqual(t, *b1.B.Int, 3)
 
 	var b2 *PtrFieldNestedAutowireBean
 	ok = ctx.GetBean(&b2)
 
-	assert.Equal(t, ok, true)
-	assert.Equal(t, b2.B.Int, (*int)(nil))
+	SpringUtils.AssertEqual(t, ok, true)
+	SpringUtils.AssertEqual(t, b2.B.Int, (*int)(nil))
 }
 
 type BaseChannel struct {
@@ -2782,7 +2786,7 @@ func TestDefaultSpringContext_NestValueField(t *testing.T) {
 		ctx.SetProperty("sdk.wx.enable", true)
 
 		bd := ctx.RegisterBeanFn(func() int { return 3 })
-		assert.Equal(t, bd.Name(), "*int")
+		SpringUtils.AssertEqual(t, bd.Name(), "*int")
 
 		ctx.RegisterBean(new(wxChannel))
 		ctx.SetAllAccess(true)
@@ -2791,12 +2795,12 @@ func TestDefaultSpringContext_NestValueField(t *testing.T) {
 		var c *wxChannel
 		ok := ctx.GetBean(&c)
 
-		assert.Equal(t, ok, true)
-		assert.Equal(t, *c.baseChannel.Int, 3)
-		assert.Equal(t, *c.int, 3)
-		assert.Equal(t, c.baseChannel.Int, c.int)
-		assert.Equal(t, c.enable, true)
-		assert.Equal(t, c.AutoCreate, true)
+		SpringUtils.AssertEqual(t, ok, true)
+		SpringUtils.AssertEqual(t, *c.baseChannel.Int, 3)
+		SpringUtils.AssertEqual(t, *c.int, 3)
+		SpringUtils.AssertEqual(t, c.baseChannel.Int, c.int)
+		SpringUtils.AssertEqual(t, c.enable, true)
+		SpringUtils.AssertEqual(t, c.AutoCreate, true)
 	})
 
 	t.Run("public", func(t *testing.T) {
@@ -2811,12 +2815,12 @@ func TestDefaultSpringContext_NestValueField(t *testing.T) {
 		var c *WXChannel
 		ok := ctx.GetBean(&c)
 
-		assert.Equal(t, ok, true)
-		assert.Equal(t, *c.BaseChannel.Int, 3)
-		assert.Equal(t, *c.Int, 3)
-		assert.Equal(t, c.BaseChannel.Int, c.Int)
-		assert.Equal(t, c.Enable, true)
-		assert.Equal(t, c.AutoCreate, true)
+		SpringUtils.AssertEqual(t, ok, true)
+		SpringUtils.AssertEqual(t, *c.BaseChannel.Int, 3)
+		SpringUtils.AssertEqual(t, *c.Int, 3)
+		SpringUtils.AssertEqual(t, c.BaseChannel.Int, c.Int)
+		SpringUtils.AssertEqual(t, c.Enable, true)
+		SpringUtils.AssertEqual(t, c.AutoCreate, true)
 	})
 }
 
@@ -2832,7 +2836,7 @@ func TestDefaultSpringContext_FnArgCollectBean(t *testing.T) {
 				nums = append(nums, *e)
 			}
 			sort.Ints(nums)
-			assert.Equal(t, nums, []int{3, 4})
+			SpringUtils.AssertEqual(t, nums, []int{3, 4})
 			return false
 		}, "[]")
 		ctx.AutoWireBeans()
@@ -2848,7 +2852,7 @@ func TestDefaultSpringContext_FnArgCollectBean(t *testing.T) {
 				names = append(names, teacher.(*historyTeacher).name)
 			}
 			sort.Strings(names)
-			assert.Equal(t, names, []string{"t1", "t2"})
+			SpringUtils.AssertEqual(t, names, []string{"t1", "t2"})
 			return false
 		}, "[]")
 		ctx.AutoWireBeans()
@@ -2869,7 +2873,7 @@ func (_ *filterImpl) Filter(input string) string {
 func TestDefaultSpringContext_BeanCache(t *testing.T) {
 
 	t.Run("not implement interface", func(t *testing.T) {
-		assert.Panic(t, func() {
+		SpringUtils.AssertPanic(t, func() {
 			ctx := SpringCore.NewDefaultSpringContext()
 			ctx.RegisterBean(new(int)).Export((*filter)(nil))
 			ctx.AutoWireBeans()
@@ -2965,23 +2969,23 @@ func TestDefaultSpringContext_AutoExport(t *testing.T) {
 
 		var x context.Context
 		ok := ctx.GetBean(&x)
-		assert.Equal(t, true, ok)
-		assert.Equal(t, b, x)
+		SpringUtils.AssertEqual(t, true, ok)
+		SpringUtils.AssertEqual(t, b, x)
 
 		var s fmt.Stringer
 		ok = ctx.GetBean(&s)
-		assert.Equal(t, true, ok)
-		assert.Equal(t, b, s)
+		SpringUtils.AssertEqual(t, true, ok)
+		SpringUtils.AssertEqual(t, b, s)
 
 		var pbi ptrBaseInterface
 		ok = ctx.GetBean(&pbi)
-		assert.Equal(t, true, ok)
-		assert.Equal(t, b, pbi)
+		SpringUtils.AssertEqual(t, true, ok)
+		SpringUtils.AssertEqual(t, b, pbi)
 
 		var bi baseInterface
 		ok = ctx.GetBean(&bi)
-		assert.Equal(t, true, ok)
-		assert.Equal(t, b, bi)
+		SpringUtils.AssertEqual(t, true, ok)
+		SpringUtils.AssertEqual(t, b, bi)
 	})
 
 	t.Run("auto export private", func(t *testing.T) {
@@ -2992,11 +2996,11 @@ func TestDefaultSpringContext_AutoExport(t *testing.T) {
 
 		var x context.Context
 		ok := ctx.GetBean(&x)
-		assert.Equal(t, true, ok)
+		SpringUtils.AssertEqual(t, true, ok)
 
 		var s fmt.Stringer
 		ok = ctx.GetBean(&s)
-		assert.Equal(t, true, ok)
+		SpringUtils.AssertEqual(t, true, ok)
 	})
 
 	t.Run("auto export & export", func(t *testing.T) {
@@ -3008,13 +3012,13 @@ func TestDefaultSpringContext_AutoExport(t *testing.T) {
 
 		var x context.Context
 		ok := ctx.GetBean(&x)
-		assert.Equal(t, true, ok)
-		assert.Equal(t, b, x)
+		SpringUtils.AssertEqual(t, true, ok)
+		SpringUtils.AssertEqual(t, b, x)
 
 		var s fmt.Stringer
 		ok = ctx.GetBean(&s)
-		assert.Equal(t, true, ok)
-		assert.Equal(t, b, s)
+		SpringUtils.AssertEqual(t, true, ok)
+		SpringUtils.AssertEqual(t, b, s)
 	})
 
 	t.Run("unexported but auto match", func(t *testing.T) {
@@ -3039,7 +3043,7 @@ func TestDefaultSpringContext_AutoExport(t *testing.T) {
 
 	t.Run("panics", func(t *testing.T) {
 
-		assert.Panic(t, func() {
+		SpringUtils.AssertPanic(t, func() {
 			ctx := SpringCore.NewDefaultSpringContext()
 			ctx.RegisterBean(&struct {
 				_ *int `export:""`
@@ -3047,7 +3051,7 @@ func TestDefaultSpringContext_AutoExport(t *testing.T) {
 			ctx.AutoWireBeans()
 		}, "export can only use on interface")
 
-		assert.Panic(t, func() {
+		SpringUtils.AssertPanic(t, func() {
 			ctx := SpringCore.NewDefaultSpringContext()
 			ctx.RegisterBean(&struct {
 				_ Runner `export:"" autowire:""`
@@ -3081,7 +3085,7 @@ func TestDefaultSpringContext_Properties(t *testing.T) {
 		bd := ctx.RegisterBean(new(ArrayProperties))
 		ctx.AutoWireBeans()
 		p := bd.Bean().(*ArrayProperties)
-		assert.Equal(t, p.Duration, []time.Duration{time.Second, 5 * time.Second})
+		SpringUtils.AssertEqual(t, p.Duration, []time.Duration{time.Second, 5 * time.Second})
 	})
 
 	t.Run("map default value ", func(t *testing.T) {
@@ -3101,10 +3105,10 @@ func TestDefaultSpringContext_Properties(t *testing.T) {
 		ctx.RegisterBean(&obj)
 		ctx.AutoWireBeans()
 
-		assert.Equal(t, obj.Int, 5)
-		assert.Equal(t, obj.IntA, 3)
-		assert.Equal(t, obj.Map, map[string]string{})
-		assert.Equal(t, obj.MapA, map[string]string{
+		SpringUtils.AssertEqual(t, obj.Int, 5)
+		SpringUtils.AssertEqual(t, obj.IntA, 3)
+		SpringUtils.AssertEqual(t, obj.Map, map[string]string{})
+		SpringUtils.AssertEqual(t, obj.MapA, map[string]string{
 			"cba": "cba", "nba": "nba",
 		})
 	})
@@ -3170,7 +3174,7 @@ func TestDefaultSpringContext_Destroy(t *testing.T) {
 	ctx.AutoWireBeans()
 	ctx.Close()
 
-	assert.Equal(t, destroyArray, []int{1, 2, 2, 4})
+	SpringUtils.AssertEqual(t, destroyArray, []int{1, 2, 2, 4})
 }
 
 type Registry interface {
@@ -3197,14 +3201,14 @@ func (f *registryFactory) Create() Registry { return NewRegistry() }
 
 func TestDefaultSpringContext_NameEquivalence(t *testing.T) {
 
-	assert.Panic(t, func() {
+	SpringUtils.AssertPanic(t, func() {
 		ctx := SpringCore.DefaultApplicationContext()
 		ctx.RegisterBean(DefaultRegistry)
 		ctx.RegisterBeanFn(NewRegistry)
 		ctx.AutoWireBeans()
 	}, `duplicate registration, bean: `)
 
-	assert.Panic(t, func() {
+	SpringUtils.AssertPanic(t, func() {
 		ctx := SpringCore.DefaultApplicationContext()
 		bd := ctx.RegisterBean(&registryFactory{})
 		ctx.RegisterMethodBean(bd, "Create")

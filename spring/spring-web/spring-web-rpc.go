@@ -19,11 +19,8 @@ package SpringWeb
 import (
 	"context"
 	"errors"
-	"fmt"
-	"net/http"
 	"reflect"
 
-	"github.com/go-spring/spring-error"
 	"github.com/go-spring/spring-utils"
 )
 
@@ -42,15 +39,17 @@ func (b *bindHandler) Invoke(ctx WebContext) {
 	RpcInvoke(ctx, b.call)
 }
 
-func (b *bindHandler) call(ctx WebContext) interface{} {
+func (b *bindHandler) call(webCtx WebContext) interface{} {
 
 	// 反射创建需要绑定请求参数
 	bindVal := reflect.New(b.bindType.Elem())
-	err := ctx.Bind(bindVal.Interface())
-	SpringError.ERROR.Panic(err).When(err != nil)
+	if err := webCtx.Bind(bindVal.Interface()); err != nil {
+		panic(err)
+	}
 
 	// 执行处理函数，并返回结果
-	in := []reflect.Value{reflect.ValueOf(ctx.Context()), bindVal}
+	ctx := webCtx.Request().Context()
+	in := []reflect.Value{reflect.ValueOf(ctx), bindVal}
 	return b.fnValue.Call(in)[0].Interface()
 }
 
@@ -88,28 +87,6 @@ func BIND(fn interface{}) Handler {
 }
 
 // RpcInvoke 可自定义的 rpc 执行函数
-var RpcInvoke = defaultRpcInvoke
-
-// defaultRpcInvoke 默认的 rpc 执行函数
-func defaultRpcInvoke(webCtx WebContext, fn func(WebContext) interface{}) {
-
-	// 目前 HTTP RPC 只能返回 json 格式的数据
-	webCtx.Header("Content-Type", "application/json")
-
-	defer func() {
-		if r := recover(); r != nil {
-			result, ok := r.(*SpringError.RpcResult)
-			if !ok {
-				var err error
-				if err, ok = r.(error); !ok {
-					err = errors.New(fmt.Sprint(r))
-				}
-				result = SpringError.ERROR.Error(err)
-			}
-			webCtx.JSON(http.StatusOK, result)
-		}
-	}()
-
-	result := SpringError.SUCCESS.Data(fn(webCtx))
-	webCtx.JSON(http.StatusOK, result)
+var RpcInvoke = func(webCtx WebContext, fn func(WebContext) interface{}) {
+	webCtx.JSON(fn(webCtx))
 }

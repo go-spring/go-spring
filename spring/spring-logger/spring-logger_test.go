@@ -25,9 +25,7 @@ import (
 )
 
 func TestConsole(t *testing.T) {
-
-	c := SpringLogger.NewConsole(SpringLogger.InfoLevel)
-	c.SetLevel(SpringLogger.TraceLevel)
+	c := SpringLogger.NewConsole(SpringLogger.TraceLevel)
 
 	c.Trace("a", "=", "1")
 	c.Tracef("a=%d", 1)
@@ -70,9 +68,7 @@ func TestConsole(t *testing.T) {
 }
 
 func TestStdLogger(t *testing.T) {
-
 	SpringLogger.SetLogger(SpringLogger.NewConsole(SpringLogger.InfoLevel))
-	SpringLogger.SetLevel(SpringLogger.TraceLevel)
 
 	SpringLogger.Trace("a", "=", "1")
 	SpringLogger.Tracef("a=%d", 1)
@@ -106,55 +102,4 @@ func TestStdLogger(t *testing.T) {
 
 	// SpringLogger.Fatal("a", "=", "1")
 	// SpringLogger.Fatalf("a=%d", 1)
-
-	SpringLogger.Output(0, SpringLogger.InfoLevel, "a=1")
-	SpringLogger.Outputf(0, SpringLogger.InfoLevel, "a=%d", 1)
-}
-
-func TestStdLoggerWrapper(t *testing.T) {
-
-	c := SpringLogger.StdLoggerWrapper{
-		StdLogger: SpringLogger.NewConsole(SpringLogger.InfoLevel),
-	}
-
-	c.SetLevel(SpringLogger.TraceLevel)
-
-	c.Trace("a", "=", "1")
-	c.Tracef("a=%d", 1)
-
-	c.Debug("a", "=", "1")
-	c.Debugf("a=%d", 1)
-
-	c.Info("a", "=", "1")
-	c.Infof("a=%d", 1)
-
-	c.Warn("a", "=", "1")
-	c.Warnf("a=%d", 1)
-
-	c.Error("a", "=", "1")
-	c.Errorf("a=%d", 1)
-
-	t.Run("panic#00", func(t *testing.T) {
-		defer func() { fmt.Println(recover()) }()
-		c.Panic("error")
-	})
-
-	t.Run("panic#01", func(t *testing.T) {
-		defer func() { fmt.Println(recover()) }()
-		c.Panic(errors.New("error"))
-	})
-
-	t.Run("panic#02", func(t *testing.T) {
-		defer func() { fmt.Println(recover()) }()
-		c.Panicf("error: %d", 404)
-	})
-
-	// c.Fatal("a", "=", "1")
-	// c.Fatalf("a=%d", 1)
-
-	c.Print("a", "=", "1")
-	c.Printf("a=%d\n", 1)
-
-	c.Output(0, SpringLogger.InfoLevel, "a=1")
-	c.Outputf(0, SpringLogger.InfoLevel, "a=%d", 1)
 }

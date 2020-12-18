@@ -20,11 +20,8 @@
 package main
 
 import (
-	"net/http"
-
 	pb "github.com/go-spring/examples/spring-boot-grpc/helloworld"
 	"github.com/go-spring/spring-boot"
-	"github.com/go-spring/spring-error"
 	"github.com/go-spring/spring-web"
 	_ "github.com/go-spring/starter-gin"
 	_ "github.com/go-spring/starter-grpc/client"
@@ -45,9 +42,9 @@ type GreeterClientController struct {
 }
 
 func (c *GreeterClientController) index(webCtx SpringWeb.WebContext) {
-	r, err := c.GreeterClient.SayHello(webCtx.Context(), &pb.HelloRequest{Name: defaultName})
-	SpringError.ERROR.Panic(err).When(err != nil)
-	webCtx.String(http.StatusOK, "Greeting: "+r.GetMessage())
+	r, err := c.GreeterClient.SayHello(webCtx.Request().Context(), &pb.HelloRequest{Name: defaultName})
+	SpringWeb.ERROR.Panic(err).When(err != nil)
+	webCtx.String("Greeting: " + r.GetMessage())
 }
 
 func init() {
