@@ -135,6 +135,10 @@ func main() {
 
 如何成为贡献者？提交有意义的 PR 或者需求，并被采纳。
 
+### 项目文档
+
+[文档地址](https://docs.lavend.net/)
+
 ### QQ 交流群
 
 <img src="https://raw.githubusercontent.com/go-spring/go-spring-website/master/qq(1).jpeg" width="140" height="*" />
