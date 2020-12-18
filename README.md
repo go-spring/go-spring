@@ -115,6 +115,10 @@ func main() {
 
 更多示例： https://github.com/go-spring/go-spring/tree/master/examples
 
+### 详细文档
+
+[https://docs.lavend.net/](https://docs.lavend.net/)
+
 ### 项目成员
 
 #### 发起者(负责人)
