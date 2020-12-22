@@ -18,34 +18,23 @@ package StarterWeb
 
 import (
 	"context"
+	"net/http"
+	"sort"
+	"strings"
 
 	"github.com/go-spring/spring-boot"
 	"github.com/go-spring/spring-core"
-	"github.com/go-spring/spring-utils"
 	"github.com/go-spring/spring-web"
 )
 
-// 一般来讲，Starter 包里面只允许包含 init 函数，但是 Web 包比较特殊，它必须配
-// 合 echo 或 gin 的 Starter 包一起使用才行，所以为了避免显式导入 Web 包采取了
-// 通过 echo 或 gin 依赖的方式自动导入该包，其他 Starter 包还是要符合一般原则的。
-
 func init() {
-
-	SpringBoot.RegisterNameBean("web-server", SpringWeb.NewWebServer()).
-		ConditionOnMissingBean((*SpringWeb.WebServer)(nil)).
-		ConditionOnOptionalPropertyValue("web-server.enable", true)
-
-	SpringBoot.RegisterNameBean("web-server-starter", new(WebServerStarter)).
-		ConditionOnMissingBean((*WebServerStarter)(nil)).
-		ConditionOnOptionalPropertyValue("web-server-starter.enable", true)
+	SpringBoot.RegisterNameBean("web-server-starter", new(WebServerStarter))
 }
 
 // WebServerConfig Web 服务器配置
 type WebServerConfig struct {
-	EnableHTTP  bool   `value:"${web.server.enable:=true}"`      // 是否启用 HTTP
 	Port        int    `value:"${web.server.port:=8080}"`        // HTTP 端口
 	EnableHTTPS bool   `value:"${web.server.ssl.enable:=false}"` // 是否启用 HTTPS
-	SSLPort     int    `value:"${web.server.ssl.port:=8443}"`    // SSL 端口
 	SSLCert     string `value:"${web.server.ssl.cert:=}"`        // SSL 证书
 	SSLKey      string `value:"${web.server.ssl.key:=}"`         // SSL 秘钥
 }
@@ -54,49 +43,58 @@ type WebServerConfig struct {
 type WebServerStarter struct {
 	_ SpringBoot.ApplicationEvent `export:""`
 
-	WebServer  *SpringWeb.WebServer     `autowire:""`
 	Containers []SpringWeb.WebContainer `autowire:"[]?"`
+}
+
+// SortContainers 按照 BasePath 的前缀关系对容器进行排序，比如
+// "/c/d", "/a/b", "/c", "/a", "/"
+// 排序之后是
+// "/c/d", "/c", "/a/b", "/a", "/"
+func SortContainers(containers []SpringWeb.WebContainer) {
+	sort.Slice(containers, func(i, j int) bool {
+		si := containers[i].Config().BasePath
+		sj := containers[j].Config().BasePath
+		if strings.HasPrefix(si, sj) {
+			return true
+		}
+		return strings.Compare(si, sj) >= 0
+	})
 }
 
 func (starter *WebServerStarter) OnStartApplication(ctx SpringBoot.ApplicationContext) {
 
-	// 将收集到的 Web 容器赋值给 Web 服务器
-	starter.WebServer.AddContainer(starter.Containers...)
-
-	// 处理 WebServer 级别的过滤器，排除不满足条件的过滤器
-	starter.WebServer.ResetFilters(starter.resolveFilters(ctx, starter.WebServer.Filters()))
-
 	for _, c := range starter.Containers {
+		c.SetFilters(starter.resolveFilters(ctx, c.GetFilters()))
+	}
 
-		// 处理 WebContainer 级别的过滤器，排除不满足条件的过滤器
-		c.ResetFilters(starter.resolveFilters(ctx, c.GetFilters()))
+	SortContainers(starter.Containers)
 
-		for _, mapping := range SpringBoot.DefaultWebMapping.Mappings {
-
-			// 查看路由的端口是否匹配
-			ports := mapping.Ports()
-			if len(ports) > 0 && SpringUtils.ContainsInt(ports, c.Config().Port) < 0 {
-				continue
-			}
-
-			// 查看路由的条件是否匹配
-			if !mapping.CheckCondition(ctx) {
-				continue
-			}
-
-			// 处理 Mapping 级别的过滤器，排除不满足条件的过滤器
-			filters := starter.resolveFilters(ctx, mapping.Filters())
-			mapper := SpringWeb.NewMapper(mapping.Method(), mapping.Path(), mapping.Handler(), filters)
-			c.AddMapper(mapper.WithSwagger(mapping.Swagger()))
+	for _, mapping := range SpringBoot.DefaultWebMapping.Mappings {
+		if mapping.CheckCondition(ctx) {
+			// 选择第一个最合适的路径前缀进行注册
+			starter.resolveMapping(ctx, mapping)
 		}
 	}
 
-	// 容器运行过程中自身发生错误的退出程序，尤其像端口占用这种错误
-	starter.WebServer.SetErrorCallback(func(err error) {
-		SpringBoot.Exit()
-	})
+	for _, c := range starter.Containers {
+		ctx.SafeGoroutine(func() { // 如果端口被占用则退出程序
+			if err := c.Start(); err != nil && err != http.ErrServerClosed {
+				SpringBoot.Exit()
+			}
+		})
+	}
+}
 
-	starter.WebServer.Start()
+// resolveMapping 选择第一个最合适的路径前缀进行注册
+func (starter *WebServerStarter) resolveMapping(ctx SpringCore.SpringContext, mapping *SpringBoot.Mapping) {
+	for _, c := range starter.Containers {
+		if strings.HasPrefix(mapping.Path(), c.Config().BasePath) {
+			filters := starter.resolveFilters(ctx, mapping.Filters())
+			mapper := SpringWeb.NewMapper(mapping.Method(), mapping.Path(), mapping.Handler(), filters)
+			c.AddMapper(mapper.WithSwagger(mapping.Swagger()))
+			return
+		}
+	}
 }
 
 func (starter *WebServerStarter) resolveFilters(ctx SpringCore.SpringContext, filters []SpringWeb.Filter) []SpringWeb.Filter {
@@ -113,5 +111,7 @@ func (starter *WebServerStarter) resolveFilters(ctx SpringCore.SpringContext, fi
 }
 
 func (starter *WebServerStarter) OnStopApplication(ctx SpringBoot.ApplicationContext) {
-	starter.WebServer.Stop(context.Background())
+	for _, c := range starter.Containers {
+		_ = c.Stop(context.Background())
+	}
 }
