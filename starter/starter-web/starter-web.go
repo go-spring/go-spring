@@ -33,10 +33,12 @@ func init() {
 
 // WebServerConfig Web 服务器配置
 type WebServerConfig struct {
-	Port        int    `value:"${web.server.port:=8080}"`        // HTTP 端口
-	EnableHTTPS bool   `value:"${web.server.ssl.enable:=false}"` // 是否启用 HTTPS
-	SSLCert     string `value:"${web.server.ssl.cert:=}"`        // SSL 证书
-	SSLKey      string `value:"${web.server.ssl.key:=}"`         // SSL 秘钥
+	IP        string `value:"${web.server.ip:=}"`              // 监听 IP
+	Port      int    `value:"${web.server.port:=8080}"`        // HTTP 端口
+	BasePath  string `value:"${web.server.base-path:=/}"`      // 根路径
+	EnableSSL bool   `value:"${web.server.ssl.enable:=false}"` // 是否启用 HTTPS
+	SSLCert   string `value:"${web.server.ssl.cert:=}"`        // SSL 证书
+	SSLKey    string `value:"${web.server.ssl.key:=}"`         // SSL 秘钥
 }
 
 // WebServerStarter Web 服务器启动器
