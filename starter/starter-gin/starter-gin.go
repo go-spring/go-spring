@@ -24,19 +24,14 @@ import (
 )
 
 func init() {
-
-	SpringBoot.RegisterNameBeanFn("web-container", func(config StarterWeb.WebServerConfig) SpringWeb.WebContainer {
+	SpringBoot.RegisterNameBeanFn("web-server", func(config StarterWeb.WebServerConfig) SpringWeb.WebContainer {
 		return SpringGin.NewContainer(SpringWeb.ContainerConfig{
-			Port: config.Port,
-		})
-	}).ConditionOnOptionalPropertyValue("web.server.enable", true)
-
-	SpringBoot.RegisterNameBeanFn("ssl-web-container", func(config StarterWeb.WebServerConfig) SpringWeb.WebContainer {
-		return SpringGin.NewContainer(SpringWeb.ContainerConfig{
-			EnableSSL: true,
-			Port:      config.SSLPort,
+			IP:        config.IP,
+			Port:      config.Port,
+			BasePath:  config.BasePath,
+			EnableSSL: config.EnableSSL,
 			KeyFile:   config.SSLKey,
 			CertFile:  config.SSLCert,
 		})
-	}).ConditionOnPropertyValue("web.server.ssl.enable", true)
+	})
 }
