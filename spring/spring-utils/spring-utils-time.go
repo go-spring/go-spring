@@ -20,12 +20,12 @@ import (
 	"time"
 )
 
-// CurrentMilliSeconds 返回当前的毫秒时间戳
+// CurrentMilliSeconds 返回当前的毫秒时间
 func CurrentMilliSeconds() int64 {
 	return time.Now().UnixNano() / int64(time.Millisecond)
 }
 
-// MilliSeconds 返回 Duration 对应的毫秒时间
+// MilliSeconds 返回对应的毫秒时长
 func MilliSeconds(d time.Duration) int64 {
-	return int64(d) / int64(time.Millisecond)
+	return d.Nanoseconds() / int64(time.Millisecond)
 }

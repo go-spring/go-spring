@@ -32,8 +32,8 @@ func AssertEqual(t *testing.T, expect interface{}, got interface{}) {
 	}
 }
 
-// AssertPanic asserts that function fn() would panic.
-// It fails if the panic message does not match the regular expression in 'expr'.
+// AssertPanic asserts that function fn() would panic. It fails if the panic message
+// does not match the regular expression in 'expr'.
 func AssertPanic(t *testing.T, fn func(), expr string) {
 	defer func() {
 		if r := recover(); r == nil {
@@ -61,7 +61,7 @@ func AssertMatches(t *testing.T, expr string, got string) {
 
 func matches(t *testing.T, skip int, expr string, got string) {
 	if ok, err := regexp.MatchString(expr, got); err != nil {
-		fail(t, skip+1, "invalid pattern %q. %s", expr, err.Error())
+		fail(t, skip+1, "invalid pattern %q %s", expr, err.Error())
 	} else if !ok {
 		fail(t, skip+1, "got %s which does not match %s", got, expr)
 	}

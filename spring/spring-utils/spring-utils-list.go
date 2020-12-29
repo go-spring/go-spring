@@ -20,7 +20,7 @@ import (
 	"container/list"
 )
 
-// NewList 使用指定的元素创建列表
+// NewList 使用输入的元素创建列表
 func NewList(v ...interface{}) *list.List {
 	l := list.New()
 	for _, val := range v {
@@ -29,7 +29,7 @@ func NewList(v ...interface{}) *list.List {
 	return l
 }
 
-// FindInList 查询列表中是否存在指定元素，存在则返回列表项指针
+// FindInList 在列表中查询指定元素，存在则返回列表项指针，不存在返回 nil
 func FindInList(v interface{}, l *list.List) (*list.Element, bool) {
 	for e := l.Front(); e != nil; e = e.Next() {
 		if e.Value == v {

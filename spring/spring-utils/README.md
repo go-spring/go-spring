@@ -1,15 +1,15 @@
 # spring-utils
 
-提供了一些针对单元测试、原生类型、集合、网络、错误、反射等的工具函数。
+提供一些针对单元测试、原生类型、集合、网络、错误、反射、同步等方面的工具函数。
 
 - [Assert](#assert)
     - [AssertEqual](#assertequal)
     - [AssertPanic](#assertpanic)
     - [AssertMatches](#assertmatches)
 - [Primitives](#primitives)
-    - [DefaultBool](#defaultbool)
-    - [DefaultString](#defaultstring)
     - [SafeCloseChan](#safeclosechan)
+    - [ToJson](#tojson)
+    - [CopyBeanUseJson](#copybeanusejson)
 - [Collection](#collection)
     - [ContainsInt](#containsint)
     - [ContainsString](#containsstring)
@@ -37,10 +37,12 @@
 - [时间](#时间)
     - [CurrentMilliSeconds](#currentmilliseconds)
     - [MilliSeconds](#milliseconds)
+- [Sync](#sync)
+    - [WaitGroup](#waitgroup)
 
 ### Assert
 
-提供了一系列 Assert 函数用于方便单元测试。
+提供一系列 Assert 函数用于编写单元测试。
 
 #### AssertEqual
 
@@ -62,19 +64,7 @@ asserts that a got value matches a given regular expression.
 
 ### Primitives
 
-提供了一些针对原生类型的工具函数。
-
-#### DefaultBool
-
-将 nil 转换成 false 布尔值。
-
-    func DefaultBool(v interface{}) (b bool, ok bool) 
-
-#### DefaultString
-
-将 nil 转换成空字符串。
-
-    func DefaultString(v interface{}) (s string, ok bool) 
+提供一些针对原生类型的工具函数。
 
 #### SafeCloseChan
 
@@ -82,9 +72,21 @@ asserts that a got value matches a given regular expression.
 
     func SafeCloseChan(ch chan struct{}) 
 
+#### ToJson
+
+将对象序列化为 Json 字符串，错误信息以结果返回。
+
+    func ToJson(i interface{}) string
+
+#### CopyBeanUseJson
+
+使用 Json 序列化框架进行拷贝，支持匿名字段，支持类型转换。
+
+    func CopyBeanUseJson(src interface{}, dest interface{}) error
+
 ### Collection
 
-提供了一些针对集合的工具函数。
+提供一些针对集合的工具函数。
 
 #### ContainsInt
 
@@ -100,19 +102,19 @@ asserts that a got value matches a given regular expression.
 
 #### NewList
 
-使用指定的元素创建列表。
+使用输入的元素创建列表。
 
     func NewList(v ...interface{}) *list.List 
 
 #### FindInList
 
-查询列表中是否存在指定元素，存在则返回列表项指针。
+在列表中查询指定元素，存在则返回列表项指针，不存在返回 nil。
 
     func FindInList(v interface{}, l *list.List) (*list.Element, bool) 
 
 ### Encoding
 
-提供了一些针对数据编码的工具函数。
+提供一些针对数据编码的工具函数。
 
 #### MD5
 
@@ -128,7 +130,7 @@ asserts that a got value matches a given regular expression.
 
 ### Error
 
-提供了一些针对 error 的工具函数。
+提供一些针对 error 的工具函数。
 
 #### WithCause
 
@@ -138,7 +140,7 @@ asserts that a got value matches a given regular expression.
 
 #### Cause
 
-获取封装的异常源。
+获取异常源。
 
     func Cause(err error) interface{} 
 
@@ -150,13 +152,13 @@ asserts that a got value matches a given regular expression.
 
 #### ErrorWithFileLine
 
-返回错误发生的文件行号。
+返回 error 发生的文件行信息。
 
     func ErrorWithFileLine(err error, skip ...int) error 
 
 ### Panic
 
-提供了一些针对 panic 的工具函数。
+提供一些针对 panic 的工具函数。
 
 #### PanicCond
 
@@ -165,10 +167,10 @@ asserts that a got value matches a given regular expression.
     type PanicCond struct {}
 
     // NewPanicCond PanicCond 的构造函数。
-    func NewPanicCond(fn func() interface{}) *PanicCond 
+    func NewPanicCond(fn func() interface{}) *PanicCond {}
 
     // When 满足给定条件时抛出一个 panic。
-    func (p *PanicCond) When(isPanic bool) 
+    func (p *PanicCond) When(isPanic bool) {}
 
 #### Panic
 
@@ -184,7 +186,7 @@ asserts that a got value matches a given regular expression.
 
 ### Reflect
 
-提供了一些针对反射的工具函数。
+提供一些针对反射的工具函数。
 
 #### PatchValue
 
@@ -212,7 +214,7 @@ allAccess 为 true 时开放 v 的私有字段，返回修改后的副本。
 
 ### 网络
 
-提供了一些针对网络的工具函数。
+提供一些针对网络的工具函数。
 
 #### LocalIPv4
 
@@ -222,16 +224,32 @@ allAccess 为 true 时开放 v 的私有字段，返回修改后的副本。
 
 ### 时间
 
-提供了一些针对时间的工具函数。
+提供一些针对时间的工具函数。
 
 #### CurrentMilliSeconds
 
-返回当前的毫秒时间戳。
+返回当前的毫秒时间。
 
     func CurrentMilliSeconds() int64
 
 #### MilliSeconds
 
-返回 Duration 对应的毫秒时间。
+返回 Duration 返回对应的毫秒时长。
 
     func MilliSeconds(d time.Duration) int64 
+
+### Sync
+
+#### WaitGroup
+
+封装 sync.WaitGroup，提供更简单的 API。
+
+    type WaitGroup struct {
+      wg sync.WaitGroup
+    }
+    
+    // Add 添加一个任务，任务在 Goroutine 中执行
+    func (wg *WaitGroup) Add(fn func()) 
+    
+    // Wait 等待所有任务执行完成
+    func (wg *WaitGroup) Wait() 

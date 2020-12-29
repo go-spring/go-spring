@@ -29,7 +29,7 @@ const (
 	flagRO       = flagStickyRO | flagEmbedRO
 )
 
-// PatchValue allAccess 为 true 时开放 v 的私有字段，返回修改后的副本。
+// PatchValue allAccess 为 true 时开放 v 的私有字段，返回修改后的副本
 func PatchValue(v reflect.Value, allAccess bool) reflect.Value {
 	if allAccess {
 		rv := reflect.ValueOf(&v)

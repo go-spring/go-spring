@@ -25,7 +25,7 @@ type WaitGroup struct {
 	wg sync.WaitGroup
 }
 
-// Add 添加一个非阻塞的任务，任务在新的 Go 程执行
+// Add 添加一个任务，任务在 Goroutine 中执行
 func (wg *WaitGroup) Add(fn func()) {
 	wg.wg.Add(1)
 	go func() {

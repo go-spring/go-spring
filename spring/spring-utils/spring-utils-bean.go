@@ -20,7 +20,7 @@ import (
 	"encoding/json"
 )
 
-// CopyBeanUseJson 使用 json 序列化框架进行拷贝，支持匿名字段，支持类型转换。
+// CopyBeanUseJson 使用 Json 序列化框架进行拷贝，支持匿名字段，支持类型转换。
 func CopyBeanUseJson(src interface{}, dest interface{}) error {
 	bytes, err := json.Marshal(src)
 	if err != nil {

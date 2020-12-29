@@ -16,11 +16,15 @@
 
 package SpringUtils
 
-// DefaultString 将 nil 转换成空字符串
-func DefaultString(v interface{}) (s string, ok bool) {
-	if v == nil {
-		return "", true
+import (
+	"encoding/json"
+)
+
+// ToJson 将对象序列化为 Json 字符串，错误信息以结果返回。
+func ToJson(i interface{}) string {
+	bytes, err := json.Marshal(i)
+	if err != nil {
+		return err.Error()
 	}
-	s, ok = v.(string)
-	return s, ok
+	return string(bytes)
 }
