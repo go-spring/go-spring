@@ -41,9 +41,10 @@ func NewStringFilter(s string) *StringFilter {
 }
 
 func (f *StringFilter) Invoke(ctx SpringWeb.WebContext, chain SpringWeb.FilterChain) {
+	log := SpringLogger.WithContext(ctx.Context())
 
-	defer func() { ctx.LogInfo("after ", f.s, " code:", ctx.ResponseWriter().Status()) }()
-	ctx.LogInfo("before ", f.s)
+	defer func() { log.Info("after ", f.s, " code:", ctx.ResponseWriter().Status()) }()
+	log.Info("before ", f.s)
 	SpringLogger.Info(f.s)
 
 	chain.Next(ctx)

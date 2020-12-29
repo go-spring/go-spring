@@ -21,6 +21,7 @@ import (
 
 	"github.com/go-spring/spring-boot"
 	"github.com/go-spring/spring-core"
+	"github.com/go-spring/spring-logger"
 	"github.com/go-spring/spring-web"
 )
 
@@ -37,6 +38,6 @@ func (f *SingleBeanFilter) Invoke(ctx SpringWeb.WebContext, chain SpringWeb.Filt
 	if f.DefaultValue != "app-test" {
 		panic(fmt.Errorf("${default-value} expect 'app-test' but '%s'", f.DefaultValue))
 	}
-	ctx.LogInfo("::SingleBeanFilter")
+	SpringLogger.WithContext(ctx.Context()).Info("::SingleBeanFilter")
 	chain.Next(ctx)
 }
