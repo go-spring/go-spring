@@ -1,6 +1,6 @@
 # spring-logger
 
-该包定义了一个标准的日志输出接口 `StdLogger`，并提供了输出到控制台的实现 `Console`。另外，该包也提供了一个封装了 `context.Context` 和自定义标签的 `ContextLogger` 类型，可以满足基于 `context.Context` 的日志输出。
+该包定义了一个标准的日志输出接口 `StdLogger`，并提供了输出到控制台的实现 `Console`。另外，该包也提供了一个封装了 `context.Context` 和自定义标签的 `ContextLogger`，可以满足基于 `context.Context` 和自定义标签的日志输出。
 
 # 示例
 
