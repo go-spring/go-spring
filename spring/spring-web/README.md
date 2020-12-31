@@ -1,76 +1,97 @@
 # spring-web
 
-### WebServer
+为社区优秀的 Web 服务器提供一个抽象层，通过定义 `WebContainer`、`WebContext`、`Filter` 三大基本组件，使得底层实现可以灵活切换。
 
-一个 WebServer 包含多个 WebContainer。
-
-#### 构造函数
-
-```
-func NewWebServer() *WebServer
-```
-
-#### 添加 WebContainer 实例
-
-```
-func (s *WebServer) AddContainer(container ...WebContainer) *WebServer
-```
-
-#### 返回 WebContainer 实例列表
-
-```
-func (s *WebServer) Containers() []WebContainer
-```
-
-#### 添加 WebFilter 实例
-
-```
-func (s *WebServer) AddFilter(filter ...Filter) *WebServer
-```
-
-#### 获取过滤器列表
-
-```
-func (s *WebServer) Filters() []Filter
-```
-
-#### 获取 Logger Filter
-
-```
-func (s *WebServer) GetLoggerFilter() Filter
-```
-
-#### 设置共用的日志过滤器
-
-```
-func (s *WebServer) SetLoggerFilter(filter Filter) *WebServer
-```
-
-#### 重新设置过滤器列表
-
-```
-func (s *WebServer) ResetFilters(filters []Filter)
-```
-
-#### 设置容器自身的错误回调
-
-```
-func (s *WebServer) SetErrorCallback(fn func(error)) *WebServer
-```
-
-#### 启动 Web 容器，非阻塞调用
-
-```
-func (s *WebServer) Start()
-```
-
-#### 停止 Web 容器，阻塞调用
-
-```
-func (s *WebServer) Stop(ctx context.Context)
-```
+- [WebContainer](#webcontainer)
+    - [Route](#route)
+    - [HandleRequest](#handlerequest)
+    - [RequestMapping](#requestmapping)
+    - [RequestBinding](#requestbinding)
+    - [HandleGet](#handleget)
+    - [GetMapping](#getmapping)
+    - [GetBinding](#getbinding)
+    - [HandlePost](#handlepost)
+    - [PostMapping](#postmapping)
+    - [PostBinding](#postbinding)
+    - [HandlePut](#handleput)
+    - [PutMapping](#putmapping)
+    - [PutBinding](#putbinding)
+    - [HandleDelete](#handledelete)
+    - [DeleteMapping](#deletemapping)
+    - [DeleteBinding](#deletebinding)
+    - [AddFilter](#addfilter)
+    - [SetLoggerFilter](#setloggerfilter)
+    - [AddRouter](#addrouter)
+    - [Swagger](#swagger)
+    - [Start](#start)
+    - [Stop](#stop)
+- [WebContext](#webcontext)
+    - [NativeContext](#nativecontext)
+    - [Get](#get)
+    - [Set](#set)
+    - [Request](#request)
+    - [SetRequest](#setrequest)
+    - [Context](#context)
+    - [IsTLS](#istls)
+    - [IsWebSocket](#iswebsocket)
+    - [Scheme](#scheme)
+    - [ClientIP](#clientip)
+    - [Path](#path)
+    - [Handler](#handler)
+    - [ContentType](#contenttype)
+    - [GetHeader](#getheader)
+    - [GetRawData](#getrawdata)
+    - [PathParam](#pathparam)
+    - [PathParamNames](#pathparamnames)
+    - [PathParamValues](#pathparamvalues)
+    - [QueryParam](#queryparam)
+    - [QueryParams](#queryparams)
+    - [QueryString](#querystring)
+    - [FormValue](#formvalue)
+    - [FormParams](#formparams)
+    - [FormFile](#formfile)
+    - [SaveUploadedFile](#saveuploadedfile)
+    - [MultipartForm](#multipartform)
+    - [Cookie](#cookie)
+    - [Cookies](#cookies)
+    - [Bind](#bind)
+    - [ResponseWriter](#responsewriter)
+    - [Status](#status)
+    - [Header](#header)
+    - [SetCookie](#setcookie)
+    - [NoContent](#nocontent)
+    - [String](#string)
+    - [HTML](#html)
+    - [HTMLBlob](#htmlblob)
+    - [JSON](#json)
+    - [JSONPretty](#jsonpretty)
+    - [JSONBlob](#jsonblob)
+    - [JSONP](#jsonp)
+    - [JSONPBlob](#jsonpblob)
+    - [XML](#xml)
+    - [XMLPretty](#xmlpretty)
+    - [XMLBlob](#xmlblob)
+    - [Blob](#blob)
+    - [File](#file)
+    - [Attachment](#attachment)
+    - [Inline](#inline)
+    - [Redirect](#redirect)
+    - [SSEvent](#ssevent)
+- [Handler](#handler-1)
+    - [FUNC](#func)
+    - [HTTP](#http)
+    - [WrapF](#wrapf)
+    - [WrapH](#wraph)
+    - [BIND](#bind-1)
+- [路由风格](#路由风格)
+- [全局变量](#全局变量)
+    - [ErrorHandler](#errorhandler)
+    - [LoggerFilter](#loggerfilter)
+    - [Validator](#validator)
 
 ### WebContainer
+
+定义一个 Web 服务器，具有注册路由、设置中间件、注册 Swagger 响应器等功能。
 
 #### Route
 
@@ -78,11 +99,11 @@ func (s *WebServer) Stop(ctx context.Context)
 
     Route(basePath string, filters ...Filter) *Router
 
-#### Request
+#### HandleRequest
 
 注册任意 HTTP 方法处理函数。
 
-    Request(method uint32, path string, fn Handler, filters ...Filter) *Mapper
+    HandleRequest(method uint32, path string, fn Handler, filters ...Filter) *Mapper
 
 #### RequestMapping
 
@@ -168,47 +189,11 @@ func (s *WebServer) Stop(ctx context.Context)
 
     DeleteBinding(path string, fn interface{}, filters ...Filter) *Mapper
 
-#### Mappers
-
-返回映射器列表。
-
-    Mappers() map[string]*Mapper
-
-#### AddMapper
-
-添加一个 Mapper。
-
-    AddMapper(m *Mapper) *Mapper
-
-#### Config
-
-获取 Web 容器配置。
-
-    Config() ContainerConfig
-
-#### GetFilters
-
-返回过滤器列表。
-
-    GetFilters() []Filter
-
-#### ResetFilters
-
-重新设置过滤器列表。
-
-    ResetFilters(filters []Filter)
-
 #### AddFilter
 
 添加过滤器。
 
     AddFilter(filter ...Filter)
-
-#### GetLoggerFilter
-
-获取 Logger Filter。
-
-    GetLoggerFilter() Filter
 
 #### SetLoggerFilter
 
@@ -216,35 +201,11 @@ func (s *WebServer) Stop(ctx context.Context)
 
     SetLoggerFilter(filter Filter)
 
-#### GetErrorCallback
-
-返回容器自身的错误回调。
-
-    GetErrorCallback() func(error)
-
-#### SetErrorCallback
-
-设置容器自身的错误回调。
-
-    SetErrorCallback(fn func(error))
-
 #### AddRouter
 
 添加新的路由信息。
 
-    AddRouter(router *Router)
-
-#### EnableSwagger
-
-是否启用 Swagger 功能。
-
-    EnableSwagger() bool
-
-#### SetEnableSwagger
-
-设置是否启用 Swagger 功能。
-
-    SetEnableSwagger(enable bool)
+    AddRouter(router RootRouter)
 
 #### Swagger
 
@@ -254,18 +215,20 @@ func (s *WebServer) Stop(ctx context.Context)
 
 #### Start
 
-启动 Web 容器，非阻塞。
+启动 Web 容器。
 
-    Start()
+    Start() error
 
 #### Stop
 
-停止 Web 容器，阻塞。
+停止 Web 容器。
 
-    Stop(ctx context.Context)
+    Stop(ctx context.Context) error
 
 ### WebContext
-    
+
+封装 *http.Request 和 http.ResponseWriter 对象，简化操作接口。
+
 #### NativeContext
 
 返回封装的底层上下文对象。
@@ -296,6 +259,12 @@ sets `*http.Request`.
 
     SetRequest(r *http.Request)
 
+#### Context
+
+返回 Request 绑定的 context.Context 对象。
+
+	Context() context.Context
+
 #### IsTLS
 
 returns true if HTTP connection is TLS otherwise false.
@@ -316,10 +285,9 @@ returns the HTTP protocol scheme, `http` or `https`.
 
 #### ClientIP
 
-implements a best effort algorithm to return the real client IP,
-it parses X-Real-IP and X-Forwarded-For in order to work properly with
-reverse-proxies such us: nginx or haproxy. Use X-Forwarded-For before
-X-Real-Ip as nginx uses X-Real-Ip with the proxy's IP.
+implements a best effort algorithm to return the real client IP, it parses X-Real-IP and X-Forwarded-For in order to
+work properly with reverse-proxies such us: nginx or haproxy. Use X-Forwarded-For before X-Real-Ip as nginx uses
+X-Real-Ip with the proxy's IP.
 
     ClientIP() string
 
@@ -433,8 +401,7 @@ returns the HTTP cookies sent with the request.
 
 #### Bind
 
-binds the request body into provided type `i`. The default binder
-does it based on Content-Type header.
+binds the request body into provided type `i`. The default binder does it based on Content-Type header.
 
     Bind(i interface{}) error
 
@@ -452,9 +419,8 @@ sets the HTTP response code.
 
 #### Header
 
-is a intelligent shortcut for c.Writer.Header().Set(key, value).
-It writes a header in the response.
-If value == "", this method removes the header `c.Writer.Header().Del(key)`
+is a intelligent shortcut for c.Writer.Header().Set(key, value). It writes a header in the response. If value == "",
+this method removes the header `c.Writer.Header().Del(key)`
 
     Header(key, value string)
 
@@ -468,81 +434,81 @@ adds a `Set-Cookie` header in HTTP response.
 
 sends a response with no body and a status code. Maybe panic.
 
-    NoContent(code int)
+    NoContent()
 
 #### String
 
 writes the given string into the response body. Maybe panic.
 
-    String(code int, format string, values ...interface{})
+    String(format string, values ...interface{})
 
 #### HTML
 
 sends an HTTP response with status code. Maybe panic.
 
-    HTML(code int, html string)
+    HTML(html string)
 
 #### HTMLBlob
 
 sends an HTTP blob response with status code. Maybe panic.
 
-    HTMLBlob(code int, b []byte)
+    HTMLBlob(b []byte)
 
 #### JSON
 
 sends a JSON response with status code. Maybe panic.
 
-    JSON(code int, i interface{})
+    JSON(i interface{})
 
 #### JSONPretty
 
 sends a pretty-print JSON with status code. Maybe panic.
 
-    JSONPretty(code int, i interface{}, indent string)
+    JSONPretty(i interface{}, indent string)
 
 #### JSONBlob
 
 sends a JSON blob response with status code. Maybe panic.
 
-    JSONBlob(code int, b []byte)
+    JSONBlob(b []byte)
 
 #### JSONP
 
 sends a JSONP response with status code. It uses `callback`
 to construct the JSONP payload. Maybe panic.
 
-    JSONP(code int, callback string, i interface{})
+    JSONP(callback string, i interface{})
 
 #### JSONPBlob
 
 sends a JSONP blob response with status code. It uses
 `callback` to construct the JSONP payload. Maybe panic.
 
-    JSONPBlob(code int, callback string, b []byte)
+    JSONPBlob(callback string, b []byte)
 
 #### XML
 
 sends an XML response with status code. Maybe panic.
 
-    XML(code int, i interface{})
+    XML(i interface{})
 
 #### XMLPretty
 
 sends a pretty-print XML with status code. Maybe panic.
 
-    XMLPretty(code int, i interface{}, indent string)
+    XMLPretty(i interface{}, indent string)
 
 #### XMLBlob
 
 sends an XML blob response with status code. Maybe panic.
 
-    XMLBlob(code int, b []byte)
+    XMLBlob(b []byte)
 
 #### Blob
 
 sends a blob response with status code and content type. Maybe panic.
 
-    Blob(code int, contentType string, b []byte)
+    Blob(contentType string, b []byte)
 
 #### File
 
@@ -566,7 +532,7 @@ sends a response as inline, opening the file in the browser. Maybe panic.
 
 redirects the request to a provided URL with status code. Maybe panic.
 
-    Redirect(code int, url string)
+    Redirect(url string)
 
 #### SSEvent
 
@@ -574,8 +540,55 @@ writes a Server-Sent Event into the body stream. Maybe panic.
 
     SSEvent(name string, message interface{})
 
-### HandlerFunc
+### Handler
 
-```
-type HandlerFunc func(WebContext)
-```
+以函数的方式实现 Handler。
+
+#### FUNC
+
+标准 Web 处理函数的辅助函数。
+
+    func FUNC(fn HandlerFunc) Handler
+
+#### HTTP
+
+标准 Http 处理函数的辅助函数。
+
+    func HTTP(fn http.HandlerFunc) Handler
+
+#### WrapF
+
+标准 Http 处理函数的辅助函数。
+
+    func WrapF(fn http.HandlerFunc) Handler
+
+#### WrapH
+
+标准 Http 处理函数的辅助函数。
+
+    func WrapH(h http.Handler) Handler
+
+#### BIND
+
+转换成 BIND 形式的 Web 处理接口。
+
+    func BIND(fn interface{}) Handler
+
+### 路由风格
+
+提供 echo、gin 和 {} 三种可无缝切换的路由风格：`/a/:b/c/:d/*` 是 echo 风格；`/a/:b/c/:d/*e` 是 gin 风格；`/a/{b}/c/{e:*}` 、`/a/{b}/c/{*:e}`
+、`/a/{b}/c/{*}` 是 {} 风格。
+
+### 全局变量
+
+#### Validator
+
+全局参数校验器。
+
+#### ErrorHandler
+
+自定义错误处理函数。
+
+#### LoggerFilter
+
+全局的日志过滤器，Container 如果没有设置日志过滤器则会使用全局的日志过滤器。

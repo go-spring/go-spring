@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+// 为社区优秀的 Web 服务器提供一个抽象层，使得底层可以灵活切换。
 package SpringWeb
 
 import (
@@ -238,17 +239,10 @@ func WrapH(h http.Handler) Handler { return httpHandler(h.ServeHTTP) }
 
 /////////////////// Web Filters //////////////////////
 
-// GetLoggerFilter 获取全局的日志过滤器
-func GetLoggerFilter() Filter { return loggerFilter }
-
-// SetLoggerFilter 设置全局的日志过滤器
-func SetLoggerFilter(filter Filter) { loggerFilter = filter }
-
-// loggerFilter 全局的日志过滤器，Container 如果没有设置日志过滤器则会使用全局的日志过滤器
-var loggerFilter = Filter(FuncFilter(func(webCtx WebContext, chain FilterChain) {
+// LoggerFilter 全局的日志过滤器，Container 如果没有设置日志过滤器则会使用全局的日志过滤器
+var LoggerFilter = Filter(FuncFilter(func(webCtx WebContext, chain FilterChain) {
 	start := time.Now()
 	chain.Next(webCtx)
 	w := webCtx.ResponseWriter()
 	SpringLogger.WithContext(webCtx.Context()).Infof("cost:%v size:%d code:%d %s", time.Since(start), w.Size(), w.Status(), string(w.Body()))
-
 }))

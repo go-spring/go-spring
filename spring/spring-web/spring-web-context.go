@@ -94,9 +94,7 @@ type ResponseWriter interface {
 	Body() []byte
 }
 
-// WebContext 上下文接口，设计理念：为社区中优秀的 Web 服务器提供一个抽象层，
-// 使得底层可以灵活切换，因此在功能上取这些 Web 服务器功能的交集，同时提供获取
-// 底层对象的接口，以便在不能满足用户要求的时候使用底层实现的能力，当然要慎用。
+// WebContext 封装 *http.Request 和 http.ResponseWriter 对象，简化操作接口。
 type WebContext interface {
 
 	// NativeContext 返回封装的底层上下文对象
