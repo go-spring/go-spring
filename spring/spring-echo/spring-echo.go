@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+// 封装 github.com/labstack/echo 实现的 Web 框架
 package SpringEcho
 
 import (
@@ -22,9 +23,9 @@ import (
 	"net/http"
 	"runtime/debug"
 
-	"github.com/go-spring/spring-logger"
-	"github.com/go-spring/spring-utils"
-	"github.com/go-spring/spring-web"
+	SpringLogger "github.com/go-spring/spring-logger"
+	SpringUtils "github.com/go-spring/spring-utils"
+	SpringWeb "github.com/go-spring/spring-web"
 	"github.com/labstack/echo"
 )
 
@@ -33,14 +34,14 @@ type route struct {
 	wildCardName string            // 通配符的名称
 }
 
-// Container 适配 echo 的 Web 容器
+// Container echo 实现的 WebContainer
 type Container struct {
 	*SpringWeb.AbstractContainer
 	echoServer *echo.Echo
-	routes     map[string]route // 记录所有通过 spring echo 注册的路由
+	routes     map[string]route // 记录所有通过 spring-echo 注册的路由
 }
 
-// NewContainer Container 的构造函数
+// NewContainer 创建 echo 实现的 WebContainer
 func NewContainer(config SpringWeb.ContainerConfig) *Container {
 	c := &Container{}
 	c.echoServer = echo.New()
@@ -58,22 +59,23 @@ func (c *Container) Start() error {
 	}
 
 	var cFilters []SpringWeb.Filter
+	{
+		if loggerFilter := c.GetLoggerFilter(); loggerFilter != nil {
+			cFilters = append(cFilters, loggerFilter)
+		} else {
+			cFilters = append(cFilters, SpringWeb.LoggerFilter)
+		}
 
-	if loggerFilter := c.GetLoggerFilter(); loggerFilter != nil {
-		cFilters = append(cFilters, loggerFilter)
-	} else {
-		cFilters = append(cFilters, SpringWeb.GetLoggerFilter())
+		cFilters = append(cFilters, &recoveryFilter{})
+		cFilters = append(cFilters, c.GetFilters()...)
 	}
-
-	cFilters = append(cFilters, &recoveryFilter{})
-	cFilters = append(cFilters, c.GetFilters()...)
 
 	// 添加容器级别的过滤器，这样在路由不存在时也会调用这些过滤器
 	c.echoServer.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(echoCtx echo.Context) error {
 
-			// 如果 method+path 是 spring echo 注册过的，那么可以保证 WebContext
-			// 的 Handler 是准确的，否则是不准确的，请优先使用 spring echo 注册路由。
+			// 如果 method+path 是 spring-echo 注册过的，那么可以保证 WebContext
+			// 的 Handler 是准确的，否则是不准确的，请优先使用 spring-echo 注册路由。
 			key := echoCtx.Request().Method + echoCtx.Path()
 			if r, ok := c.routes[key]; ok {
 				NewContext(r.fn, r.wildCardName, echoCtx)
@@ -81,7 +83,7 @@ func (c *Container) Start() error {
 				NewContext(nil, echoCtx.Path(), echoCtx)
 			}
 
-			filters := append(cFilters, SpringWeb.HandlerFilter(Echo(next)))
+			filters := append(cFilters, SpringWeb.HandlerFilter(Handler(next)))
 			chain := SpringWeb.NewDefaultFilterChain(filters)
 			chain.Next(WebContext(echoCtx))
 			return nil
@@ -97,10 +99,7 @@ func (c *Container) Start() error {
 
 		for _, method := range SpringWeb.GetMethod(mapper.Method()) {
 			c.echoServer.Add(method, path, fn)
-			c.routes[method+path] = route{
-				fn:           mapper.Handler(),
-				wildCardName: wildCardName,
-			}
+			c.routes[method+path] = route{fn: mapper.Handler(), wildCardName: wildCardName}
 		}
 	}
 
@@ -150,8 +149,8 @@ func (e echoHandler) FileLine() (file string, line int, fnName string) {
 	return SpringUtils.FileLine(e)
 }
 
-// Echo Web Echo 适配函数
-func Echo(fn echo.HandlerFunc) SpringWeb.Handler { return echoHandler(fn) }
+// Handler 适配 echo 形式的处理函数
+func Handler(fn echo.HandlerFunc) SpringWeb.Handler { return echoHandler(fn) }
 
 /////////////////// filter //////////////////////
 
@@ -170,7 +169,7 @@ func (filter echoFilter) Invoke(ctx SpringWeb.WebContext, chain SpringWeb.Filter
 	}
 }
 
-// Filter Web Echo 中间件适配器
+// Filter 适配 echo 形式的中间件函数
 func Filter(fn echo.MiddlewareFunc) SpringWeb.Filter { return echoFilter(fn) }
 
 // recoveryFilter 适配 echo 的恢复过滤器
