@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+// 封装 github.com/gin-gonic/gin 实现的 Web 框架
 package SpringGin
 
 import (
@@ -41,7 +42,7 @@ type route struct {
 	wildCardName string            // 通配符的名称
 }
 
-// Container 适配 gin 的 Web 容器
+// Container gin 实现的 WebContainer
 type Container struct {
 	*SpringWeb.AbstractContainer
 	httpServer *http.Server
@@ -49,7 +50,7 @@ type Container struct {
 	routes     map[string]route // 记录所有通过 spring gin 注册的路由
 }
 
-// NewContainer Container 的构造函数
+// NewContainer 创建 gin 实现的 WebContainer
 func NewContainer(config SpringWeb.ContainerConfig) *Container {
 	c := &Container{}
 	c.ginEngine = gin.New()
@@ -67,15 +68,16 @@ func (c *Container) Start() error {
 	}
 
 	var cFilters []SpringWeb.Filter
+	{
+		if loggerFilter := c.GetLoggerFilter(); loggerFilter != nil {
+			cFilters = append(cFilters, loggerFilter)
+		} else {
+			cFilters = append(cFilters, SpringWeb.LoggerFilter)
+		}
 
-	if loggerFilter := c.GetLoggerFilter(); loggerFilter != nil {
-		cFilters = append(cFilters, loggerFilter)
-	} else {
-		cFilters = append(cFilters, SpringWeb.GetLoggerFilter())
+		cFilters = append(cFilters, &recoveryFilter{})
+		cFilters = append(cFilters, c.GetFilters()...)
 	}
-
-	cFilters = append(cFilters, &recoveryFilter{})
-	cFilters = append(cFilters, c.GetFilters()...)
 
 	// 添加容器级别的过滤器，这样在路由不存在时也会调用这些过滤器
 	c.ginEngine.Use(func(ginCtx *gin.Context) {
@@ -169,6 +171,42 @@ func HandlerWrapper(fn SpringWeb.Handler, wildCardName string, filters []SpringW
 	return handlers
 }
 
+/////////////////// handler //////////////////////
+
+// ginHandler 封装 Gin 处理函数
+type ginHandler gin.HandlerFunc
+
+func (g ginHandler) Invoke(ctx SpringWeb.WebContext) {
+	g(GinContext(ctx))
+}
+
+func (g ginHandler) FileLine() (file string, line int, fnName string) {
+	return SpringUtils.FileLine(g)
+}
+
+// Handler 适配 gin 形式的处理函数
+func Handler(fn gin.HandlerFunc) SpringWeb.Handler { return ginHandler(fn) }
+
+/////////////////// filter //////////////////////
+
+// ginFilter 封装 Gin 中间件
+type ginFilter gin.HandlerFunc
+
+func (filter ginFilter) Invoke(ctx SpringWeb.WebContext, _ SpringWeb.FilterChain) {
+	filter(GinContext(ctx))
+}
+
+// Filter Web Gin 中间件适配器
+func Filter(fn gin.HandlerFunc) SpringWeb.Filter { return ginFilter(fn) }
+
+// ginFilterChain gin 适配的过滤器链条
+type ginFilterChain struct {
+	ginCtx *gin.Context
+}
+
+// Next 内部调用 gin.Context 对象的 Next 函数驱动链条向后执行
+func (chain *ginFilterChain) Next(_ SpringWeb.WebContext) { chain.ginCtx.Next() }
+
 // recoveryFilter 适配 gin 的恢复过滤器
 type recoveryFilter struct{}
 
@@ -218,39 +256,3 @@ func (f *recoveryFilter) Invoke(webCtx SpringWeb.WebContext, chain SpringWeb.Fil
 
 	chain.Next(webCtx)
 }
-
-/////////////////// handler //////////////////////
-
-// ginHandler 封装 Gin 处理函数
-type ginHandler gin.HandlerFunc
-
-func (g ginHandler) Invoke(ctx SpringWeb.WebContext) {
-	g(GinContext(ctx))
-}
-
-func (g ginHandler) FileLine() (file string, line int, fnName string) {
-	return SpringUtils.FileLine(g)
-}
-
-// Gin Web Gin 适配函数
-func Gin(fn gin.HandlerFunc) SpringWeb.Handler { return ginHandler(fn) }
-
-/////////////////// filter //////////////////////
-
-// ginFilter 封装 Gin 中间件
-type ginFilter gin.HandlerFunc
-
-func (filter ginFilter) Invoke(ctx SpringWeb.WebContext, _ SpringWeb.FilterChain) {
-	filter(GinContext(ctx))
-}
-
-// Filter Web Gin 中间件适配器
-func Filter(fn gin.HandlerFunc) SpringWeb.Filter { return ginFilter(fn) }
-
-// ginFilterChain gin 适配的过滤器链条
-type ginFilterChain struct {
-	ginCtx *gin.Context
-}
-
-// Next 内部调用 gin.Context 对象的 Next 函数驱动链条向后执行
-func (chain *ginFilterChain) Next(_ SpringWeb.WebContext) { chain.ginCtx.Next() }
