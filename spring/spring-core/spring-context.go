@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+// 实现了一个功能完善的运行时 IoC 容器。
 package SpringCore
 
 import (
@@ -61,28 +62,26 @@ type SpringContext interface {
 	// RegisterNameBeanFn 注册单例构造函数 Bean，需指定名称，重复注册会 panic。
 	RegisterNameBeanFn(name string, fn interface{}, tags ...string) *BeanDefinition
 
-	// Deprecated: Use "RegisterMethodBeanFn" instead.
 	// RegisterMethodBean 注册成员方法单例 Bean，不指定名称，重复注册会 panic。
 	// 必须给定方法名而不能通过遍历方法列表比较方法类型的方式获得函数名，因为不同方法的类型可能相同。
 	// 而且 interface 的方法类型不带 receiver 而成员方法的类型带有 receiver，两者类型也不好匹配。
 	RegisterMethodBean(selector BeanSelector, method string, tags ...string) *BeanDefinition
 
-	// Deprecated: Use "RegisterNameMethodBeanFn" instead.
 	// RegisterNameMethodBean 注册成员方法单例 Bean，需指定名称，重复注册会 panic。
 	// 必须给定方法名而不能通过遍历方法列表比较方法类型的方式获得函数名，因为不同方法的类型可能相同。
 	// 而且 interface 的方法类型不带 receiver 而成员方法的类型带有 receiver，两者类型也不好匹配。
 	RegisterNameMethodBean(name string, selector BeanSelector, method string, tags ...string) *BeanDefinition
 
-	// @Incubate 注册成员方法单例 Bean，不指定名称，重复注册会 panic。
+	// 注册成员方法单例 Bean，不指定名称，重复注册会 panic。
 	// method 形如 ServerInterface.Consumer (接口) 或 (*Server).Consumer (类型)。
 	RegisterMethodBeanFn(method interface{}, tags ...string) *BeanDefinition
 
-	// @Incubate 注册成员方法单例 Bean，需指定名称，重复注册会 panic。
+	// 注册成员方法单例 Bean，需指定名称，重复注册会 panic。
 	// method 形如 ServerInterface.Consumer (接口) 或 (*Server).Consumer (类型)。
 	RegisterNameMethodBeanFn(name string, method interface{}, tags ...string) *BeanDefinition
 
-	// RegisterBeanDefinition 注册 BeanDefinition 对象，如果需要 Name 请在调用之前准备好。
-	RegisterBeanDefinition(bd *BeanDefinition) *BeanDefinition
+	// RegisterBeanDefinition 注册 BeanDefinition 对象。
+	RegisterBeanDefinition(bd *BeanDefinition)
 
 	// AutoWireBeans 对所有 Bean 进行依赖注入和属性绑定
 	AutoWireBeans()

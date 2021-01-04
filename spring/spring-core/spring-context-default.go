@@ -155,51 +155,60 @@ func (ctx *defaultSpringContext) registerBeanDefinition(bd *BeanDefinition) {
 }
 
 // RegisterBeanDefinition 注册 BeanDefinition 对象，如果需要 Name 请在调用之前准备好。
-func (ctx *defaultSpringContext) RegisterBeanDefinition(bd *BeanDefinition) *BeanDefinition {
+func (ctx *defaultSpringContext) RegisterBeanDefinition(bd *BeanDefinition) {
 	ctx.checkRegistration()
 	switch bd.bean.(type) {
-	case *objectBean:
-		ctx.registerBeanDefinition(bd)
-	case *constructorBean:
+	case *objectBean, *constructorBean:
 		ctx.registerBeanDefinition(bd)
 	case *fakeMethodBean:
 		ctx.methodBeans = append(ctx.methodBeans, bd)
 	}
-	return bd
 }
 
 // RegisterBean 注册单例 Bean，不指定名称，重复注册会 panic。
 func (ctx *defaultSpringContext) RegisterBean(bean interface{}) *BeanDefinition {
-	return ctx.RegisterBeanDefinition(ObjectBean(bean))
+	bd := ObjectBean(bean)
+	ctx.RegisterBeanDefinition(bd)
+	return bd
 }
 
 // RegisterNameBean 注册单例 Bean，需要指定名称，重复注册会 panic。
 func (ctx *defaultSpringContext) RegisterNameBean(name string, bean interface{}) *BeanDefinition {
-	return ctx.RegisterBeanDefinition(ObjectBean(bean).WithName(name))
+	bd := ObjectBean(bean).WithName(name)
+	ctx.RegisterBeanDefinition(bd)
+	return bd
 }
 
 // RegisterBeanFn 注册单例构造函数 Bean，不指定名称，重复注册会 panic。
 func (ctx *defaultSpringContext) RegisterBeanFn(fn interface{}, tags ...string) *BeanDefinition {
-	return ctx.RegisterBeanDefinition(ConstructorBean(fn, tags...))
+	bd := ConstructorBean(fn, tags...)
+	ctx.RegisterBeanDefinition(bd)
+	return bd
 }
 
 // RegisterNameBeanFn 注册单例构造函数 Bean，需指定名称，重复注册会 panic。
 func (ctx *defaultSpringContext) RegisterNameBeanFn(name string, fn interface{}, tags ...string) *BeanDefinition {
-	return ctx.RegisterBeanDefinition(ConstructorBean(fn, tags...).WithName(name))
+	bd := ConstructorBean(fn, tags...).WithName(name)
+	ctx.RegisterBeanDefinition(bd)
+	return bd
 }
 
 // RegisterMethodBean 注册成员方法单例 Bean，不指定名称，重复注册会 panic。
 // 必须给定方法名而不能通过遍历方法列表比较方法类型的方式获得函数名，因为不同方法的类型可能相同。
 // 而且 interface 的方法类型不带 receiver 而成员方法的类型带有 receiver，两者类型也不好匹配。
 func (ctx *defaultSpringContext) RegisterMethodBean(selector BeanSelector, method string, tags ...string) *BeanDefinition {
-	return ctx.RegisterBeanDefinition(MethodBean(selector, method, tags...))
+	bd := MethodBean(selector, method, tags...)
+	ctx.RegisterBeanDefinition(bd)
+	return bd
 }
 
 // RegisterNameMethodBean 注册成员方法单例 Bean，需指定名称，重复注册会 panic。
 // 必须给定方法名而不能通过遍历方法列表比较方法类型的方式获得函数名，因为不同方法的类型可能相同。
 // 而且 interface 的方法类型不带 receiver 而成员方法的类型带有 receiver，两者类型也不好匹配。
 func (ctx *defaultSpringContext) RegisterNameMethodBean(name string, selector BeanSelector, method string, tags ...string) *BeanDefinition {
-	return ctx.RegisterBeanDefinition(MethodBean(selector, method, tags...).WithName(name))
+	bd := MethodBean(selector, method, tags...).WithName(name)
+	ctx.RegisterBeanDefinition(bd)
+	return bd
 }
 
 // @Incubate 注册成员方法单例 Bean，不指定名称，重复注册会 panic。
