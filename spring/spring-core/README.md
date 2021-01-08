@@ -55,25 +55,44 @@
   - [其他功能](#其他功能)
     - [SafeGoroutine](#safegoroutine)
 - [Condition](#condition)
-- [BeanDefinition](#beandefinition)
-    - [ObjectBean](#objectbean)
-    - [ConstructorBean](#constructorbean)
-    - [MethodBean](#methodbean)
-    - [Bean](#bean)
+- [Bean](#bean)
+    - [IsRefType](#isreftype)
+    - [IsValueType](#isvaluetype)
+    - [TypeName](#typename)
+    - [BeanSelector](#beanselector)
+    - [beanStatus](#beanstatus)
+  - [BeanDefinition](#beandefinition)
+    - [Bean](#bean-1)
     - [Type](#type)
     - [Value](#value)
-    - [TypeName](#typename)
+    - [TypeName](#typename-1)
     - [Name](#name)
     - [BeanId](#beanid)
     - [FileLine](#fileline)
-    - [Description](#description)
     - [WithName](#withname)
+    - [Or](#or)
+    - [And](#and)
+    - [ConditionOn](#conditionon)
+    - [ConditionNot](#conditionnot)
+    - [ConditionOnProperty](#conditiononproperty)
+    - [ConditionOnMissingProperty](#conditiononmissingproperty)
+    - [ConditionOnPropertyValue](#conditiononpropertyvalue)
+    - [ConditionOnOptionalPropertyValue](#conditiononoptionalpropertyvalue)
+    - [ConditionOnBean](#conditiononbean)
+    - [ConditionOnMissingBean](#conditiononmissingbean)
+    - [ConditionOnExpression](#conditiononexpression)
+    - [ConditionOnMatches](#conditiononmatches)
+    - [ConditionOnProfile](#conditiononprofile)
     - [Options](#options)
     - [DependsOn](#dependson)
     - [Primary](#primary)
     - [Init](#init)
     - [Destroy](#destroy)
     - [Export](#export)
+  - [Bean 创建函数](#bean-创建函数)
+    - [ObjectBean](#objectbean)
+    - [ConstructorBean](#constructorbean)
+    - [MethodBean](#methodbean)
 
 ## SpringContext
 
@@ -223,7 +242,7 @@ func BindPropertyIf(key string, i interface{}, allAccess bool)
 
 #### Context
 
-返回上下文接口
+返回上下文接口。
 
 ```
 func Context() context.Context
@@ -231,7 +250,7 @@ func Context() context.Context
 
 #### GetProfile
 
-返回运行环境
+返回运行环境。
 
 ```
 func GetProfile() string
@@ -239,7 +258,7 @@ func GetProfile() string
 
 #### SetProfile
 
-设置运行环境
+设置运行环境。
 
 ```
 func SetProfile(profile string)
@@ -247,7 +266,7 @@ func SetProfile(profile string)
 
 #### AllAccess
 
-返回是否允许访问私有字段
+返回是否允许访问私有字段。
 
 ```
 func AllAccess() bool
@@ -255,7 +274,7 @@ func AllAccess() bool
 
 #### SetAllAccess
 
-设置是否允许访问私有字段
+设置是否允许访问私有字段。
 
 ```
 func SetAllAccess(allAccess bool)
@@ -339,7 +358,7 @@ func RegisterBeanDefinition(bd *BeanDefinition)
 
 #### AutoWireBeans
 
-对所有 Bean 进行依赖注入和属性绑定
+对所有 Bean 进行依赖注入和属性绑定。
 
 ```
 func AutoWireBeans()
@@ -347,7 +366,7 @@ func AutoWireBeans()
 
 #### WireBean
 
-对外部的 Bean 进行依赖注入和属性绑定
+对外部的 Bean 进行依赖注入和属性绑定。
 
 ```
 func WireBean(i interface{})
@@ -391,7 +410,7 @@ func GetBeanDefinitions() []*BeanDefinition
 
 #### Run
 
-根据条件判断是否立即执行一个一次性的任务
+根据条件判断是否立即执行一个一次性的任务。
 
 ```
 func Run(fn interface{}, tags ...string) *Runner
@@ -399,7 +418,7 @@ func Run(fn interface{}, tags ...string) *Runner
 
 #### RunNow
 
-立即执行一个一次性的任务
+立即执行一个一次性的任务。
 
 ```
 func RunNow(fn interface{}, tags ...string) error
@@ -407,7 +426,7 @@ func RunNow(fn interface{}, tags ...string) error
 
 #### Config
 
-注册一个配置函数
+注册一个配置函数。
 
 ```
 func Config(fn interface{}, tags ...string) *Configer
@@ -445,34 +464,240 @@ func SafeGoroutine(fn GoFunc)
 
 定义一个判断条件。
 
-`NewFunctionCondition` 基于 Matches 方法的 Condition 实现  
-`NewNotCondition` 对 Condition 取反的 Condition 实现  
-`NewPropertyCondition` 基于属性值存在的 Condition 实现  
-`NewMissingPropertyCondition` 基于属性值不存在的 Condition 实现  
-`NewPropertyValueCondition` 基于属性值匹配的 Condition 实现  
-`NewBeanCondition` 基于 Bean 存在的 Condition 实现  
-`NewMissingBeanCondition` 基于 Bean 不能存在的 Condition 实现  
-`NewExpressionCondition` 基于表达式的 Condition 实现  
-`NewProfileCondition` 基于运行环境匹配的 Condition 实现  
-`NewConditions` 基于条件组的 Condition 实现  
-`NewConditional` Condition 计算式  
+`NewFunctionCondition` 基于 Matches 方法的 Condition 实现。  
+`NewNotCondition` 对 Condition 取反的 Condition 实现。  
+`NewPropertyCondition` 基于属性值存在的 Condition 实现。  
+`NewMissingPropertyCondition` 基于属性值不存在的 Condition 实现。  
+`NewPropertyValueCondition` 基于属性值匹配的 Condition 实现。  
+`NewBeanCondition` 基于 Bean 存在的 Condition 实现。  
+`NewMissingBeanCondition` 基于 Bean 不能存在的 Condition 实现。  
+`NewExpressionCondition` 基于表达式的 Condition 实现。  
+`NewProfileCondition` 基于运行环境匹配的 Condition 实现。  
+`NewConditions` 基于条件组的 Condition 实现。  
+`NewConditional` Condition 计算式。
 
 - `Or` c=a||b
 - `And` c=a&&b
-- `OnCondition` 设置一个 Condition
-- `OnConditionNot` 设置一个取反的 Condition
-- `ConditionOnProperty` 返回设置了 propertyCondition 的 Conditional 对象
-- `ConditionOnMissingProperty` 返回设置了 missingPropertyCondition 的 Conditional 对象
-- `ConditionOnPropertyValue` 返回设置了 propertyValueCondition 的 Conditional 对象
-- `ConditionOnOptionalPropertyValue` 返回属性值不存在时默认条件成立的 Conditional 对象
-- `OnOptionalPropertyValue` 设置一个 propertyValueCondition，当属性值不存在时默认条件成立
-- `ConditionOnBean` 返回设置了 beanCondition 的 Conditional 对象
-- `ConditionOnMissingBean` 返回设置了 missingBeanCondition 的 Conditional 对象
-- `ConditionOnExpression` 返回设置了 expressionCondition 的 Conditional 对象
-- `ConditionOnMatches` 返回设置了 functionCondition 的 Conditional 对象
-- `ConditionOnProfile` 返回设置了 profileCondition 的 Conditional 对象
+- `OnCondition` 设置一个 Condition。
+- `OnConditionNot` 设置一个取反的 Condition。
+- `ConditionOnProperty` 返回设置了 propertyCondition 的 Conditional 对象。
+- `ConditionOnMissingProperty` 返回设置了 missingPropertyCondition 的 Conditional 对象。
+- `ConditionOnPropertyValue` 返回设置了 propertyValueCondition 的 Conditional 对象。
+- `ConditionOnOptionalPropertyValue` 返回属性值不存在时默认条件成立的 Conditional 对象。
+- `OnOptionalPropertyValue` 设置一个 propertyValueCondition，当属性值不存在时默认条件成立。
+- `ConditionOnBean` 返回设置了 beanCondition 的 Conditional 对象。
+- `ConditionOnMissingBean` 返回设置了 missingBeanCondition 的 Conditional 对象。
+- `ConditionOnExpression` 返回设置了 expressionCondition 的 Conditional 对象。
+- `ConditionOnMatches` 返回设置了 functionCondition 的 Conditional 对象。
+- `ConditionOnProfile` 返回设置了 profileCondition 的 Conditional 对象。
 
-## BeanDefinition
+## Bean
+
+#### IsRefType
+
+返回是否是引用类型。
+
+    func IsRefType(k reflect.Kind) bool
+
+#### IsValueType
+
+返回是否是值类型。
+
+    func IsValueType(k reflect.Kind) bool
+
+#### TypeName
+
+返回原始类型的全限定名，Go 语言允许不同的路径下存在相同的包，因此有全限定名的需求，形如 "github.com/go-spring/spring-core/SpringCore.BeanDefinition"。
+
+    func TypeName(typOrPtr TypeOrPtr) string
+
+#### BeanSelector
+
+Bean 选择器，可以是 BeanId 字符串，可以是 reflect.Type 对象或者形如 (*error)(nil) 的对象指针，还可以是 *BeanDefinition 对象。
+
+    type BeanSelector interface{}
+
+#### beanStatus
+
+Bean 的状态值。
+
+    beanStatus_Default   = beanStatus(0) // 默认状态
+    beanStatus_Resolving = beanStatus(1) // 正在决议
+    beanStatus_Resolved  = beanStatus(2) // 已决议
+    beanStatus_Wiring    = beanStatus(3) // 正在注入
+    beanStatus_Wired     = beanStatus(4) // 注入完成
+    beanStatus_Deleted   = beanStatus(5) // 已删除
+
+### BeanDefinition
+
+用于存储 Bean 的各种元数据。
+
+#### Bean
+
+返回 Bean 的源。
+
+    func (d *BeanDefinition) Bean() interface{}
+
+#### Type
+
+返回 Bean 的类型。
+
+    func (d *BeanDefinition) Type() reflect.Type 
+
+#### Value
+
+返回 Bean 的值。
+
+    func (d *BeanDefinition) Value() reflect.Value
+
+#### TypeName
+
+返回 Bean 的原始类型的全限定名。
+
+    func (d *BeanDefinition) TypeName() string
+
+#### Name
+
+返回 Bean 的名称。
+
+    func (d *BeanDefinition) Name() string 
+
+#### BeanId
+
+返回 Bean 的唯一 ID。
+
+    func (d *BeanDefinition) BeanId() string
+
+#### FileLine
+
+返回 Bean 的注册点。
+
+    func (d *BeanDefinition) FileLine() string 
+
+#### WithName
+
+设置 Bean 的名称。
+
+    func (d *BeanDefinition) WithName(name string) *BeanDefinition 
+
+#### Or
+
+c=a||b。
+
+    func (d *BeanDefinition) Or() *BeanDefinition 
+
+#### And
+
+c=a&&b。
+
+    func (d *BeanDefinition) And() *BeanDefinition
+
+#### ConditionOn
+
+为 Bean 设置一个 Condition。
+
+    func (d *BeanDefinition) ConditionOn(cond Condition) *BeanDefinition
+
+#### ConditionNot
+
+为 Bean 设置一个取反的 Condition。
+
+    func (d *BeanDefinition) ConditionNot(cond Condition) *BeanDefinition 
+
+#### ConditionOnProperty
+
+为 Bean 设置一个 PropertyCondition。
+
+    func (d *BeanDefinition) ConditionOnProperty(name string) *BeanDefinition 
+
+#### ConditionOnMissingProperty
+
+为 Bean 设置一个 MissingPropertyCondition。
+
+    func (d *BeanDefinition) ConditionOnMissingProperty(name string) *BeanDefinition 
+
+#### ConditionOnPropertyValue
+
+为 Bean 设置一个 PropertyValueCondition。
+
+    func (d *BeanDefinition) ConditionOnPropertyValue(name string, havingValue interface{}, options ...PropertyValueConditionOption) *BeanDefinition 
+
+#### ConditionOnOptionalPropertyValue
+
+为 Bean 设置一个 PropertyValueCondition，当属性值不存在时默认条件成立。
+
+    func (d *BeanDefinition) ConditionOnOptionalPropertyValue(name string, havingValue interface{}) *BeanDefinition 
+
+#### ConditionOnBean
+
+为 Bean 设置一个 BeanCondition。
+
+    func (d *BeanDefinition) ConditionOnBean(selector BeanSelector) *BeanDefinition 
+
+#### ConditionOnMissingBean
+
+为 Bean 设置一个 MissingBeanCondition。
+
+    func (d *BeanDefinition) ConditionOnMissingBean(selector BeanSelector) *BeanDefinition 
+
+#### ConditionOnExpression
+
+为 Bean 设置一个 ExpressionCondition。
+
+    func (d *BeanDefinition) ConditionOnExpression(expression string) *BeanDefinition 
+
+#### ConditionOnMatches
+
+为 Bean 设置一个 FunctionCondition。
+
+    func (d *BeanDefinition) ConditionOnMatches(fn ConditionFunc) *BeanDefinition 
+
+#### ConditionOnProfile
+
+为 Bean 设置一个 ProfileCondition。
+
+    func (d *BeanDefinition) ConditionOnProfile(profile string) *BeanDefinition 
+
+#### Options
+
+设置 Option 模式函数的 Option 参数绑定。
+
+    func (d *BeanDefinition) Options(options ...*optionArg) *BeanDefinition 
+
+    // NewOptionArg optionArg 的构造函数，tags 是 Option 函数的一般参数绑定
+    func NewOptionArg(fn interface{}, tags ...string) *optionArg {}
+
+#### DependsOn
+
+设置 Bean 的间接依赖项。
+
+    func (d *BeanDefinition) DependsOn(selectors ...BeanSelector) *BeanDefinition 
+
+#### Primary
+
+设置 Bean 为主版本。
+
+    func (d *BeanDefinition) Primary(primary bool) *BeanDefinition 
+
+#### Init
+
+设置 Bean 的初始化函数，tags 是初始化函数的一般参数绑定。
+
+    func (d *BeanDefinition) Init(fn interface{}, tags ...string) *BeanDefinition 
+
+#### Destroy
+
+设置 Bean 的销毁函数，tags 是销毁函数的一般参数绑定。
+
+    func (d *BeanDefinition) Destroy(fn interface{}, tags ...string) *BeanDefinition 
+
+#### Export
+
+显式指定 Bean 的导出接口。
+
+    func (d *BeanDefinition) Export(exports ...TypeOrPtr) *BeanDefinition 
+
+### Bean 创建函数
 
 #### ObjectBean
 
@@ -496,124 +721,4 @@ func ConstructorBean(fn interface{}, tags ...string) *BeanDefinition
 
 ```
 func MethodBean(selector BeanSelector, method string, tags ...string) *BeanDefinition
-```
-
-#### Bean
-
-返回 Bean 的源
-
-```
-func (d *BeanDefinition) Bean() interface{}
-```
-
-#### Type
-
-返回 Bean 的类型
-
-```
-func (d *BeanDefinition) Type() reflect.Type
-```
-
-#### Value
-
-返回 Bean 的值
-
-```
-func (d *BeanDefinition) Value() reflect.Value
-```
-
-#### TypeName
-
-返回 Bean 的原始类型的全限定名
-
-```
-func (d *BeanDefinition) TypeName() string
-```
-
-#### Name
-
-返回 Bean 的名称
-
-```
-func (d *BeanDefinition) Name() string
-```
-
-#### BeanId
-
-返回 Bean 的唯一 ID
-
-```
-func (d *BeanDefinition) BeanId() string
-```
-
-#### FileLine
-
-返回 Bean 的注册点
-
-```
-func (d *BeanDefinition) FileLine() string
-```
-
-#### Description
-
-返回 Bean 的详细描述
-
-```
-func (d *BeanDefinition) Description() string
-```
-
-#### WithName
-
-设置 Bean 的名称
-
-```
-func (d *BeanDefinition) WithName(name string) *BeanDefinition
-```
-
-#### Options
-
-设置 Option 模式函数的 Option 参数绑定
-
-```
-func (d *BeanDefinition) Options(options ...*optionArg) *BeanDefinition
-```
-
-#### DependsOn
-
-设置 Bean 的间接依赖项
-
-```
-func (d *BeanDefinition) DependsOn(selectors ...BeanSelector) *BeanDefinition
-```
-
-#### Primary
-
-设置 Bean 为主版本
-
-```
-func (d *BeanDefinition) Primary(primary bool) *BeanDefinition
-```
-
-#### Init
-
-设置 Bean 的初始化函数，tags 是初始化函数的一般参数绑定
-
-```
-func (d *BeanDefinition) Init(fn interface{}, tags ...string) *BeanDefinition
-```
-
-#### Destroy
-
-设置 Bean 的销毁函数，tags 是销毁函数的一般参数绑定
-
-```
-func (d *BeanDefinition) Destroy(fn interface{}, tags ...string) *BeanDefinition
-```
-
-#### Export
-
-显式指定 Bean 的导出接口
-
-```
-func (d *BeanDefinition) Export(exports ...TypeOrPtr) *BeanDefinition
 ```
