@@ -1,130 +1,142 @@
 # spring-boot
 
-### *_CommandLineRunner_*
+提供基于 IoC 容器的启动框架。
+
+- [Application](#application)
+  - [启动&停止](#启动停止)
+    - [RunApplication](#runapplication)
+    - [Exit](#exit)
+  - [应用配置](#应用配置)
+    - [ExpectSysProperties](#expectsysproperties)
+    - [AfterPrepare](#afterprepare)
+  - [Banner](#banner)
+    - [SetBannerMode](#setbannermode)
+    - [SetBanner](#setbanner)
+  - [IoC 容器](#ioc-容器)
+    - [GetProfile](#getprofile)
+    - [SetProfile](#setprofile)
+    - [AllAccess](#allaccess)
+    - [SetAllAccess](#setallaccess)
+    - [RegisterBean](#registerbean)
+    - [RegisterNameBean](#registernamebean)
+    - [RegisterBeanFn](#registerbeanfn)
+    - [RegisterNameBeanFn](#registernamebeanfn)
+    - [RegisterMethodBean](#registermethodbean)
+    - [RegisterNameMethodBean](#registernamemethodbean)
+    - [RegisterMethodBeanFn](#registermethodbeanfn)
+    - [RegisterNameMethodBeanFn](#registernamemethodbeanfn)
+    - [RegisterBeanDefinition](#registerbeandefinition)
+    - [WireBean](#wirebean)
+    - [GetBean](#getbean)
+    - [FindBean](#findbean)
+    - [CollectBeans](#collectbeans)
+    - [GetBeanDefinitions](#getbeandefinitions)
+    - [GetProperty](#getproperty)
+    - [GetBoolProperty](#getboolproperty)
+    - [GetIntProperty](#getintproperty)
+    - [GetUintProperty](#getuintproperty)
+    - [GetFloatProperty](#getfloatproperty)
+    - [GetStringProperty](#getstringproperty)
+    - [GetDurationProperty](#getdurationproperty)
+    - [GetTimeProperty](#gettimeproperty)
+    - [GetDefaultProperty](#getdefaultproperty)
+    - [SetProperty](#setproperty)
+    - [GetPrefixProperties](#getprefixproperties)
+    - [GetProperties](#getproperties)
+    - [BindProperty](#bindproperty)
+    - [BindPropertyIf](#bindpropertyif)
+    - [Run](#run)
+    - [RunNow](#runnow)
+    - [Config](#config)
+    - [ConfigWithName](#configwithname)
+    - [Go](#go)
+- [配置扩展](#配置扩展)
+  - [PropertySource](#propertysource)
+  - [RegisterPropertySource](#registerpropertysource)
+  - [ConfigReader](#configreader)
+    - [RegisterConfigReader](#registerconfigreader)
+    - [RegisterFileConfigReader](#registerfileconfigreader)
+- [CommandLineRunner](#commandlinerunner)
+- [ApplicationEvent](#applicationevent)
+- [Web](#web)
+  - [Handler](#handler)
+    - [Route](#route)
+    - [HandleRequest](#handlerequest)
+    - [RequestMapping](#requestmapping)
+    - [RequestBinding](#requestbinding)
+    - [HandleGet](#handleget)
+    - [GetMapping](#getmapping)
+    - [GetBinding](#getbinding)
+    - [HandlePost](#handlepost)
+    - [PostMapping](#postmapping)
+    - [PostBinding](#postbinding)
+    - [HandlePut](#handleput)
+    - [PutMapping](#putmapping)
+    - [PutBinding](#putbinding)
+    - [HandleDelete](#handledelete)
+    - [DeleteMapping](#deletemapping)
+    - [DeleteBinding](#deletebinding)
+  - [Filter](#filter)
+    - [Filter](#filter-1)
+    - [FilterBean](#filterbean)
+  - [ConditionalWebFilter](#conditionalwebfilter)
+    - [Or](#or)
+    - [And](#and)
+    - [ConditionOn](#conditionon)
+    - [ConditionNot](#conditionnot)
+    - [ConditionOnProperty](#conditiononproperty)
+    - [ConditionOnMissingProperty](#conditiononmissingproperty)
+    - [ConditionOnPropertyValue](#conditiononpropertyvalue)
+    - [ConditionOnOptionalPropertyValue](#conditiononoptionalpropertyvalue)
+    - [ConditionOnBean](#conditiononbean)
+    - [ConditionOnMissingBean](#conditiononmissingbean)
+    - [ConditionOnExpression](#conditiononexpression)
+    - [ConditionOnMatches](#conditiononmatches)
+    - [ConditionOnProfile](#conditiononprofile)
+  - [RegisterFilter](#registerfilter)
+- [Message](#message)
+  - [BindConsumer](#bindconsumer)
+  - [ConditionalBindConsumer](#conditionalbindconsumer)
+    - [Or](#or-1)
+    - [And](#and-1)
+    - [ConditionOn](#conditionon-1)
+    - [ConditionNot](#conditionnot-1)
+    - [ConditionOnProperty](#conditiononproperty-1)
+    - [ConditionOnMissingProperty](#conditiononmissingproperty-1)
+    - [ConditionOnPropertyValue](#conditiononpropertyvalue-1)
+    - [ConditionOnOptionalPropertyValue](#conditiononoptionalpropertyvalue-1)
+    - [ConditionOnBean](#conditiononbean-1)
+    - [ConditionOnMissingBean](#conditiononmissingbean-1)
+    - [ConditionOnExpression](#conditiononexpression-1)
+    - [ConditionOnMatches](#conditiononmatches-1)
+    - [ConditionOnProfile](#conditiononprofile-1)
+- [gRPC](#grpc)
+  - [Server](#server)
+    - [RegisterGRpcServer](#registergrpcserver)
+  - [Client](#client)
+    - [RegisterGRpcClient](#registergrpcclient)
+
+## Application
+
+### 启动&停止
+
+#### RunApplication
+
+快速启动 SpringBoot 应用。
 
 ```
-func Run(ctx ApplicationContext)
+func RunApplication(configLocation ...string)
 ```
 
-### *_ApplicationEvent_*
+#### Exit
+
+退出 SpringBoot 应用。
 
 ```
-OnStopApplication(ctx ApplicationContext)  // 应用停止的事件
+func Exit()
 ```
 
-```
-OnStartApplication(ctx ApplicationContext) // 应用启动的事件
-```
-
-### *_Banner_*
-
-#### SetBanner
-
-设置自定义 Banner 字符串
-
-```
-func SetBanner(banner string)
-```
-
-### *_PropertySource_*
-
-#### RegisterPropertySource
-
-注册属性源
-
-```
-func RegisterPropertySource(ps PropertySource)
-```
-
-#### Scheme
-
-返回属性源的标识
-
-```
-func Scheme() string
-```
-
-#### Load
-
-加载属性文件，profile 配置文件剖面，fileLocation 和属性源相关。
-
-```
-Load(fileLocation string, profile string) map[string]interface{}
-```
-
-### *_ConfigReader_*
-
-#### RegisterConfigReader
-
-注册配置读取器
-
-```
-func RegisterConfigReader(reader ConfigReader)
-```
-
-#### RegisterFileConfigReader
-
-注册基于文件的配置读取器
-
-```
-func RegisterFileConfigReader(fileExt string, fn FnReadBuffer)
-```
-
-#### FileExt
-
-```
-func FileExt() string // 文件扩展名
-```
-
-#### ReadFile
-
-```
-func ReadFile(filename string, out map[string]interface{})
-```
-
-#### ReadBuffer
-
-```
-func ReadBuffer(buffer []byte, out map[string]interface{})
-```
-
-### *_gRPC_*
-
-#### RegisterGRpcServer
-
-注册 gRPC 服务提供者，fn 是 gRPC 自动生成的服务注册函数，serviceName 是服务名称，必须对应 *_grpc.pg.go 文件里面 grpc.ServiceDesc 的 ServiceName 字段，server 是服务具体提供者对象。
-
-```
-func RegisterGRpcServer(fn interface{}, serviceName string, server interface{}) *GRpcServer
-```
-
-#### RegisterGRpcClient
-
-注册 gRPC 服务客户端，fn 是 gRPC 自动生成的客户端构造函数
-
-```
-func RegisterGRpcClient(fn interface{}, endpoint string) *SpringCore.BeanDefinition
-```
-
-### *_Message_*
-
-#### BindConsumer
-
-注册 BIND 形式的消息消费者
-
-```
-func BindConsumer(topic string, fn interface{}) *ConditionalBindConsumer
-```
-
-### *_Application_*
-
-#### SetBannerMode
-
-设置 Banner 的显式模式
-
-```
-func SetBannerMode(mode BannerMode)
-```
+### 应用配置
 
 #### ExpectSysProperties
 
@@ -142,25 +154,29 @@ func ExpectSysProperties(pattern ...string)
 func AfterPrepare(fn AfterPrepareFunc)
 ```
 
-#### RunApplication
+### Banner
 
-快速启动 SpringBoot 应用
+#### SetBannerMode
 
-```
-func RunApplication(configLocation ...string)
-```
-
-#### Exit
-
-退出 SpringBoot 应用
+设置 Banner 的显式模式
 
 ```
-func Exit()
+func SetBannerMode(mode BannerMode)
 ```
+
+#### SetBanner
+
+设置自定义 Banner 字符串
+
+```
+func SetBanner(banner string)
+```
+
+### IoC 容器
 
 #### GetProfile
 
-返回运行环境
+返回运行环境。
 
 ```
 func GetProfile() string
@@ -168,7 +184,7 @@ func GetProfile() string
 
 #### SetProfile
 
-设置运行环境
+设置运行环境。
 
 ```
 func SetProfile(profile string)
@@ -176,7 +192,7 @@ func SetProfile(profile string)
 
 #### AllAccess
 
-返回是否允许访问私有字段
+返回是否允许访问私有字段。
 
 ```
 func AllAccess() bool
@@ -184,7 +200,7 @@ func AllAccess() bool
 
 #### SetAllAccess
 
-设置是否允许访问私有字段
+设置是否允许访问私有字段。
 
 ```
 func SetAllAccess(allAccess bool)
@@ -224,7 +240,8 @@ func RegisterNameBeanFn(name string, fn interface{}, tags ...string) *SpringCore
 
 #### RegisterMethodBean
 
-注册成员方法单例 Bean，不指定名称，重复注册会 panic。必须给定方法名而不能通过遍历方法列表比较方法类型的方式获得函数名，因为不同方法的类型可能相同。而且 interface 的方法类型不带 receiver 而成员方法的类型带有 receiver，两者类型也不好匹配。
+注册成员方法单例 Bean，不指定名称，重复注册会 panic。必须给定方法名而不能通过遍历方法列表比较方法类型的方式获得函数名，因为不同方法的类型可能相同。而且 interface 的方法类型不带 receiver 而成员方法的类型带有
+receiver，两者类型也不好匹配。
 
 ```
 func RegisterMethodBean(selector SpringCore.BeanSelector, method string, tags ...string) *SpringCore.BeanDefinition
@@ -232,7 +249,8 @@ func RegisterMethodBean(selector SpringCore.BeanSelector, method string, tags ..
 
 #### RegisterNameMethodBean
 
-注册成员方法单例 Bean，需指定名称，重复注册会 panic。必须给定方法名而不能通过遍历方法列表比较方法类型的方式获得函数名，因为不同方法的类型可能相同。而且 interface 的方法类型不带 receiver 而成员方法的类型带有 receiver，两者类型也不好匹配。
+注册成员方法单例 Bean，需指定名称，重复注册会 panic。必须给定方法名而不能通过遍历方法列表比较方法类型的方式获得函数名，因为不同方法的类型可能相同。而且 interface 的方法类型不带 receiver 而成员方法的类型带有
+receiver，两者类型也不好匹配。
 
 ```
 func RegisterNameMethodBean(name string, selector SpringCore.BeanSelector, method string, tags ...string) *SpringCore.BeanDefinition
@@ -254,13 +272,12 @@ func RegisterMethodBeanFn(method interface{}, tags ...string) *SpringCore.BeanDe
 func RegisterNameMethodBeanFn(name string, method interface{}, tags ...string) *SpringCore.BeanDefinition
 ```
 
-
 #### RegisterBeanDefinition
 
 注册 BeanDefinition 对象，如果需要 Name 请在调用之前准备好。
 
 ```
-func RegisterBeanDefinition(bd *SpringCore.BeanDefinition) *SpringCore.BeanDefinition
+func RegisterBeanDefinition(bd *SpringCore.BeanDefinition)
 ```
 
 #### WireBean
@@ -289,7 +306,9 @@ func FindBean(selector SpringCore.BeanSelector) (*SpringCore.BeanDefinition, boo
 
 #### CollectBeans
 
-收集数组或指针定义的所有符合条件的 Bean，收集到返回 true，否则返回 false。该函数有两种模式:自动模式和指定模式。自动模式是指 selectors 参数为空，这时候不仅会收集符合条件的单例 Bean，还会收集符合条件的数组 Bean (是指数组的元素符合条件，然后把数组元素拆开一个个放到收集结果里面)。指定模式是指 selectors 参数不为空，这时候只会收集单例 Bean，而且要求这些单例 Bean 不仅需要满足收集条件，而且必须满足 selector 条件。另外，自动模式下不对收集结果进行排序，指定模式下根据selectors 列表的顺序对收集结果进行排序。
+收集数组或指针定义的所有符合条件的 Bean，收集到返回 true，否则返回 false。该函数有两种模式:自动模式和指定模式。自动模式是指 selectors 参数为空，这时候不仅会收集符合条件的单例 Bean，还会收集符合条件的数组
+Bean (是指数组的元素符合条件，然后把数组元素拆开一个个放到收集结果里面)。指定模式是指 selectors 参数不为空，这时候只会收集单例 Bean，而且要求这些单例 Bean 不仅需要满足收集条件，而且必须满足 selector
+条件。另外，自动模式下不对收集结果进行排序，指定模式下根据selectors 列表的顺序对收集结果进行排序。
 
 ```
 func CollectBeans(i interface{}, selectors ...SpringCore.BeanSelector) bool
@@ -455,10 +474,395 @@ func ConfigWithName(name string, fn interface{}, tags ...string) *SpringCore.Con
 func Go(fn GoFuncWithContext)
 ```
 
-#### RegisterFilter
+## 配置扩展
+
+### PropertySource
+
+属性源接口。
+
+```
+type PropertySource interface {
+
+	// Scheme 返回属性源的标识
+	Scheme() string
+
+	// Load 加载属性文件，profile 配置文件剖面，fileLocation 和属性源相关。
+	Load(fileLocation string, profile string) map[string]interface{}
+}
+```
+
+### RegisterPropertySource
+
+注册属性源
+
+```
+func RegisterPropertySource(ps PropertySource)
+```
+
+### ConfigReader
+
+配置读取器接口。
+
+```
+type ConfigReader interface {
+	FileExt() string // 文件扩展名
+	ReadFile(filename string, out map[string]interface{})
+	ReadBuffer(buffer []byte, out map[string]interface{})
+}
+```
+
+#### RegisterConfigReader
+
+注册配置读取器
+
+```
+func RegisterConfigReader(reader ConfigReader)
+```
+
+#### RegisterFileConfigReader
+
+注册基于文件的配置读取器
+
+```
+func RegisterFileConfigReader(fileExt string, fn FnReadBuffer)
+```
+
+## CommandLineRunner
+
+命令行启动器接口。
+
+```
+type CommandLineRunner interface {
+	Run(ctx ApplicationContext)
+}
+```
+
+## ApplicationEvent
+
+应用运行过程中的事件。
+
+```
+type ApplicationEvent interface {
+	OnStartApplication(ctx ApplicationContext) // 应用启动的事件
+	OnStopApplication(ctx ApplicationContext)  // 应用停止的事件
+}
+```
+
+## Web
+
+### Handler
+
+#### Route
+
+返回和 Mapping 绑定的路由分组。
+
+    func Route(basePath string, filters ...SpringWeb.Filter) *Router
+
+#### HandleRequest
+
+注册任意 HTTP 方法处理函数。
+
+    func HandleRequest(method uint32, path string, fn SpringWeb.Handler, filters ...SpringWeb.Filter) *Mapping
+
+#### RequestMapping
+
+注册任意 HTTP 方法处理函数。
+
+    func RequestMapping(method uint32, path string, fn SpringWeb.HandlerFunc, filters ...SpringWeb.Filter) *Mapping 
+
+#### RequestBinding
+
+注册任意 HTTP 方法处理函数。
+
+    func RequestBinding(method uint32, path string, fn interface{}, filters ...SpringWeb.Filter) *Mapping 
+
+#### HandleGet
+
+注册 GET 方法处理函数。
+
+    func HandleGet(path string, fn SpringWeb.Handler, filters ...SpringWeb.Filter) *Mapping 
+
+#### GetMapping
+
+注册 GET 方法处理函数。
+
+    func GetMapping(path string, fn SpringWeb.HandlerFunc, filters ...SpringWeb.Filter) *Mapping 
+
+#### GetBinding
+
+注册 GET 方法处理函数。
+
+    func GetBinding(path string, fn interface{}, filters ...SpringWeb.Filter) *Mapping 
+
+#### HandlePost
+
+注册 POST 方法处理函数。
+
+    func HandlePost(path string, fn SpringWeb.Handler, filters ...SpringWeb.Filter) *Mapping 
+
+#### PostMapping
+
+注册 POST 方法处理函数。
+
+    func PostMapping(path string, fn SpringWeb.HandlerFunc, filters ...SpringWeb.Filter) *Mapping 
+
+#### PostBinding
+
+注册 POST 方法处理函数。
+
+    func PostBinding(path string, fn interface{}, filters ...SpringWeb.Filter) *Mapping 
+
+#### HandlePut
+
+注册 PUT 方法处理函数。
+
+    func HandlePut(path string, fn SpringWeb.Handler, filters ...SpringWeb.Filter) *Mapping 
+
+#### PutMapping
+
+注册 PUT 方法处理函数。
+
+    func PutMapping(path string, fn SpringWeb.HandlerFunc, filters ...SpringWeb.Filter) *Mapping 
+
+#### PutBinding
+
+注册 PUT 方法处理函数。
+
+    func PutBinding(path string, fn interface{}, filters ...SpringWeb.Filter) *Mapping 
+
+#### HandleDelete
+
+注册 DELETE 方法处理函数。
+
+    func HandleDelete(path string, fn SpringWeb.Handler, filters ...SpringWeb.Filter) *Mapping 
+
+#### DeleteMapping
+
+注册 DELETE 方法处理函数。
+
+    func DeleteMapping(path string, fn SpringWeb.HandlerFunc, filters ...SpringWeb.Filter) *Mapping 
+
+#### DeleteBinding
+
+注册 DELETE 方法处理函数。
+
+    func DeleteBinding(path string, fn interface{}, filters ...SpringWeb.Filter) *Mapping 
+
+}
+
+### Filter
+
+#### Filter
+
+封装一个 SpringWeb.Filter 对象。
+
+    func Filter(filters ...SpringWeb.Filter) *ConditionalWebFilter 
+
+#### FilterBean
+
+封装一个 Bean 选择器。
+
+    func FilterBean(selectors ...SpringCore.BeanSelector) *ConditionalWebFilter 
+
+### ConditionalWebFilter
+
+#### Or
+
+c=a||b。
+
+    func (f *ConditionalWebFilter) Or() *ConditionalWebFilter 
+
+#### And
+
+c=a&&b。
+
+    func (f *ConditionalWebFilter) And() *ConditionalWebFilter 
+
+#### ConditionOn
+
+设置一个 Condition。
+
+    func (f *ConditionalWebFilter) ConditionOn(cond SpringCore.Condition) *ConditionalWebFilter 
+
+#### ConditionNot
+
+设置一个取反的 Condition。
+
+    func (f *ConditionalWebFilter) ConditionNot(cond SpringCore.Condition) *ConditionalWebFilter 
+
+#### ConditionOnProperty
+
+设置一个 PropertyCondition。
+
+    func (f *ConditionalWebFilter) ConditionOnProperty(name string) *ConditionalWebFilter 
+
+#### ConditionOnMissingProperty
+
+设置一个 MissingPropertyCondition。
+
+    func (f *ConditionalWebFilter) ConditionOnMissingProperty(name string) *ConditionalWebFilter 
+
+#### ConditionOnPropertyValue
+
+设置一个 PropertyValueCondition。
+
+    func (f *ConditionalWebFilter) ConditionOnPropertyValue(name string, havingValue interface{},
+	options ...SpringCore.PropertyValueConditionOption) *ConditionalWebFilter 
+
+#### ConditionOnOptionalPropertyValue
+
+设置一个 PropertyValueCondition，当属性值不存在时默认条件成立。
+
+    func (f *ConditionalWebFilter) ConditionOnOptionalPropertyValue(name string, havingValue interface{}) *ConditionalWebFilter 
+
+#### ConditionOnBean
+
+设置一个 BeanCondition。
+
+    func (f *ConditionalWebFilter) ConditionOnBean(selector SpringCore.BeanSelector) *ConditionalWebFilter 
+
+#### ConditionOnMissingBean
+
+设置一个 MissingBeanCondition。
+
+    func (f *ConditionalWebFilter) ConditionOnMissingBean(selector SpringCore.BeanSelector) *ConditionalWebFilter 
+
+#### ConditionOnExpression
+
+设置一个 ExpressionCondition。
+
+    func (f *ConditionalWebFilter) ConditionOnExpression(expression string) *ConditionalWebFilter 
+
+#### ConditionOnMatches
+
+设置一个 FunctionCondition。
+
+    func (f *ConditionalWebFilter) ConditionOnMatches(fn SpringCore.ConditionFunc) *ConditionalWebFilter 
+
+#### ConditionOnProfile
+
+设置一个 ProfileCondition。
+
+    func (f *ConditionalWebFilter) ConditionOnProfile(profile string) *ConditionalWebFilter 
+
+### RegisterFilter
 
 注册 Web Filter 对象 Bean，如果需要 Name 请在调用之前准备好。
 
 ```
 func RegisterFilter(bd *SpringCore.BeanDefinition) *SpringCore.BeanDefinition
+```
+
+## Message
+
+### BindConsumer
+
+注册 BIND 形式的消息消费者
+
+```
+func BindConsumer(topic string, fn interface{}) *ConditionalBindConsumer
+```
+
+### ConditionalBindConsumer
+
+#### Or
+
+c=a||b。
+
+    func (c *ConditionalBindConsumer) Or() *ConditionalBindConsumer 
+
+#### And
+
+c=a&&b。
+
+    func (c *ConditionalBindConsumer) And() *ConditionalBindConsumer 
+
+#### ConditionOn
+
+设置一个 Condition。
+
+    func (c *ConditionalBindConsumer) ConditionOn(cond SpringCore.Condition) *ConditionalBindConsumer 
+
+#### ConditionNot
+
+设置一个取反的 Condition。
+
+    func (c *ConditionalBindConsumer) ConditionNot(cond SpringCore.Condition) *ConditionalBindConsumer 
+
+#### ConditionOnProperty
+
+设置一个 PropertyCondition。
+
+    func (c *ConditionalBindConsumer) ConditionOnProperty(name string) *ConditionalBindConsumer 
+
+#### ConditionOnMissingProperty
+
+设置一个 MissingPropertyCondition。
+
+    func (c *ConditionalBindConsumer) ConditionOnMissingProperty(name string) *ConditionalBindConsumer 
+
+#### ConditionOnPropertyValue
+
+设置一个 PropertyValueCondition。
+
+    func (c *ConditionalBindConsumer) ConditionOnPropertyValue(name string, havingValue interface{},
+	options ...SpringCore.PropertyValueConditionOption) *ConditionalBindConsumer 
+
+#### ConditionOnOptionalPropertyValue
+
+设置一个 PropertyValueCondition，当属性值不存在时默认条件成立。
+
+    func (c *ConditionalBindConsumer) ConditionOnOptionalPropertyValue(name string, havingValue interface{}) *ConditionalBindConsumer 
+
+#### ConditionOnBean
+
+设置一个 BeanCondition。
+
+    func (c *ConditionalBindConsumer) ConditionOnBean(selector SpringCore.BeanSelector) *ConditionalBindConsumer 
+
+#### ConditionOnMissingBean
+
+设置一个 MissingBeanCondition。
+
+    func (c *ConditionalBindConsumer) ConditionOnMissingBean(selector SpringCore.BeanSelector) *ConditionalBindConsumer 
+
+#### ConditionOnExpression
+
+设置一个 ExpressionCondition。
+
+    func (c *ConditionalBindConsumer) ConditionOnExpression(expression string) *ConditionalBindConsumer 
+
+#### ConditionOnMatches
+
+设置一个 FunctionCondition。
+
+    func (c *ConditionalBindConsumer) ConditionOnMatches(fn SpringCore.ConditionFunc) *ConditionalBindConsumer 
+
+#### ConditionOnProfile
+
+设置一个 ProfileCondition。
+
+    func (c *ConditionalBindConsumer) ConditionOnProfile(profile string) *ConditionalBindConsumer 
+
+## gRPC
+
+### Server
+
+#### RegisterGRpcServer
+
+注册 gRPC 服务提供者，fn 是 gRPC 自动生成的服务注册函数，serviceName 是服务名称，必须对应 *_grpc.pg.go 文件里面 grpc.ServiceDesc 的 ServiceName 字段，server
+是服务具体提供者对象。
+
+```
+func RegisterGRpcServer(fn interface{}, serviceName string, server interface{}) *GRpcServer
+```
+
+### Client
+
+#### RegisterGRpcClient
+
+注册 gRPC 服务客户端，fn 是 gRPC 自动生成的客户端构造函数
+
+```
+func RegisterGRpcClient(fn interface{}, endpoint string) *SpringCore.BeanDefinition
 ```
