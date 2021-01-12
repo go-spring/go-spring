@@ -28,23 +28,23 @@ import (
 	"github.com/go-spring/spring-logger"
 )
 
-// WebContextKey WebContext 和 NativeContext 相互转换的 Key
-const WebContextKey = "@WebCtx"
+// ContextKey Context 和 NativeContext 相互转换的 Key
+const ContextKey = "@WebCtx"
 
 // ErrorHandler 用户自定义错误处理函数
-var ErrorHandler = func(webCtx WebContext, err *HttpError) {
+var ErrorHandler = func(ctx Context, err *HttpError) {
 
 	defer func() {
 		if r := recover(); r != nil {
-			SpringLogger.WithContext(webCtx.Context()).Error(r)
+			SpringLogger.WithContext(ctx.Context()).Error(r)
 		}
 	}()
 
 	if err.Internal == nil {
-		webCtx.Status(err.Code)
-		webCtx.String(err.Message)
+		ctx.Status(err.Code)
+		ctx.String(err.Message)
 	} else {
-		webCtx.JSON(err.Internal)
+		ctx.JSON(err.Internal)
 	}
 }
 
@@ -94,8 +94,8 @@ type ResponseWriter interface {
 	Body() []byte
 }
 
-// WebContext 封装 *http.Request 和 http.ResponseWriter 对象，简化操作接口。
-type WebContext interface {
+// Context 封装 *http.Request 和 http.ResponseWriter 对象，简化操作接口。
+type Context interface {
 
 	// NativeContext 返回封装的底层上下文对象
 	NativeContext() interface{}

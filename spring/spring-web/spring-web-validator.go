@@ -16,19 +16,23 @@
 
 package SpringWeb
 
-// WebValidator 参数校验器接口
-type WebValidator interface {
+// Validator 参数校验器接口
+type Validator interface {
 	Engine() interface{}
 	Validate(i interface{}) error
 }
 
-// Validator 全局参数校验器
-var Validator WebValidator
+var validator Validator
+
+// SetValidator 设置参数校验器
+func SetValidator(v Validator) {
+	validator = v
+}
 
 // Validate 参数校验
 func Validate(i interface{}) error {
-	if Validator != nil {
-		return Validator.Validate(i)
+	if validator != nil {
+		return validator.Validate(i)
 	}
 	return nil
 }

@@ -25,12 +25,12 @@ import (
 
 func TestFuncFilter(t *testing.T) {
 
-	funcFilter := SpringWeb.FuncFilter(func(ctx SpringWeb.WebContext, chain SpringWeb.FilterChain) {
+	funcFilter := SpringWeb.FuncFilter(func(ctx SpringWeb.Context, chain SpringWeb.FilterChain) {
 		fmt.Println("@FuncFilter")
 		chain.Next(ctx)
 	})
 
-	handlerFilter := SpringWeb.HandlerFilter(SpringWeb.FUNC(func(ctx SpringWeb.WebContext) {
+	handlerFilter := SpringWeb.HandlerFilter(SpringWeb.FUNC(func(ctx SpringWeb.Context) {
 		fmt.Println("@HandlerFilter")
 	}))
 

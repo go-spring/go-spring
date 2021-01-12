@@ -1,8 +1,8 @@
 # spring-web
 
-为社区优秀的 Web 服务器提供一个抽象层，通过定义 `WebContainer`、`WebContext`、`Filter` 三大基本组件，使得底层实现可以灵活切换。
+为社区优秀的 Web 服务器提供一个抽象层，通过定义 `Container`、`Context`、`Handler`、`Filter` 四大基本组件，使得底层实现可以灵活切换。
 
-- [WebContainer](#webcontainer)
+- [Container](#container)
     - [Route](#route)
     - [HandleRequest](#handlerequest)
     - [RequestMapping](#requestmapping)
@@ -25,7 +25,7 @@
     - [Swagger](#swagger)
     - [Start](#start)
     - [Stop](#stop)
-- [WebContext](#webcontext)
+- [Context](#context)
     - [NativeContext](#nativecontext)
     - [Get](#get)
     - [Set](#set)
@@ -89,7 +89,7 @@
     - [LoggerFilter](#loggerfilter)
     - [Validator](#validator)
 
-### WebContainer
+### Container
 
 定义一个 Web 服务器，具有注册路由、设置中间件、注册 Swagger 响应器等功能。
 
@@ -225,7 +225,7 @@
 
     Stop(ctx context.Context) error
 
-### WebContext
+### Context
 
 封装 *http.Request 和 http.ResponseWriter 对象，简化操作接口。
 

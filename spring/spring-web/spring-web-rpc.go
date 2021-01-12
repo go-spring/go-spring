@@ -35,21 +35,21 @@ type bindHandler struct {
 	bindType reflect.Type
 }
 
-func (b *bindHandler) Invoke(ctx WebContext) {
+func (b *bindHandler) Invoke(ctx Context) {
 	RpcInvoke(ctx, b.call)
 }
 
-func (b *bindHandler) call(webCtx WebContext) interface{} {
+func (b *bindHandler) call(ctx Context) interface{} {
 
 	// 反射创建需要绑定请求参数
 	bindVal := reflect.New(b.bindType.Elem())
-	if err := webCtx.Bind(bindVal.Interface()); err != nil {
+	if err := ctx.Bind(bindVal.Interface()); err != nil {
 		panic(err)
 	}
 
 	// 执行处理函数，并返回结果
-	ctx := webCtx.Request().Context()
-	in := []reflect.Value{reflect.ValueOf(ctx), bindVal}
+	ctxVal := reflect.ValueOf(ctx.Request().Context())
+	in := []reflect.Value{ctxVal, bindVal}
 	return b.fnValue.Call(in)[0].Interface()
 }
 
@@ -87,6 +87,6 @@ func BIND(fn interface{}) Handler {
 }
 
 // RpcInvoke 可自定义的 rpc 执行函数
-var RpcInvoke = func(webCtx WebContext, fn func(WebContext) interface{}) {
-	webCtx.JSON(fn(webCtx))
+var RpcInvoke = func(ctx Context, fn func(Context) interface{}) {
+	ctx.JSON(fn(ctx))
 }

@@ -29,12 +29,12 @@ import (
 )
 
 // HandlerFunc 标准 Web 处理函数
-type HandlerFunc func(WebContext)
+type HandlerFunc func(Context)
 
-// Handler Web 处理接口
+// Handler 标准 Web 处理接口
 type Handler interface {
 	// Invoke 响应函数
-	Invoke(WebContext)
+	Invoke(Context)
 
 	// FileLine 获取用户函数的文件名、行号以及函数名称
 	FileLine() (file string, line int, fnName string)
@@ -53,8 +53,8 @@ type ContainerConfig struct {
 	WriteTimeout time.Duration
 }
 
-// WebContainer Web 容器
-type WebContainer interface {
+// Container Web 容器
+type Container interface {
 	// RootRouter 根路由
 	RootRouter
 
@@ -89,7 +89,7 @@ type WebContainer interface {
 	Stop(ctx context.Context) error
 }
 
-// AbstractContainer 抽象的 WebContainer 实现
+// AbstractContainer 抽象的 Container 实现
 type AbstractContainer struct {
 	RootRouter
 
@@ -193,7 +193,7 @@ func (c *AbstractContainer) PrintMapper(m *Mapper) {
 /////////////////// Invoke Handler //////////////////////
 
 // InvokeHandler 执行 Web 处理函数
-func InvokeHandler(ctx WebContext, fn Handler, filters []Filter) {
+func InvokeHandler(ctx Context, fn Handler, filters []Filter) {
 	if len(filters) > 0 {
 		filters = append(filters, HandlerFilter(fn))
 		chain := NewDefaultFilterChain(filters)
@@ -208,7 +208,7 @@ func InvokeHandler(ctx WebContext, fn Handler, filters []Filter) {
 // fnHandler 封装 Web 处理函数
 type fnHandler HandlerFunc
 
-func (f fnHandler) Invoke(ctx WebContext) { f(ctx) }
+func (f fnHandler) Invoke(ctx Context) { f(ctx) }
 
 func (f fnHandler) FileLine() (file string, line int, fnName string) {
 	return SpringUtils.FileLine(f)
@@ -220,7 +220,7 @@ func FUNC(fn HandlerFunc) Handler { return fnHandler(fn) }
 // httpHandler 标准 Http 处理函数
 type httpHandler http.HandlerFunc
 
-func (h httpHandler) Invoke(ctx WebContext) {
+func (h httpHandler) Invoke(ctx Context) {
 	h(ctx.ResponseWriter(), ctx.Request())
 }
 
@@ -240,9 +240,9 @@ func WrapH(h http.Handler) Handler { return httpHandler(h.ServeHTTP) }
 /////////////////// Web Filters //////////////////////
 
 // LoggerFilter 全局的日志过滤器，Container 如果没有设置日志过滤器则会使用全局的日志过滤器
-var LoggerFilter = Filter(FuncFilter(func(webCtx WebContext, chain FilterChain) {
+var LoggerFilter = Filter(FuncFilter(func(ctx Context, chain FilterChain) {
 	start := time.Now()
-	chain.Next(webCtx)
-	w := webCtx.ResponseWriter()
-	SpringLogger.WithContext(webCtx.Context()).Infof("cost:%v size:%d code:%d %s", time.Since(start), w.Size(), w.Status(), string(w.Body()))
+	chain.Next(ctx)
+	w := ctx.ResponseWriter()
+	SpringLogger.WithContext(ctx.Context()).Infof("cost:%v size:%d code:%d %s", time.Since(start), w.Size(), w.Status(), string(w.Body()))
 }))

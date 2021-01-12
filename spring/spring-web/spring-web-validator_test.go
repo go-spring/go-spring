@@ -32,8 +32,8 @@ func TestValidate(t *testing.T) {
 	v.Str = "" // 不启用参数校验器
 	SpringUtils.AssertEqual(t, SpringWeb.Validate(v), nil)
 
-	SpringWeb.Validator = SpringWeb.NewDefaultValidator()
-	defer func() { SpringWeb.Validator = nil }()
+	SpringWeb.SetValidator(SpringWeb.NewDefaultValidator())
+	defer func() { SpringWeb.SetValidator(nil) }()
 
 	SpringUtils.AssertPanic(t, func() {
 		v.Str = ""
