@@ -32,15 +32,15 @@ import (
 	"github.com/labstack/echo"
 )
 
-// EchoContext 将 SpringWeb.WebContext 转换为 echo.Context
-func EchoContext(webCtx SpringWeb.WebContext) echo.Context {
-	return webCtx.NativeContext().(echo.Context)
+// EchoContext 将 SpringWeb.Context 转换为 echo.Context
+func EchoContext(ctx SpringWeb.Context) echo.Context {
+	return ctx.NativeContext().(echo.Context)
 }
 
-// WebContext 将 echo.Context 转换为 SpringWeb.WebContext
-func WebContext(echoCtx echo.Context) SpringWeb.WebContext {
-	if webCtx := echoCtx.Get(SpringWeb.WebContextKey); webCtx != nil {
-		return webCtx.(SpringWeb.WebContext)
+// WebContext 将 echo.Context 转换为 SpringWeb.Context
+func WebContext(echoCtx echo.Context) SpringWeb.Context {
+	if ctx := echoCtx.Get(SpringWeb.ContextKey); ctx != nil {
+		return ctx.(SpringWeb.Context)
 	}
 	return nil
 }
@@ -98,14 +98,14 @@ func NewContext(fn SpringWeb.Handler, wildCardName string, echoCtx echo.Context)
 		response: echoCtx.Response(),
 	}
 
-	webCtx := &Context{
+	ctx := &Context{
 		handlerFunc:  fn,
 		echoContext:  echoCtx,
 		wildCardName: wildCardName,
 	}
 
-	webCtx.Set(SpringWeb.WebContextKey, webCtx)
-	return webCtx
+	ctx.Set(SpringWeb.ContextKey, ctx)
+	return ctx
 }
 
 // NativeContext 返回封装的底层上下文对象

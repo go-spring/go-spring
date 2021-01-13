@@ -14,7 +14,7 @@
 
 #### NewContainer
 
-创建 echo 实现的 WebContainer。
+创建 echo 实现的 Web 容器。
 
     func NewContainer(config SpringWeb.ContainerConfig) *Container {}
 
@@ -34,12 +34,12 @@
 
 #### EchoContext
 
-将 SpringWeb.WebContext 转换为 echo.Context。
+将 SpringWeb.Context 转换为 echo.Context。
 
-    func EchoContext(webCtx SpringWeb.WebContext) echo.Context {}
+    func EchoContext(ctx SpringWeb.Context) echo.Context {}
 
 #### WebContext
 
-将 echo.Context 转换为 SpringWeb.WebContext。
+将 echo.Context 转换为 SpringWeb.Context。
 
-    func WebContext(echoCtx echo.Context) SpringWeb.WebContext {}
+    func WebContext(echoCtx echo.Context) SpringWeb.Context {}

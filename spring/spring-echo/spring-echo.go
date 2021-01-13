@@ -23,9 +23,9 @@ import (
 	"net/http"
 	"runtime/debug"
 
-	SpringLogger "github.com/go-spring/spring-logger"
-	SpringUtils "github.com/go-spring/spring-utils"
-	SpringWeb "github.com/go-spring/spring-web"
+	"github.com/go-spring/spring-logger"
+	"github.com/go-spring/spring-utils"
+	"github.com/go-spring/spring-web"
 	"github.com/labstack/echo"
 )
 
@@ -34,14 +34,14 @@ type route struct {
 	wildCardName string            // 通配符的名称
 }
 
-// Container echo 实现的 WebContainer
+// Container echo 实现的 Web 容器
 type Container struct {
 	*SpringWeb.AbstractContainer
 	echoServer *echo.Echo
 	routes     map[string]route // 记录所有通过 spring-echo 注册的路由
 }
 
-// NewContainer 创建 echo 实现的 WebContainer
+// NewContainer 创建 echo 实现的 Web 容器
 func NewContainer(config SpringWeb.ContainerConfig) *Container {
 	c := &Container{}
 	c.echoServer = echo.New()
@@ -74,7 +74,7 @@ func (c *Container) Start() error {
 	c.echoServer.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(echoCtx echo.Context) error {
 
-			// 如果 method+path 是 spring-echo 注册过的，那么可以保证 WebContext
+			// 如果 method+path 是 spring-echo 注册过的，那么可以保证 Context
 			// 的 Handler 是准确的，否则是不准确的，请优先使用 spring-echo 注册路由。
 			key := echoCtx.Request().Method + echoCtx.Path()
 			if r, ok := c.routes[key]; ok {
@@ -125,11 +125,11 @@ func (c *Container) Stop(ctx context.Context) error {
 // HandlerWrapper Web 处理函数包装器
 func HandlerWrapper(fn SpringWeb.Handler, wildCardName string, filters []SpringWeb.Filter) echo.HandlerFunc {
 	return func(echoCtx echo.Context) error {
-		webCtx := WebContext(echoCtx)
-		if webCtx == nil {
-			webCtx = NewContext(fn, wildCardName, echoCtx)
+		ctx := WebContext(echoCtx)
+		if ctx == nil {
+			ctx = NewContext(fn, wildCardName, echoCtx)
 		}
-		SpringWeb.InvokeHandler(webCtx, fn, filters)
+		SpringWeb.InvokeHandler(ctx, fn, filters)
 		return nil
 	}
 }
@@ -139,7 +139,7 @@ func HandlerWrapper(fn SpringWeb.Handler, wildCardName string, filters []SpringW
 // echoHandler 封装 Echo 处理函数
 type echoHandler echo.HandlerFunc
 
-func (e echoHandler) Invoke(ctx SpringWeb.WebContext) {
+func (e echoHandler) Invoke(ctx SpringWeb.Context) {
 	if err := e(EchoContext(ctx)); err != nil {
 		panic(err)
 	}
@@ -157,7 +157,7 @@ func Handler(fn echo.HandlerFunc) SpringWeb.Handler { return echoHandler(fn) }
 // echoFilter 封装 Echo 中间件
 type echoFilter echo.MiddlewareFunc
 
-func (filter echoFilter) Invoke(ctx SpringWeb.WebContext, chain SpringWeb.FilterChain) {
+func (filter echoFilter) Invoke(ctx SpringWeb.Context, chain SpringWeb.FilterChain) {
 
 	h := filter(func(echoCtx echo.Context) error {
 		chain.Next(ctx)
@@ -175,12 +175,12 @@ func Filter(fn echo.MiddlewareFunc) SpringWeb.Filter { return echoFilter(fn) }
 // recoveryFilter 适配 echo 的恢复过滤器
 type recoveryFilter struct{}
 
-func (f *recoveryFilter) Invoke(webCtx SpringWeb.WebContext, chain SpringWeb.FilterChain) {
+func (f *recoveryFilter) Invoke(ctx SpringWeb.Context, chain SpringWeb.FilterChain) {
 
 	defer func() {
 		if err := recover(); err != nil {
 
-			ctxLogger := SpringLogger.WithContext(webCtx.Context())
+			ctxLogger := SpringLogger.WithContext(ctx.Context())
 			ctxLogger.Error(err, "\n", string(debug.Stack()))
 
 			httpE := SpringWeb.HttpError{Code: http.StatusInternalServerError}
@@ -206,18 +206,18 @@ func (f *recoveryFilter) Invoke(webCtx SpringWeb.WebContext, chain SpringWeb.Fil
 				httpE.Internal = err
 			}
 
-			echoCtx := EchoContext(webCtx)
+			echoCtx := EchoContext(ctx)
 			if !echoCtx.Response().Committed {
 				if echoCtx.Request().Method == http.MethodHead { // Issue #608
 					if err := echoCtx.NoContent(httpE.Code); err != nil {
 						ctxLogger.Error(err)
 					}
 				} else {
-					SpringWeb.ErrorHandler(webCtx, &httpE)
+					SpringWeb.ErrorHandler(ctx, &httpE)
 				}
 			}
 		}
 	}()
 
-	chain.Next(webCtx)
+	chain.Next(ctx)
 }

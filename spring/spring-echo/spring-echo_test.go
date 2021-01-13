@@ -33,7 +33,7 @@ import (
 
 func TestContext_PanicEchoHttpError(t *testing.T) {
 	c := SpringEcho.NewContainer(SpringWeb.ContainerConfig{Port: 8080})
-	c.GetMapping("/", func(webCtx SpringWeb.WebContext) {
+	c.GetMapping("/", func(ctx SpringWeb.Context) {
 		panic(echo.ErrTooManyRequests)
 	})
 	go c.Start()
@@ -52,7 +52,7 @@ func TestContext_PanicEchoHttpError(t *testing.T) {
 
 func TestContext_PanicString(t *testing.T) {
 	c := SpringEcho.NewContainer(SpringWeb.ContainerConfig{Port: 8080})
-	c.GetMapping("/", func(webCtx SpringWeb.WebContext) {
+	c.GetMapping("/", func(ctx SpringWeb.Context) {
 		panic("this is an error")
 	})
 	go c.Start()
@@ -71,7 +71,7 @@ func TestContext_PanicString(t *testing.T) {
 
 func TestContext_PanicError(t *testing.T) {
 	c := SpringEcho.NewContainer(SpringWeb.ContainerConfig{Port: 8080})
-	c.GetMapping("/", func(webCtx SpringWeb.WebContext) {
+	c.GetMapping("/", func(ctx SpringWeb.Context) {
 		panic(errors.New("this is an error"))
 	})
 	go c.Start()
@@ -90,7 +90,7 @@ func TestContext_PanicError(t *testing.T) {
 
 func TestContext_PanicWebHttpError(t *testing.T) {
 	c := SpringEcho.NewContainer(SpringWeb.ContainerConfig{Port: 8080})
-	c.GetMapping("/", func(webCtx SpringWeb.WebContext) {
+	c.GetMapping("/", func(ctx SpringWeb.Context) {
 		panic(&SpringWeb.HttpError{
 			Code:    http.StatusNotFound,
 			Message: http.StatusText(http.StatusNotFound),
@@ -112,7 +112,7 @@ func TestContext_PanicWebHttpError(t *testing.T) {
 
 type dummyFilter struct{}
 
-func (f *dummyFilter) Invoke(webCtx SpringWeb.WebContext, chain SpringWeb.FilterChain) {
+func (f *dummyFilter) Invoke(ctx SpringWeb.Context, chain SpringWeb.FilterChain) {
 	panic(&SpringWeb.HttpError{
 		Code:    http.StatusMethodNotAllowed,
 		Message: http.StatusText(http.StatusMethodNotAllowed),
@@ -121,8 +121,8 @@ func (f *dummyFilter) Invoke(webCtx SpringWeb.WebContext, chain SpringWeb.Filter
 
 func TestFilter_PanicWebHttpError(t *testing.T) {
 	c := SpringEcho.NewContainer(SpringWeb.ContainerConfig{Port: 8080})
-	c.GetMapping("/", func(webCtx SpringWeb.WebContext) {
-		webCtx.String("OK!")
+	c.GetMapping("/", func(ctx SpringWeb.Context) {
+		ctx.String("OK!")
 	}, &dummyFilter{})
 	go c.Start()
 	defer c.Stop(context.Background())

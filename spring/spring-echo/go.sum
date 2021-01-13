@@ -29,6 +29,8 @@ github.com/go-spring/spring-utils v1.0.6-0.20201229074202-4843c5fad0ac h1:DTrza4
 github.com/go-spring/spring-utils v1.0.6-0.20201229074202-4843c5fad0ac/go.mod h1:O9ipzL7xjafDIGLS1FhbFf0Ep7/AmgLXkxPpfDPS9Jg=
 github.com/go-spring/spring-web v1.0.6-0.20210101131318-62ed101e2937 h1:FsT9vhQUMBNfFtKv5gH9zjyCNNPgjC/U7EDC+Ekl4FA=
 github.com/go-spring/spring-web v1.0.6-0.20210101131318-62ed101e2937/go.mod h1:MS6SaATKl1Hn7tjt+vwbk0NwCJaVsuzHM+ayuhTsmcw=
+github.com/go-spring/spring-web v1.0.6-0.20210112140456-d6ffa90a8d00 h1:djD1QE4l4OnJsMFZZJqRkkI74ocpaB9bh15GGyzXrfA=
+github.com/go-spring/spring-web v1.0.6-0.20210112140456-d6ffa90a8d00/go.mod h1:MS6SaATKl1Hn7tjt+vwbk0NwCJaVsuzHM+ayuhTsmcw=
 github.com/kr/pretty v0.1.0/go.mod h1:dAy3ld7l9f0ibDNOQOHHMYYIIbhfbHSm3C4ZsoJORNo=
 github.com/kr/pty v1.1.1/go.mod h1:pFQYn66WHrOpPYNljwOMqo10TkYh1fy3cYio2l3bCsQ=
 github.com/kr/text v0.1.0/go.mod h1:4Jbv+DJW3UT/LiOwJeYQe1efqtUx/iVham/4vfdArNI=
