@@ -460,7 +460,7 @@ func (ctx *defaultSpringContext) resolveBean(bd *BeanDefinition) {
 	}
 
 	// 不满足判断条件的则标记为删除状态并删除其注册
-	if ok := bd.checkCondition(ctx); !ok {
+	if bd.cond == nil || bd.cond.Matches(ctx) {
 		ctx.deleteBeanDefinition(bd)
 		return
 	}
@@ -552,7 +552,7 @@ func (ctx *defaultSpringContext) resolveConfigers() {
 	for e := ctx.configers.Front(); e != nil; {
 		next := e.Next()
 		configer := e.Value.(*Configer)
-		if ok := configer.checkCondition(ctx); !ok {
+		if configer.cond == nil || configer.cond.Matches(ctx) {
 			ctx.configers.Remove(e)
 		}
 		e = next

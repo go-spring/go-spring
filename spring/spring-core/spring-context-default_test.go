@@ -370,12 +370,7 @@ func TestDefaultSpringContext_ValueTag(t *testing.T) {
 	ctx.SetProperty("bool", true)
 
 	setting := &Setting{}
-
-	ctx.RegisterBean(setting).ConditionOn(
-		SpringCore.NewConditional().OnProperty("bool").And().OnCondition(
-			SpringCore.NewConditional().OnPropertyValue("int", "3"),
-		),
-	)
+	ctx.RegisterBean(setting)
 
 	ctx.SetProperty("sub.int", int(4))
 	ctx.SetProperty("sub.sub.int", int(5))
@@ -865,44 +860,6 @@ func TestDefaultSpringContext_Profile(t *testing.T) {
 		ok := ctx.GetBean(&b)
 		SpringUtils.AssertEqual(t, ok, true)
 	})
-
-	t.Run("bean:test_ctx:", func(t *testing.T) {
-
-		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.RegisterBean(&BeanZero{5}).
-			ConditionOnProfile("test").
-			And().
-			ConditionOnMissingBean("null")
-		ctx.AutoWireBeans()
-
-		var b *BeanZero
-		ok := ctx.GetBean(&b)
-		SpringUtils.AssertEqual(t, ok, false)
-	})
-
-	t.Run("bean:test_ctx:test", func(t *testing.T) {
-
-		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.SetProfile("test")
-		ctx.RegisterBean(&BeanZero{5}).ConditionOnProfile("test")
-		ctx.AutoWireBeans()
-
-		var b *BeanZero
-		ok := ctx.GetBean(&b)
-		SpringUtils.AssertEqual(t, ok, true)
-	})
-
-	t.Run("bean:test_ctx:stable", func(t *testing.T) {
-
-		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.SetProfile("stable")
-		ctx.RegisterBean(&BeanZero{5}).ConditionOnProfile("test")
-		ctx.AutoWireBeans()
-
-		var b *BeanZero
-		ok := ctx.GetBean(&b)
-		SpringUtils.AssertEqual(t, ok, false)
-	})
 }
 
 type BeanFour struct{}
@@ -998,59 +955,6 @@ func TestDefaultProperties_WireFunc(t *testing.T) {
 	ctx.AutoWireBeans()
 	i := obj.Fn(3)
 	SpringUtils.AssertEqual(t, i, 6)
-}
-
-func TestDefaultSpringContext_ConditionOnBean(t *testing.T) {
-	ctx := SpringCore.NewDefaultSpringContext()
-
-	c := SpringCore.NewConditional().
-		OnMissingProperty("Null").
-		Or().
-		OnProfile("test")
-
-	ctx.RegisterBean(&BeanZero{5}).
-		ConditionOn(c).
-		And().
-		ConditionOnMissingBean("null")
-
-	ctx.RegisterBean(new(BeanOne)).
-		ConditionOn(c).
-		And().
-		ConditionOnMissingBean("null")
-
-	ctx.RegisterBean(new(BeanTwo)).ConditionOnBean("*SpringCore_test.BeanOne")
-	ctx.RegisterNameBean("another_two", new(BeanTwo)).ConditionOnBean("Null")
-
-	ctx.AutoWireBeans()
-
-	var two *BeanTwo
-	ok := ctx.GetBean(&two, "")
-	SpringUtils.AssertEqual(t, ok, true)
-
-	ok = ctx.GetBean(&two, "another_two")
-	SpringUtils.AssertEqual(t, ok, false)
-}
-
-func TestDefaultSpringContext_ConditionOnMissingBean(t *testing.T) {
-
-	for i := 0; i < 20; i++ { // 测试 FindBean 无需绑定，不要排序
-		ctx := SpringCore.NewDefaultSpringContext()
-
-		ctx.RegisterBean(&BeanZero{5})
-		ctx.RegisterBean(new(BeanOne))
-
-		ctx.RegisterBean(new(BeanTwo)).ConditionOnMissingBean("*SpringCore_test.BeanOne")
-		ctx.RegisterNameBean("another_two", new(BeanTwo)).ConditionOnMissingBean("Null")
-
-		ctx.AutoWireBeans()
-
-		var two *BeanTwo
-		ok := ctx.GetBean(&two, "")
-		SpringUtils.AssertEqual(t, ok, true)
-
-		ok = ctx.GetBean(&two, "another_two")
-		SpringUtils.AssertEqual(t, ok, true)
-	}
 }
 
 type Manager interface {
@@ -1653,50 +1557,6 @@ func TestOptionConstructorArg(t *testing.T) {
 		SpringUtils.AssertEqual(t, cls.President, "CaiYuanPei")
 	})
 
-	t.Run("option withClassName Condition", func(t *testing.T) {
-
-		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.SetProperty("president", "CaiYuanPei")
-		ctx.SetProperty("class_floor", 2)
-		ctx.RegisterBeanFn(NewClassRoom).Options(
-			SpringCore.NewOptionArg(withClassName,
-				"${class_name:=二年级03班}",
-				"${class_floor:=3}",
-			).ConditionOnProperty("class_name_enable"),
-		)
-		ctx.AutoWireBeans()
-
-		var cls *ClassRoom
-		ctx.GetBean(&cls)
-
-		SpringUtils.AssertEqual(t, cls.floor, 0)
-		SpringUtils.AssertEqual(t, len(cls.students), 0)
-		SpringUtils.AssertEqual(t, cls.className, "default")
-		SpringUtils.AssertEqual(t, cls.President, "CaiYuanPei")
-	})
-
-	t.Run("option withClassName Apply", func(t *testing.T) {
-		c := SpringCore.NewConditional().OnProperty("class_name_enable")
-
-		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.SetProperty("president", "CaiYuanPei")
-		ctx.RegisterBeanFn(NewClassRoom).Options(
-			SpringCore.NewOptionArg(withClassName,
-				"${class_name:=二年级03班}",
-				"${class_floor:=3}",
-			).ConditionOn(c),
-		)
-		ctx.AutoWireBeans()
-
-		var cls *ClassRoom
-		ctx.GetBean(&cls)
-
-		SpringUtils.AssertEqual(t, cls.floor, 0)
-		SpringUtils.AssertEqual(t, len(cls.students), 0)
-		SpringUtils.AssertEqual(t, cls.className, "default")
-		SpringUtils.AssertEqual(t, cls.President, "CaiYuanPei")
-	})
-
 	t.Run("option withStudents", func(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
@@ -1904,25 +1764,6 @@ func TestDefaultSpringContext_RegisterMethodBean(t *testing.T) {
 			}()
 		}
 		fmt.Printf("ok:%d err:%d\n", okCount, errCount)
-	})
-
-	t.Run("method bean condition", func(t *testing.T) {
-
-		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.SetProperty("server.version", "1.0.0")
-		parent := ctx.RegisterBean(new(Server))
-		ctx.RegisterMethodBean(parent, "Consumer").
-			ConditionOnProperty("consumer.enable")
-		ctx.AutoWireBeans()
-
-		var s *Server
-		ok := ctx.GetBean(&s)
-		SpringUtils.AssertEqual(t, ok, true)
-		SpringUtils.AssertEqual(t, s.Version, "1.0.0")
-
-		var c *Consumer
-		ok = ctx.GetBean(&c)
-		SpringUtils.AssertEqual(t, ok, false)
 	})
 
 	t.Run("method bean autowire", func(t *testing.T) {
@@ -2152,27 +1993,6 @@ func TestDefaultSpringContext_RegisterMethodBeanFn(t *testing.T) {
 		fmt.Printf("ok:%d err:%d\n", okCount, errCount)
 	})
 
-	t.Run("fn method bean condition", func(t *testing.T) {
-
-		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.SetProperty("server.version", "1.0.0")
-		// Name is SpringCore_test.ServerInterface
-		ctx.RegisterBeanFn(NewServerInterface)
-		ctx.RegisterMethodBeanFn(ServerInterface.ConsumerT).ConditionOnProperty("consumer.enable")
-		ctx.AutoWireBeans()
-
-		var si ServerInterface
-		ok := ctx.GetBean(&si)
-		SpringUtils.AssertEqual(t, ok, true)
-
-		s := si.(*Server)
-		SpringUtils.AssertEqual(t, s.Version, "1.0.0")
-
-		var c *Consumer
-		ok = ctx.GetBean(&c)
-		SpringUtils.AssertEqual(t, ok, false)
-	})
-
 	t.Run("fn method bean autowire", func(t *testing.T) {
 
 		ctx := SpringCore.NewDefaultSpringContext()
@@ -2280,25 +2100,6 @@ func TestDefaultSpringContext_RegisterMethodBeanFn(t *testing.T) {
 	})
 }
 
-func TestDefaultSpringContext_ParentNotRegister(t *testing.T) {
-
-	ctx := SpringCore.NewDefaultSpringContext()
-	// Name is SpringCore_test.ServerInterface
-	parent := ctx.RegisterBeanFn(NewServerInterface).
-		ConditionOnProperty("server.is.nil")
-	ctx.RegisterMethodBean(parent, "Consumer")
-
-	ctx.AutoWireBeans()
-
-	var s *Server
-	ok := ctx.GetBean(&s)
-	SpringUtils.AssertEqual(t, ok, false)
-
-	var c *Consumer
-	ok = ctx.GetBean(&c)
-	SpringUtils.AssertEqual(t, ok, false)
-}
-
 func TestDefaultSpringContext_UserDefinedTypeProperty(t *testing.T) {
 
 	type level int
@@ -2328,17 +2129,6 @@ func TestDefaultSpringContext_UserDefinedTypeProperty(t *testing.T) {
 	ctx.AutoWireBeans()
 
 	fmt.Printf("%+v\n", config)
-}
-
-func TestDefaultSpringContext_ChainConditionOnBean(t *testing.T) {
-	for i := 0; i < 20; i++ { // 不要排序
-		ctx := SpringCore.NewDefaultSpringContext()
-		ctx.RegisterBean(new(string)).ConditionOnBean("*bool")
-		ctx.RegisterBean(new(bool)).ConditionOnBean("*int")
-		ctx.RegisterBean(new(int)).ConditionOnBean("*float")
-		ctx.AutoWireBeans()
-		SpringUtils.AssertEqual(t, len(ctx.GetBeanDefinitions()), 0)
-	}
 }
 
 type CircleA struct {

@@ -196,7 +196,7 @@ func (arg *fnOptionBindingArg) Get(assembly beanAssembly, fileLine string) []ref
 
 // optionArg Option 函数的绑定参数
 type optionArg struct {
-	cond *Conditional // 判断条件
+	cond Condition // 判断条件
 
 	fn  interface{}
 	arg fnBindingArg
@@ -240,7 +240,6 @@ func NewOptionArg(fn interface{}, tags ...string) *optionArg {
 	}
 
 	return &optionArg{
-		cond: NewConditional(),
 		fn:   fn,
 		arg:  newFnStringBindingArg(fnType, false, tags),
 		file: file,
@@ -252,82 +251,9 @@ func (arg *optionArg) FileLine() string {
 	return fmt.Sprintf("%s:%d", arg.file, arg.line)
 }
 
-// Or c=a||b
-func (arg *optionArg) Or() *optionArg {
-	arg.cond.Or()
-	return arg
-}
-
-// And c=a&&b
-func (arg *optionArg) And() *optionArg {
-	arg.cond.And()
-	return arg
-}
-
-// ConditionOn 为 optionArg 设置一个 Condition
-func (arg *optionArg) ConditionOn(cond Condition) *optionArg {
-	arg.cond.OnCondition(cond)
-	return arg
-}
-
-// ConditionNot 为 optionArg 设置一个取反的 Condition
-func (arg *optionArg) ConditionNot(cond Condition) *optionArg {
-	arg.cond.OnConditionNot(cond)
-	return arg
-}
-
-// ConditionOnProperty 为 optionArg 设置一个 PropertyCondition
-func (arg *optionArg) ConditionOnProperty(name string) *optionArg {
-	arg.cond.OnProperty(name)
-	return arg
-}
-
-// ConditionOnMissingProperty 为 optionArg 设置一个 MissingPropertyCondition
-func (arg *optionArg) ConditionOnMissingProperty(name string) *optionArg {
-	arg.cond.OnMissingProperty(name)
-	return arg
-}
-
-// ConditionOnPropertyValue 为 optionArg 设置一个 PropertyValueCondition
-func (arg *optionArg) ConditionOnPropertyValue(name string, havingValue interface{},
-	options ...PropertyValueConditionOption) *optionArg {
-	arg.cond.OnPropertyValue(name, havingValue, options...)
-	return arg
-}
-
-// ConditionOnOptionalPropertyValue 为 optionArg 设置一个 PropertyValueCondition，当属性值不存在时默认条件成立
-func (arg *optionArg) ConditionOnOptionalPropertyValue(name string, havingValue interface{}) *optionArg {
-	arg.cond.OnOptionalPropertyValue(name, havingValue)
-	return arg
-}
-
-// ConditionOnBean 为 optionArg 设置一个 BeanCondition
-func (arg *optionArg) ConditionOnBean(selector BeanSelector) *optionArg {
-	arg.cond.OnBean(selector)
-	return arg
-}
-
-// ConditionOnMissingBean 为 optionArg 设置一个 MissingBeanCondition
-func (arg *optionArg) ConditionOnMissingBean(selector BeanSelector) *optionArg {
-	arg.cond.OnMissingBean(selector)
-	return arg
-}
-
-// ConditionOnExpression 为 optionArg 设置一个 ExpressionCondition
-func (arg *optionArg) ConditionOnExpression(expression string) *optionArg {
-	arg.cond.OnExpression(expression)
-	return arg
-}
-
-// ConditionOnMatches 为 optionArg 设置一个 FunctionCondition
-func (arg *optionArg) ConditionOnMatches(fn ConditionFunc) *optionArg {
-	arg.cond.OnMatches(fn)
-	return arg
-}
-
-// ConditionOnProfile 设置一个 ProfileCondition
-func (arg *optionArg) ConditionOnProfile(profile string) *optionArg {
-	arg.cond.OnProperty(profile)
+// WithCondition 为 optionArg 设置一个 Condition
+func (arg *optionArg) WithCondition(cond Condition) *optionArg {
+	arg.cond = cond
 	return arg
 }
 
@@ -335,7 +261,7 @@ func (arg *optionArg) ConditionOnProfile(profile string) *optionArg {
 func (arg *optionArg) call(assembly beanAssembly) (v reflect.Value, ok bool) {
 	SpringLogger.Tracef("call option func %s", arg.FileLine())
 
-	if ok = arg.cond.Matches(assembly.springContext()); ok {
+	if arg.cond == nil || arg.cond.Matches(assembly.springContext()) {
 		fnValue := reflect.ValueOf(arg.fn)
 		in := arg.arg.Get(assembly, arg.FileLine())
 		out := fnValue.Call(in)

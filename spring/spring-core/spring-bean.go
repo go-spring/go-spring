@@ -482,7 +482,7 @@ type BeanDefinition struct {
 	file string // 注册点所在文件
 	line int    // 注册点所在行数
 
-	cond      *Conditional   // 判断条件
+	cond      Condition      // 判断条件
 	primary   bool           // 是否为主版本
 	dependsOn []BeanSelector // 间接依赖项
 
@@ -528,7 +528,6 @@ func newBeanDefinition(bean springBean) *BeanDefinition {
 		status:  beanStatus_Default,
 		file:    file,
 		line:    line,
-		cond:    NewConditional(),
 		exports: make(map[reflect.Type]struct{}),
 	}
 }
@@ -640,88 +639,10 @@ func (d *BeanDefinition) WithName(name string) *BeanDefinition {
 	return d
 }
 
-// Or c=a||b
-func (d *BeanDefinition) Or() *BeanDefinition {
-	d.cond.Or()
+// WithCondition 为 Bean 设置一个 Condition
+func (d *BeanDefinition) WithCondition(cond Condition) *BeanDefinition {
+	d.cond = cond
 	return d
-}
-
-// And c=a&&b
-func (d *BeanDefinition) And() *BeanDefinition {
-	d.cond.And()
-	return d
-}
-
-// ConditionOn 为 Bean 设置一个 Condition
-func (d *BeanDefinition) ConditionOn(cond Condition) *BeanDefinition {
-	d.cond.OnCondition(cond)
-	return d
-}
-
-// ConditionNot 为 Bean 设置一个取反的 Condition
-func (d *BeanDefinition) ConditionNot(cond Condition) *BeanDefinition {
-	d.cond.OnConditionNot(cond)
-	return d
-}
-
-// ConditionOnProperty 为 Bean 设置一个 PropertyCondition
-func (d *BeanDefinition) ConditionOnProperty(name string) *BeanDefinition {
-	d.cond.OnProperty(name)
-	return d
-}
-
-// ConditionOnMissingProperty 为 Bean 设置一个 MissingPropertyCondition
-func (d *BeanDefinition) ConditionOnMissingProperty(name string) *BeanDefinition {
-	d.cond.OnMissingProperty(name)
-	return d
-}
-
-// ConditionOnPropertyValue 为 Bean 设置一个 PropertyValueCondition
-func (d *BeanDefinition) ConditionOnPropertyValue(name string, havingValue interface{},
-	options ...PropertyValueConditionOption) *BeanDefinition {
-	d.cond.OnPropertyValue(name, havingValue, options...)
-	return d
-}
-
-// ConditionOnOptionalPropertyValue 为 Bean 设置一个 PropertyValueCondition，当属性值不存在时默认条件成立
-func (d *BeanDefinition) ConditionOnOptionalPropertyValue(name string, havingValue interface{}) *BeanDefinition {
-	d.cond.OnOptionalPropertyValue(name, havingValue)
-	return d
-}
-
-// ConditionOnBean 为 Bean 设置一个 BeanCondition
-func (d *BeanDefinition) ConditionOnBean(selector BeanSelector) *BeanDefinition {
-	d.cond.OnBean(selector)
-	return d
-}
-
-// ConditionOnMissingBean 为 Bean 设置一个 MissingBeanCondition
-func (d *BeanDefinition) ConditionOnMissingBean(selector BeanSelector) *BeanDefinition {
-	d.cond.OnMissingBean(selector)
-	return d
-}
-
-// ConditionOnExpression 为 Bean 设置一个 ExpressionCondition
-func (d *BeanDefinition) ConditionOnExpression(expression string) *BeanDefinition {
-	d.cond.OnExpression(expression)
-	return d
-}
-
-// ConditionOnMatches 为 Bean 设置一个 FunctionCondition
-func (d *BeanDefinition) ConditionOnMatches(fn ConditionFunc) *BeanDefinition {
-	d.cond.OnMatches(fn)
-	return d
-}
-
-// ConditionOnProfile 为 Bean 设置一个 ProfileCondition
-func (d *BeanDefinition) ConditionOnProfile(profile string) *BeanDefinition {
-	d.cond.OnProfile(profile)
-	return d
-}
-
-// checkCondition 检查 Condition 的执行结果，成功返回 true，失败返回 false
-func (d *BeanDefinition) checkCondition(ctx SpringContext) bool {
-	return d.cond.Matches(ctx)
 }
 
 // Options 设置 Option 模式函数的 Option 参数绑定

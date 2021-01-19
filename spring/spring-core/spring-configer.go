@@ -84,9 +84,9 @@ func (r *runnable) run(assembly *defaultBeanAssembly) error {
 type Configer struct {
 	runnable
 	name   string
-	cond   *Conditional // 判断条件
-	before []string     // 位于哪些配置函数之前
-	after  []string     // 位于哪些配置函数之后
+	cond   Condition // 判断条件
+	before []string  // 位于哪些配置函数之前
+	after  []string  // 位于哪些配置函数之后
 }
 
 // newConfiger Configer 的构造函数，fn 不能返回 error 以外的其他值
@@ -103,7 +103,6 @@ func newConfiger(name string, fn interface{}, tags []string) *Configer {
 			fn:        fn,
 			stringArg: newFnStringBindingArg(fnType, false, tags),
 		},
-		cond: NewConditional(),
 	}
 }
 
@@ -113,88 +112,10 @@ func (c *Configer) Options(options ...*optionArg) *Configer {
 	return c
 }
 
-// Or c=a||b
-func (c *Configer) Or() *Configer {
-	c.cond.Or()
+// WithCondition 为 Configer 设置一个 Condition
+func (c *Configer) WithCondition(cond Condition) *Configer {
+	c.cond = cond
 	return c
-}
-
-// And c=a&&b
-func (c *Configer) And() *Configer {
-	c.cond.And()
-	return c
-}
-
-// ConditionOn 为 Configer 设置一个 Condition
-func (c *Configer) ConditionOn(cond Condition) *Configer {
-	c.cond.OnCondition(cond)
-	return c
-}
-
-// ConditionNot 为 Configer 设置一个取反的 Condition
-func (c *Configer) ConditionNot(cond Condition) *Configer {
-	c.cond.OnConditionNot(cond)
-	return c
-}
-
-// ConditionOnProperty 为 Configer 设置一个 PropertyCondition
-func (c *Configer) ConditionOnProperty(name string) *Configer {
-	c.cond.OnProperty(name)
-	return c
-}
-
-// ConditionOnMissingProperty 为 Configer 设置一个 MissingPropertyCondition
-func (c *Configer) ConditionOnMissingProperty(name string) *Configer {
-	c.cond.OnMissingProperty(name)
-	return c
-}
-
-// ConditionOnPropertyValue 为 Configer 设置一个 PropertyValueCondition
-func (c *Configer) ConditionOnPropertyValue(name string, havingValue interface{},
-	options ...PropertyValueConditionOption) *Configer {
-	c.cond.OnPropertyValue(name, havingValue, options...)
-	return c
-}
-
-// ConditionOnOptionalPropertyValue 为 Configer 设置一个 PropertyValueCondition，当属性值不存在时默认条件成立
-func (c *Configer) ConditionOnOptionalPropertyValue(name string, havingValue interface{}) *Configer {
-	c.cond.OnOptionalPropertyValue(name, havingValue)
-	return c
-}
-
-// ConditionOnBean 为 Configer 设置一个 BeanCondition
-func (c *Configer) ConditionOnBean(selector BeanSelector) *Configer {
-	c.cond.OnBean(selector)
-	return c
-}
-
-// ConditionOnMissingBean 为 Configer 设置一个 MissingBeanCondition
-func (c *Configer) ConditionOnMissingBean(selector BeanSelector) *Configer {
-	c.cond.OnMissingBean(selector)
-	return c
-}
-
-// ConditionOnExpression 为 Configer 设置一个 ExpressionCondition
-func (c *Configer) ConditionOnExpression(expression string) *Configer {
-	c.cond.OnExpression(expression)
-	return c
-}
-
-// ConditionOnMatches 为 Configer 设置一个 FunctionCondition
-func (c *Configer) ConditionOnMatches(fn ConditionFunc) *Configer {
-	c.cond.OnMatches(fn)
-	return c
-}
-
-// ConditionOnProfile 为 Configer 设置一个 ProfileCondition
-func (c *Configer) ConditionOnProfile(profile string) *Configer {
-	c.cond.OnProfile(profile)
-	return c
-}
-
-// checkCondition 成功返回 true，失败返回 false
-func (c *Configer) checkCondition(ctx SpringContext) bool {
-	return c.cond.Matches(ctx)
 }
 
 // Before 设置当前 Configer 在某些 Configer 之前执行
