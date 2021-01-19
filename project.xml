@@ -144,4 +144,10 @@
         <url>https://github.com/go-spring/spring-redoc.git</url>
         <branch>main</branch>
     </project>
+    <project>
+        <name>spring-cond</name>
+        <dir>spring/spring-cond</dir>
+        <url>https://github.com/go-spring/spring-cond.git</url>
+        <branch>main</branch>
+    </project>
 </projects>
