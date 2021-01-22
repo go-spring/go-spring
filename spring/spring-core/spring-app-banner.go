@@ -58,7 +58,7 @@ func printBanner(banner string) {
 
 	maxLength := 0
 	for _, s := range strings.Split(banner, "\n") {
-		fmt.Printf("\x1b[36m%s\x1b[0m", s) // CYAN
+		fmt.Printf("\x1b[36m%s\x1b[0m\n", s) // CYAN
 		if len(s) > maxLength {
 			maxLength = len(s)
 		}

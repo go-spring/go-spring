@@ -72,11 +72,13 @@ type Application struct {
 }
 
 // NewApplication Application 的构造函数
-func NewApplication(appCtx ApplicationContext, cfgLocation ...string) *Application {
-	if len(cfgLocation) == 0 {
-		cfgLocation = append(cfgLocation, DefaultConfigLocation)
+func NewApplication(cfgLocation ...string) *Application {
+	return &Application{
+		appCtx:              NewDefaultSpringContext(),
+		cfgLocation:         append(append([]string{}, DefaultConfigLocation), cfgLocation...),
+		bannerMode:          BannerModeConsole,
+		expectSysProperties: []string{`.*`},
 	}
-	return &Application{appCtx: appCtx, cfgLocation: cfgLocation}
 }
 
 // Start 启动 SpringBoot 应用

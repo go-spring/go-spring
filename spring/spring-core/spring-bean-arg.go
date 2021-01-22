@@ -266,6 +266,7 @@ func (arg *optionArg) call(assembly beanAssembly) (v reflect.Value, ok bool) {
 		in := arg.arg.Get(assembly, arg.FileLine())
 		out := fnValue.Call(in)
 		v = out[0]
+		ok = true
 	}
 
 	SpringLogger.Tracef("call option func success %s", arg.FileLine())
