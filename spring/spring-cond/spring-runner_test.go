@@ -35,7 +35,7 @@ func TestRunner_Run(t *testing.T) {
 
 	t.Run("before AutoWireBeans", func(t *testing.T) {
 
-		ctx := SpringCore.NewDefaultSpringContext()
+		ctx := SpringCore.NewApplicationContext()
 		ctx.RegisterBeanFn(func() int { return 3 })
 		ctx.SetProperty("version", "v0.0.1")
 
@@ -55,7 +55,7 @@ func TestRunner_Run(t *testing.T) {
 
 	t.Run("not run", func(t *testing.T) {
 
-		ctx := SpringCore.NewDefaultSpringContext()
+		ctx := SpringCore.NewApplicationContext()
 		ctx.RegisterBeanFn(func() int { return 3 })
 		ctx.SetProperty("version", "v0.0.1")
 		ctx.AutoWireBeans()
@@ -72,7 +72,7 @@ func TestRunner_Run(t *testing.T) {
 
 	t.Run("run", func(t *testing.T) {
 
-		ctx := SpringCore.NewDefaultSpringContext()
+		ctx := SpringCore.NewApplicationContext()
 		ctx.RegisterBeanFn(func() int { return 3 })
 		ctx.SetProperty("version", "v0.0.1")
 		ctx.SetProfile("dev")

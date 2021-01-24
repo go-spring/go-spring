@@ -164,7 +164,7 @@ func TestDefaultSpringContext(t *testing.T) {
 
 	t.Run("bean:test_ctx:", func(t *testing.T) {
 
-		ctx := SpringCore.NewDefaultSpringContext()
+		ctx := SpringCore.NewApplicationContext()
 		ctx.RegisterBean(&BeanZero{5}).WithCondition(SpringCond.
 			OnProfile("test").
 			And().
@@ -180,7 +180,7 @@ func TestDefaultSpringContext(t *testing.T) {
 
 	t.Run("bean:test_ctx:test", func(t *testing.T) {
 
-		ctx := SpringCore.NewDefaultSpringContext()
+		ctx := SpringCore.NewApplicationContext()
 		ctx.SetProfile("test")
 		ctx.RegisterBean(&BeanZero{5}).WithCondition(SpringCond.OnProfile("test"))
 		ctx.AutoWireBeans()
@@ -192,7 +192,7 @@ func TestDefaultSpringContext(t *testing.T) {
 
 	t.Run("bean:test_ctx:stable", func(t *testing.T) {
 
-		ctx := SpringCore.NewDefaultSpringContext()
+		ctx := SpringCore.NewApplicationContext()
 		ctx.SetProfile("stable")
 		ctx.RegisterBean(&BeanZero{5}).WithCondition(SpringCond.OnProfile("test"))
 		ctx.AutoWireBeans()
@@ -204,7 +204,7 @@ func TestDefaultSpringContext(t *testing.T) {
 
 	t.Run("option withClassName Condition", func(t *testing.T) {
 
-		ctx := SpringCore.NewDefaultSpringContext()
+		ctx := SpringCore.NewApplicationContext()
 		ctx.SetProperty("president", "CaiYuanPei")
 		ctx.SetProperty("class_floor", 2)
 		ctx.RegisterBeanFn(NewClassRoom).Options(
@@ -227,7 +227,7 @@ func TestDefaultSpringContext(t *testing.T) {
 	t.Run("option withClassName Apply", func(t *testing.T) {
 		c := SpringCond.OnProperty("class_name_enable")
 
-		ctx := SpringCore.NewDefaultSpringContext()
+		ctx := SpringCore.NewApplicationContext()
 		ctx.SetProperty("president", "CaiYuanPei")
 		ctx.RegisterBeanFn(NewClassRoom).Options(
 			SpringCore.NewOptionArg(withClassName,
@@ -248,7 +248,7 @@ func TestDefaultSpringContext(t *testing.T) {
 
 	t.Run("method bean condition", func(t *testing.T) {
 
-		ctx := SpringCore.NewDefaultSpringContext()
+		ctx := SpringCore.NewApplicationContext()
 		ctx.SetProperty("server.version", "1.0.0")
 		parent := ctx.RegisterBean(new(Server))
 		ctx.RegisterMethodBean(parent, "Consumer").WithCondition(SpringCond.OnProperty("consumer.enable"))
@@ -266,7 +266,7 @@ func TestDefaultSpringContext(t *testing.T) {
 
 	t.Run("fn method bean condition", func(t *testing.T) {
 
-		ctx := SpringCore.NewDefaultSpringContext()
+		ctx := SpringCore.NewApplicationContext()
 		ctx.SetProperty("server.version", "1.0.0")
 		ctx.RegisterBeanFn(NewServerInterface)
 		ctx.RegisterMethodBeanFn(ServerInterface.ConsumerT).WithCondition(SpringCond.OnProperty("consumer.enable"))
@@ -287,7 +287,7 @@ func TestDefaultSpringContext(t *testing.T) {
 
 func TestDefaultSpringContext_ParentNotRegister(t *testing.T) {
 
-	ctx := SpringCore.NewDefaultSpringContext()
+	ctx := SpringCore.NewApplicationContext()
 	parent := ctx.RegisterBeanFn(NewServerInterface).
 		WithCondition(SpringCond.OnProperty("server.is.nil"))
 	ctx.RegisterMethodBean(parent, "Consumer")
@@ -305,7 +305,7 @@ func TestDefaultSpringContext_ParentNotRegister(t *testing.T) {
 
 func TestDefaultSpringContext_ChainConditionOnBean(t *testing.T) {
 	for i := 0; i < 20; i++ { // 不要排序
-		ctx := SpringCore.NewDefaultSpringContext()
+		ctx := SpringCore.NewApplicationContext()
 		ctx.RegisterBean(new(string)).WithCondition(SpringCond.OnBean("*bool"))
 		ctx.RegisterBean(new(bool)).WithCondition(SpringCond.OnBean("*int"))
 		ctx.RegisterBean(new(int)).WithCondition(SpringCond.OnBean("*float"))
@@ -315,7 +315,7 @@ func TestDefaultSpringContext_ChainConditionOnBean(t *testing.T) {
 }
 
 func TestDefaultSpringContext_ConditionOnBean(t *testing.T) {
-	ctx := SpringCore.NewDefaultSpringContext()
+	ctx := SpringCore.NewApplicationContext()
 
 	c := SpringCond.
 		OnMissingProperty("Null").
@@ -350,7 +350,7 @@ func TestDefaultSpringContext_ConditionOnBean(t *testing.T) {
 func TestDefaultSpringContext_ConditionOnMissingBean(t *testing.T) {
 
 	for i := 0; i < 20; i++ { // 测试 FindBean 无需绑定，不要排序
-		ctx := SpringCore.NewDefaultSpringContext()
+		ctx := SpringCore.NewApplicationContext()
 
 		ctx.RegisterBean(&BeanZero{5})
 		ctx.RegisterBean(new(BeanOne))

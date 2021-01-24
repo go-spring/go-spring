@@ -25,20 +25,20 @@ import (
 )
 
 func TestFunctionCondition(t *testing.T) {
-	ctx := SpringCore.NewDefaultSpringContext()
+	ctx := SpringCore.NewApplicationContext()
 
-	fn := func(ctx SpringCore.SpringContext) bool { return true }
+	fn := func(ctx SpringCore.ApplicationContext) bool { return true }
 	cond := SpringCond.FunctionCondition(fn)
 	SpringUtils.AssertEqual(t, cond.Matches(ctx), true)
 
-	fn = func(ctx SpringCore.SpringContext) bool { return false }
+	fn = func(ctx SpringCore.ApplicationContext) bool { return false }
 	cond = SpringCond.FunctionCondition(fn)
 	SpringUtils.AssertEqual(t, cond.Matches(ctx), false)
 }
 
 func TestPropertyCondition(t *testing.T) {
 
-	ctx := SpringCore.NewDefaultSpringContext()
+	ctx := SpringCore.NewApplicationContext()
 	ctx.SetProperty("int", 3)
 	ctx.SetProperty("parent.child", 0)
 
@@ -57,7 +57,7 @@ func TestPropertyCondition(t *testing.T) {
 
 func TestMissingPropertyCondition(t *testing.T) {
 
-	ctx := SpringCore.NewDefaultSpringContext()
+	ctx := SpringCore.NewApplicationContext()
 	ctx.SetProperty("int", 3)
 	ctx.SetProperty("parent.child", 0)
 
@@ -76,7 +76,7 @@ func TestMissingPropertyCondition(t *testing.T) {
 
 func TestPropertyValueCondition(t *testing.T) {
 
-	ctx := SpringCore.NewDefaultSpringContext()
+	ctx := SpringCore.NewApplicationContext()
 	ctx.SetProperty("str", "this is a str")
 	ctx.SetProperty("int", 3)
 
@@ -121,7 +121,7 @@ func (t *BeanThree) String() string {
 
 func TestBeanCondition(t *testing.T) {
 
-	ctx := SpringCore.NewDefaultSpringContext()
+	ctx := SpringCore.NewApplicationContext()
 	ctx.RegisterBean(&BeanZero{5})
 	ctx.RegisterBean(new(BeanOne))
 	ctx.AutoWireBeans()
@@ -135,7 +135,7 @@ func TestBeanCondition(t *testing.T) {
 
 func TestMissingBeanCondition(t *testing.T) {
 
-	ctx := SpringCore.NewDefaultSpringContext()
+	ctx := SpringCore.NewApplicationContext()
 	ctx.RegisterBean(&BeanZero{5})
 	ctx.RegisterBean(new(BeanOne))
 	ctx.AutoWireBeans()
@@ -153,7 +153,7 @@ func TestExpressionCondition(t *testing.T) {
 
 func TestConditional(t *testing.T) {
 
-	ctx := SpringCore.NewDefaultSpringContext()
+	ctx := SpringCore.NewApplicationContext()
 	ctx.SetProperty("bool", false)
 	ctx.SetProperty("int", 3)
 	ctx.AutoWireBeans()
@@ -206,7 +206,7 @@ func TestConditional(t *testing.T) {
 
 func TestNotCondition(t *testing.T) {
 
-	ctx := SpringCore.NewDefaultSpringContext()
+	ctx := SpringCore.NewApplicationContext()
 	ctx.SetProfile("test")
 	ctx.AutoWireBeans()
 

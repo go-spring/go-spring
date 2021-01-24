@@ -28,7 +28,7 @@ import (
 )
 
 // ConditionFunc 定义 Condition 接口 Matches 方法的类型
-type ConditionFunc func(ctx SpringCore.SpringContext) bool
+type ConditionFunc func(ctx SpringCore.ApplicationContext) bool
 
 // functionCondition 基于 Matches 方法的 Condition 实现
 type functionCondition struct {
@@ -41,7 +41,7 @@ func FunctionCondition(fn ConditionFunc) *functionCondition {
 }
 
 // Matches 成功返回 true，失败返回 false
-func (c *functionCondition) Matches(ctx SpringCore.SpringContext) bool {
+func (c *functionCondition) Matches(ctx SpringCore.ApplicationContext) bool {
 	return c.fn(ctx)
 }
 
@@ -56,7 +56,7 @@ func NotCondition(cond SpringCore.Condition) *notCondition {
 }
 
 // Matches 成功返回 true，失败返回 false
-func (c *notCondition) Matches(ctx SpringCore.SpringContext) bool {
+func (c *notCondition) Matches(ctx SpringCore.ApplicationContext) bool {
 	return !c.cond.Matches(ctx)
 }
 
@@ -71,7 +71,7 @@ func PropertyCondition(name string) *propertyCondition {
 }
 
 // Matches 成功返回 true，失败返回 false
-func (c *propertyCondition) Matches(ctx SpringCore.SpringContext) bool {
+func (c *propertyCondition) Matches(ctx SpringCore.ApplicationContext) bool {
 	return len(ctx.GetPrefixProperties(c.name)) > 0
 }
 
@@ -86,7 +86,7 @@ func MissingPropertyCondition(name string) *missingPropertyCondition {
 }
 
 // Matches 成功返回 true，失败返回 false
-func (c *missingPropertyCondition) Matches(ctx SpringCore.SpringContext) bool {
+func (c *missingPropertyCondition) Matches(ctx SpringCore.ApplicationContext) bool {
 	return len(ctx.GetPrefixProperties(c.name)) == 0
 }
 
@@ -118,7 +118,7 @@ func PropertyValueCondition(name string, havingValue interface{},
 }
 
 // Matches 成功返回 true，失败返回 false
-func (c *propertyValueCondition) Matches(ctx SpringCore.SpringContext) bool {
+func (c *propertyValueCondition) Matches(ctx SpringCore.ApplicationContext) bool {
 	// 参考 /usr/local/go/src/go/types/eval_test.go 示例
 
 	val, ok := ctx.GetDefaultProperty(c.name, "")
@@ -156,7 +156,7 @@ func BeanCondition(selector SpringCore.BeanSelector) *beanCondition {
 }
 
 // Matches 成功返回 true，失败返回 false
-func (c *beanCondition) Matches(ctx SpringCore.SpringContext) bool {
+func (c *beanCondition) Matches(ctx SpringCore.ApplicationContext) bool {
 	_, ok := ctx.FindBean(c.selector)
 	return ok
 }
@@ -172,7 +172,7 @@ func MissingBeanCondition(selector SpringCore.BeanSelector) *missingBeanConditio
 }
 
 // Matches 成功返回 true，失败返回 false
-func (c *missingBeanCondition) Matches(ctx SpringCore.SpringContext) bool {
+func (c *missingBeanCondition) Matches(ctx SpringCore.ApplicationContext) bool {
 	_, ok := ctx.FindBean(c.selector)
 	return !ok
 }
@@ -188,7 +188,7 @@ func ExpressionCondition(expression string) *expressionCondition {
 }
 
 // Matches 成功返回 true，失败返回 false
-func (c *expressionCondition) Matches(ctx SpringCore.SpringContext) bool {
+func (c *expressionCondition) Matches(ctx SpringCore.ApplicationContext) bool {
 	panic(SpringConst.UnimplementedMethod)
 }
 
@@ -203,7 +203,7 @@ func ProfileCondition(profile string) *profileCondition {
 }
 
 // Matches 成功返回 true，失败返回 false
-func (c *profileCondition) Matches(ctx SpringCore.SpringContext) bool {
+func (c *profileCondition) Matches(ctx SpringCore.ApplicationContext) bool {
 	return c.profile == "" || strings.EqualFold(c.profile, ctx.GetProfile())
 }
 
@@ -231,7 +231,7 @@ func ConditionGroup(op ConditionOp, cond ...SpringCore.Condition) *conditionGrou
 }
 
 // Matches 成功返回 true，失败返回 false
-func (c *conditionGroup) Matches(ctx SpringCore.SpringContext) bool {
+func (c *conditionGroup) Matches(ctx SpringCore.ApplicationContext) bool {
 
 	if len(c.cond) == 0 {
 		panic(errors.New("no condition"))
@@ -272,7 +272,7 @@ type conditionNode struct {
 }
 
 // Matches 成功返回 true，失败返回 false
-func (c *conditionNode) Matches(ctx SpringCore.SpringContext) bool {
+func (c *conditionNode) Matches(ctx SpringCore.ApplicationContext) bool {
 
 	if c.cond == nil { // 空节点返回 true
 		return true
@@ -324,7 +324,7 @@ func (c *Conditional) Empty() bool {
 }
 
 // Matches 成功返回 true，失败返回 false
-func (c *Conditional) Matches(ctx SpringCore.SpringContext) bool {
+func (c *Conditional) Matches(ctx SpringCore.ApplicationContext) bool {
 	return c.head.Matches(ctx)
 }
 
