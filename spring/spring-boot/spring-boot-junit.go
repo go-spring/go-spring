@@ -19,6 +19,8 @@ package SpringBoot
 import (
 	"testing"
 	"time"
+
+	"github.com/go-spring/spring-core"
 )
 
 // JUnitSuite 测试用例集接口
@@ -28,14 +30,14 @@ type JUnitSuite interface {
 
 // JUnitRunner 测试集执行器
 type JUnitRunner struct {
-	_ CommandLineRunner `export:""`
+	_ SpringCore.CommandLineRunner `export:""`
 
 	Suites  []JUnitSuite `autowire:"[]?"`
 	t       *testing.T
 	waiting time.Duration
 }
 
-func (r *JUnitRunner) Run(ctx ApplicationContext) {
+func (r *JUnitRunner) Run(ctx SpringCore.ApplicationContext) {
 	ctx.SafeGoroutine(func() {
 		time.Sleep(r.waiting)
 		for _, suite := range r.Suites {

@@ -19,27 +19,28 @@ package SpringBoot
 import (
 	"testing"
 
+	"github.com/go-spring/spring-cond"
 	"github.com/go-spring/spring-utils"
 )
 
 func TestRouter_Route(t *testing.T) {
-	root := Route("/root", FilterBean("r1", "r2")).ConditionOnBean("r")
+	root := Route("/root", FilterBean("r1", "r2")).WithCondition(SpringCond.OnBean("r"))
 
-	get := root.GetMapping("/get", nil, FilterBean("g1", "g2")).ConditionOnBean("g")
+	get := root.GetMapping("/get", nil, FilterBean("g1", "g2")).WithCondition(SpringCond.OnBean("g"))
 	SpringUtils.AssertEqual(t, get, DefaultWebMapping.Mappings[get.Key()])
 	SpringUtils.AssertEqual(t, get.Path(), "/root/get")
 	SpringUtils.AssertEqual(t, len(get.Filters()), 2)
 	// TODO 校验 cond 字段是否正确
 
-	sub := root.Route("/sub", FilterBean("s1", "s2")).ConditionOnBean("s")
-	subGet := sub.GetMapping("/get", nil, FilterBean("sg1", "sg2")).ConditionOnBean("sg")
+	sub := root.Route("/sub", FilterBean("s1", "s2")).WithCondition(SpringCond.OnBean("s"))
+	subGet := sub.GetMapping("/get", nil, FilterBean("sg1", "sg2")).WithCondition(SpringCond.OnBean("sg"))
 	SpringUtils.AssertEqual(t, subGet, DefaultWebMapping.Mappings[subGet.Key()])
 	SpringUtils.AssertEqual(t, subGet.Path(), "/root/sub/get")
 	SpringUtils.AssertEqual(t, len(subGet.Filters()), 3)
 	// ...
 
-	subSub := sub.Route("/sub", FilterBean("ss1", "ss2")).ConditionOnBean("ss")
-	subSubGet := subSub.GetMapping("/get", nil, FilterBean("ssg1", "ssg2")).ConditionOnBean("ssg")
+	subSub := sub.Route("/sub", FilterBean("ss1", "ss2")).WithCondition(SpringCond.OnBean("ss"))
+	subSubGet := subSub.GetMapping("/get", nil, FilterBean("ssg1", "ssg2")).WithCondition(SpringCond.OnBean("ssg"))
 	SpringUtils.AssertEqual(t, subSubGet, DefaultWebMapping.Mappings[subSubGet.Key()])
 	SpringUtils.AssertEqual(t, subSubGet.Path(), "/root/sub/sub/get")
 	SpringUtils.AssertEqual(t, len(subSubGet.Filters()), 4)
