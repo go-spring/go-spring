@@ -19,5 +19,5 @@ package SpringCore
 // Condition 定义一个判断条件
 type Condition interface {
 	// Matches 成功返回 true，失败返回 false
-	Matches(ctx SpringContext) bool
+	Matches(ctx ApplicationContext) bool
 }

@@ -23,14 +23,14 @@ import (
 
 type GoFunc func()
 
-// SpringContext 定义了 IoC 容器接口。
+// ApplicationContext 定义了 IoC 容器接口。
 //
 // 它的工作过程可以分为三个大的阶段：注册 Bean 列表、加载属性配置
 // 文件、自动绑定。其中自动绑定又分为两个小阶段：解析（决议）和绑定。
 //
 // 一条需要谨记的注册规则是: AutoWireBeans 调用后就不能再注册新
 // 的 Bean 了，这样做是因为实现起来更简单而且性能更高。
-type SpringContext interface {
+type ApplicationContext interface {
 
 	// 属性值列表接口
 	Properties
@@ -42,13 +42,13 @@ type SpringContext interface {
 	GetProfile() string
 
 	// SetProfile 设置运行环境
-	SetProfile(profile string)
+	SetProfile(profile string) ApplicationContext
 
 	// AllAccess 返回是否允许访问私有字段
 	AllAccess() bool
 
 	// SetAllAccess 设置是否允许访问私有字段
-	SetAllAccess(allAccess bool)
+	SetAllAccess(allAccess bool) ApplicationContext
 
 	// RegisterBean 注册单例 Bean，不指定名称，重复注册会 panic。
 	RegisterBean(bean interface{}) *BeanDefinition
@@ -128,9 +128,3 @@ type SpringContext interface {
 	// SafeGoroutine 安全地启动一个 goroutine
 	SafeGoroutine(fn GoFunc)
 }
-
-// SpringContext 的前缀看起来没有必要，想换个名字看看。
-type ApplicationContext = SpringContext
-
-// DefaultApplicationContext 创建 ApplicationContext 实例
-var DefaultApplicationContext = NewDefaultSpringContext

@@ -29,7 +29,7 @@ import (
 
 // beanAssembly Bean 组装车间
 type beanAssembly interface {
-	springContext() SpringContext
+	applicationContext() ApplicationContext
 
 	// wireStructField 对结构体的字段进行绑定
 	wireStructField(v reflect.Value, tag string, parent reflect.Value, field string)
@@ -77,22 +77,22 @@ func (s *wiringStack) path() (path string) {
 
 // defaultBeanAssembly beanAssembly 的默认实现
 type defaultBeanAssembly struct {
-	springCtx   *defaultSpringContext
+	appCtx      *applicationContext
 	wiringStack *wiringStack
 	destroys    *list.List // 具有销毁函数的 Bean 的堆栈
 }
 
 // newDefaultBeanAssembly defaultBeanAssembly 的构造函数
-func newDefaultBeanAssembly(springContext *defaultSpringContext) *defaultBeanAssembly {
+func newDefaultBeanAssembly(appCtx *applicationContext) *defaultBeanAssembly {
 	return &defaultBeanAssembly{
-		springCtx:   springContext,
+		appCtx:      appCtx,
 		wiringStack: newWiringStack(),
 		destroys:    list.New(),
 	}
 }
 
-func (assembly *defaultBeanAssembly) springContext() SpringContext {
-	return assembly.springCtx
+func (assembly *defaultBeanAssembly) applicationContext() ApplicationContext {
+	return assembly.appCtx
 }
 
 // getBeanValue 获取符合要求的 Bean，并且确保 Bean 完成自动注入过程，结果最多有一个，否则 panic，当允许结果为空时返回 false，否则 panic
@@ -109,7 +109,7 @@ func (assembly *defaultBeanAssembly) getBeanValue(v reflect.Value, tag Singleton
 
 	foundBeans := make([]*BeanDefinition, 0)
 
-	cache := assembly.springCtx.getTypeCacheItem(beanType)
+	cache := assembly.appCtx.getTypeCacheItem(beanType)
 	for _, bean := range cache.beans {
 		// 不能将自身赋给自身的字段 && 类型全限定名匹配
 		if bean.Value() != parent && bean.Match(tag.TypeName, tag.BeanName) {
@@ -119,7 +119,7 @@ func (assembly *defaultBeanAssembly) getBeanValue(v reflect.Value, tag Singleton
 
 	// 扩展规则：如果指定了 Bean 名称则尝试通过名称获取以防没有通过 Export 显式导出接口
 	if beanType.Kind() == reflect.Interface && tag.BeanName != "" {
-		cache = assembly.springCtx.getNameCacheItem(tag.BeanName)
+		cache = assembly.appCtx.getNameCacheItem(tag.BeanName)
 		for _, b := range cache.beans {
 			// 不能将自身赋给自身的字段 && 类型匹配 && BeanName 匹配
 			if b.Value() != parent && b.Type().AssignableTo(beanType) && b.Match(tag.TypeName, tag.BeanName) {
@@ -184,7 +184,7 @@ func (assembly *defaultBeanAssembly) getBeanValue(v reflect.Value, tag Singleton
 	// 对找到的 Bean 进行自动注入
 	assembly.wireBeanDefinition(result, false)
 
-	v0 := SpringUtils.PatchValue(v, assembly.springCtx.AllAccess())
+	v0 := SpringUtils.PatchValue(v, assembly.appCtx.AllAccess())
 	v0.Set(result.Value())
 	return true
 }
@@ -208,7 +208,7 @@ func (assembly *defaultBeanAssembly) collectBeans(v reflect.Value, tag Collectio
 	}
 
 	if result.Len() > 0 { // 找到多个符合条件的结果
-		v = SpringUtils.PatchValue(v, assembly.springCtx.AllAccess())
+		v = SpringUtils.PatchValue(v, assembly.appCtx.AllAccess())
 		v.Set(result)
 		return true
 	}
@@ -266,7 +266,7 @@ func (assembly *defaultBeanAssembly) collectAndSortBeans(t reflect.Type, et refl
 	beforeAny := reflect.MakeSlice(t, 0, len(tag.Items))
 
 	// 只在单例类型中查找，数组类型的元素是否排序无法判断
-	cache := assembly.springCtx.getTypeCacheItem(et)
+	cache := assembly.appCtx.getTypeCacheItem(et)
 
 	var beans []*BeanDefinition
 	beans = append(beans, cache.beans...)
@@ -317,7 +317,7 @@ func (assembly *defaultBeanAssembly) autoCollectBeans(t reflect.Type, et reflect
 	result := reflect.MakeSlice(t, 0, 0)
 
 	// 查找可以精确匹配的数组类型
-	cache := assembly.springCtx.getTypeCacheItem(t)
+	cache := assembly.appCtx.getTypeCacheItem(t)
 	for _, d := range cache.beans {
 		for i := 0; i < d.Value().Len(); i++ {
 			di := d.Value().Index(i)
@@ -336,7 +336,7 @@ func (assembly *defaultBeanAssembly) autoCollectBeans(t reflect.Type, et reflect
 	}
 
 	// 查找可以精确匹配的单例类型
-	cache = assembly.springCtx.getTypeCacheItem(et)
+	cache = assembly.appCtx.getTypeCacheItem(et)
 	for _, d := range cache.beans {
 
 		// 对找到的 Bean 进行自动注入
@@ -372,7 +372,7 @@ func (assembly *defaultBeanAssembly) wireBeanDefinition(bd beanDefinition, onlyA
 	// 如果有销毁函数则对其进行排序处理
 	if bd.getDestroy() != nil {
 		if curr, ok := bd.(*BeanDefinition); ok {
-			de := assembly.springCtx.destroyer(curr)
+			de := assembly.appCtx.destroyer(curr)
 			if i := assembly.destroys.Back(); i != nil {
 				prev := i.Value.(*BeanDefinition)
 				de.After(prev)
@@ -403,7 +403,7 @@ func (assembly *defaultBeanAssembly) wireBeanDefinition(bd beanDefinition, onlyA
 
 	// 首先对当前 Bean 的间接依赖项进行自动注入
 	for _, selector := range bd.getDependsOn() {
-		if bean, ok := assembly.springCtx.FindBean(selector); !ok {
+		if bean, ok := assembly.appCtx.FindBean(selector); !ok {
 			panic(fmt.Errorf("can't find bean: \"%v\"", selector))
 		} else {
 			assembly.wireBeanDefinition(bean, false)
@@ -498,8 +498,8 @@ func (assembly *defaultBeanAssembly) wireObjectBean(bd beanDefinition, onlyAutoW
 				if !onlyAutoWire { // 防止 value 再次解析
 					if tag, ok := ft.Tag.Lookup("value"); ok {
 						fieldOnlyAutoWire = true
-						bindStructField(assembly.springCtx, fv, tag, bindOption{
-							allAccess: assembly.springCtx.AllAccess(),
+						bindStructField(assembly.appCtx, fv, tag, bindOption{
+							allAccess: assembly.appCtx.AllAccess(),
 							fieldName: fieldName,
 						})
 					}
@@ -519,7 +519,7 @@ func (assembly *defaultBeanAssembly) wireObjectBean(bd beanDefinition, onlyAutoW
 				if ft.Type.Kind() == reflect.Struct {
 
 					// 开放私有字段，但是不会更新其原有可见属性
-					fv0 := SpringUtils.PatchValue(fv, assembly.springCtx.AllAccess())
+					fv0 := SpringUtils.PatchValue(fv, assembly.appCtx.AllAccess())
 					if fv0.CanSet() {
 
 						// 对 Bean 的结构体进行递归注入
@@ -607,7 +607,7 @@ func (assembly *defaultBeanAssembly) wireStructField(v reflect.Value, tag string
 	if strings.HasPrefix(tag, "${") {
 		s := ""
 		sv := reflect.ValueOf(&s).Elem()
-		bindStructField(assembly.springCtx, sv, tag, bindOption{})
+		bindStructField(assembly.appCtx, sv, tag, bindOption{})
 		tag = s
 	}
 

@@ -58,8 +58,8 @@ func (item *beanCacheItem) store(bd *BeanDefinition) {
 	item.beans = append(item.beans, bd)
 }
 
-// defaultSpringContext SpringContext 的默认实现
-type defaultSpringContext struct {
+// applicationContext ApplicationContext 的默认实现
+type applicationContext struct {
 	// 属性值列表接口
 	Properties
 
@@ -82,10 +82,10 @@ type defaultSpringContext struct {
 	destroyerMap map[beanKey]*destroyer
 }
 
-// NewDefaultSpringContext defaultSpringContext 的构造函数
-func NewDefaultSpringContext() *defaultSpringContext {
+// NewApplicationContext applicationContext 的构造函数
+func NewApplicationContext() *applicationContext {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &defaultSpringContext{
+	return &applicationContext{
 		ctx:             ctx,
 		cancel:          cancel,
 		Properties:      NewDefaultProperties(),
@@ -100,53 +100,55 @@ func NewDefaultSpringContext() *defaultSpringContext {
 }
 
 // Context 返回上下文接口
-func (ctx *defaultSpringContext) Context() context.Context {
+func (ctx *applicationContext) Context() context.Context {
 	return ctx.ctx
 }
 
 // GetProfile 返回运行环境
-func (ctx *defaultSpringContext) GetProfile() string {
+func (ctx *applicationContext) GetProfile() string {
 	return ctx.profile
 }
 
 // SetProfile 设置运行环境
-func (ctx *defaultSpringContext) SetProfile(profile string) {
+func (ctx *applicationContext) SetProfile(profile string) ApplicationContext {
 	ctx.profile = profile
+	return ctx
 }
 
 // AllAccess 返回是否允许访问私有字段
-func (ctx *defaultSpringContext) AllAccess() bool {
+func (ctx *applicationContext) AllAccess() bool {
 	return ctx.allAccess
 }
 
 // SetAllAccess 设置是否允许访问私有字段
-func (ctx *defaultSpringContext) SetAllAccess(allAccess bool) {
+func (ctx *applicationContext) SetAllAccess(allAccess bool) ApplicationContext {
 	ctx.allAccess = allAccess
+	return ctx
 }
 
 // checkAutoWired 检查是否已调用 AutoWireBeans 方法
-func (ctx *defaultSpringContext) checkAutoWired() {
+func (ctx *applicationContext) checkAutoWired() {
 	if !ctx.autoWired {
 		panic(errors.New("should call after AutoWireBeans"))
 	}
 }
 
 // checkRegistration 检查注册是否已被冻结
-func (ctx *defaultSpringContext) checkRegistration() {
+func (ctx *applicationContext) checkRegistration() {
 	if ctx.autoWired {
 		panic(errors.New("bean registration have been frozen"))
 	}
 }
 
 // deleteBeanDefinition 删除 BeanDefinition。
-func (ctx *defaultSpringContext) deleteBeanDefinition(bd *BeanDefinition) {
+func (ctx *applicationContext) deleteBeanDefinition(bd *BeanDefinition) {
 	key := newBeanKey(bd.Type(), bd.Name())
 	bd.status = beanStatus_Deleted
 	delete(ctx.beanMap, key)
 }
 
 // registerBeanDefinition 注册 BeanDefinition，重复注册会 panic。
-func (ctx *defaultSpringContext) registerBeanDefinition(bd *BeanDefinition) {
+func (ctx *applicationContext) registerBeanDefinition(bd *BeanDefinition) {
 	key := newBeanKey(bd.Type(), bd.Name())
 	if _, ok := ctx.beanMap[key]; ok {
 		panic(fmt.Errorf("duplicate registration, bean: \"%s\"", bd.BeanId()))
@@ -155,7 +157,7 @@ func (ctx *defaultSpringContext) registerBeanDefinition(bd *BeanDefinition) {
 }
 
 // RegisterBeanDefinition 注册 BeanDefinition 对象，如果需要 Name 请在调用之前准备好。
-func (ctx *defaultSpringContext) RegisterBeanDefinition(bd *BeanDefinition) {
+func (ctx *applicationContext) RegisterBeanDefinition(bd *BeanDefinition) {
 	ctx.checkRegistration()
 	switch bd.bean.(type) {
 	case *objectBean, *constructorBean:
@@ -166,28 +168,28 @@ func (ctx *defaultSpringContext) RegisterBeanDefinition(bd *BeanDefinition) {
 }
 
 // RegisterBean 注册单例 Bean，不指定名称，重复注册会 panic。
-func (ctx *defaultSpringContext) RegisterBean(bean interface{}) *BeanDefinition {
+func (ctx *applicationContext) RegisterBean(bean interface{}) *BeanDefinition {
 	bd := ObjectBean(bean)
 	ctx.RegisterBeanDefinition(bd)
 	return bd
 }
 
 // RegisterNameBean 注册单例 Bean，需要指定名称，重复注册会 panic。
-func (ctx *defaultSpringContext) RegisterNameBean(name string, bean interface{}) *BeanDefinition {
+func (ctx *applicationContext) RegisterNameBean(name string, bean interface{}) *BeanDefinition {
 	bd := ObjectBean(bean).WithName(name)
 	ctx.RegisterBeanDefinition(bd)
 	return bd
 }
 
 // RegisterBeanFn 注册单例构造函数 Bean，不指定名称，重复注册会 panic。
-func (ctx *defaultSpringContext) RegisterBeanFn(fn interface{}, tags ...string) *BeanDefinition {
+func (ctx *applicationContext) RegisterBeanFn(fn interface{}, tags ...string) *BeanDefinition {
 	bd := ConstructorBean(fn, tags...)
 	ctx.RegisterBeanDefinition(bd)
 	return bd
 }
 
 // RegisterNameBeanFn 注册单例构造函数 Bean，需指定名称，重复注册会 panic。
-func (ctx *defaultSpringContext) RegisterNameBeanFn(name string, fn interface{}, tags ...string) *BeanDefinition {
+func (ctx *applicationContext) RegisterNameBeanFn(name string, fn interface{}, tags ...string) *BeanDefinition {
 	bd := ConstructorBean(fn, tags...).WithName(name)
 	ctx.RegisterBeanDefinition(bd)
 	return bd
@@ -196,7 +198,7 @@ func (ctx *defaultSpringContext) RegisterNameBeanFn(name string, fn interface{},
 // RegisterMethodBean 注册成员方法单例 Bean，不指定名称，重复注册会 panic。
 // 必须给定方法名而不能通过遍历方法列表比较方法类型的方式获得函数名，因为不同方法的类型可能相同。
 // 而且 interface 的方法类型不带 receiver 而成员方法的类型带有 receiver，两者类型也不好匹配。
-func (ctx *defaultSpringContext) RegisterMethodBean(selector BeanSelector, method string, tags ...string) *BeanDefinition {
+func (ctx *applicationContext) RegisterMethodBean(selector BeanSelector, method string, tags ...string) *BeanDefinition {
 	bd := MethodBean(selector, method, tags...)
 	ctx.RegisterBeanDefinition(bd)
 	return bd
@@ -205,7 +207,7 @@ func (ctx *defaultSpringContext) RegisterMethodBean(selector BeanSelector, metho
 // RegisterNameMethodBean 注册成员方法单例 Bean，需指定名称，重复注册会 panic。
 // 必须给定方法名而不能通过遍历方法列表比较方法类型的方式获得函数名，因为不同方法的类型可能相同。
 // 而且 interface 的方法类型不带 receiver 而成员方法的类型带有 receiver，两者类型也不好匹配。
-func (ctx *defaultSpringContext) RegisterNameMethodBean(name string, selector BeanSelector, method string, tags ...string) *BeanDefinition {
+func (ctx *applicationContext) RegisterNameMethodBean(name string, selector BeanSelector, method string, tags ...string) *BeanDefinition {
 	bd := MethodBean(selector, method, tags...).WithName(name)
 	ctx.RegisterBeanDefinition(bd)
 	return bd
@@ -213,13 +215,13 @@ func (ctx *defaultSpringContext) RegisterNameMethodBean(name string, selector Be
 
 // @Incubate 注册成员方法单例 Bean，不指定名称，重复注册会 panic。
 // method 形如 ServerInterface.Consumer (接口) 或 (*Server).Consumer (类型)。
-func (ctx *defaultSpringContext) RegisterMethodBeanFn(method interface{}, tags ...string) *BeanDefinition {
+func (ctx *applicationContext) RegisterMethodBeanFn(method interface{}, tags ...string) *BeanDefinition {
 	return ctx.RegisterNameMethodBeanFn("", method, tags...)
 }
 
 // @Incubate 注册成员方法单例 Bean，需指定名称，重复注册会 panic。
 // method 形如 ServerInterface.Consumer (接口) 或 (*Server).Consumer (类型)。
-func (ctx *defaultSpringContext) RegisterNameMethodBeanFn(name string, method interface{}, tags ...string) *BeanDefinition {
+func (ctx *applicationContext) RegisterNameMethodBeanFn(name string, method interface{}, tags ...string) *BeanDefinition {
 
 	var methodName string
 
@@ -239,7 +241,7 @@ func (ctx *defaultSpringContext) RegisterNameMethodBeanFn(name string, method in
 
 // GetBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 // 它和 FindBean 的区别是它在调用后能够保证返回的 Bean 已经完成了注入和绑定过程。
-func (ctx *defaultSpringContext) GetBean(i interface{}, selector ...BeanSelector) bool {
+func (ctx *applicationContext) GetBean(i interface{}, selector ...BeanSelector) bool {
 
 	if i == nil {
 		panic(errors.New("i can't be nil"))
@@ -267,7 +269,7 @@ func (ctx *defaultSpringContext) GetBean(i interface{}, selector ...BeanSelector
 
 // FindBean 查询单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 // 它和 GetBean 的区别是它在调用后不能保证返回的 Bean 已经完成了注入和绑定过程。
-func (ctx *defaultSpringContext) FindBean(selector BeanSelector) (*BeanDefinition, bool) {
+func (ctx *applicationContext) FindBean(selector BeanSelector) (*BeanDefinition, bool) {
 	ctx.checkAutoWired()
 
 	finder := func(fn func(*BeanDefinition) bool) (result []*BeanDefinition) {
@@ -341,7 +343,7 @@ func (ctx *defaultSpringContext) FindBean(selector BeanSelector) (*BeanDefinitio
 // 不为空，这时候只会收集单例 Bean，而且要求这些单例 Bean 不仅需要满足收集条件，而且
 // 必须满足 selector 条件。另外，自动模式下不对收集结果进行排序，指定模式下根据
 // selectors 列表的顺序对收集结果进行排序。
-func (ctx *defaultSpringContext) CollectBeans(i interface{}, selectors ...BeanSelector) bool {
+func (ctx *applicationContext) CollectBeans(i interface{}, selectors ...BeanSelector) bool {
 	ctx.checkAutoWired()
 
 	if t := reflect.TypeOf(i); t.Kind() != reflect.Ptr || t.Elem().Kind() != reflect.Slice {
@@ -359,7 +361,7 @@ func (ctx *defaultSpringContext) CollectBeans(i interface{}, selectors ...BeanSe
 }
 
 // getTypeCacheItem 查找指定类型的缓存项
-func (ctx *defaultSpringContext) getTypeCacheItem(typ reflect.Type) *beanCacheItem {
+func (ctx *applicationContext) getTypeCacheItem(typ reflect.Type) *beanCacheItem {
 	i, ok := ctx.beanCacheByType[typ]
 	if !ok {
 		i = newBeanCacheItem()
@@ -369,7 +371,7 @@ func (ctx *defaultSpringContext) getTypeCacheItem(typ reflect.Type) *beanCacheIt
 }
 
 // getNameCacheItem 查找指定类型的缓存项
-func (ctx *defaultSpringContext) getNameCacheItem(name string) *beanCacheItem {
+func (ctx *applicationContext) getNameCacheItem(name string) *beanCacheItem {
 	i, ok := ctx.beanCacheByName[name]
 	if !ok {
 		i = newBeanCacheItem()
@@ -379,7 +381,7 @@ func (ctx *defaultSpringContext) getNameCacheItem(name string) *beanCacheItem {
 }
 
 // autoExport 自动导出 Bean 实现的接口
-func (ctx *defaultSpringContext) autoExport(t reflect.Type, bd *BeanDefinition) {
+func (ctx *applicationContext) autoExport(t reflect.Type, bd *BeanDefinition) {
 
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
@@ -419,17 +421,17 @@ func (ctx *defaultSpringContext) autoExport(t reflect.Type, bd *BeanDefinition) 
 	}
 }
 
-func (ctx *defaultSpringContext) typeCache(typ reflect.Type, bd *BeanDefinition) {
+func (ctx *applicationContext) typeCache(typ reflect.Type, bd *BeanDefinition) {
 	SpringLogger.Debugf("register bean type:\"%s\" beanId:\"%s\" %s", typ.String(), bd.BeanId(), bd.FileLine())
 	ctx.getTypeCacheItem(typ).store(bd)
 }
 
-func (ctx *defaultSpringContext) nameCache(name string, bd *BeanDefinition) {
+func (ctx *applicationContext) nameCache(name string, bd *BeanDefinition) {
 	ctx.getNameCacheItem(name).store(bd)
 }
 
 // resolveBean 对 Bean 进行决议是否能够创建 Bean 的实例
-func (ctx *defaultSpringContext) resolveBean(bd *BeanDefinition) {
+func (ctx *applicationContext) resolveBean(bd *BeanDefinition) {
 
 	// 正在进行或者已经完成决议过程
 	if bd.status >= beanStatus_Resolving {
@@ -489,7 +491,7 @@ func (ctx *defaultSpringContext) resolveBean(bd *BeanDefinition) {
 }
 
 // registerMethodBeans 注册方法 Bean
-func (ctx *defaultSpringContext) registerMethodBeans() {
+func (ctx *applicationContext) registerMethodBeans() {
 
 	var (
 		selector string
@@ -546,7 +548,7 @@ func (ctx *defaultSpringContext) registerMethodBeans() {
 }
 
 // resolveConfigers 对 Config 函数进行决议是否能够保留它
-func (ctx *defaultSpringContext) resolveConfigers() {
+func (ctx *applicationContext) resolveConfigers() {
 
 	// 对 config 函数进行决议
 	for e := ctx.configers.Front(); e != nil; {
@@ -563,14 +565,14 @@ func (ctx *defaultSpringContext) resolveConfigers() {
 }
 
 // resolveBeans 对 Bean 进行决议是否能够创建 Bean 的实例
-func (ctx *defaultSpringContext) resolveBeans() {
+func (ctx *applicationContext) resolveBeans() {
 	for _, bd := range ctx.beanMap {
 		ctx.resolveBean(bd)
 	}
 }
 
 // runConfigers 执行 Config 函数
-func (ctx *defaultSpringContext) runConfigers(assembly *defaultBeanAssembly) {
+func (ctx *applicationContext) runConfigers(assembly *defaultBeanAssembly) {
 	for e := ctx.configers.Front(); e != nil; e = e.Next() {
 		configer := e.Value.(*Configer)
 		if err := configer.run(assembly); err != nil {
@@ -579,7 +581,7 @@ func (ctx *defaultSpringContext) runConfigers(assembly *defaultBeanAssembly) {
 	}
 }
 
-func (ctx *defaultSpringContext) destroyer(bd *BeanDefinition) *destroyer {
+func (ctx *applicationContext) destroyer(bd *BeanDefinition) *destroyer {
 	k := newBeanKey(bd.Type(), bd.Name())
 	d, ok := ctx.destroyerMap[k]
 	if !ok {
@@ -590,7 +592,7 @@ func (ctx *defaultSpringContext) destroyer(bd *BeanDefinition) *destroyer {
 }
 
 // sortDestroyers 对销毁函数进行排序
-func (ctx *defaultSpringContext) sortDestroyers() {
+func (ctx *applicationContext) sortDestroyers() {
 	for _, d := range ctx.destroyerMap {
 		ctx.destroyers.PushBack(d)
 	}
@@ -598,14 +600,14 @@ func (ctx *defaultSpringContext) sortDestroyers() {
 }
 
 // wireBeans 对 Bean 执行自动注入
-func (ctx *defaultSpringContext) wireBeans(assembly *defaultBeanAssembly) {
+func (ctx *applicationContext) wireBeans(assembly *defaultBeanAssembly) {
 	for _, bd := range ctx.beanMap {
 		assembly.wireBeanDefinition(bd, false)
 	}
 }
 
 // AutoWireBeans 对所有 Bean 进行依赖注入和属性绑定
-func (ctx *defaultSpringContext) AutoWireBeans() {
+func (ctx *applicationContext) AutoWireBeans() {
 
 	if ctx.autoWired {
 		panic(errors.New("AutoWireBeans already called"))
@@ -635,7 +637,7 @@ func (ctx *defaultSpringContext) AutoWireBeans() {
 }
 
 // WireBean 对外部的 Bean 进行依赖注入和属性绑定
-func (ctx *defaultSpringContext) WireBean(i interface{}) {
+func (ctx *applicationContext) WireBean(i interface{}) {
 	ctx.checkAutoWired()
 
 	assembly := newDefaultBeanAssembly(ctx)
@@ -651,7 +653,7 @@ func (ctx *defaultSpringContext) WireBean(i interface{}) {
 }
 
 // GetBeanDefinitions 获取所有 Bean 的定义，不能保证解析和注入，请谨慎使用该函数!
-func (ctx *defaultSpringContext) GetBeanDefinitions() []*BeanDefinition {
+func (ctx *applicationContext) GetBeanDefinitions() []*BeanDefinition {
 	result := make([]*BeanDefinition, 0)
 	for _, v := range ctx.beanMap {
 		result = append(result, v)
@@ -660,7 +662,7 @@ func (ctx *defaultSpringContext) GetBeanDefinitions() []*BeanDefinition {
 }
 
 // Close 关闭容器上下文，用于通知 Bean 销毁等，该函数可以确保 Bean 的销毁顺序和注入顺序相反。
-func (ctx *defaultSpringContext) Close(beforeDestroy ...func()) {
+func (ctx *applicationContext) Close(beforeDestroy ...func()) {
 
 	// 上下文结束
 	ctx.cancel()
@@ -687,30 +689,30 @@ func (ctx *defaultSpringContext) Close(beforeDestroy ...func()) {
 }
 
 // Run 根据条件判断是否立即执行一个一次性的任务
-func (ctx *defaultSpringContext) Run(fn interface{}, tags ...string) *Runner {
+func (ctx *applicationContext) Run(fn interface{}, tags ...string) *Runner {
 	ctx.checkAutoWired()
 	return newRunner(ctx, fn, tags)
 }
 
 // RunNow 立即执行一个一次性的任务
-func (ctx *defaultSpringContext) RunNow(fn interface{}, tags ...string) error {
+func (ctx *applicationContext) RunNow(fn interface{}, tags ...string) error {
 	return ctx.Run(fn, tags...).When(true)
 }
 
 // Config 注册一个配置函数
-func (ctx *defaultSpringContext) Config(fn interface{}, tags ...string) *Configer {
+func (ctx *applicationContext) Config(fn interface{}, tags ...string) *Configer {
 	return ctx.ConfigWithName("", fn, tags...)
 }
 
 // ConfigWithName 注册一个配置函数，名称的作用是对 Config 进行排重和排顺序。
-func (ctx *defaultSpringContext) ConfigWithName(name string, fn interface{}, tags ...string) *Configer {
+func (ctx *applicationContext) ConfigWithName(name string, fn interface{}, tags ...string) *Configer {
 	configer := newConfiger(name, fn, tags)
 	ctx.configers.PushBack(configer)
 	return configer
 }
 
 // SafeGoroutine 安全地启动一个 goroutine
-func (ctx *defaultSpringContext) SafeGoroutine(fn GoFunc) {
+func (ctx *applicationContext) SafeGoroutine(fn GoFunc) {
 	ctx.wg.Add(1)
 	go func() {
 		defer ctx.wg.Done()

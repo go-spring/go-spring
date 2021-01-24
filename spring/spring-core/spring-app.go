@@ -56,11 +56,12 @@ type ApplicationEvent interface {
 }
 
 // AfterPrepareFunc 定义 app.prepare() 执行完成之后的扩展点
-type AfterPrepareFunc func(ctx SpringContext)
+type AfterPrepareFunc func(ctx ApplicationContext)
 
-// Application SpringBoot 应用
+// Application 应用
 type Application struct {
-	appCtx              ApplicationContext // 应用上下文
+	ApplicationContext // 应用上下文
+
 	cfgLocation         []string           // 配置文件目录
 	banner              string             // Banner 的内容
 	bannerMode          BannerMode         // Banner 的显式模式
@@ -72,16 +73,40 @@ type Application struct {
 }
 
 // NewApplication Application 的构造函数
-func NewApplication(cfgLocation ...string) *Application {
+func NewApplication() *Application {
 	return &Application{
-		appCtx:              NewDefaultSpringContext(),
-		cfgLocation:         append(append([]string{}, DefaultConfigLocation), cfgLocation...),
+		ApplicationContext:  NewApplicationContext(),
+		cfgLocation:         append([]string{}, DefaultConfigLocation),
 		bannerMode:          BannerModeConsole,
 		expectSysProperties: []string{`.*`},
 	}
 }
 
-// Start 启动 SpringBoot 应用
+// AddConfigLocation 添加配置文件
+func (app *Application) AddConfigLocation(cfgLocation ...string) *Application {
+	app.cfgLocation = append(app.cfgLocation, cfgLocation...)
+	return app
+}
+
+// SetBannerMode 设置 Banner 的显式模式
+func (app *Application) SetBannerMode(mode BannerMode) *Application {
+	app.bannerMode = mode
+	return app
+}
+
+// ExpectSysProperties 期望从系统环境变量中获取到的属性，支持正则表达式
+func (app *Application) ExpectSysProperties(pattern ...string) *Application {
+	app.expectSysProperties = pattern
+	return app
+}
+
+// AfterPrepare 注册一个 app.prepare() 执行完成之后的扩展点
+func (app *Application) AfterPrepare(fn AfterPrepareFunc) *Application {
+	app.listOfAfterPrepare = append(app.listOfAfterPrepare, fn)
+	return app
+}
+
+// Start 启动应用
 func (app *Application) Start() {
 
 	// 打印 Banner 内容
@@ -94,32 +119,26 @@ func (app *Application) Start() {
 
 	// 执行所有 app.prepare() 之后执行的扩展点
 	for _, fn := range app.listOfAfterPrepare {
-		fn(app.appCtx)
+		fn(app)
 	}
 
 	// 注册 ApplicationContext 接口
-	app.appCtx.RegisterBean(app.appCtx).Export(
-		(*SpringContext)(nil),
-		(*ApplicationContext)(nil),
-	)
-
-	// 注入 Events、Runners 等
-	app.appCtx.RegisterBean(app)
+	app.RegisterBean(app).Export((*ApplicationContext)(nil))
 
 	// 依赖注入、属性绑定、初始化
-	app.appCtx.AutoWireBeans()
+	app.AutoWireBeans()
 
 	// 执行命令行启动器
 	for _, r := range app.Runners {
-		r.Run(app.appCtx)
+		r.Run(app)
 	}
 
 	// 通知应用启动事件
 	for _, bean := range app.Events {
-		bean.OnStartApplication(app.appCtx)
+		bean.OnStartApplication(app)
 	}
 
-	SpringLogger.Info("spring boot started")
+	SpringLogger.Info("application started")
 }
 
 // printBanner 查找 Banner 文件然后将其打印到控制台
@@ -250,7 +269,7 @@ func (app *Application) prepare() {
 
 	// 将通过代码设置的属性值拷贝一份，第 1 层
 	apiConfig := NewDefaultProperties()
-	for k, v := range app.appCtx.GetProperties() {
+	for k, v := range app.GetProperties() {
 		apiConfig.SetProperty(k, v)
 	}
 
@@ -267,43 +286,44 @@ func (app *Application) prepare() {
 	p.InsertBefore(cmdArgs, sysEnv)
 
 	// 加载特定环境的配置文件，如 application-test.properties
-	profile := app.appCtx.GetProfile()
+	profile := app.GetProfile()
 	if profile == "" {
 		keys := []string{SpringProfile, SPRING_PROFILE}
 		profile = p.GetStringProperty(keys...)
 	}
 	if profile != "" {
-		app.appCtx.SetProfile(profile) // 第 4 层
+		app.SetProfile(profile) // 第 4 层
 		profileConfig := app.loadProfileConfig(profile)
 		p.InsertBefore(profileConfig, appConfig)
 	}
 
-	// 将重组后的属性值写入 SpringContext 属性列表
+	// 将重组后的属性值写入 ApplicationContext 属性列表
 	properties := p.GetProperties()
 	for key, value := range properties {
 		value = app.resolveProperty(properties, key, value)
-		app.appCtx.SetProperty(key, value)
+		app.SetProperty(key, value)
 	}
 
 	// 设置是否允许注入私有字段
-	if ok := app.appCtx.AllAccess(); !ok {
+	if ok := app.AllAccess(); !ok {
 		keys := []string{SpringAccess, SPRING_ACCESS}
-		if access := app.appCtx.GetStringProperty(keys...); access != "" {
-			app.appCtx.SetAllAccess(strings.ToLower(access) == "all")
+		if access := app.GetStringProperty(keys...); access != "" {
+			app.SetAllAccess(strings.ToLower(access) == "all")
 		}
 	}
 }
 
 func (app *Application) stopApplication() {
 	for _, bean := range app.Events {
-		bean.OnStopApplication(app.appCtx)
+		bean.OnStopApplication(app)
 	}
 }
 
-// ShutDown 停止 SpringBoot 应用
+// ShutDown 停止应用
 func (app *Application) ShutDown() {
 
-	SpringLogger.Info("spring boot exiting")
+	defer SpringLogger.Info("application exited")
+	SpringLogger.Info("application exiting")
 
 	// OnStopApplication 是否需要有 Timeout 的 Context？
 	// 仔细想想没有必要，程序想要优雅退出就得一直等，等到所有工作
@@ -313,7 +333,5 @@ func (app *Application) ShutDown() {
 	// 的退出了，而这只需要 Context 一 cancel 也就完事了。
 
 	// 通知 Bean 销毁
-	app.appCtx.Close(app.stopApplication)
-
-	SpringLogger.Info("spring boot exited")
+	app.Close(app.stopApplication)
 }

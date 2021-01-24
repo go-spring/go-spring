@@ -164,7 +164,7 @@ func (arg *fnStringBindingArg) getArgValue(v reflect.Value, tag string, assembly
 	description := fmt.Sprintf("tag:\"%s\" %s", tag, fileLine)
 	SpringLogger.Tracef("get value %s", description)
 
-	if ctx := assembly.springContext(); IsValueType(v.Kind()) { // 值类型，采用属性绑定语法
+	if ctx := assembly.applicationContext(); IsValueType(v.Kind()) { // 值类型，采用属性绑定语法
 		if tag == "" {
 			tag = "${}"
 		}
@@ -261,7 +261,7 @@ func (arg *optionArg) WithCondition(cond Condition) *optionArg {
 func (arg *optionArg) call(assembly beanAssembly) (v reflect.Value, ok bool) {
 	SpringLogger.Tracef("call option func %s", arg.FileLine())
 
-	if arg.cond == nil || arg.cond.Matches(assembly.springContext()) {
+	if arg.cond == nil || arg.cond.Matches(assembly.applicationContext()) {
 		fnValue := reflect.ValueOf(arg.fn)
 		in := arg.arg.Get(assembly, arg.FileLine())
 		out := fnValue.Call(in)

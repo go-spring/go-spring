@@ -26,11 +26,11 @@ import (
 // Runner 立即执行器
 type Runner struct {
 	runnable
-	ctx *defaultSpringContext
+	ctx *applicationContext
 }
 
 // newRunner Runner 的构造函数，fn 不能返回 error 以外的其他值
-func newRunner(ctx *defaultSpringContext, fn interface{}, tags []string) *Runner {
+func newRunner(ctx *applicationContext, fn interface{}, tags []string) *Runner {
 
 	fnType := reflect.TypeOf(fn)
 	if fnType.Kind() != reflect.Func {
