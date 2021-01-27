@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/go-spring/spring-core/sort"
+	"github.com/go-spring/spring-core/internal/sort"
 	"github.com/go-spring/spring-utils"
 )
 

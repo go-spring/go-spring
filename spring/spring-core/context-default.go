@@ -26,7 +26,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/go-spring/spring-core/sort"
+	"github.com/go-spring/spring-core/internal/sort"
 	"github.com/go-spring/spring-logger"
 	"github.com/go-spring/spring-utils"
 )
