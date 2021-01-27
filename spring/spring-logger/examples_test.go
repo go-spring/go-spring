@@ -22,6 +22,25 @@ import (
 	"github.com/go-spring/spring-logger"
 )
 
+func Example_stdLogger() {
+	SpringLogger.SetLogger(SpringLogger.NewConsole(SpringLogger.InfoLevel))
+
+	SpringLogger.Trace("a", "=", "1")
+	SpringLogger.Tracef("a=%d", 1)
+
+	SpringLogger.Debug("a", "=", "1")
+	SpringLogger.Debugf("a=%d", 1)
+
+	SpringLogger.Info("a", "=", "1")
+	SpringLogger.Infof("a=%d", 1)
+
+	SpringLogger.Warn("a", "=", "1")
+	SpringLogger.Warnf("a=%d", 1)
+
+	SpringLogger.Error("a", "=", "1")
+	SpringLogger.Errorf("a=%d", 1)
+}
+
 func Example_contextLogger() {
 	SpringLogger.RegisterContextOutput(&NativeLogger{})
 	ctx := context.WithValue(context.TODO(), "trace_id", "0689")
