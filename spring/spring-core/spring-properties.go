@@ -17,14 +17,16 @@
 package SpringCore
 
 import (
-	"errors"
 	"io"
 	"reflect"
-	"time"
 )
+
+// TypeConverter 类型转换器，函数原型 func(string)type
+type TypeConverter interface{}
 
 // Properties 定义属性值接口
 type Properties interface {
+
 	// LoadProperties 加载属性配置文件，
 	// 支持 properties、yaml 和 toml 三种文件格式。
 	LoadProperties(filename string)
@@ -33,29 +35,14 @@ type Properties interface {
 	// 支持 properties、yaml 和 toml 三种文件格式。
 	ReadProperties(reader io.Reader, configType string)
 
+	// AddTypeConverter 添加类型转换器
+	AddTypeConverter(fn TypeConverter)
+
+	// TypeConverters 类型转换器集合
+	TypeConverters() map[reflect.Type]TypeConverter
+
 	// GetProperty 返回 keys 中第一个存在的属性值，属性名称统一转成小写。
 	GetProperty(keys ...string) interface{}
-
-	// GetBoolProperty 返回 keys 中第一个存在的布尔型属性值，属性名称统一转成小写。
-	GetBoolProperty(keys ...string) bool
-
-	// GetIntProperty 返回 keys 中第一个存在的有符号整型属性值，属性名称统一转成小写。
-	GetIntProperty(keys ...string) int64
-
-	// GetUintProperty 返回 keys 中第一个存在的无符号整型属性值，属性名称统一转成小写。
-	GetUintProperty(keys ...string) uint64
-
-	// GetFloatProperty 返回 keys 中第一个存在的浮点型属性值，属性名称统一转成小写。
-	GetFloatProperty(keys ...string) float64
-
-	// GetStringProperty 返回 keys 中第一个存在的字符串型属性值，属性名称统一转成小写。
-	GetStringProperty(keys ...string) string
-
-	// GetDurationProperty 返回 keys 中第一个存在的 Duration 类型属性值，属性名称统一转成小写。
-	GetDurationProperty(keys ...string) time.Duration
-
-	// GetTimeProperty 返回 keys 中第一个存在的 Time 类型的属性值，属性名称统一转成小写。
-	GetTimeProperty(keys ...string) time.Time
 
 	// GetDefaultProperty 返回属性值，如果没有找到则使用指定的默认值，属性名称统一转成小写。
 	GetDefaultProperty(key string, def interface{}) (interface{}, bool)
@@ -74,35 +61,4 @@ type Properties interface {
 
 	// BindProperty 根据类型获取属性值，属性名称统一转成小写。
 	BindProperty(key string, i interface{})
-
-	// BindPropertyIf 根据类型获取属性值，属性名称统一转成小写。
-	BindPropertyIf(key string, i interface{}, allAccess bool)
-}
-
-// typeConverters 类型转换器集合
-var typeConverters = make(map[reflect.Type]interface{})
-
-// validTypeConverter 返回是否是合法的类型转换器，类型转换器要求：
-// 必须是函数，且只能有一个字符串类型的输入参数和一个值类型的输出参数。
-func validTypeConverter(t reflect.Type) bool {
-
-	// 必须是函数 && 只能有一个输入参数 && 只能有一个输出参数
-	if t.Kind() != reflect.Func || t.NumIn() != 1 || t.NumOut() != 1 {
-		return false
-	}
-
-	inType := t.In(0)
-	outType := t.Out(0)
-
-	// 输入参数必须是字符串类型 && 输出参数必须是值类型
-	return inType.Kind() == reflect.String && IsValueType(outType.Kind())
-}
-
-// RegisterTypeConverter 注册类型转换器，函数原型 func(string)type
-func RegisterTypeConverter(fn interface{}) {
-	if t := reflect.TypeOf(fn); validTypeConverter(t) {
-		typeConverters[t.Out(0)] = fn
-	} else {
-		panic(errors.New("fn must be func(string)type"))
-	}
 }

@@ -70,7 +70,6 @@ type applicationContext struct {
 
 	profile   string // 运行环境
 	autoWired bool   // 是否开始自动绑定
-	allAccess bool   // 是否允许注入私有字段
 
 	beanMap         map[beanKey]*BeanDefinition // Bean 的集合
 	methodBeans     []*BeanDefinition           // 方法 Beans
@@ -112,17 +111,6 @@ func (ctx *applicationContext) GetProfile() string {
 // SetProfile 设置运行环境
 func (ctx *applicationContext) SetProfile(profile string) ApplicationContext {
 	ctx.profile = profile
-	return ctx
-}
-
-// AllAccess 返回是否允许访问私有字段
-func (ctx *applicationContext) AllAccess() bool {
-	return ctx.allAccess
-}
-
-// SetAllAccess 设置是否允许访问私有字段
-func (ctx *applicationContext) SetAllAccess(allAccess bool) ApplicationContext {
-	ctx.allAccess = allAccess
 	return ctx
 }
 

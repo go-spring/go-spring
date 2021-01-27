@@ -168,9 +168,7 @@ func (arg *fnStringBindingArg) getArgValue(v reflect.Value, tag string, assembly
 		if tag == "" {
 			tag = "${}"
 		}
-		bindStructField(ctx, v, tag, bindOption{
-			allAccess: ctx.AllAccess(),
-		})
+		bindStructField(ctx, v, tag, bindOption{})
 	} else { // 引用类型，采用对象注入语法
 		assembly.wireStructField(v, tag, reflect.Value{}, "")
 	}

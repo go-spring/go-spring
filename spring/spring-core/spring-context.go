@@ -44,12 +44,6 @@ type ApplicationContext interface {
 	// SetProfile 设置运行环境
 	SetProfile(profile string) ApplicationContext
 
-	// AllAccess 返回是否允许访问私有字段
-	AllAccess() bool
-
-	// SetAllAccess 设置是否允许访问私有字段
-	SetAllAccess(allAccess bool) ApplicationContext
-
 	// RegisterBean 注册单例 Bean，不指定名称，重复注册会 panic。
 	RegisterBean(bean interface{}) *BeanDefinition
 

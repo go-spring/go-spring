@@ -479,8 +479,7 @@ func TestApplicationContext_TypeConverter(t *testing.T) {
 	p := &PointBean{}
 	ctx.RegisterBean(p)
 
-	SpringCore.RegisterTypeConverter(PointConverter)
-
+	ctx.AddTypeConverter(PointConverter)
 	ctx.SetProperty("point", "(7,5)")
 
 	dbConfig := &DbConfig{}
@@ -568,7 +567,7 @@ func TestApplicationContext_LoadProperties(t *testing.T) {
 	ctx.LoadProperties("testdata/config/application.yaml")
 	ctx.LoadProperties("testdata/config/application.properties")
 
-	val0 := ctx.GetStringProperty("spring.application.name")
+	val0 := ctx.GetProperty("spring.application.name")
 	SpringUtils.AssertEqual(t, val0, "test")
 
 	val1 := ctx.GetProperty("yaml.list")
@@ -787,14 +786,14 @@ func TestApplicationContext_RegisterBeanFn(t *testing.T) {
 
 	SpringUtils.AssertEqual(t, ok, true)
 	fmt.Println(ToString(st1))
-	SpringUtils.AssertEqual(t, st1.Room, ctx.GetStringProperty("room"))
+	SpringUtils.AssertEqual(t, st1.Room, ctx.GetProperty("room"))
 
 	var st2 *Student
 	ok = ctx.GetBean(&st2, "st2")
 
 	SpringUtils.AssertEqual(t, ok, true)
 	fmt.Println(ToString(st2))
-	SpringUtils.AssertEqual(t, st2.Room, ctx.GetStringProperty("room"))
+	SpringUtils.AssertEqual(t, st2.Room, ctx.GetProperty("room"))
 
 	fmt.Printf("%x\n", reflect.ValueOf(st1).Pointer())
 	fmt.Printf("%x\n", reflect.ValueOf(st2).Pointer())
@@ -804,14 +803,14 @@ func TestApplicationContext_RegisterBeanFn(t *testing.T) {
 
 	SpringUtils.AssertEqual(t, ok, true)
 	fmt.Println(ToString(st3))
-	SpringUtils.AssertEqual(t, st3.Room, ctx.GetStringProperty("room"))
+	SpringUtils.AssertEqual(t, st3.Room, ctx.GetProperty("room"))
 
 	var st4 *Student
 	ok = ctx.GetBean(&st4, "st4")
 
 	SpringUtils.AssertEqual(t, ok, true)
 	fmt.Println(ToString(st4))
-	SpringUtils.AssertEqual(t, st4.Room, ctx.GetStringProperty("room"))
+	SpringUtils.AssertEqual(t, st4.Room, ctx.GetProperty("room"))
 
 	var m map[int]string
 	ok = ctx.GetBean(&m)
@@ -2096,15 +2095,6 @@ func TestApplicationContext_UserDefinedTypeProperty(t *testing.T) {
 
 	type level int
 
-	SpringCore.RegisterTypeConverter(func(v string) level {
-		switch v {
-		case "debug":
-			return 1
-		default:
-			panic(errors.New("error level"))
-		}
-	})
-
 	var config struct {
 		Duration time.Duration `value:"${duration}"`
 		Level    level         `value:"${level}"`
@@ -2113,6 +2103,16 @@ func TestApplicationContext_UserDefinedTypeProperty(t *testing.T) {
 	}
 
 	ctx := SpringCore.NewApplicationContext()
+
+	ctx.AddTypeConverter(func(v string) level {
+		switch v {
+		case "debug":
+			return 1
+		default:
+			panic(errors.New("error level"))
+		}
+	})
+
 	ctx.SetProperty("time", "2018-12-20")
 	ctx.SetProperty("duration", "1h")
 	ctx.SetProperty("level", "debug")
@@ -2571,7 +2571,6 @@ func TestApplicationContext_NestValueField(t *testing.T) {
 		SpringUtils.AssertEqual(t, bd.Name(), "*int")
 
 		ctx.RegisterBean(new(wxChannel))
-		ctx.SetAllAccess(true)
 		ctx.AutoWireBeans()
 
 		var c *wxChannel

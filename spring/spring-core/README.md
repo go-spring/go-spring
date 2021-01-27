@@ -25,8 +25,6 @@
     - [Context](#context)
     - [GetProfile](#getprofile)
     - [SetProfile](#setprofile)
-    - [AllAccess](#allaccess)
-    - [SetAllAccess](#setallaccess)
   - [Bean 注册](#bean-注册)
     - [RegisterBean](#registerbean)
     - [RegisterNameBean](#registernamebean)
@@ -262,22 +260,6 @@ func GetProfile() string
 
 ```
 func SetProfile(profile string)
-```
-
-#### AllAccess
-
-返回是否允许访问私有字段。
-
-```
-func AllAccess() bool
-```
-
-#### SetAllAccess
-
-设置是否允许访问私有字段。
-
-```
-func SetAllAccess(allAccess bool)
 ```
 
 ### Bean 注册

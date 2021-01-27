@@ -31,11 +31,23 @@ import (
 	"github.com/spf13/viper"
 )
 
-func init() {
+// defaultProperties Properties 的默认实现
+type defaultProperties struct {
+	properties map[string]interface{}
+	converters map[reflect.Type]TypeConverter
+}
+
+// NewDefaultProperties defaultProperties 的构造函数
+func NewDefaultProperties() *defaultProperties {
+
+	p := &defaultProperties{
+		properties: make(map[string]interface{}),
+		converters: make(map[reflect.Type]TypeConverter),
+	}
 
 	// 注册时长转换函数 string -> time.Duration converter
 	// time units are "ns", "us" (or "µs"), "ms", "s", "m", "h"。
-	RegisterTypeConverter(func(s string) time.Duration {
+	p.AddTypeConverter(func(s string) time.Duration {
 		r, err := cast.ToDurationE(s)
 		SpringUtils.Panic(err).When(err != nil)
 		return r
@@ -43,23 +55,13 @@ func init() {
 
 	// 注册日期转换函数 string -> time.Time converter
 	// 支持非常多的日期格式，参见 cast.StringToDate。
-	RegisterTypeConverter(func(s string) time.Time {
+	p.AddTypeConverter(func(s string) time.Time {
 		r, err := cast.ToTimeE(s)
 		SpringUtils.Panic(err).When(err != nil)
 		return r
 	})
-}
 
-// defaultProperties Properties 的默认实现
-type defaultProperties struct {
-	properties map[string]interface{}
-}
-
-// NewDefaultProperties defaultProperties 的构造函数
-func NewDefaultProperties() *defaultProperties {
-	return &defaultProperties{
-		properties: make(map[string]interface{}),
-	}
+	return p
 }
 
 func (p *defaultProperties) readProperties(reader func(*viper.Viper) error) {
@@ -106,41 +108,6 @@ func (p *defaultProperties) GetProperty(keys ...string) interface{} {
 		}
 	}
 	return nil
-}
-
-// GetBoolProperty 返回 keys 中第一个存在的布尔型属性值，属性名称统一转成小写。
-func (p *defaultProperties) GetBoolProperty(keys ...string) bool {
-	return cast.ToBool(p.GetProperty(keys...))
-}
-
-// GetIntProperty 返回 keys 中第一个存在的有符号整型属性值，属性名称统一转成小写。
-func (p *defaultProperties) GetIntProperty(keys ...string) int64 {
-	return cast.ToInt64(p.GetProperty(keys...))
-}
-
-// GetUintProperty 返回 keys 中第一个存在的无符号整型属性值，属性名称统一转成小写。
-func (p *defaultProperties) GetUintProperty(keys ...string) uint64 {
-	return cast.ToUint64(p.GetProperty(keys...))
-}
-
-// GetFloatProperty 返回 keys 中第一个存在的浮点型属性值，属性名称统一转成小写。
-func (p *defaultProperties) GetFloatProperty(keys ...string) float64 {
-	return cast.ToFloat64(p.GetProperty(keys...))
-}
-
-// GetStringProperty 返回 keys 中第一个存在的字符串型属性值，属性名称统一转成小写。
-func (p *defaultProperties) GetStringProperty(keys ...string) string {
-	return cast.ToString(p.GetProperty(keys...))
-}
-
-// GetDurationProperty 返回 keys 中第一个存在的 Duration 类型属性值，属性名称统一转成小写。
-func (p *defaultProperties) GetDurationProperty(keys ...string) time.Duration {
-	return cast.ToDuration(p.GetProperty(keys...))
-}
-
-// GetTimeProperty 返回 keys 中第一个存在的 Time 类型的属性值，属性名称统一转成小写。
-func (p *defaultProperties) GetTimeProperty(keys ...string) time.Time {
-	return cast.ToTime(p.GetProperty(keys...))
 }
 
 // SetProperty 设置属性值，属性名称统一转成小写。
@@ -197,7 +164,6 @@ type bindOption struct {
 	propNamePrefix string // 属性名前缀
 	fullPropName   string // 完整属性名
 	fieldName      string // 结构体字段的名称
-	allAccess      bool   // 私有字段是否绑定
 }
 
 // bindStruct 对结构体进行属性值绑定
@@ -208,7 +174,7 @@ func bindStruct(p Properties, v reflect.Value, opt bindOption) {
 		fv := v.Field(i)
 
 		// 可能会开放私有字段
-		fv = SpringUtils.PatchValue(fv, opt.allAccess)
+		fv = SpringUtils.PatchValue(fv, true)
 		subFieldName := opt.fieldName + ".$" + ft.Name
 
 		// 字段的绑定可选项
@@ -216,7 +182,6 @@ func bindStruct(p Properties, v reflect.Value, opt bindOption) {
 			propNamePrefix: opt.propNamePrefix,
 			fullPropName:   opt.fullPropName,
 			fieldName:      subFieldName,
-			allAccess:      opt.allAccess,
 		}
 
 		if tag, ok := ft.Tag.Lookup("value"); ok {
@@ -317,7 +282,7 @@ func bindValue(p Properties, v reflect.Value, key string, def interface{}, opt b
 	k := t.Kind()
 
 	// 存在值类型转换器的情况下结构体优先使用属性值绑定
-	if fn, ok := typeConverters[t]; ok {
+	if fn, ok := p.TypeConverters()[t]; ok {
 		propValue := getPropertyValue(p, k, key, def, opt)
 		fnValue := reflect.ValueOf(fn)
 		out := fnValue.Call([]reflect.Value{reflect.ValueOf(propValue)})
@@ -331,7 +296,6 @@ func bindValue(p Properties, v reflect.Value, key string, def interface{}, opt b
 				propNamePrefix: key,
 				fullPropName:   opt.fullPropName,
 				fieldName:      opt.fieldName,
-				allAccess:      opt.allAccess,
 			})
 			return
 		} else { // 前面已经校验过是否存在值类型转换器
@@ -382,7 +346,7 @@ func bindValue(p Properties, v reflect.Value, key string, def interface{}, opt b
 		}
 
 		// 处理使用类型转换器的场景
-		if fn, ok := typeConverters[elemType]; ok {
+		if fn, ok := p.TypeConverters()[elemType]; ok {
 			if s0, err := cast.ToStringSliceE(propValue); err == nil {
 				sv := reflect.MakeSlice(t, len(s0), len(s0))
 				fnValue := reflect.ValueOf(fn)
@@ -480,10 +444,9 @@ func bindValue(p Properties, v reflect.Value, key string, def interface{}, opt b
 					if sv, err := cast.ToStringMapE(si); err == nil {
 						ev := reflect.New(elemType)
 						subFullPropName := fmt.Sprintf("%s[%d]", key, i)
-						bindStruct(&defaultProperties{sv}, ev.Elem(), bindOption{
+						bindStruct(&defaultProperties{sv, p.TypeConverters()}, ev.Elem(), bindOption{
 							fullPropName: subFullPropName,
 							fieldName:    opt.fieldName,
-							allAccess:    opt.allAccess,
 						})
 						result.Index(i).Set(ev.Elem())
 					} else {
@@ -504,7 +467,7 @@ func bindValue(p Properties, v reflect.Value, key string, def interface{}, opt b
 		elemKind := elemType.Kind()
 
 		// 首先处理使用类型转换器的场景
-		if fn, ok := typeConverters[elemType]; ok {
+		if fn, ok := p.TypeConverters()[elemType]; ok {
 			if mapValue, err := cast.ToStringMapStringE(propValue); err == nil {
 				prefix := key + "."
 				fnValue := reflect.ValueOf(fn)
@@ -565,10 +528,9 @@ func bindValue(p Properties, v reflect.Value, key string, def interface{}, opt b
 				for k1, v1 := range temp {
 					ev := reflect.New(elemType)
 					subFullPropName := fmt.Sprintf("%s.%s", key, k1)
-					bindStruct(&defaultProperties{v1}, ev.Elem(), bindOption{
+					bindStruct(&defaultProperties{v1, p.TypeConverters()}, ev.Elem(), bindOption{
 						fullPropName: subFullPropName,
 						fieldName:    opt.fieldName,
-						allAccess:    opt.allAccess,
 					})
 					result.SetMapIndex(reflect.ValueOf(k1), ev.Elem())
 				}
@@ -585,11 +547,6 @@ func bindValue(p Properties, v reflect.Value, key string, def interface{}, opt b
 
 // BindProperty 根据类型获取属性值，属性名称统一转成小写。
 func (p *defaultProperties) BindProperty(key string, i interface{}) {
-	p.BindPropertyIf(key, i, false)
-}
-
-// BindPropertyIf 根据类型获取属性值，属性名称统一转成小写。
-func (p *defaultProperties) BindPropertyIf(key string, i interface{}, allAccess bool) {
 
 	v := reflect.ValueOf(i)
 	if v.Kind() != reflect.Ptr {
@@ -602,9 +559,35 @@ func (p *defaultProperties) BindPropertyIf(key string, i interface{}, allAccess 
 		s = t.Elem().Name()
 	}
 
-	bindValue(p, v.Elem(), key, nil, bindOption{
-		fieldName:    s,
-		fullPropName: key,
-		allAccess:    allAccess,
-	})
+	bindValue(p, v.Elem(), key, nil, bindOption{fieldName: s, fullPropName: key})
+}
+
+// TypeConverters 类型转换器集合
+func (p *defaultProperties) TypeConverters() map[reflect.Type]TypeConverter {
+	return p.converters
+}
+
+// validTypeConverter 返回是否是合法的类型转换器，类型转换器要求：
+// 必须是函数，且只能有一个字符串类型的输入参数和一个值类型的输出参数。
+func validTypeConverter(t reflect.Type) bool {
+
+	// 必须是函数 && 只能有一个输入参数 && 只能有一个输出参数
+	if t.Kind() != reflect.Func || t.NumIn() != 1 || t.NumOut() != 1 {
+		return false
+	}
+
+	inType := t.In(0)
+	outType := t.Out(0)
+
+	// 输入参数必须是字符串类型 && 输出参数必须是值类型
+	return inType.Kind() == reflect.String && IsValueType(outType.Kind())
+}
+
+// AddTypeConverter 添加类型转换器
+func (p *defaultProperties) AddTypeConverter(fn TypeConverter) {
+	if t := reflect.TypeOf(fn); validTypeConverter(t) {
+		p.converters[t.Out(0)] = fn
+	} else {
+		panic(errors.New("fn must be func(string)type"))
+	}
 }

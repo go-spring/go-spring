@@ -184,7 +184,7 @@ func (assembly *defaultBeanAssembly) getBeanValue(v reflect.Value, tag Singleton
 	// 对找到的 Bean 进行自动注入
 	assembly.wireBeanDefinition(result, false)
 
-	v0 := SpringUtils.PatchValue(v, assembly.appCtx.AllAccess())
+	v0 := SpringUtils.PatchValue(v, true)
 	v0.Set(result.Value())
 	return true
 }
@@ -208,7 +208,7 @@ func (assembly *defaultBeanAssembly) collectBeans(v reflect.Value, tag Collectio
 	}
 
 	if result.Len() > 0 { // 找到多个符合条件的结果
-		v = SpringUtils.PatchValue(v, assembly.appCtx.AllAccess())
+		v = SpringUtils.PatchValue(v, true)
 		v.Set(result)
 		return true
 	}
@@ -498,10 +498,7 @@ func (assembly *defaultBeanAssembly) wireObjectBean(bd beanDefinition, onlyAutoW
 				if !onlyAutoWire { // 防止 value 再次解析
 					if tag, ok := ft.Tag.Lookup("value"); ok {
 						fieldOnlyAutoWire = true
-						bindStructField(assembly.appCtx, fv, tag, bindOption{
-							allAccess: assembly.appCtx.AllAccess(),
-							fieldName: fieldName,
-						})
+						bindStructField(assembly.appCtx, fv, tag, bindOption{fieldName: fieldName})
 					}
 				}
 
@@ -519,7 +516,7 @@ func (assembly *defaultBeanAssembly) wireObjectBean(bd beanDefinition, onlyAutoW
 				if ft.Type.Kind() == reflect.Struct {
 
 					// 开放私有字段，但是不会更新其原有可见属性
-					fv0 := SpringUtils.PatchValue(fv, assembly.appCtx.AllAccess())
+					fv0 := SpringUtils.PatchValue(fv, true)
 					if fv0.CanSet() {
 
 						// 对 Bean 的结构体进行递归注入

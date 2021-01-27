@@ -510,24 +510,25 @@ func PointConverter(val string) image.Point {
 }
 
 func TestRegisterTypeConverter(t *testing.T) {
+	p := SpringCore.NewDefaultProperties()
 
 	SpringUtils.AssertPanic(t, func() { // 不是函数
-		SpringCore.RegisterTypeConverter(3)
+		p.AddTypeConverter(3)
 	}, "fn must be func\\(string\\)type")
 
 	SpringUtils.AssertPanic(t, func() { // 入参太多
-		SpringCore.RegisterTypeConverter(func(_ string, _ string) image.Point {
+		p.AddTypeConverter(func(_ string, _ string) image.Point {
 			return image.Point{}
 		})
 	}, "fn must be func\\(string\\)type")
 
 	SpringUtils.AssertPanic(t, func() { // 返回值太多
-		SpringCore.RegisterTypeConverter(func(_ string) (image.Point, image.Point) {
+		p.AddTypeConverter(func(_ string) (image.Point, image.Point) {
 			return image.Point{}, image.Point{}
 		})
 	}, "fn must be func\\(string\\)type")
 
-	SpringCore.RegisterTypeConverter(PointConverter)
+	p.AddTypeConverter(PointConverter)
 }
 
 func TestDefaultProperties_GetProperty(t *testing.T) {
@@ -577,29 +578,29 @@ func TestDefaultProperties_GetProperty(t *testing.T) {
 	p.BindProperty("Float", &f2)
 	SpringUtils.AssertEqual(t, f2, float32(3))
 
-	b := p.GetBoolProperty("BOOL")
+	b := cast.ToBool(p.GetProperty("BOOL"))
 	SpringUtils.AssertEqual(t, b, true)
 
 	var b2 bool
 	p.BindProperty("bool", &b2)
 	SpringUtils.AssertEqual(t, b2, true)
 
-	i := p.GetIntProperty("INT")
+	i := cast.ToInt64(p.GetProperty("INT"))
 	SpringUtils.AssertEqual(t, i, int64(3))
 
-	u := p.GetUintProperty("UINT")
+	u := cast.ToUint64(p.GetProperty("UINT"))
 	SpringUtils.AssertEqual(t, u, uint64(3))
 
-	f := p.GetFloatProperty("FLOAT")
+	f := cast.ToFloat64(p.GetProperty("FLOAT"))
 	SpringUtils.AssertEqual(t, f, 3.0)
 
-	s := p.GetStringProperty("STRING")
+	s := cast.ToString(p.GetProperty("STRING"))
 	SpringUtils.AssertEqual(t, s, "3")
 
-	d := p.GetDurationProperty("DURATION")
+	d := cast.ToDuration(p.GetProperty("DURATION"))
 	SpringUtils.AssertEqual(t, d, time.Second*3)
 
-	ti := p.GetTimeProperty("Time")
+	ti := cast.ToTime(p.GetProperty("Time"))
 	SpringUtils.AssertEqual(t, ti, time.Date(2020, 02, 04, 20, 02, 04, 0, time.UTC))
 
 	var ss2 []string
@@ -715,9 +716,9 @@ func TestDefaultProperties_StringMapString(t *testing.T) {
 	})
 
 	t.Run("converter bind", func(t *testing.T) {
-		SpringCore.RegisterTypeConverter(PointConverter)
 
 		p := SpringCore.NewDefaultProperties()
+		p.AddTypeConverter(PointConverter)
 		p.SetProperty("a.p1", "(1,2)")
 		p.SetProperty("a.p2", "(3,4)")
 		p.SetProperty("a.p3", "(5,6)")

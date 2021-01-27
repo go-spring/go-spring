@@ -26,6 +26,7 @@ import (
 	"strings"
 
 	"github.com/go-spring/spring-logger"
+	"github.com/spf13/cast"
 )
 
 const (
@@ -33,14 +34,11 @@ const (
 )
 
 const (
-	SpringAccess   = "spring.access" // "all" 为允许注入私有字段
-	SPRING_ACCESS  = "SPRING_ACCESS"
 	SpringProfile  = "spring.profile" // 运行环境
 	SPRING_PROFILE = "SPRING_PROFILE"
 )
 
 var (
-	_ = flag.String(SpringAccess, "", "是否允许注入私有字段")
 	_ = flag.String(SpringProfile, "", "设置运行环境")
 )
 
@@ -289,7 +287,7 @@ func (app *Application) prepare() {
 	profile := app.GetProfile()
 	if profile == "" {
 		keys := []string{SpringProfile, SPRING_PROFILE}
-		profile = p.GetStringProperty(keys...)
+		profile = cast.ToString(p.GetProperty(keys...))
 	}
 	if profile != "" {
 		app.SetProfile(profile) // 第 4 层
@@ -302,14 +300,6 @@ func (app *Application) prepare() {
 	for key, value := range properties {
 		value = app.resolveProperty(properties, key, value)
 		app.SetProperty(key, value)
-	}
-
-	// 设置是否允许注入私有字段
-	if ok := app.AllAccess(); !ok {
-		keys := []string{SpringAccess, SPRING_ACCESS}
-		if access := app.GetStringProperty(keys...); access != "" {
-			app.SetAllAccess(strings.ToLower(access) == "all")
-		}
 	}
 }
 
