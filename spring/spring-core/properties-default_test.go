@@ -537,7 +537,7 @@ func TestDefaultProperties_GetProperty(t *testing.T) {
 	p.SetProperty("a.b.c", "3")
 	p.SetProperty("a.b.d", []string{"3"})
 
-	m := p.GetPrefixProperties("a.b")
+	m := p.GetProperties("a.b")
 	SpringUtils.AssertEqual(t, len(m), 2)
 	SpringUtils.AssertEqual(t, m["a.b.c"], "3")
 	SpringUtils.AssertEqual(t, m["a.b.d"], []string{"3"})

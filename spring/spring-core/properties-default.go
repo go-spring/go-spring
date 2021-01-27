@@ -123,12 +123,15 @@ func (p *defaultProperties) GetDefaultProperty(key string, def interface{}) (int
 	return def, false
 }
 
-// GetPrefixProperties 返回指定前缀的属性值集合，属性名称统一转成小写。
-func (p *defaultProperties) GetPrefixProperties(prefix string) map[string]interface{} {
-	prefix = strings.ToLower(prefix)
+// GetProperties 返回指定前缀的属性值集合，不传值返回全部属性值，属性名称统一转成小写。
+func (p *defaultProperties) GetProperties(prefix ...string) map[string]interface{} {
+	if len(prefix) == 0 {
+		return p.properties
+	}
+	key := strings.ToLower(prefix[0])
 	result := make(map[string]interface{})
 	for k, v := range p.properties {
-		if k == prefix || strings.HasPrefix(k, prefix+".") {
+		if k == key || strings.HasPrefix(k, key+".") {
 			result[k] = v
 		}
 	}
@@ -152,11 +155,6 @@ func (p *defaultProperties) GetGroupedProperties(prefix string) map[string]map[s
 		}
 	}
 	return result
-}
-
-// GetProperties 返回所有的属性值，属性名称统一转成小写。
-func (p *defaultProperties) GetProperties() map[string]interface{} {
-	return p.properties
 }
 
 // bindOption 属性值绑定可选项
@@ -262,7 +260,7 @@ func getPropertyValue(p Properties, k reflect.Kind, key string, def interface{},
 
 	// Map 和 Struct 类型获取具有相同前缀的属性值
 	if k == reflect.Map || k == reflect.Struct {
-		if prefixValue := p.GetPrefixProperties(key); len(prefixValue) > 0 {
+		if prefixValue := p.GetProperties(key); len(prefixValue) > 0 {
 			return prefixValue
 		}
 	}

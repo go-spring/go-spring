@@ -65,10 +65,10 @@ func (p *priorityProperties) GetGroupedProperties(prefix string) map[string]map[
 	panic(SpringConst.UnimplementedMethod)
 }
 
-// GetProperties 返回所有的属性值，属性名称统一转成小写。
-func (p *priorityProperties) GetProperties() map[string]interface{} {
-	properties := p.Properties.GetProperties()
-	for key, val := range p.next.GetProperties() {
+// GetProperties 返回指定前缀的属性值集合，不传值返回全部属性值，属性名称统一转成小写。
+func (p *priorityProperties) GetProperties(prefix ...string) map[string]interface{} {
+	properties := p.Properties.GetProperties(prefix...)
+	for key, val := range p.next.GetProperties(prefix...) {
 		if _, ok := properties[key]; !ok {
 			properties[key] = val
 		}

@@ -50,14 +50,11 @@ type Properties interface {
 	// SetProperty 设置属性值，属性名称统一转成小写。
 	SetProperty(key string, value interface{})
 
-	// GetPrefixProperties 返回指定前缀的属性值集合，属性名称统一转成小写。
-	GetPrefixProperties(prefix string) map[string]interface{}
+	// GetProperties 返回指定前缀的属性值集合，不传值返回全部属性值，属性名称统一转成小写。
+	GetProperties(prefix ...string) map[string]interface{}
 
 	// GetGroupedProperties 返回指定前缀的属性值集合并进行分组，属性名称统一转成小写。
 	GetGroupedProperties(prefix string) map[string]map[string]interface{}
-
-	// GetProperties 返回所有的属性值，属性名称统一转成小写。
-	GetProperties() map[string]interface{}
 
 	// BindProperty 根据类型获取属性值，属性名称统一转成小写。
 	BindProperty(key string, i interface{})
