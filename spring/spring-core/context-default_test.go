@@ -71,10 +71,11 @@ func TestApplicationContext(t *testing.T) {
 
 		ctx.RegisterBean(&e)
 
-		// 相同类型的匿名 bean 不能重复注册
-		SpringUtils.AssertPanic(t, func() {
-			ctx.RegisterBean(&e)
-		}, "duplicate registration, bean: \"int:\\*int\"")
+		// 这种错误延迟到 AutoWireBeans 阶段
+		// // 相同类型的匿名 bean 不能重复注册
+		// SpringUtils.AssertPanic(t, func() {
+		//	 ctx.RegisterBean(&e)
+		// }, "duplicate registration, bean: \"int:\\*int\"")
 
 		// 相同类型不同名称的 bean 都可注册
 		ctx.RegisterNameBean("i3", &e)

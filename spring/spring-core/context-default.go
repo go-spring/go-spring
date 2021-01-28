@@ -71,8 +71,8 @@ type applicationContext struct {
 	profile   string // 运行环境
 	autoWired bool   // 是否开始自动绑定
 
-	beanMap         map[beanKey]*BeanDefinition // Bean 的集合
-	methodBeans     []*BeanDefinition           // 方法 Beans
+	AllBeans        []*BeanDefinition           // 所有注册点
+	beanMap         map[beanKey]*BeanDefinition // Bean 集合
 	beanCacheByName map[string]*beanCacheItem
 	beanCacheByType map[reflect.Type]*beanCacheItem
 
@@ -88,7 +88,7 @@ func NewApplicationContext() *applicationContext {
 		ctx:             ctx,
 		cancel:          cancel,
 		Properties:      NewDefaultProperties(),
-		methodBeans:     make([]*BeanDefinition, 0),
+		AllBeans:        make([]*BeanDefinition, 0),
 		beanMap:         make(map[beanKey]*BeanDefinition),
 		beanCacheByName: make(map[string]*beanCacheItem),
 		beanCacheByType: make(map[reflect.Type]*beanCacheItem),
@@ -147,12 +147,7 @@ func (ctx *applicationContext) registerBeanDefinition(bd *BeanDefinition) {
 // RegisterBeanDefinition 注册 BeanDefinition 对象，如果需要 Name 请在调用之前准备好。
 func (ctx *applicationContext) RegisterBeanDefinition(bd *BeanDefinition) {
 	ctx.checkRegistration()
-	switch bd.bean.(type) {
-	case *objectBean, *constructorBean:
-		ctx.registerBeanDefinition(bd)
-	case *fakeMethodBean:
-		ctx.methodBeans = append(ctx.methodBeans, bd)
-	}
+	ctx.AllBeans = append(ctx.AllBeans, bd)
 }
 
 // RegisterBean 注册单例 Bean，不指定名称，重复注册会 panic。
@@ -478,18 +473,22 @@ func (ctx *applicationContext) resolveBean(bd *BeanDefinition) {
 	bd.status = beanStatus_Resolved
 }
 
-// registerMethodBeans 注册方法 Bean
-func (ctx *applicationContext) registerMethodBeans() {
+func (ctx *applicationContext) registerAllBeans() {
 
 	var (
 		selector string
 		filter   func(*BeanDefinition) bool
 	)
 
-	for _, bd := range ctx.methodBeans {
-		bean := bd.bean.(*fakeMethodBean)
-		result := make([]*BeanDefinition, 0)
+	for _, bd := range ctx.AllBeans {
 
+		bean, ok := bd.bean.(*fakeMethodBean)
+		if !ok {
+			ctx.registerBeanDefinition(bd)
+			continue
+		}
+
+		result := make([]*BeanDefinition, 0)
 		switch e := bean.selector.(type) {
 		case string:
 			selector = e
@@ -601,8 +600,8 @@ func (ctx *applicationContext) AutoWireBeans() {
 		panic(errors.New("AutoWireBeans already called"))
 	}
 
-	// 注册所有的 Method Bean
-	ctx.registerMethodBeans()
+	// 处理 Method Bean 等
+	ctx.registerAllBeans()
 
 	ctx.autoWired = true
 
