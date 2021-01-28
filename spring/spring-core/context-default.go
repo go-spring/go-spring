@@ -22,8 +22,6 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"runtime"
-	"strings"
 	"sync"
 
 	"github.com/go-spring/spring-core/internal/sort"
@@ -144,82 +142,30 @@ func (ctx *applicationContext) registerBeanDefinition(bd *BeanDefinition) {
 	ctx.beanMap[key] = bd
 }
 
-// RegisterBeanDefinition 注册 BeanDefinition 对象，如果需要 Name 请在调用之前准备好。
-func (ctx *applicationContext) RegisterBeanDefinition(bd *BeanDefinition) {
+func (ctx *applicationContext) addBeanDefinition(bd *BeanDefinition) *BeanDefinition {
 	ctx.checkRegistration()
 	ctx.AllBeans = append(ctx.AllBeans, bd)
-}
-
-// RegisterBean 注册单例 Bean，不指定名称，重复注册会 panic。
-func (ctx *applicationContext) RegisterBean(bean interface{}) *BeanDefinition {
-	bd := Bean(bean)
-	ctx.RegisterBeanDefinition(bd)
 	return bd
 }
 
-// RegisterNameBean 注册单例 Bean，需要指定名称，重复注册会 panic。
-func (ctx *applicationContext) RegisterNameBean(name string, bean interface{}) *BeanDefinition {
-	bd := Bean(bean).WithName(name)
-	ctx.RegisterBeanDefinition(bd)
-	return bd
-}
-
-// RegisterBeanFn 注册单例构造函数 Bean，不指定名称，重复注册会 panic。
-func (ctx *applicationContext) RegisterBeanFn(fn interface{}, tags ...string) *BeanDefinition {
-	bd := FuncBean(fn, tags...)
-	ctx.RegisterBeanDefinition(bd)
-	return bd
-}
-
-// RegisterNameBeanFn 注册单例构造函数 Bean，需指定名称，重复注册会 panic。
-func (ctx *applicationContext) RegisterNameBeanFn(name string, fn interface{}, tags ...string) *BeanDefinition {
-	bd := FuncBean(fn, tags...).WithName(name)
-	ctx.RegisterBeanDefinition(bd)
-	return bd
-}
-
-// RegisterMethodBean 注册成员方法单例 Bean，不指定名称，重复注册会 panic。
-// 必须给定方法名而不能通过遍历方法列表比较方法类型的方式获得函数名，因为不同方法的类型可能相同。
-// 而且 interface 的方法类型不带 receiver 而成员方法的类型带有 receiver，两者类型也不好匹配。
-func (ctx *applicationContext) RegisterMethodBean(selector BeanSelector, method string, tags ...string) *BeanDefinition {
-	bd := MethodBean(selector, method, tags...)
-	ctx.RegisterBeanDefinition(bd)
-	return bd
-}
-
-// RegisterNameMethodBean 注册成员方法单例 Bean，需指定名称，重复注册会 panic。
-// 必须给定方法名而不能通过遍历方法列表比较方法类型的方式获得函数名，因为不同方法的类型可能相同。
-// 而且 interface 的方法类型不带 receiver 而成员方法的类型带有 receiver，两者类型也不好匹配。
-func (ctx *applicationContext) RegisterNameMethodBean(name string, selector BeanSelector, method string, tags ...string) *BeanDefinition {
-	bd := MethodBean(selector, method, tags...).WithName(name)
-	ctx.RegisterBeanDefinition(bd)
-	return bd
-}
-
-// @Incubate 注册成员方法单例 Bean，不指定名称，重复注册会 panic。
-// method 形如 ServerInterface.Consumer (接口) 或 (*Server).Consumer (类型)。
-func (ctx *applicationContext) RegisterMethodBeanFn(method interface{}, tags ...string) *BeanDefinition {
-	return ctx.RegisterNameMethodBeanFn("", method, tags...)
-}
-
-// @Incubate 注册成员方法单例 Bean，需指定名称，重复注册会 panic。
-// method 形如 ServerInterface.Consumer (接口) 或 (*Server).Consumer (类型)。
-func (ctx *applicationContext) RegisterNameMethodBeanFn(name string, method interface{}, tags ...string) *BeanDefinition {
-
-	var methodName string
-
-	fnPtr := reflect.ValueOf(method).Pointer()
-	fnInfo := runtime.FuncForPC(fnPtr)
-	s := strings.Split(fnInfo.Name(), "/")
-	ss := strings.Split(s[len(s)-1], ".")
-	if len(ss) == 3 { // 包名.类型名.函数名
-		methodName = ss[2]
-	} else {
-		panic(errors.New("error method func"))
+// Bean 注册单例 Bean，不指定名称。
+func (ctx *applicationContext) Bean(bean interface{}) *BeanDefinition {
+	if bd, ok := bean.(*BeanDefinition); ok {
+		return ctx.addBeanDefinition(bd)
 	}
+	return ctx.addBeanDefinition(Bean(bean))
+}
 
-	parent := reflect.TypeOf(method).In(0)
-	return ctx.RegisterNameMethodBean(name, parent, methodName, tags...)
+// FuncBean 注册单例构造函数 Bean，不指定名称。
+func (ctx *applicationContext) FuncBean(fn interface{}, tags ...string) *BeanDefinition {
+	return ctx.addBeanDefinition(FuncBean(fn, tags...))
+}
+
+// MethodBean 注册成员方法单例 Bean，不指定名称。
+// 必须给定方法名而不能通过遍历方法列表比较方法类型的方式获得函数名，因为不同方法的类型可能相同。
+// 而且 interface 的方法类型不带 receiver 而成员方法的类型带有 receiver，两者类型也不好匹配。
+func (ctx *applicationContext) MethodBean(selector BeanSelector, method string, tags ...string) *BeanDefinition {
+	return ctx.addBeanDefinition(MethodBean(selector, method, tags...))
 }
 
 // GetBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。

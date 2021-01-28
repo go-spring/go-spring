@@ -44,38 +44,16 @@ type ApplicationContext interface {
 	// SetProfile 设置运行环境
 	SetProfile(profile string) ApplicationContext
 
-	// RegisterBean 注册单例 Bean，不指定名称，重复注册会 panic。
-	RegisterBean(bean interface{}) *BeanDefinition
+	// Bean 注册单例 Bean，不指定名称。
+	Bean(bean interface{}) *BeanDefinition
 
-	// RegisterNameBean 注册单例 Bean，需指定名称，重复注册会 panic。
-	RegisterNameBean(name string, bean interface{}) *BeanDefinition
+	// FuncBean 注册单例构造函数 Bean，不指定名称。
+	FuncBean(fn interface{}, tags ...string) *BeanDefinition
 
-	// RegisterBeanFn 注册单例构造函数 Bean，不指定名称，重复注册会 panic。
-	RegisterBeanFn(fn interface{}, tags ...string) *BeanDefinition
-
-	// RegisterNameBeanFn 注册单例构造函数 Bean，需指定名称，重复注册会 panic。
-	RegisterNameBeanFn(name string, fn interface{}, tags ...string) *BeanDefinition
-
-	// RegisterMethodBean 注册成员方法单例 Bean，不指定名称，重复注册会 panic。
+	// MethodBean 注册成员方法单例 Bean，不指定名称。
 	// 必须给定方法名而不能通过遍历方法列表比较方法类型的方式获得函数名，因为不同方法的类型可能相同。
 	// 而且 interface 的方法类型不带 receiver 而成员方法的类型带有 receiver，两者类型也不好匹配。
-	RegisterMethodBean(selector BeanSelector, method string, tags ...string) *BeanDefinition
-
-	// RegisterNameMethodBean 注册成员方法单例 Bean，需指定名称，重复注册会 panic。
-	// 必须给定方法名而不能通过遍历方法列表比较方法类型的方式获得函数名，因为不同方法的类型可能相同。
-	// 而且 interface 的方法类型不带 receiver 而成员方法的类型带有 receiver，两者类型也不好匹配。
-	RegisterNameMethodBean(name string, selector BeanSelector, method string, tags ...string) *BeanDefinition
-
-	// 注册成员方法单例 Bean，不指定名称，重复注册会 panic。
-	// method 形如 ServerInterface.Consumer (接口) 或 (*Server).Consumer (类型)。
-	RegisterMethodBeanFn(method interface{}, tags ...string) *BeanDefinition
-
-	// 注册成员方法单例 Bean，需指定名称，重复注册会 panic。
-	// method 形如 ServerInterface.Consumer (接口) 或 (*Server).Consumer (类型)。
-	RegisterNameMethodBeanFn(name string, method interface{}, tags ...string) *BeanDefinition
-
-	// RegisterBeanDefinition 注册 BeanDefinition 对象。
-	RegisterBeanDefinition(bd *BeanDefinition)
+	MethodBean(selector BeanSelector, method string, tags ...string) *BeanDefinition
 
 	// AutoWireBeans 对所有 Bean 进行依赖注入和属性绑定
 	AutoWireBeans()
