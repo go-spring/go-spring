@@ -516,18 +516,18 @@ func TestBeanDefinition_Match(t *testing.T) {
 		beanName string
 		expect   bool
 	}{
-		{SpringCore.ObjectBean(new(int)), "int", "*int", true},
-		{SpringCore.ObjectBean(new(int)), "", "*int", true},
-		{SpringCore.ObjectBean(new(int)), "int", "", true},
-		{SpringCore.ObjectBean(new(int)).WithName("i"), "int", "i", true},
-		{SpringCore.ObjectBean(new(int)).WithName("i"), "", "i", true},
-		{SpringCore.ObjectBean(new(int)).WithName("i"), "int", "", true},
-		{SpringCore.ObjectBean(new(pkg2.SamePkg)), "github.com/go-spring/spring-core/testdata/pkg/foo/pkg.SamePkg", "*pkg.SamePkg", true},
-		{SpringCore.ObjectBean(new(pkg2.SamePkg)), "", "*pkg.SamePkg", true},
-		{SpringCore.ObjectBean(new(pkg2.SamePkg)), "github.com/go-spring/spring-core/testdata/pkg/foo/pkg.SamePkg", "", true},
-		{SpringCore.ObjectBean(new(pkg2.SamePkg)).WithName("pkg2"), "github.com/go-spring/spring-core/testdata/pkg/foo/pkg.SamePkg", "pkg2", true},
-		{SpringCore.ObjectBean(new(pkg2.SamePkg)).WithName("pkg2"), "", "pkg2", true},
-		{SpringCore.ObjectBean(new(pkg2.SamePkg)).WithName("pkg2"), "github.com/go-spring/spring-core/testdata/pkg/foo/pkg.SamePkg", "pkg2", true},
+		{SpringCore.Bean(new(int)), "int", "*int", true},
+		{SpringCore.Bean(new(int)), "", "*int", true},
+		{SpringCore.Bean(new(int)), "int", "", true},
+		{SpringCore.Bean(new(int)).WithName("i"), "int", "i", true},
+		{SpringCore.Bean(new(int)).WithName("i"), "", "i", true},
+		{SpringCore.Bean(new(int)).WithName("i"), "int", "", true},
+		{SpringCore.Bean(new(pkg2.SamePkg)), "github.com/go-spring/spring-core/testdata/pkg/foo/pkg.SamePkg", "*pkg.SamePkg", true},
+		{SpringCore.Bean(new(pkg2.SamePkg)), "", "*pkg.SamePkg", true},
+		{SpringCore.Bean(new(pkg2.SamePkg)), "github.com/go-spring/spring-core/testdata/pkg/foo/pkg.SamePkg", "", true},
+		{SpringCore.Bean(new(pkg2.SamePkg)).WithName("pkg2"), "github.com/go-spring/spring-core/testdata/pkg/foo/pkg.SamePkg", "pkg2", true},
+		{SpringCore.Bean(new(pkg2.SamePkg)).WithName("pkg2"), "", "pkg2", true},
+		{SpringCore.Bean(new(pkg2.SamePkg)).WithName("pkg2"), "github.com/go-spring/spring-core/testdata/pkg/foo/pkg.SamePkg", "pkg2", true},
 	}
 
 	for i, s := range data {
@@ -542,29 +542,29 @@ func TestObjectBean(t *testing.T) {
 	t.Run("bean can't be nil", func(t *testing.T) {
 
 		SpringUtils.AssertPanic(t, func() {
-			SpringCore.ObjectBean(nil)
+			SpringCore.Bean(nil)
 		}, "bean can't be nil")
 
 		SpringUtils.AssertPanic(t, func() {
 			var i *int
-			SpringCore.ObjectBean(i)
+			SpringCore.Bean(i)
 		}, "bean can't be nil")
 
 		SpringUtils.AssertPanic(t, func() {
 			var m map[string]string
-			SpringCore.ObjectBean(m)
+			SpringCore.Bean(m)
 		}, "bean can't be nil")
 	})
 
 	t.Run("bean must be ref type", func(t *testing.T) {
 
 		data := []func(){
-			func() { SpringCore.ObjectBean([...]int{0}) },
-			func() { SpringCore.ObjectBean(false) },
-			func() { SpringCore.ObjectBean(3) },
-			func() { SpringCore.ObjectBean("3") },
-			func() { SpringCore.ObjectBean(BeanZero{}) },
-			func() { SpringCore.ObjectBean(pkg2.SamePkg{}) },
+			func() { SpringCore.Bean([...]int{0}) },
+			func() { SpringCore.Bean(false) },
+			func() { SpringCore.Bean(3) },
+			func() { SpringCore.Bean("3") },
+			func() { SpringCore.Bean(BeanZero{}) },
+			func() { SpringCore.Bean(pkg2.SamePkg{}) },
 		}
 
 		for _, fn := range data {
@@ -573,12 +573,12 @@ func TestObjectBean(t *testing.T) {
 	})
 
 	t.Run("valid bean", func(t *testing.T) {
-		SpringCore.ObjectBean(make(chan int))
-		SpringCore.ObjectBean(func() {})
-		SpringCore.ObjectBean(make(map[string]int))
-		SpringCore.ObjectBean(new(int))
-		SpringCore.ObjectBean(&BeanZero{})
-		SpringCore.ObjectBean(make([]int, 0))
+		SpringCore.Bean(make(chan int))
+		SpringCore.Bean(func() {})
+		SpringCore.Bean(make(map[string]int))
+		SpringCore.Bean(new(int))
+		SpringCore.Bean(&BeanZero{})
+		SpringCore.Bean(make([]int, 0))
 	})
 
 	t.Run("check name && typename", func(t *testing.T) {
@@ -587,29 +587,29 @@ func TestObjectBean(t *testing.T) {
 			name     string
 			typeName string
 		}{
-			SpringCore.ObjectBean(io.Writer(os.Stdout)): {
+			SpringCore.Bean(io.Writer(os.Stdout)): {
 				"*os.File", "os/os.File",
 			},
 
-			SpringCore.ObjectBean(newHistoryTeacher("")): {
+			SpringCore.Bean(newHistoryTeacher("")): {
 				"*SpringCore_test.historyTeacher",
 				"github.com/go-spring/spring-core_test/SpringCore_test.historyTeacher",
 			},
 
-			SpringCore.ObjectBean(new(int)): {
+			SpringCore.Bean(new(int)): {
 				"*int", "int",
 			},
 
-			SpringCore.ObjectBean(new(int)).WithName("i"): {
+			SpringCore.Bean(new(int)).WithName("i"): {
 				"i", "int",
 			},
 
-			SpringCore.ObjectBean(new(pkg2.SamePkg)): {
+			SpringCore.Bean(new(pkg2.SamePkg)): {
 				"*pkg.SamePkg",
 				"github.com/go-spring/spring-core/testdata/pkg/foo/pkg.SamePkg",
 			},
 
-			SpringCore.ObjectBean(new(pkg2.SamePkg)).WithName("pkg2"): {
+			SpringCore.Bean(new(pkg2.SamePkg)).WithName("pkg2"): {
 				"pkg2",
 				"github.com/go-spring/spring-core/testdata/pkg/foo/pkg.SamePkg",
 			},
@@ -663,40 +663,40 @@ func NewPtrStudent(teacher Teacher, room string) *Student {
 
 func TestConstructorBean(t *testing.T) {
 
-	bd := SpringCore.ConstructorBean(NewStudent)
+	bd := SpringCore.FuncBean(NewStudent)
 	SpringUtils.AssertEqual(t, bd.Type().String(), "*SpringCore_test.Student")
 
-	bd = SpringCore.ConstructorBean(NewPtrStudent)
+	bd = SpringCore.FuncBean(NewPtrStudent)
 	SpringUtils.AssertEqual(t, bd.Type().String(), "*SpringCore_test.Student")
 
 	mapFn := func() map[int]string { return make(map[int]string) }
-	bd = SpringCore.ConstructorBean(mapFn)
+	bd = SpringCore.FuncBean(mapFn)
 	SpringUtils.AssertEqual(t, bd.Type().String(), "map[int]string")
 
 	sliceFn := func() []int { return make([]int, 1) }
-	bd = SpringCore.ConstructorBean(sliceFn)
+	bd = SpringCore.FuncBean(sliceFn)
 	SpringUtils.AssertEqual(t, bd.Type().String(), "[]int")
 
 	funcFn := func() func(int) { return nil }
-	bd = SpringCore.ConstructorBean(funcFn)
+	bd = SpringCore.FuncBean(funcFn)
 	SpringUtils.AssertEqual(t, bd.Type().String(), "func(int)")
 
 	intFn := func() int { return 0 }
-	bd = SpringCore.ConstructorBean(intFn)
+	bd = SpringCore.FuncBean(intFn)
 	SpringUtils.AssertEqual(t, bd.Type().String(), "*int")
 	SpringUtils.AssertEqual(t, bd.Value().Type().String(), "*int")
 
 	interfaceFn := func(name string) Teacher { return newHistoryTeacher(name) }
-	bd = SpringCore.ConstructorBean(interfaceFn)
+	bd = SpringCore.FuncBean(interfaceFn)
 	SpringUtils.AssertEqual(t, bd.Type().String(), "SpringCore_test.Teacher")
 	SpringUtils.AssertEqual(t, bd.Value().Type().String(), "SpringCore_test.Teacher")
 
 	SpringUtils.AssertPanic(t, func() {
-		bd = SpringCore.ConstructorBean(func() (*int, *int) { return nil, nil })
+		bd = SpringCore.FuncBean(func() (*int, *int) { return nil, nil })
 		SpringUtils.AssertEqual(t, bd.Type().String(), "*int")
 	}, "func bean must be func\\(...\\)bean or func\\(...\\)\\(bean, error\\)")
 
-	bd = SpringCore.ConstructorBean(func() (*int, error) { return nil, nil })
+	bd = SpringCore.FuncBean(func() (*int, error) { return nil, nil })
 	SpringUtils.AssertEqual(t, bd.Type().String(), "*int")
 }
 

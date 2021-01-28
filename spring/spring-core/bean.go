@@ -757,13 +757,13 @@ func ValueToBeanDefinition(v reflect.Value) *BeanDefinition {
 	return newBeanDefinition(newObjectBean(v))
 }
 
-// ObjectBean 将 Bean 转换为 BeanDefinition 对象
-func ObjectBean(i interface{}) *BeanDefinition {
+// Bean 将 Bean 转换为 BeanDefinition 对象
+func Bean(i interface{}) *BeanDefinition {
 	return ValueToBeanDefinition(reflect.ValueOf(i))
 }
 
-// ConstructorBean 将构造函数转换为 BeanDefinition 对象
-func ConstructorBean(fn interface{}, tags ...string) *BeanDefinition {
+// FuncBean 将构造函数转换为 BeanDefinition 对象
+func FuncBean(fn interface{}, tags ...string) *BeanDefinition {
 	return newBeanDefinition(newConstructorBean(fn, tags))
 }
 

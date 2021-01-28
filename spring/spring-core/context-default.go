@@ -157,28 +157,28 @@ func (ctx *applicationContext) RegisterBeanDefinition(bd *BeanDefinition) {
 
 // RegisterBean 注册单例 Bean，不指定名称，重复注册会 panic。
 func (ctx *applicationContext) RegisterBean(bean interface{}) *BeanDefinition {
-	bd := ObjectBean(bean)
+	bd := Bean(bean)
 	ctx.RegisterBeanDefinition(bd)
 	return bd
 }
 
 // RegisterNameBean 注册单例 Bean，需要指定名称，重复注册会 panic。
 func (ctx *applicationContext) RegisterNameBean(name string, bean interface{}) *BeanDefinition {
-	bd := ObjectBean(bean).WithName(name)
+	bd := Bean(bean).WithName(name)
 	ctx.RegisterBeanDefinition(bd)
 	return bd
 }
 
 // RegisterBeanFn 注册单例构造函数 Bean，不指定名称，重复注册会 panic。
 func (ctx *applicationContext) RegisterBeanFn(fn interface{}, tags ...string) *BeanDefinition {
-	bd := ConstructorBean(fn, tags...)
+	bd := FuncBean(fn, tags...)
 	ctx.RegisterBeanDefinition(bd)
 	return bd
 }
 
 // RegisterNameBeanFn 注册单例构造函数 Bean，需指定名称，重复注册会 panic。
 func (ctx *applicationContext) RegisterNameBeanFn(name string, fn interface{}, tags ...string) *BeanDefinition {
-	bd := ConstructorBean(fn, tags...).WithName(name)
+	bd := FuncBean(fn, tags...).WithName(name)
 	ctx.RegisterBeanDefinition(bd)
 	return bd
 }
@@ -637,7 +637,7 @@ func (ctx *applicationContext) WireBean(i interface{}) {
 		}
 	}()
 
-	assembly.wireBeanDefinition(ObjectBean(i), false)
+	assembly.wireBeanDefinition(Bean(i), false)
 }
 
 // GetBeanDefinitions 获取所有 Bean 的定义，不能保证解析和注入，请谨慎使用该函数!
