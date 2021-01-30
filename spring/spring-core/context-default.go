@@ -22,6 +22,8 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"runtime"
+	"strings"
 	"sync"
 
 	"github.com/go-spring/spring-core/internal/sort"
@@ -142,30 +144,47 @@ func (ctx *applicationContext) registerBeanDefinition(bd *BeanDefinition) {
 	ctx.beanMap[key] = bd
 }
 
-func (ctx *applicationContext) addBeanDefinition(bd *BeanDefinition) *BeanDefinition {
+func (ctx *applicationContext) Bean(bd *BeanDefinition) *BeanDefinition {
 	ctx.checkRegistration()
 	ctx.AllBeans = append(ctx.AllBeans, bd)
 	return bd
 }
 
-// Bean 注册单例 Bean，不指定名称。
-func (ctx *applicationContext) Bean(bean interface{}) *BeanDefinition {
-	if bd, ok := bean.(*BeanDefinition); ok {
-		return ctx.addBeanDefinition(bd)
-	}
-	return ctx.addBeanDefinition(Bean(bean))
+// ObjBean 注册单例 Bean，不指定名称，重复注册会 panic。
+func (ctx *applicationContext) ObjBean(bean interface{}) *BeanDefinition {
+	return ctx.Bean(ObjBean(bean))
 }
 
-// FuncBean 注册单例构造函数 Bean，不指定名称。
-func (ctx *applicationContext) FuncBean(fn interface{}, tags ...string) *BeanDefinition {
-	return ctx.addBeanDefinition(FuncBean(fn, tags...))
+// CtorBean 注册单例构造函数 Bean，不指定名称。
+func (ctx *applicationContext) CtorBean(fn interface{}, tags ...string) *BeanDefinition {
+	return ctx.Bean(CtorBean(fn, tags...))
 }
 
 // MethodBean 注册成员方法单例 Bean，不指定名称。
 // 必须给定方法名而不能通过遍历方法列表比较方法类型的方式获得函数名，因为不同方法的类型可能相同。
 // 而且 interface 的方法类型不带 receiver 而成员方法的类型带有 receiver，两者类型也不好匹配。
 func (ctx *applicationContext) MethodBean(selector BeanSelector, method string, tags ...string) *BeanDefinition {
-	return ctx.addBeanDefinition(MethodBean(selector, method, tags...))
+	return ctx.Bean(MethodBean(selector, method, tags...))
+}
+
+// MethodBeanFn 注册成员方法单例 Bean，需指定名称，重复注册会 panic。
+// method 形如 ServerInterface.Consumer (接口) 或 (*Server).Consumer (类型)。
+func (ctx *applicationContext) MethodBeanFn(method interface{}, tags ...string) *BeanDefinition {
+
+	var methodName string
+
+	fnPtr := reflect.ValueOf(method).Pointer()
+	fnInfo := runtime.FuncForPC(fnPtr)
+	s := strings.Split(fnInfo.Name(), "/")
+	ss := strings.Split(s[len(s)-1], ".")
+	if len(ss) == 3 { // 包名.类型名.函数名
+		methodName = ss[2]
+	} else {
+		panic(errors.New("error method func"))
+	}
+
+	parent := reflect.TypeOf(method).In(0)
+	return ctx.Bean(MethodBean(parent, methodName, tags...))
 }
 
 // GetBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
@@ -582,7 +601,7 @@ func (ctx *applicationContext) WireBean(i interface{}) {
 		}
 	}()
 
-	assembly.wireBeanDefinition(Bean(i), false)
+	assembly.wireBeanDefinition(ObjBean(i), false)
 }
 
 // GetBeanDefinitions 获取所有 Bean 的定义，不能保证解析和注入，请谨慎使用该函数!
