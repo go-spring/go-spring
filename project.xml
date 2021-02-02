@@ -150,4 +150,16 @@
         <url>https://github.com/go-spring/spring-cond.git</url>
         <branch>main</branch>
     </project>
+    <project>
+        <name>spring-properties</name>
+        <dir>spring/spring-properties</dir>
+        <url>https://github.com/go-spring/spring-properties.git</url>
+        <branch>main</branch>
+    </project>
+    <project>
+        <name>spring-swagger</name>
+        <dir>spring/spring-swagger</dir>
+        <url>https://github.com/go-spring/spring-swagger.git</url>
+        <branch>main</branch>
+    </project>
 </projects>
