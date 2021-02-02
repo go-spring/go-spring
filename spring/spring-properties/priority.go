@@ -38,7 +38,7 @@ func (p *priorityProperties) Has(key string) bool {
 }
 
 // Bind 根据类型获取属性值，属性名称统一转成小写。
-func (p *priorityProperties) Bind(key string, i interface{}) {
+func (p *priorityProperties) Bind(key string, i interface{}) error {
 	panic(SpringConst.UnimplementedMethod)
 }
 

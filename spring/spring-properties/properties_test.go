@@ -499,36 +499,30 @@ func TestDefaultProperties_ReadProperties_Toml(t *testing.T) {
 	})
 }
 
-func PointConverter(val string) image.Point {
+func PointConverter(val string) (image.Point, error) {
 	if !(strings.HasPrefix(val, "(") && strings.HasSuffix(val, ")")) {
-		panic(errors.New("数据格式错误"))
+		return image.Point{}, errors.New("数据格式错误")
 	}
 	ss := strings.Split(val[1:len(val)-1], ",")
 	x := cast.ToInt(ss[0])
 	y := cast.ToInt(ss[1])
-	return image.Point{X: x, Y: y}
+	return image.Point{X: x, Y: y}, nil
 }
 
 func TestRegisterTypeConverter(t *testing.T) {
 	p := SpringProperties.New()
 
-	SpringUtils.AssertPanic(t, func() { // 不是函数
-		p.Convert(3)
-	}, "fn must be func\\(string\\)type")
+	err := p.Convert(3)
+	SpringUtils.AssertEqual(t, err, errors.New("fn must be func(string)(type,error)"))
 
-	SpringUtils.AssertPanic(t, func() { // 入参太多
-		p.Convert(func(_ string, _ string) image.Point {
-			return image.Point{}
-		})
-	}, "fn must be func\\(string\\)type")
+	err = p.Convert(func(_ string, _ string) (image.Point, error) { return image.Point{}, nil })
+	SpringUtils.AssertEqual(t, err, errors.New("fn must be func(string)(type,error)"))
 
-	SpringUtils.AssertPanic(t, func() { // 返回值太多
-		p.Convert(func(_ string) (image.Point, image.Point) {
-			return image.Point{}, image.Point{}
-		})
-	}, "fn must be func\\(string\\)type")
+	err = p.Convert(func(_ string) (image.Point, image.Point, error) { return image.Point{}, image.Point{}, nil })
+	SpringUtils.AssertEqual(t, err, errors.New("fn must be func(string)(type,error)"))
 
-	p.Convert(PointConverter)
+	err = p.Convert(PointConverter)
+	SpringUtils.AssertEqual(t, err, nil)
 }
 
 func TestDefaultProperties_GetProperty(t *testing.T) {
@@ -773,10 +767,9 @@ func TestDefaultProperties_ConfigRef(t *testing.T) {
 	var httpLog struct{ fileLog }
 
 	t.Run("not config", func(t *testing.T) {
-		SpringUtils.AssertPanic(t, func() {
-			p := SpringProperties.New()
-			p.Bind("", &httpLog)
-		}, "property \\\"app.dir\\\" not config")
+		p := SpringProperties.New()
+		err := p.Bind("", &httpLog)
+		SpringUtils.AssertEqual(t, err, errors.New("property \"app.dir\" not config"))
 	})
 
 	t.Run("config", func(t *testing.T) {

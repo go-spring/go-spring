@@ -31,20 +31,23 @@ import (
 	"github.com/spf13/viper"
 )
 
-// Converter 类型转换器，函数原型 func(string)type
+// errorType error 的反射类型
+var errorType = reflect.TypeOf((*error)(nil)).Elem()
+
+// Converter 类型转换器，函数原型 func(string)(type,error)
 type Converter interface{}
 
 // Properties 定义属性值接口
 type Properties interface {
 
 	// Load 加载属性配置，支持 properties、yaml 和 toml 三种文件格式。
-	Load(filename string)
+	Load(filename string) error
 
 	// Read 读取属性配置，支持 properties、yaml 和 toml 三种文件格式。
-	Read(reader io.Reader, configType string)
+	Read(reader io.Reader, configType string) error
 
 	// Convert 添加类型转换器
-	Convert(fn Converter)
+	Convert(fn Converter) error
 
 	// Converters 返回类型转换器集合
 	Converters() map[reflect.Type]Converter
@@ -53,7 +56,7 @@ type Properties interface {
 	Has(key string) bool
 
 	// Bind 根据类型获取属性值，属性名称统一转成小写。
-	Bind(key string, i interface{})
+	Bind(key string, i interface{}) error
 
 	// Get 返回属性值，没有找到则返回默认值，属性名称统一转成小写。
 	Get(key string, def ...interface{}) interface{}
@@ -87,48 +90,41 @@ func New() *defaultProperties {
 
 	// 注册时长转换函数 string -> time.Duration converter
 	// time units are "ns", "us" (or "µs"), "ms", "s", "m", "h"。
-	p.Convert(func(s string) time.Duration {
-		r, err := cast.ToDurationE(s)
-		SpringUtils.Panic(err).When(err != nil)
-		return r
-	})
+	_ = p.Convert(func(s string) (time.Duration, error) { return cast.ToDurationE(s) })
 
 	// 注册日期转换函数 string -> time.Time converter
 	// 支持非常多的日期格式，参见 cast.StringToDate。
-	p.Convert(func(s string) time.Time {
-		r, err := cast.ToTimeE(s)
-		SpringUtils.Panic(err).When(err != nil)
-		return r
-	})
+	_ = p.Convert(func(s string) (time.Time, error) { return cast.ToTimeE(s) })
 
 	return p
 }
 
 // Load 加载属性配置，支持 properties、yaml 和 toml 三种文件格式。
-func (p *defaultProperties) Load(filename string) {
+func (p *defaultProperties) Load(filename string) error {
 	SpringLogger.Debug("load properties from file: ", filename)
 
-	p.read(func(v *viper.Viper) error {
+	return p.read(func(v *viper.Viper) error {
 		v.SetConfigFile(filename)
 		return v.ReadInConfig()
 	})
 }
 
 // Read 读取属性配置，支持 properties、yaml 和 toml 三种文件格式。
-func (p *defaultProperties) Read(reader io.Reader, configType string) {
+func (p *defaultProperties) Read(reader io.Reader, configType string) error {
 	SpringLogger.Debug("load properties from reader type: ", configType)
 
-	p.read(func(v *viper.Viper) error {
+	return p.read(func(v *viper.Viper) error {
 		v.SetConfigType(configType)
 		return v.ReadConfig(reader)
 	})
 }
 
-func (p *defaultProperties) read(reader func(*viper.Viper) error) {
+func (p *defaultProperties) read(reader func(*viper.Viper) error) error {
 
 	v := viper.New()
-	err := reader(v)
-	SpringUtils.Panic(err).When(err != nil)
+	if err := reader(v); err != nil {
+		return err
+	}
 
 	keys := v.AllKeys()
 	sort.Strings(keys)
@@ -138,31 +134,30 @@ func (p *defaultProperties) read(reader func(*viper.Viper) error) {
 		p.Set(key, val)
 		SpringLogger.Tracef("%s=%v", key, val)
 	}
+	return nil
 }
 
-// validTypeConverter 返回是否是合法的类型转换器，类型转换器要求：
-// 必须是函数，且只能有一个字符串类型的输入参数和一个值类型的输出参数。
-func validTypeConverter(t reflect.Type) bool {
+// validConverter 返回是否是合法的类型转换器。
+func validConverter(t reflect.Type) bool {
 
-	// 必须是函数 && 只能有一个输入参数 && 只能有一个输出参数
-	if t.Kind() != reflect.Func || t.NumIn() != 1 || t.NumOut() != 1 {
+	if t.Kind() != reflect.Func || t.NumIn() != 1 || t.NumOut() != 2 {
 		return false
 	}
 
-	inType := t.In(0)
-	outType := t.Out(0)
+	if t.In(0).Kind() != reflect.String {
+		return false
+	}
 
-	// 输入参数必须是字符串类型 && 输出参数必须是值类型
-	return inType.Kind() == reflect.String && SpringUtils.IsValueType(outType.Kind())
+	return SpringUtils.IsValueType(t.Out(0).Kind()) && t.Out(1) == errorType
 }
 
 // Convert 添加类型转换器
-func (p *defaultProperties) Convert(fn Converter) {
-	if t := reflect.TypeOf(fn); validTypeConverter(t) {
+func (p *defaultProperties) Convert(fn Converter) error {
+	if t := reflect.TypeOf(fn); validConverter(t) {
 		p.converters[t.Out(0)] = fn
-	} else {
-		panic(errors.New("fn must be func(string)type"))
+		return nil
 	}
+	return errors.New("fn must be func(string)(type,error)")
 }
 
 // Converters 返回类型转换器集合
@@ -236,7 +231,7 @@ type BindOption struct {
 }
 
 // BindStruct 对结构体进行属性值绑定
-func BindStruct(p Properties, v reflect.Value, opt BindOption) {
+func BindStruct(p Properties, v reflect.Value, opt BindOption) error {
 	t := v.Type()
 	for i := 0; i < t.NumField(); i++ {
 		ft := t.Field(i)
@@ -254,15 +249,20 @@ func BindStruct(p Properties, v reflect.Value, opt BindOption) {
 		}
 
 		if tag, ok := ft.Tag.Lookup("value"); ok {
-			BindStructField(p, fv, tag, subOpt)
+			if err := BindStructField(p, fv, tag, subOpt); err != nil {
+				return err
+			}
 			continue
 		}
 
 		// 匿名嵌套需要处理，不是结构体的具名字段无需处理
 		if ft.Anonymous || ft.Type.Kind() == reflect.Struct {
-			BindStruct(p, fv, subOpt)
+			if err := BindStruct(p, fv, subOpt); err != nil {
+				return err
+			}
 		}
 	}
+	return nil
 }
 
 // parsePropertyTag 解析属性值标签
@@ -276,16 +276,16 @@ func parsePropertyTag(str string) (key string, def interface{}) {
 }
 
 // BindStructField 对结构体的字段进行属性绑定
-func BindStructField(p Properties, v reflect.Value, str string, opt BindOption) {
+func BindStructField(p Properties, v reflect.Value, str string, opt BindOption) error {
 
 	// 检查 tag 语法是否正确
 	if !(strings.HasPrefix(str, "${") && strings.HasSuffix(str, "}")) {
-		panic(fmt.Errorf("%s 属性绑定的语法发生错误", opt.fieldName))
+		return fmt.Errorf("%s 属性绑定的语法发生错误", opt.fieldName)
 	}
 
 	// 指针不能作为属性绑定的目标
 	if v.Kind() == reflect.Ptr {
-		panic(fmt.Errorf("%s 属性绑定的目标不能是指针", opt.fieldName))
+		return fmt.Errorf("%s 属性绑定的目标不能是指针", opt.fieldName)
 	}
 
 	key, def := parsePropertyTag(str[2 : len(str)-1])
@@ -302,16 +302,16 @@ func BindStructField(p Properties, v reflect.Value, str string, opt BindOption) 
 		key = opt.propNamePrefix + "." + key
 	}
 
-	BindValue(p, v, key, def, opt)
+	return BindValue(p, v, key, def, opt)
 }
 
 // ResolveProperty 解析属性值，查看其是否具有引用关系
-func ResolveProperty(p Properties, _ string, value interface{}) interface{} {
+func ResolveProperty(p Properties, _ string, value interface{}) (interface{}, error) {
 	str, ok := value.(string)
 
 	// 不是字符串或者没有使用配置引用语法
 	if !ok || !strings.HasPrefix(str, "${") {
-		return value
+		return value, nil
 	}
 
 	key, def := parsePropertyTag(str[2 : len(str)-1])
@@ -319,20 +319,20 @@ func ResolveProperty(p Properties, _ string, value interface{}) interface{} {
 		return ResolveProperty(p, key, val)
 	}
 
-	panic(fmt.Errorf("property \"%s\" not config", key))
+	return nil, fmt.Errorf("property \"%s\" not config", key)
 }
 
-func getPropertyValue(p Properties, kind reflect.Kind, key string, def interface{}, opt BindOption) interface{} {
+func getPropertyValue(p Properties, kind reflect.Kind, key string, def interface{}, opt BindOption) (interface{}, error) {
 
 	// 首先获取精确匹配的属性值
 	if val := p.Get(key); val != nil {
-		return val
+		return val, nil
 	}
 
 	// Map 和 Struct 类型获取具有相同前缀的属性值
 	if kind == reflect.Map || kind == reflect.Struct {
 		if prefixValue := p.Prefix(key); len(prefixValue) > 0 {
-			return prefixValue
+			return prefixValue, nil
 		}
 	}
 
@@ -341,69 +341,73 @@ func getPropertyValue(p Properties, kind reflect.Kind, key string, def interface
 		return ResolveProperty(p, key, def)
 	}
 
-	panic(fmt.Errorf("%s properties \"%s\" not config", opt.fieldName, opt.fullPropName))
+	return nil, fmt.Errorf("%s properties \"%s\" not config", opt.fieldName, opt.fullPropName)
 }
 
 // BindValue 对任意 value 进行属性绑定
-func BindValue(p Properties, v reflect.Value, key string, def interface{}, opt BindOption) {
+func BindValue(p Properties, v reflect.Value, key string, def interface{}, opt BindOption) error {
 
 	t := v.Type()
 	k := t.Kind()
 
 	// 存在值类型转换器的情况下结构体优先使用属性值绑定
 	if fn, ok := p.Converters()[t]; ok {
-		propValue := getPropertyValue(p, k, key, def, opt)
-		fnValue := reflect.ValueOf(fn)
-		out := fnValue.Call([]reflect.Value{reflect.ValueOf(propValue)})
-		v.Set(out[0])
-		return
+		propValue, err := getPropertyValue(p, k, key, def, opt)
+		if err == nil {
+			fnValue := reflect.ValueOf(fn)
+			out := fnValue.Call([]reflect.Value{reflect.ValueOf(propValue)})
+			v.Set(out[0])
+		}
+		return err
 	}
 
 	if k == reflect.Struct {
 		if def == nil {
-			BindStruct(p, v, BindOption{
+			return BindStruct(p, v, BindOption{
 				propNamePrefix: key,
 				fullPropName:   opt.fullPropName,
 				fieldName:      opt.fieldName,
 			})
-			return
 		} else { // 前面已经校验过是否存在值类型转换器
-			panic(fmt.Errorf("%s 结构体字段不能指定默认值", opt.fieldName))
+			return fmt.Errorf("%s 结构体字段不能指定默认值", opt.fieldName)
 		}
 	}
 
-	propValue := getPropertyValue(p, k, key, def, opt)
+	propValue, err := getPropertyValue(p, k, key, def, opt)
+	if err != nil {
+		return err
+	}
 
 	switch k {
 	case reflect.Uint64, reflect.Uint32, reflect.Uint16, reflect.Uint8, reflect.Uint:
 		if u, err := cast.ToUint64E(propValue); err == nil {
 			v.SetUint(u)
 		} else {
-			panic(fmt.Errorf("property value %s isn't uint type", opt.fullPropName))
+			return fmt.Errorf("property value %s isn't uint type", opt.fullPropName)
 		}
 	case reflect.Int64, reflect.Int32, reflect.Int16, reflect.Int8, reflect.Int:
 		if i, err := cast.ToInt64E(propValue); err == nil {
 			v.SetInt(i)
 		} else {
-			panic(fmt.Errorf("property value %s isn't int type", opt.fullPropName))
+			return fmt.Errorf("property value %s isn't int type", opt.fullPropName)
 		}
 	case reflect.Float64, reflect.Float32:
 		if f, err := cast.ToFloat64E(propValue); err == nil {
 			v.SetFloat(f)
 		} else {
-			panic(fmt.Errorf("property value %s isn't float type", opt.fullPropName))
+			return fmt.Errorf("property value %s isn't float type", opt.fullPropName)
 		}
 	case reflect.String:
 		if s, err := cast.ToStringE(propValue); err == nil {
 			v.SetString(s)
 		} else {
-			panic(fmt.Errorf("property value %s isn't string type", opt.fullPropName))
+			return fmt.Errorf("property value %s isn't string type", opt.fullPropName)
 		}
 	case reflect.Bool:
 		if b, err := cast.ToBoolE(propValue); err == nil {
 			v.SetBool(b)
 		} else {
-			panic(fmt.Errorf("property value %s isn't bool type", opt.fullPropName))
+			return fmt.Errorf("property value %s isn't bool type", opt.fullPropName)
 		}
 	case reflect.Slice:
 		elemType := v.Type().Elem()
@@ -424,9 +428,9 @@ func BindValue(p Properties, v reflect.Value, key string, def interface{}, opt B
 					sv.Index(i).Set(res[0])
 				}
 				v.Set(sv)
-				return
+				return nil
 			} else {
-				panic(fmt.Errorf("property value %s isn't []string type", opt.fullPropName))
+				return fmt.Errorf("property value %s isn't []string type", opt.fullPropName)
 			}
 		}
 
@@ -435,75 +439,75 @@ func BindValue(p Properties, v reflect.Value, key string, def interface{}, opt B
 			if i, err := ToUint64SliceE(propValue); err == nil {
 				v.Set(reflect.ValueOf(i))
 			} else {
-				panic(fmt.Errorf("property value %s isn't []uint64 type", opt.fullPropName))
+				return fmt.Errorf("property value %s isn't []uint64 type", opt.fullPropName)
 			}
 		case reflect.Uint32:
 			if i, err := ToUint32SliceE(propValue); err == nil {
 				v.Set(reflect.ValueOf(i))
 			} else {
-				panic(fmt.Errorf("property value %s isn't []uint32 type", opt.fullPropName))
+				return fmt.Errorf("property value %s isn't []uint32 type", opt.fullPropName)
 			}
 		case reflect.Uint16:
 			if i, err := ToUint16SliceE(propValue); err == nil {
 				v.Set(reflect.ValueOf(i))
 			} else {
-				panic(fmt.Errorf("property value %s isn't []uint16 type", opt.fullPropName))
+				return fmt.Errorf("property value %s isn't []uint16 type", opt.fullPropName)
 			}
 		case reflect.Uint8:
 			if i, err := ToUint8SliceE(propValue); err == nil {
 				v.Set(reflect.ValueOf(i))
 			} else {
-				panic(fmt.Errorf("property value %s isn't []uint8 type", opt.fullPropName))
+				return fmt.Errorf("property value %s isn't []uint8 type", opt.fullPropName)
 			}
 		case reflect.Uint:
 			if i, err := ToUintSliceE(propValue); err == nil {
 				v.Set(reflect.ValueOf(i))
 			} else {
-				panic(fmt.Errorf("property value %s isn't []uint type", opt.fullPropName))
+				return fmt.Errorf("property value %s isn't []uint type", opt.fullPropName)
 			}
 		case reflect.Int64:
 			if i, err := ToInt64SliceE(propValue); err == nil {
 				v.Set(reflect.ValueOf(i))
 			} else {
-				panic(fmt.Errorf("property value %s isn't []int64 type", opt.fullPropName))
+				return fmt.Errorf("property value %s isn't []int64 type", opt.fullPropName)
 			}
 		case reflect.Int32:
 			if i, err := ToInt32SliceE(propValue); err == nil {
 				v.Set(reflect.ValueOf(i))
 			} else {
-				panic(fmt.Errorf("property value %s isn't []int32 type", opt.fullPropName))
+				return fmt.Errorf("property value %s isn't []int32 type", opt.fullPropName)
 			}
 		case reflect.Int16:
 			if i, err := ToInt16SliceE(propValue); err == nil {
 				v.Set(reflect.ValueOf(i))
 			} else {
-				panic(fmt.Errorf("property value %s isn't []int16 type", opt.fullPropName))
+				return fmt.Errorf("property value %s isn't []int16 type", opt.fullPropName)
 			}
 		case reflect.Int8:
 			if i, err := ToInt8SliceE(propValue); err == nil {
 				v.Set(reflect.ValueOf(i))
 			} else {
-				panic(fmt.Errorf("property value %s isn't []int8 type", opt.fullPropName))
+				return fmt.Errorf("property value %s isn't []int8 type", opt.fullPropName)
 			}
 		case reflect.Int:
 			if i, err := ToIntSliceE(propValue); err == nil {
 				v.Set(reflect.ValueOf(i))
 			} else {
-				panic(fmt.Errorf("property value %s isn't []int type", opt.fullPropName))
+				return fmt.Errorf("property value %s isn't []int type", opt.fullPropName)
 			}
 		case reflect.Float64, reflect.Float32:
-			panic(errors.New("暂未支持"))
+			return errors.New("暂未支持")
 		case reflect.String:
 			if i, err := cast.ToStringSliceE(propValue); err == nil {
 				v.Set(reflect.ValueOf(i))
 			} else {
-				panic(fmt.Errorf("property value %s isn't []string type", opt.fullPropName))
+				return fmt.Errorf("property value %s isn't []string type", opt.fullPropName)
 			}
 		case reflect.Bool:
 			if b, err := cast.ToBoolSliceE(propValue); err == nil {
 				v.Set(reflect.ValueOf(b))
 			} else {
-				panic(fmt.Errorf("property value %s isn't []bool type", opt.fullPropName))
+				return fmt.Errorf("property value %s isn't []bool type", opt.fullPropName)
 			}
 		default:
 			// 处理结构体字段的场景
@@ -513,23 +517,26 @@ func BindValue(p Properties, v reflect.Value, key string, def interface{}, opt B
 					if sv, err := cast.ToStringMapE(si); err == nil {
 						ev := reflect.New(elemType)
 						subFullPropName := fmt.Sprintf("%s[%d]", key, i)
-						BindStruct(&defaultProperties{sv, p.Converters()}, ev.Elem(), BindOption{
+						err = BindStruct(&defaultProperties{sv, p.Converters()}, ev.Elem(), BindOption{
 							fullPropName: subFullPropName,
 							fieldName:    opt.fieldName,
 						})
+						if err != nil {
+							return err
+						}
 						result.Index(i).Set(ev.Elem())
 					} else {
-						panic(fmt.Errorf("property value %s isn't []map[string]interface{}", opt.fullPropName))
+						return fmt.Errorf("property value %s isn't []map[string]interface{}", opt.fullPropName)
 					}
 				}
 				v.Set(result)
 			} else {
-				panic(fmt.Errorf("property value %s isn't []map[string]interface{}", opt.fullPropName))
+				return fmt.Errorf("property value %s isn't []map[string]interface{}", opt.fullPropName)
 			}
 		}
 	case reflect.Map:
 		if t.Key().Kind() != reflect.String {
-			panic(fmt.Errorf("field: %s isn't map[string]interface{}", opt.fieldName))
+			return fmt.Errorf("field: %s isn't map[string]interface{}", opt.fieldName)
 		}
 
 		elemType := t.Elem()
@@ -547,21 +554,21 @@ func BindValue(p Properties, v reflect.Value, key string, def interface{}, opt B
 					result.SetMapIndex(reflect.ValueOf(k0), res[0])
 				}
 				v.Set(result)
-				return
+				return nil
 			} else {
-				panic(fmt.Errorf("property value %s isn't map[string]string", opt.fullPropName))
+				return fmt.Errorf("property value %s isn't map[string]string", opt.fullPropName)
 			}
 		}
 
 		switch elemKind {
 		case reflect.Uint64, reflect.Uint32, reflect.Uint16, reflect.Uint8, reflect.Uint:
-			panic(errors.New("暂未支持"))
+			return errors.New("暂未支持")
 		case reflect.Int64, reflect.Int32, reflect.Int16, reflect.Int8, reflect.Int:
-			panic(errors.New("暂未支持"))
+			return errors.New("暂未支持")
 		case reflect.Float64, reflect.Float32:
-			panic(errors.New("暂未支持"))
+			return errors.New("暂未支持")
 		case reflect.Bool:
-			panic(errors.New("暂未支持"))
+			return errors.New("暂未支持")
 		case reflect.String:
 			if mapValue, err := cast.ToStringMapStringE(propValue); err == nil {
 				prefix := key + "."
@@ -572,7 +579,7 @@ func BindValue(p Properties, v reflect.Value, key string, def interface{}, opt B
 				}
 				v.Set(reflect.ValueOf(result))
 			} else {
-				panic(fmt.Errorf("property value %s isn't map[string]string", opt.fullPropName))
+				return fmt.Errorf("property value %s isn't map[string]string", opt.fullPropName)
 			}
 		default:
 			// 处理结构体字段的场景
@@ -597,29 +604,33 @@ func BindValue(p Properties, v reflect.Value, key string, def interface{}, opt B
 				for k1, v1 := range temp {
 					ev := reflect.New(elemType)
 					subFullPropName := fmt.Sprintf("%s.%s", key, k1)
-					BindStruct(&defaultProperties{v1, p.Converters()}, ev.Elem(), BindOption{
+					err = BindStruct(&defaultProperties{v1, p.Converters()}, ev.Elem(), BindOption{
 						fullPropName: subFullPropName,
 						fieldName:    opt.fieldName,
 					})
+					if err != nil {
+						return err
+					}
 					result.SetMapIndex(reflect.ValueOf(k1), ev.Elem())
 				}
 
 				v.Set(result)
 			} else {
-				panic(fmt.Errorf("property value %s isn't map[string]map[string]interface{}", opt.fullPropName))
+				return fmt.Errorf("property value %s isn't map[string]map[string]interface{}", opt.fullPropName)
 			}
 		}
 	default:
-		panic(errors.New(opt.fieldName + " unsupported type " + v.Kind().String()))
+		return errors.New(opt.fieldName + " unsupported type " + v.Kind().String())
 	}
+	return nil
 }
 
 // Bind 根据类型获取属性值，属性名称统一转成小写。
-func (p *defaultProperties) Bind(key string, i interface{}) {
+func (p *defaultProperties) Bind(key string, i interface{}) error {
 
 	v := reflect.ValueOf(i)
 	if v.Kind() != reflect.Ptr {
-		panic(errors.New("参数 v 必须是一个指针"))
+		return errors.New("参数 v 必须是一个指针")
 	}
 
 	t := v.Type().Elem()
@@ -628,5 +639,5 @@ func (p *defaultProperties) Bind(key string, i interface{}) {
 		s = t.Elem().Name()
 	}
 
-	BindValue(p, v.Elem(), key, nil, BindOption{fieldName: s, fullPropName: key})
+	return BindValue(p, v.Elem(), key, nil, BindOption{fieldName: s, fullPropName: key})
 }
