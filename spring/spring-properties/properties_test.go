@@ -553,7 +553,7 @@ func TestDefaultProperties_GetProperty(t *testing.T) {
 	v := p.Get("NULL")
 	SpringUtils.AssertEqual(t, v, nil)
 
-	v = p.Get("NULL", "OK")
+	v = p.GetDefault("NULL", "OK")
 	SpringUtils.AssertEqual(t, v, "OK")
 
 	v = p.Get("INT")

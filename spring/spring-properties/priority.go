@@ -37,18 +37,27 @@ func (p *priorityProperties) Has(key string) bool {
 	return p.Properties.Has(key) || p.next.Has(key)
 }
 
-// Bind 根据类型获取属性值，属性名称统一转成小写。
-func (p *priorityProperties) Bind(key string, i interface{}) error {
-	panic(SpringConst.UnimplementedMethod)
-}
-
-// Get 返回属性值，没有找到则返回默认值，属性名称统一转成小写。
-func (p *priorityProperties) Get(key string, def ...interface{}) interface{} {
-	if v := p.Properties.Get(key, def...); v == nil {
-		return p.next.Get(key, def...)
+// Get 返回 keys 中第一个存在的属性值，属性名称统一转成小写。
+func (p *priorityProperties) Get(keys ...string) interface{} {
+	if v := p.Properties.Get(keys...); v == nil {
+		return p.next.Get(keys...)
 	} else {
 		return v
 	}
+}
+
+// GetDefault 返回属性值，如果没有找到则使用指定的默认值，属性名称统一转成小写。
+func (p *priorityProperties) GetDefault(key string, def interface{}) interface{} {
+	if v := p.Get(key); v == nil {
+		return def
+	} else {
+		return v
+	}
+}
+
+// Bind 根据类型获取属性值，属性名称统一转成小写。
+func (p *priorityProperties) Bind(key string, i interface{}) error {
+	panic(SpringConst.UnimplementedMethod)
 }
 
 // Map 返回所有的属性值，属性名称统一转成小写。
