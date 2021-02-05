@@ -58,8 +58,11 @@ type Properties interface {
 	// Bind 根据类型获取属性值，属性名称统一转成小写。
 	Bind(key string, i interface{}) error
 
-	// Get 返回 keys 中第一个存在的属性值，属性名称统一转成小写。
-	Get(keys ...string) interface{}
+	// Get 返回属性值，不能存在返回 nil，属性名称统一转成小写。
+	Get(key string) interface{}
+
+	// GetFirst 返回 keys 中第一个存在的属性值，属性名称统一转成小写。
+	GetFirst(keys ...string) interface{}
 
 	// GetDefault 返回属性值，如果没有找到则使用指定的默认值，属性名称统一转成小写。
 	GetDefault(key string, def interface{}) interface{}
@@ -67,8 +70,11 @@ type Properties interface {
 	// Set 设置属性值，属性名称统一转成小写。
 	Set(key string, value interface{})
 
-	// Map 返回所有的属性值，属性名称统一转成小写。
-	Map() map[string]interface{}
+	// Range 遍历所有的属性值，属性名称统一转成小写。
+	Range(fn func(string, interface{}))
+
+	// ToMap 返回所有的属性值，属性名称统一转成小写。
+	ToMap(properties map[string]interface{})
 
 	// Prefix 返回指定前缀的属性值集合，属性名称统一转成小写。
 	Prefix(key string) map[string]interface{}
@@ -174,8 +180,16 @@ func (p *defaultProperties) Has(key string) bool {
 	return ok
 }
 
-// Get 返回 keys 中第一个存在的属性值，属性名称统一转成小写。
-func (p *defaultProperties) Get(keys ...string) interface{} {
+// Get 返回属性值，不能存在返回 nil，属性名称统一转成小写。
+func (p *defaultProperties) Get(key string) interface{} {
+	if v, ok := p.properties[strings.ToLower(key)]; ok {
+		return v
+	}
+	return nil
+}
+
+// GetFirst 返回 keys 中第一个存在的属性值，属性名称统一转成小写。
+func (p *defaultProperties) GetFirst(keys ...string) interface{} {
 	for _, key := range keys {
 		if v, ok := p.properties[strings.ToLower(key)]; ok {
 			return v
@@ -197,9 +211,18 @@ func (p *defaultProperties) Set(key string, value interface{}) {
 	p.properties[strings.ToLower(key)] = value
 }
 
-// Map 返回所有的属性值，属性名称统一转成小写。
-func (p *defaultProperties) Map() map[string]interface{} {
-	return p.properties
+// Range 遍历所有的属性值，属性名称统一转成小写。
+func (p *defaultProperties) Range(fn func(string, interface{})) {
+	for key, val := range p.properties {
+		fn(key, val)
+	}
+}
+
+// ToMap 返回所有的属性值，属性名称统一转成小写。
+func (p *defaultProperties) ToMap(properties map[string]interface{}) {
+	for key, val := range p.properties {
+		properties[key] = val
+	}
 }
 
 // Prefix 返回指定前缀的属性值集合，属性名称统一转成小写。

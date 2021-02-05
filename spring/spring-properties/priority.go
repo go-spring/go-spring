@@ -37,10 +37,24 @@ func (p *priorityProperties) Has(key string) bool {
 	return p.Properties.Has(key) || p.next.Has(key)
 }
 
-// Get 返回 keys 中第一个存在的属性值，属性名称统一转成小写。
-func (p *priorityProperties) Get(keys ...string) interface{} {
-	if v := p.Properties.Get(keys...); v == nil {
-		return p.next.Get(keys...)
+// Bind 根据类型获取属性值，属性名称统一转成小写。
+func (p *priorityProperties) Bind(key string, i interface{}) error {
+	panic(SpringConst.UnimplementedMethod)
+}
+
+// Get 返回属性值，不能存在返回 nil，属性名称统一转成小写。
+func (p *priorityProperties) Get(key string) interface{} {
+	if v := p.Properties.Get(key); v == nil {
+		return p.next.Get(key)
+	} else {
+		return v
+	}
+}
+
+// GetFirst 返回 keys 中第一个存在的属性值，属性名称统一转成小写。
+func (p *priorityProperties) GetFirst(keys ...string) interface{} {
+	if v := p.Properties.GetFirst(keys...); v == nil {
+		return p.next.GetFirst(keys...)
 	} else {
 		return v
 	}
@@ -55,25 +69,23 @@ func (p *priorityProperties) GetDefault(key string, def interface{}) interface{}
 	}
 }
 
-// Bind 根据类型获取属性值，属性名称统一转成小写。
-func (p *priorityProperties) Bind(key string, i interface{}) error {
+// Range 遍历所有的属性值，属性名称统一转成小写。
+func (p *priorityProperties) Range(fn func(string, interface{})) {
 	panic(SpringConst.UnimplementedMethod)
 }
 
-// Map 返回所有的属性值，属性名称统一转成小写。
-func (p *priorityProperties) Map() map[string]interface{} {
-	properties := map[string]interface{}{}
-	for key, val := range p.Properties.Map() {
+// Map 返回所有的属性值，属性名称统一转成小写。TODO 实现并不完美。
+func (p *priorityProperties) ToMap(properties map[string]interface{}) {
+	p.Properties.Range(func(key string, val interface{}) {
 		if _, ok := properties[key]; !ok {
 			properties[key] = val
 		}
-	}
-	for key, val := range p.next.Map() {
+	})
+	p.next.Range(func(key string, val interface{}) {
 		if _, ok := properties[key]; !ok {
 			properties[key] = val
 		}
-	}
-	return properties
+	})
 }
 
 // Prefix 返回指定前缀的属性值集合，属性名称统一转成小写。

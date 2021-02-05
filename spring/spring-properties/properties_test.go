@@ -37,9 +37,7 @@ func TestDefaultProperties_LoadProperties(t *testing.T) {
 	p.Load("testdata/config/application.properties")
 
 	fmt.Println("Get All Properties:")
-	for k, v := range p.Map() {
-		fmt.Println(k, v)
-	}
+	p.Range(func(k string, v interface{}) { fmt.Println(k, v) })
 }
 
 func TestDefaultProperties_ReadProperties_Properties(t *testing.T) {
