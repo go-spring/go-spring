@@ -166,9 +166,8 @@ func (ctx *applicationContext) GetProfile() string {
 }
 
 // SetProfile 设置运行环境
-func (ctx *applicationContext) SetProfile(profile string) ApplicationContext {
+func (ctx *applicationContext) SetProfile(profile string) {
 	ctx.profile = profile
-	return ctx
 }
 
 // checkAutoWired 检查是否已调用 AutoWireBeans 方法

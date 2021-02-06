@@ -76,7 +76,7 @@ type ApplicationContext interface {
 	GetProfile() string
 
 	// SetProfile 设置运行环境
-	SetProfile(profile string) ApplicationContext
+	SetProfile(profile string)
 
 	// Bean 注册 BeanDefinition 对象。
 	Bean(bd *BeanDefinition) *BeanDefinition
