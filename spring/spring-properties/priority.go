@@ -76,7 +76,8 @@ func (p *priorityProperties) Keys() []string {
 
 // Range 遍历所有的属性值，属性名称统一转成小写。
 func (p *priorityProperties) Range(fn func(string, interface{})) {
-	panic(SpringConst.UnimplementedMethod)
+	p.Properties.Range(fn)
+	p.next.Range(fn)
 }
 
 // Fill Fill 填充所有的属性值，属性名称统一转成小写。TODO 实现并不完美。
