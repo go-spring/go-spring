@@ -70,11 +70,14 @@ type Properties interface {
 	// Set 设置属性值，属性名称统一转成小写。
 	Set(key string, value interface{})
 
+	// Keys 返回所有键，属性名称统一转成小写。
+	Keys() []string
+
 	// Range 遍历所有的属性值，属性名称统一转成小写。
 	Range(fn func(string, interface{}))
 
-	// ToMap 返回所有的属性值，属性名称统一转成小写。
-	ToMap(properties map[string]interface{})
+	// Fill 填充所有的属性值，属性名称统一转成小写。
+	Fill(properties map[string]interface{})
 
 	// Prefix 返回指定前缀的属性值集合，属性名称统一转成小写。
 	Prefix(key string) map[string]interface{}
@@ -211,6 +214,15 @@ func (p *defaultProperties) Set(key string, value interface{}) {
 	p.properties[strings.ToLower(key)] = value
 }
 
+// Keys 返回所有键，属性名称统一转成小写。
+func (p *defaultProperties) Keys() []string {
+	var keys []string
+	for k := range p.properties {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
 // Range 遍历所有的属性值，属性名称统一转成小写。
 func (p *defaultProperties) Range(fn func(string, interface{})) {
 	for key, val := range p.properties {
@@ -218,8 +230,8 @@ func (p *defaultProperties) Range(fn func(string, interface{})) {
 	}
 }
 
-// ToMap 返回所有的属性值，属性名称统一转成小写。
-func (p *defaultProperties) ToMap(properties map[string]interface{}) {
+// Fill 返回所有的属性值，属性名称统一转成小写。
+func (p *defaultProperties) Fill(properties map[string]interface{}) {
 	for key, val := range p.properties {
 		properties[key] = val
 	}

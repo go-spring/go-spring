@@ -69,13 +69,18 @@ func (p *priorityProperties) GetDefault(key string, def interface{}) interface{}
 	}
 }
 
+// Keys 返回所有键，属性名称统一转成小写。
+func (p *priorityProperties) Keys() []string {
+	panic(SpringConst.UnimplementedMethod)
+}
+
 // Range 遍历所有的属性值，属性名称统一转成小写。
 func (p *priorityProperties) Range(fn func(string, interface{})) {
 	panic(SpringConst.UnimplementedMethod)
 }
 
-// Map 返回所有的属性值，属性名称统一转成小写。TODO 实现并不完美。
-func (p *priorityProperties) ToMap(properties map[string]interface{}) {
+// Fill Fill 填充所有的属性值，属性名称统一转成小写。TODO 实现并不完美。
+func (p *priorityProperties) Fill(properties map[string]interface{}) {
 	p.Properties.Range(func(key string, val interface{}) {
 		if _, ok := properties[key]; !ok {
 			properties[key] = val
