@@ -27,8 +27,10 @@ github.com/go-spring/spring-const v1.0.5 h1:eRFiDc9L6ikp6aIxqoA+4WBo6fs0F6H70jz8
 github.com/go-spring/spring-const v1.0.5/go.mod h1:WBXCBvxv5cf0RIqnEB3wxoZ2y1G3XIUEYk7i5KDXInw=
 github.com/go-spring/spring-logger v1.0.6-0.20201124021239-090e4c0d9eb1 h1:s4V/FDunLM3f8Ll4JdaW+4YPO12HiliHg2ePyKscafo=
 github.com/go-spring/spring-logger v1.0.6-0.20201124021239-090e4c0d9eb1/go.mod h1:HII5ccODZWgPvQ9vQkKL5qbSyCO8SNZAtVSjBNnxS74=
-github.com/go-spring/spring-utils v1.0.6-0.20201217054648-d3d6ed16527e h1:uep1ZiV2NXl+qPAUgsx8Hj0YvYcAYVInPA8HdLv+xXQ=
-github.com/go-spring/spring-utils v1.0.6-0.20201217054648-d3d6ed16527e/go.mod h1:O9ipzL7xjafDIGLS1FhbFf0Ep7/AmgLXkxPpfDPS9Jg=
+github.com/go-spring/spring-properties v0.0.0-20210206113126-2dd9ec73d0f2 h1:g760bDRs+WNXntvnN2OJK6KqGC5TURDwfIG1hTg2Yzs=
+github.com/go-spring/spring-properties v0.0.0-20210206113126-2dd9ec73d0f2/go.mod h1:9an7PmtKBxhB5QipqqkWMEroMuvmfZA1kv7hh1sn0KY=
+github.com/go-spring/spring-utils v1.0.6-0.20210130041225-67aa93fdd353 h1:CTaHTMg+AYtqatnf5npnOfL5QtY3DbOyErNDFMSVLJg=
+github.com/go-spring/spring-utils v1.0.6-0.20210130041225-67aa93fdd353/go.mod h1:O9ipzL7xjafDIGLS1FhbFf0Ep7/AmgLXkxPpfDPS9Jg=
 github.com/go-stack/stack v1.8.0/go.mod h1:v0f6uXyyMGvRgIKkXu+yp6POWl0qKG85gN/melR3HDY=
 github.com/gogo/protobuf v1.1.1/go.mod h1:r8qH/GZQm5c6nD/R0oafs1akxWv10x8SbQlK7atdtwQ=
 github.com/gogo/protobuf v1.2.1/go.mod h1:hp+jE20tsWTFYpLwKvXlhS1hjn+gTNwPg2I6zVXpSg4=

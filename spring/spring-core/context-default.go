@@ -21,6 +21,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"reflect"
 	"runtime"
 	"strings"
@@ -28,6 +29,7 @@ import (
 
 	"github.com/go-spring/spring-core/internal/sort"
 	"github.com/go-spring/spring-logger"
+	"github.com/go-spring/spring-properties"
 	"github.com/go-spring/spring-utils"
 )
 
@@ -60,8 +62,6 @@ func (item *beanCacheItem) store(bd *BeanDefinition) {
 
 // applicationContext ApplicationContext 的默认实现
 type applicationContext struct {
-	// 属性值列表接口
-	Properties
 
 	// 上下文接口
 	wg     sync.WaitGroup
@@ -79,6 +79,8 @@ type applicationContext struct {
 	configers    *list.List // 配置方法集合
 	destroyers   *list.List // 销毁函数集合
 	destroyerMap map[beanKey]*destroyer
+
+	properties SpringProperties.Properties // 属性值列表接口
 }
 
 // NewApplicationContext applicationContext 的构造函数
@@ -87,7 +89,7 @@ func NewApplicationContext() *applicationContext {
 	return &applicationContext{
 		ctx:             ctx,
 		cancel:          cancel,
-		Properties:      NewDefaultProperties(),
+		properties:      SpringProperties.New(),
 		AllBeans:        make([]*BeanDefinition, 0),
 		beanMap:         make(map[beanKey]*BeanDefinition),
 		beanCacheByName: make(map[string]*beanCacheItem),
@@ -96,6 +98,61 @@ func NewApplicationContext() *applicationContext {
 		destroyers:      list.New(),
 		destroyerMap:    make(map[beanKey]*destroyer),
 	}
+}
+
+// LoadProperties 加载属性配置，支持 properties、yaml 和 toml 三种文件格式。
+func (ctx *applicationContext) LoadProperties(filename string) error {
+	return ctx.properties.Load(filename)
+}
+
+// ReadProperties 读取属性配置，支持 properties、yaml 和 toml 三种文件格式。
+func (ctx *applicationContext) ReadProperties(reader io.Reader, configType string) error {
+	return ctx.properties.Read(reader, configType)
+}
+
+// TypeConvert 添加类型转换器
+func (ctx *applicationContext) TypeConvert(fn SpringProperties.Converter) error {
+	return ctx.properties.Convert(fn)
+}
+
+// TypeConverters 返回类型转换器集合
+func (ctx *applicationContext) TypeConverters() map[reflect.Type]SpringProperties.Converter {
+	return ctx.properties.Converters()
+}
+
+// HasProperty 查询属性值是否存在，属性名称统一转成小写。
+func (ctx *applicationContext) HasProperty(key string) bool {
+	return ctx.properties.Has(key)
+}
+
+// BindProperty 根据类型获取属性值，属性名称统一转成小写。
+func (ctx *applicationContext) BindProperty(key string, i interface{}) error {
+	return ctx.properties.Bind(key, i)
+}
+
+// GetProperty 返回属性值，不能存在返回 nil，属性名称统一转成小写。
+func (ctx *applicationContext) GetProperty(key string) interface{} {
+	return ctx.properties.Get(key)
+}
+
+// GetFirstProperty 返回 keys 中第一个存在的属性值，属性名称统一转成小写。
+func (ctx *applicationContext) GetFirstProperty(keys ...string) interface{} {
+	return ctx.properties.GetFirst(keys...)
+}
+
+// GetDefaultProperty 返回属性值，如果没有找到则使用指定的默认值，属性名称统一转成小写。
+func (ctx *applicationContext) GetDefaultProperty(key string, def interface{}) interface{} {
+	return ctx.properties.GetDefault(key, def)
+}
+
+// SetProperty 设置属性值，属性名称统一转成小写。
+func (ctx *applicationContext) SetProperty(key string, value interface{}) {
+	ctx.properties.Set(key, value)
+}
+
+// Properties 获取 Properties 对象
+func (ctx *applicationContext) Properties() SpringProperties.Properties {
+	return ctx.properties
 }
 
 // Context 返回上下文接口

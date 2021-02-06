@@ -34,6 +34,7 @@ import (
 	pkg1 "github.com/go-spring/spring-core/testdata/pkg/bar"
 	pkg2 "github.com/go-spring/spring-core/testdata/pkg/foo"
 	"github.com/go-spring/spring-utils"
+	"github.com/spf13/cast"
 )
 
 // ToString 对象转 Json 字符串
@@ -468,6 +469,28 @@ type PointBean struct {
 	PointList    []image.Point `value:"${point.list}"`
 }
 
+func PointConverter(val string) (image.Point, error) {
+	if !(strings.HasPrefix(val, "(") && strings.HasSuffix(val, ")")) {
+		return image.Point{}, errors.New("数据格式错误")
+	}
+	ss := strings.Split(val[1:len(val)-1], ",")
+	x := cast.ToInt(ss[0])
+	y := cast.ToInt(ss[1])
+	return image.Point{X: x, Y: y}, nil
+}
+
+type DB struct {
+	UserName string `value:"${username}"`
+	Password string `value:"${password}"`
+	Url      string `value:"${url}"`
+	Port     string `value:"${port}"`
+	DB       string `value:"${db}"`
+}
+
+type DbConfig struct {
+	DB []DB `value:"${db}"`
+}
+
 func TestApplicationContext_TypeConverter(t *testing.T) {
 	ctx := SpringCore.NewApplicationContext()
 	ctx.LoadProperties("testdata/config/application.yaml")
@@ -480,7 +503,7 @@ func TestApplicationContext_TypeConverter(t *testing.T) {
 	p := &PointBean{}
 	ctx.ObjBean(p)
 
-	ctx.AddTypeConverter(PointConverter)
+	ctx.TypeConvert(PointConverter)
 	ctx.SetProperty("point", "(7,5)")
 
 	dbConfig := &DbConfig{}
@@ -2105,13 +2128,11 @@ func TestApplicationContext_UserDefinedTypeProperty(t *testing.T) {
 
 	ctx := SpringCore.NewApplicationContext()
 
-	ctx.AddTypeConverter(func(v string) level {
-		switch v {
-		case "debug":
-			return 1
-		default:
-			panic(errors.New("error level"))
+	ctx.TypeConvert(func(v string) (level, error) {
+		if v == "debug" {
+			return 1, nil
 		}
+		return 0, errors.New("error level")
 	})
 
 	ctx.SetProperty("time", "2018-12-20")

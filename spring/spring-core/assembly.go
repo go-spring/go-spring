@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	"github.com/go-spring/spring-logger"
+	"github.com/go-spring/spring-properties"
 	"github.com/go-spring/spring-utils"
 )
 
@@ -498,7 +499,8 @@ func (assembly *defaultBeanAssembly) wireObjectBean(bd beanDefinition, onlyAutoW
 				if !onlyAutoWire { // 防止 value 再次解析
 					if tag, ok := ft.Tag.Lookup("value"); ok {
 						fieldOnlyAutoWire = true
-						bindStructField(assembly.appCtx, fv, tag, bindOption{fieldName: fieldName})
+						err := SpringProperties.BindStructField(assembly.appCtx.properties, fv, tag, SpringProperties.BindOption{FieldName: fieldName})
+						SpringUtils.Panic(err).When(err != nil)
 					}
 				}
 
@@ -604,7 +606,8 @@ func (assembly *defaultBeanAssembly) wireStructField(v reflect.Value, tag string
 	if strings.HasPrefix(tag, "${") {
 		s := ""
 		sv := reflect.ValueOf(&s).Elem()
-		bindStructField(assembly.appCtx, sv, tag, bindOption{})
+		err := SpringProperties.BindStructField(assembly.appCtx.properties, sv, tag, SpringProperties.BindOption{})
+		SpringUtils.Panic(err).When(err != nil)
 		tag = s
 	}
 

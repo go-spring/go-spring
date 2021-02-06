@@ -25,6 +25,8 @@ import (
 	"strings"
 
 	"github.com/go-spring/spring-logger"
+	"github.com/go-spring/spring-properties"
+	"github.com/go-spring/spring-utils"
 )
 
 // fnBindingArg 存储函数的参数绑定
@@ -168,7 +170,8 @@ func (arg *fnStringBindingArg) getArgValue(v reflect.Value, tag string, assembly
 		if tag == "" {
 			tag = "${}"
 		}
-		bindStructField(ctx, v, tag, bindOption{})
+		err := SpringProperties.BindStructField(ctx.Properties(), v, tag, SpringProperties.BindOption{})
+		SpringUtils.Panic(err).When(err != nil)
 	} else { // 引用类型，采用对象注入语法
 		assembly.wireStructField(v, tag, reflect.Value{}, "")
 	}

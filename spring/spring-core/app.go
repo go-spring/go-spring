@@ -26,6 +26,7 @@ import (
 	"strings"
 
 	"github.com/go-spring/spring-logger"
+	"github.com/go-spring/spring-properties"
 	"github.com/spf13/cast"
 )
 
@@ -171,9 +172,9 @@ func (app *Application) printBanner() {
 }
 
 // loadCmdArgs 加载命令行参数，形如 -name value 的参数才有效。
-func (_ *Application) loadCmdArgs() Properties {
+func (_ *Application) loadCmdArgs() SpringProperties.Properties {
 	SpringLogger.Debugf("load cmd args")
-	p := NewDefaultProperties()
+	p := SpringProperties.New()
 	for i := 0; i < len(os.Args); i++ { // 以短线定义的参数才有效
 		if arg := os.Args[i]; strings.HasPrefix(arg, "-") {
 			k, v := arg[1:], ""
@@ -182,14 +183,14 @@ func (_ *Application) loadCmdArgs() Properties {
 				i++
 			}
 			SpringLogger.Tracef("%s=%v", k, v)
-			p.SetProperty(k, v)
+			p.Set(k, v)
 		}
 	}
 	return p
 }
 
 // loadSystemEnv 加载系统环境变量，用户可以自定义有效环境变量的正则匹配
-func (app *Application) loadSystemEnv() Properties {
+func (app *Application) loadSystemEnv() SpringProperties.Properties {
 
 	var rex []*regexp.Regexp
 	for _, v := range app.expectSysProperties {
@@ -201,14 +202,14 @@ func (app *Application) loadSystemEnv() Properties {
 	}
 
 	SpringLogger.Debugf("load system env")
-	p := NewDefaultProperties()
+	p := SpringProperties.New()
 	for _, env := range os.Environ() {
 		if i := strings.Index(env, "="); i > 0 {
 			k, v := env[0:i], env[i+1:]
 			for _, r := range rex {
 				if r.MatchString(k) { // 符合匹配规则的才有效
 					SpringLogger.Tracef("%s=%v", k, v)
-					p.SetProperty(k, v)
+					p.Set(k, v)
 					break
 				}
 			}
@@ -218,8 +219,8 @@ func (app *Application) loadSystemEnv() Properties {
 }
 
 // loadProfileConfig 加载指定环境的配置文件
-func (app *Application) loadProfileConfig(profile string) Properties {
-	p := NewDefaultProperties()
+func (app *Application) loadProfileConfig(profile string) SpringProperties.Properties {
+	p := SpringProperties.New()
 	for _, configLocation := range app.cfgLocation {
 		var result map[string]interface{}
 		if ss := strings.SplitN(configLocation, ":", 2); len(ss) == 1 {
@@ -233,7 +234,7 @@ func (app *Application) loadProfileConfig(profile string) Properties {
 		}
 		for k, v := range result {
 			SpringLogger.Tracef("%s=%v", k, v)
-			p.SetProperty(k, v)
+			p.Set(k, v)
 		}
 	}
 	return p
@@ -266,14 +267,12 @@ func (app *Application) prepare() {
 	// 6.内部默认配置
 
 	// 将通过代码设置的属性值拷贝一份，第 1 层
-	apiConfig := NewDefaultProperties()
-	for k, v := range app.GetProperties() {
-		apiConfig.SetProperty(k, v)
-	}
+	apiConfig := SpringProperties.New()
+	app.Properties().Range(func(k string, v interface{}) { apiConfig.Set(k, v) })
 
 	// 加载默认的应用配置文件，如 application.properties，第 5 层
 	appConfig := app.loadProfileConfig("")
-	p := NewPriorityProperties(apiConfig, appConfig)
+	p := SpringProperties.Priority(apiConfig, appConfig)
 
 	// 加载系统环境变量，第 3 层
 	sysEnv := app.loadSystemEnv()
@@ -287,7 +286,7 @@ func (app *Application) prepare() {
 	profile := app.GetProfile()
 	if profile == "" {
 		keys := []string{SpringProfile, SPRING_PROFILE}
-		profile = cast.ToString(p.GetProperty(keys...))
+		profile = cast.ToString(p.GetFirst(keys...))
 	}
 	if profile != "" {
 		app.SetProfile(profile) // 第 4 层
@@ -295,8 +294,10 @@ func (app *Application) prepare() {
 		p.InsertBefore(profileConfig, appConfig)
 	}
 
+	properties := map[string]interface{}{}
+	p.Fill(properties)
+
 	// 将重组后的属性值写入 ApplicationContext 属性列表
-	properties := p.GetProperties()
 	for key, value := range properties {
 		value = app.resolveProperty(properties, key, value)
 		app.SetProperty(key, value)
