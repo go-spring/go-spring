@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package SpringConst
+package SpringUtils
 
 import (
 	"errors"
