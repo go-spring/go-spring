@@ -762,20 +762,40 @@ func ValueToBeanDefinition(v reflect.Value) *BeanDefinition {
 	return newBeanDefinition(NewObjectBean(v))
 }
 
-// ObjBean 将 Bean 转换为 BeanDefinition 对象
-func ObjBean(i interface{}) *BeanDefinition {
+// Ref 将 Bean 转换为 BeanDefinition 对象
+func Ref(i interface{}) *BeanDefinition {
 	return ValueToBeanDefinition(reflect.ValueOf(i))
 }
 
-// CtorBean 将构造函数转换为 BeanDefinition 对象
-func CtorBean(fn interface{}, tags ...string) *BeanDefinition {
+// Make 将构造函数转换为 BeanDefinition 对象
+func Make(fn interface{}, tags ...string) *BeanDefinition {
 	return newBeanDefinition(newConstructorBean(fn, tags))
 }
 
-// MethodBeanF 将成员方法转换为 BeanDefinition 对象
-func MethodBeanF(selector BeanSelector, method string, tags ...string) *BeanDefinition {
+// Method 将成员方法转换为 BeanDefinition 对象
+func Method(selector BeanSelector, method string, tags ...string) *BeanDefinition {
 	if selector == nil || selector == "" {
 		panic(errors.New("selector can't be nil or empty"))
 	}
 	return newBeanDefinition(newFakeMethodBean(selector, method, tags))
+}
+
+// MethodFunc 注册成员方法单例 Bean，需指定名称，重复注册会 panic。
+// method 形如 ServerInterface.Consumer (接口) 或 (*Server).Consumer (类型)。
+func MethodFunc(method interface{}, tags ...string) *BeanDefinition {
+
+	var methodName string
+
+	fnPtr := reflect.ValueOf(method).Pointer()
+	fnInfo := runtime.FuncForPC(fnPtr)
+	s := strings.Split(fnInfo.Name(), "/")
+	ss := strings.Split(s[len(s)-1], ".")
+	if len(ss) == 3 { // 包名.类型名.函数名
+		methodName = ss[2]
+	} else {
+		panic(errors.New("error method func"))
+	}
+
+	Parent := reflect.TypeOf(method).In(0)
+	return Method(Parent, methodName, tags...)
 }

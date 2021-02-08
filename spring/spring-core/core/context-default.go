@@ -23,8 +23,6 @@ import (
 	"fmt"
 	"io"
 	"reflect"
-	"runtime"
-	"strings"
 	"sync"
 
 	"github.com/go-spring/spring-core/bean"
@@ -205,43 +203,6 @@ func (ctx *applicationContext) Bean(bd *bean.BeanDefinition) *bean.BeanDefinitio
 	ctx.checkRegistration()
 	ctx.AllBeans = append(ctx.AllBeans, bd)
 	return bd
-}
-
-// ObjBean 注册单例 Bean，不指定名称，重复注册会 panic。
-func (ctx *applicationContext) ObjBean(i interface{}) *bean.BeanDefinition {
-	return ctx.Bean(bean.ObjBean(i))
-}
-
-// CtorBean 注册单例构造函数 Bean，不指定名称。
-func (ctx *applicationContext) CtorBean(fn interface{}, Tags ...string) *bean.BeanDefinition {
-	return ctx.Bean(bean.CtorBean(fn, Tags...))
-}
-
-// MethodBean 注册成员方法单例 Bean，不指定名称。
-// 必须给定方法名而不能通过遍历方法列表比较方法类型的方式获得函数名，因为不同方法的类型可能相同。
-// 而且 interface 的方法类型不带 receiver 而成员方法的类型带有 receiver，两者类型也不好匹配。
-func (ctx *applicationContext) MethodBean(selector bean.BeanSelector, Method string, Tags ...string) *bean.BeanDefinition {
-	return ctx.Bean(bean.MethodBeanF(selector, Method, Tags...))
-}
-
-// MethodBeanFn 注册成员方法单例 Bean，需指定名称，重复注册会 panic。
-// Method 形如 ServerInterface.Consumer (接口) 或 (*Server).Consumer (类型)。
-func (ctx *applicationContext) MethodBeanFn(Method interface{}, Tags ...string) *bean.BeanDefinition {
-
-	var methodName string
-
-	fnPtr := reflect.ValueOf(Method).Pointer()
-	fnInfo := runtime.FuncForPC(fnPtr)
-	s := strings.Split(fnInfo.Name(), "/")
-	ss := strings.Split(s[len(s)-1], ".")
-	if len(ss) == 3 { // 包名.类型名.函数名
-		methodName = ss[2]
-	} else {
-		panic(errors.New("error Method func"))
-	}
-
-	Parent := reflect.TypeOf(Method).In(0)
-	return ctx.Bean(bean.MethodBeanF(Parent, methodName, Tags...))
 }
 
 // GetBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
@@ -658,7 +619,7 @@ func (ctx *applicationContext) WireBean(i interface{}) {
 		}
 	}()
 
-	assembly.wireBeanDefinition(bean.ObjBean(i), false)
+	assembly.wireBeanDefinition(bean.Ref(i), false)
 }
 
 // GetBeanDefinitions 获取所有 Bean 的定义，不能保证解析和注入，请谨慎使用该函数!

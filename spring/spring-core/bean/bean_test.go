@@ -516,18 +516,18 @@ func TestBeanDefinition_Match(t *testing.T) {
 		beanName string
 		expect   bool
 	}{
-		{bean.ObjBean(new(int)), "int", "*int", true},
-		{bean.ObjBean(new(int)), "", "*int", true},
-		{bean.ObjBean(new(int)), "int", "", true},
-		{bean.ObjBean(new(int)).WithName("i"), "int", "i", true},
-		{bean.ObjBean(new(int)).WithName("i"), "", "i", true},
-		{bean.ObjBean(new(int)).WithName("i"), "int", "", true},
-		{bean.ObjBean(new(pkg2.SamePkg)), "github.com/go-spring/spring-core/bean/testdata/pkg/foo/pkg.SamePkg", "*pkg.SamePkg", true},
-		{bean.ObjBean(new(pkg2.SamePkg)), "", "*pkg.SamePkg", true},
-		{bean.ObjBean(new(pkg2.SamePkg)), "github.com/go-spring/spring-core/bean/testdata/pkg/foo/pkg.SamePkg", "", true},
-		{bean.ObjBean(new(pkg2.SamePkg)).WithName("pkg2"), "github.com/go-spring/spring-core/bean/testdata/pkg/foo/pkg.SamePkg", "pkg2", true},
-		{bean.ObjBean(new(pkg2.SamePkg)).WithName("pkg2"), "", "pkg2", true},
-		{bean.ObjBean(new(pkg2.SamePkg)).WithName("pkg2"), "github.com/go-spring/spring-core/bean/testdata/pkg/foo/pkg.SamePkg", "pkg2", true},
+		{bean.Ref(new(int)), "int", "*int", true},
+		{bean.Ref(new(int)), "", "*int", true},
+		{bean.Ref(new(int)), "int", "", true},
+		{bean.Ref(new(int)).WithName("i"), "int", "i", true},
+		{bean.Ref(new(int)).WithName("i"), "", "i", true},
+		{bean.Ref(new(int)).WithName("i"), "int", "", true},
+		{bean.Ref(new(pkg2.SamePkg)), "github.com/go-spring/spring-core/bean/testdata/pkg/foo/pkg.SamePkg", "*pkg.SamePkg", true},
+		{bean.Ref(new(pkg2.SamePkg)), "", "*pkg.SamePkg", true},
+		{bean.Ref(new(pkg2.SamePkg)), "github.com/go-spring/spring-core/bean/testdata/pkg/foo/pkg.SamePkg", "", true},
+		{bean.Ref(new(pkg2.SamePkg)).WithName("pkg2"), "github.com/go-spring/spring-core/bean/testdata/pkg/foo/pkg.SamePkg", "pkg2", true},
+		{bean.Ref(new(pkg2.SamePkg)).WithName("pkg2"), "", "pkg2", true},
+		{bean.Ref(new(pkg2.SamePkg)).WithName("pkg2"), "github.com/go-spring/spring-core/bean/testdata/pkg/foo/pkg.SamePkg", "pkg2", true},
 	}
 
 	for i, s := range data {
@@ -565,29 +565,29 @@ func TestObjectBean(t *testing.T) {
 	t.Run("bean can't be nil", func(t *testing.T) {
 
 		SpringUtils.AssertPanic(t, func() {
-			bean.ObjBean(nil)
+			bean.Ref(nil)
 		}, "bean can't be nil")
 
 		SpringUtils.AssertPanic(t, func() {
 			var i *int
-			bean.ObjBean(i)
+			bean.Ref(i)
 		}, "bean can't be nil")
 
 		SpringUtils.AssertPanic(t, func() {
 			var m map[string]string
-			bean.ObjBean(m)
+			bean.Ref(m)
 		}, "bean can't be nil")
 	})
 
 	t.Run("bean must be ref type", func(t *testing.T) {
 
 		data := []func(){
-			func() { bean.ObjBean([...]int{0}) },
-			func() { bean.ObjBean(false) },
-			func() { bean.ObjBean(3) },
-			func() { bean.ObjBean("3") },
-			func() { bean.ObjBean(BeanZero{}) },
-			func() { bean.ObjBean(pkg2.SamePkg{}) },
+			func() { bean.Ref([...]int{0}) },
+			func() { bean.Ref(false) },
+			func() { bean.Ref(3) },
+			func() { bean.Ref("3") },
+			func() { bean.Ref(BeanZero{}) },
+			func() { bean.Ref(pkg2.SamePkg{}) },
 		}
 
 		for _, fn := range data {
@@ -596,12 +596,12 @@ func TestObjectBean(t *testing.T) {
 	})
 
 	t.Run("valid bean", func(t *testing.T) {
-		bean.ObjBean(make(chan int))
-		bean.ObjBean(func() {})
-		bean.ObjBean(make(map[string]int))
-		bean.ObjBean(new(int))
-		bean.ObjBean(&BeanZero{})
-		bean.ObjBean(make([]int, 0))
+		bean.Ref(make(chan int))
+		bean.Ref(func() {})
+		bean.Ref(make(map[string]int))
+		bean.Ref(new(int))
+		bean.Ref(&BeanZero{})
+		bean.Ref(make([]int, 0))
 	})
 
 	t.Run("check name && typename", func(t *testing.T) {
@@ -610,29 +610,29 @@ func TestObjectBean(t *testing.T) {
 			name     string
 			typeName string
 		}{
-			bean.ObjBean(io.Writer(os.Stdout)): {
+			bean.Ref(io.Writer(os.Stdout)): {
 				"*os.File", "os/os.File",
 			},
 
-			bean.ObjBean(newHistoryTeacher("")): {
+			bean.Ref(newHistoryTeacher("")): {
 				"*bean_test.historyTeacher",
 				"github.com/go-spring/spring-core/bean_test/bean_test.historyTeacher",
 			},
 
-			bean.ObjBean(new(int)): {
+			bean.Ref(new(int)): {
 				"*int", "int",
 			},
 
-			bean.ObjBean(new(int)).WithName("i"): {
+			bean.Ref(new(int)).WithName("i"): {
 				"i", "int",
 			},
 
-			bean.ObjBean(new(pkg2.SamePkg)): {
+			bean.Ref(new(pkg2.SamePkg)): {
 				"*pkg.SamePkg",
 				"github.com/go-spring/spring-core/bean/testdata/pkg/foo/pkg.SamePkg",
 			},
 
-			bean.ObjBean(new(pkg2.SamePkg)).WithName("pkg2"): {
+			bean.Ref(new(pkg2.SamePkg)).WithName("pkg2"): {
 				"pkg2",
 				"github.com/go-spring/spring-core/bean/testdata/pkg/foo/pkg.SamePkg",
 			},
@@ -686,40 +686,40 @@ func NewPtrStudent(teacher Teacher, room string) *Student {
 
 func TestConstructorBean(t *testing.T) {
 
-	bd := bean.CtorBean(NewStudent)
+	bd := bean.Make(NewStudent)
 	SpringUtils.AssertEqual(t, bd.Type().String(), "*bean_test.Student")
 
-	bd = bean.CtorBean(NewPtrStudent)
+	bd = bean.Make(NewPtrStudent)
 	SpringUtils.AssertEqual(t, bd.Type().String(), "*bean_test.Student")
 
 	mapFn := func() map[int]string { return make(map[int]string) }
-	bd = bean.CtorBean(mapFn)
+	bd = bean.Make(mapFn)
 	SpringUtils.AssertEqual(t, bd.Type().String(), "map[int]string")
 
 	sliceFn := func() []int { return make([]int, 1) }
-	bd = bean.CtorBean(sliceFn)
+	bd = bean.Make(sliceFn)
 	SpringUtils.AssertEqual(t, bd.Type().String(), "[]int")
 
 	funcFn := func() func(int) { return nil }
-	bd = bean.CtorBean(funcFn)
+	bd = bean.Make(funcFn)
 	SpringUtils.AssertEqual(t, bd.Type().String(), "func(int)")
 
 	intFn := func() int { return 0 }
-	bd = bean.CtorBean(intFn)
+	bd = bean.Make(intFn)
 	SpringUtils.AssertEqual(t, bd.Type().String(), "*int")
 	SpringUtils.AssertEqual(t, bd.Value().Type().String(), "*int")
 
 	interfaceFn := func(name string) Teacher { return newHistoryTeacher(name) }
-	bd = bean.CtorBean(interfaceFn)
+	bd = bean.Make(interfaceFn)
 	SpringUtils.AssertEqual(t, bd.Type().String(), "bean_test.Teacher")
 	SpringUtils.AssertEqual(t, bd.Value().Type().String(), "bean_test.Teacher")
 
 	SpringUtils.AssertPanic(t, func() {
-		bd = bean.CtorBean(func() (*int, *int) { return nil, nil })
+		bd = bean.Make(func() (*int, *int) { return nil, nil })
 		SpringUtils.AssertEqual(t, bd.Type().String(), "*int")
 	}, "func bean must be func\\(...\\)bean or func\\(...\\)\\(bean, error\\)")
 
-	bd = bean.CtorBean(func() (*int, error) { return nil, nil })
+	bd = bean.Make(func() (*int, error) { return nil, nil })
 	SpringUtils.AssertEqual(t, bd.Type().String(), "*int")
 }
 

@@ -82,21 +82,6 @@ type ApplicationContext interface {
 	// Bean 注册 bean.BeanDefinition 对象。
 	Bean(bd *bean.BeanDefinition) *bean.BeanDefinition
 
-	// ObjBean 注册单例 Bean，不指定名称，重复注册会 panic。
-	ObjBean(bean interface{}) *bean.BeanDefinition
-
-	// CtorBean 注册单例构造函数 Bean，不指定名称，重复注册会 panic。
-	CtorBean(fn interface{}, tags ...string) *bean.BeanDefinition
-
-	// MethodBean 注册成员方法单例 Bean，不指定名称，重复注册会 panic。
-	// 必须给定方法名而不能通过遍历方法列表比较方法类型的方式获得函数名，因为不同方法的类型可能相同。
-	// 而且 interface 的方法类型不带 receiver 而成员方法的类型带有 receiver，两者类型也不好匹配。
-	MethodBean(selector bean.BeanSelector, method string, tags ...string) *bean.BeanDefinition
-
-	// MethodBeanFn 注册成员方法单例 Bean，不指定名称，重复注册会 panic。
-	// method 形如 ServerInterface.Consumer (接口) 或 (*Server).Consumer (类型)。
-	MethodBeanFn(method interface{}, tags ...string) *bean.BeanDefinition
-
 	// AutoWireBeans 对所有 Bean 进行依赖注入和属性绑定
 	AutoWireBeans()
 

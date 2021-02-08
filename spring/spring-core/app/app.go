@@ -25,6 +25,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/core"
 	"github.com/go-spring/spring-logger"
@@ -123,7 +124,7 @@ func (app *Application) Start() {
 	}
 
 	// 注册 ApplicationContext 接口
-	app.ObjBean(app).Export((*core.ApplicationContext)(nil))
+	app.Bean(bean.Ref(app).Export((*core.ApplicationContext)(nil)))
 
 	// 依赖注入、属性绑定、初始化
 	app.AutoWireBeans()
