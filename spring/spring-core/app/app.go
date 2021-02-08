@@ -25,8 +25,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/go-spring/spring-core/di"
-	"github.com/go-spring/spring-core/properties"
+	"github.com/go-spring/spring-core/conf"
+	"github.com/go-spring/spring-core/core"
 	"github.com/go-spring/spring-logger"
 	"github.com/spf13/cast"
 )
@@ -46,21 +46,21 @@ var (
 
 // CommandLineRunner 命令行启动器接口
 type CommandLineRunner interface {
-	Run(ctx di.ApplicationContext)
+	Run(ctx core.ApplicationContext)
 }
 
 // ApplicationEvent 应用运行过程中的事件
 type ApplicationEvent interface {
-	OnStartApplication(ctx di.ApplicationContext) // 应用启动的事件
-	OnStopApplication(ctx di.ApplicationContext)  // 应用停止的事件
+	OnStartApplication(ctx core.ApplicationContext) // 应用启动的事件
+	OnStopApplication(ctx core.ApplicationContext)  // 应用停止的事件
 }
 
 // AfterPrepareFunc 定义 app.prepare() 执行完成之后的扩展点
-type AfterPrepareFunc func(ctx di.ApplicationContext)
+type AfterPrepareFunc func(ctx core.ApplicationContext)
 
 // Application 应用
 type Application struct {
-	di.ApplicationContext // 应用上下文
+	core.ApplicationContext // 应用上下文
 
 	cfgLocation         []string           // 配置文件目录
 	banner              string             // Banner 的内容
@@ -75,7 +75,7 @@ type Application struct {
 // NewApplication Application 的构造函数
 func NewApplication() *Application {
 	return &Application{
-		ApplicationContext:  di.NewApplicationContext(),
+		ApplicationContext:  core.NewApplicationContext(),
 		cfgLocation:         append([]string{}, DefaultConfigLocation),
 		bannerMode:          BannerModeConsole,
 		expectSysProperties: []string{`.*`},
@@ -123,7 +123,7 @@ func (app *Application) Start() {
 	}
 
 	// 注册 ApplicationContext 接口
-	app.ObjBean(app).Export((*di.ApplicationContext)(nil))
+	app.ObjBean(app).Export((*core.ApplicationContext)(nil))
 
 	// 依赖注入、属性绑定、初始化
 	app.AutoWireBeans()
@@ -173,9 +173,9 @@ func (app *Application) printBanner() {
 }
 
 // loadCmdArgs 加载命令行参数，形如 -name value 的参数才有效。
-func (_ *Application) loadCmdArgs() properties.Properties {
+func (_ *Application) loadCmdArgs() conf.Properties {
 	SpringLogger.Debugf("load cmd args")
-	p := properties.New()
+	p := conf.New()
 	for i := 0; i < len(os.Args); i++ { // 以短线定义的参数才有效
 		if arg := os.Args[i]; strings.HasPrefix(arg, "-") {
 			k, v := arg[1:], ""
@@ -191,7 +191,7 @@ func (_ *Application) loadCmdArgs() properties.Properties {
 }
 
 // loadSystemEnv 加载系统环境变量，用户可以自定义有效环境变量的正则匹配
-func (app *Application) loadSystemEnv() properties.Properties {
+func (app *Application) loadSystemEnv() conf.Properties {
 
 	var rex []*regexp.Regexp
 	for _, v := range app.expectSysProperties {
@@ -203,7 +203,7 @@ func (app *Application) loadSystemEnv() properties.Properties {
 	}
 
 	SpringLogger.Debugf("load system env")
-	p := properties.New()
+	p := conf.New()
 	for _, env := range os.Environ() {
 		if i := strings.Index(env, "="); i > 0 {
 			k, v := env[0:i], env[i+1:]
@@ -220,8 +220,8 @@ func (app *Application) loadSystemEnv() properties.Properties {
 }
 
 // loadProfileConfig 加载指定环境的配置文件
-func (app *Application) loadProfileConfig(profile string) properties.Properties {
-	p := properties.New()
+func (app *Application) loadProfileConfig(profile string) conf.Properties {
+	p := conf.New()
 	for _, configLocation := range app.cfgLocation {
 		var result map[string]interface{}
 		if ss := strings.SplitN(configLocation, ":", 2); len(ss) == 1 {
@@ -242,14 +242,14 @@ func (app *Application) loadProfileConfig(profile string) properties.Properties 
 }
 
 // resolveProperty 解析属性值，查看其是否具有引用关系
-func (app *Application) resolveProperty(properties map[string]interface{}, key string, value interface{}) interface{} {
+func (app *Application) resolveProperty(conf map[string]interface{}, key string, value interface{}) interface{} {
 	if s, o := value.(string); o && strings.HasPrefix(s, "${") {
 		refKey := s[2 : len(s)-1]
-		if refValue, ok := properties[refKey]; !ok {
+		if refValue, ok := conf[refKey]; !ok {
 			panic(fmt.Errorf("property \"%s\" not config", refKey))
 		} else {
-			refValue = app.resolveProperty(properties, refKey, refValue)
-			properties[key] = refValue
+			refValue = app.resolveProperty(conf, refKey, refValue)
+			conf[key] = refValue
 			return refValue
 		}
 	}
@@ -263,17 +263,17 @@ func (app *Application) prepare() {
 	// 1.代码设置
 	// 2.命令行参数
 	// 3.系统环境变量
-	// 4.application-profile.properties
-	// 5.application.properties
+	// 4.application-profile.conf
+	// 5.application.conf
 	// 6.内部默认配置
 
 	// 将通过代码设置的属性值拷贝一份，第 1 层
-	apiConfig := properties.New()
+	apiConfig := conf.New()
 	app.Properties().Range(func(k string, v interface{}) { apiConfig.Set(k, v) })
 
-	// 加载默认的应用配置文件，如 application.properties，第 5 层
+	// 加载默认的应用配置文件，如 application.conf，第 5 层
 	appConfig := app.loadProfileConfig("")
-	p := properties.Priority(apiConfig, appConfig)
+	p := conf.Priority(apiConfig, appConfig)
 
 	// 加载系统环境变量，第 3 层
 	sysEnv := app.loadSystemEnv()
@@ -283,7 +283,7 @@ func (app *Application) prepare() {
 	cmdArgs := app.loadCmdArgs()
 	p.InsertBefore(cmdArgs, sysEnv)
 
-	// 加载特定环境的配置文件，如 application-test.properties
+	// 加载特定环境的配置文件，如 application-test.conf
 	profile := app.GetProfile()
 	if profile == "" {
 		keys := []string{SpringProfile, SPRING_PROFILE}
@@ -295,12 +295,12 @@ func (app *Application) prepare() {
 		p.InsertBefore(profileConfig, appConfig)
 	}
 
-	properties := map[string]interface{}{}
-	p.Fill(properties)
+	conf := map[string]interface{}{}
+	p.Fill(conf)
 
 	// 将重组后的属性值写入 ApplicationContext 属性列表
-	for key, value := range properties {
-		value = app.resolveProperty(properties, key, value)
+	for key, value := range conf {
+		value = app.resolveProperty(conf, key, value)
 		app.SetProperty(key, value)
 	}
 }

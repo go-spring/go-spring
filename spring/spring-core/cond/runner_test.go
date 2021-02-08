@@ -22,7 +22,7 @@ import (
 
 	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/cond"
-	"github.com/go-spring/spring-core/di"
+	"github.com/go-spring/spring-core/core"
 	"github.com/go-spring/spring-utils"
 )
 
@@ -36,7 +36,7 @@ func TestRunner_Run(t *testing.T) {
 
 	t.Run("before AutoWireBeans", func(t *testing.T) {
 
-		ctx := di.NewApplicationContext()
+		ctx := core.NewApplicationContext()
 		ctx.CtorBean(func() int { return 3 })
 		ctx.SetProperty("version", "v0.0.1")
 
@@ -56,7 +56,7 @@ func TestRunner_Run(t *testing.T) {
 
 	t.Run("not run", func(t *testing.T) {
 
-		ctx := di.NewApplicationContext()
+		ctx := core.NewApplicationContext()
 		ctx.CtorBean(func() int { return 3 })
 		ctx.SetProperty("version", "v0.0.1")
 		ctx.AutoWireBeans()
@@ -73,7 +73,7 @@ func TestRunner_Run(t *testing.T) {
 
 	t.Run("run", func(t *testing.T) {
 
-		ctx := di.NewApplicationContext()
+		ctx := core.NewApplicationContext()
 		ctx.CtorBean(func() int { return 3 })
 		ctx.SetProperty("version", "v0.0.1")
 		ctx.SetProfile("dev")

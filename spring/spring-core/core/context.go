@@ -15,7 +15,7 @@
  */
 
 // 实现了一个功能完善的运行时 IoC 容器。
-package di
+package core
 
 import (
 	"context"
@@ -23,7 +23,7 @@ import (
 	"reflect"
 
 	"github.com/go-spring/spring-core/bean"
-	"github.com/go-spring/spring-core/properties"
+	"github.com/go-spring/spring-core/conf"
 )
 
 type GoFunc func()
@@ -44,10 +44,10 @@ type ApplicationContext interface {
 	ReadProperties(reader io.Reader, configType string) error
 
 	// TypeConvert 添加类型转换器
-	TypeConvert(fn properties.Converter) error
+	TypeConvert(fn conf.Converter) error
 
 	// TypeConverters 返回类型转换器集合
-	TypeConverters() map[reflect.Type]properties.Converter
+	TypeConverters() map[reflect.Type]conf.Converter
 
 	// HasProperty 查询属性值是否存在，属性名称统一转成小写。
 	HasProperty(key string) bool
@@ -68,7 +68,7 @@ type ApplicationContext interface {
 	SetProperty(key string, value interface{})
 
 	// Properties 获取 Properties 对象
-	Properties() properties.Properties
+	Properties() conf.Properties
 
 	// Context 返回上下文接口
 	Context() context.Context

@@ -17,7 +17,7 @@
 package bean
 
 import (
-	"github.com/go-spring/spring-core/properties"
+	"github.com/go-spring/spring-core/conf"
 )
 
 type ConditionContext interface {
@@ -26,7 +26,7 @@ type ConditionContext interface {
 	GetProfile() string
 
 	//Properties
-	Properties() properties.Properties
+	Properties() conf.Properties
 
 	// FindBean 查询单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 	// 它和 GetBean 的区别是它在调用后不能保证返回的 Bean 已经完成了注入和绑定过程。

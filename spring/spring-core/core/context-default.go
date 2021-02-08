@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package di
+package core
 
 import (
 	"container/list"
@@ -28,8 +28,8 @@ import (
 	"sync"
 
 	"github.com/go-spring/spring-core/bean"
-	"github.com/go-spring/spring-core/di/internal/sort"
-	"github.com/go-spring/spring-core/properties"
+	"github.com/go-spring/spring-core/conf"
+	"github.com/go-spring/spring-core/core/internal/sort"
 	"github.com/go-spring/spring-logger"
 	"github.com/go-spring/spring-utils"
 )
@@ -81,7 +81,7 @@ type applicationContext struct {
 	destroyers   *list.List // 销毁函数集合
 	destroyerMap map[beanKey]*destroyer
 
-	properties properties.Properties // 属性值列表接口
+	properties conf.Properties // 属性值列表接口
 }
 
 // NewApplicationContext applicationContext 的构造函数
@@ -90,7 +90,7 @@ func NewApplicationContext() *applicationContext {
 	return &applicationContext{
 		ctx:             ctx,
 		cancel:          cancel,
-		properties:      properties.New(),
+		properties:      conf.New(),
 		AllBeans:        make([]*bean.BeanDefinition, 0),
 		beanMap:         make(map[beanKey]*bean.BeanDefinition),
 		beanCacheByName: make(map[string]*beanCacheItem),
@@ -112,12 +112,12 @@ func (ctx *applicationContext) ReadProperties(reader io.Reader, configType strin
 }
 
 // TypeConvert 添加类型转换器
-func (ctx *applicationContext) TypeConvert(fn properties.Converter) error {
+func (ctx *applicationContext) TypeConvert(fn conf.Converter) error {
 	return ctx.properties.Convert(fn)
 }
 
 // TypeConverters 返回类型转换器集合
-func (ctx *applicationContext) TypeConverters() map[reflect.Type]properties.Converter {
+func (ctx *applicationContext) TypeConverters() map[reflect.Type]conf.Converter {
 	return ctx.properties.Converters()
 }
 
@@ -152,7 +152,7 @@ func (ctx *applicationContext) SetProperty(key string, value interface{}) {
 }
 
 // Properties 获取 Properties 对象
-func (ctx *applicationContext) Properties() properties.Properties {
+func (ctx *applicationContext) Properties() conf.Properties {
 	return ctx.properties
 }
 

@@ -14,14 +14,14 @@
  * limitations under the License.
  */
 
-package di
+package core
 
 import (
 	"container/list"
 	"fmt"
 	"testing"
 
-	"github.com/go-spring/spring-core/di/internal/sort"
+	"github.com/go-spring/spring-core/core/internal/sort"
 	"github.com/go-spring/spring-utils"
 )
 

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package di_test
+package core_test
 
 import (
 	"fmt"
@@ -23,8 +23,8 @@ import (
 	"reflect"
 	"testing"
 
-	pkg1 "github.com/go-spring/spring-core/di/testdata/pkg/bar"
-	pkg2 "github.com/go-spring/spring-core/di/testdata/pkg/foo"
+	pkg1 "github.com/go-spring/spring-core/core/testdata/pkg/bar"
+	pkg2 "github.com/go-spring/spring-core/core/testdata/pkg/foo"
 	"github.com/go-spring/spring-utils"
 )
 
@@ -169,7 +169,7 @@ func TestReflectType(t *testing.T) {
 			reflect.TypeOf(pkg1.SamePkg{}),
 			reflect.Struct,
 			"SamePkg",
-			"github.com/go-spring/spring-core/di/testdata/pkg/bar",
+			"github.com/go-spring/spring-core/core/testdata/pkg/bar",
 		},
 		{
 			reflect.TypeOf(new(pkg1.SamePkg)),
@@ -193,7 +193,7 @@ func TestReflectType(t *testing.T) {
 			reflect.TypeOf(pkg2.SamePkg{}),
 			reflect.Struct,
 			"SamePkg",
-			"github.com/go-spring/spring-core/di/testdata/pkg/foo",
+			"github.com/go-spring/spring-core/core/testdata/pkg/foo",
 		},
 		{
 			reflect.TypeOf(new(pkg2.SamePkg)),

@@ -21,12 +21,12 @@ import (
 
 	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/cond"
-	"github.com/go-spring/spring-core/di"
+	"github.com/go-spring/spring-core/core"
 	"github.com/go-spring/spring-utils"
 )
 
 func TestFunctionCondition(t *testing.T) {
-	ctx := di.NewApplicationContext()
+	ctx := core.NewApplicationContext()
 
 	fn := func(ctx bean.ConditionContext) bool { return true }
 	c := cond.FunctionCondition(fn)
@@ -39,7 +39,7 @@ func TestFunctionCondition(t *testing.T) {
 
 func TestPropertyCondition(t *testing.T) {
 
-	ctx := di.NewApplicationContext()
+	ctx := core.NewApplicationContext()
 	ctx.SetProperty("int", 3)
 	ctx.SetProperty("parent.child", 0)
 
@@ -58,7 +58,7 @@ func TestPropertyCondition(t *testing.T) {
 
 func TestMissingPropertyCondition(t *testing.T) {
 
-	ctx := di.NewApplicationContext()
+	ctx := core.NewApplicationContext()
 	ctx.SetProperty("int", 3)
 	ctx.SetProperty("parent.child", 0)
 
@@ -77,7 +77,7 @@ func TestMissingPropertyCondition(t *testing.T) {
 
 func TestPropertyValueCondition(t *testing.T) {
 
-	ctx := di.NewApplicationContext()
+	ctx := core.NewApplicationContext()
 	ctx.SetProperty("str", "this is a str")
 	ctx.SetProperty("int", 3)
 
@@ -122,7 +122,7 @@ func (t *BeanThree) String() string {
 
 func TestBeanCondition(t *testing.T) {
 
-	ctx := di.NewApplicationContext()
+	ctx := core.NewApplicationContext()
 	ctx.ObjBean(&BeanZero{5})
 	ctx.ObjBean(new(BeanOne))
 	ctx.AutoWireBeans()
@@ -136,7 +136,7 @@ func TestBeanCondition(t *testing.T) {
 
 func TestMissingBeanCondition(t *testing.T) {
 
-	ctx := di.NewApplicationContext()
+	ctx := core.NewApplicationContext()
 	ctx.ObjBean(&BeanZero{5})
 	ctx.ObjBean(new(BeanOne))
 	ctx.AutoWireBeans()
@@ -154,7 +154,7 @@ func TestExpressionCondition(t *testing.T) {
 
 func TestConditional(t *testing.T) {
 
-	ctx := di.NewApplicationContext()
+	ctx := core.NewApplicationContext()
 	ctx.SetProperty("bool", false)
 	ctx.SetProperty("int", 3)
 	ctx.AutoWireBeans()
@@ -207,7 +207,7 @@ func TestConditional(t *testing.T) {
 
 func TestNotCondition(t *testing.T) {
 
-	ctx := di.NewApplicationContext()
+	ctx := core.NewApplicationContext()
 	ctx.SetProfile("test")
 	ctx.AutoWireBeans()
 

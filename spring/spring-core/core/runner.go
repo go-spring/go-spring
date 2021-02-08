@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package di
+package core
 
 import (
 	"errors"

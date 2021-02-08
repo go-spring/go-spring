@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package properties
+package conf
 
 import (
 	"github.com/go-spring/spring-const"

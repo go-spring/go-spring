@@ -22,7 +22,7 @@ import (
 
 	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/cond"
-	"github.com/go-spring/spring-core/di"
+	"github.com/go-spring/spring-core/core"
 	"github.com/go-spring/spring-utils"
 )
 
@@ -165,7 +165,7 @@ func TestDefaultSpringContext(t *testing.T) {
 
 	t.Run("bean:test_ctx:", func(t *testing.T) {
 
-		ctx := di.NewApplicationContext()
+		ctx := core.NewApplicationContext()
 		ctx.ObjBean(&BeanZero{5}).WithCondition(cond.
 			OnProfile("test").
 			And().
@@ -181,7 +181,7 @@ func TestDefaultSpringContext(t *testing.T) {
 
 	t.Run("bean:test_ctx:test", func(t *testing.T) {
 
-		ctx := di.NewApplicationContext()
+		ctx := core.NewApplicationContext()
 		ctx.SetProfile("test")
 		ctx.ObjBean(&BeanZero{5}).WithCondition(cond.OnProfile("test"))
 		ctx.AutoWireBeans()
@@ -193,7 +193,7 @@ func TestDefaultSpringContext(t *testing.T) {
 
 	t.Run("bean:test_ctx:stable", func(t *testing.T) {
 
-		ctx := di.NewApplicationContext()
+		ctx := core.NewApplicationContext()
 		ctx.SetProfile("stable")
 		ctx.ObjBean(&BeanZero{5}).WithCondition(cond.OnProfile("test"))
 		ctx.AutoWireBeans()
@@ -205,7 +205,7 @@ func TestDefaultSpringContext(t *testing.T) {
 
 	t.Run("option withClassName Condition", func(t *testing.T) {
 
-		ctx := di.NewApplicationContext()
+		ctx := core.NewApplicationContext()
 		ctx.SetProperty("president", "CaiYuanPei")
 		ctx.SetProperty("class_floor", 2)
 		ctx.CtorBean(NewClassRoom).Options(
@@ -228,7 +228,7 @@ func TestDefaultSpringContext(t *testing.T) {
 	t.Run("option withClassName Apply", func(t *testing.T) {
 		c := cond.OnProperty("class_name_enable")
 
-		ctx := di.NewApplicationContext()
+		ctx := core.NewApplicationContext()
 		ctx.SetProperty("president", "CaiYuanPei")
 		ctx.CtorBean(NewClassRoom).Options(
 			bean.NewOptionArg(withClassName,
@@ -247,9 +247,9 @@ func TestDefaultSpringContext(t *testing.T) {
 		SpringUtils.AssertEqual(t, cls.President, "CaiYuanPei")
 	})
 
-	t.Run("method bean condition", func(t *testing.T) {
+	t.Run("method bean cond", func(t *testing.T) {
 
-		ctx := di.NewApplicationContext()
+		ctx := core.NewApplicationContext()
 		ctx.SetProperty("server.version", "1.0.0")
 		parent := ctx.ObjBean(new(Server))
 		ctx.MethodBean(parent, "Consumer").WithCondition(cond.OnProperty("consumer.enable"))
@@ -265,9 +265,9 @@ func TestDefaultSpringContext(t *testing.T) {
 		SpringUtils.AssertEqual(t, ok, false)
 	})
 
-	t.Run("fn method bean condition", func(t *testing.T) {
+	t.Run("fn method bean cond", func(t *testing.T) {
 
-		ctx := di.NewApplicationContext()
+		ctx := core.NewApplicationContext()
 		ctx.SetProperty("server.version", "1.0.0")
 		ctx.CtorBean(NewServerInterface)
 		ctx.MethodBeanFn(ServerInterface.ConsumerT).WithCondition(cond.OnProperty("consumer.enable"))
@@ -288,7 +288,7 @@ func TestDefaultSpringContext(t *testing.T) {
 
 func TestDefaultSpringContext_ParentNotRegister(t *testing.T) {
 
-	ctx := di.NewApplicationContext()
+	ctx := core.NewApplicationContext()
 	parent := ctx.CtorBean(NewServerInterface).
 		WithCondition(cond.OnProperty("server.is.nil"))
 	ctx.MethodBean(parent, "Consumer")
@@ -306,7 +306,7 @@ func TestDefaultSpringContext_ParentNotRegister(t *testing.T) {
 
 func TestDefaultSpringContext_ChainConditionOnBean(t *testing.T) {
 	for i := 0; i < 20; i++ { // 不要排序
-		ctx := di.NewApplicationContext()
+		ctx := core.NewApplicationContext()
 		ctx.ObjBean(new(string)).WithCondition(cond.OnBean("*bool"))
 		ctx.ObjBean(new(bool)).WithCondition(cond.OnBean("*int"))
 		ctx.ObjBean(new(int)).WithCondition(cond.OnBean("*float"))
@@ -316,7 +316,7 @@ func TestDefaultSpringContext_ChainConditionOnBean(t *testing.T) {
 }
 
 func TestDefaultSpringContext_ConditionOnBean(t *testing.T) {
-	ctx := di.NewApplicationContext()
+	ctx := core.NewApplicationContext()
 
 	c := cond.
 		OnMissingProperty("Null").
@@ -351,7 +351,7 @@ func TestDefaultSpringContext_ConditionOnBean(t *testing.T) {
 func TestDefaultSpringContext_ConditionOnMissingBean(t *testing.T) {
 
 	for i := 0; i < 20; i++ { // 测试 FindBean 无需绑定，不要排序
-		ctx := di.NewApplicationContext()
+		ctx := core.NewApplicationContext()
 
 		ctx.ObjBean(&BeanZero{5})
 		ctx.ObjBean(new(BeanOne))
