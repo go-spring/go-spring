@@ -124,7 +124,7 @@ func (app *Application) Start() {
 	}
 
 	// 注册 ApplicationContext 接口
-	app.Bean(bean.Ref(app).Export((*core.ApplicationContext)(nil)))
+	app.Register(bean.Ref(app).Export((*core.ApplicationContext)(nil)))
 
 	// 依赖注入、属性绑定、初始化
 	app.AutoWireBeans()
@@ -291,7 +291,7 @@ func (app *Application) prepare() {
 		profile = cast.ToString(p.GetFirst(keys...))
 	}
 	if profile != "" {
-		app.SetProfile(profile) // 第 4 层
+		app.Profile(profile) // 第 4 层
 		profileConfig := app.loadProfileConfig(profile)
 		p.InsertBefore(profileConfig, appConfig)
 	}
@@ -302,7 +302,7 @@ func (app *Application) prepare() {
 	// 将重组后的属性值写入 ApplicationContext 属性列表
 	for key, value := range conf {
 		value = app.resolveProperty(conf, key, value)
-		app.SetProperty(key, value)
+		app.Property(key, value)
 	}
 }
 

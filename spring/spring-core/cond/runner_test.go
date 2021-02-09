@@ -37,8 +37,8 @@ func TestRunner_Run(t *testing.T) {
 	t.Run("before AutoWireBeans", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
-		ctx.Bean(bean.Make(func() int { return 3 }))
-		ctx.SetProperty("version", "v0.0.1")
+		ctx.Register(bean.Make(func() int { return 3 }))
+		ctx.Property("version", "v0.0.1")
 
 		SpringUtils.AssertPanic(t, func() {
 			run := false
@@ -57,8 +57,8 @@ func TestRunner_Run(t *testing.T) {
 	t.Run("not run", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
-		ctx.Bean(bean.Make(func() int { return 3 }))
-		ctx.SetProperty("version", "v0.0.1")
+		ctx.Register(bean.Make(func() int { return 3 }))
+		ctx.Property("version", "v0.0.1")
 		ctx.AutoWireBeans()
 
 		run := false
@@ -74,9 +74,9 @@ func TestRunner_Run(t *testing.T) {
 	t.Run("run", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
-		ctx.Bean(bean.Make(func() int { return 3 }))
-		ctx.SetProperty("version", "v0.0.1")
-		ctx.SetProfile("dev")
+		ctx.Register(bean.Make(func() int { return 3 }))
+		ctx.Property("version", "v0.0.1")
+		ctx.Profile("dev")
 		ctx.AutoWireBeans()
 
 		c := cond.OnProfile("dev")

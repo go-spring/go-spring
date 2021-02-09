@@ -40,8 +40,8 @@ func TestFunctionCondition(t *testing.T) {
 func TestPropertyCondition(t *testing.T) {
 
 	ctx := core.NewApplicationContext()
-	ctx.SetProperty("int", 3)
-	ctx.SetProperty("parent.child", 0)
+	ctx.Property("int", 3)
+	ctx.Property("parent.child", 0)
 
 	c := cond.PropertyCondition("int")
 	SpringUtils.AssertEqual(t, c.Matches(ctx), true)
@@ -59,8 +59,8 @@ func TestPropertyCondition(t *testing.T) {
 func TestMissingPropertyCondition(t *testing.T) {
 
 	ctx := core.NewApplicationContext()
-	ctx.SetProperty("int", 3)
-	ctx.SetProperty("parent.child", 0)
+	ctx.Property("int", 3)
+	ctx.Property("parent.child", 0)
 
 	c := cond.MissingPropertyCondition("int")
 	SpringUtils.AssertEqual(t, c.Matches(ctx), false)
@@ -78,8 +78,8 @@ func TestMissingPropertyCondition(t *testing.T) {
 func TestPropertyValueCondition(t *testing.T) {
 
 	ctx := core.NewApplicationContext()
-	ctx.SetProperty("str", "this is a str")
-	ctx.SetProperty("int", 3)
+	ctx.Property("str", "this is a str")
+	ctx.Property("int", 3)
 
 	c := cond.PropertyValueCondition("int", 3)
 	SpringUtils.AssertEqual(t, c.Matches(ctx), true)
@@ -123,8 +123,8 @@ func (t *BeanThree) String() string {
 func TestBeanCondition(t *testing.T) {
 
 	ctx := core.NewApplicationContext()
-	ctx.Bean(bean.Ref(&BeanZero{5}))
-	ctx.Bean(bean.Ref(new(BeanOne)))
+	ctx.Register(bean.Ref(&BeanZero{5}))
+	ctx.Register(bean.Ref(new(BeanOne)))
 	ctx.AutoWireBeans()
 
 	c := cond.BeanCondition("*cond_test.BeanOne")
@@ -137,8 +137,8 @@ func TestBeanCondition(t *testing.T) {
 func TestMissingBeanCondition(t *testing.T) {
 
 	ctx := core.NewApplicationContext()
-	ctx.Bean(bean.Ref(&BeanZero{5}))
-	ctx.Bean(bean.Ref(new(BeanOne)))
+	ctx.Register(bean.Ref(&BeanZero{5}))
+	ctx.Register(bean.Ref(new(BeanOne)))
 	ctx.AutoWireBeans()
 
 	c := cond.MissingBeanCondition("*cond_test.BeanOne")
@@ -155,8 +155,8 @@ func TestExpressionCondition(t *testing.T) {
 func TestConditional(t *testing.T) {
 
 	ctx := core.NewApplicationContext()
-	ctx.SetProperty("bool", false)
-	ctx.SetProperty("int", 3)
+	ctx.Property("bool", false)
+	ctx.Property("int", 3)
 	ctx.AutoWireBeans()
 
 	c := cond.OnProperty("int")
@@ -208,7 +208,7 @@ func TestConditional(t *testing.T) {
 func TestNotCondition(t *testing.T) {
 
 	ctx := core.NewApplicationContext()
-	ctx.SetProfile("test")
+	ctx.Profile("test")
 	ctx.AutoWireBeans()
 
 	profileCond := cond.ProfileCondition("test")

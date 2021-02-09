@@ -772,8 +772,8 @@ func Make(fn interface{}, tags ...string) *BeanDefinition {
 	return newBeanDefinition(newConstructorBean(fn, tags))
 }
 
-// Method 将成员方法转换为 BeanDefinition 对象
-func Method(selector BeanSelector, method string, tags ...string) *BeanDefinition {
+// Child 将成员方法转换为 BeanDefinition 对象
+func Child(selector BeanSelector, method string, tags ...string) *BeanDefinition {
 	if selector == nil || selector == "" {
 		panic(errors.New("selector can't be nil or empty"))
 	}
@@ -797,5 +797,5 @@ func MethodFunc(method interface{}, tags ...string) *BeanDefinition {
 	}
 
 	Parent := reflect.TypeOf(method).In(0)
-	return Method(Parent, methodName, tags...)
+	return Child(Parent, methodName, tags...)
 }

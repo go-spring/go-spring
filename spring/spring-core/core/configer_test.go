@@ -30,9 +30,9 @@ func TestSortConfigers(t *testing.T) {
 	t.Run("found cycle", func(t *testing.T) {
 		SpringUtils.AssertPanic(t, func() {
 
-			f2 := newConfiger("f2", func() {}, []string{}).After("f5")
-			f5 := newConfiger("f5", func() {}, []string{}).After("f2")
-			f7 := newConfiger("", func() {}, []string{}).Before("f2")
+			f2 := newConfiger(func() {}, []string{}).After("f5").WithName("f2")
+			f5 := newConfiger(func() {}, []string{}).After("f2").WithName("f5")
+			f7 := newConfiger(func() {}, []string{}).Before("f2")
 
 			configers := list.New()
 			configers.PushBack(f5)
@@ -50,9 +50,9 @@ func TestSortConfigers(t *testing.T) {
 
 	t.Run("sorted", func(t *testing.T) {
 
-		f2 := newConfiger("f2", func() {}, []string{})
-		f5 := newConfiger("f5", func() {}, []string{}).After("f2")
-		f7 := newConfiger("", func() {}, []string{}).Before("f2")
+		f2 := newConfiger(func() {}, []string{}).WithName("f2")
+		f5 := newConfiger(func() {}, []string{}).WithName("f5").After("f2")
+		f7 := newConfiger(func() {}, []string{}).Before("f2")
 
 		configers := list.New()
 		configers.PushBack(f5)

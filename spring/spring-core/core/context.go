@@ -20,7 +20,6 @@ package core
 import (
 	"context"
 	"io"
-	"reflect"
 
 	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/conf"
@@ -43,15 +42,6 @@ type ApplicationContext interface {
 	// ReadProperties 读取属性配置，支持 properties、yaml 和 toml 三种文件格式。
 	ReadProperties(reader io.Reader, configType string) error
 
-	// TypeConvert 添加类型转换器
-	TypeConvert(fn conf.Converter) error
-
-	// TypeConverters 返回类型转换器集合
-	TypeConverters() map[reflect.Type]conf.Converter
-
-	// HasProperty 查询属性值是否存在，属性名称统一转成小写。
-	HasProperty(key string) bool
-
 	// BindProperty 根据类型获取属性值，属性名称统一转成小写。
 	BindProperty(key string, i interface{}) error
 
@@ -64,8 +54,8 @@ type ApplicationContext interface {
 	// GetDefaultProperty 返回属性值，如果没有找到则使用指定的默认值，属性名称统一转成小写。
 	GetDefaultProperty(key string, def interface{}) interface{}
 
-	// SetProperty 设置属性值，属性名称统一转成小写。
-	SetProperty(key string, value interface{})
+	// Property 设置属性值，属性名称统一转成小写。
+	Property(key string, value interface{})
 
 	// Properties 获取 Properties 对象
 	Properties() conf.Properties
@@ -76,11 +66,11 @@ type ApplicationContext interface {
 	// GetProfile 返回运行环境
 	GetProfile() string
 
-	// SetProfile 设置运行环境
-	SetProfile(profile string)
+	// Profile 设置运行环境
+	Profile(profile string)
 
-	// Bean 注册 bean.BeanDefinition 对象。
-	Bean(bd *bean.BeanDefinition) *bean.BeanDefinition
+	// Register 注册 bean.BeanDefinition 对象。
+	Register(bd *bean.BeanDefinition) *bean.BeanDefinition
 
 	// AutoWireBeans 对所有 Bean 进行依赖注入和属性绑定
 	AutoWireBeans()
@@ -120,9 +110,6 @@ type ApplicationContext interface {
 
 	// Config 注册一个配置函数
 	Config(fn interface{}, tags ...string) *Configer
-
-	// ConfigWithName 注册一个配置函数，名称的作用是对 Config 进行排重和排顺序。
-	ConfigWithName(name string, fn interface{}, tags ...string) *Configer
 
 	// SafeGoroutine 安全地启动一个 goroutine
 	SafeGoroutine(fn GoFunc)

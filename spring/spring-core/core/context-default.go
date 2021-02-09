@@ -109,21 +109,6 @@ func (ctx *applicationContext) ReadProperties(reader io.Reader, configType strin
 	return ctx.properties.Read(reader, configType)
 }
 
-// TypeConvert 添加类型转换器
-func (ctx *applicationContext) TypeConvert(fn conf.Converter) error {
-	return ctx.properties.Convert(fn)
-}
-
-// TypeConverters 返回类型转换器集合
-func (ctx *applicationContext) TypeConverters() map[reflect.Type]conf.Converter {
-	return ctx.properties.Converters()
-}
-
-// HasProperty 查询属性值是否存在，属性名称统一转成小写。
-func (ctx *applicationContext) HasProperty(key string) bool {
-	return ctx.properties.Has(key)
-}
-
 // BindProperty 根据类型获取属性值，属性名称统一转成小写。
 func (ctx *applicationContext) BindProperty(key string, i interface{}) error {
 	return ctx.properties.Bind(key, i)
@@ -144,8 +129,8 @@ func (ctx *applicationContext) GetDefaultProperty(key string, def interface{}) i
 	return ctx.properties.GetDefault(key, def)
 }
 
-// SetProperty 设置属性值，属性名称统一转成小写。
-func (ctx *applicationContext) SetProperty(key string, value interface{}) {
+// Property 设置属性值，属性名称统一转成小写。
+func (ctx *applicationContext) Property(key string, value interface{}) {
 	ctx.properties.Set(key, value)
 }
 
@@ -164,8 +149,8 @@ func (ctx *applicationContext) GetProfile() string {
 	return ctx.profile
 }
 
-// SetProfile 设置运行环境
-func (ctx *applicationContext) SetProfile(profile string) {
+// Profile 设置运行环境
+func (ctx *applicationContext) Profile(profile string) {
 	ctx.profile = profile
 }
 
@@ -199,7 +184,7 @@ func (ctx *applicationContext) registerBeanDefinition(bd *bean.BeanDefinition) {
 	ctx.beanMap[key] = bd
 }
 
-func (ctx *applicationContext) Bean(bd *bean.BeanDefinition) *bean.BeanDefinition {
+func (ctx *applicationContext) Register(bd *bean.BeanDefinition) *bean.BeanDefinition {
 	ctx.checkRegistration()
 	ctx.AllBeans = append(ctx.AllBeans, bd)
 	return bd
@@ -671,12 +656,7 @@ func (ctx *applicationContext) RunNow(fn interface{}, Tags ...string) error {
 
 // Config 注册一个配置函数
 func (ctx *applicationContext) Config(fn interface{}, Tags ...string) *Configer {
-	return ctx.ConfigWithName("", fn, Tags...)
-}
-
-// ConfigWithName 注册一个配置函数，名称的作用是对 Config 进行排重和排顺序。
-func (ctx *applicationContext) ConfigWithName(name string, fn interface{}, Tags ...string) *Configer {
-	configer := newConfiger(name, fn, Tags)
+	configer := newConfiger(fn, Tags)
 	ctx.configers.PushBack(configer)
 	return configer
 }
