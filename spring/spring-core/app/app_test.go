@@ -21,7 +21,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/go-spring/spring-utils"
+	"github.com/go-spring/spring-core/util"
 )
 
 func startApplication(cfgLocation ...string) *Application {
@@ -38,41 +38,41 @@ func TestConfig(t *testing.T) {
 	t.Run("default config", func(t *testing.T) {
 		os.Clearenv()
 		app := startApplication()
-		SpringUtils.AssertEqual(t, app.cfgLocation, []string{DefaultConfigLocation})
-		SpringUtils.AssertEqual(t, app.GetProfile(), "")
+		util.AssertEqual(t, app.cfgLocation, []string{DefaultConfigLocation})
+		util.AssertEqual(t, app.GetProfile(), "")
 	})
 
 	t.Run("config via env", func(t *testing.T) {
 		os.Clearenv()
 		_ = os.Setenv(SpringProfile, "dev")
 		app := startApplication("testdata/config/")
-		SpringUtils.AssertEqual(t, app.GetProfile(), "dev")
+		util.AssertEqual(t, app.GetProfile(), "dev")
 	})
 
 	t.Run("config via env 2", func(t *testing.T) {
 		os.Clearenv()
 		_ = os.Setenv(SPRING_PROFILE, "dev")
 		app := startApplication("testdata/config/")
-		SpringUtils.AssertEqual(t, app.GetProfile(), "dev")
+		util.AssertEqual(t, app.GetProfile(), "dev")
 	})
 
 	t.Run("profile via config", func(t *testing.T) {
 		os.Clearenv()
 		app := startApplication("testdata/config/")
-		SpringUtils.AssertEqual(t, app.GetProfile(), "test")
+		util.AssertEqual(t, app.GetProfile(), "test")
 	})
 
 	t.Run("profile via env&config", func(t *testing.T) {
 		os.Clearenv()
 		app := startApplication("testdata/config/")
-		SpringUtils.AssertEqual(t, app.GetProfile(), "test")
+		util.AssertEqual(t, app.GetProfile(), "test")
 	})
 
 	t.Run("profile via env&config 2", func(t *testing.T) {
 		os.Clearenv()
 		_ = os.Setenv(SPRING_PROFILE, "dev")
 		app := startApplication("testdata/config/")
-		SpringUtils.AssertEqual(t, app.GetProfile(), "dev")
+		util.AssertEqual(t, app.GetProfile(), "dev")
 	})
 
 	t.Run("default expect system properties", func(t *testing.T) {

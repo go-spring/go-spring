@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package SpringUtils
+package util
 
 // ContainsInt 在一个 int 数组中进行查找，找不到返回 -1。
 func ContainsInt(array []int, val int) int {

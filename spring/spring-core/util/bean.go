@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package SpringUtils
+package util
 
 import (
 	"encoding/json"

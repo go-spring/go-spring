@@ -25,8 +25,8 @@ import (
 	"strings"
 
 	"github.com/go-spring/spring-core/conf"
+	"github.com/go-spring/spring-core/util"
 	"github.com/go-spring/spring-logger"
-	"github.com/go-spring/spring-utils"
 )
 
 type beanAssembly interface {
@@ -183,7 +183,7 @@ func (arg *fnStringBindingArg) getArgValue(v reflect.Value, tag string, assembly
 			tag = "${}"
 		}
 		err := assembly.BindStructField(v, tag, conf.BindOption{})
-		SpringUtils.Panic(err).When(err != nil)
+		util.Panic(err).When(err != nil)
 	} else { // 引用类型，采用对象注入语法
 		assembly.WireStructField(v, tag, reflect.Value{}, "")
 	}

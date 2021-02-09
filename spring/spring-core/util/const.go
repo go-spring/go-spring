@@ -14,27 +14,11 @@
  * limitations under the License.
  */
 
-package SpringUtils
+package util
 
 import (
-	"container/list"
+	"errors"
 )
 
-// NewList 使用输入的元素创建列表
-func NewList(v ...interface{}) *list.List {
-	l := list.New()
-	for _, val := range v {
-		l.PushBack(val)
-	}
-	return l
-}
-
-// FindInList 在列表中查询指定元素，存在则返回列表项指针，不存在返回 nil
-func FindInList(v interface{}, l *list.List) (*list.Element, bool) {
-	for e := l.Front(); e != nil; e = e.Next() {
-		if e.Value == v {
-			return e, true
-		}
-	}
-	return nil, false
-}
+// UnimplementedMethod 如果某个方法未实现可以抛出此错误。
+var UnimplementedMethod = errors.New("unimplemented method")

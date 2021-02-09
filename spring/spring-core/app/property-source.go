@@ -20,8 +20,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/go-spring/spring-core/util"
 	"github.com/go-spring/spring-logger"
-	"github.com/go-spring/spring-utils"
 	"github.com/spf13/viper"
 )
 
@@ -95,7 +95,7 @@ func (p *configMapPropertySource) Load(fileLocation string, profile string) map[
 	v.SetConfigFile(fileLocation)
 
 	err := v.ReadInConfig()
-	SpringUtils.Panic(err).When(err != nil)
+	util.Panic(err).When(err != nil)
 
 	d := v.Sub("data")
 	if d == nil {

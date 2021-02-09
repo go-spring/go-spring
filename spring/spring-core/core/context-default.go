@@ -28,8 +28,8 @@ import (
 	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/core/internal/sort"
+	"github.com/go-spring/spring-core/util"
 	"github.com/go-spring/spring-logger"
-	"github.com/go-spring/spring-utils"
 )
 
 // beanKey Bean's unique key, with type and name.
@@ -349,7 +349,7 @@ func (ctx *applicationContext) autoExport(t reflect.Type, bd *bean.BeanDefinitio
 			}
 
 			// 只处理结构体情况的递归，暂时不考虑接口的情况
-			typ := SpringUtils.Indirect(f.Type)
+			typ := util.Indirect(f.Type)
 			if typ.Kind() == reflect.Struct {
 				ctx.autoExport(typ, bd)
 			}
@@ -422,7 +422,7 @@ func (ctx *applicationContext) resolveBean(bd *bean.BeanDefinition) {
 	ctx.typeCache(bd.Type(), bd)
 
 	// 自动导出接口，这种情况仅对于结构体才会有效
-	if typ := SpringUtils.Indirect(bd.Type()); typ.Kind() == reflect.Struct {
+	if typ := util.Indirect(bd.Type()); typ.Kind() == reflect.Struct {
 		ctx.autoExport(typ, bd)
 	}
 

@@ -25,13 +25,13 @@ import (
 
 	pkg1 "github.com/go-spring/spring-core/core/testdata/pkg/bar"
 	pkg2 "github.com/go-spring/spring-core/core/testdata/pkg/foo"
-	"github.com/go-spring/spring-utils"
+	"github.com/go-spring/spring-core/util"
 )
 
 func TestReflectType(t *testing.T) {
 	// 测试结论：内置类型的 Name 和 PkgPath 都是空字符串。
 
-	SpringUtils.AssertEqual(t, reflect.TypeOf((io.Reader)(nil)), nil)
+	util.AssertEqual(t, reflect.TypeOf((io.Reader)(nil)), nil)
 
 	data := []struct {
 		typ     reflect.Type
@@ -234,9 +234,9 @@ func TestReflectType(t *testing.T) {
 	}
 
 	for _, d := range data {
-		SpringUtils.AssertEqual(t, d.typ.Kind(), d.kind)
-		SpringUtils.AssertEqual(t, d.typ.Name(), d.name)
-		SpringUtils.AssertEqual(t, d.typ.PkgPath(), d.pkgPath)
+		util.AssertEqual(t, d.typ.Kind(), d.kind)
+		util.AssertEqual(t, d.typ.Name(), d.name)
+		util.AssertEqual(t, d.typ.PkgPath(), d.pkgPath)
 	}
 }
 
@@ -347,8 +347,8 @@ type reCaller caller
 func TestNumMethod(t *testing.T) {
 
 	typ := reflect.TypeOf(new(caller))
-	SpringUtils.AssertEqual(t, typ.NumMethod(), 1)
+	util.AssertEqual(t, typ.NumMethod(), 1)
 
 	typ = reflect.TypeOf(new(reCaller))
-	SpringUtils.AssertEqual(t, typ.NumMethod(), 0)
+	util.AssertEqual(t, typ.NumMethod(), 0)
 }

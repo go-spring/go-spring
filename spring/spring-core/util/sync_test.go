@@ -14,11 +14,19 @@
  * limitations under the License.
  */
 
-package SpringUtils
+package util_test
 
 import (
-	"errors"
+	"testing"
+	"time"
+
+	"github.com/go-spring/spring-core/util"
 )
 
-// UnimplementedMethod 如果某个方法未实现可以抛出此错误。
-var UnimplementedMethod = errors.New("unimplemented method")
+func TestWaitGroup(t *testing.T) {
+	var wg util.WaitGroup
+	for i := 0; i < 5; i++ {
+		wg.Add(func() { time.Sleep(10 * time.Millisecond) })
+	}
+	wg.Wait()
+}

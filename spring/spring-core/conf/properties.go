@@ -25,8 +25,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-spring/spring-core/util"
 	"github.com/go-spring/spring-logger"
-	"github.com/go-spring/spring-utils"
 	"github.com/spf13/cast"
 	"github.com/spf13/viper"
 )
@@ -160,7 +160,7 @@ func validConverter(t reflect.Type) bool {
 		return false
 	}
 
-	return SpringUtils.IsValueType(t.Out(0).Kind()) && t.Out(1) == errorType
+	return util.IsValueType(t.Out(0).Kind()) && t.Out(1) == errorType
 }
 
 // Convert 添加类型转换器
@@ -283,7 +283,7 @@ func BindStruct(p Properties, v reflect.Value, opt BindOption) error {
 		fv := v.Field(i)
 
 		// 可能会开放私有字段
-		fv = SpringUtils.PatchValue(fv, true)
+		fv = util.PatchValue(fv, true)
 		subFieldName := opt.FieldName + ".$" + ft.Name
 
 		// 字段的绑定可选项

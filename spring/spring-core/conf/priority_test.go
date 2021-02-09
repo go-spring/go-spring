@@ -20,7 +20,7 @@ import (
 	"testing"
 
 	"github.com/go-spring/spring-core/conf"
-	"github.com/go-spring/spring-utils"
+	"github.com/go-spring/spring-core/util"
 )
 
 func TestNewDefaultProperties(t *testing.T) {
@@ -51,12 +51,12 @@ func TestNewDefaultProperties(t *testing.T) {
 	l0 = conf.Priority(p5, l0)
 
 	key_override := l0.Get("key_override")
-	SpringUtils.AssertEqual(t, key_override, "p5")
+	util.AssertEqual(t, key_override, "p5")
 
 	key := l0.Get("key_p1")
-	SpringUtils.AssertEqual(t, key, "p1")
+	util.AssertEqual(t, key, "p1")
 
-	SpringUtils.AssertEqual(t, l0.Depth(), 5)
+	util.AssertEqual(t, l0.Depth(), 5)
 }
 
 func TestPriorityProperties_InsertBefore(t *testing.T) {
@@ -87,10 +87,10 @@ func TestPriorityProperties_InsertBefore(t *testing.T) {
 	l0.InsertBefore(p4, p3)
 
 	key_override := l0.Get("key_override")
-	SpringUtils.AssertEqual(t, key_override, "p5")
+	util.AssertEqual(t, key_override, "p5")
 
 	key := l0.Get("key_p1")
-	SpringUtils.AssertEqual(t, key, "p1")
+	util.AssertEqual(t, key, "p1")
 
-	SpringUtils.AssertEqual(t, l0.Depth(), 5)
+	util.AssertEqual(t, l0.Depth(), 5)
 }

@@ -22,7 +22,7 @@ import (
 	"os"
 	"sort"
 
-	"github.com/go-spring/spring-utils"
+	"github.com/go-spring/spring-core/util"
 	"github.com/magiconair/properties"
 	"github.com/spf13/viper"
 )
@@ -72,7 +72,7 @@ func (r *FileConfigReader) FileExt() string {
 
 func (r *FileConfigReader) ReadFile(filename string, out map[string]interface{}) {
 	file, err := ioutil.ReadFile(filename)
-	SpringUtils.Panic(err).When(err != nil && err != os.ErrNotExist)
+	util.Panic(err).When(err != nil && err != os.ErrNotExist)
 	r.ReadBuffer(file, out)
 }
 
@@ -87,7 +87,7 @@ func propertiesReadBuffer(buffer []byte, out map[string]interface{}) {
 	p.DisableExpansion = true
 
 	err := p.Load(buffer, properties.UTF8)
-	SpringUtils.Panic(err).When(err != nil)
+	util.Panic(err).When(err != nil)
 
 	for _, key := range p.Keys() {
 		value, _ := p.Get(key)
@@ -103,7 +103,7 @@ func viperReadBuffer(fileType string) FnReadBuffer {
 		v.SetConfigType(fileType)
 
 		err := v.ReadConfig(bytes.NewBuffer(buffer))
-		SpringUtils.Panic(err).When(err != nil)
+		util.Panic(err).When(err != nil)
 
 		keys := v.AllKeys()
 		sort.Strings(keys)

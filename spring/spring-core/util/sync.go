@@ -14,19 +14,27 @@
  * limitations under the License.
  */
 
-package SpringUtils_test
+package util
 
 import (
-	"testing"
-	"time"
-
-	"github.com/go-spring/spring-utils"
+	"sync"
 )
 
-func TestWaitGroup(t *testing.T) {
-	var wg SpringUtils.WaitGroup
-	for i := 0; i < 5; i++ {
-		wg.Add(func() { time.Sleep(10 * time.Millisecond) })
-	}
-	wg.Wait()
+// WaitGroup 封装 sync.WaitGroup，提供更简单的 API
+type WaitGroup struct {
+	wg sync.WaitGroup
+}
+
+// Add 添加一个任务，任务在 Goroutine 中执行
+func (wg *WaitGroup) Add(fn func()) {
+	wg.wg.Add(1)
+	go func() {
+		defer wg.wg.Done()
+		fn()
+	}()
+}
+
+// Wait 等待所有任务执行完成
+func (wg *WaitGroup) Wait() {
+	wg.wg.Wait()
 }

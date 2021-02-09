@@ -14,29 +14,17 @@
  * limitations under the License.
  */
 
-package SpringUtils
+package util
 
 import (
-	"net"
-	"sync"
+	"encoding/json"
 )
 
-var localIPv4Str = "0.0.0.0"
-var localIPv4Once = new(sync.Once)
-
-// LocalIPv4 获取本机的 IPv4 地址
-func LocalIPv4() string {
-	localIPv4Once.Do(func() {
-		if ias, err := net.InterfaceAddrs(); err == nil {
-			for _, address := range ias {
-				if ipNet, ok := address.(*net.IPNet); ok && !ipNet.IP.IsLoopback() {
-					if ipNet.IP.To4() != nil {
-						localIPv4Str = ipNet.IP.String()
-						return
-					}
-				}
-			}
-		}
-	})
-	return localIPv4Str
+// ToJson 将对象序列化为 Json 字符串，错误信息以结果返回。
+func ToJson(i interface{}) string {
+	bytes, err := json.Marshal(i)
+	if err != nil {
+		return err.Error()
+	}
+	return string(bytes)
 }

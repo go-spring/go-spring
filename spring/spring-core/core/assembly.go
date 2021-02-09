@@ -25,8 +25,8 @@ import (
 
 	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/conf"
+	"github.com/go-spring/spring-core/util"
 	"github.com/go-spring/spring-logger"
-	"github.com/go-spring/spring-utils"
 )
 
 //// beanAssembly Bean 组装车间
@@ -192,7 +192,7 @@ func (assembly *defaultBeanAssembly) getBeanValue(v reflect.Value, tag bean.Sing
 	// 对找到的 Bean 进行自动注入
 	assembly.wireBeanDefinition(result, false)
 
-	v0 := SpringUtils.PatchValue(v, true)
+	v0 := util.PatchValue(v, true)
 	v0.Set(result.Value())
 	return true
 }
@@ -203,7 +203,7 @@ func (assembly *defaultBeanAssembly) collectBeans(v reflect.Value, tag bean.Coll
 	t := v.Type()
 	et := t.Elem()
 
-	if !SpringUtils.IsRefType(et.Kind()) { // 收集模式的数组元素必须是引用类型
+	if !util.IsRefType(et.Kind()) { // 收集模式的数组元素必须是引用类型
 		panic(errors.New("slice item in collection mode should be ref type"))
 	}
 
@@ -216,7 +216,7 @@ func (assembly *defaultBeanAssembly) collectBeans(v reflect.Value, tag bean.Coll
 	}
 
 	if result.Len() > 0 { // 找到多个符合条件的结果
-		v = SpringUtils.PatchValue(v, true)
+		v = util.PatchValue(v, true)
 		v.Set(result)
 		return true
 	}
@@ -507,7 +507,7 @@ func (assembly *defaultBeanAssembly) wireObjectBean(bd bean.SBeanDefinition, onl
 					if tag, ok := ft.Tag.Lookup("value"); ok {
 						fieldOnlyAutoWire = true
 						err := assembly.BindStructField(fv, tag, conf.BindOption{FieldName: fieldName})
-						SpringUtils.Panic(err).When(err != nil)
+						util.Panic(err).When(err != nil)
 					}
 				}
 
@@ -525,7 +525,7 @@ func (assembly *defaultBeanAssembly) wireObjectBean(bd bean.SBeanDefinition, onl
 				if ft.Type.Kind() == reflect.Struct {
 
 					// 开放私有字段，但是不会更新其原有可见属性
-					fv0 := SpringUtils.PatchValue(fv, true)
+					fv0 := util.PatchValue(fv, true)
 					if fv0.CanSet() {
 
 						// 对 Bean 的结构体进行递归注入
@@ -572,9 +572,9 @@ func (assembly *defaultBeanAssembly) wireFunctionBean(fnValue reflect.Value, fnB
 	}
 
 	// 将函数的返回值赋值给 Bean
-	if SpringUtils.IsRefType(val.Kind()) {
+	if util.IsRefType(val.Kind()) {
 		// 如果实现接口的是值类型，那么需要转换成指针类型然后再赋值给接口
-		if val.Kind() == reflect.Interface && SpringUtils.IsValueType(val.Elem().Kind()) {
+		if val.Kind() == reflect.Interface && util.IsValueType(val.Elem().Kind()) {
 			ptrVal := reflect.New(val.Elem().Type())
 			ptrVal.Elem().Set(val.Elem())
 			fnBean.RValue.Set(ptrVal)
@@ -615,7 +615,7 @@ func (assembly *defaultBeanAssembly) WireStructField(v reflect.Value, tag string
 		s := ""
 		sv := reflect.ValueOf(&s).Elem()
 		err := conf.BindStructField(assembly.appCtx.properties, sv, tag, conf.BindOption{})
-		SpringUtils.Panic(err).When(err != nil)
+		util.Panic(err).When(err != nil)
 		tag = s
 	}
 

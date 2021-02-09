@@ -14,21 +14,27 @@
  * limitations under the License.
  */
 
-package SpringUtils
+package util
 
 import (
-	"crypto/md5"
-	"encoding/base64"
-	"encoding/hex"
+	"container/list"
 )
 
-// MD5 获取 MD5 计算后的字符串
-func MD5(str string) string {
-	hash := md5.Sum([]byte(str))
-	return hex.EncodeToString(hash[:])
+// NewList 使用输入的元素创建列表
+func NewList(v ...interface{}) *list.List {
+	l := list.New()
+	for _, val := range v {
+		l.PushBack(val)
+	}
+	return l
 }
 
-// BASE64 返回 BASE64 加密后的字符串
-func BASE64(str string) string {
-	return base64.StdEncoding.EncodeToString([]byte(str))
+// FindInList 在列表中查询指定元素，存在则返回列表项指针，不存在返回 nil
+func FindInList(v interface{}, l *list.List) (*list.Element, bool) {
+	for e := l.Front(); e != nil; e = e.Next() {
+		if e.Value == v {
+			return e, true
+		}
+	}
+	return nil, false
 }

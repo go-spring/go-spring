@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/go-spring/spring-utils"
+	"github.com/go-spring/spring-core/util"
 )
 
 // Runnable 执行器，不能返回 error 以外的其他值
@@ -22,7 +22,7 @@ type Runnable struct {
 func (r *Runnable) Run(assembly beanAssembly) error {
 
 	// 获取函数定义所在的文件及其行号信息
-	file, line, _ := SpringUtils.FileLine(r.Fn)
+	file, line, _ := util.FileLine(r.Fn)
 	fileLine := fmt.Sprintf("%s:%d", file, line)
 
 	// 组装 fn 调用所需的参数列表

@@ -23,7 +23,7 @@ import (
 	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/cond"
 	"github.com/go-spring/spring-core/core"
-	"github.com/go-spring/spring-utils"
+	"github.com/go-spring/spring-core/util"
 )
 
 type fnArg struct {
@@ -40,7 +40,7 @@ func TestRunner_Run(t *testing.T) {
 		ctx.Register(bean.Make(func() int { return 3 }))
 		ctx.Property("version", "v0.0.1")
 
-		SpringUtils.AssertPanic(t, func() {
+		util.AssertPanic(t, func() {
 			run := false
 			c := cond.OnProfile("dev")
 			_ = ctx.Run(func(i *int, version string) {
@@ -48,7 +48,7 @@ func TestRunner_Run(t *testing.T) {
 				fmt.Println("int:", *i)
 				run = true
 			}, "1:${version}").When(c.Matches(ctx))
-			SpringUtils.AssertEqual(t, run, false)
+			util.AssertEqual(t, run, false)
 		}, "should call after AutoWireBeans")
 
 		ctx.AutoWireBeans()
@@ -68,7 +68,7 @@ func TestRunner_Run(t *testing.T) {
 			fmt.Println("int:", *i)
 			run = true
 		}, "1:${version}").When(c.Matches(ctx))
-		SpringUtils.AssertEqual(t, run, false)
+		util.AssertEqual(t, run, false)
 	})
 
 	t.Run("run", func(t *testing.T) {
@@ -102,14 +102,14 @@ func TestRunner_Run(t *testing.T) {
 						arg.f = 3.0
 					}
 				}, "0:${version}")).When(c.Matches(ctx))
-			SpringUtils.AssertEqual(t, run, true)
+			util.AssertEqual(t, run, true)
 		}
 
 		// run On
 		{
 			run = false
 			_ = ctx.Run(fn, "1:${version}").On(c)
-			SpringUtils.AssertEqual(t, run, true)
+			util.AssertEqual(t, run, true)
 		}
 	})
 }

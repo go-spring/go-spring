@@ -14,14 +14,21 @@
  * limitations under the License.
  */
 
-package SpringUtils
+package util
 
-// SafeCloseChan 安全地关闭一个管道
-func SafeCloseChan(ch chan struct{}) {
-	select {
-	case <-ch:
-		// chan 已关闭，无需再次关闭。
-	default:
-		close(ch)
-	}
+import (
+	"crypto/md5"
+	"encoding/base64"
+	"encoding/hex"
+)
+
+// MD5 获取 MD5 计算后的字符串
+func MD5(str string) string {
+	hash := md5.Sum([]byte(str))
+	return hex.EncodeToString(hash[:])
+}
+
+// BASE64 返回 BASE64 加密后的字符串
+func BASE64(str string) string {
+	return base64.StdEncoding.EncodeToString([]byte(str))
 }

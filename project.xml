@@ -1,12 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <projects>
     <project>
-        <name>spring-utils</name>
-        <dir>spring/spring-utils</dir>
-        <url>https://github.com/go-spring/spring-utils.git</url>
-        <branch>master</branch>
-    </project>
-    <project>
         <name>spring-message</name>
         <dir>spring/spring-message</dir>
         <url>https://github.com/go-spring/spring-message.git</url>

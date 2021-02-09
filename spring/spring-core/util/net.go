@@ -14,18 +14,29 @@
  * limitations under the License.
  */
 
-package SpringUtils
+package util
 
 import (
-	"time"
+	"net"
+	"sync"
 )
 
-// CurrentMilliSeconds 返回当前的毫秒时间
-func CurrentMilliSeconds() int64 {
-	return time.Now().UnixNano() / int64(time.Millisecond)
-}
+var localIPv4Str = "0.0.0.0"
+var localIPv4Once = new(sync.Once)
 
-// MilliSeconds 返回对应的毫秒时长
-func MilliSeconds(d time.Duration) int64 {
-	return d.Nanoseconds() / int64(time.Millisecond)
+// LocalIPv4 获取本机的 IPv4 地址
+func LocalIPv4() string {
+	localIPv4Once.Do(func() {
+		if ias, err := net.InterfaceAddrs(); err == nil {
+			for _, address := range ias {
+				if ipNet, ok := address.(*net.IPNet); ok && !ipNet.IP.IsLoopback() {
+					if ipNet.IP.To4() != nil {
+						localIPv4Str = ipNet.IP.String()
+						return
+					}
+				}
+			}
+		}
+	})
+	return localIPv4Str
 }

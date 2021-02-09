@@ -23,7 +23,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/go-spring/spring-utils"
+	"github.com/go-spring/spring-core/util"
 )
 
 // errorType error 的反射类型
@@ -742,7 +742,7 @@ func (d *BeanDefinition) Export(exports ...TypeOrPtr) *BeanDefinition {
 		if t, ok := o.(reflect.Type); ok {
 			typ = t
 		} else { // 处理 (*error)(nil) 这种导出形式
-			typ = SpringUtils.Indirect(reflect.TypeOf(o))
+			typ = util.Indirect(reflect.TypeOf(o))
 		}
 
 		if typ.Kind() == reflect.Interface {
@@ -756,7 +756,7 @@ func (d *BeanDefinition) Export(exports ...TypeOrPtr) *BeanDefinition {
 
 // ValueToBeanDefinition 将 Value 转换为 BeanDefinition 对象
 func ValueToBeanDefinition(v reflect.Value) *BeanDefinition {
-	if !v.IsValid() || SpringUtils.IsNil(v) {
+	if !v.IsValid() || util.IsNil(v) {
 		panic(errors.New("bean can't be nil"))
 	}
 	return newBeanDefinition(NewObjectBean(v))

@@ -14,17 +14,14 @@
  * limitations under the License.
  */
 
-package SpringUtils
+package util
 
-import (
-	"encoding/json"
-)
-
-// ToJson 将对象序列化为 Json 字符串，错误信息以结果返回。
-func ToJson(i interface{}) string {
-	bytes, err := json.Marshal(i)
-	if err != nil {
-		return err.Error()
+// SafeCloseChan 安全地关闭一个管道
+func SafeCloseChan(ch chan struct{}) {
+	select {
+	case <-ch:
+		// chan 已关闭，无需再次关闭。
+	default:
+		close(ch)
 	}
-	return string(bytes)
 }

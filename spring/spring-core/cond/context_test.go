@@ -23,7 +23,7 @@ import (
 	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/cond"
 	"github.com/go-spring/spring-core/core"
-	"github.com/go-spring/spring-utils"
+	"github.com/go-spring/spring-core/util"
 )
 
 type Teacher interface {
@@ -176,7 +176,7 @@ func TestDefaultSpringContext(t *testing.T) {
 
 		var b *BeanZero
 		ok := ctx.GetBean(&b)
-		SpringUtils.AssertEqual(t, ok, false)
+		util.AssertEqual(t, ok, false)
 	})
 
 	t.Run("bean:test_ctx:test", func(t *testing.T) {
@@ -188,7 +188,7 @@ func TestDefaultSpringContext(t *testing.T) {
 
 		var b *BeanZero
 		ok := ctx.GetBean(&b)
-		SpringUtils.AssertEqual(t, ok, true)
+		util.AssertEqual(t, ok, true)
 	})
 
 	t.Run("bean:test_ctx:stable", func(t *testing.T) {
@@ -200,7 +200,7 @@ func TestDefaultSpringContext(t *testing.T) {
 
 		var b *BeanZero
 		ok := ctx.GetBean(&b)
-		SpringUtils.AssertEqual(t, ok, false)
+		util.AssertEqual(t, ok, false)
 	})
 
 	t.Run("option withClassName Condition", func(t *testing.T) {
@@ -219,10 +219,10 @@ func TestDefaultSpringContext(t *testing.T) {
 		var cls *ClassRoom
 		ctx.GetBean(&cls)
 
-		SpringUtils.AssertEqual(t, cls.floor, 0)
-		SpringUtils.AssertEqual(t, len(cls.students), 0)
-		SpringUtils.AssertEqual(t, cls.className, "default")
-		SpringUtils.AssertEqual(t, cls.President, "CaiYuanPei")
+		util.AssertEqual(t, cls.floor, 0)
+		util.AssertEqual(t, len(cls.students), 0)
+		util.AssertEqual(t, cls.className, "default")
+		util.AssertEqual(t, cls.President, "CaiYuanPei")
 	})
 
 	t.Run("option withClassName Apply", func(t *testing.T) {
@@ -241,10 +241,10 @@ func TestDefaultSpringContext(t *testing.T) {
 		var cls *ClassRoom
 		ctx.GetBean(&cls)
 
-		SpringUtils.AssertEqual(t, cls.floor, 0)
-		SpringUtils.AssertEqual(t, len(cls.students), 0)
-		SpringUtils.AssertEqual(t, cls.className, "default")
-		SpringUtils.AssertEqual(t, cls.President, "CaiYuanPei")
+		util.AssertEqual(t, cls.floor, 0)
+		util.AssertEqual(t, len(cls.students), 0)
+		util.AssertEqual(t, cls.className, "default")
+		util.AssertEqual(t, cls.President, "CaiYuanPei")
 	})
 
 	t.Run("method bean cond", func(t *testing.T) {
@@ -257,12 +257,12 @@ func TestDefaultSpringContext(t *testing.T) {
 
 		var s *Server
 		ok := ctx.GetBean(&s)
-		SpringUtils.AssertEqual(t, ok, true)
-		SpringUtils.AssertEqual(t, s.Version, "1.0.0")
+		util.AssertEqual(t, ok, true)
+		util.AssertEqual(t, s.Version, "1.0.0")
 
 		var c *Consumer
 		ok = ctx.GetBean(&c)
-		SpringUtils.AssertEqual(t, ok, false)
+		util.AssertEqual(t, ok, false)
 	})
 
 	t.Run("fn method bean cond", func(t *testing.T) {
@@ -275,14 +275,14 @@ func TestDefaultSpringContext(t *testing.T) {
 
 		var si ServerInterface
 		ok := ctx.GetBean(&si)
-		SpringUtils.AssertEqual(t, ok, true)
+		util.AssertEqual(t, ok, true)
 
 		s := si.(*Server)
-		SpringUtils.AssertEqual(t, s.Version, "1.0.0")
+		util.AssertEqual(t, s.Version, "1.0.0")
 
 		var c *Consumer
 		ok = ctx.GetBean(&c)
-		SpringUtils.AssertEqual(t, ok, false)
+		util.AssertEqual(t, ok, false)
 	})
 }
 
@@ -297,11 +297,11 @@ func TestDefaultSpringContext_ParentNotRegister(t *testing.T) {
 
 	var s *Server
 	ok := ctx.GetBean(&s)
-	SpringUtils.AssertEqual(t, ok, false)
+	util.AssertEqual(t, ok, false)
 
 	var c *Consumer
 	ok = ctx.GetBean(&c)
-	SpringUtils.AssertEqual(t, ok, false)
+	util.AssertEqual(t, ok, false)
 }
 
 func TestDefaultSpringContext_ChainConditionOnBean(t *testing.T) {
@@ -311,7 +311,7 @@ func TestDefaultSpringContext_ChainConditionOnBean(t *testing.T) {
 		ctx.Register(bean.Ref(new(bool)).WithCondition(cond.OnBean("*int")))
 		ctx.Register(bean.Ref(new(int)).WithCondition(cond.OnBean("*float")))
 		ctx.AutoWireBeans()
-		SpringUtils.AssertEqual(t, len(ctx.GetBeanDefinitions()), 0)
+		util.AssertEqual(t, len(ctx.GetBeanDefinitions()), 0)
 	}
 }
 
@@ -342,10 +342,10 @@ func TestDefaultSpringContext_ConditionOnBean(t *testing.T) {
 
 	var two *BeanTwo
 	ok := ctx.GetBean(&two, "")
-	SpringUtils.AssertEqual(t, ok, true)
+	util.AssertEqual(t, ok, true)
 
 	ok = ctx.GetBean(&two, "another_two")
-	SpringUtils.AssertEqual(t, ok, false)
+	util.AssertEqual(t, ok, false)
 }
 
 func TestDefaultSpringContext_ConditionOnMissingBean(t *testing.T) {
@@ -363,9 +363,9 @@ func TestDefaultSpringContext_ConditionOnMissingBean(t *testing.T) {
 
 		var two *BeanTwo
 		ok := ctx.GetBean(&two, "")
-		SpringUtils.AssertEqual(t, ok, true)
+		util.AssertEqual(t, ok, true)
 
 		ok = ctx.GetBean(&two, "another_two")
-		SpringUtils.AssertEqual(t, ok, true)
+		util.AssertEqual(t, ok, true)
 	}
 }
