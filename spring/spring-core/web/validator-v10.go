@@ -14,13 +14,13 @@
  * limitations under the License.
  */
 
-package SpringWeb
+package web
 
 import (
 	"reflect"
 
 	v10 "github.com/go-playground/validator/v10"
-	"github.com/go-spring/spring-utils"
+	"github.com/go-spring/spring-core/util"
 )
 
 // defaultValidator 默认的参数校验器
@@ -40,7 +40,7 @@ func (v *defaultValidator) Engine() interface{} {
 
 // Validate 校验参数
 func (v *defaultValidator) Validate(i interface{}) error {
-	if SpringUtils.Indirect(reflect.TypeOf(i)).Kind() == reflect.Struct {
+	if util.Indirect(reflect.TypeOf(i)).Kind() == reflect.Struct {
 		return v.validator.Struct(i)
 	}
 	return nil

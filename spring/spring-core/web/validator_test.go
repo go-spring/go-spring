@@ -14,13 +14,13 @@
  * limitations under the License.
  */
 
-package SpringWeb_test
+package web_test
 
 import (
 	"testing"
 
-	"github.com/go-spring/spring-utils"
-	"github.com/go-spring/spring-web"
+	"github.com/go-spring/spring-core/util"
+	"github.com/go-spring/spring-core/web"
 )
 
 func TestValidate(t *testing.T) {
@@ -30,24 +30,24 @@ func TestValidate(t *testing.T) {
 	}{}
 
 	v.Str = "" // 不启用参数校验器
-	SpringUtils.AssertEqual(t, SpringWeb.Validate(v), nil)
+	util.AssertEqual(t, web.Validate(v), nil)
 
-	SpringWeb.SetValidator(SpringWeb.NewDefaultValidator())
-	defer func() { SpringWeb.SetValidator(nil) }()
+	web.SetValidator(web.NewDefaultValidator())
+	defer func() { web.SetValidator(nil) }()
 
-	SpringUtils.AssertPanic(t, func() {
+	util.AssertPanic(t, func() {
 		v.Str = ""
-		if err := SpringWeb.Validate(v); err != nil {
+		if err := web.Validate(v); err != nil {
 			panic(err)
 		}
 	}, "'Str' Error:Field validation for 'Str' failed on the 'required' tag")
 
 	v.Str = "1234"
-	SpringUtils.AssertEqual(t, SpringWeb.Validate(v), nil)
+	util.AssertEqual(t, web.Validate(v), nil)
 
-	SpringUtils.AssertPanic(t, func() {
+	util.AssertPanic(t, func() {
 		v.Str = "12345"
-		if err := SpringWeb.Validate(v); err != nil {
+		if err := web.Validate(v); err != nil {
 			panic(err)
 		}
 	}, "'Str' Error:Field validation for 'Str' failed on the 'len' tag")

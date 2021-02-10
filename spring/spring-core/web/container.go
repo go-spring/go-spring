@@ -15,7 +15,7 @@
  */
 
 // 为社区优秀的 Web 服务器提供一个抽象层，使得底层可以灵活切换。
-package SpringWeb
+package web
 
 import (
 	"context"
@@ -23,9 +23,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-spring/spring-const"
-	"github.com/go-spring/spring-logger"
-	"github.com/go-spring/spring-utils"
+	"github.com/go-spring/spring-core/log"
+	"github.com/go-spring/spring-core/util"
 )
 
 // HandlerFunc 标准 Web 处理函数
@@ -180,13 +179,13 @@ func (c *AbstractContainer) Start() error {
 
 // Stop 停止 Web 容器
 func (c *AbstractContainer) Stop(ctx context.Context) error {
-	panic(SpringConst.UnimplementedMethod)
+	panic(util.UnimplementedMethod)
 }
 
 // PrintMapper 打印路由注册信息
 func (c *AbstractContainer) PrintMapper(m *Mapper) {
 	file, line, fnName := m.handler.FileLine()
-	SpringLogger.Infof("%v :%d %s -> %s:%d %s", GetMethod(m.method), c.config.Port, m.path, file, line, fnName)
+	log.Infof("%v :%d %s -> %s:%d %s", GetMethod(m.method), c.config.Port, m.path, file, line, fnName)
 }
 
 /////////////////// Invoke Handler //////////////////////
@@ -210,7 +209,7 @@ type fnHandler HandlerFunc
 func (f fnHandler) Invoke(ctx Context) { f(ctx) }
 
 func (f fnHandler) FileLine() (file string, line int, fnName string) {
-	return SpringUtils.FileLine(f)
+	return util.FileLine(f)
 }
 
 // FUNC 标准 Web 处理函数的辅助函数
@@ -224,7 +223,7 @@ func (h httpHandler) Invoke(ctx Context) {
 }
 
 func (h httpHandler) FileLine() (file string, line int, fnName string) {
-	return SpringUtils.FileLine(h)
+	return util.FileLine(h)
 }
 
 // HTTP 标准 Http 处理函数的辅助函数
@@ -243,5 +242,5 @@ var LoggerFilter = Filter(FuncFilter(func(ctx Context, chain FilterChain) {
 	start := time.Now()
 	chain.Next(ctx)
 	w := ctx.ResponseWriter()
-	SpringLogger.WithContext(ctx.Context()).Infof("cost:%v size:%d code:%d %s", time.Since(start), w.Size(), w.Status(), string(w.Body()))
+	log.Ctx(ctx.Context()).Infof("cost:%v size:%d code:%d %s", time.Since(start), w.Size(), w.Status(), string(w.Body()))
 }))

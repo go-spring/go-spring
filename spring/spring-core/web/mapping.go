@@ -14,13 +14,13 @@
  * limitations under the License.
  */
 
-package SpringWeb
+package web
 
 import (
 	"fmt"
 	"net/http"
 
-	"github.com/go-spring/spring-const"
+	"github.com/go-spring/spring-core/util"
 )
 
 const (
@@ -148,7 +148,7 @@ type funcMapping struct {
 
 // Route 返回和 Mapping 绑定的路由分组
 func (r *funcMapping) Route(basePath string, filters ...Filter) *Router {
-	panic(SpringConst.UnimplementedMethod)
+	panic(util.UnimplementedMethod)
 }
 
 // Request 注册任意 HTTP 方法处理函数

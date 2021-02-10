@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package SpringWeb
+package web
 
 // logger
 // echo: https://github.com/labstack/echo/blob/master/middleware/logger.go

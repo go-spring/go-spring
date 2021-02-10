@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package SpringWeb
+package web
 
 // Filter 过滤器接口
 type Filter interface {

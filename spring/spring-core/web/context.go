@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package SpringWeb
+package web
 
 import (
 	"bytes"
@@ -25,7 +25,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/go-spring/spring-logger"
+	"github.com/go-spring/spring-core/log"
 )
 
 // ContextKey Context 和 NativeContext 相互转换的 Key
@@ -36,7 +36,7 @@ var ErrorHandler = func(ctx Context, err *HttpError) {
 
 	defer func() {
 		if r := recover(); r != nil {
-			SpringLogger.WithContext(ctx.Context()).Error(r)
+			log.Ctx(ctx.Context()).Error(r)
 		}
 	}()
 

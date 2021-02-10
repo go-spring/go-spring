@@ -14,13 +14,13 @@
  * limitations under the License.
  */
 
-package SpringWeb
+package web
 
 import (
 	"fmt"
 	"math"
 
-	"github.com/go-spring/spring-utils"
+	"github.com/go-spring/spring-core/util"
 )
 
 var (
@@ -81,20 +81,20 @@ func (r RpcError) ErrorWithData(err error, data interface{}) *RpcResult {
 
 // error skip 是相对于当前函数的调用深度
 func (r RpcError) error(skip int, err error, data interface{}) *RpcResult {
-	str := SpringUtils.ErrorWithFileLine(err, skip+1).Error()
+	str := util.ErrorWithFileLine(err, skip+1).Error()
 	return &RpcResult{ErrorCode: ErrorCode(r), Err: str, Data: data}
 }
 
 // Panic 抛出一个异常值
-func (r RpcError) Panic(err error) *SpringUtils.PanicCond {
-	return SpringUtils.NewPanicCond(func() interface{} {
+func (r RpcError) Panic(err error) *util.PanicCond {
+	return util.NewPanicCond(func() interface{} {
 		return r.error(2, err, nil)
 	})
 }
 
 // Panicf 抛出一段需要格式化的错误字符串
-func (r RpcError) Panicf(format string, a ...interface{}) *SpringUtils.PanicCond {
-	return SpringUtils.NewPanicCond(func() interface{} {
+func (r RpcError) Panicf(format string, a ...interface{}) *util.PanicCond {
+	return util.NewPanicCond(func() interface{} {
 		return r.error(2, fmt.Errorf(format, a...), nil)
 	})
 }

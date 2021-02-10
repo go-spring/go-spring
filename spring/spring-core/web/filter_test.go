@@ -14,25 +14,25 @@
  * limitations under the License.
  */
 
-package SpringWeb
+package web_test
 
-// Validator 参数校验器接口
-type Validator interface {
-	Engine() interface{}
-	Validate(i interface{}) error
-}
+import (
+	"fmt"
+	"testing"
 
-var validator Validator
+	"github.com/go-spring/spring-core/web"
+)
 
-// SetValidator 设置参数校验器
-func SetValidator(v Validator) {
-	validator = v
-}
+func TestFuncFilter(t *testing.T) {
 
-// Validate 参数校验
-func Validate(i interface{}) error {
-	if validator != nil {
-		return validator.Validate(i)
-	}
-	return nil
+	funcFilter := web.FuncFilter(func(ctx web.Context, chain web.FilterChain) {
+		fmt.Println("@FuncFilter")
+		chain.Next(ctx)
+	})
+
+	handlerFilter := web.HandlerFilter(web.FUNC(func(ctx web.Context) {
+		fmt.Println("@HandlerFilter")
+	}))
+
+	web.NewDefaultFilterChain([]web.Filter{funcFilter, handlerFilter}).Next(nil)
 }

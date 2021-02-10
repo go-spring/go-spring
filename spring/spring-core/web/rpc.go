@@ -14,14 +14,14 @@
  * limitations under the License.
  */
 
-package SpringWeb
+package web
 
 import (
 	"context"
 	"errors"
 	"reflect"
 
-	"github.com/go-spring/spring-utils"
+	"github.com/go-spring/spring-core/util"
 )
 
 // contextType context.Context 的反射类型
@@ -54,7 +54,7 @@ func (b *bindHandler) call(ctx Context) interface{} {
 }
 
 func (b *bindHandler) FileLine() (file string, line int, fnName string) {
-	return SpringUtils.FileLine(b.fn)
+	return util.FileLine(b.fn)
 }
 
 func validBindFn(fnType reflect.Type) bool {

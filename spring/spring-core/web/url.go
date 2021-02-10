@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package SpringWeb
+package web
 
 import (
 	"errors"

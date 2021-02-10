@@ -19,12 +19,6 @@
         <branch>master</branch>
     </project>
     <project>
-        <name>spring-web</name>
-        <dir>spring/spring-web</dir>
-        <url>https://github.com/go-spring/spring-web.git</url>
-        <branch>master</branch>
-    </project>
-    <project>
         <name>spring-gin</name>
         <dir>spring/spring-gin</dir>
         <url>https://github.com/go-spring/spring-gin.git</url>
