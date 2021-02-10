@@ -14,11 +14,10 @@
  * limitations under the License.
  */
 
-package web
+package v
 
 // Validator 参数校验器接口
 type Validator interface {
-	Engine() interface{}
 	Validate(i interface{}) error
 }
 
