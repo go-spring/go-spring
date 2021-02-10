@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package v
+package util
 
 // Validator 参数校验器接口
 type Validator interface {
