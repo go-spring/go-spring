@@ -166,7 +166,7 @@ func TestDefaultSpringContext(t *testing.T) {
 	t.Run("bean:test_ctx:", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
-		ctx.Register(bean.Ref(&BeanZero{5}).WithCondition(cond.
+		ctx.RegisterBean(bean.Ref(&BeanZero{5}).WithCondition(cond.
 			OnProfile("test").
 			And().
 			OnMissingBean("null"),
@@ -183,7 +183,7 @@ func TestDefaultSpringContext(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
 		ctx.Profile("test")
-		ctx.Register(bean.Ref(&BeanZero{5}).WithCondition(cond.OnProfile("test")))
+		ctx.RegisterBean(bean.Ref(&BeanZero{5}).WithCondition(cond.OnProfile("test")))
 		ctx.AutoWireBeans()
 
 		var b *BeanZero
@@ -195,7 +195,7 @@ func TestDefaultSpringContext(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
 		ctx.Profile("stable")
-		ctx.Register(bean.Ref(&BeanZero{5}).WithCondition(cond.OnProfile("test")))
+		ctx.RegisterBean(bean.Ref(&BeanZero{5}).WithCondition(cond.OnProfile("test")))
 		ctx.AutoWireBeans()
 
 		var b *BeanZero
@@ -208,7 +208,7 @@ func TestDefaultSpringContext(t *testing.T) {
 		ctx := core.NewApplicationContext()
 		ctx.Property("president", "CaiYuanPei")
 		ctx.Property("class_floor", 2)
-		ctx.Register(bean.Make(NewClassRoom).Options(
+		ctx.RegisterBean(bean.Make(NewClassRoom).Options(
 			bean.NewOptionArg(withClassName,
 				"${class_name:=二年级03班}",
 				"${class_floor:=3}",
@@ -230,7 +230,7 @@ func TestDefaultSpringContext(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
 		ctx.Property("president", "CaiYuanPei")
-		ctx.Register(bean.Make(NewClassRoom).Options(
+		ctx.RegisterBean(bean.Make(NewClassRoom).Options(
 			bean.NewOptionArg(withClassName,
 				"${class_name:=二年级03班}",
 				"${class_floor:=3}",
@@ -251,8 +251,8 @@ func TestDefaultSpringContext(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
 		ctx.Property("server.version", "1.0.0")
-		parent := ctx.Register(bean.Ref(new(Server)))
-		ctx.Register(bean.Child(parent, "Consumer").WithCondition(cond.OnProperty("consumer.enable")))
+		parent := ctx.RegisterBean(bean.Ref(new(Server)))
+		ctx.RegisterBean(bean.Child(parent, "Consumer").WithCondition(cond.OnProperty("consumer.enable")))
 		ctx.AutoWireBeans()
 
 		var s *Server
@@ -269,8 +269,8 @@ func TestDefaultSpringContext(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
 		ctx.Property("server.version", "1.0.0")
-		ctx.Register(bean.Make(NewServerInterface))
-		ctx.Register(bean.MethodFunc(ServerInterface.ConsumerT).WithCondition(cond.OnProperty("consumer.enable")))
+		ctx.RegisterBean(bean.Make(NewServerInterface))
+		ctx.RegisterBean(bean.MethodFunc(ServerInterface.ConsumerT).WithCondition(cond.OnProperty("consumer.enable")))
 		ctx.AutoWireBeans()
 
 		var si ServerInterface
@@ -289,9 +289,9 @@ func TestDefaultSpringContext(t *testing.T) {
 func TestDefaultSpringContext_ParentNotRegister(t *testing.T) {
 
 	ctx := core.NewApplicationContext()
-	parent := ctx.Register(bean.Make(NewServerInterface).
+	parent := ctx.RegisterBean(bean.Make(NewServerInterface).
 		WithCondition(cond.OnProperty("server.is.nil")))
-	ctx.Register(bean.Child(parent, "Consumer"))
+	ctx.RegisterBean(bean.Child(parent, "Consumer"))
 
 	ctx.AutoWireBeans()
 
@@ -307,9 +307,9 @@ func TestDefaultSpringContext_ParentNotRegister(t *testing.T) {
 func TestDefaultSpringContext_ChainConditionOnBean(t *testing.T) {
 	for i := 0; i < 20; i++ { // 不要排序
 		ctx := core.NewApplicationContext()
-		ctx.Register(bean.Ref(new(string)).WithCondition(cond.OnBean("*bool")))
-		ctx.Register(bean.Ref(new(bool)).WithCondition(cond.OnBean("*int")))
-		ctx.Register(bean.Ref(new(int)).WithCondition(cond.OnBean("*float")))
+		ctx.RegisterBean(bean.Ref(new(string)).WithCondition(cond.OnBean("*bool")))
+		ctx.RegisterBean(bean.Ref(new(bool)).WithCondition(cond.OnBean("*int")))
+		ctx.RegisterBean(bean.Ref(new(int)).WithCondition(cond.OnBean("*float")))
 		ctx.AutoWireBeans()
 		util.AssertEqual(t, len(ctx.GetBeanDefinitions()), 0)
 	}
@@ -323,20 +323,20 @@ func TestDefaultSpringContext_ConditionOnBean(t *testing.T) {
 		Or().
 		OnProfile("test")
 
-	ctx.Register(bean.Ref(&BeanZero{5}).WithCondition(cond.
+	ctx.RegisterBean(bean.Ref(&BeanZero{5}).WithCondition(cond.
 		On(c).
 		And().
 		OnMissingBean("null"),
 	))
 
-	ctx.Register(bean.Ref(new(BeanOne)).WithCondition(cond.
+	ctx.RegisterBean(bean.Ref(new(BeanOne)).WithCondition(cond.
 		On(c).
 		And().
 		OnMissingBean("null"),
 	))
 
-	ctx.Register(bean.Ref(new(BeanTwo)).WithCondition(cond.OnBean("*cond_test.BeanOne")))
-	ctx.Register(bean.Ref(new(BeanTwo)).WithName("another_two").WithCondition(cond.OnBean("Null")))
+	ctx.RegisterBean(bean.Ref(new(BeanTwo)).WithCondition(cond.OnBean("*cond_test.BeanOne")))
+	ctx.RegisterBean(bean.Ref(new(BeanTwo)).WithName("another_two").WithCondition(cond.OnBean("Null")))
 
 	ctx.AutoWireBeans()
 
@@ -353,11 +353,11 @@ func TestDefaultSpringContext_ConditionOnMissingBean(t *testing.T) {
 	for i := 0; i < 20; i++ { // 测试 FindBean 无需绑定，不要排序
 		ctx := core.NewApplicationContext()
 
-		ctx.Register(bean.Ref(&BeanZero{5}))
-		ctx.Register(bean.Ref(new(BeanOne)))
+		ctx.RegisterBean(bean.Ref(&BeanZero{5}))
+		ctx.RegisterBean(bean.Ref(new(BeanOne)))
 
-		ctx.Register(bean.Ref(new(BeanTwo)).WithCondition(cond.OnMissingBean("*cond_test.BeanOne")))
-		ctx.Register(bean.Ref(new(BeanTwo)).WithName("another_two").WithCondition(cond.OnMissingBean("Null")))
+		ctx.RegisterBean(bean.Ref(new(BeanTwo)).WithCondition(cond.OnMissingBean("*cond_test.BeanOne")))
+		ctx.RegisterBean(bean.Ref(new(BeanTwo)).WithName("another_two").WithCondition(cond.OnMissingBean("Null")))
 
 		ctx.AutoWireBeans()
 

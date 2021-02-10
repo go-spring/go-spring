@@ -29,7 +29,7 @@ func startApplication(cfgLocation ...string) *Application {
 	app.AddConfigLocation(cfgLocation...)
 	app.Property("application-event.collection", "[]?")
 	app.Property("command-line-runner.collection", "[]?")
-	app.Start()
+	app.start()
 	return app
 }
 

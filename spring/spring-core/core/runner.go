@@ -47,12 +47,6 @@ func newRunner(ctx *applicationContext, fn interface{}, tags []string) *Runner {
 	}
 }
 
-// Options 设置 Option 模式函数的参数绑定
-func (r *Runner) Options(options ...*bean.OptionArg) *Runner {
-	r.r.OptionArg = &bean.FnOptionBindingArg{Options: options}
-	return r
-}
-
 func (r *Runner) run() error {
 	assembly := newDefaultBeanAssembly(r.ctx)
 

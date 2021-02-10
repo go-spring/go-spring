@@ -21,34 +21,23 @@ import (
 	"testing"
 
 	"github.com/go-spring/spring-core/bean"
-	"github.com/go-spring/spring-core/cond"
 	"github.com/go-spring/spring-core/core"
 	"github.com/go-spring/spring-core/util"
 )
-
-type fnArg struct {
-	f float32
-}
-
-type fnOption func(arg *fnArg)
 
 func TestRunner_Run(t *testing.T) {
 
 	t.Run("before AutoWireBeans", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
-		ctx.Register(bean.Make(func() int { return 3 }))
+		ctx.RegisterBean(bean.Make(func() int { return 3 }))
 		ctx.Property("version", "v0.0.1")
 
 		util.AssertPanic(t, func() {
-			run := false
-			c := cond.OnProfile("dev")
-			_ = ctx.Run(func(i *int, version string) {
+			_ = ctx.Invoke(func(i *int, version string) {
 				fmt.Println("version:", version)
 				fmt.Println("int:", *i)
-				run = true
-			}, "1:${version}").When(c.Matches(ctx))
-			util.AssertEqual(t, run, false)
+			}, "1:${version}")
 		}, "should call after AutoWireBeans")
 
 		ctx.AutoWireBeans()
@@ -57,59 +46,29 @@ func TestRunner_Run(t *testing.T) {
 	t.Run("not run", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
-		ctx.Register(bean.Make(func() int { return 3 }))
+		ctx.RegisterBean(bean.Make(func() int { return 3 }))
 		ctx.Property("version", "v0.0.1")
 		ctx.AutoWireBeans()
 
-		run := false
-		c := cond.OnProfile("dev")
-		_ = ctx.Run(func(i *int, version string) {
+		_ = ctx.Invoke(func(i *int, version string) {
 			fmt.Println("version:", version)
 			fmt.Println("int:", *i)
-			run = true
-		}, "1:${version}").When(c.Matches(ctx))
-		util.AssertEqual(t, run, false)
+		}, "1:${version}")
 	})
 
 	t.Run("run", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
-		ctx.Register(bean.Make(func() int { return 3 }))
+		ctx.RegisterBean(bean.Make(func() int { return 3 }))
 		ctx.Property("version", "v0.0.1")
 		ctx.Profile("dev")
 		ctx.AutoWireBeans()
 
-		c := cond.OnProfile("dev")
-
-		run := false
-		fn := func(i *int, version string, options ...fnOption) {
+		fn := func(i *int, version string) {
 			fmt.Println("version:", version)
 			fmt.Println("int:", *i)
-			run = true
-
-			arg := &fnArg{}
-			for _, opt := range options {
-				opt(arg)
-			}
-			fmt.Println(arg.f)
 		}
 
-		// run When
-		{
-			_ = ctx.Run(fn, "1:${version}").Options(
-				bean.NewOptionArg(func(version string) fnOption {
-					return func(arg *fnArg) {
-						arg.f = 3.0
-					}
-				}, "0:${version}")).When(c.Matches(ctx))
-			util.AssertEqual(t, run, true)
-		}
-
-		// run On
-		{
-			run = false
-			_ = ctx.Run(fn, "1:${version}").On(c)
-			util.AssertEqual(t, run, true)
-		}
+		_ = ctx.Invoke(fn, "1:${version}")
 	})
 }

@@ -69,8 +69,8 @@ type ApplicationContext interface {
 	// Profile 设置运行环境
 	Profile(profile string)
 
-	// Register 注册 bean.BeanDefinition 对象。
-	Register(bd *bean.BeanDefinition) *bean.BeanDefinition
+	// RegisterBean 注册 bean.BeanDefinition 对象。
+	RegisterBean(bd *bean.BeanDefinition) *bean.BeanDefinition
 
 	// AutoWireBeans 对所有 Bean 进行依赖注入和属性绑定
 	AutoWireBeans()

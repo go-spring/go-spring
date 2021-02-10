@@ -184,7 +184,7 @@ func (ctx *applicationContext) registerBeanDefinition(bd *bean.BeanDefinition) {
 	ctx.beanMap[key] = bd
 }
 
-func (ctx *applicationContext) Register(bd *bean.BeanDefinition) *bean.BeanDefinition {
+func (ctx *applicationContext) RegisterBean(bd *bean.BeanDefinition) *bean.BeanDefinition {
 	ctx.checkRegistration()
 	ctx.AllBeans = append(ctx.AllBeans, bd)
 	return bd

@@ -233,7 +233,7 @@ func TestIsRefType(t *testing.T) {
 		default:
 			typ = reflect.TypeOf(i)
 		}
-		if r := bean.IsRefType(typ.Kind()); d.v != r {
+		if r := util.IsRefType(typ.Kind()); d.v != r {
 			t.Errorf("%v expect %v but %v", typ, d.v, r)
 		}
 	}

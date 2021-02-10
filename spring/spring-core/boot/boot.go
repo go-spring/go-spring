@@ -80,19 +80,19 @@ func SetProfile(profile string) {
 // Bean 注册 BeanDefinition 对象。
 func Bean(bd *bean.BeanDefinition) *bean.BeanDefinition {
 	checkRunning()
-	return gApp.Register(bd)
+	return gApp.RegisterBean(bd)
 }
 
 // Ref 注册单例 Bean，不指定名称，重复注册会 panic。
 func Ref(i interface{}) *bean.BeanDefinition {
 	checkRunning()
-	return gApp.Register(bean.Ref(i))
+	return gApp.RegisterBean(bean.Ref(i))
 }
 
 // Make 注册单例构造函数 Bean，不指定名称，重复注册会 panic。
 func Make(fn interface{}, tags ...string) *bean.BeanDefinition {
 	checkRunning()
-	return gApp.Register(bean.Make(fn, tags...))
+	return gApp.RegisterBean(bean.Make(fn, tags...))
 }
 
 // Child 注册成员方法单例 Bean，不指定名称，重复注册会 panic。
@@ -100,14 +100,14 @@ func Make(fn interface{}, tags ...string) *bean.BeanDefinition {
 // 而且 interface 的方法类型不带 receiver 而成员方法的类型带有 receiver，两者类型也不好匹配。
 func Child(selector bean.BeanSelector, method string, tags ...string) *bean.BeanDefinition {
 	checkRunning()
-	return gApp.Register(bean.Child(selector, method, tags...))
+	return gApp.RegisterBean(bean.Child(selector, method, tags...))
 }
 
 // MethodFunc 注册成员方法单例 Bean，不指定名称，重复注册会 panic。
 // method 形如 ServerInterface.Consumer (接口) 或 (*Server).Consumer (类型)。
 func MethodFunc(method interface{}, tags ...string) *bean.BeanDefinition {
 	checkRunning()
-	return gApp.Register(bean.MethodFunc(method, tags...))
+	return gApp.RegisterBean(bean.MethodFunc(method, tags...))
 }
 
 // WireBean 对外部的 Bean 进行依赖注入和属性绑定
