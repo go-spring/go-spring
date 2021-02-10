@@ -14,13 +14,13 @@
  * limitations under the License.
  */
 
-package SpringMessage
+package mq
 
 import (
 	"context"
 	"encoding/json"
 
-	"github.com/go-spring/spring-utils"
+	"github.com/go-spring/spring-core/util"
 )
 
 // Message 简单消息
@@ -65,7 +65,7 @@ func (msg *Message) WithBody(body []byte) *Message {
 // WithJsonBody 设置 Message 的消息体 NOTE:到底应不应该抛可愁死我了!
 func (msg *Message) WithJsonBody(body interface{}) *Message {
 	data, err := json.Marshal(body)
-	SpringUtils.Panic(err).When(err != nil)
+	util.Panic(err).When(err != nil)
 	msg.Body = data
 	return msg
 }

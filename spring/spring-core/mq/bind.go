@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package SpringMessage
+package mq
 
 import (
 	"context"
@@ -22,7 +22,7 @@ import (
 	"errors"
 	"reflect"
 
-	"github.com/go-spring/spring-utils"
+	"github.com/go-spring/spring-core/util"
 )
 
 // contextType context.Context 的反射类型
@@ -44,7 +44,7 @@ func (c *BindConsumer) Topics() []string {
 func (c *BindConsumer) Consume(ctx context.Context, msg *Message) {
 	bindVal := reflect.New(c.bindType.Elem())
 	err := json.Unmarshal(msg.Body, bindVal.Interface())
-	SpringUtils.Panic(err).When(err != nil)
+	util.Panic(err).When(err != nil)
 	c.fnValue.Call([]reflect.Value{reflect.ValueOf(ctx), bindVal})
 }
 

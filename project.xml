@@ -1,12 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <projects>
     <project>
-        <name>spring-message</name>
-        <dir>spring/spring-message</dir>
-        <url>https://github.com/go-spring/spring-message.git</url>
-        <branch>master</branch>
-    </project>
-    <project>
         <name>spring-rocketmq</name>
         <dir>spring/spring-rocketmq</dir>
         <url>https://github.com/go-spring/spring-rocketmq.git</url>
