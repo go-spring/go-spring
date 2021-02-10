@@ -61,10 +61,11 @@ func GetMethod(method uint32) (r []string) {
 
 // Mapper 路由映射器
 type Mapper struct {
-	method  uint32   // 方法
-	path    string   // 路径
-	handler Handler  // 处理函数
-	filters []Filter // 过滤器列表
+	method  uint32    // 方法
+	path    string    // 路径
+	handler Handler   // 处理函数
+	filters []Filter  // 过滤器列表
+	op      Operation // 描述文档
 }
 
 // NewMapper Mapper 的构造函数
@@ -88,6 +89,11 @@ func (m *Mapper) Handler() Handler { return m.handler }
 
 // Filters 返回 Mapper 的过滤器列表
 func (m *Mapper) Filters() []Filter { return m.filters }
+
+// Operation 设置与 Mapper 绑定的 Operation 对象
+func (m *Mapper) Operation(op Operation) {
+	m.op = op
+}
 
 // Mapping 路由注册接口
 type Mapping interface {

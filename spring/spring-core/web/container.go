@@ -78,11 +78,8 @@ type Container interface {
 	// AddRouter 添加新的路由信息
 	AddRouter(router RootRouter)
 
-	// Swagger 返回和容器绑定的 Swagger 对象
-	Swagger() Swagger
-
-	// SetSwagger 设置容器绑定的 Swagger 对象
-	SetSwagger(swagger Swagger)
+	// Swagger 设置与容器绑定的 Swagger 对象
+	Swagger(swagger Swagger)
 
 	// Start 启动 Web 容器
 	Start() error
@@ -148,13 +145,8 @@ func (c *AbstractContainer) AddRouter(router RootRouter) {
 	}
 }
 
-// Swagger 返回和容器绑定的 Swagger 对象
-func (c *AbstractContainer) Swagger() Swagger {
-	return c.swagger
-}
-
-// SetSwagger 设置容器绑定的 Swagger 对象
-func (c *AbstractContainer) SetSwagger(swagger Swagger) {
+// Swagger 设置与容器绑定的 Swagger 对象
+func (c *AbstractContainer) Swagger(swagger Swagger) {
 	c.swagger = swagger
 }
 
@@ -171,8 +163,16 @@ func RegisterSwaggerHandler(handler SwaggerHandler) {
 
 // Start 启动 Web 容器
 func (c *AbstractContainer) Start() error {
-	if c.Swagger() != nil && swaggerHandler != nil {
-		swaggerHandler(c.RootRouter, c.Swagger().ReadDoc())
+	if c.swagger != nil && swaggerHandler != nil {
+		for _, mapper := range c.Mappers() {
+			if op := mapper.op; op != nil {
+				if err := op.Process(); err != nil {
+					return err
+				}
+				c.swagger.AddPath(mapper.Path(), mapper.Method(), op)
+			}
+		}
+		swaggerHandler(c.RootRouter, c.swagger.ReadDoc())
 	}
 	return nil
 }
