@@ -21,7 +21,7 @@ import (
 	"reflect"
 
 	"github.com/go-spring/spring-core/bean"
-	"github.com/go-spring/spring-logger"
+	"github.com/go-spring/spring-core/log"
 )
 
 // Runner 立即执行器
@@ -74,7 +74,7 @@ func (r *Runner) run() error {
 
 	defer func() { // 捕获自动注入过程中的异常，打印错误日志然后重新抛出
 		if err := recover(); err != nil {
-			SpringLogger.Errorf("%v ↩\n%s", err, assembly.wiringStack.path())
+			log.Errorf("%v ↩\n%s", err, assembly.wiringStack.path())
 			panic(err)
 		}
 	}()

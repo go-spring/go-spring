@@ -25,8 +25,8 @@ import (
 	"strings"
 
 	"github.com/go-spring/spring-core/conf"
+	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
-	"github.com/go-spring/spring-logger"
 )
 
 type beanAssembly interface {
@@ -176,7 +176,7 @@ func (arg *fnStringBindingArg) Get(assembly beanAssembly, fileLine string) []ref
 func (arg *fnStringBindingArg) getArgValue(v reflect.Value, tag string, assembly beanAssembly, fileLine string) {
 
 	description := fmt.Sprintf("tag:\"%s\" %s", tag, fileLine)
-	SpringLogger.Tracef("get value %s", description)
+	log.Tracef("get value %s", description)
 
 	if IsValueType(v.Kind()) { // 值类型，采用属性绑定语法
 		if tag == "" {
@@ -188,7 +188,7 @@ func (arg *fnStringBindingArg) getArgValue(v reflect.Value, tag string, assembly
 		assembly.WireStructField(v, tag, reflect.Value{}, "")
 	}
 
-	SpringLogger.Tracef("get value success %s", description)
+	log.Tracef("get value success %s", description)
 }
 
 // FnOptionBindingArg 存储 Option 模式函数的参数绑定
@@ -272,7 +272,7 @@ func (arg *OptionArg) WithCondition(cond Condition) *OptionArg {
 
 // call 获取 OptionArg 的运算值
 func (arg *OptionArg) call(assembly beanAssembly) (v reflect.Value, ok bool) {
-	SpringLogger.Tracef("call option func %s", arg.FileLine())
+	log.Tracef("call option func %s", arg.FileLine())
 
 	if arg.cond == nil || assembly.Matches(arg.cond) {
 		fnValue := reflect.ValueOf(arg.fn)
@@ -282,6 +282,6 @@ func (arg *OptionArg) call(assembly beanAssembly) (v reflect.Value, ok bool) {
 		ok = true
 	}
 
-	SpringLogger.Tracef("call option func success %s", arg.FileLine())
+	log.Tracef("call option func success %s", arg.FileLine())
 	return
 }

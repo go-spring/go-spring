@@ -28,8 +28,8 @@ import (
 	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/core/internal/sort"
+	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
-	"github.com/go-spring/spring-logger"
 )
 
 // beanKey Bean's unique key, with type and name.
@@ -373,7 +373,7 @@ func (ctx *applicationContext) autoExport(t reflect.Type, bd *bean.BeanDefinitio
 }
 
 func (ctx *applicationContext) typeCache(typ reflect.Type, bd *bean.BeanDefinition) {
-	SpringLogger.Debugf("register bean type:\"%s\" beanId:\"%s\" %s", typ.String(), bd.BeanId(), bd.FileLine())
+	log.Debugf("register bean type:\"%s\" beanId:\"%s\" %s", typ.String(), bd.BeanId(), bd.FileLine())
 	ctx.getTypeCacheItem(typ).store(bd)
 }
 
@@ -580,7 +580,7 @@ func (ctx *applicationContext) AutoWireBeans() {
 
 	defer func() { // 捕获自动注入过程中的异常，打印错误日志然后重新抛出
 		if err := recover(); err != nil {
-			SpringLogger.Errorf("%v ↩\n%s", err, assembly.wiringStack.path())
+			log.Errorf("%v ↩\n%s", err, assembly.wiringStack.path())
 			panic(err)
 		}
 	}()
@@ -599,7 +599,7 @@ func (ctx *applicationContext) WireBean(i interface{}) {
 
 	defer func() { // 捕获自动注入过程中的异常，打印错误日志然后重新抛出
 		if err := recover(); err != nil {
-			SpringLogger.Errorf("%v ↩\n%s", err, assembly.wiringStack.path())
+			log.Errorf("%v ↩\n%s", err, assembly.wiringStack.path())
 			panic(err)
 		}
 	}()
@@ -630,7 +630,7 @@ func (ctx *applicationContext) Close(beforeDestroy ...func()) {
 	// 等待 safe goroutines 全部退出
 	ctx.wg.Wait()
 
-	SpringLogger.Info("safe goroutines exited")
+	log.Info("safe goroutines exited")
 
 	assembly := newDefaultBeanAssembly(ctx)
 
@@ -638,7 +638,7 @@ func (ctx *applicationContext) Close(beforeDestroy ...func()) {
 	for i := ctx.destroyers.Front(); i != nil; i = i.Next() {
 		d := i.Value.(*destroyer)
 		if err := d.bean.GetDestroy().Run(assembly); err != nil {
-			SpringLogger.Error(err)
+			log.Error(err)
 		}
 	}
 }
@@ -669,7 +669,7 @@ func (ctx *applicationContext) SafeGoroutine(fn GoFunc) {
 
 		defer func() {
 			if err := recover(); err != nil {
-				SpringLogger.Error(err)
+				log.Error(err)
 			}
 		}()
 

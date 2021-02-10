@@ -17,7 +17,7 @@
 package conf
 
 import (
-	"github.com/go-spring/spring-const"
+	"github.com/go-spring/spring-core/util"
 )
 
 // priorityProperties 基于优先级的 Properties 版本
@@ -39,7 +39,7 @@ func (p *priorityProperties) Has(key string) bool {
 
 // Bind 根据类型获取属性值，属性名称统一转成小写。
 func (p *priorityProperties) Bind(key string, i interface{}) error {
-	panic(SpringConst.UnimplementedMethod)
+	panic(util.UnimplementedMethod)
 }
 
 // Get 返回属性值，不能存在返回 nil，属性名称统一转成小写。
@@ -71,7 +71,7 @@ func (p *priorityProperties) GetDefault(key string, def interface{}) interface{}
 
 // Keys 返回所有键，属性名称统一转成小写。
 func (p *priorityProperties) Keys() []string {
-	panic(SpringConst.UnimplementedMethod)
+	panic(util.UnimplementedMethod)
 }
 
 // Range 遍历所有的属性值，属性名称统一转成小写。
@@ -96,12 +96,12 @@ func (p *priorityProperties) Fill(properties map[string]interface{}) {
 
 // Prefix 返回指定前缀的属性值集合，属性名称统一转成小写。
 func (p *priorityProperties) Prefix(key string) map[string]interface{} {
-	panic(SpringConst.UnimplementedMethod)
+	panic(util.UnimplementedMethod)
 }
 
 // Group 返回指定前缀的属性值集合并进行分组，属性名称统一转成小写。
 func (p *priorityProperties) Group(key string) map[string]map[string]interface{} {
-	panic(SpringConst.UnimplementedMethod)
+	panic(util.UnimplementedMethod)
 }
 
 // InsertBefore 在 next 之前增加一层属性值列表

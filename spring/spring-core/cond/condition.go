@@ -22,8 +22,8 @@ import (
 	"go/types"
 	"strings"
 
-	"github.com/go-spring/spring-const"
 	"github.com/go-spring/spring-core/bean"
+	"github.com/go-spring/spring-core/util"
 	"github.com/spf13/cast"
 )
 
@@ -189,7 +189,7 @@ func ExpressionCondition(expression string) *expressionCondition {
 
 // Matches 成功返回 true，失败返回 false
 func (c *expressionCondition) Matches(ctx bean.ConditionContext) bool {
-	panic(SpringConst.UnimplementedMethod)
+	panic(util.UnimplementedMethod)
 }
 
 // profileCondition 基于运行环境匹配的 Condition 实现

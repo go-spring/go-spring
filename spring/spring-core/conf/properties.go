@@ -25,8 +25,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
-	"github.com/go-spring/spring-logger"
 	"github.com/spf13/cast"
 	"github.com/spf13/viper"
 )
@@ -113,7 +113,7 @@ func New() *defaultProperties {
 
 // Load 加载属性配置，支持 properties、yaml 和 toml 三种文件格式。
 func (p *defaultProperties) Load(filename string) error {
-	SpringLogger.Debug("load properties from file: ", filename)
+	log.Debug("load properties from file: ", filename)
 
 	return p.read(func(v *viper.Viper) error {
 		v.SetConfigFile(filename)
@@ -123,7 +123,7 @@ func (p *defaultProperties) Load(filename string) error {
 
 // Read 读取属性配置，支持 properties、yaml 和 toml 三种文件格式。
 func (p *defaultProperties) Read(reader io.Reader, configType string) error {
-	SpringLogger.Debug("load properties from reader type: ", configType)
+	log.Debug("load properties from reader type: ", configType)
 
 	return p.read(func(v *viper.Viper) error {
 		v.SetConfigType(configType)
@@ -144,7 +144,7 @@ func (p *defaultProperties) read(reader func(*viper.Viper) error) error {
 	for _, key := range keys {
 		val := v.Get(key)
 		p.Set(key, val)
-		SpringLogger.Tracef("%s=%v", key, val)
+		log.Tracef("%s=%v", key, val)
 	}
 	return nil
 }

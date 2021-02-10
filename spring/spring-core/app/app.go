@@ -28,7 +28,7 @@ import (
 	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/core"
-	"github.com/go-spring/spring-logger"
+	"github.com/go-spring/spring-core/log"
 	"github.com/spf13/cast"
 )
 
@@ -139,7 +139,7 @@ func (app *Application) Start() {
 		bean.OnStartApplication(app)
 	}
 
-	SpringLogger.Info("application started")
+	log.Info("application started")
 }
 
 // printBanner 查找 Banner 文件然后将其打印到控制台
@@ -175,7 +175,7 @@ func (app *Application) printBanner() {
 
 // loadCmdArgs 加载命令行参数，形如 -name value 的参数才有效。
 func (_ *Application) loadCmdArgs() conf.Properties {
-	SpringLogger.Debugf("load cmd args")
+	log.Debugf("load cmd args")
 	p := conf.New()
 	for i := 0; i < len(os.Args); i++ { // 以短线定义的参数才有效
 		if arg := os.Args[i]; strings.HasPrefix(arg, "-") {
@@ -184,7 +184,7 @@ func (_ *Application) loadCmdArgs() conf.Properties {
 				v = os.Args[i+1]
 				i++
 			}
-			SpringLogger.Tracef("%s=%v", k, v)
+			log.Tracef("%s=%v", k, v)
 			p.Set(k, v)
 		}
 	}
@@ -203,14 +203,14 @@ func (app *Application) loadSystemEnv() conf.Properties {
 		}
 	}
 
-	SpringLogger.Debugf("load system env")
+	log.Debugf("load system env")
 	p := conf.New()
 	for _, env := range os.Environ() {
 		if i := strings.Index(env, "="); i > 0 {
 			k, v := env[0:i], env[i+1:]
 			for _, r := range rex {
 				if r.MatchString(k) { // 符合匹配规则的才有效
-					SpringLogger.Tracef("%s=%v", k, v)
+					log.Tracef("%s=%v", k, v)
 					p.Set(k, v)
 					break
 				}
@@ -235,7 +235,7 @@ func (app *Application) loadProfileConfig(profile string) conf.Properties {
 			}
 		}
 		for k, v := range result {
-			SpringLogger.Tracef("%s=%v", k, v)
+			log.Tracef("%s=%v", k, v)
 			p.Set(k, v)
 		}
 	}
@@ -315,8 +315,8 @@ func (app *Application) stopApplication() {
 // ShutDown 停止应用
 func (app *Application) ShutDown() {
 
-	defer SpringLogger.Info("application exited")
-	SpringLogger.Info("application exiting")
+	defer log.Info("application exited")
+	log.Info("application exiting")
 
 	// OnStopApplication 是否需要有 Timeout 的 Context？
 	// 仔细想想没有必要，程序想要优雅退出就得一直等，等到所有工作

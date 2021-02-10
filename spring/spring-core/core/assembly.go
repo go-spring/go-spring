@@ -25,8 +25,8 @@ import (
 
 	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/conf"
+	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
-	"github.com/go-spring/spring-logger"
 )
 
 //// beanAssembly Bean 组装车间
@@ -58,14 +58,14 @@ func newWiringStack() *wiringStack {
 
 // pushBack 添加一个 Bean 到尾部
 func (s *wiringStack) pushBack(bd bean.SBeanDefinition) {
-	SpringLogger.Tracef("wiring %s", bd.Description())
+	log.Tracef("wiring %s", bd.Description())
 	s.stack.PushBack(bd)
 }
 
 // popBack 删除尾部的 Bean
 func (s *wiringStack) popBack() {
 	e := s.stack.Remove(s.stack.Back())
-	SpringLogger.Tracef("wired %s", e.(bean.SBeanDefinition).Description())
+	log.Tracef("wired %s", e.(bean.SBeanDefinition).Description())
 }
 
 // path 返回 Bean 注入的路径
@@ -140,7 +140,7 @@ func (assembly *defaultBeanAssembly) getBeanValue(v reflect.Value, tag bean.Sing
 				}
 				if !found {
 					foundBeans = append(foundBeans, b)
-					SpringLogger.Warnf("you should call Export() on %s", b.Description())
+					log.Warnf("you should call Export() on %s", b.Description())
 				}
 			}
 		}
