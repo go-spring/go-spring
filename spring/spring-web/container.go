@@ -80,7 +80,10 @@ type Container interface {
 	AddRouter(router RootRouter)
 
 	// Swagger 返回和容器绑定的 Swagger 对象
-	Swagger() *Swagger
+	Swagger() Swagger
+
+	// SetSwagger 设置容器绑定的 Swagger 对象
+	SetSwagger(swagger Swagger)
 
 	// Start 启动 Web 容器
 	Start() error
@@ -96,7 +99,7 @@ type AbstractContainer struct {
 	config  ContainerConfig // 容器配置项
 	filters []Filter        // 其他过滤器
 	logger  Filter          // 日志过滤器
-	swagger *Swagger        // Swagger根
+	swagger Swagger         // Swagger根
 }
 
 // NewAbstractContainer AbstractContainer 的构造函数
@@ -147,9 +150,13 @@ func (c *AbstractContainer) AddRouter(router RootRouter) {
 }
 
 // Swagger 返回和容器绑定的 Swagger 对象
-func (c *AbstractContainer) Swagger() *Swagger {
-	c.swagger = NewSwagger()
+func (c *AbstractContainer) Swagger() Swagger {
 	return c.swagger
+}
+
+// SetSwagger 设置容器绑定的 Swagger 对象
+func (c *AbstractContainer) SetSwagger(swagger Swagger) {
+	c.swagger = swagger
 }
 
 // SwaggerHandler Swagger 处理器
@@ -165,16 +172,8 @@ func RegisterSwaggerHandler(handler SwaggerHandler) {
 
 // Start 启动 Web 容器
 func (c *AbstractContainer) Start() error {
-	if c.swagger != nil && swaggerHandler != nil {
-		for _, mapper := range c.Mappers() {
-			if op := mapper.swagger; op != nil {
-				if err := op.parseBind(); err != nil {
-					return err
-				}
-				c.swagger.AddPath(mapper.Path(), mapper.Method(), op)
-			}
-		}
-		swaggerHandler(c.RootRouter, c.swagger.ReadDoc())
+	if c.Swagger() != nil && swaggerHandler != nil {
+		swaggerHandler(c.RootRouter, c.Swagger().ReadDoc())
 	}
 	return nil
 }

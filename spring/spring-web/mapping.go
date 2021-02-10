@@ -61,11 +61,10 @@ func GetMethod(method uint32) (r []string) {
 
 // Mapper 路由映射器
 type Mapper struct {
-	method  uint32     // 方法
-	path    string     // 路径
-	handler Handler    // 处理函数
-	filters []Filter   // 过滤器列表
-	swagger *Operation // 描述文档
+	method  uint32   // 方法
+	path    string   // 路径
+	handler Handler  // 处理函数
+	filters []Filter // 过滤器列表
 }
 
 // NewMapper Mapper 的构造函数
@@ -89,21 +88,6 @@ func (m *Mapper) Handler() Handler { return m.handler }
 
 // Filters 返回 Mapper 的过滤器列表
 func (m *Mapper) Filters() []Filter { return m.filters }
-
-// Swagger 生成并返回 Operation 对象
-func (m *Mapper) Swagger(id string) *Operation {
-	m.swagger = NewOperation(id)
-	return m.swagger
-}
-
-// WithSwagger 设置 Swagger 文档
-func (m *Mapper) WithSwagger(swagger *Operation) *Mapper {
-	m.swagger = swagger
-	return m
-}
-
-// GetSwagger 返回 Swagger 文档
-func (m *Mapper) GetSwagger() *Operation { return m.swagger }
 
 // Mapping 路由注册接口
 type Mapping interface {
