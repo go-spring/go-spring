@@ -21,9 +21,11 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"os/signal"
 	"path"
 	"regexp"
 	"strings"
+	"syscall"
 
 	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/conf"
@@ -71,6 +73,8 @@ type Application struct {
 
 	Events  []ApplicationEvent  `autowire:"${application-event.collection:=[]?}"`
 	Runners []CommandLineRunner `autowire:"${command-line-runner.collection:=[]?}"`
+
+	exitChan chan struct{}
 }
 
 // NewApplication Application 的构造函数
@@ -80,6 +84,7 @@ func NewApplication() *Application {
 		cfgLocation:         append([]string{}, DefaultConfigLocation),
 		bannerMode:          BannerModeConsole,
 		expectSysProperties: []string{`.*`},
+		exitChan:            make(chan struct{}),
 	}
 }
 
@@ -108,7 +113,7 @@ func (app *Application) AfterPrepare(fn AfterPrepareFunc) *Application {
 }
 
 // Start 启动应用
-func (app *Application) Start() {
+func (app *Application) start() {
 
 	// 打印 Banner 内容
 	if app.bannerMode != BannerModeOff {
@@ -135,8 +140,8 @@ func (app *Application) Start() {
 	}
 
 	// 通知应用启动事件
-	for _, bean := range app.Events {
-		bean.OnStartApplication(app)
+	for _, b := range app.Events {
+		b.OnStartApplication(app)
 	}
 
 	log.Info("application started")
@@ -296,24 +301,17 @@ func (app *Application) prepare() {
 		p.InsertBefore(profileConfig, appConfig)
 	}
 
-	conf := map[string]interface{}{}
-	p.Fill(conf)
+	properties := map[string]interface{}{}
+	p.Fill(properties)
 
 	// 将重组后的属性值写入 ApplicationContext 属性列表
-	for key, value := range conf {
-		value = app.resolveProperty(conf, key, value)
+	for key, value := range properties {
+		value = app.resolveProperty(properties, key, value)
 		app.Property(key, value)
 	}
 }
 
-func (app *Application) stopApplication() {
-	for _, bean := range app.Events {
-		bean.OnStopApplication(app)
-	}
-}
-
-// ShutDown 停止应用
-func (app *Application) ShutDown() {
+func (app *Application) close() {
 
 	defer log.Info("application exited")
 	log.Info("application exiting")
@@ -326,5 +324,35 @@ func (app *Application) ShutDown() {
 	// 的退出了，而这只需要 Context 一 cancel 也就完事了。
 
 	// 通知 Bean 销毁
-	app.Close(app.stopApplication)
+	app.Close(func() {
+		for _, b := range app.Events {
+			b.OnStopApplication(app)
+		}
+	})
+}
+
+func (app *Application) Run() {
+
+	// 响应控制台的 Ctrl+C 及 kill 命令。
+	go func() {
+		sig := make(chan os.Signal, 1)
+		signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+		<-sig
+		fmt.Println("got signal, program will exit")
+		app.ShutDown()
+	}()
+
+	app.start()
+	<-app.exitChan
+	app.close()
+}
+
+// ShutDown 关闭执行器
+func (app *Application) ShutDown() {
+	select {
+	case <-app.exitChan:
+		// chan 已关闭，无需再次关闭。
+	default:
+		close(app.exitChan)
+	}
 }

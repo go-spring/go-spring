@@ -643,15 +643,10 @@ func (ctx *applicationContext) Close(beforeDestroy ...func()) {
 	}
 }
 
-// Run 根据条件判断是否立即执行一个一次性的任务
-func (ctx *applicationContext) Run(fn interface{}, Tags ...string) *Runner {
+// Invoke 立即执行一个一次性的任务
+func (ctx *applicationContext) Invoke(fn interface{}, Tags ...string) error {
 	ctx.checkAutoWired()
-	return newRunner(ctx, fn, Tags)
-}
-
-// RunNow 立即执行一个一次性的任务
-func (ctx *applicationContext) RunNow(fn interface{}, Tags ...string) error {
-	return ctx.Run(fn, Tags...).When(true)
+	return newRunner(ctx, fn, Tags).run()
 }
 
 // Config 注册一个配置函数

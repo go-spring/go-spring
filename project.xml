@@ -37,12 +37,6 @@
         <branch>master</branch>
     </project>
     <project>
-        <name>spring-boot</name>
-        <dir>spring/spring-boot</dir>
-        <url>https://github.com/go-spring/spring-boot.git</url>
-        <branch>master</branch>
-    </project>
-    <project>
         <name>starter-web</name>
         <dir>starter/starter-web</dir>
         <url>https://github.com/go-spring/starter-web.git</url>

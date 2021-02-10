@@ -102,11 +102,8 @@ type ApplicationContext interface {
 	// 该函数可以确保 Bean 的销毁顺序和注入顺序相反。
 	Close(beforeDestroy ...func())
 
-	// Run 根据条件判断是否立即执行一个一次性的任务
-	Run(fn interface{}, tags ...string) *Runner
-
-	// RunNow 立即执行一个一次性的任务
-	RunNow(fn interface{}, tags ...string) error
+	// Invoke 立即执行一个一次性的任务
+	Invoke(fn interface{}, tags ...string) error
 
 	// Config 注册一个配置函数
 	Config(fn interface{}, tags ...string) *Configer

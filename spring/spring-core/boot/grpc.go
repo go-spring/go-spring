@@ -14,14 +14,15 @@
  * limitations under the License.
  */
 
-package SpringBoot
+package boot
 
 import (
 	"fmt"
 	"reflect"
 
-	"github.com/go-spring/spring-core"
-	"github.com/go-spring/spring-utils"
+	"github.com/go-spring/spring-core/bean"
+	"github.com/go-spring/spring-core/core"
+	"github.com/go-spring/spring-core/util"
 )
 
 ///////////////////// gRPC Server //////////////////////
@@ -34,7 +35,7 @@ var GRpcServerMap = make(map[reflect.Value]*GRpcServer)
 func RegisterGRpcServer(fn interface{}, serviceName string, server interface{}) *GRpcServer {
 	v := reflect.ValueOf(fn)
 	if _, ok := GRpcServerMap[v]; ok {
-		_, _, fnName := SpringUtils.FileLine(fn)
+		_, _, fnName := util.FileLine(fn)
 		panic(fmt.Errorf("duplicate registration, gRpcServer: %s", fnName))
 	}
 	s := newGRpcServer(serviceName, server)
@@ -43,9 +44,9 @@ func RegisterGRpcServer(fn interface{}, serviceName string, server interface{}) 
 }
 
 type GRpcServer struct {
-	server      interface{}          // 服务对象
-	serviceName string               // 服务名称
-	cond        SpringCore.Condition // 判断条件
+	server      interface{}    // 服务对象
+	serviceName string         // 服务名称
+	cond        bean.Condition // 判断条件
 }
 
 // newGRpcServer GRpcServer 的构造函数
@@ -64,13 +65,13 @@ func (s *GRpcServer) Server() interface{} {
 }
 
 // WithCondition 设置一个 Condition
-func (s *GRpcServer) WithCondition(cond SpringCore.Condition) *GRpcServer {
+func (s *GRpcServer) WithCondition(cond bean.Condition) *GRpcServer {
 	s.cond = cond
 	return s
 }
 
 // CheckCondition 成功返回 true，失败返回 false
-func (s *GRpcServer) CheckCondition(ctx SpringCore.ApplicationContext) bool {
+func (s *GRpcServer) CheckCondition(ctx core.ApplicationContext) bool {
 	if s.cond == nil {
 		return true
 	}
@@ -80,6 +81,6 @@ func (s *GRpcServer) CheckCondition(ctx SpringCore.ApplicationContext) bool {
 ///////////////////// gRPC Client //////////////////////
 
 // RegisterGRpcClient 注册 gRPC 服务客户端，fn 是 gRPC 自动生成的客户端构造函数
-func RegisterGRpcClient(fn interface{}, endpoint string) *SpringCore.BeanDefinition {
-	return RegisterBeanFn(fn, endpoint)
+func RegisterGRpcClient(fn interface{}, endpoint string) *bean.BeanDefinition {
+	return Make(fn, endpoint)
 }

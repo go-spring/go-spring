@@ -14,27 +14,28 @@
  * limitations under the License.
  */
 
-package SpringBoot
+package boot
 
 import (
-	"github.com/go-spring/spring-core"
-	"github.com/go-spring/spring-message"
+	"github.com/go-spring/spring-core/bean"
+	"github.com/go-spring/spring-core/core"
+	"github.com/go-spring/spring-core/mq"
 )
 
 // ConditionalBindConsumer 为 BindConsumer 添加条件功能
 type ConditionalBindConsumer struct {
-	*SpringMessage.BindConsumer
-	cond SpringCore.Condition // 判断条件
+	*mq.BindConsumer
+	cond bean.Condition // 判断条件
 }
 
 // WithCondition 设置一个 Condition
-func (c *ConditionalBindConsumer) WithCondition(cond SpringCore.Condition) *ConditionalBindConsumer {
+func (c *ConditionalBindConsumer) WithCondition(cond bean.Condition) *ConditionalBindConsumer {
 	c.cond = cond
 	return c
 }
 
 // CheckCondition 成功返回 true，失败返回 false
-func (c *ConditionalBindConsumer) CheckCondition(ctx SpringCore.ApplicationContext) bool {
+func (c *ConditionalBindConsumer) CheckCondition(ctx core.ApplicationContext) bool {
 	if c.cond == nil {
 		return true
 	}
@@ -46,7 +47,7 @@ var BindConsumerMapping = map[string]*ConditionalBindConsumer{}
 
 // BindConsumer 注册 BIND 形式的消息消费者
 func BindConsumer(topic string, fn interface{}) *ConditionalBindConsumer {
-	c := &ConditionalBindConsumer{BindConsumer: SpringMessage.BIND(topic, fn)}
+	c := &ConditionalBindConsumer{BindConsumer: mq.BIND(topic, fn)}
 	BindConsumerMapping[topic] = c
 	return c
 }

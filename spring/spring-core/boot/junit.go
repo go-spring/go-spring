@@ -14,13 +14,14 @@
  * limitations under the License.
  */
 
-package SpringBoot
+package boot
 
 import (
 	"testing"
 	"time"
 
-	"github.com/go-spring/spring-core"
+	"github.com/go-spring/spring-core/app"
+	"github.com/go-spring/spring-core/core"
 )
 
 // JUnitSuite 测试用例集接口
@@ -30,14 +31,14 @@ type JUnitSuite interface {
 
 // JUnitRunner 测试集执行器
 type JUnitRunner struct {
-	_ SpringCore.CommandLineRunner `export:""`
+	_ app.CommandLineRunner `export:""`
 
 	Suites  []JUnitSuite `autowire:"[]?"`
 	t       *testing.T
 	waiting time.Duration
 }
 
-func (r *JUnitRunner) Run(ctx SpringCore.ApplicationContext) {
+func (r *JUnitRunner) Run(ctx core.ApplicationContext) {
 	ctx.SafeGoroutine(func() {
 		time.Sleep(r.waiting)
 		for _, suite := range r.Suites {
@@ -49,6 +50,6 @@ func (r *JUnitRunner) Run(ctx SpringCore.ApplicationContext) {
 
 // RunTestApplication 启动测试程序，waiting 是测试用例开始前的等待时间，因为不知道程序启动器何时完成
 func RunTestApplication(t *testing.T, waiting time.Duration, configLocation ...string) {
-	RegisterBean(&JUnitRunner{t: t, waiting: waiting})
-	RunApplication(configLocation...)
+	Ref(&JUnitRunner{t: t, waiting: waiting})
+	Run(configLocation...)
 }

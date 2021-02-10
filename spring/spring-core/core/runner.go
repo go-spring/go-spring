@@ -26,7 +26,7 @@ import (
 
 // Runner 立即执行器
 type Runner struct {
-	bean.Runnable
+	r   bean.Runnable
 	ctx *applicationContext
 }
 
@@ -40,7 +40,7 @@ func newRunner(ctx *applicationContext, fn interface{}, tags []string) *Runner {
 
 	return &Runner{
 		ctx: ctx,
-		Runnable: bean.Runnable{
+		r: bean.Runnable{
 			Fn:        fn,
 			StringArg: bean.NewFnStringBindingArg(fnType, false, tags),
 		},
@@ -49,24 +49,8 @@ func newRunner(ctx *applicationContext, fn interface{}, tags []string) *Runner {
 
 // Options 设置 Option 模式函数的参数绑定
 func (r *Runner) Options(options ...*bean.OptionArg) *Runner {
-	r.OptionArg = &bean.FnOptionBindingArg{Options: options}
+	r.r.OptionArg = &bean.FnOptionBindingArg{Options: options}
 	return r
-}
-
-// When 参数为 true 时执行器立即执行
-func (r *Runner) When(ok bool) error {
-	if ok {
-		return r.run()
-	}
-	return nil
-}
-
-// On Condition 判断结果为 true 时执行器立即执行
-func (r *Runner) On(cond bean.Condition) error {
-	if cond.Matches(r.ctx) {
-		return r.run()
-	}
-	return nil
 }
 
 func (r *Runner) run() error {
@@ -79,5 +63,5 @@ func (r *Runner) run() error {
 		}
 	}()
 
-	return r.Runnable.Run(assembly)
+	return r.r.Run(assembly)
 }
