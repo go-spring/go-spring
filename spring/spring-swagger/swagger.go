@@ -19,13 +19,12 @@ package SpringSwagger
 import (
 	"encoding/xml"
 	"fmt"
-	"net/http"
 	"reflect"
 	"strings"
 	"time"
 
 	"github.com/go-openapi/spec"
-	"github.com/go-spring/spring-web"
+	"github.com/go-spring/spring-core/web"
 )
 
 // Swagger 封装 spec.Swagger 对象，提供流式调用
@@ -150,42 +149,36 @@ func (s *Swagger) WithTags(tags ...spec.Tag) *Swagger {
 }
 
 // AddPath 添加一个路由
-func (s *Swagger) AddPath(path string, method uint32, op *Operation,
-	parameters ...spec.Parameter) *Swagger {
+func (s *Swagger) AddPath(path string, method uint32, op web.Operation) {
 
 	path = strings.TrimPrefix(path, s.BasePath)
 	path = strings.TrimRight(path, "/")
 	pathItem, ok := s.Paths.Paths[path]
 
 	if !ok {
-		pathItem = spec.PathItem{
-			PathItemProps: spec.PathItemProps{
-				Parameters: parameters,
-			},
-		}
+		pathItem = spec.PathItem{PathItemProps: spec.PathItemProps{}}
 	}
 
-	for _, m := range SpringWeb.GetMethod(method) {
-		switch m {
-		case http.MethodGet:
-			pathItem.Get = op.Operation
-		case http.MethodPost:
-			pathItem.Post = op.Operation
-		case http.MethodPut:
-			pathItem.Put = op.Operation
-		case http.MethodDelete:
-			pathItem.Delete = op.Operation
-		case http.MethodOptions:
-			pathItem.Options = op.Operation
-		case http.MethodHead:
-			pathItem.Head = op.Operation
-		case http.MethodPatch:
-			pathItem.Patch = op.Operation
-		}
-	}
+	//for _, m := range web.GetMethod(method) {
+	//	switch m {
+	//	case http.MethodGet:
+	//		pathItem.Get = op.Operation
+	//	case http.MethodPost:
+	//		pathItem.Post = op.Operation
+	//	case http.MethodPut:
+	//		pathItem.Put = op.Operation
+	//	case http.MethodDelete:
+	//		pathItem.Delete = op.Operation
+	//	case http.MethodOptions:
+	//		pathItem.Options = op.Operation
+	//	case http.MethodHead:
+	//		pathItem.Head = op.Operation
+	//	case http.MethodPatch:
+	//		pathItem.Patch = op.Operation
+	//	}
+	//}
 
 	s.Paths.Paths[path] = pathItem
-	return s
 }
 
 // AddDefinition 添加一个定义

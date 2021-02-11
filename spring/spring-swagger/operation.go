@@ -134,8 +134,8 @@ func (o *Operation) BindParam(i interface{}, description string) *Operation {
 	return o
 }
 
-// parseBind 解析绑定的请求参数
-func (o *Operation) parseBind() error {
+// Process 解析绑定的请求参数
+func (o *Operation) Process() error {
 	if o.bindParam != nil && o.bindParam.param != nil {
 		t := reflect.TypeOf(o.bindParam.param)
 		if t.Kind() == reflect.Ptr {

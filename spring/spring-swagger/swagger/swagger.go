@@ -14,21 +14,21 @@
  * limitations under the License.
  */
 
-package SpringSwagger
+package swagger
 
 import (
-	"github.com/go-spring/spring-web"
+	"github.com/go-spring/spring-core/web"
+	"github.com/go-spring/spring-swagger"
 )
 
-var swagger = NewSwagger()
-
-func Doc(container SpringWeb.Container) *Swagger {
-	container.SetSwagger(swagger)
+func Doc(container web.Container) *SpringSwagger.Swagger {
+	swagger := SpringSwagger.NewSwagger()
+	container.Swagger(swagger)
 	return swagger
 }
 
-func Path(id string, mapping SpringWeb.Mapper) *Operation {
-	op := NewOperation(id)
-	swagger.AddPath(mapping.Path(), mapping.Method(), op)
+func Path(m *web.Mapper) *SpringSwagger.Operation {
+	op := SpringSwagger.NewOperation("")
+	m.Operation(op)
 	return op
 }
