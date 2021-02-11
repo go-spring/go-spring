@@ -394,16 +394,16 @@ func (b *FakeMethodBean) BeanClass() string {
 	return "fake method bean"
 }
 
-// beanStatus Bean 的状态值
-type beanStatus int
+// BeanStatus Bean 的状态值
+type BeanStatus int
 
 const (
-	BeanStatus_Default   = beanStatus(0) // 默认状态
-	BeanStatus_Resolving = beanStatus(1) // 正在决议
-	BeanStatus_Resolved  = beanStatus(2) // 已决议
-	BeanStatus_Wiring    = beanStatus(3) // 正在注入
-	BeanStatus_Wired     = beanStatus(4) // 注入完成
-	BeanStatus_Deleted   = beanStatus(5) // 已删除
+	BeanStatus_Default   = BeanStatus(0) // 默认状态
+	BeanStatus_Resolving = BeanStatus(1) // 正在决议
+	BeanStatus_Resolved  = BeanStatus(2) // 已决议
+	BeanStatus_Wiring    = BeanStatus(3) // 正在注入
+	BeanStatus_Wired     = BeanStatus(4) // 注入完成
+	BeanStatus_Deleted   = BeanStatus(5) // 已删除
 )
 
 // SBeanDefinition BeanDefinition 的抽象接口
@@ -419,8 +419,8 @@ type SBeanDefinition interface {
 	Description() string // 返回 Bean 的详细描述
 
 	SpringBean() SpringBean       // 返回 SpringBean 对象
-	GetStatus() beanStatus        // 返回 Bean 的状态值
-	SetStatus(status beanStatus)  // 设置 Bean 的状态值
+	Status() BeanStatus           // 返回 Bean 的状态值
+	SetStatus(status BeanStatus)  // 设置 Bean 的状态值
 	GetDependsOn() []BeanSelector // 返回 Bean 的间接依赖项
 	GetInit() *Runnable           // 返回 Bean 的初始化函数
 	GetDestroy() *Runnable        // 返回 Bean 的销毁函数
@@ -432,10 +432,10 @@ type SBeanDefinition interface {
 type BeanDefinition struct {
 	bean   SpringBean // Bean 的注册形式
 	name   string     // Bean 的名称，请勿直接使用该字段!
-	status beanStatus // Bean 的状态
+	status BeanStatus // Bean 的状态
 
-	File string // 注册点所在文件
-	Line int    // 注册点所在行数
+	file string // 注册点所在文件
+	line int    // 注册点所在行数
 
 	Cond      Condition      // 判断条件
 	Primary   bool           // 是否为主版本
@@ -448,41 +448,12 @@ type BeanDefinition struct {
 }
 
 // newBeanDefinition BeanDefinition 的构造函数
-func newBeanDefinition(bean SpringBean) *BeanDefinition {
-
-	var (
-		file string
-		line int
-	)
-
-	// 获取注册点信息
-	for i := 2; i < 10; i++ {
-		_, file0, line0, _ := runtime.Caller(i)
-
-		// 排除 spring-core 包下面所有的非 test 文件
-		if strings.Contains(file0, "/spring-core/") {
-			if !strings.HasSuffix(file0, "_test.go") {
-				continue
-			}
-		}
-
-		// 排除 spring-boot 包下面的 spring-boot-singlet.go 文件
-		if strings.Contains(file0, "/spring-boot/") {
-			if strings.HasSuffix(file0, "spring-boot-singlet.go") {
-				continue
-			}
-		}
-
-		file = file0
-		line = line0
-		break
-	}
-
+func newBeanDefinition(bean SpringBean, file string, line int) *BeanDefinition {
 	return &BeanDefinition{
 		bean:    bean,
 		status:  BeanStatus_Default,
-		File:    file,
-		Line:    line,
+		file:    file,
+		line:    line,
 		Exports: make(map[reflect.Type]struct{}),
 	}
 }
@@ -524,7 +495,7 @@ func (d *BeanDefinition) BeanId() string {
 
 // FileLine 返回 Bean 的注册点
 func (d *BeanDefinition) FileLine() string {
-	return fmt.Sprintf("%s:%d", d.File, d.Line)
+	return fmt.Sprintf("%s:%d", d.file, d.line)
 }
 
 // SpringBean 返回 SpringBean 对象
@@ -537,13 +508,13 @@ func (d *BeanDefinition) SetSpringBean(bean SpringBean) {
 	d.bean = bean
 }
 
-// getStatus 返回 Bean 的状态值
-func (d *BeanDefinition) GetStatus() beanStatus {
+// Status 返回 Bean 的状态值
+func (d *BeanDefinition) Status() BeanStatus {
 	return d.status
 }
 
 // setStatus 设置 Bean 的状态值
-func (d *BeanDefinition) SetStatus(status beanStatus) {
+func (d *BeanDefinition) SetStatus(status BeanStatus) {
 	d.status = status
 }
 
@@ -564,12 +535,12 @@ func (d *BeanDefinition) GetDestroy() *Runnable {
 
 // getFile 返回 Bean 注册点所在文件的名称
 func (d *BeanDefinition) GetFile() string {
-	return d.File
+	return d.file
 }
 
 // getLine 返回 Bean 注册点所在文件的行数
 func (d *BeanDefinition) GetLine() int {
-	return d.Line
+	return d.line
 }
 
 // Description 返回 Bean 的详细描述
@@ -709,22 +680,51 @@ func (d *BeanDefinition) Export(exports ...TypeOrPtr) *BeanDefinition {
 	return d
 }
 
+func getFileLine() (file string, line int) {
+
+	// 获取注册点信息
+	for i := 2; i < 10; i++ {
+		_, file0, line0, _ := runtime.Caller(i)
+
+		// 排除 spring-core 包下面所有的非 test 文件
+		if strings.Contains(file0, "/spring-core/") {
+			if !strings.HasSuffix(file0, "_test.go") {
+				continue
+			}
+		}
+
+		// 排除 spring-boot 包下面的 spring-boot-singlet.go 文件
+		if strings.Contains(file0, "/spring-boot/") {
+			if strings.HasSuffix(file0, "spring-boot-singlet.go") {
+				continue
+			}
+		}
+
+		file = file0
+		line = line0
+		break
+	}
+	return
+}
+
 // ValueToBeanDefinition 将 Value 转换为 BeanDefinition 对象
-func ValueToBeanDefinition(v reflect.Value) *BeanDefinition {
+func ValueToBeanDefinition(v reflect.Value, file string, line int) *BeanDefinition {
 	if !v.IsValid() || util.IsNil(v) {
 		panic(errors.New("bean can't be nil"))
 	}
-	return newBeanDefinition(NewObjectBean(v))
+	return newBeanDefinition(NewObjectBean(v), file, line)
 }
 
 // Ref 将 Bean 转换为 BeanDefinition 对象
 func Ref(i interface{}) *BeanDefinition {
-	return ValueToBeanDefinition(reflect.ValueOf(i))
+	file, line := getFileLine()
+	return ValueToBeanDefinition(reflect.ValueOf(i), file, line)
 }
 
 // Make 将构造函数转换为 BeanDefinition 对象
 func Make(fn interface{}, tags ...string) *BeanDefinition {
-	return newBeanDefinition(newConstructorBean(fn, tags))
+	file, line := getFileLine()
+	return newBeanDefinition(newConstructorBean(fn, tags), file, line)
 }
 
 // Child 将成员方法转换为 BeanDefinition 对象
@@ -732,7 +732,8 @@ func Child(selector BeanSelector, method string, tags ...string) *BeanDefinition
 	if selector == nil || selector == "" {
 		panic(errors.New("selector can't be nil or empty"))
 	}
-	return newBeanDefinition(newFakeMethodBean(selector, method, tags))
+	file, line := getFileLine()
+	return newBeanDefinition(newFakeMethodBean(selector, method, tags), file, line)
 }
 
 // MethodFunc 注册成员方法单例 Bean，需指定名称，重复注册会 panic。

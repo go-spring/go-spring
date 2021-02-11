@@ -357,9 +357,7 @@ func (assembly *defaultBeanAssembly) autoCollectBeans(t reflect.Type, et reflect
 
 // wireSliceItem 对 slice 的元素值进行注入
 func (assembly *defaultBeanAssembly) wireSliceItem(v reflect.Value, d bean.SBeanDefinition) {
-	bd := bean.ValueToBeanDefinition(v)
-	bd.File = d.GetFile()
-	bd.Line = d.GetLine()
+	bd := bean.ValueToBeanDefinition(v, d.GetFile(), d.GetLine())
 	assembly.wireBeanDefinition(bd, false)
 }
 
@@ -367,7 +365,7 @@ func (assembly *defaultBeanAssembly) wireSliceItem(v reflect.Value, d bean.SBean
 func (assembly *defaultBeanAssembly) wireBeanDefinition(bd bean.SBeanDefinition, onlyAutoWire bool) {
 
 	// Bean 是否已删除，已经删除的 Bean 不能再注入
-	if bd.GetStatus() == bean.BeanStatus_Deleted {
+	if bd.Status() == bean.BeanStatus_Deleted {
 		panic(fmt.Errorf("bean: \"%s\" have been deleted", bd.BeanId()))
 	}
 
@@ -392,7 +390,7 @@ func (assembly *defaultBeanAssembly) wireBeanDefinition(bd bean.SBeanDefinition,
 	}
 
 	// Bean 是否已注入，已经注入的 Bean 无需再注入
-	if bd.GetStatus() == bean.BeanStatus_Wired {
+	if bd.Status() == bean.BeanStatus_Wired {
 		return
 	}
 
@@ -400,7 +398,7 @@ func (assembly *defaultBeanAssembly) wireBeanDefinition(bd bean.SBeanDefinition,
 	assembly.wiringStack.pushBack(bd)
 
 	// 正在注入的 Bean 再次注入则说明出现了循环依赖
-	if bd.GetStatus() == bean.BeanStatus_Wiring {
+	if bd.Status() == bean.BeanStatus_Wiring {
 		if _, ok := bd.SpringBean().(*bean.ObjectBean); !ok {
 			panic(errors.New("found circle autowire"))
 		}
@@ -529,9 +527,7 @@ func (assembly *defaultBeanAssembly) wireObjectBean(bd bean.SBeanDefinition, onl
 					if fv0.CanSet() {
 
 						// 对 Bean 的结构体进行递归注入
-						b := bean.ValueToBeanDefinition(fv0.Addr())
-						b.File = bd.GetFile()
-						b.Line = bd.GetLine()
+						b := bean.ValueToBeanDefinition(fv0.Addr(), bd.GetFile(), bd.GetLine())
 						fbd := &fieldBeanDefinition{b, fieldName}
 						assembly.wireBeanDefinition(fbd, fieldOnlyAutoWire)
 					}
@@ -590,20 +586,15 @@ func (assembly *defaultBeanAssembly) wireFunctionBean(fnValue reflect.Value, fnB
 	}
 
 	// 对函数的返回值进行自动注入
-	b := &bean.BeanDefinition{
-		File: bd.GetFile(),
-		Line: bd.GetLine(),
-	}
 
-	b.WithName(bd.Name())
-	b.SetStatus(bean.BeanStatus_Default)
-
+	var beanValue reflect.Value
 	if fnBean.Type().Kind() == reflect.Interface {
-		b.SetSpringBean(bean.NewObjectBean(fnBean.Value().Elem()))
+		beanValue = fnBean.Value().Elem()
 	} else {
-		b.SetSpringBean(bean.NewObjectBean(fnBean.Value()))
+		beanValue = fnBean.Value()
 	}
 
+	b := bean.ValueToBeanDefinition(beanValue, bd.GetFile(), bd.GetLine()).WithName(bd.Name())
 	assembly.wireBeanDefinition(&fnValueBeanDefinition{b, bd}, false)
 }
 

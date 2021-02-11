@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package cond_test
+package core_test
 
 import (
 	"fmt"

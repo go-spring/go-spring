@@ -225,9 +225,9 @@ func (ctx *applicationContext) FindBean(selector bean.BeanSelector) (*bean.BeanD
 
 	finder := func(fn func(*bean.BeanDefinition) bool) (result []*bean.BeanDefinition) {
 		for _, b := range ctx.beanMap {
-			if b.GetStatus() != bean.BeanStatus_Resolving && fn(b) {
+			if b.Status() != bean.BeanStatus_Resolving && fn(b) {
 				ctx.resolveBean(b) // 避免 Bean 未被解析
-				if b.GetStatus() != bean.BeanStatus_Deleted {
+				if b.Status() != bean.BeanStatus_Deleted {
 					result = append(result, b)
 				}
 			}
@@ -385,7 +385,7 @@ func (ctx *applicationContext) nameCache(name string, bd *bean.BeanDefinition) {
 func (ctx *applicationContext) resolveBean(bd *bean.BeanDefinition) {
 
 	// 正在进行或者已经完成决议过程
-	if bd.GetStatus() >= bean.BeanStatus_Resolving {
+	if bd.Status() >= bean.BeanStatus_Resolving {
 		return
 	}
 
@@ -397,7 +397,7 @@ func (ctx *applicationContext) resolveBean(bd *bean.BeanDefinition) {
 		for i := 0; ; i++ {
 			Parent := b.Parent[i]
 			ctx.resolveBean(Parent)
-			if Parent.GetStatus() == bean.BeanStatus_Deleted {
+			if Parent.Status() == bean.BeanStatus_Deleted {
 				b.Parent = append(b.Parent[:i], b.Parent[i+1:]...)
 			}
 			if i >= len(b.Parent)-1 { // 每轮都要重新获取长度
@@ -656,8 +656,8 @@ func (ctx *applicationContext) Config(fn interface{}, Tags ...string) *Configer 
 	return configer
 }
 
-// SafeGoroutine 安全地启动一个 goroutine
-func (ctx *applicationContext) SafeGoroutine(fn GoFunc) {
+// Go 安全地启动一个 goroutine
+func (ctx *applicationContext) Go(fn GoFunc) {
 	ctx.wg.Add(1)
 	go func() {
 		defer ctx.wg.Done()

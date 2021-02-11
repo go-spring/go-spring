@@ -188,5 +188,5 @@ type GoFuncWithContext func(context.Context)
 
 // Go 安全地启动一个 goroutine
 func Go(fn GoFuncWithContext) {
-	gApp.SafeGoroutine(func() { fn(gApp.Context()) })
+	gApp.Go(func() { fn(gApp.Context()) })
 }

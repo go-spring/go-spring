@@ -109,5 +109,5 @@ type ApplicationContext interface {
 	Config(fn interface{}, tags ...string) *Configer
 
 	// SafeGoroutine 安全地启动一个 goroutine
-	SafeGoroutine(fn GoFunc)
+	Go(fn GoFunc)
 }
