@@ -100,6 +100,7 @@ github.com/go-spring/spring-logger v1.0.6-0.20201230065520-b33583fc7650/go.mod h
 github.com/go-spring/spring-message v1.0.5 h1:P7yxaMk698BFVuadwVYLCKT63/5RvcsQ2ilOtqxphhM=
 github.com/go-spring/spring-message v1.0.5/go.mod h1:n/WzP2JHGchhfbxHvwkrLZLbEtbIzYWRarDOR1yxcaA=
 github.com/go-spring/spring-properties v0.0.0-20210206113126-2dd9ec73d0f2/go.mod h1:9an7PmtKBxhB5QipqqkWMEroMuvmfZA1kv7hh1sn0KY=
+github.com/go-spring/spring-swagger v0.0.0-20210202051638-31055d1e71a7 h1:BSweXcDqUHxz/1ZBSQNrA0mF7bHw2lMh+fqngoFYCYY=
 github.com/go-spring/spring-test v1.0.5 h1:OGhfTVUJuGUTuyUgMeMEiKKyCv4eoZWdvKO5yRu0osE=
 github.com/go-spring/spring-test v1.0.5/go.mod h1:2VvzedBuXMxsGa3B3dQMxKMpYEthqL7CQTL5GacPHuc=
 github.com/go-spring/spring-utils v0.0.0-20200809010418-ad9c325fc2db/go.mod h1:nt7zbJs5DiOCoi548jzBC06reyS0apM6YchDY0eMbjM=

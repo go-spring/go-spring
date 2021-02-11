@@ -1,4 +1,4 @@
-module github.com/go-spring/spring-swagger
+module github.com/go-spring/spring-swag
 
 go 1.12
 

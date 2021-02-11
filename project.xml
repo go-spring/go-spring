@@ -85,9 +85,9 @@
         <branch>main</branch>
     </project>
     <project>
-        <name>spring-swagger</name>
-        <dir>spring/spring-swagger</dir>
-        <url>https://github.com/go-spring/spring-swagger.git</url>
+        <name>spring-swag</name>
+        <dir>spring/spring-swag</dir>
+        <url>https://github.com/go-spring/spring-swag.git</url>
         <branch>main</branch>
     </project>
 </projects>

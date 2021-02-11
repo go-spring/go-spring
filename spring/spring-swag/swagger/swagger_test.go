@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/go-spring/spring-core/web"
-	"github.com/go-spring/spring-swagger/swagger"
+	"github.com/go-spring/spring-swag/swagger"
 )
 
 func Test_Doc(t *testing.T) {
