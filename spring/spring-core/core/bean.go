@@ -26,10 +26,55 @@ import (
 	"github.com/go-spring/spring-core/util"
 )
 
+const (
+	valType = 1 // 值类型
+	refType = 2 // 引用类型
+)
+
+var kindTypes = []uint8{
+	0,       // Invalid
+	valType, // Bool
+	valType, // Int
+	valType, // Int8
+	valType, // Int16
+	valType, // Int32
+	valType, // Int64
+	valType, // Uint
+	valType, // Uint8
+	valType, // Uint16
+	valType, // Uint32
+	valType, // Uint64
+	0,       // Uintptr
+	valType, // Float32
+	valType, // Float64
+	valType, // Complex64
+	valType, // Complex128
+	valType, // Array
+	refType, // Chan
+	refType, // Func
+	refType, // Interface
+	refType, // Map
+	refType, // Ptr
+	refType, // Slice
+	valType, // String
+	valType, // Struct
+	0,       // UnsafePointer
+}
+
+// IsRefType 返回是否是引用类型
+func IsRefType(k reflect.Kind) bool {
+	return kindTypes[k] == refType
+}
+
+// IsValueType 返回是否是值类型
+func IsValueType(k reflect.Kind) bool {
+	return kindTypes[k] == valType
+}
+
 // ValidBean 返回是否是合法的 Bean 及其类型
 func ValidBean(v reflect.Value) (reflect.Type, bool) {
 	if v.IsValid() {
-		if beanType := v.Type(); util.IsRefType(beanType.Kind()) {
+		if beanType := v.Type(); IsRefType(beanType.Kind()) {
 			return beanType, true
 		}
 	}
@@ -80,11 +125,11 @@ type BeanSelector interface{}
 func ToSingletonTag(selector BeanSelector) SingletonTag {
 	switch s := selector.(type) {
 	case string:
-		return ParseSingletonTag(s)
+		return parseSingletonTag(s)
 	case *BeanDefinition:
-		return ParseSingletonTag(s.BeanId())
+		return parseSingletonTag(s.BeanId())
 	default:
-		return ParseSingletonTag(TypeName(s) + ":")
+		return parseSingletonTag(TypeName(s) + ":")
 	}
 }
 
@@ -106,8 +151,8 @@ func (tag SingletonTag) String() (str string) {
 	return
 }
 
-// ParseSingletonTag 解析单例模式注入 Tag 字符串
-func ParseSingletonTag(str string) (tag SingletonTag) {
+// parseSingletonTag 解析单例模式注入 Tag 字符串
+func parseSingletonTag(str string) (tag SingletonTag) {
 	if len(str) > 0 {
 
 		// 字符串结尾是否有可空标记
@@ -126,13 +171,13 @@ func ParseSingletonTag(str string) (tag SingletonTag) {
 	return
 }
 
-// CollectionTag 收集模式注入 Tag 对应的分解形式
-type CollectionTag struct {
+// collectionTag 收集模式注入 Tag 对应的分解形式
+type collectionTag struct {
 	Items    []SingletonTag
 	Nullable bool
 }
 
-func (tag CollectionTag) String() (str string) {
+func (tag collectionTag) String() (str string) {
 	str += "["
 	for i, t := range tag.Items {
 		str += t.String()
@@ -153,7 +198,7 @@ func CollectionMode(str string) bool {
 }
 
 // ParseCollectionTag 解析收集模式注入 Tag 字符串
-func ParseCollectionTag(str string) (tag CollectionTag) {
+func ParseCollectionTag(str string) (tag collectionTag) {
 	tag.Items = make([]SingletonTag, 0)
 
 	// 字符串结尾是否有可空标记
@@ -168,7 +213,7 @@ func ParseCollectionTag(str string) (tag CollectionTag) {
 
 	if str = str[1 : len(str)-1]; len(str) > 0 {
 		for _, s := range strings.Split(str, ",") {
-			tag.Items = append(tag.Items, ParseSingletonTag(s))
+			tag.Items = append(tag.Items, parseSingletonTag(s))
 		}
 	}
 	return
@@ -193,7 +238,7 @@ type objectBean struct {
 
 // NewObjectBean objectBean 的构造函数，入参必须是一个引用类型的值。
 func NewObjectBean(v reflect.Value) *objectBean {
-	if t := v.Type(); util.IsRefType(t.Kind()) {
+	if t := v.Type(); IsRefType(t.Kind()) {
 		return &objectBean{
 			RType:    t,
 			RValue:   v,
@@ -278,7 +323,7 @@ func newFunctionBean(fnType reflect.Type, withReceiver bool, tags []string) func
 	v := reflect.New(out0)
 
 	// 引用类型去掉一层指针
-	if util.IsRefType(out0.Kind()) {
+	if IsRefType(out0.Kind()) {
 		v = v.Elem()
 	}
 
@@ -347,10 +392,10 @@ func (b *methodBean) beanClass() string {
 	return "method bean"
 }
 
-// FakeMethodBean 成员方法 Bean 不是在注册时就立即生成 MethodBean
+// fakeMethodBean 成员方法 Bean 不是在注册时就立即生成 MethodBean
 // 对象，而是在所有 Bean 注册完成并且自动注入开始后才开始生成，在此之前
-// 使用 FakeMethodBean 对象进行占位。
-type FakeMethodBean struct {
+// 使用 fakeMethodBean 对象进行占位。
+type fakeMethodBean struct {
 	// parent Bean 选择器
 	Selector BeanSelector
 
@@ -361,33 +406,33 @@ type FakeMethodBean struct {
 	Tags []string
 }
 
-// newFakeMethodBean FakeMethodBean 的构造函数，所有 tag 必须同时有或者同时没有序号。
-func newFakeMethodBean(selector BeanSelector, method string, tags []string) *FakeMethodBean {
-	return &FakeMethodBean{
+// newFakeMethodBean fakeMethodBean 的构造函数，所有 tag 必须同时有或者同时没有序号。
+func newFakeMethodBean(selector BeanSelector, method string, tags []string) *fakeMethodBean {
+	return &fakeMethodBean{
 		Selector: selector,
 		Method:   method,
 		Tags:     tags,
 	}
 }
 
-func (b *FakeMethodBean) Bean() interface{} {
+func (b *fakeMethodBean) Bean() interface{} {
 	panic(errors.New("shouldn't call this method"))
 }
 
-func (b *FakeMethodBean) Type() reflect.Type {
+func (b *fakeMethodBean) Type() reflect.Type {
 	panic(errors.New("shouldn't call this method"))
 }
 
-func (b *FakeMethodBean) Value() reflect.Value {
+func (b *fakeMethodBean) Value() reflect.Value {
 	panic(errors.New("shouldn't call this method"))
 }
 
-func (b *FakeMethodBean) TypeName() string {
+func (b *fakeMethodBean) TypeName() string {
 	panic(errors.New("shouldn't call this method"))
 }
 
 // beanClass 返回 springBean 的实现类型
-func (b *FakeMethodBean) beanClass() string {
+func (b *fakeMethodBean) beanClass() string {
 	return "fake method bean"
 }
 
@@ -477,7 +522,7 @@ func (d *BeanDefinition) TypeName() string {
 
 // Name 返回 Bean 的名称
 func (d *BeanDefinition) Name() string {
-	_, ok := d.bean.(*FakeMethodBean)
+	_, ok := d.bean.(*fakeMethodBean)
 	if !ok && d.name == "" {
 		// 统一使用类型字符串作为默认名称!
 		d.name = d.bean.Type().String()

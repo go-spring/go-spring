@@ -233,7 +233,7 @@ func TestIsRefType(t *testing.T) {
 		default:
 			typ = reflect.TypeOf(i)
 		}
-		if r := util.IsRefType(typ.Kind()); d.v != r {
+		if r := core.IsRefType(typ.Kind()); d.v != r {
 			t.Errorf("%v expect %v but %v", typ, d.v, r)
 		}
 	}
@@ -282,7 +282,7 @@ func TestIsValueType(t *testing.T) {
 		default:
 			typ = reflect.TypeOf(i)
 		}
-		if r := util.IsValueType(typ.Kind()); d.v != r {
+		if r := core.IsValueType(typ.Kind()); d.v != r {
 			t.Errorf("%v expect %v but %v", typ, d.v, r)
 		}
 	}
@@ -471,40 +471,6 @@ func TestIsFuncBeanType(t *testing.T) {
 	for k, v := range data {
 		ok := core.IsFuncBeanType(k)
 		util.AssertEqual(t, ok, v)
-	}
-}
-
-func TestParseSingletonTag(t *testing.T) {
-
-	data := map[string]core.SingletonTag{
-		"[]":     {"", "[]", false},
-		"[]?":    {"", "[]", true},
-		"i":      {"", "i", false},
-		"i?":     {"", "i", true},
-		":i":     {"", "i", false},
-		":i?":    {"", "i", true},
-		"int:i":  {"int", "i", false},
-		"int:i?": {"int", "i", true},
-		"int:":   {"int", "", false},
-		"int:?":  {"int", "", true},
-	}
-
-	for k, v := range data {
-		tag := core.ParseSingletonTag(k)
-		util.AssertEqual(t, tag, v)
-	}
-}
-
-func TestParseBeanTag(t *testing.T) {
-
-	data := map[string]core.CollectionTag{
-		"[]":  {[]core.SingletonTag{}, false},
-		"[]?": {[]core.SingletonTag{}, true},
-	}
-
-	for k, v := range data {
-		tag := core.ParseCollectionTag(k)
-		util.AssertEqual(t, tag, v)
 	}
 }
 

@@ -36,7 +36,7 @@ import (
 //
 //	// collectBeans 收集符合要求的 Bean，结果可以是多个。自动模式下不对结
 //	// 果排序，指定模式会对结果排序。当允许结果为空时返回 false，否则 panic
-//	collectBeans(v reflect.Value, tag bean.CollectionTag, field string) bool
+//	collectBeans(v reflect.Value, tag bean.collectionTag, field string) bool
 //
 //	// getBeanValue 获取符合要求的 Bean，并且确保 Bean 完成自动注入过程，
 //	// 结果最多有一个，否则 panic，当允许结果为空时返回 false，否则 panic
@@ -196,12 +196,12 @@ func (assembly *defaultBeanAssembly) getBeanValue(v reflect.Value, tag Singleton
 }
 
 // collectBeans 收集符合要求的 Bean，结果可以是多个。自动模式下不对结果排序，指定模式会对结果排序。当允许结果为空时返回 false，否则 panic
-func (assembly *defaultBeanAssembly) collectBeans(v reflect.Value, tag CollectionTag, field string) bool {
+func (assembly *defaultBeanAssembly) collectBeans(v reflect.Value, tag collectionTag, field string) bool {
 
 	t := v.Type()
 	et := t.Elem()
 
-	if !util.IsRefType(et.Kind()) { // 收集模式的数组元素必须是引用类型
+	if !IsRefType(et.Kind()) { // 收集模式的数组元素必须是引用类型
 		panic(errors.New("slice item in collection mode should be ref type"))
 	}
 
@@ -264,7 +264,7 @@ func (assembly *defaultBeanAssembly) findBeanFromCache(beans []*BeanDefinition, 
 }
 
 // collectAndSortBeans 收集符合条件的 Bean，并且根据指定的顺序对结果进行排序
-func (assembly *defaultBeanAssembly) collectAndSortBeans(t reflect.Type, et reflect.Type, tag CollectionTag) reflect.Value {
+func (assembly *defaultBeanAssembly) collectAndSortBeans(t reflect.Type, et reflect.Type, tag collectionTag) reflect.Value {
 
 	foundAny := false
 	any := reflect.MakeSlice(t, 0, len(tag.Items))
@@ -566,9 +566,9 @@ func (assembly *defaultBeanAssembly) wireFunctionBean(fnValue reflect.Value, fnB
 	}
 
 	// 将函数的返回值赋值给 Bean
-	if util.IsRefType(val.Kind()) {
+	if IsRefType(val.Kind()) {
 		// 如果实现接口的是值类型，那么需要转换成指针类型然后再赋值给接口
-		if val.Kind() == reflect.Interface && util.IsValueType(val.Elem().Kind()) {
+		if val.Kind() == reflect.Interface && IsValueType(val.Elem().Kind()) {
 			ptrVal := reflect.New(val.Elem().Type())
 			ptrVal.Elem().Set(val.Elem())
 			fnBean.RValue.Set(ptrVal)
@@ -614,7 +614,7 @@ func (assembly *defaultBeanAssembly) WireStructField(v reflect.Value, tag string
 		}
 		assembly.collectBeans(v, ParseCollectionTag(tag), field)
 	} else { // 单例模式
-		assembly.getBeanValue(v, ParseSingletonTag(tag), Parent, field)
+		assembly.getBeanValue(v, parseSingletonTag(tag), Parent, field)
 	}
 }
 

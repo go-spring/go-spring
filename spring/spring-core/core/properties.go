@@ -160,7 +160,7 @@ func validConverter(t reflect.Type) bool {
 		return false
 	}
 
-	return util.IsValueType(t.Out(0).Kind()) && t.Out(1) == errorType
+	return IsValueType(t.Out(0).Kind()) && t.Out(1) == errorType
 }
 
 // Convert 添加类型转换器

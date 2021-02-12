@@ -237,7 +237,7 @@ func (ctx *applicationContext) FindBean(selector BeanSelector) (*BeanDefinition,
 
 	switch o := selector.(type) {
 	case string:
-		tag := ParseSingletonTag(o)
+		tag := parseSingletonTag(o)
 		result = finder(func(b *BeanDefinition) bool {
 			return b.Match(tag.TypeName, tag.BeanName)
 		})
@@ -299,7 +299,7 @@ func (ctx *applicationContext) CollectBeans(i interface{}, selectors ...BeanSele
 		panic(errors.New("i must be slice ptr"))
 	}
 
-	tag := CollectionTag{Nullable: true}
+	tag := collectionTag{Nullable: true}
 
 	for _, selector := range selectors {
 		tag.Items = append(tag.Items, ToSingletonTag(selector))
@@ -448,7 +448,7 @@ func (ctx *applicationContext) registerAllBeans() {
 
 	for _, bd := range ctx.AllBeans {
 
-		b, ok := bd.springBean().(*FakeMethodBean)
+		b, ok := bd.springBean().(*fakeMethodBean)
 		if !ok {
 			ctx.registerBeanDefinition(bd)
 			continue
@@ -458,7 +458,7 @@ func (ctx *applicationContext) registerAllBeans() {
 		switch e := b.Selector.(type) {
 		case string:
 			selector = e
-			tag := ParseSingletonTag(e)
+			tag := parseSingletonTag(e)
 			filter = func(b *BeanDefinition) bool {
 				return b.Match(tag.TypeName, tag.BeanName)
 			}

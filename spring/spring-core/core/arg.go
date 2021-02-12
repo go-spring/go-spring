@@ -177,7 +177,7 @@ func (arg *fnStringBindingArg) getArgValue(v reflect.Value, tag string, assembly
 	description := fmt.Sprintf("tag:\"%s\" %s", tag, fileLine)
 	log.Tracef("get value %s", description)
 
-	if util.IsValueType(v.Kind()) { // 值类型，采用属性绑定语法
+	if IsValueType(v.Kind()) { // 值类型，采用属性绑定语法
 		if tag == "" {
 			tag = "${}"
 		}
