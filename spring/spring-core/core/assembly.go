@@ -415,7 +415,7 @@ func (assembly *defaultBeanAssembly) wireBeanDefinition(bd SBeanDefinition, only
 	}
 
 	// 如果是成员方法 Bean，需要首先对它的父 Bean 进行自动注入
-	if mBean, ok := bd.SpringBean().(*MethodBean); ok {
+	if mBean, ok := bd.SpringBean().(*methodBean); ok {
 		if l := len(mBean.Parent); l > 1 {
 			msg := fmt.Sprintf("found %d parent bean [", l)
 			for _, b := range mBean.Parent {
@@ -434,7 +434,7 @@ func (assembly *defaultBeanAssembly) wireBeanDefinition(bd SBeanDefinition, only
 	case *ConstructorBean:
 		fnValue := reflect.ValueOf(b.Fn)
 		assembly.wireFunctionBean(fnValue, &b.FunctionBean, bd)
-	case *MethodBean:
+	case *methodBean:
 		fnValue := b.Parent[0].Value().MethodByName(b.Method)
 		assembly.wireFunctionBean(fnValue, &b.FunctionBean, bd)
 	default:

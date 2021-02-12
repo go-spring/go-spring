@@ -127,7 +127,7 @@ func (app *Application) start() {
 	}
 
 	// 注册 ApplicationContext 接口
-	app.RegisterBean(core.Ref(app).Export((*core.ApplicationContext)(nil)))
+	app.RegisterBean(core.ObjBean(app).Export((*core.ApplicationContext)(nil)))
 
 	// 依赖注入、属性绑定、初始化
 	app.AutoWireBeans()

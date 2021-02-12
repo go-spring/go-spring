@@ -315,8 +315,8 @@ func (b *ConstructorBean) BeanClass() string {
 	return "constructor bean"
 }
 
-// MethodBean 以成员方法形式注册的 Bean
-type MethodBean struct {
+// methodBean 以成员方法形式注册的 Bean
+type methodBean struct {
 	FunctionBean
 
 	Parent []*BeanDefinition // 父对象的定义
@@ -324,7 +324,7 @@ type MethodBean struct {
 }
 
 // NewMethodBean MethodBean 的构造函数，所有 tag 必须同时有或者同时没有序号。
-func NewMethodBean(parent []*BeanDefinition, method string, tags []string) *MethodBean {
+func NewMethodBean(parent []*BeanDefinition, method string, tags []string) *methodBean {
 
 	parentType := parent[0].Type()
 	m, ok := parentType.MethodByName(method)
@@ -335,15 +335,15 @@ func NewMethodBean(parent []*BeanDefinition, method string, tags []string) *Meth
 	// 接口的函数指针不包含接受者类型
 	withReceiver := parentType.Kind() != reflect.Interface
 
-	return &MethodBean{
+	return &methodBean{
 		FunctionBean: newFunctionBean(m.Type, withReceiver, tags),
 		Parent:       parent,
 		Method:       method,
 	}
 }
 
-// beanClass 返回 MethodBean 的类型名称
-func (b *MethodBean) beanClass() string {
+// BeanClass 返回 MethodBean 的类型名称
+func (b *methodBean) BeanClass() string {
 	return "method bean"
 }
 
@@ -579,7 +579,7 @@ func (d *BeanDefinition) Options(options ...*OptionArg) *BeanDefinition {
 	switch bean := d.bean.(type) {
 	case *ConstructorBean:
 		bean.OptionArg = arg
-	case *MethodBean:
+	case *methodBean:
 		bean.OptionArg = arg
 	default:
 		panic(errors.New("error springBean type"))
@@ -712,20 +712,20 @@ func ValueToBeanDefinition(v reflect.Value, file string, line int) *BeanDefiniti
 	return newBeanDefinition(NewObjectBean(v), file, line)
 }
 
-// Ref 将 Bean 转换为 BeanDefinition 对象
-func Ref(i interface{}) *BeanDefinition {
+// ObjBean 将 Bean 转换为 BeanDefinition 对象
+func ObjBean(i interface{}) *BeanDefinition {
 	file, line := getFileLine()
 	return ValueToBeanDefinition(reflect.ValueOf(i), file, line)
 }
 
-// Make 将构造函数转换为 BeanDefinition 对象
-func Make(fn interface{}, tags ...string) *BeanDefinition {
+// CtorBean 将构造函数转换为 BeanDefinition 对象
+func CtorBean(fn interface{}, tags ...string) *BeanDefinition {
 	file, line := getFileLine()
 	return newBeanDefinition(newConstructorBean(fn, tags), file, line)
 }
 
-// Child 将成员方法转换为 BeanDefinition 对象
-func Child(selector BeanSelector, method string, tags ...string) *BeanDefinition {
+// MethodBean 将成员方法转换为 BeanDefinition 对象
+func MethodBean(selector BeanSelector, method string, tags ...string) *BeanDefinition {
 	if selector == nil || selector == "" {
 		panic(errors.New("selector can't be nil or empty"))
 	}
@@ -750,5 +750,5 @@ func MethodFunc(method interface{}, tags ...string) *BeanDefinition {
 	}
 
 	Parent := reflect.TypeOf(method).In(0)
-	return Child(Parent, methodName, tags...)
+	return MethodBean(Parent, methodName, tags...)
 }

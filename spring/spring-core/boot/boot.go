@@ -81,24 +81,24 @@ func Bean(bd *core.BeanDefinition) *core.BeanDefinition {
 	return gApp.RegisterBean(bd)
 }
 
-// Ref 注册单例 Bean，不指定名称，重复注册会 panic。
-func Ref(i interface{}) *core.BeanDefinition {
+// ObjBean 注册单例 Bean，不指定名称，重复注册会 panic。
+func ObjBean(i interface{}) *core.BeanDefinition {
 	checkRunning()
-	return gApp.RegisterBean(core.Ref(i))
+	return gApp.RegisterBean(core.ObjBean(i))
 }
 
-// Make 注册单例构造函数 Bean，不指定名称，重复注册会 panic。
-func Make(fn interface{}, tags ...string) *core.BeanDefinition {
+// CtorBean 注册单例构造函数 Bean，不指定名称，重复注册会 panic。
+func CtorBean(fn interface{}, tags ...string) *core.BeanDefinition {
 	checkRunning()
-	return gApp.RegisterBean(core.Make(fn, tags...))
+	return gApp.RegisterBean(core.CtorBean(fn, tags...))
 }
 
-// Child 注册成员方法单例 Bean，不指定名称，重复注册会 panic。
+// MethodBean 注册成员方法单例 Bean，不指定名称，重复注册会 panic。
 // 必须给定方法名而不能通过遍历方法列表比较方法类型的方式获得函数名，因为不同方法的类型可能相同。
 // 而且 interface 的方法类型不带 receiver 而成员方法的类型带有 receiver，两者类型也不好匹配。
-func Child(selector core.BeanSelector, method string, tags ...string) *core.BeanDefinition {
+func MethodBean(selector core.BeanSelector, method string, tags ...string) *core.BeanDefinition {
 	checkRunning()
-	return gApp.RegisterBean(core.Child(selector, method, tags...))
+	return gApp.RegisterBean(core.MethodBean(selector, method, tags...))
 }
 
 // MethodFunc 注册成员方法单例 Bean，不指定名称，重复注册会 panic。

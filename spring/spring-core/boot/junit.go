@@ -50,6 +50,6 @@ func (r *JUnitRunner) Run(ctx core.ApplicationContext) {
 
 // RunTestApplication 启动测试程序，waiting 是测试用例开始前的等待时间，因为不知道程序启动器何时完成
 func RunTestApplication(t *testing.T, waiting time.Duration, configLocation ...string) {
-	Ref(&JUnitRunner{t: t, waiting: waiting})
+	ObjBean(&JUnitRunner{t: t, waiting: waiting})
 	Run(configLocation...)
 }

@@ -390,7 +390,7 @@ func (ctx *applicationContext) resolveBean(bd *BeanDefinition) {
 	bd.SetStatus(BeanStatus_Resolving)
 
 	// 如果是成员方法 Bean，需要首先决议它的父 Bean 是否能实例化
-	if b, ok := bd.SpringBean().(*MethodBean); ok {
+	if b, ok := bd.SpringBean().(*methodBean); ok {
 
 		for i := 0; ; i++ {
 			Parent := b.Parent[i]
@@ -602,7 +602,7 @@ func (ctx *applicationContext) WireBean(i interface{}) {
 		}
 	}()
 
-	assembly.wireBeanDefinition(Ref(i), false)
+	assembly.wireBeanDefinition(ObjBean(i), false)
 }
 
 // GetBeanDefinitions 获取所有 Bean 的定义，不能保证解析和注入，请谨慎使用该函数!
