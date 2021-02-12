@@ -14,41 +14,41 @@
  * limitations under the License.
  */
 
-package conf_test
+package core_test
 
 import (
 	"testing"
 
-	"github.com/go-spring/spring-core/conf"
+	"github.com/go-spring/spring-core/core"
 	"github.com/go-spring/spring-core/util"
 )
 
 func TestNewDefaultProperties(t *testing.T) {
 
-	p1 := conf.New()
+	p1 := core.New()
 	p1.Set("key_override", "p1")
 	p1.Set("key_p1", "p1")
 
-	p2 := conf.New()
+	p2 := core.New()
 	p2.Set("key_override", "p2")
 	p2.Set("key_p2", "p2")
 
-	p3 := conf.New()
+	p3 := core.New()
 	p3.Set("key_override", "p3")
 	p3.Set("key_p3", "p3")
 
-	p4 := conf.New()
+	p4 := core.New()
 	p4.Set("key_override", "p4")
 	p4.Set("key_p4", "p4")
 
-	p5 := conf.New()
+	p5 := core.New()
 	p5.Set("key_override", "p5")
 	p5.Set("key_p5", "p5")
 
-	l0 := conf.Priority(p2, p1)
-	l0 = conf.Priority(p3, l0)
-	l0 = conf.Priority(p4, l0)
-	l0 = conf.Priority(p5, l0)
+	l0 := core.Priority(p2, p1)
+	l0 = core.Priority(p3, l0)
+	l0 = core.Priority(p4, l0)
+	l0 = core.Priority(p5, l0)
 
 	key_override := l0.Get("key_override")
 	util.AssertEqual(t, key_override, "p5")
@@ -61,29 +61,29 @@ func TestNewDefaultProperties(t *testing.T) {
 
 func TestPriorityProperties_InsertBefore(t *testing.T) {
 
-	p1 := conf.New()
+	p1 := core.New()
 	p1.Set("key_override", "p1")
 	p1.Set("key_p1", "p1")
 
-	p2 := conf.New()
+	p2 := core.New()
 	p2.Set("key_override", "p2")
 	p2.Set("key_p2", "p2")
 
-	p3 := conf.New()
+	p3 := core.New()
 	p3.Set("key_override", "p3")
 	p3.Set("key_p3", "p3")
 
-	p4 := conf.New()
+	p4 := core.New()
 	p4.Set("key_override", "p4")
 	p4.Set("key_p4", "p4")
 
-	p5 := conf.New()
+	p5 := core.New()
 	p5.Set("key_override", "p5")
 	p5.Set("key_p5", "p5")
 
-	l0 := conf.Priority(p3, p1)
+	l0 := core.Priority(p3, p1)
 	l0.InsertBefore(p2, p1)
-	l0 = conf.Priority(p5, l0)
+	l0 = core.Priority(p5, l0)
 	l0.InsertBefore(p4, p3)
 
 	key_override := l0.Get("key_override")

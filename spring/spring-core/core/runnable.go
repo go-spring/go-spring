@@ -1,4 +1,4 @@
-package bean
+package core
 
 import (
 	"errors"

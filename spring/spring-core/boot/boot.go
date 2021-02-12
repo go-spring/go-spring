@@ -20,8 +20,6 @@ import (
 	"context"
 
 	"github.com/go-spring/spring-core/app"
-	"github.com/go-spring/spring-core/bean"
-	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/core"
 	"github.com/go-spring/spring-core/log"
 )
@@ -78,36 +76,36 @@ func SetProfile(profile string) {
 }
 
 // Bean 注册 BeanDefinition 对象。
-func Bean(bd *bean.BeanDefinition) *bean.BeanDefinition {
+func Bean(bd *core.BeanDefinition) *core.BeanDefinition {
 	checkRunning()
 	return gApp.RegisterBean(bd)
 }
 
 // Ref 注册单例 Bean，不指定名称，重复注册会 panic。
-func Ref(i interface{}) *bean.BeanDefinition {
+func Ref(i interface{}) *core.BeanDefinition {
 	checkRunning()
-	return gApp.RegisterBean(bean.Ref(i))
+	return gApp.RegisterBean(core.Ref(i))
 }
 
 // Make 注册单例构造函数 Bean，不指定名称，重复注册会 panic。
-func Make(fn interface{}, tags ...string) *bean.BeanDefinition {
+func Make(fn interface{}, tags ...string) *core.BeanDefinition {
 	checkRunning()
-	return gApp.RegisterBean(bean.Make(fn, tags...))
+	return gApp.RegisterBean(core.Make(fn, tags...))
 }
 
 // Child 注册成员方法单例 Bean，不指定名称，重复注册会 panic。
 // 必须给定方法名而不能通过遍历方法列表比较方法类型的方式获得函数名，因为不同方法的类型可能相同。
 // 而且 interface 的方法类型不带 receiver 而成员方法的类型带有 receiver，两者类型也不好匹配。
-func Child(selector bean.BeanSelector, method string, tags ...string) *bean.BeanDefinition {
+func Child(selector core.BeanSelector, method string, tags ...string) *core.BeanDefinition {
 	checkRunning()
-	return gApp.RegisterBean(bean.Child(selector, method, tags...))
+	return gApp.RegisterBean(core.Child(selector, method, tags...))
 }
 
 // MethodFunc 注册成员方法单例 Bean，不指定名称，重复注册会 panic。
 // method 形如 ServerInterface.Consumer (接口) 或 (*Server).Consumer (类型)。
-func MethodFunc(method interface{}, tags ...string) *bean.BeanDefinition {
+func MethodFunc(method interface{}, tags ...string) *core.BeanDefinition {
 	checkRunning()
-	return gApp.RegisterBean(bean.MethodFunc(method, tags...))
+	return gApp.RegisterBean(core.MethodFunc(method, tags...))
 }
 
 // WireBean 对外部的 Bean 进行依赖注入和属性绑定
@@ -117,13 +115,13 @@ func WireBean(bean interface{}) {
 
 // GetBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 // 它和 FindBean 的区别是它在调用后能够保证返回的 Bean 已经完成了注入和绑定过程。
-func GetBean(i interface{}, selector ...bean.BeanSelector) bool {
+func GetBean(i interface{}, selector ...core.BeanSelector) bool {
 	return gApp.GetBean(i, selector...)
 }
 
 // FindBean 查询单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 // 它和 GetBean 的区别是它在调用后不能保证返回的 Bean 已经完成了注入和绑定过程。
-func FindBean(selector bean.BeanSelector) (*bean.BeanDefinition, bool) {
+func FindBean(selector core.BeanSelector) (*core.BeanDefinition, bool) {
 	return gApp.FindBean(selector)
 }
 
@@ -134,12 +132,12 @@ func FindBean(selector bean.BeanSelector) (*bean.BeanDefinition, bool) {
 // 不为空，这时候只会收集单例 Bean，而且要求这些单例 Bean 不仅需要满足收集条件，而且
 // 必须满足 selector 条件。另外，自动模式下不对收集结果进行排序，指定模式下根据
 // selectors 列表的顺序对收集结果进行排序。
-func CollectBeans(i interface{}, selectors ...bean.BeanSelector) bool {
+func CollectBeans(i interface{}, selectors ...core.BeanSelector) bool {
 	return gApp.CollectBeans(i, selectors...)
 }
 
 // GetBeanDefinitions 获取所有 Bean 的定义，不能保证解析和注入，请谨慎使用该函数!
-func GetBeanDefinitions() []*bean.BeanDefinition {
+func GetBeanDefinitions() []*core.BeanDefinition {
 	return gApp.GetBeanDefinitions()
 }
 
@@ -170,7 +168,7 @@ func SetProperty(key string, value interface{}) {
 }
 
 // Properties 获取 Properties 对象
-func Properties() conf.Properties {
+func Properties() core.Properties {
 	return gApp.Properties()
 }
 

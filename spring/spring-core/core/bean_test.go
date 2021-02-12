@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package bean_test
+package core_test
 
 import (
 	"fmt"
@@ -25,9 +25,9 @@ import (
 	"testing"
 	"unsafe"
 
-	"github.com/go-spring/spring-core/bean"
-	pkg1 "github.com/go-spring/spring-core/bean/testdata/pkg/bar"
-	pkg2 "github.com/go-spring/spring-core/bean/testdata/pkg/foo"
+	"github.com/go-spring/spring-core/core"
+	pkg1 "github.com/go-spring/spring-core/core/testdata/pkg/bar"
+	pkg2 "github.com/go-spring/spring-core/core/testdata/pkg/foo"
 	"github.com/go-spring/spring-core/util"
 )
 
@@ -292,7 +292,7 @@ func TestTypeName(t *testing.T) {
 
 	t.Run("nil", func(t *testing.T) {
 		util.AssertPanic(t, func() {
-			bean.TypeName(reflect.TypeOf(nil))
+			core.TypeName(reflect.TypeOf(nil))
 		}, "shouldn't be nil")
 	})
 
@@ -407,21 +407,21 @@ func TestTypeName(t *testing.T) {
 			reflect.TypeOf(&[]string{"string"}):     {"string", "*[]string"},
 			reflect.TypeOf(make(map[string]string)): {"map[string]string", "map[string]string"},
 
-			reflect.TypeOf(pkg1.SamePkg{}):             {"github.com/go-spring/spring-core/bean/testdata/pkg/bar/pkg.SamePkg", "pkg.SamePkg"},
-			reflect.TypeOf(new(pkg1.SamePkg)):          {"github.com/go-spring/spring-core/bean/testdata/pkg/bar/pkg.SamePkg", "*pkg.SamePkg"},
-			reflect.TypeOf(make([]pkg1.SamePkg, 0)):    {"github.com/go-spring/spring-core/bean/testdata/pkg/bar/pkg.SamePkg", "[]pkg.SamePkg"},
-			reflect.TypeOf(&[]pkg1.SamePkg{}):          {"github.com/go-spring/spring-core/bean/testdata/pkg/bar/pkg.SamePkg", "*[]pkg.SamePkg"},
+			reflect.TypeOf(pkg1.SamePkg{}):             {"github.com/go-spring/spring-core/core/testdata/pkg/bar/pkg.SamePkg", "pkg.SamePkg"},
+			reflect.TypeOf(new(pkg1.SamePkg)):          {"github.com/go-spring/spring-core/core/testdata/pkg/bar/pkg.SamePkg", "*pkg.SamePkg"},
+			reflect.TypeOf(make([]pkg1.SamePkg, 0)):    {"github.com/go-spring/spring-core/core/testdata/pkg/bar/pkg.SamePkg", "[]pkg.SamePkg"},
+			reflect.TypeOf(&[]pkg1.SamePkg{}):          {"github.com/go-spring/spring-core/core/testdata/pkg/bar/pkg.SamePkg", "*[]pkg.SamePkg"},
 			reflect.TypeOf(make(map[int]pkg1.SamePkg)): {"map[int]pkg.SamePkg", "map[int]pkg.SamePkg"},
 
-			reflect.TypeOf(pkg2.SamePkg{}):             {"github.com/go-spring/spring-core/bean/testdata/pkg/foo/pkg.SamePkg", "pkg.SamePkg"},
-			reflect.TypeOf(new(pkg2.SamePkg)):          {"github.com/go-spring/spring-core/bean/testdata/pkg/foo/pkg.SamePkg", "*pkg.SamePkg"},
-			reflect.TypeOf(make([]pkg2.SamePkg, 0)):    {"github.com/go-spring/spring-core/bean/testdata/pkg/foo/pkg.SamePkg", "[]pkg.SamePkg"},
-			reflect.TypeOf(&[]pkg2.SamePkg{}):          {"github.com/go-spring/spring-core/bean/testdata/pkg/foo/pkg.SamePkg", "*[]pkg.SamePkg"},
+			reflect.TypeOf(pkg2.SamePkg{}):             {"github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg", "pkg.SamePkg"},
+			reflect.TypeOf(new(pkg2.SamePkg)):          {"github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg", "*pkg.SamePkg"},
+			reflect.TypeOf(make([]pkg2.SamePkg, 0)):    {"github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg", "[]pkg.SamePkg"},
+			reflect.TypeOf(&[]pkg2.SamePkg{}):          {"github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg", "*[]pkg.SamePkg"},
 			reflect.TypeOf(make(map[int]pkg2.SamePkg)): {"map[int]pkg.SamePkg", "map[int]pkg.SamePkg"},
 		}
 
 		for typ, v := range data {
-			typeName := bean.TypeName(typ)
+			typeName := core.TypeName(typ)
 			util.AssertEqual(t, typeName, v.typeName)
 			util.AssertEqual(t, typ.String(), v.baseName)
 		}
@@ -431,7 +431,7 @@ func TestTypeName(t *testing.T) {
 		iPtrPtr := &iPtr
 		iPtrPtrPtr := &iPtrPtr
 		typ := reflect.TypeOf(iPtrPtrPtr)
-		typeName := bean.TypeName(typ)
+		typeName := core.TypeName(typ)
 		util.AssertEqual(t, typeName, "int")
 		util.AssertEqual(t, typ.String(), "***int")
 	})
@@ -469,14 +469,14 @@ func TestIsFuncBeanType(t *testing.T) {
 	}
 
 	for k, v := range data {
-		ok := bean.IsFuncBeanType(k)
+		ok := core.IsFuncBeanType(k)
 		util.AssertEqual(t, ok, v)
 	}
 }
 
 func TestParseSingletonTag(t *testing.T) {
 
-	data := map[string]bean.SingletonTag{
+	data := map[string]core.SingletonTag{
 		"[]":     {"", "[]", false},
 		"[]?":    {"", "[]", true},
 		"i":      {"", "i", false},
@@ -490,20 +490,20 @@ func TestParseSingletonTag(t *testing.T) {
 	}
 
 	for k, v := range data {
-		tag := bean.ParseSingletonTag(k)
+		tag := core.ParseSingletonTag(k)
 		util.AssertEqual(t, tag, v)
 	}
 }
 
 func TestParseBeanTag(t *testing.T) {
 
-	data := map[string]bean.CollectionTag{
-		"[]":  {[]bean.SingletonTag{}, false},
-		"[]?": {[]bean.SingletonTag{}, true},
+	data := map[string]core.CollectionTag{
+		"[]":  {[]core.SingletonTag{}, false},
+		"[]?": {[]core.SingletonTag{}, true},
 	}
 
 	for k, v := range data {
-		tag := bean.ParseCollectionTag(k)
+		tag := core.ParseCollectionTag(k)
 		util.AssertEqual(t, tag, v)
 	}
 }
@@ -511,23 +511,23 @@ func TestParseBeanTag(t *testing.T) {
 func TestBeanDefinition_Match(t *testing.T) {
 
 	data := []struct {
-		bd       *bean.BeanDefinition
+		bd       *core.BeanDefinition
 		typeName string
 		beanName string
 		expect   bool
 	}{
-		{bean.Ref(new(int)), "int", "*int", true},
-		{bean.Ref(new(int)), "", "*int", true},
-		{bean.Ref(new(int)), "int", "", true},
-		{bean.Ref(new(int)).WithName("i"), "int", "i", true},
-		{bean.Ref(new(int)).WithName("i"), "", "i", true},
-		{bean.Ref(new(int)).WithName("i"), "int", "", true},
-		{bean.Ref(new(pkg2.SamePkg)), "github.com/go-spring/spring-core/bean/testdata/pkg/foo/pkg.SamePkg", "*pkg.SamePkg", true},
-		{bean.Ref(new(pkg2.SamePkg)), "", "*pkg.SamePkg", true},
-		{bean.Ref(new(pkg2.SamePkg)), "github.com/go-spring/spring-core/bean/testdata/pkg/foo/pkg.SamePkg", "", true},
-		{bean.Ref(new(pkg2.SamePkg)).WithName("pkg2"), "github.com/go-spring/spring-core/bean/testdata/pkg/foo/pkg.SamePkg", "pkg2", true},
-		{bean.Ref(new(pkg2.SamePkg)).WithName("pkg2"), "", "pkg2", true},
-		{bean.Ref(new(pkg2.SamePkg)).WithName("pkg2"), "github.com/go-spring/spring-core/bean/testdata/pkg/foo/pkg.SamePkg", "pkg2", true},
+		{core.Ref(new(int)), "int", "*int", true},
+		{core.Ref(new(int)), "", "*int", true},
+		{core.Ref(new(int)), "int", "", true},
+		{core.Ref(new(int)).WithName("i"), "int", "i", true},
+		{core.Ref(new(int)).WithName("i"), "", "i", true},
+		{core.Ref(new(int)).WithName("i"), "int", "", true},
+		{core.Ref(new(pkg2.SamePkg)), "github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg", "*pkg.SamePkg", true},
+		{core.Ref(new(pkg2.SamePkg)), "", "*pkg.SamePkg", true},
+		{core.Ref(new(pkg2.SamePkg)), "github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg", "", true},
+		{core.Ref(new(pkg2.SamePkg)).WithName("pkg2"), "github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg", "pkg2", true},
+		{core.Ref(new(pkg2.SamePkg)).WithName("pkg2"), "", "pkg2", true},
+		{core.Ref(new(pkg2.SamePkg)).WithName("pkg2"), "github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg", "pkg2", true},
 	}
 
 	for i, s := range data {
@@ -565,29 +565,29 @@ func TestObjectBean(t *testing.T) {
 	t.Run("bean can't be nil", func(t *testing.T) {
 
 		util.AssertPanic(t, func() {
-			bean.Ref(nil)
+			core.Ref(nil)
 		}, "bean can't be nil")
 
 		util.AssertPanic(t, func() {
 			var i *int
-			bean.Ref(i)
+			core.Ref(i)
 		}, "bean can't be nil")
 
 		util.AssertPanic(t, func() {
 			var m map[string]string
-			bean.Ref(m)
+			core.Ref(m)
 		}, "bean can't be nil")
 	})
 
 	t.Run("bean must be ref type", func(t *testing.T) {
 
 		data := []func(){
-			func() { bean.Ref([...]int{0}) },
-			func() { bean.Ref(false) },
-			func() { bean.Ref(3) },
-			func() { bean.Ref("3") },
-			func() { bean.Ref(BeanZero{}) },
-			func() { bean.Ref(pkg2.SamePkg{}) },
+			func() { core.Ref([...]int{0}) },
+			func() { core.Ref(false) },
+			func() { core.Ref(3) },
+			func() { core.Ref("3") },
+			func() { core.Ref(BeanZero{}) },
+			func() { core.Ref(pkg2.SamePkg{}) },
 		}
 
 		for _, fn := range data {
@@ -596,45 +596,45 @@ func TestObjectBean(t *testing.T) {
 	})
 
 	t.Run("valid bean", func(t *testing.T) {
-		bean.Ref(make(chan int))
-		bean.Ref(func() {})
-		bean.Ref(make(map[string]int))
-		bean.Ref(new(int))
-		bean.Ref(&BeanZero{})
-		bean.Ref(make([]int, 0))
+		core.Ref(make(chan int))
+		core.Ref(func() {})
+		core.Ref(make(map[string]int))
+		core.Ref(new(int))
+		core.Ref(&BeanZero{})
+		core.Ref(make([]int, 0))
 	})
 
 	t.Run("check name && typename", func(t *testing.T) {
 
-		data := map[*bean.BeanDefinition]struct {
+		data := map[*core.BeanDefinition]struct {
 			name     string
 			typeName string
 		}{
-			bean.Ref(io.Writer(os.Stdout)): {
+			core.Ref(io.Writer(os.Stdout)): {
 				"*os.File", "os/os.File",
 			},
 
-			bean.Ref(newHistoryTeacher("")): {
-				"*bean_test.historyTeacher",
-				"github.com/go-spring/spring-core/bean_test/bean_test.historyTeacher",
+			core.Ref(newHistoryTeacher("")): {
+				"*core_test.historyTeacher",
+				"github.com/go-spring/spring-core/core_test/core_test.historyTeacher",
 			},
 
-			bean.Ref(new(int)): {
+			core.Ref(new(int)): {
 				"*int", "int",
 			},
 
-			bean.Ref(new(int)).WithName("i"): {
+			core.Ref(new(int)).WithName("i"): {
 				"i", "int",
 			},
 
-			bean.Ref(new(pkg2.SamePkg)): {
+			core.Ref(new(pkg2.SamePkg)): {
 				"*pkg.SamePkg",
-				"github.com/go-spring/spring-core/bean/testdata/pkg/foo/pkg.SamePkg",
+				"github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg",
 			},
 
-			bean.Ref(new(pkg2.SamePkg)).WithName("pkg2"): {
+			core.Ref(new(pkg2.SamePkg)).WithName("pkg2"): {
 				"pkg2",
-				"github.com/go-spring/spring-core/bean/testdata/pkg/foo/pkg.SamePkg",
+				"github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg",
 			},
 		}
 
@@ -645,81 +645,42 @@ func TestObjectBean(t *testing.T) {
 	})
 }
 
-type Teacher interface {
-	Course() string
-}
-
-type historyTeacher struct {
-	name string
-}
-
-func newHistoryTeacher(name string) *historyTeacher {
-	return &historyTeacher{
-		name: name,
-	}
-}
-
-func (t *historyTeacher) Course() string {
-	return "history"
-}
-
-type Student struct {
-	Teacher Teacher
-	Room    string
-}
-
-// 入参可以进行注入或者属性绑定，返回值可以是 struct、map、slice、func 等。
-func NewStudent(teacher Teacher, room string) Student {
-	return Student{
-		Teacher: teacher,
-		Room:    room,
-	}
-}
-
-// 入参可以进行注入或者属性绑定，返回值可以是 struct、map、slice、func 等。
-func NewPtrStudent(teacher Teacher, room string) *Student {
-	return &Student{
-		Teacher: teacher,
-		Room:    room,
-	}
-}
-
 func TestConstructorBean(t *testing.T) {
 
-	bd := bean.Make(NewStudent)
-	util.AssertEqual(t, bd.Type().String(), "*bean_test.Student")
+	bd := core.Make(NewStudent)
+	util.AssertEqual(t, bd.Type().String(), "*core_test.Student")
 
-	bd = bean.Make(NewPtrStudent)
-	util.AssertEqual(t, bd.Type().String(), "*bean_test.Student")
+	bd = core.Make(NewPtrStudent)
+	util.AssertEqual(t, bd.Type().String(), "*core_test.Student")
 
 	mapFn := func() map[int]string { return make(map[int]string) }
-	bd = bean.Make(mapFn)
+	bd = core.Make(mapFn)
 	util.AssertEqual(t, bd.Type().String(), "map[int]string")
 
 	sliceFn := func() []int { return make([]int, 1) }
-	bd = bean.Make(sliceFn)
+	bd = core.Make(sliceFn)
 	util.AssertEqual(t, bd.Type().String(), "[]int")
 
 	funcFn := func() func(int) { return nil }
-	bd = bean.Make(funcFn)
+	bd = core.Make(funcFn)
 	util.AssertEqual(t, bd.Type().String(), "func(int)")
 
 	intFn := func() int { return 0 }
-	bd = bean.Make(intFn)
+	bd = core.Make(intFn)
 	util.AssertEqual(t, bd.Type().String(), "*int")
 	util.AssertEqual(t, bd.Value().Type().String(), "*int")
 
 	interfaceFn := func(name string) Teacher { return newHistoryTeacher(name) }
-	bd = bean.Make(interfaceFn)
-	util.AssertEqual(t, bd.Type().String(), "bean_test.Teacher")
-	util.AssertEqual(t, bd.Value().Type().String(), "bean_test.Teacher")
+	bd = core.Make(interfaceFn)
+	util.AssertEqual(t, bd.Type().String(), "core_test.Teacher")
+	util.AssertEqual(t, bd.Value().Type().String(), "core_test.Teacher")
 
 	util.AssertPanic(t, func() {
-		bd = bean.Make(func() (*int, *int) { return nil, nil })
+		bd = core.Make(func() (*int, *int) { return nil, nil })
 		util.AssertEqual(t, bd.Type().String(), "*int")
 	}, "func bean must be func\\(...\\)bean or func\\(...\\)\\(bean, error\\)")
 
-	bd = bean.Make(func() (*int, error) { return nil, nil })
+	bd = core.Make(func() (*int, error) { return nil, nil })
 	util.AssertEqual(t, bd.Type().String(), "*int")
 }
 

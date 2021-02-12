@@ -18,18 +18,16 @@ package core
 
 import (
 	"container/list"
-
-	"github.com/go-spring/spring-core/bean"
 )
 
 // destroyer 保存具有销毁函数的 Bean 以及销毁函数的调用顺序
 type destroyer struct {
-	bean  *bean.BeanDefinition
-	after []*bean.BeanDefinition
+	bean  *BeanDefinition
+	after []*BeanDefinition
 }
 
 // After 添加一个在此之前调用的销毁函数
-func (d *destroyer) After(b *bean.BeanDefinition) *destroyer {
+func (d *destroyer) After(b *BeanDefinition) *destroyer {
 
 	for _, f := range d.after {
 		if f == b {

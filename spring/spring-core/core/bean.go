@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package bean
+package core
 
 import (
 	"errors"
@@ -25,9 +25,6 @@ import (
 
 	"github.com/go-spring/spring-core/util"
 )
-
-// errorType error 的反射类型
-var errorType = reflect.TypeOf((*error)(nil)).Elem()
 
 // ValidBean 返回是否是合法的 Bean 及其类型
 func ValidBean(v reflect.Value) (reflect.Type, bool) {

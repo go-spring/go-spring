@@ -20,13 +20,12 @@ import (
 	"errors"
 	"reflect"
 
-	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/log"
 )
 
 // Runner 立即执行器
 type Runner struct {
-	r   bean.Runnable
+	r   Runnable
 	ctx *applicationContext
 }
 
@@ -40,9 +39,9 @@ func newRunner(ctx *applicationContext, fn interface{}, tags []string) *Runner {
 
 	return &Runner{
 		ctx: ctx,
-		r: bean.Runnable{
+		r: Runnable{
 			Fn:        fn,
-			StringArg: bean.NewFnStringBindingArg(fnType, false, tags),
+			StringArg: NewFnStringBindingArg(fnType, false, tags),
 		},
 	}
 }

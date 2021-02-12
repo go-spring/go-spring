@@ -14,35 +14,23 @@
  * limitations under the License.
  */
 
-package pkg
+package core
 
-import (
-	"context"
-	"fmt"
-)
+type ConditionContext interface {
 
-// golang 允许不同的路径下存在相同的包，而且允许存在相同的包。
-type SamePkg struct{}
+	// GetProfile 返回运行环境
+	GetProfile() string
 
-func (p *SamePkg) Package() {
-	fmt.Println("github.com/go-spring/spring-core/testdata/pkg/foo/pkg.SamePkg")
+	//Properties
+	Properties() Properties
+
+	// FindBean 查询单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
+	// 它和 GetBean 的区别是它在调用后不能保证返回的 Bean 已经完成了注入和绑定过程。
+	FindBean(selector BeanSelector) (*BeanDefinition, bool)
 }
 
-type appContext struct {
-	// 导出 fmt.Stringer 接口
-	// 这种导出方式建议写在最上面
-	_ fmt.Stringer `export:""`
-
-	// 导出 context.Context 接口
-	context.Context `export:""`
-}
-
-func NewAppContext() *appContext {
-	return &appContext{
-		Context: context.TODO(),
-	}
-}
-
-func (_ *appContext) String() string {
-	return ""
+// Condition 定义一个判断条件
+type Condition interface {
+	// Matches 成功返回 true，失败返回 false
+	Matches(ctx ConditionContext) bool
 }

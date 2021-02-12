@@ -17,7 +17,6 @@
 package boot
 
 import (
-	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/core"
 	"github.com/go-spring/spring-core/mq"
 )
@@ -25,11 +24,11 @@ import (
 // ConditionalBindConsumer 为 BindConsumer 添加条件功能
 type ConditionalBindConsumer struct {
 	*mq.BindConsumer
-	cond bean.Condition // 判断条件
+	cond core.Condition // 判断条件
 }
 
 // WithCondition 设置一个 Condition
-func (c *ConditionalBindConsumer) WithCondition(cond bean.Condition) *ConditionalBindConsumer {
+func (c *ConditionalBindConsumer) WithCondition(cond core.Condition) *ConditionalBindConsumer {
 	c.cond = cond
 	return c
 }

@@ -25,8 +25,6 @@ import (
 	"reflect"
 	"sync"
 
-	"github.com/go-spring/spring-core/bean"
-	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/core/internal/sort"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
@@ -45,17 +43,17 @@ func newBeanKey(typ reflect.Type, name string) beanKey {
 
 // beanCacheItem BeanCache's item, for type cache or name cache.
 type beanCacheItem struct {
-	beans []*bean.BeanDefinition
+	beans []*BeanDefinition
 }
 
 // newBeanCacheItem beanCacheItem 的构造函数
 func newBeanCacheItem() *beanCacheItem {
 	return &beanCacheItem{
-		beans: make([]*bean.BeanDefinition, 0),
+		beans: make([]*BeanDefinition, 0),
 	}
 }
 
-func (item *beanCacheItem) store(bd *bean.BeanDefinition) {
+func (item *beanCacheItem) store(bd *BeanDefinition) {
 	item.beans = append(item.beans, bd)
 }
 
@@ -70,8 +68,8 @@ type applicationContext struct {
 	profile   string // 运行环境
 	autoWired bool   // 是否开始自动绑定
 
-	AllBeans        []*bean.BeanDefinition           // 所有注册点
-	beanMap         map[beanKey]*bean.BeanDefinition // Bean 集合
+	AllBeans        []*BeanDefinition           // 所有注册点
+	beanMap         map[beanKey]*BeanDefinition // Bean 集合
 	beanCacheByName map[string]*beanCacheItem
 	beanCacheByType map[reflect.Type]*beanCacheItem
 
@@ -79,7 +77,7 @@ type applicationContext struct {
 	destroyers   *list.List // 销毁函数集合
 	destroyerMap map[beanKey]*destroyer
 
-	properties conf.Properties // 属性值列表接口
+	properties Properties // 属性值列表接口
 }
 
 // NewApplicationContext applicationContext 的构造函数
@@ -88,9 +86,9 @@ func NewApplicationContext() *applicationContext {
 	return &applicationContext{
 		ctx:             ctx,
 		cancel:          cancel,
-		properties:      conf.New(),
-		AllBeans:        make([]*bean.BeanDefinition, 0),
-		beanMap:         make(map[beanKey]*bean.BeanDefinition),
+		properties:      New(),
+		AllBeans:        make([]*BeanDefinition, 0),
+		beanMap:         make(map[beanKey]*BeanDefinition),
 		beanCacheByName: make(map[string]*beanCacheItem),
 		beanCacheByType: make(map[reflect.Type]*beanCacheItem),
 		configers:       list.New(),
@@ -135,7 +133,7 @@ func (ctx *applicationContext) Property(key string, value interface{}) {
 }
 
 // Properties 获取 Properties 对象
-func (ctx *applicationContext) Properties() conf.Properties {
+func (ctx *applicationContext) Properties() Properties {
 	return ctx.properties
 }
 
@@ -169,14 +167,14 @@ func (ctx *applicationContext) checkRegistration() {
 }
 
 // deleteBeanDefinition 删除 bean.BeanDefinition。
-func (ctx *applicationContext) deleteBeanDefinition(bd *bean.BeanDefinition) {
+func (ctx *applicationContext) deleteBeanDefinition(bd *BeanDefinition) {
 	key := newBeanKey(bd.Type(), bd.Name())
-	bd.SetStatus(bean.BeanStatus_Deleted)
+	bd.SetStatus(BeanStatus_Deleted)
 	delete(ctx.beanMap, key)
 }
 
 // registerBeanDefinition 注册 bean.BeanDefinition，重复注册会 panic。
-func (ctx *applicationContext) registerBeanDefinition(bd *bean.BeanDefinition) {
+func (ctx *applicationContext) registerBeanDefinition(bd *BeanDefinition) {
 	key := newBeanKey(bd.Type(), bd.Name())
 	if _, ok := ctx.beanMap[key]; ok {
 		panic(fmt.Errorf("duplicate registration, bean: \"%s\"", bd.BeanId()))
@@ -184,7 +182,7 @@ func (ctx *applicationContext) registerBeanDefinition(bd *bean.BeanDefinition) {
 	ctx.beanMap[key] = bd
 }
 
-func (ctx *applicationContext) RegisterBean(bd *bean.BeanDefinition) *bean.BeanDefinition {
+func (ctx *applicationContext) RegisterBean(bd *BeanDefinition) *BeanDefinition {
 	ctx.checkRegistration()
 	ctx.AllBeans = append(ctx.AllBeans, bd)
 	return bd
@@ -192,7 +190,7 @@ func (ctx *applicationContext) RegisterBean(bd *bean.BeanDefinition) *bean.BeanD
 
 // GetBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 // 它和 FindBean 的区别是它在调用后能够保证返回的 Bean 已经完成了注入和绑定过程。
-func (ctx *applicationContext) GetBean(i interface{}, selector ...bean.BeanSelector) bool {
+func (ctx *applicationContext) GetBean(i interface{}, selector ...BeanSelector) bool {
 
 	if i == nil {
 		panic(errors.New("i can't be nil"))
@@ -205,12 +203,12 @@ func (ctx *applicationContext) GetBean(i interface{}, selector ...bean.BeanSelec
 		panic(errors.New("i must be pointer"))
 	}
 
-	s := bean.BeanSelector("")
+	s := BeanSelector("")
 	if len(selector) > 0 {
 		s = selector[0]
 	}
 
-	tag := bean.ToSingletonTag(s)
+	tag := ToSingletonTag(s)
 	tag.Nullable = true
 
 	v := reflect.ValueOf(i)
@@ -220,14 +218,14 @@ func (ctx *applicationContext) GetBean(i interface{}, selector ...bean.BeanSelec
 
 // FindBean 查询单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 // 它和 GetBean 的区别是它在调用后不能保证返回的 Bean 已经完成了注入和绑定过程。
-func (ctx *applicationContext) FindBean(selector bean.BeanSelector) (*bean.BeanDefinition, bool) {
+func (ctx *applicationContext) FindBean(selector BeanSelector) (*BeanDefinition, bool) {
 	ctx.checkAutoWired()
 
-	finder := func(fn func(*bean.BeanDefinition) bool) (result []*bean.BeanDefinition) {
+	finder := func(fn func(*BeanDefinition) bool) (result []*BeanDefinition) {
 		for _, b := range ctx.beanMap {
-			if b.Status() != bean.BeanStatus_Resolving && fn(b) {
+			if b.Status() != BeanStatus_Resolving && fn(b) {
 				ctx.resolveBean(b) // 避免 Bean 未被解析
-				if b.Status() != bean.BeanStatus_Deleted {
+				if b.Status() != BeanStatus_Deleted {
 					result = append(result, b)
 				}
 			}
@@ -235,12 +233,12 @@ func (ctx *applicationContext) FindBean(selector bean.BeanSelector) (*bean.BeanD
 		return
 	}
 
-	var result []*bean.BeanDefinition
+	var result []*BeanDefinition
 
 	switch o := selector.(type) {
 	case string:
-		tag := bean.ParseSingletonTag(o)
-		result = finder(func(b *bean.BeanDefinition) bool {
+		tag := ParseSingletonTag(o)
+		result = finder(func(b *BeanDefinition) bool {
 			return b.Match(tag.TypeName, tag.BeanName)
 		})
 	default:
@@ -252,7 +250,7 @@ func (ctx *applicationContext) FindBean(selector bean.BeanSelector) (*bean.BeanD
 				}
 			}
 
-			result = finder(func(b *bean.BeanDefinition) bool {
+			result = finder(func(b *BeanDefinition) bool {
 				if beanType := b.Type(); beanType.AssignableTo(t) { // 必须类型兼容
 					if beanType == t || t.Kind() != reflect.Interface {
 						return true
@@ -294,17 +292,17 @@ func (ctx *applicationContext) FindBean(selector bean.BeanSelector) (*bean.BeanD
 // 不为空，这时候只会收集单例 Bean，而且要求这些单例 Bean 不仅需要满足收集条件，而且
 // 必须满足 selector 条件。另外，自动模式下不对收集结果进行排序，指定模式下根据
 // selectors 列表的顺序对收集结果进行排序。
-func (ctx *applicationContext) CollectBeans(i interface{}, selectors ...bean.BeanSelector) bool {
+func (ctx *applicationContext) CollectBeans(i interface{}, selectors ...BeanSelector) bool {
 	ctx.checkAutoWired()
 
 	if t := reflect.TypeOf(i); t.Kind() != reflect.Ptr || t.Elem().Kind() != reflect.Slice {
 		panic(errors.New("i must be slice ptr"))
 	}
 
-	tag := bean.CollectionTag{Nullable: true}
+	tag := CollectionTag{Nullable: true}
 
 	for _, selector := range selectors {
-		tag.Items = append(tag.Items, bean.ToSingletonTag(selector))
+		tag.Items = append(tag.Items, ToSingletonTag(selector))
 	}
 
 	w := newDefaultBeanAssembly(ctx)
@@ -332,7 +330,7 @@ func (ctx *applicationContext) getNameCacheItem(name string) *beanCacheItem {
 }
 
 // autoExport 自动导出 Bean 实现的接口
-func (ctx *applicationContext) autoExport(t reflect.Type, bd *bean.BeanDefinition) {
+func (ctx *applicationContext) autoExport(t reflect.Type, bd *BeanDefinition) {
 
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
@@ -372,32 +370,32 @@ func (ctx *applicationContext) autoExport(t reflect.Type, bd *bean.BeanDefinitio
 	}
 }
 
-func (ctx *applicationContext) typeCache(typ reflect.Type, bd *bean.BeanDefinition) {
+func (ctx *applicationContext) typeCache(typ reflect.Type, bd *BeanDefinition) {
 	log.Debugf("register bean type:\"%s\" beanId:\"%s\" %s", typ.String(), bd.BeanId(), bd.FileLine())
 	ctx.getTypeCacheItem(typ).store(bd)
 }
 
-func (ctx *applicationContext) nameCache(name string, bd *bean.BeanDefinition) {
+func (ctx *applicationContext) nameCache(name string, bd *BeanDefinition) {
 	ctx.getNameCacheItem(name).store(bd)
 }
 
 // resolveBean 对 Bean 进行决议是否能够创建 Bean 的实例
-func (ctx *applicationContext) resolveBean(bd *bean.BeanDefinition) {
+func (ctx *applicationContext) resolveBean(bd *BeanDefinition) {
 
 	// 正在进行或者已经完成决议过程
-	if bd.Status() >= bean.BeanStatus_Resolving {
+	if bd.Status() >= BeanStatus_Resolving {
 		return
 	}
 
-	bd.SetStatus(bean.BeanStatus_Resolving)
+	bd.SetStatus(BeanStatus_Resolving)
 
 	// 如果是成员方法 Bean，需要首先决议它的父 Bean 是否能实例化
-	if b, ok := bd.SpringBean().(*bean.MethodBean); ok {
+	if b, ok := bd.SpringBean().(*MethodBean); ok {
 
 		for i := 0; ; i++ {
 			Parent := b.Parent[i]
 			ctx.resolveBean(Parent)
-			if Parent.Status() == bean.BeanStatus_Deleted {
+			if Parent.Status() == BeanStatus_Deleted {
 				b.Parent = append(b.Parent[:i], b.Parent[i+1:]...)
 			}
 			if i >= len(b.Parent)-1 { // 每轮都要重新获取长度
@@ -438,38 +436,38 @@ func (ctx *applicationContext) resolveBean(bd *bean.BeanDefinition) {
 	// 按照 Bean 的名字进行缓存
 	ctx.nameCache(bd.Name(), bd)
 
-	bd.SetStatus(bean.BeanStatus_Resolved)
+	bd.SetStatus(BeanStatus_Resolved)
 }
 
 func (ctx *applicationContext) registerAllBeans() {
 
 	var (
 		selector string
-		filter   func(*bean.BeanDefinition) bool
+		filter   func(*BeanDefinition) bool
 	)
 
 	for _, bd := range ctx.AllBeans {
 
-		b, ok := bd.SpringBean().(*bean.FakeMethodBean)
+		b, ok := bd.SpringBean().(*FakeMethodBean)
 		if !ok {
 			ctx.registerBeanDefinition(bd)
 			continue
 		}
 
-		result := make([]*bean.BeanDefinition, 0)
+		result := make([]*BeanDefinition, 0)
 		switch e := b.Selector.(type) {
 		case string:
 			selector = e
-			tag := bean.ParseSingletonTag(e)
-			filter = func(b *bean.BeanDefinition) bool {
+			tag := ParseSingletonTag(e)
+			filter = func(b *BeanDefinition) bool {
 				return b.Match(tag.TypeName, tag.BeanName)
 			}
-		case *bean.BeanDefinition:
+		case *BeanDefinition:
 			selector = e.BeanId()
 			result = append(result, e)
 		case reflect.Type:
 			selector = e.String()
-			filter = func(b *bean.BeanDefinition) bool {
+			filter = func(b *BeanDefinition) bool {
 				return b.Type() == e
 			}
 		default:
@@ -480,7 +478,7 @@ func (ctx *applicationContext) registerAllBeans() {
 				}
 			}
 			selector = t.String()
-			filter = func(b *bean.BeanDefinition) bool {
+			filter = func(b *BeanDefinition) bool {
 				return b.Type() == t
 			}
 		}
@@ -497,7 +495,7 @@ func (ctx *applicationContext) registerAllBeans() {
 			panic(fmt.Errorf("can't find parent bean: \"%s\"", selector))
 		}
 
-		bd.SetSpringBean(bean.NewMethodBean(result, b.Method, b.Tags))
+		bd.SetSpringBean(NewMethodBean(result, b.Method, b.Tags))
 		ctx.registerBeanDefinition(bd)
 	}
 }
@@ -536,7 +534,7 @@ func (ctx *applicationContext) runConfigers(assembly *defaultBeanAssembly) {
 	}
 }
 
-func (ctx *applicationContext) destroyer(bd *bean.BeanDefinition) *destroyer {
+func (ctx *applicationContext) destroyer(bd *BeanDefinition) *destroyer {
 	k := newBeanKey(bd.Type(), bd.Name())
 	d, ok := ctx.destroyerMap[k]
 	if !ok {
@@ -604,12 +602,12 @@ func (ctx *applicationContext) WireBean(i interface{}) {
 		}
 	}()
 
-	assembly.wireBeanDefinition(bean.Ref(i), false)
+	assembly.wireBeanDefinition(Ref(i), false)
 }
 
 // GetBeanDefinitions 获取所有 Bean 的定义，不能保证解析和注入，请谨慎使用该函数!
-func (ctx *applicationContext) GetBeanDefinitions() []*bean.BeanDefinition {
-	result := make([]*bean.BeanDefinition, 0)
+func (ctx *applicationContext) GetBeanDefinitions() []*BeanDefinition {
+	result := make([]*BeanDefinition, 0)
 	for _, v := range ctx.beanMap {
 		result = append(result, v)
 	}

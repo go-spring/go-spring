@@ -20,17 +20,15 @@ import (
 	"container/list"
 	"errors"
 	"reflect"
-
-	"github.com/go-spring/spring-core/bean"
 )
 
 // Configer 配置函数，不立即执行
 type Configer struct {
-	bean.Runnable
+	Runnable
 	name   string
-	cond   bean.Condition // 判断条件
-	before []string       // 位于哪些配置函数之前
-	after  []string       // 位于哪些配置函数之后
+	cond   Condition // 判断条件
+	before []string  // 位于哪些配置函数之前
+	after  []string  // 位于哪些配置函数之后
 }
 
 // newConfiger Configer 的构造函数，fn 不能返回 error 以外的其他值
@@ -42,9 +40,9 @@ func newConfiger(fn interface{}, tags []string) *Configer {
 	}
 
 	return &Configer{
-		Runnable: bean.Runnable{
+		Runnable: Runnable{
 			Fn:        fn,
-			StringArg: bean.NewFnStringBindingArg(fnType, false, tags),
+			StringArg: NewFnStringBindingArg(fnType, false, tags),
 		},
 	}
 }
@@ -56,13 +54,13 @@ func (c *Configer) WithName(name string) *Configer {
 }
 
 // Options 设置 Option 模式函数的参数绑定
-func (c *Configer) Options(options ...*bean.OptionArg) *Configer {
-	c.OptionArg = &bean.FnOptionBindingArg{Options: options}
+func (c *Configer) Options(options ...*OptionArg) *Configer {
+	c.OptionArg = &FnOptionBindingArg{Options: options}
 	return c
 }
 
 // WithCondition 为 Configer 设置一个 Condition
-func (c *Configer) WithCondition(cond bean.Condition) *Configer {
+func (c *Configer) WithCondition(cond Condition) *Configer {
 	c.cond = cond
 	return c
 }

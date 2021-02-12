@@ -20,9 +20,6 @@ package core
 import (
 	"context"
 	"io"
-
-	"github.com/go-spring/spring-core/bean"
-	"github.com/go-spring/spring-core/conf"
 )
 
 type GoFunc func()
@@ -58,7 +55,7 @@ type ApplicationContext interface {
 	Property(key string, value interface{})
 
 	// Properties 获取 Properties 对象
-	Properties() conf.Properties
+	Properties() Properties
 
 	// Context 返回上下文接口
 	Context() context.Context
@@ -70,7 +67,7 @@ type ApplicationContext interface {
 	Profile(profile string)
 
 	// RegisterBean 注册 bean.BeanDefinition 对象。
-	RegisterBean(bd *bean.BeanDefinition) *bean.BeanDefinition
+	RegisterBean(bd *BeanDefinition) *BeanDefinition
 
 	// AutoWireBeans 对所有 Bean 进行依赖注入和属性绑定
 	AutoWireBeans()
@@ -80,11 +77,11 @@ type ApplicationContext interface {
 
 	// GetBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 	// 它和 FindBean 的区别是它在调用后能够保证返回的 Bean 已经完成了注入和绑定过程。
-	GetBean(i interface{}, selector ...bean.BeanSelector) bool
+	GetBean(i interface{}, selector ...BeanSelector) bool
 
 	// FindBean 查询单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 	// 它和 GetBean 的区别是它在调用后不能保证返回的 Bean 已经完成了注入和绑定过程。
-	FindBean(selector bean.BeanSelector) (*bean.BeanDefinition, bool)
+	FindBean(selector BeanSelector) (*BeanDefinition, bool)
 
 	// CollectBeans 收集数组或指针定义的所有符合条件的 Bean，收集到返回 true，否则返
 	// 回 false。该函数有两种模式:自动模式和指定模式。自动模式是指 selectors 参数为空，
@@ -93,10 +90,10 @@ type ApplicationContext interface {
 	// 不为空，这时候只会收集单例 Bean，而且要求这些单例 Bean 不仅需要满足收集条件，而且
 	// 必须满足 selector 条件。另外，自动模式下不对收集结果进行排序，指定模式下根据
 	// selectors 列表的顺序对收集结果进行排序。
-	CollectBeans(i interface{}, selectors ...bean.BeanSelector) bool
+	CollectBeans(i interface{}, selectors ...BeanSelector) bool
 
 	// GetBeanDefinitions 获取所有 Bean 的定义，不能保证解析和注入，请谨慎使用该函数!
-	GetBeanDefinitions() []*bean.BeanDefinition
+	GetBeanDefinitions() []*BeanDefinition
 
 	// Close 关闭容器上下文，用于通知 Bean 销毁等。
 	// 该函数可以确保 Bean 的销毁顺序和注入顺序相反。

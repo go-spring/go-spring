@@ -20,7 +20,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/core"
 	"github.com/go-spring/spring-core/web"
 )
@@ -46,7 +45,7 @@ func (m *WebMapping) HandleRequest(method uint32, path string, fn web.Handler, f
 type Mapping struct {
 	handler web.Handler
 	mapper  *web.Mapper    // 路由映射器
-	cond    bean.Condition // 判断条件
+	cond    core.Condition // 判断条件
 }
 
 // newMapping Mapping 的构造函数
@@ -85,7 +84,7 @@ func (m *Mapping) Filters() []web.Filter {
 }
 
 // WithCondition 设置一个 Condition
-func (m *Mapping) WithCondition(cond bean.Condition) *Mapping {
+func (m *Mapping) WithCondition(cond core.Condition) *Mapping {
 	m.cond = cond
 	return m
 }
@@ -108,7 +107,7 @@ type Router struct {
 	mapping  *WebMapping
 	basePath string
 	filters  []web.Filter
-	cond     bean.Condition // 判断条件
+	cond     core.Condition // 判断条件
 }
 
 // newRouter Router 的构造函数
@@ -127,7 +126,7 @@ func (r *Router) Route(basePath string, filters ...web.Filter) *Router {
 }
 
 // WithCondition 设置一个 Condition
-func (r *Router) WithCondition(cond bean.Condition) *Router {
+func (r *Router) WithCondition(cond core.Condition) *Router {
 	r.cond = cond
 	return r
 }
@@ -311,7 +310,7 @@ func (l *WebFilterArrayImpl) Get(ctx core.ApplicationContext) []web.Filter {
 
 // WebFilterArray 首字母小写太难看，因此不管它是否真正需要公开
 type WebFilterBeanArrayImpl struct {
-	beans []bean.BeanSelector
+	beans []core.BeanSelector
 }
 
 func (l *WebFilterBeanArrayImpl) Get(ctx core.ApplicationContext) []web.Filter {
@@ -328,7 +327,7 @@ func (l *WebFilterBeanArrayImpl) Get(ctx core.ApplicationContext) []web.Filter {
 
 // ConditionalWebFilter 为 web.Filter 增加一个判断条件
 type ConditionalWebFilter struct {
-	cond bean.Condition // 判断条件
+	cond core.Condition // 判断条件
 	list WebFilterArray
 }
 
@@ -338,7 +337,7 @@ func Filter(filters ...web.Filter) *ConditionalWebFilter {
 }
 
 // FilterBean 封装一个 Bean 选择器
-func FilterBean(selectors ...bean.BeanSelector) *ConditionalWebFilter {
+func FilterBean(selectors ...core.BeanSelector) *ConditionalWebFilter {
 	return &ConditionalWebFilter{list: &WebFilterBeanArrayImpl{selectors}}
 }
 
@@ -347,7 +346,7 @@ func (f *ConditionalWebFilter) Invoke(ctx web.Context, chain web.FilterChain) {
 }
 
 // WithCondition 设置一个 Condition
-func (f *ConditionalWebFilter) WithCondition(cond bean.Condition) *ConditionalWebFilter {
+func (f *ConditionalWebFilter) WithCondition(cond core.Condition) *ConditionalWebFilter {
 	f.cond = cond
 	return f
 }

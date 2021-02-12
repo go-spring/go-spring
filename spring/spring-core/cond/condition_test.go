@@ -19,7 +19,6 @@ package cond_test
 import (
 	"testing"
 
-	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/cond"
 	"github.com/go-spring/spring-core/core"
 	"github.com/go-spring/spring-core/util"
@@ -28,11 +27,11 @@ import (
 func TestFunctionCondition(t *testing.T) {
 	ctx := core.NewApplicationContext()
 
-	fn := func(ctx bean.ConditionContext) bool { return true }
+	fn := func(ctx core.ConditionContext) bool { return true }
 	c := cond.FunctionCondition(fn)
 	util.AssertEqual(t, c.Matches(ctx), true)
 
-	fn = func(ctx bean.ConditionContext) bool { return false }
+	fn = func(ctx core.ConditionContext) bool { return false }
 	c = cond.FunctionCondition(fn)
 	util.AssertEqual(t, c.Matches(ctx), false)
 }
@@ -123,8 +122,8 @@ func (t *BeanThree) String() string {
 func TestBeanCondition(t *testing.T) {
 
 	ctx := core.NewApplicationContext()
-	ctx.RegisterBean(bean.Ref(&BeanZero{5}))
-	ctx.RegisterBean(bean.Ref(new(BeanOne)))
+	ctx.RegisterBean(core.Ref(&BeanZero{5}))
+	ctx.RegisterBean(core.Ref(new(BeanOne)))
 	ctx.AutoWireBeans()
 
 	c := cond.BeanCondition("*cond_test.BeanOne")
@@ -137,8 +136,8 @@ func TestBeanCondition(t *testing.T) {
 func TestMissingBeanCondition(t *testing.T) {
 
 	ctx := core.NewApplicationContext()
-	ctx.RegisterBean(bean.Ref(&BeanZero{5}))
-	ctx.RegisterBean(bean.Ref(new(BeanOne)))
+	ctx.RegisterBean(core.Ref(&BeanZero{5}))
+	ctx.RegisterBean(core.Ref(new(BeanOne)))
 	ctx.AutoWireBeans()
 
 	c := cond.MissingBeanCondition("*cond_test.BeanOne")

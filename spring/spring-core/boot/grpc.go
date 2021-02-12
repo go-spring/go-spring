@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/core"
 	"github.com/go-spring/spring-core/util"
 )
@@ -46,7 +45,7 @@ func RegisterGRpcServer(fn interface{}, serviceName string, server interface{}) 
 type GRpcServer struct {
 	server      interface{}    // 服务对象
 	serviceName string         // 服务名称
-	cond        bean.Condition // 判断条件
+	cond        core.Condition // 判断条件
 }
 
 // newGRpcServer GRpcServer 的构造函数
@@ -65,7 +64,7 @@ func (s *GRpcServer) Server() interface{} {
 }
 
 // WithCondition 设置一个 Condition
-func (s *GRpcServer) WithCondition(cond bean.Condition) *GRpcServer {
+func (s *GRpcServer) WithCondition(cond core.Condition) *GRpcServer {
 	s.cond = cond
 	return s
 }
@@ -81,6 +80,6 @@ func (s *GRpcServer) CheckCondition(ctx core.ApplicationContext) bool {
 ///////////////////// gRPC Client //////////////////////
 
 // RegisterGRpcClient 注册 gRPC 服务客户端，fn 是 gRPC 自动生成的客户端构造函数
-func RegisterGRpcClient(fn interface{}, endpoint string) *bean.BeanDefinition {
+func RegisterGRpcClient(fn interface{}, endpoint string) *core.BeanDefinition {
 	return Make(fn, endpoint)
 }
