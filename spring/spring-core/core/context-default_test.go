@@ -913,7 +913,7 @@ func TestApplicationContext_Primary(t *testing.T) {
 		util.AssertPanic(t, func() {
 			ctx := core.NewApplicationContext()
 			ctx.RegisterBean(core.ObjBean(&BeanZero{5}))
-			// Primary 是在多个候选 bean 里面选择，而不是允许同名同类型的两个 bean
+			// primary 是在多个候选 bean 里面选择，而不是允许同名同类型的两个 bean
 			ctx.RegisterBean(core.ObjBean(&BeanZero{6}).SetPrimary(true))
 			ctx.RegisterBean(core.ObjBean(new(BeanOne)))
 			ctx.RegisterBean(core.ObjBean(new(BeanTwo)))

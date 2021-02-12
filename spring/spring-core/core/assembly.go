@@ -55,7 +55,7 @@ func newWiringStack() *wiringStack {
 }
 
 // pushBack 添加一个 Bean 到尾部
-func (s *wiringStack) pushBack(bd SBeanDefinition) {
+func (s *wiringStack) pushBack(bd beanDefinition) {
 	log.Tracef("wiring %s", bd.Description())
 	s.stack.PushBack(bd)
 }
@@ -63,13 +63,13 @@ func (s *wiringStack) pushBack(bd SBeanDefinition) {
 // popBack 删除尾部的 Bean
 func (s *wiringStack) popBack() {
 	e := s.stack.Remove(s.stack.Back())
-	log.Tracef("wired %s", e.(SBeanDefinition).Description())
+	log.Tracef("wired %s", e.(beanDefinition).Description())
 }
 
 // path 返回 Bean 注入的路径
 func (s *wiringStack) path() (path string) {
 	for e := s.stack.Front(); e != nil; e = e.Next() {
-		w := e.Value.(SBeanDefinition)
+		w := e.Value.(beanDefinition)
 		path += fmt.Sprintf("=> %s ↩\n", w.Description())
 	}
 	return path[:len(path)-1]
@@ -157,13 +157,13 @@ func (assembly *defaultBeanAssembly) getBeanValue(v reflect.Value, tag Singleton
 	var primaryBeans []*BeanDefinition
 
 	for _, b := range foundBeans {
-		if b.Primary {
+		if b.primary {
 			primaryBeans = append(primaryBeans, b)
 		}
 	}
 
 	if len(primaryBeans) > 1 { // 找到多于 1 个主版本则 panic
-		msg := fmt.Sprintf("found %d Primary beans, bean: \"%s\" field: %s type: %s [", len(primaryBeans), tag, field, beanType)
+		msg := fmt.Sprintf("found %d primary beans, bean: \"%s\" field: %s type: %s [", len(primaryBeans), tag, field, beanType)
 		for _, b := range primaryBeans {
 			msg += "( " + b.Description() + " ), "
 		}
@@ -354,27 +354,27 @@ func (assembly *defaultBeanAssembly) autoCollectBeans(t reflect.Type, et reflect
 }
 
 // wireSliceItem 对 slice 的元素值进行注入
-func (assembly *defaultBeanAssembly) wireSliceItem(v reflect.Value, d SBeanDefinition) {
-	bd := ValueToBeanDefinition(v, d.GetFile(), d.GetLine())
+func (assembly *defaultBeanAssembly) wireSliceItem(v reflect.Value, d beanDefinition) {
+	bd := ValueToBeanDefinition(v, d.getFile(), d.getLine())
 	assembly.wireBeanDefinition(bd, false)
 }
 
 // wireBeanDefinition 对特定的 bean.BeanDefinition 进行注入，onlyAutoWire 是否只注入而不进行属性绑定
-func (assembly *defaultBeanAssembly) wireBeanDefinition(bd SBeanDefinition, onlyAutoWire bool) {
+func (assembly *defaultBeanAssembly) wireBeanDefinition(bd beanDefinition, onlyAutoWire bool) {
 
 	// Bean 是否已删除，已经删除的 Bean 不能再注入
-	if bd.Status() == BeanStatus_Deleted {
+	if bd.getStatus() == BeanStatus_Deleted {
 		panic(fmt.Errorf("bean: \"%s\" have been deleted", bd.BeanId()))
 	}
 
 	defer func() {
-		if bd.GetDestroy() != nil {
+		if bd.getDestroy() != nil {
 			assembly.destroys.Remove(assembly.destroys.Back())
 		}
 	}()
 
 	// 如果有销毁函数则对其进行排序处理
-	if bd.GetDestroy() != nil {
+	if bd.getDestroy() != nil {
 		if curr, ok := bd.(*BeanDefinition); ok {
 			de := assembly.appCtx.destroyer(curr)
 			if i := assembly.destroys.Back(); i != nil {
@@ -388,7 +388,7 @@ func (assembly *defaultBeanAssembly) wireBeanDefinition(bd SBeanDefinition, only
 	}
 
 	// Bean 是否已注入，已经注入的 Bean 无需再注入
-	if bd.Status() == BeanStatus_Wired {
+	if bd.getStatus() == BeanStatus_Wired {
 		return
 	}
 
@@ -396,17 +396,17 @@ func (assembly *defaultBeanAssembly) wireBeanDefinition(bd SBeanDefinition, only
 	assembly.wiringStack.pushBack(bd)
 
 	// 正在注入的 Bean 再次注入则说明出现了循环依赖
-	if bd.Status() == BeanStatus_Wiring {
-		if _, ok := bd.SpringBean().(*ObjectBean); !ok {
+	if bd.getStatus() == BeanStatus_Wiring {
+		if _, ok := bd.springBean().(*objectBean); !ok {
 			panic(errors.New("found circle autowire"))
 		}
 		return
 	}
 
-	bd.SetStatus(BeanStatus_Wiring)
+	bd.setStatus(BeanStatus_Wiring)
 
 	// 首先对当前 Bean 的间接依赖项进行自动注入
-	for _, selector := range bd.GetDependsOn() {
+	for _, selector := range bd.getDependsOn() {
 		if b, ok := assembly.appCtx.FindBean(selector); !ok {
 			panic(fmt.Errorf("can't find bean: \"%v\"", selector))
 		} else {
@@ -415,7 +415,7 @@ func (assembly *defaultBeanAssembly) wireBeanDefinition(bd SBeanDefinition, only
 	}
 
 	// 如果是成员方法 Bean，需要首先对它的父 Bean 进行自动注入
-	if mBean, ok := bd.SpringBean().(*methodBean); ok {
+	if mBean, ok := bd.springBean().(*methodBean); ok {
 		if l := len(mBean.Parent); l > 1 {
 			msg := fmt.Sprintf("found %d parent bean [", l)
 			for _, b := range mBean.Parent {
@@ -428,35 +428,35 @@ func (assembly *defaultBeanAssembly) wireBeanDefinition(bd SBeanDefinition, only
 	}
 
 	// 对当前 Bean 进行自动注入
-	switch b := bd.SpringBean().(type) {
-	case *ObjectBean:
+	switch b := bd.springBean().(type) {
+	case *objectBean:
 		assembly.wireObjectBean(bd, onlyAutoWire)
-	case *ConstructorBean:
+	case *constructorBean:
 		fnValue := reflect.ValueOf(b.Fn)
-		assembly.wireFunctionBean(fnValue, &b.FunctionBean, bd)
+		assembly.wireFunctionBean(fnValue, &b.functionBean, bd)
 	case *methodBean:
 		fnValue := b.Parent[0].Value().MethodByName(b.Method)
-		assembly.wireFunctionBean(fnValue, &b.FunctionBean, bd)
+		assembly.wireFunctionBean(fnValue, &b.functionBean, bd)
 	default:
 		panic(errors.New("error spring bean type"))
 	}
 
 	// 如果用户设置了初始化函数则执行初始化函数
-	if init := bd.GetInit(); init != nil {
+	if init := bd.getInit(); init != nil {
 		if err := init.Run(assembly); err != nil {
 			panic(err)
 		}
 	}
 
 	// 设置为已注入状态
-	bd.SetStatus(BeanStatus_Wired)
+	bd.setStatus(BeanStatus_Wired)
 
 	// 删除保存的注入帧
 	assembly.wiringStack.popBack()
 }
 
 // wireObjectBean 对原始对象进行注入
-func (assembly *defaultBeanAssembly) wireObjectBean(bd SBeanDefinition, onlyAutoWire bool) {
+func (assembly *defaultBeanAssembly) wireObjectBean(bd beanDefinition, onlyAutoWire bool) {
 	st := bd.Type()
 	switch sk := st.Kind(); sk {
 	case reflect.Slice: // 对数组元素进行注入
@@ -525,7 +525,7 @@ func (assembly *defaultBeanAssembly) wireObjectBean(bd SBeanDefinition, onlyAuto
 					if fv0.CanSet() {
 
 						// 对 Bean 的结构体进行递归注入
-						b := ValueToBeanDefinition(fv0.Addr(), bd.GetFile(), bd.GetLine())
+						b := ValueToBeanDefinition(fv0.Addr(), bd.getFile(), bd.getLine())
 						fbd := &fieldBeanDefinition{b, fieldName}
 						assembly.wireBeanDefinition(fbd, fieldOnlyAutoWire)
 					}
@@ -536,7 +536,7 @@ func (assembly *defaultBeanAssembly) wireObjectBean(bd SBeanDefinition, onlyAuto
 }
 
 // wireFunctionBean 对函数定义的 Bean 进行注入
-func (assembly *defaultBeanAssembly) wireFunctionBean(fnValue reflect.Value, fnBean *FunctionBean, bd SBeanDefinition) {
+func (assembly *defaultBeanAssembly) wireFunctionBean(fnValue reflect.Value, fnBean *functionBean, bd beanDefinition) {
 
 	// 获取输入参数
 	var in []reflect.Value
@@ -592,7 +592,7 @@ func (assembly *defaultBeanAssembly) wireFunctionBean(fnValue reflect.Value, fnB
 		beanValue = fnBean.Value()
 	}
 
-	b := ValueToBeanDefinition(beanValue, bd.GetFile(), bd.GetLine()).WithName(bd.Name())
+	b := ValueToBeanDefinition(beanValue, bd.getFile(), bd.getLine()).WithName(bd.Name())
 	assembly.wireBeanDefinition(&fnValueBeanDefinition{b, bd}, false)
 }
 
@@ -625,15 +625,15 @@ type fieldBeanDefinition struct {
 
 // Description 返回 Bean 的详细描述
 func (d *fieldBeanDefinition) Description() string {
-	return fmt.Sprintf("%s field: %s %s", d.SpringBean().BeanClass(), d.field, d.FileLine())
+	return fmt.Sprintf("%s field: %s %s", d.springBean().beanClass(), d.field, d.FileLine())
 }
 
 type fnValueBeanDefinition struct {
 	*BeanDefinition
-	f SBeanDefinition // 函数 Bean 定义
+	f beanDefinition // 函数 Bean 定义
 }
 
 // Description 返回 Bean 的详细描述
 func (d *fnValueBeanDefinition) Description() string {
-	return fmt.Sprintf("%s value %s", d.f.SpringBean().BeanClass(), d.f.FileLine())
+	return fmt.Sprintf("%s value %s", d.f.springBean().beanClass(), d.f.FileLine())
 }

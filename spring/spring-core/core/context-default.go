@@ -169,7 +169,7 @@ func (ctx *applicationContext) checkRegistration() {
 // deleteBeanDefinition 删除 bean.BeanDefinition。
 func (ctx *applicationContext) deleteBeanDefinition(bd *BeanDefinition) {
 	key := newBeanKey(bd.Type(), bd.Name())
-	bd.SetStatus(BeanStatus_Deleted)
+	bd.setStatus(BeanStatus_Deleted)
 	delete(ctx.beanMap, key)
 }
 
@@ -223,9 +223,9 @@ func (ctx *applicationContext) FindBean(selector BeanSelector) (*BeanDefinition,
 
 	finder := func(fn func(*BeanDefinition) bool) (result []*BeanDefinition) {
 		for _, b := range ctx.beanMap {
-			if b.Status() != BeanStatus_Resolving && fn(b) {
+			if b.getStatus() != BeanStatus_Resolving && fn(b) {
 				ctx.resolveBean(b) // 避免 Bean 未被解析
-				if b.Status() != BeanStatus_Deleted {
+				if b.getStatus() != BeanStatus_Deleted {
 					result = append(result, b)
 				}
 			}
@@ -255,7 +255,7 @@ func (ctx *applicationContext) FindBean(selector BeanSelector) (*BeanDefinition,
 					if beanType == t || t.Kind() != reflect.Interface {
 						return true
 					}
-					if _, ok := b.Exports[t]; ok {
+					if _, ok := b.exports[t]; ok {
 						return true
 					}
 				}
@@ -383,19 +383,19 @@ func (ctx *applicationContext) nameCache(name string, bd *BeanDefinition) {
 func (ctx *applicationContext) resolveBean(bd *BeanDefinition) {
 
 	// 正在进行或者已经完成决议过程
-	if bd.Status() >= BeanStatus_Resolving {
+	if bd.getStatus() >= BeanStatus_Resolving {
 		return
 	}
 
-	bd.SetStatus(BeanStatus_Resolving)
+	bd.setStatus(BeanStatus_Resolving)
 
 	// 如果是成员方法 Bean，需要首先决议它的父 Bean 是否能实例化
-	if b, ok := bd.SpringBean().(*methodBean); ok {
+	if b, ok := bd.springBean().(*methodBean); ok {
 
 		for i := 0; ; i++ {
 			Parent := b.Parent[i]
 			ctx.resolveBean(Parent)
-			if Parent.Status() == BeanStatus_Deleted {
+			if Parent.getStatus() == BeanStatus_Deleted {
 				b.Parent = append(b.Parent[:i], b.Parent[i+1:]...)
 			}
 			if i >= len(b.Parent)-1 { // 每轮都要重新获取长度
@@ -411,7 +411,7 @@ func (ctx *applicationContext) resolveBean(bd *BeanDefinition) {
 	}
 
 	// 不满足判断条件的则标记为删除状态并删除其注册
-	if bd.Cond != nil && !bd.Cond.Matches(ctx) {
+	if bd.cond != nil && !bd.cond.Matches(ctx) {
 		ctx.deleteBeanDefinition(bd)
 		return
 	}
@@ -425,7 +425,7 @@ func (ctx *applicationContext) resolveBean(bd *BeanDefinition) {
 	}
 
 	// 按照导出类型放入缓存
-	for t := range bd.Exports {
+	for t := range bd.exports {
 		if bd.Type().Implements(t) {
 			ctx.typeCache(t, bd)
 		} else {
@@ -436,7 +436,7 @@ func (ctx *applicationContext) resolveBean(bd *BeanDefinition) {
 	// 按照 Bean 的名字进行缓存
 	ctx.nameCache(bd.Name(), bd)
 
-	bd.SetStatus(BeanStatus_Resolved)
+	bd.setStatus(BeanStatus_Resolved)
 }
 
 func (ctx *applicationContext) registerAllBeans() {
@@ -448,7 +448,7 @@ func (ctx *applicationContext) registerAllBeans() {
 
 	for _, bd := range ctx.AllBeans {
 
-		b, ok := bd.SpringBean().(*FakeMethodBean)
+		b, ok := bd.springBean().(*FakeMethodBean)
 		if !ok {
 			ctx.registerBeanDefinition(bd)
 			continue
@@ -495,7 +495,7 @@ func (ctx *applicationContext) registerAllBeans() {
 			panic(fmt.Errorf("can't find parent bean: \"%s\"", selector))
 		}
 
-		bd.SetSpringBean(NewMethodBean(result, b.Method, b.Tags))
+		bd.bean = NewMethodBean(result, b.Method, b.Tags)
 		ctx.registerBeanDefinition(bd)
 	}
 }
@@ -635,7 +635,7 @@ func (ctx *applicationContext) Close(beforeDestroy ...func()) {
 	// 按照顺序执行销毁函数
 	for i := ctx.destroyers.Front(); i != nil; i = i.Next() {
 		d := i.Value.(*destroyer)
-		if err := d.bean.GetDestroy().Run(assembly); err != nil {
+		if err := d.bean.getDestroy().Run(assembly); err != nil {
 			log.Error(err)
 		}
 	}
