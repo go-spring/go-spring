@@ -44,7 +44,7 @@ const (
 )
 
 // SetBanner 设置自定义 Banner 字符串
-func (app *Application) SetBanner(banner string) {
+func (app *application) SetBanner(banner string) {
 	app.banner = banner
 }
 

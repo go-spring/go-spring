@@ -24,12 +24,11 @@ import (
 	"github.com/go-spring/spring-core/util"
 )
 
-func startApplication(cfgLocation ...string) *Application {
+func startApplication(cfgLocation ...string) *application {
 	app := NewApplication()
-	app.AddConfigLocation(cfgLocation...)
 	app.Property("application-event.collection", "[]?")
 	app.Property("command-line-runner.collection", "[]?")
-	app.start()
+	app.start(cfgLocation...)
 	return app
 }
 

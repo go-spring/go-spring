@@ -754,7 +754,7 @@ func valueBean(v reflect.Value, file string, line int) *BeanDefinition {
 // ObjBean 将 Bean 转换为 BeanDefinition 对象
 func ObjBean(i interface{}) *BeanDefinition {
 	file, line := getFileLine()
-	return newBeanDefinition(newObjectBean(reflect.ValueOf(i)), file, line)
+	return valueBean(reflect.ValueOf(i), file, line)
 }
 
 // CtorBean 将构造函数转换为 BeanDefinition 对象

@@ -59,8 +59,8 @@ type ApplicationEvent interface {
 // AfterPrepareFunc 定义 app.prepare() 执行完成之后的扩展点
 type AfterPrepareFunc func(ctx core.ApplicationContext)
 
-// Application 应用
-type Application struct {
+// application 应用
+type application struct {
 	core.ApplicationContext // 应用上下文
 
 	cfgLocation         []string           // 配置文件目录
@@ -75,9 +75,9 @@ type Application struct {
 	exitChan chan struct{}
 }
 
-// NewApplication Application 的构造函数
-func NewApplication() *Application {
-	return &Application{
+// NewApplication application 的构造函数
+func NewApplication() *application {
+	return &application{
 		ApplicationContext:  core.NewApplicationContext(),
 		cfgLocation:         append([]string{}, DefaultConfigLocation),
 		bannerMode:          BannerModeConsole,
@@ -86,32 +86,25 @@ func NewApplication() *Application {
 	}
 }
 
-// AddConfigLocation 添加配置文件
-func (app *Application) AddConfigLocation(cfgLocation ...string) *Application {
-	app.cfgLocation = append(app.cfgLocation, cfgLocation...)
-	return app
-}
-
 // SetBannerMode 设置 Banner 的显式模式
-func (app *Application) SetBannerMode(mode BannerMode) *Application {
+func (app *application) SetBannerMode(mode BannerMode) {
 	app.bannerMode = mode
-	return app
 }
 
 // ExpectSysProperties 期望从系统环境变量中获取到的属性，支持正则表达式
-func (app *Application) ExpectSysProperties(pattern ...string) *Application {
+func (app *application) ExpectSysProperties(pattern ...string) {
 	app.expectSysProperties = pattern
-	return app
 }
 
 // AfterPrepare 注册一个 app.prepare() 执行完成之后的扩展点
-func (app *Application) AfterPrepare(fn AfterPrepareFunc) *Application {
+func (app *application) AfterPrepare(fn AfterPrepareFunc) {
 	app.listOfAfterPrepare = append(app.listOfAfterPrepare, fn)
-	return app
 }
 
 // Start 启动应用
-func (app *Application) start() {
+func (app *application) start(cfgLocation ...string) {
+
+	app.cfgLocation = append(app.cfgLocation, cfgLocation...)
 
 	// 打印 Banner 内容
 	if app.bannerMode != BannerModeOff {
@@ -146,7 +139,7 @@ func (app *Application) start() {
 }
 
 // printBanner 查找 Banner 文件然后将其打印到控制台
-func (app *Application) printBanner() {
+func (app *application) printBanner() {
 
 	// 优先使用自定义 Banner
 	banner := app.banner
@@ -177,7 +170,7 @@ func (app *Application) printBanner() {
 }
 
 // loadCmdArgs 加载命令行参数，形如 -name value 的参数才有效。
-func (_ *Application) loadCmdArgs() core.Properties {
+func (_ *application) loadCmdArgs() core.Properties {
 	log.Debugf("load cmd args")
 	p := core.New()
 	for i := 0; i < len(os.Args); i++ { // 以短线定义的参数才有效
@@ -195,7 +188,7 @@ func (_ *Application) loadCmdArgs() core.Properties {
 }
 
 // loadSystemEnv 加载系统环境变量，用户可以自定义有效环境变量的正则匹配
-func (app *Application) loadSystemEnv() core.Properties {
+func (app *application) loadSystemEnv() core.Properties {
 
 	var rex []*regexp.Regexp
 	for _, v := range app.expectSysProperties {
@@ -224,7 +217,7 @@ func (app *Application) loadSystemEnv() core.Properties {
 }
 
 // loadProfileConfig 加载指定环境的配置文件
-func (app *Application) loadProfileConfig(profile string) core.Properties {
+func (app *application) loadProfileConfig(profile string) core.Properties {
 	p := core.New()
 	for _, configLocation := range app.cfgLocation {
 		var result map[string]interface{}
@@ -246,7 +239,7 @@ func (app *Application) loadProfileConfig(profile string) core.Properties {
 }
 
 // resolveProperty 解析属性值，查看其是否具有引用关系
-func (app *Application) resolveProperty(conf map[string]interface{}, key string, value interface{}) interface{} {
+func (app *application) resolveProperty(conf map[string]interface{}, key string, value interface{}) interface{} {
 	if s, o := value.(string); o && strings.HasPrefix(s, "${") {
 		refKey := s[2 : len(s)-1]
 		if refValue, ok := conf[refKey]; !ok {
@@ -261,7 +254,7 @@ func (app *Application) resolveProperty(conf map[string]interface{}, key string,
 }
 
 // prepare 准备上下文环境
-func (app *Application) prepare() {
+func (app *application) prepare() {
 
 	// 配置项加载顺序优先级，从高到低:
 	// 1.代码设置
@@ -309,7 +302,7 @@ func (app *Application) prepare() {
 	}
 }
 
-func (app *Application) close() {
+func (app *application) close() {
 
 	defer log.Info("application exited")
 	log.Info("application exiting")
@@ -329,7 +322,7 @@ func (app *Application) close() {
 	})
 }
 
-func (app *Application) Run() {
+func (app *application) Run(cfgLocation ...string) {
 
 	// 响应控制台的 Ctrl+C 及 kill 命令。
 	go func() {
@@ -340,13 +333,13 @@ func (app *Application) Run() {
 		app.ShutDown()
 	}()
 
-	app.start()
+	app.start(cfgLocation...)
 	<-app.exitChan
 	app.close()
 }
 
 // ShutDown 关闭执行器
-func (app *Application) ShutDown() {
+func (app *application) ShutDown() {
 	select {
 	case <-app.exitChan:
 		// chan 已关闭，无需再次关闭。
