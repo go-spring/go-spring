@@ -263,26 +263,6 @@ func TestDefaultSpringContext(t *testing.T) {
 		ok = ctx.GetBean(&c)
 		util.AssertEqual(t, ok, false)
 	})
-
-	t.Run("fn method bean cond", func(t *testing.T) {
-
-		ctx := core.NewApplicationContext()
-		ctx.Property("server.version", "1.0.0")
-		ctx.RegisterBean(core.CtorBean(NewServerInterface))
-		ctx.RegisterBean(core.MethodFunc(ServerInterface.ConsumerT).WithCondition(cond.OnProperty("consumer.enable")))
-		ctx.AutoWireBeans()
-
-		var si ServerInterface
-		ok := ctx.GetBean(&si)
-		util.AssertEqual(t, ok, true)
-
-		s := si.(*Server)
-		util.AssertEqual(t, s.Version, "1.0.0")
-
-		var c *Consumer
-		ok = ctx.GetBean(&c)
-		util.AssertEqual(t, ok, false)
-	})
 }
 
 func TestDefaultSpringContext_ParentNotRegister(t *testing.T) {

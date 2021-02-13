@@ -101,13 +101,6 @@ func MethodBean(selector core.BeanSelector, method string, tags ...string) *core
 	return gApp.RegisterBean(core.MethodBean(selector, method, tags...))
 }
 
-// MethodFunc 注册成员方法单例 Bean，不指定名称，重复注册会 panic。
-// method 形如 ServerInterface.Consumer (接口) 或 (*Server).Consumer (类型)。
-func MethodFunc(method interface{}, tags ...string) *core.BeanDefinition {
-	checkRunning()
-	return gApp.RegisterBean(core.MethodFunc(method, tags...))
-}
-
 // WireBean 对外部的 Bean 进行依赖注入和属性绑定
 func WireBean(bean interface{}) {
 	gApp.WireBean(bean)

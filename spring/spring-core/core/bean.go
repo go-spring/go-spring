@@ -236,8 +236,11 @@ type objectBean struct {
 	typeName string        // 原始类型的全限定名
 }
 
-// NewObjectBean objectBean 的构造函数，入参必须是一个引用类型的值。
-func NewObjectBean(v reflect.Value) *objectBean {
+// newObjectBean objectBean 的构造函数，入参必须是一个引用类型的值。
+func newObjectBean(v reflect.Value) *objectBean {
+	if !v.IsValid() || util.IsNil(v) {
+		panic(errors.New("bean can't be nil"))
+	}
 	if t := v.Type(); IsRefType(t.Kind()) {
 		return &objectBean{
 			RType:    t,
@@ -744,18 +747,14 @@ func getFileLine() (file string, line int) {
 	return
 }
 
-// ValueToBeanDefinition 将 Value 转换为 BeanDefinition 对象
-func ValueToBeanDefinition(v reflect.Value, file string, line int) *BeanDefinition {
-	if !v.IsValid() || util.IsNil(v) {
-		panic(errors.New("bean can't be nil"))
-	}
-	return newBeanDefinition(NewObjectBean(v), file, line)
+func valueBean(v reflect.Value, file string, line int) *BeanDefinition {
+	return newBeanDefinition(newObjectBean(v), file, line)
 }
 
 // ObjBean 将 Bean 转换为 BeanDefinition 对象
 func ObjBean(i interface{}) *BeanDefinition {
 	file, line := getFileLine()
-	return ValueToBeanDefinition(reflect.ValueOf(i), file, line)
+	return newBeanDefinition(newObjectBean(reflect.ValueOf(i)), file, line)
 }
 
 // CtorBean 将构造函数转换为 BeanDefinition 对象
@@ -771,24 +770,4 @@ func MethodBean(selector BeanSelector, method string, tags ...string) *BeanDefin
 	}
 	file, line := getFileLine()
 	return newBeanDefinition(newFakeMethodBean(selector, method, tags), file, line)
-}
-
-// MethodFunc 注册成员方法单例 Bean，需指定名称，重复注册会 panic。
-// method 形如 ServerInterface.Consumer (接口) 或 (*Server).Consumer (类型)。
-func MethodFunc(method interface{}, tags ...string) *BeanDefinition {
-
-	var methodName string
-
-	fnPtr := reflect.ValueOf(method).Pointer()
-	fnInfo := runtime.FuncForPC(fnPtr)
-	s := strings.Split(fnInfo.Name(), "/")
-	ss := strings.Split(s[len(s)-1], ".")
-	if len(ss) == 3 { // 包名.类型名.函数名
-		methodName = ss[2]
-	} else {
-		panic(errors.New("error method func"))
-	}
-
-	Parent := reflect.TypeOf(method).In(0)
-	return MethodBean(Parent, methodName, tags...)
 }
