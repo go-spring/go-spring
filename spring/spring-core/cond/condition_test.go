@@ -39,8 +39,8 @@ func TestFunctionCondition(t *testing.T) {
 func TestPropertyCondition(t *testing.T) {
 
 	ctx := core.NewApplicationContext()
-	ctx.Property("int", 3)
-	ctx.Property("parent.child", 0)
+	ctx.SetProperty("int", 3)
+	ctx.SetProperty("parent.child", 0)
 
 	c := cond.PropertyCondition("int")
 	util.AssertEqual(t, c.Matches(ctx), true)
@@ -58,8 +58,8 @@ func TestPropertyCondition(t *testing.T) {
 func TestMissingPropertyCondition(t *testing.T) {
 
 	ctx := core.NewApplicationContext()
-	ctx.Property("int", 3)
-	ctx.Property("parent.child", 0)
+	ctx.SetProperty("int", 3)
+	ctx.SetProperty("parent.child", 0)
 
 	c := cond.MissingPropertyCondition("int")
 	util.AssertEqual(t, c.Matches(ctx), false)
@@ -77,8 +77,8 @@ func TestMissingPropertyCondition(t *testing.T) {
 func TestPropertyValueCondition(t *testing.T) {
 
 	ctx := core.NewApplicationContext()
-	ctx.Property("str", "this is a str")
-	ctx.Property("int", 3)
+	ctx.SetProperty("str", "this is a str")
+	ctx.SetProperty("int", 3)
 
 	c := cond.PropertyValueCondition("int", 3)
 	util.AssertEqual(t, c.Matches(ctx), true)
@@ -154,8 +154,8 @@ func TestExpressionCondition(t *testing.T) {
 func TestConditional(t *testing.T) {
 
 	ctx := core.NewApplicationContext()
-	ctx.Property("bool", false)
-	ctx.Property("int", 3)
+	ctx.SetProperty("bool", false)
+	ctx.SetProperty("int", 3)
 	ctx.AutoWireBeans()
 
 	c := cond.OnProperty("int")
@@ -207,7 +207,7 @@ func TestConditional(t *testing.T) {
 func TestNotCondition(t *testing.T) {
 
 	ctx := core.NewApplicationContext()
-	ctx.Profile("test")
+	ctx.SetProfile("test")
 	ctx.AutoWireBeans()
 
 	profileCond := cond.ProfileCondition("test")

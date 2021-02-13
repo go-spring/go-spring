@@ -25,9 +25,9 @@ import (
 )
 
 func startApplication(cfgLocation ...string) *application {
-	app := NewApplication()
-	app.Property("application-event.collection", "[]?")
-	app.Property("command-line-runner.collection", "[]?")
+	app := newApp()
+	app.SetProperty("application-event.collection", "[]?")
+	app.SetProperty("command-line-runner.collection", "[]?")
 	app.start(cfgLocation...)
 	return app
 }

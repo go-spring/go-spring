@@ -75,8 +75,8 @@ type application struct {
 	exitChan chan struct{}
 }
 
-// NewApplication application 的构造函数
-func NewApplication() *application {
+// newApp application 的构造函数
+func newApp() *application {
 	return &application{
 		ApplicationContext:  core.NewApplicationContext(),
 		cfgLocation:         append([]string{}, DefaultConfigLocation),
@@ -84,21 +84,6 @@ func NewApplication() *application {
 		expectSysProperties: []string{`.*`},
 		exitChan:            make(chan struct{}),
 	}
-}
-
-// SetBannerMode 设置 Banner 的显式模式
-func (app *application) SetBannerMode(mode BannerMode) {
-	app.bannerMode = mode
-}
-
-// ExpectSysProperties 期望从系统环境变量中获取到的属性，支持正则表达式
-func (app *application) ExpectSysProperties(pattern ...string) {
-	app.expectSysProperties = pattern
-}
-
-// AfterPrepare 注册一个 app.prepare() 执行完成之后的扩展点
-func (app *application) AfterPrepare(fn AfterPrepareFunc) {
-	app.listOfAfterPrepare = append(app.listOfAfterPrepare, fn)
 }
 
 // Start 启动应用
@@ -287,7 +272,7 @@ func (app *application) prepare() {
 		profile = cast.ToString(p.GetFirst(keys...))
 	}
 	if profile != "" {
-		app.Profile(profile) // 第 4 层
+		app.SetProfile(profile) // 第 4 层
 		profileConfig := app.loadProfileConfig(profile)
 		p.InsertBefore(profileConfig, appConfig)
 	}
@@ -298,7 +283,7 @@ func (app *application) prepare() {
 	// 将重组后的属性值写入 ApplicationContext 属性列表
 	for key, value := range properties {
 		value = app.resolveProperty(properties, key, value)
-		app.Property(key, value)
+		app.SetProperty(key, value)
 	}
 }
 

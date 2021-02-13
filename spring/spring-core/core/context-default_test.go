@@ -363,23 +363,23 @@ type Setting struct {
 func TestApplicationContext_ValueTag(t *testing.T) {
 	ctx := core.NewApplicationContext()
 
-	ctx.Property("int", int(3))
-	ctx.Property("uint", uint(3))
-	ctx.Property("float", float32(3))
-	ctx.Property("complex", complex(3, 0))
-	ctx.Property("string", "3")
-	ctx.Property("bool", true)
+	ctx.SetProperty("int", int(3))
+	ctx.SetProperty("uint", uint(3))
+	ctx.SetProperty("float", float32(3))
+	ctx.SetProperty("complex", complex(3, 0))
+	ctx.SetProperty("string", "3")
+	ctx.SetProperty("bool", true)
 
 	setting := &Setting{}
 	ctx.RegisterBean(core.ObjBean(setting))
 
-	ctx.Property("sub.int", int(4))
-	ctx.Property("sub.sub.int", int(5))
-	ctx.Property("sub_sub.int", int(6))
+	ctx.SetProperty("sub.int", int(4))
+	ctx.SetProperty("sub.sub.int", int(5))
+	ctx.SetProperty("sub_sub.int", int(6))
 
-	ctx.Property("int_slice", []int{1, 2})
-	ctx.Property("string_slice", []string{"1", "2"})
-	// ctx.Property("float_slice", []float64{1, 2})
+	ctx.SetProperty("int_slice", []int{1, 2})
+	ctx.SetProperty("string_slice", []string{"1", "2"})
+	// ctx.SetProperty("float_slice", []float64{1, 2})
 
 	ctx.AutoWireBeans()
 
@@ -475,13 +475,13 @@ func TestApplicationContext_TypeConverter(t *testing.T) {
 	b := &EnvEnumBean{}
 	ctx.RegisterBean(core.ObjBean(b))
 
-	ctx.Property("env.type", "test")
+	ctx.SetProperty("env.type", "test")
 
 	p := &PointBean{}
 	ctx.RegisterBean(core.ObjBean(p))
 
 	ctx.Properties().Convert(PointConverter)
-	ctx.Property("point", "(7,5)")
+	ctx.SetProperty("point", "(7,5)")
 
 	dbConfig := &DbConfig{}
 	ctx.RegisterBean(core.ObjBean(dbConfig))
@@ -772,7 +772,7 @@ func NewPtrStudent(teacher Teacher, room string) *Student {
 
 func TestApplicationContext_RegisterBeanFn(t *testing.T) {
 	ctx := core.NewApplicationContext()
-	ctx.Property("room", "Class 3 Grade 1")
+	ctx.SetProperty("room", "Class 3 Grade 1")
 
 	// 用接口注册时实际使用的是原始类型
 	ctx.RegisterBean(core.ObjBean(Teacher(newHistoryTeacher(""))).Export((*Teacher)(nil)))
@@ -860,7 +860,7 @@ func TestApplicationContext_Profile(t *testing.T) {
 	t.Run("bean:_ctx:test", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
-		ctx.Profile("test")
+		ctx.SetProfile("test")
 		ctx.RegisterBean(core.ObjBean(&BeanZero{5}))
 		ctx.AutoWireBeans()
 
@@ -1006,7 +1006,7 @@ func TestApplicationContext_RegisterBeanFn2(t *testing.T) {
 	t.Run("ptr manager", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
-		ctx.Property("manager.version", "1.0.0")
+		ctx.SetProperty("manager.version", "1.0.0")
 		ctx.RegisterBean(core.CtorBean(NewPtrManager))
 		ctx.RegisterBean(core.CtorBean(NewInt))
 		ctx.AutoWireBeans()
@@ -1025,7 +1025,7 @@ func TestApplicationContext_RegisterBeanFn2(t *testing.T) {
 	t.Run("manager", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
-		ctx.Property("manager.version", "1.0.0")
+		ctx.SetProperty("manager.version", "1.0.0")
 
 		bd := ctx.RegisterBean(core.CtorBean(NewManager))
 		util.AssertEqual(t, bd.Name(), "core_test.Manager")
@@ -1047,7 +1047,7 @@ func TestApplicationContext_RegisterBeanFn2(t *testing.T) {
 	t.Run("manager return error", func(t *testing.T) {
 		util.AssertPanic(t, func() {
 			ctx := core.NewApplicationContext()
-			ctx.Property("manager.version", "1.0.0")
+			ctx.SetProperty("manager.version", "1.0.0")
 			ctx.RegisterBean(core.CtorBean(NewManagerRetError))
 			ctx.AutoWireBeans()
 		}, "return error")
@@ -1055,7 +1055,7 @@ func TestApplicationContext_RegisterBeanFn2(t *testing.T) {
 
 	t.Run("manager return error nil", func(t *testing.T) {
 		ctx := core.NewApplicationContext()
-		ctx.Property("manager.version", "1.0.0")
+		ctx.SetProperty("manager.version", "1.0.0")
 		ctx.RegisterBean(core.CtorBean(NewManagerRetErrorNil))
 		ctx.AutoWireBeans()
 	})
@@ -1063,7 +1063,7 @@ func TestApplicationContext_RegisterBeanFn2(t *testing.T) {
 	t.Run("manager return nil", func(t *testing.T) {
 		util.AssertPanic(t, func() {
 			ctx := core.NewApplicationContext()
-			ctx.Property("manager.version", "1.0.0")
+			ctx.SetProperty("manager.version", "1.0.0")
 			ctx.RegisterBean(core.CtorBean(NewNullPtrManager))
 			ctx.AutoWireBeans()
 		}, "return nil")
@@ -1175,7 +1175,7 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 	t.Run("call init method with arg", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
-		ctx.Property("version", "v0.0.1")
+		ctx.SetProperty("version", "v0.0.1")
 		ctx.RegisterBean(core.ObjBean(new(callDestroy)).Init((*callDestroy).InitWithArg, "${version}"))
 		ctx.AutoWireBeans()
 
@@ -1192,13 +1192,13 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 
 		util.AssertPanic(t, func() {
 			ctx := core.NewApplicationContext()
-			ctx.Property("int", 1)
+			ctx.SetProperty("int", 1)
 			ctx.RegisterBean(core.ObjBean(new(callDestroy)).Init((*callDestroy).InitWithError, "${int}"))
 			ctx.AutoWireBeans()
 		}, "error")
 
 		ctx := core.NewApplicationContext()
-		ctx.Property("int", 0)
+		ctx.SetProperty("int", 0)
 		ctx.RegisterBean(core.ObjBean(new(callDestroy)).Init((*callDestroy).InitWithError, "${int}"))
 		ctx.AutoWireBeans()
 
@@ -1229,7 +1229,7 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 	t.Run("call interface init method with arg", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
-		ctx.Property("version", "v0.0.1")
+		ctx.SetProperty("version", "v0.0.1")
 		ctx.RegisterBean(core.CtorBean(func() destroyable { return new(callDestroy) }).Init(destroyable.InitWithArg, "${version}"))
 		ctx.AutoWireBeans()
 
@@ -1246,13 +1246,13 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 
 		util.AssertPanic(t, func() {
 			ctx := core.NewApplicationContext()
-			ctx.Property("int", 1)
+			ctx.SetProperty("int", 1)
 			ctx.RegisterBean(core.CtorBean(func() destroyable { return new(callDestroy) }).Init(destroyable.InitWithError, "${int}"))
 			ctx.AutoWireBeans()
 		}, "error")
 
 		ctx := core.NewApplicationContext()
-		ctx.Property("int", 0)
+		ctx.SetProperty("int", 0)
 		ctx.RegisterBean(core.CtorBean(func() destroyable { return new(callDestroy) }).Init(destroyable.InitWithError, "${int}"))
 		ctx.AutoWireBeans()
 
@@ -1315,7 +1315,7 @@ type RecoresCluster struct {
 func TestApplicationContext_ValueBincoreng(t *testing.T) {
 
 	ctx := core.NewApplicationContext()
-	ctx.Property("recores.endpoints", "recores://localhost:6379")
+	ctx.SetProperty("recores.endpoints", "recores://localhost:6379")
 	ctx.RegisterBean(core.ObjBean(new(RecoresCluster)))
 	ctx.AutoWireBeans()
 
@@ -1332,7 +1332,7 @@ func TestApplicationContext_CollectBeans(t *testing.T) {
 	t.Run("more than one *", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
-		ctx.Property("recores.endpoints", "recores://localhost:6379")
+		ctx.SetProperty("recores.endpoints", "recores://localhost:6379")
 		ctx.RegisterBean(core.ObjBean(new(RecoresCluster)).WithName("one"))
 		ctx.RegisterBean(core.ObjBean(new(RecoresCluster)))
 		ctx.AutoWireBeans()
@@ -1346,7 +1346,7 @@ func TestApplicationContext_CollectBeans(t *testing.T) {
 	t.Run("before *", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
-		ctx.Property("recores.endpoints", "recores://localhost:6379")
+		ctx.SetProperty("recores.endpoints", "recores://localhost:6379")
 		d1 := ctx.RegisterBean(core.ObjBean(new(RecoresCluster)).WithName("one"))
 		d2 := ctx.RegisterBean(core.ObjBean(new(RecoresCluster)))
 		ctx.AutoWireBeans()
@@ -1362,7 +1362,7 @@ func TestApplicationContext_CollectBeans(t *testing.T) {
 	t.Run("after *", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
-		ctx.Property("recores.endpoints", "recores://localhost:6379")
+		ctx.SetProperty("recores.endpoints", "recores://localhost:6379")
 		d1 := ctx.RegisterBean(core.ObjBean(new(RecoresCluster)).WithName("one"))
 		d2 := ctx.RegisterBean(core.ObjBean(new(RecoresCluster)))
 		ctx.AutoWireBeans()
@@ -1378,7 +1378,7 @@ func TestApplicationContext_CollectBeans(t *testing.T) {
 	t.Run("only *", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
-		ctx.Property("recores.endpoints", "recores://localhost:6379")
+		ctx.SetProperty("recores.endpoints", "recores://localhost:6379")
 		ctx.RegisterBean(core.ObjBean(new(RecoresCluster)).WithName("one"))
 		ctx.RegisterBean(core.ObjBean(new(RecoresCluster)))
 		ctx.AutoWireBeans()
@@ -1390,7 +1390,7 @@ func TestApplicationContext_CollectBeans(t *testing.T) {
 	})
 
 	ctx := core.NewApplicationContext()
-	ctx.Property("recores.endpoints", "recores://localhost:6379")
+	ctx.SetProperty("recores.endpoints", "recores://localhost:6379")
 
 	ctx.RegisterBean(core.ObjBean([]*RecoresCluster{new(RecoresCluster)}))
 	ctx.RegisterBean(core.ObjBean([]RecoresCluster{{}}))
@@ -1420,7 +1420,7 @@ func TestApplicationContext_CollectBeans(t *testing.T) {
 func TestApplicationContext_WireSliceBean(t *testing.T) {
 
 	ctx := core.NewApplicationContext()
-	ctx.Property("recores.endpoints", "recores://localhost:6379")
+	ctx.SetProperty("recores.endpoints", "recores://localhost:6379")
 	ctx.RegisterBean(core.ObjBean([]*RecoresCluster{new(RecoresCluster)}))
 	ctx.RegisterBean(core.ObjBean([]RecoresCluster{{}}))
 	ctx.AutoWireBeans()
@@ -1533,7 +1533,7 @@ func TestOptionConstructorArg(t *testing.T) {
 	t.Run("option default", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
-		ctx.Property("president", "CaiYuanPei")
+		ctx.SetProperty("president", "CaiYuanPei")
 		ctx.RegisterBean(core.CtorBean(NewClassRoom).Options())
 		ctx.AutoWireBeans()
 
@@ -1548,7 +1548,7 @@ func TestOptionConstructorArg(t *testing.T) {
 	t.Run("option withClassName", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
-		ctx.Property("president", "CaiYuanPei")
+		ctx.SetProperty("president", "CaiYuanPei")
 		ctx.RegisterBean(core.CtorBean(NewClassRoom).Options(
 			core.NewOptionArg(withClassName,
 				"${class_name:=二年级03班}",
@@ -1568,8 +1568,8 @@ func TestOptionConstructorArg(t *testing.T) {
 	t.Run("option withStudents", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
-		ctx.Property("class_name", "二年级03班")
-		ctx.Property("president", "CaiYuanPei")
+		ctx.SetProperty("class_name", "二年级03班")
+		ctx.SetProperty("president", "CaiYuanPei")
 		ctx.RegisterBean(core.CtorBean(NewClassRoom).Options(
 			core.NewOptionArg(withStudents, ""),
 		))
@@ -1590,8 +1590,8 @@ func TestOptionConstructorArg(t *testing.T) {
 	t.Run("option withStudents withClassName", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
-		ctx.Property("class_name", "二年级06班")
-		ctx.Property("president", "CaiYuanPei")
+		ctx.SetProperty("class_name", "二年级06班")
+		ctx.SetProperty("president", "CaiYuanPei")
 		ctx.RegisterBean(core.CtorBean(NewClassRoom).Options(
 			core.NewOptionArg(withStudents, ""),
 			core.NewOptionArg(
@@ -1660,7 +1660,7 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 	t.Run("method bean", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
-		ctx.Property("server.version", "1.0.0")
+		ctx.SetProperty("server.version", "1.0.0")
 		parent := ctx.RegisterBean(core.ObjBean(new(Server)))
 
 		// Method RegisterBean 的默认名称要等到 RegisterBean 真正注册的时候才能获取到
@@ -1684,7 +1684,7 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 	t.Run("method bean arg", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
-		ctx.Property("server.version", "1.0.0")
+		ctx.SetProperty("server.version", "1.0.0")
 		parent := ctx.RegisterBean(core.ObjBean(new(Server)))
 		ctx.RegisterBean(core.MethodBean(parent, "ConsumerArg", "${i:=9}"))
 		ctx.AutoWireBeans()
@@ -1704,7 +1704,7 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 
 	t.Run("method bean wire to other bean", func(t *testing.T) {
 		ctx := core.NewApplicationContext()
-		ctx.Property("server.version", "1.0.0")
+		ctx.SetProperty("server.version", "1.0.0")
 
 		// Name is core_test.ServerInterface
 		parent := ctx.RegisterBean(core.CtorBean(NewServerInterface))
@@ -1759,7 +1759,7 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 				}()
 
 				ctx := core.NewApplicationContext()
-				ctx.Property("server.version", "1.0.0")
+				ctx.SetProperty("server.version", "1.0.0")
 
 				parent := ctx.RegisterBean(core.ObjBean(new(Server)).
 					DependsOn("*core_test.Service"))
@@ -1777,7 +1777,7 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 	t.Run("method bean autowire", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
-		ctx.Property("server.version", "1.0.0")
+		ctx.SetProperty("server.version", "1.0.0")
 		ctx.RegisterBean(core.ObjBean(new(Server)))
 		ctx.AutoWireBeans()
 
@@ -1790,7 +1790,7 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 	t.Run("method bean selector type", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
-		ctx.Property("server.version", "1.0.0")
+		ctx.SetProperty("server.version", "1.0.0")
 		ctx.RegisterBean(core.ObjBean(new(Server)))
 		ctx.RegisterBean(core.MethodBean((*Server)(nil), "Consumer"))
 		ctx.AutoWireBeans()
@@ -1812,7 +1812,7 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 
 		util.AssertPanic(t, func() {
 			ctx := core.NewApplicationContext()
-			ctx.Property("server.version", "1.0.0")
+			ctx.SetProperty("server.version", "1.0.0")
 			ctx.RegisterBean(core.ObjBean(new(Server)))
 			ctx.RegisterBean(core.MethodBean((fmt.Stringer)(nil), "Consumer"))
 			ctx.AutoWireBeans()
@@ -1820,7 +1820,7 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 
 		util.AssertPanic(t, func() {
 			ctx := core.NewApplicationContext()
-			ctx.Property("server.version", "1.0.0")
+			ctx.SetProperty("server.version", "1.0.0")
 			ctx.RegisterBean(core.ObjBean(new(Server)))
 			ctx.RegisterBean(core.MethodBean((*int)(nil), "Consumer"))
 			ctx.AutoWireBeans()
@@ -1828,7 +1828,7 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 
 		util.AssertPanic(t, func() {
 			ctx := core.NewApplicationContext()
-			ctx.Property("server.version", "1.0.0")
+			ctx.SetProperty("server.version", "1.0.0")
 			ctx.RegisterBean(core.ObjBean(new(int)))
 			ctx.RegisterBean(core.ObjBean(new(Server)))
 			ctx.RegisterBean(core.MethodBean((*int)(nil), "Consumer"))
@@ -1839,7 +1839,7 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 	t.Run("method bean selector beanId", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
-		ctx.Property("server.version", "1.0.0")
+		ctx.SetProperty("server.version", "1.0.0")
 		ctx.RegisterBean(core.ObjBean(new(Server)))
 		ctx.RegisterBean(core.MethodBean("*core_test.Server", "Consumer"))
 		ctx.AutoWireBeans()
@@ -1860,7 +1860,7 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 	t.Run("method bean selector beanId error", func(t *testing.T) {
 		util.AssertPanic(t, func() {
 			ctx := core.NewApplicationContext()
-			ctx.Property("server.version", "1.0.0")
+			ctx.SetProperty("server.version", "1.0.0")
 			ctx.RegisterBean(core.ObjBean(new(Server)))
 			ctx.RegisterBean(core.MethodBean("NULL", "Consumer"))
 			ctx.AutoWireBeans()
@@ -1888,10 +1888,10 @@ func TestApplicationContext_UserDefinedTypeProperty(t *testing.T) {
 		return 0, errors.New("error level")
 	})
 
-	ctx.Property("time", "2018-12-20")
-	ctx.Property("duration", "1h")
-	ctx.Property("level", "debug")
-	ctx.Property("complex", "1+i")
+	ctx.SetProperty("time", "2018-12-20")
+	ctx.SetProperty("duration", "1h")
+	ctx.SetProperty("level", "debug")
+	ctx.SetProperty("complex", "1+i")
 	ctx.RegisterBean(core.ObjBean(&config))
 	ctx.AutoWireBeans()
 
@@ -1976,7 +1976,7 @@ func TestApplicationContext_RegisterOptionBean(t *testing.T) {
 
 	t.Run("variacorec option param 1", func(t *testing.T) {
 		ctx := core.NewApplicationContext()
-		ctx.Property("var.obj", "description")
+		ctx.SetProperty("var.obj", "description")
 		ctx.RegisterBean(core.ObjBean(&Var{"v1"}).WithName("v1"))
 		ctx.RegisterBean(core.ObjBean(&Var{"v2"}).WithName("v2"))
 		ctx.RegisterBean(core.CtorBean(NewVarObj, "${var.obj}").Options(
@@ -1994,7 +1994,7 @@ func TestApplicationContext_RegisterOptionBean(t *testing.T) {
 
 	t.Run("variacorec option param 2", func(t *testing.T) {
 		ctx := core.NewApplicationContext()
-		ctx.Property("var.obj", "description")
+		ctx.SetProperty("var.obj", "description")
 		ctx.RegisterBean(core.ObjBean(&Var{"v1"}).WithName("v1"))
 		ctx.RegisterBean(core.ObjBean(&Var{"v2"}).WithName("v2"))
 		ctx.RegisterBean(core.CtorBean(NewVarObj, "${var.obj}").Options(
@@ -2096,7 +2096,7 @@ func TestApplicationContext_Close(t *testing.T) {
 	t.Run("call destroy method with arg", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
-		ctx.Property("version", "v0.0.1")
+		ctx.SetProperty("version", "v0.0.1")
 		ctx.RegisterBean(core.ObjBean(new(callDestroy)).Destroy((*callDestroy).DestroyWithArg, "${version}"))
 		ctx.AutoWireBeans()
 
@@ -2114,7 +2114,7 @@ func TestApplicationContext_Close(t *testing.T) {
 		// error
 		{
 			ctx := core.NewApplicationContext()
-			ctx.Property("int", 1)
+			ctx.SetProperty("int", 1)
 			ctx.RegisterBean(core.ObjBean(new(callDestroy)).Destroy((*callDestroy).DestroyWithError, "${int}"))
 			ctx.AutoWireBeans()
 
@@ -2130,7 +2130,7 @@ func TestApplicationContext_Close(t *testing.T) {
 		// nil
 		{
 			ctx := core.NewApplicationContext()
-			ctx.Property("int", 0)
+			ctx.SetProperty("int", 0)
 			ctx.RegisterBean(core.ObjBean(new(callDestroy)).Destroy((*callDestroy).DestroyWithError, "${int}"))
 			ctx.AutoWireBeans()
 
@@ -2162,7 +2162,7 @@ func TestApplicationContext_Close(t *testing.T) {
 	t.Run("call interface destroy method with arg", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
-		ctx.Property("version", "v0.0.1")
+		ctx.SetProperty("version", "v0.0.1")
 		ctx.RegisterBean(core.CtorBean(func() destroyable { return new(callDestroy) }).Destroy(destroyable.DestroyWithArg, "${version}"))
 		ctx.AutoWireBeans()
 
@@ -2180,7 +2180,7 @@ func TestApplicationContext_Close(t *testing.T) {
 		// error
 		{
 			ctx := core.NewApplicationContext()
-			ctx.Property("int", 1)
+			ctx.SetProperty("int", 1)
 			ctx.RegisterBean(core.CtorBean(func() destroyable { return new(callDestroy) }).Destroy(destroyable.DestroyWithError, "${int}"))
 			ctx.AutoWireBeans()
 
@@ -2196,7 +2196,7 @@ func TestApplicationContext_Close(t *testing.T) {
 		// nil
 		{
 			ctx := core.NewApplicationContext()
-			ctx.Property("int", 0)
+			ctx.SetProperty("int", 0)
 			ctx.RegisterBean(core.CtorBean(func() destroyable { return new(callDestroy) }).Destroy(destroyable.DestroyWithError, "${int}"))
 			ctx.AutoWireBeans()
 
@@ -2339,8 +2339,8 @@ func TestApplicationContext_NestValueField(t *testing.T) {
 	t.Run("private", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
-		ctx.Property("sdk.wx.auto-create", true)
-		ctx.Property("sdk.wx.enable", true)
+		ctx.SetProperty("sdk.wx.auto-create", true)
+		ctx.SetProperty("sdk.wx.enable", true)
 
 		bd := ctx.RegisterBean(core.CtorBean(func() int { return 3 }))
 		util.AssertEqual(t, bd.Name(), "*int")
@@ -2362,8 +2362,8 @@ func TestApplicationContext_NestValueField(t *testing.T) {
 	t.Run("public", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
-		ctx.Property("sdk.wx.auto-create", true)
-		ctx.Property("sdk.wx.enable", true)
+		ctx.SetProperty("sdk.wx.auto-create", true)
+		ctx.SetProperty("sdk.wx.enable", true)
 		ctx.RegisterBean(core.CtorBean(func() int { return 3 }))
 		ctx.RegisterBean(core.ObjBean(new(WXChannel)))
 		ctx.AutoWireBeans()
@@ -2654,10 +2654,10 @@ func TestApplicationContext_Properties(t *testing.T) {
 		}{}
 
 		ctx := core.NewApplicationContext()
-		ctx.Property("map_a.nba", "nba")
-		ctx.Property("map_a.cba", "cba")
-		ctx.Property("int.a", "3")
-		ctx.Property("int.b", "4")
+		ctx.SetProperty("map_a.nba", "nba")
+		ctx.SetProperty("map_a.cba", "cba")
+		ctx.SetProperty("int.a", "3")
+		ctx.SetProperty("int.b", "4")
 		ctx.RegisterBean(core.ObjBean(&obj))
 		ctx.AutoWireBeans()
 

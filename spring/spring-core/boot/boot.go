@@ -24,11 +24,11 @@ import (
 	"github.com/go-spring/spring-core/log"
 )
 
-var gApp = app.NewApplication()
+var gApp = app.New()
 
 // SetBannerMode 设置 Banner 的显式模式
 func SetBannerMode(mode app.BannerMode) {
-	gApp.SetBannerMode(mode)
+	gApp.BannerMode(mode)
 }
 
 // ExpectSysProperties 期望从系统环境变量中获取到的属性，支持正则表达式
@@ -46,8 +46,7 @@ var running = false
 // RunApplication 快速启动 boot 应用
 func Run(cfgLocation ...string) {
 	running = true
-	gApp.AddConfigLocation(cfgLocation...)
-	gApp.Run()
+	gApp.Run(cfgLocation...)
 }
 
 // Exit 退出 boot 应用
@@ -67,30 +66,28 @@ func checkRunning() {
 
 // GetProfile 返回运行环境
 func GetProfile() string {
-	return gApp.GetProfile()
+	return gApp.ApplicationContext().GetProfile()
 }
 
 // SetProfile 设置运行环境
 func SetProfile(profile string) {
-	gApp.Profile(profile)
-}
-
-// Bean 注册 BeanDefinition 对象。
-func Bean(bd *core.BeanDefinition) *core.BeanDefinition {
-	checkRunning()
-	return gApp.RegisterBean(bd)
+	gApp.ApplicationContext().SetProfile(profile)
 }
 
 // ObjBean 注册单例 Bean，不指定名称，重复注册会 panic。
 func ObjBean(i interface{}) *core.BeanDefinition {
 	checkRunning()
-	return gApp.RegisterBean(core.ObjBean(i))
+	bd := core.ObjBean(i)
+	gApp.Bean(bd)
+	return bd
 }
 
 // CtorBean 注册单例构造函数 Bean，不指定名称，重复注册会 panic。
 func CtorBean(fn interface{}, tags ...string) *core.BeanDefinition {
 	checkRunning()
-	return gApp.RegisterBean(core.CtorBean(fn, tags...))
+	bd := core.CtorBean(fn, tags...)
+	gApp.Bean(bd)
+	return bd
 }
 
 // MethodBean 注册成员方法单例 Bean，不指定名称，重复注册会 panic。
@@ -98,24 +95,26 @@ func CtorBean(fn interface{}, tags ...string) *core.BeanDefinition {
 // 而且 interface 的方法类型不带 receiver 而成员方法的类型带有 receiver，两者类型也不好匹配。
 func MethodBean(selector core.BeanSelector, method string, tags ...string) *core.BeanDefinition {
 	checkRunning()
-	return gApp.RegisterBean(core.MethodBean(selector, method, tags...))
+	bd := core.MethodBean(selector, method, tags...)
+	gApp.Bean(bd)
+	return bd
 }
 
 // WireBean 对外部的 Bean 进行依赖注入和属性绑定
-func WireBean(bean interface{}) {
-	gApp.WireBean(bean)
+func WireBean(i interface{}) {
+	gApp.ApplicationContext().WireBean(i)
 }
 
 // GetBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 // 它和 FindBean 的区别是它在调用后能够保证返回的 Bean 已经完成了注入和绑定过程。
 func GetBean(i interface{}, selector ...core.BeanSelector) bool {
-	return gApp.GetBean(i, selector...)
+	return gApp.ApplicationContext().GetBean(i, selector...)
 }
 
 // FindBean 查询单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 // 它和 GetBean 的区别是它在调用后不能保证返回的 Bean 已经完成了注入和绑定过程。
 func FindBean(selector core.BeanSelector) (*core.BeanDefinition, bool) {
-	return gApp.FindBean(selector)
+	return gApp.ApplicationContext().FindBean(selector)
 }
 
 // CollectBeans 收集数组或指针定义的所有符合条件的 Bean，收集到返回 true，否则返
@@ -126,58 +125,43 @@ func FindBean(selector core.BeanSelector) (*core.BeanDefinition, bool) {
 // 必须满足 selector 条件。另外，自动模式下不对收集结果进行排序，指定模式下根据
 // selectors 列表的顺序对收集结果进行排序。
 func CollectBeans(i interface{}, selectors ...core.BeanSelector) bool {
-	return gApp.CollectBeans(i, selectors...)
+	return gApp.ApplicationContext().CollectBeans(i, selectors...)
 }
 
 // GetBeanDefinitions 获取所有 Bean 的定义，不能保证解析和注入，请谨慎使用该函数!
 func GetBeanDefinitions() []*core.BeanDefinition {
-	return gApp.GetBeanDefinitions()
-}
-
-// BindProperty 根据类型获取属性值，属性名称统一转成小写。
-func BindProperty(key string, i interface{}) error {
-	return gApp.BindProperty(key, i)
+	return gApp.ApplicationContext().GetBeanDefinitions()
 }
 
 // GetProperty 返回属性值，不能存在返回 nil，属性名称统一转成小写。
 func GetProperty(key string) interface{} {
-	return gApp.GetProperty(key)
-}
-
-// GetFirstProperty 返回 keys 中第一个存在的属性值，属性名称统一转成小写。
-func GetFirstProperty(keys ...string) interface{} {
-	return gApp.GetFirstProperty(keys...)
-}
-
-// GetDefaultProperty 返回属性值，如果没有找到则使用指定的默认值，属性名称统一转成小写。
-func GetDefaultProperty(key string, def interface{}) interface{} {
-	return gApp.GetDefaultProperty(key, def)
+	return gApp.ApplicationContext().GetProperty(key)
 }
 
 // SetProperty 设置属性值，属性名称统一转成小写。
 func SetProperty(key string, value interface{}) {
 	checkRunning()
-	gApp.Property(key, value)
+	gApp.ApplicationContext().SetProperty(key, value)
 }
 
 // Properties 获取 Properties 对象
 func Properties() core.Properties {
-	return gApp.Properties()
+	return gApp.ApplicationContext().Properties()
 }
 
 // Invoke 立即执行一个一次性的任务
 func Invoke(fn interface{}, tags ...string) error {
-	return gApp.Invoke(fn, tags...)
+	return gApp.ApplicationContext().Invoke(fn, tags...)
 }
 
 // Config 注册一个配置函数
 func Config(fn interface{}, tags ...string) *core.Configer {
-	return gApp.Config(fn, tags...)
+	return gApp.ApplicationContext().Config(fn, tags...)
 }
 
 type GoFuncWithContext func(context.Context)
 
 // Go 安全地启动一个 goroutine
 func Go(fn GoFuncWithContext) {
-	gApp.Go(func() { fn(gApp.Context()) })
+	gApp.ApplicationContext().Go(func() { fn(gApp.ApplicationContext().Context()) })
 }

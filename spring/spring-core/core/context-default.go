@@ -97,6 +97,11 @@ func NewApplicationContext() *applicationContext {
 	}
 }
 
+// Properties 获取 Properties 对象
+func (ctx *applicationContext) Properties() Properties {
+	return ctx.properties
+}
+
 // LoadProperties 加载属性配置，支持 properties、yaml 和 toml 三种文件格式。
 func (ctx *applicationContext) LoadProperties(filename string) error {
 	return ctx.properties.Load(filename)
@@ -107,34 +112,14 @@ func (ctx *applicationContext) ReadProperties(reader io.Reader, configType strin
 	return ctx.properties.Read(reader, configType)
 }
 
-// BindProperty 根据类型获取属性值，属性名称统一转成小写。
-func (ctx *applicationContext) BindProperty(key string, i interface{}) error {
-	return ctx.properties.Bind(key, i)
-}
-
 // GetProperty 返回属性值，不能存在返回 nil，属性名称统一转成小写。
 func (ctx *applicationContext) GetProperty(key string) interface{} {
 	return ctx.properties.Get(key)
 }
 
-// GetFirstProperty 返回 keys 中第一个存在的属性值，属性名称统一转成小写。
-func (ctx *applicationContext) GetFirstProperty(keys ...string) interface{} {
-	return ctx.properties.GetFirst(keys...)
-}
-
-// GetDefaultProperty 返回属性值，如果没有找到则使用指定的默认值，属性名称统一转成小写。
-func (ctx *applicationContext) GetDefaultProperty(key string, def interface{}) interface{} {
-	return ctx.properties.GetDefault(key, def)
-}
-
-// Property 设置属性值，属性名称统一转成小写。
-func (ctx *applicationContext) Property(key string, value interface{}) {
+// SetProperty 设置属性值，属性名称统一转成小写。
+func (ctx *applicationContext) SetProperty(key string, value interface{}) {
 	ctx.properties.Set(key, value)
-}
-
-// Properties 获取 Properties 对象
-func (ctx *applicationContext) Properties() Properties {
-	return ctx.properties
 }
 
 // Context 返回上下文接口
@@ -147,8 +132,8 @@ func (ctx *applicationContext) GetProfile() string {
 	return ctx.profile
 }
 
-// Profile 设置运行环境
-func (ctx *applicationContext) Profile(profile string) {
+// SetProfile 设置运行环境
+func (ctx *applicationContext) SetProfile(profile string) {
 	ctx.profile = profile
 }
 
@@ -180,6 +165,21 @@ func (ctx *applicationContext) registerBeanDefinition(bd *BeanDefinition) {
 		panic(fmt.Errorf("duplicate registration, bean: \"%s\"", bd.BeanId()))
 	}
 	ctx.beanMap[key] = bd
+}
+
+// ObjBean 将 Bean 转换为 BeanDefinition 对象
+func (ctx *applicationContext) ObjBean(i interface{}) *BeanDefinition {
+	return ctx.RegisterBean(ObjBean(i))
+}
+
+// CtorBean 将构造函数转换为 BeanDefinition 对象
+func (ctx *applicationContext) CtorBean(fn interface{}, tags ...string) *BeanDefinition {
+	return ctx.RegisterBean(CtorBean(fn, tags...))
+}
+
+// MethodBean 将成员方法转换为 BeanDefinition 对象
+func (ctx *applicationContext) MethodBean(selector BeanSelector, method string, tags ...string) *BeanDefinition {
+	return ctx.RegisterBean(MethodBean(selector, method, tags...))
 }
 
 func (ctx *applicationContext) RegisterBean(bd *BeanDefinition) *BeanDefinition {

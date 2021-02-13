@@ -33,29 +33,20 @@ type GoFunc func()
 // 的 Bean 了，这样做是因为实现起来更简单而且性能更高。
 type ApplicationContext interface {
 
+	// Properties 获取 Properties 对象
+	Properties() Properties
+
 	// LoadProperties 加载属性配置，支持 properties、yaml 和 toml 三种文件格式。
 	LoadProperties(filename string) error
 
 	// ReadProperties 读取属性配置，支持 properties、yaml 和 toml 三种文件格式。
 	ReadProperties(reader io.Reader, configType string) error
 
-	// BindProperty 根据类型获取属性值，属性名称统一转成小写。
-	BindProperty(key string, i interface{}) error
-
 	// GetProperty 返回属性值，不能存在返回 nil，属性名称统一转成小写。
 	GetProperty(key string) interface{}
 
-	// GetFirstProperty 返回 keys 中第一个存在的属性值，属性名称统一转成小写。
-	GetFirstProperty(keys ...string) interface{}
-
-	// GetDefaultProperty 返回属性值，如果没有找到则使用指定的默认值，属性名称统一转成小写。
-	GetDefaultProperty(key string, def interface{}) interface{}
-
-	// Property 设置属性值，属性名称统一转成小写。
-	Property(key string, value interface{})
-
-	// Properties 获取 Properties 对象
-	Properties() Properties
+	// SetProperty 设置属性值，属性名称统一转成小写。
+	SetProperty(key string, value interface{})
 
 	// Context 返回上下文接口
 	Context() context.Context
@@ -63,8 +54,17 @@ type ApplicationContext interface {
 	// GetProfile 返回运行环境
 	GetProfile() string
 
-	// Profile 设置运行环境
-	Profile(profile string)
+	// SetProfile 设置运行环境
+	SetProfile(profile string)
+
+	// ObjBean 将 Bean 转换为 BeanDefinition 对象
+	ObjBean(i interface{}) *BeanDefinition
+
+	// CtorBean 将构造函数转换为 BeanDefinition 对象
+	CtorBean(fn interface{}, tags ...string) *BeanDefinition
+
+	// MethodBean 将成员方法转换为 BeanDefinition 对象
+	MethodBean(selector BeanSelector, method string, tags ...string) *BeanDefinition
 
 	// RegisterBean 注册 bean.BeanDefinition 对象。
 	RegisterBean(bd *BeanDefinition) *BeanDefinition

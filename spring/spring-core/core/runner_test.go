@@ -30,7 +30,7 @@ func TestRunner_Run(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
 		ctx.RegisterBean(core.CtorBean(func() int { return 3 }))
-		ctx.Property("version", "v0.0.1")
+		ctx.SetProperty("version", "v0.0.1")
 
 		util.AssertPanic(t, func() {
 			_ = ctx.Invoke(func(i *int, version string) {
@@ -46,7 +46,7 @@ func TestRunner_Run(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
 		ctx.RegisterBean(core.CtorBean(func() int { return 3 }))
-		ctx.Property("version", "v0.0.1")
+		ctx.SetProperty("version", "v0.0.1")
 		ctx.AutoWireBeans()
 
 		_ = ctx.Invoke(func(i *int, version string) {
@@ -59,8 +59,8 @@ func TestRunner_Run(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
 		ctx.RegisterBean(core.CtorBean(func() int { return 3 }))
-		ctx.Property("version", "v0.0.1")
-		ctx.Profile("dev")
+		ctx.SetProperty("version", "v0.0.1")
+		ctx.SetProfile("dev")
 		ctx.AutoWireBeans()
 
 		fn := func(i *int, version string) {

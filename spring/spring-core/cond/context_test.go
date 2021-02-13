@@ -181,7 +181,7 @@ func TestDefaultSpringContext(t *testing.T) {
 	t.Run("bean:test_ctx:test", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
-		ctx.Profile("test")
+		ctx.SetProfile("test")
 		ctx.RegisterBean(core.ObjBean(&BeanZero{5}).WithCondition(cond.OnProfile("test")))
 		ctx.AutoWireBeans()
 
@@ -193,7 +193,7 @@ func TestDefaultSpringContext(t *testing.T) {
 	t.Run("bean:test_ctx:stable", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
-		ctx.Profile("stable")
+		ctx.SetProfile("stable")
 		ctx.RegisterBean(core.ObjBean(&BeanZero{5}).WithCondition(cond.OnProfile("test")))
 		ctx.AutoWireBeans()
 
@@ -205,8 +205,8 @@ func TestDefaultSpringContext(t *testing.T) {
 	t.Run("option withClassName Condition", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
-		ctx.Property("president", "CaiYuanPei")
-		ctx.Property("class_floor", 2)
+		ctx.SetProperty("president", "CaiYuanPei")
+		ctx.SetProperty("class_floor", 2)
 		ctx.RegisterBean(core.CtorBean(NewClassRoom).Options(
 			core.NewOptionArg(withClassName,
 				"${class_name:=二年级03班}",
@@ -228,7 +228,7 @@ func TestDefaultSpringContext(t *testing.T) {
 		c := cond.OnProperty("class_name_enable")
 
 		ctx := core.NewApplicationContext()
-		ctx.Property("president", "CaiYuanPei")
+		ctx.SetProperty("president", "CaiYuanPei")
 		ctx.RegisterBean(core.CtorBean(NewClassRoom).Options(
 			core.NewOptionArg(withClassName,
 				"${class_name:=二年级03班}",
@@ -249,7 +249,7 @@ func TestDefaultSpringContext(t *testing.T) {
 	t.Run("method bean cond", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
-		ctx.Property("server.version", "1.0.0")
+		ctx.SetProperty("server.version", "1.0.0")
 		parent := ctx.RegisterBean(core.ObjBean(new(Server)))
 		ctx.RegisterBean(core.MethodBean(parent, "Consumer").WithCondition(cond.OnProperty("consumer.enable")))
 		ctx.AutoWireBeans()
