@@ -166,20 +166,20 @@ func (ctx *applicationContext) registerBeanDefinition(bd *BeanDefinition) {
 
 // ObjBean 将 Bean 转换为 BeanDefinition 对象
 func (ctx *applicationContext) ObjBean(i interface{}) *BeanDefinition {
-	return ctx.RegisterBean(ObjBean(i))
+	return ctx.Bean(ObjBean(i))
 }
 
 // CtorBean 将构造函数转换为 BeanDefinition 对象
 func (ctx *applicationContext) CtorBean(fn interface{}, args ...Arg) *BeanDefinition {
-	return ctx.RegisterBean(CtorBean(fn, args...))
+	return ctx.Bean(CtorBean(fn, args...))
 }
 
 // MethodBean 将成员方法转换为 BeanDefinition 对象
 func (ctx *applicationContext) MethodBean(selector BeanSelector, method string, args ...Arg) *BeanDefinition {
-	return ctx.RegisterBean(MethodBean(selector, method, args...))
+	return ctx.Bean(MethodBean(selector, method, args...))
 }
 
-func (ctx *applicationContext) RegisterBean(bd *BeanDefinition) *BeanDefinition {
+func (ctx *applicationContext) Bean(bd *BeanDefinition) *BeanDefinition {
 	ctx.checkRegistration()
 	ctx.AllBeans = append(ctx.AllBeans, bd)
 	return bd
@@ -602,8 +602,8 @@ func (ctx *applicationContext) WireBean(i interface{}) {
 	assembly.wireBeanDefinition(ObjBean(i), false)
 }
 
-// GetBeanDefinitions 获取所有 Bean 的定义，不能保证解析和注入，请谨慎使用该函数!
-func (ctx *applicationContext) GetBeanDefinitions() []*BeanDefinition {
+// Beans 获取所有 Bean 的定义，不能保证解析和注入，请谨慎使用该函数!
+func (ctx *applicationContext) Beans() []*BeanDefinition {
 	result := make([]*BeanDefinition, 0)
 	for _, v := range ctx.beanMap {
 		result = append(result, v)
@@ -651,13 +651,13 @@ func (ctx *applicationContext) Config(fn interface{}, args ...Arg) *Configer {
 	return configer
 }
 
-// WithConfig 注册一个配置函数
-func (ctx *applicationContext) WithConfig(configer *Configer) {
+// Configer 注册一个配置函数
+func (ctx *applicationContext) Configer(configer *Configer) {
 	ctx.configers.PushBack(configer)
 }
 
 // Go 安全地启动一个 goroutine
-func (ctx *applicationContext) Go(fn GoFunc) {
+func (ctx *applicationContext) Go(fn interface{}, args ...Arg) {
 	ctx.wg.Add(1)
 	go func() {
 		defer ctx.wg.Done()
@@ -668,6 +668,8 @@ func (ctx *applicationContext) Go(fn GoFunc) {
 			}
 		}()
 
-		fn()
+		if err := newRunner(ctx, fn, args).run(); err != nil {
+			log.Error(err)
+		}
 	}()
 }

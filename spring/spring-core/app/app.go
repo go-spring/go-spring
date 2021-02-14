@@ -349,7 +349,7 @@ func (app *application) ExpectSysProperties(pattern ...string) *application {
 
 // Bean 注册 bean.BeanDefinition 对象。
 func (app *application) Bean(bd *core.BeanDefinition) *application {
-	app.appCtx.RegisterBean(bd)
+	app.appCtx.Bean(bd)
 	return app
 }
 
@@ -420,9 +420,9 @@ func CollectBeans(i interface{}, selectors ...core.BeanSelector) bool {
 	return gApp.ApplicationContext().CollectBeans(i, selectors...)
 }
 
-// GetBeanDefinitions 获取所有 Bean 的定义，不能保证解析和注入，请谨慎使用该函数!
-func GetBeanDefinitions() []*core.BeanDefinition {
-	return gApp.ApplicationContext().GetBeanDefinitions()
+// Beans 获取所有 Bean 的定义，不能保证解析和注入，请谨慎使用该函数!
+func Beans() []*core.BeanDefinition {
+	return gApp.ApplicationContext().Beans()
 }
 
 // GetProperty 返回属性值，不能存在返回 nil，属性名称统一转成小写。
@@ -449,13 +449,13 @@ func Invoke(fn interface{}, args ...core.Arg) error {
 // Config 注册一个配置函数
 func Config(fn interface{}, args ...core.Arg) *core.Configer {
 	configer := core.Config(fn, args...)
-	gApp.Config(configer)
+	gApp.Configer(configer)
 	return configer
 }
 
-// Config 注册一个配置函数
-func (app *application) Config(configer *core.Configer) *application {
-	app.ApplicationContext().WithConfig(configer)
+// Configer 注册一个配置函数
+func (app *application) Configer(configer *core.Configer) *application {
+	app.ApplicationContext().Configer(configer)
 	return app
 }
 

@@ -100,7 +100,7 @@ func TestApp(t *testing.T) {
 		BannerMode(BannerModeOff).
 		Property("spring.application.name", "test").
 		Bean(core.ObjBean(new(int)).WithName("int")).
-		Config(core.Config(func(i *int) { fmt.Println(i) }, "")).
+		Configer(core.Config(func(i *int) { fmt.Println(i) }, "")).
 		HttpRequest(web.MethodGet, "/handle", web.FUNC(func(ctx web.Context) { ctx.String("hello") })).
 		HttpMapping(web.MethodGet, "/mapping", func(ctx web.Context) { ctx.String("hello") }).
 		Run()

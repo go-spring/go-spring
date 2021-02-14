@@ -122,8 +122,8 @@ func (t *BeanThree) String() string {
 func TestBeanCondition(t *testing.T) {
 
 	ctx := core.NewApplicationContext()
-	ctx.RegisterBean(core.ObjBean(&BeanZero{5}))
-	ctx.RegisterBean(core.ObjBean(new(BeanOne)))
+	ctx.ObjBean(&BeanZero{5})
+	ctx.ObjBean(new(BeanOne))
 	ctx.AutoWireBeans()
 
 	c := cond.BeanCondition("*cond_test.BeanOne")
@@ -136,8 +136,8 @@ func TestBeanCondition(t *testing.T) {
 func TestMissingBeanCondition(t *testing.T) {
 
 	ctx := core.NewApplicationContext()
-	ctx.RegisterBean(core.ObjBean(&BeanZero{5}))
-	ctx.RegisterBean(core.ObjBean(new(BeanOne)))
+	ctx.ObjBean(&BeanZero{5})
+	ctx.ObjBean(new(BeanOne))
 	ctx.AutoWireBeans()
 
 	c := cond.MissingBeanCondition("*cond_test.BeanOne")

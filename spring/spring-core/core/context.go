@@ -21,8 +21,6 @@ import (
 	"context"
 )
 
-type GoFunc func()
-
 // ApplicationContext 定义了 IoC 容器接口。
 //
 // 它的工作过程可以分为三个大的阶段：注册 Bean 列表、加载属性配置
@@ -31,6 +29,12 @@ type GoFunc func()
 // 一条需要谨记的注册规则是: AutoWireBeans 调用后就不能再注册新
 // 的 Bean 了，这样做是因为实现起来更简单而且性能更高。
 type ApplicationContext interface {
+
+	// GetProfile 返回运行环境
+	GetProfile() string
+
+	// SetProfile 设置运行环境
+	SetProfile(profile string)
 
 	// Properties 获取 Properties 对象
 	Properties() Properties
@@ -44,14 +48,14 @@ type ApplicationContext interface {
 	// SetProperty 设置属性值，属性名称统一转成小写。
 	SetProperty(key string, value interface{})
 
-	// Context 返回上下文接口
-	Context() context.Context
+	// Configer 注册一个配置函数
+	Configer(configer *Configer)
 
-	// GetProfile 返回运行环境
-	GetProfile() string
+	// Config 注册一个配置函数
+	Config(fn interface{}, args ...Arg) *Configer
 
-	// SetProfile 设置运行环境
-	SetProfile(profile string)
+	// Bean 注册 bean.BeanDefinition 对象。
+	Bean(bd *BeanDefinition) *BeanDefinition
 
 	// ObjBean 将 Bean 转换为 BeanDefinition 对象
 	ObjBean(i interface{}) *BeanDefinition
@@ -62,14 +66,14 @@ type ApplicationContext interface {
 	// MethodBean 将成员方法转换为 BeanDefinition 对象
 	MethodBean(selector BeanSelector, method string, args ...Arg) *BeanDefinition
 
-	// RegisterBean 注册 bean.BeanDefinition 对象。
-	RegisterBean(bd *BeanDefinition) *BeanDefinition
-
 	// AutoWireBeans 对所有 Bean 进行依赖注入和属性绑定
 	AutoWireBeans()
 
 	// WireBean 对外部的 Bean 进行依赖注入和属性绑定
 	WireBean(i interface{})
+
+	// Beans 获取所有 Bean 的定义，不能保证解析和注入，请谨慎使用该函数!
+	Beans() []*BeanDefinition
 
 	// GetBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 	// 它和 FindBean 的区别是它在调用后能够保证返回的 Bean 已经完成了注入和绑定过程。
@@ -88,22 +92,16 @@ type ApplicationContext interface {
 	// selectors 列表的顺序对收集结果进行排序。
 	CollectBeans(i interface{}, selectors ...BeanSelector) bool
 
-	// GetBeanDefinitions 获取所有 Bean 的定义，不能保证解析和注入，请谨慎使用该函数!
-	GetBeanDefinitions() []*BeanDefinition
+	// Context 返回上下文接口
+	Context() context.Context
+
+	// SafeGoroutine 安全地启动一个 goroutine
+	Go(fn interface{}, args ...Arg)
+
+	// Invoke 立即执行一个一次性的任务
+	Invoke(fn interface{}, args ...Arg) error
 
 	// Close 关闭容器上下文，用于通知 Bean 销毁等。
 	// 该函数可以确保 Bean 的销毁顺序和注入顺序相反。
 	Close(beforeDestroy ...func())
-
-	// Invoke 立即执行一个一次性的任务
-	Invoke(fn interface{}, tags ...Arg) error
-
-	// Config 注册一个配置函数
-	Config(fn interface{}, tags ...Arg) *Configer
-
-	// WithConfig 注册一个配置函数
-	WithConfig(configer *Configer)
-
-	// SafeGoroutine 安全地启动一个 goroutine
-	Go(fn GoFunc)
 }
