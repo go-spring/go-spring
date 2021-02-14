@@ -646,9 +646,14 @@ func (ctx *applicationContext) Invoke(fn interface{}, args ...Arg) error {
 
 // Config 注册一个配置函数
 func (ctx *applicationContext) Config(fn interface{}, args ...Arg) *Configer {
-	configer := newConfiger(fn, args)
+	configer := Config(fn, args)
 	ctx.configers.PushBack(configer)
 	return configer
+}
+
+// WithConfig 注册一个配置函数
+func (ctx *applicationContext) WithConfig(configer *Configer) {
+	ctx.configers.PushBack(configer)
 }
 
 // Go 安全地启动一个 goroutine

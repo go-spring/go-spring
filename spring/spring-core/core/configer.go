@@ -31,8 +31,8 @@ type Configer struct {
 	after  []string  // 位于哪些配置函数之后
 }
 
-// newConfiger Configer 的构造函数，fn 不能返回 error 以外的其他值
-func newConfiger(fn interface{}, args []Arg) *Configer {
+// Config Configer 的构造函数，fn 不能返回 error 以外的其他值
+func Config(fn interface{}, args ...Arg) *Configer {
 
 	fnType := reflect.TypeOf(fn)
 	if fnType.Kind() != reflect.Func {

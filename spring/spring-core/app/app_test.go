@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-spring/spring-core/core"
 	"github.com/go-spring/spring-core/util"
 )
 
@@ -93,6 +94,12 @@ func TestApp(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 		_ = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
 	}()
-	New().WithBannerMode(BannerModeConsole).Run()
+	New().
+		Profile("dev").
+		WithBannerMode(BannerModeOff).
+		Property("spring.application.name", "test").
+		Bean(core.ObjBean(new(int)).WithName("int")).
+		Config(core.Config(func(i *int) { fmt.Println(i) }, "")).
+		Run()
 	t.Log("success")
 }

@@ -101,6 +101,9 @@ type ApplicationContext interface {
 	// Config 注册一个配置函数
 	Config(fn interface{}, tags ...Arg) *Configer
 
+	// WithConfig 注册一个配置函数
+	WithConfig(configer *Configer)
+
 	// SafeGoroutine 安全地启动一个 goroutine
 	Go(fn GoFunc)
 }

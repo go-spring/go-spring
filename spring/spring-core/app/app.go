@@ -445,7 +445,15 @@ func Invoke(fn interface{}, args ...core.Arg) error {
 
 // Config 注册一个配置函数
 func Config(fn interface{}, args ...core.Arg) *core.Configer {
-	return gApp.ApplicationContext().Config(fn, args...)
+	configer := core.Config(fn, args...)
+	gApp.Config(configer)
+	return configer
+}
+
+// Config 注册一个配置函数
+func (app *application) Config(configer *core.Configer) *application {
+	app.ApplicationContext().WithConfig(configer)
+	return app
 }
 
 type GoFuncWithContext func(context.Context)
