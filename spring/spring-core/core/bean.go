@@ -280,8 +280,7 @@ func (b *objectBean) beanClass() string {
 type functionBean struct {
 	objectBean
 
-	StringArg *fnStringBindingArg // 一般形式参数的绑定
-	OptionArg *FnOptionBindingArg // Option 参数的绑定
+	argList *ArgList
 }
 
 // IsFuncBeanType 返回以函数形式注册 Bean 的函数是否合法。一个合法
@@ -310,9 +309,9 @@ func IsFuncBeanType(fnType reflect.Type) bool {
 }
 
 // newFunctionBean functionBean 的构造函数，当 withReceiver 为 true 时 fnType 对应的函数
-// 其第一个参数视为接收者。tags 是 Bean 函数的一般参数的绑定值，这使得函数也具有了和结构体 Tag 机制
-// 类似的能力。tags 的值是结构体 tag 值的简化版，无需名字，另外所有的 tag 必须同时有或者同时没有序号。
-func newFunctionBean(fnType reflect.Type, withReceiver bool, tags []string) functionBean {
+// 其第一个参数视为接收者。args 是 Bean 函数的一般参数的绑定值，这使得函数也具有了和结构体 Tag 机制
+// 类似的能力。args 的值是结构体 tag 值的简化版，无需名字，另外所有的 tag 必须同时有或者同时没有序号。
+func newFunctionBean(fnType reflect.Type, withReceiver bool, args []Arg) functionBean {
 
 	// 检查 Bean 的注册函数是否合法
 	if !IsFuncBeanType(fnType) {
@@ -334,12 +333,8 @@ func newFunctionBean(fnType reflect.Type, withReceiver bool, tags []string) func
 	t := v.Type()
 
 	return functionBean{
-		objectBean: objectBean{
-			RType:    t,
-			RValue:   v,
-			typeName: TypeName(t),
-		},
-		StringArg: NewFnStringBindingArg(fnType, withReceiver, tags),
+		objectBean: objectBean{RType: t, RValue: v, typeName: TypeName(t)},
+		argList:    NewArgList(fnType, withReceiver, args),
 	}
 }
 
@@ -351,9 +346,9 @@ type constructorBean struct {
 }
 
 // newConstructorBean ConstructorBean 的构造函数，所有 tag 必须同时有或者同时没有序号。
-func newConstructorBean(fn interface{}, tags []string) *constructorBean {
+func newConstructorBean(fn interface{}, args []Arg) *constructorBean {
 	return &constructorBean{
-		functionBean: newFunctionBean(reflect.TypeOf(fn), false, tags),
+		functionBean: newFunctionBean(reflect.TypeOf(fn), false, args),
 		Fn:           fn,
 	}
 }
@@ -372,7 +367,7 @@ type methodBean struct {
 }
 
 // NewMethodBean MethodBean 的构造函数，所有 tag 必须同时有或者同时没有序号。
-func NewMethodBean(parent []*BeanDefinition, method string, tags []string) *methodBean {
+func NewMethodBean(parent []*BeanDefinition, method string, args []Arg) *methodBean {
 
 	parentType := parent[0].Type()
 	m, ok := parentType.MethodByName(method)
@@ -384,7 +379,7 @@ func NewMethodBean(parent []*BeanDefinition, method string, tags []string) *meth
 	withReceiver := parentType.Kind() != reflect.Interface
 
 	return &methodBean{
-		functionBean: newFunctionBean(m.Type, withReceiver, tags),
+		functionBean: newFunctionBean(m.Type, withReceiver, args),
 		Parent:       parent,
 		Method:       method,
 	}
@@ -404,17 +399,15 @@ type fakeMethodBean struct {
 
 	// 成员方法名称
 	Method string
-
-	// 成员方法标签
-	Tags []string
+	args   []Arg
 }
 
 // newFakeMethodBean fakeMethodBean 的构造函数，所有 tag 必须同时有或者同时没有序号。
-func newFakeMethodBean(selector BeanSelector, method string, tags []string) *fakeMethodBean {
+func newFakeMethodBean(selector BeanSelector, method string, args []Arg) *fakeMethodBean {
 	return &fakeMethodBean{
 		Selector: selector,
 		Method:   method,
-		Tags:     tags,
+		args:     args,
 	}
 }
 
@@ -616,20 +609,6 @@ func (d *BeanDefinition) WithCondition(cond Condition) *BeanDefinition {
 	return d
 }
 
-// Options 设置 Option 模式函数的 Option 参数绑定
-func (d *BeanDefinition) Options(options ...*OptionArg) *BeanDefinition {
-	arg := &FnOptionBindingArg{Options: options}
-	switch bean := d.bean.(type) {
-	case *constructorBean:
-		bean.OptionArg = arg
-	case *methodBean:
-		bean.OptionArg = arg
-	default:
-		panic(errors.New("error springBean type"))
-	}
-	return d
-}
-
 // DependsOn 设置 Bean 的间接依赖项
 func (d *BeanDefinition) DependsOn(selectors ...BeanSelector) *BeanDefinition {
 	d.dependsOn = append(d.dependsOn, selectors...)
@@ -664,8 +643,8 @@ func validLifeCycleFunc(fn interface{}, beanType reflect.Type) (reflect.Type, bo
 	return fnType, true
 }
 
-// Init 设置 Bean 的初始化函数，tags 是初始化函数的一般参数绑定
-func (d *BeanDefinition) Init(fn interface{}, tags ...string) *BeanDefinition {
+// Init 设置 Bean 的初始化函数，args 是初始化函数的一般参数绑定
+func (d *BeanDefinition) Init(fn interface{}, args ...Arg) *BeanDefinition {
 
 	fnType, ok := validLifeCycleFunc(fn, d.Type())
 	if !ok {
@@ -673,17 +652,16 @@ func (d *BeanDefinition) Init(fn interface{}, tags ...string) *BeanDefinition {
 	}
 
 	d.init = &Runnable{
-		Fn:           fn,
-		withReceiver: true, // 假装 Bean 是接收者
-		receiver:     d.Value(),
-		StringArg:    NewFnStringBindingArg(fnType, true, tags),
+		Fn:       fn,
+		receiver: d.Value(),
+		argList:  NewArgList(fnType, true, args),
 	}
 
 	return d
 }
 
-// Destroy 设置 Bean 的销毁函数，tags 是销毁函数的一般参数绑定
-func (d *BeanDefinition) Destroy(fn interface{}, tags ...string) *BeanDefinition {
+// Destroy 设置 Bean 的销毁函数，args 是销毁函数的一般参数绑定
+func (d *BeanDefinition) Destroy(fn interface{}, args ...Arg) *BeanDefinition {
 
 	fnType, ok := validLifeCycleFunc(fn, d.Type())
 	if !ok {
@@ -691,10 +669,9 @@ func (d *BeanDefinition) Destroy(fn interface{}, tags ...string) *BeanDefinition
 	}
 
 	d.destroy = &Runnable{
-		Fn:           fn,
-		withReceiver: true, // 假装 Bean 是接收者
-		receiver:     d.Value(),
-		StringArg:    NewFnStringBindingArg(fnType, true, tags),
+		Fn:       fn,
+		receiver: d.Value(),
+		argList:  NewArgList(fnType, true, args),
 	}
 
 	return d
@@ -758,16 +735,16 @@ func ObjBean(i interface{}) *BeanDefinition {
 }
 
 // CtorBean 将构造函数转换为 BeanDefinition 对象
-func CtorBean(fn interface{}, tags ...string) *BeanDefinition {
+func CtorBean(fn interface{}, args ...Arg) *BeanDefinition {
 	file, line := getFileLine()
-	return newBeanDefinition(newConstructorBean(fn, tags), file, line)
+	return newBeanDefinition(newConstructorBean(fn, args), file, line)
 }
 
 // MethodBean 将成员方法转换为 BeanDefinition 对象
-func MethodBean(selector BeanSelector, method string, tags ...string) *BeanDefinition {
+func MethodBean(selector BeanSelector, method string, args ...Arg) *BeanDefinition {
 	if selector == nil || selector == "" {
 		panic(errors.New("selector can't be nil or empty"))
 	}
 	file, line := getFileLine()
-	return newBeanDefinition(newFakeMethodBean(selector, method, tags), file, line)
+	return newBeanDefinition(newFakeMethodBean(selector, method, args), file, line)
 }

@@ -19,7 +19,6 @@ package core
 
 import (
 	"context"
-	"io"
 )
 
 type GoFunc func()
@@ -38,9 +37,6 @@ type ApplicationContext interface {
 
 	// LoadProperties 加载属性配置，支持 properties、yaml 和 toml 三种文件格式。
 	LoadProperties(filename string) error
-
-	// ReadProperties 读取属性配置，支持 properties、yaml 和 toml 三种文件格式。
-	ReadProperties(reader io.Reader, configType string) error
 
 	// GetProperty 返回属性值，不能存在返回 nil，属性名称统一转成小写。
 	GetProperty(key string) interface{}
@@ -61,10 +57,10 @@ type ApplicationContext interface {
 	ObjBean(i interface{}) *BeanDefinition
 
 	// CtorBean 将构造函数转换为 BeanDefinition 对象
-	CtorBean(fn interface{}, tags ...string) *BeanDefinition
+	CtorBean(fn interface{}, args ...Arg) *BeanDefinition
 
 	// MethodBean 将成员方法转换为 BeanDefinition 对象
-	MethodBean(selector BeanSelector, method string, tags ...string) *BeanDefinition
+	MethodBean(selector BeanSelector, method string, args ...Arg) *BeanDefinition
 
 	// RegisterBean 注册 bean.BeanDefinition 对象。
 	RegisterBean(bd *BeanDefinition) *BeanDefinition
@@ -100,10 +96,10 @@ type ApplicationContext interface {
 	Close(beforeDestroy ...func())
 
 	// Invoke 立即执行一个一次性的任务
-	Invoke(fn interface{}, tags ...string) error
+	Invoke(fn interface{}, tags ...Arg) error
 
 	// Config 注册一个配置函数
-	Config(fn interface{}, tags ...string) *Configer
+	Config(fn interface{}, tags ...Arg) *Configer
 
 	// SafeGoroutine 安全地启动一个 goroutine
 	Go(fn GoFunc)

@@ -83,9 +83,9 @@ func ObjBean(i interface{}) *core.BeanDefinition {
 }
 
 // CtorBean 注册单例构造函数 Bean，不指定名称，重复注册会 panic。
-func CtorBean(fn interface{}, tags ...string) *core.BeanDefinition {
+func CtorBean(fn interface{}, args ...core.Arg) *core.BeanDefinition {
 	checkRunning()
-	bd := core.CtorBean(fn, tags...)
+	bd := core.CtorBean(fn, args...)
 	gApp.Bean(bd)
 	return bd
 }
@@ -93,9 +93,9 @@ func CtorBean(fn interface{}, tags ...string) *core.BeanDefinition {
 // MethodBean 注册成员方法单例 Bean，不指定名称，重复注册会 panic。
 // 必须给定方法名而不能通过遍历方法列表比较方法类型的方式获得函数名，因为不同方法的类型可能相同。
 // 而且 interface 的方法类型不带 receiver 而成员方法的类型带有 receiver，两者类型也不好匹配。
-func MethodBean(selector core.BeanSelector, method string, tags ...string) *core.BeanDefinition {
+func MethodBean(selector core.BeanSelector, method string, args ...core.Arg) *core.BeanDefinition {
 	checkRunning()
-	bd := core.MethodBean(selector, method, tags...)
+	bd := core.MethodBean(selector, method, args...)
 	gApp.Bean(bd)
 	return bd
 }
@@ -150,13 +150,13 @@ func Properties() core.Properties {
 }
 
 // Invoke 立即执行一个一次性的任务
-func Invoke(fn interface{}, tags ...string) error {
-	return gApp.ApplicationContext().Invoke(fn, tags...)
+func Invoke(fn interface{}, args ...core.Arg) error {
+	return gApp.ApplicationContext().Invoke(fn, args...)
 }
 
 // Config 注册一个配置函数
-func Config(fn interface{}, tags ...string) *core.Configer {
-	return gApp.ApplicationContext().Config(fn, tags...)
+func Config(fn interface{}, args ...core.Arg) *core.Configer {
+	return gApp.ApplicationContext().Config(fn, args...)
 }
 
 type GoFuncWithContext func(context.Context)

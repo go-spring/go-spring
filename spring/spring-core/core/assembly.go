@@ -541,14 +541,8 @@ func (assembly *defaultBeanAssembly) wireFunctionBean(fnValue reflect.Value, fnB
 	// 获取输入参数
 	var in []reflect.Value
 
-	if fnBean.StringArg != nil {
-		if r := fnBean.StringArg.Get(assembly, bd.FileLine()); len(r) > 0 {
-			in = append(in, r...)
-		}
-	}
-
-	if fnBean.OptionArg != nil {
-		if r := fnBean.OptionArg.Get(assembly, bd.FileLine()); len(r) > 0 {
+	if fnBean.argList != nil {
+		if r := fnBean.argList.Get(assembly, bd.FileLine()); len(r) > 0 {
 			in = append(in, r...)
 		}
 	}

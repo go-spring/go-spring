@@ -32,7 +32,7 @@ type Configer struct {
 }
 
 // newConfiger Configer 的构造函数，fn 不能返回 error 以外的其他值
-func newConfiger(fn interface{}, tags []string) *Configer {
+func newConfiger(fn interface{}, args []Arg) *Configer {
 
 	fnType := reflect.TypeOf(fn)
 	if fnType.Kind() != reflect.Func {
@@ -41,8 +41,8 @@ func newConfiger(fn interface{}, tags []string) *Configer {
 
 	return &Configer{
 		Runnable: Runnable{
-			Fn:        fn,
-			StringArg: NewFnStringBindingArg(fnType, false, tags),
+			Fn:      fn,
+			argList: NewArgList(fnType, false, args),
 		},
 	}
 }
@@ -50,12 +50,6 @@ func newConfiger(fn interface{}, tags []string) *Configer {
 // WithName 为 Configer 设置一个名称，用于排序
 func (c *Configer) WithName(name string) *Configer {
 	c.name = name
-	return c
-}
-
-// Options 设置 Option 模式函数的参数绑定
-func (c *Configer) Options(options ...*OptionArg) *Configer {
-	c.OptionArg = &FnOptionBindingArg{Options: options}
 	return c
 }
 

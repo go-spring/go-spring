@@ -36,7 +36,7 @@ func TestRunner_Run(t *testing.T) {
 			_ = ctx.Invoke(func(i *int, version string) {
 				fmt.Println("version:", version)
 				fmt.Println("int:", *i)
-			}, "1:${version}")
+			}, "", "${version}")
 		}, "should call after AutoWireBeans")
 
 		ctx.AutoWireBeans()
@@ -52,7 +52,7 @@ func TestRunner_Run(t *testing.T) {
 		_ = ctx.Invoke(func(i *int, version string) {
 			fmt.Println("version:", version)
 			fmt.Println("int:", *i)
-		}, "1:${version}")
+		}, "", "${version}")
 	})
 
 	t.Run("run", func(t *testing.T) {
@@ -68,6 +68,6 @@ func TestRunner_Run(t *testing.T) {
 			fmt.Println("int:", *i)
 		}
 
-		_ = ctx.Invoke(fn, "1:${version}")
+		_ = ctx.Invoke(fn, "", "${version}")
 	})
 }

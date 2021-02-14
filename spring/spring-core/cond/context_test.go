@@ -207,7 +207,7 @@ func TestDefaultSpringContext(t *testing.T) {
 		ctx := core.NewApplicationContext()
 		ctx.SetProperty("president", "CaiYuanPei")
 		ctx.SetProperty("class_floor", 2)
-		ctx.RegisterBean(core.CtorBean(NewClassRoom).Options(
+		ctx.RegisterBean(core.CtorBean(NewClassRoom,
 			core.NewOptionArg(withClassName,
 				"${class_name:=二年级03班}",
 				"${class_floor:=3}",
@@ -229,7 +229,7 @@ func TestDefaultSpringContext(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
 		ctx.SetProperty("president", "CaiYuanPei")
-		ctx.RegisterBean(core.CtorBean(NewClassRoom).Options(
+		ctx.RegisterBean(core.CtorBean(NewClassRoom,
 			core.NewOptionArg(withClassName,
 				"${class_name:=二年级03班}",
 				"${class_floor:=3}",

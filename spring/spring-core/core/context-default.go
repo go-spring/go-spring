@@ -21,7 +21,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"reflect"
 	"sync"
 
@@ -56,6 +55,9 @@ func newBeanCacheItem() *beanCacheItem {
 func (item *beanCacheItem) store(bd *BeanDefinition) {
 	item.beans = append(item.beans, bd)
 }
+
+// 验证 applicationContext 是否实现 ApplicationContext 接口
+var _ = (ApplicationContext)((*applicationContext)(nil))
 
 // applicationContext ApplicationContext 的默认实现
 type applicationContext struct {
@@ -105,11 +107,6 @@ func (ctx *applicationContext) Properties() Properties {
 // LoadProperties 加载属性配置，支持 properties、yaml 和 toml 三种文件格式。
 func (ctx *applicationContext) LoadProperties(filename string) error {
 	return ctx.properties.Load(filename)
-}
-
-// ReadProperties 读取属性配置，支持 properties、yaml 和 toml 三种文件格式。
-func (ctx *applicationContext) ReadProperties(reader io.Reader, configType string) error {
-	return ctx.properties.Read(reader, configType)
 }
 
 // GetProperty 返回属性值，不能存在返回 nil，属性名称统一转成小写。
@@ -173,13 +170,13 @@ func (ctx *applicationContext) ObjBean(i interface{}) *BeanDefinition {
 }
 
 // CtorBean 将构造函数转换为 BeanDefinition 对象
-func (ctx *applicationContext) CtorBean(fn interface{}, tags ...string) *BeanDefinition {
-	return ctx.RegisterBean(CtorBean(fn, tags...))
+func (ctx *applicationContext) CtorBean(fn interface{}, args ...Arg) *BeanDefinition {
+	return ctx.RegisterBean(CtorBean(fn, args...))
 }
 
 // MethodBean 将成员方法转换为 BeanDefinition 对象
-func (ctx *applicationContext) MethodBean(selector BeanSelector, method string, tags ...string) *BeanDefinition {
-	return ctx.RegisterBean(MethodBean(selector, method, tags...))
+func (ctx *applicationContext) MethodBean(selector BeanSelector, method string, args ...Arg) *BeanDefinition {
+	return ctx.RegisterBean(MethodBean(selector, method, args...))
 }
 
 func (ctx *applicationContext) RegisterBean(bd *BeanDefinition) *BeanDefinition {
@@ -495,7 +492,7 @@ func (ctx *applicationContext) registerAllBeans() {
 			panic(fmt.Errorf("can't find parent bean: \"%s\"", selector))
 		}
 
-		bd.bean = NewMethodBean(result, b.Method, b.Tags)
+		bd.bean = NewMethodBean(result, b.Method, b.args)
 		ctx.registerBeanDefinition(bd)
 	}
 }
@@ -642,14 +639,14 @@ func (ctx *applicationContext) Close(beforeDestroy ...func()) {
 }
 
 // Invoke 立即执行一个一次性的任务
-func (ctx *applicationContext) Invoke(fn interface{}, Tags ...string) error {
+func (ctx *applicationContext) Invoke(fn interface{}, args ...Arg) error {
 	ctx.checkAutoWired()
-	return newRunner(ctx, fn, Tags).run()
+	return newRunner(ctx, fn, args).run()
 }
 
 // Config 注册一个配置函数
-func (ctx *applicationContext) Config(fn interface{}, Tags ...string) *Configer {
-	configer := newConfiger(fn, Tags)
+func (ctx *applicationContext) Config(fn interface{}, args ...Arg) *Configer {
+	configer := newConfiger(fn, args)
 	ctx.configers.PushBack(configer)
 	return configer
 }

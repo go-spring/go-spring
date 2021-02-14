@@ -778,9 +778,9 @@ func TestApplicationContext_RegisterBeanFn(t *testing.T) {
 	ctx.RegisterBean(core.ObjBean(Teacher(newHistoryTeacher(""))).Export((*Teacher)(nil)))
 
 	ctx.RegisterBean(core.CtorBean(NewStudent, "", "${room}").WithName("st1"))
-	ctx.RegisterBean(core.CtorBean(NewPtrStudent, "1:${room}").WithName("st2"))
+	ctx.RegisterBean(core.CtorBean(NewPtrStudent, "", "${room}").WithName("st2"))
 	ctx.RegisterBean(core.CtorBean(NewStudent, "?", "${room:=http://}").WithName("st3"))
-	ctx.RegisterBean(core.CtorBean(NewPtrStudent, "0:?", "1:${room:=4567}").WithName("st4"))
+	ctx.RegisterBean(core.CtorBean(NewPtrStudent, "?", "${room:=4567}").WithName("st4"))
 
 	mapFn := func() map[int]string {
 		return map[int]string{
@@ -1534,7 +1534,7 @@ func TestOptionConstructorArg(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
 		ctx.SetProperty("president", "CaiYuanPei")
-		ctx.RegisterBean(core.CtorBean(NewClassRoom).Options())
+		ctx.RegisterBean(core.CtorBean(NewClassRoom))
 		ctx.AutoWireBeans()
 
 		var cls *ClassRoom
@@ -1549,11 +1549,7 @@ func TestOptionConstructorArg(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
 		ctx.SetProperty("president", "CaiYuanPei")
-		ctx.RegisterBean(core.CtorBean(NewClassRoom).Options(
-			core.NewOptionArg(withClassName,
-				"${class_name:=二年级03班}",
-				"${class_floor:=3}"),
-		))
+		ctx.RegisterBean(core.CtorBean(NewClassRoom, core.NewOptionArg(withClassName, "${class_name:=二年级03班}", "${class_floor:=3}")))
 		ctx.AutoWireBeans()
 
 		var cls *ClassRoom
@@ -1570,9 +1566,7 @@ func TestOptionConstructorArg(t *testing.T) {
 		ctx := core.NewApplicationContext()
 		ctx.SetProperty("class_name", "二年级03班")
 		ctx.SetProperty("president", "CaiYuanPei")
-		ctx.RegisterBean(core.CtorBean(NewClassRoom).Options(
-			core.NewOptionArg(withStudents, ""),
-		))
+		ctx.RegisterBean(core.CtorBean(NewClassRoom, core.NewOptionArg(withStudents, "")))
 		ctx.RegisterBean(core.ObjBean([]*Student{
 			new(Student), new(Student),
 		}))
@@ -1592,13 +1586,9 @@ func TestOptionConstructorArg(t *testing.T) {
 		ctx := core.NewApplicationContext()
 		ctx.SetProperty("class_name", "二年级06班")
 		ctx.SetProperty("president", "CaiYuanPei")
-		ctx.RegisterBean(core.CtorBean(NewClassRoom).Options(
+		ctx.RegisterBean(core.CtorBean(NewClassRoom,
 			core.NewOptionArg(withStudents, ""),
-			core.NewOptionArg(
-				withClassName, // 故意写反
-				"1:${class_floor:=3}",
-				"0:${class_name:=二年级03班}",
-			),
+			core.NewOptionArg(withClassName, "${class_name:=二年级03班}", "${class_floor:=3}"),
 		))
 		ctx.RegisterBean(core.ObjBean([]*Student{
 			new(Student), new(Student),
@@ -1974,14 +1964,12 @@ func NewVarObj(s string, options ...VarOptionFunc) *VarObj {
 
 func TestApplicationContext_RegisterOptionBean(t *testing.T) {
 
-	t.Run("variacorec option param 1", func(t *testing.T) {
+	t.Run("variable option param 1", func(t *testing.T) {
 		ctx := core.NewApplicationContext()
 		ctx.SetProperty("var.obj", "description")
 		ctx.RegisterBean(core.ObjBean(&Var{"v1"}).WithName("v1"))
 		ctx.RegisterBean(core.ObjBean(&Var{"v2"}).WithName("v2"))
-		ctx.RegisterBean(core.CtorBean(NewVarObj, "${var.obj}").Options(
-			core.NewOptionArg(withVar, "v1"),
-		))
+		ctx.RegisterBean(core.CtorBean(NewVarObj, "${var.obj}", core.NewOptionArg(withVar, "v1")))
 		ctx.AutoWireBeans()
 
 		var obj *VarObj
@@ -1992,14 +1980,12 @@ func TestApplicationContext_RegisterOptionBean(t *testing.T) {
 		util.AssertEqual(t, obj.s, "description")
 	})
 
-	t.Run("variacorec option param 2", func(t *testing.T) {
+	t.Run("variable option param 2", func(t *testing.T) {
 		ctx := core.NewApplicationContext()
 		ctx.SetProperty("var.obj", "description")
 		ctx.RegisterBean(core.ObjBean(&Var{"v1"}).WithName("v1"))
 		ctx.RegisterBean(core.ObjBean(&Var{"v2"}).WithName("v2"))
-		ctx.RegisterBean(core.CtorBean(NewVarObj, "${var.obj}").Options(
-			core.NewOptionArg(withVar, "v1", "v2"),
-		))
+		ctx.RegisterBean(core.CtorBean(NewVarObj, "${var.obj}", core.NewOptionArg(withVar, "v1", "v2")))
 		ctx.AutoWireBeans()
 
 		var obj *VarObj
@@ -2011,13 +1997,11 @@ func TestApplicationContext_RegisterOptionBean(t *testing.T) {
 		util.AssertEqual(t, obj.s, "description")
 	})
 
-	t.Run("variacorec option interface param 1", func(t *testing.T) {
+	t.Run("variable option interface param 1", func(t *testing.T) {
 		ctx := core.NewApplicationContext()
 		ctx.RegisterBean(core.ObjBean(&Var{"v1"}).WithName("v1").Export((*interface{})(nil)))
 		ctx.RegisterBean(core.ObjBean(&Var{"v2"}).WithName("v2").Export((*interface{})(nil)))
-		ctx.RegisterBean(core.CtorBean(NewVarInterfaceObj).Options(
-			core.NewOptionArg(withVarInterface, "v1"),
-		))
+		ctx.RegisterBean(core.CtorBean(NewVarInterfaceObj, core.NewOptionArg(withVarInterface, "v1")))
 		ctx.AutoWireBeans()
 
 		var obj *VarInterfaceObj
@@ -2026,13 +2010,11 @@ func TestApplicationContext_RegisterOptionBean(t *testing.T) {
 		util.AssertEqual(t, len(obj.v), 1)
 	})
 
-	t.Run("variacorec option interface param 1", func(t *testing.T) {
+	t.Run("variable option interface param 1", func(t *testing.T) {
 		ctx := core.NewApplicationContext()
 		ctx.RegisterBean(core.ObjBean(&Var{"v1"}).WithName("v1").Export((*interface{})(nil)))
 		ctx.RegisterBean(core.ObjBean(&Var{"v2"}).WithName("v2").Export((*interface{})(nil)))
-		ctx.RegisterBean(core.CtorBean(NewVarInterfaceObj).Options(
-			core.NewOptionArg(withVarInterface, "v1", "v2"),
-		))
+		ctx.RegisterBean(core.CtorBean(NewVarInterfaceObj, core.NewOptionArg(withVarInterface, "v1", "v2")))
 		ctx.AutoWireBeans()
 
 		var obj *VarInterfaceObj
@@ -2236,7 +2218,7 @@ func TestApplicationContext_Close(t *testing.T) {
 func TestApplicationContext_BeanNotFound(t *testing.T) {
 	util.AssertPanic(t, func() {
 		ctx := core.NewApplicationContext()
-		ctx.RegisterBean(core.CtorBean(func(i *int) bool { return false }))
+		ctx.RegisterBean(core.CtorBean(func(i *int) bool { return false }, ""))
 		ctx.AutoWireBeans()
 	}, "can't find bean, bean: \"\" field:  type: \\*int")
 }

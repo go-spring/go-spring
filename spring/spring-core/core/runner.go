@@ -30,7 +30,7 @@ type Runner struct {
 }
 
 // newRunner Runner 的构造函数，fn 不能返回 error 以外的其他值
-func newRunner(ctx *applicationContext, fn interface{}, tags []string) *Runner {
+func newRunner(ctx *applicationContext, fn interface{}, args []Arg) *Runner {
 
 	fnType := reflect.TypeOf(fn)
 	if fnType.Kind() != reflect.Func {
@@ -40,8 +40,8 @@ func newRunner(ctx *applicationContext, fn interface{}, tags []string) *Runner {
 	return &Runner{
 		ctx: ctx,
 		r: Runnable{
-			Fn:        fn,
-			StringArg: NewFnStringBindingArg(fnType, false, tags),
+			Fn:      fn,
+			argList: NewArgList(fnType, false, args),
 		},
 	}
 }
