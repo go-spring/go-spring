@@ -118,7 +118,7 @@ func (argList *ArgList) getArgValue(t reflect.Type, arg Arg, assembly beanAssemb
 			}
 			return v
 		}
-	case *OptionArg:
+	case *option:
 		{
 			return tArg.call(assembly)
 		}
@@ -126,11 +126,12 @@ func (argList *ArgList) getArgValue(t reflect.Type, arg Arg, assembly beanAssemb
 	panic("getArgValue:::")
 }
 
-//type ValueArg struct {
-//}
+type value struct{ v interface{} }
 
-// OptionArg Option 函数的绑定参数
-type OptionArg struct {
+func Value(v interface{}) *value { return &value{v: v} }
+
+// option Option 函数的绑定参数
+type option struct {
 	cond Condition // 判断条件
 
 	fn      interface{}
@@ -145,8 +146,8 @@ func validOptionFunc(fnType reflect.Type) bool {
 	return fnType.Kind() == reflect.Func && fnType.NumOut() == 1
 }
 
-// NewOptionArg OptionArg 的构造函数，args 是 Option 函数的一般参数绑定
-func NewOptionArg(fn interface{}, strArgs ...string) *OptionArg {
+// Option Option 的构造函数，args 是 Option 函数的一般参数绑定
+func Option(fn interface{}, args ...string) *option {
 
 	var (
 		file string
@@ -174,31 +175,31 @@ func NewOptionArg(fn interface{}, strArgs ...string) *OptionArg {
 		panic(errors.New("option func must be func(...)option"))
 	}
 
-	args := make([]Arg, len(strArgs))
-	for i, arg := range strArgs {
-		args[i] = arg
+	fnArgs := make([]Arg, len(args))
+	for i, arg := range args {
+		fnArgs[i] = arg
 	}
 
-	return &OptionArg{
+	return &option{
 		fn:      fn,
-		argList: NewArgList(fnType, false, args),
+		argList: NewArgList(fnType, false, fnArgs),
 		file:    file,
 		line:    line,
 	}
 }
 
-func (arg *OptionArg) FileLine() string {
+func (arg *option) FileLine() string {
 	return fmt.Sprintf("%s:%d", arg.file, arg.line)
 }
 
-// WithCondition 为 OptionArg 设置一个 Condition
-func (arg *OptionArg) WithCondition(cond Condition) *OptionArg {
+// WithCondition 为 Option 设置一个 Condition
+func (arg *option) WithCondition(cond Condition) *option {
 	arg.cond = cond
 	return arg
 }
 
-// call 获取 OptionArg 的运算值
-func (arg *OptionArg) call(assembly beanAssembly) reflect.Value {
+// call 获取 Option 的运算值
+func (arg *option) call(assembly beanAssembly) reflect.Value {
 
 	defer log.Tracef("call option func success %s", arg.FileLine())
 	log.Tracef("call option func %s", arg.FileLine())

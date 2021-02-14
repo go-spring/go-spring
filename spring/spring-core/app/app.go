@@ -17,6 +17,7 @@
 package app
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -61,7 +62,7 @@ type AfterPrepareFunc func(ctx core.ApplicationContext)
 
 // application 应用
 type application struct {
-	core.ApplicationContext // 应用上下文
+	appCtx core.ApplicationContext // 应用上下文
 
 	cfgLocation         []string           // 配置文件目录
 	banner              string             // Banner 的内容
@@ -75,10 +76,12 @@ type application struct {
 	exitChan chan struct{}
 }
 
-// newApp application 的构造函数
-func newApp() *application {
+var gApp = New()
+
+// New application 的构造函数
+func New() *application {
 	return &application{
-		ApplicationContext:  core.NewApplicationContext(),
+		appCtx:              core.NewApplicationContext(),
 		cfgLocation:         append([]string{}, DefaultConfigLocation),
 		bannerMode:          BannerModeConsole,
 		expectSysProperties: []string{`.*`},
@@ -101,23 +104,23 @@ func (app *application) start(cfgLocation ...string) {
 
 	// 执行所有 app.prepare() 之后执行的扩展点
 	for _, fn := range app.listOfAfterPrepare {
-		fn(app)
+		fn(app.appCtx)
 	}
 
 	// 注册 ApplicationContext 接口
-	app.RegisterBean(core.ObjBean(app).Export((*core.ApplicationContext)(nil)))
+	app.appCtx.ObjBean(app.appCtx).Export((*core.ApplicationContext)(nil))
 
 	// 依赖注入、属性绑定、初始化
-	app.AutoWireBeans()
+	app.appCtx.AutoWireBeans()
 
 	// 执行命令行启动器
 	for _, r := range app.Runners {
-		r.Run(app)
+		r.Run(app.appCtx)
 	}
 
 	// 通知应用启动事件
 	for _, b := range app.Events {
-		b.OnStartApplication(app)
+		b.OnStartApplication(app.appCtx)
 	}
 
 	log.Info("application started")
@@ -251,7 +254,7 @@ func (app *application) prepare() {
 
 	// 将通过代码设置的属性值拷贝一份，第 1 层
 	apiConfig := core.New()
-	app.Properties().Range(func(k string, v interface{}) { apiConfig.Set(k, v) })
+	app.appCtx.Properties().Range(func(k string, v interface{}) { apiConfig.Set(k, v) })
 
 	// 加载默认的应用配置文件，如 application.conf，第 5 层
 	appConfig := app.loadProfileConfig("")
@@ -266,13 +269,13 @@ func (app *application) prepare() {
 	p.InsertBefore(cmdArgs, sysEnv)
 
 	// 加载特定环境的配置文件，如 application-test.conf
-	profile := app.GetProfile()
+	profile := app.appCtx.GetProfile()
 	if profile == "" {
 		keys := []string{SpringProfile, SPRING_PROFILE}
 		profile = cast.ToString(p.GetFirst(keys...))
 	}
 	if profile != "" {
-		app.SetProfile(profile) // 第 4 层
+		app.appCtx.SetProfile(profile) // 第 4 层
 		profileConfig := app.loadProfileConfig(profile)
 		p.InsertBefore(profileConfig, appConfig)
 	}
@@ -283,7 +286,7 @@ func (app *application) prepare() {
 	// 将重组后的属性值写入 ApplicationContext 属性列表
 	for key, value := range properties {
 		value = app.resolveProperty(properties, key, value)
-		app.SetProperty(key, value)
+		app.appCtx.SetProperty(key, value)
 	}
 }
 
@@ -300,11 +303,161 @@ func (app *application) close() {
 	// 的退出了，而这只需要 Context 一 cancel 也就完事了。
 
 	// 通知 Bean 销毁
-	app.Close(func() {
+	app.appCtx.Close(func() {
 		for _, b := range app.Events {
-			b.OnStopApplication(app)
+			b.OnStopApplication(app.appCtx)
 		}
 	})
+}
+
+func (app *application) ApplicationContext() core.ApplicationContext {
+	return app.appCtx
+}
+
+// WithBannerMode 设置 Banner 的显式模式
+func WithBannerMode(mode BannerMode) {
+	gApp.WithBannerMode(mode)
+}
+
+func (app *application) WithBannerMode(mode BannerMode) *application {
+	app.bannerMode = mode
+	return app
+}
+
+// AfterPrepare 注册一个 gApp.prepare() 执行完成之后的扩展点
+func AfterPrepare(fn AfterPrepareFunc) {
+	gApp.AfterPrepare(fn)
+}
+
+func (app *application) AfterPrepare(fn AfterPrepareFunc) *application {
+	app.listOfAfterPrepare = append(app.listOfAfterPrepare, fn)
+	return app
+}
+
+// ExpectSysProperties 期望从系统环境变量中获取到的属性，支持正则表达式
+func ExpectSysProperties(pattern ...string) {
+	gApp.ExpectSysProperties(pattern...)
+}
+
+func (app *application) ExpectSysProperties(pattern ...string) *application {
+	app.expectSysProperties = pattern
+	return app
+}
+
+// Bean 注册 bean.BeanDefinition 对象。
+func (app *application) Bean(bd *core.BeanDefinition) *application {
+	app.appCtx.RegisterBean(bd)
+	return app
+}
+
+// GetProfile 返回运行环境
+func GetProfile() string {
+	return gApp.ApplicationContext().GetProfile()
+}
+
+// Profile 设置运行环境
+func Profile(profile string) {
+	gApp.Profile(profile)
+}
+
+// Profile 设置运行环境
+func (app *application) Profile(profile string) *application {
+	gApp.ApplicationContext().SetProfile(profile)
+	return app
+}
+
+// ObjBean 注册单例 Bean，不指定名称，重复注册会 panic。
+func ObjBean(i interface{}) *core.BeanDefinition {
+	bd := core.ObjBean(i)
+	gApp.Bean(bd)
+	return bd
+}
+
+// CtorBean 注册单例构造函数 Bean，不指定名称，重复注册会 panic。
+func CtorBean(fn interface{}, args ...core.Arg) *core.BeanDefinition {
+	bd := core.CtorBean(fn, args...)
+	gApp.Bean(bd)
+	return bd
+}
+
+// MethodBean 注册成员方法单例 Bean，不指定名称，重复注册会 panic。
+// 必须给定方法名而不能通过遍历方法列表比较方法类型的方式获得函数名，因为不同方法的类型可能相同。
+// 而且 interface 的方法类型不带 receiver 而成员方法的类型带有 receiver，两者类型也不好匹配。
+func MethodBean(selector core.BeanSelector, method string, args ...core.Arg) *core.BeanDefinition {
+	bd := core.MethodBean(selector, method, args...)
+	gApp.Bean(bd)
+	return bd
+}
+
+// WireBean 对外部的 Bean 进行依赖注入和属性绑定
+func WireBean(i interface{}) {
+	gApp.ApplicationContext().WireBean(i)
+}
+
+// GetBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
+// 它和 FindBean 的区别是它在调用后能够保证返回的 Bean 已经完成了注入和绑定过程。
+func GetBean(i interface{}, selector ...core.BeanSelector) bool {
+	return gApp.ApplicationContext().GetBean(i, selector...)
+}
+
+// FindBean 查询单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
+// 它和 GetBean 的区别是它在调用后不能保证返回的 Bean 已经完成了注入和绑定过程。
+func FindBean(selector core.BeanSelector) (*core.BeanDefinition, bool) {
+	return gApp.ApplicationContext().FindBean(selector)
+}
+
+// CollectBeans 收集数组或指针定义的所有符合条件的 Bean，收集到返回 true，否则返
+// 回 false。该函数有两种模式:自动模式和指定模式。自动模式是指 selectors 参数为空，
+// 这时候不仅会收集符合条件的单例 Bean，还会收集符合条件的数组 Bean (是指数组的元素
+// 符合条件，然后把数组元素拆开一个个放到收集结果里面)。指定模式是指 selectors 参数
+// 不为空，这时候只会收集单例 Bean，而且要求这些单例 Bean 不仅需要满足收集条件，而且
+// 必须满足 selector 条件。另外，自动模式下不对收集结果进行排序，指定模式下根据
+// selectors 列表的顺序对收集结果进行排序。
+func CollectBeans(i interface{}, selectors ...core.BeanSelector) bool {
+	return gApp.ApplicationContext().CollectBeans(i, selectors...)
+}
+
+// GetBeanDefinitions 获取所有 Bean 的定义，不能保证解析和注入，请谨慎使用该函数!
+func GetBeanDefinitions() []*core.BeanDefinition {
+	return gApp.ApplicationContext().GetBeanDefinitions()
+}
+
+// GetProperty 返回属性值，不能存在返回 nil，属性名称统一转成小写。
+func GetProperty(key string) interface{} {
+	return gApp.ApplicationContext().GetProperty(key)
+}
+
+// Property 设置属性值，属性名称统一转成小写。
+func Property(key string, value interface{}) {
+	gApp.Property(key, value)
+}
+
+// Property 设置属性值，属性名称统一转成小写。
+func (app *application) Property(key string, value interface{}) *application {
+	app.appCtx.SetProperty(key, value)
+	return app
+}
+
+// Invoke 立即执行一个一次性的任务
+func Invoke(fn interface{}, args ...core.Arg) error {
+	return gApp.ApplicationContext().Invoke(fn, args...)
+}
+
+// Config 注册一个配置函数
+func Config(fn interface{}, args ...core.Arg) *core.Configer {
+	return gApp.ApplicationContext().Config(fn, args...)
+}
+
+type GoFuncWithContext func(context.Context)
+
+// Go 安全地启动一个 goroutine
+func Go(fn GoFuncWithContext) {
+	gApp.ApplicationContext().Go(func() { fn(gApp.ApplicationContext().Context()) })
+}
+
+// Run 快速启动 boot 应用
+func Run(cfgLocation ...string) {
+	gApp.Run(cfgLocation...)
 }
 
 func (app *application) Run(cfgLocation ...string) {
@@ -321,6 +474,11 @@ func (app *application) Run(cfgLocation ...string) {
 	app.start(cfgLocation...)
 	<-app.exitChan
 	app.close()
+}
+
+// ShutDown 退出 boot 应用
+func ShutDown() {
+	gApp.ShutDown()
 }
 
 // ShutDown 关闭执行器

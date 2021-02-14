@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"reflect"
 
+	"github.com/go-spring/spring-core/app"
 	"github.com/go-spring/spring-core/core"
 	"github.com/go-spring/spring-core/util"
 )
@@ -81,5 +82,5 @@ func (s *GRpcServer) CheckCondition(ctx core.ApplicationContext) bool {
 
 // RegisterGRpcClient 注册 gRPC 服务客户端，fn 是 gRPC 自动生成的客户端构造函数
 func RegisterGRpcClient(fn interface{}, endpoint string) *core.BeanDefinition {
-	return CtorBean(fn, endpoint)
+	return app.CtorBean(fn, endpoint)
 }
