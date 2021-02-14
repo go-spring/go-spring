@@ -36,11 +36,9 @@ const defaultBanner = `
 // version 版本信息
 const version = `go-spring@v1.0.5    http://go-spring.com/`
 
-type BannerMode int
-
 const (
-	BannerModeOff     BannerMode = 0
-	BannerModeConsole BannerMode = 1
+	BannerModeOff     = 0
+	BannerModeConsole = 1
 )
 
 // SetBanner 设置自定义 Banner 字符串

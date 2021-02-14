@@ -66,7 +66,7 @@ type application struct {
 
 	cfgLocation         []string           // 配置文件目录
 	banner              string             // Banner 的内容
-	bannerMode          BannerMode         // Banner 的显式模式
+	bannerMode          int                // Banner 的显式模式
 	expectSysProperties []string           // 期望从系统环境变量中获取到的属性，支持正则表达式
 	listOfAfterPrepare  []AfterPrepareFunc // app.prepare() 执行完成之后的扩展点的集合
 
@@ -74,6 +74,8 @@ type application struct {
 	Runners []CommandLineRunner `autowire:"${command-line-runner.collection:=[]?}"`
 
 	exitChan chan struct{}
+
+	webMapping *WebMapping // Web 路由映射表
 }
 
 var gApp = New()
@@ -86,6 +88,7 @@ func New() *application {
 		bannerMode:          BannerModeConsole,
 		expectSysProperties: []string{`.*`},
 		exitChan:            make(chan struct{}),
+		webMapping:          NewWebMapping(),
 	}
 }
 
@@ -314,12 +317,12 @@ func (app *application) ApplicationContext() core.ApplicationContext {
 	return app.appCtx
 }
 
-// WithBannerMode 设置 Banner 的显式模式
-func WithBannerMode(mode BannerMode) {
-	gApp.WithBannerMode(mode)
+// BannerMode 设置 Banner 的显示模式
+func BannerMode(mode int) {
+	gApp.BannerMode(mode)
 }
 
-func (app *application) WithBannerMode(mode BannerMode) *application {
+func (app *application) BannerMode(mode int) *application {
 	app.bannerMode = mode
 	return app
 }

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package boot
+package app
 
 import (
 	"github.com/go-spring/spring-core/core"
@@ -184,27 +184,24 @@ func (r *Router) DeleteBinding(path string, fn interface{}, filters ...core.Bean
 
 ///////////////////// 全局函数 /////////////////////////////
 
-// DefaultWebMapping 默认的 Web 路由映射表
-var DefaultWebMapping = NewWebMapping()
-
 // Route 返回和 Mapping 绑定的路由分组
 func Route(basePath string, filters ...core.BeanSelector) *Router {
-	return newRouter(DefaultWebMapping, basePath, filters)
+	return newRouter(gApp.webMapping, basePath, filters)
 }
 
 // HandleRequest 注册任意 HTTP 方法处理函数
 func HandleRequest(method uint32, path string, fn web.Handler, filters ...core.BeanSelector) *Mapping {
-	return DefaultWebMapping.HandleRequest(method, path, fn, filters)
+	return gApp.webMapping.HandleRequest(method, path, fn, filters)
 }
 
 // RequestMapping 注册任意 HTTP 方法处理函数
 func RequestMapping(method uint32, path string, fn web.HandlerFunc, filters ...core.BeanSelector) *Mapping {
-	return DefaultWebMapping.HandleRequest(method, path, web.FUNC(fn), filters)
+	return gApp.webMapping.HandleRequest(method, path, web.FUNC(fn), filters)
 }
 
 // RequestBinding 注册任意 HTTP 方法处理函数
 func RequestBinding(method uint32, path string, fn interface{}, filters ...core.BeanSelector) *Mapping {
-	return DefaultWebMapping.HandleRequest(method, path, web.BIND(fn), filters)
+	return gApp.webMapping.HandleRequest(method, path, web.BIND(fn), filters)
 }
 
 // HandleGet 注册 GET 方法处理函数
@@ -265,4 +262,24 @@ func DeleteMapping(path string, fn web.HandlerFunc, filters ...core.BeanSelector
 // DeleteBinding 注册 DELETE 方法处理函数
 func DeleteBinding(path string, fn interface{}, filters ...core.BeanSelector) *Mapping {
 	return HandleRequest(web.MethodDelete, path, web.BIND(fn), filters...)
+}
+
+///////////////////// application /////////////////////////////
+
+// HttpRequest 注册任意 HTTP 方法处理函数
+func (app *application) HttpRequest(method uint32, path string, fn web.Handler, filters ...core.BeanSelector) *application {
+	app.webMapping.HandleRequest(method, path, fn, filters)
+	return app
+}
+
+// HttpMapping 注册任意 HTTP 方法处理函数
+func (app *application) HttpMapping(method uint32, path string, fn web.HandlerFunc, filters ...core.BeanSelector) *application {
+	app.webMapping.HandleRequest(method, path, web.FUNC(fn), filters)
+	return app
+}
+
+// HttpBinding 注册任意 HTTP 方法处理函数
+func (app *application) HttpBinding(method uint32, path string, fn interface{}, filters ...core.BeanSelector) *application {
+	app.webMapping.HandleRequest(method, path, web.BIND(fn), filters)
+	return app
 }
