@@ -24,7 +24,7 @@ import (
 
 // Configer 配置函数，不立即执行
 type Configer struct {
-	Runnable
+	*Runnable
 	name   string
 	cond   Condition // 判断条件
 	before []string  // 位于哪些配置函数之前
@@ -33,18 +33,12 @@ type Configer struct {
 
 // Config Configer 的构造函数，fn 不能返回 error 以外的其他值
 func Config(fn interface{}, args ...Arg) *Configer {
-
-	fnType := reflect.TypeOf(fn)
-	if fnType.Kind() != reflect.Func {
-		panic(errors.New("fn must be a func"))
+	if fnType := reflect.TypeOf(fn); funcType(fnType) {
+		if returnNothing(fnType) || returnOnlyError(fnType) {
+			return &Configer{Runnable: newRunnable(fn, fnType, reflect.Value{}, args)}
+		}
 	}
-
-	return &Configer{
-		Runnable: Runnable{
-			Fn:      fn,
-			argList: NewArgList(fnType, false, args),
-		},
-	}
+	panic(errors.New("fn should be func() or func()error"))
 }
 
 // WithName 为 Configer 设置一个名称，用于排序

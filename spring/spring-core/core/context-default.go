@@ -525,7 +525,7 @@ func (ctx *applicationContext) resolveBeans() {
 func (ctx *applicationContext) runConfigers(assembly *defaultBeanAssembly) {
 	for e := ctx.configers.Front(); e != nil; e = e.Next() {
 		configer := e.Value.(*Configer)
-		if err := configer.Run(assembly); err != nil {
+		if err := configer.run(assembly); err != nil {
 			panic(err)
 		}
 	}
@@ -632,7 +632,7 @@ func (ctx *applicationContext) Close(beforeDestroy ...func()) {
 	// 按照顺序执行销毁函数
 	for i := ctx.destroyers.Front(); i != nil; i = i.Next() {
 		d := i.Value.(*destroyer)
-		if err := d.bean.getDestroy().Run(assembly); err != nil {
+		if err := d.bean.getDestroy().run(assembly); err != nil {
 			log.Error(err)
 		}
 	}
@@ -641,7 +641,13 @@ func (ctx *applicationContext) Close(beforeDestroy ...func()) {
 // Invoke 立即执行一个一次性的任务
 func (ctx *applicationContext) Invoke(fn interface{}, args ...Arg) error {
 	ctx.checkAutoWired()
-	return newRunner(ctx, fn, args).run()
+	if fnType := reflect.TypeOf(fn); funcType(fnType) {
+		if returnNothing(fnType) || returnOnlyError(fnType) {
+			assembly := newDefaultBeanAssembly(ctx)
+			return newRunnable(fn, fnType, reflect.Value{}, args).run(assembly)
+		}
+	}
+	panic(errors.New("fn should be func() or func()error"))
 }
 
 // Config 注册一个配置函数
@@ -658,18 +664,24 @@ func (ctx *applicationContext) Configer(configer *Configer) {
 
 // Go 安全地启动一个 goroutine
 func (ctx *applicationContext) Go(fn interface{}, args ...Arg) {
-	ctx.wg.Add(1)
-	go func() {
-		defer ctx.wg.Done()
 
-		defer func() {
-			if err := recover(); err != nil {
-				log.Error(err)
-			}
+	ctx.checkAutoWired()
+	fnType := reflect.TypeOf(fn)
+	if funcType(fnType) && returnNothing(fnType) {
+
+		ctx.wg.Add(1)
+		go func() {
+			defer ctx.wg.Done()
+
+			defer func() {
+				if err := recover(); err != nil {
+					log.Error(err)
+				}
+			}()
+
+			assembly := newDefaultBeanAssembly(ctx)
+			_ = newRunnable(fn, fnType, reflect.Value{}, args).run(assembly)
 		}()
-
-		if err := newRunner(ctx, fn, args).run(); err != nil {
-			log.Error(err)
-		}
-	}()
+	}
+	panic(errors.New("fn should be func()"))
 }

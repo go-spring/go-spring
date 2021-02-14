@@ -15,8 +15,13 @@ type Runnable struct {
 	receiver reflect.Value // 接收者的值
 }
 
+// newRunnable Runnable 的构造函数
+func newRunnable(fn interface{}, fnType reflect.Type, receiver reflect.Value, args []Arg) *Runnable {
+	return &Runnable{Fn: fn, receiver: receiver, argList: NewArgList(fnType, receiver.IsValid(), args)}
+}
+
 // Run 运行执行器
-func (r *Runnable) Run(assembly beanAssembly) error {
+func (r *Runnable) run(assembly beanAssembly) error {
 
 	// 获取函数定义所在的文件及其行号信息
 	file, line, _ := util.FileLine(r.Fn)
@@ -51,5 +56,5 @@ func (r *Runnable) Run(assembly beanAssembly) error {
 		}
 	}
 
-	panic(errors.New("error func type"))
+	return errors.New("error func type")
 }

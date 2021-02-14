@@ -621,60 +621,54 @@ func (d *BeanDefinition) SetPrimary(primary bool) *BeanDefinition {
 	return d
 }
 
+// funcType 是否是函数类型
+func funcType(fnType reflect.Type) bool {
+	return fnType.Kind() == reflect.Func
+}
+
+// returnNothing 函数是否无返回值
+func returnNothing(fnType reflect.Type) bool {
+	return fnType.NumOut() == 0
+}
+
+// returnOnlyError 函数是否只返回错误值
+func returnOnlyError(fnType reflect.Type) bool {
+	return fnType.NumOut() == 1 && fnType.Out(0) == errorType
+}
+
+// withReceiver 函数是否具有接收者
+func withReceiver(fnType reflect.Type, receiver reflect.Type) bool {
+	return fnType.NumIn() >= 1 && fnType.In(0) == receiver
+}
+
 // validLifeCycleFunc 判断是否是合法的用于 Bean 生命周期控制的函数，生命周期函数的要求：
 // 至少一个参数，且第一个参数的类型必须是 Bean 的类型，没有返回值或者只能返回 error 类型值。
 func validLifeCycleFunc(fn interface{}, beanType reflect.Type) (reflect.Type, bool) {
 	fnType := reflect.TypeOf(fn)
-
-	// 必须是至少有一个输入参数而且第一个入参的类型必须是 Bean 的类型的函数
-	if fnType.Kind() != reflect.Func || fnType.NumIn() < 1 || fnType.In(0) != beanType {
-		return nil, false
-	}
-
-	// 无返回值，或者只返回 error
-	if numOut := fnType.NumOut(); numOut > 1 {
-		return nil, false
-	} else if numOut == 1 {
-		if out := fnType.Out(0); out != errorType {
-			return nil, false
+	if funcType(fnType) && withReceiver(fnType, beanType) {
+		if returnNothing(fnType) || returnOnlyError(fnType) {
+			return fnType, true
 		}
 	}
-
-	return fnType, true
+	return nil, false
 }
 
 // Init 设置 Bean 的初始化函数，args 是初始化函数的一般参数绑定
 func (d *BeanDefinition) Init(fn interface{}, args ...Arg) *BeanDefinition {
-
-	fnType, ok := validLifeCycleFunc(fn, d.Type())
-	if !ok {
-		panic(errors.New("init should be func(bean) or func(bean)error"))
+	if fnType, ok := validLifeCycleFunc(fn, d.Type()); ok {
+		d.init = newRunnable(fn, fnType, d.Value(), args)
+		return d
 	}
-
-	d.init = &Runnable{
-		Fn:       fn,
-		receiver: d.Value(),
-		argList:  NewArgList(fnType, true, args),
-	}
-
-	return d
+	panic(errors.New("init should be func(bean) or func(bean)error"))
 }
 
 // Destroy 设置 Bean 的销毁函数，args 是销毁函数的一般参数绑定
 func (d *BeanDefinition) Destroy(fn interface{}, args ...Arg) *BeanDefinition {
-
-	fnType, ok := validLifeCycleFunc(fn, d.Type())
-	if !ok {
-		panic(errors.New("destroy should be func(bean) or func(bean)error"))
+	if fnType, ok := validLifeCycleFunc(fn, d.Type()); ok {
+		d.destroy = newRunnable(fn, fnType, d.Value(), args)
+		return d
 	}
-
-	d.destroy = &Runnable{
-		Fn:       fn,
-		receiver: d.Value(),
-		argList:  NewArgList(fnType, true, args),
-	}
-
-	return d
+	panic(errors.New("destroy should be func(bean) or func(bean)error"))
 }
 
 // Export 显式指定 Bean 的导出接口
