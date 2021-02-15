@@ -29,17 +29,6 @@ import (
 	"github.com/go-spring/spring-core/util"
 )
 
-// beanKey Bean's unique key, with type and name.
-type beanKey struct {
-	typ  reflect.Type
-	name string
-}
-
-// newBeanKey beanKey 的构造函数
-func newBeanKey(typ reflect.Type, name string) beanKey {
-	return beanKey{typ: typ, name: name}
-}
-
 // beanCacheItem BeanCache's item, for type cache or name cache.
 type beanCacheItem struct {
 	beans []*BeanDefinition
@@ -70,14 +59,14 @@ type applicationContext struct {
 	profile   string // 运行环境
 	autoWired bool   // 是否开始自动绑定
 
-	AllBeans        []*BeanDefinition           // 所有注册点
-	beanMap         map[beanKey]*BeanDefinition // Bean 集合
+	AllBeans        []*BeanDefinition          // 所有注册点
+	beanMap         map[string]*BeanDefinition // Bean 集合
 	beanCacheByName map[string]*beanCacheItem
 	beanCacheByType map[reflect.Type]*beanCacheItem
 
 	configers    *list.List // 配置方法集合
 	destroyers   *list.List // 销毁函数集合
-	destroyerMap map[beanKey]*destroyer
+	destroyerMap map[string]*destroyer
 
 	properties Properties // 属性值列表接口
 }
@@ -90,12 +79,12 @@ func NewApplicationContext() *applicationContext {
 		cancel:          cancel,
 		properties:      New(),
 		AllBeans:        make([]*BeanDefinition, 0),
-		beanMap:         make(map[beanKey]*BeanDefinition),
+		beanMap:         make(map[string]*BeanDefinition),
 		beanCacheByName: make(map[string]*beanCacheItem),
 		beanCacheByType: make(map[reflect.Type]*beanCacheItem),
 		configers:       list.New(),
 		destroyers:      list.New(),
-		destroyerMap:    make(map[beanKey]*destroyer),
+		destroyerMap:    make(map[string]*destroyer),
 	}
 }
 
@@ -150,18 +139,16 @@ func (ctx *applicationContext) checkRegistration() {
 
 // deleteBeanDefinition 删除 bean.BeanDefinition。
 func (ctx *applicationContext) deleteBeanDefinition(bd *BeanDefinition) {
-	key := newBeanKey(bd.Type(), bd.Name())
 	bd.setStatus(BeanStatus_Deleted)
-	delete(ctx.beanMap, key)
+	delete(ctx.beanMap, bd.BeanId())
 }
 
 // registerBeanDefinition 注册 bean.BeanDefinition，重复注册会 panic。
 func (ctx *applicationContext) registerBeanDefinition(bd *BeanDefinition) {
-	key := newBeanKey(bd.Type(), bd.Name())
-	if _, ok := ctx.beanMap[key]; ok {
+	if _, ok := ctx.beanMap[bd.BeanId()]; ok {
 		panic(fmt.Errorf("duplicate registration, bean: \"%s\"", bd.BeanId()))
 	}
-	ctx.beanMap[key] = bd
+	ctx.beanMap[bd.BeanId()] = bd
 }
 
 // ObjBean 将 Bean 转换为 BeanDefinition 对象
@@ -532,11 +519,10 @@ func (ctx *applicationContext) runConfigers(assembly *defaultBeanAssembly) {
 }
 
 func (ctx *applicationContext) destroyer(bd *BeanDefinition) *destroyer {
-	k := newBeanKey(bd.Type(), bd.Name())
-	d, ok := ctx.destroyerMap[k]
+	d, ok := ctx.destroyerMap[bd.BeanId()]
 	if !ok {
 		d = &destroyer{bean: bd}
-		ctx.destroyerMap[k] = d
+		ctx.destroyerMap[bd.BeanId()] = d
 	}
 	return d
 }

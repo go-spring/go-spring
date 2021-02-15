@@ -528,7 +528,7 @@ func (d *BeanDefinition) Name() string {
 
 // BeanId 返回 Bean 的唯一 ID
 func (d *BeanDefinition) BeanId() string {
-	return fmt.Sprintf("%s:%s", d.TypeName(), d.Name())
+	return d.TypeName() + ":" + d.Name()
 }
 
 // FileLine 返回 Bean 的注册点
