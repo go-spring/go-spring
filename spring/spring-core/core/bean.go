@@ -358,80 +358,6 @@ func (b *constructorBean) beanClass() string {
 	return "constructor bean"
 }
 
-// methodBean 以成员方法形式注册的 Bean
-type methodBean struct {
-	functionBean
-
-	Parent []*BeanDefinition // 父对象的定义
-	Method string            // 成员方法名称
-}
-
-// NewMethodBean MethodBean 的构造函数，所有 tag 必须同时有或者同时没有序号。
-func NewMethodBean(parent []*BeanDefinition, method string, args []Arg) *methodBean {
-
-	parentType := parent[0].Type()
-	m, ok := parentType.MethodByName(method)
-	if !ok {
-		panic(fmt.Errorf("can't find method:%s on type:%s", method, parentType.String()))
-	}
-
-	// 接口的函数指针不包含接受者类型
-	withReceiver := parentType.Kind() != reflect.Interface
-
-	return &methodBean{
-		functionBean: newFunctionBean(m.Type, withReceiver, args),
-		Parent:       parent,
-		Method:       method,
-	}
-}
-
-// beanClass 返回 MethodBean 的类型名称
-func (b *methodBean) beanClass() string {
-	return "method bean"
-}
-
-// fakeMethodBean 成员方法 Bean 不是在注册时就立即生成 MethodBean
-// 对象，而是在所有 Bean 注册完成并且自动注入开始后才开始生成，在此之前
-// 使用 fakeMethodBean 对象进行占位。
-type fakeMethodBean struct {
-	// parent Bean 选择器
-	Selector BeanSelector
-
-	// 成员方法名称
-	Method string
-	args   []Arg
-}
-
-// newFakeMethodBean fakeMethodBean 的构造函数，所有 tag 必须同时有或者同时没有序号。
-func newFakeMethodBean(selector BeanSelector, method string, args []Arg) *fakeMethodBean {
-	return &fakeMethodBean{
-		Selector: selector,
-		Method:   method,
-		args:     args,
-	}
-}
-
-func (b *fakeMethodBean) Bean() interface{} {
-	panic(errors.New("shouldn't call this method"))
-}
-
-func (b *fakeMethodBean) Type() reflect.Type {
-	panic(errors.New("shouldn't call this method"))
-}
-
-func (b *fakeMethodBean) Value() reflect.Value {
-	panic(errors.New("shouldn't call this method"))
-}
-
-func (b *fakeMethodBean) TypeName() string {
-	panic(errors.New("shouldn't call this method"))
-}
-
-// beanClass 返回 springBean 的实现类型
-func (b *fakeMethodBean) beanClass() string {
-	return "fake method bean"
-}
-
 // beanStatus Bean 的状态值
 type beanStatus int
 
@@ -518,8 +444,7 @@ func (d *BeanDefinition) TypeName() string {
 
 // Name 返回 Bean 的名称
 func (d *BeanDefinition) Name() string {
-	_, ok := d.bean.(*fakeMethodBean)
-	if !ok && d.name == "" {
+	if d.name == "" {
 		// 统一使用类型字符串作为默认名称!
 		d.name = d.bean.Type().String()
 	}
@@ -732,13 +657,4 @@ func ObjBean(i interface{}) *BeanDefinition {
 func CtorBean(fn interface{}, args ...Arg) *BeanDefinition {
 	file, line := getFileLine()
 	return newBeanDefinition(newConstructorBean(fn, args), file, line)
-}
-
-// MethodBean 将成员方法转换为 BeanDefinition 对象
-func MethodBean(selector BeanSelector, method string, args ...Arg) *BeanDefinition {
-	if selector == nil || selector == "" {
-		panic(errors.New("selector can't be nil or empty"))
-	}
-	file, line := getFileLine()
-	return newBeanDefinition(newFakeMethodBean(selector, method, args), file, line)
 }

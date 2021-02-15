@@ -414,28 +414,12 @@ func (assembly *defaultBeanAssembly) wireBeanDefinition(bd beanDefinition, onlyA
 		}
 	}
 
-	// 如果是成员方法 Bean，需要首先对它的父 Bean 进行自动注入
-	if mBean, ok := bd.springBean().(*methodBean); ok {
-		if l := len(mBean.Parent); l > 1 {
-			msg := fmt.Sprintf("found %d parent bean [", l)
-			for _, b := range mBean.Parent {
-				msg += "( " + b.Description() + " ), "
-			}
-			msg = msg[:len(msg)-2] + "]"
-			panic(errors.New(msg))
-		}
-		assembly.wireBeanDefinition(mBean.Parent[0], false)
-	}
-
 	// 对当前 Bean 进行自动注入
 	switch b := bd.springBean().(type) {
 	case *objectBean:
 		assembly.wireObjectBean(bd, onlyAutoWire)
 	case *constructorBean:
 		fnValue := reflect.ValueOf(b.Fn)
-		assembly.wireFunctionBean(fnValue, &b.functionBean, bd)
-	case *methodBean:
-		fnValue := b.Parent[0].Value().MethodByName(b.Method)
 		assembly.wireFunctionBean(fnValue, &b.functionBean, bd)
 	default:
 		panic(errors.New("error spring bean type"))

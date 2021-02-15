@@ -63,9 +63,6 @@ type ApplicationContext interface {
 	// CtorBean 将构造函数转换为 BeanDefinition 对象
 	CtorBean(fn interface{}, args ...Arg) *BeanDefinition
 
-	// MethodBean 将成员方法转换为 BeanDefinition 对象
-	MethodBean(selector BeanSelector, method string, args ...Arg) *BeanDefinition
-
 	// AutoWireBeans 对所有 Bean 进行依赖注入和属性绑定
 	AutoWireBeans()
 

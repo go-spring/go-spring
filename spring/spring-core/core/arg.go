@@ -99,31 +99,38 @@ func (argList *ArgList) Get(assembly beanAssembly, fileLine string) []reflect.Va
 // getArgValue 获取绑定参数值
 func (argList *ArgList) getArgValue(t reflect.Type, arg Arg, assembly beanAssembly, fileLine string) reflect.Value {
 
+	// TODO 检查有些 defer 像这里这样是不正确的，panic 也会打印 success 日志
 	description := fmt.Sprintf("arg:\"%v\" %s", arg, fileLine)
 	defer log.Tracef("get value success %s", description)
 	log.Tracef("get value %s", description)
 
-	switch tArg := arg.(type) {
-	case string:
-		{
-			v := reflect.New(t).Elem()
-			if IsValueType(v.Kind()) { // 值类型，采用属性绑定语法
-				if tArg == "" {
-					tArg = "${}"
-				}
-				err := assembly.BindStructField(v, tArg, BindOption{})
-				util.Panic(err).When(err != nil)
-			} else { // 引用类型，采用对象注入语法
-				assembly.WireStructField(v, tArg, reflect.Value{}, "")
-			}
-			return v
-		}
-	case *option:
-		{
-			return tArg.call(assembly)
-		}
+	if arg == nil {
+		panic(errors.New("selector can't be nil or empty"))
 	}
-	panic("getArgValue:::")
+
+	selector := ""
+	switch tArg := arg.(type) {
+	case *BeanDefinition:
+		return tArg.Value()
+	case *option:
+		return tArg.call(assembly)
+	case string:
+		selector = tArg
+	default:
+		selector = TypeName(tArg) + ":"
+	}
+
+	v := reflect.New(t).Elem()
+	if IsValueType(v.Kind()) { // 值类型，采用属性绑定语法
+		if selector == "" {
+			selector = "${}"
+		}
+		err := assembly.BindStructField(v, selector, BindOption{})
+		util.Panic(err).When(err != nil)
+	} else { // 引用类型，采用对象注入语法
+		assembly.WireStructField(v, selector, reflect.Value{}, "")
+	}
+	return v
 }
 
 type value struct{ v interface{} }

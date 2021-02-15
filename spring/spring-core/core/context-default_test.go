@@ -1156,7 +1156,7 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 		util.AssertEqual(t, *i, 3)
 	})
 
-	t.Run("call init method", func(t *testing.T) {
+	t.Run("call init", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
 		ctx.ObjBean(new(callDestroy)).Init((*callDestroy).Init)
@@ -1171,7 +1171,7 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 		util.AssertEqual(t, d.inited, true)
 	})
 
-	t.Run("call init method with arg", func(t *testing.T) {
+	t.Run("call init with arg", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
 		ctx.SetProperty("version", "v0.0.1")
@@ -1187,7 +1187,7 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 		util.AssertEqual(t, d.inited, true)
 	})
 
-	t.Run("call init method with error", func(t *testing.T) {
+	t.Run("call init with error", func(t *testing.T) {
 
 		util.AssertPanic(t, func() {
 			ctx := core.NewApplicationContext()
@@ -1210,7 +1210,7 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 		util.AssertEqual(t, d.inited, true)
 	})
 
-	t.Run("call interface init method", func(t *testing.T) {
+	t.Run("call interface init", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
 		ctx.CtorBean(func() destroyable { return new(callDestroy) }).Init(destroyable.Init)
@@ -1225,7 +1225,7 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 		util.AssertEqual(t, d.(*callDestroy).inited, true)
 	})
 
-	t.Run("call interface init method with arg", func(t *testing.T) {
+	t.Run("call interface init with arg", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
 		ctx.SetProperty("version", "v0.0.1")
@@ -1241,7 +1241,7 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 		util.AssertEqual(t, d.(*callDestroy).inited, true)
 	})
 
-	t.Run("call interface init method with error", func(t *testing.T) {
+	t.Run("call interface init with error", func(t *testing.T) {
 
 		util.AssertPanic(t, func() {
 			ctx := core.NewApplicationContext()
@@ -1264,7 +1264,7 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 		util.AssertEqual(t, d.(*callDestroy).inited, true)
 	})
 
-	t.Run("call nested init method", func(t *testing.T) {
+	t.Run("call nested init", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
 		ctx.ObjBean(new(nestedCallDestroy)).Init((*nestedCallDestroy).Init)
@@ -1279,7 +1279,7 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 		util.AssertEqual(t, d.inited, true)
 	})
 
-	t.Run("call nested interface init method", func(t *testing.T) {
+	t.Run("call nested interface init", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
 		ctx.ObjBean(&nestedDestroyable{
@@ -1651,9 +1651,7 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 		ctx := core.NewApplicationContext()
 		ctx.SetProperty("server.version", "1.0.0")
 		parent := ctx.ObjBean(new(Server))
-
-		// Method RegisterBean 的默认名称要等到 RegisterBean 真正注册的时候才能获取到
-		bd := ctx.MethodBean(parent, "Consumer")
+		bd := ctx.CtorBean(func(s *Server) *Consumer { return s.Consumer() }, parent)
 		ctx.AutoWireBeans()
 		util.AssertEqual(t, bd.Name(), "*core_test.Consumer")
 
@@ -1675,7 +1673,7 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 		ctx := core.NewApplicationContext()
 		ctx.SetProperty("server.version", "1.0.0")
 		parent := ctx.ObjBean(new(Server))
-		ctx.MethodBean(parent, "ConsumerArg", "${i:=9}")
+		ctx.CtorBean(func(s *Server, i int) *Consumer { return s.ConsumerArg(i) }, parent, "${i:=9}")
 		ctx.AutoWireBeans()
 
 		var s *Server
@@ -1692,17 +1690,11 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 	})
 
 	t.Run("method bean wire to other bean", func(t *testing.T) {
+
 		ctx := core.NewApplicationContext()
 		ctx.SetProperty("server.version", "1.0.0")
-
-		// Name is core_test.ServerInterface
 		parent := ctx.CtorBean(NewServerInterface)
-
-		// Name is *core_test.Consumer
-		ctx.MethodBean(parent, "Consumer").
-			DependsOn("core_test.ServerInterface")
-
-		// Name is *core_test.Service
+		ctx.CtorBean(func(s ServerInterface) *Consumer { return s.Consumer() }, parent).DependsOn("core_test.ServerInterface")
 		ctx.ObjBean(new(Service))
 		ctx.AutoWireBeans()
 
@@ -1749,13 +1741,8 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 
 				ctx := core.NewApplicationContext()
 				ctx.SetProperty("server.version", "1.0.0")
-
-				parent := ctx.ObjBean(new(Server)).
-					DependsOn("*core_test.Service")
-
-				ctx.MethodBean(parent, "Consumer").
-					DependsOn("*core_test.Server")
-
+				parent := ctx.ObjBean(new(Server)).DependsOn("*core_test.Service")
+				ctx.CtorBean(func(s *Server) *Consumer { return s.Consumer() }, parent).DependsOn("*core_test.Server")
 				ctx.ObjBean(new(Service))
 				ctx.AutoWireBeans()
 			}()
@@ -1781,7 +1768,7 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 		ctx := core.NewApplicationContext()
 		ctx.SetProperty("server.version", "1.0.0")
 		ctx.ObjBean(new(Server))
-		ctx.MethodBean((*Server)(nil), "Consumer")
+		ctx.CtorBean(func(s *Server) *Consumer { return s.Consumer() }, (*Server)(nil))
 		ctx.AutoWireBeans()
 
 		var s *Server
@@ -1803,7 +1790,7 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 			ctx := core.NewApplicationContext()
 			ctx.SetProperty("server.version", "1.0.0")
 			ctx.ObjBean(new(Server))
-			ctx.MethodBean((fmt.Stringer)(nil), "Consumer")
+			ctx.CtorBean(func(s *Server) *Consumer { return s.Consumer() }, (fmt.Stringer)(nil))
 			ctx.AutoWireBeans()
 		}, "selector can't be nil or empty")
 
@@ -1811,18 +1798,9 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 			ctx := core.NewApplicationContext()
 			ctx.SetProperty("server.version", "1.0.0")
 			ctx.ObjBean(new(Server))
-			ctx.MethodBean((*int)(nil), "Consumer")
+			ctx.CtorBean(func(s *Server) *Consumer { return s.Consumer() }, (*int)(nil))
 			ctx.AutoWireBeans()
-		}, "can't find parent bean: \"\\*int\"")
-
-		util.AssertPanic(t, func() {
-			ctx := core.NewApplicationContext()
-			ctx.SetProperty("server.version", "1.0.0")
-			ctx.ObjBean(new(int))
-			ctx.ObjBean(new(Server))
-			ctx.MethodBean((*int)(nil), "Consumer")
-			ctx.AutoWireBeans()
-		}, "can't find method:Consumer on type:\\*int")
+		}, "can't find bean, bean: \"int:\" field:  type: \\*core_test.Server")
 	})
 
 	t.Run("method bean selector beanId", func(t *testing.T) {
@@ -1830,7 +1808,7 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 		ctx := core.NewApplicationContext()
 		ctx.SetProperty("server.version", "1.0.0")
 		ctx.ObjBean(new(Server))
-		ctx.MethodBean("*core_test.Server", "Consumer")
+		ctx.CtorBean(func(s *Server) *Consumer { return s.Consumer() }, "*core_test.Server")
 		ctx.AutoWireBeans()
 
 		var s *Server
@@ -1851,9 +1829,9 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 			ctx := core.NewApplicationContext()
 			ctx.SetProperty("server.version", "1.0.0")
 			ctx.ObjBean(new(Server))
-			ctx.MethodBean("NULL", "Consumer")
+			ctx.CtorBean(func(s *Server) *Consumer { return s.Consumer() }, "NULL")
 			ctx.AutoWireBeans()
-		}, "can't find parent bean: \"NULL\"")
+		}, "can't find bean, bean: \"NULL\" field:  type: \\*core_test.Server")
 	})
 }
 
@@ -2059,7 +2037,7 @@ func TestApplicationContext_Close(t *testing.T) {
 		util.AssertEqual(t, called, true)
 	})
 
-	t.Run("call destroy method", func(t *testing.T) {
+	t.Run("call destroy", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
 		ctx.ObjBean(new(callDestroy)).Destroy((*callDestroy).Destroy)
@@ -2074,7 +2052,7 @@ func TestApplicationContext_Close(t *testing.T) {
 		util.AssertEqual(t, d.destroyed, true)
 	})
 
-	t.Run("call destroy method with arg", func(t *testing.T) {
+	t.Run("call destroy with arg", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
 		ctx.SetProperty("version", "v0.0.1")
@@ -2090,7 +2068,7 @@ func TestApplicationContext_Close(t *testing.T) {
 		util.AssertEqual(t, d.destroyed, true)
 	})
 
-	t.Run("call destroy method with error", func(t *testing.T) {
+	t.Run("call destroy with error", func(t *testing.T) {
 
 		// error
 		{
@@ -2125,7 +2103,7 @@ func TestApplicationContext_Close(t *testing.T) {
 		}
 	})
 
-	t.Run("call interface destroy method", func(t *testing.T) {
+	t.Run("call interface destroy", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
 		ctx.CtorBean(func() destroyable { return new(callDestroy) }).Destroy(destroyable.Destroy)
@@ -2140,7 +2118,7 @@ func TestApplicationContext_Close(t *testing.T) {
 		util.AssertEqual(t, d.(*callDestroy).destroyed, true)
 	})
 
-	t.Run("call interface destroy method with arg", func(t *testing.T) {
+	t.Run("call interface destroy with arg", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
 		ctx.SetProperty("version", "v0.0.1")
@@ -2156,7 +2134,7 @@ func TestApplicationContext_Close(t *testing.T) {
 		util.AssertEqual(t, d.(*callDestroy).destroyed, true)
 	})
 
-	t.Run("call interface destroy method with error", func(t *testing.T) {
+	t.Run("call interface destroy with error", func(t *testing.T) {
 
 		// error
 		{
@@ -2748,7 +2726,7 @@ func TestApplicationContext_NameEquivalence(t *testing.T) {
 	util.AssertPanic(t, func() {
 		ctx := core.NewApplicationContext()
 		bd := ctx.ObjBean(&registryFactory{})
-		ctx.MethodBean(bd, "Create")
+		ctx.CtorBean(func(f *registryFactory) Registry { return f.Create() }, bd)
 		ctx.CtorBean(NewRegistryInterface)
 		ctx.AutoWireBeans()
 	}, `duplicate registration, bean: `)

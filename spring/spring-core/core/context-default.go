@@ -161,11 +161,6 @@ func (ctx *applicationContext) CtorBean(fn interface{}, args ...Arg) *BeanDefini
 	return ctx.Bean(CtorBean(fn, args...))
 }
 
-// MethodBean 将成员方法转换为 BeanDefinition 对象
-func (ctx *applicationContext) MethodBean(selector BeanSelector, method string, args ...Arg) *BeanDefinition {
-	return ctx.Bean(MethodBean(selector, method, args...))
-}
-
 func (ctx *applicationContext) Bean(bd *BeanDefinition) *BeanDefinition {
 	ctx.checkRegistration()
 	ctx.AllBeans = append(ctx.AllBeans, bd)
@@ -373,27 +368,6 @@ func (ctx *applicationContext) resolveBean(bd *BeanDefinition) {
 
 	bd.setStatus(BeanStatus_Resolving)
 
-	// 如果是成员方法 Bean，需要首先决议它的父 Bean 是否能实例化
-	if b, ok := bd.springBean().(*methodBean); ok {
-
-		for i := 0; ; i++ {
-			Parent := b.Parent[i]
-			ctx.resolveBean(Parent)
-			if Parent.getStatus() == BeanStatus_Deleted {
-				b.Parent = append(b.Parent[:i], b.Parent[i+1:]...)
-			}
-			if i >= len(b.Parent)-1 { // 每轮都要重新获取长度
-				break
-			}
-		}
-
-		// 父 Bean 已经被删除了，子 Bean 也不应该存在
-		if len(b.Parent) == 0 {
-			ctx.deleteBeanDefinition(bd)
-			return
-		}
-	}
-
 	// 不满足判断条件的则标记为删除状态并删除其注册
 	if bd.cond != nil && !bd.cond.Matches(ctx) {
 		ctx.deleteBeanDefinition(bd)
@@ -424,62 +398,7 @@ func (ctx *applicationContext) resolveBean(bd *BeanDefinition) {
 }
 
 func (ctx *applicationContext) registerAllBeans() {
-
-	var (
-		selector string
-		filter   func(*BeanDefinition) bool
-	)
-
 	for _, bd := range ctx.AllBeans {
-
-		b, ok := bd.springBean().(*fakeMethodBean)
-		if !ok {
-			ctx.registerBeanDefinition(bd)
-			continue
-		}
-
-		result := make([]*BeanDefinition, 0)
-		switch e := b.Selector.(type) {
-		case string:
-			selector = e
-			tag := parseSingletonTag(e)
-			filter = func(b *BeanDefinition) bool {
-				return b.Match(tag.TypeName, tag.BeanName)
-			}
-		case *BeanDefinition:
-			selector = e.BeanId()
-			result = append(result, e)
-		case reflect.Type:
-			selector = e.String()
-			filter = func(b *BeanDefinition) bool {
-				return b.Type() == e
-			}
-		default:
-			t := reflect.TypeOf(e)
-			if t.Kind() == reflect.Ptr {
-				if et := t.Elem(); et.Kind() == reflect.Interface {
-					t = et // 接口类型去掉指针
-				}
-			}
-			selector = t.String()
-			filter = func(b *BeanDefinition) bool {
-				return b.Type() == t
-			}
-		}
-
-		if filter != nil {
-			for _, b := range ctx.beanMap {
-				if filter(b) {
-					result = append(result, b)
-				}
-			}
-		}
-
-		if len(result) == 0 {
-			panic(fmt.Errorf("can't find parent bean: \"%s\"", selector))
-		}
-
-		bd.bean = NewMethodBean(result, b.Method, b.args)
 		ctx.registerBeanDefinition(bd)
 	}
 }
