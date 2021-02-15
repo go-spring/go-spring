@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package app
+package boot
 
 import (
 	"context"
@@ -74,21 +74,18 @@ type application struct {
 	Runners []CommandLineRunner `autowire:"${command-line-runner.collection:=[]?}"`
 
 	exitChan chan struct{}
-
-	webMapping *WebMapping // Web 路由映射表
 }
 
-var gApp = New()
+var gApp = NewApp()
 
 // New application 的构造函数
-func New() *application {
+func NewApp() *application {
 	return &application{
 		appCtx:              core.NewApplicationContext(),
 		cfgLocation:         append([]string{}, DefaultConfigLocation),
 		bannerMode:          BannerModeConsole,
 		expectSysProperties: []string{`.*`},
 		exitChan:            make(chan struct{}),
-		webMapping:          NewWebMapping(),
 	}
 }
 

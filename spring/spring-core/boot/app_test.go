@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package app
+package boot
 
 import (
 	"fmt"
@@ -29,7 +29,7 @@ import (
 )
 
 func startApplication(cfgLocation ...string) *application {
-	app := New()
+	app := NewApp()
 	app.Property("application-event.collection", "[]?")
 	app.Property("command-line-runner.collection", "[]?")
 	app.start(cfgLocation...)
@@ -95,7 +95,7 @@ func TestApp(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 		_ = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
 	}()
-	New().
+	NewApp().
 		Profile("dev").
 		BannerMode(BannerModeOff).
 		Property("spring.application.name", "test").

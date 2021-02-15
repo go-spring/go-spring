@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package app
+package boot
 
 import (
 	"fmt"

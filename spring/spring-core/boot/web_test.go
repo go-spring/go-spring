@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package app
+package boot
 
 //func TestRouter_Route(t *testing.T) {
 //	root := Route("/root", FilterBean("r1", "r2")).WithCondition(cond.OnBean("r"))
