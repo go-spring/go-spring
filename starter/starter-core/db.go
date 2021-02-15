@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package StarterDB
+package StarterCore
 
 type DBConfig struct {
 	Url string `value:"${db.url}"`

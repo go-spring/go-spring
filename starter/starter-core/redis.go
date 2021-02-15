@@ -14,14 +14,11 @@
  * limitations under the License.
  */
 
-package StarterGrpc
+package StarterCore
 
-// ServerConfig gRPC 服务器配置
-type ServerConfig struct {
-	Port int `value:"${grpc.server.port:=9090}"` // gRPC 端口
-}
-
-// EndpointConfig gRPC 服务端点配置
-type EndpointConfig struct {
-	Address string `value:"${address:=127.0.0.1:9090}"` // gRPC 服务器地址
+type RedisConfig struct {
+	Host     string `value:"${redis.host:=127.0.0.1}"`
+	Port     int    `value:"${redis.port:=6379}"`
+	Password string `value:"${redis.password:=}"`
+	Database int    `value:"${redis.database:=0}"`
 }

@@ -14,9 +14,14 @@
  * limitations under the License.
  */
 
-package StarterMongo
+package StarterCore
 
-// Config MongoDB 配置
-type Config struct {
-	Url string `value:"${mongo.url:=mongodb://localhost}"`
+// GRpcServerConfig gRPC 服务器配置
+type GRpcServerConfig struct {
+	Port int `value:"${grpc.server.port:=9090}"`
+}
+
+// GRpcEndpointConfig gRPC 服务端点配置
+type GRpcEndpointConfig struct {
+	Address string `value:"${address:=127.0.0.1:9090}"`
 }

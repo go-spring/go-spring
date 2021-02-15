@@ -14,12 +14,8 @@
  * limitations under the License.
  */
 
-package StarterRedis
+package StarterCore
 
-// Config Redis 配置
-type Config struct {
-	Host     string `value:"${redis.host:=127.0.0.1}"`
-	Port     int    `value:"${redis.port:=6379}"`
-	Password string `value:"${redis.password:=}"`
-	Database int    `value:"${redis.database:=0}"`
+type MongoConfig struct {
+	Url string `value:"${mongo.url:=mongodb://localhost}"`
 }
