@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package core
+package conf
 
 import (
 	"github.com/go-spring/spring-core/util"

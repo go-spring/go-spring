@@ -27,6 +27,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/core"
 	"github.com/go-spring/spring-core/log"
 	"github.com/spf13/cast"
@@ -197,9 +198,9 @@ func (app *application) printBanner() {
 }
 
 // loadCmdArgs 加载命令行参数，形如 -name value 的参数才有效。
-func (_ *application) loadCmdArgs() core.Properties {
+func (_ *application) loadCmdArgs() conf.Properties {
 	log.Debugf("load cmd args")
-	p := core.New()
+	p := conf.New()
 	for i := 0; i < len(os.Args); i++ { // 以短线定义的参数才有效
 		if arg := os.Args[i]; strings.HasPrefix(arg, "-") {
 			k, v := arg[1:], ""
@@ -215,7 +216,7 @@ func (_ *application) loadCmdArgs() core.Properties {
 }
 
 // loadSystemEnv 加载系统环境变量，用户可以自定义有效环境变量的正则匹配
-func (app *application) loadSystemEnv() core.Properties {
+func (app *application) loadSystemEnv() conf.Properties {
 
 	var rex []*regexp.Regexp
 	for _, v := range app.expectSysProperties {
@@ -227,7 +228,7 @@ func (app *application) loadSystemEnv() core.Properties {
 	}
 
 	log.Debugf("load system env")
-	p := core.New()
+	p := conf.New()
 	for _, env := range os.Environ() {
 		if i := strings.Index(env, "="); i > 0 {
 			k, v := env[0:i], env[i+1:]
@@ -244,8 +245,8 @@ func (app *application) loadSystemEnv() core.Properties {
 }
 
 // loadProfileConfig 加载指定环境的配置文件
-func (app *application) loadProfileConfig(profile string) core.Properties {
-	p := core.New()
+func (app *application) loadProfileConfig(profile string) conf.Properties {
+	p := conf.New()
 	for _, configLocation := range app.cfgLocation {
 		var result map[string]interface{}
 		if ss := strings.SplitN(configLocation, ":", 2); len(ss) == 1 {
@@ -292,12 +293,12 @@ func (app *application) prepare() {
 	// 6.内部默认配置
 
 	// 将通过代码设置的属性值拷贝一份，第 1 层
-	apiConfig := core.New()
+	apiConfig := conf.New()
 	app.appCtx.Properties().Range(func(k string, v interface{}) { apiConfig.Set(k, v) })
 
 	// 加载默认的应用配置文件，如 application.conf，第 5 层
 	appConfig := app.loadProfileConfig("")
-	p := core.Priority(apiConfig, appConfig)
+	p := conf.Priority(apiConfig, appConfig)
 
 	// 加载系统环境变量，第 3 层
 	sysEnv := app.loadSystemEnv()

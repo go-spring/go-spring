@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	"github.com/go-spring/spring-core/bean"
+	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
 )
@@ -34,7 +35,7 @@ type beanAssembly interface {
 	Matches(cond Condition) bool
 
 	// BindStructField 对结构体的字段进行属性绑定
-	BindStructField(v reflect.Value, str string, opt BindOption) error
+	BindStructField(v reflect.Value, str string, opt conf.BindOption) error
 
 	// WireStructField 对结构体的字段进行绑定
 	WireStructField(v reflect.Value, tag string, parent reflect.Value, field string)
@@ -126,7 +127,7 @@ func (argList *ArgList) getArgValue(t reflect.Type, arg Arg, assembly beanAssemb
 		if selector == "" {
 			selector = "${}"
 		}
-		err := assembly.BindStructField(v, selector, BindOption{})
+		err := assembly.BindStructField(v, selector, conf.BindOption{})
 		util.Panic(err).When(err != nil)
 	} else { // 引用类型，采用对象注入语法
 		assembly.WireStructField(v, selector, reflect.Value{}, "")

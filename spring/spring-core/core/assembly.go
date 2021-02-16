@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	"github.com/go-spring/spring-core/bean"
+	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
 )
@@ -98,8 +99,8 @@ func (assembly *defaultBeanAssembly) Matches(cond Condition) bool {
 }
 
 // BindStructField 对结构体的字段进行属性绑定
-func (assembly *defaultBeanAssembly) BindStructField(v reflect.Value, str string, opt BindOption) error {
-	return BindStructField(assembly.appCtx.properties, v, str, opt)
+func (assembly *defaultBeanAssembly) BindStructField(v reflect.Value, str string, opt conf.BindOption) error {
+	return conf.BindStructField(assembly.appCtx.properties, v, str, opt)
 }
 
 // getBeanValue 获取符合要求的 Bean，并且确保 Bean 完成自动注入过程，结果最多有一个，否则 panic，当允许结果为空时返回 false，否则 panic
@@ -487,7 +488,7 @@ func (assembly *defaultBeanAssembly) wireObjectBean(bd beanInstance, onlyAutoWir
 				if !onlyAutoWire { // 防止 value 再次解析
 					if tag, ok := ft.Tag.Lookup("value"); ok {
 						fieldOnlyAutoWire = true
-						err := assembly.BindStructField(fv, tag, BindOption{FieldName: fieldName})
+						err := assembly.BindStructField(fv, tag, conf.BindOption{FieldName: fieldName})
 						util.Panic(err).When(err != nil)
 					}
 				}
@@ -584,7 +585,7 @@ func (assembly *defaultBeanAssembly) WireStructField(v reflect.Value, tag string
 	if strings.HasPrefix(tag, "${") {
 		s := ""
 		sv := reflect.ValueOf(&s).Elem()
-		err := BindStructField(assembly.appCtx.properties, sv, tag, BindOption{})
+		err := conf.BindStructField(assembly.appCtx.properties, sv, tag, conf.BindOption{})
 		util.Panic(err).When(err != nil)
 		tag = s
 	}

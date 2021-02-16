@@ -21,6 +21,7 @@ import (
 	"context"
 
 	"github.com/go-spring/spring-core/bean"
+	"github.com/go-spring/spring-core/conf"
 )
 
 // ApplicationContext 定义了 IoC 容器接口。
@@ -42,7 +43,7 @@ type ApplicationContext interface {
 	SetProfile(profile string)
 
 	// Properties 获取 Properties 对象
-	Properties() Properties
+	Properties() conf.Properties
 
 	// LoadProperties 加载属性配置，支持 properties、yaml 和 toml 三种文件格式。
 	LoadProperties(filename string) error

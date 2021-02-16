@@ -27,6 +27,9 @@ import (
 	"github.com/go-spring/spring-core/util"
 )
 
+// errorType error 的反射类型
+var errorType = reflect.TypeOf((*error)(nil)).Elem()
+
 // ToSingletonTag 将 Bean 选择器转换为 SingletonTag 形式。注意该函数仅用
 // 于精确匹配的场景下，也就是说通过类型选择的时候类型必须是具体的，而不能是接口。
 func ToSingletonTag(selector bean.Selector) SingletonTag {

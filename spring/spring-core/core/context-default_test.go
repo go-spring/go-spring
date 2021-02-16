@@ -35,6 +35,7 @@ import (
 	pkg1 "github.com/go-spring/spring-core/core/testdata/pkg/bar"
 	pkg2 "github.com/go-spring/spring-core/core/testdata/pkg/foo"
 	"github.com/go-spring/spring-core/util"
+	"github.com/spf13/cast"
 )
 
 // ToString 对象转 Json 字符串
@@ -466,6 +467,28 @@ type PointBean struct {
 	Point        image.Point   `value:"${point}"`
 	DefaultPoint image.Point   `value:"${default_point:=(3,4)}"`
 	PointList    []image.Point `value:"${point.list}"`
+}
+
+func PointConverter(val string) (image.Point, error) {
+	if !(strings.HasPrefix(val, "(") && strings.HasSuffix(val, ")")) {
+		return image.Point{}, errors.New("数据格式错误")
+	}
+	ss := strings.Split(val[1:len(val)-1], ",")
+	x := cast.ToInt(ss[0])
+	y := cast.ToInt(ss[1])
+	return image.Point{X: x, Y: y}, nil
+}
+
+type DB struct {
+	UserName string `value:"${username}"`
+	Password string `value:"${password}"`
+	Url      string `value:"${url}"`
+	Port     string `value:"${port}"`
+	DB       string `value:"${db}"`
+}
+
+type DbConfig struct {
+	DB []DB `value:"${db}"`
 }
 
 func TestApplicationContext_TypeConverter(t *testing.T) {

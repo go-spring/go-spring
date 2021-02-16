@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package core_test
+package conf_test
 
 import (
 	"errors"
@@ -25,14 +25,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-spring/spring-core/core"
+	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/util"
 	"github.com/spf13/cast"
 )
 
 func TestDefaultProperties_LoadProperties(t *testing.T) {
 
-	p := core.New()
+	p := conf.New()
 	p.Load("testdata/config/application.yaml")
 	p.Load("testdata/config/application.properties")
 
@@ -60,7 +60,7 @@ func TestDefaultProperties_ReadProperties_Properties(t *testing.T) {
 		}
 
 		for _, d := range data {
-			p := core.New()
+			p := conf.New()
 			r := strings.NewReader(d.str)
 			p.Read(r, "properties")
 			v := p.Get(d.key)
@@ -84,7 +84,7 @@ func TestDefaultProperties_ReadProperties_Properties(t *testing.T) {
 		}
 
 		for _, d := range data {
-			p := core.New()
+			p := conf.New()
 			r := strings.NewReader(d.str)
 			p.Read(r, "properties")
 			v := p.Get(d.key)
@@ -108,7 +108,7 @@ func TestDefaultProperties_ReadProperties_Properties(t *testing.T) {
 			"map.string": "hello",
 		}
 
-		p := core.New()
+		p := conf.New()
 		r := strings.NewReader(str)
 		p.Read(r, "properties")
 
@@ -131,7 +131,7 @@ func TestDefaultProperties_ReadProperties_Properties(t *testing.T) {
           array[1].string=hello
         `
 
-		p := core.New()
+		p := conf.New()
 		r := strings.NewReader(str)
 		p.Read(r, "properties")
 
@@ -176,7 +176,7 @@ func TestDefaultProperties_ReadProperties_Properties(t *testing.T) {
 			"map.k2.string": "hello",
 		}
 
-		p := core.New()
+		p := conf.New()
 		r := strings.NewReader(str)
 		p.Read(r, "properties")
 
@@ -207,7 +207,7 @@ func TestDefaultProperties_ReadProperties_Yaml(t *testing.T) {
 		}
 
 		for _, d := range data {
-			p := core.New()
+			p := conf.New()
 			r := strings.NewReader(d.str)
 			p.Read(r, "yaml")
 			v := p.Get(d.key)
@@ -231,7 +231,7 @@ func TestDefaultProperties_ReadProperties_Yaml(t *testing.T) {
 		}
 
 		for _, d := range data {
-			p := core.New()
+			p := conf.New()
 			r := strings.NewReader(d.str)
 			p.Read(r, "yaml")
 			v := p.Get(d.key)
@@ -256,7 +256,7 @@ func TestDefaultProperties_ReadProperties_Yaml(t *testing.T) {
 			"map.string": "hello",
 		}
 
-		p := core.New()
+		p := conf.New()
 		r := strings.NewReader(str)
 		p.Read(r, "yaml")
 
@@ -282,7 +282,7 @@ func TestDefaultProperties_ReadProperties_Yaml(t *testing.T) {
                   string: hello
         `
 
-		p := core.New()
+		p := conf.New()
 		r := strings.NewReader(str)
 		p.Read(r, "yaml")
 
@@ -331,7 +331,7 @@ func TestDefaultProperties_ReadProperties_Yaml(t *testing.T) {
 			"map.k2.string": "hello",
 		}
 
-		p := core.New()
+		p := conf.New()
 		r := strings.NewReader(str)
 		p.Read(r, "yaml")
 
@@ -362,7 +362,7 @@ func TestDefaultProperties_ReadProperties_Toml(t *testing.T) {
 		}
 
 		for _, d := range data {
-			p := core.New()
+			p := conf.New()
 			r := strings.NewReader(d.str)
 			p.Read(r, "toml")
 			v := p.Get(d.key)
@@ -386,7 +386,7 @@ func TestDefaultProperties_ReadProperties_Toml(t *testing.T) {
 		}
 
 		for _, d := range data {
-			p := core.New()
+			p := conf.New()
 			r := strings.NewReader(d.str)
 			p.Read(r, "toml")
 			v := p.Get(d.key)
@@ -411,7 +411,7 @@ func TestDefaultProperties_ReadProperties_Toml(t *testing.T) {
 			"map.string": "hello",
 		}
 
-		p := core.New()
+		p := conf.New()
 		r := strings.NewReader(str)
 		p.Read(r, "toml")
 
@@ -437,7 +437,7 @@ func TestDefaultProperties_ReadProperties_Toml(t *testing.T) {
           string="hello"
         `
 
-		p := core.New()
+		p := conf.New()
 		r := strings.NewReader(str)
 		p.Read(r, "toml")
 
@@ -486,7 +486,7 @@ func TestDefaultProperties_ReadProperties_Toml(t *testing.T) {
 			"map.k2.string": "hello",
 		}
 
-		p := core.New()
+		p := conf.New()
 		r := strings.NewReader(str)
 		p.Read(r, "toml")
 
@@ -508,7 +508,7 @@ func PointConverter(val string) (image.Point, error) {
 }
 
 func TestRegisterTypeConverter(t *testing.T) {
-	p := core.New()
+	p := conf.New()
 
 	err := p.Convert(3)
 	util.AssertEqual(t, err, errors.New("fn must be func(string)(type,error)"))
@@ -524,7 +524,7 @@ func TestRegisterTypeConverter(t *testing.T) {
 }
 
 func TestDefaultProperties_GetProperty(t *testing.T) {
-	p := core.New()
+	p := conf.New()
 
 	p.Set("a.b.c", "3")
 	p.Set("a.b.d", []string{"3"})
@@ -645,7 +645,7 @@ type NestedDbConfig struct {
 func TestDefaultProperties_BindProperty(t *testing.T) {
 
 	t.Run("simple bind", func(t *testing.T) {
-		p := core.New()
+		p := conf.New()
 		p.Load("testdata/config/application.yaml")
 
 		dbConfig1 := DbConfig{}
@@ -660,7 +660,7 @@ func TestDefaultProperties_BindProperty(t *testing.T) {
 
 	t.Run("struct bind with tag", func(t *testing.T) {
 
-		p := core.New()
+		p := conf.New()
 		p.Load("testdata/config/application.yaml")
 
 		dbConfig := TagNestedDbConfig{}
@@ -671,7 +671,7 @@ func TestDefaultProperties_BindProperty(t *testing.T) {
 
 	t.Run("struct bind without tag", func(t *testing.T) {
 
-		p := core.New()
+		p := conf.New()
 		p.Load("testdata/config/application.yaml")
 
 		dbConfig1 := NestedDbConfig{}
@@ -694,7 +694,7 @@ func TestDefaultProperties_StringMapString(t *testing.T) {
 
 	t.Run("simple map bind", func(t *testing.T) {
 
-		p := core.New()
+		p := conf.New()
 		p.Set("a.b1", "b1")
 		p.Set("a.b2", "b2")
 		p.Set("a.b3", "b3")
@@ -708,7 +708,7 @@ func TestDefaultProperties_StringMapString(t *testing.T) {
 
 	t.Run("converter bind", func(t *testing.T) {
 
-		p := core.New()
+		p := conf.New()
 		p.Convert(PointConverter)
 		p.Set("a.p1", "(1,2)")
 		p.Set("a.p2", "(3,4)")
@@ -723,7 +723,7 @@ func TestDefaultProperties_StringMapString(t *testing.T) {
 
 	t.Run("simple bind from file", func(t *testing.T) {
 
-		p := core.New()
+		p := conf.New()
 		p.Load("testdata/config/application.yaml")
 
 		var m map[string]string
@@ -735,7 +735,7 @@ func TestDefaultProperties_StringMapString(t *testing.T) {
 
 	t.Run("struct bind from file", func(t *testing.T) {
 
-		p := core.New()
+		p := conf.New()
 		p.Load("testdata/config/application.yaml")
 
 		var m map[string]NestedDB
@@ -765,13 +765,13 @@ func TestDefaultProperties_ConfigRef(t *testing.T) {
 	var httpLog struct{ fileLog }
 
 	t.Run("not config", func(t *testing.T) {
-		p := core.New()
+		p := conf.New()
 		err := p.Bind("", &httpLog)
 		util.AssertEqual(t, err, errors.New("property \"app.dir\" not config"))
 	})
 
 	t.Run("config", func(t *testing.T) {
-		p := core.New()
+		p := conf.New()
 
 		appDir := "/home/log"
 		p.Set("app.dir", appDir)
@@ -791,7 +791,7 @@ func TestDefaultProperties_ConfigRef(t *testing.T) {
 }
 
 func TestDefaultProperties_KeyCanBeEmpty(t *testing.T) {
-	p := core.New()
+	p := conf.New()
 	var s struct {
 		KeyIsEmpty string `value:"${:=kie}"`
 	}

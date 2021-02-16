@@ -25,6 +25,7 @@ import (
 	"sync"
 
 	"github.com/go-spring/spring-core/bean"
+	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/core/internal/sort"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
@@ -69,7 +70,7 @@ type applicationContext struct {
 	destroyers   *list.List // 销毁函数集合
 	destroyerMap map[string]*destroyer
 
-	properties Properties // 属性值列表接口
+	properties conf.Properties // 属性值列表接口
 }
 
 // NewApplicationContext applicationContext 的构造函数
@@ -78,7 +79,7 @@ func NewApplicationContext() *applicationContext {
 	return &applicationContext{
 		ctx:             ctx,
 		cancel:          cancel,
-		properties:      New(),
+		properties:      conf.New(),
 		AllBeans:        make([]*BeanInstance, 0),
 		beanMap:         make(map[string]*BeanInstance),
 		beanCacheByName: make(map[string]*beanCacheItem),
@@ -90,7 +91,7 @@ func NewApplicationContext() *applicationContext {
 }
 
 // Properties 获取 Properties 对象
-func (ctx *applicationContext) Properties() Properties {
+func (ctx *applicationContext) Properties() conf.Properties {
 	return ctx.properties
 }
 
