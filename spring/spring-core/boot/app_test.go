@@ -25,7 +25,6 @@ import (
 
 	"github.com/go-spring/spring-core/core"
 	"github.com/go-spring/spring-core/util"
-	"github.com/go-spring/spring-core/web"
 )
 
 func startApplication(cfgLocation ...string) *application {
@@ -101,8 +100,6 @@ func TestApp(t *testing.T) {
 		Property("spring.application.name", "test").
 		Bean(core.ObjBean(new(int)).WithName("int")).
 		Configer(core.Config(func(i *int) { fmt.Println(i) }, "")).
-		HttpRequest(web.MethodGet, "/handle", web.FUNC(func(ctx web.Context) { ctx.String("hello") })).
-		HttpMapping(web.MethodGet, "/mapping", func(ctx web.Context) { ctx.String("hello") }).
 		Run()
 	t.Log("success")
 }

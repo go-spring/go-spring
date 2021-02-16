@@ -30,6 +30,9 @@ import (
 // 的 Bean 了，这样做是因为实现起来更简单而且性能更高。
 type ApplicationContext interface {
 
+	// Context 返回上下文接口
+	Context() context.Context
+
 	// GetProfile 返回运行环境
 	GetProfile() string
 
@@ -88,9 +91,6 @@ type ApplicationContext interface {
 	// 必须满足 selector 条件。另外，自动模式下不对收集结果进行排序，指定模式下根据
 	// selectors 列表的顺序对收集结果进行排序。
 	CollectBeans(i interface{}, selectors ...BeanSelector) bool
-
-	// Context 返回上下文接口
-	Context() context.Context
 
 	// SafeGoroutine 安全地启动一个 goroutine
 	Go(fn interface{}, args ...Arg)

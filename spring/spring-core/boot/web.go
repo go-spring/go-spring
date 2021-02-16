@@ -21,85 +21,162 @@ import (
 	"github.com/go-spring/spring-core/web"
 )
 
-// WebMapping Web 路由映射表
-type WebMapping struct {
-	Mappings map[string]*Mapping
+// WebMapping 默认的 Web 路由映射表
+var WebMapping = webMapping(make(map[string]*webMapper))
+
+// Route 返回和 webMapper 绑定的路由分组
+func Route(basePath string, filters ...core.BeanSelector) *webRouter {
+	return newRouter(WebMapping, basePath, filters)
 }
 
-// NewWebMapping WebMapping 的构造函数
-func NewWebMapping() *WebMapping {
-	return &WebMapping{Mappings: make(map[string]*Mapping)}
+// HandleRequest 注册任意 HTTP 方法处理函数
+func HandleRequest(method uint32, path string, fn web.Handler, filters ...core.BeanSelector) *webMapper {
+	return WebMapping.HandleRequest(method, path, fn, filters)
 }
+
+// MappingRequest 注册任意 HTTP 方法处理函数
+func MappingRequest(method uint32, path string, fn web.HandlerFunc, filters ...core.BeanSelector) *webMapper {
+	return WebMapping.HandleRequest(method, path, web.FUNC(fn), filters)
+}
+
+// BindingRequest 注册任意 HTTP 方法处理函数
+func BindingRequest(method uint32, path string, fn interface{}, filters ...core.BeanSelector) *webMapper {
+	return WebMapping.HandleRequest(method, path, web.BIND(fn), filters)
+}
+
+// HandleGet 注册 GET 方法处理函数
+func HandleGet(path string, fn web.Handler, filters ...core.BeanSelector) *webMapper {
+	return HandleRequest(web.MethodGet, path, fn, filters...)
+}
+
+// MappingGet 注册 GET 方法处理函数
+func MappingGet(path string, fn web.HandlerFunc, filters ...core.BeanSelector) *webMapper {
+	return HandleRequest(web.MethodGet, path, web.FUNC(fn), filters...)
+}
+
+// BindingGet 注册 GET 方法处理函数
+func BindingGet(path string, fn interface{}, filters ...core.BeanSelector) *webMapper {
+	return HandleRequest(web.MethodGet, path, web.BIND(fn), filters...)
+}
+
+// HandlePost 注册 POST 方法处理函数
+func HandlePost(path string, fn web.Handler, filters ...core.BeanSelector) *webMapper {
+	return HandleRequest(web.MethodPost, path, fn, filters...)
+}
+
+// MappingPost 注册 POST 方法处理函数
+func MappingPost(path string, fn web.HandlerFunc, filters ...core.BeanSelector) *webMapper {
+	return HandleRequest(web.MethodPost, path, web.FUNC(fn), filters...)
+}
+
+// BindingPost 注册 POST 方法处理函数
+func BindingPost(path string, fn interface{}, filters ...core.BeanSelector) *webMapper {
+	return HandleRequest(web.MethodPost, path, web.BIND(fn), filters...)
+}
+
+// HandlePut 注册 PUT 方法处理函数
+func HandlePut(path string, fn web.Handler, filters ...core.BeanSelector) *webMapper {
+	return HandleRequest(web.MethodPut, path, fn, filters...)
+}
+
+// MappingPut 注册 PUT 方法处理函数
+func MappingPut(path string, fn web.HandlerFunc, filters ...core.BeanSelector) *webMapper {
+	return HandleRequest(web.MethodPut, path, web.FUNC(fn), filters...)
+}
+
+// BindingPut 注册 PUT 方法处理函数
+func BindingPut(path string, fn interface{}, filters ...core.BeanSelector) *webMapper {
+	return HandleRequest(web.MethodPut, path, web.BIND(fn), filters...)
+}
+
+// HandleDelete 注册 DELETE 方法处理函数
+func HandleDelete(path string, fn web.Handler, filters ...core.BeanSelector) *webMapper {
+	return HandleRequest(web.MethodDelete, path, fn, filters...)
+}
+
+// MappingDelete 注册 DELETE 方法处理函数
+func MappingDelete(path string, fn web.HandlerFunc, filters ...core.BeanSelector) *webMapper {
+	return HandleRequest(web.MethodDelete, path, web.FUNC(fn), filters...)
+}
+
+// BindingDelete 注册 DELETE 方法处理函数
+func BindingDelete(path string, fn interface{}, filters ...core.BeanSelector) *webMapper {
+	return HandleRequest(web.MethodDelete, path, web.BIND(fn), filters...)
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+
+// webMapping Web 路由映射表
+type webMapping map[string]*webMapper
 
 // HandleRequest 路由注册
-func (m *WebMapping) HandleRequest(method uint32, path string, fn web.Handler, filters []core.BeanSelector) *Mapping {
+func (m webMapping) HandleRequest(method uint32, path string, fn web.Handler, filters []core.BeanSelector) *webMapper {
 	mapping := newMapping(method, path, fn, filters)
-	m.Mappings[mapping.Key()] = mapping
+	m[mapping.Key()] = mapping
 	return mapping
 }
 
-// Mapping 封装 Web 路由映射
-type Mapping struct {
-	handler web.Handler
-	mapper  *web.Mapper // 路由映射器
+// webMapper 封装 Web 路由映射
+type webMapper struct {
+	mapper  *web.Mapper
 	filters []core.BeanSelector
 }
 
-// newMapping Mapping 的构造函数
-func newMapping(method uint32, path string, handler web.Handler, filters []core.BeanSelector) *Mapping {
-	return &Mapping{mapper: web.NewMapper(method, path, nil, nil), handler: handler, filters: filters}
+// newMapping webMapper 的构造函数
+func newMapping(method uint32, path string, handler web.Handler, filters []core.BeanSelector) *webMapper {
+	return &webMapper{mapper: web.NewMapper(method, path, handler, nil), filters: filters}
 }
 
 // Mapper 返回封装的 Mapper 对象
-func (m *Mapping) Mapper() *web.Mapper {
+func (m *webMapper) Mapper() *web.Mapper {
 	return m.mapper
 }
 
-// Key 返回 Mapper 的标识符
-func (m *Mapping) Key() string {
+// Key 返回 webMapper 的标识符
+func (m *webMapper) Key() string {
 	return m.mapper.Key()
 }
 
-// Method 返回 Mapper 的方法
-func (m *Mapping) Method() uint32 {
+// Method 返回 webMapper 的方法
+func (m *webMapper) Method() uint32 {
 	return m.mapper.Method()
 }
 
-// Path 返回 Mapper 的路径
-func (m *Mapping) Path() string {
+// Path 返回 webMapper 的路径
+func (m *webMapper) Path() string {
 	return m.mapper.Path()
 }
 
 // HandlerSelector 返回处理函数选择器
-func (m *Mapping) Handler() web.Handler {
-	return m.handler
+func (m *webMapper) Handler() web.Handler {
+	return m.mapper.Handler()
 }
 
-// Filters 返回 Mapper 的过滤器列表
-func (m *Mapping) Filters() []core.BeanSelector {
+// Filters 返回 webMapper 的过滤器列表
+func (m *webMapper) Filters() []core.BeanSelector {
 	return m.filters
 }
 
 //// Swagger 生成并返回 Swagger 操作节点
-//func (m *Mapping) Swagger() *web.Operation {
+//func (m *webMapper) Swagger() *web.Operation {
 //	return m.mapper.Swagger("")
 //}
 
-// Router 路由分组
-type Router struct {
-	mapping  *WebMapping
+// webRouter 路由分组
+type webRouter struct {
+	mapping  webMapping
 	basePath string
 	filters  []core.BeanSelector
 }
 
-// newRouter Router 的构造函数
-func newRouter(mapping *WebMapping, basePath string, filters []core.BeanSelector) *Router {
-	return &Router{mapping: mapping, basePath: basePath, filters: filters}
+// newRouter webRouter 的构造函数
+func newRouter(mapping webMapping, basePath string, filters []core.BeanSelector) *webRouter {
+	return &webRouter{mapping: mapping, basePath: basePath, filters: filters}
 }
 
 // Route 创建子路由分组
-func (r *Router) Route(basePath string, filters ...core.BeanSelector) *Router {
-	return &Router{
+func (r *webRouter) Route(basePath string, filters ...core.BeanSelector) *webRouter {
+	return &webRouter{
 		mapping:  r.mapping,
 		basePath: r.basePath + basePath,
 		filters:  append(r.filters, filters...),
@@ -107,182 +184,77 @@ func (r *Router) Route(basePath string, filters ...core.BeanSelector) *Router {
 }
 
 // HandleRequest 注册任意 HTTP 方法处理函数
-func (r *Router) HandleRequest(method uint32, path string, fn web.Handler, filters ...core.BeanSelector) *Mapping {
-	filters = append(r.filters, filters...) // 组合 Router 和 Mapper 的过滤器列表
+func (r *webRouter) HandleRequest(method uint32, path string, fn web.Handler, filters ...core.BeanSelector) *webMapper {
+	filters = append(r.filters, filters...) // 组合 webRouter 和 webMapper 的过滤器列表
 	return r.mapping.HandleRequest(method, r.basePath+path, fn, filters)
 }
 
 // MappingRequest 注册任意 HTTP 方法处理函数
-func (r *Router) MappingRequest(method uint32, path string, fn web.HandlerFunc, filters ...core.BeanSelector) *Mapping {
+func (r *webRouter) MappingRequest(method uint32, path string, fn web.HandlerFunc, filters ...core.BeanSelector) *webMapper {
 	return r.HandleRequest(method, path, web.FUNC(fn), filters...)
 }
 
 // BindingRequest 注册任意 HTTP 方法处理函数
-func (r *Router) BindingRequest(method uint32, path string, fn interface{}, filters ...core.BeanSelector) *Mapping {
+func (r *webRouter) BindingRequest(method uint32, path string, fn interface{}, filters ...core.BeanSelector) *webMapper {
 	return r.HandleRequest(method, path, web.BIND(fn), filters...)
 }
 
 // HandleGet 注册 GET 方法处理函数
-func (r *Router) HandleGet(path string, fn web.Handler, filters ...core.BeanSelector) *Mapping {
+func (r *webRouter) HandleGet(path string, fn web.Handler, filters ...core.BeanSelector) *webMapper {
 	return r.HandleRequest(web.MethodGet, path, fn, filters...)
 }
 
 // MappingGet 注册 GET 方法处理函数
-func (r *Router) MappingGet(path string, fn web.HandlerFunc, filters ...core.BeanSelector) *Mapping {
+func (r *webRouter) MappingGet(path string, fn web.HandlerFunc, filters ...core.BeanSelector) *webMapper {
 	return r.HandleRequest(web.MethodGet, path, web.FUNC(fn), filters...)
 }
 
 // BindingGet 注册 GET 方法处理函数
-func (r *Router) BindingGet(path string, fn interface{}, filters ...core.BeanSelector) *Mapping {
+func (r *webRouter) BindingGet(path string, fn interface{}, filters ...core.BeanSelector) *webMapper {
 	return r.HandleRequest(web.MethodGet, path, web.BIND(fn), filters...)
 }
 
 // HandlePost 注册 POST 方法处理函数
-func (r *Router) HandlePost(path string, fn web.Handler, filters ...core.BeanSelector) *Mapping {
+func (r *webRouter) HandlePost(path string, fn web.Handler, filters ...core.BeanSelector) *webMapper {
 	return r.HandleRequest(web.MethodPost, path, fn, filters...)
 }
 
 // MappingPost 注册 POST 方法处理函数
-func (r *Router) MappingPost(path string, fn web.HandlerFunc, filters ...core.BeanSelector) *Mapping {
+func (r *webRouter) MappingPost(path string, fn web.HandlerFunc, filters ...core.BeanSelector) *webMapper {
 	return r.HandleRequest(web.MethodPost, path, web.FUNC(fn), filters...)
 }
 
 // BindingPost 注册 POST 方法处理函数
-func (r *Router) BindingPost(path string, fn interface{}, filters ...core.BeanSelector) *Mapping {
+func (r *webRouter) BindingPost(path string, fn interface{}, filters ...core.BeanSelector) *webMapper {
 	return r.HandleRequest(web.MethodPost, path, web.BIND(fn), filters...)
 }
 
 // HandlePut 注册 PUT 方法处理函数
-func (r *Router) HandlePut(path string, fn web.Handler, filters ...core.BeanSelector) *Mapping {
+func (r *webRouter) HandlePut(path string, fn web.Handler, filters ...core.BeanSelector) *webMapper {
 	return r.HandleRequest(web.MethodPut, path, fn, filters...)
 }
 
 // MappingPut 注册 PUT 方法处理函数
-func (r *Router) MappingPut(path string, fn web.HandlerFunc, filters ...core.BeanSelector) *Mapping {
+func (r *webRouter) MappingPut(path string, fn web.HandlerFunc, filters ...core.BeanSelector) *webMapper {
 	return r.HandleRequest(web.MethodPut, path, web.FUNC(fn), filters...)
 }
 
 // BindingPut 注册 PUT 方法处理函数
-func (r *Router) BindingPut(path string, fn interface{}, filters ...core.BeanSelector) *Mapping {
+func (r *webRouter) BindingPut(path string, fn interface{}, filters ...core.BeanSelector) *webMapper {
 	return r.HandleRequest(web.MethodPut, path, web.BIND(fn), filters...)
 }
 
 // HandleDelete 注册 DELETE 方法处理函数
-func (r *Router) HandleDelete(path string, fn web.Handler, filters ...core.BeanSelector) *Mapping {
+func (r *webRouter) HandleDelete(path string, fn web.Handler, filters ...core.BeanSelector) *webMapper {
 	return r.HandleRequest(web.MethodDelete, path, fn, filters...)
 }
 
 // MappingDelete 注册 DELETE 方法处理函数
-func (r *Router) MappingDelete(path string, fn web.HandlerFunc, filters ...core.BeanSelector) *Mapping {
+func (r *webRouter) MappingDelete(path string, fn web.HandlerFunc, filters ...core.BeanSelector) *webMapper {
 	return r.HandleRequest(web.MethodDelete, path, web.FUNC(fn), filters...)
 }
 
 // BindingDelete 注册 DELETE 方法处理函数
-func (r *Router) BindingDelete(path string, fn interface{}, filters ...core.BeanSelector) *Mapping {
+func (r *webRouter) BindingDelete(path string, fn interface{}, filters ...core.BeanSelector) *webMapper {
 	return r.HandleRequest(web.MethodDelete, path, web.BIND(fn), filters...)
-}
-
-///////////////////// 全局函数 /////////////////////////////
-
-// DefaultWebMapping 默认的 Web 路由映射表
-var DefaultWebMapping = NewWebMapping()
-
-// Route 返回和 Mapping 绑定的路由分组
-func Route(basePath string, filters ...core.BeanSelector) *Router {
-	return newRouter(DefaultWebMapping, basePath, filters)
-}
-
-// HandleRequest 注册任意 HTTP 方法处理函数
-func HandleRequest(method uint32, path string, fn web.Handler, filters ...core.BeanSelector) *Mapping {
-	return DefaultWebMapping.HandleRequest(method, path, fn, filters)
-}
-
-// MappingRequest 注册任意 HTTP 方法处理函数
-func MappingRequest(method uint32, path string, fn web.HandlerFunc, filters ...core.BeanSelector) *Mapping {
-	return DefaultWebMapping.HandleRequest(method, path, web.FUNC(fn), filters)
-}
-
-// BindingRequest 注册任意 HTTP 方法处理函数
-func BindingRequest(method uint32, path string, fn interface{}, filters ...core.BeanSelector) *Mapping {
-	return DefaultWebMapping.HandleRequest(method, path, web.BIND(fn), filters)
-}
-
-// HandleGet 注册 GET 方法处理函数
-func HandleGet(path string, fn web.Handler, filters ...core.BeanSelector) *Mapping {
-	return HandleRequest(web.MethodGet, path, fn, filters...)
-}
-
-// MappingGet 注册 GET 方法处理函数
-func MappingGet(path string, fn web.HandlerFunc, filters ...core.BeanSelector) *Mapping {
-	return HandleRequest(web.MethodGet, path, web.FUNC(fn), filters...)
-}
-
-// BindingGet 注册 GET 方法处理函数
-func BindingGet(path string, fn interface{}, filters ...core.BeanSelector) *Mapping {
-	return HandleRequest(web.MethodGet, path, web.BIND(fn), filters...)
-}
-
-// HandlePost 注册 POST 方法处理函数
-func HandlePost(path string, fn web.Handler, filters ...core.BeanSelector) *Mapping {
-	return HandleRequest(web.MethodPost, path, fn, filters...)
-}
-
-// MappingPost 注册 POST 方法处理函数
-func MappingPost(path string, fn web.HandlerFunc, filters ...core.BeanSelector) *Mapping {
-	return HandleRequest(web.MethodPost, path, web.FUNC(fn), filters...)
-}
-
-// BindingPost 注册 POST 方法处理函数
-func BindingPost(path string, fn interface{}, filters ...core.BeanSelector) *Mapping {
-	return HandleRequest(web.MethodPost, path, web.BIND(fn), filters...)
-}
-
-// HandlePut 注册 PUT 方法处理函数
-func HandlePut(path string, fn web.Handler, filters ...core.BeanSelector) *Mapping {
-	return HandleRequest(web.MethodPut, path, fn, filters...)
-}
-
-// MappingPut 注册 PUT 方法处理函数
-func MappingPut(path string, fn web.HandlerFunc, filters ...core.BeanSelector) *Mapping {
-	return HandleRequest(web.MethodPut, path, web.FUNC(fn), filters...)
-}
-
-// BindingPut 注册 PUT 方法处理函数
-func BindingPut(path string, fn interface{}, filters ...core.BeanSelector) *Mapping {
-	return HandleRequest(web.MethodPut, path, web.BIND(fn), filters...)
-}
-
-// HandleDelete 注册 DELETE 方法处理函数
-func HandleDelete(path string, fn web.Handler, filters ...core.BeanSelector) *Mapping {
-	return HandleRequest(web.MethodDelete, path, fn, filters...)
-}
-
-// MappingDelete 注册 DELETE 方法处理函数
-func MappingDelete(path string, fn web.HandlerFunc, filters ...core.BeanSelector) *Mapping {
-	return HandleRequest(web.MethodDelete, path, web.FUNC(fn), filters...)
-}
-
-// BindingDelete 注册 DELETE 方法处理函数
-func BindingDelete(path string, fn interface{}, filters ...core.BeanSelector) *Mapping {
-	return HandleRequest(web.MethodDelete, path, web.BIND(fn), filters...)
-}
-
-///////////////////// application /////////////////////////////
-
-// HttpRequest 注册任意 HTTP 方法处理函数
-func (app *application) HttpRequest(method uint32, path string, fn web.Handler, filters ...core.BeanSelector) *application {
-	HandleRequest(method, path, fn, filters)
-	return app
-}
-
-// HttpMapping 注册任意 HTTP 方法处理函数
-func (app *application) HttpMapping(method uint32, path string, fn web.HandlerFunc, filters ...core.BeanSelector) *application {
-	HandleRequest(method, path, web.FUNC(fn), filters)
-	return app
-}
-
-// HttpBinding 注册任意 HTTP 方法处理函数
-func (app *application) HttpBinding(method uint32, path string, fn interface{}, filters ...core.BeanSelector) *application {
-	HandleRequest(method, path, web.BIND(fn), filters)
-	return app
 }

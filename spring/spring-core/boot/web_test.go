@@ -14,7 +14,22 @@
  * limitations under the License.
  */
 
-package boot
+package boot_test
+
+import (
+	"fmt"
+	"testing"
+
+	"github.com/go-spring/spring-core/boot"
+	"github.com/go-spring/spring-core/web"
+)
+
+func TestMapper(t *testing.T) {
+	boot.MappingGet("/", func(ctx web.Context) {})
+	for _, mapper := range boot.WebMapping {
+		fmt.Println(mapper.Key(), web.GetMethod(mapper.Method()))
+	}
+}
 
 //func TestRouter_Route(t *testing.T) {
 //	root := Route("/root", FilterBean("r1", "r2")).WithCondition(cond.OnBean("r"))
