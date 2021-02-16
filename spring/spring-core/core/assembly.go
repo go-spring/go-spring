@@ -397,7 +397,7 @@ func (assembly *defaultBeanAssembly) wireBeanDefinition(bd beanDefinition, onlyA
 
 	// 正在注入的 Bean 再次注入则说明出现了循环依赖
 	if bd.getStatus() == BeanStatus_Wiring {
-		if _, ok := bd.Factory().(*objBeanFactory); !ok {
+		if _, ok := bd.beanFactory().(*objBeanFactory); !ok {
 			panic(errors.New("found circle autowire"))
 		}
 		return
@@ -415,7 +415,7 @@ func (assembly *defaultBeanAssembly) wireBeanDefinition(bd beanDefinition, onlyA
 	}
 
 	// 对当前 Bean 进行自动注入
-	switch b := bd.Factory().(type) {
+	switch b := bd.beanFactory().(type) {
 	case *objBeanFactory:
 		assembly.wireObjectBean(bd, onlyAutoWire)
 	case *ctorBeanFactory:
@@ -427,7 +427,7 @@ func (assembly *defaultBeanAssembly) wireBeanDefinition(bd beanDefinition, onlyA
 
 	// 如果用户设置了初始化函数则执行初始化函数
 	if init := bd.getInit(); init != nil {
-		if err := init.run(assembly); err != nil {
+		if err := init.run(assembly, bd.Value()); err != nil {
 			panic(err)
 		}
 	}
@@ -572,8 +572,8 @@ func (assembly *defaultBeanAssembly) wireConstructorBean(fnValue reflect.Value, 
 		beanValue = bd.Value()
 	}
 
-	b := NewBeanDefinition(valueBean(beanValue, bd.getFile(), bd.getLine())).WithName(bd.Name())
-	assembly.wireBeanDefinition(&fnValueBeanDefinition{b, bd}, false)
+	b := NewBeanDefinition(valueBean(beanValue, bd.getFile(), bd.getLine()).WithName(bd.Name()))
+	assembly.wireBeanDefinition(&fnValueBeanDefinition{BeanDefinition: b, f: bd}, false)
 }
 
 // WireStructField 对结构体的字段进行绑定
@@ -605,7 +605,7 @@ type fieldBeanDefinition struct {
 
 // Description 返回 Bean 的详细描述
 func (d *fieldBeanDefinition) Description() string {
-	return fmt.Sprintf("%s field: %s %s", d.Factory().beanClass(), d.field, d.FileLine())
+	return fmt.Sprintf("%s field: %s %s", d.beanFactory().beanClass(), d.field, d.FileLine())
 }
 
 type fnValueBeanDefinition struct {
@@ -615,5 +615,5 @@ type fnValueBeanDefinition struct {
 
 // Description 返回 Bean 的详细描述
 func (d *fnValueBeanDefinition) Description() string {
-	return fmt.Sprintf("%s value %s", d.f.Factory().beanClass(), d.f.FileLine())
+	return fmt.Sprintf("%s value %s", d.f.beanFactory().beanClass(), d.f.FileLine())
 }

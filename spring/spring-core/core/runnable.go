@@ -10,18 +10,17 @@ import (
 
 // Runnable 执行器，不能返回 error 以外的其他值
 type Runnable struct {
-	Fn       interface{}
-	argList  *ArgList
-	receiver reflect.Value // 接收者的值
+	Fn      interface{}
+	argList *ArgList
 }
 
 // newRunnable Runnable 的构造函数
-func newRunnable(fn interface{}, fnType reflect.Type, receiver reflect.Value, args []Arg) *Runnable {
-	return &Runnable{Fn: fn, receiver: receiver, argList: NewArgList(fnType, receiver.IsValid(), args)}
+func newRunnable(fn interface{}, fnType reflect.Type, withReceiver bool, args []Arg) *Runnable {
+	return &Runnable{Fn: fn, argList: NewArgList(fnType, withReceiver, args)}
 }
 
 // Run 运行执行器
-func (r *Runnable) run(assembly beanAssembly) error {
+func (r *Runnable) run(assembly beanAssembly, receiver ...reflect.Value) error {
 
 	// 获取函数定义所在的文件及其行号信息
 	file, line, _ := util.FileLine(r.Fn)
@@ -31,7 +30,7 @@ func (r *Runnable) run(assembly beanAssembly) error {
 	var in []reflect.Value
 
 	if r.argList.withReceiver {
-		in = append(in, r.receiver)
+		in = append(in, receiver[0])
 	}
 
 	if r.argList != nil {

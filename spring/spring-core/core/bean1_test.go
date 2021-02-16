@@ -485,15 +485,15 @@ func TestBeanDefinition_Match(t *testing.T) {
 		{core.NewBeanDefinition(core.ObjBean(new(int))), "int", "*int", true},
 		{core.NewBeanDefinition(core.ObjBean(new(int))), "", "*int", true},
 		{core.NewBeanDefinition(core.ObjBean(new(int))), "int", "", true},
-		{core.NewBeanDefinition(core.ObjBean(new(int))).WithName("i"), "int", "i", true},
-		{core.NewBeanDefinition(core.ObjBean(new(int))).WithName("i"), "", "i", true},
-		{core.NewBeanDefinition(core.ObjBean(new(int))).WithName("i"), "int", "", true},
+		{core.NewBeanDefinition(core.ObjBean(new(int)).WithName("i")), "int", "i", true},
+		{core.NewBeanDefinition(core.ObjBean(new(int)).WithName("i")), "", "i", true},
+		{core.NewBeanDefinition(core.ObjBean(new(int)).WithName("i")), "int", "", true},
 		{core.NewBeanDefinition(core.ObjBean(new(pkg2.SamePkg))), "github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg", "*pkg.SamePkg", true},
 		{core.NewBeanDefinition(core.ObjBean(new(pkg2.SamePkg))), "", "*pkg.SamePkg", true},
 		{core.NewBeanDefinition(core.ObjBean(new(pkg2.SamePkg))), "github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg", "", true},
-		{core.NewBeanDefinition(core.ObjBean(new(pkg2.SamePkg))).WithName("pkg2"), "github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg", "pkg2", true},
-		{core.NewBeanDefinition(core.ObjBean(new(pkg2.SamePkg))).WithName("pkg2"), "", "pkg2", true},
-		{core.NewBeanDefinition(core.ObjBean(new(pkg2.SamePkg))).WithName("pkg2"), "github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg", "pkg2", true},
+		{core.NewBeanDefinition(core.ObjBean(new(pkg2.SamePkg)).WithName("pkg2")), "github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg", "pkg2", true},
+		{core.NewBeanDefinition(core.ObjBean(new(pkg2.SamePkg)).WithName("pkg2")), "", "pkg2", true},
+		{core.NewBeanDefinition(core.ObjBean(new(pkg2.SamePkg)).WithName("pkg2")), "github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg", "pkg2", true},
 	}
 
 	for i, s := range data {
@@ -589,7 +589,7 @@ func TestObjectBean(t *testing.T) {
 				"*int", "int",
 			},
 
-			core.NewBeanDefinition(core.ObjBean(new(int))).WithName("i"): {
+			core.NewBeanDefinition(core.ObjBean(new(int)).WithName("i")): {
 				"i", "int",
 			},
 
@@ -598,7 +598,7 @@ func TestObjectBean(t *testing.T) {
 				"github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg",
 			},
 
-			core.NewBeanDefinition(core.ObjBean(new(pkg2.SamePkg))).WithName("pkg2"): {
+			core.NewBeanDefinition(core.ObjBean(new(pkg2.SamePkg)).WithName("pkg2")): {
 				"pkg2",
 				"github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg",
 			},

@@ -1344,34 +1344,40 @@ func TestApplicationContext_CollectBeans(t *testing.T) {
 
 	t.Run("before *", func(t *testing.T) {
 
+		d1 := new(RecoresCluster)
+		d2 := new(RecoresCluster)
+
 		ctx := core.NewApplicationContext()
 		ctx.SetProperty("recores.endpoints", "recores://localhost:6379")
-		d1 := ctx.ObjBean(new(RecoresCluster)).WithName("one")
-		d2 := ctx.ObjBean(new(RecoresCluster))
+		ctx.ObjBean(d1).WithName("one")
+		ctx.ObjBean(d2)
 		ctx.AutoWireBeans()
 
 		var rcs []*RecoresCluster
 		ctx.CollectBeans(&rcs, "one", "*")
 
 		util.AssertEqual(t, len(rcs), 2)
-		util.AssertEqual(t, rcs[0], d1.Bean())
-		util.AssertEqual(t, rcs[1], d2.Bean())
+		util.AssertEqual(t, rcs[0], d1)
+		util.AssertEqual(t, rcs[1], d2)
 	})
 
 	t.Run("after *", func(t *testing.T) {
 
+		d1 := new(RecoresCluster)
+		d2 := new(RecoresCluster)
+
 		ctx := core.NewApplicationContext()
 		ctx.SetProperty("recores.endpoints", "recores://localhost:6379")
-		d1 := ctx.ObjBean(new(RecoresCluster)).WithName("one")
-		d2 := ctx.ObjBean(new(RecoresCluster))
+		ctx.ObjBean(d1).WithName("one")
+		ctx.ObjBean(d2)
 		ctx.AutoWireBeans()
 
 		var rcs []*RecoresCluster
 		ctx.CollectBeans(&rcs, "one", "*")
 
 		util.AssertEqual(t, len(rcs), 2)
-		util.AssertEqual(t, rcs[1], d1.Bean())
-		util.AssertEqual(t, rcs[0], d2.Bean())
+		util.AssertEqual(t, rcs[1], d1)
+		util.AssertEqual(t, rcs[0], d2)
 	})
 
 	t.Run("only *", func(t *testing.T) {
@@ -1651,7 +1657,7 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 		ctx := core.NewApplicationContext()
 		ctx.SetProperty("server.version", "1.0.0")
 		parent := ctx.ObjBean(new(Server))
-		bd := ctx.CtorBean(func(s *Server) *Consumer { return s.Consumer() }, parent)
+		bd := ctx.CtorBean((*Server).Consumer, parent)
 		ctx.AutoWireBeans()
 		util.AssertEqual(t, bd.Name(), "*core_test.Consumer")
 
@@ -1673,7 +1679,8 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 		ctx := core.NewApplicationContext()
 		ctx.SetProperty("server.version", "1.0.0")
 		parent := ctx.ObjBean(new(Server))
-		ctx.CtorBean(func(s *Server, i int) *Consumer { return s.ConsumerArg(i) }, parent, "${i:=9}")
+		// ctx.CtorBean((*Server).ConsumerArg, "", "${i:=9}")
+		ctx.CtorBean((*Server).ConsumerArg, parent, "${i:=9}")
 		ctx.AutoWireBeans()
 
 		var s *Server
@@ -1694,7 +1701,8 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 		ctx := core.NewApplicationContext()
 		ctx.SetProperty("server.version", "1.0.0")
 		parent := ctx.CtorBean(NewServerInterface)
-		ctx.CtorBean(func(s ServerInterface) *Consumer { return s.Consumer() }, parent).DependsOn("core_test.ServerInterface")
+		// ctx.CtorBean(ServerInterface.Consumer, "").DependsOn("core_test.ServerInterface")
+		ctx.CtorBean(ServerInterface.Consumer, parent).DependsOn("core_test.ServerInterface")
 		ctx.ObjBean(new(Service))
 		ctx.AutoWireBeans()
 
@@ -1742,7 +1750,7 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 				ctx := core.NewApplicationContext()
 				ctx.SetProperty("server.version", "1.0.0")
 				parent := ctx.ObjBean(new(Server)).DependsOn("*core_test.Service")
-				ctx.CtorBean(func(s *Server) *Consumer { return s.Consumer() }, parent).DependsOn("*core_test.Server")
+				ctx.CtorBean((*Server).Consumer, parent).DependsOn("*core_test.Server")
 				ctx.ObjBean(new(Service))
 				ctx.AutoWireBeans()
 			}()
@@ -2596,11 +2604,11 @@ type ArrayProperties struct {
 func TestApplicationContext_Properties(t *testing.T) {
 
 	t.Run("array properties", func(t *testing.T) {
+		b := new(ArrayProperties)
 		ctx := core.NewApplicationContext()
-		bd := ctx.ObjBean(new(ArrayProperties))
+		ctx.ObjBean(b)
 		ctx.AutoWireBeans()
-		p := bd.Bean().(*ArrayProperties)
-		util.AssertEqual(t, p.Duration, []time.Duration{time.Second, 5 * time.Second})
+		util.AssertEqual(t, b.Duration, []time.Duration{time.Second, 5 * time.Second})
 	})
 
 	t.Run("map default value ", func(t *testing.T) {

@@ -152,20 +152,19 @@ func (ctx *applicationContext) registerBeanDefinition(bd *BeanDefinition) {
 }
 
 // ObjBean 将 Bean 转换为 BeanDefinition 对象
-func (ctx *applicationContext) ObjBean(i interface{}) *BeanDefinition {
+func (ctx *applicationContext) ObjBean(i interface{}) *BeanFactory {
 	return ctx.Bean(ObjBean(i))
 }
 
 // CtorBean 将构造函数转换为 BeanDefinition 对象
-func (ctx *applicationContext) CtorBean(fn interface{}, args ...Arg) *BeanDefinition {
+func (ctx *applicationContext) CtorBean(fn interface{}, args ...Arg) *BeanFactory {
 	return ctx.Bean(CtorBean(fn, args...))
 }
 
-func (ctx *applicationContext) Bean(factory *BeanFactory) *BeanDefinition {
+func (ctx *applicationContext) Bean(factory *BeanFactory) *BeanFactory {
 	ctx.checkRegistration()
-	bd := NewBeanDefinition(factory)
-	ctx.AllBeans = append(ctx.AllBeans, bd)
-	return bd
+	ctx.AllBeans = append(ctx.AllBeans, NewBeanDefinition(factory))
+	return factory
 }
 
 // GetBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
@@ -538,7 +537,7 @@ func (ctx *applicationContext) Close(beforeDestroy ...func()) {
 	// 按照顺序执行销毁函数
 	for i := ctx.destroyers.Front(); i != nil; i = i.Next() {
 		d := i.Value.(*destroyer)
-		if err := d.bean.getDestroy().run(assembly); err != nil {
+		if err := d.bean.getDestroy().run(assembly, d.bean.Value()); err != nil {
 			log.Error(err)
 		}
 	}
@@ -550,7 +549,7 @@ func (ctx *applicationContext) Invoke(fn interface{}, args ...Arg) error {
 	if fnType := reflect.TypeOf(fn); funcType(fnType) {
 		if returnNothing(fnType) || returnOnlyError(fnType) {
 			assembly := newDefaultBeanAssembly(ctx)
-			return newRunnable(fn, fnType, reflect.Value{}, args).run(assembly)
+			return newRunnable(fn, fnType, false, args).run(assembly)
 		}
 	}
 	panic(errors.New("fn should be func() or func()error"))
@@ -586,7 +585,7 @@ func (ctx *applicationContext) Go(fn interface{}, args ...Arg) {
 			}()
 
 			assembly := newDefaultBeanAssembly(ctx)
-			_ = newRunnable(fn, fnType, reflect.Value{}, args).run(assembly)
+			_ = newRunnable(fn, fnType, false, args).run(assembly)
 		}()
 	}
 	panic(errors.New("fn should be func()"))
