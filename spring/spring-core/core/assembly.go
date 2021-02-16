@@ -542,31 +542,34 @@ func (assembly *defaultBeanAssembly) wireConstructorBean(fnValue reflect.Value, 
 		}
 	}
 
+	oldValue := bd.Value()
+
 	// 将函数的返回值赋值给 Bean
 	if IsRefType(val.Kind()) {
 		// 如果实现接口的是值类型，那么需要转换成指针类型然后再赋值给接口
 		if val.Kind() == reflect.Interface && IsValueType(val.Elem().Kind()) {
 			ptrVal := reflect.New(val.Elem().Type())
 			ptrVal.Elem().Set(val.Elem())
-			fnBean.RValue.Set(ptrVal)
+			oldValue.Set(ptrVal)
 		} else {
-			fnBean.RValue.Set(val)
+			oldValue.Set(val)
 		}
 	} else {
-		fnBean.RValue.Elem().Set(val)
+		oldValue.Elem().Set(val)
 	}
 
-	if fnBean.Value().IsNil() {
+	bd.setVal(oldValue)
+
+	if bd.Value().IsNil() {
 		panic(fmt.Errorf("ctor bean: \"%s\" return nil", bd.FileLine()))
 	}
 
 	// 对函数的返回值进行自动注入
-
 	var beanValue reflect.Value
 	if bd.Type().Kind() == reflect.Interface {
-		beanValue = fnBean.Value().Elem()
+		beanValue = bd.Value().Elem()
 	} else {
-		beanValue = fnBean.Value()
+		beanValue = bd.Value()
 	}
 
 	b := valueBean(beanValue, bd.getFile(), bd.getLine()).WithName(bd.Name())
