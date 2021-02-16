@@ -137,13 +137,11 @@ func (ctx *applicationContext) checkRegistration() {
 	}
 }
 
-// deleteBeanInstance 删除 bean.BeanInstance。
 func (ctx *applicationContext) deleteBeanInstance(bd *BeanInstance) {
 	bd.setStatus(BeanStatus_Deleted)
 	delete(ctx.beanMap, bd.BeanId())
 }
 
-// registerBeanInstance 注册 bean.BeanInstance，重复注册会 panic。
 func (ctx *applicationContext) registerBeanInstance(bd *BeanInstance) {
 	if _, ok := ctx.beanMap[bd.BeanId()]; ok {
 		panic(fmt.Errorf("duplicate registration, bean: \"%s\"", bd.BeanId()))
@@ -151,20 +149,20 @@ func (ctx *applicationContext) registerBeanInstance(bd *BeanInstance) {
 	ctx.beanMap[bd.BeanId()] = bd
 }
 
-// ObjBean 将 Bean 转换为 BeanInstance 对象
+// ObjBean 将 Bean 转换为 BeanDefinition 对象
 func (ctx *applicationContext) ObjBean(i interface{}) *BeanDefinition {
 	return ctx.Bean(ObjBean(i))
 }
 
-// CtorBean 将构造函数转换为 BeanInstance 对象
+// CtorBean 将构造函数转换为 BeanDefinition 对象
 func (ctx *applicationContext) CtorBean(fn interface{}, args ...Arg) *BeanDefinition {
 	return ctx.Bean(CtorBean(fn, args...))
 }
 
-func (ctx *applicationContext) Bean(factory *BeanDefinition) *BeanDefinition {
+func (ctx *applicationContext) Bean(bd *BeanDefinition) *BeanDefinition {
 	ctx.checkRegistration()
-	ctx.AllBeans = append(ctx.AllBeans, NewBeanInstance(factory))
-	return factory
+	ctx.AllBeans = append(ctx.AllBeans, NewBeanInstance(bd))
+	return bd
 }
 
 // GetBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。

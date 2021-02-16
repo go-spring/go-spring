@@ -85,7 +85,7 @@ func ValidBean(v reflect.Value) (reflect.Type, bool) {
 type TypeOrPtr interface{}
 
 // TypeName 返回原始类型的全限定名，Go 语言允许不同的路径下存在相同的包，因此有全限定名
-// 的需求，形如 "github.com/go-spring/spring-core/SpringCore.BeanInstance"。
+// 的需求，形如 "github.com/go-spring/spring-core/SpringCore.BeanDefinition"。
 func TypeName(typOrPtr TypeOrPtr) string {
 
 	if typOrPtr == nil {
@@ -117,7 +117,7 @@ func TypeName(typOrPtr TypeOrPtr) string {
 }
 
 // BeanSelector Bean 选择器，可以是 BeanId 字符串，可以是 reflect.Type
-// 对象或者形如 (*error)(nil) 的对象指针，还可以是 *BeanInstance 对象。
+// 对象或者形如 (*error)(nil) 的对象指针，还可以是 *BeanDefinition 对象。
 type BeanSelector interface{}
 
 // ToSingletonTag 将 Bean 选择器转换为 SingletonTag 形式。注意该函数仅用
@@ -126,8 +126,6 @@ func ToSingletonTag(selector BeanSelector) SingletonTag {
 	switch s := selector.(type) {
 	case string:
 		return parseSingletonTag(s)
-	case *BeanInstance: // TODO 去掉支持
-		return parseSingletonTag(s.BeanId())
 	case *BeanDefinition:
 		return parseSingletonTag(s.BeanId())
 	default:
