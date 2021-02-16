@@ -232,8 +232,8 @@ type beanInstance interface {
 	getStatus() beanStatus         // 返回 Bean 的状态值
 	setStatus(status beanStatus)   // 设置 Bean 的状态值
 	getDependsOn() []bean.Selector // 返回 Bean 的间接依赖项
-	getInit() *Runnable            // 返回 Bean 的初始化函数
-	getDestroy() *Runnable         // 返回 Bean 的销毁函数
+	getInit() *runnable            // 返回 Bean 的初始化函数
+	getDestroy() *runnable         // 返回 Bean 的销毁函数
 	getFile() string               // 返回 Bean 注册点所在文件的名称
 	getLine() int                  // 返回 Bean 注册点所在文件的行数
 }
@@ -253,8 +253,8 @@ type BeanDefinition struct {
 	primary   bool            // 是否为主版本
 	dependsOn []bean.Selector // 间接依赖项
 
-	init    *Runnable // 初始化函数
-	destroy *Runnable // 销毁函数
+	init    *runnable // 初始化函数
+	destroy *runnable // 销毁函数
 
 	exports map[reflect.Type]struct{} // 严格导出的接口类型
 }
@@ -313,12 +313,12 @@ func (f *BeanDefinition) getDependsOn() []bean.Selector {
 }
 
 // getInit 返回 Bean 的初始化函数
-func (f *BeanDefinition) getInit() *Runnable {
+func (f *BeanDefinition) getInit() *runnable {
 	return f.init
 }
 
 // getDestroy 返回 Bean 的销毁函数
-func (f *BeanDefinition) getDestroy() *Runnable {
+func (f *BeanDefinition) getDestroy() *runnable {
 	return f.destroy
 }
 
@@ -400,7 +400,7 @@ func validLifeCycleFunc(fn interface{}, beanType reflect.Type) (reflect.Type, bo
 // Init 设置 Bean 的初始化函数，args 是初始化函数的一般参数绑定
 func (f *BeanDefinition) Init(fn interface{}, args ...Arg) *BeanDefinition {
 	if fnType, ok := validLifeCycleFunc(fn, f.Type()); ok {
-		f.init = newRunnable(fn, fnType, true, args)
+		f.init = newRunnable(fn, NewArgList(fnType, true, args))
 		return f
 	}
 	panic(errors.New("init should be func(bean) or func(bean)error"))
@@ -409,7 +409,7 @@ func (f *BeanDefinition) Init(fn interface{}, args ...Arg) *BeanDefinition {
 // Destroy 设置 Bean 的销毁函数，args 是销毁函数的一般参数绑定
 func (f *BeanDefinition) Destroy(fn interface{}, args ...Arg) *BeanDefinition {
 	if fnType, ok := validLifeCycleFunc(fn, f.Type()); ok {
-		f.destroy = newRunnable(fn, fnType, true, args)
+		f.destroy = newRunnable(fn, NewArgList(fnType, true, args))
 		return f
 	}
 	panic(errors.New("destroy should be func(bean) or func(bean)error"))
