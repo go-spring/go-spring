@@ -223,17 +223,13 @@ func ParseCollectionTag(str string) (tag collectionTag) {
 // (objectBean)、构造函数 Bean (constructorBean) 和成员方法 Bean (MethodBean)。
 type springBean interface {
 	Bean() interface{}    // 源
-	Type() reflect.Type   // 类型
 	Value() reflect.Value // 值
-	TypeName() string     // 原始类型的全限定名
 	beanClass() string    // 存储对象具体类型的名称
 }
 
 // objectBean 以对象形式注册的 Bean
 type objectBean struct {
-	RType    reflect.Type  // 类型
-	RValue   reflect.Value // 值
-	typeName string        // 原始类型的全限定名
+	RValue reflect.Value // 值
 }
 
 // newObjectBean objectBean 的构造函数，入参必须是一个引用类型的值。
@@ -241,14 +237,7 @@ func newObjectBean(v reflect.Value) *objectBean {
 	if !v.IsValid() || util.IsNil(v) {
 		panic(errors.New("bean can't be nil"))
 	}
-	if t := v.Type(); IsRefType(t.Kind()) {
-		return &objectBean{
-			RType:    t,
-			RValue:   v,
-			typeName: TypeName(t),
-		}
-	}
-	panic(errors.New("bean must be ref type"))
+	return &objectBean{RValue: v}
 }
 
 // Bean 返回 Bean 的源
@@ -256,19 +245,9 @@ func (b *objectBean) Bean() interface{} {
 	return b.RValue.Interface()
 }
 
-// Type 返回 Bean 的类型
-func (b *objectBean) Type() reflect.Type {
-	return b.RType
-}
-
 // Value 返回 Bean 的值
 func (b *objectBean) Value() reflect.Value {
 	return b.RValue
-}
-
-// TypeName 返回 Bean 原始类型的全限定名
-func (b *objectBean) TypeName() string {
-	return b.typeName
 }
 
 // beanClass 返回 objectBean 的类型名称
@@ -307,36 +286,6 @@ type constructorBean struct {
 
 	Fn  interface{}
 	arg *ArgList
-}
-
-// newConstructorBean ConstructorBean 的构造函数，所有 tag 必须同时有或者同时没有序号。
-func newConstructorBean(fn interface{}, args []Arg) *constructorBean {
-	fnType := reflect.TypeOf(fn)
-
-	// 检查 Bean 的注册函数是否合法
-	if !IsFuncBeanType(fnType) {
-		t1 := "func(...)bean"
-		t2 := "func(...)(bean, error)"
-		panic(fmt.Errorf("func bean must be %s or %s", t1, t2))
-	}
-
-	// 创建 Bean 的值
-	out0 := fnType.Out(0)
-	v := reflect.New(out0)
-
-	// 引用类型去掉一层指针
-	if IsRefType(out0.Kind()) {
-		v = v.Elem()
-	}
-
-	// 获取 Bean 的类型
-	t := v.Type()
-
-	return &constructorBean{
-		objectBean: objectBean{RType: t, RValue: v, typeName: TypeName(t)},
-		Fn:         fn,
-		arg:        NewArgList(fnType, false, args), // TODO 支持 receiver 构造函数
-	}
 }
 
 // beanClass 返回 constructorBean 的类型名称
@@ -380,6 +329,9 @@ type beanDefinition interface {
 
 // BeanDefinition 用于存储 Bean 的各种元数据
 type BeanDefinition struct {
+	RType    reflect.Type // 类型
+	typeName string       // 原始类型的全限定名
+
 	bean   springBean // Bean 的注册形式
 	name   string     // Bean 的名称，请勿直接使用该字段!
 	status beanStatus // Bean 的状态
@@ -398,13 +350,18 @@ type BeanDefinition struct {
 }
 
 // newBeanDefinition BeanDefinition 的构造函数
-func newBeanDefinition(bean springBean, file string, line int) *BeanDefinition {
+func newBeanDefinition(bean springBean, t reflect.Type, file string, line int) *BeanDefinition {
+	if !IsRefType(t.Kind()) {
+		panic(errors.New("bean must be ref type"))
+	}
 	return &BeanDefinition{
-		bean:    bean,
-		status:  BeanStatus_Default,
-		file:    file,
-		line:    line,
-		exports: make(map[reflect.Type]struct{}),
+		RType:    t,
+		typeName: TypeName(t),
+		bean:     bean,
+		status:   BeanStatus_Default,
+		file:     file,
+		line:     line,
+		exports:  make(map[reflect.Type]struct{}),
 	}
 }
 
@@ -415,7 +372,7 @@ func (d *BeanDefinition) Bean() interface{} {
 
 // Type 返回 Bean 的类型
 func (d *BeanDefinition) Type() reflect.Type {
-	return d.bean.Type()
+	return d.RType
 }
 
 // Value 返回 Bean 的值
@@ -425,14 +382,14 @@ func (d *BeanDefinition) Value() reflect.Value {
 
 // TypeName 返回 Bean 的原始类型的全限定名
 func (d *BeanDefinition) TypeName() string {
-	return d.bean.TypeName()
+	return d.typeName
 }
 
 // Name 返回 Bean 的名称
 func (d *BeanDefinition) Name() string {
 	if d.name == "" {
 		// 统一使用类型字符串作为默认名称!
-		d.name = d.bean.Type().String()
+		d.name = d.RType.String()
 	}
 	return d.name
 }
@@ -630,7 +587,7 @@ func getFileLine() (file string, line int) {
 }
 
 func valueBean(v reflect.Value, file string, line int) *BeanDefinition {
-	return newBeanDefinition(newObjectBean(v), file, line)
+	return newBeanDefinition(newObjectBean(v), v.Type(), file, line)
 }
 
 // ObjBean 将 Bean 转换为 BeanDefinition 对象
@@ -641,6 +598,31 @@ func ObjBean(i interface{}) *BeanDefinition {
 
 // CtorBean 将构造函数转换为 BeanDefinition 对象
 func CtorBean(fn interface{}, args ...Arg) *BeanDefinition {
+
 	file, line := getFileLine()
-	return newBeanDefinition(newConstructorBean(fn, args), file, line)
+	fnType := reflect.TypeOf(fn)
+
+	// 检查 Bean 的注册函数是否合法
+	if !IsFuncBeanType(fnType) {
+		t1 := "func(...)bean"
+		t2 := "func(...)(bean, error)"
+		panic(fmt.Errorf("func bean must be %s or %s", t1, t2))
+	}
+
+	// 创建 Bean 的值
+	out0 := fnType.Out(0)
+	v := reflect.New(out0)
+
+	// 引用类型去掉一层指针
+	if IsRefType(out0.Kind()) {
+		v = v.Elem()
+	}
+
+	b := &constructorBean{
+		objectBean: objectBean{RValue: v},
+		Fn:         fn,
+		arg:        NewArgList(fnType, false, args), // TODO 支持 receiver 构造函数
+	}
+
+	return newBeanDefinition(b, v.Type(), file, line)
 }

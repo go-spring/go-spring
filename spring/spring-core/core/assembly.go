@@ -563,7 +563,7 @@ func (assembly *defaultBeanAssembly) wireConstructorBean(fnValue reflect.Value, 
 	// 对函数的返回值进行自动注入
 
 	var beanValue reflect.Value
-	if fnBean.Type().Kind() == reflect.Interface {
+	if bd.Type().Kind() == reflect.Interface {
 		beanValue = fnBean.Value().Elem()
 	} else {
 		beanValue = fnBean.Value()
