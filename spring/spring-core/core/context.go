@@ -55,13 +55,13 @@ type ApplicationContext interface {
 	Config(fn interface{}, args ...Arg) *Configer
 
 	// Bean 注册 bean.BeanInstance 对象。
-	Bean(factory *BeanFactory) *BeanFactory
+	Bean(factory *BeanDefinition) *BeanDefinition
 
 	// ObjBean 将 Bean 转换为 BeanInstance 对象
-	ObjBean(i interface{}) *BeanFactory
+	ObjBean(i interface{}) *BeanDefinition
 
 	// CtorBean 将构造函数转换为 BeanInstance 对象
-	CtorBean(fn interface{}, args ...Arg) *BeanFactory
+	CtorBean(fn interface{}, args ...Arg) *BeanDefinition
 
 	// AutoWireBeans 对所有 Bean 进行依赖注入和属性绑定
 	AutoWireBeans()

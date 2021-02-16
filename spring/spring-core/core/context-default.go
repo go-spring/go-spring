@@ -152,16 +152,16 @@ func (ctx *applicationContext) registerBeanInstance(bd *BeanInstance) {
 }
 
 // ObjBean 将 Bean 转换为 BeanInstance 对象
-func (ctx *applicationContext) ObjBean(i interface{}) *BeanFactory {
+func (ctx *applicationContext) ObjBean(i interface{}) *BeanDefinition {
 	return ctx.Bean(ObjBean(i))
 }
 
 // CtorBean 将构造函数转换为 BeanInstance 对象
-func (ctx *applicationContext) CtorBean(fn interface{}, args ...Arg) *BeanFactory {
+func (ctx *applicationContext) CtorBean(fn interface{}, args ...Arg) *BeanDefinition {
 	return ctx.Bean(CtorBean(fn, args...))
 }
 
-func (ctx *applicationContext) Bean(factory *BeanFactory) *BeanFactory {
+func (ctx *applicationContext) Bean(factory *BeanDefinition) *BeanDefinition {
 	ctx.checkRegistration()
 	ctx.AllBeans = append(ctx.AllBeans, NewBeanInstance(factory))
 	return factory

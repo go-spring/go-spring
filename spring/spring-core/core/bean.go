@@ -128,7 +128,7 @@ func ToSingletonTag(selector BeanSelector) SingletonTag {
 		return parseSingletonTag(s)
 	case *BeanInstance: // TODO 去掉支持
 		return parseSingletonTag(s.BeanId())
-	case *BeanFactory:
+	case *BeanDefinition:
 		return parseSingletonTag(s.BeanId())
 	default:
 		return parseSingletonTag(TypeName(s) + ":")
@@ -330,7 +330,7 @@ type beanInstance interface {
 	getLine() int                 // 返回 Bean 注册点所在文件的行数
 }
 
-type BeanFactory struct {
+type BeanDefinition struct {
 	factory beanFactory
 
 	RType    reflect.Type // 类型
@@ -351,12 +351,12 @@ type BeanFactory struct {
 	exports map[reflect.Type]struct{} // 严格导出的接口类型
 }
 
-func newBeanFactory(factory beanFactory, file string, line int) *BeanFactory {
+func newBeanDefinition(factory beanFactory, file string, line int) *BeanDefinition {
 	t := factory.beanType()
 	if !IsRefType(t.Kind()) {
 		panic(errors.New("bean must be ref type"))
 	}
-	return &BeanFactory{
+	return &BeanDefinition{
 		RType:    t,
 		typeName: TypeName(t),
 		factory:  factory,
@@ -367,17 +367,17 @@ func newBeanFactory(factory beanFactory, file string, line int) *BeanFactory {
 }
 
 // Type 返回 Bean 的类型
-func (f *BeanFactory) Type() reflect.Type {
+func (f *BeanDefinition) Type() reflect.Type {
 	return f.RType
 }
 
 // TypeName 返回 Bean 的原始类型的全限定名
-func (f *BeanFactory) TypeName() string {
+func (f *BeanDefinition) TypeName() string {
 	return f.typeName
 }
 
 // Name 返回 Bean 的名称
-func (f *BeanFactory) Name() string {
+func (f *BeanDefinition) Name() string {
 	if f.name == "" {
 		// 统一使用类型字符串作为默认名称!
 		f.name = f.RType.String()
@@ -386,73 +386,73 @@ func (f *BeanFactory) Name() string {
 }
 
 // BeanId 返回 Bean 的唯一 ID
-func (f *BeanFactory) BeanId() string {
+func (f *BeanDefinition) BeanId() string {
 	return f.TypeName() + ":" + f.Name()
 }
 
 // FileLine 返回 Bean 的注册点
-func (f *BeanFactory) FileLine() string {
+func (f *BeanDefinition) FileLine() string {
 	return fmt.Sprintf("%s:%d", f.file, f.line)
 }
 
-func (f *BeanFactory) beanFactory() beanFactory {
+func (f *BeanDefinition) beanFactory() beanFactory {
 	return f.factory
 }
 
 // getDependsOn 返回 Bean 的间接依赖项
-func (f *BeanFactory) getDependsOn() []BeanSelector {
+func (f *BeanDefinition) getDependsOn() []BeanSelector {
 	return f.dependsOn
 }
 
 // getInit 返回 Bean 的初始化函数
-func (f *BeanFactory) getInit() *Runnable {
+func (f *BeanDefinition) getInit() *Runnable {
 	return f.init
 }
 
 // getDestroy 返回 Bean 的销毁函数
-func (f *BeanFactory) getDestroy() *Runnable {
+func (f *BeanDefinition) getDestroy() *Runnable {
 	return f.destroy
 }
 
 // getFile 返回 Bean 注册点所在文件的名称
-func (f *BeanFactory) getFile() string {
+func (f *BeanDefinition) getFile() string {
 	return f.file
 }
 
 // getLine 返回 Bean 注册点所在文件的行数
-func (f *BeanFactory) getLine() int {
+func (f *BeanDefinition) getLine() int {
 	return f.line
 }
 
 // Description 返回 Bean 的详细描述
-func (f *BeanFactory) Description() string {
+func (f *BeanDefinition) Description() string {
 	return fmt.Sprintf("%s \"%s\" %s", f.factory.beanClass(), f.Name(), f.FileLine())
 }
 
-func (f *BeanFactory) newValue() reflect.Value {
+func (f *BeanDefinition) newValue() reflect.Value {
 	return f.factory.newValue()
 }
 
 // WithName 设置 Bean 的名称
-func (f *BeanFactory) WithName(name string) *BeanFactory {
+func (f *BeanDefinition) WithName(name string) *BeanDefinition {
 	f.name = name
 	return f
 }
 
 // WithCondition 为 Bean 设置一个 Condition
-func (f *BeanFactory) WithCondition(cond Condition) *BeanFactory {
+func (f *BeanDefinition) WithCondition(cond Condition) *BeanDefinition {
 	f.cond = cond
 	return f
 }
 
 // DependsOn 设置 Bean 的间接依赖项
-func (f *BeanFactory) DependsOn(selectors ...BeanSelector) *BeanFactory {
+func (f *BeanDefinition) DependsOn(selectors ...BeanSelector) *BeanDefinition {
 	f.dependsOn = append(f.dependsOn, selectors...)
 	return f
 }
 
 // primary 设置 Bean 为主版本
-func (f *BeanFactory) SetPrimary(primary bool) *BeanFactory {
+func (f *BeanDefinition) SetPrimary(primary bool) *BeanDefinition {
 	f.primary = primary
 	return f
 }
@@ -490,7 +490,7 @@ func validLifeCycleFunc(fn interface{}, beanType reflect.Type) (reflect.Type, bo
 }
 
 // Init 设置 Bean 的初始化函数，args 是初始化函数的一般参数绑定
-func (f *BeanFactory) Init(fn interface{}, args ...Arg) *BeanFactory {
+func (f *BeanDefinition) Init(fn interface{}, args ...Arg) *BeanDefinition {
 	if fnType, ok := validLifeCycleFunc(fn, f.Type()); ok {
 		f.init = newRunnable(fn, fnType, true, args)
 		return f
@@ -499,7 +499,7 @@ func (f *BeanFactory) Init(fn interface{}, args ...Arg) *BeanFactory {
 }
 
 // Destroy 设置 Bean 的销毁函数，args 是销毁函数的一般参数绑定
-func (f *BeanFactory) Destroy(fn interface{}, args ...Arg) *BeanFactory {
+func (f *BeanDefinition) Destroy(fn interface{}, args ...Arg) *BeanDefinition {
 	if fnType, ok := validLifeCycleFunc(fn, f.Type()); ok {
 		f.destroy = newRunnable(fn, fnType, true, args)
 		return f
@@ -508,7 +508,7 @@ func (f *BeanFactory) Destroy(fn interface{}, args ...Arg) *BeanFactory {
 }
 
 // Export 显式指定 Bean 的导出接口
-func (f *BeanFactory) Export(exports ...TypeOrPtr) *BeanFactory {
+func (f *BeanDefinition) Export(exports ...TypeOrPtr) *BeanDefinition {
 	for _, o := range exports { // 使用 map 进行排重
 
 		var typ reflect.Type
@@ -528,7 +528,7 @@ func (f *BeanFactory) Export(exports ...TypeOrPtr) *BeanFactory {
 }
 
 // Match 测试 Bean 的类型全限定名和 Bean 的名称是否都匹配
-func (f *BeanFactory) Match(typeName string, beanName string) bool {
+func (f *BeanDefinition) Match(typeName string, beanName string) bool {
 
 	typeIsSame := false
 	if typeName == "" || f.TypeName() == typeName {
@@ -544,18 +544,18 @@ func (f *BeanFactory) Match(typeName string, beanName string) bool {
 }
 
 type BeanInstance struct {
-	*BeanFactory
+	*BeanDefinition
 
 	RValue reflect.Value // 值
 	status beanStatus    // Bean 的状态
 }
 
 // NewBeanInstance BeanInstance 的构造函数
-func NewBeanInstance(factory *BeanFactory) *BeanInstance {
+func NewBeanInstance(factory *BeanDefinition) *BeanInstance {
 	return &BeanInstance{
-		BeanFactory: factory,
-		RValue:      factory.newValue(),
-		status:      BeanStatus_Default,
+		BeanDefinition: factory,
+		RValue:         factory.newValue(),
+		status:         BeanStatus_Default,
 	}
 }
 
@@ -610,21 +610,21 @@ func getFileLine() (file string, line int) {
 	return
 }
 
-func valueBean(v reflect.Value, file string, line int) *BeanFactory {
+func valueBean(v reflect.Value, file string, line int) *BeanDefinition {
 	if !v.IsValid() || util.IsNil(v) {
 		panic(errors.New("bean can't be nil"))
 	}
-	return newBeanFactory(&objBeanFactory{v: v}, file, line)
+	return newBeanDefinition(&objBeanFactory{v: v}, file, line)
 }
 
-// ObjBean 将 Bean 转换为 BeanFactory 对象
-func ObjBean(i interface{}) *BeanFactory {
+// ObjBean 将 Bean 转换为 BeanDefinition 对象
+func ObjBean(i interface{}) *BeanDefinition {
 	file, line := getFileLine()
 	return valueBean(reflect.ValueOf(i), file, line)
 }
 
-// CtorBean 将构造函数转换为 BeanFactory 对象
-func CtorBean(fn interface{}, args ...Arg) *BeanFactory {
+// CtorBean 将构造函数转换为 BeanDefinition 对象
+func CtorBean(fn interface{}, args ...Arg) *BeanDefinition {
 
 	file, line := getFileLine()
 	fnType := reflect.TypeOf(fn)
@@ -642,5 +642,5 @@ func CtorBean(fn interface{}, args ...Arg) *BeanFactory {
 		arg:    NewArgList(fnType, false, args), // TODO 支持 receiver 构造函数
 	}
 
-	return newBeanFactory(b, file, line)
+	return newBeanDefinition(b, file, line)
 }
