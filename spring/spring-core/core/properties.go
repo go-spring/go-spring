@@ -25,6 +25,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
 	"github.com/spf13/cast"
@@ -160,7 +161,7 @@ func validConverter(t reflect.Type) bool {
 		return false
 	}
 
-	return IsValueType(t.Out(0).Kind()) && t.Out(1) == errorType
+	return bean.IsValueType(t.Out(0).Kind()) && t.Out(1) == errorType
 }
 
 // Convert 添加类型转换器

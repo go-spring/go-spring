@@ -22,6 +22,7 @@ import (
 	"go/types"
 	"strings"
 
+	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/core"
 	"github.com/go-spring/spring-core/util"
 	"github.com/spf13/cast"
@@ -147,11 +148,11 @@ func (c *propertyValueCondition) Matches(ctx core.ConditionContext) bool {
 
 // beanCondition 基于 Bean 存在的 Condition 实现
 type beanCondition struct {
-	selector core.BeanSelector
+	selector bean.Selector
 }
 
 // BeanCondition beanCondition 的构造函数
-func BeanCondition(selector core.BeanSelector) *beanCondition {
+func BeanCondition(selector bean.Selector) *beanCondition {
 	return &beanCondition{selector}
 }
 
@@ -163,11 +164,11 @@ func (c *beanCondition) Matches(ctx core.ConditionContext) bool {
 
 // missingBeanCondition 基于 Bean 不能存在的 Condition 实现
 type missingBeanCondition struct {
-	selector core.BeanSelector
+	selector bean.Selector
 }
 
 // MissingBeanCondition missingBeanCondition 的构造函数
-func MissingBeanCondition(selector core.BeanSelector) *missingBeanCondition {
+func MissingBeanCondition(selector bean.Selector) *missingBeanCondition {
 	return &missingBeanCondition{selector}
 }
 
@@ -408,22 +409,22 @@ func (c *Conditional) OnOptionalPropertyValue(name string, havingValue interface
 }
 
 // OnBean 返回设置了 beanCondition 的 Conditional 对象
-func OnBean(selector core.BeanSelector) *Conditional {
+func OnBean(selector bean.Selector) *Conditional {
 	return conditional().OnBean(selector)
 }
 
 // OnBean 设置一个 beanCondition
-func (c *Conditional) OnBean(selector core.BeanSelector) *Conditional {
+func (c *Conditional) OnBean(selector bean.Selector) *Conditional {
 	return c.OnCondition(BeanCondition(selector))
 }
 
 // OnMissingBean 返回设置了 missingBeanCondition 的 Conditional 对象
-func OnMissingBean(selector core.BeanSelector) *Conditional {
+func OnMissingBean(selector bean.Selector) *Conditional {
 	return conditional().OnMissingBean(selector)
 }
 
 // OnMissingBean 设置一个 missingBeanCondition
-func (c *Conditional) OnMissingBean(selector core.BeanSelector) *Conditional {
+func (c *Conditional) OnMissingBean(selector bean.Selector) *Conditional {
 	return c.OnCondition(MissingBeanCondition(selector))
 }
 

@@ -24,6 +24,7 @@ import (
 	"reflect"
 	"sync"
 
+	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/core/internal/sort"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
@@ -167,7 +168,7 @@ func (ctx *applicationContext) Bean(bd *BeanDefinition) *BeanDefinition {
 
 // GetBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 // 它和 FindBean 的区别是它在调用后能够保证返回的 Bean 已经完成了注入和绑定过程。
-func (ctx *applicationContext) GetBean(i interface{}, selector ...BeanSelector) bool {
+func (ctx *applicationContext) GetBean(i interface{}, selector ...bean.Selector) bool {
 
 	if i == nil {
 		panic(errors.New("i can't be nil"))
@@ -180,7 +181,7 @@ func (ctx *applicationContext) GetBean(i interface{}, selector ...BeanSelector) 
 		panic(errors.New("i must be pointer"))
 	}
 
-	s := BeanSelector("")
+	s := bean.Selector("")
 	if len(selector) > 0 {
 		s = selector[0]
 	}
@@ -195,7 +196,7 @@ func (ctx *applicationContext) GetBean(i interface{}, selector ...BeanSelector) 
 
 // FindBean 查询单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 // 它和 GetBean 的区别是它在调用后不能保证返回的 Bean 已经完成了注入和绑定过程。
-func (ctx *applicationContext) FindBean(selector BeanSelector) (*BeanInstance, bool) {
+func (ctx *applicationContext) FindBean(selector bean.Selector) (*BeanInstance, bool) {
 	ctx.checkAutoWired()
 
 	finder := func(fn func(*BeanInstance) bool) (result []*BeanInstance) {
@@ -269,7 +270,7 @@ func (ctx *applicationContext) FindBean(selector BeanSelector) (*BeanInstance, b
 // 不为空，这时候只会收集单例 Bean，而且要求这些单例 Bean 不仅需要满足收集条件，而且
 // 必须满足 selector 条件。另外，自动模式下不对收集结果进行排序，指定模式下根据
 // selectors 列表的顺序对收集结果进行排序。
-func (ctx *applicationContext) CollectBeans(i interface{}, selectors ...BeanSelector) bool {
+func (ctx *applicationContext) CollectBeans(i interface{}, selectors ...bean.Selector) bool {
 	ctx.checkAutoWired()
 
 	if t := reflect.TypeOf(i); t.Kind() != reflect.Ptr || t.Elem().Kind() != reflect.Slice {

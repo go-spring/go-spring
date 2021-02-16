@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/core"
 )
 
@@ -60,15 +61,15 @@ func Beans() []*core.BeanInstance {
 	return ApplicationContext().Beans()
 }
 
-func GetBean(i interface{}, selector ...core.BeanSelector) bool {
+func GetBean(i interface{}, selector ...bean.Selector) bool {
 	return ApplicationContext().GetBean(i, selector...)
 }
 
-func FindBean(selector core.BeanSelector) (*core.BeanInstance, bool) {
+func FindBean(selector bean.Selector) (*core.BeanInstance, bool) {
 	return ApplicationContext().FindBean(selector)
 }
 
-func CollectBeans(i interface{}, selectors ...core.BeanSelector) bool {
+func CollectBeans(i interface{}, selectors ...bean.Selector) bool {
 	return ApplicationContext().CollectBeans(i, selectors...)
 }
 

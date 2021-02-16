@@ -23,6 +23,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
 )
@@ -117,11 +118,11 @@ func (argList *ArgList) getArgValue(t reflect.Type, arg Arg, assembly beanAssemb
 	case string:
 		selector = tArg
 	default:
-		selector = TypeName(tArg) + ":"
+		selector = bean.TypeName(tArg) + ":"
 	}
 
 	v := reflect.New(t).Elem()
-	if IsValueType(v.Kind()) { // 值类型，采用属性绑定语法
+	if bean.IsValueType(v.Kind()) { // 值类型，采用属性绑定语法
 		if selector == "" {
 			selector = "${}"
 		}

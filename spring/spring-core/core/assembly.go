@@ -23,6 +23,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
 )
@@ -109,7 +110,7 @@ func (assembly *defaultBeanAssembly) getBeanValue(v reflect.Value, tag Singleton
 		beanType reflect.Type
 	)
 
-	if beanType, ok = ValidBean(v); !ok {
+	if beanType, ok = bean.ValidBean(v); !ok {
 		panic(fmt.Errorf("receiver must be ref type, bean: \"%s\" field: %s", tag, field))
 	}
 
@@ -201,7 +202,7 @@ func (assembly *defaultBeanAssembly) collectBeans(v reflect.Value, tag collectio
 	t := v.Type()
 	et := t.Elem()
 
-	if !IsRefType(et.Kind()) { // 收集模式的数组元素必须是引用类型
+	if !bean.IsRefType(et.Kind()) { // 收集模式的数组元素必须是引用类型
 		panic(errors.New("slice item in collection mode should be ref type"))
 	}
 
@@ -545,9 +546,9 @@ func (assembly *defaultBeanAssembly) wireConstructorBean(fnValue reflect.Value, 
 	oldValue := bd.Value()
 
 	// 将函数的返回值赋值给 Bean
-	if IsRefType(val.Kind()) {
+	if bean.IsRefType(val.Kind()) {
 		// 如果实现接口的是值类型，那么需要转换成指针类型然后再赋值给接口
-		if val.Kind() == reflect.Interface && IsValueType(val.Elem().Kind()) {
+		if val.Kind() == reflect.Interface && bean.IsValueType(val.Elem().Kind()) {
 			ptrVal := reflect.New(val.Elem().Type())
 			ptrVal.Elem().Set(val.Elem())
 			oldValue.Set(ptrVal)

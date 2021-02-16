@@ -23,113 +23,20 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/util"
 )
 
-const (
-	valType = 1 // 值类型
-	refType = 2 // 引用类型
-)
-
-var kindTypes = []uint8{
-	0,       // Invalid
-	valType, // Bool
-	valType, // Int
-	valType, // Int8
-	valType, // Int16
-	valType, // Int32
-	valType, // Int64
-	valType, // Uint
-	valType, // Uint8
-	valType, // Uint16
-	valType, // Uint32
-	valType, // Uint64
-	0,       // Uintptr
-	valType, // Float32
-	valType, // Float64
-	valType, // Complex64
-	valType, // Complex128
-	valType, // Array
-	refType, // Chan
-	refType, // Func
-	refType, // Interface
-	refType, // Map
-	refType, // Ptr
-	refType, // Slice
-	valType, // String
-	valType, // Struct
-	0,       // UnsafePointer
-}
-
-// IsRefType 返回是否是引用类型
-func IsRefType(k reflect.Kind) bool {
-	return kindTypes[k] == refType
-}
-
-// IsValueType 返回是否是值类型
-func IsValueType(k reflect.Kind) bool {
-	return kindTypes[k] == valType
-}
-
-// ValidBean 返回是否是合法的 Bean 及其类型
-func ValidBean(v reflect.Value) (reflect.Type, bool) {
-	if v.IsValid() {
-		if beanType := v.Type(); IsRefType(beanType.Kind()) {
-			return beanType, true
-		}
-	}
-	return nil, false
-}
-
-// TypeOrPtr 可以是 reflect.Type 对象或者形如 (*error)(nil) 的对象指针。
-type TypeOrPtr interface{}
-
-// TypeName 返回原始类型的全限定名，Go 语言允许不同的路径下存在相同的包，因此有全限定名
-// 的需求，形如 "github.com/go-spring/spring-core/SpringCore.BeanDefinition"。
-func TypeName(typOrPtr TypeOrPtr) string {
-
-	if typOrPtr == nil {
-		panic(errors.New("shouldn't be nil"))
-	}
-
-	var typ reflect.Type
-
-	switch t := typOrPtr.(type) {
-	case reflect.Type:
-		typ = t
-	default:
-		typ = reflect.TypeOf(t)
-	}
-
-	for { // 去掉指针和数组的包装，以获得原始类型
-		if k := typ.Kind(); k == reflect.Ptr || k == reflect.Slice {
-			typ = typ.Elem()
-		} else {
-			break
-		}
-	}
-
-	if pkgPath := typ.PkgPath(); pkgPath != "" {
-		return pkgPath + "/" + typ.String()
-	} else { // 内置类型的路径为空
-		return typ.String()
-	}
-}
-
-// BeanSelector Bean 选择器，可以是 BeanId 字符串，可以是 reflect.Type
-// 对象或者形如 (*error)(nil) 的对象指针，还可以是 *BeanDefinition 对象。
-type BeanSelector interface{}
-
 // ToSingletonTag 将 Bean 选择器转换为 SingletonTag 形式。注意该函数仅用
 // 于精确匹配的场景下，也就是说通过类型选择的时候类型必须是具体的，而不能是接口。
-func ToSingletonTag(selector BeanSelector) SingletonTag {
+func ToSingletonTag(selector bean.Selector) SingletonTag {
 	switch s := selector.(type) {
 	case string:
 		return parseSingletonTag(s)
 	case *BeanDefinition:
 		return parseSingletonTag(s.BeanId())
 	default:
-		return parseSingletonTag(TypeName(s) + ":")
+		return parseSingletonTag(bean.TypeName(s) + ":")
 	}
 }
 
@@ -279,7 +186,7 @@ func (b *ctorBeanFactory) newValue() reflect.Value {
 	v := reflect.New(out0)
 
 	// 引用类型去掉一层指针
-	if IsRefType(out0.Kind()) {
+	if bean.IsRefType(out0.Kind()) {
 		v = v.Elem()
 	}
 	return v
@@ -319,13 +226,13 @@ type beanInstance interface {
 	Description() string // 返回 Bean 的详细描述
 
 	beanFactory() beanFactory
-	getStatus() beanStatus        // 返回 Bean 的状态值
-	setStatus(status beanStatus)  // 设置 Bean 的状态值
-	getDependsOn() []BeanSelector // 返回 Bean 的间接依赖项
-	getInit() *Runnable           // 返回 Bean 的初始化函数
-	getDestroy() *Runnable        // 返回 Bean 的销毁函数
-	getFile() string              // 返回 Bean 注册点所在文件的名称
-	getLine() int                 // 返回 Bean 注册点所在文件的行数
+	getStatus() beanStatus         // 返回 Bean 的状态值
+	setStatus(status beanStatus)   // 设置 Bean 的状态值
+	getDependsOn() []bean.Selector // 返回 Bean 的间接依赖项
+	getInit() *Runnable            // 返回 Bean 的初始化函数
+	getDestroy() *Runnable         // 返回 Bean 的销毁函数
+	getFile() string               // 返回 Bean 注册点所在文件的名称
+	getLine() int                  // 返回 Bean 注册点所在文件的行数
 }
 
 type BeanDefinition struct {
@@ -339,9 +246,9 @@ type BeanDefinition struct {
 	file string // 注册点所在文件
 	line int    // 注册点所在行数
 
-	cond      Condition      // 判断条件
-	primary   bool           // 是否为主版本
-	dependsOn []BeanSelector // 间接依赖项
+	cond      Condition       // 判断条件
+	primary   bool            // 是否为主版本
+	dependsOn []bean.Selector // 间接依赖项
 
 	init    *Runnable // 初始化函数
 	destroy *Runnable // 销毁函数
@@ -351,12 +258,12 @@ type BeanDefinition struct {
 
 func newBeanDefinition(factory beanFactory, file string, line int) *BeanDefinition {
 	t := factory.beanType()
-	if !IsRefType(t.Kind()) {
+	if !bean.IsRefType(t.Kind()) {
 		panic(errors.New("bean must be ref type"))
 	}
 	return &BeanDefinition{
 		RType:    t,
-		typeName: TypeName(t),
+		typeName: bean.TypeName(t),
 		factory:  factory,
 		file:     file,
 		line:     line,
@@ -398,7 +305,7 @@ func (f *BeanDefinition) beanFactory() beanFactory {
 }
 
 // getDependsOn 返回 Bean 的间接依赖项
-func (f *BeanDefinition) getDependsOn() []BeanSelector {
+func (f *BeanDefinition) getDependsOn() []bean.Selector {
 	return f.dependsOn
 }
 
@@ -444,7 +351,7 @@ func (f *BeanDefinition) WithCondition(cond Condition) *BeanDefinition {
 }
 
 // DependsOn 设置 Bean 的间接依赖项
-func (f *BeanDefinition) DependsOn(selectors ...BeanSelector) *BeanDefinition {
+func (f *BeanDefinition) DependsOn(selectors ...bean.Selector) *BeanDefinition {
 	f.dependsOn = append(f.dependsOn, selectors...)
 	return f
 }
@@ -506,7 +413,7 @@ func (f *BeanDefinition) Destroy(fn interface{}, args ...Arg) *BeanDefinition {
 }
 
 // Export 显式指定 Bean 的导出接口
-func (f *BeanDefinition) Export(exports ...TypeOrPtr) *BeanDefinition {
+func (f *BeanDefinition) Export(exports ...bean.TypeOrPtr) *BeanDefinition {
 	for _, o := range exports { // 使用 map 进行排重
 
 		var typ reflect.Type

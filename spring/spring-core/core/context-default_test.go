@@ -30,6 +30,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/core"
 	pkg1 "github.com/go-spring/spring-core/core/testdata/pkg/bar"
 	pkg2 "github.com/go-spring/spring-core/core/testdata/pkg/foo"
@@ -883,7 +884,7 @@ func TestApplicationContext_DependsOn(t *testing.T) {
 
 	t.Run("dependsOn", func(t *testing.T) {
 
-		dependsOn := []core.BeanSelector{
+		dependsOn := []bean.Selector{
 			(*BeanOne)(nil), // 通过类型定义查找
 			"github.com/go-spring/spring-core/core_test/core_test.BeanZero:*core_test.BeanZero",
 		}
