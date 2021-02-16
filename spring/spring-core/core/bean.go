@@ -219,17 +219,20 @@ func ParseCollectionTag(str string) (tag collectionTag) {
 	return
 }
 
-// springBean 定义 Bean 存储对象的抽象接口，根据注册形式的不同，Bean 分为对象 Bean
-// (objectBean)、构造函数 Bean (constructorBean) 和成员方法 Bean (MethodBean)。
-type springBean interface {
-	beanClass() string // 存储对象具体类型的名称
+type beanFactory interface {
+	beanClass() string
+	newValue() reflect.Value
 }
 
-// objectBean 以对象形式注册的 Bean
-type objectBean struct{}
+type objBeanFactory struct {
+	v reflect.Value
+}
 
-// beanClass 返回 objectBean 的类型名称
-func (b *objectBean) beanClass() string {
+func (b *objBeanFactory) newValue() reflect.Value {
+	return b.v
+}
+
+func (b *objBeanFactory) beanClass() string {
 	return "object bean"
 }
 
@@ -258,14 +261,26 @@ func IsFuncBeanType(fnType reflect.Type) bool {
 	return true
 }
 
-// ConstructorBean 以构造函数形式注册的 Bean
-type constructorBean struct {
-	Fn  interface{}
-	arg *ArgList
+type ctorBeanFactory struct {
+	fnType reflect.Type
+	fn     interface{}
+	arg    *ArgList
 }
 
-// beanClass 返回 constructorBean 的类型名称
-func (b *constructorBean) beanClass() string {
+func (b *ctorBeanFactory) newValue() reflect.Value {
+
+	// 创建 Bean 的值
+	out0 := b.fnType.Out(0)
+	v := reflect.New(out0)
+
+	// 引用类型去掉一层指针
+	if IsRefType(out0.Kind()) {
+		v = v.Elem()
+	}
+	return v
+}
+
+func (b *ctorBeanFactory) beanClass() string {
 	return "constructor bean"
 }
 
@@ -294,7 +309,7 @@ type beanDefinition interface {
 	FileLine() string    // 返回 Bean 的注册点
 	Description() string // 返回 Bean 的详细描述
 
-	springBean() springBean       // 返回 springBean 对象
+	Factory() beanFactory
 	getStatus() beanStatus        // 返回 Bean 的状态值
 	setStatus(status beanStatus)  // 设置 Bean 的状态值
 	getDependsOn() []BeanSelector // 返回 Bean 的间接依赖项
@@ -306,12 +321,12 @@ type beanDefinition interface {
 
 // BeanDefinition 用于存储 Bean 的各种元数据
 type BeanDefinition struct {
-	RValue reflect.Value // 值
+	RValue  reflect.Value // 值
+	factory beanFactory
 
 	RType    reflect.Type // 类型
 	typeName string       // 原始类型的全限定名
 
-	bean   springBean // Bean 的注册形式
 	name   string     // Bean 的名称，请勿直接使用该字段!
 	status beanStatus // Bean 的状态
 
@@ -329,7 +344,9 @@ type BeanDefinition struct {
 }
 
 // newBeanDefinition BeanDefinition 的构造函数
-func newBeanDefinition(bean springBean, v reflect.Value, t reflect.Type, file string, line int) *BeanDefinition {
+func newBeanDefinition(factory beanFactory, file string, line int) *BeanDefinition {
+	v := factory.newValue()
+	t := v.Type()
 	if !IsRefType(t.Kind()) {
 		panic(errors.New("bean must be ref type"))
 	}
@@ -337,7 +354,7 @@ func newBeanDefinition(bean springBean, v reflect.Value, t reflect.Type, file st
 		RValue:   v,
 		RType:    t,
 		typeName: TypeName(t),
-		bean:     bean,
+		factory:  factory,
 		status:   BeanStatus_Default,
 		file:     file,
 		line:     line,
@@ -388,9 +405,8 @@ func (d *BeanDefinition) FileLine() string {
 	return fmt.Sprintf("%s:%d", d.file, d.line)
 }
 
-// springBean 返回 springBean 对象
-func (d *BeanDefinition) springBean() springBean {
-	return d.bean
+func (d *BeanDefinition) Factory() beanFactory {
+	return d.factory
 }
 
 // getStatus 返回 Bean 的状态值
@@ -430,7 +446,7 @@ func (d *BeanDefinition) getLine() int {
 
 // Description 返回 Bean 的详细描述
 func (d *BeanDefinition) Description() string {
-	return fmt.Sprintf("%s \"%s\" %s", d.bean.beanClass(), d.Name(), d.FileLine())
+	return fmt.Sprintf("%s \"%s\" %s", d.factory.beanClass(), d.Name(), d.FileLine())
 }
 
 // Match 测试 Bean 的类型全限定名和 Bean 的名称是否都匹配
@@ -574,7 +590,7 @@ func valueBean(v reflect.Value, file string, line int) *BeanDefinition {
 	if !v.IsValid() || util.IsNil(v) {
 		panic(errors.New("bean can't be nil"))
 	}
-	return newBeanDefinition(&objectBean{}, v, v.Type(), file, line)
+	return newBeanDefinition(&objBeanFactory{v: v}, file, line)
 }
 
 // ObjBean 将 Bean 转换为 BeanDefinition 对象
@@ -596,19 +612,11 @@ func CtorBean(fn interface{}, args ...Arg) *BeanDefinition {
 		panic(fmt.Errorf("func bean must be %s or %s", t1, t2))
 	}
 
-	// 创建 Bean 的值
-	out0 := fnType.Out(0)
-	v := reflect.New(out0)
-
-	// 引用类型去掉一层指针
-	if IsRefType(out0.Kind()) {
-		v = v.Elem()
+	b := &ctorBeanFactory{
+		fnType: fnType,
+		fn:     fn,
+		arg:    NewArgList(fnType, false, args), // TODO 支持 receiver 构造函数
 	}
 
-	b := &constructorBean{
-		Fn:  fn,
-		arg: NewArgList(fnType, false, args), // TODO 支持 receiver 构造函数
-	}
-
-	return newBeanDefinition(b, v, v.Type(), file, line)
+	return newBeanDefinition(b, file, line)
 }

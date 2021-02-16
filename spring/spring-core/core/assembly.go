@@ -397,7 +397,7 @@ func (assembly *defaultBeanAssembly) wireBeanDefinition(bd beanDefinition, onlyA
 
 	// 正在注入的 Bean 再次注入则说明出现了循环依赖
 	if bd.getStatus() == BeanStatus_Wiring {
-		if _, ok := bd.springBean().(*objectBean); !ok {
+		if _, ok := bd.Factory().(*objBeanFactory); !ok {
 			panic(errors.New("found circle autowire"))
 		}
 		return
@@ -415,11 +415,11 @@ func (assembly *defaultBeanAssembly) wireBeanDefinition(bd beanDefinition, onlyA
 	}
 
 	// 对当前 Bean 进行自动注入
-	switch b := bd.springBean().(type) {
-	case *objectBean:
+	switch b := bd.Factory().(type) {
+	case *objBeanFactory:
 		assembly.wireObjectBean(bd, onlyAutoWire)
-	case *constructorBean:
-		fnValue := reflect.ValueOf(b.Fn)
+	case *ctorBeanFactory:
+		fnValue := reflect.ValueOf(b.fn)
 		assembly.wireConstructorBean(fnValue, b, bd)
 	default:
 		panic(errors.New("error spring bean type"))
@@ -519,7 +519,7 @@ func (assembly *defaultBeanAssembly) wireObjectBean(bd beanDefinition, onlyAutoW
 	}
 }
 
-func (assembly *defaultBeanAssembly) wireConstructorBean(fnValue reflect.Value, fnBean *constructorBean, bd beanDefinition) {
+func (assembly *defaultBeanAssembly) wireConstructorBean(fnValue reflect.Value, fnBean *ctorBeanFactory, bd beanDefinition) {
 
 	// 获取输入参数
 	var in []reflect.Value
@@ -605,7 +605,7 @@ type fieldBeanDefinition struct {
 
 // Description 返回 Bean 的详细描述
 func (d *fieldBeanDefinition) Description() string {
-	return fmt.Sprintf("%s field: %s %s", d.springBean().beanClass(), d.field, d.FileLine())
+	return fmt.Sprintf("%s field: %s %s", d.Factory().beanClass(), d.field, d.FileLine())
 }
 
 type fnValueBeanDefinition struct {
@@ -615,5 +615,5 @@ type fnValueBeanDefinition struct {
 
 // Description 返回 Bean 的详细描述
 func (d *fnValueBeanDefinition) Description() string {
-	return fmt.Sprintf("%s value %s", d.f.springBean().beanClass(), d.f.FileLine())
+	return fmt.Sprintf("%s value %s", d.f.Factory().beanClass(), d.f.FileLine())
 }
