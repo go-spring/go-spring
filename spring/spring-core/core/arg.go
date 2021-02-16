@@ -110,7 +110,7 @@ func (argList *ArgList) getArgValue(t reflect.Type, arg Arg, assembly beanAssemb
 
 	selector := ""
 	switch tArg := arg.(type) {
-	case *BeanDefinition:
+	case *BeanInstance:
 		return tArg.Value()
 	case *BeanFactory:
 		selector = tArg.BeanId()

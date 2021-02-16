@@ -85,7 +85,7 @@ func ValidBean(v reflect.Value) (reflect.Type, bool) {
 type TypeOrPtr interface{}
 
 // TypeName 返回原始类型的全限定名，Go 语言允许不同的路径下存在相同的包，因此有全限定名
-// 的需求，形如 "github.com/go-spring/spring-core/SpringCore.BeanDefinition"。
+// 的需求，形如 "github.com/go-spring/spring-core/SpringCore.BeanInstance"。
 func TypeName(typOrPtr TypeOrPtr) string {
 
 	if typOrPtr == nil {
@@ -117,7 +117,7 @@ func TypeName(typOrPtr TypeOrPtr) string {
 }
 
 // BeanSelector Bean 选择器，可以是 BeanId 字符串，可以是 reflect.Type
-// 对象或者形如 (*error)(nil) 的对象指针，还可以是 *BeanDefinition 对象。
+// 对象或者形如 (*error)(nil) 的对象指针，还可以是 *BeanInstance 对象。
 type BeanSelector interface{}
 
 // ToSingletonTag 将 Bean 选择器转换为 SingletonTag 形式。注意该函数仅用
@@ -126,7 +126,7 @@ func ToSingletonTag(selector BeanSelector) SingletonTag {
 	switch s := selector.(type) {
 	case string:
 		return parseSingletonTag(s)
-	case *BeanDefinition: // TODO 去掉支持
+	case *BeanInstance: // TODO 去掉支持
 		return parseSingletonTag(s.BeanId())
 	case *BeanFactory:
 		return parseSingletonTag(s.BeanId())
@@ -307,8 +307,8 @@ const (
 	BeanStatus_Deleted   = beanStatus(5) // 已删除
 )
 
-// beanDefinition BeanDefinition 的抽象接口
-type beanDefinition interface {
+// beanInstance BeanInstance 的抽象接口
+type beanInstance interface {
 	Bean() interface{}    // 源
 	Type() reflect.Type   // 类型
 	Value() reflect.Value // 值
@@ -543,17 +543,16 @@ func (f *BeanFactory) Match(typeName string, beanName string) bool {
 	return typeIsSame && nameIsSame
 }
 
-// BeanDefinition 用于存储 Bean 的各种元数据
-type BeanDefinition struct {
+type BeanInstance struct {
 	*BeanFactory
 
 	RValue reflect.Value // 值
 	status beanStatus    // Bean 的状态
 }
 
-// NewBeanDefinition BeanDefinition 的构造函数
-func NewBeanDefinition(factory *BeanFactory) *BeanDefinition {
-	return &BeanDefinition{
+// NewBeanInstance BeanInstance 的构造函数
+func NewBeanInstance(factory *BeanFactory) *BeanInstance {
+	return &BeanInstance{
 		BeanFactory: factory,
 		RValue:      factory.newValue(),
 		status:      BeanStatus_Default,
@@ -561,26 +560,26 @@ func NewBeanDefinition(factory *BeanFactory) *BeanDefinition {
 }
 
 // Bean 返回 Bean 的源
-func (d *BeanDefinition) Bean() interface{} {
+func (d *BeanInstance) Bean() interface{} {
 	return d.RValue.Interface()
 }
 
-func (d *BeanDefinition) setVal(v reflect.Value) {
+func (d *BeanInstance) setVal(v reflect.Value) {
 	d.RValue = v
 }
 
 // Value 返回 Bean 的值
-func (d *BeanDefinition) Value() reflect.Value {
+func (d *BeanInstance) Value() reflect.Value {
 	return d.RValue
 }
 
 // getStatus 返回 Bean 的状态值
-func (d *BeanDefinition) getStatus() beanStatus {
+func (d *BeanInstance) getStatus() beanStatus {
 	return d.status
 }
 
 // setStatus 设置 Bean 的状态值
-func (d *BeanDefinition) setStatus(status beanStatus) {
+func (d *BeanInstance) setStatus(status beanStatus) {
 	d.status = status
 }
 
@@ -618,13 +617,13 @@ func valueBean(v reflect.Value, file string, line int) *BeanFactory {
 	return newBeanFactory(&objBeanFactory{v: v}, file, line)
 }
 
-// ObjBean 将 Bean 转换为 BeanDefinition 对象
+// ObjBean 将 Bean 转换为 BeanFactory 对象
 func ObjBean(i interface{}) *BeanFactory {
 	file, line := getFileLine()
 	return valueBean(reflect.ValueOf(i), file, line)
 }
 
-// CtorBean 将构造函数转换为 BeanDefinition 对象
+// CtorBean 将构造函数转换为 BeanFactory 对象
 func CtorBean(fn interface{}, args ...Arg) *BeanFactory {
 
 	file, line := getFileLine()

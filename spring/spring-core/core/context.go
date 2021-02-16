@@ -54,13 +54,13 @@ type ApplicationContext interface {
 	// Config 注册一个配置函数
 	Config(fn interface{}, args ...Arg) *Configer
 
-	// Bean 注册 bean.BeanDefinition 对象。
+	// Bean 注册 bean.BeanInstance 对象。
 	Bean(factory *BeanFactory) *BeanFactory
 
-	// ObjBean 将 Bean 转换为 BeanDefinition 对象
+	// ObjBean 将 Bean 转换为 BeanInstance 对象
 	ObjBean(i interface{}) *BeanFactory
 
-	// CtorBean 将构造函数转换为 BeanDefinition 对象
+	// CtorBean 将构造函数转换为 BeanInstance 对象
 	CtorBean(fn interface{}, args ...Arg) *BeanFactory
 
 	// AutoWireBeans 对所有 Bean 进行依赖注入和属性绑定
@@ -70,7 +70,7 @@ type ApplicationContext interface {
 	WireBean(i interface{})
 
 	// Beans 获取所有 Bean 的定义，不能保证解析和注入，请谨慎使用该函数!
-	Beans() []*BeanDefinition
+	Beans() []*BeanInstance
 
 	// GetBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 	// 它和 FindBean 的区别是它在调用后能够保证返回的 Bean 已经完成了注入和绑定过程。
@@ -78,7 +78,7 @@ type ApplicationContext interface {
 
 	// FindBean 查询单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 	// 它和 GetBean 的区别是它在调用后不能保证返回的 Bean 已经完成了注入和绑定过程。
-	FindBean(selector BeanSelector) (*BeanDefinition, bool)
+	FindBean(selector BeanSelector) (*BeanInstance, bool)
 
 	// CollectBeans 收集数组或指针定义的所有符合条件的 Bean，收集到返回 true，否则返
 	// 回 false。该函数有两种模式:自动模式和指定模式。自动模式是指 selectors 参数为空，

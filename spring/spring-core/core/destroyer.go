@@ -22,12 +22,12 @@ import (
 
 // destroyer 保存具有销毁函数的 Bean 以及销毁函数的调用顺序
 type destroyer struct {
-	bean  *BeanDefinition
-	after []*BeanDefinition
+	bean  *BeanInstance
+	after []*BeanInstance
 }
 
 // After 添加一个在此之前调用的销毁函数
-func (d *destroyer) After(b *BeanDefinition) *destroyer {
+func (d *destroyer) After(b *BeanInstance) *destroyer {
 
 	for _, f := range d.after {
 		if f == b {

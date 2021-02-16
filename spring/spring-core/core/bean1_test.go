@@ -474,26 +474,26 @@ func TestIsFuncBeanType(t *testing.T) {
 	}
 }
 
-func TestBeanDefinition_Match(t *testing.T) {
+func TestBeanInstance_Match(t *testing.T) {
 
 	data := []struct {
-		bd       *core.BeanDefinition
+		bd       *core.BeanInstance
 		typeName string
 		beanName string
 		expect   bool
 	}{
-		{core.NewBeanDefinition(core.ObjBean(new(int))), "int", "*int", true},
-		{core.NewBeanDefinition(core.ObjBean(new(int))), "", "*int", true},
-		{core.NewBeanDefinition(core.ObjBean(new(int))), "int", "", true},
-		{core.NewBeanDefinition(core.ObjBean(new(int)).WithName("i")), "int", "i", true},
-		{core.NewBeanDefinition(core.ObjBean(new(int)).WithName("i")), "", "i", true},
-		{core.NewBeanDefinition(core.ObjBean(new(int)).WithName("i")), "int", "", true},
-		{core.NewBeanDefinition(core.ObjBean(new(pkg2.SamePkg))), "github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg", "*pkg.SamePkg", true},
-		{core.NewBeanDefinition(core.ObjBean(new(pkg2.SamePkg))), "", "*pkg.SamePkg", true},
-		{core.NewBeanDefinition(core.ObjBean(new(pkg2.SamePkg))), "github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg", "", true},
-		{core.NewBeanDefinition(core.ObjBean(new(pkg2.SamePkg)).WithName("pkg2")), "github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg", "pkg2", true},
-		{core.NewBeanDefinition(core.ObjBean(new(pkg2.SamePkg)).WithName("pkg2")), "", "pkg2", true},
-		{core.NewBeanDefinition(core.ObjBean(new(pkg2.SamePkg)).WithName("pkg2")), "github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg", "pkg2", true},
+		{core.NewBeanInstance(core.ObjBean(new(int))), "int", "*int", true},
+		{core.NewBeanInstance(core.ObjBean(new(int))), "", "*int", true},
+		{core.NewBeanInstance(core.ObjBean(new(int))), "int", "", true},
+		{core.NewBeanInstance(core.ObjBean(new(int)).WithName("i")), "int", "i", true},
+		{core.NewBeanInstance(core.ObjBean(new(int)).WithName("i")), "", "i", true},
+		{core.NewBeanInstance(core.ObjBean(new(int)).WithName("i")), "int", "", true},
+		{core.NewBeanInstance(core.ObjBean(new(pkg2.SamePkg))), "github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg", "*pkg.SamePkg", true},
+		{core.NewBeanInstance(core.ObjBean(new(pkg2.SamePkg))), "", "*pkg.SamePkg", true},
+		{core.NewBeanInstance(core.ObjBean(new(pkg2.SamePkg))), "github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg", "", true},
+		{core.NewBeanInstance(core.ObjBean(new(pkg2.SamePkg)).WithName("pkg2")), "github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg", "pkg2", true},
+		{core.NewBeanInstance(core.ObjBean(new(pkg2.SamePkg)).WithName("pkg2")), "", "pkg2", true},
+		{core.NewBeanInstance(core.ObjBean(new(pkg2.SamePkg)).WithName("pkg2")), "github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg", "pkg2", true},
 	}
 
 	for i, s := range data {
@@ -572,33 +572,33 @@ func TestObjectBean(t *testing.T) {
 
 	t.Run("check name && typename", func(t *testing.T) {
 
-		data := map[*core.BeanDefinition]struct {
+		data := map[*core.BeanInstance]struct {
 			name     string
 			typeName string
 		}{
-			core.NewBeanDefinition(core.ObjBean(io.Writer(os.Stdout))): {
+			core.NewBeanInstance(core.ObjBean(io.Writer(os.Stdout))): {
 				"*os.File", "os/os.File",
 			},
 
-			core.NewBeanDefinition(core.ObjBean(newHistoryTeacher(""))): {
+			core.NewBeanInstance(core.ObjBean(newHistoryTeacher(""))): {
 				"*core_test.historyTeacher",
 				"github.com/go-spring/spring-core/core_test/core_test.historyTeacher",
 			},
 
-			core.NewBeanDefinition(core.ObjBean(new(int))): {
+			core.NewBeanInstance(core.ObjBean(new(int))): {
 				"*int", "int",
 			},
 
-			core.NewBeanDefinition(core.ObjBean(new(int)).WithName("i")): {
+			core.NewBeanInstance(core.ObjBean(new(int)).WithName("i")): {
 				"i", "int",
 			},
 
-			core.NewBeanDefinition(core.ObjBean(new(pkg2.SamePkg))): {
+			core.NewBeanInstance(core.ObjBean(new(pkg2.SamePkg))): {
 				"*pkg.SamePkg",
 				"github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg",
 			},
 
-			core.NewBeanDefinition(core.ObjBean(new(pkg2.SamePkg)).WithName("pkg2")): {
+			core.NewBeanInstance(core.ObjBean(new(pkg2.SamePkg)).WithName("pkg2")): {
 				"pkg2",
 				"github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg",
 			},
@@ -613,40 +613,40 @@ func TestObjectBean(t *testing.T) {
 
 func TestConstructorBean(t *testing.T) {
 
-	bd := core.NewBeanDefinition(core.CtorBean(NewStudent))
+	bd := core.NewBeanInstance(core.CtorBean(NewStudent))
 	util.AssertEqual(t, bd.Type().String(), "*core_test.Student")
 
-	bd = core.NewBeanDefinition(core.CtorBean(NewPtrStudent))
+	bd = core.NewBeanInstance(core.CtorBean(NewPtrStudent))
 	util.AssertEqual(t, bd.Type().String(), "*core_test.Student")
 
 	mapFn := func() map[int]string { return make(map[int]string) }
-	bd = core.NewBeanDefinition(core.CtorBean(mapFn))
+	bd = core.NewBeanInstance(core.CtorBean(mapFn))
 	util.AssertEqual(t, bd.Type().String(), "map[int]string")
 
 	sliceFn := func() []int { return make([]int, 1) }
-	bd = core.NewBeanDefinition(core.CtorBean(sliceFn))
+	bd = core.NewBeanInstance(core.CtorBean(sliceFn))
 	util.AssertEqual(t, bd.Type().String(), "[]int")
 
 	funcFn := func() func(int) { return nil }
-	bd = core.NewBeanDefinition(core.CtorBean(funcFn))
+	bd = core.NewBeanInstance(core.CtorBean(funcFn))
 	util.AssertEqual(t, bd.Type().String(), "func(int)")
 
 	intFn := func() int { return 0 }
-	bd = core.NewBeanDefinition(core.CtorBean(intFn))
+	bd = core.NewBeanInstance(core.CtorBean(intFn))
 	util.AssertEqual(t, bd.Type().String(), "*int")
 	util.AssertEqual(t, bd.Value().Type().String(), "*int")
 
 	interfaceFn := func(name string) Teacher { return newHistoryTeacher(name) }
-	bd = core.NewBeanDefinition(core.CtorBean(interfaceFn))
+	bd = core.NewBeanInstance(core.CtorBean(interfaceFn))
 	util.AssertEqual(t, bd.Type().String(), "core_test.Teacher")
 	util.AssertEqual(t, bd.Value().Type().String(), "core_test.Teacher")
 
 	util.AssertPanic(t, func() {
-		bd = core.NewBeanDefinition(core.CtorBean(func() (*int, *int) { return nil, nil }))
+		bd = core.NewBeanInstance(core.CtorBean(func() (*int, *int) { return nil, nil }))
 		util.AssertEqual(t, bd.Type().String(), "*int")
 	}, "func bean must be func\\(...\\)bean or func\\(...\\)\\(bean, error\\)")
 
-	bd = core.NewBeanDefinition(core.CtorBean(func() (*int, error) { return nil, nil }))
+	bd = core.NewBeanInstance(core.CtorBean(func() (*int, error) { return nil, nil }))
 	util.AssertEqual(t, bd.Type().String(), "*int")
 }
 
