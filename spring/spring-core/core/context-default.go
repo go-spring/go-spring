@@ -161,8 +161,9 @@ func (ctx *applicationContext) CtorBean(fn interface{}, args ...Arg) *BeanDefini
 	return ctx.Bean(CtorBean(fn, args...))
 }
 
-func (ctx *applicationContext) Bean(bd *BeanDefinition) *BeanDefinition {
+func (ctx *applicationContext) Bean(factory *BeanFactory) *BeanDefinition {
 	ctx.checkRegistration()
+	bd := NewBeanDefinition(factory)
 	ctx.AllBeans = append(ctx.AllBeans, bd)
 	return bd
 }
@@ -504,7 +505,7 @@ func (ctx *applicationContext) WireBean(i interface{}) {
 		}
 	}()
 
-	assembly.wireBeanDefinition(ObjBean(i), false)
+	assembly.wireBeanDefinition(NewBeanDefinition(ObjBean(i)), false)
 }
 
 // Beans 获取所有 Bean 的定义，不能保证解析和注入，请谨慎使用该函数!

@@ -222,6 +222,7 @@ func ParseCollectionTag(str string) (tag collectionTag) {
 type beanFactory interface {
 	beanClass() string
 	newValue() reflect.Value
+	beanType() reflect.Type
 }
 
 type objBeanFactory struct {
@@ -230,6 +231,10 @@ type objBeanFactory struct {
 
 func (b *objBeanFactory) newValue() reflect.Value {
 	return b.v
+}
+
+func (b *objBeanFactory) beanType() reflect.Type {
+	return b.v.Type()
 }
 
 func (b *objBeanFactory) beanClass() string {
@@ -280,6 +285,10 @@ func (b *ctorBeanFactory) newValue() reflect.Value {
 	return v
 }
 
+func (b *ctorBeanFactory) beanType() reflect.Type {
+	return b.newValue().Type() // TODO
+}
+
 func (b *ctorBeanFactory) beanClass() string {
 	return "constructor bean"
 }
@@ -319,16 +328,13 @@ type beanDefinition interface {
 	getLine() int                 // 返回 Bean 注册点所在文件的行数
 }
 
-// BeanDefinition 用于存储 Bean 的各种元数据
-type BeanDefinition struct {
-	RValue  reflect.Value // 值
+type BeanFactory struct {
 	factory beanFactory
 
 	RType    reflect.Type // 类型
 	typeName string       // 原始类型的全限定名
 
-	name   string     // Bean 的名称，请勿直接使用该字段!
-	status beanStatus // Bean 的状态
+	name string // Bean 的名称，请勿直接使用该字段!
 
 	file string // 注册点所在文件
 	line int    // 注册点所在行数
@@ -343,22 +349,39 @@ type BeanDefinition struct {
 	exports map[reflect.Type]struct{} // 严格导出的接口类型
 }
 
-// newBeanDefinition BeanDefinition 的构造函数
-func newBeanDefinition(factory beanFactory, file string, line int) *BeanDefinition {
-	v := factory.newValue()
-	t := v.Type()
+func newBeanFactory(factory beanFactory, file string, line int) *BeanFactory {
+	t := factory.beanType()
 	if !IsRefType(t.Kind()) {
 		panic(errors.New("bean must be ref type"))
 	}
-	return &BeanDefinition{
-		RValue:   v,
+	return &BeanFactory{
 		RType:    t,
 		typeName: TypeName(t),
 		factory:  factory,
-		status:   BeanStatus_Default,
 		file:     file,
 		line:     line,
 		exports:  make(map[reflect.Type]struct{}),
+	}
+}
+
+func (f *BeanFactory) newValue() reflect.Value {
+	return f.factory.newValue()
+}
+
+// BeanDefinition 用于存储 Bean 的各种元数据
+type BeanDefinition struct {
+	*BeanFactory
+
+	RValue reflect.Value // 值
+	status beanStatus    // Bean 的状态
+}
+
+// NewBeanDefinition BeanDefinition 的构造函数
+func NewBeanDefinition(factory *BeanFactory) *BeanDefinition {
+	return &BeanDefinition{
+		BeanFactory: factory,
+		RValue:      factory.newValue(),
+		status:      BeanStatus_Default,
 	}
 }
 
@@ -586,21 +609,21 @@ func getFileLine() (file string, line int) {
 	return
 }
 
-func valueBean(v reflect.Value, file string, line int) *BeanDefinition {
+func valueBean(v reflect.Value, file string, line int) *BeanFactory {
 	if !v.IsValid() || util.IsNil(v) {
 		panic(errors.New("bean can't be nil"))
 	}
-	return newBeanDefinition(&objBeanFactory{v: v}, file, line)
+	return newBeanFactory(&objBeanFactory{v: v}, file, line)
 }
 
 // ObjBean 将 Bean 转换为 BeanDefinition 对象
-func ObjBean(i interface{}) *BeanDefinition {
+func ObjBean(i interface{}) *BeanFactory {
 	file, line := getFileLine()
 	return valueBean(reflect.ValueOf(i), file, line)
 }
 
 // CtorBean 将构造函数转换为 BeanDefinition 对象
-func CtorBean(fn interface{}, args ...Arg) *BeanDefinition {
+func CtorBean(fn interface{}, args ...Arg) *BeanFactory {
 
 	file, line := getFileLine()
 	fnType := reflect.TypeOf(fn)
@@ -618,5 +641,5 @@ func CtorBean(fn interface{}, args ...Arg) *BeanDefinition {
 		arg:    NewArgList(fnType, false, args), // TODO 支持 receiver 构造函数
 	}
 
-	return newBeanDefinition(b, file, line)
+	return newBeanFactory(b, file, line)
 }

@@ -55,7 +55,7 @@ type ApplicationContext interface {
 	Config(fn interface{}, args ...Arg) *Configer
 
 	// Bean 注册 bean.BeanDefinition 对象。
-	Bean(bd *BeanDefinition) *BeanDefinition
+	Bean(factory *BeanFactory) *BeanDefinition
 
 	// ObjBean 将 Bean 转换为 BeanDefinition 对象
 	ObjBean(i interface{}) *BeanDefinition
