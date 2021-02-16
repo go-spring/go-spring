@@ -420,7 +420,7 @@ func (assembly *defaultBeanAssembly) wireBeanDefinition(bd beanDefinition, onlyA
 		assembly.wireObjectBean(bd, onlyAutoWire)
 	case *constructorBean:
 		fnValue := reflect.ValueOf(b.Fn)
-		assembly.wireFunctionBean(fnValue, &b.functionBean, bd)
+		assembly.wireConstructorBean(fnValue, b, bd)
 	default:
 		panic(errors.New("error spring bean type"))
 	}
@@ -519,14 +519,13 @@ func (assembly *defaultBeanAssembly) wireObjectBean(bd beanDefinition, onlyAutoW
 	}
 }
 
-// wireFunctionBean 对函数定义的 Bean 进行注入
-func (assembly *defaultBeanAssembly) wireFunctionBean(fnValue reflect.Value, fnBean *functionBean, bd beanDefinition) {
+func (assembly *defaultBeanAssembly) wireConstructorBean(fnValue reflect.Value, fnBean *constructorBean, bd beanDefinition) {
 
 	// 获取输入参数
 	var in []reflect.Value
 
-	if fnBean.argList != nil {
-		if r := fnBean.argList.Get(assembly, bd.FileLine()); len(r) > 0 {
+	if fnBean.arg != nil {
+		if r := fnBean.arg.Get(assembly, bd.FileLine()); len(r) > 0 {
 			in = append(in, r...)
 		}
 	}
@@ -539,7 +538,7 @@ func (assembly *defaultBeanAssembly) wireFunctionBean(fnValue reflect.Value, fnB
 
 	if len(out) == 2 { // 如果有 error 返回则 panic
 		if err := out[1].Interface(); err != nil {
-			panic(fmt.Errorf("function bean: \"%s\" return error: %v", bd.FileLine(), err))
+			panic(fmt.Errorf("ctor bean: \"%s\" return error: %v", bd.FileLine(), err))
 		}
 	}
 
@@ -558,7 +557,7 @@ func (assembly *defaultBeanAssembly) wireFunctionBean(fnValue reflect.Value, fnB
 	}
 
 	if fnBean.Value().IsNil() {
-		panic(fmt.Errorf("function bean: \"%s\" return nil", bd.FileLine()))
+		panic(fmt.Errorf("ctor bean: \"%s\" return nil", bd.FileLine()))
 	}
 
 	// 对函数的返回值进行自动注入

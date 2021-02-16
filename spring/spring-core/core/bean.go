@@ -276,13 +276,6 @@ func (b *objectBean) beanClass() string {
 	return "object bean"
 }
 
-// functionBean 以函数形式（构造函数或者成员方法）注册的 Bean
-type functionBean struct {
-	objectBean
-
-	argList *ArgList
-}
-
 // IsFuncBeanType 返回以函数形式注册 Bean 的函数是否合法。一个合法
 // 的注册函数需要以下条件：入参可以有任意多个，支持一般形式和 Option
 // 形式，返回值只能有一个或者两个，第一个返回值必须是 Bean 源，它可以是
@@ -308,10 +301,17 @@ func IsFuncBeanType(fnType reflect.Type) bool {
 	return true
 }
 
-// newFunctionBean functionBean 的构造函数，当 withReceiver 为 true 时 fnType 对应的函数
-// 其第一个参数视为接收者。args 是 Bean 函数的一般参数的绑定值，这使得函数也具有了和结构体 Tag 机制
-// 类似的能力。args 的值是结构体 tag 值的简化版，无需名字，另外所有的 tag 必须同时有或者同时没有序号。
-func newFunctionBean(fnType reflect.Type, withReceiver bool, args []Arg) functionBean {
+// ConstructorBean 以构造函数形式注册的 Bean
+type constructorBean struct {
+	objectBean
+
+	Fn  interface{}
+	arg *ArgList
+}
+
+// newConstructorBean ConstructorBean 的构造函数，所有 tag 必须同时有或者同时没有序号。
+func newConstructorBean(fn interface{}, args []Arg) *constructorBean {
+	fnType := reflect.TypeOf(fn)
 
 	// 检查 Bean 的注册函数是否合法
 	if !IsFuncBeanType(fnType) {
@@ -332,24 +332,10 @@ func newFunctionBean(fnType reflect.Type, withReceiver bool, args []Arg) functio
 	// 获取 Bean 的类型
 	t := v.Type()
 
-	return functionBean{
-		objectBean: objectBean{RType: t, RValue: v, typeName: TypeName(t)},
-		argList:    NewArgList(fnType, withReceiver, args),
-	}
-}
-
-// ConstructorBean 以构造函数形式注册的 Bean
-type constructorBean struct {
-	functionBean
-
-	Fn interface{} // 构造函数的函数指针
-}
-
-// newConstructorBean ConstructorBean 的构造函数，所有 tag 必须同时有或者同时没有序号。
-func newConstructorBean(fn interface{}, args []Arg) *constructorBean {
 	return &constructorBean{
-		functionBean: newFunctionBean(reflect.TypeOf(fn), false, args),
-		Fn:           fn,
+		objectBean: objectBean{RType: t, RValue: v, typeName: TypeName(t)},
+		Fn:         fn,
+		arg:        NewArgList(fnType, false, args), // TODO 支持 receiver 构造函数
 	}
 }
 
