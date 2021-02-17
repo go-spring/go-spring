@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"github.com/go-spring/spring-core/bean"
+	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/core"
 	pkg1 "github.com/go-spring/spring-core/core/testdata/pkg/bar"
 	pkg2 "github.com/go-spring/spring-core/core/testdata/pkg/foo"
@@ -503,7 +504,7 @@ func TestApplicationContext_TypeConverter(t *testing.T) {
 	p := &PointBean{}
 	ctx.ObjBean(p)
 
-	ctx.Properties().Convert(PointConverter)
+	conf.Convert(PointConverter)
 	ctx.SetProperty("point", "(7,5)")
 
 	dbConfig := &DbConfig{}
@@ -1880,7 +1881,7 @@ func TestApplicationContext_UserDefinedTypeProperty(t *testing.T) {
 
 	ctx := core.NewApplicationContext()
 
-	ctx.Properties().Convert(func(v string) (level, error) {
+	conf.Convert(func(v string) (level, error) {
 		if v == "debug" {
 			return 1, nil
 		}

@@ -102,7 +102,7 @@ func bindValue(p Properties, v reflect.Value, key string, def interface{}, opt B
 	}
 
 	// 存在值类型转换器的情况下结构体优先使用属性值绑定
-	if fn, ok := p.Converters()[t]; ok {
+	if fn, ok := converters[t]; ok {
 		propValue, err := getProperty()
 		if err == nil {
 			fnValue := reflect.ValueOf(fn)
@@ -170,7 +170,7 @@ func bindValue(p Properties, v reflect.Value, key string, def interface{}, opt B
 		}
 
 		// 处理使用类型转换器的场景
-		if fn, ok := p.Converters()[elemType]; ok {
+		if fn, ok := converters[elemType]; ok {
 			if s0, err := cast.ToStringSliceE(propValue); err == nil {
 				sv := reflect.MakeSlice(t, len(s0), len(s0))
 				fnValue := reflect.ValueOf(fn)
@@ -268,7 +268,7 @@ func bindValue(p Properties, v reflect.Value, key string, def interface{}, opt B
 					if sv, err := cast.ToStringMapE(si); err == nil {
 						ev := reflect.New(elemType)
 						subFullName := fmt.Sprintf("%s[%d]", key, i)
-						err = bindStruct(&properties{sv, p.Converters()}, ev.Elem(), BindOption{
+						err = bindStruct(&properties{sv}, ev.Elem(), BindOption{
 							FullName:  subFullName,
 							FieldName: opt.FieldName,
 						})
@@ -294,7 +294,7 @@ func bindValue(p Properties, v reflect.Value, key string, def interface{}, opt B
 		elemKind := elemType.Kind()
 
 		// 首先处理使用类型转换器的场景
-		if fn, ok := p.Converters()[elemType]; ok {
+		if fn, ok := converters[elemType]; ok {
 			if mapValue, err := cast.ToStringMapStringE(propValue); err == nil {
 				prefix := key + "."
 				fnValue := reflect.ValueOf(fn)
@@ -355,7 +355,7 @@ func bindValue(p Properties, v reflect.Value, key string, def interface{}, opt B
 				for k1, v1 := range temp {
 					ev := reflect.New(elemType)
 					subFullName := fmt.Sprintf("%s.%s", key, k1)
-					err = bindStruct(&properties{v1, p.Converters()}, ev.Elem(), BindOption{
+					err = bindStruct(&properties{v1}, ev.Elem(), BindOption{
 						FullName:  subFullName,
 						FieldName: opt.FieldName,
 					})

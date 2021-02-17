@@ -508,19 +508,20 @@ func PointConverter(val string) (image.Point, error) {
 }
 
 func TestRegisterTypeConverter(t *testing.T) {
-	p := conf.New()
 
-	err := p.Convert(3)
-	util.AssertEqual(t, err, errors.New("fn must be func(string)(type,error)"))
+	util.AssertPanic(t, func() {
+		conf.Convert(3)
+	}, "fn must be func\\(string\\)\\(type,error\\)")
 
-	err = p.Convert(func(_ string, _ string) (image.Point, error) { return image.Point{}, nil })
-	util.AssertEqual(t, err, errors.New("fn must be func(string)(type,error)"))
+	util.AssertPanic(t, func() {
+		conf.Convert(func(_ string, _ string) (image.Point, error) { return image.Point{}, nil })
+	}, "fn must be func\\(string\\)\\(type,error\\)")
 
-	err = p.Convert(func(_ string) (image.Point, image.Point, error) { return image.Point{}, image.Point{}, nil })
-	util.AssertEqual(t, err, errors.New("fn must be func(string)(type,error)"))
+	util.AssertPanic(t, func() {
+		conf.Convert(func(_ string) (image.Point, image.Point, error) { return image.Point{}, image.Point{}, nil })
+	}, "fn must be func\\(string\\)\\(type,error\\)")
 
-	err = p.Convert(PointConverter)
-	util.AssertEqual(t, err, nil)
+	conf.Convert(PointConverter)
 }
 
 func TestDefaultProperties_GetProperty(t *testing.T) {
@@ -709,7 +710,7 @@ func TestDefaultProperties_StringMapString(t *testing.T) {
 	t.Run("converter bind", func(t *testing.T) {
 
 		p := conf.New()
-		p.Convert(PointConverter)
+		conf.Convert(PointConverter)
 		p.Set("a.p1", "(1,2)")
 		p.Set("a.p2", "(3,4)")
 		p.Set("a.p3", "(5,6)")
