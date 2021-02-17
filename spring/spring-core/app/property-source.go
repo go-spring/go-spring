@@ -20,6 +20,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
 	"github.com/spf13/viper"
@@ -66,7 +67,7 @@ func (p *defaultPropertySource) Load(fileLocation string, profile string) map[st
 	result := make(map[string]interface{})
 
 	// 从预定义的文件格式中加载属性值列表
-	for _, reader := range configReaders {
+	for _, reader := range conf.Readers {
 
 		filename := filepath.Join(fileLocation, fileNamePrefix+reader.FileExt())
 		if _, err := os.Stat(filename); err != nil {
@@ -110,7 +111,7 @@ func (p *configMapPropertySource) Load(fileLocation string, profile string) map[
 	result := make(map[string]interface{})
 
 	// 从预定义的文件格式中加载属性值列表
-	for _, reader := range configReaders {
+	for _, reader := range conf.Readers {
 		if key := profileFileName + reader.FileExt(); d.IsSet(key) {
 			log.Infof("load properties from config-map %s:%s", fileLocation, key)
 

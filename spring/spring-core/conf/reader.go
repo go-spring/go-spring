@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package app
+package conf
 
 import (
 	"bytes"
@@ -23,12 +23,11 @@ import (
 	"sort"
 
 	"github.com/go-spring/spring-core/util"
-	"github.com/magiconair/properties"
 	"github.com/spf13/viper"
 )
 
 func init() {
-	RegisterFileConfigReader(".properties", propertiesReadBuffer)
+	RegisterFileConfigReader(".properties", viperReadBuffer("properties"))
 	RegisterFileConfigReader(".yaml", viperReadBuffer("yaml"))
 	RegisterFileConfigReader(".toml", viperReadBuffer("toml"))
 }
@@ -40,12 +39,12 @@ type ConfigReader interface {
 	ReadBuffer(buffer []byte, out map[string]interface{})
 }
 
-// configReaders 配置读取器集合
-var configReaders []ConfigReader
+// Readers 配置读取器集合
+var Readers []ConfigReader
 
 // RegisterConfigReader 注册配置读取器
 func RegisterConfigReader(reader ConfigReader) {
-	configReaders = append(configReaders, reader)
+	Readers = append(Readers, reader)
 }
 
 // RegisterFileConfigReader 注册基于文件的配置读取器
@@ -78,21 +77,6 @@ func (r *FileConfigReader) ReadFile(filename string, out map[string]interface{})
 
 func (r *FileConfigReader) ReadBuffer(buffer []byte, out map[string]interface{}) {
 	r.fn(buffer, out)
-}
-
-// propertiesReadBuffer 使用 properties 读取配置文件
-func propertiesReadBuffer(buffer []byte, out map[string]interface{}) {
-
-	p := properties.NewProperties()
-	p.DisableExpansion = true
-
-	err := p.Load(buffer, properties.UTF8)
-	util.Panic(err).When(err != nil)
-
-	for _, key := range p.Keys() {
-		value, _ := p.Get(key)
-		out[key] = value
-	}
 }
 
 // viperReadBuffer 使用 viper 读取配置文件
