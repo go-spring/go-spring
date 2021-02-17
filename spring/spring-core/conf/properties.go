@@ -34,6 +34,9 @@ type Properties interface {
 	// Load 加载属性配置，支持 properties、yaml 和 toml 三种文件格式。
 	Load(filename string) error
 
+	// Read 读取属性配置，支持 properties、yaml 和 toml 三种文件格式。
+	Read(b []byte, ext string) error
+
 	// Has 查询属性值是否存在，属性名称统一转成小写。
 	Has(key string) bool
 
@@ -74,13 +77,31 @@ type properties struct {
 }
 
 // New properties 的构造函数
-func From(m map[string]interface{}) *properties {
+func New() *properties {
+	return &properties{m: make(map[string]interface{})}
+}
+
+// Map properties 的构造函数
+func Map(m map[string]interface{}) *properties {
 	return &properties{m: m}
 }
 
-// New properties 的构造函数
-func New() *properties {
-	return &properties{m: make(map[string]interface{})}
+// Load properties 的构造函数
+func Load(filename string) (*properties, error) {
+	p := New()
+	if err := p.Load(filename); err != nil {
+		return nil, err
+	}
+	return p, nil
+}
+
+// Read 读取属性配置，支持 properties、yaml 和 toml 三种文件格式。
+func Read(b []byte, ext string) (*properties, error) {
+	p := New()
+	if err := p.Read(b, ext); err != nil {
+		return nil, err
+	}
+	return p, nil
 }
 
 // Load 加载属性配置，支持 properties、yaml 和 toml 三种文件格式。
@@ -89,6 +110,16 @@ func (p *properties) Load(filename string) error {
 	for _, r := range Readers {
 		if util.ContainsString(r.FileExt(), ext) >= 0 {
 			return r.ReadFile(filename, p.m)
+		}
+	}
+	panic(errors.New("unsupported file type"))
+}
+
+// Read 读取属性配置，支持 properties、yaml 和 toml 三种文件格式。
+func (p *properties) Read(b []byte, ext string) error {
+	for _, r := range Readers {
+		if util.ContainsString(r.FileExt(), ext) >= 0 {
+			return r.ReadBuffer(b, p.m)
 		}
 	}
 	panic(errors.New("unsupported file type"))
