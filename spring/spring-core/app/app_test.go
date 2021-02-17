@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package boot
+package app
 
 import (
 	"fmt"
@@ -27,8 +27,8 @@ import (
 	"github.com/go-spring/spring-core/util"
 )
 
-func startApplication(cfgLocation ...string) *application {
-	app := NewApp()
+func startApplication(cfgLocation ...string) *Application {
+	app := NewApplication()
 	app.Property("application-event.collection", "[]?")
 	app.Property("command-line-runner.collection", "[]?")
 	app.start(cfgLocation...)
@@ -94,7 +94,7 @@ func TestApp(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 		_ = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
 	}()
-	NewApp().
+	NewApplication().
 		Profile("dev").
 		BannerMode(BannerModeOff).
 		Property("spring.application.name", "test").

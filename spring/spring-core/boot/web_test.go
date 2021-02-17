@@ -26,7 +26,7 @@ import (
 
 func TestMapper(t *testing.T) {
 	boot.MappingGet("/", func(ctx web.Context) {})
-	for _, mapper := range boot.WebMapping {
+	for _, mapper := range boot.App().WebMapping {
 		fmt.Println(mapper.Key(), web.GetMethod(mapper.Method()))
 	}
 }

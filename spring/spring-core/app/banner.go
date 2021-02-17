@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package boot
+package app
 
 import (
 	"fmt"
@@ -41,9 +41,15 @@ const (
 	BannerModeConsole = 1
 )
 
-// SetBanner 设置自定义 Banner 字符串
-func (app *application) SetBanner(banner string) {
+func (app *Application) BannerMode(mode int) *Application {
+	app.bannerMode = mode
+	return app
+}
+
+// Banner 设置自定义 Banner 字符串
+func (app *Application) Banner(banner string) *Application {
 	app.banner = banner
+	return app
 }
 
 // printBanner 打印 Banner 到控制台

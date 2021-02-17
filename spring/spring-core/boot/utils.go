@@ -2,45 +2,13 @@ package boot
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/core"
 )
 
-var listOfAppCtx = make([]core.ApplicationContext, 0)
-
-func addAppCtx(appCtx core.ApplicationContext) {
-	for _, c := range listOfAppCtx {
-		if c == appCtx {
-			return
-		}
-	}
-	listOfAppCtx = append(listOfAppCtx, appCtx)
-}
-
-func delAppCtx(appCtx core.ApplicationContext) {
-	index := -1
-	for i, c := range listOfAppCtx {
-		if c == appCtx {
-			index = i
-			break
-		}
-	}
-	if index >= 0 {
-		listOfAppCtx = append(listOfAppCtx[:index], listOfAppCtx[index+1:]...)
-	}
-}
-
-func checkAppCtxCount() {
-	if n := len(listOfAppCtx); n != 1 {
-		panic(fmt.Errorf("found %d ApplicationContext", n))
-	}
-}
-
 func ApplicationContext() core.ApplicationContext {
-	checkAppCtxCount()
-	return listOfAppCtx[0]
+	return gApp.ApplicationContext()
 }
 
 // GetProfile 返回运行环境

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package boot
+package app
 
 import (
 	"bytes"

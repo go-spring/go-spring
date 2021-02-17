@@ -14,9 +14,14 @@
  * limitations under the License.
  */
 
-package boot
+package app
+
+import (
+	"github.com/go-spring/spring-core/mq"
+)
 
 // BindConsumer 注册 BIND 形式的消息消费者
-func BindConsumer(topic string, fn interface{}) {
-	gApp.BindConsumer(topic, fn)
+func (app *Application) BindConsumer(topic string, fn interface{}) *Application {
+	app.Consumers[topic] = mq.BIND(topic, fn)
+	return app
 }

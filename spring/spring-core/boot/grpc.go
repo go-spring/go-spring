@@ -17,69 +17,21 @@
 package boot
 
 import (
-	"fmt"
-	"reflect"
-
+	"github.com/go-spring/spring-core/app"
 	"github.com/go-spring/spring-core/core"
-	"github.com/go-spring/spring-core/util"
 )
-
-///////////////////// gRPC Server //////////////////////
-
-// GRpcServerMap gRPC 服务列表
-var GRpcServerMap = make(map[reflect.Value]*GRpcServer)
 
 // RegisterGRpcServer 注册 gRPC 服务提供者，fn 是 gRPC 自动生成的服务注册函数，serviceName 是服务名称，
 // 必须对应 *_grpc.pg.go 文件里面 grpc.ServiceDesc 的 ServiceName 字段，server 是服务具体提供者对象。
-func RegisterGRpcServer(fn interface{}, serviceName string, server interface{}) *GRpcServer {
-	v := reflect.ValueOf(fn)
-	if _, ok := GRpcServerMap[v]; ok {
-		_, _, fnName := util.FileLine(fn)
-		panic(fmt.Errorf("duplicate registration, gRpcServer: %s", fnName))
-	}
-	s := newGRpcServer(serviceName, server)
-	GRpcServerMap[v] = s
+func RegisterGRpcServer(fn interface{}, serviceName string, server interface{}) *app.GRpcServer {
+	s := app.NewGRpcServer(fn, serviceName, server)
+	gApp.RegisterGRpcServer(s)
 	return s
 }
-
-type GRpcServer struct {
-	server      interface{}    // 服务对象
-	serviceName string         // 服务名称
-	cond        core.Condition // 判断条件
-}
-
-// newGRpcServer GRpcServer 的构造函数
-func newGRpcServer(serviceName string, server interface{}) *GRpcServer {
-	return &GRpcServer{server: server, serviceName: serviceName}
-}
-
-// ServiceName 返回服务名称
-func (s *GRpcServer) ServiceName() string {
-	return s.serviceName
-}
-
-// Server 返回服务对象
-func (s *GRpcServer) Server() interface{} {
-	return s.server
-}
-
-// WithCondition 设置一个 Condition
-func (s *GRpcServer) WithCondition(cond core.Condition) *GRpcServer {
-	s.cond = cond
-	return s
-}
-
-// CheckCondition 成功返回 true，失败返回 false
-func (s *GRpcServer) CheckCondition(ctx core.ApplicationContext) bool {
-	if s.cond == nil {
-		return true
-	}
-	return s.cond.Matches(ctx)
-}
-
-///////////////////// gRPC Client //////////////////////
 
 // RegisterGRpcClient 注册 gRPC 服务客户端，fn 是 gRPC 自动生成的客户端构造函数
 func RegisterGRpcClient(fn interface{}, endpoint string) *core.BeanDefinition {
-	return CtorBean(fn, endpoint)
+	c := app.NewGRpcClient(fn, endpoint)
+	gApp.RegisterGRpcClient(c)
+	return c
 }
