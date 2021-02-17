@@ -68,14 +68,24 @@ func (p *defaultPropertySource) Load(fileLocation string, profile string) map[st
 
 	// 从预定义的文件格式中加载属性值列表
 	for _, reader := range conf.Readers {
+		var filename string
 
-		filename := filepath.Join(fileLocation, fileNamePrefix+reader.FileExt())
-		if _, err := os.Stat(filename); err != nil {
-			continue // 这里不需要警告
+		for _, ext := range reader.FileExt() {
+			s := filepath.Join(fileLocation, fileNamePrefix+ext)
+			if _, err := os.Stat(s); err != nil {
+				continue // 这里不需要警告
+			}
+			filename = s
+			break
+		}
+
+		if filename == "" {
+			continue
 		}
 
 		log.Info("load properties from file ", filename)
-		reader.ReadFile(filename, result)
+		err := reader.ReadFile(filename, result)
+		util.Panic(err).When(err != nil && err != os.ErrNotExist)
 	}
 
 	return result
@@ -112,11 +122,17 @@ func (p *configMapPropertySource) Load(fileLocation string, profile string) map[
 
 	// 从预定义的文件格式中加载属性值列表
 	for _, reader := range conf.Readers {
-		if key := profileFileName + reader.FileExt(); d.IsSet(key) {
-			log.Infof("load properties from config-map %s:%s", fileLocation, key)
+		for _, ext := range reader.FileExt() {
 
+			key := profileFileName + ext
+			if !d.IsSet(key) {
+				continue
+			}
+
+			log.Infof("load properties from config-map %s:%s", fileLocation, key)
 			if val := d.GetString(key); val != "" {
-				reader.ReadBuffer([]byte(val), result)
+				err = reader.ReadBuffer([]byte(val), result)
+				util.Panic(err).When(err != nil)
 			}
 		}
 	}

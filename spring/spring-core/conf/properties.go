@@ -18,13 +18,11 @@ package conf
 
 import (
 	"errors"
-	"io"
+	"path/filepath"
 	"reflect"
-	"sort"
 	"strings"
 
-	"github.com/go-spring/spring-core/log"
-	"github.com/spf13/viper"
+	"github.com/go-spring/spring-core/util"
 )
 
 // errorType error 的反射类型
@@ -35,9 +33,6 @@ type Properties interface {
 
 	// Load 加载属性配置，支持 properties、yaml 和 toml 三种文件格式。
 	Load(filename string) error
-
-	// Read 读取属性配置，支持 properties、yaml 和 toml 三种文件格式。
-	Read(reader io.Reader, configType string) error
 
 	// Has 查询属性值是否存在，属性名称统一转成小写。
 	Has(key string) bool
@@ -79,48 +74,24 @@ type properties struct {
 }
 
 // New properties 的构造函数
+func From(m map[string]interface{}) *properties {
+	return &properties{m: m}
+}
+
+// New properties 的构造函数
 func New() *properties {
-	return &properties{
-		m: make(map[string]interface{}),
-	}
+	return &properties{m: make(map[string]interface{})}
 }
 
 // Load 加载属性配置，支持 properties、yaml 和 toml 三种文件格式。
 func (p *properties) Load(filename string) error {
-	log.Debug("load properties from file: ", filename)
-
-	return p.read(func(v *viper.Viper) error {
-		v.SetConfigFile(filename)
-		return v.ReadInConfig()
-	})
-}
-
-// Read 读取属性配置，支持 properties、yaml 和 toml 三种文件格式。
-func (p *properties) Read(reader io.Reader, configType string) error {
-	log.Debug("load properties from reader type: ", configType)
-
-	return p.read(func(v *viper.Viper) error {
-		v.SetConfigType(configType)
-		return v.ReadConfig(reader)
-	})
-}
-
-func (p *properties) read(reader func(*viper.Viper) error) error {
-
-	v := viper.New()
-	if err := reader(v); err != nil {
-		return err
+	ext := strings.ToLower(filepath.Ext(filename))
+	for _, r := range Readers {
+		if util.ContainsString(r.FileExt(), ext) >= 0 {
+			return r.ReadFile(filename, p.m)
+		}
 	}
-
-	keys := v.AllKeys()
-	sort.Strings(keys)
-
-	for _, key := range keys {
-		val := v.Get(key)
-		p.Set(key, val)
-		log.Tracef("%s=%v", key, val)
-	}
-	return nil
+	panic(errors.New("unsupported file type"))
 }
 
 // Has 查询属性值是否存在，属性名称统一转成小写。

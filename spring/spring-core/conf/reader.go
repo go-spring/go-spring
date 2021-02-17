@@ -19,82 +19,66 @@ package conf
 import (
 	"bytes"
 	"io/ioutil"
-	"os"
-	"sort"
 
-	"github.com/go-spring/spring-core/util"
 	"github.com/spf13/viper"
 )
 
 func init() {
-	RegisterFileConfigReader(".properties", viperReadBuffer("properties"))
-	RegisterFileConfigReader(".yaml", viperReadBuffer("yaml"))
-	RegisterFileConfigReader(".toml", viperReadBuffer("toml"))
+	RegisterReader(Viper("prop"), ".properties")
+	RegisterReader(Viper("yaml"), ".yaml", ".yml")
+	RegisterReader(Viper("toml"), ".toml")
 }
 
-// ConfigReader 配置读取器接口
-type ConfigReader interface {
-	FileExt() string // 文件扩展名
-	ReadFile(filename string, out map[string]interface{})
-	ReadBuffer(buffer []byte, out map[string]interface{})
+// Reader 配置读取器接口
+type Reader interface {
+	FileExt() []string // 读取器支持的文件扩展名的列表
+	ReadFile(filename string, out map[string]interface{}) error
+	ReadBuffer(buffer []byte, out map[string]interface{}) error
 }
 
 // Readers 配置读取器集合
-var Readers []ConfigReader
+var Readers []Reader
 
-// RegisterConfigReader 注册配置读取器
-func RegisterConfigReader(reader ConfigReader) {
-	Readers = append(Readers, reader)
+// RegisterReader 注册基于文件的配置读取器
+func RegisterReader(fn ReaderFunc, fileExt ...string) {
+	Readers = append(Readers, &reader{ext: fileExt, fn: fn})
 }
 
-// RegisterFileConfigReader 注册基于文件的配置读取器
-func RegisterFileConfigReader(fileExt string, fn FnReadBuffer) {
-	RegisterConfigReader(NewFileConfigReader(fileExt, fn))
+type ReaderFunc func(b []byte, out map[string]interface{}) error
+
+type reader struct {
+	ext []string
+	fn  ReaderFunc
 }
 
-type FnReadBuffer func(buffer []byte, out map[string]interface{})
+func (r *reader) FileExt() []string { return r.ext }
 
-// FileConfigReader 基于文件的配置读取器
-type FileConfigReader struct {
-	ext string
-	fn  FnReadBuffer
+func (r *reader) ReadBuffer(b []byte, out map[string]interface{}) error {
+	return r.fn(b, out)
 }
 
-// NewFileConfigReader FileConfigReader 的构造函数
-func NewFileConfigReader(fileExt string, fn FnReadBuffer) *FileConfigReader {
-	return &FileConfigReader{ext: fileExt, fn: fn}
-}
-
-func (r *FileConfigReader) FileExt() string {
-	return r.ext
-}
-
-func (r *FileConfigReader) ReadFile(filename string, out map[string]interface{}) {
+func (r *reader) ReadFile(filename string, out map[string]interface{}) error {
 	file, err := ioutil.ReadFile(filename)
-	util.Panic(err).When(err != nil && err != os.ErrNotExist)
-	r.ReadBuffer(file, out)
+	if err != nil {
+		return err
+	}
+	return r.ReadBuffer(file, out)
 }
 
-func (r *FileConfigReader) ReadBuffer(buffer []byte, out map[string]interface{}) {
-	r.fn(buffer, out)
-}
-
-// viperReadBuffer 使用 viper 读取配置文件
-func viperReadBuffer(fileType string) FnReadBuffer {
-	return func(buffer []byte, out map[string]interface{}) {
+// Viper 使用 viper 读取配置文件
+func Viper(fileType string) ReaderFunc {
+	return func(b []byte, out map[string]interface{}) error {
 
 		v := viper.New()
 		v.SetConfigType(fileType)
+		if err := v.ReadConfig(bytes.NewBuffer(b)); err != nil {
+			return err
+		}
 
-		err := v.ReadConfig(bytes.NewBuffer(buffer))
-		util.Panic(err).When(err != nil)
-
-		keys := v.AllKeys()
-		sort.Strings(keys)
-
-		for _, key := range keys {
+		for _, key := range v.AllKeys() {
 			val := v.Get(key)
 			out[key] = val
 		}
+		return nil
 	}
 }

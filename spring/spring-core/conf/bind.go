@@ -268,7 +268,7 @@ func bindValue(p Properties, v reflect.Value, key string, def interface{}, opt B
 					if sv, err := cast.ToStringMapE(si); err == nil {
 						ev := reflect.New(elemType)
 						subFullName := fmt.Sprintf("%s[%d]", key, i)
-						err = bindStruct(&properties{sv}, ev.Elem(), BindOption{
+						err = bindStruct(From(sv), ev.Elem(), BindOption{
 							FullName:  subFullName,
 							FieldName: opt.FieldName,
 						})
@@ -355,7 +355,7 @@ func bindValue(p Properties, v reflect.Value, key string, def interface{}, opt B
 				for k1, v1 := range temp {
 					ev := reflect.New(elemType)
 					subFullName := fmt.Sprintf("%s.%s", key, k1)
-					err = bindStruct(&properties{v1}, ev.Elem(), BindOption{
+					err = bindStruct(From(v1), ev.Elem(), BindOption{
 						FullName:  subFullName,
 						FieldName: opt.FieldName,
 					})
