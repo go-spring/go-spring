@@ -98,3 +98,14 @@ func TypeName(typOrPtr TypeOrPtr) string {
 		return typ.String()
 	}
 }
+
+type Instance interface {
+	Bean() interface{}    // 源
+	Type() reflect.Type   // 类型
+	Value() reflect.Value // 值
+	TypeName() string     // 原始类型的全限定名
+	Name() string         // 返回 Bean 的名称
+	BeanId() string       // 返回 Bean 的唯一 ID
+	FileLine() string     // 返回 Bean 的注册点
+	Description() string  // 返回 Bean 的详细描述
+}

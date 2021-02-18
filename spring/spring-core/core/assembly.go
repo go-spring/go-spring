@@ -412,7 +412,7 @@ func (assembly *defaultBeanAssembly) wireBeanInstance(bd beanInstance, onlyAutoW
 		if b, ok := assembly.appCtx.FindBean(selector); !ok {
 			panic(fmt.Errorf("can't find bean: \"%v\"", selector))
 		} else {
-			assembly.wireBeanInstance(b, false)
+			assembly.wireBeanInstance(b.(beanInstance), false)
 		}
 	}
 

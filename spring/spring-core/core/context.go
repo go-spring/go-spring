@@ -84,7 +84,7 @@ type ApplicationContext interface {
 
 	// FindBean 查询单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 	// 它和 GetBean 的区别是它在调用后不能保证返回的 Bean 已经完成了注入和绑定过程。
-	FindBean(selector bean.Selector) (*BeanInstance, bool)
+	FindBean(selector bean.Selector) (bean.Instance, bool)
 
 	// CollectBeans 收集数组或指针定义的所有符合条件的 Bean，收集到返回 true，否则返
 	// 回 false。该函数有两种模式:自动模式和指定模式。自动模式是指 selectors 参数为空，

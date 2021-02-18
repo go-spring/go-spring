@@ -33,7 +33,7 @@ func GetBean(i interface{}, selector ...bean.Selector) bool {
 	return ApplicationContext().GetBean(i, selector...)
 }
 
-func FindBean(selector bean.Selector) (*core.BeanInstance, bool) {
+func FindBean(selector bean.Selector) (bean.Instance, bool) {
 	return ApplicationContext().FindBean(selector)
 }
 
