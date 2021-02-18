@@ -20,6 +20,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/go-spring/spring-core/arg"
 	"github.com/go-spring/spring-core/cond"
 	"github.com/go-spring/spring-core/core"
 	"github.com/go-spring/spring-core/util"
@@ -207,7 +208,7 @@ func TestDefaultSpringContext(t *testing.T) {
 		ctx := core.NewApplicationContext()
 		ctx.SetProperty("president", "CaiYuanPei")
 		ctx.SetProperty("class_floor", 2)
-		ctx.CtorBean(NewClassRoom, core.Option(withClassName,
+		ctx.CtorBean(NewClassRoom, arg.Option(withClassName,
 			"${class_name:=二年级03班}",
 			"${class_floor:=3}",
 		).WithCondition(cond.OnProperty("class_name_enable")))
@@ -228,7 +229,7 @@ func TestDefaultSpringContext(t *testing.T) {
 		ctx := core.NewApplicationContext()
 		ctx.SetProperty("president", "CaiYuanPei")
 		ctx.CtorBean(NewClassRoom,
-			core.Option(withClassName,
+			arg.Option(withClassName,
 				"${class_name:=二年级03班}",
 				"${class_floor:=3}",
 			).WithCondition(c),

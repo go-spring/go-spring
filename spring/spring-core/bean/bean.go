@@ -3,57 +3,14 @@ package bean
 import (
 	"errors"
 	"reflect"
+
+	"github.com/go-spring/spring-core/util"
 )
-
-const (
-	valType = 1 // 值类型
-	refType = 2 // 引用类型
-)
-
-var kindTypes = []uint8{
-	0,       // Invalid
-	valType, // Bool
-	valType, // Int
-	valType, // Int8
-	valType, // Int16
-	valType, // Int32
-	valType, // Int64
-	valType, // Uint
-	valType, // Uint8
-	valType, // Uint16
-	valType, // Uint32
-	valType, // Uint64
-	0,       // Uintptr
-	valType, // Float32
-	valType, // Float64
-	valType, // Complex64
-	valType, // Complex128
-	valType, // Array
-	refType, // Chan
-	refType, // Func
-	refType, // Interface
-	refType, // Map
-	refType, // Ptr
-	refType, // Slice
-	valType, // String
-	valType, // Struct
-	0,       // UnsafePointer
-}
-
-// IsRefType 返回是否是引用类型
-func IsRefType(k reflect.Kind) bool {
-	return kindTypes[k] == refType
-}
-
-// IsValueType 返回是否是值类型
-func IsValueType(k reflect.Kind) bool {
-	return kindTypes[k] == valType
-}
 
 // ValidBean 返回是否是合法的 Bean 及其类型
 func ValidBean(v reflect.Value) (reflect.Type, bool) {
 	if v.IsValid() {
-		if beanType := v.Type(); IsRefType(beanType.Kind()) {
+		if beanType := v.Type(); util.IsRefType(beanType.Kind()) {
 			return beanType, true
 		}
 	}

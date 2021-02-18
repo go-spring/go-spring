@@ -23,6 +23,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/go-spring/spring-core/arg"
 	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/util"
 )
@@ -179,7 +180,7 @@ func IsFuncBeanType(fnType reflect.Type) bool {
 type ctorBeanFactory struct {
 	fnType reflect.Type
 	fn     interface{}
-	arg    *ArgList
+	arg    *arg.ArgList
 }
 
 func (b *ctorBeanFactory) newValue() reflect.Value {
@@ -189,7 +190,7 @@ func (b *ctorBeanFactory) newValue() reflect.Value {
 	v := reflect.New(out0)
 
 	// 引用类型去掉一层指针
-	if bean.IsRefType(out0.Kind()) {
+	if util.IsRefType(out0.Kind()) {
 		v = v.Elem()
 	}
 	return v
@@ -249,7 +250,7 @@ type BeanDefinition struct {
 	file string // 注册点所在文件
 	line int    // 注册点所在行数
 
-	cond      Condition       // 判断条件
+	cond      bean.Condition  // 判断条件
 	primary   bool            // 是否为主版本
 	dependsOn []bean.Selector // 间接依赖项
 
@@ -261,7 +262,7 @@ type BeanDefinition struct {
 
 func newBeanDefinition(factory beanFactory, file string, line int) *BeanDefinition {
 	t := factory.beanType()
-	if !bean.IsRefType(t.Kind()) {
+	if !util.IsRefType(t.Kind()) {
 		panic(errors.New("bean must be ref type"))
 	}
 	return &BeanDefinition{
@@ -348,7 +349,7 @@ func (f *BeanDefinition) WithName(name string) *BeanDefinition {
 }
 
 // WithCondition 为 Bean 设置一个 Condition
-func (f *BeanDefinition) WithCondition(cond Condition) *BeanDefinition {
+func (f *BeanDefinition) WithCondition(cond bean.Condition) *BeanDefinition {
 	f.cond = cond
 	return f
 }
@@ -378,18 +379,18 @@ func validLifeCycleFunc(fn interface{}, beanType reflect.Type) (reflect.Type, bo
 }
 
 // Init 设置 Bean 的初始化函数，args 是初始化函数的一般参数绑定
-func (f *BeanDefinition) Init(fn interface{}, args ...Arg) *BeanDefinition {
+func (f *BeanDefinition) Init(fn interface{}, args ...arg.Arg) *BeanDefinition {
 	if fnType, ok := validLifeCycleFunc(fn, f.Type()); ok {
-		f.init = newRunnable(fn, NewArgList(fnType, true, args))
+		f.init = newRunnable(fn, arg.NewArgList(fnType, true, args))
 		return f
 	}
 	panic(errors.New("init should be func(bean) or func(bean)error"))
 }
 
 // Destroy 设置 Bean 的销毁函数，args 是销毁函数的一般参数绑定
-func (f *BeanDefinition) Destroy(fn interface{}, args ...Arg) *BeanDefinition {
+func (f *BeanDefinition) Destroy(fn interface{}, args ...arg.Arg) *BeanDefinition {
 	if fnType, ok := validLifeCycleFunc(fn, f.Type()); ok {
-		f.destroy = newRunnable(fn, NewArgList(fnType, true, args))
+		f.destroy = newRunnable(fn, arg.NewArgList(fnType, true, args))
 		return f
 	}
 	panic(errors.New("destroy should be func(bean) or func(bean)error"))
@@ -512,7 +513,7 @@ func ObjBean(i interface{}) *BeanDefinition {
 }
 
 // CtorBean 将构造函数转换为 BeanDefinition 对象
-func CtorBean(fn interface{}, args ...Arg) *BeanDefinition {
+func CtorBean(fn interface{}, args ...arg.Arg) *BeanDefinition {
 
 	file, line := getFileLine()
 	fnType := reflect.TypeOf(fn)
@@ -527,7 +528,7 @@ func CtorBean(fn interface{}, args ...Arg) *BeanDefinition {
 	b := &ctorBeanFactory{
 		fnType: fnType,
 		fn:     fn,
-		arg:    NewArgList(fnType, false, args), // TODO 支持 receiver 构造函数
+		arg:    arg.NewArgList(fnType, false, args), // TODO 支持 receiver 构造函数
 	}
 
 	return newBeanDefinition(b, file, line)

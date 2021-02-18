@@ -30,6 +30,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-spring/spring-core/arg"
 	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/core"
@@ -1579,7 +1580,7 @@ func TestOptionConstructorArg(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
 		ctx.SetProperty("president", "CaiYuanPei")
-		ctx.CtorBean(NewClassRoom, core.Option(withClassName, "${class_name:=二年级03班}", "${class_floor:=3}"))
+		ctx.CtorBean(NewClassRoom, arg.Option(withClassName, "${class_name:=二年级03班}", "${class_floor:=3}"))
 		ctx.AutoWireBeans()
 
 		var cls *ClassRoom
@@ -1596,7 +1597,7 @@ func TestOptionConstructorArg(t *testing.T) {
 		ctx := core.NewApplicationContext()
 		ctx.SetProperty("class_name", "二年级03班")
 		ctx.SetProperty("president", "CaiYuanPei")
-		ctx.CtorBean(NewClassRoom, core.Option(withStudents, ""))
+		ctx.CtorBean(NewClassRoom, arg.Option(withStudents, ""))
 		ctx.ObjBean([]*Student{
 			new(Student), new(Student),
 		})
@@ -1617,8 +1618,8 @@ func TestOptionConstructorArg(t *testing.T) {
 		ctx.SetProperty("class_name", "二年级06班")
 		ctx.SetProperty("president", "CaiYuanPei")
 		ctx.CtorBean(NewClassRoom,
-			core.Option(withStudents, ""),
-			core.Option(withClassName, "${class_name:=二年级03班}", "${class_floor:=3}"),
+			arg.Option(withStudents, ""),
+			arg.Option(withClassName, "${class_name:=二年级03班}", "${class_floor:=3}"),
 		)
 		ctx.ObjBean([]*Student{
 			new(Student), new(Student),
@@ -1682,7 +1683,7 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 		ctx := core.NewApplicationContext()
 		ctx.SetProperty("server.version", "1.0.0")
 		parent := ctx.ObjBean(new(Server))
-		bd := ctx.CtorBean((*Server).Consumer, parent)
+		bd := ctx.CtorBean((*Server).Consumer, parent.BeanId())
 		ctx.AutoWireBeans()
 		util.AssertEqual(t, bd.Name(), "*core_test.Consumer")
 
@@ -1705,7 +1706,7 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 		ctx.SetProperty("server.version", "1.0.0")
 		parent := ctx.ObjBean(new(Server))
 		// ctx.CtorBean((*Server).ConsumerArg, "", "${i:=9}")
-		ctx.CtorBean((*Server).ConsumerArg, parent, "${i:=9}")
+		ctx.CtorBean((*Server).ConsumerArg, parent.BeanId(), "${i:=9}")
 		ctx.AutoWireBeans()
 
 		var s *Server
@@ -1727,7 +1728,7 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 		ctx.SetProperty("server.version", "1.0.0")
 		parent := ctx.CtorBean(NewServerInterface)
 		// ctx.CtorBean(ServerInterface.Consumer, "").DependsOn("core_test.ServerInterface")
-		ctx.CtorBean(ServerInterface.Consumer, parent).DependsOn("core_test.ServerInterface")
+		ctx.CtorBean(ServerInterface.Consumer, parent.BeanId()).DependsOn("core_test.ServerInterface")
 		ctx.ObjBean(new(Service))
 		ctx.AutoWireBeans()
 
@@ -1775,7 +1776,7 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 				ctx := core.NewApplicationContext()
 				ctx.SetProperty("server.version", "1.0.0")
 				parent := ctx.ObjBean(new(Server)).DependsOn("*core_test.Service")
-				ctx.CtorBean((*Server).Consumer, parent).DependsOn("*core_test.Server")
+				ctx.CtorBean((*Server).Consumer, parent.BeanId()).DependsOn("*core_test.Server")
 				ctx.ObjBean(new(Service))
 				ctx.AutoWireBeans()
 			}()
@@ -1979,7 +1980,7 @@ func TestApplicationContext_RegisterOptionBean(t *testing.T) {
 		ctx.SetProperty("var.obj", "description")
 		ctx.ObjBean(&Var{"v1"}).WithName("v1")
 		ctx.ObjBean(&Var{"v2"}).WithName("v2")
-		ctx.CtorBean(NewVarObj, "${var.obj}", core.Option(withVar, "v1"))
+		ctx.CtorBean(NewVarObj, "${var.obj}", arg.Option(withVar, "v1"))
 		ctx.AutoWireBeans()
 
 		var obj *VarObj
@@ -1995,7 +1996,7 @@ func TestApplicationContext_RegisterOptionBean(t *testing.T) {
 		ctx.SetProperty("var.obj", "description")
 		ctx.ObjBean(&Var{"v1"}).WithName("v1")
 		ctx.ObjBean(&Var{"v2"}).WithName("v2")
-		ctx.CtorBean(NewVarObj, "${var.obj}", core.Option(withVar, "v1", "v2"))
+		ctx.CtorBean(NewVarObj, "${var.obj}", arg.Option(withVar, "v1", "v2"))
 		ctx.AutoWireBeans()
 
 		var obj *VarObj
@@ -2011,7 +2012,7 @@ func TestApplicationContext_RegisterOptionBean(t *testing.T) {
 		ctx := core.NewApplicationContext()
 		ctx.ObjBean(&Var{"v1"}).WithName("v1").Export((*interface{})(nil))
 		ctx.ObjBean(&Var{"v2"}).WithName("v2").Export((*interface{})(nil))
-		ctx.CtorBean(NewVarInterfaceObj, core.Option(withVarInterface, "v1"))
+		ctx.CtorBean(NewVarInterfaceObj, arg.Option(withVarInterface, "v1"))
 		ctx.AutoWireBeans()
 
 		var obj *VarInterfaceObj
@@ -2024,7 +2025,7 @@ func TestApplicationContext_RegisterOptionBean(t *testing.T) {
 		ctx := core.NewApplicationContext()
 		ctx.ObjBean(&Var{"v1"}).WithName("v1").Export((*interface{})(nil))
 		ctx.ObjBean(&Var{"v2"}).WithName("v2").Export((*interface{})(nil))
-		ctx.CtorBean(NewVarInterfaceObj, core.Option(withVarInterface, "v1", "v2"))
+		ctx.CtorBean(NewVarInterfaceObj, arg.Option(withVarInterface, "v1", "v2"))
 		ctx.AutoWireBeans()
 
 		var obj *VarInterfaceObj

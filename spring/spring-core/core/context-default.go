@@ -24,6 +24,7 @@ import (
 	"reflect"
 	"sync"
 
+	"github.com/go-spring/spring-core/arg"
 	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/core/internal/sort"
@@ -157,7 +158,7 @@ func (ctx *applicationContext) ObjBean(i interface{}) *BeanDefinition {
 }
 
 // CtorBean 将构造函数转换为 BeanDefinition 对象
-func (ctx *applicationContext) CtorBean(fn interface{}, args ...Arg) *BeanDefinition {
+func (ctx *applicationContext) CtorBean(fn interface{}, args ...arg.Arg) *BeanDefinition {
 	return ctx.Bean(CtorBean(fn, args...))
 }
 
@@ -544,19 +545,19 @@ func (ctx *applicationContext) Close(beforeDestroy ...func()) {
 }
 
 // Invoke 立即执行一个一次性的任务
-func (ctx *applicationContext) Invoke(fn interface{}, args ...Arg) error {
+func (ctx *applicationContext) Invoke(fn interface{}, args ...arg.Arg) error {
 	ctx.checkAutoWired()
 	if fnType := reflect.TypeOf(fn); util.FuncType(fnType) {
 		if util.ReturnNothing(fnType) || util.ReturnOnlyError(fnType) {
 			assembly := newDefaultBeanAssembly(ctx)
-			return newRunnable(fn, NewArgList(fnType, false, args)).run(assembly)
+			return newRunnable(fn, arg.NewArgList(fnType, false, args)).run(assembly)
 		}
 	}
 	panic(errors.New("fn should be func() or func()error"))
 }
 
 // Config 注册一个配置函数
-func (ctx *applicationContext) Config(fn interface{}, args ...Arg) *Configer {
+func (ctx *applicationContext) Config(fn interface{}, args ...arg.Arg) *Configer {
 	configer := Config(fn, args)
 	ctx.configers.PushBack(configer)
 	return configer
@@ -568,7 +569,7 @@ func (ctx *applicationContext) Configer(configer *Configer) {
 }
 
 // Go 安全地启动一个 goroutine
-func (ctx *applicationContext) Go(fn interface{}, args ...Arg) {
+func (ctx *applicationContext) Go(fn interface{}, args ...arg.Arg) {
 
 	ctx.checkAutoWired()
 	fnType := reflect.TypeOf(fn)
@@ -585,7 +586,7 @@ func (ctx *applicationContext) Go(fn interface{}, args ...Arg) {
 			}()
 
 			assembly := newDefaultBeanAssembly(ctx)
-			_ = newRunnable(fn, NewArgList(fnType, false, args)).run(assembly)
+			_ = newRunnable(fn, arg.NewArgList(fnType, false, args)).run(assembly)
 		}()
 	}
 	panic(errors.New("fn should be func()"))

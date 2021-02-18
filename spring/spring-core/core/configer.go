@@ -21,6 +21,8 @@ import (
 	"errors"
 	"reflect"
 
+	"github.com/go-spring/spring-core/arg"
+	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/util"
 )
 
@@ -28,16 +30,16 @@ import (
 type Configer struct {
 	*runnable
 	name   string
-	cond   Condition // 判断条件
-	before []string  // 位于哪些配置函数之前
-	after  []string  // 位于哪些配置函数之后
+	cond   bean.Condition // 判断条件
+	before []string       // 位于哪些配置函数之前
+	after  []string       // 位于哪些配置函数之后
 }
 
 // Config Configer 的构造函数，fn 不能返回 error 以外的其他值
-func Config(fn interface{}, args ...Arg) *Configer {
+func Config(fn interface{}, args ...arg.Arg) *Configer {
 	if fnType := reflect.TypeOf(fn); util.FuncType(fnType) {
 		if util.ReturnNothing(fnType) || util.ReturnOnlyError(fnType) {
-			return &Configer{runnable: newRunnable(fn, NewArgList(fnType, false, args))}
+			return &Configer{runnable: newRunnable(fn, arg.NewArgList(fnType, false, args))}
 		}
 	}
 	panic(errors.New("fn should be func() or func()error"))
@@ -50,7 +52,7 @@ func (c *Configer) WithName(name string) *Configer {
 }
 
 // WithCondition 为 Configer 设置一个 Condition
-func (c *Configer) WithCondition(cond Condition) *Configer {
+func (c *Configer) WithCondition(cond bean.Condition) *Configer {
 	c.cond = cond
 	return c
 }

@@ -20,6 +20,7 @@ package core
 import (
 	"context"
 
+	"github.com/go-spring/spring-core/arg"
 	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/conf"
 )
@@ -58,7 +59,7 @@ type ApplicationContext interface {
 	Configer(configer *Configer)
 
 	// Config 注册一个配置函数
-	Config(fn interface{}, args ...Arg) *Configer
+	Config(fn interface{}, args ...arg.Arg) *Configer
 
 	// Bean 注册 bean.BeanDefinition 对象。
 	Bean(bd *BeanDefinition) *BeanDefinition
@@ -67,7 +68,7 @@ type ApplicationContext interface {
 	ObjBean(i interface{}) *BeanDefinition
 
 	// CtorBean 将构造函数转换为 BeanDefinition 对象
-	CtorBean(fn interface{}, args ...Arg) *BeanDefinition
+	CtorBean(fn interface{}, args ...arg.Arg) *BeanDefinition
 
 	// AutoWireBeans 对所有 Bean 进行依赖注入和属性绑定
 	AutoWireBeans()
@@ -96,10 +97,10 @@ type ApplicationContext interface {
 	CollectBeans(i interface{}, selectors ...bean.Selector) bool
 
 	// SafeGoroutine 安全地启动一个 goroutine
-	Go(fn interface{}, args ...Arg)
+	Go(fn interface{}, args ...arg.Arg)
 
 	// Invoke 立即执行一个一次性的任务
-	Invoke(fn interface{}, args ...Arg) error
+	Invoke(fn interface{}, args ...arg.Arg) error
 
 	// Close 关闭容器上下文，用于通知 Bean 销毁等。
 	// 该函数可以确保 Bean 的销毁顺序和注入顺序相反。

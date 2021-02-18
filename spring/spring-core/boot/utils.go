@@ -3,6 +3,7 @@ package boot
 import (
 	"context"
 
+	"github.com/go-spring/spring-core/arg"
 	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/core"
 )
@@ -41,7 +42,7 @@ func CollectBeans(i interface{}, selectors ...bean.Selector) bool {
 	return ApplicationContext().CollectBeans(i, selectors...)
 }
 
-func Invoke(fn interface{}, args ...core.Arg) error {
+func Invoke(fn interface{}, args ...arg.Arg) error {
 	return ApplicationContext().Invoke(fn, args...)
 }
 

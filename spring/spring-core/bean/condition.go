@@ -14,10 +14,9 @@
  * limitations under the License.
  */
 
-package core
+package bean
 
 import (
-	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/conf"
 )
 
@@ -31,7 +30,7 @@ type ConditionContext interface {
 
 	// FindBean 查询单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 	// 它和 GetBean 的区别是它在调用后不能保证返回的 Bean 已经完成了注入和绑定过程。
-	FindBean(selector bean.Selector) (bean.Instance, bool)
+	FindBean(selector Selector) (Instance, bool)
 }
 
 // Condition 定义一个判断条件
