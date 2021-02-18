@@ -44,6 +44,41 @@ type BindOption struct {
 	FieldName  string // 结构体字段的名称
 }
 
+// TODO 我知道这一大段看着很累，等我有时间了再来优化，我也很头痛 ><
+func bindStruct(p Properties, v reflect.Value, opt BindOption) error {
+	t := v.Type()
+	for i := 0; i < t.NumField(); i++ {
+		ft := t.Field(i)
+		fv := v.Field(i)
+
+		// 可能会开放私有字段
+		fv = util.PatchValue(fv, true)
+		subFieldName := opt.FieldName + ".$" + ft.Name
+
+		// 字段的绑定可选项
+		subOpt := BindOption{
+			PrefixName: opt.PrefixName,
+			FullName:   opt.FullName,
+			FieldName:  subFieldName,
+		}
+
+		if tag, ok := ft.Tag.Lookup("value"); ok {
+			if err := BindValue(p, fv, tag, subOpt); err != nil {
+				return err
+			}
+			continue
+		}
+
+		// 匿名嵌套需要处理，不是结构体的具名字段无需处理
+		if ft.Anonymous || ft.Type.Kind() == reflect.Struct {
+			if err := bindStruct(p, fv, subOpt); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // BindValue 对结构体的字段进行属性绑定
 func BindValue(p Properties, v reflect.Value, tag string, opt BindOption) error {
 
@@ -70,11 +105,6 @@ func BindValue(p Properties, v reflect.Value, tag string, opt BindOption) error 
 	if opt.PrefixName != "" {
 		key = opt.PrefixName + "." + key
 	}
-
-	return bindValue(p, v, key, def, opt)
-}
-
-func bindValue(p Properties, v reflect.Value, key string, def interface{}, opt BindOption) error {
 
 	t := v.Type()
 	k := t.Kind()
@@ -372,40 +402,6 @@ func bindValue(p Properties, v reflect.Value, key string, def interface{}, opt B
 		}
 	default:
 		return errors.New(opt.FieldName + " unsupported type " + v.Kind().String())
-	}
-	return nil
-}
-
-func bindStruct(p Properties, v reflect.Value, opt BindOption) error {
-	t := v.Type()
-	for i := 0; i < t.NumField(); i++ {
-		ft := t.Field(i)
-		fv := v.Field(i)
-
-		// 可能会开放私有字段
-		fv = util.PatchValue(fv, true)
-		subFieldName := opt.FieldName + ".$" + ft.Name
-
-		// 字段的绑定可选项
-		subOpt := BindOption{
-			PrefixName: opt.PrefixName,
-			FullName:   opt.FullName,
-			FieldName:  subFieldName,
-		}
-
-		if tag, ok := ft.Tag.Lookup("value"); ok {
-			if err := BindValue(p, fv, tag, subOpt); err != nil {
-				return err
-			}
-			continue
-		}
-
-		// 匿名嵌套需要处理，不是结构体的具名字段无需处理
-		if ft.Anonymous || ft.Type.Kind() == reflect.Struct {
-			if err := bindStruct(p, fv, subOpt); err != nil {
-				return err
-			}
-		}
 	}
 	return nil
 }

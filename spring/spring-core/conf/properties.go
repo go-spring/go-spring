@@ -230,5 +230,5 @@ func (p *properties) Bind(key string, i interface{}) error {
 		s = t.Elem().Name()
 	}
 
-	return bindValue(p, v.Elem(), key, nil, BindOption{FieldName: s, FullName: key})
+	return BindValue(p, v.Elem(), "${"+key+"}", BindOption{FieldName: s, FullName: key})
 }
