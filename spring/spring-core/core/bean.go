@@ -365,32 +365,12 @@ func (f *BeanDefinition) SetPrimary(primary bool) *BeanDefinition {
 	return f
 }
 
-// funcType 是否是函数类型
-func funcType(fnType reflect.Type) bool {
-	return fnType.Kind() == reflect.Func
-}
-
-// returnNothing 函数是否无返回值
-func returnNothing(fnType reflect.Type) bool {
-	return fnType.NumOut() == 0
-}
-
-// returnOnlyError 函数是否只返回错误值
-func returnOnlyError(fnType reflect.Type) bool {
-	return fnType.NumOut() == 1 && fnType.Out(0) == errorType
-}
-
-// withReceiver 函数是否具有接收者
-func withReceiver(fnType reflect.Type, receiver reflect.Type) bool {
-	return fnType.NumIn() >= 1 && fnType.In(0) == receiver
-}
-
 // validLifeCycleFunc 判断是否是合法的用于 Bean 生命周期控制的函数，生命周期函数的要求：
 // 至少一个参数，且第一个参数的类型必须是 Bean 的类型，没有返回值或者只能返回 error 类型值。
 func validLifeCycleFunc(fn interface{}, beanType reflect.Type) (reflect.Type, bool) {
 	fnType := reflect.TypeOf(fn)
-	if funcType(fnType) && withReceiver(fnType, beanType) {
-		if returnNothing(fnType) || returnOnlyError(fnType) {
+	if util.FuncType(fnType) && util.WithReceiver(fnType, beanType) {
+		if util.ReturnNothing(fnType) || util.ReturnOnlyError(fnType) {
 			return fnType, true
 		}
 	}

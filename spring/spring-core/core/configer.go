@@ -20,6 +20,8 @@ import (
 	"container/list"
 	"errors"
 	"reflect"
+
+	"github.com/go-spring/spring-core/util"
 )
 
 // Configer 配置函数，不立即执行
@@ -33,8 +35,8 @@ type Configer struct {
 
 // Config Configer 的构造函数，fn 不能返回 error 以外的其他值
 func Config(fn interface{}, args ...Arg) *Configer {
-	if fnType := reflect.TypeOf(fn); funcType(fnType) {
-		if returnNothing(fnType) || returnOnlyError(fnType) {
+	if fnType := reflect.TypeOf(fn); util.FuncType(fnType) {
+		if util.ReturnNothing(fnType) || util.ReturnOnlyError(fnType) {
 			return &Configer{runnable: newRunnable(fn, NewArgList(fnType, false, args))}
 		}
 	}

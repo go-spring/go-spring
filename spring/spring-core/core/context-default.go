@@ -546,8 +546,8 @@ func (ctx *applicationContext) Close(beforeDestroy ...func()) {
 // Invoke 立即执行一个一次性的任务
 func (ctx *applicationContext) Invoke(fn interface{}, args ...Arg) error {
 	ctx.checkAutoWired()
-	if fnType := reflect.TypeOf(fn); funcType(fnType) {
-		if returnNothing(fnType) || returnOnlyError(fnType) {
+	if fnType := reflect.TypeOf(fn); util.FuncType(fnType) {
+		if util.ReturnNothing(fnType) || util.ReturnOnlyError(fnType) {
 			assembly := newDefaultBeanAssembly(ctx)
 			return newRunnable(fn, NewArgList(fnType, false, args)).run(assembly)
 		}
@@ -572,7 +572,7 @@ func (ctx *applicationContext) Go(fn interface{}, args ...Arg) {
 
 	ctx.checkAutoWired()
 	fnType := reflect.TypeOf(fn)
-	if funcType(fnType) && returnNothing(fnType) {
+	if util.FuncType(fnType) && util.ReturnNothing(fnType) {
 
 		ctx.wg.Add(1)
 		go func() {
