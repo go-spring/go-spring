@@ -26,7 +26,7 @@ func WireBean(i interface{}) {
 }
 
 // Beans 获取所有 Bean 的定义，不能保证解析和注入，请谨慎使用该函数!
-func Beans() []*core.BeanInstance {
+func Beans() []*core.BeanDefinition {
 	return ApplicationContext().Beans()
 }
 
@@ -34,7 +34,7 @@ func GetBean(i interface{}, selector ...bean.Selector) bool {
 	return ApplicationContext().GetBean(i, selector...)
 }
 
-func FindBean(selector bean.Selector) (bean.Instance, bool) {
+func FindBean(selector bean.Selector) (bean.Definition, bool) {
 	return ApplicationContext().FindBean(selector)
 }
 

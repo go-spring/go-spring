@@ -56,7 +56,7 @@ func TypeName(typOrPtr TypeOrPtr) string {
 	}
 }
 
-type Instance interface {
+type Definition interface {
 	Bean() interface{}    // 源
 	Type() reflect.Type   // 类型
 	Value() reflect.Value // 值

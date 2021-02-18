@@ -216,8 +216,8 @@ const (
 	BeanStatus_Deleted   = beanStatus(5) // 已删除
 )
 
-// beanInstance BeanInstance 的抽象接口
-type beanInstance interface {
+// beanDefinition BeanDefinition 的抽象接口
+type beanDefinition interface {
 	Bean() interface{}    // 源
 	Type() reflect.Type   // 类型
 	Value() reflect.Value // 值
@@ -239,13 +239,16 @@ type beanInstance interface {
 	getLine() int                  // 返回 Bean 注册点所在文件的行数
 }
 
+// BeanDefinition 用于存储 Bean 的各种元数据
 type BeanDefinition struct {
+	RValue  reflect.Value // 值
 	factory beanFactory
 
 	RType    reflect.Type // 类型
 	typeName string       // 原始类型的全限定名
 
-	name string // Bean 的名称，请勿直接使用该字段!
+	name   string     // Bean 的名称，请勿直接使用该字段!
+	status beanStatus // Bean 的状态
 
 	file string // 注册点所在文件
 	line int    // 注册点所在行数
@@ -260,110 +263,149 @@ type BeanDefinition struct {
 	exports map[reflect.Type]struct{} // 严格导出的接口类型
 }
 
+// newBeanDefinition BeanDefinition 的构造函数
 func newBeanDefinition(factory beanFactory, file string, line int) *BeanDefinition {
 	t := factory.beanType()
 	if !util.IsRefType(t.Kind()) {
 		panic(errors.New("bean must be ref type"))
 	}
 	return &BeanDefinition{
+		RValue:   factory.newValue(),
 		RType:    t,
 		typeName: bean.TypeName(t),
 		factory:  factory,
+		status:   BeanStatus_Default,
 		file:     file,
 		line:     line,
 		exports:  make(map[reflect.Type]struct{}),
 	}
 }
 
+// Bean 返回 Bean 的源
+func (d *BeanDefinition) Bean() interface{} {
+	return d.RValue.Interface()
+}
+
 // Type 返回 Bean 的类型
-func (f *BeanDefinition) Type() reflect.Type {
-	return f.RType
+func (d *BeanDefinition) Type() reflect.Type {
+	return d.RType
+}
+
+func (d *BeanDefinition) setVal(v reflect.Value) {
+	d.RValue = v
+}
+
+// Value 返回 Bean 的值
+func (d *BeanDefinition) Value() reflect.Value {
+	return d.RValue
 }
 
 // TypeName 返回 Bean 的原始类型的全限定名
-func (f *BeanDefinition) TypeName() string {
-	return f.typeName
+func (d *BeanDefinition) TypeName() string {
+	return d.typeName
 }
 
 // Name 返回 Bean 的名称
-func (f *BeanDefinition) Name() string {
-	if f.name == "" {
+func (d *BeanDefinition) Name() string {
+	if d.name == "" {
 		// 统一使用类型字符串作为默认名称!
-		f.name = f.RType.String()
+		d.name = d.RType.String()
 	}
-	return f.name
+	return d.name
 }
 
 // BeanId 返回 Bean 的唯一 ID
-func (f *BeanDefinition) BeanId() string {
-	return f.TypeName() + ":" + f.Name()
+func (d *BeanDefinition) BeanId() string {
+	return d.TypeName() + ":" + d.Name()
 }
 
 // FileLine 返回 Bean 的注册点
-func (f *BeanDefinition) FileLine() string {
-	return fmt.Sprintf("%s:%d", f.file, f.line)
+func (d *BeanDefinition) FileLine() string {
+	return fmt.Sprintf("%s:%d", d.file, d.line)
 }
 
-func (f *BeanDefinition) beanFactory() beanFactory {
-	return f.factory
+func (d *BeanDefinition) beanFactory() beanFactory {
+	return d.factory
+}
+
+// getStatus 返回 Bean 的状态值
+func (d *BeanDefinition) getStatus() beanStatus {
+	return d.status
+}
+
+// setStatus 设置 Bean 的状态值
+func (d *BeanDefinition) setStatus(status beanStatus) {
+	d.status = status
 }
 
 // getDependsOn 返回 Bean 的间接依赖项
-func (f *BeanDefinition) getDependsOn() []bean.Selector {
-	return f.dependsOn
+func (d *BeanDefinition) getDependsOn() []bean.Selector {
+	return d.dependsOn
 }
 
 // getInit 返回 Bean 的初始化函数
-func (f *BeanDefinition) getInit() *runnable {
-	return f.init
+func (d *BeanDefinition) getInit() *runnable {
+	return d.init
 }
 
 // getDestroy 返回 Bean 的销毁函数
-func (f *BeanDefinition) getDestroy() *runnable {
-	return f.destroy
+func (d *BeanDefinition) getDestroy() *runnable {
+	return d.destroy
 }
 
 // getFile 返回 Bean 注册点所在文件的名称
-func (f *BeanDefinition) getFile() string {
-	return f.file
+func (d *BeanDefinition) getFile() string {
+	return d.file
 }
 
 // getLine 返回 Bean 注册点所在文件的行数
-func (f *BeanDefinition) getLine() int {
-	return f.line
+func (d *BeanDefinition) getLine() int {
+	return d.line
 }
 
 // Description 返回 Bean 的详细描述
-func (f *BeanDefinition) Description() string {
-	return fmt.Sprintf("%s \"%s\" %s", f.factory.beanClass(), f.Name(), f.FileLine())
+func (d *BeanDefinition) Description() string {
+	return fmt.Sprintf("%s \"%s\" %s", d.factory.beanClass(), d.Name(), d.FileLine())
 }
 
-func (f *BeanDefinition) newValue() reflect.Value {
-	return f.factory.newValue()
+// Match 测试 Bean 的类型全限定名和 Bean 的名称是否都匹配
+func (d *BeanDefinition) Match(typeName string, beanName string) bool {
+
+	typeIsSame := false
+	if typeName == "" || d.TypeName() == typeName {
+		typeIsSame = true
+	}
+
+	nameIsSame := false
+	if beanName == "" || d.Name() == beanName {
+		nameIsSame = true
+	}
+
+	return typeIsSame && nameIsSame
 }
 
 // WithName 设置 Bean 的名称
-func (f *BeanDefinition) WithName(name string) *BeanDefinition {
-	f.name = name
-	return f
+func (d *BeanDefinition) WithName(name string) *BeanDefinition {
+	d.name = name
+	return d
 }
 
 // WithCondition 为 Bean 设置一个 Condition
-func (f *BeanDefinition) WithCondition(cond bean.Condition) *BeanDefinition {
-	f.cond = cond
-	return f
+func (d *BeanDefinition) WithCondition(cond bean.Condition) *BeanDefinition {
+	d.cond = cond
+	return d
 }
 
 // DependsOn 设置 Bean 的间接依赖项
-func (f *BeanDefinition) DependsOn(selectors ...bean.Selector) *BeanDefinition {
-	f.dependsOn = append(f.dependsOn, selectors...)
-	return f
+func (d *BeanDefinition) DependsOn(selectors ...bean.Selector) *BeanDefinition {
+	d.dependsOn = append(d.dependsOn, selectors...)
+	return d
 }
 
 // primary 设置 Bean 为主版本
-func (f *BeanDefinition) SetPrimary(primary bool) *BeanDefinition {
-	f.primary = primary
-	return f
+func (d *BeanDefinition) SetPrimary(primary bool) *BeanDefinition {
+	d.primary = primary
+	return d
 }
 
 // validLifeCycleFunc 判断是否是合法的用于 Bean 生命周期控制的函数，生命周期函数的要求：
@@ -379,25 +421,25 @@ func validLifeCycleFunc(fn interface{}, beanType reflect.Type) (reflect.Type, bo
 }
 
 // Init 设置 Bean 的初始化函数，args 是初始化函数的一般参数绑定
-func (f *BeanDefinition) Init(fn interface{}, args ...arg.Arg) *BeanDefinition {
-	if fnType, ok := validLifeCycleFunc(fn, f.Type()); ok {
-		f.init = newRunnable(fn, arg.NewArgList(fnType, true, args))
-		return f
+func (d *BeanDefinition) Init(fn interface{}, args ...arg.Arg) *BeanDefinition {
+	if fnType, ok := validLifeCycleFunc(fn, d.Type()); ok {
+		d.init = newRunnable(fn, arg.NewArgList(fnType, true, args))
+		return d
 	}
 	panic(errors.New("init should be func(bean) or func(bean)error"))
 }
 
 // Destroy 设置 Bean 的销毁函数，args 是销毁函数的一般参数绑定
-func (f *BeanDefinition) Destroy(fn interface{}, args ...arg.Arg) *BeanDefinition {
-	if fnType, ok := validLifeCycleFunc(fn, f.Type()); ok {
-		f.destroy = newRunnable(fn, arg.NewArgList(fnType, true, args))
-		return f
+func (d *BeanDefinition) Destroy(fn interface{}, args ...arg.Arg) *BeanDefinition {
+	if fnType, ok := validLifeCycleFunc(fn, d.Type()); ok {
+		d.destroy = newRunnable(fn, arg.NewArgList(fnType, true, args))
+		return d
 	}
 	panic(errors.New("destroy should be func(bean) or func(bean)error"))
 }
 
 // Export 显式指定 Bean 的导出接口
-func (f *BeanDefinition) Export(exports ...bean.TypeOrPtr) *BeanDefinition {
+func (d *BeanDefinition) Export(exports ...bean.TypeOrPtr) *BeanDefinition {
 	for _, o := range exports { // 使用 map 进行排重
 
 		var typ reflect.Type
@@ -408,68 +450,12 @@ func (f *BeanDefinition) Export(exports ...bean.TypeOrPtr) *BeanDefinition {
 		}
 
 		if typ.Kind() == reflect.Interface {
-			f.exports[typ] = struct{}{}
+			d.exports[typ] = struct{}{}
 		} else {
 			panic(errors.New("must export interface type"))
 		}
 	}
-	return f
-}
-
-// Match 测试 Bean 的类型全限定名和 Bean 的名称是否都匹配
-func (f *BeanDefinition) Match(typeName string, beanName string) bool {
-
-	typeIsSame := false
-	if typeName == "" || f.TypeName() == typeName {
-		typeIsSame = true
-	}
-
-	nameIsSame := false
-	if beanName == "" || f.Name() == beanName {
-		nameIsSame = true
-	}
-
-	return typeIsSame && nameIsSame
-}
-
-type BeanInstance struct {
-	*BeanDefinition
-
-	RValue reflect.Value // 值
-	status beanStatus    // Bean 的状态
-}
-
-// NewBeanInstance BeanInstance 的构造函数
-func NewBeanInstance(factory *BeanDefinition) *BeanInstance {
-	return &BeanInstance{
-		BeanDefinition: factory,
-		RValue:         factory.newValue(),
-		status:         BeanStatus_Default,
-	}
-}
-
-// Bean 返回 Bean 的源
-func (d *BeanInstance) Bean() interface{} {
-	return d.RValue.Interface()
-}
-
-func (d *BeanInstance) setVal(v reflect.Value) {
-	d.RValue = v
-}
-
-// Value 返回 Bean 的值
-func (d *BeanInstance) Value() reflect.Value {
-	return d.RValue
-}
-
-// getStatus 返回 Bean 的状态值
-func (d *BeanInstance) getStatus() beanStatus {
-	return d.status
-}
-
-// setStatus 设置 Bean 的状态值
-func (d *BeanInstance) setStatus(status beanStatus) {
-	d.status = status
+	return d
 }
 
 func getFileLine() (file string, line int) {
