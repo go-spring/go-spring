@@ -199,21 +199,7 @@ func (p *properties) Prefix(key string) map[string]interface{} {
 
 // Group 返回指定前缀的属性值集合并进行分组，属性名称统一转成小写。
 func (p *properties) Group(key string) map[string]map[string]interface{} {
-	key = strings.ToLower(key) + "."
-	result := make(map[string]map[string]interface{})
-	for k, v := range p.m {
-		if strings.HasPrefix(k, key) {
-			ss := strings.SplitN(k[len(key):], ".", 2)
-			group := ss[0]
-			m, ok := result[group]
-			if !ok {
-				m = make(map[string]interface{})
-				result[group] = m
-			}
-			m[k] = v
-		}
-	}
-	return result
+	return Group(key, p.m)
 }
 
 // Bind 根据类型获取属性值，属性名称统一转成小写。

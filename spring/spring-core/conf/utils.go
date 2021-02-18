@@ -19,9 +19,29 @@ package conf
 import (
 	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/spf13/cast"
 )
+
+// Group 返回指定前缀的属性值集合并进行分组，属性名称统一转成小写。
+func Group(key string, m map[string]interface{}) map[string]map[string]interface{} {
+	key = strings.ToLower(key) + "."
+	result := make(map[string]map[string]interface{})
+	for k, v := range m {
+		if strings.HasPrefix(k, key) {
+			ss := strings.SplitN(k[len(key):], ".", 2)
+			group := ss[0]
+			m, ok := result[group]
+			if !ok {
+				m = make(map[string]interface{})
+				result[group] = m
+			}
+			m[k] = v
+		}
+	}
+	return result
+}
 
 // ToIntSliceE casts an interface to a []int type.
 func ToIntSliceE(i interface{}) ([]int, error) {

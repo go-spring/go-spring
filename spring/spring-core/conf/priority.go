@@ -82,12 +82,7 @@ func (p *priorityProperties) Range(fn func(string, interface{})) {
 
 // Fill Fill 填充所有的属性值，属性名称统一转成小写。TODO 实现并不完美。
 func (p *priorityProperties) Fill(properties map[string]interface{}) {
-	p.Properties.Range(func(key string, val interface{}) {
-		if _, ok := properties[key]; !ok {
-			properties[key] = val
-		}
-	})
-	p.next.Range(func(key string, val interface{}) {
+	p.Range(func(key string, val interface{}) {
 		if _, ok := properties[key]; !ok {
 			properties[key] = val
 		}
