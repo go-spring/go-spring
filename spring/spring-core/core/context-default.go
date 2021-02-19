@@ -432,7 +432,7 @@ func (ctx *applicationContext) resolveBeans() {
 func (ctx *applicationContext) runConfigers(assembly *defaultBeanAssembly) {
 	for e := ctx.configers.Front(); e != nil; e = e.Next() {
 		configer := e.Value.(*Configer)
-		if err := configer.run(assembly); err != nil {
+		if err := configer.Run(assembly); err != nil {
 			panic(err)
 		}
 	}
@@ -538,7 +538,7 @@ func (ctx *applicationContext) Close(beforeDestroy ...func()) {
 	// 按照顺序执行销毁函数
 	for i := ctx.destroyers.Front(); i != nil; i = i.Next() {
 		d := i.Value.(*destroyer)
-		if err := d.bean.getDestroy().run(assembly, d.bean.Value()); err != nil {
+		if err := d.bean.getDestroy().Run(assembly, d.bean.Value()); err != nil {
 			log.Error(err)
 		}
 	}
@@ -550,7 +550,7 @@ func (ctx *applicationContext) Invoke(fn interface{}, args ...arg.Arg) error {
 	if fnType := reflect.TypeOf(fn); util.FuncType(fnType) {
 		if util.ReturnNothing(fnType) || util.ReturnOnlyError(fnType) {
 			assembly := newDefaultBeanAssembly(ctx)
-			return newRunnable(fn, arg.NewArgList(fnType, false, args)).run(assembly)
+			return newRunnable(fn, arg.NewArgList(fnType, false, args)).Run(assembly)
 		}
 	}
 	panic(errors.New("fn should be func() or func()error"))
@@ -586,7 +586,7 @@ func (ctx *applicationContext) Go(fn interface{}, args ...arg.Arg) {
 			}()
 
 			assembly := newDefaultBeanAssembly(ctx)
-			_ = newRunnable(fn, arg.NewArgList(fnType, false, args)).run(assembly)
+			_ = newRunnable(fn, arg.NewArgList(fnType, false, args)).Run(assembly)
 		}()
 	}
 	panic(errors.New("fn should be func()"))

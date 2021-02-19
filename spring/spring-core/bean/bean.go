@@ -4,6 +4,7 @@ import (
 	"errors"
 	"reflect"
 
+	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/util"
 )
 
@@ -65,4 +66,20 @@ type Definition interface {
 	BeanId() string       // 返回 Bean 的唯一 ID
 	FileLine() string     // 返回 Bean 的注册点
 	Description() string  // 返回 Bean 的详细描述
+}
+
+type Assembly interface {
+
+	// Matches 成功返回 true，失败返回 false
+	Matches(cond Condition) bool
+
+	// BindValue 对结构体的字段进行属性绑定
+	BindValue(v reflect.Value, str string, opt conf.BindOption) error
+
+	// WireStructField 对结构体的字段进行绑定
+	WireStructField(v reflect.Value, tag string, parent reflect.Value, field string)
+}
+
+type Runnable interface {
+	Run(assembly Assembly, receiver ...reflect.Value) error
 }

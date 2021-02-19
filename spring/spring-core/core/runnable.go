@@ -6,6 +6,7 @@ import (
 	"reflect"
 
 	"github.com/go-spring/spring-core/arg"
+	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/util"
 )
 
@@ -21,7 +22,7 @@ func newRunnable(fn interface{}, arg *arg.ArgList) *runnable {
 }
 
 // run 运行执行器
-func (r *runnable) run(assembly arg.BeanAssembly, receiver ...reflect.Value) error {
+func (r *runnable) Run(assembly bean.Assembly, receiver ...reflect.Value) error {
 
 	// 获取函数定义所在的文件及其行号信息
 	file, line, _ := util.FileLine(r.fn)

@@ -13,18 +13,6 @@ import (
 	"github.com/go-spring/spring-core/util"
 )
 
-type BeanAssembly interface {
-
-	// Matches 成功返回 true，失败返回 false
-	Matches(cond bean.Condition) bool
-
-	// BindValue 对结构体的字段进行属性绑定
-	BindValue(v reflect.Value, str string, opt conf.BindOption) error
-
-	// WireStructField 对结构体的字段进行绑定
-	WireStructField(v reflect.Value, tag string, parent reflect.Value, field string)
-}
-
 type Arg interface{}
 
 type ArgList struct {
@@ -38,7 +26,7 @@ func NewArgList(fnType reflect.Type, withReceiver bool, args []Arg) *ArgList {
 }
 
 // Get 获取函数参数的绑定值，fileLine 是函数所在文件及其行号，日志使用
-func (argList *ArgList) Get(assembly BeanAssembly, fileLine string) []reflect.Value {
+func (argList *ArgList) Get(assembly bean.Assembly, fileLine string) []reflect.Value {
 
 	fnType := argList.fnType
 	numIn := fnType.NumIn()
@@ -83,7 +71,7 @@ func (argList *ArgList) Get(assembly BeanAssembly, fileLine string) []reflect.Va
 }
 
 // getArgValue 获取绑定参数值
-func (argList *ArgList) getArgValue(t reflect.Type, arg Arg, assembly BeanAssembly, fileLine string) reflect.Value {
+func (argList *ArgList) getArgValue(t reflect.Type, arg Arg, assembly bean.Assembly, fileLine string) reflect.Value {
 
 	// TODO 检查有些 defer 像这里这样是不正确的，panic 也会打印 success 日志
 	description := fmt.Sprintf("arg:\"%v\" %s", arg, fileLine)
@@ -192,7 +180,7 @@ func (arg *option) WithCondition(cond bean.Condition) *option {
 }
 
 // call 获取 Option 的运算值
-func (arg *option) call(assembly BeanAssembly) reflect.Value {
+func (arg *option) call(assembly bean.Assembly) reflect.Value {
 
 	defer log.Tracef("call option func success %s", arg.FileLine())
 	log.Tracef("call option func %s", arg.FileLine())

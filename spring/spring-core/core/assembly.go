@@ -429,7 +429,7 @@ func (assembly *defaultBeanAssembly) wireBeanDefinition(bd beanDefinition, onlyA
 
 	// 如果用户设置了初始化函数则执行初始化函数
 	if init := bd.getInit(); init != nil {
-		if err := init.run(assembly, bd.Value()); err != nil {
+		if err := init.Run(assembly, bd.Value()); err != nil {
 			panic(err)
 		}
 	}
