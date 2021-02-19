@@ -493,7 +493,7 @@ func (ctx *applicationContext) AutoWireBeans() {
 }
 
 // WireBean 对外部的 Bean 进行依赖注入和属性绑定
-func (ctx *applicationContext) WireBean(i interface{}) {
+func (ctx *applicationContext) WireBean(i interface{}) error {
 	ctx.checkAutoWired()
 
 	assembly := newDefaultBeanAssembly(ctx)
@@ -506,6 +506,25 @@ func (ctx *applicationContext) WireBean(i interface{}) {
 	}()
 
 	assembly.wireBeanDefinition(ObjBean(i), false)
+	return nil
+}
+
+// CreateBean 执行构造函数并对结果进行依赖注入和属性绑定
+func (ctx *applicationContext) CreateBean(fn interface{}, args ...arg.Arg) (interface{}, error) {
+	ctx.checkAutoWired()
+
+	assembly := newDefaultBeanAssembly(ctx)
+
+	defer func() { // 捕获自动注入过程中的异常，打印错误日志然后重新抛出
+		if err := recover(); err != nil {
+			log.Errorf("%v ↩\n%s", err, assembly.wiringStack.path())
+			panic(err)
+		}
+	}()
+
+	bd := CtorBean(fn, args...)
+	assembly.wireBeanDefinition(bd, false)
+	return bd.Bean(), nil
 }
 
 // Beans 获取所有 Bean 的定义，不能保证解析和注入，请谨慎使用该函数!

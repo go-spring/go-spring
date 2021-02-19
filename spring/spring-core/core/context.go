@@ -74,7 +74,10 @@ type ApplicationContext interface {
 	AutoWireBeans()
 
 	// WireBean 对外部的 Bean 进行依赖注入和属性绑定
-	WireBean(i interface{})
+	WireBean(i interface{}) error
+
+	// CreateBean 执行构造函数并对结果进行依赖注入和属性绑定
+	CreateBean(fn interface{}, args ...arg.Arg) (interface{}, error)
 
 	// Beans 获取所有 Bean 的定义，不能保证解析和注入，请谨慎使用该函数!
 	Beans() []*BeanDefinition

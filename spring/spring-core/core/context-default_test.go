@@ -2765,3 +2765,21 @@ func TestApplicationContext_NameEquivalence(t *testing.T) {
 		ctx.AutoWireBeans()
 	}, `duplicate registration, bean: `)
 }
+
+type Obj struct {
+	i int
+}
+
+type ObjFactory struct{}
+
+func (factory *ObjFactory) NewObj(i int) *Obj { return &Obj{i: i} }
+
+func TestApplicationContext_CreateBean(t *testing.T) {
+
+	ctx := core.NewApplicationContext()
+	ctx.ObjBean(&ObjFactory{})
+	ctx.AutoWireBeans()
+
+	b, err := ctx.CreateBean((*ObjFactory).NewObj, "", "${i:=5}")
+	fmt.Println(b, err)
+}
