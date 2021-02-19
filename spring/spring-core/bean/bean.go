@@ -4,7 +4,6 @@ import (
 	"errors"
 	"reflect"
 
-	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/util"
 )
 
@@ -74,10 +73,10 @@ type Assembly interface {
 	ConditionContext() interface{}
 
 	// BindValue 对结构体的字段进行属性绑定
-	BindValue(v reflect.Value, str string, opt conf.BindOption) error
+	BindValue(v reflect.Value, str string) error
 
-	// WireStructField 对结构体的字段进行绑定
-	WireStructField(v reflect.Value, tag string, parent reflect.Value, field string)
+	// WireValue 对结构体的字段进行绑定
+	WireValue(v reflect.Value, tag string) error
 }
 
 type Runnable interface {

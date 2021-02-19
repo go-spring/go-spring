@@ -9,7 +9,6 @@ import (
 
 	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/cond"
-	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
 )
@@ -100,10 +99,11 @@ func (argList *ArgList) getArgValue(t reflect.Type, arg Arg, assembly bean.Assem
 		if selector == "" {
 			selector = "${}"
 		}
-		err := assembly.BindValue(v, selector, conf.BindOption{})
+		err := assembly.BindValue(v, selector)
 		util.Panic(err).When(err != nil)
 	} else { // 引用类型，采用对象注入语法
-		assembly.WireStructField(v, selector, reflect.Value{}, "")
+		err := assembly.WireValue(v, selector)
+		util.Panic(err).When(err != nil)
 	}
 	return v
 }

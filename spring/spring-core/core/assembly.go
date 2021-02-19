@@ -83,8 +83,8 @@ func (assembly *defaultBeanAssembly) ConditionContext() interface{} {
 }
 
 // BindStructField 对结构体的字段进行属性绑定
-func (assembly *defaultBeanAssembly) BindValue(v reflect.Value, str string, opt conf.BindOption) error {
-	return conf.BindValue(assembly.appCtx.properties, v, str, opt)
+func (assembly *defaultBeanAssembly) BindValue(v reflect.Value, str string) error {
+	return conf.BindValue(assembly.appCtx.properties, v, str, conf.BindOption{})
 }
 
 // getBeanValue 获取符合要求的 Bean，并且确保 Bean 完成自动注入过程，结果最多有一个，否则 panic，当允许结果为空时返回 false，否则 panic
@@ -472,19 +472,19 @@ func (assembly *defaultBeanAssembly) wireObjectBean(bd beanDefinition, onlyAutoW
 				if !onlyAutoWire { // 防止 value 再次解析
 					if tag, ok := ft.Tag.Lookup("value"); ok {
 						fieldOnlyAutoWire = true
-						err := assembly.BindValue(fv, tag, conf.BindOption{FieldName: fieldName})
+						err := conf.BindValue(assembly.appCtx.properties, fv, tag, conf.BindOption{FieldName: fieldName})
 						util.Panic(err).When(err != nil)
 					}
 				}
 
 				// 处理 autowire 标签，autowire 与 inject 等价
 				if beanId, ok := ft.Tag.Lookup("autowire"); ok {
-					assembly.WireStructField(fv, beanId, sv, fieldName)
+					assembly.wireStructField(fv, beanId, sv, fieldName)
 				}
 
 				// 处理 inject 标签，inject 与 autowire 等价
 				if beanId, ok := ft.Tag.Lookup("inject"); ok {
-					assembly.WireStructField(fv, beanId, sv, fieldName)
+					assembly.wireStructField(fv, beanId, sv, fieldName)
 				}
 
 				// 只处理结构体类型的字段，防止递归所以不支持指针结构体字段
@@ -562,8 +562,13 @@ func (assembly *defaultBeanAssembly) wireConstructorBean(fnValue reflect.Value, 
 	assembly.wireBeanDefinition(&fnValueBeanDefinition{BeanDefinition: b, f: bd}, false)
 }
 
-// WireStructField 对结构体的字段进行绑定
-func (assembly *defaultBeanAssembly) WireStructField(v reflect.Value, tag string, Parent reflect.Value, field string) {
+// WireValue 对结构体的字段进行绑定
+func (assembly *defaultBeanAssembly) WireValue(v reflect.Value, tag string) error {
+	assembly.wireStructField(v, tag, reflect.Value{}, "")
+	return nil
+}
+
+func (assembly *defaultBeanAssembly) wireStructField(v reflect.Value, tag string, Parent reflect.Value, field string) {
 
 	// tag 预处理，Bean 名称可以通过属性值指定
 	if strings.HasPrefix(tag, "${") {
