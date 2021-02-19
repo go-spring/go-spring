@@ -198,3 +198,28 @@ func (arg *option) call(assembly bean.Assembly) reflect.Value {
 }
 
 type Map struct{}
+
+// 返回带索引的参数
+func R1(arg Arg) {
+
+}
+
+func R2(arg Arg) {
+
+}
+
+func R3(arg Arg) {
+
+}
+
+func R4(arg Arg) {
+
+}
+
+func R5(arg Arg) {
+
+}
+
+func R6(arg Arg) {
+
+}

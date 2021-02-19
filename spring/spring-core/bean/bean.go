@@ -56,15 +56,44 @@ func TypeName(typOrPtr TypeOrPtr) string {
 	}
 }
 
+// Status Bean 的状态值
+type Status int
+
+const (
+	Default   = Status(0) // 默认状态
+	Resolving = Status(1) // 正在决议
+	Resolved  = Status(2) // 已决议
+	Wiring    = Status(3) // 正在注入
+	Wired     = Status(4) // 注入完成
+	Deleted   = Status(5) // 已删除
+)
+
+type BeanFactory interface {
+	BeanClass() string
+	NewValue() reflect.Value
+	BeanType() reflect.Type
+}
+
 type Definition interface {
-	Bean() interface{}    // 源
-	Type() reflect.Type   // 类型
-	Value() reflect.Value // 值
-	TypeName() string     // 原始类型的全限定名
-	Name() string         // 返回 Bean 的名称
-	BeanId() string       // 返回 Bean 的唯一 ID
-	FileLine() string     // 返回 Bean 的注册点
-	Description() string  // 返回 Bean 的详细描述
+	Bean() interface{}      // 源
+	Type() reflect.Type     // 类型
+	Value() reflect.Value   // 值
+	SetValue(reflect.Value) // 设置新的值
+	TypeName() string       // 原始类型的全限定名
+
+	Name() string        // 返回 Bean 的名称
+	BeanId() string      // 返回 Bean 的唯一 ID
+	FileLine() string    // 返回 Bean 的注册点
+	Description() string // 返回 Bean 的详细描述
+
+	BeanFactory() BeanFactory
+	GetStatus() Status        // 返回 Bean 的状态值
+	SetStatus(status Status)  // 设置 Bean 的状态值
+	GetDependsOn() []Selector // 返回 Bean 的间接依赖项
+	GetInit() Runnable        // 返回 Bean 的初始化函数
+	GetDestroy() Runnable     // 返回 Bean 的销毁函数
+	GetFile() string          // 返回 Bean 注册点所在文件的名称
+	GetLine() int             // 返回 Bean 注册点所在文件的行数
 }
 
 type Assembly interface {

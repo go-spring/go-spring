@@ -131,25 +131,19 @@ func ParseCollectionTag(str string) (tag collectionTag) {
 	return
 }
 
-type beanFactory interface {
-	beanClass() string
-	newValue() reflect.Value
-	beanType() reflect.Type
-}
-
 type objBeanFactory struct {
 	v reflect.Value
 }
 
-func (b *objBeanFactory) newValue() reflect.Value {
+func (b *objBeanFactory) NewValue() reflect.Value {
 	return b.v
 }
 
-func (b *objBeanFactory) beanType() reflect.Type {
+func (b *objBeanFactory) BeanType() reflect.Type {
 	return b.v.Type()
 }
 
-func (b *objBeanFactory) beanClass() string {
+func (b *objBeanFactory) BeanClass() string {
 	return "object bean"
 }
 
@@ -184,7 +178,7 @@ type ctorBeanFactory struct {
 	arg    *arg.ArgList
 }
 
-func (b *ctorBeanFactory) newValue() reflect.Value {
+func (b *ctorBeanFactory) NewValue() reflect.Value {
 
 	// 创建 Bean 的值
 	out0 := b.fnType.Out(0)
@@ -197,59 +191,24 @@ func (b *ctorBeanFactory) newValue() reflect.Value {
 	return v
 }
 
-func (b *ctorBeanFactory) beanType() reflect.Type {
-	return b.newValue().Type() // TODO
+func (b *ctorBeanFactory) BeanType() reflect.Type {
+	return b.NewValue().Type() // TODO
 }
 
-func (b *ctorBeanFactory) beanClass() string {
+func (b *ctorBeanFactory) BeanClass() string {
 	return "constructor bean"
-}
-
-// beanStatus Bean 的状态值
-type beanStatus int
-
-const (
-	BeanStatus_Default   = beanStatus(0) // 默认状态
-	BeanStatus_Resolving = beanStatus(1) // 正在决议
-	BeanStatus_Resolved  = beanStatus(2) // 已决议
-	BeanStatus_Wiring    = beanStatus(3) // 正在注入
-	BeanStatus_Wired     = beanStatus(4) // 注入完成
-	BeanStatus_Deleted   = beanStatus(5) // 已删除
-)
-
-// beanDefinition BeanDefinition 的抽象接口
-type beanDefinition interface {
-	Bean() interface{}    // 源
-	Type() reflect.Type   // 类型
-	Value() reflect.Value // 值
-	setVal(reflect.Value) //
-	TypeName() string     // 原始类型的全限定名
-
-	Name() string        // 返回 Bean 的名称
-	BeanId() string      // 返回 Bean 的唯一 ID
-	FileLine() string    // 返回 Bean 的注册点
-	Description() string // 返回 Bean 的详细描述
-
-	beanFactory() beanFactory
-	getStatus() beanStatus         // 返回 Bean 的状态值
-	setStatus(status beanStatus)   // 设置 Bean 的状态值
-	getDependsOn() []bean.Selector // 返回 Bean 的间接依赖项
-	getInit() bean.Runnable        // 返回 Bean 的初始化函数
-	getDestroy() bean.Runnable     // 返回 Bean 的销毁函数
-	getFile() string               // 返回 Bean 注册点所在文件的名称
-	getLine() int                  // 返回 Bean 注册点所在文件的行数
 }
 
 // BeanDefinition 用于存储 Bean 的各种元数据
 type BeanDefinition struct {
 	RValue  reflect.Value // 值
-	factory beanFactory
+	factory bean.BeanFactory
 
 	RType    reflect.Type // 类型
 	typeName string       // 原始类型的全限定名
 
-	name   string     // Bean 的名称，请勿直接使用该字段!
-	status beanStatus // Bean 的状态
+	name   string      // Bean 的名称，请勿直接使用该字段!
+	status bean.Status // Bean 的状态
 
 	file string // 注册点所在文件
 	line int    // 注册点所在行数
@@ -265,17 +224,17 @@ type BeanDefinition struct {
 }
 
 // newBeanDefinition BeanDefinition 的构造函数
-func newBeanDefinition(factory beanFactory, file string, line int) *BeanDefinition {
-	t := factory.beanType()
+func newBeanDefinition(factory bean.BeanFactory, file string, line int) *BeanDefinition {
+	t := factory.BeanType()
 	if !util.IsRefType(t.Kind()) {
 		panic(errors.New("bean must be ref type"))
 	}
 	return &BeanDefinition{
-		RValue:   factory.newValue(),
+		RValue:   factory.NewValue(),
 		RType:    t,
 		typeName: bean.TypeName(t),
 		factory:  factory,
-		status:   BeanStatus_Default,
+		status:   bean.Default,
 		file:     file,
 		line:     line,
 		exports:  make(map[reflect.Type]struct{}),
@@ -292,7 +251,7 @@ func (d *BeanDefinition) Type() reflect.Type {
 	return d.RType
 }
 
-func (d *BeanDefinition) setVal(v reflect.Value) {
+func (d *BeanDefinition) SetValue(v reflect.Value) {
 	d.RValue = v
 }
 
@@ -325,48 +284,48 @@ func (d *BeanDefinition) FileLine() string {
 	return fmt.Sprintf("%s:%d", d.file, d.line)
 }
 
-func (d *BeanDefinition) beanFactory() beanFactory {
+func (d *BeanDefinition) BeanFactory() bean.BeanFactory {
 	return d.factory
 }
 
 // getStatus 返回 Bean 的状态值
-func (d *BeanDefinition) getStatus() beanStatus {
+func (d *BeanDefinition) GetStatus() bean.Status {
 	return d.status
 }
 
 // setStatus 设置 Bean 的状态值
-func (d *BeanDefinition) setStatus(status beanStatus) {
+func (d *BeanDefinition) SetStatus(status bean.Status) {
 	d.status = status
 }
 
 // getDependsOn 返回 Bean 的间接依赖项
-func (d *BeanDefinition) getDependsOn() []bean.Selector {
+func (d *BeanDefinition) GetDependsOn() []bean.Selector {
 	return d.dependsOn
 }
 
 // getInit 返回 Bean 的初始化函数
-func (d *BeanDefinition) getInit() bean.Runnable {
+func (d *BeanDefinition) GetInit() bean.Runnable {
 	return d.init
 }
 
 // getDestroy 返回 Bean 的销毁函数
-func (d *BeanDefinition) getDestroy() bean.Runnable {
+func (d *BeanDefinition) GetDestroy() bean.Runnable {
 	return d.destroy
 }
 
 // getFile 返回 Bean 注册点所在文件的名称
-func (d *BeanDefinition) getFile() string {
+func (d *BeanDefinition) GetFile() string {
 	return d.file
 }
 
 // getLine 返回 Bean 注册点所在文件的行数
-func (d *BeanDefinition) getLine() int {
+func (d *BeanDefinition) GetLine() int {
 	return d.line
 }
 
 // Description 返回 Bean 的详细描述
 func (d *BeanDefinition) Description() string {
-	return fmt.Sprintf("%s \"%s\" %s", d.factory.beanClass(), d.Name(), d.FileLine())
+	return fmt.Sprintf("%s \"%s\" %s", d.factory.BeanClass(), d.Name(), d.FileLine())
 }
 
 // Match 测试 Bean 的类型全限定名和 Bean 的名称是否都匹配
