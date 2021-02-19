@@ -19,7 +19,6 @@ package cond_test
 import (
 	"testing"
 
-	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/cond"
 	"github.com/go-spring/spring-core/core"
 	"github.com/go-spring/spring-core/util"
@@ -28,11 +27,11 @@ import (
 func TestFunctionCondition(t *testing.T) {
 	ctx := core.NewApplicationContext()
 
-	fn := func(ctx bean.ConditionContext) bool { return true }
+	fn := func(ctx cond.ConditionContext) bool { return true }
 	c := cond.FunctionCondition(fn)
 	util.AssertEqual(t, c.Matches(ctx), true)
 
-	fn = func(ctx bean.ConditionContext) bool { return false }
+	fn = func(ctx cond.ConditionContext) bool { return false }
 	c = cond.FunctionCondition(fn)
 	util.AssertEqual(t, c.Matches(ctx), false)
 }

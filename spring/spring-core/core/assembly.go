@@ -29,22 +29,6 @@ import (
 	"github.com/go-spring/spring-core/util"
 )
 
-//// beanAssembly Bean 组装车间
-//type beanAssembly interface {
-//	applicationContext() ApplicationContext
-//
-//	// WireStructField 对结构体的字段进行绑定
-//	WireStructField(v reflect.Value, tag string, Parent reflect.Value, field string)
-//
-//	// collectBeans 收集符合要求的 Bean，结果可以是多个。自动模式下不对结
-//	// 果排序，指定模式会对结果排序。当允许结果为空时返回 false，否则 panic
-//	collectBeans(v reflect.Value, tag bean.collectionTag, field string) bool
-//
-//	// getBeanValue 获取符合要求的 Bean，并且确保 Bean 完成自动注入过程，
-//	// 结果最多有一个，否则 panic，当允许结果为空时返回 false，否则 panic
-//	getBeanValue(v reflect.Value, tag bean.SingletonTag, Parent reflect.Value, field string) bool
-//}
-
 // wiringStack 注入堆栈
 type wiringStack struct {
 	stack *list.List
@@ -93,9 +77,9 @@ func newDefaultBeanAssembly(appCtx *applicationContext) *defaultBeanAssembly {
 	}
 }
 
-// Matches 成功返回 true，失败返回 false
-func (assembly *defaultBeanAssembly) Matches(cond bean.Condition) bool {
-	return cond.Matches(assembly.appCtx)
+// ConditionContext 获取条件上下文
+func (assembly *defaultBeanAssembly) ConditionContext() interface{} {
+	return assembly.appCtx
 }
 
 // BindStructField 对结构体的字段进行属性绑定

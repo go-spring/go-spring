@@ -70,8 +70,8 @@ type Definition interface {
 
 type Assembly interface {
 
-	// Matches 成功返回 true，失败返回 false
-	Matches(cond Condition) bool
+	// ConditionContext 获取条件上下文
+	ConditionContext() interface{}
 
 	// BindValue 对结构体的字段进行属性绑定
 	BindValue(v reflect.Value, str string, opt conf.BindOption) error

@@ -23,12 +23,32 @@ import (
 	"strings"
 
 	"github.com/go-spring/spring-core/bean"
+	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/util"
 	"github.com/spf13/cast"
 )
 
+type ConditionContext interface {
+
+	// GetProfile 返回运行环境
+	GetProfile() string
+
+	//Properties
+	Properties() conf.Properties
+
+	// FindBean 查询单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
+	// 它和 GetBean 的区别是它在调用后不能保证返回的 Bean 已经完成了注入和绑定过程。
+	FindBean(selector bean.Selector) (bean.Definition, bool)
+}
+
+// Condition 定义一个判断条件
+type Condition interface {
+	// Matches 成功返回 true，失败返回 false
+	Matches(ctx ConditionContext) bool
+}
+
 // ConditionFunc 定义 Condition 接口 Matches 方法的类型
-type ConditionFunc func(ctx bean.ConditionContext) bool
+type ConditionFunc func(ctx ConditionContext) bool
 
 // functionCondition 基于 Matches 方法的 Condition 实现
 type functionCondition struct {
@@ -41,22 +61,22 @@ func FunctionCondition(fn ConditionFunc) *functionCondition {
 }
 
 // Matches 成功返回 true，失败返回 false
-func (c *functionCondition) Matches(ctx bean.ConditionContext) bool {
+func (c *functionCondition) Matches(ctx ConditionContext) bool {
 	return c.fn(ctx)
 }
 
 // notCondition 对 Condition 取反的 Condition 实现
 type notCondition struct {
-	cond bean.Condition
+	cond Condition
 }
 
 // NotCondition notCondition 的构造函数
-func NotCondition(cond bean.Condition) *notCondition {
+func NotCondition(cond Condition) *notCondition {
 	return &notCondition{cond}
 }
 
 // Matches 成功返回 true，失败返回 false
-func (c *notCondition) Matches(ctx bean.ConditionContext) bool {
+func (c *notCondition) Matches(ctx ConditionContext) bool {
 	return !c.cond.Matches(ctx)
 }
 
@@ -71,7 +91,7 @@ func PropertyCondition(name string) *propertyCondition {
 }
 
 // Matches 成功返回 true，失败返回 false
-func (c *propertyCondition) Matches(ctx bean.ConditionContext) bool {
+func (c *propertyCondition) Matches(ctx ConditionContext) bool {
 	return len(ctx.Properties().Prefix(c.name)) > 0
 }
 
@@ -86,7 +106,7 @@ func MissingPropertyCondition(name string) *missingPropertyCondition {
 }
 
 // Matches 成功返回 true，失败返回 false
-func (c *missingPropertyCondition) Matches(ctx bean.ConditionContext) bool {
+func (c *missingPropertyCondition) Matches(ctx ConditionContext) bool {
 	return len(ctx.Properties().Prefix(c.name)) == 0
 }
 
@@ -118,7 +138,7 @@ func PropertyValueCondition(name string, havingValue interface{},
 }
 
 // Matches 成功返回 true，失败返回 false
-func (c *propertyValueCondition) Matches(ctx bean.ConditionContext) bool {
+func (c *propertyValueCondition) Matches(ctx ConditionContext) bool {
 	// 参考 /usr/local/go/src/go/types/eval_test.go 示例
 
 	val := ctx.Properties().Get(c.name)
@@ -156,7 +176,7 @@ func BeanCondition(selector bean.Selector) *beanCondition {
 }
 
 // Matches 成功返回 true，失败返回 false
-func (c *beanCondition) Matches(ctx bean.ConditionContext) bool {
+func (c *beanCondition) Matches(ctx ConditionContext) bool {
 	_, ok := ctx.FindBean(c.selector)
 	return ok
 }
@@ -172,7 +192,7 @@ func MissingBeanCondition(selector bean.Selector) *missingBeanCondition {
 }
 
 // Matches 成功返回 true，失败返回 false
-func (c *missingBeanCondition) Matches(ctx bean.ConditionContext) bool {
+func (c *missingBeanCondition) Matches(ctx ConditionContext) bool {
 	_, ok := ctx.FindBean(c.selector)
 	return !ok
 }
@@ -188,7 +208,7 @@ func ExpressionCondition(expression string) *expressionCondition {
 }
 
 // Matches 成功返回 true，失败返回 false
-func (c *expressionCondition) Matches(ctx bean.ConditionContext) bool {
+func (c *expressionCondition) Matches(ctx ConditionContext) bool {
 	panic(util.UnimplementedMethod)
 }
 
@@ -203,7 +223,7 @@ func ProfileCondition(profile string) *profileCondition {
 }
 
 // Matches 成功返回 true，失败返回 false
-func (c *profileCondition) Matches(ctx bean.ConditionContext) bool {
+func (c *profileCondition) Matches(ctx ConditionContext) bool {
 	return c.profile == "" || strings.EqualFold(c.profile, ctx.GetProfile())
 }
 
@@ -219,11 +239,11 @@ const (
 // conditionGroup 基于条件组的 Condition 实现
 type conditionGroup struct {
 	op   ConditionOp
-	cond []bean.Condition
+	cond []Condition
 }
 
 // ConditionGroup conditions 的构造函数
-func ConditionGroup(op ConditionOp, cond ...bean.Condition) *conditionGroup {
+func ConditionGroup(op ConditionOp, cond ...Condition) *conditionGroup {
 	return &conditionGroup{
 		op:   op,
 		cond: cond,
@@ -231,7 +251,7 @@ func ConditionGroup(op ConditionOp, cond ...bean.Condition) *conditionGroup {
 }
 
 // Matches 成功返回 true，失败返回 false
-func (c *conditionGroup) Matches(ctx bean.ConditionContext) bool {
+func (c *conditionGroup) Matches(ctx ConditionContext) bool {
 
 	if len(c.cond) == 0 {
 		panic(errors.New("no condition"))
@@ -266,13 +286,13 @@ func (c *conditionGroup) Matches(ctx bean.ConditionContext) bool {
 
 // conditionNode Condition 计算式节点，返回值是 'cond op next'
 type conditionNode struct {
-	cond bean.Condition // 条件
+	cond Condition      // 条件
 	op   ConditionOp    // 计算方式
 	next *conditionNode // 下一个计算节点
 }
 
 // Matches 成功返回 true，失败返回 false
-func (c *conditionNode) Matches(ctx bean.ConditionContext) bool {
+func (c *conditionNode) Matches(ctx ConditionContext) bool {
 
 	if c.cond == nil { // 空节点返回 true
 		return true
@@ -324,7 +344,7 @@ func (c *Conditional) Empty() bool {
 }
 
 // Matches 成功返回 true，失败返回 false
-func (c *Conditional) Matches(ctx bean.ConditionContext) bool {
+func (c *Conditional) Matches(ctx ConditionContext) bool {
 	return c.head.Matches(ctx)
 }
 
@@ -347,12 +367,12 @@ func (c *Conditional) And() *Conditional {
 }
 
 // On 设置一个 Condition
-func On(cond bean.Condition) *Conditional {
+func On(cond Condition) *Conditional {
 	return conditional().OnCondition(cond)
 }
 
 // OnCondition 设置一个 Condition
-func (c *Conditional) OnCondition(cond bean.Condition) *Conditional {
+func (c *Conditional) OnCondition(cond Condition) *Conditional {
 	if c.curr.cond != nil {
 		c.And()
 	}
@@ -361,7 +381,7 @@ func (c *Conditional) OnCondition(cond bean.Condition) *Conditional {
 }
 
 // OnConditionNot 设置一个取反的 Condition
-func (c *Conditional) OnConditionNot(cond bean.Condition) *Conditional {
+func (c *Conditional) OnConditionNot(cond Condition) *Conditional {
 	return c.OnCondition(NotCondition(cond))
 }
 

@@ -25,6 +25,7 @@ import (
 
 	"github.com/go-spring/spring-core/arg"
 	"github.com/go-spring/spring-core/bean"
+	"github.com/go-spring/spring-core/cond"
 	"github.com/go-spring/spring-core/util"
 )
 
@@ -253,7 +254,7 @@ type BeanDefinition struct {
 	file string // 注册点所在文件
 	line int    // 注册点所在行数
 
-	cond      bean.Condition  // 判断条件
+	cond      cond.Condition  // 判断条件
 	primary   bool            // 是否为主版本
 	dependsOn []bean.Selector // 间接依赖项
 
@@ -391,7 +392,7 @@ func (d *BeanDefinition) WithName(name string) *BeanDefinition {
 }
 
 // WithCondition 为 Bean 设置一个 Condition
-func (d *BeanDefinition) WithCondition(cond bean.Condition) *BeanDefinition {
+func (d *BeanDefinition) WithCondition(cond cond.Condition) *BeanDefinition {
 	d.cond = cond
 	return d
 }

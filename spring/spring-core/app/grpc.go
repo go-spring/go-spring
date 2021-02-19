@@ -17,7 +17,7 @@
 package app
 
 import (
-	"github.com/go-spring/spring-core/bean"
+	"github.com/go-spring/spring-core/cond"
 	"github.com/go-spring/spring-core/core"
 )
 
@@ -32,7 +32,7 @@ type GRpcServer struct {
 	fn          interface{}
 	server      interface{}    // 服务对象
 	serviceName string         // 服务名称
-	cond        bean.Condition // 判断条件
+	cond        cond.Condition // 判断条件
 }
 
 // NewGRpcServer GRpcServer 的构造函数
@@ -51,7 +51,7 @@ func (s *GRpcServer) Server() interface{} {
 }
 
 // WithCondition 设置一个 Condition
-func (s *GRpcServer) WithCondition(cond bean.Condition) *GRpcServer {
+func (s *GRpcServer) WithCondition(cond cond.Condition) *GRpcServer {
 	s.cond = cond
 	return s
 }

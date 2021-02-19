@@ -22,7 +22,7 @@ import (
 	"reflect"
 
 	"github.com/go-spring/spring-core/arg"
-	"github.com/go-spring/spring-core/bean"
+	"github.com/go-spring/spring-core/cond"
 	"github.com/go-spring/spring-core/util"
 )
 
@@ -30,7 +30,7 @@ import (
 type Configer struct {
 	*runnable
 	name   string
-	cond   bean.Condition // 判断条件
+	cond   cond.Condition // 判断条件
 	before []string       // 位于哪些配置函数之前
 	after  []string       // 位于哪些配置函数之后
 }
@@ -52,7 +52,7 @@ func (c *Configer) WithName(name string) *Configer {
 }
 
 // WithCondition 为 Configer 设置一个 Condition
-func (c *Configer) WithCondition(cond bean.Condition) *Configer {
+func (c *Configer) WithCondition(cond cond.Condition) *Configer {
 	c.cond = cond
 	return c
 }

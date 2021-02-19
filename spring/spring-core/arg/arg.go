@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/go-spring/spring-core/bean"
+	"github.com/go-spring/spring-core/cond"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
@@ -113,7 +114,7 @@ func Value(v interface{}) *value { return &value{v: v} }
 
 // option Option 函数的绑定参数
 type option struct {
-	cond bean.Condition // 判断条件
+	cond cond.Condition // 判断条件
 
 	fn      interface{}
 	argList *ArgList
@@ -173,8 +174,8 @@ func (arg *option) FileLine() string {
 	return fmt.Sprintf("%s:%d", arg.file, arg.line)
 }
 
-// WithCondition 为 Option 设置一个 bean.Condition
-func (arg *option) WithCondition(cond bean.Condition) *option {
+// WithCondition 为 Option 设置一个 cond.Condition
+func (arg *option) WithCondition(cond cond.Condition) *option {
 	arg.cond = cond
 	return arg
 }
@@ -185,7 +186,8 @@ func (arg *option) call(assembly bean.Assembly) reflect.Value {
 	defer log.Tracef("call option func success %s", arg.FileLine())
 	log.Tracef("call option func %s", arg.FileLine())
 
-	if arg.cond == nil || assembly.Matches(arg.cond) {
+	ctx := assembly.ConditionContext().(cond.ConditionContext)
+	if arg.cond == nil || arg.cond.Matches(ctx) {
 		fnValue := reflect.ValueOf(arg.fn)
 		in := arg.argList.Get(assembly, arg.FileLine())
 		out := fnValue.Call(in)
