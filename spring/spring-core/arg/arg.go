@@ -91,7 +91,7 @@ func (argList *ArgList) getArgValue(t reflect.Type, arg Arg, assembly bean.Assem
 	case string:
 		selector = tArg
 	default:
-		selector = bean.TypeName(tArg) + ":"
+		selector = util.TypeName(tArg) + ":"
 	}
 
 	v := reflect.New(t).Elem()

@@ -66,6 +66,37 @@ func IsValueType(k reflect.Kind) bool {
 	return kindTypes[k] == valType
 }
 
+// TypeOf 获取 i 的类型
+func TypeOf(i interface{}) reflect.Type {
+	switch o := i.(type) {
+	case reflect.Type:
+		return o
+	case reflect.Value:
+		return o.Type()
+	default:
+		return reflect.TypeOf(o)
+	}
+}
+
+// TypeName 返回原始类型的全限定名，Go 语言允许不同的路径下存在相同的包，因此有全限定名
+// 的需求，形如 "github.com/go-spring/spring-core/SpringCore.BeanDefinition"。
+func TypeName(i interface{}) string {
+	typ := TypeOf(i)
+
+	for { // 去掉指针和数组的包装，以获得原始类型
+		if k := typ.Kind(); k == reflect.Ptr || k == reflect.Slice {
+			typ = typ.Elem()
+		} else {
+			break
+		}
+	}
+
+	if pkgPath := typ.PkgPath(); pkgPath != "" {
+		return pkgPath + "/" + typ.String()
+	}
+	return typ.String() // 内置类型的路径为空
+}
+
 // CopyBean 使用 Json 序列化框架进行拷贝，支持匿名字段，支持类型转换。
 func CopyBean(src interface{}, dest interface{}) error {
 	bytes, err := json.Marshal(src)

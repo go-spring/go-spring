@@ -23,7 +23,6 @@ import (
 	"testing"
 	"unsafe"
 
-	"github.com/go-spring/spring-core/bean"
 	pkg1 "github.com/go-spring/spring-core/core/testdata/pkg/bar"
 	pkg2 "github.com/go-spring/spring-core/core/testdata/pkg/foo"
 	"github.com/go-spring/spring-core/util"
@@ -288,12 +287,6 @@ func TestIsValueType(t *testing.T) {
 
 func TestTypeName(t *testing.T) {
 
-	t.Run("nil", func(t *testing.T) {
-		util.AssertPanic(t, func() {
-			bean.TypeName(reflect.TypeOf(nil))
-		}, "shouldn't be nil")
-	})
-
 	t.Run("type", func(t *testing.T) {
 
 		data := map[reflect.Type]struct {
@@ -419,7 +412,7 @@ func TestTypeName(t *testing.T) {
 		}
 
 		for typ, v := range data {
-			typeName := bean.TypeName(typ)
+			typeName := util.TypeName(typ)
 			util.AssertEqual(t, typeName, v.typeName)
 			util.AssertEqual(t, typ.String(), v.baseName)
 		}
@@ -429,7 +422,7 @@ func TestTypeName(t *testing.T) {
 		iPtrPtr := &iPtr
 		iPtrPtrPtr := &iPtrPtr
 		typ := reflect.TypeOf(iPtrPtrPtr)
-		typeName := bean.TypeName(typ)
+		typeName := util.TypeName(typ)
 		util.AssertEqual(t, typeName, "int")
 		util.AssertEqual(t, typ.String(), "***int")
 	})

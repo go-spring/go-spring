@@ -41,7 +41,7 @@ func ToSingletonTag(selector bean.Selector) SingletonTag {
 	case *BeanDefinition:
 		return parseSingletonTag(s.BeanId())
 	default:
-		return parseSingletonTag(bean.TypeName(s) + ":")
+		return parseSingletonTag(util.TypeName(s) + ":")
 	}
 }
 
@@ -232,7 +232,7 @@ func newBeanDefinition(factory bean.BeanFactory, file string, line int) *BeanDef
 	return &BeanDefinition{
 		RValue:   factory.NewValue(),
 		RType:    t,
-		typeName: bean.TypeName(t),
+		typeName: util.TypeName(t),
 		factory:  factory,
 		status:   bean.Default,
 		file:     file,
@@ -399,7 +399,7 @@ func (d *BeanDefinition) Destroy(fn interface{}, args ...arg.Arg) *BeanDefinitio
 }
 
 // Export 显式指定 Bean 的导出接口
-func (d *BeanDefinition) Export(exports ...bean.TypeOrPtr) *BeanDefinition {
+func (d *BeanDefinition) Export(exports ...interface{}) *BeanDefinition {
 	for _, o := range exports { // 使用 map 进行排重
 
 		var typ reflect.Type
