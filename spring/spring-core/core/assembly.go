@@ -558,7 +558,7 @@ func (assembly *defaultBeanAssembly) wireConstructorBean(fnValue reflect.Value, 
 		beanValue = bd.Value()
 	}
 
-	b := valueBean(beanValue, bd.GetFile(), bd.GetLine()).WithName(bd.Name())
+	b := valueBean(beanValue, bd.GetFile(), bd.GetLine()).Name(bd.BeanName())
 	assembly.wireBeanDefinition(&fnValueBeanDefinition{BeanDefinition: b, f: bd}, false)
 }
 

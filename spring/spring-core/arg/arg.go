@@ -174,8 +174,8 @@ func (arg *option) FileLine() string {
 	return fmt.Sprintf("%s:%d", arg.file, arg.line)
 }
 
-// WithCondition 为 Option 设置一个 cond.Condition
-func (arg *option) WithCondition(cond cond.Condition) *option {
+// Cond 为 Option 设置一个 cond.Condition
+func (arg *option) Cond(cond cond.Condition) *option {
 	arg.cond = cond
 	return arg
 }

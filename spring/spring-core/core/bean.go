@@ -266,7 +266,7 @@ func (d *BeanDefinition) TypeName() string {
 }
 
 // Name 返回 Bean 的名称
-func (d *BeanDefinition) Name() string {
+func (d *BeanDefinition) BeanName() string {
 	if d.name == "" {
 		// 统一使用类型字符串作为默认名称!
 		d.name = d.RType.String()
@@ -276,7 +276,7 @@ func (d *BeanDefinition) Name() string {
 
 // BeanId 返回 Bean 的唯一 ID
 func (d *BeanDefinition) BeanId() string {
-	return d.TypeName() + ":" + d.Name()
+	return d.TypeName() + ":" + d.BeanName()
 }
 
 // FileLine 返回 Bean 的注册点
@@ -325,7 +325,7 @@ func (d *BeanDefinition) GetLine() int {
 
 // Description 返回 Bean 的详细描述
 func (d *BeanDefinition) Description() string {
-	return fmt.Sprintf("%s \"%s\" %s", d.factory.BeanClass(), d.Name(), d.FileLine())
+	return fmt.Sprintf("%s \"%s\" %s", d.factory.BeanClass(), d.BeanName(), d.FileLine())
 }
 
 // Match 测试 Bean 的类型全限定名和 Bean 的名称是否都匹配
@@ -337,21 +337,21 @@ func (d *BeanDefinition) Match(typeName string, beanName string) bool {
 	}
 
 	nameIsSame := false
-	if beanName == "" || d.Name() == beanName {
+	if beanName == "" || d.BeanName() == beanName {
 		nameIsSame = true
 	}
 
 	return typeIsSame && nameIsSame
 }
 
-// WithName 设置 Bean 的名称
-func (d *BeanDefinition) WithName(name string) *BeanDefinition {
+// Name 设置 Bean 的名称
+func (d *BeanDefinition) Name(name string) *BeanDefinition {
 	d.name = name
 	return d
 }
 
-// WithCondition 为 Bean 设置一个 Condition
-func (d *BeanDefinition) WithCondition(cond cond.Condition) *BeanDefinition {
+// Cond 为 Bean 设置一个 Condition
+func (d *BeanDefinition) Cond(cond cond.Condition) *BeanDefinition {
 	d.cond = cond
 	return d
 }

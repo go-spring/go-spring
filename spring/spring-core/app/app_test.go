@@ -98,7 +98,7 @@ func TestApp(t *testing.T) {
 		Profile("dev").
 		BannerMode(BannerModeOff).
 		Property("spring.application.name", "test").
-		Bean(core.ObjBean(new(int)).WithName("int")).
+		Bean(core.ObjBean(new(int)).Name("int")).
 		Configer(core.Config(func(i *int) { fmt.Println(i) }, "")).
 		Run()
 	t.Log("success")

@@ -393,7 +393,7 @@ func (ctx *applicationContext) resolveBean(bd *BeanDefinition) {
 	}
 
 	// 按照 Bean 的名字进行缓存
-	ctx.nameCache(bd.Name(), bd)
+	ctx.nameCache(bd.BeanName(), bd)
 
 	bd.SetStatus(bean.Resolved)
 }

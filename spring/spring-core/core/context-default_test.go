@@ -82,10 +82,10 @@ func TestApplicationContext(t *testing.T) {
 		// }, "duplicate registration, bean: \"int:\\*int\"")
 
 		// 相同类型不同名称的 bean 都可注册
-		ctx.ObjBean(&e).WithName("i3")
+		ctx.ObjBean(&e).Name("i3")
 
 		// 相同类型不同名称的 bean 都可注册
-		ctx.ObjBean(&e).WithName("i4")
+		ctx.ObjBean(&e).Name("i4")
 
 		ctx.ObjBean(a)
 		ctx.ObjBean(&a)
@@ -149,10 +149,10 @@ func TestApplicationContext(t *testing.T) {
 		ctx.ObjBean(&e)
 
 		// 相同类型不同名称的 bean 都可注册
-		ctx.ObjBean(&e).WithName("i3")
+		ctx.ObjBean(&e).Name("i3")
 
 		// 相同类型不同名称的 bean 都可注册
-		ctx.ObjBean(&e).WithName("i4")
+		ctx.ObjBean(&e).Name("i4")
 
 		ctx.ObjBean(a)
 		ctx.ObjBean(&a)
@@ -178,17 +178,17 @@ func TestApplicationContext(t *testing.T) {
 
 		// 相同类型不同名称的 bean 都可注册
 		// 不同类型相同名称的 bean 也可注册
-		ctx.ObjBean(&e).WithName("i3")
+		ctx.ObjBean(&e).Name("i3")
 
 		// 相同类型不同名称的 bean 都可注册
-		ctx.ObjBean(&e).WithName("i4")
+		ctx.ObjBean(&e).Name("i4")
 
 		ctx.ObjBean(a)
 		ctx.ObjBean(&a)
 		ctx.ObjBean(p)
 		ctx.ObjBean(&p)
 
-		ctx.ObjBean(&e).WithName("i5")
+		ctx.ObjBean(&e).Name("i5")
 
 		ctx.AutoWireBeans()
 	})
@@ -260,10 +260,10 @@ func TestApplicationContext_AutoWireBeans(t *testing.T) {
 		ctx.ObjBean(obj)
 
 		i := int(3)
-		ctx.ObjBean(&i).WithName("int_ptr")
+		ctx.ObjBean(&i).Name("int_ptr")
 
 		i2 := int(3)
-		ctx.ObjBean(&i2).WithName("int_ptr_2")
+		ctx.ObjBean(&i2).Name("int_ptr_2")
 
 		util.AssertPanic(t, func() {
 			ctx.AutoWireBeans()
@@ -276,27 +276,27 @@ func TestApplicationContext_AutoWireBeans(t *testing.T) {
 	ctx.ObjBean(obj)
 
 	i := int(3)
-	ctx.ObjBean(&i).WithName("int_ptr")
+	ctx.ObjBean(&i).Name("int_ptr")
 
 	is := []int{1, 2, 3}
-	ctx.ObjBean(is).WithName("int_slice_1")
+	ctx.ObjBean(is).Name("int_slice_1")
 
 	is2 := []int{2, 3, 4}
-	ctx.ObjBean(is2).WithName("int_slice_2")
+	ctx.ObjBean(is2).Name("int_slice_2")
 
 	i2 := 4
 	ips := []*int{&i2}
-	ctx.ObjBean(ips).WithName("int_ptr_slice")
+	ctx.ObjBean(ips).Name("int_ptr_slice")
 
 	b := TestBincoreng{1}
-	ctx.ObjBean(&b).WithName("struct_ptr").Export((*fmt.Stringer)(nil))
+	ctx.ObjBean(&b).Name("struct_ptr").Export((*fmt.Stringer)(nil))
 
 	bs := []TestBincoreng{{10}}
-	ctx.ObjBean(bs).WithName("struct_slice")
+	ctx.ObjBean(bs).Name("struct_slice")
 
 	b2 := TestBincoreng{2}
 	bps := []*TestBincoreng{&b2}
-	ctx.ObjBean(bps).WithName("struct_ptr_slice")
+	ctx.ObjBean(bps).Name("struct_ptr_slice")
 
 	s := []fmt.Stringer{&TestBincoreng{3}}
 	ctx.ObjBean(s)
@@ -305,13 +305,13 @@ func TestApplicationContext_AutoWireBeans(t *testing.T) {
 		"5": 5,
 	}
 
-	ctx.ObjBean(m).WithName("map")
+	ctx.ObjBean(m).Name("map")
 
 	f1 := float32(11.0)
-	ctx.ObjBean(&f1).WithName("float_ptr_1")
+	ctx.ObjBean(&f1).Name("float_ptr_1")
 
 	f2 := float32(12.0)
-	ctx.ObjBean(&f2).WithName("float_ptr_2")
+	ctx.ObjBean(&f2).Name("float_ptr_2")
 
 	ctx.AutoWireBeans()
 
@@ -581,8 +581,8 @@ type DiffPkgHolder struct {
 
 func TestApplicationContext_DiffNameBean(t *testing.T) {
 	ctx := core.NewApplicationContext()
-	ctx.ObjBean(&DiffPkgOne{}).WithName("same").Export((*Pkg)(nil))
-	ctx.ObjBean(&DiffPkgTwo{}).WithName("same").Export((*Pkg)(nil))
+	ctx.ObjBean(&DiffPkgOne{}).Name("same").Export((*Pkg)(nil))
+	ctx.ObjBean(&DiffPkgTwo{}).Name("same").Export((*Pkg)(nil))
 	ctx.ObjBean(new(DiffPkgHolder))
 	ctx.AutoWireBeans()
 }
@@ -802,10 +802,10 @@ func TestApplicationContext_RegisterBeanFn(t *testing.T) {
 	// 用接口注册时实际使用的是原始类型
 	ctx.ObjBean(Teacher(newHistoryTeacher(""))).Export((*Teacher)(nil))
 
-	ctx.CtorBean(NewStudent, "", "${room}").WithName("st1")
-	ctx.CtorBean(NewPtrStudent, "", "${room}").WithName("st2")
-	ctx.CtorBean(NewStudent, "?", "${room:=http://}").WithName("st3")
-	ctx.CtorBean(NewPtrStudent, "?", "${room:=4567}").WithName("st4")
+	ctx.CtorBean(NewStudent, "", "${room}").Name("st1")
+	ctx.CtorBean(NewPtrStudent, "", "${room}").Name("st2")
+	ctx.CtorBean(NewStudent, "?", "${room:=http://}").Name("st3")
+	ctx.CtorBean(NewPtrStudent, "?", "${room:=4567}").Name("st4")
 
 	mapFn := func() map[int]string {
 		return map[int]string{
@@ -963,7 +963,7 @@ func TestApplicationContext_Primary(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
 		ctx.ObjBean(&BeanZero{5})
-		ctx.ObjBean(&BeanZero{6}).WithName("zero_6").SetPrimary(true)
+		ctx.ObjBean(&BeanZero{6}).Name("zero_6").SetPrimary(true)
 		ctx.ObjBean(new(BeanOne))
 		ctx.ObjBean(new(BeanTwo))
 		ctx.AutoWireBeans()
@@ -1053,10 +1053,10 @@ func TestApplicationContext_RegisterBeanFn2(t *testing.T) {
 		ctx.SetProperty("manager.version", "1.0.0")
 
 		bd := ctx.CtorBean(NewManager)
-		util.AssertEqual(t, bd.Name(), "core_test.Manager")
+		util.AssertEqual(t, bd.BeanName(), "core_test.Manager")
 
 		bd = ctx.CtorBean(NewInt)
-		util.AssertEqual(t, bd.Name(), "*int")
+		util.AssertEqual(t, bd.BeanName(), "*int")
 
 		ctx.AutoWireBeans()
 
@@ -1358,7 +1358,7 @@ func TestApplicationContext_CollectBeans(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
 		ctx.SetProperty("recores.endpoints", "recores://localhost:6379")
-		ctx.ObjBean(new(RecoresCluster)).WithName("one")
+		ctx.ObjBean(new(RecoresCluster)).Name("one")
 		ctx.ObjBean(new(RecoresCluster))
 		ctx.AutoWireBeans()
 
@@ -1375,7 +1375,7 @@ func TestApplicationContext_CollectBeans(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
 		ctx.SetProperty("recores.endpoints", "recores://localhost:6379")
-		ctx.ObjBean(d1).WithName("one")
+		ctx.ObjBean(d1).Name("one")
 		ctx.ObjBean(d2)
 		ctx.AutoWireBeans()
 
@@ -1394,7 +1394,7 @@ func TestApplicationContext_CollectBeans(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
 		ctx.SetProperty("recores.endpoints", "recores://localhost:6379")
-		ctx.ObjBean(d1).WithName("one")
+		ctx.ObjBean(d1).Name("one")
 		ctx.ObjBean(d2)
 		ctx.AutoWireBeans()
 
@@ -1410,7 +1410,7 @@ func TestApplicationContext_CollectBeans(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
 		ctx.SetProperty("recores.endpoints", "recores://localhost:6379")
-		ctx.ObjBean(new(RecoresCluster)).WithName("one")
+		ctx.ObjBean(new(RecoresCluster)).Name("one")
 		ctx.ObjBean(new(RecoresCluster))
 		ctx.AutoWireBeans()
 
@@ -1436,7 +1436,7 @@ func TestApplicationContext_CollectBeans(t *testing.T) {
 		util.AssertEqual(t, len(rcs), 2)
 		util.AssertEqual(t, rcs[0].Endpoints, "recores://localhost:6379")
 	})
-	util.AssertEqual(t, intBean.Name(), "*int")
+	util.AssertEqual(t, intBean.BeanName(), "*int")
 
 	ctx.AutoWireBeans()
 
@@ -1685,7 +1685,7 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 		parent := ctx.ObjBean(new(Server))
 		bd := ctx.CtorBean((*Server).Consumer, parent.BeanId())
 		ctx.AutoWireBeans()
-		util.AssertEqual(t, bd.Name(), "*core_test.Consumer")
+		util.AssertEqual(t, bd.BeanName(), "*core_test.Consumer")
 
 		var s *Server
 		ok := ctx.GetBean(&s)
@@ -1978,8 +1978,8 @@ func TestApplicationContext_RegisterOptionBean(t *testing.T) {
 	t.Run("variable option param 1", func(t *testing.T) {
 		ctx := core.NewApplicationContext()
 		ctx.SetProperty("var.obj", "description")
-		ctx.ObjBean(&Var{"v1"}).WithName("v1")
-		ctx.ObjBean(&Var{"v2"}).WithName("v2")
+		ctx.ObjBean(&Var{"v1"}).Name("v1")
+		ctx.ObjBean(&Var{"v2"}).Name("v2")
 		ctx.CtorBean(NewVarObj, "${var.obj}", arg.Option(withVar, "v1"))
 		ctx.AutoWireBeans()
 
@@ -1994,8 +1994,8 @@ func TestApplicationContext_RegisterOptionBean(t *testing.T) {
 	t.Run("variable option param 2", func(t *testing.T) {
 		ctx := core.NewApplicationContext()
 		ctx.SetProperty("var.obj", "description")
-		ctx.ObjBean(&Var{"v1"}).WithName("v1")
-		ctx.ObjBean(&Var{"v2"}).WithName("v2")
+		ctx.ObjBean(&Var{"v1"}).Name("v1")
+		ctx.ObjBean(&Var{"v2"}).Name("v2")
 		ctx.CtorBean(NewVarObj, "${var.obj}", arg.Option(withVar, "v1", "v2"))
 		ctx.AutoWireBeans()
 
@@ -2010,8 +2010,8 @@ func TestApplicationContext_RegisterOptionBean(t *testing.T) {
 
 	t.Run("variable option interface param 1", func(t *testing.T) {
 		ctx := core.NewApplicationContext()
-		ctx.ObjBean(&Var{"v1"}).WithName("v1").Export((*interface{})(nil))
-		ctx.ObjBean(&Var{"v2"}).WithName("v2").Export((*interface{})(nil))
+		ctx.ObjBean(&Var{"v1"}).Name("v1").Export((*interface{})(nil))
+		ctx.ObjBean(&Var{"v2"}).Name("v2").Export((*interface{})(nil))
 		ctx.CtorBean(NewVarInterfaceObj, arg.Option(withVarInterface, "v1"))
 		ctx.AutoWireBeans()
 
@@ -2023,8 +2023,8 @@ func TestApplicationContext_RegisterOptionBean(t *testing.T) {
 
 	t.Run("variable option interface param 1", func(t *testing.T) {
 		ctx := core.NewApplicationContext()
-		ctx.ObjBean(&Var{"v1"}).WithName("v1").Export((*interface{})(nil))
-		ctx.ObjBean(&Var{"v2"}).WithName("v2").Export((*interface{})(nil))
+		ctx.ObjBean(&Var{"v1"}).Name("v1").Export((*interface{})(nil))
+		ctx.ObjBean(&Var{"v2"}).Name("v2").Export((*interface{})(nil))
 		ctx.CtorBean(NewVarInterfaceObj, arg.Option(withVarInterface, "v1", "v2"))
 		ctx.AutoWireBeans()
 
@@ -2336,7 +2336,7 @@ func TestApplicationContext_NestValueField(t *testing.T) {
 		ctx.SetProperty("sdk.wx.enable", true)
 
 		bd := ctx.CtorBean(func() int { return 3 })
-		util.AssertEqual(t, bd.Name(), "*int")
+		util.AssertEqual(t, bd.BeanName(), "*int")
 
 		ctx.ObjBean(new(wxChannel))
 		ctx.AutoWireBeans()
@@ -2377,8 +2377,8 @@ func TestApplicationContext_FnArgCollectBean(t *testing.T) {
 
 	t.Run("base type", func(t *testing.T) {
 		ctx := core.NewApplicationContext()
-		ctx.CtorBean(func() int { return 3 }).WithName("i1")
-		ctx.CtorBean(func() int { return 4 }).WithName("i2")
+		ctx.CtorBean(func() int { return 3 }).Name("i1")
+		ctx.CtorBean(func() int { return 4 }).Name("i2")
 		ctx.CtorBean(func(i []*int) bool {
 			nums := make([]int, 0)
 			for _, e := range i {
@@ -2393,8 +2393,8 @@ func TestApplicationContext_FnArgCollectBean(t *testing.T) {
 
 	t.Run("interface type", func(t *testing.T) {
 		ctx := core.NewApplicationContext()
-		ctx.ObjBean(newHistoryTeacher("t1")).WithName("t1").Export((*Teacher)(nil))
-		ctx.ObjBean(newHistoryTeacher("t2")).WithName("t2").Export((*Teacher)(nil))
+		ctx.ObjBean(newHistoryTeacher("t1")).Name("t1").Export((*Teacher)(nil))
+		ctx.ObjBean(newHistoryTeacher("t2")).Name("t2").Export((*Teacher)(nil))
 		ctx.CtorBean(func(teachers []Teacher) bool {
 			names := make([]string, 0)
 			for _, teacher := range teachers {
@@ -2437,8 +2437,8 @@ func TestApplicationContext_BeanCache(t *testing.T) {
 		}
 
 		ctx := core.NewApplicationContext()
-		ctx.CtorBean(func() filter { return new(filterImpl) }).WithName("f1")
-		ctx.ObjBean(new(filterImpl)).Export((*filter)(nil)).WithName("f2")
+		ctx.CtorBean(func() filter { return new(filterImpl) }).Name("f1")
+		ctx.ObjBean(new(filterImpl)).Export((*filter)(nil)).Name("f2")
 		ctx.ObjBean(&server)
 
 		ctx.AutoWireBeans()
@@ -2576,7 +2576,7 @@ func TestApplicationContext_AutoExport(t *testing.T) {
 		ctx.ObjBean(&struct {
 			Error error `autowire:"e"`
 		}{})
-		ctx.ObjBean(b).WithName("e")
+		ctx.ObjBean(b).Name("e")
 		ctx.AutoWireBeans()
 	})
 
@@ -2586,7 +2586,7 @@ func TestApplicationContext_AutoExport(t *testing.T) {
 		ctx.ObjBean(&struct {
 			Error error `autowire:"e"`
 		}{})
-		ctx.ObjBean(b).WithName("e").Export((*error)(nil))
+		ctx.ObjBean(b).Name("e").Export((*error)(nil))
 		ctx.AutoWireBeans()
 	})
 
