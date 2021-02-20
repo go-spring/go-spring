@@ -15,6 +15,44 @@ import (
 
 type Arg interface{}
 
+// IndexArg 包含下标的参数
+type IndexArg struct {
+	idx int
+	arg Arg
+}
+
+// Index IndexArg 的构造函数
+func Index(idx int, arg Arg) IndexArg {
+	return IndexArg{idx: idx, arg: arg}
+}
+
+// R1 封装下标为 1 的参数
+func R1(arg Arg) IndexArg { return Index(1, arg) }
+
+// R2 封装下标为 2 的参数
+func R2(arg Arg) IndexArg { return Index(2, arg) }
+
+// R3 封装下标为 3 的参数
+func R3(arg Arg) IndexArg { return Index(3, arg) }
+
+// R4 封装下标为 4 的参数
+func R4(arg Arg) IndexArg { return Index(4, arg) }
+
+// R5 封装下标为 5 的参数
+func R5(arg Arg) IndexArg { return Index(5, arg) }
+
+// R6 封装下标为 6 的参数
+func R6(arg Arg) IndexArg { return Index(6, arg) }
+
+// R7 封装下标为 7 的参数
+func R7(arg Arg) IndexArg { return Index(7, arg) }
+
+// ValueArg 直接包含值的参数
+type ValueArg struct{ v interface{} }
+
+// Value ValueArg 的构造函数
+func Value(v interface{}) ValueArg { return ValueArg{v: v} }
+
 type ArgList struct {
 	fnType       reflect.Type
 	WithReceiver bool
@@ -22,7 +60,84 @@ type ArgList struct {
 }
 
 func NewArgList(fnType reflect.Type, withReceiver bool, args []Arg) *ArgList {
-	return &ArgList{fnType: fnType, WithReceiver: withReceiver, args: args}
+	fnArgCount := fnType.NumIn()
+
+	// 可选参数使用 append 所以减 1
+	if fnType.IsVariadic() {
+		fnArgCount--
+	}
+
+	// 接收者自动传入所以减 1
+	if withReceiver {
+		fnArgCount--
+	}
+
+	fnArgs := make([]Arg, fnArgCount)
+
+	shouldIndex := false
+	if len(args) > 0 {
+		switch arg := args[0].(type) {
+		case IndexArg:
+			shouldIndex = true
+			idx := arg.idx - 1
+			if idx < 0 || idx >= fnArgCount {
+				panic(errors.New("参数索引超出函数入参的个数"))
+			}
+			fnArgs[idx] = arg.arg
+		case *option:
+			fnArgs = append(fnArgs, arg)
+		default:
+			if fnArgCount == 0 {
+				if fnType.IsVariadic() {
+					fnArgs = append(fnArgs, arg)
+				} else {
+					panic(errors.New("参数索引超出函数入参的个数"))
+				}
+			} else {
+				fnArgs[0] = arg
+			}
+		}
+	}
+
+	for i := 1; i < len(args); i++ {
+		switch arg := args[i].(type) {
+		case IndexArg:
+			if !shouldIndex {
+				panic(errors.New("所有非可选参数必须都有或者都没有索引"))
+			}
+			idx := arg.idx - 1
+			if idx < 0 || idx >= fnArgCount {
+				panic(errors.New("参数索引超出函数入参的个数"))
+			}
+			if fnArgs[idx] != nil {
+				panic(fmt.Errorf("发现相同索引<%d>的参数", arg.idx))
+			}
+			fnArgs[idx] = arg.arg
+		case *option:
+			fnArgs = append(fnArgs, arg)
+		default:
+			if shouldIndex {
+				panic(errors.New("所有非可选参数必须都有或者都没有索引"))
+			}
+			if i >= fnArgCount {
+				if fnType.IsVariadic() {
+					fnArgs = append(fnArgs, arg)
+				} else {
+					panic(errors.New("参数索引超出函数入参的个数"))
+				}
+			} else {
+				fnArgs[i] = arg
+			}
+		}
+	}
+
+	for i := 0; i < fnArgCount; i++ {
+		if fnArgs[i] == nil {
+			fnArgs[i] = ""
+		}
+	}
+
+	return &ArgList{fnType: fnType, WithReceiver: withReceiver, args: fnArgs}
 }
 
 // Get 获取函数参数的绑定值，fileLine 是函数所在文件及其行号，日志使用
@@ -40,28 +155,20 @@ func (argList *ArgList) Get(assembly bean.Assembly, fileLine string) []reflect.V
 	result := make([]reflect.Value, 0)
 
 	for i, arg := range argList.args {
-		var it reflect.Type
 
-		if variadic && i >= numIn-1 {
-			if argList.WithReceiver {
-				it = fnType.In(numIn)
-			} else {
-				it = fnType.In(numIn - 1)
-			}
-		} else {
-			if argList.WithReceiver {
-				it = fnType.In(i + 1)
-			} else {
-				it = fnType.In(i)
-			}
+		idx := i
+		if argList.WithReceiver {
+			idx++
 		}
 
-		if variadic && i >= numIn-1 { // 可变参数
-			ev := argList.getArgValue(it.Elem(), arg, assembly, fileLine)
-			if ev.IsValid() {
+		if variadic && idx >= numIn-1 {
+			it := fnType.In(numIn - 1).Elem()
+			ev := argList.getArgValue(it, arg, assembly, fileLine)
+			if ev.IsValid() { // 条件可能不满足所以没有对应的参数
 				result = append(result, ev)
 			}
 		} else {
+			it := fnType.In(idx)
 			iv := argList.getArgValue(it, arg, assembly, fileLine)
 			result = append(result, iv)
 		}
@@ -78,16 +185,14 @@ func (argList *ArgList) getArgValue(t reflect.Type, arg Arg, assembly bean.Assem
 	defer log.Tracef("get value success %s", description)
 	log.Tracef("get value %s", description)
 
-	if arg == nil {
-		panic(errors.New("selector can't be nil or empty"))
-	}
-
 	selector := ""
 	switch tArg := arg.(type) {
-	//case *BeanDefinition: TODO 怎么支持呢？
-	//	selector = tArg.BeanId()
+	case ValueArg:
+		return reflect.ValueOf(tArg.v)
 	case *option:
 		return tArg.call(assembly)
+	case bean.Definition:
+		selector = tArg.BeanId()
 	case string:
 		selector = tArg
 	default:
@@ -107,10 +212,6 @@ func (argList *ArgList) getArgValue(t reflect.Type, arg Arg, assembly bean.Assem
 	}
 	return v
 }
-
-type value struct{ v interface{} }
-
-func Value(v interface{}) *value { return &value{v: v} }
 
 // option Option 函数的绑定参数
 type option struct {
@@ -157,14 +258,9 @@ func Option(fn interface{}, args ...Arg) *option {
 		panic(errors.New("option func must be func(...)option"))
 	}
 
-	fnArgs := make([]Arg, len(args))
-	for i, arg := range args {
-		fnArgs[i] = arg
-	}
-
 	return &option{
 		fn:      fn,
-		argList: NewArgList(fnType, false, fnArgs),
+		argList: NewArgList(fnType, false, args),
 		file:    file,
 		line:    line,
 	}
@@ -195,31 +291,4 @@ func (arg *option) call(assembly bean.Assembly) reflect.Value {
 	}
 
 	return reflect.Value{}
-}
-
-type Map struct{}
-
-// 返回带索引的参数
-func R1(arg Arg) {
-
-}
-
-func R2(arg Arg) {
-
-}
-
-func R3(arg Arg) {
-
-}
-
-func R4(arg Arg) {
-
-}
-
-func R5(arg Arg) {
-
-}
-
-func R6(arg Arg) {
-
 }

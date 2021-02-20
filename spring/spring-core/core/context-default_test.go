@@ -1819,15 +1819,6 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 	})
 
 	t.Run("method bean selector type error", func(t *testing.T) {
-
-		util.AssertPanic(t, func() {
-			ctx := core.NewApplicationContext()
-			ctx.SetProperty("server.version", "1.0.0")
-			ctx.ObjBean(new(Server))
-			ctx.CtorBean(func(s *Server) *Consumer { return s.Consumer() }, (fmt.Stringer)(nil))
-			ctx.AutoWireBeans()
-		}, "selector can't be nil or empty")
-
 		util.AssertPanic(t, func() {
 			ctx := core.NewApplicationContext()
 			ctx.SetProperty("server.version", "1.0.0")
@@ -1996,7 +1987,7 @@ func TestApplicationContext_RegisterOptionBean(t *testing.T) {
 		ctx.SetProperty("var.obj", "description")
 		ctx.ObjBean(&Var{"v1"}).Name("v1")
 		ctx.ObjBean(&Var{"v2"}).Name("v2")
-		ctx.CtorBean(NewVarObj, "${var.obj}", arg.Option(withVar, "v1", "v2"))
+		ctx.CtorBean(NewVarObj, arg.Value("description"), arg.Option(withVar, "v1", "v2"))
 		ctx.AutoWireBeans()
 
 		var obj *VarObj
@@ -2780,6 +2771,6 @@ func TestApplicationContext_CreateBean(t *testing.T) {
 	ctx.ObjBean(&ObjFactory{})
 	ctx.AutoWireBeans()
 
-	b, err := ctx.CreateBean((*ObjFactory).NewObj, "", "${i:=5}")
+	b, err := ctx.CreateBean((*ObjFactory).NewObj, arg.R2("${i:=5}"))
 	fmt.Println(b, err)
 }

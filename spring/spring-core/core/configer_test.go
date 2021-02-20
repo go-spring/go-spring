@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/go-spring/spring-core/arg"
 	"github.com/go-spring/spring-core/core/internal/sort"
 	"github.com/go-spring/spring-core/util"
 )
@@ -31,9 +30,9 @@ func TestSortConfigers(t *testing.T) {
 	t.Run("found cycle", func(t *testing.T) {
 		util.AssertPanic(t, func() {
 
-			f2 := Config(func() {}, []arg.Arg{}).After("f5").WithName("f2")
-			f5 := Config(func() {}, []arg.Arg{}).After("f2").WithName("f5")
-			f7 := Config(func() {}, []arg.Arg{}).Before("f2")
+			f2 := Config(func() {}).After("f5").WithName("f2")
+			f5 := Config(func() {}).After("f2").WithName("f5")
+			f7 := Config(func() {}).Before("f2")
 
 			configers := list.New()
 			configers.PushBack(f5)
@@ -51,9 +50,9 @@ func TestSortConfigers(t *testing.T) {
 
 	t.Run("sorted", func(t *testing.T) {
 
-		f2 := Config(func() {}, []arg.Arg{}).WithName("f2")
-		f5 := Config(func() {}, []arg.Arg{}).WithName("f5").After("f2")
-		f7 := Config(func() {}, []arg.Arg{}).Before("f2")
+		f2 := Config(func() {}).WithName("f2")
+		f5 := Config(func() {}).WithName("f5").After("f2")
+		f7 := Config(func() {}).Before("f2")
 
 		configers := list.New()
 		configers.PushBack(f5)
