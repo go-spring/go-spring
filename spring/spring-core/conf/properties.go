@@ -40,23 +40,23 @@ type Properties interface {
 	// Has 查询属性值是否存在，属性名称统一转成小写。
 	Has(key string) bool
 
-	// Bind 根据类型获取属性值，属性名称统一转成小写。
-	Bind(key string, i interface{}) error
-
 	// Get 返回属性值，不能存在返回 nil，属性名称统一转成小写。
 	Get(key string) interface{}
-
-	// First 返回 keys 中第一个存在的属性值，属性名称统一转成小写。
-	First(keys ...string) interface{}
-
-	// Default 返回属性值，如果没有找到则使用指定的默认值，属性名称统一转成小写。
-	Default(key string, def interface{}) interface{}
 
 	// Set 设置属性值，属性名称统一转成小写。
 	Set(key string, value interface{})
 
 	// Range 遍历所有的属性值，属性名称统一转成小写。
 	Range(fn func(string, interface{}))
+
+	// Bind 根据类型获取属性值，属性名称统一转成小写。
+	Bind(key string, i interface{}) error
+
+	// First 返回 keys 中第一个存在的属性值，属性名称统一转成小写。
+	First(keys ...string) interface{}
+
+	// Default 返回属性值，如果没有找到则使用指定的默认值，属性名称统一转成小写。
+	Default(key string, def interface{}) interface{}
 
 	// Prefix 返回指定前缀的属性值集合，属性名称统一转成小写。
 	Prefix(key string) map[string]interface{}
@@ -128,6 +128,35 @@ func (p *properties) Get(key string) interface{} {
 	return nil
 }
 
+// Set 设置属性值，属性名称统一转成小写。
+func (p *properties) Set(key string, value interface{}) {
+	p.m[strings.ToLower(key)] = value
+}
+
+// Range 遍历所有的属性值，属性名称统一转成小写。
+func (p *properties) Range(fn func(string, interface{})) {
+	for key, val := range p.m {
+		fn(key, val)
+	}
+}
+
+// Bind 根据类型获取属性值，属性名称统一转成小写。
+func (p *properties) Bind(key string, i interface{}) error {
+
+	v := reflect.ValueOf(i)
+	if v.Kind() != reflect.Ptr {
+		return errors.New("参数 v 必须是一个指针")
+	}
+
+	t := v.Type().Elem()
+	s := t.Name() // 当绑定对象是 map 或者 slice 时，取元素的类型名
+	if s == "" && (t.Kind() == reflect.Map || t.Kind() == reflect.Slice) {
+		s = t.Elem().Name()
+	}
+
+	return BindValue(p, v.Elem(), "${"+key+"}", BindOption{FieldName: s, FullName: key})
+}
+
 // First 返回 keys 中第一个存在的属性值，属性名称统一转成小写。
 func (p *properties) First(keys ...string) interface{} {
 	for _, key := range keys {
@@ -146,18 +175,6 @@ func (p *properties) Default(key string, def interface{}) interface{} {
 	return def
 }
 
-// Set 设置属性值，属性名称统一转成小写。
-func (p *properties) Set(key string, value interface{}) {
-	p.m[strings.ToLower(key)] = value
-}
-
-// Range 遍历所有的属性值，属性名称统一转成小写。
-func (p *properties) Range(fn func(string, interface{})) {
-	for key, val := range p.m {
-		fn(key, val)
-	}
-}
-
 // Prefix 返回指定前缀的属性值集合，属性名称统一转成小写。
 func (p *properties) Prefix(key string) map[string]interface{} {
 	key = strings.ToLower(key)
@@ -168,21 +185,4 @@ func (p *properties) Prefix(key string) map[string]interface{} {
 		}
 	}
 	return result
-}
-
-// Bind 根据类型获取属性值，属性名称统一转成小写。
-func (p *properties) Bind(key string, i interface{}) error {
-
-	v := reflect.ValueOf(i)
-	if v.Kind() != reflect.Ptr {
-		return errors.New("参数 v 必须是一个指针")
-	}
-
-	t := v.Type().Elem()
-	s := t.Name() // 当绑定对象是 map 或者 slice 时，取元素的类型名
-	if s == "" && (t.Kind() == reflect.Map || t.Kind() == reflect.Slice) {
-		s = t.Elem().Name()
-	}
-
-	return BindValue(p, v.Elem(), "${"+key+"}", BindOption{FieldName: s, FullName: key})
 }

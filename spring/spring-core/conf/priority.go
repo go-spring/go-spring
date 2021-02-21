@@ -37,11 +37,6 @@ func (p *priorityProperties) Has(key string) bool {
 	return p.Properties.Has(key) || p.next.Has(key)
 }
 
-// Bind 根据类型获取属性值，属性名称统一转成小写。
-func (p *priorityProperties) Bind(key string, i interface{}) error {
-	panic(util.UnimplementedMethod)
-}
-
 // Get 返回属性值，不能存在返回 nil，属性名称统一转成小写。
 func (p *priorityProperties) Get(key string) interface{} {
 	if v := p.Properties.Get(key); v == nil {
@@ -49,6 +44,17 @@ func (p *priorityProperties) Get(key string) interface{} {
 	} else {
 		return v
 	}
+}
+
+// Range 遍历所有的属性值，属性名称统一转成小写。TODO 实现并不完美。
+func (p *priorityProperties) Range(fn func(string, interface{})) {
+	p.Properties.Range(fn)
+	p.next.Range(fn)
+}
+
+// Bind 根据类型获取属性值，属性名称统一转成小写。
+func (p *priorityProperties) Bind(key string, i interface{}) error {
+	panic(util.UnimplementedMethod)
 }
 
 // First 返回 keys 中第一个存在的属性值，属性名称统一转成小写。
@@ -67,12 +73,6 @@ func (p *priorityProperties) Default(key string, def interface{}) interface{} {
 	} else {
 		return v
 	}
-}
-
-// Range 遍历所有的属性值，属性名称统一转成小写。TODO 实现并不完美。
-func (p *priorityProperties) Range(fn func(string, interface{})) {
-	p.Properties.Range(fn)
-	p.next.Range(fn)
 }
 
 // Fill Fill 填充所有的属性值，属性名称统一转成小写。TODO 实现并不完美。
