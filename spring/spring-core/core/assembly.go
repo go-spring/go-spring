@@ -472,7 +472,7 @@ func (assembly *defaultBeanAssembly) wireObjectBean(bd bean.Definition, onlyAuto
 				if !onlyAutoWire { // 防止 value 再次解析
 					if tag, ok := ft.Tag.Lookup("value"); ok {
 						fieldOnlyAutoWire = true
-						err := conf.BindValue(assembly.appCtx.properties, fv, tag, conf.BindOption{FieldName: fieldName})
+						err := conf.BindValue(assembly.appCtx.properties, fv, tag, conf.BindOption{Path: fieldName})
 						util.Panic(err).When(err != nil)
 					}
 				}

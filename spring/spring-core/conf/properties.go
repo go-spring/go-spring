@@ -154,7 +154,7 @@ func (p *properties) Bind(key string, i interface{}) error {
 		s = t.Elem().Name()
 	}
 
-	return BindValue(p, v.Elem(), "${"+key+"}", BindOption{FieldName: s, FullName: key})
+	return BindValue(p, v.Elem(), "${"+key+"}", BindOption{Path: s, Key: key})
 }
 
 // First 返回 keys 中第一个存在的属性值，属性名称统一转成小写。
