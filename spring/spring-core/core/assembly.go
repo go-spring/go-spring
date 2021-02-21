@@ -175,9 +175,7 @@ func (assembly *defaultBeanAssembly) getBeanValue(v reflect.Value, tag Singleton
 
 	// 对找到的 Bean 进行自动注入
 	assembly.wireBeanDefinition(result, false)
-
-	v0 := util.PatchValue(v, true)
-	v0.Set(result.Value())
+	util.PatchValue(v).Set(result.Value())
 	return true
 }
 
@@ -200,8 +198,7 @@ func (assembly *defaultBeanAssembly) collectBeans(v reflect.Value, tag collectio
 	}
 
 	if result.Len() > 0 { // 找到多个符合条件的结果
-		v = util.PatchValue(v, true)
-		v.Set(result)
+		util.PatchValue(v).Set(result)
 		return true
 	}
 
@@ -489,11 +486,8 @@ func (assembly *defaultBeanAssembly) wireObjectBean(bd bean.Definition, onlyAuto
 
 				// 只处理结构体类型的字段，防止递归所以不支持指针结构体字段
 				if ft.Type.Kind() == reflect.Struct {
-
 					// 开放私有字段，但是不会更新其原有可见属性
-					fv0 := util.PatchValue(fv, true)
-					if fv0.CanSet() {
-
+					if fv0 := util.PatchValue(fv); fv0.CanSet() {
 						// 对 Bean 的结构体进行递归注入
 						b := valueBean(fv0.Addr(), bd.GetFile(), bd.GetLine())
 						fbd := &fieldBeanDefinition{b, fieldName}

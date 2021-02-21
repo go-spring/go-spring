@@ -64,8 +64,8 @@ type BindOption struct {
 func bindStruct(p Properties, v reflect.Value, opt BindOption) error {
 	t := v.Type()
 	for i := 0; i < t.NumField(); i++ {
-		ft := t.Field(i) // TODO 去掉 true 参数
-		fv := util.PatchValue(v.Field(i), true)
+		ft := t.Field(i)
+		fv := util.PatchValue(v.Field(i))
 
 		subOpt := BindOption{
 			Prefix: opt.Prefix,
