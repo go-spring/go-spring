@@ -44,7 +44,6 @@ type BindOption struct {
 	FieldName  string // 结构体字段的名称
 }
 
-// TODO 我知道这一大段看着很累，等我有时间了再来优化，我也很头痛 ><
 func bindStruct(p Properties, v reflect.Value, opt BindOption) error {
 	t := v.Type()
 	for i := 0; i < t.NumField(); i++ {
@@ -133,75 +132,94 @@ func BindValue(p Properties, v reflect.Value, tag string, opt BindOption) error 
 
 	// 存在值类型转换器的情况下结构体优先使用属性值绑定
 	if fn, ok := converters[t]; ok {
-		propValue, err := getProperty()
-		if err == nil {
-			fnValue := reflect.ValueOf(fn)
-			out := fnValue.Call([]reflect.Value{reflect.ValueOf(propValue)})
-			v.Set(out[0])
+		prop, err := getProperty()
+		if err != nil {
+			return err
 		}
-		return err
+		fnValue := reflect.ValueOf(fn)
+		out := fnValue.Call([]reflect.Value{reflect.ValueOf(prop)})
+		v.Set(out[0])
+		return nil
 	}
 
 	if k == reflect.Struct {
-		if def == nil {
-			return bindStruct(p, v, BindOption{
-				PrefixName: key,
-				FullName:   opt.FullName,
-				FieldName:  opt.FieldName,
-			})
-		} else { // 前面已经校验过是否存在值类型转换器
+		if def != nil { // 前面已经校验过是否存在值类型转换器
 			return fmt.Errorf("%s 结构体字段不能指定默认值", opt.FieldName)
 		}
+		return bindStruct(p, v, BindOption{PrefixName: key, FullName: opt.FullName, FieldName: opt.FieldName})
 	}
 
-	propValue, err := getProperty()
-	if err != nil {
-		return err
+	if converter, ok := kindConverters[k]; ok {
+		prop, err := getProperty()
+		if err != nil {
+			return err
+		}
+		return converter(&v, key, prop, opt)
 	}
+	return errors.New(opt.FieldName + " unsupported type " + v.Kind().String())
+}
 
-	switch k {
-	case reflect.Uint64, reflect.Uint32, reflect.Uint16, reflect.Uint8, reflect.Uint:
-		if u, err := cast.ToUint64E(propValue); err == nil {
+func init() {
+
+	kindConverter(func(v *reflect.Value, key string, prop interface{}, opt BindOption) error {
+		if u, err := cast.ToUint64E(prop); err == nil {
 			v.SetUint(u)
+			return nil
 		} else {
 			return fmt.Errorf("property value %s isn't uint type", opt.FullName)
 		}
-	case reflect.Int64, reflect.Int32, reflect.Int16, reflect.Int8, reflect.Int:
-		if i, err := cast.ToInt64E(propValue); err == nil {
+	}, reflect.Uint64, reflect.Uint32, reflect.Uint16, reflect.Uint8, reflect.Uint)
+
+	kindConverter(func(v *reflect.Value, key string, prop interface{}, opt BindOption) error {
+		if i, err := cast.ToInt64E(prop); err == nil {
 			v.SetInt(i)
+			return nil
 		} else {
 			return fmt.Errorf("property value %s isn't int type", opt.FullName)
 		}
-	case reflect.Float64, reflect.Float32:
-		if f, err := cast.ToFloat64E(propValue); err == nil {
+	}, reflect.Int64, reflect.Int32, reflect.Int16, reflect.Int8, reflect.Int)
+
+	kindConverter(func(v *reflect.Value, key string, prop interface{}, opt BindOption) error {
+		if f, err := cast.ToFloat64E(prop); err == nil {
 			v.SetFloat(f)
+			return nil
 		} else {
 			return fmt.Errorf("property value %s isn't float type", opt.FullName)
 		}
-	case reflect.String:
-		if s, err := cast.ToStringE(propValue); err == nil {
+	}, reflect.Float64, reflect.Float32)
+
+	kindConverter(func(v *reflect.Value, key string, prop interface{}, opt BindOption) error {
+		if s, err := cast.ToStringE(prop); err == nil {
 			v.SetString(s)
+			return nil
 		} else {
 			return fmt.Errorf("property value %s isn't string type", opt.FullName)
 		}
-	case reflect.Bool:
-		if b, err := cast.ToBoolE(propValue); err == nil {
+	}, reflect.String)
+
+	kindConverter(func(v *reflect.Value, key string, prop interface{}, opt BindOption) error {
+		if b, err := cast.ToBoolE(prop); err == nil {
 			v.SetBool(b)
+			return nil
 		} else {
 			return fmt.Errorf("property value %s isn't bool type", opt.FullName)
 		}
-	case reflect.Slice:
-		elemType := v.Type().Elem()
+	}, reflect.Bool)
+
+	kindConverter(func(v *reflect.Value, key string, prop interface{}, opt BindOption) error {
+
+		t := v.Type()
+		elemType := t.Elem()
 		elemKind := elemType.Kind()
 
 		// 如果是字符串的话，尝试按照逗号进行切割
-		if s, ok := propValue.(string); ok {
-			propValue = strings.Split(s, ",")
+		if s, ok := prop.(string); ok {
+			prop = strings.Split(s, ",")
 		}
 
 		// 处理使用类型转换器的场景
 		if fn, ok := converters[elemType]; ok {
-			if s0, err := cast.ToStringSliceE(propValue); err == nil {
+			if s0, err := cast.ToStringSliceE(prop); err == nil {
 				sv := reflect.MakeSlice(t, len(s0), len(s0))
 				fnValue := reflect.ValueOf(fn)
 				for i, iv := range s0 {
@@ -217,61 +235,61 @@ func BindValue(p Properties, v reflect.Value, tag string, opt BindOption) error 
 
 		switch elemKind {
 		case reflect.Uint64:
-			if i, err := ToUint64SliceE(propValue); err == nil {
+			if i, err := ToUint64SliceE(prop); err == nil {
 				v.Set(reflect.ValueOf(i))
 			} else {
 				return fmt.Errorf("property value %s isn't []uint64 type", opt.FullName)
 			}
 		case reflect.Uint32:
-			if i, err := ToUint32SliceE(propValue); err == nil {
+			if i, err := ToUint32SliceE(prop); err == nil {
 				v.Set(reflect.ValueOf(i))
 			} else {
 				return fmt.Errorf("property value %s isn't []uint32 type", opt.FullName)
 			}
 		case reflect.Uint16:
-			if i, err := ToUint16SliceE(propValue); err == nil {
+			if i, err := ToUint16SliceE(prop); err == nil {
 				v.Set(reflect.ValueOf(i))
 			} else {
 				return fmt.Errorf("property value %s isn't []uint16 type", opt.FullName)
 			}
 		case reflect.Uint8:
-			if i, err := ToUint8SliceE(propValue); err == nil {
+			if i, err := ToUint8SliceE(prop); err == nil {
 				v.Set(reflect.ValueOf(i))
 			} else {
 				return fmt.Errorf("property value %s isn't []uint8 type", opt.FullName)
 			}
 		case reflect.Uint:
-			if i, err := ToUintSliceE(propValue); err == nil {
+			if i, err := ToUintSliceE(prop); err == nil {
 				v.Set(reflect.ValueOf(i))
 			} else {
 				return fmt.Errorf("property value %s isn't []uint type", opt.FullName)
 			}
 		case reflect.Int64:
-			if i, err := ToInt64SliceE(propValue); err == nil {
+			if i, err := ToInt64SliceE(prop); err == nil {
 				v.Set(reflect.ValueOf(i))
 			} else {
 				return fmt.Errorf("property value %s isn't []int64 type", opt.FullName)
 			}
 		case reflect.Int32:
-			if i, err := ToInt32SliceE(propValue); err == nil {
+			if i, err := ToInt32SliceE(prop); err == nil {
 				v.Set(reflect.ValueOf(i))
 			} else {
 				return fmt.Errorf("property value %s isn't []int32 type", opt.FullName)
 			}
 		case reflect.Int16:
-			if i, err := ToInt16SliceE(propValue); err == nil {
+			if i, err := ToInt16SliceE(prop); err == nil {
 				v.Set(reflect.ValueOf(i))
 			} else {
 				return fmt.Errorf("property value %s isn't []int16 type", opt.FullName)
 			}
 		case reflect.Int8:
-			if i, err := ToInt8SliceE(propValue); err == nil {
+			if i, err := ToInt8SliceE(prop); err == nil {
 				v.Set(reflect.ValueOf(i))
 			} else {
 				return fmt.Errorf("property value %s isn't []int8 type", opt.FullName)
 			}
 		case reflect.Int:
-			if i, err := ToIntSliceE(propValue); err == nil {
+			if i, err := ToIntSliceE(prop); err == nil {
 				v.Set(reflect.ValueOf(i))
 			} else {
 				return fmt.Errorf("property value %s isn't []int type", opt.FullName)
@@ -279,20 +297,20 @@ func BindValue(p Properties, v reflect.Value, tag string, opt BindOption) error 
 		case reflect.Float64, reflect.Float32:
 			return errors.New("暂未支持")
 		case reflect.String:
-			if i, err := cast.ToStringSliceE(propValue); err == nil {
+			if i, err := cast.ToStringSliceE(prop); err == nil {
 				v.Set(reflect.ValueOf(i))
 			} else {
 				return fmt.Errorf("property value %s isn't []string type", opt.FullName)
 			}
 		case reflect.Bool:
-			if b, err := cast.ToBoolSliceE(propValue); err == nil {
+			if b, err := cast.ToBoolSliceE(prop); err == nil {
 				v.Set(reflect.ValueOf(b))
 			} else {
 				return fmt.Errorf("property value %s isn't []bool type", opt.FullName)
 			}
 		default:
 			// 处理结构体字段的场景
-			if s, ok := propValue.([]interface{}); ok {
+			if s, ok := prop.([]interface{}); ok {
 				result := reflect.MakeSlice(t, len(s), len(s))
 				for i, si := range s {
 					if sv, err := cast.ToStringMapE(si); err == nil {
@@ -315,7 +333,12 @@ func BindValue(p Properties, v reflect.Value, tag string, opt BindOption) error 
 				return fmt.Errorf("property value %s isn't []map[string]interface{}", opt.FullName)
 			}
 		}
-	case reflect.Map:
+		return nil
+	}, reflect.Slice)
+
+	kindConverter(func(v *reflect.Value, key string, prop interface{}, opt BindOption) error {
+
+		t := v.Type()
 		if t.Key().Kind() != reflect.String {
 			return fmt.Errorf("field: %s isn't map[string]interface{}", opt.FieldName)
 		}
@@ -325,7 +348,7 @@ func BindValue(p Properties, v reflect.Value, tag string, opt BindOption) error 
 
 		// 首先处理使用类型转换器的场景
 		if fn, ok := converters[elemType]; ok {
-			if mapValue, err := cast.ToStringMapStringE(propValue); err == nil {
+			if mapValue, err := cast.ToStringMapStringE(prop); err == nil {
 				prefix := key + "."
 				fnValue := reflect.ValueOf(fn)
 				result := reflect.MakeMap(t)
@@ -351,7 +374,7 @@ func BindValue(p Properties, v reflect.Value, tag string, opt BindOption) error 
 		case reflect.Bool:
 			return errors.New("暂未支持")
 		case reflect.String:
-			if mapValue, err := cast.ToStringMapStringE(propValue); err == nil {
+			if mapValue, err := cast.ToStringMapStringE(prop); err == nil {
 				prefix := key + "."
 				result := make(map[string]string)
 				for k0, v0 := range mapValue {
@@ -364,7 +387,7 @@ func BindValue(p Properties, v reflect.Value, tag string, opt BindOption) error 
 			}
 		default:
 			// 处理结构体字段的场景
-			if mapValue, err := cast.ToStringMapE(propValue); err == nil {
+			if mapValue, err := cast.ToStringMapE(prop); err == nil {
 				temp := make(map[string]map[string]interface{})
 				trimKey := key + "."
 				var ok bool
@@ -400,8 +423,16 @@ func BindValue(p Properties, v reflect.Value, tag string, opt BindOption) error 
 				return fmt.Errorf("property value %s isn't map[string]map[string]interface{}", opt.FullName)
 			}
 		}
-	default:
-		return errors.New(opt.FieldName + " unsupported type " + v.Kind().String())
+		return nil
+	}, reflect.Map)
+}
+
+var kindConverters = map[reflect.Kind]kindConverterFunc{}
+
+type kindConverterFunc func(v *reflect.Value, key string, prop interface{}, opt BindOption) error
+
+func kindConverter(fn kindConverterFunc, kinds ...reflect.Kind) {
+	for _, kind := range kinds {
+		kindConverters[kind] = fn
 	}
-	return nil
 }
