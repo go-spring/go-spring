@@ -513,7 +513,7 @@ func TestDefaultProperties_GetProperty(t *testing.T) {
 	v := p.Get("NULL")
 	util.AssertEqual(t, v, nil)
 
-	v = p.GetDefault("NULL", "OK")
+	v = p.Default("NULL", "OK")
 	util.AssertEqual(t, v, "OK")
 
 	v = p.Get("INT")

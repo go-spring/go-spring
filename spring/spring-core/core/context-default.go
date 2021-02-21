@@ -101,6 +101,11 @@ func (ctx *applicationContext) LoadProperties(filename string) error {
 	return ctx.properties.Load(filename)
 }
 
+// HasProperty 查询属性值是否存在，属性名称统一转成小写。
+func (ctx *applicationContext) HasProperty(key string) bool {
+	return ctx.properties.Has(key)
+}
+
 // GetProperty 返回属性值，不能存在返回 nil，属性名称统一转成小写。
 func (ctx *applicationContext) GetProperty(key string) interface{} {
 	return ctx.properties.Get(key)
@@ -109,6 +114,11 @@ func (ctx *applicationContext) GetProperty(key string) interface{} {
 // SetProperty 设置属性值，属性名称统一转成小写。
 func (ctx *applicationContext) SetProperty(key string, value interface{}) {
 	ctx.properties.Set(key, value)
+}
+
+// PrefixProperties 返回指定前缀的属性值集合，属性名称统一转成小写。
+func (ctx *applicationContext) PrefixProperties(key string) map[string]interface{} {
+	return ctx.properties.Prefix(key)
 }
 
 // Context 返回上下文接口

@@ -23,18 +23,20 @@ import (
 	"strings"
 
 	"github.com/go-spring/spring-core/bean"
-	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/util"
 	"github.com/spf13/cast"
 )
 
-type ConditionContext interface {
+type Context interface {
 
 	// GetProfile 返回运行环境
 	GetProfile() string
 
-	//Properties
-	Properties() conf.Properties
+	// GetProperty 返回属性值，不能存在返回 nil，属性名称统一转成小写。
+	GetProperty(key string) interface{}
+
+	// PrefixProperties 返回指定前缀的属性值集合，属性名称统一转成小写。
+	PrefixProperties(key string) map[string]interface{}
 
 	// FindBean 查询单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 	// 它和 GetBean 的区别是它在调用后不能保证返回的 Bean 已经完成了注入和绑定过程。
@@ -44,11 +46,11 @@ type ConditionContext interface {
 // Condition 定义一个判断条件
 type Condition interface {
 	// Matches 成功返回 true，失败返回 false
-	Matches(ctx ConditionContext) bool
+	Matches(ctx Context) bool
 }
 
 // ConditionFunc 定义 Condition 接口 Matches 方法的类型
-type ConditionFunc func(ctx ConditionContext) bool
+type ConditionFunc func(ctx Context) bool
 
 // functionCondition 基于 Matches 方法的 Condition 实现
 type functionCondition struct {
@@ -61,7 +63,7 @@ func FunctionCondition(fn ConditionFunc) *functionCondition {
 }
 
 // Matches 成功返回 true，失败返回 false
-func (c *functionCondition) Matches(ctx ConditionContext) bool {
+func (c *functionCondition) Matches(ctx Context) bool {
 	return c.fn(ctx)
 }
 
@@ -76,7 +78,7 @@ func NotCondition(cond Condition) *notCondition {
 }
 
 // Matches 成功返回 true，失败返回 false
-func (c *notCondition) Matches(ctx ConditionContext) bool {
+func (c *notCondition) Matches(ctx Context) bool {
 	return !c.cond.Matches(ctx)
 }
 
@@ -91,8 +93,8 @@ func PropertyCondition(name string) *propertyCondition {
 }
 
 // Matches 成功返回 true，失败返回 false
-func (c *propertyCondition) Matches(ctx ConditionContext) bool {
-	return len(ctx.Properties().Prefix(c.name)) > 0
+func (c *propertyCondition) Matches(ctx Context) bool {
+	return len(ctx.PrefixProperties(c.name)) > 0
 }
 
 // missingPropertyCondition 基于属性值不存在的 Condition 实现
@@ -106,8 +108,8 @@ func MissingPropertyCondition(name string) *missingPropertyCondition {
 }
 
 // Matches 成功返回 true，失败返回 false
-func (c *missingPropertyCondition) Matches(ctx ConditionContext) bool {
-	return len(ctx.Properties().Prefix(c.name)) == 0
+func (c *missingPropertyCondition) Matches(ctx Context) bool {
+	return len(ctx.PrefixProperties(c.name)) == 0
 }
 
 // propertyValueCondition 基于属性值匹配的 Condition 实现
@@ -138,10 +140,10 @@ func PropertyValueCondition(name string, havingValue interface{},
 }
 
 // Matches 成功返回 true，失败返回 false
-func (c *propertyValueCondition) Matches(ctx ConditionContext) bool {
+func (c *propertyValueCondition) Matches(ctx Context) bool {
 	// 参考 /usr/local/go/src/go/types/eval_test.go 示例
 
-	val := ctx.Properties().Get(c.name)
+	val := ctx.GetProperty(c.name)
 	if val == nil { // 不存在返回默认值
 		return c.matchIfMissing
 	}
@@ -176,7 +178,7 @@ func BeanCondition(selector bean.Selector) *beanCondition {
 }
 
 // Matches 成功返回 true，失败返回 false
-func (c *beanCondition) Matches(ctx ConditionContext) bool {
+func (c *beanCondition) Matches(ctx Context) bool {
 	_, ok := ctx.FindBean(c.selector)
 	return ok
 }
@@ -192,7 +194,7 @@ func MissingBeanCondition(selector bean.Selector) *missingBeanCondition {
 }
 
 // Matches 成功返回 true，失败返回 false
-func (c *missingBeanCondition) Matches(ctx ConditionContext) bool {
+func (c *missingBeanCondition) Matches(ctx Context) bool {
 	_, ok := ctx.FindBean(c.selector)
 	return !ok
 }
@@ -208,7 +210,7 @@ func ExpressionCondition(expression string) *expressionCondition {
 }
 
 // Matches 成功返回 true，失败返回 false
-func (c *expressionCondition) Matches(ctx ConditionContext) bool {
+func (c *expressionCondition) Matches(ctx Context) bool {
 	panic(util.UnimplementedMethod)
 }
 
@@ -223,7 +225,7 @@ func ProfileCondition(profile string) *profileCondition {
 }
 
 // Matches 成功返回 true，失败返回 false
-func (c *profileCondition) Matches(ctx ConditionContext) bool {
+func (c *profileCondition) Matches(ctx Context) bool {
 	return c.profile == "" || strings.EqualFold(c.profile, ctx.GetProfile())
 }
 
@@ -251,7 +253,7 @@ func ConditionGroup(op ConditionOp, cond ...Condition) *conditionGroup {
 }
 
 // Matches 成功返回 true，失败返回 false
-func (c *conditionGroup) Matches(ctx ConditionContext) bool {
+func (c *conditionGroup) Matches(ctx Context) bool {
 
 	if len(c.cond) == 0 {
 		panic(errors.New("no condition"))
@@ -292,7 +294,7 @@ type conditionNode struct {
 }
 
 // Matches 成功返回 true，失败返回 false
-func (c *conditionNode) Matches(ctx ConditionContext) bool {
+func (c *conditionNode) Matches(ctx Context) bool {
 
 	if c.cond == nil { // 空节点返回 true
 		return true
@@ -344,7 +346,7 @@ func (c *Conditional) Empty() bool {
 }
 
 // Matches 成功返回 true，失败返回 false
-func (c *Conditional) Matches(ctx ConditionContext) bool {
+func (c *Conditional) Matches(ctx Context) bool {
 	return c.head.Matches(ctx)
 }
 

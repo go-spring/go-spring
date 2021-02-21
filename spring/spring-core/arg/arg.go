@@ -282,7 +282,7 @@ func (arg *option) call(assembly bean.Assembly) reflect.Value {
 	defer log.Tracef("call option func success %s", arg.FileLine())
 	log.Tracef("call option func %s", arg.FileLine())
 
-	ctx := assembly.ConditionContext().(cond.ConditionContext)
+	ctx := assembly.ConditionContext().(cond.Context)
 	if arg.cond == nil || arg.cond.Matches(ctx) {
 		fnValue := reflect.ValueOf(arg.fn)
 		in := arg.argList.Get(assembly, arg.FileLine())

@@ -30,7 +30,7 @@ func ResolveProperty(p Properties, value interface{}) (interface{}, error) {
 	}
 
 	key, def := ParseTag(str[2 : len(str)-1])
-	if val := p.GetDefault(key, def); val != nil {
+	if val := p.Default(key, def); val != nil {
 		return ResolveProperty(p, val)
 	}
 
@@ -117,8 +117,8 @@ func BindValue(p Properties, v reflect.Value, tag string, opt BindOption) error 
 
 		// Map 和 Struct 类型获取具有相同前缀的属性值
 		if k == reflect.Map || k == reflect.Struct {
-			if prefixValue := p.Prefix(key); len(prefixValue) > 0 {
-				return prefixValue, nil
+			if prop := p.Prefix(key); len(prop) > 0 {
+				return prop, nil
 			}
 		}
 

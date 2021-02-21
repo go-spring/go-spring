@@ -46,35 +46,24 @@ type Properties interface {
 	// Get 返回属性值，不能存在返回 nil，属性名称统一转成小写。
 	Get(key string) interface{}
 
-	// GetFirst 返回 keys 中第一个存在的属性值，属性名称统一转成小写。
-	GetFirst(keys ...string) interface{}
+	// First 返回 keys 中第一个存在的属性值，属性名称统一转成小写。
+	First(keys ...string) interface{}
 
-	// GetDefault 返回属性值，如果没有找到则使用指定的默认值，属性名称统一转成小写。
-	GetDefault(key string, def interface{}) interface{}
+	// Default 返回属性值，如果没有找到则使用指定的默认值，属性名称统一转成小写。
+	Default(key string, def interface{}) interface{}
 
 	// Set 设置属性值，属性名称统一转成小写。
 	Set(key string, value interface{})
 
-	// Keys 返回所有键，属性名称统一转成小写。
-	Keys() []string
-
 	// Range 遍历所有的属性值，属性名称统一转成小写。
 	Range(fn func(string, interface{}))
 
-	// Fill 填充所有的属性值，属性名称统一转成小写。
-	Fill(properties map[string]interface{})
-
 	// Prefix 返回指定前缀的属性值集合，属性名称统一转成小写。
 	Prefix(key string) map[string]interface{}
-
-	// Group 返回指定前缀的属性值集合并进行分组，属性名称统一转成小写。
-	Group(key string) map[string]map[string]interface{}
 }
 
 // properties Properties 的默认实现
-type properties struct {
-	m map[string]interface{}
-}
+type properties struct{ m map[string]interface{} }
 
 // New properties 的构造函数
 func New() *properties {
@@ -139,8 +128,8 @@ func (p *properties) Get(key string) interface{} {
 	return nil
 }
 
-// GetFirst 返回 keys 中第一个存在的属性值，属性名称统一转成小写。
-func (p *properties) GetFirst(keys ...string) interface{} {
+// First 返回 keys 中第一个存在的属性值，属性名称统一转成小写。
+func (p *properties) First(keys ...string) interface{} {
 	for _, key := range keys {
 		if v, ok := p.m[strings.ToLower(key)]; ok {
 			return v
@@ -149,8 +138,8 @@ func (p *properties) GetFirst(keys ...string) interface{} {
 	return nil
 }
 
-// GetDefault 返回属性值，如果没有找到则使用指定的默认值，属性名称统一转成小写。
-func (p *properties) GetDefault(key string, def interface{}) interface{} {
+// Default 返回属性值，如果没有找到则使用指定的默认值，属性名称统一转成小写。
+func (p *properties) Default(key string, def interface{}) interface{} {
 	if v, ok := p.m[strings.ToLower(key)]; ok {
 		return v
 	}
@@ -162,26 +151,10 @@ func (p *properties) Set(key string, value interface{}) {
 	p.m[strings.ToLower(key)] = value
 }
 
-// Keys 返回所有键，属性名称统一转成小写。
-func (p *properties) Keys() []string {
-	var keys []string
-	for k := range p.m {
-		keys = append(keys, k)
-	}
-	return keys
-}
-
 // Range 遍历所有的属性值，属性名称统一转成小写。
 func (p *properties) Range(fn func(string, interface{})) {
 	for key, val := range p.m {
 		fn(key, val)
-	}
-}
-
-// Fill 返回所有的属性值，属性名称统一转成小写。
-func (p *properties) Fill(properties map[string]interface{}) {
-	for key, val := range p.m {
-		properties[key] = val
 	}
 }
 
@@ -195,11 +168,6 @@ func (p *properties) Prefix(key string) map[string]interface{} {
 		}
 	}
 	return result
-}
-
-// Group 返回指定前缀的属性值集合并进行分组，属性名称统一转成小写。
-func (p *properties) Group(key string) map[string]map[string]interface{} {
-	return Group(key, p.m)
 }
 
 // Bind 根据类型获取属性值，属性名称统一转成小写。

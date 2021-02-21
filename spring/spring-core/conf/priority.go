@@ -51,17 +51,17 @@ func (p *priorityProperties) Get(key string) interface{} {
 	}
 }
 
-// GetFirst 返回 keys 中第一个存在的属性值，属性名称统一转成小写。
-func (p *priorityProperties) GetFirst(keys ...string) interface{} {
-	if v := p.Properties.GetFirst(keys...); v == nil {
-		return p.next.GetFirst(keys...)
+// First 返回 keys 中第一个存在的属性值，属性名称统一转成小写。
+func (p *priorityProperties) First(keys ...string) interface{} {
+	if v := p.Properties.First(keys...); v == nil {
+		return p.next.First(keys...)
 	} else {
 		return v
 	}
 }
 
-// GetDefault 返回属性值，如果没有找到则使用指定的默认值，属性名称统一转成小写。
-func (p *priorityProperties) GetDefault(key string, def interface{}) interface{} {
+// Default 返回属性值，如果没有找到则使用指定的默认值，属性名称统一转成小写。
+func (p *priorityProperties) Default(key string, def interface{}) interface{} {
 	if v := p.Get(key); v == nil {
 		return def
 	} else {
@@ -69,12 +69,7 @@ func (p *priorityProperties) GetDefault(key string, def interface{}) interface{}
 	}
 }
 
-// Keys 返回所有键，属性名称统一转成小写。
-func (p *priorityProperties) Keys() []string {
-	panic(util.UnimplementedMethod)
-}
-
-// Range 遍历所有的属性值，属性名称统一转成小写。
+// Range 遍历所有的属性值，属性名称统一转成小写。TODO 实现并不完美。
 func (p *priorityProperties) Range(fn func(string, interface{})) {
 	p.Properties.Range(fn)
 	p.next.Range(fn)
@@ -91,11 +86,6 @@ func (p *priorityProperties) Fill(properties map[string]interface{}) {
 
 // Prefix 返回指定前缀的属性值集合，属性名称统一转成小写。
 func (p *priorityProperties) Prefix(key string) map[string]interface{} {
-	panic(util.UnimplementedMethod)
-}
-
-// Group 返回指定前缀的属性值集合并进行分组，属性名称统一转成小写。
-func (p *priorityProperties) Group(key string) map[string]map[string]interface{} {
 	panic(util.UnimplementedMethod)
 }
 

@@ -22,8 +22,11 @@ import (
 
 	"github.com/go-spring/spring-core/arg"
 	"github.com/go-spring/spring-core/bean"
+	"github.com/go-spring/spring-core/cond"
 	"github.com/go-spring/spring-core/conf"
 )
+
+var _ = cond.Context((ApplicationContext)(nil))
 
 // ApplicationContext 定义了 IoC 容器接口。
 //
@@ -49,11 +52,17 @@ type ApplicationContext interface {
 	// LoadProperties 加载属性配置，支持 properties、yaml 和 toml 三种文件格式。
 	LoadProperties(filename string) error
 
+	// HasProperty 查询属性值是否存在，属性名称统一转成小写。
+	HasProperty(key string) bool
+
 	// GetProperty 返回属性值，不能存在返回 nil，属性名称统一转成小写。
 	GetProperty(key string) interface{}
 
 	// SetProperty 设置属性值，属性名称统一转成小写。
 	SetProperty(key string, value interface{})
+
+	// PrefixProperties 返回指定前缀的属性值集合，属性名称统一转成小写。
+	PrefixProperties(key string) map[string]interface{}
 
 	// Configer 注册一个配置函数
 	Configer(configer *Configer)
