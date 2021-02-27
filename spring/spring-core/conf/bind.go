@@ -172,6 +172,7 @@ func BindValue(p Properties, v reflect.Value, tag string, opt BindOption) error 
 }
 
 func init() {
+	// TODO 诚招牛人把这些类型转换的过程简化和统一 !!!
 
 	kindConvert(func(v *reflect.Value, key string, prop interface{}, opt BindOption) error {
 		if u, err := cast.ToUint64E(prop); err == nil {
@@ -435,10 +436,10 @@ func init() {
 
 var kConverters = map[reflect.Kind]kConverter{}
 
-type kConverter func(v *reflect.Value, key string, prop interface{}, opt BindOption) error
-
 func kindConvert(fn kConverter, kinds ...reflect.Kind) {
 	for _, kind := range kinds {
 		kConverters[kind] = fn
 	}
 }
+
+type kConverter func(v *reflect.Value, key string, prop interface{}, opt BindOption) error

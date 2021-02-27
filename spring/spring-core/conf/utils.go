@@ -24,7 +24,7 @@ import (
 	"github.com/spf13/cast"
 )
 
-// Group 返回指定前缀的属性值集合并进行分组，属性名称统一转成小写。
+// Group 返回 key 转为小写后作为前缀的属性列表并按照接下来的属性分段进行分组。
 func Group(key string, m map[string]interface{}) map[string]map[string]interface{} {
 	key = strings.ToLower(key) + "."
 	result := make(map[string]map[string]interface{})

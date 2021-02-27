@@ -18,6 +18,7 @@ package conf
 
 import (
 	"errors"
+	"fmt"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -25,57 +26,54 @@ import (
 	"github.com/go-spring/spring-core/util"
 )
 
-// errorType error 的反射类型
-var errorType = reflect.TypeOf((*error)(nil)).Elem()
-
-// Properties 定义属性值接口
+// Properties 属性列表接口
 type Properties interface {
 
-	// Load 加载属性配置，支持 properties、yaml 和 toml 三种文件格式。
+	// Load 从文件中加载属性列表，支持 properties、yaml、toml 等文件格式。
 	Load(filename string) error
 
-	// Read 读取属性配置，支持 properties、yaml 和 toml 三种文件格式。
+	// Read 从内存中读取属性列表，支持 properties、yaml、toml 等文件格式。
 	Read(b []byte, ext string) error
 
-	// Has 查询属性值是否存在，属性名称统一转成小写。
+	// Has 返回 key 转为小写后精确匹配的属性值是否存在。
 	Has(key string) bool
 
-	// Get 返回属性值，不能存在返回 nil，属性名称统一转成小写。
+	// Get 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。
 	Get(key string) interface{}
 
-	// Set 设置属性值，属性名称统一转成小写。
+	// Set 设置 key 转为小写后对应的属性值，key 存在则覆盖原值。
 	Set(key string, value interface{})
 
-	// Range 遍历所有的属性值，属性名称统一转成小写。
+	// Range 遍历所有的属性，属性名都为小写。
 	Range(fn func(string, interface{}))
 
-	// Bind 根据类型获取属性值，属性名称统一转成小写。
+	// Bind 根据类型获取属性值，key 转为小写。
 	Bind(key string, i interface{}) error
 
-	// First 返回 keys 中第一个存在的属性值，属性名称统一转成小写。
+	// First 返回 keys 中第一个存在的属性值，属性名转为小写后进行精确匹配。
 	First(keys ...string) interface{}
 
-	// Default 返回属性值，如果没有找到则使用指定的默认值，属性名称统一转成小写。
+	// Default 返回 key 转为小写后精确匹配的属性值，不存在则返回 def 值。
 	Default(key string, def interface{}) interface{}
 
-	// Prefix 返回指定前缀的属性值集合，属性名称统一转成小写。
+	// Prefix 返回 key 转为小写后作为前缀的所有属性的集合。
 	Prefix(key string) map[string]interface{}
 }
 
-// properties Properties 的默认实现
+// properties Properties 的默认实现。
 type properties struct{ m map[string]interface{} }
 
-// New properties 的构造函数
+// New 创建一个空的属性列表。
 func New() *properties {
 	return &properties{m: make(map[string]interface{})}
 }
 
-// Map properties 的构造函数
+// Map 返回从 map 集合创建的属性列表。
 func Map(m map[string]interface{}) *properties {
 	return &properties{m: m}
 }
 
-// Load properties 的构造函数
+// Load 返回从文件中读取的属性列表，支持 properties、yaml、toml 等格式。
 func Load(filename string) (*properties, error) {
 	p := New()
 	if err := p.Load(filename); err != nil {
@@ -84,7 +82,7 @@ func Load(filename string) (*properties, error) {
 	return p, nil
 }
 
-// Read 读取属性配置，支持 properties、yaml 和 toml 三种文件格式。
+// Read 返回从内存中读取的属性列表，支持 properties、yaml、toml 等格式。
 func Read(b []byte, ext string) (*properties, error) {
 	p := New()
 	if err := p.Read(b, ext); err != nil {
@@ -93,34 +91,34 @@ func Read(b []byte, ext string) (*properties, error) {
 	return p, nil
 }
 
-// Load 加载属性配置，支持 properties、yaml 和 toml 三种文件格式。
+// Load 从文件中加载属性列表，支持 properties、yaml、toml 等文件格式。
 func (p *properties) Load(filename string) error {
 	ext := strings.ToLower(filepath.Ext(filename))
-	for _, r := range Readers {
+	for _, r := range readers {
 		if util.ContainsString(r.FileExt(), ext) >= 0 {
 			return r.ReadFile(filename, p.m)
 		}
 	}
-	panic(errors.New("unsupported file type"))
+	return fmt.Errorf("unsupported file type %s", ext)
 }
 
-// Read 读取属性配置，支持 properties、yaml 和 toml 三种文件格式。
+// Read 从内存中读取属性列表，支持 properties、yaml、toml 等文件格式。
 func (p *properties) Read(b []byte, ext string) error {
-	for _, r := range Readers {
+	for _, r := range readers {
 		if util.ContainsString(r.FileExt(), ext) >= 0 {
 			return r.ReadBuffer(b, p.m)
 		}
 	}
-	panic(errors.New("unsupported file type"))
+	return fmt.Errorf("unsupported file type %s", ext)
 }
 
-// Has 查询属性值是否存在，属性名称统一转成小写。
+// Has 返回 key 转为小写后精确匹配的属性值是否存在。
 func (p *properties) Has(key string) bool {
 	_, ok := p.m[strings.ToLower(key)]
 	return ok
 }
 
-// Get 返回属性值，不能存在返回 nil，属性名称统一转成小写。
+// Get 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。
 func (p *properties) Get(key string) interface{} {
 	if v, ok := p.m[strings.ToLower(key)]; ok {
 		return v
@@ -128,24 +126,24 @@ func (p *properties) Get(key string) interface{} {
 	return nil
 }
 
-// Set 设置属性值，属性名称统一转成小写。
+// Set 设置 key 转为小写后对应的属性值，key 存在则覆盖原值。
 func (p *properties) Set(key string, value interface{}) {
 	p.m[strings.ToLower(key)] = value
 }
 
-// Range 遍历所有的属性值，属性名称统一转成小写。
+// Range 遍历所有的属性，属性名都为小写。
 func (p *properties) Range(fn func(string, interface{})) {
 	for key, val := range p.m {
 		fn(key, val)
 	}
 }
 
-// Bind 根据类型获取属性值，属性名称统一转成小写。
+// Bind 根据类型获取属性值，key 转为小写。
 func (p *properties) Bind(key string, i interface{}) error {
 
 	v := reflect.ValueOf(i)
 	if v.Kind() != reflect.Ptr {
-		return errors.New("参数 v 必须是一个指针")
+		return errors.New("i 必须是一个指针")
 	}
 
 	t := v.Type().Elem()
@@ -157,7 +155,7 @@ func (p *properties) Bind(key string, i interface{}) error {
 	return BindValue(p, v.Elem(), "${"+key+"}", BindOption{Path: s, Key: key})
 }
 
-// First 返回 keys 中第一个存在的属性值，属性名称统一转成小写。
+// First 返回 keys 中第一个存在的属性值，属性名转为小写后进行精确匹配。
 func (p *properties) First(keys ...string) interface{} {
 	for _, key := range keys {
 		if v, ok := p.m[strings.ToLower(key)]; ok {
@@ -167,7 +165,7 @@ func (p *properties) First(keys ...string) interface{} {
 	return nil
 }
 
-// Default 返回属性值，如果没有找到则使用指定的默认值，属性名称统一转成小写。
+// Default 返回 key 转为小写后精确匹配的属性值，不存在则返回 def 值。
 func (p *properties) Default(key string, def interface{}) interface{} {
 	if v, ok := p.m[strings.ToLower(key)]; ok {
 		return v
@@ -175,7 +173,7 @@ func (p *properties) Default(key string, def interface{}) interface{} {
 	return def
 }
 
-// Prefix 返回指定前缀的属性值集合，属性名称统一转成小写。
+// Prefix 返回 key 转为小写后作为前缀的所有属性的集合。
 func (p *properties) Prefix(key string) map[string]interface{} {
 	key = strings.ToLower(key)
 	result := make(map[string]interface{})
