@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package util
+package assert
 
 import (
 	"fmt"
@@ -25,16 +25,16 @@ import (
 	"testing"
 )
 
-// AssertEqual asserts that expect and got are equal as defined by reflect.DeepEqual.
-func AssertEqual(t *testing.T, expect interface{}, got interface{}) {
+// Equal asserts that expect and got are equal as defined by reflect.DeepEqual.
+func Equal(t *testing.T, expect interface{}, got interface{}) {
 	if !reflect.DeepEqual(expect, got) {
 		fail(t, 1, "expect %v but got %v", expect, got)
 	}
 }
 
-// AssertPanic asserts that function fn() would panic. It fails if the panic message
+// Panic asserts that function fn() would panic. It fails if the panic message
 // does not match the regular expression in 'expr'.
-func AssertPanic(t *testing.T, fn func(), expr string) {
+func Panic(t *testing.T, fn func(), expr string) {
 	defer func() {
 		if r := recover(); r == nil {
 			fail(t, 1, "did not panic")
@@ -54,8 +54,8 @@ func AssertPanic(t *testing.T, fn func(), expr string) {
 	fn()
 }
 
-// AssertMatches asserts that a got value matches a given regular expression.
-func AssertMatches(t *testing.T, expr string, got string) {
+// Matches asserts that a got value matches a given regular expression.
+func Matches(t *testing.T, expr string, got string) {
 	matches(t, 1, expr, got)
 }
 

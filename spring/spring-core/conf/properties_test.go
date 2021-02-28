@@ -25,8 +25,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-spring/spring-core/assert"
 	"github.com/go-spring/spring-core/conf"
-	"github.com/go-spring/spring-core/util"
 	"github.com/spf13/cast"
 )
 
@@ -62,7 +62,7 @@ func TestDefaultProperties_ReadProperties_Properties(t *testing.T) {
 		for _, d := range data {
 			p, _ := conf.Read([]byte(d.str), ".properties")
 			v := p.Get(d.key)
-			util.AssertEqual(t, v, d.val)
+			assert.Equal(t, v, d.val)
 		}
 	})
 
@@ -84,7 +84,7 @@ func TestDefaultProperties_ReadProperties_Properties(t *testing.T) {
 		for _, d := range data {
 			p, _ := conf.Read([]byte(d.str), ".properties")
 			v := p.Get(d.key)
-			util.AssertEqual(t, v, d.val)
+			assert.Equal(t, v, d.val)
 		}
 	})
 
@@ -107,7 +107,7 @@ func TestDefaultProperties_ReadProperties_Properties(t *testing.T) {
 		p, _ := conf.Read([]byte(str), ".properties")
 		for k, expect := range data {
 			v := p.Get(k)
-			util.AssertEqual(t, v, expect)
+			assert.Equal(t, v, expect)
 		}
 	})
 
@@ -138,7 +138,7 @@ func TestDefaultProperties_ReadProperties_Properties(t *testing.T) {
 
 		for k, expect := range data {
 			v := p.Get(k)
-			util.AssertEqual(t, v, expect)
+			assert.Equal(t, v, expect)
 		}
 	})
 
@@ -169,7 +169,7 @@ func TestDefaultProperties_ReadProperties_Properties(t *testing.T) {
 		p, _ := conf.Read([]byte(str), ".properties")
 		for k, expect := range data {
 			v := p.Get(k)
-			util.AssertEqual(t, v, expect)
+			assert.Equal(t, v, expect)
 		}
 	})
 }
@@ -196,7 +196,7 @@ func TestDefaultProperties_ReadProperties_Yaml(t *testing.T) {
 		for _, d := range data {
 			p, _ := conf.Read([]byte(d.str), ".yaml")
 			v := p.Get(d.key)
-			util.AssertEqual(t, v, d.val)
+			assert.Equal(t, v, d.val)
 		}
 	})
 
@@ -218,7 +218,7 @@ func TestDefaultProperties_ReadProperties_Yaml(t *testing.T) {
 		for _, d := range data {
 			p, _ := conf.Read([]byte(d.str), ".yaml")
 			v := p.Get(d.key)
-			util.AssertEqual(t, v, d.val)
+			assert.Equal(t, v, d.val)
 		}
 	})
 
@@ -242,7 +242,7 @@ func TestDefaultProperties_ReadProperties_Yaml(t *testing.T) {
 		p, _ := conf.Read([]byte(str), ".yaml")
 		for k, expect := range data {
 			v := p.Get(k)
-			util.AssertEqual(t, v, expect)
+			assert.Equal(t, v, expect)
 		}
 	})
 
@@ -278,7 +278,7 @@ func TestDefaultProperties_ReadProperties_Yaml(t *testing.T) {
 				"string": "hello",
 			},
 		}
-		util.AssertEqual(t, v, expect)
+		assert.Equal(t, v, expect)
 	})
 
 	t.Run("map struct", func(t *testing.T) {
@@ -311,7 +311,7 @@ func TestDefaultProperties_ReadProperties_Yaml(t *testing.T) {
 		p, _ := conf.Read([]byte(str), ".yaml")
 		for k, expect := range data {
 			v := p.Get(k)
-			util.AssertEqual(t, v, expect)
+			assert.Equal(t, v, expect)
 		}
 	})
 }
@@ -338,7 +338,7 @@ func TestDefaultProperties_ReadProperties_Toml(t *testing.T) {
 		for _, d := range data {
 			p, _ := conf.Read([]byte(d.str), ".toml")
 			v := p.Get(d.key)
-			util.AssertEqual(t, v, d.val)
+			assert.Equal(t, v, d.val)
 		}
 	})
 
@@ -360,7 +360,7 @@ func TestDefaultProperties_ReadProperties_Toml(t *testing.T) {
 		for _, d := range data {
 			p, _ := conf.Read([]byte(d.str), ".toml")
 			v := p.Get(d.key)
-			util.AssertEqual(t, v, d.val)
+			assert.Equal(t, v, d.val)
 		}
 	})
 
@@ -384,7 +384,7 @@ func TestDefaultProperties_ReadProperties_Toml(t *testing.T) {
 		p, _ := conf.Read([]byte(str), ".toml")
 		for k, expect := range data {
 			v := p.Get(k)
-			util.AssertEqual(t, v, expect)
+			assert.Equal(t, v, expect)
 		}
 	})
 
@@ -420,7 +420,7 @@ func TestDefaultProperties_ReadProperties_Toml(t *testing.T) {
 				"string": "hello",
 			},
 		}
-		util.AssertEqual(t, v, expect)
+		assert.Equal(t, v, expect)
 	})
 
 	t.Run("map struct", func(t *testing.T) {
@@ -453,7 +453,7 @@ func TestDefaultProperties_ReadProperties_Toml(t *testing.T) {
 		p, _ := conf.Read([]byte(str), ".toml")
 		for k, expect := range data {
 			v := p.Get(k)
-			util.AssertEqual(t, v, expect)
+			assert.Equal(t, v, expect)
 		}
 	})
 }
@@ -470,15 +470,15 @@ func PointConverter(val string) (image.Point, error) {
 
 func TestRegisterTypeConverter(t *testing.T) {
 
-	util.AssertPanic(t, func() {
+	assert.Panic(t, func() {
 		conf.Convert(3)
 	}, "fn must be func\\(string\\)\\(type,error\\)")
 
-	util.AssertPanic(t, func() {
+	assert.Panic(t, func() {
 		conf.Convert(func(_ string, _ string) (image.Point, error) { return image.Point{}, nil })
 	}, "fn must be func\\(string\\)\\(type,error\\)")
 
-	util.AssertPanic(t, func() {
+	assert.Panic(t, func() {
 		conf.Convert(func(_ string) (image.Point, image.Point, error) { return image.Point{}, image.Point{}, nil })
 	}, "fn must be func\\(string\\)\\(type,error\\)")
 
@@ -492,9 +492,9 @@ func TestDefaultProperties_GetProperty(t *testing.T) {
 	p.Set("a.b.d", []string{"3"})
 
 	m := p.Prefix("a.b")
-	util.AssertEqual(t, len(m), 2)
-	util.AssertEqual(t, m["a.b.c"], "3")
-	util.AssertEqual(t, m["a.b.d"], []string{"3"})
+	assert.Equal(t, len(m), 2)
+	assert.Equal(t, m["a.b.c"], "3")
+	assert.Equal(t, m["a.b.d"], []string{"3"})
 
 	p.Set("Bool", true)
 	p.Set("Int", 3)
@@ -511,54 +511,54 @@ func TestDefaultProperties_GetProperty(t *testing.T) {
 	})
 
 	v := p.Get("NULL")
-	util.AssertEqual(t, v, nil)
+	assert.Equal(t, v, nil)
 
 	v = p.Default("NULL", "OK")
-	util.AssertEqual(t, v, "OK")
+	assert.Equal(t, v, "OK")
 
 	v = p.Get("INT")
-	util.AssertEqual(t, v, 3)
+	assert.Equal(t, v, 3)
 
 	var v2 int
 	p.Bind("int", &v2)
-	util.AssertEqual(t, v2, 3)
+	assert.Equal(t, v2, 3)
 
 	var u2 uint
 	p.Bind("uint", &u2)
-	util.AssertEqual(t, u2, uint(3))
+	assert.Equal(t, u2, uint(3))
 
 	var f2 float32
 	p.Bind("Float", &f2)
-	util.AssertEqual(t, f2, float32(3))
+	assert.Equal(t, f2, float32(3))
 
 	b := cast.ToBool(p.Get("BOOL"))
-	util.AssertEqual(t, b, true)
+	assert.Equal(t, b, true)
 
 	var b2 bool
 	p.Bind("bool", &b2)
-	util.AssertEqual(t, b2, true)
+	assert.Equal(t, b2, true)
 
 	i := cast.ToInt64(p.Get("INT"))
-	util.AssertEqual(t, i, int64(3))
+	assert.Equal(t, i, int64(3))
 
 	u := cast.ToUint64(p.Get("UINT"))
-	util.AssertEqual(t, u, uint64(3))
+	assert.Equal(t, u, uint64(3))
 
 	f := cast.ToFloat64(p.Get("FLOAT"))
-	util.AssertEqual(t, f, 3.0)
+	assert.Equal(t, f, 3.0)
 
 	s := cast.ToString(p.Get("STRING"))
-	util.AssertEqual(t, s, "3")
+	assert.Equal(t, s, "3")
 
 	d := cast.ToDuration(p.Get("DURATION"))
-	util.AssertEqual(t, d, time.Second*3)
+	assert.Equal(t, d, time.Second*3)
 
 	ti := cast.ToTime(p.Get("Time"))
-	util.AssertEqual(t, ti, time.Date(2020, 02, 04, 20, 02, 04, 0, time.UTC))
+	assert.Equal(t, ti, time.Date(2020, 02, 04, 20, 02, 04, 0, time.UTC))
 
 	var ss2 []string
 	p.Bind("[]string", &ss2)
-	util.AssertEqual(t, ss2, []string{"3"})
+	assert.Equal(t, ss2, []string{"3"})
 }
 
 type DB struct {
@@ -617,7 +617,7 @@ func TestDefaultProperties_BindProperty(t *testing.T) {
 		p.Bind("prefix", &dbConfig2)
 
 		// 实际上是取的两个节点，只是值是一样的而已
-		util.AssertEqual(t, dbConfig1, dbConfig2)
+		assert.Equal(t, dbConfig1, dbConfig2)
 	})
 
 	t.Run("struct bind with tag", func(t *testing.T) {
@@ -643,8 +643,8 @@ func TestDefaultProperties_BindProperty(t *testing.T) {
 		p.Bind("prefix", &dbConfig2)
 
 		// 实际上是取的两个节点，只是值是一样的而已
-		util.AssertEqual(t, dbConfig1, dbConfig2)
-		util.AssertEqual(t, len(dbConfig1.DB), 2)
+		assert.Equal(t, dbConfig1, dbConfig2)
+		assert.Equal(t, len(dbConfig1.DB), 2)
 	})
 }
 
@@ -664,8 +664,8 @@ func TestDefaultProperties_StringMapString(t *testing.T) {
 		var m map[string]string
 		p.Bind("a", &m)
 
-		util.AssertEqual(t, len(m), 3)
-		util.AssertEqual(t, m["b1"], "b1")
+		assert.Equal(t, len(m), 3)
+		assert.Equal(t, m["b1"], "b1")
 	})
 
 	t.Run("converter bind", func(t *testing.T) {
@@ -679,8 +679,8 @@ func TestDefaultProperties_StringMapString(t *testing.T) {
 		var m map[string]image.Point
 		p.Bind("a", &m)
 
-		util.AssertEqual(t, len(m), 3)
-		util.AssertEqual(t, m["p1"], image.Pt(1, 2))
+		assert.Equal(t, len(m), 3)
+		assert.Equal(t, m["p1"], image.Pt(1, 2))
 	})
 
 	t.Run("simple bind from file", func(t *testing.T) {
@@ -691,8 +691,8 @@ func TestDefaultProperties_StringMapString(t *testing.T) {
 		var m map[string]string
 		p.Bind("camera", &m)
 
-		util.AssertEqual(t, len(m), 3)
-		util.AssertEqual(t, m["floor1"], "camera_floor1")
+		assert.Equal(t, len(m), 3)
+		assert.Equal(t, m["floor1"], "camera_floor1")
 	})
 
 	t.Run("struct bind from file", func(t *testing.T) {
@@ -703,14 +703,14 @@ func TestDefaultProperties_StringMapString(t *testing.T) {
 		var m map[string]NestedDB
 		p.Bind("db_map", &m)
 
-		util.AssertEqual(t, len(m), 2)
-		util.AssertEqual(t, m["d1"].DB, "db1")
+		assert.Equal(t, len(m), 2)
+		assert.Equal(t, m["d1"].DB, "db1")
 
 		dbConfig2 := NestedDbMapConfig{}
 		p.Bind("prefix_map", &dbConfig2)
 
-		util.AssertEqual(t, len(dbConfig2.DB), 2)
-		util.AssertEqual(t, dbConfig2.DB["d1"].DB, "db1")
+		assert.Equal(t, len(dbConfig2.DB), 2)
+		assert.Equal(t, dbConfig2.DB["d1"].DB, "db1")
 	})
 }
 
@@ -729,7 +729,7 @@ func TestDefaultProperties_ConfigRef(t *testing.T) {
 	t.Run("not config", func(t *testing.T) {
 		p := conf.New()
 		err := p.Bind("", &httpLog)
-		util.AssertEqual(t, err, errors.New("property \"app.dir\" not config"))
+		assert.Equal(t, err, errors.New("property \"app.dir\" not config"))
 	})
 
 	t.Run("config", func(t *testing.T) {
@@ -739,16 +739,16 @@ func TestDefaultProperties_ConfigRef(t *testing.T) {
 		p.Set("app.dir", appDir)
 
 		p.Bind("", &httpLog)
-		util.AssertEqual(t, httpLog.Dir, appDir)
-		util.AssertEqual(t, httpLog.NestedDir, "./log")
-		util.AssertEqual(t, httpLog.NestedEmptyDir, "")
-		util.AssertEqual(t, httpLog.NestedNestedDir, "./log")
+		assert.Equal(t, httpLog.Dir, appDir)
+		assert.Equal(t, httpLog.NestedDir, "./log")
+		assert.Equal(t, httpLog.NestedEmptyDir, "")
+		assert.Equal(t, httpLog.NestedNestedDir, "./log")
 
 		p.Bind("", &mqLog)
-		util.AssertEqual(t, mqLog.Dir, appDir)
-		util.AssertEqual(t, mqLog.NestedDir, "./log")
-		util.AssertEqual(t, mqLog.NestedEmptyDir, "")
-		util.AssertEqual(t, mqLog.NestedNestedDir, "./log")
+		assert.Equal(t, mqLog.Dir, appDir)
+		assert.Equal(t, mqLog.NestedDir, "./log")
+		assert.Equal(t, mqLog.NestedEmptyDir, "")
+		assert.Equal(t, mqLog.NestedNestedDir, "./log")
 	})
 }
 
@@ -758,5 +758,5 @@ func TestDefaultProperties_KeyCanBeEmpty(t *testing.T) {
 		KeyIsEmpty string `value:"${:=kie}"`
 	}
 	p.Bind("", &s)
-	util.AssertEqual(t, s.KeyIsEmpty, "kie")
+	assert.Equal(t, s.KeyIsEmpty, "kie")
 }

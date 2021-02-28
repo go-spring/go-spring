@@ -21,7 +21,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/go-spring/spring-core/util"
+	"github.com/go-spring/spring-core/assert"
 	"github.com/go-spring/spring-core/web"
 )
 
@@ -133,16 +133,16 @@ func TestRouter_Route(t *testing.T) {
 	root := web.NewRootRouter().Route("/root", web.LoggerFilter, web.LoggerFilter)
 
 	get := root.GetMapping("/get", nil, web.LoggerFilter, web.LoggerFilter)
-	util.AssertEqual(t, get.Path(), "/root/get")
-	util.AssertEqual(t, len(get.Filters()), 4)
+	assert.Equal(t, get.Path(), "/root/get")
+	assert.Equal(t, len(get.Filters()), 4)
 
 	sub := root.Route("/sub", web.LoggerFilter, web.LoggerFilter)
 	subGet := sub.GetMapping("/get", nil, web.LoggerFilter, web.LoggerFilter)
-	util.AssertEqual(t, subGet.Path(), "/root/sub/get")
-	util.AssertEqual(t, len(subGet.Filters()), 6)
+	assert.Equal(t, subGet.Path(), "/root/sub/get")
+	assert.Equal(t, len(subGet.Filters()), 6)
 
 	subSub := sub.Route("/sub", web.LoggerFilter, web.LoggerFilter)
 	subSubGet := subSub.GetMapping("/get", nil, web.LoggerFilter, web.LoggerFilter)
-	util.AssertEqual(t, subSubGet.Path(), "/root/sub/sub/get")
-	util.AssertEqual(t, len(subSubGet.Filters()), 8)
+	assert.Equal(t, subSubGet.Path(), "/root/sub/sub/get")
+	assert.Equal(t, len(subSubGet.Filters()), 8)
 }

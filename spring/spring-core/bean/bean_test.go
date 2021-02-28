@@ -23,6 +23,7 @@ import (
 	"testing"
 	"unsafe"
 
+	"github.com/go-spring/spring-core/assert"
 	pkg1 "github.com/go-spring/spring-core/core/testdata/pkg/bar"
 	pkg2 "github.com/go-spring/spring-core/core/testdata/pkg/foo"
 	"github.com/go-spring/spring-core/util"
@@ -413,8 +414,8 @@ func TestTypeName(t *testing.T) {
 
 		for typ, v := range data {
 			typeName := util.TypeName(typ)
-			util.AssertEqual(t, typeName, v.typeName)
-			util.AssertEqual(t, typ.String(), v.baseName)
+			assert.Equal(t, typeName, v.typeName)
+			assert.Equal(t, typ.String(), v.baseName)
 		}
 
 		i := 3
@@ -423,8 +424,8 @@ func TestTypeName(t *testing.T) {
 		iPtrPtrPtr := &iPtrPtr
 		typ := reflect.TypeOf(iPtrPtrPtr)
 		typeName := util.TypeName(typ)
-		util.AssertEqual(t, typeName, "int")
-		util.AssertEqual(t, typ.String(), "***int")
+		assert.Equal(t, typeName, "int")
+		assert.Equal(t, typ.String(), "***int")
 	})
 }
 

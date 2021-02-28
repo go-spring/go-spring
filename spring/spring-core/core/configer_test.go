@@ -21,14 +21,14 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/go-spring/spring-core/assert"
 	"github.com/go-spring/spring-core/core/internal/sort"
-	"github.com/go-spring/spring-core/util"
 )
 
 func TestSortConfigers(t *testing.T) {
 
 	t.Run("found cycle", func(t *testing.T) {
-		util.AssertPanic(t, func() {
+		assert.Panic(t, func() {
 
 			f2 := Config(func() {}).After("f5").WithName("f2")
 			f5 := Config(func() {}).After("f2").WithName("f5")
@@ -66,6 +66,6 @@ func TestSortConfigers(t *testing.T) {
 		expect.PushBack(f2)
 		expect.PushBack(f5)
 
-		util.AssertEqual(t, sorted, expect)
+		assert.Equal(t, sorted, expect)
 	})
 }

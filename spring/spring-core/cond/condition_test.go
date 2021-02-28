@@ -19,9 +19,9 @@ package cond_test
 import (
 	"testing"
 
+	"github.com/go-spring/spring-core/assert"
 	"github.com/go-spring/spring-core/cond"
 	"github.com/go-spring/spring-core/core"
-	"github.com/go-spring/spring-core/util"
 )
 
 func TestFunctionCondition(t *testing.T) {
@@ -29,11 +29,11 @@ func TestFunctionCondition(t *testing.T) {
 
 	fn := func(ctx cond.Context) bool { return true }
 	c := cond.FunctionCondition(fn)
-	util.AssertEqual(t, c.Matches(ctx), true)
+	assert.Equal(t, c.Matches(ctx), true)
 
 	fn = func(ctx cond.Context) bool { return false }
 	c = cond.FunctionCondition(fn)
-	util.AssertEqual(t, c.Matches(ctx), false)
+	assert.Equal(t, c.Matches(ctx), false)
 }
 
 func TestPropertyCondition(t *testing.T) {
@@ -43,16 +43,16 @@ func TestPropertyCondition(t *testing.T) {
 	ctx.SetProperty("parent.child", 0)
 
 	c := cond.PropertyCondition("int")
-	util.AssertEqual(t, c.Matches(ctx), true)
+	assert.Equal(t, c.Matches(ctx), true)
 
 	c = cond.PropertyCondition("bool")
-	util.AssertEqual(t, c.Matches(ctx), false)
+	assert.Equal(t, c.Matches(ctx), false)
 
 	c = cond.PropertyCondition("parent")
-	util.AssertEqual(t, c.Matches(ctx), true)
+	assert.Equal(t, c.Matches(ctx), true)
 
 	c = cond.PropertyCondition("parent123")
-	util.AssertEqual(t, c.Matches(ctx), false)
+	assert.Equal(t, c.Matches(ctx), false)
 }
 
 func TestMissingPropertyCondition(t *testing.T) {
@@ -62,16 +62,16 @@ func TestMissingPropertyCondition(t *testing.T) {
 	ctx.SetProperty("parent.child", 0)
 
 	c := cond.MissingPropertyCondition("int")
-	util.AssertEqual(t, c.Matches(ctx), false)
+	assert.Equal(t, c.Matches(ctx), false)
 
 	c = cond.MissingPropertyCondition("bool")
-	util.AssertEqual(t, c.Matches(ctx), true)
+	assert.Equal(t, c.Matches(ctx), true)
 
 	c = cond.MissingPropertyCondition("parent")
-	util.AssertEqual(t, c.Matches(ctx), false)
+	assert.Equal(t, c.Matches(ctx), false)
 
 	c = cond.MissingPropertyCondition("parent123")
-	util.AssertEqual(t, c.Matches(ctx), true)
+	assert.Equal(t, c.Matches(ctx), true)
 }
 
 func TestPropertyValueCondition(t *testing.T) {
@@ -81,19 +81,19 @@ func TestPropertyValueCondition(t *testing.T) {
 	ctx.SetProperty("int", 3)
 
 	c := cond.PropertyValueCondition("int", 3)
-	util.AssertEqual(t, c.Matches(ctx), true)
+	assert.Equal(t, c.Matches(ctx), true)
 
 	//c = cond.PropertyValueCondition("int", "3")
-	//util.AssertEqual(t, c.Matches(ctx), true)
+	//util.Equal(t, c.Matches(ctx), true)
 
 	c = cond.PropertyValueCondition("int", "$>2&&$<4")
-	util.AssertEqual(t, c.Matches(ctx), true)
+	assert.Equal(t, c.Matches(ctx), true)
 
 	c = cond.PropertyValueCondition("bool", true)
-	util.AssertEqual(t, c.Matches(ctx), false)
+	assert.Equal(t, c.Matches(ctx), false)
 
 	c = cond.PropertyValueCondition("str", "\"$\"==\"this is a str\"")
-	util.AssertEqual(t, c.Matches(ctx), true)
+	assert.Equal(t, c.Matches(ctx), true)
 }
 
 type BeanZero struct {
@@ -127,10 +127,10 @@ func TestBeanCondition(t *testing.T) {
 	ctx.AutoWireBeans()
 
 	c := cond.BeanCondition("*cond_test.BeanOne")
-	util.AssertEqual(t, c.Matches(ctx), true)
+	assert.Equal(t, c.Matches(ctx), true)
 
 	c = cond.BeanCondition("Null")
-	util.AssertEqual(t, c.Matches(ctx), false)
+	assert.Equal(t, c.Matches(ctx), false)
 }
 
 func TestMissingBeanCondition(t *testing.T) {
@@ -141,10 +141,10 @@ func TestMissingBeanCondition(t *testing.T) {
 	ctx.AutoWireBeans()
 
 	c := cond.MissingBeanCondition("*cond_test.BeanOne")
-	util.AssertEqual(t, c.Matches(ctx), false)
+	assert.Equal(t, c.Matches(ctx), false)
 
 	c = cond.MissingBeanCondition("Null")
-	util.AssertEqual(t, c.Matches(ctx), true)
+	assert.Equal(t, c.Matches(ctx), true)
 }
 
 func TestExpressionCondition(t *testing.T) {
@@ -159,49 +159,49 @@ func TestConditional(t *testing.T) {
 	ctx.AutoWireBeans()
 
 	c := cond.OnProperty("int")
-	util.AssertEqual(t, c.Matches(ctx), true)
+	assert.Equal(t, c.Matches(ctx), true)
 
 	c = cond.OnProperty("int").OnBean("null")
-	util.AssertEqual(t, c.Matches(ctx), false)
+	assert.Equal(t, c.Matches(ctx), false)
 
-	util.AssertPanic(t, func() {
+	assert.Panic(t, func() {
 		c = cond.OnProperty("int").And()
-		util.AssertEqual(t, c.Matches(ctx), true)
+		assert.Equal(t, c.Matches(ctx), true)
 	}, "last op need a cond triggered")
 
 	c = cond.OnPropertyValue("int", 3).
 		And().
 		OnPropertyValue("bool", false)
-	util.AssertEqual(t, c.Matches(ctx), true)
+	assert.Equal(t, c.Matches(ctx), true)
 
 	c = cond.OnPropertyValue("int", 3).
 		And().
 		OnPropertyValue("bool", true)
-	util.AssertEqual(t, c.Matches(ctx), false)
+	assert.Equal(t, c.Matches(ctx), false)
 
 	c = cond.OnPropertyValue("int", 2).
 		Or().
 		OnPropertyValue("bool", true)
-	util.AssertEqual(t, c.Matches(ctx), false)
+	assert.Equal(t, c.Matches(ctx), false)
 
 	c = cond.OnPropertyValue("int", 2).
 		Or().
 		OnPropertyValue("bool", false)
-	util.AssertEqual(t, c.Matches(ctx), true)
+	assert.Equal(t, c.Matches(ctx), true)
 
-	util.AssertPanic(t, func() {
+	assert.Panic(t, func() {
 		c = cond.OnPropertyValue("int", 2).
 			Or().
 			OnPropertyValue("bool", false).
 			Or()
-		util.AssertEqual(t, c.Matches(ctx), true)
+		assert.Equal(t, c.Matches(ctx), true)
 	}, "last op need a cond triggered")
 
 	c = cond.OnPropertyValue("int", 2).
 		Or().
 		OnPropertyValue("bool", false).
 		OnPropertyValue("bool", false)
-	util.AssertEqual(t, c.Matches(ctx), true)
+	assert.Equal(t, c.Matches(ctx), true)
 }
 
 func TestNotCondition(t *testing.T) {
@@ -211,16 +211,16 @@ func TestNotCondition(t *testing.T) {
 	ctx.AutoWireBeans()
 
 	profileCond := cond.ProfileCondition("test")
-	util.AssertEqual(t, profileCond.Matches(ctx), true)
+	assert.Equal(t, profileCond.Matches(ctx), true)
 
 	notCond := cond.NotCondition(profileCond)
-	util.AssertEqual(t, notCond.Matches(ctx), false)
+	assert.Equal(t, notCond.Matches(ctx), false)
 
 	c := cond.OnPropertyValue("int", 2).
 		OnConditionNot(profileCond)
-	util.AssertEqual(t, c.Matches(ctx), false)
+	assert.Equal(t, c.Matches(ctx), false)
 
 	c = cond.OnProfile("test").
 		OnConditionNot(profileCond)
-	util.AssertEqual(t, c.Matches(ctx), false)
+	assert.Equal(t, c.Matches(ctx), false)
 }

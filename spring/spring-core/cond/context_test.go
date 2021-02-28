@@ -21,9 +21,9 @@ import (
 	"testing"
 
 	"github.com/go-spring/spring-core/arg"
+	"github.com/go-spring/spring-core/assert"
 	"github.com/go-spring/spring-core/cond"
 	"github.com/go-spring/spring-core/core"
-	"github.com/go-spring/spring-core/util"
 )
 
 type Teacher interface {
@@ -176,7 +176,7 @@ func TestDefaultSpringContext(t *testing.T) {
 
 		var b *BeanZero
 		ok := ctx.GetBean(&b)
-		util.AssertEqual(t, ok, false)
+		assert.Equal(t, ok, false)
 	})
 
 	t.Run("bean:test_ctx:test", func(t *testing.T) {
@@ -188,7 +188,7 @@ func TestDefaultSpringContext(t *testing.T) {
 
 		var b *BeanZero
 		ok := ctx.GetBean(&b)
-		util.AssertEqual(t, ok, true)
+		assert.Equal(t, ok, true)
 	})
 
 	t.Run("bean:test_ctx:stable", func(t *testing.T) {
@@ -200,7 +200,7 @@ func TestDefaultSpringContext(t *testing.T) {
 
 		var b *BeanZero
 		ok := ctx.GetBean(&b)
-		util.AssertEqual(t, ok, false)
+		assert.Equal(t, ok, false)
 	})
 
 	t.Run("option withClassName Condition", func(t *testing.T) {
@@ -217,10 +217,10 @@ func TestDefaultSpringContext(t *testing.T) {
 		var cls *ClassRoom
 		ctx.GetBean(&cls)
 
-		util.AssertEqual(t, cls.floor, 0)
-		util.AssertEqual(t, len(cls.students), 0)
-		util.AssertEqual(t, cls.className, "default")
-		util.AssertEqual(t, cls.President, "CaiYuanPei")
+		assert.Equal(t, cls.floor, 0)
+		assert.Equal(t, len(cls.students), 0)
+		assert.Equal(t, cls.className, "default")
+		assert.Equal(t, cls.President, "CaiYuanPei")
 	})
 
 	t.Run("option withClassName Apply", func(t *testing.T) {
@@ -239,10 +239,10 @@ func TestDefaultSpringContext(t *testing.T) {
 		var cls *ClassRoom
 		ctx.GetBean(&cls)
 
-		util.AssertEqual(t, cls.floor, 0)
-		util.AssertEqual(t, len(cls.students), 0)
-		util.AssertEqual(t, cls.className, "default")
-		util.AssertEqual(t, cls.President, "CaiYuanPei")
+		assert.Equal(t, cls.floor, 0)
+		assert.Equal(t, len(cls.students), 0)
+		assert.Equal(t, cls.className, "default")
+		assert.Equal(t, cls.President, "CaiYuanPei")
 	})
 
 	t.Run("method bean cond", func(t *testing.T) {
@@ -255,12 +255,12 @@ func TestDefaultSpringContext(t *testing.T) {
 
 		var s *Server
 		ok := ctx.GetBean(&s)
-		util.AssertEqual(t, ok, true)
-		util.AssertEqual(t, s.Version, "1.0.0")
+		assert.Equal(t, ok, true)
+		assert.Equal(t, s.Version, "1.0.0")
 
 		var c *Consumer
 		ok = ctx.GetBean(&c)
-		util.AssertEqual(t, ok, false)
+		assert.Equal(t, ok, false)
 	})
 }
 
@@ -275,11 +275,11 @@ func TestDefaultSpringContext(t *testing.T) {
 //
 //	var s *Server
 //	ok := ctx.GetBean(&s)
-//	util.AssertEqual(t, ok, false)
+//	util.Equal(t, ok, false)
 //
 //	var c *Consumer
 //	ok = ctx.GetBean(&c)
-//	util.AssertEqual(t, ok, false)
+//	util.Equal(t, ok, false)
 //}
 
 func TestDefaultSpringContext_ChainConditionOnBean(t *testing.T) {
@@ -289,7 +289,7 @@ func TestDefaultSpringContext_ChainConditionOnBean(t *testing.T) {
 		ctx.ObjBean(new(bool)).Cond(cond.OnBean("*int"))
 		ctx.ObjBean(new(int)).Cond(cond.OnBean("*float"))
 		ctx.AutoWireBeans()
-		util.AssertEqual(t, len(ctx.Beans()), 0)
+		assert.Equal(t, len(ctx.Beans()), 0)
 	}
 }
 
@@ -320,10 +320,10 @@ func TestDefaultSpringContext_ConditionOnBean(t *testing.T) {
 
 	var two *BeanTwo
 	ok := ctx.GetBean(&two, "")
-	util.AssertEqual(t, ok, true)
+	assert.Equal(t, ok, true)
 
 	ok = ctx.GetBean(&two, "another_two")
-	util.AssertEqual(t, ok, false)
+	assert.Equal(t, ok, false)
 }
 
 func TestDefaultSpringContext_ConditionOnMissingBean(t *testing.T) {
@@ -341,9 +341,9 @@ func TestDefaultSpringContext_ConditionOnMissingBean(t *testing.T) {
 
 		var two *BeanTwo
 		ok := ctx.GetBean(&two, "")
-		util.AssertEqual(t, ok, true)
+		assert.Equal(t, ok, true)
 
 		ok = ctx.GetBean(&two, "another_two")
-		util.AssertEqual(t, ok, true)
+		assert.Equal(t, ok, true)
 	}
 }

@@ -20,7 +20,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/go-spring/spring-core/util"
+	"github.com/go-spring/spring-core/assert"
 	"github.com/go-spring/spring-core/web"
 )
 
@@ -28,13 +28,13 @@ func TestRpcError(t *testing.T) {
 	err := errors.New("this is an error")
 
 	r1 := web.ERROR.Error(err)
-	util.AssertEqual(t, r1, &web.RpcResult{
+	assert.Equal(t, r1, &web.RpcResult{
 		ErrorCode: web.ErrorCode(web.ERROR),
 		Err:       "/Users/didi/GitHub/go-spring/go-spring/spring/spring-core/web/rpc-result_test.go:30: this is an error",
 	})
 
 	r2 := web.ERROR.ErrorWithData(err, "error_with_data")
-	util.AssertEqual(t, r2, &web.RpcResult{
+	assert.Equal(t, r2, &web.RpcResult{
 		ErrorCode: web.ErrorCode(web.ERROR),
 		Err:       "/Users/didi/GitHub/go-spring/go-spring/spring/spring-core/web/rpc-result_test.go:36: this is an error",
 		Data:      "error_with_data",
@@ -42,7 +42,7 @@ func TestRpcError(t *testing.T) {
 
 	func() {
 		defer func() {
-			util.AssertEqual(t, recover(), &web.RpcResult{
+			assert.Equal(t, recover(), &web.RpcResult{
 				ErrorCode: web.ErrorCode(web.ERROR),
 				Err:       "/Users/didi/GitHub/go-spring/go-spring/spring/spring-core/web/rpc-result_test.go:50: this is an error",
 			})
@@ -52,7 +52,7 @@ func TestRpcError(t *testing.T) {
 
 	func() {
 		defer func() {
-			util.AssertEqual(t, recover(), &web.RpcResult{
+			assert.Equal(t, recover(), &web.RpcResult{
 				ErrorCode: web.ErrorCode(web.ERROR),
 				Err:       "/Users/didi/GitHub/go-spring/go-spring/spring/spring-core/web/rpc-result_test.go:60: this is an error",
 			})
@@ -62,7 +62,7 @@ func TestRpcError(t *testing.T) {
 
 	func() {
 		defer func() {
-			util.AssertEqual(t, recover(), &web.RpcResult{
+			assert.Equal(t, recover(), &web.RpcResult{
 				ErrorCode: web.ErrorCode(web.ERROR),
 				Err:       "/Users/didi/GitHub/go-spring/go-spring/spring/spring-core/web/rpc-result_test.go:70: this is an error",
 			})

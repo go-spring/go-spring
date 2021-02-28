@@ -23,8 +23,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-spring/spring-core/assert"
 	"github.com/go-spring/spring-core/core"
-	"github.com/go-spring/spring-core/util"
 )
 
 func startApplication(cfgLocation ...string) *Application {
@@ -40,41 +40,41 @@ func TestConfig(t *testing.T) {
 	t.Run("default config", func(t *testing.T) {
 		os.Clearenv()
 		app := startApplication()
-		util.AssertEqual(t, app.cfgLocation, []string{DefaultConfigLocation})
-		util.AssertEqual(t, app.ApplicationContext().GetProfile(), "")
+		assert.Equal(t, app.cfgLocation, []string{DefaultConfigLocation})
+		assert.Equal(t, app.ApplicationContext().GetProfile(), "")
 	})
 
 	t.Run("config via env", func(t *testing.T) {
 		os.Clearenv()
 		_ = os.Setenv(SpringProfile, "dev")
 		app := startApplication("testdata/config/")
-		util.AssertEqual(t, app.ApplicationContext().GetProfile(), "dev")
+		assert.Equal(t, app.ApplicationContext().GetProfile(), "dev")
 	})
 
 	t.Run("config via env 2", func(t *testing.T) {
 		os.Clearenv()
 		_ = os.Setenv(SPRING_PROFILE, "dev")
 		app := startApplication("testdata/config/")
-		util.AssertEqual(t, app.ApplicationContext().GetProfile(), "dev")
+		assert.Equal(t, app.ApplicationContext().GetProfile(), "dev")
 	})
 
 	t.Run("profile via config", func(t *testing.T) {
 		os.Clearenv()
 		app := startApplication("testdata/config/")
-		util.AssertEqual(t, app.ApplicationContext().GetProfile(), "test")
+		assert.Equal(t, app.ApplicationContext().GetProfile(), "test")
 	})
 
 	t.Run("profile via env&config", func(t *testing.T) {
 		os.Clearenv()
 		app := startApplication("testdata/config/")
-		util.AssertEqual(t, app.ApplicationContext().GetProfile(), "test")
+		assert.Equal(t, app.ApplicationContext().GetProfile(), "test")
 	})
 
 	t.Run("profile via env&config 2", func(t *testing.T) {
 		os.Clearenv()
 		_ = os.Setenv(SPRING_PROFILE, "dev")
 		app := startApplication("testdata/config/")
-		util.AssertEqual(t, app.ApplicationContext().GetProfile(), "dev")
+		assert.Equal(t, app.ApplicationContext().GetProfile(), "dev")
 	})
 
 	t.Run("default expect system properties", func(t *testing.T) {

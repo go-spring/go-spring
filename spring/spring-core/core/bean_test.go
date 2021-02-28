@@ -6,9 +6,9 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/go-spring/spring-core/assert"
 	"github.com/go-spring/spring-core/core"
 	pkg2 "github.com/go-spring/spring-core/core/testdata/pkg/foo"
-	"github.com/go-spring/spring-core/util"
 )
 
 //func TestParseSingletonTag(t *testing.T) {
@@ -28,7 +28,7 @@ import (
 //
 //	for k, v := range data {
 //		tag := parseSingletonTag(k)
-//		util.AssertEqual(t, tag, v)
+//		util.Equal(t, tag, v)
 //	}
 //}
 //
@@ -41,7 +41,7 @@ import (
 //
 //	for k, v := range data {
 //		tag := ParseCollectionTag(k)
-//		util.AssertEqual(t, tag, v)
+//		util.Equal(t, tag, v)
 //	}
 //}
 
@@ -78,7 +78,7 @@ func TestIsFuncBeanType(t *testing.T) {
 
 	for k, v := range data {
 		ok := core.IsFuncBeanType(k)
-		util.AssertEqual(t, ok, v)
+		assert.Equal(t, ok, v)
 	}
 }
 
@@ -138,16 +138,16 @@ func TestObjectBean(t *testing.T) {
 
 	t.Run("bean can't be nil", func(t *testing.T) {
 
-		util.AssertPanic(t, func() {
+		assert.Panic(t, func() {
 			core.ObjBean(nil)
 		}, "bean can't be nil")
 
-		util.AssertPanic(t, func() {
+		assert.Panic(t, func() {
 			var i *int
 			core.ObjBean(i)
 		}, "bean can't be nil")
 
-		util.AssertPanic(t, func() {
+		assert.Panic(t, func() {
 			var m map[string]string
 			core.ObjBean(m)
 		}, "bean can't be nil")
@@ -165,7 +165,7 @@ func TestObjectBean(t *testing.T) {
 		}
 
 		for _, fn := range data {
-			util.AssertPanic(t, fn, "bean must be ref type")
+			assert.Panic(t, fn, "bean must be ref type")
 		}
 	})
 
@@ -213,8 +213,8 @@ func TestObjectBean(t *testing.T) {
 		}
 
 		for bd, v := range data {
-			util.AssertEqual(t, bd.BeanName(), v.name)
-			util.AssertEqual(t, bd.TypeName(), v.typeName)
+			assert.Equal(t, bd.BeanName(), v.name)
+			assert.Equal(t, bd.TypeName(), v.typeName)
 		}
 	})
 }
@@ -222,36 +222,36 @@ func TestObjectBean(t *testing.T) {
 func TestConstructorBean(t *testing.T) {
 
 	bd := core.CtorBean(NewStudent)
-	util.AssertEqual(t, bd.Type().String(), "*core_test.Student")
+	assert.Equal(t, bd.Type().String(), "*core_test.Student")
 
 	bd = core.CtorBean(NewPtrStudent)
-	util.AssertEqual(t, bd.Type().String(), "*core_test.Student")
+	assert.Equal(t, bd.Type().String(), "*core_test.Student")
 
 	mapFn := func() map[int]string { return make(map[int]string) }
 	bd = core.CtorBean(mapFn)
-	util.AssertEqual(t, bd.Type().String(), "map[int]string")
+	assert.Equal(t, bd.Type().String(), "map[int]string")
 
 	sliceFn := func() []int { return make([]int, 1) }
 	bd = core.CtorBean(sliceFn)
-	util.AssertEqual(t, bd.Type().String(), "[]int")
+	assert.Equal(t, bd.Type().String(), "[]int")
 
 	funcFn := func() func(int) { return nil }
 	bd = core.CtorBean(funcFn)
-	util.AssertEqual(t, bd.Type().String(), "func(int)")
+	assert.Equal(t, bd.Type().String(), "func(int)")
 
 	intFn := func() int { return 0 }
 	bd = core.CtorBean(intFn)
-	util.AssertEqual(t, bd.Type().String(), "*int")
+	assert.Equal(t, bd.Type().String(), "*int")
 
 	interfaceFn := func(name string) Teacher { return newHistoryTeacher(name) }
 	bd = core.CtorBean(interfaceFn)
-	util.AssertEqual(t, bd.Type().String(), "core_test.Teacher")
+	assert.Equal(t, bd.Type().String(), "core_test.Teacher")
 
-	util.AssertPanic(t, func() {
+	assert.Panic(t, func() {
 		bd = core.CtorBean(func() (*int, *int) { return nil, nil })
-		util.AssertEqual(t, bd.Type().String(), "*int")
+		assert.Equal(t, bd.Type().String(), "*int")
 	}, "func bean must be func\\(...\\)bean or func\\(...\\)\\(bean, error\\)")
 
 	bd = core.CtorBean(func() (*int, error) { return nil, nil })
-	util.AssertEqual(t, bd.Type().String(), "*int")
+	assert.Equal(t, bd.Type().String(), "*int")
 }

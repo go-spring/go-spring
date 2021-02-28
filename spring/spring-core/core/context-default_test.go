@@ -31,12 +31,12 @@ import (
 	"time"
 
 	"github.com/go-spring/spring-core/arg"
+	"github.com/go-spring/spring-core/assert"
 	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/core"
 	pkg1 "github.com/go-spring/spring-core/core/testdata/pkg/bar"
 	pkg2 "github.com/go-spring/spring-core/core/testdata/pkg/foo"
-	"github.com/go-spring/spring-core/util"
 	"github.com/spf13/cast"
 )
 
@@ -50,7 +50,7 @@ func ToString(i interface{}) string {
 }
 
 func TestApplicationContext_RegisterBeanFrozen(t *testing.T) {
-	util.AssertPanic(t, func() {
+	assert.Panic(t, func() {
 		ctx := core.NewApplicationContext()
 		ctx.ObjBean(new(int)).Init(func(i *int) {
 			// 不能在这里注册新的 RegisterBean
@@ -69,7 +69,7 @@ func TestApplicationContext(t *testing.T) {
 		a := []int{3}
 
 		// 普通类型用属性注入
-		util.AssertPanic(t, func() {
+		assert.Panic(t, func() {
 			ctx.ObjBean(e)
 		}, "bean must be ref type")
 
@@ -77,7 +77,7 @@ func TestApplicationContext(t *testing.T) {
 
 		// 这种错误延迟到 AutoWireBeans 阶段
 		// // 相同类型的匿名 bean 不能重复注册
-		// util.AssertPanic(t, func() {
+		// util.Panic(t, func() {
 		//	 ctx.RegisterBean(bean.ObjBean(&e))
 		// }, "duplicate registration, bean: \"int:\\*int\"")
 
@@ -91,19 +91,19 @@ func TestApplicationContext(t *testing.T) {
 		ctx.ObjBean(&a)
 		ctx.AutoWireBeans()
 
-		util.AssertPanic(t, func() {
+		assert.Panic(t, func() {
 			var i int
 			ctx.GetBean(&i)
 		}, "receiver must be ref type, bean: \"\\?\" field: ")
 
 		// 找到多个符合条件的值
-		util.AssertPanic(t, func() {
+		assert.Panic(t, func() {
 			var i *int
 			ctx.GetBean(&i)
 		}, "found 3 beans, bean: \"\\?\" field:  type: \\*int")
 
 		// 入参不是可赋值的对象
-		util.AssertPanic(t, func() {
+		assert.Panic(t, func() {
 			var i int
 			ctx.GetBean(&i, "i3")
 			fmt.Println(i)
@@ -142,7 +142,7 @@ func TestApplicationContext(t *testing.T) {
 		p := []*pkg1.SamePkg{{}}
 
 		// 栈上的对象不能注册
-		util.AssertPanic(t, func() {
+		assert.Panic(t, func() {
 			ctx.ObjBean(e)
 		}, "bean must be ref type")
 
@@ -170,7 +170,7 @@ func TestApplicationContext(t *testing.T) {
 		p := []*pkg2.SamePkg{{}}
 
 		// 栈上的对象不能注册
-		util.AssertPanic(t, func() {
+		assert.Panic(t, func() {
 			ctx.ObjBean(e)
 		}, "bean must be ref type")
 
@@ -265,7 +265,7 @@ func TestApplicationContext_AutoWireBeans(t *testing.T) {
 		i2 := int(3)
 		ctx.ObjBean(&i2).Name("int_ptr_2")
 
-		util.AssertPanic(t, func() {
+		assert.Panic(t, func() {
 			ctx.AutoWireBeans()
 		}, "found 2 beans, bean: \"\" field: TestObject.\\$IntPtrByType type: \\*int")
 	})
@@ -317,7 +317,7 @@ func TestApplicationContext_AutoWireBeans(t *testing.T) {
 
 	var ff []*float32
 	ctx.CollectBeans(&ff, "float_ptr_2", "float_ptr_1")
-	util.AssertEqual(t, ff, []*float32{&f2, &f1})
+	assert.Equal(t, ff, []*float32{&f2, &f1})
 
 	fmt.Printf("%+v\n", obj)
 }
@@ -513,7 +513,7 @@ func TestApplicationContext_TypeConverter(t *testing.T) {
 
 	ctx.AutoWireBeans()
 
-	util.AssertEqual(t, b.EnvType, ENV_TEST)
+	assert.Equal(t, b.EnvType, ENV_TEST)
 
 	fmt.Printf("%+v\n", b)
 	fmt.Printf("%+v\n", p)
@@ -594,10 +594,10 @@ func TestApplicationContext_LoadProperties(t *testing.T) {
 	ctx.LoadProperties("testdata/config/application.properties")
 
 	val0 := ctx.GetProperty("spring.application.name")
-	util.AssertEqual(t, val0, "test")
+	assert.Equal(t, val0, "test")
 
 	val1 := ctx.GetProperty("yaml.list")
-	util.AssertEqual(t, val1, []interface{}{1, 2})
+	assert.Equal(t, val1, []interface{}{1, 2})
 }
 
 func TestApplicationContext_GetBean(t *testing.T) {
@@ -607,17 +607,17 @@ func TestApplicationContext_GetBean(t *testing.T) {
 		ctx := core.NewApplicationContext()
 		ctx.AutoWireBeans()
 
-		util.AssertPanic(t, func() {
+		assert.Panic(t, func() {
 			var i int
 			ctx.GetBean(i)
 		}, "i must be pointer")
 
-		util.AssertPanic(t, func() {
+		assert.Panic(t, func() {
 			var i *int
 			ctx.GetBean(i)
 		}, "receiver must be ref type")
 
-		util.AssertPanic(t, func() {
+		assert.Panic(t, func() {
 			i := new(int)
 			ctx.GetBean(i)
 		}, "receiver must be ref type")
@@ -625,7 +625,7 @@ func TestApplicationContext_GetBean(t *testing.T) {
 		var i *int
 		ctx.GetBean(&i)
 
-		util.AssertPanic(t, func() {
+		assert.Panic(t, func() {
 			var is []int
 			ctx.GetBean(is)
 		}, "i must be pointer")
@@ -633,7 +633,7 @@ func TestApplicationContext_GetBean(t *testing.T) {
 		var a []int
 		ctx.GetBean(&a)
 
-		util.AssertPanic(t, func() {
+		assert.Panic(t, func() {
 			var s fmt.Stringer
 			ctx.GetBean(s)
 		}, "i can't be nil")
@@ -652,57 +652,57 @@ func TestApplicationContext_GetBean(t *testing.T) {
 
 		var two *BeanTwo
 		ok := ctx.GetBean(&two)
-		util.AssertEqual(t, ok, true)
+		assert.Equal(t, ok, true)
 
 		var grouper Grouper
 		ok = ctx.GetBean(&grouper)
-		util.AssertEqual(t, ok, true)
+		assert.Equal(t, ok, true)
 
 		ok = ctx.GetBean(&two, (*BeanTwo)(nil))
-		util.AssertEqual(t, ok, true)
+		assert.Equal(t, ok, true)
 
 		ok = ctx.GetBean(&grouper, (*BeanTwo)(nil))
-		util.AssertEqual(t, ok, true)
+		assert.Equal(t, ok, true)
 
 		ok = ctx.GetBean(&two, "")
-		util.AssertEqual(t, ok, true)
+		assert.Equal(t, ok, true)
 
 		ok = ctx.GetBean(&grouper, "")
-		util.AssertEqual(t, ok, true)
+		assert.Equal(t, ok, true)
 
 		ok = ctx.GetBean(&two, "*core_test.BeanTwo")
-		util.AssertEqual(t, ok, true)
+		assert.Equal(t, ok, true)
 
 		ok = ctx.GetBean(&grouper, "*core_test.BeanTwo")
-		util.AssertEqual(t, ok, true)
+		assert.Equal(t, ok, true)
 
 		ok = ctx.GetBean(&two, "BeanTwo")
-		util.AssertEqual(t, ok, false)
+		assert.Equal(t, ok, false)
 
 		ok = ctx.GetBean(&grouper, "BeanTwo")
-		util.AssertEqual(t, ok, false)
+		assert.Equal(t, ok, false)
 
 		ok = ctx.GetBean(&two, ":*core_test.BeanTwo")
-		util.AssertEqual(t, ok, true)
+		assert.Equal(t, ok, true)
 
 		ok = ctx.GetBean(&grouper, ":*core_test.BeanTwo")
-		util.AssertEqual(t, ok, true)
+		assert.Equal(t, ok, true)
 
 		ok = ctx.GetBean(&two, "github.com/go-spring/spring-core/core_test/core_test.BeanTwo:*core_test.BeanTwo")
-		util.AssertEqual(t, ok, true)
+		assert.Equal(t, ok, true)
 
 		ok = ctx.GetBean(&grouper, "github.com/go-spring/spring-core/core_test/core_test.BeanTwo:*core_test.BeanTwo")
-		util.AssertEqual(t, ok, true)
+		assert.Equal(t, ok, true)
 
 		ok = ctx.GetBean(&two, "xxx:*core_test.BeanTwo")
-		util.AssertEqual(t, ok, false)
+		assert.Equal(t, ok, false)
 
 		ok = ctx.GetBean(&grouper, "xxx:*core_test.BeanTwo")
-		util.AssertEqual(t, ok, false)
+		assert.Equal(t, ok, false)
 
 		var three *BeanThree
 		ok = ctx.GetBean(&three, "")
-		util.AssertEqual(t, ok, false)
+		assert.Equal(t, ok, false)
 
 		fmt.Println(ToString(two))
 	})
@@ -717,43 +717,43 @@ func TestApplicationContext_FindBeanByName(t *testing.T) {
 
 	ctx.AutoWireBeans()
 
-	util.AssertPanic(t, func() {
+	assert.Panic(t, func() {
 		ctx.FindBean("")
 	}, "found 3 beans, bean: \"\"")
 
 	i, ok := ctx.FindBean("*core_test.BeanTwo")
 	fmt.Println(ToString(i.Bean()))
-	util.AssertEqual(t, ok, true)
+	assert.Equal(t, ok, true)
 
 	i, ok = ctx.FindBean("BeanTwo")
 	fmt.Println(ToString(i))
-	util.AssertEqual(t, ok, false)
+	assert.Equal(t, ok, false)
 
 	i, ok = ctx.FindBean(":*core_test.BeanTwo")
 	fmt.Println(ToString(i.Bean()))
-	util.AssertEqual(t, ok, true)
+	assert.Equal(t, ok, true)
 
 	i, ok = ctx.FindBean("github.com/go-spring/spring-core/core_test/core_test.BeanTwo:*core_test.BeanTwo")
 	fmt.Println(ToString(i.Bean()))
-	util.AssertEqual(t, ok, true)
+	assert.Equal(t, ok, true)
 
 	i, ok = ctx.FindBean("xxx:*core_test.BeanTwo")
 	fmt.Println(ToString(i))
-	util.AssertEqual(t, ok, false)
+	assert.Equal(t, ok, false)
 
 	i, ok = ctx.FindBean("*core_test.BeanTwo")
 	fmt.Println(ToString(i.Bean()))
-	util.AssertEqual(t, ok, true)
+	assert.Equal(t, ok, true)
 
 	i, ok = ctx.FindBean((*BeanTwo)(nil))
 	fmt.Println(ToString(i.Bean()))
-	util.AssertEqual(t, ok, true)
+	assert.Equal(t, ok, true)
 
 	_, ok = ctx.FindBean((*fmt.Stringer)(nil))
-	util.AssertEqual(t, ok, false)
+	assert.Equal(t, ok, false)
 
 	_, ok = ctx.FindBean((*Grouper)(nil))
-	util.AssertEqual(t, ok, false)
+	assert.Equal(t, ok, false)
 }
 
 type Teacher interface {
@@ -826,16 +826,16 @@ func TestApplicationContext_RegisterBeanFn(t *testing.T) {
 	var st1 *Student
 	ok := ctx.GetBean(&st1, "st1")
 
-	util.AssertEqual(t, ok, true)
+	assert.Equal(t, ok, true)
 	fmt.Println(ToString(st1))
-	util.AssertEqual(t, st1.Room, ctx.GetProperty("room"))
+	assert.Equal(t, st1.Room, ctx.GetProperty("room"))
 
 	var st2 *Student
 	ok = ctx.GetBean(&st2, "st2")
 
-	util.AssertEqual(t, ok, true)
+	assert.Equal(t, ok, true)
 	fmt.Println(ToString(st2))
-	util.AssertEqual(t, st2.Room, ctx.GetProperty("room"))
+	assert.Equal(t, st2.Room, ctx.GetProperty("room"))
 
 	fmt.Printf("%x\n", reflect.ValueOf(st1).Pointer())
 	fmt.Printf("%x\n", reflect.ValueOf(st2).Pointer())
@@ -843,30 +843,30 @@ func TestApplicationContext_RegisterBeanFn(t *testing.T) {
 	var st3 *Student
 	ok = ctx.GetBean(&st3, "st3")
 
-	util.AssertEqual(t, ok, true)
+	assert.Equal(t, ok, true)
 	fmt.Println(ToString(st3))
-	util.AssertEqual(t, st3.Room, ctx.GetProperty("room"))
+	assert.Equal(t, st3.Room, ctx.GetProperty("room"))
 
 	var st4 *Student
 	ok = ctx.GetBean(&st4, "st4")
 
-	util.AssertEqual(t, ok, true)
+	assert.Equal(t, ok, true)
 	fmt.Println(ToString(st4))
-	util.AssertEqual(t, st4.Room, ctx.GetProperty("room"))
+	assert.Equal(t, st4.Room, ctx.GetProperty("room"))
 
 	var m map[int]string
 	ok = ctx.GetBean(&m)
 
-	util.AssertEqual(t, ok, true)
+	assert.Equal(t, ok, true)
 	fmt.Println(ToString(m))
-	util.AssertEqual(t, m[1], "ok")
+	assert.Equal(t, m[1], "ok")
 
 	var s []int
 	ok = ctx.GetBean(&s)
 
-	util.AssertEqual(t, ok, true)
+	assert.Equal(t, ok, true)
 	fmt.Println(ToString(s))
-	util.AssertEqual(t, s[1], 2)
+	assert.Equal(t, s[1], 2)
 }
 
 func TestApplicationContext_Profile(t *testing.T) {
@@ -879,7 +879,7 @@ func TestApplicationContext_Profile(t *testing.T) {
 
 		var b *BeanZero
 		ok := ctx.GetBean(&b)
-		util.AssertEqual(t, ok, true)
+		assert.Equal(t, ok, true)
 	})
 
 	t.Run("bean:_ctx:test", func(t *testing.T) {
@@ -891,7 +891,7 @@ func TestApplicationContext_Profile(t *testing.T) {
 
 		var b *BeanZero
 		ok := ctx.GetBean(&b)
-		util.AssertEqual(t, ok, true)
+		assert.Equal(t, ok, true)
 	})
 }
 
@@ -926,7 +926,7 @@ func TestApplicationContext_Primary(t *testing.T) {
 
 	t.Run("duplicate", func(t *testing.T) {
 
-		util.AssertPanic(t, func() {
+		assert.Panic(t, func() {
 			ctx := core.NewApplicationContext()
 			ctx.ObjBean(&BeanZero{5})
 			ctx.ObjBean(&BeanZero{6})
@@ -935,7 +935,7 @@ func TestApplicationContext_Primary(t *testing.T) {
 			ctx.AutoWireBeans()
 		}, "duplicate registration, bean: ")
 
-		util.AssertPanic(t, func() {
+		assert.Panic(t, func() {
 			ctx := core.NewApplicationContext()
 			ctx.ObjBean(&BeanZero{5})
 			// primary 是在多个候选 bean 里面选择，而不是允许同名同类型的两个 bean
@@ -956,7 +956,7 @@ func TestApplicationContext_Primary(t *testing.T) {
 
 		var b *BeanTwo
 		ctx.GetBean(&b)
-		util.AssertEqual(t, b.One.Zero.Int, 5)
+		assert.Equal(t, b.One.Zero.Int, 5)
 	})
 
 	t.Run("primary", func(t *testing.T) {
@@ -970,7 +970,7 @@ func TestApplicationContext_Primary(t *testing.T) {
 
 		var b *BeanTwo
 		ctx.GetBean(&b)
-		util.AssertEqual(t, b.One.Zero.Int, 6)
+		assert.Equal(t, b.One.Zero.Int, 6)
 	})
 }
 
@@ -987,7 +987,7 @@ func TestDefaultProperties_WireFunc(t *testing.T) {
 	ctx.ObjBean(obj)
 	ctx.AutoWireBeans()
 	i := obj.Fn(3)
-	util.AssertEqual(t, i, 6)
+	assert.Equal(t, i, 6)
 }
 
 type Manager interface {
@@ -1038,13 +1038,13 @@ func TestApplicationContext_RegisterBeanFn2(t *testing.T) {
 
 		var m Manager
 		ok := ctx.GetBean(&m)
-		util.AssertEqual(t, ok, true)
+		assert.Equal(t, ok, true)
 
 		// 因为用户是按照接口注册的，所以理论上在依赖
 		// 系统中用户并不关心接口对应的真实类型是什么。
 		var lm *localManager
 		ok = ctx.GetBean(&lm)
-		util.AssertEqual(t, ok, false)
+		assert.Equal(t, ok, false)
 	})
 
 	t.Run("manager", func(t *testing.T) {
@@ -1053,24 +1053,24 @@ func TestApplicationContext_RegisterBeanFn2(t *testing.T) {
 		ctx.SetProperty("manager.version", "1.0.0")
 
 		bd := ctx.CtorBean(NewManager)
-		util.AssertEqual(t, bd.BeanName(), "core_test.Manager")
+		assert.Equal(t, bd.BeanName(), "core_test.Manager")
 
 		bd = ctx.CtorBean(NewInt)
-		util.AssertEqual(t, bd.BeanName(), "*int")
+		assert.Equal(t, bd.BeanName(), "*int")
 
 		ctx.AutoWireBeans()
 
 		var m Manager
 		ok := ctx.GetBean(&m)
-		util.AssertEqual(t, ok, true)
+		assert.Equal(t, ok, true)
 
 		var lm *localManager
 		ok = ctx.GetBean(&lm)
-		util.AssertEqual(t, ok, false)
+		assert.Equal(t, ok, false)
 	})
 
 	t.Run("manager return error", func(t *testing.T) {
-		util.AssertPanic(t, func() {
+		assert.Panic(t, func() {
 			ctx := core.NewApplicationContext()
 			ctx.SetProperty("manager.version", "1.0.0")
 			ctx.CtorBean(NewManagerRetError)
@@ -1086,7 +1086,7 @@ func TestApplicationContext_RegisterBeanFn2(t *testing.T) {
 	})
 
 	t.Run("manager return nil", func(t *testing.T) {
-		util.AssertPanic(t, func() {
+		assert.Panic(t, func() {
 			ctx := core.NewApplicationContext()
 			ctx.SetProperty("manager.version", "1.0.0")
 			ctx.CtorBean(NewNullPtrManager)
@@ -1153,22 +1153,22 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 
 	t.Run("int", func(t *testing.T) {
 
-		util.AssertPanic(t, func() {
+		assert.Panic(t, func() {
 			ctx := core.NewApplicationContext()
 			ctx.ObjBean(new(int)).Init(func() {})
 		}, "init should be func\\(bean\\) or func\\(bean\\)error")
 
-		util.AssertPanic(t, func() {
+		assert.Panic(t, func() {
 			ctx := core.NewApplicationContext()
 			ctx.ObjBean(new(int)).Init(func() int { return 0 })
 		}, "init should be func\\(bean\\) or func\\(bean\\)error")
 
-		util.AssertPanic(t, func() {
+		assert.Panic(t, func() {
 			ctx := core.NewApplicationContext()
 			ctx.ObjBean(new(int)).Init(func(int) {})
 		}, "init should be func\\(bean\\) or func\\(bean\\)error")
 
-		util.AssertPanic(t, func() {
+		assert.Panic(t, func() {
 			ctx := core.NewApplicationContext()
 			ctx.ObjBean(new(int)).Init(func(int, int) {})
 		}, "init should be func\\(bean\\) or func\\(bean\\)error")
@@ -1179,7 +1179,7 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 
 		var i *int
 		ctx.GetBean(&i)
-		util.AssertEqual(t, *i, 3)
+		assert.Equal(t, *i, 3)
 	})
 
 	t.Run("call init", func(t *testing.T) {
@@ -1193,8 +1193,8 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 
 		ctx.Close()
 
-		util.AssertEqual(t, ok, true)
-		util.AssertEqual(t, d.inited, true)
+		assert.Equal(t, ok, true)
+		assert.Equal(t, d.inited, true)
 	})
 
 	t.Run("call init with arg", func(t *testing.T) {
@@ -1209,13 +1209,13 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 
 		ctx.Close()
 
-		util.AssertEqual(t, ok, true)
-		util.AssertEqual(t, d.inited, true)
+		assert.Equal(t, ok, true)
+		assert.Equal(t, d.inited, true)
 	})
 
 	t.Run("call init with error", func(t *testing.T) {
 
-		util.AssertPanic(t, func() {
+		assert.Panic(t, func() {
 			ctx := core.NewApplicationContext()
 			ctx.SetProperty("int", 1)
 			ctx.ObjBean(new(callDestroy)).Init((*callDestroy).InitWithError, "${int}")
@@ -1232,8 +1232,8 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 
 		ctx.Close()
 
-		util.AssertEqual(t, ok, true)
-		util.AssertEqual(t, d.inited, true)
+		assert.Equal(t, ok, true)
+		assert.Equal(t, d.inited, true)
 	})
 
 	t.Run("call interface init", func(t *testing.T) {
@@ -1247,8 +1247,8 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 
 		ctx.Close()
 
-		util.AssertEqual(t, ok, true)
-		util.AssertEqual(t, d.(*callDestroy).inited, true)
+		assert.Equal(t, ok, true)
+		assert.Equal(t, d.(*callDestroy).inited, true)
 	})
 
 	t.Run("call interface init with arg", func(t *testing.T) {
@@ -1263,13 +1263,13 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 
 		ctx.Close()
 
-		util.AssertEqual(t, ok, true)
-		util.AssertEqual(t, d.(*callDestroy).inited, true)
+		assert.Equal(t, ok, true)
+		assert.Equal(t, d.(*callDestroy).inited, true)
 	})
 
 	t.Run("call interface init with error", func(t *testing.T) {
 
-		util.AssertPanic(t, func() {
+		assert.Panic(t, func() {
 			ctx := core.NewApplicationContext()
 			ctx.SetProperty("int", 1)
 			ctx.CtorBean(func() destroyable { return new(callDestroy) }).Init(destroyable.InitWithError, "${int}")
@@ -1286,8 +1286,8 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 
 		ctx.Close()
 
-		util.AssertEqual(t, ok, true)
-		util.AssertEqual(t, d.(*callDestroy).inited, true)
+		assert.Equal(t, ok, true)
+		assert.Equal(t, d.(*callDestroy).inited, true)
 	})
 
 	t.Run("call nested init", func(t *testing.T) {
@@ -1301,8 +1301,8 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 
 		ctx.Close()
 
-		util.AssertEqual(t, ok, true)
-		util.AssertEqual(t, d.inited, true)
+		assert.Equal(t, ok, true)
+		assert.Equal(t, d.inited, true)
 	})
 
 	t.Run("call nested interface init", func(t *testing.T) {
@@ -1318,8 +1318,8 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 
 		ctx.Close()
 
-		util.AssertEqual(t, ok, true)
-		util.AssertEqual(t, d.destroyable.(*callDestroy).inited, true)
+		assert.Equal(t, ok, true)
+		assert.Equal(t, d.destroyable.(*callDestroy).inited, true)
 	})
 }
 
@@ -1348,8 +1348,8 @@ func TestApplicationContext_ValueBincoreng(t *testing.T) {
 	ctx.GetBean(&cluster)
 	fmt.Println(cluster)
 
-	util.AssertEqual(t, cluster.Endpoints, cluster.RecoresConfig.Endpoints)
-	util.AssertEqual(t, cluster.Endpoints, cluster.Nested.RecoresConfig.Endpoints)
+	assert.Equal(t, cluster.Endpoints, cluster.RecoresConfig.Endpoints)
+	assert.Equal(t, cluster.Endpoints, cluster.Nested.RecoresConfig.Endpoints)
 }
 
 func TestApplicationContext_CollectBeans(t *testing.T) {
@@ -1362,7 +1362,7 @@ func TestApplicationContext_CollectBeans(t *testing.T) {
 		ctx.ObjBean(new(RecoresCluster))
 		ctx.AutoWireBeans()
 
-		util.AssertPanic(t, func() {
+		assert.Panic(t, func() {
 			var rcs []*RecoresCluster
 			ctx.CollectBeans(&rcs, "*", "*")
 		}, "more than one \\* in collection \\[\\*,\\*]\\?")
@@ -1382,9 +1382,9 @@ func TestApplicationContext_CollectBeans(t *testing.T) {
 		var rcs []*RecoresCluster
 		ctx.CollectBeans(&rcs, "one", "*")
 
-		util.AssertEqual(t, len(rcs), 2)
-		util.AssertEqual(t, rcs[0], d1)
-		util.AssertEqual(t, rcs[1], d2)
+		assert.Equal(t, len(rcs), 2)
+		assert.Equal(t, rcs[0], d1)
+		assert.Equal(t, rcs[1], d2)
 	})
 
 	t.Run("after *", func(t *testing.T) {
@@ -1401,9 +1401,9 @@ func TestApplicationContext_CollectBeans(t *testing.T) {
 		var rcs []*RecoresCluster
 		ctx.CollectBeans(&rcs, "one", "*")
 
-		util.AssertEqual(t, len(rcs), 2)
-		util.AssertEqual(t, rcs[1], d1)
-		util.AssertEqual(t, rcs[0], d2)
+		assert.Equal(t, len(rcs), 2)
+		assert.Equal(t, rcs[1], d1)
+		assert.Equal(t, rcs[0], d2)
 	})
 
 	t.Run("only *", func(t *testing.T) {
@@ -1417,7 +1417,7 @@ func TestApplicationContext_CollectBeans(t *testing.T) {
 		var rcs []*RecoresCluster
 		ctx.CollectBeans(&rcs, "*")
 
-		util.AssertEqual(t, len(rcs), 2)
+		assert.Equal(t, len(rcs), 2)
 	})
 
 	ctx := core.NewApplicationContext()
@@ -1433,10 +1433,10 @@ func TestApplicationContext_CollectBeans(t *testing.T) {
 		ctx.CollectBeans(&rcs)
 		fmt.Println(ToString(rcs))
 
-		util.AssertEqual(t, len(rcs), 2)
-		util.AssertEqual(t, rcs[0].Endpoints, "recores://localhost:6379")
+		assert.Equal(t, len(rcs), 2)
+		assert.Equal(t, rcs[0].Endpoints, "recores://localhost:6379")
 	})
-	util.AssertEqual(t, intBean.BeanName(), "*int")
+	assert.Equal(t, intBean.BeanName(), "*int")
 
 	ctx.AutoWireBeans()
 
@@ -1444,8 +1444,8 @@ func TestApplicationContext_CollectBeans(t *testing.T) {
 	ctx.GetBean(&rcs)
 	fmt.Println(ToString(rcs))
 
-	util.AssertEqual(t, len(rcs), 1)
-	util.AssertEqual(t, rcs[0].Endpoints, "recores://localhost:6379")
+	assert.Equal(t, len(rcs), 1)
+	assert.Equal(t, rcs[0].Endpoints, "recores://localhost:6379")
 }
 
 func TestApplicationContext_WireSliceBean(t *testing.T) {
@@ -1461,7 +1461,7 @@ func TestApplicationContext_WireSliceBean(t *testing.T) {
 		ctx.GetBean(&rcs)
 		fmt.Println(ToString(rcs))
 
-		util.AssertEqual(t, rcs[0].Endpoints, "recores://localhost:6379")
+		assert.Equal(t, rcs[0].Endpoints, "recores://localhost:6379")
 	}
 
 	{
@@ -1469,7 +1469,7 @@ func TestApplicationContext_WireSliceBean(t *testing.T) {
 		ctx.GetBean(&rcs)
 		fmt.Println(ToString(rcs))
 
-		util.AssertEqual(t, rcs[0].Endpoints, "recores://localhost:6379")
+		assert.Equal(t, rcs[0].Endpoints, "recores://localhost:6379")
 	}
 }
 
@@ -1536,27 +1536,27 @@ func TestOptionPattern(t *testing.T) {
 	}
 
 	cls := NewClassRoom()
-	util.AssertEqual(t, cls.className, "default")
+	assert.Equal(t, cls.className, "default")
 
 	cls = NewClassRoom(withClassName("二年级03班", 3))
-	util.AssertEqual(t, cls.floor, 3)
-	util.AssertEqual(t, len(cls.students), 0)
-	util.AssertEqual(t, cls.className, "二年级03班")
+	assert.Equal(t, cls.floor, 3)
+	assert.Equal(t, len(cls.students), 0)
+	assert.Equal(t, cls.className, "二年级03班")
 
 	cls = NewClassRoom(withStudents(students))
-	util.AssertEqual(t, cls.floor, 0)
-	util.AssertEqual(t, cls.students, students)
-	util.AssertEqual(t, cls.className, "default")
+	assert.Equal(t, cls.floor, 0)
+	assert.Equal(t, cls.students, students)
+	assert.Equal(t, cls.className, "default")
 
 	cls = NewClassRoom(withClassName("二年级03班", 3), withStudents(students))
-	util.AssertEqual(t, cls.className, "二年级03班")
-	util.AssertEqual(t, cls.students, students)
-	util.AssertEqual(t, cls.floor, 3)
+	assert.Equal(t, cls.className, "二年级03班")
+	assert.Equal(t, cls.students, students)
+	assert.Equal(t, cls.floor, 3)
 
 	cls = NewClassRoom(withStudents(students), withClassName("二年级03班", 3))
-	util.AssertEqual(t, cls.className, "二年级03班")
-	util.AssertEqual(t, cls.students, students)
-	util.AssertEqual(t, cls.floor, 3)
+	assert.Equal(t, cls.className, "二年级03班")
+	assert.Equal(t, cls.students, students)
+	assert.Equal(t, cls.floor, 3)
 }
 
 func TestOptionConstructorArg(t *testing.T) {
@@ -1571,9 +1571,9 @@ func TestOptionConstructorArg(t *testing.T) {
 		var cls *ClassRoom
 		ctx.GetBean(&cls)
 
-		util.AssertEqual(t, len(cls.students), 0)
-		util.AssertEqual(t, cls.className, "default")
-		util.AssertEqual(t, cls.President, "CaiYuanPei")
+		assert.Equal(t, len(cls.students), 0)
+		assert.Equal(t, cls.className, "default")
+		assert.Equal(t, cls.President, "CaiYuanPei")
 	})
 
 	t.Run("option withClassName", func(t *testing.T) {
@@ -1586,10 +1586,10 @@ func TestOptionConstructorArg(t *testing.T) {
 		var cls *ClassRoom
 		ctx.GetBean(&cls)
 
-		util.AssertEqual(t, cls.floor, 3)
-		util.AssertEqual(t, len(cls.students), 0)
-		util.AssertEqual(t, cls.className, "二年级03班")
-		util.AssertEqual(t, cls.President, "CaiYuanPei")
+		assert.Equal(t, cls.floor, 3)
+		assert.Equal(t, len(cls.students), 0)
+		assert.Equal(t, cls.className, "二年级03班")
+		assert.Equal(t, cls.President, "CaiYuanPei")
 	})
 
 	t.Run("option withStudents", func(t *testing.T) {
@@ -1606,10 +1606,10 @@ func TestOptionConstructorArg(t *testing.T) {
 		var cls *ClassRoom
 		ctx.GetBean(&cls)
 
-		util.AssertEqual(t, cls.floor, 0)
-		util.AssertEqual(t, len(cls.students), 2)
-		util.AssertEqual(t, cls.className, "default")
-		util.AssertEqual(t, cls.President, "CaiYuanPei")
+		assert.Equal(t, cls.floor, 0)
+		assert.Equal(t, len(cls.students), 2)
+		assert.Equal(t, cls.className, "default")
+		assert.Equal(t, cls.President, "CaiYuanPei")
 	})
 
 	t.Run("option withStudents withClassName", func(t *testing.T) {
@@ -1629,10 +1629,10 @@ func TestOptionConstructorArg(t *testing.T) {
 		var cls *ClassRoom
 		ctx.GetBean(&cls)
 
-		util.AssertEqual(t, cls.floor, 3)
-		util.AssertEqual(t, len(cls.students), 2)
-		util.AssertEqual(t, cls.className, "二年级06班")
-		util.AssertEqual(t, cls.President, "CaiYuanPei")
+		assert.Equal(t, cls.floor, 3)
+		assert.Equal(t, len(cls.students), 2)
+		assert.Equal(t, cls.className, "二年级06班")
+		assert.Equal(t, cls.President, "CaiYuanPei")
 	})
 }
 
@@ -1685,19 +1685,19 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 		parent := ctx.ObjBean(new(Server))
 		bd := ctx.CtorBean((*Server).Consumer, parent.BeanId())
 		ctx.AutoWireBeans()
-		util.AssertEqual(t, bd.BeanName(), "*core_test.Consumer")
+		assert.Equal(t, bd.BeanName(), "*core_test.Consumer")
 
 		var s *Server
 		ok := ctx.GetBean(&s)
-		util.AssertEqual(t, ok, true)
-		util.AssertEqual(t, s.Version, "1.0.0")
+		assert.Equal(t, ok, true)
+		assert.Equal(t, s.Version, "1.0.0")
 
 		s.Version = "2.0.0"
 
 		var c *Consumer
 		ok = ctx.GetBean(&c)
-		util.AssertEqual(t, ok, true)
-		util.AssertEqual(t, c.s.Version, "2.0.0")
+		assert.Equal(t, ok, true)
+		assert.Equal(t, c.s.Version, "2.0.0")
 	})
 
 	t.Run("method bean arg", func(t *testing.T) {
@@ -1711,15 +1711,15 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 
 		var s *Server
 		ok := ctx.GetBean(&s)
-		util.AssertEqual(t, ok, true)
-		util.AssertEqual(t, s.Version, "1.0.0")
+		assert.Equal(t, ok, true)
+		assert.Equal(t, s.Version, "1.0.0")
 
 		s.Version = "2.0.0"
 
 		var c *Consumer
 		ok = ctx.GetBean(&c)
-		util.AssertEqual(t, ok, true)
-		util.AssertEqual(t, c.s.Version, "2.0.0")
+		assert.Equal(t, ok, true)
+		assert.Equal(t, c.s.Version, "2.0.0")
 	})
 
 	t.Run("method bean wire to other bean", func(t *testing.T) {
@@ -1734,17 +1734,17 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 
 		var si ServerInterface
 		ok := ctx.GetBean(&si)
-		util.AssertEqual(t, ok, true)
+		assert.Equal(t, ok, true)
 
 		s := si.(*Server)
-		util.AssertEqual(t, s.Version, "1.0.0")
+		assert.Equal(t, s.Version, "1.0.0")
 
 		s.Version = "2.0.0"
 
 		var c *Consumer
 		ok = ctx.GetBean(&c)
-		util.AssertEqual(t, ok, true)
-		util.AssertEqual(t, c.s.Version, "2.0.0")
+		assert.Equal(t, ok, true)
+		assert.Equal(t, c.s.Version, "2.0.0")
 	})
 
 	t.Run("circle autowire", func(t *testing.T) {
@@ -1793,8 +1793,8 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 
 		var s *Server
 		ok := ctx.GetBean(&s)
-		util.AssertEqual(t, ok, true)
-		util.AssertEqual(t, s.Version, "1.0.0")
+		assert.Equal(t, ok, true)
+		assert.Equal(t, s.Version, "1.0.0")
 	})
 
 	t.Run("method bean selector type", func(t *testing.T) {
@@ -1807,19 +1807,19 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 
 		var s *Server
 		ok := ctx.GetBean(&s)
-		util.AssertEqual(t, ok, true)
-		util.AssertEqual(t, s.Version, "1.0.0")
+		assert.Equal(t, ok, true)
+		assert.Equal(t, s.Version, "1.0.0")
 
 		s.Version = "2.0.0"
 
 		var c *Consumer
 		ok = ctx.GetBean(&c)
-		util.AssertEqual(t, ok, true)
-		util.AssertEqual(t, c.s.Version, "2.0.0")
+		assert.Equal(t, ok, true)
+		assert.Equal(t, c.s.Version, "2.0.0")
 	})
 
 	t.Run("method bean selector type error", func(t *testing.T) {
-		util.AssertPanic(t, func() {
+		assert.Panic(t, func() {
 			ctx := core.NewApplicationContext()
 			ctx.SetProperty("server.version", "1.0.0")
 			ctx.ObjBean(new(Server))
@@ -1838,19 +1838,19 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 
 		var s *Server
 		ok := ctx.GetBean(&s)
-		util.AssertEqual(t, ok, true)
-		util.AssertEqual(t, s.Version, "1.0.0")
+		assert.Equal(t, ok, true)
+		assert.Equal(t, s.Version, "1.0.0")
 
 		s.Version = "2.0.0"
 
 		var c *Consumer
 		ok = ctx.GetBean(&c)
-		util.AssertEqual(t, ok, true)
-		util.AssertEqual(t, c.s.Version, "2.0.0")
+		assert.Equal(t, ok, true)
+		assert.Equal(t, c.s.Version, "2.0.0")
 	})
 
 	t.Run("method bean selector beanId error", func(t *testing.T) {
-		util.AssertPanic(t, func() {
+		assert.Panic(t, func() {
 			ctx := core.NewApplicationContext()
 			ctx.SetProperty("server.version", "1.0.0")
 			ctx.ObjBean(new(Server))
@@ -1977,9 +1977,9 @@ func TestApplicationContext_RegisterOptionBean(t *testing.T) {
 		var obj *VarObj
 		ctx.GetBean(&obj)
 
-		util.AssertEqual(t, len(obj.v), 1)
-		util.AssertEqual(t, obj.v[0].name, "v1")
-		util.AssertEqual(t, obj.s, "description")
+		assert.Equal(t, len(obj.v), 1)
+		assert.Equal(t, obj.v[0].name, "v1")
+		assert.Equal(t, obj.s, "description")
 	})
 
 	t.Run("variable option param 2", func(t *testing.T) {
@@ -1993,10 +1993,10 @@ func TestApplicationContext_RegisterOptionBean(t *testing.T) {
 		var obj *VarObj
 		ctx.GetBean(&obj)
 
-		util.AssertEqual(t, len(obj.v), 2)
-		util.AssertEqual(t, obj.v[0].name, "v1")
-		util.AssertEqual(t, obj.v[1].name, "v2")
-		util.AssertEqual(t, obj.s, "description")
+		assert.Equal(t, len(obj.v), 2)
+		assert.Equal(t, obj.v[0].name, "v1")
+		assert.Equal(t, obj.v[1].name, "v2")
+		assert.Equal(t, obj.s, "description")
 	})
 
 	t.Run("variable option interface param 1", func(t *testing.T) {
@@ -2009,7 +2009,7 @@ func TestApplicationContext_RegisterOptionBean(t *testing.T) {
 		var obj *VarInterfaceObj
 		ctx.GetBean(&obj)
 
-		util.AssertEqual(t, len(obj.v), 1)
+		assert.Equal(t, len(obj.v), 1)
 	})
 
 	t.Run("variable option interface param 1", func(t *testing.T) {
@@ -2022,7 +2022,7 @@ func TestApplicationContext_RegisterOptionBean(t *testing.T) {
 		var obj *VarInterfaceObj
 		ctx.GetBean(&obj)
 
-		util.AssertEqual(t, len(obj.v), 2)
+		assert.Equal(t, len(obj.v), 2)
 	})
 }
 
@@ -2030,22 +2030,22 @@ func TestApplicationContext_Close(t *testing.T) {
 
 	t.Run("destroy type", func(t *testing.T) {
 
-		util.AssertPanic(t, func() {
+		assert.Panic(t, func() {
 			ctx := core.NewApplicationContext()
 			ctx.ObjBean(new(int)).Destroy(func() {})
 		}, "destroy should be func\\(bean\\) or func\\(bean\\)error")
 
-		util.AssertPanic(t, func() {
+		assert.Panic(t, func() {
 			ctx := core.NewApplicationContext()
 			ctx.ObjBean(new(int)).Destroy(func() int { return 0 })
 		}, "destroy should be func\\(bean\\) or func\\(bean\\)error")
 
-		util.AssertPanic(t, func() {
+		assert.Panic(t, func() {
 			ctx := core.NewApplicationContext()
 			ctx.ObjBean(new(int)).Destroy(func(int) {})
 		}, "destroy should be func\\(bean\\) or func\\(bean\\)error")
 
-		util.AssertPanic(t, func() {
+		assert.Panic(t, func() {
 			ctx := core.NewApplicationContext()
 			ctx.ObjBean(new(int)).Destroy(func(int, int) {})
 		}, "destroy should be func\\(bean\\) or func\\(bean\\)error")
@@ -2059,7 +2059,7 @@ func TestApplicationContext_Close(t *testing.T) {
 		ctx.AutoWireBeans()
 		ctx.Close()
 
-		util.AssertEqual(t, called, true)
+		assert.Equal(t, called, true)
 	})
 
 	t.Run("call destroy", func(t *testing.T) {
@@ -2073,8 +2073,8 @@ func TestApplicationContext_Close(t *testing.T) {
 
 		ctx.Close()
 
-		util.AssertEqual(t, ok, true)
-		util.AssertEqual(t, d.destroyed, true)
+		assert.Equal(t, ok, true)
+		assert.Equal(t, d.destroyed, true)
 	})
 
 	t.Run("call destroy with arg", func(t *testing.T) {
@@ -2089,8 +2089,8 @@ func TestApplicationContext_Close(t *testing.T) {
 
 		ctx.Close()
 
-		util.AssertEqual(t, ok, true)
-		util.AssertEqual(t, d.destroyed, true)
+		assert.Equal(t, ok, true)
+		assert.Equal(t, d.destroyed, true)
 	})
 
 	t.Run("call destroy with error", func(t *testing.T) {
@@ -2107,8 +2107,8 @@ func TestApplicationContext_Close(t *testing.T) {
 
 			ctx.Close()
 
-			util.AssertEqual(t, ok, true)
-			util.AssertEqual(t, d.destroyed, false)
+			assert.Equal(t, ok, true)
+			assert.Equal(t, d.destroyed, false)
 		}
 
 		// nil
@@ -2123,8 +2123,8 @@ func TestApplicationContext_Close(t *testing.T) {
 
 			ctx.Close()
 
-			util.AssertEqual(t, ok, true)
-			util.AssertEqual(t, d.destroyed, true)
+			assert.Equal(t, ok, true)
+			assert.Equal(t, d.destroyed, true)
 		}
 	})
 
@@ -2139,8 +2139,8 @@ func TestApplicationContext_Close(t *testing.T) {
 
 		ctx.Close()
 
-		util.AssertEqual(t, ok, true)
-		util.AssertEqual(t, d.(*callDestroy).destroyed, true)
+		assert.Equal(t, ok, true)
+		assert.Equal(t, d.(*callDestroy).destroyed, true)
 	})
 
 	t.Run("call interface destroy with arg", func(t *testing.T) {
@@ -2155,8 +2155,8 @@ func TestApplicationContext_Close(t *testing.T) {
 
 		ctx.Close()
 
-		util.AssertEqual(t, ok, true)
-		util.AssertEqual(t, d.(*callDestroy).destroyed, true)
+		assert.Equal(t, ok, true)
+		assert.Equal(t, d.(*callDestroy).destroyed, true)
 	})
 
 	t.Run("call interface destroy with error", func(t *testing.T) {
@@ -2173,8 +2173,8 @@ func TestApplicationContext_Close(t *testing.T) {
 
 			ctx.Close()
 
-			util.AssertEqual(t, ok, true)
-			util.AssertEqual(t, d.(*callDestroy).destroyed, false)
+			assert.Equal(t, ok, true)
+			assert.Equal(t, d.(*callDestroy).destroyed, false)
 		}
 
 		// nil
@@ -2189,8 +2189,8 @@ func TestApplicationContext_Close(t *testing.T) {
 
 			ctx.Close()
 
-			util.AssertEqual(t, ok, true)
-			util.AssertEqual(t, d.(*callDestroy).destroyed, true)
+			assert.Equal(t, ok, true)
+			assert.Equal(t, d.(*callDestroy).destroyed, true)
 		}
 	})
 
@@ -2218,7 +2218,7 @@ func TestApplicationContext_Close(t *testing.T) {
 }
 
 func TestApplicationContext_BeanNotFound(t *testing.T) {
-	util.AssertPanic(t, func() {
+	assert.Panic(t, func() {
 		ctx := core.NewApplicationContext()
 		ctx.CtorBean(func(i *int) bool { return false }, "")
 		ctx.AutoWireBeans()
@@ -2270,26 +2270,26 @@ func TestApplicationContext_NestedAutowireBean(t *testing.T) {
 	var b *NestedAutowireBean
 	ok := ctx.GetBean(&b)
 
-	util.AssertEqual(t, ok, true)
-	util.AssertEqual(t, *b.Int, 3)
+	assert.Equal(t, ok, true)
+	assert.Equal(t, *b.Int, 3)
 
 	var b0 *PtrNestedAutowireBean
 	ok = ctx.GetBean(&b0)
 
-	util.AssertEqual(t, ok, true)
-	util.AssertEqual(t, b0.Int, (*int)(nil))
+	assert.Equal(t, ok, true)
+	assert.Equal(t, b0.Int, (*int)(nil))
 
 	var b1 *FieldNestedAutowireBean
 	ok = ctx.GetBean(&b1)
 
-	util.AssertEqual(t, ok, true)
-	util.AssertEqual(t, *b1.B.Int, 3)
+	assert.Equal(t, ok, true)
+	assert.Equal(t, *b1.B.Int, 3)
 
 	var b2 *PtrFieldNestedAutowireBean
 	ok = ctx.GetBean(&b2)
 
-	util.AssertEqual(t, ok, true)
-	util.AssertEqual(t, b2.B.Int, (*int)(nil))
+	assert.Equal(t, ok, true)
+	assert.Equal(t, b2.B.Int, (*int)(nil))
 }
 
 type BaseChannel struct {
@@ -2327,7 +2327,7 @@ func TestApplicationContext_NestValueField(t *testing.T) {
 		ctx.SetProperty("sdk.wx.enable", true)
 
 		bd := ctx.CtorBean(func() int { return 3 })
-		util.AssertEqual(t, bd.BeanName(), "*int")
+		assert.Equal(t, bd.BeanName(), "*int")
 
 		ctx.ObjBean(new(wxChannel))
 		ctx.AutoWireBeans()
@@ -2335,12 +2335,12 @@ func TestApplicationContext_NestValueField(t *testing.T) {
 		var c *wxChannel
 		ok := ctx.GetBean(&c)
 
-		util.AssertEqual(t, ok, true)
-		util.AssertEqual(t, *c.baseChannel.Int, 3)
-		util.AssertEqual(t, *c.int, 3)
-		util.AssertEqual(t, c.baseChannel.Int, c.int)
-		util.AssertEqual(t, c.enable, true)
-		util.AssertEqual(t, c.AutoCreate, true)
+		assert.Equal(t, ok, true)
+		assert.Equal(t, *c.baseChannel.Int, 3)
+		assert.Equal(t, *c.int, 3)
+		assert.Equal(t, c.baseChannel.Int, c.int)
+		assert.Equal(t, c.enable, true)
+		assert.Equal(t, c.AutoCreate, true)
 	})
 
 	t.Run("public", func(t *testing.T) {
@@ -2355,12 +2355,12 @@ func TestApplicationContext_NestValueField(t *testing.T) {
 		var c *WXChannel
 		ok := ctx.GetBean(&c)
 
-		util.AssertEqual(t, ok, true)
-		util.AssertEqual(t, *c.BaseChannel.Int, 3)
-		util.AssertEqual(t, *c.Int, 3)
-		util.AssertEqual(t, c.BaseChannel.Int, c.Int)
-		util.AssertEqual(t, c.Enable, true)
-		util.AssertEqual(t, c.AutoCreate, true)
+		assert.Equal(t, ok, true)
+		assert.Equal(t, *c.BaseChannel.Int, 3)
+		assert.Equal(t, *c.Int, 3)
+		assert.Equal(t, c.BaseChannel.Int, c.Int)
+		assert.Equal(t, c.Enable, true)
+		assert.Equal(t, c.AutoCreate, true)
 	})
 }
 
@@ -2376,7 +2376,7 @@ func TestApplicationContext_FnArgCollectBean(t *testing.T) {
 				nums = append(nums, *e)
 			}
 			sort.Ints(nums)
-			util.AssertEqual(t, nums, []int{3, 4})
+			assert.Equal(t, nums, []int{3, 4})
 			return false
 		}, "[]")
 		ctx.AutoWireBeans()
@@ -2392,7 +2392,7 @@ func TestApplicationContext_FnArgCollectBean(t *testing.T) {
 				names = append(names, teacher.(*historyTeacher).name)
 			}
 			sort.Strings(names)
-			util.AssertEqual(t, names, []string{"t1", "t2"})
+			assert.Equal(t, names, []string{"t1", "t2"})
 			return false
 		}, "[]")
 		ctx.AutoWireBeans()
@@ -2413,7 +2413,7 @@ func (_ *filterImpl) Filter(input string) string {
 func TestApplicationContext_BeanCache(t *testing.T) {
 
 	t.Run("not implement interface", func(t *testing.T) {
-		util.AssertPanic(t, func() {
+		assert.Panic(t, func() {
 			ctx := core.NewApplicationContext()
 			ctx.ObjBean(new(int)).Export((*filter)(nil))
 			ctx.AutoWireBeans()
@@ -2509,23 +2509,23 @@ func TestApplicationContext_AutoExport(t *testing.T) {
 
 		var x context.Context
 		ok := ctx.GetBean(&x)
-		util.AssertEqual(t, true, ok)
-		util.AssertEqual(t, b, x)
+		assert.Equal(t, true, ok)
+		assert.Equal(t, b, x)
 
 		var s fmt.Stringer
 		ok = ctx.GetBean(&s)
-		util.AssertEqual(t, true, ok)
-		util.AssertEqual(t, b, s)
+		assert.Equal(t, true, ok)
+		assert.Equal(t, b, s)
 
 		var pbi ptrBaseInterface
 		ok = ctx.GetBean(&pbi)
-		util.AssertEqual(t, true, ok)
-		util.AssertEqual(t, b, pbi)
+		assert.Equal(t, true, ok)
+		assert.Equal(t, b, pbi)
 
 		var bi baseInterface
 		ok = ctx.GetBean(&bi)
-		util.AssertEqual(t, true, ok)
-		util.AssertEqual(t, b, bi)
+		assert.Equal(t, true, ok)
+		assert.Equal(t, b, bi)
 	})
 
 	t.Run("auto export private", func(t *testing.T) {
@@ -2536,11 +2536,11 @@ func TestApplicationContext_AutoExport(t *testing.T) {
 
 		var x context.Context
 		ok := ctx.GetBean(&x)
-		util.AssertEqual(t, true, ok)
+		assert.Equal(t, true, ok)
 
 		var s fmt.Stringer
 		ok = ctx.GetBean(&s)
-		util.AssertEqual(t, true, ok)
+		assert.Equal(t, true, ok)
 	})
 
 	t.Run("auto export & export", func(t *testing.T) {
@@ -2552,13 +2552,13 @@ func TestApplicationContext_AutoExport(t *testing.T) {
 
 		var x context.Context
 		ok := ctx.GetBean(&x)
-		util.AssertEqual(t, true, ok)
-		util.AssertEqual(t, b, x)
+		assert.Equal(t, true, ok)
+		assert.Equal(t, b, x)
 
 		var s fmt.Stringer
 		ok = ctx.GetBean(&s)
-		util.AssertEqual(t, true, ok)
-		util.AssertEqual(t, b, s)
+		assert.Equal(t, true, ok)
+		assert.Equal(t, b, s)
 	})
 
 	t.Run("unexported but auto match", func(t *testing.T) {
@@ -2583,7 +2583,7 @@ func TestApplicationContext_AutoExport(t *testing.T) {
 
 	t.Run("panics", func(t *testing.T) {
 
-		util.AssertPanic(t, func() {
+		assert.Panic(t, func() {
 			ctx := core.NewApplicationContext()
 			ctx.ObjBean(&struct {
 				_ *int `export:""`
@@ -2591,7 +2591,7 @@ func TestApplicationContext_AutoExport(t *testing.T) {
 			ctx.AutoWireBeans()
 		}, "export can only use on interface")
 
-		util.AssertPanic(t, func() {
+		assert.Panic(t, func() {
 			ctx := core.NewApplicationContext()
 			ctx.ObjBean(&struct {
 				_ Runner `export:"" autowire:""`
@@ -2625,7 +2625,7 @@ func TestApplicationContext_Properties(t *testing.T) {
 		ctx := core.NewApplicationContext()
 		ctx.ObjBean(b)
 		ctx.AutoWireBeans()
-		util.AssertEqual(t, b.Duration, []time.Duration{time.Second, 5 * time.Second})
+		assert.Equal(t, b.Duration, []time.Duration{time.Second, 5 * time.Second})
 	})
 
 	t.Run("map default value ", func(t *testing.T) {
@@ -2645,10 +2645,10 @@ func TestApplicationContext_Properties(t *testing.T) {
 		ctx.ObjBean(&obj)
 		ctx.AutoWireBeans()
 
-		util.AssertEqual(t, obj.Int, 5)
-		util.AssertEqual(t, obj.IntA, 3)
-		util.AssertEqual(t, obj.Map, map[string]string{})
-		util.AssertEqual(t, obj.MapA, map[string]string{
+		assert.Equal(t, obj.Int, 5)
+		assert.Equal(t, obj.IntA, 3)
+		assert.Equal(t, obj.Map, map[string]string{})
+		assert.Equal(t, obj.MapA, map[string]string{
 			"cba": "cba", "nba": "nba",
 		})
 	})
@@ -2714,7 +2714,7 @@ func TestApplicationContext_Destroy(t *testing.T) {
 	ctx.AutoWireBeans()
 	ctx.Close()
 
-	util.AssertEqual(t, destroyArray, []int{1, 2, 2, 4})
+	assert.Equal(t, destroyArray, []int{1, 2, 2, 4})
 }
 
 type Registry interface {
@@ -2741,14 +2741,14 @@ func (f *registryFactory) Create() Registry { return NewRegistry() }
 
 func TestApplicationContext_NameEquivalence(t *testing.T) {
 
-	util.AssertPanic(t, func() {
+	assert.Panic(t, func() {
 		ctx := core.NewApplicationContext()
 		ctx.ObjBean(DefaultRegistry)
 		ctx.CtorBean(NewRegistry)
 		ctx.AutoWireBeans()
 	}, `duplicate registration, bean: `)
 
-	util.AssertPanic(t, func() {
+	assert.Panic(t, func() {
 		ctx := core.NewApplicationContext()
 		bd := ctx.ObjBean(&registryFactory{})
 		ctx.CtorBean(func(f *registryFactory) Registry { return f.Create() }, bd)

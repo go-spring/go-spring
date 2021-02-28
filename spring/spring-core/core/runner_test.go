@@ -20,8 +20,8 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/go-spring/spring-core/assert"
 	"github.com/go-spring/spring-core/core"
-	"github.com/go-spring/spring-core/util"
 )
 
 func TestRunner_Run(t *testing.T) {
@@ -32,7 +32,7 @@ func TestRunner_Run(t *testing.T) {
 		ctx.CtorBean(func() int { return 3 })
 		ctx.SetProperty("version", "v0.0.1")
 
-		util.AssertPanic(t, func() {
+		assert.Panic(t, func() {
 			_ = ctx.Invoke(func(i *int, version string) {
 				fmt.Println("version:", version)
 				fmt.Println("int:", *i)
