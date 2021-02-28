@@ -31,6 +31,7 @@ import (
 	"github.com/go-spring/spring-core/core"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/mq"
+	"github.com/go-spring/spring-core/util"
 	"github.com/spf13/cast"
 )
 
@@ -249,18 +250,35 @@ func (app *Application) loadSystemEnv() conf.Properties {
 
 // loadProfileConfig 加载指定环境的配置文件
 func (app *Application) loadProfileConfig(profile string) conf.Properties {
+
+	fileName := "application"
+	if profile != "" {
+		fileName += "-" + profile
+	}
+
+	var (
+		scheme       string
+		fileLocation string
+	)
+
 	p := conf.New()
 	for _, configLocation := range app.cfgLocation {
-		var result map[string]interface{}
+
 		if ss := strings.SplitN(configLocation, ":", 2); len(ss) == 1 {
-			result = new(defaultPropertySource).Load(ss[0], profile)
+			fileLocation = ss[0]
 		} else {
-			if ps, ok := propertySources[ss[0]]; ok {
-				result = ps.Load(ss[1], profile)
-			} else {
-				panic(fmt.Errorf("unsupported config scheme %s", ss[0]))
-			}
+			scheme = ss[0]
+			fileLocation = ss[1]
 		}
+
+		ps, ok := propertySourceMap[scheme]
+		if !ok {
+			panic(fmt.Errorf("unsupported config scheme %s", scheme))
+		}
+
+		result, err := ps.Load(fileLocation, fileName)
+		util.Panic(err).When(err != nil)
+
 		for k, v := range result {
 			log.Tracef("%s=%v", k, v)
 			p.Set(k, v)

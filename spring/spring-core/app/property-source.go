@@ -17,125 +17,109 @@
 package app
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/log"
-	"github.com/go-spring/spring-core/util"
 	"github.com/spf13/viper"
 )
 
 func init() {
-	RegisterPropertySource(&configMapPropertySource{})
+	RegisterPropertySource(defaultPropertySource, "")
+	RegisterPropertySource(configMapPropertySource, "k8s")
+}
+
+var propertySourceMap = make(map[string]PropertySource)
+
+// RegisterPropertySource 注册属性源
+func RegisterPropertySource(ps PropertySource, scheme string) {
+	propertySourceMap[scheme] = ps
 }
 
 // PropertySource 属性源接口
 type PropertySource interface {
 
-	// Scheme 返回属性源的标识
-	Scheme() string
-
-	// Load 加载属性文件，profile 配置文件剖面，fileLocation 和属性源相关。
-	Load(fileLocation string, profile string) map[string]interface{}
+	// Load 加载符合条件的属性文件，fileLocation 是配置文件所在的目录或者数据文件，
+	// fileName 是配置文件的名称，但不包含扩展名。通过遍历配置读取器获取存在的配置文件。
+	Load(fileLocation string, fileName string) (map[string]interface{}, error)
 }
 
-// propertySources 属性源集合
-var propertySources = make(map[string]PropertySource)
+type FuncPropertySource func(fileLocation string, fileName string) (map[string]interface{}, error)
 
-// RegisterPropertySource 注册属性源
-func RegisterPropertySource(ps PropertySource) {
-	propertySources[ps.Scheme()] = ps
+func (fn FuncPropertySource) Load(fileLocation string, fileName string) (map[string]interface{}, error) {
+	return fn(fileLocation, fileName)
 }
 
-// defaultPropertySource 基于默认配置文件的属性源
-type defaultPropertySource struct{}
-
-// Scheme 返回属性源的标识
-func (p *defaultPropertySource) Scheme() string {
-	return ""
-}
-
-// Load 加载属性文件，profile 配置文件剖面，fileLocation 配置文件所在目录。
-func (p *defaultPropertySource) Load(fileLocation string, profile string) map[string]interface{} {
-
-	fileNamePrefix := "application"
-	if profile != "" {
-		fileNamePrefix += "-" + profile
-	}
+// defaultPropertySource 整个文件都是属性
+var defaultPropertySource = FuncPropertySource(func(fileLocation string, fileName string) (map[string]interface{}, error) {
 
 	result := make(map[string]interface{})
+	err := conf.EachReader(func(r conf.Reader) error {
+		var file string
 
-	// 从预定义的文件格式中加载属性值列表
-	for _, reader := range conf.Readers {
-		var filename string
-
-		for _, ext := range reader.FileExt() {
-			s := filepath.Join(fileLocation, fileNamePrefix+ext)
-			if _, err := os.Stat(s); err != nil {
-				continue // 这里不需要警告
+		for _, ext := range r.FileExt() {
+			s := filepath.Join(fileLocation, fileName+ext)
+			if _, err := os.Stat(s); err == nil {
+				file = s
+				break
 			}
-			filename = s
-			break
 		}
 
-		if filename == "" {
-			continue
+		if file == "" {
+			return nil
 		}
 
-		log.Info("load properties from file ", filename)
-		err := reader.ReadFile(filename, result)
-		util.Panic(err).When(err != nil && err != os.ErrNotExist)
+		log.Info("load properties from file ", file)
+		err := r.ReadFile(file, result)
+		if err != nil && err != os.ErrNotExist {
+			return err
+		}
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
 	}
-
-	return result
-}
+	return result, nil
+})
 
 // configMapPropertySource 基于 k8s ConfigMap 的属性源
-type configMapPropertySource struct{}
-
-// Scheme 返回属性源的标识
-func (p *configMapPropertySource) Scheme() string {
-	return "k8s"
-}
-
-// Load 加载属性文件，profile 配置文件剖面，fileLocation 配置文件名称。
-func (p *configMapPropertySource) Load(fileLocation string, profile string) map[string]interface{} {
+var configMapPropertySource = FuncPropertySource(func(fileLocation string, fileName string) (map[string]interface{}, error) {
 
 	v := viper.New()
 	v.SetConfigFile(fileLocation)
-
-	err := v.ReadInConfig()
-	util.Panic(err).When(err != nil)
+	if err := v.ReadInConfig(); err != nil {
+		return nil, err
+	}
 
 	d := v.Sub("data")
 	if d == nil {
-		return nil
-	}
-
-	profileFileName := "application"
-	if profile != "" {
-		profileFileName += "-" + profile
+		return nil, fmt.Errorf("data not found in config-map %s", fileLocation)
 	}
 
 	result := make(map[string]interface{})
+	err := conf.EachReader(func(r conf.Reader) error {
+		for _, ext := range r.FileExt() {
 
-	// 从预定义的文件格式中加载属性值列表
-	for _, reader := range conf.Readers {
-		for _, ext := range reader.FileExt() {
-
-			key := profileFileName + ext
+			key := fileName + ext
 			if !d.IsSet(key) {
 				continue
 			}
 
 			log.Infof("load properties from config-map %s:%s", fileLocation, key)
 			if val := d.GetString(key); val != "" {
-				err = reader.ReadBuffer([]byte(val), result)
-				util.Panic(err).When(err != nil)
+				if err := r.ReadBuffer([]byte(val), result); err != nil {
+					return err
+				}
 			}
 		}
-	}
+		return nil
+	})
 
-	return result
-}
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+})
