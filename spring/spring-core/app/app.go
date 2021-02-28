@@ -27,6 +27,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/go-spring/spring-core/arg"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/core"
 	"github.com/go-spring/spring-core/log"
@@ -34,6 +35,25 @@ import (
 	"github.com/go-spring/spring-core/util"
 	"github.com/spf13/cast"
 )
+
+// ModuleContext
+type ModuleContext interface {
+
+	// ObjBean
+	ObjBean(i interface{}) *core.BeanDefinition
+
+	// CtorBean
+	CtorBean(fn interface{}, args ...arg.Arg) *core.BeanDefinition
+
+	// Config
+	Config(fn interface{}, args ...arg.Arg) *core.Configer
+}
+
+var modules = make([]ModuleFunc, 0)
+
+type ModuleFunc func(ctx ModuleContext)
+
+func Module(f ModuleFunc) int { modules = append(modules, f); return 0 }
 
 const (
 	DefaultConfigLocation = "config/" // 默认的配置文件路径
@@ -96,6 +116,10 @@ func NewApplication() *Application {
 	}
 }
 
+func (app *Application) ApplicationContext() core.ApplicationContext {
+	return app.appCtx
+}
+
 func (app *Application) AfterPrepare(fn AfterPrepareFunc) *Application {
 	app.listOfAfterPrepare = append(app.listOfAfterPrepare, fn)
 	return app
@@ -106,30 +130,9 @@ func (app *Application) ExpectSysProperties(pattern ...string) *Application {
 	return app
 }
 
-func (app *Application) ApplicationContext() core.ApplicationContext {
-	return app.appCtx
-}
-
 // Profile 设置运行环境
 func (app *Application) Profile(profile string) *Application {
 	app.appCtx.SetProfile(profile)
-	return app
-}
-
-// Property 设置属性值，属性名称统一转成小写。
-func (app *Application) Property(key string, value interface{}) *Application {
-	app.appCtx.SetProperty(key, value)
-	return app
-}
-
-func (app *Application) Bean(bd *core.BeanDefinition) *Application {
-	app.appCtx.Bean(bd)
-	return app
-}
-
-// Configer 注册一个配置函数
-func (app *Application) Configer(configer *core.Configer) *Application {
-	app.appCtx.Configer(configer)
 	return app
 }
 
@@ -271,7 +274,7 @@ func (app *Application) loadProfileConfig(profile string) conf.Properties {
 			fileLocation = ss[1]
 		}
 
-		ps, ok := propertySourceMap[scheme]
+		ps, ok := conf.FindPropertySource(scheme)
 		if !ok {
 			panic(fmt.Errorf("unsupported config scheme %s", scheme))
 		}
@@ -395,4 +398,42 @@ func (app *Application) ShutDown() {
 	default:
 		close(app.exitChan)
 	}
+}
+
+// Property 设置属性值，属性名称统一转成小写。
+func (app *Application) Property(key string, value interface{}) *Application {
+	app.appCtx.SetProperty(key, value)
+	return app
+}
+
+func (app *Application) Bean(bd *core.BeanDefinition) *Application {
+	app.appCtx.Bean(bd)
+	return app
+}
+
+// Configer 注册一个配置函数
+func (app *Application) Configer(configer *core.Configer) *Application {
+	app.appCtx.Configer(configer)
+	return app
+}
+
+func (app *Application) WebMapper(mapper *WebMapper) *Application {
+	app.WebMapping.addMapper(mapper)
+	return app
+}
+
+func (app *Application) RegisterGRpcServer(s *GRpcServer) *Application {
+	app.GRpcServers[s.fn] = s
+	return app
+}
+
+// RegisterGRpcClient 注册 gRPC 服务客户端，fn 是 gRPC 自动生成的客户端构造函数
+func (app *Application) RegisterGRpcClient(bd *core.BeanDefinition) *Application {
+	return app.Bean(bd)
+}
+
+// BindConsumer 注册 BIND 形式的消息消费者
+func (app *Application) BindConsumer(topic string, fn interface{}) *Application {
+	app.Consumers[topic] = mq.BIND(topic, fn)
+	return app
 }

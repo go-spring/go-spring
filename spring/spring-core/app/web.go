@@ -177,10 +177,3 @@ func (r *WebRouter) MappingDelete(path string, fn web.HandlerFunc, filters ...be
 func (r *WebRouter) BindingDelete(path string, fn interface{}, filters ...bean.Selector) *WebMapper {
 	return r.HandleRequest(web.MethodDelete, path, web.BIND(fn), filters...)
 }
-
-///////////////////////////////////////////////////////////////////////////////
-
-func (app *Application) WebMapper(mapper *WebMapper) *Application {
-	app.WebMapping.addMapper(mapper)
-	return app
-}

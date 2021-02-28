@@ -1,26 +1,101 @@
-/*
- * Copyright 2012-2019 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package boot
 
 import (
+	"context"
+
 	"github.com/go-spring/spring-core/app"
+	"github.com/go-spring/spring-core/arg"
 	"github.com/go-spring/spring-core/bean"
+	"github.com/go-spring/spring-core/core"
 	"github.com/go-spring/spring-core/web"
 )
+
+var gApp = app.NewApplication()
+
+func App() *app.Application { return gApp }
+
+func ApplicationContext() core.ApplicationContext {
+	return gApp.ApplicationContext()
+}
+
+// GetProfile 返回运行环境
+func GetProfile() string {
+	return ApplicationContext().GetProfile()
+}
+
+func GetProperty(key string) interface{} {
+	return ApplicationContext().GetProperty(key)
+}
+
+func WireBean(i interface{}) {
+	ApplicationContext().WireBean(i)
+}
+
+// Beans 获取所有 Bean 的定义，不能保证解析和注入，请谨慎使用该函数!
+func Beans() []*core.BeanDefinition {
+	return ApplicationContext().Beans()
+}
+
+func GetBean(i interface{}, selector ...bean.Selector) bool {
+	return ApplicationContext().GetBean(i, selector...)
+}
+
+func FindBean(selector bean.Selector) (bean.Definition, bool) {
+	return ApplicationContext().FindBean(selector)
+}
+
+func CollectBeans(i interface{}, selectors ...bean.Selector) bool {
+	return ApplicationContext().CollectBeans(i, selectors...)
+}
+
+func Invoke(fn interface{}, args ...arg.Arg) error {
+	return ApplicationContext().Invoke(fn, args...)
+}
+
+type GoFuncWithContext func(context.Context)
+
+func Go(fn GoFuncWithContext) {
+	appCtx := ApplicationContext()
+	appCtx.Go(func() { fn(appCtx.Context()) })
+}
+
+func ObjBean(i interface{}) *core.BeanDefinition {
+	bd := core.ObjBean(i)
+	gApp.Bean(bd)
+	return bd
+}
+
+func CtorBean(fn interface{}, args ...arg.Arg) *core.BeanDefinition {
+	bd := core.CtorBean(fn, args...)
+	gApp.Bean(bd)
+	return bd
+}
+
+func Config(fn interface{}, args ...arg.Arg) *core.Configer {
+	c := core.Config(fn, args...)
+	gApp.Configer(c)
+	return c
+}
+
+// RegisterGRpcServer 注册 gRPC 服务提供者，fn 是 gRPC 自动生成的服务注册函数，serviceName 是服务名称，
+// 必须对应 *_grpc.pg.go 文件里面 grpc.ServiceDesc 的 ServiceName 字段，server 是服务具体提供者对象。
+func RegisterGRpcServer(fn interface{}, serviceName string, server interface{}) *app.GRpcServer {
+	s := app.NewGRpcServer(fn, serviceName, server)
+	gApp.RegisterGRpcServer(s)
+	return s
+}
+
+// RegisterGRpcClient 注册 gRPC 服务客户端，fn 是 gRPC 自动生成的客户端构造函数
+func RegisterGRpcClient(fn interface{}, endpoint string) *core.BeanDefinition {
+	c := app.NewGRpcClient(fn, endpoint)
+	gApp.RegisterGRpcClient(c)
+	return c
+}
+
+// BindConsumer 注册 BIND 形式的消息消费者
+func BindConsumer(topic string, fn interface{}) {
+	gApp.BindConsumer(topic, fn)
+}
 
 // Route 返回和 app.WebMapper 绑定的路由分组
 func Route(basePath string, filters ...bean.Selector) *app.WebRouter {

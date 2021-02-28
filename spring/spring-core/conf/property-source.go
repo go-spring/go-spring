@@ -14,14 +14,13 @@
  * limitations under the License.
  */
 
-package app
+package conf
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
 
-	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/log"
 	"github.com/spf13/viper"
 )
@@ -32,6 +31,11 @@ func init() {
 }
 
 var propertySourceMap = make(map[string]PropertySource)
+
+func FindPropertySource(scheme string) (PropertySource, bool) {
+	ps, ok := propertySourceMap[scheme]
+	return ps, ok
+}
 
 // RegisterPropertySource 注册属性源
 func RegisterPropertySource(ps PropertySource, scheme string) {
@@ -56,7 +60,7 @@ func (fn FuncPropertySource) Load(fileLocation string, fileName string) (map[str
 var defaultPropertySource = FuncPropertySource(func(fileLocation string, fileName string) (map[string]interface{}, error) {
 
 	result := make(map[string]interface{})
-	err := conf.EachReader(func(r conf.Reader) error {
+	err := EachReader(func(r Reader) error {
 		var file string
 
 		for _, ext := range r.FileExt() {
@@ -100,7 +104,7 @@ var configMapPropertySource = FuncPropertySource(func(fileLocation string, fileN
 	}
 
 	result := make(map[string]interface{})
-	err := conf.EachReader(func(r conf.Reader) error {
+	err := EachReader(func(r Reader) error {
 		for _, ext := range r.FileExt() {
 
 			key := fileName + ext

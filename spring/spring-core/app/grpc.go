@@ -23,11 +23,6 @@ import (
 
 ///////////////////// gRPC Server //////////////////////
 
-func (app *Application) RegisterGRpcServer(s *GRpcServer) *Application {
-	app.GRpcServers[s.fn] = s
-	return app
-}
-
 type GRpcServer struct {
 	fn          interface{}
 	server      interface{}    // 服务对象
@@ -68,9 +63,4 @@ func (s *GRpcServer) CheckCondition(ctx core.ApplicationContext) bool {
 
 func NewGRpcClient(fn interface{}, endpoint string) *core.BeanDefinition {
 	return core.CtorBean(fn, endpoint)
-}
-
-// RegisterGRpcClient 注册 gRPC 服务客户端，fn 是 gRPC 自动生成的客户端构造函数
-func (app *Application) RegisterGRpcClient(bd *core.BeanDefinition) *Application {
-	return app.Bean(bd)
 }
