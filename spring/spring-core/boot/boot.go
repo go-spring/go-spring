@@ -73,28 +73,28 @@ func CtorBean(fn interface{}, args ...arg.Arg) *core.BeanDefinition {
 
 func Config(fn interface{}, args ...arg.Arg) *core.Configer {
 	c := core.Config(fn, args...)
-	gApp.Configer(c)
+	gApp.Config(c)
 	return c
 }
 
-// RegisterGRpcServer 注册 gRPC 服务提供者，fn 是 gRPC 自动生成的服务注册函数，serviceName 是服务名称，
+// GRpcServer 注册 gRPC 服务提供者，fn 是 gRPC 自动生成的服务注册函数，serviceName 是服务名称，
 // 必须对应 *_grpc.pg.go 文件里面 grpc.ServiceDesc 的 ServiceName 字段，server 是服务具体提供者对象。
-func RegisterGRpcServer(fn interface{}, serviceName string, server interface{}) *app.GRpcServer {
+func GRpcServer(fn interface{}, serviceName string, server interface{}) *app.GRpcServer {
 	s := app.NewGRpcServer(fn, serviceName, server)
-	gApp.RegisterGRpcServer(s)
+	gApp.GRpcServer(s)
 	return s
 }
 
-// RegisterGRpcClient 注册 gRPC 服务客户端，fn 是 gRPC 自动生成的客户端构造函数
-func RegisterGRpcClient(fn interface{}, endpoint string) *core.BeanDefinition {
+// GRpcClient 注册 gRPC 服务客户端，fn 是 gRPC 自动生成的客户端构造函数
+func GRpcClient(fn interface{}, endpoint string) *core.BeanDefinition {
 	c := app.NewGRpcClient(fn, endpoint)
-	gApp.RegisterGRpcClient(c)
+	gApp.GRpcClient(c)
 	return c
 }
 
-// BindConsumer 注册 BIND 形式的消息消费者
-func BindConsumer(topic string, fn interface{}) {
-	gApp.BindConsumer(topic, fn)
+// Consume 注册 BIND 形式的消息消费者
+func Consume(topic string, fn interface{}) {
+	gApp.Consume(topic, fn)
 }
 
 // Route 返回和 app.WebMapper 绑定的路由分组

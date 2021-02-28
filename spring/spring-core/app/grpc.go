@@ -61,6 +61,8 @@ func (s *GRpcServer) CheckCondition(ctx core.ApplicationContext) bool {
 
 ///////////////////// gRPC Client //////////////////////
 
-func NewGRpcClient(fn interface{}, endpoint string) *core.BeanDefinition {
+type GRpcClient = core.BeanDefinition
+
+func NewGRpcClient(fn interface{}, endpoint string) *GRpcClient {
 	return core.CtorBean(fn, endpoint)
 }

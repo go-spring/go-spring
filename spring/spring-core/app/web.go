@@ -21,18 +21,18 @@ import (
 	"github.com/go-spring/spring-core/web"
 )
 
-// webMapping Web 路由映射表
-type webMapping map[string]*WebMapper
+// WebMapping Web 路由映射表
+type WebMapping map[string]*WebMapper
 
-func (m webMapping) addMapper(mapping *WebMapper) {
+func (m WebMapping) addMapper(mapping *WebMapper) {
 	m[mapping.Key()] = mapping
 }
 
 // HandleRequest 路由注册
-func (m webMapping) HandleRequest(method uint32, path string, fn web.Handler, filters []bean.Selector) *WebMapper {
-	mapping := NewWebMapper(method, path, fn, filters)
-	m.addMapper(mapping)
-	return mapping
+func (m WebMapping) HandleRequest(method uint32, path string, fn web.Handler, filters []bean.Selector) *WebMapper {
+	mapper := NewWebMapper(method, path, fn, filters)
+	m.addMapper(mapper)
+	return mapper
 }
 
 // WebMapper 封装 Web 路由映射
@@ -42,7 +42,7 @@ type WebMapper struct {
 }
 
 // NewWebMapper WebMapper 的构造函数
-func NewWebMapper(method uint32, path string, handler web.Handler, filters []bean.Selector) *WebMapper {
+func NewWebMapper(method uint32, path string, handler web.Handler, filters ...bean.Selector) *WebMapper {
 	return &WebMapper{mapper: web.NewMapper(method, path, handler, nil), filters: filters}
 }
 
@@ -83,13 +83,13 @@ func (m *WebMapper) Filters() []bean.Selector {
 
 // WebRouter 路由分组
 type WebRouter struct {
-	mapping  webMapping
+	mapping  WebMapping
 	basePath string
 	filters  []bean.Selector
 }
 
 // NewWebRouter WebRouter 的构造函数
-func NewWebRouter(mapping webMapping, basePath string, filters []bean.Selector) *WebRouter {
+func NewWebRouter(mapping WebMapping, basePath string, filters ...bean.Selector) *WebRouter {
 	return &WebRouter{mapping: mapping, basePath: basePath, filters: filters}
 }
 

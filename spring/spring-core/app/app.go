@@ -55,6 +55,31 @@ type ModuleFunc func(ctx ModuleContext)
 
 func Module(f ModuleFunc) int { modules = append(modules, f); return 0 }
 
+type moduleContext struct {
+	app *Application
+}
+
+// ObjBean
+func (m *moduleContext) ObjBean(i interface{}) *core.BeanDefinition {
+	bd := core.ObjBean(i)
+	m.app.Bean(bd)
+	return bd
+}
+
+// CtorBean
+func (m *moduleContext) CtorBean(fn interface{}, args ...arg.Arg) *core.BeanDefinition {
+	bd := core.CtorBean(fn, args...)
+	m.app.Bean(bd)
+	return bd
+}
+
+// Config
+func (m *moduleContext) Config(fn interface{}, args ...arg.Arg) *core.Configer {
+	c := core.Config(fn, args...)
+	m.app.Config(c)
+	return c
+}
+
 const (
 	DefaultConfigLocation = "config/" // 默认的配置文件路径
 )
@@ -79,25 +104,21 @@ type ApplicationEvent interface {
 	OnStopApplication(ctx core.ApplicationContext)  // 应用停止的事件
 }
 
-// AfterPrepareFunc 定义 app.prepare() 执行完成之后的扩展点
-type AfterPrepareFunc func(ctx core.ApplicationContext)
-
 // Application 应用
 type Application struct {
 	appCtx core.ApplicationContext // 应用上下文
 
-	cfgLocation         []string           // 配置文件目录
-	banner              string             // Banner 的内容
-	bannerMode          int                // Banner 的显式模式
-	expectSysProperties []string           // 期望从系统环境变量中获取到的属性，支持正则表达式
-	listOfAfterPrepare  []AfterPrepareFunc // app.prepare() 执行完成之后的扩展点的集合
+	cfgLocation         []string // 配置文件目录
+	banner              string   // Banner 的内容
+	bannerMode          int      // Banner 的显式模式
+	expectSysProperties []string // 期望从系统环境变量中获取到的属性，支持正则表达式
 
 	Events  []ApplicationEvent  `autowire:"${Application-event.collection:=[]?}"`
 	Runners []CommandLineRunner `autowire:"${command-line-runner.collection:=[]?}"`
 
 	exitChan chan struct{}
 
-	WebMapping  webMapping                  // 默认的 Web 路由映射表
+	WebMapping  WebMapping                  // 默认的 Web 路由映射表
 	Consumers   map[string]*mq.BindConsumer // 以 BIND 形式注册的消息消费者的映射表 TODO 封装...
 	GRpcServers map[interface{}]*GRpcServer // GRpcServerMap gRPC 服务列表
 }
@@ -118,11 +139,6 @@ func NewApplication() *Application {
 
 func (app *Application) ApplicationContext() core.ApplicationContext {
 	return app.appCtx
-}
-
-func (app *Application) AfterPrepare(fn AfterPrepareFunc) *Application {
-	app.listOfAfterPrepare = append(app.listOfAfterPrepare, fn)
-	return app
 }
 
 func (app *Application) ExpectSysProperties(pattern ...string) *Application {
@@ -149,9 +165,9 @@ func (app *Application) start(cfgLocation ...string) {
 	// 准备上下文环境
 	app.prepare()
 
-	// 执行所有 app.prepare() 之后执行的扩展点
-	for _, fn := range app.listOfAfterPrepare {
-		fn(app.appCtx)
+	moduleCtx := &moduleContext{app: app}
+	for _, module := range modules {
+		module(moduleCtx)
 	}
 
 	// 注册 ApplicationContext 接口
@@ -411,29 +427,30 @@ func (app *Application) Bean(bd *core.BeanDefinition) *Application {
 	return app
 }
 
-// Configer 注册一个配置函数
-func (app *Application) Configer(configer *core.Configer) *Application {
+// Config 注册一个配置函数
+func (app *Application) Config(configer *core.Configer) *Application {
 	app.appCtx.Configer(configer)
 	return app
 }
 
-func (app *Application) WebMapper(mapper *WebMapper) *Application {
-	app.WebMapping.addMapper(mapper)
+func (app *Application) Route(fn func(*WebRouter)) *Application {
+	fn(NewWebRouter(app.WebMapping, ""))
 	return app
 }
 
-func (app *Application) RegisterGRpcServer(s *GRpcServer) *Application {
+// GRpcServer
+func (app *Application) GRpcServer(s *GRpcServer) *Application {
 	app.GRpcServers[s.fn] = s
 	return app
 }
 
-// RegisterGRpcClient 注册 gRPC 服务客户端，fn 是 gRPC 自动生成的客户端构造函数
-func (app *Application) RegisterGRpcClient(bd *core.BeanDefinition) *Application {
-	return app.Bean(bd)
+// GRpcClient 注册 gRPC 服务客户端，fn 是 gRPC 自动生成的客户端构造函数
+func (app *Application) GRpcClient(c *GRpcClient) *Application {
+	return app.Bean(c)
 }
 
-// BindConsumer 注册 BIND 形式的消息消费者
-func (app *Application) BindConsumer(topic string, fn interface{}) *Application {
+// Consume 注册 BIND 形式的消息消费者
+func (app *Application) Consume(topic string, fn interface{}) *Application {
 	app.Consumers[topic] = mq.BIND(topic, fn)
 	return app
 }
