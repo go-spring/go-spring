@@ -38,6 +38,16 @@ type Reader interface {
 
 var readers []Reader
 
+// EachReader 遍历属性读取器列表
+func EachReader(fn func(r Reader) error) error {
+	for _, r := range readers {
+		if err := fn(r); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // RegisterReader 注册属性读取器
 func RegisterReader(fn ReaderFunc, fileExt ...string) {
 	readers = append(readers, &reader{ext: fileExt, fn: fn})
