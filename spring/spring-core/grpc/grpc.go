@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package app
+package grpc
 
 import (
 	"github.com/go-spring/spring-core/cond"
@@ -23,36 +23,41 @@ import (
 
 ///////////////////// gRPC Server //////////////////////
 
-type GRpcServer struct {
+type Server struct {
 	fn          interface{}
 	server      interface{}    // 服务对象
 	serviceName string         // 服务名称
 	cond        cond.Condition // 判断条件
 }
 
-// NewGRpcServer GRpcServer 的构造函数
-func NewGRpcServer(fn interface{}, serviceName string, server interface{}) *GRpcServer {
-	return &GRpcServer{fn: fn, server: server, serviceName: serviceName}
+// NewServer Server 的构造函数
+func NewServer(fn interface{}, serviceName string, server interface{}) *Server {
+	return &Server{fn: fn, server: server, serviceName: serviceName}
+}
+
+// Handler
+func (s *Server) Handler() interface{} {
+	return s.fn
 }
 
 // ServiceName 返回服务名称
-func (s *GRpcServer) ServiceName() string {
+func (s *Server) ServiceName() string {
 	return s.serviceName
 }
 
 // Server 返回服务对象
-func (s *GRpcServer) Server() interface{} {
+func (s *Server) Server() interface{} {
 	return s.server
 }
 
 // WithCondition 设置一个 Condition
-func (s *GRpcServer) WithCondition(cond cond.Condition) *GRpcServer {
+func (s *Server) WithCondition(cond cond.Condition) *Server {
 	s.cond = cond
 	return s
 }
 
 // CheckCondition 成功返回 true，失败返回 false
-func (s *GRpcServer) CheckCondition(ctx core.ApplicationContext) bool {
+func (s *Server) CheckCondition(ctx core.ApplicationContext) bool {
 	if s.cond == nil {
 		return true
 	}
@@ -61,8 +66,8 @@ func (s *GRpcServer) CheckCondition(ctx core.ApplicationContext) bool {
 
 ///////////////////// gRPC Client //////////////////////
 
-type GRpcClient = core.BeanDefinition
+type Client = core.BeanDefinition
 
-func NewGRpcClient(fn interface{}, endpoint string) *GRpcClient {
+func NewClient(fn interface{}, endpoint string) *Client {
 	return core.CtorBean(fn, endpoint)
 }

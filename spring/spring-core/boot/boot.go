@@ -7,6 +7,7 @@ import (
 	"github.com/go-spring/spring-core/arg"
 	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/core"
+	"github.com/go-spring/spring-core/grpc"
 	"github.com/go-spring/spring-core/web"
 )
 
@@ -79,15 +80,15 @@ func Config(fn interface{}, args ...arg.Arg) *core.Configer {
 
 // GRpcServer 注册 gRPC 服务提供者，fn 是 gRPC 自动生成的服务注册函数，serviceName 是服务名称，
 // 必须对应 *_grpc.pg.go 文件里面 grpc.ServiceDesc 的 ServiceName 字段，server 是服务具体提供者对象。
-func GRpcServer(fn interface{}, serviceName string, server interface{}) *app.GRpcServer {
-	s := app.NewGRpcServer(fn, serviceName, server)
+func GRpcServer(fn interface{}, serviceName string, server interface{}) *grpc.Server {
+	s := grpc.NewServer(fn, serviceName, server)
 	gApp.GRpcServer(s)
 	return s
 }
 
 // GRpcClient 注册 gRPC 服务客户端，fn 是 gRPC 自动生成的客户端构造函数
-func GRpcClient(fn interface{}, endpoint string) *core.BeanDefinition {
-	c := app.NewGRpcClient(fn, endpoint)
+func GRpcClient(fn interface{}, endpoint string) *grpc.Client {
+	c := grpc.NewClient(fn, endpoint)
 	gApp.GRpcClient(c)
 	return c
 }

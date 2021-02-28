@@ -30,6 +30,7 @@ import (
 	"github.com/go-spring/spring-core/arg"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/core"
+	"github.com/go-spring/spring-core/grpc"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/mq"
 	"github.com/go-spring/spring-core/util"
@@ -118,9 +119,9 @@ type Application struct {
 
 	exitChan chan struct{}
 
-	WebMapping  WebMapping                  // 默认的 Web 路由映射表
-	Consumers   map[string]*mq.BindConsumer // 以 BIND 形式注册的消息消费者的映射表 TODO 封装...
-	GRpcServers map[interface{}]*GRpcServer // GRpcServerMap gRPC 服务列表
+	WebMapping  WebMapping                   // 默认的 Web 路由映射表
+	Consumers   map[string]*mq.BindConsumer  // 以 BIND 形式注册的消息消费者的映射表 TODO 封装...
+	GRpcServers map[interface{}]*grpc.Server // GRpcServerMap gRPC 服务列表
 }
 
 // NewApplication Application 的构造函数
@@ -133,7 +134,7 @@ func NewApplication() *Application {
 		exitChan:            make(chan struct{}),
 		WebMapping:          map[string]*WebMapper{},
 		Consumers:           map[string]*mq.BindConsumer{},
-		GRpcServers:         map[interface{}]*GRpcServer{},
+		GRpcServers:         map[interface{}]*grpc.Server{},
 	}
 }
 
@@ -439,17 +440,17 @@ func (app *Application) Route(fn func(*WebRouter)) *Application {
 }
 
 // GRpcServer
-func (app *Application) GRpcServer(s *GRpcServer) *Application {
-	app.GRpcServers[s.fn] = s
+func (app *Application) GRpcServer(s *grpc.Server) *Application {
+	app.GRpcServers[s.Handler()] = s
 	return app
 }
 
 // GRpcClient 注册 gRPC 服务客户端，fn 是 gRPC 自动生成的客户端构造函数
-func (app *Application) GRpcClient(c *GRpcClient) *Application {
+func (app *Application) GRpcClient(c *grpc.Client) *Application {
 	return app.Bean(c)
 }
 
-// Consume 注册 BIND 形式的消息消费者
+// Consume 注册 BIND 形式的消息消费者 TODO 该函数还需要继续优化。
 func (app *Application) Consume(topic string, fn interface{}) *Application {
 	app.Consumers[topic] = mq.BIND(topic, fn)
 	return app
