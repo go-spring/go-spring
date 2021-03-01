@@ -410,6 +410,9 @@ func (ctx *applicationContext) resolveBean(bd *BeanDefinition) {
 
 func (ctx *applicationContext) registerAllBeans() {
 	for _, bd := range ctx.AllBeans {
+		bd.Reset()
+	}
+	for _, bd := range ctx.AllBeans {
 		ctx.registerBeanDefinition(bd)
 	}
 }

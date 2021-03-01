@@ -201,10 +201,10 @@ func (b *ctorBeanFactory) BeanClass() string {
 
 // BeanDefinition 用于存储 Bean 的各种元数据
 type BeanDefinition struct {
-	RValue  reflect.Value // 值
+	rValue  reflect.Value // 值
 	factory bean.BeanFactory
 
-	RType    reflect.Type // 类型
+	rType    reflect.Type // 类型
 	typeName string       // 原始类型的全限定名
 
 	name   string      // Bean 的名称，请勿直接使用该字段!
@@ -230,8 +230,7 @@ func newBeanDefinition(factory bean.BeanFactory, file string, line int) *BeanDef
 		panic(errors.New("bean must be ref type"))
 	}
 	return &BeanDefinition{
-		RValue:   factory.NewValue(),
-		RType:    t,
+		rType:    t,
 		typeName: util.TypeName(t),
 		factory:  factory,
 		status:   bean.Default,
@@ -241,23 +240,31 @@ func newBeanDefinition(factory bean.BeanFactory, file string, line int) *BeanDef
 	}
 }
 
+func (d *BeanDefinition) Reset() {
+	d.status = bean.Default
+	d.rValue = reflect.Value{}
+}
+
 // Bean 返回 Bean 的源
 func (d *BeanDefinition) Bean() interface{} {
-	return d.RValue.Interface()
+	return d.Value().Interface()
 }
 
 // Type 返回 Bean 的类型
 func (d *BeanDefinition) Type() reflect.Type {
-	return d.RType
+	return d.rType
 }
 
 func (d *BeanDefinition) SetValue(v reflect.Value) {
-	d.RValue = v
+	d.rValue = v
 }
 
 // Value 返回 Bean 的值
 func (d *BeanDefinition) Value() reflect.Value {
-	return d.RValue
+	if !d.rValue.IsValid() {
+		d.rValue = d.factory.NewValue()
+	}
+	return d.rValue
 }
 
 // TypeName 返回 Bean 的原始类型的全限定名
@@ -269,7 +276,7 @@ func (d *BeanDefinition) TypeName() string {
 func (d *BeanDefinition) BeanName() string {
 	if d.name == "" {
 		// 统一使用类型字符串作为默认名称!
-		d.name = d.RType.String()
+		d.name = d.rType.String()
 	}
 	return d.name
 }
