@@ -14,23 +14,20 @@
  * limitations under the License.
  */
 
-package app
+package boot
 
 import (
 	"fmt"
 	"os"
-	"syscall"
 	"testing"
-	"time"
 
 	"github.com/go-spring/spring-core/assert"
-	"github.com/go-spring/spring-core/core"
 )
 
 func startApplication(cfgLocation ...string) *Application {
 	app := NewApplication()
-	app.Property("application-event.collection", "[]?")
-	app.Property("command-line-runner.collection", "[]?")
+	app.appCtx.SetProperty("application-event.collection", "[]?")
+	app.appCtx.SetProperty("command-line-runner.collection", "[]?")
 	app.start(cfgLocation...)
 	return app
 }
@@ -41,65 +38,50 @@ func TestConfig(t *testing.T) {
 		os.Clearenv()
 		app := startApplication()
 		assert.Equal(t, app.cfgLocation, []string{DefaultConfigLocation})
-		assert.Equal(t, app.ApplicationContext().GetProfile(), "")
+		assert.Equal(t, app.appCtx.GetProfile(), "")
 	})
 
 	t.Run("config via env", func(t *testing.T) {
 		os.Clearenv()
 		_ = os.Setenv(SpringProfile, "dev")
 		app := startApplication("testdata/config/")
-		assert.Equal(t, app.ApplicationContext().GetProfile(), "dev")
+		assert.Equal(t, app.appCtx.GetProfile(), "dev")
 	})
 
 	t.Run("config via env 2", func(t *testing.T) {
 		os.Clearenv()
 		_ = os.Setenv(SPRING_PROFILE, "dev")
 		app := startApplication("testdata/config/")
-		assert.Equal(t, app.ApplicationContext().GetProfile(), "dev")
+		assert.Equal(t, app.appCtx.GetProfile(), "dev")
 	})
 
 	t.Run("profile via config", func(t *testing.T) {
 		os.Clearenv()
 		app := startApplication("testdata/config/")
-		assert.Equal(t, app.ApplicationContext().GetProfile(), "test")
+		assert.Equal(t, app.appCtx.GetProfile(), "test")
 	})
 
 	t.Run("profile via env&config", func(t *testing.T) {
 		os.Clearenv()
 		app := startApplication("testdata/config/")
-		assert.Equal(t, app.ApplicationContext().GetProfile(), "test")
+		assert.Equal(t, app.appCtx.GetProfile(), "test")
 	})
 
 	t.Run("profile via env&config 2", func(t *testing.T) {
 		os.Clearenv()
 		_ = os.Setenv(SPRING_PROFILE, "dev")
 		app := startApplication("testdata/config/")
-		assert.Equal(t, app.ApplicationContext().GetProfile(), "dev")
+		assert.Equal(t, app.appCtx.GetProfile(), "dev")
 	})
 
 	t.Run("default expect system properties", func(t *testing.T) {
 		app := startApplication("testdata/config/")
-		app.ApplicationContext().Properties().Range(func(k string, v interface{}) { fmt.Println(k, v) })
+		app.appCtx.Properties().Range(func(k string, v interface{}) { fmt.Println(k, v) })
 	})
 
 	t.Run("filter all system properties", func(t *testing.T) {
 		// ExpectSysProperties("^$") // 不加载任何系统环境变量
 		app := startApplication("testdata/config/")
-		app.ApplicationContext().Properties().Range(func(k string, v interface{}) { fmt.Println(k, v) })
+		app.appCtx.Properties().Range(func(k string, v interface{}) { fmt.Println(k, v) })
 	})
-}
-
-func TestApp(t *testing.T) {
-	go func() {
-		time.Sleep(50 * time.Millisecond)
-		_ = syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
-	}()
-	NewApplication().
-		Profile("dev").
-		BannerMode(BannerModeOff).
-		Property("spring.application.name", "test").
-		Bean(core.ObjBean(new(int)).Name("int")).
-		Config(core.Config(func(i *int) { fmt.Println(i) }, "")).
-		Run()
-	t.Log("success")
 }

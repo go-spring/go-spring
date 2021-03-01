@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package app
+package boot
 
 import (
 	"flag"
@@ -27,59 +27,13 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/go-spring/spring-core/arg"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/core"
-	"github.com/go-spring/spring-core/grpc"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/mq"
 	"github.com/go-spring/spring-core/util"
 	"github.com/spf13/cast"
 )
-
-// ModuleContext
-type ModuleContext interface {
-
-	// ObjBean
-	ObjBean(i interface{}) *core.BeanDefinition
-
-	// CtorBean
-	CtorBean(fn interface{}, args ...arg.Arg) *core.BeanDefinition
-
-	// Config
-	Config(fn interface{}, args ...arg.Arg) *core.Configer
-}
-
-var modules = make([]ModuleFunc, 0)
-
-type ModuleFunc func(ctx ModuleContext)
-
-func Module(f ModuleFunc) int { modules = append(modules, f); return 0 }
-
-type moduleContext struct {
-	app *Application
-}
-
-// ObjBean
-func (m *moduleContext) ObjBean(i interface{}) *core.BeanDefinition {
-	bd := core.ObjBean(i)
-	m.app.Bean(bd)
-	return bd
-}
-
-// CtorBean
-func (m *moduleContext) CtorBean(fn interface{}, args ...arg.Arg) *core.BeanDefinition {
-	bd := core.CtorBean(fn, args...)
-	m.app.Bean(bd)
-	return bd
-}
-
-// Config
-func (m *moduleContext) Config(fn interface{}, args ...arg.Arg) *core.Configer {
-	c := core.Config(fn, args...)
-	m.app.Config(c)
-	return c
-}
 
 const (
 	DefaultConfigLocation = "config/" // 默认的配置文件路径
@@ -119,9 +73,9 @@ type Application struct {
 
 	exitChan chan struct{}
 
-	WebMapping  WebMapping                   // 默认的 Web 路由映射表
-	Consumers   map[string]*mq.BindConsumer  // 以 BIND 形式注册的消息消费者的映射表 TODO 封装...
-	GRpcServers map[interface{}]*grpc.Server // GRpcServerMap gRPC 服务列表
+	Mapping     mapping                     // Web 路由表
+	Consumers   map[string]*mq.BindConsumer // MQ 消费者列表
+	GRpcServers map[interface{}]*gRpcServer // gRPC 服务列表
 }
 
 // NewApplication Application 的构造函数
@@ -132,25 +86,10 @@ func NewApplication() *Application {
 		bannerMode:          BannerModeConsole,
 		expectSysProperties: []string{`.*`},
 		exitChan:            make(chan struct{}),
-		WebMapping:          map[string]*WebMapper{},
+		Mapping:             map[string]*mapper{},
 		Consumers:           map[string]*mq.BindConsumer{},
-		GRpcServers:         map[interface{}]*grpc.Server{},
+		GRpcServers:         map[interface{}]*gRpcServer{},
 	}
-}
-
-func (app *Application) ApplicationContext() core.ApplicationContext {
-	return app.appCtx
-}
-
-func (app *Application) ExpectSysProperties(pattern ...string) *Application {
-	app.expectSysProperties = pattern
-	return app
-}
-
-// Profile 设置运行环境
-func (app *Application) Profile(profile string) *Application {
-	app.appCtx.SetProfile(profile)
-	return app
 }
 
 // Start 启动应用
@@ -165,11 +104,6 @@ func (app *Application) start(cfgLocation ...string) {
 
 	// 准备上下文环境
 	app.prepare()
-
-	moduleCtx := &moduleContext{app: app}
-	for _, module := range modules {
-		module(moduleCtx)
-	}
 
 	// 注册 ApplicationContext 接口
 	app.appCtx.ObjBean(app.appCtx).Export((*core.ApplicationContext)(nil))
@@ -222,7 +156,7 @@ func (app *Application) printBanner() {
 }
 
 // loadCmdArgs 加载命令行参数，形如 -name value 的参数才有效。
-func (_ *Application) loadCmdArgs() conf.Properties {
+func (app *Application) loadCmdArgs() conf.Properties {
 	log.Debugf("load cmd args")
 	p := conf.New()
 	for i := 0; i < len(os.Args); i++ { // 以短线定义的参数才有效
@@ -415,43 +349,4 @@ func (app *Application) ShutDown() {
 	default:
 		close(app.exitChan)
 	}
-}
-
-// Property 设置属性值，属性名称统一转成小写。
-func (app *Application) Property(key string, value interface{}) *Application {
-	app.appCtx.SetProperty(key, value)
-	return app
-}
-
-func (app *Application) Bean(bd *core.BeanDefinition) *Application {
-	app.appCtx.Bean(bd)
-	return app
-}
-
-// Config 注册一个配置函数
-func (app *Application) Config(configer *core.Configer) *Application {
-	app.appCtx.Configer(configer)
-	return app
-}
-
-func (app *Application) Route(fn func(*WebRouter)) *Application {
-	fn(NewWebRouter(app.WebMapping, ""))
-	return app
-}
-
-// GRpcServer
-func (app *Application) GRpcServer(s *grpc.Server) *Application {
-	app.GRpcServers[s.Handler()] = s
-	return app
-}
-
-// GRpcClient 注册 gRPC 服务客户端，fn 是 gRPC 自动生成的客户端构造函数
-func (app *Application) GRpcClient(c *grpc.Client) *Application {
-	return app.Bean(c)
-}
-
-// Consume 注册 BIND 形式的消息消费者 TODO 该函数还需要继续优化。
-func (app *Application) Consume(topic string, fn interface{}) *Application {
-	app.Consumers[topic] = mq.BIND(topic, fn)
-	return app
 }
