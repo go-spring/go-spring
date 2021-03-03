@@ -41,13 +41,13 @@ const (
 	BannerModeConsole = 1
 )
 
-func (app *Application) BannerMode(mode int) *Application {
+func (app *application) BannerMode(mode int) *application {
 	app.bannerMode = mode
 	return app
 }
 
 // Banner 设置自定义 Banner 字符串
-func (app *Application) Banner(banner string) *Application {
+func (app *application) Banner(banner string) *application {
 	app.banner = banner
 	return app
 }

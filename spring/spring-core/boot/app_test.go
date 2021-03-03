@@ -24,7 +24,7 @@ import (
 	"github.com/go-spring/spring-core/assert"
 )
 
-func startApplication(cfgLocation ...string) *Application {
+func startApplication(cfgLocation ...string) *application {
 	app := NewApplication()
 	app.appCtx.SetProperty("application-event.collection", "[]?")
 	app.appCtx.SetProperty("command-line-runner.collection", "[]?")

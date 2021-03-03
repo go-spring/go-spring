@@ -104,76 +104,76 @@ func Route(basePath string, filters ...bean.Selector) *router {
 }
 
 // HandleRequest 注册任意 HTTP 方法处理函数
-func HandleRequest(method uint32, path string, fn web.Handler, filters ...bean.Selector) *mapper {
+func HandleRequest(method uint32, path string, fn web.Handler, filters ...bean.Selector) *web.Mapper {
 	return gApp.Mapping.HandleRequest(method, path, fn, filters)
 }
 
 // MappingRequest 注册任意 HTTP 方法处理函数
-func MappingRequest(method uint32, path string, fn web.HandlerFunc, filters ...bean.Selector) *mapper {
+func MappingRequest(method uint32, path string, fn web.HandlerFunc, filters ...bean.Selector) *web.Mapper {
 	return gApp.Mapping.HandleRequest(method, path, web.FUNC(fn), filters)
 }
 
 // BindingRequest 注册任意 HTTP 方法处理函数
-func BindingRequest(method uint32, path string, fn interface{}, filters ...bean.Selector) *mapper {
+func BindingRequest(method uint32, path string, fn interface{}, filters ...bean.Selector) *web.Mapper {
 	return gApp.Mapping.HandleRequest(method, path, web.BIND(fn), filters)
 }
 
 // HandleGet 注册 GET 方法处理函数
-func HandleGet(path string, fn web.Handler, filters ...bean.Selector) *mapper {
+func HandleGet(path string, fn web.Handler, filters ...bean.Selector) *web.Mapper {
 	return HandleRequest(web.MethodGet, path, fn, filters...)
 }
 
 // MappingGet 注册 GET 方法处理函数
-func MappingGet(path string, fn web.HandlerFunc, filters ...bean.Selector) *mapper {
+func MappingGet(path string, fn web.HandlerFunc, filters ...bean.Selector) *web.Mapper {
 	return HandleRequest(web.MethodGet, path, web.FUNC(fn), filters...)
 }
 
 // BindingGet 注册 GET 方法处理函数
-func BindingGet(path string, fn interface{}, filters ...bean.Selector) *mapper {
+func BindingGet(path string, fn interface{}, filters ...bean.Selector) *web.Mapper {
 	return HandleRequest(web.MethodGet, path, web.BIND(fn), filters...)
 }
 
 // HandlePost 注册 POST 方法处理函数
-func HandlePost(path string, fn web.Handler, filters ...bean.Selector) *mapper {
+func HandlePost(path string, fn web.Handler, filters ...bean.Selector) *web.Mapper {
 	return HandleRequest(web.MethodPost, path, fn, filters...)
 }
 
 // MappingPost 注册 POST 方法处理函数
-func MappingPost(path string, fn web.HandlerFunc, filters ...bean.Selector) *mapper {
+func MappingPost(path string, fn web.HandlerFunc, filters ...bean.Selector) *web.Mapper {
 	return HandleRequest(web.MethodPost, path, web.FUNC(fn), filters...)
 }
 
 // BindingPost 注册 POST 方法处理函数
-func BindingPost(path string, fn interface{}, filters ...bean.Selector) *mapper {
+func BindingPost(path string, fn interface{}, filters ...bean.Selector) *web.Mapper {
 	return HandleRequest(web.MethodPost, path, web.BIND(fn), filters...)
 }
 
 // HandlePut 注册 PUT 方法处理函数
-func HandlePut(path string, fn web.Handler, filters ...bean.Selector) *mapper {
+func HandlePut(path string, fn web.Handler, filters ...bean.Selector) *web.Mapper {
 	return HandleRequest(web.MethodPut, path, fn, filters...)
 }
 
 // MappingPut 注册 PUT 方法处理函数
-func MappingPut(path string, fn web.HandlerFunc, filters ...bean.Selector) *mapper {
+func MappingPut(path string, fn web.HandlerFunc, filters ...bean.Selector) *web.Mapper {
 	return HandleRequest(web.MethodPut, path, web.FUNC(fn), filters...)
 }
 
 // BindingPut 注册 PUT 方法处理函数
-func BindingPut(path string, fn interface{}, filters ...bean.Selector) *mapper {
+func BindingPut(path string, fn interface{}, filters ...bean.Selector) *web.Mapper {
 	return HandleRequest(web.MethodPut, path, web.BIND(fn), filters...)
 }
 
 // HandleDelete 注册 DELETE 方法处理函数
-func HandleDelete(path string, fn web.Handler, filters ...bean.Selector) *mapper {
+func HandleDelete(path string, fn web.Handler, filters ...bean.Selector) *web.Mapper {
 	return HandleRequest(web.MethodDelete, path, fn, filters...)
 }
 
 // MappingDelete 注册 DELETE 方法处理函数
-func MappingDelete(path string, fn web.HandlerFunc, filters ...bean.Selector) *mapper {
+func MappingDelete(path string, fn web.HandlerFunc, filters ...bean.Selector) *web.Mapper {
 	return HandleRequest(web.MethodDelete, path, web.FUNC(fn), filters...)
 }
 
 // BindingDelete 注册 DELETE 方法处理函数
-func BindingDelete(path string, fn interface{}, filters ...bean.Selector) *mapper {
+func BindingDelete(path string, fn interface{}, filters ...bean.Selector) *web.Mapper {
 	return HandleRequest(web.MethodDelete, path, web.BIND(fn), filters...)
 }

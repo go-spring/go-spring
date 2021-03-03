@@ -32,6 +32,7 @@ import (
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/mq"
 	"github.com/go-spring/spring-core/util"
+	"github.com/go-spring/spring-core/web"
 	"github.com/spf13/cast"
 )
 
@@ -59,8 +60,8 @@ type ApplicationEvent interface {
 	OnStopApplication(ctx core.ApplicationContext)  // 应用停止的事件
 }
 
-// Application 应用
-type Application struct {
+// application 应用
+type application struct {
 	appCtx core.ApplicationContext // 应用上下文
 
 	cfgLocation         []string // 配置文件目录
@@ -68,7 +69,7 @@ type Application struct {
 	bannerMode          int      // Banner 的显式模式
 	expectSysProperties []string // 期望从系统环境变量中获取到的属性，支持正则表达式
 
-	Events  []ApplicationEvent  `autowire:"${Application-event.collection:=[]?}"`
+	Events  []ApplicationEvent  `autowire:"${application-event.collection:=[]?}"`
 	Runners []CommandLineRunner `autowire:"${command-line-runner.collection:=[]?}"`
 
 	exitChan chan struct{}
@@ -78,22 +79,22 @@ type Application struct {
 	GRpcServers map[interface{}]*gRpcServer // gRPC 服务列表
 }
 
-// NewApplication Application 的构造函数
-func NewApplication() *Application {
-	return &Application{
+// NewApplication application 的构造函数
+func NewApplication() *application {
+	return &application{
 		appCtx:              core.NewApplicationContext(),
 		cfgLocation:         append([]string{}, DefaultConfigLocation),
 		bannerMode:          BannerModeConsole,
 		expectSysProperties: []string{`.*`},
 		exitChan:            make(chan struct{}),
-		Mapping:             map[string]*mapper{},
+		Mapping:             map[string]*web.Mapper{},
 		Consumers:           map[string]*mq.BindConsumer{},
 		GRpcServers:         map[interface{}]*gRpcServer{},
 	}
 }
 
 // Start 启动应用
-func (app *Application) start(cfgLocation ...string) {
+func (app *application) start(cfgLocation ...string) {
 
 	app.cfgLocation = append(app.cfgLocation, cfgLocation...)
 
@@ -121,11 +122,11 @@ func (app *Application) start(cfgLocation ...string) {
 		b.OnStartApplication(app.appCtx)
 	}
 
-	log.Info("Application started")
+	log.Info("application started")
 }
 
 // printBanner 查找 Banner 文件然后将其打印到控制台
-func (app *Application) printBanner() {
+func (app *application) printBanner() {
 
 	// 优先使用自定义 Banner
 	banner := app.banner
@@ -156,7 +157,7 @@ func (app *Application) printBanner() {
 }
 
 // loadCmdArgs 加载命令行参数，形如 -name value 的参数才有效。
-func (app *Application) loadCmdArgs() conf.Properties {
+func (app *application) loadCmdArgs() conf.Properties {
 	log.Debugf("load cmd args")
 	p := conf.New()
 	for i := 0; i < len(os.Args); i++ { // 以短线定义的参数才有效
@@ -174,7 +175,7 @@ func (app *Application) loadCmdArgs() conf.Properties {
 }
 
 // loadSystemEnv 加载系统环境变量，用户可以自定义有效环境变量的正则匹配
-func (app *Application) loadSystemEnv() conf.Properties {
+func (app *application) loadSystemEnv() conf.Properties {
 
 	var rex []*regexp.Regexp
 	for _, v := range app.expectSysProperties {
@@ -203,7 +204,7 @@ func (app *Application) loadSystemEnv() conf.Properties {
 }
 
 // loadProfileConfig 加载指定环境的配置文件
-func (app *Application) loadProfileConfig(profile string) conf.Properties {
+func (app *application) loadProfileConfig(profile string) conf.Properties {
 
 	fileName := "application"
 	if profile != "" {
@@ -242,7 +243,7 @@ func (app *Application) loadProfileConfig(profile string) conf.Properties {
 }
 
 // resolveProperty 解析属性值，查看其是否具有引用关系
-func (app *Application) resolveProperty(conf map[string]interface{}, key string, value interface{}) interface{} {
+func (app *application) resolveProperty(conf map[string]interface{}, key string, value interface{}) interface{} {
 	if s, o := value.(string); o && strings.HasPrefix(s, "${") {
 		refKey := s[2 : len(s)-1]
 		if refValue, ok := conf[refKey]; !ok {
@@ -257,21 +258,21 @@ func (app *Application) resolveProperty(conf map[string]interface{}, key string,
 }
 
 // prepare 准备上下文环境
-func (app *Application) prepare() {
+func (app *application) prepare() {
 
 	// 配置项加载顺序优先级，从高到低:
 	// 1.代码设置
 	// 2.命令行参数
 	// 3.系统环境变量
-	// 4.Application-profile.conf
-	// 5.Application.conf
+	// 4.application-profile.conf
+	// 5.application.conf
 	// 6.内部默认配置
 
 	// 将通过代码设置的属性值拷贝一份，第 1 层
 	apiConfig := conf.New()
 	app.appCtx.Properties().Range(func(k string, v interface{}) { apiConfig.Set(k, v) })
 
-	// 加载默认的应用配置文件，如 Application.conf，第 5 层
+	// 加载默认的应用配置文件，如 application.conf，第 5 层
 	appConfig := app.loadProfileConfig("")
 	p := conf.Priority(apiConfig, appConfig)
 
@@ -283,7 +284,7 @@ func (app *Application) prepare() {
 	cmdArgs := app.loadCmdArgs()
 	p.InsertBefore(cmdArgs, sysEnv)
 
-	// 加载特定环境的配置文件，如 Application-test.conf
+	// 加载特定环境的配置文件，如 application-test.conf
 	profile := app.appCtx.GetProfile()
 	if profile == "" {
 		keys := []string{SpringProfile, SPRING_PROFILE}
@@ -305,10 +306,10 @@ func (app *Application) prepare() {
 	}
 }
 
-func (app *Application) close() {
+func (app *application) close() {
 
-	defer log.Info("Application exited")
-	log.Info("Application exiting")
+	defer log.Info("application exited")
+	log.Info("application exiting")
 
 	// OnStopApplication 是否需要有 Timeout 的 Context？
 	// 仔细想想没有必要，程序想要优雅退出就得一直等，等到所有工作
@@ -325,7 +326,7 @@ func (app *Application) close() {
 	})
 }
 
-func (app *Application) Run(cfgLocation ...string) {
+func (app *application) Run(cfgLocation ...string) {
 
 	// 响应控制台的 Ctrl+C 及 kill 命令。
 	go func() {
@@ -342,7 +343,7 @@ func (app *Application) Run(cfgLocation ...string) {
 }
 
 // ShutDown 关闭执行器
-func (app *Application) ShutDown() {
+func (app *application) ShutDown() {
 	select {
 	case <-app.exitChan:
 		// chan 已关闭，无需再次关闭。
