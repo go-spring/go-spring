@@ -32,7 +32,6 @@ import (
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/mq"
 	"github.com/go-spring/spring-core/util"
-	"github.com/go-spring/spring-core/web"
 	"github.com/spf13/cast"
 )
 
@@ -74,7 +73,6 @@ type application struct {
 
 	exitChan chan struct{}
 
-	Mapping     mapping                     // Web 路由表
 	Consumers   map[string]*mq.BindConsumer // MQ 消费者列表
 	GRpcServers map[interface{}]*gRpcServer // gRPC 服务列表
 }
@@ -87,7 +85,6 @@ func NewApplication() *application {
 		bannerMode:          BannerModeConsole,
 		expectSysProperties: []string{`.*`},
 		exitChan:            make(chan struct{}),
-		Mapping:             map[string]*web.Mapper{},
 		Consumers:           map[string]*mq.BindConsumer{},
 		GRpcServers:         map[interface{}]*gRpcServer{},
 	}
