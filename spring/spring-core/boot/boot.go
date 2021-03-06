@@ -29,8 +29,9 @@ func GetProperty(key string) interface{} {
 	return gApp.appCtx.GetProperty(key)
 }
 
-func WireBean(i interface{}) error {
-	return gApp.appCtx.WireBean(i)
+// WireBean 对对象或者构造函数的结果进行依赖注入和属性绑定，返回处理后的对象
+func WireBean(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error) {
+	return gApp.appCtx.WireBean(objOrCtor, ctorArgs...)
 }
 
 func GetBean(i interface{}, selector ...bean.Selector) bool {
@@ -56,12 +57,9 @@ func Go(fn GoFuncWithContext) {
 	appCtx.Go(func() { fn(appCtx.Context()) })
 }
 
-func ObjBean(i interface{}) *core.BeanDefinition {
-	return gApp.appCtx.ObjBean(i)
-}
-
-func CtorBean(fn interface{}, args ...arg.Arg) *core.BeanDefinition {
-	return gApp.appCtx.CtorBean(fn, args...)
+// Bean 将对象或者构造函数转换为 BeanDefinition 对象
+func Bean(objOrCtor interface{}, ctorArgs ...arg.Arg) *core.BeanDefinition {
+	return gApp.appCtx.Bean(objOrCtor, ctorArgs...)
 }
 
 func Config(fn interface{}, args ...arg.Arg) *core.Configer {
@@ -89,7 +87,7 @@ func GRpcServer(serviceName string, fn interface{}, server interface{}) {
 
 // GRpcClient 注册 gRPC 服务客户端，fn 是 gRPC 自动生成的客户端构造函数
 func GRpcClient(fn interface{}, endpoint string) *core.BeanDefinition {
-	return gApp.appCtx.CtorBean(fn, endpoint)
+	return gApp.appCtx.Bean(fn, endpoint)
 }
 
 // Consume 注册 BIND 形式的消息消费者

@@ -29,7 +29,7 @@ func TestRunner_Run(t *testing.T) {
 	t.Run("before AutoWireBeans", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
-		ctx.CtorBean(func() int { return 3 })
+		ctx.Bean(func() int { return 3 })
 		ctx.SetProperty("version", "v0.0.1")
 
 		assert.Panic(t, func() {
@@ -45,7 +45,7 @@ func TestRunner_Run(t *testing.T) {
 	t.Run("not run", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
-		ctx.CtorBean(func() int { return 3 })
+		ctx.Bean(func() int { return 3 })
 		ctx.SetProperty("version", "v0.0.1")
 		ctx.AutoWireBeans()
 
@@ -58,7 +58,7 @@ func TestRunner_Run(t *testing.T) {
 	t.Run("run", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
-		ctx.CtorBean(func() int { return 3 })
+		ctx.Bean(func() int { return 3 })
 		ctx.SetProperty("version", "v0.0.1")
 		ctx.SetProfile("dev")
 		ctx.AutoWireBeans()

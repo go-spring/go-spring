@@ -338,7 +338,7 @@ func (assembly *defaultBeanAssembly) autoCollectBeans(t reflect.Type, et reflect
 
 // wireSliceItem 对 slice 的元素值进行注入
 func (assembly *defaultBeanAssembly) wireSliceItem(v reflect.Value, d bean.Definition) {
-	bd := valueBean(v, d.GetFile(), d.GetLine())
+	bd := Bean(v, d.GetFile(), d.GetLine())
 	assembly.wireBeanDefinition(bd, false)
 }
 
@@ -489,7 +489,7 @@ func (assembly *defaultBeanAssembly) wireObjectBean(bd bean.Definition, onlyAuto
 					// 开放私有字段，但是不会更新其原有可见属性
 					if fv0 := util.PatchValue(fv); fv0.CanSet() {
 						// 对 Bean 的结构体进行递归注入
-						b := valueBean(fv0.Addr(), bd.GetFile(), bd.GetLine())
+						b := Bean(fv0.Addr(), bd.GetFile(), bd.GetLine())
 						fbd := &fieldBeanDefinition{b, fieldName}
 						assembly.wireBeanDefinition(fbd, fieldOnlyAutoWire)
 					}
@@ -552,7 +552,7 @@ func (assembly *defaultBeanAssembly) wireConstructorBean(fnValue reflect.Value, 
 		beanValue = bd.Value()
 	}
 
-	b := valueBean(beanValue, bd.GetFile(), bd.GetLine()).Name(bd.BeanName())
+	b := Bean(beanValue, bd.GetFile(), bd.GetLine()).Name(bd.BeanName())
 	assembly.wireBeanDefinition(&fnValueBeanDefinition{BeanDefinition: b, f: bd}, false)
 }
 

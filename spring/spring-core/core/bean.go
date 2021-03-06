@@ -452,37 +452,44 @@ func getFileLine() (file string, line int) {
 	return
 }
 
-func valueBean(v reflect.Value, file string, line int) *BeanDefinition {
+// Bean 普通函数注册时需要使用 reflect.ValueOf(fn) 的方式避免和构造函数发生冲突。
+func Bean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
+
+	var v reflect.Value
+	var fromValue bool
+
+	switch i := objOrCtor.(type) {
+	case reflect.Value:
+		fromValue = true
+		v = i
+	default:
+		v = reflect.ValueOf(i)
+	}
+
 	if !v.IsValid() || util.IsNil(v) {
 		panic(errors.New("bean can't be nil"))
 	}
+
+	file, line := getFileLine()
+
+	// 以 reflect.ValueOf(fn) 方式注册的函数被视为对象 Bean 。
+	if t := v.Type(); !fromValue && t.Kind() == reflect.Func {
+
+		// 检查 Bean 的注册函数是否合法
+		if !IsFuncBeanType(t) {
+			t1 := "func(...)bean"
+			t2 := "func(...)(bean, error)"
+			panic(fmt.Errorf("func bean must be %s or %s", t1, t2))
+		}
+
+		b := &ctorBeanFactory{
+			fnType: t,
+			fn:     objOrCtor,
+			arg:    arg.NewArgList(t, false, ctorArgs),
+		}
+
+		return newBeanDefinition(b, file, line)
+	}
+
 	return newBeanDefinition(&objBeanFactory{v: v}, file, line)
-}
-
-// ObjBean 将 Bean 转换为 BeanDefinition 对象
-func ObjBean(i interface{}) *BeanDefinition {
-	file, line := getFileLine()
-	return valueBean(reflect.ValueOf(i), file, line)
-}
-
-// CtorBean 将构造函数转换为 BeanDefinition 对象
-func CtorBean(fn interface{}, args ...arg.Arg) *BeanDefinition {
-
-	file, line := getFileLine()
-	fnType := reflect.TypeOf(fn)
-
-	// 检查 Bean 的注册函数是否合法
-	if !IsFuncBeanType(fnType) {
-		t1 := "func(...)bean"
-		t2 := "func(...)(bean, error)"
-		panic(fmt.Errorf("func bean must be %s or %s", t1, t2))
-	}
-
-	b := &ctorBeanFactory{
-		fnType: fnType,
-		fn:     fn,
-		arg:    arg.NewArgList(fnType, false, args), // TODO 支持 receiver 构造函数
-	}
-
-	return newBeanDefinition(b, file, line)
 }

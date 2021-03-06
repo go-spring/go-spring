@@ -90,18 +90,18 @@ func TestBeanDefinition_Match(t *testing.T) {
 		beanName string
 		expect   bool
 	}{
-		{core.ObjBean(new(int)), "int", "*int", true},
-		{core.ObjBean(new(int)), "", "*int", true},
-		{core.ObjBean(new(int)), "int", "", true},
-		{core.ObjBean(new(int)).Name("i"), "int", "i", true},
-		{core.ObjBean(new(int)).Name("i"), "", "i", true},
-		{core.ObjBean(new(int)).Name("i"), "int", "", true},
-		{core.ObjBean(new(pkg2.SamePkg)), "github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg", "*pkg.SamePkg", true},
-		{core.ObjBean(new(pkg2.SamePkg)), "", "*pkg.SamePkg", true},
-		{core.ObjBean(new(pkg2.SamePkg)), "github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg", "", true},
-		{core.ObjBean(new(pkg2.SamePkg)).Name("pkg2"), "github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg", "pkg2", true},
-		{core.ObjBean(new(pkg2.SamePkg)).Name("pkg2"), "", "pkg2", true},
-		{core.ObjBean(new(pkg2.SamePkg)).Name("pkg2"), "github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg", "pkg2", true},
+		{core.Bean(new(int)), "int", "*int", true},
+		{core.Bean(new(int)), "", "*int", true},
+		{core.Bean(new(int)), "int", "", true},
+		{core.Bean(new(int)).Name("i"), "int", "i", true},
+		{core.Bean(new(int)).Name("i"), "", "i", true},
+		{core.Bean(new(int)).Name("i"), "int", "", true},
+		{core.Bean(new(pkg2.SamePkg)), "github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg", "*pkg.SamePkg", true},
+		{core.Bean(new(pkg2.SamePkg)), "", "*pkg.SamePkg", true},
+		{core.Bean(new(pkg2.SamePkg)), "github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg", "", true},
+		{core.Bean(new(pkg2.SamePkg)).Name("pkg2"), "github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg", "pkg2", true},
+		{core.Bean(new(pkg2.SamePkg)).Name("pkg2"), "", "pkg2", true},
+		{core.Bean(new(pkg2.SamePkg)).Name("pkg2"), "github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg", "pkg2", true},
 	}
 
 	for i, s := range data {
@@ -139,29 +139,29 @@ func TestObjectBean(t *testing.T) {
 	t.Run("bean can't be nil", func(t *testing.T) {
 
 		assert.Panic(t, func() {
-			core.ObjBean(nil)
+			core.Bean(nil)
 		}, "bean can't be nil")
 
 		assert.Panic(t, func() {
 			var i *int
-			core.ObjBean(i)
+			core.Bean(i)
 		}, "bean can't be nil")
 
 		assert.Panic(t, func() {
 			var m map[string]string
-			core.ObjBean(m)
+			core.Bean(m)
 		}, "bean can't be nil")
 	})
 
 	t.Run("bean must be ref type", func(t *testing.T) {
 
 		data := []func(){
-			func() { core.ObjBean([...]int{0}) },
-			func() { core.ObjBean(false) },
-			func() { core.ObjBean(3) },
-			func() { core.ObjBean("3") },
-			func() { core.ObjBean(BeanZero{}) },
-			func() { core.ObjBean(pkg2.SamePkg{}) },
+			func() { core.Bean([...]int{0}) },
+			func() { core.Bean(false) },
+			func() { core.Bean(3) },
+			func() { core.Bean("3") },
+			func() { core.Bean(BeanZero{}) },
+			func() { core.Bean(pkg2.SamePkg{}) },
 		}
 
 		for _, fn := range data {
@@ -170,12 +170,12 @@ func TestObjectBean(t *testing.T) {
 	})
 
 	t.Run("valid bean", func(t *testing.T) {
-		core.ObjBean(make(chan int))
-		core.ObjBean(func() {})
-		core.ObjBean(make(map[string]int))
-		core.ObjBean(new(int))
-		core.ObjBean(&BeanZero{})
-		core.ObjBean(make([]int, 0))
+		core.Bean(make(chan int))
+		core.Bean(reflect.ValueOf(func() {}))
+		core.Bean(make(map[string]int))
+		core.Bean(new(int))
+		core.Bean(&BeanZero{})
+		core.Bean(make([]int, 0))
 	})
 
 	t.Run("check name && typename", func(t *testing.T) {
@@ -184,29 +184,29 @@ func TestObjectBean(t *testing.T) {
 			name     string
 			typeName string
 		}{
-			core.ObjBean(io.Writer(os.Stdout)): {
+			core.Bean(io.Writer(os.Stdout)): {
 				"*os.File", "os/os.File",
 			},
 
-			core.ObjBean(newHistoryTeacher("")): {
+			core.Bean(newHistoryTeacher("")): {
 				"*core_test.historyTeacher",
 				"github.com/go-spring/spring-core/core_test/core_test.historyTeacher",
 			},
 
-			core.ObjBean(new(int)): {
+			core.Bean(new(int)): {
 				"*int", "int",
 			},
 
-			core.ObjBean(new(int)).Name("i"): {
+			core.Bean(new(int)).Name("i"): {
 				"i", "int",
 			},
 
-			core.ObjBean(new(pkg2.SamePkg)): {
+			core.Bean(new(pkg2.SamePkg)): {
 				"*pkg.SamePkg",
 				"github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg",
 			},
 
-			core.ObjBean(new(pkg2.SamePkg)).Name("pkg2"): {
+			core.Bean(new(pkg2.SamePkg)).Name("pkg2"): {
 				"pkg2",
 				"github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg",
 			},
@@ -221,37 +221,37 @@ func TestObjectBean(t *testing.T) {
 
 func TestConstructorBean(t *testing.T) {
 
-	bd := core.CtorBean(NewStudent)
+	bd := core.Bean(NewStudent)
 	assert.Equal(t, bd.Type().String(), "*core_test.Student")
 
-	bd = core.CtorBean(NewPtrStudent)
+	bd = core.Bean(NewPtrStudent)
 	assert.Equal(t, bd.Type().String(), "*core_test.Student")
 
 	mapFn := func() map[int]string { return make(map[int]string) }
-	bd = core.CtorBean(mapFn)
+	bd = core.Bean(mapFn)
 	assert.Equal(t, bd.Type().String(), "map[int]string")
 
 	sliceFn := func() []int { return make([]int, 1) }
-	bd = core.CtorBean(sliceFn)
+	bd = core.Bean(sliceFn)
 	assert.Equal(t, bd.Type().String(), "[]int")
 
 	funcFn := func() func(int) { return nil }
-	bd = core.CtorBean(funcFn)
+	bd = core.Bean(funcFn)
 	assert.Equal(t, bd.Type().String(), "func(int)")
 
 	intFn := func() int { return 0 }
-	bd = core.CtorBean(intFn)
+	bd = core.Bean(intFn)
 	assert.Equal(t, bd.Type().String(), "*int")
 
 	interfaceFn := func(name string) Teacher { return newHistoryTeacher(name) }
-	bd = core.CtorBean(interfaceFn)
+	bd = core.Bean(interfaceFn)
 	assert.Equal(t, bd.Type().String(), "core_test.Teacher")
 
 	assert.Panic(t, func() {
-		bd = core.CtorBean(func() (*int, *int) { return nil, nil })
+		bd = core.Bean(func() (*int, *int) { return nil, nil })
 		assert.Equal(t, bd.Type().String(), "*int")
 	}, "func bean must be func\\(...\\)bean or func\\(...\\)\\(bean, error\\)")
 
-	bd = core.CtorBean(func() (*int, error) { return nil, nil })
+	bd = core.Bean(func() (*int, error) { return nil, nil })
 	assert.Equal(t, bd.Type().String(), "*int")
 }

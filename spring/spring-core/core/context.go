@@ -70,23 +70,14 @@ type ApplicationContext interface {
 	// Config 注册一个配置函数
 	Config(fn interface{}, args ...arg.Arg) *Configer
 
-	// Bean 注册 bean.BeanDefinition 对象。
-	Bean(bd *BeanDefinition) *BeanDefinition
-
-	// ObjBean 将 Bean 转换为 BeanDefinition 对象
-	ObjBean(i interface{}) *BeanDefinition
-
-	// CtorBean 将构造函数转换为 BeanDefinition 对象
-	CtorBean(fn interface{}, args ...arg.Arg) *BeanDefinition
+	// Bean 将对象或者构造函数转换为 BeanDefinition 对象
+	Bean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition
 
 	// AutoWireBeans 对所有 Bean 进行依赖注入和属性绑定
 	AutoWireBeans()
 
-	// WireBean 对外部的 Bean 进行依赖注入和属性绑定
-	WireBean(i interface{}) error
-
-	// CreateBean 执行构造函数并对结果进行依赖注入和属性绑定
-	CreateBean(fn interface{}, args ...arg.Arg) (interface{}, error)
+	// WireBean 对对象或者构造函数的结果进行依赖注入和属性绑定，返回处理后的对象
+	WireBean(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error)
 
 	// Beans 获取所有 Bean 的定义，不能保证解析和注入，请谨慎使用该函数!
 	Beans() []*BeanDefinition

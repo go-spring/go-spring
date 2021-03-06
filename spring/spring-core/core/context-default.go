@@ -162,18 +162,10 @@ func (ctx *applicationContext) registerBeanDefinition(bd *BeanDefinition) {
 	ctx.beanMap[bd.BeanId()] = bd
 }
 
-// ObjBean 将 Bean 转换为 BeanDefinition 对象
-func (ctx *applicationContext) ObjBean(i interface{}) *BeanDefinition {
-	return ctx.Bean(ObjBean(i))
-}
-
-// CtorBean 将构造函数转换为 BeanDefinition 对象
-func (ctx *applicationContext) CtorBean(fn interface{}, args ...arg.Arg) *BeanDefinition {
-	return ctx.Bean(CtorBean(fn, args...))
-}
-
-func (ctx *applicationContext) Bean(bd *BeanDefinition) *BeanDefinition {
+// Bean 将对象或者构造函数转换为 BeanDefinition 对象
+func (ctx *applicationContext) Bean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 	ctx.checkRegistration()
+	bd := Bean(objOrCtor, ctorArgs...)
 	ctx.AllBeans = append(ctx.AllBeans, bd)
 	return bd
 }
@@ -505,8 +497,8 @@ func (ctx *applicationContext) AutoWireBeans() {
 	ctx.sortDestroyers()
 }
 
-// WireBean 对外部的 Bean 进行依赖注入和属性绑定
-func (ctx *applicationContext) WireBean(i interface{}) error {
+// WireBean 对对象或者构造函数的结果进行依赖注入和属性绑定，返回处理后的对象
+func (ctx *applicationContext) WireBean(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error) {
 	ctx.checkAutoWired()
 
 	assembly := newDefaultBeanAssembly(ctx)
@@ -518,24 +510,7 @@ func (ctx *applicationContext) WireBean(i interface{}) error {
 		}
 	}()
 
-	assembly.wireBeanDefinition(ObjBean(i), false)
-	return nil
-}
-
-// CreateBean 执行构造函数并对结果进行依赖注入和属性绑定
-func (ctx *applicationContext) CreateBean(fn interface{}, args ...arg.Arg) (interface{}, error) {
-	ctx.checkAutoWired()
-
-	assembly := newDefaultBeanAssembly(ctx)
-
-	defer func() { // 捕获自动注入过程中的异常，打印错误日志然后重新抛出
-		if err := recover(); err != nil {
-			log.Errorf("%v ↩\n%s", err, assembly.wiringStack.path())
-			panic(err)
-		}
-	}()
-
-	bd := CtorBean(fn, args...)
+	bd := Bean(objOrCtor, ctorArgs...)
 	assembly.wireBeanDefinition(bd, false)
 	return bd.Bean(), nil
 }
