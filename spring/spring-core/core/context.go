@@ -88,8 +88,8 @@ type ConfigurableApplicationContext interface {
 	// ApplicationContext 不能修改内容的接口
 	ApplicationContext
 
-	// SetProfile 设置运行环境
-	SetProfile(profile string)
+	// Profile 设置运行环境
+	Profile(profile string)
 
 	// Properties 获取 Properties 对象
 	Properties() conf.Properties
@@ -97,8 +97,8 @@ type ConfigurableApplicationContext interface {
 	// LoadProperties 加载属性配置，支持 properties、yaml 和 toml 三种文件格式。
 	LoadProperties(filename string) error
 
-	// SetProperty 设置属性值，属性名称统一转成小写。
-	SetProperty(key string, value interface{})
+	// Property 设置属性值，属性名称统一转成小写。
+	Property(key string, value interface{})
 
 	// Bean 将对象或者构造函数转换为 BeanDefinition 对象
 	Bean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition
@@ -106,8 +106,8 @@ type ConfigurableApplicationContext interface {
 	// Config 注册一个配置函数
 	Config(fn interface{}, args ...arg.Arg) *Configer
 
-	// AutoWireBeans 对所有 Bean 进行依赖注入和属性绑定
-	AutoWireBeans()
+	// Refresh 对所有 Bean 进行依赖注入和属性绑定
+	Refresh()
 
 	// Close 关闭容器上下文，用于通知 Bean 销毁等。
 	// 该函数可以确保 Bean 的销毁顺序和注入顺序相反。

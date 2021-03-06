@@ -30,9 +30,28 @@ import (
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/core"
 	"github.com/go-spring/spring-core/log"
-	"github.com/go-spring/spring-core/mq"
 	"github.com/go-spring/spring-core/util"
 	"github.com/spf13/cast"
+)
+
+// defaultBanner 默认的 Banner 字符
+const defaultBanner = `
+ _______  _______         _______  _______  _______ _________ _        _______ 
+(  ____ \(  ___  )       (  ____ \(  ____ )(  ____ )\__   __/( (    /|(  ____ \
+| (    \/| (   ) |       | (    \/| (    )|| (    )|   ) (   |  \  ( || (    \/
+| |      | |   | | _____ | (_____ | (____)|| (____)|   | |   |   \ | || |      
+| | ____ | |   | |(_____)(_____  )|  _____)|     __)   | |   | (\ \) || | ____ 
+| | \_  )| |   | |             ) || (      | (\ (      | |   | | \   || | \_  )
+| (___) || (___) |       /\____) || )      | ) \ \_____) (___| )  \  || (___) |
+(_______)(_______)       \_______)|/       |/   \__/\_______/|/    )_)(_______)
+`
+
+// version 版本信息
+const version = `go-spring@v1.0.5    http://go-spring.com/`
+
+const (
+	BannerModeOff     = 0
+	BannerModeConsole = 1
 )
 
 const (
@@ -72,9 +91,6 @@ type application struct {
 	Runners []CommandLineRunner `autowire:"${command-line-runner.collection:=[]?}"`
 
 	exitChan chan struct{}
-
-	Consumers   map[string]*mq.BindConsumer // MQ 消费者列表
-	GRpcServers map[interface{}]*gRpcServer // gRPC 服务列表
 }
 
 // NewApplication application 的构造函数
@@ -85,8 +101,6 @@ func NewApplication() *application {
 		bannerMode:          BannerModeConsole,
 		expectSysProperties: []string{`.*`},
 		exitChan:            make(chan struct{}),
-		Consumers:           map[string]*mq.BindConsumer{},
-		GRpcServers:         map[interface{}]*gRpcServer{},
 	}
 }
 
@@ -107,7 +121,7 @@ func (app *application) start(cfgLocation ...string) {
 	app.appCtx.Bean(app.appCtx).Export((*core.ApplicationContext)(nil))
 
 	// 依赖注入、属性绑定、初始化
-	app.appCtx.AutoWireBeans()
+	app.appCtx.Refresh()
 
 	// 执行命令行启动器
 	for _, r := range app.Runners {
@@ -151,6 +165,37 @@ func (app *application) printBanner() {
 	}
 
 	printBanner(banner)
+}
+
+// printBanner 打印 Banner 到控制台
+func printBanner(banner string) {
+
+	// 确保 Banner 前面有空行
+	if banner[0] != '\n' {
+		fmt.Println()
+	}
+
+	maxLength := 0
+	for _, s := range strings.Split(banner, "\n") {
+		fmt.Printf("\x1b[36m%s\x1b[0m\n", s) // CYAN
+		if len(s) > maxLength {
+			maxLength = len(s)
+		}
+	}
+
+	// 确保 Banner 后面有空行
+	if banner[len(banner)-1] != '\n' {
+		fmt.Println()
+	}
+
+	var padding []byte
+	if n := (maxLength - len(version)) / 2; n > 0 {
+		padding = make([]byte, n)
+		for i := range padding {
+			padding[i] = ' '
+		}
+	}
+	fmt.Println(string(padding) + version + "\n")
 }
 
 // loadCmdArgs 加载命令行参数，形如 -name value 的参数才有效。
@@ -288,7 +333,7 @@ func (app *application) prepare() {
 		profile = cast.ToString(p.First(keys...))
 	}
 	if profile != "" {
-		app.appCtx.SetProfile(profile) // 第 4 层
+		app.appCtx.Profile(profile) // 第 4 层
 		profileConfig := app.loadProfileConfig(profile)
 		p.InsertBefore(profileConfig, appConfig)
 	}
@@ -299,7 +344,7 @@ func (app *application) prepare() {
 	// 将重组后的属性值写入 ApplicationContext 属性列表
 	for key, value := range properties {
 		value = app.resolveProperty(properties, key, value)
-		app.appCtx.SetProperty(key, value)
+		app.appCtx.Property(key, value)
 	}
 }
 

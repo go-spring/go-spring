@@ -48,8 +48,8 @@ func (item *beanCacheItem) store(bd *BeanDefinition) {
 	item.beans = append(item.beans, bd)
 }
 
-// 验证 applicationContext 是否实现 ApplicationContext 接口
-var _ = (ApplicationContext)((*applicationContext)(nil))
+// 验证 applicationContext 是否实现 ConfigurableApplicationContext 接口
+var _ = (ConfigurableApplicationContext)((*applicationContext)(nil))
 
 // applicationContext ApplicationContext 的默认实现
 type applicationContext struct {
@@ -111,8 +111,8 @@ func (ctx *applicationContext) GetProperty(key string) interface{} {
 	return ctx.properties.Get(key)
 }
 
-// SetProperty 设置属性值，属性名称统一转成小写。
-func (ctx *applicationContext) SetProperty(key string, value interface{}) {
+// Property 设置属性值，属性名称统一转成小写。
+func (ctx *applicationContext) Property(key string, value interface{}) {
 	ctx.properties.Set(key, value)
 }
 
@@ -131,15 +131,15 @@ func (ctx *applicationContext) GetProfile() string {
 	return ctx.profile
 }
 
-// SetProfile 设置运行环境
-func (ctx *applicationContext) SetProfile(profile string) {
+// Profile 设置运行环境
+func (ctx *applicationContext) Profile(profile string) {
 	ctx.profile = profile
 }
 
-// checkAutoWired 检查是否已调用 AutoWireBeans 方法
+// checkAutoWired 检查是否已调用 Refresh 方法
 func (ctx *applicationContext) checkAutoWired() {
 	if !ctx.autoWired {
-		panic(errors.New("should call after AutoWireBeans"))
+		panic(errors.New("should call after Refresh"))
 	}
 }
 
@@ -467,11 +467,11 @@ func (ctx *applicationContext) wireBeans(assembly *defaultBeanAssembly) {
 	}
 }
 
-// AutoWireBeans 对所有 Bean 进行依赖注入和属性绑定
-func (ctx *applicationContext) AutoWireBeans() {
+// Refresh 对所有 Bean 进行依赖注入和属性绑定
+func (ctx *applicationContext) Refresh() {
 
 	if ctx.autoWired {
-		panic(errors.New("AutoWireBeans already called"))
+		panic(errors.New("already refreshed"))
 	}
 
 	// 处理 Method Bean 等

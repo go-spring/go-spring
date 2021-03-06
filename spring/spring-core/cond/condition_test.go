@@ -39,8 +39,8 @@ func TestFunctionCondition(t *testing.T) {
 func TestPropertyCondition(t *testing.T) {
 
 	ctx := core.NewApplicationContext()
-	ctx.SetProperty("int", 3)
-	ctx.SetProperty("parent.child", 0)
+	ctx.Property("int", 3)
+	ctx.Property("parent.child", 0)
 
 	c := cond.PropertyCondition("int")
 	assert.Equal(t, c.Matches(ctx), true)
@@ -58,8 +58,8 @@ func TestPropertyCondition(t *testing.T) {
 func TestMissingPropertyCondition(t *testing.T) {
 
 	ctx := core.NewApplicationContext()
-	ctx.SetProperty("int", 3)
-	ctx.SetProperty("parent.child", 0)
+	ctx.Property("int", 3)
+	ctx.Property("parent.child", 0)
 
 	c := cond.MissingPropertyCondition("int")
 	assert.Equal(t, c.Matches(ctx), false)
@@ -77,8 +77,8 @@ func TestMissingPropertyCondition(t *testing.T) {
 func TestPropertyValueCondition(t *testing.T) {
 
 	ctx := core.NewApplicationContext()
-	ctx.SetProperty("str", "this is a str")
-	ctx.SetProperty("int", 3)
+	ctx.Property("str", "this is a str")
+	ctx.Property("int", 3)
 
 	c := cond.PropertyValueCondition("int", 3)
 	assert.Equal(t, c.Matches(ctx), true)
@@ -124,7 +124,7 @@ func TestBeanCondition(t *testing.T) {
 	ctx := core.NewApplicationContext()
 	ctx.Bean(&BeanZero{5})
 	ctx.Bean(new(BeanOne))
-	ctx.AutoWireBeans()
+	ctx.Refresh()
 
 	c := cond.BeanCondition("*cond_test.BeanOne")
 	assert.Equal(t, c.Matches(ctx), true)
@@ -138,7 +138,7 @@ func TestMissingBeanCondition(t *testing.T) {
 	ctx := core.NewApplicationContext()
 	ctx.Bean(&BeanZero{5})
 	ctx.Bean(new(BeanOne))
-	ctx.AutoWireBeans()
+	ctx.Refresh()
 
 	c := cond.MissingBeanCondition("*cond_test.BeanOne")
 	assert.Equal(t, c.Matches(ctx), false)
@@ -154,9 +154,9 @@ func TestExpressionCondition(t *testing.T) {
 func TestConditional(t *testing.T) {
 
 	ctx := core.NewApplicationContext()
-	ctx.SetProperty("bool", false)
-	ctx.SetProperty("int", 3)
-	ctx.AutoWireBeans()
+	ctx.Property("bool", false)
+	ctx.Property("int", 3)
+	ctx.Refresh()
 
 	c := cond.OnProperty("int")
 	assert.Equal(t, c.Matches(ctx), true)
@@ -207,8 +207,8 @@ func TestConditional(t *testing.T) {
 func TestNotCondition(t *testing.T) {
 
 	ctx := core.NewApplicationContext()
-	ctx.SetProfile("test")
-	ctx.AutoWireBeans()
+	ctx.Profile("test")
+	ctx.Refresh()
 
 	profileCond := cond.ProfileCondition("test")
 	assert.Equal(t, profileCond.Matches(ctx), true)

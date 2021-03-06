@@ -26,28 +26,28 @@ import (
 
 func TestRunner_Run(t *testing.T) {
 
-	t.Run("before AutoWireBeans", func(t *testing.T) {
+	t.Run("before Refresh", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
 		ctx.Bean(func() int { return 3 })
-		ctx.SetProperty("version", "v0.0.1")
+		ctx.Property("version", "v0.0.1")
 
 		assert.Panic(t, func() {
 			_ = ctx.Invoke(func(i *int, version string) {
 				fmt.Println("version:", version)
 				fmt.Println("int:", *i)
 			}, "", "${version}")
-		}, "should call after AutoWireBeans")
+		}, "should call after Refresh")
 
-		ctx.AutoWireBeans()
+		ctx.Refresh()
 	})
 
 	t.Run("not run", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
 		ctx.Bean(func() int { return 3 })
-		ctx.SetProperty("version", "v0.0.1")
-		ctx.AutoWireBeans()
+		ctx.Property("version", "v0.0.1")
+		ctx.Refresh()
 
 		_ = ctx.Invoke(func(i *int, version string) {
 			fmt.Println("version:", version)
@@ -59,9 +59,9 @@ func TestRunner_Run(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
 		ctx.Bean(func() int { return 3 })
-		ctx.SetProperty("version", "v0.0.1")
-		ctx.SetProfile("dev")
-		ctx.AutoWireBeans()
+		ctx.Property("version", "v0.0.1")
+		ctx.Profile("dev")
+		ctx.Refresh()
 
 		fn := func(i *int, version string) {
 			fmt.Println("version:", version)
