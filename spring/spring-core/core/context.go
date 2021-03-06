@@ -43,44 +43,17 @@ type ApplicationContext interface {
 	// GetProfile 返回运行环境
 	GetProfile() string
 
-	// SetProfile 设置运行环境
-	SetProfile(profile string)
-
-	// Properties 获取 Properties 对象
-	Properties() conf.Properties
-
-	// LoadProperties 加载属性配置，支持 properties、yaml 和 toml 三种文件格式。
-	LoadProperties(filename string) error
-
 	// HasProperty 查询属性值是否存在，属性名称统一转成小写。
 	HasProperty(key string) bool
 
 	// GetProperty 返回属性值，不能存在返回 nil，属性名称统一转成小写。
 	GetProperty(key string) interface{}
 
-	// SetProperty 设置属性值，属性名称统一转成小写。
-	SetProperty(key string, value interface{})
-
 	// PrefixProperties 返回指定前缀的属性值集合，属性名称统一转成小写。
 	PrefixProperties(key string) map[string]interface{}
 
-	// Configer 注册一个配置函数
-	Configer(configer *Configer)
-
-	// Config 注册一个配置函数
-	Config(fn interface{}, args ...arg.Arg) *Configer
-
-	// Bean 将对象或者构造函数转换为 BeanDefinition 对象
-	Bean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition
-
-	// AutoWireBeans 对所有 Bean 进行依赖注入和属性绑定
-	AutoWireBeans()
-
 	// WireBean 对对象或者构造函数的结果进行依赖注入和属性绑定，返回处理后的对象
 	WireBean(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error)
-
-	// Beans 获取所有 Bean 的定义，不能保证解析和注入，请谨慎使用该函数!
-	Beans() []*BeanDefinition
 
 	// GetBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 	// 它和 FindBean 的区别是它在调用后能够保证返回的 Bean 已经完成了注入和绑定过程。
@@ -99,11 +72,42 @@ type ApplicationContext interface {
 	// selectors 列表的顺序对收集结果进行排序。
 	CollectBeans(i interface{}, selectors ...bean.Selector) bool
 
-	// SafeGoroutine 安全地启动一个 goroutine
+	// Beans 获取所有 Bean 的定义，不能保证解析和注入，请谨慎使用该函数!
+	Beans() []*BeanDefinition
+
+	// Go 安全地启动一个 goroutine
 	Go(fn interface{}, args ...arg.Arg)
 
 	// Invoke 立即执行一个一次性的任务
 	Invoke(fn interface{}, args ...arg.Arg) error
+}
+
+// ConfigurableApplicationContext ApplicationContext 不允许内容被修改，这个可以。
+type ConfigurableApplicationContext interface {
+
+	// ApplicationContext 不能修改内容的接口
+	ApplicationContext
+
+	// SetProfile 设置运行环境
+	SetProfile(profile string)
+
+	// Properties 获取 Properties 对象
+	Properties() conf.Properties
+
+	// LoadProperties 加载属性配置，支持 properties、yaml 和 toml 三种文件格式。
+	LoadProperties(filename string) error
+
+	// SetProperty 设置属性值，属性名称统一转成小写。
+	SetProperty(key string, value interface{})
+
+	// Bean 将对象或者构造函数转换为 BeanDefinition 对象
+	Bean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition
+
+	// Config 注册一个配置函数
+	Config(fn interface{}, args ...arg.Arg) *Configer
+
+	// AutoWireBeans 对所有 Bean 进行依赖注入和属性绑定
+	AutoWireBeans()
 
 	// Close 关闭容器上下文，用于通知 Bean 销毁等。
 	// 该函数可以确保 Bean 的销毁顺序和注入顺序相反。

@@ -1598,9 +1598,7 @@ func TestOptionConstructorArg(t *testing.T) {
 		ctx.SetProperty("class_name", "二年级03班")
 		ctx.SetProperty("president", "CaiYuanPei")
 		ctx.Bean(NewClassRoom, arg.Option(withStudents, ""))
-		ctx.Bean([]*Student{
-			new(Student), new(Student),
-		})
+		ctx.Bean([]*Student{new(Student), new(Student)})
 		ctx.AutoWireBeans()
 
 		var cls *ClassRoom

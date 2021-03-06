@@ -61,7 +61,7 @@ type ApplicationEvent interface {
 
 // application 应用
 type application struct {
-	appCtx core.ApplicationContext // 应用上下文
+	appCtx core.ConfigurableApplicationContext // 应用上下文
 
 	cfgLocation         []string // 配置文件目录
 	banner              string   // Banner 的内容

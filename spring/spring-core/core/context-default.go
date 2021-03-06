@@ -570,11 +570,6 @@ func (ctx *applicationContext) Config(fn interface{}, args ...arg.Arg) *Configer
 	return configer
 }
 
-// Configer 注册一个配置函数
-func (ctx *applicationContext) Configer(configer *Configer) {
-	ctx.configers.PushBack(configer)
-}
-
 // Go 安全地启动一个 goroutine
 func (ctx *applicationContext) Go(fn interface{}, args ...arg.Arg) {
 
