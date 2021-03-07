@@ -505,7 +505,9 @@ func (assembly *defaultBeanAssembly) wireConstructorBean(fnValue reflect.Value, 
 	var in []reflect.Value
 
 	if fnBean.arg != nil {
-		if r := fnBean.arg.Get(assembly, bd.FileLine()); len(r) > 0 {
+		r, err := fnBean.arg.Get(assembly, bd.FileLine())
+		util.Panic(err).When(err != nil)
+		if len(r) > 0 {
 			in = append(in, r...)
 		}
 	}

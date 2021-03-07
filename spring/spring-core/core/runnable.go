@@ -31,12 +31,16 @@ func (r *runnable) Run(assembly bean.Assembly, receiver ...reflect.Value) error 
 	// 组装 fn 调用所需的参数列表
 	var in []reflect.Value
 
-	if r.arg.WithReceiver {
+	if r.arg.WithReceiver() {
 		in = append(in, receiver[0])
 	}
 
 	if r.arg != nil {
-		if v := r.arg.Get(assembly, fileLine); len(v) > 0 {
+		v, err := r.arg.Get(assembly, fileLine)
+		if err != nil {
+			return err
+		}
+		if len(v) > 0 {
 			in = append(in, v...)
 		}
 	}
