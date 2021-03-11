@@ -151,7 +151,7 @@ func (ctx *applicationContext) checkRegistration() {
 }
 
 func (ctx *applicationContext) deleteBeanDefinition(bd *BeanDefinition) {
-	bd.SetStatus(bean.Deleted)
+	bd.SetStatus(Deleted)
 	delete(ctx.beanMap, bd.BeanId())
 }
 
@@ -205,9 +205,9 @@ func (ctx *applicationContext) FindBean(selector bean.Selector) (bean.Definition
 
 	finder := func(fn func(*BeanDefinition) bool) (result []*BeanDefinition) {
 		for _, b := range ctx.beanMap {
-			if b.GetStatus() != bean.Resolving && fn(b) {
+			if b.GetStatus() != Resolving && fn(b) {
 				ctx.resolveBean(b) // 避免 Bean 未被解析
-				if b.GetStatus() != bean.Deleted {
+				if b.GetStatus() != Deleted {
 					result = append(result, b)
 				}
 			}
@@ -365,11 +365,11 @@ func (ctx *applicationContext) nameCache(name string, bd *BeanDefinition) {
 func (ctx *applicationContext) resolveBean(bd *BeanDefinition) {
 
 	// 正在进行或者已经完成决议过程
-	if bd.GetStatus() >= bean.Resolving {
+	if bd.GetStatus() >= Resolving {
 		return
 	}
 
-	bd.SetStatus(bean.Resolving)
+	bd.SetStatus(Resolving)
 
 	// 不满足判断条件的则标记为删除状态并删除其注册
 	if bd.cond != nil && !bd.cond.Matches(ctx) {
@@ -397,7 +397,7 @@ func (ctx *applicationContext) resolveBean(bd *BeanDefinition) {
 	// 按照 Bean 的名字进行缓存
 	ctx.nameCache(bd.BeanName(), bd)
 
-	bd.SetStatus(bean.Resolved)
+	bd.SetStatus(Resolved)
 }
 
 func (ctx *applicationContext) registerAllBeans() {

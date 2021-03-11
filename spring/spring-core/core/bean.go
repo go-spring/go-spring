@@ -131,6 +131,12 @@ func ParseCollectionTag(str string) (tag collectionTag) {
 	return
 }
 
+type BeanFactory interface {
+	BeanClass() string
+	NewValue() reflect.Value
+	BeanType() reflect.Type
+}
+
 type objBeanFactory struct {
 	v reflect.Value
 }
@@ -199,16 +205,43 @@ func (b *ctorBeanFactory) BeanClass() string {
 	return "constructor bean"
 }
 
+// beanStatus Bean 的状态值
+type beanStatus int
+
+const (
+	Default   = beanStatus(0) // 默认状态
+	Resolving = beanStatus(1) // 正在决议
+	Resolved  = beanStatus(2) // 已决议
+	Wiring    = beanStatus(3) // 正在注入
+	Wired     = beanStatus(4) // 注入完成
+	Deleted   = beanStatus(5) // 已删除
+)
+
+type ConfigurableBeanDefinition interface {
+	bean.Definition
+
+	BeanFactory() BeanFactory
+	GetStatus() beanStatus         // 返回 Bean 的状态值
+	GetDependsOn() []bean.Selector // 返回 Bean 的间接依赖项
+	GetInit() bean.Runnable        // 返回 Bean 的初始化函数
+	GetDestroy() bean.Runnable     // 返回 Bean 的销毁函数
+	GetFile() string               // 返回 Bean 注册点所在文件的名称
+	GetLine() int                  // 返回 Bean 注册点所在文件的行数
+
+	SetValue(reflect.Value)      // 设置新的值
+	SetStatus(status beanStatus) // 设置 Bean 的状态值
+}
+
 // BeanDefinition 用于存储 Bean 的各种元数据
 type BeanDefinition struct {
 	rValue  reflect.Value // 值
-	factory bean.BeanFactory
+	factory BeanFactory
 
 	rType    reflect.Type // 类型
 	typeName string       // 原始类型的全限定名
 
-	name   string      // Bean 的名称，请勿直接使用该字段!
-	status bean.Status // Bean 的状态
+	name   string     // Bean 的名称，请勿直接使用该字段!
+	status beanStatus // Bean 的状态
 
 	file string // 注册点所在文件
 	line int    // 注册点所在行数
@@ -224,7 +257,7 @@ type BeanDefinition struct {
 }
 
 // newBeanDefinition BeanDefinition 的构造函数
-func newBeanDefinition(factory bean.BeanFactory, file string, line int) *BeanDefinition {
+func newBeanDefinition(factory BeanFactory, file string, line int) *BeanDefinition {
 	t := factory.BeanType()
 	if !util.IsRefType(t.Kind()) {
 		panic(errors.New("bean must be ref type"))
@@ -233,7 +266,7 @@ func newBeanDefinition(factory bean.BeanFactory, file string, line int) *BeanDef
 		rType:    t,
 		typeName: util.TypeName(t),
 		factory:  factory,
-		status:   bean.Default,
+		status:   Default,
 		file:     file,
 		line:     line,
 		exports:  make(map[reflect.Type]struct{}),
@@ -241,7 +274,7 @@ func newBeanDefinition(factory bean.BeanFactory, file string, line int) *BeanDef
 }
 
 func (d *BeanDefinition) Reset() {
-	d.status = bean.Default
+	d.status = Default
 	d.rValue = reflect.Value{}
 }
 
@@ -291,17 +324,17 @@ func (d *BeanDefinition) FileLine() string {
 	return fmt.Sprintf("%s:%d", d.file, d.line)
 }
 
-func (d *BeanDefinition) BeanFactory() bean.BeanFactory {
+func (d *BeanDefinition) BeanFactory() BeanFactory {
 	return d.factory
 }
 
 // getStatus 返回 Bean 的状态值
-func (d *BeanDefinition) GetStatus() bean.Status {
+func (d *BeanDefinition) GetStatus() beanStatus {
 	return d.status
 }
 
 // setStatus 设置 Bean 的状态值
-func (d *BeanDefinition) SetStatus(status bean.Status) {
+func (d *BeanDefinition) SetStatus(status beanStatus) {
 	d.status = status
 }
 

@@ -41,7 +41,7 @@ func newWiringStack() *wiringStack {
 }
 
 // pushBack 添加一个 Bean 到尾部
-func (s *wiringStack) pushBack(bd bean.Definition) {
+func (s *wiringStack) pushBack(bd ConfigurableBeanDefinition) {
 	log.Tracef("wiring %s", bd.Description())
 	s.stack.PushBack(bd)
 }
@@ -49,13 +49,13 @@ func (s *wiringStack) pushBack(bd bean.Definition) {
 // popBack 删除尾部的 Bean
 func (s *wiringStack) popBack() {
 	e := s.stack.Remove(s.stack.Back())
-	log.Tracef("wired %s", e.(bean.Definition).Description())
+	log.Tracef("wired %s", e.(ConfigurableBeanDefinition).Description())
 }
 
 // path 返回 Bean 注入的路径
 func (s *wiringStack) path() (path string) {
 	for e := s.stack.Front(); e != nil; e = e.Next() {
-		w := e.Value.(bean.Definition)
+		w := e.Value.(ConfigurableBeanDefinition)
 		path += fmt.Sprintf("=> %s ↩\n", w.Description())
 	}
 	return path[:len(path)-1]
@@ -337,16 +337,16 @@ func (assembly *defaultBeanAssembly) autoCollectBeans(t reflect.Type, et reflect
 }
 
 // wireSliceItem 对 slice 的元素值进行注入
-func (assembly *defaultBeanAssembly) wireSliceItem(v reflect.Value, d bean.Definition) {
+func (assembly *defaultBeanAssembly) wireSliceItem(v reflect.Value, d ConfigurableBeanDefinition) {
 	bd := Bean(v, d.GetFile(), d.GetLine())
 	assembly.wireBeanDefinition(bd, false)
 }
 
 // wireBeanDefinition 对特定的 bean.BeanDefinition 进行注入，onlyAutoWire 是否只注入而不进行属性绑定
-func (assembly *defaultBeanAssembly) wireBeanDefinition(bd bean.Definition, onlyAutoWire bool) {
+func (assembly *defaultBeanAssembly) wireBeanDefinition(bd ConfigurableBeanDefinition, onlyAutoWire bool) {
 
 	// Bean 是否已删除，已经删除的 Bean 不能再注入
-	if bd.GetStatus() == bean.Deleted {
+	if bd.GetStatus() == Deleted {
 		panic(fmt.Errorf("bean: \"%s\" have been deleted", bd.BeanId()))
 	}
 
@@ -371,7 +371,7 @@ func (assembly *defaultBeanAssembly) wireBeanDefinition(bd bean.Definition, only
 	}
 
 	// Bean 是否已注入，已经注入的 Bean 无需再注入
-	if bd.GetStatus() == bean.Wired {
+	if bd.GetStatus() == Wired {
 		return
 	}
 
@@ -379,21 +379,21 @@ func (assembly *defaultBeanAssembly) wireBeanDefinition(bd bean.Definition, only
 	assembly.wiringStack.pushBack(bd)
 
 	// 正在注入的 Bean 再次注入则说明出现了循环依赖
-	if bd.GetStatus() == bean.Wiring {
+	if bd.GetStatus() == Wiring {
 		if _, ok := bd.BeanFactory().(*objBeanFactory); !ok {
 			panic(errors.New("found circle autowire"))
 		}
 		return
 	}
 
-	bd.SetStatus(bean.Wiring)
+	bd.SetStatus(Wiring)
 
 	// 首先对当前 Bean 的间接依赖项进行自动注入
 	for _, selector := range bd.GetDependsOn() {
 		if b, ok := assembly.appCtx.FindBean(selector); !ok {
 			panic(fmt.Errorf("can't find bean: \"%v\"", selector))
 		} else {
-			assembly.wireBeanDefinition(b.(bean.Definition), false)
+			assembly.wireBeanDefinition(b.(ConfigurableBeanDefinition), false)
 		}
 	}
 
@@ -416,14 +416,14 @@ func (assembly *defaultBeanAssembly) wireBeanDefinition(bd bean.Definition, only
 	}
 
 	// 设置为已注入状态
-	bd.SetStatus(bean.Wired)
+	bd.SetStatus(Wired)
 
 	// 删除保存的注入帧
 	assembly.wiringStack.popBack()
 }
 
 // wireObjectBean 对原始对象进行注入
-func (assembly *defaultBeanAssembly) wireObjectBean(bd bean.Definition, onlyAutoWire bool) {
+func (assembly *defaultBeanAssembly) wireObjectBean(bd ConfigurableBeanDefinition, onlyAutoWire bool) {
 	st := bd.Type()
 	switch sk := st.Kind(); sk {
 	case reflect.Slice: // 对数组元素进行注入
@@ -499,7 +499,7 @@ func (assembly *defaultBeanAssembly) wireObjectBean(bd bean.Definition, onlyAuto
 	}
 }
 
-func (assembly *defaultBeanAssembly) wireConstructorBean(fnValue reflect.Value, fnBean *ctorBeanFactory, bd bean.Definition) {
+func (assembly *defaultBeanAssembly) wireConstructorBean(fnValue reflect.Value, fnBean *ctorBeanFactory, bd ConfigurableBeanDefinition) {
 
 	// 获取输入参数
 	var in []reflect.Value
@@ -597,7 +597,7 @@ func (d *fieldBeanDefinition) Description() string {
 
 type fnValueBeanDefinition struct {
 	*BeanDefinition
-	f bean.Definition // 函数 Bean 定义
+	f ConfigurableBeanDefinition // 函数 Bean 定义
 }
 
 // Description 返回 Bean 的详细描述
