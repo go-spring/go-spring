@@ -29,6 +29,18 @@ import (
 	"github.com/go-spring/spring-core/util"
 )
 
+type Context interface {
+
+	// Matches 条件表达式成立返回 true
+	Matches(cond cond.Condition) bool
+
+	// BindValue 对结构体的字段进行属性绑定
+	BindValue(v reflect.Value, tag string) error
+
+	// WireValue 对结构体的字段进行绑定
+	WireValue(v reflect.Value, tag string) error
+}
+
 // Arg 函数的绑定参数。
 type Arg interface{}
 
@@ -171,7 +183,7 @@ func NewArgList(fnType reflect.Type, withReceiver bool, args []Arg) *ArgList {
 func (argList *ArgList) WithReceiver() bool { return argList.withReceiver }
 
 // Get 返回函数所有绑定参数的真实值，fileLine 是函数定义所在的文件及其行号，供打印日志时使用。
-func (argList *ArgList) Get(assembly bean.Assembly, fileLine string) ([]reflect.Value, error) {
+func (argList *ArgList) Get(assembly Context, fileLine string) ([]reflect.Value, error) {
 
 	fnType := argList.fnType
 	numIn := fnType.NumIn()
@@ -213,7 +225,7 @@ func (argList *ArgList) Get(assembly bean.Assembly, fileLine string) ([]reflect.
 	return result, nil
 }
 
-func (argList *ArgList) getArgValue(t reflect.Type, arg Arg, assembly bean.Assembly, fileLine string) (reflect.Value, error) {
+func (argList *ArgList) getArgValue(t reflect.Type, arg Arg, assembly Context, fileLine string) (reflect.Value, error) {
 
 	// TODO 检查有些 defer 像这里这样是不正确的，panic 也会打印 success 日志
 	description := fmt.Sprintf("arg:\"%v\" %s", arg, fileLine)
@@ -311,7 +323,7 @@ func (arg *option) Cond(cond cond.Condition) *option {
 	return arg
 }
 
-func (arg *option) call(assembly bean.Assembly) (ret reflect.Value, err error) {
+func (arg *option) call(assembly Context) (ret reflect.Value, err error) {
 
 	fileLine := fmt.Sprintf("%s:%d", arg.file, arg.line)
 	log.Tracef("call option func %s", fileLine)
@@ -324,8 +336,7 @@ func (arg *option) call(assembly bean.Assembly) (ret reflect.Value, err error) {
 		}
 	}()
 
-	ctx := assembly.ConditionContext().(cond.Context)
-	if arg.cond == nil || arg.cond.Matches(ctx) {
+	if arg.cond == nil || assembly.Matches(arg.cond) {
 		in, err := arg.argList.Get(assembly, fileLine)
 		if err != nil {
 			return reflect.Value{}, err

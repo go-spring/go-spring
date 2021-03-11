@@ -223,8 +223,8 @@ type ConfigurableBeanDefinition interface {
 	beanFactory() beanFactory
 	getStatus() beanStatus         // 返回 Bean 的状态值
 	getDependsOn() []bean.Selector // 返回 Bean 的间接依赖项
-	getInit() bean.Runnable        // 返回 Bean 的初始化函数
-	getDestroy() bean.Runnable     // 返回 Bean 的销毁函数
+	getInit() *runnable            // 返回 Bean 的初始化函数
+	getDestroy() *runnable         // 返回 Bean 的销毁函数
 	getFile() string               // 返回 Bean 注册点所在文件的名称
 	getLine() int                  // 返回 Bean 注册点所在文件的行数
 
@@ -250,8 +250,8 @@ type BeanDefinition struct {
 	primary   bool            // 是否为主版本
 	dependsOn []bean.Selector // 间接依赖项
 
-	init    bean.Runnable // 初始化函数
-	destroy bean.Runnable // 销毁函数
+	init    *runnable // 初始化函数
+	destroy *runnable // 销毁函数
 
 	exports map[reflect.Type]struct{} // 严格导出的接口类型
 }
@@ -344,12 +344,12 @@ func (d *BeanDefinition) getDependsOn() []bean.Selector {
 }
 
 // getInit 返回 Bean 的初始化函数
-func (d *BeanDefinition) getInit() bean.Runnable {
+func (d *BeanDefinition) getInit() *runnable {
 	return d.init
 }
 
 // getDestroy 返回 Bean 的销毁函数
-func (d *BeanDefinition) getDestroy() bean.Runnable {
+func (d *BeanDefinition) getDestroy() *runnable {
 	return d.destroy
 }
 

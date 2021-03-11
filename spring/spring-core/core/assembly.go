@@ -23,7 +23,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/go-spring/spring-core/bean"
+	"github.com/go-spring/spring-core/cond"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
@@ -77,9 +77,9 @@ func newDefaultBeanAssembly(appCtx *applicationContext) *defaultBeanAssembly {
 	}
 }
 
-// ConditionContext 获取条件上下文
-func (assembly *defaultBeanAssembly) ConditionContext() interface{} {
-	return assembly.appCtx
+// Matches 条件表达式成立返回 true
+func (assembly *defaultBeanAssembly) Matches(cond cond.Condition) bool {
+	return cond.Matches(assembly.appCtx)
 }
 
 // BindStructField 对结构体的字段进行属性绑定
@@ -90,12 +90,12 @@ func (assembly *defaultBeanAssembly) BindValue(v reflect.Value, str string) erro
 // getBeanValue 获取符合要求的 Bean，并且确保 Bean 完成自动注入过程，结果最多有一个，否则 panic，当允许结果为空时返回 false，否则 panic
 func (assembly *defaultBeanAssembly) getBeanValue(v reflect.Value, tag SingletonTag, Parent reflect.Value, field string) bool {
 
-	var (
-		ok       bool
-		beanType reflect.Type
-	)
+	if !v.IsValid() {
+		panic(fmt.Errorf("receiver must be ref type, bean: \"%s\" field: %s", tag, field))
+	}
 
-	if beanType, ok = bean.ValidBean(v); !ok {
+	beanType := v.Type()
+	if !util.IsRefType(beanType.Kind()) {
 		panic(fmt.Errorf("receiver must be ref type, bean: \"%s\" field: %s", tag, field))
 	}
 
