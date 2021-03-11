@@ -338,7 +338,7 @@ func (assembly *defaultBeanAssembly) autoCollectBeans(t reflect.Type, et reflect
 
 // wireSliceItem 对 slice 的元素值进行注入
 func (assembly *defaultBeanAssembly) wireSliceItem(v reflect.Value, d ConfigurableBeanDefinition) {
-	bd := Bean(v, d.GetFile(), d.GetLine())
+	bd := Bean(v, d.getFile(), d.getLine())
 	assembly.wireBeanDefinition(bd, false)
 }
 
@@ -346,18 +346,18 @@ func (assembly *defaultBeanAssembly) wireSliceItem(v reflect.Value, d Configurab
 func (assembly *defaultBeanAssembly) wireBeanDefinition(bd ConfigurableBeanDefinition, onlyAutoWire bool) {
 
 	// Bean 是否已删除，已经删除的 Bean 不能再注入
-	if bd.GetStatus() == Deleted {
+	if bd.getStatus() == Deleted {
 		panic(fmt.Errorf("bean: \"%s\" have been deleted", bd.BeanId()))
 	}
 
 	defer func() {
-		if bd.GetDestroy() != nil {
+		if bd.getDestroy() != nil {
 			assembly.destroys.Remove(assembly.destroys.Back())
 		}
 	}()
 
 	// 如果有销毁函数则对其进行排序处理
-	if bd.GetDestroy() != nil {
+	if bd.getDestroy() != nil {
 		if curr, ok := bd.(*BeanDefinition); ok {
 			de := assembly.appCtx.destroyer(curr)
 			if i := assembly.destroys.Back(); i != nil {
@@ -371,7 +371,7 @@ func (assembly *defaultBeanAssembly) wireBeanDefinition(bd ConfigurableBeanDefin
 	}
 
 	// Bean 是否已注入，已经注入的 Bean 无需再注入
-	if bd.GetStatus() == Wired {
+	if bd.getStatus() == Wired {
 		return
 	}
 
@@ -379,17 +379,17 @@ func (assembly *defaultBeanAssembly) wireBeanDefinition(bd ConfigurableBeanDefin
 	assembly.wiringStack.pushBack(bd)
 
 	// 正在注入的 Bean 再次注入则说明出现了循环依赖
-	if bd.GetStatus() == Wiring {
-		if _, ok := bd.BeanFactory().(*objBeanFactory); !ok {
+	if bd.getStatus() == Wiring {
+		if _, ok := bd.beanFactory().(*objBeanFactory); !ok {
 			panic(errors.New("found circle autowire"))
 		}
 		return
 	}
 
-	bd.SetStatus(Wiring)
+	bd.setStatus(Wiring)
 
 	// 首先对当前 Bean 的间接依赖项进行自动注入
-	for _, selector := range bd.GetDependsOn() {
+	for _, selector := range bd.getDependsOn() {
 		if b, ok := assembly.appCtx.FindBean(selector); !ok {
 			panic(fmt.Errorf("can't find bean: \"%v\"", selector))
 		} else {
@@ -398,7 +398,7 @@ func (assembly *defaultBeanAssembly) wireBeanDefinition(bd ConfigurableBeanDefin
 	}
 
 	// 对当前 Bean 进行自动注入
-	switch b := bd.BeanFactory().(type) {
+	switch b := bd.beanFactory().(type) {
 	case *objBeanFactory:
 		assembly.wireObjectBean(bd, onlyAutoWire)
 	case *ctorBeanFactory:
@@ -409,14 +409,14 @@ func (assembly *defaultBeanAssembly) wireBeanDefinition(bd ConfigurableBeanDefin
 	}
 
 	// 如果用户设置了初始化函数则执行初始化函数
-	if init := bd.GetInit(); init != nil {
+	if init := bd.getInit(); init != nil {
 		if err := init.Run(assembly, bd.Value()); err != nil {
 			panic(err)
 		}
 	}
 
 	// 设置为已注入状态
-	bd.SetStatus(Wired)
+	bd.setStatus(Wired)
 
 	// 删除保存的注入帧
 	assembly.wiringStack.popBack()
@@ -489,7 +489,7 @@ func (assembly *defaultBeanAssembly) wireObjectBean(bd ConfigurableBeanDefinitio
 					// 开放私有字段，但是不会更新其原有可见属性
 					if fv0 := util.PatchValue(fv); fv0.CanSet() {
 						// 对 Bean 的结构体进行递归注入
-						b := Bean(fv0.Addr(), bd.GetFile(), bd.GetLine())
+						b := Bean(fv0.Addr(), bd.getFile(), bd.getLine())
 						fbd := &fieldBeanDefinition{b, fieldName}
 						assembly.wireBeanDefinition(fbd, fieldOnlyAutoWire)
 					}
@@ -540,7 +540,7 @@ func (assembly *defaultBeanAssembly) wireConstructorBean(fnValue reflect.Value, 
 		oldValue.Elem().Set(val)
 	}
 
-	bd.SetValue(oldValue)
+	bd.setValue(oldValue)
 
 	if bd.Value().IsNil() {
 		panic(fmt.Errorf("ctor bean: \"%s\" return nil", bd.FileLine()))
@@ -554,7 +554,7 @@ func (assembly *defaultBeanAssembly) wireConstructorBean(fnValue reflect.Value, 
 		beanValue = bd.Value()
 	}
 
-	b := Bean(beanValue, bd.GetFile(), bd.GetLine()).Name(bd.BeanName())
+	b := Bean(beanValue, bd.getFile(), bd.getLine()).Name(bd.BeanName())
 	assembly.wireBeanDefinition(&fnValueBeanDefinition{BeanDefinition: b, f: bd}, false)
 }
 
@@ -592,7 +592,7 @@ type fieldBeanDefinition struct {
 
 // Description 返回 Bean 的详细描述
 func (d *fieldBeanDefinition) Description() string {
-	return fmt.Sprintf("%s field: %s %s", d.BeanFactory().BeanClass(), d.field, d.FileLine())
+	return fmt.Sprintf("%s field: %s %s", d.beanFactory().beanClass(), d.field, d.FileLine())
 }
 
 type fnValueBeanDefinition struct {
@@ -602,5 +602,5 @@ type fnValueBeanDefinition struct {
 
 // Description 返回 Bean 的详细描述
 func (d *fnValueBeanDefinition) Description() string {
-	return fmt.Sprintf("%s value %s", d.f.BeanFactory().BeanClass(), d.f.FileLine())
+	return fmt.Sprintf("%s value %s", d.f.beanFactory().beanClass(), d.f.FileLine())
 }
