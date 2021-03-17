@@ -81,26 +81,30 @@ Go-Spring 提供了一个功能强大的启动器框架，不仅实现了自动�
 
 ### 快速示例
 
-```
-package main
+下面的示例使用 v1.0.5 版本测试通过。
 
+```
 import (
+	"context"
+
 	"github.com/go-spring/spring-boot"
 	_ "github.com/go-spring/starter-echo"
 )
 
 func init() {
-	SpringBoot.RegisterBean(new(Echo)).Init(func(e *Echo) {
-		SpringBoot.GetBinding("/", e.Call)
+	SpringBoot.RegisterBean(new(Service)).Init(func(s *Service) {
+		SpringBoot.GetBinding("/", s.Echo)
 	})
 }
 
-type Echo struct {
+type Service struct {
 	GoPath string `value:"${GOPATH}"`
 }
 
-func (e *Echo) Call() string {
-	return e.GoPath
+type EchoRequest struct{}
+
+func (s *Service) Echo(ctx context.Context, req *EchoRequest) interface{} {
+	return s.GoPath
 }
 
 func main() {
