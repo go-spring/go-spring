@@ -20,13 +20,13 @@ import (
 	"database/sql"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/go-spring/spring-logger"
+	"github.com/go-spring/spring-core/log"
 )
 
 // MockDB 创建 Mock DB
 func MockDB(fn func(sqlmock.Sqlmock)) func() (*sql.DB, error) {
 	return func() (*sql.DB, error) {
-		SpringLogger.Info("create sqlmock db")
+		log.Info("create sqlmock db")
 		db, mock, err := sqlmock.New()
 		if err == nil {
 			fn(mock)
