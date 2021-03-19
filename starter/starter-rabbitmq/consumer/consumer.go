@@ -19,29 +19,29 @@ package StarterRabbitMQConsumer
 import (
 	"context"
 
-	"github.com/go-spring/spring-boot"
-	"github.com/go-spring/spring-logger"
-	"github.com/go-spring/spring-message"
+	"github.com/go-spring/spring-core/boot"
+	"github.com/go-spring/spring-core/log"
+	"github.com/go-spring/spring-core/mq"
 	"github.com/go-spring/starter-rabbitmq"
 )
 
 func init() {
-	SpringBoot.RegisterNameBean("amqp-consumer-starter", new(Starter)).
-		Export((*SpringBoot.ApplicationEvent)(nil))
+	boot.RegisterNameBean("amqp-consumer-starter", new(Starter)).
+		Export((*boot.ApplicationEvent)(nil))
 }
 
 type Starter struct {
 	Server *StarterRabbitMQ.AMQPServer `autowire:""`
 }
 
-func (starter *Starter) OnStartApplication(ctx SpringBoot.ApplicationContext) {
+func (starter *Starter) OnStartApplication(ctx boot.ApplicationContext) {
 
-	cMap := map[string][]SpringMessage.Consumer{}
+	cMap := map[string][]mq.Consumer{}
 	{
-		var consumers []SpringMessage.Consumer
-		_ = SpringBoot.CollectBeans(&consumers)
+		var consumers []mq.Consumer
+		_ = boot.CollectBeans(&consumers)
 
-		for _, c := range SpringBoot.BindConsumerMapping {
+		for _, c := range boot.BindConsumerMapping {
 			if c.CheckCondition(ctx) {
 				consumers = append(consumers, c)
 			}
@@ -67,11 +67,11 @@ func (starter *Starter) OnStartApplication(ctx SpringBoot.ApplicationContext) {
 				nil,   // args
 			)
 			if err != nil {
-				SpringLogger.Error(err)
+				log.Error(err)
 				continue
 			}
 			d := <-delivery
-			msg := SpringMessage.NewMessage().WithBody(d.Body).WithTopic(topic)
+			msg := mq.NewMessage().WithBody(d.Body).WithTopic(topic)
 			for _, c := range consumers {
 				c.Consume(context.TODO(), msg)
 			}
@@ -79,6 +79,6 @@ func (starter *Starter) OnStartApplication(ctx SpringBoot.ApplicationContext) {
 	}()
 }
 
-func (starter *Starter) OnStopApplication(ctx SpringBoot.ApplicationContext) {
+func (starter *Starter) OnStopApplication(ctx boot.ApplicationContext) {
 
 }

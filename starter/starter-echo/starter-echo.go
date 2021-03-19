@@ -17,15 +17,15 @@
 package StarterEcho
 
 import (
-	"github.com/go-spring/spring-boot"
+	"github.com/go-spring/spring-core/boot"
+	"github.com/go-spring/spring-core/web"
 	"github.com/go-spring/spring-echo"
-	"github.com/go-spring/spring-web"
 	"github.com/go-spring/starter-web"
 )
 
 func init() {
-	SpringBoot.RegisterNameBeanFn("web-server", func(config StarterWeb.WebServerConfig) SpringWeb.WebContainer {
-		return SpringEcho.NewContainer(SpringWeb.ContainerConfig{
+	boot.RegisterNameBeanFn("web-server", func(config StarterWeb.WebServerConfig) web.WebContainer {
+		return SpringEcho.NewContainer(web.ContainerConfig{
 			IP:        config.IP,
 			Port:      config.Port,
 			BasePath:  config.BasePath,

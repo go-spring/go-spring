@@ -17,15 +17,15 @@
 package StarterGin
 
 import (
-	"github.com/go-spring/spring-boot"
+	"github.com/go-spring/spring-core/boot"
+	"github.com/go-spring/spring-core/web"
 	"github.com/go-spring/spring-gin"
-	"github.com/go-spring/spring-web"
 	"github.com/go-spring/starter-web"
 )
 
 func init() {
-	SpringBoot.RegisterNameBeanFn("web-server", func(config StarterWeb.WebServerConfig) SpringWeb.WebContainer {
-		return SpringGin.NewContainer(SpringWeb.ContainerConfig{
+	boot.RegisterNameBeanFn("web-server", func(config StarterWeb.WebServerConfig) web.WebContainer {
+		return SpringGin.NewContainer(web.ContainerConfig{
 			IP:        config.IP,
 			Port:      config.Port,
 			BasePath:  config.BasePath,
