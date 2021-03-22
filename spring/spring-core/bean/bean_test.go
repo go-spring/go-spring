@@ -18,14 +18,15 @@ package bean_test
 
 import (
 	"fmt"
+	"io"
 	"reflect"
 	"sync"
 	"testing"
 	"unsafe"
 
 	"github.com/go-spring/spring-core/assert"
-	pkg1 "github.com/go-spring/spring-core/core/testdata/pkg/bar"
-	pkg2 "github.com/go-spring/spring-core/core/testdata/pkg/foo"
+	pkg1 "github.com/go-spring/spring-core/bean/testdata/pkg/bar"
+	pkg2 "github.com/go-spring/spring-core/bean/testdata/pkg/foo"
 	"github.com/go-spring/spring-core/util"
 )
 
@@ -38,6 +39,7 @@ func (e *errorString) Error() string {
 }
 
 func TestRef(t *testing.T) {
+
 	// 基本测试方法，首先创建第一个目标，然后赋值给第二个目标，这时候如果修改第一个目标
 	// 内部的状态，如果第二个值也能反映出这种修改，那么它是引用类型，否则它就是值类型。
 
@@ -288,145 +290,142 @@ func TestIsValueType(t *testing.T) {
 
 func TestTypeName(t *testing.T) {
 
-	t.Run("type", func(t *testing.T) {
+	data := map[reflect.Type]struct {
+		typeName string
+		baseName string
+	}{
+		reflect.TypeOf(3):                 {"int", "int"},
+		reflect.TypeOf(new(int)):          {"int", "*int"},
+		reflect.TypeOf(make([]int, 0)):    {"int", "[]int"},
+		reflect.TypeOf(&[]int{3}):         {"int", "*[]int"},
+		reflect.TypeOf(make([]*int, 0)):   {"int", "[]*int"},
+		reflect.TypeOf(make([][]int, 0)):  {"int", "[][]int"},
+		reflect.TypeOf(make(map[int]int)): {"map[int]int", "map[int]int"},
 
-		data := map[reflect.Type]struct {
-			typeName string
-			baseName string
-		}{
-			reflect.TypeOf(3):                 {"int", "int"},
-			reflect.TypeOf(new(int)):          {"int", "*int"},
-			reflect.TypeOf(make([]int, 0)):    {"int", "[]int"},
-			reflect.TypeOf(&[]int{3}):         {"int", "*[]int"},
-			reflect.TypeOf(make([]*int, 0)):   {"int", "[]*int"},
-			reflect.TypeOf(make([][]int, 0)):  {"int", "[][]int"},
-			reflect.TypeOf(make(map[int]int)): {"map[int]int", "map[int]int"},
+		reflect.TypeOf(int8(3)):             {"int8", "int8"},
+		reflect.TypeOf(new(int8)):           {"int8", "*int8"},
+		reflect.TypeOf(make([]int8, 0)):     {"int8", "[]int8"},
+		reflect.TypeOf(&[]int8{3}):          {"int8", "*[]int8"},
+		reflect.TypeOf(make(map[int8]int8)): {"map[int8]int8", "map[int8]int8"},
 
-			reflect.TypeOf(int8(3)):             {"int8", "int8"},
-			reflect.TypeOf(new(int8)):           {"int8", "*int8"},
-			reflect.TypeOf(make([]int8, 0)):     {"int8", "[]int8"},
-			reflect.TypeOf(&[]int8{3}):          {"int8", "*[]int8"},
-			reflect.TypeOf(make(map[int8]int8)): {"map[int8]int8", "map[int8]int8"},
+		reflect.TypeOf(int16(3)):              {"int16", "int16"},
+		reflect.TypeOf(new(int16)):            {"int16", "*int16"},
+		reflect.TypeOf(make([]int16, 0)):      {"int16", "[]int16"},
+		reflect.TypeOf(&[]int16{3}):           {"int16", "*[]int16"},
+		reflect.TypeOf(make(map[int16]int16)): {"map[int16]int16", "map[int16]int16"},
 
-			reflect.TypeOf(int16(3)):              {"int16", "int16"},
-			reflect.TypeOf(new(int16)):            {"int16", "*int16"},
-			reflect.TypeOf(make([]int16, 0)):      {"int16", "[]int16"},
-			reflect.TypeOf(&[]int16{3}):           {"int16", "*[]int16"},
-			reflect.TypeOf(make(map[int16]int16)): {"map[int16]int16", "map[int16]int16"},
+		reflect.TypeOf(int32(3)):              {"int32", "int32"},
+		reflect.TypeOf(new(int32)):            {"int32", "*int32"},
+		reflect.TypeOf(make([]int32, 0)):      {"int32", "[]int32"},
+		reflect.TypeOf(&[]int32{3}):           {"int32", "*[]int32"},
+		reflect.TypeOf(make(map[int32]int32)): {"map[int32]int32", "map[int32]int32"},
 
-			reflect.TypeOf(int32(3)):              {"int32", "int32"},
-			reflect.TypeOf(new(int32)):            {"int32", "*int32"},
-			reflect.TypeOf(make([]int32, 0)):      {"int32", "[]int32"},
-			reflect.TypeOf(&[]int32{3}):           {"int32", "*[]int32"},
-			reflect.TypeOf(make(map[int32]int32)): {"map[int32]int32", "map[int32]int32"},
+		reflect.TypeOf(int64(3)):              {"int64", "int64"},
+		reflect.TypeOf(new(int64)):            {"int64", "*int64"},
+		reflect.TypeOf(make([]int64, 0)):      {"int64", "[]int64"},
+		reflect.TypeOf(&[]int64{3}):           {"int64", "*[]int64"},
+		reflect.TypeOf(make(map[int64]int64)): {"map[int64]int64", "map[int64]int64"},
 
-			reflect.TypeOf(int64(3)):              {"int64", "int64"},
-			reflect.TypeOf(new(int64)):            {"int64", "*int64"},
-			reflect.TypeOf(make([]int64, 0)):      {"int64", "[]int64"},
-			reflect.TypeOf(&[]int64{3}):           {"int64", "*[]int64"},
-			reflect.TypeOf(make(map[int64]int64)): {"map[int64]int64", "map[int64]int64"},
+		reflect.TypeOf(uint(3)):             {"uint", "uint"},
+		reflect.TypeOf(new(uint)):           {"uint", "*uint"},
+		reflect.TypeOf(make([]uint, 0)):     {"uint", "[]uint"},
+		reflect.TypeOf(&[]uint{3}):          {"uint", "*[]uint"},
+		reflect.TypeOf(make(map[uint]uint)): {"map[uint]uint", "map[uint]uint"},
 
-			reflect.TypeOf(uint(3)):             {"uint", "uint"},
-			reflect.TypeOf(new(uint)):           {"uint", "*uint"},
-			reflect.TypeOf(make([]uint, 0)):     {"uint", "[]uint"},
-			reflect.TypeOf(&[]uint{3}):          {"uint", "*[]uint"},
-			reflect.TypeOf(make(map[uint]uint)): {"map[uint]uint", "map[uint]uint"},
+		reflect.TypeOf(uint8(3)):              {"uint8", "uint8"},
+		reflect.TypeOf(new(uint8)):            {"uint8", "*uint8"},
+		reflect.TypeOf(make([]uint8, 0)):      {"uint8", "[]uint8"},
+		reflect.TypeOf(&[]uint8{3}):           {"uint8", "*[]uint8"},
+		reflect.TypeOf(make(map[uint8]uint8)): {"map[uint8]uint8", "map[uint8]uint8"},
 
-			reflect.TypeOf(uint8(3)):              {"uint8", "uint8"},
-			reflect.TypeOf(new(uint8)):            {"uint8", "*uint8"},
-			reflect.TypeOf(make([]uint8, 0)):      {"uint8", "[]uint8"},
-			reflect.TypeOf(&[]uint8{3}):           {"uint8", "*[]uint8"},
-			reflect.TypeOf(make(map[uint8]uint8)): {"map[uint8]uint8", "map[uint8]uint8"},
+		reflect.TypeOf(uint16(3)):               {"uint16", "uint16"},
+		reflect.TypeOf(new(uint16)):             {"uint16", "*uint16"},
+		reflect.TypeOf(make([]uint16, 0)):       {"uint16", "[]uint16"},
+		reflect.TypeOf(&[]uint16{3}):            {"uint16", "*[]uint16"},
+		reflect.TypeOf(make(map[uint16]uint16)): {"map[uint16]uint16", "map[uint16]uint16"},
 
-			reflect.TypeOf(uint16(3)):               {"uint16", "uint16"},
-			reflect.TypeOf(new(uint16)):             {"uint16", "*uint16"},
-			reflect.TypeOf(make([]uint16, 0)):       {"uint16", "[]uint16"},
-			reflect.TypeOf(&[]uint16{3}):            {"uint16", "*[]uint16"},
-			reflect.TypeOf(make(map[uint16]uint16)): {"map[uint16]uint16", "map[uint16]uint16"},
+		reflect.TypeOf(uint32(3)):               {"uint32", "uint32"},
+		reflect.TypeOf(new(uint32)):             {"uint32", "*uint32"},
+		reflect.TypeOf(make([]uint32, 0)):       {"uint32", "[]uint32"},
+		reflect.TypeOf(&[]uint32{3}):            {"uint32", "*[]uint32"},
+		reflect.TypeOf(make(map[uint32]uint32)): {"map[uint32]uint32", "map[uint32]uint32"},
 
-			reflect.TypeOf(uint32(3)):               {"uint32", "uint32"},
-			reflect.TypeOf(new(uint32)):             {"uint32", "*uint32"},
-			reflect.TypeOf(make([]uint32, 0)):       {"uint32", "[]uint32"},
-			reflect.TypeOf(&[]uint32{3}):            {"uint32", "*[]uint32"},
-			reflect.TypeOf(make(map[uint32]uint32)): {"map[uint32]uint32", "map[uint32]uint32"},
+		reflect.TypeOf(uint64(3)):               {"uint64", "uint64"},
+		reflect.TypeOf(new(uint64)):             {"uint64", "*uint64"},
+		reflect.TypeOf(make([]uint64, 0)):       {"uint64", "[]uint64"},
+		reflect.TypeOf(&[]uint64{3}):            {"uint64", "*[]uint64"},
+		reflect.TypeOf(make(map[uint64]uint64)): {"map[uint64]uint64", "map[uint64]uint64"},
 
-			reflect.TypeOf(uint64(3)):               {"uint64", "uint64"},
-			reflect.TypeOf(new(uint64)):             {"uint64", "*uint64"},
-			reflect.TypeOf(make([]uint64, 0)):       {"uint64", "[]uint64"},
-			reflect.TypeOf(&[]uint64{3}):            {"uint64", "*[]uint64"},
-			reflect.TypeOf(make(map[uint64]uint64)): {"map[uint64]uint64", "map[uint64]uint64"},
+		reflect.TypeOf(true):                {"bool", "bool"},
+		reflect.TypeOf(new(bool)):           {"bool", "*bool"},
+		reflect.TypeOf(make([]bool, 0)):     {"bool", "[]bool"},
+		reflect.TypeOf(&[]bool{true}):       {"bool", "*[]bool"},
+		reflect.TypeOf(make(map[bool]bool)): {"map[bool]bool", "map[bool]bool"},
 
-			reflect.TypeOf(true):                {"bool", "bool"},
-			reflect.TypeOf(new(bool)):           {"bool", "*bool"},
-			reflect.TypeOf(make([]bool, 0)):     {"bool", "[]bool"},
-			reflect.TypeOf(&[]bool{true}):       {"bool", "*[]bool"},
-			reflect.TypeOf(make(map[bool]bool)): {"map[bool]bool", "map[bool]bool"},
+		reflect.TypeOf(float32(3)):                {"float32", "float32"},
+		reflect.TypeOf(new(float32)):              {"float32", "*float32"},
+		reflect.TypeOf(make([]float32, 0)):        {"float32", "[]float32"},
+		reflect.TypeOf(&[]float32{3}):             {"float32", "*[]float32"},
+		reflect.TypeOf(make(map[float32]float32)): {"map[float32]float32", "map[float32]float32"},
 
-			reflect.TypeOf(float32(3)):                {"float32", "float32"},
-			reflect.TypeOf(new(float32)):              {"float32", "*float32"},
-			reflect.TypeOf(make([]float32, 0)):        {"float32", "[]float32"},
-			reflect.TypeOf(&[]float32{3}):             {"float32", "*[]float32"},
-			reflect.TypeOf(make(map[float32]float32)): {"map[float32]float32", "map[float32]float32"},
+		reflect.TypeOf(float64(3)):                {"float64", "float64"},
+		reflect.TypeOf(new(float64)):              {"float64", "*float64"},
+		reflect.TypeOf(make([]float64, 0)):        {"float64", "[]float64"},
+		reflect.TypeOf(&[]float64{3}):             {"float64", "*[]float64"},
+		reflect.TypeOf(make(map[float64]float64)): {"map[float64]float64", "map[float64]float64"},
 
-			reflect.TypeOf(float64(3)):                {"float64", "float64"},
-			reflect.TypeOf(new(float64)):              {"float64", "*float64"},
-			reflect.TypeOf(make([]float64, 0)):        {"float64", "[]float64"},
-			reflect.TypeOf(&[]float64{3}):             {"float64", "*[]float64"},
-			reflect.TypeOf(make(map[float64]float64)): {"map[float64]float64", "map[float64]float64"},
+		reflect.TypeOf(complex64(3)):                  {"complex64", "complex64"},
+		reflect.TypeOf(new(complex64)):                {"complex64", "*complex64"},
+		reflect.TypeOf(make([]complex64, 0)):          {"complex64", "[]complex64"},
+		reflect.TypeOf(&[]complex64{3}):               {"complex64", "*[]complex64"},
+		reflect.TypeOf(make(map[complex64]complex64)): {"map[complex64]complex64", "map[complex64]complex64"},
 
-			reflect.TypeOf(complex64(3)):                  {"complex64", "complex64"},
-			reflect.TypeOf(new(complex64)):                {"complex64", "*complex64"},
-			reflect.TypeOf(make([]complex64, 0)):          {"complex64", "[]complex64"},
-			reflect.TypeOf(&[]complex64{3}):               {"complex64", "*[]complex64"},
-			reflect.TypeOf(make(map[complex64]complex64)): {"map[complex64]complex64", "map[complex64]complex64"},
+		reflect.TypeOf(complex128(3)):                   {"complex128", "complex128"},
+		reflect.TypeOf(new(complex128)):                 {"complex128", "*complex128"},
+		reflect.TypeOf(make([]complex128, 0)):           {"complex128", "[]complex128"},
+		reflect.TypeOf(&[]complex128{3}):                {"complex128", "*[]complex128"},
+		reflect.TypeOf(make(map[complex128]complex128)): {"map[complex128]complex128", "map[complex128]complex128"},
 
-			reflect.TypeOf(complex128(3)):                   {"complex128", "complex128"},
-			reflect.TypeOf(new(complex128)):                 {"complex128", "*complex128"},
-			reflect.TypeOf(make([]complex128, 0)):           {"complex128", "[]complex128"},
-			reflect.TypeOf(&[]complex128{3}):                {"complex128", "*[]complex128"},
-			reflect.TypeOf(make(map[complex128]complex128)): {"map[complex128]complex128", "map[complex128]complex128"},
+		reflect.TypeOf(make(chan int)):      {"chan int", "chan int"},
+		reflect.TypeOf(make(chan struct{})): {"chan struct {}", "chan struct {}"},
+		reflect.TypeOf(func() {}):           {"func()", "func()"},
 
-			reflect.TypeOf(make(chan int)):      {"chan int", "chan int"},
-			reflect.TypeOf(make(chan struct{})): {"chan struct {}", "chan struct {}"},
-			reflect.TypeOf(func() {}):           {"func()", "func()"},
+		reflect.TypeOf((*error)(nil)).Elem():        {"error", "error"},
+		reflect.TypeOf((*fmt.Stringer)(nil)).Elem(): {"fmt/fmt.Stringer", "fmt.Stringer"},
 
-			reflect.TypeOf((*error)(nil)).Elem():        {"error", "error"},
-			reflect.TypeOf((*fmt.Stringer)(nil)).Elem(): {"fmt/fmt.Stringer", "fmt.Stringer"},
+		reflect.TypeOf("string"):                {"string", "string"},
+		reflect.TypeOf(new(string)):             {"string", "*string"},
+		reflect.TypeOf(make([]string, 0)):       {"string", "[]string"},
+		reflect.TypeOf(&[]string{"string"}):     {"string", "*[]string"},
+		reflect.TypeOf(make(map[string]string)): {"map[string]string", "map[string]string"},
 
-			reflect.TypeOf("string"):                {"string", "string"},
-			reflect.TypeOf(new(string)):             {"string", "*string"},
-			reflect.TypeOf(make([]string, 0)):       {"string", "[]string"},
-			reflect.TypeOf(&[]string{"string"}):     {"string", "*[]string"},
-			reflect.TypeOf(make(map[string]string)): {"map[string]string", "map[string]string"},
+		reflect.TypeOf(pkg1.SamePkg{}):             {"github.com/go-spring/spring-core/bean/testdata/pkg/bar/pkg.SamePkg", "pkg.SamePkg"},
+		reflect.TypeOf(new(pkg1.SamePkg)):          {"github.com/go-spring/spring-core/bean/testdata/pkg/bar/pkg.SamePkg", "*pkg.SamePkg"},
+		reflect.TypeOf(make([]pkg1.SamePkg, 0)):    {"github.com/go-spring/spring-core/bean/testdata/pkg/bar/pkg.SamePkg", "[]pkg.SamePkg"},
+		reflect.TypeOf(&[]pkg1.SamePkg{}):          {"github.com/go-spring/spring-core/bean/testdata/pkg/bar/pkg.SamePkg", "*[]pkg.SamePkg"},
+		reflect.TypeOf(make(map[int]pkg1.SamePkg)): {"map[int]pkg.SamePkg", "map[int]pkg.SamePkg"},
 
-			reflect.TypeOf(pkg1.SamePkg{}):             {"github.com/go-spring/spring-core/core/testdata/pkg/bar/pkg.SamePkg", "pkg.SamePkg"},
-			reflect.TypeOf(new(pkg1.SamePkg)):          {"github.com/go-spring/spring-core/core/testdata/pkg/bar/pkg.SamePkg", "*pkg.SamePkg"},
-			reflect.TypeOf(make([]pkg1.SamePkg, 0)):    {"github.com/go-spring/spring-core/core/testdata/pkg/bar/pkg.SamePkg", "[]pkg.SamePkg"},
-			reflect.TypeOf(&[]pkg1.SamePkg{}):          {"github.com/go-spring/spring-core/core/testdata/pkg/bar/pkg.SamePkg", "*[]pkg.SamePkg"},
-			reflect.TypeOf(make(map[int]pkg1.SamePkg)): {"map[int]pkg.SamePkg", "map[int]pkg.SamePkg"},
+		reflect.TypeOf(pkg2.SamePkg{}):             {"github.com/go-spring/spring-core/bean/testdata/pkg/foo/pkg.SamePkg", "pkg.SamePkg"},
+		reflect.TypeOf(new(pkg2.SamePkg)):          {"github.com/go-spring/spring-core/bean/testdata/pkg/foo/pkg.SamePkg", "*pkg.SamePkg"},
+		reflect.TypeOf(make([]pkg2.SamePkg, 0)):    {"github.com/go-spring/spring-core/bean/testdata/pkg/foo/pkg.SamePkg", "[]pkg.SamePkg"},
+		reflect.TypeOf(&[]pkg2.SamePkg{}):          {"github.com/go-spring/spring-core/bean/testdata/pkg/foo/pkg.SamePkg", "*[]pkg.SamePkg"},
+		reflect.TypeOf(make(map[int]pkg2.SamePkg)): {"map[int]pkg.SamePkg", "map[int]pkg.SamePkg"},
+	}
 
-			reflect.TypeOf(pkg2.SamePkg{}):             {"github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg", "pkg.SamePkg"},
-			reflect.TypeOf(new(pkg2.SamePkg)):          {"github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg", "*pkg.SamePkg"},
-			reflect.TypeOf(make([]pkg2.SamePkg, 0)):    {"github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg", "[]pkg.SamePkg"},
-			reflect.TypeOf(&[]pkg2.SamePkg{}):          {"github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg", "*[]pkg.SamePkg"},
-			reflect.TypeOf(make(map[int]pkg2.SamePkg)): {"map[int]pkg.SamePkg", "map[int]pkg.SamePkg"},
-		}
-
-		for typ, v := range data {
-			typeName := util.TypeName(typ)
-			assert.Equal(t, typeName, v.typeName)
-			assert.Equal(t, typ.String(), v.baseName)
-		}
-
-		i := 3
-		iPtr := &i
-		iPtrPtr := &iPtr
-		iPtrPtrPtr := &iPtrPtr
-		typ := reflect.TypeOf(iPtrPtrPtr)
+	for typ, v := range data {
 		typeName := util.TypeName(typ)
-		assert.Equal(t, typeName, "int")
-		assert.Equal(t, typ.String(), "***int")
-	})
+		assert.Equal(t, typeName, v.typeName)
+		assert.Equal(t, typ.String(), v.baseName)
+	}
+
+	i := 3
+	iPtr := &i
+	iPtrPtr := &iPtr
+	iPtrPtrPtr := &iPtrPtr
+	typ := reflect.TypeOf(iPtrPtrPtr)
+	typeName := util.TypeName(typ)
+	assert.Equal(t, typeName, "int")
+	assert.Equal(t, typ.String(), "***int")
 }
 
 func TestValue(t *testing.T) {
@@ -632,5 +631,217 @@ func TestValue(t *testing.T) {
 		v = reflect.ValueOf(e)
 		// ptr e true false
 		fmt.Println(v.Kind(), v, v.IsValid(), util.IsNil(v))
+	}
+}
+
+func TestReflectType(t *testing.T) {
+	// 测试结论：内置类型的 Name 和 PkgPath 都是空字符串。
+
+	assert.Equal(t, reflect.TypeOf((io.Reader)(nil)), nil)
+
+	data := []struct {
+		typ     reflect.Type
+		kind    reflect.Kind
+		name    string
+		pkgPath string
+	}{
+		{
+			reflect.TypeOf(false),
+			reflect.Bool,
+			"bool",
+			"",
+		},
+		{
+			reflect.TypeOf(new(bool)),
+			reflect.Ptr,
+			"",
+			"",
+		},
+		{
+			reflect.TypeOf(make([]bool, 0)),
+			reflect.Slice,
+			"",
+			"",
+		},
+		{
+			reflect.TypeOf(int(3)),
+			reflect.Int,
+			"int",
+			"",
+		},
+		{
+			reflect.TypeOf(new(int)),
+			reflect.Ptr,
+			"",
+			"",
+		},
+		{
+			reflect.TypeOf(make([]int, 0)),
+			reflect.Slice,
+			"",
+			"",
+		},
+		{
+			reflect.TypeOf(uint(3)),
+			reflect.Uint,
+			"uint",
+			"",
+		},
+		{
+			reflect.TypeOf(new(uint)),
+			reflect.Ptr,
+			"",
+			"",
+		},
+		{
+			reflect.TypeOf(make([]uint, 0)),
+			reflect.Slice,
+			"",
+			"",
+		},
+		{
+			reflect.TypeOf(float32(3)),
+			reflect.Float32,
+			"float32",
+			"",
+		},
+		{
+			reflect.TypeOf(new(float32)),
+			reflect.Ptr,
+			"",
+			"",
+		},
+		{
+			reflect.TypeOf(make([]float32, 0)),
+			reflect.Slice,
+			"",
+			"",
+		},
+		{
+			reflect.TypeOf(complex64(3)),
+			reflect.Complex64,
+			"complex64",
+			"",
+		},
+		{
+			reflect.TypeOf(new(complex64)),
+			reflect.Ptr,
+			"",
+			"",
+		},
+		{
+			reflect.TypeOf(make([]complex64, 0)),
+			reflect.Slice,
+			"",
+			"",
+		},
+		{
+			reflect.TypeOf("3"),
+			reflect.String,
+			"string",
+			"",
+		},
+		{
+			reflect.TypeOf(new(string)),
+			reflect.Ptr,
+			"",
+			"",
+		},
+		{
+			reflect.TypeOf(make([]string, 0)),
+			reflect.Slice,
+			"",
+			"",
+		},
+		{
+			reflect.TypeOf(map[int]int{}),
+			reflect.Map,
+			"",
+			"",
+		},
+		{
+			reflect.TypeOf(new(map[int]int)),
+			reflect.Ptr,
+			"",
+			"",
+		},
+		{
+			reflect.TypeOf(make([]map[int]int, 0)),
+			reflect.Slice,
+			"",
+			"",
+		},
+		{
+			reflect.TypeOf(pkg1.SamePkg{}),
+			reflect.Struct,
+			"SamePkg",
+			"github.com/go-spring/spring-core/bean/testdata/pkg/bar",
+		},
+		{
+			reflect.TypeOf(new(pkg1.SamePkg)),
+			reflect.Ptr,
+			"",
+			"",
+		},
+		{
+			reflect.TypeOf(make([]pkg1.SamePkg, 0)),
+			reflect.Slice,
+			"",
+			"",
+		},
+		{
+			reflect.TypeOf(make([]*pkg1.SamePkg, 0)),
+			reflect.Slice,
+			"",
+			"",
+		},
+		{
+			reflect.TypeOf(pkg2.SamePkg{}),
+			reflect.Struct,
+			"SamePkg",
+			"github.com/go-spring/spring-core/bean/testdata/pkg/foo",
+		},
+		{
+			reflect.TypeOf(new(pkg2.SamePkg)),
+			reflect.Ptr,
+			"",
+			"",
+		},
+		{
+			reflect.TypeOf(make([]pkg2.SamePkg, 0)),
+			reflect.Slice,
+			"",
+			"",
+		},
+		{
+			reflect.TypeOf((*error)(nil)),
+			reflect.Ptr,
+			"",
+			"",
+		},
+		{
+			reflect.TypeOf((*error)(nil)).Elem(),
+			reflect.Interface,
+			"error",
+			"",
+		},
+		{
+			reflect.TypeOf((*io.Reader)(nil)),
+			reflect.Ptr,
+			"",
+			"",
+		},
+		{
+			reflect.TypeOf((*io.Reader)(nil)).Elem(),
+			reflect.Interface,
+			"Reader",
+			"io",
+		},
+	}
+
+	for _, d := range data {
+		assert.Equal(t, d.typ.Kind(), d.kind)
+		assert.Equal(t, d.typ.Name(), d.name)
+		assert.Equal(t, d.typ.PkgPath(), d.pkgPath)
 	}
 }

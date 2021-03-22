@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+// Package assert 提供了一些断言函数。
 package assert
 
 import (
