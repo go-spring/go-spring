@@ -43,7 +43,12 @@ type Context interface {
 	WireValue(v reflect.Value, tag string) error
 }
 
-// Arg 定义一个函数参数。
+// Arg 定义一个函数参数，可以是 bean.Selector 类型，表示注入一个 Bean；
+// 可以是 ${X:=Y} 形式的字符串，表示绑定一个属性值；可以是 ValueArg 类型，
+// 表示一个不从 IoC 容器获取而是用户传入的数据；可以是 IndexArg 类型，表
+// 示一个带有下标的参数，IndexArg 是一个组合参数，接受普通类型的 Arg 参数；
+// 可以是 *optionArg 类型，专门用于 Option 形式的函数参数，*optionArg
+// 也是一个组合参数，可以接受非 *optionArg 类型的任意类型的参数。
 type Arg interface{}
 
 // IndexArg 包含下标的函数参数。
