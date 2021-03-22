@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+// Package arg 用于实现函数参数绑定。
 package arg
 
 import (
@@ -29,67 +30,66 @@ import (
 	"github.com/go-spring/spring-core/util"
 )
 
+// Context IoC 容器对 arg 模块提供的最小功能集。
 type Context interface {
 
-	// Matches 条件表达式成立返回 true
+	// Matches 条件成立返回 true，否则返回 false。
 	Matches(cond cond.Condition) bool
 
-	// BindValue 对结构体的字段进行属性绑定
+	// BindValue 对一个值进行属性绑定。
 	BindValue(v reflect.Value, tag string) error
 
-	// WireValue 对结构体的字段进行绑定
+	// WireValue 对一个值进行属性绑定和依赖注入。
 	WireValue(v reflect.Value, tag string) error
 }
 
-// Arg 函数的绑定参数。
+// Arg 定义一个函数参数。
 type Arg interface{}
 
-// IndexArg 包含下标的函数绑定参数。
+// IndexArg 包含下标的函数参数。
 type IndexArg struct {
 	idx int
 	arg Arg
 }
 
-// Index 返回包含下标的函数绑定参数。
+// Index 返回包含下标的函数参数，idx 从 1 开始计算。
 func Index(idx int, arg Arg) IndexArg {
 	return IndexArg{idx: idx, arg: arg}
 }
 
-// R1 返回下标为 1 的函数绑定参数。
+// R1 返回下标为 1 的函数参数。
 func R1(arg Arg) IndexArg { return Index(1, arg) }
 
-// R2 返回下标为 2 的函数绑定参数。
+// R2 返回下标为 2 的函数参数。
 func R2(arg Arg) IndexArg { return Index(2, arg) }
 
-// R3 返回下标为 3 的函数绑定参数。
+// R3 返回下标为 3 的函数参数。
 func R3(arg Arg) IndexArg { return Index(3, arg) }
 
-// R4 返回下标为 4 的函数绑定参数。
+// R4 返回下标为 4 的函数参数。
 func R4(arg Arg) IndexArg { return Index(4, arg) }
 
-// R5 返回下标为 5 的函数绑定参数。
+// R5 返回下标为 5 的函数参数。
 func R5(arg Arg) IndexArg { return Index(5, arg) }
 
-// R6 返回下标为 6 的函数绑定参数。
+// R6 返回下标为 6 的函数参数。
 func R6(arg Arg) IndexArg { return Index(6, arg) }
 
-// R7 返回下标为 7 的函数绑定参数。
+// R7 返回下标为 7 的函数参数。
 func R7(arg Arg) IndexArg { return Index(7, arg) }
 
-// ValueArg 包含具体值的函数绑定参数。
-type ValueArg struct {
-	arg interface{}
-}
+// ValueArg 包含具体值的函数参数。
+type ValueArg struct{ arg interface{} }
 
-// Value 返回包含具体值的函数绑定参数。
+// Value 返回包含具体值的函数参数。
 func Value(arg interface{}) ValueArg {
 	return ValueArg{arg: arg}
 }
 
-// ArgList 函数绑定参数的列表。
+// ArgList 函数参数列表。
 type ArgList struct {
 
-	// args 函数绑定参数。
+	// args 函数参数列表。
 	args []Arg
 
 	// fnType 函数的类型。
@@ -100,7 +100,7 @@ type ArgList struct {
 	withReceiver bool
 }
 
-// NewArgList 返回一个新创建的函数绑定参数的列表。
+// NewArgList 返回新创建的函数参数的列表。
 func NewArgList(fnType reflect.Type, withReceiver bool, args []Arg) *ArgList {
 
 	// 计算函数不可变参数的数量，需要排除接收者。
@@ -112,7 +112,7 @@ func NewArgList(fnType reflect.Type, withReceiver bool, args []Arg) *ArgList {
 		fixedArgCount--
 	}
 
-	// 函数的绑定参数要么都有下标，要么都没有下标。
+	// 函数的参数要么都有下标，要么都没有下标。
 	shouldIndex := false
 
 	// 分配不可变参数数量的空间，可变参数加在后面。
@@ -120,7 +120,7 @@ func NewArgList(fnType reflect.Type, withReceiver bool, args []Arg) *ArgList {
 
 	if len(args) > 0 {
 		switch arg := args[0].(type) {
-		case *option:
+		case *optionArg:
 			fnArgs = append(fnArgs, arg)
 		case IndexArg:
 			shouldIndex = true
@@ -136,14 +136,14 @@ func NewArgList(fnType reflect.Type, withReceiver bool, args []Arg) *ArgList {
 			} else if fnType.IsVariadic() {
 				fnArgs = append(fnArgs, arg)
 			} else {
-				panic(errors.New("参数索引超出函数入参的个数"))
+				panic(errors.New("函数没有定义参数但却传入了"))
 			}
 		}
 	}
 
 	for i := 1; i < len(args); i++ {
 		switch arg := args[i].(type) {
-		case *option:
+		case *optionArg:
 			fnArgs = append(fnArgs, arg)
 		case IndexArg:
 			if !shouldIndex {
@@ -165,12 +165,12 @@ func NewArgList(fnType reflect.Type, withReceiver bool, args []Arg) *ArgList {
 			} else if fnType.IsVariadic() {
 				fnArgs = append(fnArgs, arg)
 			} else {
-				panic(errors.New("参数索引超出函数入参的个数"))
+				panic(errors.New("传入的参数个数超出了函数入参的数量"))
 			}
 		}
 	}
 
-	// 其他没有传入的函数绑定参数默认为空字符串。
+	// 其他没有传入的函数参数默认为空字符串。
 	for i := 0; i < fixedArgCount; i++ {
 		if fnArgs[i] == nil {
 			fnArgs[i] = ""
@@ -182,13 +182,13 @@ func NewArgList(fnType reflect.Type, withReceiver bool, args []Arg) *ArgList {
 
 func (argList *ArgList) WithReceiver() bool { return argList.withReceiver }
 
-// Get 返回函数所有绑定参数的真实值，fileLine 是函数定义所在的文件及其行号，供打印日志时使用。
-func (argList *ArgList) Get(assembly Context, fileLine string) ([]reflect.Value, error) {
+// Get 返回函数所有参数的真实值，fileLine 是函数定义所在的文件及其行号，供打印日志时使用。
+func (argList *ArgList) Get(ctx Context, fileLine string) ([]reflect.Value, error) {
 
 	fnType := argList.fnType
 	numIn := fnType.NumIn()
 
-	// 接收者不算作函数的绑定参数。
+	// 接收者不算作函数的参数。
 	if argList.withReceiver {
 		numIn -= 1
 	}
@@ -197,27 +197,24 @@ func (argList *ArgList) Get(assembly Context, fileLine string) ([]reflect.Value,
 	result := make([]reflect.Value, 0)
 
 	for idx, arg := range argList.args {
+		var t reflect.Type
 
 		if argList.withReceiver {
 			idx++
 		}
 
 		if variadic && idx >= numIn-1 {
-			t := fnType.In(numIn - 1).Elem()
-			v, err := argList.getArgValue(t, arg, assembly, fileLine)
-			if err != nil {
-				return nil, err
-			}
-			// 条件可能不满足所以没有对应的参数
-			if v.IsValid() {
-				result = append(result, v)
-			}
+			t = fnType.In(numIn - 1).Elem()
 		} else {
-			t := fnType.In(idx)
-			v, err := argList.getArgValue(t, arg, assembly, fileLine)
-			if err != nil {
-				return nil, err
-			}
+			t = fnType.In(idx)
+		}
+
+		v, err := argList.get(t, arg, ctx, fileLine)
+		if err != nil {
+			return nil, err
+		}
+
+		if v.IsValid() {
 			result = append(result, v)
 		}
 	}
@@ -225,20 +222,25 @@ func (argList *ArgList) Get(assembly Context, fileLine string) ([]reflect.Value,
 	return result, nil
 }
 
-func (argList *ArgList) getArgValue(t reflect.Type, arg Arg, assembly Context, fileLine string) (reflect.Value, error) {
+func (argList *ArgList) get(t reflect.Type, arg Arg, ctx Context, fileLine string) (v reflect.Value, err error) {
 
-	// TODO 检查有些 defer 像这里这样是不正确的，panic 也会打印 success 日志
 	description := fmt.Sprintf("arg:\"%v\" %s", arg, fileLine)
-	defer log.Tracef("get value success %s", description)
 	log.Tracef("get value %s", description)
+	defer func() {
+		if err == nil {
+			log.Tracef("get value success %s", description)
+		} else {
+			log.Tracef("get value err:%s %s", err.Error(), description)
+		}
+	}()
 
 	tag := ""
 
 	switch g := arg.(type) {
 	case ValueArg:
 		return reflect.ValueOf(g.arg), nil
-	case *option:
-		return g.call(assembly)
+	case *optionArg:
+		return g.call(ctx)
 	case bean.Definition:
 		tag = g.BeanId()
 	case string:
@@ -247,11 +249,11 @@ func (argList *ArgList) getArgValue(t reflect.Type, arg Arg, assembly Context, f
 		tag = util.TypeName(g) + ":"
 	}
 
-	v := reflect.New(t).Elem()
+	v = reflect.New(t).Elem()
 
 	// 处理引用类型
 	if util.IsRefType(v.Kind()) {
-		if err := assembly.WireValue(v, tag); err != nil {
+		if err = ctx.WireValue(v, tag); err != nil {
 			return reflect.Value{}, err
 		}
 		return v, nil
@@ -261,14 +263,14 @@ func (argList *ArgList) getArgValue(t reflect.Type, arg Arg, assembly Context, f
 	if tag == "" {
 		tag = "${}"
 	}
-	if err := assembly.BindValue(v, tag); err != nil {
+	if err = ctx.BindValue(v, tag); err != nil {
 		return reflect.Value{}, err
 	}
 	return v, nil
 }
 
-// option Option 函数的绑定参数
-type option struct {
+// optionArg Option 形式的函数参数
+type optionArg struct {
 	fn      interface{}
 	argList *ArgList
 
@@ -278,8 +280,8 @@ type option struct {
 	cond cond.Condition // 判断条件
 }
 
-// Option 封装 Option 函数的绑定参数。
-func Option(fn interface{}, args ...Arg) *option {
+// Option 封装 Option 形式的函数参数。
+func Option(fn interface{}, args ...Arg) *optionArg {
 
 	var (
 		file string
@@ -290,8 +292,7 @@ func Option(fn interface{}, args ...Arg) *option {
 	for i := 1; i < 10; i++ {
 		_, file0, line0, _ := runtime.Caller(i)
 
-		// 排除 spring-core 包下面所有的非 test 文件
-		if strings.Contains(file0, "/spring-core/") {
+		if strings.Contains(file0, "/spring-core/arg/") {
 			if !strings.HasSuffix(file0, "_test.go") {
 				continue
 			}
@@ -304,12 +305,12 @@ func Option(fn interface{}, args ...Arg) *option {
 
 	fnType := reflect.TypeOf(fn)
 
-	// 判断是否为正确的 Option 函数定义，必要条件之一是只有一个返回值。
+	// 判断是否是正确的 Option 函数定义，必要条件之一是只有一个返回值。
 	if fnType.Kind() != reflect.Func || fnType.NumOut() != 1 {
-		panic(errors.New("option func must be func(...)option"))
+		panic(errors.New("error option func"))
 	}
 
-	return &option{
+	return &optionArg{
 		fn:      fn,
 		argList: NewArgList(fnType, false, args),
 		file:    file,
@@ -318,26 +319,27 @@ func Option(fn interface{}, args ...Arg) *option {
 }
 
 // Cond 为 Option 设置一个 cond.Condition
-func (arg *option) Cond(cond cond.Condition) *option {
+func (arg *optionArg) Cond(cond cond.Condition) *optionArg {
 	arg.cond = cond
 	return arg
 }
 
-func (arg *option) call(assembly Context) (ret reflect.Value, err error) {
+func (arg *optionArg) call(ctx Context) (v reflect.Value, err error) {
 
 	fileLine := fmt.Sprintf("%s:%d", arg.file, arg.line)
 	log.Tracef("call option func %s", fileLine)
 
 	defer func() {
 		if err == nil {
-			log.Tracef("call option func %s succeed", fileLine)
+			log.Tracef("call option func success %s", fileLine)
 		} else {
-			log.Tracef("call option func %s failed %s", fileLine, err.Error())
+			log.Tracef("call option func err:%s %s", err.Error(), fileLine)
 		}
 	}()
 
-	if arg.cond == nil || assembly.Matches(arg.cond) {
-		in, err := arg.argList.Get(assembly, fileLine)
+	if arg.cond == nil || ctx.Matches(arg.cond) {
+		var in []reflect.Value
+		in, err = arg.argList.Get(ctx, fileLine)
 		if err != nil {
 			return reflect.Value{}, err
 		}
