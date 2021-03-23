@@ -17,8 +17,9 @@
 package util
 
 import (
-	"encoding/json"
 	"reflect"
+
+	"github.com/go-spring/spring-core/json"
 )
 
 const (

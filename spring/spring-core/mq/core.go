@@ -18,8 +18,8 @@ package mq
 
 import (
 	"context"
-	"encoding/json"
 
+	"github.com/go-spring/spring-core/json"
 	"github.com/go-spring/spring-core/util"
 )
 

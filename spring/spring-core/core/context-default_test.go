@@ -18,7 +18,6 @@ package core_test
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"image"
@@ -37,17 +36,9 @@ import (
 	"github.com/go-spring/spring-core/core"
 	pkg1 "github.com/go-spring/spring-core/core/testdata/pkg/bar"
 	pkg2 "github.com/go-spring/spring-core/core/testdata/pkg/foo"
+	"github.com/go-spring/spring-core/json"
 	"github.com/spf13/cast"
 )
-
-// ToString 对象转 Json 字符串
-func ToString(i interface{}) string {
-	bytes, err := json.Marshal(i)
-	if err != nil {
-		return err.Error()
-	}
-	return string(bytes)
-}
 
 func TestApplicationContext_RegisterBeanFrozen(t *testing.T) {
 	assert.Panic(t, func() {
@@ -704,7 +695,7 @@ func TestApplicationContext_GetBean(t *testing.T) {
 		ok = ctx.GetBean(&three, "")
 		assert.Equal(t, ok, false)
 
-		fmt.Println(ToString(two))
+		fmt.Println(json.ToString(two))
 	})
 }
 
@@ -722,31 +713,31 @@ func TestApplicationContext_FindBeanByName(t *testing.T) {
 	}, "found 3 beans, bean: \"\"")
 
 	i, ok := ctx.FindBean("*core_test.BeanTwo")
-	fmt.Println(ToString(i.Bean()))
+	fmt.Println(json.ToString(i.Bean()))
 	assert.Equal(t, ok, true)
 
 	i, ok = ctx.FindBean("BeanTwo")
-	fmt.Println(ToString(i))
+	fmt.Println(json.ToString(i))
 	assert.Equal(t, ok, false)
 
 	i, ok = ctx.FindBean(":*core_test.BeanTwo")
-	fmt.Println(ToString(i.Bean()))
+	fmt.Println(json.ToString(i.Bean()))
 	assert.Equal(t, ok, true)
 
 	i, ok = ctx.FindBean("github.com/go-spring/spring-core/core_test/core_test.BeanTwo:*core_test.BeanTwo")
-	fmt.Println(ToString(i.Bean()))
+	fmt.Println(json.ToString(i.Bean()))
 	assert.Equal(t, ok, true)
 
 	i, ok = ctx.FindBean("xxx:*core_test.BeanTwo")
-	fmt.Println(ToString(i))
+	fmt.Println(json.ToString(i))
 	assert.Equal(t, ok, false)
 
 	i, ok = ctx.FindBean("*core_test.BeanTwo")
-	fmt.Println(ToString(i.Bean()))
+	fmt.Println(json.ToString(i.Bean()))
 	assert.Equal(t, ok, true)
 
 	i, ok = ctx.FindBean((*BeanTwo)(nil))
-	fmt.Println(ToString(i.Bean()))
+	fmt.Println(json.ToString(i.Bean()))
 	assert.Equal(t, ok, true)
 
 	_, ok = ctx.FindBean((*fmt.Stringer)(nil))
@@ -827,14 +818,14 @@ func TestApplicationContext_RegisterBeanFn(t *testing.T) {
 	ok := ctx.GetBean(&st1, "st1")
 
 	assert.Equal(t, ok, true)
-	fmt.Println(ToString(st1))
+	fmt.Println(json.ToString(st1))
 	assert.Equal(t, st1.Room, ctx.GetProperty("room"))
 
 	var st2 *Student
 	ok = ctx.GetBean(&st2, "st2")
 
 	assert.Equal(t, ok, true)
-	fmt.Println(ToString(st2))
+	fmt.Println(json.ToString(st2))
 	assert.Equal(t, st2.Room, ctx.GetProperty("room"))
 
 	fmt.Printf("%x\n", reflect.ValueOf(st1).Pointer())
@@ -844,28 +835,28 @@ func TestApplicationContext_RegisterBeanFn(t *testing.T) {
 	ok = ctx.GetBean(&st3, "st3")
 
 	assert.Equal(t, ok, true)
-	fmt.Println(ToString(st3))
+	fmt.Println(json.ToString(st3))
 	assert.Equal(t, st3.Room, ctx.GetProperty("room"))
 
 	var st4 *Student
 	ok = ctx.GetBean(&st4, "st4")
 
 	assert.Equal(t, ok, true)
-	fmt.Println(ToString(st4))
+	fmt.Println(json.ToString(st4))
 	assert.Equal(t, st4.Room, ctx.GetProperty("room"))
 
 	var m map[int]string
 	ok = ctx.GetBean(&m)
 
 	assert.Equal(t, ok, true)
-	fmt.Println(ToString(m))
+	fmt.Println(json.ToString(m))
 	assert.Equal(t, m[1], "ok")
 
 	var s []int
 	ok = ctx.GetBean(&s)
 
 	assert.Equal(t, ok, true)
-	fmt.Println(ToString(s))
+	fmt.Println(json.ToString(s))
 	assert.Equal(t, s[1], 2)
 }
 
@@ -1431,7 +1422,7 @@ func TestApplicationContext_CollectBeans(t *testing.T) {
 
 		var rcs []*RecoresCluster
 		ctx.CollectBeans(&rcs)
-		fmt.Println(ToString(rcs))
+		fmt.Println(json.ToString(rcs))
 
 		assert.Equal(t, len(rcs), 2)
 		assert.Equal(t, rcs[0].Endpoints, "recores://localhost:6379")
@@ -1442,7 +1433,7 @@ func TestApplicationContext_CollectBeans(t *testing.T) {
 
 	var rcs []RecoresCluster
 	ctx.GetBean(&rcs)
-	fmt.Println(ToString(rcs))
+	fmt.Println(json.ToString(rcs))
 
 	assert.Equal(t, len(rcs), 1)
 	assert.Equal(t, rcs[0].Endpoints, "recores://localhost:6379")
@@ -1459,7 +1450,7 @@ func TestApplicationContext_WireSliceBean(t *testing.T) {
 	{
 		var rcs []*RecoresCluster
 		ctx.GetBean(&rcs)
-		fmt.Println(ToString(rcs))
+		fmt.Println(json.ToString(rcs))
 
 		assert.Equal(t, rcs[0].Endpoints, "recores://localhost:6379")
 	}
@@ -1467,7 +1458,7 @@ func TestApplicationContext_WireSliceBean(t *testing.T) {
 	{
 		var rcs []RecoresCluster
 		ctx.GetBean(&rcs)
-		fmt.Println(ToString(rcs))
+		fmt.Println(json.ToString(rcs))
 
 		assert.Equal(t, rcs[0].Endpoints, "recores://localhost:6379")
 	}
