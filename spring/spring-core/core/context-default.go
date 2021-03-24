@@ -106,7 +106,7 @@ func (ctx *applicationContext) HasProperty(key string) bool {
 	return ctx.properties.Has(key)
 }
 
-// GetProperty 返回属性值，不能存在返回 nil，属性名称统一转成小写。
+// GetProperty 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。
 func (ctx *applicationContext) GetProperty(key string) interface{} {
 	return ctx.properties.Get(key)
 }
@@ -116,7 +116,7 @@ func (ctx *applicationContext) Property(key string, value interface{}) {
 	ctx.properties.Set(key, value)
 }
 
-// PrefixProperties 返回指定前缀的属性值集合，属性名称统一转成小写。
+// PrefixProperties 返回 key 转为小写后作为前缀的所有符合条件的属性集合。
 func (ctx *applicationContext) PrefixProperties(key string) map[string]interface{} {
 	return ctx.properties.Prefix(key)
 }
@@ -126,7 +126,7 @@ func (ctx *applicationContext) Context() context.Context {
 	return ctx.ctx
 }
 
-// GetProfile 返回运行环境
+// GetProfile 返回运行环境。
 func (ctx *applicationContext) GetProfile() string {
 	return ctx.profile
 }
@@ -198,12 +198,11 @@ func (ctx *applicationContext) GetBean(i interface{}, selector ...bean.Selector)
 	return w.getBeanValue(v.Elem(), tag, reflect.Value{}, "")
 }
 
-// FindBean 查询单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
-// 它和 GetBean 的区别是它在调用后不能保证返回的 Bean 已经完成了注入和绑定过程。
-func (ctx *applicationContext) FindBean(selector bean.Selector) (bean.Definition, bool) {
+// FindBean 返回符合条件的 Bean 集合，不保证返回的 Bean 已经完成注入和绑定过程。
+func (ctx *applicationContext) FindBean(selector bean.Selector) []bean.Definition {
 	ctx.checkAutoWired()
 
-	finder := func(fn func(*BeanDefinition) bool) (result []*BeanDefinition) {
+	finder := func(fn func(*BeanDefinition) bool) (result []bean.Definition) {
 		for _, b := range ctx.beanMap {
 			if b.getStatus() != Resolving && fn(b) {
 				ctx.resolveBean(b) // 避免 Bean 未被解析
@@ -215,56 +214,31 @@ func (ctx *applicationContext) FindBean(selector bean.Selector) (bean.Definition
 		return
 	}
 
-	var result []*BeanDefinition
+	t := reflect.TypeOf(selector)
 
-	switch o := selector.(type) {
-	case string:
-		tag := parseSingletonTag(o)
-		result = finder(func(b *BeanDefinition) bool {
+	if t.Kind() == reflect.String {
+		tag := parseSingletonTag(selector.(string))
+		return finder(func(b *BeanDefinition) bool {
 			return b.Match(tag.TypeName, tag.BeanName)
 		})
-	default:
-		{
-			t := reflect.TypeOf(o) // map、slice 等不是指针类型
-			if t.Kind() == reflect.Ptr {
-				if e := t.Elem(); e.Kind() == reflect.Interface {
-					t = e // 接口类型去掉指针
-				}
-			}
+	}
 
-			result = finder(func(b *BeanDefinition) bool {
-				if beanType := b.Type(); beanType.AssignableTo(t) { // 必须类型兼容
-					if beanType == t || t.Kind() != reflect.Interface {
-						return true
-					}
-					if _, ok := b.exports[t]; ok {
-						return true
-					}
-				}
-				return false
-			})
+	if t.Kind() == reflect.Ptr {
+		if e := t.Elem(); e.Kind() == reflect.Interface {
+			t = e // 接口类型去掉指针
 		}
 	}
 
-	count := len(result)
-
-	// 没有找到
-	if count == 0 {
-		return nil, false
-	}
-
-	// 多于 1 个
-	if count > 1 {
-		msg := fmt.Sprintf("found %d beans, bean: \"%v\" [", len(result), selector)
-		for _, b := range result {
-			msg += "( " + b.Description() + " ), "
+	return finder(func(b *BeanDefinition) bool {
+		if !b.Type().AssignableTo(t) {
+			return false
 		}
-		msg = msg[:len(msg)-2] + "]"
-		panic(errors.New(msg))
-	}
-
-	// 恰好 1 个
-	return result[0], true
+		if t.Kind() != reflect.Interface {
+			return true
+		}
+		_, ok := b.exports[t]
+		return ok
+	})
 }
 
 // CollectBeans 收集数组或指针定义的所有符合条件的 Bean，收集到返回 true，否则返

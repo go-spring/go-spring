@@ -700,51 +700,45 @@ func TestApplicationContext_GetBean(t *testing.T) {
 }
 
 func TestApplicationContext_FindBeanByName(t *testing.T) {
-	ctx := core.NewApplicationContext()
 
+	ctx := core.NewApplicationContext()
 	ctx.Bean(&BeanZero{5})
 	ctx.Bean(new(BeanOne))
 	ctx.Bean(new(BeanTwo))
-
 	ctx.Refresh()
 
-	assert.Panic(t, func() {
-		ctx.FindBean("")
-	}, "found 3 beans, bean: \"\"")
+	b := ctx.FindBean("")
+	assert.Equal(t, len(b), 3)
 
-	i, ok := ctx.FindBean("*core_test.BeanTwo")
-	fmt.Println(json.ToString(i.Bean()))
-	assert.Equal(t, ok, true)
+	b = ctx.FindBean("BeanTwo")
+	fmt.Println(json.ToString(b))
+	assert.Equal(t, len(b), 0)
 
-	i, ok = ctx.FindBean("BeanTwo")
-	fmt.Println(json.ToString(i))
-	assert.Equal(t, ok, false)
+	b = ctx.FindBean("*core_test.BeanTwo")
+	fmt.Println(json.ToString(b))
+	assert.Equal(t, len(b), 1)
 
-	i, ok = ctx.FindBean(":*core_test.BeanTwo")
-	fmt.Println(json.ToString(i.Bean()))
-	assert.Equal(t, ok, true)
+	b = ctx.FindBean(":*core_test.BeanTwo")
+	fmt.Println(json.ToString(b))
+	assert.Equal(t, len(b), 1)
 
-	i, ok = ctx.FindBean("github.com/go-spring/spring-core/core_test/core_test.BeanTwo:*core_test.BeanTwo")
-	fmt.Println(json.ToString(i.Bean()))
-	assert.Equal(t, ok, true)
+	b = ctx.FindBean("github.com/go-spring/spring-core/core_test/core_test.BeanTwo:*core_test.BeanTwo")
+	fmt.Println(json.ToString(b))
+	assert.Equal(t, len(b), 1)
 
-	i, ok = ctx.FindBean("xxx:*core_test.BeanTwo")
-	fmt.Println(json.ToString(i))
-	assert.Equal(t, ok, false)
+	b = ctx.FindBean("xxx:*core_test.BeanTwo")
+	fmt.Println(json.ToString(b))
+	assert.Equal(t, len(b), 0)
 
-	i, ok = ctx.FindBean("*core_test.BeanTwo")
-	fmt.Println(json.ToString(i.Bean()))
-	assert.Equal(t, ok, true)
+	b = ctx.FindBean((*BeanTwo)(nil))
+	fmt.Println(json.ToString(b))
+	assert.Equal(t, len(b), 1)
 
-	i, ok = ctx.FindBean((*BeanTwo)(nil))
-	fmt.Println(json.ToString(i.Bean()))
-	assert.Equal(t, ok, true)
+	b = ctx.FindBean((*fmt.Stringer)(nil))
+	assert.Equal(t, len(b), 0)
 
-	_, ok = ctx.FindBean((*fmt.Stringer)(nil))
-	assert.Equal(t, ok, false)
-
-	_, ok = ctx.FindBean((*Grouper)(nil))
-	assert.Equal(t, ok, false)
+	b = ctx.FindBean((*Grouper)(nil))
+	assert.Equal(t, len(b), 0)
 }
 
 type Teacher interface {

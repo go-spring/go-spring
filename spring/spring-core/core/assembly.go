@@ -390,11 +390,11 @@ func (assembly *defaultBeanAssembly) wireBeanDefinition(bd ConfigurableBeanDefin
 
 	// 首先对当前 Bean 的间接依赖项进行自动注入
 	for _, selector := range bd.getDependsOn() {
-		if b, ok := assembly.appCtx.FindBean(selector); !ok {
-			panic(fmt.Errorf("can't find bean: \"%v\"", selector))
-		} else {
-			assembly.wireBeanDefinition(b.(ConfigurableBeanDefinition), false)
+		b := assembly.appCtx.FindBean(selector)
+		if n := len(b); n != 1 {
+			panic(fmt.Errorf("found %d bean(s) for: \"%v\"", n, selector))
 		}
+		assembly.wireBeanDefinition(b[0].(ConfigurableBeanDefinition), false)
 	}
 
 	// 对当前 Bean 进行自动注入

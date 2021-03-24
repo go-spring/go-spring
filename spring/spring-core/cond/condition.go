@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+// Package cond 实现了多种条件表达式。
 package cond
 
 import (
@@ -27,20 +28,20 @@ import (
 	"github.com/spf13/cast"
 )
 
+// Context IoC 容器对 cond 模块提供的最小功能集。
 type Context interface {
 
-	// GetProfile 返回运行环境
+	// GetProfile 返回运行环境。
 	GetProfile() string
 
-	// GetProperty 返回属性值，不能存在返回 nil，属性名称统一转成小写。
+	// GetProperty 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。
 	GetProperty(key string) interface{}
 
-	// PrefixProperties 返回指定前缀的属性值集合，属性名称统一转成小写。
+	// PrefixProperties 返回 key 转为小写后作为前缀的所有符合条件的属性集合。
 	PrefixProperties(key string) map[string]interface{}
 
-	// FindBean 查询单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
-	// 它和 GetBean 的区别是它在调用后不能保证返回的 Bean 已经完成了注入和绑定过程。
-	FindBean(selector bean.Selector) (bean.Definition, bool)
+	// FindBean 返回符合条件的 Bean 集合，不保证返回的 Bean 已经完成注入和绑定过程。
+	FindBean(selector bean.Selector) []bean.Definition
 }
 
 // Condition 定义一个判断条件
@@ -179,8 +180,8 @@ func BeanCondition(selector bean.Selector) *beanCondition {
 
 // Matches 成功返回 true，失败返回 false
 func (c *beanCondition) Matches(ctx Context) bool {
-	_, ok := ctx.FindBean(c.selector)
-	return ok
+	b := ctx.FindBean(c.selector)
+	return len(b) == 1
 }
 
 // missingBeanCondition 基于 Bean 不能存在的 Condition 实现
@@ -195,8 +196,8 @@ func MissingBeanCondition(selector bean.Selector) *missingBeanCondition {
 
 // Matches 成功返回 true，失败返回 false
 func (c *missingBeanCondition) Matches(ctx Context) bool {
-	_, ok := ctx.FindBean(c.selector)
-	return !ok
+	b := ctx.FindBean(c.selector)
+	return len(b) == 0
 }
 
 // expressionCondition 基于表达式的 Condition 实现

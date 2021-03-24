@@ -279,8 +279,8 @@ type optionArg struct {
 	fn      interface{}
 	argList *ArgList
 
-	file string // 注册点所在文件
-	line int    // 注册点所在行数
+	File string // 注册点所在文件
+	Line int    // 注册点所在行数
 
 	cond cond.Condition // 判断条件
 }
@@ -318,8 +318,8 @@ func Option(fn interface{}, args ...Arg) *optionArg {
 	return &optionArg{
 		fn:      fn,
 		argList: NewArgList(fnType, false, args),
-		file:    file,
-		line:    line,
+		File:    file,
+		Line:    line,
 	}
 }
 
@@ -331,7 +331,7 @@ func (arg *optionArg) Cond(cond cond.Condition) *optionArg {
 
 func (arg *optionArg) call(ctx Context) (v reflect.Value, err error) {
 
-	fileLine := fmt.Sprintf("%s:%d", arg.file, arg.line)
+	fileLine := fmt.Sprintf("%s:%d", arg.File, arg.Line)
 	log.Tracef("call option func %s", fileLine)
 
 	defer func() {

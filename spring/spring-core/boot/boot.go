@@ -62,7 +62,8 @@ func GetBean(i interface{}, selector ...bean.Selector) bool {
 	return gApp.appCtx.GetBean(i, selector...)
 }
 
-func FindBean(selector bean.Selector) (bean.Definition, bool) {
+// FindBean 返回符合条件的 Bean 集合，不保证返回的 Bean 已经完成注入和绑定过程。
+func FindBean(selector bean.Selector) []bean.Definition {
 	return gApp.appCtx.FindBean(selector)
 }
 

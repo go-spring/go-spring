@@ -40,16 +40,16 @@ type ApplicationContext interface {
 	// Context 返回上下文接口
 	Context() context.Context
 
-	// GetProfile 返回运行环境
+	// GetProfile 返回运行环境。
 	GetProfile() string
 
 	// HasProperty 查询属性值是否存在，属性名称统一转成小写。
 	HasProperty(key string) bool
 
-	// GetProperty 返回属性值，不能存在返回 nil，属性名称统一转成小写。
+	// GetProperty 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。
 	GetProperty(key string) interface{}
 
-	// PrefixProperties 返回指定前缀的属性值集合，属性名称统一转成小写。
+	// PrefixProperties 返回 key 转为小写后作为前缀的所有符合条件的属性集合。
 	PrefixProperties(key string) map[string]interface{}
 
 	// WireBean 对对象或者构造函数的结果进行依赖注入和属性绑定，返回处理后的对象
@@ -59,9 +59,8 @@ type ApplicationContext interface {
 	// 它和 FindBean 的区别是它在调用后能够保证返回的 Bean 已经完成了注入和绑定过程。
 	GetBean(i interface{}, selector ...bean.Selector) bool
 
-	// FindBean 查询单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
-	// 它和 GetBean 的区别是它在调用后不能保证返回的 Bean 已经完成了注入和绑定过程。
-	FindBean(selector bean.Selector) (bean.Definition, bool)
+	// FindBean 返回符合条件的 Bean 集合，不保证返回的 Bean 已经完成注入和绑定过程。
+	FindBean(selector bean.Selector) []bean.Definition
 
 	// CollectBeans 收集数组或指针定义的所有符合条件的 Bean，收集到返回 true，否则返
 	// 回 false。该函数有两种模式:自动模式和指定模式。自动模式是指 selectors 参数为空，

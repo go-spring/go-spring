@@ -14,11 +14,14 @@
  * limitations under the License.
  */
 
-package arg
+package arg_test
 
 import (
 	"fmt"
 	"testing"
+
+	"github.com/go-spring/spring-core/arg"
+	"github.com/go-spring/spring-core/assert"
 )
 
 type optArg struct{ param int }
@@ -32,6 +35,7 @@ func opt(param int) optFunc {
 }
 
 func TestOption(t *testing.T) {
-	arg := Option(opt, Value(3))
-	fmt.Println(arg.file, arg.line)
+	r := arg.Option(opt, arg.Value(3))
+	assert.Equal(t, r.Line, 38)
+	fmt.Println(r.File, r.Line)
 }
