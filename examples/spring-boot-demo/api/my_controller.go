@@ -59,9 +59,6 @@ func init() {
 			Swagger(). // 设置接口的信息
 			WithDescription("ok")
 
-		// 该接口不会注册，因为没有匹配的端口
-		r.GetMapping("/nil", c.OK).OnPorts(9999)
-
 		// 注意这个接口不和任何 Router 绑定
 		SpringBoot.GetBinding("/echo", c.Echo, SpringBoot.FilterBean("router//echo")).
 			Swagger(). // 设置接口的信息

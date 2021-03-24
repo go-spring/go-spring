@@ -20,6 +20,7 @@ import (
 	"container/list"
 
 	"github.com/go-spring/spring-boot"
+	"github.com/go-spring/spring-logger"
 	"github.com/go-spring/spring-web"
 )
 
@@ -45,13 +46,14 @@ func NewNumberFilter(n int, l *list.List) *NumberFilter {
 }
 
 func (f *NumberFilter) Invoke(ctx SpringWeb.WebContext, chain SpringWeb.FilterChain) {
+	log := SpringLogger.WithContext(ctx.Context())
 
 	defer func() {
-		ctx.LogInfo("::after", f.N)
+		log.Info("::after", f.N)
 		f.l.PushBack(f.N)
 	}()
 
-	ctx.LogInfo("::before", f.N)
+	log.Info("::before", f.N)
 	f.l.PushBack(f.N)
 
 	chain.Next(ctx)

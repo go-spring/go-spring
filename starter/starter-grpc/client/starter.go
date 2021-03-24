@@ -19,8 +19,8 @@ package StarterGrpcClient
 import (
 	"fmt"
 
-	"github.com/go-spring/spring-boot"
-	"github.com/go-spring/spring-core"
+	"github.com/go-spring/spring-core/boot"
+	"github.com/go-spring/spring-core/core"
 	"github.com/go-spring/starter-grpc/client/factory"
 )
 
@@ -28,7 +28,7 @@ import (
 const grpc_endpoint_prefix = "grpc.endpoint"
 
 func init() {
-	SpringBoot.AfterPrepare(func(ctx SpringCore.SpringContext) {
+	boot.AfterPrepare(func(ctx core.SpringContext) {
 		for endpoint := range ctx.GetGroupedProperties(grpc_endpoint_prefix) {
 			tag := fmt.Sprintf("${%s.%s}", grpc_endpoint_prefix, endpoint)
 			ctx.RegisterNameBeanFn(endpoint, GrpcClientFactory.NewClientConnInterface, tag)

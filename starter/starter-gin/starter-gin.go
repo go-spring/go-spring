@@ -17,26 +17,21 @@
 package StarterGin
 
 import (
-	"github.com/go-spring/spring-boot"
+	"github.com/go-spring/spring-core/boot"
+	"github.com/go-spring/spring-core/web"
 	"github.com/go-spring/spring-gin"
-	"github.com/go-spring/spring-web"
 	"github.com/go-spring/starter-web"
 )
 
 func init() {
-
-	SpringBoot.RegisterNameBeanFn("web-container", func(config StarterWeb.WebServerConfig) SpringWeb.WebContainer {
-		return SpringGin.NewContainer(SpringWeb.ContainerConfig{
-			Port: config.Port,
-		})
-	}).ConditionOnOptionalPropertyValue("web.server.enable", true)
-
-	SpringBoot.RegisterNameBeanFn("ssl-web-container", func(config StarterWeb.WebServerConfig) SpringWeb.WebContainer {
-		return SpringGin.NewContainer(SpringWeb.ContainerConfig{
-			EnableSSL: true,
-			Port:      config.SSLPort,
+	boot.RegisterNameBeanFn("web-server", func(config StarterWeb.WebServerConfig) web.WebContainer {
+		return SpringGin.NewContainer(web.ContainerConfig{
+			IP:        config.IP,
+			Port:      config.Port,
+			BasePath:  config.BasePath,
+			EnableSSL: config.EnableSSL,
 			KeyFile:   config.SSLKey,
 			CertFile:  config.SSLCert,
 		})
-	}).ConditionOnPropertyValue("web.server.ssl.enable", true)
+	})
 }

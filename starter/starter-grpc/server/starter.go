@@ -17,10 +17,10 @@
 package StarterGrpcServer
 
 import (
-	"github.com/go-spring/spring-boot"
+	"github.com/go-spring/spring-core/boot"
 	"github.com/go-spring/starter-grpc/server/factory"
 )
 
 func init() {
-	SpringBoot.RegisterNameBeanFn("grpc-server-starter", GrpcServerFactory.NewStarter)
+	boot.RegisterNameBeanFn("grpc-server-starter", GrpcServerFactory.NewStarter)
 }

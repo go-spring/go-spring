@@ -19,23 +19,23 @@ package StarterRabbitMQProducer
 import (
 	"context"
 
-	"github.com/go-spring/spring-boot"
-	"github.com/go-spring/spring-message"
+	"github.com/go-spring/spring-core/boot"
+	"github.com/go-spring/spring-core/mq"
 	"github.com/go-spring/starter-rabbitmq"
 	"github.com/streadway/amqp"
 )
 
 func init() {
-	SpringBoot.RegisterNameBean("amqp-sender", new(Sender)).Export((*SpringMessage.Producer)(nil))
+	boot.RegisterNameBean("amqp-sender", new(Sender)).Export((*mq.Producer)(nil))
 }
 
 type Sender struct {
 	Server *StarterRabbitMQ.AMQPServer `autowire:""`
 }
 
-func (sender *Sender) SendMessage(ctx context.Context, msg SpringMessage.MessageInterface) error {
+func (sender *Sender) SendMessage(ctx context.Context, msg mq.MessageInterface) error {
 	switch message := msg.(type) {
-	case *SpringMessage.Message:
+	case *mq.Message:
 		return sender.Server.Channel.Publish(
 			"",            // exchange
 			message.Topic, // routing key

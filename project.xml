@@ -1,54 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <projects>
     <project>
-        <name>spring-const</name>
-        <dir>spring/spring-const</dir>
-        <url>https://github.com/go-spring/spring-const.git</url>
-        <branch>master</branch>
-    </project>
-    <project>
-        <name>spring-utils</name>
-        <dir>spring/spring-utils</dir>
-        <url>https://github.com/go-spring/spring-utils.git</url>
-        <branch>master</branch>
-    </project>
-    <project>
-        <name>spring-logger</name>
-        <dir>spring/spring-logger</dir>
-        <url>https://github.com/go-spring/spring-logger.git</url>
-        <branch>master</branch>
-    </project>
-    <project>
-        <name>spring-message</name>
-        <dir>spring/spring-message</dir>
-        <url>https://github.com/go-spring/spring-message.git</url>
-        <branch>master</branch>
-    </project>
-    <project>
-        <name>spring-rocketmq</name>
-        <dir>spring/spring-rocketmq</dir>
-        <url>https://github.com/go-spring/spring-rocketmq.git</url>
-        <branch>master</branch>
-    </project>
-    <project>
-        <name>spring-rabbitmq</name>
-        <dir>spring/spring-rabbitmq</dir>
-        <url>https://github.com/go-spring/spring-rabbitmq.git</url>
-        <branch>master</branch>
-    </project>
-    <project>
-        <name>spring-kafka</name>
-        <dir>spring/spring-kafka</dir>
-        <url>https://github.com/go-spring/spring-kafka.git</url>
-        <branch>master</branch>
-    </project>
-    <project>
-        <name>spring-web</name>
-        <dir>spring/spring-web</dir>
-        <url>https://github.com/go-spring/spring-web.git</url>
-        <branch>master</branch>
-    </project>
-    <project>
         <name>spring-gin</name>
         <dir>spring/spring-gin</dir>
         <url>https://github.com/go-spring/spring-gin.git</url>
@@ -64,12 +16,6 @@
         <name>spring-core</name>
         <dir>spring/spring-core</dir>
         <url>https://github.com/go-spring/spring-core.git</url>
-        <branch>master</branch>
-    </project>
-    <project>
-        <name>spring-boot</name>
-        <dir>spring/spring-boot</dir>
-        <url>https://github.com/go-spring/spring-boot.git</url>
         <branch>master</branch>
     </project>
     <project>
@@ -139,9 +85,15 @@
         <branch>main</branch>
     </project>
     <project>
-        <name>spring-redoc</name>
-        <dir>spring/spring-redoc</dir>
-        <url>https://github.com/go-spring/spring-redoc.git</url>
+        <name>spring-swag</name>
+        <dir>spring/spring-swag</dir>
+        <url>https://github.com/go-spring/spring-swag.git</url>
+        <branch>main</branch>
+    </project>
+    <project>
+        <name>starter-core</name>
+        <dir>starter/starter-core</dir>
+        <url>https://github.com/go-spring/starter-core.git</url>
         <branch>main</branch>
     </project>
 </projects>

@@ -19,7 +19,7 @@ package GoMongoFactory
 import (
 	"context"
 
-	"github.com/go-spring/spring-logger"
+	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/starter-mongo"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -28,7 +28,7 @@ import (
 
 // NewClient 创建 MongoDB 客户端
 func NewClient(config StarterMongo.Config) (*mongo.Client, error) {
-	SpringLogger.Info("open mongo db ", config.Url)
+	log.Info("open mongo db ", config.Url)
 	ctx := context.Background()
 
 	client, err := mongo.Connect(ctx, options.Client().ApplyURI(config.Url))
@@ -44,8 +44,8 @@ func NewClient(config StarterMongo.Config) (*mongo.Client, error) {
 
 // CloseClient 关闭 MongoDB 客户端
 func CloseClient(client *mongo.Client) {
-	SpringLogger.Info("close mongo db")
+	log.Info("close mongo db")
 	if err := client.Disconnect(context.Background()); err != nil {
-		SpringLogger.Error(err)
+		log.Error(err)
 	}
 }
