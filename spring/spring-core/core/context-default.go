@@ -172,7 +172,7 @@ func (ctx *applicationContext) Bean(objOrCtor interface{}, ctorArgs ...arg.Arg) 
 
 // GetBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 // 它和 FindBean 的区别是它在调用后能够保证返回的 Bean 已经完成了注入和绑定过程。
-func (ctx *applicationContext) GetBean(i interface{}, selector ...bean.Selector) bool {
+func (ctx *applicationContext) GetBean(i interface{}, selector ...bean.Selector) error {
 
 	if i == nil {
 		panic(errors.New("i can't be nil"))
@@ -190,10 +190,8 @@ func (ctx *applicationContext) GetBean(i interface{}, selector ...bean.Selector)
 		s = selector[0]
 	}
 
-	tag := ToSingletonTag(s)
-	tag.Nullable = true
-
 	v := reflect.ValueOf(i)
+	tag := ToSingletonTag(s)
 	w := newDefaultBeanAssembly(ctx)
 	return w.getBeanValue(v.Elem(), tag, reflect.Value{}, "")
 }
@@ -248,7 +246,7 @@ func (ctx *applicationContext) FindBean(selector bean.Selector) []bean.Definitio
 // 不为空，这时候只会收集单例 Bean，而且要求这些单例 Bean 不仅需要满足收集条件，而且
 // 必须满足 selector 条件。另外，自动模式下不对收集结果进行排序，指定模式下根据
 // selectors 列表的顺序对收集结果进行排序。
-func (ctx *applicationContext) CollectBeans(i interface{}, selectors ...bean.Selector) bool {
+func (ctx *applicationContext) CollectBeans(i interface{}, selectors ...bean.Selector) error {
 	ctx.checkAutoWired()
 
 	if t := reflect.TypeOf(i); t.Kind() != reflect.Ptr || t.Elem().Kind() != reflect.Slice {
@@ -435,10 +433,13 @@ func (ctx *applicationContext) sortDestroyers() {
 }
 
 // wireBeans 对 Bean 执行自动注入
-func (ctx *applicationContext) wireBeans(assembly *defaultBeanAssembly) {
+func (ctx *applicationContext) wireBeans(assembly *defaultBeanAssembly) error {
 	for _, bd := range ctx.beanMap {
-		assembly.wireBeanDefinition(bd, false)
+		if err := assembly.wireBeanDefinition(bd, false); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 // Refresh 对所有 Bean 进行依赖注入和属性绑定
@@ -466,7 +467,9 @@ func (ctx *applicationContext) Refresh() {
 	}()
 
 	ctx.runConfigers(assembly)
-	ctx.wireBeans(assembly)
+
+	err := ctx.wireBeans(assembly)
+	util.Panic(err).When(err != nil)
 
 	ctx.sortDestroyers()
 }
@@ -485,7 +488,9 @@ func (ctx *applicationContext) WireBean(objOrCtor interface{}, ctorArgs ...arg.A
 	}()
 
 	bd := Bean(objOrCtor, ctorArgs...)
-	assembly.wireBeanDefinition(bd, false)
+	if err := assembly.wireBeanDefinition(bd, false); err != nil {
+		return nil, err
+	}
 	return bd.Bean(), nil
 }
 

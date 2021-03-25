@@ -87,16 +87,16 @@ func (assembly *defaultBeanAssembly) BindValue(v reflect.Value, str string) erro
 	return conf.BindValue(assembly.appCtx.properties, v, str, conf.BindOption{})
 }
 
-// getBeanValue 获取符合要求的 Bean，并且确保 Bean 完成自动注入过程，结果最多有一个，否则 panic，当允许结果为空时返回 false，否则 panic
-func (assembly *defaultBeanAssembly) getBeanValue(v reflect.Value, tag SingletonTag, Parent reflect.Value, field string) bool {
+// getBeanValue 获取符合要求的 Bean，并且确保 Bean 完成自动注入过程。
+func (assembly *defaultBeanAssembly) getBeanValue(v reflect.Value, tag SingletonTag, parent reflect.Value, field string) error {
 
 	if !v.IsValid() {
-		panic(fmt.Errorf("receiver must be ref type, bean: \"%s\" field: %s", tag, field))
+		return fmt.Errorf("receiver must be ref type, bean: \"%s\" field: %s", tag, field)
 	}
 
 	beanType := v.Type()
 	if !util.IsRefType(beanType.Kind()) {
-		panic(fmt.Errorf("receiver must be ref type, bean: \"%s\" field: %s", tag, field))
+		return fmt.Errorf("receiver must be ref type, bean: \"%s\" field: %s", tag, field)
 	}
 
 	foundBeans := make([]*BeanDefinition, 0)
@@ -104,7 +104,7 @@ func (assembly *defaultBeanAssembly) getBeanValue(v reflect.Value, tag Singleton
 	cache := assembly.appCtx.getTypeCacheItem(beanType)
 	for _, b := range cache.beans {
 		// 不能将自身赋给自身的字段 && 类型全限定名匹配
-		if b.Value() != Parent && b.Match(tag.TypeName, tag.BeanName) {
+		if b.Value() != parent && b.Match(tag.TypeName, tag.BeanName) {
 			foundBeans = append(foundBeans, b)
 		}
 	}
@@ -114,7 +114,7 @@ func (assembly *defaultBeanAssembly) getBeanValue(v reflect.Value, tag Singleton
 		cache = assembly.appCtx.getNameCacheItem(tag.BeanName)
 		for _, b := range cache.beans {
 			// 不能将自身赋给自身的字段 && 类型匹配 && BeanName 匹配
-			if b.Value() != Parent && b.Type().AssignableTo(beanType) && b.Match(tag.TypeName, tag.BeanName) {
+			if b.Value() != parent && b.Type().AssignableTo(beanType) && b.Match(tag.TypeName, tag.BeanName) {
 				found := false // 对结果进行排重
 				for _, r := range foundBeans {
 					if r == b {
@@ -130,12 +130,11 @@ func (assembly *defaultBeanAssembly) getBeanValue(v reflect.Value, tag Singleton
 		}
 	}
 
-	// 没有找到，允许结果为空则返回 false，否则 panic
 	if len(foundBeans) == 0 {
 		if tag.Nullable {
-			return false
+			return nil
 		} else {
-			panic(fmt.Errorf("can't find bean, bean: \"%s\" field: %s type: %s", tag, field, beanType))
+			return fmt.Errorf("can't find bean, bean: \"%s\" field: %s type: %s", tag, field, beanType)
 		}
 	}
 
@@ -148,25 +147,25 @@ func (assembly *defaultBeanAssembly) getBeanValue(v reflect.Value, tag Singleton
 		}
 	}
 
-	if len(primaryBeans) > 1 { // 找到多于 1 个主版本则 panic
+	if len(primaryBeans) > 1 {
 		msg := fmt.Sprintf("found %d primary beans, bean: \"%s\" field: %s type: %s [", len(primaryBeans), tag, field, beanType)
 		for _, b := range primaryBeans {
 			msg += "( " + b.Description() + " ), "
 		}
 		msg = msg[:len(msg)-2] + "]"
-		panic(errors.New(msg))
+		return errors.New(msg)
 	}
 
 	var result *BeanDefinition
 
 	if len(primaryBeans) == 0 {
-		if len(foundBeans) > 1 { // 找到过个符合条件的 Bean 并且没有一个是主版本则 panic
+		if len(foundBeans) > 1 {
 			msg := fmt.Sprintf("found %d beans, bean: \"%s\" field: %s type: %s [", len(foundBeans), tag, field, beanType)
 			for _, b := range foundBeans {
 				msg += "( " + b.Description() + " ), "
 			}
 			msg = msg[:len(msg)-2] + "]"
-			panic(errors.New(msg))
+			return errors.New(msg)
 		}
 		result = foundBeans[0]
 	} else {
@@ -174,13 +173,15 @@ func (assembly *defaultBeanAssembly) getBeanValue(v reflect.Value, tag Singleton
 	}
 
 	// 对找到的 Bean 进行自动注入
-	assembly.wireBeanDefinition(result, false)
+	if err := assembly.wireBeanDefinition(result, false); err != nil {
+		return err
+	}
 	util.PatchValue(v).Set(result.Value())
-	return true
+	return nil
 }
 
 // collectBeans 收集符合要求的 Bean，结果可以是多个。自动模式下不对结果排序，指定模式会对结果排序。当允许结果为空时返回 false，否则 panic
-func (assembly *defaultBeanAssembly) collectBeans(v reflect.Value, tag collectionTag, field string) bool {
+func (assembly *defaultBeanAssembly) collectBeans(v reflect.Value, tag collectionTag, field string) error {
 
 	t := v.Type()
 	et := t.Elem()
@@ -189,29 +190,36 @@ func (assembly *defaultBeanAssembly) collectBeans(v reflect.Value, tag collectio
 		panic(errors.New("slice item in collection mode should be ref type"))
 	}
 
-	var result reflect.Value
+	var (
+		err error
+		ret reflect.Value
+	)
 
 	if len(tag.Items) == 0 { // 自动模式
-		result = assembly.autoCollectBeans(t, et)
+		ret, err = assembly.autoCollectBeans(t, et)
 	} else { // 指定模式
-		result = assembly.collectAndSortBeans(t, et, tag)
+		ret, err = assembly.collectAndSortBeans(t, et, tag)
 	}
 
-	if result.Len() > 0 { // 找到多个符合条件的结果
-		util.PatchValue(v).Set(result)
-		return true
+	if err != nil {
+		return err
+	}
+
+	if ret.Len() > 0 { // 找到多个符合条件的结果
+		util.PatchValue(v).Set(ret)
+		return nil
 	}
 
 	// 没有找到，允许结果为空则返回 false，否则 panic
 	if tag.Nullable {
-		return false
-	} else {
-		panic(fmt.Errorf("can't collect any beans: \"%s\" field: %s", tag, field))
+		return nil
 	}
+
+	return fmt.Errorf("can't collect any beans: \"%s\" field: %s", tag, field)
 }
 
 // findBeanFromCache 返回找到的符合条件的 Bean 在数组中的索引，找不到返回 -1。
-func (assembly *defaultBeanAssembly) findBeanFromCache(beans []*BeanDefinition, tag SingletonTag, et reflect.Type) int {
+func (assembly *defaultBeanAssembly) findBeanFromCache(beans []*BeanDefinition, tag SingletonTag, et reflect.Type) (int, error) {
 
 	// 保存符合条件的 Bean 的索引
 	var found []int
@@ -230,24 +238,26 @@ func (assembly *defaultBeanAssembly) findBeanFromCache(beans []*BeanDefinition, 
 			msg += "( " + beans[i].Description() + " ), "
 		}
 		msg = msg[:len(msg)-2] + "]"
-		panic(errors.New(msg))
+		return -2, errors.New(msg)
 	}
 
 	// 如果必须找到符合条件的 Bean 则在没有找到时 panic
 	if len(found) == 0 && !tag.Nullable {
-		panic(fmt.Errorf("can't find bean, bean: \"%s\" type: %s", tag, et))
+		return -2, fmt.Errorf("can't find bean, bean: \"%s\" type: %s", tag, et)
 	}
 
 	if len(found) > 0 {
 		i := found[0]
-		assembly.wireBeanDefinition(beans[i], false)
-		return i
+		if err := assembly.wireBeanDefinition(beans[i], false); err != nil {
+			return -2, err
+		}
+		return i, nil
 	}
-	return -1
+	return -1, nil
 }
 
 // collectAndSortBeans 收集符合条件的 Bean，并且根据指定的顺序对结果进行排序
-func (assembly *defaultBeanAssembly) collectAndSortBeans(t reflect.Type, et reflect.Type, tag collectionTag) reflect.Value {
+func (assembly *defaultBeanAssembly) collectAndSortBeans(t reflect.Type, et reflect.Type, tag collectionTag) (reflect.Value, error) {
 
 	foundAny := false
 	any := reflect.MakeSlice(t, 0, len(tag.Items))
@@ -271,9 +281,14 @@ func (assembly *defaultBeanAssembly) collectAndSortBeans(t reflect.Type, et refl
 			continue
 		}
 
-		if i := assembly.findBeanFromCache(beans, item, et); i >= 0 {
-			v := beans[i].Value()
-			beans = append(beans[:i], beans[i+1:]...)
+		idx, err := assembly.findBeanFromCache(beans, item, et)
+		if err != nil {
+			return reflect.Value{}, err
+		}
+
+		if idx >= 0 {
+			v := beans[idx].Value()
+			beans = append(beans[:idx], beans[idx+1:]...)
 			if foundAny {
 				afterAny = reflect.Append(afterAny, v)
 			} else {
@@ -298,11 +313,11 @@ func (assembly *defaultBeanAssembly) collectAndSortBeans(t reflect.Type, et refl
 	i += any.Len()
 	reflect.Copy(result.Slice(i, i+afterAny.Len()), afterAny)
 
-	return result // TODO 当收集接口类型的 Bean 时对于没有显式导出接口的 Bean 是否也需要收集？
+	return result, nil // TODO 当收集接口类型的 Bean 时对于没有显式导出接口的 Bean 是否也需要收集？
 }
 
 // autoCollectBeans 收集符合条件的 Bean，不对结果进行排序，不排序是因为目前看起来没有必要
-func (assembly *defaultBeanAssembly) autoCollectBeans(t reflect.Type, et reflect.Type) reflect.Value {
+func (assembly *defaultBeanAssembly) autoCollectBeans(t reflect.Type, et reflect.Type) (reflect.Value, error) {
 	result := reflect.MakeSlice(t, 0, 0)
 
 	// 查找可以精确匹配的数组类型
@@ -313,10 +328,14 @@ func (assembly *defaultBeanAssembly) autoCollectBeans(t reflect.Type, et reflect
 
 			// 对数组的元素进行自动注入
 			if di.Kind() == reflect.Struct { // 结构体数组
-				assembly.wireSliceItem(di.Addr(), d)
+				if err := assembly.wireSliceItem(di.Addr(), d); err != nil {
+					return reflect.Value{}, err
+				}
 			} else if di.Kind() == reflect.Ptr { // 结构体指针数组
 				if de := di.Elem(); de.Kind() == reflect.Struct {
-					assembly.wireSliceItem(di, d)
+					if err := assembly.wireSliceItem(di, d); err != nil {
+						return reflect.Value{}, err
+					}
 				}
 			}
 
@@ -324,26 +343,26 @@ func (assembly *defaultBeanAssembly) autoCollectBeans(t reflect.Type, et reflect
 		}
 	}
 
-	// 查找可以精确匹配的单例类型
+	// 查找可以精确匹配的单例类型，对找到的 Bean 进行自动注入
 	cache = assembly.appCtx.getTypeCacheItem(et)
 	for _, d := range cache.beans {
-
-		// 对找到的 Bean 进行自动注入
-		assembly.wireBeanDefinition(d, false)
+		if err := assembly.wireBeanDefinition(d, false); err != nil {
+			return reflect.Value{}, err
+		}
 		result = reflect.Append(result, d.Value())
 	}
 
-	return result // TODO 当收集接口类型的 Bean 时对于没有显式导出接口的 Bean 是否也需要收集？
+	return result, nil // TODO 当收集接口类型的 Bean 时对于没有显式导出接口的 Bean 是否也需要收集？
 }
 
 // wireSliceItem 对 slice 的元素值进行注入
-func (assembly *defaultBeanAssembly) wireSliceItem(v reflect.Value, d ConfigurableBeanDefinition) {
+func (assembly *defaultBeanAssembly) wireSliceItem(v reflect.Value, d ConfigurableBeanDefinition) error {
 	bd := Bean(v, d.getFile(), d.getLine())
-	assembly.wireBeanDefinition(bd, false)
+	return assembly.wireBeanDefinition(bd, false)
 }
 
 // wireBeanDefinition 对特定的 bean.BeanDefinition 进行注入，onlyAutoWire 是否只注入而不进行属性绑定
-func (assembly *defaultBeanAssembly) wireBeanDefinition(bd ConfigurableBeanDefinition, onlyAutoWire bool) {
+func (assembly *defaultBeanAssembly) wireBeanDefinition(bd ConfigurableBeanDefinition, onlyAutoWire bool) error {
 
 	// Bean 是否已删除，已经删除的 Bean 不能再注入
 	if bd.getStatus() == Deleted {
@@ -372,7 +391,7 @@ func (assembly *defaultBeanAssembly) wireBeanDefinition(bd ConfigurableBeanDefin
 
 	// Bean 是否已注入，已经注入的 Bean 无需再注入
 	if bd.getStatus() == Wired {
-		return
+		return nil
 	}
 
 	// 将当前 Bean 放入注入栈，以便检测循环依赖。
@@ -383,7 +402,7 @@ func (assembly *defaultBeanAssembly) wireBeanDefinition(bd ConfigurableBeanDefin
 		if _, ok := bd.beanFactory().(*objBeanFactory); !ok {
 			panic(errors.New("found circle autowire"))
 		}
-		return
+		return nil
 	}
 
 	bd.setStatus(Wiring)
@@ -394,16 +413,22 @@ func (assembly *defaultBeanAssembly) wireBeanDefinition(bd ConfigurableBeanDefin
 		if n := len(b); n != 1 {
 			panic(fmt.Errorf("found %d bean(s) for: \"%v\"", n, selector))
 		}
-		assembly.wireBeanDefinition(b[0].(ConfigurableBeanDefinition), false)
+		if err := assembly.wireBeanDefinition(b[0].(ConfigurableBeanDefinition), false); err != nil {
+			return err
+		}
 	}
 
 	// 对当前 Bean 进行自动注入
 	switch b := bd.beanFactory().(type) {
 	case *objBeanFactory:
-		assembly.wireObjectBean(bd, onlyAutoWire)
+		if err := assembly.wireObjectBean(bd, onlyAutoWire); err != nil {
+			return err
+		}
 	case *ctorBeanFactory:
 		fnValue := reflect.ValueOf(b.fn)
-		assembly.wireConstructorBean(fnValue, b, bd)
+		if err := assembly.wireConstructorBean(fnValue, b, bd); err != nil {
+			return err
+		}
 	default:
 		panic(errors.New("error spring bean type"))
 	}
@@ -420,10 +445,11 @@ func (assembly *defaultBeanAssembly) wireBeanDefinition(bd ConfigurableBeanDefin
 
 	// 删除保存的注入帧
 	assembly.wiringStack.popBack()
+	return nil
 }
 
 // wireObjectBean 对原始对象进行注入
-func (assembly *defaultBeanAssembly) wireObjectBean(bd ConfigurableBeanDefinition, onlyAutoWire bool) {
+func (assembly *defaultBeanAssembly) wireObjectBean(bd ConfigurableBeanDefinition, onlyAutoWire bool) error {
 	st := bd.Type()
 	switch sk := st.Kind(); sk {
 	case reflect.Slice: // 对数组元素进行注入
@@ -432,7 +458,9 @@ func (assembly *defaultBeanAssembly) wireObjectBean(bd ConfigurableBeanDefinitio
 			v := bd.Value()
 			for i := 0; i < v.Len(); i++ {
 				iv := v.Index(i).Addr()
-				assembly.wireSliceItem(iv, bd)
+				if err := assembly.wireSliceItem(iv, bd); err != nil {
+					return err
+				}
 			}
 		} else if ek == reflect.Ptr {
 			it := et.Elem()
@@ -440,7 +468,9 @@ func (assembly *defaultBeanAssembly) wireObjectBean(bd ConfigurableBeanDefinitio
 				v := bd.Value()
 				for p := 0; p < v.Len(); p++ {
 					pv := v.Index(p)
-					assembly.wireSliceItem(pv, bd)
+					if err := assembly.wireSliceItem(pv, bd); err != nil {
+						return err
+					}
 				}
 			}
 		}
@@ -470,18 +500,24 @@ func (assembly *defaultBeanAssembly) wireObjectBean(bd ConfigurableBeanDefinitio
 					if tag, ok := ft.Tag.Lookup("value"); ok {
 						fieldOnlyAutoWire = true
 						err := conf.BindValue(assembly.appCtx.properties, fv, tag, conf.BindOption{Path: fieldName})
-						util.Panic(err).When(err != nil)
+						if err != nil {
+							return err
+						}
 					}
 				}
 
 				// 处理 autowire 标签，autowire 与 inject 等价
 				if beanId, ok := ft.Tag.Lookup("autowire"); ok {
-					assembly.wireStructField(fv, beanId, sv, fieldName)
+					if err := assembly.wireStructField(fv, beanId, sv, fieldName); err != nil {
+						return err
+					}
 				}
 
 				// 处理 inject 标签，inject 与 autowire 等价
 				if beanId, ok := ft.Tag.Lookup("inject"); ok {
-					assembly.wireStructField(fv, beanId, sv, fieldName)
+					if err := assembly.wireStructField(fv, beanId, sv, fieldName); err != nil {
+						return err
+					}
 				}
 
 				// 只处理结构体类型的字段，防止递归所以不支持指针结构体字段
@@ -491,15 +527,18 @@ func (assembly *defaultBeanAssembly) wireObjectBean(bd ConfigurableBeanDefinitio
 						// 对 Bean 的结构体进行递归注入
 						b := Bean(fv0.Addr(), bd.getFile(), bd.getLine())
 						fbd := &fieldBeanDefinition{b, fieldName}
-						assembly.wireBeanDefinition(fbd, fieldOnlyAutoWire)
+						if err := assembly.wireBeanDefinition(fbd, fieldOnlyAutoWire); err != nil {
+							return err
+						}
 					}
 				}
 			}
 		}
 	}
+	return nil
 }
 
-func (assembly *defaultBeanAssembly) wireConstructorBean(fnValue reflect.Value, fnBean *ctorBeanFactory, bd ConfigurableBeanDefinition) {
+func (assembly *defaultBeanAssembly) wireConstructorBean(fnValue reflect.Value, fnBean *ctorBeanFactory, bd ConfigurableBeanDefinition) error {
 
 	// 获取输入参数
 	var in []reflect.Value
@@ -555,16 +594,15 @@ func (assembly *defaultBeanAssembly) wireConstructorBean(fnValue reflect.Value, 
 	}
 
 	b := Bean(beanValue, bd.getFile(), bd.getLine()).Name(bd.BeanName())
-	assembly.wireBeanDefinition(&fnValueBeanDefinition{BeanDefinition: b, f: bd}, false)
+	return assembly.wireBeanDefinition(&fnValueBeanDefinition{BeanDefinition: b, f: bd}, false)
 }
 
 // WireValue 对结构体的字段进行绑定
 func (assembly *defaultBeanAssembly) WireValue(v reflect.Value, tag string) error {
-	assembly.wireStructField(v, tag, reflect.Value{}, "")
-	return nil
+	return assembly.wireStructField(v, tag, reflect.Value{}, "")
 }
 
-func (assembly *defaultBeanAssembly) wireStructField(v reflect.Value, tag string, Parent reflect.Value, field string) {
+func (assembly *defaultBeanAssembly) wireStructField(v reflect.Value, tag string, Parent reflect.Value, field string) error {
 
 	// tag 预处理，Bean 名称可以通过属性值指定
 	if strings.HasPrefix(tag, "${") {
@@ -579,10 +617,9 @@ func (assembly *defaultBeanAssembly) wireStructField(v reflect.Value, tag string
 		if v.Type().Kind() != reflect.Slice {
 			panic(fmt.Errorf("field: %s should be slice", field))
 		}
-		assembly.collectBeans(v, ParseCollectionTag(tag), field)
-	} else { // 单例模式
-		assembly.getBeanValue(v, parseSingletonTag(tag), Parent, field)
+		return assembly.collectBeans(v, ParseCollectionTag(tag), field)
 	}
+	return assembly.getBeanValue(v, parseSingletonTag(tag), Parent, field)
 }
 
 type fieldBeanDefinition struct {

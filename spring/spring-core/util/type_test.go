@@ -637,7 +637,7 @@ func TestValue(t *testing.T) {
 func TestReflectType(t *testing.T) {
 	// 测试结论：内置类型的 Name 和 PkgPath 都是空字符串。
 
-	assert.Equal(t, reflect.TypeOf((io.Reader)(nil)), nil)
+	assert.Nil(t, reflect.TypeOf((io.Reader)(nil)))
 
 	data := []struct {
 		typ     reflect.Type

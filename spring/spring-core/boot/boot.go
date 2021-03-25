@@ -58,7 +58,7 @@ func WireBean(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error) {
 	return gApp.appCtx.WireBean(objOrCtor, ctorArgs...)
 }
 
-func GetBean(i interface{}, selector ...bean.Selector) bool {
+func GetBean(i interface{}, selector ...bean.Selector) error {
 	return gApp.appCtx.GetBean(i, selector...)
 }
 
@@ -67,7 +67,7 @@ func FindBean(selector bean.Selector) []bean.Definition {
 	return gApp.appCtx.FindBean(selector)
 }
 
-func CollectBeans(i interface{}, selectors ...bean.Selector) bool {
+func CollectBeans(i interface{}, selectors ...bean.Selector) error {
 	return gApp.appCtx.CollectBeans(i, selectors...)
 }
 

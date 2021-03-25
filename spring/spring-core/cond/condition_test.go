@@ -29,11 +29,11 @@ func TestFunctionCondition(t *testing.T) {
 
 	fn := func(ctx cond.Context) bool { return true }
 	c := cond.FunctionCondition(fn)
-	assert.Equal(t, c.Matches(ctx), true)
+	assert.True(t, c.Matches(ctx))
 
 	fn = func(ctx cond.Context) bool { return false }
 	c = cond.FunctionCondition(fn)
-	assert.Equal(t, c.Matches(ctx), false)
+	assert.False(t, c.Matches(ctx))
 }
 
 func TestPropertyCondition(t *testing.T) {
@@ -43,16 +43,16 @@ func TestPropertyCondition(t *testing.T) {
 	ctx.Property("parent.child", 0)
 
 	c := cond.PropertyCondition("int")
-	assert.Equal(t, c.Matches(ctx), true)
+	assert.True(t, c.Matches(ctx))
 
 	c = cond.PropertyCondition("bool")
-	assert.Equal(t, c.Matches(ctx), false)
+	assert.False(t, c.Matches(ctx))
 
 	c = cond.PropertyCondition("parent")
-	assert.Equal(t, c.Matches(ctx), true)
+	assert.True(t, c.Matches(ctx))
 
 	c = cond.PropertyCondition("parent123")
-	assert.Equal(t, c.Matches(ctx), false)
+	assert.False(t, c.Matches(ctx))
 }
 
 func TestMissingPropertyCondition(t *testing.T) {
@@ -62,16 +62,16 @@ func TestMissingPropertyCondition(t *testing.T) {
 	ctx.Property("parent.child", 0)
 
 	c := cond.MissingPropertyCondition("int")
-	assert.Equal(t, c.Matches(ctx), false)
+	assert.False(t, c.Matches(ctx))
 
 	c = cond.MissingPropertyCondition("bool")
-	assert.Equal(t, c.Matches(ctx), true)
+	assert.True(t, c.Matches(ctx))
 
 	c = cond.MissingPropertyCondition("parent")
-	assert.Equal(t, c.Matches(ctx), false)
+	assert.False(t, c.Matches(ctx))
 
 	c = cond.MissingPropertyCondition("parent123")
-	assert.Equal(t, c.Matches(ctx), true)
+	assert.True(t, c.Matches(ctx))
 }
 
 func TestPropertyValueCondition(t *testing.T) {
@@ -81,19 +81,19 @@ func TestPropertyValueCondition(t *testing.T) {
 	ctx.Property("int", 3)
 
 	c := cond.PropertyValueCondition("int", 3)
-	assert.Equal(t, c.Matches(ctx), true)
+	assert.True(t, c.Matches(ctx))
 
 	//c = cond.PropertyValueCondition("int", "3")
 	//util.Equal(t, c.Matches(ctx), true)
 
 	c = cond.PropertyValueCondition("int", "$>2&&$<4")
-	assert.Equal(t, c.Matches(ctx), true)
+	assert.True(t, c.Matches(ctx))
 
 	c = cond.PropertyValueCondition("bool", true)
-	assert.Equal(t, c.Matches(ctx), false)
+	assert.False(t, c.Matches(ctx))
 
 	c = cond.PropertyValueCondition("str", "\"$\"==\"this is a str\"")
-	assert.Equal(t, c.Matches(ctx), true)
+	assert.True(t, c.Matches(ctx))
 }
 
 type BeanZero struct {
@@ -127,10 +127,10 @@ func TestBeanCondition(t *testing.T) {
 	ctx.Refresh()
 
 	c := cond.BeanCondition("*cond_test.BeanOne")
-	assert.Equal(t, c.Matches(ctx), true)
+	assert.True(t, c.Matches(ctx))
 
 	c = cond.BeanCondition("Null")
-	assert.Equal(t, c.Matches(ctx), false)
+	assert.False(t, c.Matches(ctx))
 }
 
 func TestMissingBeanCondition(t *testing.T) {
@@ -141,10 +141,10 @@ func TestMissingBeanCondition(t *testing.T) {
 	ctx.Refresh()
 
 	c := cond.MissingBeanCondition("*cond_test.BeanOne")
-	assert.Equal(t, c.Matches(ctx), false)
+	assert.False(t, c.Matches(ctx))
 
 	c = cond.MissingBeanCondition("Null")
-	assert.Equal(t, c.Matches(ctx), true)
+	assert.True(t, c.Matches(ctx))
 }
 
 func TestExpressionCondition(t *testing.T) {
@@ -159,10 +159,10 @@ func TestConditional(t *testing.T) {
 	ctx.Refresh()
 
 	c := cond.OnProperty("int")
-	assert.Equal(t, c.Matches(ctx), true)
+	assert.True(t, c.Matches(ctx))
 
 	c = cond.OnProperty("int").OnBean("null")
-	assert.Equal(t, c.Matches(ctx), false)
+	assert.False(t, c.Matches(ctx))
 
 	assert.Panic(t, func() {
 		c = cond.OnProperty("int").And()
@@ -172,22 +172,22 @@ func TestConditional(t *testing.T) {
 	c = cond.OnPropertyValue("int", 3).
 		And().
 		OnPropertyValue("bool", false)
-	assert.Equal(t, c.Matches(ctx), true)
+	assert.True(t, c.Matches(ctx))
 
 	c = cond.OnPropertyValue("int", 3).
 		And().
 		OnPropertyValue("bool", true)
-	assert.Equal(t, c.Matches(ctx), false)
+	assert.False(t, c.Matches(ctx))
 
 	c = cond.OnPropertyValue("int", 2).
 		Or().
 		OnPropertyValue("bool", true)
-	assert.Equal(t, c.Matches(ctx), false)
+	assert.False(t, c.Matches(ctx))
 
 	c = cond.OnPropertyValue("int", 2).
 		Or().
 		OnPropertyValue("bool", false)
-	assert.Equal(t, c.Matches(ctx), true)
+	assert.True(t, c.Matches(ctx))
 
 	assert.Panic(t, func() {
 		c = cond.OnPropertyValue("int", 2).
@@ -201,7 +201,7 @@ func TestConditional(t *testing.T) {
 		Or().
 		OnPropertyValue("bool", false).
 		OnPropertyValue("bool", false)
-	assert.Equal(t, c.Matches(ctx), true)
+	assert.True(t, c.Matches(ctx))
 }
 
 func TestNotCondition(t *testing.T) {
@@ -211,16 +211,16 @@ func TestNotCondition(t *testing.T) {
 	ctx.Refresh()
 
 	profileCond := cond.ProfileCondition("test")
-	assert.Equal(t, profileCond.Matches(ctx), true)
+	assert.True(t, profileCond.Matches(ctx))
 
 	notCond := cond.NotCondition(profileCond)
-	assert.Equal(t, notCond.Matches(ctx), false)
+	assert.False(t, notCond.Matches(ctx))
 
 	c := cond.OnPropertyValue("int", 2).
 		OnConditionNot(profileCond)
-	assert.Equal(t, c.Matches(ctx), false)
+	assert.False(t, c.Matches(ctx))
 
 	c = cond.OnProfile("test").
 		OnConditionNot(profileCond)
-	assert.Equal(t, c.Matches(ctx), false)
+	assert.False(t, c.Matches(ctx))
 }

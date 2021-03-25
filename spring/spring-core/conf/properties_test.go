@@ -729,7 +729,7 @@ func TestDefaultProperties_ConfigRef(t *testing.T) {
 	t.Run("not config", func(t *testing.T) {
 		p := conf.New()
 		err := p.Bind("", &httpLog)
-		assert.Equal(t, err, errors.New("property \"app.dir\" not config"))
+		assert.Error(t, err, "property \"app.dir\" not config")
 	})
 
 	t.Run("config", func(t *testing.T) {

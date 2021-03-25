@@ -30,14 +30,14 @@ func TestPanicCond_When(t *testing.T) {
 
 	t.Run("Panic", func(t *testing.T) {
 		defer func() {
-			assert.Equal(t, errors.New("reason: panic"), recover())
+			assert.Equal(t, recover(), errors.New("reason: panic"))
 		}()
 		util.Panic(fmt.Errorf("reason: %s", "panic")).When(true)
 	})
 
 	t.Run("Panicf", func(t *testing.T) {
 		defer func() {
-			assert.Equal(t, errors.New("reason: panicf"), recover())
+			assert.Equal(t, recover(), errors.New("reason: panicf"))
 		}()
 		util.Panicf("reason: %s", "panicf").When(true)
 	})
@@ -48,19 +48,19 @@ func TestWithCause(t *testing.T) {
 	t.Run("cause is string", func(t *testing.T) {
 		err := util.WithCause("this is a string")
 		v := util.Cause(err)
-		assert.Equal(t, "this is a string", v)
+		assert.Equal(t, v, "this is a string")
 	})
 
 	t.Run("cause is error", func(t *testing.T) {
 		err := util.WithCause(errors.New("this is an error"))
 		v := util.Cause(err)
-		assert.Equal(t, errors.New("this is an error"), v)
+		assert.Equal(t, v, errors.New("this is an error"))
 	})
 
 	t.Run("cause is int", func(t *testing.T) {
 		err := util.WithCause(123456)
 		v := util.Cause(err)
-		assert.Equal(t, 123456, v)
+		assert.Equal(t, v, 123456)
 	})
 }
 
@@ -78,31 +78,31 @@ func TestPanic2Error(t *testing.T) {
 	t.Run("panic is string", func(t *testing.T) {
 		err := panic2Error("this is a string")
 		v := util.Cause(err)
-		assert.Equal(t, "this is a string", v)
+		assert.Equal(t, v, "this is a string")
 	})
 
 	t.Run("panic is error", func(t *testing.T) {
 		err := panic2Error(errors.New("this is an error"))
 		v := util.Cause(err)
-		assert.Equal(t, errors.New("this is an error"), v)
+		assert.Equal(t, v, errors.New("this is an error"))
 	})
 
 	t.Run("panic is int", func(t *testing.T) {
 		err := panic2Error(123456)
 		v := util.Cause(err)
-		assert.Equal(t, 123456, v)
+		assert.Equal(t, v, 123456)
 	})
 }
 
 func TestErrorWithFileLine(t *testing.T) {
 
 	err := util.ErrorWithFileLine(errors.New("this is an error"))
-	assert.Matches(t, ".*:99: this is an error", err.Error())
+	assert.Error(t, err, ".*:99: this is an error")
 
 	fnError := func(e error) error {
 		return util.ErrorWithFileLine(e, 1)
 	}
 
 	err = fnError(errors.New("this is an error"))
-	assert.Matches(t, ".*:106: this is an error", err.Error())
+	assert.Error(t, err, ".*:106: this is an error")
 }

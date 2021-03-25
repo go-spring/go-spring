@@ -248,8 +248,7 @@ func TestConstructorBean(t *testing.T) {
 	assert.Equal(t, bd.Type().String(), "core_test.Teacher")
 
 	assert.Panic(t, func() {
-		bd = core.Bean(func() (*int, *int) { return nil, nil })
-		assert.Equal(t, bd.Type().String(), "*int")
+		_ = core.Bean(func() (*int, *int) { return nil, nil })
 	}, "func bean must be func\\(...\\)bean or func\\(...\\)\\(bean, error\\)")
 
 	bd = core.Bean(func() (*int, error) { return nil, nil })

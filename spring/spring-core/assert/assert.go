@@ -73,7 +73,7 @@ func NotEqual(t *testing.T, got interface{}, expect interface{}) {
 func Panic(t *testing.T, fn func(), expr string) {
 	defer func() {
 		if r := recover(); r == nil {
-			fail(t, 1, "did not panic")
+			fail(t, 2, "did not panic")
 		} else {
 			var v string
 			switch r.(type) {
@@ -96,7 +96,7 @@ func Matches(t *testing.T, got string, expr string) {
 }
 
 func matches(t *testing.T, skip int, got string, expr string) {
-	if ok, err := regexp.MatchString(got, expr); err != nil {
+	if ok, err := regexp.MatchString(expr, got); err != nil {
 		fail(t, skip+1, "invalid pattern %s %s", expr, err.Error())
 	} else if !ok {
 		fail(t, skip+1, "got %s which does not match %s", got, expr)
@@ -115,5 +115,5 @@ func Error(t *testing.T, got error, expr string) {
 		fail(t, 1, "err is nil")
 		return
 	}
-	matches(t, 1, expr, got.Error())
+	matches(t, 1, got.Error(), expr)
 }

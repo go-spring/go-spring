@@ -175,8 +175,8 @@ func TestDefaultSpringContext(t *testing.T) {
 		ctx.Refresh()
 
 		var b *BeanZero
-		ok := ctx.GetBean(&b)
-		assert.Equal(t, ok, false)
+		err := ctx.GetBean(&b)
+		assert.Error(t, err, "can't find bean, bean: \"\"")
 	})
 
 	t.Run("bean:test_ctx:test", func(t *testing.T) {
@@ -187,8 +187,8 @@ func TestDefaultSpringContext(t *testing.T) {
 		ctx.Refresh()
 
 		var b *BeanZero
-		ok := ctx.GetBean(&b)
-		assert.Equal(t, ok, true)
+		err := ctx.GetBean(&b)
+		assert.Nil(t, err)
 	})
 
 	t.Run("bean:test_ctx:stable", func(t *testing.T) {
@@ -199,8 +199,8 @@ func TestDefaultSpringContext(t *testing.T) {
 		ctx.Refresh()
 
 		var b *BeanZero
-		ok := ctx.GetBean(&b)
-		assert.Equal(t, ok, false)
+		err := ctx.GetBean(&b)
+		assert.Error(t, err, "can't find bean, bean: \"\"")
 	})
 
 	t.Run("option withClassName Condition", func(t *testing.T) {
@@ -215,8 +215,9 @@ func TestDefaultSpringContext(t *testing.T) {
 		ctx.Refresh()
 
 		var cls *ClassRoom
-		ctx.GetBean(&cls)
+		err := ctx.GetBean(&cls)
 
+		assert.Nil(t, err)
 		assert.Equal(t, cls.floor, 0)
 		assert.Equal(t, len(cls.students), 0)
 		assert.Equal(t, cls.className, "default")
@@ -237,8 +238,9 @@ func TestDefaultSpringContext(t *testing.T) {
 		ctx.Refresh()
 
 		var cls *ClassRoom
-		ctx.GetBean(&cls)
+		err := ctx.GetBean(&cls)
 
+		assert.Nil(t, err)
 		assert.Equal(t, cls.floor, 0)
 		assert.Equal(t, len(cls.students), 0)
 		assert.Equal(t, cls.className, "default")
@@ -254,13 +256,13 @@ func TestDefaultSpringContext(t *testing.T) {
 		ctx.Refresh()
 
 		var s *Server
-		ok := ctx.GetBean(&s)
-		assert.Equal(t, ok, true)
+		err := ctx.GetBean(&s)
+		assert.Nil(t, err)
 		assert.Equal(t, s.Version, "1.0.0")
 
 		var c *Consumer
-		ok = ctx.GetBean(&c)
-		assert.Equal(t, ok, false)
+		err = ctx.GetBean(&c)
+		assert.Error(t, err, "can't find bean, bean: \"\"")
 	})
 }
 
@@ -319,11 +321,11 @@ func TestDefaultSpringContext_ConditionOnBean(t *testing.T) {
 	ctx.Refresh()
 
 	var two *BeanTwo
-	ok := ctx.GetBean(&two, "")
-	assert.Equal(t, ok, true)
+	err := ctx.GetBean(&two, "")
+	assert.Nil(t, err)
 
-	ok = ctx.GetBean(&two, "another_two")
-	assert.Equal(t, ok, false)
+	err = ctx.GetBean(&two, "another_two")
+	assert.Error(t, err, "can't find bean, bean: \"another_two\"")
 }
 
 func TestDefaultSpringContext_ConditionOnMissingBean(t *testing.T) {
@@ -340,10 +342,10 @@ func TestDefaultSpringContext_ConditionOnMissingBean(t *testing.T) {
 		ctx.Refresh()
 
 		var two *BeanTwo
-		ok := ctx.GetBean(&two, "")
-		assert.Equal(t, ok, true)
+		err := ctx.GetBean(&two, "")
+		assert.Nil(t, err)
 
-		ok = ctx.GetBean(&two, "another_two")
-		assert.Equal(t, ok, true)
+		err = ctx.GetBean(&two, "another_two")
+		assert.Nil(t, err)
 	}
 }
