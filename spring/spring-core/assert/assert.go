@@ -26,10 +26,45 @@ import (
 	"testing"
 )
 
-// Equal asserts that expect and got are equal as defined by reflect.DeepEqual.
-func Equal(t *testing.T, expect interface{}, got interface{}) {
-	if !reflect.DeepEqual(expect, got) {
-		fail(t, 1, "expect %v but got %v", expect, got)
+// True asserts that got is true.
+func True(t *testing.T, got bool) {
+	if !got {
+		fail(t, 1, "got false but expect true")
+	}
+}
+
+// False asserts that got is false.
+func False(t *testing.T, got bool) {
+	if got {
+		fail(t, 1, "got true but expect false")
+	}
+}
+
+// Nil asserts that got is nil.
+func Nil(t *testing.T, got interface{}) {
+	if got != nil {
+		fail(t, 1, "got not nil but expect nil")
+	}
+}
+
+// NotNil asserts that got is not nil.
+func NotNil(t *testing.T, got interface{}) {
+	if got == nil {
+		fail(t, 1, "got nil but expect not nil")
+	}
+}
+
+// Equal asserts that got and expect are equal as defined by reflect.DeepEqual.
+func Equal(t *testing.T, got interface{}, expect interface{}) {
+	if !reflect.DeepEqual(got, expect) {
+		fail(t, 1, "got %v but expect %v", got, expect)
+	}
+}
+
+// NotEqual asserts that got and expect are not equal as defined by reflect.DeepEqual.
+func NotEqual(t *testing.T, got interface{}, expect interface{}) {
+	if reflect.DeepEqual(got, expect) {
+		fail(t, 1, "got %v but expect %v", got, expect)
 	}
 }
 
@@ -49,20 +84,20 @@ func Panic(t *testing.T, fn func(), expr string) {
 			default:
 				v = fmt.Sprint(r)
 			}
-			matches(t, 1, expr, v)
+			matches(t, 1, v, expr)
 		}
 	}()
 	fn()
 }
 
 // Matches asserts that a got value matches a given regular expression.
-func Matches(t *testing.T, expr string, got string) {
-	matches(t, 1, expr, got)
+func Matches(t *testing.T, got string, expr string) {
+	matches(t, 1, got, expr)
 }
 
-func matches(t *testing.T, skip int, expr string, got string) {
-	if ok, err := regexp.MatchString(expr, got); err != nil {
-		fail(t, skip+1, "invalid pattern %q %s", expr, err.Error())
+func matches(t *testing.T, skip int, got string, expr string) {
+	if ok, err := regexp.MatchString(got, expr); err != nil {
+		fail(t, skip+1, "invalid pattern %s %s", expr, err.Error())
 	} else if !ok {
 		fail(t, skip+1, "got %s which does not match %s", got, expr)
 	}
@@ -72,4 +107,13 @@ func fail(t *testing.T, skip int, format string, args ...interface{}) {
 	_, file, line, _ := runtime.Caller(skip + 1)
 	fmt.Printf("\t%s:%d: %s\n", filepath.Base(file), line, fmt.Sprintf(format, args...))
 	t.Fail()
+}
+
+// Error asserts that a got error string matches a given regular expression.
+func Error(t *testing.T, got error, expr string) {
+	if got == nil {
+		fail(t, 1, "err is nil")
+		return
+	}
+	matches(t, 1, expr, got.Error())
 }
