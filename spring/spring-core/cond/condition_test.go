@@ -74,27 +74,27 @@ import (
 //	assert.True(t, c.Matches(ctx))
 //}
 
-func TestPropertyValueCondition(t *testing.T) {
-
-	ctx := core.NewApplicationContext()
-	ctx.Property("str", "this is a str")
-	ctx.Property("int", 3)
-
-	c := cond.PropertyValueCondition("int", 3)
-	assert.True(t, c.Matches(ctx))
-
-	//c = cond.PropertyValueCondition("int", "3")
-	//util.Equal(t, c.Matches(ctx), true)
-
-	c = cond.PropertyValueCondition("int", "$>2&&$<4")
-	assert.True(t, c.Matches(ctx))
-
-	c = cond.PropertyValueCondition("bool", true)
-	assert.False(t, c.Matches(ctx))
-
-	c = cond.PropertyValueCondition("str", "\"$\"==\"this is a str\"")
-	assert.True(t, c.Matches(ctx))
-}
+//func TestPropertyValueCondition(t *testing.T) {
+//
+//	ctx := core.NewApplicationContext()
+//	ctx.Property("str", "this is a str")
+//	ctx.Property("int", 3)
+//
+//	c := cond.PropertyValueCondition("int", 3)
+//	assert.True(t, c.Matches(ctx))
+//
+//	//c = cond.PropertyValueCondition("int", "3")
+//	//util.Equal(t, c.Matches(ctx), true)
+//
+//	c = cond.PropertyValueCondition("int", "$>2&&$<4")
+//	assert.True(t, c.Matches(ctx))
+//
+//	c = cond.PropertyValueCondition("bool", true)
+//	assert.False(t, c.Matches(ctx))
+//
+//	c = cond.PropertyValueCondition("str", "\"$\"==\"this is a str\"")
+//	assert.True(t, c.Matches(ctx))
+//}
 
 type BeanZero struct {
 	Int int
@@ -133,19 +133,19 @@ func (t *BeanThree) String() string {
 //	assert.False(t, c.Matches(ctx))
 //}
 
-func TestMissingBeanCondition(t *testing.T) {
-
-	ctx := core.NewApplicationContext()
-	ctx.Bean(&BeanZero{5})
-	ctx.Bean(new(BeanOne))
-	ctx.Refresh()
-
-	c := cond.MissingBeanCondition("*cond_test.BeanOne")
-	assert.False(t, c.Matches(ctx))
-
-	c = cond.MissingBeanCondition("Null")
-	assert.True(t, c.Matches(ctx))
-}
+//func TestMissingBeanCondition(t *testing.T) {
+//
+//	ctx := core.NewApplicationContext()
+//	ctx.Bean(&BeanZero{5})
+//	ctx.Bean(new(BeanOne))
+//	ctx.Refresh()
+//
+//	c := cond.MissingBeanCondition("*cond_test.BeanOne")
+//	assert.False(t, c.Matches(ctx))
+//
+//	c = cond.MissingBeanCondition("Null")
+//	assert.True(t, c.Matches(ctx))
+//}
 
 func TestExpressionCondition(t *testing.T) {
 
@@ -204,23 +204,23 @@ func TestConditional(t *testing.T) {
 	assert.True(t, c.Matches(ctx))
 }
 
-func TestNotCondition(t *testing.T) {
-
-	ctx := core.NewApplicationContext()
-	ctx.Profile("test")
-	ctx.Refresh()
-
-	profileCond := cond.ProfileCondition("test")
-	assert.True(t, profileCond.Matches(ctx))
-
-	//notCond := cond.Not(profileCond)
-	//assert.False(t, notCond.Matches(ctx))
-
-	c := cond.OnPropertyValue("int", 2).
-		OnConditionNot(profileCond)
-	assert.False(t, c.Matches(ctx))
-
-	c = cond.OnProfile("test").
-		OnConditionNot(profileCond)
-	assert.False(t, c.Matches(ctx))
-}
+//func TestNotCondition(t *testing.T) {
+//
+//	ctx := core.NewApplicationContext()
+//	ctx.Profile("test")
+//	ctx.Refresh()
+//
+//	//profileCond := cond.ProfileCondition("test")
+//	//assert.True(t, profileCond.Matches(ctx))
+//
+//	//notCond := cond.Not(profileCond)
+//	//assert.False(t, notCond.Matches(ctx))
+//
+//	//c := cond.OnPropertyValue("int", 2).
+//	//	OnConditionNot(profileCond)
+//	//assert.False(t, c.Matches(ctx))
+//	//
+//	//c = cond.OnProfile("test").
+//	//	OnConditionNot(profileCond)
+//	//assert.False(t, c.Matches(ctx))
+//}

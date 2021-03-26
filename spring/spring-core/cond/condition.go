@@ -53,67 +53,56 @@ type Condition interface {
 // Func 定义 Condition 接口 Matches 方法的类型
 type Func func(ctx Context) bool
 
-// functionCondition 基于 Matches 方法的 Condition 实现
-type matches struct{ fn Func }
+// onMatches 基于 Matches 方法的 Condition 实现
+type onMatches struct{ fn Func }
 
 // Matches 成功返回 true，失败返回 false
-func (c *matches) Matches(ctx Context) bool {
+func (c *onMatches) Matches(ctx Context) bool {
 	return c.fn(ctx)
 }
 
-// not 对 Condition 取反的 Condition 实现
-type not struct{ cond Condition }
+// onNot 对 Condition 取反的 Condition 实现
+type onNot struct{ cond Condition }
 
 // Matches 成功返回 true，失败返回 false
-func (c *not) Matches(ctx Context) bool {
+func (c *onNot) Matches(ctx Context) bool {
 	return !c.cond.Matches(ctx)
 }
 
-// propertyCondition 基于属性值存在的 Condition 实现
-type property struct{ name string }
+// onProperty 基于属性值存在的 Condition 实现
+type onProperty struct{ name string }
 
 // Matches 成功返回 true，失败返回 false
-func (c *property) Matches(ctx Context) bool {
+func (c *onProperty) Matches(ctx Context) bool {
 	return len(ctx.PrefixProperties(c.name)) > 0
 }
 
-// missingProperty 基于属性值不存在的 Condition 实现
-type missingProperty struct{ name string }
+// onMissingProperty 基于属性值不存在的 Condition 实现
+type onMissingProperty struct{ name string }
 
 // Matches 成功返回 true，失败返回 false
-func (c *missingProperty) Matches(ctx Context) bool {
+func (c *onMissingProperty) Matches(ctx Context) bool {
 	return len(ctx.PrefixProperties(c.name)) == 0
 }
 
-// propertyValue 基于属性值匹配的 Condition 实现
-type propertyValue struct {
+// onPropertyValue 基于属性值匹配的 Condition 实现
+type onPropertyValue struct {
 	name           string
 	havingValue    interface{}
 	matchIfMissing bool
 }
 
-type PropertyValueConditionOption func(*propertyValue)
+type PropertyValueConditionOption func(*onPropertyValue)
 
 // MatchIfMissing 当属性值不存在时是否匹配条件
 func MatchIfMissing(matchIfMissing bool) PropertyValueConditionOption {
-	return func(cond *propertyValue) {
+	return func(cond *onPropertyValue) {
 		cond.matchIfMissing = matchIfMissing
 	}
 }
 
-// PropertyValueCondition propertyValueCondition 的构造函数
-func PropertyValueCondition(name string, havingValue interface{},
-	options ...PropertyValueConditionOption) *propertyValue {
-
-	cond := &propertyValue{name: name, havingValue: havingValue}
-	for _, option := range options {
-		option(cond)
-	}
-	return cond
-}
-
 // Matches 成功返回 true，失败返回 false
-func (c *propertyValue) Matches(ctx Context) bool {
+func (c *onPropertyValue) Matches(ctx Context) bool {
 	// 参考 /usr/local/go/src/go/types/eval_test.go 示例
 
 	val := ctx.GetProperty(c.name)
@@ -145,60 +134,34 @@ type onBean struct {
 	selector bean.Selector
 }
 
-//// BeanCondition beanCondition 的构造函数
-//func BeanCondition(selector bean.Selector) *beanCondition {
-//	return &beanCondition{selector}
-//}
-
 // Matches 成功返回 true，失败返回 false
 func (c *onBean) Matches(ctx Context) bool {
 	b := ctx.FindBean(c.selector)
 	return len(b) == 1
 }
 
-// missingBeanCondition 基于 Bean 不能存在的 Condition 实现
-type missingBeanCondition struct {
-	selector bean.Selector
-}
-
-// MissingBeanCondition missingBeanCondition 的构造函数
-func MissingBeanCondition(selector bean.Selector) *missingBeanCondition {
-	return &missingBeanCondition{selector}
-}
+// onMissingBean 基于 Bean 不能存在的 Condition 实现
+type onMissingBean struct{ selector bean.Selector }
 
 // Matches 成功返回 true，失败返回 false
-func (c *missingBeanCondition) Matches(ctx Context) bool {
+func (c *onMissingBean) Matches(ctx Context) bool {
 	b := ctx.FindBean(c.selector)
 	return len(b) == 0
 }
 
-// expressionCondition 基于表达式的 Condition 实现
-type expressionCondition struct {
-	expression string
-}
-
-// ExpressionCondition expressionCondition 的构造函数
-func ExpressionCondition(expression string) *expressionCondition {
-	return &expressionCondition{expression}
-}
+// onExpression 基于表达式的 Condition 实现
+type onExpression struct{ expression string }
 
 // Matches 成功返回 true，失败返回 false
-func (c *expressionCondition) Matches(ctx Context) bool {
+func (c *onExpression) Matches(ctx Context) bool {
 	panic(util.UnimplementedMethod)
 }
 
 // profileCondition 基于运行环境匹配的 Condition 实现
-type profileCondition struct {
-	profile string
-}
-
-// ProfileCondition profileCondition 的构造函数
-func ProfileCondition(profile string) *profileCondition {
-	return &profileCondition{profile}
-}
+type onProfile struct{ profile string }
 
 // Matches 成功返回 true，失败返回 false
-func (c *profileCondition) Matches(ctx Context) bool {
+func (c *onProfile) Matches(ctx Context) bool {
 	return c.profile == "" || strings.EqualFold(c.profile, ctx.GetProfile())
 }
 
@@ -343,11 +306,11 @@ func (c *Conditional) And() *Conditional {
 
 // On 设置一个 Condition
 func On(cond Condition) *Conditional {
-	return conditional().OnCondition(cond)
+	return conditional().On(cond)
 }
 
-// OnCondition 设置一个 Condition
-func (c *Conditional) OnCondition(cond Condition) *Conditional {
+// On 设置一个 Condition
+func (c *Conditional) On(cond Condition) *Conditional {
 	if c.curr.cond != nil {
 		c.And()
 	}
@@ -355,9 +318,14 @@ func (c *Conditional) OnCondition(cond Condition) *Conditional {
 	return c
 }
 
-// OnConditionNot 设置一个取反的 Condition
-func (c *Conditional) OnConditionNot(cond Condition) *Conditional {
-	return c.OnCondition(&not{cond: cond})
+// OnNot 设置一个取反的 Condition
+func OnNot(cond Condition) *Conditional {
+	return conditional().OnNot(cond)
+}
+
+// OnNot 设置一个取反的 Condition
+func (c *Conditional) OnNot(cond Condition) *Conditional {
+	return c.On(&onNot{cond: cond})
 }
 
 // OnProperty 返回设置了 propertyCondition 的 Conditional 对象
@@ -367,7 +335,7 @@ func OnProperty(name string) *Conditional {
 
 // OnProperty 设置一个 propertyCondition
 func (c *Conditional) OnProperty(name string) *Conditional {
-	return c.OnCondition(&property{name: name})
+	return c.On(&onProperty{name: name})
 }
 
 // OnMissingProperty 返回设置了 missingPropertyCondition 的 Conditional 对象
@@ -377,7 +345,7 @@ func OnMissingProperty(name string) *Conditional {
 
 // OnMissingProperty 设置一个 missingPropertyCondition
 func (c *Conditional) OnMissingProperty(name string) *Conditional {
-	return c.OnCondition(&missingProperty{name: name})
+	return c.On(&onMissingProperty{name: name})
 }
 
 // OnPropertyValue 返回设置了 propertyValueCondition 的 Conditional 对象
@@ -389,7 +357,12 @@ func OnPropertyValue(name string, havingValue interface{},
 // OnPropertyValue 设置一个 propertyValueCondition
 func (c *Conditional) OnPropertyValue(name string, havingValue interface{},
 	options ...PropertyValueConditionOption) *Conditional {
-	return c.OnCondition(PropertyValueCondition(name, havingValue, options...))
+
+	cond := &onPropertyValue{name: name, havingValue: havingValue}
+	for _, option := range options {
+		option(cond)
+	}
+	return c.On(cond)
 }
 
 // OnOptionalPropertyValue 返回属性值不存在时默认条件成立的 Conditional 对象
@@ -399,7 +372,7 @@ func OnOptionalPropertyValue(name string, havingValue interface{}) *Conditional 
 
 // OnOptionalPropertyValue 设置一个 propertyValueCondition，当属性值不存在时默认条件成立
 func (c *Conditional) OnOptionalPropertyValue(name string, havingValue interface{}) *Conditional {
-	return c.OnCondition(PropertyValueCondition(name, havingValue, MatchIfMissing(true)))
+	return c.OnPropertyValue(name, havingValue, MatchIfMissing(true))
 }
 
 // OnBean 返回设置了 beanCondition 的 Conditional 对象
@@ -409,7 +382,7 @@ func OnBean(selector bean.Selector) *Conditional {
 
 // OnBean 设置一个 beanCondition
 func (c *Conditional) OnBean(selector bean.Selector) *Conditional {
-	return c.OnCondition(&onBean{selector: selector})
+	return c.On(&onBean{selector: selector})
 }
 
 // OnMissingBean 返回设置了 missingBeanCondition 的 Conditional 对象
@@ -419,7 +392,7 @@ func OnMissingBean(selector bean.Selector) *Conditional {
 
 // OnMissingBean 设置一个 missingBeanCondition
 func (c *Conditional) OnMissingBean(selector bean.Selector) *Conditional {
-	return c.OnCondition(MissingBeanCondition(selector))
+	return c.On(&onMissingBean{selector: selector})
 }
 
 // OnExpression 返回设置了 expressionCondition 的 Conditional 对象
@@ -429,7 +402,7 @@ func OnExpression(expression string) *Conditional {
 
 // OnExpression 设置一个 expressionCondition
 func (c *Conditional) OnExpression(expression string) *Conditional {
-	return c.OnCondition(ExpressionCondition(expression))
+	return c.On(&onExpression{expression: expression})
 }
 
 // OnMatches 返回设置了 functionCondition 的 Conditional 对象
@@ -439,7 +412,7 @@ func OnMatches(fn Func) *Conditional {
 
 // OnMatches 设置一个 functionCondition
 func (c *Conditional) OnMatches(fn Func) *Conditional {
-	return c.OnCondition(&matches{fn: fn})
+	return c.On(&onMatches{fn: fn})
 }
 
 // OnProfile 返回设置了 profileCondition 的 Conditional 对象
@@ -449,5 +422,5 @@ func OnProfile(profile string) *Conditional {
 
 // OnProfile 设置一个 profileCondition
 func (c *Conditional) OnProfile(profile string) *Conditional {
-	return c.OnCondition(ProfileCondition(profile))
+	return c.On(&onProfile{profile: profile})
 }
