@@ -32,6 +32,7 @@ import (
 	"github.com/go-spring/spring-core/arg"
 	"github.com/go-spring/spring-core/assert"
 	"github.com/go-spring/spring-core/bean"
+	"github.com/go-spring/spring-core/cond"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/core"
 	pkg1 "github.com/go-spring/spring-core/core/testdata/pkg/bar"
@@ -2806,4 +2807,193 @@ func TestApplicationContext_CreateBean(t *testing.T) {
 
 	b, err := ctx.WireBean((*ObjFactory).NewObj, arg.R2("${i:=5}"))
 	fmt.Println(b, err)
+}
+
+func TestDefaultSpringContext(t *testing.T) {
+
+	t.Run("bean:test_ctx:", func(t *testing.T) {
+
+		ctx := core.NewApplicationContext()
+		ctx.Bean(&BeanZero{5}).Cond(cond.
+			OnProfile("test").
+			And().
+			OnMissingBean("null"),
+		)
+
+		ctx.Refresh()
+
+		var b *BeanZero
+		err := ctx.GetBean(&b)
+		assert.Error(t, err, "can't find bean, bean: \"\"")
+	})
+
+	t.Run("bean:test_ctx:test", func(t *testing.T) {
+
+		ctx := core.NewApplicationContext()
+		ctx.Profile("test")
+		ctx.Bean(&BeanZero{5}).Cond(cond.OnProfile("test"))
+		ctx.Refresh()
+
+		var b *BeanZero
+		err := ctx.GetBean(&b)
+		assert.Nil(t, err)
+	})
+
+	t.Run("bean:test_ctx:stable", func(t *testing.T) {
+
+		ctx := core.NewApplicationContext()
+		ctx.Profile("stable")
+		ctx.Bean(&BeanZero{5}).Cond(cond.OnProfile("test"))
+		ctx.Refresh()
+
+		var b *BeanZero
+		err := ctx.GetBean(&b)
+		assert.Error(t, err, "can't find bean, bean: \"\"")
+	})
+
+	t.Run("option withClassName Condition", func(t *testing.T) {
+
+		ctx := core.NewApplicationContext()
+		ctx.Property("president", "CaiYuanPei")
+		ctx.Property("class_floor", 2)
+		ctx.Bean(NewClassRoom, arg.Option(withClassName,
+			"${class_name:=二年级03班}",
+			"${class_floor:=3}",
+		).Cond(cond.OnProperty("class_name_enable")))
+		ctx.Refresh()
+
+		var cls *ClassRoom
+		err := ctx.GetBean(&cls)
+
+		assert.Nil(t, err)
+		assert.Equal(t, cls.floor, 0)
+		assert.Equal(t, len(cls.students), 0)
+		assert.Equal(t, cls.className, "default")
+		assert.Equal(t, cls.President, "CaiYuanPei")
+	})
+
+	t.Run("option withClassName Apply", func(t *testing.T) {
+		c := cond.OnProperty("class_name_enable")
+
+		ctx := core.NewApplicationContext()
+		ctx.Property("president", "CaiYuanPei")
+		ctx.Bean(NewClassRoom,
+			arg.Option(withClassName,
+				"${class_name:=二年级03班}",
+				"${class_floor:=3}",
+			).Cond(c),
+		)
+		ctx.Refresh()
+
+		var cls *ClassRoom
+		err := ctx.GetBean(&cls)
+
+		assert.Nil(t, err)
+		assert.Equal(t, cls.floor, 0)
+		assert.Equal(t, len(cls.students), 0)
+		assert.Equal(t, cls.className, "default")
+		assert.Equal(t, cls.President, "CaiYuanPei")
+	})
+
+	t.Run("method bean cond", func(t *testing.T) {
+
+		ctx := core.NewApplicationContext()
+		ctx.Property("server.version", "1.0.0")
+		parent := ctx.Bean(new(Server))
+		ctx.Bean((*Server).Consumer, parent.BeanId()).Cond(cond.OnProperty("consumer.enable"))
+		ctx.Refresh()
+
+		var s *Server
+		err := ctx.GetBean(&s)
+		assert.Nil(t, err)
+		assert.Equal(t, s.Version, "1.0.0")
+
+		var c *Consumer
+		err = ctx.GetBean(&c)
+		assert.Error(t, err, "can't find bean, bean: \"\"")
+	})
+}
+
+// TODO 现在的方式父 Bean 不存在子 Bean 创建的时候会报错
+//func TestDefaultSpringContext_ParentNotRegister(t *testing.T) {
+//
+//	ctx := core.NewApplicationContext()
+//	parent := ctx.Bean(NewServerInterface).Cond(cond.OnProperty("server.is.nil"))
+//	ctx.Bean(ServerInterface.Consumer, parent.BeanId())
+//
+//	ctx.Refresh()
+//
+//	var s *Server
+//	ok := ctx.GetBean(&s)
+//	util.Equal(t, ok, false)
+//
+//	var c *Consumer
+//	ok = ctx.GetBean(&c)
+//	util.Equal(t, ok, false)
+//}
+
+func TestDefaultSpringContext_ChainConditionOnBean(t *testing.T) {
+	for i := 0; i < 20; i++ { // 不要排序
+		ctx := core.NewApplicationContext()
+		ctx.Bean(new(string)).Cond(cond.OnBean("*bool"))
+		ctx.Bean(new(bool)).Cond(cond.OnBean("*int"))
+		ctx.Bean(new(int)).Cond(cond.OnBean("*float"))
+		ctx.Refresh()
+		assert.Equal(t, len(ctx.Beans()), 0)
+	}
+}
+
+func TestDefaultSpringContext_ConditionOnBean(t *testing.T) {
+	ctx := core.NewApplicationContext()
+
+	c := cond.
+		OnMissingProperty("Null").
+		Or().
+		OnProfile("test")
+
+	ctx.Bean(&BeanZero{5}).Cond(cond.
+		On(c).
+		And().
+		OnMissingBean("null"),
+	)
+
+	ctx.Bean(new(BeanOne)).Cond(cond.
+		On(c).
+		And().
+		OnMissingBean("null"),
+	)
+
+	ctx.Bean(new(BeanTwo)).Cond(cond.OnBean("*core_test.BeanOne"))
+	ctx.Bean(new(BeanTwo)).Name("another_two").Cond(cond.OnBean("Null"))
+
+	ctx.Refresh()
+
+	var two *BeanTwo
+	err := ctx.GetBean(&two, "")
+	assert.Nil(t, err)
+
+	err = ctx.GetBean(&two, "another_two")
+	assert.Error(t, err, "can't find bean, bean: \"another_two\"")
+}
+
+func TestDefaultSpringContext_ConditionOnMissingBean(t *testing.T) {
+
+	for i := 0; i < 20; i++ { // 测试 FindBean 无需绑定，不要排序
+		ctx := core.NewApplicationContext()
+
+		ctx.Bean(&BeanZero{5})
+		ctx.Bean(new(BeanOne))
+
+		ctx.Bean(new(BeanTwo)).Cond(cond.OnMissingBean("*core_test.BeanOne"))
+		ctx.Bean(new(BeanTwo)).Name("another_two").Cond(cond.OnMissingBean("Null"))
+
+		ctx.Refresh()
+
+		var two *BeanTwo
+		err := ctx.GetBean(&two, "")
+		assert.Nil(t, err)
+
+		err = ctx.GetBean(&two, "another_two")
+		assert.Nil(t, err)
+	}
 }
