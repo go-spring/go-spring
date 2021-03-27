@@ -190,16 +190,16 @@ func TestNotCondition(t *testing.T) {
 	profileCond := cond.OnProfile("test")
 	assert.True(t, profileCond.Matches(ctx))
 
-	notCond := cond.OnNot(profileCond)
+	notCond := cond.Not(profileCond)
 	assert.False(t, notCond.Matches(ctx))
 
 	c := cond.OnPropertyValue("int", 2).
 		And().
-		OnNot(profileCond)
+		On(cond.Not(profileCond))
 	assert.False(t, c.Matches(ctx))
 
 	c = cond.OnProfile("test").
 		And().
-		OnNot(profileCond)
+		On(cond.Not(profileCond))
 	assert.False(t, c.Matches(ctx))
 }

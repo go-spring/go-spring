@@ -26,8 +26,19 @@ import (
 	"github.com/spf13/cast"
 )
 
+// ValidValueTag 是否为 ${key:=def} 格式的字符串。
+func ValidValueTag(tag string) bool {
+	return strings.HasPrefix(tag, "${") && strings.HasSuffix(tag, "}")
+}
+
 // ParseValueTag 解析 ${key:=def} 字符串，返回 key 和 def 的值。
-func ParseValueTag(tag string) (key string, def interface{}) {
+func ParseValueTag(tag string) (key string, def interface{}, err error) {
+
+	if !ValidValueTag(tag) {
+		return "", nil, errors.New("invalid value tag")
+	}
+
+	tag = tag[2 : len(tag)-1]
 	ss := strings.SplitN(tag, ":=", 2)
 	if len(ss) > 1 {
 		def = ss[1]
@@ -42,11 +53,11 @@ func ResolveProperty(p Properties, tagOrValue interface{}) (interface{}, error) 
 
 	// 不是字符串或者没有使用配置引用语法则直接返回
 	tag, ok := tagOrValue.(string)
-	if !ok || !strings.HasPrefix(tag, "${") {
+	if !ok || !ValidValueTag(tag) {
 		return tagOrValue, nil
 	}
 
-	key, def := ParseValueTag(tag[2 : len(tag)-1])
+	key, def, _ := ParseValueTag(tag)
 	if val := p.Default(key, def); val != nil {
 		return ResolveProperty(p, val)
 	}
@@ -95,15 +106,14 @@ func bindStruct(p Properties, v reflect.Value, opt BindOption) error {
 // BindValue 对任意值 v 进行属性绑定，tag 是形如 ${key:=def} 的字符串，v 必须是值类型。
 func BindValue(p Properties, v reflect.Value, tag string, opt BindOption) error {
 
-	if !(strings.HasPrefix(tag, "${") && strings.HasSuffix(tag, "}")) {
-		return fmt.Errorf("%s 属性绑定的语法 %s 发生错误", opt.Path, tag)
-	}
-
 	if v.Kind() == reflect.Ptr {
 		return fmt.Errorf("%s 属性绑定的目标不能是指针", opt.Path)
 	}
 
-	key, def := ParseValueTag(tag[2 : len(tag)-1])
+	key, def, err := ParseValueTag(tag)
+	if err != nil {
+		return fmt.Errorf("%s 属性绑定的语法 %s 发生错误", opt.Path, tag)
+	}
 
 	// 最短属性名
 	if opt.Key == "" {

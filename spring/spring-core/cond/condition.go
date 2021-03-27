@@ -58,10 +58,15 @@ func (c *onMatches) Matches(ctx Context) bool {
 	return c.fn(ctx)
 }
 
-// onNot 对 Condition 取反的 Condition 实现。
-type onNot struct{ cond Condition }
+// not 对一个条件进行取反的 Condition 实现。
+type not struct{ cond Condition }
 
-func (c *onNot) Matches(ctx Context) bool {
+// Not 对一个条件进行取反。
+func Not(cond Condition) *not {
+	return &not{cond: cond}
+}
+
+func (c *not) Matches(ctx Context) bool {
 	return !c.cond.Matches(ctx)
 }
 
@@ -290,16 +295,6 @@ func (c *list) On(cond Condition) *list {
 	}
 	c.curr.cond = cond
 	return c
-}
-
-// OnNot 返回一个 onNot 条件。
-func OnNot(cond Condition) *list {
-	return newList().OnNot(cond)
-}
-
-// OnNot 添加一个 onNot 条件。
-func (c *list) OnNot(cond Condition) *list {
-	return c.On(&onNot{cond: cond})
 }
 
 // OnProperty 返回一个 onProperty 条件。
