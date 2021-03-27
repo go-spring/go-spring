@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-// Package cond 提供了多种条件类型。
+// Package cond 实现了多种条件。
 package cond
 
 import (
@@ -44,64 +44,57 @@ type Context interface {
 	FindBean(selector bean.Selector) []bean.Definition
 }
 
-// Condition 定义一个条件接口
+// Condition 定义条件接口，条件成立 Matches 函数返回 true，否则返回 false。
 type Condition interface {
-	// Matches 条件成立返回 true，失败返回 false。
 	Matches(ctx Context) bool
 }
 
-// Func 定义 Condition 接口 Matches 方法的类型
-type Func func(ctx Context) bool
+type Matches func(ctx Context) bool
 
-// onMatches 基于 Matches 方法的 Condition 实现
-type onMatches struct{ fn Func }
+// onMatches 基于 Matches 方法的 Condition 实现。
+type onMatches struct{ fn Matches }
 
-// Matches 成功返回 true，失败返回 false
 func (c *onMatches) Matches(ctx Context) bool {
 	return c.fn(ctx)
 }
 
-// onNot 对 Condition 取反的 Condition 实现
+// onNot 对 Condition 取反的 Condition 实现。
 type onNot struct{ cond Condition }
 
-// Matches 成功返回 true，失败返回 false
 func (c *onNot) Matches(ctx Context) bool {
 	return !c.cond.Matches(ctx)
 }
 
-// onProperty 基于属性值存在的 Condition 实现
+// onProperty 基于属性值存在的 Condition 实现。
 type onProperty struct{ name string }
 
-// Matches 成功返回 true，失败返回 false
 func (c *onProperty) Matches(ctx Context) bool {
 	return len(ctx.PrefixProperties(c.name)) > 0
 }
 
-// onMissingProperty 基于属性值不存在的 Condition 实现
+// onMissingProperty 基于属性值不存在的 Condition 实现。
 type onMissingProperty struct{ name string }
 
-// Matches 成功返回 true，失败返回 false
 func (c *onMissingProperty) Matches(ctx Context) bool {
 	return len(ctx.PrefixProperties(c.name)) == 0
 }
 
-// onPropertyValue 基于属性值匹配的 Condition 实现
+// onPropertyValue 基于属性值匹配的 Condition 实现。
 type onPropertyValue struct {
 	name           string
 	havingValue    interface{}
 	matchIfMissing bool
 }
 
-type PropertyValueConditionOption func(*onPropertyValue)
+type PropertyValueOption func(*onPropertyValue)
 
 // MatchIfMissing 当属性值不存在时是否匹配条件
-func MatchIfMissing(matchIfMissing bool) PropertyValueConditionOption {
+func MatchIfMissing(matchIfMissing bool) PropertyValueOption {
 	return func(cond *onPropertyValue) {
 		cond.matchIfMissing = matchIfMissing
 	}
 }
 
-// Matches 成功返回 true，失败返回 false
 func (c *onPropertyValue) Matches(ctx Context) bool {
 	// 参考 /usr/local/go/src/go/types/eval_test.go 示例
 
@@ -129,88 +122,78 @@ func (c *onPropertyValue) Matches(ctx Context) bool {
 	}
 }
 
-// onBean 基于 Bean 存在的 Condition 实现
-type onBean struct {
-	selector bean.Selector
-}
+// onBean 基于 Bean 存在的 Condition 实现。
+type onBean struct{ selector bean.Selector }
 
-// Matches 成功返回 true，失败返回 false
 func (c *onBean) Matches(ctx Context) bool {
 	b := ctx.FindBean(c.selector)
 	return len(b) == 1
 }
 
-// onMissingBean 基于 Bean 不能存在的 Condition 实现
+// onMissingBean 基于 Bean 不能存在的 Condition 实现。
 type onMissingBean struct{ selector bean.Selector }
 
-// Matches 成功返回 true，失败返回 false
 func (c *onMissingBean) Matches(ctx Context) bool {
 	b := ctx.FindBean(c.selector)
 	return len(b) == 0
 }
 
-// onExpression 基于表达式的 Condition 实现
+// onExpression 基于表达式的 Condition 实现。
 type onExpression struct{ expression string }
 
-// Matches 成功返回 true，失败返回 false
 func (c *onExpression) Matches(ctx Context) bool {
 	panic(util.UnimplementedMethod)
 }
 
-// profileCondition 基于运行环境匹配的 Condition 实现
+// profileCondition 基于运行环境匹配的 Condition 实现。
 type onProfile struct{ profile string }
 
-// Matches 成功返回 true，失败返回 false
 func (c *onProfile) Matches(ctx Context) bool {
 	return c.profile == "" || strings.EqualFold(c.profile, ctx.GetProfile())
 }
 
-// ConditionOp conditionNode 的计算方式
-type ConditionOp int
+// Operator 条件操作符，包含 Or、And、None 三种。
+type Operator int
 
 const (
-	ConditionOr   = ConditionOp(1) // 至少一个满足
-	ConditionAnd  = ConditionOp(2) // 所有都要满足
-	ConditionNone = ConditionOp(3) // 没有一个满足
+	Or   = Operator(1) // 至少一个满足
+	And  = Operator(2) // 所有都要满足
+	None = Operator(3) // 没有一个满足
 )
 
-// conditionGroup 基于条件组的 Condition 实现
-type conditionGroup struct {
-	op   ConditionOp
+// group 基于条件组的 Condition 实现。
+type group struct {
+	op   Operator
 	cond []Condition
 }
 
-// ConditionGroup conditions 的构造函数
-func ConditionGroup(op ConditionOp, cond ...Condition) *conditionGroup {
-	return &conditionGroup{
-		op:   op,
-		cond: cond,
-	}
+// Group group 的构造函数。
+func Group(op Operator, cond ...Condition) *group {
+	return &group{op: op, cond: cond}
 }
 
-// Matches 成功返回 true，失败返回 false
-func (c *conditionGroup) Matches(ctx Context) bool {
+func (c *group) Matches(ctx Context) bool {
 
 	if len(c.cond) == 0 {
-		panic(errors.New("no condition"))
+		panic(errors.New("no condition in group"))
 	}
 
 	switch c.op {
-	case ConditionOr:
+	case Or:
 		for _, c0 := range c.cond {
 			if c0.Matches(ctx) {
 				return true
 			}
 		}
 		return false
-	case ConditionAnd:
+	case And:
 		for _, c0 := range c.cond {
 			if ok := c0.Matches(ctx); !ok {
 				return false
 			}
 		}
 		return true
-	case ConditionNone:
+	case None:
 		for _, c0 := range c.cond {
 			if c0.Matches(ctx) {
 				return false
@@ -219,98 +202,89 @@ func (c *conditionGroup) Matches(ctx Context) bool {
 		return true
 	}
 
-	panic(errors.New("error condition op mode"))
+	panic(errors.New("error condition operator"))
 }
 
-// conditionNode Condition 计算式节点，返回值是 'cond op next'
-type conditionNode struct {
-	cond Condition      // 条件
-	op   ConditionOp    // 计算方式
-	next *conditionNode // 下一个计算节点
+// node 基于条件表达式的 Condition 实现。
+type node struct {
+	cond Condition // 条件
+	op   Operator  // 操作符
+	next *node     // 下个表达式节点
 }
 
-// Matches 成功返回 true，失败返回 false
-func (c *conditionNode) Matches(ctx Context) bool {
+func (c *node) Matches(ctx Context) bool {
 
 	if c.cond == nil { // 空节点返回 true
 		return true
 	}
 
-	if c.next != nil && c.next.cond == nil {
-		panic(errors.New("last op need a cond triggered"))
-	}
+	r := c.cond.Matches(ctx)
 
-	if r := c.cond.Matches(ctx); c.next != nil {
-
-		switch c.op {
-		case ConditionOr: // or
-			if r {
-				return r
-			} else {
-				return c.next.Matches(ctx)
-			}
-		case ConditionAnd: // and
-			if r {
-				return c.next.Matches(ctx)
-			} else {
-				return false
-			}
-		default:
-			panic(errors.New("error condition op mode"))
-		}
-
-	} else {
+	if c.next == nil {
 		return r
+	} else if c.next.cond == nil {
+		panic(errors.New("no condition in last node"))
+	}
+
+	switch c.op {
+	case Or: // or
+		if r {
+			return r
+		} else {
+			return c.next.Matches(ctx)
+		}
+	case And: // and
+		if r {
+			return c.next.Matches(ctx)
+		} else {
+			return false
+		}
+	default:
+		panic(errors.New("error condition operator"))
 	}
 }
 
-// Conditional Condition 计算式
-type Conditional struct {
-	head *conditionNode
-	curr *conditionNode
+// list Condition 计算式
+type list struct {
+	head *node
+	curr *node
 }
 
-// conditional Conditional 的构造函数
-func conditional() *Conditional {
-	node := &conditionNode{}
-	return &Conditional{head: node, curr: node}
+// list list 的构造函数
+func newList() *list {
+	node := &node{}
+	return &list{head: node, curr: node}
 }
 
-// Empty 返回表达式是否为空
-func (c *Conditional) Empty() bool {
-	return c.head == c.curr
-}
-
-// Matches 成功返回 true，失败返回 false
-func (c *Conditional) Matches(ctx Context) bool {
+func (c *list) Matches(ctx Context) bool {
 	return c.head.Matches(ctx)
 }
 
 // Or c=a||b
-func (c *Conditional) Or() *Conditional {
-	node := &conditionNode{}
-	c.curr.op = ConditionOr
+func (c *list) Or() *list {
+	node := &node{}
+	c.curr.op = Or
 	c.curr.next = node
 	c.curr = node
 	return c
 }
 
 // And c=a&&b
-func (c *Conditional) And() *Conditional {
-	node := &conditionNode{}
-	c.curr.op = ConditionAnd
+func (c *list) And() *list {
+	node := &node{}
+	c.curr.op = And
 	c.curr.next = node
 	c.curr = node
 	return c
 }
 
-// On 设置一个 Condition
-func On(cond Condition) *Conditional {
-	return conditional().On(cond)
+// On 返回一个条件。
+func On(cond Condition) *list {
+	return newList().On(cond)
 }
 
-// On 设置一个 Condition
-func (c *Conditional) On(cond Condition) *Conditional {
+// On 添加一个条件。
+func (c *list) On(cond Condition) *list {
 	if c.curr.cond != nil {
 		c.And()
 	}
@@ -318,46 +292,43 @@ func (c *Conditional) On(cond Condition) *Conditional {
 	return c
 }
 
-// OnNot 设置一个取反的 Condition
-func OnNot(cond Condition) *Conditional {
-	return conditional().OnNot(cond)
+// OnNot 返回一个 onNot 条件。
+func OnNot(cond Condition) *list {
+	return newList().OnNot(cond)
 }
 
-// OnNot 设置一个取反的 Condition
-func (c *Conditional) OnNot(cond Condition) *Conditional {
+// OnNot 添加一个 onNot 条件。
+func (c *list) OnNot(cond Condition) *list {
 	return c.On(&onNot{cond: cond})
 }
 
-// OnProperty 返回设置了 propertyCondition 的 Conditional 对象
-func OnProperty(name string) *Conditional {
-	return conditional().OnProperty(name)
+// OnProperty 返回一个 onProperty 条件。
+func OnProperty(name string) *list {
+	return newList().OnProperty(name)
 }
 
-// OnProperty 设置一个 propertyCondition
-func (c *Conditional) OnProperty(name string) *Conditional {
+// OnProperty 添加一个 onProperty 条件。
+func (c *list) OnProperty(name string) *list {
 	return c.On(&onProperty{name: name})
 }
 
-// OnMissingProperty 返回设置了 missingPropertyCondition 的 Conditional 对象
-func OnMissingProperty(name string) *Conditional {
-	return conditional().OnMissingProperty(name)
+// OnMissingProperty 返回一个 onMissingProperty  条件。
+func OnMissingProperty(name string) *list {
+	return newList().OnMissingProperty(name)
 }
 
-// OnMissingProperty 设置一个 missingPropertyCondition
-func (c *Conditional) OnMissingProperty(name string) *Conditional {
+// OnMissingProperty 添加一个 onMissingProperty 条件。
+func (c *list) OnMissingProperty(name string) *list {
 	return c.On(&onMissingProperty{name: name})
 }
 
-// OnPropertyValue 返回设置了 propertyValueCondition 的 Conditional 对象
-func OnPropertyValue(name string, havingValue interface{},
-	options ...PropertyValueConditionOption) *Conditional {
-	return conditional().OnPropertyValue(name, havingValue, options...)
+// OnPropertyValue 返回一个 onPropertyValue 条件。
+func OnPropertyValue(name string, havingValue interface{}, options ...PropertyValueOption) *list {
+	return newList().OnPropertyValue(name, havingValue, options...)
 }
 
-// OnPropertyValue 设置一个 propertyValueCondition
-func (c *Conditional) OnPropertyValue(name string, havingValue interface{},
-	options ...PropertyValueConditionOption) *Conditional {
-
+// OnPropertyValue 添加一个 onPropertyValue 条件。
+func (c *list) OnPropertyValue(name string, havingValue interface{}, options ...PropertyValueOption) *list {
 	cond := &onPropertyValue{name: name, havingValue: havingValue}
 	for _, option := range options {
 		option(cond)
@@ -365,62 +336,62 @@ func (c *Conditional) OnPropertyValue(name string, havingValue interface{},
 	return c.On(cond)
 }
 
-// OnOptionalPropertyValue 返回属性值不存在时默认条件成立的 Conditional 对象
-func OnOptionalPropertyValue(name string, havingValue interface{}) *Conditional {
-	return conditional().OnOptionalPropertyValue(name, havingValue)
+// OnOptionalPropertyValue 返回一个 onPropertyValue 条件，并且当属性值不存在时默认条件成立。
+func OnOptionalPropertyValue(name string, havingValue interface{}) *list {
+	return newList().OnOptionalPropertyValue(name, havingValue)
 }
 
-// OnOptionalPropertyValue 设置一个 propertyValueCondition，当属性值不存在时默认条件成立
-func (c *Conditional) OnOptionalPropertyValue(name string, havingValue interface{}) *Conditional {
+// OnOptionalPropertyValue 添加一个 onPropertyValue 条件，并且当属性值不存在时默认条件成立。
+func (c *list) OnOptionalPropertyValue(name string, havingValue interface{}) *list {
 	return c.OnPropertyValue(name, havingValue, MatchIfMissing(true))
 }
 
-// OnBean 返回设置了 beanCondition 的 Conditional 对象
-func OnBean(selector bean.Selector) *Conditional {
-	return conditional().OnBean(selector)
+// OnBean 返回一个 onBean 条件。
+func OnBean(selector bean.Selector) *list {
+	return newList().OnBean(selector)
 }
 
-// OnBean 设置一个 beanCondition
-func (c *Conditional) OnBean(selector bean.Selector) *Conditional {
+// OnBean 添加一个 onBean 条件。
+func (c *list) OnBean(selector bean.Selector) *list {
 	return c.On(&onBean{selector: selector})
 }
 
-// OnMissingBean 返回设置了 missingBeanCondition 的 Conditional 对象
-func OnMissingBean(selector bean.Selector) *Conditional {
-	return conditional().OnMissingBean(selector)
+// OnMissingBean 返回一个 onMissingBean 条件。
+func OnMissingBean(selector bean.Selector) *list {
+	return newList().OnMissingBean(selector)
 }
 
-// OnMissingBean 设置一个 missingBeanCondition
-func (c *Conditional) OnMissingBean(selector bean.Selector) *Conditional {
+// OnMissingBean 添加一个 onMissingBean 条件。
+func (c *list) OnMissingBean(selector bean.Selector) *list {
 	return c.On(&onMissingBean{selector: selector})
 }
 
-// OnExpression 返回设置了 expressionCondition 的 Conditional 对象
-func OnExpression(expression string) *Conditional {
-	return conditional().OnExpression(expression)
+// OnExpression 返回一个 onExpression 条件。
+func OnExpression(expression string) *list {
+	return newList().OnExpression(expression)
 }
 
-// OnExpression 设置一个 expressionCondition
-func (c *Conditional) OnExpression(expression string) *Conditional {
+// OnExpression 添加一个 onExpression 条件。
+func (c *list) OnExpression(expression string) *list {
 	return c.On(&onExpression{expression: expression})
 }
 
-// OnMatches 返回设置了 functionCondition 的 Conditional 对象
-func OnMatches(fn Func) *Conditional {
-	return conditional().OnMatches(fn)
+// OnMatches 返回一个 onMatches 条件。
+func OnMatches(fn Matches) *list {
+	return newList().OnMatches(fn)
 }
 
-// OnMatches 设置一个 functionCondition
-func (c *Conditional) OnMatches(fn Func) *Conditional {
+// OnMatches 添加一个 onMatches 条件。
+func (c *list) OnMatches(fn Matches) *list {
 	return c.On(&onMatches{fn: fn})
 }
 
-// OnProfile 返回设置了 profileCondition 的 Conditional 对象
-func OnProfile(profile string) *Conditional {
-	return conditional().OnProfile(profile)
+// OnProfile 返回一个 onProfile 条件。
+func OnProfile(profile string) *list {
+	return newList().OnProfile(profile)
 }
 
-// OnProfile 设置一个 profileCondition
-func (c *Conditional) OnProfile(profile string) *Conditional {
+// OnProfile 添加一个 onProfile 条件。
+func (c *list) OnProfile(profile string) *list {
 	return c.On(&onProfile{profile: profile})
 }
