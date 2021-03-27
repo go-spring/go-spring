@@ -16,6 +16,10 @@
 
 package util
 
+import (
+	"container/list"
+)
+
 // ContainsInt 在一个 int 数组中进行查找，找不到返回 -1。
 func ContainsInt(array []int, val int) int {
 	for i := 0; i < len(array); i++ {
@@ -34,4 +38,14 @@ func ContainsString(array []string, val string) int {
 		}
 	}
 	return -1
+}
+
+// ContainsList 在列表中查询指定元素，存在则返回列表项指针，不存在返回 nil。
+func ContainsList(l *list.List, v interface{}) *list.Element {
+	for e := l.Front(); e != nil; e = e.Next() {
+		if e.Value == v {
+			return e
+		}
+	}
+	return nil
 }

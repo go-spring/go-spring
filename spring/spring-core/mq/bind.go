@@ -25,10 +25,10 @@ import (
 	"github.com/go-spring/spring-core/util"
 )
 
-// contextType context.Context 的反射类型
+// contextType context.Context 的反射类型。
 var contextType = reflect.TypeOf((*context.Context)(nil)).Elem()
 
-// BindConsumer BIND 方式实现的消费者
+// BindConsumer BIND 方式实现的消息消费者。
 type BindConsumer struct {
 	topics   []string
 	fn       interface{}
@@ -37,9 +37,7 @@ type BindConsumer struct {
 	bindType reflect.Type
 }
 
-func (c *BindConsumer) Topics() []string {
-	return c.topics
-}
+func (c *BindConsumer) Topics() []string { return c.topics }
 
 func (c *BindConsumer) Consume(ctx context.Context, msg *Message) {
 	bindVal := reflect.New(c.bindType.Elem())

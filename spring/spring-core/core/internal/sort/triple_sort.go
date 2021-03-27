@@ -57,23 +57,23 @@ func tripleSortByAfter(sorting *list.List, toSort *list.List, sorted *list.List,
 		c := e.Value
 
 		// 自己不可能是自己前面的元素，除非出现了循环依赖，因此抛出 Panic
-		if _, ok := util.FindInList(c, processing); ok {
+		if util.ContainsList(processing, c) != nil {
 			panic(errors.New("found sorting cycle"))
 		}
 
-		_, inSorted := util.FindInList(c, sorted)
-		_, inToSort := util.FindInList(c, toSort)
+		inSorted := util.ContainsList(sorted, c) != nil
+		inToSort := util.ContainsList(toSort, c) != nil
 
 		if !inSorted && inToSort { // 如果是待排元素则对其进行排序
 			tripleSortByAfter(sorting, toSort, sorted, processing, c, fn)
 		}
 	}
 
-	if e, ok := util.FindInList(current, processing); ok {
+	if e := util.ContainsList(processing, current); e != nil {
 		processing.Remove(e)
 	}
 
-	if e, ok := util.FindInList(current, toSort); ok {
+	if e := util.ContainsList(toSort, current); e != nil {
 		toSort.Remove(e)
 	}
 

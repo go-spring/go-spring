@@ -55,17 +55,17 @@ var kindTypes = []uint8{
 	0,       // UnsafePointer
 }
 
-// IsRefType 返回是否是引用类型
+// IsRefType 返回是否是引用类型。
 func IsRefType(k reflect.Kind) bool {
 	return kindTypes[k] == refType
 }
 
-// IsValueType 返回是否是值类型
+// IsValueType 返回是否是值类型。
 func IsValueType(k reflect.Kind) bool {
 	return kindTypes[k] == valType
 }
 
-// TypeOf 获取 i 的类型
+// TypeOf 获取 i 的类型。
 func TypeOf(i interface{}) reflect.Type {
 	switch o := i.(type) {
 	case reflect.Type:

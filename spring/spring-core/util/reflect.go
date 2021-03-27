@@ -38,7 +38,7 @@ func PatchValue(v reflect.Value) reflect.Value {
 	return v
 }
 
-// Indirect 解除 Type 的指针
+// Indirect 解除 Type 所有层级的指针。
 func Indirect(t reflect.Type) reflect.Type {
 	if t.Kind() != reflect.Ptr {
 		return t

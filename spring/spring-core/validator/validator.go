@@ -16,22 +16,20 @@
 
 package validator
 
-// Validator 参数校验器接口
+// Validator 参数校验器接口。
 type Validator interface {
 	Validate(i interface{}) error
 }
 
-var validator Validator
+var v Validator
 
-// SetValidator 设置参数校验器
-func SetValidator(v Validator) {
-	validator = v
-}
+// Init 初始化参数校验器。
+func Init(r Validator) { v = r }
 
-// Validate 参数校验
+// Validate 参数校验。
 func Validate(i interface{}) error {
-	if validator != nil {
-		return validator.Validate(i)
+	if v != nil {
+		return v.Validate(i)
 	}
 	return nil
 }

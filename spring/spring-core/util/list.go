@@ -28,13 +28,3 @@ func NewList(v ...interface{}) *list.List {
 	}
 	return l
 }
-
-// FindInList 在列表中查询指定元素，存在则返回列表项指针，不存在返回 nil
-func FindInList(v interface{}, l *list.List) (*list.Element, bool) {
-	for e := l.Front(); e != nil; e = e.Next() {
-		if e.Value == v {
-			return e, true
-		}
-	}
-	return nil, false
-}

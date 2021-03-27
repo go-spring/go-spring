@@ -18,17 +18,11 @@ package util
 
 import (
 	"crypto/md5"
-	"encoding/base64"
 	"encoding/hex"
 )
 
-// MD5 获取 MD5 计算后的字符串
+// MD5 获取 MD5 计算后的字符串。
 func MD5(str string) string {
 	hash := md5.Sum([]byte(str))
 	return hex.EncodeToString(hash[:])
-}
-
-// BASE64 返回 BASE64 加密后的字符串
-func BASE64(str string) string {
-	return base64.StdEncoding.EncodeToString([]byte(str))
 }

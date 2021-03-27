@@ -20,14 +20,13 @@ import (
 	"context"
 
 	"github.com/go-spring/spring-core/json"
-	"github.com/go-spring/spring-core/util"
 )
 
 // Message 简单消息
 type Message struct {
 	Topic      string
-	Body       []byte            // 也叫 Value
 	MessageId  string            // 也叫 Key
+	Body       []byte            // 也叫 Value
 	Properties map[string]string // 附加的属性对
 }
 
@@ -38,35 +37,34 @@ func NewMessage() *Message {
 	}
 }
 
-// WithTopic 设置 Message 的 Topic
+// WithTopic 设置 Message 的 Topic。
 func (msg *Message) WithTopic(topic string) *Message {
 	msg.Topic = topic
 	return msg
 }
 
-// WithMessageId 设置 Message 的消息 ID
+// WithMessageId 设置 Message 的消息序号。
 func (msg *Message) WithMessageId(msgId string) *Message {
 	msg.MessageId = msgId
 	return msg
 }
 
-// AddProperty 给 Message 添加一个属性对
+// AddProperty 给 Message 添加属性对。
 func (msg *Message) AddProperty(key, value string) *Message {
 	msg.Properties[key] = value
 	return msg
 }
 
-// WithBody 设置 Message 的消息体
+// WithBody 设置 Message 的消息体。
 func (msg *Message) WithBody(body []byte) *Message {
 	msg.Body = body
 	return msg
 }
 
-// WithJsonBody 设置 Message 的消息体 NOTE:到底应不应该抛可愁死我了!
+// WithJsonBody 设置 Message 的消息体，序列化出错时将错误内容当作消息体。
 func (msg *Message) WithJsonBody(body interface{}) *Message {
-	data, err := json.Marshal(body)
-	util.Panic(err).When(err != nil)
-	msg.Body = data
+	data := json.ToString(body)
+	msg.Body = []byte(data)
 	return msg
 }
 
@@ -79,8 +77,7 @@ type Consumer interface {
 // MessageInterface 抽象化的消息接口
 type MessageInterface interface{}
 
-// Producer 消息生产者
+// Producer 消息生产者，SendMessage 的消息类型不同用途也不同，需要自行判断。
 type Producer interface {
-	// SendMessage 发送消息，msg 类型不同用途也不同，需要实现方自行判断
 	SendMessage(ctx context.Context, msg MessageInterface) error
 }

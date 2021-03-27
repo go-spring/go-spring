@@ -14,11 +14,13 @@
  * limitations under the License.
  */
 
+// Package json 提供封装其他 json 序列化框架的接口。
 package json
 
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 )
 
 // MarshalFunc 定义 Marshal 函数原型。
@@ -32,10 +34,26 @@ var (
 	unmarshal UnmarshalFunc
 )
 
-// Init 自定义 Marshal 和 Unmarshal 函数。
+// Init 自定义 Marshal 和 Unmarshal 函数，为了防止在一个项目中存在多个
+// json 序列化框架，该函数只能在项目 main 函数执行前的 init 阶段设置一次。
 func Init(m MarshalFunc, u UnmarshalFunc) {
-	unmarshal = u
+	if m == nil || u == nil {
+		panic(errors.New("invalid param"))
+	}
+	if marshal != nil {
+		panic(errors.New("marshal not nil"))
+	}
 	marshal = m
+	unmarshal = u
+}
+
+// ToString 将对象序列化为 Json 字符串，错误信息以字符串形式返回。
+func ToString(i interface{}) string {
+	b, err := Marshal(i)
+	if err != nil {
+		return err.Error()
+	}
+	return string(b)
 }
 
 // Marshal 序列化 json 数据。
@@ -66,13 +84,4 @@ func Unmarshal(data []byte, v interface{}) error {
 		return unmarshal(data, v)
 	}
 	return json.Unmarshal(data, v)
-}
-
-// ToString 将对象序列化为 Json 字符串，错误信息以字符串返回。
-func ToString(i interface{}) string {
-	b, err := Marshal(i)
-	if err != nil {
-		return err.Error()
-	}
-	return string(b)
 }

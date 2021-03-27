@@ -144,7 +144,6 @@ var config = struct {
 // SetLevel 设置日志输出的级别
 func SetLevel(level Level) Level {
 
-	// TODO RAII
 	config.mutex.Lock()
 	defer config.mutex.Unlock()
 
@@ -156,7 +155,6 @@ func SetLevel(level Level) Level {
 // SetOutput 设置日志的输出格式
 func SetOutput(output Output) Output {
 
-	// TODO RAII
 	config.mutex.Lock()
 	defer config.mutex.Unlock()
 

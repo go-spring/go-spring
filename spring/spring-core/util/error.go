@@ -26,7 +26,7 @@ type withCause struct {
 	cause interface{}
 }
 
-// WithCause 封装一个异常源
+// WithCause 封装一个异常源。
 func WithCause(r interface{}) error {
 	return &withCause{cause: r}
 }
@@ -43,8 +43,8 @@ func Cause(err error) interface{} {
 	return err
 }
 
-// ErrorToString 获取 error 的字符串
-func ErrorToString(err error) string {
+// Error 返回 error 的字符串。
+func Error(err error) string {
 	if err == nil {
 		return ""
 	}
