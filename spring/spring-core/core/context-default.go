@@ -409,7 +409,7 @@ func (ctx *applicationContext) resolveBeans() {
 func (ctx *applicationContext) runConfigers(assembly *defaultBeanAssembly) {
 	for e := ctx.configers.Front(); e != nil; e = e.Next() {
 		configer := e.Value.(*Configer)
-		if err := configer.Run(assembly); err != nil {
+		if err := configer.r.Run(assembly); err != nil {
 			panic(err)
 		}
 	}
@@ -536,7 +536,8 @@ func (ctx *applicationContext) Invoke(fn interface{}, args ...arg.Arg) error {
 	if fnType := reflect.TypeOf(fn); util.FuncType(fnType) {
 		if util.ReturnNothing(fnType) || util.ReturnOnlyError(fnType) {
 			assembly := newDefaultBeanAssembly(ctx)
-			return newRunnable(fn, arg.NewArgList(fnType, false, args)).Run(assembly)
+			argList := arg.NewArgList(fnType, false, args)
+			return arg.NewRunner(fn, argList).Run(assembly)
 		}
 	}
 	panic(errors.New("fn should be func() or func()error"))
@@ -567,7 +568,8 @@ func (ctx *applicationContext) Go(fn interface{}, args ...arg.Arg) {
 			}()
 
 			assembly := newDefaultBeanAssembly(ctx)
-			_ = newRunnable(fn, arg.NewArgList(fnType, false, args)).Run(assembly)
+			argList := arg.NewArgList(fnType, false, args)
+			_ = arg.NewRunner(fn, argList).Run(assembly)
 		}()
 	}
 	panic(errors.New("fn should be func()"))

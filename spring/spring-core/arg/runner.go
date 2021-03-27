@@ -1,27 +1,29 @@
-package core
+package arg
 
 import (
 	"errors"
 	"fmt"
 	"reflect"
 
-	"github.com/go-spring/spring-core/arg"
 	"github.com/go-spring/spring-core/util"
 )
 
-// runnable 执行器，不能返回 error 以外的其他值
-type runnable struct {
+// errorType error 的反射类型
+var errorType = reflect.TypeOf((*error)(nil)).Elem()
+
+// Runner 执行器，不能返回 error 以外的其他值
+type Runner struct {
 	fn  interface{}
-	arg *arg.ArgList
+	arg *ArgList
 }
 
-// newRunnable Runnable 的构造函数
-func newRunnable(fn interface{}, arg *arg.ArgList) *runnable {
-	return &runnable{fn: fn, arg: arg}
+// NewRunner Runner 的构造函数
+func NewRunner(fn interface{}, arg *ArgList) *Runner {
+	return &Runner{fn: fn, arg: arg}
 }
 
-// run 运行执行器
-func (r *runnable) Run(assembly arg.Context, receiver ...reflect.Value) error {
+// Run 运行执行器
+func (r *Runner) Run(ctx Context, receiver ...reflect.Value) error {
 
 	// 获取函数定义所在的文件及其行号信息
 	file, line, _ := util.FileLine(r.fn)
@@ -35,7 +37,7 @@ func (r *runnable) Run(assembly arg.Context, receiver ...reflect.Value) error {
 	}
 
 	if r.arg != nil {
-		v, err := r.arg.Get(assembly, fileLine)
+		v, err := r.arg.Get(ctx, fileLine)
 		if err != nil {
 			return err
 		}

@@ -223,8 +223,8 @@ type ConfigurableBeanDefinition interface {
 	beanFactory() beanFactory
 	getStatus() beanStatus         // 返回 Bean 的状态值
 	getDependsOn() []bean.Selector // 返回 Bean 的间接依赖项
-	getInit() *runnable            // 返回 Bean 的初始化函数
-	getDestroy() *runnable         // 返回 Bean 的销毁函数
+	getInit() *arg.Runner          // 返回 Bean 的初始化函数
+	getDestroy() *arg.Runner       // 返回 Bean 的销毁函数
 	getFile() string               // 返回 Bean 注册点所在文件的名称
 	getLine() int                  // 返回 Bean 注册点所在文件的行数
 
@@ -250,8 +250,8 @@ type BeanDefinition struct {
 	primary   bool            // 是否为主版本
 	dependsOn []bean.Selector // 间接依赖项
 
-	init    *runnable // 初始化函数
-	destroy *runnable // 销毁函数
+	init    *arg.Runner // 初始化函数
+	destroy *arg.Runner // 销毁函数
 
 	exports map[reflect.Type]struct{} // 严格导出的接口类型
 }
@@ -344,12 +344,12 @@ func (d *BeanDefinition) getDependsOn() []bean.Selector {
 }
 
 // getInit 返回 Bean 的初始化函数
-func (d *BeanDefinition) getInit() *runnable {
+func (d *BeanDefinition) getInit() *arg.Runner {
 	return d.init
 }
 
 // getDestroy 返回 Bean 的销毁函数
-func (d *BeanDefinition) getDestroy() *runnable {
+func (d *BeanDefinition) getDestroy() *arg.Runner {
 	return d.destroy
 }
 
@@ -423,7 +423,8 @@ func validLifeCycleFunc(fn interface{}, beanType reflect.Type) (reflect.Type, bo
 // Init 设置 Bean 的初始化函数，args 是初始化函数的一般参数绑定
 func (d *BeanDefinition) Init(fn interface{}, args ...arg.Arg) *BeanDefinition {
 	if fnType, ok := validLifeCycleFunc(fn, d.Type()); ok {
-		d.init = newRunnable(fn, arg.NewArgList(fnType, true, args))
+		argList := arg.NewArgList(fnType, true, args)
+		d.init = arg.NewRunner(fn, argList)
 		return d
 	}
 	panic(errors.New("init should be func(bean) or func(bean)error"))
@@ -432,7 +433,8 @@ func (d *BeanDefinition) Init(fn interface{}, args ...arg.Arg) *BeanDefinition {
 // Destroy 设置 Bean 的销毁函数，args 是销毁函数的一般参数绑定
 func (d *BeanDefinition) Destroy(fn interface{}, args ...arg.Arg) *BeanDefinition {
 	if fnType, ok := validLifeCycleFunc(fn, d.Type()); ok {
-		d.destroy = newRunnable(fn, arg.NewArgList(fnType, true, args))
+		argList := arg.NewArgList(fnType, true, args)
+		d.destroy = arg.NewRunner(fn, argList)
 		return d
 	}
 	panic(errors.New("destroy should be func(bean) or func(bean)error"))
