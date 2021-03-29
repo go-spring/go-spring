@@ -21,8 +21,6 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"runtime"
-	"strings"
 
 	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/cond"
@@ -91,8 +89,8 @@ func Value(arg interface{}) ValueArg {
 	return ValueArg{arg: arg}
 }
 
-// ArgList 函数参数列表。
-type ArgList struct {
+// argList 函数参数列表。
+type argList struct {
 
 	// args 函数参数列表。
 	args []Arg
@@ -105,8 +103,8 @@ type ArgList struct {
 	withReceiver bool
 }
 
-// NewArgList 返回新创建的函数参数的列表。
-func NewArgList(fnType reflect.Type, withReceiver bool, args []Arg) *ArgList {
+// newArgList 返回新创建的函数参数的列表。
+func newArgList(fnType reflect.Type, withReceiver bool, args []Arg) *argList {
 
 	// 计算函数不可变参数的数量，需要排除接收者。
 	fixedArgCount := fnType.NumIn()
@@ -182,29 +180,29 @@ func NewArgList(fnType reflect.Type, withReceiver bool, args []Arg) *ArgList {
 		}
 	}
 
-	return &ArgList{fnType: fnType, withReceiver: withReceiver, args: fnArgs}
+	return &argList{fnType: fnType, withReceiver: withReceiver, args: fnArgs}
 }
 
-func (argList *ArgList) WithReceiver() bool { return argList.withReceiver }
+func (r *argList) WithReceiver() bool { return r.withReceiver }
 
 // Get 返回函数所有参数的真实值，fileLine 是函数定义所在的文件及其行号，供打印日志时使用。
-func (argList *ArgList) Get(ctx Context, fileLine string) ([]reflect.Value, error) {
+func (r *argList) Get(ctx Context, fileLine string) ([]reflect.Value, error) {
 
-	fnType := argList.fnType
+	fnType := r.fnType
 	numIn := fnType.NumIn()
 
 	// 接收者不算作函数的参数。
-	if argList.withReceiver {
+	if r.withReceiver {
 		numIn -= 1
 	}
 
 	variadic := fnType.IsVariadic()
 	result := make([]reflect.Value, 0)
 
-	for idx, arg := range argList.args {
+	for idx, arg := range r.args {
 		var t reflect.Type
 
-		if argList.withReceiver {
+		if r.withReceiver {
 			idx++
 		}
 
@@ -214,7 +212,7 @@ func (argList *ArgList) Get(ctx Context, fileLine string) ([]reflect.Value, erro
 			t = fnType.In(idx)
 		}
 
-		v, err := argList.get(t, arg, ctx, fileLine)
+		v, err := r.get(t, arg, ctx, fileLine)
 		if err != nil {
 			return nil, err
 		}
@@ -227,7 +225,7 @@ func (argList *ArgList) Get(ctx Context, fileLine string) ([]reflect.Value, erro
 	return result, nil
 }
 
-func (argList *ArgList) get(t reflect.Type, arg Arg, ctx Context, fileLine string) (v reflect.Value, err error) {
+func (r *argList) get(t reflect.Type, arg Arg, ctx Context, fileLine string) (v reflect.Value, err error) {
 
 	description := fmt.Sprintf("arg:\"%v\" %s", arg, fileLine)
 	log.Tracef("get value %s", description)
@@ -276,37 +274,12 @@ func (argList *ArgList) get(t reflect.Type, arg Arg, ctx Context, fileLine strin
 
 // optionArg Option 形式的函数参数
 type optionArg struct {
-	fn      interface{}
-	argList *ArgList
-
-	File string // 注册点所在文件
-	Line int    // 注册点所在行数
-
+	r    *functor
 	cond cond.Condition // 判断条件
 }
 
 // Option 封装 Option 形式的函数参数。
 func Option(fn interface{}, args ...Arg) *optionArg {
-
-	var (
-		file string
-		line int
-	)
-
-	// 获取注册点信息
-	for i := 1; i < 10; i++ {
-		_, file0, line0, _ := runtime.Caller(i)
-
-		if strings.Contains(file0, "/spring-core/arg/") {
-			if !strings.HasSuffix(file0, "_test.go") {
-				continue
-			}
-		}
-
-		file = file0
-		line = line0
-		break
-	}
 
 	fnType := reflect.TypeOf(fn)
 
@@ -315,12 +288,7 @@ func Option(fn interface{}, args ...Arg) *optionArg {
 		panic(errors.New("error option func"))
 	}
 
-	return &optionArg{
-		fn:      fn,
-		argList: NewArgList(fnType, false, args),
-		File:    file,
-		Line:    line,
-	}
+	return &optionArg{r: Bind(fn, false, args)}
 }
 
 // Cond 为 Option 设置一个 cond.Condition
@@ -331,7 +299,7 @@ func (arg *optionArg) Cond(cond cond.Condition) *optionArg {
 
 func (arg *optionArg) call(ctx Context) (v reflect.Value, err error) {
 
-	fileLine := fmt.Sprintf("%s:%d", arg.File, arg.Line)
+	fileLine := fmt.Sprintf("%s:%d", arg.r.file, arg.r.line)
 	log.Tracef("call option func %s", fileLine)
 
 	defer func() {
@@ -343,14 +311,11 @@ func (arg *optionArg) call(ctx Context) (v reflect.Value, err error) {
 	}()
 
 	if arg.cond == nil || ctx.Matches(arg.cond) {
-		var in []reflect.Value
-		in, err = arg.argList.Get(ctx, fileLine)
-		if err != nil {
+		if out, err := arg.r.Call(ctx); err != nil {
 			return reflect.Value{}, err
+		} else {
+			return out[0], nil
 		}
-		fnValue := reflect.ValueOf(arg.fn)
-		out := fnValue.Call(in)
-		return out[0], nil
 	}
 
 	return reflect.Value{}, nil

@@ -425,8 +425,7 @@ func (assembly *defaultBeanAssembly) wireBeanDefinition(bd ConfigurableBeanDefin
 			return err
 		}
 	case *ctorBeanFactory:
-		fnValue := reflect.ValueOf(b.fn)
-		if err := assembly.wireConstructorBean(fnValue, b, bd); err != nil {
+		if err := assembly.wireConstructorBean(b, bd); err != nil {
 			return err
 		}
 	default:
@@ -538,35 +537,17 @@ func (assembly *defaultBeanAssembly) wireObjectBean(bd ConfigurableBeanDefinitio
 	return nil
 }
 
-func (assembly *defaultBeanAssembly) wireConstructorBean(fnValue reflect.Value, fnBean *ctorBeanFactory, bd ConfigurableBeanDefinition) error {
+func (assembly *defaultBeanAssembly) wireConstructorBean(fnBean *ctorBeanFactory, bd ConfigurableBeanDefinition) error {
 
-	// 获取输入参数
-	var in []reflect.Value
-
-	if fnBean.arg != nil {
-		r, err := fnBean.arg.Get(assembly, bd.FileLine())
-		util.Panic(err).When(err != nil)
-		if len(r) > 0 {
-			in = append(in, r...)
-		}
+	out, err := fnBean.fn.Call(assembly)
+	if err != nil {
+		panic(fmt.Errorf("ctor bean: \"%s\" return error: %v", bd.FileLine(), err))
 	}
 
-	// 调用 Bean 函数
-	out := fnValue.Call(in)
-
-	// 获取第一个返回值
-	val := out[0]
-
-	if len(out) == 2 { // 如果有 error 返回则 panic
-		if err := out[1].Interface(); err != nil {
-			panic(fmt.Errorf("ctor bean: \"%s\" return error: %v", bd.FileLine(), err))
-		}
-	}
-
+	// 将返回值赋值给 Bean
 	oldValue := bd.Value()
 
-	// 将函数的返回值赋值给 Bean
-	if util.IsRefType(val.Kind()) {
+	if val := out[0]; util.IsRefType(val.Kind()) {
 		// 如果实现接口的是值类型，那么需要转换成指针类型然后再赋值给接口
 		if val.Kind() == reflect.Interface && util.IsValueType(val.Elem().Kind()) {
 			ptrVal := reflect.New(val.Elem().Type())

@@ -28,7 +28,7 @@ import (
 
 // Configer 配置函数，不立即执行
 type Configer struct {
-	r      *arg.Runner
+	r      arg.Runnable
 	name   string
 	cond   cond.Condition // 判断条件
 	before []string       // 位于哪些配置函数之前
@@ -39,8 +39,7 @@ type Configer struct {
 func Config(fn interface{}, args ...arg.Arg) *Configer {
 	if fnType := reflect.TypeOf(fn); util.FuncType(fnType) {
 		if util.ReturnNothing(fnType) || util.ReturnOnlyError(fnType) {
-			argList := arg.NewArgList(fnType, false, args)
-			return &Configer{r: arg.NewRunner(fn, argList)}
+			return &Configer{r: arg.Bind(fn, false, args)}
 		}
 	}
 	panic(errors.New("fn should be func() or func()error"))

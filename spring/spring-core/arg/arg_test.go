@@ -17,11 +17,9 @@
 package arg_test
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/go-spring/spring-core/arg"
-	"github.com/go-spring/spring-core/assert"
 )
 
 type optArg struct{ param int }
@@ -35,7 +33,5 @@ func opt(param int) optFunc {
 }
 
 func TestOption(t *testing.T) {
-	r := arg.Option(opt, arg.Value(3))
-	assert.Equal(t, r.Line, 38)
-	fmt.Println(r.File, r.Line)
+	arg.Option(opt, arg.Value(3))
 }

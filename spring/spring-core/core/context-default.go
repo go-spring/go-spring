@@ -536,8 +536,7 @@ func (ctx *applicationContext) Invoke(fn interface{}, args ...arg.Arg) error {
 	if fnType := reflect.TypeOf(fn); util.FuncType(fnType) {
 		if util.ReturnNothing(fnType) || util.ReturnOnlyError(fnType) {
 			assembly := newDefaultBeanAssembly(ctx)
-			argList := arg.NewArgList(fnType, false, args)
-			return arg.NewRunner(fn, argList).Run(assembly)
+			return arg.Bind(fn, false, args).Run(assembly)
 		}
 	}
 	panic(errors.New("fn should be func() or func()error"))
@@ -568,8 +567,7 @@ func (ctx *applicationContext) Go(fn interface{}, args ...arg.Arg) {
 			}()
 
 			assembly := newDefaultBeanAssembly(ctx)
-			argList := arg.NewArgList(fnType, false, args)
-			_ = arg.NewRunner(fn, argList).Run(assembly)
+			_ = arg.Bind(fn, false, args).Run(assembly)
 		}()
 	}
 	panic(errors.New("fn should be func()"))

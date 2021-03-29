@@ -179,9 +179,8 @@ func IsFuncBeanType(fnType reflect.Type) bool {
 }
 
 type ctorBeanFactory struct {
-	fnType reflect.Type
-	fn     interface{}
-	arg    *arg.ArgList
+	fnType reflect.Type // TODO
+	fn     arg.Callable
 }
 
 func (b *ctorBeanFactory) newValue() reflect.Value {
@@ -223,8 +222,8 @@ type ConfigurableBeanDefinition interface {
 	beanFactory() beanFactory
 	getStatus() beanStatus         // 返回 Bean 的状态值
 	getDependsOn() []bean.Selector // 返回 Bean 的间接依赖项
-	getInit() *arg.Runner          // 返回 Bean 的初始化函数
-	getDestroy() *arg.Runner       // 返回 Bean 的销毁函数
+	getInit() arg.Runnable         // 返回 Bean 的初始化函数
+	getDestroy() arg.Runnable      // 返回 Bean 的销毁函数
 	getFile() string               // 返回 Bean 注册点所在文件的名称
 	getLine() int                  // 返回 Bean 注册点所在文件的行数
 
@@ -250,8 +249,8 @@ type BeanDefinition struct {
 	primary   bool            // 是否为主版本
 	dependsOn []bean.Selector // 间接依赖项
 
-	init    *arg.Runner // 初始化函数
-	destroy *arg.Runner // 销毁函数
+	init    arg.Runnable // 初始化函数
+	destroy arg.Runnable // 销毁函数
 
 	exports map[reflect.Type]struct{} // 严格导出的接口类型
 }
@@ -344,12 +343,12 @@ func (d *BeanDefinition) getDependsOn() []bean.Selector {
 }
 
 // getInit 返回 Bean 的初始化函数
-func (d *BeanDefinition) getInit() *arg.Runner {
+func (d *BeanDefinition) getInit() arg.Runnable {
 	return d.init
 }
 
 // getDestroy 返回 Bean 的销毁函数
-func (d *BeanDefinition) getDestroy() *arg.Runner {
+func (d *BeanDefinition) getDestroy() arg.Runnable {
 	return d.destroy
 }
 
@@ -422,9 +421,8 @@ func validLifeCycleFunc(fn interface{}, beanType reflect.Type) (reflect.Type, bo
 
 // Init 设置 Bean 的初始化函数，args 是初始化函数的一般参数绑定
 func (d *BeanDefinition) Init(fn interface{}, args ...arg.Arg) *BeanDefinition {
-	if fnType, ok := validLifeCycleFunc(fn, d.Type()); ok {
-		argList := arg.NewArgList(fnType, true, args)
-		d.init = arg.NewRunner(fn, argList)
+	if _, ok := validLifeCycleFunc(fn, d.Type()); ok {
+		d.init = arg.Bind(fn, true, args)
 		return d
 	}
 	panic(errors.New("init should be func(bean) or func(bean)error"))
@@ -432,9 +430,8 @@ func (d *BeanDefinition) Init(fn interface{}, args ...arg.Arg) *BeanDefinition {
 
 // Destroy 设置 Bean 的销毁函数，args 是销毁函数的一般参数绑定
 func (d *BeanDefinition) Destroy(fn interface{}, args ...arg.Arg) *BeanDefinition {
-	if fnType, ok := validLifeCycleFunc(fn, d.Type()); ok {
-		argList := arg.NewArgList(fnType, true, args)
-		d.destroy = arg.NewRunner(fn, argList)
+	if _, ok := validLifeCycleFunc(fn, d.Type()); ok {
+		d.destroy = arg.Bind(fn, true, args)
 		return d
 	}
 	panic(errors.New("destroy should be func(bean) or func(bean)error"))
@@ -460,33 +457,6 @@ func (d *BeanDefinition) Export(exports ...interface{}) *BeanDefinition {
 	return d
 }
 
-func getFileLine() (file string, line int) {
-
-	// 获取注册点信息
-	for i := 2; i < 10; i++ {
-		_, file0, line0, _ := runtime.Caller(i)
-
-		// 排除 spring-core 包下面所有的非 test 文件
-		if strings.Contains(file0, "/spring-core/") {
-			if !strings.HasSuffix(file0, "_test.go") {
-				continue
-			}
-		}
-
-		// 排除 spring-boot 包下面的 spring-boot-singlet.go 文件
-		if strings.Contains(file0, "/spring-boot/") {
-			if strings.HasSuffix(file0, "spring-boot-singlet.go") {
-				continue
-			}
-		}
-
-		file = file0
-		line = line0
-		break
-	}
-	return
-}
-
 // Bean 普通函数注册时需要使用 reflect.ValueOf(fn) 的方式避免和构造函数发生冲突。
 func Bean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 
@@ -505,7 +475,22 @@ func Bean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 		panic(errors.New("bean can't be nil"))
 	}
 
-	file, line := getFileLine()
+	var (
+		file string
+		line int
+	)
+
+	for i := 2; i < 10; i++ {
+		_, f, l, _ := runtime.Caller(i)
+		if strings.Contains(f, "/spring-core/") {
+			if !strings.HasSuffix(f, "_test.go") {
+				continue
+			}
+		}
+		file = f
+		line = l
+		break
+	}
 
 	// 以 reflect.ValueOf(fn) 方式注册的函数被视为对象 Bean 。
 	if t := v.Type(); !fromValue && t.Kind() == reflect.Func {
@@ -519,8 +504,7 @@ func Bean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 
 		b := &ctorBeanFactory{
 			fnType: t,
-			fn:     objOrCtor,
-			arg:    arg.NewArgList(t, false, ctorArgs),
+			fn:     arg.Bind(objOrCtor, false, ctorArgs),
 		}
 
 		return newBeanDefinition(b, file, line)
