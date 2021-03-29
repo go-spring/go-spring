@@ -131,25 +131,20 @@ func ParseCollectionTag(str string) (tag collectionTag) {
 	return
 }
 
-type beanFactory interface {
-	beanClass() string
-	newValue() reflect.Value
-	beanType() reflect.Type
+type springBean interface {
+	value() reflect.Value
+	class() string
 }
 
-type objBeanFactory struct {
+type objBean struct {
 	v reflect.Value
 }
 
-func (b *objBeanFactory) newValue() reflect.Value {
+func (b *objBean) value() reflect.Value {
 	return b.v
 }
 
-func (b *objBeanFactory) beanType() reflect.Type {
-	return b.v.Type()
-}
-
-func (b *objBeanFactory) beanClass() string {
+func (b *objBean) class() string {
 	return "object bean"
 }
 
@@ -178,29 +173,16 @@ func IsFuncBeanType(fnType reflect.Type) bool {
 	return true
 }
 
-type ctorBeanFactory struct {
-	fnType reflect.Type // TODO
-	fn     arg.Callable
+type ctorBean struct {
+	v  reflect.Value
+	fn arg.Callable
 }
 
-func (b *ctorBeanFactory) newValue() reflect.Value {
-
-	// 创建 Bean 的值
-	out0 := b.fnType.Out(0)
-	v := reflect.New(out0)
-
-	// 引用类型去掉一层指针
-	if util.IsRefType(out0.Kind()) {
-		v = v.Elem()
-	}
-	return v
+func (b *ctorBean) value() reflect.Value {
+	return b.v
 }
 
-func (b *ctorBeanFactory) beanType() reflect.Type {
-	return b.newValue().Type() // TODO
-}
-
-func (b *ctorBeanFactory) beanClass() string {
+func (b *ctorBean) class() string {
 	return "constructor bean"
 }
 
@@ -216,10 +198,10 @@ const (
 	Deleted   = beanStatus(5) // 已删除
 )
 
-type ConfigurableBeanDefinition interface {
+type beanDefinition interface {
 	bean.Definition
 
-	beanFactory() beanFactory
+	bean() springBean
 	getStatus() beanStatus         // 返回 Bean 的状态值
 	getDependsOn() []bean.Selector // 返回 Bean 的间接依赖项
 	getInit() arg.Runnable         // 返回 Bean 的初始化函数
@@ -233,11 +215,10 @@ type ConfigurableBeanDefinition interface {
 
 // BeanDefinition 用于存储 Bean 的各种元数据
 type BeanDefinition struct {
-	rValue  reflect.Value // 值
-	factory beanFactory
-
-	rType    reflect.Type // 类型
-	typeName string       // 原始类型的全限定名
+	springBean springBean
+	beanValue  reflect.Value // 值
+	beanType   reflect.Type  // 类型
+	typeName   string        // 原始类型的全限定名
 
 	name   string     // Bean 的名称，请勿直接使用该字段!
 	status beanStatus // Bean 的状态
@@ -256,25 +237,25 @@ type BeanDefinition struct {
 }
 
 // newBeanDefinition BeanDefinition 的构造函数
-func newBeanDefinition(factory beanFactory, file string, line int) *BeanDefinition {
-	t := factory.beanType()
+func newBeanDefinition(springBean springBean, file string, line int) *BeanDefinition {
+	t := springBean.value().Type()
 	if !util.IsRefType(t.Kind()) {
 		panic(errors.New("bean must be ref type"))
 	}
 	return &BeanDefinition{
-		rType:    t,
-		typeName: util.TypeName(t),
-		factory:  factory,
-		status:   Default,
-		file:     file,
-		line:     line,
-		exports:  make(map[reflect.Type]struct{}),
+		beanType:   t,
+		typeName:   util.TypeName(t),
+		springBean: springBean,
+		status:     Default,
+		file:       file,
+		line:       line,
+		exports:    make(map[reflect.Type]struct{}),
 	}
 }
 
 func (d *BeanDefinition) Reset() {
 	d.status = Default
-	d.rValue = reflect.Value{}
+	d.beanValue = reflect.Value{}
 }
 
 // Bean 返回 Bean 的源
@@ -284,19 +265,19 @@ func (d *BeanDefinition) Bean() interface{} {
 
 // Type 返回 Bean 的类型
 func (d *BeanDefinition) Type() reflect.Type {
-	return d.rType
+	return d.beanType
 }
 
 func (d *BeanDefinition) setValue(v reflect.Value) {
-	d.rValue = v
+	d.beanValue = v
 }
 
 // Value 返回 Bean 的值
 func (d *BeanDefinition) Value() reflect.Value {
-	if !d.rValue.IsValid() {
-		d.rValue = d.factory.newValue()
+	if !d.beanValue.IsValid() {
+		d.beanValue = d.springBean.value()
 	}
-	return d.rValue
+	return d.beanValue
 }
 
 // TypeName 返回 Bean 的原始类型的全限定名
@@ -308,7 +289,7 @@ func (d *BeanDefinition) TypeName() string {
 func (d *BeanDefinition) BeanName() string {
 	if d.name == "" {
 		// 统一使用类型字符串作为默认名称!
-		d.name = d.rType.String()
+		d.name = d.beanType.String()
 	}
 	return d.name
 }
@@ -323,8 +304,8 @@ func (d *BeanDefinition) FileLine() string {
 	return fmt.Sprintf("%s:%d", d.file, d.line)
 }
 
-func (d *BeanDefinition) beanFactory() beanFactory {
-	return d.factory
+func (d *BeanDefinition) bean() springBean {
+	return d.springBean
 }
 
 // getStatus 返回 Bean 的状态值
@@ -364,7 +345,7 @@ func (d *BeanDefinition) getLine() int {
 
 // Description 返回 Bean 的详细描述
 func (d *BeanDefinition) Description() string {
-	return fmt.Sprintf("%s \"%s\" %s", d.factory.beanClass(), d.BeanName(), d.FileLine())
+	return fmt.Sprintf("%s \"%s\" %s", d.springBean.class(), d.BeanName(), d.FileLine())
 }
 
 // Match 测试 Bean 的类型全限定名和 Bean 的名称是否都匹配
@@ -502,13 +483,22 @@ func Bean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 			panic(fmt.Errorf("func bean must be %s or %s", t1, t2))
 		}
 
-		b := &ctorBeanFactory{
-			fnType: t,
-			fn:     arg.Caller(objOrCtor, false, ctorArgs),
+		// 创建 Bean 的值
+		out0 := t.Out(0)
+		v := reflect.New(out0)
+
+		// 引用类型去掉一层指针
+		if util.IsRefType(out0.Kind()) {
+			v = v.Elem()
+		}
+
+		b := &ctorBean{
+			v:  v,
+			fn: arg.Caller(objOrCtor, false, ctorArgs),
 		}
 
 		return newBeanDefinition(b, file, line)
 	}
 
-	return newBeanDefinition(&objBeanFactory{v: v}, file, line)
+	return newBeanDefinition(&objBean{v: v}, file, line)
 }

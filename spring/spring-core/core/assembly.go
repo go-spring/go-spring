@@ -33,7 +33,7 @@ import (
 type wiringStack struct{ stack *list.List }
 
 // pushBack 添加一个 Bean 到尾部
-func (s *wiringStack) pushBack(bd ConfigurableBeanDefinition) {
+func (s *wiringStack) pushBack(bd beanDefinition) {
 	log.Tracef("wiring %s", bd.Description())
 	s.stack.PushBack(bd)
 }
@@ -41,13 +41,13 @@ func (s *wiringStack) pushBack(bd ConfigurableBeanDefinition) {
 // popBack 删除尾部的 Bean
 func (s *wiringStack) popBack() {
 	e := s.stack.Remove(s.stack.Back())
-	log.Tracef("wired %s", e.(ConfigurableBeanDefinition).Description())
+	log.Tracef("wired %s", e.(beanDefinition).Description())
 }
 
 // path 返回 Bean 注入的路径
 func (s *wiringStack) path() (path string) {
 	for e := s.stack.Front(); e != nil; e = e.Next() {
-		w := e.Value.(ConfigurableBeanDefinition)
+		w := e.Value.(beanDefinition)
 		path += fmt.Sprintf("=> %s ↩\n", w.Description())
 	}
 	return path[:len(path)-1]
@@ -347,13 +347,13 @@ func (assembly *beanAssembly) autoCollectBeans(t reflect.Type, et reflect.Type) 
 }
 
 // wireSliceItem 对 slice 的元素值进行注入
-func (assembly *beanAssembly) wireSliceItem(v reflect.Value, d ConfigurableBeanDefinition) error {
+func (assembly *beanAssembly) wireSliceItem(v reflect.Value, d beanDefinition) error {
 	bd := Bean(v, d.getFile(), d.getLine())
 	return assembly.wireBeanDefinition(bd, false)
 }
 
 // wireBeanDefinition 对特定的 bean.BeanDefinition 进行注入，onlyAutoWire 是否只注入而不进行属性绑定
-func (assembly *beanAssembly) wireBeanDefinition(bd ConfigurableBeanDefinition, onlyAutoWire bool) error {
+func (assembly *beanAssembly) wireBeanDefinition(bd beanDefinition, onlyAutoWire bool) error {
 
 	// Bean 是否已删除，已经删除的 Bean 不能再注入
 	if bd.getStatus() == Deleted {
@@ -390,7 +390,7 @@ func (assembly *beanAssembly) wireBeanDefinition(bd ConfigurableBeanDefinition, 
 
 	// 正在注入的 Bean 再次注入则说明出现了循环依赖
 	if bd.getStatus() == Wiring {
-		if _, ok := bd.beanFactory().(*objBeanFactory); !ok {
+		if _, ok := bd.bean().(*objBean); !ok {
 			panic(errors.New("found circle autowire"))
 		}
 		return nil
@@ -404,18 +404,18 @@ func (assembly *beanAssembly) wireBeanDefinition(bd ConfigurableBeanDefinition, 
 		if n := len(b); n != 1 {
 			panic(fmt.Errorf("found %d bean(s) for: \"%v\"", n, selector))
 		}
-		if err := assembly.wireBeanDefinition(b[0].(ConfigurableBeanDefinition), false); err != nil {
+		if err := assembly.wireBeanDefinition(b[0].(beanDefinition), false); err != nil {
 			return err
 		}
 	}
 
 	// 对当前 Bean 进行自动注入
-	switch b := bd.beanFactory().(type) {
-	case *objBeanFactory:
+	switch b := bd.bean().(type) {
+	case *objBean:
 		if err := assembly.wireObjectBean(bd, onlyAutoWire); err != nil {
 			return err
 		}
-	case *ctorBeanFactory:
+	case *ctorBean:
 		if err := assembly.wireConstructorBean(b, bd); err != nil {
 			return err
 		}
@@ -439,7 +439,7 @@ func (assembly *beanAssembly) wireBeanDefinition(bd ConfigurableBeanDefinition, 
 }
 
 // wireObjectBean 对原始对象进行注入
-func (assembly *beanAssembly) wireObjectBean(bd ConfigurableBeanDefinition, onlyAutoWire bool) error {
+func (assembly *beanAssembly) wireObjectBean(bd beanDefinition, onlyAutoWire bool) error {
 	st := bd.Type()
 	switch sk := st.Kind(); sk {
 	case reflect.Slice: // 对数组元素进行注入
@@ -528,7 +528,7 @@ func (assembly *beanAssembly) wireObjectBean(bd ConfigurableBeanDefinition, only
 	return nil
 }
 
-func (assembly *beanAssembly) wireConstructorBean(fnBean *ctorBeanFactory, bd ConfigurableBeanDefinition) error {
+func (assembly *beanAssembly) wireConstructorBean(fnBean *ctorBean, bd beanDefinition) error {
 
 	out, err := fnBean.fn.Call(assembly)
 	if err != nil {
@@ -601,15 +601,15 @@ type fieldBeanDefinition struct {
 
 // Description 返回 Bean 的详细描述
 func (d *fieldBeanDefinition) Description() string {
-	return fmt.Sprintf("%s field: %s %s", d.beanFactory().beanClass(), d.field, d.FileLine())
+	return fmt.Sprintf("%s field: %s %s", d.bean().class(), d.field, d.FileLine())
 }
 
 type fnValueBeanDefinition struct {
 	*BeanDefinition
-	f ConfigurableBeanDefinition // 函数 Bean 定义
+	f beanDefinition // 函数 Bean 定义
 }
 
 // Description 返回 Bean 的详细描述
 func (d *fnValueBeanDefinition) Description() string {
-	return fmt.Sprintf("%s value %s", d.f.beanFactory().beanClass(), d.f.FileLine())
+	return fmt.Sprintf("%s value %s", d.f.bean().class(), d.f.FileLine())
 }
