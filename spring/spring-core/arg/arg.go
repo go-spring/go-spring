@@ -288,7 +288,7 @@ func Option(fn interface{}, args ...Arg) *optionArg {
 		panic(errors.New("error option func"))
 	}
 
-	return &optionArg{r: Bind(fn, false, args)}
+	return &optionArg{r: bind(fn, false, args)}
 }
 
 // Cond 为 Option 设置一个 cond.Condition

@@ -190,9 +190,9 @@ func (ctx *applicationContext) GetBean(i interface{}, selector ...bean.Selector)
 		s = selector[0]
 	}
 
+	w := toAssembly(ctx)
 	v := reflect.ValueOf(i)
 	tag := ToSingletonTag(s)
-	w := newDefaultBeanAssembly(ctx)
 	return w.getBeanValue(v.Elem(), tag, reflect.Value{}, "")
 }
 
@@ -259,8 +259,7 @@ func (ctx *applicationContext) CollectBeans(i interface{}, selectors ...bean.Sel
 		tag.Items = append(tag.Items, ToSingletonTag(selector))
 	}
 
-	w := newDefaultBeanAssembly(ctx)
-	return w.collectBeans(reflect.ValueOf(i).Elem(), tag, "")
+	return toAssembly(ctx).collectBeans(reflect.ValueOf(i).Elem(), tag, "")
 }
 
 // getTypeCacheItem 查找指定类型的缓存项
@@ -406,7 +405,7 @@ func (ctx *applicationContext) resolveBeans() {
 }
 
 // runConfigers 执行 Config 函数
-func (ctx *applicationContext) runConfigers(assembly *defaultBeanAssembly) {
+func (ctx *applicationContext) runConfigers(assembly *beanAssembly) {
 	for e := ctx.configers.Front(); e != nil; e = e.Next() {
 		configer := e.Value.(*Configer)
 		if err := configer.r.Run(assembly); err != nil {
@@ -433,7 +432,7 @@ func (ctx *applicationContext) sortDestroyers() {
 }
 
 // wireBeans 对 Bean 执行自动注入
-func (ctx *applicationContext) wireBeans(assembly *defaultBeanAssembly) error {
+func (ctx *applicationContext) wireBeans(assembly *beanAssembly) error {
 	for _, bd := range ctx.beanMap {
 		if err := assembly.wireBeanDefinition(bd, false); err != nil {
 			return err
@@ -457,11 +456,11 @@ func (ctx *applicationContext) Refresh() {
 	ctx.resolveConfigers()
 	ctx.resolveBeans()
 
-	assembly := newDefaultBeanAssembly(ctx)
+	assembly := toAssembly(ctx)
 
 	defer func() { // 捕获自动注入过程中的异常，打印错误日志然后重新抛出
 		if err := recover(); err != nil {
-			log.Errorf("%v ↩\n%s", err, assembly.wiringStack.path())
+			log.Errorf("%v ↩\n%s", err, assembly.stack.path())
 			panic(err)
 		}
 	}()
@@ -478,11 +477,11 @@ func (ctx *applicationContext) Refresh() {
 func (ctx *applicationContext) WireBean(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error) {
 	ctx.checkAutoWired()
 
-	assembly := newDefaultBeanAssembly(ctx)
+	assembly := toAssembly(ctx)
 
 	defer func() { // 捕获自动注入过程中的异常，打印错误日志然后重新抛出
 		if err := recover(); err != nil {
-			log.Errorf("%v ↩\n%s", err, assembly.wiringStack.path())
+			log.Errorf("%v ↩\n%s", err, assembly.stack.path())
 			panic(err)
 		}
 	}()
@@ -519,7 +518,7 @@ func (ctx *applicationContext) Close(beforeDestroy ...func()) {
 
 	log.Info("safe goroutines exited")
 
-	assembly := newDefaultBeanAssembly(ctx)
+	assembly := toAssembly(ctx)
 
 	// 按照顺序执行销毁函数
 	for i := ctx.destroyers.Front(); i != nil; i = i.Next() {
@@ -535,8 +534,7 @@ func (ctx *applicationContext) Invoke(fn interface{}, args ...arg.Arg) error {
 	ctx.checkAutoWired()
 	if fnType := reflect.TypeOf(fn); util.FuncType(fnType) {
 		if util.ReturnNothing(fnType) || util.ReturnOnlyError(fnType) {
-			assembly := newDefaultBeanAssembly(ctx)
-			return arg.Bind(fn, false, args).Run(assembly)
+			return arg.Runner(fn, false, args).Run(toAssembly(ctx))
 		}
 	}
 	panic(errors.New("fn should be func() or func()error"))
@@ -566,8 +564,7 @@ func (ctx *applicationContext) Go(fn interface{}, args ...arg.Arg) {
 				}
 			}()
 
-			assembly := newDefaultBeanAssembly(ctx)
-			_ = arg.Bind(fn, false, args).Run(assembly)
+			_ = arg.Runner(fn, false, args).Run(toAssembly(ctx))
 		}()
 	}
 	panic(errors.New("fn should be func()"))

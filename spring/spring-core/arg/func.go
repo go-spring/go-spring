@@ -32,9 +32,19 @@ type Callable interface {
 	Call(ctx Context, receiver ...reflect.Value) ([]reflect.Value, error)
 }
 
+// Caller 绑定函数及其参数。
+func Caller(fn interface{}, withReceiver bool, args []Arg) Callable {
+	return bind(fn, withReceiver, args)
+}
+
 // Runnable 无返回值的函数。
 type Runnable interface {
 	Run(ctx Context, receiver ...reflect.Value) error
+}
+
+// Runner 绑定函数及其参数。
+func Runner(fn interface{}, withReceiver bool, args []Arg) Runnable {
+	return bind(fn, withReceiver, args)
 }
 
 // functor 仿函数，绑定函数及其参数。
@@ -45,8 +55,8 @@ type functor struct {
 	line int    // 注册点所在行数
 }
 
-// Bind functor 的构造函数，绑定函数及其参数。
-func Bind(fn interface{}, withReceiver bool, args []Arg) *functor {
+// bind 绑定函数及其参数。
+func bind(fn interface{}, withReceiver bool, args []Arg) *functor {
 
 	var (
 		file string

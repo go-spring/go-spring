@@ -3177,3 +3177,51 @@ func TestNotCondition(t *testing.T) {
 		On(cond.Not(profileCond))
 	assert.False(t, c.Matches(ctx))
 }
+
+func TestApplicationContext_Invoke(t *testing.T) {
+
+	t.Run("before Refresh", func(t *testing.T) {
+
+		ctx := core.NewApplicationContext()
+		ctx.Bean(func() int { return 3 })
+		ctx.Property("version", "v0.0.1")
+
+		assert.Panic(t, func() {
+			_ = ctx.Invoke(func(i *int, version string) {
+				fmt.Println("version:", version)
+				fmt.Println("int:", *i)
+			}, "", "${version}")
+		}, "should call after Refresh")
+
+		ctx.Refresh()
+	})
+
+	t.Run("not run", func(t *testing.T) {
+
+		ctx := core.NewApplicationContext()
+		ctx.Bean(func() int { return 3 })
+		ctx.Property("version", "v0.0.1")
+		ctx.Refresh()
+
+		_ = ctx.Invoke(func(i *int, version string) {
+			fmt.Println("version:", version)
+			fmt.Println("int:", *i)
+		}, "", "${version}")
+	})
+
+	t.Run("run", func(t *testing.T) {
+
+		ctx := core.NewApplicationContext()
+		ctx.Bean(func() int { return 3 })
+		ctx.Property("version", "v0.0.1")
+		ctx.Profile("dev")
+		ctx.Refresh()
+
+		fn := func(i *int, version string) {
+			fmt.Println("version:", version)
+			fmt.Println("int:", *i)
+		}
+
+		_ = ctx.Invoke(fn, "", "${version}")
+	})
+}

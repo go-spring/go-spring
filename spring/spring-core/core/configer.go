@@ -39,7 +39,7 @@ type Configer struct {
 func Config(fn interface{}, args ...arg.Arg) *Configer {
 	if fnType := reflect.TypeOf(fn); util.FuncType(fnType) {
 		if util.ReturnNothing(fnType) || util.ReturnOnlyError(fnType) {
-			return &Configer{r: arg.Bind(fn, false, args)}
+			return &Configer{r: arg.Runner(fn, false, args)}
 		}
 	}
 	panic(errors.New("fn should be func() or func()error"))

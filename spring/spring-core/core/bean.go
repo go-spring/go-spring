@@ -422,7 +422,7 @@ func validLifeCycleFunc(fn interface{}, beanType reflect.Type) (reflect.Type, bo
 // Init 设置 Bean 的初始化函数，args 是初始化函数的一般参数绑定
 func (d *BeanDefinition) Init(fn interface{}, args ...arg.Arg) *BeanDefinition {
 	if _, ok := validLifeCycleFunc(fn, d.Type()); ok {
-		d.init = arg.Bind(fn, true, args)
+		d.init = arg.Runner(fn, true, args)
 		return d
 	}
 	panic(errors.New("init should be func(bean) or func(bean)error"))
@@ -431,7 +431,7 @@ func (d *BeanDefinition) Init(fn interface{}, args ...arg.Arg) *BeanDefinition {
 // Destroy 设置 Bean 的销毁函数，args 是销毁函数的一般参数绑定
 func (d *BeanDefinition) Destroy(fn interface{}, args ...arg.Arg) *BeanDefinition {
 	if _, ok := validLifeCycleFunc(fn, d.Type()); ok {
-		d.destroy = arg.Bind(fn, true, args)
+		d.destroy = arg.Runner(fn, true, args)
 		return d
 	}
 	panic(errors.New("destroy should be func(bean) or func(bean)error"))
@@ -504,7 +504,7 @@ func Bean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 
 		b := &ctorBeanFactory{
 			fnType: t,
-			fn:     arg.Bind(objOrCtor, false, ctorArgs),
+			fn:     arg.Caller(objOrCtor, false, ctorArgs),
 		}
 
 		return newBeanDefinition(b, file, line)
