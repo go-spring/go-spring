@@ -390,7 +390,7 @@ func (assembly *beanAssembly) wireBeanDefinition(bd beanDefinition, onlyAutoWire
 
 	// 正在注入的 Bean 再次注入则说明出现了循环依赖
 	if bd.getStatus() == Wiring {
-		if _, ok := bd.bean().(*objBean); !ok {
+		if bd.getCtor() != nil {
 			panic(errors.New("found circle autowire"))
 		}
 		return nil
@@ -410,17 +410,14 @@ func (assembly *beanAssembly) wireBeanDefinition(bd beanDefinition, onlyAutoWire
 	}
 
 	// 对当前 Bean 进行自动注入
-	switch b := bd.bean().(type) {
-	case *objBean:
+	if bd.getCtor() == nil {
 		if err := assembly.wireObjectBean(bd, onlyAutoWire); err != nil {
 			return err
 		}
-	case *ctorBean:
-		if err := assembly.wireConstructorBean(b, bd); err != nil {
+	} else {
+		if err := assembly.wireConstructorBean(bd); err != nil {
 			return err
 		}
-	default:
-		panic(errors.New("error spring bean type"))
 	}
 
 	// 如果用户设置了初始化函数则执行初始化函数
@@ -528,9 +525,9 @@ func (assembly *beanAssembly) wireObjectBean(bd beanDefinition, onlyAutoWire boo
 	return nil
 }
 
-func (assembly *beanAssembly) wireConstructorBean(fnBean *ctorBean, bd beanDefinition) error {
+func (assembly *beanAssembly) wireConstructorBean(bd beanDefinition) error {
 
-	out, err := fnBean.fn.Call(assembly)
+	out, err := bd.getCtor().Call(assembly)
 	if err != nil {
 		panic(fmt.Errorf("ctor bean: \"%s\" return error: %v", bd.FileLine(), err))
 	}
@@ -601,7 +598,7 @@ type fieldBeanDefinition struct {
 
 // Description 返回 Bean 的详细描述
 func (d *fieldBeanDefinition) Description() string {
-	return fmt.Sprintf("%s field: %s %s", d.bean().class(), d.field, d.FileLine())
+	return fmt.Sprintf("%s field: %s %s", d.class(), d.field, d.FileLine())
 }
 
 type fnValueBeanDefinition struct {
@@ -611,5 +608,5 @@ type fnValueBeanDefinition struct {
 
 // Description 返回 Bean 的详细描述
 func (d *fnValueBeanDefinition) Description() string {
-	return fmt.Sprintf("%s value %s", d.f.bean().class(), d.f.FileLine())
+	return fmt.Sprintf("%s value %s", d.f.class(), d.f.FileLine())
 }

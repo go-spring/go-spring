@@ -373,9 +373,6 @@ func (ctx *applicationContext) resolveBean(bd *BeanDefinition) {
 
 func (ctx *applicationContext) registerAllBeans() {
 	for _, bd := range ctx.AllBeans {
-		bd.Reset()
-	}
-	for _, bd := range ctx.AllBeans {
 		ctx.registerBeanDefinition(bd)
 	}
 }
@@ -493,13 +490,11 @@ func (ctx *applicationContext) WireBean(objOrCtor interface{}, ctorArgs ...arg.A
 	return bd.Bean(), nil
 }
 
-// Beans 获取所有 Bean 的定义，不能保证解析和注入，请谨慎使用该函数!
-func (ctx *applicationContext) Beans() []*BeanDefinition {
-	result := make([]*BeanDefinition, 0)
+// Range 遍历所有 Bean 的定义，不能保证解析和注入，请谨慎使用!
+func (ctx *applicationContext) Range(fn func(bd bean.Definition)) {
 	for _, v := range ctx.beanMap {
-		result = append(result, v)
+		fn(v)
 	}
-	return result
 }
 
 // Close 关闭容器上下文，用于通知 Bean 销毁等，该函数可以确保 Bean 的销毁顺序和注入顺序相反。

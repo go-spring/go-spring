@@ -71,8 +71,8 @@ type ApplicationContext interface {
 	// selectors 列表的顺序对收集结果进行排序。
 	CollectBeans(i interface{}, selectors ...bean.Selector) error
 
-	// Beans 获取所有 Bean 的定义，不能保证解析和注入，请谨慎使用该函数!
-	Beans() []*BeanDefinition
+	// Range 遍历所有 Bean 的定义，不能保证解析和注入，请谨慎使用!
+	Range(fn func(bd bean.Definition))
 
 	// Go 安全地启动一个 goroutine
 	Go(fn interface{}, args ...arg.Arg)

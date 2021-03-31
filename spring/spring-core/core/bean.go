@@ -131,23 +131,6 @@ func ParseCollectionTag(str string) (tag collectionTag) {
 	return
 }
 
-type springBean interface {
-	value() reflect.Value
-	class() string
-}
-
-type objBean struct {
-	v reflect.Value
-}
-
-func (b *objBean) value() reflect.Value {
-	return b.v
-}
-
-func (b *objBean) class() string {
-	return "object bean"
-}
-
 // IsFuncBeanType 返回以函数形式注册 Bean 的函数是否合法。一个合法
 // 的注册函数需要以下条件：入参可以有任意多个，支持一般形式和 Option
 // 形式，返回值只能有一个或者两个，第一个返回值必须是 Bean 源，它可以是
@@ -173,19 +156,6 @@ func IsFuncBeanType(fnType reflect.Type) bool {
 	return true
 }
 
-type ctorBean struct {
-	v  reflect.Value
-	fn arg.Callable
-}
-
-func (b *ctorBean) value() reflect.Value {
-	return b.v
-}
-
-func (b *ctorBean) class() string {
-	return "constructor bean"
-}
-
 // beanStatus Bean 的状态值
 type beanStatus int
 
@@ -201,13 +171,14 @@ const (
 type beanDefinition interface {
 	bean.Definition
 
-	bean() springBean
+	getCtor() arg.Callable
 	getStatus() beanStatus         // 返回 Bean 的状态值
 	getDependsOn() []bean.Selector // 返回 Bean 的间接依赖项
 	getInit() arg.Runnable         // 返回 Bean 的初始化函数
 	getDestroy() arg.Runnable      // 返回 Bean 的销毁函数
 	getFile() string               // 返回 Bean 注册点所在文件的名称
 	getLine() int                  // 返回 Bean 注册点所在文件的行数
+	class() string
 
 	setValue(reflect.Value)      // 设置新的值
 	setStatus(status beanStatus) // 设置 Bean 的状态值
@@ -215,10 +186,10 @@ type beanDefinition interface {
 
 // BeanDefinition 用于存储 Bean 的各种元数据
 type BeanDefinition struct {
-	springBean springBean
-	beanValue  reflect.Value // 值
-	beanType   reflect.Type  // 类型
-	typeName   string        // 原始类型的全限定名
+	beanCtor  arg.Callable  // 构造函数
+	beanValue reflect.Value // 值
+	beanType  reflect.Type  // 类型
+	typeName  string        // 原始类型的全限定名
 
 	name   string     // Bean 的名称，请勿直接使用该字段!
 	status beanStatus // Bean 的状态
@@ -237,25 +208,25 @@ type BeanDefinition struct {
 }
 
 // newBeanDefinition BeanDefinition 的构造函数
-func newBeanDefinition(springBean springBean, file string, line int) *BeanDefinition {
-	t := springBean.value().Type()
+func newBeanDefinition(v reflect.Value, ctor arg.Callable, file string, line int) *BeanDefinition {
+	t := v.Type()
 	if !util.IsRefType(t.Kind()) {
 		panic(errors.New("bean must be ref type"))
 	}
 	return &BeanDefinition{
-		beanType:   t,
-		typeName:   util.TypeName(t),
-		springBean: springBean,
-		status:     Default,
-		file:       file,
-		line:       line,
-		exports:    make(map[reflect.Type]struct{}),
+		beanType:  t,
+		typeName:  util.TypeName(t),
+		beanValue: v,
+		beanCtor:  ctor,
+		status:    Default,
+		file:      file,
+		line:      line,
+		exports:   make(map[reflect.Type]struct{}),
 	}
 }
 
-func (d *BeanDefinition) Reset() {
-	d.status = Default
-	d.beanValue = reflect.Value{}
+func (d *BeanDefinition) getCtor() arg.Callable {
+	return d.beanCtor
 }
 
 // Bean 返回 Bean 的源
@@ -274,9 +245,6 @@ func (d *BeanDefinition) setValue(v reflect.Value) {
 
 // Value 返回 Bean 的值
 func (d *BeanDefinition) Value() reflect.Value {
-	if !d.beanValue.IsValid() {
-		d.beanValue = d.springBean.value()
-	}
 	return d.beanValue
 }
 
@@ -302,10 +270,6 @@ func (d *BeanDefinition) BeanId() string {
 // FileLine 返回 Bean 的注册点
 func (d *BeanDefinition) FileLine() string {
 	return fmt.Sprintf("%s:%d", d.file, d.line)
-}
-
-func (d *BeanDefinition) bean() springBean {
-	return d.springBean
 }
 
 // getStatus 返回 Bean 的状态值
@@ -345,7 +309,14 @@ func (d *BeanDefinition) getLine() int {
 
 // Description 返回 Bean 的详细描述
 func (d *BeanDefinition) Description() string {
-	return fmt.Sprintf("%s \"%s\" %s", d.springBean.class(), d.BeanName(), d.FileLine())
+	return fmt.Sprintf("%s \"%s\" %s", d.class(), d.BeanName(), d.FileLine())
+}
+
+func (d *BeanDefinition) class() string {
+	if d.beanCtor == nil {
+		return "object bean"
+	}
+	return "constructor bean"
 }
 
 // Match 测试 Bean 的类型全限定名和 Bean 的名称是否都匹配
@@ -492,13 +463,9 @@ func Bean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 			v = v.Elem()
 		}
 
-		b := &ctorBean{
-			v:  v,
-			fn: arg.Caller(objOrCtor, false, ctorArgs),
-		}
-
-		return newBeanDefinition(b, file, line)
+		ctor := arg.Caller(objOrCtor, false, ctorArgs)
+		return newBeanDefinition(v, ctor, file, line)
 	}
 
-	return newBeanDefinition(&objBean{v: v}, file, line)
+	return newBeanDefinition(v, nil, file, line)
 }
