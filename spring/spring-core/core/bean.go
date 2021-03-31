@@ -171,25 +171,25 @@ const (
 type beanDefinition interface {
 	bean.Definition
 
-	getCtor() arg.Callable
+	getFactory() arg.Callable
 	getStatus() beanStatus         // 返回 Bean 的状态值
 	getDependsOn() []bean.Selector // 返回 Bean 的间接依赖项
 	getInit() arg.Runnable         // 返回 Bean 的初始化函数
 	getDestroy() arg.Runnable      // 返回 Bean 的销毁函数
 	getFile() string               // 返回 Bean 注册点所在文件的名称
 	getLine() int                  // 返回 Bean 注册点所在文件的行数
-	class() string
+	getClass() string
 
-	setValue(reflect.Value)      // 设置新的值
 	setStatus(status beanStatus) // 设置 Bean 的状态值
 }
 
 // BeanDefinition 用于存储 Bean 的各种元数据
 type BeanDefinition struct {
-	beanCtor  arg.Callable  // 构造函数
-	beanValue reflect.Value // 值
-	beanType  reflect.Type  // 类型
-	typeName  string        // 原始类型的全限定名
+	f arg.Callable  // 构造函数
+	v reflect.Value // 值
+	t reflect.Type  // 类型
+
+	typeName string // 原始类型的全限定名
 
 	name   string     // Bean 的名称，请勿直接使用该字段!
 	status beanStatus // Bean 的状态
@@ -214,38 +214,34 @@ func newBeanDefinition(v reflect.Value, ctor arg.Callable, file string, line int
 		panic(errors.New("bean must be ref type"))
 	}
 	return &BeanDefinition{
-		beanType:  t,
-		typeName:  util.TypeName(t),
-		beanValue: v,
-		beanCtor:  ctor,
-		status:    Default,
-		file:      file,
-		line:      line,
-		exports:   make(map[reflect.Type]struct{}),
+		t:        t,
+		v:        v,
+		f:        ctor,
+		typeName: util.TypeName(t),
+		status:   Default,
+		file:     file,
+		line:     line,
+		exports:  make(map[reflect.Type]struct{}),
 	}
 }
 
-func (d *BeanDefinition) getCtor() arg.Callable {
-	return d.beanCtor
+func (d *BeanDefinition) getFactory() arg.Callable {
+	return d.f
 }
 
 // Bean 返回 Bean 的源
-func (d *BeanDefinition) Bean() interface{} {
+func (d *BeanDefinition) Interface() interface{} {
 	return d.Value().Interface()
 }
 
 // Type 返回 Bean 的类型
 func (d *BeanDefinition) Type() reflect.Type {
-	return d.beanType
-}
-
-func (d *BeanDefinition) setValue(v reflect.Value) {
-	d.beanValue = v
+	return d.t
 }
 
 // Value 返回 Bean 的值
 func (d *BeanDefinition) Value() reflect.Value {
-	return d.beanValue
+	return d.v
 }
 
 // TypeName 返回 Bean 的原始类型的全限定名
@@ -257,7 +253,7 @@ func (d *BeanDefinition) TypeName() string {
 func (d *BeanDefinition) BeanName() string {
 	if d.name == "" {
 		// 统一使用类型字符串作为默认名称!
-		d.name = d.beanType.String()
+		d.name = d.t.String()
 	}
 	return d.name
 }
@@ -309,11 +305,11 @@ func (d *BeanDefinition) getLine() int {
 
 // Description 返回 Bean 的详细描述
 func (d *BeanDefinition) Description() string {
-	return fmt.Sprintf("%s \"%s\" %s", d.class(), d.BeanName(), d.FileLine())
+	return fmt.Sprintf("%s \"%s\" %s", d.getClass(), d.BeanName(), d.FileLine())
 }
 
-func (d *BeanDefinition) class() string {
-	if d.beanCtor == nil {
+func (d *BeanDefinition) getClass() string {
+	if d.f == nil {
 		return "object bean"
 	}
 	return "constructor bean"

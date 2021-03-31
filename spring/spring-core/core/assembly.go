@@ -390,7 +390,7 @@ func (assembly *beanAssembly) wireBeanDefinition(bd beanDefinition, onlyAutoWire
 
 	// 正在注入的 Bean 再次注入则说明出现了循环依赖
 	if bd.getStatus() == Wiring {
-		if bd.getCtor() != nil {
+		if bd.getFactory() != nil {
 			panic(errors.New("found circle autowire"))
 		}
 		return nil
@@ -410,7 +410,7 @@ func (assembly *beanAssembly) wireBeanDefinition(bd beanDefinition, onlyAutoWire
 	}
 
 	// 对当前 Bean 进行自动注入
-	if bd.getCtor() == nil {
+	if bd.getFactory() == nil {
 		if err := assembly.wireObjectBean(bd, onlyAutoWire); err != nil {
 			return err
 		}
@@ -527,28 +527,23 @@ func (assembly *beanAssembly) wireObjectBean(bd beanDefinition, onlyAutoWire boo
 
 func (assembly *beanAssembly) wireConstructorBean(bd beanDefinition) error {
 
-	out, err := bd.getCtor().Call(assembly)
+	out, err := bd.getFactory().Call(assembly)
 	if err != nil {
 		panic(fmt.Errorf("ctor bean: \"%s\" return error: %v", bd.FileLine(), err))
 	}
 
-	// 将返回值赋值给 Bean
-	oldValue := bd.Value()
-
 	if val := out[0]; util.IsRefType(val.Kind()) {
 		// 如果实现接口的是值类型，那么需要转换成指针类型然后再赋值给接口
 		if val.Kind() == reflect.Interface && util.IsValueType(val.Elem().Kind()) {
-			ptrVal := reflect.New(val.Elem().Type())
-			ptrVal.Elem().Set(val.Elem())
-			oldValue.Set(ptrVal)
+			v := reflect.New(val.Elem().Type())
+			v.Elem().Set(val.Elem())
+			bd.Value().Set(v)
 		} else {
-			oldValue.Set(val)
+			bd.Value().Set(val)
 		}
 	} else {
-		oldValue.Elem().Set(val)
+		bd.Value().Elem().Set(val)
 	}
-
-	bd.setValue(oldValue)
 
 	if bd.Value().IsNil() {
 		panic(fmt.Errorf("ctor bean: \"%s\" return nil", bd.FileLine()))
@@ -598,7 +593,7 @@ type fieldBeanDefinition struct {
 
 // Description 返回 Bean 的详细描述
 func (d *fieldBeanDefinition) Description() string {
-	return fmt.Sprintf("%s field: %s %s", d.class(), d.field, d.FileLine())
+	return fmt.Sprintf("%s field: %s %s", d.getClass(), d.field, d.FileLine())
 }
 
 type fnValueBeanDefinition struct {
@@ -608,5 +603,5 @@ type fnValueBeanDefinition struct {
 
 // Description 返回 Bean 的详细描述
 func (d *fnValueBeanDefinition) Description() string {
-	return fmt.Sprintf("%s value %s", d.f.class(), d.f.FileLine())
+	return fmt.Sprintf("%s value %s", d.f.getClass(), d.f.FileLine())
 }

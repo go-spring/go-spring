@@ -324,7 +324,7 @@ func (ctx *applicationContext) autoExport(t reflect.Type, bd *BeanDefinition) {
 }
 
 func (ctx *applicationContext) typeCache(typ reflect.Type, bd *BeanDefinition) {
-	log.Debugf("register bean type:\"%s\" beanId:\"%s\" %s", typ.String(), bd.BeanId(), bd.FileLine())
+	log.Debugf("register %s type:\"%s\" beanId:\"%s\" %s", bd.getClass(), typ.String(), bd.BeanId(), bd.FileLine())
 	ctx.getTypeCacheItem(typ).store(bd)
 }
 
@@ -487,7 +487,7 @@ func (ctx *applicationContext) WireBean(objOrCtor interface{}, ctorArgs ...arg.A
 	if err := assembly.wireBeanDefinition(bd, false); err != nil {
 		return nil, err
 	}
-	return bd.Bean(), nil
+	return bd.Interface(), nil
 }
 
 // Range 遍历所有 Bean 的定义，不能保证解析和注入，请谨慎使用!

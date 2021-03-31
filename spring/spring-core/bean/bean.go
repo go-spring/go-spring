@@ -27,9 +27,9 @@ type Selector interface{}
 
 // Definition Bean 元数据定义。
 type Definition interface {
-	Bean() interface{}    // 源
-	Type() reflect.Type   // 类型
-	Value() reflect.Value // 值
+	Type() reflect.Type     // 类型
+	Value() reflect.Value   // 值
+	Interface() interface{} // 源
 
 	BeanId() string   // 返回 Bean 的 ID
 	BeanName() string // 返回 Bean 的名称
