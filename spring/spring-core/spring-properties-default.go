@@ -271,13 +271,40 @@ func bindStructField(p Properties, v reflect.Value, str string, opt bindOption) 
 	bindValue(p, v, key, def, opt)
 }
 
+// Interpolate 处理字符串插值
+func Interpolate(p Properties, str string) string {
+
+	start := strings.Index(str, "${")
+	if start < 0 {
+		return str
+	}
+
+	end := strings.IndexByte(str[start+2:], '}')
+	if end < 0 {
+		return str
+	}
+
+	end = start + 2 + end
+	key := str[start+2 : end]
+	val, ok := p.GetDefaultProperty(key, nil)
+	if !ok {
+		panic(fmt.Errorf("property \"%s\" not config", key))
+	}
+
+	return str[:start] + fmt.Sprint(val) + Interpolate(p, str[end+1:])
+}
+
 // resolveProperty 解析属性值，查看其是否具有引用关系
 func resolveProperty(p Properties, _ string, value interface{}) interface{} {
-	str, ok := value.(string)
 
-	// 不是字符串或者没有使用配置引用语法
-	if !ok || !strings.HasPrefix(str, "${") {
+	str, ok := value.(string)
+	if !ok {
 		return value
+	}
+
+	// 遍历字符串看看是否包含 ${} 结构并解析
+	if !strings.HasPrefix(str, "${") {
+		return Interpolate(p, str)
 	}
 
 	key, def := parsePropertyTag(str[2 : len(str)-1])

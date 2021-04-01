@@ -807,3 +807,18 @@ func TestDefaultProperties_KeyCanBeEmpty(t *testing.T) {
 	p.BindProperty("", &s)
 	assert.Equal(t, s.KeyIsEmpty, "kie")
 }
+
+func TestInterpolate(t *testing.T) {
+	p := SpringCore.NewDefaultProperties()
+	p.SetProperty("name", "Jim")
+	str := SpringCore.Interpolate(p, "my name is ${name")
+	assert.Equal(t, str, "my name is ${name")
+	str = SpringCore.Interpolate(p, "my name is ${name}")
+	assert.Equal(t, str, "my name is Jim")
+	str = SpringCore.Interpolate(p, "my name is ${name}${name}")
+	assert.Equal(t, str, "my name is JimJim")
+	str = SpringCore.Interpolate(p, "my name is ${name} my name is ${name")
+	assert.Equal(t, str, "my name is Jim my name is ${name")
+	str = SpringCore.Interpolate(p, "my name is ${name} my name is ${name}")
+	assert.Equal(t, str, "my name is Jim my name is Jim")
+}
