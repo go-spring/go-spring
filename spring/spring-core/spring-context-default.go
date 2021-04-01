@@ -633,6 +633,12 @@ func (ctx *defaultSpringContext) AutoWireBeans() {
 	ctx.runConfigers(assembly)
 	ctx.wireBeans(assembly)
 
+	// 处理被标记为延迟注入的那些 Bean 字段
+	for _, f := range assembly.lazyFields {
+		tag := strings.TrimSuffix(f.tag, ",lazy")
+		assembly.getBeanValue(f.v, ParseSingletonTag(tag), f.parent, f.field)
+	}
+
 	ctx.sortDestroyers()
 }
 

@@ -234,6 +234,7 @@ type springBean interface {
 
 // objectBean 以对象形式注册的 Bean
 type objectBean struct {
+	rBean    interface{}
 	rType    reflect.Type  // 类型
 	rValue   reflect.Value // 值
 	typeName string        // 原始类型的全限定名
@@ -243,6 +244,7 @@ type objectBean struct {
 func newObjectBean(v reflect.Value) *objectBean {
 	if t := v.Type(); IsRefType(t.Kind()) {
 		return &objectBean{
+			rBean:    v.Interface(),
 			rType:    t,
 			rValue:   v,
 			typeName: TypeName(t),

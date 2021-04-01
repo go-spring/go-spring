@@ -72,11 +72,19 @@ func (s *wiringStack) path() (path string) {
 	return path[:len(path)-1]
 }
 
+type lazyField struct {
+	parent reflect.Value
+	field  string
+	v      reflect.Value
+	tag    string
+}
+
 // defaultBeanAssembly beanAssembly 的默认实现
 type defaultBeanAssembly struct {
 	springCtx   *defaultSpringContext
 	wiringStack wiringStack
 	destroys    *list.List // 具有销毁函数的 Bean 的堆栈
+	lazyFields  []lazyField
 }
 
 // newDefaultBeanAssembly defaultBeanAssembly 的构造函数
@@ -85,6 +93,7 @@ func newDefaultBeanAssembly(springContext *defaultSpringContext) *defaultBeanAss
 		springCtx:   springContext,
 		wiringStack: newWiringStack(),
 		destroys:    list.New(),
+		lazyFields:  make([]lazyField, 0),
 	}
 }
 
@@ -448,6 +457,15 @@ func (assembly *defaultBeanAssembly) wireBeanDefinition(bd beanDefinition, onlyA
 	assembly.wiringStack.popBack()
 }
 
+func lookup(tag reflect.StructTag, keys ...string) (value string, ok bool) {
+	for _, key := range keys {
+		if value, ok = tag.Lookup(key); ok {
+			return
+		}
+	}
+	return
+}
+
 // wireObjectBean 对原始对象进行注入
 func (assembly *defaultBeanAssembly) wireObjectBean(bd beanDefinition, onlyAutoWire bool) {
 	st := bd.Type()
@@ -502,14 +520,13 @@ func (assembly *defaultBeanAssembly) wireObjectBean(bd beanDefinition, onlyAutoW
 					}
 				}
 
-				// 处理 autowire 标签，autowire 与 inject 等价
-				if beanId, ok := ft.Tag.Lookup("autowire"); ok {
-					assembly.wireStructField(fv, beanId, sv, fieldName)
-				}
-
-				// 处理 inject 标签，inject 与 autowire 等价
-				if beanId, ok := ft.Tag.Lookup("inject"); ok {
-					assembly.wireStructField(fv, beanId, sv, fieldName)
+				if beanId, ok := lookup(ft.Tag, "autowire", "inject"); ok {
+					if strings.HasSuffix(beanId, ",lazy") {
+						f := lazyField{parent: sv, field: fieldName, v: fv, tag: beanId}
+						assembly.lazyFields = append(assembly.lazyFields, f)
+					} else {
+						assembly.wireStructField(fv, beanId, sv, fieldName)
+					}
 				}
 
 				// 只处理结构体类型的字段，防止递归所以不支持指针结构体字段
@@ -579,6 +596,9 @@ func (assembly *defaultBeanAssembly) wireFunctionBean(fnValue reflect.Value, fnB
 	if fnBean.Value().IsNil() {
 		panic(fmt.Errorf("function bean: \"%s\" return nil", bd.FileLine()))
 	}
+
+	// 把 Bean 的原始内容解出来，调试的时候更方便
+	fnBean.rBean = fnBean.rValue.Interface()
 
 	// 对函数的返回值进行自动注入
 	b := &BeanDefinition{
