@@ -263,6 +263,7 @@ func (ctx *defaultSpringContext) FindBean(selector BeanSelector) (*BeanDefinitio
 
 	finder := func(fn func(*BeanDefinition) bool) (result []*BeanDefinition) {
 		for _, bean := range ctx.beanMap {
+			ctx.export(bean) // 可能还未处理自动导出的接口
 			if bean.status != beanStatus_Resolving && fn(bean) {
 				ctx.resolveBean(bean) // 避免 Bean 未被解析
 				if bean.status != beanStatus_Deleted {
@@ -369,6 +370,18 @@ func (ctx *defaultSpringContext) getNameCacheItem(name string) *beanCacheItem {
 	return i
 }
 
+// export 自动导出 Bean 实现的接口
+func (ctx *defaultSpringContext) export(bd *BeanDefinition) {
+	if bd.export {
+		return
+	}
+	t := SpringUtils.Indirect(bd.Type())
+	if t.Kind() == reflect.Struct {
+		ctx.autoExport(t, bd)
+	}
+	bd.export = true
+}
+
 // autoExport 自动导出 Bean 实现的接口
 func (ctx *defaultSpringContext) autoExport(t reflect.Type, bd *BeanDefinition) {
 
@@ -459,10 +472,8 @@ func (ctx *defaultSpringContext) resolveBean(bd *BeanDefinition) {
 	// 将符合注册条件的 Bean 放入到缓存里面
 	ctx.typeCache(bd.Type(), bd)
 
-	// 自动导出接口，这种情况仅对于结构体才会有效
-	if typ := SpringUtils.Indirect(bd.Type()); typ.Kind() == reflect.Struct {
-		ctx.autoExport(typ, bd)
-	}
+	// 自动导出接口
+	ctx.export(bd)
 
 	// 按照导出类型放入缓存
 	for t := range bd.exports {

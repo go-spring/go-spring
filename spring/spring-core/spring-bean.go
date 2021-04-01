@@ -489,6 +489,7 @@ type BeanDefinition struct {
 	init    *runnable // 初始化函数
 	destroy *runnable // 销毁函数
 
+	export  bool                      // 是否处理过自动导出
 	exports map[reflect.Type]struct{} // 严格导出的接口类型
 }
 
@@ -529,6 +530,7 @@ func newBeanDefinition(bean springBean) *BeanDefinition {
 		file:    file,
 		line:    line,
 		cond:    NewConditional(),
+		export:  false,
 		exports: make(map[reflect.Type]struct{}),
 	}
 }
