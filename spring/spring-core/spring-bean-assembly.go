@@ -44,33 +44,30 @@ type beanAssembly interface {
 }
 
 // wiringStack 注入堆栈
-type wiringStack struct {
-	stack *list.List
-}
+type wiringStack []beanDefinition
 
-func newWiringStack() *wiringStack {
-	return &wiringStack{
-		stack: list.New(),
-	}
+func newWiringStack() wiringStack {
+	return make([]beanDefinition, 0)
 }
 
 // pushBack 添加一个 Bean 到尾部
 func (s *wiringStack) pushBack(bd beanDefinition) {
 	SpringLogger.Tracef("wiring %s", bd.Description())
-	s.stack.PushBack(bd)
+	*s = append(*s, bd)
 }
 
 // popBack 删除尾部的 Bean
 func (s *wiringStack) popBack() {
-	e := s.stack.Remove(s.stack.Back())
-	SpringLogger.Tracef("wired %s", e.(beanDefinition).Description())
+	n := len(*s)
+	bd := (*s)[n-1]
+	*s = (*s)[:n-1]
+	SpringLogger.Tracef("wired %s", bd.(beanDefinition).Description())
 }
 
 // path 返回 Bean 注入的路径
 func (s *wiringStack) path() (path string) {
-	for e := s.stack.Front(); e != nil; e = e.Next() {
-		w := e.Value.(beanDefinition)
-		path += fmt.Sprintf("=> %s ↩\n", w.Description())
+	for _, bd := range *s {
+		path += fmt.Sprintf("=> %s ↩\n", bd.Description())
 	}
 	return path[:len(path)-1]
 }
@@ -78,7 +75,7 @@ func (s *wiringStack) path() (path string) {
 // defaultBeanAssembly beanAssembly 的默认实现
 type defaultBeanAssembly struct {
 	springCtx   *defaultSpringContext
-	wiringStack *wiringStack
+	wiringStack wiringStack
 	destroys    *list.List // 具有销毁函数的 Bean 的堆栈
 }
 
