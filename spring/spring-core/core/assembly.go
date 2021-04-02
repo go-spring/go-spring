@@ -30,32 +30,33 @@ import (
 )
 
 // wiringStack 注入堆栈
-type wiringStack struct{ stack *list.List }
+type wiringStack []beanDefinition
 
 // pushBack 添加一个 Bean 到尾部
 func (s *wiringStack) pushBack(bd beanDefinition) {
 	log.Tracef("wiring %s", bd.Description())
-	s.stack.PushBack(bd)
+	*s = append(*s, bd)
 }
 
 // popBack 删除尾部的 Bean
 func (s *wiringStack) popBack() {
-	e := s.stack.Remove(s.stack.Back())
-	log.Tracef("wired %s", e.(beanDefinition).Description())
+	n := len(*s)
+	bd := (*s)[n-1]
+	*s = (*s)[:n-1]
+	log.Tracef("wired %s", bd.(beanDefinition).Description())
 }
 
 // path 返回 Bean 注入的路径
-func (s *wiringStack) path() (path string) {
-	for e := s.stack.Front(); e != nil; e = e.Next() {
-		w := e.Value.(beanDefinition)
-		path += fmt.Sprintf("=> %s ↩\n", w.Description())
+func (s wiringStack) path() (path string) {
+	for _, bd := range s {
+		path += fmt.Sprintf("=> %s ↩\n", bd.Description())
 	}
 	return path[:len(path)-1]
 }
 
 type beanAssembly struct {
 	appCtx   *applicationContext
-	stack    *wiringStack
+	stack    wiringStack
 	destroys *list.List // 具有销毁函数的 Bean 的堆栈
 }
 
@@ -63,7 +64,7 @@ type beanAssembly struct {
 func toAssembly(appCtx *applicationContext) *beanAssembly {
 	return &beanAssembly{
 		appCtx:   appCtx,
-		stack:    &wiringStack{stack: list.New()},
+		stack:    make([]beanDefinition, 0),
 		destroys: list.New(),
 	}
 }
