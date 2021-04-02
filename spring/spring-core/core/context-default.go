@@ -162,10 +162,19 @@ func (ctx *applicationContext) registerBeanDefinition(bd *BeanDefinition) {
 	ctx.beanMap[bd.BeanId()] = bd
 }
 
-// Bean 将对象或者构造函数转换为 BeanDefinition 对象
-func (ctx *applicationContext) Bean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
+// Object 注册对象形式的 Bean。
+func (ctx *applicationContext) Object(i interface{}) *BeanDefinition {
+	return ctx.AddBean(NewBean(reflect.ValueOf(i)))
+}
+
+// Factory 注册构造函数形式的 Bean。
+func (ctx *applicationContext) Factory(fn interface{}, args ...arg.Arg) *BeanDefinition {
+	return ctx.AddBean(NewBean(fn, args...))
+}
+
+// AddBean 添加 BeanDefinition 定义的 Bean。
+func (ctx *applicationContext) AddBean(bd *BeanDefinition) *BeanDefinition {
 	ctx.checkRegistration()
-	bd := Bean(objOrCtor, ctorArgs...)
 	ctx.AllBeans = append(ctx.AllBeans, bd)
 	return bd
 }
@@ -483,7 +492,7 @@ func (ctx *applicationContext) WireBean(objOrCtor interface{}, ctorArgs ...arg.A
 		}
 	}()
 
-	bd := Bean(objOrCtor, ctorArgs...)
+	bd := NewBean(objOrCtor, ctorArgs...)
 	if err := assembly.wireBeanDefinition(bd, false); err != nil {
 		return nil, err
 	}

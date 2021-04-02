@@ -99,11 +99,17 @@ type ConfigurableApplicationContext interface {
 	// Property 设置属性值，属性名称统一转成小写。
 	Property(key string, value interface{})
 
-	// Bean 将对象或者构造函数转换为 BeanDefinition 对象
-	Bean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition
+	// Object 注册对象形式的 Bean。
+	Object(i interface{}) *BeanDefinition
+
+	// Factory 注册构造函数形式的 Bean。
+	Factory(fn interface{}, args ...arg.Arg) *BeanDefinition
 
 	// Config 注册一个配置函数
 	Config(fn interface{}, args ...arg.Arg) *Configer
+
+	// AddBean 添加 BeanDefinition 定义的 Bean。
+	AddBean(bd *BeanDefinition) *BeanDefinition
 
 	// Refresh 对所有 Bean 进行依赖注入和属性绑定
 	Refresh()

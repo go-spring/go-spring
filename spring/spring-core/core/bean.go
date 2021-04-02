@@ -405,8 +405,8 @@ func (d *BeanDefinition) Export(exports ...interface{}) *BeanDefinition {
 	return d
 }
 
-// Bean 普通函数注册时需要使用 reflect.ValueOf(fn) 的方式避免和构造函数发生冲突。
-func Bean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
+// NewBean 普通函数注册时需要使用 reflect.ValueOf(fn) 的方式避免和构造函数发生冲突。
+func NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 
 	var v reflect.Value
 	var fromValue bool

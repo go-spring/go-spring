@@ -118,7 +118,7 @@ func (app *application) start(cfgLocation ...string) {
 	app.prepare()
 
 	// 注册 ApplicationContext 接口
-	app.appCtx.Bean(app.appCtx).Export((*core.ApplicationContext)(nil))
+	app.appCtx.Object(app.appCtx).Export((*core.ApplicationContext)(nil))
 
 	// 依赖注入、属性绑定、初始化
 	app.appCtx.Refresh()

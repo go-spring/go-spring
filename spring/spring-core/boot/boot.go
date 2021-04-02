@@ -48,9 +48,14 @@ func Config(fn interface{}, args ...arg.Arg) *core.Configer {
 	return gApp.appCtx.Config(fn, args...)
 }
 
-// Bean 将对象或者构造函数转换为 BeanDefinition 对象
-func Bean(objOrCtor interface{}, ctorArgs ...arg.Arg) *core.BeanDefinition {
-	return gApp.appCtx.Bean(objOrCtor, ctorArgs...)
+// Object 注册对象形式的 Bean。
+func Object(i interface{}) *core.BeanDefinition {
+	return gApp.appCtx.Object(i)
+}
+
+// Factory 注册构造函数形式的 Bean。
+func Factory(fn interface{}, args ...arg.Arg) *core.BeanDefinition {
+	return gApp.appCtx.Factory(fn, args...)
 }
 
 // WireBean 对对象或者构造函数的结果进行依赖注入和属性绑定，返回处理后的对象
@@ -101,7 +106,7 @@ func GRpcServer(serviceName string, fn interface{}, server interface{}) {
 
 // GRpcClient 注册 gRPC 服务客户端，fn 是 gRPC 自动生成的客户端构造函数
 func GRpcClient(fn interface{}, endpoint string) *core.BeanDefinition {
-	return gApp.appCtx.Bean(fn, endpoint)
+	return gApp.appCtx.Factory(fn, endpoint)
 }
 
 ///////////////////////////////////////// Web /////////////////////////////////////////
@@ -190,7 +195,8 @@ func DeleteBinding(path string, fn interface{}) *web.Mapper {
 
 // Filter 注册 web.Filter 对象
 func Filter(objOrCtor interface{}, ctorArgs ...arg.Arg) *core.BeanDefinition {
-	return gApp.appCtx.Bean(objOrCtor, ctorArgs...).Export((*web.Filter)(nil))
+	bd := core.NewBean(objOrCtor, ctorArgs...)
+	return gApp.appCtx.AddBean(bd).Export((*web.Filter)(nil))
 }
 
 ///////////////////////////////////////// MQ //////////////////////////////////////////
