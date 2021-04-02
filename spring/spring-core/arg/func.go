@@ -27,6 +27,11 @@ import (
 // errorType error 的反射类型。
 var errorType = reflect.TypeOf((*error)(nil)).Elem()
 
+// FileLine 返回文件行号的接口
+type FileLine interface {
+	FileLine() string
+}
+
 // Callable 有返回值的函数。
 type Callable interface {
 	Call(ctx Context, receiver ...reflect.Value) ([]reflect.Value, error)
@@ -80,6 +85,10 @@ func bind(fn interface{}, withReceiver bool, args []Arg) *functor {
 	return &functor{fn: fn, arg: argList, file: file, line: line}
 }
 
+func (r *functor) FileLine() string {
+	return fmt.Sprintf("%s:%d", r.file, r.line)
+}
+
 func (r *functor) Call(ctx Context, receiver ...reflect.Value) ([]reflect.Value, error) {
 
 	var in []reflect.Value
@@ -89,8 +98,7 @@ func (r *functor) Call(ctx Context, receiver ...reflect.Value) ([]reflect.Value,
 	}
 
 	if r.arg != nil {
-		fileLine := fmt.Sprintf("%s:%d", r.file, r.line)
-		v, err := r.arg.Get(ctx, fileLine)
+		v, err := r.arg.Get(ctx, r.FileLine())
 		if err != nil {
 			return nil, err
 		}

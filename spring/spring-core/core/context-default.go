@@ -179,19 +179,18 @@ func (ctx *applicationContext) AddBean(bd *BeanDefinition) *BeanDefinition {
 	return bd
 }
 
-// GetBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
-// 它和 FindBean 的区别是它在调用后能够保证返回的 Bean 已经完成了注入和绑定过程。
+// GetBean 获取单例 Bean，它和 FindBean 的区别是它在调用后能够保证返回的 Bean 已经完成了注入和绑定过程。
 func (ctx *applicationContext) GetBean(i interface{}, selector ...bean.Selector) error {
 
 	if i == nil {
-		panic(errors.New("i can't be nil"))
+		return errors.New("i can't be nil")
 	}
 
 	ctx.checkAutoWired()
 
 	// 使用指针才能够对外赋值
 	if reflect.TypeOf(i).Kind() != reflect.Ptr {
-		panic(errors.New("i must be pointer"))
+		return errors.New("i must be pointer")
 	}
 
 	s := bean.Selector("")
@@ -206,13 +205,16 @@ func (ctx *applicationContext) GetBean(i interface{}, selector ...bean.Selector)
 }
 
 // FindBean 返回符合条件的 Bean 集合，不保证返回的 Bean 已经完成注入和绑定过程。
-func (ctx *applicationContext) FindBean(selector bean.Selector) []bean.Definition {
+func (ctx *applicationContext) FindBean(selector bean.Selector) ([]bean.Definition, error) {
 	ctx.checkAutoWired()
 
-	finder := func(fn func(*BeanDefinition) bool) (result []bean.Definition) {
+	finder := func(fn func(*BeanDefinition) bool) (result []bean.Definition, err error) {
 		for _, b := range ctx.beanMap {
 			if b.getStatus() != Resolving && fn(b) {
-				ctx.resolveBean(b) // 避免 Bean 未被解析
+				// 避免 Bean 未被解析
+				if err = ctx.resolveBean(b); err != nil {
+					return nil, err
+				}
 				if b.getStatus() != Deleted {
 					result = append(result, b)
 				}
@@ -259,7 +261,7 @@ func (ctx *applicationContext) CollectBeans(i interface{}, selectors ...bean.Sel
 	ctx.checkAutoWired()
 
 	if t := reflect.TypeOf(i); t.Kind() != reflect.Ptr || t.Elem().Kind() != reflect.Slice {
-		panic(errors.New("i must be slice ptr"))
+		return errors.New("i must be slice ptr")
 	}
 
 	tag := collectionTag{Nullable: true}
@@ -292,7 +294,7 @@ func (ctx *applicationContext) getNameCacheItem(name string) *beanCacheItem {
 }
 
 // autoExport 自动导出 Bean 实现的接口
-func (ctx *applicationContext) autoExport(t reflect.Type, bd *BeanDefinition) {
+func (ctx *applicationContext) autoExport(t reflect.Type, bd *BeanDefinition) error {
 
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
@@ -311,7 +313,9 @@ func (ctx *applicationContext) autoExport(t reflect.Type, bd *BeanDefinition) {
 			// 只处理结构体情况的递归，暂时不考虑接口的情况
 			typ := util.Indirect(f.Type)
 			if typ.Kind() == reflect.Struct {
-				ctx.autoExport(typ, bd)
+				if err := ctx.autoExport(typ, bd); err != nil {
+					return err
+				}
 			}
 
 			continue
@@ -319,17 +323,18 @@ func (ctx *applicationContext) autoExport(t reflect.Type, bd *BeanDefinition) {
 
 		// 有 export 标签的必须是接口类型
 		if f.Type.Kind() != reflect.Interface {
-			panic(errors.New("export can only use on interface"))
+			return errors.New("export can only use on interface")
 		}
 
 		// 不能导出需要注入的接口，因为会重复注册
 		if export && (inject || autowire) {
-			panic(errors.New("inject or autowire can't use with export"))
+			return errors.New("inject or autowire can't use with export")
 		}
 
 		// 不限定导出接口字段必须是空白标识符，但建议使用空白标识符
 		bd.Export(f.Type)
 	}
+	return nil
 }
 
 func (ctx *applicationContext) typeCache(typ reflect.Type, bd *BeanDefinition) {
@@ -342,11 +347,11 @@ func (ctx *applicationContext) nameCache(name string, bd *BeanDefinition) {
 }
 
 // resolveBean 对 Bean 进行决议是否能够创建 Bean 的实例
-func (ctx *applicationContext) resolveBean(bd *BeanDefinition) {
+func (ctx *applicationContext) resolveBean(bd *BeanDefinition) error {
 
 	// 正在进行或者已经完成决议过程
 	if bd.getStatus() >= Resolving {
-		return
+		return nil
 	}
 
 	bd.setStatus(Resolving)
@@ -354,7 +359,7 @@ func (ctx *applicationContext) resolveBean(bd *BeanDefinition) {
 	// 不满足判断条件的则标记为删除状态并删除其注册
 	if bd.cond != nil && !bd.cond.Matches(ctx) {
 		ctx.deleteBeanDefinition(bd)
-		return
+		return nil
 	}
 
 	// 将符合注册条件的 Bean 放入到缓存里面
@@ -362,7 +367,9 @@ func (ctx *applicationContext) resolveBean(bd *BeanDefinition) {
 
 	// 自动导出接口，这种情况仅对于结构体才会有效
 	if typ := util.Indirect(bd.Type()); typ.Kind() == reflect.Struct {
-		ctx.autoExport(typ, bd)
+		if err := ctx.autoExport(typ, bd); err != nil {
+			return err
+		}
 	}
 
 	// 按照导出类型放入缓存
@@ -370,7 +377,7 @@ func (ctx *applicationContext) resolveBean(bd *BeanDefinition) {
 		if bd.Type().Implements(t) {
 			ctx.typeCache(t, bd)
 		} else {
-			panic(fmt.Errorf("%s not implement %s interface", bd.Description(), t.String()))
+			return fmt.Errorf("%s not implement %s interface", bd.Description(), t)
 		}
 	}
 
@@ -378,6 +385,7 @@ func (ctx *applicationContext) resolveBean(bd *BeanDefinition) {
 	ctx.nameCache(bd.BeanName(), bd)
 
 	bd.setStatus(Resolved)
+	return nil
 }
 
 func (ctx *applicationContext) registerAllBeans() {
@@ -404,20 +412,24 @@ func (ctx *applicationContext) resolveConfigers() {
 }
 
 // resolveBeans 对 Bean 进行决议是否能够创建 Bean 的实例
-func (ctx *applicationContext) resolveBeans() {
+func (ctx *applicationContext) resolveBeans() error {
 	for _, bd := range ctx.beanMap {
-		ctx.resolveBean(bd)
+		if err := ctx.resolveBean(bd); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 // runConfigers 执行 Config 函数
-func (ctx *applicationContext) runConfigers(assembly *beanAssembly) {
+func (ctx *applicationContext) runConfigers(assembly *beanAssembly) error {
 	for e := ctx.configers.Front(); e != nil; e = e.Next() {
 		configer := e.Value.(*Configer)
 		if err := configer.r.Run(assembly); err != nil {
-			panic(err)
+			return err
 		}
 	}
+	return nil
 }
 
 func (ctx *applicationContext) destroyer(bd *BeanDefinition) *destroyer {
@@ -454,27 +466,39 @@ func (ctx *applicationContext) Refresh() {
 		panic(errors.New("already refreshed"))
 	}
 
+	var (
+		err      error
+		assembly *beanAssembly
+	)
+
+	defer func() {
+		if err != nil {
+			if assembly != nil {
+				log.Errorf("%v ↩\n%s", err, assembly.stack.path())
+			}
+			panic(err)
+		}
+	}()
+
 	// 处理 Method Bean 等
 	ctx.registerAllBeans()
 
 	ctx.autoWired = true
 
 	ctx.resolveConfigers()
-	ctx.resolveBeans()
+	if err = ctx.resolveBeans(); err != nil {
+		return
+	}
 
-	assembly := toAssembly(ctx)
+	assembly = toAssembly(ctx)
 
-	defer func() { // 捕获自动注入过程中的异常，打印错误日志然后重新抛出
-		if err := recover(); err != nil {
-			log.Errorf("%v ↩\n%s", err, assembly.stack.path())
-			panic(err)
-		}
-	}()
+	if err = ctx.runConfigers(assembly); err != nil {
+		return
+	}
 
-	ctx.runConfigers(assembly)
-
-	err := ctx.wireBeans(assembly)
-	util.Panic(err).When(err != nil)
+	if err = ctx.wireBeans(assembly); err != nil {
+		return
+	}
 
 	ctx.sortDestroyers()
 }
@@ -482,18 +506,10 @@ func (ctx *applicationContext) Refresh() {
 // WireBean 对对象或者构造函数的结果进行依赖注入和属性绑定，返回处理后的对象
 func (ctx *applicationContext) WireBean(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error) {
 	ctx.checkAutoWired()
-
 	assembly := toAssembly(ctx)
-
-	defer func() { // 捕获自动注入过程中的异常，打印错误日志然后重新抛出
-		if err := recover(); err != nil {
-			log.Errorf("%v ↩\n%s", err, assembly.stack.path())
-			panic(err)
-		}
-	}()
-
 	bd := NewBean(objOrCtor, ctorArgs...)
-	if err := assembly.wireBeanDefinition(bd, false); err != nil {
+	err := assembly.wireBeanDefinition(bd, false)
+	if err != nil {
 		return nil, err
 	}
 	return bd.Interface(), nil
@@ -541,7 +557,7 @@ func (ctx *applicationContext) Invoke(fn interface{}, args ...arg.Arg) error {
 			return arg.Runner(fn, false, args).Run(toAssembly(ctx))
 		}
 	}
-	panic(errors.New("fn should be func() or func()error"))
+	return errors.New("fn should be func() or func()error")
 }
 
 // Config 注册一个配置函数

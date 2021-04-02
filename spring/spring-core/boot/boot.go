@@ -68,7 +68,7 @@ func GetBean(i interface{}, selector ...bean.Selector) error {
 }
 
 // FindBean 返回符合条件的 Bean 集合，不保证返回的 Bean 已经完成注入和绑定过程。
-func FindBean(selector bean.Selector) []bean.Definition {
+func FindBean(selector bean.Selector) ([]bean.Definition, error) {
 	return gApp.appCtx.FindBean(selector)
 }
 
@@ -193,8 +193,8 @@ func DeleteBinding(path string, fn interface{}) *web.Mapper {
 	return RootRouter.HandleDelete(path, web.BIND(fn))
 }
 
-// Filter 注册 web.Filter 对象
-func Filter(objOrCtor interface{}, ctorArgs ...arg.Arg) *core.BeanDefinition {
+// NewFilter 注册 web.Filter 对象
+func NewFilter(objOrCtor interface{}, ctorArgs ...arg.Arg) *core.BeanDefinition {
 	bd := core.NewBean(objOrCtor, ctorArgs...)
 	return gApp.appCtx.AddBean(bd).Export((*web.Filter)(nil))
 }

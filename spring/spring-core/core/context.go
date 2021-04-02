@@ -60,7 +60,7 @@ type ApplicationContext interface {
 	GetBean(i interface{}, selector ...bean.Selector) error
 
 	// FindBean 返回符合条件的 Bean 集合，不保证返回的 Bean 已经完成注入和绑定过程。
-	FindBean(selector bean.Selector) []bean.Definition
+	FindBean(selector bean.Selector) ([]bean.Definition, error)
 
 	// CollectBeans 收集数组或指针定义的所有符合条件的 Bean，收集到返回 true，否则返
 	// 回 false。该函数有两种模式:自动模式和指定模式。自动模式是指 selectors 参数为空，

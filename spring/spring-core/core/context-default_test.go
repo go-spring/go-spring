@@ -734,37 +734,37 @@ func TestApplicationContext_FindBeanByName(t *testing.T) {
 	ctx.Object(new(BeanTwo))
 	ctx.Refresh()
 
-	b := ctx.FindBean("")
+	b, _ := ctx.FindBean("")
 	assert.Equal(t, len(b), 3)
 
-	b = ctx.FindBean("BeanTwo")
+	b, _ = ctx.FindBean("BeanTwo")
 	fmt.Println(json.ToString(b))
 	assert.Equal(t, len(b), 0)
 
-	b = ctx.FindBean("*core_test.BeanTwo")
+	b, _ = ctx.FindBean("*core_test.BeanTwo")
 	fmt.Println(json.ToString(b))
 	assert.Equal(t, len(b), 1)
 
-	b = ctx.FindBean(":*core_test.BeanTwo")
+	b, _ = ctx.FindBean(":*core_test.BeanTwo")
 	fmt.Println(json.ToString(b))
 	assert.Equal(t, len(b), 1)
 
-	b = ctx.FindBean("github.com/go-spring/spring-core/core_test/core_test.BeanTwo:*core_test.BeanTwo")
+	b, _ = ctx.FindBean("github.com/go-spring/spring-core/core_test/core_test.BeanTwo:*core_test.BeanTwo")
 	fmt.Println(json.ToString(b))
 	assert.Equal(t, len(b), 1)
 
-	b = ctx.FindBean("xxx:*core_test.BeanTwo")
+	b, _ = ctx.FindBean("xxx:*core_test.BeanTwo")
 	fmt.Println(json.ToString(b))
 	assert.Equal(t, len(b), 0)
 
-	b = ctx.FindBean((*BeanTwo)(nil))
+	b, _ = ctx.FindBean((*BeanTwo)(nil))
 	fmt.Println(json.ToString(b))
 	assert.Equal(t, len(b), 1)
 
-	b = ctx.FindBean((*fmt.Stringer)(nil))
+	b, _ = ctx.FindBean((*fmt.Stringer)(nil))
 	assert.Equal(t, len(b), 0)
 
-	b = ctx.FindBean((*Grouper)(nil))
+	b, _ = ctx.FindBean((*Grouper)(nil))
 	assert.Equal(t, len(b), 0)
 }
 

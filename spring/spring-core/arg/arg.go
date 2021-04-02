@@ -274,7 +274,7 @@ func (r *argList) get(t reflect.Type, arg Arg, ctx Context, fileLine string) (v 
 
 // optionArg Option 形式的函数参数
 type optionArg struct {
-	r    *functor
+	r    Callable
 	cond cond.Condition // 判断条件
 }
 
@@ -299,7 +299,7 @@ func (arg *optionArg) Cond(cond cond.Condition) *optionArg {
 
 func (arg *optionArg) call(ctx Context) (v reflect.Value, err error) {
 
-	fileLine := fmt.Sprintf("%s:%d", arg.r.file, arg.r.line)
+	fileLine := arg.r.(FileLine).FileLine()
 	log.Tracef("call option func %s", fileLine)
 
 	defer func() {

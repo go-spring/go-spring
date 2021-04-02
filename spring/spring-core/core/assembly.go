@@ -171,14 +171,14 @@ func (assembly *beanAssembly) getBeanValue(v reflect.Value, tag SingletonTag, pa
 	return nil
 }
 
-// collectBeans 收集符合要求的 Bean，结果可以是多个。自动模式下不对结果排序，指定模式会对结果排序。当允许结果为空时返回 false，否则 panic
+// collectBeans 收集符合要求的 Bean，结果可以是多个，自动模式下不对结果排序，指定模式会对结果排序。
 func (assembly *beanAssembly) collectBeans(v reflect.Value, tag collectionTag, field string) error {
 
 	t := v.Type()
 	et := t.Elem()
 
 	if !util.IsRefType(et.Kind()) { // 收集模式的数组元素必须是引用类型
-		panic(errors.New("slice item in collection mode should be ref type"))
+		return errors.New("slice item in collection mode should be ref type")
 	}
 
 	var (
@@ -196,12 +196,11 @@ func (assembly *beanAssembly) collectBeans(v reflect.Value, tag collectionTag, f
 		return err
 	}
 
-	if ret.Len() > 0 { // 找到多个符合条件的结果
+	if ret.Len() > 0 {
 		util.PatchValue(v).Set(ret)
 		return nil
 	}
 
-	// 没有找到，允许结果为空则返回 false，否则 panic
 	if tag.Nullable {
 		return nil
 	}
@@ -222,7 +221,6 @@ func (assembly *beanAssembly) findBeanFromCache(beans []*BeanDefinition, tag Sin
 		}
 	}
 
-	// 如果找到多个则 panic
 	if len(found) > 1 {
 		msg := fmt.Sprintf("found %d beans, bean: \"%s\" type: %s [", len(found), tag, et)
 		for _, i := range found {
@@ -232,7 +230,6 @@ func (assembly *beanAssembly) findBeanFromCache(beans []*BeanDefinition, tag Sin
 		return -2, errors.New(msg)
 	}
 
-	// 如果必须找到符合条件的 Bean 则在没有找到时 panic
 	if len(found) == 0 && !tag.Nullable {
 		return -2, fmt.Errorf("can't find bean, bean: \"%s\" type: %s", tag, et)
 	}
@@ -263,10 +260,10 @@ func (assembly *beanAssembly) collectAndSortBeans(t reflect.Type, et reflect.Typ
 
 	for _, item := range tag.Items {
 
-		// 是否遇到了"无序"标记
+		// 是否遇到了"无序"标记 TODO 返回固定零值内存
 		if item.BeanName == "*" {
 			if foundAny {
-				panic(errors.New("more than one * in collection " + tag.String()))
+				return reflect.Value{}, errors.New("more than one * in collection " + tag.String())
 			}
 			foundAny = true
 			continue
@@ -357,7 +354,7 @@ func (assembly *beanAssembly) wireBeanDefinition(bd beanDefinition, onlyAutoWire
 
 	// Bean 是否已删除，已经删除的 Bean 不能再注入
 	if bd.getStatus() == Deleted {
-		panic(fmt.Errorf("bean: \"%s\" have been deleted", bd.BeanId()))
+		return fmt.Errorf("bean: \"%s\" have been deleted", bd.BeanId())
 	}
 
 	defer func() {
@@ -376,7 +373,7 @@ func (assembly *beanAssembly) wireBeanDefinition(bd beanDefinition, onlyAutoWire
 			}
 			assembly.destroys.PushBack(curr)
 		} else {
-			panic(errors.New("let me known when it happened"))
+			return errors.New("let me known when it happened")
 		}
 	}
 
@@ -391,7 +388,7 @@ func (assembly *beanAssembly) wireBeanDefinition(bd beanDefinition, onlyAutoWire
 	// 正在注入的 Bean 再次注入则说明出现了循环依赖
 	if bd.getStatus() == Wiring {
 		if bd.getFactory() != nil {
-			panic(errors.New("found circle autowire"))
+			return errors.New("found circle autowire")
 		}
 		return nil
 	}
@@ -400,11 +397,14 @@ func (assembly *beanAssembly) wireBeanDefinition(bd beanDefinition, onlyAutoWire
 
 	// 首先对当前 Bean 的间接依赖项进行自动注入
 	for _, selector := range bd.getDependsOn() {
-		b := assembly.appCtx.FindBean(selector)
-		if n := len(b); n != 1 {
-			panic(fmt.Errorf("found %d bean(s) for: \"%v\"", n, selector))
+		b, err := assembly.appCtx.FindBean(selector)
+		if err != nil {
+			return err
 		}
-		if err := assembly.wireBeanDefinition(b[0].(beanDefinition), false); err != nil {
+		if n := len(b); n != 1 {
+			return fmt.Errorf("found %d bean(s) for: \"%v\"", n, selector)
+		}
+		if err = assembly.wireBeanDefinition(b[0].(beanDefinition), false); err != nil {
 			return err
 		}
 	}
@@ -423,7 +423,7 @@ func (assembly *beanAssembly) wireBeanDefinition(bd beanDefinition, onlyAutoWire
 	// 如果用户设置了初始化函数则执行初始化函数
 	if init := bd.getInit(); init != nil {
 		if err := init.Run(assembly, bd.Value()); err != nil {
-			panic(err)
+			return err
 		}
 	}
 
@@ -529,11 +529,12 @@ func (assembly *beanAssembly) wireConstructorBean(bd beanDefinition) error {
 
 	out, err := bd.getFactory().Call(assembly)
 	if err != nil {
-		panic(fmt.Errorf("ctor bean: \"%s\" return error: %v", bd.FileLine(), err))
+		return fmt.Errorf("ctor bean: \"%s\" return error: %v", bd.FileLine(), err)
 	}
 
+	// 构造函数的返回值为值类型时 bd.Type() 返回其指针类型。
 	if val := out[0]; util.IsRefType(val.Kind()) {
-		// 如果实现接口的是值类型，那么需要转换成指针类型然后再赋值给接口
+		// 如果实现接口的是值类型，那么需要转换成指针类型然后再赋值给接口。
 		if val.Kind() == reflect.Interface && util.IsValueType(val.Elem().Kind()) {
 			v := reflect.New(val.Elem().Type())
 			v.Elem().Set(val.Elem())
@@ -546,7 +547,7 @@ func (assembly *beanAssembly) wireConstructorBean(bd beanDefinition) error {
 	}
 
 	if bd.Value().IsNil() {
-		panic(fmt.Errorf("ctor bean: \"%s\" return nil", bd.FileLine()))
+		return fmt.Errorf("ctor bean: \"%s\" return nil", bd.FileLine())
 	}
 
 	// 对函数的返回值进行自动注入
@@ -579,7 +580,7 @@ func (assembly *beanAssembly) wireStructField(v reflect.Value, tag string, Paren
 
 	if CollectionMode(tag) { // 收集模式，绑定对象必须是数组
 		if v.Type().Kind() != reflect.Slice {
-			panic(fmt.Errorf("field: %s should be slice", field))
+			return fmt.Errorf("field: %s should be slice", field)
 		}
 		return assembly.collectBeans(v, ParseCollectionTag(tag), field)
 	}

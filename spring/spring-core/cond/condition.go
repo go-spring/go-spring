@@ -41,7 +41,7 @@ type Context interface {
 	PrefixProperties(key string) map[string]interface{}
 
 	// FindBean 返回符合条件的 Bean 集合，不保证返回的 Bean 已经完成注入和绑定过程。
-	FindBean(selector bean.Selector) []bean.Definition
+	FindBean(selector bean.Selector) ([]bean.Definition, error)
 }
 
 // Condition 定义条件接口，条件成立 Matches 函数返回 true，否则返回 false。
@@ -131,7 +131,7 @@ func (c *onPropertyValue) Matches(ctx Context) bool {
 type onBean struct{ selector bean.Selector }
 
 func (c *onBean) Matches(ctx Context) bool {
-	b := ctx.FindBean(c.selector)
+	b, _ := ctx.FindBean(c.selector)
 	return len(b) == 1
 }
 
@@ -139,7 +139,7 @@ func (c *onBean) Matches(ctx Context) bool {
 type onMissingBean struct{ selector bean.Selector }
 
 func (c *onMissingBean) Matches(ctx Context) bool {
-	b := ctx.FindBean(c.selector)
+	b, _ := ctx.FindBean(c.selector)
 	return len(b) == 0
 }
 
