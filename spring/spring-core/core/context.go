@@ -274,7 +274,7 @@ func (ctx *applicationContext) GetBean(i interface{}, selector ...bean.Selector)
 
 	w := toAssembly(ctx)
 	v := reflect.ValueOf(i)
-	tag := ToSingletonTag(s)
+	tag := toSingletonTag(s)
 	return w.getBeanValue(v.Elem(), tag, reflect.Value{}, "")
 }
 
@@ -302,7 +302,7 @@ func (ctx *applicationContext) FindBean(selector bean.Selector) ([]bean.Definiti
 	if t.Kind() == reflect.String {
 		tag := parseSingletonTag(selector.(string))
 		return finder(func(b *BeanDefinition) bool {
-			return b.Match(tag.TypeName, tag.BeanName)
+			return b.Match(tag.typeName, tag.beanName)
 		})
 	}
 
@@ -338,12 +338,10 @@ func (ctx *applicationContext) CollectBeans(i interface{}, selectors ...bean.Sel
 		return errors.New("i must be slice ptr")
 	}
 
-	tag := collectionTag{Nullable: true}
-
+	var tag collectionTag
 	for _, selector := range selectors {
-		tag.Items = append(tag.Items, ToSingletonTag(selector))
+		tag.beanTags = append(tag.beanTags, toSingletonTag(selector))
 	}
-
 	return toAssembly(ctx).collectBeans(reflect.ValueOf(i).Elem(), tag, "")
 }
 

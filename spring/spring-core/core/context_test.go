@@ -961,7 +961,7 @@ func TestApplicationContext_Primary(t *testing.T) {
 			ctx := core.NewApplicationContext()
 			ctx.Object(&BeanZero{5})
 			// primary 是在多个候选 bean 里面选择，而不是允许同名同类型的两个 bean
-			ctx.Object(&BeanZero{6}).SetPrimary(true)
+			ctx.Object(&BeanZero{6}).Primary(true)
 			ctx.Object(new(BeanOne))
 			ctx.Object(new(BeanTwo))
 			ctx.Refresh()
@@ -986,7 +986,7 @@ func TestApplicationContext_Primary(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
 		ctx.Object(&BeanZero{5})
-		ctx.Object(&BeanZero{6}).WithName("zero_6").SetPrimary(true)
+		ctx.Object(&BeanZero{6}).WithName("zero_6").Primary(true)
 		ctx.Object(new(BeanOne))
 		ctx.Object(new(BeanTwo))
 		ctx.Refresh()
@@ -1390,11 +1390,9 @@ func TestApplicationContext_CollectBeans(t *testing.T) {
 		ctx.Object(new(RecoresCluster))
 		ctx.Refresh()
 
-		assert.Panic(t, func() {
-			var rcs []*RecoresCluster
-			err := ctx.CollectBeans(&rcs, "*", "*")
-			util.Panic(err).When(err != nil)
-		}, "more than one \\* in collection \\[\\*,\\*]\\?")
+		var rcs []*RecoresCluster
+		err := ctx.CollectBeans(&rcs, "*", "*")
+		assert.Error(t, err, "more than one \\* in collection \"\\[\\*,\\*]\"")
 	})
 
 	t.Run("before *", func(t *testing.T) {

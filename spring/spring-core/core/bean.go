@@ -17,6 +17,7 @@
 package core
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"reflect"
@@ -32,9 +33,8 @@ import (
 // errorType error 的反射类型
 var errorType = reflect.TypeOf((*error)(nil)).Elem()
 
-// ToSingletonTag 将 Bean 选择器转换为 SingletonTag 形式。注意该函数仅用
-// 于精确匹配的场景下，也就是说通过类型选择的时候类型必须是具体的，而不能是接口。
-func ToSingletonTag(selector bean.Selector) SingletonTag {
+// toSingletonTag 将 bean.Selector 转换为 singletonTag 形式。
+func toSingletonTag(selector bean.Selector) singletonTag {
 	switch s := selector.(type) {
 	case string:
 		return parseSingletonTag(s)
@@ -45,39 +45,41 @@ func ToSingletonTag(selector bean.Selector) SingletonTag {
 	}
 }
 
-// SingletonTag 单例模式注入 Tag 对应的分解形式
-type SingletonTag struct {
-	TypeName string
-	BeanName string
-	Nullable bool
+// singletonTag 单例模式注入 Tag 对应的分解形式
+type singletonTag struct {
+	typeName string
+	beanName string
+	nullable bool
 }
 
-func (tag SingletonTag) String() (str string) {
-	if tag.TypeName != "" {
-		str = tag.TypeName + ":"
+func (tag singletonTag) String() string {
+	b := bytes.NewBuffer(nil)
+	if tag.typeName != "" {
+		b.WriteString(tag.typeName)
+		b.WriteString(":")
 	}
-	str += tag.BeanName
-	if tag.Nullable {
-		str += "?"
+	b.WriteString(tag.beanName)
+	if tag.nullable {
+		b.WriteString("?")
 	}
-	return
+	return b.String()
 }
 
 // parseSingletonTag 解析单例模式注入 Tag 字符串
-func parseSingletonTag(str string) (tag SingletonTag) {
+func parseSingletonTag(str string) (tag singletonTag) {
 	if len(str) > 0 {
 
 		// 字符串结尾是否有可空标记
 		if n := len(str) - 1; str[n] == '?' {
-			tag.Nullable = true
+			tag.nullable = true
 			str = str[:n]
 		}
 
 		if i := strings.Index(str, ":"); i > -1 { // 完整形式
-			tag.BeanName = str[i+1:]
-			tag.TypeName = str[:i]
+			tag.beanName = str[i+1:]
+			tag.typeName = str[:i]
 		} else { // 简化形式
-			tag.BeanName = str
+			tag.beanName = str
 		}
 	}
 	return
@@ -85,23 +87,24 @@ func parseSingletonTag(str string) (tag SingletonTag) {
 
 // collectionTag 收集模式注入 Tag 对应的分解形式
 type collectionTag struct {
-	Items    []SingletonTag
-	Nullable bool
+	beanTags []singletonTag
+	nullable bool
 }
 
-func (tag collectionTag) String() (str string) {
-	str += "["
-	for i, t := range tag.Items {
-		str += t.String()
-		if i < len(tag.Items)-1 {
-			str += ","
+func (tag collectionTag) String() string {
+	b := bytes.NewBuffer(nil)
+	b.WriteString("[")
+	for i, t := range tag.beanTags {
+		b.WriteString(t.String())
+		if i < len(tag.beanTags)-1 {
+			b.WriteString(",")
 		}
 	}
-	str += "]"
-	if tag.Nullable {
-		str += "?"
+	b.WriteString("]")
+	if tag.nullable {
+		b.WriteString("?")
 	}
-	return
+	return b.String()
 }
 
 // CollectionMode 返回是否是收集模式
@@ -110,12 +113,12 @@ func CollectionMode(str string) bool {
 }
 
 // ParseCollectionTag 解析收集模式注入 Tag 字符串
-func ParseCollectionTag(str string) (tag collectionTag) {
-	tag.Items = make([]SingletonTag, 0)
+func parseCollectionTag(str string) (tag collectionTag) {
+	tag.beanTags = make([]singletonTag, 0)
 
 	// 字符串结尾是否有可空标记
 	if n := len(str) - 1; str[n] == '?' {
-		tag.Nullable = true
+		tag.nullable = true
 		str = str[:n]
 	}
 
@@ -125,7 +128,7 @@ func ParseCollectionTag(str string) (tag collectionTag) {
 
 	if str = str[1 : len(str)-1]; len(str) > 0 {
 		for _, s := range strings.Split(str, ",") {
-			tag.Items = append(tag.Items, parseSingletonTag(s))
+			tag.beanTags = append(tag.beanTags, parseSingletonTag(s))
 		}
 	}
 	return
@@ -225,15 +228,6 @@ func newBeanDefinition(v reflect.Value, ctor arg.Callable, file string, line int
 	}
 }
 
-func (d *BeanDefinition) getFactory() arg.Callable {
-	return d.f
-}
-
-// Bean 返回 Bean 的源
-func (d *BeanDefinition) Interface() interface{} {
-	return d.Value().Interface()
-}
-
 // Type 返回 Bean 的类型
 func (d *BeanDefinition) Type() reflect.Type {
 	return d.t
@@ -244,9 +238,14 @@ func (d *BeanDefinition) Value() reflect.Value {
 	return d.v
 }
 
-// TypeName 返回 Bean 的原始类型的全限定名
-func (d *BeanDefinition) TypeName() string {
-	return d.typeName
+// Bean 返回 Bean 的源
+func (d *BeanDefinition) Interface() interface{} {
+	return d.Value().Interface()
+}
+
+// BeanId 返回 Bean 的唯一 ID
+func (d *BeanDefinition) BeanId() string {
+	return d.TypeName() + ":" + d.BeanName()
 }
 
 // Name 返回 Bean 的名称
@@ -258,14 +257,23 @@ func (d *BeanDefinition) BeanName() string {
 	return d.name
 }
 
-// BeanId 返回 Bean 的唯一 ID
-func (d *BeanDefinition) BeanId() string {
-	return d.TypeName() + ":" + d.BeanName()
+// TypeName 返回 Bean 的原始类型的全限定名
+func (d *BeanDefinition) TypeName() string {
+	return d.typeName
 }
 
 // FileLine 返回 Bean 的注册点
 func (d *BeanDefinition) FileLine() string {
 	return fmt.Sprintf("%s:%d", d.file, d.line)
+}
+
+// Description 返回 Bean 的详细描述
+func (d *BeanDefinition) Description() string {
+	return fmt.Sprintf("%s %q %s", d.getClass(), d.BeanName(), d.FileLine())
+}
+
+func (d *BeanDefinition) getFactory() arg.Callable {
+	return d.f
 }
 
 // getStatus 返回 Bean 的状态值
@@ -301,11 +309,6 @@ func (d *BeanDefinition) getFile() string {
 // getLine 返回 Bean 注册点所在文件的行数
 func (d *BeanDefinition) getLine() int {
 	return d.line
-}
-
-// Description 返回 Bean 的详细描述
-func (d *BeanDefinition) Description() string {
-	return fmt.Sprintf("%s %q %s", d.getClass(), d.BeanName(), d.FileLine())
 }
 
 func (d *BeanDefinition) getClass() string {
@@ -350,7 +353,7 @@ func (d *BeanDefinition) DependsOn(selectors ...bean.Selector) *BeanDefinition {
 }
 
 // primary 设置 Bean 为主版本
-func (d *BeanDefinition) SetPrimary(primary bool) *BeanDefinition {
+func (d *BeanDefinition) Primary(primary bool) *BeanDefinition {
 	d.primary = primary
 	return d
 }

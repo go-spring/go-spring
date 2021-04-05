@@ -80,7 +80,7 @@ func (assembly *beanAssembly) BindValue(v reflect.Value, str string) error {
 }
 
 // getBeanValue 获取符合要求的 Bean，并且确保 Bean 完成自动注入过程。
-func (assembly *beanAssembly) getBeanValue(v reflect.Value, tag SingletonTag, parent reflect.Value, field string) error {
+func (assembly *beanAssembly) getBeanValue(v reflect.Value, tag singletonTag, parent reflect.Value, field string) error {
 
 	if !v.IsValid() {
 		return fmt.Errorf("receiver must be ref type, bean:%q field:%q", tag, field)
@@ -97,18 +97,18 @@ func (assembly *beanAssembly) getBeanValue(v reflect.Value, tag SingletonTag, pa
 	for i := 0; i < cache.Len(); i++ {
 		b := cache.Get(i).(*BeanDefinition)
 		// 不能将自身赋给自身的字段 && 类型全限定名匹配
-		if b.Value() != parent && b.Match(tag.TypeName, tag.BeanName) {
+		if b.Value() != parent && b.Match(tag.typeName, tag.beanName) {
 			foundBeans = append(foundBeans, b)
 		}
 	}
 
 	// 扩展规则：如果指定了 Bean 名称则尝试通过名称获取以防没有通过 Export 显式导出接口
-	if beanType.Kind() == reflect.Interface && tag.BeanName != "" {
-		cache = assembly.ctx.getCacheByName(tag.BeanName)
+	if beanType.Kind() == reflect.Interface && tag.beanName != "" {
+		cache = assembly.ctx.getCacheByName(tag.beanName)
 		for i := 0; i < cache.Len(); i++ {
 			b := cache.Get(i).(*BeanDefinition)
 			// 不能将自身赋给自身的字段 && 类型匹配 && BeanName 匹配
-			if b.Value() != parent && b.Type().AssignableTo(beanType) && b.Match(tag.TypeName, tag.BeanName) {
+			if b.Value() != parent && b.Type().AssignableTo(beanType) && b.Match(tag.typeName, tag.beanName) {
 				found := false // 对结果进行排重
 				for _, r := range foundBeans {
 					if r == b {
@@ -125,7 +125,7 @@ func (assembly *beanAssembly) getBeanValue(v reflect.Value, tag SingletonTag, pa
 	}
 
 	if len(foundBeans) == 0 {
-		if tag.Nullable {
+		if tag.nullable {
 			return nil
 		} else {
 			return fmt.Errorf("can't find bean, bean:%q field:%q type:%q", tag, field, beanType)
@@ -189,7 +189,7 @@ func (assembly *beanAssembly) collectBeans(v reflect.Value, tag collectionTag, f
 		ret reflect.Value
 	)
 
-	if len(tag.Items) == 0 { // 自动模式
+	if len(tag.beanTags) == 0 { // 自动模式
 		ret, err = assembly.autoCollectBeans(t, et)
 	} else { // 指定模式
 		ret, err = assembly.collectAndSortBeans(t, et, tag)
@@ -204,7 +204,7 @@ func (assembly *beanAssembly) collectBeans(v reflect.Value, tag collectionTag, f
 		return nil
 	}
 
-	if tag.Nullable {
+	if tag.nullable {
 		return nil
 	}
 
@@ -212,14 +212,14 @@ func (assembly *beanAssembly) collectBeans(v reflect.Value, tag collectionTag, f
 }
 
 // findBeanFromCache 返回找到的符合条件的 Bean 在数组中的索引，找不到返回 -1。
-func (assembly *beanAssembly) findBeanFromCache(beans []*BeanDefinition, tag SingletonTag, et reflect.Type) (int, error) {
+func (assembly *beanAssembly) findBeanFromCache(beans []*BeanDefinition, tag singletonTag, et reflect.Type) (int, error) {
 
 	// 保存符合条件的 Bean 的索引
 	var found []int
 
 	// 查找符合条件的单例 Bean
 	for i, d := range beans {
-		if d.Match(tag.TypeName, tag.BeanName) {
+		if d.Match(tag.typeName, tag.beanName) {
 			found = append(found, i)
 		}
 	}
@@ -233,7 +233,7 @@ func (assembly *beanAssembly) findBeanFromCache(beans []*BeanDefinition, tag Sin
 		return -2, errors.New(msg)
 	}
 
-	if len(found) == 0 && !tag.Nullable {
+	if len(found) == 0 && !tag.nullable {
 		return -2, fmt.Errorf("can't find bean, bean:%q type:%q", tag, et)
 	}
 
@@ -251,9 +251,9 @@ func (assembly *beanAssembly) findBeanFromCache(beans []*BeanDefinition, tag Sin
 func (assembly *beanAssembly) collectAndSortBeans(t reflect.Type, et reflect.Type, tag collectionTag) (reflect.Value, error) {
 
 	foundAny := false
-	any := reflect.MakeSlice(t, 0, len(tag.Items))
-	afterAny := reflect.MakeSlice(t, 0, len(tag.Items))
-	beforeAny := reflect.MakeSlice(t, 0, len(tag.Items))
+	any := reflect.MakeSlice(t, 0, len(tag.beanTags))
+	afterAny := reflect.MakeSlice(t, 0, len(tag.beanTags))
+	beforeAny := reflect.MakeSlice(t, 0, len(tag.beanTags))
 
 	beans := make([]*BeanDefinition, 0)
 
@@ -264,12 +264,12 @@ func (assembly *beanAssembly) collectAndSortBeans(t reflect.Type, et reflect.Typ
 		beans = append(beans, b)
 	}
 
-	for _, item := range tag.Items {
+	for _, item := range tag.beanTags {
 
 		// 是否遇到了"无序"标记 TODO 返回固定零值内存
-		if item.BeanName == "*" {
+		if item.beanName == "*" {
 			if foundAny {
-				return reflect.Value{}, errors.New("more than one * in collection " + tag.String())
+				return reflect.Value{}, fmt.Errorf("more than one * in collection %q", tag)
 			}
 			foundAny = true
 			continue
@@ -595,7 +595,7 @@ func (assembly *beanAssembly) wireStructField(v reflect.Value, tag string, Paren
 		if v.Type().Kind() != reflect.Slice {
 			return fmt.Errorf("field: %s should be slice", field)
 		}
-		return assembly.collectBeans(v, ParseCollectionTag(tag), field)
+		return assembly.collectBeans(v, parseCollectionTag(tag), field)
 	}
 	return assembly.getBeanValue(v, parseSingletonTag(tag), Parent, field)
 }
