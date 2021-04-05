@@ -83,17 +83,17 @@ func (assembly *beanAssembly) BindValue(v reflect.Value, str string) error {
 func (assembly *beanAssembly) getBeanValue(v reflect.Value, tag SingletonTag, parent reflect.Value, field string) error {
 
 	if !v.IsValid() {
-		return fmt.Errorf("receiver must be ref type, bean: \"%s\" field: %s", tag, field)
+		return fmt.Errorf("receiver must be ref type, bean:%q field:%q", tag, field)
 	}
 
 	beanType := v.Type()
 	if !util.IsRefType(beanType.Kind()) {
-		return fmt.Errorf("receiver must be ref type, bean: \"%s\" field: %s", tag, field)
+		return fmt.Errorf("receiver must be ref type, bean:%q field:%q", tag, field)
 	}
 
 	foundBeans := make([]*BeanDefinition, 0)
 
-	cache := assembly.ctx.getTypeCacheItem(beanType)
+	cache := assembly.ctx.getCacheByType(beanType)
 	for i := 0; i < cache.Len(); i++ {
 		b := cache.Get(i).(*BeanDefinition)
 		// 不能将自身赋给自身的字段 && 类型全限定名匹配
@@ -104,7 +104,7 @@ func (assembly *beanAssembly) getBeanValue(v reflect.Value, tag SingletonTag, pa
 
 	// 扩展规则：如果指定了 Bean 名称则尝试通过名称获取以防没有通过 Export 显式导出接口
 	if beanType.Kind() == reflect.Interface && tag.BeanName != "" {
-		cache = assembly.ctx.getNameCacheItem(tag.BeanName)
+		cache = assembly.ctx.getCacheByName(tag.BeanName)
 		for i := 0; i < cache.Len(); i++ {
 			b := cache.Get(i).(*BeanDefinition)
 			// 不能将自身赋给自身的字段 && 类型匹配 && BeanName 匹配
@@ -128,7 +128,7 @@ func (assembly *beanAssembly) getBeanValue(v reflect.Value, tag SingletonTag, pa
 		if tag.Nullable {
 			return nil
 		} else {
-			return fmt.Errorf("can't find bean, bean: \"%s\" field: %s type: %s", tag, field, beanType)
+			return fmt.Errorf("can't find bean, bean:%q field:%q type:%q", tag, field, beanType)
 		}
 	}
 
@@ -142,7 +142,7 @@ func (assembly *beanAssembly) getBeanValue(v reflect.Value, tag SingletonTag, pa
 	}
 
 	if len(primaryBeans) > 1 {
-		msg := fmt.Sprintf("found %d primary beans, bean: \"%s\" field: %s type: %s [", len(primaryBeans), tag, field, beanType)
+		msg := fmt.Sprintf("found %d primary beans, bean:%q field:%q type:%q [", len(primaryBeans), tag, field, beanType)
 		for _, b := range primaryBeans {
 			msg += "( " + b.Description() + " ), "
 		}
@@ -154,7 +154,7 @@ func (assembly *beanAssembly) getBeanValue(v reflect.Value, tag SingletonTag, pa
 
 	if len(primaryBeans) == 0 {
 		if len(foundBeans) > 1 {
-			msg := fmt.Sprintf("found %d beans, bean: \"%s\" field: %s type: %s [", len(foundBeans), tag, field, beanType)
+			msg := fmt.Sprintf("found %d beans, bean:%q field:%q type:%q [", len(foundBeans), tag, field, beanType)
 			for _, b := range foundBeans {
 				msg += "( " + b.Description() + " ), "
 			}
@@ -208,7 +208,7 @@ func (assembly *beanAssembly) collectBeans(v reflect.Value, tag collectionTag, f
 		return nil
 	}
 
-	return fmt.Errorf("can't collect any beans: \"%s\" field: %s", tag, field)
+	return fmt.Errorf("no beans collected for bean:%q field:%q", tag, field)
 }
 
 // findBeanFromCache 返回找到的符合条件的 Bean 在数组中的索引，找不到返回 -1。
@@ -225,7 +225,7 @@ func (assembly *beanAssembly) findBeanFromCache(beans []*BeanDefinition, tag Sin
 	}
 
 	if len(found) > 1 {
-		msg := fmt.Sprintf("found %d beans, bean: \"%s\" type: %s [", len(found), tag, et)
+		msg := fmt.Sprintf("found %d beans, bean:%q type:%q [", len(found), tag, et)
 		for _, i := range found {
 			msg += "( " + beans[i].Description() + " ), "
 		}
@@ -234,7 +234,7 @@ func (assembly *beanAssembly) findBeanFromCache(beans []*BeanDefinition, tag Sin
 	}
 
 	if len(found) == 0 && !tag.Nullable {
-		return -2, fmt.Errorf("can't find bean, bean: \"%s\" type: %s", tag, et)
+		return -2, fmt.Errorf("can't find bean, bean:%q type:%q", tag, et)
 	}
 
 	if len(found) > 0 {
@@ -258,7 +258,7 @@ func (assembly *beanAssembly) collectAndSortBeans(t reflect.Type, et reflect.Typ
 	beans := make([]*BeanDefinition, 0)
 
 	// 只在单例类型中查找，数组类型的元素是否排序无法判断
-	cache := assembly.ctx.getTypeCacheItem(et)
+	cache := assembly.ctx.getCacheByType(et)
 	for i := 0; i < cache.Len(); i++ {
 		b := cache.Get(i).(*BeanDefinition)
 		beans = append(beans, b)
@@ -315,7 +315,7 @@ func (assembly *beanAssembly) autoCollectBeans(t reflect.Type, et reflect.Type) 
 	result := reflect.MakeSlice(t, 0, 0)
 
 	// 查找可以精确匹配的数组类型
-	cache := assembly.ctx.getTypeCacheItem(t)
+	cache := assembly.ctx.getCacheByType(t)
 	for i := 0; i < cache.Len(); i++ {
 		d := cache.Get(i).(*BeanDefinition)
 		for i := 0; i < d.Value().Len(); i++ {
@@ -339,7 +339,7 @@ func (assembly *beanAssembly) autoCollectBeans(t reflect.Type, et reflect.Type) 
 	}
 
 	// 查找可以精确匹配的单例类型，对找到的 Bean 进行自动注入
-	cache = assembly.ctx.getTypeCacheItem(et)
+	cache = assembly.ctx.getCacheByType(et)
 	for i := 0; i < cache.Len(); i++ {
 		d := cache.Get(i).(*BeanDefinition)
 		if err := assembly.wireBeanDefinition(d, false); err != nil {
@@ -362,7 +362,7 @@ func (assembly *beanAssembly) wireBeanDefinition(bd beanDefinition, onlyAutoWire
 
 	// Bean 是否已删除，已经删除的 Bean 不能再注入
 	if bd.getStatus() == Deleted {
-		return fmt.Errorf("bean: \"%s\" have been deleted", bd.BeanId())
+		return fmt.Errorf("bean:%q have been deleted", bd.BeanId())
 	}
 
 	// 如果刷新阶段已完成并且 Bean 已经注入则无需再次进行下面的步骤
@@ -415,7 +415,7 @@ func (assembly *beanAssembly) wireBeanDefinition(bd beanDefinition, onlyAutoWire
 			return err
 		}
 		if n := len(b); n != 1 {
-			return fmt.Errorf("found %d bean(s) for: \"%v\"", n, selector)
+			return fmt.Errorf("found %d bean(s) for:%q", n, selector)
 		}
 		if err = assembly.wireBeanDefinition(b[0].(beanDefinition), false); err != nil {
 			return err
@@ -542,7 +542,7 @@ func (assembly *beanAssembly) wireConstructorBean(bd beanDefinition) error {
 
 	out, err := bd.getFactory().Call(assembly)
 	if err != nil {
-		return fmt.Errorf("ctor bean: \"%s\" return error: %v", bd.FileLine(), err)
+		return fmt.Errorf("ctor bean:%q return error: %v", bd.FileLine(), err)
 	}
 
 	// 构造函数的返回值为值类型时 bd.Type() 返回其指针类型。
@@ -560,7 +560,7 @@ func (assembly *beanAssembly) wireConstructorBean(bd beanDefinition) error {
 	}
 
 	if bd.Value().IsNil() {
-		return fmt.Errorf("ctor bean: \"%s\" return nil", bd.FileLine())
+		return fmt.Errorf("ctor bean:%q return nil", bd.FileLine())
 	}
 
 	// 对函数的返回值进行自动注入

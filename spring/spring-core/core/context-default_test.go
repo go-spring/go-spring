@@ -38,6 +38,7 @@ import (
 	pkg1 "github.com/go-spring/spring-core/core/testdata/pkg/bar"
 	pkg2 "github.com/go-spring/spring-core/core/testdata/pkg/foo"
 	"github.com/go-spring/spring-core/json"
+	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
 	"github.com/spf13/cast"
 )
@@ -97,21 +98,21 @@ func TestApplicationContext(t *testing.T) {
 			var i int
 			err := ctx.GetBean(&i)
 			util.Panic(err).When(err != nil)
-		}, "receiver must be ref type, bean: \"\" field: ")
+		}, "receiver must be ref type, bean:\"\" field:\"\"")
 
 		// 找到多个符合条件的值
 		assert.Panic(t, func() {
 			var i *int
 			err := ctx.GetBean(&i)
 			util.Panic(err).When(err != nil)
-		}, "found 3 beans, bean: \"\" field:  type: \\*int")
+		}, "found 3 beans, bean:\"\" field:\"\" type:\"\\*int\"")
 
 		// 入参不是可赋值的对象
 		assert.Panic(t, func() {
 			var i int
 			err := ctx.GetBean(&i, "i3")
 			util.Panic(err).When(err != nil)
-		}, "receiver must be ref type, bean: \"i3\" field: ")
+		}, "receiver must be ref type, bean:\"i3\" field:\"\"")
 
 		{
 			var i *int
@@ -268,7 +269,7 @@ func TestApplicationContext_AutoWireBeans(t *testing.T) {
 
 		assert.Panic(t, func() {
 			ctx.Refresh()
-		}, "found 2 beans, bean: \"\" field: TestObject.\\$IntPtrByType type: \\*int")
+		}, "found 2 beans, bean:\"\" field:\"TestObject.\\$IntPtrByType\" type:\"\\*int\"")
 	})
 
 	ctx := core.NewApplicationContext()
@@ -634,7 +635,7 @@ func TestApplicationContext_GetBean(t *testing.T) {
 			var i *int
 			err := ctx.GetBean(&i)
 			util.Panic(err).When(err != nil)
-		}, "can't find bean, bean: \"\"")
+		}, "can't find bean, bean:\"\"")
 
 		assert.Panic(t, func() {
 			var is []int
@@ -646,7 +647,7 @@ func TestApplicationContext_GetBean(t *testing.T) {
 			var a []int
 			err := ctx.GetBean(&a)
 			util.Panic(err).When(err != nil)
-		}, "can't find bean, bean: \"\"")
+		}, "can't find bean, bean:\"\"")
 
 		assert.Panic(t, func() {
 			var s fmt.Stringer
@@ -658,7 +659,7 @@ func TestApplicationContext_GetBean(t *testing.T) {
 			var s fmt.Stringer
 			err := ctx.GetBean(&s)
 			util.Panic(err).When(err != nil)
-		}, "can't find bean, bean: \"\"")
+		}, "can't find bean, bean:\"\"")
 	})
 
 	t.Run("success", func(t *testing.T) {
@@ -698,12 +699,12 @@ func TestApplicationContext_GetBean(t *testing.T) {
 		assert.Panic(t, func() {
 			err = ctx.GetBean(&two, "BeanTwo")
 			util.Panic(err).When(err != nil)
-		}, "can't find bean, bean: \"BeanTwo\"")
+		}, "can't find bean, bean:\"BeanTwo\"")
 
 		assert.Panic(t, func() {
 			err = ctx.GetBean(&grouper, "BeanTwo")
 			util.Panic(err).When(err != nil)
-		}, "can't find bean, bean: \"BeanTwo\"")
+		}, "can't find bean, bean:\"BeanTwo\"")
 
 		err = ctx.GetBean(&two, ":*core_test.BeanTwo")
 		assert.Nil(t, err)
@@ -720,18 +721,18 @@ func TestApplicationContext_GetBean(t *testing.T) {
 		assert.Panic(t, func() {
 			err = ctx.GetBean(&two, "xxx:*core_test.BeanTwo")
 			util.Panic(err).When(err != nil)
-		}, "can't find bean, bean: \"xxx:\\*core_test.BeanTwo\"")
+		}, "can't find bean, bean:\"xxx:\\*core_test.BeanTwo\"")
 
 		assert.Panic(t, func() {
 			err = ctx.GetBean(&grouper, "xxx:*core_test.BeanTwo")
 			util.Panic(err).When(err != nil)
-		}, "can't find bean, bean: \"xxx:\\*core_test.BeanTwo\"")
+		}, "can't find bean, bean:\"xxx:\\*core_test.BeanTwo\"")
 
 		assert.Panic(t, func() {
 			var three *BeanThree
 			err = ctx.GetBean(&three, "")
 			util.Panic(err).When(err != nil)
-		}, "can't find bean, bean: \"\"")
+		}, "can't find bean, bean:\"\"")
 	})
 }
 
@@ -954,7 +955,7 @@ func TestApplicationContext_Primary(t *testing.T) {
 			ctx.Object(new(BeanOne))
 			ctx.Object(new(BeanTwo))
 			ctx.Refresh()
-		}, "duplicate registration, bean: ")
+		}, "duplicate registration, bean:")
 
 		assert.Panic(t, func() {
 			ctx := core.NewApplicationContext()
@@ -964,7 +965,7 @@ func TestApplicationContext_Primary(t *testing.T) {
 			ctx.Object(new(BeanOne))
 			ctx.Object(new(BeanTwo))
 			ctx.Refresh()
-		}, "duplicate registration, bean: ")
+		}, "duplicate registration, bean:")
 	})
 
 	t.Run("not primary", func(t *testing.T) {
@@ -1067,7 +1068,7 @@ func TestApplicationContext_RegisterBeanFn2(t *testing.T) {
 			var lm *localManager
 			err = ctx.GetBean(&lm)
 			util.Panic(err).When(err != nil)
-		}, "can't find bean, bean: \"\"")
+		}, "can't find bean, bean:\"\"")
 	})
 
 	t.Run("manager", func(t *testing.T) {
@@ -1091,7 +1092,7 @@ func TestApplicationContext_RegisterBeanFn2(t *testing.T) {
 			var lm *localManager
 			err = ctx.GetBean(&lm)
 			util.Panic(err).When(err != nil)
-		}, "can't find bean, bean: \"\"")
+		}, "can't find bean, bean:\"\"")
 	})
 
 	t.Run("manager return error", func(t *testing.T) {
@@ -1862,7 +1863,7 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 			ctx.Object(new(Server))
 			ctx.Factory(func(s *Server) *Consumer { return s.Consumer() }, (*int)(nil))
 			ctx.Refresh()
-		}, "can't find bean, bean: \"int:\" field:  type: \\*core_test.Server")
+		}, "can't find bean, bean:\"int:\" field:\"\" type:\"\\*core_test.Server\"")
 	})
 
 	t.Run("method bean selector beanId", func(t *testing.T) {
@@ -1893,7 +1894,7 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 			ctx.Object(new(Server))
 			ctx.Factory(func(s *Server) *Consumer { return s.Consumer() }, "NULL")
 			ctx.Refresh()
-		}, "can't find bean, bean: \"NULL\" field:  type: \\*core_test.Server")
+		}, "can't find bean, bean:\"NULL\" field:\"\" type:\"\\*core_test.Server\"")
 	})
 }
 
@@ -2263,7 +2264,7 @@ func TestApplicationContext_BeanNotFound(t *testing.T) {
 		ctx := core.NewApplicationContext()
 		ctx.Factory(func(i *int) bool { return false }, "")
 		ctx.Refresh()
-	}, "can't find bean, bean: \"\" field:  type: \\*int")
+	}, "can't find bean, bean:\"\" field:\"\" type:\"\\*int\"")
 }
 
 type SubNestedAutowireBean struct {
@@ -2787,7 +2788,7 @@ func TestApplicationContext_NameEquivalence(t *testing.T) {
 		ctx.Object(DefaultRegistry)
 		ctx.Factory(NewRegistry)
 		ctx.Refresh()
-	}, `duplicate registration, bean: `)
+	}, `duplicate registration, bean:`)
 
 	assert.Panic(t, func() {
 		ctx := core.NewApplicationContext()
@@ -2795,7 +2796,7 @@ func TestApplicationContext_NameEquivalence(t *testing.T) {
 		ctx.Factory(func(f *registryFactory) Registry { return f.Create() }, bd)
 		ctx.Factory(NewRegistryInterface)
 		ctx.Refresh()
-	}, `duplicate registration, bean: `)
+	}, `duplicate registration, bean:`)
 }
 
 type Obj struct {
@@ -2831,7 +2832,7 @@ func TestDefaultSpringContext(t *testing.T) {
 
 		var b *BeanZero
 		err := ctx.GetBean(&b)
-		assert.Error(t, err, "can't find bean, bean: \"\"")
+		assert.Error(t, err, "can't find bean, bean:\"\"")
 	})
 
 	t.Run("bean:test_ctx:test", func(t *testing.T) {
@@ -2855,7 +2856,7 @@ func TestDefaultSpringContext(t *testing.T) {
 
 		var b *BeanZero
 		err := ctx.GetBean(&b)
-		assert.Error(t, err, "can't find bean, bean: \"\"")
+		assert.Error(t, err, "can't find bean, bean:\"\"")
 	})
 
 	t.Run("option withClassName Condition", func(t *testing.T) {
@@ -2917,7 +2918,7 @@ func TestDefaultSpringContext(t *testing.T) {
 
 		var c *Consumer
 		err = ctx.GetBean(&c)
-		assert.Error(t, err, "can't find bean, bean: \"\"")
+		assert.Error(t, err, "can't find bean, bean:\"\"")
 	})
 }
 
@@ -2982,7 +2983,7 @@ func TestDefaultSpringContext_ConditionOnBean(t *testing.T) {
 	assert.Nil(t, err)
 
 	err = ctx.GetBean(&two, "another_two")
-	assert.Error(t, err, "can't find bean, bean: \"another_two\"")
+	assert.Error(t, err, "can't find bean, bean:\"another_two\"")
 }
 
 func TestDefaultSpringContext_ConditionOnMissingBean(t *testing.T) {
@@ -3233,4 +3234,8 @@ func TestApplicationContext_Invoke(t *testing.T) {
 
 		_ = ctx.Invoke(fn, "", "${version}")
 	})
+}
+
+func init() {
+	log.SetLevel(log.TraceLevel)
 }

@@ -305,7 +305,7 @@ func (d *BeanDefinition) getLine() int {
 
 // Description 返回 Bean 的详细描述
 func (d *BeanDefinition) Description() string {
-	return fmt.Sprintf("%s \"%s\" %s", d.getClass(), d.BeanName(), d.FileLine())
+	return fmt.Sprintf("%s %q %s", d.getClass(), d.BeanName(), d.FileLine())
 }
 
 func (d *BeanDefinition) getClass() string {

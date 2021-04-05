@@ -139,7 +139,7 @@ func (ctx *appCtx) deleteBeanDefinition(bd *BeanDefinition) {
 
 func (ctx *appCtx) registerBeanDefinition(bd *BeanDefinition) {
 	if _, ok := ctx.cacheById[bd.BeanId()]; ok {
-		panic(fmt.Errorf("duplicate registration, bean: \"%s\"", bd.BeanId()))
+		panic(fmt.Errorf("duplicate registration, bean:%q", bd.BeanId()))
 	}
 	ctx.cacheById[bd.BeanId()] = bd
 }
@@ -255,8 +255,7 @@ func (ctx *appCtx) CollectBeans(i interface{}, selectors ...bean.Selector) error
 	return toAssembly(ctx).collectBeans(reflect.ValueOf(i).Elem(), tag, "")
 }
 
-// getTypeCacheItem 查找指定类型的缓存项
-func (ctx *appCtx) getTypeCacheItem(typ reflect.Type) *util.Array {
+func (ctx *appCtx) getCacheByType(typ reflect.Type) *util.Array {
 	i, ok := ctx.cacheByType[typ]
 	if !ok {
 		i = util.NewArray()
@@ -265,14 +264,22 @@ func (ctx *appCtx) getTypeCacheItem(typ reflect.Type) *util.Array {
 	return i
 }
 
-// getNameCacheItem 查找指定类型的缓存项
-func (ctx *appCtx) getNameCacheItem(name string) *util.Array {
+func (ctx *appCtx) setCacheByType(t reflect.Type, b *BeanDefinition) {
+	log.Debugf("register %s type:%q id:%q %s", b.getClass(), t.String(), b.BeanId(), b.FileLine())
+	ctx.getCacheByType(t).Append(b)
+}
+
+func (ctx *appCtx) getCacheByName(name string) *util.Array {
 	i, ok := ctx.cacheByName[name]
 	if !ok {
 		i = util.NewArray()
 		ctx.cacheByName[name] = i
 	}
 	return i
+}
+
+func (ctx *appCtx) setCacheByName(name string, bd *BeanDefinition) {
+	ctx.getCacheByName(name).Append(bd)
 }
 
 // autoExport 自动导出 Bean 实现的接口
@@ -319,15 +326,6 @@ func (ctx *appCtx) autoExport(t reflect.Type, bd *BeanDefinition) error {
 	return nil
 }
 
-func (ctx *appCtx) typeCache(typ reflect.Type, bd *BeanDefinition) {
-	log.Debugf("register %s type:\"%s\" beanId:\"%s\" %s", bd.getClass(), typ.String(), bd.BeanId(), bd.FileLine())
-	ctx.getTypeCacheItem(typ).Append(bd)
-}
-
-func (ctx *appCtx) nameCache(name string, bd *BeanDefinition) {
-	ctx.getNameCacheItem(name).Append(bd)
-}
-
 // resolveBean 对 Bean 进行决议是否能够创建 Bean 的实例
 func (ctx *appCtx) resolveBean(bd *BeanDefinition) error {
 
@@ -345,7 +343,7 @@ func (ctx *appCtx) resolveBean(bd *BeanDefinition) error {
 	}
 
 	// 将符合注册条件的 Bean 放入到缓存里面
-	ctx.typeCache(bd.Type(), bd)
+	ctx.setCacheByType(bd.Type(), bd)
 
 	// 自动导出接口，这种情况仅对于结构体才会有效
 	if typ := util.Indirect(bd.Type()); typ.Kind() == reflect.Struct {
@@ -357,14 +355,14 @@ func (ctx *appCtx) resolveBean(bd *BeanDefinition) error {
 	// 按照导出类型放入缓存
 	for t := range bd.exports {
 		if bd.Type().Implements(t) {
-			ctx.typeCache(t, bd)
+			ctx.setCacheByType(t, bd)
 		} else {
 			return fmt.Errorf("%s not implement %s interface", bd.Description(), t)
 		}
 	}
 
 	// 按照 Bean 的名字进行缓存
-	ctx.nameCache(bd.BeanName(), bd)
+	ctx.setCacheByName(bd.BeanName(), bd)
 
 	bd.setStatus(Resolved)
 	return nil
