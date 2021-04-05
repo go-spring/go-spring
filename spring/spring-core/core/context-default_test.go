@@ -42,6 +42,15 @@ import (
 	"github.com/spf13/cast"
 )
 
+func TestConditionContext(t *testing.T) {
+	var _ = cond.Context((core.ApplicationContext)(nil))
+}
+
+func TestConfigurableApplicationContext(t *testing.T) {
+	// 验证 applicationContext 是否实现 ConfigurableApplicationContext 接口
+	var _ = (core.ConfigurableApplicationContext)(core.NewApplicationContext())
+}
+
 func TestApplicationContext_RegisterBeanFrozen(t *testing.T) {
 	assert.Panic(t, func() {
 		ctx := core.NewApplicationContext()
@@ -2725,12 +2734,6 @@ func TestApplicationContext_Destroy(t *testing.T) {
 			destroyArray[destroyIndex] = 1
 			destroyIndex++
 		})
-	ctx.Object(new(ThirdDestroy)).Destroy(
-		func(_ *ThirdDestroy) {
-			fmt.Println("::ThirdDestroy")
-			destroyArray[destroyIndex] = 4
-			destroyIndex++
-		})
 	ctx.Object(new(Second2Destroy)).Destroy(
 		func(_ *Second2Destroy) {
 			fmt.Println("::Second2Destroy")
@@ -2741,6 +2744,12 @@ func TestApplicationContext_Destroy(t *testing.T) {
 		func(_ *Second1Destroy) {
 			fmt.Println("::Second1Destroy")
 			destroyArray[destroyIndex] = 2
+			destroyIndex++
+		})
+	ctx.Object(new(ThirdDestroy)).Destroy(
+		func(_ *ThirdDestroy) {
+			fmt.Println("::ThirdDestroy")
+			destroyArray[destroyIndex] = 4
 			destroyIndex++
 		})
 	ctx.Refresh()

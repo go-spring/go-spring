@@ -32,24 +32,22 @@ import (
 	"github.com/go-spring/spring-core/util"
 )
 
-// 验证 applicationContext 是否实现 ConfigurableApplicationContext 接口
-var _ = (ConfigurableApplicationContext)((*applicationContext)(nil))
-
-// applicationContext ApplicationContext 的默认实现
-type applicationContext struct {
+// appCtx ApplicationContext 的默认实现
+type appCtx struct {
 
 	// 上下文接口
 	wg     sync.WaitGroup
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	profile   string // 运行环境
-	autoWired bool   // 是否开始自动绑定
+	profile string // 运行环境
+	state   int    // 0 初始化，1 正在刷新，2 刷新完毕
 
-	AllBeans        []*BeanDefinition          // 所有注册点
-	beanMap         map[string]*BeanDefinition // Bean 集合
-	beanCacheByName map[string]*util.Array
-	beanCacheByType map[reflect.Type]*util.Array
+	allBeans *util.Array // 所有注册点
+
+	cacheById   map[string]*BeanDefinition
+	cacheByName map[string]*util.Array
+	cacheByType map[reflect.Type]*util.Array
 
 	configers    *list.List // 配置方法集合
 	destroyers   *list.List // 销毁函数集合
@@ -58,113 +56,113 @@ type applicationContext struct {
 	properties conf.Properties // 属性值列表接口
 }
 
-// NewApplicationContext applicationContext 的构造函数
-func NewApplicationContext() *applicationContext {
+// NewApplicationContext appCtx 的构造函数
+func NewApplicationContext() *appCtx {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &applicationContext{
-		ctx:             ctx,
-		cancel:          cancel,
-		properties:      conf.New(),
-		AllBeans:        make([]*BeanDefinition, 0),
-		beanMap:         make(map[string]*BeanDefinition),
-		beanCacheByName: make(map[string]*util.Array),
-		beanCacheByType: make(map[reflect.Type]*util.Array),
-		configers:       list.New(),
-		destroyers:      list.New(),
-		destroyerMap:    make(map[string]*destroyer),
+	return &appCtx{
+		ctx:          ctx,
+		cancel:       cancel,
+		properties:   conf.New(),
+		allBeans:     util.NewArray(),
+		cacheById:    make(map[string]*BeanDefinition),
+		cacheByName:  make(map[string]*util.Array),
+		cacheByType:  make(map[reflect.Type]*util.Array),
+		configers:    list.New(),
+		destroyers:   list.New(),
+		destroyerMap: make(map[string]*destroyer),
 	}
 }
 
 // Properties 获取 Properties 对象
-func (ctx *applicationContext) Properties() conf.Properties {
+func (ctx *appCtx) Properties() conf.Properties {
 	return ctx.properties
 }
 
 // LoadProperties 加载属性配置，支持 properties、yaml 和 toml 三种文件格式。
-func (ctx *applicationContext) LoadProperties(filename string) error {
+func (ctx *appCtx) LoadProperties(filename string) error {
 	return ctx.properties.Load(filename)
 }
 
 // HasProperty 查询属性值是否存在，属性名称统一转成小写。
-func (ctx *applicationContext) HasProperty(key string) bool {
+func (ctx *appCtx) HasProperty(key string) bool {
 	return ctx.properties.Has(key)
 }
 
 // GetProperty 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。
-func (ctx *applicationContext) GetProperty(key string) interface{} {
+func (ctx *appCtx) GetProperty(key string) interface{} {
 	return ctx.properties.Get(key)
 }
 
 // Property 设置属性值，属性名称统一转成小写。
-func (ctx *applicationContext) Property(key string, value interface{}) {
+func (ctx *appCtx) Property(key string, value interface{}) {
 	ctx.properties.Set(key, value)
 }
 
 // PrefixProperties 返回 key 转为小写后作为前缀的所有符合条件的属性集合。
-func (ctx *applicationContext) PrefixProperties(key string) map[string]interface{} {
+func (ctx *appCtx) PrefixProperties(key string) map[string]interface{} {
 	return ctx.properties.Prefix(key)
 }
 
 // Context 返回上下文接口
-func (ctx *applicationContext) Context() context.Context {
+func (ctx *appCtx) Context() context.Context {
 	return ctx.ctx
 }
 
 // GetProfile 返回运行环境。
-func (ctx *applicationContext) GetProfile() string {
+func (ctx *appCtx) GetProfile() string {
 	return ctx.profile
 }
 
 // Profile 设置运行环境
-func (ctx *applicationContext) Profile(profile string) {
+func (ctx *appCtx) Profile(profile string) {
 	ctx.profile = profile
 }
 
 // checkAutoWired 检查是否已调用 Refresh 方法
-func (ctx *applicationContext) checkAutoWired() {
-	if !ctx.autoWired {
+func (ctx *appCtx) checkAutoWired() {
+	if ctx.state == 0 {
 		panic(errors.New("should call after Refresh"))
 	}
 }
 
 // checkRegistration 检查注册是否已被冻结
-func (ctx *applicationContext) checkRegistration() {
-	if ctx.autoWired {
+func (ctx *appCtx) checkRegistration() {
+	if ctx.state > 0 {
 		panic(errors.New("bean registration have been frozen"))
 	}
 }
 
-func (ctx *applicationContext) deleteBeanDefinition(bd *BeanDefinition) {
+func (ctx *appCtx) deleteBeanDefinition(bd *BeanDefinition) {
 	bd.setStatus(Deleted)
-	delete(ctx.beanMap, bd.BeanId())
+	delete(ctx.cacheById, bd.BeanId())
 }
 
-func (ctx *applicationContext) registerBeanDefinition(bd *BeanDefinition) {
-	if _, ok := ctx.beanMap[bd.BeanId()]; ok {
+func (ctx *appCtx) registerBeanDefinition(bd *BeanDefinition) {
+	if _, ok := ctx.cacheById[bd.BeanId()]; ok {
 		panic(fmt.Errorf("duplicate registration, bean: \"%s\"", bd.BeanId()))
 	}
-	ctx.beanMap[bd.BeanId()] = bd
+	ctx.cacheById[bd.BeanId()] = bd
 }
 
 // Object 注册对象形式的 Bean。
-func (ctx *applicationContext) Object(i interface{}) *BeanDefinition {
+func (ctx *appCtx) Object(i interface{}) *BeanDefinition {
 	return ctx.AddBean(NewBean(reflect.ValueOf(i)))
 }
 
 // Factory 注册构造函数形式的 Bean。
-func (ctx *applicationContext) Factory(fn interface{}, args ...arg.Arg) *BeanDefinition {
+func (ctx *appCtx) Factory(fn interface{}, args ...arg.Arg) *BeanDefinition {
 	return ctx.AddBean(NewBean(fn, args...))
 }
 
 // AddBean 添加 BeanDefinition 定义的 Bean。
-func (ctx *applicationContext) AddBean(bd *BeanDefinition) *BeanDefinition {
+func (ctx *appCtx) AddBean(bd *BeanDefinition) *BeanDefinition {
 	ctx.checkRegistration()
-	ctx.AllBeans = append(ctx.AllBeans, bd)
+	ctx.allBeans.Append(bd)
 	return bd
 }
 
 // GetBean 获取单例 Bean，它和 FindBean 的区别是它在调用后能够保证返回的 Bean 已经完成了注入和绑定过程。
-func (ctx *applicationContext) GetBean(i interface{}, selector ...bean.Selector) error {
+func (ctx *appCtx) GetBean(i interface{}, selector ...bean.Selector) error {
 
 	if i == nil {
 		return errors.New("i can't be nil")
@@ -189,11 +187,11 @@ func (ctx *applicationContext) GetBean(i interface{}, selector ...bean.Selector)
 }
 
 // FindBean 返回符合条件的 Bean 集合，不保证返回的 Bean 已经完成注入和绑定过程。
-func (ctx *applicationContext) FindBean(selector bean.Selector) ([]bean.Definition, error) {
+func (ctx *appCtx) FindBean(selector bean.Selector) ([]bean.Definition, error) {
 	ctx.checkAutoWired()
 
 	finder := func(fn func(*BeanDefinition) bool) (result []bean.Definition, err error) {
-		for _, b := range ctx.beanMap {
+		for _, b := range ctx.cacheById {
 			if b.getStatus() != Resolving && fn(b) {
 				// 避免 Bean 未被解析
 				if err = ctx.resolveBean(b); err != nil {
@@ -241,7 +239,7 @@ func (ctx *applicationContext) FindBean(selector bean.Selector) ([]bean.Definiti
 // 不为空，这时候只会收集单例 Bean，而且要求这些单例 Bean 不仅需要满足收集条件，而且
 // 必须满足 selector 条件。另外，自动模式下不对收集结果进行排序，指定模式下根据
 // selectors 列表的顺序对收集结果进行排序。
-func (ctx *applicationContext) CollectBeans(i interface{}, selectors ...bean.Selector) error {
+func (ctx *appCtx) CollectBeans(i interface{}, selectors ...bean.Selector) error {
 	ctx.checkAutoWired()
 
 	if t := reflect.TypeOf(i); t.Kind() != reflect.Ptr || t.Elem().Kind() != reflect.Slice {
@@ -258,27 +256,27 @@ func (ctx *applicationContext) CollectBeans(i interface{}, selectors ...bean.Sel
 }
 
 // getTypeCacheItem 查找指定类型的缓存项
-func (ctx *applicationContext) getTypeCacheItem(typ reflect.Type) *util.Array {
-	i, ok := ctx.beanCacheByType[typ]
+func (ctx *appCtx) getTypeCacheItem(typ reflect.Type) *util.Array {
+	i, ok := ctx.cacheByType[typ]
 	if !ok {
 		i = util.NewArray()
-		ctx.beanCacheByType[typ] = i
+		ctx.cacheByType[typ] = i
 	}
 	return i
 }
 
 // getNameCacheItem 查找指定类型的缓存项
-func (ctx *applicationContext) getNameCacheItem(name string) *util.Array {
-	i, ok := ctx.beanCacheByName[name]
+func (ctx *appCtx) getNameCacheItem(name string) *util.Array {
+	i, ok := ctx.cacheByName[name]
 	if !ok {
 		i = util.NewArray()
-		ctx.beanCacheByName[name] = i
+		ctx.cacheByName[name] = i
 	}
 	return i
 }
 
 // autoExport 自动导出 Bean 实现的接口
-func (ctx *applicationContext) autoExport(t reflect.Type, bd *BeanDefinition) error {
+func (ctx *appCtx) autoExport(t reflect.Type, bd *BeanDefinition) error {
 
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
@@ -321,17 +319,17 @@ func (ctx *applicationContext) autoExport(t reflect.Type, bd *BeanDefinition) er
 	return nil
 }
 
-func (ctx *applicationContext) typeCache(typ reflect.Type, bd *BeanDefinition) {
+func (ctx *appCtx) typeCache(typ reflect.Type, bd *BeanDefinition) {
 	log.Debugf("register %s type:\"%s\" beanId:\"%s\" %s", bd.getClass(), typ.String(), bd.BeanId(), bd.FileLine())
 	ctx.getTypeCacheItem(typ).Append(bd)
 }
 
-func (ctx *applicationContext) nameCache(name string, bd *BeanDefinition) {
+func (ctx *appCtx) nameCache(name string, bd *BeanDefinition) {
 	ctx.getNameCacheItem(name).Append(bd)
 }
 
 // resolveBean 对 Bean 进行决议是否能够创建 Bean 的实例
-func (ctx *applicationContext) resolveBean(bd *BeanDefinition) error {
+func (ctx *appCtx) resolveBean(bd *BeanDefinition) error {
 
 	// 正在进行或者已经完成决议过程
 	if bd.getStatus() >= Resolving {
@@ -372,14 +370,15 @@ func (ctx *applicationContext) resolveBean(bd *BeanDefinition) error {
 	return nil
 }
 
-func (ctx *applicationContext) registerAllBeans() {
-	for _, bd := range ctx.AllBeans {
+func (ctx *appCtx) registerAllBeans() {
+	for i := 0; i < ctx.allBeans.Len(); i++ {
+		bd := ctx.allBeans.Get(i).(*BeanDefinition)
 		ctx.registerBeanDefinition(bd)
 	}
 }
 
 // resolveConfigers 对 Config 函数进行决议是否能够保留它
-func (ctx *applicationContext) resolveConfigers() {
+func (ctx *appCtx) resolveConfigers() {
 
 	// 对 config 函数进行决议
 	for e := ctx.configers.Front(); e != nil; {
@@ -396,8 +395,8 @@ func (ctx *applicationContext) resolveConfigers() {
 }
 
 // resolveBeans 对 Bean 进行决议是否能够创建 Bean 的实例
-func (ctx *applicationContext) resolveBeans() error {
-	for _, bd := range ctx.beanMap {
+func (ctx *appCtx) resolveBeans() error {
+	for _, bd := range ctx.cacheById {
 		if err := ctx.resolveBean(bd); err != nil {
 			return err
 		}
@@ -406,7 +405,7 @@ func (ctx *applicationContext) resolveBeans() error {
 }
 
 // runConfigers 执行 Config 函数
-func (ctx *applicationContext) runConfigers(assembly *beanAssembly) error {
+func (ctx *appCtx) runConfigers(assembly *beanAssembly) error {
 	for e := ctx.configers.Front(); e != nil; e = e.Next() {
 		configer := e.Value.(*Configer)
 		if err := configer.r.Run(assembly); err != nil {
@@ -416,7 +415,8 @@ func (ctx *applicationContext) runConfigers(assembly *beanAssembly) error {
 	return nil
 }
 
-func (ctx *applicationContext) destroyer(bd *BeanDefinition) *destroyer {
+// destroyer 某个 Bean 可能会被多个 Bean 依赖，因此需要排重处理。
+func (ctx *appCtx) destroyer(bd *BeanDefinition) *destroyer {
 	d, ok := ctx.destroyerMap[bd.BeanId()]
 	if !ok {
 		d = &destroyer{bean: bd}
@@ -426,7 +426,7 @@ func (ctx *applicationContext) destroyer(bd *BeanDefinition) *destroyer {
 }
 
 // sortDestroyers 对销毁函数进行排序
-func (ctx *applicationContext) sortDestroyers() {
+func (ctx *appCtx) sortDestroyers() {
 	for _, d := range ctx.destroyerMap {
 		ctx.destroyers.PushBack(d)
 	}
@@ -434,8 +434,8 @@ func (ctx *applicationContext) sortDestroyers() {
 }
 
 // wireBeans 对 Bean 执行自动注入
-func (ctx *applicationContext) wireBeans(assembly *beanAssembly) error {
-	for _, bd := range ctx.beanMap {
+func (ctx *appCtx) wireBeans(assembly *beanAssembly) error {
+	for _, bd := range ctx.cacheById {
 		if err := assembly.wireBeanDefinition(bd, false); err != nil {
 			return err
 		}
@@ -444,9 +444,9 @@ func (ctx *applicationContext) wireBeans(assembly *beanAssembly) error {
 }
 
 // Refresh 对所有 Bean 进行依赖注入和属性绑定
-func (ctx *applicationContext) Refresh() {
+func (ctx *appCtx) Refresh() {
 
-	if ctx.autoWired {
+	if ctx.state > 0 {
 		panic(errors.New("already refreshed"))
 	}
 
@@ -467,7 +467,7 @@ func (ctx *applicationContext) Refresh() {
 	// 处理 Method Bean 等
 	ctx.registerAllBeans()
 
-	ctx.autoWired = true
+	ctx.state = 1
 
 	ctx.resolveConfigers()
 	if err = ctx.resolveBeans(); err != nil {
@@ -485,10 +485,12 @@ func (ctx *applicationContext) Refresh() {
 	}
 
 	ctx.sortDestroyers()
+
+	ctx.state = 2
 }
 
 // WireBean 对对象或者构造函数的结果进行依赖注入和属性绑定，返回处理后的对象
-func (ctx *applicationContext) WireBean(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error) {
+func (ctx *appCtx) WireBean(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error) {
 	ctx.checkAutoWired()
 	assembly := toAssembly(ctx)
 	bd := NewBean(objOrCtor, ctorArgs...)
@@ -500,14 +502,14 @@ func (ctx *applicationContext) WireBean(objOrCtor interface{}, ctorArgs ...arg.A
 }
 
 // Range 遍历所有 Bean 的定义，不能保证解析和注入，请谨慎使用!
-func (ctx *applicationContext) Range(fn func(bd bean.Definition)) {
-	for _, v := range ctx.beanMap {
+func (ctx *appCtx) Range(fn func(bd bean.Definition)) {
+	for _, v := range ctx.cacheById {
 		fn(v)
 	}
 }
 
 // Close 关闭容器上下文，用于通知 Bean 销毁等，该函数可以确保 Bean 的销毁顺序和注入顺序相反。
-func (ctx *applicationContext) Close(beforeDestroy ...func()) {
+func (ctx *appCtx) Close(beforeDestroy ...func()) {
 
 	// 上下文结束
 	ctx.cancel()
@@ -534,7 +536,7 @@ func (ctx *applicationContext) Close(beforeDestroy ...func()) {
 }
 
 // Invoke 立即执行一个一次性的任务
-func (ctx *applicationContext) Invoke(fn interface{}, args ...arg.Arg) error {
+func (ctx *appCtx) Invoke(fn interface{}, args ...arg.Arg) error {
 	ctx.checkAutoWired()
 	if fnType := reflect.TypeOf(fn); util.FuncType(fnType) {
 		if util.ReturnNothing(fnType) || util.ReturnOnlyError(fnType) {
@@ -545,14 +547,14 @@ func (ctx *applicationContext) Invoke(fn interface{}, args ...arg.Arg) error {
 }
 
 // Config 注册一个配置函数
-func (ctx *applicationContext) Config(fn interface{}, args ...arg.Arg) *Configer {
+func (ctx *appCtx) Config(fn interface{}, args ...arg.Arg) *Configer {
 	configer := Config(fn, args)
 	ctx.configers.PushBack(configer)
 	return configer
 }
 
 // Go 安全地启动一个 goroutine
-func (ctx *applicationContext) Go(fn interface{}, args ...arg.Arg) {
+func (ctx *appCtx) Go(fn interface{}, args ...arg.Arg) {
 
 	ctx.checkAutoWired()
 	fnType := reflect.TypeOf(fn)

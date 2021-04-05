@@ -22,11 +22,8 @@ import (
 
 	"github.com/go-spring/spring-core/arg"
 	"github.com/go-spring/spring-core/bean"
-	"github.com/go-spring/spring-core/cond"
 	"github.com/go-spring/spring-core/conf"
 )
-
-var _ = cond.Context((ApplicationContext)(nil))
 
 // ApplicationContext 定义了 IoC 容器接口。
 //
