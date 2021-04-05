@@ -55,13 +55,13 @@ func (s wiringStack) path() (path string) {
 }
 
 type beanAssembly struct {
-	ctx      *appCtx
+	ctx      *applicationContext
 	stack    wiringStack
 	destroys *list.List // 具有销毁函数的 Bean 的堆栈
 }
 
 // toAssembly beanAssembly 的构造函数
-func toAssembly(appCtx *appCtx) *beanAssembly {
+func toAssembly(appCtx *applicationContext) *beanAssembly {
 	return &beanAssembly{
 		ctx:      appCtx,
 		stack:    make([]beanDefinition, 0),
