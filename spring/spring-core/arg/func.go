@@ -22,6 +22,8 @@ import (
 	"reflect"
 	"runtime"
 	"strings"
+
+	"github.com/go-spring/spring-core/util"
 )
 
 // errorType error 的反射类型。
@@ -45,6 +47,11 @@ func Caller(fn interface{}, withReceiver bool, args []Arg) Callable {
 // Runnable 无返回值的函数。
 type Runnable interface {
 	Run(ctx Context, receiver ...reflect.Value) error
+}
+
+// IsRunnerType 返回是否是 Runnable 绑定函数类型
+func IsRunnerType(t reflect.Type) bool {
+	return util.FuncType(t) && (util.ReturnNothing(t) || util.ReturnOnlyError(t))
 }
 
 // Runner 绑定函数及其参数。

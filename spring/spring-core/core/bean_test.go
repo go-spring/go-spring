@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/go-spring/spring-core/assert"
+	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/core"
 	pkg2 "github.com/go-spring/spring-core/core/testdata/pkg/foo"
 )
@@ -78,7 +79,7 @@ func TestIsFuncBeanType(t *testing.T) {
 	}
 
 	for k, v := range data {
-		ok := core.IsFuncBeanType(k)
+		ok := bean.IsFactoryType(k)
 		assert.Equal(t, ok, v)
 	}
 }

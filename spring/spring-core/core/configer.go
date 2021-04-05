@@ -23,7 +23,6 @@ import (
 
 	"github.com/go-spring/spring-core/arg"
 	"github.com/go-spring/spring-core/cond"
-	"github.com/go-spring/spring-core/util"
 )
 
 // Configer 配置函数，所谓配置函数是指可以接受一些 Bean 作为入参的函数，使用场景大多
@@ -38,9 +37,9 @@ type Configer struct {
 
 // config Configer 的构造函数，fn 只能返回 error 或者没有返回。
 func config(fn interface{}, args ...arg.Arg) *Configer {
-	if fnType := reflect.TypeOf(fn); util.FuncType(fnType) {
-		if util.ReturnNothing(fnType) || util.ReturnOnlyError(fnType) {
-			return &Configer{fn: arg.Runner(fn, false, args)}
+	if arg.IsRunnerType(reflect.TypeOf(fn)) {
+		return &Configer{
+			fn: arg.Runner(fn, false, args),
 		}
 	}
 	panic(errors.New("fn should be func() or func()error"))

@@ -108,7 +108,7 @@ type ConfigurableApplicationContext interface {
 	Object(i interface{}) *BeanDefinition
 
 	// Factory 注册构造函数形式的 Bean。
-	Factory(fn interface{}, args ...arg.Arg) *BeanDefinition
+	Factory(fn bean.Factory, args ...arg.Arg) *BeanDefinition
 
 	// Config 注册一个配置函数
 	Config(fn interface{}, args ...arg.Arg) *Configer
@@ -242,7 +242,7 @@ func (ctx *applicationContext) Object(i interface{}) *BeanDefinition {
 }
 
 // Factory 注册构造函数形式的 Bean。
-func (ctx *applicationContext) Factory(fn interface{}, args ...arg.Arg) *BeanDefinition {
+func (ctx *applicationContext) Factory(fn bean.Factory, args ...arg.Arg) *BeanDefinition {
 	return ctx.AddBean(NewBean(fn, args...))
 }
 

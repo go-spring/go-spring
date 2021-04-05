@@ -30,9 +30,6 @@ import (
 	"github.com/go-spring/spring-core/util"
 )
 
-// errorType error 的反射类型
-var errorType = reflect.TypeOf((*error)(nil)).Elem()
-
 // toSingletonTag 将 bean.Selector 转换为 singletonTag 形式。
 func toSingletonTag(selector bean.Selector) singletonTag {
 	switch s := selector.(type) {
@@ -132,31 +129,6 @@ func parseCollectionTag(str string) (tag collectionTag) {
 		}
 	}
 	return
-}
-
-// IsFuncBeanType 返回以函数形式注册 Bean 的函数是否合法。一个合法
-// 的注册函数需要以下条件：入参可以有任意多个，支持一般形式和 Option
-// 形式，返回值只能有一个或者两个，第一个返回值必须是 Bean 源，它可以是
-// 结构体等值类型也可以是指针等引用类型，为值类型时内部会自动转换为引用类
-// 型（获取可引用的地址），如果有第二个返回值那么它必须是 error 类型。
-func IsFuncBeanType(fnType reflect.Type) bool {
-
-	// 必须是函数
-	if fnType.Kind() != reflect.Func {
-		return false
-	}
-
-	// 返回值必须是 1 个或者 2 个
-	if fnType.NumOut() < 1 || fnType.NumOut() > 2 {
-		return false
-	}
-
-	// 如果有第 2 个返回值则它必须是 error 类型
-	if fnType.NumOut() == 2 && !fnType.Out(1).Implements(errorType) {
-		return false
-	}
-
-	return true
 }
 
 // beanStatus Bean 的状态值
@@ -447,7 +419,7 @@ func NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 	if t := v.Type(); !fromValue && t.Kind() == reflect.Func {
 
 		// 检查 Bean 的注册函数是否合法
-		if !IsFuncBeanType(t) {
+		if !bean.IsFactoryType(t) {
 			t1 := "func(...)bean"
 			t2 := "func(...)(bean, error)"
 			panic(fmt.Errorf("func bean must be %s or %s", t1, t2))
