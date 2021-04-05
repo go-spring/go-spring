@@ -509,7 +509,7 @@ func (ctx *applicationContext) runConfigers(assembly *beanAssembly) error {
 func (ctx *applicationContext) destroyer(bd *BeanDefinition) *destroyer {
 	d, ok := ctx.destroyerMap[bd.BeanId()]
 	if !ok {
-		d = &destroyer{bean: bd}
+		d = &destroyer{current: bd}
 		ctx.destroyerMap[bd.BeanId()] = d
 	}
 	return d
@@ -619,7 +619,7 @@ func (ctx *applicationContext) Close(beforeDestroy ...func()) {
 	// 按照顺序执行销毁函数
 	for i := ctx.destroyers.Front(); i != nil; i = i.Next() {
 		d := i.Value.(*destroyer)
-		if err := d.bean.getDestroy().Run(assembly, d.bean.Value()); err != nil {
+		if err := d.run(assembly); err != nil {
 			log.Error(err)
 		}
 	}

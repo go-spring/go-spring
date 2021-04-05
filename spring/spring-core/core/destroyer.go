@@ -18,39 +18,47 @@ package core
 
 import (
 	"container/list"
+
+	"github.com/go-spring/spring-core/arg"
 )
 
-// destroyer 保存具有销毁函数的 Bean 以及销毁函数的调用顺序
+// destroyer 保存具有销毁函数的 Bean 以及销毁函数的调用顺序。
 type destroyer struct {
-	bean  *BeanDefinition
-	after []*BeanDefinition
+	current *BeanDefinition
+	earlier []*BeanDefinition
 }
 
-// After 添加一个在此之前调用的销毁函数
-func (d *destroyer) After(b *BeanDefinition) *destroyer {
+// after 添加一个需要在该 Bean 之前调用销毁函数的 Bean。
+func (d *destroyer) after(b *BeanDefinition) {
+	if d.foundEarlier(b) {
+		return
+	}
+	d.earlier = append(d.earlier, b)
+}
 
-	for _, f := range d.after {
+func (d *destroyer) foundEarlier(b *BeanDefinition) bool {
+	for _, f := range d.earlier {
 		if f == b {
-			return d
+			return true
 		}
 	}
-
-	d.after = append(d.after, b)
-	return d
+	return false
 }
 
-// getBeforeDestroyers 获取排在当前 destroyer 前面的 destroyer 项
+// getBeforeDestroyers 获取排在 i 前面的 destroyer，用于 internal/sort 算法排序。
 func getBeforeDestroyers(destroyers *list.List, i interface{}) *list.List {
+	d := i.(*destroyer)
 	result := list.New()
-	current := i.(*destroyer)
 	for e := destroyers.Front(); e != nil; e = e.Next() {
 		c := e.Value.(*destroyer)
-		// 检查是否在当前 destroyer 的前面
-		for _, b := range current.after {
-			if c.bean == b {
-				result.PushBack(c)
-			}
+		if d.foundEarlier(c.current) {
+			result.PushBack(c)
 		}
 	}
 	return result
+}
+
+// run 执行 current 的销毁函数。
+func (d *destroyer) run(ctx arg.Context) error {
+	return d.current.getDestroy().Run(ctx, d.current.Value())
 }

@@ -43,7 +43,7 @@ func (s *wiringStack) popBack() {
 	n := len(*s)
 	bd := (*s)[n-1]
 	*s = (*s)[:n-1]
-	log.Tracef("wired %s", bd.(beanDefinition).Description())
+	log.Tracef("wired %s", bd.Description())
 }
 
 // path 返回 Bean 注入的路径
@@ -382,7 +382,7 @@ func (assembly *beanAssembly) wireBeanDefinition(bd beanDefinition, onlyAutoWire
 			de := assembly.ctx.destroyer(curr)
 			if i := assembly.destroys.Back(); i != nil {
 				prev := i.Value.(*BeanDefinition)
-				de.After(prev)
+				de.after(prev)
 			}
 			assembly.destroys.PushBack(curr)
 		} else {
