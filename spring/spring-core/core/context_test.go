@@ -85,10 +85,10 @@ func TestApplicationContext(t *testing.T) {
 		// }, "duplicate registration, bean: \"int:\\*int\"")
 
 		// 相同类型不同名称的 bean 都可注册
-		ctx.Object(&e).Name("i3")
+		ctx.Object(&e).WithName("i3")
 
 		// 相同类型不同名称的 bean 都可注册
-		ctx.Object(&e).Name("i4")
+		ctx.Object(&e).WithName("i4")
 
 		ctx.Object(a)
 		ctx.Object(&a)
@@ -151,10 +151,10 @@ func TestApplicationContext(t *testing.T) {
 		ctx.Object(&e)
 
 		// 相同类型不同名称的 bean 都可注册
-		ctx.Object(&e).Name("i3")
+		ctx.Object(&e).WithName("i3")
 
 		// 相同类型不同名称的 bean 都可注册
-		ctx.Object(&e).Name("i4")
+		ctx.Object(&e).WithName("i4")
 
 		ctx.Object(a)
 		ctx.Object(&a)
@@ -180,17 +180,17 @@ func TestApplicationContext(t *testing.T) {
 
 		// 相同类型不同名称的 bean 都可注册
 		// 不同类型相同名称的 bean 也可注册
-		ctx.Object(&e).Name("i3")
+		ctx.Object(&e).WithName("i3")
 
 		// 相同类型不同名称的 bean 都可注册
-		ctx.Object(&e).Name("i4")
+		ctx.Object(&e).WithName("i4")
 
 		ctx.Object(a)
 		ctx.Object(&a)
 		ctx.Object(p)
 		ctx.Object(&p)
 
-		ctx.Object(&e).Name("i5")
+		ctx.Object(&e).WithName("i5")
 
 		ctx.Refresh()
 	})
@@ -262,10 +262,10 @@ func TestApplicationContext_AutoWireBeans(t *testing.T) {
 		ctx.Object(obj)
 
 		i := int(3)
-		ctx.Object(&i).Name("int_ptr")
+		ctx.Object(&i).WithName("int_ptr")
 
 		i2 := int(3)
-		ctx.Object(&i2).Name("int_ptr_2")
+		ctx.Object(&i2).WithName("int_ptr_2")
 
 		assert.Panic(t, func() {
 			ctx.Refresh()
@@ -278,27 +278,27 @@ func TestApplicationContext_AutoWireBeans(t *testing.T) {
 	ctx.Object(obj)
 
 	i := int(3)
-	ctx.Object(&i).Name("int_ptr")
+	ctx.Object(&i).WithName("int_ptr")
 
 	is := []int{1, 2, 3}
-	ctx.Object(is).Name("int_slice_1")
+	ctx.Object(is).WithName("int_slice_1")
 
 	is2 := []int{2, 3, 4}
-	ctx.Object(is2).Name("int_slice_2")
+	ctx.Object(is2).WithName("int_slice_2")
 
 	i2 := 4
 	ips := []*int{&i2}
-	ctx.Object(ips).Name("int_ptr_slice")
+	ctx.Object(ips).WithName("int_ptr_slice")
 
 	b := TestBincoreng{1}
-	ctx.Object(&b).Name("struct_ptr").Export((*fmt.Stringer)(nil))
+	ctx.Object(&b).WithName("struct_ptr").Export((*fmt.Stringer)(nil))
 
 	bs := []TestBincoreng{{10}}
-	ctx.Object(bs).Name("struct_slice")
+	ctx.Object(bs).WithName("struct_slice")
 
 	b2 := TestBincoreng{2}
 	bps := []*TestBincoreng{&b2}
-	ctx.Object(bps).Name("struct_ptr_slice")
+	ctx.Object(bps).WithName("struct_ptr_slice")
 
 	s := []fmt.Stringer{&TestBincoreng{3}}
 	ctx.Object(s)
@@ -307,13 +307,13 @@ func TestApplicationContext_AutoWireBeans(t *testing.T) {
 		"5": 5,
 	}
 
-	ctx.Object(m).Name("map")
+	ctx.Object(m).WithName("map")
 
 	f1 := float32(11.0)
-	ctx.Object(&f1).Name("float_ptr_1")
+	ctx.Object(&f1).WithName("float_ptr_1")
 
 	f2 := float32(12.0)
-	ctx.Object(&f2).Name("float_ptr_2")
+	ctx.Object(&f2).WithName("float_ptr_2")
 
 	ctx.Refresh()
 
@@ -583,8 +583,8 @@ type DiffPkgHolder struct {
 
 func TestApplicationContext_DiffNameBean(t *testing.T) {
 	ctx := core.NewApplicationContext()
-	ctx.Object(&DiffPkgOne{}).Name("same").Export((*Pkg)(nil))
-	ctx.Object(&DiffPkgTwo{}).Name("same").Export((*Pkg)(nil))
+	ctx.Object(&DiffPkgOne{}).WithName("same").Export((*Pkg)(nil))
+	ctx.Object(&DiffPkgTwo{}).WithName("same").Export((*Pkg)(nil))
 	ctx.Object(new(DiffPkgHolder))
 	ctx.Refresh()
 }
@@ -824,10 +824,10 @@ func TestApplicationContext_RegisterBeanFn(t *testing.T) {
 	// 用接口注册时实际使用的是原始类型
 	ctx.Object(Teacher(newHistoryTeacher(""))).Export((*Teacher)(nil))
 
-	ctx.Factory(NewStudent, "", "${room}").Name("st1")
-	ctx.Factory(NewPtrStudent, "", "${room}").Name("st2")
-	ctx.Factory(NewStudent, "?", "${room:=http://}").Name("st3")
-	ctx.Factory(NewPtrStudent, "?", "${room:=4567}").Name("st4")
+	ctx.Factory(NewStudent, "", "${room}").WithName("st1")
+	ctx.Factory(NewPtrStudent, "", "${room}").WithName("st2")
+	ctx.Factory(NewStudent, "?", "${room:=http://}").WithName("st3")
+	ctx.Factory(NewPtrStudent, "?", "${room:=4567}").WithName("st4")
 
 	mapFn := func() map[int]string {
 		return map[int]string{
@@ -986,7 +986,7 @@ func TestApplicationContext_Primary(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
 		ctx.Object(&BeanZero{5})
-		ctx.Object(&BeanZero{6}).Name("zero_6").SetPrimary(true)
+		ctx.Object(&BeanZero{6}).WithName("zero_6").SetPrimary(true)
 		ctx.Object(new(BeanOne))
 		ctx.Object(new(BeanTwo))
 		ctx.Refresh()
@@ -1386,7 +1386,7 @@ func TestApplicationContext_CollectBeans(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
 		ctx.Property("recores.endpoints", "recores://localhost:6379")
-		ctx.Object(new(RecoresCluster)).Name("one")
+		ctx.Object(new(RecoresCluster)).WithName("one")
 		ctx.Object(new(RecoresCluster))
 		ctx.Refresh()
 
@@ -1404,7 +1404,7 @@ func TestApplicationContext_CollectBeans(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
 		ctx.Property("recores.endpoints", "recores://localhost:6379")
-		ctx.Object(d1).Name("one")
+		ctx.Object(d1).WithName("one")
 		ctx.Object(d2)
 		ctx.Refresh()
 
@@ -1424,7 +1424,7 @@ func TestApplicationContext_CollectBeans(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
 		ctx.Property("recores.endpoints", "recores://localhost:6379")
-		ctx.Object(d1).Name("one")
+		ctx.Object(d1).WithName("one")
 		ctx.Object(d2)
 		ctx.Refresh()
 
@@ -1441,7 +1441,7 @@ func TestApplicationContext_CollectBeans(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
 		ctx.Property("recores.endpoints", "recores://localhost:6379")
-		ctx.Object(new(RecoresCluster)).Name("one")
+		ctx.Object(new(RecoresCluster)).WithName("one")
 		ctx.Object(new(RecoresCluster))
 		ctx.Refresh()
 
@@ -2007,8 +2007,8 @@ func TestApplicationContext_RegisterOptionBean(t *testing.T) {
 	t.Run("variable option param 1", func(t *testing.T) {
 		ctx := core.NewApplicationContext()
 		ctx.Property("var.obj", "description")
-		ctx.Object(&Var{"v1"}).Name("v1")
-		ctx.Object(&Var{"v2"}).Name("v2")
+		ctx.Object(&Var{"v1"}).WithName("v1")
+		ctx.Object(&Var{"v2"}).WithName("v2")
 		ctx.Factory(NewVarObj, "${var.obj}", arg.Option(withVar, "v1"))
 		ctx.Refresh()
 
@@ -2024,8 +2024,8 @@ func TestApplicationContext_RegisterOptionBean(t *testing.T) {
 	t.Run("variable option param 2", func(t *testing.T) {
 		ctx := core.NewApplicationContext()
 		ctx.Property("var.obj", "description")
-		ctx.Object(&Var{"v1"}).Name("v1")
-		ctx.Object(&Var{"v2"}).Name("v2")
+		ctx.Object(&Var{"v1"}).WithName("v1")
+		ctx.Object(&Var{"v2"}).WithName("v2")
 		ctx.Factory(NewVarObj, arg.Value("description"), arg.Option(withVar, "v1", "v2"))
 		ctx.Refresh()
 
@@ -2041,8 +2041,8 @@ func TestApplicationContext_RegisterOptionBean(t *testing.T) {
 
 	t.Run("variable option interface param 1", func(t *testing.T) {
 		ctx := core.NewApplicationContext()
-		ctx.Object(&Var{"v1"}).Name("v1").Export((*interface{})(nil))
-		ctx.Object(&Var{"v2"}).Name("v2").Export((*interface{})(nil))
+		ctx.Object(&Var{"v1"}).WithName("v1").Export((*interface{})(nil))
+		ctx.Object(&Var{"v2"}).WithName("v2").Export((*interface{})(nil))
 		ctx.Factory(NewVarInterfaceObj, arg.Option(withVarInterface, "v1"))
 		ctx.Refresh()
 
@@ -2055,8 +2055,8 @@ func TestApplicationContext_RegisterOptionBean(t *testing.T) {
 
 	t.Run("variable option interface param 1", func(t *testing.T) {
 		ctx := core.NewApplicationContext()
-		ctx.Object(&Var{"v1"}).Name("v1").Export((*interface{})(nil))
-		ctx.Object(&Var{"v2"}).Name("v2").Export((*interface{})(nil))
+		ctx.Object(&Var{"v1"}).WithName("v1").Export((*interface{})(nil))
+		ctx.Object(&Var{"v2"}).WithName("v2").Export((*interface{})(nil))
 		ctx.Factory(NewVarInterfaceObj, arg.Option(withVarInterface, "v1", "v2"))
 		ctx.Refresh()
 
@@ -2410,8 +2410,8 @@ func TestApplicationContext_FnArgCollectBean(t *testing.T) {
 
 	t.Run("base type", func(t *testing.T) {
 		ctx := core.NewApplicationContext()
-		ctx.Factory(func() int { return 3 }).Name("i1")
-		ctx.Factory(func() int { return 4 }).Name("i2")
+		ctx.Factory(func() int { return 3 }).WithName("i1")
+		ctx.Factory(func() int { return 4 }).WithName("i2")
 		ctx.Factory(func(i []*int) bool {
 			nums := make([]int, 0)
 			for _, e := range i {
@@ -2426,8 +2426,8 @@ func TestApplicationContext_FnArgCollectBean(t *testing.T) {
 
 	t.Run("interface type", func(t *testing.T) {
 		ctx := core.NewApplicationContext()
-		ctx.Factory(newHistoryTeacher("t1")).Name("t1").Export((*Teacher)(nil))
-		ctx.Factory(newHistoryTeacher("t2")).Name("t2").Export((*Teacher)(nil))
+		ctx.Factory(newHistoryTeacher("t1")).WithName("t1").Export((*Teacher)(nil))
+		ctx.Factory(newHistoryTeacher("t2")).WithName("t2").Export((*Teacher)(nil))
 		ctx.Factory(func(teachers []Teacher) bool {
 			names := make([]string, 0)
 			for _, teacher := range teachers {
@@ -2470,8 +2470,8 @@ func TestApplicationContext_BeanCache(t *testing.T) {
 		}
 
 		ctx := core.NewApplicationContext()
-		ctx.Factory(func() filter { return new(filterImpl) }).Name("f1")
-		ctx.Object(new(filterImpl)).Export((*filter)(nil)).Name("f2")
+		ctx.Factory(func() filter { return new(filterImpl) }).WithName("f1")
+		ctx.Object(new(filterImpl)).Export((*filter)(nil)).WithName("f2")
 		ctx.Object(&server)
 
 		ctx.Refresh()
@@ -2609,7 +2609,7 @@ func TestApplicationContext_AutoExport(t *testing.T) {
 		ctx.Object(&struct {
 			Error error `autowire:"e"`
 		}{})
-		ctx.Object(b).Name("e")
+		ctx.Object(b).WithName("e")
 		ctx.Refresh()
 	})
 
@@ -2619,7 +2619,7 @@ func TestApplicationContext_AutoExport(t *testing.T) {
 		ctx.Object(&struct {
 			Error error `autowire:"e"`
 		}{})
-		ctx.Object(b).Name("e").Export((*error)(nil))
+		ctx.Object(b).WithName("e").Export((*error)(nil))
 		ctx.Refresh()
 	})
 
@@ -2822,7 +2822,7 @@ func TestDefaultSpringContext(t *testing.T) {
 	t.Run("bean:test_ctx:", func(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
-		ctx.Object(&BeanZero{5}).Cond(cond.
+		ctx.Object(&BeanZero{5}).WithCond(cond.
 			OnProfile("test").
 			And().
 			OnMissingBean("null"),
@@ -2839,7 +2839,7 @@ func TestDefaultSpringContext(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
 		ctx.Profile("test")
-		ctx.Object(&BeanZero{5}).Cond(cond.OnProfile("test"))
+		ctx.Object(&BeanZero{5}).WithCond(cond.OnProfile("test"))
 		ctx.Refresh()
 
 		var b *BeanZero
@@ -2851,7 +2851,7 @@ func TestDefaultSpringContext(t *testing.T) {
 
 		ctx := core.NewApplicationContext()
 		ctx.Profile("stable")
-		ctx.Object(&BeanZero{5}).Cond(cond.OnProfile("test"))
+		ctx.Object(&BeanZero{5}).WithCond(cond.OnProfile("test"))
 		ctx.Refresh()
 
 		var b *BeanZero
@@ -2867,7 +2867,7 @@ func TestDefaultSpringContext(t *testing.T) {
 		ctx.Factory(NewClassRoom, arg.Option(withClassName,
 			"${class_name:=二年级03班}",
 			"${class_floor:=3}",
-		).Cond(cond.OnProperty("class_name_enable")))
+		).WithCond(cond.OnProperty("class_name_enable")))
 		ctx.Refresh()
 
 		var cls *ClassRoom
@@ -2889,7 +2889,7 @@ func TestDefaultSpringContext(t *testing.T) {
 			arg.Option(withClassName,
 				"${class_name:=二年级03班}",
 				"${class_floor:=3}",
-			).Cond(c),
+			).WithCond(c),
 		)
 		ctx.Refresh()
 
@@ -2908,7 +2908,7 @@ func TestDefaultSpringContext(t *testing.T) {
 		ctx := core.NewApplicationContext()
 		ctx.Property("server.version", "1.0.0")
 		parent := ctx.Object(new(Server))
-		ctx.Factory((*Server).Consumer, parent.BeanId()).Cond(cond.OnProperty("consumer.enable"))
+		ctx.Factory((*Server).Consumer, parent.BeanId()).WithCond(cond.OnProperty("consumer.enable"))
 		ctx.Refresh()
 
 		var s *Server
@@ -2926,7 +2926,7 @@ func TestDefaultSpringContext(t *testing.T) {
 //func TestDefaultSpringContext_ParentNotRegister(t *testing.T) {
 //
 //	ctx := core.NewApplicationContext()
-//	parent := ctx.Factory(NewServerInterface).Cond(cond.OnProperty("server.is.nil"))
+//	parent := ctx.Factory(NewServerInterface).WithCond(cond.OnProperty("server.is.nil"))
 //	ctx.Factory(ServerInterface.Consumer, parent.BeanId())
 //
 //	ctx.Refresh()
@@ -2943,9 +2943,9 @@ func TestDefaultSpringContext(t *testing.T) {
 func TestDefaultSpringContext_ChainConditionOnBean(t *testing.T) {
 	for i := 0; i < 20; i++ { // 不要排序
 		ctx := core.NewApplicationContext()
-		ctx.Object(new(string)).Cond(cond.OnBean("*bool"))
-		ctx.Object(new(bool)).Cond(cond.OnBean("*int"))
-		ctx.Object(new(int)).Cond(cond.OnBean("*float"))
+		ctx.Object(new(string)).WithCond(cond.OnBean("*bool"))
+		ctx.Object(new(bool)).WithCond(cond.OnBean("*int"))
+		ctx.Object(new(int)).WithCond(cond.OnBean("*float"))
 		ctx.Refresh()
 		count := 0
 		ctx.Range(func(bd bean.Definition) { count++ })
@@ -2961,20 +2961,20 @@ func TestDefaultSpringContext_ConditionOnBean(t *testing.T) {
 		Or().
 		OnProfile("test")
 
-	ctx.Object(&BeanZero{5}).Cond(cond.
+	ctx.Object(&BeanZero{5}).WithCond(cond.
 		On(c).
 		And().
 		OnMissingBean("null"),
 	)
 
-	ctx.Object(new(BeanOne)).Cond(cond.
+	ctx.Object(new(BeanOne)).WithCond(cond.
 		On(c).
 		And().
 		OnMissingBean("null"),
 	)
 
-	ctx.Object(new(BeanTwo)).Cond(cond.OnBean("*core_test.BeanOne"))
-	ctx.Object(new(BeanTwo)).Name("another_two").Cond(cond.OnBean("Null"))
+	ctx.Object(new(BeanTwo)).WithCond(cond.OnBean("*core_test.BeanOne"))
+	ctx.Object(new(BeanTwo)).WithName("another_two").WithCond(cond.OnBean("Null"))
 
 	ctx.Refresh()
 
@@ -2994,8 +2994,8 @@ func TestDefaultSpringContext_ConditionOnMissingBean(t *testing.T) {
 		ctx.Object(&BeanZero{5})
 		ctx.Object(new(BeanOne))
 
-		ctx.Object(new(BeanTwo)).Cond(cond.OnMissingBean("*core_test.BeanOne"))
-		ctx.Object(new(BeanTwo)).Name("another_two").Cond(cond.OnMissingBean("Null"))
+		ctx.Object(new(BeanTwo)).WithCond(cond.OnMissingBean("*core_test.BeanOne"))
+		ctx.Object(new(BeanTwo)).WithName("another_two").WithCond(cond.OnMissingBean("Null"))
 
 		ctx.Refresh()
 

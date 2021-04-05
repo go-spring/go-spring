@@ -571,7 +571,7 @@ func (assembly *beanAssembly) wireConstructorBean(bd beanDefinition) error {
 		beanValue = bd.Value()
 	}
 
-	b := NewBean(beanValue, bd.getFile(), bd.getLine()).Name(bd.BeanName())
+	b := NewBean(beanValue, bd.getFile(), bd.getLine()).WithName(bd.BeanName())
 	return assembly.wireBeanDefinition(&fnValueBeanDefinition{BeanDefinition: b, f: bd}, false)
 }
 

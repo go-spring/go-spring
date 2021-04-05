@@ -291,8 +291,8 @@ func Option(fn interface{}, args ...Arg) *optionArg {
 	return &optionArg{r: bind(fn, false, args)}
 }
 
-// Cond 为 Option 设置一个 cond.Condition
-func (arg *optionArg) Cond(cond cond.Condition) *optionArg {
+// WithCond 为 Option 设置一个 cond.Condition
+func (arg *optionArg) WithCond(cond cond.Condition) *optionArg {
 	arg.cond = cond
 	return arg
 }

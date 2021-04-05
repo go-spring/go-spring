@@ -331,14 +331,14 @@ func (d *BeanDefinition) Match(typeName string, beanName string) bool {
 	return typeIsSame && nameIsSame
 }
 
-// Name 设置 Bean 的名称
-func (d *BeanDefinition) Name(name string) *BeanDefinition {
+// WithName 设置 Bean 的名称
+func (d *BeanDefinition) WithName(name string) *BeanDefinition {
 	d.name = name
 	return d
 }
 
-// Cond 为 Bean 设置一个 Condition
-func (d *BeanDefinition) Cond(cond cond.Condition) *BeanDefinition {
+// WithCond 为 Bean 设置一个 Condition
+func (d *BeanDefinition) WithCond(cond cond.Condition) *BeanDefinition {
 	d.cond = cond
 	return d
 }

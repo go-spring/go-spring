@@ -94,15 +94,15 @@ func TestBeanDefinition_Match(t *testing.T) {
 		{core.NewBean(new(int)), "int", "*int", true},
 		{core.NewBean(new(int)), "", "*int", true},
 		{core.NewBean(new(int)), "int", "", true},
-		{core.NewBean(new(int)).Name("i"), "int", "i", true},
-		{core.NewBean(new(int)).Name("i"), "", "i", true},
-		{core.NewBean(new(int)).Name("i"), "int", "", true},
+		{core.NewBean(new(int)).WithName("i"), "int", "i", true},
+		{core.NewBean(new(int)).WithName("i"), "", "i", true},
+		{core.NewBean(new(int)).WithName("i"), "int", "", true},
 		{core.NewBean(new(pkg2.SamePkg)), "github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg", "*pkg.SamePkg", true},
 		{core.NewBean(new(pkg2.SamePkg)), "", "*pkg.SamePkg", true},
 		{core.NewBean(new(pkg2.SamePkg)), "github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg", "", true},
-		{core.NewBean(new(pkg2.SamePkg)).Name("pkg2"), "github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg", "pkg2", true},
-		{core.NewBean(new(pkg2.SamePkg)).Name("pkg2"), "", "pkg2", true},
-		{core.NewBean(new(pkg2.SamePkg)).Name("pkg2"), "github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg", "pkg2", true},
+		{core.NewBean(new(pkg2.SamePkg)).WithName("pkg2"), "github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg", "pkg2", true},
+		{core.NewBean(new(pkg2.SamePkg)).WithName("pkg2"), "", "pkg2", true},
+		{core.NewBean(new(pkg2.SamePkg)).WithName("pkg2"), "github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg", "pkg2", true},
 	}
 
 	for i, s := range data {
@@ -198,7 +198,7 @@ func TestObjectBean(t *testing.T) {
 				"*int", "int",
 			},
 
-			core.NewBean(new(int)).Name("i"): {
+			core.NewBean(new(int)).WithName("i"): {
 				"i", "int",
 			},
 
@@ -207,7 +207,7 @@ func TestObjectBean(t *testing.T) {
 				"github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg",
 			},
 
-			core.NewBean(new(pkg2.SamePkg)).Name("pkg2"): {
+			core.NewBean(new(pkg2.SamePkg)).WithName("pkg2"): {
 				"pkg2",
 				"github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg",
 			},

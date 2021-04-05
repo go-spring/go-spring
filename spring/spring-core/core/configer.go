@@ -51,8 +51,8 @@ func (c *Configer) WithName(name string) *Configer {
 	return c
 }
 
-// WithCondition 为 Configer 设置一个 Condition
-func (c *Configer) WithCondition(cond cond.Condition) *Configer {
+// WithCond 为 Configer 设置一个 Condition
+func (c *Configer) WithCond(cond cond.Condition) *Configer {
 	c.cond = cond
 	return c
 }
