@@ -32,22 +32,6 @@ import (
 	"github.com/go-spring/spring-core/util"
 )
 
-// beanCacheItem BeanCache's item, for type cache or name cache.
-type beanCacheItem struct {
-	beans []*BeanDefinition
-}
-
-// newBeanCacheItem beanCacheItem 的构造函数
-func newBeanCacheItem() *beanCacheItem {
-	return &beanCacheItem{
-		beans: make([]*BeanDefinition, 0),
-	}
-}
-
-func (item *beanCacheItem) store(bd *BeanDefinition) {
-	item.beans = append(item.beans, bd)
-}
-
 // 验证 applicationContext 是否实现 ConfigurableApplicationContext 接口
 var _ = (ConfigurableApplicationContext)((*applicationContext)(nil))
 
@@ -64,8 +48,8 @@ type applicationContext struct {
 
 	AllBeans        []*BeanDefinition          // 所有注册点
 	beanMap         map[string]*BeanDefinition // Bean 集合
-	beanCacheByName map[string]*beanCacheItem
-	beanCacheByType map[reflect.Type]*beanCacheItem
+	beanCacheByName map[string]*util.Array
+	beanCacheByType map[reflect.Type]*util.Array
 
 	configers    *list.List // 配置方法集合
 	destroyers   *list.List // 销毁函数集合
@@ -83,8 +67,8 @@ func NewApplicationContext() *applicationContext {
 		properties:      conf.New(),
 		AllBeans:        make([]*BeanDefinition, 0),
 		beanMap:         make(map[string]*BeanDefinition),
-		beanCacheByName: make(map[string]*beanCacheItem),
-		beanCacheByType: make(map[reflect.Type]*beanCacheItem),
+		beanCacheByName: make(map[string]*util.Array),
+		beanCacheByType: make(map[reflect.Type]*util.Array),
 		configers:       list.New(),
 		destroyers:      list.New(),
 		destroyerMap:    make(map[string]*destroyer),
@@ -274,20 +258,20 @@ func (ctx *applicationContext) CollectBeans(i interface{}, selectors ...bean.Sel
 }
 
 // getTypeCacheItem 查找指定类型的缓存项
-func (ctx *applicationContext) getTypeCacheItem(typ reflect.Type) *beanCacheItem {
+func (ctx *applicationContext) getTypeCacheItem(typ reflect.Type) *util.Array {
 	i, ok := ctx.beanCacheByType[typ]
 	if !ok {
-		i = newBeanCacheItem()
+		i = util.NewArray()
 		ctx.beanCacheByType[typ] = i
 	}
 	return i
 }
 
 // getNameCacheItem 查找指定类型的缓存项
-func (ctx *applicationContext) getNameCacheItem(name string) *beanCacheItem {
+func (ctx *applicationContext) getNameCacheItem(name string) *util.Array {
 	i, ok := ctx.beanCacheByName[name]
 	if !ok {
-		i = newBeanCacheItem()
+		i = util.NewArray()
 		ctx.beanCacheByName[name] = i
 	}
 	return i
@@ -339,11 +323,11 @@ func (ctx *applicationContext) autoExport(t reflect.Type, bd *BeanDefinition) er
 
 func (ctx *applicationContext) typeCache(typ reflect.Type, bd *BeanDefinition) {
 	log.Debugf("register %s type:\"%s\" beanId:\"%s\" %s", bd.getClass(), typ.String(), bd.BeanId(), bd.FileLine())
-	ctx.getTypeCacheItem(typ).store(bd)
+	ctx.getTypeCacheItem(typ).Append(bd)
 }
 
 func (ctx *applicationContext) nameCache(name string, bd *BeanDefinition) {
-	ctx.getNameCacheItem(name).store(bd)
+	ctx.getNameCacheItem(name).Append(bd)
 }
 
 // resolveBean 对 Bean 进行决议是否能够创建 Bean 的实例

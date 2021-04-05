@@ -94,7 +94,8 @@ func (assembly *beanAssembly) getBeanValue(v reflect.Value, tag SingletonTag, pa
 	foundBeans := make([]*BeanDefinition, 0)
 
 	cache := assembly.appCtx.getTypeCacheItem(beanType)
-	for _, b := range cache.beans {
+	for i := 0; i < cache.Len(); i++ {
+		b := cache.Get(i).(*BeanDefinition)
 		// 不能将自身赋给自身的字段 && 类型全限定名匹配
 		if b.Value() != parent && b.Match(tag.TypeName, tag.BeanName) {
 			foundBeans = append(foundBeans, b)
@@ -104,7 +105,8 @@ func (assembly *beanAssembly) getBeanValue(v reflect.Value, tag SingletonTag, pa
 	// 扩展规则：如果指定了 Bean 名称则尝试通过名称获取以防没有通过 Export 显式导出接口
 	if beanType.Kind() == reflect.Interface && tag.BeanName != "" {
 		cache = assembly.appCtx.getNameCacheItem(tag.BeanName)
-		for _, b := range cache.beans {
+		for i := 0; i < cache.Len(); i++ {
+			b := cache.Get(i).(*BeanDefinition)
 			// 不能将自身赋给自身的字段 && 类型匹配 && BeanName 匹配
 			if b.Value() != parent && b.Type().AssignableTo(beanType) && b.Match(tag.TypeName, tag.BeanName) {
 				found := false // 对结果进行排重
@@ -253,11 +255,14 @@ func (assembly *beanAssembly) collectAndSortBeans(t reflect.Type, et reflect.Typ
 	afterAny := reflect.MakeSlice(t, 0, len(tag.Items))
 	beforeAny := reflect.MakeSlice(t, 0, len(tag.Items))
 
+	beans := make([]*BeanDefinition, 0)
+
 	// 只在单例类型中查找，数组类型的元素是否排序无法判断
 	cache := assembly.appCtx.getTypeCacheItem(et)
-
-	var beans []*BeanDefinition
-	beans = append(beans, cache.beans...)
+	for i := 0; i < cache.Len(); i++ {
+		b := cache.Get(i).(*BeanDefinition)
+		beans = append(beans, b)
+	}
 
 	for _, item := range tag.Items {
 
@@ -311,7 +316,8 @@ func (assembly *beanAssembly) autoCollectBeans(t reflect.Type, et reflect.Type) 
 
 	// 查找可以精确匹配的数组类型
 	cache := assembly.appCtx.getTypeCacheItem(t)
-	for _, d := range cache.beans {
+	for i := 0; i < cache.Len(); i++ {
+		d := cache.Get(i).(*BeanDefinition)
 		for i := 0; i < d.Value().Len(); i++ {
 			di := d.Value().Index(i)
 
@@ -334,7 +340,8 @@ func (assembly *beanAssembly) autoCollectBeans(t reflect.Type, et reflect.Type) 
 
 	// 查找可以精确匹配的单例类型，对找到的 Bean 进行自动注入
 	cache = assembly.appCtx.getTypeCacheItem(et)
-	for _, d := range cache.beans {
+	for i := 0; i < cache.Len(); i++ {
+		d := cache.Get(i).(*BeanDefinition)
 		if err := assembly.wireBeanDefinition(d, false); err != nil {
 			return reflect.Value{}, err
 		}
