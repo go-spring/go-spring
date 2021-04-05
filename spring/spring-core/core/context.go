@@ -497,8 +497,8 @@ func (ctx *applicationContext) resolveBeans() error {
 // runConfigers 执行 Config 函数
 func (ctx *applicationContext) runConfigers(assembly *beanAssembly) error {
 	for e := ctx.configers.Front(); e != nil; e = e.Next() {
-		configer := e.Value.(*Configer)
-		if err := configer.r.Run(assembly); err != nil {
+		c := e.Value.(*Configer)
+		if err := c.fn.Run(assembly); err != nil {
 			return err
 		}
 	}
@@ -638,7 +638,7 @@ func (ctx *applicationContext) Invoke(fn interface{}, args ...arg.Arg) error {
 
 // Config 注册一个配置函数
 func (ctx *applicationContext) Config(fn interface{}, args ...arg.Arg) *Configer {
-	configer := Config(fn, args)
+	configer := config(fn, args)
 	ctx.configers.PushBack(configer)
 	return configer
 }

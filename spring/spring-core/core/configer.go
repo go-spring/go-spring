@@ -26,64 +26,66 @@ import (
 	"github.com/go-spring/spring-core/util"
 )
 
-// Configer 配置函数，不立即执行
+// Configer 配置函数，所谓配置函数是指可以接受一些 Bean 作为入参的函数，使用场景大多
+// 是在 Bean 初始化之后对 Bean 进行二次配置，可以作为框架配置能力的补充，但是要慎用！
 type Configer struct {
-	r      arg.Runnable
+	fn     arg.Runnable
 	name   string
-	cond   cond.Condition // 判断条件
-	before []string       // 位于哪些配置函数之前
-	after  []string       // 位于哪些配置函数之后
+	cond   cond.Condition
+	before []string // 位于哪些配置函数之前
+	after  []string // 位于哪些配置函数之后
 }
 
-// Config Configer 的构造函数，fn 不能返回 error 以外的其他值
-func Config(fn interface{}, args ...arg.Arg) *Configer {
+// config Configer 的构造函数，fn 只能返回 error 或者没有返回。
+func config(fn interface{}, args ...arg.Arg) *Configer {
 	if fnType := reflect.TypeOf(fn); util.FuncType(fnType) {
 		if util.ReturnNothing(fnType) || util.ReturnOnlyError(fnType) {
-			return &Configer{r: arg.Runner(fn, false, args)}
+			return &Configer{fn: arg.Runner(fn, false, args)}
 		}
 	}
 	panic(errors.New("fn should be func() or func()error"))
 }
 
-// WithName 为 Configer 设置一个名称，用于排序
+// WithName 为 Configer 设置一个名称。
 func (c *Configer) WithName(name string) *Configer {
 	c.name = name
 	return c
 }
 
-// WithCond 为 Configer 设置一个 Condition
+// WithCond 为 Configer 设置一个 Condition。
 func (c *Configer) WithCond(cond cond.Condition) *Configer {
 	c.cond = cond
 	return c
 }
 
-// Before 设置当前 Configer 在某些 Configer 之前执行
+// Before 设置当前 Configer 在哪些 Configer 之前执行。
 func (c *Configer) Before(configers ...string) *Configer {
 	c.before = append(c.before, configers...)
 	return c
 }
 
-// After 设置当前 Configer 在某些 Configer 之后执行
+// After 设置当前 Configer 在哪些 Configer 之后执行。
 func (c *Configer) After(configers ...string) *Configer {
 	c.after = append(c.after, configers...)
 	return c
 }
 
-// getBeforeConfigers 获取当前 Configer 依赖的 Configer 列表
+// getBeforeConfigers 获取 i 之前的 Configer 列表，用于 internal/sort 排序。
 func getBeforeConfigers(configers *list.List, i interface{}) *list.List {
+
 	result := list.New()
 	current := i.(*Configer)
 	for e := configers.Front(); e != nil; e = e.Next() {
 		c := e.Value.(*Configer)
 
-		// 检查是否在当前 Configer 的前面
+		// 检查 c 是否在 current 的前面
 		for _, name := range c.before {
 			if current.name == name {
 				result.PushBack(c)
 			}
 		}
 
-		// 检查是否在当前 Configer 的前面
+		// 检查 current 是否在 c 的后面
 		for _, name := range current.after {
 			if c.name == name {
 				result.PushBack(c)

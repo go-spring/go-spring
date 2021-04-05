@@ -45,7 +45,7 @@ func (d *destroyer) foundEarlier(b *BeanDefinition) bool {
 	return false
 }
 
-// getBeforeDestroyers 获取排在 i 前面的 destroyer，用于 internal/sort 算法排序。
+// getBeforeDestroyers 获取排在 i 前面的 destroyer，用于 internal/sort 排序。
 func getBeforeDestroyers(destroyers *list.List, i interface{}) *list.List {
 	d := i.(*destroyer)
 	result := list.New()
