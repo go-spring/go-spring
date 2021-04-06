@@ -76,8 +76,8 @@ func CollectBeans(i interface{}, selectors ...bean.Selector) error {
 	return gApp.appCtx.CollectBeans(i, selectors...)
 }
 
-func Invoke(fn interface{}, args ...arg.Arg) error {
-	return gApp.appCtx.Invoke(fn, args...)
+func Run(fn interface{}, args ...arg.Arg) error {
+	return gApp.appCtx.Run(fn, args...)
 }
 
 type GoFuncWithContext func(context.Context)
@@ -195,8 +195,7 @@ func DeleteBinding(path string, fn interface{}) *web.Mapper {
 
 // NewFilter 注册 web.Filter 对象
 func NewFilter(objOrCtor interface{}, ctorArgs ...arg.Arg) *core.BeanDefinition {
-	bd := core.NewBean(objOrCtor, ctorArgs...)
-	return gApp.appCtx.AddBean(bd).Export((*web.Filter)(nil))
+	return gApp.appCtx.NewBean(objOrCtor, ctorArgs...).Export((*web.Filter)(nil))
 }
 
 ///////////////////////////////////////// MQ //////////////////////////////////////////

@@ -36,15 +36,13 @@ func init() {
 	Convert(func(s string) (time.Time, error) { return cast.ToTimeE(s) })
 }
 
-var errorType = reflect.TypeOf((*error)(nil)).Elem()
-
 func validConverter(t reflect.Type) bool {
 	return t.Kind() == reflect.Func &&
 		t.NumIn() == 1 &&
 		t.In(0).Kind() == reflect.String &&
 		t.NumOut() == 2 &&
-		util.IsValueType(t.Out(0).Kind()) &&
-		t.Out(1) == errorType
+		util.ValueType(t.Out(0).Kind()) &&
+		util.ErrorType(t.Out(1))
 }
 
 // Convert 添加类型转换器，函数原型 func(string)(type,error)

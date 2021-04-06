@@ -26,9 +26,6 @@ import (
 	"github.com/go-spring/spring-core/util"
 )
 
-// errorType error 的反射类型。
-var errorType = reflect.TypeOf((*error)(nil)).Elem()
-
 // FileLine 返回文件行号的接口
 type FileLine interface {
 	FileLine() string
@@ -118,7 +115,7 @@ func (r *functor) Call(ctx Context, receiver ...reflect.Value) ([]reflect.Value,
 	out := reflect.ValueOf(r.fn).Call(in)
 
 	if n := len(out); n > 0 {
-		if o := out[n-1]; o.Type() == errorType {
+		if o := out[n-1]; util.ErrorType(o.Type()) {
 			if i := o.Interface(); i == nil {
 				return out[:n-1], nil
 			} else {

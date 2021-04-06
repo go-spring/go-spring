@@ -38,3 +38,10 @@ func (arr *Array) Append(i interface{}) {
 func (arr *Array) Get(idx int) interface{} {
 	return arr.data[idx]
 }
+
+// Range 遍历数组所有的元素。
+func (arr *Array) Range(fn func(i int, v interface{})) {
+	for i, v := range arr.data {
+		fn(i, v)
+	}
+}

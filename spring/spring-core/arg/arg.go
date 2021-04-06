@@ -255,7 +255,7 @@ func (r *argList) get(t reflect.Type, arg Arg, ctx Context, fileLine string) (v 
 	v = reflect.New(t).Elem()
 
 	// 处理引用类型
-	if util.IsRefType(v.Kind()) {
+	if util.RefType(v.Kind()) {
 		if err = ctx.WireValue(v, tag); err != nil {
 			return reflect.Value{}, err
 		}

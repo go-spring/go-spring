@@ -30,19 +30,21 @@ import (
 	"github.com/go-spring/spring-core/util"
 )
 
-// toSingletonTag 将 bean.Selector 转换为 singletonTag 形式。
+// toSingletonTag 将 bean.Selector 转换为对应的 singletonTag 。
 func toSingletonTag(selector bean.Selector) singletonTag {
-	switch s := selector.(type) {
+	switch i := selector.(type) {
 	case string:
-		return parseSingletonTag(s)
+		return parseSingletonTag(i)
+	case bean.Definition:
+		return parseSingletonTag(i.BeanId())
 	case *BeanDefinition:
-		return parseSingletonTag(s.BeanId())
+		return parseSingletonTag(i.BeanId())
 	default:
-		return parseSingletonTag(util.TypeName(s) + ":")
+		return parseSingletonTag(util.TypeName(i) + ":")
 	}
 }
 
-// singletonTag 单例模式注入 Tag 对应的分解形式
+// singletonTag 单例模式的 tag 分解式，完整形式是 XXX:XXX? 。
 type singletonTag struct {
 	typeName string
 	beanName string
@@ -62,27 +64,32 @@ func (tag singletonTag) String() string {
 	return b.String()
 }
 
-// parseSingletonTag 解析单例模式注入 Tag 字符串
+// parseSingletonTag 解析单例模式的 tag 分解式，完整形式是 XXX:XXX? 。
 func parseSingletonTag(str string) (tag singletonTag) {
-	if len(str) > 0 {
 
-		// 字符串结尾是否有可空标记
-		if n := len(str) - 1; str[n] == '?' {
-			tag.nullable = true
-			str = str[:n]
-		}
-
-		if i := strings.Index(str, ":"); i > -1 { // 完整形式
-			tag.beanName = str[i+1:]
-			tag.typeName = str[:i]
-		} else { // 简化形式
-			tag.beanName = str
-		}
+	if str == "" {
+		return
 	}
+
+	// 检查字符串结尾是否有可空标记。
+	if n := len(str) - 1; str[n] == '?' {
+		tag.nullable = true
+		str = str[:n]
+	}
+
+	// tag 的完整形式，形如 XXX:XXX? 。
+	if i := strings.Index(str, ":"); i >= 0 {
+		tag.beanName = str[i+1:]
+		tag.typeName = str[:i]
+		return
+	}
+
+	// tag 的简化形式，形如 XXX? 。
+	tag.beanName = str
 	return
 }
 
-// collectionTag 收集模式注入 Tag 对应的分解形式
+// collectionTag 收集模式的 tag 分解式，完整形式是 [XXX:XXX?,*]? 。
 type collectionTag struct {
 	beanTags []singletonTag
 	nullable bool
@@ -91,9 +98,10 @@ type collectionTag struct {
 func (tag collectionTag) String() string {
 	b := bytes.NewBuffer(nil)
 	b.WriteString("[")
+	n := len(tag.beanTags)
 	for i, t := range tag.beanTags {
 		b.WriteString(t.String())
-		if i < len(tag.beanTags)-1 {
+		if i < n-1 {
 			b.WriteString(",")
 		}
 	}
@@ -104,23 +112,28 @@ func (tag collectionTag) String() string {
 	return b.String()
 }
 
-// CollectionMode 返回是否是收集模式
-func CollectionMode(str string) bool {
+// collectionMode 返回是否为收集模式。
+func collectionMode(str string) bool {
 	return len(str) > 0 && str[0] == '['
 }
 
-// ParseCollectionTag 解析收集模式注入 Tag 字符串
+// parseCollectionTag 解析收集模式的 tag 分解式，完整形式是 [XXX:XXX?,*]? 。
 func parseCollectionTag(str string) (tag collectionTag) {
+
+	if str == "" {
+		panic(errors.New("invalid collection tag"))
+	}
+
 	tag.beanTags = make([]singletonTag, 0)
 
-	// 字符串结尾是否有可空标记
+	// 检查字符串结尾是否有可空标记。
 	if n := len(str) - 1; str[n] == '?' {
 		tag.nullable = true
 		str = str[:n]
 	}
 
-	if str[len(str)-1] != ']' {
-		panic(errors.New("error collection tag"))
+	if str[0] != '[' || str[len(str)-1] != ']' {
+		panic(errors.New("invalid collection tag"))
 	}
 
 	if str = str[1 : len(str)-1]; len(str) > 0 {
@@ -131,7 +144,6 @@ func parseCollectionTag(str string) (tag collectionTag) {
 	return
 }
 
-// beanStatus Bean 的状态值
 type beanStatus int
 
 const (
@@ -146,143 +158,108 @@ const (
 type beanDefinition interface {
 	bean.Definition
 
-	getFactory() arg.Callable
+	getFactory() arg.Callable      // 返回 Bean 的工厂函数
+	getClass() string              // 返回 Bean 的类型描述
+	getFile() string               // 返回 Bean 注册点所在文件
+	getLine() int                  // 返回 Bean 注册点所在行数
 	getStatus() beanStatus         // 返回 Bean 的状态值
-	getDependsOn() []bean.Selector // 返回 Bean 的间接依赖项
+	setStatus(status beanStatus)   // 设置 Bean 的状态值
 	getInit() arg.Runnable         // 返回 Bean 的初始化函数
 	getDestroy() arg.Runnable      // 返回 Bean 的销毁函数
-	getFile() string               // 返回 Bean 注册点所在文件的名称
-	getLine() int                  // 返回 Bean 注册点所在文件的行数
-	getClass() string
-
-	setStatus(status beanStatus) // 设置 Bean 的状态值
+	getDependsOn() []bean.Selector // 返回 Bean 的间接依赖项
 }
 
-// BeanDefinition 用于存储 Bean 的各种元数据
+// BeanDefinition 保存 Bean 的各种元数据。
 type BeanDefinition struct {
-	f arg.Callable  // 构造函数
+
+	// 原始类型的全限定名
+	typeName string
+
 	v reflect.Value // 值
 	t reflect.Type  // 类型
-
-	typeName string // 原始类型的全限定名
-
-	name   string     // Bean 的名称，请勿直接使用该字段!
-	status beanStatus // Bean 的状态
+	f arg.Callable  // 工厂函数
 
 	file string // 注册点所在文件
 	line int    // 注册点所在行数
 
+	name      string          // 名称
+	status    beanStatus      // 状态
 	cond      cond.Condition  // 判断条件
 	primary   bool            // 是否为主版本
+	init      arg.Runnable    // 初始化函数
+	destroy   arg.Runnable    // 销毁函数
 	dependsOn []bean.Selector // 间接依赖项
 
-	init    arg.Runnable // 初始化函数
-	destroy arg.Runnable // 销毁函数
-
-	exports map[reflect.Type]struct{} // 严格导出的接口类型
+	exports map[reflect.Type]struct{} // 导出的接口
 }
 
-// newBeanDefinition BeanDefinition 的构造函数
-func newBeanDefinition(v reflect.Value, ctor arg.Callable, file string, line int) *BeanDefinition {
-	t := v.Type()
-	if !util.IsRefType(t.Kind()) {
-		panic(errors.New("bean must be ref type"))
+// newBeanDefinition BeanDefinition 的构造函数，f 是工厂函数，当 v 为对象 Bean 时 f 为空。
+func newBeanDefinition(v reflect.Value, f arg.Callable, file string, line int) *BeanDefinition {
+	if t := v.Type(); util.RefType(t.Kind()) {
+		return &BeanDefinition{
+			t:        t,
+			v:        v,
+			f:        f,
+			typeName: util.TypeName(t),
+			status:   Default,
+			file:     file,
+			line:     line,
+			exports:  make(map[reflect.Type]struct{}),
+		}
 	}
-	return &BeanDefinition{
-		t:        t,
-		v:        v,
-		f:        ctor,
-		typeName: util.TypeName(t),
-		status:   Default,
-		file:     file,
-		line:     line,
-		exports:  make(map[reflect.Type]struct{}),
-	}
+	panic(errors.New("bean must be ref type"))
 }
 
-// Type 返回 Bean 的类型
+// Type 返回 Bean 的类型。
 func (d *BeanDefinition) Type() reflect.Type {
 	return d.t
 }
 
-// Value 返回 Bean 的值
+// Value 返回 Bean 的值。
 func (d *BeanDefinition) Value() reflect.Value {
 	return d.v
 }
 
-// Bean 返回 Bean 的源
+// Bean 返回 Bean 的对象。
 func (d *BeanDefinition) Interface() interface{} {
 	return d.Value().Interface()
 }
 
-// BeanId 返回 Bean 的唯一 ID
+// BeanId 返回 Bean 的 ID 。
 func (d *BeanDefinition) BeanId() string {
 	return d.TypeName() + ":" + d.BeanName()
 }
 
-// Name 返回 Bean 的名称
+// BeanName 返回 Bean 的名称。
 func (d *BeanDefinition) BeanName() string {
+	// 没有为 Bean 设置名称时使用类型名作为它的名称。
 	if d.name == "" {
-		// 统一使用类型字符串作为默认名称!
 		d.name = d.t.String()
 	}
 	return d.name
 }
 
-// TypeName 返回 Bean 的原始类型的全限定名
+// TypeName 返回 Bean 的原始类型的全限定名。
 func (d *BeanDefinition) TypeName() string {
 	return d.typeName
 }
 
-// FileLine 返回 Bean 的注册点
+// FileLine 返回 Bean 的注册点。
 func (d *BeanDefinition) FileLine() string {
 	return fmt.Sprintf("%s:%d", d.file, d.line)
 }
 
-// Description 返回 Bean 的详细描述
+// Description 返回 Bean 的详细描述。
 func (d *BeanDefinition) Description() string {
-	return fmt.Sprintf("%s %q %s", d.getClass(), d.BeanName(), d.FileLine())
+	return fmt.Sprintf("%s name:%q %s", d.getClass(), d.BeanName(), d.FileLine())
 }
 
+// getFactory 返回 Bean 的工厂函数。
 func (d *BeanDefinition) getFactory() arg.Callable {
 	return d.f
 }
 
-// getStatus 返回 Bean 的状态值
-func (d *BeanDefinition) getStatus() beanStatus {
-	return d.status
-}
-
-// setStatus 设置 Bean 的状态值
-func (d *BeanDefinition) setStatus(status beanStatus) {
-	d.status = status
-}
-
-// getDependsOn 返回 Bean 的间接依赖项
-func (d *BeanDefinition) getDependsOn() []bean.Selector {
-	return d.dependsOn
-}
-
-// getInit 返回 Bean 的初始化函数
-func (d *BeanDefinition) getInit() arg.Runnable {
-	return d.init
-}
-
-// getDestroy 返回 Bean 的销毁函数
-func (d *BeanDefinition) getDestroy() arg.Runnable {
-	return d.destroy
-}
-
-// getFile 返回 Bean 注册点所在文件的名称
-func (d *BeanDefinition) getFile() string {
-	return d.file
-}
-
-// getLine 返回 Bean 注册点所在文件的行数
-func (d *BeanDefinition) getLine() int {
-	return d.line
-}
-
+// getClass 返回 Bean 的类型描述。
 func (d *BeanDefinition) getClass() string {
 	if d.f == nil {
 		return "object bean"
@@ -290,7 +267,42 @@ func (d *BeanDefinition) getClass() string {
 	return "constructor bean"
 }
 
-// Match 测试 Bean 的类型全限定名和 Bean 的名称是否都匹配
+// getFile 返回 Bean 注册点所在文件。
+func (d *BeanDefinition) getFile() string {
+	return d.file
+}
+
+// getLine 返回 Bean 注册点所在行数。
+func (d *BeanDefinition) getLine() int {
+	return d.line
+}
+
+// getStatus 返回 Bean 的状态值。
+func (d *BeanDefinition) getStatus() beanStatus {
+	return d.status
+}
+
+// setStatus 设置 Bean 的状态值。
+func (d *BeanDefinition) setStatus(status beanStatus) {
+	d.status = status
+}
+
+// getInit 返回 Bean 的初始化函数。
+func (d *BeanDefinition) getInit() arg.Runnable {
+	return d.init
+}
+
+// getDestroy 返回 Bean 的销毁函数。
+func (d *BeanDefinition) getDestroy() arg.Runnable {
+	return d.destroy
+}
+
+// getDependsOn 返回 Bean 的间接依赖项。
+func (d *BeanDefinition) getDependsOn() []bean.Selector {
+	return d.dependsOn
+}
+
+// Match 测试 Bean 的类型全限定名和 Bean 的名称是否都匹配。
 func (d *BeanDefinition) Match(typeName string, beanName string) bool {
 
 	typeIsSame := false
@@ -306,25 +318,25 @@ func (d *BeanDefinition) Match(typeName string, beanName string) bool {
 	return typeIsSame && nameIsSame
 }
 
-// WithName 设置 Bean 的名称
+// WithName 设置 Bean 的名称。
 func (d *BeanDefinition) WithName(name string) *BeanDefinition {
 	d.name = name
 	return d
 }
 
-// WithCond 为 Bean 设置一个 Condition
+// WithCond 设置 Bean 的 Condition。
 func (d *BeanDefinition) WithCond(cond cond.Condition) *BeanDefinition {
 	d.cond = cond
 	return d
 }
 
-// DependsOn 设置 Bean 的间接依赖项
+// DependsOn 设置 Bean 的间接依赖项。
 func (d *BeanDefinition) DependsOn(selectors ...bean.Selector) *BeanDefinition {
 	d.dependsOn = append(d.dependsOn, selectors...)
 	return d
 }
 
-// primary 设置 Bean 为主版本
+// primary 设置 Bean 为主版本。
 func (d *BeanDefinition) Primary(primary bool) *BeanDefinition {
 	d.primary = primary
 	return d
@@ -332,37 +344,32 @@ func (d *BeanDefinition) Primary(primary bool) *BeanDefinition {
 
 // validLifeCycleFunc 判断是否是合法的用于 Bean 生命周期控制的函数，生命周期函数的要求：
 // 至少一个参数，且第一个参数的类型必须是 Bean 的类型，没有返回值或者只能返回 error 类型值。
-func validLifeCycleFunc(fn interface{}, beanType reflect.Type) (reflect.Type, bool) {
-	fnType := reflect.TypeOf(fn)
-	if util.FuncType(fnType) && util.WithReceiver(fnType, beanType) {
-		if util.ReturnNothing(fnType) || util.ReturnOnlyError(fnType) {
-			return fnType, true
-		}
-	}
-	return nil, false
+func validLifeCycleFunc(fnType reflect.Type, beanType reflect.Type) bool {
+	ok := util.ReturnNothing(fnType) || util.ReturnOnlyError(fnType)
+	return ok && util.FuncType(fnType) && util.WithReceiver(fnType, beanType)
 }
 
-// Init 设置 Bean 的初始化函数，args 是初始化函数的一般参数绑定
+// Init 设置 Bean 的初始化函数。
 func (d *BeanDefinition) Init(fn interface{}, args ...arg.Arg) *BeanDefinition {
-	if _, ok := validLifeCycleFunc(fn, d.Type()); ok {
+	if validLifeCycleFunc(reflect.TypeOf(fn), d.Type()) {
 		d.init = arg.Runner(fn, true, args)
 		return d
 	}
 	panic(errors.New("init should be func(bean) or func(bean)error"))
 }
 
-// Destroy 设置 Bean 的销毁函数，args 是销毁函数的一般参数绑定
+// Destroy 设置 Bean 的销毁函数。
 func (d *BeanDefinition) Destroy(fn interface{}, args ...arg.Arg) *BeanDefinition {
-	if _, ok := validLifeCycleFunc(fn, d.Type()); ok {
+	if validLifeCycleFunc(reflect.TypeOf(fn), d.Type()) {
 		d.destroy = arg.Runner(fn, true, args)
 		return d
 	}
 	panic(errors.New("destroy should be func(bean) or func(bean)error"))
 }
 
-// Export 显式指定 Bean 的导出接口
+// Export 设置 Bean 的导出接口。
 func (d *BeanDefinition) Export(exports ...interface{}) *BeanDefinition {
-	for _, o := range exports { // 使用 map 进行排重
+	for _, o := range exports {
 
 		var typ reflect.Type
 		if t, ok := o.(reflect.Type); ok {
@@ -374,13 +381,13 @@ func (d *BeanDefinition) Export(exports ...interface{}) *BeanDefinition {
 		if typ.Kind() == reflect.Interface {
 			d.exports[typ] = struct{}{}
 		} else {
-			panic(errors.New("must export interface type"))
+			panic(errors.New("should export interface type"))
 		}
 	}
 	return d
 }
 
-// NewBean 普通函数注册时需要使用 reflect.ValueOf(fn) 的方式避免和构造函数发生冲突。
+// NewBean 普通函数注册需要使用 reflect.ValueOf(fn) 这种方式避免和构造函数发生冲突。
 func NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 
 	var v reflect.Value
@@ -430,7 +437,7 @@ func NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 		v := reflect.New(out0)
 
 		// 引用类型去掉一层指针
-		if util.IsRefType(out0.Kind()) {
+		if util.RefType(out0.Kind()) {
 			v = v.Elem()
 		}
 

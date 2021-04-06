@@ -17,6 +17,7 @@
 package util
 
 import (
+	"context"
 	"reflect"
 )
 
@@ -55,13 +56,13 @@ var kindTypes = []uint8{
 	0,       // UnsafePointer
 }
 
-// IsRefType 返回是否是引用类型。
-func IsRefType(k reflect.Kind) bool {
+// RefType 返回是否是引用类型。
+func RefType(k reflect.Kind) bool {
 	return kindTypes[k] == refType
 }
 
-// IsValueType 返回是否是值类型。
-func IsValueType(k reflect.Kind) bool {
+// ValueType 返回是否是值类型。
+func ValueType(k reflect.Kind) bool {
 	return kindTypes[k] == valType
 }
 
@@ -94,4 +95,43 @@ func TypeName(i interface{}) string {
 		return pkgPath + "/" + typ.String()
 	}
 	return typ.String() // 内置类型的路径为空
+}
+
+var (
+
+	// errorType error 的反射类型。
+	errorType = reflect.TypeOf((*error)(nil)).Elem()
+
+	// contextType context.Context 的反射类型。
+	contextType = reflect.TypeOf((*context.Context)(nil)).Elem()
+)
+
+// FuncType t 是否是 func 类型。
+func FuncType(t reflect.Type) bool {
+	return t.Kind() == reflect.Func
+}
+
+// ErrorType t 是否是 error 类型。
+func ErrorType(t reflect.Type) bool {
+	return t == errorType
+}
+
+// ErrorType t 是否是 context.Context 类型。
+func ContextType(t reflect.Type) bool {
+	return t == contextType
+}
+
+// ReturnNothing 函数是否无返回值。
+func ReturnNothing(t reflect.Type) bool {
+	return t.NumOut() == 0
+}
+
+// ReturnOnlyError 函数是否只返回错误值。
+func ReturnOnlyError(t reflect.Type) bool {
+	return t.NumOut() == 1 && ErrorType(t.Out(0))
+}
+
+// WithReceiver 函数是否具有接收者。
+func WithReceiver(t reflect.Type, receiver reflect.Type) bool {
+	return t.NumIn() >= 1 && t.In(0) == receiver
 }

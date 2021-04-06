@@ -25,9 +25,6 @@ import (
 	"github.com/go-spring/spring-core/util"
 )
 
-// contextType context.Context 的反射类型。
-var contextType = reflect.TypeOf((*context.Context)(nil)).Elem()
-
 // BindConsumer BIND 方式实现的消息消费者。
 type BindConsumer struct {
 	topics   []string
@@ -54,7 +51,7 @@ func validBindFn(fnType reflect.Type) bool {
 	}
 
 	// 第一个入参必须是 context.Context 类型
-	if fnType.In(0) != contextType {
+	if !util.ContextType(fnType.In(0)) {
 		return false
 	}
 

@@ -96,7 +96,7 @@ type application struct {
 // NewApplication application 的构造函数
 func NewApplication() *application {
 	return &application{
-		appCtx:              core.NewApplicationContext(),
+		appCtx:              core.New(),
 		cfgLocation:         append([]string{}, DefaultConfigLocation),
 		bannerMode:          BannerModeConsole,
 		expectSysProperties: []string{`.*`},
