@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package core
+package gs
 
 import (
 	"bytes"

@@ -15,7 +15,7 @@
  */
 
 // 实现了一个功能完善的运行时 IoC 容器。
-package core
+package gs
 
 import (
 	"container/list"
@@ -28,7 +28,7 @@ import (
 	"github.com/go-spring/spring-core/arg"
 	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/conf"
-	"github.com/go-spring/spring-core/core/internal/sort"
+	"github.com/go-spring/spring-core/gs/internal/sort"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
 )

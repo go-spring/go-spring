@@ -5,7 +5,7 @@ import (
 
 	"github.com/go-spring/spring-core/arg"
 	"github.com/go-spring/spring-core/bean"
-	"github.com/go-spring/spring-core/core"
+	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/mq"
 	"github.com/go-spring/spring-core/web"
 )
@@ -44,17 +44,17 @@ func Property(key string, value interface{}) {
 	gApp.appCtx.Property(key, value)
 }
 
-func Config(fn interface{}, args ...arg.Arg) *core.Configer {
+func Config(fn interface{}, args ...arg.Arg) *gs.Configer {
 	return gApp.appCtx.Config(fn, args...)
 }
 
 // Object 注册对象形式的 Bean。
-func Object(i interface{}) *core.BeanDefinition {
+func Object(i interface{}) *gs.BeanDefinition {
 	return gApp.appCtx.Object(i)
 }
 
 // Factory 注册构造函数形式的 Bean。
-func Factory(fn interface{}, args ...arg.Arg) *core.BeanDefinition {
+func Factory(fn interface{}, args ...arg.Arg) *gs.BeanDefinition {
 	return gApp.appCtx.Factory(fn, args...)
 }
 
@@ -105,7 +105,7 @@ func GRpcServer(serviceName string, fn interface{}, server interface{}) {
 }
 
 // GRpcClient 注册 gRPC 服务客户端，fn 是 gRPC 自动生成的客户端构造函数
-func GRpcClient(fn interface{}, endpoint string) *core.BeanDefinition {
+func GRpcClient(fn interface{}, endpoint string) *gs.BeanDefinition {
 	return gApp.appCtx.Factory(fn, endpoint)
 }
 
@@ -194,7 +194,7 @@ func DeleteBinding(path string, fn interface{}) *web.Mapper {
 }
 
 // NewFilter 注册 web.Filter 对象
-func NewFilter(objOrCtor interface{}, ctorArgs ...arg.Arg) *core.BeanDefinition {
+func NewFilter(objOrCtor interface{}, ctorArgs ...arg.Arg) *gs.BeanDefinition {
 	return gApp.appCtx.NewBean(objOrCtor, ctorArgs...).Export((*web.Filter)(nil))
 }
 

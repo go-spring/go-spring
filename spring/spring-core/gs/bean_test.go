@@ -1,4 +1,20 @@
-package core_test
+/*
+ * Copyright 2012-2019 the original author or authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package gs_test
 
 import (
 	"fmt"
@@ -9,8 +25,8 @@ import (
 
 	"github.com/go-spring/spring-core/assert"
 	"github.com/go-spring/spring-core/bean"
-	"github.com/go-spring/spring-core/core"
-	pkg2 "github.com/go-spring/spring-core/core/testdata/pkg/foo"
+	"github.com/go-spring/spring-core/gs"
+	pkg2 "github.com/go-spring/spring-core/gs/testdata/pkg/foo"
 )
 
 //func TestParseSingletonTag(t *testing.T) {
@@ -87,23 +103,23 @@ func TestIsFuncBeanType(t *testing.T) {
 func TestBeanDefinition_Match(t *testing.T) {
 
 	data := []struct {
-		bd       *core.BeanDefinition
+		bd       *gs.BeanDefinition
 		typeName string
 		beanName string
 		expect   bool
 	}{
-		{core.NewBean(new(int)), "int", "*int", true},
-		{core.NewBean(new(int)), "", "*int", true},
-		{core.NewBean(new(int)), "int", "", true},
-		{core.NewBean(new(int)).WithName("i"), "int", "i", true},
-		{core.NewBean(new(int)).WithName("i"), "", "i", true},
-		{core.NewBean(new(int)).WithName("i"), "int", "", true},
-		{core.NewBean(new(pkg2.SamePkg)), "github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg", "*pkg.SamePkg", true},
-		{core.NewBean(new(pkg2.SamePkg)), "", "*pkg.SamePkg", true},
-		{core.NewBean(new(pkg2.SamePkg)), "github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg", "", true},
-		{core.NewBean(new(pkg2.SamePkg)).WithName("pkg2"), "github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg", "pkg2", true},
-		{core.NewBean(new(pkg2.SamePkg)).WithName("pkg2"), "", "pkg2", true},
-		{core.NewBean(new(pkg2.SamePkg)).WithName("pkg2"), "github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg", "pkg2", true},
+		{gs.NewBean(new(int)), "int", "*int", true},
+		{gs.NewBean(new(int)), "", "*int", true},
+		{gs.NewBean(new(int)), "int", "", true},
+		{gs.NewBean(new(int)).WithName("i"), "int", "i", true},
+		{gs.NewBean(new(int)).WithName("i"), "", "i", true},
+		{gs.NewBean(new(int)).WithName("i"), "int", "", true},
+		{gs.NewBean(new(pkg2.SamePkg)), "github.com/go-spring/spring-core/gs/testdata/pkg/foo/pkg.SamePkg", "*pkg.SamePkg", true},
+		{gs.NewBean(new(pkg2.SamePkg)), "", "*pkg.SamePkg", true},
+		{gs.NewBean(new(pkg2.SamePkg)), "github.com/go-spring/spring-core/gs/testdata/pkg/foo/pkg.SamePkg", "", true},
+		{gs.NewBean(new(pkg2.SamePkg)).WithName("pkg2"), "github.com/go-spring/spring-core/gs/testdata/pkg/foo/pkg.SamePkg", "pkg2", true},
+		{gs.NewBean(new(pkg2.SamePkg)).WithName("pkg2"), "", "pkg2", true},
+		{gs.NewBean(new(pkg2.SamePkg)).WithName("pkg2"), "github.com/go-spring/spring-core/gs/testdata/pkg/foo/pkg.SamePkg", "pkg2", true},
 	}
 
 	for i, s := range data {
@@ -141,29 +157,29 @@ func TestObjectBean(t *testing.T) {
 	t.Run("bean can't be nil", func(t *testing.T) {
 
 		assert.Panic(t, func() {
-			core.NewBean(nil)
+			gs.NewBean(nil)
 		}, "bean can't be nil")
 
 		assert.Panic(t, func() {
 			var i *int
-			core.NewBean(i)
+			gs.NewBean(i)
 		}, "bean can't be nil")
 
 		assert.Panic(t, func() {
 			var m map[string]string
-			core.NewBean(m)
+			gs.NewBean(m)
 		}, "bean can't be nil")
 	})
 
 	t.Run("bean must be ref type", func(t *testing.T) {
 
 		data := []func(){
-			func() { core.NewBean([...]int{0}) },
-			func() { core.NewBean(false) },
-			func() { core.NewBean(3) },
-			func() { core.NewBean("3") },
-			func() { core.NewBean(BeanZero{}) },
-			func() { core.NewBean(pkg2.SamePkg{}) },
+			func() { gs.NewBean([...]int{0}) },
+			func() { gs.NewBean(false) },
+			func() { gs.NewBean(3) },
+			func() { gs.NewBean("3") },
+			func() { gs.NewBean(BeanZero{}) },
+			func() { gs.NewBean(pkg2.SamePkg{}) },
 		}
 
 		for _, fn := range data {
@@ -172,45 +188,45 @@ func TestObjectBean(t *testing.T) {
 	})
 
 	t.Run("valid bean", func(t *testing.T) {
-		core.NewBean(make(chan int))
-		core.NewBean(reflect.ValueOf(func() {}))
-		core.NewBean(make(map[string]int))
-		core.NewBean(new(int))
-		core.NewBean(&BeanZero{})
-		core.NewBean(make([]int, 0))
+		gs.NewBean(make(chan int))
+		gs.NewBean(reflect.ValueOf(func() {}))
+		gs.NewBean(make(map[string]int))
+		gs.NewBean(new(int))
+		gs.NewBean(&BeanZero{})
+		gs.NewBean(make([]int, 0))
 	})
 
 	t.Run("check name && typename", func(t *testing.T) {
 
-		data := map[*core.BeanDefinition]struct {
+		data := map[*gs.BeanDefinition]struct {
 			name     string
 			typeName string
 		}{
-			core.NewBean(io.Writer(os.Stdout)): {
+			gs.NewBean(io.Writer(os.Stdout)): {
 				"*os.File", "os/os.File",
 			},
 
-			core.NewBean(newHistoryTeacher("")): {
-				"*core_test.historyTeacher",
-				"github.com/go-spring/spring-core/core_test/core_test.historyTeacher",
+			gs.NewBean(newHistoryTeacher("")): {
+				"*gs_test.historyTeacher",
+				"github.com/go-spring/spring-core/gs_test/gs_test.historyTeacher",
 			},
 
-			core.NewBean(new(int)): {
+			gs.NewBean(new(int)): {
 				"*int", "int",
 			},
 
-			core.NewBean(new(int)).WithName("i"): {
+			gs.NewBean(new(int)).WithName("i"): {
 				"i", "int",
 			},
 
-			core.NewBean(new(pkg2.SamePkg)): {
+			gs.NewBean(new(pkg2.SamePkg)): {
 				"*pkg.SamePkg",
-				"github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg",
+				"github.com/go-spring/spring-core/gs/testdata/pkg/foo/pkg.SamePkg",
 			},
 
-			core.NewBean(new(pkg2.SamePkg)).WithName("pkg2"): {
+			gs.NewBean(new(pkg2.SamePkg)).WithName("pkg2"): {
 				"pkg2",
-				"github.com/go-spring/spring-core/core/testdata/pkg/foo/pkg.SamePkg",
+				"github.com/go-spring/spring-core/gs/testdata/pkg/foo/pkg.SamePkg",
 			},
 		}
 
@@ -223,37 +239,37 @@ func TestObjectBean(t *testing.T) {
 
 func TestConstructorBean(t *testing.T) {
 
-	bd := core.NewBean(NewStudent)
-	assert.Equal(t, bd.Type().String(), "*core_test.Student")
+	bd := gs.NewBean(NewStudent)
+	assert.Equal(t, bd.Type().String(), "*gs_test.Student")
 
-	bd = core.NewBean(NewPtrStudent)
-	assert.Equal(t, bd.Type().String(), "*core_test.Student")
+	bd = gs.NewBean(NewPtrStudent)
+	assert.Equal(t, bd.Type().String(), "*gs_test.Student")
 
 	mapFn := func() map[int]string { return make(map[int]string) }
-	bd = core.NewBean(mapFn)
+	bd = gs.NewBean(mapFn)
 	assert.Equal(t, bd.Type().String(), "map[int]string")
 
 	sliceFn := func() []int { return make([]int, 1) }
-	bd = core.NewBean(sliceFn)
+	bd = gs.NewBean(sliceFn)
 	assert.Equal(t, bd.Type().String(), "[]int")
 
 	funcFn := func() func(int) { return nil }
-	bd = core.NewBean(funcFn)
+	bd = gs.NewBean(funcFn)
 	assert.Equal(t, bd.Type().String(), "func(int)")
 
 	intFn := func() int { return 0 }
-	bd = core.NewBean(intFn)
+	bd = gs.NewBean(intFn)
 	assert.Equal(t, bd.Type().String(), "*int")
 
 	interfaceFn := func(name string) Teacher { return newHistoryTeacher(name) }
-	bd = core.NewBean(interfaceFn)
-	assert.Equal(t, bd.Type().String(), "core_test.Teacher")
+	bd = gs.NewBean(interfaceFn)
+	assert.Equal(t, bd.Type().String(), "gs_test.Teacher")
 
 	assert.Panic(t, func() {
-		_ = core.NewBean(func() (*int, *int) { return nil, nil })
+		_ = gs.NewBean(func() (*int, *int) { return nil, nil })
 	}, "func bean must be func\\(...\\)bean or func\\(...\\)\\(bean, error\\)")
 
-	bd = core.NewBean(func() (*int, error) { return nil, nil })
+	bd = gs.NewBean(func() (*int, error) { return nil, nil })
 	assert.Equal(t, bd.Type().String(), "*int")
 }
 

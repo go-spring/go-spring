@@ -28,7 +28,7 @@ import (
 	"syscall"
 
 	"github.com/go-spring/spring-core/conf"
-	"github.com/go-spring/spring-core/core"
+	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
 	"github.com/spf13/cast"
@@ -69,18 +69,18 @@ var (
 
 // CommandLineRunner 命令行启动器接口
 type CommandLineRunner interface {
-	Run(ctx core.ApplicationContext)
+	Run(ctx gs.ApplicationContext)
 }
 
 // ApplicationEvent 应用运行过程中的事件
 type ApplicationEvent interface {
-	OnStartApplication(ctx core.ApplicationContext) // 应用启动的事件
-	OnStopApplication(ctx core.ApplicationContext)  // 应用停止的事件
+	OnStartApplication(ctx gs.ApplicationContext) // 应用启动的事件
+	OnStopApplication(ctx gs.ApplicationContext)  // 应用停止的事件
 }
 
 // application 应用
 type application struct {
-	appCtx core.ConfigurableApplicationContext // 应用上下文
+	appCtx gs.ConfigurableApplicationContext // 应用上下文
 
 	cfgLocation         []string // 配置文件目录
 	banner              string   // Banner 的内容
@@ -96,7 +96,7 @@ type application struct {
 // NewApplication application 的构造函数
 func NewApplication() *application {
 	return &application{
-		appCtx:              core.New(),
+		appCtx:              gs.New(),
 		cfgLocation:         append([]string{}, DefaultConfigLocation),
 		bannerMode:          BannerModeConsole,
 		expectSysProperties: []string{`.*`},
@@ -118,7 +118,7 @@ func (app *application) start(cfgLocation ...string) {
 	app.prepare()
 
 	// 注册 ApplicationContext 接口
-	app.appCtx.Object(app.appCtx).Export((*core.ApplicationContext)(nil))
+	app.appCtx.Object(app.appCtx).Export((*gs.ApplicationContext)(nil))
 
 	// 依赖注入、属性绑定、初始化
 	app.appCtx.Refresh()

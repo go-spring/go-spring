@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package core
+package gs
 
 import (
 	"container/list"
@@ -22,7 +22,7 @@ import (
 	"testing"
 
 	"github.com/go-spring/spring-core/assert"
-	"github.com/go-spring/spring-core/core/internal/sort"
+	"github.com/go-spring/spring-core/gs/internal/sort"
 )
 
 func TestSortConfigers(t *testing.T) {
