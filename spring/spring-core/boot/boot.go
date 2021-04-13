@@ -30,18 +30,18 @@ func GetProfile() string {
 	return gApp.appCtx.GetProfile()
 }
 
-// Profile 设置运行环境
-func Profile(profile string) {
-	gApp.appCtx.Profile(profile)
+// SetProfile 设置运行环境
+func SetProfile(profile string) {
+	gApp.appCtx.SetProfile(profile)
 }
 
 func GetProperty(key string) interface{} {
 	return gApp.appCtx.GetProperty(key)
 }
 
-// Property 设置属性值，属性名称统一转成小写。
-func Property(key string, value interface{}) {
-	gApp.appCtx.Property(key, value)
+// SetProperty 设置属性值，属性名称统一转成小写。
+func SetProperty(key string, value interface{}) {
+	gApp.appCtx.SetProperty(key, value)
 }
 
 func Config(fn interface{}, args ...arg.Arg) *gs.Configer {

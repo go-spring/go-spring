@@ -333,7 +333,7 @@ func (app *application) prepare() {
 		profile = cast.ToString(p.First(keys...))
 	}
 	if profile != "" {
-		app.appCtx.Profile(profile) // 第 4 层
+		app.appCtx.SetProfile(profile) // 第 4 层
 		profileConfig := app.loadProfileConfig(profile)
 		p.InsertBefore(profileConfig, appConfig)
 	}
@@ -344,7 +344,7 @@ func (app *application) prepare() {
 	// 将重组后的属性值写入 ApplicationContext 属性列表
 	for key, value := range properties {
 		value = app.resolveProperty(properties, key, value)
-		app.appCtx.Property(key, value)
+		app.appCtx.SetProperty(key, value)
 	}
 }
 

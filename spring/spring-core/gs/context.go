@@ -92,8 +92,8 @@ type ApplicationContext interface {
 	// Context 不能修改内容的接口
 	Context
 
-	// Profile 设置运行环境
-	Profile(profile string)
+	// SetProfile 设置运行环境
+	SetProfile(profile string)
 
 	// Properties 获取 Properties 对象
 	Properties() conf.Properties
@@ -101,8 +101,8 @@ type ApplicationContext interface {
 	// LoadProperties 加载属性配置，支持 properties、yaml 和 toml 三种文件格式。
 	LoadProperties(filename string) error
 
-	// Property 设置属性值，属性名称统一转成小写。
-	Property(key string, value interface{})
+	// SetProperty 设置属性值，属性名称统一转成小写。
+	SetProperty(key string, value interface{})
 
 	// Object 注册对象形式的 Bean。
 	Object(i interface{}) *BeanDefinition
@@ -110,11 +110,11 @@ type ApplicationContext interface {
 	// Factory 注册构造函数形式的 Bean。
 	Factory(fn bean.Factory, args ...arg.Arg) *BeanDefinition
 
-	// Config 注册一个配置函数
-	Config(fn interface{}, args ...arg.Arg) *Configer
-
 	// NewBean 普通函数注册需要使用 reflect.ValueOf(fn) 这种方式避免和构造函数发生冲突。
 	NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition
+
+	// Config 注册一个配置函数
+	Config(fn interface{}, args ...arg.Arg) *Configer
 
 	// Refresh 对所有 Bean 进行依赖注入和属性绑定
 	Refresh()
@@ -185,8 +185,8 @@ func (ctx *applicationContext) GetProperty(key string) interface{} {
 	return ctx.properties.Get(key)
 }
 
-// Property 设置属性值，属性名称统一转成小写。
-func (ctx *applicationContext) Property(key string, value interface{}) {
+// SetProperty 设置属性值，属性名称统一转成小写。
+func (ctx *applicationContext) SetProperty(key string, value interface{}) {
 	ctx.properties.Set(key, value)
 }
 
@@ -205,8 +205,8 @@ func (ctx *applicationContext) GetProfile() string {
 	return ctx.profile
 }
 
-// Profile 设置运行环境
-func (ctx *applicationContext) Profile(profile string) {
+// SetProfile 设置运行环境
+func (ctx *applicationContext) SetProfile(profile string) {
 	ctx.profile = profile
 }
 
