@@ -32,11 +32,6 @@ func Priority(curr Properties, next Properties) *priorityProperties {
 	return &priorityProperties{Properties: curr, next: next}
 }
 
-// Has 返回 key 转为小写后精确匹配的属性值是否存在。
-func (p *priorityProperties) Has(key string) bool {
-	return p.Properties.Has(key) || p.next.Has(key)
-}
-
 // Get 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。
 func (p *priorityProperties) Get(key string) interface{} {
 	if v := p.Properties.Get(key); v == nil {

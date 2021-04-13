@@ -35,9 +35,6 @@ type Properties interface {
 	// Read 从内存中读取属性列表，支持 properties、yaml、toml 等文件格式。
 	Read(b []byte, ext string) error
 
-	// Has 返回 key 转为小写后精确匹配的属性值是否存在。
-	Has(key string) bool
-
 	// Get 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。
 	Get(key string) interface{}
 
@@ -110,12 +107,6 @@ func (p *properties) Read(b []byte, ext string) error {
 		}
 	}
 	return fmt.Errorf("unsupported file type %s", ext)
-}
-
-// Has 返回 key 转为小写后精确匹配的属性值是否存在。
-func (p *properties) Has(key string) bool {
-	_, ok := p.m[strings.ToLower(key)]
-	return ok
 }
 
 // Get 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。

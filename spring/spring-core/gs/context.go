@@ -48,9 +48,6 @@ type Context interface {
 	// GetProfile 返回运行环境。
 	GetProfile() string
 
-	// HasProperty 查询属性值是否存在，属性名称统一转成小写。
-	HasProperty(key string) bool
-
 	// GetProperty 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。
 	GetProperty(key string) interface{}
 
@@ -76,8 +73,8 @@ type Context interface {
 	// selectors 列表的顺序对收集结果进行排序。
 	CollectBeans(i interface{}, selectors ...bean.Selector) error
 
-	// Range 遍历所有 Bean 的定义，不能保证解析和注入，请谨慎使用!
-	Range(fn func(b bean.Definition))
+	// EachBean 遍历所有 Bean 的定义，不能保证解析和注入，请谨慎使用!
+	EachBean(fn func(b bean.Definition))
 
 	// Go 安全地启动一个 goroutine
 	Go(fn interface{}, args ...arg.Arg)
@@ -173,11 +170,6 @@ func (ctx *applicationContext) Properties() conf.Properties {
 // LoadProperties 加载属性配置，支持 properties、yaml 和 toml 三种文件格式。
 func (ctx *applicationContext) LoadProperties(filename string) error {
 	return ctx.properties.Load(filename)
-}
-
-// HasProperty 查询属性值是否存在，属性名称统一转成小写。
-func (ctx *applicationContext) HasProperty(key string) bool {
-	return ctx.properties.Has(key)
 }
 
 // GetProperty 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。
@@ -595,8 +587,8 @@ func (ctx *applicationContext) WireBean(objOrCtor interface{}, ctorArgs ...arg.A
 	return b.Interface(), nil
 }
 
-// Range 遍历所有 Bean 的定义，不能保证解析和注入，请谨慎使用!
-func (ctx *applicationContext) Range(fn func(b bean.Definition)) {
+// EachBean 遍历所有 Bean 的定义，不能保证解析和注入，请谨慎使用!
+func (ctx *applicationContext) EachBean(fn func(b bean.Definition)) {
 	for _, v := range ctx.cacheById {
 		fn(v)
 	}

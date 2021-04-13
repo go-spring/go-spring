@@ -2941,7 +2941,7 @@ func TestDefaultSpringContext_ChainConditionOnBean(t *testing.T) {
 		ctx.Object(new(int)).WithCond(cond.OnBean("*float"))
 		ctx.Refresh()
 		count := 0
-		ctx.Range(func(bd bean.Definition) { count++ })
+		ctx.EachBean(func(bd bean.Definition) { count++ })
 		assert.Equal(t, count, 0)
 	}
 }
