@@ -33,14 +33,14 @@ import (
 	"github.com/go-spring/spring-core/util"
 )
 
-// ApplicationContext 定义了 IoC 容器接口。
+// Context 定义了 IoC 容器接口。
 //
 // 它的工作过程可以分为三个大的阶段：注册 Bean 列表、加载属性配置
 // 文件、自动绑定。其中自动绑定又分为两个小阶段：解析（决议）和绑定。
 //
 // 一条需要谨记的注册规则是: AutoWireBeans 调用后就不能再注册新
 // 的 Bean 了，这样做是因为实现起来更简单而且性能更高。
-type ApplicationContext interface {
+type Context interface {
 
 	// Context 返回上下文接口
 	Context() context.Context
@@ -86,11 +86,11 @@ type ApplicationContext interface {
 	Run(fn interface{}, args ...arg.Arg) error
 }
 
-// ConfigurableApplicationContext ApplicationContext 不允许内容被修改，这个可以。
-type ConfigurableApplicationContext interface {
+// ApplicationContext Context 不允许内容被修改，这个可以。
+type ApplicationContext interface {
 
-	// ApplicationContext 不能修改内容的接口
-	ApplicationContext
+	// Context 不能修改内容的接口
+	Context
 
 	// Profile 设置运行环境
 	Profile(profile string)
@@ -149,7 +149,7 @@ type applicationContext struct {
 }
 
 // New applicationContext 的构造函数
-func New() ConfigurableApplicationContext {
+func New() ApplicationContext {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &applicationContext{
 		ctx:          ctx,

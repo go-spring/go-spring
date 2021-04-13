@@ -80,7 +80,7 @@ type ApplicationEvent interface {
 
 // application 应用
 type application struct {
-	appCtx gs.ConfigurableApplicationContext // 应用上下文
+	appCtx gs.ApplicationContext // 应用上下文
 
 	cfgLocation         []string // 配置文件目录
 	banner              string   // Banner 的内容

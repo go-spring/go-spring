@@ -20,7 +20,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/go-spring/spring-core/gs"
 	"image"
 	"reflect"
 	"sort"
@@ -35,6 +34,7 @@ import (
 	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/cond"
 	"github.com/go-spring/spring-core/conf"
+	"github.com/go-spring/spring-core/gs"
 	pkg1 "github.com/go-spring/spring-core/gs/testdata/pkg/bar"
 	pkg2 "github.com/go-spring/spring-core/gs/testdata/pkg/foo"
 	"github.com/go-spring/spring-core/json"
@@ -44,12 +44,7 @@ import (
 )
 
 func TestConditionContext(t *testing.T) {
-	var _ = cond.Context((gs.ApplicationContext)(nil))
-}
-
-func TestConfigurableApplicationContext(t *testing.T) {
-	// 验证 applicationContext 是否实现 ConfigurableApplicationContext 接口
-	var _ = (gs.ConfigurableApplicationContext)(gs.New())
+	var _ = cond.Context((gs.Context)(nil))
 }
 
 func TestApplicationContext_RegisterBeanFrozen(t *testing.T) {
@@ -410,7 +405,7 @@ func (p *PrototypeBean) Greeting() string {
 }
 
 type PrototypeBeanFactory struct {
-	Ctx gs.ApplicationContext `autowire:""`
+	Ctx gs.Context `autowire:""`
 }
 
 func (f *PrototypeBeanFactory) New(name string) *PrototypeBean {
@@ -419,7 +414,7 @@ func (f *PrototypeBeanFactory) New(name string) *PrototypeBean {
 		t:    time.Now(),
 	}
 
-	// PrototypeBean 依赖的服务可以通过 ApplicationContext 注入
+	// PrototypeBean 依赖的服务可以通过 Context 注入
 	_, err := f.Ctx.WireBean(b)
 	util.Panic(err).When(err != nil)
 	return b
@@ -436,7 +431,7 @@ func (s *PrototypeBeanService) Service(name string) {
 
 func TestApplicationContext_PrototypeBean(t *testing.T) {
 	ctx := gs.New()
-	ctx.Object(ctx).Export((*gs.ApplicationContext)(nil))
+	ctx.Object(ctx).Export((*gs.Context)(nil))
 
 	gs := &GreetingService{}
 	ctx.Object(gs)
