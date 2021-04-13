@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package boot
+package gs
 
 import (
 	"flag"
@@ -28,7 +28,6 @@ import (
 	"syscall"
 
 	"github.com/go-spring/spring-core/conf"
-	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
 	"github.com/spf13/cast"
@@ -69,18 +68,18 @@ var (
 
 // CommandLineRunner 命令行启动器接口
 type CommandLineRunner interface {
-	Run(ctx gs.ApplicationContext)
+	Run(ctx Context)
 }
 
 // ApplicationEvent 应用运行过程中的事件
 type ApplicationEvent interface {
-	OnStartApplication(ctx gs.ApplicationContext) // 应用启动的事件
-	OnStopApplication(ctx gs.ApplicationContext)  // 应用停止的事件
+	OnStartApplication(ctx Context) // 应用启动的事件
+	OnStopApplication(ctx Context)  // 应用停止的事件
 }
 
 // application 应用
 type application struct {
-	appCtx gs.ApplicationContext // 应用上下文
+	appCtx ApplicationContext // 应用上下文
 
 	cfgLocation         []string // 配置文件目录
 	banner              string   // Banner 的内容
@@ -96,7 +95,7 @@ type application struct {
 // NewApplication application 的构造函数
 func NewApplication() *application {
 	return &application{
-		appCtx:              gs.New(),
+		appCtx:              New(),
 		cfgLocation:         append([]string{}, DefaultConfigLocation),
 		bannerMode:          BannerModeConsole,
 		expectSysProperties: []string{`.*`},
@@ -117,8 +116,8 @@ func (app *application) start(cfgLocation ...string) {
 	// 准备上下文环境
 	app.prepare()
 
-	// 注册 ApplicationContext 接口
-	app.appCtx.Object(app.appCtx).Export((*gs.ApplicationContext)(nil))
+	// 注册 Context 接口
+	app.appCtx.Object(app.appCtx).Export((*Context)(nil))
 
 	// 依赖注入、属性绑定、初始化
 	app.appCtx.Refresh()
@@ -341,7 +340,7 @@ func (app *application) prepare() {
 	properties := map[string]interface{}{}
 	p.Fill(properties)
 
-	// 将重组后的属性值写入 ApplicationContext 属性列表
+	// 将重组后的属性值写入 Context 属性列表
 	for key, value := range properties {
 		value = app.resolveProperty(properties, key, value)
 		app.appCtx.SetProperty(key, value)

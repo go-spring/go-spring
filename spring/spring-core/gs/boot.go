@@ -1,11 +1,26 @@
-package boot
+/*
+ * Copyright 2012-2019 the original author or authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package gs
 
 import (
 	"context"
 
 	"github.com/go-spring/spring-core/arg"
 	"github.com/go-spring/spring-core/bean"
-	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/mq"
 	"github.com/go-spring/spring-core/web"
 )
@@ -44,17 +59,17 @@ func SetProperty(key string, value interface{}) {
 	gApp.appCtx.SetProperty(key, value)
 }
 
-func Config(fn interface{}, args ...arg.Arg) *gs.Configer {
+func Config(fn interface{}, args ...arg.Arg) *Configer {
 	return gApp.appCtx.Config(fn, args...)
 }
 
 // Object 注册对象形式的 Bean。
-func Object(i interface{}) *gs.BeanDefinition {
+func Object(i interface{}) *BeanDefinition {
 	return gApp.appCtx.Object(i)
 }
 
 // Factory 注册构造函数形式的 Bean。
-func Factory(fn interface{}, args ...arg.Arg) *gs.BeanDefinition {
+func Factory(fn interface{}, args ...arg.Arg) *BeanDefinition {
 	return gApp.appCtx.Factory(fn, args...)
 }
 
@@ -105,7 +120,7 @@ func GRpcServer(serviceName string, fn interface{}, server interface{}) {
 }
 
 // GRpcClient 注册 gRPC 服务客户端，fn 是 gRPC 自动生成的客户端构造函数
-func GRpcClient(fn interface{}, endpoint string) *gs.BeanDefinition {
+func GRpcClient(fn interface{}, endpoint string) *BeanDefinition {
 	return gApp.appCtx.Factory(fn, endpoint)
 }
 
@@ -194,7 +209,7 @@ func DeleteBinding(path string, fn interface{}) *web.Mapper {
 }
 
 // NewFilter 注册 web.Filter 对象
-func NewFilter(objOrCtor interface{}, ctorArgs ...arg.Arg) *gs.BeanDefinition {
+func NewFilter(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 	return gApp.appCtx.NewBean(objOrCtor, ctorArgs...).Export((*web.Filter)(nil))
 }
 

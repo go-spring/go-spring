@@ -14,4 +14,4 @@
  * limitations under the License.
  */
 
-package boot_test
+package gs_test
