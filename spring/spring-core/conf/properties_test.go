@@ -30,17 +30,19 @@ import (
 	"github.com/spf13/cast"
 )
 
-func TestDefaultProperties_LoadProperties(t *testing.T) {
+func TestProperties_Load(t *testing.T) {
 
 	p := conf.New()
 	p.Load("testdata/config/application.yaml")
 	p.Load("testdata/config/application.properties")
 
 	fmt.Println("Get All Properties:")
-	p.Range(func(k string, v interface{}) { fmt.Println(k, v) })
+	for _, k := range p.Keys() {
+		fmt.Println(k, ":", p.Get(k))
+	}
 }
 
-func TestDefaultProperties_ReadProperties_Properties(t *testing.T) {
+func TestProperties_ReadProperties(t *testing.T) {
 
 	t.Run("basic type", func(t *testing.T) {
 
@@ -66,27 +68,28 @@ func TestDefaultProperties_ReadProperties_Properties(t *testing.T) {
 		}
 	})
 
-	t.Run("array", func(t *testing.T) {
-
-		data := []struct {
-			key  string
-			str  string
-			val  interface{}
-			kind reflect.Kind
-		}{
-			{"bool[0]", "bool[0]=false", "false", reflect.String},
-			{"int[0]", "int[0]=3", "3", reflect.String},
-			{"float[0]", "float[0]=3.0", "3.0", reflect.String},
-			{"string[0]", "string[0]=\"3\"", "\"3\"", reflect.String},
-			{"string[0]", "string[0]=hello", "hello", reflect.String},
-		}
-
-		for _, d := range data {
-			p, _ := conf.Read([]byte(d.str), ".properties")
-			v := p.Get(d.key)
-			assert.Equal(t, v, d.val)
-		}
-	})
+	// 目前使用的 properties 解析库不支持数组
+	//t.Run("array", func(t *testing.T) {
+	//
+	//	data := []struct {
+	//		key  string
+	//		str  string
+	//		val  interface{}
+	//		kind reflect.Kind
+	//	}{
+	//		{"bool[0]", "bool[0]=false", "false", reflect.String},
+	//		{"int[0]", "int[0]=3", "3", reflect.String},
+	//		{"float[0]", "float[0]=3.0", "3.0", reflect.String},
+	//		{"string[0]", "string[0]=\"3\"", "\"3\"", reflect.String},
+	//		{"string[0]", "string[0]=hello", "hello", reflect.String},
+	//	}
+	//
+	//	for _, d := range data {
+	//		p, _ := conf.Read([]byte(d.str), ".properties")
+	//		v := p.Get(d.key)
+	//		assert.Equal(t, v, d.val)
+	//	}
+	//})
 
 	t.Run("map", func(t *testing.T) {
 
@@ -111,36 +114,37 @@ func TestDefaultProperties_ReadProperties_Properties(t *testing.T) {
 		}
 	})
 
-	t.Run("array struct", func(t *testing.T) {
-
-		str := `
-          array[0].bool=false
-          array[0].int=3
-          array[0].float=3.0
-          array[0].string=hello
-          array[1].bool=true
-          array[1].int=20
-          array[1].float=0.2
-          array[1].string=hello
-        `
-
-		p, _ := conf.Read([]byte(str), ".properties")
-		data := map[string]interface{}{
-			"array[0].bool":   "false",
-			"array[0].int":    "3",
-			"array[0].float":  "3.0",
-			"array[0].string": "hello",
-			"array[1].bool":   "true",
-			"array[1].int":    "20",
-			"array[1].float":  "0.2",
-			"array[1].string": "hello",
-		}
-
-		for k, expect := range data {
-			v := p.Get(k)
-			assert.Equal(t, v, expect)
-		}
-	})
+	// 目前使用的 properties 解析库不支持数组
+	//t.Run("array struct", func(t *testing.T) {
+	//
+	//	str := `
+	//          array[0].bool=false
+	//          array[0].int=3
+	//          array[0].float=3.0
+	//          array[0].string=hello
+	//          array[1].bool=true
+	//          array[1].int=20
+	//          array[1].float=0.2
+	//          array[1].string=hello
+	//        `
+	//
+	//	p, _ := conf.Read([]byte(str), ".properties")
+	//	data := map[string]interface{}{
+	//		"array[0].bool":   "false",
+	//		"array[0].int":    "3",
+	//		"array[0].float":  "3.0",
+	//		"array[0].string": "hello",
+	//		"array[1].bool":   "true",
+	//		"array[1].int":    "20",
+	//		"array[1].float":  "0.2",
+	//		"array[1].string": "hello",
+	//	}
+	//
+	//	for k, expect := range data {
+	//		v := p.Get(k)
+	//		assert.Equal(t, v, expect)
+	//	}
+	//})
 
 	t.Run("map struct", func(t *testing.T) {
 
@@ -174,7 +178,7 @@ func TestDefaultProperties_ReadProperties_Properties(t *testing.T) {
 	})
 }
 
-func TestDefaultProperties_ReadProperties_Yaml(t *testing.T) {
+func TestProperties_ReadYaml(t *testing.T) {
 
 	t.Run("basic type", func(t *testing.T) {
 
@@ -265,13 +269,13 @@ func TestDefaultProperties_ReadProperties_Yaml(t *testing.T) {
 		p, _ := conf.Read([]byte(str), ".yaml")
 		v := p.Get("array")
 		expect := []interface{}{
-			map[interface{}]interface{}{ // yaml 是 map[interface{}]interface{}，toml 是 map[string]interface{}
+			map[string]interface{}{
 				"bool":   false,
 				"int":    3,
 				"float":  3.0,
 				"string": "hello",
 			},
-			map[interface{}]interface{}{
+			map[string]interface{}{
 				"bool":   true,
 				"int":    20,
 				"float":  0.2,
@@ -316,7 +320,7 @@ func TestDefaultProperties_ReadProperties_Yaml(t *testing.T) {
 	})
 }
 
-func TestDefaultProperties_ReadProperties_Toml(t *testing.T) {
+func TestProperties_ReadToml(t *testing.T) {
 
 	t.Run("basic type", func(t *testing.T) {
 
@@ -485,80 +489,119 @@ func TestRegisterTypeConverter(t *testing.T) {
 	conf.Convert(PointConverter)
 }
 
-func TestDefaultProperties_GetProperty(t *testing.T) {
-	p := conf.New()
+func TestProperties_Get(t *testing.T) {
 
-	p.Set("a.b.c", "3")
-	p.Set("a.b.d", []string{"3"})
+	t.Run("base", func(t *testing.T) {
 
-	m := p.Prefix("a.b")
-	assert.Equal(t, len(m), 2)
-	assert.Equal(t, m["a.b.c"], "3")
-	assert.Equal(t, m["a.b.d"], []string{"3"})
+		p := conf.New()
 
-	p.Set("Bool", true)
-	p.Set("Int", 3)
-	p.Set("Uint", 3)
-	p.Set("Float", 3.0)
-	p.Set("String", "3")
-	p.Set("Duration", "3s")
-	p.Set("[]String", []string{"3"})
-	p.Set("Time", "2020-02-04 20:02:04")
-	p.Set("[]Map[String]Interface{}", []interface{}{
-		map[interface{}]interface{}{
-			"1": 2,
-		},
+		p.Set("a.b.c", "3")
+		p.Set("a.b.d", []string{"3"})
+
+		assert.Equal(t, p.Get("a.b.c"), "3")
+		assert.Equal(t, p.Get("a.b.d"), []string{"3"})
+
+		p.Set("Bool", true)
+		p.Set("Int", 3)
+		p.Set("Uint", 3)
+		p.Set("Float", 3.0)
+		p.Set("String", "3")
+		p.Set("Duration", "3s")
+		p.Set("[]String", []string{"3"})
+		p.Set("Time", "2020-02-04 20:02:04")
+		p.Set("[]Map[String]Interface{}", []interface{}{
+			map[interface{}]interface{}{
+				"1": 2,
+			},
+		})
+
+		v := p.Get("NULL")
+		assert.Equal(t, v, nil)
+
+		v = p.GetDefault("NULL", "OK")
+		assert.Equal(t, v, "OK")
+
+		v = p.Get("INT")
+		assert.Equal(t, v, 3)
+
+		var v2 int
+		p.Bind("int", &v2)
+		assert.Equal(t, v2, 3)
+
+		var u2 uint
+		p.Bind("uint", &u2)
+		assert.Equal(t, u2, uint(3))
+
+		var f2 float32
+		p.Bind("Float", &f2)
+		assert.Equal(t, f2, float32(3))
+
+		b := cast.ToBool(p.Get("BOOL"))
+		assert.Equal(t, b, true)
+
+		var b2 bool
+		p.Bind("bool", &b2)
+		assert.Equal(t, b2, true)
+
+		i := cast.ToInt64(p.Get("INT"))
+		assert.Equal(t, i, int64(3))
+
+		u := cast.ToUint64(p.Get("UINT"))
+		assert.Equal(t, u, uint64(3))
+
+		f := cast.ToFloat64(p.Get("FLOAT"))
+		assert.Equal(t, f, 3.0)
+
+		s := cast.ToString(p.Get("STRING"))
+		assert.Equal(t, s, "3")
+
+		d := cast.ToDuration(p.Get("DURATION"))
+		assert.Equal(t, d, time.Second*3)
+
+		ti := cast.ToTime(p.Get("Time"))
+		assert.Equal(t, ti, time.Date(2020, 02, 04, 20, 02, 04, 0, time.UTC))
+
+		var ss2 []string
+		p.Bind("[]string", &ss2)
+		assert.Equal(t, ss2, []string{"3"})
 	})
 
-	v := p.Get("NULL")
-	assert.Equal(t, v, nil)
-
-	v = p.Default("NULL", "OK")
-	assert.Equal(t, v, "OK")
-
-	v = p.Get("INT")
-	assert.Equal(t, v, 3)
-
-	var v2 int
-	p.Bind("int", &v2)
-	assert.Equal(t, v2, 3)
-
-	var u2 uint
-	p.Bind("uint", &u2)
-	assert.Equal(t, u2, uint(3))
-
-	var f2 float32
-	p.Bind("Float", &f2)
-	assert.Equal(t, f2, float32(3))
-
-	b := cast.ToBool(p.Get("BOOL"))
-	assert.Equal(t, b, true)
-
-	var b2 bool
-	p.Bind("bool", &b2)
-	assert.Equal(t, b2, true)
-
-	i := cast.ToInt64(p.Get("INT"))
-	assert.Equal(t, i, int64(3))
-
-	u := cast.ToUint64(p.Get("UINT"))
-	assert.Equal(t, u, uint64(3))
-
-	f := cast.ToFloat64(p.Get("FLOAT"))
-	assert.Equal(t, f, 3.0)
-
-	s := cast.ToString(p.Get("STRING"))
-	assert.Equal(t, s, "3")
-
-	d := cast.ToDuration(p.Get("DURATION"))
-	assert.Equal(t, d, time.Second*3)
-
-	ti := cast.ToTime(p.Get("Time"))
-	assert.Equal(t, ti, time.Date(2020, 02, 04, 20, 02, 04, 0, time.UTC))
-
-	var ss2 []string
-	p.Bind("[]string", &ss2)
-	assert.Equal(t, ss2, []string{"3"})
+	t.Run("slice slice", func(t *testing.T) {
+		p := conf.Map(map[string]interface{}{
+			"a": []interface{}{
+				[]interface{}{1, 2},
+				[]interface{}{3, 4},
+				map[string]interface{}{
+					"b": "c",
+					"d": []interface{}{5, 6},
+				},
+			},
+		})
+		assert.Equal(t, p.Get("a"), []interface{}{
+			[]interface{}{1, 2},
+			[]interface{}{3, 4},
+			map[string]interface{}{
+				"b": "c",
+				"d": []interface{}{5, 6},
+			},
+		})
+		assert.Equal(t, p.Get("a[0]"), []interface{}{1, 2})
+		assert.Equal(t, p.Get("a[1]"), []interface{}{3, 4})
+		assert.Equal(t, p.Get("a[2]"), map[string]interface{}{
+			"b": "c",
+			"d": []interface{}{5, 6},
+		})
+		assert.Equal(t, p.Get("a[0].[0]"), 1)
+		assert.Equal(t, p.Get("a[0].[1]"), 2)
+		assert.Equal(t, p.Get("a[1].[0]"), 3)
+		assert.Equal(t, p.Get("a[1].[1]"), 4)
+		assert.Equal(t, p.Get("a[2].b"), "c")
+		assert.Equal(t, p.Get("a[2].d[0]"), 5)
+		assert.Equal(t, p.Get("a[2].d.[0]"), 5)
+		assert.Equal(t, p.Get("a[2].d[1]"), 6)
+		assert.Equal(t, p.Get("a[2].d.[1]"), 6)
+		assert.Equal(t, p.Get("a[2].d[2]"), nil)
+	})
 }
 
 type DB struct {
@@ -604,7 +647,11 @@ type NestedDbConfig struct {
 	DB []NestedDB `value:"${db}"`
 }
 
-func TestDefaultProperties_BindProperty(t *testing.T) {
+type NestedDbMapConfig struct {
+	DB map[string]NestedDB `value:"${db_map}"`
+}
+
+func TestProperties_Bind(t *testing.T) {
 
 	t.Run("simple bind", func(t *testing.T) {
 		p := conf.New()
@@ -646,13 +693,6 @@ func TestDefaultProperties_BindProperty(t *testing.T) {
 		assert.Equal(t, dbConfig1, dbConfig2)
 		assert.Equal(t, len(dbConfig1.DB), 2)
 	})
-}
-
-type NestedDbMapConfig struct {
-	DB map[string]NestedDB `value:"${db_map}"`
-}
-
-func TestDefaultProperties_StringMapString(t *testing.T) {
 
 	t.Run("simple map bind", func(t *testing.T) {
 
@@ -714,7 +754,7 @@ func TestDefaultProperties_StringMapString(t *testing.T) {
 	})
 }
 
-func TestDefaultProperties_ConfigRef(t *testing.T) {
+func TestProperties_Ref(t *testing.T) {
 
 	type fileLog struct {
 		Dir             string `value:"${dir:=${app.dir}}"`
@@ -750,13 +790,13 @@ func TestDefaultProperties_ConfigRef(t *testing.T) {
 		assert.Equal(t, mqLog.NestedEmptyDir, "")
 		assert.Equal(t, mqLog.NestedNestedDir, "./log")
 	})
-}
 
-func TestDefaultProperties_KeyCanBeEmpty(t *testing.T) {
-	p := conf.New()
-	var s struct {
-		KeyIsEmpty string `value:"${:=kie}"`
-	}
-	p.Bind("", &s)
-	assert.Equal(t, s.KeyIsEmpty, "kie")
+	t.Run("empty key", func(t *testing.T) {
+		p := conf.New()
+		var s struct {
+			KeyIsEmpty string `value:"${:=kie}"`
+		}
+		p.Bind("", &s)
+		assert.Equal(t, s.KeyIsEmpty, "kie")
+	})
 }
