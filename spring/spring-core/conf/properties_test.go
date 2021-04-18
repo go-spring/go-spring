@@ -27,14 +27,17 @@ import (
 
 	"github.com/go-spring/spring-core/assert"
 	"github.com/go-spring/spring-core/conf"
+	"github.com/go-spring/spring-core/util"
 	"github.com/spf13/cast"
 )
 
 func TestProperties_Load(t *testing.T) {
 
 	p := conf.New()
-	p.Load("testdata/config/application.yaml")
-	p.Load("testdata/config/application.properties")
+	err := p.Load("testdata/config/application.yaml")
+	util.Panic(err).When(err != nil)
+	err = p.Load("testdata/config/application.properties")
+	util.Panic(err).When(err != nil)
 
 	fmt.Println("Get All Properties:")
 	for _, k := range p.Keys() {
@@ -518,29 +521,33 @@ func TestProperties_Get(t *testing.T) {
 		v := p.Get("NULL")
 		assert.Equal(t, v, nil)
 
-		v = p.GetDefault("NULL", "OK")
+		v = conf.GetDefault(p, "NULL", "OK")
 		assert.Equal(t, v, "OK")
 
 		v = p.Get("INT")
 		assert.Equal(t, v, 3)
 
 		var v2 int
-		p.Bind("int", &v2)
+		err := conf.Bind(p, "int", &v2)
+		util.Panic(err).When(err != nil)
 		assert.Equal(t, v2, 3)
 
 		var u2 uint
-		p.Bind("uint", &u2)
+		err = conf.Bind(p, "uint", &u2)
+		util.Panic(err).When(err != nil)
 		assert.Equal(t, u2, uint(3))
 
 		var f2 float32
-		p.Bind("Float", &f2)
+		err = conf.Bind(p, "Float", &f2)
+		util.Panic(err).When(err != nil)
 		assert.Equal(t, f2, float32(3))
 
 		b := cast.ToBool(p.Get("BOOL"))
 		assert.Equal(t, b, true)
 
 		var b2 bool
-		p.Bind("bool", &b2)
+		err = conf.Bind(p, "bool", &b2)
+		util.Panic(err).When(err != nil)
 		assert.Equal(t, b2, true)
 
 		i := cast.ToInt64(p.Get("INT"))
@@ -562,7 +569,8 @@ func TestProperties_Get(t *testing.T) {
 		assert.Equal(t, ti, time.Date(2020, 02, 04, 20, 02, 04, 0, time.UTC))
 
 		var ss2 []string
-		p.Bind("[]string", &ss2)
+		err = conf.Bind(p, "[]string", &ss2)
+		util.Panic(err).When(err != nil)
 		assert.Equal(t, ss2, []string{"3"})
 	})
 
@@ -654,14 +662,16 @@ type NestedDbMapConfig struct {
 func TestProperties_Bind(t *testing.T) {
 
 	t.Run("simple bind", func(t *testing.T) {
-		p := conf.New()
-		p.Load("testdata/config/application.yaml")
+		p, err := conf.Load("testdata/config/application.yaml")
+		util.Panic(err).When(err != nil)
 
 		dbConfig1 := DbConfig{}
-		p.Bind("", &dbConfig1)
+		err = conf.Bind(p, "", &dbConfig1)
+		util.Panic(err).When(err != nil)
 
 		dbConfig2 := DbConfig{}
-		p.Bind("prefix", &dbConfig2)
+		err = conf.Bind(p, "prefix", &dbConfig2)
+		util.Panic(err).When(err != nil)
 
 		// 实际上是取的两个节点，只是值是一样的而已
 		assert.Equal(t, dbConfig1, dbConfig2)
@@ -669,25 +679,28 @@ func TestProperties_Bind(t *testing.T) {
 
 	t.Run("struct bind with tag", func(t *testing.T) {
 
-		p := conf.New()
-		p.Load("testdata/config/application.yaml")
+		p, err := conf.Load("testdata/config/application.yaml")
+		util.Panic(err).When(err != nil)
 
 		dbConfig := TagNestedDbConfig{}
-		p.Bind("", &dbConfig)
+		err = conf.Bind(p, "", &dbConfig)
+		util.Panic(err).When(err != nil)
 
 		fmt.Println(dbConfig)
 	})
 
 	t.Run("struct bind without tag", func(t *testing.T) {
 
-		p := conf.New()
-		p.Load("testdata/config/application.yaml")
+		p, err := conf.Load("testdata/config/application.yaml")
+		util.Panic(err).When(err != nil)
 
 		dbConfig1 := NestedDbConfig{}
-		p.Bind("", &dbConfig1)
+		err = conf.Bind(p, "", &dbConfig1)
+		util.Panic(err).When(err != nil)
 
 		dbConfig2 := NestedDbConfig{}
-		p.Bind("prefix", &dbConfig2)
+		err = conf.Bind(p, "prefix", &dbConfig2)
+		util.Panic(err).When(err != nil)
 
 		// 实际上是取的两个节点，只是值是一样的而已
 		assert.Equal(t, dbConfig1, dbConfig2)
@@ -702,7 +715,8 @@ func TestProperties_Bind(t *testing.T) {
 		p.Set("a.b3", "b3")
 
 		var m map[string]string
-		p.Bind("a", &m)
+		err := conf.Bind(p, "a", &m)
+		util.Panic(err).When(err != nil)
 
 		assert.Equal(t, len(m), 3)
 		assert.Equal(t, m["b1"], "b1")
@@ -717,7 +731,8 @@ func TestProperties_Bind(t *testing.T) {
 		p.Set("a.p3", "(5,6)")
 
 		var m map[string]image.Point
-		p.Bind("a", &m)
+		err := conf.Bind(p, "a", &m)
+		util.Panic(err).When(err != nil)
 
 		assert.Equal(t, len(m), 3)
 		assert.Equal(t, m["p1"], image.Pt(1, 2))
@@ -725,11 +740,12 @@ func TestProperties_Bind(t *testing.T) {
 
 	t.Run("simple bind from file", func(t *testing.T) {
 
-		p := conf.New()
-		p.Load("testdata/config/application.yaml")
+		p, err := conf.Load("testdata/config/application.yaml")
+		util.Panic(err).When(err != nil)
 
 		var m map[string]string
-		p.Bind("camera", &m)
+		err = conf.Bind(p, "camera", &m)
+		util.Panic(err).When(err != nil)
 
 		assert.Equal(t, len(m), 3)
 		assert.Equal(t, m["floor1"], "camera_floor1")
@@ -737,17 +753,19 @@ func TestProperties_Bind(t *testing.T) {
 
 	t.Run("struct bind from file", func(t *testing.T) {
 
-		p := conf.New()
-		p.Load("testdata/config/application.yaml")
+		p, err := conf.Load("testdata/config/application.yaml")
+		util.Panic(err).When(err != nil)
 
 		var m map[string]NestedDB
-		p.Bind("db_map", &m)
+		err = conf.Bind(p, "db_map", &m)
+		util.Panic(err).When(err != nil)
 
 		assert.Equal(t, len(m), 2)
 		assert.Equal(t, m["d1"].DB, "db1")
 
 		dbConfig2 := NestedDbMapConfig{}
-		p.Bind("prefix_map", &dbConfig2)
+		err = conf.Bind(p, "prefix_map", &dbConfig2)
+		util.Panic(err).When(err != nil)
 
 		assert.Equal(t, len(dbConfig2.DB), 2)
 		assert.Equal(t, dbConfig2.DB["d1"].DB, "db1")
@@ -768,7 +786,7 @@ func TestProperties_Ref(t *testing.T) {
 
 	t.Run("not config", func(t *testing.T) {
 		p := conf.New()
-		err := p.Bind("", &httpLog)
+		err := conf.Bind(p, "", &httpLog)
 		assert.Error(t, err, "property \"app.dir\" not config")
 	})
 
@@ -778,13 +796,15 @@ func TestProperties_Ref(t *testing.T) {
 		appDir := "/home/log"
 		p.Set("app.dir", appDir)
 
-		p.Bind("", &httpLog)
+		err := conf.Bind(p, "", &httpLog)
+		util.Panic(err).When(err != nil)
 		assert.Equal(t, httpLog.Dir, appDir)
 		assert.Equal(t, httpLog.NestedDir, "./log")
 		assert.Equal(t, httpLog.NestedEmptyDir, "")
 		assert.Equal(t, httpLog.NestedNestedDir, "./log")
 
-		p.Bind("", &mqLog)
+		err = conf.Bind(p, "", &mqLog)
+		util.Panic(err).When(err != nil)
 		assert.Equal(t, mqLog.Dir, appDir)
 		assert.Equal(t, mqLog.NestedDir, "./log")
 		assert.Equal(t, mqLog.NestedEmptyDir, "")
@@ -796,7 +816,8 @@ func TestProperties_Ref(t *testing.T) {
 		var s struct {
 			KeyIsEmpty string `value:"${:=kie}"`
 		}
-		p.Bind("", &s)
+		err := conf.Bind(p, "", &s)
+		util.Panic(err).When(err != nil)
 		assert.Equal(t, s.KeyIsEmpty, "kie")
 	})
 }

@@ -16,10 +16,6 @@
 
 package conf
 
-import (
-	"github.com/go-spring/spring-core/util"
-)
-
 // priorityProperties 基于优先级的 Properties 实现。
 type priorityProperties struct {
 	Properties // 高优先级
@@ -32,6 +28,15 @@ func Priority(curr Properties, next Properties) *priorityProperties {
 	return &priorityProperties{Properties: curr, next: next}
 }
 
+// Depth 返回深度值
+func (p *priorityProperties) Depth() int {
+	if nxt, ok := p.next.(*priorityProperties); ok {
+		return nxt.Depth() + 1
+	} else {
+		return 2
+	}
+}
+
 // Get 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。
 func (p *priorityProperties) Get(key string) interface{} {
 	if v := p.Properties.Get(key); v == nil {
@@ -39,49 +44,6 @@ func (p *priorityProperties) Get(key string) interface{} {
 	} else {
 		return v
 	}
-}
-
-// Range 遍历所有的属性，属性名都为小写。TODO 实现并不完美。
-func (p *priorityProperties) Range(fn func(string, interface{})) {
-	p.Properties.Range(fn)
-	p.next.Range(fn)
-}
-
-// Bind 根据类型获取属性值，key 转为小写。
-func (p *priorityProperties) Bind(key string, i interface{}) error {
-	panic(util.UnimplementedMethod)
-}
-
-// First 返回 keys 中第一个存在的属性值，属性名转为小写后进行精确匹配。
-func (p *priorityProperties) First(keys ...string) interface{} {
-	if v := p.Properties.First(keys...); v == nil {
-		return p.next.First(keys...)
-	} else {
-		return v
-	}
-}
-
-// Default 返回 key 转为小写后精确匹配的属性值，不存在则返回 def 值。
-func (p *priorityProperties) Default(key string, def interface{}) interface{} {
-	if v := p.Get(key); v == nil {
-		return def
-	} else {
-		return v
-	}
-}
-
-// Fill 填充所有的属性值，属性名为小写。TODO 实现并不完美。
-func (p *priorityProperties) Fill(properties map[string]interface{}) {
-	p.Range(func(key string, val interface{}) {
-		if _, ok := properties[key]; !ok {
-			properties[key] = val
-		}
-	})
-}
-
-// Prefix 返回 key 转为小写后作为前缀的所有属性的集合。
-func (p *priorityProperties) Prefix(key string) map[string]interface{} {
-	panic(util.UnimplementedMethod)
 }
 
 // InsertBefore 在 next 之前增加一层属性列表
@@ -109,13 +71,4 @@ func (p *priorityProperties) InsertBefore(curr Properties, next Properties) bool
 
 	// 找不到插入点
 	return false
-}
-
-// Depth 返回深度值
-func (p *priorityProperties) Depth() int {
-	if nxt, ok := p.next.(*priorityProperties); ok {
-		return nxt.Depth() + 1
-	} else {
-		return 2
-	}
 }

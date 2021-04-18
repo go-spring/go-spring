@@ -26,45 +26,6 @@ import (
 	"github.com/spf13/cast"
 )
 
-// ValidValueTag 是否为 ${key:=def} 格式的字符串。
-func ValidValueTag(tag string) bool {
-	return strings.HasPrefix(tag, "${") && strings.HasSuffix(tag, "}")
-}
-
-// ParseValueTag 解析 ${key:=def} 字符串，返回 key 和 def 的值。
-func ParseValueTag(tag string) (key string, def interface{}, err error) {
-
-	if !ValidValueTag(tag) {
-		return "", nil, errors.New("invalid value tag")
-	}
-
-	tag = tag[2 : len(tag)-1]
-	ss := strings.SplitN(tag, ":=", 2)
-	if len(ss) > 1 {
-		def = ss[1]
-	}
-	key = ss[0]
-	return
-}
-
-// ResolveProperty 解析 ${key:=def} 字符串，返回 key 的属性值，如果没有找到则返回 def 值，
-// 如果 def 存在引用关系即 def 的内容是 ${key:=value} 形式，则递归解析直到获取最终的属性值。
-func ResolveProperty(p Properties, tagOrValue interface{}) (interface{}, error) {
-
-	// 不是字符串或者没有使用配置引用语法则直接返回
-	tag, ok := tagOrValue.(string)
-	if !ok || !ValidValueTag(tag) {
-		return tagOrValue, nil
-	}
-
-	key, def, _ := ParseValueTag(tag)
-	if val := p.Default(key, def); val != nil {
-		return ResolveProperty(p, val)
-	}
-
-	return nil, fmt.Errorf("property \"%s\" not config", key)
-}
-
 type BindOption struct {
 	Prefix string // 属性名前缀
 	Key    string // 最短属性名
@@ -85,8 +46,7 @@ func bindStruct(p Properties, v reflect.Value, opt BindOption) error {
 		}
 
 		if tag, ok := ft.Tag.Lookup("value"); ok {
-			err := BindValue(p, fv, tag, subOpt)
-			if err != nil {
+			if err := BindValue(p, fv, tag, subOpt); err != nil {
 				return err
 			}
 			continue
@@ -94,8 +54,7 @@ func bindStruct(p Properties, v reflect.Value, opt BindOption) error {
 
 		// 匿名嵌套需要处理，不是结构体的具名字段无需处理
 		if ft.Anonymous || ft.Type.Kind() == reflect.Struct {
-			err := bindStruct(p, fv, subOpt)
-			if err != nil {
+			if err := bindStruct(p, fv, subOpt); err != nil {
 				return err
 			}
 		}
@@ -106,11 +65,21 @@ func bindStruct(p Properties, v reflect.Value, opt BindOption) error {
 // BindValue 对任意值 v 进行属性绑定，tag 是形如 ${key:=def} 的字符串，v 必须是值类型。
 func BindValue(p Properties, v reflect.Value, tag string, opt BindOption) error {
 
+	getProperty := func(key string, def interface{}) (interface{}, error) {
+		if val := p.Get(key); val != nil {
+			return val, nil
+		}
+		if def != nil {
+			return Resolve(p, def)
+		}
+		return nil, fmt.Errorf("%s property %q not config", opt.Path, opt.Key)
+	}
+
 	if v.Kind() == reflect.Ptr {
 		return fmt.Errorf("%s 属性绑定的目标不能是指针", opt.Path)
 	}
 
-	key, def, err := ParseValueTag(tag)
+	key, def, err := parseValueTag(tag)
 	if err != nil {
 		return fmt.Errorf("%s 属性绑定的语法 %s 发生错误", opt.Path, tag)
 	}
@@ -130,32 +99,11 @@ func BindValue(p Properties, v reflect.Value, tag string, opt BindOption) error 
 	t := v.Type()
 	k := t.Kind()
 
-	getProperty := func() (interface{}, error) {
-
-		// 首先获取精确匹配的属性值
-		if val := p.Get(key); val != nil {
-			return val, nil
-		}
-
-		// Map 和 Struct 类型获取具有相同前缀的属性值
-		if k == reflect.Map || k == reflect.Struct {
-			if prop := p.Prefix(key); len(prop) > 0 {
-				return prop, nil
-			}
-		}
-
-		// 最后使用默认值，需要解析配置引用语法
-		if def != nil {
-			return ResolveProperty(p, def)
-		}
-
-		return nil, fmt.Errorf("%s property \"%s\" not config", opt.Path, opt.Key)
-	}
+	var prop interface{}
 
 	// 存在值类型转换器的情况下结构体优先使用转换器
 	if fn, ok := converters[t]; ok {
-		prop, err := getProperty()
-		if err != nil {
+		if prop, err = getProperty(key, def); err != nil {
 			return err
 		}
 		fnValue := reflect.ValueOf(fn) // TODO 处理 error 返回值
@@ -172,8 +120,7 @@ func BindValue(p Properties, v reflect.Value, tag string, opt BindOption) error 
 	}
 
 	if converter, ok := kConverters[k]; ok {
-		prop, err := getProperty()
-		if err != nil {
+		if prop, err = getProperty(key, def); err != nil {
 			return err
 		}
 		return converter(&v, key, prop, opt)
@@ -332,7 +279,7 @@ func init() {
 				return fmt.Errorf("property value %s isn't []bool type", opt.Key)
 			}
 		default:
-			// 处理结构体字段的场景
+			// 处理结构体字段的场景 TODO 增加单元测试
 			if s, ok := prop.([]interface{}); ok {
 				result := reflect.MakeSlice(t, len(s), len(s))
 				for i, si := range s {
@@ -409,19 +356,11 @@ func init() {
 			// 处理结构体字段的场景
 			if mapValue, err := cast.ToStringMapE(prop); err == nil {
 				temp := make(map[string]map[string]interface{})
-				trimKey := key + "."
-				var ok bool
 
-				// 将一维 map 变成二维 map
 				for k0, v0 := range mapValue {
-					k0 = strings.TrimPrefix(k0, trimKey)
-					sk := strings.Split(k0, ".")
-					var item map[string]interface{}
-					if item, ok = temp[sk[0]]; !ok {
-						item = make(map[string]interface{})
-						temp[sk[0]] = item
+					if temp[k0], err = cast.ToStringMapE(v0); err != nil {
+						return err
 					}
-					item[sk[1]] = v0
 				}
 
 				result := reflect.MakeMapWithSize(t, len(temp))

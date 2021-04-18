@@ -28,15 +28,17 @@ db:
 
 tagged:
   db:
-    - tag.username: root
-      tag.password: 123456
-      tag.url: 1.1.1.1
-      tag.port: 3306
+    - tag:
+        username: root
+        password: 123456
+        url: 1.1.1.1
+        port: 3306
       db: db1
-    - tag.username: root
-      tag.password: 123456
-      tag.url: 1.1.1.1
-      tag.port: 3306
+    - tag:
+        username: root
+        password: 123456
+        url: 1.1.1.1
+        port: 3306
       db: db2
 
 prefix:

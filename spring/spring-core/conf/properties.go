@@ -59,32 +59,6 @@ type Properties interface {
 	// 将这些 key 全部转为小写。另外，Set 方法保存的是 value 深拷贝后的副本，从而
 	// 保证 Properties 数据的安全。
 	Set(key string, value interface{})
-
-	// Bind 将 key 对应的属性值绑定到某个数据类型的实例上。i 必须是一个指针，只有这
-	// 样才能将修改传递出去。Bind 方法使用 tag 对结构体的字段进行属性绑定，tag 的语
-	// 法为 value:"${a:=b}"，其中 value 是表示属性绑定 tag 的名称，${} 表示引用
-	// 一个属性，a 表示属性名，:=b 表示属性的默认值。这里需要注意两点：
-	//
-	// 一是结构体类型的字段上不允许设置默认值，这个规则一方面是因为找不到合理的序列化
-	// 方式，有人会说可以用 json，那么肯定也会有人说用 xml，众口难调，另一方面是因为
-	// 结构体的默认值一般会比较长，而如果 tag 太长就会影响阅读体验，因此结构体类型的
-	// 字段上不允许设置默认值；
-	//
-	// 二是可以省略属性名而只有默认值，即 ${:=b}，原因是某些情况下属性名可能没想好或
-	// 者不太重要，也有人认为这是一种对 Golang 缺少默认值语法的补充，Bug is Feature。
-	//
-	// 另外，属性绑定语法还支持嵌套的属性引用，但是只能在默认值中使用，即 ${a:=${b}}。
-	Bind(key string, i interface{}) error
-
-	// GetFirst 返回 keys 中第一个存在的属性值。
-	GetFirst(keys ...string) interface{}
-
-	// GetDefault 返回 key 的属性值，不存在时返回 def 值。
-	GetDefault(key string, def interface{}) interface{}
-
-	// Resolve 解析 ${key:=def} 字符串，返回 key 对应的属性值，如果没有找到则返回
-	// def 值，如果 def 存在引用关系则递归解析直到获取最终的属性值。
-	Resolve(tagOrValue interface{}) (interface{}, error)
 }
 
 // properties Properties 的默认实现。
@@ -278,7 +252,21 @@ func dupValue(value interface{}, toLower bool) interface{} {
 	return value
 }
 
-func (p *properties) Bind(key string, i interface{}) error {
+// Bind 将 key 对应的属性值绑定到某个数据类型的实例上。i 必须是一个指针，只有这
+// 样才能将修改传递出去。Bind 方法使用 tag 对结构体的字段进行属性绑定，tag 的语
+// 法为 value:"${a:=b}"，其中 value 是表示属性绑定 tag 的名称，${} 表示引用
+// 一个属性，a 表示属性名，:=b 表示属性的默认值。这里需要注意两点：
+//
+// 一是结构体类型的字段上不允许设置默认值，这个规则一方面是因为找不到合理的序列化
+// 方式，有人会说可以用 json，那么肯定也会有人说用 xml，众口难调，另一方面是因为
+// 结构体的默认值一般会比较长，而如果 tag 太长就会影响阅读体验，因此结构体类型的
+// 字段上不允许设置默认值；
+//
+// 二是可以省略属性名而只有默认值，即 ${:=b}，原因是某些情况下属性名可能没想好或
+// 者不太重要，也有人认为这是一种对 Golang 缺少默认值语法的补充，Bug is Feature。
+//
+// 另外，属性绑定语法还支持嵌套的属性引用，但是只能在默认值中使用，即 ${a:=${b}}。
+func Bind(p Properties, key string, i interface{}) error {
 
 	v := reflect.ValueOf(i)
 	if v.Kind() != reflect.Ptr {
@@ -294,7 +282,8 @@ func (p *properties) Bind(key string, i interface{}) error {
 	return BindValue(p, v.Elem(), "${"+key+"}", BindOption{Path: s, Key: key})
 }
 
-func (p *properties) GetFirst(keys ...string) interface{} {
+// GetFirst 返回 keys 中第一个存在的属性值。
+func GetFirst(p Properties, keys ...string) interface{} {
 	for _, key := range keys {
 		if v := p.Get(key); v != nil {
 			return v
@@ -303,22 +292,23 @@ func (p *properties) GetFirst(keys ...string) interface{} {
 	return nil
 }
 
-func (p *properties) GetDefault(key string, def interface{}) interface{} {
+// GetDefault 返回 key 的属性值，不存在时返回 def 值。
+func GetDefault(p Properties, key string, def interface{}) interface{} {
 	if v := p.Get(key); v != nil {
 		return v
 	}
 	return def
 }
 
-// ValidValueTag 是否为 ${key:=def} 格式的字符串。
-func ValidValueTag(tag string) bool {
+// validValueTag 是否为 ${key:=def} 格式的字符串。
+func validValueTag(tag string) bool {
 	return strings.HasPrefix(tag, "${") && strings.HasSuffix(tag, "}")
 }
 
-// ParseValueTag 解析 ${key:=def} 字符串，返回 key 和 def 的值。
-func ParseValueTag(tag string) (key string, def interface{}, err error) {
+// parseValueTag 解析 ${key:=def} 字符串，返回 key 和 def 的值。
+func parseValueTag(tag string) (key string, def interface{}, err error) {
 
-	if !ValidValueTag(tag) {
+	if !validValueTag(tag) {
 		return "", nil, errors.New("invalid value tag")
 	}
 
@@ -331,17 +321,19 @@ func ParseValueTag(tag string) (key string, def interface{}, err error) {
 	return
 }
 
-func (p *properties) Resolve(tagOrValue interface{}) (interface{}, error) {
+// Resolve 解析 ${key:=def} 字符串，返回 key 对应的属性值，如果没有找到则返回
+// def 值，如果 def 存在引用关系则递归解析直到获取最终的属性值。
+func Resolve(p Properties, tagOrValue interface{}) (interface{}, error) {
 
 	// 不是字符串或者没有使用配置引用语法则直接返回
 	tag, ok := tagOrValue.(string)
-	if !ok || !ValidValueTag(tag) {
+	if !ok || !validValueTag(tag) {
 		return tagOrValue, nil
 	}
 
-	key, def, _ := ParseValueTag(tag)
-	if val := p.GetDefault(key, def); val != nil {
-		return p.Resolve(val)
+	key, def, _ := parseValueTag(tag)
+	if val := GetDefault(p, key, def); val != nil {
+		return Resolve(p, val)
 	}
 
 	return nil, fmt.Errorf("property %q not config", key)

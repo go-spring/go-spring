@@ -24,6 +24,7 @@ import (
 )
 
 func init() {
+	// TODO 不使用 viper 实现 properties 因为支持引用
 	RegisterReader(Viper("prop"), ".properties")
 	RegisterReader(Viper("yaml"), ".yaml", ".yml")
 	RegisterReader(Viper("toml"), ".toml")
@@ -32,8 +33,8 @@ func init() {
 // Reader 属性读取器接口
 type Reader interface {
 	FileExt() []string // 属性读取器支持的文件扩展名的列表
-	ReadFile(filename string, out map[string]interface{}) error
-	ReadBuffer(buffer []byte, out map[string]interface{}) error
+	ReadFile(p Properties, filename string) error
+	ReadBuffer(p Properties, b []byte) error
 }
 
 var readers []Reader
@@ -53,7 +54,7 @@ func RegisterReader(fn ReaderFunc, fileExt ...string) {
 	readers = append(readers, &reader{ext: fileExt, fn: fn})
 }
 
-type ReaderFunc func(b []byte, out map[string]interface{}) error
+type ReaderFunc func(p Properties, b []byte) error
 
 // reader 属性读取接口的默认实现。
 type reader struct {
@@ -65,22 +66,22 @@ type reader struct {
 func (r *reader) FileExt() []string { return r.ext }
 
 // ReadBuffer 从内存中读取当前属性读取器支持的格式。
-func (r *reader) ReadBuffer(b []byte, out map[string]interface{}) error {
-	return r.fn(b, out)
+func (r *reader) ReadBuffer(p Properties, b []byte) error {
+	return r.fn(p, b)
 }
 
 // ReadBuffer 从文件中读取当前属性读取器支持的格式。
-func (r *reader) ReadFile(filename string, out map[string]interface{}) error {
+func (r *reader) ReadFile(p Properties, filename string) error {
 	file, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return err
 	}
-	return r.ReadBuffer(file, out)
+	return r.ReadBuffer(p, file)
 }
 
 // Viper 使用 viper 读取 fileType 类型的属性文件。
 func Viper(fileType string) ReaderFunc {
-	return func(b []byte, out map[string]interface{}) error {
+	return func(p Properties, b []byte) error {
 
 		v := viper.New()
 		v.SetConfigType(fileType)
@@ -90,7 +91,7 @@ func Viper(fileType string) ReaderFunc {
 
 		for _, key := range v.AllKeys() {
 			val := v.Get(key)
-			out[key] = val
+			p.Set(key, val)
 		}
 		return nil
 	}
