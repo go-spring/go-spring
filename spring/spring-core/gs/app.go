@@ -106,7 +106,9 @@ func NewApplication() *application {
 // Start 启动应用
 func (app *application) start(cfgLocation ...string) {
 
-	app.cfgLocation = append(app.cfgLocation, cfgLocation...)
+	if len(cfgLocation) > 0 {
+		app.cfgLocation = cfgLocation
+	}
 
 	// 打印 Banner 内容
 	if app.bannerMode != BannerModeOff {
@@ -272,26 +274,23 @@ func (app *application) loadProfileConfig(profile string) conf.Properties {
 			panic(fmt.Errorf("unsupported config scheme %s", scheme))
 		}
 
-		result, err := ps.Load(fileLocation, fileName)
+		err := ps.Load(p, fileLocation, fileName)
 		util.Panic(err).When(err != nil)
 
-		for k, v := range result {
-			log.Tracef("%s=%v", k, v)
-			p.Set(k, v)
-		}
+		// TODO Trace 打印所有的属性。
 	}
 	return p
 }
 
-// resolveProperty 解析属性值，查看其是否具有引用关系
-func (app *application) resolveProperty(conf map[string]interface{}, key string, value interface{}) interface{} {
+// resolveProperty 解析属性值，查看其是否具有引用关系。 TODO 和 conf.Resolve 可以合并吗？
+func resolveProperty(p conf.Properties, key string, value interface{}) interface{} {
 	if s, o := value.(string); o && strings.HasPrefix(s, "${") {
 		refKey := s[2 : len(s)-1]
-		if refValue, ok := conf[refKey]; !ok {
+		if refValue := p.Get(refKey); refValue == nil {
 			panic(fmt.Errorf("property \"%s\" not config", refKey))
 		} else {
-			refValue = app.resolveProperty(conf, refKey, refValue)
-			conf[key] = refValue
+			refValue = resolveProperty(p, refKey, refValue)
+			p.Set(key, refValue)
 			return refValue
 		}
 	}
@@ -311,7 +310,12 @@ func (app *application) prepare() {
 
 	// 将通过代码设置的属性值拷贝一份，第 1 层
 	apiConfig := conf.New()
-	app.appCtx.Properties().Range(func(k string, v interface{}) { apiConfig.Set(k, v) })
+	{
+		p := app.appCtx.Properties()
+		for _, k := range p.Keys() {
+			apiConfig.Set(k, p.Get(k))
+		}
+	}
 
 	// 加载默认的应用配置文件，如 application.conf，第 5 层
 	appConfig := app.loadProfileConfig("")
@@ -329,7 +333,7 @@ func (app *application) prepare() {
 	profile := app.appCtx.GetProfile()
 	if profile == "" {
 		keys := []string{SpringProfile, SPRING_PROFILE}
-		profile = cast.ToString(p.First(keys...))
+		profile = cast.ToString(p.GetFirst(keys...))
 	}
 	if profile != "" {
 		app.appCtx.SetProfile(profile) // 第 4 层
@@ -337,12 +341,10 @@ func (app *application) prepare() {
 		p.InsertBefore(profileConfig, appConfig)
 	}
 
-	properties := map[string]interface{}{}
-	p.Fill(properties)
-
 	// 将重组后的属性值写入 Context 属性列表
-	for key, value := range properties {
-		value = app.resolveProperty(properties, key, value)
+	for _, key := range p.Keys() {
+		value := p.Get(key)
+		value = resolveProperty(p, key, value)
 		app.appCtx.SetProperty(key, value)
 	}
 }

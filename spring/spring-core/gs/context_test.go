@@ -464,7 +464,7 @@ type EnvEnumBean struct {
 type PointBean struct {
 	Point        image.Point   `value:"${point}"`
 	DefaultPoint image.Point   `value:"${default_point:=(3,4)}"`
-	PointList    []image.Point `value:"${point.list}"`
+	PointList    []image.Point `value:"${point_list}"`
 }
 
 func PointConverter(val string) (image.Point, error) {
@@ -2667,7 +2667,7 @@ func TestApplicationContext_Properties(t *testing.T) {
 
 		obj := struct {
 			Int  int               `value:"${int:=5}"`
-			IntA int               `value:"${int.a:=5}"`
+			IntA int               `value:"${int_a:=5}"`
 			Map  map[string]string `value:"${map:={}}"`
 			MapA map[string]string `value:"${map_a:={}}"`
 		}{}
@@ -2675,8 +2675,8 @@ func TestApplicationContext_Properties(t *testing.T) {
 		ctx := gs.New()
 		ctx.SetProperty("map_a.nba", "nba")
 		ctx.SetProperty("map_a.cba", "cba")
-		ctx.SetProperty("int.a", "3")
-		ctx.SetProperty("int.b", "4")
+		ctx.SetProperty("int_a", "3")
+		ctx.SetProperty("int_b", "4")
 		ctx.Object(&obj)
 		ctx.Refresh()
 
@@ -2684,7 +2684,8 @@ func TestApplicationContext_Properties(t *testing.T) {
 		assert.Equal(t, obj.IntA, 3)
 		assert.Equal(t, obj.Map, map[string]string{})
 		assert.Equal(t, obj.MapA, map[string]string{
-			"cba": "cba", "nba": "nba",
+			"cba": "cba",
+			"nba": "nba",
 		})
 	})
 }

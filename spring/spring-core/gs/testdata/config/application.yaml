@@ -9,10 +9,9 @@ yaml:
       - name: "bob"
         age: 8
 
-point:
-  list:
-    - (2,3)
-    - (5,3)
+point_list:
+  - (2,3)
+  - (5,3)
 
 db:
   - username: root

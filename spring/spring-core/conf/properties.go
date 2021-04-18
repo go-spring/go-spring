@@ -59,6 +59,9 @@ type Properties interface {
 	// 将这些 key 全部转为小写。另外，Set 方法保存的是 value 深拷贝后的副本，从而
 	// 保证 Properties 数据的安全。
 	Set(key string, value interface{})
+
+	// GetFirst 返回 keys 中第一个存在的属性值。
+	GetFirst(keys ...string) interface{}
 }
 
 // properties Properties 的默认实现。
@@ -282,8 +285,7 @@ func Bind(p Properties, key string, i interface{}) error {
 	return BindValue(p, v.Elem(), "${"+key+"}", BindOption{Path: s, Key: key})
 }
 
-// GetFirst 返回 keys 中第一个存在的属性值。
-func GetFirst(p Properties, keys ...string) interface{} {
+func (p *properties) GetFirst(keys ...string) interface{} {
 	for _, key := range keys {
 		if v := p.Get(key); v != nil {
 			return v

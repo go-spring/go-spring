@@ -37,9 +37,6 @@ type Context interface {
 	// GetProperty 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。
 	GetProperty(key string) interface{}
 
-	// PrefixProperties 返回 key 转为小写后作为前缀的所有符合条件的属性集合。
-	PrefixProperties(key string) map[string]interface{}
-
 	// FindBean 返回符合条件的 Bean 集合，不保证返回的 Bean 已经完成注入和绑定过程。
 	FindBean(selector bean.Selector) ([]bean.Definition, error)
 }
@@ -74,14 +71,14 @@ func (c *not) Matches(ctx Context) bool {
 type onProperty struct{ name string }
 
 func (c *onProperty) Matches(ctx Context) bool {
-	return len(ctx.PrefixProperties(c.name)) > 0
+	return ctx.GetProperty(c.name) != nil
 }
 
 // onMissingProperty 基于属性值不存在的 Condition 实现。
 type onMissingProperty struct{ name string }
 
 func (c *onMissingProperty) Matches(ctx Context) bool {
-	return len(ctx.PrefixProperties(c.name)) == 0
+	return ctx.GetProperty(c.name) == nil
 }
 
 // onPropertyValue 基于属性值匹配的 Condition 实现。

@@ -16,6 +16,8 @@
 
 package conf
 
+import "sort"
+
 // priorityProperties 基于优先级的 Properties 实现。
 type priorityProperties struct {
 	Properties // 高优先级
@@ -37,10 +39,37 @@ func (p *priorityProperties) Depth() int {
 	}
 }
 
+// Keys 返回所有属性的 key。
+func (p *priorityProperties) Keys() []string {
+
+	oldKeys := p.Properties.Keys()
+	sort.Strings(oldKeys)
+	n := len(oldKeys)
+
+	var newKeys []string
+	for _, k := range p.next.Keys() {
+		i := sort.SearchStrings(oldKeys, k)
+		if i < 0 || i >= n {
+			newKeys = append(newKeys, k)
+		}
+	}
+
+	return append(oldKeys, newKeys...)
+}
+
 // Get 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。
 func (p *priorityProperties) Get(key string) interface{} {
 	if v := p.Properties.Get(key); v == nil {
 		return p.next.Get(key)
+	} else {
+		return v
+	}
+}
+
+// GetFirst 返回 keys 中第一个存在的属性值，属性名转为小写后进行精确匹配。
+func (p *priorityProperties) GetFirst(keys ...string) interface{} {
+	if v := p.Properties.GetFirst(keys...); v == nil {
+		return p.next.GetFirst(keys...)
 	} else {
 		return v
 	}

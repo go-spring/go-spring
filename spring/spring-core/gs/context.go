@@ -51,9 +51,6 @@ type Context interface {
 	// GetProperty 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。
 	GetProperty(key string) interface{}
 
-	// PrefixProperties 返回 key 转为小写后作为前缀的所有符合条件的属性集合。
-	PrefixProperties(key string) map[string]interface{}
-
 	// WireBean 对对象或者构造函数的结果进行依赖注入和属性绑定，返回处理后的对象
 	WireBean(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error)
 
@@ -180,11 +177,6 @@ func (ctx *applicationContext) GetProperty(key string) interface{} {
 // SetProperty 设置属性值，属性名称统一转成小写。
 func (ctx *applicationContext) SetProperty(key string, value interface{}) {
 	ctx.properties.Set(key, value)
-}
-
-// PrefixProperties 返回 key 转为小写后作为前缀的所有符合条件的属性集合。
-func (ctx *applicationContext) PrefixProperties(key string) map[string]interface{} {
-	return ctx.properties.Prefix(key)
 }
 
 // Context 返回上下文接口
