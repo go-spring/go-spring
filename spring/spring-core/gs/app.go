@@ -200,9 +200,8 @@ func printBanner(banner string) {
 }
 
 // loadCmdArgs 加载命令行参数，形如 -name value 的参数才有效。
-func (app *application) loadCmdArgs() conf.Properties {
+func (app *application) loadCmdArgs(p conf.Properties) {
 	log.Debugf("load cmd args")
-	p := conf.New()
 	for i := 0; i < len(os.Args); i++ { // 以短线定义的参数才有效
 		if arg := os.Args[i]; strings.HasPrefix(arg, "-") {
 			k, v := arg[1:], ""
@@ -214,11 +213,10 @@ func (app *application) loadCmdArgs() conf.Properties {
 			p.Set(k, v)
 		}
 	}
-	return p
 }
 
 // loadSystemEnv 加载系统环境变量，用户可以自定义有效环境变量的正则匹配
-func (app *application) loadSystemEnv() conf.Properties {
+func (app *application) loadSystemEnv(p conf.Properties) {
 
 	var rex []*regexp.Regexp
 	for _, v := range app.expectSysProperties {
@@ -230,7 +228,6 @@ func (app *application) loadSystemEnv() conf.Properties {
 	}
 
 	log.Debugf("load system env")
-	p := conf.New()
 	for _, env := range os.Environ() {
 		if i := strings.Index(env, "="); i > 0 {
 			k, v := env[0:i], env[i+1:]
@@ -243,11 +240,10 @@ func (app *application) loadSystemEnv() conf.Properties {
 			}
 		}
 	}
-	return p
 }
 
 // loadProfileConfig 加载指定环境的配置文件
-func (app *application) loadProfileConfig(profile string) conf.Properties {
+func (app *application) loadProfileConfig(p conf.Properties, profile string) {
 
 	fileName := "application"
 	if profile != "" {
@@ -259,7 +255,6 @@ func (app *application) loadProfileConfig(profile string) conf.Properties {
 		fileLocation string
 	)
 
-	p := conf.New()
 	for _, configLocation := range app.cfgLocation {
 
 		if ss := strings.SplitN(configLocation, ":", 2); len(ss) == 1 {
@@ -279,72 +274,62 @@ func (app *application) loadProfileConfig(profile string) conf.Properties {
 
 		// TODO Trace 打印所有的属性。
 	}
-	return p
-}
-
-// resolveProperty 解析属性值，查看其是否具有引用关系。 TODO 和 conf.Resolve 可以合并吗？
-func resolveProperty(p conf.Properties, key string, value interface{}) interface{} {
-	if s, o := value.(string); o && strings.HasPrefix(s, "${") {
-		refKey := s[2 : len(s)-1]
-		if refValue := p.Get(refKey); refValue == nil {
-			panic(fmt.Errorf("property \"%s\" not config", refKey))
-		} else {
-			refValue = resolveProperty(p, refKey, refValue)
-			p.Set(key, refValue)
-			return refValue
-		}
-	}
-	return value
 }
 
 // prepare 准备上下文环境
 func (app *application) prepare() {
 
 	// 配置项加载顺序优先级，从高到低:
-	// 1.代码设置
+	// 1.代码设置(api)
 	// 2.命令行参数
 	// 3.系统环境变量
 	// 4.application-profile.conf
 	// 5.application.conf
 	// 6.内部默认配置
 
-	// 将通过代码设置的属性值拷贝一份，第 1 层
 	apiConfig := conf.New()
-	{
-		p := app.appCtx.Properties()
+	cmdConfig := conf.New()
+	envConfig := conf.New()
+	profileConfig := conf.New()
+	defaultConfig := conf.New()
+
+	priority := conf.Priority([]conf.Properties{
+		apiConfig, cmdConfig, envConfig,
+		profileConfig, defaultConfig,
+	})
+
+	// 1. 保存通过代码设置的属性
+	if p := app.appCtx.Properties(); p != nil {
 		for _, k := range p.Keys() {
 			apiConfig.Set(k, p.Get(k))
 		}
 	}
 
-	// 加载默认的应用配置文件，如 application.conf，第 5 层
-	appConfig := app.loadProfileConfig("")
-	p := conf.Priority(apiConfig, appConfig)
+	// 2. 保存从命令行得到的属性
+	app.loadCmdArgs(cmdConfig)
 
-	// 加载系统环境变量，第 3 层
-	sysEnv := app.loadSystemEnv()
-	p.InsertBefore(sysEnv, appConfig)
+	// 3. 保存从环境变量得到的属性
+	app.loadSystemEnv(envConfig)
 
-	// 加载命令行参数，第 2 层
-	cmdArgs := app.loadCmdArgs()
-	p.InsertBefore(cmdArgs, sysEnv)
+	// 4. 加载默认的配置文件
+	app.loadProfileConfig(defaultConfig, "")
 
-	// 加载特定环境的配置文件，如 application-test.conf
+	// 5. 加载 profile 对应的配置文件
 	profile := app.appCtx.GetProfile()
 	if profile == "" {
 		keys := []string{SpringProfile, SPRING_PROFILE}
-		profile = cast.ToString(p.Get(keys...))
+		v := priority.GetFirst(keys...)
+		profile = cast.ToString(v)
 	}
 	if profile != "" {
-		app.appCtx.SetProfile(profile) // 第 4 层
-		profileConfig := app.loadProfileConfig(profile)
-		p.InsertBefore(profileConfig, appConfig)
+		app.appCtx.SetProfile(profile)
+		app.loadProfileConfig(profileConfig, profile)
 	}
 
 	// 将重组后的属性值写入 Context 属性列表
-	for _, key := range p.Keys() {
-		value := p.Get(key)
-		value = resolveProperty(p, key, value)
+	for _, key := range priority.Keys() {
+		value, err := conf.Resolve(priority, priority.Get(key))
+		util.Panic(err).When(err != nil)
 		app.appCtx.SetProperty(key, value)
 	}
 }

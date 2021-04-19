@@ -16,79 +16,57 @@
 
 package conf
 
-import "sort"
+import (
+	"sort"
+)
 
-// priorityProperties 基于优先级的 Properties 实现。
-type priorityProperties struct {
-	Properties // 高优先级
+type Priority []Properties
 
-	next Properties // 低优先级
-}
-
-// Priority priorityProperties 的构造函数
-func Priority(curr Properties, next Properties) *priorityProperties {
-	return &priorityProperties{Properties: curr, next: next}
-}
-
-// Depth 返回深度值
-func (p *priorityProperties) Depth() int {
-	if nxt, ok := p.next.(*priorityProperties); ok {
-		return nxt.Depth() + 1
-	} else {
-		return 2
+func (p Priority) Keys() []string {
+	var oldKeys []string
+	for _, c := range p {
+		n := len(oldKeys)
+		var newKeys []string
+		for _, k := range c.Keys() {
+			i := sort.SearchStrings(oldKeys, k)
+			if i < 0 || i >= n {
+				newKeys = append(newKeys, k)
+			}
+		}
+		oldKeys = append(oldKeys, newKeys...)
+		sort.Strings(oldKeys)
 	}
+	return oldKeys
 }
 
-// Keys 返回所有属性的 key。
-func (p *priorityProperties) Keys() []string {
-
-	oldKeys := p.Properties.Keys()
-	sort.Strings(oldKeys)
-	n := len(oldKeys)
-
-	var newKeys []string
-	for _, k := range p.next.Keys() {
-		i := sort.SearchStrings(oldKeys, k)
-		if i < 0 || i >= n {
-			newKeys = append(newKeys, k)
+func (p Priority) Get(key string) interface{} {
+	for _, c := range p {
+		if v := c.Get(key); v != nil {
+			return v
 		}
 	}
-
-	return append(oldKeys, newKeys...)
+	return nil
 }
 
-// Get 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。
-func (p *priorityProperties) Get(keys ...string) interface{} {
-	if v := p.Properties.Get(keys...); v == nil {
-		return p.next.Get(keys...)
-	} else {
-		return v
+func (p Priority) GetFirst(keys ...string) interface{} {
+	for _, c := range p {
+		for _, k := range keys {
+			if v := c.Get(k); v != nil {
+				return v
+			}
+		}
 	}
+	return nil
 }
 
-// InsertBefore 在 next 之前增加一层属性列表
-func (p *priorityProperties) InsertBefore(curr Properties, next Properties) bool {
-
-	// 如果插在最前面
-	if p.Properties == next {
-		nxt := Priority(p.Properties, p.next)
-		p.Properties = curr
-		p.next = nxt
-		return true
-	}
-
-	// 如果插在中间
-	if p.next == next {
-		nxt := Priority(curr, p.next)
-		p.next = nxt
-		return true
-	}
-
-	// 否则只能插在尾部
-	if nxt, ok := p.next.(*priorityProperties); ok {
-		return nxt.InsertBefore(curr, next)
-	}
-
-	// 找不到插入点
-	return false
-}
+//func (p Priority) Resolve(value interface{}) interface{} {
+//	if s, o := value.(string); o && strings.HasPrefix(s, "${") {
+//		refKey := s[2 : len(s)-1]
+//		if refValue := p.Get(refKey); refValue == nil {
+//			panic(fmt.Errorf("property \"%s\" not config", refKey))
+//		} else {
+//			return p.Resolve(refValue)
+//		}
+//	}
+//	return value
+//}

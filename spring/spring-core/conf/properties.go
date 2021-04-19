@@ -24,6 +24,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/go-spring/spring-core/contains"
 	"github.com/go-spring/spring-core/util"
 	"github.com/spf13/cast"
 )
@@ -53,7 +54,7 @@ type Properties interface {
 	// 或者 slice 类型的数据，会返回它们深拷贝后的副本，防止因为修改了返回值而对
 	// Properties 的数据造成修改。另外，Get 方法支持传入多个 key，然后返回找到的
 	// 第一个属性值，如果所有的 key 都没找到对应的属性值则返回 nil。
-	Get(keys ...string) interface{}
+	Get(key string) interface{}
 
 	// Set 设置 key 对应的属性值，如果 key 存在会覆盖原值。Set 方法在保存属性的时
 	// 候会将 key 转为小写，如果属性值是 map 类型或者包含 map 类型的数据，那么也会
@@ -101,7 +102,7 @@ func Read(b []byte, ext string) (Properties, error) {
 func (p *properties) Load(filename string) error {
 	ext := strings.ToLower(filepath.Ext(filename))
 	for _, r := range readers {
-		if util.ContainsString(r.FileExt(), ext) >= 0 {
+		if contains.Strings(r.FileExt(), ext) >= 0 {
 			return r.ReadFile(p, filename)
 		}
 	}
@@ -110,7 +111,7 @@ func (p *properties) Load(filename string) error {
 
 func (p *properties) Read(b []byte, ext string) error {
 	for _, r := range readers {
-		if util.ContainsString(r.FileExt(), ext) >= 0 {
+		if contains.Strings(r.FileExt(), ext) >= 0 {
 			return r.ReadBuffer(p, b)
 		}
 	}
@@ -198,23 +199,19 @@ func (p *properties) create(path []string) map[string]interface{} {
 
 func (p *properties) Keys() []string {
 	var s []string
-	for k, _ := range util.FlatMap(p.m) {
+	for k := range util.FlatMap(p.m) {
 		s = append(s, k)
 	}
 	return s
 }
 
-func (p *properties) Get(keys ...string) interface{} {
-	for _, key := range keys {
-		if len(key) > 0 {
-			key = strings.ToLower(key)
-			path := strings.Split(key, ".")
-			if v := p.find(path); v != nil {
-				return dupValue(v, false)
-			}
-		}
+func (p *properties) Get(key string) interface{} {
+	if key == "" {
+		return nil
 	}
-	return nil
+	key = strings.ToLower(key)
+	path := strings.Split(key, ".")
+	return dupValue(p.find(path), false)
 }
 
 func (p *properties) Set(key string, value interface{}) {
@@ -288,7 +285,7 @@ func Bind(p Properties, key string, i interface{}) error {
 }
 
 // GetDefault 返回 key 的属性值，不存在时返回 def 值。
-func GetDefault(p Properties, key string, def interface{}) interface{} {
+func GetDefault(p interface{ Get(key string) interface{} }, key string, def interface{}) interface{} {
 	if v := p.Get(key); v != nil {
 		return v
 	}
@@ -318,7 +315,7 @@ func parseValueTag(tag string) (key string, def interface{}, err error) {
 
 // Resolve 解析 ${key:=def} 字符串，返回 key 对应的属性值，如果没有找到则返回
 // def 值，如果 def 存在引用关系则递归解析直到获取最终的属性值。
-func Resolve(p Properties, tagOrValue interface{}) (interface{}, error) {
+func Resolve(p interface{ Get(key string) interface{} }, tagOrValue interface{}) (interface{}, error) {
 
 	// 不是字符串或者没有使用配置引用语法则直接返回
 	tag, ok := tagOrValue.(string)

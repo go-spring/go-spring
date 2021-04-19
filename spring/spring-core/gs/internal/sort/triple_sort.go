@@ -20,7 +20,7 @@ import (
 	"container/list"
 	"errors"
 
-	"github.com/go-spring/spring-core/util"
+	"github.com/go-spring/spring-core/contains"
 )
 
 // GetBeforeItems 获取 sorting 中排在 current 前面的元素
@@ -57,23 +57,23 @@ func tripleSortByAfter(sorting *list.List, toSort *list.List, sorted *list.List,
 		c := e.Value
 
 		// 自己不可能是自己前面的元素，除非出现了循环依赖，因此抛出 Panic
-		if util.ContainsList(processing, c) != nil {
+		if contains.List(processing, c) != nil {
 			panic(errors.New("found sorting cycle"))
 		}
 
-		inSorted := util.ContainsList(sorted, c) != nil
-		inToSort := util.ContainsList(toSort, c) != nil
+		inSorted := contains.List(sorted, c) != nil
+		inToSort := contains.List(toSort, c) != nil
 
 		if !inSorted && inToSort { // 如果是待排元素则对其进行排序
 			tripleSortByAfter(sorting, toSort, sorted, processing, c, fn)
 		}
 	}
 
-	if e := util.ContainsList(processing, current); e != nil {
+	if e := contains.List(processing, current); e != nil {
 		processing.Remove(e)
 	}
 
-	if e := util.ContainsList(toSort, current); e != nil {
+	if e := contains.List(toSort, current); e != nil {
 		toSort.Remove(e)
 	}
 

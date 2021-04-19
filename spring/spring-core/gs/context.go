@@ -26,6 +26,7 @@ import (
 	"sync"
 
 	"github.com/go-spring/spring-core/arg"
+	"github.com/go-spring/spring-core/array"
 	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/gs/internal/sort"
@@ -129,11 +130,11 @@ type applicationContext struct {
 	profile string // 运行环境
 	state   int    // 0 初始化，1 正在刷新，2 刷新完毕
 
-	allBeans *util.Array // 所有注册点
+	allBeans *array.Array // 所有注册点
 
 	cacheById   map[string]*BeanDefinition
-	cacheByName map[string]*util.Array
-	cacheByType map[reflect.Type]*util.Array
+	cacheByName map[string]*array.Array
+	cacheByType map[reflect.Type]*array.Array
 
 	configers    *list.List // 配置方法集合
 	destroyers   *list.List // 销毁函数集合
@@ -149,10 +150,10 @@ func New() ApplicationContext {
 		ctx:          ctx,
 		cancel:       cancel,
 		properties:   conf.New(),
-		allBeans:     util.NewArray(),
+		allBeans:     array.New(),
 		cacheById:    make(map[string]*BeanDefinition),
-		cacheByName:  make(map[string]*util.Array),
-		cacheByType:  make(map[reflect.Type]*util.Array),
+		cacheByName:  make(map[string]*array.Array),
+		cacheByType:  make(map[reflect.Type]*array.Array),
 		configers:    list.New(),
 		destroyers:   list.New(),
 		destroyerMap: make(map[string]*destroyer),
@@ -337,10 +338,10 @@ func (ctx *applicationContext) CollectBeans(i interface{}, selectors ...bean.Sel
 	return toAssembly(ctx).collectBeans(reflect.ValueOf(i).Elem(), tag, "")
 }
 
-func (ctx *applicationContext) getCacheByType(typ reflect.Type) *util.Array {
+func (ctx *applicationContext) getCacheByType(typ reflect.Type) *array.Array {
 	i, ok := ctx.cacheByType[typ]
 	if !ok {
-		i = util.NewArray()
+		i = array.New()
 		ctx.cacheByType[typ] = i
 	}
 	return i
@@ -351,10 +352,10 @@ func (ctx *applicationContext) setCacheByType(t reflect.Type, b *BeanDefinition)
 	ctx.getCacheByType(t).Append(b)
 }
 
-func (ctx *applicationContext) getCacheByName(name string) *util.Array {
+func (ctx *applicationContext) getCacheByName(name string) *array.Array {
 	i, ok := ctx.cacheByName[name]
 	if !ok {
-		i = util.NewArray()
+		i = array.New()
 		ctx.cacheByName[name] = i
 	}
 	return i
@@ -409,9 +410,10 @@ func (ctx *applicationContext) autoExport(t reflect.Type, b *BeanDefinition) err
 }
 
 func (ctx *applicationContext) registerBeans() {
-	ctx.allBeans.Range(func(_ int, v interface{}) {
+	for i := 0; i < ctx.allBeans.Len(); i++ {
+		v := ctx.allBeans.Get(i)
 		ctx.register(v.(*BeanDefinition))
-	})
+	}
 }
 
 // resolveBeans 对 Bean 进行决议是否能够创建 Bean 的实例

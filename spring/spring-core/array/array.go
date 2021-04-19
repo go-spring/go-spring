@@ -14,14 +14,19 @@
  * limitations under the License.
  */
 
-package util
+package array
 
 // Array 数组
 type Array struct{ data []interface{} }
 
-// NewArray Array 的构造函数。
-func NewArray() *Array {
+// New Array 的构造函数。
+func New() *Array {
 	return &Array{data: make([]interface{}, 0)}
+}
+
+// NewSize Array 的构造函数。
+func NewSize(size int) *Array {
+	return &Array{data: make([]interface{}, size)}
 }
 
 // Len 返回 Array 的长度。
@@ -37,11 +42,4 @@ func (arr *Array) Append(i interface{}) {
 // Get 获取 idx 位置的元素。
 func (arr *Array) Get(idx int) interface{} {
 	return arr.data[idx]
-}
-
-// Range 遍历数组所有的元素。
-func (arr *Array) Range(fn func(i int, v interface{})) {
-	for i, v := range arr.data {
-		fn(i, v)
-	}
 }
