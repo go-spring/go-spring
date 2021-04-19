@@ -51,17 +51,15 @@ type Properties interface {
 
 	// Get 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。如果返回值是 map
 	// 或者 slice 类型的数据，会返回它们深拷贝后的副本，防止因为修改了返回值而对
-	// Properties 的数据造成修改。
-	Get(key string) interface{}
+	// Properties 的数据造成修改。另外，Get 方法支持传入多个 key，然后返回找到的
+	// 第一个属性值，如果所有的 key 都没找到对应的属性值则返回 nil。
+	Get(keys ...string) interface{}
 
 	// Set 设置 key 对应的属性值，如果 key 存在会覆盖原值。Set 方法在保存属性的时
 	// 候会将 key 转为小写，如果属性值是 map 类型或者包含 map 类型的数据，那么也会
 	// 将这些 key 全部转为小写。另外，Set 方法保存的是 value 深拷贝后的副本，从而
 	// 保证 Properties 数据的安全。
 	Set(key string, value interface{})
-
-	// GetFirst 返回 keys 中第一个存在的属性值。
-	GetFirst(keys ...string) interface{}
 }
 
 // properties Properties 的默认实现。
@@ -206,13 +204,17 @@ func (p *properties) Keys() []string {
 	return s
 }
 
-func (p *properties) Get(key string) interface{} {
-	if key == "" {
-		return nil
+func (p *properties) Get(keys ...string) interface{} {
+	for _, key := range keys {
+		if len(key) > 0 {
+			key = strings.ToLower(key)
+			path := strings.Split(key, ".")
+			if v := p.find(path); v != nil {
+				return dupValue(v, false)
+			}
+		}
 	}
-	key = strings.ToLower(key)
-	path := strings.Split(key, ".")
-	return dupValue(p.find(path), false)
+	return nil
 }
 
 func (p *properties) Set(key string, value interface{}) {
@@ -283,15 +285,6 @@ func Bind(p Properties, key string, i interface{}) error {
 	}
 
 	return BindValue(p, v.Elem(), "${"+key+"}", BindOption{Path: s, Key: key})
-}
-
-func (p *properties) GetFirst(keys ...string) interface{} {
-	for _, key := range keys {
-		if v := p.Get(key); v != nil {
-			return v
-		}
-	}
-	return nil
 }
 
 // GetDefault 返回 key 的属性值，不存在时返回 def 值。

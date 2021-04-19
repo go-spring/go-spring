@@ -58,18 +58,9 @@ func (p *priorityProperties) Keys() []string {
 }
 
 // Get 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。
-func (p *priorityProperties) Get(key string) interface{} {
-	if v := p.Properties.Get(key); v == nil {
-		return p.next.Get(key)
-	} else {
-		return v
-	}
-}
-
-// GetFirst 返回 keys 中第一个存在的属性值，属性名转为小写后进行精确匹配。
-func (p *priorityProperties) GetFirst(keys ...string) interface{} {
-	if v := p.Properties.GetFirst(keys...); v == nil {
-		return p.next.GetFirst(keys...)
+func (p *priorityProperties) Get(keys ...string) interface{} {
+	if v := p.Properties.Get(keys...); v == nil {
+		return p.next.Get(keys...)
 	} else {
 		return v
 	}

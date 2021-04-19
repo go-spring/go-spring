@@ -333,7 +333,7 @@ func (app *application) prepare() {
 	profile := app.appCtx.GetProfile()
 	if profile == "" {
 		keys := []string{SpringProfile, SPRING_PROFILE}
-		profile = cast.ToString(p.GetFirst(keys...))
+		profile = cast.ToString(p.Get(keys...))
 	}
 	if profile != "" {
 		app.appCtx.SetProfile(profile) // 第 4 层
