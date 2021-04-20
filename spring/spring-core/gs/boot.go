@@ -40,9 +40,9 @@ func Banner(banner string) {
 	gApp.banner = banner
 }
 
-// GetProfile 返回运行环境
-func GetProfile() string {
-	return gApp.appCtx.GetProfile()
+// Profile 返回运行环境
+func Profile() string {
+	return gApp.appCtx.Profile()
 }
 
 // SetProfile 设置运行环境
@@ -50,8 +50,8 @@ func SetProfile(profile string) {
 	gApp.appCtx.SetProfile(profile)
 }
 
-func GetProperty(key string) interface{} {
-	return gApp.appCtx.GetProperty(key)
+func Property(key string) interface{} {
+	return gApp.appCtx.Property(key)
 }
 
 // SetProperty 设置属性值，属性名称统一转成小写。

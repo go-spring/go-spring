@@ -315,7 +315,7 @@ func (app *application) prepare() {
 	app.loadProfileConfig(defaultConfig, "")
 
 	// 5. 加载 profile 对应的配置文件
-	profile := app.appCtx.GetProfile()
+	profile := app.appCtx.Profile()
 	if profile == "" {
 		keys := []string{SpringProfile, SPRING_PROFILE}
 		v := priority.GetFirst(keys...)

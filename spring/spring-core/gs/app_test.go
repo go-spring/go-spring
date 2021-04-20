@@ -38,40 +38,40 @@ func TestConfig(t *testing.T) {
 		os.Clearenv()
 		app := startApplication()
 		assert.Equal(t, app.cfgLocation, []string{DefaultConfigLocation})
-		assert.Equal(t, app.appCtx.GetProfile(), "")
+		assert.Equal(t, app.appCtx.Profile(), "")
 	})
 
 	t.Run("config via env", func(t *testing.T) {
 		os.Clearenv()
 		_ = os.Setenv(SpringProfile, "dev")
 		app := startApplication("testdata/config/")
-		assert.Equal(t, app.appCtx.GetProfile(), "dev")
+		assert.Equal(t, app.appCtx.Profile(), "dev")
 	})
 
 	t.Run("config via env 2", func(t *testing.T) {
 		os.Clearenv()
 		_ = os.Setenv(SPRING_PROFILE, "dev")
 		app := startApplication("testdata/config/")
-		assert.Equal(t, app.appCtx.GetProfile(), "dev")
+		assert.Equal(t, app.appCtx.Profile(), "dev")
 	})
 
 	t.Run("profile via config", func(t *testing.T) {
 		os.Clearenv()
 		app := startApplication("testdata/config/")
-		assert.Equal(t, app.appCtx.GetProfile(), "test")
+		assert.Equal(t, app.appCtx.Profile(), "test")
 	})
 
 	t.Run("profile via env&config", func(t *testing.T) {
 		os.Clearenv()
 		app := startApplication("testdata/config/")
-		assert.Equal(t, app.appCtx.GetProfile(), "test")
+		assert.Equal(t, app.appCtx.Profile(), "test")
 	})
 
 	t.Run("profile via env&config 2", func(t *testing.T) {
 		os.Clearenv()
 		_ = os.Setenv(SPRING_PROFILE, "dev")
 		app := startApplication("testdata/config/")
-		assert.Equal(t, app.appCtx.GetProfile(), "dev")
+		assert.Equal(t, app.appCtx.Profile(), "dev")
 	})
 
 	t.Run("default expect system properties", func(t *testing.T) {

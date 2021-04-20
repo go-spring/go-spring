@@ -46,14 +46,17 @@ type Context interface {
 	// Context 返回上下文接口
 	Context() context.Context
 
-	// GetProfile 返回运行环境。
-	GetProfile() string
+	// Profile 返回运行环境。
+	Profile() string
 
-	// GetProperty 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。
-	GetProperty(key string) interface{}
+	// PropKeys 返回所有属性的 key。
+	PropKeys() []string
 
-	// WireBean 对对象或者构造函数的结果进行依赖注入和属性绑定，返回处理后的对象
-	WireBean(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error)
+	// Property 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。
+	Property(key string) interface{}
+
+	// EachBean 遍历所有 Bean 的定义，不能保证解析和注入，请谨慎使用!
+	EachBean(fn func(b bean.Definition))
 
 	// GetBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 	// 它和 FindBean 的区别是它在调用后能够保证返回的 Bean 已经完成了注入和绑定过程。
@@ -71,8 +74,8 @@ type Context interface {
 	// selectors 列表的顺序对收集结果进行排序。
 	CollectBeans(i interface{}, selectors ...bean.Selector) error
 
-	// EachBean 遍历所有 Bean 的定义，不能保证解析和注入，请谨慎使用!
-	EachBean(fn func(b bean.Definition))
+	// WireBean 对对象或者构造函数的结果进行依赖注入和属性绑定，返回处理后的对象
+	WireBean(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error)
 
 	// Go 安全地启动一个 goroutine
 	Go(fn interface{}, args ...arg.Arg)
@@ -170,8 +173,13 @@ func (ctx *applicationContext) LoadProperties(filename string) error {
 	return ctx.properties.Load(filename)
 }
 
-// GetProperty 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。
-func (ctx *applicationContext) GetProperty(key string) interface{} {
+// PropKeys 返回所有属性的 key。
+func (ctx *applicationContext) PropKeys() []string {
+	return ctx.properties.Keys()
+}
+
+// Property 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。
+func (ctx *applicationContext) Property(key string) interface{} {
 	return ctx.properties.Get(key)
 }
 
@@ -185,8 +193,8 @@ func (ctx *applicationContext) Context() context.Context {
 	return ctx.ctx
 }
 
-// GetProfile 返回运行环境。
-func (ctx *applicationContext) GetProfile() string {
+// Profile 返回运行环境。
+func (ctx *applicationContext) Profile() string {
 	return ctx.profile
 }
 
