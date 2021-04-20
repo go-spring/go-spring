@@ -26,38 +26,38 @@ import (
 )
 
 func init() {
-	RegisterPropertySource(defaultPropertySource, "")
-	RegisterPropertySource(configMapPropertySource, "k8s")
+	RegisterScheme(defaultScheme, "")
+	RegisterScheme(configMapScheme, "k8s")
 }
 
-var propertySourceMap = make(map[string]PropertySource)
+var schemeMap = make(map[string]Scheme)
 
-func FindPropertySource(scheme string) (PropertySource, bool) {
-	ps, ok := propertySourceMap[scheme]
+func FindScheme(name string) (Scheme, bool) {
+	ps, ok := schemeMap[name]
 	return ps, ok
 }
 
-// RegisterPropertySource 注册属性源
-func RegisterPropertySource(ps PropertySource, scheme string) {
-	propertySourceMap[scheme] = ps
+// RegisterScheme 注册属性源
+func RegisterScheme(ps Scheme, name string) {
+	schemeMap[name] = ps
 }
 
-// PropertySource 属性源接口
-type PropertySource interface {
+// Scheme 属性源接口
+type Scheme interface {
 
 	// Load 加载符合条件的属性文件，fileLocation 是配置文件所在的目录或者数据文件，
 	// fileName 是配置文件的名称，但不包含扩展名。通过遍历配置读取器获取存在的配置文件。
 	Load(p Properties, fileLocation string, fileName string) error
 }
 
-type FuncPropertySource func(p Properties, fileLocation string, fileName string) error
+type FuncScheme func(p Properties, fileLocation string, fileName string) error
 
-func (fn FuncPropertySource) Load(p Properties, fileLocation string, fileName string) error {
+func (fn FuncScheme) Load(p Properties, fileLocation string, fileName string) error {
 	return fn(p, fileLocation, fileName)
 }
 
-// defaultPropertySource 整个文件都是属性
-var defaultPropertySource = FuncPropertySource(func(p Properties, fileLocation string, fileName string) error {
+// defaultScheme 整个文件都是属性
+var defaultScheme = FuncScheme(func(p Properties, fileLocation string, fileName string) error {
 	err := EachReader(func(r Reader) error {
 		var file string
 
@@ -87,8 +87,8 @@ var defaultPropertySource = FuncPropertySource(func(p Properties, fileLocation s
 	return nil
 })
 
-// configMapPropertySource 基于 k8s ConfigMap 的属性源
-var configMapPropertySource = FuncPropertySource(func(p Properties, fileLocation string, fileName string) error {
+// configMapScheme 基于 k8s ConfigMap 的属性源
+var configMapScheme = FuncScheme(func(p Properties, fileLocation string, fileName string) error {
 
 	v := viper.New()
 	v.SetConfigFile(fileLocation)

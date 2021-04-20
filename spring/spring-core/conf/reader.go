@@ -70,7 +70,7 @@ func (r *reader) ReadBuffer(p Properties, b []byte) error {
 	return r.fn(p, b)
 }
 
-// ReadBuffer 从文件中读取当前属性读取器支持的格式。
+// ReadFile 从文件中读取当前属性读取器支持的格式。
 func (r *reader) ReadFile(p Properties, filename string) error {
 	file, err := ioutil.ReadFile(filename)
 	if err != nil {

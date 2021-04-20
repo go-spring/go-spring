@@ -268,7 +268,7 @@ func dupValue(value interface{}, toLower bool) interface{} {
 // 者不太重要，也有人认为这是一种对 Golang 缺少默认值语法的补充，Bug is Feature。
 //
 // 另外，属性绑定语法还支持嵌套的属性引用，但是只能在默认值中使用，即 ${a:=${b}}。
-func Bind(p Properties, key string, i interface{}) error {
+func Bind(p interface{ Get(key string) interface{} }, key string, i interface{}) error {
 
 	v := reflect.ValueOf(i)
 	if v.Kind() != reflect.Ptr {
@@ -284,8 +284,8 @@ func Bind(p Properties, key string, i interface{}) error {
 	return BindValue(p, v.Elem(), "${"+key+"}", BindOption{Path: s, Key: key})
 }
 
-// GetDefault 返回 key 的属性值，不存在时返回 def 值。
-func GetDefault(p interface{ Get(key string) interface{} }, key string, def interface{}) interface{} {
+// Default 返回 key 的属性值，不存在时返回 def 值。
+func Default(p interface{ Get(key string) interface{} }, key string, def interface{}) interface{} {
 	if v := p.Get(key); v != nil {
 		return v
 	}
@@ -324,7 +324,7 @@ func Resolve(p interface{ Get(key string) interface{} }, tagOrValue interface{})
 	}
 
 	key, def, _ := parseValueTag(tag)
-	if val := GetDefault(p, key, def); val != nil {
+	if val := Default(p, key, def); val != nil {
 		return Resolve(p, val)
 	}
 

@@ -521,7 +521,7 @@ func TestProperties_Get(t *testing.T) {
 		v := p.Get("NULL")
 		assert.Equal(t, v, nil)
 
-		v = conf.GetDefault(p, "NULL", "OK")
+		v = conf.Default(p, "NULL", "OK")
 		assert.Equal(t, v, "OK")
 
 		v = p.Get("INT")

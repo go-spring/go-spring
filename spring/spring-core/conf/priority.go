@@ -58,15 +58,3 @@ func (p Priority) GetFirst(keys ...string) interface{} {
 	}
 	return nil
 }
-
-//func (p Priority) Resolve(value interface{}) interface{} {
-//	if s, o := value.(string); o && strings.HasPrefix(s, "${") {
-//		refKey := s[2 : len(s)-1]
-//		if refValue := p.Get(refKey); refValue == nil {
-//			panic(fmt.Errorf("property \"%s\" not config", refKey))
-//		} else {
-//			return p.Resolve(refValue)
-//		}
-//	}
-//	return value
-//}

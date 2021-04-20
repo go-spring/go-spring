@@ -251,7 +251,7 @@ func (app *application) loadProfileConfig(p conf.Properties, profile string) {
 	}
 
 	var (
-		scheme       string
+		schemeName   string
 		fileLocation string
 	)
 
@@ -260,16 +260,16 @@ func (app *application) loadProfileConfig(p conf.Properties, profile string) {
 		if ss := strings.SplitN(configLocation, ":", 2); len(ss) == 1 {
 			fileLocation = ss[0]
 		} else {
-			scheme = ss[0]
+			schemeName = ss[0]
 			fileLocation = ss[1]
 		}
 
-		ps, ok := conf.FindPropertySource(scheme)
+		scheme, ok := conf.FindScheme(schemeName)
 		if !ok {
-			panic(fmt.Errorf("unsupported config scheme %s", scheme))
+			panic(fmt.Errorf("unsupported config scheme %s", schemeName))
 		}
 
-		err := ps.Load(p, fileLocation, fileName)
+		err := scheme.Load(p, fileLocation, fileName)
 		util.Panic(err).When(err != nil)
 
 		// TODO Trace 打印所有的属性。

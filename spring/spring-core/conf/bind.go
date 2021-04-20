@@ -33,7 +33,7 @@ type BindOption struct {
 }
 
 // bindStruct 对结构体的字段进行属性绑定，该方法要求 v 的类型必须是结构体。
-func bindStruct(p Properties, v reflect.Value, opt BindOption) error {
+func bindStruct(p interface{ Get(key string) interface{} }, v reflect.Value, opt BindOption) error {
 	t := v.Type()
 	for i := 0; i < t.NumField(); i++ {
 		ft := t.Field(i)
@@ -42,7 +42,7 @@ func bindStruct(p Properties, v reflect.Value, opt BindOption) error {
 		subOpt := BindOption{
 			Prefix: opt.Prefix,
 			Key:    opt.Key,
-			Path:   opt.Path + ".$" + ft.Name,
+			Path:   opt.Path + "." + ft.Name,
 		}
 
 		if tag, ok := ft.Tag.Lookup("value"); ok {
@@ -63,7 +63,7 @@ func bindStruct(p Properties, v reflect.Value, opt BindOption) error {
 }
 
 // BindValue 对任意值 v 进行属性绑定，tag 是形如 ${key:=def} 的字符串，v 必须是值类型。
-func BindValue(p Properties, v reflect.Value, tag string, opt BindOption) error {
+func BindValue(p interface{ Get(key string) interface{} }, v reflect.Value, tag string, opt BindOption) error {
 
 	getProperty := func(key string, def interface{}) (interface{}, error) {
 		if val := p.Get(key); val != nil {
