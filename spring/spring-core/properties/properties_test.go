@@ -14,6 +14,26 @@
  * limitations under the License.
  */
 
-package java
+package properties_test
 
-type Properties struct{}
+import (
+	"testing"
+
+	"github.com/go-spring/spring-core/assert"
+	"github.com/go-spring/spring-core/properties"
+)
+
+func TestRead(t *testing.T) {
+
+	// 不支持数组
+	str := "a[0].b=c"
+	m, _ := properties.Read([]byte(str))
+	assert.Nil(t, m["a"])
+	assert.Equal(t, m["a[0].b"], "c")
+
+	// 不支持属性引用
+	str = "a=b\nc=${a}"
+	m, _ = properties.Read([]byte(str))
+	assert.Equal(t, m["a"], "b")
+	assert.Equal(t, m["c"], "${a}")
+}
