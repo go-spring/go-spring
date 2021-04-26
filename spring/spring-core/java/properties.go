@@ -14,26 +14,21 @@
  * limitations under the License.
  */
 
-package properties_test
+package java
 
-import (
-	"testing"
+import "github.com/magiconair/properties"
 
-	"github.com/go-spring/spring-core/assert"
-	"github.com/go-spring/spring-core/properties"
-)
-
-func TestRead(t *testing.T) {
-
-	// 不支持数组
-	str := "a[0].b=c"
-	m, _ := properties.Read([]byte(str))
-	assert.Nil(t, m["a"])
-	assert.Equal(t, m["a[0].b"], "c")
-
-	// 不支持属性引用
-	str = "a=b\nc=${a}"
-	m, _ = properties.Read([]byte(str))
-	assert.Equal(t, m["a"], "b")
-	assert.Equal(t, m["c"], "${a}")
+// ReadProperties 从内存中读取属性列表，b 是 UTF8 格式，不支持数组类型的配置，不支持属性引用。
+func ReadProperties(b []byte) (map[string]interface{}, error) {
+	p := properties.NewProperties()
+	p.DisableExpansion = true
+	if err := p.Load(b, properties.UTF8); err != nil {
+		return nil, err
+	}
+	ret := make(map[string]interface{})
+	for _, k := range p.Keys() {
+		v, _ := p.Get(k)
+		ret[k] = v
+	}
+	return ret, nil
 }

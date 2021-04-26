@@ -89,7 +89,7 @@ func TestTomlReader(t *testing.T) {
 	})
 
 	t.Run("", func(t *testing.T) {
-		p, _ := conf.Read([]byte("a.b=c"), ".properties")
+		p, _ := conf.Read([]byte("a.b=c"), "properties")
 		m := p.Get("a").(map[string]interface{})
 		m["d"] = "e"
 		fmt.Println(p)

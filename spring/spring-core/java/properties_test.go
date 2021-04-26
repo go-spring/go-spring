@@ -14,32 +14,26 @@
  * limitations under the License.
  */
 
-package array
+package java_test
 
-// Array 数组
-type Array struct{ data []interface{} }
+import (
+	"testing"
 
-// New Array 的构造函数。
-func New() *Array {
-	return &Array{data: make([]interface{}, 0)}
-}
+	"github.com/go-spring/spring-core/assert"
+	"github.com/go-spring/spring-core/java"
+)
 
-// NewSize Array 的构造函数。
-func NewSize(size int) *Array {
-	return &Array{data: make([]interface{}, size)}
-}
+func TestRead(t *testing.T) {
 
-// Len 返回 Array 的长度。
-func (arr *Array) Len() int {
-	return len(arr.data)
-}
+	// 不支持数组
+	str := "a[0].b=c"
+	m, _ := java.ReadProperties([]byte(str))
+	assert.Nil(t, m["a"])
+	assert.Equal(t, m["a[0].b"], "c")
 
-// Append 向数组尾部添加一个元素。
-func (arr *Array) Append(i interface{}) {
-	arr.data = append(arr.data, i)
-}
-
-// Get 获取 idx 位置的元素。
-func (arr *Array) Get(idx int) interface{} {
-	return arr.data[idx]
+	// 不支持属性引用
+	str = "a=b\nc=${a}"
+	m, _ = java.ReadProperties([]byte(str))
+	assert.Equal(t, m["a"], "b")
+	assert.Equal(t, m["c"], "${a}")
 }

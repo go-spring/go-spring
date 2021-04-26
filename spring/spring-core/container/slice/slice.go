@@ -14,21 +14,32 @@
  * limitations under the License.
  */
 
-package properties
+package slice
 
-import "github.com/magiconair/properties"
+// Slice 切片。
+type Slice struct{ data []interface{} }
 
-// Read 从内存中读取属性列表，b 是 UTF8 格式，不支持数组类型的配置，不支持属性引用。
-func Read(b []byte) (map[string]interface{}, error) {
-	p := properties.NewProperties()
-	p.DisableExpansion = true
-	if err := p.Load(b, properties.UTF8); err != nil {
-		return nil, err
-	}
-	ret := make(map[string]interface{})
-	for _, k := range p.Keys() {
-		v, _ := p.Get(k)
-		ret[k] = v
-	}
-	return ret, nil
+// New Slice 的构造函数。
+func New() *Slice {
+	return &Slice{data: make([]interface{}, 0)}
+}
+
+// NewSize Slice 的构造函数。
+func NewSize(size int) *Slice {
+	return &Slice{data: make([]interface{}, size)}
+}
+
+// Len 返回 Slice 的长度。
+func (arr *Slice) Len() int {
+	return len(arr.data)
+}
+
+// Append 向切片尾部添加一个元素。
+func (arr *Slice) Append(i interface{}) {
+	arr.data = append(arr.data, i)
+}
+
+// Get 获取 idx 位置的元素。
+func (arr *Slice) Get(idx int) interface{} {
+	return arr.data[idx]
 }

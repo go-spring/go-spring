@@ -26,9 +26,9 @@ import (
 	"sync"
 
 	"github.com/go-spring/spring-core/arg"
-	"github.com/go-spring/spring-core/array"
 	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/conf"
+	"github.com/go-spring/spring-core/container/slice"
 	"github.com/go-spring/spring-core/gs/internal/sort"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
@@ -133,11 +133,11 @@ type applicationContext struct {
 	profile string // 运行环境
 	state   int    // 0 初始化，1 正在刷新，2 刷新完毕
 
-	allBeans *array.Array // 所有注册点
+	allBeans *slice.Slice // 所有注册点
 
 	cacheById   map[string]*BeanDefinition
-	cacheByName map[string]*array.Array
-	cacheByType map[reflect.Type]*array.Array
+	cacheByName map[string]*slice.Slice
+	cacheByType map[reflect.Type]*slice.Slice
 
 	configers    *list.List // 配置方法集合
 	destroyers   *list.List // 销毁函数集合
@@ -153,10 +153,10 @@ func New() ApplicationContext {
 		ctx:          ctx,
 		cancel:       cancel,
 		properties:   conf.New(),
-		allBeans:     array.New(),
+		allBeans:     slice.New(),
 		cacheById:    make(map[string]*BeanDefinition),
-		cacheByName:  make(map[string]*array.Array),
-		cacheByType:  make(map[reflect.Type]*array.Array),
+		cacheByName:  make(map[string]*slice.Slice),
+		cacheByType:  make(map[reflect.Type]*slice.Slice),
 		configers:    list.New(),
 		destroyers:   list.New(),
 		destroyerMap: make(map[string]*destroyer),
@@ -346,10 +346,10 @@ func (ctx *applicationContext) CollectBeans(i interface{}, selectors ...bean.Sel
 	return toAssembly(ctx).collectBeans(reflect.ValueOf(i).Elem(), tag, "")
 }
 
-func (ctx *applicationContext) getCacheByType(typ reflect.Type) *array.Array {
+func (ctx *applicationContext) getCacheByType(typ reflect.Type) *slice.Slice {
 	i, ok := ctx.cacheByType[typ]
 	if !ok {
-		i = array.New()
+		i = slice.New()
 		ctx.cacheByType[typ] = i
 	}
 	return i
@@ -360,10 +360,10 @@ func (ctx *applicationContext) setCacheByType(t reflect.Type, b *BeanDefinition)
 	ctx.getCacheByType(t).Append(b)
 }
 
-func (ctx *applicationContext) getCacheByName(name string) *array.Array {
+func (ctx *applicationContext) getCacheByName(name string) *slice.Slice {
 	i, ok := ctx.cacheByName[name]
 	if !ok {
-		i = array.New()
+		i = slice.New()
 		ctx.cacheByName[name] = i
 	}
 	return i

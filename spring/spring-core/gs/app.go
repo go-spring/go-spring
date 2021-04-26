@@ -269,7 +269,7 @@ func (app *application) loadProfileConfig(p conf.Properties, profile string) {
 			panic(fmt.Errorf("unsupported config scheme %s", schemeName))
 		}
 
-		err := scheme.Load(p, fileLocation, fileName)
+		err := scheme.Load(p, fileLocation, fileName, []string{"properties", "yaml", "toml"})
 		util.Panic(err).When(err != nil)
 
 		// TODO Trace 打印所有的属性。

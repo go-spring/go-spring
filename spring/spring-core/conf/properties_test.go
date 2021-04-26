@@ -65,7 +65,7 @@ func TestProperties_ReadProperties(t *testing.T) {
 		}
 
 		for _, d := range data {
-			p, _ := conf.Read([]byte(d.str), ".properties")
+			p, _ := conf.Read([]byte(d.str), "properties")
 			v := p.Get(d.key)
 			assert.Equal(t, v, d.val)
 		}
@@ -88,7 +88,7 @@ func TestProperties_ReadProperties(t *testing.T) {
 	//	}
 	//
 	//	for _, d := range data {
-	//		p, _ := conf.Read([]byte(d.str), ".properties")
+	//		p, _ := conf.Read([]byte(d.str), "properties")
 	//		v := p.Get(d.key)
 	//		assert.Equal(t, v, d.val)
 	//	}
@@ -110,7 +110,7 @@ func TestProperties_ReadProperties(t *testing.T) {
 			"map.string": "hello",
 		}
 
-		p, _ := conf.Read([]byte(str), ".properties")
+		p, _ := conf.Read([]byte(str), "properties")
 		for k, expect := range data {
 			v := p.Get(k)
 			assert.Equal(t, v, expect)
@@ -131,7 +131,7 @@ func TestProperties_ReadProperties(t *testing.T) {
 	//          array[1].string=hello
 	//        `
 	//
-	//	p, _ := conf.Read([]byte(str), ".properties")
+	//	p, _ := conf.Read([]byte(str), "properties")
 	//	data := map[string]interface{}{
 	//		"array[0].bool":   "false",
 	//		"array[0].int":    "3",
@@ -173,7 +173,7 @@ func TestProperties_ReadProperties(t *testing.T) {
 			"map.k2.string": "hello",
 		}
 
-		p, _ := conf.Read([]byte(str), ".properties")
+		p, _ := conf.Read([]byte(str), "properties")
 		for k, expect := range data {
 			v := p.Get(k)
 			assert.Equal(t, v, expect)
@@ -201,7 +201,7 @@ func TestProperties_ReadYaml(t *testing.T) {
 		}
 
 		for _, d := range data {
-			p, _ := conf.Read([]byte(d.str), ".yaml")
+			p, _ := conf.Read([]byte(d.str), "yaml")
 			v := p.Get(d.key)
 			assert.Equal(t, v, d.val)
 		}
@@ -223,7 +223,7 @@ func TestProperties_ReadYaml(t *testing.T) {
 		}
 
 		for _, d := range data {
-			p, _ := conf.Read([]byte(d.str), ".yaml")
+			p, _ := conf.Read([]byte(d.str), "yaml")
 			v := p.Get(d.key)
 			assert.Equal(t, v, d.val)
 		}
@@ -246,7 +246,7 @@ func TestProperties_ReadYaml(t *testing.T) {
 			"map.string": "hello",
 		}
 
-		p, _ := conf.Read([]byte(str), ".yaml")
+		p, _ := conf.Read([]byte(str), "yaml")
 		for k, expect := range data {
 			v := p.Get(k)
 			assert.Equal(t, v, expect)
@@ -269,7 +269,7 @@ func TestProperties_ReadYaml(t *testing.T) {
                   string: hello
         `
 
-		p, _ := conf.Read([]byte(str), ".yaml")
+		p, _ := conf.Read([]byte(str), "yaml")
 		v := p.Get("array")
 		expect := []interface{}{
 			map[string]interface{}{
@@ -315,7 +315,7 @@ func TestProperties_ReadYaml(t *testing.T) {
 			"map.k2.string": "hello",
 		}
 
-		p, _ := conf.Read([]byte(str), ".yaml")
+		p, _ := conf.Read([]byte(str), "yaml")
 		for k, expect := range data {
 			v := p.Get(k)
 			assert.Equal(t, v, expect)
@@ -343,7 +343,7 @@ func TestProperties_ReadToml(t *testing.T) {
 		}
 
 		for _, d := range data {
-			p, _ := conf.Read([]byte(d.str), ".toml")
+			p, _ := conf.Read([]byte(d.str), "toml")
 			v := p.Get(d.key)
 			assert.Equal(t, v, d.val)
 		}
@@ -365,7 +365,7 @@ func TestProperties_ReadToml(t *testing.T) {
 		}
 
 		for _, d := range data {
-			p, _ := conf.Read([]byte(d.str), ".toml")
+			p, _ := conf.Read([]byte(d.str), "toml")
 			v := p.Get(d.key)
 			assert.Equal(t, v, d.val)
 		}
@@ -388,7 +388,7 @@ func TestProperties_ReadToml(t *testing.T) {
 			"map.string": "hello",
 		}
 
-		p, _ := conf.Read([]byte(str), ".toml")
+		p, _ := conf.Read([]byte(str), "toml")
 		for k, expect := range data {
 			v := p.Get(k)
 			assert.Equal(t, v, expect)
@@ -411,7 +411,7 @@ func TestProperties_ReadToml(t *testing.T) {
           string="hello"
         `
 
-		p, _ := conf.Read([]byte(str), ".toml")
+		p, _ := conf.Read([]byte(str), "toml")
 		v := p.Get("array")
 		expect := []interface{}{
 			map[string]interface{}{ // yaml 是 map[interface{}]interface{}，toml 是 map[string]interface{}
@@ -457,7 +457,7 @@ func TestProperties_ReadToml(t *testing.T) {
 			"map.k2.string": "hello",
 		}
 
-		p, _ := conf.Read([]byte(str), ".toml")
+		p, _ := conf.Read([]byte(str), "toml")
 		for k, expect := range data {
 			v := p.Get(k)
 			assert.Equal(t, v, expect)

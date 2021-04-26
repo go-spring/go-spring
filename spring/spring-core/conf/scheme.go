@@ -21,74 +21,56 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/go-spring/spring-core/log"
 	"github.com/spf13/viper"
 )
-
-func init() {
-	RegisterScheme(defaultScheme, "")
-	RegisterScheme(configMapScheme, "k8s")
-}
-
-var schemeMap = make(map[string]Scheme)
-
-func FindScheme(name string) (Scheme, bool) {
-	ps, ok := schemeMap[name]
-	return ps, ok
-}
-
-// RegisterScheme 注册属性源
-func RegisterScheme(ps Scheme, name string) {
-	schemeMap[name] = ps
-}
 
 // Scheme 属性源接口
 type Scheme interface {
 
 	// Load 加载符合条件的属性文件，fileLocation 是配置文件所在的目录或者数据文件，
-	// fileName 是配置文件的名称，但不包含扩展名。通过遍历配置读取器获取存在的配置文件。
-	Load(p Properties, fileLocation string, fileName string) error
+	// fileName 是配置文件的名称，但不包含扩展名。
+	Load(p Properties, fileLocation string, fileName string, configTypes []string) error
 }
 
-type FuncScheme func(p Properties, fileLocation string, fileName string) error
+func init() {
+	NewScheme(defaultScheme, "")
+	NewScheme(configMapScheme, "k8s")
+}
 
-func (fn FuncScheme) Load(p Properties, fileLocation string, fileName string) error {
-	return fn(p, fileLocation, fileName)
+var schemes = make(map[string]Scheme)
+
+// NewScheme 注册属性源
+func NewScheme(ps Scheme, name string) {
+	schemes[name] = ps
+}
+
+func FindScheme(name string) (Scheme, bool) {
+	ps, ok := schemes[name]
+	return ps, ok
+}
+
+type FuncScheme func(p Properties, fileLocation string, fileName string, configTypes []string) error
+
+func (f FuncScheme) Load(p Properties, fileLocation string, fileName string, configTypes []string) error {
+	return f(p, fileLocation, fileName, configTypes)
 }
 
 // defaultScheme 整个文件都是属性
-var defaultScheme = FuncScheme(func(p Properties, fileLocation string, fileName string) error {
-	err := EachReader(func(r Reader) error {
-		var file string
-
-		for _, ext := range r.FileExt() {
-			s := filepath.Join(fileLocation, fileName+ext)
-			if _, err := os.Stat(s); err == nil {
-				file = s
-				break
-			}
+var defaultScheme = FuncScheme(func(p Properties, fileLocation string, fileName string, configTypes []string) error {
+	for _, configType := range configTypes {
+		file := filepath.Join(fileLocation, fileName+"."+configType)
+		if _, err := os.Stat(file); err != nil {
+			continue
 		}
-
-		if file == "" {
-			return nil
-		}
-
-		log.Info("load properties from file ", file)
-		err := r.ReadFile(p, file)
-		if err != nil && err != os.ErrNotExist {
+		if err := p.Load(file); err != nil {
 			return err
 		}
-		return nil
-	})
-
-	if err != nil {
-		return err
 	}
 	return nil
 })
 
 // configMapScheme 基于 k8s ConfigMap 的属性源
-var configMapScheme = FuncScheme(func(p Properties, fileLocation string, fileName string) error {
+var configMapScheme = FuncScheme(func(p Properties, fileLocation string, fileName string, configTypes []string) error {
 
 	v := viper.New()
 	v.SetConfigFile(fileLocation)
@@ -101,26 +83,19 @@ var configMapScheme = FuncScheme(func(p Properties, fileLocation string, fileNam
 		return fmt.Errorf("data not found in config-map %s", fileLocation)
 	}
 
-	err := EachReader(func(r Reader) error {
-		for _, ext := range r.FileExt() {
-
-			key := fileName + ext
-			if !d.IsSet(key) {
-				continue
-			}
-
-			log.Infof("load properties from config-map %s:%s", fileLocation, key)
-			if val := d.GetString(key); val != "" {
-				if err := r.ReadBuffer(p, []byte(val)); err != nil {
-					return err
-				}
-			}
+	for _, configType := range configTypes {
+		key := fileName + "." + configType
+		if !d.IsSet(key) {
+			continue
 		}
-		return nil
-	})
-
-	if err != nil {
-		return err
+		val := d.GetString(key)
+		if len(val) == 0 {
+			continue
+		}
+		err := p.Read([]byte(val), configType)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 })

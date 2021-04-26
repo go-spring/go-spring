@@ -19,12 +19,12 @@ package conf
 import (
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
 
-	"github.com/go-spring/spring-core/contains"
 	"github.com/go-spring/spring-core/util"
 	"github.com/spf13/cast"
 )
@@ -91,31 +91,29 @@ func Load(filename string) (Properties, error) {
 }
 
 // Read 从 []byte 读取属性列表，ext 是文件扩展名，如 .toml、.yaml 等。
-func Read(b []byte, ext string) (Properties, error) {
+func Read(b []byte, configType string) (Properties, error) {
 	p := New()
-	if err := p.Read(b, ext); err != nil {
+	if err := p.Read(b, configType); err != nil {
 		return nil, err
 	}
 	return p, nil
 }
 
 func (p *properties) Load(filename string) error {
-	ext := strings.ToLower(filepath.Ext(filename))
-	for _, r := range readers {
-		if contains.Strings(r.FileExt(), ext) >= 0 {
-			return r.ReadFile(p, filename)
-		}
+	b, err := ioutil.ReadFile(filename)
+	if err != nil {
+		return err
 	}
-	return fmt.Errorf("unsupported file type %s", ext)
+	ext := filepath.Ext(filename)
+	return p.Read(b, strings.TrimPrefix(ext, "."))
 }
 
-func (p *properties) Read(b []byte, ext string) error {
-	for _, r := range readers {
-		if contains.Strings(r.FileExt(), ext) >= 0 {
-			return r.ReadBuffer(p, b)
-		}
+func (p *properties) Read(b []byte, configType string) error {
+	configType = strings.ToLower(configType)
+	if r, ok := readers[configType]; ok {
+		return r.Read(p, b)
 	}
-	return fmt.Errorf("unsupported file type %s", ext)
+	return fmt.Errorf("unsupported file type %s", configType)
 }
 
 func splitPath(path string) (key string, index int) {

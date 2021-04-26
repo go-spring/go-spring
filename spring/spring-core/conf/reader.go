@@ -18,68 +18,56 @@ package conf
 
 import (
 	"bytes"
-	"io/ioutil"
+	"strings"
 
+	"github.com/go-spring/spring-core/java"
 	"github.com/spf13/viper"
 )
 
 func init() {
-	// TODO 不使用 viper 实现 properties 因为支持引用
-	RegisterReader(Viper("prop"), ".properties")
-	RegisterReader(Viper("yaml"), ".yaml", ".yml")
-	RegisterReader(Viper("toml"), ".toml")
-}
-
-// Reader 属性读取器接口
-type Reader interface {
-	FileExt() []string // 属性读取器支持的文件扩展名的列表
-	ReadFile(p Properties, filename string) error
-	ReadBuffer(p Properties, b []byte) error
-}
-
-var readers []Reader
-
-// EachReader 遍历属性读取器列表
-func EachReader(fn func(r Reader) error) error {
-	for _, r := range readers {
-		if err := fn(r); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// RegisterReader 注册属性读取器
-func RegisterReader(fn ReaderFunc, fileExt ...string) {
-	readers = append(readers, &reader{ext: fileExt, fn: fn})
+	NewReader(Java(), "properties", "prop")
+	NewReader(Viper("yaml"), "yaml", "yml")
+	NewReader(Viper("toml"), "toml")
 }
 
 type ReaderFunc func(p Properties, b []byte) error
 
-// reader 属性读取接口的默认实现。
-type reader struct {
-	ext []string
-	fn  ReaderFunc
+// reader 属性读取器接口
+type reader interface {
+	Read(p Properties, b []byte) error
 }
 
-// FileExt 返回属性读取器对应的文件扩展名的列表
-func (r *reader) FileExt() []string { return r.ext }
+var readers = make(map[string]reader)
 
-// ReadBuffer 从内存中读取当前属性读取器支持的格式。
-func (r *reader) ReadBuffer(p Properties, b []byte) error {
-	return r.fn(p, b)
-}
-
-// ReadFile 从文件中读取当前属性读取器支持的格式。
-func (r *reader) ReadFile(p Properties, filename string) error {
-	file, err := ioutil.ReadFile(filename)
-	if err != nil {
-		return err
+// NewReader 注册属性读取器
+func NewReader(f ReaderFunc, configTypes ...string) {
+	for _, configType := range configTypes {
+		configType = strings.ToLower(configType)
+		readers[configType] = funcReader(f)
 	}
-	return r.ReadBuffer(p, file)
 }
 
-// Viper 使用 viper 读取 fileType 类型的属性文件。
+type funcReader ReaderFunc
+
+func (r funcReader) Read(p Properties, b []byte) error {
+	return r(p, b)
+}
+
+// Java 读取 java properties 属性文件。
+func Java() ReaderFunc {
+	return func(p Properties, b []byte) error {
+		m, err := java.ReadProperties(b)
+		if err != nil {
+			return err
+		}
+		for k, v := range m {
+			p.Set(k, v)
+		}
+		return nil
+	}
+}
+
+// Viper 读取 fileType 类型的属性文件。
 func Viper(fileType string) ReaderFunc {
 	return func(p Properties, b []byte) error {
 
