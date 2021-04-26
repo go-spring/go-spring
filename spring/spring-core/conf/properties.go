@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+// Package conf 提供了读取配置文件的通用方法，并且通过扩展支持各种配置文件格式。
 package conf
 
 import (
@@ -77,7 +78,7 @@ func New() Properties {
 
 // Map 返回从 map 集合创建的属性列表，保存的是 map 深拷贝后的值。
 func Map(m map[string]interface{}) Properties {
-	m = dupValue(m, true).(map[string]interface{})
+	m = toLowerValue(m).(map[string]interface{})
 	return &properties{m: m}
 }
 
@@ -208,44 +209,38 @@ func (p *properties) Get(key string) interface{} {
 		return nil
 	}
 	key = strings.ToLower(key)
-	path := strings.Split(key, ".")
-	return dupValue(p.find(path), false)
+	return p.find(strings.Split(key, "."))
 }
 
 func (p *properties) Set(key string, value interface{}) {
 	key = strings.ToLower(key)
 	path := strings.Split(key, ".")
 	nodeMap := p.create(path[0 : len(path)-1])
-	nodeMap[path[len(path)-1]] = dupValue(value, true)
+	nodeMap[path[len(path)-1]] = toLowerValue(value)
 }
 
-// dupValue 深度拷贝 value 的值，如果 value 是 map 类型或者包含 map 类型，
-// 当 toLower 为 true 时表示将 map 的 key 转为小写，为 false 时表示不转换。
-func dupValue(value interface{}, toLower bool) interface{} {
+// toLowerValue 如果 value 包含 map 类型，则将其 key 转为小写。
+func toLowerValue(value interface{}) interface{} {
 	switch v := value.(type) {
 	case map[interface{}]interface{}:
 		m := make(map[string]interface{})
 		for k, val := range v {
 			key := cast.ToString(k)
-			if toLower {
-				key = strings.ToLower(key)
-			}
-			m[key] = dupValue(val, toLower)
+			key = strings.ToLower(key)
+			m[key] = toLowerValue(val)
 		}
 		return m
 	case map[string]interface{}:
 		m := make(map[string]interface{})
 		for key, val := range v {
-			if toLower {
-				key = strings.ToLower(key)
-			}
-			m[key] = dupValue(val, toLower)
+			key = strings.ToLower(key)
+			m[key] = toLowerValue(val)
 		}
 		return m
 	case []interface{}:
 		var s []interface{}
 		for _, val := range v {
-			s = append(s, dupValue(val, toLower))
+			s = append(s, toLowerValue(val))
 		}
 		return s
 	}

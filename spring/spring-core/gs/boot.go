@@ -25,7 +25,7 @@ import (
 	"github.com/go-spring/spring-core/web"
 )
 
-var gApp = NewApplication()
+var gApp = NewApp()
 
 func ExpectSysProperties(pattern ...string) {
 	gApp.expectSysProperties = pattern
@@ -42,63 +42,63 @@ func Banner(banner string) {
 
 // Profile 返回运行环境
 func Profile() string {
-	return gApp.appCtx.Profile()
+	return gApp.Profile()
 }
 
 // SetProfile 设置运行环境
 func SetProfile(profile string) {
-	gApp.appCtx.SetProfile(profile)
+	gApp.SetProfile(profile)
 }
 
-func Property(key string) interface{} {
-	return gApp.appCtx.Property(key)
+func GetProperty(key string) interface{} {
+	return gApp.GetProperty(key)
 }
 
 // SetProperty 设置属性值，属性名称统一转成小写。
 func SetProperty(key string, value interface{}) {
-	gApp.appCtx.SetProperty(key, value)
+	gApp.SetProperty(key, value)
 }
 
 func Config(fn interface{}, args ...arg.Arg) *Configer {
-	return gApp.appCtx.Config(fn, args...)
+	return gApp.Config(fn, args...)
 }
 
 // Object 注册对象形式的 Bean。
 func Object(i interface{}) *BeanDefinition {
-	return gApp.appCtx.Object(i)
+	return gApp.Object(i)
 }
 
 // Factory 注册构造函数形式的 Bean。
 func Factory(fn interface{}, args ...arg.Arg) *BeanDefinition {
-	return gApp.appCtx.Factory(fn, args...)
+	return gApp.Factory(fn, args...)
 }
 
 // WireBean 对对象或者构造函数的结果进行依赖注入和属性绑定，返回处理后的对象
 func WireBean(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error) {
-	return gApp.appCtx.WireBean(objOrCtor, ctorArgs...)
+	return gApp.WireBean(objOrCtor, ctorArgs...)
 }
 
 func GetBean(i interface{}, selector ...bean.Selector) error {
-	return gApp.appCtx.GetBean(i, selector...)
+	return gApp.GetBean(i, selector...)
 }
 
 // FindBean 返回符合条件的 Bean 集合，不保证返回的 Bean 已经完成注入和绑定过程。
 func FindBean(selector bean.Selector) ([]bean.Definition, error) {
-	return gApp.appCtx.FindBean(selector)
+	return gApp.FindBean(selector)
 }
 
 func CollectBeans(i interface{}, selectors ...bean.Selector) error {
-	return gApp.appCtx.CollectBeans(i, selectors...)
+	return gApp.CollectBeans(i, selectors...)
 }
 
-func Run(fn interface{}, args ...arg.Arg) error {
-	return gApp.appCtx.Run(fn, args...)
+func Invoke(fn interface{}, args ...arg.Arg) error {
+	return gApp.Invoke(fn, args...)
 }
 
 type GoFuncWithContext func(context.Context)
 
 func Go(fn GoFuncWithContext) {
-	appCtx := gApp.appCtx
+	appCtx := gApp
 	appCtx.Go(func() { fn(appCtx.Context()) })
 }
 
@@ -121,7 +121,7 @@ func GRpcServer(serviceName string, fn interface{}, server interface{}) {
 
 // GRpcClient 注册 gRPC 服务客户端，fn 是 gRPC 自动生成的客户端构造函数
 func GRpcClient(fn interface{}, endpoint string) *BeanDefinition {
-	return gApp.appCtx.Factory(fn, endpoint)
+	return gApp.Factory(fn, endpoint)
 }
 
 ///////////////////////////////////////// Web /////////////////////////////////////////
@@ -210,7 +210,7 @@ func DeleteBinding(path string, fn interface{}) *web.Mapper {
 
 // NewFilter 注册 web.Filter 对象
 func NewFilter(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
-	return gApp.appCtx.NewBean(objOrCtor, ctorArgs...).Export((*web.Filter)(nil))
+	return gApp.NewBean(objOrCtor, ctorArgs...).Export((*web.Filter)(nil))
 }
 
 ///////////////////////////////////////// MQ //////////////////////////////////////////

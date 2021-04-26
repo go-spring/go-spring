@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-// 实现了一个功能完善的运行时 IoC 容器。
+// Package gs 实现了一个功能完善的运行时 IoC 容器。
 package gs
 
 import (
@@ -52,8 +52,8 @@ type Context interface {
 	// PropKeys 返回所有属性的 key。
 	PropKeys() []string
 
-	// Property 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。
-	Property(key string) interface{}
+	// GetProperty 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。
+	GetProperty(key string) interface{}
 
 	// EachBean 遍历所有 Bean 的定义，不能保证解析和注入，请谨慎使用!
 	EachBean(fn func(b bean.Definition))
@@ -80,8 +80,8 @@ type Context interface {
 	// Go 安全地启动一个 goroutine
 	Go(fn interface{}, args ...arg.Arg)
 
-	// Run 立即执行一个一次性的任务
-	Run(fn interface{}, args ...arg.Arg) error
+	// Invoke 立即执行一个一次性的任务
+	Invoke(fn interface{}, args ...arg.Arg) error
 }
 
 // ApplicationContext Context 不允许内容被修改，这个可以。
@@ -92,9 +92,6 @@ type ApplicationContext interface {
 
 	// SetProfile 设置运行环境
 	SetProfile(profile string)
-
-	// Properties 获取 Properties 对象
-	Properties() conf.Properties
 
 	// LoadProperties 加载属性配置，支持 properties、yaml 和 toml 三种文件格式。
 	LoadProperties(filename string) error
@@ -163,11 +160,6 @@ func New() ApplicationContext {
 	}
 }
 
-// Properties 获取 Properties 对象
-func (ctx *applicationContext) Properties() conf.Properties {
-	return ctx.properties
-}
-
 // LoadProperties 加载属性配置，支持 properties、yaml 和 toml 三种文件格式。
 func (ctx *applicationContext) LoadProperties(filename string) error {
 	return ctx.properties.Load(filename)
@@ -178,8 +170,8 @@ func (ctx *applicationContext) PropKeys() []string {
 	return ctx.properties.Keys()
 }
 
-// Property 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。
-func (ctx *applicationContext) Property(key string) interface{} {
+// GetProperty 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。
+func (ctx *applicationContext) GetProperty(key string) interface{} {
 	return ctx.properties.Get(key)
 }
 
@@ -623,8 +615,8 @@ func (ctx *applicationContext) Close(beforeDestroy ...func()) {
 	}
 }
 
-// Run 立即执行一个一次性的任务
-func (ctx *applicationContext) Run(fn interface{}, args ...arg.Arg) error {
+// Invoke 立即执行一个一次性的任务
+func (ctx *applicationContext) Invoke(fn interface{}, args ...arg.Arg) error {
 	ctx.checkAutoWired()
 	if fnType := reflect.TypeOf(fn); util.FuncType(fnType) {
 		if util.ReturnNothing(fnType) || util.ReturnOnlyError(fnType) {

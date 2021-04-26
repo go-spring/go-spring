@@ -77,9 +77,9 @@ type ApplicationEvent interface {
 	OnStopApplication(ctx Context)  // 应用停止的事件
 }
 
-// application 应用
-type application struct {
-	appCtx ApplicationContext // 应用上下文
+// Application 应用
+type Application struct {
+	ApplicationContext // 应用上下文
 
 	cfgLocation         []string // 配置文件目录
 	banner              string   // Banner 的内容
@@ -92,10 +92,10 @@ type application struct {
 	exitChan chan struct{}
 }
 
-// NewApplication application 的构造函数
-func NewApplication() *application {
-	return &application{
-		appCtx:              New(),
+// NewApp application 的构造函数
+func NewApp() *Application {
+	return &Application{
+		ApplicationContext:  New(),
 		cfgLocation:         append([]string{}, DefaultConfigLocation),
 		bannerMode:          BannerModeConsole,
 		expectSysProperties: []string{`.*`},
@@ -103,8 +103,12 @@ func NewApplication() *application {
 	}
 }
 
+func (app *Application) GetConfigLocation() []string {
+	return app.cfgLocation
+}
+
 // Start 启动应用
-func (app *application) start(cfgLocation ...string) {
+func (app *Application) start(cfgLocation ...string) {
 
 	if len(cfgLocation) > 0 {
 		app.cfgLocation = cfgLocation
@@ -119,26 +123,26 @@ func (app *application) start(cfgLocation ...string) {
 	app.prepare()
 
 	// 注册 Context 接口
-	app.appCtx.Object(app.appCtx).Export((*Context)(nil))
+	app.Object(app).Export((*Context)(nil))
 
 	// 依赖注入、属性绑定、初始化
-	app.appCtx.Refresh()
+	app.Refresh()
 
 	// 执行命令行启动器
 	for _, r := range app.Runners {
-		r.Run(app.appCtx)
+		r.Run(app)
 	}
 
 	// 通知应用启动事件
 	for _, b := range app.Events {
-		b.OnStartApplication(app.appCtx)
+		b.OnStartApplication(app)
 	}
 
 	log.Info("application started")
 }
 
 // printBanner 查找 Banner 文件然后将其打印到控制台
-func (app *application) printBanner() {
+func (app *Application) printBanner() {
 
 	// 优先使用自定义 Banner
 	banner := app.banner
@@ -200,7 +204,7 @@ func printBanner(banner string) {
 }
 
 // loadCmdArgs 加载命令行参数，形如 -name value 的参数才有效。
-func (app *application) loadCmdArgs(p conf.Properties) {
+func (app *Application) loadCmdArgs(p conf.Properties) {
 	log.Debugf("load cmd args")
 	for i := 0; i < len(os.Args); i++ { // 以短线定义的参数才有效
 		if arg := os.Args[i]; strings.HasPrefix(arg, "-") {
@@ -216,7 +220,7 @@ func (app *application) loadCmdArgs(p conf.Properties) {
 }
 
 // loadSystemEnv 加载系统环境变量，用户可以自定义有效环境变量的正则匹配
-func (app *application) loadSystemEnv(p conf.Properties) {
+func (app *Application) loadSystemEnv(p conf.Properties) {
 
 	var rex []*regexp.Regexp
 	for _, v := range app.expectSysProperties {
@@ -243,7 +247,7 @@ func (app *application) loadSystemEnv(p conf.Properties) {
 }
 
 // loadProfileConfig 加载指定环境的配置文件
-func (app *application) loadProfileConfig(p conf.Properties, profile string) {
+func (app *Application) loadProfileConfig(p conf.Properties, profile string) {
 
 	fileName := "application"
 	if profile != "" {
@@ -277,7 +281,7 @@ func (app *application) loadProfileConfig(p conf.Properties, profile string) {
 }
 
 // prepare 准备上下文环境
-func (app *application) prepare() {
+func (app *Application) prepare() {
 
 	// 配置项加载顺序优先级，从高到低:
 	// 1.代码设置(api)
@@ -299,10 +303,8 @@ func (app *application) prepare() {
 	})
 
 	// 1. 保存通过代码设置的属性
-	if p := app.appCtx.Properties(); p != nil {
-		for _, k := range p.Keys() {
-			apiConfig.Set(k, p.Get(k))
-		}
+	for _, k := range app.PropKeys() {
+		apiConfig.Set(k, app.GetProperty(k))
 	}
 
 	// 2. 保存从命令行得到的属性
@@ -315,14 +317,14 @@ func (app *application) prepare() {
 	app.loadProfileConfig(defaultConfig, "")
 
 	// 5. 加载 profile 对应的配置文件
-	profile := app.appCtx.Profile()
+	profile := app.Profile()
 	if profile == "" {
 		keys := []string{SpringProfile, SPRING_PROFILE}
 		v := priority.GetFirst(keys...)
 		profile = cast.ToString(v)
 	}
 	if profile != "" {
-		app.appCtx.SetProfile(profile)
+		app.SetProfile(profile)
 		app.loadProfileConfig(profileConfig, profile)
 	}
 
@@ -330,11 +332,11 @@ func (app *application) prepare() {
 	for _, key := range priority.Keys() {
 		value, err := conf.Resolve(priority, priority.Get(key))
 		util.Panic(err).When(err != nil)
-		app.appCtx.SetProperty(key, value)
+		app.SetProperty(key, value)
 	}
 }
 
-func (app *application) close() {
+func (app *Application) close() {
 
 	defer log.Info("application exited")
 	log.Info("application exiting")
@@ -347,14 +349,14 @@ func (app *application) close() {
 	// 的退出了，而这只需要 Context 一 cancel 也就完事了。
 
 	// 通知 Bean 销毁
-	app.appCtx.Close(func() {
+	app.Close(func() {
 		for _, b := range app.Events {
-			b.OnStopApplication(app.appCtx)
+			b.OnStopApplication(app)
 		}
 	})
 }
 
-func (app *application) Run(cfgLocation ...string) {
+func (app *Application) Run(cfgLocation ...string) {
 
 	// 响应控制台的 Ctrl+C 及 kill 命令。
 	go func() {
@@ -371,7 +373,7 @@ func (app *application) Run(cfgLocation ...string) {
 }
 
 // ShutDown 关闭执行器
-func (app *application) ShutDown() {
+func (app *Application) ShutDown() {
 	select {
 	case <-app.exitChan:
 		// chan 已关闭，无需再次关闭。

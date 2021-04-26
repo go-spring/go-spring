@@ -594,10 +594,10 @@ func TestApplicationContext_LoadProperties(t *testing.T) {
 	err = ctx.LoadProperties("testdata/config/application.properties")
 	assert.Nil(t, err)
 
-	val0 := ctx.Property("spring.application.name")
+	val0 := ctx.GetProperty("spring.application.name")
 	assert.Equal(t, val0, "test")
 
-	val1 := ctx.Property("yaml.list")
+	val1 := ctx.GetProperty("yaml.list")
 	assert.Equal(t, val1, []interface{}{1, 2})
 }
 
@@ -845,14 +845,14 @@ func TestApplicationContext_RegisterBeanFn(t *testing.T) {
 
 	assert.Nil(t, err)
 	fmt.Println(json.ToString(st1))
-	assert.Equal(t, st1.Room, ctx.Property("room"))
+	assert.Equal(t, st1.Room, ctx.GetProperty("room"))
 
 	var st2 *Student
 	err = ctx.GetBean(&st2, "st2")
 
 	assert.Nil(t, err)
 	fmt.Println(json.ToString(st2))
-	assert.Equal(t, st2.Room, ctx.Property("room"))
+	assert.Equal(t, st2.Room, ctx.GetProperty("room"))
 
 	fmt.Printf("%x\n", reflect.ValueOf(st1).Pointer())
 	fmt.Printf("%x\n", reflect.ValueOf(st2).Pointer())
@@ -862,14 +862,14 @@ func TestApplicationContext_RegisterBeanFn(t *testing.T) {
 
 	assert.Nil(t, err)
 	fmt.Println(json.ToString(st3))
-	assert.Equal(t, st3.Room, ctx.Property("room"))
+	assert.Equal(t, st3.Room, ctx.GetProperty("room"))
 
 	var st4 *Student
 	err = ctx.GetBean(&st4, "st4")
 
 	assert.Nil(t, err)
 	fmt.Println(json.ToString(st4))
-	assert.Equal(t, st4.Room, ctx.Property("room"))
+	assert.Equal(t, st4.Room, ctx.GetProperty("room"))
 
 	var m map[int]string
 	err = ctx.GetBean(&m)
@@ -3191,7 +3191,7 @@ func TestApplicationContext_Invoke(t *testing.T) {
 		ctx.SetProperty("version", "v0.0.1")
 
 		assert.Panic(t, func() {
-			_ = ctx.Run(func(i *int, version string) {
+			_ = ctx.Invoke(func(i *int, version string) {
 				fmt.Println("version:", version)
 				fmt.Println("int:", *i)
 			}, "", "${version}")
@@ -3207,7 +3207,7 @@ func TestApplicationContext_Invoke(t *testing.T) {
 		ctx.SetProperty("version", "v0.0.1")
 		ctx.Refresh()
 
-		_ = ctx.Run(func(i *int, version string) {
+		_ = ctx.Invoke(func(i *int, version string) {
 			fmt.Println("version:", version)
 			fmt.Println("int:", *i)
 		}, "", "${version}")
@@ -3226,7 +3226,7 @@ func TestApplicationContext_Invoke(t *testing.T) {
 			fmt.Println("int:", *i)
 		}
 
-		_ = ctx.Run(fn, "", "${version}")
+		_ = ctx.Invoke(fn, "", "${version}")
 	})
 }
 
