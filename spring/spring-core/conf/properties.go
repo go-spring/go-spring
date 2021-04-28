@@ -26,7 +26,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/go-spring/spring-core/util"
 	"github.com/spf13/cast"
 )
 
@@ -48,8 +47,8 @@ type Properties interface {
 	// Read 从 []byte 读取属性列表，ext 是文件扩展名，如 .toml、.yaml 等。
 	Read(b []byte, ext string) error
 
-	// Keys 返回所有属性的 key。
-	Keys() []string
+	// Map 返回所有属性。
+	Map() map[string]interface{}
 
 	// Get 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。如果返回值是 map
 	// 或者 slice 类型的数据，会返回它们深拷贝后的副本，防止因为修改了返回值而对
@@ -196,12 +195,8 @@ func (p *properties) create(path []string) map[string]interface{} {
 	return m
 }
 
-func (p *properties) Keys() []string {
-	var s []string
-	for k := range util.FlatMap(p.m) {
-		s = append(s, k)
-	}
-	return s
+func (p *properties) Map() map[string]interface{} {
+	return p.m
 }
 
 func (p *properties) Get(key string) interface{} {

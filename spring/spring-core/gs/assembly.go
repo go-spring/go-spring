@@ -56,15 +56,15 @@ func (s wiringStack) path() (path string) {
 
 // beanAssembly 装配工作台
 type beanAssembly struct {
+	c        *applicationContext
 	stack    wiringStack
-	appCtx   *applicationContext
 	destroys *list.List // 记录具有销毁函数的 Bean 的堆栈
 }
 
 // toAssembly beanAssembly 的构造函数。
 func toAssembly(appCtx *applicationContext) *beanAssembly {
 	return &beanAssembly{
-		appCtx:   appCtx,
+		c:        appCtx,
 		destroys: list.New(),
 		stack:    make([]beanDefinition, 0),
 	}
@@ -72,12 +72,12 @@ func toAssembly(appCtx *applicationContext) *beanAssembly {
 
 // Matches 返回 Condition 的判断结果。
 func (assembly *beanAssembly) Matches(cond cond.Condition) bool {
-	return cond.Matches(assembly.appCtx)
+	return cond.Matches(assembly.c)
 }
 
 // BindValue 对值进行属性绑定。
 func (assembly *beanAssembly) BindValue(v reflect.Value, tag string) error {
-	return conf.BindValue(assembly.appCtx.properties, v, tag, conf.BindOption{})
+	return conf.BindValue(assembly.c.p, v, tag, conf.BindOption{})
 }
 
 // WireValue 对值进行依赖注入。
@@ -99,7 +99,7 @@ func (assembly *beanAssembly) getBean(v reflect.Value, tag singletonTag, parent 
 
 	foundBeans := make([]*BeanDefinition, 0)
 
-	cache := assembly.appCtx.getCacheByType(t)
+	cache := assembly.c.getCacheByType(t)
 	for i := 0; i < cache.Len(); i++ {
 		b := cache.Get(i).(*BeanDefinition)
 		// 不能将自身赋值给自身的字段 && 类型全限定名匹配
@@ -110,7 +110,7 @@ func (assembly *beanAssembly) getBean(v reflect.Value, tag singletonTag, parent 
 
 	// 指定 beanName 时通过名称获取防止未通过 Export 显式导出接口
 	if t.Kind() == reflect.Interface && tag.beanName != "" {
-		cache = assembly.appCtx.getCacheByName(tag.beanName)
+		cache = assembly.c.getCacheByName(tag.beanName)
 		for i := 0; i < cache.Len(); i++ {
 			b := cache.Get(i).(*BeanDefinition)
 			// 不能将自身赋值给自身的字段 && 类型匹配 && beanName 匹配
@@ -262,7 +262,7 @@ func (assembly *beanAssembly) collectAndSortBeans(t reflect.Type, et reflect.Typ
 	beans := make([]*BeanDefinition, 0)
 
 	// 只在单例类型中查找，数组类型的元素是否排序无法判断
-	cache := assembly.appCtx.getCacheByType(et)
+	cache := assembly.c.getCacheByType(et)
 	for i := 0; i < cache.Len(); i++ {
 		b := cache.Get(i).(*BeanDefinition)
 		beans = append(beans, b)
@@ -324,7 +324,7 @@ func (assembly *beanAssembly) autoCollectBeans(t reflect.Type, et reflect.Type) 
 	result := reflect.MakeSlice(t, 0, 0)
 
 	// 查找可以精确匹配的数组类型
-	cache := assembly.appCtx.getCacheByType(t)
+	cache := assembly.c.getCacheByType(t)
 	for i := 0; i < cache.Len(); i++ {
 		b := cache.Get(i).(*BeanDefinition)
 		if err := assembly.wireSlice(b); err != nil {
@@ -334,7 +334,7 @@ func (assembly *beanAssembly) autoCollectBeans(t reflect.Type, et reflect.Type) 
 	}
 
 	// 查找可以精确匹配的单例类型，对找到的 Bean 进行自动注入
-	cache = assembly.appCtx.getCacheByType(et)
+	cache = assembly.c.getCacheByType(et)
 	for i := 0; i < cache.Len(); i++ {
 		d := cache.Get(i).(*BeanDefinition)
 		if err := assembly.wire(d, false); err != nil {
@@ -355,7 +355,7 @@ func (assembly *beanAssembly) wire(b beanDefinition, onlyAutoWire bool) error {
 	}
 
 	// 如果刷新阶段已完成并且 Bean 已经注入则无需再次进行下面的步骤
-	if assembly.appCtx.state == 2 && b.getStatus() == Wired {
+	if assembly.c.state == 2 && b.getStatus() == Wired {
 		return nil
 	}
 
@@ -368,7 +368,7 @@ func (assembly *beanAssembly) wire(b beanDefinition, onlyAutoWire bool) error {
 	// 如果有销毁函数则对其进行排序处理
 	if b.getDestroy() != nil {
 		if curr, ok := b.(*BeanDefinition); ok {
-			de := assembly.appCtx.destroyer(curr)
+			de := assembly.c.destroyer(curr)
 			if i := assembly.destroys.Back(); i != nil {
 				prev := i.Value.(*BeanDefinition)
 				de.after(prev)
@@ -399,7 +399,7 @@ func (assembly *beanAssembly) wire(b beanDefinition, onlyAutoWire bool) error {
 
 	// 首先对当前 Bean 的间接依赖项进行自动注入
 	for _, selector := range b.getDependsOn() {
-		d, err := assembly.appCtx.FindBean(selector)
+		d, err := assembly.c.FindBean(selector)
 		if err != nil {
 			return err
 		}
@@ -506,7 +506,7 @@ func (assembly *beanAssembly) wireObject(b beanDefinition, onlyAutoWire bool) er
 		if !onlyAutoWire { // 防止 value 再次解析
 			if tag, ok := ft.Tag.Lookup("value"); ok {
 				fieldOnlyAutoWire = true
-				err := conf.BindValue(assembly.appCtx.properties, fv, tag, conf.BindOption{Path: fieldName})
+				err := conf.BindValue(assembly.c.p, fv, tag, conf.BindOption{Path: fieldName})
 				if err != nil {
 					return err
 				}
@@ -586,7 +586,7 @@ func (assembly *beanAssembly) wireField(v reflect.Value, tag string, parent refl
 	if strings.HasPrefix(tag, "${") {
 		s := ""
 		sv := reflect.ValueOf(&s).Elem()
-		err := conf.BindValue(assembly.appCtx.properties, sv, tag, conf.BindOption{})
+		err := conf.BindValue(assembly.c.p, sv, tag, conf.BindOption{})
 		if err != nil {
 			return err
 		}

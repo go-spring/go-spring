@@ -27,7 +27,7 @@ func (p Priority) Keys() []string {
 	for _, c := range p {
 		n := len(oldKeys)
 		var newKeys []string
-		for _, k := range c.Keys() {
+		for k := range c.Map() {
 			i := sort.SearchStrings(oldKeys, k)
 			if i < 0 || i >= n {
 				newKeys = append(newKeys, k)

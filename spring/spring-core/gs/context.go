@@ -49,18 +49,15 @@ type Context interface {
 	// Profile 返回运行环境。
 	Profile() string
 
-	// PropKeys 返回所有属性的 key。
-	PropKeys() []string
+	// Properties 返回所有属性。
+	Properties() map[string]interface{}
 
 	// GetProperty 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。
 	GetProperty(key string) interface{}
 
-	// EachBean 遍历所有 Bean 的定义，不能保证解析和注入，请谨慎使用!
-	EachBean(fn func(b bean.Definition))
-
-	// GetBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
+	// GetObject 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 	// 它和 FindBean 的区别是它在调用后能够保证返回的 Bean 已经完成了注入和绑定过程。
-	GetBean(i interface{}, selector ...bean.Selector) error
+	GetObject(i interface{}, selector ...bean.Selector) error
 
 	// FindBean 返回符合条件的 Bean 集合，不保证返回的 Bean 已经完成注入和绑定过程。
 	FindBean(selector bean.Selector) ([]bean.Definition, error)
@@ -122,6 +119,9 @@ type ApplicationContext interface {
 // applicationContext ApplicationContext 的默认实现
 type applicationContext struct {
 
+	// 属性值列表接口
+	p conf.Properties
+
 	// 上下文接口
 	wg     sync.WaitGroup
 	ctx    context.Context
@@ -139,8 +139,6 @@ type applicationContext struct {
 	configers    *list.List // 配置方法集合
 	destroyers   *list.List // 销毁函数集合
 	destroyerMap map[string]*destroyer
-
-	properties conf.Properties // 属性值列表接口
 }
 
 // New applicationContext 的构造函数
@@ -149,7 +147,7 @@ func New() ApplicationContext {
 	return &applicationContext{
 		ctx:          ctx,
 		cancel:       cancel,
-		properties:   conf.New(),
+		p:            conf.New(),
 		allBeans:     slice.New(),
 		cacheById:    make(map[string]*BeanDefinition),
 		cacheByName:  make(map[string]*slice.Slice),
@@ -162,22 +160,21 @@ func New() ApplicationContext {
 
 // LoadProperties 加载属性配置，支持 properties、yaml 和 toml 三种文件格式。
 func (ctx *applicationContext) LoadProperties(filename string) error {
-	return ctx.properties.Load(filename)
+	return ctx.p.Load(filename)
 }
 
-// PropKeys 返回所有属性的 key。
-func (ctx *applicationContext) PropKeys() []string {
-	return ctx.properties.Keys()
+func (ctx *applicationContext) Properties() map[string]interface{} {
+	return ctx.p.Map()
 }
 
 // GetProperty 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。
 func (ctx *applicationContext) GetProperty(key string) interface{} {
-	return ctx.properties.Get(key)
+	return ctx.p.Get(key)
 }
 
 // SetProperty 设置属性值，属性名称统一转成小写。
 func (ctx *applicationContext) SetProperty(key string, value interface{}) {
-	ctx.properties.Set(key, value)
+	ctx.p.Set(key, value)
 }
 
 // Context 返回上下文接口
@@ -246,8 +243,8 @@ func (ctx *applicationContext) Config(fn interface{}, args ...arg.Arg) *Configer
 	return configer
 }
 
-// GetBean 获取单例 Bean，它和 FindBean 的区别是它在调用后能够保证返回的 Bean 已经完成了注入和绑定过程。
-func (ctx *applicationContext) GetBean(i interface{}, selector ...bean.Selector) error {
+// GetObject 获取单例 Bean，它和 FindBean 的区别是它在调用后能够保证返回的 Bean 已经完成了注入和绑定过程。
+func (ctx *applicationContext) GetObject(i interface{}, selector ...bean.Selector) error {
 
 	if i == nil {
 		return errors.New("i can't be nil")
@@ -579,13 +576,6 @@ func (ctx *applicationContext) WireBean(objOrCtor interface{}, ctorArgs ...arg.A
 		return nil, err
 	}
 	return b.Interface(), nil
-}
-
-// EachBean 遍历所有 Bean 的定义，不能保证解析和注入，请谨慎使用!
-func (ctx *applicationContext) EachBean(fn func(b bean.Definition)) {
-	for _, v := range ctx.cacheById {
-		fn(v)
-	}
 }
 
 // Close 关闭容器上下文，用于通知 Bean 销毁等，该函数可以确保 Bean 的销毁顺序和注入顺序相反。

@@ -40,8 +40,8 @@ func TestProperties_Load(t *testing.T) {
 	util.Panic(err).When(err != nil)
 
 	fmt.Println("Get All Properties:")
-	for _, k := range p.Keys() {
-		fmt.Println(k, ":", p.Get(k))
+	for k, v := range p.Map() {
+		fmt.Println(k, ":", v)
 	}
 }
 

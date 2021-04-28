@@ -86,8 +86,8 @@ func TestConfig(t *testing.T) {
 	t.Run("default expect system properties", func(t *testing.T) {
 		app := startApplication("testdata/config/")
 		defer app.ShutDown()
-		for _, k := range app.PropKeys() {
-			fmt.Println(k, app.GetProperty(k))
+		for k, v := range app.Properties() {
+			fmt.Println(k, v)
 		}
 	})
 
@@ -95,8 +95,8 @@ func TestConfig(t *testing.T) {
 		// ExpectSysProperties("^$") // 不加载任何系统环境变量
 		app := startApplication("testdata/config/")
 		defer app.ShutDown()
-		for _, k := range app.PropKeys() {
-			fmt.Println(k, app.GetProperty(k))
+		for k, v := range app.Properties() {
+			fmt.Println(k, v)
 		}
 	})
 }

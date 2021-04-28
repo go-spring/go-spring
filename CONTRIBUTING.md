@@ -32,3 +32,7 @@ Following information can help us to resolve the issue faster.
 * interface 一般使用名词或者形容词，动词短语也可。习惯上以 able、ible、er 等结尾。
 * struct 一般使用名词或者动词短语。
 * function 如果只返回 bool 值则以 is、has 等打头，否则必须使用动词打头。
+
+## 编程规约
+
+* 慎用嵌套(继承)，避免暴露不必要的方法。

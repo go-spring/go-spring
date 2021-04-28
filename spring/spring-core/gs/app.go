@@ -303,8 +303,8 @@ func (app *Application) prepare() {
 	})
 
 	// 1. 保存通过代码设置的属性
-	for _, k := range app.PropKeys() {
-		apiConfig.Set(k, app.GetProperty(k))
+	for k, v := range app.Properties() {
+		apiConfig.Set(k, v)
 	}
 
 	// 2. 保存从命令行得到的属性
