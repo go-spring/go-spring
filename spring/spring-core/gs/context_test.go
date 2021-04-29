@@ -490,9 +490,7 @@ type DbConfig struct {
 }
 
 func TestApplicationContext_TypeConverter(t *testing.T) {
-	ctx := gs.New()
-	err := ctx.LoadProperties("testdata/config/application.yaml")
-	assert.Nil(t, err)
+	ctx := gs.New("testdata/config/application.yaml")
 
 	b := &EnvEnumBean{}
 	ctx.Object(b)
@@ -586,13 +584,10 @@ func TestApplicationContext_DiffNameBean(t *testing.T) {
 
 func TestApplicationContext_LoadProperties(t *testing.T) {
 
-	ctx := gs.New()
-
-	err := ctx.LoadProperties("testdata/config/application.yaml")
-	assert.Nil(t, err)
-
-	err = ctx.LoadProperties("testdata/config/application.properties")
-	assert.Nil(t, err)
+	ctx := gs.New(
+		"testdata/config/application.yaml",
+		"testdata/config/application.properties",
+	)
 
 	val0 := ctx.GetProperty("spring.application.name")
 	assert.Equal(t, val0, "test")

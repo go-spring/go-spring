@@ -90,9 +90,6 @@ type ApplicationContext interface {
 	// SetProfile 设置运行环境
 	SetProfile(profile string)
 
-	// LoadProperties 加载属性配置，支持 properties、yaml 和 toml 三种文件格式。
-	LoadProperties(filename string) error
-
 	// SetProperty 设置属性值，属性名称统一转成小写。
 	SetProperty(key string, value interface{})
 
@@ -142,12 +139,20 @@ type applicationContext struct {
 }
 
 // New applicationContext 的构造函数
-func New() ApplicationContext {
+func New(filename ...string) *applicationContext {
+
+	p := conf.New()
+	for _, s := range filename {
+		if err := p.Load(s); err != nil {
+			panic(err)
+		}
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	return &applicationContext{
+		p:            p,
 		ctx:          ctx,
 		cancel:       cancel,
-		p:            conf.New(),
 		allBeans:     slice.New(),
 		cacheById:    make(map[string]*BeanDefinition),
 		cacheByName:  make(map[string]*slice.Slice),
@@ -156,11 +161,6 @@ func New() ApplicationContext {
 		destroyers:   list.New(),
 		destroyerMap: make(map[string]*destroyer),
 	}
-}
-
-// LoadProperties 加载属性配置，支持 properties、yaml 和 toml 三种文件格式。
-func (ctx *applicationContext) LoadProperties(filename string) error {
-	return ctx.p.Load(filename)
 }
 
 func (ctx *applicationContext) Properties() map[string]interface{} {
