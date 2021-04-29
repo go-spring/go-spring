@@ -55,9 +55,9 @@ type Context interface {
 	// GetProperty 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。
 	GetProperty(key string) interface{}
 
-	// GetObject 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
+	// GetBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 	// 它和 FindBean 的区别是它在调用后能够保证返回的 Bean 已经完成了注入和绑定过程。
-	GetObject(i interface{}, selector ...bean.Selector) error
+	GetBean(i interface{}, selector ...bean.Selector) error
 
 	// FindBean 返回符合条件的 Bean 集合，不保证返回的 Bean 已经完成注入和绑定过程。
 	FindBean(selector bean.Selector) ([]bean.Definition, error)
@@ -93,14 +93,11 @@ type ApplicationContext interface {
 	// SetProperty 设置属性值，属性名称统一转成小写。
 	SetProperty(key string, value interface{})
 
-	// Object 注册对象形式的 Bean。
-	Object(i interface{}) *BeanDefinition
+	// RegisterBean 注册对象形式的 Bean。
+	RegisterBean(i interface{}) *BeanDefinition
 
-	// Factory 注册构造函数形式的 Bean。
-	Factory(fn bean.Factory, args ...arg.Arg) *BeanDefinition
-
-	// NewBean 普通函数注册需要使用 reflect.ValueOf(fn) 这种方式避免和构造函数发生冲突。
-	NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition
+	// ProvideBean 普通函数注册需要使用 reflect.ValueOf(fn) 这种方式避免和构造函数发生冲突。
+	ProvideBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition
 
 	// Config 注册一个配置函数
 	Config(fn interface{}, args ...arg.Arg) *Configer
@@ -218,18 +215,13 @@ func (ctx *applicationContext) register(b *BeanDefinition) {
 	ctx.cacheById[b.BeanId()] = b
 }
 
-// Object 注册对象形式的 Bean。
-func (ctx *applicationContext) Object(i interface{}) *BeanDefinition {
-	return ctx.NewBean(reflect.ValueOf(i))
+// RegisterBean 注册对象形式的 Bean。
+func (ctx *applicationContext) RegisterBean(i interface{}) *BeanDefinition {
+	return ctx.ProvideBean(reflect.ValueOf(i))
 }
 
-// Factory 注册构造函数形式的 Bean。
-func (ctx *applicationContext) Factory(fn bean.Factory, args ...arg.Arg) *BeanDefinition {
-	return ctx.NewBean(fn, args...)
-}
-
-// NewBean 普通函数注册需要使用 reflect.ValueOf(fn) 这种方式避免和构造函数发生冲突。
-func (ctx *applicationContext) NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
+// ProvideBean 注册构造函数形式的 Bean。
+func (ctx *applicationContext) ProvideBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 	ctx.checkRegistration()
 	b := NewBean(objOrCtor, ctorArgs...)
 	ctx.allBeans.Append(b)
@@ -243,8 +235,8 @@ func (ctx *applicationContext) Config(fn interface{}, args ...arg.Arg) *Configer
 	return configer
 }
 
-// GetObject 获取单例 Bean，它和 FindBean 的区别是它在调用后能够保证返回的 Bean 已经完成了注入和绑定过程。
-func (ctx *applicationContext) GetObject(i interface{}, selector ...bean.Selector) error {
+// GetBean 获取单例 Bean，它和 FindBean 的区别是它在调用后能够保证返回的 Bean 已经完成了注入和绑定过程。
+func (ctx *applicationContext) GetBean(i interface{}, selector ...bean.Selector) error {
 
 	if i == nil {
 		return errors.New("i can't be nil")

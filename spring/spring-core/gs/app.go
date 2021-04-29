@@ -123,7 +123,7 @@ func (app *Application) start(cfgLocation ...string) {
 	app.prepare()
 
 	// 注册 Context 接口
-	app.Object(app).Export((*Context)(nil))
+	app.RegisterBean(app).Export((*Context)(nil))
 
 	// 依赖注入、属性绑定、初始化
 	app.Refresh()

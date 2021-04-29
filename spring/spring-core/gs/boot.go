@@ -63,14 +63,14 @@ func Config(fn interface{}, args ...arg.Arg) *Configer {
 	return gApp.Config(fn, args...)
 }
 
-// Object 注册对象形式的 Bean。
-func Object(i interface{}) *BeanDefinition {
-	return gApp.Object(i)
+// RegisterBean 注册对象形式的 Bean。
+func RegisterBean(i interface{}) *BeanDefinition {
+	return gApp.RegisterBean(i)
 }
 
-// Factory 注册构造函数形式的 Bean。
-func Factory(fn interface{}, args ...arg.Arg) *BeanDefinition {
-	return gApp.Factory(fn, args...)
+// ProvideBean 注册构造函数形式的 Bean。
+func ProvideBean(fn interface{}, args ...arg.Arg) *BeanDefinition {
+	return gApp.ProvideBean(fn, args...)
 }
 
 // WireBean 对对象或者构造函数的结果进行依赖注入和属性绑定，返回处理后的对象
@@ -78,8 +78,8 @@ func WireBean(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error) {
 	return gApp.WireBean(objOrCtor, ctorArgs...)
 }
 
-func GetObject(i interface{}, selector ...bean.Selector) error {
-	return gApp.GetObject(i, selector...)
+func GetBean(i interface{}, selector ...bean.Selector) error {
+	return gApp.GetBean(i, selector...)
 }
 
 // FindBean 返回符合条件的 Bean 集合，不保证返回的 Bean 已经完成注入和绑定过程。
@@ -121,7 +121,7 @@ func GRpcServer(serviceName string, fn interface{}, server interface{}) {
 
 // GRpcClient 注册 gRPC 服务客户端，fn 是 gRPC 自动生成的客户端构造函数
 func GRpcClient(fn interface{}, endpoint string) *BeanDefinition {
-	return gApp.Factory(fn, endpoint)
+	return gApp.ProvideBean(fn, endpoint)
 }
 
 ///////////////////////////////////////// Web /////////////////////////////////////////
@@ -210,7 +210,7 @@ func DeleteBinding(path string, fn interface{}) *web.Mapper {
 
 // NewFilter 注册 web.Filter 对象
 func NewFilter(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
-	return gApp.NewBean(objOrCtor, ctorArgs...).Export((*web.Filter)(nil))
+	return gApp.ProvideBean(objOrCtor, ctorArgs...).Export((*web.Filter)(nil))
 }
 
 ///////////////////////////////////////// MQ //////////////////////////////////////////
