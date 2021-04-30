@@ -65,24 +65,15 @@ func bindStruct(p interface{ Get(key string) interface{} }, v reflect.Value, opt
 // BindValue 对任意值 v 进行属性绑定，tag 是形如 ${key:=def} 的字符串，v 必须是值类型。
 func BindValue(p interface{ Get(key string) interface{} }, v reflect.Value, tag string, opt BindOption) error {
 
-	getProperty := func(key string, def interface{}) (interface{}, error) {
-		if val := p.Get(key); val != nil {
-			return val, nil
-		}
-		if def != nil {
-			return Resolve(p, def)
-		}
-		return nil, fmt.Errorf("%s property %q not config", opt.Path, opt.Key)
-	}
-
 	if v.Kind() == reflect.Ptr {
 		return fmt.Errorf("%s 属性绑定的目标不能是指针", opt.Path)
 	}
 
-	key, def, err := parseValueTag(tag)
-	if err != nil {
+	if !validValueTag(tag) {
 		return fmt.Errorf("%s 属性绑定的语法 %s 发生错误", opt.Path, tag)
 	}
+
+	key, def := parseValueTag(tag)
 
 	// 最短属性名
 	if opt.Key == "" {
@@ -99,15 +90,14 @@ func BindValue(p interface{ Get(key string) interface{} }, v reflect.Value, tag 
 	t := v.Type()
 	k := t.Kind()
 
-	var prop interface{}
-
 	// 存在值类型转换器的情况下结构体优先使用转换器
-	if fn, ok := converters[t]; ok {
-		if prop, err = getProperty(key, def); err != nil {
-			return err
+	if fn, ok := tConverters[t]; ok {
+		val := Resolve(p, Default(p, key, def))
+		if val == nil {
+			return fmt.Errorf("property %q not config", key)
 		}
 		fnValue := reflect.ValueOf(fn) // TODO 处理 error 返回值
-		out := fnValue.Call([]reflect.Value{reflect.ValueOf(prop)})
+		out := fnValue.Call([]reflect.Value{reflect.ValueOf(val)})
 		v.Set(out[0])
 		return nil
 	}
@@ -120,10 +110,11 @@ func BindValue(p interface{ Get(key string) interface{} }, v reflect.Value, tag 
 	}
 
 	if converter, ok := kConverters[k]; ok {
-		if prop, err = getProperty(key, def); err != nil {
-			return err
+		val := Resolve(p, Default(p, key, def))
+		if val == nil {
+			return fmt.Errorf("property %q not config", key)
 		}
-		return converter(&v, key, prop, opt)
+		return converter(&v, key, val, opt)
 	}
 	return fmt.Errorf("%s unsupported type %s", opt.Path, v.Kind().String())
 }
@@ -188,7 +179,7 @@ func init() {
 		}
 
 		// 处理使用类型转换器的场景
-		if fn, ok := converters[elemType]; ok {
+		if fn, ok := tConverters[elemType]; ok {
 			if s0, err := cast.ToStringSliceE(prop); err == nil {
 				sv := reflect.MakeSlice(t, len(s0), len(s0))
 				fnValue := reflect.ValueOf(fn)
@@ -314,7 +305,7 @@ func init() {
 		elemKind := elemType.Kind()
 
 		// 首先处理使用类型转换器的场景
-		if fn, ok := converters[elemType]; ok {
+		if fn, ok := tConverters[elemType]; ok {
 			if mapValue, err := cast.ToStringMapStringE(prop); err == nil {
 				prefix := key + "."
 				fnValue := reflect.ValueOf(fn)

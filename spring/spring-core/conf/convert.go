@@ -25,7 +25,7 @@ import (
 	"github.com/spf13/cast"
 )
 
-var converters = map[reflect.Type]interface{}{}
+var tConverters = map[reflect.Type]interface{}{}
 
 func init() {
 
@@ -48,7 +48,7 @@ func validConverter(t reflect.Type) bool {
 // Convert 添加类型转换器，函数原型 func(string)(type,error)
 func Convert(fn interface{}) {
 	if t := reflect.TypeOf(fn); validConverter(t) {
-		converters[t.Out(0)] = fn
+		tConverters[t.Out(0)] = fn
 		return
 	}
 	panic(errors.New("fn must be func(string)(type,error)"))

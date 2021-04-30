@@ -147,7 +147,7 @@ func (p *properties) find(path []string) interface{} {
 
 		k := path[i]
 		if len(k) == 0 {
-			continue
+			return nil
 		}
 
 		key, index := splitPath(k)
@@ -200,9 +200,6 @@ func (p *properties) Map() map[string]interface{} {
 }
 
 func (p *properties) Get(key string) interface{} {
-	if key == "" {
-		return nil
-	}
 	key = strings.ToLower(key)
 	return p.find(strings.Split(key, "."))
 }
@@ -286,14 +283,8 @@ func validValueTag(tag string) bool {
 }
 
 // parseValueTag 解析 ${key:=def} 字符串，返回 key 和 def 的值。
-func parseValueTag(tag string) (key string, def interface{}, err error) {
-
-	if !validValueTag(tag) {
-		return "", nil, errors.New("invalid value tag")
-	}
-
-	tag = tag[2 : len(tag)-1]
-	ss := strings.SplitN(tag, ":=", 2)
+func parseValueTag(tag string) (key string, def interface{}) {
+	ss := strings.SplitN(tag[2:len(tag)-1], ":=", 2)
 	if len(ss) > 1 {
 		def = ss[1]
 	}
@@ -303,18 +294,13 @@ func parseValueTag(tag string) (key string, def interface{}, err error) {
 
 // Resolve 解析 ${key:=def} 字符串，返回 key 对应的属性值，如果没有找到则返回
 // def 值，如果 def 存在引用关系则递归解析直到获取最终的属性值。
-func Resolve(p interface{ Get(key string) interface{} }, tagOrValue interface{}) (interface{}, error) {
+func Resolve(p interface{ Get(key string) interface{} }, val interface{}) interface{} {
 
-	// 不是字符串或者没有使用配置引用语法则直接返回
-	tag, ok := tagOrValue.(string)
-	if !ok || !validValueTag(tag) {
-		return tagOrValue, nil
+	str, ok := val.(string)
+	if !ok || !validValueTag(str) {
+		return val
 	}
 
-	key, def, _ := parseValueTag(tag)
-	if val := Default(p, key, def); val != nil {
-		return Resolve(p, val)
-	}
-
-	return nil, fmt.Errorf("property %q not config", key)
+	key, def := parseValueTag(str)
+	return Resolve(p, Default(p, key, def))
 }

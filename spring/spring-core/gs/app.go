@@ -330,9 +330,8 @@ func (app *Application) prepare() {
 
 	// 将重组后的属性值写入 Context 属性列表
 	for _, key := range priority.Keys() {
-		value, err := conf.Resolve(priority, priority.Get(key))
-		util.Panic(err).When(err != nil)
-		app.SetProperty(key, value)
+		val := priority.Get(key)
+		app.SetProperty(key, val)
 	}
 }
 
