@@ -23,6 +23,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/go-spring/spring-core/arg"
 	"github.com/go-spring/spring-core/cond"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/log"
@@ -351,7 +352,7 @@ func (assembly *beanAssembly) wire(b beanDefinition, onlyAutoWire bool) error {
 
 	// Bean 是否已删除，已经删除的 Bean 不能再注入
 	if b.getStatus() == Deleted {
-		return fmt.Errorf("bean:%q have been deleted", b.BeanId())
+		return fmt.Errorf("bean:%q have been deleted", b.ID())
 	}
 
 	// 如果刷新阶段已完成并且 Bean 已经注入则无需再次进行下面的步骤
@@ -424,7 +425,7 @@ func (assembly *beanAssembly) wire(b beanDefinition, onlyAutoWire bool) error {
 
 	// 如果用户设置了初始化函数则执行初始化函数
 	if init := b.getInit(); init != nil {
-		if _, err := init.Call(assembly, b.Value()); err != nil {
+		if _, err := init.Call(assembly, arg.Receiver(b.Value())); err != nil {
 			return err
 		}
 	}
@@ -576,7 +577,7 @@ func (assembly *beanAssembly) wireFactory(b beanDefinition) error {
 		beanValue = b.Value()
 	}
 
-	d := NewBean(beanValue, b.getFile(), b.getLine()).WithName(b.BeanName())
+	d := NewBean(beanValue, b.getFile(), b.getLine()).WithName(b.Name())
 	return assembly.wire(&fnValueBeanDefinition{beanDefinition: d, f: b}, false)
 }
 

@@ -33,16 +33,13 @@ type Definition interface {
 	Value() reflect.Value   // 值
 	Interface() interface{} // 源
 
-	BeanId() string   // 返回 Bean 的 ID
-	BeanName() string // 返回 Bean 的名称
+	ID() string       // 返回 Bean 的 ID
+	Name() string     // 返回 Bean 的名称
 	TypeName() string // 返回类型的全限定名
 
 	FileLine() string    // 返回 Bean 的注册点
 	Description() string // 返回 Bean 的详细描述
 }
-
-// Factory Bean 的工厂函数，也叫构造函数。
-type Factory interface{}
 
 // IsFactoryType 返回以函数形式注册 Bean 的函数是否合法。一个合法
 // 的注册函数需要以下条件：入参可以有任意多个，支持一般形式和 Option

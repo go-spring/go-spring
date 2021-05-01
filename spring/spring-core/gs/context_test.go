@@ -1067,10 +1067,10 @@ func TestApplicationContext_RegisterBeanFn2(t *testing.T) {
 		ctx.SetProperty("manager.version", "1.0.0")
 
 		bd := ctx.ProvideBean(NewManager)
-		assert.Equal(t, bd.BeanName(), "gs_test.Manager")
+		assert.Equal(t, bd.Name(), "gs_test.Manager")
 
 		bd = ctx.ProvideBean(NewInt)
-		assert.Equal(t, bd.BeanName(), "*int")
+		assert.Equal(t, bd.Name(), "*int")
 
 		ctx.Refresh()
 
@@ -1457,7 +1457,7 @@ func TestApplicationContext_CollectBeans(t *testing.T) {
 		assert.Equal(t, len(rcs), 2)
 		assert.Equal(t, rcs[0].Endpoints, "recores://localhost:6379")
 	})
-	assert.Equal(t, intBean.BeanName(), "*int")
+	assert.Equal(t, intBean.Name(), "*int")
 
 	ctx.Refresh()
 
@@ -1709,9 +1709,9 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 		ctx := gs.New()
 		ctx.SetProperty("server.version", "1.0.0")
 		parent := ctx.RegisterBean(new(Server))
-		bd := ctx.ProvideBean((*Server).Consumer, parent.BeanId())
+		bd := ctx.ProvideBean((*Server).Consumer, parent.ID())
 		ctx.Refresh()
-		assert.Equal(t, bd.BeanName(), "*gs_test.Consumer")
+		assert.Equal(t, bd.Name(), "*gs_test.Consumer")
 
 		var s *Server
 		err := ctx.GetBean(&s)
@@ -1732,7 +1732,7 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 		ctx.SetProperty("server.version", "1.0.0")
 		parent := ctx.RegisterBean(new(Server))
 		// ctx.Bean((*Server).ConsumerArg, "", "${i:=9}")
-		ctx.ProvideBean((*Server).ConsumerArg, parent.BeanId(), "${i:=9}")
+		ctx.ProvideBean((*Server).ConsumerArg, parent.ID(), "${i:=9}")
 		ctx.Refresh()
 
 		var s *Server
@@ -1754,7 +1754,7 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 		ctx.SetProperty("server.version", "1.0.0")
 		parent := ctx.ProvideBean(NewServerInterface)
 		// ctx.ProvideBean(ServerInterface.Consumer, "").DependsOn("gs_test.ServerInterface")
-		ctx.ProvideBean(ServerInterface.Consumer, parent.BeanId()).DependsOn("gs_test.ServerInterface")
+		ctx.ProvideBean(ServerInterface.Consumer, parent.ID()).DependsOn("gs_test.ServerInterface")
 		ctx.RegisterBean(new(Service))
 		ctx.Refresh()
 
@@ -1802,7 +1802,7 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 				ctx := gs.New()
 				ctx.SetProperty("server.version", "1.0.0")
 				parent := ctx.RegisterBean(new(Server)).DependsOn("*gs_test.Service")
-				ctx.ProvideBean((*Server).Consumer, parent.BeanId()).DependsOn("*gs_test.Server")
+				ctx.ProvideBean((*Server).Consumer, parent.ID()).DependsOn("*gs_test.Server")
 				ctx.RegisterBean(new(Service))
 				ctx.Refresh()
 			}()
@@ -2357,7 +2357,7 @@ func TestApplicationContext_NestValueField(t *testing.T) {
 		ctx.SetProperty("sdk.wx.enable", true)
 
 		bd := ctx.ProvideBean(func() int { return 3 })
-		assert.Equal(t, bd.BeanName(), "*int")
+		assert.Equal(t, bd.Name(), "*int")
 
 		ctx.RegisterBean(new(wxChannel))
 		ctx.Refresh()
@@ -2897,7 +2897,7 @@ func TestDefaultSpringContext(t *testing.T) {
 		ctx := gs.New()
 		ctx.SetProperty("server.version", "1.0.0")
 		parent := ctx.RegisterBean(new(Server))
-		ctx.ProvideBean((*Server).Consumer, parent.BeanId()).WithCond(cond.OnProperty("consumer.enable"))
+		ctx.ProvideBean((*Server).Consumer, parent.ID()).WithCond(cond.OnProperty("consumer.enable"))
 		ctx.Refresh()
 
 		var s *Server
@@ -2916,7 +2916,7 @@ func TestDefaultSpringContext(t *testing.T) {
 //
 //	ctx := core.New()
 //	parent := ctx.ProvideBean(NewServerInterface).WithCond(cond.OnProperty("server.is.nil"))
-//	ctx.ProvideBean(ServerInterface.Consumer, parent.BeanId())
+//	ctx.ProvideBean(ServerInterface.Consumer, parent.ID())
 //
 //	ctx.Refresh()
 //

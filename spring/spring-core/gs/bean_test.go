@@ -231,7 +231,7 @@ func TestObjectBean(t *testing.T) {
 		}
 
 		for bd, v := range data {
-			assert.Equal(t, bd.BeanName(), v.name)
+			assert.Equal(t, bd.Name(), v.name)
 			assert.Equal(t, bd.TypeName(), v.typeName)
 		}
 	})

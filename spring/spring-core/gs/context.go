@@ -212,14 +212,14 @@ func (ctx *applicationContext) checkRegistration() {
 
 func (ctx *applicationContext) delete(b *BeanDefinition) {
 	b.setStatus(Deleted)
-	delete(ctx.cacheById, b.BeanId())
+	delete(ctx.cacheById, b.ID())
 }
 
 func (ctx *applicationContext) register(b *BeanDefinition) {
-	if _, ok := ctx.cacheById[b.BeanId()]; ok {
-		panic(fmt.Errorf("duplicate registration, bean:%q", b.BeanId()))
+	if _, ok := ctx.cacheById[b.ID()]; ok {
+		panic(fmt.Errorf("duplicate registration, bean:%q", b.ID()))
 	}
-	ctx.cacheById[b.BeanId()] = b
+	ctx.cacheById[b.ID()] = b
 }
 
 // RegisterBean 注册对象形式的 Bean。
@@ -344,7 +344,7 @@ func (ctx *applicationContext) getCacheByType(typ reflect.Type) *slice.Slice {
 }
 
 func (ctx *applicationContext) setCacheByType(t reflect.Type, b *BeanDefinition) {
-	log.Debugf("register %s name:%q type:%q %s", b.getClass(), b.BeanName(), t.String(), b.FileLine())
+	log.Debugf("register %s name:%q type:%q %s", b.getClass(), b.Name(), t.String(), b.FileLine())
 	ctx.getCacheByType(t).Append(b)
 }
 
@@ -458,7 +458,7 @@ func (ctx *applicationContext) resolveBean(b *BeanDefinition) error {
 	}
 
 	// 按照 Bean 的名字进行缓存
-	ctx.setCacheByName(b.BeanName(), b)
+	ctx.setCacheByName(b.Name(), b)
 
 	b.setStatus(Resolved)
 	return nil
@@ -495,10 +495,10 @@ func (ctx *applicationContext) runConfigers(assembly *beanAssembly) error {
 
 // destroyer 某个 Bean 可能会被多个 Bean 依赖，因此需要排重处理。
 func (ctx *applicationContext) destroyer(b *BeanDefinition) *destroyer {
-	d, ok := ctx.destroyerMap[b.BeanId()]
+	d, ok := ctx.destroyerMap[b.ID()]
 	if !ok {
 		d = &destroyer{current: b}
-		ctx.destroyerMap[b.BeanId()] = d
+		ctx.destroyerMap[b.ID()] = d
 	}
 	return d
 }

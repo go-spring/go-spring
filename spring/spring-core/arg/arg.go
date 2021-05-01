@@ -184,10 +184,8 @@ func newArgList(fnType reflect.Type, withReceiver bool, args []Arg) *argList {
 	return &argList{fnType: fnType, withReceiver: withReceiver, args: fnArgs}
 }
 
-func (r *argList) WithReceiver() bool { return r.withReceiver }
-
-// Get 返回函数所有参数的真实值，fileLine 是函数定义所在的文件及其行号，供打印日志时使用。
-func (r *argList) Get(ctx Context, fileLine string) ([]reflect.Value, error) {
+// get 返回函数所有参数的真实值，fileLine 是函数定义所在的文件及其行号，供打印日志时使用。
+func (r *argList) get(ctx Context, fileLine string) ([]reflect.Value, error) {
 
 	fnType := r.fnType
 	numIn := fnType.NumIn()
@@ -213,7 +211,7 @@ func (r *argList) Get(ctx Context, fileLine string) ([]reflect.Value, error) {
 			t = fnType.In(idx)
 		}
 
-		v, err := r.get(t, arg, ctx, fileLine)
+		v, err := r.getArg(ctx, arg, t, fileLine)
 		if err != nil {
 			return nil, err
 		}
@@ -226,7 +224,8 @@ func (r *argList) Get(ctx Context, fileLine string) ([]reflect.Value, error) {
 	return result, nil
 }
 
-func (r *argList) get(t reflect.Type, arg Arg, ctx Context, fileLine string) (v reflect.Value, err error) {
+func (r *argList) getArg(ctx Context, arg Arg, t reflect.Type,
+	fileLine string) (v reflect.Value, err error) {
 
 	description := fmt.Sprintf("arg:\"%v\" %s", arg, fileLine)
 	log.Tracef("get value %s", description)
@@ -246,7 +245,7 @@ func (r *argList) get(t reflect.Type, arg Arg, ctx Context, fileLine string) (v 
 	case *optionArg:
 		return g.call(ctx)
 	case bean.Definition:
-		tag = g.BeanId()
+		tag = g.ID()
 	case string:
 		tag = g
 	default:
@@ -275,7 +274,7 @@ func (r *argList) get(t reflect.Type, arg Arg, ctx Context, fileLine string) (v 
 
 // optionArg Option 形式的函数参数
 type optionArg struct {
-	r *Callable
+	r *callable
 	c cond.Condition
 }
 
@@ -322,8 +321,24 @@ func (arg *optionArg) call(ctx Context) (v reflect.Value, err error) {
 	return reflect.Value{}, nil
 }
 
-// Callable 绑定函数及其参数。
-type Callable struct {
+type callArg struct {
+	receiver reflect.Value
+}
+
+type CallOption func(arg *callArg)
+
+func Receiver(r reflect.Value) CallOption {
+	return func(arg *callArg) {
+		arg.receiver = r
+	}
+}
+
+type Callable interface {
+	Call(ctx Context, opts ...CallOption) ([]reflect.Value, error)
+}
+
+// callable 绑定函数及其参数。
+type callable struct {
 	fn   interface{}
 	arg  *argList
 	file string // 注册点所在文件
@@ -350,7 +365,7 @@ func WithReceiver() BindOption {
 }
 
 // Bind 绑定函数及其参数。
-func Bind(fn interface{}, args []Arg, opts ...BindOption) *Callable {
+func Bind(fn interface{}, args []Arg, opts ...BindOption) *callable {
 
 	a := bindArg{}
 	for _, opt := range opts {
@@ -361,20 +376,25 @@ func Bind(fn interface{}, args []Arg, opts ...BindOption) *Callable {
 
 	fnType := reflect.TypeOf(fn)
 	argList := newArgList(fnType, a.withReceiver, args)
-	return &Callable{fn: fn, arg: argList, file: file, line: line}
+	return &callable{fn: fn, arg: argList, file: file, line: line}
 }
 
-func (r *Callable) Call(ctx Context, receiver ...reflect.Value) ([]reflect.Value, error) {
+func (r *callable) Call(ctx Context, opts ...CallOption) ([]reflect.Value, error) {
+
+	arg := callArg{}
+	for _, opt := range opts {
+		opt(&arg)
+	}
 
 	var in []reflect.Value
 
-	if r.arg.WithReceiver() {
-		in = append(in, receiver[0])
+	if r.arg.withReceiver {
+		in = append(in, arg.receiver)
 	}
 
 	if r.arg != nil {
 		fileline := fmt.Sprintf("%s:%d", r.file, r.line)
-		v, err := r.arg.Get(ctx, fileline)
+		v, err := r.arg.get(ctx, fileline)
 		if err != nil {
 			return nil, err
 		}

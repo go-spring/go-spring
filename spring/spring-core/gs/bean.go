@@ -32,15 +32,15 @@ import (
 
 // toSingletonTag 将 bean.Selector 转换为对应的 singletonTag 。
 func toSingletonTag(selector bean.Selector) singletonTag {
-	switch i := selector.(type) {
+	switch s := selector.(type) {
 	case string:
-		return parseSingletonTag(i)
+		return parseSingletonTag(s)
 	case bean.Definition:
-		return parseSingletonTag(i.BeanId())
+		return parseSingletonTag(s.ID())
 	case *BeanDefinition:
-		return parseSingletonTag(i.BeanId())
+		return parseSingletonTag(s.ID())
 	default:
-		return parseSingletonTag(util.TypeName(i) + ":")
+		return parseSingletonTag(util.TypeName(s) + ":")
 	}
 }
 
@@ -158,14 +158,14 @@ const (
 type beanDefinition interface {
 	bean.Definition
 
-	getFactory() *arg.Callable     // 返回 Bean 的工厂函数
+	getFactory() arg.Callable      // 返回 Bean 的工厂函数
 	getClass() string              // 返回 Bean 的类型描述
 	getFile() string               // 返回 Bean 注册点所在文件
 	getLine() int                  // 返回 Bean 注册点所在行数
 	getStatus() beanStatus         // 返回 Bean 的状态值
 	setStatus(status beanStatus)   // 设置 Bean 的状态值
-	getInit() *arg.Callable        // 返回 Bean 的初始化函数
-	getDestroy() *arg.Callable     // 返回 Bean 的销毁函数
+	getInit() arg.Callable         // 返回 Bean 的初始化函数
+	getDestroy() arg.Callable      // 返回 Bean 的销毁函数
 	getDependsOn() []bean.Selector // 返回 Bean 的间接依赖项
 }
 
@@ -177,7 +177,7 @@ type BeanDefinition struct {
 
 	v reflect.Value // 值
 	t reflect.Type  // 类型
-	f *arg.Callable // 工厂函数
+	f arg.Callable  // 工厂函数
 
 	file string // 注册点所在文件
 	line int    // 注册点所在行数
@@ -186,15 +186,15 @@ type BeanDefinition struct {
 	status    beanStatus      // 状态
 	cond      cond.Condition  // 判断条件
 	primary   bool            // 是否为主版本
-	init      *arg.Callable   // 初始化函数
-	destroy   *arg.Callable   // 销毁函数
+	init      arg.Callable    // 初始化函数
+	destroy   arg.Callable    // 销毁函数
 	dependsOn []bean.Selector // 间接依赖项
 
 	exports map[reflect.Type]struct{} // 导出的接口
 }
 
 // newBeanDefinition BeanDefinition 的构造函数，f 是工厂函数，当 v 为对象 Bean 时 f 为空。
-func newBeanDefinition(v reflect.Value, f *arg.Callable, file string, line int) *BeanDefinition {
+func newBeanDefinition(v reflect.Value, f arg.Callable, file string, line int) *BeanDefinition {
 	if t := v.Type(); util.RefType(t.Kind()) {
 		return &BeanDefinition{
 			t:        t,
@@ -220,18 +220,18 @@ func (d *BeanDefinition) Value() reflect.Value {
 	return d.v
 }
 
-// Bean 返回 Bean 的对象。
+// Interface 返回 Bean 的对象。
 func (d *BeanDefinition) Interface() interface{} {
 	return d.Value().Interface()
 }
 
-// BeanId 返回 Bean 的 ID 。
-func (d *BeanDefinition) BeanId() string {
-	return d.TypeName() + ":" + d.BeanName()
+// ID 返回 Bean 的 ID 。
+func (d *BeanDefinition) ID() string {
+	return d.TypeName() + ":" + d.Name()
 }
 
-// BeanName 返回 Bean 的名称。
-func (d *BeanDefinition) BeanName() string {
+// Name 返回 Bean 的名称。
+func (d *BeanDefinition) Name() string {
 	// 没有为 Bean 设置名称时使用类型名作为它的名称。
 	if d.name == "" {
 		d.name = d.t.String()
@@ -251,11 +251,11 @@ func (d *BeanDefinition) FileLine() string {
 
 // Description 返回 Bean 的详细描述。
 func (d *BeanDefinition) Description() string {
-	return fmt.Sprintf("%s name:%q %s", d.getClass(), d.BeanName(), d.FileLine())
+	return fmt.Sprintf("%s name:%q %s", d.getClass(), d.Name(), d.FileLine())
 }
 
 // getFactory 返回 Bean 的工厂函数。
-func (d *BeanDefinition) getFactory() *arg.Callable {
+func (d *BeanDefinition) getFactory() arg.Callable {
 	return d.f
 }
 
@@ -288,12 +288,12 @@ func (d *BeanDefinition) setStatus(status beanStatus) {
 }
 
 // getInit 返回 Bean 的初始化函数。
-func (d *BeanDefinition) getInit() *arg.Callable {
+func (d *BeanDefinition) getInit() arg.Callable {
 	return d.init
 }
 
 // getDestroy 返回 Bean 的销毁函数。
-func (d *BeanDefinition) getDestroy() *arg.Callable {
+func (d *BeanDefinition) getDestroy() arg.Callable {
 	return d.destroy
 }
 
@@ -311,7 +311,7 @@ func (d *BeanDefinition) Match(typeName string, beanName string) bool {
 	}
 
 	nameIsSame := false
-	if beanName == "" || d.BeanName() == beanName {
+	if beanName == "" || d.Name() == beanName {
 		nameIsSame = true
 	}
 
