@@ -3215,3 +3215,9 @@ func TestApplicationContext_Invoke(t *testing.T) {
 func init() {
 	log.SetLevel(log.TraceLevel)
 }
+
+func TestApplicationContext_Go(t *testing.T) {
+	ctx := gs.New()
+	ctx.Refresh()
+	ctx.Go(func() { panic(errors.New("error")) })
+}

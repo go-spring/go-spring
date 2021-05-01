@@ -30,9 +30,9 @@ func TestSortConfigers(t *testing.T) {
 	t.Run("found cycle", func(t *testing.T) {
 		assert.Panic(t, func() {
 
-			f2 := config(func() {}).After("f5").WithName("f2")
-			f5 := config(func() {}).After("f2").WithName("f5")
-			f7 := config(func() {}).Before("f2")
+			f2 := config(func() {}, nil, 0).After("f5").WithName("f2")
+			f5 := config(func() {}, nil, 0).After("f2").WithName("f5")
+			f7 := config(func() {}, nil, 0).Before("f2")
 
 			configers := list.New()
 			configers.PushBack(f5)
@@ -50,9 +50,9 @@ func TestSortConfigers(t *testing.T) {
 
 	t.Run("sorted", func(t *testing.T) {
 
-		f2 := config(func() {}).WithName("f2")
-		f5 := config(func() {}).WithName("f5").After("f2")
-		f7 := config(func() {}).Before("f2")
+		f2 := config(func() {}, nil, 0).WithName("f2")
+		f5 := config(func() {}, nil, 0).WithName("f5").After("f2")
+		f7 := config(func() {}, nil, 0).Before("f2")
 
 		configers := list.New()
 		configers.PushBack(f5)

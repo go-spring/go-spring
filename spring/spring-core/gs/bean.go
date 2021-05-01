@@ -336,7 +336,7 @@ func (d *BeanDefinition) DependsOn(selectors ...bean.Selector) *BeanDefinition {
 	return d
 }
 
-// primary 设置 Bean 为主版本。
+// Primary 设置 Bean 为主版本。
 func (d *BeanDefinition) Primary(primary bool) *BeanDefinition {
 	d.primary = primary
 	return d
@@ -352,7 +352,7 @@ func validLifeCycleFunc(fnType reflect.Type, beanType reflect.Type) bool {
 // Init 设置 Bean 的初始化函数。
 func (d *BeanDefinition) Init(fn interface{}, args ...arg.Arg) *BeanDefinition {
 	if validLifeCycleFunc(reflect.TypeOf(fn), d.Type()) {
-		d.init = arg.Bind(fn, true, args)
+		d.init = arg.Bind(fn, args, arg.WithReceiver(), arg.Skip(1))
 		return d
 	}
 	panic(errors.New("init should be func(bean) or func(bean)error"))
@@ -361,7 +361,7 @@ func (d *BeanDefinition) Init(fn interface{}, args ...arg.Arg) *BeanDefinition {
 // Destroy 设置 Bean 的销毁函数。
 func (d *BeanDefinition) Destroy(fn interface{}, args ...arg.Arg) *BeanDefinition {
 	if validLifeCycleFunc(reflect.TypeOf(fn), d.Type()) {
-		d.destroy = arg.Bind(fn, true, args)
+		d.destroy = arg.Bind(fn, args, arg.WithReceiver(), arg.Skip(1))
 		return d
 	}
 	panic(errors.New("destroy should be func(bean) or func(bean)error"))
@@ -408,10 +408,11 @@ func NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 	var (
 		file string
 		line int
+		skip int
 	)
 
-	for i := 2; i < 10; i++ {
-		_, f, l, _ := runtime.Caller(i)
+	for skip = 1; skip < 10; skip++ {
+		_, f, l, _ := runtime.Caller(skip)
 		if strings.Contains(f, "/spring-core/") {
 			if !strings.HasSuffix(f, "_test.go") {
 				continue
@@ -434,14 +435,14 @@ func NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 
 		// 创建 Bean 的值
 		out0 := t.Out(0)
-		v := reflect.New(out0)
+		v = reflect.New(out0)
 
 		// 引用类型去掉一层指针
 		if util.RefType(out0.Kind()) {
 			v = v.Elem()
 		}
 
-		ctor := arg.Bind(objOrCtor, false, ctorArgs)
+		ctor := arg.Bind(objOrCtor, ctorArgs, arg.Skip(skip))
 		return newBeanDefinition(v, ctor, file, line)
 	}
 

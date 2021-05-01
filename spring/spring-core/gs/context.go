@@ -237,7 +237,7 @@ func (ctx *applicationContext) ProvideBean(objOrCtor interface{}, ctorArgs ...ar
 
 // Config 注册一个配置函数
 func (ctx *applicationContext) Config(fn interface{}, args ...arg.Arg) *Configer {
-	configer := config(fn, args)
+	configer := config(fn, args, 1)
 	ctx.configers.PushBack(configer)
 	return configer
 }
@@ -610,7 +610,7 @@ func (ctx *applicationContext) Invoke(fn interface{}, args ...arg.Arg) error {
 	ctx.checkAutoWired()
 	if fnType := reflect.TypeOf(fn); util.FuncType(fnType) {
 		if util.ReturnNothing(fnType) || util.ReturnOnlyError(fnType) {
-			r := arg.Bind(fn, false, args)
+			r := arg.Bind(fn, args, arg.Skip(1))
 			_, err := r.Call(toAssembly(ctx))
 			return err
 		}
@@ -620,27 +620,28 @@ func (ctx *applicationContext) Invoke(fn interface{}, args ...arg.Arg) error {
 
 // Go 安全地启动一个 goroutine
 func (ctx *applicationContext) Go(fn interface{}, args ...arg.Arg) {
-
 	ctx.checkAutoWired()
+
 	fnType := reflect.TypeOf(fn)
-	if util.FuncType(fnType) && util.ReturnNothing(fnType) {
+	if !util.FuncType(fnType) || !util.ReturnNothing(fnType) {
+		panic(errors.New("fn should be func()"))
+	}
 
-		ctx.wg.Add(1)
-		go func() {
-			defer ctx.wg.Done()
+	r := arg.Bind(fn, args, arg.Skip(1))
 
-			defer func() {
-				if r := recover(); r != nil {
-					log.Error(r)
-				}
-			}()
+	ctx.wg.Add(1)
+	go func() {
+		defer ctx.wg.Done()
 
-			r := arg.Bind(fn, false, args)
-			_, err := r.Call(toAssembly(ctx))
-			if err != nil {
-				log.Error(err.Error())
+		defer func() {
+			if r := recover(); r != nil {
+				log.Error(r)
 			}
 		}()
-	}
-	panic(errors.New("fn should be func()"))
+
+		_, err := r.Call(toAssembly(ctx))
+		if err != nil {
+			log.Error(err.Error())
+		}
+	}()
 }

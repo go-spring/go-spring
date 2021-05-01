@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"reflect"
 	"runtime"
-	"strings"
 
 	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/cond"
@@ -290,7 +289,7 @@ func Option(fn interface{}, args ...Arg) *optionArg {
 		panic(errors.New("error option func"))
 	}
 
-	return &optionArg{r: Bind(fn, false, args)}
+	return &optionArg{r: Bind(fn, args, Skip(1))}
 }
 
 // WithCond 为 Option 设置一个 cond.Condition
@@ -331,28 +330,37 @@ type Callable struct {
 	line int    // 注册点所在行数
 }
 
+type bindArg struct {
+	skip         int
+	withReceiver bool
+}
+
+type BindOption func(arg *bindArg)
+
+func Skip(skip int) BindOption {
+	return func(arg *bindArg) {
+		arg.skip = skip
+	}
+}
+
+func WithReceiver() BindOption {
+	return func(arg *bindArg) {
+		arg.withReceiver = true
+	}
+}
+
 // Bind 绑定函数及其参数。
-func Bind(fn interface{}, withReceiver bool, args []Arg) *Callable {
+func Bind(fn interface{}, args []Arg, opts ...BindOption) *Callable {
 
-	var (
-		file string
-		line int
-	)
-
-	for i := 2; i < 10; i++ {
-		_, f, l, _ := runtime.Caller(i)
-		if strings.Contains(f, "/spring-core/") {
-			if !strings.HasSuffix(f, "_test.go") {
-				continue
-			}
-		}
-		file = f
-		line = l
-		break
+	a := bindArg{}
+	for _, opt := range opts {
+		opt(&a)
 	}
 
+	_, file, line, _ := runtime.Caller(a.skip + 1)
+
 	fnType := reflect.TypeOf(fn)
-	argList := newArgList(fnType, withReceiver, args)
+	argList := newArgList(fnType, a.withReceiver, args)
 	return &Callable{fn: fn, arg: argList, file: file, line: line}
 }
 
