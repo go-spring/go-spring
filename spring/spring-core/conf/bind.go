@@ -281,7 +281,7 @@ func init() {
 					if sv, err := cast.ToStringMapE(si); err == nil {
 						ev := reflect.New(elemType)
 						subKey := fmt.Sprintf("%s[%d]", key, i)
-						err = bindStruct(Map(sv), ev.Elem(), BindOption{Key: subKey, Path: opt.Path})
+						err = bindStruct(&properties{m: sv}, ev.Elem(), BindOption{Key: subKey, Path: opt.Path})
 						if err != nil {
 							return err
 						}
@@ -362,7 +362,7 @@ func init() {
 				for k1, v1 := range temp {
 					ev := reflect.New(elemType)
 					subKey := fmt.Sprintf("%s.%s", key, k1)
-					err = bindStruct(Map(v1), ev.Elem(), BindOption{Key: subKey, Path: opt.Path})
+					err = bindStruct(&properties{m: v1}, ev.Elem(), BindOption{Key: subKey, Path: opt.Path})
 					if err != nil {
 						return err
 					}

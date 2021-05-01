@@ -821,3 +821,19 @@ func TestProperties_Ref(t *testing.T) {
 		assert.Equal(t, s.KeyIsEmpty, "kie")
 	})
 }
+
+func TestBindMap(t *testing.T) {
+	m := map[string]interface{}{
+		"a.b1": "b1",
+		"a.b2": "b2",
+		"a.b3": "b3",
+	}
+	var r map[string]struct {
+		B1 string `value:"${b1}"`
+		B2 string `value:"${b2}"`
+		B3 string `value:"${b3}"`
+	}
+	err := conf.BindMap(m, &r)
+	assert.Nil(t, err)
+	assert.Equal(t, r["a"].B1, "b1")
+}

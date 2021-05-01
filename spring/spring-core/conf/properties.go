@@ -29,6 +29,10 @@ import (
 	"github.com/spf13/cast"
 )
 
+const (
+	RootKey = "$"
+)
+
 type getArg struct {
 	d interface{} // 默认值
 	r bool        // 开启解析
@@ -114,8 +118,11 @@ func New() Properties {
 
 // Map 返回从 map 集合创建的属性列表，保存的是 map 深拷贝后的值。
 func Map(m map[string]interface{}) Properties {
-	m = toLowerValue(m).(map[string]interface{})
-	return &properties{m: m}
+	p := New()
+	for k, v := range m {
+		p.Set(k, v)
+	}
+	return p
 }
 
 // Load 从文件加载属性列表。
@@ -238,6 +245,10 @@ func (p *properties) Map() map[string]interface{} {
 
 func (p *properties) Get(key string, opts ...GetOption) interface{} {
 
+	if key == RootKey {
+		return p.m
+	}
+
 	key = strings.ToLower(key)
 	val := p.find(strings.Split(key, "."))
 
@@ -305,6 +316,11 @@ func (p *properties) Bind(key string, i interface{}) error {
 	}
 
 	return BindValue(p, v.Elem(), "${"+key+"}", BindOption{Path: s, Key: key})
+}
+
+// BindMap 将 map 作为属性源对 i 进行属性绑定。
+func BindMap(m map[string]interface{}, i interface{}) error {
+	return Map(m).Bind(RootKey, i)
 }
 
 // validValueTag 是否为 ${key:=def} 格式的字符串。
