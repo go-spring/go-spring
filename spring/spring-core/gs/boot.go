@@ -78,8 +78,8 @@ func WireBean(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error) {
 	return gApp.Wire(objOrCtor, ctorArgs...)
 }
 
-func GetBean(i interface{}, selector ...bean.Selector) error {
-	return gApp.GetBean(i, selector...)
+func GetBean(i interface{}, opts ...GetBeanOption) error {
+	return gApp.GetBean(i, opts...)
 }
 
 // FindBean 返回符合条件的 Bean 集合，不保证返回的 Bean 已经完成注入和绑定过程。

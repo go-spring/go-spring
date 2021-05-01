@@ -105,13 +105,13 @@ func TestApplicationContext(t *testing.T) {
 		// 入参不是可赋值的对象
 		assert.Panic(t, func() {
 			var i int
-			err := ctx.GetBean(&i, "i3")
+			err := ctx.GetBean(&i, gs.Use("i3"))
 			util.Panic(err).When(err != nil)
 		}, "receiver must be ref type, bean:\"i3\" field:\"\"")
 
 		{
 			var i *int
-			err := ctx.GetBean(&i, "i3")
+			err := ctx.GetBean(&i, gs.Use("i3"))
 			assert.Nil(t, err)
 		}
 
@@ -668,59 +668,59 @@ func TestApplicationContext_GetBean(t *testing.T) {
 		err = ctx.GetBean(&grouper)
 		assert.Nil(t, err)
 
-		err = ctx.GetBean(&two, (*BeanTwo)(nil))
+		err = ctx.GetBean(&two, gs.Use((*BeanTwo)(nil)))
 		assert.Nil(t, err)
 
-		err = ctx.GetBean(&grouper, (*BeanTwo)(nil))
+		err = ctx.GetBean(&grouper, gs.Use((*BeanTwo)(nil)))
 		assert.Nil(t, err)
 
-		err = ctx.GetBean(&two, "")
+		err = ctx.GetBean(&two)
 		assert.Nil(t, err)
 
-		err = ctx.GetBean(&grouper, "")
+		err = ctx.GetBean(&grouper)
 		assert.Nil(t, err)
 
-		err = ctx.GetBean(&two, "*gs_test.BeanTwo")
+		err = ctx.GetBean(&two, gs.Use("*gs_test.BeanTwo"))
 		assert.Nil(t, err)
 
-		err = ctx.GetBean(&grouper, "*gs_test.BeanTwo")
+		err = ctx.GetBean(&grouper, gs.Use("*gs_test.BeanTwo"))
 		assert.Nil(t, err)
 
 		assert.Panic(t, func() {
-			err = ctx.GetBean(&two, "BeanTwo")
+			err = ctx.GetBean(&two, gs.Use("BeanTwo"))
 			util.Panic(err).When(err != nil)
 		}, "can't find bean, bean:\"BeanTwo\"")
 
 		assert.Panic(t, func() {
-			err = ctx.GetBean(&grouper, "BeanTwo")
+			err = ctx.GetBean(&grouper, gs.Use("BeanTwo"))
 			util.Panic(err).When(err != nil)
 		}, "can't find bean, bean:\"BeanTwo\"")
 
-		err = ctx.GetBean(&two, ":*gs_test.BeanTwo")
+		err = ctx.GetBean(&two, gs.Use(":*gs_test.BeanTwo"))
 		assert.Nil(t, err)
 
-		err = ctx.GetBean(&grouper, ":*gs_test.BeanTwo")
+		err = ctx.GetBean(&grouper, gs.Use(":*gs_test.BeanTwo"))
 		assert.Nil(t, err)
 
-		err = ctx.GetBean(&two, "github.com/go-spring/spring-core/gs_test/gs_test.BeanTwo:*gs_test.BeanTwo")
+		err = ctx.GetBean(&two, gs.Use("github.com/go-spring/spring-core/gs_test/gs_test.BeanTwo:*gs_test.BeanTwo"))
 		assert.Nil(t, err)
 
-		err = ctx.GetBean(&grouper, "github.com/go-spring/spring-core/gs_test/gs_test.BeanTwo:*gs_test.BeanTwo")
+		err = ctx.GetBean(&grouper, gs.Use("github.com/go-spring/spring-core/gs_test/gs_test.BeanTwo:*gs_test.BeanTwo"))
 		assert.Nil(t, err)
 
 		assert.Panic(t, func() {
-			err = ctx.GetBean(&two, "xxx:*gs_test.BeanTwo")
+			err = ctx.GetBean(&two, gs.Use("xxx:*gs_test.BeanTwo"))
 			util.Panic(err).When(err != nil)
 		}, "can't find bean, bean:\"xxx:\\*gs_test.BeanTwo\"")
 
 		assert.Panic(t, func() {
-			err = ctx.GetBean(&grouper, "xxx:*gs_test.BeanTwo")
+			err = ctx.GetBean(&grouper, gs.Use("xxx:*gs_test.BeanTwo"))
 			util.Panic(err).When(err != nil)
 		}, "can't find bean, bean:\"xxx:\\*gs_test.BeanTwo\"")
 
 		assert.Panic(t, func() {
 			var three *BeanThree
-			err = ctx.GetBean(&three, "")
+			err = ctx.GetBean(&three)
 			util.Panic(err).When(err != nil)
 		}, "can't find bean, bean:\"\"")
 	})
@@ -836,14 +836,14 @@ func TestApplicationContext_RegisterBeanFn(t *testing.T) {
 	ctx.Refresh()
 
 	var st1 *Student
-	err := ctx.GetBean(&st1, "st1")
+	err := ctx.GetBean(&st1, gs.Use("st1"))
 
 	assert.Nil(t, err)
 	fmt.Println(json.ToString(st1))
 	assert.Equal(t, st1.Room, ctx.GetProperty("room"))
 
 	var st2 *Student
-	err = ctx.GetBean(&st2, "st2")
+	err = ctx.GetBean(&st2, gs.Use("st2"))
 
 	assert.Nil(t, err)
 	fmt.Println(json.ToString(st2))
@@ -853,14 +853,14 @@ func TestApplicationContext_RegisterBeanFn(t *testing.T) {
 	fmt.Printf("%x\n", reflect.ValueOf(st2).Pointer())
 
 	var st3 *Student
-	err = ctx.GetBean(&st3, "st3")
+	err = ctx.GetBean(&st3, gs.Use("st3"))
 
 	assert.Nil(t, err)
 	fmt.Println(json.ToString(st3))
 	assert.Equal(t, st3.Room, ctx.GetProperty("room"))
 
 	var st4 *Student
-	err = ctx.GetBean(&st4, "st4")
+	err = ctx.GetBean(&st4, gs.Use("st4"))
 
 	assert.Nil(t, err)
 	fmt.Println(json.ToString(st4))
@@ -2955,10 +2955,10 @@ func TestDefaultSpringContext_ConditionOnBean(t *testing.T) {
 	ctx.Refresh()
 
 	var two *BeanTwo
-	err := ctx.GetBean(&two, "")
+	err := ctx.GetBean(&two)
 	assert.Nil(t, err)
 
-	err = ctx.GetBean(&two, "another_two")
+	err = ctx.GetBean(&two, gs.Use("another_two"))
 	assert.Error(t, err, "can't find bean, bean:\"another_two\"")
 }
 
@@ -2976,10 +2976,10 @@ func TestDefaultSpringContext_ConditionOnMissingBean(t *testing.T) {
 		ctx.Refresh()
 
 		var two *BeanTwo
-		err := ctx.GetBean(&two, "")
+		err := ctx.GetBean(&two)
 		assert.Nil(t, err)
 
-		err = ctx.GetBean(&two, "another_two")
+		err = ctx.GetBean(&two, gs.Use("another_two"))
 		assert.Nil(t, err)
 	}
 }

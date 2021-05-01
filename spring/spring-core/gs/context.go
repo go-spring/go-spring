@@ -34,6 +34,18 @@ import (
 	"github.com/go-spring/spring-core/util"
 )
 
+type getBeanArg struct {
+	s bean.Selector
+}
+
+type GetBeanOption func(arg *getBeanArg)
+
+func Use(s bean.Selector) GetBeanOption {
+	return func(arg *getBeanArg) {
+		arg.s = s
+	}
+}
+
 // Context 定义了 IoC 容器接口。
 //
 // 它的工作过程可以分为三个大的阶段：注册 Bean 列表、加载属性配置
@@ -57,7 +69,7 @@ type Context interface {
 
 	// GetBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 	// 它和 FindBean 的区别是它在调用后能够保证返回的 Bean 已经完成了注入和绑定过程。
-	GetBean(i interface{}, selector ...bean.Selector) error
+	GetBean(i interface{}, opts ...GetBeanOption) error
 
 	// FindBean 返回符合条件的 Bean 集合，不保证返回的 Bean 已经完成注入和绑定过程。
 	FindBean(selector bean.Selector) ([]bean.Definition, error)
@@ -243,7 +255,7 @@ func (ctx *applicationContext) Config(fn interface{}, args ...arg.Arg) *Configer
 }
 
 // GetBean 获取单例 Bean，它和 FindBean 的区别是它在调用后能够保证返回的 Bean 已经完成了注入和绑定过程。
-func (ctx *applicationContext) GetBean(i interface{}, selector ...bean.Selector) error {
+func (ctx *applicationContext) GetBean(i interface{}, opts ...GetBeanOption) error {
 
 	if i == nil {
 		return errors.New("i can't be nil")
@@ -256,14 +268,14 @@ func (ctx *applicationContext) GetBean(i interface{}, selector ...bean.Selector)
 		return errors.New("i must be pointer")
 	}
 
-	s := bean.Selector("")
-	if len(selector) > 0 {
-		s = selector[0]
+	a := getBeanArg{s: bean.Selector("")}
+	for _, opt := range opts {
+		opt(&a)
 	}
 
 	w := toAssembly(ctx)
 	v := reflect.ValueOf(i)
-	tag := toSingletonTag(s)
+	tag := toSingletonTag(a.s)
 	return w.getBean(v.Elem(), tag, reflect.Value{}, "")
 }
 
