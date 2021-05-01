@@ -41,12 +41,12 @@ type Definition interface {
 	Description() string // 返回 Bean 的详细描述
 }
 
-// IsFactoryType 返回以函数形式注册 Bean 的函数是否合法。一个合法
+// IsConstructor 返回以函数形式注册 Bean 的函数是否合法。一个合法
 // 的注册函数需要以下条件：入参可以有任意多个，支持一般形式和 Option
 // 形式，返回值只能有一个或者两个，第一个返回值必须是 Bean 源，它可以是
 // 结构体等值类型也可以是指针等引用类型，为值类型时内部会自动转换为引用类
 // 型（获取可引用的地址），如果有第二个返回值那么它必须是 error 类型。
-func IsFactoryType(t reflect.Type) bool {
+func IsConstructor(t reflect.Type) bool {
 	returnError := t.NumOut() == 2 && util.ErrorType(t.Out(1))
 	return util.FuncType(t) && (t.NumOut() == 1 || returnError)
 }

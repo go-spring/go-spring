@@ -33,7 +33,7 @@ import (
 type Context interface {
 
 	// Matches 条件成立返回 true，否则返回 false。
-	Matches(cond cond.Condition) bool
+	Matches(c cond.Condition) bool
 
 	// Bind 对一个值进行属性绑定。
 	Bind(tag string, v reflect.Value) error
@@ -52,13 +52,13 @@ type Arg interface{}
 
 // IndexArg 包含下标的函数参数。
 type IndexArg struct {
-	idx int
+	n   int
 	arg Arg
 }
 
 // Index 返回包含下标的函数参数，idx 从 1 开始计算。
-func Index(idx int, arg Arg) IndexArg {
-	return IndexArg{idx: idx, arg: arg}
+func Index(n int, arg Arg) IndexArg {
+	return IndexArg{n: n, arg: arg}
 }
 
 // R1 返回下标为 1 的函数参数。
@@ -93,11 +93,11 @@ func Value(arg interface{}) ValueArg {
 // argList 函数参数列表。
 type argList struct {
 
-	// args 函数参数列表。
-	args []Arg
-
 	// fnType 函数的类型。
 	fnType reflect.Type
+
+	// args 函数参数列表。
+	args []Arg
 
 	// withReceiver 这里所谓的接收者是指函数的第一个参数，是否包含接收者的
 	// 意思是接收者是否由 IoC 容器在执行函数时自动传入作为接收者的第一个参数。
@@ -105,7 +105,7 @@ type argList struct {
 }
 
 // newArgList 返回新创建的函数参数的列表。
-func newArgList(fnType reflect.Type, withReceiver bool, args []Arg) *argList {
+func newArgList(fnType reflect.Type, args []Arg, withReceiver bool) *argList {
 
 	// 计算函数不可变参数的数量，需要排除接收者。
 	fixedArgCount := fnType.NumIn()
@@ -128,8 +128,8 @@ func newArgList(fnType reflect.Type, withReceiver bool, args []Arg) *argList {
 			fnArgs = append(fnArgs, arg)
 		case IndexArg:
 			shouldIndex = true
-			if idx := arg.idx - 1; idx >= 0 && idx < fixedArgCount {
-				fnArgs[idx] = arg.arg
+			if n := arg.n - 1; n >= 0 && n < fixedArgCount {
+				fnArgs[n] = arg.arg
 			} else {
 				panic(errors.New("参数索引超出函数入参的个数"))
 			}
@@ -153,12 +153,12 @@ func newArgList(fnType reflect.Type, withReceiver bool, args []Arg) *argList {
 			if !shouldIndex {
 				panic(errors.New("所有非可选参数必须都有或者都没有索引"))
 			}
-			if idx := arg.idx - 1; idx < 0 || idx >= fixedArgCount {
+			if n := arg.n - 1; n < 0 || n >= fixedArgCount {
 				panic(errors.New("参数索引超出函数入参的个数"))
-			} else if fnArgs[idx] != nil {
-				panic(fmt.Errorf("发现相同索引<%d>的参数", arg.idx))
+			} else if fnArgs[n] != nil {
+				panic(fmt.Errorf("发现相同索引<%d>的参数", arg.n))
 			} else {
-				fnArgs[idx] = arg.arg
+				fnArgs[n] = arg.arg
 			}
 		default:
 			if shouldIndex {
@@ -292,8 +292,8 @@ func Option(fn interface{}, args ...Arg) *optionArg {
 }
 
 // WithCond 为 Option 设置一个 cond.Condition
-func (arg *optionArg) WithCond(cond cond.Condition) *optionArg {
-	arg.c = cond
+func (arg *optionArg) WithCond(c cond.Condition) *optionArg {
+	arg.c = c
 	return arg
 }
 
@@ -375,7 +375,7 @@ func Bind(fn interface{}, args []Arg, opts ...BindOption) *callable {
 	_, file, line, _ := runtime.Caller(a.skip + 1)
 
 	fnType := reflect.TypeOf(fn)
-	argList := newArgList(fnType, a.withReceiver, args)
+	argList := newArgList(fnType, args, a.withReceiver)
 	return &callable{fn: fn, arg: argList, file: file, line: line}
 }
 

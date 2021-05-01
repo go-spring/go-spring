@@ -427,7 +427,7 @@ func NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 	if t := v.Type(); !fromValue && t.Kind() == reflect.Func {
 
 		// 检查 Bean 的注册函数是否合法
-		if !bean.IsFactoryType(t) {
+		if !bean.IsConstructor(t) {
 			t1 := "func(...)bean"
 			t2 := "func(...)(bean, error)"
 			panic(fmt.Errorf("func bean must be %s or %s", t1, t2))

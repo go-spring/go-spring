@@ -33,8 +33,19 @@ Following information can help us to resolve the issue faster.
 * struct 一般使用名词或者动词短语。
 * function 如果只返回 bool 值则以 is、has 等打头，否则必须使用动词打头。
 
+### 常用变量名
+
+* 构造函数的变量名和结构体的字段名保持一致。
+* arg.Arg 一般情况下命名为 a 或者 arg。
+* cond.Condition 一般情况下命名为 c 或者 cond。
+* function 一般情况下命名为 fn。
+* 返回结果一帮情况下命名为 result 或者 ret。
+* node 一般命名为 n。
+* element 一般命名为 e。
+
 ## 编程规约
 
 * 慎用嵌套(继承)，避免暴露不必要的方法。
 * 限制每行长度最大不超过 100 个字符。
 * 放心使用选项模式。
+* 不对外直接暴露指针类型，使用值或者接口。

@@ -57,15 +57,15 @@ func (c *onMatches) Matches(ctx Context) bool {
 }
 
 // not 对一个条件进行取反的 Condition 实现。
-type not struct{ cond Condition }
+type not struct{ c Condition }
 
 // Not 对一个条件进行取反。
-func Not(cond Condition) *not {
-	return &not{cond: cond}
+func Not(c Condition) *not {
+	return &not{c: c}
 }
 
 func (c *not) Matches(ctx Context) bool {
-	return !c.cond.Matches(ctx)
+	return !c.c.Matches(ctx)
 }
 
 // onProperty 基于属性值存在的 Condition 实现。
@@ -93,8 +93,8 @@ type PropertyValueOption func(*onPropertyValue)
 
 // MatchIfMissing 当属性值不存在时是否匹配条件
 func MatchIfMissing(matchIfMissing bool) PropertyValueOption {
-	return func(cond *onPropertyValue) {
-		cond.matchIfMissing = matchIfMissing
+	return func(c *onPropertyValue) {
+		c.matchIfMissing = matchIfMissing
 	}
 }
 
@@ -175,30 +175,30 @@ func Group(op Operator, cond ...Condition) *group {
 	return &group{op: op, cond: cond}
 }
 
-func (c *group) Matches(ctx Context) bool {
+func (g *group) Matches(ctx Context) bool {
 
-	if len(c.cond) == 0 {
+	if len(g.cond) == 0 {
 		panic(errors.New("no condition in group"))
 	}
 
-	switch c.op {
+	switch g.op {
 	case Or:
-		for _, c0 := range c.cond {
-			if c0.Matches(ctx) {
+		for _, c := range g.cond {
+			if c.Matches(ctx) {
 				return true
 			}
 		}
 		return false
 	case And:
-		for _, c0 := range c.cond {
-			if ok := c0.Matches(ctx); !ok {
+		for _, c := range g.cond {
+			if ok := c.Matches(ctx); !ok {
 				return false
 			}
 		}
 		return true
 	case None:
-		for _, c0 := range c.cond {
-			if c0.Matches(ctx) {
+		for _, c := range g.cond {
+			if c.Matches(ctx) {
 				return false
 			}
 		}
@@ -215,30 +215,30 @@ type node struct {
 	next *node     // 下个表达式节点
 }
 
-func (c *node) Matches(ctx Context) bool {
+func (n *node) Matches(ctx Context) bool {
 
-	if c.cond == nil { // 空节点返回 true
+	if n.cond == nil { // 空节点返回 true
 		return true
 	}
 
-	r := c.cond.Matches(ctx)
+	r := n.cond.Matches(ctx)
 
-	if c.next == nil {
+	if n.next == nil {
 		return r
-	} else if c.next.cond == nil {
+	} else if n.next.cond == nil {
 		panic(errors.New("no condition in last node"))
 	}
 
-	switch c.op {
+	switch n.op {
 	case Or: // or
 		if r {
 			return r
 		} else {
-			return c.next.Matches(ctx)
+			return n.next.Matches(ctx)
 		}
 	case And: // and
 		if r {
-			return c.next.Matches(ctx)
+			return n.next.Matches(ctx)
 		} else {
 			return false
 		}
@@ -247,47 +247,47 @@ func (c *node) Matches(ctx Context) bool {
 	}
 }
 
-// list Condition 计算式
-type list struct {
+// conditional Condition 计算式
+type conditional struct {
 	head *node
 	curr *node
 }
 
-// list list 的构造函数
-func newList() *list {
-	node := &node{}
-	return &list{head: node, curr: node}
+// New conditional 的构造函数
+func New() *conditional {
+	n := &node{}
+	return &conditional{head: n, curr: n}
 }
 
-func (c *list) Matches(ctx Context) bool {
+func (c *conditional) Matches(ctx Context) bool {
 	return c.head.Matches(ctx)
 }
 
 // Or c=a||b
-func (c *list) Or() *list {
-	node := &node{}
+func (c *conditional) Or() *conditional {
+	n := &node{}
 	c.curr.op = Or
-	c.curr.next = node
-	c.curr = node
+	c.curr.next = n
+	c.curr = n
 	return c
 }
 
 // And c=a&&b
-func (c *list) And() *list {
-	node := &node{}
+func (c *conditional) And() *conditional {
+	n := &node{}
 	c.curr.op = And
-	c.curr.next = node
-	c.curr = node
+	c.curr.next = n
+	c.curr = n
 	return c
 }
 
 // On 返回一个条件。
-func On(cond Condition) *list {
-	return newList().On(cond)
+func On(cond Condition) *conditional {
+	return New().On(cond)
 }
 
 // On 添加一个条件。
-func (c *list) On(cond Condition) *list {
+func (c *conditional) On(cond Condition) *conditional {
 	if c.curr.cond != nil {
 		c.And()
 	}
@@ -296,32 +296,32 @@ func (c *list) On(cond Condition) *list {
 }
 
 // OnProperty 返回一个 onProperty 条件。
-func OnProperty(name string) *list {
-	return newList().OnProperty(name)
+func OnProperty(name string) *conditional {
+	return New().OnProperty(name)
 }
 
 // OnProperty 添加一个 onProperty 条件。
-func (c *list) OnProperty(name string) *list {
+func (c *conditional) OnProperty(name string) *conditional {
 	return c.On(&onProperty{name: name})
 }
 
 // OnMissingProperty 返回一个 onMissingProperty  条件。
-func OnMissingProperty(name string) *list {
-	return newList().OnMissingProperty(name)
+func OnMissingProperty(name string) *conditional {
+	return New().OnMissingProperty(name)
 }
 
 // OnMissingProperty 添加一个 onMissingProperty 条件。
-func (c *list) OnMissingProperty(name string) *list {
+func (c *conditional) OnMissingProperty(name string) *conditional {
 	return c.On(&onMissingProperty{name: name})
 }
 
 // OnPropertyValue 返回一个 onPropertyValue 条件。
-func OnPropertyValue(name string, havingValue interface{}, options ...PropertyValueOption) *list {
-	return newList().OnPropertyValue(name, havingValue, options...)
+func OnPropertyValue(name string, havingValue interface{}, options ...PropertyValueOption) *conditional {
+	return New().OnPropertyValue(name, havingValue, options...)
 }
 
 // OnPropertyValue 添加一个 onPropertyValue 条件。
-func (c *list) OnPropertyValue(name string, havingValue interface{}, options ...PropertyValueOption) *list {
+func (c *conditional) OnPropertyValue(name string, havingValue interface{}, options ...PropertyValueOption) *conditional {
 	cond := &onPropertyValue{name: name, havingValue: havingValue}
 	for _, option := range options {
 		option(cond)
@@ -330,61 +330,61 @@ func (c *list) OnPropertyValue(name string, havingValue interface{}, options ...
 }
 
 // OnOptionalPropertyValue 返回一个 onPropertyValue 条件，并且当属性值不存在时默认条件成立。
-func OnOptionalPropertyValue(name string, havingValue interface{}) *list {
-	return newList().OnOptionalPropertyValue(name, havingValue)
+func OnOptionalPropertyValue(name string, havingValue interface{}) *conditional {
+	return New().OnOptionalPropertyValue(name, havingValue)
 }
 
 // OnOptionalPropertyValue 添加一个 onPropertyValue 条件，并且当属性值不存在时默认条件成立。
-func (c *list) OnOptionalPropertyValue(name string, havingValue interface{}) *list {
+func (c *conditional) OnOptionalPropertyValue(name string, havingValue interface{}) *conditional {
 	return c.OnPropertyValue(name, havingValue, MatchIfMissing(true))
 }
 
 // OnBean 返回一个 onBean 条件。
-func OnBean(selector bean.Selector) *list {
-	return newList().OnBean(selector)
+func OnBean(selector bean.Selector) *conditional {
+	return New().OnBean(selector)
 }
 
 // OnBean 添加一个 onBean 条件。
-func (c *list) OnBean(selector bean.Selector) *list {
+func (c *conditional) OnBean(selector bean.Selector) *conditional {
 	return c.On(&onBean{selector: selector})
 }
 
 // OnMissingBean 返回一个 onMissingBean 条件。
-func OnMissingBean(selector bean.Selector) *list {
-	return newList().OnMissingBean(selector)
+func OnMissingBean(selector bean.Selector) *conditional {
+	return New().OnMissingBean(selector)
 }
 
 // OnMissingBean 添加一个 onMissingBean 条件。
-func (c *list) OnMissingBean(selector bean.Selector) *list {
+func (c *conditional) OnMissingBean(selector bean.Selector) *conditional {
 	return c.On(&onMissingBean{selector: selector})
 }
 
 // OnExpression 返回一个 onExpression 条件。
-func OnExpression(expression string) *list {
-	return newList().OnExpression(expression)
+func OnExpression(expression string) *conditional {
+	return New().OnExpression(expression)
 }
 
 // OnExpression 添加一个 onExpression 条件。
-func (c *list) OnExpression(expression string) *list {
+func (c *conditional) OnExpression(expression string) *conditional {
 	return c.On(&onExpression{expression: expression})
 }
 
 // OnMatches 返回一个 onMatches 条件。
-func OnMatches(fn Matches) *list {
-	return newList().OnMatches(fn)
+func OnMatches(fn Matches) *conditional {
+	return New().OnMatches(fn)
 }
 
 // OnMatches 添加一个 onMatches 条件。
-func (c *list) OnMatches(fn Matches) *list {
+func (c *conditional) OnMatches(fn Matches) *conditional {
 	return c.On(&onMatches{fn: fn})
 }
 
 // OnProfile 返回一个 onProfile 条件。
-func OnProfile(profile string) *list {
-	return newList().OnProfile(profile)
+func OnProfile(profile string) *conditional {
+	return New().OnProfile(profile)
 }
 
 // OnProfile 添加一个 onProfile 条件。
-func (c *list) OnProfile(profile string) *list {
+func (c *conditional) OnProfile(profile string) *conditional {
 	return c.On(&onProfile{profile: profile})
 }

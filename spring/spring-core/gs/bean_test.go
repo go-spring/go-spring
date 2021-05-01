@@ -95,7 +95,7 @@ func TestIsFuncBeanType(t *testing.T) {
 	}
 
 	for k, v := range data {
-		ok := bean.IsFactoryType(k)
+		ok := bean.IsConstructor(k)
 		assert.Equal(t, ok, v)
 	}
 }
