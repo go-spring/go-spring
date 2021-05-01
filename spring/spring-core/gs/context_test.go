@@ -415,7 +415,7 @@ func (f *PrototypeBeanFactory) New(name string) *PrototypeBean {
 	}
 
 	// PrototypeBean 依赖的服务可以通过 Context 注入
-	_, err := f.Ctx.WireBean(b)
+	_, err := f.Ctx.Wire(b)
 	util.Panic(err).When(err != nil)
 	return b
 }
@@ -2802,7 +2802,7 @@ func TestApplicationContext_CreateBean(t *testing.T) {
 	ctx.RegisterBean(&ObjFactory{})
 	ctx.Refresh()
 
-	b, err := ctx.WireBean((*ObjFactory).NewObj, arg.R2("${i:=5}"))
+	b, err := ctx.Wire((*ObjFactory).NewObj, arg.R2("${i:=5}"))
 	fmt.Println(b, err)
 }
 

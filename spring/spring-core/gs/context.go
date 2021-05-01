@@ -53,7 +53,7 @@ type Context interface {
 	Properties() map[string]interface{}
 
 	// GetProperty 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。
-	GetProperty(key string) interface{}
+	GetProperty(key string, opts ...conf.GetOption) interface{}
 
 	// GetBean 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 	// 它和 FindBean 的区别是它在调用后能够保证返回的 Bean 已经完成了注入和绑定过程。
@@ -71,8 +71,11 @@ type Context interface {
 	// selectors 列表的顺序对收集结果进行排序。
 	CollectBeans(i interface{}, selectors ...bean.Selector) error
 
-	// WireBean 对对象或者构造函数的结果进行依赖注入和属性绑定，返回处理后的对象
-	WireBean(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error)
+	// Bind 绑定结构体属性。
+	Bind(key string, i interface{}) error
+
+	// Wire 对对象或者构造函数的结果进行依赖注入和属性绑定，返回处理后的对象
+	Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error)
 
 	// Go 安全地启动一个 goroutine
 	Go(fn interface{}, args ...arg.Arg)
@@ -164,9 +167,13 @@ func (ctx *applicationContext) Properties() map[string]interface{} {
 	return ctx.p.Map()
 }
 
+func (ctx *applicationContext) Bind(key string, i interface{}) error {
+	return ctx.p.Bind(key, i)
+}
+
 // GetProperty 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。
-func (ctx *applicationContext) GetProperty(key string) interface{} {
-	return ctx.p.Get(key)
+func (ctx *applicationContext) GetProperty(key string, opts ...conf.GetOption) interface{} {
+	return ctx.p.Get(key, opts...)
 }
 
 // SetProperty 设置属性值，属性名称统一转成小写。
@@ -559,8 +566,8 @@ func (ctx *applicationContext) Refresh() {
 	ctx.state = 2
 }
 
-// WireBean 对对象或者构造函数的结果进行依赖注入和属性绑定，返回处理后的对象
-func (ctx *applicationContext) WireBean(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error) {
+// Wire 对对象或者构造函数的结果进行依赖注入和属性绑定，返回处理后的对象
+func (ctx *applicationContext) Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error) {
 	ctx.checkAutoWired()
 	assembly := toAssembly(ctx)
 	b := NewBean(objOrCtor, ctorArgs...)

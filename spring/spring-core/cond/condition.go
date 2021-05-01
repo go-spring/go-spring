@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	"github.com/go-spring/spring-core/bean"
+	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/util"
 	"github.com/spf13/cast"
 )
@@ -35,7 +36,7 @@ type Context interface {
 	Profile() string
 
 	// GetProperty 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。
-	GetProperty(key string) interface{}
+	GetProperty(key string, opts ...conf.GetOption) interface{}
 
 	// FindBean 返回符合条件的 Bean 集合，不保证返回的 Bean 已经完成注入和绑定过程。
 	FindBean(selector bean.Selector) ([]bean.Definition, error)

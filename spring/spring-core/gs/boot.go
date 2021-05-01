@@ -75,7 +75,7 @@ func ProvideBean(fn interface{}, args ...arg.Arg) *BeanDefinition {
 
 // WireBean 对对象或者构造函数的结果进行依赖注入和属性绑定，返回处理后的对象
 func WireBean(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error) {
-	return gApp.WireBean(objOrCtor, ctorArgs...)
+	return gApp.Wire(objOrCtor, ctorArgs...)
 }
 
 func GetBean(i interface{}, selector ...bean.Selector) error {
