@@ -75,13 +75,13 @@ func (assembly *beanAssembly) Matches(cond cond.Condition) bool {
 	return cond.Matches(assembly.c)
 }
 
-// BindValue 对值进行属性绑定。
-func (assembly *beanAssembly) BindValue(v reflect.Value, tag string) error {
+// Bind 对值进行属性绑定。
+func (assembly *beanAssembly) Bind(tag string, v reflect.Value) error {
 	return conf.BindValue(assembly.c.p, v, tag, conf.BindOption{})
 }
 
-// WireValue 对值进行依赖注入。
-func (assembly *beanAssembly) WireValue(v reflect.Value, tag string) error {
+// Wire 对值进行依赖注入。
+func (assembly *beanAssembly) Wire(tag string, v reflect.Value) error {
 	return assembly.wireField(v, tag, reflect.Value{}, "")
 }
 

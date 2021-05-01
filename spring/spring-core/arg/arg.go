@@ -34,11 +34,11 @@ type Context interface {
 	// Matches 条件成立返回 true，否则返回 false。
 	Matches(cond cond.Condition) bool
 
-	// BindValue 对一个值进行属性绑定。
-	BindValue(v reflect.Value, tag string) error
+	// Bind 对一个值进行属性绑定。
+	Bind(tag string, v reflect.Value) error
 
-	// WireValue 对一个值进行属性绑定和依赖注入。
-	WireValue(v reflect.Value, tag string) error
+	// Wire 对一个值进行属性绑定和依赖注入。
+	Wire(tag string, v reflect.Value) error
 }
 
 // Arg 定义一个函数参数，可以是 bean.Selector 类型，表示注入一个 Bean；
@@ -256,7 +256,7 @@ func (r *argList) get(t reflect.Type, arg Arg, ctx Context, fileLine string) (v 
 
 	// 处理引用类型
 	if util.RefType(v.Kind()) {
-		if err = ctx.WireValue(v, tag); err != nil {
+		if err = ctx.Wire(tag, v); err != nil {
 			return reflect.Value{}, err
 		}
 		return v, nil
@@ -266,7 +266,7 @@ func (r *argList) get(t reflect.Type, arg Arg, ctx Context, fileLine string) (v 
 	if tag == "" {
 		tag = "${}"
 	}
-	if err = ctx.BindValue(v, tag); err != nil {
+	if err = ctx.Bind(tag, v); err != nil {
 		return reflect.Value{}, err
 	}
 	return v, nil
