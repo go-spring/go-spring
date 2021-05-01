@@ -297,10 +297,13 @@ func (app *Application) prepare() {
 	profileConfig := conf.New()
 	defaultConfig := conf.New()
 
-	priority := conf.Priority([]conf.Properties{
-		apiConfig, cmdConfig, envConfig,
-		profileConfig, defaultConfig,
-	})
+	p := []conf.Properties{
+		apiConfig,
+		cmdConfig,
+		envConfig,
+		profileConfig,
+		defaultConfig,
+	}
 
 	// 1. 保存通过代码设置的属性
 	for k, v := range app.Properties() {
@@ -320,17 +323,34 @@ func (app *Application) prepare() {
 	profile := app.Profile()
 	if profile == "" {
 		keys := []string{SpringProfile, SPRING_PROFILE}
-		v := priority.GetFirst(keys...)
-		profile = cast.ToString(v)
+		profile = func() string {
+			for _, c := range p {
+				for _, k := range keys {
+					v := c.Get(k, conf.DisableResolve())
+					if v != nil {
+						return cast.ToString(v)
+					}
+				}
+			}
+			return ""
+		}()
 	}
 	if profile != "" {
 		app.SetProfile(profile)
 		app.loadProfileConfig(profileConfig, profile)
 	}
 
+	m := make(map[string]interface{})
+	for _, c := range p {
+		for k, v := range util.FlatMap(c.Map()) {
+			if _, ok := m[k]; !ok {
+				m[k] = v
+			}
+		}
+	}
+
 	// 将重组后的属性值写入 Context 属性列表
-	for _, key := range priority.Keys() {
-		val := priority.Get(key)
+	for key, val := range m {
 		app.SetProperty(key, val)
 	}
 }

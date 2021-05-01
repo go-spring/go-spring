@@ -26,6 +26,10 @@ import (
 	"github.com/spf13/cast"
 )
 
+type Property interface {
+	Get(key string, opts ...GetOption) interface{}
+}
+
 type BindOption struct {
 	Prefix string // 属性名前缀
 	Key    string // 最短属性名
@@ -33,7 +37,7 @@ type BindOption struct {
 }
 
 // bindStruct 对结构体的字段进行属性绑定，该方法要求 v 的类型必须是结构体。
-func bindStruct(p interface{ Get(key string) interface{} }, v reflect.Value, opt BindOption) error {
+func bindStruct(p Property, v reflect.Value, opt BindOption) error {
 	t := v.Type()
 	for i := 0; i < t.NumField(); i++ {
 		ft := t.Field(i)
@@ -63,7 +67,7 @@ func bindStruct(p interface{ Get(key string) interface{} }, v reflect.Value, opt
 }
 
 // BindValue 对任意值 v 进行属性绑定，tag 是形如 ${key:=def} 的字符串，v 必须是值类型。
-func BindValue(p interface{ Get(key string) interface{} }, v reflect.Value, tag string, opt BindOption) error {
+func BindValue(p Property, v reflect.Value, tag string, opt BindOption) error {
 
 	if v.Kind() == reflect.Ptr {
 		return fmt.Errorf("%s 属性绑定的目标不能是指针", opt.Path)
@@ -92,7 +96,7 @@ func BindValue(p interface{ Get(key string) interface{} }, v reflect.Value, tag 
 
 	// 存在值类型转换器的情况下结构体优先使用转换器
 	if fn, ok := tConverters[t]; ok {
-		val := Resolve(p, Default(p, key, def))
+		val := p.Get(key, WithDefault(def))
 		if val == nil {
 			return fmt.Errorf("property %q not config", key)
 		}
@@ -110,7 +114,7 @@ func BindValue(p interface{ Get(key string) interface{} }, v reflect.Value, tag 
 	}
 
 	if converter, ok := kConverters[k]; ok {
-		val := Resolve(p, Default(p, key, def))
+		val := p.Get(key, WithDefault(def))
 		if val == nil {
 			return fmt.Errorf("property %q not config", key)
 		}

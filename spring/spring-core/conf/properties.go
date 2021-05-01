@@ -29,6 +29,27 @@ import (
 	"github.com/spf13/cast"
 )
 
+type getArg struct {
+	d interface{} // 默认值
+	r bool        // 开启解析
+}
+
+type GetOption func(arg *getArg)
+
+// WithDefault 设置默认值。
+func WithDefault(d interface{}) GetOption {
+	return func(arg *getArg) {
+		arg.d = d
+	}
+}
+
+// DisableResolve 开启解析功能。
+func DisableResolve() GetOption {
+	return func(arg *getArg) {
+		arg.r = false
+	}
+}
+
 // Properties 属性列表接口。所有的 key 都是小写，匹配的时候也都转成小写然后再匹配。
 //
 // 一般情况下 key 都是 a.b.c 这种形式，但是这种形式只能表达 map 嵌套的结构，而没
@@ -54,13 +75,29 @@ type Properties interface {
 	// 或者 slice 类型的数据，会返回它们深拷贝后的副本，防止因为修改了返回值而对
 	// Properties 的数据造成修改。另外，Get 方法支持传入多个 key，然后返回找到的
 	// 第一个属性值，如果所有的 key 都没找到对应的属性值则返回 nil。
-	Get(key string) interface{}
+	Get(key string, opts ...GetOption) interface{}
 
 	// Set 设置 key 对应的属性值，如果 key 存在会覆盖原值。Set 方法在保存属性的时
 	// 候会将 key 转为小写，如果属性值是 map 类型或者包含 map 类型的数据，那么也会
 	// 将这些 key 全部转为小写。另外，Set 方法保存的是 value 深拷贝后的副本，从而
 	// 保证 Properties 数据的安全。
 	Set(key string, value interface{})
+
+	// Bind 将 key 对应的属性值绑定到某个数据类型的实例上。i 必须是一个指针，只有这
+	// 样才能将修改传递出去。Bind 方法使用 tag 对结构体的字段进行属性绑定，tag 的语
+	// 法为 value:"${a:=b}"，其中 value 是表示属性绑定 tag 的名称，${} 表示引用
+	// 一个属性，a 表示属性名，:=b 表示属性的默认值。这里需要注意两点：
+	//
+	// 一是结构体类型的字段上不允许设置默认值，这个规则一方面是因为找不到合理的序列化
+	// 方式，有人会说可以用 json，那么肯定也会有人说用 xml，众口难调，另一方面是因为
+	// 结构体的默认值一般会比较长，而如果 tag 太长就会影响阅读体验，因此结构体类型的
+	// 字段上不允许设置默认值；
+	//
+	// 二是可以省略属性名而只有默认值，即 ${:=b}，原因是某些情况下属性名可能没想好或
+	// 者不太重要，也有人认为这是一种对 Golang 缺少默认值语法的补充，Bug is Feature。
+	//
+	// 另外，属性绑定语法还支持嵌套的属性引用，但是只能在默认值中使用，即 ${a:=${b}}。
+	Bind(key string, i interface{}) error
 }
 
 // properties Properties 的默认实现。
@@ -199,9 +236,24 @@ func (p *properties) Map() map[string]interface{} {
 	return p.m
 }
 
-func (p *properties) Get(key string) interface{} {
+func (p *properties) Get(key string, opts ...GetOption) interface{} {
+
 	key = strings.ToLower(key)
-	return p.find(strings.Split(key, "."))
+	val := p.find(strings.Split(key, "."))
+
+	arg := getArg{r: true}
+	for _, opt := range opts {
+		opt(&arg)
+	}
+
+	if val == nil {
+		val = arg.d
+	}
+
+	if !arg.r {
+		return val
+	}
+	return p.resolve(val)
 }
 
 func (p *properties) Set(key string, value interface{}) {
@@ -239,21 +291,7 @@ func toLowerValue(value interface{}) interface{} {
 	return value
 }
 
-// Bind 将 key 对应的属性值绑定到某个数据类型的实例上。i 必须是一个指针，只有这
-// 样才能将修改传递出去。Bind 方法使用 tag 对结构体的字段进行属性绑定，tag 的语
-// 法为 value:"${a:=b}"，其中 value 是表示属性绑定 tag 的名称，${} 表示引用
-// 一个属性，a 表示属性名，:=b 表示属性的默认值。这里需要注意两点：
-//
-// 一是结构体类型的字段上不允许设置默认值，这个规则一方面是因为找不到合理的序列化
-// 方式，有人会说可以用 json，那么肯定也会有人说用 xml，众口难调，另一方面是因为
-// 结构体的默认值一般会比较长，而如果 tag 太长就会影响阅读体验，因此结构体类型的
-// 字段上不允许设置默认值；
-//
-// 二是可以省略属性名而只有默认值，即 ${:=b}，原因是某些情况下属性名可能没想好或
-// 者不太重要，也有人认为这是一种对 Golang 缺少默认值语法的补充，Bug is Feature。
-//
-// 另外，属性绑定语法还支持嵌套的属性引用，但是只能在默认值中使用，即 ${a:=${b}}。
-func Bind(p interface{ Get(key string) interface{} }, key string, i interface{}) error {
+func (p *properties) Bind(key string, i interface{}) error {
 
 	v := reflect.ValueOf(i)
 	if v.Kind() != reflect.Ptr {
@@ -267,14 +305,6 @@ func Bind(p interface{ Get(key string) interface{} }, key string, i interface{})
 	}
 
 	return BindValue(p, v.Elem(), "${"+key+"}", BindOption{Path: s, Key: key})
-}
-
-// Default 返回 key 的属性值，不存在时返回 def 值。
-func Default(p interface{ Get(key string) interface{} }, key string, def interface{}) interface{} {
-	if v := p.Get(key); v != nil {
-		return v
-	}
-	return def
 }
 
 // validValueTag 是否为 ${key:=def} 格式的字符串。
@@ -292,9 +322,9 @@ func parseValueTag(tag string) (key string, def interface{}) {
 	return
 }
 
-// Resolve 解析 ${key:=def} 字符串，返回 key 对应的属性值，如果没有找到则返回
+// resolve 解析 ${key:=def} 字符串，返回 key 对应的属性值，如果没有找到则返回
 // def 值，如果 def 存在引用关系则递归解析直到获取最终的属性值。
-func Resolve(p interface{ Get(key string) interface{} }, val interface{}) interface{} {
+func (p *properties) resolve(val interface{}) interface{} {
 
 	str, ok := val.(string)
 	if !ok || !validValueTag(str) {
@@ -302,5 +332,8 @@ func Resolve(p interface{ Get(key string) interface{} }, val interface{}) interf
 	}
 
 	key, def := parseValueTag(str)
-	return Resolve(p, Default(p, key, def))
+	if v := p.Get(key); v != nil {
+		return v
+	}
+	return p.resolve(def)
 }
