@@ -158,14 +158,14 @@ const (
 type beanDefinition interface {
 	bean.Definition
 
-	getFactory() arg.Callable      // 返回 Bean 的工厂函数
+	getFactory() *arg.Callable     // 返回 Bean 的工厂函数
 	getClass() string              // 返回 Bean 的类型描述
 	getFile() string               // 返回 Bean 注册点所在文件
 	getLine() int                  // 返回 Bean 注册点所在行数
 	getStatus() beanStatus         // 返回 Bean 的状态值
 	setStatus(status beanStatus)   // 设置 Bean 的状态值
-	getInit() arg.Runnable         // 返回 Bean 的初始化函数
-	getDestroy() arg.Runnable      // 返回 Bean 的销毁函数
+	getInit() *arg.Callable        // 返回 Bean 的初始化函数
+	getDestroy() *arg.Callable     // 返回 Bean 的销毁函数
 	getDependsOn() []bean.Selector // 返回 Bean 的间接依赖项
 }
 
@@ -177,7 +177,7 @@ type BeanDefinition struct {
 
 	v reflect.Value // 值
 	t reflect.Type  // 类型
-	f arg.Callable  // 工厂函数
+	f *arg.Callable // 工厂函数
 
 	file string // 注册点所在文件
 	line int    // 注册点所在行数
@@ -186,15 +186,15 @@ type BeanDefinition struct {
 	status    beanStatus      // 状态
 	cond      cond.Condition  // 判断条件
 	primary   bool            // 是否为主版本
-	init      arg.Runnable    // 初始化函数
-	destroy   arg.Runnable    // 销毁函数
+	init      *arg.Callable   // 初始化函数
+	destroy   *arg.Callable   // 销毁函数
 	dependsOn []bean.Selector // 间接依赖项
 
 	exports map[reflect.Type]struct{} // 导出的接口
 }
 
 // newBeanDefinition BeanDefinition 的构造函数，f 是工厂函数，当 v 为对象 Bean 时 f 为空。
-func newBeanDefinition(v reflect.Value, f arg.Callable, file string, line int) *BeanDefinition {
+func newBeanDefinition(v reflect.Value, f *arg.Callable, file string, line int) *BeanDefinition {
 	if t := v.Type(); util.RefType(t.Kind()) {
 		return &BeanDefinition{
 			t:        t,
@@ -255,7 +255,7 @@ func (d *BeanDefinition) Description() string {
 }
 
 // getFactory 返回 Bean 的工厂函数。
-func (d *BeanDefinition) getFactory() arg.Callable {
+func (d *BeanDefinition) getFactory() *arg.Callable {
 	return d.f
 }
 
@@ -288,12 +288,12 @@ func (d *BeanDefinition) setStatus(status beanStatus) {
 }
 
 // getInit 返回 Bean 的初始化函数。
-func (d *BeanDefinition) getInit() arg.Runnable {
+func (d *BeanDefinition) getInit() *arg.Callable {
 	return d.init
 }
 
 // getDestroy 返回 Bean 的销毁函数。
-func (d *BeanDefinition) getDestroy() arg.Runnable {
+func (d *BeanDefinition) getDestroy() *arg.Callable {
 	return d.destroy
 }
 
@@ -352,7 +352,7 @@ func validLifeCycleFunc(fnType reflect.Type, beanType reflect.Type) bool {
 // Init 设置 Bean 的初始化函数。
 func (d *BeanDefinition) Init(fn interface{}, args ...arg.Arg) *BeanDefinition {
 	if validLifeCycleFunc(reflect.TypeOf(fn), d.Type()) {
-		d.init = arg.Runner(fn, true, args)
+		d.init = arg.Bind(fn, true, args)
 		return d
 	}
 	panic(errors.New("init should be func(bean) or func(bean)error"))
@@ -361,7 +361,7 @@ func (d *BeanDefinition) Init(fn interface{}, args ...arg.Arg) *BeanDefinition {
 // Destroy 设置 Bean 的销毁函数。
 func (d *BeanDefinition) Destroy(fn interface{}, args ...arg.Arg) *BeanDefinition {
 	if validLifeCycleFunc(reflect.TypeOf(fn), d.Type()) {
-		d.destroy = arg.Runner(fn, true, args)
+		d.destroy = arg.Bind(fn, true, args)
 		return d
 	}
 	panic(errors.New("destroy should be func(bean) or func(bean)error"))
@@ -441,7 +441,7 @@ func NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 			v = v.Elem()
 		}
 
-		ctor := arg.Caller(objOrCtor, false, ctorArgs)
+		ctor := arg.Bind(objOrCtor, false, ctorArgs)
 		return newBeanDefinition(v, ctor, file, line)
 	}
 

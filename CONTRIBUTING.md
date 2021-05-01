@@ -36,3 +36,4 @@ Following information can help us to resolve the issue faster.
 ## 编程规约
 
 * 慎用嵌套(继承)，避免暴露不必要的方法。
+* 限制每行长度最大不超过 100 个字符。

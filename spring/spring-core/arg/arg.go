@@ -21,6 +21,8 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"runtime"
+	"strings"
 
 	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/cond"
@@ -274,8 +276,8 @@ func (r *argList) get(t reflect.Type, arg Arg, ctx Context, fileLine string) (v 
 
 // optionArg Option 形式的函数参数
 type optionArg struct {
-	r    Callable
-	cond cond.Condition // 判断条件
+	r *Callable
+	c cond.Condition
 }
 
 // Option 封装 Option 形式的函数参数。
@@ -288,29 +290,29 @@ func Option(fn interface{}, args ...Arg) *optionArg {
 		panic(errors.New("error option func"))
 	}
 
-	return &optionArg{r: bind(fn, false, args)}
+	return &optionArg{r: Bind(fn, false, args)}
 }
 
 // WithCond 为 Option 设置一个 cond.Condition
 func (arg *optionArg) WithCond(cond cond.Condition) *optionArg {
-	arg.cond = cond
+	arg.c = cond
 	return arg
 }
 
 func (arg *optionArg) call(ctx Context) (v reflect.Value, err error) {
 
-	fileLine := arg.r.(FileLine).FileLine()
-	log.Tracef("call option func %s", fileLine)
+	fileline := fmt.Sprintf("%s:%d", arg.r.file, arg.r.line)
+	log.Tracef("call option func %s", fileline)
 
 	defer func() {
 		if err == nil {
-			log.Tracef("call option func success %s", fileLine)
+			log.Tracef("call option func success %s", fileline)
 		} else {
-			log.Tracef("call option func err:%s %s", err.Error(), fileLine)
+			log.Tracef("call option func err:%s %s", err.Error(), fileline)
 		}
 	}()
 
-	if arg.cond == nil || ctx.Matches(arg.cond) {
+	if arg.c == nil || ctx.Matches(arg.c) {
 		if out, err := arg.r.Call(ctx); err != nil {
 			return reflect.Value{}, err
 		} else {
@@ -319,4 +321,72 @@ func (arg *optionArg) call(ctx Context) (v reflect.Value, err error) {
 	}
 
 	return reflect.Value{}, nil
+}
+
+// Callable 绑定函数及其参数。
+type Callable struct {
+	fn   interface{}
+	arg  *argList
+	file string // 注册点所在文件
+	line int    // 注册点所在行数
+}
+
+// Bind 绑定函数及其参数。
+func Bind(fn interface{}, withReceiver bool, args []Arg) *Callable {
+
+	var (
+		file string
+		line int
+	)
+
+	for i := 2; i < 10; i++ {
+		_, f, l, _ := runtime.Caller(i)
+		if strings.Contains(f, "/spring-core/") {
+			if !strings.HasSuffix(f, "_test.go") {
+				continue
+			}
+		}
+		file = f
+		line = l
+		break
+	}
+
+	fnType := reflect.TypeOf(fn)
+	argList := newArgList(fnType, withReceiver, args)
+	return &Callable{fn: fn, arg: argList, file: file, line: line}
+}
+
+func (r *Callable) Call(ctx Context, receiver ...reflect.Value) ([]reflect.Value, error) {
+
+	var in []reflect.Value
+
+	if r.arg.WithReceiver() {
+		in = append(in, receiver[0])
+	}
+
+	if r.arg != nil {
+		fileline := fmt.Sprintf("%s:%d", r.file, r.line)
+		v, err := r.arg.Get(ctx, fileline)
+		if err != nil {
+			return nil, err
+		}
+		if len(v) > 0 {
+			in = append(in, v...)
+		}
+	}
+
+	// 调用 fn 函数
+	out := reflect.ValueOf(r.fn).Call(in)
+
+	if n := len(out); n > 0 {
+		if o := out[n-1]; util.ErrorType(o.Type()) {
+			if i := o.Interface(); i == nil {
+				return out[:n-1], nil
+			} else {
+				return out[:n-1], i.(error)
+			}
+		}
+	}
+
+	return out, nil
 }

@@ -424,7 +424,7 @@ func (assembly *beanAssembly) wire(b beanDefinition, onlyAutoWire bool) error {
 
 	// 如果用户设置了初始化函数则执行初始化函数
 	if init := b.getInit(); init != nil {
-		if err := init.Run(assembly, b.Value()); err != nil {
+		if _, err := init.Call(assembly, b.Value()); err != nil {
 			return err
 		}
 	}

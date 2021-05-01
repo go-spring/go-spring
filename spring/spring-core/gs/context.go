@@ -485,7 +485,8 @@ func (ctx *applicationContext) resolveConfigers() {
 func (ctx *applicationContext) runConfigers(assembly *beanAssembly) error {
 	for e := ctx.configers.Front(); e != nil; e = e.Next() {
 		c := e.Value.(*Configer)
-		if err := c.fn.Run(assembly); err != nil {
+		_, err := c.fn.Call(assembly)
+		if err != nil {
 			return err
 		}
 	}
@@ -609,7 +610,9 @@ func (ctx *applicationContext) Invoke(fn interface{}, args ...arg.Arg) error {
 	ctx.checkAutoWired()
 	if fnType := reflect.TypeOf(fn); util.FuncType(fnType) {
 		if util.ReturnNothing(fnType) || util.ReturnOnlyError(fnType) {
-			return arg.Runner(fn, false, args).Run(toAssembly(ctx))
+			r := arg.Bind(fn, false, args)
+			_, err := r.Call(toAssembly(ctx))
+			return err
 		}
 	}
 	return errors.New("fn should be func() or func()error")
@@ -627,12 +630,16 @@ func (ctx *applicationContext) Go(fn interface{}, args ...arg.Arg) {
 			defer ctx.wg.Done()
 
 			defer func() {
-				if err := recover(); err != nil {
-					log.Error(err)
+				if r := recover(); r != nil {
+					log.Error(r)
 				}
 			}()
 
-			_ = arg.Runner(fn, false, args).Run(toAssembly(ctx))
+			r := arg.Bind(fn, false, args)
+			_, err := r.Call(toAssembly(ctx))
+			if err != nil {
+				log.Error(err.Error())
+			}
 		}()
 	}
 	panic(errors.New("fn should be func()"))

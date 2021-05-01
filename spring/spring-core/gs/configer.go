@@ -23,12 +23,13 @@ import (
 
 	"github.com/go-spring/spring-core/arg"
 	"github.com/go-spring/spring-core/cond"
+	"github.com/go-spring/spring-core/util"
 )
 
 // Configer 配置函数，所谓配置函数是指可以接受一些 Bean 作为入参的函数，使用场景大多
 // 是在 Bean 初始化之后对 Bean 进行二次配置，可以作为框架配置能力的补充，但是要慎用！
 type Configer struct {
-	fn     arg.Runnable
+	fn     *arg.Callable
 	name   string
 	cond   cond.Condition
 	before []string // 位于哪些配置函数之前
@@ -37,9 +38,12 @@ type Configer struct {
 
 // config Configer 的构造函数，fn 只能返回 error 或者没有返回。
 func config(fn interface{}, args ...arg.Arg) *Configer {
-	if arg.IsRunnerType(reflect.TypeOf(fn)) {
-		return &Configer{
-			fn: arg.Runner(fn, false, args),
+	t := reflect.TypeOf(fn)
+	if util.FuncType(t) {
+		if util.ReturnNothing(t) || util.ReturnOnlyError(t) {
+			return &Configer{
+				fn: arg.Bind(fn, false, args),
+			}
 		}
 	}
 	panic(errors.New("fn should be func() or func()error"))
