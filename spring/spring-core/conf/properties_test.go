@@ -17,6 +17,7 @@
 package conf_test
 
 import (
+	"container/list"
 	"errors"
 	"fmt"
 	"image"
@@ -769,6 +770,14 @@ func TestProperties_Bind(t *testing.T) {
 
 		assert.Equal(t, len(dbConfig2.DB), 2)
 		assert.Equal(t, dbConfig2.DB["d1"].DB, "db1")
+	})
+
+	t.Run("ignore interface", func(t *testing.T) {
+		_ = conf.New().Bind(conf.RootKey, &struct{ fmt.Stringer }{})
+	})
+
+	t.Run("ignore pointer", func(t *testing.T) {
+		_ = conf.New().Bind(conf.RootKey, list.New())
 	})
 }
 

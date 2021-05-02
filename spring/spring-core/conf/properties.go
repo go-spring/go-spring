@@ -315,7 +315,7 @@ func (p *properties) Bind(key string, i interface{}) error {
 		s = t.Elem().Name()
 	}
 
-	return BindValue(p, v.Elem(), "${"+key+"}", BindOption{Path: s, Key: key})
+	return bindValue(p, "${"+key+"}", v.Elem(), bindOption{Path: s, Key: key})
 }
 
 // BindMap 将 map 作为属性源对 i 进行属性绑定。

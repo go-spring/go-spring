@@ -30,34 +30,39 @@ type Property interface {
 	Get(key string, opts ...GetOption) interface{}
 }
 
-type BindOption struct {
+// BindValue 对任意值 v 进行属性绑定，tag 是形如 ${key:=def} 的字符串，v 必须是值类型。
+func BindValue(p Property, tag string, v reflect.Value) error {
+	return bindValue(p, tag, v, bindOption{})
+}
+
+type bindOption struct {
 	Prefix string // 属性名前缀
 	Key    string // 最短属性名
 	Path   string // 结构体字段
 }
 
 // bindStruct 对结构体的字段进行属性绑定，该方法要求 v 的类型必须是结构体。
-func bindStruct(p Property, v reflect.Value, opt BindOption) error {
+func bindStruct(p Property, v reflect.Value, opt bindOption) error {
 	t := v.Type()
 	for i := 0; i < t.NumField(); i++ {
 		ft := t.Field(i)
 		fv := util.PatchValue(v.Field(i))
 
-		subOpt := BindOption{
+		subOpt := bindOption{
 			Prefix: opt.Prefix,
 			Key:    opt.Key,
 			Path:   opt.Path + "." + ft.Name,
 		}
 
 		if tag, ok := ft.Tag.Lookup("value"); ok {
-			if err := BindValue(p, fv, tag, subOpt); err != nil {
+			if err := bindValue(p, tag, fv, subOpt); err != nil {
 				return err
 			}
 			continue
 		}
 
-		// 匿名嵌套需要处理，不是结构体的具名字段无需处理
-		if ft.Anonymous || ft.Type.Kind() == reflect.Struct {
+		// 结构体字段才能递归，指针或者接口都不行。
+		if ft.Type.Kind() == reflect.Struct {
 			if err := bindStruct(p, fv, subOpt); err != nil {
 				return err
 			}
@@ -66,8 +71,7 @@ func bindStruct(p Property, v reflect.Value, opt BindOption) error {
 	return nil
 }
 
-// BindValue 对任意值 v 进行属性绑定，tag 是形如 ${key:=def} 的字符串，v 必须是值类型。
-func BindValue(p Property, v reflect.Value, tag string, opt BindOption) error {
+func bindValue(p Property, tag string, v reflect.Value, opt bindOption) error {
 
 	if v.Kind() == reflect.Ptr {
 		return fmt.Errorf("%s 属性绑定的目标不能是指针", opt.Path)
@@ -110,7 +114,7 @@ func BindValue(p Property, v reflect.Value, tag string, opt BindOption) error {
 		if def != nil {
 			return fmt.Errorf("%s 结构体字段不能指定默认值", opt.Path)
 		}
-		return bindStruct(p, v, BindOption{Prefix: key, Key: opt.Key, Path: opt.Path})
+		return bindStruct(p, v, bindOption{Prefix: key, Key: opt.Key, Path: opt.Path})
 	}
 
 	if converter, ok := kConverters[k]; ok {
@@ -126,7 +130,7 @@ func BindValue(p Property, v reflect.Value, tag string, opt BindOption) error {
 func init() {
 	// TODO 诚招牛人把这些类型转换的过程简化和统一 !!!
 
-	kindConvert(func(v *reflect.Value, key string, prop interface{}, opt BindOption) error {
+	kindConvert(func(v *reflect.Value, key string, prop interface{}, opt bindOption) error {
 		if u, err := cast.ToUint64E(prop); err == nil {
 			v.SetUint(u)
 			return nil
@@ -135,7 +139,7 @@ func init() {
 		}
 	}, reflect.Uint64, reflect.Uint32, reflect.Uint16, reflect.Uint8, reflect.Uint)
 
-	kindConvert(func(v *reflect.Value, key string, prop interface{}, opt BindOption) error {
+	kindConvert(func(v *reflect.Value, key string, prop interface{}, opt bindOption) error {
 		if i, err := cast.ToInt64E(prop); err == nil {
 			v.SetInt(i)
 			return nil
@@ -144,7 +148,7 @@ func init() {
 		}
 	}, reflect.Int64, reflect.Int32, reflect.Int16, reflect.Int8, reflect.Int)
 
-	kindConvert(func(v *reflect.Value, key string, prop interface{}, opt BindOption) error {
+	kindConvert(func(v *reflect.Value, key string, prop interface{}, opt bindOption) error {
 		if f, err := cast.ToFloat64E(prop); err == nil {
 			v.SetFloat(f)
 			return nil
@@ -153,7 +157,7 @@ func init() {
 		}
 	}, reflect.Float64, reflect.Float32)
 
-	kindConvert(func(v *reflect.Value, key string, prop interface{}, opt BindOption) error {
+	kindConvert(func(v *reflect.Value, key string, prop interface{}, opt bindOption) error {
 		if s, err := cast.ToStringE(prop); err == nil {
 			v.SetString(s)
 			return nil
@@ -162,7 +166,7 @@ func init() {
 		}
 	}, reflect.String)
 
-	kindConvert(func(v *reflect.Value, key string, prop interface{}, opt BindOption) error {
+	kindConvert(func(v *reflect.Value, key string, prop interface{}, opt bindOption) error {
 		if b, err := cast.ToBoolE(prop); err == nil {
 			v.SetBool(b)
 			return nil
@@ -171,7 +175,7 @@ func init() {
 		}
 	}, reflect.Bool)
 
-	kindConvert(func(v *reflect.Value, key string, prop interface{}, opt BindOption) error {
+	kindConvert(func(v *reflect.Value, key string, prop interface{}, opt bindOption) error {
 
 		t := v.Type()
 		elemType := t.Elem()
@@ -281,7 +285,7 @@ func init() {
 					if sv, err := cast.ToStringMapE(si); err == nil {
 						ev := reflect.New(elemType)
 						subKey := fmt.Sprintf("%s[%d]", key, i)
-						err = bindStruct(&properties{m: sv}, ev.Elem(), BindOption{Key: subKey, Path: opt.Path})
+						err = bindStruct(&properties{m: sv}, ev.Elem(), bindOption{Key: subKey, Path: opt.Path})
 						if err != nil {
 							return err
 						}
@@ -298,7 +302,7 @@ func init() {
 		return nil
 	}, reflect.Slice)
 
-	kindConvert(func(v *reflect.Value, key string, prop interface{}, opt BindOption) error {
+	kindConvert(func(v *reflect.Value, key string, prop interface{}, opt bindOption) error {
 
 		t := v.Type()
 		if t.Key().Kind() != reflect.String {
@@ -362,7 +366,7 @@ func init() {
 				for k1, v1 := range temp {
 					ev := reflect.New(elemType)
 					subKey := fmt.Sprintf("%s.%s", key, k1)
-					err = bindStruct(&properties{m: v1}, ev.Elem(), BindOption{Key: subKey, Path: opt.Path})
+					err = bindStruct(&properties{m: v1}, ev.Elem(), bindOption{Key: subKey, Path: opt.Path})
 					if err != nil {
 						return err
 					}
@@ -386,4 +390,4 @@ func kindConvert(fn kConverter, kinds ...reflect.Kind) {
 	}
 }
 
-type kConverter func(v *reflect.Value, key string, prop interface{}, opt BindOption) error
+type kConverter func(v *reflect.Value, key string, prop interface{}, opt bindOption) error

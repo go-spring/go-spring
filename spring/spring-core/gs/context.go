@@ -276,7 +276,7 @@ func (ctx *applicationContext) GetBean(i interface{}, opts ...GetBeanOption) err
 	w := toAssembly(ctx)
 	v := reflect.ValueOf(i)
 	tag := toSingletonTag(a.s)
-	return w.getBean(v.Elem(), tag, reflect.Value{}, "")
+	return w.getBean(tag, v.Elem())
 }
 
 // FindBean 返回符合条件的 Bean 集合，不保证返回的 Bean 已经完成注入和绑定过程。
@@ -343,7 +343,7 @@ func (ctx *applicationContext) CollectBeans(i interface{}, selectors ...bean.Sel
 	for _, selector := range selectors {
 		tag.beanTags = append(tag.beanTags, toSingletonTag(selector))
 	}
-	return toAssembly(ctx).collectBeans(reflect.ValueOf(i).Elem(), tag, "")
+	return toAssembly(ctx).collectBeans(tag, reflect.ValueOf(i).Elem())
 }
 
 func (ctx *applicationContext) getCacheByType(typ reflect.Type) *slice.Slice {
@@ -526,7 +526,7 @@ func (ctx *applicationContext) sortDestroyers() {
 // wireBeans 对 Bean 执行自动注入
 func (ctx *applicationContext) wireBeans(assembly *beanAssembly) error {
 	for _, b := range ctx.cacheById {
-		if err := assembly.wire(b, false); err != nil {
+		if err := assembly.wireBean(b); err != nil {
 			return err
 		}
 	}
@@ -584,7 +584,7 @@ func (ctx *applicationContext) Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) 
 	ctx.checkAutoWired()
 	assembly := toAssembly(ctx)
 	b := NewBean(objOrCtor, ctorArgs...)
-	if err := assembly.wire(b, false); err != nil {
+	if err := assembly.wireBean(b); err != nil {
 		return nil, err
 	}
 	return b.Interface(), nil

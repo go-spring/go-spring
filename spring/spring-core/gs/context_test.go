@@ -8,7 +8,7 @@
  *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
- * corestributed under the License is corestributed on an "AS IS" BASIS,
+ * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
@@ -93,21 +93,21 @@ func TestApplicationContext(t *testing.T) {
 			var i int
 			err := ctx.GetBean(&i)
 			util.Panic(err).When(err != nil)
-		}, "receiver must be ref type, bean:\"\" field:\"\"")
+		}, "receiver must be ref type, bean:\"\"")
 
 		// 找到多个符合条件的值
 		assert.Panic(t, func() {
 			var i *int
 			err := ctx.GetBean(&i)
 			util.Panic(err).When(err != nil)
-		}, "found 3 beans, bean:\"\" field:\"\" type:\"\\*int\"")
+		}, "found 3 beans, bean:\"\" type:\"\\*int\"")
 
 		// 入参不是可赋值的对象
 		assert.Panic(t, func() {
 			var i int
 			err := ctx.GetBean(&i, gs.Use("i3"))
 			util.Panic(err).When(err != nil)
-		}, "receiver must be ref type, bean:\"i3\" field:\"\"")
+		}, "receiver must be ref type, bean:\"i3\"")
 
 		{
 			var i *int
@@ -264,7 +264,7 @@ func TestApplicationContext_AutoWireBeans(t *testing.T) {
 
 		assert.Panic(t, func() {
 			ctx.Refresh()
-		}, "found 2 beans, bean:\"\" field:\"TestObject.IntPtrByType\" type:\"\\*int\"")
+		}, "\"TestObject.IntPtrByType\" wired error: found 2 beans, bean:\"\" type:\"\\*int\"")
 	})
 
 	ctx := gs.New()
@@ -1851,7 +1851,7 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 			ctx.RegisterBean(new(Server))
 			ctx.ProvideBean(func(s *Server) *Consumer { return s.Consumer() }, (*int)(nil))
 			ctx.Refresh()
-		}, "can't find bean, bean:\"int:\" field:\"\" type:\"\\*gs_test.Server\"")
+		}, "can't find bean, bean:\"int:\" type:\"\\*gs_test.Server\"")
 	})
 
 	t.Run("method bean selector beanId", func(t *testing.T) {
@@ -1882,7 +1882,7 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 			ctx.RegisterBean(new(Server))
 			ctx.ProvideBean(func(s *Server) *Consumer { return s.Consumer() }, "NULL")
 			ctx.Refresh()
-		}, "can't find bean, bean:\"NULL\" field:\"\" type:\"\\*gs_test.Server\"")
+		}, "can't find bean, bean:\"NULL\" type:\"\\*gs_test.Server\"")
 	})
 }
 
@@ -2252,7 +2252,7 @@ func TestApplicationContext_BeanNotFound(t *testing.T) {
 		ctx := gs.New()
 		ctx.ProvideBean(func(i *int) bool { return false }, "")
 		ctx.Refresh()
-	}, "can't find bean, bean:\"\" field:\"\" type:\"\\*int\"")
+	}, "can't find bean, bean:\"\" type:\"\\*int\"")
 }
 
 type SubNestedAutowireBean struct {
