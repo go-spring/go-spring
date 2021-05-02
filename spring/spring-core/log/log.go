@@ -60,17 +60,17 @@ func (l Level) String() string {
 
 var empty = Entry{}
 
-// Ctx
+// Ctx 创建包含 context.Context 对象的 Entry 。
 func Ctx(ctx context.Context) Entry {
 	return empty.Ctx(ctx)
 }
 
-// Tag
+// Tag 创建包含 tag 信息的 Entry 。
 func Tag(tag string) Entry {
 	return empty.Tag(tag)
 }
 
-// Entry
+// Entry 打包需要记录的日志信息。
 type Entry struct {
 	ctx context.Context
 	tag string
@@ -112,7 +112,8 @@ func (e Entry) printf(format string, a ...interface{}) *Entry {
 // Output 定制日志的输出格式，skip 是相对于当前函数的调用深度。
 type Output func(skip int, level Level, e *Entry)
 
-func DefaultOutput(skip int, level Level, e *Entry) {
+// Console 将日志输出到控制台。
+func Console(skip int, level Level, e *Entry) {
 
 	strLevel := strings.ToUpper(level.String())
 	if level >= ErrorLevel {
@@ -122,7 +123,7 @@ func DefaultOutput(skip int, level Level, e *Entry) {
 	}
 
 	_, file, line, _ := runtime.Caller(skip + 1)
-	fmt.Fprintf(os.Stdout, "[%s] %s:%d %s\n", strLevel, file, line, e.GetMsg())
+	_, _ = fmt.Printf("[%s] %s:%d %s\n", strLevel, file, line, e.GetMsg())
 
 	switch level {
 	case PanicLevel:
@@ -138,197 +139,176 @@ var config = struct {
 	output Output
 }{
 	level:  InfoLevel,
-	output: DefaultOutput,
+	output: Console,
 }
 
-// SetLevel 设置日志输出的级别
-func SetLevel(level Level) Level {
+// B 将可变参数转换成切片。
+func B(a ...interface{}) []interface{} { return a }
 
+func output(l Level, e Entry, args ...interface{}) {
+	if config.level <= l {
+		config.output(2, l, e.print(args...))
+	}
+}
+
+func outputf(l Level, e Entry, format string, args ...interface{}) {
+	if config.level <= l {
+		config.output(2, l, e.printf(format, args...))
+	}
+}
+
+func bOutput(l Level, e Entry, fn func() []interface{}) {
+	if config.level <= l {
+		config.output(2, l, e.print(fn()...))
+	}
+}
+
+func bOutputf(l Level, e Entry, format string, fn func() []interface{}) {
+	if config.level <= l {
+		config.output(2, l, e.printf(format, fn()...))
+	}
+}
+
+// Reset 重新设置输出级别及输出格式。
+func Reset() {
 	config.mutex.Lock()
 	defer config.mutex.Unlock()
+	config.level = InfoLevel
+	config.output = Console
+}
 
-	old := config.level
+// SetLevel 设置日志输出的级别。
+func SetLevel(level Level) {
+	config.mutex.Lock()
+	defer config.mutex.Unlock()
 	config.level = level
-	return old
 }
 
-// SetOutput 设置日志的输出格式
-func SetOutput(output Output) Output {
-
+// SetOutput 设置日志的输出格式。
+func SetOutput(output Output) {
 	config.mutex.Lock()
 	defer config.mutex.Unlock()
-
-	old := config.output
 	config.output = output
-	return old
 }
 
 // Trace 输出 TRACE 级别的日志。
 func (e Entry) Trace(args ...interface{}) {
-	if config.level <= TraceLevel {
-		config.output(1, TraceLevel, e.print(args...))
-	}
+	output(TraceLevel, e, args...)
 }
 
 // Tracef 输出 TRACE 级别的日志。
 func (e Entry) Tracef(format string, args ...interface{}) {
-	if config.level <= TraceLevel {
-		config.output(1, TraceLevel, e.printf(format, args...))
-	}
-}
-
-// Debug 输出 DEBUG 级别的日志。
-func (e Entry) Debug(args ...interface{}) {
-	if config.level <= DebugLevel {
-		config.output(1, DebugLevel, e.print(args...))
-	}
-}
-
-// Debugf 输出 DEBUG 级别的日志。
-func (e Entry) Debugf(format string, args ...interface{}) {
-	if config.level <= DebugLevel {
-		config.output(1, DebugLevel, e.printf(format, args...))
-	}
-}
-
-// Info 输出 INFO 级别的日志。
-func (e Entry) Info(args ...interface{}) {
-	if config.level <= InfoLevel {
-		config.output(1, InfoLevel, e.print(args...))
-	}
-}
-
-// Infof 输出 INFO 级别的日志。
-func (e Entry) Infof(format string, args ...interface{}) {
-	if config.level <= InfoLevel {
-		config.output(1, InfoLevel, e.printf(format, args...))
-	}
-}
-
-// Warn 输出 WARN 级别的日志。
-func (e Entry) Warn(args ...interface{}) {
-	if config.level <= WarnLevel {
-		config.output(1, WarnLevel, e.print(args...))
-	}
-}
-
-// Warnf 输出 WARN 级别的日志。
-func (e Entry) Warnf(format string, args ...interface{}) {
-	if config.level <= WarnLevel {
-		config.output(1, WarnLevel, e.printf(format, args...))
-	}
-}
-
-// Error 输出 ERROR 级别的日志。
-func (e Entry) Error(args ...interface{}) {
-	if config.level <= ErrorLevel {
-		config.output(1, ErrorLevel, e.print(args...))
-	}
-}
-
-// Errorf 输出 ERROR 级别的日志。
-func (e Entry) Errorf(format string, args ...interface{}) {
-	if config.level <= ErrorLevel {
-		config.output(1, ErrorLevel, e.printf(format, args...))
-	}
-}
-
-// Panic 输出 PANIC 级别的日志。
-func (e Entry) Panic(args ...interface{}) {
-	if config.level <= PanicLevel {
-		config.output(1, PanicLevel, e.print(args...))
-	}
-}
-
-// Panicf 输出 PANIC 级别的日志。
-func (e Entry) Panicf(format string, args ...interface{}) {
-	if config.level <= PanicLevel {
-		config.output(1, PanicLevel, e.printf(format, args...))
-	}
-}
-
-// Fatal 输出 FATAL 级别的日志。
-func (e Entry) Fatal(args ...interface{}) {
-	if config.level <= FatalLevel {
-		config.output(1, FatalLevel, e.print(args...))
-	}
-}
-
-// Fatalf 输出 FATAL 级别的日志。
-func (e Entry) Fatalf(format string, args ...interface{}) {
-	if config.level <= FatalLevel {
-		config.output(1, FatalLevel, e.printf(format, args...))
-	}
+	outputf(TraceLevel, e, format, args...)
 }
 
 // BTrace 输出 TRACE 级别的日志。
 func (e Entry) BTrace(fn func() []interface{}) {
-	if config.level <= TraceLevel {
-		config.output(1, TraceLevel, e.print(fn()...))
-	}
+	bOutput(TraceLevel, e, fn)
 }
 
 // BTracef 输出 TRACE 级别的日志。
 func (e Entry) BTracef(format string, fn func() []interface{}) {
-	if config.level <= TraceLevel {
-		config.output(1, TraceLevel, e.printf(format, fn()...))
-	}
+	bOutputf(TraceLevel, e, format, fn)
+}
+
+// Debug 输出 DEBUG 级别的日志。
+func (e Entry) Debug(args ...interface{}) {
+	output(DebugLevel, e, args...)
+}
+
+// Debugf 输出 DEBUG 级别的日志。
+func (e Entry) Debugf(format string, args ...interface{}) {
+	outputf(DebugLevel, e, format, args...)
 }
 
 // BDebug 输出 DEBUG 级别的日志。
 func (e Entry) BDebug(fn func() []interface{}) {
-	if config.level <= DebugLevel {
-		config.output(1, DebugLevel, e.print(fn()...))
-	}
+	bOutput(DebugLevel, e, fn)
 }
 
 // BDebugf 输出 DEBUG 级别的日志。
 func (e Entry) BDebugf(format string, fn func() []interface{}) {
-	if config.level <= DebugLevel {
-		config.output(1, DebugLevel, e.printf(format, fn()...))
-	}
+	bOutputf(DebugLevel, e, format, fn)
+}
+
+// Info 输出 INFO 级别的日志。
+func (e Entry) Info(args ...interface{}) {
+	output(InfoLevel, e, args...)
+}
+
+// Infof 输出 INFO 级别的日志。
+func (e Entry) Infof(format string, args ...interface{}) {
+	outputf(InfoLevel, e, format, args...)
 }
 
 // BInfo 输出 INFO 级别的日志。
 func (e Entry) BInfo(fn func() []interface{}) {
-	if config.level <= InfoLevel {
-		config.output(1, InfoLevel, e.print(fn()...))
-	}
+	bOutput(InfoLevel, e, fn)
 }
 
 // BInfof 输出 INFO 级别的日志。
 func (e Entry) BInfof(format string, fn func() []interface{}) {
-	if config.level <= InfoLevel {
-		config.output(1, InfoLevel, e.printf(format, fn()...))
-	}
+	bOutputf(InfoLevel, e, format, fn)
+}
+
+// Warn 输出 WARN 级别的日志。
+func (e Entry) Warn(args ...interface{}) {
+	output(WarnLevel, e, args...)
+}
+
+// Warnf 输出 WARN 级别的日志。
+func (e Entry) Warnf(format string, args ...interface{}) {
+	outputf(WarnLevel, e, format, args...)
 }
 
 // BWarn 输出 WARN 级别的日志。
 func (e Entry) BWarn(fn func() []interface{}) {
-	if config.level <= WarnLevel {
-		config.output(1, WarnLevel, e.print(fn()...))
-	}
+	bOutput(WarnLevel, e, fn)
 }
 
 // BWarnf 输出 WARN 级别的日志。
 func (e Entry) BWarnf(format string, fn func() []interface{}) {
-	if config.level <= WarnLevel {
-		config.output(1, WarnLevel, e.printf(format, fn()...))
-	}
+	bOutputf(WarnLevel, e, format, fn)
+}
+
+// Error 输出 ERROR 级别的日志。
+func (e Entry) Error(args ...interface{}) {
+	output(ErrorLevel, e, args...)
+}
+
+// Errorf 输出 ERROR 级别的日志。
+func (e Entry) Errorf(format string, args ...interface{}) {
+	outputf(ErrorLevel, e, format, args...)
 }
 
 // BError 输出 ERROR 级别的日志。
 func (e Entry) BError(fn func() []interface{}) {
-	if config.level <= ErrorLevel {
-		config.output(1, ErrorLevel, e.print(fn()...))
-	}
+	bOutput(ErrorLevel, e, fn)
 }
 
 // BErrorf 输出 ERROR 级别的日志。
 func (e Entry) BErrorf(format string, fn func() []interface{}) {
-	if config.level <= ErrorLevel {
-		config.output(1, ErrorLevel, e.printf(format, fn()...))
-	}
+	bOutputf(ErrorLevel, e, format, fn)
+}
+
+// Panic 输出 PANIC 级别的日志。
+func (e Entry) Panic(args ...interface{}) {
+	output(PanicLevel, e, args...)
+}
+
+// Panicf 输出 PANIC 级别的日志。
+func (e Entry) Panicf(format string, args ...interface{}) {
+	outputf(PanicLevel, e, format, args...)
+}
+
+// Fatal 输出 FATAL 级别的日志。
+func (e Entry) Fatal(args ...interface{}) {
+	output(FatalLevel, e, args...)
+}
+
+// Fatalf 输出 FATAL 级别的日志。
+func (e Entry) Fatalf(format string, args ...interface{}) {
+	outputf(FatalLevel, e, format, args...)
 }
 
 // EnableTrace 是否允许输出 TRACE 级别的日志。
@@ -336,37 +316,9 @@ func EnableTrace() bool {
 	return config.level <= TraceLevel
 }
 
-// Trace 输出 TRACE 级别的日志。
-func Trace(args ...interface{}) {
-	if EnableTrace() {
-		config.output(1, TraceLevel, empty.print(args...))
-	}
-}
-
-// Tracef 输出 TRACE 级别的日志。
-func Tracef(format string, args ...interface{}) {
-	if EnableTrace() {
-		config.output(1, TraceLevel, empty.printf(format, args...))
-	}
-}
-
 // EnableDebug 是否允许输出 DEBUG 级别的日志。
 func EnableDebug() bool {
 	return config.level <= DebugLevel
-}
-
-// Debug 输出 DEBUG 级别的日志。
-func Debug(args ...interface{}) {
-	if EnableDebug() {
-		config.output(1, DebugLevel, empty.print(args...))
-	}
-}
-
-// Debugf 输出 DEBUG 级别的日志。
-func Debugf(format string, args ...interface{}) {
-	if EnableDebug() {
-		config.output(1, DebugLevel, empty.printf(format, args...))
-	}
 }
 
 // EnableInfo 是否允许输出 INFO 级别的日志。
@@ -374,37 +326,9 @@ func EnableInfo() bool {
 	return config.level <= InfoLevel
 }
 
-// Info 输出 INFO 级别的日志。
-func Info(args ...interface{}) {
-	if EnableInfo() {
-		config.output(1, InfoLevel, empty.print(args...))
-	}
-}
-
-// Infof 输出 INFO 级别的日志。
-func Infof(format string, args ...interface{}) {
-	if EnableInfo() {
-		config.output(1, InfoLevel, empty.printf(format, args...))
-	}
-}
-
 // EnableWarn 是否允许输出 WARN 级别的日志。
 func EnableWarn() bool {
 	return config.level <= WarnLevel
-}
-
-// Warn 输出 WARN 级别的日志。
-func Warn(args ...interface{}) {
-	if EnableWarn() {
-		config.output(1, WarnLevel, empty.print(args...))
-	}
-}
-
-// Warnf 输出 WARN 级别的日志。
-func Warnf(format string, args ...interface{}) {
-	if EnableWarn() {
-		config.output(1, WarnLevel, empty.printf(format, args...))
-	}
 }
 
 // EnableError 是否允许输出 ERROR 级别的日志。
@@ -412,37 +336,9 @@ func EnableError() bool {
 	return config.level <= ErrorLevel
 }
 
-// Error 输出 ERROR 级别的日志。
-func Error(args ...interface{}) {
-	if EnableError() {
-		config.output(1, ErrorLevel, empty.print(args...))
-	}
-}
-
-// Errorf 输出 ERROR 级别的日志。
-func Errorf(format string, args ...interface{}) {
-	if EnableError() {
-		config.output(1, ErrorLevel, empty.printf(format, args...))
-	}
-}
-
 // EnablePanic 是否允许输出 PANIC 级别的日志。
 func EnablePanic() bool {
 	return config.level <= PanicLevel
-}
-
-// Panic 输出 PANIC 级别的日志。
-func Panic(args ...interface{}) {
-	if EnablePanic() {
-		config.output(1, PanicLevel, empty.print(args...))
-	}
-}
-
-// Panicf 输出 PANIC 级别的日志。
-func Panicf(format string, args ...interface{}) {
-	if EnablePanic() {
-		config.output(1, PanicLevel, empty.printf(format, args...))
-	}
 }
 
 // EnableFatal 是否允许输出 FATAL 级别的日志。
@@ -450,89 +346,122 @@ func EnableFatal() bool {
 	return config.level <= FatalLevel
 }
 
-// Fatal 输出 FATAL 级别的日志。
-func Fatal(args ...interface{}) {
-	if EnableFatal() {
-		config.output(1, FatalLevel, empty.print(args...))
-	}
+// Trace 输出 TRACE 级别的日志。
+func Trace(args ...interface{}) {
+	output(TraceLevel, empty, args...)
 }
 
-// Fatalf 输出 FATAL 级别的日志。
-func Fatalf(format string, args ...interface{}) {
-	if EnableFatal() {
-		config.output(1, FatalLevel, empty.printf(format, args...))
-	}
+// Tracef 输出 TRACE 级别的日志。
+func Tracef(format string, args ...interface{}) {
+	outputf(TraceLevel, empty, format, args...)
 }
-
-// B 将可变参数转换成切片。
-func B(a ...interface{}) []interface{} { return a }
 
 // BTrace 输出 TRACE 级别的日志。
 func BTrace(fn func() []interface{}) {
-	if EnableTrace() {
-		config.output(1, TraceLevel, empty.print(fn()...))
-	}
+	bOutput(TraceLevel, empty, fn)
 }
 
 // BTracef 输出 TRACE 级别的日志。
 func BTracef(format string, fn func() []interface{}) {
-	if EnableTrace() {
-		config.output(1, TraceLevel, empty.printf(format, fn()...))
-	}
+	bOutputf(TraceLevel, empty, format, fn)
+}
+
+// Debug 输出 DEBUG 级别的日志。
+func Debug(args ...interface{}) {
+	output(DebugLevel, empty, args...)
+}
+
+// Debugf 输出 DEBUG 级别的日志。
+func Debugf(format string, args ...interface{}) {
+	outputf(DebugLevel, empty, format, args...)
 }
 
 // BDebug 输出 DEBUG 级别的日志。
 func BDebug(fn func() []interface{}) {
-	if EnableDebug() {
-		config.output(1, DebugLevel, empty.print(fn()...))
-	}
+	bOutput(DebugLevel, empty, fn)
 }
 
 // BDebugf 输出 DEBUG 级别的日志。
 func BDebugf(format string, fn func() []interface{}) {
-	if EnableDebug() {
-		config.output(1, DebugLevel, empty.printf(format, fn()...))
-	}
+	bOutputf(DebugLevel, empty, format, fn)
+}
+
+// Info 输出 INFO 级别的日志。
+func Info(args ...interface{}) {
+	output(InfoLevel, empty, args...)
+}
+
+// Infof 输出 INFO 级别的日志。
+func Infof(format string, args ...interface{}) {
+	outputf(InfoLevel, empty, format, args...)
 }
 
 // BInfo 输出 INFO 级别的日志。
 func BInfo(fn func() []interface{}) {
-	if EnableInfo() {
-		config.output(1, InfoLevel, empty.print(fn()...))
-	}
+	bOutput(InfoLevel, empty, fn)
 }
 
 // BInfof 输出 INFO 级别的日志。
 func BInfof(format string, fn func() []interface{}) {
-	if EnableInfo() {
-		config.output(1, InfoLevel, empty.printf(format, fn()...))
-	}
+	bOutputf(InfoLevel, empty, format, fn)
+}
+
+// Warn 输出 WARN 级别的日志。
+func Warn(args ...interface{}) {
+	output(WarnLevel, empty, args...)
+}
+
+// Warnf 输出 WARN 级别的日志。
+func Warnf(format string, args ...interface{}) {
+	outputf(WarnLevel, empty, format, args...)
 }
 
 // BWarn 输出 WARN 级别的日志。
 func BWarn(fn func() []interface{}) {
-	if EnableWarn() {
-		config.output(1, WarnLevel, empty.print(fn()...))
-	}
+	bOutput(WarnLevel, empty, fn)
 }
 
 // BWarnf 输出 WARN 级别的日志。
 func BWarnf(format string, fn func() []interface{}) {
-	if EnableWarn() {
-		config.output(1, WarnLevel, empty.printf(format, fn()...))
-	}
+	bOutputf(WarnLevel, empty, format, fn)
+}
+
+// Error 输出 ERROR 级别的日志。
+func Error(args ...interface{}) {
+	output(ErrorLevel, empty, args...)
+}
+
+// Errorf 输出 ERROR 级别的日志。
+func Errorf(format string, args ...interface{}) {
+	outputf(ErrorLevel, empty, format, args...)
 }
 
 // BError 输出 ERROR 级别的日志。
 func BError(fn func() []interface{}) {
-	if EnableError() {
-		config.output(1, ErrorLevel, empty.print(fn()...))
-	}
+	bOutput(ErrorLevel, empty, fn)
 }
 
 // BErrorf 输出 ERROR 级别的日志。
 func BErrorf(format string, fn func() []interface{}) {
-	if EnableError() {
-		config.output(1, ErrorLevel, empty.printf(format, fn()...))
-	}
+	bOutputf(ErrorLevel, empty, format, fn)
+}
+
+// Panic 输出 PANIC 级别的日志。
+func Panic(args ...interface{}) {
+	output(PanicLevel, empty, args...)
+}
+
+// Panicf 输出 PANIC 级别的日志。
+func Panicf(format string, args ...interface{}) {
+	outputf(PanicLevel, empty, format, args...)
+}
+
+// Fatal 输出 FATAL 级别的日志。
+func Fatal(args ...interface{}) {
+	output(FatalLevel, empty, args...)
+}
+
+// Fatalf 输出 FATAL 级别的日志。
+func Fatalf(format string, args ...interface{}) {
+	outputf(FatalLevel, empty, format, args...)
 }

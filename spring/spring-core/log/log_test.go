@@ -29,8 +29,8 @@ import (
 
 func TestDefault(t *testing.T) {
 
-	old := log.SetLevel(log.TraceLevel)
-	defer log.SetLevel(old)
+	log.SetLevel(log.TraceLevel)
+	defer log.Reset()
 
 	log.Trace("a", "=", "1")
 	log.Tracef("a=%d", 1)
@@ -83,29 +83,34 @@ func TestDefault(t *testing.T) {
 
 func myOutput(skip int, level log.Level, e *log.Entry) {
 
+	msg := e.GetMsg()
 	tag := e.GetTag()
 	if len(tag) > 0 {
 		tag += " "
 	}
 
-	ctxString := func(ctx context.Context) string {
-		if ctx != nil {
-			if v := ctx.Value("trace_id"); v != nil {
-				return "trace_id:" + v.(string)
-			}
+	strCtx := func(ctx context.Context) string {
+		if ctx == nil {
+			return ""
 		}
-		return ""
-	}
+		v := ctx.Value("trace_id")
+		if v == nil {
+			return ""
+		}
+		return "trace_id:" + v.(string)
+	}(e.GetCtx())
 
+	strLevel := strings.ToUpper(level.String())
 	_, file, line, _ := runtime.Caller(skip + 1)
-	fmt.Printf("[%s] %s:%d %s %s%s\n", strings.ToUpper(level.String()), file, line, ctxString(e.GetCtx()), tag, e.GetMsg())
+	fmt.Printf("[%s] %s:%d %s %s%s\n", strLevel, file, line, strCtx, tag, msg)
 }
 
 func TestEntry(t *testing.T) {
 	ctx := context.WithValue(context.TODO(), "trace_id", "0689")
 
-	old := log.SetOutput(myOutput)
-	defer log.SetOutput(old)
+	log.SetLevel(log.TraceLevel)
+	log.SetOutput(myOutput)
+	defer log.Reset()
 
 	logger := log.Ctx(ctx)
 	logger.Trace("level:", "trace")
