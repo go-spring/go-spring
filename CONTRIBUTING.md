@@ -49,3 +49,4 @@ Following information can help us to resolve the issue faster.
 * 限制每行长度最大不超过 100 个字符。
 * 放心使用选项模式。
 * 不对外直接暴露指针类型，使用值或者接口。
+* 包名不能和 Golang 标准库重名。
