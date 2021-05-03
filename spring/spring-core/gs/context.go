@@ -84,7 +84,7 @@ type Context interface {
 	CollectBeans(i interface{}, selectors ...bean.Selector) error
 
 	// Bind 绑定结构体属性。
-	Bind(key string, i interface{}) error
+	Bind(i interface{}, opts ...conf.BindOption) error
 
 	// Wire 对对象或者构造函数的结果进行依赖注入和属性绑定，返回处理后的对象
 	Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error)
@@ -179,8 +179,8 @@ func (ctx *applicationContext) Properties() map[string]interface{} {
 	return ctx.p.Map()
 }
 
-func (ctx *applicationContext) Bind(key string, i interface{}) error {
-	return ctx.p.Bind(key, i)
+func (ctx *applicationContext) Bind(i interface{}, opts ...conf.BindOption) error {
+	return ctx.p.Bind(i, opts...)
 }
 
 // GetProperty 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。

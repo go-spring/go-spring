@@ -529,17 +529,17 @@ func TestProperties_Get(t *testing.T) {
 		assert.Equal(t, v, 3)
 
 		var v2 int
-		err := p.Bind("int", &v2)
+		err := p.Bind(&v2, conf.Key("int"))
 		util.Panic(err).When(err != nil)
 		assert.Equal(t, v2, 3)
 
 		var u2 uint
-		err = p.Bind("uint", &u2)
+		err = p.Bind(&u2, conf.Key("uint"))
 		util.Panic(err).When(err != nil)
 		assert.Equal(t, u2, uint(3))
 
 		var f2 float32
-		err = p.Bind("Float", &f2)
+		err = p.Bind(&f2, conf.Key("Float"))
 		util.Panic(err).When(err != nil)
 		assert.Equal(t, f2, float32(3))
 
@@ -547,7 +547,7 @@ func TestProperties_Get(t *testing.T) {
 		assert.Equal(t, b, true)
 
 		var b2 bool
-		err = p.Bind("bool", &b2)
+		err = p.Bind(&b2, conf.Key("bool"))
 		util.Panic(err).When(err != nil)
 		assert.Equal(t, b2, true)
 
@@ -570,7 +570,7 @@ func TestProperties_Get(t *testing.T) {
 		assert.Equal(t, ti, time.Date(2020, 02, 04, 20, 02, 04, 0, time.UTC))
 
 		var ss2 []string
-		err = p.Bind("[]string", &ss2)
+		err = p.Bind(&ss2, conf.Key("[]string"))
 		util.Panic(err).When(err != nil)
 		assert.Equal(t, ss2, []string{"3"})
 	})
@@ -667,11 +667,11 @@ func TestProperties_Bind(t *testing.T) {
 		util.Panic(err).When(err != nil)
 
 		dbConfig1 := DbConfig{}
-		err = p.Bind("", &dbConfig1)
+		err = p.Bind(&dbConfig1)
 		util.Panic(err).When(err != nil)
 
 		dbConfig2 := DbConfig{}
-		err = p.Bind("prefix", &dbConfig2)
+		err = p.Bind(&dbConfig2, conf.Tag("${prefix}"))
 		util.Panic(err).When(err != nil)
 
 		// 实际上是取的两个节点，只是值是一样的而已
@@ -684,7 +684,7 @@ func TestProperties_Bind(t *testing.T) {
 		util.Panic(err).When(err != nil)
 
 		dbConfig := TagNestedDbConfig{}
-		err = p.Bind("", &dbConfig)
+		err = p.Bind(&dbConfig)
 		util.Panic(err).When(err != nil)
 
 		fmt.Println(dbConfig)
@@ -696,11 +696,11 @@ func TestProperties_Bind(t *testing.T) {
 		util.Panic(err).When(err != nil)
 
 		dbConfig1 := NestedDbConfig{}
-		err = p.Bind("", &dbConfig1)
+		err = p.Bind(&dbConfig1)
 		util.Panic(err).When(err != nil)
 
 		dbConfig2 := NestedDbConfig{}
-		err = p.Bind("prefix", &dbConfig2)
+		err = p.Bind(&dbConfig2, conf.Tag("${prefix}"))
 		util.Panic(err).When(err != nil)
 
 		// 实际上是取的两个节点，只是值是一样的而已
@@ -716,7 +716,7 @@ func TestProperties_Bind(t *testing.T) {
 		p.Set("a.b3", "b3")
 
 		var m map[string]string
-		err := p.Bind("a", &m)
+		err := p.Bind(&m, conf.Tag("${a}"))
 		util.Panic(err).When(err != nil)
 
 		assert.Equal(t, len(m), 3)
@@ -732,7 +732,7 @@ func TestProperties_Bind(t *testing.T) {
 		p.Set("a.p3", "(5,6)")
 
 		var m map[string]image.Point
-		err := p.Bind("a", &m)
+		err := p.Bind(&m, conf.Tag("${a}"))
 		util.Panic(err).When(err != nil)
 
 		assert.Equal(t, len(m), 3)
@@ -745,7 +745,7 @@ func TestProperties_Bind(t *testing.T) {
 		util.Panic(err).When(err != nil)
 
 		var m map[string]string
-		err = p.Bind("camera", &m)
+		err = p.Bind(&m, conf.Tag("${camera}"))
 		util.Panic(err).When(err != nil)
 
 		assert.Equal(t, len(m), 3)
@@ -758,14 +758,14 @@ func TestProperties_Bind(t *testing.T) {
 		util.Panic(err).When(err != nil)
 
 		var m map[string]NestedDB
-		err = p.Bind("db_map", &m)
+		err = p.Bind(&m, conf.Tag("${db_map}"))
 		util.Panic(err).When(err != nil)
 
 		assert.Equal(t, len(m), 2)
 		assert.Equal(t, m["d1"].DB, "db1")
 
 		dbConfig2 := NestedDbMapConfig{}
-		err = p.Bind("prefix_map", &dbConfig2)
+		err = p.Bind(&dbConfig2, conf.Tag("${prefix_map}"))
 		util.Panic(err).When(err != nil)
 
 		assert.Equal(t, len(dbConfig2.DB), 2)
@@ -773,11 +773,11 @@ func TestProperties_Bind(t *testing.T) {
 	})
 
 	t.Run("ignore interface", func(t *testing.T) {
-		_ = conf.New().Bind(conf.RootKey, &struct{ fmt.Stringer }{})
+		_ = conf.New().Bind(&struct{ fmt.Stringer }{}, conf.Key(conf.RootKey))
 	})
 
 	t.Run("ignore pointer", func(t *testing.T) {
-		_ = conf.New().Bind(conf.RootKey, list.New())
+		_ = conf.New().Bind(list.New(), conf.Key(conf.RootKey))
 	})
 }
 
@@ -795,7 +795,7 @@ func TestProperties_Ref(t *testing.T) {
 
 	t.Run("not config", func(t *testing.T) {
 		p := conf.New()
-		err := p.Bind("", &httpLog)
+		err := p.Bind(&httpLog)
 		assert.Error(t, err, "property \"dir\" not config")
 	})
 
@@ -805,14 +805,14 @@ func TestProperties_Ref(t *testing.T) {
 		appDir := "/home/log"
 		p.Set("app.dir", appDir)
 
-		err := p.Bind("", &httpLog)
+		err := p.Bind(&httpLog)
 		util.Panic(err).When(err != nil)
 		assert.Equal(t, httpLog.Dir, appDir)
 		assert.Equal(t, httpLog.NestedDir, "./log")
 		assert.Equal(t, httpLog.NestedEmptyDir, "")
 		assert.Equal(t, httpLog.NestedNestedDir, "./log")
 
-		err = p.Bind("", &mqLog)
+		err = p.Bind(&mqLog)
 		util.Panic(err).When(err != nil)
 		assert.Equal(t, mqLog.Dir, appDir)
 		assert.Equal(t, mqLog.NestedDir, "./log")
@@ -825,7 +825,7 @@ func TestProperties_Ref(t *testing.T) {
 		var s struct {
 			KeyIsEmpty string `value:"${:=kie}"`
 		}
-		err := p.Bind("", &s)
+		err := p.Bind(&s)
 		util.Panic(err).When(err != nil)
 		assert.Equal(t, s.KeyIsEmpty, "kie")
 	})

@@ -26,13 +26,8 @@ import (
 	"github.com/spf13/cast"
 )
 
-type Property interface {
+type property interface {
 	Get(key string, opts ...GetOption) interface{}
-}
-
-// BindValue 对任意值 v 进行属性绑定，tag 是形如 ${key:=def} 的字符串，v 必须是值类型。
-func BindValue(p Property, tag string, v reflect.Value) error {
-	return bindValue(p, tag, v, bindOption{})
 }
 
 type bindOption struct {
@@ -42,7 +37,7 @@ type bindOption struct {
 }
 
 // bindStruct 对结构体的字段进行属性绑定，该方法要求 v 的类型必须是结构体。
-func bindStruct(p Property, v reflect.Value, opt bindOption) error {
+func bindStruct(p property, v reflect.Value, opt bindOption) error {
 	t := v.Type()
 	for i := 0; i < t.NumField(); i++ {
 		ft := t.Field(i)
@@ -71,7 +66,7 @@ func bindStruct(p Property, v reflect.Value, opt bindOption) error {
 	return nil
 }
 
-func bindValue(p Property, tag string, v reflect.Value, opt bindOption) error {
+func bindValue(p property, tag string, v reflect.Value, opt bindOption) error {
 
 	if v.Kind() == reflect.Ptr {
 		return fmt.Errorf("%s 属性绑定的目标不能是指针", opt.Path)

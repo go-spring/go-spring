@@ -54,6 +54,26 @@ func DisableResolve() GetOption {
 	}
 }
 
+type bindArg struct {
+	tag string
+}
+
+type BindOption func(arg *bindArg)
+
+// Key 设置绑定的 key 。
+func Key(key string) BindOption {
+	return func(arg *bindArg) {
+		arg.tag = "${" + key + "}"
+	}
+}
+
+// Tag 设置绑定的 tag 。
+func Tag(tag string) BindOption {
+	return func(arg *bindArg) {
+		arg.tag = tag
+	}
+}
+
 // Properties 属性列表接口。所有的 key 都是小写，匹配的时候也都转成小写然后再匹配。
 //
 // 一般情况下 key 都是 a.b.c 这种形式，但是这种形式只能表达 map 嵌套的结构，而没
@@ -101,7 +121,7 @@ type Properties interface {
 	// 者不太重要，也有人认为这是一种对 Golang 缺少默认值语法的补充，Bug is Feature。
 	//
 	// 另外，属性绑定语法还支持嵌套的属性引用，但是只能在默认值中使用，即 ${a:=${b}}。
-	Bind(key string, i interface{}) error
+	Bind(i interface{}, opts ...BindOption) error
 }
 
 // properties Properties 的默认实现。
@@ -302,25 +322,37 @@ func toLowerValue(value interface{}) interface{} {
 	return value
 }
 
-func (p *properties) Bind(key string, i interface{}) error {
+func (p *properties) Bind(i interface{}, opts ...BindOption) error {
 
-	v := reflect.ValueOf(i)
-	if v.Kind() != reflect.Ptr {
-		return errors.New("i 必须是一个指针")
+	var v reflect.Value
+
+	switch i.(type) {
+	case reflect.Value:
+		v = i.(reflect.Value)
+	default:
+		if v = reflect.ValueOf(i); v.Kind() != reflect.Ptr {
+			return errors.New("i 必须是一个指针")
+		}
+		v = v.Elem()
 	}
 
-	t := v.Type().Elem()
+	arg := bindArg{tag: "${}"}
+	for _, opt := range opts {
+		opt(&arg)
+	}
+
+	t := v.Type()
 	s := t.Name() // 当绑定对象是 map 或者 slice 时，取元素的类型名
 	if s == "" && (t.Kind() == reflect.Map || t.Kind() == reflect.Slice) {
 		s = t.Elem().Name()
 	}
 
-	return bindValue(p, "${"+key+"}", v.Elem(), bindOption{Path: s, Key: key})
+	return bindValue(p, arg.tag, v, bindOption{Path: s})
 }
 
 // BindMap 将 map 作为属性源对 i 进行属性绑定。
 func BindMap(m map[string]interface{}, i interface{}) error {
-	return Map(m).Bind(RootKey, i)
+	return Map(m).Bind(i, Key(RootKey))
 }
 
 // validValueTag 是否为 ${key:=def} 格式的字符串。

@@ -84,10 +84,11 @@ func (assembly *beanAssembly) WireField(tag string, v reflect.Value) error {
 	}
 
 	// 处理值类型
-	if tag == "" {
-		tag = "${}"
+	var opt conf.BindOption
+	if tag != "" {
+		opt = conf.Tag(tag)
 	}
-	return conf.BindValue(assembly.c.p, tag, v)
+	return assembly.c.p.Bind(v, opt)
 }
 
 // getBean 获取符合 tag 要求的 Bean，并且确保 Bean 已经完成依赖注入。
@@ -498,7 +499,7 @@ func (assembly *beanAssembly) wireValue(v reflect.Value) error {
 		return nil
 	}
 
-	err := conf.BindValue(assembly.c.p, "${}", ev)
+	err := assembly.c.p.Bind(ev)
 	if err != nil {
 		return err
 	}
@@ -551,7 +552,7 @@ func (assembly *beanAssembly) wireField(tag string, v reflect.Value) error {
 	if strings.HasPrefix(tag, "${") {
 		s := ""
 		sv := reflect.ValueOf(&s).Elem()
-		err := conf.BindValue(assembly.c.p, tag, sv)
+		err := assembly.c.p.Bind(sv, conf.Tag(tag))
 		if err != nil {
 			return err
 		}
