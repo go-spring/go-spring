@@ -35,7 +35,7 @@ type Context interface {
 	// Matches 条件成立返回 true，否则返回 false。
 	Matches(c cond.Condition) bool
 
-	WireByTag(tag string, v reflect.Value) error
+	WireField(tag string, v reflect.Value) error
 }
 
 // Arg 定义一个函数参数，可以是 bean.Selector 类型，表示注入一个 Bean；
@@ -249,7 +249,7 @@ func (r *argList) getArg(ctx Context, arg Arg, t reflect.Type,
 	}
 
 	v = reflect.New(t).Elem()
-	if err = ctx.WireByTag(tag, v); err != nil {
+	if err = ctx.WireField(tag, v); err != nil {
 		return reflect.Value{}, err
 	}
 	return v, nil

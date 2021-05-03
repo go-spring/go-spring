@@ -274,8 +274,8 @@ func (ctx *applicationContext) GetBean(i interface{}, opts ...GetBeanOption) err
 	}
 
 	w := toAssembly(ctx)
-	v := reflect.ValueOf(i)
-	return w.getBean(toSingletonTag(a.Selector), v.Elem())
+	v := reflect.ValueOf(i).Elem()
+	return w.getBean(toSingletonTag(a.Selector), v)
 }
 
 // FindBean 返回符合条件的 Bean 集合，不保证返回的 Bean 已经完成注入和绑定过程。
@@ -334,15 +334,17 @@ func (ctx *applicationContext) FindBean(selector bean.Selector) ([]bean.Definiti
 func (ctx *applicationContext) CollectBeans(i interface{}, selectors ...bean.Selector) error {
 	ctx.checkAutoWired()
 
-	if t := reflect.TypeOf(i); t.Kind() != reflect.Ptr || t.Elem().Kind() != reflect.Slice {
+	v := reflect.ValueOf(i)
+	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Slice {
 		return errors.New("i must be slice ptr")
 	}
 
 	var tag collectionTag
 	for _, selector := range selectors {
-		tag.beanTags = append(tag.beanTags, toSingletonTag(selector))
+		s := toSingletonTag(selector)
+		tag.beanTags = append(tag.beanTags, s)
 	}
-	return toAssembly(ctx).collectBeans(tag, reflect.ValueOf(i).Elem())
+	return toAssembly(ctx).collectBeans(tag, v.Elem())
 }
 
 func (ctx *applicationContext) getCacheByType(typ reflect.Type) *slice.Slice {

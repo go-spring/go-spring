@@ -179,7 +179,6 @@ func init() {
 
 		t := v.Type()
 		elemType := t.Elem()
-		elemKind := elemType.Kind()
 
 		// 如果是字符串的话，尝试按照逗号进行切割
 		if s, ok := prop.(string); ok {
@@ -202,7 +201,7 @@ func init() {
 			}
 		}
 
-		switch elemKind {
+		switch elemType.Kind() {
 		case reflect.Uint64:
 			if i, err := ToUint64SliceE(prop); err == nil {
 				v.Set(reflect.ValueOf(i))
@@ -283,13 +282,13 @@ func init() {
 				result := reflect.MakeSlice(t, len(s), len(s))
 				for i, si := range s {
 					if sv, err := cast.ToStringMapE(si); err == nil {
-						ev := reflect.New(elemType)
+						ev := reflect.New(elemType).Elem()
 						subKey := fmt.Sprintf("%s[%d]", key, i)
-						err = bindStruct(&properties{m: sv}, ev.Elem(), bindOption{Key: subKey, Path: opt.Path})
+						err = bindStruct(&properties{m: sv}, ev, bindOption{Key: subKey, Path: opt.Path})
 						if err != nil {
 							return err
 						}
-						result.Index(i).Set(ev.Elem())
+						result.Index(i).Set(ev)
 					} else {
 						return fmt.Errorf("property value %s isn't []map[string]interface{}", opt.Key)
 					}
@@ -310,7 +309,6 @@ func init() {
 		}
 
 		elemType := t.Elem()
-		elemKind := elemType.Kind()
 
 		// 首先处理使用类型转换器的场景
 		if fn, ok := tConverters[elemType]; ok {
@@ -330,7 +328,7 @@ func init() {
 			}
 		}
 
-		switch elemKind {
+		switch elemType.Kind() {
 		case reflect.Uint64, reflect.Uint32, reflect.Uint16, reflect.Uint8, reflect.Uint:
 			return errors.New("暂未支持")
 		case reflect.Int64, reflect.Int32, reflect.Int16, reflect.Int8, reflect.Int:
@@ -364,13 +362,13 @@ func init() {
 
 				result := reflect.MakeMapWithSize(t, len(temp))
 				for k1, v1 := range temp {
-					ev := reflect.New(elemType)
+					ev := reflect.New(elemType).Elem()
 					subKey := fmt.Sprintf("%s.%s", key, k1)
-					err = bindStruct(&properties{m: v1}, ev.Elem(), bindOption{Key: subKey, Path: opt.Path})
+					err = bindStruct(&properties{m: v1}, ev, bindOption{Key: subKey, Path: opt.Path})
 					if err != nil {
 						return err
 					}
-					result.SetMapIndex(reflect.ValueOf(k1), ev.Elem())
+					result.SetMapIndex(reflect.ValueOf(k1), ev)
 				}
 
 				v.Set(result)

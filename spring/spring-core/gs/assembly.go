@@ -76,8 +76,18 @@ func (assembly *beanAssembly) Matches(cond cond.Condition) bool {
 	return cond.Matches(assembly.c)
 }
 
-func (assembly *beanAssembly) WireByTag(tag string, v reflect.Value) error {
-	return assembly.wireByTag(anyTag, tag, v)
+func (assembly *beanAssembly) WireField(tag string, v reflect.Value) error {
+
+	// 处理引用类型
+	if util.RefType(v.Kind()) {
+		return assembly.wireField(tag, v)
+	}
+
+	// 处理值类型
+	if tag == "" {
+		tag = "${}"
+	}
+	return conf.BindValue(assembly.c.p, tag, v)
 }
 
 // getBean 获取符合 tag 要求的 Bean，并且确保 Bean 已经完成依赖注入。
@@ -178,29 +188,27 @@ func (assembly *beanAssembly) getBean(tag singletonTag, v reflect.Value) error {
 func (assembly *beanAssembly) collectBeans(tag collectionTag, v reflect.Value) error {
 
 	t := v.Type()
-	et := t.Elem()
-
-	if !util.RefType(et.Kind()) { // 收集模式的数组元素必须是引用类型
+	if !util.RefType(t.Elem().Kind()) { // 收集模式的数组元素必须是引用类型
 		return errors.New("slice item in collection mode should be ref type")
 	}
 
 	var (
-		err    error
-		result reflect.Value
+		err error
+		ret reflect.Value
 	)
 
 	if len(tag.beanTags) == 0 {
-		result, err = assembly.autoCollectBeans(t, et)
+		ret, err = assembly.autoCollectBeans(t)
 	} else {
-		result, err = assembly.collectAndSortBeans(t, et, tag)
+		ret, err = assembly.collectAndSortBeans(tag, t)
 	}
 
 	if err != nil {
 		return err
 	}
 
-	if result.Len() > 0 {
-		util.PatchValue(v).Set(result)
+	if ret.Len() > 0 {
+		util.PatchValue(v).Set(ret)
 		return nil
 	}
 
@@ -209,6 +217,33 @@ func (assembly *beanAssembly) collectBeans(tag collectionTag, v reflect.Value) e
 	}
 
 	return fmt.Errorf("no beans collected for %q", tag)
+}
+
+// autoCollectBeans 收集符合条件的 Bean，不对结果进行排序，不排序是因为目前看起来没有必要
+func (assembly *beanAssembly) autoCollectBeans(t reflect.Type) (reflect.Value, error) {
+	result := reflect.MakeSlice(t, 0, 0)
+
+	// 查找可以精确匹配的数组类型
+	cache := assembly.c.getCacheByType(t)
+	for i := 0; i < cache.Len(); i++ {
+		b := cache.Get(i).(*BeanDefinition)
+		if err := assembly.wireValue(b.Value()); err != nil {
+			return reflect.Value{}, err
+		}
+		result = reflect.AppendSlice(result, b.Value())
+	}
+
+	// 查找可以精确匹配的单例类型，对找到的 Bean 进行自动注入
+	cache = assembly.c.getCacheByType(t.Elem())
+	for i := 0; i < cache.Len(); i++ {
+		d := cache.Get(i).(*BeanDefinition)
+		if err := assembly.wireBean(d); err != nil {
+			return reflect.Value{}, err
+		}
+		result = reflect.Append(result, d.Value())
+	}
+
+	return result, nil // TODO 当收集接口类型的 Bean 时对于没有显式导出接口的 Bean 是否也需要收集？
 }
 
 // findBean 返回找到的符合条件的 Bean 在数组中的索引，找不到返回 -1。
@@ -245,9 +280,11 @@ func findBean(beans []*BeanDefinition, tag singletonTag, et reflect.Type) (int, 
 }
 
 // collectAndSortBeans 收集符合条件的 Bean，并且根据指定的顺序对结果进行排序
-func (assembly *beanAssembly) collectAndSortBeans(t reflect.Type, et reflect.Type, tag collectionTag) (reflect.Value, error) {
+func (assembly *beanAssembly) collectAndSortBeans(tag collectionTag, t reflect.Type) (reflect.Value, error) {
 
+	et := t.Elem()
 	foundAny := false
+
 	any := reflect.MakeSlice(t, 0, len(tag.beanTags))
 	afterAny := reflect.MakeSlice(t, 0, len(tag.beanTags))
 	beforeAny := reflect.MakeSlice(t, 0, len(tag.beanTags))
@@ -308,33 +345,6 @@ func (assembly *beanAssembly) collectAndSortBeans(t reflect.Type, et reflect.Typ
 	reflect.Copy(result.Slice(i, i+any.Len()), any)
 	i += any.Len()
 	reflect.Copy(result.Slice(i, i+afterAny.Len()), afterAny)
-
-	return result, nil // TODO 当收集接口类型的 Bean 时对于没有显式导出接口的 Bean 是否也需要收集？
-}
-
-// autoCollectBeans 收集符合条件的 Bean，不对结果进行排序，不排序是因为目前看起来没有必要
-func (assembly *beanAssembly) autoCollectBeans(t reflect.Type, et reflect.Type) (reflect.Value, error) {
-	result := reflect.MakeSlice(t, 0, 0)
-
-	// 查找可以精确匹配的数组类型
-	cache := assembly.c.getCacheByType(t)
-	for i := 0; i < cache.Len(); i++ {
-		b := cache.Get(i).(*BeanDefinition)
-		if err := assembly.wireSlice(b.Value()); err != nil {
-			return reflect.Value{}, err
-		}
-		result = reflect.AppendSlice(result, b.Value())
-	}
-
-	// 查找可以精确匹配的单例类型，对找到的 Bean 进行自动注入
-	cache = assembly.c.getCacheByType(et)
-	for i := 0; i < cache.Len(); i++ {
-		d := cache.Get(i).(*BeanDefinition)
-		if err := assembly.wireBean(d); err != nil {
-			return reflect.Value{}, err
-		}
-		result = reflect.Append(result, d.Value())
-	}
 
 	return result, nil // TODO 当收集接口类型的 Bean 时对于没有显式导出接口的 Bean 是否也需要收集？
 }
@@ -409,7 +419,7 @@ func (assembly *beanAssembly) wireBean(b beanDefinition) error {
 		return err
 	}
 
-	err = assembly.wireValue(v, false)
+	err = assembly.wireValue(v)
 	if err != nil {
 		return err
 	}
@@ -458,66 +468,57 @@ func (assembly *beanAssembly) getValue(b beanDefinition) (reflect.Value, error) 
 		return reflect.Value{}, fmt.Errorf("ctor bean:%q return nil", b.FileLine())
 	}
 
-	beanValue := b.Value()
+	v := b.Value()
 	if b.Type().Kind() == reflect.Interface {
-		beanValue = b.Value().Elem()
+		v = v.Elem()
 	}
-
-	return beanValue, nil
+	return v, nil
 }
 
-func (assembly *beanAssembly) wireValue(v reflect.Value, onlyAutoWire bool) error {
+func (assembly *beanAssembly) wireValue(v reflect.Value) error {
 
 	t := v.Type()
 	if t.Kind() == reflect.Slice {
-		return assembly.wireSlice(v)
-	}
-
-	et := t
-	ev := v
-
-	if t.Kind() == reflect.Ptr {
-		et = t.Elem()
-		ev = v.Elem()
-	}
-	if et.Kind() != reflect.Struct {
+		for i := 0; i < v.Len(); i++ {
+			if ev := v.Index(i); ev.IsValid() {
+				err := assembly.wireValue(ev)
+				if err != nil {
+					return err
+				}
+			}
+		}
 		return nil
 	}
 
-	return assembly.wireStruct(ev, et, onlyAutoWire)
-}
-
-func (assembly *beanAssembly) wireSlice(v reflect.Value) error {
-	for i := 0; i < v.Len(); i++ {
-		if ev := v.Index(i); ev.IsValid() {
-			err := assembly.wireValue(ev, false)
-			if err != nil {
-				return err
-			}
-		}
+	ev := v
+	if t.Kind() == reflect.Ptr {
+		ev = ev.Elem()
 	}
-	return nil
-}
-
-func (assembly *beanAssembly) wireStruct(ev reflect.Value, et reflect.Type, onlyAutoWire bool) error {
-
-	if !onlyAutoWire {
-		err := conf.BindValue(assembly.c.p, "${}", ev)
-		if err != nil {
-			return err
-		}
+	if ev.Kind() != reflect.Struct {
+		return nil
 	}
 
-	etName := et.Name()
+	err := conf.BindValue(assembly.c.p, "${}", ev)
+	if err != nil {
+		return err
+	}
+
+	return assembly.wireStruct(ev)
+}
+
+func (assembly *beanAssembly) wireStruct(v reflect.Value) error {
+
+	t := v.Type()
+	etName := t.Name()
 	if etName == "" { // 可能是内置类型
-		etName = et.String()
+		etName = t.String()
 	}
 
 	// 遍历 Bean 的每个字段，按照 tag 进行注入
-	for i := 0; i < et.NumField(); i++ {
+	for i := 0; i < t.NumField(); i++ {
 
-		ft := et.Field(i)
-		fv := ev.Field(i)
+		ft := t.Field(i)
+		fv := v.Field(i)
 
 		// 处理 autowire 标签，autowire 与 inject 等价
 		beanId, ok := ft.Tag.Lookup("autowire")
@@ -525,7 +526,7 @@ func (assembly *beanAssembly) wireStruct(ev reflect.Value, et reflect.Type, only
 			beanId, ok = ft.Tag.Lookup("inject")
 		}
 		if ok {
-			err := assembly.wireByTag(wireTag, beanId, fv)
+			err := assembly.wireField(beanId, fv)
 			if err != nil {
 				fieldName := etName + "." + ft.Name
 				return fmt.Errorf("%q wired error: %s", fieldName, err.Error())
@@ -535,7 +536,7 @@ func (assembly *beanAssembly) wireStruct(ev reflect.Value, et reflect.Type, only
 		// 只处理结构体类型的字段，防止递归所以不支持指针结构体字段
 		if ft.Type.Kind() == reflect.Struct {
 			pv := util.PatchValue(fv)
-			err := assembly.wireStruct(pv, pv.Type(), true)
+			err := assembly.wireStruct(pv)
 			if err != nil {
 				return err
 			}
@@ -544,33 +545,7 @@ func (assembly *beanAssembly) wireStruct(ev reflect.Value, et reflect.Type, only
 	return nil
 }
 
-type tagKind int
-
-const (
-	anyTag   = tagKind(0)
-	wireTag  = tagKind(1)
-	valueTag = tagKind(2)
-)
-
-func (assembly *beanAssembly) wireByTag(k tagKind, tag string, v reflect.Value) error {
-
-	if k == anyTag {
-
-		// 处理引用类型
-		if util.RefType(v.Kind()) {
-			return assembly.wireByTag(wireTag, tag, v)
-		}
-
-		// 处理值类型
-		if tag == "" {
-			tag = "${}"
-		}
-		return assembly.wireByTag(valueTag, tag, v)
-	}
-
-	if k == valueTag {
-		return conf.BindValue(assembly.c.p, tag, v)
-	}
+func (assembly *beanAssembly) wireField(tag string, v reflect.Value) error {
 
 	// tag 预处理，Bean 名称可以通过属性值指定
 	if strings.HasPrefix(tag, "${") {
