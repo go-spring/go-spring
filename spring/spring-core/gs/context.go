@@ -34,15 +34,15 @@ import (
 	"github.com/go-spring/spring-core/util"
 )
 
-type getBeanArg struct {
-	s bean.Selector
+type GetBeanArg struct {
+	Selector bean.Selector
 }
 
-type GetBeanOption func(arg *getBeanArg)
+type GetBeanOption func(arg *GetBeanArg)
 
 func Use(s bean.Selector) GetBeanOption {
-	return func(arg *getBeanArg) {
-		arg.s = s
+	return func(arg *GetBeanArg) {
+		arg.Selector = s
 	}
 }
 
@@ -268,15 +268,14 @@ func (ctx *applicationContext) GetBean(i interface{}, opts ...GetBeanOption) err
 		return errors.New("i must be pointer")
 	}
 
-	a := getBeanArg{s: bean.Selector("")}
+	a := GetBeanArg{Selector: bean.Selector("")}
 	for _, opt := range opts {
 		opt(&a)
 	}
 
 	w := toAssembly(ctx)
 	v := reflect.ValueOf(i)
-	tag := toSingletonTag(a.s)
-	return w.getBean(tag, v.Elem())
+	return w.getBean(toSingletonTag(a.Selector), v.Elem())
 }
 
 // FindBean 返回符合条件的 Bean 集合，不保证返回的 Bean 已经完成注入和绑定过程。
