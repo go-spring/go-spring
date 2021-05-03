@@ -35,7 +35,11 @@ type Context interface {
 	// Matches 条件成立返回 true，否则返回 false。
 	Matches(c cond.Condition) bool
 
-	WireField(tag string, v reflect.Value) error
+	// Bind 根据 tag 内容进行属性绑定。
+	Bind(tag string, v reflect.Value) error
+
+	// Autowire 根据 tag 内容自动注入。
+	Autowire(tag string, v reflect.Value) error
 }
 
 // Arg 定义一个函数参数，可以是 bean.Selector 类型，表示注入一个 Bean；
@@ -249,7 +253,20 @@ func (r *argList) getArg(ctx Context, arg Arg, t reflect.Type,
 	}
 
 	v = reflect.New(t).Elem()
-	if err = ctx.WireField(tag, v); err != nil {
+
+	// 处理引用类型
+	if util.RefType(v.Kind()) {
+		if err = ctx.Autowire(tag, v); err != nil {
+			return reflect.Value{}, err
+		}
+		return v, nil
+	}
+
+	// 处理值类型
+	if tag == "" {
+		tag = "${}"
+	}
+	if err = ctx.Bind(tag, v); err != nil {
 		return reflect.Value{}, err
 	}
 	return v, nil

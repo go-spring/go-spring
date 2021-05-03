@@ -76,19 +76,9 @@ func (assembly *beanAssembly) Matches(cond cond.Condition) bool {
 	return cond.Matches(assembly.c)
 }
 
-func (assembly *beanAssembly) WireField(tag string, v reflect.Value) error {
-
-	// 处理引用类型
-	if util.RefType(v.Kind()) {
-		return assembly.wireField(tag, v)
-	}
-
-	// 处理值类型
-	var opt conf.BindOption
-	if tag != "" {
-		opt = conf.Tag(tag)
-	}
-	return assembly.c.p.Bind(v, opt)
+// Bind 根据 tag 内容进行属性绑定。
+func (assembly *beanAssembly) Bind(tag string, v reflect.Value) error {
+	return assembly.c.p.Bind(v, conf.Tag(tag))
 }
 
 // getBean 获取符合 tag 要求的 Bean，并且确保 Bean 已经完成依赖注入。
@@ -189,8 +179,12 @@ func (assembly *beanAssembly) getBean(tag singletonTag, v reflect.Value) error {
 func (assembly *beanAssembly) collectBeans(tag collectionTag, v reflect.Value) error {
 
 	t := v.Type()
+	if t.Kind() != reflect.Slice {
+		return fmt.Errorf("should be slice in collection mode")
+	}
+
 	if !util.RefType(t.Elem().Kind()) { // 收集模式的数组元素必须是引用类型
-		return errors.New("slice item in collection mode should be ref type")
+		return errors.New("item in collection mode should be ref type")
 	}
 
 	var (
@@ -228,7 +222,7 @@ func (assembly *beanAssembly) autoCollectBeans(t reflect.Type) (reflect.Value, e
 	cache := assembly.c.getCacheByType(t)
 	for i := 0; i < cache.Len(); i++ {
 		b := cache.Get(i).(*BeanDefinition)
-		if err := assembly.wireValue(b.Value()); err != nil {
+		if err := assembly.wireObject(b.Value()); err != nil {
 			return reflect.Value{}, err
 		}
 		result = reflect.AppendSlice(result, b.Value())
@@ -420,7 +414,7 @@ func (assembly *beanAssembly) wireBean(b beanDefinition) error {
 		return err
 	}
 
-	err = assembly.wireValue(v)
+	err = assembly.wireObject(v)
 	if err != nil {
 		return err
 	}
@@ -476,13 +470,14 @@ func (assembly *beanAssembly) getValue(b beanDefinition) (reflect.Value, error) 
 	return v, nil
 }
 
-func (assembly *beanAssembly) wireValue(v reflect.Value) error {
+// wireObject 对任意有效对象进行属性绑定和依赖注入。
+func (assembly *beanAssembly) wireObject(v reflect.Value) error {
 
 	t := v.Type()
 	if t.Kind() == reflect.Slice {
 		for i := 0; i < v.Len(); i++ {
 			if ev := v.Index(i); ev.IsValid() {
-				err := assembly.wireValue(ev)
+				err := assembly.wireObject(ev)
 				if err != nil {
 					return err
 				}
@@ -493,7 +488,7 @@ func (assembly *beanAssembly) wireValue(v reflect.Value) error {
 
 	ev := v
 	if t.Kind() == reflect.Ptr {
-		ev = ev.Elem()
+		ev = v.Elem()
 	}
 	if ev.Kind() != reflect.Struct {
 		return nil
@@ -507,37 +502,36 @@ func (assembly *beanAssembly) wireValue(v reflect.Value) error {
 	return assembly.wireStruct(ev)
 }
 
+// wireStruct 对结构体对象进行依赖注入，注意不进行属性绑定。
 func (assembly *beanAssembly) wireStruct(v reflect.Value) error {
 
 	t := v.Type()
-	etName := t.Name()
-	if etName == "" { // 可能是内置类型
-		etName = t.String()
+	typeName := t.Name()
+	if typeName == "" {
+		typeName = t.String()
 	}
 
-	// 遍历 Bean 的每个字段，按照 tag 进行注入
 	for i := 0; i < t.NumField(); i++ {
 
 		ft := t.Field(i)
 		fv := v.Field(i)
 
-		// 处理 autowire 标签，autowire 与 inject 等价
-		beanId, ok := ft.Tag.Lookup("autowire")
+		// 支持 autowire 和 inject 两种注入标签。
+		tag, ok := ft.Tag.Lookup("autowire")
 		if !ok {
-			beanId, ok = ft.Tag.Lookup("inject")
+			tag, ok = ft.Tag.Lookup("inject")
 		}
 		if ok {
-			err := assembly.wireField(beanId, fv)
+			err := assembly.Autowire(tag, fv)
 			if err != nil {
-				fieldName := etName + "." + ft.Name
+				fieldName := typeName + "." + ft.Name
 				return fmt.Errorf("%q wired error: %s", fieldName, err.Error())
 			}
 		}
 
-		// 只处理结构体类型的字段，防止递归所以不支持指针结构体字段
+		// 递归处理结构体字段，指针字段不可以因为可能出现无限循环。
 		if ft.Type.Kind() == reflect.Struct {
-			pv := util.PatchValue(fv)
-			err := assembly.wireStruct(pv)
+			err := assembly.wireStruct(util.PatchValue(fv))
 			if err != nil {
 				return err
 			}
@@ -546,24 +540,21 @@ func (assembly *beanAssembly) wireStruct(v reflect.Value) error {
 	return nil
 }
 
-func (assembly *beanAssembly) wireField(tag string, v reflect.Value) error {
+// Autowire 根据 tag 内容自动注入。
+func (assembly *beanAssembly) Autowire(tag string, v reflect.Value) error {
 
-	// tag 预处理，Bean 名称可以通过属性值指定
+	// tag 预处理，可以通过属性值进行指定。
 	if strings.HasPrefix(tag, "${") {
 		s := ""
-		sv := reflect.ValueOf(&s).Elem()
-		err := assembly.c.p.Bind(sv, conf.Tag(tag))
+		err := assembly.c.p.Bind(&s, conf.Tag(tag))
 		if err != nil {
 			return err
 		}
 		tag = s
 	}
 
-	if collectionMode(tag) { // 收集模式，绑定对象必须是数组
-		if v.Type().Kind() != reflect.Slice {
-			return fmt.Errorf("should be slice")
-		}
-		return assembly.collectBeans(parseCollectionTag(tag), v)
+	if !collectionMode(tag) {
+		return assembly.getBean(parseSingletonTag(tag), v)
 	}
-	return assembly.getBean(parseSingletonTag(tag), v)
+	return assembly.collectBeans(parseCollectionTag(tag), v)
 }

@@ -335,7 +335,7 @@ func (ctx *applicationContext) CollectBeans(i interface{}, selectors ...bean.Sel
 	ctx.checkAutoWired()
 
 	v := reflect.ValueOf(i)
-	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Slice {
+	if v.Kind() != reflect.Ptr {
 		return errors.New("i must be slice ptr")
 	}
 
