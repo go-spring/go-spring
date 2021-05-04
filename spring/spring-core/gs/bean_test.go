@@ -267,7 +267,7 @@ func TestConstructorBean(t *testing.T) {
 
 	assert.Panic(t, func() {
 		_ = gs.NewBean(func() (*int, *int) { return nil, nil })
-	}, "func bean must be func\\(...\\)bean or func\\(...\\)\\(bean, error\\)")
+	}, "constructor should be func\\(...\\)bean or func\\(...\\)\\(bean, error\\)")
 
 	bd = gs.NewBean(func() (*int, error) { return nil, nil })
 	assert.Equal(t, bd.Type().String(), "*int")

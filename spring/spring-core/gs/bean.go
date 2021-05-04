@@ -181,19 +181,26 @@ type BeanDefinition struct {
 
 // newBeanDefinition BeanDefinition 的构造函数，f 是工厂函数，当 v 为对象 Bean 时 f 为空。
 func newBeanDefinition(v reflect.Value, f arg.Callable, file string, line int) *BeanDefinition {
-	if t := v.Type(); util.IsRefType(t.Kind()) {
-		return &BeanDefinition{
-			t:        t,
-			v:        v,
-			f:        f,
-			typeName: util.TypeName(t),
-			status:   Default,
-			file:     file,
-			line:     line,
-			exports:  make(map[reflect.Type]struct{}),
-		}
+
+	t := v.Type()
+	if !util.IsRefType(t.Kind()) {
+		panic(errors.New("bean must be ref type"))
 	}
-	panic(errors.New("bean must be ref type"))
+
+	if t.Kind() == reflect.Ptr && !util.IsValueType(t.Elem().Kind()) {
+		panic(errors.New("bean should be *val but not *ref"))
+	}
+
+	return &BeanDefinition{
+		t:        t,
+		v:        v,
+		f:        f,
+		typeName: util.TypeName(t),
+		status:   Default,
+		file:     file,
+		line:     line,
+		exports:  make(map[reflect.Type]struct{}),
+	}
 }
 
 // Type 返回 Bean 的类型。
@@ -333,7 +340,7 @@ func (d *BeanDefinition) Export(exports ...interface{}) *BeanDefinition {
 	return d
 }
 
-// NewBean 普通函数注册需要使用 reflect.ValueOf(fn) 这种方式避免和构造函数发生冲突。
+// NewBean 普通函数注册时需要使用 reflect.ValueOf(fn) 形式以避免和构造函数发生冲突。
 func NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 
 	var v reflect.Value
@@ -369,27 +376,26 @@ func NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 		break
 	}
 
-	// 以 reflect.ValueOf(fn) 方式注册的函数被视为对象 Bean 。
+	// 以 reflect.ValueOf(fn) 形式注册的函数被视为函数对象 bean 。
 	if t := v.Type(); !fromValue && t.Kind() == reflect.Func {
 
-		// 检查 Bean 的注册函数是否合法
 		if !bean.IsConstructor(t) {
 			t1 := "func(...)bean"
 			t2 := "func(...)(bean, error)"
-			panic(fmt.Errorf("func bean must be %s or %s", t1, t2))
+			panic(fmt.Errorf("constructor should be %s or %s", t1, t2))
 		}
 
 		// 创建 Bean 的值
 		out0 := t.Out(0)
 		v = reflect.New(out0)
 
-		// 引用类型去掉一层指针
+		// 引用类型去掉指针，值类型则刚刚好。
 		if util.IsRefType(out0.Kind()) {
 			v = v.Elem()
 		}
 
-		ctor := arg.Bind(objOrCtor, ctorArgs, arg.Skip(skip))
-		return newBeanDefinition(v, ctor, file, line)
+		f := arg.Bind(objOrCtor, ctorArgs, arg.Skip(skip))
+		return newBeanDefinition(v, f, file, line)
 	}
 
 	return newBeanDefinition(v, nil, file, line)

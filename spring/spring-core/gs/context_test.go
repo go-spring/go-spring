@@ -86,7 +86,11 @@ func TestApplicationContext(t *testing.T) {
 		ctx.RegisterBean(&e).WithName("i4")
 
 		ctx.RegisterBean(a)
-		ctx.RegisterBean(&a)
+
+		assert.Panic(t, func() {
+			ctx.RegisterBean(&a)
+		}, "bean should be \\*val but not \\*ref")
+
 		ctx.Refresh()
 
 		assert.Panic(t, func() {
@@ -124,7 +128,7 @@ func TestApplicationContext(t *testing.T) {
 		{
 			var i *[]int
 			err := ctx.GetBean(&i)
-			assert.Nil(t, err)
+			assert.NotNil(t, err)
 		}
 	})
 
@@ -147,14 +151,10 @@ func TestApplicationContext(t *testing.T) {
 
 		// 相同类型不同名称的 bean 都可注册
 		ctx.RegisterBean(&e).WithName("i3")
-
-		// 相同类型不同名称的 bean 都可注册
 		ctx.RegisterBean(&e).WithName("i4")
 
 		ctx.RegisterBean(a)
-		ctx.RegisterBean(&a)
 		ctx.RegisterBean(p)
-		ctx.RegisterBean(&p)
 
 		ctx.Refresh()
 	})
@@ -166,7 +166,6 @@ func TestApplicationContext(t *testing.T) {
 		a := []pkg2.SamePkg{{}}
 		p := []*pkg2.SamePkg{{}}
 
-		// 栈上的对象不能注册
 		assert.Panic(t, func() {
 			ctx.RegisterBean(e)
 		}, "bean must be ref type")
@@ -176,16 +175,11 @@ func TestApplicationContext(t *testing.T) {
 		// 相同类型不同名称的 bean 都可注册
 		// 不同类型相同名称的 bean 也可注册
 		ctx.RegisterBean(&e).WithName("i3")
-
-		// 相同类型不同名称的 bean 都可注册
 		ctx.RegisterBean(&e).WithName("i4")
+		ctx.RegisterBean(&e).WithName("i5")
 
 		ctx.RegisterBean(a)
-		ctx.RegisterBean(&a)
 		ctx.RegisterBean(p)
-		ctx.RegisterBean(&p)
-
-		ctx.RegisterBean(&e).WithName("i5")
 
 		ctx.Refresh()
 	})

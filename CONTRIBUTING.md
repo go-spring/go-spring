@@ -38,7 +38,7 @@ Following information can help us to resolve the issue faster.
 * 构造函数的变量名和结构体的字段名保持一致。
 * arg.Arg 一般情况下命名为 a 或者 arg。
 * cond.Condition 一般情况下命名为 c 或者 cond。
-* function 一般情况下命名为 fn。
+* function 一般情况下命名为 f 或者 fn。
 * 返回结果一帮情况下命名为 result 或者 ret。
 * node 一般命名为 n。
 * element 一般命名为 e。

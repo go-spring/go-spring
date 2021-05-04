@@ -81,7 +81,7 @@ func (assembly *beanAssembly) Bind(tag string, v reflect.Value) error {
 	return assembly.c.p.Bind(v, conf.Tag(tag))
 }
 
-// getBean 获取符合 tag 要求的 Bean，并且确保 Bean 已经完成依赖注入。
+// getBean 获取 tag 对应的 bean 然后赋值给 v，因此 v 应该是一个未初始化的值。
 func (assembly *beanAssembly) getBean(tag singletonTag, v reflect.Value) error {
 
 	if !v.IsValid() {
@@ -93,6 +93,9 @@ func (assembly *beanAssembly) getBean(tag singletonTag, v reflect.Value) error {
 		return fmt.Errorf("receiver must be ref type, bean:%q", tag)
 	}
 
+	// TODO 如何检测 v 是否初始化过呢？如果初始化过需要输出一行下面的日志。
+	// log.Warnf("receiver should not be unassigned, bean:%q", tag)
+
 	foundBeans := make([]*BeanDefinition, 0)
 
 	cache := assembly.c.getCacheByType(t)
@@ -103,7 +106,7 @@ func (assembly *beanAssembly) getBean(tag singletonTag, v reflect.Value) error {
 		}
 	}
 
-	// 指定 beanName 时通过名称获取防止未通过 Export 显式导出接口
+	// 指定 bean 名称时通过名称获取，防止未通过 Export 方法导出接口。
 	if t.Kind() == reflect.Interface && tag.beanName != "" {
 		cache = assembly.c.getCacheByName(tag.beanName)
 		for i := 0; i < cache.Len(); i++ {
@@ -131,7 +134,7 @@ func (assembly *beanAssembly) getBean(tag singletonTag, v reflect.Value) error {
 		return fmt.Errorf("can't find bean, bean:%q type:%q", tag, t)
 	}
 
-	// 优先使用设置成主版本的 Bean
+	// 优先使用设置成主版本的 bean
 	var primaryBeans []*BeanDefinition
 
 	for _, b := range foundBeans {
@@ -165,7 +168,7 @@ func (assembly *beanAssembly) getBean(tag singletonTag, v reflect.Value) error {
 		result = foundBeans[0]
 	}
 
-	// 确保找到的 Bean 已经完成依赖注入
+	// 确保找到的 bean 已经完成依赖注入。
 	err := assembly.wireBean(result)
 	if err != nil {
 		return err
@@ -222,7 +225,7 @@ func (assembly *beanAssembly) autoCollectBeans(t reflect.Type) (reflect.Value, e
 	cache := assembly.c.getCacheByType(t)
 	for i := 0; i < cache.Len(); i++ {
 		b := cache.Get(i).(*BeanDefinition)
-		if err := assembly.wireObject(b.Value()); err != nil {
+		if err := assembly.wireBeanValue(b.Value()); err != nil {
 			return reflect.Value{}, err
 		}
 		result = reflect.AppendSlice(result, b.Value())
@@ -405,12 +408,12 @@ func (assembly *beanAssembly) wireBean(b *BeanDefinition) error {
 		}
 	}
 
-	v, err := assembly.getValue(b)
+	v, err := assembly.getBeanValue(b)
 	if err != nil {
 		return err
 	}
 
-	err = assembly.wireObject(v)
+	err = assembly.wireBeanValue(v)
 	if err != nil {
 		return err
 	}
@@ -430,8 +433,8 @@ func (assembly *beanAssembly) wireBean(b *BeanDefinition) error {
 	return nil
 }
 
-// getValue 如果是构造函数 bean 则执行其构造函数并返回执行结果，如果是对象 bean 则返回其值。
-func (assembly *beanAssembly) getValue(b *BeanDefinition) (reflect.Value, error) {
+// getBeanValue 获取 bean 的值，如果是构造函数 bean 则执行其构造函数然后返回执行结果。
+func (assembly *beanAssembly) getBeanValue(b *BeanDefinition) (reflect.Value, error) {
 
 	if b.f == nil {
 		return b.Value(), nil
@@ -439,7 +442,7 @@ func (assembly *beanAssembly) getValue(b *BeanDefinition) (reflect.Value, error)
 
 	out, err := b.f.Call(assembly)
 	if err != nil {
-		return reflect.Value{}, fmt.Errorf("ctor bean:%q return error: %v", b.FileLine(), err)
+		return reflect.Value{}, fmt.Errorf("constructor bean:%q return error: %v", b.FileLine(), err)
 	}
 
 	// 构造函数的返回值为值类型时 b.Type() 返回其指针类型。
@@ -457,24 +460,27 @@ func (assembly *beanAssembly) getValue(b *BeanDefinition) (reflect.Value, error)
 	}
 
 	if b.Value().IsNil() {
-		return reflect.Value{}, fmt.Errorf("ctor bean:%q return nil", b.FileLine())
+		return reflect.Value{}, fmt.Errorf("constructor bean:%q return nil", b.FileLine())
 	}
 
 	v := b.Value()
+	// 结果以接口类型返回时需要将原始值取出来才能进行注入。
 	if b.Type().Kind() == reflect.Interface {
 		v = v.Elem()
 	}
 	return v, nil
 }
 
-// wireObject 对任意有效对象进行属性绑定和依赖注入。
-func (assembly *beanAssembly) wireObject(v reflect.Value) error {
+// wireBeanValue 对 v 进行属性绑定和依赖注入，v 应该是一个已经初始化的值。
+func (assembly *beanAssembly) wireBeanValue(v reflect.Value) error {
 
 	t := v.Type()
+
+	// 数组 bean 的每个元素单独注入。
 	if t.Kind() == reflect.Slice {
 		for i := 0; i < v.Len(); i++ {
 			if ev := v.Index(i); ev.IsValid() {
-				err := assembly.wireObject(ev)
+				err := assembly.wireBeanValue(ev)
 				if err != nil {
 					return err
 				}
@@ -487,10 +493,13 @@ func (assembly *beanAssembly) wireObject(v reflect.Value) error {
 	if t.Kind() == reflect.Ptr {
 		ev = v.Elem()
 	}
+
+	// 如整数指针类型的 bean 是无需注入的。
 	if ev.Kind() != reflect.Struct {
 		return nil
 	}
 
+	// 属性绑定不是单纯的递归，需要单独处理。
 	err := assembly.c.p.Bind(ev)
 	if err != nil {
 		return err
@@ -499,12 +508,12 @@ func (assembly *beanAssembly) wireObject(v reflect.Value) error {
 	return assembly.wireStruct(ev)
 }
 
-// wireStruct 对结构体对象进行依赖注入，注意不进行属性绑定。
+// wireStruct 对结构体进行依赖注入，需要注意的是这里不需要进行属性绑定。
 func (assembly *beanAssembly) wireStruct(v reflect.Value) error {
 
 	t := v.Type()
 	typeName := t.Name()
-	if typeName == "" {
+	if typeName == "" { // 简单类型没有名字
 		typeName = t.String()
 	}
 
@@ -537,7 +546,7 @@ func (assembly *beanAssembly) wireStruct(v reflect.Value) error {
 	return nil
 }
 
-// Autowire 根据 tag 内容自动注入。
+// Autowire 根据 tag 的内容自动判断注入模式，是单例模式，还是收集模式。
 func (assembly *beanAssembly) Autowire(tag string, v reflect.Value) error {
 
 	// tag 预处理，可以通过属性值进行指定。
