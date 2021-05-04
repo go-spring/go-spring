@@ -47,6 +47,6 @@ type Definition interface {
 // 结构体等值类型也可以是指针等引用类型，为值类型时内部会自动转换为引用类
 // 型（获取可引用的地址），如果有第二个返回值那么它必须是 error 类型。
 func IsConstructor(t reflect.Type) bool {
-	returnError := t.NumOut() == 2 && util.ErrorType(t.Out(1))
-	return util.FuncType(t) && (t.NumOut() == 1 || returnError)
+	returnError := t.NumOut() == 2 && util.IsErrorType(t.Out(1))
+	return util.IsFuncType(t) && (t.NumOut() == 1 || returnError)
 }

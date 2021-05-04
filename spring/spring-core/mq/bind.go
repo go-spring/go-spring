@@ -51,7 +51,7 @@ func validBindFn(fnType reflect.Type) bool {
 	}
 
 	// 第一个入参必须是 context.Context 类型
-	if !util.ContextType(fnType.In(0)) {
+	if !util.IsContextType(fnType.In(0)) {
 		return false
 	}
 

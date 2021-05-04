@@ -223,7 +223,7 @@ func (ctx *applicationContext) checkRegistration() {
 }
 
 func (ctx *applicationContext) delete(b *BeanDefinition) {
-	b.setStatus(Deleted)
+	b.status = Deleted
 	delete(ctx.cacheById, b.ID())
 }
 
@@ -284,12 +284,12 @@ func (ctx *applicationContext) FindBean(selector bean.Selector) ([]bean.Definiti
 
 	finder := func(fn func(*BeanDefinition) bool) (result []bean.Definition, err error) {
 		for _, b := range ctx.cacheById {
-			if b.getStatus() != Resolving && fn(b) {
+			if b.status != Resolving && fn(b) {
 				// 避免 Bean 未被解析
 				if err = ctx.resolveBean(b); err != nil {
 					return nil, err
 				}
-				if b.getStatus() != Deleted {
+				if b.status != Deleted {
 					result = append(result, b)
 				}
 			}
@@ -439,11 +439,10 @@ func (ctx *applicationContext) resolveBeans() error {
 func (ctx *applicationContext) resolveBean(b *BeanDefinition) error {
 
 	// 正在进行或者已经完成决议过程
-	if b.getStatus() >= Resolving {
+	if b.status >= Resolving {
 		return nil
 	}
-
-	b.setStatus(Resolving)
+	b.status = Resolving
 
 	// 不满足判断条件的则标记为删除状态并删除其注册
 	if b.cond != nil && !b.cond.Matches(ctx) {
@@ -473,7 +472,7 @@ func (ctx *applicationContext) resolveBean(b *BeanDefinition) error {
 	// 按照 Bean 的名字进行缓存
 	ctx.setCacheByName(b.Name(), b)
 
-	b.setStatus(Resolved)
+	b.status = Resolved
 	return nil
 }
 
@@ -621,7 +620,7 @@ func (ctx *applicationContext) Close(beforeDestroy ...func()) {
 // Invoke 立即执行一个一次性的任务
 func (ctx *applicationContext) Invoke(fn interface{}, args ...arg.Arg) error {
 	ctx.checkAutoWired()
-	if fnType := reflect.TypeOf(fn); util.FuncType(fnType) {
+	if fnType := reflect.TypeOf(fn); util.IsFuncType(fnType) {
 		if util.ReturnNothing(fnType) || util.ReturnOnlyError(fnType) {
 			r := arg.Bind(fn, args, arg.Skip(1))
 			_, err := r.Call(toAssembly(ctx))
@@ -636,7 +635,7 @@ func (ctx *applicationContext) Go(fn interface{}, args ...arg.Arg) {
 	ctx.checkAutoWired()
 
 	fnType := reflect.TypeOf(fn)
-	if !util.FuncType(fnType) || !util.ReturnNothing(fnType) {
+	if !util.IsFuncType(fnType) || !util.ReturnNothing(fnType) {
 		panic(errors.New("fn should be func()"))
 	}
 

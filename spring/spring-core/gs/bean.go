@@ -155,20 +155,6 @@ const (
 	Deleted   = beanStatus(5) // 已删除
 )
 
-type beanDefinition interface {
-	bean.Definition
-
-	getFactory() arg.Callable      // 返回 Bean 的工厂函数
-	getClass() string              // 返回 Bean 的类型描述
-	getFile() string               // 返回 Bean 注册点所在文件
-	getLine() int                  // 返回 Bean 注册点所在行数
-	getStatus() beanStatus         // 返回 Bean 的状态值
-	setStatus(status beanStatus)   // 设置 Bean 的状态值
-	getInit() arg.Callable         // 返回 Bean 的初始化函数
-	getDestroy() arg.Callable      // 返回 Bean 的销毁函数
-	getDependsOn() []bean.Selector // 返回 Bean 的间接依赖项
-}
-
 // BeanDefinition 保存 Bean 的各种元数据。
 type BeanDefinition struct {
 
@@ -195,7 +181,7 @@ type BeanDefinition struct {
 
 // newBeanDefinition BeanDefinition 的构造函数，f 是工厂函数，当 v 为对象 Bean 时 f 为空。
 func newBeanDefinition(v reflect.Value, f arg.Callable, file string, line int) *BeanDefinition {
-	if t := v.Type(); util.RefType(t.Kind()) {
+	if t := v.Type(); util.IsRefType(t.Kind()) {
 		return &BeanDefinition{
 			t:        t,
 			v:        v,
@@ -254,52 +240,12 @@ func (d *BeanDefinition) Description() string {
 	return fmt.Sprintf("%s name:%q %s", d.getClass(), d.Name(), d.FileLine())
 }
 
-// getFactory 返回 Bean 的工厂函数。
-func (d *BeanDefinition) getFactory() arg.Callable {
-	return d.f
-}
-
 // getClass 返回 Bean 的类型描述。
 func (d *BeanDefinition) getClass() string {
 	if d.f == nil {
 		return "object bean"
 	}
 	return "constructor bean"
-}
-
-// getFile 返回 Bean 注册点所在文件。
-func (d *BeanDefinition) getFile() string {
-	return d.file
-}
-
-// getLine 返回 Bean 注册点所在行数。
-func (d *BeanDefinition) getLine() int {
-	return d.line
-}
-
-// getStatus 返回 Bean 的状态值。
-func (d *BeanDefinition) getStatus() beanStatus {
-	return d.status
-}
-
-// setStatus 设置 Bean 的状态值。
-func (d *BeanDefinition) setStatus(status beanStatus) {
-	d.status = status
-}
-
-// getInit 返回 Bean 的初始化函数。
-func (d *BeanDefinition) getInit() arg.Callable {
-	return d.init
-}
-
-// getDestroy 返回 Bean 的销毁函数。
-func (d *BeanDefinition) getDestroy() arg.Callable {
-	return d.destroy
-}
-
-// getDependsOn 返回 Bean 的间接依赖项。
-func (d *BeanDefinition) getDependsOn() []bean.Selector {
-	return d.dependsOn
 }
 
 // Match 测试 Bean 的类型全限定名和 Bean 的名称是否都匹配。
@@ -346,7 +292,7 @@ func (d *BeanDefinition) Primary(primary bool) *BeanDefinition {
 // 至少一个参数，且第一个参数的类型必须是 Bean 的类型，没有返回值或者只能返回 error 类型值。
 func validLifeCycleFunc(fnType reflect.Type, beanType reflect.Type) bool {
 	ok := util.ReturnNothing(fnType) || util.ReturnOnlyError(fnType)
-	return ok && util.FuncType(fnType) && util.WithReceiver(fnType, beanType)
+	return ok && util.IsFuncType(fnType) && util.HasReceiver(fnType, beanType)
 }
 
 // Init 设置 Bean 的初始化函数。
@@ -438,7 +384,7 @@ func NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 		v = reflect.New(out0)
 
 		// 引用类型去掉一层指针
-		if util.RefType(out0.Kind()) {
+		if util.IsRefType(out0.Kind()) {
 			v = v.Elem()
 		}
 

@@ -255,7 +255,7 @@ func (r *argList) getArg(ctx Context, arg Arg, t reflect.Type,
 	v = reflect.New(t).Elem()
 
 	// 处理引用类型
-	if util.RefType(v.Kind()) {
+	if util.IsRefType(v.Kind()) {
 		if err = ctx.Autowire(tag, v); err != nil {
 			return reflect.Value{}, err
 		}
@@ -407,7 +407,7 @@ func (r *callable) Call(ctx Context, opts ...CallOption) ([]reflect.Value, error
 	out := reflect.ValueOf(r.fn).Call(in)
 
 	if n := len(out); n > 0 {
-		if o := out[n-1]; util.ErrorType(o.Type()) {
+		if o := out[n-1]; util.IsErrorType(o.Type()) {
 			if i := o.Interface(); i == nil {
 				return out[:n-1], nil
 			} else {

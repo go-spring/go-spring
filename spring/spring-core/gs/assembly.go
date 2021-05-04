@@ -31,10 +31,10 @@ import (
 )
 
 // wiringStack 注入堆栈
-type wiringStack []beanDefinition
+type wiringStack []*BeanDefinition
 
 // pushBack 添加一个即将注入的 Bean 。
-func (s *wiringStack) pushBack(b beanDefinition) {
+func (s *wiringStack) pushBack(b *BeanDefinition) {
 	log.Tracef("wiring %s", b.Description())
 	*s = append(*s, b)
 }
@@ -67,7 +67,7 @@ func toAssembly(appCtx *applicationContext) *beanAssembly {
 	return &beanAssembly{
 		c:        appCtx,
 		destroys: list.New(),
-		stack:    make([]beanDefinition, 0),
+		stack:    make([]*BeanDefinition, 0),
 	}
 }
 
@@ -89,7 +89,7 @@ func (assembly *beanAssembly) getBean(tag singletonTag, v reflect.Value) error {
 	}
 
 	t := v.Type()
-	if !util.RefType(t.Kind()) {
+	if !util.IsRefType(t.Kind()) {
 		return fmt.Errorf("receiver must be ref type, bean:%q", tag)
 	}
 
@@ -183,7 +183,7 @@ func (assembly *beanAssembly) collectBeans(tag collectionTag, v reflect.Value) e
 		return fmt.Errorf("should be slice in collection mode")
 	}
 
-	if !util.RefType(t.Elem().Kind()) { // 收集模式的数组元素必须是引用类型
+	if !util.IsRefType(t.Elem().Kind()) { // 收集模式的数组元素必须是引用类型
 		return errors.New("item in collection mode should be ref type")
 	}
 
@@ -344,41 +344,37 @@ func (assembly *beanAssembly) collectAndSortBeans(tag collectionTag, t reflect.T
 	return result, nil // TODO 当收集接口类型的 Bean 时对于没有显式导出接口的 Bean 是否也需要收集？
 }
 
-// wireBean 对特定的 bean.BeanDefinition 进行注入。
-func (assembly *beanAssembly) wireBean(b beanDefinition) error {
+// wireBean 对特定的 BeanDefinition 进行注入。
+func (assembly *beanAssembly) wireBean(b *BeanDefinition) error {
 
 	// Bean 是否已删除，已经删除的 Bean 不能再注入
-	if b.getStatus() == Deleted {
+	if b.status == Deleted {
 		return fmt.Errorf("bean:%q have been deleted", b.ID())
 	}
 
 	// 如果刷新阶段已完成并且 Bean 已经注入则无需再次进行下面的步骤
-	if assembly.c.state == 2 && b.getStatus() == Wired {
+	if assembly.c.state == 2 && b.status == Wired {
 		return nil
 	}
 
 	defer func() {
-		if b.getDestroy() != nil {
+		if b.destroy != nil {
 			assembly.destroys.Remove(assembly.destroys.Back())
 		}
 	}()
 
 	// 如果有销毁函数则对其进行排序处理
-	if b.getDestroy() != nil {
-		if curr, ok := b.(*BeanDefinition); ok {
-			de := assembly.c.destroyer(curr)
-			if i := assembly.destroys.Back(); i != nil {
-				prev := i.Value.(*BeanDefinition)
-				de.after(prev)
-			}
-			assembly.destroys.PushBack(curr)
-		} else {
-			return errors.New("let me known when it happened")
+	if b.destroy != nil {
+		de := assembly.c.destroyer(b)
+		if i := assembly.destroys.Back(); i != nil {
+			prev := i.Value.(*BeanDefinition)
+			de.after(prev)
 		}
+		assembly.destroys.PushBack(b)
 	}
 
 	// Bean 是否已注入，已经注入的 Bean 无需再注入
-	if b.getStatus() == Wired {
+	if b.status == Wired {
 		return nil
 	}
 
@@ -386,17 +382,17 @@ func (assembly *beanAssembly) wireBean(b beanDefinition) error {
 	assembly.stack.pushBack(b)
 
 	// 正在注入的 Bean 再次注入则说明出现了循环依赖
-	if b.getStatus() == Wiring {
-		if b.getFactory() != nil {
+	if b.status == Wiring {
+		if b.f != nil {
 			return errors.New("found circle autowire")
 		}
 		return nil
 	}
 
-	b.setStatus(Wiring)
+	b.status = Wiring
 
 	// 首先对当前 Bean 的间接依赖项进行自动注入
-	for _, selector := range b.getDependsOn() {
+	for _, selector := range b.dependsOn {
 		d, err := assembly.c.FindBean(selector)
 		if err != nil {
 			return err
@@ -404,7 +400,7 @@ func (assembly *beanAssembly) wireBean(b beanDefinition) error {
 		if n := len(d); n != 1 {
 			return fmt.Errorf("found %d bean(s) for:%q", n, selector)
 		}
-		if err = assembly.wireBean(d[0].(beanDefinition)); err != nil {
+		if err = assembly.wireBean(d[0].(*BeanDefinition)); err != nil {
 			return err
 		}
 	}
@@ -420,35 +416,36 @@ func (assembly *beanAssembly) wireBean(b beanDefinition) error {
 	}
 
 	// 如果用户设置了初始化函数则执行初始化函数
-	if init := b.getInit(); init != nil {
+	if init := b.init; init != nil {
 		if _, err := init.Call(assembly, arg.Receiver(b.Value())); err != nil {
 			return err
 		}
 	}
 
 	// 设置为已注入状态
-	b.setStatus(Wired)
+	b.status = Wired
 
 	// 删除保存的注入帧
 	assembly.stack.popBack()
 	return nil
 }
 
-func (assembly *beanAssembly) getValue(b beanDefinition) (reflect.Value, error) {
+// getValue 如果是构造函数 bean 则执行其构造函数并返回执行结果，如果是对象 bean 则返回其值。
+func (assembly *beanAssembly) getValue(b *BeanDefinition) (reflect.Value, error) {
 
-	if b.getFactory() == nil {
+	if b.f == nil {
 		return b.Value(), nil
 	}
 
-	out, err := b.getFactory().Call(assembly)
+	out, err := b.f.Call(assembly)
 	if err != nil {
 		return reflect.Value{}, fmt.Errorf("ctor bean:%q return error: %v", b.FileLine(), err)
 	}
 
 	// 构造函数的返回值为值类型时 b.Type() 返回其指针类型。
-	if val := out[0]; util.RefType(val.Kind()) {
+	if val := out[0]; util.IsRefType(val.Kind()) {
 		// 如果实现接口的是值类型，那么需要转换成指针类型然后再赋值给接口。
-		if val.Kind() == reflect.Interface && util.ValueType(val.Elem().Kind()) {
+		if val.Kind() == reflect.Interface && util.IsValueType(val.Elem().Kind()) {
 			v := reflect.New(val.Elem().Type())
 			v.Elem().Set(val.Elem())
 			b.Value().Set(v)

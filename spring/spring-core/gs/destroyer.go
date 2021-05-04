@@ -60,7 +60,7 @@ func getBeforeDestroyers(destroyers *list.List, i interface{}) *list.List {
 
 // run 执行 current 的销毁函数。
 func (d *destroyer) run(ctx arg.Context) error {
-	r := d.current.getDestroy()
+	r := d.current.destroy
 	_, err := r.Call(ctx, arg.Receiver(d.current.Value()))
 	return err
 }

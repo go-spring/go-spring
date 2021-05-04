@@ -233,7 +233,7 @@ func TestRefType(t *testing.T) {
 		default:
 			typ = reflect.TypeOf(i)
 		}
-		if r := util.RefType(typ.Kind()); d.v != r {
+		if r := util.IsRefType(typ.Kind()); d.v != r {
 			t.Errorf("%v expect %v but %v", typ, d.v, r)
 		}
 	}
@@ -282,7 +282,7 @@ func TestIsValueType(t *testing.T) {
 		default:
 			typ = reflect.TypeOf(i)
 		}
-		if r := util.ValueType(typ.Kind()); d.v != r {
+		if r := util.IsValueType(typ.Kind()); d.v != r {
 			t.Errorf("%v expect %v but %v", typ, d.v, r)
 		}
 	}

@@ -39,7 +39,7 @@ type Configer struct {
 // config Configer 的构造函数，fn 只能返回 error 或者没有返回。
 func config(fn interface{}, args []arg.Arg, skip int) *Configer {
 	t := reflect.TypeOf(fn)
-	if util.FuncType(t) {
+	if util.IsFuncType(t) {
 		if util.ReturnNothing(t) || util.ReturnOnlyError(t) {
 			return &Configer{
 				fn: arg.Bind(fn, args, arg.Skip(skip+1)),
