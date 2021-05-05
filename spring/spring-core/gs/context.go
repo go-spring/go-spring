@@ -125,6 +125,14 @@ type ApplicationContext interface {
 	Close(beforeDestroy ...func())
 }
 
+type refreshState int
+
+const (
+	Unrefreshed = refreshState(0) // 未刷新
+	Refreshing  = refreshState(1) // 正在刷新
+	Refreshed   = refreshState(2) // 已刷新
+)
+
 // applicationContext ApplicationContext 的默认实现
 type applicationContext struct {
 
@@ -136,8 +144,8 @@ type applicationContext struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	profile string // 运行环境
-	state   int    // 0 初始化，1 正在刷新，2 刷新完毕
+	profile string       // 运行环境
+	state   refreshState // 0 初始化，1 正在刷新，2 刷新完毕
 
 	allBeans *slice.Slice // 所有注册点
 
@@ -210,14 +218,14 @@ func (ctx *applicationContext) SetProfile(profile string) {
 
 // checkAutoWired 检查是否已调用 Refresh 方法
 func (ctx *applicationContext) checkAutoWired() {
-	if ctx.state == 0 {
+	if ctx.state == Unrefreshed {
 		panic(errors.New("should call after Refresh"))
 	}
 }
 
 // checkRegistration 检查注册是否已被冻结
 func (ctx *applicationContext) checkRegistration() {
-	if ctx.state > 0 {
+	if ctx.state != Unrefreshed {
 		panic(errors.New("bean registration have been frozen"))
 	}
 }
@@ -505,8 +513,8 @@ func (ctx *applicationContext) runConfigers(assembly *beanAssembly) error {
 	return nil
 }
 
-// destroyer 某个 Bean 可能会被多个 Bean 依赖，因此需要排重处理。
-func (ctx *applicationContext) destroyer(b *BeanDefinition) *destroyer {
+// saveDestroyer 某个 Bean 可能会被多个 Bean 依赖，因此需要排重处理。
+func (ctx *applicationContext) saveDestroyer(b *BeanDefinition) *destroyer {
 	d, ok := ctx.destroyerMap[b.ID()]
 	if !ok {
 		d = &destroyer{current: b}
@@ -536,7 +544,7 @@ func (ctx *applicationContext) wireBeans(assembly *beanAssembly) error {
 // Refresh 对所有 Bean 进行依赖注入和属性绑定
 func (ctx *applicationContext) Refresh() {
 
-	if ctx.state > 0 {
+	if ctx.state != Unrefreshed {
 		panic(errors.New("already refreshed"))
 	}
 
@@ -557,7 +565,7 @@ func (ctx *applicationContext) Refresh() {
 	// 处理 Method Bean 等
 	ctx.registerBeans()
 
-	ctx.state = 1
+	ctx.state = Refreshing
 
 	ctx.resolveConfigers()
 	if err = ctx.resolveBeans(); err != nil {
@@ -576,7 +584,7 @@ func (ctx *applicationContext) Refresh() {
 
 	ctx.sortDestroyers()
 
-	ctx.state = 2
+	ctx.state = Refreshed
 }
 
 // Wire 对对象或者构造函数的结果进行依赖注入和属性绑定，返回处理后的对象
@@ -584,6 +592,7 @@ func (ctx *applicationContext) Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) 
 	ctx.checkAutoWired()
 	assembly := toAssembly(ctx)
 	b := NewBean(objOrCtor, ctorArgs...)
+	// 这里使用 wireBean 是为了追踪 bean 的注入路径。
 	if err := assembly.wireBean(b); err != nil {
 		return nil, err
 	}

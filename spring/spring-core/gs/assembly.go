@@ -347,16 +347,15 @@ func (assembly *beanAssembly) collectAndSortBeans(tag collectionTag, t reflect.T
 	return result, nil // TODO 当收集接口类型的 Bean 时对于没有显式导出接口的 Bean 是否也需要收集？
 }
 
-// wireBean 对特定的 BeanDefinition 进行注入。
+// wireBean 对 bean 进行注入，同时追踪其注入路径。如果 bean 有初始化函数，则在注入完成之后
+// 执行其初始化函数。如果 bean 依赖了其他 bean，则首先尝试获取这些 bean 然后对它们进行注入。
 func (assembly *beanAssembly) wireBean(b *BeanDefinition) error {
 
-	// Bean 是否已删除，已经删除的 Bean 不能再注入
 	if b.status == Deleted {
 		return fmt.Errorf("bean:%q have been deleted", b.ID())
 	}
 
-	// 如果刷新阶段已完成并且 Bean 已经注入则无需再次进行下面的步骤
-	if assembly.c.state == 2 && b.status == Wired {
+	if assembly.c.state == Refreshed && b.status == Wired {
 		return nil
 	}
 
@@ -366,27 +365,24 @@ func (assembly *beanAssembly) wireBean(b *BeanDefinition) error {
 		}
 	}()
 
-	// 如果有销毁函数则对其进行排序处理
+	// 对注入路径上的销毁函数进行排序。
 	if b.destroy != nil {
-		de := assembly.c.destroyer(b)
+		d := assembly.c.saveDestroyer(b)
 		if i := assembly.destroys.Back(); i != nil {
-			prev := i.Value.(*BeanDefinition)
-			de.after(prev)
+			d.after(i.Value.(*BeanDefinition))
 		}
 		assembly.destroys.PushBack(b)
 	}
 
-	// Bean 是否已注入，已经注入的 Bean 无需再注入
 	if b.status == Wired {
 		return nil
 	}
 
-	// 将当前 Bean 放入注入栈，以便检测循环依赖。
+	// 将当前 bean 放入注入栈，以便检测循环依赖。
 	assembly.stack.pushBack(b)
 
-	// 正在注入的 Bean 再次注入则说明出现了循环依赖
 	if b.status == Wiring {
-		if b.f != nil {
+		if b.f != nil { // 构造函数 bean 出现循环依赖。
 			return errors.New("found circle autowire")
 		}
 		return nil
@@ -394,16 +390,17 @@ func (assembly *beanAssembly) wireBean(b *BeanDefinition) error {
 
 	b.status = Wiring
 
-	// 首先对当前 Bean 的间接依赖项进行自动注入
-	for _, selector := range b.dependsOn {
-		d, err := assembly.c.FindBean(selector)
+	// 对当前 bean 的间接依赖项进行注入。
+	for _, s := range b.dependsOn {
+		d, err := assembly.c.FindBean(s)
 		if err != nil {
 			return err
 		}
 		if n := len(d); n != 1 {
-			return fmt.Errorf("found %d bean(s) for:%q", n, selector)
+			return fmt.Errorf("found %d bean(s) for:%q", n, s)
 		}
-		if err = assembly.wireBean(d[0].(*BeanDefinition)); err != nil {
+		err = assembly.wireBean(d[0].(*BeanDefinition))
+		if err != nil {
 			return err
 		}
 	}
@@ -418,17 +415,15 @@ func (assembly *beanAssembly) wireBean(b *BeanDefinition) error {
 		return err
 	}
 
-	// 如果用户设置了初始化函数则执行初始化函数
-	if init := b.init; init != nil {
-		if _, err := init.Call(assembly, arg.Receiver(b.Value())); err != nil {
+	// 执行 bean 的初始化函数。
+	if b.init != nil {
+		_, err = b.init.Call(assembly, arg.Receiver(b.Value()))
+		if err != nil {
 			return err
 		}
 	}
 
-	// 设置为已注入状态
 	b.status = Wired
-
-	// 删除保存的注入帧
 	assembly.stack.popBack()
 	return nil
 }
