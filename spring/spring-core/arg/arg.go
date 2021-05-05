@@ -35,10 +35,10 @@ type Context interface {
 	// Matches 条件成立返回 true，否则返回 false。
 	Matches(c cond.Condition) bool
 
-	// Bind 根据 tag 内容进行属性绑定。
+	// Bind 根据 tag 的内容进行属性绑定。
 	Bind(tag string, v reflect.Value) error
 
-	// Autowire 根据 tag 内容自动注入。
+	// Autowire 根据 tag 的内容自动注入。
 	Autowire(tag string, v reflect.Value) error
 }
 

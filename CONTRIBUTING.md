@@ -50,3 +50,4 @@ Following information can help us to resolve the issue faster.
 * 放心使用选项模式。
 * 不对外直接暴露指针类型，使用值或者接口。
 * 包名不能和 Golang 标准库重名。
+* 注释里面的 bean 都是小写格式。

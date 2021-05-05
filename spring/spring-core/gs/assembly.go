@@ -30,16 +30,16 @@ import (
 	"github.com/go-spring/spring-core/util"
 )
 
-// wiringStack 注入堆栈
+// wiringStack 注入栈。
 type wiringStack []*BeanDefinition
 
-// pushBack 添加一个即将注入的 Bean 。
+// pushBack 添加一个即将注入的 bean 。
 func (s *wiringStack) pushBack(b *BeanDefinition) {
 	log.Tracef("wiring %s", b.Description())
 	*s = append(*s, b)
 }
 
-// popBack 删除一个已经注入的 Bean 。
+// popBack 删除一个已经注入的 bean 。
 func (s *wiringStack) popBack() {
 	n := len(*s)
 	b := (*s)[n-1]
@@ -47,7 +47,7 @@ func (s *wiringStack) popBack() {
 	log.Tracef("wired %s", b.Description())
 }
 
-// path 返回正在注入的 Bean 的集合。
+// path 返回注入路径。
 func (s wiringStack) path() (path string) {
 	for _, b := range s {
 		path += fmt.Sprintf("=> %s ↩\n", b.Description())
@@ -55,28 +55,27 @@ func (s wiringStack) path() (path string) {
 	return path[:len(path)-1]
 }
 
-// beanAssembly 装配工作台
+// beanAssembly 装配工作台。
 type beanAssembly struct {
 	c        *applicationContext
 	stack    wiringStack
-	destroys *list.List // 记录具有销毁函数的 Bean 的堆栈
+	destroys *list.List // 具有销毁函数的 bean 的列表。
 }
 
-// toAssembly beanAssembly 的构造函数。
-func toAssembly(appCtx *applicationContext) *beanAssembly {
+func toAssembly(c *applicationContext) *beanAssembly {
 	return &beanAssembly{
-		c:        appCtx,
+		c:        c,
 		destroys: list.New(),
 		stack:    make([]*BeanDefinition, 0),
 	}
 }
 
-// Matches 返回 Condition 的判断结果。
+// Matches 条件成立返回 true，否则返回 false。
 func (assembly *beanAssembly) Matches(cond cond.Condition) bool {
 	return cond.Matches(assembly.c)
 }
 
-// Bind 根据 tag 内容进行属性绑定。
+// Bind 根据 tag 的内容进行属性绑定。
 func (assembly *beanAssembly) Bind(tag string, v reflect.Value) error {
 	return assembly.c.p.Bind(v, conf.Tag(tag))
 }
@@ -178,7 +177,7 @@ func (assembly *beanAssembly) getBean(tag singletonTag, v reflect.Value) error {
 	return nil
 }
 
-// collectBeans 收集符合 tag 要求的 Bean，自动模式下不对结果排序，指定模式下按照 tag 规定的顺序对结果进行排序。
+// collectBeans 收集 tag 对应的 bean，自动模式下不排序，指定模式下根据 tag 对结果进行排序。
 func (assembly *beanAssembly) collectBeans(tag collectionTag, v reflect.Value) error {
 
 	t := v.Type()
@@ -186,7 +185,7 @@ func (assembly *beanAssembly) collectBeans(tag collectionTag, v reflect.Value) e
 		return fmt.Errorf("should be slice in collection mode")
 	}
 
-	if !util.IsRefType(t.Elem().Kind()) { // 收集模式的数组元素必须是引用类型
+	if !util.IsRefType(t.Elem().Kind()) { // 收集模式的数组元素应当是引用类型
 		return errors.New("item in collection mode should be ref type")
 	}
 
@@ -217,48 +216,45 @@ func (assembly *beanAssembly) collectBeans(tag collectionTag, v reflect.Value) e
 	return fmt.Errorf("no beans collected for %q", tag)
 }
 
-// autoCollectBeans 收集符合条件的 Bean，不对结果进行排序，不排序是因为目前看起来没有必要
+// autoCollectBeans 收集 tag 对应的 bean，不对结果进行排序，因为没有指定排序条件。
 func (assembly *beanAssembly) autoCollectBeans(t reflect.Type) (reflect.Value, error) {
 	result := reflect.MakeSlice(t, 0, 0)
 
-	// 查找可以精确匹配的数组类型
+	// 查找精确匹配的数组类型。
 	cache := assembly.c.getCacheByType(t)
 	for i := 0; i < cache.Len(); i++ {
 		b := cache.Get(i).(*BeanDefinition)
-		if err := assembly.wireBeanValue(b.Value()); err != nil {
+		if err := assembly.wireBean(b); err != nil {
 			return reflect.Value{}, err
 		}
 		result = reflect.AppendSlice(result, b.Value())
 	}
 
-	// 查找可以精确匹配的单例类型，对找到的 Bean 进行自动注入
+	// 查找精确匹配的单例类型。
 	cache = assembly.c.getCacheByType(t.Elem())
 	for i := 0; i < cache.Len(); i++ {
-		d := cache.Get(i).(*BeanDefinition)
-		if err := assembly.wireBean(d); err != nil {
+		b := cache.Get(i).(*BeanDefinition)
+		if err := assembly.wireBean(b); err != nil {
 			return reflect.Value{}, err
 		}
-		result = reflect.Append(result, d.Value())
+		result = reflect.Append(result, b.Value())
 	}
 
-	return result, nil // TODO 当收集接口类型的 Bean 时对于没有显式导出接口的 Bean 是否也需要收集？
+	return result, nil // TODO 收集接口类型的 bean 时没有显式导出接口的 bean 是否也收集？
 }
 
-// findBean 返回找到的符合条件的 Bean 在数组中的索引，找不到返回 -1。
-func findBean(beans []*BeanDefinition, tag singletonTag, et reflect.Type) (int, error) {
+// findBean 返回 tag 对应的 bean 在数组中的索引，找不到返回 -1。
+func findBean(beans []*BeanDefinition, tag singletonTag, t reflect.Type) (int, error) {
 
-	// 保存符合条件的 Bean 的索引
 	var found []int
-
-	// 查找符合条件的单例 Bean
-	for i, d := range beans {
-		if d.Match(tag.typeName, tag.beanName) {
+	for i, b := range beans {
+		if b.Match(tag.typeName, tag.beanName) {
 			found = append(found, i)
 		}
 	}
 
 	if len(found) > 1 {
-		msg := fmt.Sprintf("found %d beans, bean:%q type:%q [", len(found), tag, et)
+		msg := fmt.Sprintf("found %d beans, bean:%q type:%q [", len(found), tag, t)
 		for _, i := range found {
 			msg += "( " + beans[i].Description() + " ), "
 		}
@@ -266,19 +262,21 @@ func findBean(beans []*BeanDefinition, tag singletonTag, et reflect.Type) (int, 
 		return -1, errors.New(msg)
 	}
 
-	if len(found) == 0 && !tag.nullable {
-		return -1, fmt.Errorf("can't find bean, bean:%q type:%q", tag, et)
-	}
-
 	if len(found) > 0 {
 		i := found[0]
 		return i, nil
 	}
-	return -1, nil
+
+	if tag.nullable {
+		return -1, nil
+	}
+
+	return -1, fmt.Errorf("can't find bean, bean:%q type:%q", tag, t)
 }
 
-// collectAndSortBeans 收集符合条件的 Bean，并且根据指定的顺序对结果进行排序
-func (assembly *beanAssembly) collectAndSortBeans(tag collectionTag, t reflect.Type) (reflect.Value, error) {
+// collectAndSortBeans 收集 tag 对应的 bean，并根据 tag 的内容对结果进行排序。
+func (assembly *beanAssembly) collectAndSortBeans(tag collectionTag,
+	t reflect.Type) (reflect.Value, error) {
 
 	et := t.Elem()
 	foundAny := false
@@ -289,7 +287,7 @@ func (assembly *beanAssembly) collectAndSortBeans(tag collectionTag, t reflect.T
 
 	beans := make([]*BeanDefinition, 0)
 
-	// 只在单例类型中查找，数组类型的元素是否排序无法判断
+	// 只收集数组元素对应的 bean，因为数组 bean 无法进行排序。
 	cache := assembly.c.getCacheByType(et)
 	for i := 0; i < cache.Len(); i++ {
 		b := cache.Get(i).(*BeanDefinition)
@@ -307,30 +305,30 @@ func (assembly *beanAssembly) collectAndSortBeans(tag collectionTag, t reflect.T
 			continue
 		}
 
-		idx, err := findBean(beans, item, et)
+		index, err := findBean(beans, item, et)
 		if err != nil {
 			return reflect.Value{}, err
 		}
+		if index < 0 {
+			continue
+		}
 
-		if idx >= 0 {
+		if err = assembly.wireBean(beans[index]); err != nil {
+			return reflect.Value{}, err
+		}
 
-			if err := assembly.wireBean(beans[idx]); err != nil {
-				return reflect.Value{}, err
-			}
-
-			v := beans[idx].Value()
-			beans = append(beans[:idx], beans[idx+1:]...)
-			if foundAny {
-				afterAny = reflect.Append(afterAny, v)
-			} else {
-				beforeAny = reflect.Append(beforeAny, v)
-			}
+		v := beans[index].Value()
+		beans = append(beans[:index], beans[index+1:]...)
+		if foundAny {
+			afterAny = reflect.Append(afterAny, v)
+		} else {
+			beforeAny = reflect.Append(beforeAny, v)
 		}
 	}
 
 	if foundAny {
-		for _, d := range beans {
-			any = reflect.Append(any, d.Value())
+		for _, b := range beans {
+			any = reflect.Append(any, b.Value())
 		}
 	}
 
@@ -344,7 +342,7 @@ func (assembly *beanAssembly) collectAndSortBeans(tag collectionTag, t reflect.T
 	i += any.Len()
 	reflect.Copy(result.Slice(i, i+afterAny.Len()), afterAny)
 
-	return result, nil // TODO 当收集接口类型的 Bean 时对于没有显式导出接口的 Bean 是否也需要收集？
+	return result, nil // TODO 收集接口类型的 bean 时没有显式导出接口的 bean 是否也收集？
 }
 
 // wireBean 对 bean 进行注入，同时追踪其注入路径。如果 bean 有初始化函数，则在注入完成之后
