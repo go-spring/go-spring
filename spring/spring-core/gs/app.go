@@ -107,6 +107,11 @@ func (app *Application) GetConfigLocation() []string {
 	return app.cfgLocation
 }
 
+// Refresh 覆盖 ApplicationContext.Refresh 方法，禁止内外部调用。
+func (app *Application) Refresh() {
+	panic(util.ForbiddenMethod)
+}
+
 // Start 启动应用
 func (app *Application) start(cfgLocation ...string) {
 
@@ -126,7 +131,7 @@ func (app *Application) start(cfgLocation ...string) {
 	app.RegisterBean(app).Export((*Context)(nil))
 
 	// 依赖注入、属性绑定、初始化
-	app.Refresh()
+	app.ApplicationContext.Refresh()
 
 	// 执行命令行启动器
 	for _, r := range app.Runners {
@@ -355,6 +360,11 @@ func (app *Application) prepare() {
 	}
 }
 
+// Close 覆盖 ApplicationContext.Close 方法，禁止内外部调用。
+func (app *Application) Close() {
+	panic(util.ForbiddenMethod)
+}
+
 func (app *Application) close() {
 
 	defer log.Info("application exited")
@@ -367,12 +377,16 @@ func (app *Application) close() {
 	// 依赖 appCtx 的 Context，就只需要考虑 SafeGoroutine
 	// 的退出了，而这只需要 Context 一 cancel 也就完事了。
 
-	// 通知 Bean 销毁
-	app.Close(func() {
-		for _, b := range app.Events {
-			b.OnStopApplication(app)
+	app.Go(func() {
+		select {
+		case <-app.Context().Done():
+			for _, b := range app.Events {
+				b.OnStopApplication(app)
+			}
 		}
 	})
+
+	app.ApplicationContext.Close()
 }
 
 func (app *Application) Run(cfgLocation ...string) {

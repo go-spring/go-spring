@@ -55,7 +55,7 @@ func TestApplicationContext_RegisterBeanFrozen(t *testing.T) {
 			ctx.RegisterBean(new(bool))
 		})
 		ctx.Refresh()
-	}, "bean registration have been frozen")
+	}, "should call before Refreshing")
 }
 
 func TestApplicationContext(t *testing.T) {
