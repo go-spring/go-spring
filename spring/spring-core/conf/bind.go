@@ -175,6 +175,11 @@ func init() {
 		t := v.Type()
 		elemType := t.Elem()
 
+		if prop == "" {
+			v.Set(reflect.MakeSlice(t, 0, 0))
+			return nil
+		}
+
 		// 如果是字符串的话，尝试按照逗号进行切割
 		if s, ok := prop.(string); ok {
 			prop = strings.Split(s, ",")
@@ -301,6 +306,11 @@ func init() {
 		t := v.Type()
 		if t.Key().Kind() != reflect.String {
 			return fmt.Errorf("path: %s isn't map[string]interface{}", opt.Path)
+		}
+
+		if prop == "" {
+			v.Set(reflect.MakeMap(t))
+			return nil
 		}
 
 		elemType := t.Elem()

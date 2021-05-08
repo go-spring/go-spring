@@ -653,7 +653,9 @@ type NestedDB struct {
 }
 
 type NestedDbConfig struct {
-	DB []NestedDB `value:"${db}"`
+	DB   []NestedDB     `value:"${db}"`
+	Ints []int          `value:"${:=}"`
+	Map  map[string]int `value:"${:=}"`
 }
 
 type NestedDbMapConfig struct {
