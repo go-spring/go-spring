@@ -216,10 +216,12 @@ func TestRefType(t *testing.T) {
 		{make(chan struct{}), true},                  // Chan
 		{func() {}, true},                            // Func
 		{reflect.TypeOf((*error)(nil)).Elem(), true}, // Interface
-		{make(map[int]int), true},                    // Map
+		{make(map[int]int), false},                   // Map
+		{make(map[string]*int), true},                //
 		{new(int), true},                             // Ptr
-		{new(struct{}), true},                        // Ptr
-		{[]int{0}, true},                             // Slice
+		{new(struct{}), true},                        //
+		{[]int{0}, false},                            // Slice
+		{[]*int{}, true},                             //
 		{"this is a string", false},                  // String
 		{struct{}{}, false},                          // Struct
 		{unsafe.Pointer(new(int)), false},            // UnsafePointer
@@ -233,7 +235,7 @@ func TestRefType(t *testing.T) {
 		default:
 			typ = reflect.TypeOf(i)
 		}
-		if r := util.IsRefType(typ.Kind()); d.v != r {
+		if r := util.IsBeanType(typ); d.v != r {
 			t.Errorf("%v expect %v but %v", typ, d.v, r)
 		}
 	}
@@ -265,10 +267,12 @@ func TestIsValueType(t *testing.T) {
 		{make(chan struct{}), false}, // Chan
 		{func() {}, false},           // Func
 		{reflect.TypeOf((*error)(nil)).Elem(), false}, // Interface
-		{make(map[int]int), false},                    // Map
+		{make(map[int]int), true},                     // Map
+		{make(map[string]*int), false},                //
 		{new(int), false},                             // Ptr
-		{new(struct{}), false},                        // Ptr
-		{[]int{0}, false},                             // Slice
+		{new(struct{}), false},                        //
+		{[]int{0}, true},                              // Slice
+		{[]*int{}, false},                             //
 		{"this is a string", true},                    // String
 		{struct{}{}, true},                            // Struct
 		{unsafe.Pointer(new(int)), false},             // UnsafePointer
@@ -282,7 +286,7 @@ func TestIsValueType(t *testing.T) {
 		default:
 			typ = reflect.TypeOf(i)
 		}
-		if r := util.IsValueType(typ.Kind()); d.v != r {
+		if r := util.IsValueType(typ); d.v != r {
 			t.Errorf("%v expect %v but %v", typ, d.v, r)
 		}
 	}

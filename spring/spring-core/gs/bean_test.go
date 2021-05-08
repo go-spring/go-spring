@@ -24,9 +24,9 @@ import (
 	"testing"
 
 	"github.com/go-spring/spring-core/assert"
-	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/gs"
 	pkg2 "github.com/go-spring/spring-core/gs/testdata/pkg/foo"
+	"github.com/go-spring/spring-core/util"
 )
 
 //func TestParseSingletonTag(t *testing.T) {
@@ -95,7 +95,7 @@ func TestIsFuncBeanType(t *testing.T) {
 	}
 
 	for k, v := range data {
-		ok := bean.IsConstructor(k)
+		ok := util.IsConstructor(k)
 		assert.Equal(t, ok, v)
 	}
 }
@@ -190,10 +190,10 @@ func TestObjectBean(t *testing.T) {
 	t.Run("valid bean", func(t *testing.T) {
 		gs.NewBean(make(chan int))
 		gs.NewBean(reflect.ValueOf(func() {}))
-		gs.NewBean(make(map[string]int))
+		gs.NewBean(make(map[string]*int))
 		gs.NewBean(new(int))
 		gs.NewBean(&BeanZero{})
-		gs.NewBean(make([]int, 0))
+		gs.NewBean(make([]*int, 0))
 	})
 
 	t.Run("check name && typename", func(t *testing.T) {
@@ -247,11 +247,11 @@ func TestConstructorBean(t *testing.T) {
 
 	mapFn := func() map[int]string { return make(map[int]string) }
 	bd = gs.NewBean(mapFn)
-	assert.Equal(t, bd.Type().String(), "map[int]string")
+	assert.Equal(t, bd.Type().String(), "*map[int]string")
 
 	sliceFn := func() []int { return make([]int, 1) }
 	bd = gs.NewBean(sliceFn)
-	assert.Equal(t, bd.Type().String(), "[]int")
+	assert.Equal(t, bd.Type().String(), "*[]int")
 
 	funcFn := func() func(int) { return nil }
 	bd = gs.NewBean(funcFn)

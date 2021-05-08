@@ -21,49 +21,50 @@ import (
 	"reflect"
 )
 
-const (
-	valType = 1 // 值类型
-	refType = 2 // 引用类型
-)
-
-var kindTypes = []uint8{
-	0,       // Invalid
-	valType, // Bool
-	valType, // Int
-	valType, // Int8
-	valType, // Int16
-	valType, // Int32
-	valType, // Int64
-	valType, // Uint
-	valType, // Uint8
-	valType, // Uint16
-	valType, // Uint32
-	valType, // Uint64
-	0,       // Uintptr
-	valType, // Float32
-	valType, // Float64
-	valType, // Complex64
-	valType, // Complex128
-	valType, // Array
-	refType, // Chan
-	refType, // Func
-	refType, // Interface
-	refType, // Map
-	refType, // Ptr
-	refType, // Slice
-	valType, // String
-	valType, // Struct
-	0,       // UnsafePointer
+// IsBeanType 返回是否是 bean 类型。
+func IsBeanType(t reflect.Type) bool {
+	switch t.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Ptr:
+		return true
+	case reflect.Map, reflect.Slice, reflect.Array:
+		// 这里默认只需要递归一次即可停止。
+		return IsBeanType(t.Elem())
+	default:
+		return false
+	}
 }
 
-// IsRefType 返回是否是引用类型。
-func IsRefType(k reflect.Kind) bool {
-	return kindTypes[k] == refType
-}
-
-// IsValueType 返回是否是值类型。
-func IsValueType(k reflect.Kind) bool {
-	return kindTypes[k] == valType
+// IsValueType 返回是否是 value 类型。
+func IsValueType(t reflect.Type) bool {
+	switch t.Kind() {
+	case reflect.String,
+		reflect.Bool,
+		reflect.Int,
+		reflect.Int8,
+		reflect.Int16,
+		reflect.Int32,
+		reflect.Int64,
+		reflect.Uint,
+		reflect.Uint8,
+		reflect.Uint16,
+		reflect.Uint32,
+		reflect.Uint64,
+		reflect.Float32,
+		reflect.Float64,
+		reflect.Complex64,
+		reflect.Complex128:
+		return true
+	case reflect.Map,
+		reflect.Slice,
+		reflect.Array:
+		return IsValueType(t.Elem())
+	case reflect.Struct:
+		// 为了减少反射的使用，这里默认用户在使用结构体时是按照值类型
+		// 方式使用的，就是说结构体及其嵌套结构里面不存在任何引用类型。
+		return true
+	default:
+		return false
+	}
 }
 
 // TypeOf 获取 i 的类型。
@@ -105,6 +106,16 @@ var (
 	// contextType context.Context 的反射类型。
 	contextType = reflect.TypeOf((*context.Context)(nil)).Elem()
 )
+
+// IsConstructor 返回以函数形式注册 Bean 的函数是否合法。一个合法
+// 的注册函数需要以下条件：入参可以有任意多个，支持一般形式和 Option
+// 形式，返回值只能有一个或者两个，第一个返回值必须是 Bean 源，它可以是
+// 结构体等值类型也可以是指针等引用类型，为值类型时内部会自动转换为引用类
+// 型（获取可引用的地址），如果有第二个返回值那么它必须是 error 类型。
+func IsConstructor(t reflect.Type) bool {
+	returnError := t.NumOut() == 2 && IsErrorType(t.Out(1))
+	return IsFuncType(t) && (t.NumOut() == 1 || returnError)
+}
 
 // IsFuncType t 是否是 func 类型。
 func IsFuncType(t reflect.Type) bool {

@@ -183,11 +183,11 @@ type BeanDefinition struct {
 func newBeanDefinition(v reflect.Value, f arg.Callable, file string, line int) *BeanDefinition {
 
 	t := v.Type()
-	if !util.IsRefType(t.Kind()) {
+	if !util.IsBeanType(t) {
 		panic(errors.New("bean must be ref type"))
 	}
 
-	if t.Kind() == reflect.Ptr && !util.IsValueType(t.Elem().Kind()) {
+	if t.Kind() == reflect.Ptr && !util.IsValueType(t.Elem()) {
 		panic(errors.New("bean should be *val but not *ref"))
 	}
 
@@ -379,7 +379,7 @@ func NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 	// 以 reflect.ValueOf(fn) 形式注册的函数被视为函数对象 bean 。
 	if t := v.Type(); !fromValue && t.Kind() == reflect.Func {
 
-		if !bean.IsConstructor(t) {
+		if !util.IsConstructor(t) {
 			t1 := "func(...)bean"
 			t2 := "func(...)(bean, error)"
 			panic(fmt.Errorf("constructor should be %s or %s", t1, t2))
@@ -390,7 +390,7 @@ func NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 		v = reflect.New(out0)
 
 		// 引用类型去掉指针，值类型则刚刚好。
-		if util.IsRefType(out0.Kind()) {
+		if util.IsBeanType(out0) {
 			v = v.Elem()
 		}
 

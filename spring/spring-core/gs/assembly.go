@@ -88,7 +88,7 @@ func (assembly *beanAssembly) getBean(tag singletonTag, v reflect.Value) error {
 	}
 
 	t := v.Type()
-	if !util.IsRefType(t.Kind()) {
+	if !util.IsBeanType(t) {
 		return fmt.Errorf("receiver must be ref type, bean:%q", tag)
 	}
 
@@ -185,7 +185,7 @@ func (assembly *beanAssembly) collectBeans(tag collectionTag, v reflect.Value) e
 		return fmt.Errorf("should be slice in collection mode")
 	}
 
-	if !util.IsRefType(t.Elem().Kind()) { // 收集模式的数组元素应当是引用类型
+	if !util.IsBeanType(t.Elem()) { // 收集模式的数组元素应当是引用类型
 		return errors.New("item in collection mode should be ref type")
 	}
 
@@ -439,9 +439,9 @@ func (assembly *beanAssembly) getBeanValue(b *BeanDefinition) (reflect.Value, er
 	}
 
 	// 构造函数的返回值为值类型时 b.Type() 返回其指针类型。
-	if val := out[0]; util.IsRefType(val.Kind()) {
+	if val := out[0]; util.IsBeanType(val.Type()) {
 		// 如果实现接口的是值类型，那么需要转换成指针类型然后再赋值给接口。
-		if val.Kind() == reflect.Interface && util.IsValueType(val.Elem().Kind()) {
+		if !val.IsNil() && val.Kind() == reflect.Interface && util.IsValueType(val.Elem().Type()) {
 			v := reflect.New(val.Elem().Type())
 			v.Elem().Set(val.Elem())
 			b.Value().Set(v)

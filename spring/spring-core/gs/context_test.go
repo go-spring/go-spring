@@ -64,7 +64,7 @@ func TestApplicationContext(t *testing.T) {
 		ctx := gs.New()
 
 		e := int(3)
-		a := []int{3}
+		a := []*int{&e}
 
 		// 普通类型用属性注入
 		assert.Panic(t, func() {
@@ -122,7 +122,7 @@ func TestApplicationContext(t *testing.T) {
 		{
 			var i []int
 			err := ctx.GetBean(&i)
-			assert.Nil(t, err)
+			assert.NotNil(t, err)
 		}
 
 		{
@@ -142,20 +142,19 @@ func TestApplicationContext(t *testing.T) {
 		a := []pkg1.SamePkg{{}}
 		p := []*pkg1.SamePkg{{}}
 
-		// 栈上的对象不能注册
 		assert.Panic(t, func() {
 			ctx.RegisterBean(e)
 		}, "bean must be ref type")
 
 		ctx.RegisterBean(&e)
-
-		// 相同类型不同名称的 bean 都可注册
 		ctx.RegisterBean(&e).WithName("i3")
 		ctx.RegisterBean(&e).WithName("i4")
 
-		ctx.RegisterBean(a)
-		ctx.RegisterBean(p)
+		assert.Panic(t, func() {
+			ctx.RegisterBean(a)
+		}, "bean must be ref type")
 
+		ctx.RegisterBean(p)
 		ctx.Refresh()
 	})
 
@@ -171,16 +170,15 @@ func TestApplicationContext(t *testing.T) {
 		}, "bean must be ref type")
 
 		ctx.RegisterBean(&e)
-
-		// 相同类型不同名称的 bean 都可注册
-		// 不同类型相同名称的 bean 也可注册
 		ctx.RegisterBean(&e).WithName("i3")
 		ctx.RegisterBean(&e).WithName("i4")
 		ctx.RegisterBean(&e).WithName("i5")
 
-		ctx.RegisterBean(a)
-		ctx.RegisterBean(p)
+		assert.Panic(t, func() {
+			ctx.RegisterBean(a)
+		}, "bean must be ref type")
 
+		ctx.RegisterBean(p)
 		ctx.Refresh()
 	})
 }
@@ -202,11 +200,6 @@ type TestObject struct {
 	IntPtrByType *int `inject:""`
 	IntPtrByName *int `autowire:"${key_1:=int_ptr}"`
 
-	// 基础类型数组
-	// IntSliceByType []int `autowire:""` // 多实例
-	IntSliceByName1 []int `autowire:"int_slice_1"`
-	IntSliceByName2 []int `autowire:"int_slice_2"`
-
 	// 基础类型指针数组
 	IntPtrSliceByType []*int `inject:""`
 	IntPtrCollection  []*int `autowire:"${key_2:=[int_ptr]}"`
@@ -215,10 +208,6 @@ type TestObject struct {
 	// 自定义类型指针
 	StructByType *TestBincoreng `inject:""`
 	StructByName *TestBincoreng `autowire:"struct_ptr"`
-
-	// 自定义类型数组
-	StructSliceByType []TestBincoreng `inject:""`
-	StructSliceByName []TestBincoreng `autowire:"struct_slice"`
 
 	// 自定义类型指针数组
 	StructPtrSliceByType []*TestBincoreng `inject:""`
@@ -269,21 +258,12 @@ func TestApplicationContext_AutoWireBeans(t *testing.T) {
 	i := int(3)
 	ctx.RegisterBean(&i).WithName("int_ptr")
 
-	is := []int{1, 2, 3}
-	ctx.RegisterBean(is).WithName("int_slice_1")
-
-	is2 := []int{2, 3, 4}
-	ctx.RegisterBean(is2).WithName("int_slice_2")
-
 	i2 := 4
 	ips := []*int{&i2}
 	ctx.RegisterBean(ips).WithName("int_ptr_slice")
 
 	b := TestBincoreng{1}
 	ctx.RegisterBean(&b).WithName("struct_ptr").Export((*fmt.Stringer)(nil))
-
-	bs := []TestBincoreng{{10}}
-	ctx.RegisterBean(bs).WithName("struct_slice")
 
 	b2 := TestBincoreng{2}
 	bps := []*TestBincoreng{&b2}
@@ -622,18 +602,6 @@ func TestApplicationContext_GetBean(t *testing.T) {
 		}, "can't find bean, bean:\"\"")
 
 		assert.Panic(t, func() {
-			var is []int
-			err := ctx.GetBean(is)
-			util.Panic(err).When(err != nil)
-		}, "i must be pointer")
-
-		assert.Panic(t, func() {
-			var a []int
-			err := ctx.GetBean(&a)
-			util.Panic(err).When(err != nil)
-		}, "can't find bean, bean:\"\"")
-
-		assert.Panic(t, func() {
 			var s fmt.Stringer
 			err := ctx.GetBean(s)
 			util.Panic(err).When(err != nil)
@@ -813,20 +781,6 @@ func TestApplicationContext_RegisterBeanFn(t *testing.T) {
 	ctx.ProvideBean(NewStudent, "?", "${room:=https://}").WithName("st3")
 	ctx.ProvideBean(NewPtrStudent, "?", "${room:=4567}").WithName("st4")
 
-	mapFn := func() map[int]string {
-		return map[int]string{
-			1: "ok",
-		}
-	}
-
-	ctx.ProvideBean(mapFn)
-
-	sliceFn := func() []int {
-		return []int{1, 2}
-	}
-
-	ctx.ProvideBean(sliceFn)
-
 	ctx.Refresh()
 
 	var st1 *Student
@@ -859,20 +813,6 @@ func TestApplicationContext_RegisterBeanFn(t *testing.T) {
 	assert.Nil(t, err)
 	fmt.Println(json.ToString(st4))
 	assert.Equal(t, st4.Room, ctx.GetProperty("room"))
-
-	var m map[int]string
-	err = ctx.GetBean(&m)
-
-	assert.Nil(t, err)
-	fmt.Println(json.ToString(m))
-	assert.Equal(t, m[1], "ok")
-
-	var s []int
-	err = ctx.GetBean(&s)
-
-	assert.Nil(t, err)
-	fmt.Println(json.ToString(s))
-	assert.Equal(t, s[1], 2)
 }
 
 func TestApplicationContext_Profile(t *testing.T) {
@@ -1438,7 +1378,6 @@ func TestApplicationContext_CollectBeans(t *testing.T) {
 	ctx.SetProperty("recores.endpoints", "recores://localhost:6379")
 
 	ctx.RegisterBean([]*RecoresCluster{new(RecoresCluster)})
-	ctx.RegisterBean([]RecoresCluster{{}})
 	ctx.RegisterBean(new(RecoresCluster))
 
 	intBean := ctx.RegisterBean(new(int)).Init(func(*int) {
@@ -1454,14 +1393,6 @@ func TestApplicationContext_CollectBeans(t *testing.T) {
 	assert.Equal(t, intBean.Name(), "*int")
 
 	ctx.Refresh()
-
-	var rcs []RecoresCluster
-	err := ctx.GetBean(&rcs)
-	fmt.Println(json.ToString(rcs))
-
-	assert.Nil(t, err)
-	assert.Equal(t, len(rcs), 1)
-	assert.Equal(t, rcs[0].Endpoints, "recores://localhost:6379")
 }
 
 func TestApplicationContext_WireSliceBean(t *testing.T) {
@@ -1469,20 +1400,10 @@ func TestApplicationContext_WireSliceBean(t *testing.T) {
 	ctx := gs.New()
 	ctx.SetProperty("recores.endpoints", "recores://localhost:6379")
 	ctx.RegisterBean([]*RecoresCluster{new(RecoresCluster)})
-	ctx.RegisterBean([]RecoresCluster{{}})
 	ctx.Refresh()
 
 	{
 		var rcs []*RecoresCluster
-		err := ctx.GetBean(&rcs)
-		fmt.Println(json.ToString(rcs))
-
-		assert.Nil(t, err)
-		assert.Equal(t, rcs[0].Endpoints, "recores://localhost:6379")
-	}
-
-	{
-		var rcs []RecoresCluster
 		err := ctx.GetBean(&rcs)
 		fmt.Println(json.ToString(rcs))
 

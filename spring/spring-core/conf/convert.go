@@ -41,7 +41,7 @@ func validConverter(t reflect.Type) bool {
 		t.NumIn() == 1 &&
 		t.In(0).Kind() == reflect.String &&
 		t.NumOut() == 2 &&
-		util.IsValueType(t.Out(0).Kind()) &&
+		util.IsValueType(t.Out(0)) &&
 		util.IsErrorType(t.Out(1))
 }
 

@@ -254,15 +254,15 @@ func (r *argList) getArg(ctx Context, arg Arg, t reflect.Type,
 
 	v = reflect.New(t).Elem()
 
-	// 处理引用类型
-	if util.IsRefType(v.Kind()) {
+	// 处理 bean 类型
+	if util.IsBeanType(t) {
 		if err = ctx.Autowire(tag, v); err != nil {
 			return reflect.Value{}, err
 		}
 		return v, nil
 	}
 
-	// 处理值类型
+	// 处理 value 类型
 	if tag == "" {
 		tag = "${}"
 	}
