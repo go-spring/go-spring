@@ -173,7 +173,7 @@ func (assembly *beanAssembly) getBean(tag singletonTag, v reflect.Value) error {
 		return err
 	}
 
-	util.PatchValue(v).Set(result.Value())
+	v.Set(result.Value())
 	return nil
 }
 
@@ -205,7 +205,7 @@ func (assembly *beanAssembly) collectBeans(tag collectionTag, v reflect.Value) e
 	}
 
 	if ret.Len() > 0 {
-		util.PatchValue(v).Set(ret)
+		v.Set(ret)
 		return nil
 	}
 
@@ -515,6 +515,10 @@ func (assembly *beanAssembly) wireStruct(v reflect.Value) error {
 		ft := t.Field(i)
 		fv := v.Field(i)
 
+		if !fv.CanInterface() {
+			fv = util.PatchValue(fv)
+		}
+
 		// 支持 autowire 和 inject 两种注入标签。
 		tag, ok := ft.Tag.Lookup("autowire")
 		if !ok {
@@ -530,7 +534,7 @@ func (assembly *beanAssembly) wireStruct(v reflect.Value) error {
 
 		// 递归处理结构体字段，指针字段不可以因为可能出现无限循环。
 		if ft.Type.Kind() == reflect.Struct {
-			err := assembly.wireStruct(util.PatchValue(fv))
+			err := assembly.wireStruct(fv)
 			if err != nil {
 				return err
 			}

@@ -41,7 +41,11 @@ func bindStruct(p property, v reflect.Value, opt bindOption) error {
 	t := v.Type()
 	for i := 0; i < t.NumField(); i++ {
 		ft := t.Field(i)
-		fv := util.PatchValue(v.Field(i))
+		fv := v.Field(i)
+
+		if !fv.CanInterface() {
+			fv = util.PatchValue(fv)
+		}
 
 		subOpt := bindOption{
 			Prefix: opt.Prefix,
