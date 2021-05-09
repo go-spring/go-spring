@@ -1,6 +1,6 @@
 module github.com/go-spring/spring-core
 
-go 1.12
+go 1.14
 
 require (
 	github.com/magiconair/properties v1.8.1
