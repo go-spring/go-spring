@@ -51,3 +51,7 @@ Following information can help us to resolve the issue faster.
 * 不对外直接暴露指针类型，使用值或者接口。
 * 包名不能和 Golang 标准库重名。
 * 注释里面的 bean 都是小写格式。
+
+## 注释
+
+* 不要在注释上浪费太多文字，不要详细阐述你的思考，写清楚结论即可。

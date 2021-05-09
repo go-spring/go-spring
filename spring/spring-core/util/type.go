@@ -21,13 +21,19 @@ import (
 	"reflect"
 )
 
-// IsBeanType 返回是否是 bean 类型。
+// IsBeanType 返回是否是 bean 类型。在 go-spring 里，如果一个非集合类型的变量赋值
+// 给另一个变量后二者指向相同的内存地址，则称这个变量的类型为 bean 类型，反之则称为
+// value 类型。因此，interface、chan、func、ptr，这些都是 bean 类型，string、
+// bool、int、uint、float、complex、struct，这些都是 value 类型。对于集合类型的
+// 变量来说，它的类型属于 bean 类型还是 value 类型是由其元素的类型决定的，如果元素的
+// 类型是 bean 类型则该变量的类型是 bean 类型，如果元素的类型是 value 类型则该变量的
+// 类型是 value 类型。
 func IsBeanType(t reflect.Type) bool {
 	switch t.Kind() {
 	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Ptr:
 		return true
 	case reflect.Map, reflect.Slice, reflect.Array:
-		// 这里默认只需要递归一次即可停止。
+		// 这里默认只发生一次递归就会停止。
 		return IsBeanType(t.Elem())
 	default:
 		return false
