@@ -28,7 +28,6 @@ import (
 	"github.com/go-spring/spring-core/arg"
 	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/conf"
-	"github.com/go-spring/spring-core/container/slice"
 	"github.com/go-spring/spring-core/gs/internal/sort"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
@@ -89,11 +88,11 @@ type Context interface {
 	// Wire 对对象或者构造函数的结果进行依赖注入和属性绑定，返回处理后的对象
 	Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error)
 
-	// Go 安全地启动一个 goroutine
-	Go(fn interface{}, args ...arg.Arg)
-
 	// Invoke 立即执行一个一次性的任务
 	Invoke(fn interface{}, args ...arg.Arg) error
+
+	// Go 安全地启动一个 goroutine
+	Go(fn interface{}, args ...arg.Arg)
 }
 
 // ApplicationContext Context 不允许内容被修改，这个可以。
@@ -147,15 +146,13 @@ type applicationContext struct {
 	profile string
 	state   refreshState
 
-	allBeans   *slice.Slice // 所有注册点
-	configers  *list.List   // 配置方法集合
-	destroyers *list.List   // 销毁函数集合
+	allBeans   []*BeanDefinition // 所有注册点
+	configers  *list.List        // 配置方法集合
+	destroyers *list.List        // 销毁函数集合
 
 	cacheById   map[string]*BeanDefinition
-	cacheByName map[string]*slice.Slice
-	cacheByType map[reflect.Type]*slice.Slice
-
-	destroyerMap map[string]*destroyer
+	cacheByName map[string][]*BeanDefinition
+	cacheByType map[reflect.Type][]*BeanDefinition
 }
 
 // New applicationContext 的构造函数
@@ -170,16 +167,14 @@ func New(filename ...string) *applicationContext {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	return &applicationContext{
-		p:            p,
-		ctx:          ctx,
-		cancel:       cancel,
-		allBeans:     slice.New(),
-		cacheById:    make(map[string]*BeanDefinition),
-		cacheByName:  make(map[string]*slice.Slice),
-		cacheByType:  make(map[reflect.Type]*slice.Slice),
-		configers:    list.New(),
-		destroyers:   list.New(),
-		destroyerMap: make(map[string]*destroyer),
+		p:           p,
+		ctx:         ctx,
+		cancel:      cancel,
+		cacheById:   make(map[string]*BeanDefinition),
+		cacheByName: make(map[string][]*BeanDefinition),
+		cacheByType: make(map[reflect.Type][]*BeanDefinition),
+		configers:   list.New(),
+		destroyers:  list.New(),
 	}
 }
 
@@ -232,18 +227,6 @@ func (c *applicationContext) callBeforeRefreshing() {
 	}
 }
 
-func (c *applicationContext) register(b *BeanDefinition) {
-	if _, ok := c.cacheById[b.ID()]; ok {
-		panic(fmt.Errorf("duplicate registration, bean:%q", b.ID()))
-	}
-	c.cacheById[b.ID()] = b
-}
-
-func (c *applicationContext) delete(b *BeanDefinition) {
-	b.status = Deleted
-	delete(c.cacheById, b.ID())
-}
-
 // RegisterBean 注册对象形式的 Bean。
 func (c *applicationContext) RegisterBean(i interface{}) *BeanDefinition {
 	return c.ProvideBean(reflect.ValueOf(i))
@@ -253,7 +236,7 @@ func (c *applicationContext) RegisterBean(i interface{}) *BeanDefinition {
 func (c *applicationContext) ProvideBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 	c.callBeforeRefreshing()
 	b := NewBean(objOrCtor, ctorArgs...)
-	c.allBeans.Append(b)
+	c.allBeans = append(c.allBeans, b)
 	return b
 }
 
@@ -358,31 +341,173 @@ func (c *applicationContext) CollectBeans(i interface{}, selectors ...bean.Selec
 	return toAssembly(c).collectBeans(tag, v.Elem())
 }
 
-func (c *applicationContext) getCacheByType(typ reflect.Type) *slice.Slice {
-	i, ok := c.cacheByType[typ]
-	if !ok {
-		i = slice.New()
-		c.cacheByType[typ] = i
+// Wire 对对象或者构造函数的结果进行依赖注入和属性绑定，返回处理后的对象
+func (c *applicationContext) Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error) {
+	c.callAfterRefreshing()
+	assembly := toAssembly(c)
+	b := NewBean(objOrCtor, ctorArgs...)
+	// 这里使用 wireBean 是为了追踪 bean 的注入路径。
+	if err := assembly.wireBean(b); err != nil {
+		return nil, err
 	}
-	return i
+	return b.Interface(), nil
 }
 
-func (c *applicationContext) setCacheByType(t reflect.Type, b *BeanDefinition) {
-	log.Debugf("register %s name:%q type:%q %s", b.getClass(), b.Name(), t.String(), b.FileLine())
-	c.getCacheByType(t).Append(b)
-}
-
-func (c *applicationContext) getCacheByName(name string) *slice.Slice {
-	i, ok := c.cacheByName[name]
-	if !ok {
-		i = slice.New()
-		c.cacheByName[name] = i
+// Invoke 立即执行一个一次性的任务
+func (c *applicationContext) Invoke(fn interface{}, args ...arg.Arg) error {
+	c.callAfterRefreshing()
+	if fnType := reflect.TypeOf(fn); util.IsFuncType(fnType) {
+		if util.ReturnNothing(fnType) || util.ReturnOnlyError(fnType) {
+			r := arg.Bind(fn, args, arg.Skip(1))
+			_, err := r.Call(toAssembly(c))
+			return err
+		}
 	}
-	return i
+	return errors.New("fn should be func() or func()error")
 }
 
-func (c *applicationContext) setCacheByName(name string, b *BeanDefinition) {
-	c.getCacheByName(name).Append(b)
+// Go 安全地启动一个 goroutine
+func (c *applicationContext) Go(fn interface{}, args ...arg.Arg) {
+	c.callAfterRefreshing()
+
+	fnType := reflect.TypeOf(fn)
+	if !util.IsFuncType(fnType) || !util.ReturnNothing(fnType) {
+		panic(errors.New("fn should be func()"))
+	}
+
+	r := arg.Bind(fn, args, arg.Skip(1))
+
+	c.wg.Add(1)
+	go func() {
+		defer c.wg.Done()
+
+		defer func() {
+			if r := recover(); r != nil {
+				log.Error(r)
+			}
+		}()
+
+		_, err := r.Call(toAssembly(c))
+		if err != nil {
+			log.Error(err.Error())
+		}
+	}()
+}
+
+// Refresh 对所有 Bean 进行依赖注入和属性绑定
+func (c *applicationContext) Refresh() {
+
+	if c.state != Unrefreshed {
+		panic(errors.New("already refreshed"))
+	}
+
+	// 处理 Method Bean 等
+	c.registerBeans()
+
+	c.state = Refreshing
+
+	c.resolveConfigers()
+
+	err := c.resolveBeans()
+	util.Panic(err).When(err != nil)
+
+	assembly := toAssembly(c)
+
+	defer func() {
+		if len(assembly.stack) > 0 {
+			log.Infof("wiring path %s", assembly.stack.path())
+		}
+	}()
+
+	err = c.runConfigers(assembly)
+	util.Panic(err).When(err != nil)
+
+	err = c.wireBeans(assembly)
+	util.Panic(err).When(err != nil)
+
+	c.destroyers = assembly.sortDestroyers()
+	c.state = Refreshed
+}
+
+func (c *applicationContext) registerBeans() {
+	for i := 0; i < len(c.allBeans); i++ {
+		b := c.allBeans[i]
+		if _, ok := c.cacheById[b.ID()]; ok {
+			panic(fmt.Errorf("duplicate registration, bean:%q", b.ID()))
+		}
+		c.cacheById[b.ID()] = b
+	}
+}
+
+// resolveConfigers 对 Config 函数进行决议是否能够保留它
+func (c *applicationContext) resolveConfigers() {
+
+	// 对 config 函数进行决议
+	for e := c.configers.Front(); e != nil; {
+		next := e.Next()
+		configer := e.Value.(*Configer)
+		if configer.cond != nil && !configer.cond.Matches(c) {
+			c.configers.Remove(e)
+		}
+		e = next
+	}
+
+	// 对 config 函数进行排序
+	c.configers = sort.TripleSorting(c.configers, getBeforeConfigers)
+}
+
+// resolveBeans 对 Bean 进行决议是否能够创建 Bean 的实例
+func (c *applicationContext) resolveBeans() error {
+	for _, b := range c.cacheById {
+		if err := c.resolveBean(b); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// resolveBean 对 Bean 进行决议是否能够创建 Bean 的实例
+func (c *applicationContext) resolveBean(b *BeanDefinition) error {
+
+	// 正在进行或者已经完成决议过程
+	if b.status >= Resolving {
+		return nil
+	}
+	b.status = Resolving
+
+	// 不满足判断条件的则标记为删除状态并删除其注册
+	if b.cond != nil && !b.cond.Matches(c) {
+		delete(c.cacheById, b.ID())
+		b.status = Deleted
+		return nil
+	}
+
+	// 将符合注册条件的 Bean 放入到缓存里面
+	log.Debugf("register %s name:%q type:%q %s", b.getClass(), b.Name(), b.Type().String(), b.FileLine())
+	c.cacheByType[b.Type()] = append(c.cacheByType[b.Type()], b)
+
+	// 自动导出接口，这种情况仅对于结构体才会有效
+	if typ := util.Indirect(b.Type()); typ.Kind() == reflect.Struct {
+		if err := c.autoExport(typ, b); err != nil {
+			return err
+		}
+	}
+
+	// 按照导出类型放入缓存
+	for t := range b.exports {
+		if b.Type().Implements(t) {
+			log.Debugf("register %s name:%q type:%q %s", b.getClass(), b.Name(), t.String(), b.FileLine())
+			c.cacheByType[t] = append(c.cacheByType[t], b)
+		} else {
+			return fmt.Errorf("%s not implement %s interface", b.Description(), t)
+		}
+	}
+
+	// 按照 Bean 的名字进行缓存
+	c.cacheByName[b.name] = append(c.cacheByName[b.name], b)
+
+	b.status = Resolved
+	return nil
 }
 
 // autoExport 自动导出 Bean 实现的接口
@@ -429,81 +554,6 @@ func (c *applicationContext) autoExport(t reflect.Type, b *BeanDefinition) error
 	return nil
 }
 
-func (c *applicationContext) registerBeans() {
-	for i := 0; i < c.allBeans.Len(); i++ {
-		v := c.allBeans.Get(i)
-		c.register(v.(*BeanDefinition))
-	}
-}
-
-// resolveBeans 对 Bean 进行决议是否能够创建 Bean 的实例
-func (c *applicationContext) resolveBeans() error {
-	for _, b := range c.cacheById {
-		if err := c.resolveBean(b); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// resolveBean 对 Bean 进行决议是否能够创建 Bean 的实例
-func (c *applicationContext) resolveBean(b *BeanDefinition) error {
-
-	// 正在进行或者已经完成决议过程
-	if b.status >= Resolving {
-		return nil
-	}
-	b.status = Resolving
-
-	// 不满足判断条件的则标记为删除状态并删除其注册
-	if b.cond != nil && !b.cond.Matches(c) {
-		c.delete(b)
-		return nil
-	}
-
-	// 将符合注册条件的 Bean 放入到缓存里面
-	c.setCacheByType(b.Type(), b)
-
-	// 自动导出接口，这种情况仅对于结构体才会有效
-	if typ := util.Indirect(b.Type()); typ.Kind() == reflect.Struct {
-		if err := c.autoExport(typ, b); err != nil {
-			return err
-		}
-	}
-
-	// 按照导出类型放入缓存
-	for t := range b.exports {
-		if b.Type().Implements(t) {
-			c.setCacheByType(t, b)
-		} else {
-			return fmt.Errorf("%s not implement %s interface", b.Description(), t)
-		}
-	}
-
-	// 按照 Bean 的名字进行缓存
-	c.setCacheByName(b.Name(), b)
-
-	b.status = Resolved
-	return nil
-}
-
-// resolveConfigers 对 Config 函数进行决议是否能够保留它
-func (c *applicationContext) resolveConfigers() {
-
-	// 对 config 函数进行决议
-	for e := c.configers.Front(); e != nil; {
-		next := e.Next()
-		configer := e.Value.(*Configer)
-		if configer.cond != nil && !configer.cond.Matches(c) {
-			c.configers.Remove(e)
-		}
-		e = next
-	}
-
-	// 对 config 函数进行排序
-	c.configers = sort.TripleSorting(c.configers, getBeforeConfigers)
-}
-
 // runConfigers 执行 Config 函数
 func (c *applicationContext) runConfigers(assembly *beanAssembly) error {
 	for e := c.configers.Front(); e != nil; e = e.Next() {
@@ -516,24 +566,6 @@ func (c *applicationContext) runConfigers(assembly *beanAssembly) error {
 	return nil
 }
 
-// saveDestroyer 某个 Bean 可能会被多个 Bean 依赖，因此需要排重处理。
-func (c *applicationContext) saveDestroyer(b *BeanDefinition) *destroyer {
-	d, ok := c.destroyerMap[b.ID()]
-	if !ok {
-		d = &destroyer{current: b}
-		c.destroyerMap[b.ID()] = d
-	}
-	return d
-}
-
-// sortDestroyers 对销毁函数进行排序
-func (c *applicationContext) sortDestroyers() {
-	for _, d := range c.destroyerMap {
-		c.destroyers.PushBack(d)
-	}
-	c.destroyers = sort.TripleSorting(c.destroyers, getBeforeDestroyers)
-}
-
 // wireBeans 对 Bean 执行自动注入
 func (c *applicationContext) wireBeans(assembly *beanAssembly) error {
 	for _, b := range c.cacheById {
@@ -542,64 +574,6 @@ func (c *applicationContext) wireBeans(assembly *beanAssembly) error {
 		}
 	}
 	return nil
-}
-
-// Refresh 对所有 Bean 进行依赖注入和属性绑定
-func (c *applicationContext) Refresh() {
-
-	if c.state != Unrefreshed {
-		panic(errors.New("already refreshed"))
-	}
-
-	var (
-		err      error
-		assembly *beanAssembly
-	)
-
-	defer func() {
-		if err != nil {
-			if assembly != nil {
-				log.Errorf("%v ↩\n%s", err, assembly.stack.path())
-			}
-			panic(err)
-		}
-	}()
-
-	// 处理 Method Bean 等
-	c.registerBeans()
-
-	c.state = Refreshing
-
-	c.resolveConfigers()
-	if err = c.resolveBeans(); err != nil {
-		return
-	}
-
-	assembly = toAssembly(c)
-
-	if err = c.runConfigers(assembly); err != nil {
-		return
-	}
-
-	if err = c.wireBeans(assembly); err != nil {
-		return
-	}
-
-	c.sortDestroyers()
-
-	c.state = Refreshed
-}
-
-// Wire 对对象或者构造函数的结果进行依赖注入和属性绑定，返回处理后的对象
-func (c *applicationContext) Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error) {
-	c.callAfterRefreshing()
-	assembly := toAssembly(c)
-	b := NewBean(objOrCtor, ctorArgs...)
-	// 这里使用 wireBean 是为了追踪 bean 的注入路径。
-	if err := assembly.wireBean(b); err != nil {
-		return nil, err
-	}
-	return b.Interface(), nil
 }
 
 // Close 关闭容器上下文，用于通知 Bean 销毁等，该函数可以确保 Bean 的销毁顺序和注入顺序相反。
@@ -618,45 +592,4 @@ func (c *applicationContext) Close() {
 			log.Error(err)
 		}
 	}
-}
-
-// Invoke 立即执行一个一次性的任务
-func (c *applicationContext) Invoke(fn interface{}, args ...arg.Arg) error {
-	c.callAfterRefreshing()
-	if fnType := reflect.TypeOf(fn); util.IsFuncType(fnType) {
-		if util.ReturnNothing(fnType) || util.ReturnOnlyError(fnType) {
-			r := arg.Bind(fn, args, arg.Skip(1))
-			_, err := r.Call(toAssembly(c))
-			return err
-		}
-	}
-	return errors.New("fn should be func() or func()error")
-}
-
-// Go 安全地启动一个 goroutine
-func (c *applicationContext) Go(fn interface{}, args ...arg.Arg) {
-	c.callAfterRefreshing()
-
-	fnType := reflect.TypeOf(fn)
-	if !util.IsFuncType(fnType) || !util.ReturnNothing(fnType) {
-		panic(errors.New("fn should be func()"))
-	}
-
-	r := arg.Bind(fn, args, arg.Skip(1))
-
-	c.wg.Add(1)
-	go func() {
-		defer c.wg.Done()
-
-		defer func() {
-			if r := recover(); r != nil {
-				log.Error(r)
-			}
-		}()
-
-		_, err := r.Call(toAssembly(c))
-		if err != nil {
-			log.Error(err.Error())
-		}
-	}()
 }
