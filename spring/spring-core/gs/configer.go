@@ -73,7 +73,7 @@ func (c *Configer) After(configers ...string) *Configer {
 	return c
 }
 
-// getBeforeConfigers 获取 i 之前的 Configer 列表，用于 internal/sort 排序。
+// getBeforeConfigers 获取 i 之前的 Configer 列表，用于 sort.Triple 排序。
 func getBeforeConfigers(configers *list.List, i interface{}) *list.List {
 
 	result := list.New()

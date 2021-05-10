@@ -26,8 +26,8 @@ import (
 // GetBeforeItems 获取 sorting 中排在 current 前面的元素
 type GetBeforeItems func(sorting *list.List, current interface{}) *list.List
 
-// TripleSorting 三路排序
-func TripleSorting(sorting *list.List, fn GetBeforeItems) *list.List {
+// Triple 三路排序
+func Triple(sorting *list.List, fn GetBeforeItems) *list.List {
 
 	toSort := list.New()     // 待排序列表
 	sorted := list.New()     // 已排序列表

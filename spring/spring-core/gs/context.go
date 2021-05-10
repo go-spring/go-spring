@@ -28,8 +28,8 @@ import (
 	"github.com/go-spring/spring-core/arg"
 	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/conf"
-	"github.com/go-spring/spring-core/gs/internal/sort"
 	"github.com/go-spring/spring-core/log"
+	"github.com/go-spring/spring-core/sort"
 	"github.com/go-spring/spring-core/util"
 )
 
@@ -453,7 +453,7 @@ func (c *applicationContext) resolveConfigers() {
 	}
 
 	// 对 config 函数进行排序
-	c.configers = sort.TripleSorting(c.configers, getBeforeConfigers)
+	c.configers = sort.Triple(c.configers, getBeforeConfigers)
 }
 
 // resolveBeans 对 Bean 进行决议是否能够创建 Bean 的实例

@@ -26,8 +26,8 @@ import (
 	"github.com/go-spring/spring-core/arg"
 	"github.com/go-spring/spring-core/cond"
 	"github.com/go-spring/spring-core/conf"
-	"github.com/go-spring/spring-core/gs/internal/sort"
 	"github.com/go-spring/spring-core/log"
+	"github.com/go-spring/spring-core/sort"
 	"github.com/go-spring/spring-core/util"
 )
 
@@ -98,7 +98,7 @@ func (assembly *beanAssembly) sortDestroyers() *list.List {
 	for _, d := range assembly.destroyerMap {
 		assembly.destroyers.PushBack(d)
 	}
-	assembly.destroyers = sort.TripleSorting(assembly.destroyers, getBeforeDestroyers)
+	assembly.destroyers = sort.Triple(assembly.destroyers, getBeforeDestroyers)
 	return assembly.destroyers
 }
 
