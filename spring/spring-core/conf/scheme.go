@@ -29,7 +29,7 @@ type Scheme interface {
 
 	// Load 加载符合条件的属性文件，fileLocation 是配置文件所在的目录或者数据文件，
 	// fileName 是配置文件的名称，但不包含扩展名。
-	Load(p Properties, fileLocation string, fileName string, configTypes []string) error
+	Load(p *Properties, fileLocation string, fileName string, configTypes []string) error
 }
 
 func init() {
@@ -49,14 +49,14 @@ func FindScheme(name string) (Scheme, bool) {
 	return ps, ok
 }
 
-type FuncScheme func(p Properties, fileLocation string, fileName string, configTypes []string) error
+type FuncScheme func(p *Properties, fileLocation string, fileName string, configTypes []string) error
 
-func (f FuncScheme) Load(p Properties, fileLocation string, fileName string, configTypes []string) error {
+func (f FuncScheme) Load(p *Properties, fileLocation string, fileName string, configTypes []string) error {
 	return f(p, fileLocation, fileName, configTypes)
 }
 
 // defaultScheme 整个文件都是属性
-var defaultScheme = FuncScheme(func(p Properties, fileLocation string, fileName string, configTypes []string) error {
+var defaultScheme = FuncScheme(func(p *Properties, fileLocation string, fileName string, configTypes []string) error {
 	for _, configType := range configTypes {
 		file := filepath.Join(fileLocation, fileName+"."+configType)
 		if _, err := os.Stat(file); err != nil {
@@ -70,7 +70,7 @@ var defaultScheme = FuncScheme(func(p Properties, fileLocation string, fileName 
 })
 
 // configMapScheme 基于 k8s ConfigMap 的属性源
-var configMapScheme = FuncScheme(func(p Properties, fileLocation string, fileName string, configTypes []string) error {
+var configMapScheme = FuncScheme(func(p *Properties, fileLocation string, fileName string, configTypes []string) error {
 
 	v := viper.New()
 	v.SetConfigFile(fileLocation)

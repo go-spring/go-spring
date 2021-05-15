@@ -51,6 +51,7 @@ Following information can help us to resolve the issue faster.
 * 不对外直接暴露指针类型，使用值或者接口。
 * 包名不能和 Golang 标准库重名。
 * 注释里面的 bean 都是小写格式。
+* 函数内部调用的函数一般放在它的上方并且靠近它。
 
 ## 注释
 

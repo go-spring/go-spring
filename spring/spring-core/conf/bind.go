@@ -76,11 +76,11 @@ func bindValue(p property, tag string, v reflect.Value, opt bindOption) error {
 		return fmt.Errorf("%s 属性绑定的目标不能是指针", opt.Path)
 	}
 
-	if !validValueTag(tag) {
+	if !validTag(tag) {
 		return fmt.Errorf("%s 属性绑定的语法 %s 发生错误", opt.Path, tag)
 	}
 
-	key, def := parseValueTag(tag)
+	key, def := parseTag(tag)
 
 	// 最短属性名
 	if opt.Key == "" {
@@ -288,7 +288,7 @@ func init() {
 					if sv, err := cast.ToStringMapE(si); err == nil {
 						ev := reflect.New(elemType).Elem()
 						subKey := fmt.Sprintf("%s[%d]", key, i)
-						err = bindStruct(&properties{m: sv}, ev, bindOption{Key: subKey, Path: opt.Path})
+						err = bindStruct(&Properties{m: sv}, ev, bindOption{Key: subKey, Path: opt.Path})
 						if err != nil {
 							return err
 						}
@@ -373,7 +373,7 @@ func init() {
 				for k1, v1 := range temp {
 					ev := reflect.New(elemType).Elem()
 					subKey := fmt.Sprintf("%s.%s", key, k1)
-					err = bindStruct(&properties{m: v1}, ev, bindOption{Key: subKey, Path: opt.Path})
+					err = bindStruct(&Properties{m: v1}, ev, bindOption{Key: subKey, Path: opt.Path})
 					if err != nil {
 						return err
 					}

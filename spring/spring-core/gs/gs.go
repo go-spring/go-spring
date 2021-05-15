@@ -55,7 +55,7 @@ const (
 
 // Container 实现了功能完善的 IoC 容器。
 type Container struct {
-	p conf.Properties
+	p *conf.Properties
 
 	state refreshState
 

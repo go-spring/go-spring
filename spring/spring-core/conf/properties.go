@@ -35,47 +35,6 @@ const RootKey = "$"
 // SpringProfile 可以用它来设置 spring 的运行环境。
 const SpringProfile = "spring.profile"
 
-type getArg struct {
-	defaultValue  interface{} // 默认值
-	enableResolve bool        // 开启解析
-}
-
-type GetOption func(arg *getArg)
-
-// WithDefault 设置默认值。
-func WithDefault(v interface{}) GetOption {
-	return func(arg *getArg) {
-		arg.defaultValue = v
-	}
-}
-
-// DisableResolve 开启解析功能。
-func DisableResolve() GetOption {
-	return func(arg *getArg) {
-		arg.enableResolve = false
-	}
-}
-
-type bindArg struct {
-	tag string
-}
-
-type BindOption func(arg *bindArg)
-
-// Key 设置绑定的 key 。
-func Key(key string) BindOption {
-	return func(arg *bindArg) {
-		arg.tag = "${" + key + "}"
-	}
-}
-
-// Tag 设置绑定的 tag 。
-func Tag(tag string) BindOption {
-	return func(arg *bindArg) {
-		arg.tag = tag
-	}
-}
-
 // Properties 属性列表接口。所有的 key 都是小写，匹配的时候也都转成小写然后再匹配。
 //
 // 一般情况下 key 都是 a.b.c 这种形式，但是这种形式只能表达 map 嵌套的结构，而没
@@ -86,60 +45,19 @@ func Tag(tag string) BindOption {
 //
 // Load 和 Read 方法最终都是通过 Reader 接口读取属性列表，用户可以通过 Reader
 // 注册接口来自定义需要支持的文件格式。
-type Properties interface {
-
-	// Load 从文件读取属性列表。
-	Load(filename string) error
-
-	// Read 从 []byte 读取属性列表，ext 是文件扩展名，如 .toml、.yaml 等。
-	Read(b []byte, ext string) error
-
-	// Map 返回所有属性。
-	Map() map[string]interface{}
-
-	// Get 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。如果返回值是 map
-	// 或者 slice 类型的数据，会返回它们深拷贝后的副本，防止因为修改了返回值而对
-	// Properties 的数据造成修改。另外，Get 方法支持传入多个 key，然后返回找到的
-	// 第一个属性值，如果所有的 key 都没找到对应的属性值则返回 nil。
-	Get(key string, opts ...GetOption) interface{}
-
-	// Set 设置 key 对应的属性值，如果 key 存在会覆盖原值。Set 方法在保存属性的时
-	// 候会将 key 转为小写，如果属性值是 map 类型或者包含 map 类型的数据，那么也会
-	// 将这些 key 全部转为小写。另外，Set 方法保存的是 value 深拷贝后的副本，从而
-	// 保证 Properties 数据的安全。
-	Set(key string, value interface{})
-
-	// Bind 将 key 对应的属性值绑定到某个数据类型的实例上。i 必须是一个指针，只有这
-	// 样才能将修改传递出去。Bind 方法使用 tag 对结构体的字段进行属性绑定，tag 的语
-	// 法为 value:"${a:=b}"，其中 value 是表示属性绑定 tag 的名称，${} 表示引用
-	// 一个属性，a 表示属性名，:=b 表示属性的默认值。这里需要注意两点：
-	//
-	// 一是结构体类型的字段上不允许设置默认值，这个规则一方面是因为找不到合理的序列化
-	// 方式，有人会说可以用 json，那么肯定也会有人说用 xml，众口难调，另一方面是因为
-	// 结构体的默认值一般会比较长，而如果 tag 太长就会影响阅读体验，因此结构体类型的
-	// 字段上不允许设置默认值；
-	//
-	// 二是可以省略属性名而只有默认值，即 ${:=b}，原因是某些情况下属性名可能没想好或
-	// 者不太重要，也有人认为这是一种对 Golang 缺少默认值语法的补充，Bug is Feature。
-	//
-	// 另外，属性绑定语法还支持嵌套的属性引用，但是只能在默认值中使用，即 ${a:=${b}}。
-	Bind(i interface{}, opts ...BindOption) error
-}
-
-// properties Properties 的默认实现。
-type properties struct {
+type Properties struct {
 
 	// m 是一个(多维)嵌套的 map[string]interface{} 结构。
 	m map[string]interface{}
 }
 
 // New 返回一个空的属性列表。
-func New() Properties {
-	return &properties{m: make(map[string]interface{})}
+func New() *Properties {
+	return &Properties{m: make(map[string]interface{})}
 }
 
 // Map 返回从 map 集合创建的属性列表，保存的是 map 深拷贝后的值。
-func Map(m map[string]interface{}) Properties {
+func Map(m map[string]interface{}) *Properties {
 	p := New()
 	for k, v := range m {
 		p.Set(k, v)
@@ -148,7 +66,7 @@ func Map(m map[string]interface{}) Properties {
 }
 
 // Load 从文件加载属性列表。
-func Load(filename string) (Properties, error) {
+func Load(filename string) (*Properties, error) {
 	p := New()
 	if err := p.Load(filename); err != nil {
 		return nil, err
@@ -157,7 +75,7 @@ func Load(filename string) (Properties, error) {
 }
 
 // Read 从 []byte 读取属性列表，ext 是文件扩展名，如 .toml、.yaml 等。
-func Read(b []byte, configType string) (Properties, error) {
+func Read(b []byte, configType string) (*Properties, error) {
 	p := New()
 	if err := p.Read(b, configType); err != nil {
 		return nil, err
@@ -165,7 +83,8 @@ func Read(b []byte, configType string) (Properties, error) {
 	return p, nil
 }
 
-func (p *properties) Load(filename string) error {
+// Load 从文件读取属性列表。
+func (p *Properties) Load(filename string) error {
 	b, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return err
@@ -174,12 +93,18 @@ func (p *properties) Load(filename string) error {
 	return p.Read(b, strings.TrimPrefix(ext, "."))
 }
 
-func (p *properties) Read(b []byte, configType string) error {
+// Read 从 []byte 读取属性列表，ext 是文件扩展名，如 .toml、.yaml 等。
+func (p *Properties) Read(b []byte, configType string) error {
 	configType = strings.ToLower(configType)
 	if r, ok := readers[configType]; ok {
 		return r.Read(p, b)
 	}
 	return fmt.Errorf("unsupported file type %s", configType)
+}
+
+// Map 返回所有属性。
+func (p *Properties) Map() map[string]interface{} {
+	return p.m
 }
 
 func splitPath(path string) (key string, index int) {
@@ -205,7 +130,7 @@ func splitPath(path string) (key string, index int) {
 	return path, -1
 }
 
-func (p *properties) find(path []string) interface{} {
+func (p *Properties) find(path []string) interface{} {
 	i := 0
 	ok := false
 	v := interface{}(p.m)
@@ -241,31 +166,32 @@ func (p *properties) find(path []string) interface{} {
 	return v
 }
 
-func (p *properties) create(path []string) map[string]interface{} {
-	m := p.m
-	for _, k := range path {
-		m2, ok := m[k]
-		if !ok {
-			m3 := make(map[string]interface{})
-			m[k] = m3
-			m = m3
-			continue
-		}
-		m3, ok := m2.(map[string]interface{})
-		if !ok {
-			m3 = make(map[string]interface{})
-			m[k] = m3
-		}
-		m = m3
+type getArg struct {
+	defaultValue  interface{} // 默认值
+	enableResolve bool        // 开启解析
+}
+
+type GetOption func(arg *getArg)
+
+// WithDefault 设置默认值。
+func WithDefault(v interface{}) GetOption {
+	return func(arg *getArg) {
+		arg.defaultValue = v
 	}
-	return m
 }
 
-func (p *properties) Map() map[string]interface{} {
-	return p.m
+// DisableResolve 开启解析功能。
+func DisableResolve() GetOption {
+	return func(arg *getArg) {
+		arg.enableResolve = false
+	}
 }
 
-func (p *properties) Get(key string, opts ...GetOption) interface{} {
+// Get 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。如果返回值是 map
+// 或者 slice 类型的数据，会返回它们深拷贝后的副本，防止因为修改了返回值而对
+// Properties 的数据造成修改。另外，Get 方法支持传入多个 key，然后返回找到的
+// 第一个属性值，如果所有的 key 都没找到对应的属性值则返回 nil。
+func (p *Properties) Get(key string, opts ...GetOption) interface{} {
 
 	if key == RootKey {
 		return p.m
@@ -286,14 +212,27 @@ func (p *properties) Get(key string, opts ...GetOption) interface{} {
 	if !arg.enableResolve {
 		return val
 	}
-	return p.resolve(val)
+	return p.Resolve(val)
 }
 
-func (p *properties) Set(key string, value interface{}) {
-	key = strings.ToLower(key)
-	path := strings.Split(key, ".")
-	nodeMap := p.create(path[0 : len(path)-1])
-	nodeMap[path[len(path)-1]] = toLowerValue(value)
+func (p *Properties) create(path []string) map[string]interface{} {
+	m := p.m
+	for _, k := range path {
+		m2, ok := m[k]
+		if !ok {
+			m3 := make(map[string]interface{})
+			m[k] = m3
+			m = m3
+			continue
+		}
+		m3, ok := m2.(map[string]interface{})
+		if !ok {
+			m3 = make(map[string]interface{})
+			m[k] = m3
+		}
+		m = m3
+	}
+	return m
 }
 
 // toLowerValue 如果 value 包含 map 类型，则将其 key 转为小写。
@@ -324,7 +263,52 @@ func toLowerValue(value interface{}) interface{} {
 	return value
 }
 
-func (p *properties) Bind(i interface{}, opts ...BindOption) error {
+// Set 设置 key 对应的属性值，如果 key 存在会覆盖原值。Set 方法在保存属性的时
+// 候会将 key 转为小写，如果属性值是 map 类型或者包含 map 类型的数据，那么也会
+// 将这些 key 全部转为小写。另外，Set 方法保存的是 value 深拷贝后的副本，从而
+// 保证 Properties 数据的安全。
+func (p *Properties) Set(key string, value interface{}) {
+	key = strings.ToLower(key)
+	path := strings.Split(key, ".")
+	nodeMap := p.create(path[0 : len(path)-1])
+	nodeMap[path[len(path)-1]] = toLowerValue(value)
+}
+
+type bindArg struct {
+	tag string
+}
+
+type BindOption func(arg *bindArg)
+
+// Key 设置绑定的 key 。
+func Key(key string) BindOption {
+	return func(arg *bindArg) {
+		arg.tag = "${" + key + "}"
+	}
+}
+
+// Tag 设置绑定的 tag 。
+func Tag(tag string) BindOption {
+	return func(arg *bindArg) {
+		arg.tag = tag
+	}
+}
+
+// Bind 将 key 对应的属性值绑定到某个数据类型的实例上。i 必须是一个指针，只有这
+// 样才能将修改传递出去。Bind 方法使用 tag 对结构体的字段进行属性绑定，tag 的语
+// 法为 value:"${a:=b}"，其中 value 是表示属性绑定 tag 的名称，${} 表示引用
+// 一个属性，a 表示属性名，:=b 表示属性的默认值。这里需要注意两点：
+//
+// 一是结构体类型的字段上不允许设置默认值，这个规则一方面是因为找不到合理的序列化
+// 方式，有人会说可以用 json，那么肯定也会有人说用 xml，众口难调，另一方面是因为
+// 结构体的默认值一般会比较长，而如果 tag 太长就会影响阅读体验，因此结构体类型的
+// 字段上不允许设置默认值；
+//
+// 二是可以省略属性名而只有默认值，即 ${:=b}，原因是某些情况下属性名可能没想好或
+// 者不太重要，也有人认为这是一种对 Golang 缺少默认值语法的补充，Bug is Feature。
+//
+// 另外，属性绑定语法还支持嵌套的属性引用，但是只能在默认值中使用，即 ${a:=${b}}。
+func (p *Properties) Bind(i interface{}, opts ...BindOption) error {
 
 	var v reflect.Value
 
@@ -352,13 +336,13 @@ func (p *properties) Bind(i interface{}, opts ...BindOption) error {
 	return bindValue(p, arg.tag, v, bindOption{Path: s})
 }
 
-// validValueTag 是否为 ${key:=def} 格式的字符串。
-func validValueTag(tag string) bool {
+// validTag 是否为 ${key:=def} 格式的字符串。
+func validTag(tag string) bool {
 	return strings.HasPrefix(tag, "${") && strings.HasSuffix(tag, "}")
 }
 
-// parseValueTag 解析 ${key:=def} 字符串，返回 key 和 def 的值。
-func parseValueTag(tag string) (key string, def interface{}) {
+// parseTag 解析 ${key:=def} 字符串，返回 key 和 def 的值。
+func parseTag(tag string) (key string, def interface{}) {
 	ss := strings.SplitN(tag[2:len(tag)-1], ":=", 2)
 	if len(ss) > 1 {
 		def = ss[1]
@@ -367,18 +351,18 @@ func parseValueTag(tag string) (key string, def interface{}) {
 	return
 }
 
-// resolve 解析 ${key:=def} 字符串，返回 key 对应的属性值，如果没有找到则返回
+// Resolve 解析 ${key:=def} 字符串，返回 key 对应的属性值，如果没有找到则返回
 // def 值，如果 def 存在引用关系则递归解析直到获取最终的属性值。
-func (p *properties) resolve(val interface{}) interface{} {
+func (p *Properties) Resolve(value interface{}) interface{} {
 
-	str, ok := val.(string)
-	if !ok || !validValueTag(str) {
-		return val
+	str, ok := value.(string)
+	if !ok || !validTag(str) {
+		return value
 	}
 
-	key, def := parseValueTag(str)
+	key, def := parseTag(str)
 	if v := p.Get(key); v != nil {
 		return v
 	}
-	return p.resolve(def)
+	return p.Resolve(def)
 }

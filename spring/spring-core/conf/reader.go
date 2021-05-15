@@ -30,11 +30,11 @@ func init() {
 	NewReader(Viper("toml"), "toml")
 }
 
-type ReaderFunc func(p Properties, b []byte) error
+type ReaderFunc func(p *Properties, b []byte) error
 
 // reader 属性读取器接口
 type reader interface {
-	Read(p Properties, b []byte) error
+	Read(p *Properties, b []byte) error
 }
 
 var readers = make(map[string]reader)
@@ -49,13 +49,13 @@ func NewReader(f ReaderFunc, configTypes ...string) {
 
 type funcReader ReaderFunc
 
-func (r funcReader) Read(p Properties, b []byte) error {
+func (r funcReader) Read(p *Properties, b []byte) error {
 	return r(p, b)
 }
 
 // Java 读取 java properties 属性文件。
 func Java() ReaderFunc {
-	return func(p Properties, b []byte) error {
+	return func(p *Properties, b []byte) error {
 		m, err := java.ReadProperties(b)
 		if err != nil {
 			return err
@@ -69,7 +69,7 @@ func Java() ReaderFunc {
 
 // Viper 读取 fileType 类型的属性文件。
 func Viper(fileType string) ReaderFunc {
-	return func(p Properties, b []byte) error {
+	return func(p *Properties, b []byte) error {
 
 		v := viper.New()
 		v.SetConfigType(fileType)

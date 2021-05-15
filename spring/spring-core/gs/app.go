@@ -194,7 +194,7 @@ func printBanner(banner string) {
 }
 
 // loadCmdArgs 加载命令行参数，形如 -name value 的参数才有效。
-func (app *Application) loadCmdArgs(p conf.Properties) {
+func (app *Application) loadCmdArgs(p *conf.Properties) {
 	log.Debugf("load cmd args")
 	for i := 0; i < len(os.Args); i++ { // 以短线定义的参数才有效
 		if arg := os.Args[i]; strings.HasPrefix(arg, "-") {
@@ -210,7 +210,7 @@ func (app *Application) loadCmdArgs(p conf.Properties) {
 }
 
 // loadSystemEnv 加载系统环境变量，用户可以自定义有效环境变量的正则匹配
-func (app *Application) loadSystemEnv(p conf.Properties) {
+func (app *Application) loadSystemEnv(p *conf.Properties) {
 
 	var rex []*regexp.Regexp
 	for _, v := range app.expectSysProperties {
@@ -237,7 +237,7 @@ func (app *Application) loadSystemEnv(p conf.Properties) {
 }
 
 // loadConfigFile 加载指定环境的配置文件
-func (app *Application) loadConfigFile(p conf.Properties, profile ...string) {
+func (app *Application) loadConfigFile(p *conf.Properties, profile ...string) {
 
 	fileName := "application"
 	if len(profile) > 0 && profile[0] != "" {
@@ -286,7 +286,7 @@ func (app *Application) prepare() {
 	profileConfig := conf.New()
 	defaultConfig := conf.New()
 
-	p := []conf.Properties{
+	p := []*conf.Properties{
 		app.p,
 		cmdConfig,
 		envConfig,
@@ -298,7 +298,7 @@ func (app *Application) prepare() {
 	app.loadSystemEnv(envConfig)
 	app.loadConfigFile(defaultConfig)
 
-	profile := func([]conf.Properties) string {
+	profile := func([]*conf.Properties) string {
 		keys := []string{conf.SpringProfile, SPRING_PROFILE}
 		for _, c := range p {
 			for _, k := range keys {
