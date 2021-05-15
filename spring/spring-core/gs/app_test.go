@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/go-spring/spring-core/assert"
+	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/gs"
 )
 
@@ -41,16 +42,16 @@ func TestConfig(t *testing.T) {
 		os.Clearenv()
 		app := startApplication()
 		defer app.ShutDown()
-		assert.Equal(t, app.GetConfigLocation(), []string{gs.DefaultConfigLocation})
-		assert.Equal(t, app.Profile(), "")
+		assert.Equal(t, app.GetConfigLocation(), []string{"config/"})
+		assert.Equal(t, app.Prop(conf.SpringProfile), nil)
 	})
 
 	t.Run("config via env", func(t *testing.T) {
 		os.Clearenv()
-		_ = os.Setenv(gs.SpringProfile, "dev")
+		_ = os.Setenv(conf.SpringProfile, "dev")
 		app := startApplication("testdata/config/")
 		defer app.ShutDown()
-		assert.Equal(t, app.Profile(), "dev")
+		assert.Equal(t, app.Prop(conf.SpringProfile), "dev")
 	})
 
 	t.Run("config via env 2", func(t *testing.T) {
@@ -58,21 +59,21 @@ func TestConfig(t *testing.T) {
 		_ = os.Setenv(gs.SPRING_PROFILE, "dev")
 		app := startApplication("testdata/config/")
 		defer app.ShutDown()
-		assert.Equal(t, app.Profile(), "dev")
+		assert.Equal(t, app.Prop(conf.SpringProfile), "dev")
 	})
 
 	t.Run("profile via config", func(t *testing.T) {
 		os.Clearenv()
 		app := startApplication("testdata/config/")
 		defer app.ShutDown()
-		assert.Equal(t, app.Profile(), "test")
+		assert.Equal(t, app.Prop(conf.SpringProfile), "test")
 	})
 
 	t.Run("profile via env&config", func(t *testing.T) {
 		os.Clearenv()
 		app := startApplication("testdata/config/")
 		defer app.ShutDown()
-		assert.Equal(t, app.Profile(), "test")
+		assert.Equal(t, app.Prop(conf.SpringProfile), "test")
 	})
 
 	t.Run("profile via env&config 2", func(t *testing.T) {
@@ -80,13 +81,14 @@ func TestConfig(t *testing.T) {
 		_ = os.Setenv(gs.SPRING_PROFILE, "dev")
 		app := startApplication("testdata/config/")
 		defer app.ShutDown()
-		assert.Equal(t, app.Profile(), "dev")
+		assert.Equal(t, app.Prop(conf.SpringProfile), "dev")
 	})
 
 	t.Run("default expect system properties", func(t *testing.T) {
 		app := startApplication("testdata/config/")
 		defer app.ShutDown()
-		for k, v := range app.Properties() {
+		p := app.Prop(conf.RootKey)
+		for k, v := range p.(map[string]interface{}) {
 			fmt.Println(k, v)
 		}
 	})
@@ -95,7 +97,8 @@ func TestConfig(t *testing.T) {
 		// ExpectSysProperties("^$") // 不加载任何系统环境变量
 		app := startApplication("testdata/config/")
 		defer app.ShutDown()
-		for k, v := range app.Properties() {
+		p := app.Prop(conf.RootKey)
+		for k, v := range p.(map[string]interface{}) {
 			fmt.Println(k, v)
 		}
 	})

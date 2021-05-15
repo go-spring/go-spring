@@ -17,7 +17,7 @@
 package gs
 
 import (
-	"flag"
+	"context"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -27,6 +27,8 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/go-spring/spring-core/arg"
+	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
@@ -53,33 +55,35 @@ const (
 	BannerModeConsole = 1
 )
 
-const (
-	DefaultConfigLocation = "config/" // 默认的配置文件路径
-)
+const SPRING_PROFILE = "SPRING_PROFILE"
 
-const (
-	SpringProfile  = "spring.profile" // 运行环境
-	SPRING_PROFILE = "SPRING_PROFILE"
-)
-
-var (
-	_ = flag.String(SpringProfile, "", "设置运行环境")
-)
+// ApplicationContext 应用上下文接口。
+type ApplicationContext interface {
+	Context() context.Context
+	Prop(key string, opts ...conf.GetOption) interface{}
+	Get(i interface{}, opts ...GetBeanOption) error
+	Find(selector bean.Selector) ([]bean.Definition, error)
+	Collect(i interface{}, selectors ...bean.Selector) error
+	Bind(i interface{}, opts ...conf.BindOption) error
+	Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error)
+	Go(fn interface{}, args ...arg.Arg)
+	Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, error)
+}
 
 // CommandLineRunner 命令行启动器接口
 type CommandLineRunner interface {
-	Run(ctx Context)
+	Run(ctx ApplicationContext)
 }
 
 // ApplicationEvent 应用运行过程中的事件
 type ApplicationEvent interface {
-	OnStartApplication(ctx Context) // 应用启动的事件
-	OnStopApplication(ctx Context)  // 应用停止的事件
+	OnStartApplication(ctx ApplicationContext) // 应用启动的事件
+	OnStopApplication(ctx ApplicationContext)  // 应用停止的事件
 }
 
 // Application 应用
 type Application struct {
-	ApplicationContext // 应用上下文
+	*container // 应用上下文
 
 	cfgLocation         []string // 配置文件目录
 	banner              string   // Banner 的内容
@@ -95,8 +99,8 @@ type Application struct {
 // NewApp application 的构造函数
 func NewApp() *Application {
 	return &Application{
-		ApplicationContext:  New(),
-		cfgLocation:         append([]string{}, DefaultConfigLocation),
+		container:           New(),
+		cfgLocation:         append([]string{}, "config/"),
 		bannerMode:          BannerModeConsole,
 		expectSysProperties: []string{`.*`},
 		exitChan:            make(chan struct{}),
@@ -127,11 +131,11 @@ func (app *Application) start(cfgLocation ...string) {
 	// 准备上下文环境
 	app.prepare()
 
-	// 注册 Context 接口
-	app.RegisterBean(app).Export((*Context)(nil))
+	// 注册 ApplicationContext 接口
+	app.Register(app).Export((*ApplicationContext)(nil))
 
 	// 依赖注入、属性绑定、初始化
-	app.ApplicationContext.Refresh()
+	app.container.Refresh()
 
 	// 执行命令行启动器
 	for _, r := range app.Runners {
@@ -251,12 +255,12 @@ func (app *Application) loadSystemEnv(p conf.Properties) {
 	}
 }
 
-// loadProfileConfig 加载指定环境的配置文件
-func (app *Application) loadProfileConfig(p conf.Properties, profile string) {
+// loadConfigFile 加载指定环境的配置文件
+func (app *Application) loadConfigFile(p conf.Properties, profile ...string) {
 
 	fileName := "application"
-	if profile != "" {
-		fileName += "-" + profile
+	if len(profile) > 0 && profile[0] != "" {
+		fileName += "-" + profile[0]
 	}
 
 	var (
@@ -296,53 +300,39 @@ func (app *Application) prepare() {
 	// 5.application.conf
 	// 6.内部默认配置
 
-	apiConfig := conf.New()
 	cmdConfig := conf.New()
 	envConfig := conf.New()
 	profileConfig := conf.New()
 	defaultConfig := conf.New()
 
 	p := []conf.Properties{
-		apiConfig,
+		app.p,
 		cmdConfig,
 		envConfig,
 		profileConfig,
 		defaultConfig,
 	}
 
-	// 1. 保存通过代码设置的属性
-	for k, v := range app.Properties() {
-		apiConfig.Set(k, v)
-	}
-
-	// 2. 保存从命令行得到的属性
 	app.loadCmdArgs(cmdConfig)
-
-	// 3. 保存从环境变量得到的属性
 	app.loadSystemEnv(envConfig)
+	app.loadConfigFile(defaultConfig)
 
-	// 4. 加载默认的配置文件
-	app.loadProfileConfig(defaultConfig, "")
-
-	// 5. 加载 profile 对应的配置文件
-	profile := app.Profile()
-	if profile == "" {
-		keys := []string{SpringProfile, SPRING_PROFILE}
-		profile = func() string {
-			for _, c := range p {
-				for _, k := range keys {
-					v := c.Get(k, conf.DisableResolve())
-					if v != nil {
-						return cast.ToString(v)
-					}
+	profile := func([]conf.Properties) string {
+		keys := []string{conf.SpringProfile, SPRING_PROFILE}
+		for _, c := range p {
+			for _, k := range keys {
+				v := c.Get(k, conf.DisableResolve())
+				if v != nil {
+					return cast.ToString(v)
 				}
 			}
-			return ""
-		}()
-	}
+		}
+		return ""
+	}(p)
+
 	if profile != "" {
-		app.SetProfile(profile)
-		app.loadProfileConfig(profileConfig, profile)
+		app.SetProperty(conf.SpringProfile, profile)
+		app.loadConfigFile(profileConfig, profile)
 	}
 
 	m := make(map[string]interface{})
@@ -386,7 +376,7 @@ func (app *Application) close() {
 		}
 	})
 
-	app.ApplicationContext.Close()
+	app.container.Close()
 }
 
 func (app *Application) Run(cfgLocation ...string) {

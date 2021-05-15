@@ -55,3 +55,9 @@ Following information can help us to resolve the issue faster.
 ## 注释
 
 * 不要在注释上浪费太多文字，不要详细阐述你的思考，写清楚结论即可。
+* 具有返回值的函数注释应该以 return 开头。
+
+## 优秀经验
+
+* 不用尽早抽象接口。
+* 在使用的地方定义接口，而不是实现的地方。

@@ -32,14 +32,11 @@ import (
 // Context IoC 容器对 cond 模块提供的最小功能集。
 type Context interface {
 
-	// Profile 返回运行环境。
-	Profile() string
+	// Prop 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。
+	Prop(key string, opts ...conf.GetOption) interface{}
 
-	// GetProperty 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。
-	GetProperty(key string, opts ...conf.GetOption) interface{}
-
-	// FindBean 返回符合条件的 Bean 集合，不保证返回的 Bean 已经完成注入和绑定过程。
-	FindBean(selector bean.Selector) ([]bean.Definition, error)
+	// Find 返回符合条件的 Bean 集合，不保证返回的 Bean 已经完成注入和绑定过程。
+	Find(selector bean.Selector) ([]bean.Definition, error)
 }
 
 // Condition 定义条件接口，条件成立 Matches 函数返回 true，否则返回 false。
@@ -72,14 +69,14 @@ func (c *not) Matches(ctx Context) bool {
 type onProperty struct{ name string }
 
 func (c *onProperty) Matches(ctx Context) bool {
-	return ctx.GetProperty(c.name) != nil
+	return ctx.Prop(c.name) != nil
 }
 
 // onMissingProperty 基于属性值不存在的 Condition 实现。
 type onMissingProperty struct{ name string }
 
 func (c *onMissingProperty) Matches(ctx Context) bool {
-	return ctx.GetProperty(c.name) == nil
+	return ctx.Prop(c.name) == nil
 }
 
 // onPropertyValue 基于属性值匹配的 Condition 实现。
@@ -101,7 +98,7 @@ func MatchIfMissing(matchIfMissing bool) PropertyValueOption {
 func (c *onPropertyValue) Matches(ctx Context) bool {
 	// 参考 /usr/local/go/src/go/types/eval_test.go 示例
 
-	val := ctx.GetProperty(c.name)
+	val := ctx.Prop(c.name)
 	if val == nil { // 不存在返回默认值
 		return c.matchIfMissing
 	}
@@ -129,7 +126,7 @@ func (c *onPropertyValue) Matches(ctx Context) bool {
 type onBean struct{ selector bean.Selector }
 
 func (c *onBean) Matches(ctx Context) bool {
-	b, _ := ctx.FindBean(c.selector)
+	b, _ := ctx.Find(c.selector)
 	return len(b) == 1
 }
 
@@ -137,7 +134,7 @@ func (c *onBean) Matches(ctx Context) bool {
 type onMissingBean struct{ selector bean.Selector }
 
 func (c *onMissingBean) Matches(ctx Context) bool {
-	b, _ := ctx.FindBean(c.selector)
+	b, _ := ctx.Find(c.selector)
 	return len(b) == 0
 }
 
@@ -146,13 +143,6 @@ type onExpression struct{ expression string }
 
 func (c *onExpression) Matches(ctx Context) bool {
 	panic(util.UnimplementedMethod)
-}
-
-// profileCondition 基于运行环境匹配的 Condition 实现。
-type onProfile struct{ profile string }
-
-func (c *onProfile) Matches(ctx Context) bool {
-	return c.profile == "" || strings.EqualFold(c.profile, ctx.Profile())
 }
 
 // Operator 条件操作符，包含 Or、And、None 三种。
@@ -386,5 +376,5 @@ func OnProfile(profile string) *conditional {
 
 // OnProfile 添加一个 onProfile 条件。
 func (c *conditional) OnProfile(profile string) *conditional {
-	return c.On(&onProfile{profile: profile})
+	return c.On(&onPropertyValue{name: conf.SpringProfile, havingValue: profile})
 }

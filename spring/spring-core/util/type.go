@@ -28,7 +28,10 @@ import (
 // 的类型决定的，如果元素的类型是 bean 类型则该变量的类型是 bean 类型，如果元素的类型
 // 是 value 类型则该变量的类型是 value 类型。因此，interface、chan、func、ptr 是
 // bean 类型，string、bool、int、uint、float、complex、struct 是 value 类型，
-// 而 map、slice、array 则视其元素的类型而定。
+// 而 map、slice、array 则视其元素的类型而定。当然这样定义还不是很精确，比如 *int、
+// *struct 应当视为 bean 类型，但 **int、**struct 是 bean 类型吗？*chan、*func、
+// map[string]map[string]*struct、[][]*struct 呢？理论上，这些都可以认为是 bean
+// 类型，但一般不应该出现后面那些既复杂又没有意义的写法，否则可能出现某种未定义的行为。
 func IsBeanType(t reflect.Type) bool {
 	switch t.Kind() {
 	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Ptr:
@@ -40,7 +43,8 @@ func IsBeanType(t reflect.Type) bool {
 	}
 }
 
-// IsValueType 返回是否是 value 类型。
+// IsValueType 返回是否是 value 类型。布尔、整数、浮点数、复数、字符串、结构体都是
+// value 类型，当 map、slice、array 的元素是 value 类型时它们也视为 value 类型。
 func IsValueType(t reflect.Type) bool {
 	switch t.Kind() {
 	case reflect.Bool,

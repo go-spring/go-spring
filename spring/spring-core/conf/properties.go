@@ -29,28 +29,30 @@ import (
 	"github.com/spf13/cast"
 )
 
-const (
-	RootKey = "$"
-)
+// RootKey 可以用它来获取完整的属性表。
+const RootKey = "$"
+
+// SpringProfile 可以用它来设置 spring 的运行环境。
+const SpringProfile = "spring.profile"
 
 type getArg struct {
-	d interface{} // 默认值
-	r bool        // 开启解析
+	defaultValue  interface{} // 默认值
+	enableResolve bool        // 开启解析
 }
 
 type GetOption func(arg *getArg)
 
 // WithDefault 设置默认值。
-func WithDefault(d interface{}) GetOption {
+func WithDefault(v interface{}) GetOption {
 	return func(arg *getArg) {
-		arg.d = d
+		arg.defaultValue = v
 	}
 }
 
 // DisableResolve 开启解析功能。
 func DisableResolve() GetOption {
 	return func(arg *getArg) {
-		arg.r = false
+		arg.enableResolve = false
 	}
 }
 
@@ -272,16 +274,16 @@ func (p *properties) Get(key string, opts ...GetOption) interface{} {
 	key = strings.ToLower(key)
 	val := p.find(strings.Split(key, "."))
 
-	arg := getArg{r: true}
+	arg := getArg{enableResolve: true}
 	for _, opt := range opts {
 		opt(&arg)
 	}
 
 	if val == nil {
-		val = arg.d
+		val = arg.defaultValue
 	}
 
-	if !arg.r {
+	if !arg.enableResolve {
 		return val
 	}
 	return p.resolve(val)
@@ -348,11 +350,6 @@ func (p *properties) Bind(i interface{}, opts ...BindOption) error {
 	}
 
 	return bindValue(p, arg.tag, v, bindOption{Path: s})
-}
-
-// BindMap 将 map 作为属性源对 i 进行属性绑定。
-func BindMap(m map[string]interface{}, i interface{}) error {
-	return Map(m).Bind(i, Key(RootKey))
 }
 
 // validValueTag 是否为 ${key:=def} 格式的字符串。

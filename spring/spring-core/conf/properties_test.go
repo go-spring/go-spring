@@ -844,7 +844,7 @@ func TestBindMap(t *testing.T) {
 		B2 string `value:"${b2}"`
 		B3 string `value:"${b3}"`
 	}
-	err := conf.BindMap(m, &r)
+	err := conf.Map(m).Bind(&r, conf.Key(conf.RootKey))
 	assert.Nil(t, err)
 	assert.Equal(t, r["a"].B1, "b1")
 }

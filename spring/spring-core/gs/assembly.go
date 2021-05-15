@@ -58,13 +58,13 @@ func (s wiringStack) path() (path string) {
 
 // beanAssembly 装配工作台。
 type beanAssembly struct {
-	c            *applicationContext
+	c            *container
 	stack        wiringStack
 	destroyers   *list.List // 具有销毁函数的 bean 的列表。
 	destroyerMap map[string]*destroyer
 }
 
-func toAssembly(c *applicationContext) *beanAssembly {
+func toAssembly(c *container) *beanAssembly {
 	return &beanAssembly{
 		c:            c,
 		stack:        make([]*BeanDefinition, 0),
@@ -119,7 +119,7 @@ func (assembly *beanAssembly) getBean(tag singletonTag, v reflect.Value) error {
 
 	foundBeans := make([]*BeanDefinition, 0)
 
-	cache := assembly.c.cacheByType[t]
+	cache := assembly.c.beansByType[t]
 	for i := 0; i < len(cache); i++ {
 		b := cache[i]
 		if b.Match(tag.typeName, tag.beanName) {
@@ -129,7 +129,7 @@ func (assembly *beanAssembly) getBean(tag singletonTag, v reflect.Value) error {
 
 	// 指定 bean 名称时通过名称获取，防止未通过 Export 方法导出接口。
 	if t.Kind() == reflect.Interface && tag.beanName != "" {
-		cache = assembly.c.cacheByName[tag.beanName]
+		cache = assembly.c.beansByName[tag.beanName]
 		for i := 0; i < len(cache); i++ {
 			b := cache[i]
 			if b.Type().AssignableTo(t) && b.Match(tag.typeName, tag.beanName) {
@@ -243,7 +243,7 @@ func (assembly *beanAssembly) autoCollectBeans(t reflect.Type) (reflect.Value, e
 	result := reflect.MakeSlice(t, 0, 0)
 
 	// 查找精确匹配的数组类型。
-	cache := assembly.c.cacheByType[t]
+	cache := assembly.c.beansByType[t]
 	for i := 0; i < len(cache); i++ {
 		b := cache[i]
 		if err := assembly.wireBean(b); err != nil {
@@ -253,7 +253,7 @@ func (assembly *beanAssembly) autoCollectBeans(t reflect.Type) (reflect.Value, e
 	}
 
 	// 查找精确匹配的单例类型。
-	cache = assembly.c.cacheByType[t.Elem()]
+	cache = assembly.c.beansByType[t.Elem()]
 	for i := 0; i < len(cache); i++ {
 		b := cache[i]
 		if err := assembly.wireBean(b); err != nil {
@@ -310,7 +310,7 @@ func (assembly *beanAssembly) collectAndSortBeans(tag collectionTag,
 	beans := make([]*BeanDefinition, 0)
 
 	// 只收集数组元素对应的 bean，因为数组 bean 无法进行排序。
-	cache := assembly.c.cacheByType[et]
+	cache := assembly.c.beansByType[et]
 	for i := 0; i < len(cache); i++ {
 		beans = append(beans, cache[i])
 	}
@@ -411,7 +411,7 @@ func (assembly *beanAssembly) wireBean(b *BeanDefinition) error {
 
 	// 对当前 bean 的间接依赖项进行注入。
 	for _, s := range b.dependsOn {
-		d, err := assembly.c.FindBean(s)
+		d, err := assembly.c.Find(s)
 		if err != nil {
 			return err
 		}
