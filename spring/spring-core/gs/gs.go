@@ -33,6 +33,18 @@ import (
 	"github.com/go-spring/spring-core/util"
 )
 
+type Context interface {
+	Context() context.Context
+	Prop(key string, opts ...conf.GetOption) interface{}
+	Get(i interface{}, opts ...GetBeanOption) error
+	Find(selector bean.Selector) ([]bean.Definition, error)
+	Collect(i interface{}, selectors ...bean.Selector) error
+	Bind(i interface{}, opts ...conf.BindOption) error
+	Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error)
+	Go(fn interface{}, args ...arg.Arg)
+	Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, error)
+}
+
 type refreshState int
 
 const (
@@ -41,8 +53,8 @@ const (
 	Refreshed   = refreshState(2) // 已刷新
 )
 
-// container 实现了功能完善的 IoC 容器。
-type container struct {
+// Container 实现了功能完善的 IoC 容器。
+type Container struct {
 	p conf.Properties
 
 	state refreshState
@@ -63,7 +75,7 @@ type container struct {
 }
 
 // New 返回创建的 IoC 容器实例。
-func New(filename ...string) *container {
+func New(filename ...string) *Container {
 
 	p := conf.New()
 	for _, s := range filename {
@@ -73,7 +85,7 @@ func New(filename ...string) *container {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	return &container{
+	c := &Container{
 		p:             p,
 		ctx:           ctx,
 		cancel:        cancel,
@@ -83,49 +95,52 @@ func New(filename ...string) *container {
 		configerList:  list.New(),
 		destroyerList: list.New(),
 	}
+
+	c.Object(c).Export((*Context)(nil))
+	return c
 }
 
 // Context 返回上下文接口
-func (c *container) Context() context.Context {
+func (c *Container) Context() context.Context {
 	return c.ctx
 }
 
 // Bind 绑定结构体属性。
-func (c *container) Bind(i interface{}, opts ...conf.BindOption) error {
+func (c *Container) Bind(i interface{}, opts ...conf.BindOption) error {
 	return c.p.Bind(i, opts...)
 }
 
 // Prop 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。
-func (c *container) Prop(key string, opts ...conf.GetOption) interface{} {
+func (c *Container) Prop(key string, opts ...conf.GetOption) interface{} {
 	return c.p.Get(key, opts...)
 }
 
-// SetProperty 设置 key 对应的属性值。
-func (c *container) SetProperty(key string, value interface{}) {
+// Property 设置 key 对应的属性值。
+func (c *Container) Property(key string, value interface{}) {
 	c.p.Set(key, value)
 }
 
 // callAfterRefreshing 有些方法必须在 Refresh 开始后才能调用，比如 GetBean、Wire 等。
-func (c *container) callAfterRefreshing() {
+func (c *Container) callAfterRefreshing() {
 	if c.state == Unrefreshed {
 		panic(errors.New("should call after Refreshing"))
 	}
 }
 
-// callBeforeRefreshing 有些方法在 Refresh 开始后不能再调用，比如 Register、Config 等。
-func (c *container) callBeforeRefreshing() {
+// callBeforeRefreshing 有些方法在 Refresh 开始后不能再调用，比如 Object、Config 等。
+func (c *Container) callBeforeRefreshing() {
 	if c.state != Unrefreshed {
 		panic(errors.New("should call before Refreshing"))
 	}
 }
 
-// Register 注册对象形式的 Bean。
-func (c *container) Register(i interface{}) *BeanDefinition {
+// Object 注册对象形式的 Bean。
+func (c *Container) Object(i interface{}) *BeanDefinition {
 	return c.Provide(reflect.ValueOf(i))
 }
 
 // Provide 普通函数注册需要使用 reflect.ValueOf(fn) 这种方式避免和构造函数发生冲突。
-func (c *container) Provide(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
+func (c *Container) Provide(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 	c.callBeforeRefreshing()
 	b := NewBean(objOrCtor, ctorArgs...)
 	c.beans = append(c.beans, b)
@@ -133,7 +148,7 @@ func (c *container) Provide(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDef
 }
 
 // Config 注册一个配置函数
-func (c *container) Config(fn interface{}, args ...arg.Arg) *Configer {
+func (c *Container) Config(fn interface{}, args ...arg.Arg) *Configer {
 	c.callBeforeRefreshing()
 
 	t := reflect.TypeOf(fn)
@@ -164,7 +179,7 @@ func Use(s bean.Selector) GetBeanOption {
 
 // Get 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 // 它和 FindBean 的区别是它在调用后能够保证返回的 Bean 已经完成了注入和绑定过程。
-func (c *container) Get(i interface{}, opts ...GetBeanOption) error {
+func (c *Container) Get(i interface{}, opts ...GetBeanOption) error {
 
 	if i == nil {
 		return errors.New("i can't be nil")
@@ -188,7 +203,7 @@ func (c *container) Get(i interface{}, opts ...GetBeanOption) error {
 }
 
 // Find 返回符合条件的 Bean 集合，不保证返回的 Bean 已经完成注入和绑定过程。
-func (c *container) Find(selector bean.Selector) ([]bean.Definition, error) {
+func (c *Container) Find(selector bean.Selector) ([]bean.Definition, error) {
 	c.callAfterRefreshing()
 
 	finder := func(fn func(*BeanDefinition) bool) (result []bean.Definition, err error) {
@@ -240,7 +255,7 @@ func (c *container) Find(selector bean.Selector) ([]bean.Definition, error) {
 // 不为空，这时候只会收集单例 Bean，而且要求这些单例 Bean 不仅需要满足收集条件，而且
 // 必须满足 selector 条件。另外，自动模式下不对收集结果进行排序，指定模式下根据
 // selectors 列表的顺序对收集结果进行排序。
-func (c *container) Collect(i interface{}, selectors ...bean.Selector) error {
+func (c *Container) Collect(i interface{}, selectors ...bean.Selector) error {
 	c.callAfterRefreshing()
 
 	v := reflect.ValueOf(i)
@@ -257,7 +272,7 @@ func (c *container) Collect(i interface{}, selectors ...bean.Selector) error {
 }
 
 // Wire 对对象或者构造函数的结果进行依赖注入和属性绑定，返回处理后的对象
-func (c *container) Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error) {
+func (c *Container) Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error) {
 	c.callAfterRefreshing()
 	assembly := toAssembly(c)
 	b := NewBean(objOrCtor, ctorArgs...)
@@ -269,7 +284,7 @@ func (c *container) Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{
 }
 
 // Invoke 立即执行一个一次性的任务
-func (c *container) Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, error) {
+func (c *Container) Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, error) {
 	c.callAfterRefreshing()
 	if fnType := reflect.TypeOf(fn); util.IsFuncType(fnType) {
 		if util.ReturnNothing(fnType) || util.ReturnOnlyError(fnType) {
@@ -289,7 +304,7 @@ func (c *container) Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, erro
 }
 
 // Go 安全地启动一个 goroutine
-func (c *container) Go(fn interface{}, args ...arg.Arg) {
+func (c *Container) Go(fn interface{}, args ...arg.Arg) {
 	c.callAfterRefreshing()
 
 	fnType := reflect.TypeOf(fn)
@@ -317,7 +332,7 @@ func (c *container) Go(fn interface{}, args ...arg.Arg) {
 }
 
 // Refresh 对所有 Bean 进行依赖注入和属性绑定
-func (c *container) Refresh() {
+func (c *Container) Refresh() {
 
 	if c.state != Unrefreshed {
 		panic(errors.New("already refreshed"))
@@ -351,7 +366,7 @@ func (c *container) Refresh() {
 	c.state = Refreshed
 }
 
-func (c *container) registerBeans() {
+func (c *Container) registerBeans() {
 	for _, b := range c.beans {
 		if d, ok := c.beansById[b.ID()]; ok {
 			panic(fmt.Errorf("found duplicate beans [%s] [%s]", b.Description(), d.Description()))
@@ -361,7 +376,7 @@ func (c *container) registerBeans() {
 }
 
 // resolveConfigers 对 Config 函数进行决议是否能够保留它
-func (c *container) resolveConfigers() {
+func (c *Container) resolveConfigers() {
 
 	for _, g := range c.configers {
 		if g.cond != nil && !g.cond.Matches(c) {
@@ -373,7 +388,7 @@ func (c *container) resolveConfigers() {
 }
 
 // resolveBeans 对 Bean 进行决议是否能够创建 Bean 的实例
-func (c *container) resolveBeans() error {
+func (c *Container) resolveBeans() error {
 	for _, b := range c.beansById {
 		if err := c.resolveBean(b); err != nil {
 			return err
@@ -383,7 +398,7 @@ func (c *container) resolveBeans() error {
 }
 
 // resolveBean 对 Bean 进行决议是否能够创建 Bean 的实例
-func (c *container) resolveBean(b *BeanDefinition) error {
+func (c *Container) resolveBean(b *BeanDefinition) error {
 
 	// 正在进行或者已经完成决议过程
 	if b.status >= Resolving {
@@ -427,7 +442,7 @@ func (c *container) resolveBean(b *BeanDefinition) error {
 }
 
 // autoExport 自动导出 Bean 实现的接口
-func (c *container) autoExport(t reflect.Type, b *BeanDefinition) error {
+func (c *Container) autoExport(t reflect.Type, b *BeanDefinition) error {
 
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
@@ -470,7 +485,7 @@ func (c *container) autoExport(t reflect.Type, b *BeanDefinition) error {
 	return nil
 }
 
-func (c *container) invokeConfigers(assembly *beanAssembly) error {
+func (c *Container) invokeConfigers(assembly *beanAssembly) error {
 	for e := c.configerList.Front(); e != nil; e = e.Next() {
 		_, err := e.Value.(*Configer).fn.Call(assembly)
 		if err != nil {
@@ -480,7 +495,7 @@ func (c *container) invokeConfigers(assembly *beanAssembly) error {
 	return nil
 }
 
-func (c *container) wireBeans(assembly *beanAssembly) error {
+func (c *Container) wireBeans(assembly *beanAssembly) error {
 	for _, b := range c.beansById {
 		if err := assembly.wireBean(b); err != nil {
 			return err
@@ -491,7 +506,7 @@ func (c *container) wireBeans(assembly *beanAssembly) error {
 
 // Close 关闭容器上下文，用于通知 Bean 销毁等。
 // 该函数可以确保 Bean 的销毁顺序和注入顺序相反。
-func (c *container) Close() {
+func (c *Container) Close() {
 	c.callAfterRefreshing()
 
 	c.cancel()

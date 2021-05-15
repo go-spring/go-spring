@@ -29,8 +29,8 @@ import (
 
 func startApplication(cfgLocation ...string) *gs.Application {
 	app := gs.NewApp()
-	app.SetProperty("application-event.collection", "[]?")
-	app.SetProperty("command-line-runner.collection", "[]?")
+	app.Property("application-event.collection", "[]?")
+	app.Property("command-line-runner.collection", "[]?")
 	go app.Run(cfgLocation...)
 	time.Sleep(100 * time.Millisecond)
 	return app

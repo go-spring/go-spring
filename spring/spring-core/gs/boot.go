@@ -46,7 +46,7 @@ func Prop(key string) interface{} {
 
 // SetProperty 设置属性值，属性名称统一转成小写。
 func SetProperty(key string, value interface{}) {
-	gApp.SetProperty(key, value)
+	gApp.Property(key, value)
 }
 
 func Config(fn interface{}, args ...arg.Arg) *Configer {
@@ -55,7 +55,7 @@ func Config(fn interface{}, args ...arg.Arg) *Configer {
 
 // Register 注册对象形式的 Bean。
 func Register(i interface{}) *BeanDefinition {
-	return gApp.Register(i)
+	return gApp.Object(i)
 }
 
 // Provide 注册构造函数形式的 Bean。

@@ -58,13 +58,13 @@ func (s wiringStack) path() (path string) {
 
 // beanAssembly 装配工作台。
 type beanAssembly struct {
-	c            *container
+	c            *Container
 	stack        wiringStack
 	destroyers   *list.List // 具有销毁函数的 bean 的列表。
 	destroyerMap map[string]*destroyer
 }
 
-func toAssembly(c *container) *beanAssembly {
+func toAssembly(c *Container) *beanAssembly {
 	return &beanAssembly{
 		c:            c,
 		stack:        make([]*BeanDefinition, 0),

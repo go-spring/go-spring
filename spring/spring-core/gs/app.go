@@ -17,7 +17,6 @@
 package gs
 
 import (
-	"context"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -27,8 +26,6 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/go-spring/spring-core/arg"
-	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
@@ -57,33 +54,20 @@ const (
 
 const SPRING_PROFILE = "SPRING_PROFILE"
 
-// ApplicationContext 应用上下文接口。
-type ApplicationContext interface {
-	Context() context.Context
-	Prop(key string, opts ...conf.GetOption) interface{}
-	Get(i interface{}, opts ...GetBeanOption) error
-	Find(selector bean.Selector) ([]bean.Definition, error)
-	Collect(i interface{}, selectors ...bean.Selector) error
-	Bind(i interface{}, opts ...conf.BindOption) error
-	Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error)
-	Go(fn interface{}, args ...arg.Arg)
-	Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, error)
-}
-
 // CommandLineRunner 命令行启动器接口
 type CommandLineRunner interface {
-	Run(ctx ApplicationContext)
+	Run(ctx Context)
 }
 
 // ApplicationEvent 应用运行过程中的事件
 type ApplicationEvent interface {
-	OnStartApplication(ctx ApplicationContext) // 应用启动的事件
-	OnStopApplication(ctx ApplicationContext)  // 应用停止的事件
+	OnStartApplication(ctx Context) // 应用启动的事件
+	OnStopApplication(ctx Context)  // 应用停止的事件
 }
 
 // Application 应用
 type Application struct {
-	*container // 应用上下文
+	*Container // 应用上下文
 
 	cfgLocation         []string // 配置文件目录
 	banner              string   // Banner 的内容
@@ -99,7 +83,7 @@ type Application struct {
 // NewApp application 的构造函数
 func NewApp() *Application {
 	return &Application{
-		container:           New(),
+		Container:           New(),
 		cfgLocation:         append([]string{}, "config/"),
 		bannerMode:          BannerModeConsole,
 		expectSysProperties: []string{`.*`},
@@ -111,7 +95,7 @@ func (app *Application) GetConfigLocation() []string {
 	return app.cfgLocation
 }
 
-// Refresh 覆盖 ApplicationContext.Refresh 方法，禁止内外部调用。
+// Refresh 覆盖 Context.Refresh 方法，禁止内外部调用。
 func (app *Application) Refresh() {
 	panic(util.ForbiddenMethod)
 }
@@ -131,11 +115,8 @@ func (app *Application) start(cfgLocation ...string) {
 	// 准备上下文环境
 	app.prepare()
 
-	// 注册 ApplicationContext 接口
-	app.Register(app).Export((*ApplicationContext)(nil))
-
 	// 依赖注入、属性绑定、初始化
-	app.container.Refresh()
+	app.Container.Refresh()
 
 	// 执行命令行启动器
 	for _, r := range app.Runners {
@@ -331,7 +312,7 @@ func (app *Application) prepare() {
 	}(p)
 
 	if profile != "" {
-		app.SetProperty(conf.SpringProfile, profile)
+		app.Property(conf.SpringProfile, profile)
 		app.loadConfigFile(profileConfig, profile)
 	}
 
@@ -346,11 +327,11 @@ func (app *Application) prepare() {
 
 	// 将重组后的属性值写入 Context 属性列表
 	for key, val := range m {
-		app.SetProperty(key, val)
+		app.Property(key, val)
 	}
 }
 
-// Close 覆盖 ApplicationContext.Close 方法，禁止内外部调用。
+// Close 覆盖 Context.Close 方法，禁止内外部调用。
 func (app *Application) Close() {
 	panic(util.ForbiddenMethod)
 }
@@ -376,7 +357,7 @@ func (app *Application) close() {
 		}
 	})
 
-	app.container.Close()
+	app.Container.Close()
 }
 
 func (app *Application) Run(cfgLocation ...string) {
