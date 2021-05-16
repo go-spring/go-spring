@@ -26,6 +26,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/go-spring/spring-core/util"
 	"github.com/spf13/cast"
 )
 
@@ -105,6 +106,11 @@ func (p *Properties) Read(b []byte, configType string) error {
 // Map 返回所有属性。
 func (p *Properties) Map() map[string]interface{} {
 	return p.m
+}
+
+// FlatMap 返回所有属性。
+func (p *Properties) FlatMap() map[string]interface{} {
+	return util.FlatMap(p.m)
 }
 
 func splitPath(path string) (key string, index int) {

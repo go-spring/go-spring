@@ -85,6 +85,11 @@ func New(filename ...string) *Container {
 	}
 }
 
+// Context 返回上下文接口
+func (c *Container) Context() context.Context {
+	return c.ctx
+}
+
 // callAfterRefreshing 有些方法必须在 Refresh 开始后才能调用，比如 GetBean、Wire 等。
 func (c *Container) callAfterRefreshing() {
 	if c.state == Unrefreshed {
@@ -97,16 +102,6 @@ func (c *Container) callBeforeRefreshing() {
 	if c.state != Unrefreshed {
 		panic(errors.New("should call before Refreshing"))
 	}
-}
-
-// Context 返回上下文接口
-func (c *Container) Context() context.Context {
-	return c.ctx
-}
-
-// Prop 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。
-func (c *Container) Prop(key string, opts ...conf.GetOption) interface{} {
-	return c.p.Get(key, opts...)
 }
 
 // Property 设置 key 对应的属性值。
@@ -149,13 +144,18 @@ func (c *Container) Config(fn interface{}, args ...arg.Arg) *Configer {
 	return configer
 }
 
+// Prop 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。
+func (c *Container) Prop(key string, opts ...conf.GetOption) interface{} {
+	return c.p.Get(key, opts...)
+}
+
 type GetBeanArg struct {
 	selector bean.Selector
 }
 
-type GetBeanOption func(arg *GetBeanArg)
+type GetOption func(arg *GetBeanArg)
 
-func Use(s bean.Selector) GetBeanOption {
+func Use(s bean.Selector) GetOption {
 	return func(arg *GetBeanArg) {
 		arg.selector = s
 	}
@@ -163,7 +163,7 @@ func Use(s bean.Selector) GetBeanOption {
 
 // Get 获取单例 bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 // 它和 FindBean 的区别是它在调用后能够保证返回的 bean 已经完成了注入和绑定过程。
-func (c *Container) Get(i interface{}, opts ...GetBeanOption) error {
+func (c *Container) Get(i interface{}, opts ...GetOption) error {
 
 	if i == nil {
 		return errors.New("i can't be nil")
@@ -255,6 +255,11 @@ func (c *Container) Collect(i interface{}, selectors ...bean.Selector) error {
 	return toAssembly(c).collectBeans(tag, v.Elem())
 }
 
+// Bind 绑定结构体属性。
+func (c *Container) Bind(i interface{}, opts ...conf.BindOption) error {
+	return c.p.Bind(i, opts...)
+}
+
 // Wire 对对象或者构造函数的结果进行依赖注入和属性绑定，返回处理后的对象
 func (c *Container) Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error) {
 	c.callAfterRefreshing()
@@ -265,11 +270,6 @@ func (c *Container) Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{
 		return nil, err
 	}
 	return b.Interface(), nil
-}
-
-// Bind 绑定结构体属性。
-func (c *Container) Bind(i interface{}, opts ...conf.BindOption) error {
-	return c.p.Bind(i, opts...)
 }
 
 // Go 安全地启动一个 goroutine

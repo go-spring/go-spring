@@ -16,21 +16,35 @@
 
 package util
 
+import "fmt"
+
 // FlatMap 将嵌套形式的 map 打平，map 必须是 map[string]interface{} 类型。
 func FlatMap(m map[string]interface{}) map[string]interface{} {
-	ret := make(map[string]interface{})
-	flatMap("", m, ret)
-	return ret
+	p := make(map[string]interface{})
+	flatMap("", m, p)
+	return p
 }
 
-func flatMap(prefix string, in map[string]interface{}, out map[string]interface{}) {
-	for k, v := range in {
-		key := prefix + k
-		switch i := v.(type) {
-		case map[string]interface{}:
-			flatMap(key+".", i, out)
-		default:
-			out[key] = v
-		}
+func flatMap(prefix string, m map[string]interface{}, p map[string]interface{}) {
+	for k, v := range m {
+		flatValue(prefix+k, v, p)
+	}
+}
+
+func flatSlice(prefix string, a []interface{}, p map[string]interface{}) {
+	for i, v := range a {
+		key := fmt.Sprintf("%s[%d]", prefix, i)
+		flatValue(key, v, p)
+	}
+}
+
+func flatValue(key string, v interface{}, p map[string]interface{}) {
+	switch value := v.(type) {
+	case map[string]interface{}:
+		flatMap(key+".", value, p)
+	case []interface{}:
+		flatSlice(key, value, p)
+	default:
+		p[key] = v
 	}
 }

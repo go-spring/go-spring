@@ -74,7 +74,7 @@ func Config(fn interface{}, args ...arg.Arg) *Configer {
 	return gApp.Config(fn, args...)
 }
 
-func GetBean(i interface{}, opts ...GetBeanOption) error {
+func GetBean(i interface{}, opts ...GetOption) error {
 	return gApp.GetBean(i, opts...)
 }
 

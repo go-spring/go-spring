@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"image"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -40,9 +41,17 @@ func TestProperties_Load(t *testing.T) {
 	err = p.Load("testdata/config/application.properties")
 	util.Panic(err).When(err != nil)
 
-	fmt.Println("Get All Properties:")
-	for k, v := range p.Map() {
-		fmt.Println(k, ":", v)
+	m := p.FlatMap()
+
+	var keys []string
+	for key := range m {
+		keys = append(keys, key)
+	}
+
+	sort.Strings(keys)
+
+	for _, k := range keys {
+		fmt.Println(k+":", m[k])
 	}
 }
 

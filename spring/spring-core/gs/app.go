@@ -63,7 +63,7 @@ const SPRING_PROFILE = "SPRING_PROFILE"
 type ApplicationContext interface {
 	Context() context.Context
 	GetProperty(key string, opts ...conf.GetOption) interface{}
-	GetBean(i interface{}, opts ...GetBeanOption) error
+	GetBean(i interface{}, opts ...GetOption) error
 	FindBean(selector bean.Selector) ([]bean.Definition, error)
 	Collect(i interface{}, selectors ...bean.Selector) error
 	Bind(i interface{}, opts ...conf.BindOption) error
@@ -456,7 +456,7 @@ func (app *Application) Config(fn interface{}, args ...arg.Arg) *Configer {
 	return app.container.Config(fn, args...)
 }
 
-func (app *Application) GetBean(i interface{}, opts ...GetBeanOption) error {
+func (app *Application) GetBean(i interface{}, opts ...GetOption) error {
 	return app.container.Get(i, opts...)
 }
 
