@@ -62,3 +62,4 @@ Following information can help us to resolve the issue faster.
 
 * 不用尽早抽象接口。
 * 在使用的地方定义接口，而不是实现的地方。
+* 多数情况下不需要新增错误类型，只有深层嵌套的场景才需要。

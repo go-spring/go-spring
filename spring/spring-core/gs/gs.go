@@ -134,15 +134,19 @@ func (c *Container) callBeforeRefreshing() {
 	}
 }
 
-// Object 注册对象形式的 Bean。
+// Object 注册对象形式的 bean 。
 func (c *Container) Object(i interface{}) *BeanDefinition {
-	return c.Provide(reflect.ValueOf(i))
+	return c.Register(NewBean(reflect.ValueOf(i)))
 }
 
-// Provide 普通函数注册需要使用 reflect.ValueOf(fn) 这种方式避免和构造函数发生冲突。
-func (c *Container) Provide(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
+// Provide 注册构造函数形式的 bean 。
+func (c *Container) Provide(ctor interface{}, args ...arg.Arg) *BeanDefinition {
+	return c.Register(NewBean(ctor, args...))
+}
+
+// Register 注册元数据形式的 bean 。
+func (c *Container) Register(b *BeanDefinition) *BeanDefinition {
 	c.callBeforeRefreshing()
-	b := NewBean(objOrCtor, ctorArgs...)
 	c.beans = append(c.beans, b)
 	return b
 }
@@ -177,8 +181,8 @@ func Use(s bean.Selector) GetBeanOption {
 	}
 }
 
-// Get 获取单例 Bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
-// 它和 FindBean 的区别是它在调用后能够保证返回的 Bean 已经完成了注入和绑定过程。
+// Get 获取单例 bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
+// 它和 FindBean 的区别是它在调用后能够保证返回的 bean 已经完成了注入和绑定过程。
 func (c *Container) Get(i interface{}, opts ...GetBeanOption) error {
 
 	if i == nil {
@@ -202,14 +206,14 @@ func (c *Container) Get(i interface{}, opts ...GetBeanOption) error {
 	return w.getBean(toSingletonTag(a.selector), v)
 }
 
-// Find 返回符合条件的 Bean 集合，不保证返回的 Bean 已经完成注入和绑定过程。
+// Find 返回符合条件的 bean 集合，不保证返回的 bean 已经完成注入和绑定过程。
 func (c *Container) Find(selector bean.Selector) ([]bean.Definition, error) {
 	c.callAfterRefreshing()
 
 	finder := func(fn func(*BeanDefinition) bool) (result []bean.Definition, err error) {
 		for _, b := range c.beansById {
 			if b.status != Resolving && fn(b) {
-				// 避免 Bean 未被解析
+				// 避免 bean 未被解析
 				if err = c.resolveBean(b); err != nil {
 					return nil, err
 				}
@@ -248,11 +252,11 @@ func (c *Container) Find(selector bean.Selector) ([]bean.Definition, error) {
 	})
 }
 
-// Collect 收集数组或指针定义的所有符合条件的 Bean，收集到返回 true，否则返
+// Collect 收集数组或指针定义的所有符合条件的 bean，收集到返回 true，否则返
 // 回 false。该函数有两种模式:自动模式和指定模式。自动模式是指 selectors 参数为空，
-// 这时候不仅会收集符合条件的单例 Bean，还会收集符合条件的数组 Bean (是指数组的元素
+// 这时候不仅会收集符合条件的单例 bean，还会收集符合条件的数组 bean (是指数组的元素
 // 符合条件，然后把数组元素拆开一个个放到收集结果里面)。指定模式是指 selectors 参数
-// 不为空，这时候只会收集单例 Bean，而且要求这些单例 Bean 不仅需要满足收集条件，而且
+// 不为空，这时候只会收集单例 bean，而且要求这些单例 bean 不仅需要满足收集条件，而且
 // 必须满足 selector 条件。另外，自动模式下不对收集结果进行排序，指定模式下根据
 // selectors 列表的顺序对收集结果进行排序。
 func (c *Container) Collect(i interface{}, selectors ...bean.Selector) error {
@@ -331,18 +335,16 @@ func (c *Container) Go(fn interface{}, args ...arg.Arg) {
 	}()
 }
 
-// Refresh 对所有 Bean 进行依赖注入和属性绑定
+// Refresh 对所有 bean 进行依赖注入和属性绑定
 func (c *Container) Refresh() {
 
 	if c.state != Unrefreshed {
 		panic(errors.New("already refreshed"))
 	}
 
-	// 处理 Method Bean 等
-	c.registerBeans()
-
 	c.state = Refreshing
 
+	c.registerBeans()
 	c.resolveConfigers()
 
 	err := c.resolveBeans()
@@ -387,7 +389,7 @@ func (c *Container) resolveConfigers() {
 	c.configerList = sort.Triple(c.configerList, getBeforeConfigers)
 }
 
-// resolveBeans 对 Bean 进行决议是否能够创建 Bean 的实例
+// resolveBeans 对 bean 进行决议是否能够创建 bean 的实例。
 func (c *Container) resolveBeans() error {
 	for _, b := range c.beansById {
 		if err := c.resolveBean(b); err != nil {
@@ -397,7 +399,7 @@ func (c *Container) resolveBeans() error {
 	return nil
 }
 
-// resolveBean 对 Bean 进行决议是否能够创建 Bean 的实例
+// resolveBean 对 bean 进行决议是否能够创建 bean 的实例。
 func (c *Container) resolveBean(b *BeanDefinition) error {
 
 	// 正在进行或者已经完成决议过程
@@ -413,7 +415,7 @@ func (c *Container) resolveBean(b *BeanDefinition) error {
 		return nil
 	}
 
-	// 将符合注册条件的 Bean 放入到缓存里面
+	// 将符合注册条件的 bean 放入到缓存里面。
 	log.Debugf("register %s name:%q type:%q %s", b.getClass(), b.Name(), b.Type().String(), b.FileLine())
 	c.beansByType[b.Type()] = append(c.beansByType[b.Type()], b)
 
@@ -434,14 +436,14 @@ func (c *Container) resolveBean(b *BeanDefinition) error {
 		}
 	}
 
-	// 按照 Bean 的名字进行缓存
+	// 按照 bean 的名字进行缓存。
 	c.beansByName[b.name] = append(c.beansByName[b.name], b)
 
 	b.status = Resolved
 	return nil
 }
 
-// autoExport 自动导出 Bean 实现的接口
+// autoExport 自动导出 bean 实现的接口。
 func (c *Container) autoExport(t reflect.Type, b *BeanDefinition) error {
 
 	for i := 0; i < t.NumField(); i++ {
@@ -504,8 +506,8 @@ func (c *Container) wireBeans(assembly *beanAssembly) error {
 	return nil
 }
 
-// Close 关闭容器上下文，用于通知 Bean 销毁等。
-// 该函数可以确保 Bean 的销毁顺序和注入顺序相反。
+// Close 关闭容器上下文，用于通知 bean 销毁等。
+// 该函数可以确保 bean 的销毁顺序和注入顺序相反。
 func (c *Container) Close() {
 	c.callAfterRefreshing()
 

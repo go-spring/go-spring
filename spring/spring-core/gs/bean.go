@@ -358,23 +358,8 @@ func NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 		panic(errors.New("bean can't be nil"))
 	}
 
-	var (
-		file string
-		line int
-		skip int
-	)
-
-	for skip = 1; skip < 10; skip++ {
-		_, f, l, _ := runtime.Caller(skip)
-		if strings.Contains(f, "/spring-core/") {
-			if !strings.HasSuffix(f, "_test.go") {
-				continue
-			}
-		}
-		file = f
-		line = l
-		break
-	}
+	const skip = 2
+	_, file, line, _ := runtime.Caller(skip)
 
 	// 以 reflect.ValueOf(fn) 形式注册的函数被视为函数对象 bean 。
 	if t := v.Type(); !fromValue && t.Kind() == reflect.Func {

@@ -22,10 +22,12 @@ import (
 	"os"
 	"os/signal"
 	"path"
+	"reflect"
 	"regexp"
 	"strings"
 	"syscall"
 
+	"github.com/go-spring/spring-core/arg"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
@@ -384,4 +386,14 @@ func (app *Application) ShutDown() {
 	default:
 		close(app.exitChan)
 	}
+}
+
+// Object 注册对象形式的 bean 。
+func (app *Application) Object(i interface{}) *BeanDefinition {
+	return app.Register(NewBean(reflect.ValueOf(i)))
+}
+
+// Provide 注册构造函数形式的 bean 。
+func (app *Application) Provide(ctor interface{}, args ...arg.Arg) *BeanDefinition {
+	return app.Register(NewBean(ctor, args...))
 }
