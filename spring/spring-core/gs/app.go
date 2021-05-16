@@ -32,7 +32,9 @@ import (
 	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/log"
+	"github.com/go-spring/spring-core/mq"
 	"github.com/go-spring/spring-core/util"
+	"github.com/go-spring/spring-core/web"
 	"github.com/spf13/cast"
 )
 
@@ -60,14 +62,17 @@ const SPRING_PROFILE = "SPRING_PROFILE"
 
 type ApplicationContext interface {
 	Context() context.Context
-	Prop(key string, opts ...conf.GetOption) interface{}
-	Get(i interface{}, opts ...GetBeanOption) error
-	Find(selector bean.Selector) ([]bean.Definition, error)
+	GetProperty(key string, opts ...conf.GetOption) interface{}
+	GetBean(i interface{}, opts ...GetBeanOption) error
+	FindBean(selector bean.Selector) ([]bean.Definition, error)
 	Collect(i interface{}, selectors ...bean.Selector) error
 	Bind(i interface{}, opts ...conf.BindOption) error
 	Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error)
 	Go(fn interface{}, args ...arg.Arg)
 	Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, error)
+	Mappers() map[string]*web.Mapper
+	Consumers() map[string]*mq.BindConsumer
+	GRPCServers() map[interface{}]*GRpcService
 }
 
 // CommandLineRunner 命令行启动器接口
@@ -81,9 +86,15 @@ type ApplicationEvent interface {
 	OnStopApplication(ctx ApplicationContext)  // 应用停止的事件
 }
 
+type GRpcService struct {
+	ServiceName string      // 服务的名称
+	Handler     interface{} // 服务注册函数
+	Server      interface{} // 服务提供者
+}
+
 // Application 应用
 type Application struct {
-	*Container // 应用上下文
+	container *Container // 应用上下文
 
 	cfgLocation         []string // 配置文件目录
 	banner              string   // Banner 的内容
@@ -94,26 +105,28 @@ type Application struct {
 	Runners []CommandLineRunner `autowire:"${command-line-runner.collection:=[]?}"`
 
 	exitChan chan struct{}
+
+	rootRouter  web.RootRouter
+	consumers   map[string]*mq.BindConsumer
+	gRPCServers map[interface{}]*GRpcService
 }
 
 // NewApp application 的构造函数
 func NewApp() *Application {
 	return &Application{
-		Container:           New(),
+		container:           New(),
 		cfgLocation:         append([]string{}, "config/"),
 		bannerMode:          BannerModeConsole,
 		expectSysProperties: []string{`.*`},
 		exitChan:            make(chan struct{}),
+		rootRouter:          web.NewRootRouter(),
+		consumers:           make(map[string]*mq.BindConsumer),
+		gRPCServers:         make(map[interface{}]*GRpcService),
 	}
 }
 
 func (app *Application) GetConfigLocation() []string {
 	return app.cfgLocation
-}
-
-// Refresh 覆盖 Context.Refresh 方法，禁止内外部调用。
-func (app *Application) Refresh() {
-	panic(util.ForbiddenMethod)
 }
 
 // Start 启动应用
@@ -132,7 +145,7 @@ func (app *Application) start(cfgLocation ...string) {
 	app.prepare()
 
 	// 依赖注入、属性绑定、初始化
-	app.Container.Refresh()
+	app.container.Refresh()
 
 	// 执行命令行启动器
 	for _, r := range app.Runners {
@@ -303,7 +316,7 @@ func (app *Application) prepare() {
 	defaultConfig := conf.New()
 
 	p := []*conf.Properties{
-		app.p,
+		app.container.p,
 		cmdConfig,
 		envConfig,
 		profileConfig,
@@ -328,7 +341,7 @@ func (app *Application) prepare() {
 	}(p)
 
 	if profile != "" {
-		app.Property(conf.SpringProfile, profile)
+		app.container.Property(conf.SpringProfile, profile)
 		app.loadConfigFile(profileConfig, profile)
 	}
 
@@ -343,13 +356,8 @@ func (app *Application) prepare() {
 
 	// 将重组后的属性值写入 Context 属性列表
 	for key, val := range m {
-		app.Property(key, val)
+		app.container.Property(key, val)
 	}
-}
-
-// Close 覆盖 Context.Close 方法，禁止内外部调用。
-func (app *Application) Close() {
-	panic(util.ForbiddenMethod)
 }
 
 func (app *Application) close() {
@@ -364,16 +372,16 @@ func (app *Application) close() {
 	// 依赖 appCtx 的 Context，就只需要考虑 SafeGoroutine
 	// 的退出了，而这只需要 Context 一 cancel 也就完事了。
 
-	app.Go(func() {
+	app.container.Go(func() {
 		select {
-		case <-app.Context().Done():
+		case <-app.container.Context().Done():
 			for _, b := range app.Events {
 				b.OnStopApplication(app)
 			}
 		}
 	})
 
-	app.Container.Close()
+	app.container.Close()
 }
 
 func (app *Application) Run(cfgLocation ...string) {
@@ -402,12 +410,169 @@ func (app *Application) ShutDown() {
 	}
 }
 
-// Object 注册对象形式的 bean 。
-func (app *Application) Object(i interface{}) *BeanDefinition {
-	return app.Register(NewBean(reflect.ValueOf(i)))
+func (app *Application) ExpectSysProperties(pattern ...string) {
+	app.expectSysProperties = pattern
 }
 
-// Provide 注册构造函数形式的 bean 。
+func (app *Application) BannerMode(mode int) {
+	app.bannerMode = mode
+}
+
+// Banner 设置自定义 Banner 字符串
+func (app *Application) Banner(banner string) {
+	app.banner = banner
+}
+
+// Context 返回上下文接口
+func (app *Application) Context() context.Context {
+	return app.container.Context()
+}
+
+func (app *Application) Bind(i interface{}, opts ...conf.BindOption) error {
+	return app.container.Bind(i, opts...)
+}
+
+func (app *Application) GetProperty(key string, opts ...conf.GetOption) interface{} {
+	return app.container.Prop(key, opts...)
+}
+
+func (app *Application) SetProperty(key string, value interface{}) {
+	app.container.Property(key, value)
+}
+
+func (app *Application) Object(i interface{}) *BeanDefinition {
+	return app.container.Register(NewBean(reflect.ValueOf(i)))
+}
+
 func (app *Application) Provide(ctor interface{}, args ...arg.Arg) *BeanDefinition {
-	return app.Register(NewBean(ctor, args...))
+	return app.container.Register(NewBean(ctor, args...))
+}
+
+func (app *Application) Register(b *BeanDefinition) *BeanDefinition {
+	return app.container.Register(b)
+}
+
+func (app *Application) Config(fn interface{}, args ...arg.Arg) *Configer {
+	return app.container.Config(fn, args...)
+}
+
+func (app *Application) GetBean(i interface{}, opts ...GetBeanOption) error {
+	return app.container.Get(i, opts...)
+}
+
+func (app *Application) FindBean(selector bean.Selector) ([]bean.Definition, error) {
+	return app.container.Find(selector)
+}
+
+func (app *Application) Collect(i interface{}, selectors ...bean.Selector) error {
+	return app.container.Collect(i, selectors)
+}
+
+func (app *Application) Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error) {
+	return app.container.Wire(objOrCtor, ctorArgs...)
+}
+
+func (app *Application) Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, error) {
+	return app.container.Invoke(fn, args...)
+}
+
+func (app *Application) Go(fn interface{}, args ...arg.Arg) {
+	app.container.Go(fn, args...)
+}
+
+func (app *Application) GRPCServers() map[interface{}]*GRpcService {
+	return app.gRPCServers
+}
+
+// GRpcServer 注册 gRPC 服务提供者，fn 是 gRPC 自动生成的服务注册函数，serviceName 是服务名称，
+// 必须对应 *_grpc.pg.go 文件里面 grpc.ServiceDesc 的 ServiceName 字段，server 是服务具体提供者对象。
+func (app *Application) GRpcServer(serviceName string, fn interface{}, server interface{}) {
+	s := &GRpcService{Handler: fn, Server: server, ServiceName: serviceName}
+	app.gRPCServers[s.Handler] = s
+}
+
+// GRpcClient 注册 gRPC 服务客户端，fn 是 gRPC 自动生成的客户端构造函数
+func (app *Application) GRpcClient(fn interface{}, endpoint string) *BeanDefinition {
+	return app.Register(NewBean(fn, endpoint))
+}
+
+func (app *Application) Mappers() map[string]*web.Mapper {
+	return app.rootRouter.Mappers()
+}
+
+func (app *Application) Route(basePath string) *web.Router {
+	return app.rootRouter.Route(basePath)
+}
+
+func (app *Application) HandleRequest(method uint32, path string, fn web.Handler) *web.Mapper {
+	return app.rootRouter.HandleRequest(method, path, fn)
+}
+
+func (app *Application) RequestMapping(method uint32, path string, fn web.HandlerFunc) *web.Mapper {
+	return app.rootRouter.HandleRequest(method, path, web.FUNC(fn))
+}
+
+func (app *Application) RequestBinding(method uint32, path string, fn interface{}) *web.Mapper {
+	return app.rootRouter.HandleRequest(method, path, web.BIND(fn))
+}
+
+func (app *Application) HandleGet(path string, fn web.Handler) *web.Mapper {
+	return app.rootRouter.HandleGet(path, fn)
+}
+
+func (app *Application) GetMapping(path string, fn web.HandlerFunc) *web.Mapper {
+	return app.rootRouter.HandleGet(path, web.FUNC(fn))
+}
+
+func (app *Application) GetBinding(path string, fn interface{}) *web.Mapper {
+	return app.rootRouter.HandleGet(path, web.BIND(fn))
+}
+
+func (app *Application) HandlePost(path string, fn web.Handler) *web.Mapper {
+	return app.rootRouter.HandlePost(path, fn)
+}
+
+func (app *Application) PostMapping(path string, fn web.HandlerFunc) *web.Mapper {
+	return app.rootRouter.HandlePost(path, web.FUNC(fn))
+}
+
+func (app *Application) PostBinding(path string, fn interface{}) *web.Mapper {
+	return app.rootRouter.HandlePost(path, web.BIND(fn))
+}
+
+func (app *Application) HandlePut(path string, fn web.Handler) *web.Mapper {
+	return app.rootRouter.HandlePut(path, fn)
+}
+
+func (app *Application) PutMapping(path string, fn web.HandlerFunc) *web.Mapper {
+	return app.rootRouter.HandlePut(path, web.FUNC(fn))
+}
+
+func (app *Application) PutBinding(path string, fn interface{}) *web.Mapper {
+	return app.rootRouter.HandlePut(path, web.BIND(fn))
+}
+
+func (app *Application) HandleDelete(path string, fn web.Handler) *web.Mapper {
+	return app.rootRouter.HandleDelete(path, fn)
+}
+
+func (app *Application) DeleteMapping(path string, fn web.HandlerFunc) *web.Mapper {
+	return app.rootRouter.HandleDelete(path, web.FUNC(fn))
+}
+
+func (app *Application) DeleteBinding(path string, fn interface{}) *web.Mapper {
+	return app.rootRouter.HandleDelete(path, web.BIND(fn))
+}
+
+func (app *Application) NewFilter(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
+	b := NewBean(objOrCtor, ctorArgs...)
+	return app.Register(b).Export((*web.Filter)(nil))
+}
+
+func (app *Application) Consumers() map[string]*mq.BindConsumer {
+	return app.consumers
+}
+
+func (app *Application) Consume(topic string, fn interface{}) {
+	app.consumers[topic] = mq.BIND(topic, fn)
 }

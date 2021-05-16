@@ -85,26 +85,6 @@ func New(filename ...string) *Container {
 	}
 }
 
-// Context 返回上下文接口
-func (c *Container) Context() context.Context {
-	return c.ctx
-}
-
-// Bind 绑定结构体属性。
-func (c *Container) Bind(i interface{}, opts ...conf.BindOption) error {
-	return c.p.Bind(i, opts...)
-}
-
-// Prop 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。
-func (c *Container) Prop(key string, opts ...conf.GetOption) interface{} {
-	return c.p.Get(key, opts...)
-}
-
-// Property 设置 key 对应的属性值。
-func (c *Container) Property(key string, value interface{}) {
-	c.p.Set(key, value)
-}
-
 // callAfterRefreshing 有些方法必须在 Refresh 开始后才能调用，比如 GetBean、Wire 等。
 func (c *Container) callAfterRefreshing() {
 	if c.state == Unrefreshed {
@@ -117,6 +97,21 @@ func (c *Container) callBeforeRefreshing() {
 	if c.state != Unrefreshed {
 		panic(errors.New("should call before Refreshing"))
 	}
+}
+
+// Context 返回上下文接口
+func (c *Container) Context() context.Context {
+	return c.ctx
+}
+
+// Prop 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。
+func (c *Container) Prop(key string, opts ...conf.GetOption) interface{} {
+	return c.p.Get(key, opts...)
+}
+
+// Property 设置 key 对应的属性值。
+func (c *Container) Property(key string, value interface{}) {
+	c.p.Set(key, value)
 }
 
 // Object 注册对象形式的 bean 。
@@ -272,24 +267,9 @@ func (c *Container) Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{
 	return b.Interface(), nil
 }
 
-// Invoke 立即执行一个一次性的任务
-func (c *Container) Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, error) {
-	c.callAfterRefreshing()
-	if fnType := reflect.TypeOf(fn); util.IsFuncType(fnType) {
-		if util.ReturnNothing(fnType) || util.ReturnOnlyError(fnType) {
-			r := arg.Bind(fn, args, arg.Skip(1))
-			callResult, err := r.Call(toAssembly(c))
-			if err != nil {
-				return nil, err
-			}
-			var arr []interface{}
-			for _, v := range callResult {
-				arr = append(arr, v.Interface())
-			}
-			return arr, nil
-		}
-	}
-	return nil, errors.New("fn should be func() or func()error")
+// Bind 绑定结构体属性。
+func (c *Container) Bind(i interface{}, opts ...conf.BindOption) error {
+	return c.p.Bind(i, opts...)
 }
 
 // Go 安全地启动一个 goroutine
@@ -318,6 +298,26 @@ func (c *Container) Go(fn interface{}, args ...arg.Arg) {
 			log.Error(err.Error())
 		}
 	}()
+}
+
+// Invoke 立即执行一个一次性的任务
+func (c *Container) Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, error) {
+	c.callAfterRefreshing()
+	if fnType := reflect.TypeOf(fn); util.IsFuncType(fnType) {
+		if util.ReturnNothing(fnType) || util.ReturnOnlyError(fnType) {
+			r := arg.Bind(fn, args, arg.Skip(1))
+			callResult, err := r.Call(toAssembly(c))
+			if err != nil {
+				return nil, err
+			}
+			var arr []interface{}
+			for _, v := range callResult {
+				arr = append(arr, v.Interface())
+			}
+			return arr, nil
+		}
+	}
+	return nil, errors.New("fn should be func() or func()error")
 }
 
 // Refresh 对所有 bean 进行依赖注入和属性绑定
