@@ -375,7 +375,7 @@ func (p *PrototypeBean) Greeting() string {
 }
 
 type PrototypeBeanFactory struct {
-	Context gs.Context `autowire:""`
+	Container *gs.Container `autowire:""`
 }
 
 func (f *PrototypeBeanFactory) New(name string) *PrototypeBean {
@@ -385,7 +385,7 @@ func (f *PrototypeBeanFactory) New(name string) *PrototypeBean {
 	}
 
 	// PrototypeBean 依赖的服务可以通过 Context 注入
-	_, err := f.Context.Wire(b)
+	_, err := f.Container.Wire(b)
 	util.Panic(err).When(err != nil)
 	return b
 }
@@ -411,6 +411,7 @@ func TestApplicationContext_PrototypeBean(t *testing.T) {
 	f := &PrototypeBeanFactory{}
 	c.Object(f)
 
+	c.Object(c)
 	c.Refresh()
 
 	s.Service("Li Lei")
@@ -689,7 +690,7 @@ func TestApplicationContext_FindByName(t *testing.T) {
 	c.Refresh()
 
 	b, _ := c.Find("")
-	assert.Equal(t, len(b), 4)
+	assert.Equal(t, len(b), 3)
 
 	b, _ = c.Find("BeanTwo")
 	fmt.Println(json.ToString(b))

@@ -17,6 +17,7 @@
 package gs
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -28,6 +29,7 @@ import (
 	"syscall"
 
 	"github.com/go-spring/spring-core/arg"
+	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
@@ -56,15 +58,27 @@ const (
 
 const SPRING_PROFILE = "SPRING_PROFILE"
 
+type ApplicationContext interface {
+	Context() context.Context
+	Prop(key string, opts ...conf.GetOption) interface{}
+	Get(i interface{}, opts ...GetBeanOption) error
+	Find(selector bean.Selector) ([]bean.Definition, error)
+	Collect(i interface{}, selectors ...bean.Selector) error
+	Bind(i interface{}, opts ...conf.BindOption) error
+	Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error)
+	Go(fn interface{}, args ...arg.Arg)
+	Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, error)
+}
+
 // CommandLineRunner 命令行启动器接口
 type CommandLineRunner interface {
-	Run(ctx Context)
+	Run(ctx ApplicationContext)
 }
 
 // ApplicationEvent 应用运行过程中的事件
 type ApplicationEvent interface {
-	OnStartApplication(ctx Context) // 应用启动的事件
-	OnStopApplication(ctx Context)  // 应用停止的事件
+	OnStartApplication(ctx ApplicationContext) // 应用启动的事件
+	OnStopApplication(ctx ApplicationContext)  // 应用停止的事件
 }
 
 // Application 应用

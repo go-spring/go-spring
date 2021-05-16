@@ -33,18 +33,6 @@ import (
 	"github.com/go-spring/spring-core/util"
 )
 
-type Context interface {
-	Context() context.Context
-	Prop(key string, opts ...conf.GetOption) interface{}
-	Get(i interface{}, opts ...GetBeanOption) error
-	Find(selector bean.Selector) ([]bean.Definition, error)
-	Collect(i interface{}, selectors ...bean.Selector) error
-	Bind(i interface{}, opts ...conf.BindOption) error
-	Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error)
-	Go(fn interface{}, args ...arg.Arg)
-	Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, error)
-}
-
 type refreshState int
 
 const (
@@ -85,7 +73,7 @@ func New(filename ...string) *Container {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	c := &Container{
+	return &Container{
 		p:             p,
 		ctx:           ctx,
 		cancel:        cancel,
@@ -95,9 +83,6 @@ func New(filename ...string) *Container {
 		configerList:  list.New(),
 		destroyerList: list.New(),
 	}
-
-	c.Object(c).Export((*Context)(nil))
-	return c
 }
 
 // Context 返回上下文接口
