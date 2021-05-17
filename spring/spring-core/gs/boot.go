@@ -17,12 +17,9 @@
 package gs
 
 import (
-	"context"
 	"reflect"
 
 	"github.com/go-spring/spring-core/arg"
-	"github.com/go-spring/spring-core/bean"
-	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/web"
 )
 
@@ -41,17 +38,8 @@ func Banner(banner string) {
 	gApp.banner = banner
 }
 
-// Context 返回上下文接口
-func Context() context.Context {
-	return gApp.Context()
-}
-
-func GetProperty(key string, opts ...conf.GetOption) interface{} {
-	return gApp.GetProperty(key, opts...)
-}
-
-// SetProperty 设置属性值，属性名称统一转成小写。
-func SetProperty(key string, value interface{}) {
+// Property 设置属性值，属性名称统一转成小写。
+func Property(key string, value interface{}) {
 	gApp.SetProperty(key, value)
 }
 
@@ -72,32 +60,6 @@ func Register(b *BeanDefinition) *BeanDefinition {
 
 func Config(fn interface{}, args ...arg.Arg) *Configer {
 	return gApp.Config(fn, args...)
-}
-
-func GetBean(i interface{}, opts ...GetOption) error {
-	return gApp.GetBean(i, opts...)
-}
-
-func FindBean(selector bean.Selector) ([]bean.Definition, error) {
-	return gApp.FindBean(selector)
-}
-
-func Collect(i interface{}, selectors ...bean.Selector) error {
-	return gApp.Collect(i, selectors...)
-}
-
-func Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error) {
-	return gApp.Wire(objOrCtor, ctorArgs...)
-}
-
-func Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, error) {
-	return gApp.Invoke(fn, args...)
-}
-
-type GoFuncWithContext func(context.Context)
-
-func Go(fn GoFuncWithContext) {
-	gApp.Go(func() { fn(gApp.Context()) })
 }
 
 // GRpcServer 注册 gRPC 服务提供者，fn 是 gRPC 自动生成的服务注册函数，serviceName 是服务名称，
@@ -191,8 +153,8 @@ func DeleteBinding(path string, fn interface{}) *web.Mapper {
 	return gApp.HandleDelete(path, web.BIND(fn))
 }
 
-// NewFilter 注册 web.Filter 对象
-func NewFilter(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
+// Filter 注册 web.Filter 对象
+func Filter(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 	b := NewBean(objOrCtor, ctorArgs...)
 	return gApp.Register(b).Export((*web.Filter)(nil))
 }
