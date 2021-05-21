@@ -14,40 +14,9 @@
  * limitations under the License.
  */
 
-package util_test
+package grpc
 
-import (
-	"testing"
-
-	"github.com/go-spring/spring-core/assert"
-	"github.com/go-spring/spring-core/util"
-)
-
-func TestFlatMap(t *testing.T) {
-	m := map[string]interface{}{
-		"a": map[string]interface{}{
-			"b": map[string]interface{}{
-				"c": "d",
-			},
-			"e": []interface{}{
-				"f", "g",
-			},
-			"h": "i",
-		},
-		"j": []interface{}{
-			"k", "l",
-		},
-		"m": "n",
-	}
-	ret := util.FlatMap(m)
-	expect := map[string]interface{}{
-		"a.b.c":  "d",
-		"a.e[0]": "f",
-		"a.e[1]": "g",
-		"a.h":    "i",
-		"j[0]":   "k",
-		"j[1]":   "l",
-		"m":      "n",
-	}
-	assert.Equal(t, ret, expect)
+type Service struct {
+	Register interface{} // 服务注册函数
+	Server   interface{} // 服务提供者
 }

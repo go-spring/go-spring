@@ -29,8 +29,8 @@ import (
 	"syscall"
 
 	"github.com/go-spring/spring-core/arg"
-	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/conf"
+	"github.com/go-spring/spring-core/grpc"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/mq"
 	"github.com/go-spring/spring-core/util"
@@ -38,45 +38,14 @@ import (
 	"github.com/spf13/cast"
 )
 
-// defaultBanner 默认的 Banner 字符
-const defaultBanner = `
- _______  _______         _______  _______  _______ _________ _        _______ 
-(  ____ \(  ___  )       (  ____ \(  ____ )(  ____ )\__   __/( (    /|(  ____ \
-| (    \/| (   ) |       | (    \/| (    )|| (    )|   ) (   |  \  ( || (    \/
-| |      | |   | | _____ | (_____ | (____)|| (____)|   | |   |   \ | || |      
-| | ____ | |   | |(_____)(_____  )|  _____)|     __)   | |   | (\ \) || | ____ 
-| | \_  )| |   | |             ) || (      | (\ (      | |   | | \   || | \_  )
-| (___) || (___) |       /\____) || )      | ) \ \_____) (___| )  \  || (___) |
-(_______)(_______)       \_______)|/       |/   \__/\_______/|/    )_)(_______)
-`
-
-// version 版本信息
-const version = `go-spring@v1.0.5    http://go-spring.com/`
-
-const (
-	BannerModeOff     = 0
-	BannerModeConsole = 1
-)
-
 const SPRING_PROFILE = "SPRING_PROFILE"
 
 type ApplicationContext interface {
-	Context() context.Context
-	Prop(key string, opts ...conf.GetOption) interface{}
-	GetBean(i interface{}, opts ...GetOption) error
-	FindBean(selector bean.Selector) ([]bean.Definition, error)
-	Collect(i interface{}, selectors ...bean.Selector) error
-	Bind(i interface{}, opts ...conf.BindOption) error
-	Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error)
-	Go(fn interface{}, args ...arg.Arg)
-	Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, error)
-	Mappers() map[string]*web.Mapper
-	Consumers() map[string]*mq.BindConsumer
-	GRPCServers() map[interface{}]*GRpcService
+	Go(fn func(ctx context.Context))
 }
 
-// CommandLineRunner 命令行启动器接口
-type CommandLineRunner interface {
+// ApplicationRunner 命令行启动器接口
+type ApplicationRunner interface {
 	Run(ctx ApplicationContext)
 }
 
@@ -86,15 +55,9 @@ type ApplicationEvent interface {
 	OnStopApplication(ctx ApplicationContext)  // 应用停止的事件
 }
 
-type GRpcService struct {
-	ServiceName string      // 服务的名称
-	Handler     interface{} // 服务注册函数
-	Server      interface{} // 服务提供者
-}
-
-// Application 应用
-type Application struct {
-	container *Container // 应用上下文
+// App 应用
+type App struct {
+	c *Container // 应用上下文
 
 	cfgLocation         []string // 配置文件目录
 	banner              string   // Banner 的内容
@@ -102,35 +65,35 @@ type Application struct {
 	expectSysProperties []string // 期望从系统环境变量中获取到的属性，支持正则表达式
 
 	Events  []ApplicationEvent  `autowire:"${application-event.collection:=[]?}"`
-	Runners []CommandLineRunner `autowire:"${command-line-runner.collection:=[]?}"`
+	Runners []ApplicationRunner `autowire:"${command-line-runner.collection:=[]?}"`
 
 	exitChan chan struct{}
 
 	rootRouter  web.RootRouter
 	consumers   map[string]*mq.BindConsumer
-	gRPCServers map[interface{}]*GRpcService
+	gRPCServers map[string]*grpc.Service
 }
 
 // NewApp application 的构造函数
-func NewApp() *Application {
-	return &Application{
-		container:           New(),
+func NewApp(opts ...NewOption) *App {
+	return &App{
+		c:                   New(opts...),
 		cfgLocation:         append([]string{}, "config/"),
 		bannerMode:          BannerModeConsole,
 		expectSysProperties: []string{`.*`},
 		exitChan:            make(chan struct{}),
 		rootRouter:          web.NewRootRouter(),
 		consumers:           make(map[string]*mq.BindConsumer),
-		gRPCServers:         make(map[interface{}]*GRpcService),
+		gRPCServers:         make(map[string]*grpc.Service),
 	}
 }
 
-func (app *Application) GetConfigLocation() []string {
+func (app *App) GetConfigLocation() []string {
 	return app.cfgLocation
 }
 
 // Start 启动应用
-func (app *Application) start(cfgLocation ...string) {
+func (app *App) start(cfgLocation ...string) {
 
 	if len(cfgLocation) > 0 {
 		app.cfgLocation = cfgLocation
@@ -142,10 +105,11 @@ func (app *Application) start(cfgLocation ...string) {
 	}
 
 	// 准备上下文环境
-	app.prepare()
+	err := app.prepare()
+	util.Panic(err).When(err != nil)
 
 	// 依赖注入、属性绑定、初始化
-	app.container.Refresh()
+	app.c.Refresh()
 
 	// 执行命令行启动器
 	for _, r := range app.Runners {
@@ -161,7 +125,7 @@ func (app *Application) start(cfgLocation ...string) {
 }
 
 // printBanner 查找 Banner 文件然后将其打印到控制台
-func (app *Application) printBanner() {
+func (app *App) printBanner() {
 
 	// 优先使用自定义 Banner
 	banner := app.banner
@@ -191,82 +155,57 @@ func (app *Application) printBanner() {
 	printBanner(banner)
 }
 
-// printBanner 打印 Banner 到控制台
-func printBanner(banner string) {
-
-	// 确保 Banner 前面有空行
-	if banner[0] != '\n' {
-		fmt.Println()
-	}
-
-	maxLength := 0
-	for _, s := range strings.Split(banner, "\n") {
-		fmt.Printf("\x1b[36m%s\x1b[0m\n", s) // CYAN
-		if len(s) > maxLength {
-			maxLength = len(s)
-		}
-	}
-
-	// 确保 Banner 后面有空行
-	if banner[len(banner)-1] != '\n' {
-		fmt.Println()
-	}
-
-	var padding []byte
-	if n := (maxLength - len(version)) / 2; n > 0 {
-		padding = make([]byte, n)
-		for i := range padding {
-			padding[i] = ' '
-		}
-	}
-	fmt.Println(string(padding) + version + "\n")
-}
-
 // loadCmdArgs 加载命令行参数，形如 -name value 的参数才有效。
-func (app *Application) loadCmdArgs(p *conf.Properties) {
+func (app *App) loadCmdArgs(p *conf.Properties) {
 	log.Debugf("load cmd args")
 	for i := 0; i < len(os.Args); i++ { // 以短线定义的参数才有效
-		if arg := os.Args[i]; strings.HasPrefix(arg, "-") {
-			k, v := arg[1:], ""
-			if i < len(os.Args)-1 && !strings.HasPrefix(os.Args[i+1], "-") {
-				v = os.Args[i+1]
-				i++
-			}
-			log.Tracef("%s=%v", k, v)
-			p.Set(k, v)
+		a := os.Args[i]
+		if !strings.HasPrefix(a, "-") {
+			continue
 		}
+		k, v := a[1:], ""
+		if i < len(os.Args)-1 && !strings.HasPrefix(os.Args[i+1], "-") {
+			v = os.Args[i+1]
+			i++
+		}
+		log.Tracef("%s=%v", k, v)
+		p.Set(k, v)
 	}
 }
 
-// loadSystemEnv 加载系统环境变量，用户可以自定义有效环境变量的正则匹配
-func (app *Application) loadSystemEnv(p *conf.Properties) {
+// loadSystemEnv 加载环境变量，用户可以使用正则表达式来提取想要的环境变量。
+func (app *App) loadSystemEnv(p *conf.Properties) error {
 
 	var rex []*regexp.Regexp
 	for _, v := range app.expectSysProperties {
-		if exp, err := regexp.Compile(v); err != nil {
-			panic(err)
-		} else {
-			rex = append(rex, exp)
+		exp, err := regexp.Compile(v)
+		if err != nil {
+			return err
 		}
+		rex = append(rex, exp)
 	}
 
 	log.Debugf("load system env")
 	for _, env := range os.Environ() {
-		if i := strings.Index(env, "="); i > 0 {
-			k, v := env[0:i], env[i+1:]
-			for _, r := range rex {
-				if r.MatchString(k) { // 符合匹配规则的才有效
-					log.Tracef("%s=%v", k, v)
-					p.Set(k, v)
-					break
-				}
+		i := strings.Index(env, "=")
+		if i <= 0 {
+			continue
+		}
+		k, v := env[0:i], env[i+1:]
+		for _, r := range rex {
+			if !r.MatchString(k) {
+				continue
 			}
+			log.Tracef("%s=%v", k, v)
+			p.Set(k, v)
+			break
 		}
 	}
+	return nil
 }
 
 // loadConfigFile 加载指定环境的配置文件
-func (app *Application) loadConfigFile(p *conf.Properties, profile ...string) {
+func (app *App) loadConfigFile(p *conf.Properties, profile ...string) {
 
 	fileName := "application"
 	if len(profile) > 0 && profile[0] != "" {
@@ -300,7 +239,7 @@ func (app *Application) loadConfigFile(p *conf.Properties, profile ...string) {
 }
 
 // prepare 准备上下文环境
-func (app *Application) prepare() {
+func (app *App) prepare() error {
 
 	// 配置项加载顺序优先级，从高到低:
 	// 1.代码设置(api)
@@ -316,7 +255,7 @@ func (app *Application) prepare() {
 	defaultConfig := conf.New()
 
 	p := []*conf.Properties{
-		app.container.p,
+		app.c.p,
 		cmdConfig,
 		envConfig,
 		profileConfig,
@@ -324,7 +263,9 @@ func (app *Application) prepare() {
 	}
 
 	app.loadCmdArgs(cmdConfig)
-	app.loadSystemEnv(envConfig)
+	if err := app.loadSystemEnv(envConfig); err != nil {
+		return err
+	}
 	app.loadConfigFile(defaultConfig)
 
 	profile := func([]*conf.Properties) string {
@@ -341,7 +282,7 @@ func (app *Application) prepare() {
 	}(p)
 
 	if profile != "" {
-		app.container.Property(conf.SpringProfile, profile)
+		app.c.Property(conf.SpringProfile, profile)
 		app.loadConfigFile(profileConfig, profile)
 	}
 
@@ -356,11 +297,13 @@ func (app *Application) prepare() {
 
 	// 将重组后的属性值写入 Context 属性列表
 	for key, val := range m {
-		app.container.Property(key, val)
+		app.c.Property(key, val)
 	}
+
+	return nil
 }
 
-func (app *Application) close() {
+func (app *App) close() {
 
 	defer log.Info("application exited")
 	log.Info("application exiting")
@@ -372,19 +315,19 @@ func (app *Application) close() {
 	// 依赖 appCtx 的 Context，就只需要考虑 SafeGoroutine
 	// 的退出了，而这只需要 Context 一 cancel 也就完事了。
 
-	app.container.Go(func() {
+	app.Go(func(ctx context.Context) {
 		select {
-		case <-app.container.Context().Done():
+		case <-ctx.Done():
 			for _, b := range app.Events {
 				b.OnStopApplication(app)
 			}
 		}
 	})
 
-	app.container.Close()
+	app.c.Close()
 }
 
-func (app *Application) Run(cfgLocation ...string) {
+func (app *App) Run(cfgLocation ...string) {
 
 	// 响应控制台的 Ctrl+C 及 kill 命令。
 	go func() {
@@ -401,7 +344,7 @@ func (app *Application) Run(cfgLocation ...string) {
 }
 
 // ShutDown 关闭执行器
-func (app *Application) ShutDown() {
+func (app *App) ShutDown() {
 	select {
 	case <-app.exitChan:
 		// chan 已关闭，无需再次关闭。
@@ -410,169 +353,136 @@ func (app *Application) ShutDown() {
 	}
 }
 
-func (app *Application) ExpectSysProperties(pattern ...string) {
+func (app *App) ExpectSysProperties(pattern ...string) {
 	app.expectSysProperties = pattern
 }
 
-func (app *Application) BannerMode(mode int) {
+func (app *App) BannerMode(mode int) {
 	app.bannerMode = mode
 }
 
 // Banner 设置自定义 Banner 字符串
-func (app *Application) Banner(banner string) {
+func (app *App) Banner(banner string) {
 	app.banner = banner
 }
 
-// Context 返回上下文接口
-func (app *Application) Context() context.Context {
-	return app.container.Context()
+func (app *App) Property(key string, value interface{}) {
+	app.c.Property(key, value)
 }
 
-func (app *Application) Bind(i interface{}, opts ...conf.BindOption) error {
-	return app.container.Bind(i, opts...)
+func (app *App) Object(i interface{}) *BeanDefinition {
+	return app.c.Register(NewBean(reflect.ValueOf(i)))
 }
 
-func (app *Application) Prop(key string, opts ...conf.GetOption) interface{} {
-	return app.container.Prop(key, opts...)
+func (app *App) Provide(ctor interface{}, args ...arg.Arg) *BeanDefinition {
+	return app.c.Register(NewBean(ctor, args...))
 }
 
-func (app *Application) Property(key string, value interface{}) {
-	app.container.Property(key, value)
+func (app *App) Register(b *BeanDefinition) *BeanDefinition {
+	return app.c.Register(b)
 }
 
-func (app *Application) Object(i interface{}) *BeanDefinition {
-	return app.container.Register(NewBean(reflect.ValueOf(i)))
+func (app *App) Config(fn interface{}, args ...arg.Arg) *Configer {
+	return app.c.Config(fn, args...)
 }
 
-func (app *Application) Provide(ctor interface{}, args ...arg.Arg) *BeanDefinition {
-	return app.container.Register(NewBean(ctor, args...))
+func (app *App) Go(fn func(ctx context.Context)) {
+	app.c.Go(fn)
 }
 
-func (app *Application) Register(b *BeanDefinition) *BeanDefinition {
-	return app.container.Register(b)
-}
-
-func (app *Application) Config(fn interface{}, args ...arg.Arg) *Configer {
-	return app.container.Config(fn, args...)
-}
-
-func (app *Application) GetBean(i interface{}, opts ...GetOption) error {
-	return app.container.Get(i, opts...)
-}
-
-func (app *Application) FindBean(selector bean.Selector) ([]bean.Definition, error) {
-	return app.container.Find(selector)
-}
-
-func (app *Application) Collect(i interface{}, selectors ...bean.Selector) error {
-	return app.container.Collect(i, selectors)
-}
-
-func (app *Application) Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error) {
-	return app.container.Wire(objOrCtor, ctorArgs...)
-}
-
-func (app *Application) Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, error) {
-	return app.container.Invoke(fn, args...)
-}
-
-func (app *Application) Go(fn interface{}, args ...arg.Arg) {
-	app.container.Go(fn, args...)
-}
-
-func (app *Application) GRPCServers() map[interface{}]*GRpcService {
+func (app *App) GRPCServers() map[string]*grpc.Service {
 	return app.gRPCServers
 }
 
 // GRpcServer 注册 gRPC 服务提供者，fn 是 gRPC 自动生成的服务注册函数，serviceName 是服务名称，
 // 必须对应 *_grpc.pg.go 文件里面 grpc.ServiceDesc 的 ServiceName 字段，server 是服务具体提供者对象。
-func (app *Application) GRpcServer(serviceName string, fn interface{}, server interface{}) {
-	s := &GRpcService{Handler: fn, Server: server, ServiceName: serviceName}
-	app.gRPCServers[s.Handler] = s
+func (app *App) GRpcServer(serviceName string, fn interface{}, server interface{}) {
+	s := &grpc.Service{Register: fn, Server: server}
+	app.gRPCServers[serviceName] = s
 }
 
 // GRpcClient 注册 gRPC 服务客户端，fn 是 gRPC 自动生成的客户端构造函数
-func (app *Application) GRpcClient(fn interface{}, endpoint string) *BeanDefinition {
+func (app *App) GRpcClient(fn interface{}, endpoint string) *BeanDefinition {
 	return app.Register(NewBean(fn, endpoint))
 }
 
-func (app *Application) Mappers() map[string]*web.Mapper {
+func (app *App) Mappers() map[string]*web.Mapper {
 	return app.rootRouter.Mappers()
 }
 
-func (app *Application) Route(basePath string) *web.Router {
+func (app *App) Route(basePath string) *web.Router {
 	return app.rootRouter.Route(basePath)
 }
 
-func (app *Application) HandleRequest(method uint32, path string, fn web.Handler) *web.Mapper {
+func (app *App) HandleRequest(method uint32, path string, fn web.Handler) *web.Mapper {
 	return app.rootRouter.HandleRequest(method, path, fn)
 }
 
-func (app *Application) RequestMapping(method uint32, path string, fn web.HandlerFunc) *web.Mapper {
+func (app *App) RequestMapping(method uint32, path string, fn web.HandlerFunc) *web.Mapper {
 	return app.rootRouter.HandleRequest(method, path, web.FUNC(fn))
 }
 
-func (app *Application) RequestBinding(method uint32, path string, fn interface{}) *web.Mapper {
+func (app *App) RequestBinding(method uint32, path string, fn interface{}) *web.Mapper {
 	return app.rootRouter.HandleRequest(method, path, web.BIND(fn))
 }
 
-func (app *Application) HandleGet(path string, fn web.Handler) *web.Mapper {
+func (app *App) HandleGet(path string, fn web.Handler) *web.Mapper {
 	return app.rootRouter.HandleGet(path, fn)
 }
 
-func (app *Application) GetMapping(path string, fn web.HandlerFunc) *web.Mapper {
+func (app *App) GetMapping(path string, fn web.HandlerFunc) *web.Mapper {
 	return app.rootRouter.HandleGet(path, web.FUNC(fn))
 }
 
-func (app *Application) GetBinding(path string, fn interface{}) *web.Mapper {
+func (app *App) GetBinding(path string, fn interface{}) *web.Mapper {
 	return app.rootRouter.HandleGet(path, web.BIND(fn))
 }
 
-func (app *Application) HandlePost(path string, fn web.Handler) *web.Mapper {
+func (app *App) HandlePost(path string, fn web.Handler) *web.Mapper {
 	return app.rootRouter.HandlePost(path, fn)
 }
 
-func (app *Application) PostMapping(path string, fn web.HandlerFunc) *web.Mapper {
+func (app *App) PostMapping(path string, fn web.HandlerFunc) *web.Mapper {
 	return app.rootRouter.HandlePost(path, web.FUNC(fn))
 }
 
-func (app *Application) PostBinding(path string, fn interface{}) *web.Mapper {
+func (app *App) PostBinding(path string, fn interface{}) *web.Mapper {
 	return app.rootRouter.HandlePost(path, web.BIND(fn))
 }
 
-func (app *Application) HandlePut(path string, fn web.Handler) *web.Mapper {
+func (app *App) HandlePut(path string, fn web.Handler) *web.Mapper {
 	return app.rootRouter.HandlePut(path, fn)
 }
 
-func (app *Application) PutMapping(path string, fn web.HandlerFunc) *web.Mapper {
+func (app *App) PutMapping(path string, fn web.HandlerFunc) *web.Mapper {
 	return app.rootRouter.HandlePut(path, web.FUNC(fn))
 }
 
-func (app *Application) PutBinding(path string, fn interface{}) *web.Mapper {
+func (app *App) PutBinding(path string, fn interface{}) *web.Mapper {
 	return app.rootRouter.HandlePut(path, web.BIND(fn))
 }
 
-func (app *Application) HandleDelete(path string, fn web.Handler) *web.Mapper {
+func (app *App) HandleDelete(path string, fn web.Handler) *web.Mapper {
 	return app.rootRouter.HandleDelete(path, fn)
 }
 
-func (app *Application) DeleteMapping(path string, fn web.HandlerFunc) *web.Mapper {
+func (app *App) DeleteMapping(path string, fn web.HandlerFunc) *web.Mapper {
 	return app.rootRouter.HandleDelete(path, web.FUNC(fn))
 }
 
-func (app *Application) DeleteBinding(path string, fn interface{}) *web.Mapper {
+func (app *App) DeleteBinding(path string, fn interface{}) *web.Mapper {
 	return app.rootRouter.HandleDelete(path, web.BIND(fn))
 }
 
-func (app *Application) NewFilter(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
+func (app *App) NewFilter(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 	b := NewBean(objOrCtor, ctorArgs...)
 	return app.Register(b).Export((*web.Filter)(nil))
 }
 
-func (app *Application) Consumers() map[string]*mq.BindConsumer {
+func (app *App) Consumers() map[string]*mq.BindConsumer {
 	return app.consumers
 }
 
-func (app *Application) Consume(topic string, fn interface{}) {
+func (app *App) Consume(topic string, fn interface{}) {
 	app.consumers[topic] = mq.BIND(topic, fn)
 }

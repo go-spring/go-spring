@@ -75,7 +75,7 @@ func toAssembly(c *Container) *beanAssembly {
 
 // Matches 条件成立返回 true，否则返回 false。
 func (assembly *beanAssembly) Matches(cond cond.Condition) bool {
-	return cond.Matches(assembly.c)
+	return cond.Matches(&conditionContext{assembly.c})
 }
 
 // Bind 根据 tag 的内容进行属性绑定。
@@ -411,7 +411,7 @@ func (assembly *beanAssembly) wireBean(b *BeanDefinition) error {
 
 	// 对当前 bean 的间接依赖项进行注入。
 	for _, s := range b.dependsOn {
-		d, err := assembly.c.Find(s)
+		d, err := assembly.c.find(s)
 		if err != nil {
 			return err
 		}

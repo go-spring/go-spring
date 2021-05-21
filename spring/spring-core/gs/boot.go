@@ -40,7 +40,7 @@ func Banner(banner string) {
 
 // Property 设置属性值，属性名称统一转成小写。
 func Property(key string, value interface{}) {
-	gApp.SetProperty(key, value)
+	gApp.Property(key, value)
 }
 
 // Object 注册对象形式的 bean 。
