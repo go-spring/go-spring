@@ -14,30 +14,24 @@
  * limitations under the License.
  */
 
-package conf
+package prop
 
-import (
-	"strings"
+import "github.com/magiconair/properties"
 
-	"github.com/go-spring/spring-core/conf/prop"
-	"github.com/go-spring/spring-core/conf/toml"
-	"github.com/go-spring/spring-core/conf/yaml"
-)
+// Read 从内存中读取配置项列表，b 是 UTF8 格式。
+func Read(b []byte) (map[string]interface{}, error) {
 
-func init() {
-	NewReader(prop.Read, "properties", "prop")
-	NewReader(yaml.Read, "yaml", "yml")
-	NewReader(toml.Read, "toml")
-}
+	p := properties.NewProperties()
+	p.DisableExpansion = true
 
-type Reader func([]byte) (map[string]interface{}, error)
-
-// readers 属性读取器列表。
-var readers = make(map[string]Reader)
-
-// NewReader 注册属性读取器。
-func NewReader(fn Reader, configTypes ...string) {
-	for _, configType := range configTypes {
-		readers[strings.ToLower(configType)] = fn
+	err := p.Load(b, properties.UTF8)
+	if err != nil {
+		return nil, err
 	}
+
+	ret := make(map[string]interface{})
+	for k, v := range p.Map() {
+		ret[k] = v
+	}
+	return ret, nil
 }

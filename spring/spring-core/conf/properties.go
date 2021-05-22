@@ -96,11 +96,21 @@ func (p *Properties) Load(filename string) error {
 
 // Read 从 []byte 读取属性列表，ext 是文件扩展名，如 .toml、.yaml 等。
 func (p *Properties) Read(b []byte, configType string) error {
-	configType = strings.ToLower(configType)
-	if r, ok := readers[configType]; ok {
-		return r.Read(p, b)
+
+	r, ok := readers[strings.ToLower(configType)]
+	if !ok {
+		return fmt.Errorf("unsupported file type %s", configType)
 	}
-	return fmt.Errorf("unsupported file type %s", configType)
+
+	m, err := r(b)
+	if err != nil {
+		return err
+	}
+
+	for k, v := range m {
+		p.Set(k, v)
+	}
+	return nil
 }
 
 // Map 返回所有属性。

@@ -14,26 +14,17 @@
  * limitations under the License.
  */
 
-package java_test
+package toml
 
 import (
-	"testing"
-
-	"github.com/go-spring/spring-core/assert"
-	"github.com/go-spring/spring-core/java"
+	"github.com/pelletier/go-toml"
 )
 
-func TestRead(t *testing.T) {
-
-	// 不支持数组
-	str := "a[0].b=c"
-	m, _ := java.ReadProperties([]byte(str))
-	assert.Nil(t, m["a"])
-	assert.Equal(t, m["a[0].b"], "c")
-
-	// 不支持属性引用
-	str = "a=b\nc=${a}"
-	m, _ = java.ReadProperties([]byte(str))
-	assert.Equal(t, m["a"], "b")
-	assert.Equal(t, m["c"], "${a}")
+// Read 从内存中读取配置项列表，b 是 UTF8 格式。
+func Read(b []byte) (map[string]interface{}, error) {
+	tree, err := toml.LoadBytes(b)
+	if err != nil {
+		return nil, err
+	}
+	return tree.ToMap(), nil
 }

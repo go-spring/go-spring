@@ -14,21 +14,18 @@
  * limitations under the License.
  */
 
-package java
+package yaml
 
-import "github.com/magiconair/properties"
+import (
+	"gopkg.in/yaml.v2"
+)
 
-// ReadProperties 从内存中读取属性列表，b 是 UTF8 格式，不支持数组类型的配置，不支持属性引用。
-func ReadProperties(b []byte) (map[string]interface{}, error) {
-	p := properties.NewProperties()
-	p.DisableExpansion = true
-	if err := p.Load(b, properties.UTF8); err != nil {
+// Read 从内存中读取配置项列表，b 是 UTF8 格式。
+func Read(b []byte) (map[string]interface{}, error) {
+	m := make(map[string]interface{})
+	err := yaml.Unmarshal(b, &m)
+	if err != nil {
 		return nil, err
 	}
-	ret := make(map[string]interface{})
-	for _, k := range p.Keys() {
-		v, _ := p.Get(k)
-		ret[k] = v
-	}
-	return ret, nil
+	return m, nil
 }
