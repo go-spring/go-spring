@@ -27,82 +27,80 @@ import (
 	"github.com/go-spring/spring-core/gs"
 )
 
-func startApplication(cfgLocation ...string) (*gs.App, gs.PandoraBox) {
+func startApplication(cfgLocation ...string) (*gs.App, gs.Pandora) {
 	app := gs.NewApp(gs.OpenPandora())
 	app.Property("application-event.collection", "[]?")
 	app.Property("command-line-runner.collection", "[]?")
 
-	var box gs.PandoraBox
-	app.Config(func(b gs.PandoraBox) { box = b })
+	var p gs.Pandora
+	app.Config(func(b gs.Pandora) { p = b })
 
 	go app.Run(cfgLocation...)
 	time.Sleep(100 * time.Millisecond)
-	return app, box
+	return app, p
 }
 
 func TestConfig(t *testing.T) {
 
 	t.Run("default config", func(t *testing.T) {
 		os.Clearenv()
-		app, box := startApplication()
+		app, p := startApplication()
 		defer app.ShutDown()
 		assert.Equal(t, app.GetConfigLocation(), []string{"config/"})
-		assert.Equal(t, box.Prop(conf.SpringProfile), nil)
+		assert.Equal(t, p.Prop(conf.SpringProfile), nil)
 	})
 
 	t.Run("config via env", func(t *testing.T) {
 		os.Clearenv()
 		_ = os.Setenv(conf.SpringProfile, "dev")
-		app, box := startApplication("testdata/config/")
+		app, p := startApplication("testdata/config/")
 		defer app.ShutDown()
-		assert.Equal(t, box.Prop(conf.SpringProfile), "dev")
+		assert.Equal(t, p.Prop(conf.SpringProfile), "dev")
 	})
 
 	t.Run("config via env 2", func(t *testing.T) {
 		os.Clearenv()
 		_ = os.Setenv(gs.SPRING_PROFILE, "dev")
-		app, box := startApplication("testdata/config/")
+		app, p := startApplication("testdata/config/")
 		defer app.ShutDown()
-		assert.Equal(t, box.Prop(conf.SpringProfile), "dev")
+		assert.Equal(t, p.Prop(conf.SpringProfile), "dev")
 	})
 
 	t.Run("profile via config", func(t *testing.T) {
 		os.Clearenv()
-		app, box := startApplication("testdata/config/")
+		app, p := startApplication("testdata/config/")
 		defer app.ShutDown()
-		assert.Equal(t, box.Prop(conf.SpringProfile), "test")
+		assert.Equal(t, p.Prop(conf.SpringProfile), "test")
 	})
 
 	t.Run("profile via env&config", func(t *testing.T) {
 		os.Clearenv()
-		app, box := startApplication("testdata/config/")
+		app, p := startApplication("testdata/config/")
 		defer app.ShutDown()
-		assert.Equal(t, box.Prop(conf.SpringProfile), "test")
+		assert.Equal(t, p.Prop(conf.SpringProfile), "test")
 	})
 
 	t.Run("profile via env&config 2", func(t *testing.T) {
 		os.Clearenv()
 		_ = os.Setenv(gs.SPRING_PROFILE, "dev")
-		app, box := startApplication("testdata/config/")
+		app, p := startApplication("testdata/config/")
 		defer app.ShutDown()
-		assert.Equal(t, box.Prop(conf.SpringProfile), "dev")
+		assert.Equal(t, p.Prop(conf.SpringProfile), "dev")
 	})
 
 	t.Run("default expect system properties", func(t *testing.T) {
-		app, box := startApplication("testdata/config/")
+		app, p := startApplication("testdata/config/")
 		defer app.ShutDown()
-		p := box.Prop(conf.RootKey)
-		for k, v := range p.(map[string]interface{}) {
+		for k, v := range p.Prop(conf.RootKey).(map[string]interface{}) {
 			fmt.Println(k, v)
 		}
 	})
 
 	t.Run("filter all system properties", func(t *testing.T) {
 		// ExpectSysProperties("^$") // 不加载任何系统环境变量
-		app, box := startApplication("testdata/config/")
+		app, p := startApplication("testdata/config/")
 		defer app.ShutDown()
-		p := box.Prop(conf.RootKey)
-		for k, v := range p.(map[string]interface{}) {
+		for k, v := range p.Prop(conf.RootKey).(map[string]interface{}) {
 			fmt.Println(k, v)
 		}
 	})

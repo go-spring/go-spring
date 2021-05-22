@@ -75,7 +75,7 @@ func toAssembly(c *Container) *beanAssembly {
 
 // Matches 条件成立返回 true，否则返回 false。
 func (assembly *beanAssembly) Matches(cond cond.Condition) bool {
-	return cond.Matches(&conditionContext{assembly.c})
+	return cond.Matches(&pandora{assembly.c})
 }
 
 // Bind 根据 tag 的内容进行属性绑定。

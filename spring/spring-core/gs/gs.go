@@ -68,7 +68,7 @@ type newArg struct {
 
 type NewOption func(arg *newArg)
 
-// OpenPandora 注册 PandoraBox 实例。
+// OpenPandora 注册 Pandora 实例。
 func OpenPandora() NewOption {
 	return func(arg *newArg) {
 		arg.openPandora = true
@@ -96,7 +96,7 @@ func New(opts ...NewOption) *Container {
 	}
 
 	if a.openPandora {
-		c.Object(&pandora{c}).Export((*PandoraBox)(nil))
+		c.Object(&pandora{c}).Export((*Pandora)(nil))
 	}
 	return c
 }
@@ -160,48 +160,6 @@ func (c *Container) Config(fn interface{}, args ...arg.Arg) *Configer {
 	return configer
 }
 
-// prop 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。
-func (c *Container) prop(key string, opts ...conf.GetOption) interface{} {
-	return c.p.Get(key, opts...)
-}
-
-type getArg struct {
-	selector bean.Selector
-}
-
-type GetOption func(arg *getArg)
-
-func Use(s bean.Selector) GetOption {
-	return func(arg *getArg) {
-		arg.selector = s
-	}
-}
-
-// get 获取单例 bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
-// 它和 FindBean 的区别是它在调用后能够保证返回的 bean 已经完成了注入和绑定过程。
-func (c *Container) get(i interface{}, opts ...GetOption) error {
-
-	if i == nil {
-		return errors.New("i can't be nil")
-	}
-
-	c.callAfterRefreshing()
-
-	// 使用指针才能够对外赋值
-	if reflect.TypeOf(i).Kind() != reflect.Ptr {
-		return errors.New("i must be pointer")
-	}
-
-	a := getArg{selector: bean.Selector("")}
-	for _, opt := range opts {
-		opt(&a)
-	}
-
-	w := toAssembly(c)
-	v := reflect.ValueOf(i).Elem()
-	return w.getBean(toSingletonTag(a.selector), v)
-}
-
 // find 返回符合条件的 bean 集合，不保证返回的 bean 已经完成注入和绑定过程。
 func (c *Container) find(selector bean.Selector) ([]bean.Definition, error) {
 	c.callAfterRefreshing()
@@ -246,106 +204,6 @@ func (c *Container) find(selector bean.Selector) ([]bean.Definition, error) {
 		_, ok := b.exports[t]
 		return ok
 	})
-}
-
-// collect 收集数组或指针定义的所有符合条件的 bean，收集到返回 true，否则返
-// 回 false。该函数有两种模式:自动模式和指定模式。自动模式是指 selectors 参数为空，
-// 这时候不仅会收集符合条件的单例 bean，还会收集符合条件的数组 bean (是指数组的元素
-// 符合条件，然后把数组元素拆开一个个放到收集结果里面)。指定模式是指 selectors 参数
-// 不为空，这时候只会收集单例 bean，而且要求这些单例 bean 不仅需要满足收集条件，而且
-// 必须满足 selector 条件。另外，自动模式下不对收集结果进行排序，指定模式下根据
-// selectors 列表的顺序对收集结果进行排序。
-func (c *Container) collect(i interface{}, selectors ...bean.Selector) error {
-	c.callAfterRefreshing()
-
-	v := reflect.ValueOf(i)
-	if v.Kind() != reflect.Ptr {
-		return errors.New("i must be slice ptr")
-	}
-
-	var tag collectionTag
-	for _, selector := range selectors {
-		s := toSingletonTag(selector)
-		tag.beanTags = append(tag.beanTags, s)
-	}
-	return toAssembly(c).collectBeans(tag, v.Elem())
-}
-
-// bind 绑定结构体属性。
-func (c *Container) bind(i interface{}, opts ...conf.BindOption) error {
-	return c.p.Bind(i, opts...)
-}
-
-// wire 对对象或者构造函数的结果进行依赖注入和属性绑定，返回处理后的对象
-func (c *Container) wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error) {
-	c.callAfterRefreshing()
-	assembly := toAssembly(c)
-	b := NewBean(objOrCtor, ctorArgs...)
-	// 这里使用 wireBean 是为了追踪 bean 的注入路径。
-	if err := assembly.wireBean(b); err != nil {
-		return nil, err
-	}
-	return b.Interface(), nil
-}
-
-// goroutine 安全地启动一个 goroutine
-func (c *Container) goroutine(fn interface{}, args ...arg.Arg) {
-	c.callAfterRefreshing()
-
-	fnType := reflect.TypeOf(fn)
-	if !util.IsFuncType(fnType) || !util.ReturnNothing(fnType) {
-		panic(errors.New("fn should be func()"))
-	}
-
-	r := arg.Bind(fn, args, arg.Skip(1))
-
-	c.wg.Add(1)
-	go func() {
-		defer c.wg.Done()
-
-		defer func() {
-			if r := recover(); r != nil {
-				log.Error(r)
-			}
-		}()
-
-		_, err := r.Call(toAssembly(c))
-		if err != nil {
-			log.Error(err.Error())
-		}
-	}()
-}
-
-// invoke 立即执行一个一次性的任务
-func (c *Container) invoke(fn interface{}, args ...arg.Arg) ([]interface{}, error) {
-	c.callAfterRefreshing()
-	if fnType := reflect.TypeOf(fn); util.IsFuncType(fnType) {
-		if util.ReturnNothing(fnType) || util.ReturnOnlyError(fnType) {
-			r := arg.Bind(fn, args, arg.Skip(1))
-			callResult, err := r.Call(toAssembly(c))
-			if err != nil {
-				return nil, err
-			}
-			var arr []interface{}
-			for _, v := range callResult {
-				arr = append(arr, v.Interface())
-			}
-			return arr, nil
-		}
-	}
-	return nil, errors.New("fn should be func() or func()error")
-}
-
-type conditionContext struct {
-	c *Container
-}
-
-func (ctx *conditionContext) Prop(key string, opts ...conf.GetOption) interface{} {
-	return ctx.c.prop(key, opts...)
-}
-
-func (ctx *conditionContext) Find(selector bean.Selector) ([]bean.Definition, error) {
-	return ctx.c.find(selector)
 }
 
 // Refresh 对所有 bean 进行依赖注入和属性绑定
@@ -394,7 +252,7 @@ func (c *Container) registerBeans() {
 func (c *Container) resolveConfigers() {
 
 	for _, g := range c.configers {
-		if g.cond == nil || g.cond.Matches(&conditionContext{c}) {
+		if g.cond == nil || g.cond.Matches(&pandora{c}) {
 			c.configerList.PushBack(g)
 		}
 	}
@@ -422,7 +280,7 @@ func (c *Container) resolveBean(b *BeanDefinition) error {
 	b.status = Resolving
 
 	// 不满足判断条件的则标记为删除状态并删除其注册
-	if b.cond != nil && !b.cond.Matches(&conditionContext{c}) {
+	if b.cond != nil && !b.cond.Matches(&pandora{c}) {
 		delete(c.beansById, b.ID())
 		b.status = Deleted
 		return nil

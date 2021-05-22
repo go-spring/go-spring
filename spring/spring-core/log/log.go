@@ -38,8 +38,8 @@ const (
 // Level 日志输出级别。
 type Level uint32
 
-func (l Level) String() string {
-	switch l {
+func (level Level) String() string {
+	switch level {
 	case TraceLevel:
 		return "trace"
 	case DebugLevel:
@@ -145,27 +145,27 @@ var config = struct {
 // B 将可变参数转换成切片。
 func B(a ...interface{}) []interface{} { return a }
 
-func output(l Level, e Entry, args ...interface{}) {
-	if config.level <= l {
-		config.output(2, l, e.print(args...))
+func output(level Level, e Entry, args ...interface{}) {
+	if config.level <= level {
+		config.output(2, level, e.print(args...))
 	}
 }
 
-func outputf(l Level, e Entry, format string, args ...interface{}) {
-	if config.level <= l {
-		config.output(2, l, e.printf(format, args...))
+func outputf(level Level, e Entry, format string, args ...interface{}) {
+	if config.level <= level {
+		config.output(2, level, e.printf(format, args...))
 	}
 }
 
-func bOutput(l Level, e Entry, fn func() []interface{}) {
-	if config.level <= l {
-		config.output(2, l, e.print(fn()...))
+func bOutput(level Level, e Entry, fn func() []interface{}) {
+	if config.level <= level {
+		config.output(2, level, e.print(fn()...))
 	}
 }
 
-func bOutputf(l Level, e Entry, format string, fn func() []interface{}) {
-	if config.level <= l {
-		config.output(2, l, e.printf(format, fn()...))
+func bOutputf(level Level, e Entry, format string, fn func() []interface{}) {
+	if config.level <= level {
+		config.output(2, level, e.printf(format, fn()...))
 	}
 }
 
