@@ -53,6 +53,7 @@ Following information can help us to resolve the issue faster.
 * 注释里面的 bean 都是小写格式。
 * 函数内部调用的函数一般放在它的上方并且靠近它。
 * 几乎所有的 panic 都应该打印其调用栈。
+* 和包名同名的文件作为了解包的入口。
 
 ## 注释
 
@@ -70,4 +71,4 @@ Following information can help us to resolve the issue faster.
 
 ## 实战
 
-* 原型 bean 可以使用工厂方法或者工厂接口进行注入，高并发场景下应该使用对象缓存提高效率。
+* 原型 bean 可以使用工厂模式进行注入，高并发场景下应该使用缓存以提高效率。

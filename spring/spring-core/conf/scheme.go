@@ -17,27 +17,17 @@
 package conf
 
 import (
-	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
-
-	"github.com/go-spring/spring-core/conf/yaml"
-	"github.com/spf13/cast"
 )
-
-// Scheme 属性源接口
-type Scheme interface {
-
-	// Load 加载符合条件的属性文件，fileLocation 是配置文件所在的目录或者数据文件，
-	// fileName 是配置文件的名称，但不包含扩展名。
-	Load(p *Properties, fileLocation string, fileName string, configTypes []string) error
-}
 
 func init() {
 	NewScheme(defaultScheme, "")
-	NewScheme(configMapScheme, "k8s")
 }
+
+// Scheme 加载符合条件的属性文件，fileLocation 是配置文件所在的目录或者数据
+// 文件，fileName 是配置文件的名称，但不包含扩展名。
+type Scheme func(p *Properties, fileLocation string, fileName string, configTypes []string) error
 
 var schemes = make(map[string]Scheme)
 
@@ -51,14 +41,7 @@ func FindScheme(name string) (Scheme, bool) {
 	return ps, ok
 }
 
-type FuncScheme func(p *Properties, fileLocation string, fileName string, configTypes []string) error
-
-func (f FuncScheme) Load(p *Properties, fileLocation string, fileName string, configTypes []string) error {
-	return f(p, fileLocation, fileName, configTypes)
-}
-
-// defaultScheme 整个文件都是属性
-var defaultScheme = FuncScheme(func(p *Properties, fileLocation string, fileName string, configTypes []string) error {
+func defaultScheme(p *Properties, fileLocation string, fileName string, configTypes []string) error {
 	for _, configType := range configTypes {
 		file := filepath.Join(fileLocation, fileName+"."+configType)
 		if _, err := os.Stat(file); err != nil {
@@ -69,45 +52,4 @@ var defaultScheme = FuncScheme(func(p *Properties, fileLocation string, fileName
 		}
 	}
 	return nil
-})
-
-// configMapScheme 基于 k8s ConfigMap 的属性源
-var configMapScheme = FuncScheme(func(p *Properties, fileLocation string, fileName string, configTypes []string) error {
-
-	b, err := ioutil.ReadFile(fileLocation)
-	if err != nil {
-		return err
-	}
-
-	m, err := yaml.Read(b)
-	if err != nil {
-		return err
-	}
-
-	d, ok := m["data"]
-	if !ok {
-		return fmt.Errorf("data not found in config-map %s", fileLocation)
-	}
-
-	data := d.(map[string]interface{})
-
-	for _, configType := range configTypes {
-		key := fileName + "." + configType
-
-		v, ok := data[key]
-		if !ok {
-			continue
-		}
-
-		val := cast.ToString(v)
-		if len(val) == 0 {
-			continue
-		}
-
-		err = p.Read([]byte(val), configType)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-})
+}

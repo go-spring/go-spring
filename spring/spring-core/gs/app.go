@@ -30,6 +30,7 @@ import (
 
 	"github.com/go-spring/spring-core/arg"
 	"github.com/go-spring/spring-core/conf"
+	"github.com/go-spring/spring-core/conf/k8s"
 	"github.com/go-spring/spring-core/grpc"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/mq"
@@ -37,6 +38,10 @@ import (
 	"github.com/go-spring/spring-core/web"
 	"github.com/spf13/cast"
 )
+
+func init() {
+	conf.NewScheme(k8s.Scheme, "k8s")
+}
 
 const SPRING_PROFILE = "SPRING_PROFILE"
 
@@ -224,7 +229,7 @@ func (app *App) loadConfigFile(p *conf.Properties, profile ...string) error {
 			panic(fmt.Errorf("unsupported config scheme %s", schemeName))
 		}
 
-		err := scheme.Load(p, fileLocation, fileName, configTypes)
+		err := scheme(p, fileLocation, fileName, configTypes)
 		if err != nil {
 			return err
 		}

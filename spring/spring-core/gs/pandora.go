@@ -27,7 +27,14 @@ import (
 	"github.com/go-spring/spring-core/util"
 )
 
-// Pandora 请谨慎使用该接口提供的方法。
+// Pandora 提供了一些在 IoC 容器启动后基于反射获取和使用 property 与 bean 的接
+// 口。因为很多人会担心在运行时大量使用反射会降低程序性能，所以命名为 Pandora，取
+// 其诱人但危险的含义。事实上，这些在 IoC 容器启动后使用属性绑定和依赖注入的方案，
+// 都可以转换为启动阶段的方案以提高程序的性能。
+// 另一方面，为了统一 Container 和 App 两种启动方式下这些方法的使用方式，需要提取
+// 出一个可共用的接口来，也就是说，无论程序是 Container 方式启动还是 App 方式启动，
+// 都可以在需要使用这些方法的地方注入一个 Pandora 对象而不是 Container 对象或者
+// App 对象，从而实现使用方式的统一。
 type Pandora interface {
 	Prop(key string, opts ...conf.GetOption) interface{}
 	Get(i interface{}, opts ...GetOption) error
@@ -43,7 +50,11 @@ type pandora struct {
 	c *Container
 }
 
-// Prop 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。
+// Prop 返回 key 转为小写后精确匹配的属性值。默认情况下属性不存在时返回 nil ，但
+// 是可以通过 conf.WithDefault 选项在属性不存在时返回一个默认值。另外，默认情况
+// 下该方法会对返回值进行解引用，就是说如果 key 对应的属性值是一个引用，例如 ${a}，
+// 那么默认情况下该方法会返回 key 为 a 的属性值，如果 a 的属性值不存在则返回 nil。
+// 如果你不想对返回值进行解引用，可以通过 conf.DisableResolve 选项来关闭此功能。
 func (p *pandora) Prop(key string, opts ...conf.GetOption) interface{} {
 	return p.c.p.Get(key, opts...)
 }

@@ -59,7 +59,6 @@ type Container struct {
 	configers    []*Configer
 	configerList *list.List
 
-	destroyerMap  map[string]*destroyer
 	destroyerList *list.List
 }
 
@@ -94,7 +93,6 @@ func New(opts ...NewOption) *Container {
 		beansByType:   make(map[reflect.Type][]*BeanDefinition),
 		configerList:  list.New(),
 		destroyerList: list.New(),
-		destroyerMap:  make(map[string]*destroyer),
 	}
 
 	if a.openPandora {
@@ -237,7 +235,7 @@ func (c *Container) Refresh() {
 	err = c.wireBeans(assembly)
 	util.Panic(err).When(err != nil)
 
-	c.sortDestroyers()
+	c.destroyerList = assembly.sortDestroyers()
 	c.state = Refreshed
 
 	log.Info("container refreshed successfully")
@@ -380,24 +378,6 @@ func (c *Container) wireBeans(assembly *beanAssembly) error {
 		}
 	}
 	return nil
-}
-
-// saveDestroyer 某个 Bean 可能会被多个 Bean 依赖，因此需要排重处理。
-func (c *Container) saveDestroyer(b *BeanDefinition) *destroyer {
-	d, ok := c.destroyerMap[b.ID()]
-	if !ok {
-		d = &destroyer{current: b}
-		c.destroyerMap[b.ID()] = d
-	}
-	return d
-}
-
-// sortDestroyers 对销毁函数进行排序
-func (c *Container) sortDestroyers() {
-	for _, d := range c.destroyerMap {
-		c.destroyerList.PushBack(d)
-	}
-	c.destroyerList = sort.Triple(c.destroyerList, getBeforeDestroyers)
 }
 
 // Close 关闭容器上下文，用于通知 bean 销毁等。
