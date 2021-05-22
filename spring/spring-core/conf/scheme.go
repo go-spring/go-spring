@@ -18,10 +18,12 @@ package conf
 
 import (
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 
-	"github.com/spf13/viper"
+	"github.com/go-spring/spring-core/conf/yaml"
+	"github.com/spf13/cast"
 )
 
 // Scheme 属性源接口
@@ -72,27 +74,37 @@ var defaultScheme = FuncScheme(func(p *Properties, fileLocation string, fileName
 // configMapScheme 基于 k8s ConfigMap 的属性源
 var configMapScheme = FuncScheme(func(p *Properties, fileLocation string, fileName string, configTypes []string) error {
 
-	v := viper.New()
-	v.SetConfigFile(fileLocation)
-	if err := v.ReadInConfig(); err != nil {
+	b, err := ioutil.ReadFile(fileLocation)
+	if err != nil {
 		return err
 	}
 
-	d := v.Sub("data")
-	if d == nil {
+	m, err := yaml.Read(b)
+	if err != nil {
+		return err
+	}
+
+	d, ok := m["data"]
+	if !ok {
 		return fmt.Errorf("data not found in config-map %s", fileLocation)
 	}
 
+	data := d.(map[string]interface{})
+
 	for _, configType := range configTypes {
 		key := fileName + "." + configType
-		if !d.IsSet(key) {
+
+		v, ok := data[key]
+		if !ok {
 			continue
 		}
-		val := d.GetString(key)
+
+		val := cast.ToString(v)
 		if len(val) == 0 {
 			continue
 		}
-		err := p.Read([]byte(val), configType)
+
+		err = p.Read([]byte(val), configType)
 		if err != nil {
 			return err
 		}

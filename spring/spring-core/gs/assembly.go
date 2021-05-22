@@ -27,7 +27,6 @@ import (
 	"github.com/go-spring/spring-core/cond"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/log"
-	"github.com/go-spring/spring-core/sort"
 	"github.com/go-spring/spring-core/util"
 )
 
@@ -58,18 +57,16 @@ func (s wiringStack) path() (path string) {
 
 // beanAssembly 装配工作台。
 type beanAssembly struct {
-	c            *Container
-	stack        wiringStack
-	destroyers   *list.List // 具有销毁函数的 bean 的列表。
-	destroyerMap map[string]*destroyer
+	c          *Container
+	stack      wiringStack
+	destroyers *list.List // 具有销毁函数的 bean 的列表。
 }
 
 func toAssembly(c *Container) *beanAssembly {
 	return &beanAssembly{
-		c:            c,
-		stack:        make([]*BeanDefinition, 0),
-		destroyers:   list.New(),
-		destroyerMap: make(map[string]*destroyer),
+		c:          c,
+		stack:      make([]*BeanDefinition, 0),
+		destroyers: list.New(),
 	}
 }
 
@@ -81,25 +78,6 @@ func (assembly *beanAssembly) Matches(cond cond.Condition) bool {
 // Bind 根据 tag 的内容进行属性绑定。
 func (assembly *beanAssembly) Bind(tag string, v reflect.Value) error {
 	return assembly.c.p.Bind(v, conf.Tag(tag))
-}
-
-// saveDestroyer 某个 Bean 可能会被多个 Bean 依赖，因此需要排重处理。
-func (assembly *beanAssembly) saveDestroyer(b *BeanDefinition) *destroyer {
-	d, ok := assembly.destroyerMap[b.ID()]
-	if !ok {
-		d = &destroyer{current: b}
-		assembly.destroyerMap[b.ID()] = d
-	}
-	return d
-}
-
-// sortDestroyers 对销毁函数进行排序
-func (assembly *beanAssembly) sortDestroyers() *list.List {
-	for _, d := range assembly.destroyerMap {
-		assembly.destroyers.PushBack(d)
-	}
-	assembly.destroyers = sort.Triple(assembly.destroyers, getBeforeDestroyers)
-	return assembly.destroyers
 }
 
 // getBean 获取 tag 对应的 bean 然后赋值给 v，因此 v 应该是一个未初始化的值。
@@ -386,7 +364,7 @@ func (assembly *beanAssembly) wireBean(b *BeanDefinition) error {
 
 	// 对注入路径上的销毁函数进行排序。
 	if b.destroy != nil {
-		d := assembly.saveDestroyer(b)
+		d := assembly.c.saveDestroyer(b)
 		if i := assembly.destroyers.Back(); i != nil {
 			d.after(i.Value.(*BeanDefinition))
 		}

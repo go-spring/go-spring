@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package contains
+package contain
 
 import (
 	"container/list"

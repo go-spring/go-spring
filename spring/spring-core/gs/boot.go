@@ -85,12 +85,12 @@ func HandleRequest(method uint32, path string, fn web.Handler) *web.Mapper {
 
 // RequestMapping 注册任意 HTTP 方法处理函数
 func RequestMapping(method uint32, path string, fn web.HandlerFunc) *web.Mapper {
-	return gApp.HandleRequest(method, path, web.FUNC(fn))
+	return gApp.RequestMapping(method, path, fn)
 }
 
 // RequestBinding 注册任意 HTTP 方法处理函数
 func RequestBinding(method uint32, path string, fn interface{}) *web.Mapper {
-	return gApp.HandleRequest(method, path, web.BIND(fn))
+	return gApp.RequestBinding(method, path, fn)
 }
 
 // HandleGet 注册 GET 方法处理函数
@@ -100,12 +100,12 @@ func HandleGet(path string, fn web.Handler) *web.Mapper {
 
 // GetMapping 注册 GET 方法处理函数
 func GetMapping(path string, fn web.HandlerFunc) *web.Mapper {
-	return gApp.HandleGet(path, web.FUNC(fn))
+	return gApp.GetMapping(path, fn)
 }
 
 // GetBinding 注册 GET 方法处理函数
 func GetBinding(path string, fn interface{}) *web.Mapper {
-	return gApp.HandleGet(path, web.BIND(fn))
+	return gApp.GetBinding(path, fn)
 }
 
 // HandlePost 注册 POST 方法处理函数
@@ -115,12 +115,12 @@ func HandlePost(path string, fn web.Handler) *web.Mapper {
 
 // PostMapping 注册 POST 方法处理函数
 func PostMapping(path string, fn web.HandlerFunc) *web.Mapper {
-	return gApp.HandlePost(path, web.FUNC(fn))
+	return gApp.PostMapping(path, fn)
 }
 
 // PostBinding 注册 POST 方法处理函数
 func PostBinding(path string, fn interface{}) *web.Mapper {
-	return gApp.HandlePost(path, web.BIND(fn))
+	return gApp.PostBinding(path, fn)
 }
 
 // HandlePut 注册 PUT 方法处理函数
@@ -130,12 +130,12 @@ func HandlePut(path string, fn web.Handler) *web.Mapper {
 
 // PutMapping 注册 PUT 方法处理函数
 func PutMapping(path string, fn web.HandlerFunc) *web.Mapper {
-	return gApp.HandlePut(path, web.FUNC(fn))
+	return gApp.PutMapping(path, fn)
 }
 
 // PutBinding 注册 PUT 方法处理函数
 func PutBinding(path string, fn interface{}) *web.Mapper {
-	return gApp.HandlePut(path, web.BIND(fn))
+	return gApp.PutBinding(path, fn)
 }
 
 // HandleDelete 注册 DELETE 方法处理函数
@@ -145,12 +145,12 @@ func HandleDelete(path string, fn web.Handler) *web.Mapper {
 
 // DeleteMapping 注册 DELETE 方法处理函数
 func DeleteMapping(path string, fn web.HandlerFunc) *web.Mapper {
-	return gApp.HandleDelete(path, web.FUNC(fn))
+	return gApp.DeleteMapping(path, fn)
 }
 
 // DeleteBinding 注册 DELETE 方法处理函数
 func DeleteBinding(path string, fn interface{}) *web.Mapper {
-	return gApp.HandleDelete(path, web.BIND(fn))
+	return gApp.DeleteBinding(path, fn)
 }
 
 // Filter 注册 web.Filter 对象

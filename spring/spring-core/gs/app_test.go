@@ -42,14 +42,6 @@ func startApplication(cfgLocation ...string) (*gs.App, gs.Pandora) {
 
 func TestConfig(t *testing.T) {
 
-	t.Run("default config", func(t *testing.T) {
-		os.Clearenv()
-		app, p := startApplication()
-		defer app.ShutDown()
-		assert.Equal(t, app.GetConfigLocation(), []string{"config/"})
-		assert.Equal(t, p.Prop(conf.SpringProfile), nil)
-	})
-
 	t.Run("config via env", func(t *testing.T) {
 		os.Clearenv()
 		_ = os.Setenv(conf.SpringProfile, "dev")

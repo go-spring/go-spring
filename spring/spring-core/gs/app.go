@@ -88,10 +88,6 @@ func NewApp(opts ...NewOption) *App {
 	}
 }
 
-func (app *App) GetConfigLocation() []string {
-	return app.cfgLocation
-}
-
 // Start 启动应用
 func (app *App) start(cfgLocation ...string) {
 
@@ -101,12 +97,11 @@ func (app *App) start(cfgLocation ...string) {
 
 	// 打印 Banner 内容
 	if app.bannerMode != BannerModeOff {
-		app.printBanner()
+		printBanner(app.getBanner())
 	}
 
 	// 准备上下文环境
-	err := app.prepare()
-	util.Panic(err).When(err != nil)
+	app.prepare()
 
 	// 依赖注入、属性绑定、初始化
 	app.c.Refresh()
@@ -117,42 +112,38 @@ func (app *App) start(cfgLocation ...string) {
 	}
 
 	// 通知应用启动事件
-	for _, b := range app.Events {
-		b.OnStartApplication(app)
+	for _, e := range app.Events {
+		e.OnStartApplication(app)
 	}
 
-	log.Info("application started")
+	log.Info("application started successfully")
 }
 
-// printBanner 查找 Banner 文件然后将其打印到控制台
-func (app *App) printBanner() {
+func (app *App) getBanner() string {
 
-	// 优先使用自定义 Banner
-	banner := app.banner
+	if len(app.banner) > 0 {
+		return app.banner
+	}
 
-	// 然后是文件中的 Banner
-	if banner == "" {
-		for _, configLocation := range app.cfgLocation {
-			if stat, err := os.Stat(configLocation); err == nil && stat.IsDir() {
-				f := path.Join(configLocation, "banner.txt")
-				if stat, err = os.Stat(f); err == nil && !stat.IsDir() {
-					if s, e := ioutil.ReadFile(f); e == nil {
-						banner = string(s)
-						break
-					} else {
-						panic(e)
-					}
-				}
-			}
+	for _, dir := range app.cfgLocation {
+		stat, err := os.Stat(dir)
+		if err != nil || !stat.IsDir() {
+			continue
+		}
+
+		f := path.Join(dir, "banner.txt")
+		stat, err = os.Stat(f)
+		if err != nil || stat.IsDir() {
+			continue
+		}
+
+		b, err := ioutil.ReadFile(f)
+		if err == nil {
+			return string(b)
 		}
 	}
 
-	// 最后是默认的 Banner
-	if banner == "" {
-		banner = defaultBanner
-	}
-
-	printBanner(banner)
+	return defaultBanner
 }
 
 // loadCmdArgs 加载命令行参数，形如 -name value 的参数才有效。
@@ -205,7 +196,7 @@ func (app *App) loadSystemEnv(p *conf.Properties) error {
 }
 
 // loadConfigFile 加载指定环境的配置文件
-func (app *App) loadConfigFile(p *conf.Properties, profile ...string) {
+func (app *App) loadConfigFile(p *conf.Properties, profile ...string) error {
 
 	fileName := "application"
 	if len(profile) > 0 && profile[0] != "" {
@@ -217,9 +208,11 @@ func (app *App) loadConfigFile(p *conf.Properties, profile ...string) {
 		fileLocation string
 	)
 
+	configTypes := []string{"properties", "yaml", "toml"}
 	for _, configLocation := range app.cfgLocation {
 
-		if ss := strings.SplitN(configLocation, ":", 2); len(ss) == 1 {
+		ss := strings.SplitN(configLocation, ":", 2)
+		if len(ss) == 1 {
 			fileLocation = ss[0]
 		} else {
 			schemeName = ss[0]
@@ -231,15 +224,19 @@ func (app *App) loadConfigFile(p *conf.Properties, profile ...string) {
 			panic(fmt.Errorf("unsupported config scheme %s", schemeName))
 		}
 
-		err := scheme.Load(p, fileLocation, fileName, []string{"properties", "yaml", "toml"})
-		util.Panic(err).When(err != nil)
+		err := scheme.Load(p, fileLocation, fileName, configTypes)
+		if err != nil {
+			return err
+		}
 
 		// TODO Trace 打印所有的属性。
 	}
+
+	return nil
 }
 
 // prepare 准备上下文环境
-func (app *App) prepare() error {
+func (app *App) prepare() {
 
 	// 配置项加载顺序优先级，从高到低:
 	// 1.代码设置(api)
@@ -263,10 +260,12 @@ func (app *App) prepare() error {
 	}
 
 	app.loadCmdArgs(cmdConfig)
-	if err := app.loadSystemEnv(envConfig); err != nil {
-		return err
-	}
-	app.loadConfigFile(defaultConfig)
+
+	err := app.loadSystemEnv(envConfig)
+	util.Panic(err).When(err != nil)
+
+	err = app.loadConfigFile(defaultConfig)
+	util.Panic(err).When(err != nil)
 
 	profile := func([]*conf.Properties) string {
 		keys := []string{conf.SpringProfile, SPRING_PROFILE}
@@ -282,8 +281,9 @@ func (app *App) prepare() error {
 	}(p)
 
 	if profile != "" {
+		err = app.loadConfigFile(profileConfig, profile)
+		util.Panic(err).When(err != nil)
 		app.c.Property(conf.SpringProfile, profile)
-		app.loadConfigFile(profileConfig, profile)
 	}
 
 	m := make(map[string]interface{})
@@ -299,8 +299,6 @@ func (app *App) prepare() error {
 	for key, val := range m {
 		app.c.Property(key, val)
 	}
-
-	return nil
 }
 
 func (app *App) close() {
@@ -331,10 +329,10 @@ func (app *App) Run(cfgLocation ...string) {
 
 	// 响应控制台的 Ctrl+C 及 kill 命令。
 	go func() {
-		sig := make(chan os.Signal, 1)
-		signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
-		<-sig
-		fmt.Println("got signal, program will exit")
+		ch := make(chan os.Signal, 1)
+		signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
+		sig := <-ch
+		log.Infof("program will exit because of signal %v", sig)
 		app.ShutDown()
 	}()
 
@@ -410,68 +408,84 @@ func (app *App) Mappers() map[string]*web.Mapper {
 	return app.rootRouter.Mappers()
 }
 
+// Route 返回和 Mapping 绑定的路由分组
 func (app *App) Route(basePath string) *web.Router {
 	return app.rootRouter.Route(basePath)
 }
 
+// HandleRequest 注册任意 HTTP 方法处理函数
 func (app *App) HandleRequest(method uint32, path string, fn web.Handler) *web.Mapper {
 	return app.rootRouter.HandleRequest(method, path, fn)
 }
 
+// RequestMapping 注册任意 HTTP 方法处理函数
 func (app *App) RequestMapping(method uint32, path string, fn web.HandlerFunc) *web.Mapper {
-	return app.rootRouter.HandleRequest(method, path, web.FUNC(fn))
+	return app.rootRouter.RequestMapping(method, path, fn)
 }
 
+// RequestBinding 注册任意 HTTP 方法处理函数
 func (app *App) RequestBinding(method uint32, path string, fn interface{}) *web.Mapper {
-	return app.rootRouter.HandleRequest(method, path, web.BIND(fn))
+	return app.rootRouter.RequestBinding(method, path, fn)
 }
 
+// HandleGet 注册 GET 方法处理函数
 func (app *App) HandleGet(path string, fn web.Handler) *web.Mapper {
 	return app.rootRouter.HandleGet(path, fn)
 }
 
+// GetMapping 注册 GET 方法处理函数
 func (app *App) GetMapping(path string, fn web.HandlerFunc) *web.Mapper {
-	return app.rootRouter.HandleGet(path, web.FUNC(fn))
+	return app.rootRouter.GetMapping(path, fn)
 }
 
+// GetBinding 注册 GET 方法处理函数
 func (app *App) GetBinding(path string, fn interface{}) *web.Mapper {
-	return app.rootRouter.HandleGet(path, web.BIND(fn))
+	return app.rootRouter.GetBinding(path, fn)
 }
 
+// HandlePost 注册 POST 方法处理函数
 func (app *App) HandlePost(path string, fn web.Handler) *web.Mapper {
 	return app.rootRouter.HandlePost(path, fn)
 }
 
+// PostMapping 注册 POST 方法处理函数
 func (app *App) PostMapping(path string, fn web.HandlerFunc) *web.Mapper {
-	return app.rootRouter.HandlePost(path, web.FUNC(fn))
+	return app.rootRouter.PostMapping(path, fn)
 }
 
+// PostBinding 注册 POST 方法处理函数
 func (app *App) PostBinding(path string, fn interface{}) *web.Mapper {
-	return app.rootRouter.HandlePost(path, web.BIND(fn))
+	return app.rootRouter.PostBinding(path, fn)
 }
 
+// HandlePut 注册 PUT 方法处理函数
 func (app *App) HandlePut(path string, fn web.Handler) *web.Mapper {
 	return app.rootRouter.HandlePut(path, fn)
 }
 
+// PutMapping 注册 PUT 方法处理函数
 func (app *App) PutMapping(path string, fn web.HandlerFunc) *web.Mapper {
-	return app.rootRouter.HandlePut(path, web.FUNC(fn))
+	return app.rootRouter.PutMapping(path, fn)
 }
 
+// PutBinding 注册 PUT 方法处理函数
 func (app *App) PutBinding(path string, fn interface{}) *web.Mapper {
-	return app.rootRouter.HandlePut(path, web.BIND(fn))
+	return app.rootRouter.PutBinding(path, fn)
 }
 
+// HandleDelete 注册 DELETE 方法处理函数
 func (app *App) HandleDelete(path string, fn web.Handler) *web.Mapper {
 	return app.rootRouter.HandleDelete(path, fn)
 }
 
+// DeleteMapping 注册 DELETE 方法处理函数
 func (app *App) DeleteMapping(path string, fn web.HandlerFunc) *web.Mapper {
-	return app.rootRouter.HandleDelete(path, web.FUNC(fn))
+	return app.rootRouter.DeleteMapping(path, fn)
 }
 
+// DeleteBinding 注册 DELETE 方法处理函数
 func (app *App) DeleteBinding(path string, fn interface{}) *web.Mapper {
-	return app.rootRouter.HandleDelete(path, web.BIND(fn))
+	return app.rootRouter.DeleteBinding(path, web.BIND(fn))
 }
 
 func (app *App) NewFilter(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
