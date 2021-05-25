@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"runtime/debug"
 	"sync"
 
 	"github.com/go-spring/spring-core/arg"
@@ -117,22 +118,28 @@ func (c *Container) callBeforeRefreshing() {
 
 // Load 从文件读取属性列表。
 func (c *Container) Load(filename string) error {
+	c.callBeforeRefreshing()
 	return c.p.Load(filename)
 }
 
 // Property 设置 key 对应的属性值。
 func (c *Container) Property(key string, value interface{}) {
+	c.callBeforeRefreshing()
 	c.p.Set(key, value)
 }
 
 // Object 注册对象形式的 bean 。
 func (c *Container) Object(i interface{}) *BeanDefinition {
-	return c.Register(NewBean(reflect.ValueOf(i)))
+	c.callBeforeRefreshing()
+	b := NewBean(reflect.ValueOf(i))
+	return c.Register(b)
 }
 
 // Provide 注册构造函数形式的 bean 。
 func (c *Container) Provide(ctor interface{}, args ...arg.Arg) *BeanDefinition {
-	return c.Register(NewBean(ctor, args...))
+	c.callBeforeRefreshing()
+	b := NewBean(ctor, args...)
+	return c.Register(b)
 }
 
 // Register 注册元数据形式的 bean 。
@@ -362,8 +369,8 @@ func (c *Container) autoExport(t reflect.Type, b *BeanDefinition) error {
 
 func (c *Container) runConfigers(assembly *beanAssembly) error {
 	for e := c.configerList.Front(); e != nil; e = e.Next() {
-		_, err := e.Value.(*Configer).fn.Call(assembly)
-		if err != nil {
+		g := e.Value.(*Configer)
+		if _, err := g.fn.Call(assembly); err != nil {
 			return err
 		}
 	}
@@ -372,33 +379,40 @@ func (c *Container) runConfigers(assembly *beanAssembly) error {
 
 func (c *Container) wireBeans(assembly *beanAssembly) error {
 	for _, b := range c.beansById {
-		err := assembly.wireBean(b)
-		if err != nil {
+		if err := assembly.wireBean(b); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// Close 关闭容器上下文，用于通知 bean 销毁等。
-// 该函数可以确保 bean 的销毁顺序和注入顺序相反。
+// Close 关闭容器，此方法必须在 Refresh 之后调用。该方法会触发 ctx 的 Done 信
+// 号，然后等待所有 goroutine 结束，最后按照被依赖先销毁的原则执行所有的销毁函数。
 func (c *Container) Close() {
 	c.callAfterRefreshing()
 
 	c.cancel()
 	c.wg.Wait()
 
-	log.Info("safe goroutines exited")
+	log.Info("goroutines exited")
 
 	assembly := toAssembly(c)
-	for d := c.destroyerList.Front(); d != nil; d = d.Next() {
-		err := d.Value.(*destroyer).run(assembly)
-		if err != nil {
+	c.runDestroyers(assembly)
+
+	log.Info("container closed")
+}
+
+func (c *Container) runDestroyers(assembly *beanAssembly) {
+	for e := c.destroyerList.Front(); e != nil; e = e.Next() {
+		d := e.Value.(*destroyer)
+		if err := d.run(assembly); err != nil {
 			log.Error(err)
 		}
 	}
 }
 
+// Go 创建安全可等待的 goroutine，fn 要求的 ctx 对象由 Container 提供，当
+// Container 关闭时 ctx 发出 Done 信号， fn 在接收到此信号后应当立即退出。
 func (c *Container) Go(fn func(ctx context.Context)) {
 	c.wg.Add(1)
 	go func() {
@@ -406,7 +420,7 @@ func (c *Container) Go(fn func(ctx context.Context)) {
 
 		defer func() {
 			if r := recover(); r != nil {
-				log.Error(r)
+				log.Errorf("%v, %s", r, debug.Stack())
 			}
 		}()
 

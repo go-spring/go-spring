@@ -709,49 +709,49 @@ func TestApplicationContext_Get(t *testing.T) {
 	})
 }
 
-func TestApplicationContext_FindByName(t *testing.T) {
-
-	c, ch := container()
-	c.Object(&BeanZero{5})
-	c.Object(new(BeanOne))
-	c.Object(new(BeanTwo))
-	c.Refresh()
-
-	p := <-ch
-
-	b, _ := p.Find("")
-	assert.Equal(t, len(b), 4)
-
-	b, _ = p.Find("BeanTwo")
-	fmt.Println(json.ToString(b))
-	assert.Equal(t, len(b), 0)
-
-	b, _ = p.Find("*gs_test.BeanTwo")
-	fmt.Println(json.ToString(b))
-	assert.Equal(t, len(b), 1)
-
-	b, _ = p.Find(":*gs_test.BeanTwo")
-	fmt.Println(json.ToString(b))
-	assert.Equal(t, len(b), 1)
-
-	b, _ = p.Find("github.com/go-spring/spring-core/gs_test/gs_test.BeanTwo:*gs_test.BeanTwo")
-	fmt.Println(json.ToString(b))
-	assert.Equal(t, len(b), 1)
-
-	b, _ = p.Find("xxx:*gs_test.BeanTwo")
-	fmt.Println(json.ToString(b))
-	assert.Equal(t, len(b), 0)
-
-	b, _ = p.Find((*BeanTwo)(nil))
-	fmt.Println(json.ToString(b))
-	assert.Equal(t, len(b), 1)
-
-	b, _ = p.Find((*fmt.Stringer)(nil))
-	assert.Equal(t, len(b), 0)
-
-	b, _ = p.Find((*Grouper)(nil))
-	assert.Equal(t, len(b), 0)
-}
+//func TestApplicationContext_FindByName(t *testing.T) {
+//
+//	c, ch := container()
+//	c.Object(&BeanZero{5})
+//	c.Object(new(BeanOne))
+//	c.Object(new(BeanTwo))
+//	c.Refresh()
+//
+//	p := <-ch
+//
+//	b, _ := p.Find("")
+//	assert.Equal(t, len(b), 4)
+//
+//	b, _ = p.Find("BeanTwo")
+//	fmt.Println(json.ToString(b))
+//	assert.Equal(t, len(b), 0)
+//
+//	b, _ = p.Find("*gs_test.BeanTwo")
+//	fmt.Println(json.ToString(b))
+//	assert.Equal(t, len(b), 1)
+//
+//	b, _ = p.Find(":*gs_test.BeanTwo")
+//	fmt.Println(json.ToString(b))
+//	assert.Equal(t, len(b), 1)
+//
+//	b, _ = p.Find("github.com/go-spring/spring-core/gs_test/gs_test.BeanTwo:*gs_test.BeanTwo")
+//	fmt.Println(json.ToString(b))
+//	assert.Equal(t, len(b), 1)
+//
+//	b, _ = p.Find("xxx:*gs_test.BeanTwo")
+//	fmt.Println(json.ToString(b))
+//	assert.Equal(t, len(b), 0)
+//
+//	b, _ = p.Find((*BeanTwo)(nil))
+//	fmt.Println(json.ToString(b))
+//	assert.Equal(t, len(b), 1)
+//
+//	b, _ = p.Find((*fmt.Stringer)(nil))
+//	assert.Equal(t, len(b), 0)
+//
+//	b, _ = p.Find((*Grouper)(nil))
+//	assert.Equal(t, len(b), 0)
+//}
 
 type Teacher interface {
 	Course() string
@@ -3253,8 +3253,7 @@ func init() {
 }
 
 func TestApplicationContext_Go(t *testing.T) {
-	c, ch := container()
+	c := gs.New()
 	c.Refresh()
-	p := <-ch
-	p.Go(func() { panic(errors.New("error")) })
+	c.Go(func(ctx context.Context) { panic(errors.New("error")) })
 }

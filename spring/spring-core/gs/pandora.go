@@ -23,7 +23,6 @@ import (
 	"github.com/go-spring/spring-core/arg"
 	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/conf"
-	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
 )
 
@@ -38,11 +37,9 @@ import (
 type Pandora interface {
 	Prop(key string, opts ...conf.GetOption) interface{}
 	Get(i interface{}, opts ...GetOption) error
-	Find(selector bean.Selector) ([]bean.Definition, error)
 	Collect(i interface{}, selectors ...bean.Selector) error
 	Bind(i interface{}, opts ...conf.BindOption) error
 	Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error)
-	Go(fn interface{}, args ...arg.Arg)
 	Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, error)
 }
 
@@ -56,6 +53,7 @@ type pandora struct {
 // 那么默认情况下该方法会返回 key 为 a 的属性值，如果 a 的属性值不存在则返回 nil。
 // 如果你不想对返回值进行解引用，可以通过 conf.DisableResolve 选项来关闭此功能。
 func (p *pandora) Prop(key string, opts ...conf.GetOption) interface{} {
+	p.c.callAfterRefreshing()
 	return p.c.p.Get(key, opts...)
 }
 
@@ -74,12 +72,11 @@ func Use(s bean.Selector) GetOption {
 // Get 获取单例 bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
 // 它和 FindBean 的区别是它在调用后能够保证返回的 bean 已经完成了注入和绑定过程。
 func (p *pandora) Get(i interface{}, opts ...GetOption) error {
+	p.c.callAfterRefreshing()
 
 	if i == nil {
 		return errors.New("i can't be nil")
 	}
-
-	p.c.callAfterRefreshing()
 
 	// 使用指针才能够对外赋值
 	if reflect.TypeOf(i).Kind() != reflect.Ptr {
@@ -97,6 +94,7 @@ func (p *pandora) Get(i interface{}, opts ...GetOption) error {
 }
 
 func (p *pandora) Find(selector bean.Selector) ([]bean.Definition, error) {
+	p.c.callAfterRefreshing()
 	return p.c.find(selector)
 }
 
@@ -123,67 +121,41 @@ func (p *pandora) Collect(i interface{}, selectors ...bean.Selector) error {
 	return toAssembly(p.c).collectBeans(tag, v.Elem())
 }
 
-// Bind 绑定结构体属性。
+// Bind 对传入的对象进行属性绑定。
 func (p *pandora) Bind(i interface{}, opts ...conf.BindOption) error {
+	p.c.callAfterRefreshing()
 	return p.c.p.Bind(i, opts...)
 }
 
-// Wire 对对象或者构造函数的结果进行依赖注入和属性绑定，返回处理后的对象
+// Wire 对传入的对象或者构造函数的执行结果进行属性绑定和依赖注入，并返回处理后的对象。
 func (p *pandora) Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error) {
 	p.c.callAfterRefreshing()
-	assembly := toAssembly(p.c)
+
 	b := NewBean(objOrCtor, ctorArgs...)
-	// 这里使用 wireBean 是为了追踪 bean 的注入路径。
-	if err := assembly.wireBean(b); err != nil {
+	err := toAssembly(p.c).wireBean(b)
+	if err != nil {
 		return nil, err
 	}
 	return b.Interface(), nil
 }
 
-// Go 安全地启动一个 goroutine
-func (p *pandora) Go(fn interface{}, args ...arg.Arg) {
-	p.c.callAfterRefreshing()
-
-	fnType := reflect.TypeOf(fn)
-	if !util.IsFuncType(fnType) || !util.ReturnNothing(fnType) {
-		panic(errors.New("fn should be func()"))
-	}
-
-	r := arg.Bind(fn, args, arg.Skip(1))
-
-	p.c.wg.Add(1)
-	go func() {
-		defer p.c.wg.Done()
-
-		defer func() {
-			if r := recover(); r != nil {
-				log.Error(r)
-			}
-		}()
-
-		_, err := r.Call(toAssembly(p.c))
-		if err != nil {
-			log.Error(err.Error())
-		}
-	}()
-}
-
-// Invoke 立即执行一个一次性的任务
+// Invoke 立即执行 fn 并返回执行结果。
 func (p *pandora) Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, error) {
 	p.c.callAfterRefreshing()
-	if fnType := reflect.TypeOf(fn); util.IsFuncType(fnType) {
-		if util.ReturnNothing(fnType) || util.ReturnOnlyError(fnType) {
-			r := arg.Bind(fn, args, arg.Skip(1))
-			callResult, err := r.Call(toAssembly(p.c))
-			if err != nil {
-				return nil, err
-			}
-			var arr []interface{}
-			for _, v := range callResult {
-				arr = append(arr, v.Interface())
-			}
-			return arr, nil
-		}
+
+	if !util.IsFuncType(reflect.TypeOf(fn)) {
+		return nil, errors.New("fn should be func(...) or func(...)error")
 	}
-	return nil, errors.New("fn should be func() or func()error")
+
+	c := arg.Bind(fn, args, arg.Skip(1))
+	ret, err := c.Call(toAssembly(p.c))
+	if err != nil {
+		return nil, err
+	}
+
+	var a []interface{}
+	for _, v := range ret {
+		a = append(a, v.Interface())
+	}
+	return a, nil
 }
