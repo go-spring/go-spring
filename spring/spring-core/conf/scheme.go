@@ -25,8 +25,8 @@ func init() {
 	NewScheme(defaultScheme, "")
 }
 
-// Scheme 加载符合条件的属性文件，fileLocation 是配置文件所在的目录或者数据
-// 文件，fileName 是配置文件的名称，但不包含扩展名。
+// Scheme 加载符合条件的属性文件，fileLocation 是属性列表文件所在的目录或者数据
+// 文件，fileName 是属性列表文件的名称，但不包含扩展名。
 type Scheme func(p *Properties, fileLocation string, fileName string, configTypes []string) error
 
 var schemes = make(map[string]Scheme)

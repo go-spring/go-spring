@@ -20,7 +20,7 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-// Read 从内存中读取配置项列表，b 是 UTF8 格式。
+// Read 从内存中读取属性列表，b 是 UTF8 格式。
 func Read(b []byte) (map[string]interface{}, error) {
 	m := make(map[string]interface{})
 	err := yaml.Unmarshal(b, &m)

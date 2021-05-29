@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-// Package conf 提供了读取配置文件的通用方法，并且通过扩展支持各种配置文件格式。
+// Package conf 提供了读取属性列表的一般方法，并且通过扩展支持各种格式的属性列表文件。
 package conf
 
 import (

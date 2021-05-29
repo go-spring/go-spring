@@ -64,7 +64,7 @@ type ApplicationEvent interface {
 type App struct {
 	c *Container // 应用上下文
 
-	cfgLocation         []string // 配置文件目录
+	cfgLocation         []string // 属性列表文件搜索目录
 	banner              string   // Banner 的内容
 	bannerMode          int      // Banner 的显式模式
 	expectSysProperties []string // 期望从系统环境变量中获取到的属性，支持正则表达式
@@ -204,7 +204,7 @@ func (app *App) loadSystemEnv(p *conf.Properties) error {
 	return nil
 }
 
-// loadConfigFile 加载指定环境的配置文件
+// loadConfigFile 加载指定环境的属性列表文件
 func (app *App) loadConfigFile(p *conf.Properties, profile ...string) error {
 
 	fileName := "application"
@@ -247,13 +247,13 @@ func (app *App) loadConfigFile(p *conf.Properties, profile ...string) error {
 // prepare 准备上下文环境
 func (app *App) prepare() {
 
-	// 配置项加载顺序优先级，从高到低:
-	// 1.代码设置(api)
+	// 属性列表加载顺序优先级，从高到低:
+	// 1.API 设置
 	// 2.命令行参数
 	// 3.系统环境变量
 	// 4.application-profile.conf
 	// 5.application.conf
-	// 6.内部默认配置
+	// 6.属性绑定声明时的默认值
 
 	cmdConfig := conf.New()
 	envConfig := conf.New()

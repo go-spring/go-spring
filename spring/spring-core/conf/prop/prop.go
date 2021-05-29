@@ -18,7 +18,7 @@ package prop
 
 import "github.com/magiconair/properties"
 
-// Read 从内存中读取配置项列表，b 是 UTF8 格式。
+// Read 从内存中读取属性列表，b 是 UTF8 格式。
 func Read(b []byte) (map[string]interface{}, error) {
 
 	p := properties.NewProperties()

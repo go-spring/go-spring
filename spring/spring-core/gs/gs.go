@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-// Package gs 实现了 go-spring 框架的骨架。
+// Package gs 实现了 go-spring 框架的基础骨架，包含 IoC 容器、基于 IoC 容器
+// 的 App 以及全局 App 对象封装三个部分。
 package gs
 
 import (
@@ -43,7 +44,13 @@ const (
 	Refreshed   = refreshState(2) // 已刷新
 )
 
-// Container 实现了功能完善的 IoC 容器。
+// Container 是 go-spring 框架的基石，实现了 Martin Fowler 在 << Inversion
+// of Control Containers and the Dependency Injection pattern >> 一文滥
+// 觞的依赖注入的概念。原文的依赖注入仅仅是指对象(在 Java 中是指结构体实例)之间的
+// 依赖关系处理，而有些 IoC 容器在实现时比如 Spring 还引入了对属性 property
+// 的处理，通常大家会用依赖注入统述上面两种概念，但实际上使用属性绑定来
+// 描述对属性 property 的处理更合适，因此 go-spring 在描述对 bean 的处理时要
+// 么单独使用依赖注入或属性绑定，要么同时使用依赖注入和属性绑定。
 type Container struct {
 	p *conf.Properties
 
@@ -70,22 +77,22 @@ type newArg struct {
 
 type NewOption func(arg *newArg)
 
-// OpenPandora 注册 Pandora 实例。
+// OpenPandora 使用此选项时 Container 会注册一个 Pandora 实例。
 func OpenPandora() NewOption {
 	return func(arg *newArg) {
 		arg.openPandora = true
 	}
 }
 
-// New 返回创建的 IoC 容器实例。
+// New 创建 IoC 容器，使用 OpenPandora 选项可以注册一个 Pandora 实例。
 func New(opts ...NewOption) *Container {
-	ctx, cancel := context.WithCancel(context.Background())
 
 	a := newArg{}
 	for _, opt := range opts {
 		opt(&a)
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
 	c := &Container{
 		p:             conf.New(),
 		ctx:           ctx,
@@ -103,14 +110,14 @@ func New(opts ...NewOption) *Container {
 	return c
 }
 
-// callBeforeRefreshing 有些方法在 Refresh 开始后不能再调用，比如 Object、Config 等。
+// callBeforeRefreshing 有些方法只能在 Refresh 开始前调用，比如 Object、Config 等。
 func (c *Container) callBeforeRefreshing() {
 	if c.state != Unrefreshed {
 		panic(errors.New("should call before Refreshing"))
 	}
 }
 
-// callAfterRefreshing 有些方法必须在 Refresh 开始后才能调用，比如 get、wire 等。
+// callAfterRefreshing 有些方法必须在 Refresh 开始后才能调用，比如 Get、Wire 等。
 func (c *Container) callAfterRefreshing() {
 	if c.state == Unrefreshed {
 		panic(errors.New("should call after Refreshing"))
