@@ -18,9 +18,12 @@ package gs
 
 import (
 	"container/list"
+	"errors"
+	"reflect"
 
 	"github.com/go-spring/spring-core/arg"
 	"github.com/go-spring/spring-core/cond"
+	"github.com/go-spring/spring-core/util"
 )
 
 // Configer 配置函数，所谓配置函数是指可以接受一些 Bean 作为入参的函数，使用场景大多
@@ -31,6 +34,21 @@ type Configer struct {
 	cond   cond.Condition
 	before []string // 位于哪些配置函数之前
 	after  []string // 位于哪些配置函数之后
+}
+
+// NewConfiger 创建 Configer 对象，如果 fn 类型错误会引发 panic。
+func NewConfiger(fn interface{}, args ...arg.Arg) *Configer {
+
+	t := reflect.TypeOf(fn)
+	if !util.IsFuncType(t) {
+		panic(errors.New("fn should be func(...) or func(...)error"))
+	}
+
+	if !util.ReturnNothing(t) && !util.ReturnOnlyError(t) {
+		panic(errors.New("fn should be func(...) or func(...)error"))
+	}
+
+	return &Configer{fn: arg.Bind(fn, args, arg.Skip(2))}
 }
 
 // WithName 为 Configer 设置一个名称。

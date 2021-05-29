@@ -3257,3 +3257,21 @@ func TestApplicationContext_Go(t *testing.T) {
 	c.Refresh()
 	c.Go(func(ctx context.Context) { panic(errors.New("error")) })
 }
+
+type emptyStructA struct{}
+
+type emptyStructB struct{}
+
+func TestEmptyStruct(t *testing.T) {
+
+	c := gs.New()
+	objA := &emptyStructA{}
+	c.Object(objA)
+	objB := &emptyStructB{}
+	c.Object(objB)
+	c.Refresh()
+
+	// objA 和 objB 的地址相同但是类型确实不一样。
+	fmt.Printf("objA:%p objB:%p\n", objA, objB)
+	fmt.Printf("objA:%#v objB:%#v\n", objA, objB)
+}

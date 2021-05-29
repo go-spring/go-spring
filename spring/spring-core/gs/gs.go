@@ -103,17 +103,17 @@ func New(opts ...NewOption) *Container {
 	return c
 }
 
-// callAfterRefreshing 有些方法必须在 Refresh 开始后才能调用，比如 get、wire 等。
-func (c *Container) callAfterRefreshing() {
-	if c.state == Unrefreshed {
-		panic(errors.New("should call after Refreshing"))
-	}
-}
-
 // callBeforeRefreshing 有些方法在 Refresh 开始后不能再调用，比如 Object、Config 等。
 func (c *Container) callBeforeRefreshing() {
 	if c.state != Unrefreshed {
 		panic(errors.New("should call before Refreshing"))
+	}
+}
+
+// callAfterRefreshing 有些方法必须在 Refresh 开始后才能调用，比如 get、wire 等。
+func (c *Container) callAfterRefreshing() {
+	if c.state == Unrefreshed {
+		panic(errors.New("should call after Refreshing"))
 	}
 }
 
@@ -131,39 +131,27 @@ func (c *Container) Property(key string, value interface{}) {
 
 // Object 注册对象形式的 bean 。
 func (c *Container) Object(i interface{}) *BeanDefinition {
-	c.callBeforeRefreshing()
-	b := NewBean(reflect.ValueOf(i))
-	return c.Register(b)
+	return c.register(NewBean(reflect.ValueOf(i)))
 }
 
 // Provide 注册构造函数形式的 bean 。
 func (c *Container) Provide(ctor interface{}, args ...arg.Arg) *BeanDefinition {
-	c.callBeforeRefreshing()
-	b := NewBean(ctor, args...)
-	return c.Register(b)
+	return c.register(NewBean(ctor, args...))
 }
 
-// Register 注册元数据形式的 bean 。
-func (c *Container) Register(b *BeanDefinition) *BeanDefinition {
+func (c *Container) register(b *BeanDefinition) *BeanDefinition {
 	c.callBeforeRefreshing()
 	c.beans = append(c.beans, b)
 	return b
 }
 
-// Config 注册一个配置函数
+// Config 注册一个配置函数，TODO 什么是配置函数。
 func (c *Container) Config(fn interface{}, args ...arg.Arg) *Configer {
+	return c.config(NewConfiger(fn, args...))
+}
+
+func (c *Container) config(configer *Configer) *Configer {
 	c.callBeforeRefreshing()
-
-	t := reflect.TypeOf(fn)
-	if !util.IsFuncType(t) {
-		panic(errors.New("xxx"))
-	}
-
-	if !util.ReturnNothing(t) && !util.ReturnOnlyError(t) {
-		panic(errors.New("fn should be func() or func()error"))
-	}
-
-	configer := &Configer{fn: arg.Bind(fn, args, arg.Skip(1))}
 	c.configers = append(c.configers, configer)
 	return configer
 }

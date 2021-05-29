@@ -80,9 +80,9 @@ type App struct {
 }
 
 // NewApp application 的构造函数
-func NewApp(opts ...NewOption) *App {
+func NewApp() *App {
 	return &App{
-		c:                   New(opts...),
+		c:                   New(),
 		cfgLocation:         append([]string{}, "config/"),
 		bannerMode:          BannerModeConsole,
 		expectSysProperties: []string{`.*`},
@@ -105,10 +105,14 @@ func (app *App) start(cfgLocation ...string) {
 		printBanner(app.getBanner())
 	}
 
-	// 准备上下文环境
+	app.Object(app)
 	app.prepare()
 
-	// 依赖注入、属性绑定、初始化
+	openPandora := app.c.p.Get("spring.application.open-pandora")
+	if cast.ToBool(openPandora) {
+		app.Object(&pandora{app.c}).Export((*Pandora)(nil))
+	}
+
 	app.c.Refresh()
 
 	// 执行命令行启动器
@@ -374,19 +378,15 @@ func (app *App) Property(key string, value interface{}) {
 }
 
 func (app *App) Object(i interface{}) *BeanDefinition {
-	return app.c.Register(NewBean(reflect.ValueOf(i)))
+	return app.c.register(NewBean(reflect.ValueOf(i)))
 }
 
 func (app *App) Provide(ctor interface{}, args ...arg.Arg) *BeanDefinition {
-	return app.c.Register(NewBean(ctor, args...))
-}
-
-func (app *App) Register(b *BeanDefinition) *BeanDefinition {
-	return app.c.Register(b)
+	return app.c.register(NewBean(ctor, args...))
 }
 
 func (app *App) Config(fn interface{}, args ...arg.Arg) *Configer {
-	return app.c.Config(fn, args...)
+	return app.c.config(NewConfiger(fn, args...))
 }
 
 func (app *App) Go(fn func(ctx context.Context)) {
@@ -406,7 +406,7 @@ func (app *App) GRpcServer(serviceName string, fn interface{}, server interface{
 
 // GRpcClient 注册 gRPC 服务客户端，fn 是 gRPC 自动生成的客户端构造函数
 func (app *App) GRpcClient(fn interface{}, endpoint string) *BeanDefinition {
-	return app.Register(NewBean(fn, endpoint))
+	return app.c.register(NewBean(fn, endpoint))
 }
 
 func (app *App) Mappers() map[string]*web.Mapper {
@@ -495,7 +495,7 @@ func (app *App) DeleteBinding(path string, fn interface{}) *web.Mapper {
 
 func (app *App) NewFilter(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 	b := NewBean(objOrCtor, ctorArgs...)
-	return app.Register(b).Export((*web.Filter)(nil))
+	return app.c.register(b).Export((*web.Filter)(nil))
 }
 
 func (app *App) Consumers() map[string]*mq.BindConsumer {
