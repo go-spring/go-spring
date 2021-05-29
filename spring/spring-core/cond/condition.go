@@ -36,7 +36,7 @@ type Context interface {
 	Prop(key string, opts ...conf.GetOption) interface{}
 
 	// Find 返回符合条件的 Bean 集合，不保证返回的 Bean 已经完成注入和绑定过程。
-	Find(selector bean.Selector) ([]bean.Definition, error)
+	Find(selector bean.Selector) (bean.Definition, error)
 }
 
 // Condition 定义条件接口，条件成立 Matches 函数返回 true，否则返回 false。
@@ -128,7 +128,7 @@ type onBean struct{ selector bean.Selector }
 
 func (c *onBean) Matches(ctx Context) (bool, error) {
 	b, err := ctx.Find(c.selector)
-	return len(b) == 1, err
+	return b != nil, err
 }
 
 // onMissingBean 基于 Bean 不能存在的 Condition 实现。
@@ -136,7 +136,7 @@ type onMissingBean struct{ selector bean.Selector }
 
 func (c *onMissingBean) Matches(ctx Context) (bool, error) {
 	b, err := ctx.Find(c.selector)
-	return len(b) == 0, err
+	return b == nil, err
 }
 
 // onExpression 基于表达式的 Condition 实现。

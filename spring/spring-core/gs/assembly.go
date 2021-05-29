@@ -415,10 +415,7 @@ func (assembly *beanAssembly) wireBean(b *BeanDefinition) error {
 		if err != nil {
 			return err
 		}
-		if n := len(d); n != 1 {
-			return fmt.Errorf("found %d bean(s) for:%q", n, s)
-		}
-		err = assembly.wireBean(d[0].(*BeanDefinition))
+		err = assembly.wireBean(d)
 		if err != nil {
 			return err
 		}

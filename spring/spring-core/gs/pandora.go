@@ -93,9 +93,16 @@ func (p *pandora) Get(i interface{}, opts ...GetOption) error {
 	return w.getBean(toSingletonTag(a.selector), v)
 }
 
-func (p *pandora) Find(selector bean.Selector) ([]bean.Definition, error) {
-	p.c.callAfterRefreshing()
-	return p.c.find(selector)
+func (p *pandora) Find(selector bean.Selector) (bean.Definition, error) {
+	// 如果此处直接返回会触发臭名昭著的 interface{} == nil 返回 false 的问题。
+	b, err := p.c.find(selector)
+	if err != nil {
+		return nil, err
+	}
+	if b == nil {
+		return nil, nil
+	}
+	return b, nil
 }
 
 // Collect 收集数组或指针定义的所有符合条件的 bean，收集到返回 true，否则返

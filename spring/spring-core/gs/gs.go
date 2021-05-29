@@ -18,6 +18,7 @@
 package gs
 
 import (
+	"bytes"
 	"container/list"
 	"context"
 	"errors"
@@ -167,23 +168,41 @@ func (c *Container) Config(fn interface{}, args ...arg.Arg) *Configer {
 	return configer
 }
 
-// find 返回符合条件的 bean 集合，不保证返回的 bean 已经完成注入和绑定过程。
-func (c *Container) find(selector bean.Selector) ([]bean.Definition, error) {
+// find 查找符合条件的单例 bean，考虑到该方法可能的使用场景，因此找不到符合条件的 bean
+// 时返回 nil，找到多于 1 个时返回 error，而且不保证返回的 bean 已经完成绑定和注入过程。
+func (c *Container) find(selector bean.Selector) (*BeanDefinition, error) {
 	c.callAfterRefreshing()
 
-	finder := func(fn func(*BeanDefinition) bool) (result []bean.Definition, err error) {
+	finder := func(fn func(*BeanDefinition) bool) (*BeanDefinition, error) {
+		var result []*BeanDefinition
+
 		for _, b := range c.beansById {
-			if b.status != Resolving && fn(b) {
-				// 避免 bean 未被解析
-				if err = c.resolveBean(b); err != nil {
-					return nil, err
-				}
-				if b.status != Deleted {
-					result = append(result, b)
-				}
+			if b.status == Resolving || !fn(b) {
+				continue
 			}
+			if err := c.resolveBean(b); err != nil {
+				return nil, err
+			}
+			if b.status == Deleted {
+				continue
+			}
+			result = append(result, b)
 		}
-		return
+
+		if result == nil {
+			return nil, nil
+		}
+
+		if n := len(result); n > 1 {
+			buf := bytes.Buffer{}
+			buf.WriteString(fmt.Sprintf("found %d beans", n))
+			for _, d := range result {
+				buf.WriteString(fmt.Sprintf(" %q", d.Description()))
+			}
+			return nil, errors.New(buf.String())
+		}
+
+		return result[0], nil
 	}
 
 	t := reflect.TypeOf(selector)
