@@ -213,19 +213,22 @@ func (c *Container) find(selector bean.Selector) ([]bean.Definition, error) {
 	})
 }
 
-// Refresh 对所有 bean 进行依赖注入和属性绑定
+// Refresh 刷新容器内容，决议和组装所有的 configer 与 bean。
 func (c *Container) Refresh() {
 
 	if c.state != Unrefreshed {
-		panic(errors.New("already refreshed"))
+		panic(errors.New("container already refreshed"))
 	}
 
 	c.state = Refreshing
 
-	c.registerBeans()
-	c.resolveConfigers()
+	err := c.registerBeans()
+	util.Panic(err).When(err != nil)
 
-	err := c.resolveBeans()
+	err = c.resolveConfigers()
+	util.Panic(err).When(err != nil)
+
+	err = c.resolveBeans()
 	util.Panic(err).When(err != nil)
 
 	assembly := toAssembly(c)
@@ -248,28 +251,31 @@ func (c *Container) Refresh() {
 	log.Info("container refreshed successfully")
 }
 
-func (c *Container) registerBeans() {
+func (c *Container) registerBeans() error {
 	for _, b := range c.beans {
 		if d, ok := c.beansById[b.ID()]; ok {
-			panic(fmt.Errorf("found duplicate beans [%s] [%s]", b.Description(), d.Description()))
+			return fmt.Errorf("found duplicate beans [%s] [%s]", b.Description(), d.Description())
 		}
 		c.beansById[b.ID()] = b
 	}
+	return nil
 }
 
-// resolveConfigers 对 Config 函数进行决议是否能够保留它
-func (c *Container) resolveConfigers() {
-
+func (c *Container) resolveConfigers() error {
 	for _, g := range c.configers {
-		if g.cond == nil || g.cond.Matches(&pandora{c}) {
-			c.configerList.PushBack(g)
+		if g.cond != nil {
+			if ok, err := g.cond.Matches(&pandora{c}); err != nil {
+				return err
+			} else if !ok {
+				continue
+			}
 		}
+		c.configerList.PushBack(g)
 	}
-
 	c.configerList = sort.Triple(c.configerList, getBeforeConfigers)
+	return nil
 }
 
-// resolveBeans 对 bean 进行决议是否能够创建 bean 的实例。
 func (c *Container) resolveBeans() error {
 	for _, b := range c.beansById {
 		if err := c.resolveBean(b); err != nil {
@@ -279,52 +285,52 @@ func (c *Container) resolveBeans() error {
 	return nil
 }
 
-// resolveBean 对 bean 进行决议是否能够创建 bean 的实例。
+// resolveBean 对 bean 进行决议是否需要创建 bean 的实例。
 func (c *Container) resolveBean(b *BeanDefinition) error {
 
-	// 正在进行或者已经完成决议过程
 	if b.status >= Resolving {
 		return nil
 	}
+
 	b.status = Resolving
 
-	// 不满足判断条件的则标记为删除状态并删除其注册
-	if b.cond != nil && !b.cond.Matches(&pandora{c}) {
-		delete(c.beansById, b.ID())
-		b.status = Deleted
-		return nil
-	}
-
-	// 将符合注册条件的 bean 放入到缓存里面。
-	log.Debugf("register %s name:%q type:%q %s", b.getClass(), b.Name(), b.Type().String(), b.FileLine())
-	c.beansByType[b.Type()] = append(c.beansByType[b.Type()], b)
-
-	// 自动导出接口，这种情况仅对于结构体才会有效
-	if typ := util.Indirect(b.Type()); typ.Kind() == reflect.Struct {
-		if err := c.autoExport(typ, b); err != nil {
+	if b.cond != nil {
+		if ok, err := b.cond.Matches(&pandora{c}); err != nil {
 			return err
+		} else if !ok {
+			delete(c.beansById, b.ID())
+			b.status = Deleted
+			return nil
 		}
 	}
 
-	// 按照导出类型放入缓存
+	log.Debugf("register %s name:%q type:%q %s", b.getClass(), b.Name(), b.Type(), b.FileLine())
+	c.beansByType[b.Type()] = append(c.beansByType[b.Type()], b)
+	c.beansByName[b.name] = append(c.beansByName[b.name], b)
+
+	if err := c.export(b.Type(), b); err != nil {
+		return err
+	}
+
 	for t := range b.exports {
-		if b.Type().Implements(t) {
-			log.Debugf("register %s name:%q type:%q %s", b.getClass(), b.Name(), t.String(), b.FileLine())
-			c.beansByType[t] = append(c.beansByType[t], b)
-		} else {
+		if !b.Type().Implements(t) {
 			return fmt.Errorf("%s not implement %s interface", b.Description(), t)
 		}
+		log.Debugf("register %s name:%q type:%q %s", b.getClass(), b.Name(), t, b.FileLine())
+		c.beansByType[t] = append(c.beansByType[t], b)
 	}
-
-	// 按照 bean 的名字进行缓存。
-	c.beansByName[b.name] = append(c.beansByName[b.name], b)
 
 	b.status = Resolved
 	return nil
 }
 
-// autoExport 自动导出 bean 实现的接口。
-func (c *Container) autoExport(t reflect.Type, b *BeanDefinition) error {
+// export 导出结构体指针类型 bean 使用 export 语法导出的接口。
+func (c *Container) export(t reflect.Type, b *BeanDefinition) error {
+
+	t = util.Indirect(t)
+	if t.Kind() != reflect.Struct {
+		return nil
+	}
 
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
@@ -333,36 +339,28 @@ func (c *Container) autoExport(t reflect.Type, b *BeanDefinition) error {
 		_, inject := f.Tag.Lookup("inject")
 		_, autowire := f.Tag.Lookup("autowire")
 
-		if !export { // 没有 export 标签
-
-			// 嵌套才能递归；有注入标记的也不进行递归
-			if !f.Anonymous || inject || autowire {
-				continue
-			}
-
-			// 只处理结构体情况的递归，暂时不考虑接口的情况
-			typ := util.Indirect(f.Type)
-			if typ.Kind() == reflect.Struct {
-				if err := c.autoExport(typ, b); err != nil {
+		if !export {
+			if f.Anonymous && !inject && !autowire {
+				if err := c.export(f.Type, b); err != nil {
 					return err
 				}
 			}
-
 			continue
 		}
 
-		// 有 export 标签的必须是接口类型
+		// 有 export 标签的必须是接口类型。
 		if f.Type.Kind() != reflect.Interface {
 			return errors.New("export can only use on interface")
 		}
 
-		// 不能导出需要注入的接口，因为会重复注册
-		if export && (inject || autowire) {
+		// 不能导出需要注入的接口。
+		if inject || autowire {
 			return errors.New("inject or autowire can't use with export")
 		}
 
-		// 不限定导出接口字段必须是空白标识符，但建议使用空白标识符
-		b.Export(f.Type)
+		if err := b.export(f.Type); err != nil {
+			return err
+		}
 	}
 	return nil
 }

@@ -74,7 +74,7 @@ func toAssembly(c *Container) *beanAssembly {
 }
 
 // Matches 条件成立返回 true，否则返回 false。
-func (assembly *beanAssembly) Matches(cond cond.Condition) bool {
+func (assembly *beanAssembly) Matches(cond cond.Condition) (bool, error) {
 	return cond.Matches(&pandora{assembly.c})
 }
 

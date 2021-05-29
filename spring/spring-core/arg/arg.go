@@ -33,7 +33,7 @@ import (
 type Context interface {
 
 	// Matches 条件成立返回 true，否则返回 false。
-	Matches(c cond.Condition) bool
+	Matches(c cond.Condition) (bool, error)
 
 	// Bind 根据 tag 的内容进行属性绑定。
 	Bind(tag string, v reflect.Value) error
@@ -310,15 +310,19 @@ func (arg *optionArg) call(ctx Context) (v reflect.Value, err error) {
 		}
 	}()
 
-	if arg.c == nil || ctx.Matches(arg.c) {
-		if out, err := arg.r.Call(ctx); err != nil {
+	if arg.c != nil {
+		if ok, err := ctx.Matches(arg.c); err != nil {
 			return reflect.Value{}, err
-		} else {
-			return out[0], nil
+		} else if !ok {
+			return reflect.Value{}, nil
 		}
 	}
 
-	return reflect.Value{}, nil
+	out, err := arg.r.Call(ctx)
+	if err != nil {
+		return reflect.Value{}, err
+	}
+	return out[0], nil
 }
 
 type callArg struct {

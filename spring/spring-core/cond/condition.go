@@ -41,15 +41,15 @@ type Context interface {
 
 // Condition 定义条件接口，条件成立 Matches 函数返回 true，否则返回 false。
 type Condition interface {
-	Matches(ctx Context) bool
+	Matches(ctx Context) (bool, error)
 }
 
-type Matches func(ctx Context) bool
+type Matches func(ctx Context) (bool, error)
 
 // onMatches 基于 Matches 方法的 Condition 实现。
 type onMatches struct{ fn Matches }
 
-func (c *onMatches) Matches(ctx Context) bool {
+func (c *onMatches) Matches(ctx Context) (bool, error) {
 	return c.fn(ctx)
 }
 
@@ -61,22 +61,23 @@ func Not(c Condition) *not {
 	return &not{c: c}
 }
 
-func (c *not) Matches(ctx Context) bool {
-	return !c.c.Matches(ctx)
+func (c *not) Matches(ctx Context) (bool, error) {
+	ok, err := c.c.Matches(ctx)
+	return !ok, err
 }
 
 // onProperty 基于属性值存在的 Condition 实现。
 type onProperty struct{ name string }
 
-func (c *onProperty) Matches(ctx Context) bool {
-	return ctx.Prop(c.name) != nil
+func (c *onProperty) Matches(ctx Context) (bool, error) {
+	return ctx.Prop(c.name) != nil, nil
 }
 
 // onMissingProperty 基于属性值不存在的 Condition 实现。
 type onMissingProperty struct{ name string }
 
-func (c *onMissingProperty) Matches(ctx Context) bool {
-	return ctx.Prop(c.name) == nil
+func (c *onMissingProperty) Matches(ctx Context) (bool, error) {
+	return ctx.Prop(c.name) == nil, nil
 }
 
 // onPropertyValue 基于属性值匹配的 Condition 实现。
@@ -95,54 +96,54 @@ func MatchIfMissing(matchIfMissing bool) PropertyValueOption {
 	}
 }
 
-func (c *onPropertyValue) Matches(ctx Context) bool {
+func (c *onPropertyValue) Matches(ctx Context) (bool, error) {
 	// 参考 /usr/local/go/src/go/types/eval_test.go 示例
 
 	val := ctx.Prop(c.name)
-	if val == nil { // 不存在返回默认值
-		return c.matchIfMissing
+	if val == nil {
+		return c.matchIfMissing, nil
 	}
 
-	// 不是字符串则直接比较
 	expectValue, ok := c.havingValue.(string)
 	if !ok {
-		return val == c.havingValue
+		return val == c.havingValue, nil
 	}
 
-	// 字符串不是表达式的话则直接比较
-	if ok = strings.Contains(expectValue, "$"); !ok {
-		return val == expectValue
+	ok = strings.Contains(expectValue, "$")
+	if !ok {
+		return val == expectValue, nil
 	}
 
 	expr := strings.Replace(expectValue, "$", cast.ToString(val), -1)
-	if ret, err := types.Eval(token.NewFileSet(), nil, token.NoPos, expr); err == nil {
-		return ret.Value.String() == "true"
-	} else {
-		panic(err)
+	ret, err := types.Eval(token.NewFileSet(), nil, token.NoPos, expr)
+	if err != nil {
+		return false, err
 	}
+
+	return cast.ToBoolE(ret.Value.String())
 }
 
 // onBean 基于 Bean 存在的 Condition 实现。
 type onBean struct{ selector bean.Selector }
 
-func (c *onBean) Matches(ctx Context) bool {
-	b, _ := ctx.Find(c.selector)
-	return len(b) == 1
+func (c *onBean) Matches(ctx Context) (bool, error) {
+	b, err := ctx.Find(c.selector)
+	return len(b) == 1, err
 }
 
 // onMissingBean 基于 Bean 不能存在的 Condition 实现。
 type onMissingBean struct{ selector bean.Selector }
 
-func (c *onMissingBean) Matches(ctx Context) bool {
-	b, _ := ctx.Find(c.selector)
-	return len(b) == 0
+func (c *onMissingBean) Matches(ctx Context) (bool, error) {
+	b, err := ctx.Find(c.selector)
+	return len(b) == 0, err
 }
 
 // onExpression 基于表达式的 Condition 实现。
 type onExpression struct{ expression string }
 
-func (c *onExpression) Matches(ctx Context) bool {
-	panic(util.UnimplementedMethod)
+func (c *onExpression) Matches(ctx Context) (bool, error) {
+	return false, util.UnimplementedMethod
 }
 
 // Operator 条件操作符，包含 Or、And、None 三种。
@@ -165,7 +166,7 @@ func Group(op Operator, cond ...Condition) *group {
 	return &group{op: op, cond: cond}
 }
 
-func (g *group) Matches(ctx Context) bool {
+func (g *group) Matches(ctx Context) (bool, error) {
 
 	if len(g.cond) == 0 {
 		panic(errors.New("no condition in group"))
@@ -174,28 +175,34 @@ func (g *group) Matches(ctx Context) bool {
 	switch g.op {
 	case Or:
 		for _, c := range g.cond {
-			if c.Matches(ctx) {
-				return true
+			if ok, err := c.Matches(ctx); err != nil {
+				return false, err
+			} else if ok {
+				return true, nil
 			}
 		}
-		return false
+		return false, nil
 	case And:
 		for _, c := range g.cond {
-			if ok := c.Matches(ctx); !ok {
-				return false
+			if ok, err := c.Matches(ctx); err != nil {
+				return false, err
+			} else if !ok {
+				return false, nil
 			}
 		}
-		return true
+		return true, nil
 	case None:
 		for _, c := range g.cond {
-			if c.Matches(ctx) {
-				return false
+			if ok, err := c.Matches(ctx); err != nil {
+				return false, err
+			} else if ok {
+				return false, nil
 			}
 		}
-		return true
+		return true, nil
 	}
 
-	panic(errors.New("error condition operator"))
+	return false, errors.New("error condition operator")
 }
 
 // node 基于条件表达式的 Condition 实现。
@@ -205,36 +212,39 @@ type node struct {
 	next *node     // 下个表达式节点
 }
 
-func (n *node) Matches(ctx Context) bool {
+func (n *node) Matches(ctx Context) (bool, error) {
 
 	if n.cond == nil { // 空节点返回 true
-		return true
+		return true, nil
 	}
 
-	r := n.cond.Matches(ctx)
+	ok, err := n.cond.Matches(ctx)
+	if err != nil {
+		return false, err
+	}
 
 	if n.next == nil {
-		return r
+		return ok, nil
 	} else if n.next.cond == nil {
-		panic(errors.New("no condition in last node"))
+		return false, errors.New("no condition in last node")
 	}
 
 	switch n.op {
-	case Or: // or
-		if r {
-			return r
+	case Or:
+		if ok {
+			return ok, nil
 		} else {
 			return n.next.Matches(ctx)
 		}
-	case And: // and
-		if r {
+	case And:
+		if ok {
 			return n.next.Matches(ctx)
 		} else {
-			return false
+			return false, nil
 		}
-	default:
-		panic(errors.New("error condition operator"))
 	}
+
+	return false, errors.New("error condition operator")
 }
 
 // conditional Condition 计算式
@@ -249,7 +259,7 @@ func New() *conditional {
 	return &conditional{head: n, curr: n}
 }
 
-func (c *conditional) Matches(ctx Context) bool {
+func (c *conditional) Matches(ctx Context) (bool, error) {
 	return c.head.Matches(ctx)
 }
 

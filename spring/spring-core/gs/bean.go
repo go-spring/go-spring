@@ -320,8 +320,7 @@ func (d *BeanDefinition) Destroy(fn interface{}, args ...arg.Arg) *BeanDefinitio
 	panic(errors.New("destroy should be func(bean) or func(bean)error"))
 }
 
-// Export 设置 Bean 的导出接口。
-func (d *BeanDefinition) Export(exports ...interface{}) *BeanDefinition {
+func (d *BeanDefinition) export(exports ...interface{}) error {
 	for _, o := range exports {
 
 		var typ reflect.Type
@@ -334,9 +333,18 @@ func (d *BeanDefinition) Export(exports ...interface{}) *BeanDefinition {
 		if typ.Kind() == reflect.Interface {
 			d.exports[typ] = struct{}{}
 		} else {
-			panic(errors.New("should export interface type"))
+			return errors.New("should export interface type")
 		}
+
+		// resolve bean 的时候才判断是否实现了接口。
 	}
+	return nil
+}
+
+// Export 设置 Bean 的导出接口。
+func (d *BeanDefinition) Export(exports ...interface{}) *BeanDefinition {
+	err := d.export(exports...)
+	util.Panic(err).When(err != nil)
 	return d
 }
 
