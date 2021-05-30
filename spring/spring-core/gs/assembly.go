@@ -36,7 +36,7 @@ type wiringStack []*BeanDefinition
 
 // pushBack 添加一个即将注入的 bean 。
 func (s *wiringStack) pushBack(b *BeanDefinition) {
-	log.Tracef("wiring %s", b.Description())
+	log.Tracef("wiring %s", b)
 	*s = append(*s, b)
 }
 
@@ -45,13 +45,13 @@ func (s *wiringStack) popBack() {
 	n := len(*s)
 	b := (*s)[n-1]
 	*s = (*s)[:n-1]
-	log.Tracef("wired %s", b.Description())
+	log.Tracef("wired %s", b)
 }
 
 // path 返回注入路径。
 func (s wiringStack) path() (path string) {
 	for _, b := range s {
-		path += fmt.Sprintf("=> %s ↩\n", b.Description())
+		path += fmt.Sprintf("=> %s ↩\n", b)
 	}
 	return path[:len(path)-1]
 }
@@ -142,7 +142,7 @@ func (assembly *beanAssembly) getBean(tag singletonTag, v reflect.Value) error {
 				}
 				if !found {
 					foundBeans = append(foundBeans, b)
-					log.Warnf("you should call Export() on %s", b.Description())
+					log.Warnf("you should call Export() on %s", b)
 				}
 			}
 		}
@@ -167,7 +167,7 @@ func (assembly *beanAssembly) getBean(tag singletonTag, v reflect.Value) error {
 	if len(primaryBeans) > 1 {
 		msg := fmt.Sprintf("found %d primary beans, bean:%q type:%q [", len(primaryBeans), tag, t)
 		for _, b := range primaryBeans {
-			msg += "( " + b.Description() + " ), "
+			msg += "( " + b.String() + " ), "
 		}
 		msg = msg[:len(msg)-2] + "]"
 		return errors.New(msg)
@@ -176,7 +176,7 @@ func (assembly *beanAssembly) getBean(tag singletonTag, v reflect.Value) error {
 	if len(primaryBeans) == 0 && len(foundBeans) > 1 {
 		msg := fmt.Sprintf("found %d beans, bean:%q type:%q [", len(foundBeans), tag, t)
 		for _, b := range foundBeans {
-			msg += "( " + b.Description() + " ), "
+			msg += "( " + b.String() + " ), "
 		}
 		msg = msg[:len(msg)-2] + "]"
 		return errors.New(msg)
@@ -278,7 +278,7 @@ func findBean(beans []*BeanDefinition, tag singletonTag, t reflect.Type) (int, e
 	if len(found) > 1 {
 		msg := fmt.Sprintf("found %d beans, bean:%q type:%q [", len(found), tag, t)
 		for _, i := range found {
-			msg += "( " + beans[i].Description() + " ), "
+			msg += "( " + beans[i].String() + " ), "
 		}
 		msg = msg[:len(msg)-2] + "]"
 		return -1, errors.New(msg)

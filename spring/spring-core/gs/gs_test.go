@@ -2472,7 +2472,7 @@ func TestApplicationContext_BeanCache(t *testing.T) {
 			c := gs.New()
 			c.Object(new(int)).Export((*filter)(nil))
 			c.Refresh()
-		}, "not implement gs_test.filter interface")
+		}, "doesn't implement gs_test.filter interface")
 	})
 
 	t.Run("implement interface", func(t *testing.T) {

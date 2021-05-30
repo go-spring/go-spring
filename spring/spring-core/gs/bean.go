@@ -242,8 +242,8 @@ func (d *BeanDefinition) FileLine() string {
 	return fmt.Sprintf("%s:%d", d.file, d.line)
 }
 
-// Description 返回 Bean 的详细描述。
-func (d *BeanDefinition) Description() string {
+// String 返回 Bean 的描述。
+func (d *BeanDefinition) String() string {
 	return fmt.Sprintf("%s name:%q %s", d.getClass(), d.Name(), d.FileLine())
 }
 

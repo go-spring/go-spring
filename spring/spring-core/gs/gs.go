@@ -47,10 +47,10 @@ const (
 // Container 是 go-spring 框架的基石，实现了 Martin Fowler 在 << Inversion
 // of Control Containers and the Dependency Injection pattern >> 一文滥
 // 觞的依赖注入的概念。原文的依赖注入仅仅是指对象(在 Java 中是指结构体实例)之间的
-// 依赖关系处理，而有些 IoC 容器在实现时比如 Spring 还引入了对属性 property
-// 的处理，通常大家会用依赖注入统述上面两种概念，但实际上使用属性绑定来
-// 描述对属性 property 的处理更合适，因此 go-spring 在描述对 bean 的处理时要
-// 么单独使用依赖注入或属性绑定，要么同时使用依赖注入和属性绑定。
+// 依赖关系处理，而有些 IoC 容器在实现时比如 Spring 还引入了对属性 property 的处
+// 理，通常大家会用依赖注入统述上面两种概念，但实际上使用属性绑定来描述对 property
+// 的处理更合适，因此 go-spring 在描述对 bean 的处理时要么单独使用依赖注入或属性
+// 绑定，要么同时使用依赖注入和属性绑定。
 type Container struct {
 	p *conf.Properties
 
@@ -110,14 +110,14 @@ func New(opts ...NewOption) *Container {
 	return c
 }
 
-// callBeforeRefreshing 有些方法只能在 Refresh 开始前调用，比如 Object、Config 等。
+// callBeforeRefreshing 有些方法只能在 Refresh 开始前调用，比如 Object 。
 func (c *Container) callBeforeRefreshing() {
 	if c.state != Unrefreshed {
 		panic(errors.New("should call before Refreshing"))
 	}
 }
 
-// callAfterRefreshing 有些方法必须在 Refresh 开始后才能调用，比如 Get、Wire 等。
+// callAfterRefreshing 有些方法必须在 Refresh 开始后才能调用，比如 Wire 。
 func (c *Container) callAfterRefreshing() {
 	if c.state == Unrefreshed {
 		panic(errors.New("should call after Refreshing"))
@@ -136,12 +136,15 @@ func (c *Container) Property(key string, value interface{}) {
 	c.p.Set(key, value)
 }
 
-// Object 注册对象形式的 bean 。
+// Object 注册对象形式的 bean ，包括接口、指针、channel、function 及其集合。
 func (c *Container) Object(i interface{}) *BeanDefinition {
 	return c.register(NewBean(reflect.ValueOf(i)))
 }
 
-// Provide 注册构造函数形式的 bean 。
+// Provide 注册构造函数形式的 bean ，这里的构造函数泛指所有可以返回 bean 对象
+// 的函数或方法( golang 里面方法是指带有接收者的函数)，当使用方法定义的构造函数
+// 时，接收者被当做函数的第一个参数。另外，ctor 只能返回一个 bean 对象，当然也
+// 支持返回一个额外的 error 对象。
 func (c *Container) Provide(ctor interface{}, args ...arg.Arg) *BeanDefinition {
 	return c.register(NewBean(ctor, args...))
 }
@@ -152,7 +155,9 @@ func (c *Container) register(b *BeanDefinition) *BeanDefinition {
 	return b
 }
 
-// Config 注册一个配置函数，TODO 什么是配置函数。
+// Config 注册配置函数，配置函数是指可以接受一些 bean 作为入参且没有返回值的函
+// 数，使用场景大多是在 bean 初始化之后对 bean 进行二次配置，该机制可以作为框架
+// 配置能力的有效补充，但是一定要慎用！
 func (c *Container) Config(fn interface{}, args ...arg.Arg) *Configer {
 	return c.config(NewConfiger(fn, args...))
 }
@@ -163,8 +168,9 @@ func (c *Container) config(configer *Configer) *Configer {
 	return configer
 }
 
-// find 查找符合条件的单例 bean，考虑到该方法可能的使用场景，因此找不到符合条件的 bean
-// 时返回 nil，找到多于 1 个时返回 error，而且不保证返回的 bean 已经完成绑定和注入过程。
+// find 查找符合条件的单例 bean，考虑到该方法可能的使用场景，因此在找不到符合条件
+// 的 bean 时返回 nil，在找到多于 1 个符合条件的 bean 时返回 error，而且该函数
+// 只保证返回的 bean 是有效(未被标记为删除)的，而不保证已经完成属性绑定和依赖注入。
 func (c *Container) find(selector bean.Selector) (*BeanDefinition, error) {
 	c.callAfterRefreshing()
 
@@ -192,7 +198,7 @@ func (c *Container) find(selector bean.Selector) (*BeanDefinition, error) {
 			buf := bytes.Buffer{}
 			buf.WriteString(fmt.Sprintf("found %d beans", n))
 			for _, d := range result {
-				buf.WriteString(fmt.Sprintf(" %q", d.Description()))
+				buf.WriteString(fmt.Sprintf(" %q", d))
 			}
 			return nil, errors.New(buf.String())
 		}
@@ -211,7 +217,7 @@ func (c *Container) find(selector bean.Selector) (*BeanDefinition, error) {
 
 	if t.Kind() == reflect.Ptr {
 		if e := t.Elem(); e.Kind() == reflect.Interface {
-			t = e // 接口类型去掉指针
+			t = e // 指 (*error)(nil) 形式的 bean 选择器
 		}
 	}
 
@@ -227,7 +233,7 @@ func (c *Container) find(selector bean.Selector) (*BeanDefinition, error) {
 	})
 }
 
-// Refresh 刷新容器内容，决议和组装所有的 configer 与 bean。
+// Refresh 决议和组装所有的 configer 与 bean 。
 func (c *Container) Refresh() {
 
 	if c.state != Unrefreshed {
@@ -268,7 +274,7 @@ func (c *Container) Refresh() {
 func (c *Container) registerBeans() error {
 	for _, b := range c.beans {
 		if d, ok := c.beansById[b.ID()]; ok {
-			return fmt.Errorf("found duplicate beans [%s] [%s]", b.Description(), d.Description())
+			return fmt.Errorf("found duplicate beans [%s] [%s]", b, d)
 		}
 		c.beansById[b.ID()] = b
 	}
@@ -299,7 +305,7 @@ func (c *Container) resolveBeans() error {
 	return nil
 }
 
-// resolveBean 对 bean 进行决议是否需要创建 bean 的实例。
+// resolveBean 决议 bean 是否是有效的，如果 bean 是无效的则呗标记为已删除。
 func (c *Container) resolveBean(b *BeanDefinition) error {
 
 	if b.status >= Resolving {
@@ -328,7 +334,7 @@ func (c *Container) resolveBean(b *BeanDefinition) error {
 
 	for t := range b.exports {
 		if !b.Type().Implements(t) {
-			return fmt.Errorf("%s not implement %s interface", b.Description(), t)
+			return fmt.Errorf("%s doesn't implement %s interface", b, t)
 		}
 		log.Debugf("register %s name:%q type:%q %s", b.getClass(), b.Name(), t, b.FileLine())
 		c.beansByType[t] = append(c.beansByType[t], b)

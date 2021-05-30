@@ -35,6 +35,6 @@ type Definition interface {
 	Name() string     // 返回 Bean 的名称
 	TypeName() string // 返回类型的全限定名
 
-	FileLine() string    // 返回 Bean 的注册点
-	Description() string // 返回 Bean 的详细描述
+	String() string   // 返回 Bean 的描述
+	FileLine() string // 返回 Bean 的注册点
 }
