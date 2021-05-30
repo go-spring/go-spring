@@ -16,7 +16,7 @@
 
 package grpc
 
-type Service struct {
+type Server struct {
 	Register interface{} // 服务注册函数
-	Server   interface{} // 服务提供者
+	Service  interface{} // 服务提供者
 }

@@ -74,9 +74,9 @@ type App struct {
 
 	exitChan chan struct{}
 
-	rootRouter  web.RootRouter
-	consumers   map[string]*mq.BindConsumer
-	gRPCServers map[string]*grpc.Service
+	RootRouter  web.RootRouter
+	GRPCServers map[string]*grpc.Server
+	Consumers   map[string]*mq.BindConsumer
 }
 
 // NewApp application 的构造函数
@@ -87,9 +87,9 @@ func NewApp() *App {
 		bannerMode:          BannerModeConsole,
 		expectSysProperties: []string{`.*`},
 		exitChan:            make(chan struct{}),
-		rootRouter:          web.NewRootRouter(),
-		consumers:           make(map[string]*mq.BindConsumer),
-		gRPCServers:         make(map[string]*grpc.Service),
+		RootRouter:          web.NewRootRouter(),
+		GRPCServers:         make(map[string]*grpc.Server),
+		Consumers:           make(map[string]*mq.BindConsumer),
 	}
 }
 
@@ -393,115 +393,106 @@ func (app *App) Go(fn func(ctx context.Context)) {
 	app.c.Go(fn)
 }
 
-func (app *App) GRPCServers() map[string]*grpc.Service {
-	return app.gRPCServers
-}
-
-// GRpcServer 注册 gRPC 服务提供者，fn 是 gRPC 自动生成的服务注册函数，serviceName 是服务名称，
-// 必须对应 *_grpc.pg.go 文件里面 grpc.ServiceDesc 的 ServiceName 字段，server 是服务具体提供者对象。
-func (app *App) GRpcServer(serviceName string, fn interface{}, server interface{}) {
-	s := &grpc.Service{Register: fn, Server: server}
-	app.gRPCServers[serviceName] = s
-}
-
-// GRpcClient 注册 gRPC 服务客户端，fn 是 gRPC 自动生成的客户端构造函数
-func (app *App) GRpcClient(fn interface{}, endpoint string) *BeanDefinition {
-	return app.c.register(NewBean(fn, endpoint))
-}
-
-func (app *App) Mappers() map[string]*web.Mapper {
-	return app.rootRouter.Mappers()
-}
-
 // Route 返回和 Mapping 绑定的路由分组
 func (app *App) Route(basePath string) *web.Router {
-	return app.rootRouter.Route(basePath)
+	return app.RootRouter.Route(basePath)
 }
 
 // HandleRequest 注册任意 HTTP 方法处理函数
 func (app *App) HandleRequest(method uint32, path string, fn web.Handler) *web.Mapper {
-	return app.rootRouter.HandleRequest(method, path, fn)
+	return app.RootRouter.HandleRequest(method, path, fn)
 }
 
 // RequestMapping 注册任意 HTTP 方法处理函数
 func (app *App) RequestMapping(method uint32, path string, fn web.HandlerFunc) *web.Mapper {
-	return app.rootRouter.RequestMapping(method, path, fn)
+	return app.RootRouter.RequestMapping(method, path, fn)
 }
 
 // RequestBinding 注册任意 HTTP 方法处理函数
 func (app *App) RequestBinding(method uint32, path string, fn interface{}) *web.Mapper {
-	return app.rootRouter.RequestBinding(method, path, fn)
+	return app.RootRouter.RequestBinding(method, path, fn)
 }
 
 // HandleGet 注册 GET 方法处理函数
 func (app *App) HandleGet(path string, fn web.Handler) *web.Mapper {
-	return app.rootRouter.HandleGet(path, fn)
+	return app.RootRouter.HandleGet(path, fn)
 }
 
 // GetMapping 注册 GET 方法处理函数
 func (app *App) GetMapping(path string, fn web.HandlerFunc) *web.Mapper {
-	return app.rootRouter.GetMapping(path, fn)
+	return app.RootRouter.GetMapping(path, fn)
 }
 
 // GetBinding 注册 GET 方法处理函数
 func (app *App) GetBinding(path string, fn interface{}) *web.Mapper {
-	return app.rootRouter.GetBinding(path, fn)
+	return app.RootRouter.GetBinding(path, fn)
 }
 
 // HandlePost 注册 POST 方法处理函数
 func (app *App) HandlePost(path string, fn web.Handler) *web.Mapper {
-	return app.rootRouter.HandlePost(path, fn)
+	return app.RootRouter.HandlePost(path, fn)
 }
 
 // PostMapping 注册 POST 方法处理函数
 func (app *App) PostMapping(path string, fn web.HandlerFunc) *web.Mapper {
-	return app.rootRouter.PostMapping(path, fn)
+	return app.RootRouter.PostMapping(path, fn)
 }
 
 // PostBinding 注册 POST 方法处理函数
 func (app *App) PostBinding(path string, fn interface{}) *web.Mapper {
-	return app.rootRouter.PostBinding(path, fn)
+	return app.RootRouter.PostBinding(path, fn)
 }
 
 // HandlePut 注册 PUT 方法处理函数
 func (app *App) HandlePut(path string, fn web.Handler) *web.Mapper {
-	return app.rootRouter.HandlePut(path, fn)
+	return app.RootRouter.HandlePut(path, fn)
 }
 
 // PutMapping 注册 PUT 方法处理函数
 func (app *App) PutMapping(path string, fn web.HandlerFunc) *web.Mapper {
-	return app.rootRouter.PutMapping(path, fn)
+	return app.RootRouter.PutMapping(path, fn)
 }
 
 // PutBinding 注册 PUT 方法处理函数
 func (app *App) PutBinding(path string, fn interface{}) *web.Mapper {
-	return app.rootRouter.PutBinding(path, fn)
+	return app.RootRouter.PutBinding(path, fn)
 }
 
 // HandleDelete 注册 DELETE 方法处理函数
 func (app *App) HandleDelete(path string, fn web.Handler) *web.Mapper {
-	return app.rootRouter.HandleDelete(path, fn)
+	return app.RootRouter.HandleDelete(path, fn)
 }
 
 // DeleteMapping 注册 DELETE 方法处理函数
 func (app *App) DeleteMapping(path string, fn web.HandlerFunc) *web.Mapper {
-	return app.rootRouter.DeleteMapping(path, fn)
+	return app.RootRouter.DeleteMapping(path, fn)
 }
 
 // DeleteBinding 注册 DELETE 方法处理函数
 func (app *App) DeleteBinding(path string, fn interface{}) *web.Mapper {
-	return app.rootRouter.DeleteBinding(path, web.BIND(fn))
+	return app.RootRouter.DeleteBinding(path, web.BIND(fn))
 }
 
-func (app *App) NewFilter(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
+// Filter 注册 web.Filter 对象。
+func (app *App) Filter(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 	b := NewBean(objOrCtor, ctorArgs...)
 	return app.c.register(b).Export((*web.Filter)(nil))
 }
 
-func (app *App) Consumers() map[string]*mq.BindConsumer {
-	return app.consumers
+// Consume 注册 MQ 消费者。
+func (app *App) Consume(topic string, fn interface{}) {
+	app.Consumers[topic] = mq.BIND(topic, fn)
 }
 
-func (app *App) Consume(topic string, fn interface{}) {
-	app.consumers[topic] = mq.BIND(topic, fn)
+// GRPCClient 注册 gRPC 服务客户端，fn 是 gRPC 自动生成的客户端构造函数。
+func (app *App) GRPCClient(fn interface{}, endpoint string) *BeanDefinition {
+	return app.c.register(NewBean(fn, endpoint))
+}
+
+// GRPCServer 注册 gRPC 服务提供者，fn 是 gRPC 自动生成的服务注册函数，
+// serviceName 是服务名称，必须对应 *_grpc.pg.go 文件里面 grpc.ServerDesc
+// 的 ServiceName 字段，server 是服务提供者对象。
+func (app *App) GRPCServer(serviceName string, fn interface{}, service interface{}) {
+	s := &grpc.Server{Register: fn, Service: service}
+	app.GRPCServers[serviceName] = s
 }
