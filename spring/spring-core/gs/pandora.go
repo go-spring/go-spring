@@ -69,8 +69,9 @@ func Use(s bean.Selector) GetOption {
 	}
 }
 
-// Get 获取单例 bean，若多于 1 个则 panic；找到返回 true 否则返回 false。
-// 它和 FindBean 的区别是它在调用后能够保证返回的 bean 已经完成了注入和绑定过程。
+// Get 根据类型和选择器获取符合条件的 bean 对象，该方法用于精确查找某个 bean 。
+// 如果没有找到或者找到多个都会返回 error。另外，这个方法和 Find 方法的区别在于
+// Get 方法返回的 bean 对象能够确保已经完成属性绑定和依赖注入，而 Find 则不能。
 func (p *pandora) Get(i interface{}, opts ...GetOption) error {
 	p.c.callAfterRefreshing()
 
@@ -105,13 +106,15 @@ func (p *pandora) Find(selector bean.Selector) (bean.Definition, error) {
 	return b, nil
 }
 
-// Collect 收集数组或指针定义的所有符合条件的 bean，收集到返回 true，否则返
-// 回 false。该函数有两种模式:自动模式和指定模式。自动模式是指 selectors 参数为空，
-// 这时候不仅会收集符合条件的单例 bean，还会收集符合条件的数组 bean (是指数组的元素
-// 符合条件，然后把数组元素拆开一个个放到收集结果里面)。指定模式是指 selectors 参数
-// 不为空，这时候只会收集单例 bean，而且要求这些单例 bean 不仅需要满足收集条件，而且
-// 必须满足 selector 条件。另外，自动模式下不对收集结果进行排序，指定模式下根据
-// selectors 列表的顺序对收集结果进行排序。
+// Collect 根据类型和选择器收集符合条件的 bean 对象，该方法和 Get 方法的区别
+// 在于它能够返回多个和类型匹配的 bean 对象，并且符合条件的不仅仅只是单例形式的
+// bean 对象，还可能包含集合形式注册的 bean 对象，该方法将集合形式 bean 对象
+// 的元素当成单例 bean 对象。
+// 另外，该函数有两种使用模式:自动模式和指定模式。自动模式是指 selectors 参数
+// 为空，这时候不仅会收集符合条件的单例 bean，还会收集符合条件的数组 bean (将
+// 数组元素拆开后一个个按照顺序放到收集结果里面)。指定模式是指 selectors 参数
+// 不为空，这时候只会收集符合条件的单例 bean，原因是该模式下会根据 selectors
+// 参数的顺序对收集结果进行排序。
 func (p *pandora) Collect(i interface{}, selectors ...bean.Selector) error {
 	p.c.callAfterRefreshing()
 
@@ -128,13 +131,16 @@ func (p *pandora) Collect(i interface{}, selectors ...bean.Selector) error {
 	return toAssembly(p.c).collectBeans(tag, v.Elem())
 }
 
-// Bind 对传入的对象进行属性绑定。
+// Bind 对传入的对象进行属性绑定，注意该方法不会进行依赖注入，支持基本数据类型
+// 及结构体类型。
 func (p *pandora) Bind(i interface{}, opts ...conf.BindOption) error {
 	p.c.callAfterRefreshing()
 	return p.c.p.Bind(i, opts...)
 }
 
-// Wire 对传入的对象或者构造函数的执行结果进行属性绑定和依赖注入，并返回处理后的对象。
+// Wire 如果传入的是 bean 对象，则对 bean 对象进行属性绑定和依赖注入，如果传
+// 入的是构造函数，则立即执行构造函数，然后对返回的结果进行属性绑定和依赖注入。
+// 无论哪种方式，该函数执行完后都会返回被处理的对象。
 func (p *pandora) Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error) {
 	p.c.callAfterRefreshing()
 
@@ -146,12 +152,12 @@ func (p *pandora) Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{},
 	return b.Interface(), nil
 }
 
-// Invoke 立即执行 fn 并返回执行结果。
+// Invoke fn 形似配置函数，但是可以返回多个值，fn 的执行结果以数组的形式返回。
 func (p *pandora) Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, error) {
 	p.c.callAfterRefreshing()
 
 	if !util.IsFuncType(reflect.TypeOf(fn)) {
-		return nil, errors.New("fn should be func(...) or func(...)error")
+		return nil, errors.New("fn should be function")
 	}
 
 	c := arg.Bind(fn, args, arg.Skip(1))
