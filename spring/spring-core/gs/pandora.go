@@ -161,7 +161,13 @@ func (p *pandora) Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, error)
 	}
 
 	c := arg.Bind(fn, args, arg.Skip(1))
-	ret, err := c.Call(toAssembly(p.c))
+
+	err := c.Prepare(toAssembly(p.c))
+	if err != nil {
+		return nil, err
+	}
+
+	ret, err := c.Call()
 	if err != nil {
 		return nil, err
 	}

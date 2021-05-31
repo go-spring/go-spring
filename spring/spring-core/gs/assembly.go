@@ -432,9 +432,11 @@ func (assembly *beanAssembly) wireBean(b *BeanDefinition) error {
 	}
 
 	// 执行 bean 的初始化函数。
-	if b.init != nil {
-		_, err = b.init.Call(assembly, arg.Receiver(b.Value()))
-		if err != nil {
+	if r := b.init; r != nil {
+		if err = r.Prepare(assembly, arg.Receiver(b.Value())); err != nil {
+			return err
+		}
+		if _, err = r.Call(); err != nil {
 			return err
 		}
 	}
@@ -451,7 +453,11 @@ func (assembly *beanAssembly) getBeanValue(b *BeanDefinition) (reflect.Value, er
 		return b.Value(), nil
 	}
 
-	out, err := b.f.Call(assembly)
+	if err := b.f.Prepare(assembly); err != nil {
+		return reflect.Value{}, err
+	}
+
+	out, err := b.f.Call()
 	if err != nil {
 		return reflect.Value{}, fmt.Errorf("constructor bean:%q return error: %v", b.FileLine(), err)
 	}

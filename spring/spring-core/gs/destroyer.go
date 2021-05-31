@@ -18,8 +18,6 @@ package gs
 
 import (
 	"container/list"
-
-	"github.com/go-spring/spring-core/arg"
 )
 
 // destroyer 保存具有销毁函数的 Bean 以及销毁函数的调用顺序。
@@ -56,11 +54,4 @@ func getBeforeDestroyers(destroyers *list.List, i interface{}) *list.List {
 		}
 	}
 	return result
-}
-
-// run 执行 current 的销毁函数。
-func (d *destroyer) run(ctx arg.Context) error {
-	r := d.current.destroy
-	_, err := r.Call(ctx, arg.Receiver(d.current.Value()))
-	return err
 }

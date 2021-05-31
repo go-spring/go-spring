@@ -268,6 +268,13 @@ func (c *Container) Refresh() {
 	c.destroyerList = assembly.sortDestroyers()
 	c.state = Refreshed
 
+	for e := c.destroyerList.Front(); e != nil; e = e.Next() {
+		curr := e.Value.(*destroyer).current
+		o := arg.Receiver(curr.Value())
+		err = curr.destroy.Prepare(assembly, o)
+		util.Panic(err).When(err != nil)
+	}
+
 	log.Info("container refreshed successfully")
 }
 
@@ -388,7 +395,10 @@ func (c *Container) export(t reflect.Type, b *BeanDefinition) error {
 func (c *Container) runConfigers(assembly *beanAssembly) error {
 	for e := c.configerList.Front(); e != nil; e = e.Next() {
 		g := e.Value.(*Configer)
-		if _, err := g.fn.Call(assembly); err != nil {
+		if err := g.fn.Prepare(assembly); err != nil {
+			return err
+		}
+		if _, err := g.fn.Call(); err != nil {
 			return err
 		}
 	}
@@ -414,16 +424,15 @@ func (c *Container) Close() {
 
 	log.Info("goroutines exited")
 
-	assembly := toAssembly(c)
-	c.runDestroyers(assembly)
+	c.runDestroyers()
 
 	log.Info("container closed")
 }
 
-func (c *Container) runDestroyers(assembly *beanAssembly) {
+func (c *Container) runDestroyers() {
 	for e := c.destroyerList.Front(); e != nil; e = e.Next() {
-		d := e.Value.(*destroyer)
-		if err := d.run(assembly); err != nil {
+		curr := e.Value.(*destroyer).current
+		if _, err := curr.destroy.Call(); err != nil {
 			log.Error(err)
 		}
 	}

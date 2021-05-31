@@ -318,27 +318,32 @@ func (arg *optionArg) call(ctx Context) (v reflect.Value, err error) {
 		}
 	}
 
-	out, err := arg.r.Call(ctx)
+	if err = arg.r.Prepare(ctx); err != nil {
+		return reflect.Value{}, err
+	}
+
+	out, err := arg.r.Call()
 	if err != nil {
 		return reflect.Value{}, err
 	}
 	return out[0], nil
 }
 
-type callArg struct {
+type prepareArg struct {
 	receiver reflect.Value
 }
 
-type CallOption func(arg *callArg)
+type PrepareOption func(arg *prepareArg)
 
-func Receiver(r reflect.Value) CallOption {
-	return func(arg *callArg) {
+func Receiver(r reflect.Value) PrepareOption {
+	return func(arg *prepareArg) {
 		arg.receiver = r
 	}
 }
 
 type Callable interface {
-	Call(ctx Context, opts ...CallOption) ([]reflect.Value, error)
+	Prepare(ctx Context, opts ...PrepareOption) error
+	Call() ([]reflect.Value, error)
 }
 
 // callable 绑定函数及其参数。
@@ -347,6 +352,7 @@ type callable struct {
 	arg  *argList
 	file string // 注册点所在文件
 	line int    // 注册点所在行数
+	temp []reflect.Value
 }
 
 type bindArg struct {
@@ -383,9 +389,9 @@ func Bind(fn interface{}, args []Arg, opts ...BindOption) *callable {
 	return &callable{fn: fn, arg: argList, file: file, line: line}
 }
 
-func (r *callable) Call(ctx Context, opts ...CallOption) ([]reflect.Value, error) {
+func (r *callable) Prepare(ctx Context, opts ...PrepareOption) error {
 
-	arg := callArg{}
+	arg := prepareArg{}
 	for _, opt := range opts {
 		opt(&arg)
 	}
@@ -400,16 +406,19 @@ func (r *callable) Call(ctx Context, opts ...CallOption) ([]reflect.Value, error
 		fileline := fmt.Sprintf("%s:%d", r.file, r.line)
 		v, err := r.arg.get(ctx, fileline)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if len(v) > 0 {
 			in = append(in, v...)
 		}
 	}
 
-	// 调用 fn 函数
-	out := reflect.ValueOf(r.fn).Call(in)
+	r.temp = in
+	return nil
+}
 
+func (r *callable) Call() ([]reflect.Value, error) {
+	out := reflect.ValueOf(r.fn).Call(r.temp)
 	if n := len(out); n > 0 {
 		if o := out[n-1]; util.IsErrorType(o.Type()) {
 			if i := o.Interface(); i == nil {
@@ -419,6 +428,5 @@ func (r *callable) Call(ctx Context, opts ...CallOption) ([]reflect.Value, error
 			}
 		}
 	}
-
 	return out, nil
 }
