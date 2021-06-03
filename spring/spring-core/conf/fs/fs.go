@@ -14,24 +14,9 @@
  * limitations under the License.
  */
 
-package conf
+package fs
 
-import (
-	"github.com/go-spring/spring-core/conf/scheme"
-	"github.com/go-spring/spring-core/conf/scheme/file"
-	"github.com/go-spring/spring-core/conf/scheme/k8s"
-)
-
-const MaxSchemeNameLength = 16
-
-func init() {
-	NewScheme(file.New(), "")
-	NewScheme(k8s.New(), "k8s")
-}
-
-var schemeMap = make(map[string]scheme.Scheme)
-
-// NewScheme 注册读取属性列表文件内容的方案，name 最长不超过 16 个字符。
-func NewScheme(s scheme.Scheme, name string) {
-	schemeMap[name] = s
+// FS 文件读取器，从文件所在路径读取完成的文件内容。
+type FS interface {
+	ReadFile(filename string) ([]byte, error)
 }

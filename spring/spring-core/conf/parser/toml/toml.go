@@ -17,11 +17,19 @@
 package toml
 
 import (
+	"github.com/go-spring/spring-core/conf/parser"
 	"github.com/pelletier/go-toml"
 )
 
-// Read 从内存中读取属性列表，b 是 UTF8 格式。
-func Read(b []byte) (map[string]interface{}, error) {
+// Parser 属性列表解析器
+type Parser struct{}
+
+func New() parser.Parser {
+	return &Parser{}
+}
+
+// Parse 将字节数组解析成 map 结构。
+func (_ *Parser) Parse(b []byte) (map[string]interface{}, error) {
 	tree, err := toml.LoadBytes(b)
 	if err != nil {
 		return nil, err

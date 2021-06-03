@@ -14,24 +14,34 @@
  * limitations under the License.
  */
 
-package conf
+package file
 
 import (
+	"path/filepath"
+
+	"github.com/go-spring/spring-core/conf/fs"
 	"github.com/go-spring/spring-core/conf/scheme"
-	"github.com/go-spring/spring-core/conf/scheme/file"
-	"github.com/go-spring/spring-core/conf/scheme/k8s"
 )
 
-const MaxSchemeNameLength = 16
+type Scheme struct{}
 
-func init() {
-	NewScheme(file.New(), "")
-	NewScheme(k8s.New(), "k8s")
+func New() scheme.Scheme {
+	return &Scheme{}
 }
 
-var schemeMap = make(map[string]scheme.Scheme)
+func (_ *Scheme) Split(path string) (location, filename string) {
+	return filepath.Split(path)
+}
 
-// NewScheme 注册读取属性列表文件内容的方案，name 最长不超过 16 个字符。
-func NewScheme(s scheme.Scheme, name string) {
-	schemeMap[name] = s
+func (_ *Scheme) Open(fs fs.FS, location string) (scheme.Reader, error) {
+	return &reader{fs: fs, location: location}, nil
+}
+
+type reader struct {
+	fs       fs.FS
+	location string
+}
+
+func (r *reader) ReadFile(filename string) ([]byte, error) {
+	return r.fs.ReadFile(filepath.Join(r.location, filename))
 }

@@ -20,12 +20,13 @@ package conf
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
 
+	"github.com/go-spring/spring-core/conf/fs"
+	"github.com/go-spring/spring-core/conf/scheme"
 	"github.com/go-spring/spring-core/util"
 	"github.com/spf13/cast"
 )
@@ -76,33 +77,103 @@ func Load(filename string) (*Properties, error) {
 }
 
 // Read 从 []byte 读取属性列表，ext 是文件扩展名，如 .toml、.yaml 等。
-func Read(b []byte, configType string) (*Properties, error) {
+func Read(b []byte, ext string) (*Properties, error) {
 	p := New()
-	if err := p.Read(b, configType); err != nil {
+	if err := p.Read(b, ext); err != nil {
 		return nil, err
 	}
 	return p, nil
 }
 
-// Load 从文件读取属性列表。
+func TrimScheme(filename string) (schemeName string, newFileName string) {
+	n := MaxSchemeNameLength + 1
+	if n > len(filename) {
+		n = len(filename)
+	}
+	i := strings.Index(filename[:n], "@")
+	if i <= 0 {
+		return "", filename
+	}
+	if strings.Index(filename[:i], "://") >= 0 {
+		return "", filename
+	}
+	return filename[:i], filename[i+1:]
+}
+
+func GetScheme(schemeName string) (scheme.Scheme, error) {
+	s, ok := schemeMap[schemeName]
+	if !ok {
+		return nil, fmt.Errorf("unsupported scheme %q", schemeName)
+	}
+	return s, nil
+}
+
+func TrimFS(filename string) (fsName string, newFileName string) {
+	n := MaxFSNameLength + 3
+	if n > len(filename) {
+		n = len(filename)
+	}
+	i := strings.Index(filename[:n], "://")
+	if i <= 0 {
+		return "", filename
+	}
+	return filename[:i], filename[i+3:]
+}
+
+func GetFS(fsName string) (fs.FS, error) {
+	f, ok := fsMap[fsName]
+	if !ok {
+		return nil, fmt.Errorf("unsupported FS %q", fsName)
+	}
+	return f, nil
+}
+
+// Load 从文件中读取属性列表，filename 表示被读取文件的地址，默认从本地文件系
+// 统中读取，也可以通过 scheme 扩展的方式从其他地方读取。scheme 扩展的语法为
+// scheme://xxx，其中 scheme 表示扩展的名称，最长不超过 16 个字符，后面紧接
+// 着 :// 分隔符，然后是文件的读取方式，scheme 不同文件的读取方式也不相同，比
+// 如，默认情况下文件的读取方式是本地文件系统的相对地址或者绝对地址，而 k8s 扩
+// 展因为是从 config-map 文件的 data 节点中读取，所以它的读取方式是本地文件系
+// 统的相对地址或者绝对地址加上一个 # 然后再加上 data 节点的名称，因此想要知道
+// filename 的具体格式请参阅对应的 scheme 扩展的文档。
 func (p *Properties) Load(filename string) error {
-	b, err := ioutil.ReadFile(filename)
+
+	schemeName, filename := TrimScheme(filename)
+	s, err := GetScheme(schemeName)
 	if err != nil {
 		return err
 	}
+
+	fsName, filename := TrimFS(filename)
+	f, err := GetFS(fsName)
+	if err != nil {
+		return err
+	}
+
+	location, filename := s.Split(filename)
+	r, err := s.Open(f, location)
+	if err != nil {
+		return err
+	}
+
+	b, err := r.ReadFile(filename)
+	if err != nil {
+		return err
+	}
+
 	ext := filepath.Ext(filename)
-	return p.Read(b, strings.TrimPrefix(ext, "."))
+	return p.Read(b, ext)
 }
 
 // Read 从 []byte 读取属性列表，ext 是文件扩展名，如 .toml、.yaml 等。
-func (p *Properties) Read(b []byte, configType string) error {
+func (p *Properties) Read(b []byte, ext string) error {
 
-	r, ok := readers[strings.ToLower(configType)]
+	parser, ok := parserMap[strings.ToLower(ext)]
 	if !ok {
-		return fmt.Errorf("unsupported file type %s", configType)
+		return fmt.Errorf("unsupported file type %s", ext)
 	}
 
-	m, err := r(b)
+	m, err := parser.Parse(b)
 	if err != nil {
 		return err
 	}

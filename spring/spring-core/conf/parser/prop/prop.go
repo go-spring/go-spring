@@ -14,30 +14,34 @@
  * limitations under the License.
  */
 
-package conf
+package prop
 
 import (
-	"strings"
-
-	"github.com/go-spring/spring-core/conf/prop"
-	"github.com/go-spring/spring-core/conf/toml"
-	"github.com/go-spring/spring-core/conf/yaml"
+	"github.com/go-spring/spring-core/conf/parser"
+	"github.com/magiconair/properties"
 )
 
-func init() {
-	NewReader(prop.Read, "properties", "prop")
-	NewReader(yaml.Read, "yaml", "yml")
-	NewReader(toml.Read, "toml")
+// Parser 属性列表解析器
+type Parser struct{}
+
+func New() parser.Parser {
+	return &Parser{}
 }
 
-type Reader func([]byte) (map[string]interface{}, error)
+// Parse 将字节数组解析成 map 结构。
+func (_ *Parser) Parse(b []byte) (map[string]interface{}, error) {
 
-// readers 属性读取器列表。
-var readers = make(map[string]Reader)
+	p := properties.NewProperties()
+	p.DisableExpansion = true
 
-// NewReader 注册属性读取器。
-func NewReader(fn Reader, configTypes ...string) {
-	for _, configType := range configTypes {
-		readers[strings.ToLower(configType)] = fn
+	err := p.Load(b, properties.UTF8)
+	if err != nil {
+		return nil, err
 	}
+
+	ret := make(map[string]interface{})
+	for k, v := range p.Map() {
+		ret[k] = v
+	}
+	return ret, nil
 }

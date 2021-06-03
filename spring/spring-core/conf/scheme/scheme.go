@@ -14,24 +14,18 @@
  * limitations under the License.
  */
 
-package conf
+package scheme
 
-import (
-	"github.com/go-spring/spring-core/conf/scheme"
-	"github.com/go-spring/spring-core/conf/scheme/file"
-	"github.com/go-spring/spring-core/conf/scheme/k8s"
-)
+import "github.com/go-spring/spring-core/conf/fs"
 
-const MaxSchemeNameLength = 16
-
-func init() {
-	NewScheme(file.New(), "")
-	NewScheme(k8s.New(), "k8s")
+// Scheme 定义读取属性列表文件内容的方案，可以是读取完整的文件，也可以是读取文件
+// 的某一部分。通过与 fs.FS 对象配合，既可以从本地读，也可以从远程读。
+type Scheme interface {
+	Split(path string) (location, filename string)
+	Open(fs fs.FS, location string) (Reader, error)
 }
 
-var schemeMap = make(map[string]scheme.Scheme)
-
-// NewScheme 注册读取属性列表文件内容的方案，name 最长不超过 16 个字符。
-func NewScheme(s scheme.Scheme, name string) {
-	schemeMap[name] = s
+// Reader 文件读取器，filename 对应的文件不存在时必须返回 os.ErrNotExist 。
+type Reader interface {
+	ReadFile(filename string) ([]byte, error)
 }

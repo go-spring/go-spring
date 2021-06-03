@@ -14,24 +14,26 @@
  * limitations under the License.
  */
 
-package conf
+package yaml
 
 import (
-	"github.com/go-spring/spring-core/conf/scheme"
-	"github.com/go-spring/spring-core/conf/scheme/file"
-	"github.com/go-spring/spring-core/conf/scheme/k8s"
+	"github.com/go-spring/spring-core/conf/parser"
+	"gopkg.in/yaml.v2"
 )
 
-const MaxSchemeNameLength = 16
+// Parser 属性列表解析器
+type Parser struct{}
 
-func init() {
-	NewScheme(file.New(), "")
-	NewScheme(k8s.New(), "k8s")
+func New() parser.Parser {
+	return &Parser{}
 }
 
-var schemeMap = make(map[string]scheme.Scheme)
-
-// NewScheme 注册读取属性列表文件内容的方案，name 最长不超过 16 个字符。
-func NewScheme(s scheme.Scheme, name string) {
-	schemeMap[name] = s
+// Parse 将字节数组解析成 map 结构。
+func (_ *Parser) Parse(b []byte) (map[string]interface{}, error) {
+	m := make(map[string]interface{})
+	err := yaml.Unmarshal(b, &m)
+	if err != nil {
+		return nil, err
+	}
+	return m, nil
 }

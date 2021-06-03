@@ -17,21 +17,25 @@
 package conf
 
 import (
-	"github.com/go-spring/spring-core/conf/scheme"
-	"github.com/go-spring/spring-core/conf/scheme/file"
-	"github.com/go-spring/spring-core/conf/scheme/k8s"
+	"strings"
+
+	"github.com/go-spring/spring-core/conf/parser"
+	"github.com/go-spring/spring-core/conf/parser/prop"
+	"github.com/go-spring/spring-core/conf/parser/toml"
+	"github.com/go-spring/spring-core/conf/parser/yaml"
 )
 
-const MaxSchemeNameLength = 16
-
 func init() {
-	NewScheme(file.New(), "")
-	NewScheme(k8s.New(), "k8s")
+	NewParser(prop.New(), ".properties", ".prop")
+	NewParser(yaml.New(), ".yaml", ".yml")
+	NewParser(toml.New(), ".toml")
 }
 
-var schemeMap = make(map[string]scheme.Scheme)
+var parserMap = make(map[string]parser.Parser)
 
-// NewScheme 注册读取属性列表文件内容的方案，name 最长不超过 16 个字符。
-func NewScheme(s scheme.Scheme, name string) {
-	schemeMap[name] = s
+// NewParser 注册属性列表解析器，ext 是解析器支持的文件扩展名。
+func NewParser(p parser.Parser, ext ...string) {
+	for _, s := range ext {
+		parserMap[strings.ToLower(s)] = p
+	}
 }

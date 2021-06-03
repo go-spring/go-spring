@@ -14,18 +14,9 @@
  * limitations under the License.
  */
 
-package yaml
+package parser
 
-import (
-	"gopkg.in/yaml.v2"
-)
-
-// Read 从内存中读取属性列表，b 是 UTF8 格式。
-func Read(b []byte) (map[string]interface{}, error) {
-	m := make(map[string]interface{})
-	err := yaml.Unmarshal(b, &m)
-	if err != nil {
-		return nil, err
-	}
-	return m, nil
+// Parser 属性列表解析器，将字节数组解析成 map 结构。
+type Parser interface {
+	Parse(b []byte) (map[string]interface{}, error)
 }

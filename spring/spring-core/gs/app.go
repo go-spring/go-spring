@@ -18,7 +18,7 @@ package gs
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"io/ioutil"
 	"os"
 	"os/signal"
@@ -30,7 +30,6 @@ import (
 
 	"github.com/go-spring/spring-core/arg"
 	"github.com/go-spring/spring-core/conf"
-	"github.com/go-spring/spring-core/conf/k8s"
 	"github.com/go-spring/spring-core/grpc"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/mq"
@@ -38,10 +37,6 @@ import (
 	"github.com/go-spring/spring-core/web"
 	"github.com/spf13/cast"
 )
-
-func init() {
-	conf.NewScheme(k8s.Scheme, "k8s")
-}
 
 const SPRING_PROFILE = "SPRING_PROFILE"
 
@@ -205,40 +200,53 @@ func (app *App) loadSystemEnv(p *conf.Properties) error {
 }
 
 // loadConfigFile 加载指定环境的属性列表文件
-func (app *App) loadConfigFile(p *conf.Properties, profile ...string) error {
+func (app *App) loadConfigFile(p *conf.Properties, profile string) error {
 
-	fileName := "application"
-	if len(profile) > 0 && profile[0] != "" {
-		fileName += "-" + profile[0]
+	filename := "application"
+	if len(profile) > 0 {
+		filename += "-" + profile
 	}
 
-	var (
-		schemeName   string
-		fileLocation string
-	)
+	extArray := []string{".properties", ".yaml", ".toml"}
+	for _, location := range app.cfgLocation {
 
-	configTypes := []string{"properties", "yaml", "toml"}
-	for _, configLocation := range app.cfgLocation {
-
-		ss := strings.SplitN(configLocation, ":", 2)
-		if len(ss) == 1 {
-			fileLocation = ss[0]
-		} else {
-			schemeName = ss[0]
-			fileLocation = ss[1]
-		}
-
-		scheme, ok := conf.FindScheme(schemeName)
-		if !ok {
-			panic(fmt.Errorf("unsupported config scheme %s", schemeName))
-		}
-
-		err := scheme(p, fileLocation, fileName, configTypes)
+		schemeName, location := conf.TrimScheme(location)
+		s, err := conf.GetScheme(schemeName)
 		if err != nil {
 			return err
 		}
 
-		// TODO Trace 打印所有的属性。
+		fsName, location := conf.TrimFS(location)
+		f, err := conf.GetFS(fsName)
+		if err != nil {
+			return err
+		}
+
+		r, err := s.Open(f, location)
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+
+		if err != nil {
+			return err
+		}
+
+		for _, ext := range extArray {
+
+			b, err := r.ReadFile(filename + ext)
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+
+			if err != nil {
+				return err
+			}
+
+			err = p.Read(b, ext)
+			if err != nil {
+				return err
+			}
+		}
 	}
 
 	return nil
@@ -273,7 +281,7 @@ func (app *App) prepare() {
 	err := app.loadSystemEnv(envConfig)
 	util.Panic(err).When(err != nil)
 
-	err = app.loadConfigFile(defaultConfig)
+	err = app.loadConfigFile(defaultConfig, "")
 	util.Panic(err).When(err != nil)
 
 	profile := func([]*conf.Properties) string {

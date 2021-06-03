@@ -14,24 +14,22 @@
  * limitations under the License.
  */
 
-package prop
+package conf
 
-import "github.com/magiconair/properties"
+import (
+	"github.com/go-spring/spring-core/conf/fs"
+	"github.com/go-spring/spring-core/conf/fs/local"
+)
 
-// Read 从内存中读取属性列表，b 是 UTF8 格式。
-func Read(b []byte) (map[string]interface{}, error) {
+const MaxFSNameLength = 16
 
-	p := properties.NewProperties()
-	p.DisableExpansion = true
+func init() {
+	NewFS(local.New(), "")
+}
 
-	err := p.Load(b, properties.UTF8)
-	if err != nil {
-		return nil, err
-	}
+var fsMap = make(map[string]fs.FS)
 
-	ret := make(map[string]interface{})
-	for k, v := range p.Map() {
-		ret[k] = v
-	}
-	return ret, nil
+// NewFS 注册文件读取器，name 最长不超过 16 个字符。
+func NewFS(fs fs.FS, name string) {
+	fsMap[name] = fs
 }
