@@ -16,20 +16,10 @@
 
 package prop
 
-import (
-	"github.com/go-spring/spring-core/conf/parser"
-	"github.com/magiconair/properties"
-)
-
-// Parser 属性列表解析器
-type Parser struct{}
-
-func New() parser.Parser {
-	return &Parser{}
-}
+import "github.com/magiconair/properties"
 
 // Parse 将字节数组解析成 map 结构。
-func (_ *Parser) Parse(b []byte) (map[string]interface{}, error) {
+func Parse(b []byte) (map[string]interface{}, error) {
 
 	p := properties.NewProperties()
 	p.DisableExpansion = true

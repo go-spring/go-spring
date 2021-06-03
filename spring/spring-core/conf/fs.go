@@ -18,18 +18,22 @@ package conf
 
 import (
 	"github.com/go-spring/spring-core/conf/fs"
+	"github.com/go-spring/spring-core/conf/fs/http"
 	"github.com/go-spring/spring-core/conf/fs/local"
 )
 
 const MaxFSNameLength = 16
 
 func init() {
-	NewFS(local.New(), "")
+	NewFS(local.New(), "file://")
+	NewFS(http.New(), "http://", "https://")
 }
 
 var fsMap = make(map[string]fs.FS)
 
 // NewFS 注册文件读取器，name 最长不超过 16 个字符。
-func NewFS(fs fs.FS, name string) {
-	fsMap[name] = fs
+func NewFS(fs fs.FS, name ...string) {
+	for _, s := range name {
+		fsMap[s] = fs
+	}
 }

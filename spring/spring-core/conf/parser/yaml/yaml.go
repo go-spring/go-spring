@@ -17,19 +17,11 @@
 package yaml
 
 import (
-	"github.com/go-spring/spring-core/conf/parser"
 	"gopkg.in/yaml.v2"
 )
 
-// Parser 属性列表解析器
-type Parser struct{}
-
-func New() parser.Parser {
-	return &Parser{}
-}
-
 // Parse 将字节数组解析成 map 结构。
-func (_ *Parser) Parse(b []byte) (map[string]interface{}, error) {
+func Parse(b []byte) (map[string]interface{}, error) {
 	m := make(map[string]interface{})
 	err := yaml.Unmarshal(b, &m)
 	if err != nil {

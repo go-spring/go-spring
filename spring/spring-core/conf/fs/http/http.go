@@ -14,16 +14,16 @@
  * limitations under the License.
  */
 
-package local
+package http
 
 import (
-	"io/ioutil"
-	"path/filepath"
+	"path"
 
 	"github.com/go-spring/spring-core/conf/fs"
+	"github.com/go-spring/spring-core/util"
 )
 
-// FS 支持从本地文件系统读取文件内容的 fs.FS 实现。
+// FS 支持通过 HTTP 协议读取文件内容的 fs.FS 实现。
 type FS struct{}
 
 func New() fs.FS {
@@ -32,17 +32,15 @@ func New() fs.FS {
 
 // Join joins any number of path elements into a single path。
 func (_ *FS) Join(elem ...string) string {
-	return filepath.Join(elem...)
+	return path.Join(elem...)
 }
 
-// Split splits path immediately following the final Separator。
-func (_ *FS) Split(path string) (dir, file string) {
-	return filepath.Split(path)
+// Split splits path immediately following the final slash。
+func (_ *FS) Split(fileURL string) (dir, file string) {
+	return path.Split(fileURL)
 }
 
 // ReadFile 从文件所在路径读取完成的文件内容。
 func (_ *FS) ReadFile(filename string) (b []byte, ext string, err error) {
-	b, err = ioutil.ReadFile(filename)
-	ext = filepath.Ext(filename)
-	return
+	return nil, "", util.UnimplementedMethod
 }

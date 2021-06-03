@@ -19,6 +19,7 @@ package k8s
 import (
 	"errors"
 	"os"
+	"path"
 	"strings"
 
 	"github.com/go-spring/spring-core/conf/fs"
@@ -26,10 +27,12 @@ import (
 	"github.com/go-spring/spring-core/conf/scheme"
 )
 
-type Scheme struct{}
+type Scheme struct {
+	fs fs.FS
+}
 
-func New() scheme.Scheme {
-	return &Scheme{}
+func New(fs fs.FS) scheme.Scheme {
+	return &Scheme{fs: fs}
 }
 
 func (_ *Scheme) Split(path string) (location, filename string) {
@@ -39,14 +42,14 @@ func (_ *Scheme) Split(path string) (location, filename string) {
 	return path, ""
 }
 
-func (_ *Scheme) Open(fs fs.FS, location string) (scheme.Reader, error) {
+func (s *Scheme) Open(location string) (scheme.Reader, error) {
 
-	b, err := fs.ReadFile(location)
+	b, _, err := s.fs.ReadFile(location)
 	if err != nil {
 		return nil, err
 	}
 
-	m, err := yaml.New().Parse(b)
+	m, err := yaml.Parse(b)
 	if err != nil {
 		return nil, err
 	}
@@ -68,17 +71,17 @@ type reader struct {
 	data map[string]interface{}
 }
 
-func (r *reader) ReadFile(filename string) ([]byte, error) {
+func (r *reader) ReadFile(filename string) (b []byte, ext string, err error) {
 
 	v, ok := r.data[filename]
 	if !ok {
-		return nil, os.ErrNotExist
+		return nil, "", os.ErrNotExist
 	}
 
 	str, ok := v.(string)
 	if !ok {
-		return nil, errors.New("error data")
+		return nil, "", errors.New("error data")
 	}
 
-	return []byte(str), nil
+	return []byte(str), path.Ext(filename), nil
 }

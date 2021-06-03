@@ -16,7 +16,5 @@
 
 package parser
 
-// Parser 属性列表解析器，将字节数组解析成 map 结构。
-type Parser interface {
-	Parse(b []byte) (map[string]interface{}, error)
-}
+// Parse 属性列表解析器，将字节数组解析成 map 结构。
+type Parse func(b []byte) (map[string]interface{}, error)

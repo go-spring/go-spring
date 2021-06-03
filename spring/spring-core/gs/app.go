@@ -210,19 +210,18 @@ func (app *App) loadConfigFile(p *conf.Properties, profile string) error {
 	extArray := []string{".properties", ".yaml", ".toml"}
 	for _, location := range app.cfgLocation {
 
-		schemeName, location := conf.TrimScheme(location)
-		s, err := conf.GetScheme(schemeName)
+		schemeName, location := conf.TrimSchemeName(location)
+		f, err := conf.GetFS(location)
 		if err != nil {
 			return err
 		}
 
-		fsName, location := conf.TrimFS(location)
-		f, err := conf.GetFS(fsName)
+		s, err := conf.GetScheme(schemeName, f)
 		if err != nil {
 			return err
 		}
 
-		r, err := s.Open(f, location)
+		r, err := s.Open(location)
 		if errors.Is(err, os.ErrNotExist) {
 			continue
 		}
@@ -233,7 +232,7 @@ func (app *App) loadConfigFile(p *conf.Properties, profile string) error {
 
 		for _, ext := range extArray {
 
-			b, err := r.ReadFile(filename + ext)
+			b, _, err := r.ReadFile(filename + ext)
 			if errors.Is(err, os.ErrNotExist) {
 				continue
 			}

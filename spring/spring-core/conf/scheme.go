@@ -25,13 +25,13 @@ import (
 const MaxSchemeNameLength = 16
 
 func init() {
-	NewScheme(file.New(), "")
-	NewScheme(k8s.New(), "k8s")
+	NewScheme(file.New, "")
+	NewScheme(k8s.New, "k8s")
 }
 
-var schemeMap = make(map[string]scheme.Scheme)
+var schemeMap = make(map[string]scheme.Factory)
 
 // NewScheme 注册读取属性列表文件内容的方案，name 最长不超过 16 个字符。
-func NewScheme(s scheme.Scheme, name string) {
+func NewScheme(s scheme.Factory, name string) {
 	schemeMap[name] = s
 }

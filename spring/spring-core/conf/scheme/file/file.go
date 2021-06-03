@@ -17,24 +17,24 @@
 package file
 
 import (
-	"path/filepath"
-
 	"github.com/go-spring/spring-core/conf/fs"
 	"github.com/go-spring/spring-core/conf/scheme"
 )
 
-type Scheme struct{}
-
-func New() scheme.Scheme {
-	return &Scheme{}
+type Scheme struct {
+	fs fs.FS
 }
 
-func (_ *Scheme) Split(path string) (location, filename string) {
-	return filepath.Split(path)
+func New(fs fs.FS) scheme.Scheme {
+	return &Scheme{fs: fs}
 }
 
-func (_ *Scheme) Open(fs fs.FS, location string) (scheme.Reader, error) {
-	return &reader{fs: fs, location: location}, nil
+func (s *Scheme) Split(path string) (location, filename string) {
+	return s.fs.Split(path)
+}
+
+func (s *Scheme) Open(location string) (scheme.Reader, error) {
+	return &reader{fs: s.fs, location: location}, nil
 }
 
 type reader struct {
@@ -42,6 +42,6 @@ type reader struct {
 	location string
 }
 
-func (r *reader) ReadFile(filename string) ([]byte, error) {
-	return r.fs.ReadFile(filepath.Join(r.location, filename))
+func (r *reader) ReadFile(filename string) (b []byte, ext string, err error) {
+	return r.fs.ReadFile(r.fs.Join(r.location, filename))
 }

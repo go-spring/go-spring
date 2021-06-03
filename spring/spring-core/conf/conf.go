@@ -20,12 +20,12 @@ package conf
 import (
 	"errors"
 	"fmt"
-	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
 
 	"github.com/go-spring/spring-core/conf/fs"
+	"github.com/go-spring/spring-core/conf/fs/local"
 	"github.com/go-spring/spring-core/conf/scheme"
 	"github.com/go-spring/spring-core/util"
 	"github.com/spf13/cast"
@@ -85,7 +85,8 @@ func Read(b []byte, ext string) (*Properties, error) {
 	return p, nil
 }
 
-func TrimScheme(filename string) (schemeName string, newFileName string) {
+// TrimSchemeName 如果有 scheme 的话去掉它，然后返回 scheme 和新的文件路径。
+func TrimSchemeName(filename string) (schemeName string, newFileName string) {
 	n := MaxSchemeNameLength + 1
 	if n > len(filename) {
 		n = len(filename)
@@ -100,27 +101,26 @@ func TrimScheme(filename string) (schemeName string, newFileName string) {
 	return filename[:i], filename[i+1:]
 }
 
-func GetScheme(schemeName string) (scheme.Scheme, error) {
+// GetScheme 获取 schemeName 对应的 scheme.Scheme 对象。
+func GetScheme(schemeName string, f fs.FS) (scheme.Scheme, error) {
 	s, ok := schemeMap[schemeName]
 	if !ok {
 		return nil, fmt.Errorf("unsupported scheme %q", schemeName)
 	}
-	return s, nil
+	return s(f), nil
 }
 
-func TrimFS(filename string) (fsName string, newFileName string) {
+// GetFS 获取 filename 对应的 fs.FS 对象。
+func GetFS(filename string) (fs.FS, error) {
 	n := MaxFSNameLength + 3
 	if n > len(filename) {
 		n = len(filename)
 	}
 	i := strings.Index(filename[:n], "://")
 	if i <= 0 {
-		return "", filename
+		return local.New(), nil
 	}
-	return filename[:i], filename[i+3:]
-}
-
-func GetFS(fsName string) (fs.FS, error) {
+	fsName := filename[:i+3]
 	f, ok := fsMap[fsName]
 	if !ok {
 		return nil, fmt.Errorf("unsupported FS %q", fsName)
@@ -138,42 +138,40 @@ func GetFS(fsName string) (fs.FS, error) {
 // filename 的具体格式请参阅对应的 scheme 扩展的文档。
 func (p *Properties) Load(filename string) error {
 
-	schemeName, filename := TrimScheme(filename)
-	s, err := GetScheme(schemeName)
+	schemeName, filename := TrimSchemeName(filename)
+	f, err := GetFS(filename)
 	if err != nil {
 		return err
 	}
 
-	fsName, filename := TrimFS(filename)
-	f, err := GetFS(fsName)
+	s, err := GetScheme(schemeName, f)
 	if err != nil {
 		return err
 	}
 
 	location, filename := s.Split(filename)
-	r, err := s.Open(f, location)
+	r, err := s.Open(location)
 	if err != nil {
 		return err
 	}
 
-	b, err := r.ReadFile(filename)
+	b, ext, err := r.ReadFile(filename)
 	if err != nil {
 		return err
 	}
 
-	ext := filepath.Ext(filename)
 	return p.Read(b, ext)
 }
 
 // Read 从 []byte 读取属性列表，ext 是文件扩展名，如 .toml、.yaml 等。
 func (p *Properties) Read(b []byte, ext string) error {
 
-	parser, ok := parserMap[strings.ToLower(ext)]
+	f, ok := parserMap[strings.ToLower(ext)]
 	if !ok {
 		return fmt.Errorf("unsupported file type %s", ext)
 	}
 
-	m, err := parser.Parse(b)
+	m, err := f(b)
 	if err != nil {
 		return err
 	}

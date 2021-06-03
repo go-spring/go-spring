@@ -16,7 +16,15 @@
 
 package fs
 
-// FS 文件读取器，从文件所在路径读取完成的文件内容。
+// FS 抽象文件系统。
 type FS interface {
-	ReadFile(filename string) ([]byte, error)
+
+	// Join joins any number of path elements into a single path。
+	Join(elem ...string) string
+
+	// Split splits path immediately following the final Separator。
+	Split(path string) (dir, file string)
+
+	// ReadFile 从文件所在路径读取完成的文件内容。
+	ReadFile(filename string) (b []byte, ext string, err error)
 }

@@ -26,15 +26,15 @@ import (
 )
 
 func init() {
-	NewParser(prop.New(), ".properties", ".prop")
-	NewParser(yaml.New(), ".yaml", ".yml")
-	NewParser(toml.New(), ".toml")
+	NewParser(prop.Parse, ".properties", ".prop")
+	NewParser(yaml.Parse, ".yaml", ".yml")
+	NewParser(toml.Parse, ".toml")
 }
 
-var parserMap = make(map[string]parser.Parser)
+var parserMap = make(map[string]parser.Parse)
 
 // NewParser 注册属性列表解析器，ext 是解析器支持的文件扩展名。
-func NewParser(p parser.Parser, ext ...string) {
+func NewParser(p parser.Parse, ext ...string) {
 	for _, s := range ext {
 		parserMap[strings.ToLower(s)] = p
 	}
