@@ -19,10 +19,9 @@ package conf
 import (
 	"strings"
 
-	"github.com/go-spring/spring-core/conf/parser"
-	"github.com/go-spring/spring-core/conf/parser/prop"
-	"github.com/go-spring/spring-core/conf/parser/toml"
-	"github.com/go-spring/spring-core/conf/parser/yaml"
+	"github.com/go-spring/spring-core/conf/prop"
+	"github.com/go-spring/spring-core/conf/toml"
+	"github.com/go-spring/spring-core/conf/yaml"
 )
 
 func init() {
@@ -31,10 +30,13 @@ func init() {
 	NewParser(toml.Parse, ".toml")
 }
 
-var parserMap = make(map[string]parser.Parse)
+// Parser 属性列表解析器，将字节数组解析成 map 结构。
+type Parser func(b []byte) (map[string]interface{}, error)
+
+var parserMap = make(map[string]Parser)
 
 // NewParser 注册属性列表解析器，ext 是解析器支持的文件扩展名。
-func NewParser(p parser.Parse, ext ...string) {
+func NewParser(p Parser, ext ...string) {
 	for _, s := range ext {
 		parserMap[strings.ToLower(s)] = p
 	}

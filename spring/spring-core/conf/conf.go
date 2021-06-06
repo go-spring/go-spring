@@ -24,9 +24,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/go-spring/spring-core/conf/fs"
-	"github.com/go-spring/spring-core/conf/fs/local"
-	"github.com/go-spring/spring-core/conf/scheme"
 	"github.com/go-spring/spring-core/util"
 	"github.com/spf13/cast"
 )
@@ -85,49 +82,6 @@ func Read(b []byte, ext string) (*Properties, error) {
 	return p, nil
 }
 
-// TrimSchemeName 如果有 scheme 的话去掉它，然后返回 scheme 和新的文件路径。
-func TrimSchemeName(filename string) (schemeName string, newFileName string) {
-	n := MaxSchemeNameLength + 1
-	if n > len(filename) {
-		n = len(filename)
-	}
-	i := strings.Index(filename[:n], "@")
-	if i <= 0 {
-		return "", filename
-	}
-	if strings.Index(filename[:i], "://") >= 0 {
-		return "", filename
-	}
-	return filename[:i], filename[i+1:]
-}
-
-// GetScheme 获取 schemeName 对应的 scheme.Scheme 对象。
-func GetScheme(schemeName string, f fs.FS) (scheme.Scheme, error) {
-	s, ok := schemeMap[schemeName]
-	if !ok {
-		return nil, fmt.Errorf("unsupported scheme %q", schemeName)
-	}
-	return s(f), nil
-}
-
-// GetFS 获取 filename 对应的 fs.FS 对象。
-func GetFS(filename string) (fs.FS, error) {
-	n := MaxFSNameLength + 3
-	if n > len(filename) {
-		n = len(filename)
-	}
-	i := strings.Index(filename[:n], "://")
-	if i <= 0 {
-		return local.New(), nil
-	}
-	fsName := filename[:i+3]
-	f, ok := fsMap[fsName]
-	if !ok {
-		return nil, fmt.Errorf("unsupported FS %q", fsName)
-	}
-	return f, nil
-}
-
 // Load 从文件中读取属性列表，filename 表示被读取文件的地址，默认从本地文件系
 // 统中读取，也可以通过 scheme 扩展的方式从其他地方读取。scheme 扩展的语法为
 // scheme://xxx，其中 scheme 表示扩展的名称，最长不超过 16 个字符，后面紧接
@@ -136,30 +90,11 @@ func GetFS(filename string) (fs.FS, error) {
 // 展因为是从 config-map 文件的 data 节点中读取，所以它的读取方式是本地文件系
 // 统的相对地址或者绝对地址加上一个 # 然后再加上 data 节点的名称，因此想要知道
 // filename 的具体格式请参阅对应的 scheme 扩展的文档。
-func (p *Properties) Load(filename string) error {
-
-	schemeName, filename := TrimSchemeName(filename)
-	f, err := GetFS(filename)
+func (p *Properties) Load(fileURL string) error {
+	b, ext, err := ReadFile(fileURL)
 	if err != nil {
 		return err
 	}
-
-	s, err := GetScheme(schemeName, f)
-	if err != nil {
-		return err
-	}
-
-	location, filename := s.Split(filename)
-	r, err := s.Open(location)
-	if err != nil {
-		return err
-	}
-
-	b, ext, err := r.ReadFile(filename)
-	if err != nil {
-		return err
-	}
-
 	return p.Read(b, ext)
 }
 
