@@ -34,11 +34,6 @@ const defaultBanner = `
 
 const version = `go-spring@v1.0.5    https://go-spring.com/`
 
-const (
-	BannerModeOff     = 0
-	BannerModeConsole = 1
-)
-
 // printBanner 打印 Banner 到控制台
 func printBanner(banner string) {
 

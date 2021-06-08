@@ -25,17 +25,22 @@ import (
 
 var app = NewApp()
 
-func ExpectSysProperties(pattern ...string) {
-	app.expectSysProperties = pattern
-}
-
-func BannerMode(mode int) {
-	app.bannerMode = mode
-}
-
-// Banner 设置自定义 Banner 字符串
+// Banner 自定义 banner 字符串。
 func Banner(banner string) {
 	app.banner = banner
+}
+
+// ShowBanner 设置是否显示 banner。
+func ShowBanner(show bool) {
+	app.showBanner = show
+}
+
+func ExpectSystemEnv(pattern ...string) {
+	app.ExpectSystemEnv(pattern...)
+}
+
+func AddConfigLocation(cfgLocation ...string) {
+	app.AddConfigLocation(cfgLocation...)
 }
 
 // Property 设置属性值，属性名称统一转成小写。

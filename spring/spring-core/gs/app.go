@@ -17,28 +17,169 @@
 package gs
 
 import (
+	"container/list"
 	"context"
-	"errors"
 	"io/ioutil"
 	"os"
 	"os/signal"
 	"path"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"strings"
 	"syscall"
 
 	"github.com/go-spring/spring-core/arg"
+	"github.com/go-spring/spring-core/bean"
+	"github.com/go-spring/spring-core/cond"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/grpc"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/mq"
+	"github.com/go-spring/spring-core/sort"
 	"github.com/go-spring/spring-core/util"
 	"github.com/go-spring/spring-core/web"
 	"github.com/spf13/cast"
 )
 
 const SPRING_PROFILE = "SPRING_PROFILE"
+
+type PropertySource func(app, profile, ext string) (*conf.Properties, error)
+
+type BootstrapContext interface {
+	Prop(key string, opts ...conf.GetOption) interface{}
+	AddPropertySource(ps PropertySource)
+}
+
+type Bootstrap func(BootstrapContext)
+
+type bootstrapContext struct {
+	p *conf.Properties
+	s []PropertySource
+}
+
+func (ctx *bootstrapContext) Prop(key string, opts ...conf.GetOption) interface{} {
+	return ctx.p.Get(key, opts...)
+}
+
+func (ctx *bootstrapContext) Find(selector bean.Selector) (bean.Definition, error) {
+	panic(util.UnimplementedMethod)
+}
+
+func (ctx *bootstrapContext) AddPropertySource(ps PropertySource) {
+	ctx.s = append(ctx.s, ps)
+}
+
+// loadCmdArgs 加载命令行参数，形如 -name value 的参数才有效。
+func (ctx *bootstrapContext) loadCmdArgs() error {
+	log.Debug("load cmd args")
+	for i := 0; i < len(os.Args); i++ {
+		a := os.Args[i]
+		if !strings.HasPrefix(a, "-") {
+			continue
+		}
+		k, v := a[1:], ""
+		if i < len(os.Args)-1 && !strings.HasPrefix(os.Args[i+1], "-") {
+			v = os.Args[i+1]
+			i++
+		}
+		if ctx.p.Get(k, conf.DisableResolve()) == nil {
+			log.Tracef("%v=%v", k, v)
+			ctx.p.Set(k, v)
+		}
+	}
+	return nil
+}
+
+// loadSystemEnv 加载环境变量，用户可以使用正则表达式来提取想要的环境变量。
+func (ctx *bootstrapContext) loadSystemEnv(expectSystemEnv []string) error {
+	log.Debug("load system env")
+
+	var rex []*regexp.Regexp
+	for _, v := range expectSystemEnv {
+		exp, err := regexp.Compile(v)
+		if err != nil {
+			return err
+		}
+		rex = append(rex, exp)
+	}
+
+	for _, env := range os.Environ() {
+		i := strings.Index(env, "=")
+		if i <= 0 {
+			continue
+		}
+		k, v := env[0:i], env[i+1:]
+		for _, r := range rex {
+			if !r.MatchString(k) {
+				continue
+			}
+			if ctx.p.Get(k, conf.DisableResolve()) == nil {
+				log.Tracef("%v=%v", k, v)
+				ctx.p.Set(k, v)
+			}
+			break
+		}
+	}
+	return nil
+}
+
+type BootstrapDefinition struct {
+	b      Bootstrap
+	name   string
+	cond   cond.Condition
+	before []string // 位于哪些配置函数之前
+	after  []string // 位于哪些配置函数之后
+}
+
+// WithName 为 Bootstrap 设置一个名称。
+func (d *BootstrapDefinition) WithName(name string) *BootstrapDefinition {
+	d.name = name
+	return d
+}
+
+// WithCond 为 Bootstrap 设置一个 Condition。
+func (d *BootstrapDefinition) WithCond(cond cond.Condition) *BootstrapDefinition {
+	d.cond = cond
+	return d
+}
+
+// Before 设置当前 Bootstrap 在哪些 Bootstrap 之前执行。
+func (d *BootstrapDefinition) Before(bootstraps ...string) *BootstrapDefinition {
+	d.before = append(d.before, bootstraps...)
+	return d
+}
+
+// After 设置当前 Bootstrap 在哪些 Bootstrap 之后执行。
+func (d *BootstrapDefinition) After(bootstraps ...string) *BootstrapDefinition {
+	d.after = append(d.after, bootstraps...)
+	return d
+}
+
+// getBeforeBootstraps 获取 i 之前的 Bootstrap 列表，用于 sort.Triple 排序。
+func getBeforeBootstraps(bootstraps *list.List, i interface{}) *list.List {
+
+	result := list.New()
+	current := i.(*BootstrapDefinition)
+	for e := bootstraps.Front(); e != nil; e = e.Next() {
+		c := e.Value.(*BootstrapDefinition)
+
+		// 检查 c 是否在 current 的前面
+		for _, name := range c.before {
+			if current.name == name {
+				result.PushBack(c)
+			}
+		}
+
+		// 检查 current 是否在 c 的后面
+		for _, name := range current.after {
+			if c.name == name {
+				result.PushBack(c)
+			}
+		}
+	}
+	return result
+}
 
 type ApplicationContext interface {
 	Go(fn func(ctx context.Context))
@@ -59,10 +200,14 @@ type ApplicationEvent interface {
 type App struct {
 	c *Container // 应用上下文
 
-	cfgLocation         []string // 属性列表文件搜索目录
-	banner              string   // Banner 的内容
-	bannerMode          int      // Banner 的显式模式
-	expectSysProperties []string // 期望从系统环境变量中获取到的属性，支持正则表达式
+	banner     string // banner 的内容
+	showBanner bool   // 是否显示 banner
+
+	bootstrapList *list.List
+
+	configLocations []string // 属性列表文件的读取地址
+	configTypeOrder []string // 属性列表文件的读取顺序
+	expectSystemEnv []string // 获取环境变量的正则表达式
 
 	Events  []ApplicationEvent  `autowire:"${application-event.collection:=[]?}"`
 	Runners []ApplicationRunner `autowire:"${command-line-runner.collection:=[]?}"`
@@ -77,26 +222,168 @@ type App struct {
 // NewApp application 的构造函数
 func NewApp() *App {
 	return &App{
-		c:                   New(),
-		cfgLocation:         append([]string{}, "config/"),
-		bannerMode:          BannerModeConsole,
-		expectSysProperties: []string{`.*`},
-		exitChan:            make(chan struct{}),
-		RootRouter:          web.NewRootRouter(),
-		GRPCServers:         make(map[string]*grpc.Server),
-		Consumers:           make(map[string]*mq.BindConsumer),
+		c:               New(),
+		showBanner:      true,
+		bootstrapList:   list.New(),
+		configLocations: []string{"config/"},
+		configTypeOrder: []string{".properties", ".yaml", ".toml"},
+		expectSystemEnv: []string{`.*`},
+		exitChan:        make(chan struct{}),
+		RootRouter:      web.NewRootRouter(),
+		GRPCServers:     make(map[string]*grpc.Server),
+		Consumers:       make(map[string]*mq.BindConsumer),
 	}
 }
 
-// Start 启动应用
-func (app *App) start(cfgLocation ...string) {
+// getBanner 获取 banner 字符串。
+func (app *App) getBanner() string {
 
-	if len(cfgLocation) > 0 {
-		app.cfgLocation = cfgLocation
+	if len(app.banner) > 0 {
+		return app.banner
 	}
 
+	for _, location := range app.configLocations {
+
+		stat, err := os.Stat(location)
+		if err != nil || !stat.IsDir() {
+			continue
+		}
+
+		file := path.Join(location, "banner.txt")
+		b, err := ioutil.ReadFile(file)
+		if err != nil {
+			continue
+		}
+
+		return string(b)
+	}
+	return defaultBanner
+}
+
+// loadConfigFile 加载 profile 对应的属性列表文件。
+func (app *App) loadConfigFile(s []PropertySource, profile string) (*conf.Properties, error) {
+	ret := conf.New()
+	for _, source := range s {
+		for _, ext := range app.configTypeOrder {
+			p, err := source("application", profile, ext)
+			if err != nil {
+				return nil, err
+			}
+			for k, v := range p.Map() {
+				ret.Set(k, v)
+			}
+		}
+	}
+	return ret, nil
+}
+
+func (app *App) prepare() {
+
+	// 属性列表加载顺序优先级，从高到低:
+	// 1.API 设置
+	// 2.命令行参数
+	// 3.系统环境变量
+	// 4.application-profile.conf
+	// 5.application.conf
+	// 6.属性绑定声明时的默认值
+
+	defaultPS := func(prefix, profile, ext string) (*conf.Properties, error) {
+		ret := conf.New()
+		filename := prefix
+		if profile != "" {
+			filename += "-" + profile
+		}
+		filename += ext
+		for _, location := range app.configLocations {
+			p, err := conf.Load(filepath.Join(location, filename))
+			if err != nil {
+				if os.IsNotExist(err) {
+					continue
+				}
+				return nil, err
+			}
+			for k, v := range p.Map() {
+				if ret.Get(k, conf.DisableResolve()) == nil {
+					log.Tracef("%v=%v", k, v)
+					ret.Set(k, v)
+				}
+			}
+		}
+		return ret, nil
+	}
+
+	ctx := &bootstrapContext{p: conf.New()}
+	ctx.s = append(ctx.s, defaultPS)
+
+	for k, v := range app.c.p.Map() {
+		ctx.p.Set(k, v)
+	}
+
+	err := ctx.loadCmdArgs()
+	util.Panic(err).When(err != nil)
+
+	err = ctx.loadSystemEnv(app.expectSystemEnv)
+	util.Panic(err).When(err != nil)
+
+	profile := func() string {
+		keys := []string{conf.SpringProfile, SPRING_PROFILE}
+		for _, k := range keys {
+			v := ctx.p.Get(k, conf.DisableResolve())
+			if v != nil {
+				return cast.ToString(v)
+			}
+		}
+		return ""
+	}()
+
+	if profile != "" {
+		ctx.p.Set(conf.SpringProfile, profile)
+	}
+
+	sorted := sort.Triple(app.bootstrapList, getBeforeBootstraps)
+	for e := sorted.Front(); e != nil; e = e.Next() {
+		d := e.Value.(*BootstrapDefinition)
+		if d.cond != nil {
+			var ok bool
+			ok, err = d.cond.Matches(ctx)
+			util.Panic(err).When(err != nil)
+			if !ok {
+				continue
+			}
+		}
+		d.b(ctx)
+	}
+
+	defaultConfig, err := app.loadConfigFile(ctx.s, "")
+	util.Panic(err).When(err != nil)
+
+	profileConfig, err := app.loadConfigFile(ctx.s, profile)
+	util.Panic(err).When(err != nil)
+
+	p := []*conf.Properties{
+		ctx.p,
+		defaultConfig,
+		profileConfig,
+	}
+
+	m := make(map[string]interface{})
+	for _, c := range p {
+		for k, v := range util.FlatMap(c.Map()) {
+			if _, ok := m[k]; !ok {
+				m[k] = v
+			}
+		}
+	}
+
+	for key, val := range m {
+		app.c.Property(key, val)
+	}
+}
+
+func (app *App) start() {
+
 	// 打印 Banner 内容
-	if app.bannerMode != BannerModeOff {
+	if app.showBanner {
 		printBanner(app.getBanner())
 	}
 
@@ -123,200 +410,6 @@ func (app *App) start(cfgLocation ...string) {
 	log.Info("application started successfully")
 }
 
-func (app *App) getBanner() string {
-
-	if len(app.banner) > 0 {
-		return app.banner
-	}
-
-	for _, dir := range app.cfgLocation {
-		stat, err := os.Stat(dir)
-		if err != nil || !stat.IsDir() {
-			continue
-		}
-
-		f := path.Join(dir, "banner.txt")
-		stat, err = os.Stat(f)
-		if err != nil || stat.IsDir() {
-			continue
-		}
-
-		b, err := ioutil.ReadFile(f)
-		if err == nil {
-			return string(b)
-		}
-	}
-
-	return defaultBanner
-}
-
-// loadCmdArgs 加载命令行参数，形如 -name value 的参数才有效。
-func (app *App) loadCmdArgs(p *conf.Properties) {
-	log.Debugf("load cmd args")
-	for i := 0; i < len(os.Args); i++ { // 以短线定义的参数才有效
-		a := os.Args[i]
-		if !strings.HasPrefix(a, "-") {
-			continue
-		}
-		k, v := a[1:], ""
-		if i < len(os.Args)-1 && !strings.HasPrefix(os.Args[i+1], "-") {
-			v = os.Args[i+1]
-			i++
-		}
-		log.Tracef("%s=%v", k, v)
-		p.Set(k, v)
-	}
-}
-
-// loadSystemEnv 加载环境变量，用户可以使用正则表达式来提取想要的环境变量。
-func (app *App) loadSystemEnv(p *conf.Properties) error {
-
-	var rex []*regexp.Regexp
-	for _, v := range app.expectSysProperties {
-		exp, err := regexp.Compile(v)
-		if err != nil {
-			return err
-		}
-		rex = append(rex, exp)
-	}
-
-	log.Debugf("load system env")
-	for _, env := range os.Environ() {
-		i := strings.Index(env, "=")
-		if i <= 0 {
-			continue
-		}
-		k, v := env[0:i], env[i+1:]
-		for _, r := range rex {
-			if !r.MatchString(k) {
-				continue
-			}
-			log.Tracef("%s=%v", k, v)
-			p.Set(k, v)
-			break
-		}
-	}
-	return nil
-}
-
-// loadConfigFile 加载指定环境的属性列表文件
-func (app *App) loadConfigFile(p *conf.Properties, profile string) error {
-
-	filename := "application"
-	if len(profile) > 0 {
-		filename += "-" + profile
-	}
-
-	extArray := []string{".properties", ".yaml", ".toml"}
-	for _, location := range app.cfgLocation {
-
-		schemeName, location := conf.TrimSchemeName(location)
-		f, err := conf.GetFS(location)
-		if err != nil {
-			return err
-		}
-
-		s, err := conf.GetScheme(schemeName, f)
-		if err != nil {
-			return err
-		}
-
-		r, err := s.Open(location)
-		if errors.Is(err, os.ErrNotExist) {
-			continue
-		}
-
-		if err != nil {
-			return err
-		}
-
-		for _, ext := range extArray {
-
-			b, _, err := r.ReadFile(filename + ext)
-			if errors.Is(err, os.ErrNotExist) {
-				continue
-			}
-
-			if err != nil {
-				return err
-			}
-
-			err = p.Read(b, ext)
-			if err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
-}
-
-// prepare 准备上下文环境
-func (app *App) prepare() {
-
-	// 属性列表加载顺序优先级，从高到低:
-	// 1.API 设置
-	// 2.命令行参数
-	// 3.系统环境变量
-	// 4.application-profile.conf
-	// 5.application.conf
-	// 6.属性绑定声明时的默认值
-
-	cmdConfig := conf.New()
-	envConfig := conf.New()
-	profileConfig := conf.New()
-	defaultConfig := conf.New()
-
-	p := []*conf.Properties{
-		app.c.p,
-		cmdConfig,
-		envConfig,
-		profileConfig,
-		defaultConfig,
-	}
-
-	app.loadCmdArgs(cmdConfig)
-
-	err := app.loadSystemEnv(envConfig)
-	util.Panic(err).When(err != nil)
-
-	err = app.loadConfigFile(defaultConfig, "")
-	util.Panic(err).When(err != nil)
-
-	profile := func([]*conf.Properties) string {
-		keys := []string{conf.SpringProfile, SPRING_PROFILE}
-		for _, c := range p {
-			for _, k := range keys {
-				v := c.Get(k, conf.DisableResolve())
-				if v != nil {
-					return cast.ToString(v)
-				}
-			}
-		}
-		return ""
-	}(p)
-
-	if profile != "" {
-		err = app.loadConfigFile(profileConfig, profile)
-		util.Panic(err).When(err != nil)
-		app.c.Property(conf.SpringProfile, profile)
-	}
-
-	m := make(map[string]interface{})
-	for _, c := range p {
-		for k, v := range util.FlatMap(c.Map()) {
-			if _, ok := m[k]; !ok {
-				m[k] = v
-			}
-		}
-	}
-
-	// 将重组后的属性值写入 Context 属性列表
-	for key, val := range m {
-		app.c.Property(key, val)
-	}
-}
-
 func (app *App) close() {
 
 	defer log.Info("application exited")
@@ -341,7 +434,7 @@ func (app *App) close() {
 	app.c.Close()
 }
 
-func (app *App) Run(cfgLocation ...string) {
+func (app *App) Run() {
 
 	// 响应控制台的 Ctrl+C 及 kill 命令。
 	go func() {
@@ -352,7 +445,7 @@ func (app *App) Run(cfgLocation ...string) {
 		app.ShutDown()
 	}()
 
-	app.start(cfgLocation...)
+	app.start()
 	<-app.exitChan
 	app.close()
 }
@@ -361,23 +454,33 @@ func (app *App) Run(cfgLocation ...string) {
 func (app *App) ShutDown() {
 	select {
 	case <-app.exitChan:
-		// chan 已关闭，无需再次关闭。
 	default:
 		close(app.exitChan)
 	}
 }
 
-func (app *App) ExpectSysProperties(pattern ...string) {
-	app.expectSysProperties = pattern
-}
-
-func (app *App) BannerMode(mode int) {
-	app.bannerMode = mode
-}
-
-// Banner 设置自定义 Banner 字符串
+// Banner 自定义 banner 字符串。
 func (app *App) Banner(banner string) {
 	app.banner = banner
+}
+
+// ShowBanner 设置是否显示 banner。
+func (app *App) ShowBanner(show bool) {
+	app.showBanner = show
+}
+
+func (app *App) ExpectSystemEnv(pattern ...string) {
+	app.expectSystemEnv = pattern
+}
+
+func (app *App) Bootstrap(b Bootstrap) *BootstrapDefinition {
+	d := &BootstrapDefinition{b: b}
+	app.bootstrapList.PushBack(d)
+	return d
+}
+
+func (app *App) AddConfigLocation(cfgLocation ...string) {
+	app.configLocations = append(app.configLocations, cfgLocation...)
 }
 
 func (app *App) Property(key string, value interface{}) {
