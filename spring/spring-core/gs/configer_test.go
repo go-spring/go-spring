@@ -39,7 +39,7 @@ func TestSortConfigers(t *testing.T) {
 			configers.PushBack(f2)
 			configers.PushBack(f7)
 
-			sorted := sort.Triple(configers, getBeforeConfigers)
+			sorted := sort.Triple(configers, getBeforeList)
 
 			for e := sorted.Front(); e != nil; e = e.Next() {
 				fmt.Println(e.Value.(*Configer).name)
@@ -59,7 +59,7 @@ func TestSortConfigers(t *testing.T) {
 		configers.PushBack(f2)
 		configers.PushBack(f7)
 
-		sorted := sort.Triple(configers, getBeforeConfigers)
+		sorted := sort.Triple(configers, getBeforeList)
 
 		expect := list.New()
 		expect.PushBack(f7)

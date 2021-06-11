@@ -19,7 +19,6 @@
 package gs
 
 import (
-	"bytes"
 	"container/list"
 	"context"
 	"errors"
@@ -65,10 +64,8 @@ type Container struct {
 	beansByName map[string][]*BeanDefinition
 	beansByType map[reflect.Type][]*BeanDefinition
 
-	configers    []*Configer
-	configerList *list.List
-
-	destroyerList *list.List
+	configers  []*Configer
+	destroyers []*BeanDefinition
 }
 
 type newArg struct {
@@ -94,14 +91,12 @@ func New(opts ...NewOption) *Container {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	c := &Container{
-		p:             conf.New(),
-		ctx:           ctx,
-		cancel:        cancel,
-		beansById:     make(map[string]*BeanDefinition),
-		beansByName:   make(map[string][]*BeanDefinition),
-		beansByType:   make(map[reflect.Type][]*BeanDefinition),
-		configerList:  list.New(),
-		destroyerList: list.New(),
+		p:           conf.New(),
+		ctx:         ctx,
+		cancel:      cancel,
+		beansById:   make(map[string]*BeanDefinition),
+		beansByName: make(map[string][]*BeanDefinition),
+		beansByType: make(map[reflect.Type][]*BeanDefinition),
 	}
 
 	if a.openPandora {
@@ -171,12 +166,11 @@ func (c *Container) config(configer *Configer) *Configer {
 // find 查找符合条件的单例 bean，考虑到该方法可能的使用场景，因此在找不到符合条件
 // 的 bean 时返回 nil，在找到多于 1 个符合条件的 bean 时返回 error，而且该函数
 // 只保证返回的 bean 是有效(未被标记为删除)的，而不保证已经完成属性绑定和依赖注入。
-func (c *Container) find(selector bean.Selector) (*BeanDefinition, error) {
+func (c *Container) find(selector bean.Selector) (ret []*BeanDefinition, _ error) {
 	c.callAfterRefreshing()
 
-	finder := func(fn func(*BeanDefinition) bool) (*BeanDefinition, error) {
+	finder := func(fn func(*BeanDefinition) bool) ([]*BeanDefinition, error) {
 		var result []*BeanDefinition
-
 		for _, b := range c.beansById {
 			if b.status == Resolving || !fn(b) {
 				continue
@@ -189,21 +183,7 @@ func (c *Container) find(selector bean.Selector) (*BeanDefinition, error) {
 			}
 			result = append(result, b)
 		}
-
-		if result == nil {
-			return nil, nil
-		}
-
-		if n := len(result); n > 1 {
-			buf := bytes.Buffer{}
-			buf.WriteString(fmt.Sprintf("found %d beans", n))
-			for _, d := range result {
-				buf.WriteString(fmt.Sprintf(" %q", d))
-			}
-			return nil, errors.New(buf.String())
-		}
-
-		return result[0], nil
+		return result, nil
 	}
 
 	t := reflect.TypeOf(selector)
@@ -242,13 +222,7 @@ func (c *Container) Refresh() {
 
 	c.state = Refreshing
 
-	err := c.registerBeans()
-	util.Panic(err).When(err != nil)
-
-	err = c.resolveConfigers()
-	util.Panic(err).When(err != nil)
-
-	err = c.resolveBeans()
+	err := c.resolveBeans()
 	util.Panic(err).When(err != nil)
 
 	assembly := toAssembly(c)
@@ -265,46 +239,20 @@ func (c *Container) Refresh() {
 	err = c.wireBeans(assembly)
 	util.Panic(err).When(err != nil)
 
-	c.destroyerList = assembly.sortDestroyers()
+	c.destroyers = assembly.sortDestroyers()
 	c.state = Refreshed
 
-	for e := c.destroyerList.Front(); e != nil; e = e.Next() {
-		curr := e.Value.(*destroyer).current
-		o := arg.Receiver(curr.Value())
-		err = curr.destroy.Prepare(assembly, o)
+	for _, b := range c.destroyers {
+		o := arg.Receiver(b.Value())
+		err = b.destroy.Prepare(assembly, o)
 		util.Panic(err).When(err != nil)
 	}
 
 	log.Info("container refreshed successfully")
 }
 
-func (c *Container) registerBeans() error {
-	for _, b := range c.beans {
-		if d, ok := c.beansById[b.ID()]; ok {
-			return fmt.Errorf("found duplicate beans [%s] [%s]", b, d)
-		}
-		c.beansById[b.ID()] = b
-	}
-	return nil
-}
-
-func (c *Container) resolveConfigers() error {
-	for _, g := range c.configers {
-		if g.cond != nil {
-			if ok, err := g.cond.Matches(&pandora{c}); err != nil {
-				return err
-			} else if !ok {
-				continue
-			}
-		}
-		c.configerList.PushBack(g)
-	}
-	c.configerList = sort.Triple(c.configerList, getBeforeConfigers)
-	return nil
-}
-
 func (c *Container) resolveBeans() error {
-	for _, b := range c.beansById {
+	for _, b := range c.beans {
 		if err := c.resolveBean(b); err != nil {
 			return err
 		}
@@ -325,15 +273,20 @@ func (c *Container) resolveBean(b *BeanDefinition) error {
 		if ok, err := b.cond.Matches(&pandora{c}); err != nil {
 			return err
 		} else if !ok {
-			delete(c.beansById, b.ID())
 			b.status = Deleted
 			return nil
 		}
 	}
 
+	if d, ok := c.beansById[b.ID()]; ok {
+		return fmt.Errorf("found duplicate beans [%s] [%s]", b, d)
+	}
+
 	log.Debugf("register %s name:%q type:%q %s", b.getClass(), b.Name(), b.Type(), b.FileLine())
-	c.beansByType[b.Type()] = append(c.beansByType[b.Type()], b)
+
+	c.beansById[b.ID()] = b
 	c.beansByName[b.name] = append(c.beansByName[b.name], b)
+	c.beansByType[b.Type()] = append(c.beansByType[b.Type()], b)
 
 	if err := c.export(b.Type(), b); err != nil {
 		return err
@@ -393,7 +346,21 @@ func (c *Container) export(t reflect.Type, b *BeanDefinition) error {
 }
 
 func (c *Container) runConfigers(assembly *beanAssembly) error {
-	for e := c.configerList.Front(); e != nil; e = e.Next() {
+
+	configerList := list.New()
+	for _, g := range c.configers {
+		if g.cond != nil {
+			if ok, err := g.cond.Matches(&pandora{c}); err != nil {
+				return err
+			} else if !ok {
+				continue
+			}
+		}
+		configerList.PushBack(g)
+	}
+
+	configerList = sort.Triple(configerList, getBeforeList)
+	for e := configerList.Front(); e != nil; e = e.Next() {
 		g := e.Value.(*Configer)
 		if err := g.fn.Prepare(assembly); err != nil {
 			return err
@@ -430,9 +397,8 @@ func (c *Container) Close() {
 }
 
 func (c *Container) runDestroyers() {
-	for e := c.destroyerList.Front(); e != nil; e = e.Next() {
-		curr := e.Value.(*destroyer).current
-		if _, err := curr.destroy.Call(); err != nil {
+	for _, b := range c.destroyers {
+		if _, err := b.destroy.Call(); err != nil {
 			log.Error(err)
 		}
 	}

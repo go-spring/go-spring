@@ -36,7 +36,7 @@ type Context interface {
 	Prop(key string, opts ...conf.GetOption) interface{}
 
 	// Find 返回符合条件的 Bean 集合，不保证返回的 Bean 已经完成注入和绑定过程。
-	Find(selector bean.Selector) (bean.Definition, error)
+	Find(selector bean.Selector) ([]bean.Definition, error)
 }
 
 // Condition 定义条件接口，条件成立 Matches 函数返回 true，否则返回 false。
@@ -127,16 +127,24 @@ func (c *onPropertyValue) Matches(ctx Context) (bool, error) {
 type onBean struct{ selector bean.Selector }
 
 func (c *onBean) Matches(ctx Context) (bool, error) {
-	b, err := ctx.Find(c.selector)
-	return b != nil, err
+	beans, err := ctx.Find(c.selector)
+	return beans != nil, err
 }
 
 // onMissingBean 基于 Bean 不能存在的 Condition 实现。
 type onMissingBean struct{ selector bean.Selector }
 
 func (c *onMissingBean) Matches(ctx Context) (bool, error) {
-	b, err := ctx.Find(c.selector)
-	return b == nil, err
+	beans, err := ctx.Find(c.selector)
+	return beans == nil, err
+}
+
+// onSingleCandidate 基于 Bean 存在的 Condition 实现。
+type onSingleCandidate struct{ selector bean.Selector }
+
+func (c *onSingleCandidate) Matches(ctx Context) (bool, error) {
+	beans, err := ctx.Find(c.selector)
+	return len(beans) == 1, err
 }
 
 // onExpression 基于表达式的 Condition 实现。
@@ -329,16 +337,6 @@ func (c *conditional) OnPropertyValue(name string, havingValue interface{}, opti
 	return c.On(cond)
 }
 
-// OnOptionalPropertyValue 返回一个 onPropertyValue 条件，并且当属性值不存在时默认条件成立。
-func OnOptionalPropertyValue(name string, havingValue interface{}) *conditional {
-	return New().OnOptionalPropertyValue(name, havingValue)
-}
-
-// OnOptionalPropertyValue 添加一个 onPropertyValue 条件，并且当属性值不存在时默认条件成立。
-func (c *conditional) OnOptionalPropertyValue(name string, havingValue interface{}) *conditional {
-	return c.OnPropertyValue(name, havingValue, MatchIfMissing(true))
-}
-
 // OnBean 返回一个 onBean 条件。
 func OnBean(selector bean.Selector) *conditional {
 	return New().OnBean(selector)
@@ -357,6 +355,16 @@ func OnMissingBean(selector bean.Selector) *conditional {
 // OnMissingBean 添加一个 onMissingBean 条件。
 func (c *conditional) OnMissingBean(selector bean.Selector) *conditional {
 	return c.On(&onMissingBean{selector: selector})
+}
+
+// OnSingleCandidate 返回一个 onMissingBean 条件。
+func OnSingleCandidate(selector bean.Selector) *conditional {
+	return New().OnSingleCandidate(selector)
+}
+
+// OnSingleCandidate 添加一个 onMissingBean 条件。
+func (c *conditional) OnSingleCandidate(selector bean.Selector) *conditional {
+	return c.On(&onSingleCandidate{selector: selector})
 }
 
 // OnExpression 返回一个 onExpression 条件。

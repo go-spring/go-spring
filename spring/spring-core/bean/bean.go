@@ -27,6 +27,8 @@ type Selector interface{}
 
 // Definition Bean 元数据定义。
 type Definition interface {
+	IsWired() bool // 是否注入完成
+
 	Type() reflect.Type     // 类型
 	Value() reflect.Value   // 值
 	Interface() interface{} // 源
@@ -34,7 +36,4 @@ type Definition interface {
 	ID() string       // 返回 Bean 的 ID
 	Name() string     // 返回 Bean 的名称
 	TypeName() string // 返回类型的全限定名
-
-	String() string   // 返回 Bean 的描述
-	FileLine() string // 返回 Bean 的注册点
 }

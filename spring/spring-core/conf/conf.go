@@ -20,6 +20,8 @@ package conf
 import (
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
@@ -74,39 +76,32 @@ func Load(filename string) (*Properties, error) {
 }
 
 // Read 从 []byte 读取属性列表，ext 是文件扩展名，如 .toml、.yaml 等。
-func Read(b []byte, ext string) (*Properties, error) {
+func Read(b []byte, configType string) (*Properties, error) {
 	p := New()
-	if err := p.Read(b, ext); err != nil {
+	if err := p.Read(b, configType); err != nil {
 		return nil, err
 	}
 	return p, nil
 }
 
-// Load 从文件中读取属性列表，filename 表示被读取文件的地址，默认从本地文件系
-// 统中读取，也可以通过 scheme 扩展的方式从其他地方读取。scheme 扩展的语法为
-// scheme://xxx，其中 scheme 表示扩展的名称，最长不超过 16 个字符，后面紧接
-// 着 :// 分隔符，然后是文件的读取方式，scheme 不同文件的读取方式也不相同，比
-// 如，默认情况下文件的读取方式是本地文件系统的相对地址或者绝对地址，而 k8s 扩
-// 展因为是从 config-map 文件的 data 节点中读取，所以它的读取方式是本地文件系
-// 统的相对地址或者绝对地址加上一个 # 然后再加上 data 节点的名称，因此想要知道
-// filename 的具体格式请参阅对应的 scheme 扩展的文档。
-func (p *Properties) Load(fileURL string) error {
-	b, ext, err := ReadFile(fileURL)
+// Load 从文件读取属性列表。
+func (p *Properties) Load(filename string) error {
+	b, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return err
 	}
-	return p.Read(b, ext)
+	return p.Read(b, filepath.Ext(filename))
 }
 
 // Read 从 []byte 读取属性列表，ext 是文件扩展名，如 .toml、.yaml 等。
-func (p *Properties) Read(b []byte, ext string) error {
+func (p *Properties) Read(b []byte, configType string) error {
 
-	f, ok := parserMap[strings.ToLower(ext)]
+	r, ok := parserMap[strings.ToLower(configType)]
 	if !ok {
-		return fmt.Errorf("unsupported file type %s", ext)
+		return fmt.Errorf("unsupported file type %s", configType)
 	}
 
-	m, err := f(b)
+	m, err := r(b)
 	if err != nil {
 		return err
 	}

@@ -75,24 +75,42 @@ func (c *Configer) After(configers ...string) *Configer {
 	return c
 }
 
-// getBeforeConfigers 获取 i 之前的 Configer 列表，用于 sort.Triple 排序。
-func getBeforeConfigers(configers *list.List, i interface{}) *list.List {
+func (c *Configer) GetName() string {
+	return c.name
+}
+
+func (c *Configer) GetAfter() []string {
+	return c.after
+}
+
+func (c *Configer) GetBefore() []string {
+	return c.before
+}
+
+type TripleSorting interface {
+	GetName() string
+	GetAfter() []string
+	GetBefore() []string
+}
+
+// getBeforeList 获取 i 之前的列表项，用于 sort.Triple 排序。
+func getBeforeList(v *list.List, i interface{}) *list.List {
 
 	result := list.New()
-	current := i.(*Configer)
-	for e := configers.Front(); e != nil; e = e.Next() {
-		c := e.Value.(*Configer)
+	current := i.(TripleSorting)
+	for e := v.Front(); e != nil; e = e.Next() {
+		c := e.Value.(TripleSorting)
 
 		// 检查 c 是否在 current 的前面
-		for _, name := range c.before {
-			if current.name == name {
+		for _, name := range c.GetBefore() {
+			if current.GetName() == name {
 				result.PushBack(c)
 			}
 		}
 
 		// 检查 current 是否在 c 的后面
-		for _, name := range current.after {
-			if c.name == name {
+		for _, name := range current.GetAfter() {
+			if c.GetName() == name {
 				result.PushBack(c)
 			}
 		}

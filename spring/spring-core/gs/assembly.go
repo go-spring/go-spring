@@ -94,12 +94,15 @@ func (assembly *beanAssembly) saveDestroyer(b *BeanDefinition) *destroyer {
 }
 
 // sortDestroyers 对销毁函数进行排序
-func (assembly *beanAssembly) sortDestroyers() *list.List {
+func (assembly *beanAssembly) sortDestroyers() (ret []*BeanDefinition) {
 	for _, d := range assembly.destroyerMap {
 		assembly.destroyers.PushBack(d)
 	}
-	assembly.destroyers = sort.Triple(assembly.destroyers, getBeforeDestroyers)
-	return assembly.destroyers
+	destroyers := sort.Triple(assembly.destroyers, getBeforeDestroyers)
+	for e := destroyers.Front(); e != nil; e = e.Next() {
+		ret = append(ret, e.Value.(*destroyer).current)
+	}
+	return ret
 }
 
 // getBean 获取 tag 对应的 bean 然后赋值给 v，因此 v 应该是一个未初始化的值。
@@ -411,13 +414,15 @@ func (assembly *beanAssembly) wireBean(b *BeanDefinition) error {
 
 	// 对当前 bean 的间接依赖项进行注入。
 	for _, s := range b.dependsOn {
-		d, err := assembly.c.find(s)
+		beans, err := assembly.c.find(s)
 		if err != nil {
 			return err
 		}
-		err = assembly.wireBean(d)
-		if err != nil {
-			return err
+		for _, d := range beans {
+			err = assembly.wireBean(d)
+			if err != nil {
+				return err
+			}
 		}
 	}
 

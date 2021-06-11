@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"math"
 	"reflect"
 	"runtime"
 	"strings"
@@ -144,6 +145,11 @@ func parseCollectionTag(str string) (tag collectionTag) {
 	return
 }
 
+const (
+	HighestOrder = math.MinInt32
+	LowestOrder  = math.MaxInt32
+)
+
 type beanStatus int
 
 const (
@@ -172,6 +178,7 @@ type BeanDefinition struct {
 	status    beanStatus      // 状态
 	cond      cond.Condition  // 判断条件
 	primary   bool            // 是否为主版本
+	order     int             // 收集时的顺序
 	init      arg.Callable    // 初始化函数
 	destroy   arg.Callable    // 销毁函数
 	dependsOn []bean.Selector // 间接依赖项
@@ -195,8 +202,10 @@ func newBeanDefinition(v reflect.Value, f arg.Callable, file string, line int) *
 		t:        t,
 		v:        v,
 		f:        f,
+		name:     t.String(),
 		typeName: util.TypeName(t),
 		status:   Default,
+		order:    LowestOrder,
 		file:     file,
 		line:     line,
 		exports:  make(map[reflect.Type]struct{}),
@@ -215,26 +224,27 @@ func (d *BeanDefinition) Value() reflect.Value {
 
 // Interface 返回 Bean 的对象。
 func (d *BeanDefinition) Interface() interface{} {
-	return d.Value().Interface()
+	return d.v.Interface()
 }
 
 // ID 返回 Bean 的 ID 。
 func (d *BeanDefinition) ID() string {
-	return d.TypeName() + ":" + d.Name()
+	return d.typeName + ":" + d.name
 }
 
 // Name 返回 Bean 的名称。
 func (d *BeanDefinition) Name() string {
-	// 没有为 Bean 设置名称时使用类型名作为它的名称。
-	if d.name == "" {
-		d.name = d.t.String()
-	}
 	return d.name
 }
 
 // TypeName 返回 Bean 的原始类型的全限定名。
 func (d *BeanDefinition) TypeName() string {
 	return d.typeName
+}
+
+// IsWired 返回 Bean 是否注入完成。
+func (d *BeanDefinition) IsWired() bool {
+	return d.status == Wired
 }
 
 // FileLine 返回 Bean 的注册点。
@@ -244,7 +254,7 @@ func (d *BeanDefinition) FileLine() string {
 
 // String 返回 Bean 的描述。
 func (d *BeanDefinition) String() string {
-	return fmt.Sprintf("%s name:%q %s", d.getClass(), d.Name(), d.FileLine())
+	return fmt.Sprintf("%s name:%q %s", d.getClass(), d.name, d.FileLine())
 }
 
 // getClass 返回 Bean 的类型描述。
@@ -259,12 +269,12 @@ func (d *BeanDefinition) getClass() string {
 func (d *BeanDefinition) Match(typeName string, beanName string) bool {
 
 	typeIsSame := false
-	if typeName == "" || d.TypeName() == typeName {
+	if typeName == "" || d.typeName == typeName {
 		typeIsSame = true
 	}
 
 	nameIsSame := false
-	if beanName == "" || d.Name() == beanName {
+	if beanName == "" || d.name == beanName {
 		nameIsSame = true
 	}
 
@@ -280,6 +290,12 @@ func (d *BeanDefinition) WithName(name string) *BeanDefinition {
 // WithCond 设置 Bean 的 Condition。
 func (d *BeanDefinition) WithCond(cond cond.Condition) *BeanDefinition {
 	d.cond = cond
+	return d
+}
+
+// Order 设置 Bean 的 order ，值越小顺序越靠前(优先级越高)。
+func (d *BeanDefinition) Order(order int) *BeanDefinition {
+	d.order = order
 	return d
 }
 

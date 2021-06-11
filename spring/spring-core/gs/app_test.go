@@ -29,7 +29,6 @@ import (
 
 func startApplication(cfgLocation ...string) (*gs.App, gs.Pandora) {
 	app := gs.NewApp()
-	app.AddConfigLocation(cfgLocation...)
 
 	app.Property("application-event.collection", "[]?")
 	app.Property("command-line-runner.collection", "[]?")
@@ -38,7 +37,7 @@ func startApplication(cfgLocation ...string) (*gs.App, gs.Pandora) {
 	var p gs.Pandora
 	app.Config(func(b gs.Pandora) { p = b })
 
-	go app.Run()
+	go app.Run(cfgLocation...)
 	time.Sleep(100 * time.Millisecond)
 	return app, p
 }

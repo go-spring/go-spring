@@ -94,16 +94,16 @@ func (p *pandora) Get(i interface{}, opts ...GetOption) error {
 	return w.getBean(toSingletonTag(a.selector), v)
 }
 
-func (p *pandora) Find(selector bean.Selector) (bean.Definition, error) {
-	// 如果此处直接返回会触发臭名昭著的 interface{} == nil 返回 false 的问题。
-	b, err := p.c.find(selector)
+func (p *pandora) Find(selector bean.Selector) ([]bean.Definition, error) {
+	beans, err := p.c.find(selector)
 	if err != nil {
 		return nil, err
 	}
-	if b == nil {
-		return nil, nil
+	var ret []bean.Definition
+	for _, b := range beans {
+		ret = append(ret, b)
 	}
-	return b, nil
+	return ret, nil
 }
 
 // Collect 根据类型和选择器收集符合条件的 bean 对象，该方法和 Get 方法的区别

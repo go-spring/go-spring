@@ -39,10 +39,6 @@ func ExpectSystemEnv(pattern ...string) {
 	app.ExpectSystemEnv(pattern...)
 }
 
-func AddConfigLocation(cfgLocation ...string) {
-	app.AddConfigLocation(cfgLocation...)
-}
-
 // Property 设置属性值，属性名称统一转成小写。
 func Property(key string, value interface{}) {
 	app.Property(key, value)
