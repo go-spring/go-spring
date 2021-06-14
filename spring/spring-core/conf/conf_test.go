@@ -863,3 +863,18 @@ func TestBindMap(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, r["a"].B1, "b1")
 }
+
+func TestInterpolate(t *testing.T) {
+	p := conf.New()
+	p.Set("name", "Jim")
+	str, _ := conf.Resolve(p, "my name is ${name")
+	assert.Equal(t, str, "my name is ${name")
+	str, _ = conf.Resolve(p, "my name is ${name}")
+	assert.Equal(t, str, "my name is Jim")
+	str, _ = conf.Resolve(p, "my name is ${name}${name}")
+	assert.Equal(t, str, "my name is JimJim")
+	str, _ = conf.Resolve(p, "my name is ${name} my name is ${name")
+	assert.Equal(t, str, "my name is Jim my name is ${name")
+	str, _ = conf.Resolve(p, "my name is ${name} my name is ${name}")
+	assert.Equal(t, str, "my name is Jim my name is Jim")
+}

@@ -254,10 +254,11 @@ func Resolve(p Properties, s string) (string, error) {
 	return resolveString(p, s)
 }
 
+// GroupKeys 对属性列表的 key 按照 prefix 作为前缀进行分组，然后返回分组的名称。
 func GroupKeys(p Properties, prefix string) []string {
 
 	matches := func(key, prefix string) (string, bool) {
-		if prefix == "$" {
+		if prefix == RootKey {
 			return key, true
 		}
 		if !strings.HasPrefix(key, prefix+".") {

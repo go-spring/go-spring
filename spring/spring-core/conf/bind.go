@@ -275,12 +275,55 @@ func parseTag(tag string) (key string, def string, hasDef bool) {
 }
 
 func resolveString(p Properties, s string) (string, error) {
-	if !validTag(s) {
+	n := len(s)
+
+	count := 0
+	found := false
+	start, end := -1, -1
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '$':
+			if i < n-1 {
+				if s[i+1] == '{' {
+					if count == 0 {
+						start = i
+					}
+					count++
+				}
+			}
+		case '}':
+			count--
+			if count == 0 {
+				found = true
+				end = i
+			}
+		}
+		if found {
+			break
+		}
+	}
+
+	if start < 0 || end < 0 {
 		return s, nil
 	}
-	key, def, hasDef := parseTag(s)
+
+	if count > 0 {
+		return "", fmt.Errorf("%s 语法错误", s)
+	}
+
+	key, def, hasDef := parseTag(s[start : end+1])
 	opt := bindOption{key: key, def: def, hasDef: hasDef}
-	return resolve(p, opt)
+	s1, err := resolve(p, opt)
+	if err != nil {
+		return "", err
+	}
+
+	s2, err := resolveString(p, s[end+1:])
+	if err != nil {
+		return "", err
+	}
+
+	return s[:start] + s1 + s2, nil
 }
 
 func resolve(p Properties, opt bindOption) (string, error) {
