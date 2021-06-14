@@ -18,42 +18,43 @@ package conf_test
 
 import (
 	"container/list"
-	"errors"
 	"fmt"
-	"image"
 	"reflect"
-	"sort"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/go-spring/spring-core/assert"
 	"github.com/go-spring/spring-core/conf"
+	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
 	"github.com/spf13/cast"
 )
 
-func TestProperties_Load(t *testing.T) {
-
-	p := conf.New()
-	err := p.Load("testdata/config/application.yaml")
-	util.Panic(err).When(err != nil)
-	err = p.Load("testdata/config/application.properties")
-	util.Panic(err).When(err != nil)
-
-	m := p.FlatMap()
-
-	var keys []string
-	for key := range m {
-		keys = append(keys, key)
-	}
-
-	sort.Strings(keys)
-
-	for _, k := range keys {
-		fmt.Println(k+":", m[k])
-	}
+func init() {
+	log.SetLevel(log.TraceLevel)
 }
+
+//func TestProperties_Load(t *testing.T) {
+//
+//	p := conf.New()
+//	err := p.Load("testdata/config/application.yaml")
+//	util.Panic(err).When(err != nil)
+//	err = p.Load("testdata/config/application.properties")
+//	util.Panic(err).When(err != nil)
+//
+//	m := p.FlatMap()
+//
+//	var keys []string
+//	for key := range m {
+//		keys = append(keys, key)
+//	}
+//
+//	sort.Strings(keys)
+//
+//	for _, k := range keys {
+//		fmt.Println(k+":", m[k])
+//	}
+//}
 
 func TestProperties_ReadProperties(t *testing.T) {
 
@@ -68,7 +69,7 @@ func TestProperties_ReadProperties(t *testing.T) {
 			{"bool", "bool=false", "false", reflect.String},
 			{"int", "int=3", "3", reflect.String},
 			{"float", "float=3.0", "3.0", reflect.String},
-			{"string", "string=\"3\"", "\"3\"", reflect.String},
+			{"string", "string=3", "3", reflect.String},
 			{"string", "string=hello", "hello", reflect.String},
 			{"date", "date=2018-02-17", "2018-02-17", reflect.String},
 			{"time", "time=2018-02-17T15:02:31+08:00", "2018-02-17T15:02:31+08:00", reflect.String},
@@ -99,7 +100,7 @@ func TestProperties_ReadProperties(t *testing.T) {
 	//
 	//	for _, d := range data {
 	//		p, _ := conf.Read([]byte(d.str), ".properties")
-	//		v := p.Get(d.key)
+	//		v,_ := p.Get(d.key)
 	//		assert.Equal(t, v, d.val)
 	//	}
 	//})
@@ -154,7 +155,7 @@ func TestProperties_ReadProperties(t *testing.T) {
 	//	}
 	//
 	//	for k, expect := range data {
-	//		v := p.Get(k)
+	//		v,_ := p.Get(k)
 	//		assert.Equal(t, v, expect)
 	//	}
 	//})
@@ -201,9 +202,9 @@ func TestProperties_ReadYaml(t *testing.T) {
 			val  interface{}
 			kind reflect.Kind
 		}{
-			{"bool", "bool: false", false, reflect.Bool},
-			{"int", "int: 3", 3 /*int*/, reflect.Int}, // yaml 是 int，toml 是 int64。
-			{"float", "float: 3.0", 3.0 /*float64*/, reflect.Float64},
+			{"bool", "bool: false", "false", reflect.Bool},
+			{"int", "int: 3", "3", reflect.Int},
+			{"float", "float: 3.0", "3", reflect.Float64},
 			{"string", "string: \"3\"", "3", reflect.String},
 			{"string", "string: hello", "hello", reflect.String},
 			{"date", "date: 2018-02-17", "2018-02-17", reflect.String},
@@ -225,11 +226,11 @@ func TestProperties_ReadYaml(t *testing.T) {
 			val  interface{}
 			kind reflect.Kind
 		}{
-			{"bool", "bool: [false]", []interface{}{false}, reflect.Bool},
-			{"int", "int: [3]", []interface{}{3}, reflect.Int},
-			{"float", "float: [3.0]", []interface{}{3.0}, reflect.Float64},
-			{"string", "string: [\"3\"]", []interface{}{"3"}, reflect.String},
-			{"string", "string: [hello]", []interface{}{"hello"}, reflect.String},
+			{"bool[0]", "bool: [false]", "false", reflect.Bool},
+			{"int[0]", "int: [3]", "3", reflect.Int},
+			{"float[0]", "float: [3.0]", "3", reflect.Float64},
+			{"string[0]", "string: [\"3\"]", "3", reflect.String},
+			{"string[0]", "string: [hello]", "hello", reflect.String},
 		}
 
 		for _, d := range data {
@@ -250,9 +251,9 @@ func TestProperties_ReadYaml(t *testing.T) {
         `
 
 		data := map[string]interface{}{
-			"map.bool":   false,
-			"map.float":  3.0,
-			"map.int":    3,
+			"map.bool":   "false",
+			"map.float":  "3",
+			"map.int":    "3",
 			"map.string": "hello",
 		}
 
@@ -280,22 +281,26 @@ func TestProperties_ReadYaml(t *testing.T) {
         `
 
 		p, _ := conf.Read([]byte(str), ".yaml")
-		v := p.Get("array")
-		expect := []interface{}{
-			map[string]interface{}{
-				"bool":   false,
-				"int":    3,
-				"float":  3.0,
-				"string": "hello",
-			},
-			map[string]interface{}{
-				"bool":   true,
-				"int":    20,
-				"float":  0.2,
-				"string": "hello",
-			},
+
+		data := []struct {
+			key  string
+			val  interface{}
+			kind reflect.Kind
+		}{
+			{"array[0].bool", "false", reflect.Bool},
+			{"array[0].int", "3", reflect.Int},
+			{"array[0].float", "3", reflect.Float64},
+			{"array[0].string", "hello", reflect.String},
+			{"array[1].bool", "true", reflect.Bool},
+			{"array[1].int", "20", reflect.Int},
+			{"array[1].float", "0.2", reflect.Float64},
+			{"array[1].string", "hello", reflect.String},
 		}
-		assert.Equal(t, v, expect)
+
+		for _, d := range data {
+			v := p.Get(d.key)
+			assert.Equal(t, v, d.val)
+		}
 	})
 
 	t.Run("map struct", func(t *testing.T) {
@@ -314,21 +319,26 @@ func TestProperties_ReadYaml(t *testing.T) {
                   string: hello
         `
 
-		data := map[string]interface{}{
-			"map.k1.bool":   false,
-			"map.k1.float":  3.0,
-			"map.k1.int":    3,
-			"map.k1.string": "hello",
-			"map.k2.bool":   true,
-			"map.k2.float":  0.2,
-			"map.k2.int":    20,
-			"map.k2.string": "hello",
+		p, _ := conf.Read([]byte(str), ".yaml")
+
+		data := []struct {
+			key  string
+			val  interface{}
+			kind reflect.Kind
+		}{
+			{"map.k1.bool", "false", reflect.Bool},
+			{"map.k1.int", "3", reflect.Int},
+			{"map.k1.float", "3", reflect.Float64},
+			{"map.k1.string", "hello", reflect.String},
+			{"map.k2.bool", "true", reflect.Bool},
+			{"map.k2.int", "20", reflect.Int},
+			{"map.k2.float", "0.2", reflect.Float64},
+			{"map.k2.string", "hello", reflect.String},
 		}
 
-		p, _ := conf.Read([]byte(str), ".yaml")
-		for k, expect := range data {
-			v := p.Get(k)
-			assert.Equal(t, v, expect)
+		for _, d := range data {
+			v := p.Get(d.key)
+			assert.Equal(t, v, d.val)
 		}
 	})
 }
@@ -343,9 +353,9 @@ func TestProperties_ReadToml(t *testing.T) {
 			val  interface{}
 			kind reflect.Kind
 		}{
-			{"bool", "bool=false", false, reflect.Bool},
-			{"int", "int=3", int64(3), reflect.Int64}, // yaml 是 int，toml 是 int64。
-			{"float", "float=3.0", 3.0, reflect.Float64},
+			{"bool", "bool=false", "false", reflect.Bool},
+			{"int", "int=3", "3", reflect.Int},
+			{"float", "float=3.0", "3", reflect.Float64},
 			{"string", "string=\"3\"", "3", reflect.String},
 			{"string", "string=\"hello\"", "hello", reflect.String},
 			{"date", "date=\"2018-02-17\"", "2018-02-17", reflect.String},
@@ -367,11 +377,11 @@ func TestProperties_ReadToml(t *testing.T) {
 			val  interface{}
 			kind reflect.Kind
 		}{
-			{"bool", "bool=[false]", []interface{}{false}, reflect.Bool},
-			{"int", "int=[3]", []interface{}{int64(3)}, reflect.Int},
-			{"float", "float=[3.0]", []interface{}{3.0}, reflect.Float64},
-			{"string", "string=[\"3\"]", []interface{}{"3"}, reflect.String},
-			{"string", "string=[\"hello\"]", []interface{}{"hello"}, reflect.String},
+			{"bool[0]", "bool=[false]", "false", reflect.Bool},
+			{"int[0]", "int=[3]", "3", reflect.Int},
+			{"float[0]", "float=[3.0]", "3", reflect.Float64},
+			{"string[0]", "string=[\"3\"]", "3", reflect.String},
+			{"string[0]", "string=[\"hello\"]", "hello", reflect.String},
 		}
 
 		for _, d := range data {
@@ -392,9 +402,9 @@ func TestProperties_ReadToml(t *testing.T) {
         `
 
 		data := map[string]interface{}{
-			"map.bool":   false,
-			"map.float":  3.0,
-			"map.int":    int64(3),
+			"map.bool":   "false",
+			"map.float":  "3",
+			"map.int":    "3",
 			"map.string": "hello",
 		}
 
@@ -422,22 +432,26 @@ func TestProperties_ReadToml(t *testing.T) {
         `
 
 		p, _ := conf.Read([]byte(str), ".toml")
-		v := p.Get("array")
-		expect := []interface{}{
-			map[string]interface{}{ // yaml 是 map[interface{}]interface{}，toml 是 map[string]interface{}
-				"bool":   false,
-				"int":    int64(3),
-				"float":  3.0, /*float64*/
-				"string": "hello",
-			},
-			map[string]interface{}{
-				"bool":   true,
-				"int":    int64(20),
-				"float":  0.2, /*float64*/
-				"string": "hello",
-			},
+
+		data := []struct {
+			key  string
+			val  interface{}
+			kind reflect.Kind
+		}{
+			{"array[0].bool", "false", reflect.Bool},
+			{"array[0].int", "3", reflect.Int},
+			{"array[0].float", "3", reflect.Float64},
+			{"array[0].string", "hello", reflect.String},
+			{"array[1].bool", "true", reflect.Bool},
+			{"array[1].int", "20", reflect.Int},
+			{"array[1].float", "0.2", reflect.Float64},
+			{"array[1].string", "hello", reflect.String},
 		}
-		assert.Equal(t, v, expect)
+
+		for _, d := range data {
+			v := p.Get(d.key)
+			assert.Equal(t, v, d.val)
+		}
 	})
 
 	t.Run("map struct", func(t *testing.T) {
@@ -456,50 +470,28 @@ func TestProperties_ReadToml(t *testing.T) {
           string="hello"
         `
 
-		data := map[string]interface{}{
-			"map.k1.bool":   false,
-			"map.k1.float":  3.0, /*float64*/
-			"map.k1.int":    int64(3),
-			"map.k1.string": "hello",
-			"map.k2.bool":   true,
-			"map.k2.float":  0.2, /*float64*/
-			"map.k2.int":    int64(20),
-			"map.k2.string": "hello",
+		p, _ := conf.Read([]byte(str), ".toml")
+
+		data := []struct {
+			key  string
+			val  interface{}
+			kind reflect.Kind
+		}{
+			{"map.k1.bool", "false", reflect.Bool},
+			{"map.k1.int", "3", reflect.Int},
+			{"map.k1.float", "3", reflect.Float64},
+			{"map.k1.string", "hello", reflect.String},
+			{"map.k2.bool", "true", reflect.Bool},
+			{"map.k2.int", "20", reflect.Int},
+			{"map.k2.float", "0.2", reflect.Float64},
+			{"map.k2.string", "hello", reflect.String},
 		}
 
-		p, _ := conf.Read([]byte(str), ".toml")
-		for k, expect := range data {
-			v := p.Get(k)
-			assert.Equal(t, v, expect)
+		for _, d := range data {
+			v := p.Get(d.key)
+			assert.Equal(t, v, d.val)
 		}
 	})
-}
-
-func PointConverter(val string) (image.Point, error) {
-	if !(strings.HasPrefix(val, "(") && strings.HasSuffix(val, ")")) {
-		return image.Point{}, errors.New("数据格式错误")
-	}
-	ss := strings.Split(val[1:len(val)-1], ",")
-	x := cast.ToInt(ss[0])
-	y := cast.ToInt(ss[1])
-	return image.Point{X: x, Y: y}, nil
-}
-
-func TestRegisterTypeConverter(t *testing.T) {
-
-	assert.Panic(t, func() {
-		conf.Convert(3)
-	}, "fn must be func\\(string\\)\\(type,error\\)")
-
-	assert.Panic(t, func() {
-		conf.Convert(func(_ string, _ string) (image.Point, error) { return image.Point{}, nil })
-	}, "fn must be func\\(string\\)\\(type,error\\)")
-
-	assert.Panic(t, func() {
-		conf.Convert(func(_ string) (image.Point, image.Point, error) { return image.Point{}, image.Point{}, nil })
-	}, "fn must be func\\(string\\)\\(type,error\\)")
-
-	conf.Convert(PointConverter)
 }
 
 func TestProperties_Get(t *testing.T) {
@@ -511,8 +503,10 @@ func TestProperties_Get(t *testing.T) {
 		p.Set("a.b.c", "3")
 		p.Set("a.b.d", []string{"3"})
 
-		assert.Equal(t, p.Get("a.b.c"), "3")
-		assert.Equal(t, p.Get("a.b.d"), []string{"3"})
+		v := p.Get("a.b.c")
+		assert.Equal(t, v, "3")
+		v = p.Get("a.b.d[0]")
+		assert.Equal(t, v, "3")
 
 		p.Set("Bool", true)
 		p.Set("Int", 3)
@@ -520,68 +514,80 @@ func TestProperties_Get(t *testing.T) {
 		p.Set("Float", 3.0)
 		p.Set("String", "3")
 		p.Set("Duration", "3s")
-		p.Set("[]String", []string{"3"})
+		p.Set("StringSlice", []string{"3", "4"})
 		p.Set("Time", "2020-02-04 20:02:04")
-		p.Set("[]Map[String]Interface{}", []interface{}{
+		p.Set("MapStringInterface", []interface{}{
 			map[interface{}]interface{}{
 				"1": 2,
 			},
 		})
 
-		v := p.Get("NULL")
-		assert.Equal(t, v, nil)
+		v = p.Get("NULL")
+		assert.Equal(t, v, "")
 
-		v = p.Get("NULL", conf.WithDefault("OK"))
+		v = p.Get("NULL", conf.Def("OK"))
 		assert.Equal(t, v, "OK")
 
 		v = p.Get("INT")
-		assert.Equal(t, v, 3)
+		assert.Equal(t, v, "3")
 
 		var v2 int
-		err := p.Bind(&v2, conf.Key("int"))
+		err := conf.Bind(p, &v2, conf.Key("int"))
 		util.Panic(err).When(err != nil)
 		assert.Equal(t, v2, 3)
 
 		var u2 uint
-		err = p.Bind(&u2, conf.Key("uint"))
+		err = conf.Bind(p, &u2, conf.Key("uint"))
 		util.Panic(err).When(err != nil)
 		assert.Equal(t, u2, uint(3))
 
+		var u3 uint32
+		err = conf.Bind(p, &u3, conf.Key("uint"))
+		util.Panic(err).When(err != nil)
+		assert.Equal(t, u3, uint32(3))
+
 		var f2 float32
-		err = p.Bind(&f2, conf.Key("Float"))
+		err = conf.Bind(p, &f2, conf.Key("Float"))
 		util.Panic(err).When(err != nil)
 		assert.Equal(t, f2, float32(3))
 
-		b := cast.ToBool(p.Get("BOOL"))
+		v = p.Get("BOOL")
+		b := cast.ToBool(v)
 		assert.Equal(t, b, true)
 
 		var b2 bool
-		err = p.Bind(&b2, conf.Key("bool"))
+		err = conf.Bind(p, &b2, conf.Key("bool"))
 		util.Panic(err).When(err != nil)
 		assert.Equal(t, b2, true)
 
-		i := cast.ToInt64(p.Get("INT"))
+		v = p.Get("INT")
+		i := cast.ToInt64(v)
 		assert.Equal(t, i, int64(3))
 
-		u := cast.ToUint64(p.Get("UINT"))
+		v = p.Get("UINT")
+		u := cast.ToUint64(v)
 		assert.Equal(t, u, uint64(3))
 
-		f := cast.ToFloat64(p.Get("FLOAT"))
+		v = p.Get("FLOAT")
+		f := cast.ToFloat64(v)
 		assert.Equal(t, f, 3.0)
 
-		s := cast.ToString(p.Get("STRING"))
+		v = p.Get("STRING")
+		s := cast.ToString(v)
 		assert.Equal(t, s, "3")
 
-		d := cast.ToDuration(p.Get("DURATION"))
+		v = p.Get("DURATION")
+		d := cast.ToDuration(v)
 		assert.Equal(t, d, time.Second*3)
 
-		ti := cast.ToTime(p.Get("Time"))
+		v = p.Get("Time")
+		ti := cast.ToTime(v)
 		assert.Equal(t, ti, time.Date(2020, 02, 04, 20, 02, 04, 0, time.UTC))
 
 		var ss2 []string
-		err = p.Bind(&ss2, conf.Key("[]string"))
+		err = conf.Bind(p, &ss2, conf.Key("StringSlice"))
 		util.Panic(err).When(err != nil)
-		assert.Equal(t, ss2, []string{"3"})
+		assert.Equal(t, ss2, []string{"3", "4"})
 	})
 
 	t.Run("slice slice", func(t *testing.T) {
@@ -595,30 +601,26 @@ func TestProperties_Get(t *testing.T) {
 				},
 			},
 		})
-		assert.Equal(t, p.Get("a"), []interface{}{
-			[]interface{}{1, 2},
-			[]interface{}{3, 4},
-			map[string]interface{}{
-				"b": "c",
-				"d": []interface{}{5, 6},
-			},
-		})
-		assert.Equal(t, p.Get("a[0]"), []interface{}{1, 2})
-		assert.Equal(t, p.Get("a[1]"), []interface{}{3, 4})
-		assert.Equal(t, p.Get("a[2]"), map[string]interface{}{
-			"b": "c",
-			"d": []interface{}{5, 6},
-		})
-		assert.Equal(t, p.Get("a[0].[0]"), 1)
-		assert.Equal(t, p.Get("a[0].[1]"), 2)
-		assert.Equal(t, p.Get("a[1].[0]"), 3)
-		assert.Equal(t, p.Get("a[1].[1]"), 4)
-		assert.Equal(t, p.Get("a[2].b"), "c")
-		assert.Equal(t, p.Get("a[2].d[0]"), 5)
-		assert.Equal(t, p.Get("a[2].d.[0]"), 5)
-		assert.Equal(t, p.Get("a[2].d[1]"), 6)
-		assert.Equal(t, p.Get("a[2].d.[1]"), 6)
-		assert.Equal(t, p.Get("a[2].d[2]"), nil)
+		v := p.Get("a[0][0]")
+		assert.Equal(t, v, "1")
+		v = p.Get("a[0][1]")
+		assert.Equal(t, v, "2")
+		v = p.Get("a[1][0]")
+		assert.Equal(t, v, "3")
+		v = p.Get("a[1][1]")
+		assert.Equal(t, v, "4")
+		v = p.Get("a[2].b")
+		assert.Equal(t, v, "c")
+		v = p.Get("a[2].d[0]")
+		assert.Equal(t, v, "5")
+		v = p.Get("a[2].d[0]")
+		assert.Equal(t, v, "5")
+		v = p.Get("a[2].d[1]")
+		assert.Equal(t, v, "6")
+		v = p.Get("a[2].d[1]")
+		assert.Equal(t, v, "6")
+		ok := p.Has("a[2].d[2]")
+		assert.Equal(t, ok, false)
 	})
 }
 
@@ -642,8 +644,8 @@ type DBConnection struct {
 }
 
 type UntaggedNestedDB struct {
-	DBConnection `value:"${}"`
-	DB           string `value:"${db}"`
+	DBConnection
+	DB string `value:"${db}"`
 }
 
 type TaggedNestedDB struct {
@@ -657,14 +659,17 @@ type TagNestedDbConfig struct {
 }
 
 type NestedDB struct {
-	DBConnection        // 正确，不能有 tag
-	DB           string `value:"${db}"`
+	DBConnection
+	DB string `value:"${db}"`
 }
 
 type NestedDbConfig struct {
-	DB   []NestedDB     `value:"${db}"`
-	Ints []int          `value:"${:=}"`
-	Map  map[string]int `value:"${:=}"`
+	DB      []NestedDB     `value:"${db}"`
+	Ints    []int          `value:"${:=}"`
+	Map     map[string]int `value:"${:=}"`
+	Structs []struct {
+		V string `value:"${v:=#v}"`
+	} `value:"${:=}"`
 }
 
 type NestedDbMapConfig struct {
@@ -673,16 +678,28 @@ type NestedDbMapConfig struct {
 
 func TestProperties_Bind(t *testing.T) {
 
+	t.Run("default", func(t *testing.T) {
+		p := conf.New()
+		v := &struct {
+			S struct {
+				V int `value:"${:=3}"`
+			} `value:"${s:=}"`
+		}{}
+		err := conf.Bind(p, v)
+		util.Panic(err).When(err != nil)
+		assert.Equal(t, v.S.V, 3)
+	})
+
 	t.Run("simple bind", func(t *testing.T) {
 		p, err := conf.Load("testdata/config/application.yaml")
 		util.Panic(err).When(err != nil)
 
 		dbConfig1 := DbConfig{}
-		err = p.Bind(&dbConfig1)
+		err = conf.Bind(p, &dbConfig1)
 		util.Panic(err).When(err != nil)
 
 		dbConfig2 := DbConfig{}
-		err = p.Bind(&dbConfig2, conf.Tag("${prefix}"))
+		err = conf.Bind(p, &dbConfig2, conf.Tag("${prefix}"))
 		util.Panic(err).When(err != nil)
 
 		// 实际上是取的两个节点，只是值是一样的而已
@@ -695,7 +712,7 @@ func TestProperties_Bind(t *testing.T) {
 		util.Panic(err).When(err != nil)
 
 		dbConfig := TagNestedDbConfig{}
-		err = p.Bind(&dbConfig)
+		err = conf.Bind(p, &dbConfig)
 		util.Panic(err).When(err != nil)
 
 		fmt.Println(dbConfig)
@@ -707,11 +724,11 @@ func TestProperties_Bind(t *testing.T) {
 		util.Panic(err).When(err != nil)
 
 		dbConfig1 := NestedDbConfig{}
-		err = p.Bind(&dbConfig1)
+		err = conf.Bind(p, &dbConfig1)
 		util.Panic(err).When(err != nil)
 
 		dbConfig2 := NestedDbConfig{}
-		err = p.Bind(&dbConfig2, conf.Tag("${prefix}"))
+		err = conf.Bind(p, &dbConfig2, conf.Tag("${prefix}"))
 		util.Panic(err).When(err != nil)
 
 		// 实际上是取的两个节点，只是值是一样的而已
@@ -727,27 +744,11 @@ func TestProperties_Bind(t *testing.T) {
 		p.Set("a.b3", "b3")
 
 		var m map[string]string
-		err := p.Bind(&m, conf.Tag("${a}"))
+		err := conf.Bind(p, &m, conf.Tag("${a}"))
 		util.Panic(err).When(err != nil)
 
 		assert.Equal(t, len(m), 3)
 		assert.Equal(t, m["b1"], "b1")
-	})
-
-	t.Run("converter bind", func(t *testing.T) {
-
-		p := conf.New()
-		conf.Convert(PointConverter)
-		p.Set("a.p1", "(1,2)")
-		p.Set("a.p2", "(3,4)")
-		p.Set("a.p3", "(5,6)")
-
-		var m map[string]image.Point
-		err := p.Bind(&m, conf.Tag("${a}"))
-		util.Panic(err).When(err != nil)
-
-		assert.Equal(t, len(m), 3)
-		assert.Equal(t, m["p1"], image.Pt(1, 2))
 	})
 
 	t.Run("simple bind from file", func(t *testing.T) {
@@ -756,7 +757,7 @@ func TestProperties_Bind(t *testing.T) {
 		util.Panic(err).When(err != nil)
 
 		var m map[string]string
-		err = p.Bind(&m, conf.Tag("${camera}"))
+		err = conf.Bind(p, &m, conf.Tag("${camera}"))
 		util.Panic(err).When(err != nil)
 
 		assert.Equal(t, len(m), 3)
@@ -769,14 +770,14 @@ func TestProperties_Bind(t *testing.T) {
 		util.Panic(err).When(err != nil)
 
 		var m map[string]NestedDB
-		err = p.Bind(&m, conf.Tag("${db_map}"))
+		err = conf.Bind(p, &m, conf.Tag("${db_map}"))
 		util.Panic(err).When(err != nil)
 
 		assert.Equal(t, len(m), 2)
 		assert.Equal(t, m["d1"].DB, "db1")
 
 		dbConfig2 := NestedDbMapConfig{}
-		err = p.Bind(&dbConfig2, conf.Tag("${prefix_map}"))
+		err = conf.Bind(p, &dbConfig2, conf.Tag("${prefix_map}"))
 		util.Panic(err).When(err != nil)
 
 		assert.Equal(t, len(dbConfig2.DB), 2)
@@ -784,11 +785,15 @@ func TestProperties_Bind(t *testing.T) {
 	})
 
 	t.Run("ignore interface", func(t *testing.T) {
-		_ = conf.New().Bind(&struct{ fmt.Stringer }{}, conf.Key(conf.RootKey))
+		p := conf.New()
+		err := conf.Bind(p, &struct{ fmt.Stringer }{})
+		assert.Nil(t, err)
 	})
 
 	t.Run("ignore pointer", func(t *testing.T) {
-		_ = conf.New().Bind(list.New(), conf.Key(conf.RootKey))
+		p := conf.New()
+		err := conf.Bind(p, list.New())
+		assert.Nil(t, err)
 	})
 }
 
@@ -806,8 +811,8 @@ func TestProperties_Ref(t *testing.T) {
 
 	t.Run("not config", func(t *testing.T) {
 		p := conf.New()
-		err := p.Bind(&httpLog)
-		assert.Error(t, err, "property \"dir\" not config")
+		err := conf.Bind(p, &httpLog)
+		assert.Error(t, err, "property \\\"app.dir\\\" not exist")
 	})
 
 	t.Run("config", func(t *testing.T) {
@@ -816,14 +821,14 @@ func TestProperties_Ref(t *testing.T) {
 		appDir := "/home/log"
 		p.Set("app.dir", appDir)
 
-		err := p.Bind(&httpLog)
+		err := conf.Bind(p, &httpLog)
 		util.Panic(err).When(err != nil)
 		assert.Equal(t, httpLog.Dir, appDir)
 		assert.Equal(t, httpLog.NestedDir, "./log")
 		assert.Equal(t, httpLog.NestedEmptyDir, "")
 		assert.Equal(t, httpLog.NestedNestedDir, "./log")
 
-		err = p.Bind(&mqLog)
+		err = conf.Bind(p, &mqLog)
 		util.Panic(err).When(err != nil)
 		assert.Equal(t, mqLog.Dir, appDir)
 		assert.Equal(t, mqLog.NestedDir, "./log")
@@ -836,7 +841,7 @@ func TestProperties_Ref(t *testing.T) {
 		var s struct {
 			KeyIsEmpty string `value:"${:=kie}"`
 		}
-		err := p.Bind(&s)
+		err := conf.Bind(p, &s)
 		util.Panic(err).When(err != nil)
 		assert.Equal(t, s.KeyIsEmpty, "kie")
 	})
@@ -853,7 +858,8 @@ func TestBindMap(t *testing.T) {
 		B2 string `value:"${b2}"`
 		B3 string `value:"${b3}"`
 	}
-	err := conf.Map(m).Bind(&r, conf.Key(conf.RootKey))
+	p := conf.Map(m)
+	err := conf.Bind(p, &r)
 	assert.Nil(t, err)
 	assert.Equal(t, r["a"].B1, "b1")
 }

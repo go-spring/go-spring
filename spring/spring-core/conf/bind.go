@@ -21,23 +21,207 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"time"
 
+	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
 	"github.com/spf13/cast"
 )
 
-type property interface {
-	Get(key string, opts ...GetOption) interface{}
-}
-
 type bindOption struct {
-	Prefix string // 属性名前缀
-	Key    string // 最短属性名
-	Path   string // 结构体字段
+	key    string // 完整属性名
+	path   string // 结构体字段
+	def    string
+	hasDef bool
 }
 
-// bindStruct 对结构体的字段进行属性绑定，该方法要求 v 的类型必须是结构体。
-func bindStruct(p property, v reflect.Value, opt bindOption) error {
+func bind(p Properties, v reflect.Value, tag string, opt bindOption) error {
+
+	if v.Kind() == reflect.Ptr {
+		return fmt.Errorf("%s 属性绑定的目标不能是指针", opt.path)
+	}
+
+	if !validTag(tag) {
+		return fmt.Errorf("%s 属性绑定的语法 %s 发生错误", opt.path, tag)
+	}
+
+	key, def, hasDef := parseTag(tag)
+	if key == "" {
+		key = "ANONYMOUS"
+	}
+
+	if opt.key == "" {
+		opt.key = key
+	} else {
+		opt.key = opt.key + "." + key
+	}
+
+	opt.def = def
+	opt.hasDef = hasDef
+
+	return bindValue(p, v, opt)
+}
+
+var ErrNotExist = errors.New("not exist")
+
+func bindValue(p Properties, v reflect.Value, opt bindOption) error {
+
+	log.Tracef("::<>:: %#v", opt)
+
+	switch v.Kind() {
+	case reflect.Map:
+		return bindMap(p, v, opt)
+	case reflect.Array:
+		return bindArray(p, v, opt)
+	case reflect.Slice:
+		return bindSlice(p, v, opt)
+	case reflect.Struct:
+		return bindStruct(p, v, opt)
+	}
+
+	val, err := resolve(p, opt)
+	if err != nil {
+		return err
+	}
+
+	switch v.Interface().(type) {
+	case uint, uint8, uint16, uint32, uint64:
+		u, err := cast.ToUint64E(val)
+		if err == nil {
+			v.SetUint(u)
+		}
+		return err
+	case int, int8, int16, int32, int64:
+		i, err := cast.ToInt64E(val)
+		if err == nil {
+			v.SetInt(i)
+		}
+		return err
+	case float32, float64:
+		f, err := cast.ToFloat64E(val)
+		if err == nil {
+			v.SetFloat(f)
+		}
+		return err
+	case bool:
+		b, err := cast.ToBoolE(val)
+		if err == nil {
+			v.SetBool(b)
+		}
+		return err
+	case string:
+		s, err := cast.ToStringE(val)
+		if err == nil {
+			v.SetString(s)
+		}
+		return err
+	case time.Time:
+		t, err := cast.ToTimeE(val)
+		if err == nil {
+			v.Set(reflect.ValueOf(t))
+		}
+		return err
+	case time.Duration:
+		d, err := cast.ToDurationE(val)
+		if err == nil {
+			v.Set(reflect.ValueOf(d))
+		}
+		return err
+	}
+
+	return nil
+}
+
+func bindArray(p Properties, v reflect.Value, opt bindOption) error {
+
+	if opt.hasDef {
+		if opt.def == "" {
+			return nil
+		}
+		return fmt.Errorf("%s array 字段不能指定非空默认值", opt.path)
+	}
+
+	for i := 0; i < v.Len(); i++ {
+		subKey := fmt.Sprintf("%s[%d]", opt.key, i)
+		subPath := fmt.Sprintf("%s[%d]", opt.path, i)
+		subOpt := bindOption{key: subKey, path: subPath}
+		err := bindValue(p, v.Index(i), subOpt)
+		if errors.Is(err, ErrNotExist) {
+			break
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func bindSlice(p Properties, v reflect.Value, opt bindOption) error {
+
+	if opt.hasDef {
+		if opt.def == "" {
+			return nil
+		}
+		return fmt.Errorf("%s slice 字段不能指定非空默认值", opt.path)
+	}
+
+	t := v.Type()
+	elemType := t.Elem()
+	ret := reflect.MakeSlice(v.Type(), 0, 0)
+
+	for i := 0; ; i++ {
+		subKey := fmt.Sprintf("%s[%d]", opt.key, i)
+		subPath := fmt.Sprintf("%s[%d]", opt.path, i)
+		subOpt := bindOption{key: subKey, path: subPath}
+
+		e := reflect.New(elemType).Elem()
+		err := bindValue(p, e, subOpt)
+		if errors.Is(err, ErrNotExist) {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		ret = reflect.Append(ret, e)
+	}
+
+	v.Set(ret)
+	return nil
+}
+
+func bindMap(p Properties, v reflect.Value, opt bindOption) error {
+
+	if opt.hasDef {
+		if opt.def == "" {
+			return nil
+		}
+		return fmt.Errorf("%s map 字段不能指定非空默认值", opt.path)
+	}
+
+	t := v.Type()
+	elemType := t.Elem()
+	ret := reflect.MakeMap(t)
+
+	for _, key := range GroupKeys(p, opt.key) {
+		e := reflect.New(elemType).Elem()
+		subKey := fmt.Sprintf("%s.%s", opt.key, key)
+		subOpt := bindOption{key: subKey, path: opt.path}
+		if err := bindValue(p, e, subOpt); err != nil {
+			return err
+		}
+		ret.SetMapIndex(reflect.ValueOf(key), e)
+	}
+
+	v.Set(ret)
+	return nil
+}
+
+func bindStruct(p Properties, v reflect.Value, opt bindOption) error {
+
+	if opt.hasDef && opt.def != "" {
+		return fmt.Errorf("%s struct 字段不能指定非空默认值", opt.path)
+	}
+
 	t := v.Type()
 	for i := 0; i < t.NumField(); i++ {
 		ft := t.Field(i)
@@ -45,24 +229,28 @@ func bindStruct(p property, v reflect.Value, opt bindOption) error {
 
 		if !fv.CanInterface() {
 			fv = util.PatchValue(fv)
+			if !fv.CanInterface() {
+				continue
+			}
 		}
 
 		subOpt := bindOption{
-			Prefix: opt.Prefix,
-			Key:    opt.Key,
-			Path:   opt.Path + "." + ft.Name,
+			key:  opt.key,
+			path: opt.path + "." + ft.Name,
 		}
 
 		if tag, ok := ft.Tag.Lookup("value"); ok {
-			if err := bindValue(p, tag, fv, subOpt); err != nil {
+			err := bind(p, fv, tag, subOpt)
+			if err != nil {
 				return err
 			}
 			continue
 		}
 
-		// 结构体字段才能递归，指针或者接口都不行。
+		// 指针或者结构体字段可能出现无限递归的情况。
 		if ft.Type.Kind() == reflect.Struct {
-			if err := bindStruct(p, fv, subOpt); err != nil {
+			err := bindStruct(p, fv, subOpt)
+			if err != nil {
 				return err
 			}
 		}
@@ -70,331 +258,41 @@ func bindStruct(p property, v reflect.Value, opt bindOption) error {
 	return nil
 }
 
-func bindValue(p property, tag string, v reflect.Value, opt bindOption) error {
-
-	if v.Kind() == reflect.Ptr {
-		return fmt.Errorf("%s 属性绑定的目标不能是指针", opt.Path)
-	}
-
-	if !validTag(tag) {
-		return fmt.Errorf("%s 属性绑定的语法 %s 发生错误", opt.Path, tag)
-	}
-
-	key, def := parseTag(tag)
-
-	// 最短属性名
-	if opt.Key == "" {
-		opt.Key = key
-	} else if key != "" {
-		opt.Key = opt.Key + "." + key
-	}
-
-	// 完整属性名
-	if opt.Prefix != "" {
-		key = opt.Prefix + "." + key
-	}
-
-	t := v.Type()
-	k := t.Kind()
-
-	// 存在值类型转换器的情况下结构体优先使用转换器
-	if fn, ok := tConverters[t]; ok {
-		val := p.Get(key, WithDefault(def))
-		if val == nil {
-			return fmt.Errorf("property %q not config", key)
-		}
-		fnValue := reflect.ValueOf(fn) // TODO 处理 error 返回值
-		out := fnValue.Call([]reflect.Value{reflect.ValueOf(val)})
-		v.Set(out[0])
-		return nil
-	}
-
-	if k == reflect.Struct {
-		if def != nil {
-			return fmt.Errorf("%s 结构体字段不能指定默认值", opt.Path)
-		}
-		return bindStruct(p, v, bindOption{Prefix: key, Key: opt.Key, Path: opt.Path})
-	}
-
-	if converter, ok := kConverters[k]; ok {
-		val := p.Get(key, WithDefault(def))
-		if val == nil {
-			return fmt.Errorf("property %q not config", key)
-		}
-		return converter(&v, key, val, opt)
-	}
-	return fmt.Errorf("%s unsupported type %s", opt.Path, v.Kind().String())
+// validTag 是否为 ${key:=def} 格式的字符串。
+func validTag(tag string) bool {
+	return strings.HasPrefix(tag, "${") && strings.HasSuffix(tag, "}")
 }
 
-func init() {
-	// TODO 诚招牛人把这些类型转换的过程简化和统一 !!!
-
-	kindConvert(func(v *reflect.Value, key string, prop interface{}, opt bindOption) error {
-		if u, err := cast.ToUint64E(prop); err == nil {
-			v.SetUint(u)
-			return nil
-		} else {
-			return fmt.Errorf("property value %s isn't uint type", opt.Key)
-		}
-	}, reflect.Uint64, reflect.Uint32, reflect.Uint16, reflect.Uint8, reflect.Uint)
-
-	kindConvert(func(v *reflect.Value, key string, prop interface{}, opt bindOption) error {
-		if i, err := cast.ToInt64E(prop); err == nil {
-			v.SetInt(i)
-			return nil
-		} else {
-			return fmt.Errorf("property value %s isn't int type", opt.Key)
-		}
-	}, reflect.Int64, reflect.Int32, reflect.Int16, reflect.Int8, reflect.Int)
-
-	kindConvert(func(v *reflect.Value, key string, prop interface{}, opt bindOption) error {
-		if f, err := cast.ToFloat64E(prop); err == nil {
-			v.SetFloat(f)
-			return nil
-		} else {
-			return fmt.Errorf("property value %s isn't float type", opt.Key)
-		}
-	}, reflect.Float64, reflect.Float32)
-
-	kindConvert(func(v *reflect.Value, key string, prop interface{}, opt bindOption) error {
-		if s, err := cast.ToStringE(prop); err == nil {
-			v.SetString(s)
-			return nil
-		} else {
-			return fmt.Errorf("property value %s isn't string type", opt.Key)
-		}
-	}, reflect.String)
-
-	kindConvert(func(v *reflect.Value, key string, prop interface{}, opt bindOption) error {
-		if b, err := cast.ToBoolE(prop); err == nil {
-			v.SetBool(b)
-			return nil
-		} else {
-			return fmt.Errorf("property value %s isn't bool type", opt.Key)
-		}
-	}, reflect.Bool)
-
-	kindConvert(func(v *reflect.Value, key string, prop interface{}, opt bindOption) error {
-
-		t := v.Type()
-		elemType := t.Elem()
-
-		if prop == "" {
-			v.Set(reflect.MakeSlice(t, 0, 0))
-			return nil
-		}
-
-		// 如果是字符串的话，尝试按照逗号进行切割
-		if s, ok := prop.(string); ok {
-			prop = strings.Split(s, ",")
-		}
-
-		// 处理使用类型转换器的场景
-		if fn, ok := tConverters[elemType]; ok {
-			if s0, err := cast.ToStringSliceE(prop); err == nil {
-				sv := reflect.MakeSlice(t, len(s0), len(s0))
-				fnValue := reflect.ValueOf(fn)
-				for i, iv := range s0 {
-					res := fnValue.Call([]reflect.Value{reflect.ValueOf(iv)})
-					sv.Index(i).Set(res[0])
-				}
-				v.Set(sv)
-				return nil
-			} else {
-				return fmt.Errorf("property value %s isn't []string type", opt.Key)
-			}
-		}
-
-		switch elemType.Kind() {
-		case reflect.Uint64:
-			if i, err := ToUint64SliceE(prop); err == nil {
-				v.Set(reflect.ValueOf(i))
-			} else {
-				return fmt.Errorf("property value %s isn't []uint64 type", opt.Key)
-			}
-		case reflect.Uint32:
-			if i, err := ToUint32SliceE(prop); err == nil {
-				v.Set(reflect.ValueOf(i))
-			} else {
-				return fmt.Errorf("property value %s isn't []uint32 type", opt.Key)
-			}
-		case reflect.Uint16:
-			if i, err := ToUint16SliceE(prop); err == nil {
-				v.Set(reflect.ValueOf(i))
-			} else {
-				return fmt.Errorf("property value %s isn't []uint16 type", opt.Key)
-			}
-		case reflect.Uint8:
-			if i, err := ToUint8SliceE(prop); err == nil {
-				v.Set(reflect.ValueOf(i))
-			} else {
-				return fmt.Errorf("property value %s isn't []uint8 type", opt.Key)
-			}
-		case reflect.Uint:
-			if i, err := ToUintSliceE(prop); err == nil {
-				v.Set(reflect.ValueOf(i))
-			} else {
-				return fmt.Errorf("property value %s isn't []uint type", opt.Key)
-			}
-		case reflect.Int64:
-			if i, err := ToInt64SliceE(prop); err == nil {
-				v.Set(reflect.ValueOf(i))
-			} else {
-				return fmt.Errorf("property value %s isn't []int64 type", opt.Key)
-			}
-		case reflect.Int32:
-			if i, err := ToInt32SliceE(prop); err == nil {
-				v.Set(reflect.ValueOf(i))
-			} else {
-				return fmt.Errorf("property value %s isn't []int32 type", opt.Key)
-			}
-		case reflect.Int16:
-			if i, err := ToInt16SliceE(prop); err == nil {
-				v.Set(reflect.ValueOf(i))
-			} else {
-				return fmt.Errorf("property value %s isn't []int16 type", opt.Key)
-			}
-		case reflect.Int8:
-			if i, err := ToInt8SliceE(prop); err == nil {
-				v.Set(reflect.ValueOf(i))
-			} else {
-				return fmt.Errorf("property value %s isn't []int8 type", opt.Key)
-			}
-		case reflect.Int:
-			if i, err := ToIntSliceE(prop); err == nil {
-				v.Set(reflect.ValueOf(i))
-			} else {
-				return fmt.Errorf("property value %s isn't []int type", opt.Key)
-			}
-		case reflect.Float64, reflect.Float32:
-			return errors.New("暂未支持")
-		case reflect.String:
-			if i, err := cast.ToStringSliceE(prop); err == nil {
-				v.Set(reflect.ValueOf(i))
-			} else {
-				return fmt.Errorf("property value %s isn't []string type", opt.Key)
-			}
-		case reflect.Bool:
-			if b, err := cast.ToBoolSliceE(prop); err == nil {
-				v.Set(reflect.ValueOf(b))
-			} else {
-				return fmt.Errorf("property value %s isn't []bool type", opt.Key)
-			}
-		default:
-			// 处理结构体字段的场景 TODO 增加单元测试
-			if s, ok := prop.([]interface{}); ok {
-				result := reflect.MakeSlice(t, len(s), len(s))
-				for i, si := range s {
-					if sv, err := cast.ToStringMapE(si); err == nil {
-						ev := reflect.New(elemType).Elem()
-						subKey := fmt.Sprintf("%s[%d]", key, i)
-						err = bindStruct(&Properties{m: sv}, ev, bindOption{Key: subKey, Path: opt.Path})
-						if err != nil {
-							return err
-						}
-						result.Index(i).Set(ev)
-					} else {
-						return fmt.Errorf("property value %s isn't []map[string]interface{}", opt.Key)
-					}
-				}
-				v.Set(result)
-			} else {
-				return fmt.Errorf("property value %s isn't []map[string]interface{}", opt.Key)
-			}
-		}
-		return nil
-	}, reflect.Slice)
-
-	kindConvert(func(v *reflect.Value, key string, prop interface{}, opt bindOption) error {
-
-		t := v.Type()
-		if t.Key().Kind() != reflect.String {
-			return fmt.Errorf("path: %s isn't map[string]interface{}", opt.Path)
-		}
-
-		if prop == "" {
-			v.Set(reflect.MakeMap(t))
-			return nil
-		}
-
-		elemType := t.Elem()
-
-		// 首先处理使用类型转换器的场景
-		if fn, ok := tConverters[elemType]; ok {
-			if mapValue, err := cast.ToStringMapStringE(prop); err == nil {
-				prefix := key + "."
-				fnValue := reflect.ValueOf(fn)
-				result := reflect.MakeMap(t)
-				for k0, v0 := range mapValue {
-					res := fnValue.Call([]reflect.Value{reflect.ValueOf(v0)})
-					k0 = strings.TrimPrefix(k0, prefix)
-					result.SetMapIndex(reflect.ValueOf(k0), res[0])
-				}
-				v.Set(result)
-				return nil
-			} else {
-				return fmt.Errorf("property value %s isn't map[string]string", opt.Key)
-			}
-		}
-
-		switch elemType.Kind() {
-		case reflect.Uint64, reflect.Uint32, reflect.Uint16, reflect.Uint8, reflect.Uint:
-			return errors.New("暂未支持")
-		case reflect.Int64, reflect.Int32, reflect.Int16, reflect.Int8, reflect.Int:
-			return errors.New("暂未支持")
-		case reflect.Float64, reflect.Float32:
-			return errors.New("暂未支持")
-		case reflect.Bool:
-			return errors.New("暂未支持")
-		case reflect.String:
-			if mapValue, err := cast.ToStringMapStringE(prop); err == nil {
-				prefix := key + "."
-				result := make(map[string]string)
-				for k0, v0 := range mapValue {
-					k0 = strings.TrimPrefix(k0, prefix)
-					result[k0] = v0
-				}
-				v.Set(reflect.ValueOf(result))
-			} else {
-				return fmt.Errorf("property value %s isn't map[string]string", opt.Key)
-			}
-		default:
-			// 处理结构体字段的场景
-			if mapValue, err := cast.ToStringMapE(prop); err == nil {
-				temp := make(map[string]map[string]interface{})
-
-				for k0, v0 := range mapValue {
-					if temp[k0], err = cast.ToStringMapE(v0); err != nil {
-						return err
-					}
-				}
-
-				result := reflect.MakeMapWithSize(t, len(temp))
-				for k1, v1 := range temp {
-					ev := reflect.New(elemType).Elem()
-					subKey := fmt.Sprintf("%s.%s", key, k1)
-					err = bindStruct(&Properties{m: v1}, ev, bindOption{Key: subKey, Path: opt.Path})
-					if err != nil {
-						return err
-					}
-					result.SetMapIndex(reflect.ValueOf(k1), ev)
-				}
-
-				v.Set(result)
-			} else {
-				return fmt.Errorf("property value %s isn't map[string]map[string]interface{}", opt.Key)
-			}
-		}
-		return nil
-	}, reflect.Map)
-}
-
-var kConverters = map[reflect.Kind]kConverter{}
-
-func kindConvert(fn kConverter, kinds ...reflect.Kind) {
-	for _, kind := range kinds {
-		kConverters[kind] = fn
+// parseTag 解析 ${key:=def} 字符串，返回 key 和 def 的值。
+func parseTag(tag string) (key string, def string, hasDef bool) {
+	ss := strings.SplitN(tag[2:len(tag)-1], ":=", 2)
+	if len(ss) > 1 {
+		hasDef = true
+		def = ss[1]
 	}
+	key = ss[0]
+	return
 }
 
-type kConverter func(v *reflect.Value, key string, prop interface{}, opt bindOption) error
+func resolveString(p Properties, s string) (string, error) {
+	if !validTag(s) {
+		return s, nil
+	}
+	key, def, hasDef := parseTag(s)
+	opt := bindOption{key: key, def: def, hasDef: hasDef}
+	return resolve(p, opt)
+}
+
+func resolve(p Properties, opt bindOption) (string, error) {
+	var val string
+
+	if p.Has(opt.key) {
+		val = p.Get(opt.key)
+	} else if opt.hasDef {
+		val = opt.def
+	} else {
+		return "", fmt.Errorf("property %q %w", opt.key, ErrNotExist)
+	}
+
+	return resolveString(p, val)
+}

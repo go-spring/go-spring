@@ -20,8 +20,8 @@ import (
 	"github.com/pelletier/go-toml"
 )
 
-// Parse 将字节数组解析成 map 结构。
-func Parse(b []byte) (map[string]interface{}, error) {
+// Read 将字节数组解析成 map 结构。
+func Read(b []byte) (map[string]interface{}, error) {
 	tree, err := toml.LoadBytes(b)
 	if err != nil {
 		return nil, err

@@ -25,19 +25,17 @@ import (
 )
 
 func init() {
-	NewParser(prop.Parse, ".properties", ".prop")
-	NewParser(yaml.Parse, ".yaml", ".yml")
-	NewParser(toml.Parse, ".toml")
+	NewReader(prop.Read, ".properties")
+	NewReader(yaml.Read, ".yaml")
+	NewReader(toml.Read, ".toml")
 }
 
-// Parser 属性列表解析器，将字节数组解析成 map 结构。
-type Parser func(b []byte) (map[string]interface{}, error)
+var readers = make(map[string]Reader)
 
-var parserMap = make(map[string]Parser)
+// Reader 属性列表解析器，将字节数组解析成 map 结构。
+type Reader func(b []byte) (map[string]interface{}, error)
 
-// NewParser 注册属性列表解析器，ext 是解析器支持的文件扩展名。
-func NewParser(p Parser, ext ...string) {
-	for _, s := range ext {
-		parserMap[strings.ToLower(s)] = p
-	}
+// NewReader 注册属性列表解析器，ext 是解析器支持的(标准)文件扩展名。
+func NewReader(r Reader, ext string) {
+	readers[strings.ToLower(ext)] = r
 }

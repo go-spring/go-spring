@@ -18,8 +18,8 @@ package prop
 
 import "github.com/magiconair/properties"
 
-// Parse 将字节数组解析成 map 结构。
-func Parse(b []byte) (map[string]interface{}, error) {
+// Read 将字节数组解析成 map 结构。
+func Read(b []byte) (map[string]interface{}, error) {
 
 	p := properties.NewProperties()
 	p.DisableExpansion = true
