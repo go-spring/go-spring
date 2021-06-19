@@ -21,28 +21,35 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
-	"time"
 
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
 	"github.com/spf13/cast"
 )
 
-type bindOption struct {
-	key    string // 完整属性名
-	path   string // 结构体字段
-	def    string
-	hasDef bool
+var (
+	ErrNotExist = errors.New("not exist")
+)
+
+type properties interface {
+	Get(key string, opts ...GetOption) interface{}
 }
 
-func bind(p Properties, v reflect.Value, tag string, opt bindOption) error {
+type bindOption struct {
+	key    string // 完整的属性 key
+	path   string // 结构体字段 path
+	def    string // 默认值
+	hasDef bool   // def 字段是否有效
+}
+
+func bind(p properties, v reflect.Value, tag string, opt bindOption) error {
 
 	if v.Kind() == reflect.Ptr {
 		return fmt.Errorf("%s 属性绑定的目标不能是指针", opt.path)
 	}
 
 	if !validTag(tag) {
-		return fmt.Errorf("%s 属性绑定的语法 %s 发生错误", opt.path, tag)
+		return fmt.Errorf("%s 属性绑定字符串 %s 发生错误", opt.path, tag)
 	}
 
 	key, def, hasDef := parseTag(tag)
@@ -62,9 +69,7 @@ func bind(p Properties, v reflect.Value, tag string, opt bindOption) error {
 	return bindValue(p, v, opt)
 }
 
-var ErrNotExist = errors.New("not exist")
-
-func bindValue(p Properties, v reflect.Value, opt bindOption) error {
+func bindValue(p properties, v reflect.Value, opt bindOption) error {
 
 	log.Tracef("::<>:: %#v", opt)
 
@@ -75,8 +80,15 @@ func bindValue(p Properties, v reflect.Value, opt bindOption) error {
 		return bindArray(p, v, opt)
 	case reflect.Slice:
 		return bindSlice(p, v, opt)
-	case reflect.Struct:
-		return bindStruct(p, v, opt)
+	}
+
+	t := v.Type()
+	fn, _ := converters[t]
+
+	if v.Kind() == reflect.Struct {
+		if fn == nil {
+			return bindStruct(p, v, opt)
+		}
 	}
 
 	val, err := resolve(p, opt)
@@ -84,55 +96,54 @@ func bindValue(p Properties, v reflect.Value, opt bindOption) error {
 		return err
 	}
 
-	switch v.Interface().(type) {
-	case uint, uint8, uint16, uint32, uint64:
+	if fn != nil {
+		fnValue := reflect.ValueOf(fn)
+		in := []reflect.Value{reflect.ValueOf(val)}
+		out := fnValue.Call(in)
+		if !out[1].IsNil() {
+			return out[1].Interface().(error)
+		}
+		v.Set(out[0])
+		return nil
+	}
+
+	switch v.Kind() {
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		u, err := cast.ToUint64E(val)
 		if err == nil {
 			v.SetUint(u)
 		}
 		return err
-	case int, int8, int16, int32, int64:
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		i, err := cast.ToInt64E(val)
 		if err == nil {
 			v.SetInt(i)
 		}
 		return err
-	case float32, float64:
+	case reflect.Float32, reflect.Float64:
 		f, err := cast.ToFloat64E(val)
 		if err == nil {
 			v.SetFloat(f)
 		}
 		return err
-	case bool:
+	case reflect.Bool:
 		b, err := cast.ToBoolE(val)
 		if err == nil {
 			v.SetBool(b)
 		}
 		return err
-	case string:
+	case reflect.String:
 		s, err := cast.ToStringE(val)
 		if err == nil {
 			v.SetString(s)
 		}
 		return err
-	case time.Time:
-		t, err := cast.ToTimeE(val)
-		if err == nil {
-			v.Set(reflect.ValueOf(t))
-		}
-		return err
-	case time.Duration:
-		d, err := cast.ToDurationE(val)
-		if err == nil {
-			v.Set(reflect.ValueOf(d))
-		}
-		return err
 	}
 
-	return nil
+	return errors.New("unsupported type " + t.String())
 }
 
-func bindArray(p Properties, v reflect.Value, opt bindOption) error {
+func bindArray(p properties, v reflect.Value, opt bindOption) error {
 
 	if opt.hasDef {
 		if opt.def == "" {
@@ -156,7 +167,7 @@ func bindArray(p Properties, v reflect.Value, opt bindOption) error {
 	return nil
 }
 
-func bindSlice(p Properties, v reflect.Value, opt bindOption) error {
+func bindSlice(p properties, v reflect.Value, opt bindOption) error {
 
 	if opt.hasDef {
 		if opt.def == "" {
@@ -166,15 +177,15 @@ func bindSlice(p Properties, v reflect.Value, opt bindOption) error {
 	}
 
 	t := v.Type()
-	elemType := t.Elem()
-	ret := reflect.MakeSlice(v.Type(), 0, 0)
+	et := t.Elem()
+	slice := reflect.MakeSlice(t, 0, 0)
 
 	for i := 0; ; i++ {
 		subKey := fmt.Sprintf("%s[%d]", opt.key, i)
 		subPath := fmt.Sprintf("%s[%d]", opt.path, i)
 		subOpt := bindOption{key: subKey, path: subPath}
 
-		e := reflect.New(elemType).Elem()
+		e := reflect.New(et).Elem()
 		err := bindValue(p, e, subOpt)
 		if errors.Is(err, ErrNotExist) {
 			break
@@ -182,14 +193,15 @@ func bindSlice(p Properties, v reflect.Value, opt bindOption) error {
 		if err != nil {
 			return err
 		}
-		ret = reflect.Append(ret, e)
+
+		slice = reflect.Append(slice, e)
 	}
 
-	v.Set(ret)
+	v.Set(slice)
 	return nil
 }
 
-func bindMap(p Properties, v reflect.Value, opt bindOption) error {
+func bindMap(p properties, v reflect.Value, opt bindOption) error {
 
 	if opt.hasDef {
 		if opt.def == "" {
@@ -198,27 +210,32 @@ func bindMap(p Properties, v reflect.Value, opt bindOption) error {
 		return fmt.Errorf("%s map 字段不能指定非空默认值", opt.path)
 	}
 
-	t := v.Type()
-	elemType := t.Elem()
-	ret := reflect.MakeMap(t)
+	g := p.(interface{ Group(prefix string) []string })
+	groups := g.Group(opt.key)
 
-	for _, key := range GroupKeys(p, opt.key) {
-		e := reflect.New(elemType).Elem()
+	t := v.Type()
+	et := t.Elem()
+	m := reflect.MakeMap(t)
+
+	for _, key := range groups {
+		e := reflect.New(et).Elem()
 		subKey := fmt.Sprintf("%s.%s", opt.key, key)
 		subOpt := bindOption{key: subKey, path: opt.path}
-		if err := bindValue(p, e, subOpt); err != nil {
+		err := bindValue(p, e, subOpt)
+		if err != nil {
 			return err
 		}
-		ret.SetMapIndex(reflect.ValueOf(key), e)
+		m.SetMapIndex(reflect.ValueOf(key), e)
 	}
 
-	v.Set(ret)
+	v.Set(m)
 	return nil
 }
 
-func bindStruct(p Properties, v reflect.Value, opt bindOption) error {
+func bindStruct(p properties, v reflect.Value, opt bindOption) error {
 
 	if opt.hasDef && opt.def != "" {
+		// 空默认值时为什么不直接返回？因为继续处理可以使用结构体字段的默认值。
 		return fmt.Errorf("%s struct 字段不能指定非空默认值", opt.path)
 	}
 
@@ -258,12 +275,12 @@ func bindStruct(p Properties, v reflect.Value, opt bindOption) error {
 	return nil
 }
 
-// validTag 是否为 ${key:=def} 格式的字符串。
+// validTag 返回是否为 ${key:=def} 格式的字符串。
 func validTag(tag string) bool {
 	return strings.HasPrefix(tag, "${") && strings.HasSuffix(tag, "}")
 }
 
-// parseTag 解析 ${key:=def} 字符串，返回 key 和 def 的值。
+// parseTag 解析 ${key:=def} 格式的字符串，然后返回 key 和 def 的值。
 func parseTag(tag string) (key string, def string, hasDef bool) {
 	ss := strings.SplitN(tag[2:len(tag)-1], ":=", 2)
 	if len(ss) > 1 {
@@ -274,7 +291,7 @@ func parseTag(tag string) (key string, def string, hasDef bool) {
 	return
 }
 
-func resolveString(p Properties, s string) (string, error) {
+func resolveString(p properties, s string) (string, error) {
 	n := len(s)
 
 	count := 0
@@ -326,16 +343,14 @@ func resolveString(p Properties, s string) (string, error) {
 	return s[:start] + s1 + s2, nil
 }
 
-func resolve(p Properties, opt bindOption) (string, error) {
-	var val string
-
-	if p.Has(opt.key) {
-		val = p.Get(opt.key)
-	} else if opt.hasDef {
-		val = opt.def
-	} else {
-		return "", fmt.Errorf("property %q %w", opt.key, ErrNotExist)
+func resolve(p properties, opt bindOption) (string, error) {
+	val := p.Get(opt.key)
+	if val == nil {
+		if opt.hasDef {
+			val = opt.def
+		} else {
+			return "", fmt.Errorf("property %q %w", opt.key, ErrNotExist)
+		}
 	}
-
-	return resolveString(p, val)
+	return resolveString(p, val.(string))
 }

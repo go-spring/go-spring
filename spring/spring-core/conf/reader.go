@@ -17,8 +17,6 @@
 package conf
 
 import (
-	"strings"
-
 	"github.com/go-spring/spring-core/conf/prop"
 	"github.com/go-spring/spring-core/conf/toml"
 	"github.com/go-spring/spring-core/conf/yaml"
@@ -37,5 +35,5 @@ type Reader func(b []byte) (map[string]interface{}, error)
 
 // NewReader 注册属性列表解析器，ext 是解析器支持的(标准)文件扩展名。
 func NewReader(r Reader, ext string) {
-	readers[strings.ToLower(ext)] = r
+	readers[ext] = r
 }

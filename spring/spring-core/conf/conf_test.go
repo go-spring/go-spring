@@ -20,13 +20,13 @@ import (
 	"container/list"
 	"fmt"
 	"reflect"
+	"sort"
 	"testing"
 	"time"
 
 	"github.com/go-spring/spring-core/assert"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/log"
-	"github.com/go-spring/spring-core/util"
 	"github.com/spf13/cast"
 )
 
@@ -34,27 +34,20 @@ func init() {
 	log.SetLevel(log.TraceLevel)
 }
 
-//func TestProperties_Load(t *testing.T) {
-//
-//	p := conf.New()
-//	err := p.Load("testdata/config/application.yaml")
-//	util.Panic(err).When(err != nil)
-//	err = p.Load("testdata/config/application.properties")
-//	util.Panic(err).When(err != nil)
-//
-//	m := p.FlatMap()
-//
-//	var keys []string
-//	for key := range m {
-//		keys = append(keys, key)
-//	}
-//
-//	sort.Strings(keys)
-//
-//	for _, k := range keys {
-//		fmt.Println(k+":", m[k])
-//	}
-//}
+func TestProperties_Load(t *testing.T) {
+
+	p := conf.New()
+	err := p.Load("testdata/config/application.yaml")
+	assert.Nil(t, err)
+	err = p.Load("testdata/config/application.properties")
+	assert.Nil(t, err)
+
+	keys := p.Keys()
+	sort.Strings(keys)
+	for _, k := range keys {
+		fmt.Println(k+":", p.Get(k))
+	}
+}
 
 func TestProperties_ReadProperties(t *testing.T) {
 
@@ -82,28 +75,27 @@ func TestProperties_ReadProperties(t *testing.T) {
 		}
 	})
 
-	// 目前使用的 properties 解析库不支持数组
-	//t.Run("array", func(t *testing.T) {
-	//
-	//	data := []struct {
-	//		key  string
-	//		str  string
-	//		val  interface{}
-	//		kind reflect.Kind
-	//	}{
-	//		{"bool[0]", "bool[0]=false", "false", reflect.String},
-	//		{"int[0]", "int[0]=3", "3", reflect.String},
-	//		{"float[0]", "float[0]=3.0", "3.0", reflect.String},
-	//		{"string[0]", "string[0]=\"3\"", "\"3\"", reflect.String},
-	//		{"string[0]", "string[0]=hello", "hello", reflect.String},
-	//	}
-	//
-	//	for _, d := range data {
-	//		p, _ := conf.Read([]byte(d.str), ".properties")
-	//		v,_ := p.Get(d.key)
-	//		assert.Equal(t, v, d.val)
-	//	}
-	//})
+	t.Run("array", func(t *testing.T) {
+
+		data := []struct {
+			key  string
+			str  string
+			val  interface{}
+			kind reflect.Kind
+		}{
+			{"bool[0]", "bool[0]=false", "false", reflect.String},
+			{"int[0]", "int[0]=3", "3", reflect.String},
+			{"float[0]", "float[0]=3.0", "3.0", reflect.String},
+			{"string[0]", "string[0]=\"3\"", "\"3\"", reflect.String},
+			{"string[0]", "string[0]=hello", "hello", reflect.String},
+		}
+
+		for _, d := range data {
+			p, _ := conf.Read([]byte(d.str), ".properties")
+			v := p.Get(d.key)
+			assert.Equal(t, v, d.val)
+		}
+	})
 
 	t.Run("map", func(t *testing.T) {
 
@@ -128,37 +120,36 @@ func TestProperties_ReadProperties(t *testing.T) {
 		}
 	})
 
-	// 目前使用的 properties 解析库不支持数组
-	//t.Run("array struct", func(t *testing.T) {
-	//
-	//	str := `
-	//          array[0].bool=false
-	//          array[0].int=3
-	//          array[0].float=3.0
-	//          array[0].string=hello
-	//          array[1].bool=true
-	//          array[1].int=20
-	//          array[1].float=0.2
-	//          array[1].string=hello
-	//        `
-	//
-	//	p, _ := conf.Read([]byte(str), ".properties")
-	//	data := map[string]interface{}{
-	//		"array[0].bool":   "false",
-	//		"array[0].int":    "3",
-	//		"array[0].float":  "3.0",
-	//		"array[0].string": "hello",
-	//		"array[1].bool":   "true",
-	//		"array[1].int":    "20",
-	//		"array[1].float":  "0.2",
-	//		"array[1].string": "hello",
-	//	}
-	//
-	//	for k, expect := range data {
-	//		v,_ := p.Get(k)
-	//		assert.Equal(t, v, expect)
-	//	}
-	//})
+	t.Run("array struct", func(t *testing.T) {
+
+		str := `
+	         array[0].bool=false
+	         array[0].int=3
+	         array[0].float=3.0
+	         array[0].string=hello
+	         array[1].bool=true
+	         array[1].int=20
+	         array[1].float=0.2
+	         array[1].string=hello
+	       `
+
+		p, _ := conf.Read([]byte(str), ".properties")
+		data := map[string]interface{}{
+			"array[0].bool":   "false",
+			"array[0].int":    "3",
+			"array[0].float":  "3.0",
+			"array[0].string": "hello",
+			"array[1].bool":   "true",
+			"array[1].int":    "20",
+			"array[1].float":  "0.2",
+			"array[1].string": "hello",
+		}
+
+		for k, expect := range data {
+			v := p.Get(k)
+			assert.Equal(t, v, expect)
+		}
+	})
 
 	t.Run("map struct", func(t *testing.T) {
 
@@ -523,60 +514,63 @@ func TestProperties_Get(t *testing.T) {
 		})
 
 		v = p.Get("NULL")
-		assert.Equal(t, v, "")
+		assert.Equal(t, v, nil)
 
 		v = p.Get("NULL", conf.Def("OK"))
 		assert.Equal(t, v, "OK")
 
-		v = p.Get("INT")
+		v = p.Get("Int")
 		assert.Equal(t, v, "3")
 
 		var v2 int
-		err := conf.Bind(p, &v2, conf.Key("int"))
-		util.Panic(err).When(err != nil)
+		err := p.Bind(&v2, conf.Key("Int"))
+		assert.Nil(t, err)
 		assert.Equal(t, v2, 3)
 
 		var u2 uint
-		err = conf.Bind(p, &u2, conf.Key("uint"))
-		util.Panic(err).When(err != nil)
+		err = p.Bind(&u2, conf.Key("Uint"))
+		assert.Nil(t, err)
 		assert.Equal(t, u2, uint(3))
 
 		var u3 uint32
-		err = conf.Bind(p, &u3, conf.Key("uint"))
-		util.Panic(err).When(err != nil)
+		err = p.Bind(&u3, conf.Key("Uint"))
+		assert.Nil(t, err)
 		assert.Equal(t, u3, uint32(3))
 
 		var f2 float32
-		err = conf.Bind(p, &f2, conf.Key("Float"))
-		util.Panic(err).When(err != nil)
+		err = p.Bind(&f2, conf.Key("Float"))
+		assert.Nil(t, err)
 		assert.Equal(t, f2, float32(3))
 
-		v = p.Get("BOOL")
+		v = p.Get("Bool")
 		b := cast.ToBool(v)
 		assert.Equal(t, b, true)
 
 		var b2 bool
-		err = conf.Bind(p, &b2, conf.Key("bool"))
-		util.Panic(err).When(err != nil)
+		err = p.Bind(&b2, conf.Key("Bool"))
+		assert.Nil(t, err)
 		assert.Equal(t, b2, true)
 
-		v = p.Get("INT")
+		v = p.Get("Int")
 		i := cast.ToInt64(v)
 		assert.Equal(t, i, int64(3))
 
-		v = p.Get("UINT")
+		v = p.Get("Uint")
 		u := cast.ToUint64(v)
 		assert.Equal(t, u, uint64(3))
 
-		v = p.Get("FLOAT")
+		v = p.Get("Float")
 		f := cast.ToFloat64(v)
 		assert.Equal(t, f, 3.0)
 
-		v = p.Get("STRING")
+		v = p.Get("String")
 		s := cast.ToString(v)
 		assert.Equal(t, s, "3")
 
-		v = p.Get("DURATION")
+		v = p.Get("string")
+		assert.Nil(t, v)
+
+		v = p.Get("Duration")
 		d := cast.ToDuration(v)
 		assert.Equal(t, d, time.Second*3)
 
@@ -585,8 +579,8 @@ func TestProperties_Get(t *testing.T) {
 		assert.Equal(t, ti, time.Date(2020, 02, 04, 20, 02, 04, 0, time.UTC))
 
 		var ss2 []string
-		err = conf.Bind(p, &ss2, conf.Key("StringSlice"))
-		util.Panic(err).When(err != nil)
+		err = p.Bind(&ss2, conf.Key("StringSlice"))
+		assert.Nil(t, err)
 		assert.Equal(t, ss2, []string{"3", "4"})
 	})
 
@@ -619,8 +613,8 @@ func TestProperties_Get(t *testing.T) {
 		assert.Equal(t, v, "6")
 		v = p.Get("a[2].d[1]")
 		assert.Equal(t, v, "6")
-		ok := p.Has("a[2].d[2]")
-		assert.Equal(t, ok, false)
+		v = p.Get("a[2].d[2]")
+		assert.Nil(t, v)
 	})
 }
 
@@ -685,22 +679,22 @@ func TestProperties_Bind(t *testing.T) {
 				V int `value:"${:=3}"`
 			} `value:"${s:=}"`
 		}{}
-		err := conf.Bind(p, v)
-		util.Panic(err).When(err != nil)
+		err := p.Bind(v)
+		assert.Nil(t, err)
 		assert.Equal(t, v.S.V, 3)
 	})
 
 	t.Run("simple bind", func(t *testing.T) {
 		p, err := conf.Load("testdata/config/application.yaml")
-		util.Panic(err).When(err != nil)
+		assert.Nil(t, err)
 
 		dbConfig1 := DbConfig{}
-		err = conf.Bind(p, &dbConfig1)
-		util.Panic(err).When(err != nil)
+		err = p.Bind(&dbConfig1)
+		assert.Nil(t, err)
 
 		dbConfig2 := DbConfig{}
-		err = conf.Bind(p, &dbConfig2, conf.Tag("${prefix}"))
-		util.Panic(err).When(err != nil)
+		err = p.Bind(&dbConfig2, conf.Tag("${prefix}"))
+		assert.Nil(t, err)
 
 		// 实际上是取的两个节点，只是值是一样的而已
 		assert.Equal(t, dbConfig1, dbConfig2)
@@ -709,11 +703,11 @@ func TestProperties_Bind(t *testing.T) {
 	t.Run("struct bind with tag", func(t *testing.T) {
 
 		p, err := conf.Load("testdata/config/application.yaml")
-		util.Panic(err).When(err != nil)
+		assert.Nil(t, err)
 
 		dbConfig := TagNestedDbConfig{}
-		err = conf.Bind(p, &dbConfig)
-		util.Panic(err).When(err != nil)
+		err = p.Bind(&dbConfig)
+		assert.Nil(t, err)
 
 		fmt.Println(dbConfig)
 	})
@@ -721,15 +715,15 @@ func TestProperties_Bind(t *testing.T) {
 	t.Run("struct bind without tag", func(t *testing.T) {
 
 		p, err := conf.Load("testdata/config/application.yaml")
-		util.Panic(err).When(err != nil)
+		assert.Nil(t, err)
 
 		dbConfig1 := NestedDbConfig{}
-		err = conf.Bind(p, &dbConfig1)
-		util.Panic(err).When(err != nil)
+		err = p.Bind(&dbConfig1)
+		assert.Nil(t, err)
 
 		dbConfig2 := NestedDbConfig{}
-		err = conf.Bind(p, &dbConfig2, conf.Tag("${prefix}"))
-		util.Panic(err).When(err != nil)
+		err = p.Bind(&dbConfig2, conf.Tag("${prefix}"))
+		assert.Nil(t, err)
 
 		// 实际上是取的两个节点，只是值是一样的而已
 		assert.Equal(t, dbConfig1, dbConfig2)
@@ -744,8 +738,8 @@ func TestProperties_Bind(t *testing.T) {
 		p.Set("a.b3", "b3")
 
 		var m map[string]string
-		err := conf.Bind(p, &m, conf.Tag("${a}"))
-		util.Panic(err).When(err != nil)
+		err := p.Bind(&m, conf.Tag("${a}"))
+		assert.Nil(t, err)
 
 		assert.Equal(t, len(m), 3)
 		assert.Equal(t, m["b1"], "b1")
@@ -754,11 +748,11 @@ func TestProperties_Bind(t *testing.T) {
 	t.Run("simple bind from file", func(t *testing.T) {
 
 		p, err := conf.Load("testdata/config/application.yaml")
-		util.Panic(err).When(err != nil)
+		assert.Nil(t, err)
 
 		var m map[string]string
-		err = conf.Bind(p, &m, conf.Tag("${camera}"))
-		util.Panic(err).When(err != nil)
+		err = p.Bind(&m, conf.Tag("${camera}"))
+		assert.Nil(t, err)
 
 		assert.Equal(t, len(m), 3)
 		assert.Equal(t, m["floor1"], "camera_floor1")
@@ -767,18 +761,18 @@ func TestProperties_Bind(t *testing.T) {
 	t.Run("struct bind from file", func(t *testing.T) {
 
 		p, err := conf.Load("testdata/config/application.yaml")
-		util.Panic(err).When(err != nil)
+		assert.Nil(t, err)
 
 		var m map[string]NestedDB
-		err = conf.Bind(p, &m, conf.Tag("${db_map}"))
-		util.Panic(err).When(err != nil)
+		err = p.Bind(&m, conf.Tag("${db_map}"))
+		assert.Nil(t, err)
 
 		assert.Equal(t, len(m), 2)
 		assert.Equal(t, m["d1"].DB, "db1")
 
 		dbConfig2 := NestedDbMapConfig{}
-		err = conf.Bind(p, &dbConfig2, conf.Tag("${prefix_map}"))
-		util.Panic(err).When(err != nil)
+		err = p.Bind(&dbConfig2, conf.Tag("${prefix_map}"))
+		assert.Nil(t, err)
 
 		assert.Equal(t, len(dbConfig2.DB), 2)
 		assert.Equal(t, dbConfig2.DB["d1"].DB, "db1")
@@ -786,13 +780,13 @@ func TestProperties_Bind(t *testing.T) {
 
 	t.Run("ignore interface", func(t *testing.T) {
 		p := conf.New()
-		err := conf.Bind(p, &struct{ fmt.Stringer }{})
+		err := p.Bind(&struct{ fmt.Stringer }{})
 		assert.Nil(t, err)
 	})
 
 	t.Run("ignore pointer", func(t *testing.T) {
 		p := conf.New()
-		err := conf.Bind(p, list.New())
+		err := p.Bind(list.New())
 		assert.Nil(t, err)
 	})
 }
@@ -811,7 +805,7 @@ func TestProperties_Ref(t *testing.T) {
 
 	t.Run("not config", func(t *testing.T) {
 		p := conf.New()
-		err := conf.Bind(p, &httpLog)
+		err := p.Bind(&httpLog)
 		assert.Error(t, err, "property \\\"app.dir\\\" not exist")
 	})
 
@@ -821,15 +815,15 @@ func TestProperties_Ref(t *testing.T) {
 		appDir := "/home/log"
 		p.Set("app.dir", appDir)
 
-		err := conf.Bind(p, &httpLog)
-		util.Panic(err).When(err != nil)
+		err := p.Bind(&httpLog)
+		assert.Nil(t, err)
 		assert.Equal(t, httpLog.Dir, appDir)
 		assert.Equal(t, httpLog.NestedDir, "./log")
 		assert.Equal(t, httpLog.NestedEmptyDir, "")
 		assert.Equal(t, httpLog.NestedNestedDir, "./log")
 
-		err = conf.Bind(p, &mqLog)
-		util.Panic(err).When(err != nil)
+		err = p.Bind(&mqLog)
+		assert.Nil(t, err)
 		assert.Equal(t, mqLog.Dir, appDir)
 		assert.Equal(t, mqLog.NestedDir, "./log")
 		assert.Equal(t, mqLog.NestedEmptyDir, "")
@@ -841,8 +835,8 @@ func TestProperties_Ref(t *testing.T) {
 		var s struct {
 			KeyIsEmpty string `value:"${:=kie}"`
 		}
-		err := conf.Bind(p, &s)
-		util.Panic(err).When(err != nil)
+		err := p.Bind(&s)
+		assert.Nil(t, err)
 		assert.Equal(t, s.KeyIsEmpty, "kie")
 	})
 }
@@ -859,7 +853,7 @@ func TestBindMap(t *testing.T) {
 		B3 string `value:"${b3}"`
 	}
 	p := conf.Map(m)
-	err := conf.Bind(p, &r)
+	err := p.Bind(&r)
 	assert.Nil(t, err)
 	assert.Equal(t, r["a"].B1, "b1")
 }
@@ -867,14 +861,14 @@ func TestBindMap(t *testing.T) {
 func TestInterpolate(t *testing.T) {
 	p := conf.New()
 	p.Set("name", "Jim")
-	str, _ := conf.Resolve(p, "my name is ${name")
+	str, _ := p.Resolve("my name is ${name")
 	assert.Equal(t, str, "my name is ${name")
-	str, _ = conf.Resolve(p, "my name is ${name}")
+	str, _ = p.Resolve("my name is ${name}")
 	assert.Equal(t, str, "my name is Jim")
-	str, _ = conf.Resolve(p, "my name is ${name}${name}")
+	str, _ = p.Resolve("my name is ${name}${name}")
 	assert.Equal(t, str, "my name is JimJim")
-	str, _ = conf.Resolve(p, "my name is ${name} my name is ${name")
+	str, _ = p.Resolve("my name is ${name} my name is ${name")
 	assert.Equal(t, str, "my name is Jim my name is ${name")
-	str, _ = conf.Resolve(p, "my name is ${name} my name is ${name}")
+	str, _ = p.Resolve("my name is ${name} my name is ${name}")
 	assert.Equal(t, str, "my name is Jim my name is Jim")
 }
