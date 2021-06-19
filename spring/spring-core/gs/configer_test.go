@@ -22,7 +22,7 @@ import (
 	"testing"
 
 	"github.com/go-spring/spring-core/assert"
-	"github.com/go-spring/spring-core/sort"
+	"github.com/go-spring/spring-core/util"
 )
 
 func TestSortConfigers(t *testing.T) {
@@ -39,8 +39,7 @@ func TestSortConfigers(t *testing.T) {
 			configers.PushBack(f2)
 			configers.PushBack(f7)
 
-			sorted := sort.Triple(configers, getBeforeList)
-
+			sorted := util.TripleSort(configers, getBeforeList)
 			for e := sorted.Front(); e != nil; e = e.Next() {
 				fmt.Println(e.Value.(*Configer).name)
 			}
@@ -59,7 +58,7 @@ func TestSortConfigers(t *testing.T) {
 		configers.PushBack(f2)
 		configers.PushBack(f7)
 
-		sorted := sort.Triple(configers, getBeforeList)
+		sorted := util.TripleSort(configers, getBeforeList)
 
 		expect := list.New()
 		expect.PushBack(f7)

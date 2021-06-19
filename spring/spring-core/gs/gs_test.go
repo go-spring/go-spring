@@ -1364,7 +1364,7 @@ func TestApplicationContext_ValueBincoreng(t *testing.T) {
 
 func TestApplicationContext_Collect(t *testing.T) {
 
-	t.Run("more than one *", func(t *testing.T) {
+	t.Run("", func(t *testing.T) {
 
 		c, ch := container()
 		c.Property("redis.endpoints", "redis://localhost:6379")
@@ -1373,91 +1373,35 @@ func TestApplicationContext_Collect(t *testing.T) {
 		c.Refresh()
 
 		p := <-ch
-
-		var rcs []*RecoresCluster
-		err := p.Collect(&rcs, "*", "*")
-		assert.Error(t, err, "more than one \\* in collection \"\\[\\*,\\*]\"")
-	})
-
-	t.Run("before *", func(t *testing.T) {
-
-		d1 := new(RecoresCluster)
-		d2 := new(RecoresCluster)
-
-		c, ch := container()
-		c.Property("redis.endpoints", "redis://localhost:6379")
-		c.Object(d1).WithName("one")
-		c.Object(d2)
-		c.Refresh()
-
-		p := <-ch
-
-		var rcs []*RecoresCluster
-		err := p.Collect(&rcs, "one", "*")
-		assert.Nil(t, err)
-
-		assert.Equal(t, len(rcs), 2)
-		assert.Equal(t, rcs[0], d1)
-		assert.Equal(t, rcs[1], d2)
-	})
-
-	t.Run("after *", func(t *testing.T) {
-
-		d1 := new(RecoresCluster)
-		d2 := new(RecoresCluster)
-
-		c, ch := container()
-		c.Property("redis.endpoints", "redis://localhost:6379")
-		c.Object(d1).WithName("one")
-		c.Object(d2)
-		c.Refresh()
-
-		p := <-ch
-
-		var rcs []*RecoresCluster
-		err := p.Collect(&rcs, "one", "*")
-		assert.Nil(t, err)
-
-		assert.Equal(t, len(rcs), 2)
-		assert.Equal(t, rcs[1], d1)
-		assert.Equal(t, rcs[0], d2)
-	})
-
-	t.Run("only *", func(t *testing.T) {
-
-		c, ch := container()
-		c.Property("redis.endpoints", "redis://localhost:6379")
-		c.Object(new(RecoresCluster)).WithName("one")
-		c.Object(new(RecoresCluster))
-		c.Refresh()
-
-		p := <-ch
-
-		var rcs []*RecoresCluster
-		err := p.Collect(&rcs, "*")
-
-		assert.Nil(t, err)
-		assert.Equal(t, len(rcs), 2)
-	})
-
-	c, _ := container()
-	c.Property("redis.endpoints", "redis://localhost:6379")
-	c.Object([]*RecoresCluster{new(RecoresCluster)})
-	c.Object(new(RecoresCluster))
-
-	intBean := c.Object(new(int)).Init(func(_ *int, p gs.Pandora) {
 
 		var rcs []*RecoresCluster
 		err := p.Collect(&rcs)
-		fmt.Println(json.ToString(rcs))
 
 		assert.Nil(t, err)
 		assert.Equal(t, len(rcs), 2)
-		assert.Equal(t, rcs[0].Endpoints, "redis://localhost:6379")
 	})
-	assert.Equal(t, intBean.Name(), "*int")
 
-	c.Refresh()
+	t.Run("", func(t *testing.T) {
+
+		c, _ := container()
+		c.Property("redis.endpoints", "redis://localhost:6379")
+		c.Object([]*RecoresCluster{new(RecoresCluster)})
+		c.Object(new(RecoresCluster))
+
+		intBean := c.Object(new(int)).Init(func(_ *int, p gs.Pandora) {
+
+			var rcs []*RecoresCluster
+			err := p.Collect(&rcs)
+			fmt.Println(json.ToString(rcs))
+
+			assert.Nil(t, err)
+			assert.Equal(t, len(rcs), 2)
+			assert.Equal(t, rcs[0].Endpoints, "redis://localhost:6379")
+		})
+		assert.Equal(t, intBean.Name(), "*int")
+
+		c.Refresh()
+	})
 }
 
 func TestApplicationContext_WireSliceBean(t *testing.T) {
@@ -3269,4 +3213,34 @@ func TestEmptyStruct(t *testing.T) {
 	// objA 和 objB 的地址相同但是类型确实不一样。
 	fmt.Printf("objA:%p objB:%p\n", objA, objB)
 	fmt.Printf("objA:%#v objB:%#v\n", objA, objB)
+}
+
+func TestMapCollection(t *testing.T) {
+
+	type mapValue struct {
+		v string
+	}
+
+	t.Run("", func(t *testing.T) {
+
+		c, ch := container()
+		c.Object(&mapValue{"a"}).WithName("a").Order(1)
+		c.Object(&mapValue{"b"}).WithName("b").Order(2)
+		c.Object([]*mapValue{{"c"}, {"d"}}).WithName("cd").Order(3)
+		c.Object(map[string]*mapValue{"e": {"e"}, "f": {"f"}}).WithName("ef").Order(4)
+		c.Refresh()
+
+		p := <-ch
+
+		var vSlice []*mapValue
+		err := p.Collect(&vSlice)
+		assert.Nil(t, err)
+		fmt.Println(vSlice)
+
+		var vMap map[string]*mapValue
+		err = p.Collect(&vMap)
+		assert.Nil(t, err)
+		fmt.Println(vMap)
+	})
+
 }

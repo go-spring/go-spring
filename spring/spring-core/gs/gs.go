@@ -31,7 +31,6 @@ import (
 	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/log"
-	"github.com/go-spring/spring-core/sort"
 	"github.com/go-spring/spring-core/util"
 )
 
@@ -163,10 +162,9 @@ func (c *Container) config(configer *Configer) *Configer {
 	return configer
 }
 
-// find 查找符合条件的单例 bean，考虑到该方法可能的使用场景，因此在找不到符合条件
-// 的 bean 时返回 nil，在找到多于 1 个符合条件的 bean 时返回 error，而且该函数
-// 只保证返回的 bean 是有效(未被标记为删除)的，而不保证已经完成属性绑定和依赖注入。
-func (c *Container) find(selector bean.Selector) (ret []*BeanDefinition, _ error) {
+// find 查找符合条件的 bean，注意该函数只能保证返回的 bean 是有效的(即未被标
+// 记为删除)的，而不能保证已经完成属性绑定和依赖注入。
+func (c *Container) find(selector bean.Selector) ([]*BeanDefinition, error) {
 	c.callAfterRefreshing()
 
 	finder := func(fn func(*BeanDefinition) bool) ([]*BeanDefinition, error) {
@@ -359,7 +357,7 @@ func (c *Container) runConfigers(assembly *beanAssembly) error {
 		configerList.PushBack(g)
 	}
 
-	configerList = sort.Triple(configerList, getBeforeList)
+	configerList = util.TripleSort(configerList, getBeforeList)
 	for e := configerList.Front(); e != nil; e = e.Next() {
 		g := e.Value.(*Configer)
 		if err := g.fn.Prepare(assembly); err != nil {
@@ -407,6 +405,7 @@ func (c *Container) runDestroyers() {
 // Go 创建安全可等待的 goroutine，fn 要求的 ctx 对象由 Container 提供，当
 // Container 关闭时 ctx 发出 Done 信号， fn 在接收到此信号后应当立即退出。
 func (c *Container) Go(fn func(ctx context.Context)) {
+
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
