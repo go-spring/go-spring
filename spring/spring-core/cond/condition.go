@@ -394,5 +394,5 @@ func OnProfile(profile string) *conditional {
 
 // OnProfile 添加一个 onProfile 条件。
 func (c *conditional) OnProfile(profile string) *conditional {
-	return c.On(&onPropertyValue{name: conf.SpringProfile, havingValue: profile})
+	return c.On(&onPropertyValue{name: util.SpringProfile, havingValue: profile})
 }

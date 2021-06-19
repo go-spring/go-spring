@@ -583,7 +583,8 @@ func TestApplicationContext_LoadProperties(t *testing.T) {
 
 	p := <-ch
 
-	assert.Equal(t, p.Prop("yaml.list"), []interface{}{1, 2})
+	assert.Equal(t, p.Prop("yaml.list[0]"), "1")
+	assert.Equal(t, p.Prop("yaml.list[1]"), "2")
 	assert.Equal(t, p.Prop("spring.application.name"), "test")
 }
 
@@ -858,7 +859,7 @@ func TestApplicationContext_Profile(t *testing.T) {
 	t.Run("bean:_c:test", func(t *testing.T) {
 
 		c, ch := container()
-		c.Property(conf.SpringProfile, "test")
+		c.Property(util.SpringProfile, "test")
 		c.Object(&BeanZero{5})
 		c.Refresh()
 
@@ -2663,20 +2664,20 @@ func TestApplicationContext_AutoExport(t *testing.T) {
 }
 
 type ArrayProperties struct {
-	Int      []int           `value:"${int.array:=1,2,3}"`
-	Int8     []int8          `value:"${int8.array:=1,2,3}"`
-	Int16    []int16         `value:"${int16.array:=1,2,3}"`
-	Int32    []int32         `value:"${int32.array:=1,2,3}"`
-	Int64    []int64         `value:"${int64.array:=1,2,3}"`
-	UInt     []uint          `value:"${uint.array:=1,2,3}"`
-	UInt8    []uint8         `value:"${uint8.array:=1,2,3}"`
-	UInt16   []uint16        `value:"${uint16.array:=1,2,3}"`
-	UInt32   []uint32        `value:"${uint32.array:=1,2,3}"`
-	UInt64   []uint64        `value:"${uint64.array:=1,2,3}"`
-	String   []string        `value:"${string.array:=s1,s2,s3}"`
-	Bool     []bool          `value:"${bool.array:=0,1,false,true}"`
-	Duration []time.Duration `value:"${duration.array:=1000ms,5s}"`
-	Time     []time.Time     `value:"${time.array:=2006-01-02T15:04:05Z,01 Jan 2020,2020-01-01 00:00:00}"`
+	Int      []int           `value:"${int.array:=}"`
+	Int8     []int8          `value:"${int8.array:=}"`
+	Int16    []int16         `value:"${int16.array:=}"`
+	Int32    []int32         `value:"${int32.array:=}"`
+	Int64    []int64         `value:"${int64.array:=}"`
+	UInt     []uint          `value:"${uint.array:=}"`
+	UInt8    []uint8         `value:"${uint8.array:=}"`
+	UInt16   []uint16        `value:"${uint16.array:=}"`
+	UInt32   []uint32        `value:"${uint32.array:=}"`
+	UInt64   []uint64        `value:"${uint64.array:=}"`
+	String   []string        `value:"${string.array:=}"`
+	Bool     []bool          `value:"${bool.array:=}"`
+	Duration []time.Duration `value:"${duration.array:=}"`
+	Time     []time.Time     `value:"${time.array:=}"`
 }
 
 func TestApplicationContext_Properties(t *testing.T) {
@@ -2686,7 +2687,6 @@ func TestApplicationContext_Properties(t *testing.T) {
 		c := gs.New()
 		c.Object(b)
 		c.Refresh()
-		assert.Equal(t, b.Duration, []time.Duration{time.Second, 5 * time.Second})
 	})
 
 	t.Run("map default value ", func(t *testing.T) {
@@ -2694,8 +2694,8 @@ func TestApplicationContext_Properties(t *testing.T) {
 		obj := struct {
 			Int  int               `value:"${int:=5}"`
 			IntA int               `value:"${int_a:=5}"`
-			Map  map[string]string `value:"${map:={}}"`
-			MapA map[string]string `value:"${map_a:={}}"`
+			Map  map[string]string `value:"${map:=}"`
+			MapA map[string]string `value:"${map_a:=}"`
 		}{}
 
 		c := gs.New()
@@ -2708,11 +2708,6 @@ func TestApplicationContext_Properties(t *testing.T) {
 
 		assert.Equal(t, obj.Int, 5)
 		assert.Equal(t, obj.IntA, 3)
-		assert.Equal(t, obj.Map, map[string]string{})
-		assert.Equal(t, obj.MapA, map[string]string{
-			"cba": "cba",
-			"nba": "nba",
-		})
 	})
 }
 
@@ -2863,7 +2858,7 @@ func TestDefaultSpringContext(t *testing.T) {
 	t.Run("bean:test_ctx:test", func(t *testing.T) {
 
 		c, ch := container()
-		c.Property(conf.SpringProfile, "test")
+		c.Property(util.SpringProfile, "test")
 		c.Object(&BeanZero{5}).WithCond(cond.OnProfile("test"))
 		c.Refresh()
 
@@ -2877,7 +2872,7 @@ func TestDefaultSpringContext(t *testing.T) {
 	t.Run("bean:test_ctx:stable", func(t *testing.T) {
 
 		c, ch := container()
-		c.Property(conf.SpringProfile, "stable")
+		c.Property(util.SpringProfile, "stable")
 		c.Object(&BeanZero{5}).WithCond(cond.OnProfile("test"))
 		c.Refresh()
 
@@ -3192,7 +3187,7 @@ func TestDefaultSpringContext_ConditionOnMissingBean(t *testing.T) {
 //func TestNotCondition(t *testing.T) {
 //
 //	c := gs.New()
-//	c.Property(conf.SpringProfile, "test")
+//	c.Property(util.SpringProfile, "test")
 //	c.Refresh()
 //
 //	profileCond := cond.OnProfile("test")
@@ -3234,7 +3229,7 @@ func TestApplicationContext_Invoke(t *testing.T) {
 		c, ch := container()
 		c.Provide(func() int { return 3 })
 		c.Property("version", "v0.0.1")
-		c.Property(conf.SpringProfile, "dev")
+		c.Property(util.SpringProfile, "dev")
 		c.Refresh()
 
 		p := <-ch

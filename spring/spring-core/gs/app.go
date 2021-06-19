@@ -252,12 +252,11 @@ func (app *App) prepare() {
 	util.Panic(err).When(err != nil)
 
 	profile := func([]*conf.Properties) string {
-		keys := []string{conf.SpringProfile, SPRING_PROFILE}
+		keys := []string{util.SpringProfile, SPRING_PROFILE}
 		for _, c := range p {
 			for _, k := range keys {
-				v := c.Get(k, conf.DisableResolve())
-				if v != nil {
-					return cast.ToString(v)
+				if v := c.Get(k); v != nil {
+					return v.(string)
 				}
 			}
 		}
@@ -267,14 +266,14 @@ func (app *App) prepare() {
 	if profile != "" {
 		err = app.loadConfigFile(profileConfig, profile)
 		util.Panic(err).When(err != nil)
-		app.c.Property(conf.SpringProfile, profile)
+		app.c.Property(util.SpringProfile, profile)
 	}
 
-	m := make(map[string]interface{})
+	m := make(map[string]string)
 	for _, c := range p {
-		for k, v := range util.FlatMap(c.Map()) {
+		for _, k := range c.Keys() {
 			if _, ok := m[k]; !ok {
-				m[k] = v
+				m[k] = c.Get(k).(string)
 			}
 		}
 	}
