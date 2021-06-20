@@ -29,10 +29,6 @@ import (
 func startApplication(cfgLocation ...string) (*gs.App, gs.Pandora) {
 	app := gs.NewApp()
 
-	app.Property("application-event.collection", "[]?")
-	app.Property("command-line-runner.collection", "[]?")
-	app.Property("spring.application.open-pandora", true)
-
 	var p gs.Pandora
 	app.Config(func(b gs.Pandora) { p = b })
 

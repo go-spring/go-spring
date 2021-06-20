@@ -43,7 +43,7 @@ import (
 )
 
 func container() (*gs.Container, chan gs.Pandora) {
-	c := gs.New(gs.OpenPandora())
+	c := gs.New()
 	ch := make(chan gs.Pandora)
 	c.Config(func(p gs.Pandora) {
 		go func() {

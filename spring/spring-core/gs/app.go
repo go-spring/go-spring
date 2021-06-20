@@ -35,7 +35,6 @@ import (
 	"github.com/go-spring/spring-core/mq"
 	"github.com/go-spring/spring-core/util"
 	"github.com/go-spring/spring-core/web"
-	"github.com/spf13/cast"
 )
 
 const SPRING_PROFILE = "SPRING_PROFILE"
@@ -102,12 +101,6 @@ func (app *App) start(cfgLocation ...string) {
 
 	app.Object(app)
 	app.prepare()
-
-	openPandora := app.c.p.Get("spring.application.open-pandora")
-	if cast.ToBool(openPandora) {
-		app.Object(&pandora{app.c}).Export((*Pandora)(nil))
-	}
-
 	app.c.Refresh()
 
 	// 执行命令行启动器

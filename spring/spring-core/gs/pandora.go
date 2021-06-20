@@ -23,6 +23,7 @@ import (
 	"github.com/go-spring/spring-core/arg"
 	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/conf"
+	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
 )
 
@@ -89,9 +90,16 @@ func (p *pandora) Get(i interface{}, opts ...GetOption) error {
 		opt(&a)
 	}
 
-	w := toAssembly(p.c)
+	stack := newWiringStack()
+
+	defer func() {
+		if len(stack.beans) > 0 {
+			log.Infof("wiring path %s", stack.path())
+		}
+	}()
+
 	v := reflect.ValueOf(i).Elem()
-	return w.getBean(toSingletonTag(a.selector), v)
+	return p.c.getBean(v, toSingletonTag(a.selector), stack)
 }
 
 func (p *pandora) Find(selector bean.Selector) ([]bean.Definition, error) {
@@ -123,12 +131,20 @@ func (p *pandora) Collect(i interface{}, selectors ...bean.Selector) error {
 		return errors.New("i must be slice ptr")
 	}
 
+	stack := newWiringStack()
+
+	defer func() {
+		if len(stack.beans) > 0 {
+			log.Infof("wiring path %s", stack.path())
+		}
+	}()
+
 	var tag collectionTag
 	for _, selector := range selectors {
 		s := toSingletonTag(selector)
 		tag.beanTags = append(tag.beanTags, s)
 	}
-	return toAssembly(p.c).collectBeans(tag, v.Elem())
+	return p.c.collectBeans(v.Elem(), tag, stack)
 }
 
 // Bind 对传入的对象进行属性绑定，注意该方法不会进行依赖注入，支持基本数据类型
@@ -144,8 +160,16 @@ func (p *pandora) Bind(i interface{}, opts ...conf.BindOption) error {
 func (p *pandora) Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error) {
 	p.c.callAfterRefreshing()
 
+	stack := newWiringStack()
+
+	defer func() {
+		if len(stack.beans) > 0 {
+			log.Infof("wiring path %s", stack.path())
+		}
+	}()
+
 	b := NewBean(objOrCtor, ctorArgs...)
-	err := toAssembly(p.c).wireBean(b)
+	err := p.c.wireBean(b, stack)
 	if err != nil {
 		return nil, err
 	}
@@ -160,10 +184,17 @@ func (p *pandora) Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, error)
 		return nil, errors.New("fn should be function")
 	}
 
-	c := arg.Bind(fn, args, arg.Skip(1))
+	stack := newWiringStack()
 
-	err := c.Prepare(toAssembly(p.c))
-	if err != nil {
+	defer func() {
+		if len(stack.beans) > 0 {
+			log.Infof("wiring path %s", stack.path())
+		}
+	}()
+
+	ctx := newArgContext(p.c, stack)
+	c := arg.Bind(fn, args, arg.Skip(1))
+	if err := c.Prepare(ctx); err != nil {
 		return nil, err
 	}
 
