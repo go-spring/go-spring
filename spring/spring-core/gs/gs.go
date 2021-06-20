@@ -67,7 +67,7 @@ type Container struct {
 	beansByType map[reflect.Type][]*BeanDefinition
 
 	configers  []*Configer
-	destroyers []*BeanDefinition
+	destroyers []destroyer0
 }
 
 // New 创建 IoC 容器。
@@ -223,13 +223,6 @@ func (c *Container) Refresh() {
 	c.destroyers = stack.sortDestroyers()
 	c.state = Refreshed
 
-	for _, b := range c.destroyers {
-		o := arg.Receiver(b.Value())
-		ctx := newArgContext(c, stack)
-		err = b.destroy.Prepare(ctx, o)
-		util.Panic(err).When(err != nil)
-	}
-
 	log.Info("container refreshed successfully")
 }
 
@@ -345,10 +338,7 @@ func (c *Container) runConfigers(stack *wiringStack) error {
 	for e := configerList.Front(); e != nil; e = e.Next() {
 		g := e.Value.(*Configer)
 		ctx := newArgContext(c, stack)
-		if err := g.fn.Prepare(ctx); err != nil {
-			return err
-		}
-		if _, err := g.fn.Call(); err != nil {
+		if _, err := g.fn.Call(ctx); err != nil {
 			return err
 		}
 	}
@@ -380,9 +370,11 @@ func (c *Container) Close() {
 }
 
 func (c *Container) runDestroyers() {
-	for _, b := range c.destroyers {
-		if _, err := b.destroy.Call(); err != nil {
-			log.Error(err)
+	for _, d := range c.destroyers {
+		fnValue := reflect.ValueOf(d.fn)
+		out := fnValue.Call([]reflect.Value{d.v})
+		if len(out) > 0 && !out[0].IsNil() {
+			log.Error(out[0].Interface().(error))
 		}
 	}
 }
@@ -452,14 +444,15 @@ func (s *wiringStack) saveDestroyer(b *BeanDefinition) *destroyer {
 }
 
 // sortDestroyers 对销毁函数进行排序
-func (s *wiringStack) sortDestroyers() (ret []*BeanDefinition) {
+func (s *wiringStack) sortDestroyers() (ret []destroyer0) {
 	destroyers := list.New()
 	for _, d := range s.destroyerMap {
 		destroyers.PushBack(d)
 	}
 	destroyers = util.TripleSort(destroyers, getBeforeDestroyers)
 	for e := destroyers.Front(); e != nil; e = e.Next() {
-		ret = append(ret, e.Value.(*destroyer).current)
+		d := e.Value.(*destroyer).current
+		ret = append(ret, destroyer0{d.destroy, d.Value()})
 	}
 	return ret
 }
@@ -629,14 +622,11 @@ func (c *Container) wireBean(b *BeanDefinition, stack *wiringStack) error {
 	}
 
 	// 执行 bean 的初始化函数。
-	if r := b.init; r != nil {
-		ctx := newArgContext(c, stack)
-		err = r.Prepare(ctx, arg.Receiver(b.Value()))
-		if err != nil {
-			return err
-		}
-		if _, err = r.Call(); err != nil {
-			return err
+	if b.init != nil {
+		fnValue := reflect.ValueOf(b.init)
+		out := fnValue.Call([]reflect.Value{b.Value()})
+		if len(out) > 0 && !out[0].IsNil() {
+			return out[0].Interface().(error)
 		}
 	}
 
@@ -652,13 +642,7 @@ func (c *Container) getBeanValue(b *BeanDefinition, stack *wiringStack) (reflect
 		return b.Value(), nil
 	}
 
-	ctx := newArgContext(c, stack)
-	err := b.f.Prepare(ctx)
-	if err != nil {
-		return reflect.Value{}, err
-	}
-
-	out, err := b.f.Call()
+	out, err := b.f.Call(newArgContext(c, stack))
 	if err != nil {
 		return reflect.Value{}, fmt.Errorf("constructor bean:%q return error: %v", b.FileLine(), err)
 	}
@@ -960,7 +944,7 @@ func (c *ArgContext) Bind(tag string, v reflect.Value) error {
 	return c.c.p.Bind(v, conf.Tag(tag))
 }
 
-// Autowire 根据 tag 的内容自动判断注入模式，是单例模式，还是收集模式。
-func (c *ArgContext) Autowire(tag string, v reflect.Value) error {
+// Wire 根据 tag 的内容自动判断注入模式，是单例模式，还是收集模式。
+func (c *ArgContext) Wire(tag string, v reflect.Value) error {
 	return c.c.autowire(tag, v, c.stack)
 }

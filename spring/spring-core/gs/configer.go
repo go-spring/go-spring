@@ -48,7 +48,7 @@ func NewConfiger(fn interface{}, args ...arg.Arg) *Configer {
 		panic(errors.New("fn should be func(...) or func(...)error"))
 	}
 
-	return &Configer{fn: arg.Bind(fn, args, arg.Skip(2))}
+	return &Configer{fn: arg.Bind(fn, args, 2)}
 }
 
 // WithName 为 Configer 设置一个名称。

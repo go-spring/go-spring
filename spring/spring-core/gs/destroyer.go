@@ -18,6 +18,7 @@ package gs
 
 import (
 	"container/list"
+	"reflect"
 )
 
 // destroyer 保存具有销毁函数的 Bean 以及销毁函数的调用顺序。
@@ -54,4 +55,9 @@ func getBeforeDestroyers(destroyers *list.List, i interface{}) *list.List {
 		}
 	}
 	return result
+}
+
+type destroyer0 struct {
+	fn interface{}
+	v  reflect.Value
 }

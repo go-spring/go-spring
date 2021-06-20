@@ -179,8 +179,8 @@ type BeanDefinition struct {
 	cond      cond.Condition  // 判断条件
 	primary   bool            // 是否为主版本
 	order     int             // 收集时的顺序
-	init      arg.Callable    // 初始化函数
-	destroy   arg.Callable    // 销毁函数
+	init      interface{}     // 初始化函数
+	destroy   interface{}     // 销毁函数
 	dependsOn []bean.Selector // 间接依赖项
 
 	exports map[reflect.Type]struct{} // 导出的接口
@@ -319,18 +319,18 @@ func validLifeCycleFunc(fnType reflect.Type, beanType reflect.Type) bool {
 }
 
 // Init 设置 Bean 的初始化函数。
-func (d *BeanDefinition) Init(fn interface{}, args ...arg.Arg) *BeanDefinition {
+func (d *BeanDefinition) Init(fn interface{}) *BeanDefinition {
 	if validLifeCycleFunc(reflect.TypeOf(fn), d.Type()) {
-		d.init = arg.Bind(fn, args, arg.WithReceiver(), arg.Skip(1))
+		d.init = fn
 		return d
 	}
 	panic(errors.New("init should be func(bean) or func(bean)error"))
 }
 
 // Destroy 设置 Bean 的销毁函数。
-func (d *BeanDefinition) Destroy(fn interface{}, args ...arg.Arg) *BeanDefinition {
+func (d *BeanDefinition) Destroy(fn interface{}) *BeanDefinition {
 	if validLifeCycleFunc(reflect.TypeOf(fn), d.Type()) {
-		d.destroy = arg.Bind(fn, args, arg.WithReceiver(), arg.Skip(1))
+		d.destroy = fn
 		return d
 	}
 	panic(errors.New("destroy should be func(bean) or func(bean)error"))
@@ -403,7 +403,7 @@ func NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 			v = v.Elem()
 		}
 
-		f := arg.Bind(objOrCtor, ctorArgs, arg.Skip(skip))
+		f := arg.Bind(objOrCtor, ctorArgs, skip)
 		return newBeanDefinition(v, f, file, line)
 	}
 

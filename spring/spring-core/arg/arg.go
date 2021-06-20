@@ -38,8 +38,8 @@ type Context interface {
 	// Bind 根据 tag 的内容进行属性绑定。
 	Bind(tag string, v reflect.Value) error
 
-	// Autowire 根据 tag 的内容自动注入。
-	Autowire(tag string, v reflect.Value) error
+	// Wire 根据 tag 的内容自动注入。
+	Wire(tag string, v reflect.Value) error
 }
 
 // Arg 定义一个函数参数，可以是 bean.Selector 类型，表示注入一个 Bean；
@@ -98,21 +98,14 @@ type argList struct {
 
 	// args 函数参数列表。
 	args []Arg
-
-	// withReceiver 这里所谓的接收者是指函数的第一个参数，是否包含接收者的
-	// 意思是接收者是否由 IoC 容器在执行函数时自动传入作为接收者的第一个参数。
-	withReceiver bool
 }
 
 // newArgList 返回新创建的函数参数的列表。
-func newArgList(fnType reflect.Type, args []Arg, withReceiver bool) *argList {
+func newArgList(fnType reflect.Type, args []Arg) *argList {
 
 	// 计算函数不可变参数的数量，需要排除接收者。
 	fixedArgCount := fnType.NumIn()
 	if fnType.IsVariadic() {
-		fixedArgCount--
-	}
-	if withReceiver {
 		fixedArgCount--
 	}
 
@@ -181,7 +174,7 @@ func newArgList(fnType reflect.Type, args []Arg, withReceiver bool) *argList {
 		}
 	}
 
-	return &argList{fnType: fnType, withReceiver: withReceiver, args: fnArgs}
+	return &argList{fnType: fnType, args: fnArgs}
 }
 
 // get 返回函数所有参数的真实值，fileLine 是函数定义所在的文件及其行号，供打印日志时使用。
@@ -190,20 +183,11 @@ func (r *argList) get(ctx Context, fileLine string) ([]reflect.Value, error) {
 	fnType := r.fnType
 	numIn := fnType.NumIn()
 
-	// 接收者不算作函数的参数。
-	if r.withReceiver {
-		numIn -= 1
-	}
-
 	variadic := fnType.IsVariadic()
 	result := make([]reflect.Value, 0)
 
 	for idx, arg := range r.args {
 		var t reflect.Type
-
-		if r.withReceiver {
-			idx++
-		}
 
 		if variadic && idx >= numIn-1 {
 			t = fnType.In(numIn - 1).Elem()
@@ -256,7 +240,7 @@ func (r *argList) getArg(ctx Context, arg Arg, t reflect.Type,
 
 	// 处理 bean 类型
 	if util.IsBeanType(t) {
-		if err = ctx.Autowire(tag, v); err != nil {
+		if err = ctx.Wire(tag, v); err != nil {
 			return reflect.Value{}, err
 		}
 		return v, nil
@@ -288,7 +272,7 @@ func Option(fn interface{}, args ...Arg) *optionArg {
 		panic(errors.New("error option func"))
 	}
 
-	return &optionArg{r: Bind(fn, args, Skip(1))}
+	return &optionArg{r: Bind(fn, args, 1)}
 }
 
 // WithCond 为 Option 设置一个 cond.Condition
@@ -299,14 +283,14 @@ func (arg *optionArg) WithCond(c cond.Condition) *optionArg {
 
 func (arg *optionArg) call(ctx Context) (v reflect.Value, err error) {
 
-	fileline := fmt.Sprintf("%s:%d", arg.r.file, arg.r.line)
-	log.Tracef("call option func %s", fileline)
+	fileLine := fmt.Sprintf("%s:%d", arg.r.file, arg.r.line)
+	log.Tracef("call option func %s", fileLine)
 
 	defer func() {
 		if err == nil {
-			log.Tracef("call option func success %s", fileline)
+			log.Tracef("call option func success %s", fileLine)
 		} else {
-			log.Tracef("call option func err:%s %s", err.Error(), fileline)
+			log.Tracef("call option func err:%s %s", err.Error(), fileLine)
 		}
 	}()
 
@@ -318,32 +302,15 @@ func (arg *optionArg) call(ctx Context) (v reflect.Value, err error) {
 		}
 	}
 
-	if err = arg.r.Prepare(ctx); err != nil {
-		return reflect.Value{}, err
-	}
-
-	out, err := arg.r.Call()
+	out, err := arg.r.Call(ctx)
 	if err != nil {
 		return reflect.Value{}, err
 	}
 	return out[0], nil
 }
 
-type prepareArg struct {
-	receiver reflect.Value
-}
-
-type PrepareOption func(arg *prepareArg)
-
-func Receiver(r reflect.Value) PrepareOption {
-	return func(arg *prepareArg) {
-		arg.receiver = r
-	}
-}
-
 type Callable interface {
-	Prepare(ctx Context, opts ...PrepareOption) error
-	Call() ([]reflect.Value, error)
+	Call(ctx Context) ([]reflect.Value, error)
 }
 
 // callable 绑定函数及其参数。
@@ -352,73 +319,25 @@ type callable struct {
 	arg  *argList
 	file string // 注册点所在文件
 	line int    // 注册点所在行数
-	temp []reflect.Value
-}
-
-type bindArg struct {
-	skip         int
-	withReceiver bool
-}
-
-type BindOption func(arg *bindArg)
-
-func Skip(skip int) BindOption {
-	return func(arg *bindArg) {
-		arg.skip = skip
-	}
-}
-
-func WithReceiver() BindOption {
-	return func(arg *bindArg) {
-		arg.withReceiver = true
-	}
 }
 
 // Bind 绑定函数及其参数。
-func Bind(fn interface{}, args []Arg, opts ...BindOption) *callable {
-
-	a := bindArg{}
-	for _, opt := range opts {
-		opt(&a)
-	}
-
-	_, file, line, _ := runtime.Caller(a.skip + 1)
-
+func Bind(fn interface{}, args []Arg, skip int) *callable {
 	fnType := reflect.TypeOf(fn)
-	argList := newArgList(fnType, args, a.withReceiver)
+	argList := newArgList(fnType, args)
+	_, file, line, _ := runtime.Caller(skip + 1)
 	return &callable{fn: fn, arg: argList, file: file, line: line}
 }
 
-func (r *callable) Prepare(ctx Context, opts ...PrepareOption) error {
+func (r *callable) Call(ctx Context) ([]reflect.Value, error) {
 
-	arg := prepareArg{}
-	for _, opt := range opts {
-		opt(&arg)
+	fileLine := fmt.Sprintf("%s:%d", r.file, r.line)
+	in, err := r.arg.get(ctx, fileLine)
+	if err != nil {
+		return nil, err
 	}
 
-	var in []reflect.Value
-
-	if r.arg.withReceiver {
-		in = append(in, arg.receiver)
-	}
-
-	if r.arg != nil {
-		fileline := fmt.Sprintf("%s:%d", r.file, r.line)
-		v, err := r.arg.get(ctx, fileline)
-		if err != nil {
-			return err
-		}
-		if len(v) > 0 {
-			in = append(in, v...)
-		}
-	}
-
-	r.temp = in
-	return nil
-}
-
-func (r *callable) Call() ([]reflect.Value, error) {
-	out := reflect.ValueOf(r.fn).Call(r.temp)
+	out := reflect.ValueOf(r.fn).Call(in)
 	if n := len(out); n > 0 {
 		if o := out[n-1]; util.IsErrorType(o.Type()) {
 			if i := o.Interface(); i == nil {

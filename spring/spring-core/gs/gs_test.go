@@ -1086,13 +1086,12 @@ func TestApplicationContext_RegisterBeanFn2(t *testing.T) {
 type destroyable interface {
 	Init()
 	Destroy()
-	InitWithArg(s string)
-	DestroyWithArg(s string)
-	InitWithError(i int) error
-	DestroyWithError(i int) error
+	InitWithError() error
+	DestroyWithError() error
 }
 
 type callDestroy struct {
+	i         int
 	inited    bool
 	destroyed bool
 }
@@ -1105,24 +1104,16 @@ func (d *callDestroy) Destroy() {
 	d.destroyed = true
 }
 
-func (d *callDestroy) InitWithArg(_ string) {
-	d.inited = true
-}
-
-func (d *callDestroy) DestroyWithArg(_ string) {
-	d.destroyed = true
-}
-
-func (d *callDestroy) InitWithError(i int) error {
-	if i == 0 {
+func (d *callDestroy) InitWithError() error {
+	if d.i == 0 {
 		d.inited = true
 		return nil
 	}
 	return errors.New("error")
 }
 
-func (d *callDestroy) DestroyWithError(i int) error {
-	if i == 0 {
+func (d *callDestroy) DestroyWithError() error {
+	if d.i == 0 {
 		d.destroyed = true
 		return nil
 	}
@@ -1190,36 +1181,17 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 		assert.True(t, d.inited)
 	})
 
-	t.Run("call init with arg", func(t *testing.T) {
-
-		c, ch := container()
-		c.Property("version", "v0.0.1")
-		c.Object(new(callDestroy)).Init((*callDestroy).InitWithArg, "${version}")
-		c.Refresh()
-
-		p := <-ch
-
-		var d *callDestroy
-		err := p.Get(&d)
-
-		c.Close()
-
-		assert.Nil(t, err)
-		assert.True(t, d.inited)
-	})
-
 	t.Run("call init with error", func(t *testing.T) {
 
 		assert.Panic(t, func() {
 			c := gs.New()
-			c.Property("int", 1)
-			c.Object(new(callDestroy)).Init((*callDestroy).InitWithError, "${int}")
+			c.Object(&callDestroy{i: 1}).Init((*callDestroy).InitWithError)
 			c.Refresh()
 		}, "error")
 
 		c, ch := container()
 		c.Property("int", 0)
-		c.Object(new(callDestroy)).Init((*callDestroy).InitWithError, "${int}")
+		c.Object(&callDestroy{}).Init((*callDestroy).InitWithError)
 		c.Refresh()
 
 		p := <-ch
@@ -1250,36 +1222,17 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 		assert.True(t, d.(*callDestroy).inited)
 	})
 
-	t.Run("call interface init with arg", func(t *testing.T) {
-
-		c, ch := container()
-		c.Property("version", "v0.0.1")
-		c.Provide(func() destroyable { return new(callDestroy) }).Init(destroyable.InitWithArg, "${version}")
-		c.Refresh()
-
-		p := <-ch
-
-		var d destroyable
-		err := p.Get(&d)
-
-		c.Close()
-
-		assert.Nil(t, err)
-		assert.True(t, d.(*callDestroy).inited)
-	})
-
 	t.Run("call interface init with error", func(t *testing.T) {
 
 		assert.Panic(t, func() {
 			c := gs.New()
-			c.Property("int", 1)
-			c.Provide(func() destroyable { return new(callDestroy) }).Init(destroyable.InitWithError, "${int}")
+			c.Provide(func() destroyable { return &callDestroy{i: 1} }).Init(destroyable.InitWithError)
 			c.Refresh()
 		}, "error")
 
 		c, ch := container()
 		c.Property("int", 0)
-		c.Provide(func() destroyable { return new(callDestroy) }).Init(destroyable.InitWithError, "${int}")
+		c.Provide(func() destroyable { return &callDestroy{} }).Init(destroyable.InitWithError)
 		c.Refresh()
 
 		p := <-ch
@@ -1388,7 +1341,7 @@ func TestApplicationContext_Collect(t *testing.T) {
 		c.Object([]*RecoresCluster{new(RecoresCluster)})
 		c.Object(new(RecoresCluster))
 
-		intBean := c.Object(new(int)).Init(func(_ *int, p gs.Pandora) {
+		intBean := c.Provide(func(p gs.Pandora) *int {
 
 			var rcs []*RecoresCluster
 			err := p.Collect(&rcs)
@@ -1397,6 +1350,8 @@ func TestApplicationContext_Collect(t *testing.T) {
 			assert.Nil(t, err)
 			assert.Equal(t, len(rcs), 2)
 			assert.Equal(t, rcs[0].Endpoints, "redis://localhost:6379")
+
+			return new(int)
 		})
 		assert.Equal(t, intBean.Name(), "*int")
 
@@ -2061,31 +2016,12 @@ func TestApplicationContext_Close(t *testing.T) {
 		assert.True(t, d.destroyed)
 	})
 
-	t.Run("call destroy with arg", func(t *testing.T) {
-
-		c, ch := container()
-		c.Property("version", "v0.0.1")
-		c.Object(new(callDestroy)).Destroy((*callDestroy).DestroyWithArg, "${version}")
-		c.Refresh()
-
-		p := <-ch
-
-		var d *callDestroy
-		err := p.Get(&d)
-
-		c.Close()
-
-		assert.Nil(t, err)
-		assert.True(t, d.destroyed)
-	})
-
 	t.Run("call destroy with error", func(t *testing.T) {
 
 		// error
 		{
 			c, ch := container()
-			c.Property("int", 1)
-			c.Object(new(callDestroy)).Destroy((*callDestroy).DestroyWithError, "${int}")
+			c.Object(&callDestroy{i: 1}).Destroy((*callDestroy).DestroyWithError)
 			c.Refresh()
 
 			p := <-ch
@@ -2102,8 +2038,7 @@ func TestApplicationContext_Close(t *testing.T) {
 		// nil
 		{
 			c, ch := container()
-			c.Property("int", 0)
-			c.Object(new(callDestroy)).Destroy((*callDestroy).DestroyWithError, "${int}")
+			c.Object(&callDestroy{}).Destroy((*callDestroy).DestroyWithError)
 			c.Refresh()
 
 			p := <-ch
@@ -2135,31 +2070,12 @@ func TestApplicationContext_Close(t *testing.T) {
 		assert.True(t, d.(*callDestroy).destroyed)
 	})
 
-	t.Run("call interface destroy with arg", func(t *testing.T) {
-
-		c, ch := container()
-		c.Property("version", "v0.0.1")
-		c.Provide(func() destroyable { return new(callDestroy) }).Destroy(destroyable.DestroyWithArg, "${version}")
-		c.Refresh()
-
-		p := <-ch
-
-		var d destroyable
-		err := p.Get(&d)
-
-		c.Close()
-
-		assert.Nil(t, err)
-		assert.True(t, d.(*callDestroy).destroyed)
-	})
-
 	t.Run("call interface destroy with error", func(t *testing.T) {
 
 		// error
 		{
 			c, ch := container()
-			c.Property("int", 1)
-			c.Provide(func() destroyable { return new(callDestroy) }).Destroy(destroyable.DestroyWithError, "${int}")
+			c.Provide(func() destroyable { return &callDestroy{i: 1} }).Destroy(destroyable.DestroyWithError)
 			c.Refresh()
 
 			p := <-ch
@@ -2177,7 +2093,7 @@ func TestApplicationContext_Close(t *testing.T) {
 		{
 			c, ch := container()
 			c.Property("int", 0)
-			c.Provide(func() destroyable { return new(callDestroy) }).Destroy(destroyable.DestroyWithError, "${int}")
+			c.Provide(func() destroyable { return &callDestroy{} }).Destroy(destroyable.DestroyWithError)
 			c.Refresh()
 
 			p := <-ch
