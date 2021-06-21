@@ -743,7 +743,7 @@ func (c *Container) wireStruct(v reflect.Value, stack *wiringStack) error {
 			tag, ok = ft.Tag.Lookup("inject")
 		}
 		if ok {
-			err := c.autowire(tag, fv, stack)
+			err := c.autowire(fv, tag, stack)
 			if err != nil {
 				fieldName := typeName + "." + ft.Name
 				return fmt.Errorf("%q wired error: %s", fieldName, err.Error())
@@ -762,7 +762,7 @@ func (c *Container) wireStruct(v reflect.Value, stack *wiringStack) error {
 }
 
 // autowire 根据 tag 的内容自动判断注入模式，是单例模式，还是收集模式。
-func (c *Container) autowire(tag string, v reflect.Value, stack *wiringStack) error {
+func (c *Container) autowire(v reflect.Value, tag string, stack *wiringStack) error {
 
 	// tag 预处理，可以通过属性值进行指定。
 	if strings.HasPrefix(tag, "${") {
@@ -940,11 +940,11 @@ func (c *ArgContext) Matches(cond cond.Condition) (bool, error) {
 }
 
 // Bind 根据 tag 的内容进行属性绑定。
-func (c *ArgContext) Bind(tag string, v reflect.Value) error {
+func (c *ArgContext) Bind(v reflect.Value, tag string) error {
 	return c.c.p.Bind(v, conf.Tag(tag))
 }
 
 // Wire 根据 tag 的内容自动判断注入模式，是单例模式，还是收集模式。
-func (c *ArgContext) Wire(tag string, v reflect.Value) error {
-	return c.c.autowire(tag, v, c.stack)
+func (c *ArgContext) Wire(v reflect.Value, tag string) error {
+	return c.c.autowire(v, tag, c.stack)
 }

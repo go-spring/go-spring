@@ -36,10 +36,10 @@ type Context interface {
 	Matches(c cond.Condition) (bool, error)
 
 	// Bind 根据 tag 的内容进行属性绑定。
-	Bind(tag string, v reflect.Value) error
+	Bind(v reflect.Value, tag string) error
 
 	// Wire 根据 tag 的内容自动注入。
-	Wire(tag string, v reflect.Value) error
+	Wire(v reflect.Value, tag string) error
 }
 
 // Arg 定义一个函数参数，可以是 bean.Selector 类型，表示注入一个 Bean；
@@ -240,7 +240,7 @@ func (r *argList) getArg(ctx Context, arg Arg, t reflect.Type,
 
 	// 处理 bean 类型
 	if util.IsBeanType(t) {
-		if err = ctx.Wire(tag, v); err != nil {
+		if err = ctx.Wire(v, tag); err != nil {
 			return reflect.Value{}, err
 		}
 		return v, nil
@@ -250,7 +250,7 @@ func (r *argList) getArg(ctx Context, arg Arg, t reflect.Type,
 	if tag == "" {
 		tag = "${}"
 	}
-	if err = ctx.Bind(tag, v); err != nil {
+	if err = ctx.Bind(v, tag); err != nil {
 		return reflect.Value{}, err
 	}
 	return v, nil
@@ -258,7 +258,7 @@ func (r *argList) getArg(ctx Context, arg Arg, t reflect.Type,
 
 // optionArg Option 形式的函数参数
 type optionArg struct {
-	r *callable
+	r *Callable
 	c cond.Condition
 }
 
@@ -309,30 +309,26 @@ func (arg *optionArg) call(ctx Context) (v reflect.Value, err error) {
 	return out[0], nil
 }
 
-type Callable interface {
-	Call(ctx Context) ([]reflect.Value, error)
-}
-
-// callable 绑定函数及其参数。
-type callable struct {
-	fn   interface{}
-	arg  *argList
-	file string // 注册点所在文件
-	line int    // 注册点所在行数
+// Callable 绑定函数及其参数。
+type Callable struct {
+	fn      interface{}
+	argList *argList
+	file    string // 注册点所在文件
+	line    int    // 注册点所在行数
 }
 
 // Bind 绑定函数及其参数。
-func Bind(fn interface{}, args []Arg, skip int) *callable {
+func Bind(fn interface{}, args []Arg, skip int) *Callable {
 	fnType := reflect.TypeOf(fn)
 	argList := newArgList(fnType, args)
 	_, file, line, _ := runtime.Caller(skip + 1)
-	return &callable{fn: fn, arg: argList, file: file, line: line}
+	return &Callable{fn: fn, argList: argList, file: file, line: line}
 }
 
-func (r *callable) Call(ctx Context) ([]reflect.Value, error) {
+func (r *Callable) Call(ctx Context) ([]reflect.Value, error) {
 
 	fileLine := fmt.Sprintf("%s:%d", r.file, r.line)
-	in, err := r.arg.get(ctx, fileLine)
+	in, err := r.argList.get(ctx, fileLine)
 	if err != nil {
 		return nil, err
 	}

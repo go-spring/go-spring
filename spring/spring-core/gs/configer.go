@@ -29,7 +29,7 @@ import (
 // Configer 配置函数，所谓配置函数是指可以接受一些 Bean 作为入参的函数，使用场景大多
 // 是在 Bean 初始化之后对 Bean 进行二次配置，可以作为框架配置能力的补充，但是要慎用！
 type Configer struct {
-	fn     arg.Callable
+	fn     *arg.Callable
 	name   string
 	cond   cond.Condition
 	before []string // 位于哪些配置函数之前

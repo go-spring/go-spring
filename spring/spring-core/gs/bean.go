@@ -169,7 +169,7 @@ type BeanDefinition struct {
 
 	v reflect.Value // 值
 	t reflect.Type  // 类型
-	f arg.Callable  // 工厂函数
+	f *arg.Callable // 工厂函数
 
 	file string // 注册点所在文件
 	line int    // 注册点所在行数
@@ -187,7 +187,7 @@ type BeanDefinition struct {
 }
 
 // newBeanDefinition BeanDefinition 的构造函数，f 是工厂函数，当 v 为对象 Bean 时 f 为空。
-func newBeanDefinition(v reflect.Value, f arg.Callable, file string, line int) *BeanDefinition {
+func newBeanDefinition(v reflect.Value, f *arg.Callable, file string, line int) *BeanDefinition {
 
 	t := v.Type()
 	if !util.IsBeanType(t) {
@@ -242,8 +242,8 @@ func (d *BeanDefinition) TypeName() string {
 	return d.typeName
 }
 
-// IsWired 返回 Bean 是否注入完成。
-func (d *BeanDefinition) IsWired() bool {
+// Wired 返回 Bean 是否注入完成。
+func (d *BeanDefinition) Wired() bool {
 	return d.status == Wired
 }
 

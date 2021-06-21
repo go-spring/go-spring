@@ -27,7 +27,7 @@ type Selector interface{}
 
 // Definition Bean 元数据定义。
 type Definition interface {
-	IsWired() bool // 是否注入完成
+	Wired() bool // 是否注入完成
 
 	Type() reflect.Type     // 类型
 	Value() reflect.Value   // 值
