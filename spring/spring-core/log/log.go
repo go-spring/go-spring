@@ -142,30 +142,28 @@ var config = struct {
 	output: Console,
 }
 
-// B 将可变参数转换成切片。
-func B(a ...interface{}) []interface{} { return a }
+// T 将可变参数转换成切片。
+func T(a ...interface{}) []interface{} { return a }
 
 func output(level Level, e Entry, args ...interface{}) {
 	if config.level <= level {
+		if len(args) == 1 {
+			if fn, ok := args[0].(func() []interface{}); ok {
+				args = fn()
+			}
+		}
 		config.output(2, level, e.print(args...))
 	}
 }
 
 func outputf(level Level, e Entry, format string, args ...interface{}) {
 	if config.level <= level {
+		if len(args) == 1 {
+			if fn, ok := args[0].(func() []interface{}); ok {
+				args = fn()
+			}
+		}
 		config.output(2, level, e.printf(format, args...))
-	}
-}
-
-func bOutput(level Level, e Entry, fn func() []interface{}) {
-	if config.level <= level {
-		config.output(2, level, e.print(fn()...))
-	}
-}
-
-func bOutputf(level Level, e Entry, format string, fn func() []interface{}) {
-	if config.level <= level {
-		config.output(2, level, e.printf(format, fn()...))
 	}
 }
 
@@ -201,16 +199,6 @@ func (e Entry) Tracef(format string, args ...interface{}) {
 	outputf(TraceLevel, e, format, args...)
 }
 
-// BTrace 输出 TRACE 级别的日志。
-func (e Entry) BTrace(fn func() []interface{}) {
-	bOutput(TraceLevel, e, fn)
-}
-
-// BTracef 输出 TRACE 级别的日志。
-func (e Entry) BTracef(format string, fn func() []interface{}) {
-	bOutputf(TraceLevel, e, format, fn)
-}
-
 // Debug 输出 DEBUG 级别的日志。
 func (e Entry) Debug(args ...interface{}) {
 	output(DebugLevel, e, args...)
@@ -219,16 +207,6 @@ func (e Entry) Debug(args ...interface{}) {
 // Debugf 输出 DEBUG 级别的日志。
 func (e Entry) Debugf(format string, args ...interface{}) {
 	outputf(DebugLevel, e, format, args...)
-}
-
-// BDebug 输出 DEBUG 级别的日志。
-func (e Entry) BDebug(fn func() []interface{}) {
-	bOutput(DebugLevel, e, fn)
-}
-
-// BDebugf 输出 DEBUG 级别的日志。
-func (e Entry) BDebugf(format string, fn func() []interface{}) {
-	bOutputf(DebugLevel, e, format, fn)
 }
 
 // Info 输出 INFO 级别的日志。
@@ -241,16 +219,6 @@ func (e Entry) Infof(format string, args ...interface{}) {
 	outputf(InfoLevel, e, format, args...)
 }
 
-// BInfo 输出 INFO 级别的日志。
-func (e Entry) BInfo(fn func() []interface{}) {
-	bOutput(InfoLevel, e, fn)
-}
-
-// BInfof 输出 INFO 级别的日志。
-func (e Entry) BInfof(format string, fn func() []interface{}) {
-	bOutputf(InfoLevel, e, format, fn)
-}
-
 // Warn 输出 WARN 级别的日志。
 func (e Entry) Warn(args ...interface{}) {
 	output(WarnLevel, e, args...)
@@ -261,16 +229,6 @@ func (e Entry) Warnf(format string, args ...interface{}) {
 	outputf(WarnLevel, e, format, args...)
 }
 
-// BWarn 输出 WARN 级别的日志。
-func (e Entry) BWarn(fn func() []interface{}) {
-	bOutput(WarnLevel, e, fn)
-}
-
-// BWarnf 输出 WARN 级别的日志。
-func (e Entry) BWarnf(format string, fn func() []interface{}) {
-	bOutputf(WarnLevel, e, format, fn)
-}
-
 // Error 输出 ERROR 级别的日志。
 func (e Entry) Error(args ...interface{}) {
 	output(ErrorLevel, e, args...)
@@ -279,16 +237,6 @@ func (e Entry) Error(args ...interface{}) {
 // Errorf 输出 ERROR 级别的日志。
 func (e Entry) Errorf(format string, args ...interface{}) {
 	outputf(ErrorLevel, e, format, args...)
-}
-
-// BError 输出 ERROR 级别的日志。
-func (e Entry) BError(fn func() []interface{}) {
-	bOutput(ErrorLevel, e, fn)
-}
-
-// BErrorf 输出 ERROR 级别的日志。
-func (e Entry) BErrorf(format string, fn func() []interface{}) {
-	bOutputf(ErrorLevel, e, format, fn)
 }
 
 // Panic 输出 PANIC 级别的日志。
@@ -356,16 +304,6 @@ func Tracef(format string, args ...interface{}) {
 	outputf(TraceLevel, empty, format, args...)
 }
 
-// BTrace 输出 TRACE 级别的日志。
-func BTrace(fn func() []interface{}) {
-	bOutput(TraceLevel, empty, fn)
-}
-
-// BTracef 输出 TRACE 级别的日志。
-func BTracef(format string, fn func() []interface{}) {
-	bOutputf(TraceLevel, empty, format, fn)
-}
-
 // Debug 输出 DEBUG 级别的日志。
 func Debug(args ...interface{}) {
 	output(DebugLevel, empty, args...)
@@ -374,16 +312,6 @@ func Debug(args ...interface{}) {
 // Debugf 输出 DEBUG 级别的日志。
 func Debugf(format string, args ...interface{}) {
 	outputf(DebugLevel, empty, format, args...)
-}
-
-// BDebug 输出 DEBUG 级别的日志。
-func BDebug(fn func() []interface{}) {
-	bOutput(DebugLevel, empty, fn)
-}
-
-// BDebugf 输出 DEBUG 级别的日志。
-func BDebugf(format string, fn func() []interface{}) {
-	bOutputf(DebugLevel, empty, format, fn)
 }
 
 // Info 输出 INFO 级别的日志。
@@ -396,16 +324,6 @@ func Infof(format string, args ...interface{}) {
 	outputf(InfoLevel, empty, format, args...)
 }
 
-// BInfo 输出 INFO 级别的日志。
-func BInfo(fn func() []interface{}) {
-	bOutput(InfoLevel, empty, fn)
-}
-
-// BInfof 输出 INFO 级别的日志。
-func BInfof(format string, fn func() []interface{}) {
-	bOutputf(InfoLevel, empty, format, fn)
-}
-
 // Warn 输出 WARN 级别的日志。
 func Warn(args ...interface{}) {
 	output(WarnLevel, empty, args...)
@@ -416,16 +334,6 @@ func Warnf(format string, args ...interface{}) {
 	outputf(WarnLevel, empty, format, args...)
 }
 
-// BWarn 输出 WARN 级别的日志。
-func BWarn(fn func() []interface{}) {
-	bOutput(WarnLevel, empty, fn)
-}
-
-// BWarnf 输出 WARN 级别的日志。
-func BWarnf(format string, fn func() []interface{}) {
-	bOutputf(WarnLevel, empty, format, fn)
-}
-
 // Error 输出 ERROR 级别的日志。
 func Error(args ...interface{}) {
 	output(ErrorLevel, empty, args...)
@@ -434,16 +342,6 @@ func Error(args ...interface{}) {
 // Errorf 输出 ERROR 级别的日志。
 func Errorf(format string, args ...interface{}) {
 	outputf(ErrorLevel, empty, format, args...)
-}
-
-// BError 输出 ERROR 级别的日志。
-func BError(fn func() []interface{}) {
-	bOutput(ErrorLevel, empty, fn)
-}
-
-// BErrorf 输出 ERROR 级别的日志。
-func BErrorf(format string, fn func() []interface{}) {
-	bOutputf(ErrorLevel, empty, format, fn)
 }
 
 // Panic 输出 PANIC 级别的日志。

@@ -35,32 +35,32 @@ func TestDefault(t *testing.T) {
 	log.Trace("a", "=", "1")
 	log.Tracef("a=%d", 1)
 
-	log.BTrace(func() []interface{} { return log.B("a", "=", "1") })
-	log.BTracef("a=%d", func() []interface{} { return log.B(1) })
+	log.Trace(func() []interface{} { return log.T("a", "=", "1") })
+	log.Tracef("a=%d", func() []interface{} { return log.T(1) })
 
 	log.Debug("a", "=", "1")
 	log.Debugf("a=%d", 1)
 
-	log.BDebug(func() []interface{} { return log.B("a", "=", "1") })
-	log.BDebugf("a=%d", func() []interface{} { return log.B(1) })
+	log.Debug(func() []interface{} { return log.T("a", "=", "1") })
+	log.Debugf("a=%d", func() []interface{} { return log.T(1) })
 
 	log.Info("a", "=", "1")
 	log.Infof("a=%d", 1)
 
-	log.BInfo(func() []interface{} { return log.B("a", "=", "1") })
-	log.BInfof("a=%d", func() []interface{} { return log.B(1) })
+	log.Info(func() []interface{} { return log.T("a", "=", "1") })
+	log.Infof("a=%d", func() []interface{} { return log.T(1) })
 
 	log.Warn("a", "=", "1")
 	log.Warnf("a=%d", 1)
 
-	log.BWarn(func() []interface{} { return log.B("a", "=", "1") })
-	log.BWarnf("a=%d", func() []interface{} { return log.B(1) })
+	log.Warn(func() []interface{} { return log.T("a", "=", "1") })
+	log.Warnf("a=%d", func() []interface{} { return log.T(1) })
 
 	log.Error("a", "=", "1")
 	log.Errorf("a=%d", 1)
 
-	log.BError(func() []interface{} { return log.B("a", "=", "1") })
-	log.BErrorf("a=%d", func() []interface{} { return log.B(1) })
+	log.Error(func() []interface{} { return log.T("a", "=", "1") })
+	log.Errorf("a=%d", func() []interface{} { return log.T(1) })
 
 	t.Run("panic#00", func(t *testing.T) {
 		defer func() { fmt.Println(recover()) }()
@@ -128,16 +128,16 @@ func TestEntry(t *testing.T) {
 	logger.Fatal("level:", "fatal")
 	logger.Fatalf("level:%s", "fatal")
 
-	logger.BTrace(func() []interface{} { return log.B("level:", "trace") })
-	logger.BTracef("level:%s", func() []interface{} { return log.B("trace") })
-	logger.BDebug(func() []interface{} { return log.B("level:", "debug") })
-	logger.BDebugf("level:%s", func() []interface{} { return log.B("debug") })
-	logger.BInfo(func() []interface{} { return log.B("level:", "info") })
-	logger.BInfof("level:%s", func() []interface{} { return log.B("info") })
-	logger.BWarn(func() []interface{} { return log.B("level:", "warn") })
-	logger.BWarnf("level:%s", func() []interface{} { return log.B("warn") })
-	logger.BError(func() []interface{} { return log.B("level:", "error") })
-	logger.BErrorf("level:%s", func() []interface{} { return log.B("error") })
+	logger.Trace(func() []interface{} { return log.T("level:", "trace") })
+	logger.Tracef("level:%s", func() []interface{} { return log.T("trace") })
+	logger.Debug(func() []interface{} { return log.T("level:", "debug") })
+	logger.Debugf("level:%s", func() []interface{} { return log.T("debug") })
+	logger.Info(func() []interface{} { return log.T("level:", "info") })
+	logger.Infof("level:%s", func() []interface{} { return log.T("info") })
+	logger.Warn(func() []interface{} { return log.T("level:", "warn") })
+	logger.Warnf("level:%s", func() []interface{} { return log.T("warn") })
+	logger.Error(func() []interface{} { return log.T("level:", "error") })
+	logger.Errorf("level:%s", func() []interface{} { return log.T("error") })
 
 	logger = logger.Tag("__in")
 	logger.Trace("level:", "trace")
