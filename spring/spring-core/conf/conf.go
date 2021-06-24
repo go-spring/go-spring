@@ -25,7 +25,6 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/go-spring/spring-core/contain"
 	"github.com/spf13/cast"
 )
 
@@ -164,6 +163,11 @@ func (p *Properties) Set(key string, val interface{}) {
 	}
 }
 
+// Resolve 解析字符串中包含的属性引用即 ${key:=def} 的内容，且支持递归引用。
+func (p *Properties) Resolve(s string) (string, error) {
+	return resolveString(p, s)
+}
+
 type bindArg struct {
 	tag string
 }
@@ -218,49 +222,8 @@ func (p *Properties) Bind(i interface{}, opts ...BindOption) error {
 	t := v.Type()
 	s := t.Name()
 	if s == "" {
-		switch t.Kind() {
-		case reflect.Map, reflect.Slice, reflect.Array:
-			s = t.Elem().Name()
-			if s == "" {
-				s = t.Elem().String()
-			}
-		default:
-			s = t.String()
-		}
+		s = t.String()
 	}
 
-	return bind(p, v, arg.tag, bindOption{path: s})
-}
-
-// Group 对属性列表的 key 按照 prefix 作为前缀进行分组，然后返回分组的名称。
-func (p *Properties) Group(prefix string) []string {
-
-	trimPrefix := func(key, prefix string) (string, bool) {
-		if prefix == rootKey {
-			return key, true
-		}
-		if !strings.HasPrefix(key, prefix+".") {
-			return "", false
-		}
-		return strings.TrimPrefix(key, prefix+"."), true
-	}
-
-	var groups []string
-	for _, key := range p.Keys() {
-		s, ok := trimPrefix(key, prefix)
-		if !ok {
-			continue
-		}
-		k := strings.Split(s, ".")[0]
-		if contain.Strings(groups, k) >= 0 {
-			continue
-		}
-		groups = append(groups, k)
-	}
-	return groups
-}
-
-// Resolve 解析字符串中包含的属性引用即 ${key:=def} 的内容，且支持递归引用。
-func (p *Properties) Resolve(s string) (string, error) {
-	return resolveString(p, s)
+	return bind(p, v, arg.tag, bindOption{typ: t, path: s})
 }

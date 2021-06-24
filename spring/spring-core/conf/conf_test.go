@@ -842,20 +842,93 @@ func TestProperties_Ref(t *testing.T) {
 }
 
 func TestBindMap(t *testing.T) {
+
+	t.Run("", func(t *testing.T) {
+		var r [3]map[string]string
+		err := conf.New().Bind(&r)
+		assert.Error(t, err, "\\[3]map\\[string]string 属性绑定的目标必须是值类型")
+	})
+
+	t.Run("", func(t *testing.T) {
+		var r []map[string]string
+		err := conf.New().Bind(&r)
+		assert.Error(t, err, "\\[]map\\[string]string 属性绑定的目标必须是值类型")
+	})
+
+	t.Run("", func(t *testing.T) {
+		var r map[string]map[string]string
+		err := conf.New().Bind(&r)
+		assert.Error(t, err, "map\\[string]map\\[string]string 属性绑定的目标必须是值类型")
+	})
+
 	m := map[string]interface{}{
-		"a.b1": "b1",
-		"a.b2": "b2",
-		"a.b3": "b3",
+		"a.b1": "ab1",
+		"a.b2": "ab2",
+		"a.b3": "ab3",
+		"b.b1": "bb1",
+		"b.b2": "bb2",
+		"b.b3": "bb3",
 	}
-	var r map[string]struct {
-		B1 string `value:"${b1}"`
-		B2 string `value:"${b2}"`
-		B3 string `value:"${b3}"`
-	}
-	p := conf.Map(m)
-	err := p.Bind(&r)
-	assert.Nil(t, err)
-	assert.Equal(t, r["a"].B1, "b1")
+
+	t.Run("", func(t *testing.T) {
+		type S struct {
+			M [3]map[string]string `value:"${}"`
+		}
+		var r map[string]S
+		p := conf.Map(m)
+		err := p.Bind(&r)
+		assert.Error(t, err, "map\\[string]conf_test.S.M 属性绑定的目标必须是值类型")
+	})
+
+	t.Run("", func(t *testing.T) {
+		type S struct {
+			M []map[string]string `value:"${}"`
+		}
+		var r map[string]S
+		p := conf.Map(m)
+		err := p.Bind(&r)
+		assert.Error(t, err, "map\\[string]conf_test.S.M 属性绑定的目标必须是值类型")
+	})
+
+	t.Run("", func(t *testing.T) {
+		type S struct {
+			M map[string]map[string]string `value:"${}"`
+		}
+		var r map[string]S
+		p := conf.Map(m)
+		err := p.Bind(&r)
+		assert.Error(t, err, "map\\[string]conf_test.S.M 属性绑定的目标必须是值类型")
+	})
+
+	t.Run("", func(t *testing.T) {
+		var r map[string]struct {
+			B1 string `value:"${b1}"`
+			B2 string `value:"${b2}"`
+			B3 string `value:"${b3}"`
+		}
+		p := conf.Map(m)
+		err := p.Bind(&r)
+		assert.Nil(t, err)
+		assert.Equal(t, r["a"].B1, "ab1")
+	})
+
+	t.Run("", func(t *testing.T) {
+		var r map[string]string
+		err := conf.Map(m).Bind(&r)
+		assert.Nil(t, err)
+		assert.Equal(t, r["a.b1"], "ab1")
+	})
+
+	t.Run("", func(t *testing.T) {
+		var r struct {
+			A map[string]string `value:"${a}"`
+			B map[string]string `value:"${b}"`
+		}
+		p := conf.Map(m)
+		err := p.Bind(&r)
+		assert.Nil(t, err)
+		assert.Equal(t, r.A["b1"], "ab1")
+	})
 }
 
 func TestInterpolate(t *testing.T) {

@@ -31,25 +31,22 @@ var (
 	ErrNotExist = errors.New("not exist")
 )
 
-type properties interface {
-	Get(key string, opts ...GetOption) interface{}
-}
-
 type bindOption struct {
-	key    string // 完整的属性 key
-	path   string // 结构体字段 path
-	def    string // 默认值
-	hasDef bool   // def 字段是否有效
+	typ    reflect.Type // 绑定对象的类型
+	key    string       // 完整的属性名
+	path   string       // 绑定对象的路径
+	def    string       // 默认值
+	hasDef bool         // 是否具有默认值
 }
 
-func bind(p properties, v reflect.Value, tag string, opt bindOption) error {
+func bind(p *Properties, v reflect.Value, tag string, opt bindOption) error {
 
-	if v.Kind() == reflect.Ptr {
-		return fmt.Errorf("%s 属性绑定的目标不能是指针", opt.path)
+	if !util.IsValueType(opt.typ) {
+		return fmt.Errorf("%s 属性绑定的目标必须是值类型", opt.path)
 	}
 
 	if !validTag(tag) {
-		return fmt.Errorf("%s 属性绑定字符串 %s 发生错误", opt.path, tag)
+		return fmt.Errorf("%s 属性绑定字符串 %s 错误", opt.path, tag)
 	}
 
 	key, def, hasDef := parseTag(tag)
@@ -69,7 +66,7 @@ func bind(p properties, v reflect.Value, tag string, opt bindOption) error {
 	return bindValue(p, v, opt)
 }
 
-func bindValue(p properties, v reflect.Value, opt bindOption) error {
+func bindValue(p *Properties, v reflect.Value, opt bindOption) error {
 
 	log.Tracef("::<>:: %#v", opt)
 
@@ -82,9 +79,7 @@ func bindValue(p properties, v reflect.Value, opt bindOption) error {
 		return bindSlice(p, v, opt)
 	}
 
-	t := v.Type()
-	fn, _ := converters[t]
-
+	fn, _ := converters[opt.typ]
 	if v.Kind() == reflect.Struct {
 		if fn == nil {
 			return bindStruct(p, v, opt)
@@ -140,23 +135,31 @@ func bindValue(p properties, v reflect.Value, opt bindOption) error {
 		return err
 	}
 
-	return errors.New("unsupported type " + t.String())
+	return errors.New("unsupported type " + opt.typ.String())
 }
 
-func bindArray(p properties, v reflect.Value, opt bindOption) error {
+func bindArray(p *Properties, v reflect.Value, opt bindOption) error {
 
 	if opt.hasDef {
 		if opt.def == "" {
 			return nil
 		}
-		return fmt.Errorf("%s array 字段不能指定非空默认值", opt.path)
+		return fmt.Errorf("%s array 类型不能指定非空默认值", opt.path)
 	}
 
 	for i := 0; i < v.Len(); i++ {
+
+		subValue := v.Index(i)
 		subKey := fmt.Sprintf("%s[%d]", opt.key, i)
 		subPath := fmt.Sprintf("%s[%d]", opt.path, i)
-		subOpt := bindOption{key: subKey, path: subPath}
-		err := bindValue(p, v.Index(i), subOpt)
+
+		subOpt := bindOption{
+			typ:  subValue.Type(),
+			key:  subKey,
+			path: subPath,
+		}
+
+		err := bindValue(p, subValue, subOpt)
 		if errors.Is(err, ErrNotExist) {
 			break
 		}
@@ -167,23 +170,23 @@ func bindArray(p properties, v reflect.Value, opt bindOption) error {
 	return nil
 }
 
-func bindSlice(p properties, v reflect.Value, opt bindOption) error {
+func bindSlice(p *Properties, v reflect.Value, opt bindOption) error {
 
 	if opt.hasDef {
 		if opt.def == "" {
 			return nil
 		}
-		return fmt.Errorf("%s slice 字段不能指定非空默认值", opt.path)
+		return fmt.Errorf("%s slice 类型不能指定非空默认值", opt.path)
 	}
 
-	t := v.Type()
-	et := t.Elem()
-	slice := reflect.MakeSlice(t, 0, 0)
+	et := opt.typ.Elem()
+	slice := reflect.MakeSlice(opt.typ, 0, 0)
 
 	for i := 0; ; i++ {
+
 		subKey := fmt.Sprintf("%s[%d]", opt.key, i)
 		subPath := fmt.Sprintf("%s[%d]", opt.path, i)
-		subOpt := bindOption{key: subKey, path: subPath}
+		subOpt := bindOption{typ: et, key: subKey, path: subPath}
 
 		e := reflect.New(et).Elem()
 		err := bindValue(p, e, subOpt)
@@ -201,47 +204,63 @@ func bindSlice(p properties, v reflect.Value, opt bindOption) error {
 	return nil
 }
 
-func bindMap(p properties, v reflect.Value, opt bindOption) error {
+func bindMap(p *Properties, v reflect.Value, opt bindOption) error {
 
 	if opt.hasDef {
 		if opt.def == "" {
 			return nil
 		}
-		return fmt.Errorf("%s map 字段不能指定非空默认值", opt.path)
+		return fmt.Errorf("%s map 类型不能指定非空默认值", opt.path)
 	}
 
-	g := p.(interface{ Group(prefix string) []string })
-	groups := g.Group(opt.key)
+	opt.key = strings.TrimPrefix(opt.key, rootKey+".")
 
-	t := v.Type()
-	et := t.Elem()
-	m := reflect.MakeMap(t)
+	et := opt.typ.Elem()
+	keys := make(map[string]struct{})
+	for _, key := range p.Keys() {
 
-	for _, key := range groups {
+		subKey := key
+		if opt.key != rootKey {
+			if !strings.HasPrefix(key, opt.key+".") {
+				continue
+			}
+			subKey = strings.TrimPrefix(key, opt.key+".")
+		}
+
+		if et.Kind() == reflect.Struct {
+			if fn, _ := converters[opt.typ]; fn == nil {
+				subKey = strings.Split(subKey, ".")[0]
+			}
+		}
+
+		if _, ok := keys[subKey]; !ok {
+			keys[subKey] = struct{}{}
+		}
+	}
+
+	m := reflect.MakeMap(opt.typ)
+	for key := range keys {
 		e := reflect.New(et).Elem()
 		subKey := fmt.Sprintf("%s.%s", opt.key, key)
-		subOpt := bindOption{key: subKey, path: opt.path}
+		subOpt := bindOption{typ: et, key: subKey, path: opt.path}
 		err := bindValue(p, e, subOpt)
 		if err != nil {
 			return err
 		}
 		m.SetMapIndex(reflect.ValueOf(key), e)
 	}
-
 	v.Set(m)
 	return nil
 }
 
-func bindStruct(p properties, v reflect.Value, opt bindOption) error {
+func bindStruct(p *Properties, v reflect.Value, opt bindOption) error {
 
 	if opt.hasDef && opt.def != "" {
-		// 空默认值时为什么不直接返回？因为继续处理可以使用结构体字段的默认值。
-		return fmt.Errorf("%s struct 字段不能指定非空默认值", opt.path)
+		return fmt.Errorf("%s struct 类型不能指定非空默认值", opt.path)
 	}
 
-	t := v.Type()
-	for i := 0; i < t.NumField(); i++ {
-		ft := t.Field(i)
+	for i := 0; i < opt.typ.NumField(); i++ {
+		ft := opt.typ.Field(i)
 		fv := v.Field(i)
 
 		if !fv.CanInterface() {
@@ -252,6 +271,7 @@ func bindStruct(p properties, v reflect.Value, opt bindOption) error {
 		}
 
 		subOpt := bindOption{
+			typ:  ft.Type,
 			key:  opt.key,
 			path: opt.path + "." + ft.Name,
 		}
@@ -264,7 +284,7 @@ func bindStruct(p properties, v reflect.Value, opt bindOption) error {
 			continue
 		}
 
-		// 指针或者结构体字段可能出现无限递归的情况。
+		// 指针或者结构体类型可能出现无限递归的情况。
 		if ft.Type.Kind() == reflect.Struct {
 			err := bindStruct(p, fv, subOpt)
 			if err != nil {
@@ -291,7 +311,7 @@ func parseTag(tag string) (key string, def string, hasDef bool) {
 	return
 }
 
-func resolveString(p properties, s string) (string, error) {
+func resolveString(p *Properties, s string) (string, error) {
 	n := len(s)
 
 	count := 0
@@ -343,7 +363,7 @@ func resolveString(p properties, s string) (string, error) {
 	return s[:start] + s1 + s2, nil
 }
 
-func resolve(p properties, opt bindOption) (string, error) {
+func resolve(p *Properties, opt bindOption) (string, error) {
 	val := p.Get(opt.key)
 	if val == nil {
 		if opt.hasDef {
