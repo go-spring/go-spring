@@ -36,16 +36,21 @@ func IsBeanType(t reflect.Type) bool {
 	switch t.Kind() {
 	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Ptr:
 		return true
-	case reflect.Map, reflect.Slice, reflect.Array:
-		return IsBeanType(t.Elem())
 	default:
 		return false
 	}
 }
 
-// IsValueType 返回是否是 value 类型。布尔、整数、浮点数、复数、字符串、结构体都是
-// value 类型，当 map、slice、array 的元素是 value 类型时它们也视为 value 类型。
-func IsValueType(t reflect.Type) bool {
+func IsBeanReceiver(t reflect.Type) bool {
+	switch t.Kind() {
+	case reflect.Map, reflect.Slice, reflect.Array:
+		return IsBeanType(t.Elem())
+	default:
+		return IsBeanType(t)
+	}
+}
+
+func IsPrimitiveValueType(t reflect.Type) bool {
 	switch t.Kind() {
 	case reflect.Bool,
 		reflect.Int,
@@ -65,12 +70,19 @@ func IsValueType(t reflect.Type) bool {
 		reflect.String,
 		reflect.Struct:
 		return true
-	case reflect.Map,
-		reflect.Slice,
-		reflect.Array:
-		return IsValueType(t.Elem())
 	default:
 		return false
+	}
+}
+
+// IsValueType 返回是否是 value 类型。布尔、整数、浮点数、复数、字符串、结构体都是
+// value 类型，当 map、slice、array 的元素是 value 类型时它们也视为 value 类型。
+func IsValueType(t reflect.Type) bool {
+	switch t.Kind() {
+	case reflect.Map, reflect.Slice, reflect.Array:
+		return IsPrimitiveValueType(t.Elem())
+	default:
+		return IsPrimitiveValueType(t)
 	}
 }
 

@@ -208,8 +208,7 @@ func (r *argList) get(ctx Context, fileLine string) ([]reflect.Value, error) {
 	return result, nil
 }
 
-func (r *argList) getArg(ctx Context, arg Arg, t reflect.Type,
-	fileLine string) (v reflect.Value, err error) {
+func (r *argList) getArg(ctx Context, arg Arg, t reflect.Type, fileLine string) (v reflect.Value, err error) {
 
 	description := fmt.Sprintf("arg:\"%v\" %s", arg, fileLine)
 	log.Tracef("get value %s", description)
@@ -239,7 +238,7 @@ func (r *argList) getArg(ctx Context, arg Arg, t reflect.Type,
 	v = reflect.New(t).Elem()
 
 	// 处理 bean 类型
-	if util.IsBeanType(t) {
+	if util.IsBeanReceiver(t) {
 		if err = ctx.Wire(v, tag); err != nil {
 			return reflect.Value{}, err
 		}

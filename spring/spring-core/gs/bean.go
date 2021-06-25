@@ -31,42 +31,15 @@ import (
 	"github.com/go-spring/spring-core/util"
 )
 
-// toSingletonTag 将 bean.Selector 转换为对应的 singletonTag 。
-func toSingletonTag(selector bean.Selector) singletonTag {
-	switch s := selector.(type) {
-	case string:
-		return parseSingletonTag(s)
-	case bean.Definition:
-		return parseSingletonTag(s.ID())
-	case *BeanDefinition:
-		return parseSingletonTag(s.ID())
-	default:
-		return parseSingletonTag(util.TypeName(s) + ":")
-	}
-}
-
-// singletonTag 单例模式的 tag 分解式，完整形式是 XXX:XXX? 。
-type singletonTag struct {
+// wireTag 单例模式的 tag 分解式，完整形式是 XXX:XXX? 。
+type wireTag struct {
 	typeName string
 	beanName string
 	nullable bool
 }
 
-func (tag singletonTag) String() string {
-	b := bytes.NewBuffer(nil)
-	if tag.typeName != "" {
-		b.WriteString(tag.typeName)
-		b.WriteString(":")
-	}
-	b.WriteString(tag.beanName)
-	if tag.nullable {
-		b.WriteString("?")
-	}
-	return b.String()
-}
-
-// parseSingletonTag 解析单例模式的 tag 分解式，完整形式是 XXX:XXX? 。
-func parseSingletonTag(str string) (tag singletonTag) {
+// parseWireTag 解析单例模式的 tag 分解式，完整形式是 XXX:XXX? 。
+func parseWireTag(str string) (tag wireTag) {
 
 	if str == "" {
 		return
@@ -90,59 +63,31 @@ func parseSingletonTag(str string) (tag singletonTag) {
 	return
 }
 
-// collectionTag 收集模式的 tag 分解式，完整形式是 [XXX:XXX?,*]? 。
-type collectionTag struct {
-	beanTags []singletonTag
-	nullable bool
-}
-
-func (tag collectionTag) String() string {
+func (tag wireTag) String() string {
 	b := bytes.NewBuffer(nil)
-	b.WriteString("[")
-	n := len(tag.beanTags)
-	for i, t := range tag.beanTags {
-		b.WriteString(t.String())
-		if i < n-1 {
-			b.WriteString(",")
-		}
+	if tag.typeName != "" {
+		b.WriteString(tag.typeName)
+		b.WriteString(":")
 	}
-	b.WriteString("]")
+	b.WriteString(tag.beanName)
 	if tag.nullable {
 		b.WriteString("?")
 	}
 	return b.String()
 }
 
-// collectionMode 返回是否为收集模式。
-func collectionMode(str string) bool {
-	return len(str) > 0 && str[0] == '['
-}
-
-// parseCollectionTag 解析收集模式的 tag 分解式，完整形式是 [XXX:XXX?,*]? 。
-func parseCollectionTag(str string) (tag collectionTag) {
-
-	if str == "" {
-		panic(errors.New("invalid collection tag"))
+// toWireTag 将 bean.Selector 转换为对应的 wireTag 。
+func toWireTag(selector bean.Selector) wireTag {
+	switch s := selector.(type) {
+	case string:
+		return parseWireTag(s)
+	case bean.Definition:
+		return parseWireTag(s.ID())
+	case *BeanDefinition:
+		return parseWireTag(s.ID())
+	default:
+		return parseWireTag(util.TypeName(s) + ":")
 	}
-
-	tag.beanTags = make([]singletonTag, 0)
-
-	// 检查字符串结尾是否有可空标记。
-	if n := len(str) - 1; str[n] == '?' {
-		tag.nullable = true
-		str = str[:n]
-	}
-
-	if str[0] != '[' || str[len(str)-1] != ']' {
-		panic(errors.New("invalid collection tag"))
-	}
-
-	if str = str[1 : len(str)-1]; len(str) > 0 {
-		for _, s := range strings.Split(str, ",") {
-			tag.beanTags = append(tag.beanTags, parseSingletonTag(s))
-		}
-	}
-	return
 }
 
 const (

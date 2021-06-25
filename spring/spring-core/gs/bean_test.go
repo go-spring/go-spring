@@ -38,8 +38,7 @@ func newBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *gs.BeanDefinition {
 //func TestParseSingletonTag(t *testing.T) {
 //
 //	data := map[string]SingletonTag{
-//		"[]":     {"", "[]", false},
-//		"[]?":    {"", "[]", true},
+//		"?":      {"", "", true},
 //		"i":      {"", "i", false},
 //		"i?":     {"", "i", true},
 //		":i":     {"", "i", false},
@@ -59,8 +58,7 @@ func newBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *gs.BeanDefinition {
 //func TestParseBeanTag(t *testing.T) {
 //
 //	data := map[string]collectionTag{
-//		"[]":  {[]SingletonTag{}, false},
-//		"[]?": {[]SingletonTag{}, true},
+//		"?":   {[]SingletonTag{}, true},
 //	}
 //
 //	for k, v := range data {
@@ -196,10 +194,8 @@ func TestObjectBean(t *testing.T) {
 	t.Run("valid bean", func(t *testing.T) {
 		newBean(make(chan int))
 		newBean(reflect.ValueOf(func() {}))
-		newBean(make(map[string]*int))
 		newBean(new(int))
 		newBean(&BeanZero{})
-		newBean(make([]*int, 0))
 	})
 
 	t.Run("check name && typename", func(t *testing.T) {

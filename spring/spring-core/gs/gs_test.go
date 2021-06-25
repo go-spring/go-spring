@@ -70,7 +70,6 @@ func TestApplicationContext(t *testing.T) {
 		c, ch := container()
 
 		e := int(3)
-		a := []*int{&e}
 
 		// 普通类型用属性注入
 		assert.Panic(t, func() {
@@ -90,12 +89,6 @@ func TestApplicationContext(t *testing.T) {
 
 		// 相同类型不同名称的 bean 都可注册
 		c.Object(&e).WithName("i4")
-
-		c.Object(a)
-
-		assert.Panic(t, func() {
-			c.Object(&a)
-		}, "bean should be \\*val but not \\*ref")
 
 		c.Refresh()
 
@@ -117,13 +110,13 @@ func TestApplicationContext(t *testing.T) {
 		// 入参不是可赋值的对象
 		assert.Panic(t, func() {
 			var i int
-			err := p.Get(&i, gs.Use("i3"))
+			err := p.Get(&i, "i3")
 			util.Panic(err).When(err != nil)
 		}, "receiver must be ref type, bean:\"i3\"")
 
 		{
 			var i *int
-			err := p.Get(&i, gs.Use("i3"))
+			err := p.Get(&i, "i3")
 			assert.Nil(t, err)
 		}
 
@@ -145,10 +138,7 @@ func TestApplicationContext(t *testing.T) {
 
 	t.Run("pkg1.SamePkg", func(t *testing.T) {
 		c := gs.New()
-
 		e := pkg1.SamePkg{}
-		a := []pkg1.SamePkg{{}}
-		p := []*pkg1.SamePkg{{}}
 
 		assert.Panic(t, func() {
 			c.Object(e)
@@ -158,20 +148,12 @@ func TestApplicationContext(t *testing.T) {
 		c.Object(&e).WithName("i3")
 		c.Object(&e).WithName("i4")
 
-		assert.Panic(t, func() {
-			c.Object(a)
-		}, "bean must be ref type")
-
-		c.Object(p)
 		c.Refresh()
 	})
 
 	t.Run("pkg2.SamePkg", func(t *testing.T) {
 		c := gs.New()
-
 		e := pkg2.SamePkg{}
-		a := []pkg2.SamePkg{{}}
-		p := []*pkg2.SamePkg{{}}
 
 		assert.Panic(t, func() {
 			c.Object(e)
@@ -182,11 +164,6 @@ func TestApplicationContext(t *testing.T) {
 		c.Object(&e).WithName("i4")
 		c.Object(&e).WithName("i5")
 
-		assert.Panic(t, func() {
-			c.Object(a)
-		}, "bean must be ref type")
-
-		c.Object(p)
 		c.Refresh()
 	})
 }
@@ -205,38 +182,38 @@ func (b *TestBincoreng) String() string {
 
 type TestObject struct {
 	// 基础类型指针
-	IntPtrByType *int `inject:""`
-	IntPtrByName *int `autowire:"${key_1:=int_ptr}"`
+	IntPtrByType *int `inject:"?"`
+	IntPtrByName *int `autowire:"${key_1:=int_ptr}?"`
 
 	// 基础类型指针数组
-	IntPtrSliceByType []*int `inject:""`
-	IntPtrCollection  []*int `autowire:"${key_2:=[int_ptr]}"`
-	IntPtrSliceByName []*int `autowire:"int_ptr_slice"`
+	IntPtrSliceByType []*int `inject:"?"`
+	IntPtrCollection  []*int `autowire:"${key_2:=[int_ptr]}?"`
+	IntPtrSliceByName []*int `autowire:"int_ptr_slice?"`
 
 	// 自定义类型指针
-	StructByType *TestBincoreng `inject:""`
-	StructByName *TestBincoreng `autowire:"struct_ptr"`
+	StructByType *TestBincoreng `inject:"?"`
+	StructByName *TestBincoreng `autowire:"struct_ptr?"`
 
 	// 自定义类型指针数组
-	StructPtrSliceByType []*TestBincoreng `inject:""`
-	StructPtrCollection  []*TestBincoreng `autowire:"[]"`
-	StructPtrSliceByName []*TestBincoreng `autowire:"struct_ptr_slice"`
+	StructPtrSliceByType []*TestBincoreng `inject:"?"`
+	StructPtrCollection  []*TestBincoreng `autowire:"?"`
+	StructPtrSliceByName []*TestBincoreng `autowire:"struct_ptr_slice?"`
 
 	// 接口
-	InterfaceByType fmt.Stringer `inject:""`
-	InterfaceByName fmt.Stringer `autowire:"struct_ptr"`
+	InterfaceByType fmt.Stringer `inject:"?"`
+	InterfaceByName fmt.Stringer `autowire:"struct_ptr?"`
 
 	// 接口数组
-	InterfaceSliceByType []fmt.Stringer `autowire:""`
+	InterfaceSliceByType []fmt.Stringer `autowire:"?"`
 
-	InterfaceCollection  []fmt.Stringer `inject:"[]"`
-	InterfaceCollection2 []fmt.Stringer `autowire:"[]"`
+	InterfaceCollection  []fmt.Stringer `inject:"?"`
+	InterfaceCollection2 []fmt.Stringer `autowire:"?"`
 
 	// 指定名称时使用精确匹配模式，不对数组元素进行转换，即便能做到似乎也无意义
 	InterfaceSliceByName []fmt.Stringer `autowire:"struct_ptr_slice?"`
 
-	MapTyType map[string]interface{} `inject:""`
-	MapByName map[string]interface{} `autowire:"map"`
+	MapTyType map[string]interface{} `inject:"?"`
+	MapByName map[string]interface{} `autowire:"map?"`
 }
 
 func TestApplicationContext_AutoWireBeans(t *testing.T) {
@@ -255,7 +232,7 @@ func TestApplicationContext_AutoWireBeans(t *testing.T) {
 
 		assert.Panic(t, func() {
 			c.Refresh()
-		}, "\"TestObject.IntPtrByType\" wired error: found 2 beans, bean:\"\" type:\"\\*int\"")
+		}, "\"TestObject.IntPtrByType\" wired error: found 2 beans, bean:\"\\?\" type:\"\\*int\"")
 	})
 
 	c, ch := container()
@@ -266,25 +243,8 @@ func TestApplicationContext_AutoWireBeans(t *testing.T) {
 	i := int(3)
 	c.Object(&i).WithName("int_ptr")
 
-	i2 := 4
-	ips := []*int{&i2}
-	c.Object(ips).WithName("int_ptr_slice")
-
 	b := TestBincoreng{1}
 	c.Object(&b).WithName("struct_ptr").Export((*fmt.Stringer)(nil))
-
-	b2 := TestBincoreng{2}
-	bps := []*TestBincoreng{&b2}
-	c.Object(bps).WithName("struct_ptr_slice")
-
-	s := []fmt.Stringer{&TestBincoreng{3}}
-	c.Object(s)
-
-	m := map[string]interface{}{
-		"5": 5,
-	}
-
-	c.Object(m).WithName("map")
 
 	f1 := float32(11.0)
 	c.Object(&f1).WithName("float_ptr_1")
@@ -297,7 +257,7 @@ func TestApplicationContext_AutoWireBeans(t *testing.T) {
 	p := <-ch
 
 	var ff []*float32
-	err := p.Collect(&ff, "float_ptr_2", "float_ptr_1")
+	err := p.Get(&ff, "float_ptr_2", "float_ptr_1")
 	assert.Nil(t, err)
 	assert.Equal(t, ff, []*float32{&f2, &f1})
 
@@ -652,10 +612,10 @@ func TestApplicationContext_Get(t *testing.T) {
 		err = p.Get(&grouper)
 		assert.Nil(t, err)
 
-		err = p.Get(&two, gs.Use((*BeanTwo)(nil)))
+		err = p.Get(&two, (*BeanTwo)(nil))
 		assert.Nil(t, err)
 
-		err = p.Get(&grouper, gs.Use((*BeanTwo)(nil)))
+		err = p.Get(&grouper, (*BeanTwo)(nil))
 		assert.Nil(t, err)
 
 		err = p.Get(&two)
@@ -664,41 +624,41 @@ func TestApplicationContext_Get(t *testing.T) {
 		err = p.Get(&grouper)
 		assert.Nil(t, err)
 
-		err = p.Get(&two, gs.Use("*gs_test.BeanTwo"))
+		err = p.Get(&two, "*gs_test.BeanTwo")
 		assert.Nil(t, err)
 
-		err = p.Get(&grouper, gs.Use("*gs_test.BeanTwo"))
+		err = p.Get(&grouper, "*gs_test.BeanTwo")
 		assert.Nil(t, err)
 
 		assert.Panic(t, func() {
-			err = p.Get(&two, gs.Use("BeanTwo"))
+			err = p.Get(&two, "BeanTwo")
 			util.Panic(err).When(err != nil)
 		}, "can't find bean, bean:\"BeanTwo\"")
 
 		assert.Panic(t, func() {
-			err = p.Get(&grouper, gs.Use("BeanTwo"))
+			err = p.Get(&grouper, "BeanTwo")
 			util.Panic(err).When(err != nil)
 		}, "can't find bean, bean:\"BeanTwo\"")
 
-		err = p.Get(&two, gs.Use(":*gs_test.BeanTwo"))
+		err = p.Get(&two, ":*gs_test.BeanTwo")
 		assert.Nil(t, err)
 
-		err = p.Get(&grouper, gs.Use(":*gs_test.BeanTwo"))
+		err = p.Get(&grouper, ":*gs_test.BeanTwo")
 		assert.Nil(t, err)
 
-		err = p.Get(&two, gs.Use("github.com/go-spring/spring-core/gs_test/gs_test.BeanTwo:*gs_test.BeanTwo"))
+		err = p.Get(&two, "github.com/go-spring/spring-core/gs_test/gs_test.BeanTwo:*gs_test.BeanTwo")
 		assert.Nil(t, err)
 
-		err = p.Get(&grouper, gs.Use("github.com/go-spring/spring-core/gs_test/gs_test.BeanTwo:*gs_test.BeanTwo"))
+		err = p.Get(&grouper, "github.com/go-spring/spring-core/gs_test/gs_test.BeanTwo:*gs_test.BeanTwo")
 		assert.Nil(t, err)
 
 		assert.Panic(t, func() {
-			err = p.Get(&two, gs.Use("xxx:*gs_test.BeanTwo"))
+			err = p.Get(&two, "xxx:*gs_test.BeanTwo")
 			util.Panic(err).When(err != nil)
 		}, "can't find bean, bean:\"xxx:\\*gs_test.BeanTwo\"")
 
 		assert.Panic(t, func() {
-			err = p.Get(&grouper, gs.Use("xxx:*gs_test.BeanTwo"))
+			err = p.Get(&grouper, "xxx:*gs_test.BeanTwo")
 			util.Panic(err).When(err != nil)
 		}, "can't find bean, bean:\"xxx:\\*gs_test.BeanTwo\"")
 
@@ -810,14 +770,14 @@ func TestApplicationContext_RegisterBeanFn(t *testing.T) {
 	p := <-ch
 
 	var st1 *Student
-	err := p.Get(&st1, gs.Use("st1"))
+	err := p.Get(&st1, "st1")
 
 	assert.Nil(t, err)
 	fmt.Println(json.ToString(st1))
 	assert.Equal(t, st1.Room, p.Prop("room"))
 
 	var st2 *Student
-	err = p.Get(&st2, gs.Use("st2"))
+	err = p.Get(&st2, "st2")
 
 	assert.Nil(t, err)
 	fmt.Println(json.ToString(st2))
@@ -827,14 +787,14 @@ func TestApplicationContext_RegisterBeanFn(t *testing.T) {
 	fmt.Printf("%x\n", reflect.ValueOf(st2).Pointer())
 
 	var st3 *Student
-	err = p.Get(&st3, gs.Use("st3"))
+	err = p.Get(&st3, "st3")
 
 	assert.Nil(t, err)
 	fmt.Println(json.ToString(st3))
 	assert.Equal(t, st3.Room, p.Prop("room"))
 
 	var st4 *Student
-	err = p.Get(&st4, gs.Use("st4"))
+	err = p.Get(&st4, "st4")
 
 	assert.Nil(t, err)
 	fmt.Println(json.ToString(st4))
@@ -1328,7 +1288,7 @@ func TestApplicationContext_Collect(t *testing.T) {
 		p := <-ch
 
 		var rcs []*RecoresCluster
-		err := p.Collect(&rcs)
+		err := p.Get(&rcs)
 
 		assert.Nil(t, err)
 		assert.Equal(t, len(rcs), 2)
@@ -1338,13 +1298,13 @@ func TestApplicationContext_Collect(t *testing.T) {
 
 		c, _ := container()
 		c.Property("redis.endpoints", "redis://localhost:6379")
-		c.Object([]*RecoresCluster{new(RecoresCluster)})
-		c.Object(new(RecoresCluster))
+		c.Object(new(RecoresCluster)).WithName("a").Order(1)
+		c.Object(new(RecoresCluster)).WithName("b").Order(2)
 
 		intBean := c.Provide(func(p gs.Pandora) *int {
 
 			var rcs []*RecoresCluster
-			err := p.Collect(&rcs)
+			err := p.Get(&rcs)
 			fmt.Println(json.ToString(rcs))
 
 			assert.Nil(t, err)
@@ -1357,23 +1317,6 @@ func TestApplicationContext_Collect(t *testing.T) {
 
 		c.Refresh()
 	})
-}
-
-func TestApplicationContext_WireSliceBean(t *testing.T) {
-
-	c, ch := container()
-	c.Property("redis.endpoints", "redis://localhost:6379")
-	c.Object([]*RecoresCluster{new(RecoresCluster)})
-	c.Refresh()
-
-	p := <-ch
-
-	var rcs []*RecoresCluster
-	err := p.Get(&rcs)
-	fmt.Println(json.ToString(rcs))
-
-	assert.Nil(t, err)
-	assert.Equal(t, rcs[0].Endpoints, "redis://localhost:6379")
 }
 
 var defaultClassOption = ClassOption{
@@ -1506,8 +1449,9 @@ func TestOptionConstructorArg(t *testing.T) {
 		c, ch := container()
 		c.Property("class_name", "二年级03班")
 		c.Property("president", "CaiYuanPei")
-		c.Provide(NewClassRoom, arg.Option(withStudents, ""))
-		c.Object([]*Student{new(Student), new(Student)})
+		c.Provide(NewClassRoom, arg.Option(withStudents))
+		c.Object(new(Student)).WithName("Student1")
+		c.Object(new(Student)).WithName("Student2")
 		c.Refresh()
 
 		p := <-ch
@@ -1528,12 +1472,11 @@ func TestOptionConstructorArg(t *testing.T) {
 		c.Property("class_name", "二年级06班")
 		c.Property("president", "CaiYuanPei")
 		c.Provide(NewClassRoom,
-			arg.Option(withStudents, ""),
+			arg.Option(withStudents),
 			arg.Option(withClassName, "${class_name:=二年级03班}", "${class_floor:=3}"),
 		)
-		c.Object([]*Student{
-			new(Student), new(Student),
-		})
+		c.Object(&Student{}).WithName("Student1")
+		c.Object(&Student{}).WithName("Student2")
 		c.Refresh()
 
 		p := <-ch
@@ -2294,7 +2237,7 @@ func TestApplicationContext_FnArgCollectBean(t *testing.T) {
 			sort.Ints(nums)
 			assert.Equal(t, nums, []int{3, 4})
 			return false
-		}, "[]")
+		})
 		c.Refresh()
 	})
 
@@ -2310,7 +2253,7 @@ func TestApplicationContext_FnArgCollectBean(t *testing.T) {
 			sort.Strings(names)
 			assert.Equal(t, names, []string{"t1", "t2"})
 			return false
-		}, "[]")
+		})
 		c.Refresh()
 	})
 }
@@ -2861,7 +2804,7 @@ func TestDefaultSpringContext_ConditionOnBean(t *testing.T) {
 	err := p.Get(&two)
 	assert.Nil(t, err)
 
-	err = p.Get(&two, gs.Use("another_two"))
+	err = p.Get(&two, "another_two")
 	assert.Error(t, err, "can't find bean, bean:\"another_two\"")
 }
 
@@ -2882,7 +2825,7 @@ func TestDefaultSpringContext_ConditionOnMissingBean(t *testing.T) {
 		err := p.Get(&two)
 		assert.Nil(t, err)
 
-		err = p.Get(&two, gs.Use("another_two"))
+		err = p.Get(&two, "another_two")
 		assert.Nil(t, err)
 	}
 }
@@ -3142,19 +3085,17 @@ func TestMapCollection(t *testing.T) {
 		c, ch := container()
 		c.Object(&mapValue{"a"}).WithName("a").Order(1)
 		c.Object(&mapValue{"b"}).WithName("b").Order(2)
-		c.Object([]*mapValue{{"c"}, {"d"}}).WithName("cd").Order(3)
-		c.Object(map[string]*mapValue{"e": {"e"}, "f": {"f"}}).WithName("ef").Order(4)
 		c.Refresh()
 
 		p := <-ch
 
 		var vSlice []*mapValue
-		err := p.Collect(&vSlice)
+		err := p.Get(&vSlice)
 		assert.Nil(t, err)
 		fmt.Println(vSlice)
 
 		var vMap map[string]*mapValue
-		err = p.Collect(&vMap)
+		err = p.Get(&vMap)
 		assert.Nil(t, err)
 		fmt.Println(vMap)
 	})

@@ -37,9 +37,8 @@ import (
 // App 对象，从而实现使用方式的统一。
 type Pandora interface {
 	Prop(key string, opts ...conf.GetOption) interface{}
-	Get(i interface{}, opts ...GetOption) error
-	Collect(i interface{}, selectors ...bean.Selector) error
 	Bind(i interface{}, opts ...conf.BindOption) error
+	Get(i interface{}, selectors ...bean.Selector) error
 	Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error)
 	Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, error)
 }
@@ -58,36 +57,35 @@ func (p *pandora) Prop(key string, opts ...conf.GetOption) interface{} {
 	return p.c.p.Get(key, opts...)
 }
 
-type getArg struct {
-	selector bean.Selector
-}
-
-type GetOption func(arg *getArg)
-
-func Use(s bean.Selector) GetOption {
-	return func(arg *getArg) {
-		arg.selector = s
-	}
+// Bind 对传入的对象进行属性绑定，注意该方法不会进行依赖注入，支持基本数据类型
+// 及结构体类型。
+func (p *pandora) Bind(i interface{}, opts ...conf.BindOption) error {
+	p.c.callAfterRefreshing()
+	return p.c.p.Bind(i, opts...)
 }
 
 // Get 根据类型和选择器获取符合条件的 bean 对象，该方法用于精确查找某个 bean 。
 // 如果没有找到或者找到多个都会返回 error。另外，这个方法和 Find 方法的区别在于
 // Get 方法返回的 bean 对象能够确保已经完成属性绑定和依赖注入，而 Find 则不能。
-func (p *pandora) Get(i interface{}, opts ...GetOption) error {
+// Collect 根据类型和选择器收集符合条件的 bean 对象，该方法和 Get 方法的区别
+// 在于它能够返回多个和类型匹配的 bean 对象，并且符合条件的不仅仅只是单例形式的
+// bean 对象，还可能包含集合形式注册的 bean 对象，该方法将集合形式 bean 对象
+// 的元素当成单例 bean 对象。
+// 另外，该函数有两种使用模式:自动模式和指定模式。自动模式是指 selectors 参数
+// 为空，这时候不仅会收集符合条件的单例 bean，还会收集符合条件的数组 bean (将
+// 数组元素拆开后一个个按照顺序放到收集结果里面)。指定模式是指 selectors 参数
+// 不为空，这时候只会收集符合条件的单例 bean，原因是该模式下会根据 selectors
+// 参数的顺序对收集结果进行排序。
+func (p *pandora) Get(i interface{}, selectors ...bean.Selector) error {
 	p.c.callAfterRefreshing()
 
 	if i == nil {
 		return errors.New("i can't be nil")
 	}
 
-	// 使用指针才能够对外赋值
-	if reflect.TypeOf(i).Kind() != reflect.Ptr {
+	v := reflect.ValueOf(i)
+	if v.Kind() != reflect.Ptr {
 		return errors.New("i must be pointer")
-	}
-
-	a := getArg{selector: bean.Selector("")}
-	for _, opt := range opts {
-		opt(&a)
 	}
 
 	stack := newWiringStack()
@@ -98,8 +96,11 @@ func (p *pandora) Get(i interface{}, opts ...GetOption) error {
 		}
 	}()
 
-	v := reflect.ValueOf(i).Elem()
-	return p.c.getBean(v, toSingletonTag(a.selector), stack)
+	var tags []wireTag
+	for _, s := range selectors {
+		tags = append(tags, toWireTag(s))
+	}
+	return p.c.autowire(v.Elem(), tags, stack)
 }
 
 func (p *pandora) Find(selector bean.Selector) ([]bean.Definition, error) {
@@ -112,46 +113,6 @@ func (p *pandora) Find(selector bean.Selector) ([]bean.Definition, error) {
 		ret = append(ret, b)
 	}
 	return ret, nil
-}
-
-// Collect 根据类型和选择器收集符合条件的 bean 对象，该方法和 Get 方法的区别
-// 在于它能够返回多个和类型匹配的 bean 对象，并且符合条件的不仅仅只是单例形式的
-// bean 对象，还可能包含集合形式注册的 bean 对象，该方法将集合形式 bean 对象
-// 的元素当成单例 bean 对象。
-// 另外，该函数有两种使用模式:自动模式和指定模式。自动模式是指 selectors 参数
-// 为空，这时候不仅会收集符合条件的单例 bean，还会收集符合条件的数组 bean (将
-// 数组元素拆开后一个个按照顺序放到收集结果里面)。指定模式是指 selectors 参数
-// 不为空，这时候只会收集符合条件的单例 bean，原因是该模式下会根据 selectors
-// 参数的顺序对收集结果进行排序。
-func (p *pandora) Collect(i interface{}, selectors ...bean.Selector) error {
-	p.c.callAfterRefreshing()
-
-	v := reflect.ValueOf(i)
-	if v.Kind() != reflect.Ptr {
-		return errors.New("i must be slice ptr")
-	}
-
-	stack := newWiringStack()
-
-	defer func() {
-		if len(stack.beans) > 0 {
-			log.Infof("wiring path %s", stack.path())
-		}
-	}()
-
-	var tag collectionTag
-	for _, selector := range selectors {
-		s := toSingletonTag(selector)
-		tag.beanTags = append(tag.beanTags, s)
-	}
-	return p.c.collectBeans(v.Elem(), tag, stack)
-}
-
-// Bind 对传入的对象进行属性绑定，注意该方法不会进行依赖注入，支持基本数据类型
-// 及结构体类型。
-func (p *pandora) Bind(i interface{}, opts ...conf.BindOption) error {
-	p.c.callAfterRefreshing()
-	return p.c.p.Bind(i, opts...)
 }
 
 // Wire 如果传入的是 bean 对象，则对 bean 对象进行属性绑定和依赖注入，如果传

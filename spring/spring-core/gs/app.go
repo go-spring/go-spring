@@ -64,8 +64,8 @@ type App struct {
 	cfgLocation         []string // 属性列表文件搜索目录
 	expectSysProperties []string // 期望从系统环境变量中获取到的属性，支持正则表达式
 
-	Events  []ApplicationEvent  `autowire:"${application-event.collection:=[]?}"`
-	Runners []ApplicationRunner `autowire:"${command-line-runner.collection:=[]?}"`
+	Events  []ApplicationEvent  `autowire:"${application-event.collection:=?}"`
+	Runners []ApplicationRunner `autowire:"${command-line-runner.collection:=?}"`
 
 	exitChan chan struct{}
 

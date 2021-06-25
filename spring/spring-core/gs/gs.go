@@ -170,7 +170,7 @@ func (c *Container) find(selector bean.Selector) ([]*BeanDefinition, error) {
 	t := reflect.TypeOf(selector)
 
 	if t.Kind() == reflect.String {
-		tag := parseSingletonTag(selector.(string))
+		tag := toWireTag(selector)
 		return finder(func(b *BeanDefinition) bool {
 			return b.Match(tag.typeName, tag.beanName)
 		})
@@ -458,14 +458,14 @@ func (s *wiringStack) sortDestroyers() (ret []destroyer0) {
 }
 
 // getBean 获取 tag 对应的 bean 然后赋值给 v，因此 v 应该是一个未初始化的值。
-func (c *Container) getBean(v reflect.Value, tag singletonTag, stack *wiringStack) error {
+func (c *Container) getBean(v reflect.Value, tag wireTag, stack *wiringStack) error {
 
 	if !v.IsValid() {
 		return fmt.Errorf("receiver must be ref type, bean:%q", tag)
 	}
 
 	t := v.Type()
-	if !util.IsBeanType(t) {
+	if !util.IsBeanReceiver(t) {
 		return fmt.Errorf("receiver must be ref type, bean:%q", tag)
 	}
 
@@ -743,7 +743,7 @@ func (c *Container) wireStruct(v reflect.Value, stack *wiringStack) error {
 			tag, ok = ft.Tag.Lookup("inject")
 		}
 		if ok {
-			err := c.autowire(fv, tag, stack)
+			err := newArgContext(c, stack).Wire(fv, tag)
 			if err != nil {
 				fieldName := typeName + "." + ft.Name
 				return fmt.Errorf("%q wired error: %s", fieldName, err.Error())
@@ -762,26 +762,21 @@ func (c *Container) wireStruct(v reflect.Value, stack *wiringStack) error {
 }
 
 // autowire 根据 tag 的内容自动判断注入模式，是单例模式，还是收集模式。
-func (c *Container) autowire(v reflect.Value, tag string, stack *wiringStack) error {
-
-	// tag 预处理，可以通过属性值进行指定。
-	if strings.HasPrefix(tag, "${") {
-		s := ""
-		err := c.p.Bind(&s, conf.Tag(tag))
-		if err != nil {
-			return err
+func (c *Container) autowire(v reflect.Value, tags []wireTag, stack *wiringStack) error {
+	switch v.Kind() {
+	case reflect.Map, reflect.Slice, reflect.Array:
+		return c.collectBeans(v, tags, stack)
+	default:
+		var tag wireTag
+		if len(tags) > 0 {
+			tag = tags[0]
 		}
-		tag = s
+		return c.getBean(v, tag, stack)
 	}
-
-	if !collectionMode(tag) {
-		return c.getBean(v, parseSingletonTag(tag), stack)
-	}
-	return c.collectBeans(v, parseCollectionTag(tag), stack)
 }
 
 // filterBean 返回 tag 对应的 bean 在数组中的索引，找不到返回 -1。
-func filterBean(beans []*BeanDefinition, tag singletonTag, t reflect.Type) (int, error) {
+func filterBean(beans []*BeanDefinition, tag wireTag, t reflect.Type) (int, error) {
 
 	var found []int
 	for i, b := range beans {
@@ -817,7 +812,7 @@ func (b byOrder) Len() int           { return len(b) }
 func (b byOrder) Less(i, j int) bool { return b[i].order < b[j].order }
 func (b byOrder) Swap(i, j int)      { b[i], b[j] = b[j], b[i] }
 
-func (c *Container) collectBeans(v reflect.Value, tag collectionTag, stack *wiringStack) error {
+func (c *Container) collectBeans(v reflect.Value, tags []wireTag, stack *wiringStack) error {
 
 	t := v.Type()
 	if t.Kind() != reflect.Slice && t.Kind() != reflect.Map {
@@ -825,103 +820,55 @@ func (c *Container) collectBeans(v reflect.Value, tag collectionTag, stack *wiri
 	}
 
 	et := t.Elem()
-	if !util.IsBeanType(et) {
+	if !util.IsBeanReceiver(et) {
 		return errors.New("item in collection mode should be ref type")
 	}
 
-	tmp := make([]*BeanDefinition, 0)
-
-	mapType := reflect.MapOf(reflect.TypeOf(""), et)
-	cache := c.beansByType[mapType]
-	for i := 0; i < len(cache); i++ {
-		tmp = append(tmp, cache[i])
-	}
-
-	sliceType := reflect.SliceOf(et)
-	cache = c.beansByType[sliceType]
-	for i := 0; i < len(cache); i++ {
-		tmp = append(tmp, cache[i])
-	}
-
-	cache = c.beansByType[et]
-	for i := 0; i < len(cache); i++ {
-		tmp = append(tmp, cache[i])
-	}
-
-	var beans []*BeanDefinition
-
-	if len(tag.beanTags) == 0 {
-		beans = tmp
-	} else {
-		for _, item := range tag.beanTags {
-			index, err := filterBean(tmp, item, et)
+	beans := c.beansByType[et]
+	if len(tags) > 0 {
+		arr := make([]*BeanDefinition, 0)
+		for _, item := range tags {
+			index, err := filterBean(beans, item, et)
 			if err != nil {
 				return err
 			}
 			if index >= 0 {
-				beans = append(beans, tmp[index])
+				arr = append(arr, beans[index])
 			}
 		}
+		beans = arr
 	}
 
 	if len(beans) == 0 {
-		if tag.nullable {
-			return nil
+		for _, tag := range tags {
+			if !tag.nullable {
+				return fmt.Errorf("no beans collected for %q", tags)
+			}
 		}
-		return fmt.Errorf("no beans collected for %q", tag)
+		return nil
 	}
 
+	for _, b := range beans {
+		if err := c.wireBean(b, stack); err != nil {
+			return err
+		}
+	}
+
+	var ret reflect.Value
 	switch t.Kind() {
 	case reflect.Slice:
-		ret := reflect.MakeSlice(t, 0, 0)
 		sort.Sort(byOrder(beans))
+		ret = reflect.MakeSlice(t, 0, 0)
 		for _, b := range beans {
-			err := c.wireBean(b, stack)
-			if err != nil {
-				return err
-			}
-			beanValue := b.Value()
-			switch b.Type().Kind() {
-			case reflect.Map:
-				iter := beanValue.MapRange()
-				for iter.Next() {
-					ret = reflect.Append(ret, iter.Value())
-				}
-			case reflect.Slice:
-				for i := 0; i < beanValue.Len(); i++ {
-					ret = reflect.Append(ret, beanValue.Index(i))
-				}
-			default:
-				ret = reflect.Append(ret, beanValue)
-			}
+			ret = reflect.Append(ret, b.Value())
 		}
-		v.Set(ret)
 	case reflect.Map:
-		ret := reflect.MakeMap(t)
+		ret = reflect.MakeMap(t)
 		for _, b := range beans {
-			err := c.wireBean(b, stack)
-			if err != nil {
-				return err
-			}
-			beanValue := b.Value()
-			switch b.Type().Kind() {
-			case reflect.Map:
-				iter := beanValue.MapRange()
-				for iter.Next() {
-					key := b.name + "#" + iter.Key().Interface().(string)
-					ret.SetMapIndex(reflect.ValueOf(key), iter.Value())
-				}
-			case reflect.Slice:
-				for i := 0; i < beanValue.Len(); i++ {
-					key := fmt.Sprintf("%s#%d", b.name, i)
-					ret.SetMapIndex(reflect.ValueOf(key), beanValue.Index(i))
-				}
-			default:
-				ret.SetMapIndex(reflect.ValueOf(b.name), beanValue)
-			}
+			ret.SetMapIndex(reflect.ValueOf(b.name), b.Value())
 		}
-		v.Set(ret)
 	}
+	v.Set(ret)
 	return nil
 }
 
@@ -946,5 +893,23 @@ func (c *ArgContext) Bind(v reflect.Value, tag string) error {
 
 // Wire 根据 tag 的内容自动判断注入模式，是单例模式，还是收集模式。
 func (c *ArgContext) Wire(v reflect.Value, tag string) error {
-	return c.c.autowire(v, tag, c.stack)
+
+	// tag 预处理，可以通过属性值进行指定。
+	if strings.HasPrefix(tag, "${") {
+		s, err := c.c.p.Resolve(tag)
+		if err != nil {
+			return err
+		}
+		tag = s
+	}
+
+	if tag == "" {
+		return c.c.autowire(v, nil, c.stack)
+	}
+
+	var tags []wireTag
+	for _, s := range strings.Split(tag, ",") {
+		tags = append(tags, toWireTag(s))
+	}
+	return c.c.autowire(v, tags, c.stack)
 }

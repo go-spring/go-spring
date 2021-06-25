@@ -217,11 +217,11 @@ func TestRefType(t *testing.T) {
 		{func() {}, true},                            // Func
 		{reflect.TypeOf((*error)(nil)).Elem(), true}, // Interface
 		{make(map[int]int), false},                   // Map
-		{make(map[string]*int), true},                //
+		{make(map[string]*int), false},               //
 		{new(int), true},                             // Ptr
 		{new(struct{}), true},                        //
 		{[]int{0}, false},                            // Slice
-		{[]*int{}, true},                             //
+		{[]*int{}, false},                            //
 		{"this is a string", false},                  // String
 		{struct{}{}, false},                          // Struct
 		{unsafe.Pointer(new(int)), false},            // UnsafePointer
