@@ -341,6 +341,11 @@ func (app *App) ShowBanner(show bool) {
 	app.showBanner = show
 }
 
+// EnablePandora 允许使用 Pandora 接口
+func (app *App) EnablePandora() {
+	app.c.EnablePandora()
+}
+
 func (app *App) Property(key string, value interface{}) {
 	app.c.Property(key, value)
 }

@@ -68,13 +68,14 @@ type Container struct {
 
 	configers  []*Configer
 	destroyers []destroyer0
+
+	enablePandora bool
 }
 
 // New 创建 IoC 容器。
 func New() *Container {
-
 	ctx, cancel := context.WithCancel(context.Background())
-	c := &Container{
+	return &Container{
 		p:           conf.New(),
 		ctx:         ctx,
 		cancel:      cancel,
@@ -82,9 +83,11 @@ func New() *Container {
 		beansByName: make(map[string][]*BeanDefinition),
 		beansByType: make(map[reflect.Type][]*BeanDefinition),
 	}
+}
 
-	c.Object(&pandora{c}).Export((*Pandora)(nil))
-	return c
+// EnablePandora 允许使用 Pandora 接口
+func (c *Container) EnablePandora() {
+	c.enablePandora = true
 }
 
 // callBeforeRefreshing 有些方法只能在 Refresh 开始前调用，比如 Object 。
@@ -201,6 +204,10 @@ func (c *Container) Refresh() {
 		panic(errors.New("container already refreshed"))
 	}
 
+	if c.enablePandora {
+		c.Object(&pandora{c}).Export((*Pandora)(nil))
+	}
+
 	c.state = Refreshing
 
 	err := c.resolveBeans()
@@ -222,6 +229,15 @@ func (c *Container) Refresh() {
 
 	c.destroyers = stack.sortDestroyers()
 	c.state = Refreshed
+
+	if !c.enablePandora {
+		c.p = nil
+		c.beans = nil
+		c.beansById = nil
+		c.beansByName = nil
+		c.beansByType = nil
+		c.configers = nil
+	}
 
 	log.Info("container refreshed successfully")
 }
@@ -371,10 +387,14 @@ func (c *Container) Close() {
 
 func (c *Container) runDestroyers() {
 	for _, d := range c.destroyers {
-		fnValue := reflect.ValueOf(d.fn)
-		out := fnValue.Call([]reflect.Value{d.v})
-		if len(out) > 0 && !out[0].IsNil() {
-			log.Error(out[0].Interface().(error))
+		if d.fn == nil {
+			d.v.Interface().(interface{ OnDestroy() }).OnDestroy()
+		} else {
+			fnValue := reflect.ValueOf(d.fn)
+			out := fnValue.Call([]reflect.Value{d.v})
+			if len(out) > 0 && !out[0].IsNil() {
+				log.Error(out[0].Interface().(error))
+			}
 		}
 	}
 }
@@ -573,7 +593,7 @@ func (c *Container) wireBean(b *BeanDefinition, stack *wiringStack) error {
 	}()
 
 	// 对注入路径上的销毁函数进行排序。
-	if b.destroy != nil {
+	if _, ok := b.Interface().(interface{ OnDestroy() }); ok || b.destroy != nil {
 		d := stack.saveDestroyer(b)
 		if i := stack.destroyers.Back(); i != nil {
 			d.after(i.Value.(*BeanDefinition))
@@ -619,6 +639,16 @@ func (c *Container) wireBean(b *BeanDefinition, stack *wiringStack) error {
 	err = c.wireBeanValue(v, stack)
 	if err != nil {
 		return err
+	}
+
+	if f, ok := b.Interface().(interface{ OnInit() }); ok {
+		f.OnInit()
+	}
+
+	if f, ok := b.Interface().(interface{ OnInit() error }); ok {
+		if err = f.OnInit(); err != nil {
+			return err
+		}
 	}
 
 	// 执行 bean 的初始化函数。
@@ -676,31 +706,8 @@ func (c *Container) getBeanValue(b *BeanDefinition, stack *wiringStack) (reflect
 // wireBeanValue 对 v 进行属性绑定和依赖注入，v 应该是一个已经初始化的值。
 func (c *Container) wireBeanValue(v reflect.Value, stack *wiringStack) error {
 
-	t := v.Type()
-
-	// 数组 bean 的每个元素单独注入。
-	if t.Kind() == reflect.Slice {
-		for i := 0; i < v.Len(); i++ {
-			err := c.wireBeanValue(v.Index(i), stack)
-			if err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-
-	if t.Kind() == reflect.Map {
-		iter := v.MapRange()
-		for iter.Next() {
-			err := c.wireBeanValue(iter.Value(), stack)
-			if err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-
 	ev := v
+	t := v.Type()
 	if t.Kind() == reflect.Ptr {
 		ev = v.Elem()
 	}
@@ -826,16 +833,51 @@ func (c *Container) collectBeans(v reflect.Value, tags []wireTag, stack *wiringS
 
 	beans := c.beansByType[et]
 	if len(tags) > 0 {
-		arr := make([]*BeanDefinition, 0)
+
+		var (
+			any       []*BeanDefinition
+			afterAny  []*BeanDefinition
+			beforeAny []*BeanDefinition
+		)
+
+		foundAny := false
 		for _, item := range tags {
+
+			// 是否遇到了"无序"标记
+			if item.beanName == "*" {
+				if foundAny {
+					return fmt.Errorf("more than one * in collection %q", tags)
+				}
+				foundAny = true
+				continue
+			}
+
 			index, err := filterBean(beans, item, et)
 			if err != nil {
 				return err
 			}
-			if index >= 0 {
-				arr = append(arr, beans[index])
+			if index < 0 {
+				continue
 			}
+
+			if foundAny {
+				afterAny = append(afterAny, beans[index])
+			} else {
+				beforeAny = append(beforeAny, beans[index])
+			}
+
+			beans = append(beans[:index], beans[index+1:]...)
 		}
+
+		if foundAny {
+			any = append(any, beans...)
+		}
+
+		n := len(beforeAny) + len(any) + len(afterAny)
+		arr := make([]*BeanDefinition, 0, n)
+		arr = append(arr, beforeAny...)
+		arr = append(arr, any...)
+		arr = append(arr, afterAny...)
 		beans = arr
 	}
 

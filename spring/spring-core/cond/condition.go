@@ -87,15 +87,6 @@ type onPropertyValue struct {
 	matchIfMissing bool
 }
 
-type PropertyValueOption func(*onPropertyValue)
-
-// MatchIfMissing 当属性值不存在时是否匹配条件
-func MatchIfMissing(matchIfMissing bool) PropertyValueOption {
-	return func(c *onPropertyValue) {
-		c.matchIfMissing = matchIfMissing
-	}
-}
-
 func (c *onPropertyValue) Matches(ctx Context) (bool, error) {
 	// 参考 /usr/local/go/src/go/types/eval_test.go 示例
 
@@ -321,6 +312,15 @@ func OnMissingProperty(name string) *conditional {
 // OnMissingProperty 添加一个 onMissingProperty 条件。
 func (c *conditional) OnMissingProperty(name string) *conditional {
 	return c.On(&onMissingProperty{name: name})
+}
+
+type PropertyValueOption func(*onPropertyValue)
+
+// MatchIfMissing 当属性值不存在时是否匹配条件
+func MatchIfMissing(matchIfMissing bool) PropertyValueOption {
+	return func(c *onPropertyValue) {
+		c.matchIfMissing = matchIfMissing
+	}
 }
 
 // OnPropertyValue 返回一个 onPropertyValue 条件。

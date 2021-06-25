@@ -39,6 +39,11 @@ func ExpectSystemEnv(pattern ...string) {
 	app.ExpectSystemEnv(pattern...)
 }
 
+// EnablePandora 允许使用 Pandora 接口
+func EnablePandora() {
+	app.EnablePandora()
+}
+
 // Property 设置属性值，属性名称统一转成小写。
 func Property(key string, value interface{}) {
 	app.Property(key, value)
