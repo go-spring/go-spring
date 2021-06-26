@@ -18,6 +18,7 @@ package gs
 
 import (
 	"context"
+	"errors"
 	"io/ioutil"
 	"os"
 	"os/signal"
@@ -61,8 +62,9 @@ type App struct {
 	banner     string // banner 的内容
 	showBanner bool   // 是否显示 banner
 
-	cfgLocation         []string // 属性列表文件搜索目录
-	expectSysProperties []string // 期望从系统环境变量中获取到的属性，支持正则表达式
+	cfgLocation         []string               // 属性列表文件搜索目录
+	expectSysProperties []string               // 期望从系统环境变量中获取到的属性，支持正则表达式
+	mapOfOnProperty     map[string]interface{} // 属性列表解析完成后的回调
 
 	Events  []ApplicationEvent  `autowire:"${application-event.collection:=?}"`
 	Runners []ApplicationRunner `autowire:"${command-line-runner.collection:=?}"`
@@ -70,8 +72,8 @@ type App struct {
 	exitChan chan struct{}
 
 	RootRouter  web.RootRouter
+	Consumers   []mq.Consumer
 	GRPCServers map[string]*grpc.Server
-	Consumers   map[string]*mq.BindConsumer
 }
 
 // NewApp application 的构造函数
@@ -80,10 +82,10 @@ func NewApp() *App {
 		c:                   New(),
 		cfgLocation:         append([]string{}, "config/"),
 		expectSysProperties: []string{`.*`},
+		mapOfOnProperty:     make(map[string]interface{}),
 		exitChan:            make(chan struct{}),
 		RootRouter:          web.NewRootRouter(),
 		GRPCServers:         make(map[string]*grpc.Server),
-		Consumers:           make(map[string]*mq.BindConsumer),
 	}
 }
 
@@ -101,6 +103,17 @@ func (app *App) start(cfgLocation ...string) {
 
 	app.Object(app)
 	app.prepare()
+
+	for key, f := range app.mapOfOnProperty {
+		t := reflect.TypeOf(f)
+		in := reflect.New(t.In(0)).Elem()
+		err := app.c.p.Bind(in, conf.Key(key))
+		if err != nil {
+			return
+		}
+		reflect.ValueOf(f).Call([]reflect.Value{in})
+	}
+
 	app.c.Refresh()
 
 	// 执行命令行启动器
@@ -350,6 +363,14 @@ func (app *App) Property(key string, value interface{}) {
 	app.c.Property(key, value)
 }
 
+func (app *App) OnProperty(key string, f interface{}) {
+	t := reflect.TypeOf(f)
+	if t.Kind() != reflect.Func || t.NumIn() != 1 || t.NumOut() != 0 {
+		panic(errors.New("f should be a func(value_type)"))
+	}
+	app.mapOfOnProperty[key] = f
+}
+
 func (app *App) Object(i interface{}) *BeanDefinition {
 	return app.c.register(NewBean(reflect.ValueOf(i)))
 }
@@ -453,8 +474,9 @@ func (app *App) Filter(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefiniti
 }
 
 // Consume 注册 MQ 消费者。
-func (app *App) Consume(topic string, fn interface{}) {
-	app.Consumers[topic] = mq.BIND(topic, fn)
+func (app *App) Consume(fn interface{}, topics ...string) {
+	c := mq.Bind(fn, topics...)
+	app.Consumers = append(app.Consumers, c)
 }
 
 // GRPCClient 注册 gRPC 服务客户端，fn 是 gRPC 自动生成的客户端构造函数。

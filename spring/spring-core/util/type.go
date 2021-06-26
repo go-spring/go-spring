@@ -165,3 +165,7 @@ func ReturnOnlyError(t reflect.Type) bool {
 func HasReceiver(t reflect.Type, receiver reflect.Type) bool {
 	return t.NumIn() >= 1 && t.In(0) == receiver
 }
+
+func IsStructPtr(t reflect.Type) bool {
+	return t.Kind() == reflect.Ptr && t.Elem().Kind() == reflect.Struct
+}

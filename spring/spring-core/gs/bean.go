@@ -281,6 +281,13 @@ func (d *BeanDefinition) Destroy(fn interface{}) *BeanDefinition {
 	panic(errors.New("destroy should be func(bean) or func(bean)error"))
 }
 
+// Export 设置 Bean 的导出接口。
+func (d *BeanDefinition) Export(exports ...interface{}) *BeanDefinition {
+	err := d.export(exports...)
+	util.Panic(err).When(err != nil)
+	return d
+}
+
 func (d *BeanDefinition) export(exports ...interface{}) error {
 	for _, o := range exports {
 
@@ -291,22 +298,54 @@ func (d *BeanDefinition) export(exports ...interface{}) error {
 			typ = util.Indirect(reflect.TypeOf(o))
 		}
 
-		if typ.Kind() == reflect.Interface {
-			d.exports[typ] = struct{}{}
-		} else {
-			return errors.New("should export interface type")
+		if typ.Kind() != reflect.Interface {
+			return errors.New("only interface type can be exported")
 		}
 
-		// resolve bean 的时候才判断是否实现了接口。
+		if !d.Type().Implements(typ) {
+			return fmt.Errorf("%s doesn't implement interface %s", d, typ)
+		}
+
+		d.exports[typ] = struct{}{}
 	}
 	return nil
 }
 
-// Export 设置 Bean 的导出接口。
-func (d *BeanDefinition) Export(exports ...interface{}) *BeanDefinition {
-	err := d.export(exports...)
-	util.Panic(err).When(err != nil)
-	return d
+// autoExport 自动导出结构体指针类型 bean 使用 export 语法导出的接口。
+func (d *BeanDefinition) autoExport(t reflect.Type) error {
+
+	t = util.Indirect(t)
+	if t.Kind() != reflect.Struct {
+		return nil
+	}
+
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+
+		_, export := f.Tag.Lookup("export")
+		_, inject := f.Tag.Lookup("inject")
+		_, autowire := f.Tag.Lookup("autowire")
+
+		if inject || autowire {
+			if export {
+				return errors.New("can't export an autowired type")
+			}
+			continue
+		}
+
+		if export {
+			if err := d.export(f.Type); err != nil {
+				return err
+			}
+		}
+
+		if f.Anonymous {
+			if err := d.autoExport(f.Type); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // NewBean 普通函数注册时需要使用 reflect.ValueOf(fn) 形式以避免和构造函数发生冲突。

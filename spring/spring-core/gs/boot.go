@@ -150,8 +150,8 @@ func Filter(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 }
 
 // Consume 注册 MQ 消费者。
-func Consume(topic string, fn interface{}) {
-	app.Consume(topic, fn)
+func Consume(fn interface{}, topics ...string) {
+	app.Consume(fn, topics...)
 }
 
 // GRPCClient 注册 gRPC 服务客户端，fn 是 gRPC 自动生成的客户端构造函数。

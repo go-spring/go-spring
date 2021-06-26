@@ -104,7 +104,7 @@ func (p *pandora) Get(i interface{}, selectors ...bean.Selector) error {
 }
 
 func (p *pandora) Find(selector bean.Selector) ([]bean.Definition, error) {
-	beans, err := p.c.find(selector)
+	beans, err := p.c.findBean(selector)
 	if err != nil {
 		return nil, err
 	}

@@ -2277,7 +2277,7 @@ func TestApplicationContext_BeanCache(t *testing.T) {
 			c := gs.New()
 			c.Object(new(int)).Export((*filter)(nil))
 			c.Refresh()
-		}, "doesn't implement gs_test.filter interface")
+		}, "doesn't implement interface gs_test.filter")
 	})
 
 	t.Run("implement interface", func(t *testing.T) {
@@ -2455,7 +2455,7 @@ func TestApplicationContext_AutoExport(t *testing.T) {
 				_ *int `export:""`
 			}{})
 			c.Refresh()
-		}, "export can only use on interface")
+		}, "only interface type can be exported")
 
 		assert.Panic(t, func() {
 			c := gs.New()
@@ -2463,7 +2463,7 @@ func TestApplicationContext_AutoExport(t *testing.T) {
 				_ Runner `export:"" autowire:""`
 			}{})
 			c.Refresh()
-		}, "inject or autowire can't use with export")
+		}, "can't export an autowired type")
 	})
 }
 
