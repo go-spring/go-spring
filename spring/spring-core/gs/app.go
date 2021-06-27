@@ -379,10 +379,6 @@ func (app *App) Provide(ctor interface{}, args ...arg.Arg) *BeanDefinition {
 	return app.c.register(NewBean(ctor, args...))
 }
 
-func (app *App) Config(fn interface{}, args ...arg.Arg) *Configer {
-	return app.c.config(NewConfiger(fn, args...))
-}
-
 func (app *App) Go(fn func(ctx context.Context)) {
 	app.c.Go(fn)
 }

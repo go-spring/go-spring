@@ -27,11 +27,16 @@ import (
 )
 
 func startApplication(cfgLocation ...string) (*gs.App, gs.Pandora) {
+
 	app := gs.NewApp()
 	app.EnablePandora()
 
 	var p gs.Pandora
-	app.Config(func(b gs.Pandora) { p = b })
+	type PandoraAware struct{}
+	app.Provide(func(b gs.Pandora) PandoraAware {
+		p = b
+		return PandoraAware{}
+	})
 
 	go app.Run(cfgLocation...)
 	time.Sleep(100 * time.Millisecond)

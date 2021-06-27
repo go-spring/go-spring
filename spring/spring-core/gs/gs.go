@@ -66,7 +66,6 @@ type Container struct {
 	beansByName map[string][]*BeanDefinition
 	beansByType map[reflect.Type][]*BeanDefinition
 
-	configers  []*Configer
 	destroyers []destroyer0
 
 	enablePandora bool
@@ -133,19 +132,6 @@ func (c *Container) register(b *BeanDefinition) *BeanDefinition {
 	c.callBeforeRefreshing()
 	c.beans = append(c.beans, b)
 	return b
-}
-
-// Config 注册配置函数，配置函数是指可以接受一些 bean 作为入参且没有返回值的函
-// 数，使用场景大多是在 bean 初始化之后对 bean 进行二次配置，该机制可以作为框架
-// 配置能力的有效补充，但是一定要慎用！
-func (c *Container) Config(fn interface{}, args ...arg.Arg) *Configer {
-	return c.config(NewConfiger(fn, args...))
-}
-
-func (c *Container) config(configer *Configer) *Configer {
-	c.callBeforeRefreshing()
-	c.configers = append(c.configers, configer)
-	return configer
 }
 
 // Go 创建安全可等待的 goroutine，fn 要求的 ctx 对象由 Container 提供，当
@@ -250,9 +236,6 @@ func (c *Container) Refresh() {
 		}
 	}()
 
-	err = c.runConfigers(stack)
-	util.Panic(err).When(err != nil)
-
 	for _, b := range c.beansById {
 		err = c.wireBean(b, stack)
 		util.Panic(err).When(err != nil)
@@ -267,7 +250,6 @@ func (c *Container) Refresh() {
 		c.beansById = nil
 		c.beansByName = nil
 		c.beansByType = nil
-		c.configers = nil
 	}
 
 	log.Info("container refreshed successfully")
@@ -320,31 +302,6 @@ func (c *Container) resolveBean(b *BeanDefinition) error {
 	}
 
 	b.status = Resolved
-	return nil
-}
-
-func (c *Container) runConfigers(stack *wiringStack) error {
-
-	configerList := list.New()
-	for _, g := range c.configers {
-		if g.cond != nil {
-			if ok, err := g.cond.Matches(&pandora{c}); err != nil {
-				return err
-			} else if !ok {
-				continue
-			}
-		}
-		configerList.PushBack(g)
-	}
-
-	configerList = util.TripleSort(configerList, getBeforeList)
-	for e := configerList.Front(); e != nil; e = e.Next() {
-		g := e.Value.(*Configer)
-		ctx := newArgContext(c, stack)
-		if _, err := g.fn.Call(ctx); err != nil {
-			return err
-		}
-	}
 	return nil
 }
 
@@ -495,7 +452,7 @@ func (c *Container) getBeanValue(b *BeanDefinition, stack *wiringStack) (reflect
 		return b.Value(), nil
 	}
 
-	out, err := b.f.Call(newArgContext(c, stack))
+	out, err := b.f.Call(&argContext{c: c, stack: stack})
 	if err != nil {
 		return reflect.Value{}, fmt.Errorf("constructor bean:%q return error: %v", b.FileLine(), err)
 	}
@@ -885,26 +842,22 @@ func (c *Container) runDestroyers() {
 	}
 }
 
-type ArgContext struct {
+type argContext struct {
 	c     *Container
 	stack *wiringStack
 }
 
-func newArgContext(c *Container, stack *wiringStack) *ArgContext {
-	return &ArgContext{c: c, stack: stack}
-}
-
 // Matches 条件成立返回 true，否则返回 false。
-func (c *ArgContext) Matches(cond cond.Condition) (bool, error) {
-	return cond.Matches(&pandora{c.c})
+func (a *argContext) Matches(c cond.Condition) (bool, error) {
+	return c.Matches(&pandora{a.c})
 }
 
 // Bind 根据 tag 的内容进行属性绑定。
-func (c *ArgContext) Bind(v reflect.Value, tag string) error {
-	return c.c.p.Bind(v, conf.Tag(tag))
+func (a *argContext) Bind(v reflect.Value, tag string) error {
+	return a.c.p.Bind(v, conf.Tag(tag))
 }
 
 // Wire 根据 tag 的内容自动判断注入模式，是单例模式，还是收集模式。
-func (c *ArgContext) Wire(v reflect.Value, tag string) error {
-	return c.c.wireByTag(v, tag, c.stack)
+func (a *argContext) Wire(v reflect.Value, tag string) error {
+	return a.c.wireByTag(v, tag, a.stack)
 }

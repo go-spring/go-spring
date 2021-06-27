@@ -59,10 +59,6 @@ func Provide(ctor interface{}, args ...arg.Arg) *BeanDefinition {
 	return app.c.register(NewBean(ctor, args...))
 }
 
-func Config(fn interface{}, args ...arg.Arg) *Configer {
-	return app.c.config(NewConfiger(fn, args...))
-}
-
 // Route 返回和 Mapping 绑定的路由分组。
 func Route(basePath string) *web.Router {
 	return app.Route(basePath)

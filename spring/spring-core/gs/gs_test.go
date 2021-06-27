@@ -43,14 +43,17 @@ import (
 )
 
 func container() (*gs.Container, chan gs.Pandora) {
+
 	c := gs.New()
 	c.EnablePandora()
-	ch := make(chan gs.Pandora)
-	c.Config(func(p gs.Pandora) {
-		go func() {
-			ch <- p
-		}()
+
+	type PandoraAware struct{}
+	ch := make(chan gs.Pandora, 1)
+	c.Provide(func(p gs.Pandora) PandoraAware {
+		ch <- p
+		return PandoraAware{}
 	})
+
 	return c, ch
 }
 
