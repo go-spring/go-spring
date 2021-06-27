@@ -153,8 +153,12 @@ func (p *pandora) Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, error)
 		}
 	}()
 
-	c := arg.Bind(fn, args, 1)
-	ret, err := c.Call(&argContext{c: p.c, stack: stack})
+	r, err := arg.Bind(fn, args, 1)
+	if err != nil {
+		return nil, err
+	}
+
+	ret, err := r.Call(&argContext{c: p.c, stack: stack})
 	if err != nil {
 		return nil, err
 	}

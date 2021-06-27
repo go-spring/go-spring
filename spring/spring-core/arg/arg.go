@@ -32,78 +32,77 @@ import (
 // Context IoC 容器对 arg 模块提供的最小功能集。
 type Context interface {
 
-	// Matches 条件成立返回 true，否则返回 false。
+	// Matches 条件成立返回 true，失败返回 false。
 	Matches(c cond.Condition) (bool, error)
 
-	// Bind 根据 tag 的内容进行属性绑定。
+	// Bind 根据 tag 的内容对 v 进行属性绑定。
 	Bind(v reflect.Value, tag string) error
 
-	// Wire 根据 tag 的内容自动注入。
+	// Wire 根据 tag 的内容对 v 进行依赖注入。
 	Wire(v reflect.Value, tag string) error
 }
 
-// Arg 定义一个函数参数，可以是 bean.Selector 类型，表示注入一个 Bean；
-// 可以是 ${X:=Y} 形式的字符串，表示绑定一个属性值；可以是 ValueArg 类型，
-// 表示一个不从 IoC 容器获取而是用户传入的数据；可以是 IndexArg 类型，表
-// 示一个带有下标的参数，IndexArg 是一个组合参数，接受普通类型的 Arg 参数；
-// 可以是 *optionArg 类型，专门用于 Option 形式的函数参数，*optionArg
-// 也是一个组合参数，可以接受非 *optionArg 类型的任意类型的参数。
+// Arg 用于为函数参数提供绑定值。可以是 bean.Selector 类型，表示注入 bean ；
+// 可以是 ${X:=Y} 形式的字符串，表示属性绑定或者注入 bean ；可以是 ValueArg
+// 类型，表示不从 IoC 容器获取而是用户传入的普通值；可以是 IndexArg 类型，表示
+// 带有下标的参数绑定；可以是 *optionArg 类型，用于为 Option 方法提供参数绑定。
 type Arg interface{}
 
-// IndexArg 包含下标的函数参数。
+// IndexArg 包含下标的参数绑定。
 type IndexArg struct {
 	n   int
 	arg Arg
 }
 
-// Index 返回包含下标的函数参数，idx 从 1 开始计算。
+// Index 返回包含下标的参数绑定，下标从 1 开始。
 func Index(n int, arg Arg) IndexArg {
 	return IndexArg{n: n, arg: arg}
 }
 
-// R1 返回下标为 1 的函数参数。
+// R1 返回下标为 1 的参数绑定。
 func R1(arg Arg) IndexArg { return Index(1, arg) }
 
-// R2 返回下标为 2 的函数参数。
+// R2 返回下标为 2 的参数绑定。
 func R2(arg Arg) IndexArg { return Index(2, arg) }
 
-// R3 返回下标为 3 的函数参数。
+// R3 返回下标为 3 的参数绑定。
 func R3(arg Arg) IndexArg { return Index(3, arg) }
 
-// R4 返回下标为 4 的函数参数。
+// R4 返回下标为 4 的参数绑定。
 func R4(arg Arg) IndexArg { return Index(4, arg) }
 
-// R5 返回下标为 5 的函数参数。
+// R5 返回下标为 5 的参数绑定。
 func R5(arg Arg) IndexArg { return Index(5, arg) }
 
-// R6 返回下标为 6 的函数参数。
+// R6 返回下标为 6 的参数绑定。
 func R6(arg Arg) IndexArg { return Index(6, arg) }
 
-// R7 返回下标为 7 的函数参数。
+// R7 返回下标为 7 的参数绑定。
 func R7(arg Arg) IndexArg { return Index(7, arg) }
 
-// ValueArg 包含具体值的函数参数。
-type ValueArg struct{ arg interface{} }
-
-// Value 返回包含具体值的函数参数。
-func Value(arg interface{}) ValueArg {
-	return ValueArg{arg: arg}
+// ValueArg 包含具体值的参数绑定。
+type ValueArg struct {
+	v interface{}
 }
 
-// argList 函数参数列表。
+// Value 返回包含具体值的参数绑定。
+func Value(v interface{}) ValueArg {
+	return ValueArg{v: v}
+}
+
+// argList 函数参数绑定列表。
 type argList struct {
 
 	// fnType 函数的类型。
 	fnType reflect.Type
 
-	// args 函数参数列表。
+	// args 参数绑定列表。
 	args []Arg
 }
 
-// newArgList 返回新创建的函数参数的列表。
-func newArgList(fnType reflect.Type, args []Arg) *argList {
+func newArgList(fnType reflect.Type, args []Arg) (*argList, error) {
 
-	// 计算函数不可变参数的数量，需要排除接收者。
+	// 计算函数类型中包含不可变参数的数量。
 	fixedArgCount := fnType.NumIn()
 	if fnType.IsVariadic() {
 		fixedArgCount--
@@ -112,7 +111,7 @@ func newArgList(fnType reflect.Type, args []Arg) *argList {
 	// 函数的参数要么都有下标，要么都没有下标。
 	shouldIndex := false
 
-	// 分配不可变参数数量的空间，可变参数加在后面。
+	// 分配不可变参数的空间，可变参数加在后面。
 	fnArgs := make([]Arg, fixedArgCount)
 
 	if len(args) > 0 {
@@ -124,7 +123,7 @@ func newArgList(fnType reflect.Type, args []Arg) *argList {
 			if n := arg.n - 1; n >= 0 && n < fixedArgCount {
 				fnArgs[n] = arg.arg
 			} else {
-				panic(errors.New("参数索引超出函数入参的个数"))
+				return nil, errors.New("参数索引超出函数入参的个数")
 			}
 		default:
 			shouldIndex = false
@@ -133,7 +132,7 @@ func newArgList(fnType reflect.Type, args []Arg) *argList {
 			} else if fnType.IsVariadic() {
 				fnArgs = append(fnArgs, arg)
 			} else {
-				panic(errors.New("函数没有定义参数但却传入了"))
+				return nil, errors.New("函数没有参数但却绑定了参数")
 			}
 		}
 	}
@@ -144,40 +143,40 @@ func newArgList(fnType reflect.Type, args []Arg) *argList {
 			fnArgs = append(fnArgs, arg)
 		case IndexArg:
 			if !shouldIndex {
-				panic(errors.New("所有非可选参数必须都有或者都没有索引"))
+				return nil, errors.New("所有参数必须都有或者都没有索引")
 			}
 			if n := arg.n - 1; n < 0 || n >= fixedArgCount {
-				panic(errors.New("参数索引超出函数入参的个数"))
+				return nil, errors.New("参数索引超出函数入参的个数")
 			} else if fnArgs[n] != nil {
-				panic(fmt.Errorf("发现相同索引<%d>的参数", arg.n))
+				return nil, fmt.Errorf("发现相同索引 %d 的参数", arg.n)
 			} else {
 				fnArgs[n] = arg.arg
 			}
 		default:
 			if shouldIndex {
-				panic(errors.New("所有非可选参数必须都有或者都没有索引"))
+				return nil, errors.New("所有参数必须都有或者都没有索引")
 			}
 			if i < fixedArgCount {
 				fnArgs[i] = arg
 			} else if fnType.IsVariadic() {
 				fnArgs = append(fnArgs, arg)
 			} else {
-				panic(errors.New("传入的参数个数超出了函数入参的数量"))
+				return nil, errors.New("参数的数量超出了函数入参的数量")
 			}
 		}
 	}
 
-	// 其他没有传入的函数参数默认为空字符串。
+	// 其他没有传入的参数绑定默认为空字符串。
 	for i := 0; i < fixedArgCount; i++ {
 		if fnArgs[i] == nil {
 			fnArgs[i] = ""
 		}
 	}
 
-	return &argList{fnType: fnType, args: fnArgs}
+	return &argList{fnType: fnType, args: fnArgs}, nil
 }
 
-// get 返回函数所有参数的真实值，fileLine 是函数定义所在的文件及其行号，供打印日志时使用。
+// get 返回所有绑定参数的真实值，fileLine 是函数定义所在的文件信息。
 func (r *argList) get(ctx Context, fileLine string) ([]reflect.Value, error) {
 
 	fnType := r.fnType
@@ -208,7 +207,7 @@ func (r *argList) get(ctx Context, fileLine string) ([]reflect.Value, error) {
 	return result, nil
 }
 
-func (r *argList) getArg(ctx Context, arg Arg, t reflect.Type, fileLine string) (v reflect.Value, err error) {
+func (r *argList) getArg(ctx Context, arg Arg, t reflect.Type, fileLine string) (_ reflect.Value, err error) {
 
 	description := fmt.Sprintf("arg:\"%v\" %s", arg, fileLine)
 	log.Tracef("get value %s", description)
@@ -216,7 +215,7 @@ func (r *argList) getArg(ctx Context, arg Arg, t reflect.Type, fileLine string) 
 		if err == nil {
 			log.Tracef("get value success %s", description)
 		} else {
-			log.Tracef("get value err:%s %s", err.Error(), description)
+			log.Tracef("get value error %s %s", err.Error(), description)
 		}
 	}()
 
@@ -224,7 +223,7 @@ func (r *argList) getArg(ctx Context, arg Arg, t reflect.Type, fileLine string) 
 
 	switch g := arg.(type) {
 	case ValueArg:
-		return reflect.ValueOf(g.arg), nil
+		return reflect.ValueOf(g.v), nil
 	case *optionArg:
 		return g.call(ctx)
 	case bean.Definition:
@@ -235,7 +234,7 @@ func (r *argList) getArg(ctx Context, arg Arg, t reflect.Type, fileLine string) 
 		tag = util.TypeName(g) + ":"
 	}
 
-	v = reflect.New(t).Elem()
+	v := reflect.New(t).Elem()
 
 	// 处理 bean 类型
 	if util.IsBeanReceiver(t) {
@@ -255,48 +254,50 @@ func (r *argList) getArg(ctx Context, arg Arg, t reflect.Type, fileLine string) 
 	return v, nil
 }
 
-// optionArg Option 形式的函数参数
+// optionArg Option 函数的参数绑定。
 type optionArg struct {
 	r *Callable
 	c cond.Condition
 }
 
-// Option 封装 Option 形式的函数参数。
+// Option 返回 Option 函数的参数绑定。
 func Option(fn interface{}, args ...Arg) *optionArg {
 
-	fnType := reflect.TypeOf(fn)
-
-	// 判断是否是正确的 Option 函数定义，必要条件之一是只有一个返回值。
-	if fnType.Kind() != reflect.Func || fnType.NumOut() != 1 {
-		panic(errors.New("error option func"))
+	t := reflect.TypeOf(fn)
+	if t.Kind() != reflect.Func || t.NumOut() != 1 {
+		panic(errors.New("invalid option func"))
 	}
 
-	return &optionArg{r: Bind(fn, args, 1)}
+	r, err := Bind(fn, args, 1)
+	util.Panic(err).When(err != nil)
+
+	return &optionArg{r: r}
 }
 
-// WithCond 为 Option 设置一个 cond.Condition
+// WithCond 设置一个 cond.Condition 对象。
 func (arg *optionArg) WithCond(c cond.Condition) *optionArg {
 	arg.c = c
 	return arg
 }
 
-func (arg *optionArg) call(ctx Context) (v reflect.Value, err error) {
+func (arg *optionArg) call(ctx Context) (_ reflect.Value, err error) {
 
-	fileLine := fmt.Sprintf("%s:%d", arg.r.file, arg.r.line)
-	log.Tracef("call option func %s", fileLine)
-
+	log.Tracef("call option func %s", arg.r.fileLine)
 	defer func() {
 		if err == nil {
-			log.Tracef("call option func success %s", fileLine)
+			log.Tracef("call option func success %s", arg.r.fileLine)
 		} else {
-			log.Tracef("call option func err:%s %s", err.Error(), fileLine)
+			log.Tracef("call option func error %s %s", err.Error(), arg.r.fileLine)
 		}
 	}()
 
 	if arg.c != nil {
-		if ok, err := ctx.Matches(arg.c); err != nil {
+		var ok bool
+		ok, err = ctx.Matches(arg.c)
+		if err != nil {
 			return reflect.Value{}, err
-		} else if !ok {
+		}
+		if !ok {
 			return reflect.Value{}, nil
 		}
 	}
@@ -308,39 +309,52 @@ func (arg *optionArg) call(ctx Context) (v reflect.Value, err error) {
 	return out[0], nil
 }
 
-// Callable 绑定函数及其参数。
+// Callable 绑定函数及其参数，然后通过 Call 方法获取绑定函数的执行结果。
 type Callable struct {
-	fn      interface{}
-	argList *argList
-	file    string // 注册点所在文件
-	line    int    // 注册点所在行数
+	fn       interface{}
+	argList  *argList
+	fileLine string
 }
 
-// Bind 绑定函数及其参数。
-func Bind(fn interface{}, args []Arg, skip int) *Callable {
+// Bind 绑定函数及其参数，skip 是相对于当前方法需要跳过的调用栈层数。
+func Bind(fn interface{}, args []Arg, skip int) (*Callable, error) {
+
 	fnType := reflect.TypeOf(fn)
-	argList := newArgList(fnType, args)
+	argList, err := newArgList(fnType, args)
+	if err != nil {
+		return nil, err
+	}
+
 	_, file, line, _ := runtime.Caller(skip + 1)
-	return &Callable{fn: fn, argList: argList, file: file, line: line}
+	r := &Callable{
+		fn:       fn,
+		argList:  argList,
+		fileLine: fmt.Sprintf("%s:%d", file, line),
+	}
+	return r, nil
 }
 
+// Call 通过反射机制获取函数的绑定参数并执行函数，最后返回函数的执行结果。
 func (r *Callable) Call(ctx Context) ([]reflect.Value, error) {
 
-	fileLine := fmt.Sprintf("%s:%d", r.file, r.line)
-	in, err := r.argList.get(ctx, fileLine)
+	in, err := r.argList.get(ctx, r.fileLine)
 	if err != nil {
 		return nil, err
 	}
 
 	out := reflect.ValueOf(r.fn).Call(in)
-	if n := len(out); n > 0 {
-		if o := out[n-1]; util.IsErrorType(o.Type()) {
-			if i := o.Interface(); i == nil {
-				return out[:n-1], nil
-			} else {
-				return out[:n-1], i.(error)
-			}
-		}
+	n := len(out)
+	if n == 0 {
+		return out, nil
 	}
-	return out, nil
+
+	o := out[n-1]
+	if !util.IsErrorType(o.Type()) {
+		return out, nil
+	}
+
+	if i := o.Interface(); i != nil {
+		return out[:n-1], i.(error)
+	}
+	return out[:n-1], nil
 }

@@ -378,6 +378,9 @@ func NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 			panic(fmt.Errorf("constructor should be %s or %s", t1, t2))
 		}
 
+		r, err := arg.Bind(objOrCtor, ctorArgs, skip)
+		util.Panic(err).When(err != nil)
+
 		// 创建 Bean 的值
 		out0 := t.Out(0)
 		v = reflect.New(out0)
@@ -387,9 +390,7 @@ func NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 			v = v.Elem()
 		}
 
-		f := arg.Bind(objOrCtor, ctorArgs, skip)
-		return newBeanDefinition(v, f, file, line)
+		return newBeanDefinition(v, r, file, line)
 	}
-
 	return newBeanDefinition(v, nil, file, line)
 }
