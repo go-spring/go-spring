@@ -45,7 +45,7 @@ import (
 func container() (*gs.Container, chan gs.Pandora) {
 
 	c := gs.New()
-	c.EnablePandora()
+	c.Property(gs.EnablePandoraProp, true)
 
 	type PandoraAware struct{}
 	ch := make(chan gs.Pandora, 1)
@@ -823,7 +823,7 @@ func TestApplicationContext_Profile(t *testing.T) {
 	t.Run("bean:_c:test", func(t *testing.T) {
 
 		c, ch := container()
-		c.Property(util.SpringProfile, "test")
+		c.Property(gs.SpringProfileProp, "test")
 		c.Object(&BeanZero{5})
 		c.Refresh()
 
@@ -2665,7 +2665,7 @@ func TestDefaultSpringContext(t *testing.T) {
 	t.Run("bean:test_ctx:test", func(t *testing.T) {
 
 		c, ch := container()
-		c.Property(util.SpringProfile, "test")
+		c.Property(gs.SpringProfileProp, "test")
 		c.Object(&BeanZero{5}).WithCond(cond.OnProfile("test"))
 		c.Refresh()
 
@@ -2679,7 +2679,7 @@ func TestDefaultSpringContext(t *testing.T) {
 	t.Run("bean:test_ctx:stable", func(t *testing.T) {
 
 		c, ch := container()
-		c.Property(util.SpringProfile, "stable")
+		c.Property(gs.SpringProfileProp, "stable")
 		c.Object(&BeanZero{5}).WithCond(cond.OnProfile("test"))
 		c.Refresh()
 
@@ -2994,7 +2994,7 @@ func TestDefaultSpringContext_ConditionOnMissingBean(t *testing.T) {
 //func TestNotCondition(t *testing.T) {
 //
 //	c := gs.New()
-//	c.Property(util.SpringProfile, "test")
+//	c.Property(gs.SpringProfileProp, "test")
 //	c.Refresh()
 //
 //	profileCond := cond.OnProfile("test")
@@ -3036,7 +3036,7 @@ func TestApplicationContext_Invoke(t *testing.T) {
 		c, ch := container()
 		c.Provide(func() int { return 3 })
 		c.Property("version", "v0.0.1")
-		c.Property(util.SpringProfile, "dev")
+		c.Property(gs.SpringProfileProp, "dev")
 		c.Refresh()
 
 		p := <-ch

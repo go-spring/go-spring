@@ -35,6 +35,7 @@ import (
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
+	"github.com/spf13/cast"
 )
 
 type refreshState int
@@ -43,6 +44,10 @@ const (
 	Unrefreshed = refreshState(0) // 未刷新
 	Refreshing  = refreshState(1) // 正在刷新
 	Refreshed   = refreshState(2) // 已刷新
+)
+
+const (
+	EnablePandoraProp = "spring.enable-pandora"
 )
 
 // Container 是 go-spring 框架的基石，实现了 Martin Fowler 在 << Inversion
@@ -66,9 +71,7 @@ type Container struct {
 	beansByName map[string][]*BeanDefinition
 	beansByType map[reflect.Type][]*BeanDefinition
 
-	destroyers []destroyer0
-
-	enablePandora bool
+	destroyers []func()
 }
 
 // New 创建 IoC 容器。
@@ -82,11 +85,6 @@ func New() *Container {
 		beansByName: make(map[string][]*BeanDefinition),
 		beansByType: make(map[reflect.Type][]*BeanDefinition),
 	}
-}
-
-// EnablePandora 允许使用 Pandora 接口
-func (c *Container) EnablePandora() {
-	c.enablePandora = true
 }
 
 // callBeforeRefreshing 有些方法只能在 Refresh 开始前调用，比如 Object 。
@@ -152,6 +150,42 @@ func (c *Container) Go(fn func(ctx context.Context)) {
 	}()
 }
 
+// destroyer 保存具有销毁函数的 Bean 以及销毁函数的调用顺序。
+type destroyer struct {
+	current *BeanDefinition
+	earlier []*BeanDefinition
+}
+
+// after 添加一个需要在该 Bean 之前调用销毁函数的 Bean。
+func (d *destroyer) after(b *BeanDefinition) {
+	if d.foundEarlier(b) {
+		return
+	}
+	d.earlier = append(d.earlier, b)
+}
+
+func (d *destroyer) foundEarlier(b *BeanDefinition) bool {
+	for _, f := range d.earlier {
+		if f == b {
+			return true
+		}
+	}
+	return false
+}
+
+// getBeforeDestroyers 获取排在 i 前面的 destroyer，用于 sort.Triple 排序。
+func getBeforeDestroyers(destroyers *list.List, i interface{}) *list.List {
+	d := i.(*destroyer)
+	result := list.New()
+	for e := destroyers.Front(); e != nil; e = e.Next() {
+		c := e.Value.(*destroyer)
+		if d.foundEarlier(c.current) {
+			result.PushBack(c)
+		}
+	}
+	return result
+}
+
 type wiringStack struct {
 	beans        []*BeanDefinition
 	destroyers   *list.List
@@ -199,7 +233,23 @@ func (s *wiringStack) saveDestroyer(b *BeanDefinition) *destroyer {
 }
 
 // sortDestroyers 对销毁函数进行排序
-func (s *wiringStack) sortDestroyers() (ret []destroyer0) {
+func (s *wiringStack) sortDestroyers() []func() {
+
+	destroy := func(v reflect.Value, f interface{}) func() {
+		return func() {
+			if f == nil {
+				v.Interface().(interface{ OnDestroy() }).OnDestroy()
+			} else {
+				fnValue := reflect.ValueOf(f)
+				out := fnValue.Call([]reflect.Value{v})
+				if len(out) > 0 && !out[0].IsNil() {
+					log.Error(out[0].Interface().(error))
+				}
+			}
+		}
+	}
+
+	var result []func()
 	destroyers := list.New()
 	for _, d := range s.destroyerMap {
 		destroyers.PushBack(d)
@@ -207,9 +257,9 @@ func (s *wiringStack) sortDestroyers() (ret []destroyer0) {
 	destroyers = util.TripleSort(destroyers, getBeforeDestroyers)
 	for e := destroyers.Front(); e != nil; e = e.Next() {
 		d := e.Value.(*destroyer).current
-		ret = append(ret, destroyer0{d.destroy, d.Value()})
+		result = append(result, destroy(d.Value(), d.destroy))
 	}
-	return ret
+	return result
 }
 
 // Refresh 决议和组装所有的 configer 与 bean 。
@@ -219,7 +269,8 @@ func (c *Container) Refresh() {
 		panic(errors.New("container already refreshed"))
 	}
 
-	if c.enablePandora {
+	enablePandora := cast.ToBool(c.p.Get(EnablePandoraProp))
+	if enablePandora {
 		c.Object(&pandora{c}).Export((*Pandora)(nil))
 	}
 
@@ -244,7 +295,7 @@ func (c *Container) Refresh() {
 	c.destroyers = stack.sortDestroyers()
 	c.state = Refreshed
 
-	if !c.enablePandora {
+	if !enablePandora {
 		c.p = nil
 		c.beans = nil
 		c.beansById = nil
@@ -829,16 +880,8 @@ func (c *Container) Close() {
 }
 
 func (c *Container) runDestroyers() {
-	for _, d := range c.destroyers {
-		if d.fn == nil {
-			d.v.Interface().(interface{ OnDestroy() }).OnDestroy()
-		} else {
-			fnValue := reflect.ValueOf(d.fn)
-			out := fnValue.Call([]reflect.Value{d.v})
-			if len(out) > 0 && !out[0].IsNil() {
-				log.Error(out[0].Interface().(error))
-			}
-		}
+	for _, f := range c.destroyers {
+		f()
 	}
 }
 

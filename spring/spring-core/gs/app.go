@@ -19,6 +19,7 @@ package gs
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"os/signal"
@@ -38,7 +39,27 @@ import (
 	"github.com/go-spring/spring-core/web"
 )
 
-const SPRING_PROFILE = "SPRING_PROFILE"
+const defaultBanner = `
+ _______  _______         _______  _______  _______ _________ _        _______ 
+(  ____ \(  ___  )       (  ____ \(  ____ )(  ____ )\__   __/( (    /|(  ____ \
+| (    \/| (   ) |       | (    \/| (    )|| (    )|   ) (   |  \  ( || (    \/
+| |      | |   | | _____ | (_____ | (____)|| (____)|   | |   |   \ | || |      
+| | ____ | |   | |(_____)(_____  )|  _____)|     __)   | |   | (\ \) || | ____ 
+| | \_  )| |   | |             ) || (      | (\ (      | |   | | \   || | \_  )
+| (___) || (___) |       /\____) || )      | ) \ \_____) (___| )  \  || (___) |
+(_______)(_______)       \_______)|/       |/   \__/\_______/|/    )_)(_______)
+`
+
+const (
+	version = "go-spring@v1.0.5"
+	website = "https://go-spring.com/"
+)
+
+// 设置 spring 的运行环境。
+const (
+	SpringProfileEnv  = "SPRING_PROFILE"
+	SpringProfileProp = "spring.profile"
+)
 
 type ApplicationContext interface {
 	Go(fn func(ctx context.Context))
@@ -156,6 +177,37 @@ func (app *App) getBanner() string {
 	return defaultBanner
 }
 
+// printBanner 打印 Banner 到控制台
+func printBanner(banner string) {
+
+	// 确保 Banner 前面有空行
+	if banner[0] != '\n' {
+		fmt.Println()
+	}
+
+	maxLength := 0
+	for _, s := range strings.Split(banner, "\n") {
+		fmt.Printf("\x1b[36m%s\x1b[0m\n", s) // CYAN
+		if len(s) > maxLength {
+			maxLength = len(s)
+		}
+	}
+
+	// 确保 Banner 后面有空行
+	if banner[len(banner)-1] != '\n' {
+		fmt.Println()
+	}
+
+	var padding []byte
+	if n := (maxLength - len(version)) / 2; n > 0 {
+		padding = make([]byte, n)
+		for i := range padding {
+			padding[i] = ' '
+		}
+	}
+	fmt.Println(string(padding) + version + "\n")
+}
+
 // loadCmdArgs 加载命令行参数，形如 -name value 的参数才有效。
 func (app *App) loadCmdArgs(p *conf.Properties) {
 	log.Debugf("load cmd args")
@@ -258,7 +310,7 @@ func (app *App) prepare() {
 	util.Panic(err).When(err != nil)
 
 	profile := func([]*conf.Properties) string {
-		keys := []string{util.SpringProfile, SPRING_PROFILE}
+		keys := []string{SpringProfileEnv, SpringProfileProp}
 		for _, c := range p {
 			for _, k := range keys {
 				if v := c.Get(k); v != nil {
@@ -272,7 +324,7 @@ func (app *App) prepare() {
 	if profile != "" {
 		err = app.loadConfigFile(profileConfig, profile)
 		util.Panic(err).When(err != nil)
-		app.c.Property(util.SpringProfile, profile)
+		app.c.Property(SpringProfileProp, profile)
 	}
 
 	m := make(map[string]string)
@@ -352,11 +404,6 @@ func (app *App) Banner(banner string) {
 // ShowBanner 设置是否显示 banner。
 func (app *App) ShowBanner(show bool) {
 	app.showBanner = show
-}
-
-// EnablePandora 允许使用 Pandora 接口
-func (app *App) EnablePandora() {
-	app.c.EnablePandora()
 }
 
 func (app *App) Property(key string, value interface{}) {

@@ -17,19 +17,21 @@
 package gs_test
 
 import (
+	"fmt"
 	"os"
+	"sort"
 	"testing"
 	"time"
 
 	"github.com/go-spring/spring-core/assert"
+	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/gs"
-	"github.com/go-spring/spring-core/util"
 )
 
 func startApplication(cfgLocation ...string) (*gs.App, gs.Pandora) {
 
 	app := gs.NewApp()
-	app.EnablePandora()
+	app.Property(gs.EnablePandoraProp, true)
 
 	var p gs.Pandora
 	type PandoraAware struct{}
@@ -47,39 +49,54 @@ func TestConfig(t *testing.T) {
 
 	t.Run("config via env", func(t *testing.T) {
 		os.Clearenv()
-		_ = os.Setenv(util.SpringProfile, "dev")
+		_ = os.Setenv(gs.SpringProfileProp, "dev")
 		app, p := startApplication("testdata/config/")
 		defer app.ShutDown()
-		assert.Equal(t, p.Prop(util.SpringProfile), "dev")
+		assert.Equal(t, p.Prop(gs.SpringProfileProp), "dev")
 	})
 
 	t.Run("config via env 2", func(t *testing.T) {
 		os.Clearenv()
-		_ = os.Setenv(gs.SPRING_PROFILE, "dev")
+		_ = os.Setenv(gs.SpringProfileEnv, "dev")
 		app, p := startApplication("testdata/config/")
 		defer app.ShutDown()
-		assert.Equal(t, p.Prop(util.SpringProfile), "dev")
+		assert.Equal(t, p.Prop(gs.SpringProfileProp), "dev")
 	})
 
 	t.Run("profile via config", func(t *testing.T) {
 		os.Clearenv()
 		app, p := startApplication("testdata/config/")
 		defer app.ShutDown()
-		assert.Equal(t, p.Prop(util.SpringProfile), "test")
+		assert.Equal(t, p.Prop(gs.SpringProfileProp), "test")
 	})
 
 	t.Run("profile via env&config", func(t *testing.T) {
 		os.Clearenv()
 		app, p := startApplication("testdata/config/")
 		defer app.ShutDown()
-		assert.Equal(t, p.Prop(util.SpringProfile), "test")
+		assert.Equal(t, p.Prop(gs.SpringProfileProp), "test")
 	})
 
 	t.Run("profile via env&config 2", func(t *testing.T) {
+
 		os.Clearenv()
-		_ = os.Setenv(gs.SPRING_PROFILE, "dev")
+		_ = os.Setenv(gs.SpringProfileEnv, "dev")
 		app, p := startApplication("testdata/config/")
 		defer app.ShutDown()
-		assert.Equal(t, p.Prop(util.SpringProfile), "dev")
+		assert.Equal(t, p.Prop(gs.SpringProfileProp), "dev")
+
+		var m map[string]string
+		_ = p.Bind(&m, conf.Key(conf.RootKey))
+		for _, k := range sortedKeys(m) {
+			fmt.Println(k, "=", p.Prop(k))
+		}
 	})
+}
+
+func sortedKeys(m map[string]string) (keys []string) {
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return
 }

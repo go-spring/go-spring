@@ -213,14 +213,14 @@ func bindMap(p *Properties, v reflect.Value, opt bindOption) error {
 		return fmt.Errorf("%s map 类型不能指定非空默认值", opt.path)
 	}
 
-	opt.key = strings.TrimPrefix(opt.key, rootKey+".")
+	opt.key = strings.TrimPrefix(opt.key, RootKey+".")
 
 	et := opt.typ.Elem()
 	keys := make(map[string]struct{})
 	for _, key := range p.Keys() {
 
 		subKey := key
-		if opt.key != rootKey {
+		if opt.key != RootKey {
 			if !strings.HasPrefix(key, opt.key+".") {
 				continue
 			}
