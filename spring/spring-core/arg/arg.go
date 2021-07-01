@@ -50,35 +50,35 @@ type Arg interface{}
 
 // IndexArg 包含下标的参数绑定。
 type IndexArg struct {
-	n   int
+	n   uint
 	arg Arg
 }
 
-// Index 返回包含下标的参数绑定，下标从 1 开始。
-func Index(n int, arg Arg) IndexArg {
+// Index 返回包含下标的参数绑定。
+func Index(n uint, arg Arg) IndexArg {
 	return IndexArg{n: n, arg: arg}
 }
 
 // R1 返回下标为 1 的参数绑定。
-func R1(arg Arg) IndexArg { return Index(1, arg) }
+func R1(arg Arg) IndexArg { return Index(0, arg) }
 
 // R2 返回下标为 2 的参数绑定。
-func R2(arg Arg) IndexArg { return Index(2, arg) }
+func R2(arg Arg) IndexArg { return Index(1, arg) }
 
 // R3 返回下标为 3 的参数绑定。
-func R3(arg Arg) IndexArg { return Index(3, arg) }
+func R3(arg Arg) IndexArg { return Index(2, arg) }
 
 // R4 返回下标为 4 的参数绑定。
-func R4(arg Arg) IndexArg { return Index(4, arg) }
+func R4(arg Arg) IndexArg { return Index(3, arg) }
 
 // R5 返回下标为 5 的参数绑定。
-func R5(arg Arg) IndexArg { return Index(5, arg) }
+func R5(arg Arg) IndexArg { return Index(4, arg) }
 
 // R6 返回下标为 6 的参数绑定。
-func R6(arg Arg) IndexArg { return Index(6, arg) }
+func R6(arg Arg) IndexArg { return Index(5, arg) }
 
 // R7 返回下标为 7 的参数绑定。
-func R7(arg Arg) IndexArg { return Index(7, arg) }
+func R7(arg Arg) IndexArg { return Index(6, arg) }
 
 // ValueArg 包含具体值的参数绑定。
 type ValueArg struct {
@@ -120,11 +120,10 @@ func newArgList(fnType reflect.Type, args []Arg) (*argList, error) {
 			fnArgs = append(fnArgs, arg)
 		case IndexArg:
 			shouldIndex = true
-			if n := arg.n - 1; n >= 0 && n < fixedArgCount {
-				fnArgs[n] = arg.arg
-			} else {
+			if arg.n >= uint(fixedArgCount) {
 				return nil, errors.New("参数索引超出函数入参的个数")
 			}
+			fnArgs[arg.n] = arg.arg
 		default:
 			shouldIndex = false
 			if fixedArgCount > 0 {
@@ -145,13 +144,13 @@ func newArgList(fnType reflect.Type, args []Arg) (*argList, error) {
 			if !shouldIndex {
 				return nil, errors.New("所有参数必须都有或者都没有索引")
 			}
-			if n := arg.n - 1; n < 0 || n >= fixedArgCount {
+			if arg.n >= uint(fixedArgCount) {
 				return nil, errors.New("参数索引超出函数入参的个数")
-			} else if fnArgs[n] != nil {
-				return nil, fmt.Errorf("发现相同索引 %d 的参数", arg.n)
-			} else {
-				fnArgs[n] = arg.arg
 			}
+			if fnArgs[arg.n] != nil {
+				return nil, fmt.Errorf("发现相同索引 %d 的参数", arg.n)
+			}
+			fnArgs[arg.n] = arg.arg
 		default:
 			if shouldIndex {
 				return nil, errors.New("所有参数必须都有或者都没有索引")

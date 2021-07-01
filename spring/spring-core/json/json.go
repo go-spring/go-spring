@@ -83,5 +83,7 @@ func Unmarshal(data []byte, v interface{}) error {
 	if unmarshal != nil {
 		return unmarshal(data, v)
 	}
-	return json.Unmarshal(data, v)
+	d := json.NewDecoder(bytes.NewReader(data))
+	d.UseNumber()
+	return d.Decode(v)
 }

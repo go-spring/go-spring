@@ -25,9 +25,9 @@ import (
 	"time"
 
 	"github.com/go-spring/spring-core/assert"
+	"github.com/go-spring/spring-core/cast"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/log"
-	"github.com/spf13/cast"
 )
 
 func init() {

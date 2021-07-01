@@ -21,8 +21,8 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/go-spring/spring-core/cast"
 	"github.com/go-spring/spring-core/util"
-	"github.com/spf13/cast"
 )
 
 var converters = map[reflect.Type]interface{}{}

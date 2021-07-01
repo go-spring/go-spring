@@ -31,11 +31,11 @@ import (
 
 	"github.com/go-spring/spring-core/arg"
 	"github.com/go-spring/spring-core/bean"
+	"github.com/go-spring/spring-core/cast"
 	"github.com/go-spring/spring-core/cond"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
-	"github.com/spf13/cast"
 )
 
 type refreshState int

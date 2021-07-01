@@ -22,9 +22,9 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/go-spring/spring-core/cast"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
-	"github.com/spf13/cast"
 )
 
 var (
