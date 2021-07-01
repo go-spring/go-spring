@@ -32,7 +32,7 @@ import (
 // Context IoC 容器对 arg 模块提供的最小功能集。
 type Context interface {
 
-	// Matches 条件成立返回 true，失败返回 false。
+	// Matches 条件成立返回 true，否则返回 false。
 	Matches(c cond.Condition) (bool, error)
 
 	// Bind 根据 tag 的内容对 v 进行属性绑定。

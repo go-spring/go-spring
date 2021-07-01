@@ -47,11 +47,10 @@ type pandora struct {
 	c *Container
 }
 
-// Prop 返回 key 转为小写后精确匹配的属性值。默认情况下属性不存在时返回 nil ，但
-// 是可以通过 conf.WithDefault 选项在属性不存在时返回一个默认值。另外，默认情况
-// 下该方法会对返回值进行解引用，就是说如果 key 对应的属性值是一个引用，例如 ${a}，
-// 那么默认情况下该方法会返回 key 为 a 的属性值，如果 a 的属性值不存在则返回 nil。
-// 如果你不想对返回值进行解引用，可以通过 conf.DisableResolve 选项来关闭此功能。
+// Prop 获取 key 对应的属性值，注意 key 是大小写敏感的。当 key 对应的属性
+// 值存在时，或者 key 对应的属性值不存在但设置了默认值时，该方法返回 string
+// 类型的数据，当 key 对应的属性值不存在且没有设置默认值时该方法返回 nil。
+// 因此可以通过判断该方法的返回值是否为 nil 来判断 key 对应的属性值是否存在。
 func (p *pandora) Prop(key string, opts ...conf.GetOption) interface{} {
 	p.c.callAfterRefreshing()
 	return p.c.p.Get(key, opts...)
@@ -103,6 +102,7 @@ func (p *pandora) Get(i interface{}, selectors ...bean.Selector) error {
 	return p.c.autowire(v.Elem(), tags, stack)
 }
 
+// Find 返回符合条件的 bean 集合，不保证返回的 bean 已经完成注入和绑定过程。
 func (p *pandora) Find(selector bean.Selector) ([]bean.Definition, error) {
 	beans, err := p.c.findBean(selector)
 	if err != nil {

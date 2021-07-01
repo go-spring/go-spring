@@ -68,8 +68,8 @@ func NotEqual(t *testing.T, got interface{}, expect interface{}) {
 	}
 }
 
-// Panic asserts that function fn() would panic. It fails if the panic message
-// does not match the regular expression in 'expr'.
+// Panic asserts that function fn() would panic. It fails if the panic
+// message does not match the regular expression.
 func Panic(t *testing.T, fn func(), expr string) {
 	defer func() {
 		if r := recover(); r == nil {
@@ -97,22 +97,23 @@ func Matches(t *testing.T, got string, expr string) {
 
 func matches(t *testing.T, skip int, got string, expr string) {
 	if ok, err := regexp.MatchString(expr, got); err != nil {
-		fail(t, skip+1, "invalid pattern %s %s", expr, err.Error())
+		fail(t, skip+1, "invalid pattern %q %s", expr, err.Error())
 	} else if !ok {
-		fail(t, skip+1, "got %s which does not match %s", got, expr)
+		fail(t, skip+1, "got %q which does not match %q", got, expr)
 	}
 }
 
 func fail(t *testing.T, skip int, format string, args ...interface{}) {
+	msg := fmt.Sprintf(format, args...)
 	_, file, line, _ := runtime.Caller(skip + 1)
-	fmt.Printf("\t%s:%d: %s\n", filepath.Base(file), line, fmt.Sprintf(format, args...))
+	fmt.Printf("\t%s:%d: %s\n", filepath.Base(file), line, msg)
 	t.Fail()
 }
 
 // Error asserts that a got error string matches a given regular expression.
 func Error(t *testing.T, got error, expr string) {
 	if got == nil {
-		fail(t, 1, "err is nil")
+		fail(t, 1, "got nil error but expect not nil")
 		return
 	}
 	matches(t, 1, got.Error(), expr)

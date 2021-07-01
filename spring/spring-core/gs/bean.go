@@ -106,7 +106,7 @@ const (
 	Deleted   = beanStatus(5) // 已删除
 )
 
-// BeanDefinition 保存 Bean 的各种元数据。
+// BeanDefinition 保存 bean 的各种元数据。
 type BeanDefinition struct {
 
 	// 原始类型的全限定名
@@ -131,7 +131,7 @@ type BeanDefinition struct {
 	exports map[reflect.Type]struct{} // 导出的接口
 }
 
-// newBeanDefinition BeanDefinition 的构造函数，f 是工厂函数，当 v 为对象 Bean 时 f 为空。
+// newBeanDefinition BeanDefinition 的构造函数，f 是工厂函数，当 v 为对象 bean 时 f 为空。
 func newBeanDefinition(v reflect.Value, f *arg.Callable, file string, line int) *BeanDefinition {
 
 	t := v.Type()
@@ -157,52 +157,52 @@ func newBeanDefinition(v reflect.Value, f *arg.Callable, file string, line int) 
 	}
 }
 
-// Type 返回 Bean 的类型。
+// Type 返回 bean 的类型。
 func (d *BeanDefinition) Type() reflect.Type {
 	return d.t
 }
 
-// Value 返回 Bean 的值。
+// Value 返回 bean 的值。
 func (d *BeanDefinition) Value() reflect.Value {
 	return d.v
 }
 
-// Interface 返回 Bean 的对象。
+// Interface 返回 bean 的对象。
 func (d *BeanDefinition) Interface() interface{} {
 	return d.v.Interface()
 }
 
-// ID 返回 Bean 的 ID 。
+// ID 返回 bean 的 ID 。
 func (d *BeanDefinition) ID() string {
 	return d.typeName + ":" + d.name
 }
 
-// Name 返回 Bean 的名称。
+// Name 返回 bean 的名称。
 func (d *BeanDefinition) Name() string {
 	return d.name
 }
 
-// TypeName 返回 Bean 的原始类型的全限定名。
+// TypeName 返回 bean 的原始类型的全限定名。
 func (d *BeanDefinition) TypeName() string {
 	return d.typeName
 }
 
-// Wired 返回 Bean 是否注入完成。
+// Wired 返回 bean 是否注入完成。
 func (d *BeanDefinition) Wired() bool {
 	return d.status == Wired
 }
 
-// FileLine 返回 Bean 的注册点。
+// FileLine 返回 bean 的注册点。
 func (d *BeanDefinition) FileLine() string {
 	return fmt.Sprintf("%s:%d", d.file, d.line)
 }
 
-// String 返回 Bean 的描述。
+// String 返回 bean 的描述。
 func (d *BeanDefinition) String() string {
 	return fmt.Sprintf("%s name:%q %s", d.getClass(), d.name, d.FileLine())
 }
 
-// getClass 返回 Bean 的类型描述。
+// getClass 返回 bean 的类型描述。
 func (d *BeanDefinition) getClass() string {
 	if d.f == nil {
 		return "object bean"
@@ -210,7 +210,7 @@ func (d *BeanDefinition) getClass() string {
 	return "constructor bean"
 }
 
-// Match 测试 Bean 的类型全限定名和 Bean 的名称是否都匹配。
+// Match 测试 bean 的类型全限定名和 bean 的名称是否都匹配。
 func (d *BeanDefinition) Match(typeName string, beanName string) bool {
 
 	typeIsSame := false
@@ -226,44 +226,44 @@ func (d *BeanDefinition) Match(typeName string, beanName string) bool {
 	return typeIsSame && nameIsSame
 }
 
-// WithName 设置 Bean 的名称。
+// WithName 设置 bean 的名称。
 func (d *BeanDefinition) WithName(name string) *BeanDefinition {
 	d.name = name
 	return d
 }
 
-// WithCond 设置 Bean 的 Condition。
+// WithCond 设置 bean 的 Condition。
 func (d *BeanDefinition) WithCond(cond cond.Condition) *BeanDefinition {
 	d.cond = cond
 	return d
 }
 
-// Order 设置 Bean 的 order ，值越小顺序越靠前(优先级越高)。
+// Order 设置 bean 的 order ，值越小顺序越靠前(优先级越高)。
 func (d *BeanDefinition) Order(order int) *BeanDefinition {
 	d.order = order
 	return d
 }
 
-// DependsOn 设置 Bean 的间接依赖项。
+// DependsOn 设置 bean 的间接依赖项。
 func (d *BeanDefinition) DependsOn(selectors ...bean.Selector) *BeanDefinition {
 	d.dependsOn = append(d.dependsOn, selectors...)
 	return d
 }
 
-// Primary 设置 Bean 为主版本。
+// Primary 设置 bean 为主版本。
 func (d *BeanDefinition) Primary(primary bool) *BeanDefinition {
 	d.primary = primary
 	return d
 }
 
-// validLifeCycleFunc 判断是否是合法的用于 Bean 生命周期控制的函数，生命周期函数的要求：
-// 至少一个参数，且第一个参数的类型必须是 Bean 的类型，没有返回值或者只能返回 error 类型值。
+// validLifeCycleFunc 判断是否是合法的用于 bean 生命周期控制的函数，生命周期函数的要求：
+// 至少一个参数，且第一个参数的类型必须是 bean 的类型，没有返回值或者只能返回 error 类型值。
 func validLifeCycleFunc(fnType reflect.Type, beanType reflect.Type) bool {
 	ok := util.ReturnNothing(fnType) || util.ReturnOnlyError(fnType)
 	return ok && util.IsFuncType(fnType) && util.HasReceiver(fnType, beanType)
 }
 
-// Init 设置 Bean 的初始化函数。
+// Init 设置 bean 的初始化函数。
 func (d *BeanDefinition) Init(fn interface{}) *BeanDefinition {
 	if validLifeCycleFunc(reflect.TypeOf(fn), d.Type()) {
 		d.init = fn
@@ -272,7 +272,7 @@ func (d *BeanDefinition) Init(fn interface{}) *BeanDefinition {
 	panic(errors.New("init should be func(bean) or func(bean)error"))
 }
 
-// Destroy 设置 Bean 的销毁函数。
+// Destroy 设置 bean 的销毁函数。
 func (d *BeanDefinition) Destroy(fn interface{}) *BeanDefinition {
 	if validLifeCycleFunc(reflect.TypeOf(fn), d.Type()) {
 		d.destroy = fn
@@ -281,7 +281,7 @@ func (d *BeanDefinition) Destroy(fn interface{}) *BeanDefinition {
 	panic(errors.New("destroy should be func(bean) or func(bean)error"))
 }
 
-// Export 设置 Bean 的导出接口。
+// Export 设置 bean 的导出接口。
 func (d *BeanDefinition) Export(exports ...interface{}) *BeanDefinition {
 	err := d.export(exports...)
 	util.Panic(err).When(err != nil)
@@ -381,7 +381,7 @@ func NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 		r, err := arg.Bind(objOrCtor, ctorArgs, skip)
 		util.Panic(err).When(err != nil)
 
-		// 创建 Bean 的值
+		// 创建 bean 的值
 		out0 := t.Out(0)
 		v = reflect.New(out0)
 

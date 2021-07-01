@@ -150,13 +150,13 @@ func (c *Container) Go(fn func(ctx context.Context)) {
 	}()
 }
 
-// destroyer 保存具有销毁函数的 Bean 以及销毁函数的调用顺序。
+// destroyer 保存具有销毁函数的 bean 以及销毁函数的调用顺序。
 type destroyer struct {
 	current *BeanDefinition
 	earlier []*BeanDefinition
 }
 
-// after 添加一个需要在该 Bean 之前调用销毁函数的 Bean。
+// after 添加一个需要在该 bean 之前调用销毁函数的 bean。
 func (d *destroyer) after(b *BeanDefinition) {
 	if d.foundEarlier(b) {
 		return
@@ -222,7 +222,7 @@ func (s *wiringStack) path() (path string) {
 	return path[:len(path)-1]
 }
 
-// saveDestroyer 某个 Bean 可能会被多个 Bean 依赖，因此需要排重处理。
+// saveDestroyer 某个 bean 可能会被多个 bean 依赖，因此需要排重处理。
 func (s *wiringStack) saveDestroyer(b *BeanDefinition) *destroyer {
 	d, ok := s.destroyerMap[b.ID()]
 	if !ok {

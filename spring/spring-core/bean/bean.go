@@ -14,26 +14,22 @@
  * limitations under the License.
  */
 
-// Package bean 定义了一些和 Bean 相关的类型。
+// Package bean 定义了 bean 选择器和 Definition 接口。
 package bean
 
-import (
-	"reflect"
-)
+import "reflect"
 
-// Selector Bean 选择器，可以是 BeanId 字符串，可以是 reflect.Type 对
-// 象或者形如 (*error)(nil) 的对象指针，还可以是 Definition 类型的对象。
-type Selector interface{}
-
-// Definition Bean 元数据定义。
+// Definition bean 元数据。
 type Definition interface {
-	Wired() bool // 是否注入完成
-
 	Type() reflect.Type     // 类型
 	Value() reflect.Value   // 值
 	Interface() interface{} // 源
-
-	ID() string       // 返回 Bean 的 ID
-	Name() string     // 返回 Bean 的名称
-	TypeName() string // 返回类型的全限定名
+	ID() string             // 返回 bean 的 ID
+	Name() string           // 返回 bean 的名称
+	TypeName() string       // 返回类型的全限定名
+	Wired() bool            // 返回是否已完成注入
 }
+
+// Selector bean 选择器，可以是 bean ID 字符串，可以是 reflect.Type 对
+// 象，可以是形如 (*error)(nil) 的指针，还可以是 Definition 类型的对象。
+type Selector interface{}

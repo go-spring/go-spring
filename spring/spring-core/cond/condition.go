@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-// Package cond 实现了多种条件。
+// Package cond 提供了判断 bean 注册是否有效的条件。
 package cond
 
 import (
@@ -32,14 +32,17 @@ import (
 // Context IoC 容器对 cond 模块提供的最小功能集。
 type Context interface {
 
-	// Prop 返回 key 转为小写后精确匹配的属性值，不存在返回 nil。
+	// Prop 获取 key 对应的属性值，注意 key 是大小写敏感的。当 key 对应的属性
+	// 值存在时，或者 key 对应的属性值不存在但设置了默认值时，该方法返回 string
+	// 类型的数据，当 key 对应的属性值不存在且没有设置默认值时该方法返回 nil。
+	// 因此可以通过判断该方法的返回值是否为 nil 来判断 key 对应的属性值是否存在。
 	Prop(key string, opts ...conf.GetOption) interface{}
 
-	// Find 返回符合条件的 Bean 集合，不保证返回的 Bean 已经完成注入和绑定过程。
+	// Find 返回符合条件的 bean 集合，不保证返回的 bean 已经完成注入和绑定过程。
 	Find(selector bean.Selector) ([]bean.Definition, error)
 }
 
-// Condition 定义条件接口，条件成立 Matches 函数返回 true，否则返回 false。
+// Condition 条件接口，条件成立 Matches 方法返回 true，否则返回 false。
 type Condition interface {
 	Matches(ctx Context) (bool, error)
 }
@@ -56,7 +59,7 @@ func (c *onMatches) Matches(ctx Context) (bool, error) {
 // not 对一个条件进行取反的 Condition 实现。
 type not struct{ c Condition }
 
-// Not 对一个条件进行取反。
+// Not 返回对一个条件取反后的 Condition 对象。
 func Not(c Condition) *not {
 	return &not{c: c}
 }
@@ -66,14 +69,14 @@ func (c *not) Matches(ctx Context) (bool, error) {
 	return !ok, err
 }
 
-// onProperty 基于属性值存在的 Condition 实现。
+// onProperty 基于属性必须存在的 Condition 实现。
 type onProperty struct{ name string }
 
 func (c *onProperty) Matches(ctx Context) (bool, error) {
 	return ctx.Prop(c.name) != nil, nil
 }
 
-// onMissingProperty 基于属性值不存在的 Condition 实现。
+// onMissingProperty 基于属性必须不存在的 Condition 实现。
 type onMissingProperty struct{ name string }
 
 func (c *onMissingProperty) Matches(ctx Context) (bool, error) {
@@ -114,23 +117,23 @@ func (c *onPropertyValue) Matches(ctx Context) (bool, error) {
 	return cast.ToBoolE(ret.Value.String())
 }
 
-// onBean 基于 Bean 存在的 Condition 实现。
+// onBean 基于符合条件的 bean 必须存在的 Condition 实现。
 type onBean struct{ selector bean.Selector }
 
 func (c *onBean) Matches(ctx Context) (bool, error) {
 	beans, err := ctx.Find(c.selector)
-	return beans != nil, err
+	return len(beans) > 0, err
 }
 
-// onMissingBean 基于 Bean 不能存在的 Condition 实现。
+// onMissingBean 基于符合条件的 bean 必须不存在的 Condition 实现。
 type onMissingBean struct{ selector bean.Selector }
 
 func (c *onMissingBean) Matches(ctx Context) (bool, error) {
 	beans, err := ctx.Find(c.selector)
-	return beans == nil, err
+	return len(beans) == 0, err
 }
 
-// onSingleCandidate 基于 Bean 存在的 Condition 实现。
+// onSingleCandidate 基于符合条件的 bean 只有一个的 Condition 实现。
 type onSingleCandidate struct{ selector bean.Selector }
 
 func (c *onSingleCandidate) Matches(ctx Context) (bool, error) {
@@ -149,9 +152,9 @@ func (c *onExpression) Matches(ctx Context) (bool, error) {
 type Operator int
 
 const (
-	Or   = Operator(1) // 至少一个满足
-	And  = Operator(2) // 所有都要满足
-	None = Operator(3) // 没有一个满足
+	Or   = Operator(1) // 条件成立必须至少一个满足。
+	And  = Operator(2) // 条件成立必须所有都要满足。
+	None = Operator(3) // 条件成立必须没有一个满足。
 )
 
 // group 基于条件组的 Condition 实现。
@@ -160,7 +163,7 @@ type group struct {
 	cond []Condition
 }
 
-// Group group 的构造函数。
+// Group 返回基于条件组的 Condition 对象。
 func Group(op Operator, cond ...Condition) *group {
 	return &group{op: op, cond: cond}
 }
@@ -168,7 +171,7 @@ func Group(op Operator, cond ...Condition) *group {
 func (g *group) Matches(ctx Context) (bool, error) {
 
 	if len(g.cond) == 0 {
-		panic(errors.New("no condition in group"))
+		return false, errors.New("no condition in group")
 	}
 
 	switch g.op {
@@ -204,11 +207,11 @@ func (g *group) Matches(ctx Context) (bool, error) {
 	return false, errors.New("error condition operator")
 }
 
-// node 基于条件表达式的 Condition 实现。
+// node 基于条件链的 Condition 实现。
 type node struct {
 	cond Condition // 条件
 	op   Operator  // 操作符
-	next *node     // 下个表达式节点
+	next *node     // 下一个节点
 }
 
 func (n *node) Matches(ctx Context) (bool, error) {
@@ -246,13 +249,13 @@ func (n *node) Matches(ctx Context) (bool, error) {
 	return false, errors.New("error condition operator")
 }
 
-// conditional Condition 计算式
+// conditional Condition 计算式。
 type conditional struct {
 	head *node
 	curr *node
 }
 
-// New conditional 的构造函数
+// New 返回 Condition 计算式对象。
 func New() *conditional {
 	n := &node{}
 	return &conditional{head: n, curr: n}
@@ -262,7 +265,7 @@ func (c *conditional) Matches(ctx Context) (bool, error) {
 	return c.head.Matches(ctx)
 }
 
-// Or c=a||b
+// Or 添加一个 or 操作符。
 func (c *conditional) Or() *conditional {
 	n := &node{}
 	c.curr.op = Or
@@ -271,7 +274,7 @@ func (c *conditional) Or() *conditional {
 	return c
 }
 
-// And c=a&&b
+// And 添加一个 and 操作符。
 func (c *conditional) And() *conditional {
 	n := &node{}
 	c.curr.op = And
@@ -280,7 +283,7 @@ func (c *conditional) And() *conditional {
 	return c
 }
 
-// On 返回一个条件。
+// On 返回一个以给定 Condition 为开始条件的计算式。
 func On(cond Condition) *conditional {
 	return New().On(cond)
 }
@@ -294,7 +297,7 @@ func (c *conditional) On(cond Condition) *conditional {
 	return c
 }
 
-// OnProperty 返回一个 onProperty 条件。
+// OnProperty 返回一个以 onProperty 为开始条件的计算式。
 func OnProperty(name string) *conditional {
 	return New().OnProperty(name)
 }
@@ -304,7 +307,7 @@ func (c *conditional) OnProperty(name string) *conditional {
 	return c.On(&onProperty{name: name})
 }
 
-// OnMissingProperty 返回一个 onMissingProperty  条件。
+// OnMissingProperty 返回一个以 onMissingProperty 为开始条件的计算式。
 func OnMissingProperty(name string) *conditional {
 	return New().OnMissingProperty(name)
 }
@@ -316,14 +319,14 @@ func (c *conditional) OnMissingProperty(name string) *conditional {
 
 type PropertyValueOption func(*onPropertyValue)
 
-// MatchIfMissing 当属性值不存在时是否匹配条件
+// MatchIfMissing 当属性不存在时如果 matchIfMissing 为 true 则条件成立。
 func MatchIfMissing(matchIfMissing bool) PropertyValueOption {
 	return func(c *onPropertyValue) {
 		c.matchIfMissing = matchIfMissing
 	}
 }
 
-// OnPropertyValue 返回一个 onPropertyValue 条件。
+// OnPropertyValue 返回一个以 onPropertyValue 为开始条件的计算式。
 func OnPropertyValue(name string, havingValue interface{}, options ...PropertyValueOption) *conditional {
 	return New().OnPropertyValue(name, havingValue, options...)
 }
@@ -337,7 +340,7 @@ func (c *conditional) OnPropertyValue(name string, havingValue interface{}, opti
 	return c.On(cond)
 }
 
-// OnBean 返回一个 onBean 条件。
+// OnBean 返回一个以 onBean 为开始条件的计算式。
 func OnBean(selector bean.Selector) *conditional {
 	return New().OnBean(selector)
 }
@@ -347,7 +350,7 @@ func (c *conditional) OnBean(selector bean.Selector) *conditional {
 	return c.On(&onBean{selector: selector})
 }
 
-// OnMissingBean 返回一个 onMissingBean 条件。
+// OnMissingBean 返回一个以 onMissingBean 为开始条件的计算式。
 func OnMissingBean(selector bean.Selector) *conditional {
 	return New().OnMissingBean(selector)
 }
@@ -357,7 +360,7 @@ func (c *conditional) OnMissingBean(selector bean.Selector) *conditional {
 	return c.On(&onMissingBean{selector: selector})
 }
 
-// OnSingleCandidate 返回一个 onMissingBean 条件。
+// OnSingleCandidate 返回一个以 onSingleCandidate 为开始条件的计算式。
 func OnSingleCandidate(selector bean.Selector) *conditional {
 	return New().OnSingleCandidate(selector)
 }
@@ -367,7 +370,7 @@ func (c *conditional) OnSingleCandidate(selector bean.Selector) *conditional {
 	return c.On(&onSingleCandidate{selector: selector})
 }
 
-// OnExpression 返回一个 onExpression 条件。
+// OnExpression 返回一个以 onExpression 为开始条件的计算式。
 func OnExpression(expression string) *conditional {
 	return New().OnExpression(expression)
 }
@@ -377,7 +380,7 @@ func (c *conditional) OnExpression(expression string) *conditional {
 	return c.On(&onExpression{expression: expression})
 }
 
-// OnMatches 返回一个 onMatches 条件。
+// OnMatches 返回一个以 onMatches 为开始条件的计算式。
 func OnMatches(fn Matches) *conditional {
 	return New().OnMatches(fn)
 }
@@ -387,12 +390,12 @@ func (c *conditional) OnMatches(fn Matches) *conditional {
 	return c.On(&onMatches{fn: fn})
 }
 
-// OnProfile 返回一个 onProfile 条件。
+// OnProfile 返回一个以 spring.profile 属性值是否匹配为开始条件的计算式。
 func OnProfile(profile string) *conditional {
 	return New().OnProfile(profile)
 }
 
-// OnProfile 添加一个 onProfile 条件。
+// OnProfile 添加一个 spring.profile 属性值是否匹配的条件。
 func (c *conditional) OnProfile(profile string) *conditional {
 	return c.On(&onPropertyValue{name: "spring.profile", havingValue: profile})
 }
