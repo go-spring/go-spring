@@ -65,6 +65,7 @@ Following information can help us to resolve the issue faster.
 ## 优秀经验
 
 * 不用尽早抽象接口。
+* 异常判断今早返回。
 * 在使用的地方定义接口，而不是实现的地方。
 * 多数情况下不需要新增错误类型，只有深层嵌套的场景才需要。
 * 所有可变参数如果函数名不能提供有效信息都应该使用 Option 模式。

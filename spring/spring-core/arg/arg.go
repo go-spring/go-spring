@@ -50,35 +50,35 @@ type Arg interface{}
 
 // IndexArg 包含下标的参数绑定。
 type IndexArg struct {
-	n   uint
+	n   int
 	arg Arg
 }
 
-// Index 返回包含下标的参数绑定。
-func Index(n uint, arg Arg) IndexArg {
+// Index 返回包含下标的参数绑定，下标从 1 开始。
+func Index(n int, arg Arg) IndexArg {
 	return IndexArg{n: n, arg: arg}
 }
 
 // R1 返回下标为 1 的参数绑定。
-func R1(arg Arg) IndexArg { return Index(0, arg) }
+func R1(arg Arg) IndexArg { return Index(1, arg) }
 
 // R2 返回下标为 2 的参数绑定。
-func R2(arg Arg) IndexArg { return Index(1, arg) }
+func R2(arg Arg) IndexArg { return Index(2, arg) }
 
 // R3 返回下标为 3 的参数绑定。
-func R3(arg Arg) IndexArg { return Index(2, arg) }
+func R3(arg Arg) IndexArg { return Index(3, arg) }
 
 // R4 返回下标为 4 的参数绑定。
-func R4(arg Arg) IndexArg { return Index(3, arg) }
+func R4(arg Arg) IndexArg { return Index(4, arg) }
 
 // R5 返回下标为 5 的参数绑定。
-func R5(arg Arg) IndexArg { return Index(4, arg) }
+func R5(arg Arg) IndexArg { return Index(5, arg) }
 
 // R6 返回下标为 6 的参数绑定。
-func R6(arg Arg) IndexArg { return Index(5, arg) }
+func R6(arg Arg) IndexArg { return Index(6, arg) }
 
 // R7 返回下标为 7 的参数绑定。
-func R7(arg Arg) IndexArg { return Index(6, arg) }
+func R7(arg Arg) IndexArg { return Index(7, arg) }
 
 // ValueArg 包含具体值的参数绑定。
 type ValueArg struct {
@@ -93,11 +93,11 @@ func Value(v interface{}) ValueArg {
 // argList 函数参数绑定列表。
 type argList struct {
 
-	// fnType 函数的类型。
-	fnType reflect.Type
-
 	// args 参数绑定列表。
 	args []Arg
+
+	// fnType 函数的类型。
+	fnType reflect.Type
 }
 
 func newArgList(fnType reflect.Type, args []Arg) (*argList, error) {
@@ -108,10 +108,14 @@ func newArgList(fnType reflect.Type, args []Arg) (*argList, error) {
 		fixedArgCount--
 	}
 
-	// 函数的参数要么都有下标，要么都没有下标。
-	shouldIndex := false
+	shouldIndex := func() bool {
+		if len(args) == 0 {
+			return false
+		}
+		_, ok := args[0].(IndexArg)
+		return ok
+	}()
 
-	// 分配不可变参数的空间，可变参数加在后面。
 	fnArgs := make([]Arg, fixedArgCount)
 
 	if len(args) > 0 {
@@ -119,19 +123,19 @@ func newArgList(fnType reflect.Type, args []Arg) (*argList, error) {
 		case *optionArg:
 			fnArgs = append(fnArgs, arg)
 		case IndexArg:
-			shouldIndex = true
-			if arg.n >= uint(fixedArgCount) {
+			if n := arg.n - 1; n < 0 || n >= fixedArgCount {
 				return nil, errors.New("参数索引超出函数入参的个数")
+			} else {
+				fnArgs[n] = arg.arg
 			}
-			fnArgs[arg.n] = arg.arg
 		default:
-			shouldIndex = false
-			if fixedArgCount > 0 {
-				fnArgs[0] = arg
-			} else if fnType.IsVariadic() {
+			if fixedArgCount <= 0 {
+				return nil, errors.New("函数没有参数但却绑定了参数")
+			}
+			if fnType.IsVariadic() {
 				fnArgs = append(fnArgs, arg)
 			} else {
-				return nil, errors.New("函数没有参数但却绑定了参数")
+				fnArgs[0] = arg
 			}
 		}
 	}
@@ -144,23 +148,24 @@ func newArgList(fnType reflect.Type, args []Arg) (*argList, error) {
 			if !shouldIndex {
 				return nil, errors.New("所有参数必须都有或者都没有索引")
 			}
-			if arg.n >= uint(fixedArgCount) {
+			if n := arg.n - 1; n < 0 || n >= fixedArgCount {
 				return nil, errors.New("参数索引超出函数入参的个数")
-			}
-			if fnArgs[arg.n] != nil {
+			} else if fnArgs[n] != nil {
 				return nil, fmt.Errorf("发现相同索引 %d 的参数", arg.n)
+			} else {
+				fnArgs[n] = arg.arg
 			}
-			fnArgs[arg.n] = arg.arg
 		default:
 			if shouldIndex {
 				return nil, errors.New("所有参数必须都有或者都没有索引")
 			}
-			if i < fixedArgCount {
-				fnArgs[i] = arg
-			} else if fnType.IsVariadic() {
+			if i >= fixedArgCount {
+				return nil, errors.New("参数的数量超出了函数入参的数量")
+			}
+			if fnType.IsVariadic() {
 				fnArgs = append(fnArgs, arg)
 			} else {
-				return nil, errors.New("参数的数量超出了函数入参的数量")
+				fnArgs[i] = arg
 			}
 		}
 	}
@@ -180,24 +185,23 @@ func (r *argList) get(ctx Context, fileLine string) ([]reflect.Value, error) {
 
 	fnType := r.fnType
 	numIn := fnType.NumIn()
-
 	variadic := fnType.IsVariadic()
 	result := make([]reflect.Value, 0)
 
 	for idx, arg := range r.args {
-		var t reflect.Type
 
+		var t reflect.Type
 		if variadic && idx >= numIn-1 {
 			t = fnType.In(numIn - 1).Elem()
 		} else {
 			t = fnType.In(idx)
 		}
 
+		// Option 参数可能因为条件不满足而没有生成绑定值
 		v, err := r.getArg(ctx, arg, t, fileLine)
 		if err != nil {
 			return nil, err
 		}
-
 		if v.IsValid() {
 			result = append(result, v)
 		}
@@ -206,7 +210,12 @@ func (r *argList) get(ctx Context, fileLine string) ([]reflect.Value, error) {
 	return result, nil
 }
 
-func (r *argList) getArg(ctx Context, arg Arg, t reflect.Type, fileLine string) (_ reflect.Value, err error) {
+func (r *argList) getArg(ctx Context, arg Arg, t reflect.Type, fileLine string) (reflect.Value, error) {
+
+	var (
+		err error
+		tag string
+	)
 
 	description := fmt.Sprintf("arg:\"%v\" %s", arg, fileLine)
 	log.Tracef("get value %s", description)
@@ -217,8 +226,6 @@ func (r *argList) getArg(ctx Context, arg Arg, t reflect.Type, fileLine string) 
 			log.Tracef("get value error %s %s", err.Error(), description)
 		}
 	}()
-
-	tag := ""
 
 	switch g := arg.(type) {
 	case ValueArg:
@@ -279,7 +286,12 @@ func (arg *optionArg) WithCond(c cond.Condition) *optionArg {
 	return arg
 }
 
-func (arg *optionArg) call(ctx Context) (_ reflect.Value, err error) {
+func (arg *optionArg) call(ctx Context) (reflect.Value, error) {
+
+	var (
+		ok  bool
+		err error
+	)
 
 	log.Tracef("call option func %s", arg.r.fileLine)
 	defer func() {
@@ -291,12 +303,10 @@ func (arg *optionArg) call(ctx Context) (_ reflect.Value, err error) {
 	}()
 
 	if arg.c != nil {
-		var ok bool
 		ok, err = ctx.Matches(arg.c)
 		if err != nil {
 			return reflect.Value{}, err
-		}
-		if !ok {
+		} else if !ok {
 			return reflect.Value{}, nil
 		}
 	}
@@ -348,12 +358,11 @@ func (r *Callable) Call(ctx Context) ([]reflect.Value, error) {
 	}
 
 	o := out[n-1]
-	if !util.IsErrorType(o.Type()) {
-		return out, nil
+	if util.IsErrorType(o.Type()) {
+		if i := o.Interface(); i != nil {
+			return out[:n-1], i.(error)
+		}
+		return out[:n-1], nil
 	}
-
-	if i := o.Interface(); i != nil {
-		return out[:n-1], i.(error)
-	}
-	return out[:n-1], nil
+	return out, nil
 }
