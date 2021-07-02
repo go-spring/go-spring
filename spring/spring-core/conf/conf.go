@@ -58,7 +58,8 @@ func Load(file string) (*Properties, error) {
 	return p, nil
 }
 
-// Load 返回一个由属性文件创建的属性列表，file 可以是绝对路径，也可以是相对路径。
+// Load 从属性文件加载属性列表，file 可以是绝对路径，也可以是相对路径。该方法会覆盖
+// 已有的属性值。
 func (p *Properties) Load(file string) error {
 	b, err := ioutil.ReadFile(file)
 	if err != nil {
@@ -76,7 +77,8 @@ func Read(b []byte, ext string) (*Properties, error) {
 	return p, nil
 }
 
-// Read 返回一个由 []byte 创建的属性列表，ext 是文件扩展名，如 .yaml、.toml 等。
+// Read 从 []byte 加载属性列表，ext 是文件扩展名，如 .yaml、.toml 等。该方法会覆
+// 盖已有的属性值。
 func (p *Properties) Read(b []byte, ext string) error {
 
 	r, ok := readers[ext]
@@ -95,7 +97,7 @@ func (p *Properties) Read(b []byte, ext string) error {
 	return nil
 }
 
-// Keys 返回属性 key 的列表。
+// Keys 返回所有属性 key 的列表。
 func (p *Properties) Keys() []string {
 	keys := make([]string, 0, len(p.m))
 	for k := range p.m {
@@ -105,7 +107,7 @@ func (p *Properties) Keys() []string {
 }
 
 type getArg struct {
-	def interface{} // 默认值
+	def interface{}
 }
 
 type GetOption func(arg *getArg)
@@ -145,7 +147,8 @@ func (p *Properties) Get(key string, opts ...GetOption) interface{} {
 // 成的属性值，其处理方式是将组合结构层层展开，可以将组合结构看成一棵树，那么叶子结
 // 点的路径就是属性的 key，叶子结点的值就是属性的值。
 func (p *Properties) Set(key string, val interface{}) {
-	switch v := reflect.ValueOf(val); v.Kind() {
+	v := reflect.ValueOf(val)
+	switch v.Kind() {
 	case reflect.Map:
 		for _, k := range v.MapKeys() {
 			mapValue := v.MapIndex(k).Interface()
@@ -163,7 +166,7 @@ func (p *Properties) Set(key string, val interface{}) {
 	}
 }
 
-// Resolve 解析字符串中包含的属性引用即 ${key:=def} 的内容，且支持递归引用。
+// Resolve 解析字符串中包含的所有属性引用即 ${key:=def} 的内容，并且支持递归引用。
 func (p *Properties) Resolve(s string) (string, error) {
 	return resolveString(p, s)
 }
@@ -174,14 +177,14 @@ type bindArg struct {
 
 type BindOption func(arg *bindArg)
 
-// Key 设置绑定使用的 key 。
+// Key 设置属性绑定使用的 key 。
 func Key(key string) BindOption {
 	return func(arg *bindArg) {
 		arg.tag = "${" + key + "}"
 	}
 }
 
-// Tag 设置绑定使用的 tag 。
+// Tag 设置属性绑定使用的 tag 。
 func Tag(tag string) BindOption {
 	return func(arg *bindArg) {
 		arg.tag = tag

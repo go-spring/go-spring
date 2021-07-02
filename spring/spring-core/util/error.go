@@ -35,7 +35,7 @@ func (c *withCause) Error() string {
 	return fmt.Sprint(c.cause)
 }
 
-// Cause 获取封装的异常源
+// Cause 获取封装的异常源。
 func Cause(err error) interface{} {
 	if c, ok := err.(*withCause); ok {
 		return c.cause
@@ -51,7 +51,7 @@ func Error(err error) string {
 	return err.Error()
 }
 
-// ErrorWithFileLine 返回错误发生的文件行号，skip 是相对于当前函数的深度
+// ErrorWithFileLine 返回错误发生的文件行号，skip 是相对于当前函数的深度。
 func ErrorWithFileLine(err error, skip ...int) error {
 	var (
 		file string
@@ -69,29 +69,27 @@ func ErrorWithFileLine(err error, skip ...int) error {
 	return errors.New(str)
 }
 
-/******************** PanicCond **********************/
-
-// Panic 抛出一个异常值
+// Panic 抛出一个异常值。
 func Panic(err error) *PanicCond {
 	return NewPanicCond(func() interface{} { return err })
 }
 
-// Panicf 抛出一段需要格式化的错误字符串
+// Panicf 抛出一段需要格式化的错误字符串。
 func Panicf(format string, a ...interface{}) *PanicCond {
 	return NewPanicCond(func() interface{} { return fmt.Errorf(format, a...) })
 }
 
-// PanicCond 封装触发 panic 的条件
+// PanicCond 封装触发 panic 的条件。
 type PanicCond struct {
 	fn func() interface{}
 }
 
-// NewPanicCond PanicCond 的构造函数
+// NewPanicCond PanicCond 的构造函数。
 func NewPanicCond(fn func() interface{}) *PanicCond {
 	return &PanicCond{fn}
 }
 
-// When 满足给定条件时抛出一个 panic
+// When 满足给定条件时抛出一个 panic 。
 func (p *PanicCond) When(isPanic bool) {
 	if isPanic {
 		panic(p.fn())

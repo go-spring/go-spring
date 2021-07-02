@@ -84,6 +84,6 @@ func Unmarshal(data []byte, v interface{}) error {
 		return unmarshal(data, v)
 	}
 	d := json.NewDecoder(bytes.NewReader(data))
-	d.UseNumber()
+	//d.UseNumber()
 	return d.Decode(v)
 }

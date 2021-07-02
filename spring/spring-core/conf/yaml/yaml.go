@@ -20,7 +20,7 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-// Read 将字节数组解析成 map 结构。
+// Read 将 yaml 格式的字节数组解析成 map 数据。
 func Read(b []byte) (map[string]interface{}, error) {
 	m := make(map[string]interface{})
 	err := yaml.Unmarshal(b, &m)

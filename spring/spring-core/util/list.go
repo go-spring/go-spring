@@ -20,7 +20,7 @@ import (
 	"container/list"
 )
 
-// NewList 使用输入的元素创建列表
+// NewList 使用输入的元素创建列表。
 func NewList(v ...interface{}) *list.List {
 	l := list.New()
 	for _, val := range v {

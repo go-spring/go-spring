@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+// Package mq 提供了标准的消息队列接口，可以灵活适配各种 MQ 实现。
 package mq
 
 type Message interface {

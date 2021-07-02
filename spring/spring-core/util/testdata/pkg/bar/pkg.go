@@ -20,7 +20,7 @@ import (
 	"fmt"
 )
 
-// Golang 允许不同的路径下存在同名的包。
+// SamePkg Golang 允许不同的路径下存在同名的包。
 type SamePkg struct{}
 
 func (p *SamePkg) Package() {

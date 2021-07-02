@@ -25,6 +25,3 @@ var UnimplementedMethod = errors.New("unimplemented method")
 
 // UnsupportedMethod 如果某个方法禁止被调用则可以抛出此错误。
 var UnsupportedMethod = errors.New("unsupported method")
-
-// ForbiddenMethod 如果某个方法禁止被调用则可以抛出此错误。
-var ForbiddenMethod = errors.New("forbidden method")

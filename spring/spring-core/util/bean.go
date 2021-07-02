@@ -20,7 +20,7 @@ import (
 	"github.com/go-spring/spring-core/json"
 )
 
-// CopyBean 使用 Json 序列化框架进行拷贝，支持匿名字段，支持类型转换。
+// CopyBean 使用 JSON 序列化的方式进行拷贝，支持匿名字段，支持类型转换。
 func CopyBean(src interface{}, dest interface{}) error {
 	bytes, err := json.Marshal(src)
 	if err != nil {

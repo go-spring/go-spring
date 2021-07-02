@@ -23,17 +23,19 @@ import (
 )
 
 func init() {
+	NewReader(yaml.Read, ".yaml", ".yml")
 	NewReader(prop.Read, ".properties")
-	NewReader(yaml.Read, ".yaml")
 	NewReader(toml.Read, ".toml")
 }
 
 var readers = make(map[string]Reader)
 
-// Reader 属性列表解析器，将字节数组解析成 map 结构。
+// Reader 属性列表解析器，将字节数组解析成 map 数据。
 type Reader func(b []byte) (map[string]interface{}, error)
 
-// NewReader 注册属性列表解析器，ext 是解析器支持的(标准)文件扩展名。
-func NewReader(r Reader, ext string) {
-	readers[ext] = r
+// NewReader 注册属性列表解析器，ext 是解析器支持的文件扩展名。
+func NewReader(r Reader, ext ...string) {
+	for _, s := range ext {
+		readers[s] = r
+	}
 }

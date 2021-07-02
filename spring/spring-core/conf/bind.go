@@ -46,7 +46,7 @@ func bind(p *Properties, v reflect.Value, tag string, opt bindOption) error {
 	}
 
 	if !validTag(tag) {
-		return fmt.Errorf("%s 属性绑定字符串 %s 错误", opt.path, tag)
+		return fmt.Errorf("%s 属性绑定字符串 %s 语法错误", opt.path, tag)
 	}
 
 	key, def, hasDef := parseTag(tag)
@@ -93,8 +93,7 @@ func bindValue(p *Properties, v reflect.Value, opt bindOption) error {
 
 	if fn != nil {
 		fnValue := reflect.ValueOf(fn)
-		in := []reflect.Value{reflect.ValueOf(val)}
-		out := fnValue.Call(in)
+		out := fnValue.Call([]reflect.Value{reflect.ValueOf(val)})
 		if !out[1].IsNil() {
 			return out[1].Interface().(error)
 		}
@@ -363,6 +362,8 @@ func resolveString(p *Properties, s string) (string, error) {
 	return s[:start] + s1 + s2, nil
 }
 
+// resolve 解析 ${key:=def} 字符串，返回 key 对应的属性值，如果没有找到则返回
+// def 值，如果 def 存在引用则递归解析直到获取最终的属性值。
 func resolve(p *Properties, opt bindOption) (string, error) {
 	val := p.Get(opt.key)
 	if val == nil {

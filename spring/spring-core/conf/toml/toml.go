@@ -20,7 +20,7 @@ import (
 	"github.com/pelletier/go-toml"
 )
 
-// Read 将字节数组解析成 map 结构。
+// Read 将 toml 格式的字节数组解析成 map 数据。
 func Read(b []byte) (map[string]interface{}, error) {
 	tree, err := toml.LoadBytes(b)
 	if err != nil {
