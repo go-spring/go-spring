@@ -65,7 +65,7 @@ func TestApplicationContext_RegisterBeanFrozen(t *testing.T) {
 			c.Object(new(bool))
 		})
 		c.Refresh()
-	}, "should call before Refreshing")
+	}, "should call before Refresh")
 }
 
 func TestApplicationContext(t *testing.T) {
@@ -102,7 +102,7 @@ func TestApplicationContext(t *testing.T) {
 			var i int
 			err := p.Get(&i)
 			util.Panic(err).When(err != nil)
-		}, "receiver must be ref type, bean:\"\"")
+		}, "int is not valid receiver type")
 
 		// 找到多个符合条件的值
 		assert.Panic(t, func() {
@@ -116,7 +116,7 @@ func TestApplicationContext(t *testing.T) {
 			var i int
 			err := p.Get(&i, "i3")
 			util.Panic(err).When(err != nil)
-		}, "receiver must be ref type, bean:\"i3\"")
+		}, "int is not valid receiver type")
 
 		{
 			var i *int
@@ -577,7 +577,7 @@ func TestApplicationContext_Get(t *testing.T) {
 			i := new(int)
 			err := p.Get(i)
 			util.Panic(err).When(err != nil)
-		}, "receiver must be ref type")
+		}, "int is not valid receiver type")
 
 		assert.Panic(t, func() {
 			var i *int

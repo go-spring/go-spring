@@ -17,6 +17,7 @@
 package gs
 
 import (
+	"context"
 	"reflect"
 
 	"github.com/go-spring/spring-core/arg"
@@ -27,31 +28,45 @@ var app = NewApp()
 
 // Banner 自定义 banner 字符串。
 func Banner(banner string) {
-	app.banner = banner
+	app.Banner(banner)
 }
 
 // ShowBanner 设置是否显示 banner。
 func ShowBanner(show bool) {
-	app.showBanner = show
+	app.ShowBanner(show)
 }
 
 func ExpectSystemEnv(pattern ...string) {
 	app.ExpectSystemEnv(pattern...)
 }
 
-// Property 设置属性值，属性名称统一转成小写。
+// Property 设置 key 对应的属性值，如果 key 对应的属性值已经存在则 Set 方法会
+// 覆盖旧值。Set 方法除了支持 string 类型的属性值，还支持 int、uint、bool 等
+// 其他基础数据类型的属性值。特殊情况下，Set 方法也支持 slice 、map 与基础数据
+// 类型组合构成的属性值，其处理方式是将组合结构层层展开，可以将组合结构看成一棵树，
+// 那么叶子结点的路径就是属性的 key，叶子结点的值就是属性的值。
 func Property(key string, value interface{}) {
 	app.Property(key, value)
 }
 
-// Object 注册对象形式的 bean 。
+func OnProperty(key string, fn interface{}) {
+	app.OnProperty(key, fn)
+}
+
+// Object 注册对象形式的 bean ，需要注意的是该方法在注入开始后就不能再调用了。
 func Object(i interface{}) *BeanDefinition {
 	return app.c.register(NewBean(reflect.ValueOf(i)))
 }
 
-// Provide 注册构造函数形式的 bean 。
+// Provide 注册构造函数形式的 bean ，需要注意的是该方法在注入开始后就不能再调用了。
 func Provide(ctor interface{}, args ...arg.Arg) *BeanDefinition {
 	return app.c.register(NewBean(ctor, args...))
+}
+
+// Go 创建安全可等待的 goroutine，fn 要求的 ctx 对象由 IoC 容器提供，当 IoC 容
+// 器关闭时 ctx会 发出 Done 信号， fn 在接收到此信号后应当立即退出。
+func Go(fn func(ctx context.Context)) {
+	app.Go(fn)
 }
 
 // Route 返回和 Mapping 绑定的路由分组。

@@ -71,6 +71,7 @@ func NotEqual(t *testing.T, got interface{}, expect interface{}) {
 // Panic asserts that function fn() would panic. It fails if the panic
 // message does not match the regular expression.
 func Panic(t *testing.T, fn func(), expr string) {
+	// TODO 使用 util.Panic(err).When(err != nil) 时堆栈信息不对
 	defer func() {
 		if r := recover(); r == nil {
 			fail(t, 2, "did not panic")
