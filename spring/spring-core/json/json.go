@@ -84,6 +84,6 @@ func Unmarshal(data []byte, v interface{}) error {
 		return unmarshal(data, v)
 	}
 	d := json.NewDecoder(bytes.NewReader(data))
-	//d.UseNumber()
+	//d.UseNumber() // TODO 是否任何时候都有效?
 	return d.Decode(v)
 }

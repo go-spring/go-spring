@@ -879,7 +879,7 @@ func TestApplicationContext_Primary(t *testing.T) {
 			c := gs.New()
 			c.Object(&BeanZero{5})
 			// primary 是在多个候选 bean 里面选择，而不是允许同名同类型的两个 bean
-			c.Object(&BeanZero{6}).Primary(true)
+			c.Object(&BeanZero{6}).Primary()
 			c.Object(new(BeanOne))
 			c.Object(new(BeanTwo))
 			c.Refresh()
@@ -906,7 +906,7 @@ func TestApplicationContext_Primary(t *testing.T) {
 
 		c, ch := container()
 		c.Object(&BeanZero{5})
-		c.Object(&BeanZero{6}).WithName("zero_6").Primary(true)
+		c.Object(&BeanZero{6}).WithName("zero_6").Primary()
 		c.Object(new(BeanOne))
 		c.Object(new(BeanTwo))
 		c.Refresh()

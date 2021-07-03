@@ -17,78 +17,17 @@
 package gs
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"math"
 	"reflect"
 	"runtime"
-	"strings"
 
 	"github.com/go-spring/spring-core/arg"
 	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/cond"
 	"github.com/go-spring/spring-core/util"
 )
-
-// wireTag 单例模式的 tag 分解式，完整形式是 XXX:XXX? 。
-type wireTag struct {
-	typeName string
-	beanName string
-	nullable bool
-}
-
-// parseWireTag 解析单例模式的 tag 分解式，完整形式是 XXX:XXX? 。
-func parseWireTag(str string) (tag wireTag) {
-
-	if str == "" {
-		return
-	}
-
-	// 检查字符串结尾是否有可空标记。
-	if n := len(str) - 1; str[n] == '?' {
-		tag.nullable = true
-		str = str[:n]
-	}
-
-	// tag 的完整形式，形如 XXX:XXX? 。
-	if i := strings.Index(str, ":"); i >= 0 {
-		tag.beanName = str[i+1:]
-		tag.typeName = str[:i]
-		return
-	}
-
-	// tag 的简化形式，形如 XXX? 。
-	tag.beanName = str
-	return
-}
-
-func (tag wireTag) String() string {
-	b := bytes.NewBuffer(nil)
-	if tag.typeName != "" {
-		b.WriteString(tag.typeName)
-		b.WriteString(":")
-	}
-	b.WriteString(tag.beanName)
-	if tag.nullable {
-		b.WriteString("?")
-	}
-	return b.String()
-}
-
-// toWireTag 将 bean.Selector 转换为对应的 wireTag 。
-func toWireTag(selector bean.Selector) wireTag {
-	switch s := selector.(type) {
-	case string:
-		return parseWireTag(s)
-	case bean.Definition:
-		return parseWireTag(s.ID())
-	case *BeanDefinition:
-		return parseWireTag(s.ID())
-	default:
-		return parseWireTag(util.TypeName(s) + ":")
-	}
-}
 
 const (
 	HighestOrder = math.MinInt32
@@ -106,7 +45,7 @@ const (
 	Deleted   = beanStatus(5) // 已删除
 )
 
-// BeanDefinition 保存 bean 的各种元数据。
+// BeanDefinition bean 元数据。
 type BeanDefinition struct {
 
 	// 原始类型的全限定名
@@ -114,7 +53,7 @@ type BeanDefinition struct {
 
 	v reflect.Value // 值
 	t reflect.Type  // 类型
-	f *arg.Callable // 工厂函数
+	f *arg.Callable // 构造函数
 
 	file string // 注册点所在文件
 	line int    // 注册点所在行数
@@ -131,7 +70,6 @@ type BeanDefinition struct {
 	exports map[reflect.Type]struct{} // 导出的接口
 }
 
-// newBeanDefinition BeanDefinition 的构造函数，f 是工厂函数，当 v 为对象 bean 时 f 为空。
 func newBeanDefinition(v reflect.Value, f *arg.Callable, file string, line int) *BeanDefinition {
 
 	t := v.Type()
@@ -167,7 +105,7 @@ func (d *BeanDefinition) Value() reflect.Value {
 	return d.v
 }
 
-// Interface 返回 bean 的对象。
+// Interface 返回 bean 的真实值。
 func (d *BeanDefinition) Interface() interface{} {
 	return d.v.Interface()
 }
@@ -187,7 +125,7 @@ func (d *BeanDefinition) TypeName() string {
 	return d.typeName
 }
 
-// Wired 返回 bean 是否注入完成。
+// Wired 返回 bean 是否已经注入完成。
 func (d *BeanDefinition) Wired() bool {
 	return d.status == Wired
 }
@@ -197,17 +135,16 @@ func (d *BeanDefinition) FileLine() string {
 	return fmt.Sprintf("%s:%d", d.file, d.line)
 }
 
-// String 返回 bean 的描述。
-func (d *BeanDefinition) String() string {
-	return fmt.Sprintf("%s name:%q %s", d.getClass(), d.name, d.FileLine())
-}
-
 // getClass 返回 bean 的类型描述。
 func (d *BeanDefinition) getClass() string {
 	if d.f == nil {
 		return "object bean"
 	}
 	return "constructor bean"
+}
+
+func (d *BeanDefinition) String() string {
+	return fmt.Sprintf("%s name:%q %s", d.getClass(), d.name, d.FileLine())
 }
 
 // Match 测试 bean 的类型全限定名和 bean 的名称是否都匹配。
@@ -238,7 +175,7 @@ func (d *BeanDefinition) WithCond(cond cond.Condition) *BeanDefinition {
 	return d
 }
 
-// Order 设置 bean 的 order ，值越小顺序越靠前(优先级越高)。
+// Order 设置 bean 的排序序号，值越小顺序越靠前(优先级越高)。
 func (d *BeanDefinition) Order(order int) *BeanDefinition {
 	d.order = order
 	return d
@@ -251,16 +188,21 @@ func (d *BeanDefinition) DependsOn(selectors ...bean.Selector) *BeanDefinition {
 }
 
 // Primary 设置 bean 为主版本。
-func (d *BeanDefinition) Primary(primary bool) *BeanDefinition {
-	d.primary = primary
+func (d *BeanDefinition) Primary() *BeanDefinition {
+	d.primary = true
 	return d
 }
 
-// validLifeCycleFunc 判断是否是合法的用于 bean 生命周期控制的函数，生命周期函数的要求：
-// 至少一个参数，且第一个参数的类型必须是 bean 的类型，没有返回值或者只能返回 error 类型值。
+// validLifeCycleFunc 判断是否是合法的用于 bean 生命周期控制的函数，生命周期函数
+// 的要求：只能有一个入参并且必须是 bean 的类型，没有返回值或者只返回 error 类型值。
 func validLifeCycleFunc(fnType reflect.Type, beanType reflect.Type) bool {
-	ok := util.ReturnNothing(fnType) || util.ReturnOnlyError(fnType)
-	return ok && util.IsFuncType(fnType) && util.HasReceiver(fnType, beanType)
+	if !util.IsFuncType(fnType) {
+		return false
+	}
+	if fnType.NumIn() != 1 || !util.HasReceiver(fnType, beanType) {
+		return false
+	}
+	return util.ReturnNothing(fnType) || util.ReturnOnlyError(fnType)
 }
 
 // Init 设置 bean 的初始化函数。
@@ -284,7 +226,9 @@ func (d *BeanDefinition) Destroy(fn interface{}) *BeanDefinition {
 // Export 设置 bean 的导出接口。
 func (d *BeanDefinition) Export(exports ...interface{}) *BeanDefinition {
 	err := d.export(exports...)
-	util.Panic(err).When(err != nil)
+	if err != nil {
+		panic(err)
+	}
 	return d
 }
 
@@ -311,11 +255,10 @@ func (d *BeanDefinition) export(exports ...interface{}) error {
 	return nil
 }
 
-// autoExport 自动导出结构体指针类型 bean 使用 export 语法导出的接口。
+// autoExport 导出结构体指针类型的 bean 对象使用 export 语法导出的接口。
 func (d *BeanDefinition) autoExport(t reflect.Type) error {
 
-	t = util.Indirect(t)
-	if t.Kind() != reflect.Struct {
+	if t = util.Indirect(t); t.Kind() != reflect.Struct {
 		return nil
 	}
 
@@ -381,7 +324,6 @@ func NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 		r, err := arg.Bind(objOrCtor, ctorArgs, skip)
 		util.Panic(err).When(err != nil)
 
-		// 创建 bean 的值
 		out0 := t.Out(0)
 		v = reflect.New(out0)
 

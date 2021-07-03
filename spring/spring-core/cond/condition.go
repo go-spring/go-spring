@@ -38,7 +38,8 @@ type Context interface {
 	// 因此可以通过判断该方法的返回值是否为 nil 来判断 key 对应的属性值是否存在。
 	Prop(key string, opts ...conf.GetOption) interface{}
 
-	// Find 返回符合条件的 bean 集合，不保证返回的 bean 已经完成注入和绑定过程。
+	// Find 查找符合条件的 bean 对象，注意该函数只能保证返回的 bean 是有效的,
+	// 即未被标记为删除的，而不能保证已经完成属性绑定和依赖注入。
 	Find(selector bean.Selector) ([]bean.Definition, error)
 }
 

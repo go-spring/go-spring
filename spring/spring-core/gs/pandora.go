@@ -43,40 +43,32 @@ type Pandora interface {
 	Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, error)
 }
 
-type pandora struct {
-	c *Container
-}
+type pandora struct{ c *Container }
 
-// Prop 获取 key 对应的属性值，注意 key 是大小写敏感的。当 key 对应的属性
-// 值存在时，或者 key 对应的属性值不存在但设置了默认值时，该方法返回 string
-// 类型的数据，当 key 对应的属性值不存在且没有设置默认值时该方法返回 nil。
-// 因此可以通过判断该方法的返回值是否为 nil 来判断 key 对应的属性值是否存在。
+// Prop 获取 key 对应的属性值，注意 key 是大小写敏感的。当 key 对应的属性值存在
+// 时，或者 key 对应的属性值不存在但设置了默认值时，该方法返回 string 类型的数据，
+// 当 key 对应的属性值不存在且没有设置默认值时该方法返回 nil。因此可以通过判断该方
+// 法的返回值是否为 nil 来判断 key 对应的属性值是否存在。
 func (p *pandora) Prop(key string, opts ...conf.GetOption) interface{} {
-	p.c.callAfterRefreshing()
 	return p.c.p.Get(key, opts...)
 }
 
-// Bind 对传入的对象进行属性绑定，注意该方法不会进行依赖注入，支持基本数据类型
-// 及结构体类型。
+// Bind 将 key 对应的属性值绑定到某个数据类型的实例上。i 必须是一个指针，只有这
+// 样才能将修改传递出去。注意该方法不会进行依赖注入，Wire 方法才会。
 func (p *pandora) Bind(i interface{}, opts ...conf.BindOption) error {
-	p.c.callAfterRefreshing()
 	return p.c.p.Bind(i, opts...)
 }
 
-// Get 根据类型和选择器获取符合条件的 bean 对象，该方法用于精确查找某个 bean 。
-// 如果没有找到或者找到多个都会返回 error。另外，这个方法和 Find 方法的区别在于
-// Get 方法返回的 bean 对象能够确保已经完成属性绑定和依赖注入，而 Find 则不能。
-// Collect 根据类型和选择器收集符合条件的 bean 对象，该方法和 Get 方法的区别
-// 在于它能够返回多个和类型匹配的 bean 对象，并且符合条件的不仅仅只是单例形式的
-// bean 对象，还可能包含集合形式注册的 bean 对象，该方法将集合形式 bean 对象
-// 的元素当成单例 bean 对象。
-// 另外，该函数有两种使用模式:自动模式和指定模式。自动模式是指 selectors 参数
-// 为空，这时候不仅会收集符合条件的单例 bean，还会收集符合条件的数组 bean (将
-// 数组元素拆开后一个个按照顺序放到收集结果里面)。指定模式是指 selectors 参数
-// 不为空，这时候只会收集符合条件的单例 bean，原因是该模式下会根据 selectors
-// 参数的顺序对收集结果进行排序。
+// Get 根据类型和选择器获取符合条件的 bean 对象。当 i 是一个基础类型的 bean 接收
+// 者时，表示符合条件的 bean 对象只能有一个，没有找到或者多于一个时会返回 error。
+// 当 i 是一个 map 类型的 bean 接收者时，表示获取任意数量的 bean 对象，map 的
+// key 是 bean 的名称，map 的 value 是 bean 的地址。当 i 是一个 array 或者
+// slice 时，也表示获取任意数量的 bean 对象，但是它会对获取到的 bean 对象进行排序，
+// 如果没有传入选择器或者传入的选择器是 * ，则根据 bean 的 order 值进行排序，这种
+// 工作模式称为自动模式，否则根据传入的选择器列表进行排序，这种工作模式成为指派模式。
+// 该方法和 Find 方法的区别是该方法保证返回的所有 bean 对象都已经完成属性绑定和依
+// 赖注入，而 Find 方法只能保证返回的 bean 对象是有效的，即未被标记为删除的。
 func (p *pandora) Get(i interface{}, selectors ...bean.Selector) error {
-	p.c.callAfterRefreshing()
 
 	if i == nil {
 		return errors.New("i can't be nil")
@@ -102,7 +94,8 @@ func (p *pandora) Get(i interface{}, selectors ...bean.Selector) error {
 	return p.c.autowire(v.Elem(), tags, stack)
 }
 
-// Find 返回符合条件的 bean 集合，不保证返回的 bean 已经完成注入和绑定过程。
+// Find 查找符合条件的 bean 对象，注意该函数只能保证返回的 bean 是有效的，即未被
+// 标记为删除的，而不能保证已经完成属性绑定和依赖注入。
 func (p *pandora) Find(selector bean.Selector) ([]bean.Definition, error) {
 	beans, err := p.c.findBean(selector)
 	if err != nil {
@@ -115,11 +108,10 @@ func (p *pandora) Find(selector bean.Selector) ([]bean.Definition, error) {
 	return ret, nil
 }
 
-// Wire 如果传入的是 bean 对象，则对 bean 对象进行属性绑定和依赖注入，如果传
-// 入的是构造函数，则立即执行构造函数，然后对返回的结果进行属性绑定和依赖注入。
-// 无论哪种方式，该函数执行完后都会返回被处理的对象。
+// Wire 如果传入的是 bean 对象，则对 bean 对象进行属性绑定和依赖注入，如果传入的
+// 是构造函数，则立即执行该构造函数，然后对返回的结果进行属性绑定和依赖注入。无论哪
+// 种方式，该函数执行完后都会返回 bean 对象的真实值。
 func (p *pandora) Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error) {
-	p.c.callAfterRefreshing()
 
 	stack := newWiringStack()
 
@@ -137,12 +129,10 @@ func (p *pandora) Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{},
 	return b.Interface(), nil
 }
 
-// Invoke fn 形似配置函数，但是可以返回多个值，fn 的执行结果以数组的形式返回。
 func (p *pandora) Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, error) {
-	p.c.callAfterRefreshing()
 
 	if !util.IsFuncType(reflect.TypeOf(fn)) {
-		return nil, errors.New("fn should be function")
+		return nil, errors.New("fn should be func type")
 	}
 
 	stack := newWiringStack()

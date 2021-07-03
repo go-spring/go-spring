@@ -129,13 +129,12 @@ func newArgList(fnType reflect.Type, args []Arg) (*argList, error) {
 				fnArgs[n] = arg.arg
 			}
 		default:
-			if fixedArgCount <= 0 {
-				return nil, errors.New("函数没有参数但却绑定了参数")
-			}
-			if fnType.IsVariadic() {
+			if fixedArgCount > 0 {
+				fnArgs[0] = arg
+			} else if fnType.IsVariadic() {
 				fnArgs = append(fnArgs, arg)
 			} else {
-				fnArgs[0] = arg
+				return nil, errors.New("函数没有参数但却绑定了参数")
 			}
 		}
 	}
@@ -159,13 +158,12 @@ func newArgList(fnType reflect.Type, args []Arg) (*argList, error) {
 			if shouldIndex {
 				return nil, errors.New("所有参数必须都有或者都没有索引")
 			}
-			if i >= fixedArgCount {
-				return nil, errors.New("参数的数量超出了函数入参的数量")
-			}
-			if fnType.IsVariadic() {
+			if i < fixedArgCount {
+				fnArgs[i] = arg
+			} else if fnType.IsVariadic() {
 				fnArgs = append(fnArgs, arg)
 			} else {
-				fnArgs[i] = arg
+				panic(errors.New("参数的数量超出了函数入参的数量"))
 			}
 		}
 	}

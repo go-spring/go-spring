@@ -19,6 +19,7 @@
 package gs
 
 import (
+	"bytes"
 	"container/list"
 	"context"
 	"errors"
@@ -354,6 +355,65 @@ func (c *Container) resolveBean(b *BeanDefinition) error {
 
 	b.status = Resolved
 	return nil
+}
+
+// wireTag 单例模式的 tag 分解式，完整形式是 XXX:XXX? 。
+type wireTag struct {
+	typeName string
+	beanName string
+	nullable bool
+}
+
+// parseWireTag 解析单例模式的 tag 分解式，完整形式是 XXX:XXX? 。
+func parseWireTag(str string) (tag wireTag) {
+
+	if str == "" {
+		return
+	}
+
+	// 检查字符串结尾是否有可空标记。
+	if n := len(str) - 1; str[n] == '?' {
+		tag.nullable = true
+		str = str[:n]
+	}
+
+	// tag 的完整形式，形如 XXX:XXX? 。
+	if i := strings.Index(str, ":"); i >= 0 {
+		tag.beanName = str[i+1:]
+		tag.typeName = str[:i]
+		return
+	}
+
+	// tag 的简化形式，形如 XXX? 。
+	tag.beanName = str
+	return
+}
+
+func (tag wireTag) String() string {
+	b := bytes.NewBuffer(nil)
+	if tag.typeName != "" {
+		b.WriteString(tag.typeName)
+		b.WriteString(":")
+	}
+	b.WriteString(tag.beanName)
+	if tag.nullable {
+		b.WriteString("?")
+	}
+	return b.String()
+}
+
+// toWireTag 将 bean.Selector 转换为对应的 wireTag 。
+func toWireTag(selector bean.Selector) wireTag {
+	switch s := selector.(type) {
+	case string:
+		return parseWireTag(s)
+	case bean.Definition:
+		return parseWireTag(s.ID())
+	case *BeanDefinition:
+		return parseWireTag(s.ID())
+	default:
+		return parseWireTag(util.TypeName(s) + ":")
+	}
 }
 
 // findBean 查找符合条件的 bean，注意该函数只能保证返回的 bean 是有效的(即未被标

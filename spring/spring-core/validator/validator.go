@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+// Package validator 提供了参数校验器接口。
 package validator
 
 // Validator 参数校验器接口。
@@ -24,7 +25,21 @@ type Validator interface {
 var v Validator
 
 // Init 初始化参数校验器。
-func Init(r Validator) { v = r }
+func Init(r Validator) {
+	v = r
+}
+
+// InitFunc 初始化参数校验器。
+func InitFunc(r func(i interface{}) error) {
+	v = funcValidator(r)
+}
+
+// funcValidator 基于简单函数的参数校验器。
+type funcValidator func(i interface{}) error
+
+func (f funcValidator) Validate(i interface{}) error {
+	return f(i)
+}
 
 // Validate 参数校验。
 func Validate(i interface{}) error {

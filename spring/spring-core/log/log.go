@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-// Package log 实现了重新定义的标准日志接口，可以灵活适配各种日志框架。
+// Package log 重新定义了标准日志接口，可以灵活适配各种日志框架。
 package log
 
 import (
