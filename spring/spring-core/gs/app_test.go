@@ -25,13 +25,16 @@ import (
 
 	"github.com/go-spring/spring-core/assert"
 	"github.com/go-spring/spring-core/conf"
+	"github.com/go-spring/spring-core/environ"
 	"github.com/go-spring/spring-core/gs"
 )
 
-func startApplication(cfgLocation ...string) (*gs.App, gs.Pandora) {
+func startApplication(cfgLocation string) (*gs.App, gs.Pandora) {
 
 	app := gs.NewApp()
-	app.Property(gs.EnablePandoraProp, true)
+	gs.Setenv("SPRING_BANNER_VISIBLE", true)
+	gs.Setenv("SPRING_CONFIG_LOCATION", cfgLocation)
+	app.Property(environ.EnablePandora, true)
 
 	var p gs.Pandora
 	type PandoraAware struct{}
@@ -40,7 +43,7 @@ func startApplication(cfgLocation ...string) (*gs.App, gs.Pandora) {
 		return PandoraAware{}
 	})
 
-	go app.Run(cfgLocation...)
+	go app.Run()
 	time.Sleep(100 * time.Millisecond)
 	return app, p
 }
@@ -49,41 +52,27 @@ func TestConfig(t *testing.T) {
 
 	t.Run("config via env", func(t *testing.T) {
 		os.Clearenv()
-		_ = os.Setenv(gs.SpringProfileProp, "dev")
+		gs.Setenv("SPRING_ACTIVE_PROFILE", "dev")
 		app, p := startApplication("testdata/config/")
 		defer app.ShutDown()
-		assert.Equal(t, p.Prop(gs.SpringProfileProp), "dev")
+		assert.Equal(t, p.Prop(environ.SpringActiveProfile), "dev")
 	})
 
 	t.Run("config via env 2", func(t *testing.T) {
 		os.Clearenv()
-		_ = os.Setenv(gs.SpringProfileEnv, "dev")
+		gs.Setenv("SPRING_ACTIVE_PROFILE", "dev")
 		app, p := startApplication("testdata/config/")
 		defer app.ShutDown()
-		assert.Equal(t, p.Prop(gs.SpringProfileProp), "dev")
-	})
-
-	t.Run("profile via config", func(t *testing.T) {
-		os.Clearenv()
-		app, p := startApplication("testdata/config/")
-		defer app.ShutDown()
-		assert.Equal(t, p.Prop(gs.SpringProfileProp), "test")
-	})
-
-	t.Run("profile via env&config", func(t *testing.T) {
-		os.Clearenv()
-		app, p := startApplication("testdata/config/")
-		defer app.ShutDown()
-		assert.Equal(t, p.Prop(gs.SpringProfileProp), "test")
+		assert.Equal(t, p.Prop(environ.SpringActiveProfile), "dev")
 	})
 
 	t.Run("profile via env&config 2", func(t *testing.T) {
 
 		os.Clearenv()
-		_ = os.Setenv(gs.SpringProfileEnv, "dev")
+		gs.Setenv("SPRING_ACTIVE_PROFILE", "dev")
 		app, p := startApplication("testdata/config/")
 		defer app.ShutDown()
-		assert.Equal(t, p.Prop(gs.SpringProfileProp), "dev")
+		assert.Equal(t, p.Prop(environ.SpringActiveProfile), "dev")
 
 		var m map[string]string
 		_ = p.Bind(&m, conf.Key(conf.RootKey))

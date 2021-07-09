@@ -19,46 +19,23 @@ package gs
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"os/signal"
 	"path"
 	"path/filepath"
 	"reflect"
-	"regexp"
-	"strings"
 	"syscall"
 
 	"github.com/go-spring/spring-core/arg"
+	"github.com/go-spring/spring-core/cast"
 	"github.com/go-spring/spring-core/conf"
+	"github.com/go-spring/spring-core/environ"
 	"github.com/go-spring/spring-core/grpc"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/mq"
 	"github.com/go-spring/spring-core/util"
 	"github.com/go-spring/spring-core/web"
-)
-
-const defaultBanner = `
- _______  _______         _______  _______  _______ _________ _        _______ 
-(  ____ \(  ___  )       (  ____ \(  ____ )(  ____ )\__   __/( (    /|(  ____ \
-| (    \/| (   ) |       | (    \/| (    )|| (    )|   ) (   |  \  ( || (    \/
-| |      | |   | | _____ | (_____ | (____)|| (____)|   | |   |   \ | || |      
-| | ____ | |   | |(_____)(_____  )|  _____)|     __)   | |   | (\ \) || | ____ 
-| | \_  )| |   | |             ) || (      | (\ (      | |   | | \   || | \_  )
-| (___) || (___) |       /\____) || )      | ) \ \_____) (___| )  \  || (___) |
-(_______)(_______)       \_______)|/       |/   \__/\_______/|/    )_)(_______)
-`
-
-const (
-	version = "go-spring@v1.0.5"
-	website = "https://go-spring.com/"
-)
-
-// 设置 spring 的运行环境。
-const (
-	SpringProfileEnv  = "SPRING_PROFILE"
-	SpringProfileProp = "spring.profile"
 )
 
 type ApplicationContext interface {
@@ -78,14 +55,17 @@ type ApplicationEvent interface {
 
 // App 应用
 type App struct {
-	c *Container // 应用上下文
 
-	banner     string // banner 的内容
-	showBanner bool   // 是否显示 banner
+	// 应用上下文
+	c *Container
 
-	cfgLocation         []string               // 属性列表文件搜索目录
-	expectSysProperties []string               // 期望从系统环境变量中获取到的属性，支持正则表达式
-	mapOfOnProperty     map[string]interface{} // 属性列表解析完成后的回调
+	banner string
+
+	envIncludePatterns []string
+	envExcludePatterns []string
+
+	// 属性列表解析完成后的回调
+	mapOfOnProperty map[string]interface{}
 
 	Events  []ApplicationEvent  `autowire:"${application-event.collection:=?}"`
 	Runners []ApplicationRunner `autowire:"${command-line-runner.collection:=?}"`
@@ -100,38 +80,87 @@ type App struct {
 // NewApp application 的构造函数
 func NewApp() *App {
 	return &App{
-		c:                   New(),
-		cfgLocation:         append([]string{}, "config/"),
-		expectSysProperties: []string{`.*`},
-		mapOfOnProperty:     make(map[string]interface{}),
-		exitChan:            make(chan struct{}),
-		RootRouter:          web.NewRootRouter(),
-		GRPCServers:         make(map[string]*grpc.Server),
+		c:                  New(),
+		envIncludePatterns: []string{`.*`},
+		mapOfOnProperty:    make(map[string]interface{}),
+		exitChan:           make(chan struct{}),
+		RootRouter:         web.NewRootRouter(),
+		GRPCServers:        make(map[string]*grpc.Server),
 	}
 }
 
-// Start 启动应用
-func (app *App) start(cfgLocation ...string) {
+// Banner 自定义 banner 字符串。
+func (app *App) Banner(banner string) {
+	app.banner = banner
+}
 
-	if len(cfgLocation) > 0 {
-		app.cfgLocation = cfgLocation
+// EnvIncludePatterns 需要添加的环境变量。
+func (app *App) EnvIncludePatterns(patterns []string) {
+	app.envIncludePatterns = patterns
+}
+
+// EnvExcludePatterns 需要排除的环境变量。
+func (app *App) EnvExcludePatterns(patterns []string) {
+	app.envExcludePatterns = patterns
+}
+
+func (app *App) Run() {
+
+	// 响应控制台的 Ctrl+C 及 kill 命令。
+	go func() {
+		ch := make(chan os.Signal, 1)
+		signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
+		sig := <-ch
+		log.Infof("program will exit because of signal %v", sig)
+		app.ShutDown()
+	}()
+
+	app.start()
+	<-app.exitChan
+
+	log.Info("application exiting")
+	app.close()
+	log.Info("application exited")
+}
+
+func (app *App) start() {
+
+	e := newEnvironment()
+	err := e.prepare(
+		envIncludePatterns(app.envIncludePatterns),
+		envExcludePatterns(app.envExcludePatterns),
+	)
+	util.Panic(err).When(err != nil)
+
+	configLocation := func() string {
+		s := e.Get(environ.SpringConfigLocation, conf.Def("config/"))
+		return cast.ToString(s)
+	}()
+
+	showBanner := cast.ToBool(e.Get(environ.SpringBannerVisible))
+	if showBanner {
+		PrintBanner(app.getBanner(configLocation))
 	}
 
-	// 打印 banner 内容
-	if app.showBanner {
-		printBanner(app.getBanner())
+	profile := cast.ToString(e.Get(environ.SpringActiveProfile))
+	p, err := app.profile(configLocation, profile)
+	util.Panic(err).When(err != nil)
+
+	// 保存从配置文件加载的属性
+	for _, k := range p.Keys() {
+		app.c.p.Set(k, p.Get(k))
 	}
 
-	app.Object(app)
-	app.prepare()
+	// 保存从环境变量和命令行解析的属性
+	for _, k := range e.p.Keys() {
+		app.c.p.Set(k, e.p.Get(k))
+	}
 
 	for key, f := range app.mapOfOnProperty {
 		t := reflect.TypeOf(f)
 		in := reflect.New(t.In(0)).Elem()
-		err := app.c.p.Bind(in, conf.Key(key))
-		if err != nil {
-			return
-		}
+		err = app.c.p.Bind(in, conf.Key(key))
+		util.Panic(err).When(err != nil)
 		reflect.ValueOf(f).Call([]reflect.Value{in})
 	}
 
@@ -150,115 +179,34 @@ func (app *App) start(cfgLocation ...string) {
 	log.Info("application started successfully")
 }
 
-func (app *App) getBanner() string {
-
-	if len(app.banner) > 0 {
+func (app *App) getBanner(configLocation string) string {
+	if app.banner != "" {
 		return app.banner
 	}
-
-	for _, dir := range app.cfgLocation {
-		stat, err := os.Stat(dir)
-		if err != nil || !stat.IsDir() {
-			continue
-		}
-
-		f := path.Join(dir, "banner.txt")
-		stat, err = os.Stat(f)
-		if err != nil || stat.IsDir() {
-			continue
-		}
-
-		b, err := ioutil.ReadFile(f)
-		if err == nil {
-			return string(b)
-		}
+	file := path.Join(configLocation, "banner.txt")
+	b, err := ioutil.ReadFile(file)
+	if err != nil {
+		return DefaultBanner
 	}
-
-	return defaultBanner
+	return string(b)
 }
 
-// printBanner 打印 banner 到控制台
-func printBanner(banner string) {
+func (app *App) profile(configLocation string, profile string) (*conf.Properties, error) {
 
-	// 确保 banner 前面有空行
-	if banner[0] != '\n' {
-		fmt.Println()
+	p := conf.New()
+	if err := app.loadConfigFile(p, configLocation, ""); err != nil {
+		return nil, err
 	}
 
-	maxLength := 0
-	for _, s := range strings.Split(banner, "\n") {
-		fmt.Printf("\x1b[36m%s\x1b[0m\n", s) // CYAN
-		if len(s) > maxLength {
-			maxLength = len(s)
+	if profile != "" {
+		if err := app.loadConfigFile(p, configLocation, profile); err != nil {
+			return nil, err
 		}
 	}
-
-	// 确保 banner 后面有空行
-	if banner[len(banner)-1] != '\n' {
-		fmt.Println()
-	}
-
-	var padding []byte
-	if n := (maxLength - len(version)) / 2; n > 0 {
-		padding = make([]byte, n)
-		for i := range padding {
-			padding[i] = ' '
-		}
-	}
-	fmt.Println(string(padding) + version + "\n")
+	return p, nil
 }
 
-// loadCmdArgs 加载命令行参数，形如 -name value 的参数才有效。
-func (app *App) loadCmdArgs(p *conf.Properties) {
-	log.Debugf("load cmd args")
-	for i := 0; i < len(os.Args); i++ { // 以短线定义的参数才有效
-		a := os.Args[i]
-		if !strings.HasPrefix(a, "-") {
-			continue
-		}
-		k, v := a[1:], ""
-		if i < len(os.Args)-1 && !strings.HasPrefix(os.Args[i+1], "-") {
-			v = os.Args[i+1]
-			i++
-		}
-		log.Tracef("%s=%v", k, v)
-		p.Set(k, v)
-	}
-}
-
-// loadSystemEnv 加载环境变量，用户可以使用正则表达式来提取想要的环境变量。
-func (app *App) loadSystemEnv(p *conf.Properties) error {
-
-	var rex []*regexp.Regexp
-	for _, v := range app.expectSysProperties {
-		exp, err := regexp.Compile(v)
-		if err != nil {
-			return err
-		}
-		rex = append(rex, exp)
-	}
-
-	log.Debugf("load system env")
-	for _, env := range os.Environ() {
-		i := strings.Index(env, "=")
-		if i <= 0 {
-			continue
-		}
-		k, v := env[0:i], env[i+1:]
-		for _, r := range rex {
-			if !r.MatchString(k) {
-				continue
-			}
-			log.Tracef("%s=%v", k, v)
-			p.Set(k, v)
-			break
-		}
-	}
-	return nil
-}
-
-// loadConfigFile 加载指定环境的属性列表文件
-func (app *App) loadConfigFile(p *conf.Properties, profile string) error {
+func (app *App) loadConfigFile(p *conf.Properties, configLocation string, profile string) error {
 
 	filename := "application"
 	if len(profile) > 0 {
@@ -266,115 +214,26 @@ func (app *App) loadConfigFile(p *conf.Properties, profile string) error {
 	}
 
 	extArray := []string{".properties", ".yaml", ".toml"}
-	for _, location := range app.cfgLocation {
-		for _, ext := range extArray {
-			err := p.Load(filepath.Join(location, filename+ext))
-			if err != nil && !os.IsNotExist(err) {
-				return err
-			}
+	for _, ext := range extArray {
+		err := p.Load(filepath.Join(configLocation, filename+ext))
+		if err != nil && !os.IsNotExist(err) {
+			return err
 		}
 	}
 	return nil
 }
 
-// prepare 准备上下文环境
-func (app *App) prepare() {
-
-	// 属性列表加载顺序优先级，从高到低:
-	// 1.API 设置
-	// 2.命令行参数
-	// 3.系统环境变量
-	// 4.application-profile.conf
-	// 5.application.conf
-	// 6.属性绑定声明时的默认值
-
-	cmdConfig := conf.New()
-	envConfig := conf.New()
-	profileConfig := conf.New()
-	defaultConfig := conf.New()
-
-	p := []*conf.Properties{
-		app.c.p,
-		cmdConfig,
-		envConfig,
-		profileConfig,
-		defaultConfig,
-	}
-
-	app.loadCmdArgs(cmdConfig)
-
-	err := app.loadSystemEnv(envConfig)
-	util.Panic(err).When(err != nil)
-
-	err = app.loadConfigFile(defaultConfig, "")
-	util.Panic(err).When(err != nil)
-
-	profile := func([]*conf.Properties) string {
-		keys := []string{SpringProfileEnv, SpringProfileProp}
-		for _, c := range p {
-			for _, k := range keys {
-				if v := c.Get(k); v != nil {
-					return v.(string)
-				}
-			}
-		}
-		return ""
-	}(p)
-
-	if profile != "" {
-		err = app.loadConfigFile(profileConfig, profile)
-		util.Panic(err).When(err != nil)
-		app.c.Property(SpringProfileProp, profile)
-	}
-
-	m := make(map[string]string)
-	for _, c := range p {
-		for _, k := range c.Keys() {
-			if _, ok := m[k]; !ok {
-				m[k] = c.Get(k).(string)
-			}
-		}
-	}
-
-	// 将重组后的属性值写入 Context 属性列表
-	for key, val := range m {
-		app.c.Property(key, val)
-	}
-}
-
-func (app *App) Run(cfgLocation ...string) {
-
-	// 响应控制台的 Ctrl+C 及 kill 命令。
-	go func() {
-		ch := make(chan os.Signal, 1)
-		signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
-		sig := <-ch
-		log.Infof("program will exit because of signal %v", sig)
-		app.ShutDown()
-	}()
-
-	app.start(cfgLocation...)
-	<-app.exitChan
-	app.close()
-}
-
 func (app *App) close() {
 
-	defer log.Info("application exited")
-	log.Info("application exiting")
-
-	// OnStopApplication 是否需要有 Timeout 的 Context ？
-	// 仔细想想没有必要，程序想要优雅退出就得一直等，等到所有工作
-	// 做完，用户如果等不急了可以使用 kill -9 进行硬杀，也就是
-	// 是否优雅退出取决于用户。这样的话，OnStopApplication 不
-	// 依赖 appCtx 的 Context，就只需要考虑 SafeGoroutine
-	// 的退出了，而这只需要 Context 一 cancel 也就完事了。
+	// OnStopApplication 是否需要有 Timeout 的 Context ？仔细想想没有必
+	// 要，程序想要优雅退出就得一直等，等到所有工作做完，用户如果等不急了可以使
+	// 用 kill -9 进行强杀，也就是是否优雅退出取决于用户。
 
 	app.Go(func(ctx context.Context) {
 		select {
 		case <-ctx.Done():
-			for _, b := range app.Events {
-				b.OnStopApplication(app)
+			for _, e := range app.Events {
+				e.OnStopApplication(app)
 			}
 		}
 	})
@@ -390,20 +249,6 @@ func (app *App) ShutDown() {
 	default:
 		close(app.exitChan)
 	}
-}
-
-// Banner 设置自定义 banner 字符串。
-func (app *App) Banner(banner string) {
-	app.banner = banner
-}
-
-// ShowBanner 设置是否显示 banner。
-func (app *App) ShowBanner(show bool) {
-	app.showBanner = show
-}
-
-func (app *App) ExpectSystemEnv(pattern ...string) {
-	app.expectSysProperties = pattern
 }
 
 // Property 设置 key 对应的属性值，如果 key 对应的属性值已经存在则 Set 方法会

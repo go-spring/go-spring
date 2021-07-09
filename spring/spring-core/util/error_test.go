@@ -96,7 +96,7 @@ func TestPanic2Error(t *testing.T) {
 
 func TestErrorWithFileLine(t *testing.T) {
 
-	err := util.ErrorWithFileLine(errors.New("this is an error"))
+	err := util.ErrorWithFileLine(errors.New("this is an error"), 0)
 	assert.Error(t, err, ".*:99: this is an error")
 
 	fnError := func(e error) error {

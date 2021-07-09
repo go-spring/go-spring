@@ -35,12 +35,10 @@ import (
 	"github.com/go-spring/spring-core/cast"
 	"github.com/go-spring/spring-core/cond"
 	"github.com/go-spring/spring-core/conf"
+	"github.com/go-spring/spring-core/environ"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
 )
-
-// EnablePandoraProp 当对应的属性值为 true 时表示允许注入 Pandora 对象。
-const EnablePandoraProp = "spring.enable-pandora"
 
 type refreshState int
 
@@ -258,7 +256,7 @@ func (c *Container) Refresh() {
 		panic(errors.New("container already refreshed"))
 	}
 
-	enablePandora := cast.ToBool(c.p.Get(EnablePandoraProp))
+	enablePandora := cast.ToBool(c.p.Get(environ.EnablePandora))
 	if enablePandora {
 		c.Object(&pandora{c}).Export((*Pandora)(nil))
 	}

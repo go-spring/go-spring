@@ -34,6 +34,7 @@ import (
 	"github.com/go-spring/spring-core/cast"
 	"github.com/go-spring/spring-core/cond"
 	"github.com/go-spring/spring-core/conf"
+	"github.com/go-spring/spring-core/environ"
 	"github.com/go-spring/spring-core/gs"
 	pkg1 "github.com/go-spring/spring-core/gs/testdata/pkg/bar"
 	pkg2 "github.com/go-spring/spring-core/gs/testdata/pkg/foo"
@@ -45,7 +46,7 @@ import (
 func container() (*gs.Container, chan gs.Pandora) {
 
 	c := gs.New()
-	c.Property(gs.EnablePandoraProp, true)
+	c.Property(environ.EnablePandora, true)
 
 	type PandoraAware struct{}
 	ch := make(chan gs.Pandora, 1)
@@ -823,7 +824,7 @@ func TestApplicationContext_Profile(t *testing.T) {
 	t.Run("bean:_c:test", func(t *testing.T) {
 
 		c, ch := container()
-		c.Property(gs.SpringProfileProp, "test")
+		c.Property(environ.SpringActiveProfile, "test")
 		c.Object(&BeanZero{5})
 		c.Refresh()
 
@@ -2665,7 +2666,7 @@ func TestDefaultSpringContext(t *testing.T) {
 	t.Run("bean:test_ctx:test", func(t *testing.T) {
 
 		c, ch := container()
-		c.Property(gs.SpringProfileProp, "test")
+		c.Property(environ.SpringActiveProfile, "test")
 		c.Object(&BeanZero{5}).WithCond(cond.OnProfile("test"))
 		c.Refresh()
 
@@ -2679,7 +2680,7 @@ func TestDefaultSpringContext(t *testing.T) {
 	t.Run("bean:test_ctx:stable", func(t *testing.T) {
 
 		c, ch := container()
-		c.Property(gs.SpringProfileProp, "stable")
+		c.Property(environ.SpringActiveProfile, "stable")
 		c.Object(&BeanZero{5}).WithCond(cond.OnProfile("test"))
 		c.Refresh()
 
@@ -2994,7 +2995,7 @@ func TestDefaultSpringContext_ConditionOnMissingBean(t *testing.T) {
 //func TestNotCondition(t *testing.T) {
 //
 //	c := gs.New()
-//	c.Property(gs.SpringProfileProp, "test")
+//	c.Property(environ.SpringActiveProfile, "test")
 //	c.Refresh()
 //
 //	profileCond := cond.OnProfile("test")
@@ -3036,7 +3037,7 @@ func TestApplicationContext_Invoke(t *testing.T) {
 		c, ch := container()
 		c.Provide(func() int { return 3 })
 		c.Property("version", "v0.0.1")
-		c.Property(gs.SpringProfileProp, "dev")
+		c.Property(environ.SpringActiveProfile, "dev")
 		c.Refresh()
 
 		p := <-ch

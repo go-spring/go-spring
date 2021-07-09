@@ -18,26 +18,36 @@ package gs
 
 import (
 	"context"
+	"os"
 	"reflect"
 
 	"github.com/go-spring/spring-core/arg"
+	"github.com/go-spring/spring-core/cast"
+	"github.com/go-spring/spring-core/util"
 	"github.com/go-spring/spring-core/web"
 )
 
 var app = NewApp()
+
+// Setenv 封装 os.Setenv 函数，如果发生 error 会 panic 。
+func Setenv(key string, value interface{}) {
+	err := os.Setenv(key, cast.ToString(value))
+	util.Panic(err).When(err != nil)
+}
 
 // Banner 自定义 banner 字符串。
 func Banner(banner string) {
 	app.Banner(banner)
 }
 
-// ShowBanner 设置是否显示 banner。
-func ShowBanner(show bool) {
-	app.ShowBanner(show)
+// EnvIncludePatterns 需要添加的环境变量。
+func EnvIncludePatterns(patterns []string) {
+	app.EnvIncludePatterns(patterns)
 }
 
-func ExpectSystemEnv(pattern ...string) {
-	app.ExpectSystemEnv(pattern...)
+// EnvExcludePatterns 需要排除的环境变量。
+func EnvExcludePatterns(patterns []string) {
+	app.EnvExcludePatterns(patterns)
 }
 
 // Property 设置 key 对应的属性值，如果 key 对应的属性值已经存在则 Set 方法会

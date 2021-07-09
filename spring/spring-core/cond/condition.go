@@ -26,6 +26,7 @@ import (
 	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/cast"
 	"github.com/go-spring/spring-core/conf"
+	"github.com/go-spring/spring-core/environ"
 	"github.com/go-spring/spring-core/util"
 )
 
@@ -398,5 +399,8 @@ func OnProfile(profile string) *conditional {
 
 // OnProfile 添加一个 spring.profile 属性值是否匹配的条件。
 func (c *conditional) OnProfile(profile string) *conditional {
-	return c.On(&onPropertyValue{name: "spring.profile", havingValue: profile})
+	return c.On(&onPropertyValue{
+		name:        environ.SpringActiveProfile,
+		havingValue: profile,
+	})
 }
