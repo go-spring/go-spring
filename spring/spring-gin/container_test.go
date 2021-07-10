@@ -27,14 +27,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-spring/spring-core/assert"
+	"github.com/go-spring/spring-core/web"
 	"github.com/go-spring/spring-gin"
-	"github.com/go-spring/spring-utils"
-	"github.com/go-spring/spring-web"
 )
 
 func TestContext_PanicSysError(t *testing.T) {
-	c := SpringGin.NewContainer(SpringWeb.ContainerConfig{Port: 8080})
-	c.GetMapping("/", func(webCtx SpringWeb.WebContext) {
+	c := SpringGin.NewContainer(web.ContainerConfig{Port: 8080})
+	c.GetMapping("/", func(webCtx web.Context) {
 		panic(&net.OpError{
 			Op:     "dial",
 			Net:    "tcp",
@@ -58,8 +58,8 @@ func TestContext_PanicSysError(t *testing.T) {
 }
 
 func TestContext_PanicString(t *testing.T) {
-	c := SpringGin.NewContainer(SpringWeb.ContainerConfig{Port: 8080})
-	c.GetMapping("/", func(webCtx SpringWeb.WebContext) {
+	c := SpringGin.NewContainer(web.ContainerConfig{Port: 8080})
+	c.GetMapping("/", func(webCtx web.Context) {
 		panic("this is an error")
 	})
 	go c.Start()
@@ -72,13 +72,13 @@ func TestContext_PanicString(t *testing.T) {
 	defer response.Body.Close()
 	b, _ := ioutil.ReadAll(response.Body)
 	fmt.Println(response.Status, string(b))
-	SpringUtils.AssertEqual(t, response.StatusCode, http.StatusOK)
-	SpringUtils.AssertEqual(t, string(b), `"this is an error"`)
+	assert.Equal(t, response.StatusCode, http.StatusOK)
+	assert.Equal(t, string(b), `"this is an error"`)
 }
 
 func TestContext_PanicError(t *testing.T) {
-	c := SpringGin.NewContainer(SpringWeb.ContainerConfig{Port: 8080})
-	c.GetMapping("/", func(webCtx SpringWeb.WebContext) {
+	c := SpringGin.NewContainer(web.ContainerConfig{Port: 8080})
+	c.GetMapping("/", func(webCtx web.Context) {
 		panic(errors.New("this is an error"))
 	})
 	go c.Start()
@@ -91,14 +91,14 @@ func TestContext_PanicError(t *testing.T) {
 	defer response.Body.Close()
 	b, _ := ioutil.ReadAll(response.Body)
 	fmt.Println(response.Status, string(b))
-	SpringUtils.AssertEqual(t, response.StatusCode, http.StatusInternalServerError)
-	SpringUtils.AssertEqual(t, string(b), `this is an error`)
+	assert.Equal(t, response.StatusCode, http.StatusInternalServerError)
+	assert.Equal(t, string(b), `this is an error`)
 }
 
 func TestContext_PanicWebHttpError(t *testing.T) {
-	c := SpringGin.NewContainer(SpringWeb.ContainerConfig{Port: 8080})
-	c.GetMapping("/", func(webCtx SpringWeb.WebContext) {
-		panic(&SpringWeb.HttpError{
+	c := SpringGin.NewContainer(web.ContainerConfig{Port: 8080})
+	c.GetMapping("/", func(webCtx web.Context) {
+		panic(&web.HttpError{
 			Code:    http.StatusNotFound,
 			Message: http.StatusText(http.StatusNotFound),
 		})
@@ -113,21 +113,21 @@ func TestContext_PanicWebHttpError(t *testing.T) {
 	defer response.Body.Close()
 	b, _ := ioutil.ReadAll(response.Body)
 	fmt.Println(response.Status, string(b))
-	SpringUtils.AssertEqual(t, response.StatusCode, http.StatusNotFound)
+	assert.Equal(t, response.StatusCode, http.StatusNotFound)
 }
 
 type dummyFilter struct{}
 
-func (f *dummyFilter) Invoke(webCtx SpringWeb.WebContext, chain SpringWeb.FilterChain) {
-	panic(&SpringWeb.HttpError{
+func (f *dummyFilter) Invoke(webCtx web.Context, chain web.FilterChain) {
+	panic(&web.HttpError{
 		Code:    http.StatusMethodNotAllowed,
 		Message: http.StatusText(http.StatusMethodNotAllowed),
 	})
 }
 
 func TestFilter_PanicWebHttpError(t *testing.T) {
-	c := SpringGin.NewContainer(SpringWeb.ContainerConfig{Port: 8080})
-	c.GetMapping("/", func(webCtx SpringWeb.WebContext) {
+	c := SpringGin.NewContainer(web.ContainerConfig{Port: 8080})
+	c.GetMapping("/", func(webCtx web.Context) {
 		webCtx.String("OK!")
 	}, &dummyFilter{})
 	go c.Start()
@@ -140,5 +140,5 @@ func TestFilter_PanicWebHttpError(t *testing.T) {
 	defer response.Body.Close()
 	b, _ := ioutil.ReadAll(response.Body)
 	fmt.Println(response.Status, string(b))
-	SpringUtils.AssertEqual(t, response.StatusCode, http.StatusMethodNotAllowed)
+	assert.Equal(t, response.StatusCode, http.StatusMethodNotAllowed)
 }

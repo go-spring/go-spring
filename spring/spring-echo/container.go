@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-// 封装 github.com/labstack/echo 实现的 Web 框架
+// Package SpringEcho 封装 github.com/labstack/echo 实现的 Web 框架
 package SpringEcho
 
 import (
@@ -23,31 +23,31 @@ import (
 	"net/http"
 	"runtime/debug"
 
-	"github.com/go-spring/spring-logger"
-	"github.com/go-spring/spring-utils"
-	"github.com/go-spring/spring-web"
+	"github.com/go-spring/spring-core/log"
+	"github.com/go-spring/spring-core/util"
+	"github.com/go-spring/spring-core/web"
 	"github.com/labstack/echo"
 )
 
 type route struct {
-	fn           SpringWeb.Handler // Web 处理函数
-	wildCardName string            // 通配符的名称
+	fn           web.Handler // Web 处理函数
+	wildCardName string      // 通配符的名称
 }
 
 // Container echo 实现的 Web 容器
 type Container struct {
-	*SpringWeb.AbstractContainer
+	*web.AbstractContainer
 	echoServer *echo.Echo
 	routes     map[string]route // 记录所有通过 spring-echo 注册的路由
 }
 
 // NewContainer 创建 echo 实现的 Web 容器
-func NewContainer(config SpringWeb.ContainerConfig) *Container {
+func NewContainer(config web.ContainerConfig) *Container {
 	c := &Container{}
 	c.echoServer = echo.New()
 	c.echoServer.HideBanner = true
 	c.routes = make(map[string]route)
-	c.AbstractContainer = SpringWeb.NewAbstractContainer(config)
+	c.AbstractContainer = web.NewAbstractContainer(config)
 	return c
 }
 
@@ -58,12 +58,12 @@ func (c *Container) Start() error {
 		return err
 	}
 
-	var cFilters []SpringWeb.Filter
+	var cFilters []web.Filter
 	{
 		if loggerFilter := c.GetLoggerFilter(); loggerFilter != nil {
 			cFilters = append(cFilters, loggerFilter)
 		} else {
-			cFilters = append(cFilters, SpringWeb.LoggerFilter)
+			cFilters = append(cFilters, web.LoggerFilter)
 		}
 
 		cFilters = append(cFilters, &recoveryFilter{})
@@ -83,8 +83,8 @@ func (c *Container) Start() error {
 				NewContext(nil, echoCtx.Path(), echoCtx)
 			}
 
-			filters := append(cFilters, SpringWeb.HandlerFilter(Handler(next)))
-			chain := SpringWeb.NewDefaultFilterChain(filters)
+			filters := append(cFilters, web.HandlerFilter(Handler(next)))
+			chain := web.NewDefaultFilterChain(filters)
 			chain.Next(WebContext(echoCtx))
 			return nil
 		}
@@ -94,10 +94,10 @@ func (c *Container) Start() error {
 	for _, mapper := range c.Mappers() {
 		c.PrintMapper(mapper)
 
-		path, wildCardName := SpringWeb.ToPathStyle(mapper.Path(), SpringWeb.EchoPathStyle)
+		path, wildCardName := web.ToPathStyle(mapper.Path(), web.EchoPathStyle)
 		fn := HandlerWrapper(mapper.Handler(), wildCardName, mapper.Filters())
 
-		for _, method := range SpringWeb.GetMethod(mapper.Method()) {
+		for _, method := range web.GetMethod(mapper.Method()) {
 			c.echoServer.Add(method, path, fn)
 			c.routes[method+path] = route{fn: mapper.Handler(), wildCardName: wildCardName}
 		}
@@ -111,25 +111,25 @@ func (c *Container) Start() error {
 		err = c.echoServer.Start(c.Address())
 	}
 
-	SpringLogger.Infof("exit echo server on %s return %s", c.Address(), SpringUtils.ErrorToString(err))
+	log.Infof("exit echo server on %s return %s", c.Address(), util.Error(err))
 	return err
 }
 
 // Stop 停止 Web 容器
 func (c *Container) Stop(ctx context.Context) error {
 	err := c.echoServer.Shutdown(ctx)
-	SpringLogger.Infof("shutdown echo server on %s return %s", c.Address(), SpringUtils.ErrorToString(err))
+	log.Infof("shutdown echo server on %s return %s", c.Address(), util.Error(err))
 	return err
 }
 
 // HandlerWrapper Web 处理函数包装器
-func HandlerWrapper(fn SpringWeb.Handler, wildCardName string, filters []SpringWeb.Filter) echo.HandlerFunc {
+func HandlerWrapper(fn web.Handler, wildCardName string, filters []web.Filter) echo.HandlerFunc {
 	return func(echoCtx echo.Context) error {
 		ctx := WebContext(echoCtx)
 		if ctx == nil {
 			ctx = NewContext(fn, wildCardName, echoCtx)
 		}
-		SpringWeb.InvokeHandler(ctx, fn, filters)
+		web.InvokeHandler(ctx, fn, filters)
 		return nil
 	}
 }
@@ -139,25 +139,25 @@ func HandlerWrapper(fn SpringWeb.Handler, wildCardName string, filters []SpringW
 // echoHandler 封装 Echo 处理函数
 type echoHandler echo.HandlerFunc
 
-func (e echoHandler) Invoke(ctx SpringWeb.Context) {
+func (e echoHandler) Invoke(ctx web.Context) {
 	if err := e(EchoContext(ctx)); err != nil {
 		panic(err)
 	}
 }
 
 func (e echoHandler) FileLine() (file string, line int, fnName string) {
-	return SpringUtils.FileLine(e)
+	return util.FileLine(e)
 }
 
 // Handler 适配 echo 形式的处理函数
-func Handler(fn echo.HandlerFunc) SpringWeb.Handler { return echoHandler(fn) }
+func Handler(fn echo.HandlerFunc) web.Handler { return echoHandler(fn) }
 
 /////////////////// filter //////////////////////
 
 // echoFilter 封装 Echo 中间件
 type echoFilter echo.MiddlewareFunc
 
-func (filter echoFilter) Invoke(ctx SpringWeb.Context, chain SpringWeb.FilterChain) {
+func (filter echoFilter) Invoke(ctx web.Context, chain web.FilterChain) {
 
 	h := filter(func(echoCtx echo.Context) error {
 		chain.Next(ctx)
@@ -170,20 +170,20 @@ func (filter echoFilter) Invoke(ctx SpringWeb.Context, chain SpringWeb.FilterCha
 }
 
 // Filter 适配 echo 形式的中间件函数
-func Filter(fn echo.MiddlewareFunc) SpringWeb.Filter { return echoFilter(fn) }
+func Filter(fn echo.MiddlewareFunc) web.Filter { return echoFilter(fn) }
 
 // recoveryFilter 适配 echo 的恢复过滤器
 type recoveryFilter struct{}
 
-func (f *recoveryFilter) Invoke(ctx SpringWeb.Context, chain SpringWeb.FilterChain) {
+func (f *recoveryFilter) Invoke(ctx web.Context, chain web.FilterChain) {
 
 	defer func() {
 		if err := recover(); err != nil {
 
-			ctxLogger := SpringLogger.WithContext(ctx.Context())
+			ctxLogger := log.Ctx(ctx.Context())
 			ctxLogger.Error(err, "\n", string(debug.Stack()))
 
-			httpE := SpringWeb.HttpError{Code: http.StatusInternalServerError}
+			httpE := web.HttpError{Code: http.StatusInternalServerError}
 			switch e := err.(type) {
 			case *echo.HTTPError:
 				httpE.Code = e.Code
@@ -195,9 +195,9 @@ func (f *recoveryFilter) Invoke(ctx SpringWeb.Context, chain SpringWeb.FilterCha
 					httpE.Message = fmt.Sprintf("%v", e.Message)
 				}
 				httpE.Internal = e.Internal
-			case *SpringWeb.HttpError:
+			case *web.HttpError:
 				httpE = *e
-			case SpringWeb.HttpError:
+			case web.HttpError:
 				httpE = e
 			case error:
 				httpE.Message = e.Error()
@@ -213,7 +213,7 @@ func (f *recoveryFilter) Invoke(ctx SpringWeb.Context, chain SpringWeb.FilterCha
 						ctxLogger.Error(err)
 					}
 				} else {
-					SpringWeb.ErrorHandler(ctx, &httpE)
+					web.ErrorHandler(ctx, &httpE)
 				}
 			}
 		}

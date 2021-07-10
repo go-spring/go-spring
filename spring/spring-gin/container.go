@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-// 封装 github.com/gin-gonic/gin 实现的 Web 框架
+// Package SpringGin 封装 github.com/gin-gonic/gin 实现的 Web 框架
 package SpringGin
 
 import (
@@ -27,9 +27,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
-	"github.com/go-spring/spring-logger"
-	"github.com/go-spring/spring-utils"
-	"github.com/go-spring/spring-web"
+	"github.com/go-spring/spring-core/log"
+	"github.com/go-spring/spring-core/util"
+	"github.com/go-spring/spring-core/web"
 )
 
 func init() {
@@ -38,25 +38,25 @@ func init() {
 }
 
 type route struct {
-	fn           SpringWeb.Handler // Web 处理函数
-	wildCardName string            // 通配符的名称
+	fn           web.Handler // Web 处理函数
+	wildCardName string      // 通配符的名称
 }
 
 // Container gin 实现的 WebContainer
 type Container struct {
-	*SpringWeb.AbstractContainer
+	*web.AbstractContainer
 	httpServer *http.Server
 	ginEngine  *gin.Engine
 	routes     map[string]route // 记录所有通过 spring gin 注册的路由
 }
 
 // NewContainer 创建 gin 实现的 WebContainer
-func NewContainer(config SpringWeb.ContainerConfig) *Container {
+func NewContainer(config web.ContainerConfig) *Container {
 	c := &Container{}
 	c.ginEngine = gin.New()
 	c.ginEngine.HandleMethodNotAllowed = true
 	c.routes = make(map[string]route)
-	c.AbstractContainer = SpringWeb.NewAbstractContainer(config)
+	c.AbstractContainer = web.NewAbstractContainer(config)
 	return c
 }
 
@@ -67,12 +67,12 @@ func (c *Container) Start() error {
 		return err
 	}
 
-	var cFilters []SpringWeb.Filter
+	var cFilters []web.Filter
 	{
 		if loggerFilter := c.GetLoggerFilter(); loggerFilter != nil {
 			cFilters = append(cFilters, loggerFilter)
 		} else {
-			cFilters = append(cFilters, SpringWeb.LoggerFilter)
+			cFilters = append(cFilters, web.LoggerFilter)
 		}
 
 		cFilters = append(cFilters, &recoveryFilter{})
@@ -82,7 +82,7 @@ func (c *Container) Start() error {
 	// 添加容器级别的过滤器，这样在路由不存在时也会调用这些过滤器
 	c.ginEngine.Use(func(ginCtx *gin.Context) {
 
-		// 如果 method+path 是 spring gin 注册过的，那么可以保证 WebContext
+		// 如果 method+path 是 spring gin 注册过的，那么可以保证 Context
 		// 的 Handler 是准确的，否则是不准确的，请优先使用 spring gin 注册路由。
 		key := ginCtx.Request.Method + ginCtx.FullPath()
 		if r, ok := c.routes[key]; ok {
@@ -103,10 +103,10 @@ func (c *Container) Start() error {
 	for _, mapper := range c.Mappers() {
 		c.PrintMapper(mapper)
 
-		path, wildCardName := SpringWeb.ToPathStyle(mapper.Path(), SpringWeb.GinPathStyle)
+		path, wildCardName := web.ToPathStyle(mapper.Path(), web.GinPathStyle)
 		handlers := HandlerWrapper(mapper.Handler(), wildCardName, mapper.Filters())
 
-		for _, method := range SpringWeb.GetMethod(mapper.Method()) {
+		for _, method := range web.GetMethod(mapper.Method()) {
 			c.ginEngine.Handle(method, path, handlers...)
 			c.routes[method+path] = route{
 				fn:           mapper.Handler(),
@@ -125,7 +125,7 @@ func (c *Container) Start() error {
 		WriteTimeout: cfg.WriteTimeout,
 	}
 
-	SpringLogger.Info("⇨ http server started on ", c.Address())
+	log.Info("⇨ http server started on ", c.Address())
 
 	if cfg.EnableSSL {
 		err = c.httpServer.ListenAndServeTLS(cfg.CertFile, cfg.KeyFile)
@@ -133,22 +133,22 @@ func (c *Container) Start() error {
 		err = c.httpServer.ListenAndServe()
 	}
 
-	SpringLogger.Infof("exit gin server on %s return %s", c.Address(), SpringUtils.ErrorToString(err))
+	log.Infof("exit gin server on %s return %s", c.Address(), util.Error(err))
 	return err
 }
 
 // Stop 停止 Web 容器
 func (c *Container) Stop(ctx context.Context) error {
 	err := c.httpServer.Shutdown(ctx)
-	SpringLogger.Infof("shutdown gin server on %s return %s", c.Address(), SpringUtils.ErrorToString(err))
+	log.Infof("shutdown gin server on %s return %s", c.Address(), util.Error(err))
 	return err
 }
 
 // HandlerWrapper Web 处理函数包装器
-func HandlerWrapper(fn SpringWeb.Handler, wildCardName string, filters []SpringWeb.Filter) []gin.HandlerFunc {
+func HandlerWrapper(fn web.Handler, wildCardName string, filters []web.Filter) []gin.HandlerFunc {
 	var handlers []gin.HandlerFunc
 
-	// 建立 WebContext 和 GinContext 之间的关联
+	// 建立 Context 和 GinContext 之间的关联
 	handlers = append(handlers, func(ginCtx *gin.Context) {
 		if WebContext(ginCtx) == nil {
 			NewContext(fn, wildCardName, ginCtx)
@@ -176,28 +176,28 @@ func HandlerWrapper(fn SpringWeb.Handler, wildCardName string, filters []SpringW
 // ginHandler 封装 Gin 处理函数
 type ginHandler gin.HandlerFunc
 
-func (g ginHandler) Invoke(ctx SpringWeb.WebContext) {
+func (g ginHandler) Invoke(ctx web.Context) {
 	g(GinContext(ctx))
 }
 
 func (g ginHandler) FileLine() (file string, line int, fnName string) {
-	return SpringUtils.FileLine(g)
+	return util.FileLine(g)
 }
 
 // Handler 适配 gin 形式的处理函数
-func Handler(fn gin.HandlerFunc) SpringWeb.Handler { return ginHandler(fn) }
+func Handler(fn gin.HandlerFunc) web.Handler { return ginHandler(fn) }
 
 /////////////////// filter //////////////////////
 
 // ginFilter 封装 Gin 中间件
 type ginFilter gin.HandlerFunc
 
-func (filter ginFilter) Invoke(ctx SpringWeb.WebContext, _ SpringWeb.FilterChain) {
+func (filter ginFilter) Invoke(ctx web.Context, _ web.FilterChain) {
 	filter(GinContext(ctx))
 }
 
 // Filter Web Gin 中间件适配器
-func Filter(fn gin.HandlerFunc) SpringWeb.Filter { return ginFilter(fn) }
+func Filter(fn gin.HandlerFunc) web.Filter { return ginFilter(fn) }
 
 // ginFilterChain gin 适配的过滤器链条
 type ginFilterChain struct {
@@ -205,17 +205,17 @@ type ginFilterChain struct {
 }
 
 // Next 内部调用 gin.Context 对象的 Next 函数驱动链条向后执行
-func (chain *ginFilterChain) Next(_ SpringWeb.WebContext) { chain.ginCtx.Next() }
+func (chain *ginFilterChain) Next(_ web.Context) { chain.ginCtx.Next() }
 
 // recoveryFilter 适配 gin 的恢复过滤器
 type recoveryFilter struct{}
 
-func (f *recoveryFilter) Invoke(webCtx SpringWeb.WebContext, chain SpringWeb.FilterChain) {
+func (f *recoveryFilter) Invoke(webCtx web.Context, chain web.FilterChain) {
 
 	defer func() {
 		if err := recover(); err != nil {
 
-			ctxLogger := SpringLogger.WithContext(webCtx.Context())
+			ctxLogger := log.Ctx(webCtx.Context())
 			ctxLogger.Error(err, "\n", string(debug.Stack()))
 
 			// Check for a broken connection, as it is not really a
@@ -237,11 +237,11 @@ func (f *recoveryFilter) Invoke(webCtx SpringWeb.WebContext, chain SpringWeb.Fil
 				return
 			}
 
-			httpE := SpringWeb.HttpError{Code: http.StatusInternalServerError}
+			httpE := web.HttpError{Code: http.StatusInternalServerError}
 			switch e := err.(type) {
-			case *SpringWeb.HttpError:
+			case *web.HttpError:
 				httpE = *e
-			case SpringWeb.HttpError:
+			case web.HttpError:
 				httpE = e
 			case error:
 				httpE.Message = e.Error()
@@ -250,7 +250,7 @@ func (f *recoveryFilter) Invoke(webCtx SpringWeb.WebContext, chain SpringWeb.Fil
 				httpE.Internal = err
 			}
 
-			SpringWeb.ErrorHandler(webCtx, &httpE)
+			web.ErrorHandler(webCtx, &httpE)
 		}
 	}()
 

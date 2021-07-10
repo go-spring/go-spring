@@ -27,30 +27,31 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/go-spring/spring-web"
+	"github.com/go-spring/spring-core/validator"
+	"github.com/go-spring/spring-core/web"
 )
 
 const (
 	defaultMemory = 32 << 20 // 32 MB
 )
 
-// GinContext 将 SpringWeb.WebContext 转换为 *gin.Context
-func GinContext(webCtx SpringWeb.WebContext) *gin.Context {
+// GinContext 将 web.Context 转换为 *gin.Context
+func GinContext(webCtx web.Context) *gin.Context {
 	return webCtx.NativeContext().(*gin.Context)
 }
 
-// WebContext 将 *gin.Context 转换为 SpringWeb.WebContext
-func WebContext(ginCtx *gin.Context) SpringWeb.WebContext {
-	if webCtx, _ := ginCtx.Get(SpringWeb.WebContextKey); webCtx != nil {
-		return webCtx.(SpringWeb.WebContext)
+// WebContext 将 *gin.Context 转换为 web.Context
+func WebContext(ginCtx *gin.Context) web.Context {
+	if webCtx, _ := ginCtx.Get(web.ContextKey); webCtx != nil {
+		return webCtx.(web.Context)
 	}
 	return nil
 }
 
-// 同时继承了 SpringWeb.ResponseWriter 接口
+// 同时继承了 web.ResponseWriter 接口
 type responseWriter struct {
 	gin.ResponseWriter
-	writer *SpringWeb.BufferedResponseWriter
+	writer *web.BufferedResponseWriter
 }
 
 func (w *responseWriter) Size() int {
@@ -72,7 +73,7 @@ type Context struct {
 	ginContext *gin.Context
 
 	// handlerFunc Web 处理函数
-	handlerFunc SpringWeb.Handler
+	handlerFunc web.Handler
 
 	pathNames  []string
 	pathValues []string
@@ -82,10 +83,10 @@ type Context struct {
 }
 
 // NewContext Context 的构造函数
-func NewContext(fn SpringWeb.Handler, wildCardName string, ginCtx *gin.Context) *Context {
+func NewContext(fn web.Handler, wildCardName string, ginCtx *gin.Context) *Context {
 
 	ginCtx.Writer = &responseWriter{
-		writer: &SpringWeb.BufferedResponseWriter{
+		writer: &web.BufferedResponseWriter{
 			ResponseWriter: ginCtx.Writer,
 		},
 		ResponseWriter: ginCtx.Writer,
@@ -97,7 +98,7 @@ func NewContext(fn SpringWeb.Handler, wildCardName string, ginCtx *gin.Context) 
 		wildCardName: wildCardName,
 	}
 
-	webCtx.Set(SpringWeb.WebContextKey, webCtx)
+	webCtx.Set(web.ContextKey, webCtx)
 	return webCtx
 }
 
@@ -153,19 +154,19 @@ func (ctx *Context) Scheme() string {
 		return "https"
 	}
 
-	if scheme := r.Header.Get(SpringWeb.HeaderXForwardedProto); scheme != "" {
+	if scheme := r.Header.Get(web.HeaderXForwardedProto); scheme != "" {
 		return scheme
 	}
 
-	if scheme := r.Header.Get(SpringWeb.HeaderXForwardedProtocol); scheme != "" {
+	if scheme := r.Header.Get(web.HeaderXForwardedProtocol); scheme != "" {
 		return scheme
 	}
 
-	if ssl := r.Header.Get(SpringWeb.HeaderXForwardedSsl); ssl == "on" {
+	if ssl := r.Header.Get(web.HeaderXForwardedSsl); ssl == "on" {
 		return "https"
 	}
 
-	if scheme := r.Header.Get(SpringWeb.HeaderXUrlScheme); scheme != "" {
+	if scheme := r.Header.Get(web.HeaderXUrlScheme); scheme != "" {
 		return scheme
 	}
 	return "http"
@@ -182,7 +183,7 @@ func (ctx *Context) Path() string {
 }
 
 // Handler returns the matched handler by router.
-func (ctx *Context) Handler() SpringWeb.Handler {
+func (ctx *Context) Handler() web.Handler {
 	return ctx.handlerFunc
 }
 
@@ -270,7 +271,7 @@ func (ctx *Context) FormParams() (url.Values, error) {
 
 	r := ctx.ginContext.Request
 
-	if strings.HasPrefix(ctx.ContentType(), SpringWeb.MIMEMultipartForm) {
+	if strings.HasPrefix(ctx.ContentType(), web.MIMEMultipartForm) {
 		if err := r.ParseMultipartForm(defaultMemory); err != nil {
 			return nil, err
 		}
@@ -313,11 +314,11 @@ func (ctx *Context) Bind(i interface{}) error {
 	if err != nil {
 		return err
 	}
-	return SpringWeb.Validate(i)
+	return validator.Validate(i)
 }
 
 // ResponseWriter returns `http.ResponseWriter`.
-func (ctx *Context) ResponseWriter() SpringWeb.ResponseWriter {
+func (ctx *Context) ResponseWriter() web.ResponseWriter {
 	return ctx.ginContext.Writer.(*responseWriter)
 }
 
@@ -350,13 +351,13 @@ func (ctx *Context) String(format string, values ...interface{}) {
 // HTML sends an HTTP response.
 func (ctx *Context) HTML(html string) {
 	statusCode := ctx.ginContext.Writer.Status()
-	ctx.ginContext.Data(statusCode, SpringWeb.MIMETextHTMLCharsetUTF8, []byte(html))
+	ctx.ginContext.Data(statusCode, web.MIMETextHTMLCharsetUTF8, []byte(html))
 }
 
 // HTMLBlob sends an HTTP blob response.
 func (ctx *Context) HTMLBlob(b []byte) {
 	statusCode := ctx.ginContext.Writer.Status()
-	ctx.ginContext.Data(statusCode, SpringWeb.MIMETextHTMLCharsetUTF8, b)
+	ctx.ginContext.Data(statusCode, web.MIMETextHTMLCharsetUTF8, b)
 }
 
 // JSON sends a JSON response.
@@ -372,19 +373,19 @@ func (ctx *Context) JSONPretty(i interface{}, indent string) {
 		panic(err)
 	}
 	statusCode := ctx.ginContext.Writer.Status()
-	ctx.ginContext.Data(statusCode, SpringWeb.MIMEApplicationJSONCharsetUTF8, b)
+	ctx.ginContext.Data(statusCode, web.MIMEApplicationJSONCharsetUTF8, b)
 }
 
 // JSONBlob sends a JSON blob response.
 func (ctx *Context) JSONBlob(b []byte) {
 	statusCode := ctx.ginContext.Writer.Status()
-	ctx.ginContext.Data(statusCode, SpringWeb.MIMEApplicationJSONCharsetUTF8, b)
+	ctx.ginContext.Data(statusCode, web.MIMEApplicationJSONCharsetUTF8, b)
 }
 
 func (ctx *Context) jsonPBlob(code int, callback string, data func(http.ResponseWriter) error) {
 	rw := ctx.ginContext.Writer
 
-	ctx.Header(SpringWeb.HeaderContentType, SpringWeb.MIMEApplicationJavaScriptCharsetUTF8)
+	ctx.Header(web.HeaderContentType, web.MIMEApplicationJavaScriptCharsetUTF8)
 	ctx.Status(code)
 
 	if _, err := rw.Write([]byte(callback + "(")); err != nil {
@@ -430,7 +431,7 @@ func (ctx *Context) XML(i interface{}) {
 func (ctx *Context) xmlBlob(code int, data func(http.ResponseWriter) error) {
 	rw := ctx.ginContext.Writer
 
-	ctx.Header(SpringWeb.HeaderContentType, SpringWeb.MIMEApplicationXMLCharsetUTF8)
+	ctx.Header(web.HeaderContentType, web.MIMEApplicationXMLCharsetUTF8)
 	ctx.Status(code)
 
 	if _, err := rw.Write([]byte(xml.Header)); err != nil {
@@ -476,7 +477,7 @@ func (ctx *Context) File(file string) {
 
 func (ctx *Context) contentDisposition(file, name, dispositionType string) {
 	s := fmt.Sprintf("%s; filename=%q", dispositionType, name)
-	ctx.Header(SpringWeb.HeaderContentDisposition, s)
+	ctx.Header(web.HeaderContentDisposition, s)
 	ctx.ginContext.File(file)
 }
 
