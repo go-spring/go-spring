@@ -28,9 +28,10 @@ func MockDB(fn func(sqlmock.Sqlmock)) func() (*sql.DB, error) {
 	return func() (*sql.DB, error) {
 		log.Info("create sqlmock db")
 		db, mock, err := sqlmock.New()
-		if err == nil {
-			fn(mock)
+		if err != nil {
+			return nil, err
 		}
-		return db, err
+		fn(mock)
+		return db, nil
 	}
 }

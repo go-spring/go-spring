@@ -18,11 +18,12 @@ package StarterGoRedis
 
 import (
 	"github.com/go-redis/redis"
-	"github.com/go-spring/spring-boot"
+	"github.com/go-spring/spring-core/cond"
+	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/starter-go-redis/go-redis-factory"
 )
 
 func init() {
-	SpringBoot.RegisterNameBeanFn("go-redis-client", GoRedisFactory.NewClient).
-		ConditionOnMissingBean((*redis.Cmdable)(nil))
+	gs.Provide("go-redis-client", GoRedisFactory.NewClient).
+		WithCond(cond.OnMissingBean((*redis.Cmdable)(nil)))
 }

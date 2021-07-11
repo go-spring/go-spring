@@ -37,12 +37,6 @@
         <branch>master</branch>
     </project>
     <project>
-        <name>starter-redis</name>
-        <dir>starter/starter-redis</dir>
-        <url>https://github.com/go-spring/starter-redis.git</url>
-        <branch>master</branch>
-    </project>
-    <project>
         <name>starter-go-redis</name>
         <dir>starter/starter-go-redis</dir>
         <url>https://github.com/go-spring/starter-go-redis.git</url>

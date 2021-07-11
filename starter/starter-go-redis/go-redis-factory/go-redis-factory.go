@@ -20,11 +20,11 @@ import (
 	"fmt"
 
 	"github.com/go-redis/redis"
-	"github.com/go-spring/starter-redis"
+	"github.com/go-spring/starter-core"
 )
 
 // NewClient 创建 Redis 客户端
-func NewClient(config StarterRedis.Config) (redis.Cmdable, error) {
+func NewClient(config StarterCore.RedisConfig) (redis.Cmdable, error) {
 
 	address := fmt.Sprintf("%s:%d", config.Host, config.Port)
 	client := redis.NewClient(&redis.Options{
