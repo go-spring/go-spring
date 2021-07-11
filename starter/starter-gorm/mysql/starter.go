@@ -19,9 +19,10 @@ package StarterMySqlGorm
 import (
 	"database/sql"
 
-	"github.com/go-spring/spring-core/boot"
+	"github.com/go-spring/spring-core/cond"
+	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/log"
-	"github.com/go-spring/starter-db"
+	"github.com/go-spring/starter-core"
 	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/mysql"
 )
@@ -29,18 +30,18 @@ import (
 func init() {
 
 	// 如果没有 fromDB 名称的 *gorm.DB 对象则创建 fromConfig 名称的 *gorm.DB 对象
-	boot.RegisterNameBeanFn("mysql-gorm-from-config", fromConfig).
-		ConditionOnMissingBean((*gorm.DB)(nil)).
+	gs.Provide("mysql-gorm-from-config", fromConfig).
+		WithCond(cond.OnMissingBean((*gorm.DB)(nil))).
 		Destroy(closeDB)
 
 	// 如果已经有 *sql.DB 对象则创建fromDB 名称的 *gorm.DB 对象
-	boot.RegisterNameBeanFn("mysql-gorm-from-db", fromDB).
-		ConditionOnBean((*sql.DB)(nil)).
+	gs.Provide("mysql-gorm-from-db", fromDB).
+		WithCond(cond.OnBean((*sql.DB)(nil))).
 		Destroy(closeDB)
 }
 
 // fromConfig 从配置文件创建 *gorm.DB 客户端
-func fromConfig(config StarterDB.DBConfig) (*gorm.DB, error) {
+func fromConfig(config StarterCore.DBConfig) (*gorm.DB, error) {
 	log.Info("open gorm mysql ", config.Url)
 	return gorm.Open("mysql", config.Url)
 }

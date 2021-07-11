@@ -10,6 +10,7 @@ require (
 	github.com/stretchr/objx v0.3.0 // indirect
 )
 
-replace github.com/go-spring/starter-core => ../starter-core
-
-replace github.com/go-spring/spring-core => ../../spring/spring-core
+replace (
+	github.com/go-spring/starter-core => ../starter-core
+	github.com/go-spring/spring-core => ../../spring/spring-core
+)

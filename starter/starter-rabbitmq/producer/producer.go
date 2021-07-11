@@ -19,32 +19,30 @@ package StarterRabbitMQProducer
 import (
 	"context"
 
-	"github.com/go-spring/spring-core/boot"
+	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/mq"
 	"github.com/go-spring/starter-rabbitmq"
 	"github.com/streadway/amqp"
 )
 
 func init() {
-	boot.RegisterNameBean("amqp-sender", new(Sender)).Export((*mq.Producer)(nil))
+	gs.Object(new(Sender)).
+		WithName("amqp-sender").
+		Export((*mq.Producer)(nil))
 }
 
 type Sender struct {
 	Server *StarterRabbitMQ.AMQPServer `autowire:""`
 }
 
-func (sender *Sender) SendMessage(ctx context.Context, msg mq.MessageInterface) error {
-	switch message := msg.(type) {
-	case *mq.Message:
-		return sender.Server.Channel.Publish(
-			"",            // exchange
-			message.Topic, // routing key
-			false,         // mandatory
-			false,         // immediate
-			amqp.Publishing{
-				ContentType: "text/plain",
-				Body:        message.Body,
-			})
-	}
-	return nil
+func (sender *Sender) SendMessage(ctx context.Context, msg mq.Message) error {
+	return sender.Server.Channel.Publish(
+		"",          // exchange
+		msg.Topic(), // routing key
+		false,       // mandatory
+		false,       // immediate
+		amqp.Publishing{
+			ContentType: "text/plain",
+			Body:        msg.Body(),
+		})
 }

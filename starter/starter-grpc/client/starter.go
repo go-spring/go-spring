@@ -17,21 +17,16 @@
 package StarterGrpcClient
 
 import (
-	"fmt"
-
-	"github.com/go-spring/spring-core/boot"
-	"github.com/go-spring/spring-core/core"
+	"github.com/go-spring/spring-core/arg"
+	"github.com/go-spring/spring-core/gs"
+	"github.com/go-spring/starter-core"
 	"github.com/go-spring/starter-grpc/client/factory"
 )
 
-// NOTE: 为了避免该变量被导出，所以使用了小写模式。
-const grpc_endpoint_prefix = "grpc.endpoint"
-
 func init() {
-	boot.AfterPrepare(func(ctx core.SpringContext) {
-		for endpoint := range ctx.GetGroupedProperties(grpc_endpoint_prefix) {
-			tag := fmt.Sprintf("${%s.%s}", grpc_endpoint_prefix, endpoint)
-			ctx.RegisterNameBeanFn(endpoint, GrpcClientFactory.NewClientConnInterface, tag)
+	gs.OnProperty("grpc.endpoint", func(endpoints map[string]StarterCore.GRpcEndpointConfig) {
+		for endpoint, config := range endpoints {
+			gs.Provide(GrpcClientFactory.NewClient, arg.Value(config)).WithName(endpoint)
 		}
 	})
 }

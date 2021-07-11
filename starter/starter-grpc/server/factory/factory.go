@@ -17,47 +17,54 @@
 package GrpcServerFactory
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"reflect"
 	"runtime"
 
-	"github.com/go-spring/spring-core/boot"
+	SpringGRPC "github.com/go-spring/spring-core/grpc"
+	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
-	"github.com/go-spring/starter-grpc"
+	"github.com/go-spring/starter-core"
 	"google.golang.org/grpc"
 )
 
 // Starter gRPC 服务器启动器
 type Starter struct {
-	_ boot.ApplicationEvent `export:""`
-
-	config StarterGrpc.ServerConfig
+	config StarterCore.GRpcServerConfig
 	server *grpc.Server
 }
 
 // NewStarter Starter 的构造函数
-func NewStarter(config StarterGrpc.ServerConfig) *Starter {
+func NewStarter(config StarterCore.GRpcServerConfig) *Starter {
 	return &Starter{
 		config: config,
 		server: grpc.NewServer(),
 	}
 }
 
-func (starter *Starter) OnStartApplication(ctx boot.ApplicationContext) {
+func (starter *Starter) OnStartApplication(ctx gs.ApplicationContext) {
 
 	srvMap := make(map[string]reflect.Value)
 
-	v := reflect.ValueOf(starter.server)
-	for fn, server := range boot.GRpcServerMap {
-		if server.CheckCondition(ctx) {
-			ctx.WireBean(server.Server()) // 对 gRPC 服务对象进行注入
-			srv := reflect.ValueOf(server.Server())
-			fn.Call([]reflect.Value{v, srv}) // 调用 gRPC 的服务注册函数
-			srvMap[server.ServiceName()] = srv
-		}
-	}
+	var servers *gs.GRPCServers
+	err := ctx.Get(&servers)
+	util.Panic(err).When(err != nil)
+
+	server := reflect.ValueOf(starter.server)
+	servers.ForEach(func(serviceName string, rpcServer *SpringGRPC.Server) {
+
+		service := reflect.ValueOf(rpcServer.Service)
+		srvMap[serviceName] = service
+
+		_, err = ctx.Wire(rpcServer.Service)
+		util.Panic(err).When(err != nil)
+
+		fn := reflect.ValueOf(rpcServer.Register)
+		fn.Call([]reflect.Value{server, service})
+	})
 
 	for service, info := range starter.server.GetServiceInfo() {
 		srv := srvMap[service]
@@ -71,16 +78,16 @@ func (starter *Starter) OnStartApplication(ctx boot.ApplicationContext) {
 	}
 
 	addr := fmt.Sprintf(":%d", starter.config.Port)
-	lis, err := net.Listen("tcp", addr)
+	listener, err := net.Listen("tcp", addr)
 	util.Panic(err).When(err != nil)
 
-	ctx.SafeGoroutine(func() {
-		if err = starter.server.Serve(lis); err != nil {
+	ctx.Go(func(_ context.Context) {
+		if err = starter.server.Serve(listener); err != nil {
 			log.Error(err)
 		}
 	})
 }
 
-func (starter *Starter) OnStopApplication(ctx boot.ApplicationContext) {
+func (starter *Starter) OnStopApplication(ctx gs.ApplicationContext) {
 	starter.server.GracefulStop()
 }

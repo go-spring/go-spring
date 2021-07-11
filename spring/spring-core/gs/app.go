@@ -28,6 +28,7 @@ import (
 	"syscall"
 
 	"github.com/go-spring/spring-core/arg"
+	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/cast"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/environ"
@@ -40,6 +41,37 @@ import (
 
 type ApplicationContext interface {
 	Go(fn func(ctx context.Context))
+	Prop(key string, opts ...conf.GetOption) interface{}
+	Bind(i interface{}, opts ...conf.BindOption) error
+	Get(i interface{}, selectors ...bean.Selector) error
+	Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error)
+	Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, error)
+}
+
+type applicationContext struct{ app *App }
+
+func (ctx *applicationContext) Go(fn func(ctx context.Context)) {
+	ctx.app.Go(fn)
+}
+
+func (ctx *applicationContext) Prop(key string, opts ...conf.GetOption) interface{} {
+	return (&pandora{ctx.app.c}).Prop(key, opts...)
+}
+
+func (ctx *applicationContext) Bind(i interface{}, opts ...conf.BindOption) error {
+	return (&pandora{ctx.app.c}).Bind(i, opts...)
+}
+
+func (ctx *applicationContext) Get(i interface{}, selectors ...bean.Selector) error {
+	return (&pandora{ctx.app.c}).Get(i, selectors...)
+}
+
+func (ctx *applicationContext) Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error) {
+	return (&pandora{ctx.app.c}).Wire(objOrCtor, ctorArgs...)
+}
+
+func (ctx *applicationContext) Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, error) {
+	return (&pandora{ctx.app.c}).Invoke(fn, args...)
 }
 
 // ApplicationRunner 命令行启动器接口
@@ -67,14 +99,35 @@ type App struct {
 	// 属性列表解析完成后的回调
 	mapOfOnProperty map[string]interface{}
 
-	Events  []ApplicationEvent  `autowire:"${application-event.collection:=?}"`
-	Runners []ApplicationRunner `autowire:"${command-line-runner.collection:=?}"`
-
 	exitChan chan struct{}
 
-	RootRouter  web.RootRouter
-	Consumers   []mq.Consumer
-	GRPCServers map[string]*grpc.Server
+	RootRouter    web.RootRouter
+	BindConsumers *BindConsumers
+	GRPCServers   *GRPCServers
+}
+
+type BindConsumers struct{ consumers []mq.Consumer }
+
+func (c *BindConsumers) Add(consumer mq.Consumer) {
+	c.consumers = append(c.consumers, consumer)
+}
+
+func (c *BindConsumers) ForEach(fn func(mq.Consumer)) {
+	for _, consumer := range c.consumers {
+		fn(consumer)
+	}
+}
+
+type GRPCServers struct{ servers map[string]*grpc.Server }
+
+func (c *GRPCServers) Add(serviceName string, server *grpc.Server) {
+	c.servers[serviceName] = server
+}
+
+func (c *GRPCServers) ForEach(fn func(string, *grpc.Server)) {
+	for serviceName, server := range c.servers {
+		fn(serviceName, server)
+	}
 }
 
 // NewApp application 的构造函数
@@ -85,7 +138,8 @@ func NewApp() *App {
 		mapOfOnProperty:    make(map[string]interface{}),
 		exitChan:           make(chan struct{}),
 		RootRouter:         web.NewRootRouter(),
-		GRPCServers:        make(map[string]*grpc.Server),
+		BindConsumers:      new(BindConsumers),
+		GRPCServers:        new(GRPCServers),
 	}
 }
 
@@ -119,11 +173,14 @@ func (app *App) Run() {
 	<-app.exitChan
 
 	log.Info("application exiting")
-	app.close()
+	app.c.Close()
 	log.Info("application exited")
 }
 
 func (app *App) start() {
+
+	app.Object(app.BindConsumers)
+	app.Object(app.GRPCServers)
 
 	e := newEnvironment()
 	err := e.prepare(
@@ -166,15 +223,35 @@ func (app *App) start() {
 
 	app.c.Refresh()
 
+	ctx := &applicationContext{app}
+
+	var runners []ApplicationRunner
+	err = ctx.Get(&runners)
+	util.Panic(err).When(err != nil)
+
 	// 执行命令行启动器
-	for _, r := range app.Runners {
-		r.Run(app)
+	for _, r := range runners {
+		r.Run(ctx)
 	}
 
+	var events []ApplicationEvent
+	err = ctx.Get(&events)
+	util.Panic(err).When(err != nil)
+
 	// 通知应用启动事件
-	for _, e := range app.Events {
-		e.OnStartApplication(app)
+	for _, e := range events {
+		e.OnStartApplication(ctx)
 	}
+
+	// 通知应用停止事件
+	app.Go(func(c context.Context) {
+		select {
+		case <-c.Done():
+			for _, e := range events {
+				e.OnStopApplication(ctx)
+			}
+		}
+	})
 
 	log.Info("application started successfully")
 }
@@ -221,24 +298,6 @@ func (app *App) loadConfigFile(p *conf.Properties, configLocation string, profil
 		}
 	}
 	return nil
-}
-
-func (app *App) close() {
-
-	// OnStopApplication 是否需要有 Timeout 的 Context ？仔细想想没有必
-	// 要，程序想要优雅退出就得一直等，等到所有工作做完，用户如果等不急了可以使
-	// 用 kill -9 进行强杀，也就是是否优雅退出取决于用户。
-
-	app.Go(func(ctx context.Context) {
-		select {
-		case <-ctx.Done():
-			for _, e := range app.Events {
-				e.OnStopApplication(app)
-			}
-		}
-	})
-
-	app.c.Close()
 }
 
 // ShutDown 关闭执行器
@@ -375,8 +434,7 @@ func (app *App) Filter(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefiniti
 
 // Consume 注册 MQ 消费者。
 func (app *App) Consume(fn interface{}, topics ...string) {
-	c := mq.Bind(fn, topics...)
-	app.Consumers = append(app.Consumers, c)
+	app.BindConsumers.Add(mq.Bind(fn, topics...))
 }
 
 // GRPCClient 注册 gRPC 服务客户端，fn 是 gRPC 自动生成的客户端构造函数。
@@ -388,6 +446,8 @@ func (app *App) GRPCClient(fn interface{}, endpoint string) *BeanDefinition {
 // serviceName 是服务名称，必须对应 *_grpc.pg.go 文件里面 grpc.ServerDesc
 // 的 ServiceName 字段，server 是服务提供者对象。
 func (app *App) GRPCServer(serviceName string, fn interface{}, service interface{}) {
-	s := &grpc.Server{Register: fn, Service: service}
-	app.GRPCServers[serviceName] = s
+	app.GRPCServers.Add(serviceName, &grpc.Server{
+		Service:  service,
+		Register: fn,
+	})
 }

@@ -17,12 +17,14 @@
 package StarterRabbitMQ
 
 import (
-	"github.com/go-spring/spring-boot"
+	"github.com/go-spring/spring-core/gs"
 	"github.com/streadway/amqp"
 )
 
 func init() {
-	SpringBoot.RegisterNameBeanFn("amqp-server", CreateServer).Destroy(DestroyServer)
+	gs.Provide(CreateServer).
+		WithName("amqp-server").
+		Destroy(DestroyServer)
 }
 
 type AMQPServerConfig struct {
