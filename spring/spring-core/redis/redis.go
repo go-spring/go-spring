@@ -14,18 +14,4 @@
  * limitations under the License.
  */
 
-package GoRedisMockFactory
-
-import (
-	"github.com/elliotchance/redismock"
-	"github.com/go-redis/redis"
-)
-
-// MockRedisClient 创建 Redis Mock 客户端
-func MockRedisClient(fn func(*redismock.ClientMock)) func() redis.Cmdable {
-	return func() redis.Cmdable {
-		mock := redismock.NewMock()
-		fn(mock)
-		return mock
-	}
-}
+package redis

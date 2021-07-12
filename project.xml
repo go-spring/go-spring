@@ -43,12 +43,6 @@
         <branch>master</branch>
     </project>
     <project>
-        <name>starter-db</name>
-        <dir>starter/starter-db</dir>
-        <url>https://github.com/go-spring/starter-db.git</url>
-        <branch>master</branch>
-    </project>
-    <project>
         <name>starter-go-mongo</name>
         <dir>starter/starter-go-mongo</dir>
         <url>https://github.com/go-spring/starter-go-mongo.git</url>
