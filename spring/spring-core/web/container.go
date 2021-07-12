@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-// 为社区优秀的 Web 服务器提供一个抽象层，使得底层可以灵活切换。
+// Package web 为社区优秀的 Web 服务器提供一个抽象层，使得底层可以灵活切换。
 package web
 
 import (
@@ -32,6 +32,7 @@ type HandlerFunc func(Context)
 
 // Handler 标准 Web 处理接口
 type Handler interface {
+
 	// Invoke 响应函数
 	Invoke(Context)
 

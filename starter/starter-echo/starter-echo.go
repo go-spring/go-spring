@@ -17,21 +17,24 @@
 package StarterEcho
 
 import (
-	"github.com/go-spring/spring-core/boot"
+	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/web"
 	"github.com/go-spring/spring-echo"
-	"github.com/go-spring/starter-web"
+	"github.com/go-spring/starter-core"
+	_ "github.com/go-spring/starter-web"
 )
 
 func init() {
-	boot.RegisterNameBeanFn("web-server", func(config StarterWeb.WebServerConfig) web.WebContainer {
-		return SpringEcho.NewContainer(web.ContainerConfig{
-			IP:        config.IP,
-			Port:      config.Port,
-			BasePath:  config.BasePath,
-			EnableSSL: config.EnableSSL,
-			KeyFile:   config.SSLKey,
-			CertFile:  config.SSLCert,
-		})
+	gs.Provide(container).WithName("web-server")
+}
+
+func container(config StarterCore.WebServerConfig) web.Container {
+	return SpringEcho.NewContainer(web.ContainerConfig{
+		IP:        config.IP,
+		Port:      config.Port,
+		BasePath:  config.BasePath,
+		EnableSSL: config.EnableSSL,
+		KeyFile:   config.SSLKey,
+		CertFile:  config.SSLCert,
 	})
 }

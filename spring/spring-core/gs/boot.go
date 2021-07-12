@@ -29,6 +29,11 @@ import (
 
 var app = NewApp()
 
+// ShutDown 关闭执行器
+func ShutDown() {
+	app.ShutDown()
+}
+
 // Setenv 封装 os.Setenv 函数，如果发生 error 会 panic 。
 func Setenv(key string, value interface{}) {
 	err := os.Setenv(key, cast.ToString(value))

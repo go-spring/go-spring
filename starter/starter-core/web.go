@@ -14,27 +14,14 @@
  * limitations under the License.
  */
 
-package StarterGin
+package StarterCore
 
-import (
-	"github.com/go-spring/spring-core/gs"
-	"github.com/go-spring/spring-core/web"
-	"github.com/go-spring/spring-gin"
-	"github.com/go-spring/starter-core"
-	_ "github.com/go-spring/starter-web"
-)
-
-func init() {
-	gs.Provide(container).WithName("web-server")
-}
-
-func container(config StarterCore.WebServerConfig) web.Container {
-	return SpringGin.NewContainer(web.ContainerConfig{
-		IP:        config.IP,
-		Port:      config.Port,
-		BasePath:  config.BasePath,
-		EnableSSL: config.EnableSSL,
-		KeyFile:   config.SSLKey,
-		CertFile:  config.SSLCert,
-	})
+// WebServerConfig Web 服务器配置
+type WebServerConfig struct {
+	IP        string `value:"${web.server.ip:=}"`              // 监听 IP
+	Port      int    `value:"${web.server.port:=8080}"`        // HTTP 端口
+	BasePath  string `value:"${web.server.base-path:=/}"`      // 根路径
+	EnableSSL bool   `value:"${web.server.ssl.enable:=false}"` // 是否启用 HTTPS
+	SSLCert   string `value:"${web.server.ssl.cert:=}"`        // SSL 证书
+	SSLKey    string `value:"${web.server.ssl.key:=}"`         // SSL 秘钥
 }

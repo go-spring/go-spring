@@ -101,9 +101,17 @@ type App struct {
 
 	exitChan chan struct{}
 
-	RootRouter    web.RootRouter
+	RootRouter    *RootRouter
 	BindConsumers *BindConsumers
 	GRPCServers   *GRPCServers
+}
+
+type RootRouter struct{ r web.RootRouter }
+
+func (r *RootRouter) ForEach(fn func(string, *web.Mapper)) {
+	for s, mapper := range r.r.Mappers() {
+		fn(s, mapper)
+	}
 }
 
 type BindConsumers struct{ consumers []mq.Consumer }
@@ -137,7 +145,7 @@ func NewApp() *App {
 		envIncludePatterns: []string{`.*`},
 		mapOfOnProperty:    make(map[string]interface{}),
 		exitChan:           make(chan struct{}),
-		RootRouter:         web.NewRootRouter(),
+		RootRouter:         new(RootRouter),
 		BindConsumers:      new(BindConsumers),
 		GRPCServers:        new(GRPCServers),
 	}
@@ -348,82 +356,82 @@ func (app *App) Go(fn func(ctx context.Context)) {
 
 // Route 返回和 Mapping 绑定的路由分组
 func (app *App) Route(basePath string) *web.Router {
-	return app.RootRouter.Route(basePath)
+	return app.RootRouter.r.Route(basePath)
 }
 
 // HandleRequest 注册任意 HTTP 方法处理函数
 func (app *App) HandleRequest(method uint32, path string, fn web.Handler) *web.Mapper {
-	return app.RootRouter.HandleRequest(method, path, fn)
+	return app.RootRouter.r.HandleRequest(method, path, fn)
 }
 
 // RequestMapping 注册任意 HTTP 方法处理函数
 func (app *App) RequestMapping(method uint32, path string, fn web.HandlerFunc) *web.Mapper {
-	return app.RootRouter.RequestMapping(method, path, fn)
+	return app.RootRouter.r.RequestMapping(method, path, fn)
 }
 
 // RequestBinding 注册任意 HTTP 方法处理函数
 func (app *App) RequestBinding(method uint32, path string, fn interface{}) *web.Mapper {
-	return app.RootRouter.RequestBinding(method, path, fn)
+	return app.RootRouter.r.RequestBinding(method, path, fn)
 }
 
 // HandleGet 注册 GET 方法处理函数
 func (app *App) HandleGet(path string, fn web.Handler) *web.Mapper {
-	return app.RootRouter.HandleGet(path, fn)
+	return app.RootRouter.r.HandleGet(path, fn)
 }
 
 // GetMapping 注册 GET 方法处理函数
 func (app *App) GetMapping(path string, fn web.HandlerFunc) *web.Mapper {
-	return app.RootRouter.GetMapping(path, fn)
+	return app.RootRouter.r.GetMapping(path, fn)
 }
 
 // GetBinding 注册 GET 方法处理函数
 func (app *App) GetBinding(path string, fn interface{}) *web.Mapper {
-	return app.RootRouter.GetBinding(path, fn)
+	return app.RootRouter.r.GetBinding(path, fn)
 }
 
 // HandlePost 注册 POST 方法处理函数
 func (app *App) HandlePost(path string, fn web.Handler) *web.Mapper {
-	return app.RootRouter.HandlePost(path, fn)
+	return app.RootRouter.r.HandlePost(path, fn)
 }
 
 // PostMapping 注册 POST 方法处理函数
 func (app *App) PostMapping(path string, fn web.HandlerFunc) *web.Mapper {
-	return app.RootRouter.PostMapping(path, fn)
+	return app.RootRouter.r.PostMapping(path, fn)
 }
 
 // PostBinding 注册 POST 方法处理函数
 func (app *App) PostBinding(path string, fn interface{}) *web.Mapper {
-	return app.RootRouter.PostBinding(path, fn)
+	return app.RootRouter.r.PostBinding(path, fn)
 }
 
 // HandlePut 注册 PUT 方法处理函数
 func (app *App) HandlePut(path string, fn web.Handler) *web.Mapper {
-	return app.RootRouter.HandlePut(path, fn)
+	return app.RootRouter.r.HandlePut(path, fn)
 }
 
 // PutMapping 注册 PUT 方法处理函数
 func (app *App) PutMapping(path string, fn web.HandlerFunc) *web.Mapper {
-	return app.RootRouter.PutMapping(path, fn)
+	return app.RootRouter.r.PutMapping(path, fn)
 }
 
 // PutBinding 注册 PUT 方法处理函数
 func (app *App) PutBinding(path string, fn interface{}) *web.Mapper {
-	return app.RootRouter.PutBinding(path, fn)
+	return app.RootRouter.r.PutBinding(path, fn)
 }
 
 // HandleDelete 注册 DELETE 方法处理函数
 func (app *App) HandleDelete(path string, fn web.Handler) *web.Mapper {
-	return app.RootRouter.HandleDelete(path, fn)
+	return app.RootRouter.r.HandleDelete(path, fn)
 }
 
 // DeleteMapping 注册 DELETE 方法处理函数
 func (app *App) DeleteMapping(path string, fn web.HandlerFunc) *web.Mapper {
-	return app.RootRouter.DeleteMapping(path, fn)
+	return app.RootRouter.r.DeleteMapping(path, fn)
 }
 
 // DeleteBinding 注册 DELETE 方法处理函数
 func (app *App) DeleteBinding(path string, fn interface{}) *web.Mapper {
-	return app.RootRouter.DeleteBinding(path, web.BIND(fn))
+	return app.RootRouter.r.DeleteBinding(path, web.BIND(fn))
 }
 
 // Filter 注册 web.Filter 对象。
