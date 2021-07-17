@@ -26,7 +26,7 @@ import (
 func init() {
 	gs.OnProperty("grpc.endpoint", func(endpoints map[string]StarterCore.GRpcEndpointConfig) {
 		for endpoint, config := range endpoints {
-			gs.Provide(GrpcClientFactory.NewClient, arg.Value(config)).WithName(endpoint)
+			gs.Provide(GrpcClientFactory.NewClient, arg.Value(config)).Name(endpoint)
 		}
 	})
 }

@@ -24,7 +24,8 @@ import (
 )
 
 func init() {
-	gs.Provide("go-mongo-client", GoMongoFactory.NewClient).
-		WithCond(cond.OnMissingBean((*mongo.Client)(nil))).
+	gs.Provide(GoMongoFactory.NewClient).
+		Name("go-mongo-client").
+		Cond(cond.OnMissingBean((*mongo.Client)(nil))).
 		Destroy(GoMongoFactory.CloseClient)
 }

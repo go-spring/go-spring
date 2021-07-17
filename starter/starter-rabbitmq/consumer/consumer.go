@@ -23,17 +23,15 @@ import (
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/mq"
 	"github.com/go-spring/spring-core/util"
-	"github.com/go-spring/starter-rabbitmq"
+	"github.com/go-spring/starter-rabbitmq/server"
 )
 
 func init() {
-	gs.Object(new(Starter)).
-		WithName("amqp-consumer-starter").
-		Export((*gs.ApplicationEvent)(nil))
+	gs.Object(new(Starter)).Name("amqp-consumer-starter").Export(gs.ApplicationEvent)
 }
 
 type Starter struct {
-	Server *StarterRabbitMQ.AMQPServer `autowire:""`
+	Server *StarterRabbitMQServer.AMQPServer `autowire:""`
 }
 
 func (starter *Starter) OnStartApplication(ctx gs.ApplicationContext) {

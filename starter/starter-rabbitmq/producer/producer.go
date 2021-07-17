@@ -21,18 +21,16 @@ import (
 
 	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/mq"
-	"github.com/go-spring/starter-rabbitmq"
+	"github.com/go-spring/starter-rabbitmq/server"
 	"github.com/streadway/amqp"
 )
 
 func init() {
-	gs.Object(new(Sender)).
-		WithName("amqp-sender").
-		Export((*mq.Producer)(nil))
+	gs.Object(new(Sender)).Name("amqp-sender").Export((*mq.Producer)(nil))
 }
 
 type Sender struct {
-	Server *StarterRabbitMQ.AMQPServer `autowire:""`
+	Server *StarterRabbitMQServer.AMQPServer `autowire:""`
 }
 
 func (sender *Sender) SendMessage(ctx context.Context, msg mq.Message) error {

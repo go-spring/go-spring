@@ -22,5 +22,5 @@ import (
 )
 
 func init() {
-	gs.Provide(GrpcServerFactory.NewStarter).WithName("grpc-server-starter")
+	gs.Provide(GrpcServerFactory.NewStarter).Name("grpc-server-starter")
 }

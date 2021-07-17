@@ -25,7 +25,7 @@ import (
 )
 
 func init() {
-	gs.Provide(container).WithName("web-server")
+	gs.Provide(container).Name("web-server")
 }
 
 func container(config StarterCore.WebServerConfig) web.Container {

@@ -19,6 +19,7 @@ package StarterWeb
 import (
 	"context"
 	"net/http"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -27,21 +28,101 @@ import (
 )
 
 func init() {
-	gs.Object(new(WebServerStarter)).
-		WithName("web-server-starter").
-		Export((*gs.ApplicationEvent)(nil))
+	gs.Object(new(Starter)).Name("starter").Export(gs.ApplicationEvent)
 }
 
-// WebServerStarter Web 服务器启动器
-type WebServerStarter struct {
-	Containers []web.Container `autowire:"[]?"`
+// Starter Web 服务器启动器
+type Starter struct {
+	Containers []web.Container `autowire:""`
 }
 
-// SortContainers 按照 BasePath 的前缀关系对容器进行排序，比如
-// "/c/d", "/a/b", "/c", "/a", "/"
-// 排序之后是
-// "/c/d", "/c", "/a/b", "/a", "/"
-func SortContainers(containers []web.Container) {
+// OnStartApplication 应用程序启动事件。
+func (starter *Starter) OnStartApplication(ctx gs.ApplicationContext) {
+
+	var router *gs.RootRouter
+	if err := ctx.Get(&router); err != nil {
+		panic(err)
+	}
+
+	var webFilters struct {
+		Filters []web.Filter `autowire:"${web.server.filters}"`
+	}
+
+	if _, err := ctx.Wire(&webFilters); err != nil {
+		panic(err)
+	}
+
+	filterMap := make(map[string][]web.Filter)
+	for _, filter := range webFilters.Filters {
+		var urlPatterns []string
+		if p, ok := filter.(interface{ URLPatterns() []string }); ok {
+			urlPatterns = p.URLPatterns()
+		} else {
+			urlPatterns = []string{"/*"}
+		}
+		for _, pattern := range urlPatterns {
+			filterMap[pattern] = append(filterMap[pattern], filter)
+		}
+	}
+
+	filterPatterns := make(map[*regexp.Regexp][]web.Filter)
+	for pattern, filter := range filterMap {
+		exp, err := regexp.Compile(pattern)
+		if err != nil {
+			panic(err)
+		}
+		filterPatterns[exp] = filter
+	}
+
+	sortContainers(starter.Containers)
+
+	getContainer := func(mapper *web.Mapper) web.Container {
+		for _, c := range starter.Containers {
+			if strings.HasPrefix(mapper.Path(), c.Config().BasePath) {
+				return c
+			}
+		}
+		return nil
+	}
+
+	getFilters := func(path string) []web.Filter {
+		for pattern, filters := range filterPatterns {
+			if pattern.MatchString(path) {
+				return filters
+			}
+		}
+		return nil
+	}
+
+	router.ForEach(func(path string, mapper *web.Mapper) {
+		if c := getContainer(mapper); c != nil {
+			c.AddMapper(web.NewMapper(
+				mapper.Method(),
+				mapper.Path(),
+				mapper.Handler(),
+				getFilters(path),
+			))
+		}
+	})
+
+	for _, c := range starter.Containers {
+		ctx.Go(func(_ context.Context) {
+			if err := c.Start(); err != nil && err != http.ErrServerClosed {
+				gs.ShutDown(err)
+			}
+		})
+	}
+}
+
+// OnStopApplication 应用程序结束事件。
+func (starter *Starter) OnStopApplication(ctx gs.ApplicationContext) {
+	for _, c := range starter.Containers {
+		_ = c.Stop(context.Background())
+	}
+}
+
+// sortContainers 按照 BasePath 的前缀关系对容器进行排序。
+func sortContainers(containers []web.Container) {
 	sort.Slice(containers, func(i, j int) bool {
 		si := containers[i].Config().BasePath
 		sj := containers[j].Config().BasePath
@@ -50,36 +131,4 @@ func SortContainers(containers []web.Container) {
 		}
 		return strings.Compare(si, sj) >= 0
 	})
-}
-
-func (starter *WebServerStarter) OnStartApplication(ctx gs.ApplicationContext) {
-
-	SortContainers(starter.Containers)
-
-	var r *gs.RootRouter
-	if err := ctx.Get(&r); err != nil {
-		panic(err)
-	}
-
-	r.ForEach(func(s string, mapper *web.Mapper) {
-		for _, c := range starter.Containers {
-			if strings.HasPrefix(mapper.Path(), c.Config().BasePath) {
-				c.AddMapper(mapper)
-			}
-		}
-	})
-
-	for _, c := range starter.Containers {
-		ctx.Go(func(_ context.Context) {
-			if err := c.Start(); err != nil && err != http.ErrServerClosed {
-				gs.ShutDown()
-			}
-		})
-	}
-}
-
-func (starter *WebServerStarter) OnStopApplication(ctx gs.ApplicationContext) {
-	for _, c := range starter.Containers {
-		_ = c.Stop(context.Background())
-	}
 }

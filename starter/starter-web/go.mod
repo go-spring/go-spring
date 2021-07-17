@@ -6,4 +6,6 @@ require (
 	github.com/go-spring/spring-core v1.0.6-0.20201217060132-0c182ff5a770
 )
 
-replace github.com/go-spring/spring-core => ../../spring/spring-core
+replace (
+	github.com/go-spring/spring-core => ../../spring/spring-core
+)

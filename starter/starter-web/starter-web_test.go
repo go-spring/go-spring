@@ -14,14 +14,13 @@
  * limitations under the License.
  */
 
-package StarterWeb_test
+package StarterWeb
 
 import (
 	"testing"
 
 	"github.com/go-spring/spring-core/assert"
 	"github.com/go-spring/spring-core/web"
-	"github.com/go-spring/starter-web"
 )
 
 func TestSort(t *testing.T) {
@@ -35,7 +34,7 @@ func TestSort(t *testing.T) {
 		for _, s := range input {
 			containers = append(containers, container(s))
 		}
-		StarterWeb.SortContainers(containers)
+		sortContainers(containers)
 		for i, c := range containers {
 			if output[i] != c.Config().BasePath {
 				return false
@@ -44,12 +43,43 @@ func TestSort(t *testing.T) {
 		return true
 	}
 
-	assert.Equal(t, true, testSort([]string{"/c/d", "/a/b", "/c", "/a", "/"}, []string{"/c/d", "/c", "/a/b", "/a", "/"}))
-	assert.Equal(t, true, testSort([]string{"/c/d", "/c", "/a/b", "/a", "/"}, []string{"/c/d", "/c", "/a/b", "/a", "/"}))
-	assert.Equal(t, true, testSort([]string{"/c/d", "/c", "/a", "/a/b", "/"}, []string{"/c/d", "/c", "/a/b", "/a", "/"}))
-	assert.Equal(t, true, testSort([]string{"/c/d", "/c", "/a", "/", "/a/b"}, []string{"/c/d", "/c", "/a/b", "/a", "/"}))
-	assert.Equal(t, true, testSort([]string{"/a", "/c/d", "/a/b", "/c", "/"}, []string{"/c/d", "/c", "/a/b", "/a", "/"}))
-	assert.Equal(t, true, testSort([]string{"/c/d", "/a", "/a/b", "/c", "/"}, []string{"/c/d", "/c", "/a/b", "/a", "/"}))
-	assert.Equal(t, true, testSort([]string{"/c/d", "/a/b", "/a", "/c", "/"}, []string{"/c/d", "/c", "/a/b", "/a", "/"}))
-	assert.Equal(t, true, testSort([]string{"/c/d", "/a/b", "/c", "/", "/a"}, []string{"/c/d", "/c", "/a/b", "/a", "/"}))
+	assert.Equal(t, true, testSort(
+		[]string{"/c/d", "/a/b", "/c", "/a", "/"},
+		[]string{"/c/d", "/c", "/a/b", "/a", "/"},
+	))
+
+	assert.Equal(t, true, testSort(
+		[]string{"/c/d", "/c", "/a/b", "/a", "/"},
+		[]string{"/c/d", "/c", "/a/b", "/a", "/"},
+	))
+
+	assert.Equal(t, true, testSort(
+		[]string{"/c/d", "/c", "/a", "/a/b", "/"},
+		[]string{"/c/d", "/c", "/a/b", "/a", "/"},
+	))
+
+	assert.Equal(t, true, testSort(
+		[]string{"/c/d", "/c", "/a", "/", "/a/b"},
+		[]string{"/c/d", "/c", "/a/b", "/a", "/"},
+	))
+
+	assert.Equal(t, true, testSort(
+		[]string{"/a", "/c/d", "/a/b", "/c", "/"},
+		[]string{"/c/d", "/c", "/a/b", "/a", "/"},
+	))
+
+	assert.Equal(t, true, testSort(
+		[]string{"/c/d", "/a", "/a/b", "/c", "/"},
+		[]string{"/c/d", "/c", "/a/b", "/a", "/"},
+	))
+
+	assert.Equal(t, true, testSort(
+		[]string{"/c/d", "/a/b", "/a", "/c", "/"},
+		[]string{"/c/d", "/c", "/a/b", "/a", "/"},
+	))
+
+	assert.Equal(t, true, testSort(
+		[]string{"/c/d", "/a/b", "/c", "/", "/a"},
+		[]string{"/c/d", "/c", "/a/b", "/a", "/"},
+	))
 }

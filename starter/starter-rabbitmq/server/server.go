@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-package StarterRabbitMQ
+// TODO 提取公共部分到 spring-rabbitmq 包
+package StarterRabbitMQServer
 
 import (
 	"github.com/go-spring/spring-core/gs"
@@ -22,9 +23,7 @@ import (
 )
 
 func init() {
-	gs.Provide(CreateServer).
-		WithName("amqp-server").
-		Destroy(DestroyServer)
+	gs.Provide(CreateServer).Name("amqp-server").Destroy(DestroyServer)
 }
 
 type AMQPServerConfig struct {
