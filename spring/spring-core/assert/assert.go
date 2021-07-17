@@ -18,6 +18,8 @@
 package assert
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"reflect"
@@ -25,6 +27,27 @@ import (
 	"runtime"
 	"testing"
 )
+
+type Cases = []struct {
+	Condition bool
+	Message   string
+}
+
+// Check 用于检查参数有效性。
+func Check(cases Cases) error {
+	buf := bytes.Buffer{}
+	for _, c := range cases {
+		if c.Condition {
+			continue
+		}
+		buf.WriteString(c.Message)
+		buf.WriteString("; ")
+	}
+	if buf.Len() == 0 {
+		return nil
+	}
+	return errors.New(string(buf.Bytes()[:buf.Len()-2]))
+}
 
 // True asserts that got is true.
 func True(t *testing.T, got bool) {

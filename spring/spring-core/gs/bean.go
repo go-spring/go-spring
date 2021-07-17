@@ -70,31 +70,6 @@ type BeanDefinition struct {
 	exports map[reflect.Type]struct{} // 导出的接口
 }
 
-func newBeanDefinition(v reflect.Value, f *arg.Callable, file string, line int) *BeanDefinition {
-
-	t := v.Type()
-	if !util.IsBeanType(t) {
-		panic(errors.New("bean must be ref type"))
-	}
-
-	if t.Kind() == reflect.Ptr && !util.IsValueType(t.Elem()) {
-		panic(errors.New("bean should be *val but not *ref"))
-	}
-
-	return &BeanDefinition{
-		t:        t,
-		v:        v,
-		f:        f,
-		name:     t.String(),
-		typeName: util.TypeName(t),
-		status:   Default,
-		order:    LowestOrder,
-		file:     file,
-		line:     line,
-		exports:  make(map[reflect.Type]struct{}),
-	}
-}
-
 // Type 返回 bean 的类型。
 func (d *BeanDefinition) Type() reflect.Type {
 	return d.t
@@ -115,8 +90,8 @@ func (d *BeanDefinition) ID() string {
 	return d.typeName + ":" + d.name
 }
 
-// Name 返回 bean 的名称。
-func (d *BeanDefinition) Name() string {
+// BeanName 返回 bean 的名称。
+func (d *BeanDefinition) BeanName() string {
 	return d.name
 }
 
@@ -163,14 +138,14 @@ func (d *BeanDefinition) Match(typeName string, beanName string) bool {
 	return typeIsSame && nameIsSame
 }
 
-// WithName 设置 bean 的名称。
-func (d *BeanDefinition) WithName(name string) *BeanDefinition {
+// Name 设置 bean 的名称。
+func (d *BeanDefinition) Name(name string) *BeanDefinition {
 	d.name = name
 	return d
 }
 
-// WithCond 设置 bean 的 Condition。
-func (d *BeanDefinition) WithCond(cond cond.Condition) *BeanDefinition {
+// Cond 设置 bean 的 Condition。
+func (d *BeanDefinition) Cond(cond cond.Condition) *BeanDefinition {
 	d.cond = cond
 	return d
 }
@@ -226,9 +201,7 @@ func (d *BeanDefinition) Destroy(fn interface{}) *BeanDefinition {
 // Export 设置 bean 的导出接口。
 func (d *BeanDefinition) Export(exports ...interface{}) *BeanDefinition {
 	err := d.export(exports...)
-	if err != nil {
-		panic(err)
-	}
+	util.Panic(err).When(err != nil)
 	return d
 }
 
@@ -310,6 +283,7 @@ func NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 	}
 
 	const skip = 2
+	var f *arg.Callable
 	_, file, line, _ := runtime.Caller(skip)
 
 	// 以 reflect.ValueOf(fn) 形式注册的函数被视为函数对象 bean 。
@@ -321,7 +295,8 @@ func NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 			panic(fmt.Errorf("constructor should be %s or %s", t1, t2))
 		}
 
-		r, err := arg.Bind(objOrCtor, ctorArgs, skip)
+		var err error
+		f, err = arg.Bind(objOrCtor, ctorArgs, skip)
 		util.Panic(err).When(err != nil)
 
 		out0 := t.Out(0)
@@ -331,8 +306,27 @@ func NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 		if util.IsBeanType(out0) {
 			v = v.Elem()
 		}
-
-		return newBeanDefinition(v, r, file, line)
 	}
-	return newBeanDefinition(v, nil, file, line)
+
+	t := v.Type()
+	if !util.IsBeanType(t) {
+		panic(errors.New("bean must be ref type"))
+	}
+
+	if t.Kind() == reflect.Ptr && !util.IsValueType(t.Elem()) {
+		panic(errors.New("bean should be *val but not *ref"))
+	}
+
+	return &BeanDefinition{
+		t:        t,
+		v:        v,
+		f:        f,
+		name:     t.String(),
+		typeName: util.TypeName(t),
+		status:   Default,
+		order:    LowestOrder,
+		file:     file,
+		line:     line,
+		exports:  make(map[reflect.Type]struct{}),
+	}
 }

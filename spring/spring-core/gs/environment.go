@@ -25,6 +25,9 @@ import (
 	"github.com/go-spring/spring-core/environ"
 )
 
+// EnvPrefix 属性覆盖的环境变量需要携带该前缀。
+const EnvPrefix = "GS_"
+
 // Environment 提供获取环境变量和命令行参数的方法，命令行参数优先级更高。
 type Environment interface {
 	Get(key string, opts ...conf.GetOption) interface{}
@@ -63,11 +66,11 @@ func loadCmdArgs(p *conf.Properties) {
 
 // loadSystemEnv 添加符合 includes 条件的环境变量，排除符合 excludes 条件的
 // 环境变量。如果发现存在允许通过环境变量覆盖的属性名，那么保存时转换成真正的属性名。
-func loadSystemEnv(p *conf.Properties, includes []string, excludes []string) error {
+func loadSystemEnv(p *conf.Properties) error {
 
 	toRex := func(patterns []string) ([]*regexp.Regexp, error) {
 		var rex []*regexp.Regexp
-		for _, v := range includes {
+		for _, v := range patterns {
 			exp, err := regexp.Compile(v)
 			if err != nil {
 				return nil, err
@@ -77,11 +80,19 @@ func loadSystemEnv(p *conf.Properties, includes []string, excludes []string) err
 		return rex, nil
 	}
 
+	includes := []string{".*"}
+	if s, ok := os.LookupEnv(environ.IncludeEnvPatterns); ok {
+		includes = strings.Split(s, ",")
+	}
 	includeRex, err := toRex(includes)
 	if err != nil {
 		return err
 	}
 
+	var excludes []string
+	if s, ok := os.LookupEnv(environ.ExcludeEnvPatterns); ok {
+		excludes = strings.Split(s, ",")
+	}
 	excludeRex, err := toRex(excludes)
 	if err != nil {
 		return err
@@ -108,9 +119,10 @@ func loadSystemEnv(p *conf.Properties, includes []string, excludes []string) err
 			continue
 		}
 
-		propKey := strings.ToLower(strings.ReplaceAll(k, "_", "."))
-		if environ.ValidProp(propKey) {
-			p.Set(propKey, v)
+		if strings.HasPrefix(k, EnvPrefix) {
+			propKey := strings.TrimPrefix(k, EnvPrefix)
+			propKey = strings.ReplaceAll(propKey, "_", ".")
+			p.Set(strings.ToLower(propKey), v)
 			continue
 		}
 
@@ -122,31 +134,8 @@ func loadSystemEnv(p *conf.Properties, includes []string, excludes []string) err
 	return nil
 }
 
-type prepareArg struct {
-	envIncludes []string
-	envExcludes []string
-}
-
-type prepareOption func(arg *prepareArg)
-
-func envIncludePatterns(patterns []string) prepareOption {
-	return func(arg *prepareArg) {
-		arg.envIncludes = patterns
-	}
-}
-
-func envExcludePatterns(patterns []string) prepareOption {
-	return func(arg *prepareArg) {
-		arg.envExcludes = patterns
-	}
-}
-
-func (e *environment) prepare(opts ...prepareOption) error {
-	arg := prepareArg{}
-	for _, opt := range opts {
-		opt(&arg)
-	}
-	err := loadSystemEnv(e.p, arg.envIncludes, arg.envExcludes)
+func (e *environment) prepare() error {
+	err := loadSystemEnv(e.p)
 	if err != nil {
 		return err
 	}

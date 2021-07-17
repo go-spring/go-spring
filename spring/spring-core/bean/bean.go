@@ -25,7 +25,7 @@ type Definition interface {
 	Value() reflect.Value   // 值
 	Interface() interface{} // 源
 	ID() string             // 返回 bean 的 ID
-	Name() string           // 返回 bean 的名称
+	BeanName() string       // 返回 bean 的名称
 	TypeName() string       // 返回类型的全限定名
 	Wired() bool            // 返回是否已完成注入
 }

@@ -23,42 +23,26 @@ const (
 	Website = "https://go-spring.com/"
 )
 
-// propNames go-spring 提供了一种机制，允许通过环境变量覆盖命令行或者配置文件中的
-// 配置项，但是必须通过 NewProp 进行声明(注册)。假设我们通过 NewProp 定义了一个名
-// 为 example.name 的属性，那么可以通过环境变量 EXAMPLE_NAME 进行配置覆盖。
-var propNames = make(map[string]struct{})
+// IncludeEnvPatterns 只加载符合条件的环境变量。
+const IncludeEnvPatterns = "INCLUDE_ENV_PATTERNS"
 
-// NewProp 注册可以通过环境变量进行覆盖的属性。
-func NewProp(name string) {
-	propNames[name] = struct{}{}
-}
+// ExcludeEnvPatterns 排除符合条件的环境变量。
+const ExcludeEnvPatterns = "EXCLUDE_ENV_PATTERNS"
 
-// ValidProp 返回是否允许通过环境变量进行覆盖。
-func ValidProp(name string) bool {
-	_, ok := propNames[name]
-	return ok
-}
-
-// EnablePandora 是否允许 gs.Pandora 接口，不允许环境覆盖。
+// EnablePandora 是否允许 gs.Pandora 接口。
 const EnablePandora = "enable-pandora"
 
-// SpringActiveProfile 当前应用的 profile 配置，允许环境覆盖。
-const SpringActiveProfile = "spring.active.profile"
-
-// SpringApplicationName 当前应用的名称，不允许环境覆盖。
-const SpringApplicationName = "spring.application.name"
-
-// SpringBannerVisible 是否显示 banner，允许环境覆盖。
-const SpringBannerVisible = "spring.banner.visible"
-
-// SpringConfigLocation 配置文件的位置，允许环境覆盖。
-const SpringConfigLocation = "spring.config.location"
-
-// SpringPidFile 保存进程 ID 的文件，不允许环境覆盖。
+// SpringPidFile 保存进程 ID 的文件。
 const SpringPidFile = "spring.pid.file"
 
-func init() {
-	NewProp(SpringActiveProfile)
-	NewProp(SpringBannerVisible)
-	NewProp(SpringConfigLocation)
-}
+// SpringConfigLocation 配置文件的位置。
+const SpringConfigLocation = "spring.config.location"
+
+// SpringBannerVisible 是否显示 banner。
+const SpringBannerVisible = "spring.banner.visible"
+
+// SpringActiveProfile 当前应用的 profile 配置。
+const SpringActiveProfile = "spring.active.profile"
+
+// SpringApplicationName 当前应用的名称。
+const SpringApplicationName = "spring.application.name"

@@ -14,24 +14,4 @@
  * limitations under the License.
  */
 
-package arg_test
-
-import (
-	"testing"
-
-	"github.com/go-spring/spring-core/arg"
-)
-
-type optArg struct{ param int }
-
-type optFunc func(*optArg)
-
-func opt(param int) optFunc {
-	return func(arg *optArg) {
-		arg.param = param
-	}
-}
-
-func TestOption(t *testing.T) {
-	arg.Option(opt, arg.Value(3))
-}
+package tools

@@ -250,10 +250,10 @@ func (s *wiringStack) sortDestroyers() []func() {
 }
 
 // Refresh 刷新容器的内容，对 bean 进行有效性判断以及完成属性绑定和依赖注入。
-func (c *Container) Refresh() {
+func (c *Container) Refresh() error {
 
 	if c.state != Unrefreshed {
-		panic(errors.New("container already refreshed"))
+		return errors.New("container already refreshed")
 	}
 
 	enablePandora := cast.ToBool(c.p.Get(environ.EnablePandora))
@@ -264,8 +264,9 @@ func (c *Container) Refresh() {
 	c.state = Refreshing
 
 	for _, b := range c.beans {
-		err := c.resolveBean(b)
-		util.Panic(err).When(err != nil)
+		if err := c.resolveBean(b); err != nil {
+			return err
+		}
 	}
 
 	stack := newWiringStack()
@@ -277,8 +278,9 @@ func (c *Container) Refresh() {
 	}()
 
 	for _, b := range c.beansById {
-		err := c.wireBean(b, stack)
-		util.Panic(err).When(err != nil)
+		if err := c.wireBean(b, stack); err != nil {
+			return err
+		}
 	}
 
 	c.destroyers = stack.sortDestroyers()
@@ -292,6 +294,7 @@ func (c *Container) Refresh() {
 	}
 
 	log.Info("container refreshed successfully")
+	return nil
 }
 
 // resolveBean 判断 bean 的有效性，如果 bean 是无效的则被标记为已删除。
@@ -320,14 +323,14 @@ func (c *Container) resolveBean(b *BeanDefinition) error {
 		return fmt.Errorf("found duplicate beans [%s] [%s]", b, d)
 	}
 
-	log.Debugf("register %s name:%q type:%q %s", b.getClass(), b.Name(), b.Type(), b.FileLine())
+	log.Debugf("register %s name:%q type:%q %s", b.getClass(), b.BeanName(), b.Type(), b.FileLine())
 
 	c.beansById[b.ID()] = b
 	c.beansByName[b.name] = append(c.beansByName[b.name], b)
 	c.beansByType[b.Type()] = append(c.beansByType[b.Type()], b)
 
 	for t := range b.exports {
-		log.Debugf("register %s name:%q type:%q %s", b.getClass(), b.Name(), t, b.FileLine())
+		log.Debugf("register %s name:%q type:%q %s", b.getClass(), b.BeanName(), t, b.FileLine())
 		c.beansByType[t] = append(c.beansByType[t], b)
 	}
 

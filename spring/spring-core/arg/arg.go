@@ -278,8 +278,8 @@ func Option(fn interface{}, args ...Arg) *optionArg {
 	return &optionArg{r: r}
 }
 
-// WithCond 设置一个 cond.Condition 对象。
-func (arg *optionArg) WithCond(c cond.Condition) *optionArg {
+// Cond 设置一个 cond.Condition 对象。
+func (arg *optionArg) Cond(c cond.Condition) *optionArg {
 	arg.c = c
 	return arg
 }

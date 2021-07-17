@@ -17,6 +17,7 @@
 package gs_test
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -52,26 +53,26 @@ func TestConfig(t *testing.T) {
 
 	t.Run("config via env", func(t *testing.T) {
 		os.Clearenv()
-		gs.Setenv("SPRING_ACTIVE_PROFILE", "dev")
+		gs.Setenv("GS_SPRING_ACTIVE_PROFILE", "dev")
 		app, p := startApplication("testdata/config/")
-		defer app.ShutDown()
+		defer app.ShutDown(errors.New("run test end"))
 		assert.Equal(t, p.Prop(environ.SpringActiveProfile), "dev")
 	})
 
 	t.Run("config via env 2", func(t *testing.T) {
 		os.Clearenv()
-		gs.Setenv("SPRING_ACTIVE_PROFILE", "dev")
+		gs.Setenv("GS_SPRING_ACTIVE_PROFILE", "dev")
 		app, p := startApplication("testdata/config/")
-		defer app.ShutDown()
+		defer app.ShutDown(errors.New("run test end"))
 		assert.Equal(t, p.Prop(environ.SpringActiveProfile), "dev")
 	})
 
 	t.Run("profile via env&config 2", func(t *testing.T) {
 
 		os.Clearenv()
-		gs.Setenv("SPRING_ACTIVE_PROFILE", "dev")
+		gs.Setenv("GS_SPRING_ACTIVE_PROFILE", "dev")
 		app, p := startApplication("testdata/config/")
-		defer app.ShutDown()
+		defer app.ShutDown(errors.New("run test end"))
 		assert.Equal(t, p.Prop(environ.SpringActiveProfile), "dev")
 
 		var m map[string]string

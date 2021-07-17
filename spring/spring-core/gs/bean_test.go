@@ -115,15 +115,15 @@ func TestBeanDefinition_Match(t *testing.T) {
 		{newBean(new(int)), "int", "*int", true},
 		{newBean(new(int)), "", "*int", true},
 		{newBean(new(int)), "int", "", true},
-		{newBean(new(int)).WithName("i"), "int", "i", true},
-		{newBean(new(int)).WithName("i"), "", "i", true},
-		{newBean(new(int)).WithName("i"), "int", "", true},
+		{newBean(new(int)).Name("i"), "int", "i", true},
+		{newBean(new(int)).Name("i"), "", "i", true},
+		{newBean(new(int)).Name("i"), "int", "", true},
 		{newBean(new(pkg2.SamePkg)), "github.com/go-spring/spring-core/gs/testdata/pkg/foo/pkg.SamePkg", "*pkg.SamePkg", true},
 		{newBean(new(pkg2.SamePkg)), "", "*pkg.SamePkg", true},
 		{newBean(new(pkg2.SamePkg)), "github.com/go-spring/spring-core/gs/testdata/pkg/foo/pkg.SamePkg", "", true},
-		{newBean(new(pkg2.SamePkg)).WithName("pkg2"), "github.com/go-spring/spring-core/gs/testdata/pkg/foo/pkg.SamePkg", "pkg2", true},
-		{newBean(new(pkg2.SamePkg)).WithName("pkg2"), "", "pkg2", true},
-		{newBean(new(pkg2.SamePkg)).WithName("pkg2"), "github.com/go-spring/spring-core/gs/testdata/pkg/foo/pkg.SamePkg", "pkg2", true},
+		{newBean(new(pkg2.SamePkg)).Name("pkg2"), "github.com/go-spring/spring-core/gs/testdata/pkg/foo/pkg.SamePkg", "pkg2", true},
+		{newBean(new(pkg2.SamePkg)).Name("pkg2"), "", "pkg2", true},
+		{newBean(new(pkg2.SamePkg)).Name("pkg2"), "github.com/go-spring/spring-core/gs/testdata/pkg/foo/pkg.SamePkg", "pkg2", true},
 	}
 
 	for i, s := range data {
@@ -217,7 +217,7 @@ func TestObjectBean(t *testing.T) {
 				"*int", "int",
 			},
 
-			newBean(new(int)).WithName("i"): {
+			newBean(new(int)).Name("i"): {
 				"i", "int",
 			},
 
@@ -226,14 +226,14 @@ func TestObjectBean(t *testing.T) {
 				"github.com/go-spring/spring-core/gs/testdata/pkg/foo/pkg.SamePkg",
 			},
 
-			newBean(new(pkg2.SamePkg)).WithName("pkg2"): {
+			newBean(new(pkg2.SamePkg)).Name("pkg2"): {
 				"pkg2",
 				"github.com/go-spring/spring-core/gs/testdata/pkg/foo/pkg.SamePkg",
 			},
 		}
 
 		for bd, v := range data {
-			assert.Equal(t, bd.Name(), v.name)
+			assert.Equal(t, bd.BeanName(), v.name)
 			assert.Equal(t, bd.TypeName(), v.typeName)
 		}
 	})

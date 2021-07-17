@@ -23,6 +23,23 @@ import (
 	"github.com/go-spring/spring-core/assert"
 )
 
+func TestCheck(t *testing.T) {
+
+	var r struct {
+		True  bool
+		False bool
+		Nil   interface{}
+	}
+
+	err := assert.Check(assert.Cases{
+		{r.True, "r.True want true but is false"},
+		{!r.False, "r.False want false but is true"},
+		{r.Nil == nil, "r.Nil want nil but not nil"},
+	})
+
+	assert.Error(t, err, "r.True want true but is false")
+}
+
 func checkFailed(t *testing.T) {
 	if t.Failed() {
 		t.Fatalf("failed but expect not failed")

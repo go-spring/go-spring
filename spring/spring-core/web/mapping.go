@@ -91,9 +91,7 @@ func (m *Mapper) Handler() Handler { return m.handler }
 func (m *Mapper) Filters() []Filter { return m.filters }
 
 // Operation 设置与 Mapper 绑定的 Operation 对象
-func (m *Mapper) Operation(op Operation) {
-	m.op = op
-}
+func (m *Mapper) Operation(op Operation) { m.op = op }
 
 // Mapping 路由注册接口
 type Mapping interface {
@@ -157,7 +155,7 @@ func (r *funcMapping) Route(basePath string, filters ...Filter) *Router {
 	panic(util.UnimplementedMethod)
 }
 
-// Request 注册任意 HTTP 方法处理函数
+// HandleRequest 注册任意 HTTP 方法处理函数
 func (r *funcMapping) HandleRequest(method uint32, path string, fn Handler, filters ...Filter) *Mapper {
 	return r.request(method, path, fn, filters)
 }

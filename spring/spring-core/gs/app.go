@@ -19,6 +19,7 @@ package gs
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"os/signal"
@@ -74,13 +75,19 @@ func (ctx *applicationContext) Invoke(fn interface{}, args ...arg.Arg) ([]interf
 	return (&pandora{ctx.app.c}).Invoke(fn, args...)
 }
 
-// ApplicationRunner 命令行启动器接口
-type ApplicationRunner interface {
+// ApplicationRunner 导出 applicationRunner 类型
+var ApplicationRunner = (*applicationRunner)(nil)
+
+// applicationRunner 命令行启动器接口
+type applicationRunner interface {
 	Run(ctx ApplicationContext)
 }
 
-// ApplicationEvent 应用运行过程中的事件
-type ApplicationEvent interface {
+// ApplicationEvent 导出 applicationEvent 类型
+var ApplicationEvent = (*applicationEvent)(nil)
+
+// applicationEvent 应用运行过程中的事件
+type applicationEvent interface {
 	OnStartApplication(ctx ApplicationContext) // 应用启动的事件
 	OnStopApplication(ctx ApplicationContext)  // 应用停止的事件
 }
@@ -93,9 +100,6 @@ type App struct {
 
 	banner string
 
-	envIncludePatterns []string
-	envExcludePatterns []string
-
 	// 属性列表解析完成后的回调
 	mapOfOnProperty map[string]interface{}
 
@@ -106,7 +110,12 @@ type App struct {
 	GRPCServers   *GRPCServers
 }
 
-type RootRouter struct{ r web.RootRouter }
+// WebFilter 导出 web.Filter 类型
+var WebFilter = (*web.Filter)(nil)
+
+type RootRouter struct {
+	r web.RootRouter
+}
 
 func (r *RootRouter) ForEach(fn func(string, *web.Mapper)) {
 	for s, mapper := range r.r.Mappers() {
@@ -114,7 +123,9 @@ func (r *RootRouter) ForEach(fn func(string, *web.Mapper)) {
 	}
 }
 
-type BindConsumers struct{ consumers []mq.Consumer }
+type BindConsumers struct {
+	consumers []mq.Consumer
+}
 
 func (c *BindConsumers) Add(consumer mq.Consumer) {
 	c.consumers = append(c.consumers, consumer)
@@ -126,7 +137,9 @@ func (c *BindConsumers) ForEach(fn func(mq.Consumer)) {
 	}
 }
 
-type GRPCServers struct{ servers map[string]*grpc.Server }
+type GRPCServers struct {
+	servers map[string]*grpc.Server
+}
 
 func (c *GRPCServers) Add(serviceName string, server *grpc.Server) {
 	c.servers[serviceName] = server
@@ -141,13 +154,12 @@ func (c *GRPCServers) ForEach(fn func(string, *grpc.Server)) {
 // NewApp application 的构造函数
 func NewApp() *App {
 	return &App{
-		c:                  New(),
-		envIncludePatterns: []string{`.*`},
-		mapOfOnProperty:    make(map[string]interface{}),
-		exitChan:           make(chan struct{}),
-		RootRouter:         new(RootRouter),
-		BindConsumers:      new(BindConsumers),
-		GRPCServers:        new(GRPCServers),
+		c:               New(),
+		mapOfOnProperty: make(map[string]interface{}),
+		exitChan:        make(chan struct{}),
+		RootRouter:      new(RootRouter),
+		BindConsumers:   new(BindConsumers),
+		GRPCServers:     new(GRPCServers),
 	}
 }
 
@@ -156,46 +168,38 @@ func (app *App) Banner(banner string) {
 	app.banner = banner
 }
 
-// EnvIncludePatterns 需要添加的环境变量。
-func (app *App) EnvIncludePatterns(patterns []string) {
-	app.envIncludePatterns = patterns
-}
-
-// EnvExcludePatterns 需要排除的环境变量。
-func (app *App) EnvExcludePatterns(patterns []string) {
-	app.envExcludePatterns = patterns
-}
-
-func (app *App) Run() {
+func (app *App) Run() error {
 
 	// 响应控制台的 Ctrl+C 及 kill 命令。
 	go func() {
 		ch := make(chan os.Signal, 1)
 		signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
 		sig := <-ch
-		log.Infof("program will exit because of signal %v", sig)
-		app.ShutDown()
+		app.ShutDown(fmt.Errorf("signal %v", sig))
 	}()
 
-	app.start()
+	if err := app.start(); err != nil {
+		return err
+	}
+
 	<-app.exitChan
 
 	log.Info("application exiting")
 	app.c.Close()
 	log.Info("application exited")
+	return nil
 }
 
-func (app *App) start() {
+func (app *App) start() error {
 
-	app.Object(app.BindConsumers)
+	app.Object(app.RootRouter)
 	app.Object(app.GRPCServers)
+	app.Object(app.BindConsumers)
 
 	e := newEnvironment()
-	err := e.prepare(
-		envIncludePatterns(app.envIncludePatterns),
-		envExcludePatterns(app.envExcludePatterns),
-	)
-	util.Panic(err).When(err != nil)
+	if err := e.prepare(); err != nil {
+		return err
+	}
 
 	configLocation := func() string {
 		s := e.Get(environ.SpringConfigLocation, conf.Def("config/"))
@@ -209,7 +213,9 @@ func (app *App) start() {
 
 	profile := cast.ToString(e.Get(environ.SpringActiveProfile))
 	p, err := app.profile(configLocation, profile)
-	util.Panic(err).When(err != nil)
+	if err != nil {
+		return err
+	}
 
 	// 保存从配置文件加载的属性
 	for _, k := range p.Keys() {
@@ -225,26 +231,32 @@ func (app *App) start() {
 		t := reflect.TypeOf(f)
 		in := reflect.New(t.In(0)).Elem()
 		err = app.c.p.Bind(in, conf.Key(key))
-		util.Panic(err).When(err != nil)
+		if err != nil {
+			return err
+		}
 		reflect.ValueOf(f).Call([]reflect.Value{in})
 	}
 
-	app.c.Refresh()
+	if err = app.c.Refresh(); err != nil {
+		return err
+	}
 
 	ctx := &applicationContext{app}
 
-	var runners []ApplicationRunner
-	err = ctx.Get(&runners)
-	util.Panic(err).When(err != nil)
+	var runners []applicationRunner
+	if err = ctx.Get(&runners); err != nil {
+		return err
+	}
 
 	// 执行命令行启动器
 	for _, r := range runners {
 		r.Run(ctx)
 	}
 
-	var events []ApplicationEvent
-	err = ctx.Get(&events)
-	util.Panic(err).When(err != nil)
+	var events []applicationEvent
+	if err = ctx.Get(&events); err != nil {
+		return err
+	}
 
 	// 通知应用启动事件
 	for _, e := range events {
@@ -262,6 +274,7 @@ func (app *App) start() {
 	})
 
 	log.Info("application started successfully")
+	return err
 }
 
 func (app *App) getBanner(configLocation string) string {
@@ -309,7 +322,8 @@ func (app *App) loadConfigFile(p *conf.Properties, configLocation string, profil
 }
 
 // ShutDown 关闭执行器
-func (app *App) ShutDown() {
+func (app *App) ShutDown(err error) {
+	log.Infof("program will exit %s", err.Error())
 	select {
 	case <-app.exitChan:
 		// chan 已关闭，无需再次关闭。
@@ -432,12 +446,6 @@ func (app *App) DeleteMapping(path string, fn web.HandlerFunc) *web.Mapper {
 // DeleteBinding 注册 DELETE 方法处理函数
 func (app *App) DeleteBinding(path string, fn interface{}) *web.Mapper {
 	return app.RootRouter.r.DeleteBinding(path, web.BIND(fn))
-}
-
-// Filter 注册 web.Filter 对象。
-func (app *App) Filter(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
-	b := NewBean(objOrCtor, ctorArgs...)
-	return app.c.register(b).Export((*web.Filter)(nil))
 }
 
 // Consume 注册 MQ 消费者。

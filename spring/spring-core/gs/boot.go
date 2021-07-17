@@ -29,9 +29,14 @@ import (
 
 var app = NewApp()
 
-// ShutDown 关闭执行器
-func ShutDown() {
-	app.ShutDown()
+// Run 启动程序。
+func Run() {
+	app.Run()
+}
+
+// ShutDown 停止程序。
+func ShutDown(err error) {
+	app.ShutDown(err)
 }
 
 // Setenv 封装 os.Setenv 函数，如果发生 error 会 panic 。
@@ -43,16 +48,6 @@ func Setenv(key string, value interface{}) {
 // Banner 自定义 banner 字符串。
 func Banner(banner string) {
 	app.Banner(banner)
-}
-
-// EnvIncludePatterns 需要添加的环境变量。
-func EnvIncludePatterns(patterns []string) {
-	app.EnvIncludePatterns(patterns)
-}
-
-// EnvExcludePatterns 需要排除的环境变量。
-func EnvExcludePatterns(patterns []string) {
-	app.EnvExcludePatterns(patterns)
 }
 
 // Property 设置 key 对应的属性值，如果 key 对应的属性值已经存在则 Set 方法会
@@ -162,12 +157,6 @@ func DeleteMapping(path string, fn web.HandlerFunc) *web.Mapper {
 // DeleteBinding 注册 DELETE 方法处理函数。
 func DeleteBinding(path string, fn interface{}) *web.Mapper {
 	return app.DeleteBinding(path, fn)
-}
-
-// Filter 注册 web.Filter 对象。
-func Filter(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
-	b := NewBean(objOrCtor, ctorArgs...)
-	return app.c.register(b).Export((*web.Filter)(nil))
 }
 
 // Consume 注册 MQ 消费者。
