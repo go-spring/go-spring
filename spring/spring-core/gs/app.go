@@ -26,6 +26,7 @@ import (
 	"path"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"syscall"
 
 	"github.com/go-spring/spring-core/cast"
@@ -107,7 +108,7 @@ type App struct {
 
 	RootRouter    *RootRouter
 	BindConsumers *BindConsumers
-	GRPCServers   *GRPCServers
+	GrpcServers   *GrpcServers
 }
 
 // WebFilter 导出 web.Filter 类型
@@ -137,15 +138,15 @@ func (c *BindConsumers) ForEach(fn func(mq.Consumer)) {
 	}
 }
 
-type GRPCServers struct {
+type GrpcServers struct {
 	servers map[string]*grpc.Server
 }
 
-func (c *GRPCServers) Add(serviceName string, server *grpc.Server) {
+func (c *GrpcServers) Add(serviceName string, server *grpc.Server) {
 	c.servers[serviceName] = server
 }
 
-func (c *GRPCServers) ForEach(fn func(string, *grpc.Server)) {
+func (c *GrpcServers) ForEach(fn func(string, *grpc.Server)) {
 	for serviceName, server := range c.servers {
 		fn(serviceName, server)
 	}
@@ -159,7 +160,7 @@ func NewApp() *App {
 		exitChan:        make(chan struct{}),
 		RootRouter:      new(RootRouter),
 		BindConsumers:   new(BindConsumers),
-		GRPCServers:     new(GRPCServers),
+		GrpcServers:     new(GrpcServers),
 	}
 }
 
@@ -193,7 +194,7 @@ func (app *App) Run() error {
 func (app *App) start() error {
 
 	app.Object(app.RootRouter)
-	app.Object(app.GRPCServers)
+	app.Object(app.GrpcServers)
 	app.Object(app.BindConsumers)
 
 	e := newEnvironment()
@@ -201,18 +202,24 @@ func (app *App) start() error {
 		return err
 	}
 
-	configLocation := func() string {
-		s := e.Get(environ.SpringConfigLocation, conf.Def("config/"))
-		return cast.ToString(s)
+	configLocations := func() []string {
+		s := e.Get(environ.SpringConfigLocations, conf.Def("config/"))
+		return strings.Split(cast.ToString(s), ",")
 	}()
 
 	showBanner := cast.ToBool(e.Get(environ.SpringBannerVisible))
 	if showBanner {
-		PrintBanner(app.getBanner(configLocation))
+		PrintBanner(app.getBanner(configLocations))
 	}
 
-	profile := cast.ToString(e.Get(environ.SpringActiveProfile))
-	p, err := app.profile(configLocation, profile)
+	configExtensions := func() []string {
+		extensions := ".properties,.prop,.yaml,.yml,.toml,.tml"
+		s := e.Get(environ.SpringConfigExtensions, conf.Def(extensions))
+		return strings.Split(cast.ToString(s), ",")
+	}()
+
+	profile := cast.ToString(e.Get(environ.SpringProfilesActive))
+	p, err := app.profile(configLocations, configExtensions, profile)
 	if err != nil {
 		return err
 	}
@@ -277,45 +284,47 @@ func (app *App) start() error {
 	return err
 }
 
-func (app *App) getBanner(configLocation string) string {
+func (app *App) getBanner(configLocations []string) string {
 	if app.banner != "" {
 		return app.banner
 	}
-	file := path.Join(configLocation, "banner.txt")
-	b, err := ioutil.ReadFile(file)
-	if err != nil {
-		return DefaultBanner
+	for _, configLocation := range configLocations {
+		file := path.Join(configLocation, "banner.txt")
+		if b, err := ioutil.ReadFile(file); err == nil {
+			return string(b)
+		}
 	}
-	return string(b)
+	return DefaultBanner
 }
 
-func (app *App) profile(configLocation string, profile string) (*conf.Properties, error) {
+func (app *App) profile(locations []string, extensions []string, profile string) (*conf.Properties, error) {
 
 	p := conf.New()
-	if err := app.loadConfigFile(p, configLocation, ""); err != nil {
+	if err := app.loadConfigFile(p, locations, extensions, ""); err != nil {
 		return nil, err
 	}
 
 	if profile != "" {
-		if err := app.loadConfigFile(p, configLocation, profile); err != nil {
+		if err := app.loadConfigFile(p, locations, extensions, profile); err != nil {
 			return nil, err
 		}
 	}
 	return p, nil
 }
 
-func (app *App) loadConfigFile(p *conf.Properties, configLocation string, profile string) error {
+func (app *App) loadConfigFile(p *conf.Properties, locations []string, extensions []string, profile string) error {
 
 	filename := "application"
 	if len(profile) > 0 {
 		filename += "-" + profile
 	}
 
-	extArray := []string{".properties", ".yaml", ".toml"}
-	for _, ext := range extArray {
-		err := p.Load(filepath.Join(configLocation, filename+ext))
-		if err != nil && !os.IsNotExist(err) {
-			return err
+	for _, loc := range locations {
+		for _, ext := range extensions {
+			err := p.Load(filepath.Join(loc, filename+ext))
+			if err != nil && !os.IsNotExist(err) {
+				return err
+			}
 		}
 	}
 	return nil
@@ -453,16 +462,16 @@ func (app *App) Consume(fn interface{}, topics ...string) {
 	app.BindConsumers.Add(mq.Bind(fn, topics...))
 }
 
-// GRPCClient 注册 gRPC 服务客户端，fn 是 gRPC 自动生成的客户端构造函数。
-func (app *App) GRPCClient(fn interface{}, endpoint string) *BeanDefinition {
+// GrpcClient 注册 gRPC 服务客户端，fn 是 gRPC 自动生成的客户端构造函数。
+func (app *App) GrpcClient(fn interface{}, endpoint string) *BeanDefinition {
 	return app.c.register(NewBean(fn, endpoint))
 }
 
-// GRPCServer 注册 gRPC 服务提供者，fn 是 gRPC 自动生成的服务注册函数，
+// GrpcServer 注册 gRPC 服务提供者，fn 是 gRPC 自动生成的服务注册函数，
 // serviceName 是服务名称，必须对应 *_grpc.pg.go 文件里面 grpc.ServerDesc
 // 的 ServiceName 字段，server 是服务提供者对象。
-func (app *App) GRPCServer(serviceName string, fn interface{}, service interface{}) {
-	app.GRPCServers.Add(serviceName, &grpc.Server{
+func (app *App) GrpcServer(serviceName string, fn interface{}, service interface{}) {
+	app.GrpcServers.Add(serviceName, &grpc.Server{
 		Service:  service,
 		Register: fn,
 	})

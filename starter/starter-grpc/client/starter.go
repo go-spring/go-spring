@@ -17,14 +17,14 @@
 package StarterGrpcClient
 
 import (
-	"github.com/go-spring/spring-core/arg"
 	"github.com/go-spring/spring-core/gs"
+	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/starter-core"
 	"github.com/go-spring/starter-grpc/client/factory"
 )
 
 func init() {
-	gs.OnProperty("grpc.endpoint", func(endpoints map[string]StarterCore.GRpcEndpointConfig) {
+	gs.OnProperty("grpc.endpoint", func(endpoints map[string]StarterCore.GrpcEndpointConfig) {
 		for endpoint, config := range endpoints {
 			gs.Provide(GrpcClientFactory.NewClient, arg.Value(config)).Name(endpoint)
 		}

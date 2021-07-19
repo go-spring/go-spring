@@ -164,14 +164,14 @@ func Consume(fn interface{}, topics ...string) {
 	app.Consume(fn, topics...)
 }
 
-// GRPCClient 注册 gRPC 服务客户端，fn 是 gRPC 自动生成的客户端构造函数。
-func GRPCClient(fn interface{}, endpoint string) *BeanDefinition {
+// GrpcClient 注册 gRPC 服务客户端，fn 是 gRPC 自动生成的客户端构造函数。
+func GrpcClient(fn interface{}, endpoint string) *BeanDefinition {
 	return app.c.register(NewBean(fn, endpoint))
 }
 
-// GRPCServer 注册 gRPC 服务提供者，fn 是 gRPC 自动生成的服务注册函数，
+// GrpcServer 注册 gRPC 服务提供者，fn 是 gRPC 自动生成的服务注册函数，
 // serviceName 是服务名称，必须对应 *_grpc.pg.go 文件里面 grpc.ServerDesc
 // 的 ServiceName 字段，server 是服务提供者对象。
-func GRPCServer(serviceName string, fn interface{}, service interface{}) {
-	app.GRPCServer(serviceName, fn, service)
+func GrpcServer(serviceName string, fn interface{}, service interface{}) {
+	app.GrpcServer(serviceName, fn, service)
 }

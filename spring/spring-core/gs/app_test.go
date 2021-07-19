@@ -53,27 +53,27 @@ func TestConfig(t *testing.T) {
 
 	t.Run("config via env", func(t *testing.T) {
 		os.Clearenv()
-		gs.Setenv("GS_SPRING_ACTIVE_PROFILE", "dev")
+		gs.Setenv("GS_SPRING_PROFILES_ACTIVE", "dev")
 		app, p := startApplication("testdata/config/")
 		defer app.ShutDown(errors.New("run test end"))
-		assert.Equal(t, p.Prop(environ.SpringActiveProfile), "dev")
+		assert.Equal(t, p.Prop(environ.SpringProfilesActive), "dev")
 	})
 
 	t.Run("config via env 2", func(t *testing.T) {
 		os.Clearenv()
-		gs.Setenv("GS_SPRING_ACTIVE_PROFILE", "dev")
+		gs.Setenv("GS_SPRING_PROFILES_ACTIVE", "dev")
 		app, p := startApplication("testdata/config/")
 		defer app.ShutDown(errors.New("run test end"))
-		assert.Equal(t, p.Prop(environ.SpringActiveProfile), "dev")
+		assert.Equal(t, p.Prop(environ.SpringProfilesActive), "dev")
 	})
 
 	t.Run("profile via env&config 2", func(t *testing.T) {
 
 		os.Clearenv()
-		gs.Setenv("GS_SPRING_ACTIVE_PROFILE", "dev")
+		gs.Setenv("GS_SPRING_PROFILES_ACTIVE", "dev")
 		app, p := startApplication("testdata/config/")
 		defer app.ShutDown(errors.New("run test end"))
-		assert.Equal(t, p.Prop(environ.SpringActiveProfile), "dev")
+		assert.Equal(t, p.Prop(environ.SpringProfilesActive), "dev")
 
 		var m map[string]string
 		_ = p.Bind(&m, conf.Key(conf.RootKey))

@@ -8,4 +8,7 @@ require (
 	google.golang.org/grpc v1.31.0
 )
 
-replace github.com/go-spring/spring-core => ../../spring/spring-core
+replace (
+	github.com/go-spring/spring-core => ../../spring/spring-core
+	github.com/go-spring/starter-core => ../starter-core
+)

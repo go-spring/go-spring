@@ -841,7 +841,7 @@ func TestApplicationContext_Profile(t *testing.T) {
 	t.Run("bean:_c:test", func(t *testing.T) {
 
 		c, ch := container()
-		c.Property(environ.SpringActiveProfile, "test")
+		c.Property(environ.SpringProfilesActive, "test")
 		c.Object(&BeanZero{5})
 		err := c.Refresh()
 		assert.Nil(t, err)
@@ -2759,7 +2759,7 @@ func TestDefaultSpringContext(t *testing.T) {
 	t.Run("bean:test_ctx:test", func(t *testing.T) {
 
 		c, ch := container()
-		c.Property(environ.SpringActiveProfile, "test")
+		c.Property(environ.SpringProfilesActive, "test")
 		c.Object(&BeanZero{5}).Cond(cond.OnProfile("test"))
 		err := c.Refresh()
 		assert.Nil(t, err)
@@ -2774,7 +2774,7 @@ func TestDefaultSpringContext(t *testing.T) {
 	t.Run("bean:test_ctx:stable", func(t *testing.T) {
 
 		c, ch := container()
-		c.Property(environ.SpringActiveProfile, "stable")
+		c.Property(environ.SpringProfilesActive, "stable")
 		c.Object(&BeanZero{5}).Cond(cond.OnProfile("test"))
 		err := c.Refresh()
 		assert.Nil(t, err)
@@ -3095,7 +3095,7 @@ func TestDefaultSpringContext_ConditionOnMissingBean(t *testing.T) {
 //func TestNotCondition(t *testing.T) {
 //
 //	c := gs.New()
-//	c.Property(environ.SpringActiveProfile, "test")
+//	c.Property(environ.SpringProfilesActive, "test")
 //	c.Refresh()
 //
 //	profileCond := cond.OnProfile("test")
@@ -3138,7 +3138,7 @@ func TestApplicationContext_Invoke(t *testing.T) {
 		c, ch := container()
 		c.Provide(func() int { return 3 })
 		c.Property("version", "v0.0.1")
-		c.Property(environ.SpringActiveProfile, "dev")
+		c.Property(environ.SpringProfilesActive, "dev")
 		err := c.Refresh()
 		assert.Nil(t, err)
 

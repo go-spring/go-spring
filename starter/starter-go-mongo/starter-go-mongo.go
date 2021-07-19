@@ -17,8 +17,8 @@
 package StarterGoMongo
 
 import (
-	"github.com/go-spring/spring-core/cond"
 	"github.com/go-spring/spring-core/gs"
+	"github.com/go-spring/spring-core/gs/cond"
 	"github.com/go-spring/starter-go-mongo/go-mongo-factory"
 	"go.mongodb.org/mongo-driver/mongo"
 )

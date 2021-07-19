@@ -400,7 +400,7 @@ func OnProfile(profile string) *conditional {
 // OnProfile 添加一个 spring.profile 属性值是否匹配的条件。
 func (c *conditional) OnProfile(profile string) *conditional {
 	return c.On(&onPropertyValue{
-		name:        environ.SpringActiveProfile,
+		name:        environ.SpringProfilesActive,
 		havingValue: profile,
 	})
 }

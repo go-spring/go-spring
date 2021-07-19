@@ -29,12 +29,5 @@ func init() {
 }
 
 func container(config StarterCore.WebServerConfig) web.Container {
-	return SpringEcho.NewContainer(web.ContainerConfig{
-		IP:        config.IP,
-		Port:      config.Port,
-		BasePath:  config.BasePath,
-		EnableSSL: config.EnableSSL,
-		KeyFile:   config.SSLKey,
-		CertFile:  config.SSLCert,
-	})
+	return SpringEcho.NewContainer(web.ContainerConfig(config))
 }

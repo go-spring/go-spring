@@ -16,12 +16,12 @@
 
 package StarterCore
 
-// GRpcServerConfig gRPC 服务器配置
-type GRpcServerConfig struct {
+// GrpcServerConfig gRPC 服务器配置
+type GrpcServerConfig struct {
 	Port int `value:"${grpc.server.port:=9090}"`
 }
 
-// GRpcEndpointConfig gRPC 服务端点配置
-type GRpcEndpointConfig struct {
+// GrpcEndpointConfig gRPC 服务端点配置
+type GrpcEndpointConfig struct {
 	Address string `value:"${address:=127.0.0.1:9090}"`
 }

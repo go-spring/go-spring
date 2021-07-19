@@ -22,6 +22,6 @@ import (
 )
 
 // NewClient 根据配置创建 grpc.ClientConnInterface 对象
-func NewClient(config StarterCore.GRpcEndpointConfig) (grpc.ClientConnInterface, error) {
+func NewClient(config StarterCore.GrpcEndpointConfig) (grpc.ClientConnInterface, error) {
 	return grpc.Dial(config.Address, grpc.WithInsecure())
 }

@@ -35,14 +35,17 @@ const EnablePandora = "enable-pandora"
 // SpringPidFile 保存进程 ID 的文件。
 const SpringPidFile = "spring.pid.file"
 
-// SpringConfigLocation 配置文件的位置。
-const SpringConfigLocation = "spring.config.location"
+// SpringConfigLocations 配置文件的位置，支持逗号分隔。
+const SpringConfigLocations = "spring.config.locations"
+
+// SpringConfigExtensions 配置文件的扩展名，支持逗号分隔。
+const SpringConfigExtensions = "spring.config.extensions"
 
 // SpringBannerVisible 是否显示 banner。
 const SpringBannerVisible = "spring.banner.visible"
 
-// SpringActiveProfile 当前应用的 profile 配置。
-const SpringActiveProfile = "spring.active.profile"
+// SpringProfilesActive 当前应用的 profile 配置。
+const SpringProfilesActive = "spring.profiles.active"
 
 // SpringApplicationName 当前应用的名称。
 const SpringApplicationName = "spring.application.name"

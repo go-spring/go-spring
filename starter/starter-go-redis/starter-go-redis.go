@@ -18,8 +18,8 @@ package StarterGoRedis
 
 import (
 	"github.com/go-redis/redis"
-	"github.com/go-spring/spring-core/cond"
 	"github.com/go-spring/spring-core/gs"
+	"github.com/go-spring/spring-core/gs/cond"
 	"github.com/go-spring/starter-go-redis/go-redis-factory"
 )
 

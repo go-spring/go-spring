@@ -23,7 +23,7 @@ import (
 	"reflect"
 	"runtime"
 
-	SpringGRPC "github.com/go-spring/spring-core/grpc"
+	SpringGrpc "github.com/go-spring/spring-core/grpc"
 	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
@@ -33,12 +33,12 @@ import (
 
 // Starter gRPC 服务器启动器
 type Starter struct {
-	config StarterCore.GRpcServerConfig
+	config StarterCore.GrpcServerConfig
 	server *grpc.Server
 }
 
 // NewStarter Starter 的构造函数
-func NewStarter(config StarterCore.GRpcServerConfig) *Starter {
+func NewStarter(config StarterCore.GrpcServerConfig) *Starter {
 	return &Starter{
 		config: config,
 		server: grpc.NewServer(),
@@ -49,12 +49,12 @@ func (starter *Starter) OnStartApplication(ctx gs.ApplicationContext) {
 
 	srvMap := make(map[string]reflect.Value)
 
-	var servers *gs.GRPCServers
+	var servers *gs.GrpcServers
 	err := ctx.Get(&servers)
 	util.Panic(err).When(err != nil)
 
 	server := reflect.ValueOf(starter.server)
-	servers.ForEach(func(serviceName string, rpcServer *SpringGRPC.Server) {
+	servers.ForEach(func(serviceName string, rpcServer *SpringGrpc.Server) {
 
 		service := reflect.ValueOf(rpcServer.Service)
 		srvMap[serviceName] = service
