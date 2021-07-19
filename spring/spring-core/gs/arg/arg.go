@@ -23,8 +23,8 @@ import (
 	"reflect"
 	"runtime"
 
-	"github.com/go-spring/spring-core/bean"
-	"github.com/go-spring/spring-core/cond"
+	"github.com/go-spring/spring-core/gs/bean"
+	"github.com/go-spring/spring-core/gs/cond"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
 )

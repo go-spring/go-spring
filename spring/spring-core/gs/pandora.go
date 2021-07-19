@@ -20,9 +20,9 @@ import (
 	"errors"
 	"reflect"
 
-	"github.com/go-spring/spring-core/arg"
-	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/conf"
+	"github.com/go-spring/spring-core/gs/arg"
+	"github.com/go-spring/spring-core/gs/bean"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
 )

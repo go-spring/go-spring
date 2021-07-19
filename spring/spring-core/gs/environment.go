@@ -22,7 +22,7 @@ import (
 	"strings"
 
 	"github.com/go-spring/spring-core/conf"
-	"github.com/go-spring/spring-core/environ"
+	"github.com/go-spring/spring-core/gs/environ"
 )
 
 // EnvPrefix 属性覆盖的环境变量需要携带该前缀。

@@ -23,10 +23,10 @@ import (
 	"go/types"
 	"strings"
 
-	"github.com/go-spring/spring-core/bean"
 	"github.com/go-spring/spring-core/cast"
 	"github.com/go-spring/spring-core/conf"
-	"github.com/go-spring/spring-core/environ"
+	"github.com/go-spring/spring-core/gs/bean"
+	"github.com/go-spring/spring-core/gs/environ"
 	"github.com/go-spring/spring-core/util"
 )
 

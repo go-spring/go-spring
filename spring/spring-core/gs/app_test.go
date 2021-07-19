@@ -26,8 +26,8 @@ import (
 
 	"github.com/go-spring/spring-core/assert"
 	"github.com/go-spring/spring-core/conf"
-	"github.com/go-spring/spring-core/environ"
 	"github.com/go-spring/spring-core/gs"
+	"github.com/go-spring/spring-core/gs/environ"
 )
 
 func startApplication(cfgLocation string) (*gs.App, gs.Pandora) {

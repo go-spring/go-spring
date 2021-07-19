@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/go-spring/spring-core/environ"
+	"github.com/go-spring/spring-core/gs/environ"
 )
 
 const DefaultBanner = `

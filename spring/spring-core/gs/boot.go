@@ -21,8 +21,8 @@ import (
 	"os"
 	"reflect"
 
-	"github.com/go-spring/spring-core/arg"
 	"github.com/go-spring/spring-core/cast"
+	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/util"
 	"github.com/go-spring/spring-core/web"
 )
@@ -30,8 +30,8 @@ import (
 var app = NewApp()
 
 // Run 启动程序。
-func Run() {
-	app.Run()
+func Run() error {
+	return app.Run()
 }
 
 // ShutDown 停止程序。

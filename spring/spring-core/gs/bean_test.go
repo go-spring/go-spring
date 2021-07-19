@@ -23,9 +23,9 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/go-spring/spring-core/arg"
 	"github.com/go-spring/spring-core/assert"
 	"github.com/go-spring/spring-core/gs"
+	"github.com/go-spring/spring-core/gs/arg"
 	pkg2 "github.com/go-spring/spring-core/gs/testdata/pkg/foo"
 	"github.com/go-spring/spring-core/util"
 )
