@@ -144,8 +144,8 @@ func (d *BeanDefinition) Name(name string) *BeanDefinition {
 	return d
 }
 
-// Cond 设置 bean 的 Condition。
-func (d *BeanDefinition) Cond(cond cond.Condition) *BeanDefinition {
+// On 设置 bean 的 Condition。
+func (d *BeanDefinition) On(cond cond.Condition) *BeanDefinition {
 	d.cond = cond
 	return d
 }

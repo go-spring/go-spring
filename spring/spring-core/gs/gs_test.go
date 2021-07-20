@@ -2740,7 +2740,7 @@ func TestDefaultSpringContext(t *testing.T) {
 
 		c, ch := container()
 
-		c.Object(&BeanZero{5}).Cond(cond.
+		c.Object(&BeanZero{5}).On(cond.
 			OnProfile("test").
 			And().
 			OnMissingBean("null"),
@@ -2760,7 +2760,7 @@ func TestDefaultSpringContext(t *testing.T) {
 
 		c, ch := container()
 		c.Property(environ.SpringProfilesActive, "test")
-		c.Object(&BeanZero{5}).Cond(cond.OnProfile("test"))
+		c.Object(&BeanZero{5}).On(cond.OnProfile("test"))
 		err := c.Refresh()
 		assert.Nil(t, err)
 
@@ -2775,7 +2775,7 @@ func TestDefaultSpringContext(t *testing.T) {
 
 		c, ch := container()
 		c.Property(environ.SpringProfilesActive, "stable")
-		c.Object(&BeanZero{5}).Cond(cond.OnProfile("test"))
+		c.Object(&BeanZero{5}).On(cond.OnProfile("test"))
 		err := c.Refresh()
 		assert.Nil(t, err)
 
@@ -2794,7 +2794,7 @@ func TestDefaultSpringContext(t *testing.T) {
 		c.Provide(NewClassRoom, arg.Option(withClassName,
 			"${class_name:=二年级03班}",
 			"${class_floor:=3}",
-		).Cond(cond.OnProperty("class_name_enable")))
+		).On(cond.OnProperty("class_name_enable")))
 		err := c.Refresh()
 		assert.Nil(t, err)
 
@@ -2819,7 +2819,7 @@ func TestDefaultSpringContext(t *testing.T) {
 			arg.Option(withClassName,
 				"${class_name:=二年级03班}",
 				"${class_floor:=3}",
-			).Cond(onProperty),
+			).On(onProperty),
 		)
 		err := c.Refresh()
 		assert.Nil(t, err)
@@ -2841,7 +2841,7 @@ func TestDefaultSpringContext(t *testing.T) {
 		c, ch := container()
 		c.Property("server.version", "1.0.0")
 		parent := c.Object(new(Server))
-		c.Provide((*Server).Consumer, parent.ID()).Cond(cond.OnProperty("consumer.enable"))
+		c.Provide((*Server).Consumer, parent.ID()).On(cond.OnProperty("consumer.enable"))
 		err := c.Refresh()
 		assert.Nil(t, err)
 
@@ -2862,7 +2862,7 @@ func TestDefaultSpringContext(t *testing.T) {
 //func TestDefaultSpringContext_ParentNotRegister(t *testing.T) {
 //
 //	c := gs.New()
-//	parent := c.Provide(NewServerInterface).Cond(cond.OnProperty("server.is.nil"))
+//	parent := c.Provide(NewServerInterface).On(cond.OnProperty("server.is.nil"))
 //	c.Provide(ServerInterface.Consumer, parent.ID())
 //
 //	c.Refresh()
@@ -2879,25 +2879,13 @@ func TestDefaultSpringContext(t *testing.T) {
 func TestDefaultSpringContext_ConditionOnBean(t *testing.T) {
 	c, ch := container()
 
-	c1 := cond.
-		OnMissingProperty("Null").
-		Or().
-		OnProfile("test")
+	c1 := cond.OnProperty("null", cond.MatchIfMissing()).Or().OnProfile("test")
 
-	c.Object(&BeanZero{5}).Cond(cond.
-		On(c1).
-		And().
-		OnMissingBean("null"),
-	)
+	c.Object(&BeanZero{5}).On(cond.On(c1).And().OnMissingBean("null"))
+	c.Object(new(BeanOne)).On(cond.On(c1).And().OnMissingBean("null"))
 
-	c.Object(new(BeanOne)).Cond(cond.
-		On(c1).
-		And().
-		OnMissingBean("null"),
-	)
-
-	c.Object(new(BeanTwo)).Cond(cond.OnBean("*gs_test.BeanOne"))
-	c.Object(new(BeanTwo)).Name("another_two").Cond(cond.OnBean("Null"))
+	c.Object(new(BeanTwo)).On(cond.OnBean("*gs_test.BeanOne"))
+	c.Object(new(BeanTwo)).Name("another_two").On(cond.OnBean("Null"))
 
 	err := c.Refresh()
 	assert.Nil(t, err)
@@ -2919,8 +2907,8 @@ func TestDefaultSpringContext_ConditionOnMissingBean(t *testing.T) {
 		c, ch := container()
 		c.Object(&BeanZero{5})
 		c.Object(new(BeanOne))
-		c.Object(new(BeanTwo)).Cond(cond.OnMissingBean("*gs_test.BeanOne"))
-		c.Object(new(BeanTwo)).Name("another_two").Cond(cond.OnMissingBean("Null"))
+		c.Object(new(BeanTwo)).On(cond.OnMissingBean("*gs_test.BeanOne"))
+		c.Object(new(BeanTwo)).Name("another_two").On(cond.OnMissingBean("Null"))
 		err := c.Refresh()
 		assert.Nil(t, err)
 

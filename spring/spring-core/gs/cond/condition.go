@@ -71,28 +71,14 @@ func (c *not) Matches(ctx Context) (bool, error) {
 	return !ok, err
 }
 
-// onProperty 基于属性必须存在的 Condition 实现。
-type onProperty struct{ name string }
-
-func (c *onProperty) Matches(ctx Context) (bool, error) {
-	return ctx.Prop(c.name) != nil, nil
-}
-
-// onMissingProperty 基于属性必须不存在的 Condition 实现。
-type onMissingProperty struct{ name string }
-
-func (c *onMissingProperty) Matches(ctx Context) (bool, error) {
-	return ctx.Prop(c.name) == nil, nil
-}
-
-// onPropertyValue 基于属性值匹配的 Condition 实现。
-type onPropertyValue struct {
+// onProperty 基于属性值匹配的 Condition 实现。
+type onProperty struct {
 	name           string
-	havingValue    interface{}
+	havingValue    string
 	matchIfMissing bool
 }
 
-func (c *onPropertyValue) Matches(ctx Context) (bool, error) {
+func (c *onProperty) Matches(ctx Context) (bool, error) {
 	// 参考 /usr/local/go/src/go/types/eval_test.go 示例
 
 	val := ctx.Prop(c.name)
@@ -100,17 +86,11 @@ func (c *onPropertyValue) Matches(ctx Context) (bool, error) {
 		return c.matchIfMissing, nil
 	}
 
-	expectValue, ok := c.havingValue.(string)
-	if !ok {
+	if !strings.Contains(c.havingValue, "$") {
 		return val == c.havingValue, nil
 	}
 
-	ok = strings.Contains(expectValue, "$")
-	if !ok {
-		return val == expectValue, nil
-	}
-
-	expr := strings.Replace(expectValue, "$", cast.ToString(val), -1)
+	expr := strings.Replace(c.havingValue, "$", cast.ToString(val), -1)
 	ret, err := types.Eval(token.NewFileSet(), nil, token.NoPos, expr)
 	if err != nil {
 		return false, err
@@ -299,43 +279,30 @@ func (c *conditional) On(cond Condition) *conditional {
 	return c
 }
 
-// OnProperty 返回一个以 onProperty 为开始条件的计算式。
-func OnProperty(name string) *conditional {
-	return New().OnProperty(name)
-}
+type PropertyOption func(*onProperty)
 
-// OnProperty 添加一个 onProperty 条件。
-func (c *conditional) OnProperty(name string) *conditional {
-	return c.On(&onProperty{name: name})
-}
-
-// OnMissingProperty 返回一个以 onMissingProperty 为开始条件的计算式。
-func OnMissingProperty(name string) *conditional {
-	return New().OnMissingProperty(name)
-}
-
-// OnMissingProperty 添加一个 onMissingProperty 条件。
-func (c *conditional) OnMissingProperty(name string) *conditional {
-	return c.On(&onMissingProperty{name: name})
-}
-
-type PropertyValueOption func(*onPropertyValue)
-
-// MatchIfMissing 当属性不存在时如果 matchIfMissing 为 true 则条件成立。
-func MatchIfMissing(matchIfMissing bool) PropertyValueOption {
-	return func(c *onPropertyValue) {
-		c.matchIfMissing = matchIfMissing
+// MatchIfMissing 当属性不存在时条件成立。
+func MatchIfMissing() PropertyOption {
+	return func(c *onProperty) {
+		c.matchIfMissing = true
 	}
 }
 
-// OnPropertyValue 返回一个以 onPropertyValue 为开始条件的计算式。
-func OnPropertyValue(name string, havingValue interface{}, options ...PropertyValueOption) *conditional {
-	return New().OnPropertyValue(name, havingValue, options...)
+// HavingValue 当 havingValue 与属性值相同时条件成立。
+func HavingValue(havingValue string) PropertyOption {
+	return func(c *onProperty) {
+		c.havingValue = havingValue
+	}
 }
 
-// OnPropertyValue 添加一个 onPropertyValue 条件。
-func (c *conditional) OnPropertyValue(name string, havingValue interface{}, options ...PropertyValueOption) *conditional {
-	cond := &onPropertyValue{name: name, havingValue: havingValue}
+// OnProperty 返回一个以 onProperty 为开始条件的计算式。
+func OnProperty(name string, options ...PropertyOption) *conditional {
+	return New().OnProperty(name, options...)
+}
+
+// OnProperty 添加一个 onProperty 条件。
+func (c *conditional) OnProperty(name string, options ...PropertyOption) *conditional {
+	cond := &onProperty{name: name}
 	for _, option := range options {
 		option(cond)
 	}
@@ -399,8 +366,5 @@ func OnProfile(profile string) *conditional {
 
 // OnProfile 添加一个 spring.profile 属性值是否匹配的条件。
 func (c *conditional) OnProfile(profile string) *conditional {
-	return c.On(&onPropertyValue{
-		name:        environ.SpringProfilesActive,
-		havingValue: profile,
-	})
+	return c.OnProperty(environ.SpringProfilesActive, HavingValue(profile))
 }

@@ -33,7 +33,6 @@ import (
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/grpc"
 	"github.com/go-spring/spring-core/gs/arg"
-	"github.com/go-spring/spring-core/gs/bean"
 	"github.com/go-spring/spring-core/gs/environ"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/mq"
@@ -41,40 +40,7 @@ import (
 	"github.com/go-spring/spring-core/web"
 )
 
-type ApplicationContext interface {
-	Go(fn func(ctx context.Context))
-	Prop(key string, opts ...conf.GetOption) interface{}
-	Bind(i interface{}, opts ...conf.BindOption) error
-	Get(i interface{}, selectors ...bean.Selector) error
-	Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error)
-	Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, error)
-}
-
-type applicationContext struct{ app *App }
-
-func (ctx *applicationContext) Go(fn func(ctx context.Context)) {
-	ctx.app.Go(fn)
-}
-
-func (ctx *applicationContext) Prop(key string, opts ...conf.GetOption) interface{} {
-	return (&pandora{ctx.app.c}).Prop(key, opts...)
-}
-
-func (ctx *applicationContext) Bind(i interface{}, opts ...conf.BindOption) error {
-	return (&pandora{ctx.app.c}).Bind(i, opts...)
-}
-
-func (ctx *applicationContext) Get(i interface{}, selectors ...bean.Selector) error {
-	return (&pandora{ctx.app.c}).Get(i, selectors...)
-}
-
-func (ctx *applicationContext) Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error) {
-	return (&pandora{ctx.app.c}).Wire(objOrCtor, ctorArgs...)
-}
-
-func (ctx *applicationContext) Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, error) {
-	return (&pandora{ctx.app.c}).Invoke(fn, args...)
-}
+type ApplicationContext interface{ Pandora }
 
 // ApplicationRunner 导出 applicationRunner 类型
 var ApplicationRunner = (*applicationRunner)(nil)
@@ -248,7 +214,7 @@ func (app *App) start() error {
 		return err
 	}
 
-	ctx := &applicationContext{app}
+	ctx := &pandora{app.c}
 
 	var runners []applicationRunner
 	if err = ctx.Get(&runners); err != nil {
