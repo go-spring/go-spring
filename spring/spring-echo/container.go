@@ -29,6 +29,15 @@ import (
 	"github.com/labstack/echo"
 )
 
+func init() {
+	echo.NotFoundHandler = func(c echo.Context) error {
+		panic(echo.ErrNotFound)
+	}
+	echo.MethodNotAllowedHandler = func(c echo.Context) error {
+		panic(echo.ErrMethodNotAllowed)
+	}
+}
+
 type route struct {
 	fn           web.Handler // Web 处理函数
 	wildCardName string      // 通配符的名称
@@ -70,6 +79,11 @@ func (c *Container) Start() error {
 		cFilters = append(cFilters, c.GetFilters()...)
 	}
 
+	urlPatterns, err := web.URLPatterns(cFilters)
+	if err != nil {
+		return err
+	}
+
 	// 添加容器级别的过滤器，这样在路由不存在时也会调用这些过滤器
 	c.echoServer.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(echoCtx echo.Context) error {
@@ -83,7 +97,7 @@ func (c *Container) Start() error {
 				NewContext(nil, echoCtx.Path(), echoCtx)
 			}
 
-			filters := append(cFilters, web.HandlerFilter(Handler(next)))
+			filters := append(urlPatterns.Get("\\*"), web.HandlerFilter(Handler(next)))
 			chain := web.NewDefaultFilterChain(filters)
 			chain.Next(WebContext(echoCtx))
 			return nil
@@ -95,15 +109,13 @@ func (c *Container) Start() error {
 		c.PrintMapper(mapper)
 
 		path, wildCardName := web.ToPathStyle(mapper.Path(), web.EchoPathStyle)
-		fn := HandlerWrapper(mapper.Handler(), wildCardName, mapper.Filters())
+		fn := HandlerWrapper(mapper.Handler(), wildCardName, urlPatterns.Get(mapper.Path()))
 
 		for _, method := range web.GetMethod(mapper.Method()) {
 			c.echoServer.Add(method, path, fn)
 			c.routes[method+path] = route{fn: mapper.Handler(), wildCardName: wildCardName}
 		}
 	}
-
-	var err error
 
 	if cfg := c.Config(); cfg.EnableSSL {
 		err = c.echoServer.StartTLS(c.Address(), cfg.CertFile, cfg.KeyFile)

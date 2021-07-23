@@ -79,6 +79,11 @@ func (c *Container) Start() error {
 		cFilters = append(cFilters, c.GetFilters()...)
 	}
 
+	urlPatterns, err := web.URLPatterns(cFilters)
+	if err != nil {
+		return err
+	}
+
 	// 添加容器级别的过滤器，这样在路由不存在时也会调用这些过滤器
 	c.ginEngine.Use(func(ginCtx *gin.Context) {
 
@@ -92,19 +97,19 @@ func (c *Container) Start() error {
 		}
 	})
 
-	for _, filter := range cFilters {
-		f := filter // 避免延迟绑定
-		c.ginEngine.Use(func(ginCtx *gin.Context) {
-			f.Invoke(WebContext(ginCtx), &ginFilterChain{ginCtx})
-		})
-	}
+	//for _, filter := range cFilters {
+	//	f := filter // 避免延迟绑定
+	//	c.ginEngine.Use(func(ginCtx *gin.Context) {
+	//		f.Invoke(WebContext(ginCtx), &ginFilterChain{ginCtx})
+	//	})
+	//}
 
 	// 映射 Web 处理函数
 	for _, mapper := range c.Mappers() {
 		c.PrintMapper(mapper)
 
 		path, wildCardName := web.ToPathStyle(mapper.Path(), web.GinPathStyle)
-		handlers := HandlerWrapper(mapper.Handler(), wildCardName, mapper.Filters())
+		handlers := HandlerWrapper(mapper.Handler(), wildCardName, urlPatterns.Get(mapper.Path()))
 
 		for _, method := range web.GetMethod(mapper.Method()) {
 			c.ginEngine.Handle(method, path, handlers...)
@@ -115,9 +120,7 @@ func (c *Container) Start() error {
 		}
 	}
 
-	var err error
 	cfg := c.Config()
-
 	c.httpServer = &http.Server{
 		Addr:         c.Address(),
 		Handler:      c.ginEngine,

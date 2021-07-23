@@ -19,16 +19,16 @@ package StarterWeb
 import (
 	"context"
 	"net/http"
-	"regexp"
 	"sort"
 	"strings"
 
 	"github.com/go-spring/spring-core/gs"
+	"github.com/go-spring/spring-core/util"
 	"github.com/go-spring/spring-core/web"
 )
 
 func init() {
-	gs.Object(new(Starter)).Name("starter").Export(gs.ApplicationEvent)
+	gs.Object(new(Starter)).Name("starter").Export(gs.AppEvent)
 }
 
 // Starter Web 服务器启动器
@@ -36,45 +36,21 @@ type Starter struct {
 	Containers []web.Container `autowire:""`
 }
 
-// OnStartApplication 应用程序启动事件。
-func (starter *Starter) OnStartApplication(ctx gs.ApplicationContext) {
+// OnStartApp 应用程序启动事件。
+func (starter *Starter) OnStartApp(ctx gs.AppContext) {
 
-	var router *gs.RootRouter
-	if err := ctx.Get(&router); err != nil {
-		panic(err)
-	}
+	sortContainers(starter.Containers)
 
 	var webFilters struct {
 		Filters []web.Filter `autowire:"${web.server.filters}"`
 	}
 
-	if _, err := ctx.Wire(&webFilters); err != nil {
-		panic(err)
-	}
+	_, err := ctx.Wire(&webFilters)
+	util.Panic(err).When(err != nil)
 
-	filterMap := make(map[string][]web.Filter)
-	for _, filter := range webFilters.Filters {
-		var urlPatterns []string
-		if p, ok := filter.(interface{ URLPatterns() []string }); ok {
-			urlPatterns = p.URLPatterns()
-		} else {
-			urlPatterns = []string{"/*"}
-		}
-		for _, pattern := range urlPatterns {
-			filterMap[pattern] = append(filterMap[pattern], filter)
-		}
+	for _, container := range starter.Containers {
+		container.AddFilter(webFilters.Filters...)
 	}
-
-	filterPatterns := make(map[*regexp.Regexp][]web.Filter)
-	for pattern, filter := range filterMap {
-		exp, err := regexp.Compile(pattern)
-		if err != nil {
-			panic(err)
-		}
-		filterPatterns[exp] = filter
-	}
-
-	sortContainers(starter.Containers)
 
 	getContainer := func(mapper *web.Mapper) web.Container {
 		for _, c := range starter.Containers {
@@ -85,25 +61,19 @@ func (starter *Starter) OnStartApplication(ctx gs.ApplicationContext) {
 		return nil
 	}
 
-	getFilters := func(path string) []web.Filter {
-		for pattern, filters := range filterPatterns {
-			if pattern.MatchString(path) {
-				return filters
-			}
-		}
-		return nil
-	}
+	var router web.Router
+	err = ctx.Get(&router)
+	util.Panic(err).When(err != nil)
 
-	router.ForEach(func(path string, mapper *web.Mapper) {
+	for _, mapper := range router.Mappers() {
 		if c := getContainer(mapper); c != nil {
 			c.AddMapper(web.NewMapper(
 				mapper.Method(),
 				mapper.Path(),
 				mapper.Handler(),
-				getFilters(path),
 			))
 		}
-	})
+	}
 
 	for _, c := range starter.Containers {
 		ctx.Go(func(_ context.Context) {
@@ -114,8 +84,8 @@ func (starter *Starter) OnStartApplication(ctx gs.ApplicationContext) {
 	}
 }
 
-// OnStopApplication 应用程序结束事件。
-func (starter *Starter) OnStopApplication(ctx gs.ApplicationContext) {
+// OnStopApp 应用程序结束事件。
+func (starter *Starter) OnStopApp(ctx gs.AppContext) {
 	for _, c := range starter.Containers {
 		_ = c.Stop(context.Background())
 	}

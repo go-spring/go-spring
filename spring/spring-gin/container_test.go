@@ -116,20 +116,8 @@ func TestContext_PanicWebHttpError(t *testing.T) {
 	assert.Equal(t, response.StatusCode, http.StatusNotFound)
 }
 
-type dummyFilter struct{}
-
-func (f *dummyFilter) Invoke(webCtx web.Context, chain web.FilterChain) {
-	panic(&web.HttpError{
-		Code:    http.StatusMethodNotAllowed,
-		Message: http.StatusText(http.StatusMethodNotAllowed),
-	})
-}
-
 func TestFilter_PanicWebHttpError(t *testing.T) {
 	c := SpringGin.NewContainer(web.ContainerConfig{Port: 8080})
-	c.GetMapping("/", func(webCtx web.Context) {
-		webCtx.String("OK!")
-	}, &dummyFilter{})
 	go c.Start()
 	defer c.Stop(context.Background())
 	time.Sleep(10 * time.Millisecond)
@@ -140,5 +128,5 @@ func TestFilter_PanicWebHttpError(t *testing.T) {
 	defer response.Body.Close()
 	b, _ := ioutil.ReadAll(response.Body)
 	fmt.Println(response.Status, string(b))
-	assert.Equal(t, response.StatusCode, http.StatusMethodNotAllowed)
+	assert.Equal(t, response.StatusCode, http.StatusNotFound)
 }

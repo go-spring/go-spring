@@ -16,6 +16,10 @@
 
 package web
 
+import (
+	"regexp"
+)
+
 // Filter 过滤器接口
 type Filter interface {
 	// Invoke 通过 chain.Next() 驱动链条向后执行
@@ -70,4 +74,44 @@ func (chain *DefaultFilterChain) Next(ctx Context) {
 	f := chain.filters[chain.next]
 	chain.next++
 	f.Invoke(ctx, chain)
+}
+
+type urlPatterns struct {
+	m map[*regexp.Regexp][]Filter
+}
+
+func (p *urlPatterns) Get(path string) []Filter {
+	for pattern, filters := range p.m {
+		if pattern.MatchString(path) {
+			return filters
+		}
+	}
+	return nil
+}
+
+// URLPatterns 根据 Filter 的 URL 匹配表达式进行分组。
+func URLPatterns(filters []Filter) (*urlPatterns, error) {
+
+	filterMap := make(map[string][]Filter)
+	for _, filter := range filters {
+		var patterns []string
+		if p, ok := filter.(interface{ URLPatterns() []string }); ok {
+			patterns = p.URLPatterns()
+		} else {
+			patterns = []string{"/*"}
+		}
+		for _, pattern := range patterns {
+			filterMap[pattern] = append(filterMap[pattern], filter)
+		}
+	}
+
+	filterPatterns := make(map[*regexp.Regexp][]Filter)
+	for pattern, filter := range filterMap {
+		exp, err := regexp.Compile(pattern)
+		if err != nil {
+			return nil, err
+		}
+		filterPatterns[exp] = filter
+	}
+	return &urlPatterns{m: filterPatterns}, nil
 }

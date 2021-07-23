@@ -45,7 +45,8 @@ func TestContext_PanicEchoHttpError(t *testing.T) {
 	}
 	defer response.Body.Close()
 	b, _ := ioutil.ReadAll(response.Body)
-	fmt.Println(response.Status, string(b))
+	fmt.Println(string(b))
+	fmt.Println(response.Status)
 	assert.Equal(t, response.StatusCode, http.StatusTooManyRequests)
 	assert.Equal(t, string(b), `Too Many Requests`)
 }
@@ -64,7 +65,8 @@ func TestContext_PanicString(t *testing.T) {
 	}
 	defer response.Body.Close()
 	b, _ := ioutil.ReadAll(response.Body)
-	fmt.Println(response.Status, string(b))
+	fmt.Println(string(b))
+	fmt.Println(response.Status)
 	assert.Equal(t, response.StatusCode, http.StatusOK)
 	assert.Equal(t, string(b), "\"this is an error\"")
 }
@@ -83,7 +85,8 @@ func TestContext_PanicError(t *testing.T) {
 	}
 	defer response.Body.Close()
 	b, _ := ioutil.ReadAll(response.Body)
-	fmt.Println(response.Status, string(b))
+	fmt.Println(string(b))
+	fmt.Println(response.Status)
 	assert.Equal(t, response.StatusCode, http.StatusInternalServerError)
 	assert.Equal(t, string(b), `this is an error`)
 }
@@ -92,8 +95,8 @@ func TestContext_PanicWebHttpError(t *testing.T) {
 	c := SpringEcho.NewContainer(web.ContainerConfig{Port: 8080})
 	c.GetMapping("/", func(ctx web.Context) {
 		panic(&web.HttpError{
-			Code:    http.StatusNotFound,
-			Message: http.StatusText(http.StatusNotFound),
+			Code:    http.StatusInternalServerError,
+			Message: http.StatusText(http.StatusInternalServerError),
 		})
 	})
 	go c.Start()
@@ -105,35 +108,25 @@ func TestContext_PanicWebHttpError(t *testing.T) {
 	}
 	defer response.Body.Close()
 	b, _ := ioutil.ReadAll(response.Body)
-	fmt.Println(response.Status, string(b))
-	assert.Equal(t, response.StatusCode, http.StatusNotFound)
-	assert.Equal(t, string(b), `Not Found`)
+	fmt.Println(string(b))
+	fmt.Println(response.Status)
+	assert.Equal(t, response.StatusCode, http.StatusInternalServerError)
+	assert.Equal(t, string(b), `Internal Server Error`)
 }
 
-type dummyFilter struct{}
-
-func (f *dummyFilter) Invoke(ctx web.Context, chain web.FilterChain) {
-	panic(&web.HttpError{
-		Code:    http.StatusMethodNotAllowed,
-		Message: http.StatusText(http.StatusMethodNotAllowed),
-	})
-}
-
-func TestFilter_PanicWebHttpError(t *testing.T) {
+func TestContext_PathNotFound(t *testing.T) {
 	c := SpringEcho.NewContainer(web.ContainerConfig{Port: 8080})
-	c.GetMapping("/", func(ctx web.Context) {
-		ctx.String("OK!")
-	}, &dummyFilter{})
 	go c.Start()
 	defer c.Stop(context.Background())
 	time.Sleep(10 * time.Millisecond)
-	response, err := http.Get("http://127.0.0.1:8080/")
+	response, err := http.Get("http://127.0.0.1:8080/not_found")
 	if err != nil {
 		panic(err)
 	}
 	defer response.Body.Close()
 	b, _ := ioutil.ReadAll(response.Body)
-	fmt.Println(response.Status, string(b))
-	assert.Equal(t, response.StatusCode, http.StatusMethodNotAllowed)
-	assert.Equal(t, string(b), `Method Not Allowed`)
+	fmt.Println(string(b))
+	fmt.Println(response.Status)
+	assert.Equal(t, response.StatusCode, http.StatusNotFound)
+	assert.Equal(t, string(b), "404 page not found")
 }

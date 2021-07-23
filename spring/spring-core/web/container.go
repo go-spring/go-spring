@@ -66,9 +66,6 @@ type Container interface {
 	// AddFilter 添加过滤器
 	AddFilter(filter ...Filter)
 
-	// SetFilters 设置过滤器列表
-	SetFilters(filters []Filter)
-
 	// GetLoggerFilter 获取 Logger Filter
 	GetLoggerFilter() Filter
 
@@ -118,11 +115,6 @@ func (c *AbstractContainer) GetFilters() []Filter {
 // AddFilter 添加过滤器
 func (c *AbstractContainer) AddFilter(filter ...Filter) {
 	c.filters = append(c.filters, filter...)
-}
-
-// SetFilters 设置过滤器列表
-func (c *AbstractContainer) SetFilters(filters []Filter) {
-	c.filters = filters
 }
 
 // GetLoggerFilter 获取 Logger Filter

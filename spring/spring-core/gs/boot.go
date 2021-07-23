@@ -167,6 +167,6 @@ func GrpcClient(fn interface{}, endpoint string) *BeanDefinition {
 // GrpcServer 注册 gRPC 服务提供者，fn 是 gRPC 自动生成的服务注册函数，
 // serviceName 是服务名称，必须对应 *_grpc.pg.go 文件里面 grpc.ServerDesc
 // 的 ServiceName 字段，server 是服务提供者对象。
-func GrpcServer(serviceName string, fn interface{}, service interface{}) {
-	app.GrpcServer(serviceName, fn, service)
+func GrpcServer(serviceName string, fn interface{}, service interface{}) *BeanDefinition {
+	return app.GrpcServer(serviceName, fn, service)
 }
