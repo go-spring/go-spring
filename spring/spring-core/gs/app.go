@@ -278,15 +278,7 @@ func (app *App) ShutDown(err error) {
 	}
 }
 
-// Property 设置 key 对应的属性值，如果 key 对应的属性值已经存在则 Set 方法会
-// 覆盖旧值。Set 方法除了支持 string 类型的属性值，还支持 int、uint、bool 等
-// 其他基础数据类型的属性值。特殊情况下，Set 方法也支持 slice 、map 与基础数据
-// 类型组合构成的属性值，其处理方式是将组合结构层层展开，可以将组合结构看成一棵树，
-// 那么叶子结点的路径就是属性的 key，叶子结点的值就是属性的值。
-func (app *App) Property(key string, value interface{}) {
-	app.c.Property(key, value)
-}
-
+// OnProperty 当 key 对应的属性值准备好后发送一个通知。
 func (app *App) OnProperty(key string, fn interface{}) {
 	t := reflect.TypeOf(fn)
 	if t.Kind() != reflect.Func {
@@ -296,6 +288,15 @@ func (app *App) OnProperty(key string, fn interface{}) {
 		panic(errors.New("fn should be a func(value_type)"))
 	}
 	app.mapOfOnProperty[key] = fn
+}
+
+// Property 设置 key 对应的属性值，如果 key 对应的属性值已经存在则 Set 方法会
+// 覆盖旧值。Set 方法除了支持 string 类型的属性值，还支持 int、uint、bool 等
+// 其他基础数据类型的属性值。特殊情况下，Set 方法也支持 slice 、map 与基础数据
+// 类型组合构成的属性值，其处理方式是将组合结构层层展开，可以将组合结构看成一棵树，
+// 那么叶子结点的路径就是属性的 key，叶子结点的值就是属性的值。
+func (app *App) Property(key string, value interface{}) {
+	app.c.Property(key, value)
 }
 
 // Object 注册对象形式的 bean ，需要注意的是该方法在注入开始后就不能再调用了。

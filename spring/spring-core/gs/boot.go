@@ -29,6 +29,12 @@ import (
 
 var app = NewApp()
 
+// Setenv 封装 os.Setenv 函数，如果发生 error 会 panic 。
+func Setenv(key string, value interface{}) {
+	err := os.Setenv(key, cast.ToString(value))
+	util.Panic(err).When(err != nil)
+}
+
 // Run 启动程序。
 func Run() error {
 	return app.Run()
@@ -39,15 +45,14 @@ func ShutDown(err error) {
 	app.ShutDown(err)
 }
 
-// Setenv 封装 os.Setenv 函数，如果发生 error 会 panic 。
-func Setenv(key string, value interface{}) {
-	err := os.Setenv(key, cast.ToString(value))
-	util.Panic(err).When(err != nil)
-}
-
 // Banner 自定义 banner 字符串。
 func Banner(banner string) {
 	app.Banner(banner)
+}
+
+// OnProperty 当 key 对应的属性值准备好后发送一个通知。
+func OnProperty(key string, fn interface{}) {
+	app.OnProperty(key, fn)
 }
 
 // Property 设置 key 对应的属性值，如果 key 对应的属性值已经存在则 Set 方法会
@@ -57,10 +62,6 @@ func Banner(banner string) {
 // 那么叶子结点的路径就是属性的 key，叶子结点的值就是属性的值。
 func Property(key string, value interface{}) {
 	app.Property(key, value)
-}
-
-func OnProperty(key string, fn interface{}) {
-	app.OnProperty(key, fn)
 }
 
 // Object 注册对象形式的 bean ，需要注意的是该方法在注入开始后就不能再调用了。
