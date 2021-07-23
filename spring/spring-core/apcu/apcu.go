@@ -18,11 +18,12 @@
 package apcu
 
 import (
-	"encoding/json"
 	"fmt"
 	"reflect"
 	"sync"
 	"time"
+
+	"github.com/go-spring/spring-core/json"
 )
 
 var cache sync.Map

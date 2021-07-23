@@ -18,7 +18,6 @@ package SpringGin
 
 import (
 	"context"
-	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"mime/multipart"
@@ -27,6 +26,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/go-spring/spring-core/json"
 	"github.com/go-spring/spring-core/knife"
 	"github.com/go-spring/spring-core/validator"
 	"github.com/go-spring/spring-core/web"
@@ -402,11 +402,20 @@ func (ctx *Context) jsonPBlob(code int, callback string, data func(http.Response
 func (ctx *Context) JSONP(callback string, i interface{}) {
 	statusCode := ctx.ginContext.Writer.Status()
 	ctx.jsonPBlob(statusCode, callback, func(response http.ResponseWriter) error {
-		enc := json.NewEncoder(response)
+		var (
+			data []byte
+			err  error
+		)
 		if _, pretty := ctx.QueryParams()["pretty"]; pretty {
-			enc.SetIndent("", "  ")
+			data, err = json.MarshalIndent(i, "", "  ")
+		} else {
+			data, err = json.Marshal(i)
 		}
-		return enc.Encode(i)
+		if err == nil {
+			return err
+		}
+		_, err = response.Write(data)
+		return err
 	})
 }
 
