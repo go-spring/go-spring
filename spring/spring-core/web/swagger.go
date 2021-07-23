@@ -16,6 +16,13 @@
 
 package web
 
+// Operation 与路由绑定的 API 描述文档
+type Operation interface {
+
+	// Process 完成处理参数绑定等过程
+	Process() error
+}
+
 // Swagger 与容器绑定的 API 描述文档
 type Swagger interface {
 
@@ -23,12 +30,5 @@ type Swagger interface {
 	ReadDoc() string
 
 	// AddPath 添加与容器绑定的路由节点
-	AddPath(path string, method uint32, op Operation)
-}
-
-// Operation 与路由绑定的 API 描述文档
-type Operation interface {
-
-	// Process 完成处理参数绑定等过程
-	Process() error
+	AddPath(path string, method string, op Operation)
 }

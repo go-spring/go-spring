@@ -79,29 +79,9 @@ func Go(fn func(ctx context.Context)) {
 	app.Go(fn)
 }
 
-// Route 返回和 Mapping 绑定的路由分组。
-func Route(basePath string) *web.Router {
-	return app.Route(basePath)
-}
-
-// HandleRequest 注册任意 HTTP 方法处理函数。
-func HandleRequest(method uint32, path string, fn web.Handler) *web.Mapper {
-	return app.HandleRequest(method, path, fn)
-}
-
-// RequestMapping 注册任意 HTTP 方法处理函数。
-func RequestMapping(method uint32, path string, fn web.HandlerFunc) *web.Mapper {
-	return app.RequestMapping(method, path, fn)
-}
-
-// RequestBinding 注册任意 HTTP 方法处理函数。
-func RequestBinding(method uint32, path string, fn interface{}) *web.Mapper {
-	return app.RequestBinding(method, path, fn)
-}
-
 // HandleGet 注册 GET 方法处理函数。
-func HandleGet(path string, fn web.Handler) *web.Mapper {
-	return app.HandleGet(path, fn)
+func HandleGet(path string, h web.Handler) *web.Mapper {
+	return app.HandleGet(path, h)
 }
 
 // GetMapping 注册 GET 方法处理函数。
@@ -115,8 +95,8 @@ func GetBinding(path string, fn interface{}) *web.Mapper {
 }
 
 // HandlePost 注册 POST 方法处理函数。
-func HandlePost(path string, fn web.Handler) *web.Mapper {
-	return app.HandlePost(path, fn)
+func HandlePost(path string, h web.Handler) *web.Mapper {
+	return app.HandlePost(path, h)
 }
 
 // PostMapping 注册 POST 方法处理函数。
@@ -130,8 +110,8 @@ func PostBinding(path string, fn interface{}) *web.Mapper {
 }
 
 // HandlePut 注册 PUT 方法处理函数。
-func HandlePut(path string, fn web.Handler) *web.Mapper {
-	return app.HandlePut(path, fn)
+func HandlePut(path string, h web.Handler) *web.Mapper {
+	return app.HandlePut(path, h)
 }
 
 // PutMapping 注册 PUT 方法处理函数。
@@ -145,8 +125,8 @@ func PutBinding(path string, fn interface{}) *web.Mapper {
 }
 
 // HandleDelete 注册 DELETE 方法处理函数。
-func HandleDelete(path string, fn web.Handler) *web.Mapper {
-	return app.HandleDelete(path, fn)
+func HandleDelete(path string, h web.Handler) *web.Mapper {
+	return app.HandleDelete(path, h)
 }
 
 // DeleteMapping 注册 DELETE 方法处理函数。
@@ -157,6 +137,21 @@ func DeleteMapping(path string, fn web.HandlerFunc) *web.Mapper {
 // DeleteBinding 注册 DELETE 方法处理函数。
 func DeleteBinding(path string, fn interface{}) *web.Mapper {
 	return app.DeleteBinding(path, fn)
+}
+
+// HandleRequest 注册任意 HTTP 方法处理函数。
+func HandleRequest(method uint32, path string, h web.Handler) *web.Mapper {
+	return app.HandleRequest(method, path, h)
+}
+
+// RequestMapping 注册任意 HTTP 方法处理函数。
+func RequestMapping(method uint32, path string, fn web.HandlerFunc) *web.Mapper {
+	return app.RequestMapping(method, path, fn)
+}
+
+// RequestBinding 注册任意 HTTP 方法处理函数。
+func RequestBinding(method uint32, path string, fn interface{}) *web.Mapper {
+	return app.RequestBinding(method, path, fn)
 }
 
 // Consume 注册 MQ 消费者。

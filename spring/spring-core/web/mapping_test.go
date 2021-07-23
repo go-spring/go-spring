@@ -17,11 +17,9 @@
 package web_test
 
 import (
-	"fmt"
 	"net/http"
 	"testing"
 
-	"github.com/go-spring/spring-core/assert"
 	"github.com/go-spring/spring-core/web"
 )
 
@@ -121,28 +119,4 @@ func BenchmarkGetMethod(b *testing.B) {
 	b.Run("cache-9", func(b *testing.B) {
 		GetMethodViaCache(web.MethodGet | web.MethodHead | web.MethodPost | web.MethodPut | web.MethodPatch | web.MethodDelete | web.MethodConnect | web.MethodOptions | web.MethodTrace)
 	})
-}
-
-func TestMapper_Key(t *testing.T) {
-	fmt.Println(web.NewMapper(web.MethodAny, "/", nil, nil).Key())
-	fmt.Println(web.NewMapper(web.MethodGet, "/", nil, nil).Key())
-	fmt.Println(web.NewMapper(web.MethodGetPost, "/", nil, nil).Key())
-}
-
-func TestRouter_Route(t *testing.T) {
-	root := web.NewRootRouter().Route("/root", web.LoggerFilter, web.LoggerFilter)
-
-	get := root.GetMapping("/get", nil, web.LoggerFilter, web.LoggerFilter)
-	assert.Equal(t, get.Path(), "/root/get")
-	assert.Equal(t, len(get.Filters()), 4)
-
-	sub := root.Route("/sub", web.LoggerFilter, web.LoggerFilter)
-	subGet := sub.GetMapping("/get", nil, web.LoggerFilter, web.LoggerFilter)
-	assert.Equal(t, subGet.Path(), "/root/sub/get")
-	assert.Equal(t, len(subGet.Filters()), 6)
-
-	subSub := sub.Route("/sub", web.LoggerFilter, web.LoggerFilter)
-	subSubGet := subSub.GetMapping("/get", nil, web.LoggerFilter, web.LoggerFilter)
-	assert.Equal(t, subSubGet.Path(), "/root/sub/sub/get")
-	assert.Equal(t, len(subSubGet.Filters()), 8)
 }

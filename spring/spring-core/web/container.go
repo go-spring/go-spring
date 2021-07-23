@@ -55,8 +55,7 @@ type ContainerConfig struct {
 
 // Container Web 容器
 type Container interface {
-	// RootRouter 根路由
-	RootRouter
+	Router
 
 	// Config 获取 Web 容器配置
 	Config() ContainerConfig
@@ -76,9 +75,6 @@ type Container interface {
 	// SetLoggerFilter 设置 Logger Filter
 	SetLoggerFilter(filter Filter)
 
-	// AddRouter 添加新的路由信息
-	AddRouter(router RootRouter)
-
 	// Swagger 设置与容器绑定的 Swagger 对象
 	Swagger(swagger Swagger)
 
@@ -91,7 +87,7 @@ type Container interface {
 
 // AbstractContainer 抽象的 Container 实现
 type AbstractContainer struct {
-	RootRouter
+	router
 
 	config  ContainerConfig // 容器配置项
 	filters []Filter        // 其他过滤器
@@ -101,7 +97,7 @@ type AbstractContainer struct {
 
 // NewAbstractContainer AbstractContainer 的构造函数
 func NewAbstractContainer(config ContainerConfig) *AbstractContainer {
-	return &AbstractContainer{RootRouter: NewRootRouter(), config: config}
+	return &AbstractContainer{config: config}
 }
 
 // Address 返回监听地址
@@ -139,20 +135,13 @@ func (c *AbstractContainer) SetLoggerFilter(filter Filter) {
 	c.logger = filter
 }
 
-// AddRouter 添加新的路由信息
-func (c *AbstractContainer) AddRouter(router RootRouter) {
-	for _, mapper := range router.Mappers() {
-		c.AddMapper(mapper)
-	}
-}
-
 // Swagger 设置与容器绑定的 Swagger 对象
 func (c *AbstractContainer) Swagger(swagger Swagger) {
 	c.swagger = swagger
 }
 
 // SwaggerHandler Swagger 处理器
-type SwaggerHandler func(router RootRouter, doc string)
+type SwaggerHandler func(router Router, doc string)
 
 // swaggerHandler Swagger 处理器
 var swaggerHandler SwaggerHandler
@@ -166,14 +155,17 @@ func RegisterSwaggerHandler(handler SwaggerHandler) {
 func (c *AbstractContainer) Start() error {
 	if c.swagger != nil && swaggerHandler != nil {
 		for _, mapper := range c.Mappers() {
-			if op := mapper.op; op != nil {
-				if err := op.Process(); err != nil {
-					return err
-				}
-				c.swagger.AddPath(mapper.Path(), mapper.Method(), op)
+			if mapper.swagger == nil {
+				continue
+			}
+			if err := mapper.swagger.Process(); err != nil {
+				return err
+			}
+			for _, method := range GetMethod(mapper.Method()) {
+				c.swagger.AddPath(mapper.Path(), method, mapper.swagger)
 			}
 		}
-		swaggerHandler(c.RootRouter, c.swagger.ReadDoc())
+		swaggerHandler(&c.router, c.swagger.ReadDoc())
 	}
 	return nil
 }

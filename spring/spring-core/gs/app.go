@@ -40,24 +40,27 @@ import (
 	"github.com/go-spring/spring-core/web"
 )
 
-type ApplicationContext interface{ Pandora }
+type AppContext interface{ Pandora }
 
-// ApplicationRunner 导出 applicationRunner 类型
-var ApplicationRunner = (*applicationRunner)(nil)
+// AppRunner 导出 appRunner 类型
+var AppRunner = (*appRunner)(nil)
 
-// applicationRunner 命令行启动器接口
-type applicationRunner interface {
-	Run(ctx ApplicationContext)
+// appRunner 命令行启动器接口
+type appRunner interface {
+	Run(ctx AppContext)
 }
 
-// ApplicationEvent 导出 applicationEvent 类型
-var ApplicationEvent = (*applicationEvent)(nil)
+// AppEvent 导出 appEvent 类型
+var AppEvent = (*appEvent)(nil)
 
-// applicationEvent 应用运行过程中的事件
-type applicationEvent interface {
-	OnStartApplication(ctx ApplicationContext) // 应用启动的事件
-	OnStopApplication(ctx ApplicationContext)  // 应用停止的事件
+// appEvent 应用运行过程中的事件
+type appEvent interface {
+	OnStopApp(ctx AppContext)  // 应用停止的事件
+	OnStartApp(ctx AppContext) // 应用启动的事件
 }
+
+// WebFilter 导出 web.Filter 类型
+var WebFilter = (*web.Filter)(nil)
 
 // App 应用
 type App struct {
@@ -72,49 +75,21 @@ type App struct {
 
 	exitChan chan struct{}
 
-	RootRouter    *RootRouter
-	BindConsumers *BindConsumers
-	GrpcServers   *GrpcServers
+	router    web.Router
+	consumers *Consumers
 }
 
-// WebFilter 导出 web.Filter 类型
-var WebFilter = (*web.Filter)(nil)
-
-type RootRouter struct {
-	r web.RootRouter
-}
-
-func (r *RootRouter) ForEach(fn func(string, *web.Mapper)) {
-	for s, mapper := range r.r.Mappers() {
-		fn(s, mapper)
-	}
-}
-
-type BindConsumers struct {
+type Consumers struct {
 	consumers []mq.Consumer
 }
 
-func (c *BindConsumers) Add(consumer mq.Consumer) {
+func (c *Consumers) Add(consumer mq.Consumer) {
 	c.consumers = append(c.consumers, consumer)
 }
 
-func (c *BindConsumers) ForEach(fn func(mq.Consumer)) {
+func (c *Consumers) ForEach(fn func(mq.Consumer)) {
 	for _, consumer := range c.consumers {
 		fn(consumer)
-	}
-}
-
-type GrpcServers struct {
-	servers map[string]*grpc.Server
-}
-
-func (c *GrpcServers) Add(serviceName string, server *grpc.Server) {
-	c.servers[serviceName] = server
-}
-
-func (c *GrpcServers) ForEach(fn func(string, *grpc.Server)) {
-	for serviceName, server := range c.servers {
-		fn(serviceName, server)
 	}
 }
 
@@ -124,9 +99,8 @@ func NewApp() *App {
 		c:               New(),
 		mapOfOnProperty: make(map[string]interface{}),
 		exitChan:        make(chan struct{}),
-		RootRouter:      new(RootRouter),
-		BindConsumers:   new(BindConsumers),
-		GrpcServers:     new(GrpcServers),
+		router:          web.NewRouter(),
+		consumers:       new(Consumers),
 	}
 }
 
@@ -159,9 +133,8 @@ func (app *App) Run() error {
 
 func (app *App) start() error {
 
-	app.Object(app.RootRouter)
-	app.Object(app.GrpcServers)
-	app.Object(app.BindConsumers)
+	app.Object(app.router)
+	app.Object(app.consumers)
 
 	e := newEnvironment()
 	if err := e.prepare(); err != nil {
@@ -216,7 +189,7 @@ func (app *App) start() error {
 
 	ctx := &pandora{app.c}
 
-	var runners []applicationRunner
+	var runners []appRunner
 	if err = ctx.Get(&runners); err != nil {
 		return err
 	}
@@ -226,14 +199,14 @@ func (app *App) start() error {
 		r.Run(ctx)
 	}
 
-	var events []applicationEvent
+	var events []appEvent
 	if err = ctx.Get(&events); err != nil {
 		return err
 	}
 
 	// 通知应用启动事件
 	for _, e := range events {
-		e.OnStartApplication(ctx)
+		e.OnStartApp(ctx)
 	}
 
 	// 通知应用停止事件
@@ -241,7 +214,7 @@ func (app *App) start() error {
 		select {
 		case <-c.Done():
 			for _, e := range events {
-				e.OnStopApplication(ctx)
+				e.OnStopApp(ctx)
 			}
 		}
 	})
@@ -343,89 +316,84 @@ func (app *App) Go(fn func(ctx context.Context)) {
 	app.c.Go(fn)
 }
 
-// Route 返回和 Mapping 绑定的路由分组
-func (app *App) Route(basePath string) *web.Router {
-	return app.RootRouter.r.Route(basePath)
-}
-
-// HandleRequest 注册任意 HTTP 方法处理函数
-func (app *App) HandleRequest(method uint32, path string, fn web.Handler) *web.Mapper {
-	return app.RootRouter.r.HandleRequest(method, path, fn)
-}
-
-// RequestMapping 注册任意 HTTP 方法处理函数
-func (app *App) RequestMapping(method uint32, path string, fn web.HandlerFunc) *web.Mapper {
-	return app.RootRouter.r.RequestMapping(method, path, fn)
-}
-
-// RequestBinding 注册任意 HTTP 方法处理函数
-func (app *App) RequestBinding(method uint32, path string, fn interface{}) *web.Mapper {
-	return app.RootRouter.r.RequestBinding(method, path, fn)
-}
-
 // HandleGet 注册 GET 方法处理函数
-func (app *App) HandleGet(path string, fn web.Handler) *web.Mapper {
-	return app.RootRouter.r.HandleGet(path, fn)
+func (app *App) HandleGet(path string, h web.Handler) *web.Mapper {
+	return app.router.HandleGet(path, h)
 }
 
 // GetMapping 注册 GET 方法处理函数
 func (app *App) GetMapping(path string, fn web.HandlerFunc) *web.Mapper {
-	return app.RootRouter.r.GetMapping(path, fn)
+	return app.router.GetMapping(path, fn)
 }
 
 // GetBinding 注册 GET 方法处理函数
 func (app *App) GetBinding(path string, fn interface{}) *web.Mapper {
-	return app.RootRouter.r.GetBinding(path, fn)
+	return app.router.GetBinding(path, fn)
 }
 
 // HandlePost 注册 POST 方法处理函数
-func (app *App) HandlePost(path string, fn web.Handler) *web.Mapper {
-	return app.RootRouter.r.HandlePost(path, fn)
+func (app *App) HandlePost(path string, h web.Handler) *web.Mapper {
+	return app.router.HandlePost(path, h)
 }
 
 // PostMapping 注册 POST 方法处理函数
 func (app *App) PostMapping(path string, fn web.HandlerFunc) *web.Mapper {
-	return app.RootRouter.r.PostMapping(path, fn)
+	return app.router.PostMapping(path, fn)
 }
 
 // PostBinding 注册 POST 方法处理函数
 func (app *App) PostBinding(path string, fn interface{}) *web.Mapper {
-	return app.RootRouter.r.PostBinding(path, fn)
+	return app.router.PostBinding(path, fn)
 }
 
 // HandlePut 注册 PUT 方法处理函数
-func (app *App) HandlePut(path string, fn web.Handler) *web.Mapper {
-	return app.RootRouter.r.HandlePut(path, fn)
+func (app *App) HandlePut(path string, h web.Handler) *web.Mapper {
+	return app.router.HandlePut(path, h)
 }
 
 // PutMapping 注册 PUT 方法处理函数
 func (app *App) PutMapping(path string, fn web.HandlerFunc) *web.Mapper {
-	return app.RootRouter.r.PutMapping(path, fn)
+	return app.router.PutMapping(path, fn)
 }
 
 // PutBinding 注册 PUT 方法处理函数
 func (app *App) PutBinding(path string, fn interface{}) *web.Mapper {
-	return app.RootRouter.r.PutBinding(path, fn)
+	return app.router.PutBinding(path, fn)
 }
 
 // HandleDelete 注册 DELETE 方法处理函数
-func (app *App) HandleDelete(path string, fn web.Handler) *web.Mapper {
-	return app.RootRouter.r.HandleDelete(path, fn)
+func (app *App) HandleDelete(path string, h web.Handler) *web.Mapper {
+	return app.router.HandleDelete(path, h)
 }
 
 // DeleteMapping 注册 DELETE 方法处理函数
 func (app *App) DeleteMapping(path string, fn web.HandlerFunc) *web.Mapper {
-	return app.RootRouter.r.DeleteMapping(path, fn)
+	return app.router.DeleteMapping(path, fn)
 }
 
 // DeleteBinding 注册 DELETE 方法处理函数
 func (app *App) DeleteBinding(path string, fn interface{}) *web.Mapper {
-	return app.RootRouter.r.DeleteBinding(path, web.BIND(fn))
+	return app.router.DeleteBinding(path, web.BIND(fn))
+}
+
+// HandleRequest 注册任意 HTTP 方法处理函数
+func (app *App) HandleRequest(method uint32, path string, h web.Handler) *web.Mapper {
+	return app.router.HandleRequest(method, path, h)
+}
+
+// RequestMapping 注册任意 HTTP 方法处理函数
+func (app *App) RequestMapping(method uint32, path string, fn web.HandlerFunc) *web.Mapper {
+	return app.router.RequestMapping(method, path, fn)
+}
+
+// RequestBinding 注册任意 HTTP 方法处理函数
+func (app *App) RequestBinding(method uint32, path string, fn interface{}) *web.Mapper {
+	return app.router.RequestBinding(method, path, fn)
 }
 
 // Consume 注册 MQ 消费者。
 func (app *App) Consume(fn interface{}, topics ...string) {
-	app.BindConsumers.Add(mq.Bind(fn, topics...))
+	app.consumers.Add(mq.Bind(fn, topics...))
 }
 
 // GrpcClient 注册 gRPC 服务客户端，fn 是 gRPC 自动生成的客户端构造函数。
@@ -437,8 +405,6 @@ func (app *App) GrpcClient(fn interface{}, endpoint string) *BeanDefinition {
 // serviceName 是服务名称，必须对应 *_grpc.pg.go 文件里面 grpc.ServerDesc
 // 的 ServiceName 字段，server 是服务提供者对象。
 func (app *App) GrpcServer(serviceName string, fn interface{}, service interface{}) {
-	app.GrpcServers.Add(serviceName, &grpc.Server{
-		Service:  service,
-		Register: fn,
-	})
+	s := &grpc.Server{Service: service, Register: fn}
+	app.c.register(NewBean(s)).Name(serviceName)
 }

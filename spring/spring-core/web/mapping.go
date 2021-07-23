@@ -17,10 +17,7 @@
 package web
 
 import (
-	"fmt"
 	"net/http"
-
-	"github.com/go-spring/spring-core/util"
 )
 
 const (
@@ -61,240 +58,189 @@ func GetMethod(method uint32) (r []string) {
 
 // Mapper 路由映射器
 type Mapper struct {
-	method  uint32    // 方法
-	path    string    // 路径
+	method  uint32    // 请求方法
+	path    string    // 路由地址
 	handler Handler   // 处理函数
-	filters []Filter  // 过滤器列表
-	op      Operation // 描述文档
+	swagger Operation // 描述文档
 }
 
 // NewMapper Mapper 的构造函数
-func NewMapper(method uint32, path string, fn Handler, filters []Filter) *Mapper {
-	return &Mapper{method: method, path: path, handler: fn, filters: filters}
-}
-
-// Key 返回 Mapper 的标识符
-func (m *Mapper) Key() string {
-	return fmt.Sprintf("0x%.4x@%s", m.method, m.path)
+func NewMapper(method uint32, path string, h Handler) *Mapper {
+	return &Mapper{method: method, path: path, handler: h}
 }
 
 // Method 返回 Mapper 的方法
-func (m *Mapper) Method() uint32 { return m.method }
+func (m *Mapper) Method() uint32 {
+	return m.method
+}
 
 // Path 返回 Mapper 的路径
-func (m *Mapper) Path() string { return m.path }
+func (m *Mapper) Path() string {
+	return m.path
+}
 
 // Handler 返回 Mapper 的处理函数
-func (m *Mapper) Handler() Handler { return m.handler }
-
-// Filters 返回 Mapper 的过滤器列表
-func (m *Mapper) Filters() []Filter { return m.filters }
+func (m *Mapper) Handler() Handler {
+	return m.handler
+}
 
 // Operation 设置与 Mapper 绑定的 Operation 对象
-func (m *Mapper) Operation(op Operation) { m.op = op }
-
-// Mapping 路由注册接口
-type Mapping interface {
-
-	// Route 返回和 Mapping 绑定的路由分组
-	Route(basePath string, filters ...Filter) *Router
-
-	// HandleRequest 注册任意 HTTP 方法处理函数
-	HandleRequest(method uint32, path string, fn Handler, filters ...Filter) *Mapper
-
-	// RequestMapping 注册任意 HTTP 方法处理函数
-	RequestMapping(method uint32, path string, fn HandlerFunc, filters ...Filter) *Mapper
-
-	// RequestBinding 注册任意 HTTP 方法处理函数
-	RequestBinding(method uint32, path string, fn interface{}, filters ...Filter) *Mapper
-
-	// HandleGet 注册 GET 方法处理函数
-	HandleGet(path string, fn Handler, filters ...Filter) *Mapper
-
-	// GetMapping 注册 GET 方法处理函数
-	GetMapping(path string, fn HandlerFunc, filters ...Filter) *Mapper
-
-	// GetBinding 注册 GET 方法处理函数
-	GetBinding(path string, fn interface{}, filters ...Filter) *Mapper
-
-	// HandlePost 注册 POST 方法处理函数
-	HandlePost(path string, fn Handler, filters ...Filter) *Mapper
-
-	// PostMapping 注册 POST 方法处理函数
-	PostMapping(path string, fn HandlerFunc, filters ...Filter) *Mapper
-
-	// PostBinding 注册 POST 方法处理函数
-	PostBinding(path string, fn interface{}, filters ...Filter) *Mapper
-
-	// HandlePut 注册 PUT 方法处理函数
-	HandlePut(path string, fn Handler, filters ...Filter) *Mapper
-
-	// PutMapping 注册 PUT 方法处理函数
-	PutMapping(path string, fn HandlerFunc, filters ...Filter) *Mapper
-
-	// PutBinding 注册 PUT 方法处理函数
-	PutBinding(path string, fn interface{}, filters ...Filter) *Mapper
-
-	// HandleDelete 注册 DELETE 方法处理函数
-	HandleDelete(path string, fn Handler, filters ...Filter) *Mapper
-
-	// DeleteMapping 注册 DELETE 方法处理函数
-	DeleteMapping(path string, fn HandlerFunc, filters ...Filter) *Mapper
-
-	// DeleteBinding 注册 DELETE 方法处理函数
-	DeleteBinding(path string, fn interface{}, filters ...Filter) *Mapper
+func (m *Mapper) Operation(op Operation) {
+	m.swagger = op
 }
 
-// funcMapping 路由注册接口的默认实现
-type funcMapping struct {
-	request func(method uint32, path string, fn Handler, filters []Filter) *Mapper
-}
+// Router 路由注册接口
+type Router interface {
 
-// Route 返回和 Mapping 绑定的路由分组
-func (r *funcMapping) Route(basePath string, filters ...Filter) *Router {
-	panic(util.UnimplementedMethod)
-}
-
-// HandleRequest 注册任意 HTTP 方法处理函数
-func (r *funcMapping) HandleRequest(method uint32, path string, fn Handler, filters ...Filter) *Mapper {
-	return r.request(method, path, fn, filters)
-}
-
-// RequestMapping 注册任意 HTTP 方法处理函数
-func (r *funcMapping) RequestMapping(method uint32, path string, fn HandlerFunc, filters ...Filter) *Mapper {
-	return r.request(method, path, FUNC(fn), filters)
-}
-
-// RequestBinding 注册任意 HTTP 方法处理函数
-func (r *funcMapping) RequestBinding(method uint32, path string, fn interface{}, filters ...Filter) *Mapper {
-	return r.request(method, path, BIND(fn), filters)
-}
-
-// HandleGet 注册 GET 方法处理函数
-func (r *funcMapping) HandleGet(path string, fn Handler, filters ...Filter) *Mapper {
-	return r.request(MethodGet, path, fn, filters)
-}
-
-// GetMapping 注册 GET 方法处理函数
-func (r *funcMapping) GetMapping(path string, fn HandlerFunc, filters ...Filter) *Mapper {
-	return r.request(MethodGet, path, FUNC(fn), filters)
-}
-
-// GetBinding 注册 GET 方法处理函数
-func (r *funcMapping) GetBinding(path string, fn interface{}, filters ...Filter) *Mapper {
-	return r.request(MethodGet, path, BIND(fn), filters)
-}
-
-// HandlePost 注册 POST 方法处理函数
-func (r *funcMapping) HandlePost(path string, fn Handler, filters ...Filter) *Mapper {
-	return r.request(MethodPost, path, fn, filters)
-}
-
-// PostMapping 注册 POST 方法处理函数
-func (r *funcMapping) PostMapping(path string, fn HandlerFunc, filters ...Filter) *Mapper {
-	return r.request(MethodPost, path, FUNC(fn), filters)
-}
-
-// PostBinding 注册 POST 方法处理函数
-func (r *funcMapping) PostBinding(path string, fn interface{}, filters ...Filter) *Mapper {
-	return r.request(MethodPost, path, BIND(fn), filters)
-}
-
-// HandlePut 注册 PUT 方法处理函数
-func (r *funcMapping) HandlePut(path string, fn Handler, filters ...Filter) *Mapper {
-	return r.request(MethodPut, path, fn, filters)
-}
-
-// PutMapping 注册 PUT 方法处理函数
-func (r *funcMapping) PutMapping(path string, fn HandlerFunc, filters ...Filter) *Mapper {
-	return r.request(MethodPut, path, FUNC(fn), filters)
-}
-
-// PutBinding 注册 PUT 方法处理函数
-func (r *funcMapping) PutBinding(path string, fn interface{}, filters ...Filter) *Mapper {
-	return r.request(MethodPut, path, BIND(fn), filters)
-}
-
-// HandleDelete 注册 DELETE 方法处理函数
-func (r *funcMapping) HandleDelete(path string, fn Handler, filters ...Filter) *Mapper {
-	return r.request(MethodDelete, path, fn, filters)
-}
-
-// DeleteMapping 注册 DELETE 方法处理函数
-func (r *funcMapping) DeleteMapping(path string, fn HandlerFunc, filters ...Filter) *Mapper {
-	return r.request(MethodDelete, path, FUNC(fn), filters)
-}
-
-// DeleteBinding 注册 DELETE 方法处理函数
-func (r *funcMapping) DeleteBinding(path string, fn interface{}, filters ...Filter) *Mapper {
-	return r.request(MethodDelete, path, BIND(fn), filters)
-}
-
-// RootRouter 根路由，本质是 Mapper 的集合
-type RootRouter interface {
-	Mapping
+	// Mappers 返回映射器列表
+	Mappers() []*Mapper
 
 	// AddMapper 添加一个 Mapper
 	AddMapper(m *Mapper)
 
-	// Mappers 返回映射器列表
-	Mappers() map[string]*Mapper
+	// HandleGet 注册 GET 方法处理函数
+	HandleGet(path string, h Handler) *Mapper
+
+	// GetMapping 注册 GET 方法处理函数
+	GetMapping(path string, fn HandlerFunc) *Mapper
+
+	// GetBinding 注册 GET 方法处理函数
+	GetBinding(path string, fn interface{}) *Mapper
+
+	// HandlePost 注册 POST 方法处理函数
+	HandlePost(path string, h Handler) *Mapper
+
+	// PostMapping 注册 POST 方法处理函数
+	PostMapping(path string, fn HandlerFunc) *Mapper
+
+	// PostBinding 注册 POST 方法处理函数
+	PostBinding(path string, fn interface{}) *Mapper
+
+	// HandlePut 注册 PUT 方法处理函数
+	HandlePut(path string, h Handler) *Mapper
+
+	// PutMapping 注册 PUT 方法处理函数
+	PutMapping(path string, fn HandlerFunc) *Mapper
+
+	// PutBinding 注册 PUT 方法处理函数
+	PutBinding(path string, fn interface{}) *Mapper
+
+	// HandleDelete 注册 DELETE 方法处理函数
+	HandleDelete(path string, h Handler) *Mapper
+
+	// DeleteMapping 注册 DELETE 方法处理函数
+	DeleteMapping(path string, fn HandlerFunc) *Mapper
+
+	// DeleteBinding 注册 DELETE 方法处理函数
+	DeleteBinding(path string, fn interface{}) *Mapper
+
+	// HandleRequest 注册任意 HTTP 方法处理函数
+	HandleRequest(method uint32, path string, h Handler) *Mapper
+
+	// RequestMapping 注册任意 HTTP 方法处理函数
+	RequestMapping(method uint32, path string, fn HandlerFunc) *Mapper
+
+	// RequestBinding 注册任意 HTTP 方法处理函数
+	RequestBinding(method uint32, path string, fn interface{}) *Mapper
 }
 
-// rootRouter 根路由表的默认实现
-type rootRouter struct {
-	Mapping
-
-	mappers map[string]*Mapper
+// router 路由注册接口的默认实现
+type router struct {
+	mappers []*Mapper
 }
 
-// NewRootRouter 返回一个 RootRouter 对象
-func NewRootRouter() RootRouter {
-	m := &rootRouter{mappers: make(map[string]*Mapper)}
-	m.Mapping = &funcMapping{request: m.request}
-	return m
+// NewRouter router 的构造函数。
+func NewRouter() *router {
+	return &router{}
+}
+
+// Mappers 返回映射器列表
+func (r *router) Mappers() []*Mapper {
+	return r.mappers
 }
 
 // AddMapper 添加一个 Mapper
-func (w *rootRouter) AddMapper(m *Mapper) { w.mappers[m.Key()] = m }
-
-// Mappers 返回映射器列表
-func (w *rootRouter) Mappers() map[string]*Mapper { return w.mappers }
-
-// Route 返回和 Mapping 绑定的路由分组
-func (w *rootRouter) Route(basePath string, filters ...Filter) *Router {
-	return NewRouter(w, basePath, filters)
+func (r *router) AddMapper(m *Mapper) {
+	r.mappers = append(r.mappers, m)
 }
 
-func (w *rootRouter) request(method uint32, path string, fn Handler, filters []Filter) *Mapper {
-	m := NewMapper(method, path, fn, filters)
-	w.mappers[m.Key()] = m
+func (r *router) request(method uint32, path string, h Handler) *Mapper {
+	m := NewMapper(method, path, h)
+	r.AddMapper(m)
 	return m
 }
 
-// Router 路由分组
-type Router struct {
-	Mapping
-
-	basePath   string
-	filters    []Filter
-	rootRouter RootRouter
+// HandleGet 注册 GET 方法处理函数
+func (r *router) HandleGet(path string, h Handler) *Mapper {
+	return r.request(MethodGet, path, h)
 }
 
-// NewRouter Router 的构造函数
-func NewRouter(rootRouter RootRouter, basePath string, filters []Filter) *Router {
-	r := &Router{filters: filters, basePath: basePath, rootRouter: rootRouter}
-	r.Mapping = &funcMapping{request: r.request}
-	return r
+// GetMapping 注册 GET 方法处理函数
+func (r *router) GetMapping(path string, fn HandlerFunc) *Mapper {
+	return r.request(MethodGet, path, FUNC(fn))
 }
 
-func (r *Router) request(method uint32, path string, fn Handler, filters []Filter) *Mapper {
-	filters = append(r.filters, filters...)
-	return r.rootRouter.HandleRequest(method, r.basePath+path, fn, filters...)
+// GetBinding 注册 GET 方法处理函数
+func (r *router) GetBinding(path string, fn interface{}) *Mapper {
+	return r.request(MethodGet, path, BIND(fn))
 }
 
-// Route 返回和 Mapping 绑定的路由分组
-func (r *Router) Route(basePath string, filters ...Filter) *Router {
-	filters = append(r.filters, filters...)
-	return NewRouter(r.rootRouter, r.basePath+basePath, filters)
+// HandlePost 注册 POST 方法处理函数
+func (r *router) HandlePost(path string, h Handler) *Mapper {
+	return r.request(MethodPost, path, h)
+}
+
+// PostMapping 注册 POST 方法处理函数
+func (r *router) PostMapping(path string, fn HandlerFunc) *Mapper {
+	return r.request(MethodPost, path, FUNC(fn))
+}
+
+// PostBinding 注册 POST 方法处理函数
+func (r *router) PostBinding(path string, fn interface{}) *Mapper {
+	return r.request(MethodPost, path, BIND(fn))
+}
+
+// HandlePut 注册 PUT 方法处理函数
+func (r *router) HandlePut(path string, h Handler) *Mapper {
+	return r.request(MethodPut, path, h)
+}
+
+// PutMapping 注册 PUT 方法处理函数
+func (r *router) PutMapping(path string, fn HandlerFunc) *Mapper {
+	return r.request(MethodPut, path, FUNC(fn))
+}
+
+// PutBinding 注册 PUT 方法处理函数
+func (r *router) PutBinding(path string, fn interface{}) *Mapper {
+	return r.request(MethodPut, path, BIND(fn))
+}
+
+// HandleDelete 注册 DELETE 方法处理函数
+func (r *router) HandleDelete(path string, h Handler) *Mapper {
+	return r.request(MethodDelete, path, h)
+}
+
+// DeleteMapping 注册 DELETE 方法处理函数
+func (r *router) DeleteMapping(path string, fn HandlerFunc) *Mapper {
+	return r.request(MethodDelete, path, FUNC(fn))
+}
+
+// DeleteBinding 注册 DELETE 方法处理函数
+func (r *router) DeleteBinding(path string, fn interface{}) *Mapper {
+	return r.request(MethodDelete, path, BIND(fn))
+}
+
+// HandleRequest 注册任意 HTTP 方法处理函数
+func (r *router) HandleRequest(method uint32, path string, h Handler) *Mapper {
+	return r.request(method, path, h)
+}
+
+// RequestMapping 注册任意 HTTP 方法处理函数
+func (r *router) RequestMapping(method uint32, path string, fn HandlerFunc) *Mapper {
+	return r.request(method, path, FUNC(fn))
+}
+
+// RequestBinding 注册任意 HTTP 方法处理函数
+func (r *router) RequestBinding(method uint32, path string, fn interface{}) *Mapper {
+	return r.request(method, path, BIND(fn))
 }
