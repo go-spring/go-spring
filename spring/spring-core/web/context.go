@@ -84,13 +84,13 @@ func (e *HttpError) SetInternal(err error) *HttpError {
 type ResponseWriter interface {
 	http.ResponseWriter
 
-	// Returns the HTTP response status code of the current request.
+	// Status Returns the HTTP response status code of the current request.
 	Status() int
 
-	// Returns the number of bytes already written into the response http body.
+	// Size Returns the number of bytes already written into the response http body.
 	Size() int
 
-	// 返回发送给客户端的数据，当前仅支持 MIMEApplicationJSON 格式.
+	// Body 返回发送给客户端的数据，当前仅支持 MIMEApplicationJSON 格式.
 	Body() []byte
 }
 
@@ -99,12 +99,6 @@ type Context interface {
 
 	// NativeContext 返回封装的底层上下文对象
 	NativeContext() interface{}
-
-	// Get retrieves data from the context.
-	Get(key string) interface{}
-
-	// Set saves data in the context.
-	Set(key string, val interface{})
 
 	/////////////////////////////////////////
 	// Request Part

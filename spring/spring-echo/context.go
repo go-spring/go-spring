@@ -27,6 +27,7 @@ import (
 	"net/url"
 	"os"
 
+	"github.com/go-spring/spring-core/knife"
 	"github.com/go-spring/spring-core/util"
 	"github.com/go-spring/spring-core/validator"
 	"github.com/go-spring/spring-core/web"
@@ -92,6 +93,12 @@ type Context struct {
 // NewContext Context 的构造函数
 func NewContext(fn web.Handler, wildCardName string, echoCtx echo.Context) *Context {
 
+	{
+		req := echoCtx.Request()
+		ctx := knife.New(req.Context())
+		echoCtx.SetRequest(req.WithContext(ctx))
+	}
+
 	echoCtx.Response().Writer = &responseWriter{
 		writer: &web.BufferedResponseWriter{
 			ResponseWriter: echoCtx.Response().Writer,
@@ -105,23 +112,13 @@ func NewContext(fn web.Handler, wildCardName string, echoCtx echo.Context) *Cont
 		wildCardName: wildCardName,
 	}
 
-	ctx.Set(web.ContextKey, ctx)
+	echoCtx.Set(web.ContextKey, ctx)
 	return ctx
 }
 
 // NativeContext 返回封装的底层上下文对象
 func (ctx *Context) NativeContext() interface{} {
 	return ctx.echoContext
-}
-
-// Get retrieves data from the context.
-func (ctx *Context) Get(key string) interface{} {
-	return ctx.echoContext.Get(key)
-}
-
-// Set saves data in the context.
-func (ctx *Context) Set(key string, val interface{}) {
-	ctx.echoContext.Set(key, val)
 }
 
 // Request returns `*http.Request`.

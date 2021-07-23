@@ -27,6 +27,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/go-spring/spring-core/knife"
 	"github.com/go-spring/spring-core/validator"
 	"github.com/go-spring/spring-core/web"
 )
@@ -85,6 +86,12 @@ type Context struct {
 // NewContext Context 的构造函数
 func NewContext(fn web.Handler, wildCardName string, ginCtx *gin.Context) *Context {
 
+	{
+		req := ginCtx.Request
+		ctx := knife.New(req.Context())
+		ginCtx.Request = req.WithContext(ctx)
+	}
+
 	ginCtx.Writer = &responseWriter{
 		writer: &web.BufferedResponseWriter{
 			ResponseWriter: ginCtx.Writer,
@@ -98,23 +105,13 @@ func NewContext(fn web.Handler, wildCardName string, ginCtx *gin.Context) *Conte
 		wildCardName: wildCardName,
 	}
 
-	webCtx.Set(web.ContextKey, webCtx)
+	ginCtx.Set(web.ContextKey, webCtx)
 	return webCtx
 }
 
 // NativeContext 返回封装的底层上下文对象
 func (ctx *Context) NativeContext() interface{} {
 	return ctx.ginContext
-}
-
-// Get retrieves data from the context.
-func (ctx *Context) Get(key string) interface{} {
-	return ctx.ginContext.MustGet(key)
-}
-
-// Set saves data in the context.
-func (ctx *Context) Set(key string, val interface{}) {
-	ctx.ginContext.Set(key, val)
 }
 
 // Request returns `*http.Request`.
