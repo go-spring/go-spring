@@ -1,5 +1,7 @@
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
+github.com/go-spring/spring-stl v0.0.0-20210724145437-4e7cb5d3e0ce h1:F7wJMEoqdFfr/1uk1Vxl5MTQHozxZn8fDxaVHZZoHGM=
+github.com/go-spring/spring-stl v0.0.0-20210724145437-4e7cb5d3e0ce/go.mod h1:J6ueKvxmXzWJ+PSVaoE9SqWNSpSUuHPrR2/X/MdfSU0=
 github.com/labstack/echo v3.3.10+incompatible h1:pGRcYk231ExFAyoAjAfD85kQzRJCRI8bbnE7CX5OEgg=
 github.com/labstack/echo v3.3.10+incompatible/go.mod h1:0INS7j/VjnFxD4E2wkz67b8cVwCLbBmJyDaka6Cmk1s=
 github.com/labstack/gommon v0.3.0 h1:JEeO0bvc78PKdyHxloTKiF8BD5iGrH8T6MSeGvSgob0=

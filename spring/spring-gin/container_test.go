@@ -27,9 +27,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-spring/spring-core/util/assert"
 	"github.com/go-spring/spring-core/web"
 	"github.com/go-spring/spring-gin"
+	"github.com/go-spring/spring-stl/assert"
 )
 
 func TestContext_PanicSysError(t *testing.T) {

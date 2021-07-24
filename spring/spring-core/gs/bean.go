@@ -26,7 +26,7 @@ import (
 	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/gs/bean"
 	"github.com/go-spring/spring-core/gs/cond"
-	"github.com/go-spring/spring-core/util"
+	"github.com/go-spring/spring-stl/util"
 )
 
 const (

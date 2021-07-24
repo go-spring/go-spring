@@ -21,8 +21,8 @@ import (
 	"errors"
 	"reflect"
 
-	"github.com/go-spring/spring-core/json"
-	"github.com/go-spring/spring-core/util"
+	"github.com/go-spring/spring-stl/json"
+	"github.com/go-spring/spring-stl/util"
 )
 
 // Consumer 消息消费者。

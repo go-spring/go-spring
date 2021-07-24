@@ -36,8 +36,8 @@ import (
 	"github.com/go-spring/spring-core/gs/cond"
 	"github.com/go-spring/spring-core/gs/environ"
 	"github.com/go-spring/spring-core/log"
-	"github.com/go-spring/spring-core/util"
-	"github.com/go-spring/spring-core/util/cast"
+	"github.com/go-spring/spring-stl/cast"
+	"github.com/go-spring/spring-stl/util"
 )
 
 type refreshState int

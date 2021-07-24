@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/go-spring/spring-core/web"
+	"github.com/go-spring/spring-stl/assert"
 	"github.com/go-spring/spring-swag/swagger"
 )
 
@@ -31,4 +32,5 @@ func Test_Doc(t *testing.T) {
 	swagger.Path(m).WithDescription("welcome to go-spring")
 	web.RegisterSwaggerHandler(func(router web.Router, doc string) { fmt.Println(doc) })
 	_ = c.Start()
+	assert.True(t, true)
 }

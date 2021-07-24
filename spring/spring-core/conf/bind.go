@@ -23,8 +23,8 @@ import (
 	"strings"
 
 	"github.com/go-spring/spring-core/log"
-	"github.com/go-spring/spring-core/util"
-	"github.com/go-spring/spring-core/util/cast"
+	"github.com/go-spring/spring-stl/cast"
+	"github.com/go-spring/spring-stl/util"
 )
 
 var (

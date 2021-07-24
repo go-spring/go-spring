@@ -36,11 +36,11 @@ import (
 	"github.com/go-spring/spring-core/gs/environ"
 	pkg1 "github.com/go-spring/spring-core/gs/testdata/pkg/bar"
 	pkg2 "github.com/go-spring/spring-core/gs/testdata/pkg/foo"
-	"github.com/go-spring/spring-core/json"
 	"github.com/go-spring/spring-core/log"
-	"github.com/go-spring/spring-core/util"
-	"github.com/go-spring/spring-core/util/assert"
-	"github.com/go-spring/spring-core/util/cast"
+	"github.com/go-spring/spring-stl/assert"
+	"github.com/go-spring/spring-stl/cast"
+	"github.com/go-spring/spring-stl/json"
+	"github.com/go-spring/spring-stl/util"
 )
 
 func container() (*gs.Container, chan gs.Pandora) {

@@ -26,8 +26,8 @@ import (
 
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/log"
-	"github.com/go-spring/spring-core/util/assert"
-	"github.com/go-spring/spring-core/util/cast"
+	"github.com/go-spring/spring-stl/assert"
+	"github.com/go-spring/spring-stl/cast"
 )
 
 func init() {

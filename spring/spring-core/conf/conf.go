@@ -25,7 +25,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/go-spring/spring-core/util/cast"
+	"github.com/go-spring/spring-stl/cast"
 )
 
 const RootKey = "$"

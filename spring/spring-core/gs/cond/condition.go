@@ -26,8 +26,8 @@ import (
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/gs/bean"
 	"github.com/go-spring/spring-core/gs/environ"
-	"github.com/go-spring/spring-core/util"
-	"github.com/go-spring/spring-core/util/cast"
+	"github.com/go-spring/spring-stl/cast"
+	"github.com/go-spring/spring-stl/util"
 )
 
 // Context IoC 容器对 cond 模块提供的最小功能集。

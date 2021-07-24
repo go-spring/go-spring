@@ -25,9 +25,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-spring/spring-core/util/assert"
 	"github.com/go-spring/spring-core/web"
 	"github.com/go-spring/spring-echo"
+	"github.com/go-spring/spring-stl/assert"
 	"github.com/labstack/echo"
 )
 

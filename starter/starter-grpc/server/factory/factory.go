@@ -26,7 +26,7 @@ import (
 	SpringGrpc "github.com/go-spring/spring-core/grpc"
 	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/log"
-	"github.com/go-spring/spring-core/util"
+	"github.com/go-spring/spring-stl/util"
 	"github.com/go-spring/starter-core"
 	"google.golang.org/grpc"
 )

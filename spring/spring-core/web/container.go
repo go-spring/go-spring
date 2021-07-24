@@ -25,7 +25,7 @@ import (
 	"time"
 
 	"github.com/go-spring/spring-core/log"
-	"github.com/go-spring/spring-core/util"
+	"github.com/go-spring/spring-stl/util"
 )
 
 // HandlerFunc 标准 Web 处理函数
