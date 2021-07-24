@@ -20,8 +20,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/go-spring/spring-core/assert"
-	"github.com/go-spring/spring-core/knife"
+	"github.com/go-spring/spring-core/util/assert"
+	"github.com/go-spring/spring-core/util/knife"
 )
 
 func TestKnife(t *testing.T) {

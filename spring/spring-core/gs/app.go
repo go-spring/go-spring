@@ -29,7 +29,6 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/go-spring/spring-core/cast"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/grpc"
 	"github.com/go-spring/spring-core/gs/arg"
@@ -37,6 +36,7 @@ import (
 	"github.com/go-spring/spring-core/gsutil"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/mq"
+	"github.com/go-spring/spring-core/util/cast"
 	"github.com/go-spring/spring-core/web"
 )
 

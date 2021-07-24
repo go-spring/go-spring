@@ -19,7 +19,7 @@ package web_test
 import (
 	"testing"
 
-	"github.com/go-spring/spring-core/assert"
+	"github.com/go-spring/spring-core/util/assert"
 	"github.com/go-spring/spring-core/web"
 )
 

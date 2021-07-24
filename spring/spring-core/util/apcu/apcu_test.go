@@ -20,8 +20,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/go-spring/spring-core/apcu"
-	"github.com/go-spring/spring-core/assert"
+	"github.com/go-spring/spring-core/util/apcu"
+	"github.com/go-spring/spring-core/util/assert"
 )
 
 func TestAPCU(t *testing.T) {

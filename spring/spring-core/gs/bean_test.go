@@ -23,12 +23,12 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/go-spring/spring-core/assert"
 	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/gs/arg"
 	pkg1 "github.com/go-spring/spring-core/gs/testdata/pkg/bar"
 	pkg2 "github.com/go-spring/spring-core/gs/testdata/pkg/foo"
 	"github.com/go-spring/spring-core/gsutil"
+	"github.com/go-spring/spring-core/util/assert"
 )
 
 // newBean 该方法是为了平衡调用栈的深度，一般情况下 gs.NewBean 不应该被直接使用。

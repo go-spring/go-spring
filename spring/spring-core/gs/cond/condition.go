@@ -23,11 +23,11 @@ import (
 	"go/types"
 	"strings"
 
-	"github.com/go-spring/spring-core/cast"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/gs/bean"
 	"github.com/go-spring/spring-core/gs/environ"
 	"github.com/go-spring/spring-core/util"
+	"github.com/go-spring/spring-core/util/cast"
 )
 
 // Context IoC 容器对 cond 模块提供的最小功能集。

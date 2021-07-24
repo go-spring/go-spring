@@ -28,8 +28,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-spring/spring-core/assert"
-	"github.com/go-spring/spring-core/cast"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/gs/arg"
@@ -41,6 +39,8 @@ import (
 	"github.com/go-spring/spring-core/json"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
+	"github.com/go-spring/spring-core/util/assert"
+	"github.com/go-spring/spring-core/util/cast"
 )
 
 func container() (*gs.Container, chan gs.Pandora) {

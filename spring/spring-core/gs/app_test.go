@@ -24,10 +24,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-spring/spring-core/assert"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/gs/environ"
+	"github.com/go-spring/spring-core/util/assert"
 )
 
 func startApplication(cfgLocation string) (*gs.App, gs.Pandora) {

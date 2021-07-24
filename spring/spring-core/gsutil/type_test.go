@@ -24,10 +24,10 @@ import (
 	"testing"
 	"unsafe"
 
-	"github.com/go-spring/spring-core/assert"
 	"github.com/go-spring/spring-core/gsutil"
 	pkg1 "github.com/go-spring/spring-core/gsutil/testdata/pkg/bar"
 	pkg2 "github.com/go-spring/spring-core/gsutil/testdata/pkg/foo"
+	"github.com/go-spring/spring-core/util/assert"
 )
 
 type errorString struct {

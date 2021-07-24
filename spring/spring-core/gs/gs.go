@@ -30,7 +30,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/go-spring/spring-core/cast"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/gs/bean"
@@ -39,6 +38,7 @@ import (
 	"github.com/go-spring/spring-core/gsutil"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
+	"github.com/go-spring/spring-core/util/cast"
 )
 
 type refreshState int

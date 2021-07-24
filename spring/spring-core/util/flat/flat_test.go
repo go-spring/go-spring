@@ -19,8 +19,8 @@ package flat_test
 import (
 	"testing"
 
-	"github.com/go-spring/spring-core/assert"
-	"github.com/go-spring/spring-core/flat"
+	"github.com/go-spring/spring-core/util/assert"
+	"github.com/go-spring/spring-core/util/flat"
 )
 
 func TestFlatMap(t *testing.T) {

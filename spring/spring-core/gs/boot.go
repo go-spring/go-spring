@@ -21,9 +21,9 @@ import (
 	"os"
 	"reflect"
 
-	"github.com/go-spring/spring-core/cast"
 	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/util"
+	"github.com/go-spring/spring-core/util/cast"
 	"github.com/go-spring/spring-core/web"
 )
 

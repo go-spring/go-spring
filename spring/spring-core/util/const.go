@@ -20,8 +20,8 @@ import (
 	"errors"
 )
 
-// UnimplementedMethod 如果某个方法未实现则可以抛出此错误。
-var UnimplementedMethod = errors.New("unimplemented method")
-
 // UnsupportedMethod 如果某个方法禁止被调用则可以抛出此错误。
 var UnsupportedMethod = errors.New("unsupported method")
+
+// UnimplementedMethod 如果某个方法未实现则可以抛出此错误。
+var UnimplementedMethod = errors.New("unimplemented method")
