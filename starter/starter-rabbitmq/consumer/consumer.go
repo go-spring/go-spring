@@ -27,14 +27,14 @@ import (
 )
 
 func init() {
-	gs.Object(new(Starter)).Name("amqp-consumer-starter").Export(gs.ApplicationEvent)
+	gs.Object(new(Starter)).Name("amqp-consumer-starter").Export(gs.AppEvent)
 }
 
 type Starter struct {
 	Server *StarterRabbitMQServer.AMQPServer `autowire:""`
 }
 
-func (starter *Starter) OnStartApplication(ctx gs.ApplicationContext) {
+func (starter *Starter) OnStartApp(ctx gs.AppContext) {
 
 	cMap := map[string][]mq.Consumer{}
 	{
@@ -42,7 +42,7 @@ func (starter *Starter) OnStartApplication(ctx gs.ApplicationContext) {
 		err := ctx.Get(&consumers)
 		util.Panic(err).When(err != nil)
 
-		var bindConsumers *gs.BindConsumers
+		var bindConsumers *gs.Consumers
 		err = ctx.Get(&bindConsumers)
 		util.Panic(err).When(err != nil)
 
@@ -82,6 +82,6 @@ func (starter *Starter) OnStartApplication(ctx gs.ApplicationContext) {
 	}()
 }
 
-func (starter *Starter) OnStopApplication(ctx gs.ApplicationContext) {
+func (starter *Starter) OnStopApp(ctx gs.AppContext) {
 
 }

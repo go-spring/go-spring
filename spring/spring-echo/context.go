@@ -27,8 +27,8 @@ import (
 	"os"
 
 	"github.com/go-spring/spring-core/json"
-	"github.com/go-spring/spring-core/knife"
 	"github.com/go-spring/spring-core/util"
+	"github.com/go-spring/spring-core/util/knife"
 	"github.com/go-spring/spring-core/validator"
 	"github.com/go-spring/spring-core/web"
 	"github.com/labstack/echo"

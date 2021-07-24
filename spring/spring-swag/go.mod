@@ -8,4 +8,6 @@ require (
 	github.com/swaggo/http-swagger v1.0.0
 )
 
-replace github.com/go-spring/spring-core => ../spring-core
+replace (
+	github.com/go-spring/spring-core => ../spring-core
+)

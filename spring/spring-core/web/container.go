@@ -24,7 +24,6 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/go-spring/spring-core/gsutil"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
 )
@@ -203,7 +202,7 @@ type fnHandler HandlerFunc
 func (f fnHandler) Invoke(ctx Context) { f(ctx) }
 
 func (f fnHandler) FileLine() (file string, line int, fnName string) {
-	return gsutil.FileLine(f)
+	return util.FileLine(f)
 }
 
 // FUNC 标准 Web 处理函数的辅助函数
@@ -217,7 +216,7 @@ func (h httpFuncHandler) Invoke(ctx Context) {
 }
 
 func (h httpFuncHandler) FileLine() (file string, line int, fnName string) {
-	return gsutil.FileLine(h)
+	return util.FileLine(h)
 }
 
 // HTTP 标准 Http 处理函数的辅助函数
@@ -240,7 +239,7 @@ func (h httpHandler) Invoke(ctx Context) {
 func (h httpHandler) FileLine() (file string, line int, fnName string) {
 	t := reflect.TypeOf(h.Handler)
 	m, _ := t.MethodByName("ServeHTTP")
-	return gsutil.FileLine(m.Func.Interface())
+	return util.FileLine(m.Func.Interface())
 }
 
 // WrapH 标准 Http 处理函数的辅助函数

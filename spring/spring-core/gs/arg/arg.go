@@ -25,7 +25,6 @@ import (
 
 	"github.com/go-spring/spring-core/gs/bean"
 	"github.com/go-spring/spring-core/gs/cond"
-	"github.com/go-spring/spring-core/gsutil"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
 )
@@ -236,13 +235,13 @@ func (r *argList) getArg(ctx Context, arg Arg, t reflect.Type, fileLine string) 
 	case string:
 		tag = g
 	default:
-		tag = gsutil.TypeName(g) + ":"
+		tag = util.TypeName(g) + ":"
 	}
 
 	v := reflect.New(t).Elem()
 
 	// 处理 bean 类型
-	if gsutil.IsBeanReceiver(t) {
+	if util.IsBeanReceiver(t) {
 		if err = ctx.Wire(v, tag); err != nil {
 			return reflect.Value{}, err
 		}
@@ -357,7 +356,7 @@ func (r *Callable) Call(ctx Context) ([]reflect.Value, error) {
 	}
 
 	o := out[n-1]
-	if gsutil.IsErrorType(o.Type()) {
+	if util.IsErrorType(o.Type()) {
 		if i := o.Interface(); i != nil {
 			return out[:n-1], i.(error)
 		}

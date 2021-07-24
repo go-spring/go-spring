@@ -35,7 +35,6 @@ import (
 	"github.com/go-spring/spring-core/gs/bean"
 	"github.com/go-spring/spring-core/gs/cond"
 	"github.com/go-spring/spring-core/gs/environ"
-	"github.com/go-spring/spring-core/gsutil"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
 	"github.com/go-spring/spring-core/util/cast"
@@ -392,7 +391,7 @@ func toWireTag(selector bean.Selector) wireTag {
 	case *BeanDefinition:
 		return parseWireTag(s.ID())
 	default:
-		return parseWireTag(gsutil.TypeName(s) + ":")
+		return parseWireTag(util.TypeName(s) + ":")
 	}
 }
 
@@ -564,9 +563,9 @@ func (c *Container) getBeanValue(b *BeanDefinition, stack *wiringStack) (reflect
 	}
 
 	// 构造函数的返回值为值类型时 b.Type() 返回其指针类型。
-	if val := out[0]; gsutil.IsBeanType(val.Type()) {
+	if val := out[0]; util.IsBeanType(val.Type()) {
 		// 如果实现接口的是值类型，那么需要转换成指针类型然后再赋值给接口。
-		if !val.IsNil() && val.Kind() == reflect.Interface && gsutil.IsValueType(val.Elem().Type()) {
+		if !val.IsNil() && val.Kind() == reflect.Interface && util.IsValueType(val.Elem().Type()) {
 			v := reflect.New(val.Elem().Type())
 			v.Elem().Set(val.Elem())
 			b.Value().Set(v)
@@ -626,7 +625,7 @@ func (c *Container) wireStruct(v reflect.Value, stack *wiringStack) error {
 		fv := v.Field(i)
 
 		if !fv.CanInterface() {
-			fv = gsutil.PatchValue(fv)
+			fv = util.PatchValue(fv)
 		}
 
 		// 支持 autowire 和 inject 两种注入标签。
@@ -696,7 +695,7 @@ func (c *Container) getBean(v reflect.Value, tag wireTag, stack *wiringStack) er
 	}
 
 	t := v.Type()
-	if !gsutil.IsBeanReceiver(t) {
+	if !util.IsBeanReceiver(t) {
 		return fmt.Errorf("%s is not valid receiver type", t.String())
 	}
 
@@ -827,7 +826,7 @@ func (c *Container) collectBeans(v reflect.Value, tags []wireTag, stack *wiringS
 	}
 
 	et := t.Elem()
-	if !gsutil.IsBeanReceiver(et) {
+	if !util.IsBeanReceiver(et) {
 		return fmt.Errorf("%s is not valid receiver type", t.String())
 	}
 

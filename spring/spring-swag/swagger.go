@@ -149,7 +149,7 @@ func (s *Swagger) WithTags(tags ...spec.Tag) *Swagger {
 }
 
 // AddPath 添加一个路由
-func (s *Swagger) AddPath(path string, method uint32, op web.Operation) {
+func (s *Swagger) AddPath(path string, method string, op web.Operation) {
 
 	path = strings.TrimPrefix(path, s.BasePath)
 	path = strings.TrimRight(path, "/")

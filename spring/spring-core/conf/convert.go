@@ -21,7 +21,7 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/go-spring/spring-core/gsutil"
+	"github.com/go-spring/spring-core/util"
 	"github.com/go-spring/spring-core/util/cast"
 )
 
@@ -41,8 +41,8 @@ func validConverter(t reflect.Type) bool {
 		t.NumIn() == 1 &&
 		t.In(0).Kind() == reflect.String &&
 		t.NumOut() == 2 &&
-		gsutil.IsValueType(t.Out(0)) &&
-		gsutil.IsErrorType(t.Out(1))
+		util.IsValueType(t.Out(0)) &&
+		util.IsErrorType(t.Out(1))
 }
 
 // Convert 注册类型转换器，转换器的函数原型为 func(string)(type,error) 。

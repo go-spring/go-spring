@@ -29,6 +29,7 @@ import (
 	"github.com/gin-gonic/gin/binding"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
+	"github.com/go-spring/spring-core/util/errors"
 	"github.com/go-spring/spring-core/web"
 )
 
@@ -125,14 +126,14 @@ func (c *Container) Start() error {
 		err = c.httpServer.ListenAndServe()
 	}
 
-	log.Infof("exit gin server on %s return %s", c.Address(), util.Error(err))
+	log.Infof("exit gin server on %s return %s", c.Address(), errors.ToString(err))
 	return err
 }
 
 // Stop 停止 Web 容器
 func (c *Container) Stop(ctx context.Context) error {
 	err := c.httpServer.Shutdown(ctx)
-	log.Infof("shutdown gin server on %s return %s", c.Address(), util.Error(err))
+	log.Infof("shutdown gin server on %s return %s", c.Address(), errors.ToString(err))
 	return err
 }
 

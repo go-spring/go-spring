@@ -22,8 +22,8 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/go-spring/spring-core/gsutil"
 	"github.com/go-spring/spring-core/log"
+	"github.com/go-spring/spring-core/util"
 	"github.com/go-spring/spring-core/util/cast"
 )
 
@@ -41,7 +41,7 @@ type bindOption struct {
 
 func bind(p *Properties, v reflect.Value, tag string, opt bindOption) error {
 
-	if !gsutil.IsValueType(opt.typ) {
+	if !util.IsValueType(opt.typ) {
 		return fmt.Errorf("%s 属性绑定的目标必须是值类型", opt.path)
 	}
 
@@ -263,7 +263,7 @@ func bindStruct(p *Properties, v reflect.Value, opt bindOption) error {
 		fv := v.Field(i)
 
 		if !fv.CanInterface() {
-			fv = gsutil.PatchValue(fv)
+			fv = util.PatchValue(fv)
 			if !fv.CanInterface() {
 				continue
 			}

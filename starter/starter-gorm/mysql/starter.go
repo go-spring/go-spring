@@ -32,13 +32,13 @@ func init() {
 	// 如果没有 fromDB 名称的 *gorm.DB 对象则创建 fromConfig 名称的 *gorm.DB 对象
 	gs.Provide(fromConfig).
 		Name("mysql-gorm-from-config").
-		Cond(cond.OnMissingBean((*gorm.DB)(nil))).
+		On(cond.OnMissingBean((*gorm.DB)(nil))).
 		Destroy(closeDB)
 
 	// 如果已经有 *sql.DB 对象则创建fromDB 名称的 *gorm.DB 对象
 	gs.Provide(fromDB).
 		Name("mysql-gorm-from-db").
-		Cond(cond.OnBean((*sql.DB)(nil))).
+		On(cond.OnBean((*sql.DB)(nil))).
 		Destroy(closeDB)
 }
 

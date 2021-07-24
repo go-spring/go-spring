@@ -33,9 +33,9 @@ import (
 	"github.com/go-spring/spring-core/grpc"
 	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/gs/environ"
-	"github.com/go-spring/spring-core/gsutil"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/mq"
+	"github.com/go-spring/spring-core/util"
 	"github.com/go-spring/spring-core/util/cast"
 	"github.com/go-spring/spring-core/web"
 )
@@ -284,7 +284,7 @@ func (app *App) OnProperty(key string, fn interface{}) {
 	if t.Kind() != reflect.Func {
 		panic(errors.New("fn should be a func(value_type)"))
 	}
-	if t.NumIn() != 1 || !gsutil.IsValueType(t.In(0)) || t.NumOut() != 0 {
+	if t.NumIn() != 1 || !util.IsValueType(t.In(0)) || t.NumOut() != 0 {
 		panic(errors.New("fn should be a func(value_type)"))
 	}
 	app.mapOfOnProperty[key] = fn

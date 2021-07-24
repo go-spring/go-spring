@@ -25,6 +25,7 @@ import (
 
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
+	"github.com/go-spring/spring-core/util/errors"
 	"github.com/go-spring/spring-core/web"
 	"github.com/labstack/echo"
 )
@@ -113,14 +114,14 @@ func (c *Container) Start() error {
 		err = c.echoServer.Start(c.Address())
 	}
 
-	log.Infof("exit echo server on %s return %s", c.Address(), util.Error(err))
+	log.Infof("exit echo server on %s return %s", c.Address(), errors.ToString(err))
 	return err
 }
 
 // Stop 停止 Web 容器
 func (c *Container) Stop(ctx context.Context) error {
 	err := c.echoServer.Shutdown(ctx)
-	log.Infof("shutdown echo server on %s return %s", c.Address(), util.Error(err))
+	log.Infof("shutdown echo server on %s return %s", c.Address(), errors.ToString(err))
 	return err
 }
 

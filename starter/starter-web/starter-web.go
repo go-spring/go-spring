@@ -39,7 +39,7 @@ type Starter struct {
 // OnStartApp 应用程序启动事件。
 func (starter *Starter) OnStartApp(ctx gs.AppContext) {
 
-	sortContainers(starter.Containers)
+	starter.sortContainers()
 
 	var webFilters struct {
 		Filters []web.Filter `autowire:"${web.server.filters}"`
@@ -48,40 +48,21 @@ func (starter *Starter) OnStartApp(ctx gs.AppContext) {
 	_, err := ctx.Wire(&webFilters)
 	util.Panic(err).When(err != nil)
 
-	for _, container := range starter.Containers {
-		container.AddFilter(webFilters.Filters...)
-	}
-
-	getContainer := func(mapper *web.Mapper) web.Container {
-		for _, c := range starter.Containers {
-			if strings.HasPrefix(mapper.Path(), c.Config().BasePath) {
-				return c
-			}
-		}
-		return nil
+	for _, c := range starter.Containers {
+		c.AddFilter(webFilters.Filters...)
 	}
 
 	var router web.Router
 	err = ctx.Get(&router)
 	util.Panic(err).When(err != nil)
 
-	for _, mapper := range router.Mappers() {
-		if c := getContainer(mapper); c != nil {
-			c.AddMapper(web.NewMapper(
-				mapper.Method(),
-				mapper.Path(),
-				mapper.Handler(),
-			))
+	for _, m := range router.Mappers() {
+		if c := starter.getContainer(m); c != nil {
+			c.AddMapper(web.NewMapper(m.Method(), m.Path(), m.Handler()))
 		}
 	}
 
-	for _, c := range starter.Containers {
-		ctx.Go(func(_ context.Context) {
-			if err := c.Start(); err != nil && err != http.ErrServerClosed {
-				gs.ShutDown(err)
-			}
-		})
-	}
+	starter.startContainers(ctx)
 }
 
 // OnStopApp 应用程序结束事件。
@@ -92,13 +73,33 @@ func (starter *Starter) OnStopApp(ctx gs.AppContext) {
 }
 
 // sortContainers 按照 BasePath 的前缀关系对容器进行排序。
-func sortContainers(containers []web.Container) {
-	sort.Slice(containers, func(i, j int) bool {
-		si := containers[i].Config().BasePath
-		sj := containers[j].Config().BasePath
+func (starter *Starter) sortContainers() {
+	sort.Slice(starter.Containers, func(i, j int) bool {
+		si := starter.Containers[i].Config().BasePath
+		sj := starter.Containers[j].Config().BasePath
 		if strings.HasPrefix(si, sj) {
 			return true
 		}
 		return strings.Compare(si, sj) >= 0
 	})
+}
+
+func (starter *Starter) getContainer(mapper *web.Mapper) web.Container {
+	for _, c := range starter.Containers {
+		if strings.HasPrefix(mapper.Path(), c.Config().BasePath) {
+			return c
+		}
+	}
+	return nil
+}
+
+func (starter *Starter) startContainers(ctx gs.AppContext) {
+	for _, container := range starter.Containers {
+		c := container
+		ctx.Go(func(_ context.Context) {
+			if err := c.Start(); err != nil && err != http.ErrServerClosed {
+				gs.ShutDown(err)
+			}
+		})
+	}
 }

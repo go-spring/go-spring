@@ -24,7 +24,7 @@ import (
 )
 
 func init() {
-	web.RegisterSwaggerHandler(func(mapping web.RootRouter, doc string) {
+	web.RegisterSwaggerHandler(func(mapping web.Router, doc string) {
 		hSwagger := httpSwagger.Handler(httpSwagger.URL("/swagger/doc.json"))
 
 		// 注册 swagger-ui 和 doc.json 接口

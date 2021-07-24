@@ -26,5 +26,5 @@ import (
 func init() {
 	gs.Provide(GoRedisFactory.NewClient).
 		Name("go-redis-client").
-		Cond(cond.OnMissingBean((*redis.Cmdable)(nil)))
+		On(cond.OnMissingBean((*redis.Cmdable)(nil)))
 }

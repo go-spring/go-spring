@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package gsutil_test
+package util_test
 
 import (
 	"fmt"
@@ -24,10 +24,10 @@ import (
 	"testing"
 	"unsafe"
 
-	"github.com/go-spring/spring-core/gsutil"
-	pkg1 "github.com/go-spring/spring-core/gsutil/testdata/pkg/bar"
-	pkg2 "github.com/go-spring/spring-core/gsutil/testdata/pkg/foo"
+	"github.com/go-spring/spring-core/util"
 	"github.com/go-spring/spring-core/util/assert"
+	pkg1 "github.com/go-spring/spring-core/util/testdata/pkg/bar"
+	pkg2 "github.com/go-spring/spring-core/util/testdata/pkg/foo"
 )
 
 type errorString struct {
@@ -235,7 +235,7 @@ func TestRefType(t *testing.T) {
 		default:
 			typ = reflect.TypeOf(i)
 		}
-		if r := gsutil.IsBeanType(typ); d.v != r {
+		if r := util.IsBeanType(typ); d.v != r {
 			t.Errorf("%v expect %v but %v", typ, d.v, r)
 		}
 	}
@@ -286,7 +286,7 @@ func TestIsValueType(t *testing.T) {
 		default:
 			typ = reflect.TypeOf(i)
 		}
-		if r := gsutil.IsValueType(typ); d.v != r {
+		if r := util.IsValueType(typ); d.v != r {
 			t.Errorf("%v expect %v but %v", typ, d.v, r)
 		}
 	}
@@ -403,21 +403,21 @@ func TestTypeName(t *testing.T) {
 		reflect.TypeOf(&[]string{"string"}):     {"string", "*[]string"},
 		reflect.TypeOf(make(map[string]string)): {"map[string]string", "map[string]string"},
 
-		reflect.TypeOf(pkg1.SamePkg{}):             {"github.com/go-spring/spring-core/gsutil/testdata/pkg/bar/pkg.SamePkg", "pkg.SamePkg"},
-		reflect.TypeOf(new(pkg1.SamePkg)):          {"github.com/go-spring/spring-core/gsutil/testdata/pkg/bar/pkg.SamePkg", "*pkg.SamePkg"},
-		reflect.TypeOf(make([]pkg1.SamePkg, 0)):    {"github.com/go-spring/spring-core/gsutil/testdata/pkg/bar/pkg.SamePkg", "[]pkg.SamePkg"},
-		reflect.TypeOf(&[]pkg1.SamePkg{}):          {"github.com/go-spring/spring-core/gsutil/testdata/pkg/bar/pkg.SamePkg", "*[]pkg.SamePkg"},
+		reflect.TypeOf(pkg1.SamePkg{}):             {"github.com/go-spring/spring-core/util/testdata/pkg/bar/pkg.SamePkg", "pkg.SamePkg"},
+		reflect.TypeOf(new(pkg1.SamePkg)):          {"github.com/go-spring/spring-core/util/testdata/pkg/bar/pkg.SamePkg", "*pkg.SamePkg"},
+		reflect.TypeOf(make([]pkg1.SamePkg, 0)):    {"github.com/go-spring/spring-core/util/testdata/pkg/bar/pkg.SamePkg", "[]pkg.SamePkg"},
+		reflect.TypeOf(&[]pkg1.SamePkg{}):          {"github.com/go-spring/spring-core/util/testdata/pkg/bar/pkg.SamePkg", "*[]pkg.SamePkg"},
 		reflect.TypeOf(make(map[int]pkg1.SamePkg)): {"map[int]pkg.SamePkg", "map[int]pkg.SamePkg"},
 
-		reflect.TypeOf(pkg2.SamePkg{}):             {"github.com/go-spring/spring-core/gsutil/testdata/pkg/foo/pkg.SamePkg", "pkg.SamePkg"},
-		reflect.TypeOf(new(pkg2.SamePkg)):          {"github.com/go-spring/spring-core/gsutil/testdata/pkg/foo/pkg.SamePkg", "*pkg.SamePkg"},
-		reflect.TypeOf(make([]pkg2.SamePkg, 0)):    {"github.com/go-spring/spring-core/gsutil/testdata/pkg/foo/pkg.SamePkg", "[]pkg.SamePkg"},
-		reflect.TypeOf(&[]pkg2.SamePkg{}):          {"github.com/go-spring/spring-core/gsutil/testdata/pkg/foo/pkg.SamePkg", "*[]pkg.SamePkg"},
+		reflect.TypeOf(pkg2.SamePkg{}):             {"github.com/go-spring/spring-core/util/testdata/pkg/foo/pkg.SamePkg", "pkg.SamePkg"},
+		reflect.TypeOf(new(pkg2.SamePkg)):          {"github.com/go-spring/spring-core/util/testdata/pkg/foo/pkg.SamePkg", "*pkg.SamePkg"},
+		reflect.TypeOf(make([]pkg2.SamePkg, 0)):    {"github.com/go-spring/spring-core/util/testdata/pkg/foo/pkg.SamePkg", "[]pkg.SamePkg"},
+		reflect.TypeOf(&[]pkg2.SamePkg{}):          {"github.com/go-spring/spring-core/util/testdata/pkg/foo/pkg.SamePkg", "*[]pkg.SamePkg"},
 		reflect.TypeOf(make(map[int]pkg2.SamePkg)): {"map[int]pkg.SamePkg", "map[int]pkg.SamePkg"},
 	}
 
 	for typ, v := range data {
-		typeName := gsutil.TypeName(typ)
+		typeName := util.TypeName(typ)
 		assert.Equal(t, typeName, v.typeName)
 		assert.Equal(t, typ.String(), v.baseName)
 	}
@@ -427,7 +427,7 @@ func TestTypeName(t *testing.T) {
 	iPtrPtr := &iPtr
 	iPtrPtrPtr := &iPtrPtr
 	typ := reflect.TypeOf(iPtrPtrPtr)
-	typeName := gsutil.TypeName(typ)
+	typeName := util.TypeName(typ)
 	assert.Equal(t, typeName, "int")
 	assert.Equal(t, typ.String(), "***int")
 }
@@ -438,203 +438,203 @@ func TestValue(t *testing.T) {
 		var i int // 默认值
 		v := reflect.ValueOf(i)
 		// int 0 true false
-		fmt.Println(v.Kind(), v, v.IsValid(), gsutil.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), util.IsNil(v))
 
 		i = 3
 		v = reflect.ValueOf(i)
 		// int 3 true false
-		fmt.Println(v.Kind(), v, v.IsValid(), gsutil.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), util.IsNil(v))
 
 		var pi *int // 未赋值
 		v = reflect.ValueOf(pi)
 		// ptr <nil> true true ***
-		fmt.Println(v.Kind(), v, v.IsValid(), gsutil.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), util.IsNil(v))
 
 		pi = &i
 		v = reflect.ValueOf(pi)
 		// ptr 0xc0000a4e60 true false
-		fmt.Println(v.Kind(), v, v.IsValid(), gsutil.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), util.IsNil(v))
 	}
 
 	{
 		var a [3]int // 内存已分配
 		v := reflect.ValueOf(a)
 		// array [0 0 0] true false
-		fmt.Println(v.Kind(), v, v.IsValid(), gsutil.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), util.IsNil(v))
 
 		a = [3]int{0, 0, 0} // 全零值
 		v = reflect.ValueOf(a)
 		// array [0 0 0] true false
-		fmt.Println(v.Kind(), v, v.IsValid(), gsutil.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), util.IsNil(v))
 
 		a = [3]int{1, 0, 0} // 非全零值
 		v = reflect.ValueOf(a)
 		// array [1 0 0] true false
-		fmt.Println(v.Kind(), v, v.IsValid(), gsutil.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), util.IsNil(v))
 
 		var pa *[3]int // 未赋值
 		v = reflect.ValueOf(pa)
 		// ptr <nil> true true ***
-		fmt.Println(v.Kind(), v, v.IsValid(), gsutil.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), util.IsNil(v))
 
 		pa = &a
 		v = reflect.ValueOf(pa)
 		// ptr &[1 0 0] true false
-		fmt.Println(v.Kind(), v, v.IsValid(), gsutil.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), util.IsNil(v))
 	}
 
 	{
 		var c chan struct{} // 未赋值
 		v := reflect.ValueOf(c)
 		// chan <nil> true true ***
-		fmt.Println(v.Kind(), v, v.IsValid(), gsutil.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), util.IsNil(v))
 
 		c = make(chan struct{})
 		v = reflect.ValueOf(c)
 		// chan 0xc000086360 true false
-		fmt.Println(v.Kind(), v, v.IsValid(), gsutil.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), util.IsNil(v))
 
 		var pc *chan struct{} // 未赋值
 		v = reflect.ValueOf(pc)
 		// chan <nil> true true ***
-		fmt.Println(v.Kind(), v, v.IsValid(), gsutil.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), util.IsNil(v))
 
 		pc = &c
 		v = reflect.ValueOf(pc)
 		// ptr 0xc0000a00d8 true false
-		fmt.Println(v.Kind(), v, v.IsValid(), gsutil.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), util.IsNil(v))
 	}
 
 	{
 		var f func() // 未赋值
 		v := reflect.ValueOf(f)
 		// func <nil> true true ***
-		fmt.Println(v.Kind(), v, v.IsValid(), gsutil.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), util.IsNil(v))
 
 		f = func() {}
 		v = reflect.ValueOf(f)
 		// func 0x16d8810 true false
-		fmt.Println(v.Kind(), v, v.IsValid(), gsutil.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), util.IsNil(v))
 
 		var pf *func() // 未赋值
 		v = reflect.ValueOf(pf)
 		// ptr <nil> true true ***
-		fmt.Println(v.Kind(), v, v.IsValid(), gsutil.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), util.IsNil(v))
 
 		pf = &f
 		v = reflect.ValueOf(pf)
 		// ptr 0xc0000a00e0 true false
-		fmt.Println(v.Kind(), v, v.IsValid(), gsutil.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), util.IsNil(v))
 	}
 
 	{
 		var m map[string]string // 未赋值
 		v := reflect.ValueOf(m)
 		// map map[] true true ***
-		fmt.Println(v.Kind(), v, v.IsValid(), gsutil.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), util.IsNil(v))
 
 		m = map[string]string{}
 		v = reflect.ValueOf(m)
 		// map map[] true false
-		fmt.Println(v.Kind(), v, v.IsValid(), gsutil.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), util.IsNil(v))
 
 		m = map[string]string{"a": "1"}
 		v = reflect.ValueOf(m)
 		// map map[a:1] true false
-		fmt.Println(v.Kind(), v, v.IsValid(), gsutil.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), util.IsNil(v))
 
 		var pm *map[string]string // 未赋值
 		v = reflect.ValueOf(pm)
 		// ptr <nil> true true ***
-		fmt.Println(v.Kind(), v, v.IsValid(), gsutil.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), util.IsNil(v))
 
 		pm = &m
 		v = reflect.ValueOf(pm)
 		// ptr &map[a:1] true false
-		fmt.Println(v.Kind(), v, v.IsValid(), gsutil.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), util.IsNil(v))
 	}
 
 	{
 		var b []int // 未赋值
 		v := reflect.ValueOf(b)
 		// slice [] true true ***
-		fmt.Println(v.Kind(), v, v.IsValid(), gsutil.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), util.IsNil(v))
 
 		b = []int{}
 		v = reflect.ValueOf(b)
 		// slice [] true false
-		fmt.Println(v.Kind(), v, v.IsValid(), gsutil.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), util.IsNil(v))
 
 		b = []int{0, 0}
 		v = reflect.ValueOf(b)
 		// slice [0 0] true false
-		fmt.Println(v.Kind(), v, v.IsValid(), gsutil.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), util.IsNil(v))
 
 		b = []int{1, 0, 0}
 		v = reflect.ValueOf(b)
 		// slice [1 0 0] true false
-		fmt.Println(v.Kind(), v, v.IsValid(), gsutil.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), util.IsNil(v))
 
 		var pb *[]int // 未赋值
 		v = reflect.ValueOf(pb)
 		// ptr <nil> true true ***
-		fmt.Println(v.Kind(), v, v.IsValid(), gsutil.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), util.IsNil(v))
 
 		pb = &b
 		v = reflect.ValueOf(pb)
 		// ptr &[1 0 0] true false
-		fmt.Println(v.Kind(), v, v.IsValid(), gsutil.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), util.IsNil(v))
 	}
 
 	{
 		var s string // 默认值
 		v := reflect.ValueOf(s)
 		// string  true false
-		fmt.Println(v.Kind(), v, v.IsValid(), gsutil.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), util.IsNil(v))
 
 		s = "s"
 		v = reflect.ValueOf(s)
 		// string s true false
-		fmt.Println(v.Kind(), v, v.IsValid(), gsutil.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), util.IsNil(v))
 
 		var ps *string // 未赋值
 		v = reflect.ValueOf(ps)
 		// ptr <nil> true true ***
-		fmt.Println(v.Kind(), v, v.IsValid(), gsutil.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), util.IsNil(v))
 
 		ps = &s
 		v = reflect.ValueOf(ps)
 		// ptr 0xc0000974f0 true false
-		fmt.Println(v.Kind(), v, v.IsValid(), gsutil.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), util.IsNil(v))
 	}
 
 	{
 		var st struct{} // 默认值
 		v := reflect.ValueOf(st)
 		// struct {} true false
-		fmt.Println(v.Kind(), v, v.IsValid(), gsutil.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), util.IsNil(v))
 
 		var pst *struct{} // 未赋值
 		v = reflect.ValueOf(pst)
 		// ptr <nil> true true ***
-		fmt.Println(v.Kind(), v, v.IsValid(), gsutil.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), util.IsNil(v))
 
 		pst = &st
 		v = reflect.ValueOf(pst)
 		// ptr &{} true false
-		fmt.Println(v.Kind(), v, v.IsValid(), gsutil.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), util.IsNil(v))
 	}
 
 	{
 		var e error
 		v := reflect.ValueOf(e)
 		// invalid <invalid reflect.Value> false false ***
-		fmt.Println(v.Kind(), v, v.IsValid(), gsutil.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), util.IsNil(v))
 
 		e = fmt.Errorf("e")
 		v = reflect.ValueOf(e)
 		// ptr e true false
-		fmt.Println(v.Kind(), v, v.IsValid(), gsutil.IsNil(v))
+		fmt.Println(v.Kind(), v, v.IsValid(), util.IsNil(v))
 	}
 }
 
@@ -779,7 +779,7 @@ func TestReflectType(t *testing.T) {
 			reflect.TypeOf(pkg1.SamePkg{}),
 			reflect.Struct,
 			"SamePkg",
-			"github.com/go-spring/spring-core/gsutil/testdata/pkg/bar",
+			"github.com/go-spring/spring-core/util/testdata/pkg/bar",
 		},
 		{
 			reflect.TypeOf(new(pkg1.SamePkg)),
@@ -803,7 +803,7 @@ func TestReflectType(t *testing.T) {
 			reflect.TypeOf(pkg2.SamePkg{}),
 			reflect.Struct,
 			"SamePkg",
-			"github.com/go-spring/spring-core/gsutil/testdata/pkg/foo",
+			"github.com/go-spring/spring-core/util/testdata/pkg/foo",
 		},
 		{
 			reflect.TypeOf(new(pkg2.SamePkg)),

@@ -45,16 +45,15 @@ func NewStarter(config StarterCore.GrpcServerConfig) *Starter {
 	}
 }
 
-func (starter *Starter) OnStartApplication(ctx gs.ApplicationContext) {
+func (starter *Starter) OnStartApp(ctx gs.AppContext) {
 
-	srvMap := make(map[string]reflect.Value)
-
-	var servers *gs.GrpcServers
+	var servers map[string]SpringGrpc.Server
 	err := ctx.Get(&servers)
 	util.Panic(err).When(err != nil)
 
 	server := reflect.ValueOf(starter.server)
-	servers.ForEach(func(serviceName string, rpcServer *SpringGrpc.Server) {
+	srvMap := make(map[string]reflect.Value)
+	for serviceName, rpcServer := range servers {
 
 		service := reflect.ValueOf(rpcServer.Service)
 		srvMap[serviceName] = service
@@ -64,7 +63,7 @@ func (starter *Starter) OnStartApplication(ctx gs.ApplicationContext) {
 
 		fn := reflect.ValueOf(rpcServer.Register)
 		fn.Call([]reflect.Value{server, service})
-	})
+	}
 
 	for service, info := range starter.server.GetServiceInfo() {
 		srv := srvMap[service]
@@ -88,6 +87,6 @@ func (starter *Starter) OnStartApplication(ctx gs.ApplicationContext) {
 	})
 }
 
-func (starter *Starter) OnStopApplication(ctx gs.ApplicationContext) {
+func (starter *Starter) OnStopApp(ctx gs.AppContext) {
 	starter.server.GracefulStop()
 }

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package gsutil
+package util
 
 import (
 	"reflect"

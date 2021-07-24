@@ -19,7 +19,7 @@ package StarterWeb
 import (
 	"testing"
 
-	"github.com/go-spring/spring-core/assert"
+	"github.com/go-spring/spring-core/util/assert"
 	"github.com/go-spring/spring-core/web"
 )
 
@@ -30,12 +30,12 @@ func TestSort(t *testing.T) {
 	}
 
 	testSort := func(input []string, output []string) bool {
-		var containers []web.Container
+		starter := &Starter{}
 		for _, s := range input {
-			containers = append(containers, container(s))
+			starter.Containers = append(starter.Containers, container(s))
 		}
-		sortContainers(containers)
-		for i, c := range containers {
+		starter.sortContainers()
+		for i, c := range starter.Containers {
 			if output[i] != c.Config().BasePath {
 				return false
 			}
