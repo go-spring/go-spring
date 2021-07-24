@@ -78,4 +78,16 @@
         <url>https://github.com/go-spring/starter-core.git</url>
         <branch>main</branch>
     </project>
+    <project>
+        <name>spring-stl</name>
+        <dir>spring/spring-stl</dir>
+        <url>https://github.com/go-spring/spring-stl.git</url>
+        <branch>main</branch>
+    </project>
+    <project>
+        <name>spring-rabbitmq</name>
+        <dir>spring/spring-rabbitmq</dir>
+        <url>https://github.com/go-spring/spring-rabbitmq.git</url>
+        <branch>master</branch>
+    </project>
 </projects>
