@@ -26,8 +26,9 @@ import (
 	"github.com/go-spring/spring-core/assert"
 	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/gs/arg"
+	pkg1 "github.com/go-spring/spring-core/gs/testdata/pkg/bar"
 	pkg2 "github.com/go-spring/spring-core/gs/testdata/pkg/foo"
-	"github.com/go-spring/spring-core/util"
+	"github.com/go-spring/spring-core/gsutil"
 )
 
 // newBean 该方法是为了平衡调用栈的深度，一般情况下 gs.NewBean 不应该被直接使用。
@@ -99,7 +100,7 @@ func TestIsFuncBeanType(t *testing.T) {
 	}
 
 	for k, v := range data {
-		ok := util.IsConstructor(k)
+		ok := gsutil.IsConstructor(k)
 		assert.Equal(t, ok, v)
 	}
 }
@@ -124,6 +125,12 @@ func TestBeanDefinition_Match(t *testing.T) {
 		{newBean(new(pkg2.SamePkg)).Name("pkg2"), "github.com/go-spring/spring-core/gs/testdata/pkg/foo/pkg.SamePkg", "pkg2", true},
 		{newBean(new(pkg2.SamePkg)).Name("pkg2"), "", "pkg2", true},
 		{newBean(new(pkg2.SamePkg)).Name("pkg2"), "github.com/go-spring/spring-core/gs/testdata/pkg/foo/pkg.SamePkg", "pkg2", true},
+		{newBean(new(pkg1.SamePkg)), "github.com/go-spring/spring-core/gs/testdata/pkg/bar/pkg.SamePkg", "*pkg.SamePkg", true},
+		{newBean(new(pkg1.SamePkg)), "", "*pkg.SamePkg", true},
+		{newBean(new(pkg1.SamePkg)), "github.com/go-spring/spring-core/gs/testdata/pkg/bar/pkg.SamePkg", "", true},
+		{newBean(new(pkg1.SamePkg)).Name("pkg1"), "github.com/go-spring/spring-core/gs/testdata/pkg/bar/pkg.SamePkg", "pkg1", true},
+		{newBean(new(pkg1.SamePkg)).Name("pkg1"), "", "pkg1", true},
+		{newBean(new(pkg1.SamePkg)).Name("pkg1"), "github.com/go-spring/spring-core/gs/testdata/pkg/bar/pkg.SamePkg", "pkg1", true},
 	}
 
 	for i, s := range data {

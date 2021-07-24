@@ -21,8 +21,8 @@ import (
 	"errors"
 	"reflect"
 
+	"github.com/go-spring/spring-core/gsutil"
 	"github.com/go-spring/spring-core/json"
-	"github.com/go-spring/spring-core/util"
 )
 
 // Consumer 消息消费者。
@@ -61,11 +61,11 @@ func (c *consumer) Consume(ctx context.Context, msg Message) error {
 }
 
 func validBindFn(t reflect.Type) bool {
-	return util.IsFuncType(t) &&
-		util.ReturnOnlyError(t) &&
+	return gsutil.IsFuncType(t) &&
+		gsutil.ReturnOnlyError(t) &&
 		t.NumIn() == 2 &&
-		util.IsContextType(t.In(0)) &&
-		util.IsStructPtr(t.In(1))
+		gsutil.IsContextType(t.In(0)) &&
+		gsutil.IsStructPtr(t.In(1))
 }
 
 // Bind 创建 Bind 方式的消费者。

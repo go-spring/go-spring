@@ -26,6 +26,7 @@ import (
 	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/gs/bean"
 	"github.com/go-spring/spring-core/gs/cond"
+	"github.com/go-spring/spring-core/gsutil"
 	"github.com/go-spring/spring-core/util"
 )
 
@@ -171,13 +172,13 @@ func (d *BeanDefinition) Primary() *BeanDefinition {
 // validLifeCycleFunc 判断是否是合法的用于 bean 生命周期控制的函数，生命周期函数
 // 的要求：只能有一个入参并且必须是 bean 的类型，没有返回值或者只返回 error 类型值。
 func validLifeCycleFunc(fnType reflect.Type, beanType reflect.Type) bool {
-	if !util.IsFuncType(fnType) {
+	if !gsutil.IsFuncType(fnType) {
 		return false
 	}
-	if fnType.NumIn() != 1 || !util.HasReceiver(fnType, beanType) {
+	if fnType.NumIn() != 1 || !gsutil.HasReceiver(fnType, beanType) {
 		return false
 	}
-	return util.ReturnNothing(fnType) || util.ReturnOnlyError(fnType)
+	return gsutil.ReturnNothing(fnType) || gsutil.ReturnOnlyError(fnType)
 }
 
 // Init 设置 bean 的初始化函数。
@@ -212,7 +213,7 @@ func (d *BeanDefinition) export(exports ...interface{}) error {
 		if t, ok := o.(reflect.Type); ok {
 			typ = t
 		} else { // 处理 (*error)(nil) 这种导出形式
-			typ = util.Indirect(reflect.TypeOf(o))
+			typ = gsutil.Indirect(reflect.TypeOf(o))
 		}
 
 		if typ.Kind() != reflect.Interface {
@@ -231,7 +232,7 @@ func (d *BeanDefinition) export(exports ...interface{}) error {
 // autoExport 导出结构体指针类型的 bean 对象使用 export 语法导出的接口。
 func (d *BeanDefinition) autoExport(t reflect.Type) error {
 
-	if t = util.Indirect(t); t.Kind() != reflect.Struct {
+	if t = gsutil.Indirect(t); t.Kind() != reflect.Struct {
 		return nil
 	}
 
@@ -278,7 +279,7 @@ func NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 		v = reflect.ValueOf(i)
 	}
 
-	if !v.IsValid() || util.IsNil(v) {
+	if !v.IsValid() || gsutil.IsNil(v) {
 		panic(errors.New("bean can't be nil"))
 	}
 
@@ -289,7 +290,7 @@ func NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 	// 以 reflect.ValueOf(fn) 形式注册的函数被视为函数对象 bean 。
 	if t := v.Type(); !fromValue && t.Kind() == reflect.Func {
 
-		if !util.IsConstructor(t) {
+		if !gsutil.IsConstructor(t) {
 			t1 := "func(...)bean"
 			t2 := "func(...)(bean, error)"
 			panic(fmt.Errorf("constructor should be %s or %s", t1, t2))
@@ -303,17 +304,17 @@ func NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 		v = reflect.New(out0)
 
 		// 引用类型去掉指针，值类型则刚刚好。
-		if util.IsBeanType(out0) {
+		if gsutil.IsBeanType(out0) {
 			v = v.Elem()
 		}
 	}
 
 	t := v.Type()
-	if !util.IsBeanType(t) {
+	if !gsutil.IsBeanType(t) {
 		panic(errors.New("bean must be ref type"))
 	}
 
-	if t.Kind() == reflect.Ptr && !util.IsValueType(t.Elem()) {
+	if t.Kind() == reflect.Ptr && !gsutil.IsValueType(t.Elem()) {
 		panic(errors.New("bean should be *val but not *ref"))
 	}
 
@@ -322,7 +323,7 @@ func NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 		v:        v,
 		f:        f,
 		name:     t.String(),
-		typeName: util.TypeName(t),
+		typeName: gsutil.TypeName(t),
 		status:   Default,
 		order:    LowestOrder,
 		file:     file,

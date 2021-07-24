@@ -67,22 +67,8 @@ func (c *Container) Start() error {
 		return err
 	}
 
-	var cFilters []web.Filter
-	{
-		if loggerFilter := c.GetLoggerFilter(); loggerFilter != nil {
-			cFilters = append(cFilters, loggerFilter)
-		} else {
-			cFilters = append(cFilters, web.LoggerFilter)
-		}
-
-		cFilters = append(cFilters, &recoveryFilter{})
-		cFilters = append(cFilters, c.GetFilters()...)
-	}
-
-	urlPatterns, err := web.URLPatterns(cFilters)
-	if err != nil {
-		return err
-	}
+	loggerFilter := c.GetLoggerFilter()
+	recoveryFilter := &recoveryFilter{}
 
 	// 添加容器级别的过滤器，这样在路由不存在时也会调用这些过滤器
 	c.echoServer.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
@@ -97,20 +83,24 @@ func (c *Container) Start() error {
 				NewContext(nil, echoCtx.Path(), echoCtx)
 			}
 
-			filters := append(urlPatterns.Get("\\*"), web.HandlerFilter(Handler(next)))
-			chain := web.NewDefaultFilterChain(filters)
+			chain := web.NewDefaultFilterChain([]web.Filter{
+				loggerFilter, recoveryFilter,
+				web.HandlerFilter(Handler(next)),
+			})
 			chain.Next(WebContext(echoCtx))
 			return nil
 		}
 	})
 
+	urlPatterns, err := web.URLPatterns(c.GetFilters())
+	if err != nil {
+		return err
+	}
+
 	// 映射 Web 处理函数
 	for _, mapper := range c.Mappers() {
-		c.PrintMapper(mapper)
-
 		path, wildCardName := web.ToPathStyle(mapper.Path(), web.EchoPathStyle)
 		fn := HandlerWrapper(mapper.Handler(), wildCardName, urlPatterns.Get(mapper.Path()))
-
 		for _, method := range web.GetMethod(mapper.Method()) {
 			c.echoServer.Add(method, path, fn)
 			c.routes[method+path] = route{fn: mapper.Handler(), wildCardName: wildCardName}

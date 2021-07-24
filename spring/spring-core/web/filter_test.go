@@ -18,8 +18,10 @@ package web_test
 
 import (
 	"fmt"
+	"net/http"
 	"testing"
 
+	"github.com/go-spring/spring-core/gsutil"
 	"github.com/go-spring/spring-core/web"
 )
 
@@ -35,4 +37,20 @@ func TestFuncFilter(t *testing.T) {
 	}))
 
 	web.NewDefaultFilterChain([]web.Filter{funcFilter, handlerFilter}).Next(nil)
+}
+
+type Counter struct{}
+
+func (ctr *Counter) ServeHTTP(http.ResponseWriter, *http.Request) {}
+
+func TestWrapH(t *testing.T) {
+
+	c := &Counter{}
+	fmt.Println(gsutil.FileLine(c.ServeHTTP))
+
+	var h http.Handler
+	h = &Counter{}
+	fmt.Println(gsutil.FileLine(h.ServeHTTP))
+
+	fmt.Println(web.WrapH(&Counter{}).FileLine())
 }

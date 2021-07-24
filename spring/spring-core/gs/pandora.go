@@ -24,8 +24,8 @@ import (
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/gs/bean"
+	"github.com/go-spring/spring-core/gsutil"
 	"github.com/go-spring/spring-core/log"
-	"github.com/go-spring/spring-core/util"
 )
 
 // Pandora 提供了一些在 IoC 容器启动后基于反射获取和使用 property 与 bean 的接
@@ -139,7 +139,7 @@ func (p *pandora) Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{},
 
 func (p *pandora) Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, error) {
 
-	if !util.IsFuncType(reflect.TypeOf(fn)) {
+	if !gsutil.IsFuncType(reflect.TypeOf(fn)) {
 		return nil, errors.New("fn should be func type")
 	}
 

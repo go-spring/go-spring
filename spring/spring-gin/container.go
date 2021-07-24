@@ -67,23 +67,6 @@ func (c *Container) Start() error {
 		return err
 	}
 
-	var cFilters []web.Filter
-	{
-		if loggerFilter := c.GetLoggerFilter(); loggerFilter != nil {
-			cFilters = append(cFilters, loggerFilter)
-		} else {
-			cFilters = append(cFilters, web.LoggerFilter)
-		}
-
-		cFilters = append(cFilters, &recoveryFilter{})
-		cFilters = append(cFilters, c.GetFilters()...)
-	}
-
-	urlPatterns, err := web.URLPatterns(cFilters)
-	if err != nil {
-		return err
-	}
-
 	// 添加容器级别的过滤器，这样在路由不存在时也会调用这些过滤器
 	c.ginEngine.Use(func(ginCtx *gin.Context) {
 
@@ -97,20 +80,26 @@ func (c *Container) Start() error {
 		}
 	})
 
-	//for _, filter := range cFilters {
-	//	f := filter // 避免延迟绑定
-	//	c.ginEngine.Use(func(ginCtx *gin.Context) {
-	//		f.Invoke(WebContext(ginCtx), &ginFilterChain{ginCtx})
-	//	})
-	//}
+	loggerFilter := c.GetLoggerFilter()
+	recoveryFilter := &recoveryFilter{}
+
+	for _, filter := range []web.Filter{loggerFilter, recoveryFilter} {
+		f := filter // 避免延迟绑定
+		c.ginEngine.Use(func(ginCtx *gin.Context) {
+			f.Invoke(WebContext(ginCtx), &ginFilterChain{ginCtx})
+		})
+	}
+
+	urlPatterns, err := web.URLPatterns(c.GetFilters())
+	if err != nil {
+		return err
+	}
 
 	// 映射 Web 处理函数
 	for _, mapper := range c.Mappers() {
-		c.PrintMapper(mapper)
-
+		filters := urlPatterns.Get(mapper.Path())
 		path, wildCardName := web.ToPathStyle(mapper.Path(), web.GinPathStyle)
-		handlers := HandlerWrapper(mapper.Handler(), wildCardName, urlPatterns.Get(mapper.Path()))
-
+		handlers := HandlerWrapper(mapper.Handler(), wildCardName, filters)
 		for _, method := range web.GetMethod(mapper.Method()) {
 			c.ginEngine.Handle(method, path, handlers...)
 			c.routes[method+path] = route{

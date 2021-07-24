@@ -14,13 +14,28 @@
  * limitations under the License.
  */
 
-package util
+package errors
 
 import (
 	"errors"
 	"fmt"
 	"runtime"
 )
+
+var (
+	New    = errors.New
+	Is     = errors.Is
+	As     = errors.As
+	Unwrap = errors.Unwrap
+)
+
+// ToString 返回 error 的字符串。
+func ToString(err error) string {
+	if err == nil {
+		return "<nil>"
+	}
+	return err.Error()
+}
 
 type withCause struct {
 	cause interface{}
@@ -43,47 +58,12 @@ func Cause(err error) interface{} {
 	return err
 }
 
-// Error 返回 error 的字符串。
-func Error(err error) string {
-	if err == nil {
-		return ""
-	}
-	return err.Error()
-}
-
-// ErrorWithFileLine 返回错误发生的文件行号，skip 是相对于当前函数的深度。
-func ErrorWithFileLine(err error, skip int) error {
+// WithFileLine 返回错误发生的文件行号，skip 是相对于当前函数的深度。
+func WithFileLine(err error, skip int) error {
 	_, file, line, _ := runtime.Caller(skip + 1)
 	str := fmt.Sprintf("%s:%d", file, line)
 	if err != nil {
 		str += ": " + err.Error()
 	}
-	return errors.New(str)
-}
-
-// Panic 抛出一个异常值。
-func Panic(err error) *PanicCond {
-	return NewPanicCond(func() interface{} { return err })
-}
-
-// Panicf 抛出一段需要格式化的错误字符串。
-func Panicf(format string, a ...interface{}) *PanicCond {
-	return NewPanicCond(func() interface{} { return fmt.Errorf(format, a...) })
-}
-
-// PanicCond 封装触发 panic 的条件。
-type PanicCond struct {
-	fn func() interface{}
-}
-
-// NewPanicCond PanicCond 的构造函数。
-func NewPanicCond(fn func() interface{}) *PanicCond {
-	return &PanicCond{fn}
-}
-
-// When 满足给定条件时抛出一个 panic 。
-func (p *PanicCond) When(isPanic bool) {
-	if isPanic {
-		panic(p.fn())
-	}
+	return New(str)
 }

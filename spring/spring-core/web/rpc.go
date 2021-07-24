@@ -20,7 +20,7 @@ import (
 	"errors"
 	"reflect"
 
-	"github.com/go-spring/spring-core/util"
+	"github.com/go-spring/spring-core/gsutil"
 )
 
 // bindHandler BIND 形式的 Web 处理接口
@@ -50,7 +50,7 @@ func (b *bindHandler) call(ctx Context) interface{} {
 }
 
 func (b *bindHandler) FileLine() (file string, line int, fnName string) {
-	return util.FileLine(b.fn)
+	return gsutil.FileLine(b.fn)
 }
 
 func validBindFn(fnType reflect.Type) bool {
@@ -61,7 +61,7 @@ func validBindFn(fnType reflect.Type) bool {
 	}
 
 	// 第一个入参必须是 context.Context 类型
-	if !util.IsContextType(fnType.In(0)) {
+	if !gsutil.IsContextType(fnType.In(0)) {
 		return false
 	}
 

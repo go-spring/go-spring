@@ -21,8 +21,10 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"reflect"
 	"time"
 
+	"github.com/go-spring/spring-core/gsutil"
 	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/util"
 )
@@ -119,7 +121,10 @@ func (c *AbstractContainer) AddFilter(filter ...Filter) {
 
 // GetLoggerFilter 获取 Logger Filter
 func (c *AbstractContainer) GetLoggerFilter() Filter {
-	return c.logger
+	if c.logger != nil {
+		return c.logger
+	}
+	return defaultLoggerFilter
 }
 
 // SetLoggerFilter 设置 Logger Filter
@@ -145,6 +150,7 @@ func RegisterSwaggerHandler(handler SwaggerHandler) {
 
 // Start 启动 Web 容器
 func (c *AbstractContainer) Start() error {
+
 	if c.swagger != nil && swaggerHandler != nil {
 		for _, mapper := range c.Mappers() {
 			if mapper.swagger == nil {
@@ -159,18 +165,21 @@ func (c *AbstractContainer) Start() error {
 		}
 		swaggerHandler(&c.router, c.swagger.ReadDoc())
 	}
+
+	for _, mapper := range c.Mappers() {
+		log.Infof("%v :%d %s -> %s:%d %s", func() []interface{} {
+			method := GetMethod(mapper.method)
+			file, line, fnName := mapper.handler.FileLine()
+			return log.T(method, c.config.Port, mapper.path, file, line, fnName)
+		})
+	}
+
 	return nil
 }
 
 // Stop 停止 Web 容器
 func (c *AbstractContainer) Stop(ctx context.Context) error {
 	panic(util.UnimplementedMethod)
-}
-
-// PrintMapper 打印路由注册信息
-func (c *AbstractContainer) PrintMapper(m *Mapper) {
-	file, line, fnName := m.handler.FileLine()
-	log.Infof("%v :%d %s -> %s:%d %s", GetMethod(m.method), c.config.Port, m.path, file, line, fnName)
 }
 
 /////////////////// Invoke Handler //////////////////////
@@ -194,36 +203,55 @@ type fnHandler HandlerFunc
 func (f fnHandler) Invoke(ctx Context) { f(ctx) }
 
 func (f fnHandler) FileLine() (file string, line int, fnName string) {
-	return util.FileLine(f)
+	return gsutil.FileLine(f)
 }
 
 // FUNC 标准 Web 处理函数的辅助函数
 func FUNC(fn HandlerFunc) Handler { return fnHandler(fn) }
 
-// httpHandler 标准 Http 处理函数
-type httpHandler http.HandlerFunc
+// httpFuncHandler 标准 Http 处理函数
+type httpFuncHandler http.HandlerFunc
 
-func (h httpHandler) Invoke(ctx Context) {
+func (h httpFuncHandler) Invoke(ctx Context) {
 	h(ctx.ResponseWriter(), ctx.Request())
 }
 
-func (h httpHandler) FileLine() (file string, line int, fnName string) {
-	return util.FileLine(h)
+func (h httpFuncHandler) FileLine() (file string, line int, fnName string) {
+	return gsutil.FileLine(h)
 }
 
 // HTTP 标准 Http 处理函数的辅助函数
-func HTTP(fn http.HandlerFunc) Handler { return httpHandler(fn) }
+func HTTP(fn http.HandlerFunc) Handler {
+	return httpFuncHandler(fn)
+}
 
 // WrapF 标准 Http 处理函数的辅助函数
-func WrapF(fn http.HandlerFunc) Handler { return httpHandler(fn) }
+func WrapF(fn http.HandlerFunc) Handler {
+	return httpFuncHandler(fn)
+}
+
+// httpHandler 标准 Http 处理函数
+type httpHandler struct{ http.Handler }
+
+func (h httpHandler) Invoke(ctx Context) {
+	h.Handler.ServeHTTP(ctx.ResponseWriter(), ctx.Request())
+}
+
+func (h httpHandler) FileLine() (file string, line int, fnName string) {
+	t := reflect.TypeOf(h.Handler)
+	m, _ := t.MethodByName("ServeHTTP")
+	return gsutil.FileLine(m.Func.Interface())
+}
 
 // WrapH 标准 Http 处理函数的辅助函数
-func WrapH(h http.Handler) Handler { return httpHandler(h.ServeHTTP) }
+func WrapH(h http.Handler) Handler {
+	return &httpHandler{h}
+}
 
 /////////////////// Web Filters //////////////////////
 
-// LoggerFilter 全局的日志过滤器，Container 如果没有设置日志过滤器则会使用全局的日志过滤器
-var LoggerFilter = Filter(FuncFilter(func(ctx Context, chain FilterChain) {
+// defaultLoggerFilter 全局的日志过滤器，Container 如果没有设置日志过滤器则会使用全局的日志过滤器
+var defaultLoggerFilter = Filter(FuncFilter(func(ctx Context, chain FilterChain) {
 	start := time.Now()
 	chain.Next(ctx)
 	w := ctx.ResponseWriter()

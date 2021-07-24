@@ -17,6 +17,7 @@
 package apcu_test
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/go-spring/spring-core/apcu"
@@ -55,14 +56,14 @@ func TestAPCU(t *testing.T) {
 		assert.Nil(t, err)
 		assert.True(t, load)
 		assert.Equal(t, resp, map[string]interface{}{
-			"errno": float64(200), "errmsg": "OK",
+			"errno": json.Number("200"), "errmsg": "OK",
 		})
 
 		load, err = apcu.Load("success", &resp)
 		assert.Nil(t, err)
 		assert.True(t, load)
 		assert.Equal(t, resp, map[string]interface{}{
-			"errno": float64(200), "errmsg": "OK",
+			"errno": json.Number("200"), "errmsg": "OK",
 		})
 	})
 }
