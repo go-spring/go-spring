@@ -1,4 +1,6 @@
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
+github.com/go-spring/spring-stl v0.0.0-20210724153121-8378c2594815 h1:9ez++onyyU2hyVoNOKwHoynIcvTxlvkF74LrDfyliLo=
+github.com/go-spring/spring-stl v0.0.0-20210724153121-8378c2594815/go.mod h1:RFkTfNPcNYbppU8krHBfGKjnvhR2Z0nQokpl5s0Te84=
 github.com/magiconair/properties v1.8.1 h1:ZC2Vc7/ZFkGmsVC9KvOjumD+G5lXy2RtTKyzRKO2BQ4=
 github.com/magiconair/properties v1.8.1/go.mod h1:PppfXfuXeibc/6YijjN8zIbojt8czPbwD3XqdrwzmxQ=
 github.com/pelletier/go-toml v1.2.0 h1:T5zMGML61Wp+FlcbWjRDT7yAxhJNAiPPLOFECq181zc=

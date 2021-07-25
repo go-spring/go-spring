@@ -172,11 +172,18 @@ func getBeforeDestroyers(destroyers *list.List, i interface{}) *list.List {
 	return result
 }
 
+type lazyField struct {
+	v    reflect.Value
+	name string
+	tag  string
+}
+
 // wiringStack 记录 bean 的注入路径。
 type wiringStack struct {
 	beans        []*BeanDefinition
 	destroyers   *list.List
 	destroyerMap map[string]*destroyer
+	lazyFields   []lazyField
 }
 
 func newWiringStack() *wiringStack {
@@ -264,6 +271,12 @@ func (c *Container) Refresh() error {
 	c.state = Refreshing
 
 	for _, b := range c.beans {
+		if err := c.registerBean(b); err != nil {
+			return err
+		}
+	}
+
+	for _, b := range c.beansById {
 		if err := c.resolveBean(b); err != nil {
 			return err
 		}
@@ -283,6 +296,14 @@ func (c *Container) Refresh() error {
 		}
 	}
 
+	// 处理被标记为延迟注入的那些 bean 字段
+	for _, f := range stack.lazyFields {
+		tag := strings.TrimSuffix(f.tag, ",lazy")
+		if err := c.wireByTag(f.v, tag, stack); err != nil {
+			return fmt.Errorf("%q wired error: %s", f.name, err.Error())
+		}
+	}
+
 	c.destroyers = stack.sortDestroyers()
 	c.state = Refreshed
 
@@ -297,8 +318,17 @@ func (c *Container) Refresh() error {
 	return nil
 }
 
+func (c *Container) registerBean(b *BeanDefinition) error {
+	if d, ok := c.beansById[b.ID()]; ok {
+		return fmt.Errorf("found duplicate beans [%s] [%s]", b, d)
+	}
+	c.beansById[b.ID()] = b
+	return nil
+}
+
 // resolveBean 判断 bean 的有效性，如果 bean 是无效的则被标记为已删除。
 func (c *Container) resolveBean(b *BeanDefinition) error {
+	fmt.Println(b.ID())
 
 	if b.status >= Resolving {
 		return nil
@@ -307,9 +337,11 @@ func (c *Container) resolveBean(b *BeanDefinition) error {
 	b.status = Resolving
 
 	if b.cond != nil {
+		fmt.Println("resolve:: " + b.ID())
 		if ok, err := b.cond.Matches(&pandora{c}); err != nil {
 			return err
 		} else if !ok {
+			delete(c.beansById, b.ID())
 			b.status = Deleted
 			return nil
 		}
@@ -319,13 +351,8 @@ func (c *Container) resolveBean(b *BeanDefinition) error {
 		return err
 	}
 
-	if d, ok := c.beansById[b.ID()]; ok {
-		return fmt.Errorf("found duplicate beans [%s] [%s]", b, d)
-	}
-
 	log.Debugf("register %s name:%q type:%q %s", b.getClass(), b.BeanName(), b.Type(), b.FileLine())
 
-	c.beansById[b.ID()] = b
 	c.beansByName[b.name] = append(c.beansByName[b.name], b)
 	c.beansByType[b.Type()] = append(c.beansByType[b.Type()], b)
 
@@ -402,13 +429,10 @@ func (c *Container) findBean(selector bean.Selector) ([]*BeanDefinition, error) 
 	finder := func(fn func(*BeanDefinition) bool) ([]*BeanDefinition, error) {
 		var result []*BeanDefinition
 		for _, b := range c.beansById {
-			if b.status == Resolving || !fn(b) {
-				continue
-			}
 			if err := c.resolveBean(b); err != nil {
 				return nil, err
 			}
-			if b.status == Deleted {
+			if b.status == Deleted || !fn(b) {
 				continue
 			}
 			result = append(result, b)
@@ -628,16 +652,21 @@ func (c *Container) wireStruct(v reflect.Value, stack *wiringStack) error {
 			fv = util.PatchValue(fv)
 		}
 
-		// 支持 autowire 和 inject 两种注入标签。
+		// 支持 autowire 和 inject 标签，支持 lazy 注入。
 		tag, ok := ft.Tag.Lookup("autowire")
 		if !ok {
 			tag, ok = ft.Tag.Lookup("inject")
 		}
 		if ok {
-			err := c.wireByTag(fv, tag, stack)
-			if err != nil {
+			if strings.HasSuffix(tag, ",lazy") {
 				fieldName := typeName + "." + ft.Name
-				return fmt.Errorf("%q wired error: %s", fieldName, err.Error())
+				f := lazyField{v: fv, name: fieldName, tag: tag}
+				stack.lazyFields = append(stack.lazyFields, f)
+			} else {
+				if err := c.wireByTag(fv, tag, stack); err != nil {
+					fieldName := typeName + "." + ft.Name
+					return fmt.Errorf("%q wired error: %s", fieldName, err.Error())
+				}
 			}
 		}
 

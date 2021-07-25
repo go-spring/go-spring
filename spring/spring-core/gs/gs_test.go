@@ -3197,5 +3197,71 @@ func TestMapCollection(t *testing.T) {
 		assert.Nil(t, err)
 		fmt.Println(vMap)
 	})
+}
 
+type circularA struct {
+	b *circularB
+}
+
+func newCircularA(b *circularB) *circularA {
+	return &circularA{b: b}
+}
+
+type circularB struct {
+	A *circularA `autowire:",lazy"`
+}
+
+func newCircularB() *circularB {
+	return new(circularB)
+}
+
+func TestLazy(t *testing.T) {
+	for i := 0; i < 20; i++ {
+
+		c, ch := container()
+		c.Provide(newCircularA)
+		c.Provide(newCircularB)
+		err := c.Refresh()
+		assert.Nil(t, err)
+		p := <-ch
+
+		var a *circularA
+		err = p.Get(&a)
+		assert.Nil(t, err)
+	}
+}
+
+type Dater interface {
+	Date() time.Time
+}
+
+type dater struct {
+	_ Dater `export:""`
+}
+
+func (s *dater) Date() time.Time {
+	return time.Now()
+}
+
+func TestFind(t *testing.T) {
+	count := 0
+	for i := 0; i < 20; i++ {
+
+		// 如果 1 在 2 之前初始化则必须保证 2 导出所有接口
+		c, ch := container()
+		c.Object(new(int)).On(cond.OnBean((*Dater)(nil)))
+		c.Object(new(dater))
+		err := c.Refresh()
+		assert.Nil(t, err)
+		p := <-ch
+
+		var i *int
+		err = p.Get(&i)
+		assert.Nil(t, err)
+
+		if err != nil {
+			count++
+		}
+	}
+	assert.Equal(t, count == 0, true)
 }
