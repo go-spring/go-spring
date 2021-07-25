@@ -13,12 +13,6 @@
         <branch>master</branch>
     </project>
     <project>
-        <name>spring-core</name>
-        <dir>spring/spring-core</dir>
-        <url>https://github.com/go-spring/spring-core.git</url>
-        <branch>master</branch>
-    </project>
-    <project>
         <name>starter-web</name>
         <dir>starter/starter-web</dir>
         <url>https://github.com/go-spring/starter-web.git</url>
