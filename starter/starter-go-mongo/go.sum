@@ -3,6 +3,11 @@ github.com/aws/aws-sdk-go v1.29.15 h1:0ms/213murpsujhsnxnNKNeVouW60aJqSd992Ks3mx
 github.com/aws/aws-sdk-go v1.29.15/go.mod h1:1KvfttTE3SPKMpo8g2c6jL3ZKfXtFvKscTgahTma5Xg=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
+github.com/go-spring/spring-core v1.0.6-0.20210725091854-c92ef2937b10 h1:3wVokv0UL8xf5f99gDK5CXW7+AkBhMPzasfK10d5mIM=
+github.com/go-spring/spring-core v1.0.6-0.20210725091854-c92ef2937b10/go.mod h1:dlmlLZon5quLckxW7TkmY+OYuVUMB9ot28fxTL/3fYA=
+github.com/go-spring/spring-stl v0.0.0-20210724153121-8378c2594815 h1:9ez++onyyU2hyVoNOKwHoynIcvTxlvkF74LrDfyliLo=
+github.com/go-spring/spring-stl v0.0.0-20210724153121-8378c2594815/go.mod h1:RFkTfNPcNYbppU8krHBfGKjnvhR2Z0nQokpl5s0Te84=
+github.com/go-spring/starter-core v0.0.0-20210719133634-d661de98b7a9/go.mod h1:+LqWXkvuH96lX47uhz+NK6J7MY6bXtIELy/dkYjno80=
 github.com/go-spring/starter-mongo v1.0.5 h1:USroc3aYvPRQH4K1qdi8kJ8OpnMv0cnCSkCDDJFIlhc=
 github.com/go-spring/starter-mongo v1.0.5/go.mod h1:Y2GugU07lt4Dk2MaGyLm2dIHSh6ETvQYXe/Oa0jepwY=
 github.com/go-sql-driver/mysql v1.5.0/go.mod h1:DCzpHaOWr8IXmIStZouvnhqoel9Qv2LBy8hT2VhHyBg=

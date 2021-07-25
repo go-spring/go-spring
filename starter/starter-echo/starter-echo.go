@@ -21,7 +21,6 @@ import (
 	"github.com/go-spring/spring-core/web"
 	"github.com/go-spring/spring-echo"
 	"github.com/go-spring/starter-core"
-	_ "github.com/go-spring/starter-web"
 )
 
 func init() {

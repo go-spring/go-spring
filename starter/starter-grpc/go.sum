@@ -7,8 +7,14 @@ github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSs
 github.com/envoyproxy/go-control-plane v0.9.0/go.mod h1:YTl/9mNaCwkRvm6d1a2C3ymFceY/DCBVvsKhRF0iEA4=
 github.com/envoyproxy/go-control-plane v0.9.4/go.mod h1:6rpuAdCZL397s3pYoYcLgu1mIlRU8Am5FuJP05cCM98=
 github.com/envoyproxy/protoc-gen-validate v0.1.0/go.mod h1:iSmxcyjqTsJpI2R4NaDN7+kN2VEUnK/pcBlmesArF7c=
+github.com/go-spring/spring-core v1.0.6-0.20210725091854-c92ef2937b10 h1:3wVokv0UL8xf5f99gDK5CXW7+AkBhMPzasfK10d5mIM=
+github.com/go-spring/spring-core v1.0.6-0.20210725091854-c92ef2937b10/go.mod h1:dlmlLZon5quLckxW7TkmY+OYuVUMB9ot28fxTL/3fYA=
+github.com/go-spring/spring-stl v0.0.0-20210724153121-8378c2594815 h1:9ez++onyyU2hyVoNOKwHoynIcvTxlvkF74LrDfyliLo=
+github.com/go-spring/spring-stl v0.0.0-20210724153121-8378c2594815/go.mod h1:RFkTfNPcNYbppU8krHBfGKjnvhR2Z0nQokpl5s0Te84=
 github.com/go-spring/starter-core v0.0.0-20210215012223-32c9b94871eb h1:OvB4uCNwqAdDCrdNSNUDo2hDm3M/1sIHScg1ILrcd/g=
 github.com/go-spring/starter-core v0.0.0-20210215012223-32c9b94871eb/go.mod h1:+LqWXkvuH96lX47uhz+NK6J7MY6bXtIELy/dkYjno80=
+github.com/go-spring/starter-core v0.0.0-20210719133634-d661de98b7a9 h1:leSC43dySaQN/u2mcVSPdcFRe74xutRLt/nm50MGEQE=
+github.com/go-spring/starter-core v0.0.0-20210719133634-d661de98b7a9/go.mod h1:+LqWXkvuH96lX47uhz+NK6J7MY6bXtIELy/dkYjno80=
 github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b/go.mod h1:SBH7ygxi8pfUlaOkMMuAQtPIUF8ecWP5IEl/CR7VP2Q=
 github.com/golang/mock v1.1.1/go.mod h1:oTYuIxOrZwtPieC+H1uAHpcLFnEyAGVDL/k47Jfbm0A=
 github.com/golang/protobuf v1.2.0/go.mod h1:6lQm79b+lXiMfvg/cZm0SGofjICqVBUtrP5yJMmIC1U=
