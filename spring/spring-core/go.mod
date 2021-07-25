@@ -1,12 +1,14 @@
 module github.com/go-spring/spring-core
 
-go 1.12
+go 1.14
 
 require (
-	github.com/go-spring/spring-const v1.0.5
-	github.com/go-spring/spring-logger v1.0.5
-	github.com/go-spring/spring-utils v1.0.5
+	github.com/go-spring/spring-stl v0.0.0-20210724153121-8378c2594815
 	github.com/magiconair/properties v1.8.1
-	github.com/spf13/cast v1.3.1
-	github.com/spf13/viper v1.6.3
+	github.com/pelletier/go-toml v1.2.0
+	gopkg.in/yaml.v2 v2.2.4
 )
+
+//replace (
+//	github.com/go-spring/spring-stl => ../spring-stl
+//)
