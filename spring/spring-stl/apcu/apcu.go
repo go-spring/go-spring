@@ -83,22 +83,22 @@ func Delete(key string) {
 	cache.Delete(key)
 }
 
-type SaveArg struct {
+type StoreArg struct {
 	ttl time.Duration
 }
 
-type SaveOption func(arg *SaveArg)
+type StoreOption func(arg *StoreArg)
 
 // TTL 过期时间
-func TTL(ttl time.Duration) SaveOption {
-	return func(arg *SaveArg) {
+func TTL(ttl time.Duration) StoreOption {
+	return func(arg *StoreArg) {
 		arg.ttl = ttl
 	}
 }
 
-// Save 保存 key 及其对应的 val，支持对 key 设置 ttl 即过期时间。
-func Save(key string, val interface{}, opts ...SaveOption) {
-	arg := SaveArg{}
+// Store 保存 key 及其对应的 val，支持对 key 设置 ttl 即过期时间。
+func Store(key string, val interface{}, opts ...StoreOption) {
+	arg := StoreArg{}
 	for _, opt := range opts {
 		opt(&arg)
 	}

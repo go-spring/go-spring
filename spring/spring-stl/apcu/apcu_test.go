@@ -32,7 +32,7 @@ func TestAPCU(t *testing.T) {
 	}
 
 	t.Run("", func(t *testing.T) {
-		apcu.Save("success", `{"errno":200,"errmsg":"OK"}`)
+		apcu.Store("success", `{"errno":200,"errmsg":"OK"}`)
 
 		var resp *Resp
 		load, err := apcu.Load("success", &resp)
@@ -49,7 +49,7 @@ func TestAPCU(t *testing.T) {
 	apcu.Delete("success")
 
 	t.Run("", func(t *testing.T) {
-		apcu.Save("success", `{"errno":200,"errmsg":"OK"}`)
+		apcu.Store("success", `{"errno":200,"errmsg":"OK"}`)
 
 		var resp map[string]interface{}
 		load, err := apcu.Load("success", &resp)
