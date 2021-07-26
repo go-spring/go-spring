@@ -10,6 +10,8 @@ github.com/go-spring/spring-stl v0.0.0-20210724153121-8378c2594815 h1:9ez++onyyU
 github.com/go-spring/spring-stl v0.0.0-20210724153121-8378c2594815/go.mod h1:RFkTfNPcNYbppU8krHBfGKjnvhR2Z0nQokpl5s0Te84=
 github.com/go-spring/starter-core v0.0.0-20210719133634-d661de98b7a9 h1:leSC43dySaQN/u2mcVSPdcFRe74xutRLt/nm50MGEQE=
 github.com/go-spring/starter-core v0.0.0-20210719133634-d661de98b7a9/go.mod h1:+LqWXkvuH96lX47uhz+NK6J7MY6bXtIELy/dkYjno80=
+github.com/go-spring/starter-web v1.0.6-0.20210725120433-93d719663caf h1:m13TE0mzNbe4AGf97ANBqGhDJYsImHYDcps1/PbNAp4=
+github.com/go-spring/starter-web v1.0.6-0.20210725120433-93d719663caf/go.mod h1:VUb9sqffXGjd5Rbli59J4/5vc7ftDG0R0LdzHcfpFZ0=
 github.com/labstack/echo v3.3.10+incompatible h1:pGRcYk231ExFAyoAjAfD85kQzRJCRI8bbnE7CX5OEgg=
 github.com/labstack/echo v3.3.10+incompatible/go.mod h1:0INS7j/VjnFxD4E2wkz67b8cVwCLbBmJyDaka6Cmk1s=
 github.com/labstack/gommon v0.3.0 h1:JEeO0bvc78PKdyHxloTKiF8BD5iGrH8T6MSeGvSgob0=

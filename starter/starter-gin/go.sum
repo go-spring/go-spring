@@ -19,6 +19,8 @@ github.com/go-spring/spring-stl v0.0.0-20210724153121-8378c2594815 h1:9ez++onyyU
 github.com/go-spring/spring-stl v0.0.0-20210724153121-8378c2594815/go.mod h1:RFkTfNPcNYbppU8krHBfGKjnvhR2Z0nQokpl5s0Te84=
 github.com/go-spring/starter-core v0.0.0-20210719133634-d661de98b7a9 h1:leSC43dySaQN/u2mcVSPdcFRe74xutRLt/nm50MGEQE=
 github.com/go-spring/starter-core v0.0.0-20210719133634-d661de98b7a9/go.mod h1:+LqWXkvuH96lX47uhz+NK6J7MY6bXtIELy/dkYjno80=
+github.com/go-spring/starter-web v1.0.6-0.20210725120433-93d719663caf h1:m13TE0mzNbe4AGf97ANBqGhDJYsImHYDcps1/PbNAp4=
+github.com/go-spring/starter-web v1.0.6-0.20210725120433-93d719663caf/go.mod h1:VUb9sqffXGjd5Rbli59J4/5vc7ftDG0R0LdzHcfpFZ0=
 github.com/golang/protobuf v1.3.3 h1:gyjaxf+svBWX08ZjK86iN9geUJF0H6gp2IRKX6Nf6/I=
 github.com/golang/protobuf v1.3.3/go.mod h1:vzj43D7+SQXF/4pzW/hwtAqwc6iTitCiVSaWz5lYuqw=
 github.com/google/gofuzz v1.0.0/go.mod h1:dBl0BpW6vV/+mYPU4Po3pmUjxk6FQPldtuIdl/M65Eg=
