@@ -21,18 +21,16 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 
 	pb "github.com/go-spring/examples/spring-boot-grpc/helloworld"
-	"github.com/go-spring/spring-boot"
+	"github.com/go-spring/spring-core/gs"
 	_ "github.com/go-spring/starter-grpc/server"
 )
 
 func init() {
-	SpringBoot.RegisterGRpcServer(pb.RegisterGreeterServer,
-		"helloworld.Greeter",
-		new(GreeterServer),
-	).ConditionOnOptionalPropertyValue("greeter-server.enable", true)
+	gs.GrpcServer("helloworld.Greeter", pb.RegisterGreeterServer, new(GreeterServer))
 }
 
 type GreeterServer struct {
@@ -45,7 +43,7 @@ func (s *GreeterServer) SayHello(ctx context.Context, in *pb.HelloRequest) (*pb.
 }
 
 func main() {
-	SpringBoot.SetProperty("spring.application.name", "GreeterServer")
-	SpringBoot.SetProperty("grpc.server.port", 50051)
-	SpringBoot.RunApplication()
+	gs.Property("spring.application.name", "GreeterServer")
+	gs.Property("grpc.server.port", 50051)
+	fmt.Println("application exit: ", gs.Run())
 }

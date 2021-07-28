@@ -20,9 +20,11 @@
 package main
 
 import (
+	"fmt"
+
 	pb "github.com/go-spring/examples/spring-boot-grpc/helloworld"
-	"github.com/go-spring/spring-boot"
-	"github.com/go-spring/spring-web"
+	"github.com/go-spring/spring-core/gs"
+	"github.com/go-spring/spring-core/web"
 	_ "github.com/go-spring/starter-gin"
 	_ "github.com/go-spring/starter-grpc/client"
 )
@@ -32,8 +34,8 @@ const (
 )
 
 func init() {
-	SpringBoot.RegisterBean(new(GreeterClientController)).Init(func(c *GreeterClientController) {
-		SpringBoot.GetMapping("/", c.index)
+	gs.Provide(new(GreeterClientController)).Init(func(c *GreeterClientController) {
+		gs.GetMapping("/", c.index)
 	})
 }
 
@@ -41,18 +43,18 @@ type GreeterClientController struct {
 	GreeterClient pb.GreeterClient `autowire:""`
 }
 
-func (c *GreeterClientController) index(webCtx SpringWeb.WebContext) {
-	r, err := c.GreeterClient.SayHello(webCtx.Request().Context(), &pb.HelloRequest{Name: defaultName})
-	SpringWeb.ERROR.Panic(err).When(err != nil)
-	webCtx.String("Greeting: " + r.GetMessage())
+func (c *GreeterClientController) index(ctx web.Context) {
+	r, err := c.GreeterClient.SayHello(ctx.Request().Context(), &pb.HelloRequest{Name: defaultName})
+	web.ERROR.Panic(err).When(err != nil)
+	ctx.String("Greeting: " + r.GetMessage())
 }
 
 func init() {
-	SpringBoot.RegisterGRpcClient(pb.NewGreeterClient, "greeter-client")
+	gs.GrpcClient(pb.NewGreeterClient, "greeter-client")
 }
 
 func main() {
-	SpringBoot.SetProperty("grpc.endpoint.greeter-client.address", "127.0.0.1:50051")
-	SpringBoot.SetProperty("spring.application.name", "GreeterClient")
-	SpringBoot.RunApplication()
+	gs.Property("grpc.endpoint.greeter-client.address", "127.0.0.1:50051")
+	gs.Property("spring.application.name", "GreeterClient")
+	fmt.Println("application exit: ", gs.Run())
 }
