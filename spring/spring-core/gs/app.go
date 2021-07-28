@@ -59,6 +59,9 @@ type appEvent interface {
 	OnStartApp(ctx AppContext) // 应用启动的事件
 }
 
+// WebRouter 导出 web.Router 类型
+var WebRouter = (*web.Router)(nil)
+
 // WebFilter 导出 web.Filter 类型
 var WebFilter = (*web.Filter)(nil)
 
@@ -131,7 +134,7 @@ func (app *App) Run() error {
 
 func (app *App) start() error {
 
-	app.Object(app.router)
+	app.Object(app.router).Export(WebRouter)
 	app.Object(app.consumers)
 
 	e := newEnvironment()
@@ -181,7 +184,7 @@ func (app *App) start() error {
 		reflect.ValueOf(f).Call([]reflect.Value{in})
 	}
 
-	if err = app.c.Refresh(); err != nil {
+	if err = app.c.refresh(); err != nil {
 		return err
 	}
 
@@ -216,6 +219,10 @@ func (app *App) start() error {
 			}
 		}
 	})
+
+	if !app.c.enablePandora() {
+		app.c.clearCache()
+	}
 
 	log.Info("application started successfully")
 	return err

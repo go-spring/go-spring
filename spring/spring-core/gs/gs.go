@@ -256,15 +256,35 @@ func (s *wiringStack) sortDestroyers() []func() {
 	return ret
 }
 
+func (c *Container) clearCache() {
+	c.beans = nil
+	c.beansById = nil
+	c.beansByName = nil
+	c.beansByType = nil
+}
+
+func (c *Container) enablePandora() bool {
+	return cast.ToBool(c.p.Get(environ.EnablePandora))
+}
+
 // Refresh 刷新容器的内容，对 bean 进行有效性判断以及完成属性绑定和依赖注入。
 func (c *Container) Refresh() error {
+	if err := c.refresh(); err != nil {
+		return err
+	}
+	if !c.enablePandora() {
+		c.clearCache()
+	}
+	return nil
+}
+
+func (c *Container) refresh() error {
 
 	if c.state != Unrefreshed {
 		return errors.New("container already refreshed")
 	}
 
-	enablePandora := cast.ToBool(c.p.Get(environ.EnablePandora))
-	if enablePandora {
+	if c.enablePandora() {
 		c.Object(&pandora{c}).Export((*Pandora)(nil))
 	}
 
@@ -307,13 +327,6 @@ func (c *Container) Refresh() error {
 	c.destroyers = stack.sortDestroyers()
 	c.state = Refreshed
 
-	if !enablePandora {
-		c.beans = nil
-		c.beansById = nil
-		c.beansByName = nil
-		c.beansByType = nil
-	}
-
 	log.Info("container refreshed successfully")
 	return nil
 }
@@ -328,7 +341,6 @@ func (c *Container) registerBean(b *BeanDefinition) error {
 
 // resolveBean 判断 bean 的有效性，如果 bean 是无效的则被标记为已删除。
 func (c *Container) resolveBean(b *BeanDefinition) error {
-	fmt.Println(b.ID())
 
 	if b.status >= Resolving {
 		return nil
@@ -337,7 +349,6 @@ func (c *Container) resolveBean(b *BeanDefinition) error {
 	b.status = Resolving
 
 	if b.cond != nil {
-		fmt.Println("resolve:: " + b.ID())
 		if ok, err := b.cond.Matches(&pandora{c}); err != nil {
 			return err
 		} else if !ok {
@@ -345,10 +356,6 @@ func (c *Container) resolveBean(b *BeanDefinition) error {
 			b.status = Deleted
 			return nil
 		}
-	}
-
-	if err := b.autoExport(b.Type()); err != nil {
-		return err
 	}
 
 	log.Debugf("register %s name:%q type:%q %s", b.getClass(), b.BeanName(), b.Type(), b.FileLine())
@@ -429,10 +436,13 @@ func (c *Container) findBean(selector bean.Selector) ([]*BeanDefinition, error) 
 	finder := func(fn func(*BeanDefinition) bool) ([]*BeanDefinition, error) {
 		var result []*BeanDefinition
 		for _, b := range c.beansById {
+			if b.status == Resolving || !fn(b) {
+				continue
+			}
 			if err := c.resolveBean(b); err != nil {
 				return nil, err
 			}
-			if b.status == Deleted || !fn(b) {
+			if b.status == Deleted {
 				continue
 			}
 			result = append(result, b)

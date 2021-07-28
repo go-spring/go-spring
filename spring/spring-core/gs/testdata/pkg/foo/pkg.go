@@ -17,7 +17,6 @@
 package pkg
 
 import (
-	"context"
 	"fmt"
 )
 
@@ -26,23 +25,4 @@ type SamePkg struct{}
 
 func (p *SamePkg) Package() {
 	fmt.Println("github.com/go-spring/spring-core/gs/testdata/pkg/foo/pkg.SamePkg")
-}
-
-type appContext struct {
-	// 导出 fmt.Stringer 接口
-	// 这种导出方式建议写在最上面
-	_ fmt.Stringer `export:""`
-
-	// 导出 context.Context 接口
-	context.Context `export:""`
-}
-
-func NewAppContext() *appContext {
-	return &appContext{
-		Context: context.TODO(),
-	}
-}
-
-func (_ *appContext) String() string {
-	return ""
 }
