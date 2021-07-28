@@ -26,7 +26,7 @@ import (
 )
 
 func init() {
-	gs.Object(new(Sender)).Name("amqp-sender").Export((*mq.Producer)(nil))
+	gs.Object(new(Sender)).Export((*mq.Producer)(nil))
 }
 
 type Sender struct {

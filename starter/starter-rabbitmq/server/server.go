@@ -23,7 +23,7 @@ import (
 )
 
 func init() {
-	gs.Provide(CreateServer).Name("amqp-server").Destroy(DestroyServer)
+	gs.Provide(CreateServer).Destroy(DestroyServer)
 }
 
 type AMQPServerConfig struct {

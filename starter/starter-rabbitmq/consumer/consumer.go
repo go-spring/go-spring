@@ -27,7 +27,7 @@ import (
 )
 
 func init() {
-	gs.Object(new(Starter)).Name("amqp-consumer-starter").Export(gs.AppEvent)
+	gs.Object(new(Starter)).Export(gs.AppEvent)
 }
 
 type Starter struct {

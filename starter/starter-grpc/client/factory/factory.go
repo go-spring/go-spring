@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package GrpcClientFactory
+package factory
 
 import (
 	"github.com/go-spring/starter-core"

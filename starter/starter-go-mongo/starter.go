@@ -18,14 +18,9 @@ package StarterGoMongo
 
 import (
 	"github.com/go-spring/spring-core/gs"
-	"github.com/go-spring/spring-core/gs/cond"
-	"github.com/go-spring/starter-go-mongo/go-mongo-factory"
-	"go.mongodb.org/mongo-driver/mongo"
+	"github.com/go-spring/starter-go-mongo/factory"
 )
 
 func init() {
-	gs.Provide(GoMongoFactory.NewClient).
-		Name("go-mongo-client").
-		On(cond.OnMissingBean((*mongo.Client)(nil))).
-		Destroy(GoMongoFactory.CloseClient)
+	gs.Provide(factory.NewClient).Destroy(factory.CloseClient)
 }

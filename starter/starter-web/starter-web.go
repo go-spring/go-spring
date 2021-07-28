@@ -19,7 +19,6 @@ package StarterWeb
 import (
 	"context"
 	"net/http"
-	"sort"
 	"strings"
 
 	"github.com/go-spring/spring-core/gs"
@@ -28,7 +27,7 @@ import (
 )
 
 func init() {
-	gs.Object(new(Starter)).Name("starter").Export(gs.AppEvent)
+	gs.Object(new(Starter)).Export(gs.AppEvent)
 }
 
 // Starter Web 服务器启动器
@@ -39,10 +38,8 @@ type Starter struct {
 // OnStartApp 应用程序启动事件。
 func (starter *Starter) OnStartApp(ctx gs.AppContext) {
 
-	starter.sortContainers()
-
 	var webFilters struct {
-		Filters []web.Filter `autowire:"${web.server.filters}"`
+		Filters []web.Filter `autowire:"${web.server.filters:=?}"`
 	}
 
 	_, err := ctx.Wire(&webFilters)
@@ -57,7 +54,7 @@ func (starter *Starter) OnStartApp(ctx gs.AppContext) {
 	util.Panic(err).When(err != nil)
 
 	for _, m := range router.Mappers() {
-		if c := starter.getContainer(m); c != nil {
+		for _, c := range starter.getContainers(m) {
 			c.AddMapper(web.NewMapper(m.Method(), m.Path(), m.Handler()))
 		}
 	}
@@ -72,25 +69,14 @@ func (starter *Starter) OnStopApp(ctx gs.AppContext) {
 	}
 }
 
-// sortContainers 按照 BasePath 的前缀关系对容器进行排序。
-func (starter *Starter) sortContainers() {
-	sort.Slice(starter.Containers, func(i, j int) bool {
-		si := starter.Containers[i].Config().BasePath
-		sj := starter.Containers[j].Config().BasePath
-		if strings.HasPrefix(si, sj) {
-			return true
-		}
-		return strings.Compare(si, sj) >= 0
-	})
-}
-
-func (starter *Starter) getContainer(mapper *web.Mapper) web.Container {
+func (starter *Starter) getContainers(mapper *web.Mapper) []web.Container {
+	var ret []web.Container
 	for _, c := range starter.Containers {
 		if strings.HasPrefix(mapper.Path(), c.Config().BasePath) {
-			return c
+			ret = append(ret, c)
 		}
 	}
-	return nil
+	return ret
 }
 
 func (starter *Starter) startContainers(ctx gs.AppContext) {

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package GrpcServerFactory
+package factory
 
 import (
 	"context"
@@ -47,7 +47,7 @@ func NewStarter(config StarterCore.GrpcServerConfig) *Starter {
 
 func (starter *Starter) OnStartApp(ctx gs.AppContext) {
 
-	var servers map[string]SpringGrpc.Server
+	var servers map[string]*SpringGrpc.Server
 	err := ctx.Get(&servers)
 	util.Panic(err).When(err != nil)
 

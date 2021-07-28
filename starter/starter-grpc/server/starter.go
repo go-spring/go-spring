@@ -22,5 +22,5 @@ import (
 )
 
 func init() {
-	gs.Provide(GrpcServerFactory.NewStarter).Name("grpc-server-starter")
+	gs.Provide(factory.NewStarter).Export(gs.AppEvent)
 }
