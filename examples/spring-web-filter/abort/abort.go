@@ -20,7 +20,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/go-spring/spring-web"
+	"github.com/go-spring/spring-core/web"
 )
 
 type StringArray struct {
@@ -41,10 +41,10 @@ func NewPushFilter(num int, abort bool, array *StringArray) *PushFilter {
 	return &PushFilter{num: num, abort: abort, array: array}
 }
 
-func (f *PushFilter) Invoke(ctx SpringWeb.WebContext, chain SpringWeb.FilterChain) {
+func (f *PushFilter) Invoke(ctx web.Context, chain web.FilterChain) {
 
 	if f.abort { // 中断处理过程
-		panic(SpringWeb.NewHttpError(http.StatusOK))
+		panic(web.NewHttpError(http.StatusOK))
 	}
 
 	f.array.Push(strconv.Itoa(f.num))

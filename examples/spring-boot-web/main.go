@@ -8,9 +8,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-spring/spring-boot"
-	"github.com/go-spring/spring-logger"
-	"github.com/go-spring/spring-web"
+	"github.com/go-spring/spring-core/gs"
+	"github.com/go-spring/spring-core/log"
+	"github.com/go-spring/spring-core/web"
 	_ "github.com/go-spring/starter-echo"
 	//_ "github.com/go-spring/starter-gin"
 )
@@ -19,44 +19,44 @@ type request struct{}
 
 func init() {
 
-	SpringBoot.GetMapping("/mapping/json/error",
-		func(webCtx SpringWeb.WebContext) {
-			webCtx.JSON(SpringWeb.ERROR.Error(errors.New("this is an error")))
+	gs.GetMapping("/mapping/json/error",
+		func(webCtx web.Context) {
+			webCtx.JSON(web.ERROR.Error(errors.New("this is an error")))
 		})
 
-	SpringBoot.GetMapping("/mapping/json/success",
-		func(webCtx SpringWeb.WebContext) {
-			webCtx.JSON(SpringWeb.SUCCESS.Data("ok"))
+	gs.GetMapping("/mapping/json/success",
+		func(webCtx web.Context) {
+			webCtx.JSON(web.SUCCESS.Data("ok"))
 		})
 
-	SpringBoot.GetMapping("/mapping/panic/error", func(webCtx SpringWeb.WebContext) {
+	gs.GetMapping("/mapping/panic/error", func(webCtx web.Context) {
 		panic(errors.New("this is an error"))
 	})
 
-	SpringBoot.GetMapping("/mapping/panic/rpc_result", func(webCtx SpringWeb.WebContext) {
-		panic(SpringWeb.ERROR.Error(errors.New("this is a rpc_result")))
+	gs.GetMapping("/mapping/panic/rpc_result", func(webCtx web.Context) {
+		panic(web.ERROR.Error(errors.New("this is a rpc_result")))
 	})
 
-	SpringBoot.GetBinding("/binding/json/error",
-		func(ctx context.Context, req *request) *SpringWeb.RpcResult {
-			return SpringWeb.ERROR.Error(errors.New("this is an error"))
+	gs.GetBinding("/binding/json/error",
+		func(ctx context.Context, req *request) *web.RpcResult {
+			return web.ERROR.Error(errors.New("this is an error"))
 		})
 
-	SpringBoot.GetBinding("/binding/json/success",
-		func(ctx context.Context, req *request) *SpringWeb.RpcResult {
-			return SpringWeb.SUCCESS.Data("ok")
+	gs.GetBinding("/binding/json/success",
+		func(ctx context.Context, req *request) *web.RpcResult {
+			return web.SUCCESS.Data("ok")
 		})
 
-	SpringBoot.GetBinding("/binding/panic/error",
-		func(ctx context.Context, req *request) *SpringWeb.RpcResult {
+	gs.GetBinding("/binding/panic/error",
+		func(ctx context.Context, req *request) *web.RpcResult {
 			panic(errors.New("this is an error"))
 		})
 
-	SpringBoot.GetBinding("/binding/panic/rpc_result",
-		func(ctx context.Context, req *request) *SpringWeb.RpcResult {
+	gs.GetBinding("/binding/panic/rpc_result",
+		func(ctx context.Context, req *request) *web.RpcResult {
 			err := errors.New("this is a rpc_result")
-			// SpringWeb.ERROR.Panic(err).When(true)
-			panic(SpringWeb.ERROR.Error(err))
+			// web.ERROR.Panic(err).When(true)
+			panic(web.ERROR.Error(err))
 		})
 }
 
@@ -68,7 +68,7 @@ func read(response *http.Response, err error, expected string) {
 	b, _ := ioutil.ReadAll(response.Body)
 	fmt.Println("status:", response.Status, "body:", string(b))
 	if string(b) != expected {
-		SpringLogger.Errorf("get %s but want %s", string(b), expected)
+		log.Errorf("get %s but want %s", string(b), expected)
 	}
 }
 
@@ -95,7 +95,7 @@ func main() {
 		get("http://127.0.0.1:8080/binding/json/success", `{"code":200,"msg":"SUCCESS","data":"ok"}`)
 		get("http://127.0.0.1:8080/binding/panic/error", `this is an error`)
 		get("http://127.0.0.1:8080/binding/panic/rpc_result", `{"code":-1,"msg":"ERROR","err":"/Users/didi/GitHub/go-spring/go-spring/examples/spring-boot-web/main.go:59: this is a rpc_result"}`)
-		SpringBoot.Exit()
+		gs.ShutDown(errors.New("app run end"))
 	}()
-	SpringBoot.RunApplication()
+	fmt.Println(gs.Run())
 }
