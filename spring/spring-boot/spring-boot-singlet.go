@@ -72,6 +72,14 @@ func RunApplication(configLocation ...string) {
 	NewApplication().Run(configLocation...)
 }
 
+// StartApplication 快速启动 SpringBoot 应用,但不进行限塞
+func StartApplication(configLocation ...string) *Application {
+	g.running = true
+	app := newApplication(g.ctx, *g.config, configLocation...)
+	app.Start()
+	return app
+}
+
 // Exit 退出 SpringBoot 应用
 func Exit() {
 	BootStarter.Exit()

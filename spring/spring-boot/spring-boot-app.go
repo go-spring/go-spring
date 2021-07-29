@@ -78,7 +78,7 @@ type ApplicationEvent interface {
 }
 
 // application SpringBoot 应用
-type application struct {
+type Application struct {
 	appCtx      ApplicationContext  // 应用上下文
 	config      ApplicationConfig   // 应用程序配置
 	cfgLocation []string            // 配置文件目录
@@ -88,14 +88,14 @@ type application struct {
 
 // newApplication application 的构造函数
 func newApplication(appCtx ApplicationContext, config ApplicationConfig,
-	cfgLocation ...string) *application {
+	cfgLocation ...string) *Application {
 
 	// 使用默认的配置文件路径
 	if len(cfgLocation) == 0 {
 		cfgLocation = append(cfgLocation, DefaultConfigLocation)
 	}
 
-	return &application{
+	return &Application{
 		config:      config,
 		appCtx:      appCtx,
 		cfgLocation: cfgLocation,
@@ -103,7 +103,7 @@ func newApplication(appCtx ApplicationContext, config ApplicationConfig,
 }
 
 // Start 启动 SpringBoot 应用
-func (app *application) Start() {
+func (app *Application) Start() {
 
 	// 打印 Banner 内容
 	if app.config.bannerMode != BannerModeOff {
@@ -144,7 +144,7 @@ func (app *application) Start() {
 }
 
 // printBanner 查找 Banner 文件然后将其打印到控制台
-func (app *application) printBanner() {
+func (app *Application) printBanner() {
 
 	// 优先使用自定义 Banner
 	banner := customBanner
@@ -175,7 +175,7 @@ func (app *application) printBanner() {
 }
 
 // loadCmdArgs 加载命令行参数，形如 -name value 的参数才有效。
-func (_ *application) loadCmdArgs() SpringCore.Properties {
+func (_ *Application) loadCmdArgs() SpringCore.Properties {
 	SpringLogger.Debugf("load cmd args")
 	p := SpringCore.NewDefaultProperties()
 	for i := 0; i < len(os.Args); i++ { // 以短线定义的参数才有效
@@ -193,7 +193,7 @@ func (_ *application) loadCmdArgs() SpringCore.Properties {
 }
 
 // loadSystemEnv 加载系统环境变量，用户可以自定义有效环境变量的正则匹配
-func (app *application) loadSystemEnv() SpringCore.Properties {
+func (app *Application) loadSystemEnv() SpringCore.Properties {
 
 	var rex []*regexp.Regexp
 	for _, v := range app.config.expectSysProperties {
@@ -222,7 +222,7 @@ func (app *application) loadSystemEnv() SpringCore.Properties {
 }
 
 // loadProfileConfig 加载指定环境的配置文件
-func (app *application) loadProfileConfig(profile string) SpringCore.Properties {
+func (app *Application) loadProfileConfig(profile string) SpringCore.Properties {
 	p := SpringCore.NewDefaultProperties()
 	for _, configLocation := range app.cfgLocation {
 		var result map[string]interface{}
@@ -259,7 +259,7 @@ func resolveProperty(properties map[string]interface{}, key string, value interf
 }
 
 // prepare 准备上下文环境
-func (app *application) prepare() {
+func (app *Application) prepare() {
 
 	// 配置项加载顺序优先级，从高到低:
 	// 1.代码设置
@@ -315,14 +315,14 @@ func (app *application) prepare() {
 	}
 }
 
-func (app *application) stopApplication() {
+func (app *Application) stopApplication() {
 	for _, bean := range app.Events {
 		bean.OnStopApplication(app.appCtx)
 	}
 }
 
 // ShutDown 停止 SpringBoot 应用
-func (app *application) ShutDown() {
+func (app *Application) ShutDown() {
 
 	SpringLogger.Info("spring boot exiting")
 
