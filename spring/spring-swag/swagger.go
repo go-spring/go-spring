@@ -19,6 +19,7 @@ package SpringSwagger
 import (
 	"encoding/xml"
 	"fmt"
+	"net/http"
 	"reflect"
 	"strings"
 	"time"
@@ -159,24 +160,22 @@ func (s *Swagger) AddPath(path string, method string, op web.Operation) {
 		pathItem = spec.PathItem{PathItemProps: spec.PathItemProps{}}
 	}
 
-	//for _, m := range web.GetMethod(method) {
-	//	switch m {
-	//	case http.MethodGet:
-	//		pathItem.Get = op.Operation
-	//	case http.MethodPost:
-	//		pathItem.Post = op.Operation
-	//	case http.MethodPut:
-	//		pathItem.Put = op.Operation
-	//	case http.MethodDelete:
-	//		pathItem.Delete = op.Operation
-	//	case http.MethodOptions:
-	//		pathItem.Options = op.Operation
-	//	case http.MethodHead:
-	//		pathItem.Head = op.Operation
-	//	case http.MethodPatch:
-	//		pathItem.Patch = op.Operation
-	//	}
-	//}
+	switch method {
+	case http.MethodGet:
+		pathItem.Get = op.(*Operation).Operation
+	case http.MethodPost:
+		pathItem.Post = op.(*Operation).Operation
+	case http.MethodPut:
+		pathItem.Put = op.(*Operation).Operation
+	case http.MethodDelete:
+		pathItem.Delete = op.(*Operation).Operation
+	case http.MethodOptions:
+		pathItem.Options = op.(*Operation).Operation
+	case http.MethodHead:
+		pathItem.Head = op.(*Operation).Operation
+	case http.MethodPatch:
+		pathItem.Patch = op.(*Operation).Operation
+	}
 
 	s.Paths.Paths[path] = pathItem
 }
