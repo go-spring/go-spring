@@ -24,7 +24,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/gs/environ"
 	"github.com/go-spring/spring-stl/assert"
@@ -76,7 +75,9 @@ func TestConfig(t *testing.T) {
 		assert.Equal(t, p.Prop(environ.SpringProfilesActive), "dev")
 
 		var m map[string]string
-		_ = p.Bind(&m, conf.Key(conf.RootKey))
+		err := p.Bind(&m)
+		assert.Nil(t, err)
+
 		for _, k := range sortedKeys(m) {
 			fmt.Println(k, "=", p.Prop(k))
 		}

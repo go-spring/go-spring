@@ -466,8 +466,8 @@ func (c *Container) findBean(selector bean.Selector) ([]*BeanDefinition, error) 
 	}
 
 	return finder(func(b *BeanDefinition) bool {
-		if !b.Type().AssignableTo(t) {
-			return false
+		if b.Type().AssignableTo(t) {
+			return true
 		}
 		if t.Kind() != reflect.Interface {
 			return true

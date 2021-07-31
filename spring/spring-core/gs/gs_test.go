@@ -2568,7 +2568,7 @@ func TestApplicationContext_CreateBean(t *testing.T) {
 
 	p := <-ch
 
-	b, err := p.Wire((*ObjFactory).NewObj, arg.R2("${i:=5}"))
+	b, err := p.Wire((*ObjFactory).NewObj, arg.R1("${i:=5}"))
 	fmt.Println(b, err)
 }
 

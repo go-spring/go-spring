@@ -40,7 +40,9 @@ import (
 	"github.com/go-spring/spring-stl/util"
 )
 
-type AppContext interface{ Pandora }
+type AppContext interface {
+	Go(fn func(ctx context.Context))
+}
 
 // AppRunner 导出 appRunner 类型
 var AppRunner = (*appRunner)(nil)

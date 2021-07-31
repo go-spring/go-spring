@@ -46,17 +46,13 @@ func bind(p *Properties, v reflect.Value, tag string, opt bindOption) error {
 	}
 
 	if !validTag(tag) {
-		return fmt.Errorf("%s 属性绑定字符串 %s 语法错误", opt.path, tag)
+		return fmt.Errorf("%s 属性绑定字符串 %q 语法错误", opt.path, tag)
 	}
 
 	key, def, hasDef := parseTag(tag)
-	if key == "" {
-		key = "ANONYMOUS"
-	}
-
 	if opt.key == "" {
 		opt.key = key
-	} else {
+	} else if key != "" {
 		opt.key = opt.key + "." + key
 	}
 
@@ -88,7 +84,7 @@ func bindValue(p *Properties, v reflect.Value, opt bindOption) error {
 
 	val, err := resolve(p, opt)
 	if err != nil {
-		return err
+		return fmt.Errorf("type %q bind error: %w", opt.typ, err)
 	}
 
 	if fn != nil {
@@ -134,7 +130,7 @@ func bindValue(p *Properties, v reflect.Value, opt bindOption) error {
 		return err
 	}
 
-	return errors.New("unsupported type " + opt.typ.String())
+	return fmt.Errorf("unsupported bind type %q", opt.typ.String())
 }
 
 func bindArray(p *Properties, v reflect.Value, opt bindOption) error {
@@ -212,14 +208,12 @@ func bindMap(p *Properties, v reflect.Value, opt bindOption) error {
 		return fmt.Errorf("%s map 类型不能指定非空默认值", opt.path)
 	}
 
-	opt.key = strings.TrimPrefix(opt.key, RootKey+".")
-
 	et := opt.typ.Elem()
 	keys := make(map[string]struct{})
 	for _, key := range p.Keys() {
 
 		subKey := key
-		if opt.key != RootKey {
+		if opt.key != "" {
 			if !strings.HasPrefix(key, opt.key+".") {
 				continue
 			}
@@ -240,7 +234,10 @@ func bindMap(p *Properties, v reflect.Value, opt bindOption) error {
 	m := reflect.MakeMap(opt.typ)
 	for key := range keys {
 		e := reflect.New(et).Elem()
-		subKey := fmt.Sprintf("%s.%s", opt.key, key)
+		subKey := key
+		if opt.key != "" {
+			subKey = opt.key + "." + key
+		}
 		subOpt := bindOption{typ: et, key: subKey, path: opt.path}
 		err := bindValue(p, e, subOpt)
 		if err != nil {

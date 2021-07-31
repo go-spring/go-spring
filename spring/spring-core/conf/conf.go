@@ -23,12 +23,9 @@ import (
 	"io/ioutil"
 	"path/filepath"
 	"reflect"
-	"strings"
 
 	"github.com/go-spring/spring-stl/cast"
 )
-
-const RootKey = "$"
 
 // Properties 提供创建和读取属性列表的方法。它使用扁平的 map[string]string 结
 // 构存储数据，属性的 key 可以是 a.b.c 或者 a[0].b 两种形式，a.b.c 表示从 map
@@ -125,7 +122,6 @@ func Def(v interface{}) GetOption {
 // Get 方法的返回值是否为 nil 来判断 key 对应的属性值是否存在。
 func (p *Properties) Get(key string, opts ...GetOption) interface{} {
 
-	key = strings.TrimPrefix(key, RootKey+".")
 	if val, ok := p.m[key]; ok {
 		return val
 	}
@@ -215,9 +211,7 @@ func (p *Properties) Bind(i interface{}, opts ...BindOption) error {
 		v = v.Elem()
 	}
 
-	arg := bindArg{}
-	Key(RootKey)(&arg)
-
+	arg := bindArg{tag: "${}"}
 	for _, opt := range opts {
 		opt(&arg)
 	}

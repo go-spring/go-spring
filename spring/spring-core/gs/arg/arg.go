@@ -59,26 +59,26 @@ func Index(n int, arg Arg) IndexArg {
 	return IndexArg{n: n, arg: arg}
 }
 
+// R0 返回下标为 0 的参数绑定。
+func R0(arg Arg) IndexArg { return Index(1, arg) }
+
 // R1 返回下标为 1 的参数绑定。
-func R1(arg Arg) IndexArg { return Index(1, arg) }
+func R1(arg Arg) IndexArg { return Index(2, arg) }
 
 // R2 返回下标为 2 的参数绑定。
-func R2(arg Arg) IndexArg { return Index(2, arg) }
+func R2(arg Arg) IndexArg { return Index(3, arg) }
 
 // R3 返回下标为 3 的参数绑定。
-func R3(arg Arg) IndexArg { return Index(3, arg) }
+func R3(arg Arg) IndexArg { return Index(4, arg) }
 
 // R4 返回下标为 4 的参数绑定。
-func R4(arg Arg) IndexArg { return Index(4, arg) }
+func R4(arg Arg) IndexArg { return Index(5, arg) }
 
 // R5 返回下标为 5 的参数绑定。
-func R5(arg Arg) IndexArg { return Index(5, arg) }
+func R5(arg Arg) IndexArg { return Index(6, arg) }
 
 // R6 返回下标为 6 的参数绑定。
-func R6(arg Arg) IndexArg { return Index(6, arg) }
-
-// R7 返回下标为 7 的参数绑定。
-func R7(arg Arg) IndexArg { return Index(7, arg) }
+func R6(arg Arg) IndexArg { return Index(7, arg) }
 
 // ValueArg 包含具体值的参数绑定。
 type ValueArg struct {
