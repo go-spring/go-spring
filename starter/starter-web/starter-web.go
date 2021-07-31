@@ -23,7 +23,6 @@ import (
 
 	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/web"
-	"github.com/go-spring/spring-stl/util"
 )
 
 func init() {
@@ -33,27 +32,18 @@ func init() {
 // Starter Web 服务器启动器
 type Starter struct {
 	Containers []web.Container `autowire:""`
+	Filters    []web.Filter    `autowire:"${web.server.filters:=*?}"`
+	Router     web.Router      `autowire:""`
 }
 
 // OnStartApp 应用程序启动事件。
 func (starter *Starter) OnStartApp(ctx gs.AppContext) {
 
-	var webFilters struct {
-		Filters []web.Filter `autowire:"${web.server.filters:=?}"`
-	}
-
-	_, err := ctx.Wire(&webFilters)
-	util.Panic(err).When(err != nil)
-
 	for _, c := range starter.Containers {
-		c.AddFilter(webFilters.Filters...)
+		c.AddFilter(starter.Filters...)
 	}
 
-	var router web.Router
-	err = ctx.Get(&router)
-	util.Panic(err).When(err != nil)
-
-	for _, m := range router.Mappers() {
+	for _, m := range starter.Router.Mappers() {
 		for _, c := range starter.getContainers(m) {
 			c.AddMapper(web.NewMapper(m.Method(), m.Path(), m.Handler()))
 		}
