@@ -506,7 +506,7 @@ type Pkg interface {
 
 type SamePkgHolder struct {
 	// Pkg `autowire:""` // 这种方式会找到多个符合条件的 Object
-	Pkg `autowire:"github.com/go-spring/spring-core/gs/testdata/pkg/bar/pkg.SamePkg:*pkg.SamePkg"`
+	Pkg `autowire:"github.com/go-spring/spring-core/gs/testdata/pkg/bar/pkg.SamePkg:SamePkg"`
 }
 
 func TestApplicationContext_SameNameBean(t *testing.T) {
@@ -644,43 +644,33 @@ func TestApplicationContext_Get(t *testing.T) {
 		err = p.Get(&grouper)
 		assert.Nil(t, err)
 
-		err = p.Get(&two, "*gs_test.BeanTwo")
+		err = p.Get(&two, "BeanTwo")
 		assert.Nil(t, err)
 
-		err = p.Get(&grouper, "*gs_test.BeanTwo")
+		err = p.Get(&grouper, "BeanTwo")
 		assert.Nil(t, err)
 
-		assert.Panic(t, func() {
-			err = p.Get(&two, "BeanTwo")
-			util.Panic(err).When(err != nil)
-		}, "can't find bean, bean:\"BeanTwo\"")
-
-		assert.Panic(t, func() {
-			err = p.Get(&grouper, "BeanTwo")
-			util.Panic(err).When(err != nil)
-		}, "can't find bean, bean:\"BeanTwo\"")
-
-		err = p.Get(&two, ":*gs_test.BeanTwo")
+		err = p.Get(&two, ":BeanTwo")
 		assert.Nil(t, err)
 
-		err = p.Get(&grouper, ":*gs_test.BeanTwo")
+		err = p.Get(&grouper, ":BeanTwo")
 		assert.Nil(t, err)
 
-		err = p.Get(&two, "github.com/go-spring/spring-core/gs_test/gs_test.BeanTwo:*gs_test.BeanTwo")
+		err = p.Get(&two, "github.com/go-spring/spring-core/gs_test/gs_test.BeanTwo:BeanTwo")
 		assert.Nil(t, err)
 
-		err = p.Get(&grouper, "github.com/go-spring/spring-core/gs_test/gs_test.BeanTwo:*gs_test.BeanTwo")
+		err = p.Get(&grouper, "github.com/go-spring/spring-core/gs_test/gs_test.BeanTwo:BeanTwo")
 		assert.Nil(t, err)
 
 		assert.Panic(t, func() {
-			err = p.Get(&two, "xxx:*gs_test.BeanTwo")
+			err = p.Get(&two, "xxx:BeanTwo")
 			util.Panic(err).When(err != nil)
-		}, "can't find bean, bean:\"xxx:\\*gs_test.BeanTwo\"")
+		}, "can't find bean, bean:\"xxx:BeanTwo\"")
 
 		assert.Panic(t, func() {
-			err = p.Get(&grouper, "xxx:*gs_test.BeanTwo")
+			err = p.Get(&grouper, "xxx:BeanTwo")
 			util.Panic(err).When(err != nil)
-		}, "can't find bean, bean:\"xxx:\\*gs_test.BeanTwo\"")
+		}, "can't find bean, bean:\"xxx:BeanTwo\"")
 
 		assert.Panic(t, func() {
 			var three *BeanThree
@@ -707,19 +697,19 @@ func TestApplicationContext_Get(t *testing.T) {
 //	fmt.Println(json.ToString(b))
 //	assert.Equal(t, len(b), 0)
 //
-//	b, _ = p.Find("*gs_test.BeanTwo")
+//	b, _ = p.Find("BeanTwo")
 //	fmt.Println(json.ToString(b))
 //	assert.Equal(t, len(b), 1)
 //
-//	b, _ = p.Find(":*gs_test.BeanTwo")
+//	b, _ = p.Find(":BeanTwo")
 //	fmt.Println(json.ToString(b))
 //	assert.Equal(t, len(b), 1)
 //
-//	b, _ = p.Find("github.com/go-spring/spring-core/gs_test/gs_test.BeanTwo:*gs_test.BeanTwo")
+//	b, _ = p.Find("github.com/go-spring/spring-core/gs_test/gs_test.BeanTwo:BeanTwo")
 //	fmt.Println(json.ToString(b))
 //	assert.Equal(t, len(b), 1)
 //
-//	b, _ = p.Find("xxx:*gs_test.BeanTwo")
+//	b, _ = p.Find("xxx:BeanTwo")
 //	fmt.Println(json.ToString(b))
 //	assert.Equal(t, len(b), 0)
 //
@@ -871,7 +861,7 @@ func TestApplicationContext_DependsOn(t *testing.T) {
 
 		dependsOn := []bean.Selector{
 			(*BeanOne)(nil), // 通过类型定义查找
-			"github.com/go-spring/spring-core/gs_test/gs_test.BeanZero:*gs_test.BeanZero",
+			"github.com/go-spring/spring-core/gs_test/gs_test.BeanZero:BeanZero",
 		}
 
 		c := gs.New()
@@ -1028,7 +1018,7 @@ func TestApplicationContext_RegisterBeanFn2(t *testing.T) {
 		c.Property("manager.version", "1.0.0")
 
 		bd := c.Provide(NewManager)
-		assert.Equal(t, bd.BeanName(), "gs_test.Manager")
+		assert.Equal(t, bd.BeanName(), "Manager")
 
 		bd = c.Provide(NewInt)
 		assert.Equal(t, bd.BeanName(), "*int")
@@ -1593,7 +1583,7 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 		bd := c.Provide((*Server).Consumer, parent.ID())
 		err := c.Refresh()
 		assert.Nil(t, err)
-		assert.Equal(t, bd.BeanName(), "*gs_test.Consumer")
+		assert.Equal(t, bd.BeanName(), "Consumer")
 
 		p := <-ch
 
@@ -1640,8 +1630,8 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 		c, ch := container()
 		c.Property("server.version", "1.0.0")
 		parent := c.Provide(NewServerInterface)
-		// c.Provide(ServerInterface.Consumer, "").DependsOn("gs_test.ServerInterface")
-		c.Provide(ServerInterface.Consumer, parent.ID()).DependsOn("gs_test.ServerInterface")
+		// c.Provide(ServerInterface.Consumer, "").DependsOn("ServerInterface")
+		c.Provide(ServerInterface.Consumer, parent.ID()).DependsOn("ServerInterface")
 		c.Object(new(Service))
 		err := c.Refresh()
 		assert.Nil(t, err)
@@ -1691,8 +1681,8 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 
 				c := gs.New()
 				c.Property("server.version", "1.0.0")
-				parent := c.Object(new(Server)).DependsOn("*gs_test.Service")
-				c.Provide((*Server).Consumer, parent.ID()).DependsOn("*gs_test.Server")
+				parent := c.Object(new(Server)).DependsOn("Service")
+				c.Provide((*Server).Consumer, parent.ID()).DependsOn("Server")
 				c.Object(new(Service))
 				err := c.Refresh()
 				util.Panic(err).When(err != nil)
@@ -1757,7 +1747,7 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 		c, ch := container()
 		c.Property("server.version", "1.0.0")
 		c.Object(new(Server))
-		c.Provide(func(s *Server) *Consumer { return s.Consumer() }, "*gs_test.Server")
+		c.Provide(func(s *Server) *Consumer { return s.Consumer() }, "Server")
 		err := c.Refresh()
 		assert.Nil(t, err)
 
@@ -2722,7 +2712,7 @@ func TestDefaultSpringContext_ConditionOnBean(t *testing.T) {
 	c.Object(&BeanZero{5}).On(cond.On(c1).And().OnMissingBean("null"))
 	c.Object(new(BeanOne)).On(cond.On(c1).And().OnMissingBean("null"))
 
-	c.Object(new(BeanTwo)).On(cond.OnBean("*gs_test.BeanOne"))
+	c.Object(new(BeanTwo)).On(cond.OnBean("BeanOne"))
 	c.Object(new(BeanTwo)).Name("another_two").On(cond.OnBean("Null"))
 
 	err := c.Refresh()
@@ -2745,7 +2735,7 @@ func TestDefaultSpringContext_ConditionOnMissingBean(t *testing.T) {
 		c, ch := container()
 		c.Object(&BeanZero{5})
 		c.Object(new(BeanOne))
-		c.Object(new(BeanTwo)).On(cond.OnMissingBean("*gs_test.BeanOne"))
+		c.Object(new(BeanTwo)).On(cond.OnMissingBean("BeanOne"))
 		c.Object(new(BeanTwo)).Name("another_two").On(cond.OnMissingBean("Null"))
 		err := c.Refresh()
 		assert.Nil(t, err)
@@ -2840,7 +2830,7 @@ func TestDefaultSpringContext_ConditionOnMissingBean(t *testing.T) {
 //	c.Object(new(BeanOne))
 //	c.Refresh()
 //
-//	c1 := cond.OnBean("*gs_test.BeanOne")
+//	c1 := cond.OnBean("BeanOne")
 //	assert.True(t, c1.Matches(c))
 //
 //	c2 := cond.OnBean("Null")
@@ -2854,7 +2844,7 @@ func TestDefaultSpringContext_ConditionOnMissingBean(t *testing.T) {
 //	c.Object(new(BeanOne))
 //	c.Refresh()
 //
-//	c1 := cond.OnMissingBean("*gs_test.BeanOne")
+//	c1 := cond.OnMissingBean("BeanOne")
 //	assert.False(t, c1.Matches(c))
 //
 //	c2 := cond.OnMissingBean("Null")

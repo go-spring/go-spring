@@ -119,14 +119,14 @@ func TestBeanDefinition_Match(t *testing.T) {
 		{newBean(new(int)).Name("i"), "int", "i", true},
 		{newBean(new(int)).Name("i"), "", "i", true},
 		{newBean(new(int)).Name("i"), "int", "", true},
-		{newBean(new(pkg2.SamePkg)), "github.com/go-spring/spring-core/gs/testdata/pkg/foo/pkg.SamePkg", "*pkg.SamePkg", true},
-		{newBean(new(pkg2.SamePkg)), "", "*pkg.SamePkg", true},
+		{newBean(new(pkg2.SamePkg)), "github.com/go-spring/spring-core/gs/testdata/pkg/foo/pkg.SamePkg", "SamePkg", true},
+		{newBean(new(pkg2.SamePkg)), "", "SamePkg", true},
 		{newBean(new(pkg2.SamePkg)), "github.com/go-spring/spring-core/gs/testdata/pkg/foo/pkg.SamePkg", "", true},
 		{newBean(new(pkg2.SamePkg)).Name("pkg2"), "github.com/go-spring/spring-core/gs/testdata/pkg/foo/pkg.SamePkg", "pkg2", true},
 		{newBean(new(pkg2.SamePkg)).Name("pkg2"), "", "pkg2", true},
 		{newBean(new(pkg2.SamePkg)).Name("pkg2"), "github.com/go-spring/spring-core/gs/testdata/pkg/foo/pkg.SamePkg", "pkg2", true},
-		{newBean(new(pkg1.SamePkg)), "github.com/go-spring/spring-core/gs/testdata/pkg/bar/pkg.SamePkg", "*pkg.SamePkg", true},
-		{newBean(new(pkg1.SamePkg)), "", "*pkg.SamePkg", true},
+		{newBean(new(pkg1.SamePkg)), "github.com/go-spring/spring-core/gs/testdata/pkg/bar/pkg.SamePkg", "SamePkg", true},
+		{newBean(new(pkg1.SamePkg)), "", "SamePkg", true},
 		{newBean(new(pkg1.SamePkg)), "github.com/go-spring/spring-core/gs/testdata/pkg/bar/pkg.SamePkg", "", true},
 		{newBean(new(pkg1.SamePkg)).Name("pkg1"), "github.com/go-spring/spring-core/gs/testdata/pkg/bar/pkg.SamePkg", "pkg1", true},
 		{newBean(new(pkg1.SamePkg)).Name("pkg1"), "", "pkg1", true},
@@ -212,11 +212,11 @@ func TestObjectBean(t *testing.T) {
 			typeName string
 		}{
 			newBean(io.Writer(os.Stdout)): {
-				"*os.File", "os/os.File",
+				"File", "os/os.File",
 			},
 
 			newBean(newHistoryTeacher("")): {
-				"*gs_test.historyTeacher",
+				"historyTeacher",
 				"github.com/go-spring/spring-core/gs_test/gs_test.historyTeacher",
 			},
 
@@ -229,7 +229,7 @@ func TestObjectBean(t *testing.T) {
 			},
 
 			newBean(new(pkg2.SamePkg)): {
-				"*pkg.SamePkg",
+				"SamePkg",
 				"github.com/go-spring/spring-core/gs/testdata/pkg/foo/pkg.SamePkg",
 			},
 

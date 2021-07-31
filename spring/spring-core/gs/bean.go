@@ -22,6 +22,7 @@ import (
 	"math"
 	"reflect"
 	"runtime"
+	"strings"
 
 	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/gs/bean"
@@ -281,11 +282,16 @@ func NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 		panic(errors.New("bean should be *val but not *ref"))
 	}
 
+	// Type.String() 一般返回 *pkg.Type 形式的字符串，
+	// 我们只取最后的类型名，如有需要请自定义 bean 名称。
+	s := strings.Split(t.String(), ".")
+	name := s[len(s)-1]
+
 	return &BeanDefinition{
 		t:        t,
 		v:        v,
 		f:        f,
-		name:     t.String(),
+		name:     name,
 		typeName: util.TypeName(t),
 		status:   Default,
 		order:    LowestOrder,

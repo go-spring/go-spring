@@ -192,6 +192,7 @@ func (app *App) start() error {
 
 	ctx := &pandora{app.c}
 
+	// TODO 增加根据配置获取。
 	var runners []appRunner
 	if err = ctx.Get(&runners); err != nil {
 		return err
@@ -202,6 +203,7 @@ func (app *App) start() error {
 		r.Run(ctx)
 	}
 
+	// TODO 增加根据配置获取。
 	var events []appEvent
 	if err = ctx.Get(&events); err != nil {
 		return err

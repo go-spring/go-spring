@@ -32,7 +32,7 @@ import (
 func startApplication(cfgLocation string) (*gs.App, gs.Pandora) {
 
 	app := gs.NewApp()
-	gs.Setenv("SPRING_BANNER_VISIBLE", true)
+	gs.Setenv("SPRING_BANNER_VISIBLE", "true")
 	gs.Setenv("SPRING_CONFIG_LOCATION", cfgLocation)
 	app.Property(environ.EnablePandora, true)
 
