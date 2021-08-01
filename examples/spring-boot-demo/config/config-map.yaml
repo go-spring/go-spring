@@ -1,9 +1,0 @@
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: config-map
-data:
-  application.properties: |-
-    message=msg from config-map:application.properties
-  application-test.yaml: |-
-    message: msg from config-map:application-test.yaml

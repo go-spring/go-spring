@@ -19,25 +19,27 @@ package filter
 import (
 	"fmt"
 
-	"github.com/go-spring/spring-boot"
-	"github.com/go-spring/spring-core"
-	"github.com/go-spring/spring-logger"
-	"github.com/go-spring/spring-web"
+	"github.com/go-spring/spring-core/gs"
+	"github.com/go-spring/spring-core/log"
+	"github.com/go-spring/spring-core/web"
 )
 
 func init() {
-	// 这种方式可以避免使用 export 语法，就像 StringFilter 和 NumberFilter 那样。
-	SpringBoot.RegisterFilter(SpringCore.ObjectBean(new(SingleBeanFilter)))
+	gs.Object(new(SingleBeanFilter)).Export(gs.WebFilter)
 }
 
 type SingleBeanFilter struct {
 	DefaultValue string `value:"${default-value:=default}"`
 }
 
-func (f *SingleBeanFilter) Invoke(ctx SpringWeb.WebContext, chain SpringWeb.FilterChain) {
+func (f *SingleBeanFilter) URLPatterns() []string {
+	return []string{"/api/*"}
+}
+
+func (f *SingleBeanFilter) Invoke(ctx web.Context, chain web.FilterChain) {
 	if f.DefaultValue != "app-test" {
 		panic(fmt.Errorf("${default-value} expect 'app-test' but '%s'", f.DefaultValue))
 	}
-	SpringLogger.WithContext(ctx.Context()).Info("::SingleBeanFilter")
+	log.Ctx(ctx.Context()).Info("::SingleBeanFilter")
 	chain.Next(ctx)
 }

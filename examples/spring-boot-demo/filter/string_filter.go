@@ -17,35 +17,23 @@
 package filter
 
 import (
-	"github.com/go-spring/spring-boot"
-	"github.com/go-spring/spring-logger"
-	"github.com/go-spring/spring-web"
+	"github.com/go-spring/spring-core/gs"
+	"github.com/go-spring/spring-core/log"
+	"github.com/go-spring/spring-core/web"
 )
 
 func init() {
-	SpringBoot.RegisterNameBean("server", NewStringFilter("server"))
-	SpringBoot.RegisterNameBean("container", NewStringFilter("container"))
-	SpringBoot.RegisterNameBean("router", NewStringFilter("router"))
-	SpringBoot.RegisterNameBean("router//ok", NewStringFilter("router//ok"))
-	SpringBoot.RegisterNameBean("router//echo", NewStringFilter("router//echo"))
+	gs.Object(&StringFilter{"server"}).Export(gs.WebFilter)
 }
 
-type StringFilter struct {
-	_ SpringWeb.Filter `export:""`
+type StringFilter struct{ s string }
 
-	s string
-}
+func (f *StringFilter) Invoke(ctx web.Context, chain web.FilterChain) {
+	ctxLogger := log.Ctx(ctx.Context())
 
-func NewStringFilter(s string) *StringFilter {
-	return &StringFilter{s: s}
-}
-
-func (f *StringFilter) Invoke(ctx SpringWeb.WebContext, chain SpringWeb.FilterChain) {
-	log := SpringLogger.WithContext(ctx.Context())
-
-	defer func() { log.Info("after ", f.s, " code:", ctx.ResponseWriter().Status()) }()
-	log.Info("before ", f.s)
-	SpringLogger.Info(f.s)
+	defer func() { ctxLogger.Info("after ", f.s, " code:", ctx.ResponseWriter().Status()) }()
+	ctxLogger.Info("before ", f.s)
+	log.Info(f.s)
 
 	chain.Next(ctx)
 }

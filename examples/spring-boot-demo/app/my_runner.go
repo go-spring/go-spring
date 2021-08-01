@@ -17,51 +17,41 @@
 package app
 
 import (
-	"errors"
+	"context"
 	"time"
 
-	"github.com/go-spring/spring-boot"
-	"github.com/go-spring/spring-core"
-	"github.com/go-spring/spring-logger"
+	"github.com/go-spring/spring-core/gs"
+	"github.com/go-spring/spring-core/log"
 )
 
 func init() {
-	SpringBoot.RegisterBean(new(MyRunner))
+	gs.Object(new(MyRunner)).Export(gs.AppRunner)
 }
 
 type MyRunner struct {
-	_ SpringBoot.CommandLineRunner `export:""`
+	Properties map[string]string `value:"${}"`
 }
 
-func (_ *MyRunner) Run(appCtx SpringBoot.ApplicationContext) {
+func (r *MyRunner) Run(appCtx gs.AppContext) {
 
-	appCtx.SafeGoroutine(func() {
-		SpringLogger.Trace("get all properties:")
-		for k, v := range appCtx.GetProperties() {
-			SpringLogger.Tracef("%v=%v", k, v)
-		}
-		SpringLogger.Info("exit right now in MyRunner::Run")
-	})
-
-	fn := func(ctx SpringBoot.ApplicationContext, version string) {
-		if version != "v0.0.1" {
-			panic(errors.New("error"))
-		}
+	log.Trace("get all properties:")
+	for k, v := range r.Properties {
+		log.Tracef("%v=%v", k, v)
 	}
-	_ = appCtx.Run(fn, "1:${version:=v0.0.1}").On(SpringCore.ConditionOnProfile("test"))
+	log.Info("exit right now in MyRunner::Run")
 
-	appCtx.SafeGoroutine(func() {
-		defer func() { SpringLogger.Info("exit after waiting in MyRunner::Run") }()
+	appCtx.Go(func(ctx context.Context) {
+		defer func() { log.Info("exit after waiting in MyRunner::Run") }()
 
 		ticker := time.NewTicker(10 * time.Millisecond)
 		defer ticker.Stop()
 
 		for {
 			select {
-			case <-appCtx.Context().Done():
+			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				SpringLogger.Info("MyRunner::Run")
+				log.Info("MyRunner::Run")
 			}
 		}
 	})

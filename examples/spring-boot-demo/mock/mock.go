@@ -17,40 +17,40 @@
 package mock
 
 import (
-	"database/sql"
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/elliotchance/redismock"
 	"github.com/go-redis/redis"
-	"github.com/go-spring/spring-boot"
-	"github.com/go-spring/spring-logger"
+	"github.com/go-spring/spring-core/gs"
+	"github.com/go-spring/spring-core/log"
+	"github.com/jinzhu/gorm"
 )
 
 func init() {
 
-	SpringBoot.RegisterBeanFn(mockDB(func(mock sqlmock.Sqlmock) {
+	gs.Provide(mockDB(func(mock sqlmock.Sqlmock) {
 		mock.ExpectQuery("SELECT ENGINE FROM `ENGINES`").WillReturnRows(
 			mock.NewRows([]string{"ENGINE"}).AddRow("sql-mock"),
 		)
-	}))
+	})).Name("mockDB")
 
-	SpringBoot.RegisterBeanFn(mockRedis(func(mock *redismock.ClientMock) {
+	gs.Provide(mockRedis(func(mock *redismock.ClientMock) {
 		mock.On("Set", "key", "ok", time.Second*10).Return(redis.NewStatusResult("", nil))
 		mock.On("Get", "key").Return(redis.NewStringResult("ok", nil))
-	}))
+	})).Name("mockRedis")
 }
 
-// mockDB 创建 Mock DB
-func mockDB(fn func(sqlmock.Sqlmock)) func() (*sql.DB, error) {
-	return func() (*sql.DB, error) {
-		SpringLogger.Info("create sqlmock db")
+// mockDB 创建 gorm.DB Mock 客户端
+func mockDB(fn func(sqlmock.Sqlmock)) func() (*gorm.DB, error) {
+	return func() (*gorm.DB, error) {
+		log.Info("create sqlmock db")
 		db, mock, err := sqlmock.New()
 		if err != nil {
 			return nil, err
 		}
 		fn(mock)
-		return db, nil
+		return gorm.Open("mysql", db)
 	}
 }
 

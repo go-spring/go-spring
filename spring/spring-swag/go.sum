@@ -27,11 +27,10 @@ github.com/go-openapi/swag v0.19.11/go.mod h1:Uc0gKkdR+ojzsEpjh39QChyu92vPgIr72P
 github.com/go-openapi/swag v0.19.12/go.mod h1:eFdyEBkTdoAf/9RXBvj4cr1nH7GD8Kzo5HTt47gr72M=
 github.com/go-openapi/swag v0.19.13 h1:233UVgMy1DlmCYYfOiFpta6e2urloh+sEs5id6lyzog=
 github.com/go-openapi/swag v0.19.13/go.mod h1:QYRuS/SOXUCsnplDa677K7+DxSOj6IPNl/eQntq43wQ=
-github.com/go-spring/spring-core v1.0.6-0.20210731095216-fc5849f3eee0 h1:ttTcjAQp31bCzU8TUx2PlvqSphfy/VEqw0RjseKIaBY=
-github.com/go-spring/spring-core v1.0.6-0.20210731095216-fc5849f3eee0/go.mod h1:dlmlLZon5quLckxW7TkmY+OYuVUMB9ot28fxTL/3fYA=
-github.com/go-spring/spring-stl v0.0.0-20210724153121-8378c2594815/go.mod h1:RFkTfNPcNYbppU8krHBfGKjnvhR2Z0nQokpl5s0Te84=
-github.com/go-spring/spring-stl v0.0.0-20210726122404-abcf52621c2c h1:gZUvT/opSUX+5rtPqZzzLVdeBrtWFGqUaBXsCG5csIk=
-github.com/go-spring/spring-stl v0.0.0-20210726122404-abcf52621c2c/go.mod h1:RFkTfNPcNYbppU8krHBfGKjnvhR2Z0nQokpl5s0Te84=
+github.com/go-spring/spring-core v1.1.0-alpha h1:9U7pvTV4Sqvjss4o3Le1eYiu6qYt8A9MJG5P5DEEjt0=
+github.com/go-spring/spring-core v1.1.0-alpha/go.mod h1:evmTpsLrHqXqsTZTUMWFawEwfwyA9JJ0qY+ffRjwslo=
+github.com/go-spring/spring-stl v1.1.0-alpha h1:o0WpXRoO6VF97sttCaK60vxbfBXJZYd+UxBH7RkQP5Q=
+github.com/go-spring/spring-stl v1.1.0-alpha/go.mod h1:RFkTfNPcNYbppU8krHBfGKjnvhR2Z0nQokpl5s0Te84=
 github.com/gorilla/mux v1.7.3/go.mod h1:1lud6UwP+6orDFRuTfBEV8e9/aOM/c4fVVCaMa2zaAs=
 github.com/josharian/intern v1.0.0 h1:vlS4z54oSdjm0bgjRigI+G1HpF+tI+9rE5LLzOg8HmY=
 github.com/josharian/intern v1.0.0/go.mod h1:5DoeVV0s6jJacbCEi61lwdGj/aVlrQvzHFFd8Hwg//Y=

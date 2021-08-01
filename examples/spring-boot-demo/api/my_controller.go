@@ -23,49 +23,27 @@ import (
 	"time"
 
 	"github.com/go-redis/redis"
-	"github.com/go-spring/examples/spring-boot-demo/filter"
-	"github.com/go-spring/spring-boot"
-	"github.com/go-spring/spring-echo"
-	"github.com/go-spring/spring-logger"
-	"github.com/go-spring/spring-utils"
-	"github.com/go-spring/spring-web"
+	"github.com/go-spring/spring-core/gs"
+	"github.com/go-spring/spring-core/log"
+	"github.com/go-spring/spring-core/web"
+	"github.com/go-spring/spring-stl/util"
 	"github.com/jinzhu/gorm"
-	"github.com/labstack/echo"
-	"github.com/labstack/echo/middleware"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
 func init() {
 
-	// 使用 "router" 名称的过滤器，需要使用 SpringBoot.FilterBean 封装，为了编译器能够进行类型检查
-	r := SpringBoot.Route("/api", SpringBoot.FilterBean(
-		"router", (*filter.SingleBeanFilter)(nil)),
-	)
-
-	// 接受简单函数，可以使用 SpringBoot.Filter 封装，进而增加可用条件
-	r.GetMapping("/func", func(ctx SpringWeb.WebContext) {
+	gs.GetMapping("/api/func", func(ctx web.Context) {
 		ctx.String("func() return ok")
-	}, SpringBoot.Filter(SpringEcho.Filter(middleware.KeyAuth(
-		func(key string, context echo.Context) (bool, error) {
-			return key == "key_auth", nil
-		}))).ConditionOnPropertyValue("key_auth", true),
-	)
+	})
 
-	SpringBoot.RegisterBean(new(MyController)).Init(func(c *MyController) {
+	gs.Object(new(MyController)).Init(func(c *MyController) {
 
-		// 接受对象方法
-		r.GetMapping("/ok", c.OK, SpringBoot.FilterBean("router//ok")).
-			ConditionOnProfile("test").
-			Swagger(). // 设置接口的信息
-			WithDescription("ok")
+		gs.GetMapping("/api/ok", c.OK)
+		gs.GetBinding("/api/echo", c.Echo)
 
-		// 注意这个接口不和任何 Router 绑定
-		SpringBoot.GetBinding("/echo", c.Echo, SpringBoot.FilterBean("router//echo")).
-			Swagger(). // 设置接口的信息
-			WithDescription("echo")
-
-		SpringBoot.Go(func(ctx context.Context) {
-			defer func() { SpringLogger.Info("exit after waiting in ::Go") }()
+		gs.Go(func(ctx context.Context) {
+			defer func() { log.Info("exit after waiting in ::Go") }()
 
 			ticker := time.NewTicker(10 * time.Millisecond)
 			defer ticker.Stop()
@@ -75,7 +53,7 @@ func init() {
 				case <-ctx.Done():
 					return
 				case <-ticker.C:
-					SpringLogger.Info("::Go")
+					log.Info("::Go")
 				}
 			}
 		})
@@ -83,10 +61,9 @@ func init() {
 }
 
 type MyController struct {
-	RedisClient redis.Cmdable                 `autowire:""`
-	MongoClient *mongo.Client                 `autowire:"?"`
-	DB          *gorm.DB                      `autowire:""`
-	AppCtx      SpringBoot.ApplicationContext `autowire:""`
+	RedisClient redis.Cmdable `autowire:""`
+	MongoClient *mongo.Client `autowire:"?"`
+	DB          *gorm.DB      `autowire:""`
 }
 
 type EchoRequest struct {
@@ -97,23 +74,23 @@ type EchoResponse struct {
 	Echo string `json:"echo"`
 }
 
-func (c *MyController) Echo(ctx context.Context, request *EchoRequest) *SpringWeb.RpcResult {
+func (c *MyController) Echo(ctx context.Context, request *EchoRequest) *web.RpcResult {
 	if c.MongoClient != nil {
 		fmt.Println(c.MongoClient.Database("db0").Name())
 	}
-	return SpringWeb.SUCCESS.Data(&EchoResponse{"echo " + request.Str})
+	return web.SUCCESS.Data(&EchoResponse{"echo " + request.Str})
 }
 
-func (c *MyController) OK(ctx SpringWeb.WebContext) {
+func (c *MyController) OK(ctx web.Context) {
 
 	err := c.RedisClient.Set("key", "ok", time.Second*10).Err()
-	SpringUtils.Panic(err).When(err != nil)
+	util.Panic(err).When(err != nil)
 
 	val, err := c.RedisClient.Get("key").Result()
-	SpringUtils.Panic(err).When(err != nil)
+	util.Panic(err).When(err != nil)
 
 	rows, err := c.DB.Table("ENGINES").Select("ENGINE").Rows()
-	SpringUtils.Panic(err).When(err != nil)
+	util.Panic(err).When(err != nil)
 	defer func() { _ = rows.Close() }()
 
 	count := 0
@@ -123,7 +100,7 @@ func (c *MyController) OK(ctx SpringWeb.WebContext) {
 
 		var engine string
 		_ = rows.Scan(&engine)
-		SpringLogger.Info(engine)
+		log.Info(engine)
 
 		if engine != "sql-mock" {
 			panic(errors.New("error"))

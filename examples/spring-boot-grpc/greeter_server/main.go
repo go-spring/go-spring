@@ -30,7 +30,9 @@ import (
 )
 
 func init() {
-	gs.GrpcServer("helloworld.Greeter", pb.RegisterGreeterServer, new(GreeterServer))
+	s := new(GreeterServer)
+	gs.Object(s) // TODO 这里的用法有点奇怪
+	gs.GrpcServer("helloworld.Greeter", pb.RegisterGreeterServer, s)
 }
 
 type GreeterServer struct {

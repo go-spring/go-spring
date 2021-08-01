@@ -17,56 +17,38 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"io/ioutil"
 	"net/http"
 	"time"
 
-	"github.com/go-spring/spring-boot"
-	"github.com/go-spring/spring-logger"
+	"github.com/go-spring/spring-core/gs"
+	"github.com/go-spring/spring-core/log"
 	"github.com/labstack/echo"
 	"github.com/labstack/echo/middleware"
 )
 
 func init() {
-	SpringBoot.RegisterBeanFn(NewMyModule, "${message}")
+	gs.Provide(new(MyModule)).Export(gs.AppEvent)
 }
 
-type MyModule struct {
-	_ SpringBoot.ApplicationEvent `export:""`
+type MyModule struct{}
 
-	msg string
+func (m *MyModule) OnStartApp(ctx gs.AppContext) {
+	log.Info("MyModule start")
+	ctx.Go(Process)
 }
 
-func NewMyModule(msg string) *MyModule {
-	return &MyModule{
-		msg: msg,
-	}
+func (m *MyModule) OnStopApp(ctx gs.AppContext) {
+	log.Info("MyModule stop")
 }
 
-func (m *MyModule) OnStartApplication(appCtx SpringBoot.ApplicationContext) {
-	SpringLogger.Info("MyModule start")
+func Process(ctx context.Context) {
+	defer gs.ShutDown(errors.New("run end"))
 
-	var e *MyModule
-	appCtx.GetBean(&e)
-	SpringLogger.Infof("event: %+v", e)
-
-	appCtx.SafeGoroutine(Process)
-}
-
-func (m *MyModule) OnStopApplication(appCtx SpringBoot.ApplicationContext) {
-	SpringLogger.Info("MyModule stop")
-}
-
-func Process() {
-	defer SpringBoot.Exit()
-
-	defer func() { SpringLogger.Info("go stop") }()
-	SpringLogger.Info("go start")
-
-	var m *MyModule
-	SpringBoot.GetBean(&m)
-	SpringLogger.Infof("process: %+v", m)
+	defer func() { log.Info("go stop") }()
+	log.Info("go start")
 
 	time.Sleep(200 * time.Millisecond)
 
@@ -76,7 +58,7 @@ func Process() {
 		if body, e := ioutil.ReadAll(resp.Body); e != nil {
 			panic(e)
 		} else {
-			SpringLogger.Infof("resp code=%d body=%s", resp.StatusCode, string(body))
+			log.Infof("resp code=%d body=%s", resp.StatusCode, string(body))
 			if string(body) != "ok" {
 				panic(errors.New("error"))
 			}
@@ -89,7 +71,7 @@ func Process() {
 		if body, e := ioutil.ReadAll(resp.Body); e != nil {
 			panic(e)
 		} else {
-			SpringLogger.Infof("resp code=%d body=%s", resp.StatusCode, string(body))
+			log.Infof("resp code=%d body=%s", resp.StatusCode, string(body))
 		}
 	}
 
@@ -99,7 +81,7 @@ func Process() {
 		if body, e := ioutil.ReadAll(resp.Body); e != nil {
 			panic(e)
 		} else {
-			SpringLogger.Infof("resp code=%d body=%s", resp.StatusCode, string(body))
+			log.Infof("resp code=%d body=%s", resp.StatusCode, string(body))
 			if string(body) != "{\"code\":200,\"msg\":\"SUCCESS\",\"data\":{\"echo\":\"echo echo\"}}" {
 				panic(errors.New("error"))
 			}
@@ -117,7 +99,7 @@ func Process() {
 			if body, e0 := ioutil.ReadAll(resp.Body); e0 != nil {
 				panic(e0)
 			} else {
-				SpringLogger.Infof("resp code=%d body=%s", resp.StatusCode, string(body))
+				log.Infof("resp code=%d body=%s", resp.StatusCode, string(body))
 				if string(body) != "func() return ok" {
 					panic(errors.New("error"))
 				}
@@ -131,7 +113,7 @@ func Process() {
 		if body, e := ioutil.ReadAll(resp.Body); e != nil {
 			panic(e)
 		} else {
-			SpringLogger.Infof("resp code=%d body=%s", resp.StatusCode, string(body))
+			log.Infof("resp code=%d body=%s", resp.StatusCode, string(body))
 		}
 	}
 }

@@ -33,8 +33,9 @@ import (
 
 // Starter gRPC 服务器启动器
 type Starter struct {
-	config StarterCore.GrpcServerConfig
-	server *grpc.Server
+	config  StarterCore.GrpcServerConfig
+	server  *grpc.Server
+	Servers map[string]*SpringGrpc.Server `autowire:""`
 }
 
 // NewStarter Starter 的构造函数
@@ -47,19 +48,12 @@ func NewStarter(config StarterCore.GrpcServerConfig) *Starter {
 
 func (starter *Starter) OnStartApp(ctx gs.AppContext) {
 
-	var servers map[string]*SpringGrpc.Server
-	err := ctx.Get(&servers)
-	util.Panic(err).When(err != nil)
-
 	server := reflect.ValueOf(starter.server)
 	srvMap := make(map[string]reflect.Value)
-	for serviceName, rpcServer := range servers {
+	for serviceName, rpcServer := range starter.Servers {
 
 		service := reflect.ValueOf(rpcServer.Service)
 		srvMap[serviceName] = service
-
-		_, err = ctx.Wire(rpcServer.Service)
-		util.Panic(err).When(err != nil)
 
 		fn := reflect.ValueOf(rpcServer.Register)
 		fn.Call([]reflect.Value{server, service})

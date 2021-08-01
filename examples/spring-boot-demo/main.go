@@ -17,6 +17,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 
 	_ "github.com/go-spring/examples/spring-boot-demo/api"
@@ -24,42 +25,29 @@ import (
 	_ "github.com/go-spring/examples/spring-boot-demo/extension"
 	_ "github.com/go-spring/examples/spring-boot-demo/filter"
 	_ "github.com/go-spring/examples/spring-boot-demo/mock"
-	_ "github.com/go-spring/examples/spring-boot-demo/server"
-	"github.com/go-spring/spring-boot"
+	"github.com/go-spring/spring-core/gs"
+	"github.com/go-spring/spring-core/log"
+	_ "github.com/go-spring/starter-echo"
 	_ "github.com/go-spring/starter-go-redis"
 	_ "github.com/go-spring/starter-gorm/mysql"
 )
 
 func init() {
-	// SpringLogger.SetLogger(&SpringLogger.Console{})
+	log.SetLevel(log.TraceLevel)
 }
 
 func main() {
 
-	// 配置文件里面也指定了 spring.profile 的值
-	// _ = os.Setenv(SpringBoot.SpringProfile, "test")
-
-	// 过滤系统环境变量
-	SpringBoot.ExpectSysProperties("GOPATH")
-
-	// 设置过滤器是否启用
-	SpringBoot.SetProperty("key_auth", false)
-
-	SpringBoot.SetProperty("db.url", "root:root@/information_schema?charset=utf8&parseTime=True&loc=Local")
+	// 注意 env 和 property 的优先级，选择合适的方式。
+	gs.Setenv("INCLUDE_ENV_PATTERNS", "GOPATH")
+	gs.Setenv("GS_SPRING_PROFILES_ACTIVE", "test")
+	gs.Setenv("GS_SPRING_CONFIG_LOCATIONS", "config/")
+	gs.Setenv("GS_SPRING_CONFIG_EXTENSIONS", ".properties,.prop,.yaml,.yml,.toml,.tml,.ini")
 
 	dir, _ := os.Getwd()
-	SpringBoot.SetProperty("static.root", dir)
+	gs.Property("static.root", dir)
 
-	configLocations := []string{
-		"config/", "k8s:config/config-map.yaml",
-	}
+	gs.Property("db.url", "root:root@/information_schema?charset=utf8&parseTime=True&loc=Local")
 
-	// 可以通过 API 设置 Banner 字符串
-	// SpringBoot.SetBanner("go-spring-demo@github")
-
-	// 关闭 Banner 功能
-	// SpringBoot.SetBannerMode(SpringBoot.BannerModeOff)
-
-	// 等效 SpringBoot.RunApplication(configLocations...)
-	SpringBoot.NewApplication().Run(configLocations...)
+	fmt.Println(gs.Run())
 }
