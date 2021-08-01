@@ -1,3 +1,3 @@
 module github.com/go-spring/starter-core
 
-go 1.12
+go 1.14
