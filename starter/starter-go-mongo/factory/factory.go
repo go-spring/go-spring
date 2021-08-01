@@ -20,14 +20,14 @@ import (
 	"context"
 
 	"github.com/go-spring/spring-core/log"
-	"github.com/go-spring/starter-mongo"
+	"github.com/go-spring/starter-core"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
 )
 
 // NewClient 创建 MongoDB 客户端
-func NewClient(config StarterMongo.Config) (*mongo.Client, error) {
+func NewClient(config StarterCore.MongoConfig) (*mongo.Client, error) {
 	log.Info("open mongo db ", config.Url)
 	ctx := context.Background()
 

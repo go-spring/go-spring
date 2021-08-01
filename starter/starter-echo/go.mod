@@ -1,12 +1,12 @@
 module github.com/go-spring/starter-echo
 
-go 1.12
+go 1.14
 
 require (
-	github.com/go-spring/spring-echo v1.0.6-0.20210725113450-fbe41d0e09d0
-	github.com/go-spring/spring-core v1.0.6-0.20210725091854-c92ef2937b10
-	github.com/go-spring/starter-core v0.0.0-20210719133634-d661de98b7a9
-	github.com/go-spring/starter-web v1.0.6-0.20210725120433-93d719663caf
+	github.com/go-spring/spring-core v1.0.6-0.20210731095216-fc5849f3eee0
+	github.com/go-spring/spring-echo v1.0.6-0.20210801004555-fde74c458730
+	github.com/go-spring/starter-core v0.0.0-20210801005940-083fbb1c8f0b
+	github.com/go-spring/starter-web v1.0.6-0.20210801011027-9536fb593b09
 )
 
 //replace (
