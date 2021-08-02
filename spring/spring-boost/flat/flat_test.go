@@ -14,34 +14,40 @@
  * limitations under the License.
  */
 
-package knife_test
+package flat_test
 
 import (
-	"context"
 	"testing"
 
-	"github.com/go-spring/spring-stl/assert"
-	"github.com/go-spring/spring-stl/knife"
+	"github.com/go-spring/spring-boost/assert"
+	"github.com/go-spring/spring-boost/flat"
 )
 
-func TestKnife(t *testing.T) {
-	ctx := context.TODO()
-
-	v := knife.Get(ctx, "a")
-	assert.Nil(t, v)
-
-	knife.Set(ctx, "a", "b")
-
-	v = knife.Get(ctx, "a")
-	assert.Nil(t, v)
-
-	ctx = knife.New(ctx)
-
-	v = knife.Get(ctx, "a")
-	assert.Nil(t, v)
-
-	knife.Set(ctx, "a", "b")
-
-	v = knife.Get(ctx, "a")
-	assert.Equal(t, v, "b")
+func TestFlatMap(t *testing.T) {
+	m := map[string]interface{}{
+		"a": map[string]interface{}{
+			"b": map[string]interface{}{
+				"c": "d",
+			},
+			"e": []interface{}{
+				"f", "g",
+			},
+			"h": "i",
+		},
+		"j": []interface{}{
+			"k", "l",
+		},
+		"m": "n",
+	}
+	ret := flat.Map(m)
+	expect := map[string]interface{}{
+		"a.b.c":  "d",
+		"a.e[0]": "f",
+		"a.e[1]": "g",
+		"a.h":    "i",
+		"j[0]":   "k",
+		"j[1]":   "l",
+		"m":      "n",
+	}
+	assert.Equal(t, ret, expect)
 }

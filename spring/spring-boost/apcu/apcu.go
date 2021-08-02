@@ -23,7 +23,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-spring/spring-stl/json"
+	"github.com/go-spring/spring-boost/json"
 )
 
 var cache sync.Map

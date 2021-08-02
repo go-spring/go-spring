@@ -14,15 +14,34 @@
  * limitations under the License.
  */
 
-package pkg
+package knife_test
 
 import (
-	"fmt"
+	"context"
+	"testing"
+
+	"github.com/go-spring/spring-boost/assert"
+	"github.com/go-spring/spring-boost/knife"
 )
 
-// SamePkg Golang 允许不同的路径下存在同名的包。
-type SamePkg struct{}
+func TestKnife(t *testing.T) {
+	ctx := context.TODO()
 
-func (p *SamePkg) Package() {
-	fmt.Println("github.com/go-spring/spring-stl/util/testdata/pkg/bar/pkg.SamePkg")
+	v := knife.Get(ctx, "a")
+	assert.Nil(t, v)
+
+	knife.Set(ctx, "a", "b")
+
+	v = knife.Get(ctx, "a")
+	assert.Nil(t, v)
+
+	ctx = knife.New(ctx)
+
+	v = knife.Get(ctx, "a")
+	assert.Nil(t, v)
+
+	knife.Set(ctx, "a", "b")
+
+	v = knife.Get(ctx, "a")
+	assert.Equal(t, v, "b")
 }

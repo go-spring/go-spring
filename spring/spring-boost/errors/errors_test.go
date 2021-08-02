@@ -20,9 +20,9 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/go-spring/spring-stl/assert"
-	"github.com/go-spring/spring-stl/errors"
-	"github.com/go-spring/spring-stl/util"
+	"github.com/go-spring/spring-boost/assert"
+	"github.com/go-spring/spring-boost/errors"
+	"github.com/go-spring/spring-boost/util"
 )
 
 func TestPanicCond_When(t *testing.T) {

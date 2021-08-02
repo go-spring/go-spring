@@ -20,8 +20,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/go-spring/spring-stl/util"
-	"github.com/go-spring/spring-stl/util/testdata"
+	"github.com/go-spring/spring-boost/util"
+	"github.com/go-spring/spring-boost/util/testdata"
 )
 
 func fnNoArgs() {}

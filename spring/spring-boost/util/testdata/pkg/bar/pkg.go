@@ -14,17 +14,15 @@
  * limitations under the License.
  */
 
-package util
+package pkg
 
 import (
-	"github.com/go-spring/spring-stl/json"
+	"fmt"
 )
 
-// CopyBean 使用 JSON 序列化的方式进行拷贝，支持匿名字段，支持类型转换。
-func CopyBean(src interface{}, dest interface{}) error {
-	bytes, err := json.Marshal(src)
-	if err != nil {
-		return err
-	}
-	return json.Unmarshal(bytes, dest)
+// SamePkg Golang 允许不同的路径下存在同名的包。
+type SamePkg struct{}
+
+func (p *SamePkg) Package() {
+	fmt.Println("github.com/go-spring/spring-boost/util/testdata/pkg/bar/pkg.SamePkg")
 }

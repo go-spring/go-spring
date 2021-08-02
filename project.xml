@@ -73,12 +73,6 @@
         <branch>main</branch>
     </project>
     <project>
-        <name>spring-stl</name>
-        <dir>spring/spring-stl</dir>
-        <url>https://github.com/go-spring/spring-stl.git</url>
-        <branch>main</branch>
-    </project>
-    <project>
         <name>spring-rabbitmq</name>
         <dir>spring/spring-rabbitmq</dir>
         <url>https://github.com/go-spring/spring-rabbitmq.git</url>
@@ -89,5 +83,11 @@
         <dir>spring/spring-core</dir>
         <url>https://github.com/go-spring/spring-core.git</url>
         <branch>master</branch>
+    </project>
+    <project>
+        <name>spring-boost</name>
+        <dir>spring/spring-boost</dir>
+        <url>https://github.com/go-spring/spring-boost.git</url>
+        <branch>main</branch>
     </project>
 </projects>

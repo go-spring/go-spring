@@ -20,7 +20,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/go-spring/spring-stl/assert"
+	"github.com/go-spring/spring-boost/assert"
 )
 
 func TestCheck(t *testing.T) {

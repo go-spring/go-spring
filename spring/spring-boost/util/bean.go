@@ -14,40 +14,17 @@
  * limitations under the License.
  */
 
-package flat_test
+package util
 
 import (
-	"testing"
-
-	"github.com/go-spring/spring-stl/assert"
-	"github.com/go-spring/spring-stl/flat"
+	"github.com/go-spring/spring-boost/json"
 )
 
-func TestFlatMap(t *testing.T) {
-	m := map[string]interface{}{
-		"a": map[string]interface{}{
-			"b": map[string]interface{}{
-				"c": "d",
-			},
-			"e": []interface{}{
-				"f", "g",
-			},
-			"h": "i",
-		},
-		"j": []interface{}{
-			"k", "l",
-		},
-		"m": "n",
+// CopyBean 使用 JSON 序列化的方式进行拷贝，支持匿名字段，支持类型转换。
+func CopyBean(src interface{}, dest interface{}) error {
+	bytes, err := json.Marshal(src)
+	if err != nil {
+		return err
 	}
-	ret := flat.Map(m)
-	expect := map[string]interface{}{
-		"a.b.c":  "d",
-		"a.e[0]": "f",
-		"a.e[1]": "g",
-		"a.h":    "i",
-		"j[0]":   "k",
-		"j[1]":   "l",
-		"m":      "n",
-	}
-	assert.Equal(t, ret, expect)
+	return json.Unmarshal(bytes, dest)
 }
