@@ -3,6 +3,7 @@ module github.com/go-spring/spring-core
 go 1.14
 
 require (
+	github.com/BurntSushi/toml v0.4.0 // indirect
 	github.com/go-spring/spring-stl v1.1.0-alpha
 	github.com/magiconair/properties v1.8.1
 	github.com/pelletier/go-toml v1.2.0

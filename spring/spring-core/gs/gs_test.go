@@ -101,25 +101,24 @@ func TestApplicationContext(t *testing.T) {
 
 		p := <-ch
 
-		assert.Panic(t, func() {
+		{
 			var i int
 			err = p.Get(&i)
-			util.Panic(err).When(err != nil)
-		}, "int is not valid receiver type")
+			assert.Error(t, err, "int is not valid receiver type")
+		}
 
 		// 找到多个符合条件的值
-		assert.Panic(t, func() {
+		{
 			var i *int
 			err = p.Get(&i)
-			util.Panic(err).When(err != nil)
-		}, "found 3 beans, bean:\"\" type:\"\\*int\"")
-
+			assert.Error(t, err, "found 3 beans, bean:\"\" type:\"\\*int\"")
+		}
 		// 入参不是可赋值的对象
-		assert.Panic(t, func() {
+		{
 			var i int
 			err = p.Get(&i, "i3")
-			util.Panic(err).When(err != nil)
-		}, "int is not valid receiver type")
+			assert.Error(t, err, "int is not valid receiver type")
+		}
 
 		{
 			var i *int
@@ -239,10 +238,8 @@ func TestApplicationContext_AutoWireBeans(t *testing.T) {
 		i2 := int(3)
 		c.Object(&i2).Name("int_ptr_2")
 
-		assert.Panic(t, func() {
-			err := c.Refresh()
-			util.Panic(err).When(err != nil)
-		}, "\"TestObject.IntPtrByType\" wired error: found 2 beans, bean:\"\\?\" type:\"\\*int\"")
+		err := c.Refresh()
+		assert.Error(t, err, "\"TestObject.IntPtrByType\" wired error: found 2 beans, bean:\"\\?\" type:\"\\*int\"")
 	})
 
 	c, ch := container()
@@ -576,41 +573,41 @@ func TestApplicationContext_Get(t *testing.T) {
 
 		p := <-ch
 
-		assert.Panic(t, func() {
+		{
 			var i int
 			err = p.Get(i)
-			util.Panic(err).When(err != nil)
-		}, "i must be pointer")
+			assert.Error(t, err, "i must be pointer")
+		}
 
-		assert.Panic(t, func() {
+		{
 			var i *int
 			err = p.Get(i)
-			util.Panic(err).When(err != nil)
-		}, "receiver must be ref type")
+			assert.Error(t, err, "receiver must be ref type")
+		}
 
-		assert.Panic(t, func() {
+		{
 			i := new(int)
 			err = p.Get(i)
-			util.Panic(err).When(err != nil)
-		}, "int is not valid receiver type")
+			assert.Error(t, err, "int is not valid receiver type")
+		}
 
-		assert.Panic(t, func() {
+		{
 			var i *int
 			err = p.Get(&i)
-			util.Panic(err).When(err != nil)
-		}, "can't find bean, bean:\"\"")
+			assert.Error(t, err, "can't find bean, bean:\"\"")
+		}
 
-		assert.Panic(t, func() {
+		{
 			var s fmt.Stringer
 			err = p.Get(s)
-			util.Panic(err).When(err != nil)
-		}, "i can't be nil")
+			assert.Error(t, err, "i can't be nil")
+		}
 
-		assert.Panic(t, func() {
+		{
 			var s fmt.Stringer
 			err = p.Get(&s)
-			util.Panic(err).When(err != nil)
-		}, "can't find bean, bean:\"\"")
+			assert.Error(t, err, "can't find bean, bean:\"\"")
+		}
 	})
 
 	t.Run("success", func(t *testing.T) {
@@ -662,21 +659,15 @@ func TestApplicationContext_Get(t *testing.T) {
 		err = p.Get(&grouper, "github.com/go-spring/spring-core/gs_test/gs_test.BeanTwo:BeanTwo")
 		assert.Nil(t, err)
 
-		assert.Panic(t, func() {
-			err = p.Get(&two, "xxx:BeanTwo")
-			util.Panic(err).When(err != nil)
-		}, "can't find bean, bean:\"xxx:BeanTwo\"")
+		err = p.Get(&two, "xxx:BeanTwo")
+		assert.Error(t, err, "can't find bean, bean:\"xxx:BeanTwo\"")
 
-		assert.Panic(t, func() {
-			err = p.Get(&grouper, "xxx:BeanTwo")
-			util.Panic(err).When(err != nil)
-		}, "can't find bean, bean:\"xxx:BeanTwo\"")
+		err = p.Get(&grouper, "xxx:BeanTwo")
+		assert.Error(t, err, "can't find bean, bean:\"xxx:BeanTwo\"")
 
-		assert.Panic(t, func() {
-			var three *BeanThree
-			err = p.Get(&three)
-			util.Panic(err).When(err != nil)
-		}, "can't find bean, bean:\"\"")
+		var three *BeanThree
+		err = p.Get(&three)
+		assert.Error(t, err, "can't find bean, bean:\"\"")
 	})
 }
 
@@ -1003,13 +994,11 @@ func TestApplicationContext_RegisterBeanFn2(t *testing.T) {
 		err = p.Get(&m)
 		assert.Nil(t, err)
 
-		assert.Panic(t, func() {
-			// 因为用户是按照接口注册的，所以理论上在依赖
-			// 系统中用户并不关心接口对应的真实类型是什么。
-			var lm *localManager
-			err = p.Get(&lm)
-			util.Panic(err).When(err != nil)
-		}, "can't find bean, bean:\"\"")
+		// 因为用户是按照接口注册的，所以理论上在依赖
+		// 系统中用户并不关心接口对应的真实类型是什么。
+		var lm *localManager
+		err = p.Get(&lm)
+		assert.Error(t, err, "can't find bean, bean:\"\"")
 	})
 
 	t.Run("manager", func(t *testing.T) {
@@ -1032,11 +1021,9 @@ func TestApplicationContext_RegisterBeanFn2(t *testing.T) {
 		err = p.Get(&m)
 		assert.Nil(t, err)
 
-		assert.Panic(t, func() {
-			var lm *localManager
-			err = p.Get(&lm)
-			util.Panic(err).When(err != nil)
-		}, "can't find bean, bean:\"\"")
+		var lm *localManager
+		err = p.Get(&lm)
+		assert.Error(t, err, "can't find bean, bean:\"\"")
 	})
 
 	t.Run("manager return error", func(t *testing.T) {
