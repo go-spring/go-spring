@@ -625,27 +625,14 @@ func (c *Container) getBeanValue(b *BeanDefinition, stack *wiringStack) (reflect
 // wireBeanValue 对 v 进行属性绑定和依赖注入，v 在传入时应该是一个已经初始化的值。
 func (c *Container) wireBeanValue(v reflect.Value, stack *wiringStack) error {
 
-	ev := v
-	t := v.Type()
-	if t.Kind() == reflect.Ptr {
-		ev = v.Elem()
+	if v.Kind() == reflect.Ptr {
+		v = v.Elem()
 	}
 
 	// 如整数指针类型的 bean 是无需注入的。
-	if ev.Kind() != reflect.Struct {
+	if v.Kind() != reflect.Struct {
 		return nil
 	}
-
-	err := c.p.Bind(ev)
-	if err != nil {
-		return err
-	}
-
-	return c.wireStruct(ev, stack)
-}
-
-// wireStruct 对结构体进行依赖注入，需要注意的是这里不需要进行属性绑定。
-func (c *Container) wireStruct(v reflect.Value, stack *wiringStack) error {
 
 	t := v.Type()
 	typeName := t.Name()
@@ -653,14 +640,25 @@ func (c *Container) wireStruct(v reflect.Value, stack *wiringStack) error {
 		typeName = t.String()
 	}
 
-	for i := 0; i < t.NumField(); i++ {
+	param := conf.BindParam{Type: t, Path: typeName}
+	return c.wireStruct(v, param, stack)
+}
 
-		ft := t.Field(i)
+// wireStruct 对结构体进行依赖注入，需要注意的是这里不需要进行属性绑定。
+func (c *Container) wireStruct(v reflect.Value, opt conf.BindParam, stack *wiringStack) error {
+
+	for i := 0; i < opt.Type.NumField(); i++ {
+		ft := opt.Type.Field(i)
 		fv := v.Field(i)
 
 		if !fv.CanInterface() {
 			fv = util.PatchValue(fv)
+			if !fv.CanInterface() {
+				continue
+			}
 		}
+
+		fieldPath := opt.Path + "." + ft.Name
 
 		// 支持 autowire 和 inject 标签，支持 lazy 注入。
 		tag, ok := ft.Tag.Lookup("autowire")
@@ -669,23 +667,42 @@ func (c *Container) wireStruct(v reflect.Value, stack *wiringStack) error {
 		}
 		if ok {
 			if strings.HasSuffix(tag, ",lazy") {
-				fieldName := typeName + "." + ft.Name
-				f := lazyField{v: fv, name: fieldName, tag: tag}
+				f := lazyField{v: fv, name: fieldPath, tag: tag}
 				stack.lazyFields = append(stack.lazyFields, f)
 			} else {
 				if err := c.wireByTag(fv, tag, stack); err != nil {
-					fieldName := typeName + "." + ft.Name
-					return fmt.Errorf("%q wired error: %s", fieldName, err.Error())
+					return fmt.Errorf("%q wired error: %w", fieldPath, err)
 				}
 			}
-		}
-
-		if ft.Type.Kind() != reflect.Struct {
 			continue
 		}
-		// 递归处理结构体字段，指针字段不可以因为可能出现无限循环。
-		if err := c.wireStruct(fv, stack); err != nil {
-			return err
+
+		subParam := conf.BindParam{
+			Type: ft.Type,
+			Key:  opt.Key,
+			Path: fieldPath,
+		}
+
+		if tag, ok = ft.Tag.Lookup("value"); ok {
+			if err := subParam.BindTag(tag); err != nil {
+				return err
+			}
+			if ft.Anonymous {
+				if err := c.wireStruct(fv, subParam, stack); err != nil {
+					return err
+				}
+			} else {
+				if err := conf.BindValue(c.p, fv, subParam); err != nil {
+					return err
+				}
+			}
+			continue
+		}
+
+		if ft.Anonymous && ft.Type.Kind() == reflect.Struct {
+			if err := c.wireStruct(fv, subParam, stack); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

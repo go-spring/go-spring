@@ -1279,16 +1279,6 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 
 type RecoresCluster struct {
 	Endpoints string `value:"${redis.endpoints}"`
-
-	RecoresConfig struct {
-		Endpoints string `value:"${redis.endpoints}"`
-	}
-
-	Nested struct {
-		RecoresConfig struct {
-			Endpoints string `value:"${redis.endpoints}"`
-		}
-	}
 }
 
 func TestApplicationContext_ValueBincoreng(t *testing.T) {
@@ -1306,8 +1296,6 @@ func TestApplicationContext_ValueBincoreng(t *testing.T) {
 	fmt.Println(cluster)
 
 	assert.Nil(t, err)
-	assert.Equal(t, cluster.Endpoints, cluster.RecoresConfig.Endpoints)
-	assert.Equal(t, cluster.Endpoints, cluster.Nested.RecoresConfig.Endpoints)
 }
 
 func TestApplicationContext_Collect(t *testing.T) {
@@ -2159,18 +2147,6 @@ type PtrNestedAutowireBean struct {
 	_                      bool
 }
 
-type FieldNestedAutowireBean struct {
-	B SubNestedAutowireBean
-	_ *float32
-	_ bool
-}
-
-type PtrFieldNestedAutowireBean struct {
-	B *SubNestedAutowireBean // 不处理
-	_ *float32
-	_ bool
-}
-
 func TestApplicationContext_NestedAutowireBean(t *testing.T) {
 
 	c, ch := container()
@@ -2178,10 +2154,6 @@ func TestApplicationContext_NestedAutowireBean(t *testing.T) {
 	c.Object(new(NestedAutowireBean))
 	c.Object(&PtrNestedAutowireBean{
 		SubNestedAutowireBean: new(SubNestedAutowireBean),
-	})
-	c.Object(new(FieldNestedAutowireBean))
-	c.Object(&PtrFieldNestedAutowireBean{
-		B: new(SubNestedAutowireBean),
 	})
 	err := c.Refresh()
 	assert.Nil(t, err)
@@ -2199,18 +2171,6 @@ func TestApplicationContext_NestedAutowireBean(t *testing.T) {
 
 	assert.Nil(t, err)
 	assert.Equal(t, b0.Int, (*int)(nil))
-
-	var b1 *FieldNestedAutowireBean
-	err = p.Get(&b1)
-
-	assert.Nil(t, err)
-	assert.Equal(t, *b1.B.Int, 3)
-
-	var b2 *PtrFieldNestedAutowireBean
-	err = p.Get(&b2)
-
-	assert.Nil(t, err)
-	assert.Equal(t, b2.B.Int, (*int)(nil))
 }
 
 type BaseChannel struct {

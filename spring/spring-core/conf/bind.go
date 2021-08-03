@@ -31,60 +31,59 @@ var (
 	ErrNotExist = errors.New("not exist")
 )
 
-type bindOption struct {
-	typ    reflect.Type // 绑定对象的类型
-	key    string       // 完整的属性名
-	path   string       // 绑定对象的路径
+type BindParam struct {
+	Type   reflect.Type // 绑定对象的类型
+	Key    string       // 完整的属性名
+	Path   string       // 绑定对象的路径
 	def    string       // 默认值
 	hasDef bool         // 是否具有默认值
 }
 
-func bind(p *Properties, v reflect.Value, tag string, opt bindOption) error {
-
-	if !util.IsValueType(opt.typ) {
-		return fmt.Errorf("%s 属性绑定的目标必须是值类型", opt.path)
-	}
+func (param *BindParam) BindTag(tag string) error {
 
 	if !validTag(tag) {
-		return fmt.Errorf("%s 属性绑定字符串 %q 语法错误", opt.path, tag)
+		return fmt.Errorf("%s 属性绑定字符串 %q 语法错误", param.Path, tag)
 	}
 
 	key, def, hasDef := parseTag(tag)
-	if opt.key == "" {
-		opt.key = key
+	if param.Key == "" {
+		param.Key = key
 	} else if key != "" {
-		opt.key = opt.key + "." + key
+		param.Key = param.Key + "." + key
 	}
 
-	opt.def = def
-	opt.hasDef = hasDef
-
-	return bindValue(p, v, opt)
+	param.hasDef = hasDef
+	param.def = def
+	return nil
 }
 
-func bindValue(p *Properties, v reflect.Value, opt bindOption) error {
+func BindValue(p *Properties, v reflect.Value, param BindParam) error {
 
-	log.Tracef("::<>:: %#v", opt)
+	if !util.IsValueType(param.Type) {
+		return fmt.Errorf("%s 属性绑定的目标必须是值类型", param.Path)
+	}
+
+	log.Tracef("::<>:: %#v", param)
 
 	switch v.Kind() {
 	case reflect.Map:
-		return bindMap(p, v, opt)
+		return bindMap(p, v, param)
 	case reflect.Array:
-		return bindArray(p, v, opt)
+		return bindArray(p, v, param)
 	case reflect.Slice:
-		return bindSlice(p, v, opt)
+		return bindSlice(p, v, param)
 	}
 
-	fn, _ := converters[opt.typ]
+	fn, _ := converters[param.Type]
 	if v.Kind() == reflect.Struct {
 		if fn == nil {
-			return bindStruct(p, v, opt)
+			return bindStruct(p, v, param)
 		}
 	}
 
-	val, err := resolve(p, opt)
+	val, err := resolve(p, param)
 	if err != nil {
-		return fmt.Errorf("type %q bind error: %w", opt.typ, err)
+		return fmt.Errorf("type %q bind error: %w", param.Type, err)
 	}
 
 	if fn != nil {
@@ -130,31 +129,31 @@ func bindValue(p *Properties, v reflect.Value, opt bindOption) error {
 		return err
 	}
 
-	return fmt.Errorf("unsupported bind type %q", opt.typ.String())
+	return fmt.Errorf("unsupported bind type %q", param.Type.String())
 }
 
-func bindArray(p *Properties, v reflect.Value, opt bindOption) error {
+func bindArray(p *Properties, v reflect.Value, param BindParam) error {
 
-	if opt.hasDef {
-		if opt.def == "" {
+	if param.hasDef {
+		if param.def == "" {
 			return nil
 		}
-		return fmt.Errorf("%s array 类型不能指定非空默认值", opt.path)
+		return fmt.Errorf("%s array 类型不能指定非空默认值", param.Path)
 	}
 
 	for i := 0; i < v.Len(); i++ {
 
 		subValue := v.Index(i)
-		subKey := fmt.Sprintf("%s[%d]", opt.key, i)
-		subPath := fmt.Sprintf("%s[%d]", opt.path, i)
+		subKey := fmt.Sprintf("%s[%d]", param.Key, i)
+		subPath := fmt.Sprintf("%s[%d]", param.Path, i)
 
-		subOpt := bindOption{
-			typ:  subValue.Type(),
-			key:  subKey,
-			path: subPath,
+		subParam := BindParam{
+			Type: subValue.Type(),
+			Key:  subKey,
+			Path: subPath,
 		}
 
-		err := bindValue(p, subValue, subOpt)
+		err := BindValue(p, subValue, subParam)
 		if errors.Is(err, ErrNotExist) {
 			break
 		}
@@ -165,26 +164,26 @@ func bindArray(p *Properties, v reflect.Value, opt bindOption) error {
 	return nil
 }
 
-func bindSlice(p *Properties, v reflect.Value, opt bindOption) error {
+func bindSlice(p *Properties, v reflect.Value, param BindParam) error {
 
-	if opt.hasDef {
-		if opt.def == "" {
+	if param.hasDef {
+		if param.def == "" {
 			return nil
 		}
-		return fmt.Errorf("%s slice 类型不能指定非空默认值", opt.path)
+		return fmt.Errorf("%s slice 类型不能指定非空默认值", param.Path)
 	}
 
-	et := opt.typ.Elem()
-	slice := reflect.MakeSlice(opt.typ, 0, 0)
+	et := param.Type.Elem()
+	slice := reflect.MakeSlice(param.Type, 0, 0)
 
 	for i := 0; ; i++ {
 
-		subKey := fmt.Sprintf("%s[%d]", opt.key, i)
-		subPath := fmt.Sprintf("%s[%d]", opt.path, i)
-		subOpt := bindOption{typ: et, key: subKey, path: subPath}
+		subKey := fmt.Sprintf("%s[%d]", param.Key, i)
+		subPath := fmt.Sprintf("%s[%d]", param.Path, i)
+		subParam := BindParam{Type: et, Key: subKey, Path: subPath}
 
 		e := reflect.New(et).Elem()
-		err := bindValue(p, e, subOpt)
+		err := BindValue(p, e, subParam)
 		if errors.Is(err, ErrNotExist) {
 			break
 		}
@@ -199,29 +198,29 @@ func bindSlice(p *Properties, v reflect.Value, opt bindOption) error {
 	return nil
 }
 
-func bindMap(p *Properties, v reflect.Value, opt bindOption) error {
+func bindMap(p *Properties, v reflect.Value, param BindParam) error {
 
-	if opt.hasDef {
-		if opt.def == "" {
+	if param.hasDef {
+		if param.def == "" {
 			return nil
 		}
-		return fmt.Errorf("%s map 类型不能指定非空默认值", opt.path)
+		return fmt.Errorf("%s map 类型不能指定非空默认值", param.Path)
 	}
 
-	et := opt.typ.Elem()
+	et := param.Type.Elem()
 	keys := make(map[string]struct{})
 	for _, key := range p.Keys() {
 
 		subKey := key
-		if opt.key != "" {
-			if !strings.HasPrefix(key, opt.key+".") {
+		if param.Key != "" {
+			if !strings.HasPrefix(key, param.Key+".") {
 				continue
 			}
-			subKey = strings.TrimPrefix(key, opt.key+".")
+			subKey = strings.TrimPrefix(key, param.Key+".")
 		}
 
 		if et.Kind() == reflect.Struct {
-			if fn, _ := converters[opt.typ]; fn == nil {
+			if fn, _ := converters[param.Type]; fn == nil {
 				subKey = strings.Split(subKey, ".")[0]
 			}
 		}
@@ -231,15 +230,19 @@ func bindMap(p *Properties, v reflect.Value, opt bindOption) error {
 		}
 	}
 
-	m := reflect.MakeMap(opt.typ)
+	m := reflect.MakeMap(param.Type)
 	for key := range keys {
 		e := reflect.New(et).Elem()
 		subKey := key
-		if opt.key != "" {
-			subKey = opt.key + "." + key
+		if param.Key != "" {
+			subKey = param.Key + "." + key
 		}
-		subOpt := bindOption{typ: et, key: subKey, path: opt.path}
-		err := bindValue(p, e, subOpt)
+		subParam := BindParam{
+			Type: et,
+			Key:  subKey,
+			Path: param.Path,
+		}
+		err := BindValue(p, e, subParam)
 		if err != nil {
 			return err
 		}
@@ -249,14 +252,14 @@ func bindMap(p *Properties, v reflect.Value, opt bindOption) error {
 	return nil
 }
 
-func bindStruct(p *Properties, v reflect.Value, opt bindOption) error {
+func bindStruct(p *Properties, v reflect.Value, param BindParam) error {
 
-	if opt.hasDef && opt.def != "" {
-		return fmt.Errorf("%s struct 类型不能指定非空默认值", opt.path)
+	if param.hasDef && param.def != "" {
+		return fmt.Errorf("%s struct 类型不能指定非空默认值", param.Path)
 	}
 
-	for i := 0; i < opt.typ.NumField(); i++ {
-		ft := opt.typ.Field(i)
+	for i := 0; i < param.Type.NumField(); i++ {
+		ft := param.Type.Field(i)
 		fv := v.Field(i)
 
 		if !fv.CanInterface() {
@@ -266,24 +269,25 @@ func bindStruct(p *Properties, v reflect.Value, opt bindOption) error {
 			}
 		}
 
-		subOpt := bindOption{
-			typ:  ft.Type,
-			key:  opt.key,
-			path: opt.path + "." + ft.Name,
+		subParam := BindParam{
+			Type: ft.Type,
+			Key:  param.Key,
+			Path: param.Path + "." + ft.Name,
 		}
 
 		if tag, ok := ft.Tag.Lookup("value"); ok {
-			err := bind(p, fv, tag, subOpt)
-			if err != nil {
+			if err := subParam.BindTag(tag); err != nil {
+				return err
+			}
+			if err := BindValue(p, fv, subParam); err != nil {
 				return err
 			}
 			continue
 		}
 
 		// 指针或者结构体类型可能出现无限递归的情况。
-		if ft.Type.Kind() == reflect.Struct {
-			err := bindStruct(p, fv, subOpt)
-			if err != nil {
+		if ft.Anonymous && ft.Type.Kind() == reflect.Struct {
+			if err := bindStruct(p, fv, subParam); err != nil {
 				return err
 			}
 		}
@@ -344,9 +348,13 @@ func resolveString(p *Properties, s string) (string, error) {
 		return "", fmt.Errorf("%s 语法错误", s)
 	}
 
-	key, def, hasDef := parseTag(s[start : end+1])
-	opt := bindOption{key: key, def: def, hasDef: hasDef}
-	s1, err := resolve(p, opt)
+	param := BindParam{}
+	err := param.BindTag(s[start : end+1])
+	if err != nil {
+		return "", err
+	}
+
+	s1, err := resolve(p, param)
 	if err != nil {
 		return "", err
 	}
@@ -361,13 +369,13 @@ func resolveString(p *Properties, s string) (string, error) {
 
 // resolve 解析 ${key:=def} 字符串，返回 key 对应的属性值，如果没有找到则返回
 // def 值，如果 def 存在引用则递归解析直到获取最终的属性值。
-func resolve(p *Properties, opt bindOption) (string, error) {
-	val := p.Get(opt.key)
+func resolve(p *Properties, param BindParam) (string, error) {
+	val := p.Get(param.Key)
 	if val == nil {
-		if opt.hasDef {
-			val = opt.def
+		if param.hasDef {
+			val = param.def
 		} else {
-			return "", fmt.Errorf("property %q %w", opt.key, ErrNotExist)
+			return "", fmt.Errorf("property %q %w", param.Key, ErrNotExist)
 		}
 	}
 	return resolveString(p, val.(string))

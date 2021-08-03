@@ -217,10 +217,14 @@ func (p *Properties) Bind(i interface{}, opts ...BindOption) error {
 	}
 
 	t := v.Type()
-	s := t.Name()
-	if s == "" {
-		s = t.String()
+	typeName := t.Name()
+	if typeName == "" { // 简单类型没有名字
+		typeName = t.String()
 	}
 
-	return bind(p, v, arg.tag, bindOption{typ: t, path: s})
+	param := BindParam{Type: t, Path: typeName}
+	if err := param.BindTag(arg.tag); err != nil {
+		return err
+	}
+	return BindValue(p, v, param)
 }
