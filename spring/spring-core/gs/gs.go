@@ -539,7 +539,14 @@ func (c *Container) wireBean(b *BeanDefinition, stack *wiringStack) error {
 		return err
 	}
 
-	err = c.wireBeanValue(v, stack)
+	t := v.Type()
+	for typ := range b.exports {
+		if !t.Implements(typ) {
+			return fmt.Errorf("%s doesn't implement interface %s", b, typ)
+		}
+	}
+
+	err = c.wireBeanValue(v, t, stack)
 	if err != nil {
 		return err
 	}
@@ -623,10 +630,11 @@ func (c *Container) getBeanValue(b *BeanDefinition, stack *wiringStack) (reflect
 }
 
 // wireBeanValue 对 v 进行属性绑定和依赖注入，v 在传入时应该是一个已经初始化的值。
-func (c *Container) wireBeanValue(v reflect.Value, stack *wiringStack) error {
+func (c *Container) wireBeanValue(v reflect.Value, t reflect.Type, stack *wiringStack) error {
 
 	if v.Kind() == reflect.Ptr {
 		v = v.Elem()
+		t = t.Elem()
 	}
 
 	// 如整数指针类型的 bean 是无需注入的。
@@ -634,7 +642,6 @@ func (c *Container) wireBeanValue(v reflect.Value, stack *wiringStack) error {
 		return nil
 	}
 
-	t := v.Type()
 	typeName := t.Name()
 	if typeName == "" { // 简单类型没有名字
 		typeName = t.String()

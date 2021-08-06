@@ -208,22 +208,15 @@ func (d *BeanDefinition) Export(exports ...interface{}) *BeanDefinition {
 
 func (d *BeanDefinition) export(exports ...interface{}) error {
 	for _, o := range exports {
-
 		var typ reflect.Type
 		if t, ok := o.(reflect.Type); ok {
 			typ = t
 		} else { // 处理 (*error)(nil) 这种导出形式
 			typ = util.Indirect(reflect.TypeOf(o))
 		}
-
 		if typ.Kind() != reflect.Interface {
 			return errors.New("only interface type can be exported")
 		}
-
-		if !d.Type().Implements(typ) {
-			return fmt.Errorf("%s doesn't implement interface %s", d, typ)
-		}
-
 		d.exports[typ] = struct{}{}
 	}
 	return nil
