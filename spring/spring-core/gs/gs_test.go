@@ -28,6 +28,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-spring/spring-boost/assert"
+	"github.com/go-spring/spring-boost/cast"
+	"github.com/go-spring/spring-boost/json"
+	"github.com/go-spring/spring-boost/log"
+	"github.com/go-spring/spring-boost/util"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/gs/arg"
@@ -36,11 +41,6 @@ import (
 	"github.com/go-spring/spring-core/gs/environ"
 	pkg1 "github.com/go-spring/spring-core/gs/testdata/pkg/bar"
 	pkg2 "github.com/go-spring/spring-core/gs/testdata/pkg/foo"
-	"github.com/go-spring/spring-core/log"
-	"github.com/go-spring/spring-stl/assert"
-	"github.com/go-spring/spring-stl/cast"
-	"github.com/go-spring/spring-stl/json"
-	"github.com/go-spring/spring-stl/util"
 )
 
 func container() (*gs.Container, chan gs.Pandora) {

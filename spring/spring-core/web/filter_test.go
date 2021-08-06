@@ -21,8 +21,8 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/go-spring/spring-boost/util"
 	"github.com/go-spring/spring-core/web"
-	"github.com/go-spring/spring-stl/util"
 )
 
 func TestFuncFilter(t *testing.T) {

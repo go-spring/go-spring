@@ -24,8 +24,8 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/go-spring/spring-core/log"
-	"github.com/go-spring/spring-stl/util"
+	"github.com/go-spring/spring-boost/log"
+	"github.com/go-spring/spring-boost/util"
 )
 
 // HandlerFunc 标准 Web 处理函数

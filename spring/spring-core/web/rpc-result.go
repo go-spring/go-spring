@@ -20,8 +20,8 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/go-spring/spring-stl/errors"
-	"github.com/go-spring/spring-stl/util"
+	"github.com/go-spring/spring-boost/errors"
+	"github.com/go-spring/spring-boost/util"
 )
 
 var (

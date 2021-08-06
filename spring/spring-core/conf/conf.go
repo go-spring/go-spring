@@ -24,7 +24,7 @@ import (
 	"path/filepath"
 	"reflect"
 
-	"github.com/go-spring/spring-stl/cast"
+	"github.com/go-spring/spring-boost/cast"
 )
 
 // Properties 提供创建和读取属性列表的方法。它使用扁平的 map[string]string 结

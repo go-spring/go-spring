@@ -24,10 +24,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-spring/spring-boost/assert"
+	"github.com/go-spring/spring-boost/cast"
+	"github.com/go-spring/spring-boost/log"
 	"github.com/go-spring/spring-core/conf"
-	"github.com/go-spring/spring-core/log"
-	"github.com/go-spring/spring-stl/assert"
-	"github.com/go-spring/spring-stl/cast"
 )
 
 func init() {

@@ -24,9 +24,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-spring/spring-boost/assert"
 	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/gs/environ"
-	"github.com/go-spring/spring-stl/assert"
 )
 
 func startApplication(cfgLocation string) (*gs.App, gs.Pandora) {
