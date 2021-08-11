@@ -38,12 +38,13 @@ const (
 type beanStatus int
 
 const (
-	Default   = beanStatus(0) // 默认状态
-	Resolving = beanStatus(1) // 正在决议
-	Resolved  = beanStatus(2) // 已决议
-	Wiring    = beanStatus(3) // 正在注入
-	Wired     = beanStatus(4) // 注入完成
-	Deleted   = beanStatus(5) // 已删除
+	Default   = beanStatus(iota) // 默认状态
+	Resolving                    // 正在决议
+	Resolved                     // 已决议
+	Creating                     // 正在创建
+	Created                      // 已创建
+	Wired                        // 注入完成
+	Deleted                      // 已删除
 )
 
 // BeanDefinition bean 元数据。

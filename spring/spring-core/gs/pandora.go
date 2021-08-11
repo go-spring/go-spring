@@ -37,6 +37,7 @@ import (
 // 都可以在需要使用这些方法的地方注入一个 Pandora 对象而不是 Container 对象或者
 // App 对象，从而实现使用方式的统一。
 type Pandora interface {
+	Context() context.Context
 	Go(fn func(ctx context.Context))
 	Prop(key string, opts ...conf.GetOption) interface{}
 	Bind(i interface{}, opts ...conf.BindOption) error
@@ -47,10 +48,15 @@ type Pandora interface {
 
 type pandora struct{ c *Container }
 
+// Context 返回 IoC 容器的 ctx 对象。
+func (p *pandora) Context() context.Context {
+	return p.c.ctx
+}
+
 // Go 创建安全可等待的 goroutine，fn 要求的 ctx 对象由 IoC 容器提供，当 IoC 容
 // 器关闭时 ctx会 发出 Done 信号， fn 在接收到此信号后应当立即退出。
 func (p *pandora) Go(fn func(ctx context.Context)) {
-	p.c.Go(fn)
+	p.c.safeGo(fn)
 }
 
 // Prop 获取 key 对应的属性值，注意 key 是大小写敏感的。当 key 对应的属性值存在

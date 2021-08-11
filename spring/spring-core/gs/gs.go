@@ -40,12 +40,18 @@ import (
 	"github.com/go-spring/spring-core/gs/environ"
 )
 
+// AppContext 封装 IoC 容器的 context.Context 对象。
+type AppContext interface {
+	Context() context.Context
+	Go(fn func(ctx context.Context))
+}
+
 type refreshState int
 
 const (
-	Unrefreshed = refreshState(0) // 未刷新
-	Refreshing  = refreshState(1) // 正在刷新
-	Refreshed   = refreshState(2) // 已刷新
+	Unrefreshed = refreshState(iota) // 未刷新
+	Refreshing                       // 正在刷新
+	Refreshed                        // 已刷新
 )
 
 // Container 是 go-spring 框架的基石，实现了 Martin Fowler 在 << Inversion
@@ -118,24 +124,6 @@ func (c *Container) Provide(ctor interface{}, args ...arg.Arg) *BeanDefinition {
 	return c.register(NewBean(ctor, args...))
 }
 
-// Go 创建安全可等待的 goroutine，fn 要求的 ctx 对象由 IoC 容器提供，当 IoC 容
-// 器关闭时 ctx会 发出 Done 信号， fn 在接收到此信号后应当立即退出。
-func (c *Container) Go(fn func(ctx context.Context)) {
-
-	c.wg.Add(1)
-	go func() {
-		defer c.wg.Done()
-
-		defer func() {
-			if r := recover(); r != nil {
-				log.Errorf("%v, %s", r, debug.Stack())
-			}
-		}()
-
-		fn(c.ctx)
-	}()
-}
-
 // destroyer 保存具有销毁函数的 bean 以及销毁函数的调用顺序。
 type destroyer struct {
 	current *BeanDefinition
@@ -172,18 +160,11 @@ func getBeforeDestroyers(destroyers *list.List, i interface{}) *list.List {
 	return result
 }
 
-type lazyField struct {
-	v    reflect.Value
-	name string
-	tag  string
-}
-
 // wiringStack 记录 bean 的注入路径。
 type wiringStack struct {
 	beans        []*BeanDefinition
 	destroyers   *list.List
 	destroyerMap map[string]*destroyer
-	lazyFields   []lazyField
 }
 
 func newWiringStack() *wiringStack {
@@ -313,14 +294,6 @@ func (c *Container) refresh() error {
 	for _, b := range c.beansById {
 		if err := c.wireBean(b, stack); err != nil {
 			return err
-		}
-	}
-
-	// 处理被标记为延迟注入的那些 bean 字段
-	for _, f := range stack.lazyFields {
-		tag := strings.TrimSuffix(f.tag, ",lazy")
-		if err := c.wireByTag(f.v, tag, stack); err != nil {
-			return fmt.Errorf("%q wired error: %s", f.name, err.Error())
 		}
 	}
 
@@ -486,6 +459,7 @@ func (c *Container) wireBean(b *BeanDefinition, stack *wiringStack) error {
 		return fmt.Errorf("bean:%q have been deleted", b.ID())
 	}
 
+	// 运行时 Get 或者 Wire 会出现下面这种情况。
 	if c.state == Refreshed && b.status == Wired {
 		return nil
 	}
@@ -505,20 +479,21 @@ func (c *Container) wireBean(b *BeanDefinition, stack *wiringStack) error {
 		stack.destroyers.PushBack(b)
 	}
 
-	if b.status == Wired {
-		return nil
-	}
-
 	stack.pushBack(b)
 
-	if b.status == Wiring {
-		if b.f != nil { // 构造函数 bean 出现循环依赖。
+	if b.status == Creating && b.f != nil {
+		prev := stack.beans[len(stack.beans)-2]
+		if prev.status == Creating {
 			return errors.New("found circle autowire")
 		}
+	}
+
+	if b.status >= Creating {
+		stack.popBack()
 		return nil
 	}
 
-	b.status = Wiring
+	b.status = Creating
 
 	// 对当前 bean 的间接依赖项进行注入。
 	for _, s := range b.dependsOn {
@@ -538,6 +513,8 @@ func (c *Container) wireBean(b *BeanDefinition, stack *wiringStack) error {
 	if err != nil {
 		return err
 	}
+
+	b.status = Created
 
 	t := v.Type()
 	for typ := range b.exports {
@@ -667,19 +644,14 @@ func (c *Container) wireStruct(v reflect.Value, opt conf.BindParam, stack *wirin
 
 		fieldPath := opt.Path + "." + ft.Name
 
-		// 支持 autowire 和 inject 标签，支持 lazy 注入。
+		// 支持 autowire 和 inject 两个标签。
 		tag, ok := ft.Tag.Lookup("autowire")
 		if !ok {
 			tag, ok = ft.Tag.Lookup("inject")
 		}
 		if ok {
-			if strings.HasSuffix(tag, ",lazy") {
-				f := lazyField{v: fv, name: fieldPath, tag: tag}
-				stack.lazyFields = append(stack.lazyFields, f)
-			} else {
-				if err := c.wireByTag(fv, tag, stack); err != nil {
-					return fmt.Errorf("%q wired error: %w", fieldPath, err)
-				}
+			if err := c.wireByTag(fv, tag, stack); err != nil {
+				return fmt.Errorf("%q wired error: %w", fieldPath, err)
 			}
 			continue
 		}
@@ -990,4 +962,19 @@ func (c *Container) Close() {
 	}
 
 	log.Info("container closed")
+}
+
+// safeGo 创建安全可等待的 goroutine，fn 要求的 ctx 对象由 IoC 容器提供，当
+// IoC 容器关闭时 ctx会 发出 Done 信号， fn 在接收到此信号后应当立即退出。
+func (c *Container) safeGo(fn func(ctx context.Context)) {
+	c.wg.Add(1)
+	go func() {
+		defer func() {
+			c.wg.Done()
+			if r := recover(); r != nil {
+				log.Errorf("%v, %s", r, debug.Stack())
+			}
+		}()
+		fn(c.ctx)
+	}()
 }

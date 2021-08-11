@@ -17,7 +17,6 @@
 package gs
 
 import (
-	"context"
 	"os"
 	"reflect"
 
@@ -71,12 +70,6 @@ func Object(i interface{}) *BeanDefinition {
 // Provide 注册构造函数形式的 bean ，需要注意的是该方法在注入开始后就不能再调用了。
 func Provide(ctor interface{}, args ...arg.Arg) *BeanDefinition {
 	return app.c.register(NewBean(ctor, args...))
-}
-
-// Go 创建安全可等待的 goroutine，fn 要求的 ctx 对象由 IoC 容器提供，当 IoC 容
-// 器关闭时 ctx会 发出 Done 信号， fn 在接收到此信号后应当立即退出。
-func Go(fn func(ctx context.Context)) {
-	app.Go(fn)
 }
 
 // HandleGet 注册 GET 方法处理函数。

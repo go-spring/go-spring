@@ -40,10 +40,6 @@ import (
 	"github.com/go-spring/spring-core/web"
 )
 
-type AppContext interface {
-	Go(fn func(ctx context.Context))
-}
-
 // AppRunner 导出 appRunner 类型
 var AppRunner = (*appRunner)(nil)
 
@@ -215,7 +211,7 @@ func (app *App) start() error {
 	}
 
 	// 通知应用停止事件
-	app.Go(func(c context.Context) {
+	app.c.safeGo(func(c context.Context) {
 		select {
 		case <-c.Done():
 			for _, e := range events {
@@ -318,12 +314,6 @@ func (app *App) Object(i interface{}) *BeanDefinition {
 // Provide 注册构造函数形式的 bean ，需要注意的是该方法在注入开始后就不能再调用了。
 func (app *App) Provide(ctor interface{}, args ...arg.Arg) *BeanDefinition {
 	return app.c.register(NewBean(ctor, args...))
-}
-
-// Go 创建安全可等待的 goroutine，fn 要求的 ctx 对象由 IoC 容器提供，当 IoC 容
-// 器关闭时 ctx会 发出 Done 信号， fn 在接收到此信号后应当立即退出。
-func (app *App) Go(fn func(ctx context.Context)) {
-	app.c.Go(fn)
 }
 
 // HandleGet 注册 GET 方法处理函数
