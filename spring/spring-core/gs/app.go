@@ -75,6 +75,9 @@ type App struct {
 
 	exitChan chan struct{}
 
+	Events  []appEvent  `autowire:""`
+	Runners []appRunner `autowire:""`
+
 	// 属性列表解析完成后的回调
 	mapOfOnProperty map[string]interface{}
 }
@@ -188,25 +191,13 @@ func (app *App) start() error {
 
 	ctx := &pandora{app.c}
 
-	// TODO 增加根据配置获取。
-	var runners []appRunner
-	if err = ctx.Get(&runners); err != nil {
-		return err
-	}
-
 	// 执行命令行启动器
-	for _, r := range runners {
+	for _, r := range app.Runners {
 		r.Run(ctx)
 	}
 
-	// TODO 增加根据配置获取。
-	var events []appEvent
-	if err = ctx.Get(&events); err != nil {
-		return err
-	}
-
 	// 通知应用启动事件
-	for _, e := range events {
+	for _, e := range app.Events {
 		e.OnStartApp(ctx)
 	}
 
@@ -214,7 +205,7 @@ func (app *App) start() error {
 	app.c.safeGo(func(c context.Context) {
 		select {
 		case <-c.Done():
-			for _, e := range events {
+			for _, e := range app.Events {
 				e.OnStopApp(ctx)
 			}
 		}

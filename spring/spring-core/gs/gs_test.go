@@ -2075,25 +2075,6 @@ func TestApplicationContext_Close(t *testing.T) {
 			assert.True(t, d.(*callDestroy).destroyed)
 		}
 	})
-
-	t.Run("context done", func(t *testing.T) {
-		c := gs.New()
-		c.Object(new(int)).Init(func(i *int) {
-			//c.Go(func(ctx context.Context) {
-			//	for {
-			//		select {
-			//		case <-ctx.Done():
-			//			return
-			//		default:
-			//			time.Sleep(time.Millisecond * 5)
-			//		}
-			//	}
-			//})
-		})
-		err := c.Refresh()
-		assert.Nil(t, err)
-		c.Close()
-	})
 }
 
 func TestApplicationContext_BeanNotFound(t *testing.T) {

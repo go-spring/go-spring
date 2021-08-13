@@ -25,7 +25,6 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
@@ -971,9 +970,7 @@ func (c *Container) safeGo(fn func(ctx context.Context)) {
 	go func() {
 		defer func() {
 			c.wg.Done()
-			if r := recover(); r != nil {
-				log.Errorf("%v, %s", r, debug.Stack())
-			}
+			log.Recovery(recover())
 		}()
 		fn(c.ctx)
 	}()

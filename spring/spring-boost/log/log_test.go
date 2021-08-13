@@ -74,11 +74,13 @@ func TestDefault(t *testing.T) {
 
 	t.Run("panic#02", func(t *testing.T) {
 		defer func() { fmt.Println(recover()) }()
-		log.Panicf("error: %d", 404)
+		log.Panicf("error:%d", 404)
 	})
 
-	// log.Fatal("a", "=", "1")
-	// log.Fatalf("a=%d", 1)
+	log.Fatal("a", "=", "1")
+	log.Fatalf("a=%d", 1)
+
+	log.Recovery(errors.New("panic:3"))
 }
 
 func myOutput(skip int, level log.Level, e *log.Entry) {
@@ -170,4 +172,7 @@ func TestEntry(t *testing.T) {
 	logger.Ctx(ctx).Panicf("level:%s", "panic")
 	logger.Ctx(ctx).Fatal("level:", "fatal")
 	logger.Ctx(ctx).Fatalf("level:%s", "fatal")
+
+	logger.Recovery(errors.New("panic:3"))
+	logger.Ctx(ctx).Recovery(errors.New("panic:3"))
 }
