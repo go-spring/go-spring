@@ -29,14 +29,12 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/go-spring/spring-boost/cast"
 	"github.com/go-spring/spring-boost/log"
 	"github.com/go-spring/spring-boost/util"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/gs/bean"
 	"github.com/go-spring/spring-core/gs/cond"
-	"github.com/go-spring/spring-core/gs/environ"
 )
 
 // AppContext 封装 IoC 容器的 context.Context 对象。
@@ -236,37 +234,21 @@ func (s *wiringStack) sortDestroyers() []func() {
 	return ret
 }
 
-func (c *Container) clearCache() {
+func (c *Container) ClearCache() {
 	c.beans = nil
 	c.beansById = nil
 	c.beansByName = nil
 	c.beansByType = nil
 }
 
-func (c *Container) enablePandora() bool {
-	return cast.ToBool(c.p.Get(environ.EnablePandora))
-}
-
 // Refresh 刷新容器的内容，对 bean 进行有效性判断以及完成属性绑定和依赖注入。
 func (c *Container) Refresh() error {
-	if err := c.refresh(); err != nil {
-		return err
-	}
-	if !c.enablePandora() {
-		c.clearCache()
-	}
-	return nil
-}
-
-func (c *Container) refresh() error {
 
 	if c.state != Unrefreshed {
 		return errors.New("container already refreshed")
 	}
 
-	if c.enablePandora() {
-		c.Object(&pandora{c}).Export((*Pandora)(nil))
-	}
+	c.Object(&pandora{c}).Export((*Pandora)(nil))
 
 	c.state = Refreshing
 

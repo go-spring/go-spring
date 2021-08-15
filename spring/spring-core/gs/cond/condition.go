@@ -27,8 +27,10 @@ import (
 	"github.com/go-spring/spring-boost/util"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/gs/bean"
-	"github.com/go-spring/spring-core/gs/environ"
 )
+
+// SpringProfilesActive 当前应用的 profile 配置。
+const SpringProfilesActive = "spring.profiles.active"
 
 // Context IoC 容器对 cond 模块提供的最小功能集。
 type Context interface {
@@ -366,5 +368,5 @@ func OnProfile(profile string) *conditional {
 
 // OnProfile 添加一个 spring.profile 属性值是否匹配的条件。
 func (c *conditional) OnProfile(profile string) *conditional {
-	return c.OnProperty(environ.SpringProfilesActive, HavingValue(profile))
+	return c.OnProperty(SpringProfilesActive, HavingValue(profile))
 }

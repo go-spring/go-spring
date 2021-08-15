@@ -23,11 +23,25 @@ import (
 
 	"github.com/go-spring/spring-boost/cast"
 	"github.com/go-spring/spring-core/conf"
-	"github.com/go-spring/spring-core/gs/environ"
 )
 
 // EnvPrefix 属性覆盖的环境变量需要携带该前缀。
 const EnvPrefix = "GS_"
+
+// IncludeEnvPatterns 只加载符合条件的环境变量。
+const IncludeEnvPatterns = "INCLUDE_ENV_PATTERNS"
+
+// ExcludeEnvPatterns 排除符合条件的环境变量。
+const ExcludeEnvPatterns = "EXCLUDE_ENV_PATTERNS"
+
+// SpringProfilesActive 当前应用的 profile 配置。
+const SpringProfilesActive = "spring.profiles.active"
+
+// SpringConfigLocations 配置文件的位置，支持逗号分隔。
+const SpringConfigLocations = "spring.config.locations"
+
+// SpringConfigExtensions 配置文件的扩展名，支持逗号分隔。
+const SpringConfigExtensions = "spring.config.extensions"
 
 // Environment 提供获取环境变量和命令行参数的方法，命令行参数优先级更高。
 type Environment interface {
@@ -102,7 +116,7 @@ func loadSystemEnv(p *conf.Properties) error {
 	}
 
 	includes := []string{".*"}
-	if s, ok := os.LookupEnv(environ.IncludeEnvPatterns); ok {
+	if s, ok := os.LookupEnv(IncludeEnvPatterns); ok {
 		includes = strings.Split(s, ",")
 	}
 	includeRex, err := toRex(includes)
@@ -111,7 +125,7 @@ func loadSystemEnv(p *conf.Properties) error {
 	}
 
 	var excludes []string
-	if s, ok := os.LookupEnv(environ.ExcludeEnvPatterns); ok {
+	if s, ok := os.LookupEnv(ExcludeEnvPatterns); ok {
 		excludes = strings.Split(s, ",")
 	}
 	excludeRex, err := toRex(excludes)
@@ -165,13 +179,13 @@ func (e *environment) prepare() error {
 		return err
 	}
 
-	s := e.p.Get(environ.SpringConfigLocations, conf.Def("config/"))
+	s := e.p.Get(SpringConfigLocations, conf.Def("config/"))
 	e.configLocations = strings.Split(cast.ToString(s), ",")
 
 	extensions := ".properties,.prop,.yaml,.yml,.toml,.tml"
-	s = e.p.Get(environ.SpringConfigExtensions, conf.Def(extensions))
+	s = e.p.Get(SpringConfigExtensions, conf.Def(extensions))
 	e.configExtensions = strings.Split(cast.ToString(s), ",")
 
-	e.activeProfile = cast.ToString(e.p.Get(environ.SpringProfilesActive))
+	e.activeProfile = cast.ToString(e.p.Get(SpringProfilesActive))
 	return nil
 }

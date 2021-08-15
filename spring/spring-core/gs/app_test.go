@@ -26,7 +26,6 @@ import (
 
 	"github.com/go-spring/spring-boost/assert"
 	"github.com/go-spring/spring-core/gs"
-	"github.com/go-spring/spring-core/gs/environ"
 )
 
 func startApplication(cfgLocation string) (*gs.App, gs.Pandora) {
@@ -34,7 +33,6 @@ func startApplication(cfgLocation string) (*gs.App, gs.Pandora) {
 	app := gs.NewApp()
 	gs.Setenv("SPRING_BANNER_VISIBLE", "true")
 	gs.Setenv("SPRING_CONFIG_LOCATION", cfgLocation)
-	app.Property(environ.EnablePandora, true)
 
 	var p gs.Pandora
 	type PandoraAware struct{}
@@ -55,7 +53,7 @@ func TestConfig(t *testing.T) {
 		gs.Setenv("GS_SPRING_PROFILES_ACTIVE", "dev")
 		app, p := startApplication("testdata/config/")
 		defer app.ShutDown(errors.New("run test end"))
-		assert.Equal(t, p.Prop(environ.SpringProfilesActive), "dev")
+		assert.Equal(t, p.Prop(gs.SpringProfilesActive), "dev")
 	})
 
 	t.Run("config via env 2", func(t *testing.T) {
@@ -63,7 +61,7 @@ func TestConfig(t *testing.T) {
 		gs.Setenv("GS_SPRING_PROFILES_ACTIVE", "dev")
 		app, p := startApplication("testdata/config/")
 		defer app.ShutDown(errors.New("run test end"))
-		assert.Equal(t, p.Prop(environ.SpringProfilesActive), "dev")
+		assert.Equal(t, p.Prop(gs.SpringProfilesActive), "dev")
 	})
 
 	t.Run("profile via env&config 2", func(t *testing.T) {
@@ -72,7 +70,7 @@ func TestConfig(t *testing.T) {
 		gs.Setenv("GS_SPRING_PROFILES_ACTIVE", "dev")
 		app, p := startApplication("testdata/config/")
 		defer app.ShutDown(errors.New("run test end"))
-		assert.Equal(t, p.Prop(environ.SpringProfilesActive), "dev")
+		assert.Equal(t, p.Prop(gs.SpringProfilesActive), "dev")
 
 		var m map[string]string
 		err := p.Bind(&m)

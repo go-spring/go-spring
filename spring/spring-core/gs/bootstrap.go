@@ -102,7 +102,7 @@ func (boot *bootstrap) start(e *environment) error {
 		reflect.ValueOf(f).Call([]reflect.Value{in})
 	}
 
-	return boot.c.refresh()
+	return boot.c.Refresh()
 }
 
 func (boot *bootstrap) loadBootstrap(e *environment) error {

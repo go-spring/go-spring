@@ -34,9 +34,13 @@ import (
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/grpc"
 	"github.com/go-spring/spring-core/gs/arg"
-	"github.com/go-spring/spring-core/gs/environ"
 	"github.com/go-spring/spring-core/mq"
 	"github.com/go-spring/spring-core/web"
+)
+
+const (
+	Version = "go-spring@v1.0.5"
+	Website = "https://go-spring.com/"
 )
 
 // AppRunner 导出 appRunner 类型
@@ -62,10 +66,13 @@ var WebRouter = (*web.Router)(nil)
 // WebFilter 导出 web.Filter 类型
 var WebFilter = (*web.Filter)(nil)
 
+// SpringBannerVisible 是否显示 banner。
+const SpringBannerVisible = "spring.banner.visible"
+
 // App 应用
 type App struct {
+	Name string `value:"${spring.application.name}"`
 
-	// 应用上下文
 	c *Container
 	b *bootstrap
 
@@ -100,7 +107,6 @@ func (c *Consumers) ForEach(fn func(mq.Consumer)) {
 func NewApp() *App {
 	return &App{
 		c:               New(),
-		b:               &bootstrap{c: New(), mapOfOnProperty: make(map[string]interface{})},
 		mapOfOnProperty: make(map[string]interface{}),
 		exitChan:        make(chan struct{}),
 		router:          web.NewRouter(),
@@ -127,6 +133,8 @@ func (app *App) Run() error {
 		return err
 	}
 
+	app.c.ClearCache()
+
 	<-app.exitChan
 
 	app.c.Close()
@@ -134,46 +142,29 @@ func (app *App) Run() error {
 	return nil
 }
 
-func (app *App) start() (err error) {
+func (app *App) start() error {
 
 	app.Object(app.consumers)
 	app.Object(app.router).Export(WebRouter)
 
 	e := &environment{p: conf.New()}
-	if err = e.prepare(); err != nil {
-		return
+	if err := e.prepare(); err != nil {
+		return err
 	}
 
-	showBanner := cast.ToBool(e.p.Get(environ.SpringBannerVisible))
+	showBanner := cast.ToBool(e.p.Get(SpringBannerVisible))
 	if showBanner {
 		app.printBanner(app.getBanner(e.configLocations))
 	}
 
-	if err = app.b.start(e); err != nil {
-		return
-	}
-
-	if err = app.profile(e); err != nil {
-		return
-	}
-
-	sourceMap, err := app.b.sourceMap(e)
-	if err != nil {
-		return
-	}
-
-	// 保存远程 default 配置。
-	for _, p := range sourceMap[""] {
-		for _, k := range p.Keys() {
-			app.c.p.Set(k, p.Get(k))
+	if app.b != nil {
+		if err := app.loadBootstrap(e); err != nil {
+			return err
 		}
 	}
 
-	// 保存远程 active 配置。
-	for _, p := range sourceMap[e.activeProfile] {
-		for _, k := range p.Keys() {
-			app.c.p.Set(k, p.Get(k))
-		}
+	if err := app.profile(e); err != nil {
+		return err
 	}
 
 	// 保存从环境变量和命令行解析的属性
@@ -184,15 +175,15 @@ func (app *App) start() (err error) {
 	for key, f := range app.mapOfOnProperty {
 		t := reflect.TypeOf(f)
 		in := reflect.New(t.In(0)).Elem()
-		err = app.c.p.Bind(in, conf.Key(key))
+		err := app.c.p.Bind(in, conf.Key(key))
 		if err != nil {
-			return
+			return err
 		}
 		reflect.ValueOf(f).Call([]reflect.Value{in})
 	}
 
-	if err = app.c.refresh(); err != nil {
-		return
+	if err := app.c.Refresh(); err != nil {
+		return err
 	}
 
 	ctx := &pandora{app.c}
@@ -217,11 +208,35 @@ func (app *App) start() (err error) {
 		}
 	})
 
-	if !app.c.enablePandora() {
-		app.c.clearCache()
+	log.Info("application started successfully")
+	return nil
+}
+
+func (app *App) loadBootstrap(e *environment) error {
+
+	if err := app.b.start(e); err != nil {
+		return err
 	}
 
-	log.Info("application started successfully")
+	sourceMap, err := app.b.sourceMap(e)
+	if err != nil {
+		return err
+	}
+
+	// 保存远程 default 配置。
+	for _, p := range sourceMap[""] {
+		for _, k := range p.Keys() {
+			app.c.p.Set(k, p.Get(k))
+		}
+	}
+
+	// 保存远程 active 配置。
+	for _, p := range sourceMap[e.activeProfile] {
+		for _, k := range p.Keys() {
+			app.c.p.Set(k, p.Get(k))
+		}
+	}
+
 	return nil
 }
 
@@ -269,13 +284,13 @@ func (app *App) printBanner(banner string) {
 	}
 
 	var padding []byte
-	if n := (maxLength - len(environ.Version)) / 2; n > 0 {
+	if n := (maxLength - len(Version)) / 2; n > 0 {
 		padding = make([]byte, n)
 		for i := range padding {
 			padding[i] = ' '
 		}
 	}
-	fmt.Println(string(padding) + environ.Version + "\n")
+	fmt.Println(string(padding) + Version + "\n")
 }
 
 func (app *App) profile(e *environment) error {
@@ -313,6 +328,12 @@ func (app *App) ShutDown(err error) {
 
 // Bootstrap 返回 *bootstrap 对象。
 func (app *App) Bootstrap() *bootstrap {
+	if app.b == nil {
+		app.b = &bootstrap{
+			c:               New(),
+			mapOfOnProperty: make(map[string]interface{}),
+		}
+	}
 	return app.b
 }
 

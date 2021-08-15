@@ -37,7 +37,6 @@ import (
 	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/gs/bean"
 	"github.com/go-spring/spring-core/gs/cond"
-	"github.com/go-spring/spring-core/gs/environ"
 	pkg1 "github.com/go-spring/spring-core/gs/testdata/pkg/bar"
 	pkg2 "github.com/go-spring/spring-core/gs/testdata/pkg/foo"
 )
@@ -49,7 +48,6 @@ func init() {
 func container() (*gs.Container, chan gs.Pandora) {
 
 	c := gs.New()
-	c.Property(environ.EnablePandora, true)
 
 	type PandoraAware struct{}
 	ch := make(chan gs.Pandora, 1)
@@ -820,7 +818,7 @@ func TestApplicationContext_Profile(t *testing.T) {
 	t.Run("bean:_c:test", func(t *testing.T) {
 
 		c, ch := container()
-		c.Property(environ.SpringProfilesActive, "test")
+		c.Property(gs.SpringProfilesActive, "test")
 		c.Object(&BeanZero{5})
 		err := c.Refresh()
 		assert.Nil(t, err)
@@ -2498,7 +2496,7 @@ func TestDefaultSpringContext(t *testing.T) {
 	t.Run("bean:test_ctx:test", func(t *testing.T) {
 
 		c, ch := container()
-		c.Property(environ.SpringProfilesActive, "test")
+		c.Property(gs.SpringProfilesActive, "test")
 		c.Object(&BeanZero{5}).On(cond.OnProfile("test"))
 		err := c.Refresh()
 		assert.Nil(t, err)
@@ -2513,7 +2511,7 @@ func TestDefaultSpringContext(t *testing.T) {
 	t.Run("bean:test_ctx:stable", func(t *testing.T) {
 
 		c, ch := container()
-		c.Property(environ.SpringProfilesActive, "stable")
+		c.Property(gs.SpringProfilesActive, "stable")
 		c.Object(&BeanZero{5}).On(cond.OnProfile("test"))
 		err := c.Refresh()
 		assert.Nil(t, err)
@@ -2865,7 +2863,7 @@ func TestApplicationContext_Invoke(t *testing.T) {
 		c, ch := container()
 		c.Provide(func() int { return 3 })
 		c.Property("version", "v0.0.1")
-		c.Property(environ.SpringProfilesActive, "dev")
+		c.Property(gs.SpringProfilesActive, "dev")
 		err := c.Refresh()
 		assert.Nil(t, err)
 
