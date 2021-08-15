@@ -14,4 +14,13 @@
  * limitations under the License.
  */
 
-package mybatis
+package StarterK8S
+
+import (
+	"github.com/go-spring/spring-core/gs"
+	"github.com/go-spring/spring-core/k8s"
+)
+
+func init() {
+	gs.Object(new(k8s.DiscoveryClient))
+}

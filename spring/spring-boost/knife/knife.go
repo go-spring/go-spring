@@ -30,6 +30,9 @@ func cache(ctx context.Context) *sync.Map {
 
 // New 返回带有缓存空间的 context.Context 对象。
 func New(ctx context.Context) context.Context {
+	if cache(ctx) != nil {
+		return ctx
+	}
 	return context.WithValue(ctx, ctxKey, new(sync.Map))
 }
 

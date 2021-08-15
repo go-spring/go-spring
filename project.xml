@@ -90,4 +90,10 @@
         <url>https://github.com/go-spring/spring-boost.git</url>
         <branch>main</branch>
     </project>
+    <project>
+        <name>starter-k8s</name>
+        <dir>starter/starter-k8s</dir>
+        <url>https://github.com/go-spring/starter-k8s.git</url>
+        <branch>main</branch>
+    </project>
 </projects>

@@ -48,6 +48,11 @@ func Banner(banner string) {
 	app.Banner(banner)
 }
 
+// Bootstrap 返回 *bootstrap 对象。
+func Bootstrap() *bootstrap {
+	return app.Bootstrap()
+}
+
 // OnProperty 当 key 对应的属性值准备好后发送一个通知。
 func OnProperty(key string, fn interface{}) {
 	app.OnProperty(key, fn)

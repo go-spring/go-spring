@@ -20,17 +20,38 @@ import (
 	"regexp"
 )
 
-// Filter 过滤器接口
+// Filter 过滤器接口，Invoke 通过 chain.Next() 驱动链条向后执行。
 type Filter interface {
-	// Invoke 通过 chain.Next() 驱动链条向后执行
 	Invoke(ctx Context, chain FilterChain)
 }
 
-// FuncFilter 函数实现的过滤器
-type FuncFilter func(ctx Context, chain FilterChain)
+type funcFilter struct {
+	f func(ctx Context, chain FilterChain)
+}
 
-func (f FuncFilter) Invoke(ctx Context, chain FilterChain) {
-	f(ctx, chain)
+func FuncFilter(f func(ctx Context, chain FilterChain)) *funcFilter {
+	return &funcFilter{f: f}
+}
+
+func (f *funcFilter) Invoke(ctx Context, chain FilterChain) {
+	f.f(ctx, chain)
+}
+
+func (f *funcFilter) URLPatterns(s []string) *funcFilterWithURLPatterns {
+	return &funcFilterWithURLPatterns{f: f.f, s: s}
+}
+
+type funcFilterWithURLPatterns struct {
+	f func(ctx Context, chain FilterChain)
+	s []string
+}
+
+func (f *funcFilterWithURLPatterns) Invoke(ctx Context, chain FilterChain) {
+	f.f(ctx, chain)
+}
+
+func (f *funcFilterWithURLPatterns) URLPatterns() []string {
+	return f.s
 }
 
 // handlerFilter 包装 Web 处理接口的过滤器

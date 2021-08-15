@@ -21,6 +21,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/go-spring/spring-boost/cast"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/gs/environ"
 )
@@ -30,19 +31,38 @@ const EnvPrefix = "GS_"
 
 // Environment 提供获取环境变量和命令行参数的方法，命令行参数优先级更高。
 type Environment interface {
+	ActiveProfile() string
+	ConfigLocations() []string
+	ConfigExtensions() []string
 	Get(key string, opts ...conf.GetOption) interface{}
 }
 
 type environment struct {
 	p *conf.Properties
+
+	activeProfile    string
+	configLocations  []string
+	configExtensions []string
 }
 
-func newEnvironment() *environment {
-	return &environment{p: conf.New()}
+func (e *environment) ActiveProfile() string {
+	return e.activeProfile
+}
+
+func (e *environment) ConfigLocations() []string {
+	return e.configLocations
+}
+
+func (e *environment) ConfigExtensions() []string {
+	return e.configExtensions
+}
+
+func (e *environment) Get(key string, opts ...conf.GetOption) interface{} {
+	return e.p.Get(key, opts...)
 }
 
 // loadCmdArgs 加载 -name value 形式的命令行参数。
-func loadCmdArgs(p *conf.Properties) {
+func loadCmdArgs(p *conf.Properties) error {
 	for i := 0; i < len(os.Args); i++ {
 
 		s := os.Args[i]
@@ -62,6 +82,7 @@ func loadCmdArgs(p *conf.Properties) {
 		}
 		p.Set(k, v)
 	}
+	return nil
 }
 
 // loadSystemEnv 添加符合 includes 条件的环境变量，排除符合 excludes 条件的
@@ -135,14 +156,22 @@ func loadSystemEnv(p *conf.Properties) error {
 }
 
 func (e *environment) prepare() error {
-	err := loadSystemEnv(e.p)
-	if err != nil {
+
+	if err := loadSystemEnv(e.p); err != nil {
 		return err
 	}
-	loadCmdArgs(e.p)
-	return nil
-}
 
-func (e *environment) Get(key string, opts ...conf.GetOption) interface{} {
-	return e.p.Get(key, opts...)
+	if err := loadCmdArgs(e.p); err != nil {
+		return err
+	}
+
+	s := e.p.Get(environ.SpringConfigLocations, conf.Def("config/"))
+	e.configLocations = strings.Split(cast.ToString(s), ",")
+
+	extensions := ".properties,.prop,.yaml,.yml,.toml,.tml"
+	s = e.p.Get(environ.SpringConfigExtensions, conf.Def(extensions))
+	e.configExtensions = strings.Split(cast.ToString(s), ",")
+
+	e.activeProfile = cast.ToString(e.p.Get(environ.SpringProfilesActive))
+	return nil
 }

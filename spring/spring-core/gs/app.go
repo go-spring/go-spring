@@ -18,7 +18,6 @@ package gs
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -68,6 +67,7 @@ type App struct {
 
 	// 应用上下文
 	c *Container
+	b *bootstrap
 
 	banner    string
 	router    web.Router
@@ -100,6 +100,7 @@ func (c *Consumers) ForEach(fn func(mq.Consumer)) {
 func NewApp() *App {
 	return &App{
 		c:               New(),
+		b:               &bootstrap{c: New(), mapOfOnProperty: make(map[string]interface{})},
 		mapOfOnProperty: make(map[string]interface{}),
 		exitChan:        make(chan struct{}),
 		router:          web.NewRouter(),
@@ -133,41 +134,46 @@ func (app *App) Run() error {
 	return nil
 }
 
-func (app *App) start() error {
+func (app *App) start() (err error) {
 
-	app.Object(app.router).Export(WebRouter)
 	app.Object(app.consumers)
+	app.Object(app.router).Export(WebRouter)
 
-	e := newEnvironment()
-	if err := e.prepare(); err != nil {
-		return err
+	e := &environment{p: conf.New()}
+	if err = e.prepare(); err != nil {
+		return
 	}
 
-	configLocations := func() []string {
-		s := e.Get(environ.SpringConfigLocations, conf.Def("config/"))
-		return strings.Split(cast.ToString(s), ",")
-	}()
-
-	showBanner := cast.ToBool(e.Get(environ.SpringBannerVisible))
+	showBanner := cast.ToBool(e.p.Get(environ.SpringBannerVisible))
 	if showBanner {
-		PrintBanner(app.getBanner(configLocations))
+		app.printBanner(app.getBanner(e.configLocations))
 	}
 
-	configExtensions := func() []string {
-		extensions := ".properties,.prop,.yaml,.yml,.toml,.tml"
-		s := e.Get(environ.SpringConfigExtensions, conf.Def(extensions))
-		return strings.Split(cast.ToString(s), ",")
-	}()
+	if err = app.b.start(e); err != nil {
+		return
+	}
 
-	profile := cast.ToString(e.Get(environ.SpringProfilesActive))
-	p, err := app.profile(configLocations, configExtensions, profile)
+	if err = app.profile(e); err != nil {
+		return
+	}
+
+	sourceMap, err := app.b.sourceMap(e)
 	if err != nil {
-		return err
+		return
 	}
 
-	// 保存从配置文件加载的属性
-	for _, k := range p.Keys() {
-		app.c.p.Set(k, p.Get(k))
+	// 保存远程 default 配置。
+	for _, p := range sourceMap[""] {
+		for _, k := range p.Keys() {
+			app.c.p.Set(k, p.Get(k))
+		}
+	}
+
+	// 保存远程 active 配置。
+	for _, p := range sourceMap[e.activeProfile] {
+		for _, k := range p.Keys() {
+			app.c.p.Set(k, p.Get(k))
+		}
 	}
 
 	// 保存从环境变量和命令行解析的属性
@@ -180,13 +186,13 @@ func (app *App) start() error {
 		in := reflect.New(t.In(0)).Elem()
 		err = app.c.p.Bind(in, conf.Key(key))
 		if err != nil {
-			return err
+			return
 		}
 		reflect.ValueOf(f).Call([]reflect.Value{in})
 	}
 
 	if err = app.c.refresh(); err != nil {
-		return err
+		return
 	}
 
 	ctx := &pandora{app.c}
@@ -216,8 +222,19 @@ func (app *App) start() error {
 	}
 
 	log.Info("application started successfully")
-	return err
+	return nil
 }
+
+const DefaultBanner = `
+ _______  _______         _______  _______  _______ _________ _        _______ 
+(  ____ \(  ___  )       (  ____ \(  ____ )(  ____ )\__   __/( (    /|(  ____ \
+| (    \/| (   ) |       | (    \/| (    )|| (    )|   ) (   |  \  ( || (    \/
+| |      | |   | | _____ | (_____ | (____)|| (____)|   | |   |   \ | || |      
+| | ____ | |   | |(_____)(_____  )|  _____)|     __)   | |   | (\ \) || | ____ 
+| | \_  )| |   | |             ) || (      | (\ (      | |   | | \   || | \_  )
+| (___) || (___) |       /\____) || )      | ) \ \_____) (___| )  \  || (___) |
+(_______)(_______)       \_______)|/       |/   \__/\_______/|/    )_)(_______)
+`
 
 func (app *App) getBanner(configLocations []string) string {
 	if app.banner != "" {
@@ -232,31 +249,49 @@ func (app *App) getBanner(configLocations []string) string {
 	return DefaultBanner
 }
 
-func (app *App) profile(locations []string, extensions []string, profile string) (*conf.Properties, error) {
+// printBanner 打印 banner 到控制台
+func (app *App) printBanner(banner string) {
 
-	p := conf.New()
-	if err := app.loadConfigFile(p, locations, extensions, ""); err != nil {
-		return nil, err
+	if banner[0] != '\n' {
+		fmt.Println()
 	}
 
-	if profile != "" {
-		if err := app.loadConfigFile(p, locations, extensions, profile); err != nil {
-			return nil, err
+	maxLength := 0
+	for _, s := range strings.Split(banner, "\n") {
+		fmt.Printf("\x1b[36m%s\x1b[0m\n", s) // CYAN
+		if len(s) > maxLength {
+			maxLength = len(s)
 		}
 	}
-	return p, nil
-}
 
-func (app *App) loadConfigFile(p *conf.Properties, locations []string, extensions []string, profile string) error {
-
-	filename := "application"
-	if len(profile) > 0 {
-		filename += "-" + profile
+	if banner[len(banner)-1] != '\n' {
+		fmt.Println()
 	}
 
-	for _, loc := range locations {
-		for _, ext := range extensions {
-			err := p.Load(filepath.Join(loc, filename+ext))
+	var padding []byte
+	if n := (maxLength - len(environ.Version)) / 2; n > 0 {
+		padding = make([]byte, n)
+		for i := range padding {
+			padding[i] = ' '
+		}
+	}
+	fmt.Println(string(padding) + environ.Version + "\n")
+}
+
+func (app *App) profile(e *environment) error {
+	if err := app.loadConfigFile(e, "application"); err != nil {
+		return err
+	}
+	if e.activeProfile == "" {
+		return nil
+	}
+	return app.loadConfigFile(e, "application-"+e.activeProfile)
+}
+
+func (app *App) loadConfigFile(e *environment, filename string) error {
+	for _, loc := range e.configLocations {
+		for _, ext := range e.configExtensions {
+			err := app.c.p.Load(filepath.Join(loc, filename+ext))
 			if err != nil && !os.IsNotExist(err) {
 				return err
 			}
@@ -276,15 +311,15 @@ func (app *App) ShutDown(err error) {
 	}
 }
 
+// Bootstrap 返回 *bootstrap 对象。
+func (app *App) Bootstrap() *bootstrap {
+	return app.b
+}
+
 // OnProperty 当 key 对应的属性值准备好后发送一个通知。
 func (app *App) OnProperty(key string, fn interface{}) {
-	t := reflect.TypeOf(fn)
-	if t.Kind() != reflect.Func {
-		panic(errors.New("fn should be a func(value_type)"))
-	}
-	if t.NumIn() != 1 || !util.IsValueType(t.In(0)) || t.NumOut() != 0 {
-		panic(errors.New("fn should be a func(value_type)"))
-	}
+	err := validOnProperty(fn)
+	util.Panic(err).When(err != nil)
 	app.mapOfOnProperty[key] = fn
 }
 
