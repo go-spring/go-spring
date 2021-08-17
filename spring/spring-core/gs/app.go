@@ -138,6 +138,7 @@ func (app *App) start() (err error) {
 
 	app.Object(app.consumers)
 	app.Object(app.router).Export(WebRouter)
+	app.Object(app)
 
 	e := &environment{p: conf.New()}
 	if err = e.prepare(); err != nil {
