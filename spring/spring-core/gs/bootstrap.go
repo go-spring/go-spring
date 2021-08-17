@@ -28,7 +28,7 @@ import (
 )
 
 type PropertySource interface {
-	Load(e *environment) (map[string]*conf.Properties, error)
+	Load(e Environment) (map[string]*conf.Properties, error)
 }
 
 type bootstrap struct {
