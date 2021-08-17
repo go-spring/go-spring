@@ -140,6 +140,7 @@ func (app *App) start() error {
 
 	app.Object(app.router)
 	app.Object(app.consumers)
+	app.Object(app)
 
 	e := &environment{p: conf.New()}
 	if err := e.prepare(); err != nil {
