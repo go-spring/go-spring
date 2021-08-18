@@ -26,8 +26,8 @@ import (
 
 	"github.com/go-spring/spring-boost/util"
 	"github.com/go-spring/spring-core/gs/arg"
-	"github.com/go-spring/spring-core/gs/bean"
 	"github.com/go-spring/spring-core/gs/cond"
+	"github.com/go-spring/spring-core/gs/lib"
 )
 
 const (
@@ -35,16 +35,16 @@ const (
 	LowestOrder  = math.MaxInt32
 )
 
-type beanStatus int
+type beanStatus int8
 
 const (
-	Default   = beanStatus(iota) // 默认状态
+	Deleted   = beanStatus(-1)   // 已删除
+	Default   = beanStatus(iota) // 未处理
 	Resolving                    // 正在决议
 	Resolved                     // 已决议
 	Creating                     // 正在创建
 	Created                      // 已创建
 	Wired                        // 注入完成
-	Deleted                      // 已删除
 )
 
 // BeanDefinition bean 元数据。
@@ -60,16 +60,15 @@ type BeanDefinition struct {
 	file string // 注册点所在文件
 	line int    // 注册点所在行数
 
-	name      string          // 名称
-	status    beanStatus      // 状态
-	cond      cond.Condition  // 判断条件
-	primary   bool            // 是否为主版本
-	order     int             // 收集时的顺序
-	init      interface{}     // 初始化函数
-	destroy   interface{}     // 销毁函数
-	dependsOn []bean.Selector // 间接依赖项
-
-	exports map[reflect.Type]struct{} // 导出的接口
+	name      string                    // 名称
+	status    beanStatus                // 状态
+	cond      cond.Condition            // 判断条件
+	primary   bool                      // 是否为主版本
+	order     int                       // 收集时的顺序
+	init      interface{}               // 初始化函数
+	destroy   interface{}               // 销毁函数
+	dependsOn []lib.BeanSelector        // 间接依赖项
+	exports   map[reflect.Type]struct{} // 导出的接口
 }
 
 // Type 返回 bean 的类型。
@@ -102,7 +101,12 @@ func (d *BeanDefinition) TypeName() string {
 	return d.typeName
 }
 
-// Wired 返回 bean 是否已经注入完成。
+// Created 返回是否已创建。
+func (d *BeanDefinition) Created() bool {
+	return d.status >= Created
+}
+
+// Wired 返回 bean 是否已经注入。
 func (d *BeanDefinition) Wired() bool {
 	return d.status == Wired
 }
@@ -159,7 +163,7 @@ func (d *BeanDefinition) Order(order int) *BeanDefinition {
 }
 
 // DependsOn 设置 bean 的间接依赖项。
-func (d *BeanDefinition) DependsOn(selectors ...bean.Selector) *BeanDefinition {
+func (d *BeanDefinition) DependsOn(selectors ...lib.BeanSelector) *BeanDefinition {
 	d.dependsOn = append(d.dependsOn, selectors...)
 	return d
 }

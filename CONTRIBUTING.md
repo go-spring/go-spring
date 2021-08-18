@@ -54,6 +54,7 @@ Following information can help us to resolve the issue faster.
 * 函数内部调用的函数一般放在它的上方并且靠近它。
 * 几乎所有的 panic 都应该打印其调用栈。
 * 和包名同名的文件作为了解包的入口。
+* 类型或函数的内容较短时也不能写在一行上，必须换行。
 
 ## 注释
 

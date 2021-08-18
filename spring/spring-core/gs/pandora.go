@@ -25,7 +25,7 @@ import (
 	"github.com/go-spring/spring-boost/util"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/gs/arg"
-	"github.com/go-spring/spring-core/gs/bean"
+	"github.com/go-spring/spring-core/gs/lib"
 )
 
 // Pandora 提供了一些在 IoC 容器启动后基于反射获取和使用 property 与 bean 的接
@@ -41,7 +41,7 @@ type Pandora interface {
 	Go(fn func(ctx context.Context))
 	Prop(key string, opts ...conf.GetOption) interface{}
 	Bind(i interface{}, opts ...conf.BindOption) error
-	Get(i interface{}, selectors ...bean.Selector) error
+	Get(i interface{}, selectors ...lib.BeanSelector) error
 	Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error)
 	Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, error)
 }
@@ -82,7 +82,7 @@ func (p *pandora) Bind(i interface{}, opts ...conf.BindOption) error {
 // 工作模式称为自动模式，否则根据传入的选择器列表进行排序，这种工作模式成为指派模式。
 // 该方法和 Find 方法的区别是该方法保证返回的所有 bean 对象都已经完成属性绑定和依
 // 赖注入，而 Find 方法只能保证返回的 bean 对象是有效的，即未被标记为删除的。
-func (p *pandora) Get(i interface{}, selectors ...bean.Selector) error {
+func (p *pandora) Get(i interface{}, selectors ...lib.BeanSelector) error {
 
 	if i == nil {
 		return errors.New("i can't be nil")
@@ -110,12 +110,12 @@ func (p *pandora) Get(i interface{}, selectors ...bean.Selector) error {
 
 // Find 查找符合条件的 bean 对象，注意该函数只能保证返回的 bean 是有效的，即未被
 // 标记为删除的，而不能保证已经完成属性绑定和依赖注入。
-func (p *pandora) Find(selector bean.Selector) ([]bean.Definition, error) {
+func (p *pandora) Find(selector lib.BeanSelector) ([]lib.BeanDefinition, error) {
 	beans, err := p.c.findBean(selector)
 	if err != nil {
 		return nil, err
 	}
-	var ret []bean.Definition
+	var ret []lib.BeanDefinition
 	for _, b := range beans {
 		ret = append(ret, b)
 	}

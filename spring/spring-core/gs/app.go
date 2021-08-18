@@ -34,6 +34,7 @@ import (
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/grpc"
 	"github.com/go-spring/spring-core/gs/arg"
+	"github.com/go-spring/spring-core/gs/lib"
 	"github.com/go-spring/spring-core/mq"
 	"github.com/go-spring/spring-core/web"
 )
@@ -43,22 +44,11 @@ const (
 	Website = "https://go-spring.com/"
 )
 
-// AppRunner 导出 appRunner 类型
-var AppRunner = (*appRunner)(nil)
+// AppRunner 导出 lib.AppRunner 类型
+var AppRunner = (*lib.AppRunner)(nil)
 
-// appRunner 命令行启动器接口
-type appRunner interface {
-	Run(ctx AppContext)
-}
-
-// AppEvent 导出 appEvent 类型
-var AppEvent = (*appEvent)(nil)
-
-// appEvent 应用运行过程中的事件
-type appEvent interface {
-	OnStopApp(ctx AppContext)  // 应用停止的事件
-	OnStartApp(ctx AppContext) // 应用启动的事件
-}
+// AppEvent 导出 lib.AppEvent 类型
+var AppEvent = (*lib.AppEvent)(nil)
 
 // WebRouter 导出 web.Router 类型
 var WebRouter = (*web.Router)(nil)
@@ -82,8 +72,8 @@ type App struct {
 
 	exitChan chan struct{}
 
-	Events  []appEvent  `autowire:""`
-	Runners []appRunner `autowire:""`
+	Events  []lib.AppEvent  `autowire:""`
+	Runners []lib.AppRunner `autowire:""`
 
 	// 属性列表解析完成后的回调
 	mapOfOnProperty map[string]interface{}

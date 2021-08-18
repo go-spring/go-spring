@@ -33,15 +33,9 @@ import (
 	"github.com/go-spring/spring-boost/util"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/gs/arg"
-	"github.com/go-spring/spring-core/gs/bean"
 	"github.com/go-spring/spring-core/gs/cond"
+	"github.com/go-spring/spring-core/gs/lib"
 )
-
-// AppContext 封装 IoC 容器的 context.Context 对象。
-type AppContext interface {
-	Context() context.Context
-	Go(fn func(ctx context.Context))
-}
 
 type refreshState int
 
@@ -370,11 +364,11 @@ func (tag wireTag) String() string {
 	return b.String()
 }
 
-func toWireTag(selector bean.Selector) wireTag {
+func toWireTag(selector lib.BeanSelector) wireTag {
 	switch s := selector.(type) {
 	case string:
 		return parseWireTag(s)
-	case bean.Definition:
+	case lib.BeanDefinition:
 		return parseWireTag(s.ID())
 	case *BeanDefinition:
 		return parseWireTag(s.ID())
@@ -385,7 +379,7 @@ func toWireTag(selector bean.Selector) wireTag {
 
 // findBean 查找符合条件的 bean 对象，注意该函数只能保证返回的 bean 是有效的，
 // 即未被标记为删除的，而不能保证已经完成属性绑定和依赖注入。
-func (c *Container) findBean(selector bean.Selector) ([]*BeanDefinition, error) {
+func (c *Container) findBean(selector lib.BeanSelector) ([]*BeanDefinition, error) {
 
 	finder := func(fn func(*BeanDefinition) bool) ([]*BeanDefinition, error) {
 		var result []*BeanDefinition
