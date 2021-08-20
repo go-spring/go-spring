@@ -34,7 +34,6 @@ import (
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/gs/cond"
-	"github.com/go-spring/spring-core/gs/lib"
 )
 
 type refreshState int
@@ -364,11 +363,11 @@ func (tag wireTag) String() string {
 	return b.String()
 }
 
-func toWireTag(selector lib.BeanSelector) wireTag {
+func toWireTag(selector cond.BeanSelector) wireTag {
 	switch s := selector.(type) {
 	case string:
 		return parseWireTag(s)
-	case lib.BeanDefinition:
+	case cond.BeanDefinition:
 		return parseWireTag(s.ID())
 	case *BeanDefinition:
 		return parseWireTag(s.ID())
@@ -379,7 +378,7 @@ func toWireTag(selector lib.BeanSelector) wireTag {
 
 // findBean 查找符合条件的 bean 对象，注意该函数只能保证返回的 bean 是有效的，
 // 即未被标记为删除的，而不能保证已经完成属性绑定和依赖注入。
-func (c *Container) findBean(selector lib.BeanSelector) ([]*BeanDefinition, error) {
+func (c *Container) findBean(selector cond.BeanSelector) ([]*BeanDefinition, error) {
 
 	finder := func(fn func(*BeanDefinition) bool) ([]*BeanDefinition, error) {
 		var result []*BeanDefinition

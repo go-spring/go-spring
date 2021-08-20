@@ -72,20 +72,10 @@ func TestConfig(t *testing.T) {
 		defer app.ShutDown(errors.New("run test end"))
 		assert.Equal(t, p.Prop(gs.SpringProfilesActive), "dev")
 
-		var m map[string]string
-		err := p.Bind(&m)
-		assert.Nil(t, err)
-
-		for _, k := range sortedKeys(m) {
+		keys := p.Keys()
+		sort.Strings(keys)
+		for _, k := range keys {
 			fmt.Println(k, "=", p.Prop(k))
 		}
 	})
-}
-
-func sortedKeys(m map[string]string) (keys []string) {
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return
 }

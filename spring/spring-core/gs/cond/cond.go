@@ -21,16 +21,32 @@ import (
 	"errors"
 	"go/token"
 	"go/types"
+	"reflect"
 	"strings"
 
 	"github.com/go-spring/spring-boost/cast"
 	"github.com/go-spring/spring-boost/util"
 	"github.com/go-spring/spring-core/conf"
-	"github.com/go-spring/spring-core/gs/lib"
 )
 
 // SpringProfilesActive 当前应用的 profile 配置。
 const SpringProfilesActive = "spring.profiles.active"
+
+// BeanSelector bean 选择器，可以是 bean ID 字符串，可以是 reflect.Type
+// 对象，可以是形如 (*error)(nil) 的指针，还可以是 Definition 类型的对象。
+type BeanSelector interface{}
+
+// BeanDefinition bean 元数据。
+type BeanDefinition interface {
+	Type() reflect.Type     // 类型
+	Value() reflect.Value   // 值
+	Interface() interface{} // 源
+	ID() string             // 返回 bean 的 ID
+	BeanName() string       // 返回 bean 的名称
+	TypeName() string       // 返回类型的全限定名
+	Created() bool          // 返回是否已创建
+	Wired() bool            // 返回是否已注入
+}
 
 // Context IoC 容器对 cond 模块提供的最小功能集。
 type Context interface {
@@ -43,7 +59,7 @@ type Context interface {
 
 	// Find 查找符合条件的 bean 对象，注意该函数只能保证返回的 bean 是有效的,
 	// 即未被标记为删除的，而不能保证已经完成属性绑定和依赖注入。
-	Find(selector lib.BeanSelector) ([]lib.BeanDefinition, error)
+	Find(selector BeanSelector) ([]BeanDefinition, error)
 }
 
 // Condition 条件接口，条件成立 Matches 方法返回 true，否则返回 false。
@@ -107,7 +123,7 @@ func (c *onProperty) Matches(ctx Context) (bool, error) {
 
 // onBean 基于符合条件的 bean 必须存在的 Condition 实现。
 type onBean struct {
-	selector lib.BeanSelector
+	selector BeanSelector
 }
 
 func (c *onBean) Matches(ctx Context) (bool, error) {
@@ -117,7 +133,7 @@ func (c *onBean) Matches(ctx Context) (bool, error) {
 
 // onMissingBean 基于符合条件的 bean 必须不存在的 Condition 实现。
 type onMissingBean struct {
-	selector lib.BeanSelector
+	selector BeanSelector
 }
 
 func (c *onMissingBean) Matches(ctx Context) (bool, error) {
@@ -127,7 +143,7 @@ func (c *onMissingBean) Matches(ctx Context) (bool, error) {
 
 // onSingleCandidate 基于符合条件的 bean 只有一个的 Condition 实现。
 type onSingleCandidate struct {
-	selector lib.BeanSelector
+	selector BeanSelector
 }
 
 func (c *onSingleCandidate) Matches(ctx Context) (bool, error) {
@@ -324,32 +340,32 @@ func (c *conditional) OnProperty(name string, options ...PropertyOption) *condit
 }
 
 // OnBean 返回一个以 onBean 为开始条件的计算式。
-func OnBean(selector lib.BeanSelector) *conditional {
+func OnBean(selector BeanSelector) *conditional {
 	return New().OnBean(selector)
 }
 
 // OnBean 添加一个 onBean 条件。
-func (c *conditional) OnBean(selector lib.BeanSelector) *conditional {
+func (c *conditional) OnBean(selector BeanSelector) *conditional {
 	return c.On(&onBean{selector: selector})
 }
 
 // OnMissingBean 返回一个以 onMissingBean 为开始条件的计算式。
-func OnMissingBean(selector lib.BeanSelector) *conditional {
+func OnMissingBean(selector BeanSelector) *conditional {
 	return New().OnMissingBean(selector)
 }
 
 // OnMissingBean 添加一个 onMissingBean 条件。
-func (c *conditional) OnMissingBean(selector lib.BeanSelector) *conditional {
+func (c *conditional) OnMissingBean(selector BeanSelector) *conditional {
 	return c.On(&onMissingBean{selector: selector})
 }
 
 // OnSingleCandidate 返回一个以 onSingleCandidate 为开始条件的计算式。
-func OnSingleCandidate(selector lib.BeanSelector) *conditional {
+func OnSingleCandidate(selector BeanSelector) *conditional {
 	return New().OnSingleCandidate(selector)
 }
 
 // OnSingleCandidate 添加一个 onMissingBean 条件。
-func (c *conditional) OnSingleCandidate(selector lib.BeanSelector) *conditional {
+func (c *conditional) OnSingleCandidate(selector BeanSelector) *conditional {
 	return c.On(&onSingleCandidate{selector: selector})
 }
 

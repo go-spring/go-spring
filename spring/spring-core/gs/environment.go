@@ -43,6 +43,14 @@ const SpringConfigLocations = "spring.config.locations"
 // SpringConfigExtensions 配置文件的扩展名，支持逗号分隔。
 const SpringConfigExtensions = "spring.config.extensions"
 
+// Environment 提供获取环境变量和命令行参数的方法，命令行参数优先级更高。
+type Environment interface {
+	ActiveProfile() string
+	ConfigLocations() []string
+	ConfigExtensions() []string
+	Prop(key string, opts ...conf.GetOption) interface{}
+}
+
 type environment struct {
 	p *conf.Properties
 

@@ -25,8 +25,11 @@ import (
 	"github.com/go-spring/spring-boost/util"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/gs/arg"
-	"github.com/go-spring/spring-core/gs/lib"
 )
+
+type PropertySource interface {
+	Load(e Environment) (map[string]*conf.Properties, error)
+}
 
 type bootstrap struct {
 
@@ -36,7 +39,7 @@ type bootstrap struct {
 	// 属性列表解析完成后的回调
 	mapOfOnProperty map[string]interface{}
 
-	PropertySources []lib.PropertySource `autowire:""`
+	PropertySources []PropertySource `autowire:""`
 }
 
 func validOnProperty(fn interface{}) error {

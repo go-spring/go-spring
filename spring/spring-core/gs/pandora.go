@@ -25,7 +25,7 @@ import (
 	"github.com/go-spring/spring-boost/util"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/gs/arg"
-	"github.com/go-spring/spring-core/gs/lib"
+	"github.com/go-spring/spring-core/gs/cond"
 )
 
 // Pandora 提供了一些在 IoC 容器启动后基于反射获取和使用 property 与 bean 的接
@@ -39,9 +39,10 @@ import (
 type Pandora interface {
 	Context() context.Context
 	Go(fn func(ctx context.Context))
+	Keys() []string
 	Prop(key string, opts ...conf.GetOption) interface{}
 	Bind(i interface{}, opts ...conf.BindOption) error
-	Get(i interface{}, selectors ...lib.BeanSelector) error
+	Get(i interface{}, selectors ...cond.BeanSelector) error
 	Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error)
 	Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, error)
 }
@@ -57,6 +58,11 @@ func (p *pandora) Context() context.Context {
 // 器关闭时 ctx会 发出 Done 信号， fn 在接收到此信号后应当立即退出。
 func (p *pandora) Go(fn func(ctx context.Context)) {
 	p.c.safeGo(fn)
+}
+
+// Keys 返回所有属性 key 的列表。
+func (p *pandora) Keys() []string {
+	return p.c.p.Keys()
 }
 
 // Prop 获取 key 对应的属性值，注意 key 是大小写敏感的。当 key 对应的属性值存在
@@ -82,7 +88,7 @@ func (p *pandora) Bind(i interface{}, opts ...conf.BindOption) error {
 // 工作模式称为自动模式，否则根据传入的选择器列表进行排序，这种工作模式成为指派模式。
 // 该方法和 Find 方法的区别是该方法保证返回的所有 bean 对象都已经完成属性绑定和依
 // 赖注入，而 Find 方法只能保证返回的 bean 对象是有效的，即未被标记为删除的。
-func (p *pandora) Get(i interface{}, selectors ...lib.BeanSelector) error {
+func (p *pandora) Get(i interface{}, selectors ...cond.BeanSelector) error {
 
 	if i == nil {
 		return errors.New("i can't be nil")
@@ -110,12 +116,12 @@ func (p *pandora) Get(i interface{}, selectors ...lib.BeanSelector) error {
 
 // Find 查找符合条件的 bean 对象，注意该函数只能保证返回的 bean 是有效的，即未被
 // 标记为删除的，而不能保证已经完成属性绑定和依赖注入。
-func (p *pandora) Find(selector lib.BeanSelector) ([]lib.BeanDefinition, error) {
+func (p *pandora) Find(selector cond.BeanSelector) ([]cond.BeanDefinition, error) {
 	beans, err := p.c.findBean(selector)
 	if err != nil {
 		return nil, err
 	}
-	var ret []lib.BeanDefinition
+	var ret []cond.BeanDefinition
 	for _, b := range beans {
 		ret = append(ret, b)
 	}

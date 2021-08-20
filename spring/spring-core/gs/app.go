@@ -34,7 +34,6 @@ import (
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/grpc"
 	"github.com/go-spring/spring-core/gs/arg"
-	"github.com/go-spring/spring-core/gs/lib"
 	"github.com/go-spring/spring-core/mq"
 	"github.com/go-spring/spring-core/web"
 )
@@ -44,17 +43,22 @@ const (
 	Website = "https://go-spring.com/"
 )
 
-// AppRunner 导出 lib.AppRunner 类型
-var AppRunner = (*lib.AppRunner)(nil)
+// AppContext 封装 IoC 容器的 context.Context 对象。
+type AppContext interface {
+	Context() context.Context
+	Go(fn func(ctx context.Context))
+}
 
-// AppEvent 导出 lib.AppEvent 类型
-var AppEvent = (*lib.AppEvent)(nil)
+// AppRunner 命令行启动器接口
+type AppRunner interface {
+	Run(ctx AppContext)
+}
 
-// WebRouter 导出 web.Router 类型
-var WebRouter = (*web.Router)(nil)
-
-// WebFilter 导出 web.Filter 类型
-var WebFilter = (*web.Filter)(nil)
+// AppEvent 应用运行过程中的事件
+type AppEvent interface {
+	OnStopApp(ctx AppContext)  // 应用停止的事件
+	OnStartApp(ctx AppContext) // 应用启动的事件
+}
 
 // SpringBannerVisible 是否显示 banner。
 const SpringBannerVisible = "spring.banner.visible"
@@ -72,8 +76,8 @@ type App struct {
 
 	exitChan chan struct{}
 
-	Events  []lib.AppEvent  `autowire:""`
-	Runners []lib.AppRunner `autowire:""`
+	Events  []AppEvent  `autowire:""`
+	Runners []AppRunner `autowire:""`
 
 	// 属性列表解析完成后的回调
 	mapOfOnProperty map[string]interface{}
@@ -134,8 +138,8 @@ func (app *App) Run() error {
 
 func (app *App) start() error {
 
+	app.Object(app.router)
 	app.Object(app.consumers)
-	app.Object(app.router).Export(WebRouter)
 
 	e := &environment{p: conf.New()}
 	if err := e.prepare(); err != nil {
