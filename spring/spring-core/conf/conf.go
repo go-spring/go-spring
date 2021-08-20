@@ -23,6 +23,7 @@ import (
 	"io/ioutil"
 	"path/filepath"
 	"reflect"
+	"strings"
 
 	"github.com/go-spring/spring-boost/cast"
 )
@@ -30,11 +31,17 @@ import (
 // Properties 提供创建和读取属性列表的方法。它使用扁平的 map[string]string 结
 // 构存储数据，属性的 key 可以是 a.b.c 或者 a[0].b 两种形式，a.b.c 表示从 map
 // 结构中获取属性值，a[0].b 表示从切片结构中获取属性值，并且 key 是大小写敏感的。
-type Properties struct{ m map[string]string }
+type Properties struct {
+	m map[string]string      // 一维，存储 key 和 value。
+	t map[string]interface{} // 树形，存储 key 的节点路由。
+}
 
 // New 返回一个空的属性列表。
 func New() *Properties {
-	return &Properties{m: make(map[string]string)}
+	return &Properties{
+		m: make(map[string]string),
+		t: make(map[string]interface{}),
+	}
 }
 
 // Map 返回一个由 map 创建的属性列表。
@@ -103,6 +110,80 @@ func (p *Properties) Keys() []string {
 	return keys
 }
 
+// cacheKey 缓存属性 key 的路由。
+func (p *Properties) cacheKey(key string) {
+
+	var (
+		ok bool
+		v  interface{}
+		t  map[string]interface{}
+	)
+
+	t = p.t
+	keyPath := strings.Split(key, ".")
+	for i, s := range keyPath {
+
+		if v, ok = t[s]; !ok {
+			if i < len(keyPath)-1 {
+				m := make(map[string]interface{})
+				t[s] = m
+				t = m
+			} else {
+				t[s] = struct{}{}
+			}
+			continue
+		}
+
+		if _, ok = v.(struct{}); ok {
+			if i == len(keyPath)-1 {
+				continue
+			}
+			oldKey := strings.Join(keyPath[:i+1], ".")
+			panic(fmt.Errorf("property %q has a value but want another sub key %q", oldKey, key))
+		}
+
+		if _, ok = v.(map[string]interface{}); ok {
+			if i < len(keyPath)-1 {
+				t = v.(map[string]interface{})
+				continue
+			}
+			panic(fmt.Errorf("property %q want a value but has sub keys %v", key, v))
+		}
+	}
+}
+
+// Has 返回属性 key 是否存在。
+func (p *Properties) Has(key string) bool {
+
+	var (
+		ok bool
+		v  interface{}
+		t  map[string]interface{}
+	)
+
+	t = p.t
+	keyPath := strings.Split(key, ".")
+	for i, s := range keyPath {
+		if v, ok = t[s]; !ok {
+			if i < len(keyPath)-1 {
+				return false
+			}
+			if _, ok = t[s+"[0]"]; !ok {
+				return false
+			}
+			return true
+		}
+		if _, ok = v.(struct{}); ok {
+			if i < len(keyPath)-1 {
+				return false
+			}
+			return true
+		}
+		t = v.(map[string]interface{})
+	}
+	return true
+}
+
 type getArg struct {
 	def interface{}
 }
@@ -159,6 +240,7 @@ func (p *Properties) Set(key string, val interface{}) {
 		}
 	default:
 		p.m[key] = cast.ToString(val)
+		p.cacheKey(key)
 	}
 }
 

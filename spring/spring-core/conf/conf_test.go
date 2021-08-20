@@ -915,8 +915,19 @@ func TestBindMap(t *testing.T) {
 	t.Run("", func(t *testing.T) {
 		var r map[string]string
 		err := conf.Map(m).Bind(&r)
-		assert.Nil(t, err)
-		assert.Equal(t, r["a.b1"], "ab1")
+		assert.Error(t, err, "type \"string\" bind error: property \"a\" not exist")
+	})
+
+	t.Run("", func(t *testing.T) {
+		var r struct {
+			A map[string]string `value:"${a}"`
+			B map[string]string `value:"${b}"`
+		}
+		p := conf.Map(map[string]interface{}{
+			"a": "1", "b": 2,
+		})
+		err := p.Bind(&r)
+		assert.Error(t, err, "property \"a\" has a value but want another sub key \"a\\.\\*\"")
 	})
 
 	t.Run("", func(t *testing.T) {
@@ -944,4 +955,37 @@ func TestInterpolate(t *testing.T) {
 	assert.Equal(t, str, "my name is Jim my name is ${name")
 	str, _ = p.Resolve("my name is ${name} my name is ${name}")
 	assert.Equal(t, str, "my name is Jim my name is Jim")
+}
+
+func TestProperties_Has(t *testing.T) {
+
+	assert.Panic(t, func() {
+		p := conf.New()
+		p.Set("a", "1")
+		p.Set("a.b", "2")
+	}, "property \\\"a\\\" has a value but want another sub key \\\"a.b\\\"")
+
+	assert.Panic(t, func() {
+		p := conf.New()
+		p.Set("a.b", "2")
+		p.Set("a", "1")
+	}, "property \\\"a\\\" want a value but has sub keys map\\[b\\:\\{}]")
+
+	p := conf.New()
+	p.Set("a.b.c", "3")
+	p.Set("a.b.d", "4")
+	p.Set("a.b.e[0]", "5")
+	p.Set("a.b.e[1]", "6")
+	p.Set("a.b.f", []string{"7", "8"})
+
+	assert.True(t, p.Has("a"))
+	assert.True(t, p.Has("a.b"))
+	assert.True(t, p.Has("a.b.c"))
+	assert.True(t, p.Has("a.b.d"))
+
+	assert.True(t, p.Has("a.b.e"))
+	assert.True(t, p.Has("a.b.e[0]"))
+	assert.True(t, p.Has("a.b.e[1]"))
+
+	assert.False(t, p.Has("a.b[0].c"))
 }

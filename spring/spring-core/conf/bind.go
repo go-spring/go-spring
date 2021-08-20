@@ -207,31 +207,32 @@ func bindMap(p *Properties, v reflect.Value, param BindParam) error {
 		return fmt.Errorf("%s map 类型不能指定非空默认值", param.Path)
 	}
 
-	et := param.Type.Elem()
-	keys := make(map[string]struct{})
-	for _, key := range p.Keys() {
-
-		subKey := key
+	var keys []string
+	{
+		var keyPath []string
 		if param.Key != "" {
-			if !strings.HasPrefix(key, param.Key+".") {
-				continue
-			}
-			subKey = strings.TrimPrefix(key, param.Key+".")
+			keyPath = strings.Split(param.Key, ".")
 		}
-
-		if et.Kind() == reflect.Struct {
-			if fn, _ := converters[param.Type]; fn == nil {
-				subKey = strings.Split(subKey, ".")[0]
+		t := p.t
+		for i, s := range keyPath {
+			vt, ok := t[s]
+			if !ok {
+				return fmt.Errorf("property %q %w", param.Key, ErrNotExist)
 			}
+			if _, ok = vt.(struct{}); ok {
+				oldKey := strings.Join(keyPath[:i+1], ".")
+				return fmt.Errorf("property %q has a value but want another sub key %q", oldKey, param.Key+".*")
+			}
+			t = vt.(map[string]interface{})
 		}
-
-		if _, ok := keys[subKey]; !ok {
-			keys[subKey] = struct{}{}
+		for k := range t {
+			keys = append(keys, k)
 		}
 	}
 
+	et := param.Type.Elem()
 	m := reflect.MakeMap(param.Type)
-	for key := range keys {
+	for _, key := range keys {
 		e := reflect.New(et).Elem()
 		subKey := key
 		if param.Key != "" {
