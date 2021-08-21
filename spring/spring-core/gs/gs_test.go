@@ -1002,7 +1002,7 @@ func TestApplicationContext_RegisterBeanFn2(t *testing.T) {
 		assert.Equal(t, bd.BeanName(), "Manager")
 
 		bd = c.Provide(NewInt)
-		assert.Equal(t, bd.BeanName(), "*int")
+		assert.Equal(t, bd.BeanName(), "int")
 
 		err := c.Refresh()
 		assert.Nil(t, err)
@@ -1312,7 +1312,7 @@ func TestApplicationContext_Collect(t *testing.T) {
 
 			return new(int)
 		})
-		assert.Equal(t, intBean.BeanName(), "*int")
+		assert.Equal(t, intBean.BeanName(), "int")
 
 		err := c.Refresh()
 		assert.Nil(t, err)
@@ -2158,7 +2158,7 @@ func TestApplicationContext_NestValueField(t *testing.T) {
 		c.Property("sdk.wx.enable", true)
 
 		bd := c.Provide(func() int { return 3 })
-		assert.Equal(t, bd.BeanName(), "*int")
+		assert.Equal(t, bd.BeanName(), "int")
 
 		c.Object(new(wxChannel))
 		err := c.Refresh()
@@ -2347,7 +2347,7 @@ func TestFnStringBincorengArg(t *testing.T) {
 	c.Provide(func(i *int) bool {
 		fmt.Printf("i=%d\n", *i)
 		return false
-	}, "${key.name:=*int}")
+	}, "${key.name:=int}")
 	i := 5
 	c.Object(&i)
 	err := c.Refresh()

@@ -113,8 +113,8 @@ func TestBeanDefinition_Match(t *testing.T) {
 		beanName string
 		expect   bool
 	}{
-		{newBean(new(int)), "int", "*int", true},
-		{newBean(new(int)), "", "*int", true},
+		{newBean(new(int)), "int", "int", true},
+		{newBean(new(int)), "", "int", true},
 		{newBean(new(int)), "int", "", true},
 		{newBean(new(int)).Name("i"), "int", "i", true},
 		{newBean(new(int)).Name("i"), "", "i", true},
@@ -221,7 +221,7 @@ func TestObjectBean(t *testing.T) {
 			},
 
 			newBean(new(int)): {
-				"*int", "int",
+				"int", "int",
 			},
 
 			newBean(new(int)).Name("i"): {

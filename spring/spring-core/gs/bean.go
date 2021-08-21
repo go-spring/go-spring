@@ -282,7 +282,7 @@ func NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 	// Type.String() 一般返回 *pkg.Type 形式的字符串，
 	// 我们只取最后的类型名，如有需要请自定义 bean 名称。
 	s := strings.Split(t.String(), ".")
-	name := s[len(s)-1]
+	name := strings.TrimPrefix(s[len(s)-1], "*")
 
 	return &BeanDefinition{
 		t:        t,
