@@ -131,6 +131,10 @@ func (app *App) Run() error {
 
 	<-app.exitChan
 
+	if app.b != nil {
+		app.b.c.Close()
+	}
+
 	app.c.Close()
 	log.Info("application exited")
 	return nil
@@ -138,6 +142,7 @@ func (app *App) Run() error {
 
 func (app *App) start() error {
 
+	app.Object(app)
 	app.Object(app.router)
 	app.Object(app.consumers)
 

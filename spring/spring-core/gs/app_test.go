@@ -28,15 +28,15 @@ import (
 	"github.com/go-spring/spring-core/gs"
 )
 
-func startApplication(cfgLocation string) (*gs.App, gs.Pandora) {
+func startApplication(cfgLocation string) (*gs.App, gs.Environment) {
 
 	app := gs.NewApp()
 	gs.Setenv("SPRING_BANNER_VISIBLE", "true")
 	gs.Setenv("SPRING_CONFIG_LOCATION", cfgLocation)
 
-	var p gs.Pandora
+	var p gs.Environment
 	type PandoraAware struct{}
-	app.Provide(func(b gs.Pandora) PandoraAware {
+	app.Provide(func(b gs.Environment) PandoraAware {
 		p = b
 		return PandoraAware{}
 	})

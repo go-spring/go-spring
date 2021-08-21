@@ -34,6 +34,7 @@ import (
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/gs/cond"
+	"github.com/go-spring/spring-core/gs/env"
 )
 
 type refreshState int
@@ -241,7 +242,7 @@ func (c *Container) Refresh() error {
 		return errors.New("container already refreshed")
 	}
 
-	c.Object(&pandora{c}).Export((*Pandora)(nil))
+	c.Object(&pandora{c}).Export((*Environment)(nil))
 
 	c.state = Refreshing
 
@@ -290,22 +291,22 @@ type condContext struct {
 	c *Container
 }
 
-func (c *condContext) Properties() cond.Properties {
+func (c *condContext) Properties() env.Properties {
 	return c.c.p
 }
 
-func (c *condContext) BeanRegistry() cond.BeanRegistry {
+func (c *condContext) BeanRegistry() env.BeanRegistry {
 	return c
 }
 
 // Find 查找符合条件的 bean 对象，注意该函数只能保证返回的 bean 是有效的，即未被
 // 标记为删除的，而不能保证已经完成属性绑定和依赖注入。
-func (c *condContext) Find(selector cond.BeanSelector) ([]cond.BeanDefinition, error) {
+func (c *condContext) Find(selector env.BeanSelector) ([]env.BeanDefinition, error) {
 	beans, err := c.c.findBean(selector)
 	if err != nil {
 		return nil, err
 	}
-	var ret []cond.BeanDefinition
+	var ret []env.BeanDefinition
 	for _, b := range beans {
 		ret = append(ret, b)
 	}
@@ -389,11 +390,11 @@ func (tag wireTag) String() string {
 	return b.String()
 }
 
-func toWireTag(selector cond.BeanSelector) wireTag {
+func toWireTag(selector env.BeanSelector) wireTag {
 	switch s := selector.(type) {
 	case string:
 		return parseWireTag(s)
-	case cond.BeanDefinition:
+	case env.BeanDefinition:
 		return parseWireTag(s.ID())
 	case *BeanDefinition:
 		return parseWireTag(s.ID())
@@ -404,7 +405,7 @@ func toWireTag(selector cond.BeanSelector) wireTag {
 
 // findBean 查找符合条件的 bean 对象，注意该函数只能保证返回的 bean 是有效的，
 // 即未被标记为删除的，而不能保证已经完成属性绑定和依赖注入。
-func (c *Container) findBean(selector cond.BeanSelector) ([]*BeanDefinition, error) {
+func (c *Container) findBean(selector env.BeanSelector) ([]*BeanDefinition, error) {
 
 	finder := func(fn func(*BeanDefinition) bool) ([]*BeanDefinition, error) {
 		var result []*BeanDefinition

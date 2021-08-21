@@ -26,6 +26,7 @@ import (
 	"github.com/go-spring/spring-boost/log"
 	"github.com/go-spring/spring-boost/util"
 	"github.com/go-spring/spring-core/gs/cond"
+	"github.com/go-spring/spring-core/gs/env"
 )
 
 // Context IoC 容器对 arg 模块提供的最小功能集。
@@ -229,7 +230,7 @@ func (r *argList) getArg(ctx Context, arg Arg, t reflect.Type, fileLine string) 
 		return reflect.ValueOf(g.v), nil
 	case *optionArg:
 		return g.call(ctx)
-	case cond.BeanDefinition:
+	case env.BeanDefinition:
 		tag = g.ID()
 	case string:
 		tag = g

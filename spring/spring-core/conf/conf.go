@@ -185,13 +185,13 @@ func (p *Properties) Has(key string) bool {
 }
 
 type getArg struct {
-	def interface{}
+	def string
 }
 
 type GetOption func(arg *getArg)
 
 // Def 为 Get 方法设置默认值。
-func Def(v interface{}) GetOption {
+func Def(v string) GetOption {
 	return func(arg *getArg) {
 		arg.def = v
 	}
@@ -211,11 +211,7 @@ func (p *Properties) Get(key string, opts ...GetOption) string {
 	for _, opt := range opts {
 		opt(&arg)
 	}
-
-	if arg.def != nil {
-		return cast.ToString(arg.def)
-	}
-	return ""
+	return arg.def
 }
 
 // Set 设置 key 对应的属性值，如果 key 对应的属性值已经存在则 Set 方法会覆盖旧
@@ -239,10 +235,8 @@ func (p *Properties) Set(key string, val interface{}) {
 			p.Set(subKey, subValue)
 		}
 	default:
-		if s := cast.ToString(val); s != "" {
-			p.cacheKey(key)
-			p.m[key] = s
-		}
+		p.m[key] = cast.ToString(val)
+		p.cacheKey(key)
 	}
 }
 

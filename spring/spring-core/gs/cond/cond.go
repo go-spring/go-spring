@@ -21,63 +21,29 @@ import (
 	"errors"
 	"go/token"
 	"go/types"
-	"reflect"
 	"strings"
 
 	"github.com/go-spring/spring-boost/cast"
 	"github.com/go-spring/spring-boost/util"
-	"github.com/go-spring/spring-core/conf"
+	"github.com/go-spring/spring-core/gs/env"
 )
 
 // SpringProfilesActive 当前应用的 profile 配置。
 const SpringProfilesActive = "spring.profiles.active"
 
-// BeanSelector bean 选择器，可以是 bean ID 字符串，可以是 reflect.Type
-// 对象，可以是形如 (*error)(nil) 的指针，还可以是 Definition 类型的对象。
-type BeanSelector interface{}
-
-// BeanDefinition bean 元数据。
-type BeanDefinition interface {
-	Type() reflect.Type     // 类型
-	Value() reflect.Value   // 值
-	Interface() interface{} // 源
-	ID() string             // 返回 bean 的 ID
-	BeanName() string       // 返回 bean 的名称
-	TypeName() string       // 返回类型的全限定名
-	Created() bool          // 返回是否已创建
-	Wired() bool            // 返回是否已注入
-}
-
-type Properties interface {
-	Keys() []string
-	Has(key string) bool
-	Get(key string, opts ...conf.GetOption) string
-	Bind(i interface{}, opts ...conf.BindOption) error
-}
-
-type BeanRegistry interface {
-	Find(selector BeanSelector) ([]BeanDefinition, error)
-}
-
-// Context IoC 容器对 cond 模块提供的最小功能集。
-type Context interface {
-	Properties() Properties
-	BeanRegistry() BeanRegistry
-}
-
 // Condition 条件接口，条件成立 Matches 方法返回 true，否则返回 false。
 type Condition interface {
-	Matches(ctx Context) (bool, error)
+	Matches(ctx env.Environment) (bool, error)
 }
 
-type Matches func(ctx Context) (bool, error)
+type Matches func(ctx env.Environment) (bool, error)
 
 // onMatches 基于 Matches 方法的 Condition 实现。
 type onMatches struct {
 	fn Matches
 }
 
-func (c *onMatches) Matches(ctx Context) (bool, error) {
+func (c *onMatches) Matches(ctx env.Environment) (bool, error) {
 	return c.fn(ctx)
 }
 
@@ -91,7 +57,7 @@ func Not(c Condition) *not {
 	return &not{c: c}
 }
 
-func (c *not) Matches(ctx Context) (bool, error) {
+func (c *not) Matches(ctx env.Environment) (bool, error) {
 	ok, err := c.c.Matches(ctx)
 	return !ok, err
 }
@@ -103,7 +69,7 @@ type onProperty struct {
 	matchIfMissing bool
 }
 
-func (c *onProperty) Matches(ctx Context) (bool, error) {
+func (c *onProperty) Matches(ctx env.Environment) (bool, error) {
 	// 参考 /usr/local/go/src/go/types/eval_test.go 示例
 
 	p := ctx.Properties()
@@ -130,36 +96,36 @@ type onMissingProperty struct {
 	name string
 }
 
-func (c *onMissingProperty) Matches(ctx Context) (bool, error) {
+func (c *onMissingProperty) Matches(ctx env.Environment) (bool, error) {
 	return !ctx.Properties().Has(c.name), nil
 }
 
 // onBean 基于符合条件的 bean 必须存在的 Condition 实现。
 type onBean struct {
-	selector BeanSelector
+	selector env.BeanSelector
 }
 
-func (c *onBean) Matches(ctx Context) (bool, error) {
+func (c *onBean) Matches(ctx env.Environment) (bool, error) {
 	beans, err := ctx.BeanRegistry().Find(c.selector)
 	return len(beans) > 0, err
 }
 
 // onMissingBean 基于符合条件的 bean 必须不存在的 Condition 实现。
 type onMissingBean struct {
-	selector BeanSelector
+	selector env.BeanSelector
 }
 
-func (c *onMissingBean) Matches(ctx Context) (bool, error) {
+func (c *onMissingBean) Matches(ctx env.Environment) (bool, error) {
 	beans, err := ctx.BeanRegistry().Find(c.selector)
 	return len(beans) == 0, err
 }
 
 // onSingleCandidate 基于符合条件的 bean 只有一个的 Condition 实现。
 type onSingleCandidate struct {
-	selector BeanSelector
+	selector env.BeanSelector
 }
 
-func (c *onSingleCandidate) Matches(ctx Context) (bool, error) {
+func (c *onSingleCandidate) Matches(ctx env.Environment) (bool, error) {
 	beans, err := ctx.BeanRegistry().Find(c.selector)
 	return len(beans) == 1, err
 }
@@ -169,7 +135,7 @@ type onExpression struct {
 	expression string
 }
 
-func (c *onExpression) Matches(ctx Context) (bool, error) {
+func (c *onExpression) Matches(ctx env.Environment) (bool, error) {
 	return false, util.UnimplementedMethod
 }
 
@@ -193,7 +159,7 @@ func Group(op Operator, cond ...Condition) *group {
 	return &group{op: op, cond: cond}
 }
 
-func (g *group) Matches(ctx Context) (bool, error) {
+func (g *group) Matches(ctx env.Environment) (bool, error) {
 
 	if len(g.cond) == 0 {
 		return false, errors.New("no condition in group")
@@ -239,7 +205,7 @@ type node struct {
 	next *node     // 下一个节点
 }
 
-func (n *node) Matches(ctx Context) (bool, error) {
+func (n *node) Matches(ctx env.Environment) (bool, error) {
 
 	if n.cond == nil { // 空节点返回 true
 		return true, nil
@@ -286,7 +252,7 @@ func New() *conditional {
 	return &conditional{head: n, curr: n}
 }
 
-func (c *conditional) Matches(ctx Context) (bool, error) {
+func (c *conditional) Matches(ctx env.Environment) (bool, error) {
 	return c.head.Matches(ctx)
 }
 
@@ -363,32 +329,32 @@ func (c *conditional) OnMissingProperty(name string) *conditional {
 }
 
 // OnBean 返回一个以 onBean 为开始条件的计算式。
-func OnBean(selector BeanSelector) *conditional {
+func OnBean(selector env.BeanSelector) *conditional {
 	return New().OnBean(selector)
 }
 
 // OnBean 添加一个 onBean 条件。
-func (c *conditional) OnBean(selector BeanSelector) *conditional {
+func (c *conditional) OnBean(selector env.BeanSelector) *conditional {
 	return c.On(&onBean{selector: selector})
 }
 
 // OnMissingBean 返回一个以 onMissingBean 为开始条件的计算式。
-func OnMissingBean(selector BeanSelector) *conditional {
+func OnMissingBean(selector env.BeanSelector) *conditional {
 	return New().OnMissingBean(selector)
 }
 
 // OnMissingBean 添加一个 onMissingBean 条件。
-func (c *conditional) OnMissingBean(selector BeanSelector) *conditional {
+func (c *conditional) OnMissingBean(selector env.BeanSelector) *conditional {
 	return c.On(&onMissingBean{selector: selector})
 }
 
 // OnSingleCandidate 返回一个以 onSingleCandidate 为开始条件的计算式。
-func OnSingleCandidate(selector BeanSelector) *conditional {
+func OnSingleCandidate(selector env.BeanSelector) *conditional {
 	return New().OnSingleCandidate(selector)
 }
 
 // OnSingleCandidate 添加一个 onMissingBean 条件。
-func (c *conditional) OnSingleCandidate(selector BeanSelector) *conditional {
+func (c *conditional) OnSingleCandidate(selector env.BeanSelector) *conditional {
 	return c.On(&onSingleCandidate{selector: selector})
 }
 

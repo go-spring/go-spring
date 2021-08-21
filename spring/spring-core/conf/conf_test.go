@@ -513,8 +513,8 @@ func TestProperties_Get(t *testing.T) {
 			},
 		})
 
-		v = p.Get("NULL")
-		assert.Equal(t, v, nil)
+		assert.False(t, p.Has("NULL"))
+		assert.Equal(t, p.Get("NULL"), "")
 
 		v = p.Get("NULL", conf.Def("OK"))
 		assert.Equal(t, v, "OK")
@@ -567,8 +567,8 @@ func TestProperties_Get(t *testing.T) {
 		s := cast.ToString(v)
 		assert.Equal(t, s, "3")
 
-		v = p.Get("string")
-		assert.Nil(t, v)
+		assert.False(t, p.Has("string"))
+		assert.Equal(t, p.Get("string"), "")
 
 		v = p.Get("Duration")
 		d := cast.ToDuration(v)
@@ -613,8 +613,9 @@ func TestProperties_Get(t *testing.T) {
 		assert.Equal(t, v, "6")
 		v = p.Get("a[2].d[1]")
 		assert.Equal(t, v, "6")
-		v = p.Get("a[2].d[2]")
-		assert.Nil(t, v)
+
+		assert.False(t, p.Has("a[2].d[2]"))
+		assert.Equal(t, p.Get("a[2].d[2]"), "")
 	})
 }
 
@@ -913,8 +914,9 @@ func TestBindMap(t *testing.T) {
 	})
 
 	t.Run("", func(t *testing.T) {
+		p := conf.Map(map[string]interface{}{"a.b1": "ab1"})
 		var r map[string]string
-		err := conf.Map(m).Bind(&r)
+		err := p.Bind(&r)
 		assert.Error(t, err, "type \"string\" bind error: property \"a\" not exist")
 	})
 

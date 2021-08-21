@@ -36,6 +36,7 @@ import (
 	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/gs/cond"
+	"github.com/go-spring/spring-core/gs/env"
 	pkg1 "github.com/go-spring/spring-core/gs/testdata/pkg/bar"
 	pkg2 "github.com/go-spring/spring-core/gs/testdata/pkg/foo"
 )
@@ -44,13 +45,13 @@ func init() {
 	log.SetLevel(log.TraceLevel)
 }
 
-func container() (*gs.Container, chan gs.Pandora) {
+func container() (*gs.Container, chan gs.Environment) {
 
 	c := gs.New()
 
 	type PandoraAware struct{}
-	ch := make(chan gs.Pandora, 1)
-	c.Provide(func(p gs.Pandora) PandoraAware {
+	ch := make(chan gs.Environment, 1)
+	c.Provide(func(p gs.Environment) PandoraAware {
 		ch <- p
 		return PandoraAware{}
 	})
@@ -353,7 +354,7 @@ func (p *PrototypeBean) Greeting() string {
 }
 
 type PrototypeBeanFactory struct {
-	Container gs.Pandora `autowire:""`
+	Container gs.Environment `autowire:""`
 }
 
 func (f *PrototypeBeanFactory) New(name string) *PrototypeBean {
@@ -845,7 +846,7 @@ func TestApplicationContext_DependsOn(t *testing.T) {
 
 	t.Run("dependsOn", func(t *testing.T) {
 
-		dependsOn := []cond.BeanSelector{
+		dependsOn := []env.BeanSelector{
 			(*BeanOne)(nil), // 通过类型定义查找
 			"github.com/go-spring/spring-core/gs_test/gs_test.BeanZero:BeanZero",
 		}
@@ -1300,7 +1301,7 @@ func TestApplicationContext_Collect(t *testing.T) {
 		c.Object(new(RecoresCluster)).Name("a").Order(1)
 		c.Object(new(RecoresCluster)).Name("b").Order(2)
 
-		intBean := c.Provide(func(p gs.Pandora) *int {
+		intBean := c.Provide(func(p gs.Environment) *int {
 
 			var rcs []*RecoresCluster
 			err := p.BeanRegistry().Get(&rcs)

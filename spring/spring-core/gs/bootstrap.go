@@ -28,7 +28,8 @@ import (
 	"github.com/go-spring/spring-boost/util"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/gs/arg"
-	"github.com/go-spring/spring-core/gs/cond"
+	"github.com/go-spring/spring-core/gs/cloud"
+	"github.com/go-spring/spring-core/gs/env"
 )
 
 // EnvPrefix 属性覆盖的环境变量需要携带该前缀。
@@ -184,19 +185,12 @@ func (e *environment) prepare() error {
 	return nil
 }
 
-func (e *environment) Properties() cond.Properties {
+func (e *environment) Properties() env.Properties {
 	return e.p
 }
 
-type Environment interface {
-	ActiveProfile() string
-	ConfigLocations() []string
-	ConfigExtensions() []string
-	Properties() cond.Properties
-}
-
 type PropertySource interface {
-	Load(e Environment) (map[string]*conf.Properties, error)
+	Load(e cloud.Environment) (map[string]*conf.Properties, error)
 }
 
 type bootstrap struct {
