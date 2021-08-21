@@ -53,7 +53,7 @@ func TestConfig(t *testing.T) {
 		gs.Setenv("GS_SPRING_PROFILES_ACTIVE", "dev")
 		app, p := startApplication("testdata/config/")
 		defer app.ShutDown(errors.New("run test end"))
-		assert.Equal(t, p.Prop(gs.SpringProfilesActive), "dev")
+		assert.Equal(t, p.Properties().Get(gs.SpringProfilesActive), "dev")
 	})
 
 	t.Run("config via env 2", func(t *testing.T) {
@@ -61,7 +61,7 @@ func TestConfig(t *testing.T) {
 		gs.Setenv("GS_SPRING_PROFILES_ACTIVE", "dev")
 		app, p := startApplication("testdata/config/")
 		defer app.ShutDown(errors.New("run test end"))
-		assert.Equal(t, p.Prop(gs.SpringProfilesActive), "dev")
+		assert.Equal(t, p.Properties().Get(gs.SpringProfilesActive), "dev")
 	})
 
 	t.Run("profile via env&config 2", func(t *testing.T) {
@@ -70,12 +70,12 @@ func TestConfig(t *testing.T) {
 		gs.Setenv("GS_SPRING_PROFILES_ACTIVE", "dev")
 		app, p := startApplication("testdata/config/")
 		defer app.ShutDown(errors.New("run test end"))
-		assert.Equal(t, p.Prop(gs.SpringProfilesActive), "dev")
+		assert.Equal(t, p.Properties().Get(gs.SpringProfilesActive), "dev")
 
-		keys := p.Keys()
+		keys := p.Properties().Keys()
 		sort.Strings(keys)
 		for _, k := range keys {
-			fmt.Println(k, "=", p.Prop(k))
+			fmt.Println(k, "=", p.Properties().Get(k))
 		}
 	})
 }

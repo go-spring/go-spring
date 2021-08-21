@@ -97,39 +97,39 @@ func TestApplicationContext(t *testing.T) {
 
 		{
 			var i int
-			err = p.Get(&i)
+			err = p.BeanRegistry().Get(&i)
 			assert.Error(t, err, "int is not valid receiver type")
 		}
 
 		// 找到多个符合条件的值
 		{
 			var i *int
-			err = p.Get(&i)
+			err = p.BeanRegistry().Get(&i)
 			assert.Error(t, err, "found 3 beans, bean:\"\" type:\"\\*int\" ")
 		}
 
 		// 入参不是可赋值的对象
 		{
 			var i int
-			err = p.Get(&i, "i3")
+			err = p.BeanRegistry().Get(&i, "i3")
 			assert.Error(t, err, "int is not valid receiver type")
 		}
 
 		{
 			var i *int
-			err = p.Get(&i, "i3")
+			err = p.BeanRegistry().Get(&i, "i3")
 			assert.Nil(t, err)
 		}
 
 		{
 			var i []int
-			err = p.Get(&i)
+			err = p.BeanRegistry().Get(&i)
 			assert.NotNil(t, err)
 		}
 
 		{
 			var i *[]int
-			err = p.Get(&i)
+			err = p.BeanRegistry().Get(&i)
 			assert.NotNil(t, err)
 		}
 	})
@@ -260,7 +260,7 @@ func TestApplicationContext_AutoWireBeans(t *testing.T) {
 	p := <-ch
 
 	var ff []*float32
-	err = p.Get(&ff, "float_ptr_2", "float_ptr_1")
+	err = p.BeanRegistry().Get(&ff, "float_ptr_2", "float_ptr_1")
 	assert.Nil(t, err)
 	assert.Equal(t, ff, []*float32{&f2, &f1})
 
@@ -363,7 +363,7 @@ func (f *PrototypeBeanFactory) New(name string) *PrototypeBean {
 	}
 
 	// PrototypeBean 依赖的服务可以通过 Context 注入
-	_, err := f.Container.Wire(b)
+	_, err := f.Container.BeanRegistry().Wire(b)
 	util.Panic(err).When(err != nil)
 	return b
 }
@@ -553,9 +553,9 @@ func TestApplicationContext_LoadProperties(t *testing.T) {
 
 	p := <-ch
 
-	assert.Equal(t, p.Prop("yaml.list[0]"), "1")
-	assert.Equal(t, p.Prop("yaml.list[1]"), "2")
-	assert.Equal(t, p.Prop("spring.application.name"), "test")
+	assert.Equal(t, p.Properties().Get("yaml.list[0]"), "1")
+	assert.Equal(t, p.Properties().Get("yaml.list[1]"), "2")
+	assert.Equal(t, p.Properties().Get("spring.application.name"), "test")
 }
 
 func TestApplicationContext_Get(t *testing.T) {
@@ -570,37 +570,37 @@ func TestApplicationContext_Get(t *testing.T) {
 
 		{
 			var i int
-			err = p.Get(i)
+			err = p.BeanRegistry().Get(i)
 			assert.Error(t, err, "i must be pointer")
 		}
 
 		{
 			var i *int
-			err = p.Get(i)
+			err = p.BeanRegistry().Get(i)
 			assert.Error(t, err, "receiver must be ref type")
 		}
 
 		{
 			i := new(int)
-			err = p.Get(i)
+			err = p.BeanRegistry().Get(i)
 			assert.Error(t, err, "int is not valid receiver type")
 		}
 
 		{
 			var i *int
-			err = p.Get(&i)
+			err = p.BeanRegistry().Get(&i)
 			assert.Error(t, err, "can't find bean, bean:\"\"")
 		}
 
 		{
 			var s fmt.Stringer
-			err = p.Get(s)
+			err = p.BeanRegistry().Get(s)
 			assert.Error(t, err, "i can't be nil")
 		}
 
 		{
 			var s fmt.Stringer
-			err = p.Get(&s)
+			err = p.BeanRegistry().Get(&s)
 			assert.Error(t, err, "can't find bean, bean:\"\"")
 		}
 	})
@@ -617,51 +617,51 @@ func TestApplicationContext_Get(t *testing.T) {
 		p := <-ch
 
 		var two *BeanTwo
-		err = p.Get(&two)
+		err = p.BeanRegistry().Get(&two)
 		assert.Nil(t, err)
 
 		var grouper Grouper
-		err = p.Get(&grouper)
+		err = p.BeanRegistry().Get(&grouper)
 		assert.Nil(t, err)
 
-		err = p.Get(&two, (*BeanTwo)(nil))
+		err = p.BeanRegistry().Get(&two, (*BeanTwo)(nil))
 		assert.Nil(t, err)
 
-		err = p.Get(&grouper, (*BeanTwo)(nil))
+		err = p.BeanRegistry().Get(&grouper, (*BeanTwo)(nil))
 		assert.Nil(t, err)
 
-		err = p.Get(&two)
+		err = p.BeanRegistry().Get(&two)
 		assert.Nil(t, err)
 
-		err = p.Get(&grouper)
+		err = p.BeanRegistry().Get(&grouper)
 		assert.Nil(t, err)
 
-		err = p.Get(&two, "BeanTwo")
+		err = p.BeanRegistry().Get(&two, "BeanTwo")
 		assert.Nil(t, err)
 
-		err = p.Get(&grouper, "BeanTwo")
+		err = p.BeanRegistry().Get(&grouper, "BeanTwo")
 		assert.Nil(t, err)
 
-		err = p.Get(&two, ":BeanTwo")
+		err = p.BeanRegistry().Get(&two, ":BeanTwo")
 		assert.Nil(t, err)
 
-		err = p.Get(&grouper, ":BeanTwo")
+		err = p.BeanRegistry().Get(&grouper, ":BeanTwo")
 		assert.Nil(t, err)
 
-		err = p.Get(&two, "github.com/go-spring/spring-core/gs_test/gs_test.BeanTwo:BeanTwo")
+		err = p.BeanRegistry().Get(&two, "github.com/go-spring/spring-core/gs_test/gs_test.BeanTwo:BeanTwo")
 		assert.Nil(t, err)
 
-		err = p.Get(&grouper, "github.com/go-spring/spring-core/gs_test/gs_test.BeanTwo:BeanTwo")
+		err = p.BeanRegistry().Get(&grouper, "github.com/go-spring/spring-core/gs_test/gs_test.BeanTwo:BeanTwo")
 		assert.Nil(t, err)
 
-		err = p.Get(&two, "xxx:BeanTwo")
+		err = p.BeanRegistry().Get(&two, "xxx:BeanTwo")
 		assert.Error(t, err, "can't find bean, bean:\"xxx:BeanTwo\"")
 
-		err = p.Get(&grouper, "xxx:BeanTwo")
+		err = p.BeanRegistry().Get(&grouper, "xxx:BeanTwo")
 		assert.Error(t, err, "can't find bean, bean:\"xxx:BeanTwo\"")
 
 		var three *BeanThree
-		err = p.Get(&three)
+		err = p.BeanRegistry().Get(&three)
 		assert.Error(t, err, "can't find bean, bean:\"\"")
 	})
 }
@@ -767,35 +767,35 @@ func TestApplicationContext_RegisterBeanFn(t *testing.T) {
 	p := <-ch
 
 	var st1 *Student
-	err = p.Get(&st1, "st1")
+	err = p.BeanRegistry().Get(&st1, "st1")
 
 	assert.Nil(t, err)
 	fmt.Println(json.ToString(st1))
-	assert.Equal(t, st1.Room, p.Prop("room"))
+	assert.Equal(t, st1.Room, p.Properties().Get("room"))
 
 	var st2 *Student
-	err = p.Get(&st2, "st2")
+	err = p.BeanRegistry().Get(&st2, "st2")
 
 	assert.Nil(t, err)
 	fmt.Println(json.ToString(st2))
-	assert.Equal(t, st2.Room, p.Prop("room"))
+	assert.Equal(t, st2.Room, p.Properties().Get("room"))
 
 	fmt.Printf("%x\n", reflect.ValueOf(st1).Pointer())
 	fmt.Printf("%x\n", reflect.ValueOf(st2).Pointer())
 
 	var st3 *Student
-	err = p.Get(&st3, "st3")
+	err = p.BeanRegistry().Get(&st3, "st3")
 
 	assert.Nil(t, err)
 	fmt.Println(json.ToString(st3))
-	assert.Equal(t, st3.Room, p.Prop("room"))
+	assert.Equal(t, st3.Room, p.Properties().Get("room"))
 
 	var st4 *Student
-	err = p.Get(&st4, "st4")
+	err = p.BeanRegistry().Get(&st4, "st4")
 
 	assert.Nil(t, err)
 	fmt.Println(json.ToString(st4))
-	assert.Equal(t, st4.Room, p.Prop("room"))
+	assert.Equal(t, st4.Room, p.Properties().Get("room"))
 }
 
 func TestApplicationContext_Profile(t *testing.T) {
@@ -810,7 +810,7 @@ func TestApplicationContext_Profile(t *testing.T) {
 		p := <-ch
 
 		var b *BeanZero
-		err = p.Get(&b)
+		err = p.BeanRegistry().Get(&b)
 		assert.Nil(t, err)
 	})
 
@@ -825,7 +825,7 @@ func TestApplicationContext_Profile(t *testing.T) {
 		p := <-ch
 
 		var b *BeanZero
-		err = p.Get(&b)
+		err = p.BeanRegistry().Get(&b)
 		assert.Nil(t, err)
 	})
 }
@@ -894,7 +894,7 @@ func TestApplicationContext_Primary(t *testing.T) {
 		p := <-ch
 
 		var b *BeanTwo
-		err = p.Get(&b)
+		err = p.BeanRegistry().Get(&b)
 		assert.Nil(t, err)
 		assert.Equal(t, b.One.Zero.Int, 5)
 	})
@@ -912,7 +912,7 @@ func TestApplicationContext_Primary(t *testing.T) {
 		p := <-ch
 
 		var b *BeanTwo
-		err = p.Get(&b)
+		err = p.BeanRegistry().Get(&b)
 		assert.Nil(t, err)
 		assert.Equal(t, b.One.Zero.Int, 6)
 	})
@@ -983,13 +983,13 @@ func TestApplicationContext_RegisterBeanFn2(t *testing.T) {
 		p := <-ch
 
 		var m Manager
-		err = p.Get(&m)
+		err = p.BeanRegistry().Get(&m)
 		assert.Nil(t, err)
 
 		// 因为用户是按照接口注册的，所以理论上在依赖
 		// 系统中用户并不关心接口对应的真实类型是什么。
 		var lm *localManager
-		err = p.Get(&lm)
+		err = p.BeanRegistry().Get(&lm)
 		assert.Error(t, err, "can't find bean, bean:\"\"")
 	})
 
@@ -1010,11 +1010,11 @@ func TestApplicationContext_RegisterBeanFn2(t *testing.T) {
 		p := <-ch
 
 		var m Manager
-		err = p.Get(&m)
+		err = p.BeanRegistry().Get(&m)
 		assert.Nil(t, err)
 
 		var lm *localManager
-		err = p.Get(&lm)
+		err = p.BeanRegistry().Get(&lm)
 		assert.Error(t, err, "can't find bean, bean:\"\"")
 	})
 
@@ -1120,7 +1120,7 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 		p := <-ch
 
 		var i *int
-		err = p.Get(&i)
+		err = p.BeanRegistry().Get(&i)
 		assert.Nil(t, err)
 		assert.Equal(t, *i, 3)
 	})
@@ -1135,7 +1135,7 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 		p := <-ch
 
 		var d *callDestroy
-		err = p.Get(&d)
+		err = p.BeanRegistry().Get(&d)
 
 		c.Close()
 
@@ -1161,7 +1161,7 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 		p := <-ch
 
 		var d *callDestroy
-		err = p.Get(&d)
+		err = p.BeanRegistry().Get(&d)
 
 		c.Close()
 
@@ -1179,7 +1179,7 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 		p := <-ch
 
 		var d destroyable
-		err = p.Get(&d)
+		err = p.BeanRegistry().Get(&d)
 
 		c.Close()
 
@@ -1205,7 +1205,7 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 		p := <-ch
 
 		var d destroyable
-		err = p.Get(&d)
+		err = p.BeanRegistry().Get(&d)
 
 		c.Close()
 
@@ -1223,7 +1223,7 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 		p := <-ch
 
 		var d *nestedCallDestroy
-		err = p.Get(&d)
+		err = p.BeanRegistry().Get(&d)
 
 		c.Close()
 
@@ -1243,7 +1243,7 @@ func TestRegisterBean_InitFunc(t *testing.T) {
 		p := <-ch
 
 		var d *nestedDestroyable
-		err = p.Get(&d)
+		err = p.BeanRegistry().Get(&d)
 
 		c.Close()
 
@@ -1267,7 +1267,7 @@ func TestApplicationContext_ValueBincoreng(t *testing.T) {
 	p := <-ch
 
 	var cluster *RecoresCluster
-	err = p.Get(&cluster)
+	err = p.BeanRegistry().Get(&cluster)
 	fmt.Println(cluster)
 
 	assert.Nil(t, err)
@@ -1287,7 +1287,7 @@ func TestApplicationContext_Collect(t *testing.T) {
 		p := <-ch
 
 		var rcs []*RecoresCluster
-		err = p.Get(&rcs)
+		err = p.BeanRegistry().Get(&rcs)
 
 		assert.Nil(t, err)
 		assert.Equal(t, len(rcs), 2)
@@ -1303,7 +1303,7 @@ func TestApplicationContext_Collect(t *testing.T) {
 		intBean := c.Provide(func(p gs.Pandora) *int {
 
 			var rcs []*RecoresCluster
-			err := p.Get(&rcs)
+			err := p.BeanRegistry().Get(&rcs)
 			fmt.Println(json.ToString(rcs))
 
 			assert.Nil(t, err)
@@ -1418,7 +1418,7 @@ func TestOptionConstructorArg(t *testing.T) {
 		p := <-ch
 
 		var cls *ClassRoom
-		err = p.Get(&cls)
+		err = p.BeanRegistry().Get(&cls)
 
 		assert.Nil(t, err)
 		assert.Equal(t, len(cls.students), 0)
@@ -1437,7 +1437,7 @@ func TestOptionConstructorArg(t *testing.T) {
 		p := <-ch
 
 		var cls *ClassRoom
-		err = p.Get(&cls)
+		err = p.BeanRegistry().Get(&cls)
 
 		assert.Nil(t, err)
 		assert.Equal(t, cls.floor, 3)
@@ -1460,7 +1460,7 @@ func TestOptionConstructorArg(t *testing.T) {
 		p := <-ch
 
 		var cls *ClassRoom
-		err = p.Get(&cls)
+		err = p.BeanRegistry().Get(&cls)
 
 		assert.Nil(t, err)
 		assert.Equal(t, cls.floor, 0)
@@ -1486,7 +1486,7 @@ func TestOptionConstructorArg(t *testing.T) {
 		p := <-ch
 
 		var cls *ClassRoom
-		err = p.Get(&cls)
+		err = p.BeanRegistry().Get(&cls)
 
 		assert.Nil(t, err)
 		assert.Equal(t, cls.floor, 3)
@@ -1551,14 +1551,14 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 		p := <-ch
 
 		var s *Server
-		err = p.Get(&s)
+		err = p.BeanRegistry().Get(&s)
 		assert.Nil(t, err)
 		assert.Equal(t, s.Version, "1.0.0")
 
 		s.Version = "2.0.0"
 
 		var consumer *Consumer
-		err = p.Get(&consumer)
+		err = p.BeanRegistry().Get(&consumer)
 		assert.Nil(t, err)
 		assert.Equal(t, consumer.s.Version, "2.0.0")
 	})
@@ -1576,14 +1576,14 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 		p := <-ch
 
 		var s *Server
-		err = p.Get(&s)
+		err = p.BeanRegistry().Get(&s)
 		assert.Nil(t, err)
 		assert.Equal(t, s.Version, "1.0.0")
 
 		s.Version = "2.0.0"
 
 		var consumer *Consumer
-		err = p.Get(&consumer)
+		err = p.BeanRegistry().Get(&consumer)
 		assert.Nil(t, err)
 		assert.Equal(t, consumer.s.Version, "2.0.0")
 	})
@@ -1602,7 +1602,7 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 		p := <-ch
 
 		var si ServerInterface
-		err = p.Get(&si)
+		err = p.BeanRegistry().Get(&si)
 		assert.Nil(t, err)
 
 		s := si.(*Server)
@@ -1611,7 +1611,7 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 		s.Version = "2.0.0"
 
 		var consumer *Consumer
-		err = p.Get(&consumer)
+		err = p.BeanRegistry().Get(&consumer)
 		assert.Nil(t, err)
 		assert.Equal(t, consumer.s.Version, "2.0.0")
 	})
@@ -1665,7 +1665,7 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 		p := <-ch
 
 		var s *Server
-		err = p.Get(&s)
+		err = p.BeanRegistry().Get(&s)
 		assert.Nil(t, err)
 		assert.Equal(t, s.Version, "1.0.0")
 	})
@@ -1682,14 +1682,14 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 		p := <-ch
 
 		var s *Server
-		err = p.Get(&s)
+		err = p.BeanRegistry().Get(&s)
 		assert.Nil(t, err)
 		assert.Equal(t, s.Version, "1.0.0")
 
 		s.Version = "2.0.0"
 
 		var consumer *Consumer
-		err = p.Get(&consumer)
+		err = p.BeanRegistry().Get(&consumer)
 		assert.Nil(t, err)
 		assert.Equal(t, consumer.s.Version, "2.0.0")
 	})
@@ -1715,14 +1715,14 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 		p := <-ch
 
 		var s *Server
-		err = p.Get(&s)
+		err = p.BeanRegistry().Get(&s)
 		assert.Nil(t, err)
 		assert.Equal(t, s.Version, "1.0.0")
 
 		s.Version = "2.0.0"
 
 		var consumer *Consumer
-		err = p.Get(&consumer)
+		err = p.BeanRegistry().Get(&consumer)
 		assert.Nil(t, err)
 		assert.Equal(t, consumer.s.Version, "2.0.0")
 	})
@@ -1857,7 +1857,7 @@ func TestApplicationContext_RegisterOptionBean(t *testing.T) {
 		p := <-ch
 
 		var obj *VarObj
-		err = p.Get(&obj)
+		err = p.BeanRegistry().Get(&obj)
 
 		assert.Nil(t, err)
 		assert.Equal(t, len(obj.v), 1)
@@ -1877,7 +1877,7 @@ func TestApplicationContext_RegisterOptionBean(t *testing.T) {
 		p := <-ch
 
 		var obj *VarObj
-		err = p.Get(&obj)
+		err = p.BeanRegistry().Get(&obj)
 
 		assert.Nil(t, err)
 		assert.Equal(t, len(obj.v), 2)
@@ -1897,7 +1897,7 @@ func TestApplicationContext_RegisterOptionBean(t *testing.T) {
 		p := <-ch
 
 		var obj *VarInterfaceObj
-		err = p.Get(&obj)
+		err = p.BeanRegistry().Get(&obj)
 
 		assert.Nil(t, err)
 		assert.Equal(t, len(obj.v), 1)
@@ -1914,7 +1914,7 @@ func TestApplicationContext_RegisterOptionBean(t *testing.T) {
 		p := <-ch
 
 		var obj *VarInterfaceObj
-		err = p.Get(&obj)
+		err = p.BeanRegistry().Get(&obj)
 
 		assert.Nil(t, err)
 		assert.Equal(t, len(obj.v), 2)
@@ -1968,7 +1968,7 @@ func TestApplicationContext_Close(t *testing.T) {
 		p := <-ch
 
 		var d *callDestroy
-		err = p.Get(&d)
+		err = p.BeanRegistry().Get(&d)
 
 		c.Close()
 
@@ -1988,7 +1988,7 @@ func TestApplicationContext_Close(t *testing.T) {
 			p := <-ch
 
 			var d *callDestroy
-			err = p.Get(&d)
+			err = p.BeanRegistry().Get(&d)
 
 			c.Close()
 
@@ -2006,7 +2006,7 @@ func TestApplicationContext_Close(t *testing.T) {
 			p := <-ch
 
 			var d *callDestroy
-			err = p.Get(&d)
+			err = p.BeanRegistry().Get(&d)
 
 			c.Close()
 
@@ -2025,7 +2025,7 @@ func TestApplicationContext_Close(t *testing.T) {
 		p := <-ch
 
 		var d destroyable
-		err = p.Get(&d)
+		err = p.BeanRegistry().Get(&d)
 
 		c.Close()
 
@@ -2045,7 +2045,7 @@ func TestApplicationContext_Close(t *testing.T) {
 			p := <-ch
 
 			var d destroyable
-			err = p.Get(&d)
+			err = p.BeanRegistry().Get(&d)
 
 			c.Close()
 
@@ -2064,7 +2064,7 @@ func TestApplicationContext_Close(t *testing.T) {
 			p := <-ch
 
 			var d destroyable
-			err = p.Get(&d)
+			err = p.BeanRegistry().Get(&d)
 
 			c.Close()
 
@@ -2111,13 +2111,13 @@ func TestApplicationContext_NestedAutowireBean(t *testing.T) {
 	p := <-ch
 
 	var b *NestedAutowireBean
-	err = p.Get(&b)
+	err = p.BeanRegistry().Get(&b)
 
 	assert.Nil(t, err)
 	assert.Equal(t, *b.Int, 3)
 
 	var b0 *PtrNestedAutowireBean
-	err = p.Get(&b0)
+	err = p.BeanRegistry().Get(&b0)
 
 	assert.Nil(t, err)
 	assert.Equal(t, b0.Int, (*int)(nil))
@@ -2167,7 +2167,7 @@ func TestApplicationContext_NestValueField(t *testing.T) {
 		p := <-ch
 
 		var channel *wxChannel
-		err = p.Get(&channel)
+		err = p.BeanRegistry().Get(&channel)
 
 		assert.Nil(t, err)
 		assert.Equal(t, *channel.baseChannel.Int, 3)
@@ -2190,7 +2190,7 @@ func TestApplicationContext_NestValueField(t *testing.T) {
 		p := <-ch
 
 		var channel *WXChannel
-		err = p.Get(&channel)
+		err = p.BeanRegistry().Get(&channel)
 
 		assert.Nil(t, err)
 		assert.Equal(t, *channel.BaseChannel.Int, 3)
@@ -2466,7 +2466,7 @@ func TestApplicationContext_CreateBean(t *testing.T) {
 
 	p := <-ch
 
-	b, err := p.Wire((*ObjFactory).NewObj, arg.R1("${i:=5}"))
+	b, err := p.BeanRegistry().Wire((*ObjFactory).NewObj, arg.R1("${i:=5}"))
 	fmt.Println(b, err)
 }
 
@@ -2488,7 +2488,7 @@ func TestDefaultSpringContext(t *testing.T) {
 		p := <-ch
 
 		var b *BeanZero
-		err = p.Get(&b)
+		err = p.BeanRegistry().Get(&b)
 		assert.Error(t, err, "can't find bean, bean:\"\"")
 	})
 
@@ -2503,7 +2503,7 @@ func TestDefaultSpringContext(t *testing.T) {
 		p := <-ch
 
 		var b *BeanZero
-		err = p.Get(&b)
+		err = p.BeanRegistry().Get(&b)
 		assert.Nil(t, err)
 	})
 
@@ -2518,7 +2518,7 @@ func TestDefaultSpringContext(t *testing.T) {
 		p := <-ch
 
 		var b *BeanZero
-		err = p.Get(&b)
+		err = p.BeanRegistry().Get(&b)
 		assert.Error(t, err, "can't find bean, bean:\"\"")
 	})
 
@@ -2537,7 +2537,7 @@ func TestDefaultSpringContext(t *testing.T) {
 		p := <-ch
 
 		var cls *ClassRoom
-		err = p.Get(&cls)
+		err = p.BeanRegistry().Get(&cls)
 
 		assert.Nil(t, err)
 		assert.Equal(t, cls.floor, 0)
@@ -2563,7 +2563,7 @@ func TestDefaultSpringContext(t *testing.T) {
 		p := <-ch
 
 		var cls *ClassRoom
-		err = p.Get(&cls)
+		err = p.BeanRegistry().Get(&cls)
 
 		assert.Nil(t, err)
 		assert.Equal(t, cls.floor, 0)
@@ -2584,12 +2584,12 @@ func TestDefaultSpringContext(t *testing.T) {
 		p := <-ch
 
 		var s *Server
-		err = p.Get(&s)
+		err = p.BeanRegistry().Get(&s)
 		assert.Nil(t, err)
 		assert.Equal(t, s.Version, "1.0.0")
 
 		var consumer *Consumer
-		err = p.Get(&consumer)
+		err = p.BeanRegistry().Get(&consumer)
 		assert.Error(t, err, "can't find bean, bean:\"\"")
 	})
 }
@@ -2604,11 +2604,11 @@ func TestDefaultSpringContext(t *testing.T) {
 //	c.Refresh()
 //
 //	var s *Server
-//	ok := p.Get(&s)
+//	ok := p.BeanRegistry().Get(&s)
 //	util.Equal(t, ok, false)
 //
 //	var c *Consumer
-//	ok = p.Get(&c)
+//	ok = p.BeanRegistry().Get(&c)
 //	util.Equal(t, ok, false)
 //}
 
@@ -2629,10 +2629,10 @@ func TestDefaultSpringContext_ConditionOnBean(t *testing.T) {
 	p := <-ch
 
 	var two *BeanTwo
-	err = p.Get(&two)
+	err = p.BeanRegistry().Get(&two)
 	assert.Nil(t, err)
 
-	err = p.Get(&two, "another_two")
+	err = p.BeanRegistry().Get(&two, "another_two")
 	assert.Error(t, err, "can't find bean, bean:\"another_two\"")
 }
 
@@ -2651,10 +2651,10 @@ func TestDefaultSpringContext_ConditionOnMissingBean(t *testing.T) {
 		p := <-ch
 
 		var two *BeanTwo
-		err = p.Get(&two)
+		err = p.BeanRegistry().Get(&two)
 		assert.Nil(t, err)
 
-		err = p.Get(&two, "another_two")
+		err = p.BeanRegistry().Get(&two, "another_two")
 		assert.Nil(t, err)
 	}
 }
@@ -2851,7 +2851,7 @@ func TestApplicationContext_Invoke(t *testing.T) {
 
 		p := <-ch
 
-		_, _ = p.Invoke(func(i *int, version string) {
+		_, _ = p.BeanRegistry().Invoke(func(i *int, version string) {
 			fmt.Println("version:", version)
 			fmt.Println("int:", *i)
 		}, "", "${version}")
@@ -2873,7 +2873,7 @@ func TestApplicationContext_Invoke(t *testing.T) {
 			fmt.Println("int:", *i)
 		}
 
-		_, _ = p.Invoke(fn, "", "${version}")
+		_, _ = p.BeanRegistry().Invoke(fn, "", "${version}")
 	})
 }
 
@@ -2913,12 +2913,12 @@ func TestMapCollection(t *testing.T) {
 		p := <-ch
 
 		var vSlice []*mapValue
-		err = p.Get(&vSlice)
+		err = p.BeanRegistry().Get(&vSlice)
 		assert.Nil(t, err)
 		fmt.Println(vSlice)
 
 		var vMap map[string]*mapValue
-		err = p.Get(&vMap)
+		err = p.BeanRegistry().Get(&vMap)
 		assert.Nil(t, err)
 		fmt.Println(vMap)
 	})
@@ -2951,7 +2951,7 @@ func TestLazy(t *testing.T) {
 		p := <-ch
 
 		var a *circularA
-		err = p.Get(&a)
+		err = p.BeanRegistry().Get(&a)
 		assert.Nil(t, err)
 	}
 }

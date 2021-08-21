@@ -201,7 +201,7 @@ func Def(v interface{}) GetOption {
 // 或者 key 对应的属性值不存在但设置了默认值时，Get 方法返回 string 类型的数据，
 // 当 key 对应的属性值不存在且没有设置默认值时 Get 方法返回 nil。因此可以通过判断
 // Get 方法的返回值是否为 nil 来判断 key 对应的属性值是否存在。
-func (p *Properties) Get(key string, opts ...GetOption) interface{} {
+func (p *Properties) Get(key string, opts ...GetOption) string {
 
 	if val, ok := p.m[key]; ok {
 		return val
@@ -215,7 +215,7 @@ func (p *Properties) Get(key string, opts ...GetOption) interface{} {
 	if arg.def != nil {
 		return cast.ToString(arg.def)
 	}
-	return nil
+	return ""
 }
 
 // Set 设置 key 对应的属性值，如果 key 对应的属性值已经存在则 Set 方法会覆盖旧
@@ -239,8 +239,10 @@ func (p *Properties) Set(key string, val interface{}) {
 			p.Set(subKey, subValue)
 		}
 	default:
-		p.m[key] = cast.ToString(val)
-		p.cacheKey(key)
+		if s := cast.ToString(val); s != "" {
+			p.cacheKey(key)
+			p.m[key] = s
+		}
 	}
 }
 

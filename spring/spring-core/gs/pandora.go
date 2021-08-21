@@ -23,10 +23,15 @@ import (
 
 	"github.com/go-spring/spring-boost/log"
 	"github.com/go-spring/spring-boost/util"
-	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/gs/cond"
 )
+
+type BeanRegistry interface {
+	Get(i interface{}, selectors ...cond.BeanSelector) error
+	Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error)
+	Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, error)
+}
 
 // Pandora 提供了一些在 IoC 容器启动后基于反射获取和使用 property 与 bean 的接
 // 口。因为很多人会担心在运行时大量使用反射会降低程序性能，所以命名为 Pandora，取
@@ -37,17 +42,21 @@ import (
 // 都可以在需要使用这些方法的地方注入一个 Pandora 对象而不是 Container 对象或者
 // App 对象，从而实现使用方式的统一。
 type Pandora interface {
+	Properties() cond.Properties
+	BeanRegistry() BeanRegistry
 	Context() context.Context
 	Go(fn func(ctx context.Context))
-	Keys() []string
-	Prop(key string, opts ...conf.GetOption) interface{}
-	Bind(i interface{}, opts ...conf.BindOption) error
-	Get(i interface{}, selectors ...cond.BeanSelector) error
-	Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error)
-	Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, error)
 }
 
 type pandora struct{ c *Container }
+
+func (p *pandora) Properties() cond.Properties {
+	return p.c.p
+}
+
+func (p *pandora) BeanRegistry() BeanRegistry {
+	return p
+}
 
 // Context 返回 IoC 容器的 ctx 对象。
 func (p *pandora) Context() context.Context {
@@ -58,25 +67,6 @@ func (p *pandora) Context() context.Context {
 // 器关闭时 ctx会 发出 Done 信号， fn 在接收到此信号后应当立即退出。
 func (p *pandora) Go(fn func(ctx context.Context)) {
 	p.c.safeGo(fn)
-}
-
-// Keys 返回所有属性 key 的列表。
-func (p *pandora) Keys() []string {
-	return p.c.p.Keys()
-}
-
-// Prop 获取 key 对应的属性值，注意 key 是大小写敏感的。当 key 对应的属性值存在
-// 时，或者 key 对应的属性值不存在但设置了默认值时，该方法返回 string 类型的数据，
-// 当 key 对应的属性值不存在且没有设置默认值时该方法返回 nil。因此可以通过判断该方
-// 法的返回值是否为 nil 来判断 key 对应的属性值是否存在。
-func (p *pandora) Prop(key string, opts ...conf.GetOption) interface{} {
-	return p.c.p.Get(key, opts...)
-}
-
-// Bind 将 key 对应的属性值绑定到某个数据类型的实例上。i 必须是一个指针，只有这
-// 样才能将修改传递出去。注意该方法不会进行依赖注入，Wire 方法才会。
-func (p *pandora) Bind(i interface{}, opts ...conf.BindOption) error {
-	return p.c.p.Bind(i, opts...)
 }
 
 // Get 根据类型和选择器获取符合条件的 bean 对象。当 i 是一个基础类型的 bean 接收
@@ -112,20 +102,6 @@ func (p *pandora) Get(i interface{}, selectors ...cond.BeanSelector) error {
 		tags = append(tags, toWireTag(s))
 	}
 	return p.c.autowire(v.Elem(), tags, stack)
-}
-
-// Find 查找符合条件的 bean 对象，注意该函数只能保证返回的 bean 是有效的，即未被
-// 标记为删除的，而不能保证已经完成属性绑定和依赖注入。
-func (p *pandora) Find(selector cond.BeanSelector) ([]cond.BeanDefinition, error) {
-	beans, err := p.c.findBean(selector)
-	if err != nil {
-		return nil, err
-	}
-	var ret []cond.BeanDefinition
-	for _, b := range beans {
-		ret = append(ret, b)
-	}
-	return ret, nil
 }
 
 // Wire 如果传入的是 bean 对象，则对 bean 对象进行属性绑定和依赖注入，如果传入的

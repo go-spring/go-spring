@@ -48,18 +48,21 @@ type BeanDefinition interface {
 	Wired() bool            // 返回是否已注入
 }
 
+type Properties interface {
+	Keys() []string
+	Has(key string) bool
+	Get(key string, opts ...conf.GetOption) string
+	Bind(i interface{}, opts ...conf.BindOption) error
+}
+
+type BeanRegistry interface {
+	Find(selector BeanSelector) ([]BeanDefinition, error)
+}
+
 // Context IoC 容器对 cond 模块提供的最小功能集。
 type Context interface {
-
-	// Prop 获取 key 对应的属性值，注意 key 是大小写敏感的。当 key 对应的属性
-	// 值存在时，或者 key 对应的属性值不存在但设置了默认值时，该方法返回 string
-	// 类型的数据，当 key 对应的属性值不存在且没有设置默认值时该方法返回 nil。
-	// 因此可以通过判断该方法的返回值是否为 nil 来判断 key 对应的属性值是否存在。
-	Prop(key string, opts ...conf.GetOption) interface{}
-
-	// Find 查找符合条件的 bean 对象，注意该函数只能保证返回的 bean 是有效的,
-	// 即未被标记为删除的，而不能保证已经完成属性绑定和依赖注入。
-	Find(selector BeanSelector) ([]BeanDefinition, error)
+	Properties() Properties
+	BeanRegistry() BeanRegistry
 }
 
 // Condition 条件接口，条件成立 Matches 方法返回 true，否则返回 false。
@@ -103,11 +106,12 @@ type onProperty struct {
 func (c *onProperty) Matches(ctx Context) (bool, error) {
 	// 参考 /usr/local/go/src/go/types/eval_test.go 示例
 
-	val := ctx.Prop(c.name)
-	if val == nil {
+	p := ctx.Properties()
+	if !p.Has(c.name) {
 		return c.matchIfMissing, nil
 	}
 
+	val := p.Get(c.name)
 	if !strings.Contains(c.havingValue, "$") {
 		return val == c.havingValue, nil
 	}
@@ -121,13 +125,22 @@ func (c *onProperty) Matches(ctx Context) (bool, error) {
 	return cast.ToBoolE(ret.Value.String())
 }
 
+// onMissingProperty 基于属性值不存在的 Condition 实现。
+type onMissingProperty struct {
+	name string
+}
+
+func (c *onMissingProperty) Matches(ctx Context) (bool, error) {
+	return !ctx.Properties().Has(c.name), nil
+}
+
 // onBean 基于符合条件的 bean 必须存在的 Condition 实现。
 type onBean struct {
 	selector BeanSelector
 }
 
 func (c *onBean) Matches(ctx Context) (bool, error) {
-	beans, err := ctx.Find(c.selector)
+	beans, err := ctx.BeanRegistry().Find(c.selector)
 	return len(beans) > 0, err
 }
 
@@ -137,7 +150,7 @@ type onMissingBean struct {
 }
 
 func (c *onMissingBean) Matches(ctx Context) (bool, error) {
-	beans, err := ctx.Find(c.selector)
+	beans, err := ctx.BeanRegistry().Find(c.selector)
 	return len(beans) == 0, err
 }
 
@@ -147,7 +160,7 @@ type onSingleCandidate struct {
 }
 
 func (c *onSingleCandidate) Matches(ctx Context) (bool, error) {
-	beans, err := ctx.Find(c.selector)
+	beans, err := ctx.BeanRegistry().Find(c.selector)
 	return len(beans) == 1, err
 }
 
@@ -337,6 +350,16 @@ func (c *conditional) OnProperty(name string, options ...PropertyOption) *condit
 		option(cond)
 	}
 	return c.On(cond)
+}
+
+// OnMissingProperty 返回一个以 onMissingProperty 为开始条件的计算式。
+func OnMissingProperty(name string) *conditional {
+	return New().OnMissingProperty(name)
+}
+
+// OnMissingProperty 添加一个 onMissingProperty 条件。
+func (c *conditional) OnMissingProperty(name string) *conditional {
+	return c.On(&onMissingProperty{name: name})
 }
 
 // OnBean 返回一个以 onBean 为开始条件的计算式。

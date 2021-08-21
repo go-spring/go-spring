@@ -372,12 +372,12 @@ func resolveString(p *Properties, s string) (string, error) {
 // def 值，如果 def 存在引用则递归解析直到获取最终的属性值。
 func resolve(p *Properties, param BindParam) (string, error) {
 	val := p.Get(param.Key)
-	if val == nil {
+	if val == "" {
 		if param.hasDef {
 			val = param.def
 		} else {
 			return "", fmt.Errorf("property %q %w", param.Key, ErrNotExist)
 		}
 	}
-	return resolveString(p, val.(string))
+	return resolveString(p, val)
 }

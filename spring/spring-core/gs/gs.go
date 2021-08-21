@@ -286,6 +286,32 @@ func (c *Container) registerBean(b *BeanDefinition) error {
 	return nil
 }
 
+type condContext struct {
+	c *Container
+}
+
+func (c *condContext) Properties() cond.Properties {
+	return c.c.p
+}
+
+func (c *condContext) BeanRegistry() cond.BeanRegistry {
+	return c
+}
+
+// Find 查找符合条件的 bean 对象，注意该函数只能保证返回的 bean 是有效的，即未被
+// 标记为删除的，而不能保证已经完成属性绑定和依赖注入。
+func (c *condContext) Find(selector cond.BeanSelector) ([]cond.BeanDefinition, error) {
+	beans, err := c.c.findBean(selector)
+	if err != nil {
+		return nil, err
+	}
+	var ret []cond.BeanDefinition
+	for _, b := range beans {
+		ret = append(ret, b)
+	}
+	return ret, nil
+}
+
 // resolveBean 判断 bean 的有效性，如果 bean 是无效的则被标记为已删除。
 func (c *Container) resolveBean(b *BeanDefinition) error {
 
@@ -296,7 +322,7 @@ func (c *Container) resolveBean(b *BeanDefinition) error {
 	b.status = Resolving
 
 	if b.cond != nil {
-		if ok, err := b.cond.Matches(&pandora{c}); err != nil {
+		if ok, err := b.cond.Matches(&condContext{c}); err != nil {
 			return err
 		} else if !ok {
 			delete(c.beansById, b.ID())
@@ -531,7 +557,7 @@ type argContext struct {
 }
 
 func (a *argContext) Matches(c cond.Condition) (bool, error) {
-	return c.Matches(&pandora{a.c})
+	return c.Matches(&condContext{a.c})
 }
 
 func (a *argContext) Bind(v reflect.Value, tag string) error {
