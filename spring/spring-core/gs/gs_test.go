@@ -36,7 +36,7 @@ import (
 	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/gs/cond"
-	"github.com/go-spring/spring-core/gs/env"
+	"github.com/go-spring/spring-core/gs/core"
 	pkg1 "github.com/go-spring/spring-core/gs/testdata/pkg/bar"
 	pkg2 "github.com/go-spring/spring-core/gs/testdata/pkg/foo"
 )
@@ -846,7 +846,7 @@ func TestApplicationContext_DependsOn(t *testing.T) {
 
 	t.Run("dependsOn", func(t *testing.T) {
 
-		dependsOn := []env.BeanSelector{
+		dependsOn := []core.BeanSelector{
 			(*BeanOne)(nil), // 通过类型定义查找
 			"github.com/go-spring/spring-core/gs_test/gs_test.BeanZero:BeanZero",
 		}

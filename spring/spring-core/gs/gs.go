@@ -34,7 +34,7 @@ import (
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/gs/cond"
-	"github.com/go-spring/spring-core/gs/env"
+	"github.com/go-spring/spring-core/gs/core"
 )
 
 type refreshState int
@@ -291,22 +291,22 @@ type condContext struct {
 	c *Container
 }
 
-func (c *condContext) Properties() env.Properties {
+func (c *condContext) Properties() core.Properties {
 	return c.c.p
 }
 
-func (c *condContext) BeanRegistry() env.BeanRegistry {
+func (c *condContext) BeanRegistry() cond.BeanRegistry {
 	return c
 }
 
 // Find 查找符合条件的 bean 对象，注意该函数只能保证返回的 bean 是有效的，即未被
 // 标记为删除的，而不能保证已经完成属性绑定和依赖注入。
-func (c *condContext) Find(selector env.BeanSelector) ([]env.BeanDefinition, error) {
+func (c *condContext) Find(selector core.BeanSelector) ([]core.BeanDefinition, error) {
 	beans, err := c.c.findBean(selector)
 	if err != nil {
 		return nil, err
 	}
-	var ret []env.BeanDefinition
+	var ret []core.BeanDefinition
 	for _, b := range beans {
 		ret = append(ret, b)
 	}
@@ -390,11 +390,11 @@ func (tag wireTag) String() string {
 	return b.String()
 }
 
-func toWireTag(selector env.BeanSelector) wireTag {
+func toWireTag(selector core.BeanSelector) wireTag {
 	switch s := selector.(type) {
 	case string:
 		return parseWireTag(s)
-	case env.BeanDefinition:
+	case core.BeanDefinition:
 		return parseWireTag(s.ID())
 	case *BeanDefinition:
 		return parseWireTag(s.ID())
@@ -405,7 +405,7 @@ func toWireTag(selector env.BeanSelector) wireTag {
 
 // findBean 查找符合条件的 bean 对象，注意该函数只能保证返回的 bean 是有效的，
 // 即未被标记为删除的，而不能保证已经完成属性绑定和依赖注入。
-func (c *Container) findBean(selector env.BeanSelector) ([]*BeanDefinition, error) {
+func (c *Container) findBean(selector core.BeanSelector) ([]*BeanDefinition, error) {
 
 	finder := func(fn func(*BeanDefinition) bool) ([]*BeanDefinition, error) {
 		var result []*BeanDefinition

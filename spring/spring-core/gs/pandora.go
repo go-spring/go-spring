@@ -24,37 +24,18 @@ import (
 	"github.com/go-spring/spring-boost/log"
 	"github.com/go-spring/spring-boost/util"
 	"github.com/go-spring/spring-core/gs/arg"
-	"github.com/go-spring/spring-core/gs/env"
+	"github.com/go-spring/spring-core/gs/core"
 )
 
-type BeanRegistry interface {
-	Get(i interface{}, selectors ...env.BeanSelector) error
-	Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error)
-	Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, error)
-}
-
-// Environment 提供了一些在 IoC 容器启动后基于反射获取和使用 property 与 bean 的接
-// 口。因为很多人会担心在运行时大量使用反射会降低程序性能，所以命名为 Environment，取
-// 其诱人但危险的含义。事实上，这些在 IoC 容器启动后使用属性绑定和依赖注入的方案，
-// 都可以转换为启动阶段的方案以提高程序的性能。
-// 另一方面，为了统一 Container 和 App 两种启动方式下这些方法的使用方式，需要提取
-// 出一个可共用的接口来，也就是说，无论程序是 Container 方式启动还是 App 方式启动，
-// 都可以在需要使用这些方法的地方注入一个 Environment 对象而不是 Container 对象或者
-// App 对象，从而实现使用方式的统一。
-type Environment interface {
-	Properties() env.Properties
-	BeanRegistry() BeanRegistry
-	Context() context.Context
-	Go(fn func(ctx context.Context))
-}
+type Environment = core.Environment
 
 type pandora struct{ c *Container }
 
-func (p *pandora) Properties() env.Properties {
+func (p *pandora) Properties() core.Properties {
 	return p.c.p
 }
 
-func (p *pandora) BeanRegistry() BeanRegistry {
+func (p *pandora) BeanRegistry() core.BeanRegistry {
 	return p
 }
 
@@ -78,7 +59,7 @@ func (p *pandora) Go(fn func(ctx context.Context)) {
 // 工作模式称为自动模式，否则根据传入的选择器列表进行排序，这种工作模式成为指派模式。
 // 该方法和 Find 方法的区别是该方法保证返回的所有 bean 对象都已经完成属性绑定和依
 // 赖注入，而 Find 方法只能保证返回的 bean 对象是有效的，即未被标记为删除的。
-func (p *pandora) Get(i interface{}, selectors ...env.BeanSelector) error {
+func (p *pandora) Get(i interface{}, selectors ...core.BeanSelector) error {
 
 	if i == nil {
 		return errors.New("i can't be nil")
@@ -107,7 +88,7 @@ func (p *pandora) Get(i interface{}, selectors ...env.BeanSelector) error {
 // Wire 如果传入的是 bean 对象，则对 bean 对象进行属性绑定和依赖注入，如果传入的
 // 是构造函数，则立即执行该构造函数，然后对返回的结果进行属性绑定和依赖注入。无论哪
 // 种方式，该函数执行完后都会返回 bean 对象的真实值。
-func (p *pandora) Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error) {
+func (p *pandora) Wire(objOrCtor interface{}, ctorArgs ...core.Arg) (interface{}, error) {
 
 	stack := newWiringStack()
 
@@ -125,7 +106,7 @@ func (p *pandora) Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{},
 	return b.Interface(), nil
 }
 
-func (p *pandora) Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, error) {
+func (p *pandora) Invoke(fn interface{}, args ...core.Arg) ([]interface{}, error) {
 
 	if !util.IsFuncType(reflect.TypeOf(fn)) {
 		return nil, errors.New("fn should be func type")

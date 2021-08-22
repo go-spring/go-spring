@@ -29,7 +29,7 @@ import (
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/gs/cloud"
-	"github.com/go-spring/spring-core/gs/env"
+	"github.com/go-spring/spring-core/gs/core"
 )
 
 // EnvPrefix 属性覆盖的环境变量需要携带该前缀。
@@ -185,7 +185,7 @@ func (e *environment) prepare() error {
 	return nil
 }
 
-func (e *environment) Properties() env.Properties {
+func (e *environment) Properties() core.Properties {
 	return e.p
 }
 

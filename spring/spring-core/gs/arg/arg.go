@@ -26,7 +26,7 @@ import (
 	"github.com/go-spring/spring-boost/log"
 	"github.com/go-spring/spring-boost/util"
 	"github.com/go-spring/spring-core/gs/cond"
-	"github.com/go-spring/spring-core/gs/env"
+	"github.com/go-spring/spring-core/gs/core"
 )
 
 // Context IoC 容器对 arg 模块提供的最小功能集。
@@ -42,11 +42,7 @@ type Context interface {
 	Wire(v reflect.Value, tag string) error
 }
 
-// Arg 用于为函数参数提供绑定值。可以是 bean.Selector 类型，表示注入 bean ；
-// 可以是 ${X:=Y} 形式的字符串，表示属性绑定或者注入 bean ；可以是 ValueArg
-// 类型，表示不从 IoC 容器获取而是用户传入的普通值；可以是 IndexArg 类型，表示
-// 带有下标的参数绑定；可以是 *optionArg 类型，用于为 Option 方法提供参数绑定。
-type Arg interface{}
+type Arg = core.Arg
 
 // IndexArg 包含下标的参数绑定。
 type IndexArg struct {
@@ -230,7 +226,7 @@ func (r *argList) getArg(ctx Context, arg Arg, t reflect.Type, fileLine string) 
 		return reflect.ValueOf(g.v), nil
 	case *optionArg:
 		return g.call(ctx)
-	case env.BeanDefinition:
+	case core.BeanDefinition:
 		tag = g.ID()
 	case string:
 		tag = g

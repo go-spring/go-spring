@@ -17,12 +17,12 @@
 package cloud
 
 import (
-	"github.com/go-spring/spring-core/gs/env"
+	"github.com/go-spring/spring-core/gs/core"
 )
 
 type Environment interface {
 	ActiveProfile() string
 	ConfigLocations() []string
 	ConfigExtensions() []string
-	Properties() env.Properties
+	Properties() core.Properties
 }

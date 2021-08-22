@@ -27,7 +27,7 @@ import (
 	"github.com/go-spring/spring-boost/util"
 	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/gs/cond"
-	"github.com/go-spring/spring-core/gs/env"
+	"github.com/go-spring/spring-core/gs/core"
 )
 
 const (
@@ -67,7 +67,7 @@ type BeanDefinition struct {
 	order     int                       // 收集时的顺序
 	init      interface{}               // 初始化函数
 	destroy   interface{}               // 销毁函数
-	dependsOn []env.BeanSelector        // 间接依赖项
+	dependsOn []core.BeanSelector       // 间接依赖项
 	exports   map[reflect.Type]struct{} // 导出的接口
 }
 
@@ -163,7 +163,7 @@ func (d *BeanDefinition) Order(order int) *BeanDefinition {
 }
 
 // DependsOn 设置 bean 的间接依赖项。
-func (d *BeanDefinition) DependsOn(selectors ...env.BeanSelector) *BeanDefinition {
+func (d *BeanDefinition) DependsOn(selectors ...core.BeanSelector) *BeanDefinition {
 	d.dependsOn = append(d.dependsOn, selectors...)
 	return d
 }

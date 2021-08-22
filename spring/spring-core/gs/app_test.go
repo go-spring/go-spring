@@ -31,8 +31,8 @@ import (
 func startApplication(cfgLocation string) (*gs.App, gs.Environment) {
 
 	app := gs.NewApp()
-	gs.Setenv("SPRING_BANNER_VISIBLE", "true")
-	gs.Setenv("SPRING_CONFIG_LOCATION", cfgLocation)
+	gs.Setenv("GS_SPRING_BANNER_VISIBLE", "true")
+	gs.Setenv("GS_SPRING_CONFIG_LOCATIONS", cfgLocation)
 
 	var p gs.Environment
 	type PandoraAware struct{}
@@ -41,7 +41,12 @@ func startApplication(cfgLocation string) (*gs.App, gs.Environment) {
 		return PandoraAware{}
 	})
 
-	go app.Run()
+	go func() {
+		if err := app.Run(); err != nil {
+			panic(err)
+		}
+	}()
+
 	time.Sleep(100 * time.Millisecond)
 	return app, p
 }

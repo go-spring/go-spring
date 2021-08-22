@@ -43,21 +43,15 @@ const (
 	Website = "https://go-spring.com/"
 )
 
-// AppContext 封装 IoC 容器的 context.Context 对象。
-type AppContext interface {
-	Context() context.Context
-	Go(fn func(ctx context.Context))
-}
-
 // AppRunner 命令行启动器接口
 type AppRunner interface {
-	Run(ctx AppContext)
+	Run(ctx Environment)
 }
 
 // AppEvent 应用运行过程中的事件
 type AppEvent interface {
-	OnStopApp(ctx AppContext)  // 应用停止的事件
-	OnStartApp(ctx AppContext) // 应用启动的事件
+	OnStopApp(ctx Environment)  // 应用停止的事件
+	OnStartApp(ctx Environment) // 应用启动的事件
 }
 
 // SpringBannerVisible 是否显示 banner。
