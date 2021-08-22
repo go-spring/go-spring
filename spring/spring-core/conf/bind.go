@@ -373,6 +373,9 @@ func resolveString(p *Properties, s string) (string, error) {
 func resolve(p *Properties, param BindParam) (string, error) {
 	val := p.Get(param.Key)
 	if val == "" {
+		if p.Has(param.Key) {
+			return "", nil
+		}
 		if param.hasDef {
 			val = param.def
 		} else {
