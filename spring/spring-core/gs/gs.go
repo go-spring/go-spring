@@ -34,7 +34,7 @@ import (
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/gs/cond"
-	"github.com/go-spring/spring-core/gs/core"
+	"github.com/go-spring/spring-core/gs/internal"
 )
 
 type refreshState int
@@ -54,6 +54,7 @@ const (
 // 性绑定，要么同时使用依赖注入和属性绑定。
 type Container struct {
 	p *conf.Properties
+	e *environment
 
 	state refreshState
 
@@ -72,7 +73,7 @@ type Container struct {
 // New 创建 IoC 容器。
 func New() *Container {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Container{
+	c := &Container{
 		p:           conf.New(),
 		ctx:         ctx,
 		cancel:      cancel,
@@ -80,6 +81,8 @@ func New() *Container {
 		beansByName: make(map[string][]*BeanDefinition),
 		beansByType: make(map[reflect.Type][]*BeanDefinition),
 	}
+	c.e = &environment{c}
+	return c
 }
 
 // Load 从属性文件加载属性列表，file 可以是绝对路径，也可以是相对路径。该方法会覆
@@ -203,7 +206,7 @@ func (s *wiringStack) sortDestroyers() []func() {
 	destroy := func(v reflect.Value, f interface{}) func() {
 		return func() {
 			if f == nil {
-				v.Interface().(interface{ OnDestroy() }).OnDestroy()
+				v.Interface().(BeanDestroy).OnDestroy()
 			} else {
 				fnValue := reflect.ValueOf(f)
 				out := fnValue.Call([]reflect.Value{v})
@@ -242,8 +245,7 @@ func (c *Container) Refresh() error {
 		return errors.New("container already refreshed")
 	}
 
-	c.Object(&pandora{c}).Export((*Environment)(nil))
-
+	c.Object(c.e).Export((*Environment)(nil))
 	c.state = Refreshing
 
 	for _, b := range c.beans {
@@ -291,7 +293,7 @@ type condContext struct {
 	c *Container
 }
 
-func (c *condContext) Properties() core.Properties {
+func (c *condContext) Properties() Properties {
 	return c.c.p
 }
 
@@ -301,12 +303,12 @@ func (c *condContext) BeanRegistry() cond.BeanRegistry {
 
 // Find 查找符合条件的 bean 对象，注意该函数只能保证返回的 bean 是有效的，即未被
 // 标记为删除的，而不能保证已经完成属性绑定和依赖注入。
-func (c *condContext) Find(selector core.BeanSelector) ([]core.BeanDefinition, error) {
+func (c *condContext) Find(selector BeanSelector) ([]cond.BeanDefinition, error) {
 	beans, err := c.c.findBean(selector)
 	if err != nil {
 		return nil, err
 	}
-	var ret []core.BeanDefinition
+	var ret []cond.BeanDefinition
 	for _, b := range beans {
 		ret = append(ret, b)
 	}
@@ -390,11 +392,11 @@ func (tag wireTag) String() string {
 	return b.String()
 }
 
-func toWireTag(selector core.BeanSelector) wireTag {
+func toWireTag(selector BeanSelector) wireTag {
 	switch s := selector.(type) {
 	case string:
 		return parseWireTag(s)
-	case core.BeanDefinition:
+	case BeanDefinition:
 		return parseWireTag(s.ID())
 	case *BeanDefinition:
 		return parseWireTag(s.ID())
@@ -405,7 +407,7 @@ func toWireTag(selector core.BeanSelector) wireTag {
 
 // findBean 查找符合条件的 bean 对象，注意该函数只能保证返回的 bean 是有效的，
 // 即未被标记为删除的，而不能保证已经完成属性绑定和依赖注入。
-func (c *Container) findBean(selector core.BeanSelector) ([]*BeanDefinition, error) {
+func (c *Container) findBean(selector BeanSelector) ([]*BeanDefinition, error) {
 
 	finder := func(fn func(*BeanDefinition) bool) ([]*BeanDefinition, error) {
 		var result []*BeanDefinition
@@ -472,7 +474,7 @@ func (c *Container) wireBean(b *BeanDefinition, stack *wiringStack) error {
 	}()
 
 	// 记录注入路径上的销毁函数及其执行的先后顺序。
-	if _, ok := b.Interface().(interface{ OnDestroy() }); ok || b.destroy != nil {
+	if _, ok := b.Interface().(BeanDestroy); ok || b.destroy != nil {
 		d := stack.saveDestroyer(b)
 		if i := stack.destroyers.Back(); i != nil {
 			d.after(i.Value.(*BeanDefinition))
@@ -537,12 +539,8 @@ func (c *Container) wireBean(b *BeanDefinition, stack *wiringStack) error {
 		}
 	}
 
-	if f, ok := b.Interface().(interface{ OnInit() }); ok {
-		f.OnInit()
-	}
-
-	if f, ok := b.Interface().(interface{ OnInit() error }); ok {
-		if err = f.OnInit(); err != nil {
+	if f, ok := b.Interface().(BeanInit); ok {
+		if err = f.OnInit(c.e); err != nil {
 			return err
 		}
 	}
@@ -976,4 +974,137 @@ func (c *Container) safeGo(fn func(ctx context.Context)) {
 		}()
 		fn(c.ctx)
 	}()
+}
+
+//////////////////////////// environment ////////////////////////////
+
+type Properties = internal.Properties
+
+type BeanRegistry interface {
+	Get(i interface{}, selectors ...BeanSelector) error
+	Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error)
+	Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, error)
+}
+
+// Environment 提供了一些在 IoC 容器启动后基于反射获取和使用 property 与 bean 的接
+// 口。因为很多人会担心在运行时大量使用反射会降低程序性能，所以命名为 Environment，取
+// 其诱人但危险的含义。事实上，这些在 IoC 容器启动后使用属性绑定和依赖注入的方案，
+// 都可以转换为启动阶段的方案以提高程序的性能。
+// 另一方面，为了统一 Container 和 App 两种启动方式下这些方法的使用方式，需要提取
+// 出一个可共用的接口来，也就是说，无论程序是 Container 方式启动还是 App 方式启动，
+// 都可以在需要使用这些方法的地方注入一个 Environment 对象而不是 Container 对象或者
+// App 对象，从而实现使用方式的统一。
+type Environment interface {
+	Properties() Properties
+	BeanRegistry() BeanRegistry
+	Context() context.Context
+	Go(fn func(ctx context.Context))
+}
+
+type environment struct{ c *Container }
+
+func (p *environment) Properties() Properties {
+	return p.c.p
+}
+
+func (p *environment) BeanRegistry() BeanRegistry {
+	return p
+}
+
+// Context 返回 IoC 容器的 ctx 对象。
+func (p *environment) Context() context.Context {
+	return p.c.ctx
+}
+
+// Go 创建安全可等待的 goroutine，fn 要求的 ctx 对象由 IoC 容器提供，当 IoC 容
+// 器关闭时 ctx会 发出 Done 信号， fn 在接收到此信号后应当立即退出。
+func (p *environment) Go(fn func(ctx context.Context)) {
+	p.c.safeGo(fn)
+}
+
+// Get 根据类型和选择器获取符合条件的 bean 对象。当 i 是一个基础类型的 bean 接收
+// 者时，表示符合条件的 bean 对象只能有一个，没有找到或者多于一个时会返回 error。
+// 当 i 是一个 map 类型的 bean 接收者时，表示获取任意数量的 bean 对象，map 的
+// key 是 bean 的名称，map 的 value 是 bean 的地址。当 i 是一个 array 或者
+// slice 时，也表示获取任意数量的 bean 对象，但是它会对获取到的 bean 对象进行排序，
+// 如果没有传入选择器或者传入的选择器是 * ，则根据 bean 的 order 值进行排序，这种
+// 工作模式称为自动模式，否则根据传入的选择器列表进行排序，这种工作模式成为指派模式。
+// 该方法和 Find 方法的区别是该方法保证返回的所有 bean 对象都已经完成属性绑定和依
+// 赖注入，而 Find 方法只能保证返回的 bean 对象是有效的，即未被标记为删除的。
+func (p *environment) Get(i interface{}, selectors ...BeanSelector) error {
+
+	if i == nil {
+		return errors.New("i can't be nil")
+	}
+
+	v := reflect.ValueOf(i)
+	if v.Kind() != reflect.Ptr {
+		return errors.New("i must be pointer")
+	}
+
+	stack := newWiringStack()
+
+	defer func() {
+		if len(stack.beans) > 0 {
+			log.Infof("wiring path %s", stack.path())
+		}
+	}()
+
+	var tags []wireTag
+	for _, s := range selectors {
+		tags = append(tags, toWireTag(s))
+	}
+	return p.c.autowire(v.Elem(), tags, stack)
+}
+
+// Wire 如果传入的是 bean 对象，则对 bean 对象进行属性绑定和依赖注入，如果传入的
+// 是构造函数，则立即执行该构造函数，然后对返回的结果进行属性绑定和依赖注入。无论哪
+// 种方式，该函数执行完后都会返回 bean 对象的真实值。
+func (p *environment) Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error) {
+
+	stack := newWiringStack()
+
+	defer func() {
+		if len(stack.beans) > 0 {
+			log.Infof("wiring path %s", stack.path())
+		}
+	}()
+
+	b := NewBean(objOrCtor, ctorArgs...)
+	err := p.c.wireBean(b, stack)
+	if err != nil {
+		return nil, err
+	}
+	return b.Interface(), nil
+}
+
+func (p *environment) Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, error) {
+
+	if !util.IsFuncType(reflect.TypeOf(fn)) {
+		return nil, errors.New("fn should be func type")
+	}
+
+	stack := newWiringStack()
+
+	defer func() {
+		if len(stack.beans) > 0 {
+			log.Infof("wiring path %s", stack.path())
+		}
+	}()
+
+	r, err := arg.Bind(fn, args, 1)
+	if err != nil {
+		return nil, err
+	}
+
+	ret, err := r.Call(&argContext{c: p.c, stack: stack})
+	if err != nil {
+		return nil, err
+	}
+
+	var a []interface{}
+	for _, v := range ret {
+		a = append(a, v.Interface())
+	}
+	return a, nil
 }

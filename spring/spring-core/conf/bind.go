@@ -313,11 +313,12 @@ func parseTag(tag string) (key string, def string, hasDef bool) {
 }
 
 func resolveString(p *Properties, s string) (string, error) {
-	n := len(s)
 
+	n := len(s)
 	count := 0
 	found := false
 	start, end := -1, -1
+
 	for i := 0; i < len(s); i++ {
 		switch s[i] {
 		case '$':
@@ -371,13 +372,11 @@ func resolveString(p *Properties, s string) (string, error) {
 // resolve 解析 ${key:=def} 字符串，返回 key 对应的属性值，如果没有找到则返回
 // def 值，如果 def 存在引用则递归解析直到获取最终的属性值。
 func resolve(p *Properties, param BindParam) (string, error) {
-	val := p.Get(param.Key)
-	if val == "" {
-		if param.hasDef {
-			val = param.def
-		} else {
-			return "", fmt.Errorf("property %q %w", param.Key, ErrNotExist)
-		}
+	if val, ok := p.m[param.Key]; ok {
+		return resolveString(p, val)
 	}
-	return resolveString(p, val)
+	if param.hasDef {
+		return resolveString(p, param.def)
+	}
+	return "", fmt.Errorf("property %q %w", param.Key, ErrNotExist)
 }

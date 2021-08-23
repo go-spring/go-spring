@@ -27,8 +27,10 @@ import (
 	"github.com/go-spring/spring-boost/util"
 	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/gs/cond"
-	"github.com/go-spring/spring-core/gs/core"
+	"github.com/go-spring/spring-core/gs/internal"
 )
+
+type BeanSelector = internal.BeanSelector
 
 const (
 	HighestOrder = math.MinInt32
@@ -46,6 +48,14 @@ const (
 	Created                      // 已创建
 	Wired                        // 注入完成
 )
+
+type BeanInit interface {
+	OnInit(e Environment) error
+}
+
+type BeanDestroy interface {
+	OnDestroy()
+}
 
 // BeanDefinition bean 元数据。
 type BeanDefinition struct {
@@ -67,7 +77,7 @@ type BeanDefinition struct {
 	order     int                       // 收集时的顺序
 	init      interface{}               // 初始化函数
 	destroy   interface{}               // 销毁函数
-	dependsOn []core.BeanSelector       // 间接依赖项
+	dependsOn []BeanSelector            // 间接依赖项
 	exports   map[reflect.Type]struct{} // 导出的接口
 }
 
@@ -163,7 +173,7 @@ func (d *BeanDefinition) Order(order int) *BeanDefinition {
 }
 
 // DependsOn 设置 bean 的间接依赖项。
-func (d *BeanDefinition) DependsOn(selectors ...core.BeanSelector) *BeanDefinition {
+func (d *BeanDefinition) DependsOn(selectors ...BeanSelector) *BeanDefinition {
 	d.dependsOn = append(d.dependsOn, selectors...)
 	return d
 }

@@ -25,7 +25,14 @@ import (
 	"github.com/go-spring/spring-core/web"
 )
 
-var app = NewApp()
+var gApp *App
+
+func app() *App {
+	if gApp == nil {
+		gApp = NewApp()
+	}
+	return gApp
+}
 
 // Setenv 封装 os.Setenv 函数，如果发生 error 会 panic 。
 func Setenv(key string, value string) {
@@ -35,27 +42,27 @@ func Setenv(key string, value string) {
 
 // Run 启动程序。
 func Run() error {
-	return app.Run()
+	return app().Run()
 }
 
 // ShutDown 停止程序。
 func ShutDown(err error) {
-	app.ShutDown(err)
+	app().ShutDown(err)
 }
 
 // Banner 自定义 banner 字符串。
 func Banner(banner string) {
-	app.Banner(banner)
+	app().Banner(banner)
 }
 
 // Bootstrap 返回 *bootstrap 对象。
 func Bootstrap() *bootstrap {
-	return app.Bootstrap()
+	return app().Bootstrap()
 }
 
 // OnProperty 当 key 对应的属性值准备好后发送一个通知。
 func OnProperty(key string, fn interface{}) {
-	app.OnProperty(key, fn)
+	app().OnProperty(key, fn)
 }
 
 // Property 设置 key 对应的属性值，如果 key 对应的属性值已经存在则 Set 方法会
@@ -64,107 +71,107 @@ func OnProperty(key string, fn interface{}) {
 // 类型组合构成的属性值，其处理方式是将组合结构层层展开，可以将组合结构看成一棵树，
 // 那么叶子结点的路径就是属性的 key，叶子结点的值就是属性的值。
 func Property(key string, value interface{}) {
-	app.Property(key, value)
+	app().Property(key, value)
 }
 
 // Object 注册对象形式的 bean ，需要注意的是该方法在注入开始后就不能再调用了。
 func Object(i interface{}) *BeanDefinition {
-	return app.c.register(NewBean(reflect.ValueOf(i)))
+	return app().c.register(NewBean(reflect.ValueOf(i)))
 }
 
 // Provide 注册构造函数形式的 bean ，需要注意的是该方法在注入开始后就不能再调用了。
 func Provide(ctor interface{}, args ...arg.Arg) *BeanDefinition {
-	return app.c.register(NewBean(ctor, args...))
+	return app().c.register(NewBean(ctor, args...))
 }
 
 // HandleGet 注册 GET 方法处理函数。
 func HandleGet(path string, h web.Handler) *web.Mapper {
-	return app.HandleGet(path, h)
+	return app().HandleGet(path, h)
 }
 
 // GetMapping 注册 GET 方法处理函数。
 func GetMapping(path string, fn web.HandlerFunc) *web.Mapper {
-	return app.GetMapping(path, fn)
+	return app().GetMapping(path, fn)
 }
 
 // GetBinding 注册 GET 方法处理函数。
 func GetBinding(path string, fn interface{}) *web.Mapper {
-	return app.GetBinding(path, fn)
+	return app().GetBinding(path, fn)
 }
 
 // HandlePost 注册 POST 方法处理函数。
 func HandlePost(path string, h web.Handler) *web.Mapper {
-	return app.HandlePost(path, h)
+	return app().HandlePost(path, h)
 }
 
 // PostMapping 注册 POST 方法处理函数。
 func PostMapping(path string, fn web.HandlerFunc) *web.Mapper {
-	return app.PostMapping(path, fn)
+	return app().PostMapping(path, fn)
 }
 
 // PostBinding 注册 POST 方法处理函数。
 func PostBinding(path string, fn interface{}) *web.Mapper {
-	return app.PostBinding(path, fn)
+	return app().PostBinding(path, fn)
 }
 
 // HandlePut 注册 PUT 方法处理函数。
 func HandlePut(path string, h web.Handler) *web.Mapper {
-	return app.HandlePut(path, h)
+	return app().HandlePut(path, h)
 }
 
 // PutMapping 注册 PUT 方法处理函数。
 func PutMapping(path string, fn web.HandlerFunc) *web.Mapper {
-	return app.PutMapping(path, fn)
+	return app().PutMapping(path, fn)
 }
 
 // PutBinding 注册 PUT 方法处理函数。
 func PutBinding(path string, fn interface{}) *web.Mapper {
-	return app.PutBinding(path, fn)
+	return app().PutBinding(path, fn)
 }
 
 // HandleDelete 注册 DELETE 方法处理函数。
 func HandleDelete(path string, h web.Handler) *web.Mapper {
-	return app.HandleDelete(path, h)
+	return app().HandleDelete(path, h)
 }
 
 // DeleteMapping 注册 DELETE 方法处理函数。
 func DeleteMapping(path string, fn web.HandlerFunc) *web.Mapper {
-	return app.DeleteMapping(path, fn)
+	return app().DeleteMapping(path, fn)
 }
 
 // DeleteBinding 注册 DELETE 方法处理函数。
 func DeleteBinding(path string, fn interface{}) *web.Mapper {
-	return app.DeleteBinding(path, fn)
+	return app().DeleteBinding(path, fn)
 }
 
 // HandleRequest 注册任意 HTTP 方法处理函数。
 func HandleRequest(method uint32, path string, h web.Handler) *web.Mapper {
-	return app.HandleRequest(method, path, h)
+	return app().HandleRequest(method, path, h)
 }
 
 // RequestMapping 注册任意 HTTP 方法处理函数。
 func RequestMapping(method uint32, path string, fn web.HandlerFunc) *web.Mapper {
-	return app.RequestMapping(method, path, fn)
+	return app().RequestMapping(method, path, fn)
 }
 
 // RequestBinding 注册任意 HTTP 方法处理函数。
 func RequestBinding(method uint32, path string, fn interface{}) *web.Mapper {
-	return app.RequestBinding(method, path, fn)
+	return app().RequestBinding(method, path, fn)
 }
 
 // Consume 注册 MQ 消费者。
 func Consume(fn interface{}, topics ...string) {
-	app.Consume(fn, topics...)
+	app().Consume(fn, topics...)
 }
 
 // GrpcClient 注册 gRPC 服务客户端，fn 是 gRPC 自动生成的客户端构造函数。
 func GrpcClient(fn interface{}, endpoint string) *BeanDefinition {
-	return app.c.register(NewBean(fn, endpoint))
+	return app().c.register(NewBean(fn, endpoint))
 }
 
 // GrpcServer 注册 gRPC 服务提供者，fn 是 gRPC 自动生成的服务注册函数，
 // serviceName 是服务名称，必须对应 *_grpc.pg.go 文件里面 grpc.ServerDesc
 // 的 ServiceName 字段，server 是服务提供者对象。
 func GrpcServer(serviceName string, fn interface{}, service interface{}) *BeanDefinition {
-	return app.GrpcServer(serviceName, fn, service)
+	return app().GrpcServer(serviceName, fn, service)
 }
