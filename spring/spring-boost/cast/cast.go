@@ -18,6 +18,8 @@
 package cast
 
 import (
+	"fmt"
+	"reflect"
 	"time"
 
 	"github.com/spf13/cast"
@@ -107,4 +109,25 @@ func ToTime(i interface{}) time.Time {
 // ToTimeE casts an interface{} to a time.Time.
 func ToTimeE(i interface{}) (time.Time, error) {
 	return cast.ToTimeE(i)
+}
+
+// ToStringSlice casts an interface to a []string type.
+func ToStringSlice(i interface{}) []string {
+	v, _ := ToStringSliceE(i)
+	return v
+}
+
+// ToStringSliceE casts an interface to a []string type.
+func ToStringSliceE(i interface{}) ([]string, error) {
+	// TODO 使用具体的类型判断，看看是否有更好的性能。
+	switch v := reflect.ValueOf(i); v.Kind() {
+	case reflect.Slice, reflect.Array:
+		var slice []string
+		for j := 0; j < v.Len(); j++ {
+			s := ToString(v.Index(j).Interface())
+			slice = append(slice, s)
+		}
+		return slice, nil
+	}
+	return nil, fmt.Errorf("unable to cast %#v of type %T to []string", i, i)
 }

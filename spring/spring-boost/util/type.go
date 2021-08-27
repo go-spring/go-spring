@@ -64,27 +64,27 @@ func IsBeanReceiver(t reflect.Type) bool {
 // 值类型，只要有不是值类型的字段就不是值类型。
 func IsPrimitiveValueType(t reflect.Type) bool {
 	switch t.Kind() {
-	case reflect.Bool,
-		reflect.Int,
-		reflect.Int8,
-		reflect.Int16,
-		reflect.Int32,
-		reflect.Int64,
-		reflect.Uint,
-		reflect.Uint8,
-		reflect.Uint16,
-		reflect.Uint32,
-		reflect.Uint64,
-		reflect.Float32,
-		reflect.Float64,
-		reflect.Complex64,
-		reflect.Complex128,
-		reflect.String,
-		reflect.Struct:
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		return true
-	default:
-		return false
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return true
+	case reflect.Complex64, reflect.Complex128:
+		return true
+	case reflect.Float32, reflect.Float64:
+		return true
+	case reflect.String:
+		return true
+	case reflect.Bool:
+		return true
 	}
+	return false
+}
+
+func isValueType(t reflect.Type) bool {
+	if t.Kind() == reflect.Struct {
+		return true
+	}
+	return IsPrimitiveValueType(t)
 }
 
 // IsValueType 返回是否是 value 类型。除了原生值类型，它们的集合类型也是值类型，但
@@ -94,10 +94,9 @@ func IsPrimitiveValueType(t reflect.Type) bool {
 func IsValueType(t reflect.Type) bool {
 	switch t.Kind() {
 	case reflect.Map, reflect.Slice, reflect.Array:
-		return IsPrimitiveValueType(t.Elem())
-	default:
-		return IsPrimitiveValueType(t)
+		return isValueType(t.Elem())
 	}
+	return isValueType(t)
 }
 
 // TypeOf 获取任意数据的真实类型。
