@@ -817,7 +817,7 @@ func TestApplicationContext_Profile(t *testing.T) {
 	t.Run("bean:_c:test", func(t *testing.T) {
 
 		c, ch := container()
-		c.Property(gs.SpringProfilesActive, "test")
+		c.Property("spring.profiles.active", "test")
 		c.Object(&BeanZero{5})
 		err := c.Refresh()
 		assert.Nil(t, err)
@@ -2495,7 +2495,7 @@ func TestDefaultSpringContext(t *testing.T) {
 	t.Run("bean:test_ctx:test", func(t *testing.T) {
 
 		c, ch := container()
-		c.Property(gs.SpringProfilesActive, "test")
+		c.Property("spring.profiles.active", "test")
 		c.Object(&BeanZero{5}).On(cond.OnProfile("test"))
 		err := c.Refresh()
 		assert.Nil(t, err)
@@ -2510,7 +2510,7 @@ func TestDefaultSpringContext(t *testing.T) {
 	t.Run("bean:test_ctx:stable", func(t *testing.T) {
 
 		c, ch := container()
-		c.Property(gs.SpringProfilesActive, "stable")
+		c.Property("spring.profiles.active", "stable")
 		c.Object(&BeanZero{5}).On(cond.OnProfile("test"))
 		err := c.Refresh()
 		assert.Nil(t, err)
@@ -2862,7 +2862,7 @@ func TestApplicationContext_Invoke(t *testing.T) {
 		c, ch := container()
 		c.Provide(func() int { return 3 })
 		c.Property("version", "v0.0.1")
-		c.Property(gs.SpringProfilesActive, "dev")
+		c.Property("spring.profiles.active", "dev")
 		err := c.Refresh()
 		assert.Nil(t, err)
 

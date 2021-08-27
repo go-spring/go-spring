@@ -58,7 +58,7 @@ func TestConfig(t *testing.T) {
 		gs.Setenv("GS_SPRING_PROFILES_ACTIVE", "dev")
 		app, p := startApplication("testdata/config/")
 		defer app.ShutDown(errors.New("run test end"))
-		assert.Equal(t, p.Properties().Get(gs.SpringProfilesActive), "dev")
+		assert.Equal(t, p.Properties().Get("spring.profiles.active"), "dev")
 	})
 
 	t.Run("config via env 2", func(t *testing.T) {
@@ -66,7 +66,7 @@ func TestConfig(t *testing.T) {
 		gs.Setenv("GS_SPRING_PROFILES_ACTIVE", "dev")
 		app, p := startApplication("testdata/config/")
 		defer app.ShutDown(errors.New("run test end"))
-		assert.Equal(t, p.Properties().Get(gs.SpringProfilesActive), "dev")
+		assert.Equal(t, p.Properties().Get("spring.profiles.active"), "dev")
 	})
 
 	t.Run("profile via env&config 2", func(t *testing.T) {
@@ -75,7 +75,7 @@ func TestConfig(t *testing.T) {
 		gs.Setenv("GS_SPRING_PROFILES_ACTIVE", "dev")
 		app, p := startApplication("testdata/config/")
 		defer app.ShutDown(errors.New("run test end"))
-		assert.Equal(t, p.Properties().Get(gs.SpringProfilesActive), "dev")
+		assert.Equal(t, p.Properties().Get("spring.profiles.active"), "dev")
 
 		keys := p.Properties().Keys()
 		sort.Strings(keys)

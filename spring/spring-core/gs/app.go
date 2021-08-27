@@ -222,12 +222,13 @@ func (app *App) bootstrap(e *configuration) error {
 	}
 
 	// 保存远程 active 配置。
-	for _, p := range sourceMap[e.activeProfile] {
-		for _, k := range p.Keys() {
-			app.c.p.Set(k, p.Get(k))
+	for _, profile := range e.activeProfiles {
+		for _, p := range sourceMap[profile] {
+			for _, k := range p.Keys() {
+				app.c.p.Set(k, p.Get(k))
+			}
 		}
 	}
-
 	return nil
 }
 
@@ -288,10 +289,13 @@ func (app *App) profile(e *configuration) error {
 	if err := app.loadConfigFile(e, "application"); err != nil {
 		return err
 	}
-	if e.activeProfile == "" {
-		return nil
+	for _, profile := range e.activeProfiles {
+		filename := "application-" + profile
+		if err := app.loadConfigFile(e, filename); err != nil {
+			return err
+		}
 	}
-	return app.loadConfigFile(e, "application-"+e.activeProfile)
+	return nil
 }
 
 func (app *App) loadConfigFile(e *configuration, filename string) error {
@@ -335,96 +339,92 @@ func (app *App) OnProperty(key string, fn interface{}) {
 	app.mapOfOnProperty[key] = fn
 }
 
-// Property 设置 key 对应的属性值，如果 key 对应的属性值已经存在则 Set 方法会
-// 覆盖旧值。Set 方法除了支持 string 类型的属性值，还支持 int、uint、bool 等
-// 其他基础数据类型的属性值。特殊情况下，Set 方法也支持 slice 、map 与基础数据
-// 类型组合构成的属性值，其处理方式是将组合结构层层展开，可以将组合结构看成一棵树，
-// 那么叶子结点的路径就是属性的 key，叶子结点的值就是属性的值。
+// Property 参考 Container.Property 的解释。
 func (app *App) Property(key string, value interface{}) {
 	app.c.Property(key, value)
 }
 
-// Object 注册对象形式的 bean ，需要注意的是该方法在注入开始后就不能再调用了。
+// Object 参考 Container.Object 的解释。
 func (app *App) Object(i interface{}) *BeanDefinition {
 	return app.c.register(NewBean(reflect.ValueOf(i)))
 }
 
-// Provide 注册构造函数形式的 bean ，需要注意的是该方法在注入开始后就不能再调用了。
+// Provide 参考 Container.Provide 的解释。
 func (app *App) Provide(ctor interface{}, args ...arg.Arg) *BeanDefinition {
 	return app.c.register(NewBean(ctor, args...))
 }
 
-// HandleGet 注册 GET 方法处理函数
+// HandleGet 注册 GET 方法处理函数。
 func (app *App) HandleGet(path string, h web.Handler) *web.Mapper {
 	return app.router.HandleGet(path, h)
 }
 
-// GetMapping 注册 GET 方法处理函数
+// GetMapping 注册 GET 方法处理函数。
 func (app *App) GetMapping(path string, fn web.HandlerFunc) *web.Mapper {
 	return app.router.GetMapping(path, fn)
 }
 
-// GetBinding 注册 GET 方法处理函数
+// GetBinding 注册 GET 方法处理函数。
 func (app *App) GetBinding(path string, fn interface{}) *web.Mapper {
 	return app.router.GetBinding(path, fn)
 }
 
-// HandlePost 注册 POST 方法处理函数
+// HandlePost 注册 POST 方法处理函数。
 func (app *App) HandlePost(path string, h web.Handler) *web.Mapper {
 	return app.router.HandlePost(path, h)
 }
 
-// PostMapping 注册 POST 方法处理函数
+// PostMapping 注册 POST 方法处理函数。
 func (app *App) PostMapping(path string, fn web.HandlerFunc) *web.Mapper {
 	return app.router.PostMapping(path, fn)
 }
 
-// PostBinding 注册 POST 方法处理函数
+// PostBinding 注册 POST 方法处理函数。
 func (app *App) PostBinding(path string, fn interface{}) *web.Mapper {
 	return app.router.PostBinding(path, fn)
 }
 
-// HandlePut 注册 PUT 方法处理函数
+// HandlePut 注册 PUT 方法处理函数。
 func (app *App) HandlePut(path string, h web.Handler) *web.Mapper {
 	return app.router.HandlePut(path, h)
 }
 
-// PutMapping 注册 PUT 方法处理函数
+// PutMapping 注册 PUT 方法处理函数。
 func (app *App) PutMapping(path string, fn web.HandlerFunc) *web.Mapper {
 	return app.router.PutMapping(path, fn)
 }
 
-// PutBinding 注册 PUT 方法处理函数
+// PutBinding 注册 PUT 方法处理函数。
 func (app *App) PutBinding(path string, fn interface{}) *web.Mapper {
 	return app.router.PutBinding(path, fn)
 }
 
-// HandleDelete 注册 DELETE 方法处理函数
+// HandleDelete 注册 DELETE 方法处理函数。
 func (app *App) HandleDelete(path string, h web.Handler) *web.Mapper {
 	return app.router.HandleDelete(path, h)
 }
 
-// DeleteMapping 注册 DELETE 方法处理函数
+// DeleteMapping 注册 DELETE 方法处理函数。
 func (app *App) DeleteMapping(path string, fn web.HandlerFunc) *web.Mapper {
 	return app.router.DeleteMapping(path, fn)
 }
 
-// DeleteBinding 注册 DELETE 方法处理函数
+// DeleteBinding 注册 DELETE 方法处理函数。
 func (app *App) DeleteBinding(path string, fn interface{}) *web.Mapper {
 	return app.router.DeleteBinding(path, web.BIND(fn))
 }
 
-// HandleRequest 注册任意 HTTP 方法处理函数
+// HandleRequest 注册任意 HTTP 方法处理函数。
 func (app *App) HandleRequest(method uint32, path string, h web.Handler) *web.Mapper {
 	return app.router.HandleRequest(method, path, h)
 }
 
-// RequestMapping 注册任意 HTTP 方法处理函数
+// RequestMapping 注册任意 HTTP 方法处理函数。
 func (app *App) RequestMapping(method uint32, path string, fn web.HandlerFunc) *web.Mapper {
 	return app.router.RequestMapping(method, path, fn)
 }
 
-// RequestBinding 注册任意 HTTP 方法处理函数
+// RequestBinding 注册任意 HTTP 方法处理函数。
 func (app *App) RequestBinding(method uint32, path string, fn interface{}) *web.Mapper {
 	return app.router.RequestBinding(method, path, fn)
 }

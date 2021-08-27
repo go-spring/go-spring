@@ -53,28 +53,24 @@ func validOnProperty(fn interface{}) error {
 	return nil
 }
 
-// OnProperty 当 key 对应的属性值准备好后发送一个通知。
+// OnProperty 参考 App.OnProperty 的解释。
 func (boot *bootstrap) OnProperty(key string, fn interface{}) {
 	err := validOnProperty(fn)
 	util.Panic(err).When(err != nil)
 	boot.mapOfOnProperty[key] = fn
 }
 
-// Property 设置 key 对应的属性值，如果 key 对应的属性值已经存在则 Set 方法会
-// 覆盖旧值。Set 方法除了支持 string 类型的属性值，还支持 int、uint、bool 等
-// 其他基础数据类型的属性值。特殊情况下，Set 方法也支持 slice 、map 与基础数据
-// 类型组合构成的属性值，其处理方式是将组合结构层层展开，可以将组合结构看成一棵树，
-// 那么叶子结点的路径就是属性的 key，叶子结点的值就是属性的值。
+// Property 参考 Container.Property 的解释。
 func (boot *bootstrap) Property(key string, value interface{}) {
 	boot.c.Property(key, value)
 }
 
-// Object 注册对象形式的 bean ，需要注意的是该方法在注入开始后就不能再调用了。
+// Object 参考 Container.Object 的解释。
 func (boot *bootstrap) Object(i interface{}) *BeanDefinition {
 	return boot.c.register(NewBean(reflect.ValueOf(i)))
 }
 
-// Provide 注册构造函数形式的 bean ，需要注意的是该方法在注入开始后就不能再调用了。
+// Provide 参考 Container.Provide 的解释。
 func (boot *bootstrap) Provide(ctor interface{}, args ...arg.Arg) *BeanDefinition {
 	return boot.c.register(NewBean(ctor, args...))
 }
@@ -109,10 +105,13 @@ func (boot *bootstrap) loadBootstrap(e *configuration) error {
 	if err := boot.loadConfigFile(e, "bootstrap"); err != nil {
 		return err
 	}
-	if e.activeProfile == "" {
-		return nil
+	for _, profile := range e.activeProfiles {
+		filename := "application-" + profile
+		if err := boot.loadConfigFile(e, filename); err != nil {
+			return err
+		}
 	}
-	return boot.loadConfigFile(e, "bootstrap-"+e.activeProfile)
+	return nil
 }
 
 func (boot *bootstrap) loadConfigFile(e *configuration, filename string) error {
