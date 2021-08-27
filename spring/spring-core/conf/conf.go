@@ -26,6 +26,7 @@ import (
 	"strings"
 
 	"github.com/go-spring/spring-boost/cast"
+	"github.com/go-spring/spring-boost/util"
 )
 
 // Properties 提供创建和读取属性列表的方法。它使用扁平的 map[string]string 结
@@ -220,8 +221,7 @@ func (p *Properties) Get(key string, opts ...GetOption) string {
 // 成的属性值，其处理方式是将组合结构层层展开，可以将组合结构看成一棵树，那么叶子结
 // 点的路径就是属性的 key，叶子结点的值就是属性的值。
 func (p *Properties) Set(key string, val interface{}) {
-	v := reflect.ValueOf(val)
-	switch v.Kind() {
+	switch v := reflect.ValueOf(val); v.Kind() {
 	case reflect.Map:
 		for _, k := range v.MapKeys() {
 			mapValue := v.MapIndex(k).Interface()
@@ -229,10 +229,15 @@ func (p *Properties) Set(key string, val interface{}) {
 			p.Set(key+"."+mapKey, mapValue)
 		}
 	case reflect.Array, reflect.Slice:
-		for i := 0; i < v.Len(); i++ {
-			subKey := fmt.Sprintf("%s[%d]", key, i)
-			subValue := v.Index(i).Interface()
-			p.Set(subKey, subValue)
+		if util.IsPrimitiveValueType(v.Type().Elem()) {
+			ss := cast.ToStringSlice(val)
+			p.Set(key, strings.Join(ss, ","))
+		} else {
+			for i := 0; i < v.Len(); i++ {
+				subKey := fmt.Sprintf("%s[%d]", key, i)
+				subValue := v.Index(i).Interface()
+				p.Set(subKey, subValue)
+			}
 		}
 	default:
 		p.m[key] = cast.ToString(val)

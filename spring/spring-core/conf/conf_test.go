@@ -496,7 +496,7 @@ func TestProperties_Get(t *testing.T) {
 
 		v := p.Get("a.b.c")
 		assert.Equal(t, v, "3")
-		v = p.Get("a.b.d[0]")
+		v = p.Get("a.b.d")
 		assert.Equal(t, v, "3")
 
 		p.Set("Bool", true)
@@ -990,4 +990,14 @@ func TestProperties_Has(t *testing.T) {
 	assert.True(t, p.Has("a.b.e[1]"))
 
 	assert.False(t, p.Has("a.b[0].c"))
+}
+
+func TestProperties_Set(t *testing.T) {
+	p := conf.New()
+	p.Set("a", []string{"a", "aa", "aaa"})
+	p.Set("b", []int{1, 11, 111})
+	p.Set("c", []float32{1, 1.1, 1.11})
+	assert.Equal(t, p.Get("a"), "a,aa,aaa")
+	assert.Equal(t, p.Get("b"), "1,11,111")
+	assert.Equal(t, p.Get("c"), "1,1.1,1.11")
 }

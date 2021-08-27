@@ -132,28 +132,66 @@ func BindValue(p *Properties, v reflect.Value, param BindParam) error {
 	return fmt.Errorf("unsupported bind type %q", param.Type.String())
 }
 
+func getSliceValue(p *Properties, et reflect.Type, param BindParam) (*Properties, error) {
+
+	strVal := ""
+	wantDef := false
+	primitive := util.IsPrimitiveValueType(et)
+
+	if primitive {
+		if !p.Has(param.Key) {
+			wantDef = true
+		} else {
+			strVal = p.Get(param.Key)
+		}
+	} else {
+		if !p.Has(fmt.Sprintf("%s[%d]", param.Key, 0)) {
+			wantDef = true
+		} else {
+			return p, nil
+		}
+	}
+
+	if wantDef {
+		if !param.hasDef {
+			return nil, ErrNotExist
+		}
+		if param.def == "" {
+			return nil, nil
+		}
+		if !primitive {
+			return nil, fmt.Errorf("%s array 类型不能为简单类型指定非空默认值", param.Path)
+		}
+		strVal = param.def
+	}
+
+	if strVal == "" {
+		return nil, nil
+	}
+
+	p = New()
+	for i, s := range strings.Split(strVal, ",") {
+		k := fmt.Sprintf("%s[%d]", param.Key, i)
+		p.Set(k, s)
+	}
+	return p, nil
+}
+
 func bindArray(p *Properties, v reflect.Value, param BindParam) error {
 
-	if param.hasDef {
-		if param.def == "" {
-			return nil
-		}
-		return fmt.Errorf("%s array 类型不能指定非空默认值", param.Path)
+	et := param.Type.Elem()
+	p, err := getSliceValue(p, et, param)
+	if p == nil || err != nil {
+		return err
 	}
 
 	for i := 0; i < v.Len(); i++ {
-
-		subValue := v.Index(i)
-		subKey := fmt.Sprintf("%s[%d]", param.Key, i)
-		subPath := fmt.Sprintf("%s[%d]", param.Path, i)
-
 		subParam := BindParam{
-			Type: subValue.Type(),
-			Key:  subKey,
-			Path: subPath,
+			Type: et,
+			Key:  fmt.Sprintf("%s[%d]", param.Key, i),
+			Path: fmt.Sprintf("%s[%d]", param.Path, i),
 		}
-
-		err := BindValue(p, subValue, subParam)
+		err = BindValue(p, v.Index(i), subParam)
 		if errors.Is(err, ErrNotExist) {
 			break
 		}
@@ -166,34 +204,29 @@ func bindArray(p *Properties, v reflect.Value, param BindParam) error {
 
 func bindSlice(p *Properties, v reflect.Value, param BindParam) error {
 
-	if param.hasDef {
-		if param.def == "" {
-			return nil
-		}
-		return fmt.Errorf("%s slice 类型不能指定非空默认值", param.Path)
+	et := param.Type.Elem()
+	p, err := getSliceValue(p, et, param)
+	if p == nil || err != nil {
+		return err
 	}
 
-	et := param.Type.Elem()
 	slice := reflect.MakeSlice(param.Type, 0, 0)
-
 	for i := 0; ; i++ {
-
-		subKey := fmt.Sprintf("%s[%d]", param.Key, i)
-		subPath := fmt.Sprintf("%s[%d]", param.Path, i)
-		subParam := BindParam{Type: et, Key: subKey, Path: subPath}
-
+		subParam := BindParam{
+			Type: et,
+			Key:  fmt.Sprintf("%s[%d]", param.Key, i),
+			Path: fmt.Sprintf("%s[%d]", param.Path, i),
+		}
 		e := reflect.New(et).Elem()
-		err := BindValue(p, e, subParam)
+		err = BindValue(p, e, subParam)
 		if errors.Is(err, ErrNotExist) {
 			break
 		}
 		if err != nil {
 			return err
 		}
-
 		slice = reflect.Append(slice, e)
 	}
-
 	v.Set(slice)
 	return nil
 }
