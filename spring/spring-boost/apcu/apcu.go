@@ -18,93 +18,64 @@
 package apcu
 
 import (
-	"fmt"
-	"reflect"
-	"sync"
+	"context"
 	"time"
 
-	"github.com/go-spring/spring-boost/json"
+	"github.com/go-spring/spring-boost/apcu/internal"
 )
 
-var cache sync.Map
-
-type cacheItem struct {
-	source   interface{}
-	expireAt time.Time
+type APCU interface {
+	Load(ctx context.Context, key string, out interface{}) (ok bool, err error)
+	Store(key string, val interface{}, opts ...internal.StoreOption)
+	Range(f func(key, value interface{}) bool)
+	Delete(key string)
 }
 
-// OnLoad Load 成功获取到 key 对应的缓存值时发一个通知出来。
-var OnLoad func(key string, val interface{})
+var gCache APCU = internal.New()
 
-// Load 获取 key 对应的缓存值，支持存入 string 但是按照 json 反序列化后的对象取出。
-func Load(key string, out interface{}) (ok bool, err error) {
+// OnLoadRecord Load 函数在录制时的 hook 函数。
+var OnLoadRecord func(ctx context.Context, key string, val interface{})
 
-	v, ok := cache.Load(key)
-	if !ok {
-		return false, nil
+// OnLoadReplay Load 函数在回放时的 hook 函数。
+var OnLoadReplay func(ctx context.Context, key string, out interface{}) (ok bool, err error)
+
+// Load 获取 key 对应的缓存值，注意 out 的类型必须和 Store 的时候存入的类
+// 型一致，否则 Load 会失败。但是如果 Store 的时候存入的内容是一个字符串，
+// 那么 out 可以是该字符串 JSON 反序列化之后的类型。
+func Load(ctx context.Context, key string, out interface{}) (ok bool, err error) {
+	if OnLoadReplay != nil {
+		return OnLoadReplay(ctx, key, out)
 	}
-
-	item := v.(*cacheItem)
-	if !item.expireAt.IsZero() && time.Now().After(item.expireAt) {
-		return false, nil
+	ok, err = gCache.Load(ctx, key, out)
+	if ok && OnLoadRecord != nil {
+		OnLoadRecord(ctx, key, out)
 	}
+	return ok, err
+}
 
-	outVal := reflect.ValueOf(out)
-	if outVal.Kind() != reflect.Ptr || outVal.IsNil() {
-		return false, &json.InvalidUnmarshalError{Type: outVal.Type()}
+// TTL 设置 key 的过期时间。
+func TTL(ttl time.Duration) internal.StoreOption {
+	return func(arg *internal.StoreArg) {
+		arg.TTL = ttl
 	}
+}
 
-	defer func() {
-		if ok && OnLoad != nil {
-			OnLoad(key, outVal.Interface())
-		}
-	}()
+// Store 保存 key 及其对应的 val，支持对 key 设置 ttl (过期时间)。另外，
+// 这里的 val 可以是任何值，因此要求 Load 的时候必须保证返回值和这里的 val
+// 是相同类型的，否则 Load 会失败。
+// 但是这里有一个例外情况，考虑到很多场景下，用户需要缓存一个由字符串反序列
+// 化后的对象，所以该库提供了一个功能，就是用户可以 Store 一个字符串，然后
+// Load 的时候按照指定类型返回。
+func Store(key string, val interface{}, opts ...internal.StoreOption) {
+	gCache.Store(key, val, opts...)
+}
 
-	if srcVal, ok := item.source.(reflect.Value); ok {
-		if outVal.Type().Elem() == srcVal.Type() {
-			outVal.Elem().Set(srcVal)
-			return true, nil
-		}
-	}
-
-	if str, ok := item.source.(string); ok {
-		if err = json.Unmarshal([]byte(str), out); err != nil {
-			return false, err
-		}
-		item.source = outVal.Elem()
-		return true, nil
-	}
-
-	return false, fmt.Errorf("type not match %s", outVal.Type())
+// Range 遍历缓存的内容。
+func Range(f func(key, value interface{}) bool) {
+	gCache.Range(f)
 }
 
 // Delete 删除 key 对应的缓存内容。
 func Delete(key string) {
-	cache.Delete(key)
-}
-
-type StoreArg struct {
-	ttl time.Duration
-}
-
-type StoreOption func(arg *StoreArg)
-
-// TTL 过期时间
-func TTL(ttl time.Duration) StoreOption {
-	return func(arg *StoreArg) {
-		arg.ttl = ttl
-	}
-}
-
-// Store 保存 key 及其对应的 val，支持对 key 设置 ttl 即过期时间。
-func Store(key string, val interface{}, opts ...StoreOption) {
-	arg := StoreArg{}
-	for _, opt := range opts {
-		opt(&arg)
-	}
-	expireAt := time.Time{}
-	if arg.ttl > 0 {
-		expireAt = time.Now().Add(arg.ttl)
-	}
-	cache.Store(key, &cacheItem{source: val, expireAt: expireAt})
+	gCache.Delete(key)
 }

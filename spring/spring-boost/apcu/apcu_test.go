@@ -17,6 +17,7 @@
 package apcu_test
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -35,12 +36,12 @@ func TestAPCU(t *testing.T) {
 		apcu.Store("success", `{"errno":200,"errmsg":"OK"}`)
 
 		var resp *Resp
-		load, err := apcu.Load("success", &resp)
+		load, err := apcu.Load(context.TODO(), "success", &resp)
 		assert.Nil(t, err)
 		assert.True(t, load)
 		assert.Equal(t, resp, &Resp{200, "OK"})
 
-		load, err = apcu.Load("success", &resp)
+		load, err = apcu.Load(context.TODO(), "success", &resp)
 		assert.Nil(t, err)
 		assert.True(t, load)
 		assert.Equal(t, resp, &Resp{200, "OK"})
@@ -52,14 +53,14 @@ func TestAPCU(t *testing.T) {
 		apcu.Store("success", `{"errno":200,"errmsg":"OK"}`)
 
 		var resp map[string]interface{}
-		load, err := apcu.Load("success", &resp)
+		load, err := apcu.Load(context.TODO(), "success", &resp)
 		assert.Nil(t, err)
 		assert.True(t, load)
 		assert.Equal(t, resp, map[string]interface{}{
 			"errno": json.Number("200"), "errmsg": "OK",
 		})
 
-		load, err = apcu.Load("success", &resp)
+		load, err = apcu.Load(context.TODO(), "success", &resp)
 		assert.Nil(t, err)
 		assert.True(t, load)
 		assert.Equal(t, resp, map[string]interface{}{
