@@ -22,7 +22,11 @@ import (
 	"time"
 
 	"github.com/go-spring/spring-boost/apcu/internal"
+	"github.com/go-spring/spring-boost/recorder"
+	"github.com/go-spring/spring-boost/replayer"
 )
+
+const Protocol = "apcu"
 
 type APCU interface {
 	Load(ctx context.Context, key string, out interface{}) (ok bool, err error)
@@ -31,26 +35,34 @@ type APCU interface {
 	Delete(key string)
 }
 
-var gCache APCU = internal.New()
-
-// OnLoadRecord Load 函数在录制时的 hook 函数。
-var OnLoadRecord func(ctx context.Context, key string, val interface{})
-
-// OnLoadReplay Load 函数在回放时的 hook 函数。
-var OnLoadReplay func(ctx context.Context, key string, out interface{}) (ok bool, err error)
+var cache APCU = internal.New()
 
 // Load 获取 key 对应的缓存值，注意 out 的类型必须和 Store 的时候存入的类
 // 型一致，否则 Load 会失败。但是如果 Store 的时候存入的内容是一个字符串，
 // 那么 out 可以是该字符串 JSON 反序列化之后的类型。
 func Load(ctx context.Context, key string, out interface{}) (ok bool, err error) {
-	if OnLoadReplay != nil {
-		return OnLoadReplay(ctx, key, out)
+
+	if replayer.ReplayMode() {
+		return replayer.Replay(ctx, &recorder.Action{
+			Protocol: Protocol,
+			Key:      key,
+			Output:   out,
+		})
 	}
-	ok, err = gCache.Load(ctx, key, out)
-	if ok && OnLoadRecord != nil {
-		OnLoadRecord(ctx, key, out)
-	}
-	return ok, err
+
+	defer func() {
+		if ok {
+			recorder.Record(ctx, func() *recorder.Action {
+				return &recorder.Action{
+					Protocol: Protocol,
+					Key:      key,
+					Output:   out,
+				}
+			})
+		}
+	}()
+
+	return cache.Load(ctx, key, out)
 }
 
 // TTL 设置 key 的过期时间。
@@ -67,15 +79,15 @@ func TTL(ttl time.Duration) internal.StoreOption {
 // 化后的对象，所以该库提供了一个功能，就是用户可以 Store 一个字符串，然后
 // Load 的时候按照指定类型返回。
 func Store(key string, val interface{}, opts ...internal.StoreOption) {
-	gCache.Store(key, val, opts...)
+	cache.Store(key, val, opts...)
 }
 
 // Range 遍历缓存的内容。
 func Range(f func(key, value interface{}) bool) {
-	gCache.Range(f)
+	cache.Range(f)
 }
 
 // Delete 删除 key 对应的缓存内容。
 func Delete(key string) {
-	gCache.Delete(key)
+	cache.Delete(key)
 }

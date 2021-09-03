@@ -1,3 +1,5 @@
+// +build gs_replayer
+
 /*
  * Copyright 2012-2019 the original author or authors.
  *
@@ -14,16 +16,20 @@
  * limitations under the License.
  */
 
-//gs:build gs_replayer
-
-package apcu
+package replayer
 
 import (
 	"context"
+
+	"github.com/go-spring/spring-boost/recorder"
 )
 
-func init() {
-	OnLoadReplay = func(ctx context.Context, key string, out interface{}) (ok bool, err error) {
-		return gCache.Load(ctx, key, out)
-	}
+// ReplayMode 返回是否是回放模式。
+func ReplayMode() bool {
+	return true
+}
+
+// Replay 根据 action 传入的匹配信息返回对应的数据。
+func Replay(ctx context.Context, action *recorder.Action) (ok bool, err error) {
+	return false, nil
 }

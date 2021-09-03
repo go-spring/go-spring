@@ -1,3 +1,5 @@
+// +build gs_recorder
+
 /*
  * Copyright 2012-2019 the original author or authors.
  *
@@ -14,18 +16,13 @@
  * limitations under the License.
  */
 
-// Package recorder 流量录制。
 package recorder
 
-type Input struct {
-	Param   map[string][]string `json:"param"`
-	Header  map[string][]string `json:"header"`
-	Content interface{}         `json:"content"`
-}
+import (
+	"context"
+)
 
-type Action struct {
-	Protocol string      `json:"protocol"`
-	Key      string      `json:"key"`
-	Input    Input       `json:"input"`
-	Output   interface{} `json:"output"`
+// Record 流量录制。
+func Record(ctx context.Context, f func() *Action) {
+
 }

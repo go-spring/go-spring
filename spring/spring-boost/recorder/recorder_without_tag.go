@@ -1,3 +1,5 @@
+// +build !gs_recorder
+
 /*
  * Copyright 2012-2019 the original author or authors.
  *
@@ -14,16 +16,13 @@
  * limitations under the License.
  */
 
-//go:build gs_recorder
-
-package apcu
+package recorder
 
 import (
 	"context"
 )
 
-func init() {
-	OnLoadRecord = func(ctx context.Context, key string, val interface{}) {
+// Record 流量录制。
+func Record(ctx context.Context, f func() *Action) {
 
-	}
 }

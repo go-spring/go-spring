@@ -1,3 +1,5 @@
+// +build !gs_replayer
+
 /*
  * Copyright 2012-2019 the original author or authors.
  *
@@ -14,18 +16,21 @@
  * limitations under the License.
  */
 
-// Package recorder 流量录制。
-package recorder
+package replayer
 
-type Input struct {
-	Param   map[string][]string `json:"param"`
-	Header  map[string][]string `json:"header"`
-	Content interface{}         `json:"content"`
+import (
+	"context"
+
+	"github.com/go-spring/spring-boost/recorder"
+	"github.com/go-spring/spring-boost/util"
+)
+
+// ReplayMode 返回是否是回放模式。
+func ReplayMode() bool {
+	return false
 }
 
-type Action struct {
-	Protocol string      `json:"protocol"`
-	Key      string      `json:"key"`
-	Input    Input       `json:"input"`
-	Output   interface{} `json:"output"`
+// Replay 根据 action 传入的匹配信息返回对应的数据。
+func Replay(ctx context.Context, action *recorder.Action) (ok bool, err error) {
+	panic(util.UnsupportedMethod)
 }
