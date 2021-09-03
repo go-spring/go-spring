@@ -18,6 +18,7 @@ package gs
 
 import (
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -169,4 +170,16 @@ func (e *configuration) prepare() error {
 
 func (e *configuration) Properties() Properties {
 	return e.p
+}
+
+func (e *configuration) LoadResources(filename string) ([]*os.File, error) {
+	var files []*os.File
+	for _, location := range e.configLocations {
+		file, err := os.Open(filepath.Join(location, filename))
+		if err != nil && !os.IsNotExist(err) {
+			return nil, err
+		}
+		files = append(files, file)
+	}
+	return files, nil
 }

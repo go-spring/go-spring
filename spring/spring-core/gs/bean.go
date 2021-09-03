@@ -70,15 +70,15 @@ type BeanDefinition struct {
 	file string // 注册点所在文件
 	line int    // 注册点所在行数
 
-	name      string                    // 名称
-	status    beanStatus                // 状态
-	cond      cond.Condition            // 判断条件
-	primary   bool                      // 是否为主版本
-	order     int                       // 收集时的顺序
-	init      interface{}               // 初始化函数
-	destroy   interface{}               // 销毁函数
-	dependsOn []BeanSelector            // 间接依赖项
-	exports   map[reflect.Type]struct{} // 导出的接口
+	name    string         // 名称
+	status  beanStatus     // 状态
+	primary bool           // 是否为主版本
+	cond    cond.Condition // 判断条件
+	order   int            // 收集时的顺序
+	init    interface{}    // 初始化函数
+	destroy interface{}    // 销毁函数
+	depends []BeanSelector // 间接依赖项
+	exports []reflect.Type // 导出的接口
 }
 
 // Type 返回 bean 的类型。
@@ -174,7 +174,7 @@ func (d *BeanDefinition) Order(order int) *BeanDefinition {
 
 // DependsOn 设置 bean 的间接依赖项。
 func (d *BeanDefinition) DependsOn(selectors ...BeanSelector) *BeanDefinition {
-	d.dependsOn = append(d.dependsOn, selectors...)
+	d.depends = append(d.depends, selectors...)
 	return d
 }
 
@@ -232,7 +232,7 @@ func (d *BeanDefinition) export(exports ...interface{}) error {
 		if typ.Kind() != reflect.Interface {
 			return errors.New("only interface type can be exported")
 		}
-		d.exports[typ] = struct{}{}
+		d.exports = append(d.exports, typ)
 	}
 	return nil
 }
@@ -305,6 +305,5 @@ func NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 		order:    LowestOrder,
 		file:     file,
 		line:     line,
-		exports:  make(map[reflect.Type]struct{}),
 	}
 }

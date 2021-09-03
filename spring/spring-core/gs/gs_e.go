@@ -29,6 +29,11 @@ import (
 
 type Properties = internal.Properties
 
+type FileProperties struct {
+	Properties
+	File string
+}
+
 type BeanRegistry interface {
 	Get(i interface{}, selectors ...BeanSelector) error
 	Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error)

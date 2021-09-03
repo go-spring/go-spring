@@ -60,6 +60,11 @@ func Bootstrap() *bootstrap {
 	return app().Bootstrap()
 }
 
+// PropertySource 参考 app.PropertySource 的解释。
+func PropertySource(file string, prefix string, object interface{}) {
+	app().PropertySource(file, prefix, object)
+}
+
 // OnProperty 参考 App.OnProperty 的解释。
 func OnProperty(key string, fn interface{}) {
 	app().OnProperty(key, fn)

@@ -23,7 +23,6 @@ import (
 	"os"
 	"os/signal"
 	"path"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"syscall"
@@ -73,8 +72,9 @@ type App struct {
 	Events  []AppEvent  `autowire:""`
 	Runners []AppRunner `autowire:""`
 
-	// 属性列表解析完成后的回调
-	mapOfOnProperty map[string]interface{}
+	mapOfOnProperty map[string]interface{} // 属性列表解析完成后的回调
+	propertySources []*propertySource
+	sourceLocators  []PropertySourceLocator
 }
 
 type Consumers struct {
@@ -99,6 +99,7 @@ func NewApp() *App {
 		exitChan:        make(chan struct{}),
 		router:          web.NewRouter(),
 		consumers:       new(Consumers),
+		sourceLocators:  []PropertySourceLocator{&filePropertySourceLocator{}},
 	}
 }
 
@@ -145,13 +146,31 @@ func (app *App) start() error {
 		return err
 	}
 
+	for _, ps := range app.propertySources {
+		files, err := e.LoadResources(ps.file)
+		if err != nil {
+			return err
+		}
+		p := conf.New()
+		for _, file := range files {
+			if err = p.Load(file.Name()); err != nil {
+				return err
+			}
+		}
+		err = p.Bind(ps.object, conf.Key(ps.prefix))
+		if err != nil {
+			return err
+		}
+		app.Object(ps)
+	}
+
 	showBanner := cast.ToBool(e.p.Get(SpringBannerVisible))
 	if showBanner {
 		app.printBanner(app.getBanner(e.configLocations))
 	}
 
 	if app.b != nil {
-		if err := app.bootstrap(e); err != nil {
+		if err := app.b.start(e); err != nil {
 			return err
 		}
 	}
@@ -200,35 +219,6 @@ func (app *App) start() error {
 	})
 
 	log.Info("application started successfully")
-	return nil
-}
-
-func (app *App) bootstrap(e *configuration) error {
-
-	if err := app.b.start(e); err != nil {
-		return err
-	}
-
-	sourceMap, err := app.b.sourceMap(e)
-	if err != nil {
-		return err
-	}
-
-	// 保存远程 default 配置。
-	for _, p := range sourceMap[""] {
-		for _, k := range p.Keys() {
-			app.c.p.Set(k, p.Get(k))
-		}
-	}
-
-	// 保存远程 active 配置。
-	for _, profile := range e.activeProfiles {
-		for _, p := range sourceMap[profile] {
-			for _, k := range p.Keys() {
-				app.c.p.Set(k, p.Get(k))
-			}
-		}
-	}
 	return nil
 }
 
@@ -286,27 +276,42 @@ func (app *App) printBanner(banner string) {
 }
 
 func (app *App) profile(e *configuration) error {
-	if err := app.loadConfigFile(e, "application"); err != nil {
-		return err
-	}
-	for _, profile := range e.activeProfiles {
-		filename := "application-" + profile
-		if err := app.loadConfigFile(e, filename); err != nil {
+	var all []Properties
+
+	for _, locator := range app.sourceLocators {
+		if err := e.p.Bind(locator); err != nil {
 			return err
 		}
 	}
-	return nil
-}
 
-func (app *App) loadConfigFile(e *configuration, filename string) error {
-	for _, loc := range e.configLocations {
+	for _, locator := range app.sourceLocators {
 		for _, ext := range e.configExtensions {
-			err := app.c.p.Load(filepath.Join(loc, filename+ext))
-			if err != nil && !os.IsNotExist(err) {
+			sources, err := locator.Load("application" + ext)
+			if err != nil {
 				return err
+			}
+			all = append(all, sources...)
+		}
+	}
+
+	for _, profile := range e.activeProfiles {
+		for _, locator := range app.sourceLocators {
+			for _, ext := range e.configExtensions {
+				sources, err := locator.Load("application-" + profile + ext)
+				if err != nil {
+					return err
+				}
+				all = append(all, sources...)
 			}
 		}
 	}
+
+	for _, p := range all {
+		for _, key := range p.Keys() {
+			app.c.p.Set(key, p.Get(key))
+		}
+	}
+
 	return nil
 }
 
@@ -330,6 +335,15 @@ func (app *App) Bootstrap() *bootstrap {
 		}
 	}
 	return app.b
+}
+
+func (app *App) PropertySourceLocator(locator PropertySourceLocator) {
+	app.sourceLocators = append(app.sourceLocators, locator)
+}
+
+func (app *App) PropertySource(file string, prefix string, object interface{}) {
+	ps := &propertySource{file: file, prefix: prefix, object: object}
+	app.propertySources = append(app.propertySources, ps)
 }
 
 // OnProperty 当 key 对应的属性值准备好后发送一个通知。

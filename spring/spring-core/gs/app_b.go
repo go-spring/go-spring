@@ -27,10 +27,6 @@ import (
 	"github.com/go-spring/spring-core/gs/arg"
 )
 
-type PropertySource interface {
-	Load(c Configuration) (map[string]Properties, error)
-}
-
 type bootstrap struct {
 
 	// 应用上下文
@@ -38,8 +34,6 @@ type bootstrap struct {
 
 	// 属性列表解析完成后的回调
 	mapOfOnProperty map[string]interface{}
-
-	PropertySources []PropertySource `autowire:""`
 }
 
 func validOnProperty(fn interface{}) error {
@@ -124,18 +118,4 @@ func (boot *bootstrap) loadConfigFile(e *configuration, filename string) error {
 		}
 	}
 	return nil
-}
-
-func (boot *bootstrap) sourceMap(e *configuration) (map[string][]Properties, error) {
-	sourceMap := make(map[string][]Properties)
-	for _, ps := range boot.PropertySources {
-		m, err := ps.Load(e)
-		if err != nil {
-			return nil, err
-		}
-		for k, p := range m {
-			sourceMap[k] = append(sourceMap[k], p)
-		}
-	}
-	return sourceMap, nil
 }

@@ -338,7 +338,7 @@ func (c *Container) resolveBean(b *BeanDefinition) error {
 	c.beansByName[b.name] = append(c.beansByName[b.name], b)
 	c.beansByType[b.Type()] = append(c.beansByType[b.Type()], b)
 
-	for t := range b.exports {
+	for _, t := range b.exports {
 		log.Debugf("register %s name:%q type:%q %s", b.getClass(), b.BeanName(), t, b.FileLine())
 		c.beansByType[t] = append(c.beansByType[t], b)
 	}
@@ -447,8 +447,12 @@ func (c *Container) findBean(selector BeanSelector) ([]*BeanDefinition, error) {
 		if t.Kind() != reflect.Interface {
 			return true
 		}
-		_, ok := b.exports[t]
-		return ok
+		for _, typ := range b.exports {
+			if typ == t {
+				return true
+			}
+		}
+		return false
 	})
 }
 
@@ -498,7 +502,7 @@ func (c *Container) wireBean(b *BeanDefinition, stack *wiringStack) error {
 	b.status = Creating
 
 	// 对当前 bean 的间接依赖项进行注入。
-	for _, s := range b.dependsOn {
+	for _, s := range b.depends {
 		beans, err := c.findBean(s)
 		if err != nil {
 			return err
@@ -519,7 +523,7 @@ func (c *Container) wireBean(b *BeanDefinition, stack *wiringStack) error {
 	b.status = Created
 
 	t := v.Type()
-	for typ := range b.exports {
+	for _, typ := range b.exports {
 		if !t.Implements(typ) {
 			return fmt.Errorf("%s doesn't implement interface %s", b, typ)
 		}

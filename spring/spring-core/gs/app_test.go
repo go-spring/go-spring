@@ -34,6 +34,8 @@ func startApplication(cfgLocation string) (*gs.App, gs.Environment) {
 	gs.Setenv("GS_SPRING_BANNER_VISIBLE", "true")
 	gs.Setenv("GS_SPRING_CONFIG_LOCATIONS", cfgLocation)
 
+	//app.PropertySource()
+
 	var p gs.Environment
 	type PandoraAware struct{}
 	app.Provide(func(b gs.Environment) PandoraAware {
