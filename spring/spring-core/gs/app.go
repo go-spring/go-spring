@@ -74,7 +74,6 @@ type App struct {
 
 	mapOfOnProperty map[string]interface{} // 属性列表解析完成后的回调
 	propertySources []*propertySource
-	sourceLocators  []PropertySourceLocator
 }
 
 type Consumers struct {
@@ -94,12 +93,16 @@ func (c *Consumers) ForEach(fn func(mq.Consumer)) {
 // NewApp application 的构造函数
 func NewApp() *App {
 	return &App{
+		b: &bootstrap{
+			c:                New(),
+			mapOfOnProperty:  make(map[string]interface{}),
+			resourceLocators: []ResourceLocator{},
+		},
 		c:               New(),
 		mapOfOnProperty: make(map[string]interface{}),
 		exitChan:        make(chan struct{}),
 		router:          web.NewRouter(),
 		consumers:       new(Consumers),
-		sourceLocators:  []PropertySourceLocator{&filePropertySourceLocator{}},
 	}
 }
 
@@ -137,6 +140,10 @@ func (app *App) Run() error {
 
 func (app *App) start() error {
 
+	app.b.Object(new(defaultResourceLocator)).
+		Export((*ResourceLocator)(nil)).
+		Order(HighestOrder)
+
 	app.Object(app)
 	app.Object(app.router)
 	app.Object(app.consumers)
@@ -147,7 +154,7 @@ func (app *App) start() error {
 	}
 
 	for _, ps := range app.propertySources {
-		files, err := e.LoadResources(ps.file)
+		files, err := app.b.LoadResources(ps.file)
 		if err != nil {
 			return err
 		}
@@ -161,7 +168,7 @@ func (app *App) start() error {
 		if err != nil {
 			return err
 		}
-		app.Object(ps)
+		app.Object(ps.object)
 	}
 
 	showBanner := cast.ToBool(e.p.Get(SpringBannerVisible))
@@ -169,10 +176,8 @@ func (app *App) start() error {
 		app.printBanner(app.getBanner(e.configLocations))
 	}
 
-	if app.b != nil {
-		if err := app.b.start(e); err != nil {
-			return err
-		}
+	if err := app.b.start(e); err != nil {
+		return err
 	}
 
 	if err := app.profile(e); err != nil {
@@ -276,37 +281,35 @@ func (app *App) printBanner(banner string) {
 }
 
 func (app *App) profile(e *configuration) error {
-	var all []Properties
+	var files []*os.File
 
-	for _, locator := range app.sourceLocators {
-		if err := e.p.Bind(locator); err != nil {
-			return err
-		}
-	}
-
-	for _, locator := range app.sourceLocators {
+	for _, locator := range app.b.resourceLocators {
 		for _, ext := range e.configExtensions {
-			sources, err := locator.Load("application" + ext)
+			sources, err := locator.Locate("application" + ext)
 			if err != nil {
 				return err
 			}
-			all = append(all, sources...)
+			files = append(files, sources...)
 		}
 	}
 
 	for _, profile := range e.activeProfiles {
-		for _, locator := range app.sourceLocators {
+		for _, locator := range app.b.resourceLocators {
 			for _, ext := range e.configExtensions {
-				sources, err := locator.Load("application-" + profile + ext)
+				sources, err := locator.Locate("application-" + profile + ext)
 				if err != nil {
 					return err
 				}
-				all = append(all, sources...)
+				files = append(files, sources...)
 			}
 		}
 	}
 
-	for _, p := range all {
+	for _, file := range files {
+		p, err := conf.Load(file.Name())
+		if err != nil {
+			return err
+		}
 		for _, key := range p.Keys() {
 			app.c.p.Set(key, p.Get(key))
 		}
@@ -328,17 +331,7 @@ func (app *App) ShutDown(err error) {
 
 // Bootstrap 返回 *bootstrap 对象。
 func (app *App) Bootstrap() *bootstrap {
-	if app.b == nil {
-		app.b = &bootstrap{
-			c:               New(),
-			mapOfOnProperty: make(map[string]interface{}),
-		}
-	}
 	return app.b
-}
-
-func (app *App) PropertySourceLocator(locator PropertySourceLocator) {
-	app.sourceLocators = append(app.sourceLocators, locator)
 }
 
 func (app *App) PropertySource(file string, prefix string, object interface{}) {

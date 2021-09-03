@@ -33,7 +33,8 @@ type bootstrap struct {
 	c *Container
 
 	// 属性列表解析完成后的回调
-	mapOfOnProperty map[string]interface{}
+	mapOfOnProperty  map[string]interface{}
+	resourceLocators []ResourceLocator `autowire:""`
 }
 
 func validOnProperty(fn interface{}) error {
@@ -118,4 +119,16 @@ func (boot *bootstrap) loadConfigFile(e *configuration, filename string) error {
 		}
 	}
 	return nil
+}
+
+func (boot *bootstrap) LoadResources(filename string) ([]*os.File, error) {
+	var files []*os.File
+	for _, locator := range boot.resourceLocators {
+		sources, err := locator.Locate(filename)
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, sources...)
+	}
+	return files, nil
 }

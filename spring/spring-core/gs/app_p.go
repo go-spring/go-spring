@@ -19,8 +19,6 @@ package gs
 import (
 	"os"
 	"path/filepath"
-
-	"github.com/go-spring/spring-core/conf"
 )
 
 type propertySource struct {
@@ -29,26 +27,26 @@ type propertySource struct {
 	object interface{}
 }
 
-type PropertySourceLocator interface {
-	Load(filename string) ([]Properties, error)
+type ResourceLocator interface {
+	Locate(filename string) ([]*os.File, error)
 }
 
-type filePropertySourceLocator struct {
+type defaultResourceLocator struct {
 	configLocations []string `value:"${spring.config.locations:=config/}"`
 }
 
-func (ps *filePropertySourceLocator) Load(filename string) ([]Properties, error) {
-	var arr []Properties
+func (ps *defaultResourceLocator) Locate(filename string) ([]*os.File, error) {
+	var files []*os.File
 	for _, location := range ps.configLocations {
 		fileLocation := filepath.Join(location, filename)
-		p, err := conf.Load(fileLocation)
+		file, err := os.Open(fileLocation)
+		if os.IsNotExist(err) {
+			continue
+		}
 		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
 			return nil, err
 		}
-		arr = append(arr, &FileProperties{p, fileLocation})
+		files = append(files, file)
 	}
-	return arr, nil
+	return files, nil
 }
