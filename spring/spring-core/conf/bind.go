@@ -74,7 +74,7 @@ func BindValue(p *Properties, v reflect.Value, param BindParam) error {
 		return bindSlice(p, v, param)
 	}
 
-	fn, _ := converters[param.Type]
+	fn := converters[param.Type]
 	if v.Kind() == reflect.Struct {
 		if fn == nil {
 			return bindStruct(p, v, param)

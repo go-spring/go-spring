@@ -83,6 +83,10 @@ func TestDefault(t *testing.T) {
 	log.Recovery(errors.New("panic:3"))
 }
 
+type traceIDKeyType int
+
+var traceIDKey traceIDKeyType
+
 func myOutput(skip int, level log.Level, e *log.Entry) {
 
 	msg := e.GetMsg()
@@ -95,7 +99,7 @@ func myOutput(skip int, level log.Level, e *log.Entry) {
 		if ctx == nil {
 			return ""
 		}
-		v := ctx.Value("trace_id")
+		v := ctx.Value(traceIDKey)
 		if v == nil {
 			return ""
 		}
@@ -108,7 +112,7 @@ func myOutput(skip int, level log.Level, e *log.Entry) {
 }
 
 func TestEntry(t *testing.T) {
-	ctx := context.WithValue(context.TODO(), "trace_id", "0689")
+	ctx := context.WithValue(context.TODO(), traceIDKey, "0689")
 
 	log.SetLevel(log.TraceLevel)
 	log.SetOutput(myOutput)

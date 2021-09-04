@@ -28,7 +28,7 @@ import (
 type bootstrap struct {
 
 	// 应用上下文
-	c *Container
+	c *container
 
 	// 属性列表解析完成后的回调
 	mapOfOnProperty  map[string]interface{}
@@ -37,7 +37,7 @@ type bootstrap struct {
 
 func newBootstrap() *bootstrap {
 	return &bootstrap{
-		c:               New(),
+		c:               New().(*container),
 		mapOfOnProperty: make(map[string]interface{}),
 	}
 }

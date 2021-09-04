@@ -55,25 +55,30 @@ type Environment interface {
 	Go(fn func(ctx context.Context))
 }
 
-type environment struct{ c *Container }
-
-func (p *environment) Properties() Properties {
-	return p.c.p
+func (c *container) Properties() Properties {
+	return c.p
 }
 
-func (p *environment) BeanRegistry() BeanRegistry {
-	return p
+func (c *container) BeanRegistry() BeanRegistry {
+	return c
 }
 
 // Context 返回 IoC 容器的 ctx 对象。
-func (p *environment) Context() context.Context {
-	return p.c.ctx
+func (c *container) Context() context.Context {
+	return c.ctx
 }
 
 // Go 创建安全可等待的 goroutine，fn 要求的 ctx 对象由 IoC 容器提供，当 IoC 容
 // 器关闭时 ctx会 发出 Done 信号， fn 在接收到此信号后应当立即退出。
-func (p *environment) Go(fn func(ctx context.Context)) {
-	p.c.safeGo(fn)
+func (c *container) Go(fn func(ctx context.Context)) {
+	c.wg.Add(1)
+	go func() {
+		defer func() {
+			c.wg.Done()
+			log.Recovery(recover())
+		}()
+		fn(c.ctx)
+	}()
 }
 
 // Get 根据类型和选择器获取符合条件的 bean 对象。当 i 是一个基础类型的 bean 接收
@@ -85,7 +90,7 @@ func (p *environment) Go(fn func(ctx context.Context)) {
 // 工作模式称为自动模式，否则根据传入的选择器列表进行排序，这种工作模式成为指派模式。
 // 该方法和 Find 方法的区别是该方法保证返回的所有 bean 对象都已经完成属性绑定和依
 // 赖注入，而 Find 方法只能保证返回的 bean 对象是有效的，即未被标记为删除的。
-func (p *environment) Get(i interface{}, selectors ...BeanSelector) error {
+func (c *container) Get(i interface{}, selectors ...BeanSelector) error {
 
 	if i == nil {
 		return errors.New("i can't be nil")
@@ -108,13 +113,13 @@ func (p *environment) Get(i interface{}, selectors ...BeanSelector) error {
 	for _, s := range selectors {
 		tags = append(tags, toWireTag(s))
 	}
-	return p.c.autowire(v.Elem(), tags, stack)
+	return c.autowire(v.Elem(), tags, stack)
 }
 
 // Wire 如果传入的是 bean 对象，则对 bean 对象进行属性绑定和依赖注入，如果传入的
 // 是构造函数，则立即执行该构造函数，然后对返回的结果进行属性绑定和依赖注入。无论哪
 // 种方式，该函数执行完后都会返回 bean 对象的真实值。
-func (p *environment) Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error) {
+func (c *container) Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error) {
 
 	stack := newWiringStack()
 
@@ -125,14 +130,14 @@ func (p *environment) Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interfac
 	}()
 
 	b := NewBean(objOrCtor, ctorArgs...)
-	err := p.c.wireBean(b, stack)
+	err := c.wireBean(b, stack)
 	if err != nil {
 		return nil, err
 	}
 	return b.Interface(), nil
 }
 
-func (p *environment) Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, error) {
+func (c *container) Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, error) {
 
 	if !util.IsFuncType(reflect.TypeOf(fn)) {
 		return nil, errors.New("fn should be func type")
@@ -151,7 +156,7 @@ func (p *environment) Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, er
 		return nil, err
 	}
 
-	ret, err := r.Call(&argContext{c: p.c, stack: stack})
+	ret, err := r.Call(&argContext{c: c, stack: stack})
 	if err != nil {
 		return nil, err
 	}

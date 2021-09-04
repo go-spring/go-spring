@@ -284,9 +284,9 @@ func (p *Properties) Bind(i interface{}, opts ...BindOption) error {
 
 	var v reflect.Value
 
-	switch i.(type) {
+	switch e := i.(type) {
 	case reflect.Value:
-		v = i.(reflect.Value)
+		v = e
 	default:
 		if v = reflect.ValueOf(i); v.Kind() != reflect.Ptr {
 			return errors.New("属性绑定的对象必须是一个指针")

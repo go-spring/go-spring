@@ -44,16 +44,24 @@ const (
 	Refreshed                        // 已刷新
 )
 
-// Container 是 go-spring 框架的基石，实现了 Martin Fowler 在 << Inversion
+type Container interface {
+	Load(file string) error
+	Property(key string, value interface{})
+	Object(i interface{}) *BeanDefinition
+	Provide(ctor interface{}, args ...arg.Arg) *BeanDefinition
+	Refresh() error
+	Close()
+}
+
+// container 是 go-spring 框架的基石，实现了 Martin Fowler 在 << Inversion
 // of Control Containers and the Dependency Injection pattern >> 一文中
 // 提及的依赖注入的概念。但原文的依赖注入仅仅是指对象之间的依赖关系处理，而有些 IoC
 // 容器在实现时比如 Spring 还引入了对属性 property 的处理。通常大家会用依赖注入统
 // 述上面两种概念，但实际上使用属性绑定来描述对 property 的处理会更加合适，因此
 // go-spring 严格区分了这两种概念，在描述对 bean 的处理时要么单独使用依赖注入或属
 // 性绑定，要么同时使用依赖注入和属性绑定。
-type Container struct {
+type container struct {
 	p *conf.Properties
-	e *environment
 
 	state refreshState
 
@@ -70,9 +78,9 @@ type Container struct {
 }
 
 // New 创建 IoC 容器。
-func New() *Container {
+func New() Container {
 	ctx, cancel := context.WithCancel(context.Background())
-	c := &Container{
+	return &container{
 		p:           conf.New(),
 		ctx:         ctx,
 		cancel:      cancel,
@@ -80,13 +88,11 @@ func New() *Container {
 		beansByName: make(map[string][]*BeanDefinition),
 		beansByType: make(map[reflect.Type][]*BeanDefinition),
 	}
-	c.e = &environment{c}
-	return c
 }
 
 // Load 从属性文件加载属性列表，file 可以是绝对路径，也可以是相对路径。该方法会覆
 // 盖已有的属性值。
-func (c *Container) Load(file string) error {
+func (c *container) Load(file string) error {
 	return c.p.Load(file)
 }
 
@@ -95,11 +101,11 @@ func (c *Container) Load(file string) error {
 // 其他基础数据类型的属性值。特殊情况下，Set 方法也支持 slice 、map 与基础数据
 // 类型组合构成的属性值，其处理方式是将组合结构层层展开，可以将组合结构看成一棵树，
 // 那么叶子结点的路径就是属性的 key，叶子结点的值就是属性的值。
-func (c *Container) Property(key string, value interface{}) {
+func (c *container) Property(key string, value interface{}) {
 	c.p.Set(key, value)
 }
 
-func (c *Container) register(b *BeanDefinition) *BeanDefinition {
+func (c *container) register(b *BeanDefinition) *BeanDefinition {
 	if c.state != Unrefreshed {
 		panic(errors.New("should call before Refresh"))
 	}
@@ -108,12 +114,12 @@ func (c *Container) register(b *BeanDefinition) *BeanDefinition {
 }
 
 // Object 注册对象形式的 bean ，需要注意的是该方法在注入开始后就不能再调用了。
-func (c *Container) Object(i interface{}) *BeanDefinition {
+func (c *container) Object(i interface{}) *BeanDefinition {
 	return c.register(NewBean(reflect.ValueOf(i)))
 }
 
 // Provide 注册构造函数形式的 bean ，需要注意的是该方法在注入开始后就不能再调用了。
-func (c *Container) Provide(ctor interface{}, args ...arg.Arg) *BeanDefinition {
+func (c *container) Provide(ctor interface{}, args ...arg.Arg) *BeanDefinition {
 	return c.register(NewBean(ctor, args...))
 }
 
@@ -230,7 +236,7 @@ func (s *wiringStack) sortDestroyers() []func() {
 	return ret
 }
 
-func (c *Container) ClearCache() {
+func (c *container) ClearCache() {
 	c.beans = nil
 	c.beansById = nil
 	c.beansByName = nil
@@ -238,13 +244,13 @@ func (c *Container) ClearCache() {
 }
 
 // Refresh 刷新容器的内容，对 bean 进行有效性判断以及完成属性绑定和依赖注入。
-func (c *Container) Refresh() error {
+func (c *container) Refresh() error {
 
 	if c.state != Unrefreshed {
 		return errors.New("container already refreshed")
 	}
 
-	c.Object(c.e).Export((*Environment)(nil))
+	c.Object(c).Export((*Environment)(nil))
 	c.state = Refreshing
 
 	for _, b := range c.beans {
@@ -280,7 +286,7 @@ func (c *Container) Refresh() error {
 	return nil
 }
 
-func (c *Container) registerBean(b *BeanDefinition) error {
+func (c *container) registerBean(b *BeanDefinition) error {
 	if d, ok := c.beansById[b.ID()]; ok {
 		return fmt.Errorf("found duplicate beans [%s] [%s]", b, d)
 	}
@@ -289,7 +295,7 @@ func (c *Container) registerBean(b *BeanDefinition) error {
 }
 
 type condContext struct {
-	c *Container
+	c *container
 }
 
 func (c *condContext) Properties() Properties {
@@ -315,7 +321,7 @@ func (c *condContext) Find(selector BeanSelector) ([]cond.BeanDefinition, error)
 }
 
 // resolveBean 判断 bean 的有效性，如果 bean 是无效的则被标记为已删除。
-func (c *Container) resolveBean(b *BeanDefinition) error {
+func (c *container) resolveBean(b *BeanDefinition) error {
 
 	if b.status >= Resolving {
 		return nil
@@ -406,7 +412,7 @@ func toWireTag(selector BeanSelector) wireTag {
 
 // findBean 查找符合条件的 bean 对象，注意该函数只能保证返回的 bean 是有效的，
 // 即未被标记为删除的，而不能保证已经完成属性绑定和依赖注入。
-func (c *Container) findBean(selector BeanSelector) ([]*BeanDefinition, error) {
+func (c *container) findBean(selector BeanSelector) ([]*BeanDefinition, error) {
 
 	finder := func(fn func(*BeanDefinition) bool) ([]*BeanDefinition, error) {
 		var result []*BeanDefinition
@@ -459,7 +465,7 @@ func (c *Container) findBean(selector BeanSelector) ([]*BeanDefinition, error) {
 // wireBean 对 bean 进行属性绑定和依赖注入，同时追踪其注入路径。如果 bean 有初始
 // 化函数，则在注入完成之后执行其初始化函数。如果 bean 依赖了其他 bean，则首先尝试
 // 实例化被依赖的 bean 然后对它们进行注入。
-func (c *Container) wireBean(b *BeanDefinition, stack *wiringStack) error {
+func (c *container) wireBean(b *BeanDefinition, stack *wiringStack) error {
 
 	if b.status == Deleted {
 		return fmt.Errorf("bean:%q have been deleted", b.ID())
@@ -543,7 +549,7 @@ func (c *Container) wireBean(b *BeanDefinition, stack *wiringStack) error {
 	}
 
 	if f, ok := b.Interface().(BeanInit); ok {
-		if err = f.OnInit(c.e); err != nil {
+		if err = f.OnInit(c); err != nil {
 			return err
 		}
 	}
@@ -554,7 +560,7 @@ func (c *Container) wireBean(b *BeanDefinition, stack *wiringStack) error {
 }
 
 type argContext struct {
-	c     *Container
+	c     *container
 	stack *wiringStack
 }
 
@@ -571,7 +577,7 @@ func (a *argContext) Wire(v reflect.Value, tag string) error {
 }
 
 // getBeanValue 获取 bean 的值，如果是构造函数 bean 则执行其构造函数然后返回执行结果。
-func (c *Container) getBeanValue(b *BeanDefinition, stack *wiringStack) (reflect.Value, error) {
+func (c *container) getBeanValue(b *BeanDefinition, stack *wiringStack) (reflect.Value, error) {
 
 	if b.f == nil {
 		return b.Value(), nil
@@ -609,7 +615,7 @@ func (c *Container) getBeanValue(b *BeanDefinition, stack *wiringStack) (reflect
 }
 
 // wireBeanValue 对 v 进行属性绑定和依赖注入，v 在传入时应该是一个已经初始化的值。
-func (c *Container) wireBeanValue(v reflect.Value, t reflect.Type, stack *wiringStack) error {
+func (c *container) wireBeanValue(v reflect.Value, t reflect.Type, stack *wiringStack) error {
 
 	if v.Kind() == reflect.Ptr {
 		v = v.Elem()
@@ -631,7 +637,7 @@ func (c *Container) wireBeanValue(v reflect.Value, t reflect.Type, stack *wiring
 }
 
 // wireStruct 对结构体进行依赖注入，需要注意的是这里不需要进行属性绑定。
-func (c *Container) wireStruct(v reflect.Value, opt conf.BindParam, stack *wiringStack) error {
+func (c *container) wireStruct(v reflect.Value, opt conf.BindParam, stack *wiringStack) error {
 
 	for i := 0; i < opt.Type.NumField(); i++ {
 		ft := opt.Type.Field(i)
@@ -689,7 +695,7 @@ func (c *Container) wireStruct(v reflect.Value, opt conf.BindParam, stack *wirin
 	return nil
 }
 
-func (c *Container) wireByTag(v reflect.Value, tag string, stack *wiringStack) error {
+func (c *container) wireByTag(v reflect.Value, tag string, stack *wiringStack) error {
 
 	// tag 预处理，可能通过属性值进行指定。
 	if strings.HasPrefix(tag, "${") {
@@ -711,7 +717,7 @@ func (c *Container) wireByTag(v reflect.Value, tag string, stack *wiringStack) e
 	return c.autowire(v, tags, stack)
 }
 
-func (c *Container) autowire(v reflect.Value, tags []wireTag, stack *wiringStack) error {
+func (c *container) autowire(v reflect.Value, tags []wireTag, stack *wiringStack) error {
 	switch v.Kind() {
 	case reflect.Map, reflect.Slice, reflect.Array:
 		return c.collectBeans(v, tags, stack)
@@ -725,7 +731,7 @@ func (c *Container) autowire(v reflect.Value, tags []wireTag, stack *wiringStack
 }
 
 // getBean 获取 tag 对应的 bean 然后赋值给 v，因此 v 应该是一个未初始化的值。
-func (c *Container) getBean(v reflect.Value, tag wireTag, stack *wiringStack) error {
+func (c *container) getBean(v reflect.Value, tag wireTag, stack *wiringStack) error {
 
 	if !v.IsValid() {
 		return fmt.Errorf("receiver must be ref type, bean:%q", tag)
@@ -855,7 +861,7 @@ func (b byOrder) Len() int           { return len(b) }
 func (b byOrder) Less(i, j int) bool { return b[i].order < b[j].order }
 func (b byOrder) Swap(i, j int)      { b[i], b[j] = b[j], b[i] }
 
-func (c *Container) collectBeans(v reflect.Value, tags []wireTag, stack *wiringStack) error {
+func (c *container) collectBeans(v reflect.Value, tags []wireTag, stack *wiringStack) error {
 
 	t := v.Type()
 	if t.Kind() != reflect.Slice && t.Kind() != reflect.Map {
@@ -952,7 +958,7 @@ func (c *Container) collectBeans(v reflect.Value, tags []wireTag, stack *wiringS
 
 // Close 关闭容器，此方法必须在 Refresh 之后调用。该方法会触发 ctx 的 Done 信
 // 号，然后等待所有 goroutine 结束，最后按照被依赖先销毁的原则执行所有的销毁函数。
-func (c *Container) Close() {
+func (c *container) Close() {
 
 	c.cancel()
 	c.wg.Wait()
@@ -964,17 +970,4 @@ func (c *Container) Close() {
 	}
 
 	log.Info("container closed")
-}
-
-// safeGo 创建安全可等待的 goroutine，fn 要求的 ctx 对象由 IoC 容器提供，当
-// IoC 容器关闭时 ctx会 发出 Done 信号， fn 在接收到此信号后应当立即退出。
-func (c *Container) safeGo(fn func(ctx context.Context)) {
-	c.wg.Add(1)
-	go func() {
-		defer func() {
-			c.wg.Done()
-			log.Recovery(recover())
-		}()
-		fn(c.ctx)
-	}()
 }

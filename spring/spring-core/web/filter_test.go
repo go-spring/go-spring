@@ -48,8 +48,7 @@ func TestWrapH(t *testing.T) {
 	c := &Counter{}
 	fmt.Println(util.FileLine(c.ServeHTTP))
 
-	var h http.Handler
-	h = &Counter{}
+	h := &Counter{}
 	fmt.Println(util.FileLine(h.ServeHTTP))
 
 	fmt.Println(web.WrapH(&Counter{}).FileLine())

@@ -44,7 +44,7 @@ func init() {
 	log.SetLevel(log.TraceLevel)
 }
 
-func container() (*gs.Container, chan gs.Environment) {
+func container() (gs.Container, chan gs.Environment) {
 
 	c := gs.New()
 
@@ -353,7 +353,7 @@ func (p *PrototypeBean) Greeting() string {
 }
 
 type PrototypeBeanFactory struct {
-	Container gs.Environment `autowire:""`
+	container gs.Environment `autowire:""`
 }
 
 func (f *PrototypeBeanFactory) New(name string) *PrototypeBean {
@@ -363,7 +363,7 @@ func (f *PrototypeBeanFactory) New(name string) *PrototypeBean {
 	}
 
 	// PrototypeBean 依赖的服务可以通过 Context 注入
-	_, err := f.Container.BeanRegistry().Wire(b)
+	_, err := f.container.BeanRegistry().Wire(b)
 	util.Panic(err).When(err != nil)
 	return b
 }
@@ -380,8 +380,8 @@ func (s *PrototypeBeanService) Service(name string) {
 func TestApplicationContext_PrototypeBean(t *testing.T) {
 	c, _ := container()
 
-	gs := &GreetingService{}
-	c.Object(gs)
+	greetingService := &GreetingService{}
+	c.Object(greetingService)
 
 	s := &PrototypeBeanService{}
 	c.Object(s)
@@ -389,7 +389,6 @@ func TestApplicationContext_PrototypeBean(t *testing.T) {
 	f := &PrototypeBeanFactory{}
 	c.Object(f)
 
-	c.Object(c)
 	err := c.Refresh()
 	assert.Nil(t, err)
 
@@ -2138,7 +2137,7 @@ type baseChannel struct {
 	Int        *int `autowire:""`
 	AutoCreate bool `value:"${auto-create}"`
 
-	// 支持对私有字段注入，但是不推荐！代码扫描请忽略这行。
+	// nolint 支持对私有字段注入，但是不推荐！代码扫描请忽略这行。
 	enable bool `value:"${enable:=false}"`
 }
 

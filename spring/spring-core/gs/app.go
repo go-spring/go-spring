@@ -22,6 +22,7 @@ import (
 	"io/ioutil"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"syscall"
@@ -65,7 +66,7 @@ type propertySource struct {
 type App struct {
 	Name string `value:"${spring.application.name}"`
 
-	c *Container
+	c *container
 	b *bootstrap
 
 	banner    string
@@ -98,7 +99,7 @@ func (c *Consumers) ForEach(fn func(mq.Consumer)) {
 // NewApp application 的构造函数
 func NewApp() *App {
 	return &App{
-		c:               New(),
+		c:               New().(*container),
 		mapOfOnProperty: make(map[string]interface{}),
 		exitChan:        make(chan struct{}),
 		router:          web.NewRouter(),
@@ -182,7 +183,7 @@ func (app *App) start() error {
 		}
 	}
 
-	if err := app.profile(e); err != nil {
+	if err := app.loadProperties(e); err != nil {
 		return err
 	}
 
@@ -207,45 +208,24 @@ func (app *App) start() error {
 
 	// 执行命令行启动器
 	for _, r := range app.Runners {
-		r.Run(app.c.e)
+		r.Run(app.c)
 	}
 
 	// 通知应用启动事件
-	for _, e := range app.Events {
-		e.OnStartApp(app.c.e)
+	for _, event := range app.Events {
+		event.OnStartApp(app.c)
 	}
 
 	// 通知应用停止事件
-	app.c.safeGo(func(c context.Context) {
-		select {
-		case <-c.Done():
-			for _, e := range app.Events {
-				e.OnStopApp(app.c.e)
-			}
+	app.c.Go(func(c context.Context) {
+		<-c.Done()
+		for _, event := range app.Events {
+			event.OnStopApp(app.c)
 		}
 	})
 
 	log.Info("application started successfully")
 	return nil
-}
-
-func (app *App) loadResource(e *configuration, filename string) ([]Resource, error) {
-
-	var locators []ResourceLocator
-	locators = append(locators, e.resourceLocator)
-	if app.b != nil {
-		locators = append(locators, app.b.resourceLocators...)
-	}
-
-	var resources []Resource
-	for _, locator := range locators {
-		sources, err := locator.Locate(filename)
-		if err != nil {
-			return nil, err
-		}
-		resources = append(resources, sources...)
-	}
-	return resources, nil
 }
 
 const DefaultBanner = `
@@ -304,7 +284,7 @@ func (app *App) printBanner(banner string) {
 	fmt.Println(string(padding) + Version + "\n")
 }
 
-func (app *App) profile(e *configuration) error {
+func (app *App) loadProperties(e *configuration) error {
 	var resources []Resource
 
 	for _, ext := range e.ConfigExtensions {
@@ -326,7 +306,11 @@ func (app *App) profile(e *configuration) error {
 	}
 
 	for _, resource := range resources {
-		p, err := conf.Load(resource.Name())
+		b, err := ioutil.ReadAll(resource)
+		if err != nil {
+			return err
+		}
+		p, err := conf.Read(b, filepath.Ext(resource.Name()))
 		if err != nil {
 			return err
 		}
@@ -336,6 +320,25 @@ func (app *App) profile(e *configuration) error {
 	}
 
 	return nil
+}
+
+func (app *App) loadResource(e *configuration, filename string) ([]Resource, error) {
+
+	var locators []ResourceLocator
+	locators = append(locators, e.resourceLocator)
+	if app.b != nil {
+		locators = append(locators, app.b.resourceLocators...)
+	}
+
+	var resources []Resource
+	for _, locator := range locators {
+		sources, err := locator.Locate(filename)
+		if err != nil {
+			return nil, err
+		}
+		resources = append(resources, sources...)
+	}
+	return resources, nil
 }
 
 // ShutDown 关闭执行器

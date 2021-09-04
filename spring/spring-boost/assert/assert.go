@@ -99,16 +99,16 @@ func Panic(t *testing.T, fn func(), expr string) {
 		if r := recover(); r == nil {
 			fail(t, 2, "did not panic")
 		} else {
-			var v string
-			switch r.(type) {
+			var str string
+			switch v := r.(type) {
 			case error:
-				v = r.(error).Error()
+				str = v.Error()
 			case string:
-				v = r.(string)
+				str = v
 			default:
-				v = fmt.Sprint(r)
+				str = fmt.Sprint(r)
 			}
-			matches(t, 1, v, expr)
+			matches(t, 1, str, expr)
 		}
 	}()
 	fn()

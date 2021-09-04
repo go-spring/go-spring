@@ -21,7 +21,9 @@ import (
 	"sync"
 )
 
-const ctxKey = "::knife::"
+type ctxKeyType int
+
+var ctxKey ctxKeyType
 
 func cache(ctx context.Context) *sync.Map {
 	c, _ := ctx.Value(ctxKey).(*sync.Map)

@@ -33,11 +33,6 @@ const IncludeEnvPatterns = "INCLUDE_ENV_PATTERNS"
 // ExcludeEnvPatterns 排除符合条件的环境变量。
 const ExcludeEnvPatterns = "EXCLUDE_ENV_PATTERNS"
 
-type Configuration interface {
-	Get(key string, opts ...conf.GetOption) string
-	Bind(i interface{}, opts ...conf.BindOption) error
-}
-
 type configuration struct {
 	p *conf.Properties
 
@@ -147,19 +142,11 @@ func (e *configuration) prepare() error {
 	if err := loadCmdArgs(e.p); err != nil {
 		return err
 	}
-	if err := e.Bind(e); err != nil {
+	if err := e.p.Bind(e); err != nil {
 		return err
 	}
-	if err := e.Bind(e.resourceLocator); err != nil {
+	if err := e.p.Bind(e.resourceLocator); err != nil {
 		return err
 	}
 	return nil
-}
-
-func (e *configuration) Get(key string, opts ...conf.GetOption) string {
-	return e.p.Get(key, opts...)
-}
-
-func (e *configuration) Bind(i interface{}, opts ...conf.BindOption) error {
-	return e.p.Bind(i, opts...)
 }
