@@ -60,11 +60,6 @@ func Bootstrap() *bootstrap {
 	return app().Bootstrap()
 }
 
-// PropertySource 参考 app.PropertySource 的解释。
-func PropertySource(file string, prefix string, object interface{}) {
-	app().PropertySource(file, prefix, object)
-}
-
 // OnProperty 参考 App.OnProperty 的解释。
 func OnProperty(key string, fn interface{}) {
 	app().OnProperty(key, fn)
@@ -83,6 +78,11 @@ func Object(i interface{}) *BeanDefinition {
 // Provide 参考 Container.Provide 的解释。
 func Provide(ctor interface{}, args ...arg.Arg) *BeanDefinition {
 	return app().c.register(NewBean(ctor, args...))
+}
+
+// PropertySource 参考 app.PropertySource 的解释。
+func PropertySource(file string, prefix string, object interface{}) {
+	app().PropertySource(file, prefix, object)
 }
 
 // HandleGet 参考 App.HandleGet 的解释。

@@ -22,7 +22,6 @@ import (
 	"io/ioutil"
 	"os"
 	"os/signal"
-	"path"
 	"reflect"
 	"strings"
 	"syscall"
@@ -54,6 +53,12 @@ type AppRunner interface {
 type AppEvent interface {
 	OnStopApp(ctx Environment)  // 应用停止的事件
 	OnStartApp(ctx Environment) // 应用启动的事件
+}
+
+type propertySource struct {
+	file   string
+	prefix string
+	object interface{}
 }
 
 // App 应用
@@ -93,11 +98,6 @@ func (c *Consumers) ForEach(fn func(mq.Consumer)) {
 // NewApp application 的构造函数
 func NewApp() *App {
 	return &App{
-		b: &bootstrap{
-			c:                New(),
-			mapOfOnProperty:  make(map[string]interface{}),
-			resourceLocators: []ResourceLocator{},
-		},
 		c:               New(),
 		mapOfOnProperty: make(map[string]interface{}),
 		exitChan:        make(chan struct{}),
@@ -140,21 +140,21 @@ func (app *App) Run() error {
 
 func (app *App) start() error {
 
-	app.b.Object(new(defaultResourceLocator)).
-		Export((*ResourceLocator)(nil)).
-		Order(HighestOrder)
-
 	app.Object(app)
 	app.Object(app.router)
 	app.Object(app.consumers)
 
-	e := &configuration{p: conf.New()}
+	e := &configuration{
+		p:               conf.New(),
+		resourceLocator: new(defaultResourceLocator),
+	}
+
 	if err := e.prepare(); err != nil {
 		return err
 	}
 
 	for _, ps := range app.propertySources {
-		files, err := app.b.LoadResources(ps.file)
+		files, err := app.loadResource(e, ps.file)
 		if err != nil {
 			return err
 		}
@@ -173,11 +173,13 @@ func (app *App) start() error {
 
 	showBanner := cast.ToBool(e.p.Get(SpringBannerVisible))
 	if showBanner {
-		app.printBanner(app.getBanner(e.configLocations))
+		app.printBanner(app.getBanner(e))
 	}
 
-	if err := app.b.start(e); err != nil {
-		return err
+	if app.b != nil {
+		if err := app.b.start(e); err != nil {
+			return err
+		}
 	}
 
 	if err := app.profile(e); err != nil {
@@ -227,28 +229,50 @@ func (app *App) start() error {
 	return nil
 }
 
+func (app *App) loadResource(e *configuration, filename string) ([]Resource, error) {
+
+	var locators []ResourceLocator
+	locators = append(locators, e.resourceLocator)
+	if app.b != nil {
+		locators = append(locators, app.b.resourceLocators...)
+	}
+
+	var resources []Resource
+	for _, locator := range locators {
+		sources, err := locator.Locate(filename)
+		if err != nil {
+			return nil, err
+		}
+		resources = append(resources, sources...)
+	}
+	return resources, nil
+}
+
 const DefaultBanner = `
- _______  _______         _______  _______  _______ _________ _        _______ 
-(  ____ \(  ___  )       (  ____ \(  ____ )(  ____ )\__   __/( (    /|(  ____ \
-| (    \/| (   ) |       | (    \/| (    )|| (    )|   ) (   |  \  ( || (    \/
-| |      | |   | | _____ | (_____ | (____)|| (____)|   | |   |   \ | || |      
-| | ____ | |   | |(_____)(_____  )|  _____)|     __)   | |   | (\ \) || | ____ 
-| | \_  )| |   | |             ) || (      | (\ (      | |   | | \   || | \_  )
-| (___) || (___) |       /\____) || )      | ) \ \_____) (___| )  \  || (___) |
-(_______)(_______)       \_______)|/       |/   \__/\_______/|/    )_)(_______)
+                                              (_)              
+  __ _    ___             ___   _ __    _ __   _   _ __     __ _ 
+ / _' |  / _ \   ______  / __| | '_ \  | '__| | | | '_ \   / _' |
+| (_| | | (_) | |______| \__ \ | |_) | | |    | | | | | | | (_| |
+ \__, |  \___/           |___/ | .__/  |_|    |_| |_| |_|  \__, |
+  __/ |                        | |                          __/ |
+ |___/                         |_|                         |___/ 
 `
 
-func (app *App) getBanner(configLocations []string) string {
+func (app *App) getBanner(e *configuration) string {
 	if app.banner != "" {
 		return app.banner
 	}
-	for _, configLocation := range configLocations {
-		file := path.Join(configLocation, "banner.txt")
-		if b, err := ioutil.ReadFile(file); err == nil {
-			return string(b)
+	resources, err := e.resourceLocator.Locate("banner.txt")
+	if err != nil {
+		return ""
+	}
+	banner := DefaultBanner
+	for _, resource := range resources {
+		if b, _ := ioutil.ReadAll(resource); b != nil {
+			banner = string(b)
 		}
 	}
-	return DefaultBanner
+	return banner
 }
 
 // printBanner 打印 banner 到控制台
@@ -281,32 +305,28 @@ func (app *App) printBanner(banner string) {
 }
 
 func (app *App) profile(e *configuration) error {
-	var files []*os.File
+	var resources []Resource
 
-	for _, locator := range app.b.resourceLocators {
-		for _, ext := range e.configExtensions {
-			sources, err := locator.Locate("application" + ext)
+	for _, ext := range e.ConfigExtensions {
+		sources, err := app.loadResource(e, "application"+ext)
+		if err != nil {
+			return err
+		}
+		resources = append(resources, sources...)
+	}
+
+	for _, profile := range e.ActiveProfiles {
+		for _, ext := range e.ConfigExtensions {
+			sources, err := app.loadResource(e, "application-"+profile+ext)
 			if err != nil {
 				return err
 			}
-			files = append(files, sources...)
+			resources = append(resources, sources...)
 		}
 	}
 
-	for _, profile := range e.activeProfiles {
-		for _, locator := range app.b.resourceLocators {
-			for _, ext := range e.configExtensions {
-				sources, err := locator.Locate("application-" + profile + ext)
-				if err != nil {
-					return err
-				}
-				files = append(files, sources...)
-			}
-		}
-	}
-
-	for _, file := range files {
-		p, err := conf.Load(file.Name())
+	for _, resource := range resources {
+		p, err := conf.Load(resource.Name())
 		if err != nil {
 			return err
 		}
@@ -331,12 +351,10 @@ func (app *App) ShutDown(err error) {
 
 // Bootstrap 返回 *bootstrap 对象。
 func (app *App) Bootstrap() *bootstrap {
+	if app.b == nil {
+		app.b = newBootstrap()
+	}
 	return app.b
-}
-
-func (app *App) PropertySource(file string, prefix string, object interface{}) {
-	ps := &propertySource{file: file, prefix: prefix, object: object}
-	app.propertySources = append(app.propertySources, ps)
 }
 
 // OnProperty 当 key 对应的属性值准备好后发送一个通知。
@@ -359,6 +377,11 @@ func (app *App) Object(i interface{}) *BeanDefinition {
 // Provide 参考 Container.Provide 的解释。
 func (app *App) Provide(ctor interface{}, args ...arg.Arg) *BeanDefinition {
 	return app.c.register(NewBean(ctor, args...))
+}
+
+func (app *App) PropertySource(file string, prefix string, object interface{}) {
+	ps := &propertySource{file: file, prefix: prefix, object: object}
+	app.propertySources = append(app.propertySources, ps)
 }
 
 // HandleGet 注册 GET 方法处理函数。

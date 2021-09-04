@@ -17,27 +17,30 @@
 package gs
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 )
 
-type propertySource struct {
-	file   string
-	prefix string
-	object interface{}
+// Resource 具有名字的 io.Reader 接口称为资源。
+type Resource interface {
+	io.Reader
+	Name() string
 }
 
+// ResourceLocator 查找名字为 filename 的资源。
 type ResourceLocator interface {
-	Locate(filename string) ([]*os.File, error)
+	Locate(filename string) ([]Resource, error)
 }
 
+// defaultResourceLocator 从本地文件系统中查找资源。
 type defaultResourceLocator struct {
 	configLocations []string `value:"${spring.config.locations:=config/}"`
 }
 
-func (ps *defaultResourceLocator) Locate(filename string) ([]*os.File, error) {
-	var files []*os.File
-	for _, location := range ps.configLocations {
+func (locator *defaultResourceLocator) Locate(filename string) ([]Resource, error) {
+	var resources []Resource
+	for _, location := range locator.configLocations {
 		fileLocation := filepath.Join(location, filename)
 		file, err := os.Open(fileLocation)
 		if os.IsNotExist(err) {
@@ -46,7 +49,7 @@ func (ps *defaultResourceLocator) Locate(filename string) ([]*os.File, error) {
 		if err != nil {
 			return nil, err
 		}
-		files = append(files, file)
+		resources = append(resources, file)
 	}
-	return files, nil
+	return resources, nil
 }

@@ -17,8 +17,6 @@
 package gs
 
 import (
-	"os"
-	"path/filepath"
 	"reflect"
 
 	"github.com/go-spring/spring-boost/errors"
@@ -35,6 +33,13 @@ type bootstrap struct {
 	// 属性列表解析完成后的回调
 	mapOfOnProperty  map[string]interface{}
 	resourceLocators []ResourceLocator `autowire:""`
+}
+
+func newBootstrap() *bootstrap {
+	return &bootstrap{
+		c:               New(),
+		mapOfOnProperty: make(map[string]interface{}),
+	}
 }
 
 func validOnProperty(fn interface{}) error {
@@ -100,9 +105,8 @@ func (boot *bootstrap) loadBootstrap(e *configuration) error {
 	if err := boot.loadConfigFile(e, "bootstrap"); err != nil {
 		return err
 	}
-	for _, profile := range e.activeProfiles {
-		filename := "application-" + profile
-		if err := boot.loadConfigFile(e, filename); err != nil {
+	for _, profile := range e.ActiveProfiles {
+		if err := boot.loadConfigFile(e, "bootstrap-"+profile); err != nil {
 			return err
 		}
 	}
@@ -110,25 +114,20 @@ func (boot *bootstrap) loadBootstrap(e *configuration) error {
 }
 
 func (boot *bootstrap) loadConfigFile(e *configuration, filename string) error {
-	for _, loc := range e.configLocations {
-		for _, ext := range e.configExtensions {
-			err := boot.c.Load(filepath.Join(loc, filename+ext))
-			if err != nil && !os.IsNotExist(err) {
+	for _, ext := range e.ConfigExtensions {
+		resources, err := e.resourceLocator.Locate(filename + ext)
+		if err != nil {
+			return err
+		}
+		p := conf.New()
+		for _, file := range resources {
+			if err = p.Load(file.Name()); err != nil {
 				return err
 			}
 		}
+		for _, key := range p.Keys() {
+			boot.c.p.Set(key, p.Get(key))
+		}
 	}
 	return nil
-}
-
-func (boot *bootstrap) LoadResources(filename string) ([]*os.File, error) {
-	var files []*os.File
-	for _, locator := range boot.resourceLocators {
-		sources, err := locator.Locate(filename)
-		if err != nil {
-			return nil, err
-		}
-		files = append(files, sources...)
-	}
-	return files, nil
 }

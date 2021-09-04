@@ -34,30 +34,16 @@ const IncludeEnvPatterns = "INCLUDE_ENV_PATTERNS"
 const ExcludeEnvPatterns = "EXCLUDE_ENV_PATTERNS"
 
 type Configuration interface {
-	ActiveProfiles() []string
-	ConfigLocations() []string
-	ConfigExtensions() []string
-	Properties() Properties
+	Get(key string, opts ...conf.GetOption) string
+	Bind(i interface{}, opts ...conf.BindOption) error
 }
 
 type configuration struct {
 	p *conf.Properties
 
-	activeProfiles   []string `value:"${spring.profiles.active:=}"`
-	configLocations  []string `value:"${spring.config.locations:=config/}"`
-	configExtensions []string `value:"${spring.config.extensions:=.properties,.prop,.yaml,.yml,.toml,.tml}"`
-}
-
-func (e *configuration) ActiveProfiles() []string {
-	return e.activeProfiles
-}
-
-func (e *configuration) ConfigLocations() []string {
-	return e.configLocations
-}
-
-func (e *configuration) ConfigExtensions() []string {
-	return e.configExtensions
+	resourceLocator  ResourceLocator
+	ActiveProfiles   []string `value:"${spring.profiles.active:=}"`
+	ConfigExtensions []string `value:"${spring.config.extensions:=.properties,.prop,.yaml,.yml,.toml,.tml}"`
 }
 
 // loadCmdArgs 加载 -name value 形式的命令行参数。
@@ -161,12 +147,19 @@ func (e *configuration) prepare() error {
 	if err := loadCmdArgs(e.p); err != nil {
 		return err
 	}
-	if err := e.p.Bind(e); err != nil {
+	if err := e.Bind(e); err != nil {
+		return err
+	}
+	if err := e.Bind(e.resourceLocator); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (e *configuration) Properties() Properties {
-	return e.p
+func (e *configuration) Get(key string, opts ...conf.GetOption) string {
+	return e.p.Get(key, opts...)
+}
+
+func (e *configuration) Bind(i interface{}, opts ...conf.BindOption) error {
+	return e.p.Bind(i, opts...)
 }
