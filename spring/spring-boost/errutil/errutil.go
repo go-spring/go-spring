@@ -14,19 +14,11 @@
  * limitations under the License.
  */
 
-package errors
+package errutil
 
 import (
-	"errors"
 	"fmt"
 	"runtime"
-)
-
-var (
-	New    = errors.New
-	Is     = errors.Is
-	As     = errors.As
-	Unwrap = errors.Unwrap
 )
 
 // ToString 返回 error 的字符串。
@@ -37,33 +29,8 @@ func ToString(err error) string {
 	return err.Error()
 }
 
-type withCause struct {
-	cause interface{}
-}
-
-// WithCause 封装一个异常源。
-func WithCause(r interface{}) error {
-	return &withCause{cause: r}
-}
-
-func (c *withCause) Error() string {
-	return fmt.Sprint(c.cause)
-}
-
-// Cause 获取封装的异常源。
-func Cause(err error) interface{} {
-	if c, ok := err.(*withCause); ok {
-		return c.cause
-	}
-	return err
-}
-
 // WithFileLine 返回错误发生的文件行号，skip 是相对于当前函数的深度。
 func WithFileLine(err error, skip int) error {
 	_, file, line, _ := runtime.Caller(skip + 1)
-	str := fmt.Sprintf("%s:%d", file, line)
-	if err != nil {
-		str += ": " + err.Error()
-	}
-	return New(str)
+	return fmt.Errorf("%s:%d: %w", file, line, err)
 }

@@ -21,6 +21,7 @@ import (
 	"reflect"
 
 	"github.com/go-spring/spring-boost/util"
+	"github.com/go-spring/spring-core/grpc"
 	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/web"
 )
@@ -171,6 +172,6 @@ func GrpcClient(fn interface{}, endpoint string) *BeanDefinition {
 }
 
 // GrpcServer 参考 App.GrpcServer 的解释。
-func GrpcServer(serviceName string, fn interface{}, service interface{}) *BeanDefinition {
-	return app().GrpcServer(serviceName, fn, service)
+func GrpcServer(serviceName string, server *grpc.Server) *BeanDefinition {
+	return app().GrpcServer(serviceName, server)
 }

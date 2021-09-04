@@ -14,25 +14,25 @@
  * limitations under the License.
  */
 
-package json
+package errutil_test
 
 import (
-	"reflect"
+	"errors"
+	"testing"
+
+	"github.com/go-spring/spring-boost/assert"
+	"github.com/go-spring/spring-boost/errutil"
 )
 
-// An InvalidUnmarshalError describes an invalid argument passed to Unmarshal.
-// (The argument to Unmarshal must be a non-nil pointer.)
-type InvalidUnmarshalError struct {
-	Type reflect.Type
-}
+func TestErrorWithFileLine(t *testing.T) {
 
-func (e *InvalidUnmarshalError) Error() string {
-	if e.Type == nil {
-		return "json: Unmarshal(nil)"
+	err := errutil.WithFileLine(errors.New("this is an error"), 0)
+	assert.Error(t, err, ".*:29: this is an error")
+
+	fnError := func(e error) error {
+		return errutil.WithFileLine(e, 1)
 	}
 
-	if e.Type.Kind() != reflect.Ptr {
-		return "json: Unmarshal(non-pointer " + e.Type.String() + ")"
-	}
-	return "json: Unmarshal(nil " + e.Type.String() + ")"
+	err = fnError(errors.New("this is an error"))
+	assert.Error(t, err, ".*:36: this is an error")
 }

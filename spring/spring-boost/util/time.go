@@ -22,10 +22,5 @@ import (
 
 // CurrentMilliSeconds 返回当前的毫秒时间
 func CurrentMilliSeconds() int64 {
-	return time.Now().UnixNano() / int64(time.Millisecond)
-}
-
-// MilliSeconds 返回对应的毫秒时长
-func MilliSeconds(d time.Duration) int64 {
-	return d.Nanoseconds() / int64(time.Millisecond)
+	return time.Now().UnixNano() / 1e6
 }

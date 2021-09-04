@@ -18,6 +18,7 @@ package internal
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"sync"
@@ -65,7 +66,7 @@ func (c *cache) Load(_ context.Context, key string, out interface{}) (ok bool, e
 
 	outVal := reflect.ValueOf(out)
 	if outVal.Kind() != reflect.Ptr || outVal.IsNil() {
-		return false, &json.InvalidUnmarshalError{Type: outVal.Type()}
+		return false, errors.New("out value should be ptr and not nil")
 	}
 
 	switch source := item.source.(type) {
