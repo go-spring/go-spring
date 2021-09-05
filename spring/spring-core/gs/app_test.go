@@ -28,18 +28,15 @@ import (
 	"github.com/go-spring/spring-core/gs"
 )
 
-func startApplication(cfgLocation string) (*gs.App, gs.Environment) {
+func startApplication(cfgLocation string, fn func(gs.Environment)) *gs.App {
 
 	app := gs.NewApp()
 	gs.Setenv("GS_SPRING_BANNER_VISIBLE", "true")
 	gs.Setenv("GS_SPRING_CONFIG_LOCATIONS", cfgLocation)
 
-	//app.PropertySource()
-
-	var p gs.Environment
 	type PandoraAware struct{}
 	app.Provide(func(b gs.Environment) PandoraAware {
-		p = b
+		fn(b)
 		return PandoraAware{}
 	})
 
@@ -50,7 +47,7 @@ func startApplication(cfgLocation string) (*gs.App, gs.Environment) {
 	}()
 
 	time.Sleep(100 * time.Millisecond)
-	return app, p
+	return app
 }
 
 func TestConfig(t *testing.T) {
@@ -58,31 +55,32 @@ func TestConfig(t *testing.T) {
 	t.Run("config via env", func(t *testing.T) {
 		os.Clearenv()
 		gs.Setenv("GS_SPRING_PROFILES_ACTIVE", "dev")
-		app, p := startApplication("testdata/config/")
+		app := startApplication("testdata/config/", func(e gs.Environment) {
+			assert.Equal(t, e.Properties().Get("spring.profiles.active"), "dev")
+		})
 		defer app.ShutDown(errors.New("run test end"))
-		assert.Equal(t, p.Properties().Get("spring.profiles.active"), "dev")
 	})
 
 	t.Run("config via env 2", func(t *testing.T) {
 		os.Clearenv()
 		gs.Setenv("GS_SPRING_PROFILES_ACTIVE", "dev")
-		app, p := startApplication("testdata/config/")
+		app := startApplication("testdata/config/", func(e gs.Environment) {
+			assert.Equal(t, e.Properties().Get("spring.profiles.active"), "dev")
+		})
 		defer app.ShutDown(errors.New("run test end"))
-		assert.Equal(t, p.Properties().Get("spring.profiles.active"), "dev")
 	})
 
 	t.Run("profile via env&config 2", func(t *testing.T) {
-
 		os.Clearenv()
 		gs.Setenv("GS_SPRING_PROFILES_ACTIVE", "dev")
-		app, p := startApplication("testdata/config/")
+		app := startApplication("testdata/config/", func(e gs.Environment) {
+			assert.Equal(t, e.Properties().Get("spring.profiles.active"), "dev")
+			keys := e.Properties().Keys()
+			sort.Strings(keys)
+			for _, k := range keys {
+				fmt.Println(k, "=", e.Properties().Get(k))
+			}
+		})
 		defer app.ShutDown(errors.New("run test end"))
-		assert.Equal(t, p.Properties().Get("spring.profiles.active"), "dev")
-
-		keys := p.Properties().Keys()
-		sort.Strings(keys)
-		for _, k := range keys {
-			fmt.Println(k, "=", p.Properties().Get(k))
-		}
 	})
 }

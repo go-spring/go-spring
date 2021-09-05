@@ -33,6 +33,7 @@ import (
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/grpc"
 	"github.com/go-spring/spring-core/gs/arg"
+	"github.com/go-spring/spring-core/gs/internal"
 	"github.com/go-spring/spring-core/mq"
 	"github.com/go-spring/spring-core/web"
 )
@@ -52,8 +53,8 @@ type AppRunner interface {
 
 // AppEvent 应用运行过程中的事件
 type AppEvent interface {
-	OnStopApp(ctx Environment)  // 应用停止的事件
-	OnStartApp(ctx Environment) // 应用启动的事件
+	OnStartApp(ctx Environment)    // 应用启动的事件
+	OnStopApp(ctx context.Context) // 应用停止的事件
 }
 
 type propertySource struct {
@@ -62,24 +63,24 @@ type propertySource struct {
 	object interface{}
 }
 
+type tempApp struct {
+	banner          string
+	router          web.Router
+	consumers       *Consumers
+	propertySources []*propertySource
+	mapOfOnProperty map[string]interface{} // 属性列表解析完成后的回调
+}
+
 // App 应用
 type App struct {
-	Name string `value:"${spring.application.name}"`
+	*tempApp
 
 	c *container
 	b *bootstrap
 
-	banner    string
-	router    web.Router
-	consumers *Consumers
-
 	exitChan chan struct{}
 
-	Events  []AppEvent  `autowire:""`
-	Runners []AppRunner `autowire:""`
-
-	mapOfOnProperty map[string]interface{} // 属性列表解析完成后的回调
-	propertySources []*propertySource
+	Name string `value:"${spring.application.name}"`
 }
 
 type Consumers struct {
@@ -99,11 +100,13 @@ func (c *Consumers) ForEach(fn func(mq.Consumer)) {
 // NewApp application 的构造函数
 func NewApp() *App {
 	return &App{
-		c:               New().(*container),
-		mapOfOnProperty: make(map[string]interface{}),
-		exitChan:        make(chan struct{}),
-		router:          web.NewRouter(),
-		consumers:       new(Consumers),
+		c: New().(*container),
+		tempApp: &tempApp{
+			router:          web.NewRouter(),
+			consumers:       new(Consumers),
+			mapOfOnProperty: make(map[string]interface{}),
+		},
+		exitChan: make(chan struct{}),
 	}
 }
 
@@ -125,8 +128,6 @@ func (app *App) Run() error {
 	if err := app.start(); err != nil {
 		return err
 	}
-
-	app.c.ClearCache()
 
 	<-app.exitChan
 
@@ -202,25 +203,38 @@ func (app *App) start() error {
 		reflect.ValueOf(f).Call([]reflect.Value{in})
 	}
 
-	if err := app.c.Refresh(); err != nil {
+	if err := app.c.Refresh(internal.AutoClear(false)); err != nil {
+		return err
+	}
+
+	var runners []AppRunner
+	if err := app.c.Get(&runners, "?"); err != nil {
 		return err
 	}
 
 	// 执行命令行启动器
-	for _, r := range app.Runners {
+	for _, r := range runners {
 		r.Run(app.c)
 	}
 
+	var events []AppEvent
+	if err := app.c.Get(&events, "?"); err != nil {
+		return err
+	}
+
 	// 通知应用启动事件
-	for _, event := range app.Events {
+	for _, event := range events {
 		event.OnStartApp(app.c)
 	}
+
+	app.c.clear()
+	app.tempApp = nil
 
 	// 通知应用停止事件
 	app.c.Go(func(c context.Context) {
 		<-c.Done()
-		for _, event := range app.Events {
-			event.OnStopApp(app.c)
+		for _, event := range events {
+			event.OnStopApp(context.TODO())
 		}
 	})
 

@@ -34,6 +34,7 @@ import (
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/gs/cond"
+	"github.com/go-spring/spring-core/gs/internal"
 )
 
 type refreshState int
@@ -49,8 +50,16 @@ type Container interface {
 	Property(key string, value interface{})
 	Object(i interface{}) *BeanDefinition
 	Provide(ctor interface{}, args ...arg.Arg) *BeanDefinition
-	Refresh() error
+	Refresh(opts ...internal.RefreshOption) error
 	Close()
+}
+
+type tempContainer struct {
+	p           *conf.Properties
+	beans       []*BeanDefinition
+	beansById   map[string]*BeanDefinition
+	beansByName map[string][]*BeanDefinition
+	beansByType map[reflect.Type][]*BeanDefinition
 }
 
 // container 是 go-spring 框架的基石，实现了 Martin Fowler 在 << Inversion
@@ -61,32 +70,28 @@ type Container interface {
 // go-spring 严格区分了这两种概念，在描述对 bean 的处理时要么单独使用依赖注入或属
 // 性绑定，要么同时使用依赖注入和属性绑定。
 type container struct {
-	p *conf.Properties
-
+	*tempContainer
 	state refreshState
 
 	wg     sync.WaitGroup
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	beans       []*BeanDefinition
-	beansById   map[string]*BeanDefinition
-	beansByName map[string][]*BeanDefinition
-	beansByType map[reflect.Type][]*BeanDefinition
-
 	destroyers []func() // 使用函数闭包来避免引入新的类型。
 }
 
 // New 创建 IoC 容器。
 func New() Container {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(context.TODO())
 	return &container{
-		p:           conf.New(),
-		ctx:         ctx,
-		cancel:      cancel,
-		beansById:   make(map[string]*BeanDefinition),
-		beansByName: make(map[string][]*BeanDefinition),
-		beansByType: make(map[reflect.Type][]*BeanDefinition),
+		ctx:    ctx,
+		cancel: cancel,
+		tempContainer: &tempContainer{
+			p:           conf.New(),
+			beansById:   make(map[string]*BeanDefinition),
+			beansByName: make(map[string][]*BeanDefinition),
+			beansByType: make(map[reflect.Type][]*BeanDefinition),
+		},
 	}
 }
 
@@ -236,18 +241,20 @@ func (s *wiringStack) sortDestroyers() []func() {
 	return ret
 }
 
-func (c *container) ClearCache() {
-	c.beans = nil
-	c.beansById = nil
-	c.beansByName = nil
-	c.beansByType = nil
+func (c *container) clear() {
+	c.tempContainer = nil
 }
 
 // Refresh 刷新容器的内容，对 bean 进行有效性判断以及完成属性绑定和依赖注入。
-func (c *container) Refresh() error {
+func (c *container) Refresh(opts ...internal.RefreshOption) error {
 
 	if c.state != Unrefreshed {
 		return errors.New("container already refreshed")
+	}
+
+	optArg := &internal.RefreshArg{AutoClear: true}
+	for _, opt := range opts {
+		opt(optArg)
 	}
 
 	c.Object(c).Export((*Environment)(nil))
@@ -281,6 +288,10 @@ func (c *container) Refresh() error {
 
 	c.destroyers = stack.sortDestroyers()
 	c.state = Refreshed
+
+	if optArg.AutoClear {
+		c.clear()
+	}
 
 	log.Info("container refreshed successfully")
 	return nil

@@ -46,3 +46,15 @@ type Properties interface {
 	Get(key string, opts ...conf.GetOption) string
 	Bind(i interface{}, opts ...conf.BindOption) error
 }
+
+type RefreshArg struct {
+	AutoClear bool
+}
+
+type RefreshOption func(arg *RefreshArg)
+
+func AutoClear(enable bool) RefreshOption {
+	return func(arg *RefreshArg) {
+		arg.AutoClear = enable
+	}
+}
