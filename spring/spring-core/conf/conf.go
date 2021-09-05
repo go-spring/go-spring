@@ -240,6 +240,7 @@ func (p *Properties) Set(key string, val interface{}) {
 			}
 		}
 	default:
+		key = strings.ToLower(key)
 		p.m[key] = cast.ToString(val)
 		p.cacheKey(key)
 	}

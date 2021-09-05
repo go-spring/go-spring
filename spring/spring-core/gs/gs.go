@@ -46,11 +46,12 @@ const (
 )
 
 type Container interface {
-	Load(file string) error
+	Context() context.Context
 	Property(key string, value interface{})
 	Object(i interface{}) *BeanDefinition
 	Provide(ctor interface{}, args ...arg.Arg) *BeanDefinition
 	Refresh(opts ...internal.RefreshOption) error
+	Go(fn func(ctx context.Context))
 	Close()
 }
 
@@ -95,10 +96,9 @@ func New() Container {
 	}
 }
 
-// Load 从属性文件加载属性列表，file 可以是绝对路径，也可以是相对路径。该方法会覆
-// 盖已有的属性值。
-func (c *container) Load(file string) error {
-	return c.p.Load(file)
+// Context 返回 IoC 容器的 ctx 对象。
+func (c *container) Context() context.Context {
+	return c.ctx
 }
 
 // Property 设置 key 对应的属性值，如果 key 对应的属性值已经存在则 Set 方法会
@@ -981,4 +981,17 @@ func (c *container) Close() {
 	}
 
 	log.Info("container closed")
+}
+
+// Go 创建安全可等待的 goroutine，fn 要求的 ctx 对象由 IoC 容器提供，当 IoC 容
+// 器关闭时 ctx会 发出 Done 信号， fn 在接收到此信号后应当立即退出。
+func (c *container) Go(fn func(ctx context.Context)) {
+	c.wg.Add(1)
+	go func() {
+		defer func() {
+			c.wg.Done()
+			log.Recovery(recover())
+		}()
+		fn(c.ctx)
+	}()
 }

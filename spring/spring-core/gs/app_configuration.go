@@ -44,23 +44,27 @@ type configuration struct {
 // loadCmdArgs 加载 -name value 形式的命令行参数。
 func loadCmdArgs(p *conf.Properties) error {
 	for i := 0; i < len(os.Args); i++ {
-
 		s := os.Args[i]
-		if !strings.HasPrefix(s, "-") {
-			continue
-		}
-
-		k, v := s[1:], ""
-		if i >= len(os.Args)-1 {
+		if strings.HasPrefix(s, "-") {
+			k, v := s[1:], ""
+			if i >= len(os.Args)-1 {
+				p.Set(k, v)
+				return nil
+			}
+			next := os.Args[i+1]
+			if !strings.HasPrefix(next, "-") && !strings.HasPrefix(next, "--") {
+				v = os.Args[i+1]
+				i++
+			}
 			p.Set(k, v)
-			break
+		} else if strings.HasPrefix(s, "--") {
+			ss := strings.SplitN(strings.TrimPrefix(s, "--"), "=", 2)
+			k, v := ss[0], ""
+			if len(ss) > 1 {
+				v = ss[1]
+			}
+			p.Set(k, v)
 		}
-
-		if !strings.HasPrefix(os.Args[i+1], "-") {
-			v = os.Args[i+1]
-			i++
-		}
-		p.Set(k, v)
 	}
 	return nil
 }
@@ -109,28 +113,20 @@ func loadSystemEnv(p *conf.Properties) error {
 	}
 
 	for _, env := range os.Environ() {
-
-		kv := strings.SplitN(env, "=", 2)
-		if len(kv) == 1 {
-			continue
+		ss := strings.SplitN(env, "=", 2)
+		k, v := ss[0], ""
+		if len(ss) > 1 {
+			v = ss[1]
 		}
-
-		k, v := kv[0], kv[1]
-		if k == "" || v == "" {
-			continue
-		}
-
 		if strings.HasPrefix(k, EnvPrefix) {
 			propKey := strings.TrimPrefix(k, EnvPrefix)
 			propKey = strings.ReplaceAll(propKey, "_", ".")
-			p.Set(strings.ToLower(propKey), v)
+			p.Set(propKey, v)
 			continue
 		}
-
-		if matches(excludeRex, k) || !matches(includeRex, k) {
-			continue
+		if matches(includeRex, k) && !matches(excludeRex, k) {
+			p.Set(k, v)
 		}
-		p.Set(k, v)
 	}
 	return nil
 }

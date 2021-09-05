@@ -49,9 +49,9 @@ type BeanRegistry interface {
 // 都可以在需要使用这些方法的地方注入一个 Environment 对象而不是 Container 对象或者
 // App 对象，从而实现使用方式的统一。
 type Environment interface {
+	Context() context.Context
 	Properties() Properties
 	BeanRegistry() BeanRegistry
-	Context() context.Context
 	Go(fn func(ctx context.Context))
 }
 
@@ -61,24 +61,6 @@ func (c *container) Properties() Properties {
 
 func (c *container) BeanRegistry() BeanRegistry {
 	return c
-}
-
-// Context 返回 IoC 容器的 ctx 对象。
-func (c *container) Context() context.Context {
-	return c.ctx
-}
-
-// Go 创建安全可等待的 goroutine，fn 要求的 ctx 对象由 IoC 容器提供，当 IoC 容
-// 器关闭时 ctx会 发出 Done 信号， fn 在接收到此信号后应当立即退出。
-func (c *container) Go(fn func(ctx context.Context)) {
-	c.wg.Add(1)
-	go func() {
-		defer func() {
-			c.wg.Done()
-			log.Recovery(recover())
-		}()
-		fn(c.ctx)
-	}()
 }
 
 // Get 根据类型和选择器获取符合条件的 bean 对象。当 i 是一个基础类型的 bean 接收

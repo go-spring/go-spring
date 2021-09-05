@@ -434,9 +434,12 @@ type DbConfig struct {
 
 func TestApplicationContext_TypeConverter(t *testing.T) {
 	c := gs.New()
-
-	err := c.Load("testdata/config/application.yaml")
-	assert.Nil(t, err)
+	{
+		p, _ := conf.Load("testdata/config/application.yaml")
+		for _, key := range p.Keys() {
+			c.Property(key, p.Get(key))
+		}
+	}
 
 	b := &EnvEnumBean{}
 	c.Object(b)
@@ -452,7 +455,7 @@ func TestApplicationContext_TypeConverter(t *testing.T) {
 	dbConfig := &DbConfig{}
 	c.Object(dbConfig)
 
-	err = c.Refresh(internal.AutoClear(false))
+	err := c.Refresh(internal.AutoClear(false))
 	assert.Nil(t, err)
 
 	assert.Equal(t, b.EnvType, ENV_TEST)
@@ -534,19 +537,24 @@ func TestApplicationContext_DiffNameBean(t *testing.T) {
 
 func TestApplicationContext_LoadProperties(t *testing.T) {
 
-	c := container(func(p gs.Environment) {
-		assert.Equal(t, p.Properties().Get("yaml.list[0]"), "1")
-		assert.Equal(t, p.Properties().Get("yaml.list[1]"), "2")
-		assert.Equal(t, p.Properties().Get("spring.application.name"), "test")
+	c := container(func(e gs.Environment) {
+		p := e.Properties()
+		assert.Equal(t, p.Get("yaml.list[0]"), "1")
+		assert.Equal(t, p.Get("yaml.list[1]"), "2")
+		assert.Equal(t, p.Get("spring.application.name"), "test")
 	})
 
-	err := c.Load("testdata/config/application.yaml")
-	assert.Nil(t, err)
+	p, _ := conf.Load("testdata/config/application.yaml")
+	for _, key := range p.Keys() {
+		c.Property(key, p.Get(key))
+	}
 
-	err = c.Load("testdata/config/application.properties")
-	assert.Nil(t, err)
+	p, _ = conf.Load("testdata/config/application.properties")
+	for _, key := range p.Keys() {
+		c.Property(key, p.Get(key))
+	}
 
-	err = c.Refresh(internal.AutoClear(false))
+	err := c.Refresh(internal.AutoClear(false))
 	assert.Nil(t, err)
 }
 

@@ -80,7 +80,7 @@ type App struct {
 
 	exitChan chan struct{}
 
-	Name string `value:"${spring.application.name}"`
+	Events []AppEvent `autowire:""`
 }
 
 type Consumers struct {
@@ -217,13 +217,8 @@ func (app *App) start() error {
 		r.Run(app.c)
 	}
 
-	var events []AppEvent
-	if err := app.c.Get(&events, "?"); err != nil {
-		return err
-	}
-
 	// 通知应用启动事件
-	for _, event := range events {
+	for _, event := range app.Events {
 		event.OnStartApp(app.c)
 	}
 
@@ -233,8 +228,9 @@ func (app *App) start() error {
 	// 通知应用停止事件
 	app.c.Go(func(c context.Context) {
 		<-c.Done()
-		for _, event := range events {
-			event.OnStopApp(context.TODO())
+		ctx := context.TODO()
+		for _, event := range app.Events {
+			event.OnStopApp(ctx)
 		}
 	})
 
