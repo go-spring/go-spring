@@ -121,6 +121,7 @@ func loadSystemEnv(p *conf.Properties) error {
 		if strings.HasPrefix(k, EnvPrefix) {
 			propKey := strings.TrimPrefix(k, EnvPrefix)
 			propKey = strings.ReplaceAll(propKey, "_", ".")
+			propKey = strings.ToLower(propKey)
 			p.Set(propKey, v)
 			continue
 		}

@@ -20,6 +20,7 @@ package conf
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"path/filepath"
 	"reflect"
@@ -70,21 +71,30 @@ func (p *Properties) Load(file string) error {
 	if err != nil {
 		return err
 	}
-	return p.Read(b, filepath.Ext(file))
+	return p.Bytes(b, filepath.Ext(file))
 }
 
-// Read 返回一个由 []byte 创建的属性列表，ext 是文件扩展名，如 .yaml、.toml 等。
-func Read(b []byte, ext string) (*Properties, error) {
+// Read 返回一个由 io.Reader 创建的属性列表，ext 是文件扩展名，如 .yaml、.toml 等。
+func Read(r io.Reader, ext string) (*Properties, error) {
+	b, err := ioutil.ReadAll(r)
+	if err != nil {
+		return nil, err
+	}
+	return Bytes(b, ext)
+}
+
+// Bytes 返回一个由 []byte 创建的属性列表，ext 是文件扩展名，如 .yaml、.toml 等。
+func Bytes(b []byte, ext string) (*Properties, error) {
 	p := New()
-	if err := p.Read(b, ext); err != nil {
+	if err := p.Bytes(b, ext); err != nil {
 		return nil, err
 	}
 	return p, nil
 }
 
-// Read 从 []byte 加载属性列表，ext 是文件扩展名，如 .yaml、.toml 等。该方法会覆
+// Bytes 从 []byte 加载属性列表，ext 是文件扩展名，如 .yaml、.toml 等。该方法会覆
 // 盖已有的属性值。
-func (p *Properties) Read(b []byte, ext string) error {
+func (p *Properties) Bytes(b []byte, ext string) error {
 
 	r, ok := readers[ext]
 	if !ok {
@@ -240,7 +250,6 @@ func (p *Properties) Set(key string, val interface{}) {
 			}
 		}
 	default:
-		key = strings.ToLower(key)
 		p.m[key] = cast.ToString(val)
 		p.cacheKey(key)
 	}

@@ -69,7 +69,7 @@ func TestProperties_ReadProperties(t *testing.T) {
 		}
 
 		for _, d := range data {
-			p, _ := conf.Read([]byte(d.str), ".properties")
+			p, _ := conf.Bytes([]byte(d.str), ".properties")
 			v := p.Get(d.key)
 			assert.Equal(t, v, d.val)
 		}
@@ -91,7 +91,7 @@ func TestProperties_ReadProperties(t *testing.T) {
 		}
 
 		for _, d := range data {
-			p, _ := conf.Read([]byte(d.str), ".properties")
+			p, _ := conf.Bytes([]byte(d.str), ".properties")
 			v := p.Get(d.key)
 			assert.Equal(t, v, d.val)
 		}
@@ -113,7 +113,7 @@ func TestProperties_ReadProperties(t *testing.T) {
 			"map.string": "hello",
 		}
 
-		p, _ := conf.Read([]byte(str), ".properties")
+		p, _ := conf.Bytes([]byte(str), ".properties")
 		for k, expect := range data {
 			v := p.Get(k)
 			assert.Equal(t, v, expect)
@@ -133,7 +133,7 @@ func TestProperties_ReadProperties(t *testing.T) {
 	         array[1].string=hello
 	       `
 
-		p, _ := conf.Read([]byte(str), ".properties")
+		p, _ := conf.Bytes([]byte(str), ".properties")
 		data := map[string]interface{}{
 			"array[0].bool":   "false",
 			"array[0].int":    "3",
@@ -175,7 +175,7 @@ func TestProperties_ReadProperties(t *testing.T) {
 			"map.k2.string": "hello",
 		}
 
-		p, _ := conf.Read([]byte(str), ".properties")
+		p, _ := conf.Bytes([]byte(str), ".properties")
 		for k, expect := range data {
 			v := p.Get(k)
 			assert.Equal(t, v, expect)
@@ -203,7 +203,7 @@ func TestProperties_ReadYaml(t *testing.T) {
 		}
 
 		for _, d := range data {
-			p, _ := conf.Read([]byte(d.str), ".yaml")
+			p, _ := conf.Bytes([]byte(d.str), ".yaml")
 			v := p.Get(d.key)
 			assert.Equal(t, v, d.val)
 		}
@@ -225,7 +225,7 @@ func TestProperties_ReadYaml(t *testing.T) {
 		}
 
 		for _, d := range data {
-			p, _ := conf.Read([]byte(d.str), ".yaml")
+			p, _ := conf.Bytes([]byte(d.str), ".yaml")
 			v := p.Get(d.key)
 			assert.Equal(t, v, d.val)
 		}
@@ -248,7 +248,7 @@ func TestProperties_ReadYaml(t *testing.T) {
 			"map.string": "hello",
 		}
 
-		p, _ := conf.Read([]byte(str), ".yaml")
+		p, _ := conf.Bytes([]byte(str), ".yaml")
 		for k, expect := range data {
 			v := p.Get(k)
 			assert.Equal(t, v, expect)
@@ -271,7 +271,7 @@ func TestProperties_ReadYaml(t *testing.T) {
                   string: hello
         `
 
-		p, _ := conf.Read([]byte(str), ".yaml")
+		p, _ := conf.Bytes([]byte(str), ".yaml")
 
 		data := []struct {
 			key  string
@@ -310,7 +310,7 @@ func TestProperties_ReadYaml(t *testing.T) {
                   string: hello
         `
 
-		p, _ := conf.Read([]byte(str), ".yaml")
+		p, _ := conf.Bytes([]byte(str), ".yaml")
 
 		data := []struct {
 			key  string
@@ -354,7 +354,7 @@ func TestProperties_ReadToml(t *testing.T) {
 		}
 
 		for _, d := range data {
-			p, _ := conf.Read([]byte(d.str), ".toml")
+			p, _ := conf.Bytes([]byte(d.str), ".toml")
 			v := p.Get(d.key)
 			assert.Equal(t, v, d.val)
 		}
@@ -376,7 +376,7 @@ func TestProperties_ReadToml(t *testing.T) {
 		}
 
 		for _, d := range data {
-			p, _ := conf.Read([]byte(d.str), ".toml")
+			p, _ := conf.Bytes([]byte(d.str), ".toml")
 			v := p.Get(d.key)
 			assert.Equal(t, v, d.val)
 		}
@@ -399,7 +399,7 @@ func TestProperties_ReadToml(t *testing.T) {
 			"map.string": "hello",
 		}
 
-		p, _ := conf.Read([]byte(str), ".toml")
+		p, _ := conf.Bytes([]byte(str), ".toml")
 		for k, expect := range data {
 			v := p.Get(k)
 			assert.Equal(t, v, expect)
@@ -422,7 +422,7 @@ func TestProperties_ReadToml(t *testing.T) {
           string="hello"
         `
 
-		p, _ := conf.Read([]byte(str), ".toml")
+		p, _ := conf.Bytes([]byte(str), ".toml")
 
 		data := []struct {
 			key  string
@@ -461,7 +461,7 @@ func TestProperties_ReadToml(t *testing.T) {
           string="hello"
         `
 
-		p, _ := conf.Read([]byte(str), ".toml")
+		p, _ := conf.Bytes([]byte(str), ".toml")
 
 		data := []struct {
 			key  string
