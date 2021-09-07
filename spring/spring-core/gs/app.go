@@ -28,9 +28,9 @@ import (
 	"syscall"
 
 	"github.com/go-spring/spring-boost/cast"
+	"github.com/go-spring/spring-boost/conf"
 	"github.com/go-spring/spring-boost/log"
 	"github.com/go-spring/spring-boost/util"
-	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/grpc"
 	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/gs/internal"
@@ -48,12 +48,12 @@ const SpringBannerVisible = "spring.banner.visible"
 
 // AppRunner 命令行启动器接口
 type AppRunner interface {
-	Run(ctx Environment)
+	Run(e Environment)
 }
 
 // AppEvent 应用运行过程中的事件
 type AppEvent interface {
-	OnStartApp(ctx Environment)    // 应用启动的事件
+	OnStartApp(e Environment)      // 应用启动的事件
 	OnStopApp(ctx context.Context) // 应用停止的事件
 }
 
@@ -140,6 +140,14 @@ func (app *App) Run() error {
 	return nil
 }
 
+func (app *App) clear() {
+	app.c.clear()
+	if app.b != nil {
+		app.b.clear()
+	}
+	app.tempApp = nil
+}
+
 func (app *App) start() error {
 
 	app.Object(app)
@@ -222,8 +230,7 @@ func (app *App) start() error {
 		event.OnStartApp(app.c)
 	}
 
-	app.c.clear()
-	app.tempApp = nil
+	app.clear()
 
 	// 通知应用停止事件
 	app.c.Go(func(c context.Context) {

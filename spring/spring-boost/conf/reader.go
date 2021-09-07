@@ -14,25 +14,28 @@
  * limitations under the License.
  */
 
-package errutil_test
+package conf
 
 import (
-	"errors"
-	"testing"
-
-	"github.com/go-spring/spring-boost/assert"
-	"github.com/go-spring/spring-boost/errutil"
+	"github.com/go-spring/spring-boost/conf/prop"
+	"github.com/go-spring/spring-boost/conf/toml"
+	"github.com/go-spring/spring-boost/conf/yaml"
 )
 
-func TestErrorWithFileLine(t *testing.T) {
+func init() {
+	NewReader(yaml.Read, ".yaml", ".yml")
+	NewReader(prop.Read, ".properties")
+	NewReader(toml.Read, ".toml")
+}
 
-	err := errutil.WithFileLine(errors.New("this is an error"), 0)
-	assert.Error(t, err, ".*:29: this is an error")
+var readers = make(map[string]Reader)
 
-	fnError := func(e error) error {
-		return errutil.WithFileLine(e, 1)
+// Reader 属性列表解析器，将字节数组解析成 map 数据。
+type Reader func(b []byte) (map[string]interface{}, error)
+
+// NewReader 注册属性列表解析器，ext 是解析器支持的文件扩展名。
+func NewReader(r Reader, ext ...string) {
+	for _, s := range ext {
+		readers[s] = r
 	}
-
-	err = fnError(errors.New("this is an error"))
-	assert.Error(t, err, ".*:36: this is an error")
 }

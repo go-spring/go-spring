@@ -29,10 +29,10 @@ import (
 
 	"github.com/go-spring/spring-boost/assert"
 	"github.com/go-spring/spring-boost/cast"
+	"github.com/go-spring/spring-boost/conf"
 	"github.com/go-spring/spring-boost/json"
 	"github.com/go-spring/spring-boost/log"
 	"github.com/go-spring/spring-boost/util"
-	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/gs/cond"

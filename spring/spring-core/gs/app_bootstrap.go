@@ -17,29 +17,35 @@
 package gs
 
 import (
+	"errors"
 	"reflect"
 
-	"github.com/go-spring/spring-boost/errors"
+	"github.com/go-spring/spring-boost/conf"
 	"github.com/go-spring/spring-boost/util"
-	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/gs/arg"
 )
 
-type bootstrap struct {
-
-	// 应用上下文
-	c *container
-
-	// 属性列表解析完成后的回调
+type tempBootstrap struct {
 	mapOfOnProperty  map[string]interface{}
 	resourceLocators []ResourceLocator `autowire:""`
 }
 
+type bootstrap struct {
+	*tempBootstrap
+	c *container
+}
+
 func newBootstrap() *bootstrap {
 	return &bootstrap{
-		c:               New().(*container),
-		mapOfOnProperty: make(map[string]interface{}),
+		c: New().(*container),
+		tempBootstrap: &tempBootstrap{
+			mapOfOnProperty: make(map[string]interface{}),
+		},
 	}
+}
+
+func (b *bootstrap) clear() {
+	b.tempBootstrap = nil
 }
 
 func validOnProperty(fn interface{}) error {
@@ -54,66 +60,66 @@ func validOnProperty(fn interface{}) error {
 }
 
 // OnProperty 参考 App.OnProperty 的解释。
-func (boot *bootstrap) OnProperty(key string, fn interface{}) {
+func (b *bootstrap) OnProperty(key string, fn interface{}) {
 	err := validOnProperty(fn)
 	util.Panic(err).When(err != nil)
-	boot.mapOfOnProperty[key] = fn
+	b.mapOfOnProperty[key] = fn
 }
 
 // Property 参考 Container.Property 的解释。
-func (boot *bootstrap) Property(key string, value interface{}) {
-	boot.c.Property(key, value)
+func (b *bootstrap) Property(key string, value interface{}) {
+	b.c.Property(key, value)
 }
 
 // Object 参考 Container.Object 的解释。
-func (boot *bootstrap) Object(i interface{}) *BeanDefinition {
-	return boot.c.register(NewBean(reflect.ValueOf(i)))
+func (b *bootstrap) Object(i interface{}) *BeanDefinition {
+	return b.c.register(NewBean(reflect.ValueOf(i)))
 }
 
 // Provide 参考 Container.Provide 的解释。
-func (boot *bootstrap) Provide(ctor interface{}, args ...arg.Arg) *BeanDefinition {
-	return boot.c.register(NewBean(ctor, args...))
+func (b *bootstrap) Provide(ctor interface{}, args ...arg.Arg) *BeanDefinition {
+	return b.c.register(NewBean(ctor, args...))
 }
 
-func (boot *bootstrap) start(e *configuration) error {
+func (b *bootstrap) start(e *configuration) error {
 
-	boot.c.Object(boot)
+	b.c.Object(b)
 
-	if err := boot.loadBootstrap(e); err != nil {
+	if err := b.loadBootstrap(e); err != nil {
 		return err
 	}
 
 	// 保存从环境变量和命令行解析的属性
 	for _, k := range e.p.Keys() {
-		boot.c.p.Set(k, e.p.Get(k))
+		b.c.p.Set(k, e.p.Get(k))
 	}
 
-	for key, f := range boot.mapOfOnProperty {
+	for key, f := range b.mapOfOnProperty {
 		t := reflect.TypeOf(f)
 		in := reflect.New(t.In(0)).Elem()
-		err := boot.c.p.Bind(in, conf.Key(key))
+		err := b.c.p.Bind(in, conf.Key(key))
 		if err != nil {
 			return err
 		}
 		reflect.ValueOf(f).Call([]reflect.Value{in})
 	}
 
-	return boot.c.Refresh()
+	return b.c.Refresh()
 }
 
-func (boot *bootstrap) loadBootstrap(e *configuration) error {
-	if err := boot.loadConfigFile(e, "bootstrap"); err != nil {
+func (b *bootstrap) loadBootstrap(e *configuration) error {
+	if err := b.loadConfigFile(e, "bootstrap"); err != nil {
 		return err
 	}
 	for _, profile := range e.ActiveProfiles {
-		if err := boot.loadConfigFile(e, "bootstrap-"+profile); err != nil {
+		if err := b.loadConfigFile(e, "bootstrap-"+profile); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (boot *bootstrap) loadConfigFile(e *configuration, filename string) error {
+func (b *bootstrap) loadConfigFile(e *configuration, filename string) error {
 	for _, ext := range e.ConfigExtensions {
 		resources, err := e.resourceLocator.Locate(filename + ext)
 		if err != nil {
@@ -126,7 +132,7 @@ func (boot *bootstrap) loadConfigFile(e *configuration, filename string) error {
 			}
 		}
 		for _, key := range p.Keys() {
-			boot.c.p.Set(key, p.Get(key))
+			b.c.p.Set(key, p.Get(key))
 		}
 	}
 	return nil

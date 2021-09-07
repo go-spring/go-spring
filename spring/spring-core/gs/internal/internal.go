@@ -19,7 +19,7 @@ package internal
 import (
 	"reflect"
 
-	"github.com/go-spring/spring-core/conf"
+	"github.com/go-spring/spring-boost/conf"
 )
 
 // BeanSelector bean 选择器，可以是 bean ID 字符串，可
