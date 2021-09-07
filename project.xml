@@ -25,6 +25,12 @@
         <branch>master</branch>
     </project>
     <project>
+        <name>spring-rabbitmq</name>
+        <dir>spring/spring-rabbitmq</dir>
+        <url>https://github.com/go-spring/spring-rabbitmq.git</url>
+        <branch>main</branch>
+    </project>
+    <project>
         <name>spring-swag</name>
         <dir>spring/spring-swag</dir>
         <url>https://github.com/go-spring/spring-swag.git</url>
