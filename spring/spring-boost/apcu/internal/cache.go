@@ -28,7 +28,6 @@ import (
 )
 
 type cacheItem struct {
-	lock     sync.Mutex
 	source   interface{}
 	expireAt time.Time
 }
@@ -50,9 +49,9 @@ func (c *cache) Load(_ context.Context, key string, out interface{}) (ok bool, e
 	}
 
 	item := v.(*cacheItem)
-
-	item.lock.Lock()
-	defer item.lock.Unlock()
+	if item.source == nil {
+		return false, nil
+	}
 
 	// 缓存过期之后不会删除 key 对应的 *cacheItem 对象，而是将 *cacheItem
 	// 对象的 source 设为 nil，原因是此时此处的 Delete 操作无法和此时别处的
@@ -60,7 +59,7 @@ func (c *cache) Load(_ context.Context, key string, out interface{}) (ok bool, e
 	// 那么此处的 Delete 理应在 Store 之前执行，但是目前的框架下是无法保证的。
 	// 因此，退而求其次，把缓存的真实内容释放掉，这样即使占了一些内存也不会太多。
 	if !item.expireAt.IsZero() && time.Now().After(item.expireAt) {
-		item.source = nil
+		c.m.Store(key, &cacheItem{expireAt: item.expireAt})
 		return false, nil
 	}
 

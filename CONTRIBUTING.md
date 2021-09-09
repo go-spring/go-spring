@@ -49,7 +49,7 @@ Following information can help us to resolve the issue faster.
 * 限制每行长度最大不超过 100 个字符。
 * 放心使用选项模式。
 * 不对外直接暴露指针类型，使用值或者接口。
-* 包名不能和 Golang 标准库重名。
+* 包名尽量不和 Golang 标准库重名。
 * 注释里面的 bean 都是小写格式。
 * 函数内部调用的函数一般放在它的上方并且靠近它。
 * 几乎所有的 panic 都应该打印其调用栈。
