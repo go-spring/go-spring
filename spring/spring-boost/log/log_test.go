@@ -20,7 +20,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -87,7 +86,7 @@ type traceIDKeyType int
 
 var traceIDKey traceIDKeyType
 
-func myOutput(skip int, level log.Level, e *log.Entry) {
+func myOutput(level log.Level, e *log.Entry) {
 
 	msg := e.GetMsg()
 	tag := e.GetTag()
@@ -106,8 +105,9 @@ func myOutput(skip int, level log.Level, e *log.Entry) {
 		return "trace_id:" + v.(string)
 	}(e.GetCtx())
 
+	line := e.GetLine()
+	file := e.GetFile()
 	strLevel := strings.ToUpper(level.String())
-	_, file, line, _ := runtime.Caller(skip + 1)
 	fmt.Printf("[%s] %s:%d %s %s%s\n", strLevel, file, line, strCtx, tag, msg)
 }
 
