@@ -23,6 +23,8 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+
+	"github.com/go-spring/spring-boost/console"
 )
 
 const (
@@ -125,9 +127,11 @@ type Output func(level Level, e *Entry)
 func Console(level Level, e *Entry) {
 	strLevel := strings.ToUpper(level.String())
 	if level >= ErrorLevel {
-		strLevel = fmt.Sprintf("\x1b[31m%s\x1b[0m", strLevel) // RED
+		strLevel = console.RED.Sprint(strLevel)
 	} else if level == WarnLevel {
-		strLevel = fmt.Sprintf("\x1b[33m%s\x1b[0m", strLevel) // YELLOW
+		strLevel = console.YELLOW.Sprint(strLevel)
+	} else if level == TraceLevel {
+		strLevel = console.GREEN.Sprint(strLevel)
 	}
 	_, _ = fmt.Printf("[%s] %s:%d %s\n", strLevel, e.file, e.line, e.msg)
 }
