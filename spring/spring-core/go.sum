@@ -1,6 +1,8 @@
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/go-spring/spring-boost v0.0.0-20210907025139-e2764b7dba72 h1:fLDQMq2oi1rRtvmK/0xwvByEOJC/EGFQd/nKgSbpo8M=
 github.com/go-spring/spring-boost v0.0.0-20210907025139-e2764b7dba72/go.mod h1:Z5Q1l5gDVIa5iL/SR0RdJmkGSxZh0D948FA2ZemXNlg=
+github.com/go-spring/spring-boost v0.0.0-20210919065342-b77a23a19833 h1:qbKOR+256ExwvngxQ2LkKzu1FwPUwcEjwwSPufzAz/Y=
+github.com/go-spring/spring-boost v0.0.0-20210919065342-b77a23a19833/go.mod h1:Z5Q1l5gDVIa5iL/SR0RdJmkGSxZh0D948FA2ZemXNlg=
 github.com/magiconair/properties v1.8.5 h1:b6kJs+EmPFMYGkow9GiUyCyOvIwYetYJ3fSaWak/Gls=
 github.com/magiconair/properties v1.8.5/go.mod h1:y3VJvCyxH9uVvJTWEGAELF3aiYNyPKd5NZ3oSwXrF60=
 github.com/pelletier/go-toml v1.9.4 h1:tjENF6MfZAg8e4ZmZTeWaWiT2vXtsoO6+iuOjFhECwM=
