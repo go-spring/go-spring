@@ -988,9 +988,11 @@ func (c *container) Close() {
 func (c *container) Go(fn func(ctx context.Context)) {
 	c.wg.Add(1)
 	go func() {
+		defer c.wg.Done()
 		defer func() {
-			c.wg.Done()
-			log.Recovery(recover())
+			if r := recover(); r != nil {
+				log.Panic(r)
+			}
 		}()
 		fn(c.ctx)
 	}()

@@ -175,7 +175,7 @@ func pull(rootDir string) {
 func push(rootDir string) {
 
 	project := arg(2)
-	prefix, _, err := getProjectPath(rootDir, project)
+	prefix, projectDir, err := getProjectPath(rootDir, project)
 	if err != nil {
 		panic(err)
 	}
@@ -202,7 +202,7 @@ func push(rootDir string) {
 		commitMsg = string(b)
 	}
 
-	tempPath := filepath.Join("/tmp", project)
+	tempPath := filepath.Join(os.TempDir(), project)
 	if err = os.RemoveAll(tempPath); err != nil {
 		panic(err)
 	}
@@ -210,17 +210,39 @@ func push(rootDir string) {
 	{
 		repository := fmt.Sprintf("https://github.com/go-spring/%s.git", project)
 		cmd := exec.Command("bash", "-c", fmt.Sprintf("git clone %s", repository))
-		cmd.Dir = "/tmp"
+		cmd.Dir = os.TempDir()
 		b, err := cmd.CombinedOutput()
 		if err != nil {
 			panic(fmt.Errorf("err %v with output %s", err, b))
 		}
-		fmt.Printf("clone %s to temp dir success", project)
+		fmt.Printf("clone %s to temp dir success\n", project)
+	}
+
+	{
+		cmd := exec.Command("bash", "-c", fmt.Sprintf("git log --pretty=format:\"%%B\" | awk \"NR==1\""))
+		cmd.Dir = tempPath
+		b, err := cmd.CombinedOutput()
+		if err != nil {
+			panic(fmt.Errorf("err %v with output %s", err, b))
+		}
+
+		// 远程仓库是最新版本
+		if string(b) == commitID {
+			return
+		}
 	}
 
 	{
 		cmd := exec.Command("bash", "-c", fmt.Sprintf("rm -rf %s/*", tempPath))
 		cmd.Dir = tempPath
+		b, err := cmd.CombinedOutput()
+		if err != nil {
+			panic(fmt.Errorf("err %v with output %s", err, b))
+		}
+	}
+
+	{
+		cmd := exec.Command("bash", "-c", fmt.Sprintf("cp -rf %s/* %s", projectDir, tempPath))
 		b, err := cmd.CombinedOutput()
 		if err != nil {
 			panic(fmt.Errorf("err %v with output %s", err, b))

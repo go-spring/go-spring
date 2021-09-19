@@ -16,3 +16,36 @@
 
 // Package atomic 封装基础数据类型的原子操作。
 package atomic
+
+import (
+	"sync/atomic"
+)
+
+type Int64 struct {
+	value int64
+}
+
+// Add wrapper for atomic.AddInt64.
+func (c *Int64) Add(delta int64) int64 {
+	return atomic.AddInt64(&c.value, delta)
+}
+
+// Load wrapper for atomic.LoadInt64.
+func (c *Int64) Load() int64 {
+	return atomic.LoadInt64(&c.value)
+}
+
+// Store wrapper for atomic.StoreInt64.
+func (c *Int64) Store(v int64) {
+	atomic.StoreInt64(&c.value, v)
+}
+
+// Swap wrapper for atomic.SwapInt64.
+func (c *Int64) Swap(new int64) int64 {
+	return atomic.SwapInt64(&c.value, new)
+}
+
+// CompareAndSwap wrapper for atomic.CompareAndSwapInt64.
+func (c *Int64) CompareAndSwap(old, new int64) bool {
+	return atomic.CompareAndSwapInt64(&c.value, old, new)
+}

@@ -57,17 +57,10 @@ type AppEvent interface {
 	OnStopApp(ctx context.Context) // 应用停止的事件
 }
 
-type propertySource struct {
-	file   string
-	prefix string
-	object interface{}
-}
-
 type tempApp struct {
 	banner          string
 	router          web.Router
 	consumers       *Consumers
-	propertySources []*propertySource
 	mapOfOnProperty map[string]interface{} // 属性列表解析完成后的回调
 }
 
@@ -161,24 +154,6 @@ func (app *App) start() error {
 
 	if err := e.prepare(); err != nil {
 		return err
-	}
-
-	for _, ps := range app.propertySources {
-		files, err := app.loadResource(e, ps.file)
-		if err != nil {
-			return err
-		}
-		p := conf.New()
-		for _, file := range files {
-			if err = p.Load(file.Name()); err != nil {
-				return err
-			}
-		}
-		err = p.Bind(ps.object, conf.Key(ps.prefix))
-		if err != nil {
-			return err
-		}
-		app.Object(ps.object)
 	}
 
 	showBanner := cast.ToBool(e.p.Get(SpringBannerVisible))
@@ -327,7 +302,7 @@ func (app *App) loadProperties(e *configuration) error {
 		if err != nil {
 			return err
 		}
-		p, err := conf.Read(b, filepath.Ext(resource.Name()))
+		p, err := conf.Bytes(b, filepath.Ext(resource.Name()))
 		if err != nil {
 			return err
 		}
@@ -397,11 +372,6 @@ func (app *App) Object(i interface{}) *BeanDefinition {
 // Provide 参考 Container.Provide 的解释。
 func (app *App) Provide(ctor interface{}, args ...arg.Arg) *BeanDefinition {
 	return app.c.register(NewBean(ctor, args...))
-}
-
-func (app *App) PropertySource(file string, prefix string, object interface{}) {
-	ps := &propertySource{file: file, prefix: prefix, object: object}
-	app.propertySources = append(app.propertySources, ps)
 }
 
 // HandleGet 注册 GET 方法处理函数。

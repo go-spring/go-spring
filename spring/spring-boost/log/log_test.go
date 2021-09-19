@@ -78,8 +78,6 @@ func TestDefault(t *testing.T) {
 
 	log.Fatal("a", "=", "1")
 	log.Fatalf("a=%d", 1)
-
-	log.Recovery(errors.New("panic:3"))
 }
 
 type traceIDKeyType int
@@ -176,7 +174,4 @@ func TestEntry(t *testing.T) {
 	logger.Ctx(ctx).Panicf("level:%s", "panic")
 	logger.Ctx(ctx).Fatal("level:", "fatal")
 	logger.Ctx(ctx).Fatalf("level:%s", "fatal")
-
-	logger.Recovery(errors.New("panic:3"))
-	logger.Ctx(ctx).Recovery(errors.New("panic:3"))
 }

@@ -81,6 +81,11 @@ func (b *bootstrap) Provide(ctor interface{}, args ...arg.Arg) *BeanDefinition {
 	return b.c.register(NewBean(ctor, args...))
 }
 
+// ResourceLocator 参考 Container.Object 的解释。
+func (b *bootstrap) ResourceLocator(i interface{}) *BeanDefinition {
+	return b.c.register(NewBean(reflect.ValueOf(i))).Export((*ResourceLocator)(nil))
+}
+
 func (b *bootstrap) start(e *configuration) error {
 
 	b.c.Object(b)

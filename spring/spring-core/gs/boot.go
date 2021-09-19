@@ -81,11 +81,6 @@ func Provide(ctor interface{}, args ...arg.Arg) *BeanDefinition {
 	return app().c.register(NewBean(ctor, args...))
 }
 
-// PropertySource 参考 app.PropertySource 的解释。
-func PropertySource(file string, prefix string, object interface{}) {
-	app().PropertySource(file, prefix, object)
-}
-
 // HandleGet 参考 App.HandleGet 的解释。
 func HandleGet(path string, h web.Handler) *web.Mapper {
 	return app().HandleGet(path, h)

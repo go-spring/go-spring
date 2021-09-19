@@ -253,13 +253,6 @@ func (e Entry) Fatalf(format string, args ...interface{}) {
 	outputf(FatalLevel, e, format, args...)
 }
 
-// Recovery 记录 recover 事件。
-func (e Entry) Recovery(i interface{}) {
-	if i != nil {
-		outputf(PanicLevel, e, "", i)
-	}
-}
-
 // EnableTrace 是否允许输出 TRACE 级别的日志。
 func EnableTrace() bool {
 	return config.level <= TraceLevel
@@ -363,11 +356,4 @@ func Fatal(args ...interface{}) {
 // Fatalf 输出 FATAL 级别的日志。
 func Fatalf(format string, args ...interface{}) {
 	outputf(FatalLevel, empty, format, args...)
-}
-
-// Recovery 记录 recover 事件。
-func Recovery(i interface{}) {
-	if i != nil {
-		outputf(PanicLevel, empty, "", i)
-	}
 }
