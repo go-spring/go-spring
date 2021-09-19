@@ -18,9 +18,7 @@ package gs_test
 
 import (
 	"errors"
-	"fmt"
 	"os"
-	"sort"
 	"testing"
 	"time"
 
@@ -56,7 +54,7 @@ func TestConfig(t *testing.T) {
 		os.Clearenv()
 		gs.Setenv("GS_SPRING_PROFILES_ACTIVE", "dev")
 		app := startApplication("testdata/config/", func(e gs.Environment) {
-			assert.Equal(t, e.Properties().Get("spring.profiles.active"), "dev")
+			assert.Equal(t, e.GetProperty("spring.profiles.active"), "dev")
 		})
 		defer app.ShutDown(errors.New("run test end"))
 	})
@@ -65,7 +63,7 @@ func TestConfig(t *testing.T) {
 		os.Clearenv()
 		gs.Setenv("GS_SPRING_PROFILES_ACTIVE", "dev")
 		app := startApplication("testdata/config/", func(e gs.Environment) {
-			assert.Equal(t, e.Properties().Get("spring.profiles.active"), "dev")
+			assert.Equal(t, e.GetProperty("spring.profiles.active"), "dev")
 		})
 		defer app.ShutDown(errors.New("run test end"))
 	})
@@ -74,12 +72,12 @@ func TestConfig(t *testing.T) {
 		os.Clearenv()
 		gs.Setenv("GS_SPRING_PROFILES_ACTIVE", "dev")
 		app := startApplication("testdata/config/", func(e gs.Environment) {
-			assert.Equal(t, e.Properties().Get("spring.profiles.active"), "dev")
-			keys := e.Properties().Keys()
-			sort.Strings(keys)
-			for _, k := range keys {
-				fmt.Println(k, "=", e.Properties().Get(k))
-			}
+			assert.Equal(t, e.GetProperty("spring.profiles.active"), "dev")
+			//keys := e.Properties().Keys()
+			//sort.Strings(keys)
+			//for _, k := range keys {
+			//	fmt.Println(k, "=", e.GetProperty(k))
+			//}
 		})
 		defer app.ShutDown(errors.New("run test end"))
 	})

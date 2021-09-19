@@ -18,8 +18,6 @@ package internal
 
 import (
 	"reflect"
-
-	"github.com/go-spring/spring-boost/conf"
 )
 
 // BeanSelector bean 选择器，可以是 bean ID 字符串，可
@@ -37,14 +35,6 @@ type BeanDefinition interface {
 	TypeName() string       // 返回类型的全限定名
 	Created() bool          // 返回是否已创建
 	Wired() bool            // 返回是否已注入
-}
-
-// Properties 配置
-type Properties interface {
-	Keys() []string
-	Has(key string) bool
-	Get(key string, opts ...conf.GetOption) string
-	Bind(i interface{}, opts ...conf.BindOption) error
 }
 
 type RefreshArg struct {

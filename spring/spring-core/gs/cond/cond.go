@@ -24,21 +24,18 @@ import (
 	"strings"
 
 	"github.com/go-spring/spring-boost/cast"
+	"github.com/go-spring/spring-boost/conf"
 	"github.com/go-spring/spring-boost/util"
 	"github.com/go-spring/spring-core/gs/internal"
 )
 
-type Properties = internal.Properties
 type BeanSelector = internal.BeanSelector
 type BeanDefinition = internal.BeanDefinition
 
-type BeanRegistry interface {
-	Find(selector BeanSelector) ([]BeanDefinition, error)
-}
-
 type Context interface {
-	Properties() Properties
-	BeanRegistry() BeanRegistry
+	HasProperty(key string) bool
+	GetProperty(key string, opts ...conf.GetOption) string
+	FindBean(selector BeanSelector) ([]BeanDefinition, error)
 }
 
 // Condition 条件接口，条件成立 Matches 方法返回 true，否则返回 false。
@@ -82,12 +79,11 @@ type onProperty struct {
 func (c *onProperty) Matches(ctx Context) (bool, error) {
 	// 参考 /usr/local/go/src/go/types/eval_test.go 示例
 
-	p := ctx.Properties()
-	if !p.Has(c.name) {
+	if !ctx.HasProperty(c.name) {
 		return c.matchIfMissing, nil
 	}
 
-	val := p.Get(c.name)
+	val := ctx.GetProperty(c.name)
 	if !strings.Contains(c.havingValue, "$") {
 		return val == c.havingValue, nil
 	}
@@ -107,7 +103,7 @@ type onMissingProperty struct {
 }
 
 func (c *onMissingProperty) Matches(ctx Context) (bool, error) {
-	return !ctx.Properties().Has(c.name), nil
+	return !ctx.HasProperty(c.name), nil
 }
 
 // onBean 基于符合条件的 bean 必须存在的 Condition 实现。
@@ -116,7 +112,7 @@ type onBean struct {
 }
 
 func (c *onBean) Matches(ctx Context) (bool, error) {
-	beans, err := ctx.BeanRegistry().Find(c.selector)
+	beans, err := ctx.FindBean(c.selector)
 	return len(beans) > 0, err
 }
 
@@ -126,7 +122,7 @@ type onMissingBean struct {
 }
 
 func (c *onMissingBean) Matches(ctx Context) (bool, error) {
-	beans, err := ctx.BeanRegistry().Find(c.selector)
+	beans, err := ctx.FindBean(c.selector)
 	return len(beans) == 0, err
 }
 
@@ -136,7 +132,7 @@ type onSingleCandidate struct {
 }
 
 func (c *onSingleCandidate) Matches(ctx Context) (bool, error) {
-	beans, err := ctx.BeanRegistry().Find(c.selector)
+	beans, err := ctx.FindBean(c.selector)
 	return len(beans) == 1, err
 }
 

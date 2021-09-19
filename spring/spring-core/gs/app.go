@@ -144,8 +144,8 @@ func (app *App) clear() {
 func (app *App) start() error {
 
 	app.Object(app)
-	app.Object(app.router)
 	app.Object(app.consumers)
+	app.Object(app.router).Export((*web.Router)(nil))
 
 	e := &configuration{
 		p:               conf.New(),
@@ -191,7 +191,7 @@ func (app *App) start() error {
 	}
 
 	var runners []AppRunner
-	if err := app.c.Get(&runners, "?"); err != nil {
+	if err := app.c.GetBean(&runners, "?"); err != nil {
 		return err
 	}
 
