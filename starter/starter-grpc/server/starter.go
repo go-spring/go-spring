@@ -22,5 +22,5 @@ import (
 )
 
 func init() {
-	gs.Provide(factory.NewStarter).Export(gs.AppEvent)
+	gs.Provide(factory.NewStarter).Export((*gs.AppEvent)(nil))
 }

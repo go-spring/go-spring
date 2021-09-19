@@ -18,63 +18,57 @@ package StarterK8S
 
 import (
 	"fmt"
+	"io/ioutil"
+	"os"
+	"path/filepath"
 
-	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/gs"
 	"github.com/spf13/viper"
 )
 
 func init() {
-	gs.Bootstrap().Object(new(propertySource)).Export((*gs.PropertySource)(nil))
+	gs.Bootstrap().ResourceLocator(new(resourceLocator))
 }
 
-type propertySource struct {
+type resourceLocator struct {
 	ConfigLocation string `value:"${spring.cloud.k8s.config-location:=config/config-map.yml}"`
+	tempDir        string
 }
 
-func (ps *propertySource) Load(e gs.Environment) (map[string]*conf.Properties, error) {
-
-	var err error
+func (r *resourceLocator) OnInit(e gs.Environment) error {
 
 	v := viper.New()
-	v.SetConfigFile(ps.ConfigLocation)
-	if err = v.ReadInConfig(); err != nil {
-		return nil, err
+	v.SetConfigFile(r.ConfigLocation)
+	if err := v.ReadInConfig(); err != nil {
+		return err
 	}
 
 	d := v.Sub("data")
 	if d == nil {
-		return nil, fmt.Errorf("data not found in %s", ps.ConfigLocation)
+		return fmt.Errorf("data not found in %s", r.ConfigLocation)
 	}
 
-	result := make(map[string]*conf.Properties)
-	if result[""], err = ps.loadProfile(e, d, "application"); err != nil {
-		return nil, err
+	tempDir, err := ioutil.TempDir(os.TempDir(), "")
+	if err != nil {
+		return err
 	}
-	if profile := e.ActiveProfile(); profile != "" {
-		result[profile], err = ps.loadProfile(e, d, "application-"+profile)
+	r.tempDir = tempDir
+
+	for _, key := range d.AllKeys() {
+		val := d.GetString(key)
+		filename := filepath.Join(tempDir, key)
+		err = ioutil.WriteFile(filename, []byte(val), os.ModePerm)
 		if err != nil {
-			return nil, err
+			return err
 		}
 	}
-	return result, nil
+	return nil
 }
 
-func (ps *propertySource) loadProfile(e gs.Environment, v *viper.Viper, filename string) (*conf.Properties, error) {
-	r := conf.New()
-	for _, ext := range e.ConfigExtensions() {
-		key := filename + ext
-		if !v.IsSet(key) {
-			continue
-		}
-		val := v.GetString(key)
-		p, err := conf.Read([]byte(val), ext)
-		if err != nil {
-			return nil, err
-		}
-		for _, s := range p.Keys() {
-			r.Set(s, p.Get(s))
-		}
+func (r *resourceLocator) Locate(filename string) ([]gs.Resource, error) {
+	file, err := os.Open(filepath.Join(r.tempDir, filename))
+	if err != nil {
+		return nil, err
 	}
-	return r, nil
+	return []gs.Resource{file}, nil
 }

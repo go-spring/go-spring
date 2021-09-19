@@ -19,31 +19,31 @@ package StarterRabbitMQConsumer
 import (
 	"context"
 
+	"github.com/go-spring/spring-boost/log"
 	"github.com/go-spring/spring-core/gs"
-	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/mq"
 	"github.com/go-spring/spring-stl/util"
 	"github.com/go-spring/starter-rabbitmq/server"
 )
 
 func init() {
-	gs.Object(new(Starter)).Export(gs.AppEvent)
+	gs.Object(new(Starter)).Export((*gs.AppEvent)(nil))
 }
 
 type Starter struct {
 	Server *StarterRabbitMQServer.AMQPServer `autowire:""`
 }
 
-func (starter *Starter) OnStartApp(ctx gs.AppContext) {
+func (starter *Starter) OnStartApp(ctx gs.Environment) {
 
 	cMap := map[string][]mq.Consumer{}
 	{
 		var consumers []mq.Consumer
-		err := ctx.Get(&consumers)
+		err := ctx.BeanRegistry().Get(&consumers)
 		util.Panic(err).When(err != nil)
 
 		var bindConsumers *gs.Consumers
-		err = ctx.Get(&bindConsumers)
+		err = ctx.BeanRegistry().Get(&bindConsumers)
 		util.Panic(err).When(err != nil)
 
 		bindConsumers.ForEach(func(c mq.Consumer) {
@@ -82,6 +82,6 @@ func (starter *Starter) OnStartApp(ctx gs.AppContext) {
 	}()
 }
 
-func (starter *Starter) OnStopApp(ctx gs.AppContext) {
+func (starter *Starter) OnStopApp(ctx context.Context) {
 
 }

@@ -23,9 +23,9 @@ import (
 	"reflect"
 	"runtime"
 
+	"github.com/go-spring/spring-boost/log"
 	SpringGrpc "github.com/go-spring/spring-core/grpc"
 	"github.com/go-spring/spring-core/gs"
-	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-stl/util"
 	"github.com/go-spring/starter-core"
 	"google.golang.org/grpc"
@@ -46,7 +46,7 @@ func NewStarter(config StarterCore.GrpcServerConfig) *Starter {
 	}
 }
 
-func (starter *Starter) OnStartApp(ctx gs.AppContext) {
+func (starter *Starter) OnStartApp(ctx gs.Environment) {
 
 	server := reflect.ValueOf(starter.server)
 	srvMap := make(map[string]reflect.Value)
@@ -81,6 +81,6 @@ func (starter *Starter) OnStartApp(ctx gs.AppContext) {
 	})
 }
 
-func (starter *Starter) OnStopApp(ctx gs.AppContext) {
+func (starter *Starter) OnStopApp(ctx context.Context) {
 	starter.server.GracefulStop()
 }

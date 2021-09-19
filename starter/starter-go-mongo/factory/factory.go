@@ -19,7 +19,7 @@ package factory
 import (
 	"context"
 
-	"github.com/go-spring/spring-core/log"
+	"github.com/go-spring/spring-boost/log"
 	"github.com/go-spring/starter-core"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
