@@ -26,7 +26,7 @@ import (
 )
 
 func init() {
-	gs.Object(new(Starter)).Export(gs.AppEvent)
+	gs.Object(new(Starter)).Export((*gs.AppEvent)(nil))
 }
 
 // Starter Web 服务器启动器
@@ -37,7 +37,7 @@ type Starter struct {
 }
 
 // OnStartApp 应用程序启动事件。
-func (starter *Starter) OnStartApp(ctx gs.AppContext) {
+func (starter *Starter) OnStartApp(ctx gs.Environment) {
 
 	for _, c := range starter.Containers {
 		c.AddFilter(starter.Filters...)
@@ -52,13 +52,6 @@ func (starter *Starter) OnStartApp(ctx gs.AppContext) {
 	starter.startContainers(ctx)
 }
 
-// OnStopApp 应用程序结束事件。
-func (starter *Starter) OnStopApp(ctx gs.AppContext) {
-	for _, c := range starter.Containers {
-		_ = c.Stop(context.Background())
-	}
-}
-
 func (starter *Starter) getContainers(mapper *web.Mapper) []web.Container {
 	var ret []web.Container
 	for _, c := range starter.Containers {
@@ -69,7 +62,7 @@ func (starter *Starter) getContainers(mapper *web.Mapper) []web.Container {
 	return ret
 }
 
-func (starter *Starter) startContainers(ctx gs.AppContext) {
+func (starter *Starter) startContainers(ctx gs.Environment) {
 	for _, container := range starter.Containers {
 		c := container
 		ctx.Go(func(_ context.Context) {
@@ -77,5 +70,12 @@ func (starter *Starter) startContainers(ctx gs.AppContext) {
 				gs.ShutDown(err)
 			}
 		})
+	}
+}
+
+// OnStopApp 应用程序结束事件。
+func (starter *Starter) OnStopApp(ctx context.Context) {
+	for _, c := range starter.Containers {
+		_ = c.Stop(ctx)
 	}
 }
