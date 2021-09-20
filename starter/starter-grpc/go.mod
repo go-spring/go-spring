@@ -3,10 +3,10 @@ module github.com/go-spring/starter-grpc
 go 1.14
 
 require (
-	github.com/go-spring/spring-boost v0.0.0-20210919065342-b77a23a19833
-	github.com/go-spring/spring-core v1.0.6-0.20210919070406-296d1cd840e4
-	github.com/go-spring/spring-stl v1.1.0-alpha
-	github.com/go-spring/starter-core v1.1.0-alpha
+	github.com/go-spring/spring-boost v1.1.0-beta
+	github.com/go-spring/spring-core v1.1.0-beta
+	github.com/go-spring/spring-stl v1.1.0-beta
+	github.com/go-spring/starter-core v1.1.0-beta
 	golang.org/x/lint v0.0.0-20190313153728-d0100b6bd8b3 // indirect
 	golang.org/x/tools v0.0.0-20190524140312-2c0ae7006135 // indirect
 	google.golang.org/grpc v1.31.0
