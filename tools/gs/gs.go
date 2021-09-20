@@ -18,8 +18,11 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
@@ -123,37 +126,13 @@ func zip(rootDir string) {
 	}
 }
 
-// getProjectPrefix 获取项目前缀
-func getProjectPrefix(project string) string {
-	prefix := strings.Split(project, "-")[0]
-	if prefix != "spring" && prefix != "starter" {
-		panic(errors.New("error project name"))
-	}
-	return prefix
-}
-
-func getProjectPath(rootDir, project string) (prefix, projectDir string, err error) {
-	prefix = getProjectPrefix(project)
-	projectDir = filepath.Join(rootDir, prefix, project)
-	stat, err := os.Stat(projectDir)
-	if os.IsNotExist(err) {
-		return prefix, projectDir, err
-	} else if err != nil {
-		return "", "", err
-	}
-	if !stat.IsDir() {
-		return "", "", fmt.Errorf("%s exist but not dir", projectDir)
-	}
-	return prefix, projectDir, nil
-}
-
 // pull 拉取远程项目
 func pull(rootDir string) {
 
 	project := arg(2)
 	branch := arg(3)
 
-	prefix, projectDir, err := getProjectPath(rootDir, project)
+	prefix, projectDir, err := internal.GetProjectPath(rootDir, project)
 	if os.IsNotExist(err) {
 		err = os.MkdirAll(projectDir, os.ModePerm)
 		if err != nil {
@@ -173,116 +152,15 @@ func pull(rootDir string) {
 
 // push 推送更新到远程项目
 func push(rootDir string) {
-
 	project := arg(2)
-	prefix, projectDir, err := getProjectPath(rootDir, project)
-	if err != nil {
-		panic(err)
-	}
-
-	var commitID string
-	{
-		cmd := exec.Command("bash", "-c", fmt.Sprintf("git log --pretty=format:\"%%H\" %s/%s | awk \"NR==1\"", prefix, project))
-		cmd.Dir = rootDir
-		b, err := cmd.CombinedOutput()
-		if err != nil {
-			panic(fmt.Errorf("err %v with output %s", err, b))
-		}
-		commitID = string(b)
-	}
-
-	var commitMsg string
-	{
-		cmd := exec.Command("bash", "-c", fmt.Sprintf("git log --pretty=format:\"%%s\" %s/%s | awk \"NR==1\"", prefix, project))
-		cmd.Dir = rootDir
-		b, err := cmd.CombinedOutput()
-		if err != nil {
-			panic(fmt.Errorf("err %v with output %s", err, b))
-		}
-		commitMsg = string(b)
-	}
-
-	tempPath := filepath.Join(os.TempDir(), project)
-	if err = os.RemoveAll(tempPath); err != nil {
-		panic(err)
-	}
-
-	{
-		repository := fmt.Sprintf("https://github.com/go-spring/%s.git", project)
-		cmd := exec.Command("bash", "-c", fmt.Sprintf("git clone %s", repository))
-		cmd.Dir = os.TempDir()
-		b, err := cmd.CombinedOutput()
-		if err != nil {
-			panic(fmt.Errorf("err %v with output %s", err, b))
-		}
-		fmt.Printf("clone %s to temp dir success\n", project)
-	}
-
-	{
-		cmd := exec.Command("bash", "-c", fmt.Sprintf("git log --pretty=format:\"%%B\" | awk \"NR==1\""))
-		cmd.Dir = tempPath
-		b, err := cmd.CombinedOutput()
-		if err != nil {
-			panic(fmt.Errorf("err %v with output %s", err, b))
-		}
-
-		// 远程仓库是最新版本
-		if string(b) == commitID {
-			return
-		}
-	}
-
-	{
-		cmd := exec.Command("bash", "-c", fmt.Sprintf("rm -rf %s/*", tempPath))
-		cmd.Dir = tempPath
-		b, err := cmd.CombinedOutput()
-		if err != nil {
-			panic(fmt.Errorf("err %v with output %s", err, b))
-		}
-	}
-
-	{
-		cmd := exec.Command("bash", "-c", fmt.Sprintf("cp -rf %s/* %s", projectDir, tempPath))
-		b, err := cmd.CombinedOutput()
-		if err != nil {
-			panic(fmt.Errorf("err %v with output %s", err, b))
-		}
-	}
-
-	{
-		cmd := exec.Command("bash", "-c", "git add .")
-		cmd.Dir = tempPath
-		b, err := cmd.CombinedOutput()
-		if err != nil {
-			panic(fmt.Errorf("err %v with output %s", err, b))
-		}
-	}
-
-	{
-		cmd := exec.Command("bash", "-c", fmt.Sprintf("git commit -am \"%s%s\"", commitID, commitMsg))
-		cmd.Dir = tempPath
-		b, err := cmd.CombinedOutput()
-		if err != nil {
-			panic(fmt.Errorf("err %v with output %s", err, b))
-		}
-	}
-
-	{
-		cmd := exec.Command("bash", "-c", "git push -f")
-		cmd.Dir = tempPath
-		b, err := cmd.CombinedOutput()
-		if err != nil {
-			panic(fmt.Errorf("err %v with output %s", err, b))
-		}
-		fmt.Printf("push %s to remote dir success", project)
-	}
+	internal.Push(project, rootDir)
 }
 
 // remove 移除远程项目
 func remove(rootDir string) {
 
 	project := arg(2)
-	_, projectDir, err := getProjectPath(rootDir, project)
+	_, projectDir, err := internal.GetProjectPath(rootDir, project)
 	if err != nil {
 		if !os.IsNotExist(err) {
 			panic(err)
@@ -298,4 +176,89 @@ func remove(rootDir string) {
 // release 发布远程项目
 func release(rootDir string) {
 
+	tag := arg(2)
+	err := filepath.Walk(rootDir, func(walkFile string, _ os.FileInfo, err error) error {
+
+		if err != nil {
+			return err
+		}
+
+		if path.Base(walkFile) != "go.mod" {
+			return nil
+		}
+
+		//fmt.Println(walkFile)
+		fileData, err := ioutil.ReadFile(walkFile)
+		if err != nil {
+			return nil
+		}
+
+		outBuf := bytes.NewBuffer(nil)
+		r := bufio.NewReader(strings.NewReader(string(fileData)))
+		for {
+			line, isPrefix, err := r.ReadLine()
+			if len(line) > 0 && err != nil {
+				panic(err)
+			}
+			if isPrefix {
+				panic(errors.New("ReadLine returned prefix"))
+			}
+			if err != nil {
+				if err != io.EOF {
+					panic(err)
+				}
+				break
+			}
+			s := strings.TrimSpace(string(line))
+			if strings.HasPrefix(s, "github.com/go-spring/spring-") ||
+				strings.HasPrefix(s, "github.com/go-spring/starter-") {
+				index := strings.LastIndexByte(s, ' ')
+				if index <= 0 {
+					panic(errors.New(s))
+				}
+				b := append(line[:index+2], []byte(tag)...)
+				outBuf.Write(b)
+			} else {
+				outBuf.Write(line)
+			}
+			outBuf.WriteString("\n")
+		}
+
+		//fmt.Println(outBuf.String())
+		return ioutil.WriteFile(walkFile, outBuf.Bytes(), os.ModePerm)
+	})
+
+	if err != nil {
+		panic(err)
+	}
+
+	// 提交代码更新
+	{
+		cmd := exec.Command("bash", "-c", fmt.Sprintf("git commit -am \"publish %s\"", tag))
+		cmd.Dir = rootDir
+		b, err := cmd.CombinedOutput()
+		if err != nil {
+			panic(fmt.Errorf("err %v with output %s", err, b))
+		}
+	}
+
+	// 遍历所有项目，推送远程更新
+	for _, project := range projectsXml.Projects {
+		internal.Push(project.Name, rootDir)
+	}
+
+	// 创建临时目录
+	now := time.Now().Format("20060102150405")
+	buildDir := path.Join(rootDir, "..", "go-spring-build-"+now)
+	err = os.MkdirAll(buildDir, os.ModePerm)
+	if err != nil {
+		panic(err)
+	}
+
+	// 遍历所有项目，推送远程标签
+	for _, project := range projectsXml.Projects {
+		internal.Clone(buildDir, project.Name, project.Url)
+		projectDir := filepath.Join(buildDir, project.Name)
+		internal.Release(projectDir, project.Name, tag)
+	}
 }
