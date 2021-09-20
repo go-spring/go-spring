@@ -17,6 +17,7 @@
 package internal
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -136,6 +137,18 @@ func Push(project string, rootDir string) {
 	}
 
 	{
+		cmd := exec.Command("bash", "-c", fmt.Sprintf("git status"))
+		cmd.Dir = tempPath
+		b, err := cmd.CombinedOutput()
+		if err != nil {
+			panic(fmt.Errorf("err %v with output %s", err, b))
+		}
+		if bytes.Contains(b, []byte("nothing to commit, working tree clean")) {
+			return
+		}
+	}
+
+	{
 		cmd := exec.Command("bash", "-c", fmt.Sprintf("git commit -am \"%s%s\"", commitID, commitMsg))
 		cmd.Dir = tempPath
 		b, err := cmd.CombinedOutput()
@@ -151,7 +164,7 @@ func Push(project string, rootDir string) {
 		if err != nil {
 			panic(fmt.Errorf("err %v with output %s", err, b))
 		}
-		fmt.Printf("push %s to remote dir success", project)
+		fmt.Printf("push %s to remote dir success\n", project)
 	}
 }
 
