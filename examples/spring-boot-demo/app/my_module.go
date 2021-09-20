@@ -23,24 +23,24 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-spring/spring-boost/log"
 	"github.com/go-spring/spring-core/gs"
-	"github.com/go-spring/spring-core/log"
 	"github.com/labstack/echo"
 	"github.com/labstack/echo/middleware"
 )
 
 func init() {
-	gs.Provide(new(MyModule)).Export(gs.AppEvent)
+	gs.Provide(new(MyModule)).Export((*gs.AppEvent)(nil))
 }
 
 type MyModule struct{}
 
-func (m *MyModule) OnStartApp(ctx gs.AppContext) {
+func (m *MyModule) OnStartApp(e gs.Environment) {
 	log.Info("MyModule start")
-	ctx.Go(Process)
+	e.Go(Process)
 }
 
-func (m *MyModule) OnStopApp(ctx gs.AppContext) {
+func (m *MyModule) OnStopApp(ctx context.Context) {
 	log.Info("MyModule stop")
 }
 

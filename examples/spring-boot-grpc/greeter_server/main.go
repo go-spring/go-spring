@@ -25,6 +25,7 @@ import (
 	"log"
 
 	pb "github.com/go-spring/examples/spring-boot-grpc/helloworld"
+	"github.com/go-spring/spring-core/grpc"
 	"github.com/go-spring/spring-core/gs"
 	_ "github.com/go-spring/starter-grpc/server"
 )
@@ -32,7 +33,10 @@ import (
 func init() {
 	s := new(GreeterServer)
 	gs.Object(s) // TODO 这里的用法有点奇怪
-	gs.GrpcServer("helloworld.Greeter", pb.RegisterGreeterServer, s)
+	gs.GrpcServer("helloworld.Greeter", &grpc.Server{
+		Register: pb.RegisterGreeterServer,
+		Service:  s,
+	})
 }
 
 type GreeterServer struct {

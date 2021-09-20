@@ -23,10 +23,10 @@ import (
 	"time"
 
 	"github.com/go-redis/redis"
+	"github.com/go-spring/spring-boost/log"
+	"github.com/go-spring/spring-boost/util"
 	"github.com/go-spring/spring-core/gs"
-	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/web"
-	"github.com/go-spring/spring-stl/util"
 	"github.com/jinzhu/gorm"
 	"go.mongodb.org/mongo-driver/mongo"
 )
@@ -38,25 +38,8 @@ func init() {
 	})
 
 	gs.Object(new(MyController)).Init(func(c *MyController) {
-
 		gs.GetMapping("/api/ok", c.OK)
 		gs.GetBinding("/api/echo", c.Echo)
-
-		gs.Go(func(ctx context.Context) {
-			defer func() { log.Info("exit after waiting in ::Go") }()
-
-			ticker := time.NewTicker(10 * time.Millisecond)
-			defer ticker.Stop()
-
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-ticker.C:
-					log.Info("::Go")
-				}
-			}
-		})
 	})
 }
 
@@ -64,6 +47,25 @@ type MyController struct {
 	RedisClient redis.Cmdable `autowire:""`
 	MongoClient *mongo.Client `autowire:"?"`
 	DB          *gorm.DB      `autowire:""`
+}
+
+func (c *MyController) onInit(e gs.Environment) error {
+	e.Go(func(ctx context.Context) {
+		defer func() { log.Info("exit after waiting in ::Go") }()
+
+		ticker := time.NewTicker(10 * time.Millisecond)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				log.Info("::Go")
+			}
+		}
+	})
+	return nil
 }
 
 type EchoRequest struct {

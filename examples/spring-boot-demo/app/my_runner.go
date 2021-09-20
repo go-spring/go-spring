@@ -20,27 +20,18 @@ import (
 	"context"
 	"time"
 
+	"github.com/go-spring/spring-boost/log"
 	"github.com/go-spring/spring-core/gs"
-	"github.com/go-spring/spring-core/log"
 )
 
 func init() {
-	gs.Object(new(MyRunner)).Export(gs.AppRunner)
+	gs.Object(new(MyRunner)).Export((*gs.AppRunner)(nil))
 }
 
-type MyRunner struct {
-	Properties map[string]string `value:"${}"`
-}
+type MyRunner struct{}
 
-func (r *MyRunner) Run(appCtx gs.AppContext) {
-
-	log.Trace("get all properties:")
-	for k, v := range r.Properties {
-		log.Tracef("%v=%v", k, v)
-	}
-	log.Info("exit right now in MyRunner::Run")
-
-	appCtx.Go(func(ctx context.Context) {
+func (r *MyRunner) Run(e gs.Environment) {
+	e.Go(func(ctx context.Context) {
 		defer func() { log.Info("exit after waiting in MyRunner::Run") }()
 
 		ticker := time.NewTicker(10 * time.Millisecond)

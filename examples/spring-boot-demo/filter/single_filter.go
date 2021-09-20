@@ -19,13 +19,13 @@ package filter
 import (
 	"fmt"
 
+	"github.com/go-spring/spring-boost/log"
 	"github.com/go-spring/spring-core/gs"
-	"github.com/go-spring/spring-core/log"
 	"github.com/go-spring/spring-core/web"
 )
 
 func init() {
-	gs.Object(new(SingleBeanFilter)).Export(gs.WebFilter)
+	gs.Object(new(SingleBeanFilter)).Export((*web.Filter)(nil))
 }
 
 type SingleBeanFilter struct {

@@ -22,8 +22,8 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/elliotchance/redismock"
 	"github.com/go-redis/redis"
+	"github.com/go-spring/spring-boost/log"
 	"github.com/go-spring/spring-core/gs"
-	"github.com/go-spring/spring-core/log"
 	"github.com/jinzhu/gorm"
 )
 

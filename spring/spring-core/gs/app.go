@@ -38,11 +38,6 @@ import (
 	"github.com/go-spring/spring-core/web"
 )
 
-const (
-	Version = "go-spring@v1.0.5"
-	Website = "https://go-spring.com/"
-)
-
 // SpringBannerVisible 是否显示 banner。
 const SpringBannerVisible = "spring.banner.visible"
 

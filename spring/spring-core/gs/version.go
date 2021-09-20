@@ -14,26 +14,9 @@
  * limitations under the License.
  */
 
-package filter
+package gs
 
-import (
-	"github.com/go-spring/spring-boost/log"
-	"github.com/go-spring/spring-core/gs"
-	"github.com/go-spring/spring-core/web"
+const (
+	Version = "go-spring@v1.0.5"
+	Website = "https://go-spring.com/"
 )
-
-func init() {
-	gs.Object(&StringFilter{"server"}).Export((*web.Filter)(nil))
-}
-
-type StringFilter struct{ s string }
-
-func (f *StringFilter) Invoke(ctx web.Context, chain web.FilterChain) {
-	ctxLogger := log.Ctx(ctx.Context())
-
-	defer func() { ctxLogger.Info("after ", f.s, " code:", ctx.ResponseWriter().Status()) }()
-	ctxLogger.Info("before ", f.s)
-	log.Info(f.s)
-
-	chain.Next(ctx)
-}

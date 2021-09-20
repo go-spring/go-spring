@@ -3,7 +3,7 @@ package extension
 import (
 	"bytes"
 
-	"github.com/go-spring/spring-core/conf"
+	"github.com/go-spring/spring-boost/conf"
 	"github.com/spf13/viper"
 )
 
