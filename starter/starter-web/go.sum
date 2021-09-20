@@ -5,8 +5,6 @@ github.com/go-spring/spring-core v1.0.6-0.20210919070406-296d1cd840e4 h1:SLN1vc5
 github.com/go-spring/spring-core v1.0.6-0.20210919070406-296d1cd840e4/go.mod h1:1XSNVnPTyBPxAaOJ4YOyJuIAbeHzFKERmCEmzOjDoYw=
 github.com/go-spring/spring-core v1.1.0-alpha h1:9U7pvTV4Sqvjss4o3Le1eYiu6qYt8A9MJG5P5DEEjt0=
 github.com/go-spring/spring-core v1.1.0-alpha/go.mod h1:evmTpsLrHqXqsTZTUMWFawEwfwyA9JJ0qY+ffRjwslo=
-github.com/go-spring/spring-stl v1.1.0-alpha h1:o0WpXRoO6VF97sttCaK60vxbfBXJZYd+UxBH7RkQP5Q=
-github.com/go-spring/spring-stl v1.1.0-alpha/go.mod h1:RFkTfNPcNYbppU8krHBfGKjnvhR2Z0nQokpl5s0Te84=
 github.com/magiconair/properties v1.8.1 h1:ZC2Vc7/ZFkGmsVC9KvOjumD+G5lXy2RtTKyzRKO2BQ4=
 github.com/magiconair/properties v1.8.1/go.mod h1:PppfXfuXeibc/6YijjN8zIbojt8czPbwD3XqdrwzmxQ=
 github.com/magiconair/properties v1.8.5 h1:b6kJs+EmPFMYGkow9GiUyCyOvIwYetYJ3fSaWak/Gls=

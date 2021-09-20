@@ -35,7 +35,7 @@ import (
 type Starter struct {
 	config  StarterCore.GrpcServerConfig
 	server  *grpc.Server
-	Servers map[string]*SpringGrpc.Server `autowire:""`
+	Servers *gs.GrpcServers `autowire:""`
 }
 
 // NewStarter Starter 的构造函数
@@ -50,14 +50,13 @@ func (starter *Starter) OnStartApp(ctx gs.Environment) {
 
 	server := reflect.ValueOf(starter.server)
 	srvMap := make(map[string]reflect.Value)
-	for serviceName, rpcServer := range starter.Servers {
 
+	starter.Servers.ForEach(func(serviceName string, rpcServer *SpringGrpc.Server) {
 		service := reflect.ValueOf(rpcServer.Service)
 		srvMap[serviceName] = service
-
 		fn := reflect.ValueOf(rpcServer.Register)
 		fn.Call([]reflect.Value{server, service})
-	}
+	})
 
 	for service, info := range starter.server.GetServiceInfo() {
 		srv := srvMap[service]

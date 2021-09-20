@@ -24,9 +24,6 @@ github.com/go-spring/spring-gin v1.0.6-0.20210909143446-52826893234d h1:7Qowf659
 github.com/go-spring/spring-gin v1.0.6-0.20210909143446-52826893234d/go.mod h1:Pg4reR8IwxOEeoSxM/FSGdGD7GPSMPL+UAEl3uK4+7o=
 github.com/go-spring/spring-gin v1.1.0-alpha h1:+gCEmSCCXVAxmYzl05arTrfIK1S03hcVdQeYisCBMZs=
 github.com/go-spring/spring-gin v1.1.0-alpha/go.mod h1:f6MCFQZh49E5vjihyDI93kpo91K6lCbE1RiGwQ1716E=
-github.com/go-spring/spring-stl v0.0.0-20210724153121-8378c2594815/go.mod h1:RFkTfNPcNYbppU8krHBfGKjnvhR2Z0nQokpl5s0Te84=
-github.com/go-spring/spring-stl v1.1.0-alpha h1:o0WpXRoO6VF97sttCaK60vxbfBXJZYd+UxBH7RkQP5Q=
-github.com/go-spring/spring-stl v1.1.0-alpha/go.mod h1:RFkTfNPcNYbppU8krHBfGKjnvhR2Z0nQokpl5s0Te84=
 github.com/go-spring/starter-core v1.1.0-alpha h1:zZ+HN+cS/SNjMLj3rww+AgG4rKhRa80if0g+FJQ7DwM=
 github.com/go-spring/starter-core v1.1.0-alpha/go.mod h1:f8r68vQJ/rQe7EtvRrhkElG5LlTuT7RcOmJs73IAL50=
 github.com/go-spring/starter-web v1.1.0-alpha h1:FV6V8sRwQEznyhfQV0WPp0+rMMpHBo3Z9ElZxWQVmdw=

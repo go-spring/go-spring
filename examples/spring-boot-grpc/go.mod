@@ -10,8 +10,8 @@ require (
 	google.golang.org/grpc v1.31.0
 )
 
-//replace (
-//	github.com/go-spring/spring-core => ../../spring/spring-core
-//	github.com/go-spring/starter-web => ../../starter/starter-web
-//	github.com/go-spring/starter-grpc => ../../starter/starter-grpc
-//)
+replace (
+	github.com/go-spring/spring-core => ../../spring/spring-core
+	github.com/go-spring/starter-web => ../../starter/starter-web
+	github.com/go-spring/starter-grpc => ../../starter/starter-grpc
+)

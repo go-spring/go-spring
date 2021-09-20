@@ -56,6 +56,7 @@ type tempApp struct {
 	banner          string
 	router          web.Router
 	consumers       *Consumers
+	grpcServers     *GrpcServers
 	mapOfOnProperty map[string]interface{} // 属性列表解析完成后的回调
 }
 
@@ -85,13 +86,30 @@ func (c *Consumers) ForEach(fn func(mq.Consumer)) {
 	}
 }
 
+type GrpcServers struct {
+	servers map[string]*grpc.Server
+}
+
+func (s *GrpcServers) Add(serviceName string, server *grpc.Server) {
+	s.servers[serviceName] = server
+}
+
+func (s *GrpcServers) ForEach(fn func(string, *grpc.Server)) {
+	for serviceName, server := range s.servers {
+		fn(serviceName, server)
+	}
+}
+
 // NewApp application 的构造函数
 func NewApp() *App {
 	return &App{
 		c: New().(*container),
 		tempApp: &tempApp{
-			router:          web.NewRouter(),
-			consumers:       new(Consumers),
+			router:    web.NewRouter(),
+			consumers: new(Consumers),
+			grpcServers: &GrpcServers{
+				servers: map[string]*grpc.Server{},
+			},
 			mapOfOnProperty: make(map[string]interface{}),
 		},
 		exitChan: make(chan struct{}),
@@ -140,6 +158,7 @@ func (app *App) start() error {
 
 	app.Object(app)
 	app.Object(app.consumers)
+	app.Object(app.grpcServers)
 	app.Object(app.router).Export((*web.Router)(nil))
 
 	e := &configuration{
@@ -449,14 +468,14 @@ func (app *App) Consume(fn interface{}, topics ...string) {
 	app.consumers.Add(mq.Bind(fn, topics...))
 }
 
-// GrpcClient 注册 gRPC 服务客户端，fn 是 gRPC 自动生成的客户端构造函数。
-func (app *App) GrpcClient(fn interface{}, endpoint string) *BeanDefinition {
-	return app.c.register(NewBean(fn, endpoint))
-}
-
 // GrpcServer 注册 gRPC 服务提供者，fn 是 gRPC 自动生成的服务注册函数，
 // serviceName 是服务名称，必须对应 *_grpc.pg.go 文件里面 grpc.ServerDesc
 // 的 ServiceName 字段，server 是服务提供者对象。
-func (app *App) GrpcServer(serviceName string, server *grpc.Server) *BeanDefinition {
-	return app.c.register(NewBean(server)).Name(serviceName)
+func (app *App) GrpcServer(serviceName string, server *grpc.Server) {
+	app.grpcServers.Add(serviceName, server)
+}
+
+// GrpcClient 注册 gRPC 服务客户端，fn 是 gRPC 自动生成的客户端构造函数。
+func (app *App) GrpcClient(fn interface{}, endpoint string) *BeanDefinition {
+	return app.c.register(NewBean(fn, endpoint))
 }

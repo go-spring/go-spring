@@ -12,7 +12,7 @@ require (
 	honnef.co/go/tools v0.0.0-20190523083050-ea95bdfd59fc // indirect
 )
 
-//replace (
-//	github.com/go-spring/spring-core => ../../spring/spring-core
-//	github.com/go-spring/starter-core => ../starter-core
-//)
+replace (
+	github.com/go-spring/spring-core => ../../spring/spring-core
+	github.com/go-spring/starter-core => ../starter-core
+)

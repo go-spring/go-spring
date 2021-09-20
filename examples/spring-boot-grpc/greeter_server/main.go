@@ -31,11 +31,11 @@ import (
 )
 
 func init() {
-	s := new(GreeterServer)
-	gs.Object(s) // TODO 这里的用法有点奇怪
-	gs.GrpcServer("helloworld.Greeter", &grpc.Server{
-		Register: pb.RegisterGreeterServer,
-		Service:  s,
+	gs.Object(new(GreeterServer)).Init(func(s *GreeterServer) {
+		gs.GrpcServer("helloworld.Greeter", &grpc.Server{
+			Register: pb.RegisterGreeterServer,
+			Service:  s,
+		})
 	})
 }
 

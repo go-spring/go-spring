@@ -161,12 +161,12 @@ func Consume(fn interface{}, topics ...string) {
 	app().Consume(fn, topics...)
 }
 
+// GrpcServer 参考 App.GrpcServer 的解释。
+func GrpcServer(serviceName string, server *grpc.Server) {
+	app().GrpcServer(serviceName, server)
+}
+
 // GrpcClient 参考 App.GrpcClient 的解释。
 func GrpcClient(fn interface{}, endpoint string) *BeanDefinition {
 	return app().c.register(NewBean(fn, endpoint))
-}
-
-// GrpcServer 参考 App.GrpcServer 的解释。
-func GrpcServer(serviceName string, server *grpc.Server) *BeanDefinition {
-	return app().GrpcServer(serviceName, server)
 }

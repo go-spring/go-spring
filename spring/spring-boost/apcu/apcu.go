@@ -28,14 +28,7 @@ import (
 
 const Protocol = "apcu"
 
-type APCU interface {
-	Load(ctx context.Context, key string, out interface{}) (ok bool, err error)
-	Store(key string, val interface{}, opts ...internal.StoreOption)
-	Range(f func(key, value interface{}) bool)
-	Delete(key string)
-}
-
-var cache APCU = internal.New()
+var cache internal.APCU = internal.New()
 
 // Load 获取 key 对应的缓存值，注意 out 的类型必须和 Store 的时候存入的类
 // 型一致，否则 Load 会失败。但是如果 Store 的时候存入的内容是一个字符串，
@@ -65,8 +58,10 @@ func Load(ctx context.Context, key string, out interface{}) (ok bool, err error)
 	return cache.Load(ctx, key, out)
 }
 
+type StoreOption = internal.StoreOption
+
 // TTL 设置 key 的过期时间。
-func TTL(ttl time.Duration) internal.StoreOption {
+func TTL(ttl time.Duration) StoreOption {
 	return func(arg *internal.StoreArg) {
 		arg.TTL = ttl
 	}
@@ -78,7 +73,7 @@ func TTL(ttl time.Duration) internal.StoreOption {
 // 但是这里有一个例外情况，考虑到很多场景下，用户需要缓存一个由字符串反序列
 // 化后的对象，所以该库提供了一个功能，就是用户可以 Store 一个字符串，然后
 // Load 的时候按照指定类型返回。
-func Store(key string, val interface{}, opts ...internal.StoreOption) {
+func Store(key string, val interface{}, opts ...StoreOption) {
 	cache.Store(key, val, opts...)
 }
 
