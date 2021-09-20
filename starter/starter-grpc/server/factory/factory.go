@@ -24,9 +24,9 @@ import (
 	"runtime"
 
 	"github.com/go-spring/spring-boost/log"
+	"github.com/go-spring/spring-boost/util"
 	SpringGrpc "github.com/go-spring/spring-core/grpc"
 	"github.com/go-spring/spring-core/gs"
-	"github.com/go-spring/spring-stl/util"
 	"github.com/go-spring/starter-core"
 	"google.golang.org/grpc"
 )

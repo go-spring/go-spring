@@ -20,9 +20,9 @@ import (
 	"context"
 
 	"github.com/go-spring/spring-boost/log"
+	"github.com/go-spring/spring-boost/util"
 	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/mq"
-	"github.com/go-spring/spring-stl/util"
 	"github.com/go-spring/starter-rabbitmq/server"
 )
 
@@ -39,11 +39,11 @@ func (starter *Starter) OnStartApp(ctx gs.Environment) {
 	cMap := map[string][]mq.Consumer{}
 	{
 		var consumers []mq.Consumer
-		err := ctx.BeanRegistry().Get(&consumers)
+		err := ctx.GetBean(&consumers)
 		util.Panic(err).When(err != nil)
 
 		var bindConsumers *gs.Consumers
-		err = ctx.BeanRegistry().Get(&bindConsumers)
+		err = ctx.GetBean(&bindConsumers)
 		util.Panic(err).When(err != nil)
 
 		bindConsumers.ForEach(func(c mq.Consumer) {
