@@ -189,16 +189,16 @@ func Release(projectDir, project, tag string) {
 		if err != nil {
 			panic(fmt.Errorf("err %v with output %s", err, b))
 		}
-		fmt.Printf("push %s to remote dir success", project)
+		//fmt.Printf("push %s to remote dir success\n", project)
 	}
 
 	{
-		cmd := exec.Command("bash", "-c", "git push -f")
+		cmd := exec.Command("bash", "-c", "git push origin "+tag)
 		cmd.Dir = projectDir
 		b, err := cmd.CombinedOutput()
 		if err != nil {
 			panic(fmt.Errorf("err %v with output %s", err, b))
 		}
-		fmt.Printf("push %s to remote dir success", project)
+		fmt.Printf("push %s to remote dir success\n", project)
 	}
 }
