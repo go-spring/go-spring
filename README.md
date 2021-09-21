@@ -148,6 +148,12 @@ func main() {
 
 <img src="https://raw.githubusercontent.com/go-spring/go-spring-website/master/go-spring-action.jpg" width="140" height="*" />
 
+### 支持我们！
+
+<img src="https://raw.githubusercontent.com/go-spring/go-spring/master/sponsor.png" width="140" height="*" />
+
+为了更好地吸引和激励开发者，我们需要您的捐赠，帮助项目快速发展。
+
 ### License
 
 The Go-Spring is released under version 2.0 of the Apache License.

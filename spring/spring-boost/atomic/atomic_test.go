@@ -20,10 +20,16 @@ import (
 	"reflect"
 	"sync"
 	"testing"
+	"unsafe"
 
 	"github.com/go-spring/spring-boost/assert"
 	"github.com/go-spring/spring-boost/atomic"
 )
+
+func TestSize(t *testing.T) {
+	assert.Equal(t, unsafe.Sizeof(int64(0)), uintptr(8))
+	assert.Equal(t, unsafe.Sizeof(atomic.Int64{}), uintptr(8))
+}
 
 func TestInt64(t *testing.T) {
 
