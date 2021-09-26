@@ -172,7 +172,9 @@ func getSliceValue(p *Properties, et reflect.Type, param BindParam) (*Properties
 	p = New()
 	for i, s := range strings.Split(strVal, ",") {
 		k := fmt.Sprintf("%s[%d]", param.Key, i)
-		p.Set(k, s)
+		if err := p.Set(k, s); err != nil {
+			return nil, err
+		}
 	}
 	return p, nil
 }

@@ -332,6 +332,13 @@ func TestProperties_ReadYaml(t *testing.T) {
 			assert.Equal(t, v, d.val)
 		}
 	})
+
+	t.Run("", func(t *testing.T) {
+		p, err := conf.Bytes([]byte("array: []\nmap: {}\n"), ".yaml")
+		assert.Nil(t, err)
+		assert.True(t, p.Has("map"))
+		assert.True(t, p.Has("array"))
+	})
 }
 
 func TestProperties_ReadToml(t *testing.T) {
@@ -491,27 +498,38 @@ func TestProperties_Get(t *testing.T) {
 
 		p := conf.New()
 
-		p.Set("a.b.c", "3")
-		p.Set("a.b.d", []string{"3"})
+		err := p.Set("a.b.c", "3")
+		assert.Nil(t, err)
+		err = p.Set("a.b.d", []string{"3"})
+		assert.Nil(t, err)
 
 		v := p.Get("a.b.c")
 		assert.Equal(t, v, "3")
 		v = p.Get("a.b.d")
 		assert.Equal(t, v, "3")
 
-		p.Set("Bool", true)
-		p.Set("Int", 3)
-		p.Set("Uint", 3)
-		p.Set("Float", 3.0)
-		p.Set("String", "3")
-		p.Set("Duration", "3s")
-		p.Set("StringSlice", []string{"3", "4"})
-		p.Set("Time", "2020-02-04 20:02:04")
-		p.Set("MapStringInterface", []interface{}{
+		err = p.Set("Bool", true)
+		assert.Nil(t, err)
+		err = p.Set("Int", 3)
+		assert.Nil(t, err)
+		err = p.Set("Uint", 3)
+		assert.Nil(t, err)
+		err = p.Set("Float", 3.0)
+		assert.Nil(t, err)
+		err = p.Set("String", "3")
+		assert.Nil(t, err)
+		err = p.Set("Duration", "3s")
+		assert.Nil(t, err)
+		err = p.Set("StringSlice", []string{"3", "4"})
+		assert.Nil(t, err)
+		err = p.Set("Time", "2020-02-04 20:02:04")
+		assert.Nil(t, err)
+		err = p.Set("MapStringInterface", []interface{}{
 			map[interface{}]interface{}{
 				"1": 2,
 			},
 		})
+		assert.Nil(t, err)
 
 		assert.False(t, p.Has("NULL"))
 		assert.Equal(t, p.Get("NULL"), "")
@@ -523,7 +541,7 @@ func TestProperties_Get(t *testing.T) {
 		assert.Equal(t, v, "3")
 
 		var v2 int
-		err := p.Bind(&v2, conf.Key("Int"))
+		err = p.Bind(&v2, conf.Key("Int"))
 		assert.Nil(t, err)
 		assert.Equal(t, v2, 3)
 
@@ -734,12 +752,15 @@ func TestProperties_Bind(t *testing.T) {
 	t.Run("simple map bind", func(t *testing.T) {
 
 		p := conf.New()
-		p.Set("a.b1", "b1")
-		p.Set("a.b2", "b2")
-		p.Set("a.b3", "b3")
+		err := p.Set("a.b1", "b1")
+		assert.Nil(t, err)
+		err = p.Set("a.b2", "b2")
+		assert.Nil(t, err)
+		err = p.Set("a.b3", "b3")
+		assert.Nil(t, err)
 
 		var m map[string]string
-		err := p.Bind(&m, conf.Tag("${a}"))
+		err = p.Bind(&m, conf.Tag("${a}"))
 		assert.Nil(t, err)
 
 		assert.Equal(t, len(m), 3)
@@ -814,9 +835,10 @@ func TestProperties_Ref(t *testing.T) {
 		p := conf.New()
 
 		appDir := "/home/log"
-		p.Set("app.dir", appDir)
+		err := p.Set("app.dir", appDir)
+		assert.Nil(t, err)
 
-		err := p.Bind(&httpLog)
+		err = p.Bind(&httpLog)
 		assert.Nil(t, err)
 		assert.Equal(t, httpLog.Dir, appDir)
 		assert.Equal(t, httpLog.NestedDir, "./log")
@@ -946,7 +968,8 @@ func TestBindMap(t *testing.T) {
 
 func TestInterpolate(t *testing.T) {
 	p := conf.New()
-	p.Set("name", "Jim")
+	err := p.Set("name", "Jim")
+	assert.Nil(t, err)
 	str, _ := p.Resolve("my name is ${name")
 	assert.Equal(t, str, "my name is ${name")
 	str, _ = p.Resolve("my name is ${name}")
@@ -961,24 +984,33 @@ func TestInterpolate(t *testing.T) {
 
 func TestProperties_Has(t *testing.T) {
 
-	assert.Panic(t, func() {
+	t.Run("", func(t *testing.T) {
 		p := conf.New()
-		p.Set("a", "1")
-		p.Set("a.b", "2")
-	}, "property \\\"a\\\" has a value but want another sub key \\\"a.b\\\"")
+		err := p.Set("a", "1")
+		assert.Nil(t, err)
+		err = p.Set("a.b", "2")
+		assert.Error(t, err, "property \\\"a\\\" has a value but want another sub key \\\"a.b\\\"")
+	})
 
-	assert.Panic(t, func() {
+	t.Run("", func(t *testing.T) {
 		p := conf.New()
-		p.Set("a.b", "2")
-		p.Set("a", "1")
-	}, "property \\\"a\\\" want a value but has sub keys map\\[b\\:\\{}]")
+		err := p.Set("a.b", "2")
+		assert.Nil(t, err)
+		err = p.Set("a", "1")
+		assert.Error(t, err, "property \\\"a\\\" want a value but has sub keys map\\[b\\:\\{}]")
+	})
 
 	p := conf.New()
-	p.Set("a.b.c", "3")
-	p.Set("a.b.d", "4")
-	p.Set("a.b.e[0]", "5")
-	p.Set("a.b.e[1]", "6")
-	p.Set("a.b.f", []string{"7", "8"})
+	err := p.Set("a.b.c", "3")
+	assert.Nil(t, err)
+	err = p.Set("a.b.d", "4")
+	assert.Nil(t, err)
+	err = p.Set("a.b.e[0]", "5")
+	assert.Nil(t, err)
+	err = p.Set("a.b.e[1]", "6")
+	assert.Nil(t, err)
+	err = p.Set("a.b.f", []string{"7", "8"})
+	assert.Nil(t, err)
 
 	assert.True(t, p.Has("a"))
 	assert.True(t, p.Has("a.b"))
@@ -993,10 +1025,22 @@ func TestProperties_Has(t *testing.T) {
 }
 
 func TestProperties_Set(t *testing.T) {
+
+	t.Run("", func(t *testing.T) {
+		p := conf.New()
+		err := p.Set("a", []string{})
+		assert.Nil(t, err)
+		val := p.Get("a")
+		assert.Equal(t, val, "")
+	})
+
 	p := conf.New()
-	p.Set("a", []string{"a", "aa", "aaa"})
-	p.Set("b", []int{1, 11, 111})
-	p.Set("c", []float32{1, 1.1, 1.11})
+	err := p.Set("a", []string{"a", "aa", "aaa"})
+	assert.Nil(t, err)
+	err = p.Set("b", []int{1, 11, 111})
+	assert.Nil(t, err)
+	err = p.Set("c", []float32{1, 1.1, 1.11})
+	assert.Nil(t, err)
 	assert.Equal(t, p.Get("a"), "a,aa,aaa")
 	assert.Equal(t, p.Get("b"), "1,11,111")
 	assert.Equal(t, p.Get("c"), "1,1.1,1.11")

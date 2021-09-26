@@ -18,6 +18,7 @@
 package conf
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -50,7 +51,9 @@ func New() *Properties {
 func Map(m map[string]interface{}) *Properties {
 	p := New()
 	for k, v := range m {
-		p.Set(k, v)
+		if err := p.Set(k, v); err != nil {
+			return nil
+		}
 	}
 	return p
 }
@@ -107,7 +110,9 @@ func (p *Properties) Bytes(b []byte, ext string) error {
 	}
 
 	for k, v := range m {
-		p.Set(k, v)
+		if err = p.Set(k, v); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -121,8 +126,22 @@ func (p *Properties) Keys() []string {
 	return keys
 }
 
-// cacheKey 缓存属性 key 的路由。
-func (p *Properties) cacheKey(key string) {
+func (p *Properties) convertKey(key string) string {
+	var buf bytes.Buffer
+	for _, c := range key {
+		switch c {
+		case '[':
+			buf.WriteByte('.')
+		case ']':
+		default:
+			buf.WriteByte(byte(c))
+		}
+	}
+	return buf.String()
+}
+
+// checkKey 检查属性 key 是否合法，collection 表示是否为空的集合数据。
+func (p *Properties) checkKey(key string, collection bool) error {
 
 	var (
 		ok bool
@@ -131,11 +150,12 @@ func (p *Properties) cacheKey(key string) {
 	)
 
 	t = p.t
+	key = p.convertKey(key)
 	keyPath := strings.Split(key, ".")
 	for i, s := range keyPath {
 
 		if v, ok = t[s]; !ok {
-			if i < len(keyPath)-1 {
+			if i < len(keyPath)-1 || collection {
 				m := make(map[string]interface{})
 				t[s] = m
 				t = m
@@ -145,22 +165,23 @@ func (p *Properties) cacheKey(key string) {
 			continue
 		}
 
-		if _, ok = v.(struct{}); ok {
-			if i == len(keyPath)-1 {
-				continue
-			}
-			oldKey := strings.Join(keyPath[:i+1], ".")
-			panic(fmt.Errorf("property %q has a value but want another sub key %q", oldKey, key))
-		}
-
 		if _, ok = v.(map[string]interface{}); ok {
-			if i < len(keyPath)-1 {
+			if i < len(keyPath)-1 || collection {
 				t = v.(map[string]interface{})
 				continue
 			}
-			panic(fmt.Errorf("property %q want a value but has sub keys %v", key, v))
+			return fmt.Errorf("property %q want a value but has sub keys %v", key, v)
+		}
+
+		if _, ok = v.(struct{}); ok {
+			if i == len(keyPath)-1 && !collection {
+				continue
+			}
+			oldKey := strings.Join(keyPath[:i+1], ".")
+			return fmt.Errorf("property %q has a value but want another sub key %q", oldKey, key)
 		}
 	}
+	return nil
 }
 
 // Has 返回属性 key 是否存在。
@@ -173,6 +194,7 @@ func (p *Properties) Has(key string) bool {
 	)
 
 	t = p.t
+	key = p.convertKey(key)
 	keyPath := strings.Split(key, ".")
 	for i, s := range keyPath {
 		if v, ok = t[s]; !ok {
@@ -230,29 +252,53 @@ func (p *Properties) Get(key string, opts ...GetOption) string {
 // 数据类型的属性值。特殊情况下，Set 方法也支持 slice 、map 与基础数据类型组合构
 // 成的属性值，其处理方式是将组合结构层层展开，可以将组合结构看成一棵树，那么叶子结
 // 点的路径就是属性的 key，叶子结点的值就是属性的值。
-func (p *Properties) Set(key string, val interface{}) {
+func (p *Properties) Set(key string, val interface{}) error {
 	switch v := reflect.ValueOf(val); v.Kind() {
 	case reflect.Map:
+		if v.Len() == 0 {
+			p.m[key] = ""
+			return p.checkKey(key, true)
+		}
 		for _, k := range v.MapKeys() {
 			mapValue := v.MapIndex(k).Interface()
 			mapKey := cast.ToString(k.Interface())
-			p.Set(key+"."+mapKey, mapValue)
+			err := p.Set(key+"."+mapKey, mapValue)
+			if err != nil {
+				return err
+			}
+		}
+		if _, ok := p.m[key]; ok {
+			delete(p.m, key)
 		}
 	case reflect.Array, reflect.Slice:
+		if v.Len() == 0 {
+			p.m[key] = ""
+			return p.checkKey(key, true)
+		}
 		if util.IsPrimitiveValueType(v.Type().Elem()) {
 			ss := cast.ToStringSlice(val)
-			p.Set(key, strings.Join(ss, ","))
+			err := p.Set(key, strings.Join(ss, ","))
+			if err != nil {
+				return err
+			}
 		} else {
 			for i := 0; i < v.Len(); i++ {
 				subKey := fmt.Sprintf("%s[%d]", key, i)
 				subValue := v.Index(i).Interface()
-				p.Set(subKey, subValue)
+				err := p.Set(subKey, subValue)
+				if err != nil {
+					return err
+				}
+			}
+			if _, ok := p.m[key]; ok {
+				delete(p.m, key)
 			}
 		}
 	default:
 		p.m[key] = cast.ToString(val)
-		p.cacheKey(key)
+		return p.checkKey(key, false)
 	}
+	return nil
 }
 
 // Resolve 解析字符串中包含的所有属性引用即 ${key:=def} 的内容，并且支持递归引用。
