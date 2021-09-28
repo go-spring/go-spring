@@ -54,6 +54,13 @@ func (c *onMatches) Matches(ctx Context) (bool, error) {
 	return c.fn(ctx)
 }
 
+// OK 永远成立的 Condition 实现。
+func OK() Condition {
+	return &onMatches{fn: func(ctx Context) (bool, error) {
+		return true, nil
+	}}
+}
+
 // not 对一个条件进行取反的 Condition 实现。
 type not struct {
 	c Condition
@@ -83,12 +90,16 @@ func (c *onProperty) Matches(ctx Context) (bool, error) {
 		return c.matchIfMissing, nil
 	}
 
+	if c.havingValue == "" {
+		return true, nil
+	}
+
 	val := ctx.GetProperty(c.name)
-	if !strings.Contains(c.havingValue, "$") {
+	if !strings.HasPrefix(c.havingValue, "go:") {
 		return val == c.havingValue, nil
 	}
 
-	expr := strings.Replace(c.havingValue, "$", cast.ToString(val), -1)
+	expr := strings.Replace(c.havingValue[3:], "$", cast.ToString(val), -1)
 	ret, err := types.Eval(token.NewFileSet(), nil, token.NoPos, expr)
 	if err != nil {
 		return false, err

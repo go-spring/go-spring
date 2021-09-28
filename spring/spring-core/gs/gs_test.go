@@ -2331,7 +2331,9 @@ func TestDefaultSpringContext(t *testing.T) {
 		c.Object(&BeanZero{5}).On(cond.
 			OnProfile("test").
 			And().
-			OnMissingBean("null"),
+			OnMissingBean("null").
+			And().
+			On(cond.OK()),
 		)
 
 		err := runTest(c, func(p gs.Environment) {
@@ -2552,7 +2554,7 @@ func TestDefaultSpringContext_ConditionOnMissingBean(t *testing.T) {
 //	c2 := cond.OnPropertyValue("int", "3")
 //	assert.False(t, c2.Matches(c))
 //
-//	c3 := cond.OnPropertyValue("int", "$>2&&$<4")
+//	c3 := cond.OnPropertyValue("int", "go:$>2&&$<4")
 //	assert.True(t, c3.Matches(c))
 //
 //	c4 := cond.OnPropertyValue("bool", true)
