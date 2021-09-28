@@ -314,6 +314,31 @@ func (c *container) resolveBean(b *BeanDefinition) error {
 
 	b.status = Resolving
 
+	// method bean 先确定 parent bean 是否存在
+	if b.method {
+		selector, ok := b.f.Arg(0)
+		if !ok || selector == nil {
+			selector = b.t.In(0)
+		}
+		parents, err := c.findBean(selector)
+		if err != nil {
+			return err
+		}
+		n := len(parents)
+		if n > 1 {
+			msg := fmt.Sprintf("found %d parent beans, bean:%q type:%q [", n, selector, b.t.In(0))
+			for _, b := range parents {
+				msg += "( " + b.String() + " ), "
+			}
+			msg = msg[:len(msg)-2] + "]"
+			return errors.New(msg)
+		} else if n == 0 {
+			delete(c.beansById, b.ID())
+			b.status = Deleted
+			return nil
+		}
+	}
+
 	if b.cond != nil {
 		if ok, err := b.cond.Matches(c); err != nil {
 			return err
@@ -416,15 +441,15 @@ func (c *container) findBean(selector BeanSelector) ([]*BeanDefinition, error) {
 		return result, nil
 	}
 
-	t := reflect.TypeOf(selector)
-
-	if t.Kind() == reflect.String {
+	switch selector.(type) {
+	case string, BeanDefinition, *BeanDefinition:
 		tag := toWireTag(selector)
 		return finder(func(b *BeanDefinition) bool {
 			return b.Match(tag.typeName, tag.beanName)
 		})
 	}
 
+	t := reflect.TypeOf(selector)
 	if t.Kind() == reflect.Ptr {
 		if e := t.Elem(); e.Kind() == reflect.Interface {
 			t = e // 指 (*error)(nil) 形式的 bean 选择器

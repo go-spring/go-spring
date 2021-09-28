@@ -73,6 +73,7 @@ type BeanDefinition struct {
 	name    string         // 名称
 	status  beanStatus     // 状态
 	primary bool           // 是否为主版本
+	method  bool           // 是否为成员方法
 	cond    cond.Condition // 判断条件
 	order   int            // 收集时的顺序
 	init    interface{}    // 初始化函数
@@ -256,6 +257,7 @@ func NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 	}
 
 	const skip = 2
+	var method bool
 	var f *arg.Callable
 	_, file, line, _ := runtime.Caller(skip)
 
@@ -279,6 +281,11 @@ func NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 		if util.IsBeanType(out0) {
 			v = v.Elem()
 		}
+
+		// 成员方法一般是 xxx/gs_test.(*Server).Consumer 形式命名
+		fnPtr := reflect.ValueOf(objOrCtor).Pointer()
+		fnInfo := runtime.FuncForPC(fnPtr)
+		method = strings.LastIndexByte(fnInfo.Name(), ')') > 0
 	}
 
 	t := v.Type()
@@ -302,6 +309,7 @@ func NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 		name:     name,
 		typeName: util.TypeName(t),
 		status:   Default,
+		method:   method,
 		order:    LowestOrder,
 		file:     file,
 		line:     line,

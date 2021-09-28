@@ -1454,7 +1454,7 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 		c := gs.New()
 		c.Property("server.version", "1.0.0")
 		parent := c.Object(new(Server))
-		bd := c.Provide((*Server).Consumer, parent.ID())
+		bd := c.Provide((*Server).Consumer, parent)
 		err := runTest(c, func(p gs.Environment) {
 
 			var s *Server
@@ -1473,11 +1473,30 @@ func TestApplicationContext_RegisterMethodBean(t *testing.T) {
 		assert.Equal(t, bd.BeanName(), "Consumer")
 	})
 
+	t.Run("method bean condition", func(t *testing.T) {
+		c := gs.New()
+		c.Property("server.version", "1.0.0")
+		parent := c.Object(new(Server)).On(cond.Not(cond.OK()))
+		bd := c.Provide((*Server).Consumer, parent)
+		err := runTest(c, func(p gs.Environment) {
+
+			var s *Server
+			err := p.GetBean(&s)
+			assert.Error(t, err, "can't find bean, bean:\"\" type:\"\\*gs_test.Server\"")
+
+			var consumer *Consumer
+			err = p.GetBean(&consumer)
+			assert.Error(t, err, "can't find bean, bean:\"\" type:\"\\*gs_test.Consumer\"")
+		})
+		assert.Nil(t, err)
+		assert.Equal(t, bd.BeanName(), "Consumer")
+	})
+
 	t.Run("method bean arg", func(t *testing.T) {
 		c := gs.New()
 		c.Property("server.version", "1.0.0")
 		parent := c.Object(new(Server))
-		c.Provide((*Server).ConsumerArg, parent.ID(), "${i:=9}")
+		c.Provide((*Server).ConsumerArg, parent, "${i:=9}")
 		err := runTest(c, func(p gs.Environment) {
 
 			var s *Server
