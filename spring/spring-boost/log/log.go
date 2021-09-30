@@ -127,11 +127,11 @@ type Output func(level Level, e *Entry)
 func Console(level Level, e *Entry) {
 	strLevel := strings.ToUpper(level.String())
 	if level >= ErrorLevel {
-		strLevel = console.RED.Sprint(strLevel)
+		strLevel = console.Red.Sprint(strLevel)
 	} else if level == WarnLevel {
-		strLevel = console.YELLOW.Sprint(strLevel)
+		strLevel = console.Yellow.Sprint(strLevel)
 	} else if level == TraceLevel {
-		strLevel = console.GREEN.Sprint(strLevel)
+		strLevel = console.Green.Sprint(strLevel)
 	}
 	_, _ = fmt.Printf("[%s] %s:%d %s\n", strLevel, e.file, e.line, e.msg)
 }
