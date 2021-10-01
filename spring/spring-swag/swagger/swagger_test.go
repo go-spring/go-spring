@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/go-spring/spring-boost/assert"
+	"github.com/go-spring/spring-base/assert"
 	"github.com/go-spring/spring-core/web"
 	"github.com/go-spring/spring-swag/swagger"
 )

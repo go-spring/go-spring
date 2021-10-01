@@ -26,8 +26,8 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/go-spring/spring-boost/json"
-	"github.com/go-spring/spring-boost/knife"
+	"github.com/go-spring/spring-base/json"
+	"github.com/go-spring/spring-base/knife"
 	"github.com/go-spring/spring-core/validator"
 	"github.com/go-spring/spring-core/web"
 )

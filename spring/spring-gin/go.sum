@@ -11,10 +11,10 @@ github.com/go-playground/universal-translator v0.17.0 h1:icxd5fm+REJzpZx7ZfpaD87
 github.com/go-playground/universal-translator v0.17.0/go.mod h1:UkSxE5sNxxRwHyU+Scu5vgOQjsIJAF8j9muTVoKLVtA=
 github.com/go-playground/validator/v10 v10.4.1 h1:pH2c5ADXtd66mxoE0Zm9SUhxE20r7aM3F26W0hOn+GE=
 github.com/go-playground/validator/v10 v10.4.1/go.mod h1:nlOn6nFhuKACm19sB/8EGNn9GlaMV7XkbRSipzJ0Ii4=
-github.com/go-spring/spring-boost v0.0.0-20210919065342-b77a23a19833 h1:qbKOR+256ExwvngxQ2LkKzu1FwPUwcEjwwSPufzAz/Y=
-github.com/go-spring/spring-boost v0.0.0-20210919065342-b77a23a19833/go.mod h1:Z5Q1l5gDVIa5iL/SR0RdJmkGSxZh0D948FA2ZemXNlg=
-github.com/go-spring/spring-core v1.0.6-0.20210919070406-296d1cd840e4 h1:SLN1vc5HV8iTfF9Dwb8BpB0sm14JGetJ1V8a7U8hs5o=
-github.com/go-spring/spring-core v1.0.6-0.20210919070406-296d1cd840e4/go.mod h1:1XSNVnPTyBPxAaOJ4YOyJuIAbeHzFKERmCEmzOjDoYw=
+github.com/go-spring/spring-base v1.1.0-beta.0.20211001035852-bfba805daa15 h1:cb9WgDWJ2RkUnhZE6WhZwnh/3HlfMHvJmTn6K3y9P1c=
+github.com/go-spring/spring-base v1.1.0-beta.0.20211001035852-bfba805daa15/go.mod h1:vSrkrey1gExfuMWvtyCKpzEoBk6lN4s80pLnuqgcMgk=
+github.com/go-spring/spring-core v1.0.6-0.20211001040940-f4fed6e6c943 h1:nFa/EV3c5LjNJnglNbx3qhE8EPKKKudAY2EF5fye+yE=
+github.com/go-spring/spring-core v1.0.6-0.20211001040940-f4fed6e6c943/go.mod h1:k/ytAsg+FQhNwINurqRIb+FBUECe38sHufvHzLm/O1A=
 github.com/golang/protobuf v1.3.3 h1:gyjaxf+svBWX08ZjK86iN9geUJF0H6gp2IRKX6Nf6/I=
 github.com/golang/protobuf v1.3.3/go.mod h1:vzj43D7+SQXF/4pzW/hwtAqwc6iTitCiVSaWz5lYuqw=
 github.com/google/gofuzz v1.0.0/go.mod h1:dBl0BpW6vV/+mYPU4Po3pmUjxk6FQPldtuIdl/M65Eg=

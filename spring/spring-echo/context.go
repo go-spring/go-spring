@@ -26,9 +26,9 @@ import (
 	"net/url"
 	"os"
 
-	"github.com/go-spring/spring-boost/json"
-	"github.com/go-spring/spring-boost/knife"
-	"github.com/go-spring/spring-boost/util"
+	"github.com/go-spring/spring-base/json"
+	"github.com/go-spring/spring-base/knife"
+	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/validator"
 	"github.com/go-spring/spring-core/web"
 	"github.com/labstack/echo"
