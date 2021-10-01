@@ -20,7 +20,7 @@ import (
 	"os"
 	"reflect"
 
-	"github.com/go-spring/spring-boost/util"
+	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/grpc"
 	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/web"

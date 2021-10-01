@@ -23,9 +23,9 @@ import (
 	"go/types"
 	"strings"
 
-	"github.com/go-spring/spring-boost/cast"
-	"github.com/go-spring/spring-boost/conf"
-	"github.com/go-spring/spring-boost/util"
+	"github.com/go-spring/spring-base/cast"
+	"github.com/go-spring/spring-base/conf"
+	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/gs/internal"
 )
 

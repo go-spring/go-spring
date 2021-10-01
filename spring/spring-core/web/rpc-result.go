@@ -21,7 +21,7 @@ import (
 	"math"
 	"runtime"
 
-	"github.com/go-spring/spring-boost/util"
+	"github.com/go-spring/spring-base/util"
 )
 
 var (

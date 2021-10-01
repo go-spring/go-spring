@@ -23,8 +23,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/go-spring/spring-boost/assert"
-	"github.com/go-spring/spring-boost/util"
+	"github.com/go-spring/spring-base/assert"
+	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/gs/arg"
 	pkg1 "github.com/go-spring/spring-core/gs/testdata/pkg/bar"

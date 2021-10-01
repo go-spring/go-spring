@@ -21,7 +21,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/go-spring/spring-boost/util"
+	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/web"
 )
 

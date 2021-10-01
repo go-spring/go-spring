@@ -25,7 +25,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/go-spring/spring-boost/log"
+	"github.com/go-spring/spring-base/log"
 )
 
 // ContextKey Context 和 NativeContext 相互转换的 Key

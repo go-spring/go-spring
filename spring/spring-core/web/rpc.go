@@ -20,7 +20,7 @@ import (
 	"errors"
 	"reflect"
 
-	"github.com/go-spring/spring-boost/util"
+	"github.com/go-spring/spring-base/util"
 )
 
 // bindHandler BIND 形式的 Web 处理接口

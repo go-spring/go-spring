@@ -21,7 +21,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/go-spring/spring-boost/conf"
+	"github.com/go-spring/spring-base/conf"
 )
 
 // EnvPrefix 属性覆盖的环境变量需要携带该前缀。
