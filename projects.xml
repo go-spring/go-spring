@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <projects>
     <project>
-        <name>spring-boost</name>
-        <dir>spring/spring-boost</dir>
-        <url>https://github.com/go-spring/spring-boost.git</url>
+        <name>spring-base</name>
+        <dir>spring/spring-base</dir>
+        <url>https://github.com/go-spring/spring-base.git</url>
         <branch>main</branch>
     </project>
     <project>
