@@ -19,8 +19,8 @@ package StarterRabbitMQConsumer
 import (
 	"context"
 
-	"github.com/go-spring/spring-boost/log"
-	"github.com/go-spring/spring-boost/util"
+	"github.com/go-spring/spring-base/log"
+	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/mq"
 	"github.com/go-spring/starter-rabbitmq/server"

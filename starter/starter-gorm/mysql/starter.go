@@ -17,7 +17,7 @@
 package StarterMySqlGorm
 
 import (
-	"github.com/go-spring/spring-boost/log"
+	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/gs/cond"
 	"github.com/go-spring/starter-core"

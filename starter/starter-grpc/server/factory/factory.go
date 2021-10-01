@@ -23,8 +23,8 @@ import (
 	"reflect"
 	"runtime"
 
-	"github.com/go-spring/spring-boost/log"
-	"github.com/go-spring/spring-boost/util"
+	"github.com/go-spring/spring-base/log"
+	"github.com/go-spring/spring-base/util"
 	SpringGrpc "github.com/go-spring/spring-core/grpc"
 	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/starter-core"
