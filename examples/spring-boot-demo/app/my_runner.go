@@ -20,7 +20,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/go-spring/spring-boost/log"
+	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-core/gs"
 )
 

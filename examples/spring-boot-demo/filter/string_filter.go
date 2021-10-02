@@ -17,7 +17,7 @@
 package filter
 
 import (
-	"github.com/go-spring/spring-boost/log"
+	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/web"
 )

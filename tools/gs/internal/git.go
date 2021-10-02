@@ -120,7 +120,7 @@ func Push(project string, rootDir string) {
 	}
 
 	{
-		cmd := exec.Command("bash", "-c", fmt.Sprintf("cp -rf %s/* %s", projectDir, tempPath))
+		cmd := exec.Command("bash", "-c", fmt.Sprintf("cp -rf %s/. %s", projectDir, tempPath))
 		b, err := cmd.CombinedOutput()
 		if err != nil {
 			panic(fmt.Errorf("err %v with output %s", err, b))
@@ -128,7 +128,7 @@ func Push(project string, rootDir string) {
 	}
 
 	{
-		cmd := exec.Command("bash", "-c", "git add .")
+		cmd := exec.Command("bash", "-c", "git add -A .")
 		cmd.Dir = tempPath
 		b, err := cmd.CombinedOutput()
 		if err != nil {

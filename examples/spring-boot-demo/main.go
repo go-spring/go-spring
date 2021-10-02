@@ -25,7 +25,7 @@ import (
 	_ "github.com/go-spring/examples/spring-boot-demo/extension"
 	_ "github.com/go-spring/examples/spring-boot-demo/filter"
 	_ "github.com/go-spring/examples/spring-boot-demo/mock"
-	"github.com/go-spring/spring-boost/log"
+	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-core/gs"
 	_ "github.com/go-spring/starter-echo"
 	_ "github.com/go-spring/starter-go-redis"

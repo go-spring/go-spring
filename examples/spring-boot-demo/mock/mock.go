@@ -22,7 +22,7 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/elliotchance/redismock"
 	"github.com/go-redis/redis"
-	"github.com/go-spring/spring-boost/log"
+	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-core/gs"
 	"github.com/jinzhu/gorm"
 )
