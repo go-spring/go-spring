@@ -1209,6 +1209,44 @@ func TestApplicationContext_Collect(t *testing.T) {
 
 	t.Run("", func(t *testing.T) {
 		c := gs.New()
+		c.Object(&struct {
+			Events []ServerInterface `autowire:""`
+		}{})
+		err := runTest(c, func(e gs.Environment) {})
+		assert.Error(t, err, "no beans collected for \"\"")
+	})
+
+	t.Run("", func(t *testing.T) {
+		c := gs.New()
+		err := runTest(c, func(e gs.Environment) {
+			var Events []ServerInterface
+			err := e.GetBean(&Events)
+			assert.Error(t, err, "no beans collected for \"\"")
+		})
+		assert.Nil(t, err)
+	})
+
+	t.Run("", func(t *testing.T) {
+		c := gs.New()
+		c.Object(&struct {
+			Events []ServerInterface `autowire:"?"`
+		}{})
+		err := runTest(c, func(e gs.Environment) {})
+		assert.Nil(t, err)
+	})
+
+	t.Run("", func(t *testing.T) {
+		c := gs.New()
+		err := runTest(c, func(e gs.Environment) {
+			var Events []ServerInterface
+			err := e.GetBean(&Events, "?")
+			assert.Nil(t, err)
+		})
+		assert.Nil(t, err)
+	})
+
+	t.Run("", func(t *testing.T) {
+		c := gs.New()
 		c.Property("redis.endpoints", "redis://localhost:6379")
 		c.Object(new(RecoresCluster)).Name("one")
 		c.Object(new(RecoresCluster))
@@ -1232,7 +1270,6 @@ func TestApplicationContext_Collect(t *testing.T) {
 
 			var rcs []*RecoresCluster
 			err := p.GetBean(&rcs)
-			fmt.Println(json.ToString(rcs))
 
 			assert.Nil(t, err)
 			assert.Equal(t, len(rcs), 2)

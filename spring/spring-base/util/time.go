@@ -17,10 +17,44 @@
 package util
 
 import (
+	"context"
+	"errors"
 	"time"
 )
 
-// CurrentMilliSeconds 返回当前的毫秒时间
-func CurrentMilliSeconds() int64 {
-	return time.Now().UnixNano() / 1e6
+// MilliSeconds 返回 time.Time 的毫秒时间。
+func MilliSeconds(t time.Time) int64 {
+	return t.UnixNano() / 1e6
+}
+
+type TimeKey int
+
+type TimeValue struct {
+	base time.Time
+	from time.Time
+}
+
+var timeKey TimeKey
+
+// Now 返回当前时间。
+func Now(ctx context.Context) time.Time {
+	if ctx == nil {
+		return time.Now()
+	}
+	t, ok := ctx.Value(timeKey).(*TimeValue)
+	if !ok {
+		return time.Now()
+	}
+	return t.base.Add(time.Now().Sub(t.from))
+}
+
+// MockNow 模拟当前时间。
+func MockNow(ctx context.Context, t time.Time) context.Context {
+	if _, ok := ctx.Value(timeKey).(*TimeValue); ok {
+		panic(errors.New("time value already mocked"))
+	}
+	return context.WithValue(ctx, timeKey, &TimeValue{
+		base: t,
+		from: time.Now(),
+	})
 }

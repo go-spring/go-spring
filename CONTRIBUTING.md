@@ -31,7 +31,7 @@ Following information can help us to resolve the issue faster.
 * package 一般使用名词或者动词，不推荐使用形容词。
 * interface 一般使用名词或者形容词，动词短语也可。习惯上以 able、ible、er 等结尾。
 * struct 一般使用名词或者动词短语。
-* function 如果只返回 bool 值则以 is、has 等打头，否则必须使用动词打头。
+* function 如果只返回 bool 值则尽量以 is、has 等打头，否则必须使用动词打头。
 
 ### 常用变量名
 
@@ -49,7 +49,7 @@ Following information can help us to resolve the issue faster.
 * 限制每行长度最大不超过 100 个字符。
 * 放心使用选项模式。
 * 不对外直接暴露指针类型，使用值或者接口。
-* 包名尽量不和 Golang 标准库重名。
+* 包名不能和 Golang 标准库重名。
 * 注释里面的 bean 都是小写格式。
 * 函数内部调用的函数一般放在它的上方并且靠近它。
 * 几乎所有的 panic 都应该打印其调用栈。

@@ -420,6 +420,17 @@ func toWireTag(selector BeanSelector) wireTag {
 	}
 }
 
+func toWireString(tags []wireTag) string {
+	var buf bytes.Buffer
+	for i, tag := range tags {
+		buf.WriteString(tag.String())
+		if i < len(tags)-1 {
+			buf.WriteByte(',')
+		}
+	}
+	return buf.String()
+}
+
 // findBean 查找符合条件的 bean 对象，注意该函数只能保证返回的 bean 是有效的，
 // 即未被标记为删除的，而不能保证已经完成属性绑定和依赖注入。
 func (c *container) findBean(selector BeanSelector) ([]*BeanDefinition, error) {
@@ -934,9 +945,12 @@ func (c *container) collectBeans(v reflect.Value, tags []wireTag, stack *wiringS
 	}
 
 	if len(beans) == 0 {
+		if len(tags) == 0 {
+			return fmt.Errorf("no beans collected for %q", toWireString(tags))
+		}
 		for _, tag := range tags {
 			if !tag.nullable {
-				return fmt.Errorf("no beans collected for %q", tags)
+				return fmt.Errorf("no beans collected for %q", toWireString(tags))
 			}
 		}
 		return nil

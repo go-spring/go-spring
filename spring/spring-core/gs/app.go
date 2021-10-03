@@ -69,7 +69,7 @@ type App struct {
 
 	exitChan chan struct{}
 
-	Events []AppEvent `autowire:""`
+	Events []AppEvent `autowire:"?"`
 }
 
 type Consumers struct {
