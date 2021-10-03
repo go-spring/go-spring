@@ -226,6 +226,14 @@ func (r *argList) getArg(ctx Context, arg Arg, t reflect.Type, fileLine string) 
 	}()
 
 	switch g := arg.(type) {
+	case *Callable:
+		if results, err := g.Call(ctx); err != nil {
+			return reflect.Value{}, err
+		} else if len(results) < 1 {
+			return reflect.Value{}, errors.New("")
+		} else {
+			return results[0], nil
+		}
 	case ValueArg:
 		return reflect.ValueOf(g.v), nil
 	case *optionArg:
@@ -268,6 +276,13 @@ type optionArg struct {
 	c cond.Condition
 }
 
+// Provide 为 Option 方法绑定运行时参数。
+func Provide(fn interface{}, args ...Arg) *Callable {
+	r, err := Bind(fn, args, 1)
+	util.Panic(err).When(err != nil)
+	return r
+}
+
 // Option 返回 Option 函数的参数绑定。
 func Option(fn interface{}, args ...Arg) *optionArg {
 
@@ -278,7 +293,6 @@ func Option(fn interface{}, args ...Arg) *optionArg {
 
 	r, err := Bind(fn, args, 1)
 	util.Panic(err).When(err != nil)
-
 	return &optionArg{r: r}
 }
 

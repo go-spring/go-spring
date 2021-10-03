@@ -1251,10 +1251,15 @@ var defaultClassOption = ClassOption{
 	className: "default",
 }
 
+type ClassBuilder struct {
+	param string
+}
+
 type ClassOption struct {
 	className string
 	students  []*Student
 	floor     int
+	builder   *ClassBuilder
 }
 
 type ClassOptionFunc func(opt *ClassOption)
@@ -1272,12 +1277,19 @@ func withStudents(students []*Student) ClassOptionFunc {
 	}
 }
 
+func withBuilder(builder *ClassBuilder) ClassOptionFunc {
+	return func(opt *ClassOption) {
+		opt.builder = builder
+	}
+}
+
 type ClassRoom struct {
 	President string `value:"${president}"`
 	className string
 	floor     int
 	students  []*Student
 	desktop   Desktop
+	builder   *ClassBuilder
 }
 
 type Desktop interface {
@@ -1300,6 +1312,7 @@ func NewClassRoom(options ...ClassOptionFunc) ClassRoom {
 		students:  opt.students,
 		floor:     opt.floor,
 		desktop:   &MetalDesktop{},
+		builder:   opt.builder,
 	}
 }
 
@@ -1392,6 +1405,9 @@ func TestOptionConstructorArg(t *testing.T) {
 		c.Provide(NewClassRoom,
 			arg.Option(withStudents),
 			arg.Option(withClassName, "${class_name:=二年级03班}", "${class_floor:=3}"),
+			arg.Option(withBuilder, arg.Provide(func(param string) *ClassBuilder {
+				return &ClassBuilder{param: param}
+			}, arg.Value("1"))),
 		)
 		c.Object(&Student{}).Name("Student1")
 		c.Object(&Student{}).Name("Student2")
@@ -1403,6 +1419,7 @@ func TestOptionConstructorArg(t *testing.T) {
 			assert.Equal(t, len(cls.students), 2)
 			assert.Equal(t, cls.className, "二年级06班")
 			assert.Equal(t, cls.President, "CaiYuanPei")
+			assert.Equal(t, cls.builder.param, "1")
 		})
 		assert.Nil(t, err)
 	})
