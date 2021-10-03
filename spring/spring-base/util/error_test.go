@@ -14,14 +14,26 @@
  * limitations under the License.
  */
 
-package util
+package util_test
 
 import (
-	"errors"
+	"testing"
+
+	"github.com/go-spring/spring-base/assert"
+	"github.com/go-spring/spring-base/util"
 )
 
-// UnsupportedMethod 如果某个方法禁止被调用则可以抛出此错误。
-var UnsupportedMethod = errors.New("unsupported method")
+func TestError(t *testing.T) {
 
-// UnimplementedMethod 如果某个方法未实现则可以抛出此错误。
-var UnimplementedMethod = errors.New("unimplemented method")
+	e0 := util.Error(util.CurrentFileLine(), "error")
+	assert.Error(t, e0, "error_test.go:28 error")
+
+	e1 := util.Errorf(util.CurrentFileLine(), "error: %d", 0)
+	assert.Error(t, e1, "error_test.go:31 error: 0")
+
+	e2 := util.Wrap(e0, util.CurrentFileLine(), "error")
+	assert.Error(t, e2, "error_test.go:34 error\nerror_test.go:28 error")
+
+	e3 := util.Wrapf(e1, util.CurrentFileLine(), "error: %d", 1)
+	assert.Error(t, e3, "error_test.go:37 error: 1\nerror_test.go:31 error: 0")
+}

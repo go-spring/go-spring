@@ -42,7 +42,7 @@ type BindParam struct {
 func (param *BindParam) BindTag(tag string) error {
 
 	if !validTag(tag) {
-		return fmt.Errorf("%s 属性绑定字符串 %q 语法错误", param.Path, tag)
+		return util.Errorf(util.CurrentFileLine(), "%s 属性绑定字符串 %q 语法错误", param.Path, tag)
 	}
 
 	key, def, hasDef := parseTag(tag)
@@ -60,7 +60,7 @@ func (param *BindParam) BindTag(tag string) error {
 func BindValue(p *Properties, v reflect.Value, param BindParam) error {
 
 	if !util.IsValueType(param.Type) {
-		return fmt.Errorf("%s 属性绑定的目标必须是值类型", param.Path)
+		return util.Errorf(util.CurrentFileLine(), "%s 属性绑定的目标必须是值类型", param.Path)
 	}
 
 	log.Tracef("::<>:: %#v", param)
@@ -83,7 +83,7 @@ func BindValue(p *Properties, v reflect.Value, param BindParam) error {
 
 	val, err := resolve(p, param)
 	if err != nil {
-		return fmt.Errorf("type %q bind error: %w", param.Type, err)
+		return util.Wrapf(err, util.CurrentFileLine(), "type %q bind error", param.Type)
 	}
 
 	if fn != nil {
@@ -129,7 +129,7 @@ func BindValue(p *Properties, v reflect.Value, param BindParam) error {
 		return err
 	}
 
-	return fmt.Errorf("unsupported bind type %q", param.Type.String())
+	return util.Errorf(util.CurrentFileLine(), "unsupported bind type %q", param.Type.String())
 }
 
 func getSliceValue(p *Properties, et reflect.Type, param BindParam) (*Properties, error) {
@@ -160,7 +160,7 @@ func getSliceValue(p *Properties, et reflect.Type, param BindParam) (*Properties
 			return nil, nil
 		}
 		if !primitive {
-			return nil, fmt.Errorf("%s array 类型不能为简单类型指定非空默认值", param.Path)
+			return nil, util.Errorf(util.CurrentFileLine(), "%s array 类型不能为简单类型指定非空默认值", param.Path)
 		}
 		strVal = param.def
 	}
@@ -239,7 +239,7 @@ func bindMap(p *Properties, v reflect.Value, param BindParam) error {
 		if param.def == "" {
 			return nil
 		}
-		return fmt.Errorf("%s map 类型不能指定非空默认值", param.Path)
+		return util.Errorf(util.CurrentFileLine(), "%s map 类型不能指定非空默认值", param.Path)
 	}
 
 	var keys []string
@@ -252,11 +252,11 @@ func bindMap(p *Properties, v reflect.Value, param BindParam) error {
 		for i, s := range keyPath {
 			vt, ok := t[s]
 			if !ok {
-				return fmt.Errorf("property %q %w", param.Key, ErrNotExist)
+				return util.Errorf(util.CurrentFileLine(), "property %q %w", param.Key, ErrNotExist)
 			}
 			if _, ok = vt.(struct{}); ok {
 				oldKey := strings.Join(keyPath[:i+1], ".")
-				return fmt.Errorf("property %q has a value but want another sub key %q", oldKey, param.Key+".*")
+				return util.Errorf(util.CurrentFileLine(), "property %q has a value but want another sub key %q", oldKey, param.Key+".*")
 			}
 			t = vt.(map[string]interface{})
 		}
@@ -291,7 +291,7 @@ func bindMap(p *Properties, v reflect.Value, param BindParam) error {
 func bindStruct(p *Properties, v reflect.Value, param BindParam) error {
 
 	if param.hasDef && param.def != "" {
-		return fmt.Errorf("%s struct 类型不能指定非空默认值", param.Path)
+		return util.Errorf(util.CurrentFileLine(), "%s struct 类型不能指定非空默认值", param.Path)
 	}
 
 	for i := 0; i < param.Type.NumField(); i++ {
@@ -382,7 +382,7 @@ func resolveString(p *Properties, s string) (string, error) {
 	}
 
 	if count > 0 {
-		return "", fmt.Errorf("%s 语法错误", s)
+		return "", util.Errorf(util.CurrentFileLine(), "%s 语法错误", s)
 	}
 
 	param := BindParam{}
@@ -413,5 +413,5 @@ func resolve(p *Properties, param BindParam) (string, error) {
 	if param.hasDef {
 		return resolveString(p, param.def)
 	}
-	return "", fmt.Errorf("property %q %w", param.Key, ErrNotExist)
+	return "", util.Errorf(util.CurrentFileLine(), "property %q %w", param.Key, ErrNotExist)
 }
