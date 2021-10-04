@@ -17,7 +17,7 @@
 package util
 
 import (
-	"github.com/go-spring/spring-base/json"
+	"encoding/json"
 )
 
 // CopyBean 使用 JSON 序列化的方式进行拷贝，支持匿名字段，支持类型转换。

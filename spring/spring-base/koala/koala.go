@@ -14,24 +14,52 @@
  * limitations under the License.
  */
 
-package internal
+// Package koala 提供了进程内缓存组件。
+package koala
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
 	"sync"
 	"time"
 
-	"github.com/go-spring/spring-base/json"
+	"github.com/go-spring/spring-base/recorder"
+	"github.com/go-spring/spring-base/replayer"
 )
 
-type APCU interface {
-	Load(ctx context.Context, key string, out interface{}) (ok bool, err error)
-	Store(key string, val interface{}, opts ...StoreOption)
-	Range(f func(key, value interface{}) bool)
-	Delete(key string)
+const Protocol = "apcu"
+
+var cache sync.Map
+
+// Load 获取 key 对应的缓存值，注意 out 的类型必须和 Store 的时候存入的类
+// 型一致，否则 Load 会失败。但是如果 Store 的时候存入的内容是一个字符串，
+// 那么 out 可以是该字符串 JSON 反序列化之后的类型。
+func Load(ctx context.Context, key string, out interface{}) (ok bool, err error) {
+
+	if replayer.ReplayMode() {
+		return replayer.Replay(ctx, &recorder.Action{
+			Protocol: Protocol,
+			Key:      key,
+			Output:   out,
+		})
+	}
+
+	defer func() {
+		if ok {
+			recorder.Record(ctx, func() *recorder.Action {
+				return &recorder.Action{
+					Protocol: Protocol,
+					Key:      key,
+					Output:   out,
+				}
+			})
+		}
+	}()
+
+	return load(key, out)
 }
 
 type cacheItem struct {
@@ -39,18 +67,9 @@ type cacheItem struct {
 	expireAt time.Time
 }
 
-type cache struct {
-	m sync.Map
-}
+func load(key string, out interface{}) (ok bool, err error) {
 
-// New 返回一个 APCU 的实例。
-func New() *cache {
-	return &cache{}
-}
-
-func (c *cache) Load(_ context.Context, key string, out interface{}) (ok bool, err error) {
-
-	v, ok := c.m.Load(key)
+	v, ok := cache.Load(key)
 	if !ok {
 		return false, nil
 	}
@@ -66,7 +85,7 @@ func (c *cache) Load(_ context.Context, key string, out interface{}) (ok bool, e
 	// 那么此处的 Delete 理应在 Store 之前执行，但是目前的框架下是无法保证的。
 	// 因此，退而求其次，把缓存的真实内容释放掉，这样即使占了一些内存也不会太多。
 	if !item.expireAt.IsZero() && time.Now().After(item.expireAt) {
-		c.m.Store(key, &cacheItem{expireAt: item.expireAt})
+		cache.Store(key, &cacheItem{expireAt: item.expireAt})
 		return false, nil
 	}
 
@@ -104,7 +123,20 @@ type StoreArg struct {
 
 type StoreOption func(arg *StoreArg)
 
-func (c *cache) Store(key string, val interface{}, opts ...StoreOption) {
+// TTL 设置 key 的过期时间。
+func TTL(ttl time.Duration) StoreOption {
+	return func(arg *StoreArg) {
+		arg.TTL = ttl
+	}
+}
+
+// Store 保存 key 及其对应的 val，支持对 key 设置 ttl (过期时间)。另外，
+// 这里的 val 可以是任何值，因此要求 Load 的时候必须保证返回值和这里的 val
+// 是相同类型的，否则 Load 会失败。
+// 但是这里有一个例外情况，考虑到很多场景下，用户需要缓存一个由字符串反序列
+// 化后的对象，所以该库提供了一个功能，就是用户可以 Store 一个字符串，然后
+// Load 的时候按照指定类型返回。
+func Store(key string, val interface{}, opts ...StoreOption) {
 	arg := StoreArg{}
 	for _, opt := range opts {
 		opt(&arg)
@@ -113,13 +145,15 @@ func (c *cache) Store(key string, val interface{}, opts ...StoreOption) {
 	if arg.TTL > 0 {
 		expireAt = time.Now().Add(arg.TTL)
 	}
-	c.m.Store(key, &cacheItem{source: val, expireAt: expireAt})
+	cache.Store(key, &cacheItem{source: val, expireAt: expireAt})
 }
 
-func (c *cache) Range(f func(key, value interface{}) bool) {
-	c.m.Range(f)
+// Range 遍历缓存的内容。
+func Range(f func(key, value interface{}) bool) {
+	cache.Range(f)
 }
 
-func (c *cache) Delete(key string) {
-	c.m.Delete(key)
+// Delete 删除 key 对应的缓存内容。
+func Delete(key string) {
+	cache.Delete(key)
 }

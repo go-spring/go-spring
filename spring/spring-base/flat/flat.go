@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+// Package flat 提供了一些将复合数据打平的函数。
 package flat
 
 import (

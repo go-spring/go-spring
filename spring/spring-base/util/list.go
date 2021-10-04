@@ -28,3 +28,13 @@ func NewList(v ...interface{}) *list.List {
 	}
 	return l
 }
+
+// SearchList 在列表中查询指定元素，存在则返回列表项指针，不存在返回 nil。
+func SearchList(l *list.List, v interface{}) *list.Element {
+	for e := l.Front(); e != nil; e = e.Next() {
+		if e.Value == v {
+			return e
+		}
+	}
+	return nil
+}

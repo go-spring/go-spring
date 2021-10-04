@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-package console
+// Package color 提供了一些控制台输出格式。
+package color
 
 import (
 	"bytes"

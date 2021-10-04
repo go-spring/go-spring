@@ -24,7 +24,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/go-spring/spring-base/console"
+	"github.com/go-spring/spring-base/color"
 )
 
 const (
@@ -127,11 +127,11 @@ type Output func(level Level, e *Entry)
 func Console(level Level, e *Entry) {
 	strLevel := strings.ToUpper(level.String())
 	if level >= ErrorLevel {
-		strLevel = console.Red.Sprint(strLevel)
+		strLevel = color.Red.Sprint(strLevel)
 	} else if level == WarnLevel {
-		strLevel = console.Yellow.Sprint(strLevel)
+		strLevel = color.Yellow.Sprint(strLevel)
 	} else if level == TraceLevel {
-		strLevel = console.Green.Sprint(strLevel)
+		strLevel = color.Green.Sprint(strLevel)
 	}
 	_, _ = fmt.Printf("[%s] %s:%d %s\n", strLevel, e.file, e.line, e.msg)
 }

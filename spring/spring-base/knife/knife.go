@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+// Package knife 提供了 context.Context 上的缓存。
 package knife
 
 import (

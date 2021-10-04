@@ -14,9 +14,5 @@
  * limitations under the License.
  */
 
-package apollo
-
-// Get 获取缓存值，底层使用 Properties 实现，实时更新。
-func Get(key string, out interface{}) error {
-	return nil
-}
+// Package util 提供了一些常用的辅助函数。
+package util
