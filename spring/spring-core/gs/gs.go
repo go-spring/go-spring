@@ -246,7 +246,7 @@ func (c *container) clear() {
 }
 
 // Refresh 刷新容器的内容，对 bean 进行有效性判断以及完成属性绑定和依赖注入。
-func (c *container) Refresh(opts ...internal.RefreshOption) error {
+func (c *container) Refresh(opts ...internal.RefreshOption) (err error) {
 
 	if c.state != Unrefreshed {
 		return errors.New("container already refreshed")
@@ -261,13 +261,13 @@ func (c *container) Refresh(opts ...internal.RefreshOption) error {
 	c.state = Refreshing
 
 	for _, b := range c.beans {
-		if err := c.registerBean(b); err != nil {
+		if err = c.registerBean(b); err != nil {
 			return err
 		}
 	}
 
 	for _, b := range c.beansById {
-		if err := c.resolveBean(b); err != nil {
+		if err = c.resolveBean(b); err != nil {
 			return err
 		}
 	}
@@ -275,13 +275,14 @@ func (c *container) Refresh(opts ...internal.RefreshOption) error {
 	stack := newWiringStack()
 
 	defer func() {
-		if len(stack.beans) > 0 {
-			log.Infof("wiring path %s", stack.path())
+		if err != nil || len(stack.beans) > 0 {
+			err = fmt.Errorf("%s ↩\n%s", err, stack.path())
+			log.Error(err)
 		}
 	}()
 
 	for _, b := range c.beansById {
-		if err := c.wireBean(b, stack); err != nil {
+		if err = c.wireBean(b, stack); err != nil {
 			return err
 		}
 	}
@@ -606,7 +607,7 @@ func (c *container) getBeanValue(b *BeanDefinition, stack *wiringStack) (reflect
 
 	out, err := b.f.Call(&argContext{c: c, stack: stack})
 	if err != nil {
-		return reflect.Value{}, fmt.Errorf("%s:%q return error: %v", b.getClass(), b.FileLine(), err)
+		return reflect.Value{}, err /* fmt.Errorf("%s:%s return error: %v", b.getClass(), b.ID(), err) */
 	}
 
 	// 构造函数的返回值为值类型时 b.Type() 返回其指针类型。

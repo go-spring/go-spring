@@ -1751,13 +1751,55 @@ type CircleC struct {
 }
 
 func TestApplicationContext_CircleAutowire(t *testing.T) {
+
 	// 直接创建的 Object 直接发生循环依赖是没有关系的。
-	c := gs.New()
-	c.Object(new(CircleA))
-	c.Object(new(CircleB))
-	c.Object(new(CircleC))
-	err := c.Refresh()
-	assert.Nil(t, err)
+	t.Run("", func(t *testing.T) {
+		c := gs.New()
+		c.Object(new(CircleA))
+		c.Object(new(CircleB))
+		c.Object(new(CircleC))
+		err := c.Refresh()
+		assert.Nil(t, err)
+	})
+
+	t.Run("", func(t *testing.T) {
+		c := gs.New()
+		c.Object(new(CircleA))
+		c.Object(new(CircleB))
+		c.Provide(func() *CircleC {
+			return new(CircleC)
+		})
+		err := c.Refresh()
+		assert.Nil(t, err)
+	})
+
+	t.Run("", func(t *testing.T) {
+		c := gs.New()
+		c.Object(new(CircleA))
+		c.Provide(func() *CircleB {
+			return new(CircleB)
+		})
+		c.Provide(func() *CircleC {
+			return new(CircleC)
+		})
+		err := c.Refresh()
+		assert.Nil(t, err)
+	})
+
+	t.Run("", func(t *testing.T) {
+		c := gs.New()
+		c.Provide(func(b *CircleB) *CircleA {
+			return new(CircleA)
+		})
+		c.Provide(func(c *CircleC) *CircleB {
+			return new(CircleB)
+		})
+		c.Provide(func(a *CircleA) *CircleC {
+			return new(CircleC)
+		})
+		err := c.Refresh()
+		assert.Error(t, err, "found circle autowire")
+	})
 }
 
 type VarInterfaceOptionFunc func(opt *VarInterfaceOption)

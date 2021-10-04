@@ -178,54 +178,13 @@ func release(rootDir string) {
 
 	tag := arg(2)
 	err := filepath.Walk(rootDir, func(walkFile string, _ os.FileInfo, err error) error {
-
 		if err != nil {
 			return err
 		}
-
 		if path.Base(walkFile) != "go.mod" {
 			return nil
 		}
-
-		//fmt.Println(walkFile)
-		fileData, err := ioutil.ReadFile(walkFile)
-		if err != nil {
-			return nil
-		}
-
-		outBuf := bytes.NewBuffer(nil)
-		r := bufio.NewReader(strings.NewReader(string(fileData)))
-		for {
-			line, isPrefix, err := r.ReadLine()
-			if len(line) > 0 && err != nil {
-				panic(err)
-			}
-			if isPrefix {
-				panic(errors.New("ReadLine returned prefix"))
-			}
-			if err != nil {
-				if err != io.EOF {
-					panic(err)
-				}
-				break
-			}
-			s := strings.TrimSpace(string(line))
-			if strings.HasPrefix(s, "github.com/go-spring/spring-") ||
-				strings.HasPrefix(s, "github.com/go-spring/starter-") {
-				index := strings.LastIndexByte(s, ' ')
-				if index <= 0 {
-					panic(errors.New(s))
-				}
-				b := append(line[:index+2], []byte(tag)...)
-				outBuf.Write(b)
-			} else {
-				outBuf.Write(line)
-			}
-			outBuf.WriteString("\n")
-		}
-
-		//fmt.Println(outBuf.String())
-		return ioutil.WriteFile(walkFile, outBuf.Bytes(), os.ModePerm)
+		return replaceModVersion(walkFile, tag)
 	})
 
 	if err != nil {
@@ -261,4 +220,50 @@ func release(rootDir string) {
 		projectDir := filepath.Join(buildDir, project.Name)
 		internal.Release(projectDir, project.Name, tag)
 	}
+}
+
+func replaceModVersion(file string, version string) error {
+
+	fileData, err := ioutil.ReadFile(file)
+	if err != nil {
+		return err
+	}
+
+	outBuf := bytes.NewBuffer(nil)
+	r := bufio.NewReader(strings.NewReader(string(fileData)))
+	for {
+		line, isPrefix, err := r.ReadLine()
+		if len(line) > 0 && err != nil {
+			panic(err)
+		}
+		if isPrefix {
+			panic(errors.New("ReadLine returned prefix"))
+		}
+		if err != nil {
+			if err != io.EOF {
+				panic(err)
+			}
+			break
+		}
+		s := strings.TrimSpace(string(line))
+		if strings.HasPrefix(s, "github.com/go-spring/spring-") ||
+			strings.HasPrefix(s, "github.com/go-spring/starter-") {
+
+			index := strings.IndexByte(s, ' ')
+			if index <= 0 {
+				panic(errors.New(s))
+			}
+
+			ss := strings.Split(s, " ")
+			ss[0] = string(line[:index+2])
+			ss[1] = version
+
+			outBuf.WriteString(strings.Join(ss, " "))
+		} else {
+			outBuf.Write(line)
+		}
+		outBuf.WriteString("\n")
+	}
+
+	return ioutil.WriteFile(file, outBuf.Bytes(), os.ModePerm)
 }
