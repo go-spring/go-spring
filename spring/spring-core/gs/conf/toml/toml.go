@@ -17,8 +17,13 @@
 package toml
 
 import (
+	"github.com/go-spring/spring-base/conf"
 	"github.com/pelletier/go-toml"
 )
+
+func init() {
+	conf.NewReader(Read, ".toml")
+}
 
 // Read 将 toml 格式的字节数组解析成 map 数据。
 func Read(b []byte) (map[string]interface{}, error) {

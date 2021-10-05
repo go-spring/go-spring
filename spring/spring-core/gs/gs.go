@@ -35,6 +35,8 @@ import (
 	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/gs/cond"
 	"github.com/go-spring/spring-core/gs/internal"
+
+	_ "github.com/go-spring/spring-core/gs/conf/toml"
 )
 
 type refreshState int
