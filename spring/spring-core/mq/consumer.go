@@ -18,10 +18,10 @@ package mq
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"reflect"
 
-	"github.com/go-spring/spring-base/json"
 	"github.com/go-spring/spring-base/util"
 )
 

@@ -19,6 +19,7 @@
 package cast
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"time"
@@ -87,7 +88,15 @@ func ToString(i interface{}) string {
 
 // ToStringE casts an interface{} to a string.
 func ToStringE(i interface{}) (string, error) {
-	return cast.ToStringE(i)
+	str, err := cast.ToStringE(i)
+	if err == nil {
+		return str, nil
+	}
+	b, err := json.Marshal(i)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
 }
 
 // ToDuration casts an interface{} to a time.Duration.

@@ -34,8 +34,10 @@ import (
 // 禁止使用多层指针。
 func IsBeanType(t reflect.Type) bool {
 	switch t.Kind() {
-	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Ptr:
+	case reflect.Chan, reflect.Func, reflect.Interface:
 		return true
+	case reflect.Ptr:
+		return isValueType(t.Elem())
 	default:
 		return false
 	}

@@ -30,7 +30,6 @@ import (
 	"github.com/go-spring/spring-base/assert"
 	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-base/conf"
-	"github.com/go-spring/spring-base/json"
 	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/gs"
@@ -667,27 +666,27 @@ func TestApplicationContext_Get(t *testing.T) {
 //	assert.Equal(t, len(b), 4)
 //
 //	b, _ = p.Find("BeanTwo")
-//	fmt.Println(json.ToString(b))
+//	fmt.Println(util.ToJsonString(b))
 //	assert.Equal(t, len(b), 0)
 //
 //	b, _ = p.Find("BeanTwo")
-//	fmt.Println(json.ToString(b))
+//	fmt.Println(util.ToJsonString(b))
 //	assert.Equal(t, len(b), 1)
 //
 //	b, _ = p.Find(":BeanTwo")
-//	fmt.Println(json.ToString(b))
+//	fmt.Println(util.ToJsonString(b))
 //	assert.Equal(t, len(b), 1)
 //
 //	b, _ = p.Find("github.com/go-spring/spring-core/gs_test/gs_test.BeanTwo:BeanTwo")
-//	fmt.Println(json.ToString(b))
+//	fmt.Println(util.ToJsonString(b))
 //	assert.Equal(t, len(b), 1)
 //
 //	b, _ = p.Find("xxx:BeanTwo")
-//	fmt.Println(json.ToString(b))
+//	fmt.Println(util.ToJsonString(b))
 //	assert.Equal(t, len(b), 0)
 //
 //	b, _ = p.Find((*BeanTwo)(nil))
-//	fmt.Println(json.ToString(b))
+//	fmt.Println(util.ToJsonString(b))
 //	assert.Equal(t, len(b), 1)
 //
 //	b, _ = p.Find((*fmt.Stringer)(nil))
@@ -755,14 +754,14 @@ func TestApplicationContext_RegisterBeanFn(t *testing.T) {
 		err := p.GetBean(&st1, "st1")
 
 		assert.Nil(t, err)
-		fmt.Println(json.ToString(st1))
+		fmt.Println("::", cast.ToString(st1))
 		assert.Equal(t, st1.Room, p.GetProperty("room"))
 
 		var st2 *Student
 		err = p.GetBean(&st2, "st2")
 
 		assert.Nil(t, err)
-		fmt.Println(json.ToString(st2))
+		fmt.Println("::", cast.ToString(st2))
 		assert.Equal(t, st2.Room, p.GetProperty("room"))
 
 		fmt.Printf("%x\n", reflect.ValueOf(st1).Pointer())
@@ -772,14 +771,14 @@ func TestApplicationContext_RegisterBeanFn(t *testing.T) {
 		err = p.GetBean(&st3, "st3")
 
 		assert.Nil(t, err)
-		fmt.Println(json.ToString(st3))
+		fmt.Println("::", cast.ToString(st3))
 		assert.Equal(t, st3.Room, p.GetProperty("room"))
 
 		var st4 *Student
 		err = p.GetBean(&st4, "st4")
 
 		assert.Nil(t, err)
-		fmt.Println(json.ToString(st4))
+		fmt.Println("::", cast.ToString(st4))
 		assert.Equal(t, st4.Room, p.GetProperty("room"))
 	})
 	assert.Nil(t, err)
@@ -917,7 +916,7 @@ func NewManager() Manager {
 }
 
 func NewManagerRetError() (Manager, error) {
-	return localManager{}, errors.New("error")
+	return localManager{}, util.Error(util.CurrentFileLine(), "error")
 }
 
 func NewManagerRetErrorNil() (Manager, error) {
@@ -994,7 +993,7 @@ func TestApplicationContext_RegisterBeanFn2(t *testing.T) {
 		c.Property("manager.version", "1.0.0")
 		c.Provide(NewManagerRetError)
 		err := c.Refresh()
-		assert.Error(t, err, "return error")
+		assert.Error(t, err, "gs_test.go:\\d* error")
 	})
 
 	t.Run("manager return error nil", func(t *testing.T) {
@@ -1040,7 +1039,7 @@ func (d *callDestroy) InitWithError() error {
 		d.inited = true
 		return nil
 	}
-	return errors.New("error")
+	return util.Error(util.CurrentFileLine(), "error")
 }
 
 func (d *callDestroy) DestroyWithError() error {
@@ -1048,7 +1047,7 @@ func (d *callDestroy) DestroyWithError() error {
 		d.destroyed = true
 		return nil
 	}
-	return errors.New("error")
+	return util.Error(util.CurrentFileLine(), "error")
 }
 
 type nestedCallDestroy struct {
