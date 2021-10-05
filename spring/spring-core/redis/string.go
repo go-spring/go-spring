@@ -21,20 +21,24 @@ import (
 	"time"
 )
 
-type Reply interface {
-	String() string
+const (
+	CommandGet = "get"
+	CommandSet = "set"
+)
+
+func (c *BaseClient) Get(ctx context.Context, key string) (string, error) {
+	reply, err := c.Do(ctx, CommandGet, key)
+	if err != nil {
+		return "", err
+	}
+	return reply.String(), nil
 }
 
-type Client interface {
-	Do(ctx context.Context, args ...interface{}) (Reply, error)
-	Get(ctx context.Context, key string) (string, error)
-	Set(ctx context.Context, key string, value interface{}, expiration time.Duration) (string, error)
-}
-
-type BaseClient struct {
-	DoFunc func(ctx context.Context, args ...interface{}) (Reply, error)
-}
-
-func (c *BaseClient) Do(ctx context.Context, args ...interface{}) (Reply, error) {
-	return c.DoFunc(ctx, args...)
+func (c *BaseClient) Set(ctx context.Context, key string, value interface{}, expiration time.Duration) (string, error) {
+	args := []interface{}{CommandSet, key, value}
+	reply, err := c.Do(ctx, args...)
+	if err != nil {
+		return "", err
+	}
+	return reply.String(), nil
 }

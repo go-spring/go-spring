@@ -14,27 +14,40 @@
  * limitations under the License.
  */
 
-package redis
+package SpringGoRedis
 
 import (
 	"context"
-	"time"
+
+	g "github.com/go-redis/redis/v8"
+	"github.com/go-spring/spring-base/cast"
+	"github.com/go-spring/spring-core/redis"
 )
 
-type Reply interface {
-	String() string
+type client struct {
+	redis.BaseClient
+	client *g.Client
 }
 
-type Client interface {
-	Do(ctx context.Context, args ...interface{}) (Reply, error)
-	Get(ctx context.Context, key string) (string, error)
-	Set(ctx context.Context, key string, value interface{}, expiration time.Duration) (string, error)
+func NewClient(clt *g.Client) redis.Client {
+	c := &client{client: clt}
+	c.DoFunc = c.do
+	return c
 }
 
-type BaseClient struct {
-	DoFunc func(ctx context.Context, args ...interface{}) (Reply, error)
+func (c *client) do(ctx context.Context, args ...interface{}) (redis.Reply, error) {
+	cmd := c.client.Do(ctx, args...)
+	result, err := cmd.Result()
+	if err != nil {
+		return nil, err
+	}
+	return &reply{v: result}, nil
 }
 
-func (c *BaseClient) Do(ctx context.Context, args ...interface{}) (Reply, error) {
-	return c.DoFunc(ctx, args...)
+type reply struct {
+	v interface{}
+}
+
+func (r *reply) String() string {
+	return cast.ToString(r.v)
 }

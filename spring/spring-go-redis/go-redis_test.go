@@ -14,27 +14,29 @@
  * limitations under the License.
  */
 
-package redis
+package SpringGoRedis_test
 
 import (
 	"context"
-	"time"
+	"fmt"
+	"testing"
+
+	g "github.com/go-redis/redis/v8"
+	SpringGoRedis "github.com/go-spring/spring-go-redis"
 )
 
-type Reply interface {
-	String() string
-}
-
-type Client interface {
-	Do(ctx context.Context, args ...interface{}) (Reply, error)
-	Get(ctx context.Context, key string) (string, error)
-	Set(ctx context.Context, key string, value interface{}, expiration time.Duration) (string, error)
-}
-
-type BaseClient struct {
-	DoFunc func(ctx context.Context, args ...interface{}) (Reply, error)
-}
-
-func (c *BaseClient) Do(ctx context.Context, args ...interface{}) (Reply, error) {
-	return c.DoFunc(ctx, args...)
+func TestClient(t *testing.T) {
+	var reply interface{}
+	ctx := context.Background()
+	c := SpringGoRedis.NewClient(g.NewClient(&g.Options{}))
+	reply, err := c.Set(ctx, "name", "king", 0)
+	if err != nil {
+		t.Fatal()
+	}
+	fmt.Println(reply)
+	reply, err = c.Get(ctx, "name")
+	if err != nil {
+		t.Fatal()
+	}
+	fmt.Println(reply)
 }

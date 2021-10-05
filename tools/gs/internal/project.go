@@ -37,7 +37,9 @@ type ProjectsXml struct {
 
 // Add 添加一个项目
 func (p *ProjectsXml) Add(project Project) {
-	p.Projects = append(p.Projects, project)
+	if _, ok := p.Find(project.Name); !ok {
+		p.Projects = append(p.Projects, project)
+	}
 }
 
 // Find 查找一个项目，成功返回 true，失败返回 false

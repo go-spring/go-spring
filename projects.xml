@@ -25,6 +25,12 @@
         <branch>master</branch>
     </project>
     <project>
+        <name>spring-go-redis</name>
+        <dir>spring/spring-go-redis</dir>
+        <url>https://github.com/go-spring/spring-go-redis.git</url>
+        <branch>main</branch>
+    </project>
+    <project>
         <name>spring-rabbitmq</name>
         <dir>spring/spring-rabbitmq</dir>
         <url>https://github.com/go-spring/spring-rabbitmq.git</url>
