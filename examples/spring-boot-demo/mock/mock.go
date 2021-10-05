@@ -20,8 +20,8 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/elliotchance/redismock"
-	"github.com/go-redis/redis"
+	"github.com/elliotchance/redismock/v8"
+	"github.com/go-redis/redis/v8"
 	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-core/gs"
 	"github.com/jinzhu/gorm"

@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/go-redis/redis"
+	"github.com/go-redis/redis/v8"
 	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/gs"
@@ -85,10 +85,10 @@ func (c *MyController) Echo(ctx context.Context, request *EchoRequest) *web.RpcR
 
 func (c *MyController) OK(ctx web.Context) {
 
-	err := c.RedisClient.Set("key", "ok", time.Second*10).Err()
+	err := c.RedisClient.Set(ctx.Context(), "key", "ok", time.Second*10).Err()
 	util.Panic(err).When(err != nil)
 
-	val, err := c.RedisClient.Get("key").Result()
+	val, err := c.RedisClient.Get(ctx.Context(), "key").Result()
 	util.Panic(err).When(err != nil)
 
 	rows, err := c.DB.Table("ENGINES").Select("ENGINE").Rows()
