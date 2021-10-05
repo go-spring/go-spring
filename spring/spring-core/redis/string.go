@@ -26,6 +26,11 @@ const (
 	CommandSet = "set"
 )
 
+type StringCommand interface {
+	Get(ctx context.Context, key string) (string, error)
+	Set(ctx context.Context, key string, value interface{}, expiration time.Duration) (string, error)
+}
+
 func (c *BaseClient) Get(ctx context.Context, key string) (string, error) {
 	reply, err := c.Do(ctx, CommandGet, key)
 	if err != nil {

@@ -18,7 +18,6 @@ package redis
 
 import (
 	"context"
-	"time"
 )
 
 type Reply interface {
@@ -26,9 +25,8 @@ type Reply interface {
 }
 
 type Client interface {
+	StringCommand
 	Do(ctx context.Context, args ...interface{}) (Reply, error)
-	Get(ctx context.Context, key string) (string, error)
-	Set(ctx context.Context, key string, value interface{}, expiration time.Duration) (string, error)
 }
 
 type BaseClient struct {
