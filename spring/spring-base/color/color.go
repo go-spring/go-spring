@@ -34,7 +34,7 @@ const (
 	Black   Attribute = "30" // 黑色
 	Red     Attribute = "31" // 红色
 	Green   Attribute = "32" // 绿色
-	Yellow  Attribute = "33" //黄色
+	Yellow  Attribute = "33" // 黄色
 	Blue    Attribute = "34" // 蓝色
 	Magenta Attribute = "35" // 紫色
 	Cyan    Attribute = "36" // 青色
@@ -42,14 +42,14 @@ const (
 )
 
 const (
-	BgBlack   Attribute = "40"
-	BgRed     Attribute = "41"
-	BgGreen   Attribute = "42"
-	BgYellow  Attribute = "43"
-	BgBlue    Attribute = "44"
-	BgMagenta Attribute = "45"
-	BgCyan    Attribute = "46"
-	BgWhite   Attribute = "47"
+	BgBlack   Attribute = "40" // 背景黑色
+	BgRed     Attribute = "41" // 背景红色
+	BgGreen   Attribute = "42" // 背景绿色
+	BgYellow  Attribute = "43" // 背景黄色
+	BgBlue    Attribute = "44" // 背景蓝色
+	BgMagenta Attribute = "45" // 背景紫色
+	BgCyan    Attribute = "46" // 背景青色
+	BgWhite   Attribute = "47" // 背景白色
 )
 
 // Attribute 控制台属性

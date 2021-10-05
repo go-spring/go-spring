@@ -167,7 +167,7 @@ func (u *Uintptr) Add(delta uintptr) (new uintptr) {
 	return atomic.AddUintptr(&u.v, delta)
 }
 
-// Load wrapper for atomic.LoadInt64.
+// Load wrapper for atomic.LoadUintptr.
 func (u *Uintptr) Load() (val uintptr) {
 	return atomic.LoadUintptr(&u.v)
 }
