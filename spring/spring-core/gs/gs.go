@@ -28,6 +28,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-spring/spring-base/conf"
 	"github.com/go-spring/spring-base/log"
@@ -254,6 +255,8 @@ func (c *container) Refresh(opts ...internal.RefreshOption) (err error) {
 		return errors.New("container already refreshed")
 	}
 
+	start := time.Now()
+
 	optArg := &internal.RefreshArg{AutoClear: true}
 	for _, opt := range opts {
 		opt(optArg)
@@ -291,6 +294,9 @@ func (c *container) Refresh(opts ...internal.RefreshOption) (err error) {
 
 	c.destroyers = stack.sortDestroyers()
 	c.state = Refreshed
+
+	cost := time.Now().Sub(start)
+	log.Infof("refresh %d beans cost %v", len(c.beansById), cost)
 
 	if optArg.AutoClear {
 		c.clear()

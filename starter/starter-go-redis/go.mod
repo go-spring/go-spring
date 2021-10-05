@@ -3,7 +3,7 @@ module github.com/go-spring/starter-go-redis
 go 1.14
 
 require (
-	github.com/go-redis/redis v6.15.9+incompatible
+	github.com/go-redis/redis/v8 v8.11.4
 	github.com/go-spring/spring-core v1.0.6-0.20211001040940-f4fed6e6c943
 	github.com/go-spring/starter-core v1.1.0-beta
 )

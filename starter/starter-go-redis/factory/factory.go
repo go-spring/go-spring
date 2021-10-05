@@ -17,9 +17,10 @@
 package factory
 
 import (
+	"context"
 	"fmt"
 
-	"github.com/go-redis/redis"
+	"github.com/go-redis/redis/v8"
 	"github.com/go-spring/starter-core"
 )
 
@@ -33,7 +34,7 @@ func NewClient(config StarterCore.RedisConfig) (redis.Cmdable, error) {
 		DB:       config.Database,
 	})
 
-	if err := client.Ping().Err(); err != nil {
+	if err := client.Ping(context.Background()).Err(); err != nil {
 		return nil, err
 	}
 	return client, nil

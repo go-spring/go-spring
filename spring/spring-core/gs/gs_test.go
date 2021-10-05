@@ -56,11 +56,9 @@ func TestApplicationContext_RegisterBeanFrozen(t *testing.T) {
 	assert.Panic(t, func() {
 		c := gs.New()
 		c.Object(new(int)).Init(func(i *int) {
-			// 不能在这里注册新的 Object
-			c.Object(new(bool))
+			c.Object(new(bool)) // 不能在这里注册新的 Object
 		})
-		err := c.Refresh()
-		assert.Nil(t, err)
+		_ = c.Refresh()
 	}, "should call before Refresh")
 }
 
