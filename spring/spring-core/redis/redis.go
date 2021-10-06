@@ -18,31 +18,47 @@ package redis
 
 import (
 	"context"
+	"time"
 )
 
-type Reply interface {
-	Bool() bool
-	Int64() int64
-	String() string
-	StringSlice() []string
-}
-
 type Client interface {
+	BaseCommand
 	KeyCommand
 	BitmapCommand
 	StringCommand
 	HashCommand
 	ListCommand
 	SetCommand
-	Do(ctx context.Context, args ...interface{}) (Reply, error)
+}
+
+type Reply interface {
+	Bool() bool
+	Int64() int64
+	Float64() float64
+	String() string
+	Duration() time.Duration
+	Slice() []interface{}
+	Int64Slice() []int64
+	BoolSlice() []bool
+	StringSlice() []string
+	StringStringMap() map[string]string
+}
+
+type BaseCommand interface {
+	Bool(ctx context.Context, args ...interface{}) (bool, error)
+	Int64(ctx context.Context, args ...interface{}) (int64, error)
+	Float64(ctx context.Context, args ...interface{}) (float64, error)
+	String(ctx context.Context, args ...interface{}) (string, error)
+	Duration(ctx context.Context, args ...interface{}) (time.Duration, error)
+	Slice(ctx context.Context, args ...interface{}) ([]interface{}, error)
+	Int64Slice(ctx context.Context, args ...interface{}) ([]int64, error)
+	BoolSlice(ctx context.Context, args ...interface{}) ([]bool, error)
+	StringSlice(ctx context.Context, args ...interface{}) ([]string, error)
+	StringStringMap(ctx context.Context, args ...interface{}) (map[string]string, error)
 }
 
 type BaseClient struct {
 	DoFunc func(ctx context.Context, args ...interface{}) (Reply, error)
-}
-
-func (c *BaseClient) Do(ctx context.Context, args ...interface{}) (Reply, error) {
-	return c.DoFunc(ctx, args...)
 }
 
 func (c *BaseClient) Bool(ctx context.Context, args ...interface{}) (bool, error) {
@@ -61,6 +77,14 @@ func (c *BaseClient) Int64(ctx context.Context, args ...interface{}) (int64, err
 	return reply.Int64(), nil
 }
 
+func (c *BaseClient) Float64(ctx context.Context, args ...interface{}) (float64, error) {
+	reply, err := c.DoFunc(ctx, args...)
+	if err != nil {
+		return -1, err
+	}
+	return reply.Float64(), nil
+}
+
 func (c *BaseClient) String(ctx context.Context, args ...interface{}) (string, error) {
 	reply, err := c.DoFunc(ctx, args...)
 	if err != nil {
@@ -69,10 +93,50 @@ func (c *BaseClient) String(ctx context.Context, args ...interface{}) (string, e
 	return reply.String(), nil
 }
 
+func (c *BaseClient) Duration(ctx context.Context, args ...interface{}) (time.Duration, error) {
+	reply, err := c.DoFunc(ctx, args...)
+	if err != nil {
+		return 0, err
+	}
+	return reply.Duration(), nil
+}
+
+func (c *BaseClient) Slice(ctx context.Context, args ...interface{}) ([]interface{}, error) {
+	reply, err := c.DoFunc(ctx, args...)
+	if err != nil {
+		return nil, err
+	}
+	return reply.Slice(), nil
+}
+
+func (c *BaseClient) Int64Slice(ctx context.Context, args ...interface{}) ([]int64, error) {
+	reply, err := c.DoFunc(ctx, args...)
+	if err != nil {
+		return nil, err
+	}
+	return reply.Int64Slice(), nil
+}
+
+func (c *BaseClient) BoolSlice(ctx context.Context, args ...interface{}) ([]bool, error) {
+	reply, err := c.DoFunc(ctx, args...)
+	if err != nil {
+		return nil, err
+	}
+	return reply.BoolSlice(), nil
+}
+
 func (c *BaseClient) StringSlice(ctx context.Context, args ...interface{}) ([]string, error) {
 	reply, err := c.DoFunc(ctx, args...)
 	if err != nil {
 		return nil, err
 	}
 	return reply.StringSlice(), nil
+}
+
+func (c *BaseClient) StringStringMap(ctx context.Context, args ...interface{}) (map[string]string, error) {
+	reply, err := c.DoFunc(ctx, args...)
+	if err != nil {
+		return nil, err
+	}
+	return reply.StringStringMap(), nil
 }

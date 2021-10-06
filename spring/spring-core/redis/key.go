@@ -22,19 +22,84 @@ import (
 )
 
 const (
-	CommandDel      = "del"
-	CommandExpire   = "expire"
-	CommandExpireAt = "expireat"
+	CommandDel       = "del"
+	CommandExists    = "exists"
+	CommandExpire    = "expire"
+	CommandExpireAt  = "expireat"
+	CommandKeys      = "keys"
+	CommandPersist   = "persist"
+	CommandPExpire   = "pexpire"
+	CommandPExpireAt = "pexpireat"
+	CommandPTTL      = "pttl"
+	CommandRename    = "rename"
+	CommandRenameNX  = "renamenx"
+	CommandTTL       = "ttl"
 )
 
 type KeyCommand interface {
+
+	// Del https://redis.io/commands/del
+	// Integer reply: The number of keys that were removed.
 	Del(ctx context.Context, keys ...string) (int64, error)
+
+	// Exists https://redis.io/commands/exists
+	// Integer reply, 1 if the key exists, 0 if the key does not exist.
+	Exists(ctx context.Context, keys ...string) (int64, error)
+
+	// Expire https://redis.io/commands/expire
+	// Integer reply, 1 if the timeout was set, 0 if the timeout was not set.
 	Expire(ctx context.Context, key string, expiration time.Duration) (bool, error)
-	ExpireAt(ctx context.Context, key string, tm time.Time) (bool, error)
+
+	// ExpireAt https://redis.io/commands/expireat
+	// Integer reply, 1 if the timeout was set, 0 if the timeout was not set.
+	ExpireAt(ctx context.Context, key string, expiration time.Time) (bool, error)
+
+	// Keys https://redis.io/commands/keys
+	// Array reply: list of keys matching pattern.
+	Keys(ctx context.Context, pattern string) ([]string, error)
+
+	// Persist https://redis.io/commands/persist
+	// Integer reply, 1 if the timeout was removed, 0 if key does
+	// not exist or does not have an associated timeout.
+	Persist(ctx context.Context, key string) (bool, error)
+
+	// PExpire https://redis.io/commands/pexpire
+	// Integer reply, 1 if the timeout was set, 0 if the timeout was not set.
+	PExpire(ctx context.Context, key string, expiration time.Duration) (bool, error)
+
+	// PExpireAt https://redis.io/commands/pexpireat
+	// Integer reply, 1 if the timeout was set, 0 if the timeout was not set.
+	PExpireAt(ctx context.Context, key string, expiration time.Time) (bool, error)
+
+	// PTTL https://redis.io/commands/pttl
+	// Integer reply: TTL in milliseconds, -1 if the key exists but
+	// has no associated expire, -2 if the key does not exist.
+	PTTL(ctx context.Context, key string) (time.Duration, error)
+
+	// Rename https://redis.io/commands/rename
+	// Simple string reply.
+	Rename(ctx context.Context, key, newKey string) (string, error)
+
+	// RenameNX https://redis.io/commands/renamenx
+	// Integer reply, 1 if key was renamed to newKey, 0 if newKey already exists.
+	RenameNX(ctx context.Context, key, newKey string) (bool, error)
+
+	// TTL https://redis.io/commands/ttl
+	// Integer reply: TTL in seconds, -1 if the key exists but has no
+	// associated expire, -2 if the key does not exist.
+	TTL(ctx context.Context, key string) (time.Duration, error)
 }
 
 func (c *BaseClient) Del(ctx context.Context, keys ...string) (int64, error) {
 	args := []interface{}{CommandDel}
+	for _, key := range keys {
+		args = append(args, key)
+	}
+	return c.Int64(ctx, args...)
+}
+
+func (c *BaseClient) Exists(ctx context.Context, keys ...string) (int64, error) {
+	args := []interface{}{CommandExists}
 	for _, key := range keys {
 		args = append(args, key)
 	}
@@ -49,4 +114,44 @@ func (c *BaseClient) Expire(ctx context.Context, key string, expiration time.Dur
 func (c *BaseClient) ExpireAt(ctx context.Context, key string, expiration time.Time) (bool, error) {
 	args := []interface{}{CommandExpireAt, key, expiration}
 	return c.Bool(ctx, args...)
+}
+
+func (c *BaseClient) Keys(ctx context.Context, pattern string) ([]string, error) {
+	args := []interface{}{CommandKeys, pattern}
+	return c.StringSlice(ctx, args...)
+}
+
+func (c *BaseClient) Persist(ctx context.Context, key string) (bool, error) {
+	args := []interface{}{CommandPersist, key}
+	return c.Bool(ctx, args...)
+}
+
+func (c *BaseClient) PExpire(ctx context.Context, key string, expiration time.Duration) (bool, error) {
+	args := []interface{}{CommandPExpire, key, expiration}
+	return c.Bool(ctx, args...)
+}
+
+func (c *BaseClient) PExpireAt(ctx context.Context, key string, expiration time.Time) (bool, error) {
+	args := []interface{}{CommandPExpireAt, key, expiration}
+	return c.Bool(ctx, args...)
+}
+
+func (c *BaseClient) PTTL(ctx context.Context, key string) (time.Duration, error) {
+	args := []interface{}{CommandPTTL, key}
+	return c.Duration(ctx, args...)
+}
+
+func (c *BaseClient) Rename(ctx context.Context, key, newKey string) (string, error) {
+	args := []interface{}{CommandRename, key, newKey}
+	return c.String(ctx, args...)
+}
+
+func (c *BaseClient) RenameNX(ctx context.Context, key, newKey string) (bool, error) {
+	args := []interface{}{CommandRenameNX, key, newKey}
+	return c.Bool(ctx, args...)
+}
+
+func (c *BaseClient) TTL(ctx context.Context, key string) (time.Duration, error) {
+	args := []interface{}{CommandTTL, key}
+	return c.Duration(ctx, args...)
 }
