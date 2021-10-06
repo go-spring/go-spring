@@ -14,25 +14,29 @@
  * limitations under the License.
  */
 
-package SpringGoRedis_test
+package SpringRedigo_test
 
 import (
 	"context"
 	"testing"
 
-	g "github.com/go-redis/redis/v8"
 	"github.com/go-spring/spring-base/assert"
 	"github.com/go-spring/spring-core/redis"
-	SpringGoRedis "github.com/go-spring/spring-go-redis"
+	"github.com/go-spring/spring-redigo"
+	g "github.com/gomodule/redigo/redis"
 )
 
-func getClient() redis.Client {
-	return SpringGoRedis.NewClient(g.NewClient(&g.Options{}))
+func getClient(t *testing.T) redis.Client {
+	conn, err := g.Dial("tcp", ":6379")
+	if err != nil {
+		t.Fatal()
+	}
+	return SpringRedigo.NewClient(conn)
 }
 
-func TestString(t *testing.T) {
+func TestClient(t *testing.T) {
 
-	c := getClient()
+	c := getClient(t)
 	var reply interface{}
 	ctx := context.Background()
 
@@ -51,7 +55,7 @@ func TestString(t *testing.T) {
 
 func TestHash(t *testing.T) {
 
-	c := getClient()
+	c := getClient(t)
 	var reply interface{}
 	ctx := context.Background()
 

@@ -37,6 +37,12 @@
         <branch>main</branch>
     </project>
     <project>
+        <name>spring-redigo</name>
+        <dir>spring/spring-redigo</dir>
+        <url>https://github.com/go-spring/spring-redigo.git</url>
+        <branch>main</branch>
+    </project>
+    <project>
         <name>spring-swag</name>
         <dir>spring/spring-swag</dir>
         <url>https://github.com/go-spring/spring-swag.git</url>

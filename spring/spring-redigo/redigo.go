@@ -14,30 +14,29 @@
  * limitations under the License.
  */
 
-package SpringGoRedis
+package SpringRedigo
 
 import (
 	"context"
 
-	g "github.com/go-redis/redis/v8"
 	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-core/redis"
+	g "github.com/gomodule/redigo/redis"
 )
 
 type client struct {
 	redis.BaseClient
-	client *g.Client
+	conn g.Conn
 }
 
-func NewClient(clt *g.Client) redis.Client {
-	c := &client{client: clt}
+func NewClient(conn g.Conn) redis.Client {
+	c := &client{conn: conn}
 	c.DoFunc = c.do
 	return c
 }
 
 func (c *client) do(ctx context.Context, args ...interface{}) (redis.Reply, error) {
-	cmd := c.client.Do(ctx, args...)
-	result, err := cmd.Result()
+	result, err := c.conn.Do(args[0].(string), args[1:]...)
 	if err != nil {
 		return nil, err
 	}

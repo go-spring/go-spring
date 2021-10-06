@@ -22,10 +22,12 @@ import (
 
 type Reply interface {
 	String() string
+	Int64() int64
 }
 
 type Client interface {
 	StringCommand
+	HashCommand
 	Do(ctx context.Context, args ...interface{}) (Reply, error)
 }
 
