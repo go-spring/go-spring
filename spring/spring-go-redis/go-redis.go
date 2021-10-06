@@ -48,10 +48,18 @@ type reply struct {
 	v interface{}
 }
 
-func (r *reply) String() string {
-	return cast.ToString(r.v)
+func (r *reply) Bool() bool {
+	return cast.ToBool(r.v)
 }
 
 func (r *reply) Int64() int64 {
 	return cast.ToInt64(r.v)
+}
+
+func (r *reply) String() string {
+	return cast.ToString(r.v)
+}
+
+func (r *reply) StringSlice() []string {
+	return cast.ToStringSlice(r.v)
 }

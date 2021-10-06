@@ -67,3 +67,41 @@ func TestHash(t *testing.T) {
 	}
 	assert.Equal(t, reply, "king")
 }
+
+func TestBitmap(t *testing.T) {
+
+	c := getClient()
+	var reply interface{}
+	ctx := context.Background()
+
+	reply, err := c.SetBit(ctx, "bitmap", 5, 1)
+	if err != nil {
+		t.Fatal()
+	}
+	assert.Equal(t, reply, int64(1))
+
+	reply, err = c.GetBit(ctx, "bitmap", 5)
+	if err != nil {
+		t.Fatal()
+	}
+	assert.Equal(t, reply, int64(1))
+}
+
+func TestSet(t *testing.T) {
+
+	c := getClient()
+	var reply interface{}
+	ctx := context.Background()
+
+	reply, err := c.SAdd(ctx, "set", 1, 2, 3)
+	if err != nil {
+		t.Fatal()
+	}
+	assert.Equal(t, reply, int64(0))
+
+	reply, err = c.SMembers(ctx, "set")
+	if err != nil {
+		t.Fatal()
+	}
+	assert.Equal(t, reply, []string{"1", "2", "3"})
+}

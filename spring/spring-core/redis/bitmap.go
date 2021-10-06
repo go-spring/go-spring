@@ -21,22 +21,21 @@ import (
 )
 
 const (
-	CommandHGet = "hget"
-	CommandHSet = "hset"
+	CommandGetBit = "getbit"
+	CommandSetBit = "setbit"
 )
 
-type HashCommand interface {
-	HGet(ctx context.Context, key string, field string) (string, error)
-	HSet(ctx context.Context, key string, values ...interface{}) (int64, error)
+type BitmapCommand interface {
+	GetBit(ctx context.Context, key string, offset int64) (int64, error)
+	SetBit(ctx context.Context, key string, offset int64, value int) (int64, error)
 }
 
-func (c *BaseClient) HGet(ctx context.Context, key string, field string) (string, error) {
-	args := []interface{}{CommandHGet, key, field}
-	return c.String(ctx, args...)
+func (c *BaseClient) GetBit(ctx context.Context, key string, offset int64) (int64, error) {
+	args := []interface{}{CommandGetBit, key, offset}
+	return c.Int64(ctx, args...)
 }
 
-func (c *BaseClient) HSet(ctx context.Context, key string, values ...interface{}) (int64, error) {
-	args := []interface{}{CommandHSet, key}
-	args = append(args, values...)
+func (c *BaseClient) SetBit(ctx context.Context, key string, offset int64, value int) (int64, error) {
+	args := []interface{}{CommandSetBit, key, offset, value}
 	return c.Int64(ctx, args...)
 }

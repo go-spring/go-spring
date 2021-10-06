@@ -32,18 +32,11 @@ type StringCommand interface {
 }
 
 func (c *BaseClient) Get(ctx context.Context, key string) (string, error) {
-	reply, err := c.Do(ctx, CommandGet, key)
-	if err != nil {
-		return "", err
-	}
-	return reply.String(), nil
+	args := []interface{}{CommandGet, key}
+	return c.String(ctx, args...)
 }
 
 func (c *BaseClient) Set(ctx context.Context, key string, value interface{}, expiration time.Duration) (string, error) {
 	args := []interface{}{CommandSet, key, value}
-	reply, err := c.Do(ctx, args...)
-	if err != nil {
-		return "", err
-	}
-	return reply.String(), nil
+	return c.String(ctx, args...)
 }
