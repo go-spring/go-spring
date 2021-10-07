@@ -18,6 +18,7 @@ package SpringGoRedis_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	g "github.com/go-redis/redis/v8"
@@ -104,4 +105,15 @@ func TestSet(t *testing.T) {
 		t.Fatal()
 	}
 	assert.Equal(t, reply, []string{"1", "2", "3"})
+}
+
+func TestKey(t *testing.T) {
+
+	c := getClient()
+	var reply interface{}
+	ctx := context.Background()
+
+	reply, err := c.Dump(ctx, "k")
+	assert.True(t, redis.ErrNil == err)
+	fmt.Print(reply)
 }

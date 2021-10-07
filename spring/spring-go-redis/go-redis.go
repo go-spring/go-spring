@@ -18,6 +18,7 @@ package SpringGoRedis
 
 import (
 	"context"
+	"time"
 
 	g "github.com/go-redis/redis/v8"
 	"github.com/go-spring/spring-base/cast"
@@ -39,6 +40,9 @@ func (c *client) do(ctx context.Context, args ...interface{}) (redis.Reply, erro
 	cmd := c.client.Do(ctx, args...)
 	result, err := cmd.Result()
 	if err != nil {
+		if err == g.Nil {
+			return nil, redis.ErrNil
+		}
 		return nil, err
 	}
 	return &reply{v: result}, nil
@@ -56,10 +60,34 @@ func (r *reply) Int64() int64 {
 	return cast.ToInt64(r.v)
 }
 
+func (r *reply) Float64() float64 {
+	return cast.ToFloat64(r.v)
+}
+
 func (r *reply) String() string {
 	return cast.ToString(r.v)
 }
 
+func (r *reply) Duration() time.Duration {
+	return cast.ToDuration(r.v)
+}
+
+func (r *reply) Slice() []interface{} {
+	return nil
+}
+
+func (r *reply) Int64Slice() []int64 {
+	return nil
+}
+
+func (r *reply) BoolSlice() []bool {
+	return nil
+}
+
 func (r *reply) StringSlice() []string {
 	return cast.ToStringSlice(r.v)
+}
+
+func (r *reply) StringStringMap() map[string]string {
+	return nil
 }

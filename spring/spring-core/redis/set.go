@@ -67,7 +67,7 @@ type SetCommand interface {
 	SInterStore(ctx context.Context, destination string, keys ...string) (int64, error)
 
 	// SIsMember https://redis.io/commands/sismember
-	// Integer reply, 1 if the element is a member of the set, 0 if the
+	// Integer reply: 1 if the element is a member of the set, 0 if the
 	// element is not a member of the set, or if key does not exist.
 	SIsMember(ctx context.Context, key string, member interface{}) (bool, error)
 
@@ -81,7 +81,7 @@ type SetCommand interface {
 	SMembers(ctx context.Context, key string) ([]string, error)
 
 	// SMove https://redis.io/commands/smove
-	// Integer reply, 1 if the element is moved, 0 if the element is
+	// Integer reply: 1 if the element is moved, 0 if the element is
 	// not a member of source and no operation was performed.
 	SMove(ctx context.Context, source, destination string, member interface{}) (bool, error)
 

@@ -99,7 +99,7 @@ type StringCommand interface {
 	MSet(ctx context.Context, values ...interface{}) (string, error)
 
 	// MSetNX https://redis.io/commands/msetnx
-	// Integer reply, 1 if the all the keys were set, 0 if no key was
+	// Integer reply: 1 if the all the keys were set, 0 if no key was
 	// set (at least one key already existed).
 	MSetNX(ctx context.Context, values ...interface{}) (bool, error)
 
@@ -119,7 +119,7 @@ type StringCommand interface {
 	SetEX(ctx context.Context, key string, value interface{}, expiration time.Duration) (string, error)
 
 	// SetNX https://redis.io/commands/setnx
-	// Integer reply, 1 if the key was set, 0 if the key was not set.
+	// Integer reply: 1 if the key was set, 0 if the key was not set.
 	SetNX(ctx context.Context, key string, value interface{}, expiration time.Duration) (bool, error)
 
 	// SetRange https://redis.io/commands/setrange
@@ -172,7 +172,7 @@ func (c *BaseClient) GetSet(ctx context.Context, key string, value interface{}) 
 }
 
 func (c *BaseClient) Incr(ctx context.Context, key string) (int64, error) {
-	args := []interface{}{CommandIncrBy, key}
+	args := []interface{}{CommandIncr, key}
 	return c.Int64(ctx, args...)
 }
 
