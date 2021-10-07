@@ -18,7 +18,6 @@ package redis
 
 import (
 	"context"
-	"time"
 )
 
 type Client interface {
@@ -36,7 +35,6 @@ type Reply interface {
 	Int64() int64
 	Float64() float64
 	String() string
-	Duration() time.Duration
 	Slice() []interface{}
 	Int64Slice() []int64
 	BoolSlice() []bool
@@ -49,7 +47,6 @@ type BaseCommand interface {
 	Int64(ctx context.Context, args ...interface{}) (int64, error)
 	Float64(ctx context.Context, args ...interface{}) (float64, error)
 	String(ctx context.Context, args ...interface{}) (string, error)
-	Duration(ctx context.Context, args ...interface{}) (time.Duration, error)
 	Slice(ctx context.Context, args ...interface{}) ([]interface{}, error)
 	Int64Slice(ctx context.Context, args ...interface{}) ([]int64, error)
 	BoolSlice(ctx context.Context, args ...interface{}) ([]bool, error)
@@ -91,14 +88,6 @@ func (c *BaseClient) String(ctx context.Context, args ...interface{}) (string, e
 		return "", err
 	}
 	return reply.String(), nil
-}
-
-func (c *BaseClient) Duration(ctx context.Context, args ...interface{}) (time.Duration, error) {
-	reply, err := c.DoFunc(ctx, args...)
-	if err != nil {
-		return 0, err
-	}
-	return reply.Duration(), nil
 }
 
 func (c *BaseClient) Slice(ctx context.Context, args ...interface{}) ([]interface{}, error) {

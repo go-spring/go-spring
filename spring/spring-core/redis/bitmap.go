@@ -21,24 +21,14 @@ import (
 )
 
 const (
-	CommandGetBit   = "getbit"
-	CommandSetBit   = "setbit"
-	CommandBitCount = "bitcount"
-	CommandBitOp    = "bitop"
-	CommandBitPos   = "bitpos"
+	CommandGetBit   = "GETBIT"
+	CommandSetBit   = "SETBIT"
+	CommandBitCount = "BITCOUNT"
+	CommandBitOp    = "BITOP"
+	CommandBitPos   = "BITPOS"
 )
 
 type BitmapCommand interface {
-
-	// GetBit https://redis.io/commands/getbit
-	// Returns the bit value at offset in the string value stored at key.
-	// Integer reply: the bit value stored at offset.
-	GetBit(ctx context.Context, key string, offset int64) (int64, error)
-
-	// SetBit https://redis.io/commands/setbit
-	// Sets or clears the bit at offset in the string value stored at key.
-	// Integer reply: the original bit value stored at offset.
-	SetBit(ctx context.Context, key string, offset int64, value int) (int64, error)
 
 	// BitCount https://redis.io/commands/bitcount
 	// Count the number of set bits (population counting) in a string.
@@ -69,6 +59,53 @@ type BitmapCommand interface {
 	// Integer reply: The command returns the position of the first bit
 	// set to 1 or 0 according to the request.
 	BitPos(ctx context.Context, key string, bit int64, start, end int64) (int64, error)
+
+	// GetBit https://redis.io/commands/getbit
+	// Integer reply: the bit value stored at offset.
+	GetBit(ctx context.Context, key string, offset int64) (int64, error)
+
+	// SetBit https://redis.io/commands/setbit
+	// Integer reply: the original bit value stored at offset.
+	SetBit(ctx context.Context, key string, offset int64, value int) (int64, error)
+}
+
+func (c *BaseClient) BitCount(ctx context.Context, key string, start, end int64) (int64, error) {
+	args := []interface{}{CommandBitCount, key, start, end}
+	return c.Int64(ctx, args...)
+}
+
+func (c *BaseClient) BitOpAnd(ctx context.Context, destKey string, keys ...string) (int64, error) {
+	args := []interface{}{CommandBitOp, "AND", destKey}
+	for _, key := range keys {
+		args = append(args, key)
+	}
+	return c.Int64(ctx, args...)
+}
+
+func (c *BaseClient) BitOpOr(ctx context.Context, destKey string, keys ...string) (int64, error) {
+	args := []interface{}{CommandBitOp, "OR", destKey}
+	for _, key := range keys {
+		args = append(args, key)
+	}
+	return c.Int64(ctx, args...)
+}
+
+func (c *BaseClient) BitOpXor(ctx context.Context, destKey string, keys ...string) (int64, error) {
+	args := []interface{}{CommandBitOp, "XOR", destKey}
+	for _, key := range keys {
+		args = append(args, key)
+	}
+	return c.Int64(ctx, args...)
+}
+
+func (c *BaseClient) BitOpNot(ctx context.Context, destKey string, key string) (int64, error) {
+	args := []interface{}{CommandBitOp, "NOT", destKey, key}
+	return c.Int64(ctx, args...)
+}
+
+func (c *BaseClient) BitPos(ctx context.Context, key string, bit int64, start, end int64) (int64, error) {
+	args := []interface{}{CommandBitPos, key, bit, start, end}
+	return c.Int64(ctx, args...)
 }
 
 func (c *BaseClient) GetBit(ctx context.Context, key string, offset int64) (int64, error) {
@@ -78,44 +115,5 @@ func (c *BaseClient) GetBit(ctx context.Context, key string, offset int64) (int6
 
 func (c *BaseClient) SetBit(ctx context.Context, key string, offset int64, value int) (int64, error) {
 	args := []interface{}{CommandSetBit, key, offset, value}
-	return c.Int64(ctx, args...)
-}
-
-func (c *BaseClient) BitCount(ctx context.Context, key string, start, end int64) (int64, error) {
-	args := []interface{}{CommandBitCount, key, start, end}
-	return c.Int64(ctx, args...)
-}
-
-func (c *BaseClient) BitOpAnd(ctx context.Context, destKey string, keys ...string) (int64, error) {
-	args := []interface{}{CommandBitOp, "and", destKey}
-	for _, key := range keys {
-		args = append(args, key)
-	}
-	return c.Int64(ctx, args...)
-}
-
-func (c *BaseClient) BitOpOr(ctx context.Context, destKey string, keys ...string) (int64, error) {
-	args := []interface{}{CommandBitOp, "or", destKey}
-	for _, key := range keys {
-		args = append(args, key)
-	}
-	return c.Int64(ctx, args...)
-}
-
-func (c *BaseClient) BitOpXor(ctx context.Context, destKey string, keys ...string) (int64, error) {
-	args := []interface{}{CommandBitOp, "xor", destKey}
-	for _, key := range keys {
-		args = append(args, key)
-	}
-	return c.Int64(ctx, args...)
-}
-
-func (c *BaseClient) BitOpNot(ctx context.Context, destKey string, key string) (int64, error) {
-	args := []interface{}{CommandBitOp, "not", destKey, key}
-	return c.Int64(ctx, args...)
-}
-
-func (c *BaseClient) BitPos(ctx context.Context, key string, bit int64, start, end int64) (int64, error) {
-	args := []interface{}{CommandBitPos, key, bit, start, end}
 	return c.Int64(ctx, args...)
 }

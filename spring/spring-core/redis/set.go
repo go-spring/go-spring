@@ -21,21 +21,21 @@ import (
 )
 
 const (
-	CommandSAdd        = "SAdd"
-	CommandSCard       = "SCard"
-	CommandSDiff       = "SDiff"
-	CommandSDiffStore  = "SDiffStore"
-	CommandSInter      = "SInter"
-	CommandSInterStore = "SInterStore"
-	CommandSIsMember   = "SIsMember"
-	CommandSMIsMember  = "SMIsMember"
-	CommandSMembers    = "SMembers"
-	CommandSMove       = "SMove"
-	CommandSPop        = "SPop"
-	CommandSRandMember = "SRandMember"
-	CommandSRem        = "SRem"
-	CommandSUnion      = "SUnion"
-	CommandSUnionStore = "SUnionStore"
+	CommandSAdd        = "SADD"
+	CommandSCard       = "SCARD"
+	CommandSDiff       = "SDIFF"
+	CommandSDiffStore  = "SDIFFSTORE"
+	CommandSInter      = "SINTER"
+	CommandSInterStore = "SINTERSTORE"
+	CommandSIsMember   = "SISMEMBER"
+	CommandSMIsMember  = "SMISMEMBER"
+	CommandSMembers    = "SMEMBERS"
+	CommandSMove       = "SMOVE"
+	CommandSPop        = "SPOP"
+	CommandSRandMember = "SRANDMEMBER"
+	CommandSRem        = "SREM"
+	CommandSUnion      = "SUNION"
+	CommandSUnionStore = "SUNIONSTORE"
 )
 
 type SetCommand interface {
@@ -71,14 +71,14 @@ type SetCommand interface {
 	// element is not a member of the set, or if key does not exist.
 	SIsMember(ctx context.Context, key string, member interface{}) (bool, error)
 
+	// SMembers https://redis.io/commands/smembers
+	// Array reply: all elements of the set.
+	SMembers(ctx context.Context, key string) ([]string, error)
+
 	// SMIsMember https://redis.io/commands/smismember
 	// Array reply: list representing the membership of the given elements,
 	// in the same order as they are requested.
 	SMIsMember(ctx context.Context, key string, members ...interface{}) ([]bool, error)
-
-	// SMembers https://redis.io/commands/smembers
-	// Array reply: all elements of the set.
-	SMembers(ctx context.Context, key string) ([]string, error)
 
 	// SMove https://redis.io/commands/smove
 	// Integer reply: 1 if the element is moved, 0 if the element is
@@ -164,17 +164,17 @@ func (c *BaseClient) SIsMember(ctx context.Context, key string, member interface
 	return c.Bool(ctx, args...)
 }
 
+func (c *BaseClient) SMembers(ctx context.Context, key string) ([]string, error) {
+	args := []interface{}{CommandSMembers, key}
+	return c.StringSlice(ctx, args...)
+}
+
 func (c *BaseClient) SMIsMember(ctx context.Context, key string, members ...interface{}) ([]bool, error) {
 	args := []interface{}{CommandSMIsMember, key}
 	for _, member := range members {
 		args = append(args, member)
 	}
 	return c.BoolSlice(ctx, args...)
-}
-
-func (c *BaseClient) SMembers(ctx context.Context, key string) ([]string, error) {
-	args := []interface{}{CommandSMembers, key}
-	return c.StringSlice(ctx, args...)
 }
 
 func (c *BaseClient) SMove(ctx context.Context, source, destination string, member interface{}) (bool, error) {
@@ -188,7 +188,7 @@ func (c *BaseClient) SPop(ctx context.Context, key string) (string, error) {
 }
 
 func (c *BaseClient) SPopN(ctx context.Context, key string, count int64) ([]string, error) {
-	args := []interface{}{CommandSPop, key, "count", count}
+	args := []interface{}{CommandSPop, key, count}
 	return c.StringSlice(ctx, args...)
 }
 
@@ -198,12 +198,12 @@ func (c *BaseClient) SRandMember(ctx context.Context, key string) (string, error
 }
 
 func (c *BaseClient) SRandMemberN(ctx context.Context, key string, count int64) ([]string, error) {
-	args := []interface{}{CommandSRandMember, key, "count", count}
+	args := []interface{}{CommandSRandMember, key, count}
 	return c.StringSlice(ctx, args...)
 }
 
 func (c *BaseClient) SRem(ctx context.Context, key string, members ...interface{}) (int64, error) {
-	args := []interface{}{CommandSUnion, key}
+	args := []interface{}{CommandSRem, key}
 	for _, member := range members {
 		args = append(args, member)
 	}

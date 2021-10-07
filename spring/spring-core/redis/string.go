@@ -18,29 +18,29 @@ package redis
 
 import (
 	"context"
-	"time"
 )
 
 const (
-	CommandAppend      = "append"
-	CommandDecr        = "decr"
-	CommandDecrBy      = "decrby"
-	CommandGet         = "get"
-	CommandGetDel      = "getdel"
-	CommandGetEx       = "getex"
-	CommandGetRange    = "getrange"
-	CommandGetSet      = "getset"
-	CommandIncr        = "incr"
-	CommandIncrBy      = "incrby"
-	CommandIncrByFloat = "incrbyfloat"
-	CommandMGet        = "mget"
-	CommandMSet        = "mset"
-	CommandMSetNX      = "msetnx"
-	CommandSet         = "set"
-	CommandSetEX       = "setex"
-	CommandSetNX       = "setnx"
-	CommandSetRange    = "setrange"
-	CommandStrLen      = "strlen"
+	CommandAppend      = "APPEND"
+	CommandDecr        = "DECR"
+	CommandDecrBy      = "DECRBY"
+	CommandGet         = "GET"
+	CommandGetDel      = "GETDEL"
+	CommandGetEx       = "GETEX"
+	CommandGetRange    = "GETRANGE"
+	CommandGetSet      = "GETSET"
+	CommandIncr        = "INCR"
+	CommandIncrBy      = "INCRBY"
+	CommandIncrByFloat = "INCRBYFLOAT"
+	CommandMGet        = "MGET"
+	CommandMSet        = "MSET"
+	CommandMSetNX      = "MSETNX"
+	CommandPSetEX      = "PSETEX"
+	CommandSet         = "SET"
+	CommandSetEX       = "SETEX"
+	CommandSetNX       = "SETNX"
+	CommandSetRange    = "SETRANGE"
+	CommandStrLen      = "STRLEN"
 )
 
 type StringCommand interface {
@@ -68,7 +68,7 @@ type StringCommand interface {
 
 	// GetEx https://redis.io/commands/getex
 	// Bulk string reply: the value of key, or nil when key does not exist.
-	GetEx(ctx context.Context, key string, expiration time.Duration) (string, error)
+	GetEx(ctx context.Context, key string) (string, error)
 
 	// GetRange https://redis.io/commands/getrange
 	// Bulk string reply
@@ -103,24 +103,21 @@ type StringCommand interface {
 	// set (at least one key already existed).
 	MSetNX(ctx context.Context, values ...interface{}) (bool, error)
 
+	// PSetEX https://redis.io/commands/psetex
+	// Simple string reply
+	PSetEX(ctx context.Context, key string, value interface{}, expire int64) (string, error)
+
 	// Set https://redis.io/commands/set
 	// Simple string reply: OK if SET was executed correctly.
-	// Null reply: (nil) if the SET operation was not performed because
-	//     the user specified the NX or XX option but the condition was not met.
-	//     If the command is issued with the GET option, the above does not
-	//     apply. It will instead reply as follows, regardless if the SET
-	//     was actually performed.
-	//Bulk string reply: the old string value stored at key.
-	//Null reply: (nil) if the key did not exist.
-	Set(ctx context.Context, key string, value interface{}, expiration time.Duration) (string, error)
+	Set(ctx context.Context, key string, value interface{}) (string, error)
 
 	// SetEX https://redis.io/commands/setex
 	// Simple string reply
-	SetEX(ctx context.Context, key string, value interface{}, expiration time.Duration) (string, error)
+	SetEX(ctx context.Context, key string, value interface{}, expire int64) (string, error)
 
 	// SetNX https://redis.io/commands/setnx
 	// Integer reply: 1 if the key was set, 0 if the key was not set.
-	SetNX(ctx context.Context, key string, value interface{}, expiration time.Duration) (bool, error)
+	SetNX(ctx context.Context, key string, value interface{}) (bool, error)
 
 	// SetRange https://redis.io/commands/setrange
 	// Integer reply: the length of the string after it was modified by the command.
@@ -156,8 +153,8 @@ func (c *BaseClient) GetDel(ctx context.Context, key string) (string, error) {
 	return c.String(ctx, args...)
 }
 
-func (c *BaseClient) GetEx(ctx context.Context, key string, expiration time.Duration) (string, error) {
-	args := []interface{}{CommandGetEx, key, expiration}
+func (c *BaseClient) GetEx(ctx context.Context, key string) (string, error) {
+	args := []interface{}{CommandGetEx, key}
 	return c.String(ctx, args...)
 }
 
@@ -210,18 +207,23 @@ func (c *BaseClient) MSetNX(ctx context.Context, values ...interface{}) (bool, e
 	return c.Bool(ctx, args...)
 }
 
-func (c *BaseClient) Set(ctx context.Context, key string, value interface{}, expiration time.Duration) (string, error) {
-	args := []interface{}{CommandSet, key, value, expiration}
+func (c *BaseClient) PSetEX(ctx context.Context, key string, value interface{}, expire int64) (string, error) {
+	args := []interface{}{CommandPSetEX, key, expire, value}
 	return c.String(ctx, args...)
 }
 
-func (c *BaseClient) SetEX(ctx context.Context, key string, value interface{}, expiration time.Duration) (string, error) {
-	args := []interface{}{CommandSetEX, key, value, expiration}
+func (c *BaseClient) Set(ctx context.Context, key string, value interface{}) (string, error) {
+	args := []interface{}{CommandSet, key, value}
 	return c.String(ctx, args...)
 }
 
-func (c *BaseClient) SetNX(ctx context.Context, key string, value interface{}, expiration time.Duration) (bool, error) {
-	args := []interface{}{CommandSetNX, key, value, expiration}
+func (c *BaseClient) SetEX(ctx context.Context, key string, value interface{}, expire int64) (string, error) {
+	args := []interface{}{CommandSetEX, key, expire, value}
+	return c.String(ctx, args...)
+}
+
+func (c *BaseClient) SetNX(ctx context.Context, key string, value interface{}) (bool, error) {
+	args := []interface{}{CommandSetNX, key, value}
 	return c.Bool(ctx, args...)
 }
 

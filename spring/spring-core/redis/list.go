@@ -21,22 +21,22 @@ import (
 )
 
 const (
-	CommandLIndex    = "LIndex"
-	CommandLInsert   = "LInsert"
-	CommandLLen      = "LLen"
-	CommandLMove     = "LMove"
-	CommandLPop      = "LPop"
-	CommandLPos      = "LPos"
-	CommandLPush     = "LPush"
-	CommandLPushX    = "LPushX"
-	CommandLRange    = "LRange"
-	CommandLRem      = "LRem"
-	CommandLSet      = "LSet"
-	CommandLTrim     = "LTrim"
-	CommandRPop      = "RPop"
-	CommandRPopLPush = "RPopLPush"
-	CommandRPush     = "RPush"
-	CommandRPushX    = "RPushX"
+	CommandLIndex    = "LINDEX"
+	CommandLInsert   = "LINSERT"
+	CommandLLen      = "LLEN"
+	CommandLMove     = "LMOVE"
+	CommandLPop      = "LPOP"
+	CommandLPos      = "LPOS"
+	CommandLPush     = "LPUSH"
+	CommandLPushX    = "LPUSHX"
+	CommandLRange    = "LRANGE"
+	CommandLRem      = "LREM"
+	CommandLSet      = "LSET"
+	CommandLTrim     = "LTRIM"
+	CommandRPop      = "RPOP"
+	CommandRPopLPush = "RPOPLPUSH"
+	CommandRPush     = "RPUSH"
+	CommandRPushX    = "RPUSHX"
 )
 
 type ListCommand interface {
@@ -72,17 +72,17 @@ type ListCommand interface {
 	// Bulk string reply: the value of the first element, or nil when key does not exist.
 	LPop(ctx context.Context, key string) (string, error)
 
-	// LPopCount https://redis.io/commands/lpop
+	// LPopN https://redis.io/commands/lpop
 	// Array reply: list of popped elements, or nil when key does not exist.
-	LPopCount(ctx context.Context, key string, count int) ([]string, error)
+	LPopN(ctx context.Context, key string, count int) ([]string, error)
 
 	// LPos https://redis.io/commands/lpos
 	// The command returns the integer representing the matching element, or nil if there is no match.
 	LPos(ctx context.Context, key string, value string, rank, maxLen int64) (int64, error)
 
-	// LPosCount https://redis.io/commands/lpos
+	// LPosN https://redis.io/commands/lpos
 	// Returns an array (empty if there are no matches).
-	LPosCount(ctx context.Context, key string, value string, count int64, rank, maxLen int64) ([]int64, error)
+	LPosN(ctx context.Context, key string, value string, count int64, rank, maxLen int64) ([]int64, error)
 
 	// LPush https://redis.io/commands/lpush
 	// Integer reply: the length of the list after the push operations.
@@ -112,9 +112,9 @@ type ListCommand interface {
 	// Bulk string reply: the value of the last element, or nil when key does not exist.
 	RPop(ctx context.Context, key string) (string, error)
 
-	// RPopCount https://redis.io/commands/rpop
+	// RPopN https://redis.io/commands/rpop
 	// Array reply: list of popped elements, or nil when key does not exist.
-	RPopCount(ctx context.Context, key string, count int) ([]string, error)
+	RPopN(ctx context.Context, key string, count int) ([]string, error)
 
 	// RPopLPush https://redis.io/commands/rpoplpush
 	// Bulk string reply: the element being popped and pushed.
@@ -140,12 +140,12 @@ func (c *BaseClient) LInsert(ctx context.Context, key, op string, pivot, value i
 }
 
 func (c *BaseClient) LInsertBefore(ctx context.Context, key string, pivot, value interface{}) (int64, error) {
-	args := []interface{}{CommandLInsert, key, pivot, value}
+	args := []interface{}{CommandLInsert, key, "BEFORE", pivot, value}
 	return c.Int64(ctx, args...)
 }
 
 func (c *BaseClient) LInsertAfter(ctx context.Context, key string, pivot, value interface{}) (int64, error) {
-	args := []interface{}{CommandLInsert, key, pivot, value}
+	args := []interface{}{CommandLInsert, key, "AFTER", pivot, value}
 	return c.Int64(ctx, args...)
 }
 
@@ -164,18 +164,18 @@ func (c *BaseClient) LPop(ctx context.Context, key string) (string, error) {
 	return c.String(ctx, args...)
 }
 
-func (c *BaseClient) LPopCount(ctx context.Context, key string, count int) ([]string, error) {
-	args := []interface{}{CommandLPop, key, "count", count}
+func (c *BaseClient) LPopN(ctx context.Context, key string, count int) ([]string, error) {
+	args := []interface{}{CommandLPop, key, count}
 	return c.StringSlice(ctx, args...)
 }
 
 func (c *BaseClient) LPos(ctx context.Context, key string, value string, rank, maxLen int64) (int64, error) {
-	args := []interface{}{CommandLPos, key, value, rank, maxLen}
+	args := []interface{}{CommandLPos, key, value, "RANK", rank, "MAXLEN", maxLen}
 	return c.Int64(ctx, args...)
 }
 
-func (c *BaseClient) LPosCount(ctx context.Context, key string, value string, count int64, rank, maxLen int64) ([]int64, error) {
-	args := []interface{}{CommandLPos, key, value, count, rank, maxLen}
+func (c *BaseClient) LPosN(ctx context.Context, key string, value string, count int64, rank, maxLen int64) ([]int64, error) {
+	args := []interface{}{CommandLPos, key, value, "COUNT", count, "RANK", rank, "MAXLEN", maxLen}
 	return c.Int64Slice(ctx, args...)
 }
 
@@ -220,8 +220,8 @@ func (c *BaseClient) RPop(ctx context.Context, key string) (string, error) {
 	return c.String(ctx, args...)
 }
 
-func (c *BaseClient) RPopCount(ctx context.Context, key string, count int) ([]string, error) {
-	args := []interface{}{CommandRPop, key, "count", count}
+func (c *BaseClient) RPopN(ctx context.Context, key string, count int) ([]string, error) {
+	args := []interface{}{CommandRPop, key, count}
 	return c.StringSlice(ctx, args...)
 }
 

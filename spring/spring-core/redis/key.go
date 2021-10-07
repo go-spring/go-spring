@@ -18,26 +18,25 @@ package redis
 
 import (
 	"context"
-	"time"
 )
 
 const (
-	CommandDel       = "del"
-	CommandDump      = "Dump"
-	CommandExists    = "exists"
-	CommandExpire    = "expire"
-	CommandExpireAt  = "expireat"
-	CommandKeys      = "keys"
-	CommandPersist   = "persist"
-	CommandPExpire   = "pexpire"
-	CommandPExpireAt = "pexpireat"
-	CommandPTTL      = "pttl"
-	CommandRandomKey = "randomkey"
-	CommandRename    = "rename"
-	CommandRenameNX  = "renamenx"
-	CommandTouch     = "Touch"
-	CommandTTL       = "ttl"
-	CommandType      = "type"
+	CommandDel       = "DEL"
+	CommandDump      = "DUMP"
+	CommandExists    = "EXISTS"
+	CommandExpire    = "EXPIRE"
+	CommandExpireAt  = "EXPIREAT"
+	CommandKeys      = "KEYS"
+	CommandPersist   = "PERSIST"
+	CommandPExpire   = "PEXPIRE"
+	CommandPExpireAt = "PEXPIREAT"
+	CommandPTTL      = "PTTL"
+	CommandRandomKey = "RANDOMKEY"
+	CommandRename    = "RENAME"
+	CommandRenameNX  = "RENAMENX"
+	CommandTouch     = "TOUCH"
+	CommandTTL       = "TTL"
+	CommandType      = "TYPE"
 )
 
 type KeyCommand interface {
@@ -61,11 +60,11 @@ type KeyCommand interface {
 
 	// Expire https://redis.io/commands/expire
 	// Integer reply: 1 if the timeout was set, 0 if the timeout was not set.
-	Expire(ctx context.Context, key string, expiration time.Duration) (bool, error)
+	Expire(ctx context.Context, key string, expire int64) (bool, error)
 
 	// ExpireAt https://redis.io/commands/expireat
 	// Integer reply: 1 if the timeout was set, 0 if the timeout was not set.
-	ExpireAt(ctx context.Context, key string, expiration time.Time) (bool, error)
+	ExpireAt(ctx context.Context, key string, expireAt int64) (bool, error)
 
 	// Keys https://redis.io/commands/keys
 	// Array reply: list of keys matching pattern.
@@ -78,16 +77,16 @@ type KeyCommand interface {
 
 	// PExpire https://redis.io/commands/pexpire
 	// Integer reply: 1 if the timeout was set, 0 if the timeout was not set.
-	PExpire(ctx context.Context, key string, expiration time.Duration) (bool, error)
+	PExpire(ctx context.Context, key string, expire int64) (bool, error)
 
 	// PExpireAt https://redis.io/commands/pexpireat
 	// Integer reply: 1 if the timeout was set, 0 if the timeout was not set.
-	PExpireAt(ctx context.Context, key string, expiration time.Time) (bool, error)
+	PExpireAt(ctx context.Context, key string, expireAt int64) (bool, error)
 
 	// PTTL https://redis.io/commands/pttl
 	// Integer reply: TTL in milliseconds, -1 if the key exists but
 	// has no associated expire, -2 if the key does not exist.
-	PTTL(ctx context.Context, key string) (time.Duration, error)
+	PTTL(ctx context.Context, key string) (int64, error)
 
 	// RandomKey https://redis.io/commands/randomkey
 	// Bulk string reply: the random key, or nil when the database is empty.
@@ -108,7 +107,7 @@ type KeyCommand interface {
 	// TTL https://redis.io/commands/ttl
 	// Integer reply: TTL in seconds, -1 if the key exists but has no
 	// associated expire, -2 if the key does not exist.
-	TTL(ctx context.Context, key string) (time.Duration, error)
+	TTL(ctx context.Context, key string) (int64, error)
 
 	// Type https://redis.io/commands/type
 	// Simple string reply: type of key, or none when key does not exist.
@@ -136,13 +135,13 @@ func (c *BaseClient) Exists(ctx context.Context, keys ...string) (int64, error) 
 	return c.Int64(ctx, args...)
 }
 
-func (c *BaseClient) Expire(ctx context.Context, key string, expiration time.Duration) (bool, error) {
-	args := []interface{}{CommandExpire, key, expiration}
+func (c *BaseClient) Expire(ctx context.Context, key string, expire int64) (bool, error) {
+	args := []interface{}{CommandExpire, key, expire}
 	return c.Bool(ctx, args...)
 }
 
-func (c *BaseClient) ExpireAt(ctx context.Context, key string, expiration time.Time) (bool, error) {
-	args := []interface{}{CommandExpireAt, key, expiration}
+func (c *BaseClient) ExpireAt(ctx context.Context, key string, expireAt int64) (bool, error) {
+	args := []interface{}{CommandExpireAt, key, expireAt}
 	return c.Bool(ctx, args...)
 }
 
@@ -156,19 +155,19 @@ func (c *BaseClient) Persist(ctx context.Context, key string) (bool, error) {
 	return c.Bool(ctx, args...)
 }
 
-func (c *BaseClient) PExpire(ctx context.Context, key string, expiration time.Duration) (bool, error) {
-	args := []interface{}{CommandPExpire, key, expiration}
+func (c *BaseClient) PExpire(ctx context.Context, key string, expire int64) (bool, error) {
+	args := []interface{}{CommandPExpire, key, expire}
 	return c.Bool(ctx, args...)
 }
 
-func (c *BaseClient) PExpireAt(ctx context.Context, key string, expiration time.Time) (bool, error) {
-	args := []interface{}{CommandPExpireAt, key, expiration}
+func (c *BaseClient) PExpireAt(ctx context.Context, key string, expireAt int64) (bool, error) {
+	args := []interface{}{CommandPExpireAt, key, expireAt}
 	return c.Bool(ctx, args...)
 }
 
-func (c *BaseClient) PTTL(ctx context.Context, key string) (time.Duration, error) {
+func (c *BaseClient) PTTL(ctx context.Context, key string) (int64, error) {
 	args := []interface{}{CommandPTTL, key}
-	return c.Duration(ctx, args...)
+	return c.Int64(ctx, args...)
 }
 
 func (c *BaseClient) RandomKey(ctx context.Context) (string, error) {
@@ -194,9 +193,9 @@ func (c *BaseClient) Touch(ctx context.Context, keys ...string) (int64, error) {
 	return c.Int64(ctx, args...)
 }
 
-func (c *BaseClient) TTL(ctx context.Context, key string) (time.Duration, error) {
+func (c *BaseClient) TTL(ctx context.Context, key string) (int64, error) {
 	args := []interface{}{CommandTTL, key}
-	return c.Duration(ctx, args...)
+	return c.Int64(ctx, args...)
 }
 
 func (c *BaseClient) Type(ctx context.Context, key string) (string, error) {
