@@ -28,6 +28,7 @@ type Client interface {
 	HashCommand
 	ListCommand
 	SetCommand
+	ServerCommand
 }
 
 type Reply interface {

@@ -52,11 +52,7 @@ type KeyCommand interface {
 
 	// Exists https://redis.io/commands/exists
 	// Integer reply: 1 if the key exists, 0 if the key does not exist.
-	// Since Redis 3.0.3 the command accepts a variable number of keys
-	// and the return value is generalized: The number of keys existing
-	// among the ones specified as arguments. Keys mentioned multiple
-	// times and existing are counted multiple times.
-	Exists(ctx context.Context, keys ...string) (int64, error)
+	Exists(ctx context.Context, key string) (bool, error)
 
 	// Expire https://redis.io/commands/expire
 	// Integer reply: 1 if the timeout was set, 0 if the timeout was not set.
@@ -127,12 +123,9 @@ func (c *BaseClient) Dump(ctx context.Context, key string) (string, error) {
 	return c.String(ctx, args...)
 }
 
-func (c *BaseClient) Exists(ctx context.Context, keys ...string) (int64, error) {
-	args := []interface{}{CommandExists}
-	for _, key := range keys {
-		args = append(args, key)
-	}
-	return c.Int64(ctx, args...)
+func (c *BaseClient) Exists(ctx context.Context, key string) (bool, error) {
+	args := []interface{}{CommandExists, key}
+	return c.Bool(ctx, args...)
 }
 
 func (c *BaseClient) Expire(ctx context.Context, key string, expire int64) (bool, error) {
