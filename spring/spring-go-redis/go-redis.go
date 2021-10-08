@@ -53,7 +53,14 @@ type reply struct {
 }
 
 func (r *reply) Bool() bool {
-	return cast.ToBool(r.v)
+	switch v := r.v.(type) {
+	case int64:
+		return v == 1
+	case string:
+		return v == "OK"
+	default:
+		return false
+	}
 }
 
 func (r *reply) Int64() int64 {

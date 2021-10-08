@@ -15,3 +15,29 @@
  */
 
 package testcases
+
+import (
+	"testing"
+
+	"github.com/go-spring/spring-core/redis/testcases"
+)
+
+func TestHMSet(t *testing.T) {
+	RunCase(t, testcases.HMSet)
+}
+
+func TestHSet(t *testing.T) {
+	RunCase(t, testcases.HSet)
+}
+
+func TestHSetNX(t *testing.T) {
+	RunCase(t, testcases.HSetNX)
+}
+
+func TestHStrLen(t *testing.T) {
+	RunCase(t, testcases.HStrLen)
+}
+
+func TestHVals(t *testing.T) {
+	RunCase(t, testcases.HVals)
+}

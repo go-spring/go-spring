@@ -33,6 +33,7 @@ const (
 	CommandHSet         = "HSET"
 	CommandHMSet        = "HMSET"
 	CommandHSetNX       = "HSETNX"
+	CommandHStrLen      = "HSTRLEN"
 	CommandHVals        = "HVALS"
 )
 
@@ -95,6 +96,7 @@ type HashCommand interface {
 	// HStrLen https://redis.io/commands/hstrlen
 	// Integer reply: the string length of the value associated with field,
 	// or zero when field is not present in the hash or key does not exist at all.
+	HStrLen(ctx context.Context, key, field string) (int64, error)
 
 	// HVals https://redis.io/commands/hvals
 	// Array reply: list of values in the hash, or an empty list when key does not exist.
@@ -167,6 +169,11 @@ func (c *BaseClient) HSet(ctx context.Context, key string, values ...interface{}
 func (c *BaseClient) HSetNX(ctx context.Context, key, field string, value interface{}) (bool, error) {
 	args := []interface{}{CommandHSetNX, key, field, value}
 	return c.Bool(ctx, args...)
+}
+
+func (c *BaseClient) HStrLen(ctx context.Context, key, field string) (int64, error) {
+	args := []interface{}{CommandHStrLen, key, field}
+	return c.Int64(ctx, args...)
 }
 
 func (c *BaseClient) HVals(ctx context.Context, key string) ([]string, error) {
