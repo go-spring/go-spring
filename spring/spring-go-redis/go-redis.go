@@ -18,10 +18,8 @@ package SpringGoRedis
 
 import (
 	"context"
-	"time"
 
 	g "github.com/go-redis/redis/v8"
-	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-core/redis"
 )
 
@@ -38,22 +36,22 @@ func NewClient(clt *g.Client) redis.Client {
 
 func (c *client) do(ctx context.Context, args ...interface{}) (redis.Reply, error) {
 	cmd := c.client.Do(ctx, args...)
-	result, err := cmd.Result()
+	_, err := cmd.Result()
 	if err != nil {
 		if err == g.Nil {
 			return nil, redis.ErrNil
 		}
 		return nil, err
 	}
-	return &reply{v: result}, nil
+	return &reply{cmd: cmd}, nil
 }
 
 type reply struct {
-	v interface{}
+	cmd *g.Cmd
 }
 
 func (r *reply) Bool() bool {
-	switch v := r.v.(type) {
+	switch v := r.cmd.Val().(type) {
 	case int64:
 		return v == 1
 	case string:
@@ -64,37 +62,45 @@ func (r *reply) Bool() bool {
 }
 
 func (r *reply) Int64() int64 {
-	return cast.ToInt64(r.v)
+	val, _ := r.cmd.Int64()
+	return val
 }
 
 func (r *reply) Float64() float64 {
-	return cast.ToFloat64(r.v)
+	val, _ := r.cmd.Float64()
+	return val
 }
 
 func (r *reply) String() string {
-	return cast.ToString(r.v)
-}
-
-func (r *reply) Duration() time.Duration {
-	return cast.ToDuration(r.v)
+	val, _ := r.cmd.Text()
+	return val
 }
 
 func (r *reply) Slice() []interface{} {
-	return nil
+	val, _ := r.cmd.Slice()
+	return val
 }
 
 func (r *reply) Int64Slice() []int64 {
-	return nil
+	val, _ := r.cmd.Int64Slice()
+	return val
 }
 
 func (r *reply) BoolSlice() []bool {
-	return nil
+	val, _ := r.cmd.BoolSlice()
+	return val
 }
 
 func (r *reply) StringSlice() []string {
-	return cast.ToStringSlice(r.v)
+	val, _ := r.cmd.StringSlice()
+	return val
 }
 
 func (r *reply) StringStringMap() map[string]string {
-	return nil
+	ss, _ := r.cmd.StringSlice()
+	val := make(map[string]string, len(ss)/2)
+	for i := 0; i < len(ss); i += 2 {
+		val[ss[i]] = ss[i+1]
+	}
+	return val
 }

@@ -24,116 +24,230 @@ import (
 	"github.com/go-spring/spring-core/redis"
 )
 
-//HDEL
-//redis> HSET myhash field1 "foo"
-//(integer) 1
-//redis> HDEL myhash field1
-//(integer) 1
-//redis> HDEL myhash field2
-//(integer) 0
-//redis>
+func HDel(t *testing.T, ctx context.Context, c redis.Client) {
 
-//HEXISTS
-//redis> HSET myhash field1 "foo"
-//(integer) 1
-//redis> HEXISTS myhash field1
-//(integer) 1
-//redis> HEXISTS myhash field2
-//(integer) 0
-//redis>
+	r1, err := c.HSet(ctx, "myhash", "field1", "foo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r1, int64(1))
 
-//HGET
-//redis> HSET myhash field1 "foo"
-//(integer) 1
-//redis> HGET myhash field1
-//"foo"
-//redis> HGET myhash field2
-//(nil)
-//redis>
+	r2, err := c.HDel(ctx, "myhash", "field1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r2, int64(1))
 
-//HGETALL
-//redis> HSET myhash field1 "Hello"
-//(integer) 1
-//redis> HSET myhash field2 "World"
-//(integer) 1
-//redis> HGETALL myhash
-//1) "field1"
-//2) "Hello"
-//3) "field2"
-//4) "World"
-//redis>
+	r3, err := c.HDel(ctx, "myhash", "field2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r3, int64(0))
+}
 
-//HINCRBY
-//redis> HSET myhash field 5
-//(integer) 1
-//redis> HINCRBY myhash field 1
-//(integer) 6
-//redis> HINCRBY myhash field -1
-//(integer) 5
-//redis> HINCRBY myhash field -10
-//(integer) -5
-//redis>
+func HExists(t *testing.T, ctx context.Context, c redis.Client) {
 
-//HINCRBYFLOAT
-//redis> HSET mykey field 10.50
-//(integer) 1
-//redis> HINCRBYFLOAT mykey field 0.1
-//"10.6"
-//redis> HINCRBYFLOAT mykey field -5
-//"5.6"
-//redis> HSET mykey field 5.0e3
-//(integer) 0
-//redis> HINCRBYFLOAT mykey field 2.0e2
-//"5200"
-//redis>
+	r1, err := c.HSet(ctx, "myhash", "field1", "foo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r1, int64(1))
 
-//HKEYS
-//redis> HSET myhash field1 "Hello"
-//(integer) 1
-//redis> HSET myhash field2 "World"
-//(integer) 1
-//redis> HKEYS myhash
-//1) "field1"
-//2) "field2"
-//redis>
+	r2, err := c.HExists(ctx, "myhash", "field1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r2, true)
 
-//HLEN
-//redis> HSET myhash field1 "Hello"
-//(integer) 1
-//redis> HSET myhash field2 "World"
-//(integer) 1
-//redis> HLEN myhash
-//(integer) 2
-//redis>
+	r3, err := c.HExists(ctx, "myhash", "field2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r3, false)
+}
 
-//HMGET
-//redis> HSET myhash field1 "Hello"
-//(integer) 1
-//redis> HSET myhash field2 "World"
-//(integer) 1
-//redis> HMGET myhash field1 field2 nofield
-//1) "Hello"
-//2) "World"
-//3) (nil)
-//redis>
+func HGet(t *testing.T, ctx context.Context, c redis.Client) {
+
+	r1, err := c.HSet(ctx, "myhash", "field1", "foo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r1, int64(1))
+
+	r2, err := c.HGet(ctx, "myhash", "field1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r2, "foo")
+
+	_, err = c.HGet(ctx, "myhash", "field2")
+	assert.Equal(t, err, redis.ErrNil)
+}
+
+func HGetAll(t *testing.T, ctx context.Context, c redis.Client) {
+
+	r1, err := c.HSet(ctx, "myhash", "field1", "Hello")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r1, int64(1))
+
+	r2, err := c.HSet(ctx, "myhash", "field2", "World")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r2, int64(1))
+
+	r3, err := c.HGetAll(ctx, "myhash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r3, map[string]string{
+		"field1": "Hello",
+		"field2": "World",
+	})
+}
+
+func HIncrBy(t *testing.T, ctx context.Context, c redis.Client) {
+
+	r1, err := c.HSet(ctx, "myhash", "field", 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r1, int64(1))
+
+	r2, err := c.HIncrBy(ctx, "myhash", "field", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r2, int64(6))
+
+	r3, err := c.HIncrBy(ctx, "myhash", "field", -1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r3, int64(5))
+
+	r4, err := c.HIncrBy(ctx, "myhash", "field", -10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r4, int64(-5))
+}
+
+func HIncrByFloat(t *testing.T, ctx context.Context, c redis.Client) {
+
+	r1, err := c.HSet(ctx, "mykey", "field", 10.50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r1, int64(1))
+
+	r2, err := c.HIncrByFloat(ctx, "mykey", "field", 0.1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r2, 10.6)
+
+	r3, err := c.HIncrByFloat(ctx, "mykey", "field", -5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r3, 5.6)
+
+	r4, err := c.HSet(ctx, "mykey", "field", 5.0e3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r4, int64(0))
+
+	r5, err := c.HIncrByFloat(ctx, "mykey", "field", 2.0e2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r5, float64(5200))
+}
+
+func HKeys(t *testing.T, ctx context.Context, c redis.Client) {
+
+	r1, err := c.HSet(ctx, "myhash", "field1", "Hello")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r1, int64(1))
+
+	r2, err := c.HSet(ctx, "myhash", "field2", "World")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r2, int64(1))
+
+	r3, err := c.HKeys(ctx, "myhash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r3, []string{"field1", "field2"})
+}
+
+func HLen(t *testing.T, ctx context.Context, c redis.Client) {
+
+	r1, err := c.HSet(ctx, "myhash", "field1", "Hello")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r1, int64(1))
+
+	r2, err := c.HSet(ctx, "myhash", "field2", "World")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r2, int64(1))
+
+	r3, err := c.HLen(ctx, "myhash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r3, int64(2))
+}
+
+func HMGet(t *testing.T, ctx context.Context, c redis.Client) {
+
+	r1, err := c.HSet(ctx, "myhash", "field1", "Hello")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r1, int64(1))
+
+	r2, err := c.HSet(ctx, "myhash", "field2", "World")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r2, int64(1))
+
+	r3, err := c.HMGet(ctx, "myhash", "field1", "field2", "nofield")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r3, []interface{}{"Hello", "World", nil})
+}
 
 func HMSet(t *testing.T, ctx context.Context, c redis.Client) {
 
 	r1, err := c.HMSet(ctx, "myhash", "field1", "Hello", "field2", "World")
 	if err != nil {
-		t.Fatal()
+		t.Fatal(err)
 	}
 	assert.Equal(t, r1, true)
 
 	r2, err := c.HGet(ctx, "myhash", "field1")
 	if err != nil {
-		t.Fatal()
+		t.Fatal(err)
 	}
 	assert.Equal(t, r2, "Hello")
 
 	r3, err := c.HGet(ctx, "myhash", "field2")
 	if err != nil {
-		t.Fatal()
+		t.Fatal(err)
 	}
 	assert.Equal(t, r3, "World")
 }
@@ -142,13 +256,13 @@ func HSet(t *testing.T, ctx context.Context, c redis.Client) {
 
 	r1, err := c.HSet(ctx, "myhash", "field1", "Hello")
 	if err != nil {
-		t.Fatal()
+		t.Fatal(err)
 	}
 	assert.Equal(t, r1, int64(1))
 
 	r2, err := c.HGet(ctx, "myhash", "field1")
 	if err != nil {
-		t.Fatal()
+		t.Fatal(err)
 	}
 	assert.Equal(t, r2, "Hello")
 }
@@ -157,19 +271,19 @@ func HSetNX(t *testing.T, ctx context.Context, c redis.Client) {
 
 	r1, err := c.HSetNX(ctx, "myhash", "field", "Hello")
 	if err != nil {
-		t.Fatal()
+		t.Fatal(err)
 	}
 	assert.Equal(t, r1, true)
 
 	r2, err := c.HSetNX(ctx, "myhash", "field", "World")
 	if err != nil {
-		t.Fatal()
+		t.Fatal(err)
 	}
 	assert.Equal(t, r2, false)
 
 	r3, err := c.HGet(ctx, "myhash", "field")
 	if err != nil {
-		t.Fatal()
+		t.Fatal(err)
 	}
 	assert.Equal(t, r3, "Hello")
 }
@@ -178,25 +292,25 @@ func HStrLen(t *testing.T, ctx context.Context, c redis.Client) {
 
 	r1, err := c.HMSet(ctx, "myhash", "f1", "HelloWorld", "f2", 99, "f3", -256)
 	if err != nil {
-		t.Fatal()
+		t.Fatal(err)
 	}
 	assert.Equal(t, r1, true)
 
 	r2, err := c.HStrLen(ctx, "myhash", "f1")
 	if err != nil {
-		t.Fatal()
+		t.Fatal(err)
 	}
 	assert.Equal(t, r2, int64(10))
 
 	r3, err := c.HStrLen(ctx, "myhash", "f2")
 	if err != nil {
-		t.Fatal()
+		t.Fatal(err)
 	}
 	assert.Equal(t, r3, int64(2))
 
 	r4, err := c.HStrLen(ctx, "myhash", "f3")
 	if err != nil {
-		t.Fatal()
+		t.Fatal(err)
 	}
 	assert.Equal(t, r4, int64(4))
 }
@@ -205,19 +319,19 @@ func HVals(t *testing.T, ctx context.Context, c redis.Client) {
 
 	r1, err := c.HSet(ctx, "myhash", "field1", "Hello")
 	if err != nil {
-		t.Fatal()
+		t.Fatal(err)
 	}
 	assert.Equal(t, r1, int64(1))
 
 	r2, err := c.HSet(ctx, "myhash", "field2", "World")
 	if err != nil {
-		t.Fatal()
+		t.Fatal(err)
 	}
 	assert.Equal(t, r2, int64(1))
 
 	r3, err := c.HVals(ctx, "myhash")
 	if err != nil {
-		t.Fatal()
+		t.Fatal(err)
 	}
 	assert.Equal(t, r3, []string{"Hello", "World"})
 }
