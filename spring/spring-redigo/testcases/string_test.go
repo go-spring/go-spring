@@ -25,3 +25,75 @@ import (
 func TestAppend(t *testing.T) {
 	RunCase(t, testcases.Append)
 }
+
+func TestDecr(t *testing.T) {
+	RunCase(t, testcases.Decr)
+}
+
+func TestDecrBy(t *testing.T) {
+	RunCase(t, testcases.DecrBy)
+}
+
+func TestGet(t *testing.T) {
+	RunCase(t, testcases.Get)
+}
+
+func TestGetDel(t *testing.T) {
+	RunCase(t, testcases.GetDel)
+}
+
+func TestGetRange(t *testing.T) {
+	RunCase(t, testcases.GetRange)
+}
+
+func TestGetSet(t *testing.T) {
+	RunCase(t, testcases.GetSet)
+}
+
+func TestIncr(t *testing.T) {
+	RunCase(t, testcases.Incr)
+}
+
+func TestIncrBy(t *testing.T) {
+	RunCase(t, testcases.IncrBy)
+}
+
+func TestIncrByFloat(t *testing.T) {
+	RunCase(t, testcases.IncrByFloat)
+}
+
+func TestMGet(t *testing.T) {
+	RunCase(t, testcases.MGet)
+}
+
+func TestMSet(t *testing.T) {
+	RunCase(t, testcases.MSet)
+}
+
+func TestMSetNX(t *testing.T) {
+	RunCase(t, testcases.MSetNX)
+}
+
+func TestPSetEX(t *testing.T) {
+	RunCase(t, testcases.PSetEX)
+}
+
+func TestSet(t *testing.T) {
+	RunCase(t, testcases.Set)
+}
+
+func TestSetEX(t *testing.T) {
+	RunCase(t, testcases.SetEX)
+}
+
+func TestSetNX(t *testing.T) {
+	RunCase(t, testcases.SetNX)
+}
+
+func TestSetRange(t *testing.T) {
+	RunCase(t, testcases.SetRange)
+}
+
+func TestStrLen(t *testing.T) {
+	RunCase(t, testcases.StrLen)
+}

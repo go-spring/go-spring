@@ -99,13 +99,14 @@ type StringCommand interface {
 	MSet(ctx context.Context, values ...interface{}) (bool, error)
 
 	// MSetNX https://redis.io/commands/msetnx
-	// Integer reply: 1 if the all the keys were set, 0 if no key was
-	// set (at least one key already existed).
+	// MSETNX is atomic, so all given keys are set at once
+	// Integer reply: 1 if the all the keys were set, 0 if no
+	// key was set (at least one key already existed).
 	MSetNX(ctx context.Context, values ...interface{}) (bool, error)
 
 	// PSetEX https://redis.io/commands/psetex
 	// Simple string reply
-	PSetEX(ctx context.Context, key string, value interface{}, expire int64) (string, error)
+	PSetEX(ctx context.Context, key string, value interface{}, expire int64) (bool, error)
 
 	// Set https://redis.io/commands/set
 	// Simple string reply: OK if SET was executed correctly.
@@ -113,7 +114,7 @@ type StringCommand interface {
 
 	// SetEX https://redis.io/commands/setex
 	// Simple string reply
-	SetEX(ctx context.Context, key string, value interface{}, expire int64) (string, error)
+	SetEX(ctx context.Context, key string, value interface{}, expire int64) (bool, error)
 
 	// SetNX https://redis.io/commands/setnx
 	// Integer reply: 1 if the key was set, 0 if the key was not set.
@@ -207,9 +208,9 @@ func (c *BaseClient) MSetNX(ctx context.Context, values ...interface{}) (bool, e
 	return c.Bool(ctx, args...)
 }
 
-func (c *BaseClient) PSetEX(ctx context.Context, key string, value interface{}, expire int64) (string, error) {
+func (c *BaseClient) PSetEX(ctx context.Context, key string, value interface{}, expire int64) (bool, error) {
 	args := []interface{}{CommandPSetEX, key, expire, value}
-	return c.String(ctx, args...)
+	return c.Bool(ctx, args...)
 }
 
 func (c *BaseClient) Set(ctx context.Context, key string, value interface{}) (bool, error) {
@@ -217,9 +218,9 @@ func (c *BaseClient) Set(ctx context.Context, key string, value interface{}) (bo
 	return c.Bool(ctx, args...)
 }
 
-func (c *BaseClient) SetEX(ctx context.Context, key string, value interface{}, expire int64) (string, error) {
+func (c *BaseClient) SetEX(ctx context.Context, key string, value interface{}, expire int64) (bool, error) {
 	args := []interface{}{CommandSetEX, key, expire, value}
-	return c.String(ctx, args...)
+	return c.Bool(ctx, args...)
 }
 
 func (c *BaseClient) SetNX(ctx context.Context, key string, value interface{}) (bool, error) {

@@ -80,14 +80,14 @@ func NotNil(t *testing.T, got interface{}) {
 // Equal asserts that got and expect are equal.
 func Equal(t *testing.T, got interface{}, expect interface{}) {
 	if !reflect.DeepEqual(got, expect) {
-		fail(t, 1, "got %v but expect %v", got, expect)
+		fail(t, 1, "got (%T) %v but expect (%T)  %v", got, got, expect, expect)
 	}
 }
 
 // NotEqual asserts that got and expect are not equal.
 func NotEqual(t *testing.T, got interface{}, expect interface{}) {
 	if reflect.DeepEqual(got, expect) {
-		fail(t, 1, "got %v but expect %v", got, expect)
+		fail(t, 1, "got (%T) %v but expect (%T) %v", got, got, expect, expect)
 	}
 }
 

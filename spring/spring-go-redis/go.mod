@@ -8,3 +8,4 @@ require (
 )
 
 replace github.com/go-spring/spring-core => ../spring-core
+replace github.com/go-spring/spring-base => ../spring-base
