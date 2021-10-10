@@ -26,29 +26,29 @@ import (
 
 func Append(t *testing.T, ctx context.Context, c redis.Client) {
 
-	exists, err := c.Exists(ctx, "mykey")
+	r1, err := c.Exists(ctx, "mykey")
 	if err != nil {
 		t.Fatal()
 	}
-	assert.False(t, exists)
+	assert.Equal(t, r1, int64(0))
 
-	count, err := c.Append(ctx, "mykey", "Hello")
+	r2, err := c.Append(ctx, "mykey", "Hello")
 	if err != nil {
 		t.Fatal()
 	}
-	assert.Equal(t, count, int64(5))
+	assert.Equal(t, r2, int64(5))
 
-	count, err = c.Append(ctx, "mykey", " World")
+	r3, err := c.Append(ctx, "mykey", " World")
 	if err != nil {
 		t.Fatal()
 	}
-	assert.Equal(t, count, int64(11))
+	assert.Equal(t, r3, int64(11))
 
-	str, err := c.Get(ctx, "mykey")
+	r4, err := c.Get(ctx, "mykey")
 	if err != nil {
 		t.Fatal()
 	}
-	assert.Equal(t, str, "Hello World")
+	assert.Equal(t, r4, "Hello World")
 }
 
 //DECR

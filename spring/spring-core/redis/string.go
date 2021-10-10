@@ -96,7 +96,7 @@ type StringCommand interface {
 
 	// MSet https://redis.io/commands/mset
 	// Simple string reply: always OK since MSET can't fail.
-	MSet(ctx context.Context, values ...interface{}) (string, error)
+	MSet(ctx context.Context, values ...interface{}) (bool, error)
 
 	// MSetNX https://redis.io/commands/msetnx
 	// Integer reply: 1 if the all the keys were set, 0 if no key was
@@ -109,7 +109,7 @@ type StringCommand interface {
 
 	// Set https://redis.io/commands/set
 	// Simple string reply: OK if SET was executed correctly.
-	Set(ctx context.Context, key string, value interface{}) (string, error)
+	Set(ctx context.Context, key string, value interface{}) (bool, error)
 
 	// SetEX https://redis.io/commands/setex
 	// Simple string reply
@@ -191,12 +191,12 @@ func (c *BaseClient) MGet(ctx context.Context, keys ...string) ([]interface{}, e
 	return c.Slice(ctx, args...)
 }
 
-func (c *BaseClient) MSet(ctx context.Context, values ...interface{}) (string, error) {
+func (c *BaseClient) MSet(ctx context.Context, values ...interface{}) (bool, error) {
 	args := []interface{}{CommandMSet}
 	for _, value := range values {
 		args = append(args, value)
 	}
-	return c.String(ctx, args...)
+	return c.Bool(ctx, args...)
 }
 
 func (c *BaseClient) MSetNX(ctx context.Context, values ...interface{}) (bool, error) {
@@ -212,9 +212,9 @@ func (c *BaseClient) PSetEX(ctx context.Context, key string, value interface{}, 
 	return c.String(ctx, args...)
 }
 
-func (c *BaseClient) Set(ctx context.Context, key string, value interface{}) (string, error) {
+func (c *BaseClient) Set(ctx context.Context, key string, value interface{}) (bool, error) {
 	args := []interface{}{CommandSet, key, value}
-	return c.String(ctx, args...)
+	return c.Bool(ctx, args...)
 }
 
 func (c *BaseClient) SetEX(ctx context.Context, key string, value interface{}, expire int64) (string, error) {
