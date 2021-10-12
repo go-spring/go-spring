@@ -15,3 +15,60 @@
  */
 
 package testcases
+
+import (
+	"context"
+	"testing"
+
+	"github.com/go-spring/spring-core/redis"
+)
+
+// ZADD
+// redis> ZADD myzset 1 "one"
+// (integer) 1
+// redis> ZADD myzset 1 "uno"
+// (integer) 1
+// redis> ZADD myzset 2 "two" 3 "three"
+// (integer) 2
+// redis> ZRANGE myzset 0 -1 WITHSCORES
+// 1) "one"
+// 2) "1"
+// 3) "uno"
+// 4) "1"
+// 5) "two"
+// 6) "2"
+// 7) "three"
+// 8) "3"
+// redis>
+func ZAdd(t *testing.T, ctx context.Context, c redis.Client) {
+
+	// r1, err := c.ZAdd(ctx, "myzset", &redis.ZItem{
+	// 	Score:  1,
+	// 	Member: "one",
+	// })
+	// if err != nil {
+	// 	t.Fatal(err)
+	// }
+	// assert.Equal(t, r1, int64(1))
+
+	// r2, err := c.ZAdd(ctx, "myzset", &redis.ZItem{
+	// 	Score:  1,
+	// 	Member: "uno",
+	// })
+	// if err != nil {
+	// 	t.Fatal(err)
+	// }
+	// assert.Equal(t, r2, int64(1))
+
+	// r3, err := c.ZAdd(ctx, "myzset", &redis.ZItem{
+	// 	Score:  2,
+	// 	Member: "two",
+	// }, &redis.ZItem{
+	// 	Score:  3,
+	// 	Member: "three",
+	// })
+	// if err != nil {
+	// 	t.Fatal(err)
+	// }
+	// assert.Equal(t, r3, int64(2))
+}

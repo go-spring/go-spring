@@ -15,3 +15,13 @@
  */
 
 package testcases
+
+import (
+	"testing"
+
+	"github.com/go-spring/spring-core/redis/testcases"
+)
+
+func TestZAdd(t *testing.T) {
+	RunCase(t, testcases.ZAdd)
+}

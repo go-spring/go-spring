@@ -181,12 +181,42 @@ type ZSetCommand interface {
 	ZUnionStore(ctx context.Context, dest string, store *ZStore) (int64, error)
 }
 
+const (
+	ZAddOptionNone = ""
+	ZAddOptionNX   = "NX"
+	ZAddOptionXx   = "XX"
+	ZAddOptionLt   = "LT"
+	ZAddOptionGt   = "GT"
+	ZAddOptionCh   = "CH"
+)
+
 func (c *BaseClient) ZAdd(ctx context.Context, key string, members ...*ZItem) (int64, error) {
-	return 0, nil
+	return c.zadd(ctx, ZAddOptionNone, key, members...)
+}
+
+func (c *BaseClient) ZAddNx(ctx context.Context, key string, members ...*ZItem) (int64, error) {
+	return c.zadd(ctx, ZAddOptionNX, key, members...)
+}
+
+func (c *BaseClient) zadd(ctx context.Context, option, key string, members ...*ZItem) (int64, error) {
+
+	args := []interface{}{CommandZAdd, key}
+
+	if len(option) > 0 {
+		args = append(args, option)
+	}
+
+	for _, item := range members {
+		args = append(args, item.Score)
+		args = append(args, item.Member)
+	}
+
+	return c.Int64(ctx, args...)
 }
 
 func (c *BaseClient) ZCard(ctx context.Context, key string) (int64, error) {
-	return 0, nil
+	args := []interface{}{CommandZCard, key}
+	return c.Int64(ctx, args...)
 }
 
 func (c *BaseClient) ZCount(ctx context.Context, key, min, max string) (int64, error) {
