@@ -18,6 +18,7 @@ package redis
 
 import (
 	"context"
+	"github.com/go-spring/spring-base/cast"
 )
 
 const (
@@ -220,23 +221,49 @@ func (c *BaseClient) ZCard(ctx context.Context, key string) (int64, error) {
 }
 
 func (c *BaseClient) ZCount(ctx context.Context, key, min, max string) (int64, error) {
-	return 0, nil
+	args := []interface{}{CommandZCount, key}
+	args = append(args, min)
+	args = append(args, max)
+	return c.Int64(ctx, args...)
 }
 
 func (c *BaseClient) ZDiff(ctx context.Context, keys ...string) ([]string, error) {
-	return nil, nil
+	args := []interface{}{CommandZDiff}
+	for _, key := range keys {
+		args = append(args, key)
+	}
+	return c.StringSlice(ctx, args...)
 }
 
+// ZDiffWithScores redis-server version >= 6.2.0.
 func (c *BaseClient) ZDiffWithScores(ctx context.Context, keys ...string) ([]ZItem, error) {
 	return nil, nil
 }
 
 func (c *BaseClient) ZIncrBy(ctx context.Context, key string, increment float64, member string) (float64, error) {
-	return 0, nil
+	args := []interface{}{CommandZIncrBy, key}
+	args = append(args, increment)
+	args = append(args, member)
+	return c.Float64(ctx, args...)
 }
 
+// ZInter redis-server version >= 6.2.0.
 func (c *BaseClient) ZInter(ctx context.Context, store *ZStore) ([]string, error) {
-	return nil, nil
+	args := []interface{}{CommandZInter}
+	args = append(args, store.Aggregate)
+	for _, key := range store.Keys {
+		args = append(args, key)
+	}
+
+	// Weights
+	if len(store.Weights) > 0 {
+		args = append(args, "weights")
+		for _, weight := range store.Weights {
+			args = append(args, weight)
+		}
+	}
+
+	return c.StringSlice(ctx, args...)
 }
 
 func (c *BaseClient) ZInterWithScores(ctx context.Context, store *ZStore) ([]ZItem, error) {
@@ -264,11 +291,30 @@ func (c *BaseClient) ZRandMember(ctx context.Context, key string, count int, wit
 }
 
 func (c *BaseClient) ZRange(ctx context.Context, key string, start, stop int64) ([]string, error) {
-	return nil, nil
+	args := []interface{}{CommandZRange, key}
+	args = append(args, start)
+	args = append(args, stop)
+	return c.StringSlice(ctx, args...)
 }
 
 func (c *BaseClient) ZRangeWithScores(ctx context.Context, key string, start, stop int64) ([]ZItem, error) {
-	return nil, nil
+	args := []interface{}{CommandZRange, key}
+	args = append(args, start)
+	args = append(args, stop)
+	result, err := c.StringSlice(ctx, args...)
+	if err != nil {
+		return nil, err
+	}
+	val := make([]ZItem, len(result)/2)
+	for i := 0; i < len(val); i++ {
+		member := result[i*2]
+		score := cast.ToFloat64(result[i*2+1])
+		val[i] = ZItem{
+			Score:  score,
+			Member: member,
+		}
+	}
+	return val, nil
 }
 
 func (c *BaseClient) ZRangeByLex(ctx context.Context, key string, Min, Max string, Offset, Count int64) ([]string, error) {
