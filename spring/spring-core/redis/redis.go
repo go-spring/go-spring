@@ -40,7 +40,7 @@ type Reply interface {
 	Int64Slice() []int64
 	BoolSlice() []bool
 	StringSlice() []string
-	StringStringMap() map[string]string
+	StringMap() map[string]string
 }
 
 type BaseCommand interface {
@@ -52,7 +52,7 @@ type BaseCommand interface {
 	Int64Slice(ctx context.Context, args ...interface{}) ([]int64, error)
 	BoolSlice(ctx context.Context, args ...interface{}) ([]bool, error)
 	StringSlice(ctx context.Context, args ...interface{}) ([]string, error)
-	StringStringMap(ctx context.Context, args ...interface{}) (map[string]string, error)
+	StringMap(ctx context.Context, args ...interface{}) (map[string]string, error)
 }
 
 type BaseClient struct {
@@ -123,10 +123,10 @@ func (c *BaseClient) StringSlice(ctx context.Context, args ...interface{}) ([]st
 	return reply.StringSlice(), nil
 }
 
-func (c *BaseClient) StringStringMap(ctx context.Context, args ...interface{}) (map[string]string, error) {
+func (c *BaseClient) StringMap(ctx context.Context, args ...interface{}) (map[string]string, error) {
 	reply, err := c.DoFunc(ctx, args...)
 	if err != nil {
 		return nil, err
 	}
-	return reply.StringStringMap(), nil
+	return reply.StringMap(), nil
 }

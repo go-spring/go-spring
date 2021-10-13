@@ -388,9 +388,12 @@ type reCaller caller
 
 func TestNumMethod(t *testing.T) {
 
-	typ := reflect.TypeOf(new(caller))
-	assert.Equal(t, typ.NumMethod(), 1)
+	typ0 := reflect.TypeOf(new(caller))
+	assert.Equal(t, typ0.NumMethod(), 1)
 
-	typ = reflect.TypeOf(new(reCaller))
-	assert.Equal(t, typ.NumMethod(), 0)
+	typ1 := reflect.TypeOf(new(reCaller))
+	assert.Equal(t, typ1.NumMethod(), 0)
+
+	typ2 := reflect.TypeOf((*reCaller)(nil))
+	assert.True(t, typ1 == typ2)
 }

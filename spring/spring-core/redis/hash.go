@@ -123,7 +123,7 @@ func (c *BaseClient) HGet(ctx context.Context, key string, field string) (string
 
 func (c *BaseClient) HGetAll(ctx context.Context, key string) (map[string]string, error) {
 	args := []interface{}{CommandHGetAll, key}
-	return c.StringStringMap(ctx, args...)
+	return c.StringMap(ctx, args...)
 }
 
 func (c *BaseClient) HIncrBy(ctx context.Context, key, field string, incr int64) (int64, error) {

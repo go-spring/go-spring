@@ -41,15 +41,17 @@ import (
 // SpringBannerVisible 是否显示 banner。
 const SpringBannerVisible = "spring.banner.visible"
 
+type AppContext Environment
+
 // AppRunner 命令行启动器接口
 type AppRunner interface {
-	Run(e Environment)
+	Run(ctx AppContext)
 }
 
 // AppEvent 应用运行过程中的事件
 type AppEvent interface {
-	OnStartApp(e Environment)      // 应用启动的事件
-	OnStopApp(ctx context.Context) // 应用停止的事件
+	OnAppStart(ctx AppContext)     // 应用启动的事件
+	OnAppStop(ctx context.Context) // 应用停止的事件
 }
 
 type tempApp struct {
@@ -216,7 +218,7 @@ func (app *App) start() error {
 
 	// 通知应用启动事件
 	for _, event := range app.Events {
-		event.OnStartApp(app.c)
+		event.OnAppStart(app.c)
 	}
 
 	app.clear()
@@ -226,7 +228,7 @@ func (app *App) start() error {
 		<-c.Done()
 		ctx := context.TODO()
 		for _, event := range app.Events {
-			event.OnStopApp(ctx)
+			event.OnAppStop(ctx)
 		}
 	})
 

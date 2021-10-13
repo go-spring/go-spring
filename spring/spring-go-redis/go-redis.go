@@ -96,7 +96,7 @@ func (r *reply) StringSlice() []string {
 	return val
 }
 
-func (r *reply) StringStringMap() map[string]string {
+func (r *reply) StringMap() map[string]string {
 	ss, _ := r.cmd.StringSlice()
 	val := make(map[string]string, len(ss)/2)
 	for i := 0; i < len(ss); i += 2 {
