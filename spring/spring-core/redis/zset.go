@@ -35,6 +35,10 @@ const (
 	CommandZRandMember      = "ZRandMember"
 	CommandZRange           = "ZRange"
 	CommandZRangeByLex      = "ZRangeByLex"
+	CommandZRangeByScore    = "ZRangeByScore"
+	CommandZRank            = "ZRank"
+	CommandZRem             = "ZRem"
+	CommandZRemRangeByLex   = "ZRemRangeByLex"
 	CommandZRemRangeByRank  = "ZRemRangeByRank"
 	CommandZRemRangeByScore = "ZRemRangeByScore"
 	CommandZRevRange        = "ZRevRange"
@@ -125,11 +129,11 @@ type ZSetCommand interface {
 
 	// ZRangeByLex https://redis.io/commands/zrangebylex
 	// Array reply: list of elements in the specified score range.
-	ZRangeByLex(ctx context.Context, key string, Min, Max string, Offset, Count int64) ([]string, error)
+	ZRangeByLex(ctx context.Context, key string, min, max string, offset, count int64) ([]string, error)
 
 	// ZRangeByScore https://redis.io/commands/zrangebyscore
 	// Array reply: list of elements in the specified score range.
-	ZRangeByScore(ctx context.Context, key string, Min, Max string, Offset, Count int64) ([]string, error)
+	ZRangeByScore(ctx context.Context, key string, min, max string, offset, count int64) ([]string, error)
 
 	// ZRank https://redis.io/commands/zrank
 	// If member exists in the sorted set, Integer reply: the rank of member.
@@ -158,11 +162,11 @@ type ZSetCommand interface {
 
 	// ZRevRangeByLex https://redis.io/commands/zrevrangebylex
 	// Array reply: list of elements in the specified score range.
-	ZRevRangeByLex(ctx context.Context, key string, Min, Max string, Offset, Count int64) ([]string, error)
+	ZRevRangeByLex(ctx context.Context, key string, min, max string, offset, count int64) ([]string, error)
 
 	// ZRevRangeByScore https://redis.io/commands/zrevrangebyscore
 	// Array reply: list of elements in the specified score range.
-	ZRevRangeByScore(ctx context.Context, key string, Min, Max string, Offset, Count int64) ([]string, error)
+	ZRevRangeByScore(ctx context.Context, key string, min, max string, offset, count int64) ([]string, error)
 
 	// ZRevRank https://redis.io/commands/zrevrank
 	// If member exists in the sorted set, Integer reply: the rank of member.
@@ -182,30 +186,8 @@ type ZSetCommand interface {
 	ZUnionStore(ctx context.Context, dest string, store *ZStore) (int64, error)
 }
 
-const (
-	ZAddOptionNone = ""
-	ZAddOptionNX   = "NX"
-	ZAddOptionXx   = "XX"
-	ZAddOptionLt   = "LT"
-	ZAddOptionGt   = "GT"
-	ZAddOptionCh   = "CH"
-)
-
 func (c *BaseClient) ZAdd(ctx context.Context, key string, members ...*ZItem) (int64, error) {
-	return c.zadd(ctx, ZAddOptionNone, key, members...)
-}
-
-func (c *BaseClient) ZAddNx(ctx context.Context, key string, members ...*ZItem) (int64, error) {
-	return c.zadd(ctx, ZAddOptionNX, key, members...)
-}
-
-func (c *BaseClient) zadd(ctx context.Context, option, key string, members ...*ZItem) (int64, error) {
-
 	args := []interface{}{CommandZAdd, key}
-
-	if len(option) > 0 {
-		args = append(args, option)
-	}
 
 	for _, item := range members {
 		args = append(args, item.Score)
@@ -221,14 +203,12 @@ func (c *BaseClient) ZCard(ctx context.Context, key string) (int64, error) {
 }
 
 func (c *BaseClient) ZCount(ctx context.Context, key, min, max string) (int64, error) {
-	args := []interface{}{CommandZCount, key}
-	args = append(args, min)
-	args = append(args, max)
+	args := []interface{}{CommandZCount, key, min, max}
 	return c.Int64(ctx, args...)
 }
 
 func (c *BaseClient) ZDiff(ctx context.Context, keys ...string) ([]string, error) {
-	args := []interface{}{CommandZDiff}
+	args := []interface{}{CommandZDiff, len(keys)}
 	for _, key := range keys {
 		args = append(args, key)
 	}
@@ -237,25 +217,41 @@ func (c *BaseClient) ZDiff(ctx context.Context, keys ...string) ([]string, error
 
 // ZDiffWithScores redis-server version >= 6.2.0.
 func (c *BaseClient) ZDiffWithScores(ctx context.Context, keys ...string) ([]ZItem, error) {
-	return nil, nil
+	args := []interface{}{CommandZDiff, len(keys)}
+	for _, key := range keys {
+		args = append(args, key)
+	}
+	args = append(args, "withScores")
+	result, err := c.StringSlice(ctx, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	val := make([]ZItem, len(result)/2)
+	for i := 0; i < len(val); i++ {
+		member := result[i*2]
+		score := cast.ToFloat64(result[i*2+1])
+		val[i] = ZItem{
+			Score:  score,
+			Member: member,
+		}
+	}
+	return val, nil
 }
 
 func (c *BaseClient) ZIncrBy(ctx context.Context, key string, increment float64, member string) (float64, error) {
-	args := []interface{}{CommandZIncrBy, key}
-	args = append(args, increment)
-	args = append(args, member)
+	args := []interface{}{CommandZIncrBy, key, increment, member}
 	return c.Float64(ctx, args...)
 }
 
 // ZInter redis-server version >= 6.2.0.
 func (c *BaseClient) ZInter(ctx context.Context, store *ZStore) ([]string, error) {
-	args := []interface{}{CommandZInter}
-	args = append(args, store.Aggregate)
+	args := []interface{}{CommandZInter, len(store.Keys)}
 	for _, key := range store.Keys {
 		args = append(args, key)
 	}
 
-	// Weights
+	// weights
 	if len(store.Weights) > 0 {
 		args = append(args, "weights")
 		for _, weight := range store.Weights {
@@ -263,44 +259,126 @@ func (c *BaseClient) ZInter(ctx context.Context, store *ZStore) ([]string, error
 		}
 	}
 
+	// aggregate [sum|min|max]
+	if store.Aggregate != "" {
+		args = append(args, "aggregate", store.Aggregate)
+	}
+
 	return c.StringSlice(ctx, args...)
 }
 
 func (c *BaseClient) ZInterWithScores(ctx context.Context, store *ZStore) ([]ZItem, error) {
-	return nil, nil
+	args := []interface{}{CommandZInter, len(store.Keys)}
+	for _, key := range store.Keys {
+		args = append(args, key)
+	}
+	args = append(args, "withScores")
+	result, err := c.StringSlice(ctx, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	val := make([]ZItem, len(result)/2)
+	for i := 0; i < len(val); i++ {
+		member := result[i*2]
+		score := cast.ToFloat64(result[i*2+1])
+		val[i] = ZItem{
+			Score:  score,
+			Member: member,
+		}
+	}
+	return val, nil
+
 }
 
 func (c *BaseClient) ZLexCount(ctx context.Context, key, min, max string) (int64, error) {
-	return 0, nil
+	args := []interface{}{CommandZLexCount, key, min, max}
+	return c.Int64(ctx, args...)
 }
 
 func (c *BaseClient) ZMScore(ctx context.Context, key string, members ...string) ([]float64, error) {
-	return nil, nil
+	args := []interface{}{CommandZMScore, key}
+	for _, member := range members {
+		args = append(args, member)
+	}
+	return c.Float64Slice(ctx, args...)
 }
 
 func (c *BaseClient) ZPopMax(ctx context.Context, key string, count ...int64) ([]ZItem, error) {
-	return nil, nil
+	args := []interface{}{CommandZPopMax, key}
+
+	switch len(count) {
+	case 0:
+		break
+	case 1:
+		args = append(args, count[0])
+	default:
+		panic("too many arguments")
+	}
+
+	result, err := c.StringSlice(ctx, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	val := make([]ZItem, len(result)/2)
+	for i := 0; i < len(val); i++ {
+		member := result[i*2]
+		score := cast.ToFloat64(result[i*2+1])
+		val[i] = ZItem{
+			Score:  score,
+			Member: member,
+		}
+	}
+	return val, nil
 }
 
 func (c *BaseClient) ZPopMin(ctx context.Context, key string, count ...int64) ([]ZItem, error) {
-	return nil, nil
+	args := []interface{}{CommandZPopMin, key}
+
+	switch len(count) {
+	case 0:
+		break
+	case 1:
+		args = append(args, count[0])
+	default:
+		panic("too many arguments")
+	}
+
+	result, err := c.StringSlice(ctx, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	val := make([]ZItem, len(result)/2)
+	for i := 0; i < len(val); i++ {
+		member := result[i*2]
+		score := cast.ToFloat64(result[i*2+1])
+		val[i] = ZItem{
+			Score:  score,
+			Member: member,
+		}
+	}
+	return val, nil
 }
 
+// ZRandMember redis-server version >= 6.2.0.
 func (c *BaseClient) ZRandMember(ctx context.Context, key string, count int, withScores bool) ([]string, error) {
-	return nil, nil
+	args := []interface{}{CommandZRandMember, key, count}
+	if withScores {
+		args = append(args, "withScores")
+	}
+	return c.StringSlice(ctx, args...)
 }
 
 func (c *BaseClient) ZRange(ctx context.Context, key string, start, stop int64) ([]string, error) {
-	args := []interface{}{CommandZRange, key}
-	args = append(args, start)
-	args = append(args, stop)
+	args := []interface{}{CommandZRange, key, start, stop}
 	return c.StringSlice(ctx, args...)
 }
 
 func (c *BaseClient) ZRangeWithScores(ctx context.Context, key string, start, stop int64) ([]ZItem, error) {
-	args := []interface{}{CommandZRange, key}
-	args = append(args, start)
-	args = append(args, stop)
+	args := []interface{}{CommandZRange, key, start, stop}
+	args = append(args, "withScores")
 	result, err := c.StringSlice(ctx, args...)
 	if err != nil {
 		return nil, err
@@ -317,58 +395,121 @@ func (c *BaseClient) ZRangeWithScores(ctx context.Context, key string, start, st
 	return val, nil
 }
 
-func (c *BaseClient) ZRangeByLex(ctx context.Context, key string, Min, Max string, Offset, Count int64) ([]string, error) {
-	return nil, nil
+func (c *BaseClient) ZRangeByLex(ctx context.Context, key string, min, max string, offset, count int64) ([]string, error) {
+	args := []interface{}{CommandZRangeByLex, key, min, max}
+	if offset != 0 || count != 0 {
+		args = append(args, "limit", offset, count)
+	}
+	return c.StringSlice(ctx, args...)
 }
 
-func (c *BaseClient) ZRangeByScore(ctx context.Context, key string, Min, Max string, Offset, Count int64) ([]string, error) {
-	return nil, nil
+func (c *BaseClient) ZRangeByScore(ctx context.Context, key string, min, max string, offset, count int64) ([]string, error) {
+	args := []interface{}{CommandZRangeByScore, key, min, max}
+	if offset != 0 || count != 0 {
+		args = append(args, "limit", offset, count)
+	}
+	return c.StringSlice(ctx, args...)
 }
 
 func (c *BaseClient) ZRank(ctx context.Context, key, member string) (int64, error) {
-	return 0, nil
+	args := []interface{}{CommandZRank, key, member}
+	return c.Int64(ctx, args)
 }
 
 func (c *BaseClient) ZRem(ctx context.Context, key string, members ...interface{}) (int64, error) {
-	return 0, nil
+	args := []interface{}{CommandZRem, key}
+	for _, member := range members {
+		args = append(args, member)
+	}
+	return c.Int64(ctx, args)
 }
 
 func (c *BaseClient) ZRemRangeByLex(ctx context.Context, key, min, max string) (int64, error) {
-	return 0, nil
+	args := []interface{}{CommandZRemRangeByLex, key, min, max}
+	return c.Int64(ctx, args...)
 }
 
 func (c *BaseClient) ZRemRangeByRank(ctx context.Context, key string, start, stop int64) (int64, error) {
-	return 0, nil
+	args := []interface{}{CommandZRemRangeByRank, key, start, stop}
+	return c.Int64(ctx, args...)
 }
 
 func (c *BaseClient) ZRemRangeByScore(ctx context.Context, key, min, max string) (int64, error) {
-	return 0, nil
+	args := []interface{}{CommandZRemRangeByScore, key, min, max}
+	return c.Int64(ctx, args...)
 }
 
 func (c *BaseClient) ZRevRange(ctx context.Context, key string, start, stop int64) ([]string, error) {
-	return nil, nil
+	args := []interface{}{CommandZRevRange, key, start, stop}
+	return c.StringSlice(ctx, args...)
 }
 
-func (c *BaseClient) ZRevRangeByLex(ctx context.Context, key string, Min, Max string, Offset, Count int64) ([]string, error) {
-	return nil, nil
+func (c *BaseClient) ZRevRangeByLex(ctx context.Context, key string, min, max string, offset, count int64) ([]string, error) {
+	args := []interface{}{CommandZRevRangeByLex, key, min, max}
+	if offset != 0 || count != 0 {
+		args = append(args, "limit", offset, count)
+	}
+	return c.StringSlice(ctx, args...)
 }
 
-func (c *BaseClient) ZRevRangeByScore(ctx context.Context, key string, Min, Max string, Offset, Count int64) ([]string, error) {
-	return nil, nil
+func (c *BaseClient) ZRevRangeByScore(ctx context.Context, key string, min, max string, offset, count int64) ([]string, error) {
+	args := []interface{}{CommandZRevRangeByScore, key, min, max}
+	if offset != 0 || count != 0 {
+		args = append(args, "limit", offset, count)
+	}
+	return c.StringSlice(ctx, args...)
 }
 
 func (c *BaseClient) ZRevRank(ctx context.Context, key, member string) (int64, error) {
-	return 0, nil
+	args := []interface{}{CommandZRevRank, key, member}
+	return c.Int64(ctx, args...)
 }
 
 func (c *BaseClient) ZScore(ctx context.Context, key, member string) (float64, error) {
-	return 0, nil
+	args := []interface{}{CommandZScore, key, member}
+	return c.Float64(ctx, args...)
 }
 
 func (c *BaseClient) ZUnion(ctx context.Context, store ZStore) ([]string, error) {
-	return nil, nil
+	args := []interface{}{CommandZUnion, len(store.Keys)}
+	for _, key := range store.Keys {
+		args = append(args, key)
+	}
+
+	// weights
+	if len(store.Weights) > 2 {
+		args = append(args, "weights")
+		for _, weights := range store.Weights {
+			args = append(args, weights)
+		}
+	}
+
+	// aggregate [sum|min|max]
+	if store.Aggregate != "" {
+		args = append(args, "aggregate", store.Aggregate)
+	}
+
+	return c.StringSlice(ctx, args...)
 }
 
 func (c *BaseClient) ZUnionStore(ctx context.Context, dest string, store *ZStore) (int64, error) {
-	return 0, nil
+	args := []interface{}{CommandZUnionStore, dest, len(store.Keys)}
+	for _, key := range store.Keys {
+		args = append(args, key)
+	}
+
+	// weights
+	if len(store.Weights) > 2 {
+		args = append(args, "weights")
+		for _, weights := range store.Weights {
+			args = append(args, weights)
+		}
+	}
+
+	// aggregate [sum|min|max]
+	if store.Aggregate != "" {
+		args = append(args, "aggregate", store.Aggregate)
+	}
+
+	return c.Int64(ctx, args...)
 }

@@ -38,6 +38,7 @@ type Reply interface {
 	String() string
 	Slice() []interface{}
 	Int64Slice() []int64
+	Float64Slice() []float64
 	BoolSlice() []bool
 	StringSlice() []string
 	StringStringMap() map[string]string
@@ -50,6 +51,7 @@ type BaseCommand interface {
 	String(ctx context.Context, args ...interface{}) (string, error)
 	Slice(ctx context.Context, args ...interface{}) ([]interface{}, error)
 	Int64Slice(ctx context.Context, args ...interface{}) ([]int64, error)
+	Float64Slice(ctx context.Context, args ...interface{}) ([]float64, error)
 	BoolSlice(ctx context.Context, args ...interface{}) ([]bool, error)
 	StringSlice(ctx context.Context, args ...interface{}) ([]string, error)
 	StringStringMap(ctx context.Context, args ...interface{}) (map[string]string, error)
@@ -105,6 +107,14 @@ func (c *BaseClient) Int64Slice(ctx context.Context, args ...interface{}) ([]int
 		return nil, err
 	}
 	return reply.Int64Slice(), nil
+}
+
+func (c *BaseClient) Float64Slice(ctx context.Context, args ...interface{}) ([]float64, error) {
+	reply, err := c.DoFunc(ctx, args...)
+	if err != nil {
+		return nil, err
+	}
+	return reply.Float64Slice(), nil
 }
 
 func (c *BaseClient) BoolSlice(ctx context.Context, args ...interface{}) ([]bool, error) {
