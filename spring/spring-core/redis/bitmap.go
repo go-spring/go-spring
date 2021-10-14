@@ -21,56 +21,64 @@ import (
 )
 
 const (
-	CommandGetBit   = "GETBIT"
-	CommandSetBit   = "SETBIT"
 	CommandBitCount = "BITCOUNT"
 	CommandBitOp    = "BITOP"
 	CommandBitPos   = "BITPOS"
+	CommandGetBit   = "GETBIT"
+	CommandSetBit   = "SETBIT"
 )
 
 type BitmapCommand interface {
 
 	// BitCount https://redis.io/commands/bitcount
+	// Command: BITCOUNT key [start end]
 	// Count the number of set bits (population counting) in a string.
 	// Integer reply: The number of bits set to 1.
-	BitCount(ctx context.Context, key string, start, end int64) (int64, error)
+	BitCount(ctx context.Context, key string, args ...interface{}) (int64, error)
 
 	// BitOpAnd https://redis.io/commands/bitop
+	// Command: BITOP AND destkey srckey1 srckey2 srckey3 ... srckeyN
 	// Integer reply: The size of the string stored in the destination key,
 	// that is equal to the size of the longest input string.
 	BitOpAnd(ctx context.Context, destKey string, keys ...string) (int64, error)
 
 	// BitOpOr https://redis.io/commands/bitop
+	// Command: BITOP OR destkey srckey1 srckey2 srckey3 ... srckeyN
 	// Integer reply: The size of the string stored in the destination key,
 	// that is equal to the size of the longest input string.
 	BitOpOr(ctx context.Context, destKey string, keys ...string) (int64, error)
 
 	// BitOpXor https://redis.io/commands/bitop
+	// Command: BITOP XOR destkey srckey1 srckey2 srckey3 ... srckeyN
 	// Integer reply: The size of the string stored in the destination key,
 	// that is equal to the size of the longest input string.
 	BitOpXor(ctx context.Context, destKey string, keys ...string) (int64, error)
 
 	// BitOpNot https://redis.io/commands/bitop
+	// Command: BITOP NOT destkey srckey
 	// Integer reply: The size of the string stored in the destination key,
 	// that is equal to the size of the longest input string.
 	BitOpNot(ctx context.Context, destKey string, key string) (int64, error)
 
 	// BitPos https://redis.io/commands/bitpos
+	// Command: BITPOS key bit [start [end]]
 	// Integer reply: The command returns the position of the first bit
 	// set to 1 or 0 according to the request.
-	BitPos(ctx context.Context, key string, bit int64, start, end int64) (int64, error)
+	BitPos(ctx context.Context, key string, bit int64, args ...interface{}) (int64, error)
 
 	// GetBit https://redis.io/commands/getbit
+	// Command: GETBIT key offset
 	// Integer reply: the bit value stored at offset.
 	GetBit(ctx context.Context, key string, offset int64) (int64, error)
 
 	// SetBit https://redis.io/commands/setbit
+	// Command: SETBIT key offset value
 	// Integer reply: the original bit value stored at offset.
 	SetBit(ctx context.Context, key string, offset int64, value int) (int64, error)
 }
 
-func (c *BaseClient) BitCount(ctx context.Context, key string, start, end int64) (int64, error) {
-	args := []interface{}{CommandBitCount, key, start, end}
+func (c *BaseClient) BitCount(ctx context.Context, key string, args ...interface{}) (int64, error) {
+	args = append([]interface{}{CommandBitCount, key}, args...)
 	return c.Int64(ctx, args...)
 }
 
@@ -103,8 +111,8 @@ func (c *BaseClient) BitOpNot(ctx context.Context, destKey string, key string) (
 	return c.Int64(ctx, args...)
 }
 
-func (c *BaseClient) BitPos(ctx context.Context, key string, bit int64, start, end int64) (int64, error) {
-	args := []interface{}{CommandBitPos, key, bit, start, end}
+func (c *BaseClient) BitPos(ctx context.Context, key string, bit int64, args ...interface{}) (int64, error) {
+	args = append([]interface{}{CommandBitPos, key, bit}, args...)
 	return c.Int64(ctx, args...)
 }
 

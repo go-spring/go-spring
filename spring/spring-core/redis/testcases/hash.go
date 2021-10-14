@@ -231,27 +231,6 @@ func HMGet(t *testing.T, ctx context.Context, c redis.Client) {
 	assert.Equal(t, r3, []interface{}{"Hello", "World", nil})
 }
 
-func HMSet(t *testing.T, ctx context.Context, c redis.Client) {
-
-	r1, err := c.HMSet(ctx, "myhash", "field1", "Hello", "field2", "World")
-	if err != nil {
-		t.Fatal(err)
-	}
-	assert.Equal(t, r1, true)
-
-	r2, err := c.HGet(ctx, "myhash", "field1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	assert.Equal(t, r2, "Hello")
-
-	r3, err := c.HGet(ctx, "myhash", "field2")
-	if err != nil {
-		t.Fatal(err)
-	}
-	assert.Equal(t, r3, "World")
-}
-
 func HSet(t *testing.T, ctx context.Context, c redis.Client) {
 
 	r1, err := c.HSet(ctx, "myhash", "field1", "Hello")
@@ -290,11 +269,11 @@ func HSetNX(t *testing.T, ctx context.Context, c redis.Client) {
 
 func HStrLen(t *testing.T, ctx context.Context, c redis.Client) {
 
-	r1, err := c.HMSet(ctx, "myhash", "f1", "HelloWorld", "f2", 99, "f3", -256)
+	r1, err := c.HSet(ctx, "myhash", "f1", "HelloWorld", "f2", 99, "f3", -256)
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r1, true)
+	assert.Equal(t, r1, int64(3))
 
 	r2, err := c.HStrLen(ctx, "myhash", "f1")
 	if err != nil {

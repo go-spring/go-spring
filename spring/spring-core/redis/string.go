@@ -46,85 +46,105 @@ const (
 type StringCommand interface {
 
 	// Append https://redis.io/commands/append
+	// Command: APPEND key value
 	// Integer reply: the length of the string after the append operation.
 	Append(ctx context.Context, key, value string) (int64, error)
 
 	// Decr https://redis.io/commands/decr
+	// Command: DECR key
 	// Integer reply: the value of key after the decrement
 	Decr(ctx context.Context, key string) (int64, error)
 
 	// DecrBy https://redis.io/commands/decrby
+	// Command: DECRBY key decrement
 	// Integer reply: the value of key after the decrement.
 	DecrBy(ctx context.Context, key string, decrement int64) (int64, error)
 
 	// Get https://redis.io/commands/get
+	// Command: GET key
 	// Bulk string reply: the value of key, or nil when key does not exist.
 	Get(ctx context.Context, key string) (string, error)
 
 	// GetDel https://redis.io/commands/getdel
+	// Command: GETDEL key
 	// Bulk string reply: the value of key, nil when key does not exist,
 	// or an error if the key's value type isn't a string.
 	GetDel(ctx context.Context, key string) (string, error)
 
 	// GetEx https://redis.io/commands/getex
+	// Command: GETEX key [EX seconds|PX milliseconds|EXAT timestamp|PXAT milliseconds-timestamp|PERSIST]
 	// Bulk string reply: the value of key, or nil when key does not exist.
-	GetEx(ctx context.Context, key string) (string, error)
+	GetEx(ctx context.Context, key string, args ...interface{}) (string, error)
 
 	// GetRange https://redis.io/commands/getrange
+	// Command: GETRANGE key start end
 	// Bulk string reply
 	GetRange(ctx context.Context, key string, start, end int64) (string, error)
 
 	// GetSet https://redis.io/commands/getset
+	// Command: GETSET key value
 	// Bulk string reply: the old value stored at key, or nil when key did not exist.
 	GetSet(ctx context.Context, key string, value interface{}) (string, error)
 
 	// Incr https://redis.io/commands/incr
+	// Command: INCR key
 	// Integer reply: the value of key after the increment
 	Incr(ctx context.Context, key string) (int64, error)
 
 	// IncrBy https://redis.io/commands/incrby
+	// Command: INCRBY key increment
 	// Integer reply: the value of key after the increment.
 	IncrBy(ctx context.Context, key string, value int64) (int64, error)
 
 	// IncrByFloat https://redis.io/commands/incrbyfloat
+	// Command: INCRBYFLOAT key increment
 	// Bulk string reply: the value of key after the increment.
 	IncrByFloat(ctx context.Context, key string, value float64) (float64, error)
 
 	// MGet https://redis.io/commands/mget
+	// Command: MGET key [key ...]
 	// Array reply: list of values at the specified keys.
 	MGet(ctx context.Context, keys ...string) ([]interface{}, error)
 
 	// MSet https://redis.io/commands/mset
+	// Command: MSET key value [key value ...]
 	// Simple string reply: always OK since MSET can't fail.
-	MSet(ctx context.Context, values ...interface{}) (bool, error)
+	MSet(ctx context.Context, args ...interface{}) (bool, error)
 
 	// MSetNX https://redis.io/commands/msetnx
+	// Command: MSETNX key value [key value ...]
 	// MSETNX is atomic, so all given keys are set at once
 	// Integer reply: 1 if the all the keys were set, 0 if no
 	// key was set (at least one key already existed).
-	MSetNX(ctx context.Context, values ...interface{}) (bool, error)
+	MSetNX(ctx context.Context, args ...interface{}) (bool, error)
 
 	// PSetEX https://redis.io/commands/psetex
+	// Command: PSETEX key milliseconds value
 	// Simple string reply
 	PSetEX(ctx context.Context, key string, value interface{}, expire int64) (bool, error)
 
 	// Set https://redis.io/commands/set
+	// Command: SET key value [EX seconds|PX milliseconds|EXAT timestamp|PXAT milliseconds-timestamp|KEEPTTL] [NX|XX] [GET]
 	// Simple string reply: OK if SET was executed correctly.
-	Set(ctx context.Context, key string, value interface{}) (bool, error)
+	Set(ctx context.Context, key string, value interface{}, args ...interface{}) (bool, error)
 
 	// SetEX https://redis.io/commands/setex
+	// Command: SETEX key seconds value
 	// Simple string reply
 	SetEX(ctx context.Context, key string, value interface{}, expire int64) (bool, error)
 
 	// SetNX https://redis.io/commands/setnx
+	// Command: SETNX key value
 	// Integer reply: 1 if the key was set, 0 if the key was not set.
 	SetNX(ctx context.Context, key string, value interface{}) (bool, error)
 
 	// SetRange https://redis.io/commands/setrange
+	// Command: SETRANGE key offset value
 	// Integer reply: the length of the string after it was modified by the command.
 	SetRange(ctx context.Context, key string, offset int64, value string) (int64, error)
 
 	// StrLen https://redis.io/commands/strlen
+	// Command: STRLEN key
 	// Integer reply: the length of the string at key, or 0 when key does not exist.
 	StrLen(ctx context.Context, key string) (int64, error)
 }
@@ -154,8 +174,8 @@ func (c *BaseClient) GetDel(ctx context.Context, key string) (string, error) {
 	return c.String(ctx, args...)
 }
 
-func (c *BaseClient) GetEx(ctx context.Context, key string) (string, error) {
-	args := []interface{}{CommandGetEx, key}
+func (c *BaseClient) GetEx(ctx context.Context, key string, args ...interface{}) (string, error) {
+	args = append([]interface{}{CommandGetEx, key}, args...)
 	return c.String(ctx, args...)
 }
 
@@ -192,19 +212,13 @@ func (c *BaseClient) MGet(ctx context.Context, keys ...string) ([]interface{}, e
 	return c.Slice(ctx, args...)
 }
 
-func (c *BaseClient) MSet(ctx context.Context, values ...interface{}) (bool, error) {
-	args := []interface{}{CommandMSet}
-	for _, value := range values {
-		args = append(args, value)
-	}
+func (c *BaseClient) MSet(ctx context.Context, args ...interface{}) (bool, error) {
+	args = append([]interface{}{CommandMSet}, args...)
 	return c.Bool(ctx, args...)
 }
 
-func (c *BaseClient) MSetNX(ctx context.Context, values ...interface{}) (bool, error) {
-	args := []interface{}{CommandMSetNX}
-	for _, value := range values {
-		args = append(args, value)
-	}
+func (c *BaseClient) MSetNX(ctx context.Context, args ...interface{}) (bool, error) {
+	args = append([]interface{}{CommandMSetNX}, args...)
 	return c.Bool(ctx, args...)
 }
 
@@ -213,8 +227,8 @@ func (c *BaseClient) PSetEX(ctx context.Context, key string, value interface{}, 
 	return c.Bool(ctx, args...)
 }
 
-func (c *BaseClient) Set(ctx context.Context, key string, value interface{}) (bool, error) {
-	args := []interface{}{CommandSet, key, value}
+func (c *BaseClient) Set(ctx context.Context, key string, value interface{}, args ...interface{}) (bool, error) {
+	args = append([]interface{}{CommandSet, key, value}, args...)
 	return c.Bool(ctx, args...)
 }
 

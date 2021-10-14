@@ -18,7 +18,10 @@ package redis
 
 import (
 	"context"
+	"errors"
 )
+
+var ErrNil = errors.New("redis: nil")
 
 type Client interface {
 	BaseCommand
