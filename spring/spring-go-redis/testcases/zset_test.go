@@ -25,3 +25,7 @@ import (
 func TestZAdd(t *testing.T) {
 	RunCase(t, testcases.ZAdd)
 }
+
+func TestZCard(t *testing.T) {
+	RunCase(t, testcases.ZCard)
+}

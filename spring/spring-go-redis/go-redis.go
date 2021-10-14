@@ -86,6 +86,11 @@ func (r *reply) Int64Slice() []int64 {
 	return val
 }
 
+func (r *reply) Float64Slice() []float64 {
+	val, _ := r.cmd.Float64Slice()
+	return val
+}
+
 func (r *reply) BoolSlice() []bool {
 	val, _ := r.cmd.BoolSlice()
 	return val

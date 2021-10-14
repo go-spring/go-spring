@@ -61,6 +61,14 @@ type ZStore struct {
 	Aggregate string
 }
 
+type ZAddOption struct {
+	NX bool
+	XX bool
+	LT bool
+	GT bool
+	CH bool
+}
+
 type ZSetCommand interface {
 
 	// ZAdd https://redis.io/commands/zadd
@@ -186,8 +194,25 @@ type ZSetCommand interface {
 	ZUnionStore(ctx context.Context, dest string, store *ZStore) (int64, error)
 }
 
-func (c *BaseClient) ZAdd(ctx context.Context, key string, members ...*ZItem) (int64, error) {
+func (c *BaseClient) zAdd(ctx context.Context, key string, opt ZAddOption, members ...*ZItem) (int64, error) {
 	args := []interface{}{CommandZAdd, key}
+
+	if opt.NX {
+		args = append(args, "nx")
+	} else {
+		if opt.XX {
+			args = append(args, "xx")
+		}
+		if opt.GT {
+			args = append(args, "gt")
+		} else if opt.LT {
+			args = append(args, "lt")
+		}
+	}
+
+	if opt.CH {
+		args = append(args, "ch")
+	}
 
 	for _, item := range members {
 		args = append(args, item.Score)
@@ -195,6 +220,29 @@ func (c *BaseClient) ZAdd(ctx context.Context, key string, members ...*ZItem) (i
 	}
 
 	return c.Int64(ctx, args...)
+}
+
+func (c *BaseClient) ZAdd(ctx context.Context, key string, members ...*ZItem) (int64, error) {
+	return c.zAdd(ctx, key, ZAddOption{}, members...)
+}
+
+func (c *BaseClient) ZAddNX(ctx context.Context, key string, members ...*ZItem) (int64, error) {
+	return c.zAdd(ctx, key, ZAddOption{NX: true}, members...)
+}
+
+func (c *BaseClient) ZAddXX(ctx context.Context, key string, members ...*ZItem) (int64, error) {
+	return c.zAdd(ctx, key, ZAddOption{XX: true}, members...)
+}
+
+func (c *BaseClient) ZAddCh(ctx context.Context, key string, members ...*ZItem) (int64, error) {
+	return c.zAdd(ctx, key, ZAddOption{CH: true}, members...)
+}
+
+func (c *BaseClient) ZAddNXCh(ctx context.Context, key string, members ...*ZItem) (int64, error) {
+	return c.zAdd(ctx, key, ZAddOption{
+		NX: true,
+		CH: true,
+	})
 }
 
 func (c *BaseClient) ZCard(ctx context.Context, key string) (int64, error) {

@@ -20,6 +20,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/go-spring/spring-base/assert"
 	"github.com/go-spring/spring-core/redis"
 )
 
@@ -40,35 +41,90 @@ import (
 // 7) "three"
 // 8) "3"
 // redis>
+
 func ZAdd(t *testing.T, ctx context.Context, c redis.Client) {
 
-	// r1, err := c.ZAdd(ctx, "myzset", &redis.ZItem{
-	// 	Score:  1,
-	// 	Member: "one",
-	// })
-	// if err != nil {
-	// 	t.Fatal(err)
-	// }
-	// assert.Equal(t, r1, int64(1))
+	r1, err := c.ZAdd(ctx, "myzset", &redis.ZItem{
+		Score:  1,
+		Member: "one",
+	})
+	assert.Nil(t, err)
+	assert.Equal(t, r1, int64(1))
 
-	// r2, err := c.ZAdd(ctx, "myzset", &redis.ZItem{
-	// 	Score:  1,
-	// 	Member: "uno",
-	// })
-	// if err != nil {
-	// 	t.Fatal(err)
-	// }
-	// assert.Equal(t, r2, int64(1))
+	r2, err := c.ZAdd(ctx, "myzset", &redis.ZItem{
+		Score:  1,
+		Member: "uno",
+	})
+	assert.Nil(t, err)
+	assert.Equal(t, r2, int64(1))
 
-	// r3, err := c.ZAdd(ctx, "myzset", &redis.ZItem{
-	// 	Score:  2,
-	// 	Member: "two",
-	// }, &redis.ZItem{
-	// 	Score:  3,
-	// 	Member: "three",
-	// })
-	// if err != nil {
-	// 	t.Fatal(err)
-	// }
-	// assert.Equal(t, r3, int64(2))
+	r3, err := c.ZAdd(ctx, "myzset", &redis.ZItem{
+		Score:  2,
+		Member: "two",
+	}, &redis.ZItem{
+		Score:  3,
+		Member: "three",
+	})
+	assert.Nil(t, err)
+	assert.Equal(t, r3, int64(2))
+
+	r4, err := c.ZRangeWithScores(ctx, "myzset", 0, -1)
+	assert.Nil(t, err)
+	assert.Equal(t, len(r4), 4)
+}
+
+// ZCARD
+// redis> ZADD myzset 1 "one"
+// (integer) 1
+// redis> ZADD myzset 2 "two"
+// (integer) 1
+// redis> ZCARD myzset
+// (integer) 2
+// redis>
+
+func ZCard(t *testing.T, ctx context.Context, c redis.Client) {
+
+	r1, err := c.ZAdd(ctx, "myzset", &redis.ZItem{
+		Score:  1,
+		Member: "one",
+	})
+	assert.Nil(t, err)
+	assert.Equal(t, r1, int64(1))
+
+	r2, err := c.ZAdd(ctx, "myzset", &redis.ZItem{
+		Score:  2,
+		Member: "two",
+	})
+	assert.Nil(t, err)
+	assert.Equal(t, r2, int64(1))
+
+	r3, err := c.ZCard(ctx, "myzset")
+	assert.Nil(t, err)
+	assert.Equal(t, r3, int64(2))
+}
+
+func ZCount(t *testing.T, ctx context.Context, c redis.Client) {
+
+	r1, err := c.ZAdd(ctx, "myzset", &redis.ZItem{
+		Score:  1,
+		Member: "one",
+	})
+	assert.Nil(t, err)
+	assert.Equal(t, r1, int64(1))
+
+	r2, err := c.ZAdd(ctx, "myzset", &redis.ZItem{
+		Score:  2,
+		Member: "two",
+	})
+	assert.Nil(t, err)
+	assert.Equal(t, r2, int64(1))
+
+	r3, err := c.ZAdd(ctx, "myzset", &redis.ZItem{
+		Score:  3,
+		Member: "three",
+	})
+	assert.Nil(t, err)
+	assert.Equal(t, r3, int64(1))
+
+	c.ZCount(ctx, "myzset", 1, 3)
 }
