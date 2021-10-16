@@ -41,77 +41,94 @@ const (
 type SetCommand interface {
 
 	// SAdd https://redis.io/commands/sadd
+	// Command: SADD key member [member ...]
 	// Integer reply: the number of elements that were added to the set,
 	// not including all the elements already present in the set.
 	SAdd(ctx context.Context, key string, members ...interface{}) (int64, error)
 
 	// SCard https://redis.io/commands/scard
+	// Command: SCARD key
 	// Integer reply: the cardinality (number of elements) of the set,
 	// or 0 if key does not exist.
 	SCard(ctx context.Context, key string) (int64, error)
 
 	// SDiff https://redis.io/commands/sdiff
+	// Command: SDIFF key [key ...]
 	// Array reply: list with members of the resulting set.
 	SDiff(ctx context.Context, keys ...string) ([]string, error)
 
 	// SDiffStore https://redis.io/commands/sdiffstore
+	// Command: SDIFFSTORE destination key [key ...]
 	// Integer reply: the number of elements in the resulting set.
 	SDiffStore(ctx context.Context, destination string, keys ...string) (int64, error)
 
 	// SInter https://redis.io/commands/sinter
+	// Command: SINTER key [key ...]
 	// Array reply: list with members of the resulting set.
 	SInter(ctx context.Context, keys ...string) ([]string, error)
 
 	// SInterStore https://redis.io/commands/sinterstore
+	// Command: SINTERSTORE destination key [key ...]
 	// Integer reply: the number of elements in the resulting set.
 	SInterStore(ctx context.Context, destination string, keys ...string) (int64, error)
 
 	// SIsMember https://redis.io/commands/sismember
+	// Command: SISMEMBER key member
 	// Integer reply: 1 if the element is a member of the set, 0 if the
 	// element is not a member of the set, or if key does not exist.
 	SIsMember(ctx context.Context, key string, member interface{}) (bool, error)
 
 	// SMembers https://redis.io/commands/smembers
+	// Command: SMEMBERS key
 	// Array reply: all elements of the set.
 	SMembers(ctx context.Context, key string) ([]string, error)
 
 	// SMIsMember https://redis.io/commands/smismember
+	// Command: SMISMEMBER key member [member ...]
 	// Array reply: list representing the membership of the given elements,
 	// in the same order as they are requested.
 	SMIsMember(ctx context.Context, key string, members ...interface{}) ([]bool, error)
 
 	// SMove https://redis.io/commands/smove
+	// Command: SMOVE source destination member
 	// Integer reply: 1 if the element is moved, 0 if the element is
 	// not a member of source and no operation was performed.
 	SMove(ctx context.Context, source, destination string, member interface{}) (bool, error)
 
 	// SPop https://redis.io/commands/spop
+	// Command: SPOP key [count]
 	// Bulk string reply: the removed member, or nil when key does not exist.
 	SPop(ctx context.Context, key string) (string, error)
 
 	// SPopN https://redis.io/commands/spop
+	// Command: SPOP key [count]
 	// Array reply: the removed members, or an empty array when key does not exist.
 	SPopN(ctx context.Context, key string, count int64) ([]string, error)
 
 	// SRandMember https://redis.io/commands/srandmember
+	// Command: SRANDMEMBER key [count]
 	// Returns a Bulk Reply with the randomly selected element,
 	// or nil when key does not exist.
 	SRandMember(ctx context.Context, key string) (string, error)
 
 	// SRandMemberN https://redis.io/commands/srandmember
+	// Command: SRANDMEMBER key [count]
 	// Returns an array of elements, or an empty array when key does not exist.
 	SRandMemberN(ctx context.Context, key string, count int64) ([]string, error)
 
 	// SRem https://redis.io/commands/srem
+	// Command: SREM key member [member ...]
 	// Integer reply: the number of members that were removed from the set,
 	// not including non existing members.
 	SRem(ctx context.Context, key string, members ...interface{}) (int64, error)
 
 	// SUnion https://redis.io/commands/sunion
+	// Command: SUNION key [key ...]
 	// Array reply: list with members of the resulting set.
 	SUnion(ctx context.Context, keys ...string) ([]string, error)
 
 	// SUnionStore https://redis.io/commands/sunionstore
+	// Command: SUNIONSTORE destination key [key ...]
 	// Integer reply: the number of elements in the resulting set.
 	SUnionStore(ctx context.Context, destination string, keys ...string) (int64, error)
 }

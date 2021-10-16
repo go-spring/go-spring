@@ -19,12 +19,26 @@ package gs
 import (
 	"os"
 	"reflect"
+	"strings"
 
+	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/grpc"
 	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/web"
 )
+
+func init() {
+	// 如果发现是调试模式则设置日志级别为 Debug 级别。
+	{
+		s := os.Getenv("CGO_CFLAGS")
+		if strings.Contains(s, "-O0") && strings.Contains(s, "-g") {
+			if !log.EnableDebug() {
+				log.SetLevel(log.DebugLevel)
+			}
+		}
+	}
+}
 
 var gApp *App
 
@@ -43,17 +57,17 @@ func Setenv(key string, value string) {
 
 // Run 启动程序。
 func Run() error {
-	return app().Run()
+	return gApp.Run()
 }
 
 // ShutDown 停止程序。
 func ShutDown(err error) {
-	app().ShutDown(err)
+	gApp.ShutDown(err)
 }
 
 // Banner 参考 App.Banner 的解释。
 func Banner(banner string) {
-	app().Banner(banner)
+	gApp.Banner(banner)
 }
 
 // Bootstrap 参考 App.Bootstrap 的解释。

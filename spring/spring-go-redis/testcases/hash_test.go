@@ -58,10 +58,6 @@ func TestHMGet(t *testing.T) {
 	RunCase(t, testcases.HMGet)
 }
 
-func TestHMSet(t *testing.T) {
-	RunCase(t, testcases.HMSet)
-}
-
 func TestHSet(t *testing.T) {
 	RunCase(t, testcases.HSet)
 }

@@ -27,11 +27,12 @@ const (
 type ServerCommand interface {
 
 	// FlushAll https://redis.io/commands/flushall
+	// Command: FLUSHALL [ASYNC|SYNC]
 	// Simple string reply
-	FlushAll(ctx context.Context) (string, error)
+	FlushAll(ctx context.Context, args ...interface{}) (string, error)
 }
 
-func (c *BaseClient) FlushAll(ctx context.Context) (string, error) {
-	args := []interface{}{CommandFlushAll}
+func (c *BaseClient) FlushAll(ctx context.Context, args ...interface{}) (string, error) {
+	args = append([]interface{}{CommandFlushAll}, args...)
 	return c.String(ctx, args...)
 }
