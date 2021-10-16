@@ -340,23 +340,6 @@ func RenameNX(t *testing.T, ctx context.Context, c redis.Client) {
 	assert.Equal(t, r4, "World")
 }
 
-func Restore(t *testing.T, ctx context.Context, c redis.Client) {
-
-	//RESTORE
-	//redis> DEL mykey
-	//0
-	//redis> RESTORE mykey 0 "\n\x17\x17\x00\x00\x00\x12\x00\x00\x00\x03\x00\
-	//                        x00\xc0\x01\x00\x04\xc0\x02\x00\x04\xc0\x03\x00\
-	//                        xff\x04\x00u#<\xc0;.\xe9\xdd"
-	//OK
-	//redis> TYPE mykey
-	//list
-	//redis> LRANGE mykey 0 -1
-	//1) "1"
-	//2) "2"
-	//3) "3"
-}
-
 func Touch(t *testing.T, ctx context.Context, c redis.Client) {
 
 	r1, err := c.Set(ctx, "key1", "Hello")
@@ -401,18 +384,39 @@ func TTL(t *testing.T, ctx context.Context, c redis.Client) {
 
 func Type(t *testing.T, ctx context.Context, c redis.Client) {
 
-	//TYPE
-	//redis> SET key1 "value"
-	//"OK"
-	//redis> LPUSH key2 "value"
-	//(integer) 1
-	//redis> SADD key3 "value"
-	//(integer) 1
-	//redis> TYPE key1
-	//"string"
-	//redis> TYPE key2
-	//"list"
-	//redis> TYPE key3
-	//"set"
-	//redis>
+	r1, err := c.Set(ctx, "key1", "value")
+	if err != nil {
+		return
+	}
+	assert.Equal(t, r1, true)
+
+	r2, err := c.LPush(ctx, "key2", "value")
+	if err != nil {
+		return
+	}
+	assert.Equal(t, r2, int64(1))
+
+	r3, err := c.SAdd(ctx, "key3", "value")
+	if err != nil {
+		return
+	}
+	assert.Equal(t, r3, int64(1))
+
+	r4, err := c.Type(ctx, "key1")
+	if err != nil {
+		return
+	}
+	assert.Equal(t, r4, "string")
+
+	r5, err := c.Type(ctx, "key2")
+	if err != nil {
+		return
+	}
+	assert.Equal(t, r5, "list")
+
+	r6, err := c.Type(ctx, "key3")
+	if err != nil {
+		return
+	}
+	assert.Equal(t, r6, "set")
 }

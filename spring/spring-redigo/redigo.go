@@ -18,6 +18,7 @@ package SpringRedigo
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/go-spring/spring-core/redis"
 	g "github.com/gomodule/redigo/redis"
@@ -49,60 +50,93 @@ type reply struct {
 	v interface{}
 }
 
-func (r *reply) Bool() bool {
-	switch v := r.v.(type) {
+func toBool(val interface{}) (bool, error) {
+	switch v := val.(type) {
 	case int64:
-		return v == 1
+		return v == 1, nil
 	case string:
-		return v == "OK"
+		return v == "OK", nil
 	default:
-		return false
+		return false, fmt.Errorf("redis: unexpected type=%T for bool", v)
 	}
 }
 
-func (r *reply) Int64() int64 {
-	val, _ := g.Int64(r.v, nil)
-	return val
+func (r *reply) Bool() (bool, error) {
+	return toBool(r.v)
 }
 
-func (r *reply) Float64() float64 {
-	val, _ := g.Float64(r.v, nil)
-	return val
+func (r *reply) Int64() (int64, error) {
+	return g.Int64(r.v, nil)
 }
 
-func (r *reply) String() string {
-	val, _ := g.String(r.v, nil)
-	return val
+func (r *reply) Float64() (float64, error) {
+	return g.Float64(r.v, nil)
 }
 
-func (r *reply) Slice() []interface{} {
-	val, _ := g.Values(r.v, nil)
+func (r *reply) String() (string, error) {
+	return g.String(r.v, nil)
+}
+
+func (r *reply) Slice() ([]interface{}, error) {
+	val, err := g.Values(r.v, nil)
+	if err != nil {
+		return nil, err
+	}
 	for i := 0; i < len(val); i++ {
 		switch v := val[i].(type) {
 		case []byte:
 			val[i] = string(v)
 		}
 	}
-	return val
+	return val, nil
 }
 
-func (r *reply) Int64Slice() []int64 {
-	val, _ := g.Int64s(r.v, nil)
-	return val
+func (r *reply) BoolSlice() ([]bool, error) {
+	slice, err := g.Values(r.v, nil)
+	if err != nil {
+		return nil, err
+	}
+	val := make([]bool, len(slice))
+	for i := 0; i < len(slice); i++ {
+		if val[i], err = toBool(slice[i]); err != nil {
+			return nil, err
+		}
+	}
+	return val, nil
 }
 
-func (r *reply) BoolSlice() []bool {
-	//val, _ := g.Bool(r.v, nil)
-	//return val
-	return nil
+func (r *reply) Int64Slice() ([]int64, error) {
+	return g.Int64s(r.v, nil)
 }
 
-func (r *reply) StringSlice() []string {
-	val, _ := g.Strings(r.v, nil)
-	return val
+func (r *reply) Float64Slice() ([]float64, error) {
+	return g.Float64s(r.v, nil)
 }
 
-func (r *reply) StringStringMap() map[string]string {
-	val, _ := g.StringMap(r.v, nil)
-	return val
+func (r *reply) StringSlice() ([]string, error) {
+	return g.Strings(r.v, nil)
+}
+
+func (r *reply) ZItemSlice() ([]redis.ZItem, error) {
+	slice, err := g.Values(r.v, nil)
+	if err != nil {
+		return nil, err
+	}
+	val := make([]redis.ZItem, len(slice)/2)
+	for i := 0; i < len(slice); i += 2 {
+		member, ok := slice[i].(string)
+		if !ok {
+			return nil, fmt.Errorf("redis: unexpected type=%T for string", slice[i])
+		}
+		score, ok := slice[i+1].(float64)
+		if !ok {
+			return nil, fmt.Errorf("redis: unexpected type=%T for float64", slice[i+1])
+		}
+		val[i] = redis.ZItem{Score: score, Member: member}
+	}
+	return val, nil
+}
+
+func (r *reply) StringMap() (map[string]string, error) {
+	return g.StringMap(r.v, nil)
 }

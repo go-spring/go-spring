@@ -52,14 +52,14 @@ type HashCommand interface {
 
 	// HGet https://redis.io/commands/hget
 	// Command: HGET key field
-	// Bulk string reply: the value associated with field, or nil when
-	// field is not present in the hash or key does not exist.
+	// Bulk string reply: the value associated with field,
+	// or nil when field is not present in the hash or key does not exist.
 	HGet(ctx context.Context, key, field string) (string, error)
 
 	// HGetAll https://redis.io/commands/hgetall
 	// Command: HGETALL key
-	// Array reply: list of fields and their values stored in the hash,
-	// or an empty list when key does not exist.
+	// Array reply: list of fields and their values stored
+	// in the hash, or an empty list when key does not exist.
 	HGetAll(ctx context.Context, key string) (map[string]string, error)
 
 	// HIncrBy https://redis.io/commands/hincrby
@@ -84,8 +84,8 @@ type HashCommand interface {
 
 	// HMGet https://redis.io/commands/hmget
 	// Command: HMGET key field [field ...]
-	// Array reply: list of values associated with the given fields,
-	// in the same order as they are requested.
+	// Array reply: list of values associated with the
+	// given fields, in the same order as they are requested.
 	HMGet(ctx context.Context, key string, fields ...string) ([]interface{}, error)
 
 	// HSet https://redis.io/commands/hset
@@ -95,8 +95,8 @@ type HashCommand interface {
 
 	// HSetNX https://redis.io/commands/hsetnx
 	// Command: HSETNX key field value
-	// Integer reply: 1 if field is a new field in the hash and value
-	// was set, 0 if field already exists in the hash and no operation was performed.
+	// Integer reply: 1 if field is a new field in the hash and value was set,
+	// 0 if field already exists in the hash and no operation was performed.
 	HSetNX(ctx context.Context, key, field string, value interface{}) (bool, error)
 
 	// HStrLen https://redis.io/commands/hstrlen

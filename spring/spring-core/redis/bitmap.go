@@ -32,7 +32,6 @@ type BitmapCommand interface {
 
 	// BitCount https://redis.io/commands/bitcount
 	// Command: BITCOUNT key [start end]
-	// Count the number of set bits (population counting) in a string.
 	// Integer reply: The number of bits set to 1.
 	BitCount(ctx context.Context, key string, args ...interface{}) (int64, error)
 

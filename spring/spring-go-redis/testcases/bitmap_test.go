@@ -15,3 +15,29 @@
  */
 
 package testcases
+
+import (
+	"testing"
+
+	"github.com/go-spring/spring-core/redis/testcases"
+)
+
+func TestBitCount(t *testing.T) {
+	RunCase(t, testcases.BitCount)
+}
+
+func TestBitOpAnd(t *testing.T) {
+	RunCase(t, testcases.BitOpAnd)
+}
+
+func TestBitPos(t *testing.T) {
+	RunCase(t, testcases.BitPos)
+}
+
+func TestGetBit(t *testing.T) {
+	RunCase(t, testcases.GetBit)
+}
+
+func TestSetBit(t *testing.T) {
+	RunCase(t, testcases.SetBit)
+}

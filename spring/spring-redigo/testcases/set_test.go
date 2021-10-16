@@ -15,3 +15,65 @@
  */
 
 package testcases
+
+import (
+	"testing"
+
+	"github.com/go-spring/spring-core/redis/testcases"
+)
+
+func TestSAdd(t *testing.T) {
+	RunCase(t, testcases.SAdd)
+}
+
+func TestSCard(t *testing.T) {
+	RunCase(t, testcases.SCard)
+}
+
+func TestSDiff(t *testing.T) {
+	RunCase(t, testcases.SDiff)
+}
+
+func TestSDiffStore(t *testing.T) {
+	RunCase(t, testcases.SDiffStore)
+}
+
+func TestSInter(t *testing.T) {
+	RunCase(t, testcases.SInter)
+}
+
+func TestSInterStore(t *testing.T) {
+	RunCase(t, testcases.SInterStore)
+}
+
+func TestSMembers(t *testing.T) {
+	RunCase(t, testcases.SMembers)
+}
+
+func TestSMIsMember(t *testing.T) {
+	RunCase(t, testcases.SMIsMember)
+}
+
+func TestSMove(t *testing.T) {
+	RunCase(t, testcases.SMove)
+}
+
+func TestSPop(t *testing.T) {
+	RunCase(t, testcases.SPop)
+}
+
+func TestSRandMember(t *testing.T) {
+	RunCase(t, testcases.SRandMember)
+}
+
+func TestSRem(t *testing.T) {
+	RunCase(t, testcases.SRem)
+}
+
+func TestSUnion(t *testing.T) {
+	RunCase(t, testcases.SUnion)
+}
+
+func TestSUnionStore(t *testing.T) {
+	RunCase(t, testcases.SUnionStore)
+}

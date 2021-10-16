@@ -16,61 +16,157 @@
 
 package testcases
 
-//BITCOUNT
-//redis> SET mykey "foobar"
-//"OK"
-//redis> BITCOUNT mykey
-//(integer) 26
-//redis> BITCOUNT mykey 0 0
-//(integer) 4
-//redis> BITCOUNT mykey 1 1
-//(integer) 6
-//redis>
+import (
+	"context"
+	"testing"
 
-//BITOP
-//redis> SET key1 "foobar"
-//"OK"
-//redis> SET key2 "abcdef"
-//"OK"
-//redis> BITOP AND dest key1 key2
-//(integer) 6
-//redis> GET dest
-//"`bc`ab"
-//redis>
+	"github.com/go-spring/spring-base/assert"
+	"github.com/go-spring/spring-core/redis"
+)
 
-//BITPOS
-//redis> SET mykey "\xff\xf0\x00"
-//"OK"
-//redis> BITPOS mykey 0
-//(integer) 12
-//redis> SET mykey "\x00\xff\xf0"
-//"OK"
-//redis> BITPOS mykey 1 0
-//(integer) 8
-//redis> BITPOS mykey 1 2
-//(integer) 16
-//redis> set mykey "\x00\x00\x00"
-//"OK"
-//redis> BITPOS mykey 1
-//(integer) -1
-//redis>
+func BitCount(t *testing.T, ctx context.Context, c redis.Client) {
 
-//GETBIT
-//redis> SETBIT mykey 7 1
-//(integer) 0
-//redis> GETBIT mykey 0
-//(integer) 0
-//redis> GETBIT mykey 7
-//(integer) 1
-//redis> GETBIT mykey 100
-//(integer) 0
-//redis>
+	r1, err := c.Set(ctx, "mykey", "foobar")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r1, true)
 
-//SETBIT
-//redis> SETBIT mykey 7 1
-//(integer) 0
-//redis> SETBIT mykey 7 0
-//(integer) 1
-//redis> GET mykey
-//"\u0000"
-//redis>
+	r2, err := c.BitCount(ctx, "mykey")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r2, int64(26))
+
+	r3, err := c.BitCount(ctx, "mykey", 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r3, int64(4))
+
+	r4, err := c.BitCount(ctx, "mykey", 1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r4, int64(6))
+}
+
+func BitOpAnd(t *testing.T, ctx context.Context, c redis.Client) {
+
+	r1, err := c.Set(ctx, "key1", "foobar")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r1, true)
+
+	r2, err := c.Set(ctx, "key2", "abcdef")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r2, true)
+
+	r3, err := c.BitOpAnd(ctx, "dest", "key1", "key2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r3, int64(6))
+
+	r4, err := c.Get(ctx, "dest")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r4, "`bc`ab")
+}
+
+func BitPos(t *testing.T, ctx context.Context, c redis.Client) {
+
+	r1, err := c.Set(ctx, "mykey", "\xff\xf0\x00")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r1, true)
+
+	r2, err := c.BitPos(ctx, "mykey", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r2, int64(12))
+
+	r3, err := c.Set(ctx, "mykey", "\x00\xff\xf0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r3, true)
+
+	r4, err := c.BitPos(ctx, "mykey", 1, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r4, int64(8))
+
+	r5, err := c.BitPos(ctx, "mykey", 1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r5, int64(16))
+
+	r6, err := c.Set(ctx, "mykey", "\x00\x00\x00")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r6, true)
+
+	r7, err := c.BitPos(ctx, "mykey", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r7, int64(-1))
+}
+
+func GetBit(t *testing.T, ctx context.Context, c redis.Client) {
+
+	r1, err := c.SetBit(ctx, "mykey", 7, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r1, int64(0))
+
+	r2, err := c.GetBit(ctx, "mykey", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r2, int64(0))
+
+	r3, err := c.GetBit(ctx, "mykey", 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r3, int64(1))
+
+	r4, err := c.GetBit(ctx, "mykey", 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r4, int64(0))
+}
+
+func SetBit(t *testing.T, ctx context.Context, c redis.Client) {
+
+	r1, err := c.SetBit(ctx, "mykey", 7, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r1, int64(0))
+
+	r2, err := c.SetBit(ctx, "mykey", 7, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r2, int64(1))
+
+	r3, err := c.Get(ctx, "mykey")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r3, "\u0000")
+}
