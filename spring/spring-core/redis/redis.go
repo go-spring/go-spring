@@ -34,28 +34,32 @@ type Client interface {
 	ServerCommand
 }
 
-type Reply interface {
-	Bool() bool
-	Int64() int64
-	Float64() float64
-	String() string
-	Slice() []interface{}
-	Int64Slice() []int64
-	BoolSlice() []bool
-	StringSlice() []string
-	StringMap() map[string]string
-}
-
 type BaseCommand interface {
 	Bool(ctx context.Context, args ...interface{}) (bool, error)
 	Int64(ctx context.Context, args ...interface{}) (int64, error)
 	Float64(ctx context.Context, args ...interface{}) (float64, error)
 	String(ctx context.Context, args ...interface{}) (string, error)
 	Slice(ctx context.Context, args ...interface{}) ([]interface{}, error)
-	Int64Slice(ctx context.Context, args ...interface{}) ([]int64, error)
 	BoolSlice(ctx context.Context, args ...interface{}) ([]bool, error)
+	Int64Slice(ctx context.Context, args ...interface{}) ([]int64, error)
+	Float64Slice(ctx context.Context, args ...interface{}) ([]float64, error)
 	StringSlice(ctx context.Context, args ...interface{}) ([]string, error)
+	ZItemSlice(ctx context.Context, args ...interface{}) ([]ZItem, error)
 	StringMap(ctx context.Context, args ...interface{}) (map[string]string, error)
+}
+
+type Reply interface {
+	Bool() bool
+	Int64() int64
+	Float64() float64
+	String() string
+	Slice() []interface{}
+	BoolSlice() []bool
+	Int64Slice() []int64
+	Float64Slice() []float64
+	StringSlice() []string
+	ZItemSlice() []ZItem
+	StringMap() map[string]string
 }
 
 type BaseClient struct {
@@ -102,14 +106,6 @@ func (c *BaseClient) Slice(ctx context.Context, args ...interface{}) ([]interfac
 	return reply.Slice(), nil
 }
 
-func (c *BaseClient) Int64Slice(ctx context.Context, args ...interface{}) ([]int64, error) {
-	reply, err := c.DoFunc(ctx, args...)
-	if err != nil {
-		return nil, err
-	}
-	return reply.Int64Slice(), nil
-}
-
 func (c *BaseClient) BoolSlice(ctx context.Context, args ...interface{}) ([]bool, error) {
 	reply, err := c.DoFunc(ctx, args...)
 	if err != nil {
@@ -118,12 +114,36 @@ func (c *BaseClient) BoolSlice(ctx context.Context, args ...interface{}) ([]bool
 	return reply.BoolSlice(), nil
 }
 
+func (c *BaseClient) Int64Slice(ctx context.Context, args ...interface{}) ([]int64, error) {
+	reply, err := c.DoFunc(ctx, args...)
+	if err != nil {
+		return nil, err
+	}
+	return reply.Int64Slice(), nil
+}
+
+func (c *BaseClient) Float64Slice(ctx context.Context, args ...interface{}) ([]float64, error) {
+	reply, err := c.DoFunc(ctx, args...)
+	if err != nil {
+		return nil, err
+	}
+	return reply.Float64Slice(), nil
+}
+
 func (c *BaseClient) StringSlice(ctx context.Context, args ...interface{}) ([]string, error) {
 	reply, err := c.DoFunc(ctx, args...)
 	if err != nil {
 		return nil, err
 	}
 	return reply.StringSlice(), nil
+}
+
+func (c *BaseClient) ZItemSlice(ctx context.Context, args ...interface{}) ([]ZItem, error) {
+	reply, err := c.DoFunc(ctx, args...)
+	if err != nil {
+		return nil, err
+	}
+	return reply.ZItemSlice(), nil
 }
 
 func (c *BaseClient) StringMap(ctx context.Context, args ...interface{}) (map[string]string, error) {

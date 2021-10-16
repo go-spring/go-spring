@@ -48,14 +48,14 @@ type ListCommand interface {
 
 	// LInsertBefore https://redis.io/commands/linsert
 	// Command: LINSERT key BEFORE|AFTER pivot element
-	// Integer reply: the length of the list after the insert operation,
-	// or -1 when the value pivot was not found.
+	// Integer reply: the length of the list after the
+	// insert operation, or -1 when the value pivot was not found.
 	LInsertBefore(ctx context.Context, key string, pivot, value interface{}) (int64, error)
 
 	// LInsertAfter https://redis.io/commands/linsert
 	// Command: LINSERT key BEFORE|AFTER pivot element
-	// Integer reply: the length of the list after the insert operation,
-	// or -1 when the value pivot was not found.
+	// Integer reply: the length of the list after the
+	// insert operation, or -1 when the value pivot was not found.
 	LInsertAfter(ctx context.Context, key string, pivot, value interface{}) (int64, error)
 
 	// LLen https://redis.io/commands/llen

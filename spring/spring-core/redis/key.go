@@ -54,9 +54,9 @@ type KeyCommand interface {
 
 	// Exists https://redis.io/commands/exists
 	// Command: EXISTS key [key ...]
-	// Integer reply: The number of keys existing among the ones
-	// specified as arguments. Keys mentioned multiple times and
-	// existing are counted multiple times.
+	// Integer reply: The number of keys existing among the
+	// ones specified as arguments. Keys mentioned multiple
+	// times and existing are counted multiple times.
 	Exists(ctx context.Context, keys ...string) (int64, error)
 
 	// Expire https://redis.io/commands/expire
@@ -76,8 +76,8 @@ type KeyCommand interface {
 
 	// Persist https://redis.io/commands/persist
 	// Command: PERSIST key
-	// Integer reply: 1 if the timeout was removed, 0 if key does
-	// not exist or does not have an associated timeout.
+	// Integer reply: 1 if the timeout was removed,
+	// 0 if key does not exist or does not have an associated timeout.
 	Persist(ctx context.Context, key string) (bool, error)
 
 	// PExpire https://redis.io/commands/pexpire
@@ -92,8 +92,8 @@ type KeyCommand interface {
 
 	// PTTL https://redis.io/commands/pttl
 	// Command: PTTL key
-	// Integer reply: TTL in milliseconds, -1 if the key exists but
-	// has no associated expire, -2 if the key does not exist.
+	// Integer reply: TTL in milliseconds, -1 if the key exists
+	// but has no associated expire, -2 if the key does not exist.
 	PTTL(ctx context.Context, key string) (int64, error)
 
 	// RandomKey https://redis.io/commands/randomkey
@@ -118,8 +118,8 @@ type KeyCommand interface {
 
 	// TTL https://redis.io/commands/ttl
 	// Command: TTL key
-	// Integer reply: TTL in seconds, -1 if the key exists but has no
-	// associated expire, -2 if the key does not exist.
+	// Integer reply: TTL in seconds, -1 if the key exists
+	// but has no associated expire, -2 if the key does not exist.
 	TTL(ctx context.Context, key string) (int64, error)
 
 	// Type https://redis.io/commands/type

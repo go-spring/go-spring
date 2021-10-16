@@ -74,8 +74,8 @@ type SetCommand interface {
 
 	// SIsMember https://redis.io/commands/sismember
 	// Command: SISMEMBER key member
-	// Integer reply: 1 if the element is a member of the set, 0 if the
-	// element is not a member of the set, or if key does not exist.
+	// Integer reply: 1 if the element is a member of the set,
+	// 0 if the element is not a member of the set, or if key does not exist.
 	SIsMember(ctx context.Context, key string, member interface{}) (bool, error)
 
 	// SMembers https://redis.io/commands/smembers
@@ -91,8 +91,8 @@ type SetCommand interface {
 
 	// SMove https://redis.io/commands/smove
 	// Command: SMOVE source destination member
-	// Integer reply: 1 if the element is moved, 0 if the element is
-	// not a member of source and no operation was performed.
+	// Integer reply: 1 if the element is moved, 0 if the element
+	// is not a member of source and no operation was performed.
 	SMove(ctx context.Context, source, destination string, member interface{}) (bool, error)
 
 	// SPop https://redis.io/commands/spop
