@@ -372,29 +372,6 @@ func SMove(t *testing.T, ctx context.Context, c redis.Client) {
 	assert.Equal(t, r6, []string{"three", "two"})
 }
 
-//SPOP
-//redis> SADD myset "one"
-//(integer) 1
-//redis> SADD myset "two"
-//(integer) 1
-//redis> SADD myset "three"
-//(integer) 1
-//redis> SPOP myset
-//"one"
-//redis> SMEMBERS myset
-//1) "three"
-//2) "two"
-//redis> SADD myset "four"
-//(integer) 1
-//redis> SADD myset "five"
-//(integer) 1
-//redis> SPOP myset 3
-//1) "three"
-//2) "four"
-//3) "five"
-//redis> SMEMBERS myset
-//1) "two"
-//redis>
 func SPop(t *testing.T, ctx context.Context, c redis.Client) {
 
 	r1, err := c.SAdd(ctx, "myset", "one")
@@ -415,43 +392,21 @@ func SPop(t *testing.T, ctx context.Context, c redis.Client) {
 	}
 	assert.Equal(t, r3, int64(1))
 
-	// SPOP 将随机元素从集合中移除并返回
-	_, err = c.SPop(ctx, "myset")
+	r4, err := c.SPop(ctx, "myset")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	r5, err := c.SCard(ctx, "myset")
+	r5, err := c.SMembers(ctx, "myset")
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r5, int64(2))
 
-	r6, err := c.SMembers(ctx, "myset")
-	if err != nil {
-		t.Fatal(r5)
-	}
-	assert.Equal(t, len(r6), 2)
-
-	//sort.Strings(r6)
-	//assert.Equal(t, r6, []string{"one", "two"})
+	r6 := append([]string{r4}, r5...)
+	sort.Strings(r6)
+	assert.Equal(t, r6, []string{"one", "three", "two"})
 }
 
-//SRANDMEMBER
-//redis> SADD myset one two three
-//(integer) 3
-//redis> SRANDMEMBER myset
-//"two"
-//redis> SRANDMEMBER myset 2
-//1) "three"
-//2) "two"
-//redis> SRANDMEMBER myset -5
-//1) "two"
-//2) "one"
-//3) "one"
-//4) "three"
-//5) "three"
-//redis>
 func SRandMember(t *testing.T, ctx context.Context, c redis.Client) {
 
 	r1, err := c.SAdd(ctx, "myset", "one", "two", "three")

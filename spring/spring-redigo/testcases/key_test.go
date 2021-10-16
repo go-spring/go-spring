@@ -70,10 +70,6 @@ func TestRenameNX(t *testing.T) {
 	RunCase(t, testcases.RenameNX)
 }
 
-func TestRestore(t *testing.T) {
-	RunCase(t, testcases.Restore)
-}
-
 func TestTouch(t *testing.T) {
 	RunCase(t, testcases.Touch)
 }
