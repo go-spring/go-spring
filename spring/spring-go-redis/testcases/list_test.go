@@ -38,10 +38,6 @@ func TestLMove(t *testing.T) {
 	RunCase(t, testcases.LMove)
 }
 
-func TestLMPop(t *testing.T) {
-	RunCase(t, testcases.LMPop)
-}
-
 func TestLPop(t *testing.T) {
 	RunCase(t, testcases.LPop)
 }

@@ -80,8 +80,17 @@ type ListCommand interface {
 
 	// LPos https://redis.io/commands/lpos
 	// Command: LPOS key element [RANK rank] [COUNT num-matches] [MAXLEN len]
-	// The command returns the integer representing the matching element, or nil if there is no match.
-	LPos(ctx context.Context, key string, value string, args ...interface{}) (int64, error)
+	// The command returns the integer representing the matching element,
+	// or nil if there is no match. However, if the COUNT option is given
+	// the command returns an array (empty if there are no matches).
+	LPos(ctx context.Context, key string, value interface{}, args ...interface{}) (int64, error)
+
+	// LPosN https://redis.io/commands/lpos
+	// Command: LPOS key element [RANK rank] [COUNT num-matches] [MAXLEN len]
+	// The command returns the integer representing the matching element,
+	// or nil if there is no match. However, if the COUNT option is given
+	// the command returns an array (empty if there are no matches).
+	LPosN(ctx context.Context, key string, value interface{}, count int64, args ...interface{}) ([]int64, error)
 
 	// LPush https://redis.io/commands/lpush
 	// Command: LPUSH key element [element ...]
@@ -174,9 +183,14 @@ func (c *BaseClient) LPopN(ctx context.Context, key string, count int) ([]string
 	return c.StringSlice(ctx, args...)
 }
 
-func (c *BaseClient) LPos(ctx context.Context, key string, value string, args ...interface{}) (int64, error) {
+func (c *BaseClient) LPos(ctx context.Context, key string, value interface{}, args ...interface{}) (int64, error) {
 	args = append([]interface{}{CommandLPos, key, value}, args...)
 	return c.Int64(ctx, args...)
+}
+
+func (c *BaseClient) LPosN(ctx context.Context, key string, value interface{}, count int64, args ...interface{}) ([]int64, error) {
+	args = append([]interface{}{CommandLPos, key, value, "COUNT", count}, args...)
+	return c.Int64Slice(ctx, args...)
 }
 
 func (c *BaseClient) LPush(ctx context.Context, key string, values ...interface{}) (int64, error) {

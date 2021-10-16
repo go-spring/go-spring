@@ -104,90 +104,47 @@ func LLen(t *testing.T, ctx context.Context, c redis.Client) {
 
 func LMove(t *testing.T, ctx context.Context, c redis.Client) {
 
-	//r1, err := c.RPush(ctx, "mylist", "one")
-	//if err != nil {
-	//	t.Fatal(err)
-	//}
-	//assert.Equal(t, r1, int64(1))
-	//
-	//r2, err := c.RPush(ctx, "mylist", "two")
-	//if err != nil {
-	//	t.Fatal(err)
-	//}
-	//assert.Equal(t, r2, int64(2))
-	//
-	//r3, err := c.RPush(ctx, "mylist", "three")
-	//if err != nil {
-	//	t.Fatal(err)
-	//}
-	//assert.Equal(t, r3, int64(3))
-	//
-	//r4, err := c.LMove(ctx, "mylist", "myotherlist", "RIGHT", "LEFT")
-	//if err != nil {
-	//	t.Fatal(err)
-	//}
-	//assert.Equal(t, r4, "three")
-	//
-	//r5, err := c.LMove(ctx, "mylist", "myotherlist", "LEFT", "RIGHT")
-	//if err != nil {
-	//	t.Fatal(err)
-	//}
-	//assert.Equal(t, r5, "one")
-	//
-	//r6, err := c.LRange(ctx, "mylist", 0, -1)
-	//if err != nil {
-	//	t.Fatal(err)
-	//}
-	//assert.Equal(t, r6, "two")
-	//
-	//r7, err := c.LRange(ctx, "myotherlist", 0, -1)
-	//if err != nil {
-	//	t.Fatal(err)
-	//}
-	//assert.Equal(t, r7, []string{"three", "one"})
-}
+	r1, err := c.RPush(ctx, "mylist", "one")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r1, int64(1))
 
-func LMPop(t *testing.T, ctx context.Context, c redis.Client) {
+	r2, err := c.RPush(ctx, "mylist", "two")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r2, int64(2))
 
-	//LMPOP
-	//redis> LMPOP 2 non1 non2 LEFT COUNT 10
-	//ERR Don't know what to do for "lmpop"
-	//redis> LPUSH mylist "one" "two" "three" "four" "five"
-	//(integer) 5
-	//redis> LMPOP 1 mylist LEFT
-	//ERR Don't know what to do for "lmpop"
-	//redis> LRANGE mylist 0 -1
-	//1) "five"
-	//2) "four"
-	//3) "three"
-	//4) "two"
-	//5) "one"
-	//redis> LMPOP 1 mylist RIGHT COUNT 10
-	//ERR Don't know what to do for "lmpop"
-	//redis> LPUSH mylist "one" "two" "three" "four" "five"
-	//(integer) 10
-	//redis> LPUSH mylist2 "a" "b" "c" "d" "e"
-	//(integer) 5
-	//redis> LMPOP 2 mylist mylist2 right count 3
-	//ERR Don't know what to do for "lmpop"
-	//redis> LRANGE mylist 0 -1
-	//1) "five"
-	// 2) "four"
-	// 3) "three"
-	// 4) "two"
-	// 5) "one"
-	// 6) "five"
-	// 7) "four"
-	// 8) "three"
-	// 9) "two"
-	//10) "one"
-	//redis> LMPOP 2 mylist mylist2 right count 5
-	//ERR Don't know what to do for "lmpop"
-	//redis> LMPOP 2 mylist mylist2 right count 10
-	//ERR Don't know what to do for "lmpop"
-	//redis> EXISTS mylist mylist2
-	//(integer) 2
-	//redis>
+	r3, err := c.RPush(ctx, "mylist", "three")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r3, int64(3))
+
+	r4, err := c.LMove(ctx, "mylist", "myotherlist", "RIGHT", "LEFT")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r4, "three")
+
+	r5, err := c.LMove(ctx, "mylist", "myotherlist", "LEFT", "RIGHT")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r5, "one")
+
+	r6, err := c.LRange(ctx, "mylist", 0, -1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r6, []string{"two"})
+
+	r7, err := c.LRange(ctx, "myotherlist", 0, -1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r7, []string{"three", "one"})
 }
 
 func LPop(t *testing.T, ctx context.Context, c redis.Client) {
@@ -204,45 +161,38 @@ func LPop(t *testing.T, ctx context.Context, c redis.Client) {
 	}
 	assert.Equal(t, r2, "one")
 
-	//r3, err := c.LPopN(ctx, "mylist", 2)
-	//if err != nil {
-	//	t.Fatal(err)
-	//}
-	//assert.Equal(t, r3, []string{"two", "three"})
-	//
-	//r4, err := c.LRange(ctx, "mylist", 0, -1)
-	//if err != nil {
-	//	t.Fatal(err)
-	//}
-	//assert.Equal(t, r4, []string{"four", "five"})
+	r3, err := c.LPopN(ctx, "mylist", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r3, []string{"two", "three"})
+
+	r4, err := c.LRange(ctx, "mylist", 0, -1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r4, []string{"four", "five"})
 }
 
 func LPos(t *testing.T, ctx context.Context, c redis.Client) {
 
-	//r1, err := c.RPush(ctx, "mylist", 'a', 'b', 'c', 'd', 1, 2, 3, 4, 3, 3, 3)
-	//if err != nil {
-	//	t.Fatal(err)
-	//}
-	//assert.Equal(t, r1, int64(11))
-	//
-	//// c.LPos(ctx, "mylist", "3")
-	//
-	//r3, err := c.LPos(ctx, "mylist", "3", 0, 2)
-	//if err != nil {
-	//	t.Fatal(err)
-	//}
-	//assert.Equal(t, r3, []interface{}{int64(8), int64(9), int64(10)})
+	r1, err := c.RPush(ctx, "mylist", 'a', 'b', 'c', 'd', 1, 2, 3, 4, 3, 3, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r1, int64(11))
 
-	//LPOS
-	//redis> RPUSH mylist a b c d 1 2 3 4 3 3 3
-	//(integer) 11
-	//redis> LPOS mylist 3
-	//(integer) 6
-	//redis> LPOS mylist 3 COUNT 0 RANK 2
-	//1) (integer) 8
-	//2) (integer) 9
-	//3) (integer) 10
-	//redis>
+	r2, err := c.LPos(ctx, "mylist", 3)
+	if err != nil {
+		return
+	}
+	assert.Equal(t, r2, int64(6))
+
+	r3, err := c.LPosN(ctx, "mylist", "3", 0, "RANK", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r3, []int64{8, 9, 10})
 }
 
 func LPush(t *testing.T, ctx context.Context, c redis.Client) {
@@ -469,17 +419,17 @@ func RPop(t *testing.T, ctx context.Context, c redis.Client) {
 	}
 	assert.Equal(t, r2, "five")
 
-	//r3, err := c.RPopN(ctx, "mylist", 2)
-	//if err != nil {
-	//	t.Fatal(err)
-	//}
-	//assert.Equal(t, r3, []string{"four", "three"})
-	//
-	//r4, err := c.LRange(ctx, "mylist", 0, -1)
-	//if err != nil {
-	//	t.Fatal(err)
-	//}
-	//assert.Equal(t, r4, []string{"one", "two"})
+	r3, err := c.RPopN(ctx, "mylist", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r3, []string{"four", "three"})
+
+	r4, err := c.LRange(ctx, "mylist", 0, -1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r4, []string{"one", "two"})
 }
 
 func RPopLPush(t *testing.T, ctx context.Context, c redis.Client) {

@@ -110,22 +110,20 @@ func Get(t *testing.T, ctx context.Context, c redis.Client) {
 
 func GetDel(t *testing.T, ctx context.Context, c redis.Client) {
 
-	// TODO 需要使用 6.2.0 以上的 redis 服务器。
+	r1, err := c.Set(ctx, "mykey", "Hello")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r1, true)
 
-	//r1, err := c.Set(ctx, "mykey", "Hello")
-	//if err != nil {
-	//	t.Fatal(err)
-	//}
-	//assert.Equal(t, r1, true)
-	//
-	//r2, err := c.GetDel(ctx, "mykey")
-	//if err != nil {
-	//	t.Fatal(err)
-	//}
-	//assert.Equal(t, r2, "Hello")
-	//
-	//_, err = c.Get(ctx, "mykey")
-	//assert.Equal(t, err, redis.ErrNil)
+	r2, err := c.GetDel(ctx, "mykey")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r2, "Hello")
+
+	_, err = c.Get(ctx, "mykey")
+	assert.Equal(t, err, redis.ErrNil)
 }
 
 func GetRange(t *testing.T, ctx context.Context, c redis.Client) {
