@@ -31,9 +31,9 @@
         <branch>main</branch>
     </project>
     <project>
-        <name>spring-rabbitmq</name>
-        <dir>spring/spring-rabbitmq</dir>
-        <url>https://github.com/go-spring/spring-rabbitmq.git</url>
+        <name>spring-rabbit</name>
+        <dir>spring/spring-rabbit</dir>
+        <url>https://github.com/go-spring/spring-rabbit.git</url>
         <branch>main</branch>
     </project>
     <project>
@@ -97,9 +97,9 @@
         <branch>main</branch>
     </project>
     <project>
-        <name>starter-rabbitmq</name>
-        <dir>starter/starter-rabbitmq</dir>
-        <url>https://github.com/go-spring/starter-rabbitmq.git</url>
+        <name>starter-rabbit</name>
+        <dir>starter/starter-rabbit</dir>
+        <url>https://github.com/go-spring/starter-rabbit.git</url>
         <branch>main</branch>
     </project>
     <project>

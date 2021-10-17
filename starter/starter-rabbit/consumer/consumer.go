@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package StarterRabbitMQConsumer
+package StarterRabbitConsumer
 
 import (
 	"context"
@@ -23,7 +23,7 @@ import (
 	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/mq"
-	"github.com/go-spring/starter-rabbitmq/server"
+	"github.com/go-spring/starter-rabbit/server"
 )
 
 func init() {
@@ -31,7 +31,7 @@ func init() {
 }
 
 type Starter struct {
-	Server *StarterRabbitMQServer.AMQPServer `autowire:""`
+	Server *StarterRabbitServer.AMQPServer `autowire:""`
 }
 
 func (starter *Starter) OnStartApp(ctx gs.Environment) {

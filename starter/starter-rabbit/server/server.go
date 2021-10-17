@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-// TODO 提取公共部分到 spring-rabbitmq 包
-package StarterRabbitMQServer
+// TODO 提取公共部分到 spring-rabbit 包
+package StarterRabbitServer
 
 import (
 	"github.com/go-spring/spring-core/gs"

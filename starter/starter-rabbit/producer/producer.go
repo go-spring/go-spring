@@ -14,14 +14,14 @@
  * limitations under the License.
  */
 
-package StarterRabbitMQProducer
+package StarterRabbitProducer
 
 import (
 	"context"
 
 	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/mq"
-	"github.com/go-spring/starter-rabbitmq/server"
+	"github.com/go-spring/starter-rabbit/server"
 	"github.com/streadway/amqp"
 )
 
@@ -30,7 +30,7 @@ func init() {
 }
 
 type Sender struct {
-	Server *StarterRabbitMQServer.AMQPServer `autowire:""`
+	Server *StarterRabbitServer.AMQPServer `autowire:""`
 }
 
 func (sender *Sender) SendMessage(ctx context.Context, msg mq.Message) error {
