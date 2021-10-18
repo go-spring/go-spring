@@ -31,6 +31,7 @@ type Client interface {
 	HashCommand
 	ListCommand
 	SetCommand
+	ZSetCommand
 	ServerCommand
 }
 
