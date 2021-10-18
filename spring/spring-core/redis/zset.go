@@ -133,7 +133,7 @@ type ZSetCommand interface {
 	// ZRandMember https://redis.io/commands/zrandmember
 	// Command: ZRANDMEMBER key [count [WITHSCORES]]
 	// Bulk Reply with the randomly selected element, or nil when key does not exist.
-	ZRandMember(ctx context.Context, key string) ([]string, error)
+	ZRandMember(ctx context.Context, key string) (string, error)
 
 	// ZRandMemberN https://redis.io/commands/zrandmember
 	// Command: ZRANDMEMBER key [count [WITHSCORES]]
@@ -254,7 +254,7 @@ func (c *BaseClient) ZCount(ctx context.Context, key, min, max string) (int64, e
 }
 
 func (c *BaseClient) ZDiff(ctx context.Context, keys ...string) ([]string, error) {
-	args := []interface{}{CommandZDiff}
+	args := []interface{}{CommandZDiff, len(keys)}
 	for _, key := range keys {
 		args = append(args, key)
 	}
@@ -262,7 +262,7 @@ func (c *BaseClient) ZDiff(ctx context.Context, keys ...string) ([]string, error
 }
 
 func (c *BaseClient) ZDiffWithScores(ctx context.Context, keys ...string) ([]ZItem, error) {
-	args := []interface{}{CommandZDiff}
+	args := []interface{}{CommandZDiff, len(keys)}
 	for _, key := range keys {
 		args = append(args, key)
 	}
@@ -319,9 +319,9 @@ func (c *BaseClient) ZPopMinN(ctx context.Context, key string, count int64) ([]Z
 	return c.ZItemSlice(ctx, args...)
 }
 
-func (c *BaseClient) ZRandMember(ctx context.Context, key string) ([]string, error) {
+func (c *BaseClient) ZRandMember(ctx context.Context, key string) (string, error) {
 	args := []interface{}{CommandZRandMember, key}
-	return c.StringSlice(ctx, args...)
+	return c.String(ctx, args...)
 }
 
 func (c *BaseClient) ZRandMemberN(ctx context.Context, key string, count int) ([]string, error) {
