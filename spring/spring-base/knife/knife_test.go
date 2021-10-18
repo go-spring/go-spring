@@ -24,24 +24,42 @@ import (
 	"github.com/go-spring/spring-base/knife"
 )
 
-func TestKnife(t *testing.T) {
-	ctx := context.TODO()
+func TestGet(t *testing.T) {
+	ctx := context.Background()
 
-	v := knife.Get(ctx, "a")
-	assert.Nil(t, v)
+	v, ok := knife.Get(ctx, "a")
+	assert.False(t, ok)
 
-	knife.Set(ctx, "a", "b")
+	err := knife.Set(ctx, "a", "b")
+	assert.Equal(t, err, knife.ErrUninitialized)
 
-	v = knife.Get(ctx, "a")
-	assert.Nil(t, v)
+	v, ok = knife.Get(ctx, "a")
+	assert.False(t, ok)
 
 	ctx = knife.New(ctx)
 
-	v = knife.Get(ctx, "a")
-	assert.Nil(t, v)
+	v, ok = knife.Get(ctx, "a")
+	assert.False(t, ok)
 
-	knife.Set(ctx, "a", "b")
+	err = knife.Set(ctx, "a", "b")
+	assert.Nil(t, err)
 
-	v = knife.Get(ctx, "a")
+	v, ok = knife.Get(ctx, "a")
 	assert.Equal(t, v, "b")
+}
+
+func TestFetch(t *testing.T) {
+	ctx := knife.New(context.Background())
+
+	err := knife.Set(ctx, "a", map[string]string{"b": "c"})
+	assert.Nil(t, err)
+
+	var m map[string]string
+	ok, err := knife.Fetch(ctx, "a", &m)
+	assert.True(t, ok)
+
+	var b bool
+	ok, err = knife.Fetch(ctx, "a", &b)
+	assert.False(t, ok)
+	assert.Error(t, err, "want bool but got map\\[string]string")
 }

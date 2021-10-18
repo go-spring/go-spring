@@ -233,6 +233,16 @@ func (d *BeanDefinition) export(exports ...interface{}) error {
 		if typ.Kind() != reflect.Interface {
 			return errors.New("only interface type can be exported")
 		}
+		exported := false
+		for _, export := range d.exports {
+			if typ == export {
+				exported = true
+				break
+			}
+		}
+		if exported {
+			continue
+		}
 		d.exports = append(d.exports, typ)
 	}
 	return nil

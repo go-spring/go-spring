@@ -19,38 +19,75 @@ package knife
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"reflect"
 	"sync"
 )
+
+var ErrUninitialized = errors.New("knife uninitialized")
 
 type ctxKeyType int
 
 var ctxKey ctxKeyType
 
-func cache(ctx context.Context) *sync.Map {
-	c, _ := ctx.Value(ctxKey).(*sync.Map)
-	return c
-}
-
 // New 返回带有缓存空间的 context.Context 对象。
 func New(ctx context.Context) context.Context {
-	if cache(ctx) != nil {
+	if _, ok := cache(ctx); ok {
 		return ctx
 	}
 	return context.WithValue(ctx, ctxKey, new(sync.Map))
 }
 
+func cache(ctx context.Context) (*sync.Map, bool) {
+	c, ok := ctx.Value(ctxKey).(*sync.Map)
+	return c, ok
+}
+
 // Get 从 context.Context 对象中获取 key 对应的 val。
-func Get(ctx context.Context, key string) interface{} {
-	if c := cache(ctx); c != nil {
-		v, _ := c.Load(key)
-		return v
+func Get(ctx context.Context, key string) (interface{}, bool) {
+	if c, ok := cache(ctx); ok {
+		return c.Load(key)
 	}
-	return nil
+	return nil, false
+}
+
+// Fetch 从 context.Context 对象中获取 key 对应的 val。
+func Fetch(ctx context.Context, key string, out interface{}) (bool, error) {
+
+	ov := reflect.ValueOf(out)
+	if ov.Kind() != reflect.Ptr || ov.IsNil() {
+		return false, errors.New("out should be ptr and not nil")
+	}
+
+	c, ok := cache(ctx)
+	if !ok {
+		return false, nil
+	}
+
+	v, ok := c.Load(key)
+	if !ok {
+		return false, nil
+	}
+
+	ev := ov.Elem()
+	rv := reflect.ValueOf(v)
+	if rv.Type() != ev.Type() {
+		return false, fmt.Errorf("want %s but got %T", ev.Type(), v)
+	}
+
+	ev.Set(rv)
+	return true, nil
 }
 
 // Set 将 key 及其 val 保存到 context.Context 对象。
-func Set(ctx context.Context, key string, val interface{}) {
-	if c := cache(ctx); c != nil {
-		c.Store(key, val)
+func Set(ctx context.Context, key string, val interface{}) error {
+	c, ok := cache(ctx)
+	if !ok {
+		return ErrUninitialized
 	}
+	if _, loaded := c.LoadOrStore(key, val); loaded {
+		return fmt.Errorf("duplicate set %s value", key)
+	}
+	return nil
 }
