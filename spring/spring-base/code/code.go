@@ -14,27 +14,17 @@
  * limitations under the License.
  */
 
-package util_test
+package code
 
 import (
-	"testing"
-
-	"github.com/go-spring/spring-base/assert"
-	"github.com/go-spring/spring-base/code"
-	"github.com/go-spring/spring-base/util"
+	"fmt"
+	"path/filepath"
+	"runtime"
 )
 
-func TestError(t *testing.T) {
-
-	e0 := util.Error(code.Line(), "error")
-	assert.Error(t, e0, "error_test.go:29 error")
-
-	e1 := util.Errorf(code.Line(), "error: %d", 0)
-	assert.Error(t, e1, "error_test.go:32 error: 0")
-
-	e2 := util.Wrap(e0, code.Line(), "error")
-	assert.Error(t, e2, "error_test.go:35 error\nerror_test.go:29 error")
-
-	e3 := util.Wrapf(e1, code.Line(), "error: %d", 1)
-	assert.Error(t, e3, "error_test.go:38 error: 1\nerror_test.go:32 error: 0")
+// Line 获取当前调用点的文件信息，希望未来可以实现编译期计算。
+func Line() string {
+	_, file, line, _ := runtime.Caller(1)
+	_, file = filepath.Split(file)
+	return fmt.Sprintf("%s:%d", file, line)
 }

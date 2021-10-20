@@ -19,8 +19,6 @@ package util
 import (
 	"errors"
 	"fmt"
-	"path/filepath"
-	"runtime"
 )
 
 // UnsupportedMethod 如果某个方法禁止被调用则可以抛出此错误。
@@ -28,13 +26,6 @@ var UnsupportedMethod = errors.New("unsupported method")
 
 // UnimplementedMethod 如果某个方法未实现则可以抛出此错误。
 var UnimplementedMethod = errors.New("unimplemented method")
-
-// CurrentFileLine 获取当前调用点的文件信息，希望未来可以实现编译期计算。
-func CurrentFileLine() string {
-	_, file, line, _ := runtime.Caller(1)
-	_, file = filepath.Split(file)
-	return fmt.Sprintf("%s:%d", file, line)
-}
 
 var WrapFormat = func(err error, fileline string, format string, a ...interface{}) error {
 	if err == nil {
