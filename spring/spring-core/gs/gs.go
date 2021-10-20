@@ -506,14 +506,17 @@ func (c *container) wireBean(b *BeanDefinition, stack *wiringStack) error {
 		return nil
 	}
 
+	haveDestroy := false
+
 	defer func() {
-		if b.destroy != nil {
+		if haveDestroy {
 			stack.destroyers.Remove(stack.destroyers.Back())
 		}
 	}()
 
 	// 记录注入路径上的销毁函数及其执行的先后顺序。
 	if _, ok := b.Interface().(BeanDestroy); ok || b.destroy != nil {
+		haveDestroy = true
 		d := stack.saveDestroyer(b)
 		if i := stack.destroyers.Back(); i != nil {
 			d.after(i.Value.(*BeanDefinition))

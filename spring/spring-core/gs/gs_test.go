@@ -2889,3 +2889,37 @@ func TestLazy(t *testing.T) {
 		assert.Nil(t, err)
 	}
 }
+
+type memory struct {
+}
+
+func (m *memory) OnInit(e gs.Environment) error {
+	fmt.Println("memory.OnInit")
+	return nil
+}
+
+func (m *memory) OnDestroy() {
+	fmt.Println("memory.OnDestroy")
+}
+
+type table struct {
+	_ *memory `autowire:""`
+}
+
+func (t *table) OnInit(e gs.Environment) error {
+	fmt.Println("table.OnInit")
+	return nil
+}
+
+func (t *table) OnDestroy() {
+	fmt.Println("table.OnDestroy")
+}
+
+func TestNew(t *testing.T) {
+	c := gs.New()
+	c.Object(new(memory))
+	c.Object(new(table)).Name("aaa")
+	c.Object(new(table)).Name("bbb")
+	err := c.Refresh()
+	assert.Nil(t, err)
+}
