@@ -67,7 +67,7 @@ func (starter *Starter) startContainers(ctx gs.Environment) {
 		c := container
 		ctx.Go(func(_ context.Context) {
 			if err := c.Start(); err != nil && err != http.ErrServerClosed {
-				gs.ShutDown(err)
+				gs.ShutDown(err.Error())
 			}
 		})
 	}
