@@ -18,6 +18,7 @@ package SpringGin
 
 import (
 	"context"
+	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"mime/multipart"
@@ -26,7 +27,6 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/go-spring/spring-base/json"
 	"github.com/go-spring/spring-base/knife"
 	"github.com/go-spring/spring-core/validator"
 	"github.com/go-spring/spring-core/web"
