@@ -19,6 +19,7 @@ package SpringRedigo
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"github.com/go-spring/spring-core/redis"
 	g "github.com/gomodule/redigo/redis"
@@ -57,7 +58,7 @@ func toBool(val interface{}) (bool, error) {
 	case string:
 		return v == "OK", nil
 	default:
-		return false, fmt.Errorf("redis: unexpected type=%T for bool", v)
+		return false, fmt.Errorf("redis: unexpected type %T for bool", v)
 	}
 }
 
@@ -123,16 +124,21 @@ func (r *reply) ZItemSlice() ([]redis.ZItem, error) {
 		return nil, err
 	}
 	val := make([]redis.ZItem, len(slice)/2)
-	for i := 0; i < len(slice); i += 2 {
-		member, ok := slice[i].(string)
+	for i := 0; i < len(val); i++ {
+		idx := 2 * i
+		member, ok := slice[idx].([]uint8)
 		if !ok {
-			return nil, fmt.Errorf("redis: unexpected type=%T for string", slice[i])
+			return nil, fmt.Errorf("redis: unexpected type %T for string", slice[i])
 		}
-		score, ok := slice[i+1].(float64)
+		score, ok := slice[idx+1].([]uint8)
 		if !ok {
-			return nil, fmt.Errorf("redis: unexpected type=%T for float64", slice[i+1])
+			return nil, fmt.Errorf("redis: unexpected type %T for float64", slice[i+1])
 		}
-		val[i] = redis.ZItem{Score: score, Member: member}
+		score0, err := strconv.ParseFloat(string(score), 64)
+		if err != nil {
+			return nil, err
+		}
+		val[i] = redis.ZItem{Score: score0, Member: string(member)}
 	}
 	return val, nil
 }

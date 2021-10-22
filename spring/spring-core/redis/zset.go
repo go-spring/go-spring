@@ -230,7 +230,7 @@ type ZSetCommand interface {
 	// ZUnionWithScores https://redis.io/commands/zunion
 	// Command: ZUNION numkeys key [key ...] [WEIGHTS weight [weight ...]] [AGGREGATE SUM|MIN|MAX] [WITHSCORES]
 	// Array reply: the result of union.
-	ZUnionWithScores(ctx context.Context, args ...interface{}) ([]string, error)
+	ZUnionWithScores(ctx context.Context, args ...interface{}) ([]ZItem, error)
 
 	// ZUnionStore https://redis.io/commands/zunionstore
 	// Command: ZUNIONSTORE destination numkeys key [key ...] [WEIGHTS weight [weight ...]] [AGGREGATE SUM|MIN|MAX]
@@ -418,10 +418,10 @@ func (c *BaseClient) ZUnion(ctx context.Context, args ...interface{}) ([]string,
 	return c.StringSlice(ctx, args...)
 }
 
-func (c *BaseClient) ZUnionWithScores(ctx context.Context, args ...interface{}) ([]string, error) {
+func (c *BaseClient) ZUnionWithScores(ctx context.Context, args ...interface{}) ([]ZItem, error) {
 	args = append([]interface{}{CommandZUnion}, args...)
 	args = append(args, "WITHSCORES")
-	return c.StringSlice(ctx, args...)
+	return c.ZItemSlice(ctx, args...)
 }
 
 func (c *BaseClient) ZUnionStore(ctx context.Context, dest string, args ...interface{}) (int64, error) {

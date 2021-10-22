@@ -48,7 +48,7 @@ func ZAdd(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, len(r4), 4)
+	assert.Equal(t, r4, []redis.ZItem{{1, "one"}, {1, "uno"}, {2, "two"}, {3, "three"}})
 }
 
 func ZCard(t *testing.T, ctx context.Context, c redis.Client) {
@@ -141,13 +141,13 @@ func ZDiff(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, len(r6), 1)
+	assert.Equal(t, r6, []string{"three"})
 
 	r7, err := c.ZDiffWithScores(ctx, "zset1", "zset2")
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, len(r7), 1)
+	assert.Equal(t, r7, []redis.ZItem{{3, "three"}})
 }
 
 func ZIncrBy(t *testing.T, ctx context.Context, c redis.Client) {
@@ -174,7 +174,7 @@ func ZIncrBy(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, len(r4), 2)
+	assert.Equal(t, r4, []redis.ZItem{{2, "two"}, {3, "one"}})
 }
 
 func ZInter(t *testing.T, ctx context.Context, c redis.Client) {
@@ -213,13 +213,13 @@ func ZInter(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, len(r6), 2)
+	assert.Equal(t, r6, []string{"one", "two"})
 
 	r7, err := c.ZInterWithScores(ctx, 2, "zset1", "zset2")
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, len(r7), 2)
+	assert.Equal(t, r7, []redis.ZItem{{2, "one"}, {4, "two"}})
 }
 
 func ZLexCount(t *testing.T, ctx context.Context, c redis.Client) {
@@ -240,7 +240,7 @@ func ZLexCount(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r3, int64(r3))
+	assert.Equal(t, r3, int64(7))
 
 	r4, err := c.ZLexCount(ctx, "myzset", "[b", "[f")
 	if err != nil {
@@ -263,12 +263,11 @@ func ZMScore(t *testing.T, ctx context.Context, c redis.Client) {
 	}
 	assert.Equal(t, r2, int64(1))
 
-	// redis: unexpected type=<nil> for Float64
 	r3, err := c.ZMScore(ctx, "myzset", "one", "two", "nofield")
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, len(r3), 2)
+	assert.Equal(t, r3, []float64{1, 2, 0})
 }
 
 func ZPopMax(t *testing.T, ctx context.Context, c redis.Client) {
@@ -295,7 +294,7 @@ func ZPopMax(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, len(r4), 1)
+	assert.Equal(t, r4, []redis.ZItem{{3, "three"}})
 }
 
 func ZPopMin(t *testing.T, ctx context.Context, c redis.Client) {
@@ -322,8 +321,7 @@ func ZPopMin(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, len(r4), 1)
-
+	assert.Equal(t, r4, []redis.ZItem{{1, "one"}})
 }
 
 func ZRandMember(t *testing.T, ctx context.Context, c redis.Client) {
@@ -377,25 +375,25 @@ func ZRange(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, len(r4), 3)
+	assert.Equal(t, r4, []string{"one", "two", "three"})
 
 	r5, err := c.ZRange(ctx, "myzset", 2, 3)
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, len(r5), 1)
+	assert.Equal(t, r5, []string{"three"})
 
 	r6, err := c.ZRange(ctx, "myzset", -2, -1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, len(r6), 2)
+	assert.Equal(t, r6, []string{"two", "three"})
 
 	r7, err := c.ZRangeWithScores(ctx, "myzset", 0, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, len(r7), 2)
+	assert.Equal(t, r7, []redis.ZItem{{1, "one"}, {2, "two"}})
 }
 
 func ZRangeByLex(t *testing.T, ctx context.Context, c redis.Client) {
@@ -410,19 +408,19 @@ func ZRangeByLex(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, len(r2), 3)
+	assert.Equal(t, r2, []string{"a", "b", "c"})
 
 	r3, err := c.ZRangeByLex(ctx, "myzset", "-", "(c")
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, len(r3), 2)
+	assert.Equal(t, r3, []string{"a", "b"})
 
 	r4, err := c.ZRangeByLex(ctx, "myzset", "[aaa", "(g")
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, len(r4), 5)
+	assert.Equal(t, r4, []string{"b", "c", "d", "e", "f"})
 }
 
 func ZRangeByScore(t *testing.T, ctx context.Context, c redis.Client) {
@@ -449,19 +447,19 @@ func ZRangeByScore(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, len(r4), 3)
+	assert.Equal(t, r4, []string{"one", "two", "three"})
 
 	r5, err := c.ZRangeByScore(ctx, "myzset", "1", "2")
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, len(r5), 2)
+	assert.Equal(t, r5, []string{"one", "two"})
 
 	r6, err := c.ZRangeByScore(ctx, "myzset", "(1", "2")
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, len(r6), 1)
+	assert.Equal(t, r6, []string{"two"})
 
 	r7, err := c.ZRangeByScore(ctx, "myzset", "(1", "(2")
 	if err != nil {
@@ -496,13 +494,8 @@ func ZRank(t *testing.T, ctx context.Context, c redis.Client) {
 	}
 	assert.Equal(t, r4, int64(2))
 
-	r5, err := c.ZRank(ctx, "myzset", "four")
-	if err == redis.ErrNil {
-		assert.Equal(t, r5, int64(-1))
-	} else {
-		t.Fatal(err)
-	}
-
+	_, err = c.ZRank(ctx, "myzset", "four")
+	assert.Equal(t, err, redis.ErrNil)
 }
 
 func ZRem(t *testing.T, ctx context.Context, c redis.Client) {
@@ -535,7 +528,7 @@ func ZRem(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, len(r5), 2)
+	assert.Equal(t, r5, []redis.ZItem{{1, "one"}, {3, "three"}})
 }
 
 func ZRemRangeByLex(t *testing.T, ctx context.Context, c redis.Client) {
@@ -556,7 +549,9 @@ func ZRemRangeByLex(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, len(r3), 10)
+	assert.Equal(t, r3, []string{
+		"ALPHA", "aaaa", "alpha", "b", "c", "d", "e", "foo", "zap", "zip",
+	})
 
 	r4, err := c.ZRemRangeByLex(ctx, "myzset", "[alpha", "[omega")
 	if err != nil {
@@ -568,7 +563,7 @@ func ZRemRangeByLex(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, len(r5), 4)
+	assert.Equal(t, r5, []string{"ALPHA", "aaaa", "zap", "zip"})
 }
 
 func ZRemRangeByRank(t *testing.T, ctx context.Context, c redis.Client) {
@@ -601,7 +596,7 @@ func ZRemRangeByRank(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, len(r5), 1)
+	assert.Equal(t, r5, []redis.ZItem{{3, "three"}})
 }
 
 func ZRemRangeByScore(t *testing.T, ctx context.Context, c redis.Client) {
@@ -630,11 +625,11 @@ func ZRemRangeByScore(t *testing.T, ctx context.Context, c redis.Client) {
 	}
 	assert.Equal(t, r4, int64(1))
 
-	r5, err := c.ZRange(ctx, "myzset", 0, -1)
+	r5, err := c.ZRangeWithScores(ctx, "myzset", 0, -1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, len(r5), 2)
+	assert.Equal(t, r5, []redis.ZItem{{2, "two"}, {3, "three"}})
 }
 
 func ZRevRange(t *testing.T, ctx context.Context, c redis.Client) {
@@ -661,19 +656,19 @@ func ZRevRange(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, len(r4), 3)
+	assert.Equal(t, r4, []string{"three", "two", "one"})
 
 	r5, err := c.ZRevRange(ctx, "myzset", 2, 3)
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, len(r5), 1)
+	assert.Equal(t, r5, []string{"one"})
 
 	r6, err := c.ZRevRange(ctx, "myzset", -2, -1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, len(r6), 2)
+	assert.Equal(t, r6, []string{"two", "one"})
 }
 
 func ZRevRangeByLex(t *testing.T, ctx context.Context, c redis.Client) {
@@ -688,19 +683,19 @@ func ZRevRangeByLex(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, len(r2), 3)
+	assert.Equal(t, r2, []string{"c", "b", "a"})
 
 	r3, err := c.ZRevRangeByLex(ctx, "myzset", "(c", "-")
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, len(r3), 2)
+	assert.Equal(t, r3, []string{"b", "a"})
 
 	r4, err := c.ZRevRangeByLex(ctx, "myzset", "(g", "[aaa")
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, len(r4), 5)
+	assert.Equal(t, r4, []string{"f", "e", "d", "c", "b"})
 }
 
 func ZRevRangeByScore(t *testing.T, ctx context.Context, c redis.Client) {
@@ -727,19 +722,19 @@ func ZRevRangeByScore(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, len(r4), 3)
+	assert.Equal(t, r4, []string{"three", "two", "one"})
 
 	r5, err := c.ZRevRangeByScore(ctx, "myzset", "2", "1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, len(r5), 2)
+	assert.Equal(t, r5, []string{"two", "one"})
 
 	r6, err := c.ZRevRangeByScore(ctx, "myzset", "2", "(1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, len(r6), 1)
+	assert.Equal(t, r6, []string{"two"})
 
 	r7, err := c.ZRevRangeByScore(ctx, "myzset", "(2", "(1")
 	if err != nil {
@@ -774,13 +769,8 @@ func ZRevRank(t *testing.T, ctx context.Context, c redis.Client) {
 	}
 	assert.Equal(t, r4, int64(2))
 
-	r5, err := c.ZRevRank(ctx, "myzset", "four")
-	if err == redis.ErrNil {
-		assert.Equal(t, r5, int64(-1))
-	} else {
-		t.Fatal(err)
-	}
-
+	_, err = c.ZRevRank(ctx, "myzset", "four")
+	assert.Equal(t, err, redis.ErrNil)
 }
 
 func ZScore(t *testing.T, ctx context.Context, c redis.Client) {
@@ -834,7 +824,13 @@ func ZUnion(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, len(r6), 3)
+	assert.Equal(t, r6, []string{"one", "three", "two"})
+
+	r7, err := c.ZUnionWithScores(ctx, 2, "zset1", "zset2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r7, []redis.ZItem{{2, "one"}, {3, "three"}, {4, "two"}})
 }
 
 func ZUnionStore(t *testing.T, ctx context.Context, c redis.Client) {
@@ -874,4 +870,10 @@ func ZUnionStore(t *testing.T, ctx context.Context, c redis.Client) {
 		t.Fatal(err)
 	}
 	assert.Equal(t, r6, int64(3))
+
+	r7, err := c.ZRangeWithScores(ctx, "out", 0, -1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, r7, []redis.ZItem{{5, "one"}, {9, "three"}, {10, "two"}})
 }

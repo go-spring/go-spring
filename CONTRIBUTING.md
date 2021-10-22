@@ -73,6 +73,7 @@ Following information can help us to resolve the issue faster.
 * 好的架构都是在改进的过程中逐渐浮现出来的。
 * 并发程序难写在于很难想清楚所有出现并发的情况。
 * 为大公司提供框架，为小公司提供实现。
+* 方法的接收者尽量使用指针，避免不必要的指针到值的转换过程。
 
 ## 实战
 

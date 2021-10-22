@@ -59,7 +59,7 @@ func (r *reply) Bool() (bool, error) {
 	case string:
 		return v == "OK", nil
 	default:
-		return false, fmt.Errorf("redis: unexpected type=%T for bool", v)
+		return false, fmt.Errorf("redis: unexpected type %T for bool", v)
 	}
 }
 
@@ -88,35 +88,32 @@ func (r *reply) Int64Slice() ([]int64, error) {
 }
 
 func (r *reply) Float64Slice() ([]float64, error) {
-	slice, err := r.Slice()
+
+	slice, err := r.cmd.Slice()
 	if err != nil {
 		return nil, err
 	}
 
-	floats := make([]float64, 0)
-	for _, iface := range slice {
-		// 当 redis 返回 <nil>，跳出本次循环
-		if iface == nil {
-			continue
-		}
-
-		val, err := toFloat64(iface)
+	val := make([]float64, len(slice))
+	for i := range slice {
+		val[i], err = toFloat64(slice[i])
 		if err != nil {
 			return nil, err
 		}
-		floats = append(floats, val)
 	}
-	return floats, nil
+	return val, nil
 }
 
 func toFloat64(val interface{}) (float64, error) {
 	switch val := val.(type) {
+	case nil:
+		return 0, nil
 	case int64:
 		return float64(val), nil
 	case string:
 		return strconv.ParseFloat(val, 64)
 	default:
-		err := fmt.Errorf("redis: unexpected type=%T for Float64", val)
+		err := fmt.Errorf("redis: unexpected type %T for Float64", val)
 		return 0, err
 	}
 }
