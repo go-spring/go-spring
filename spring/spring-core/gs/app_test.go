@@ -17,7 +17,6 @@
 package gs_test
 
 import (
-	"errors"
 	"os"
 	"testing"
 	"time"
@@ -56,7 +55,7 @@ func TestConfig(t *testing.T) {
 		app := startApplication("testdata/config/", func(e gs.Environment) {
 			assert.Equal(t, e.GetProperty("spring.profiles.active"), "dev")
 		})
-		defer app.ShutDown(errors.New("run test end"))
+		defer app.ShutDown("run test end")
 	})
 
 	t.Run("config via env 2", func(t *testing.T) {
@@ -65,7 +64,7 @@ func TestConfig(t *testing.T) {
 		app := startApplication("testdata/config/", func(e gs.Environment) {
 			assert.Equal(t, e.GetProperty("spring.profiles.active"), "dev")
 		})
-		defer app.ShutDown(errors.New("run test end"))
+		defer app.ShutDown("run test end")
 	})
 
 	t.Run("profile via env&config 2", func(t *testing.T) {
@@ -79,6 +78,6 @@ func TestConfig(t *testing.T) {
 			//	fmt.Println(k, "=", e.GetProperty(k))
 			//}
 		})
-		defer app.ShutDown(errors.New("run test end"))
+		defer app.ShutDown("run test end")
 	})
 }
