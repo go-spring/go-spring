@@ -14,30 +14,31 @@
  * limitations under the License.
  */
 
-package factory
+package main
 
 import (
-	"context"
 	"fmt"
 
-	g "github.com/go-redis/redis/v8"
+	"github.com/go-spring/spring-base/util"
+	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/redis"
-	"github.com/go-spring/spring-go-redis"
-	"github.com/go-spring/starter-core"
+	_ "github.com/go-spring/starter-go-redis"
 )
 
-// NewClient 创建 Redis 客户端
-func NewClient(config StarterCore.RedisConfig) (redis.Client, error) {
+type runner struct {
+	RedisClient redis.Client `autowire:""`
+}
 
-	address := fmt.Sprintf("%s:%d", config.Host, config.Port)
-	client := g.NewClient(&g.Options{
-		Addr:     address,
-		Password: config.Password,
-		DB:       config.Database,
-	})
+func (r *runner) Run(ctx gs.AppContext) {
+	_, err := r.RedisClient.Set(ctx.Context(), "a", 1)
+	util.Panic(err).When(err != nil)
+	v, err := r.RedisClient.Get(ctx.Context(), "a")
+	util.Panic(err).When(err != nil)
+	fmt.Printf("get redis a=%v\n", v)
+	go gs.ShutDown()
+}
 
-	if err := client.Ping(context.Background()).Err(); err != nil {
-		return nil, err
-	}
-	return SpringGoRedis.NewClient(client), nil
+func main() {
+	gs.Object(&runner{}).Export((*gs.AppRunner)(nil))
+	fmt.Printf("program exited %v\n", gs.Run())
 }
