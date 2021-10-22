@@ -60,7 +60,6 @@ type tempApp struct {
 	consumers       *Consumers
 	grpcServers     *GrpcServers
 	mapOfOnProperty map[string]interface{} // 属性列表解析完成后的回调
-	Runners         []AppRunner            `autowire:"${command-line-runner.collection:=*?}"`
 }
 
 // App 应用
@@ -72,7 +71,8 @@ type App struct {
 
 	exitChan chan struct{}
 
-	Events []AppEvent `autowire:"${application-event.collection:=*?}"`
+	Events  []AppEvent  `autowire:"${application-event.collection:=*?}"`
+	Runners []AppRunner `autowire:"${command-line-runner.collection:=*?}"`
 }
 
 type Consumers struct {
@@ -131,7 +131,7 @@ func (app *App) Run() error {
 		ch := make(chan os.Signal, 1)
 		signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
 		sig := <-ch
-		app.ShutDown(fmt.Errorf("signal %v", sig))
+		app.ShutDown(fmt.Sprintf("signal %v", sig))
 	}()
 
 	if err := app.start(); err != nil {
@@ -346,8 +346,8 @@ func (app *App) loadResource(e *configuration, filename string) ([]Resource, err
 }
 
 // ShutDown 关闭执行器
-func (app *App) ShutDown(err error) {
-	log.Infof("program will exit %s", err.Error())
+func (app *App) ShutDown(msg ...string) {
+	log.Infof("program will exit %s", strings.Join(msg, " "))
 	select {
 	case <-app.exitChan:
 		// chan 已关闭，无需再次关闭。

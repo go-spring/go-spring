@@ -61,8 +61,8 @@ func Run() error {
 }
 
 // ShutDown 停止程序。
-func ShutDown(err error) {
-	gApp.ShutDown(err)
+func ShutDown(msg ...string) {
+	gApp.ShutDown(msg...)
 }
 
 // Banner 参考 App.Banner 的解释。
