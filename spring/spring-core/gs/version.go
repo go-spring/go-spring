@@ -17,6 +17,6 @@
 package gs
 
 const (
-	Version = "go-spring@v1.0.5"
+	Version = "go-spring@v1.1.0-rc1"
 	Website = "https://go-spring.com/"
 )

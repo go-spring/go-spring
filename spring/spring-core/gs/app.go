@@ -60,6 +60,7 @@ type tempApp struct {
 	consumers       *Consumers
 	grpcServers     *GrpcServers
 	mapOfOnProperty map[string]interface{} // 属性列表解析完成后的回调
+	Runners         []AppRunner            `autowire:"${command-line-runner.collection:=*?}"`
 }
 
 // App 应用
@@ -71,7 +72,7 @@ type App struct {
 
 	exitChan chan struct{}
 
-	Events []AppEvent `autowire:"?"`
+	Events []AppEvent `autowire:"${application-event.collection:=*?}"`
 }
 
 type Consumers struct {
@@ -206,13 +207,8 @@ func (app *App) start() error {
 		return err
 	}
 
-	var runners []AppRunner
-	if err := app.c.GetBean(&runners, "?"); err != nil {
-		return err
-	}
-
 	// 执行命令行启动器
-	for _, r := range runners {
+	for _, r := range app.Runners {
 		r.Run(app.c)
 	}
 

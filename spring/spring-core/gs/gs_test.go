@@ -29,6 +29,7 @@ import (
 
 	"github.com/go-spring/spring-base/assert"
 	"github.com/go-spring/spring-base/cast"
+	"github.com/go-spring/spring-base/code"
 	"github.com/go-spring/spring-base/conf"
 	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-base/util"
@@ -914,7 +915,7 @@ func NewManager() Manager {
 }
 
 func NewManagerRetError() (Manager, error) {
-	return localManager{}, util.Error(util.CurrentFileLine(), "error")
+	return localManager{}, util.Error(code.Line(), "error")
 }
 
 func NewManagerRetErrorNil() (Manager, error) {
@@ -1037,7 +1038,7 @@ func (d *callDestroy) InitWithError() error {
 		d.inited = true
 		return nil
 	}
-	return util.Error(util.CurrentFileLine(), "error")
+	return util.Error(code.Line(), "error")
 }
 
 func (d *callDestroy) DestroyWithError() error {
@@ -1045,7 +1046,7 @@ func (d *callDestroy) DestroyWithError() error {
 		d.destroyed = true
 		return nil
 	}
-	return util.Error(util.CurrentFileLine(), "error")
+	return util.Error(code.Line(), "error")
 }
 
 type nestedCallDestroy struct {
@@ -2915,7 +2916,7 @@ func (t *table) OnDestroy() {
 	fmt.Println("table.OnDestroy")
 }
 
-func TestNew(t *testing.T) {
+func TestDestroyDependence(t *testing.T) {
 	c := gs.New()
 	c.Object(new(memory))
 	c.Object(new(table)).Name("aaa")
