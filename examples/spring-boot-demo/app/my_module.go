@@ -35,17 +35,17 @@ func init() {
 
 type MyModule struct{}
 
-func (m *MyModule) OnStartApp(e gs.Environment) {
+func (m *MyModule) OnAppStart(ctx gs.AppContext) {
 	log.Info("MyModule start")
-	e.Go(Process)
+	ctx.Go(Process)
 }
 
-func (m *MyModule) OnStopApp(ctx context.Context) {
+func (m *MyModule) OnAppStop(ctx context.Context) {
 	log.Info("MyModule stop")
 }
 
 func Process(ctx context.Context) {
-	defer gs.ShutDown(errors.New("run end"))
+	defer gs.ShutDown("run end")
 
 	defer func() { log.Info("go stop") }()
 	log.Info("go start")

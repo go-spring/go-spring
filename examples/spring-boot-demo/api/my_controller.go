@@ -22,10 +22,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/go-redis/redis/v8"
 	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/gs"
+	"github.com/go-spring/spring-core/redis"
 	"github.com/go-spring/spring-core/web"
 	"github.com/jinzhu/gorm"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -44,7 +44,7 @@ func init() {
 }
 
 type MyController struct {
-	RedisClient redis.Cmdable `autowire:""`
+	RedisClient redis.Client  `autowire:""`
 	MongoClient *mongo.Client `autowire:"?"`
 	DB          *gorm.DB      `autowire:""`
 }
@@ -85,10 +85,10 @@ func (c *MyController) Echo(ctx context.Context, request *EchoRequest) *web.RpcR
 
 func (c *MyController) OK(ctx web.Context) {
 
-	err := c.RedisClient.Set(ctx.Context(), "key", "ok", time.Second*10).Err()
+	_, err := c.RedisClient.SetEX(ctx.Context(), "key", "ok", 10)
 	util.Panic(err).When(err != nil)
 
-	val, err := c.RedisClient.Get(ctx.Context(), "key").Result()
+	val, err := c.RedisClient.Get(ctx.Context(), "key")
 	util.Panic(err).When(err != nil)
 
 	rows, err := c.DB.Table("ENGINES").Select("ENGINE").Rows()

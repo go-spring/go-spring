@@ -17,11 +17,7 @@
 package mock
 
 import (
-	"time"
-
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/elliotchance/redismock/v8"
-	"github.com/go-redis/redis/v8"
 	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-core/gs"
 	"github.com/jinzhu/gorm"
@@ -35,10 +31,10 @@ func init() {
 		)
 	})).Name("mockDB")
 
-	gs.Provide(mockRedis(func(mock *redismock.ClientMock) {
-		mock.On("Set", "key", "ok", time.Second*10).Return(redis.NewStatusResult("", nil))
-		mock.On("Get", "key").Return(redis.NewStringResult("ok", nil))
-	})).Name("mockRedis")
+	//gs.Provide(mockRedis(func(mock *redismock.ClientMock) {
+	//	mock.On("Set", "key", "ok", time.Second*10).Return(redis.NewStatusResult("", nil))
+	//	mock.On("Get", "key").Return(redis.NewStringResult("ok", nil))
+	//})).Name("mockRedis")
 }
 
 // mockDB 创建 gorm.DB Mock 客户端
@@ -54,11 +50,11 @@ func mockDB(fn func(sqlmock.Sqlmock)) func() (*gorm.DB, error) {
 	}
 }
 
-// mockRedis 创建 Redis Mock 客户端
-func mockRedis(fn func(*redismock.ClientMock)) func() redis.Cmdable {
-	return func() redis.Cmdable {
-		mock := redismock.NewMock()
-		fn(mock)
-		return mock
-	}
-}
+//// mockRedis 创建 Redis Mock 客户端
+//func mockRedis(fn func(*redismock.ClientMock)) func() redis.Cmdable {
+//	return func() redis.Cmdable {
+//		mock := redismock.NewMock()
+//		fn(mock)
+//		return mock
+//	}
+//}

@@ -25,16 +25,11 @@ import (
 	_ "github.com/go-spring/examples/spring-boot-demo/extension"
 	_ "github.com/go-spring/examples/spring-boot-demo/filter"
 	_ "github.com/go-spring/examples/spring-boot-demo/mock"
-	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-core/gs"
 	_ "github.com/go-spring/starter-echo"
 	_ "github.com/go-spring/starter-go-redis"
 	_ "github.com/go-spring/starter-gorm/mysql"
 )
-
-func init() {
-	log.SetLevel(log.TraceLevel)
-}
 
 func main() {
 
@@ -46,7 +41,6 @@ func main() {
 
 	dir, _ := os.Getwd()
 	gs.Property("static.root", dir)
-
 	gs.Property("db.url", "root:root@/information_schema?charset=utf8&parseTime=True&loc=Local")
 
 	fmt.Println(gs.Run())

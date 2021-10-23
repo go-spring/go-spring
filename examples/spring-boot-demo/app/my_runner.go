@@ -30,8 +30,8 @@ func init() {
 
 type MyRunner struct{}
 
-func (r *MyRunner) Run(e gs.Environment) {
-	e.Go(func(ctx context.Context) {
+func (r *MyRunner) Run(ctx gs.AppContext) {
+	ctx.Go(func(ctx context.Context) {
 		defer func() { log.Info("exit after waiting in MyRunner::Run") }()
 
 		ticker := time.NewTicker(10 * time.Millisecond)

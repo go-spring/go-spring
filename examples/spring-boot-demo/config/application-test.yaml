@@ -4,8 +4,8 @@ default-value-ref: app-test
 
 # 设置 runner 收集顺序
 command-line-runner:
-  collection: "[*app.MyRunner]"
+  collection: "*,github.com/go-spring/examples/spring-boot-demo/app/app.MyRunner:MyRunner"
 
 # 设置 starter 收集顺序
 application-event:
-  collection: "[*,web-server-starter]"
+  collection: "*,github.com/go-spring/starter-web/StarterWeb.Starter:Starter"
