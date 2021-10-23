@@ -95,7 +95,7 @@ func main() {
 		get("http://127.0.0.1:8080/binding/json/success", `{"code":200,"msg":"SUCCESS","data":"ok"}`)
 		get("http://127.0.0.1:8080/binding/panic/error", `this is an error`)
 		get("http://127.0.0.1:8080/binding/panic/rpc_result", `{"code":-1,"msg":"ERROR","err":"/Users/didi/GitHub/go-spring/go-spring/examples/spring-boot-web/main.go:59: this is a rpc_result"}`)
-		gs.ShutDown(errors.New("app run end"))
+		gs.ShutDown("app run end")
 	}()
 	fmt.Println(gs.Run())
 }
