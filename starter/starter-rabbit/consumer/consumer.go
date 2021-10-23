@@ -34,7 +34,7 @@ type Starter struct {
 	Server *StarterRabbitServer.AMQPServer `autowire:""`
 }
 
-func (starter *Starter) OnStartApp(ctx gs.Environment) {
+func (starter *Starter) OnAppStart(ctx gs.AppContext) {
 
 	cMap := map[string][]mq.Consumer{}
 	{
@@ -82,6 +82,6 @@ func (starter *Starter) OnStartApp(ctx gs.Environment) {
 	}()
 }
 
-func (starter *Starter) OnStopApp(ctx context.Context) {
+func (starter *Starter) OnAppStop(ctx context.Context) {
 
 }

@@ -46,7 +46,7 @@ func NewStarter(config StarterCore.GrpcServerConfig) *Starter {
 	}
 }
 
-func (starter *Starter) OnStartApp(ctx gs.Environment) {
+func (starter *Starter) OnAppStart(ctx gs.AppContext) {
 
 	server := reflect.ValueOf(starter.server)
 	srvMap := make(map[string]reflect.Value)
@@ -80,6 +80,6 @@ func (starter *Starter) OnStartApp(ctx gs.Environment) {
 	})
 }
 
-func (starter *Starter) OnStopApp(ctx context.Context) {
+func (starter *Starter) OnAppStop(ctx context.Context) {
 	starter.server.GracefulStop()
 }

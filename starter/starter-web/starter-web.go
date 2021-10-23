@@ -36,8 +36,8 @@ type Starter struct {
 	Router     web.Router      `autowire:""`
 }
 
-// OnStartApp 应用程序启动事件。
-func (starter *Starter) OnStartApp(ctx gs.Environment) {
+// OnAppStart 应用程序启动事件。
+func (starter *Starter) OnAppStart(ctx gs.AppContext) {
 
 	for _, c := range starter.Containers {
 		c.AddFilter(starter.Filters...)
@@ -62,7 +62,7 @@ func (starter *Starter) getContainers(mapper *web.Mapper) []web.Container {
 	return ret
 }
 
-func (starter *Starter) startContainers(ctx gs.Environment) {
+func (starter *Starter) startContainers(ctx gs.AppContext) {
 	for _, container := range starter.Containers {
 		c := container
 		ctx.Go(func(_ context.Context) {
@@ -73,8 +73,8 @@ func (starter *Starter) startContainers(ctx gs.Environment) {
 	}
 }
 
-// OnStopApp 应用程序结束事件。
-func (starter *Starter) OnStopApp(ctx context.Context) {
+// OnAppStop 应用程序结束事件。
+func (starter *Starter) OnAppStop(ctx context.Context) {
 	for _, c := range starter.Containers {
 		_ = c.Stop(ctx)
 	}
