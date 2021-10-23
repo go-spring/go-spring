@@ -6,7 +6,7 @@ require (
 	github.com/go-spring/spring-core v1.0.6-0.20211022224649-f0f6fffd8bc2
 	github.com/go-spring/spring-echo v1.0.6-0.20211022225705-4a93a3321fcc
 	github.com/go-spring/starter-core v1.1.0-beta.0.20211022230035-68dc9bcad473
-	github.com/go-spring/starter-web v1.1.0-alpha.0.20211022230357-d435510e8eba
+	github.com/go-spring/starter-web v1.1.0-alpha.0.20211023011006-dcfa16178268
 )
 
 //replace (

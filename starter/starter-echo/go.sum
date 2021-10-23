@@ -8,8 +8,8 @@ github.com/go-spring/spring-echo v1.0.6-0.20211022225705-4a93a3321fcc h1:Oyrhvc7
 github.com/go-spring/spring-echo v1.0.6-0.20211022225705-4a93a3321fcc/go.mod h1:SbBcok6VKmZEx/RGfo0mtgifgEoSYt+yJl4aHXDbiVE=
 github.com/go-spring/starter-core v1.1.0-beta.0.20211022230035-68dc9bcad473 h1:EbMlkOKLcd78tOYCGv0QXUR2HadGtaK4vSxyQermhWc=
 github.com/go-spring/starter-core v1.1.0-beta.0.20211022230035-68dc9bcad473/go.mod h1:f8r68vQJ/rQe7EtvRrhkElG5LlTuT7RcOmJs73IAL50=
-github.com/go-spring/starter-web v1.1.0-alpha.0.20211022230357-d435510e8eba h1:tizXkrdofWlu+vfDG7g6WfT9CJycJHlS08zLm41kif0=
-github.com/go-spring/starter-web v1.1.0-alpha.0.20211022230357-d435510e8eba/go.mod h1:oKVf6F8BCkuolG6g/1bnNZVewkTr65mqQoCE4XwJ71I=
+github.com/go-spring/starter-web v1.1.0-alpha.0.20211023011006-dcfa16178268 h1:qLZXJO1w5G5IE+gGwo69SOXD0vS+j3O2+HWsjiiJiW4=
+github.com/go-spring/starter-web v1.1.0-alpha.0.20211023011006-dcfa16178268/go.mod h1:oKVf6F8BCkuolG6g/1bnNZVewkTr65mqQoCE4XwJ71I=
 github.com/labstack/echo v3.3.10+incompatible h1:pGRcYk231ExFAyoAjAfD85kQzRJCRI8bbnE7CX5OEgg=
 github.com/labstack/echo v3.3.10+incompatible/go.mod h1:0INS7j/VjnFxD4E2wkz67b8cVwCLbBmJyDaka6Cmk1s=
 github.com/labstack/gommon v0.3.0 h1:JEeO0bvc78PKdyHxloTKiF8BD5iGrH8T6MSeGvSgob0=
