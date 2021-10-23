@@ -37,7 +37,7 @@ type Starter struct {
 }
 
 // OnAppStart 应用程序启动事件。
-func (starter *Starter) OnAppStart(ctx gs.AppContext) {
+func (starter *Starter) OnAppStart(ctx gs.Context) {
 
 	for _, c := range starter.Containers {
 		c.AddFilter(starter.Filters...)
@@ -62,7 +62,7 @@ func (starter *Starter) getContainers(mapper *web.Mapper) []web.Container {
 	return ret
 }
 
-func (starter *Starter) startContainers(ctx gs.AppContext) {
+func (starter *Starter) startContainers(ctx gs.Context) {
 	for _, container := range starter.Containers {
 		c := container
 		ctx.Go(func(_ context.Context) {

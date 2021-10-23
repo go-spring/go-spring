@@ -17,6 +17,7 @@
 package gs
 
 import (
+	"context"
 	"os"
 	"reflect"
 	"strings"
@@ -53,6 +54,11 @@ func app() *App {
 func Setenv(key string, value string) {
 	err := os.Setenv(key, value)
 	util.Panic(err).When(err != nil)
+}
+
+// Go 参考 App.Go 的解释。
+func Go(fn func(ctx context.Context)) {
+	gApp.Go(fn)
 }
 
 // Run 启动程序。

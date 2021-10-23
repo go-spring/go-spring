@@ -50,7 +50,7 @@ const (
 )
 
 type BeanInit interface {
-	OnInit(e Environment) error
+	OnInit(ctx Context) error
 }
 
 type BeanDestroy interface {

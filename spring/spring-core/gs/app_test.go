@@ -25,14 +25,14 @@ import (
 	"github.com/go-spring/spring-core/gs"
 )
 
-func startApplication(cfgLocation string, fn func(gs.Environment)) *gs.App {
+func startApplication(cfgLocation string, fn func(gs.Context)) *gs.App {
 
 	app := gs.NewApp()
 	gs.Setenv("GS_SPRING_BANNER_VISIBLE", "true")
 	gs.Setenv("GS_SPRING_CONFIG_LOCATIONS", cfgLocation)
 
 	type PandoraAware struct{}
-	app.Provide(func(b gs.Environment) PandoraAware {
+	app.Provide(func(b gs.Context) PandoraAware {
 		fn(b)
 		return PandoraAware{}
 	})
@@ -52,8 +52,8 @@ func TestConfig(t *testing.T) {
 	t.Run("config via env", func(t *testing.T) {
 		os.Clearenv()
 		gs.Setenv("GS_SPRING_PROFILES_ACTIVE", "dev")
-		app := startApplication("testdata/config/", func(e gs.Environment) {
-			assert.Equal(t, e.GetProperty("spring.profiles.active"), "dev")
+		app := startApplication("testdata/config/", func(ctx gs.Context) {
+			assert.Equal(t, ctx.GetProperty("spring.profiles.active"), "dev")
 		})
 		defer app.ShutDown("run test end")
 	})
@@ -61,8 +61,8 @@ func TestConfig(t *testing.T) {
 	t.Run("config via env 2", func(t *testing.T) {
 		os.Clearenv()
 		gs.Setenv("GS_SPRING_PROFILES_ACTIVE", "dev")
-		app := startApplication("testdata/config/", func(e gs.Environment) {
-			assert.Equal(t, e.GetProperty("spring.profiles.active"), "dev")
+		app := startApplication("testdata/config/", func(ctx gs.Context) {
+			assert.Equal(t, ctx.GetProperty("spring.profiles.active"), "dev")
 		})
 		defer app.ShutDown("run test end")
 	})
@@ -70,12 +70,12 @@ func TestConfig(t *testing.T) {
 	t.Run("profile via env&config 2", func(t *testing.T) {
 		os.Clearenv()
 		gs.Setenv("GS_SPRING_PROFILES_ACTIVE", "dev")
-		app := startApplication("testdata/config/", func(e gs.Environment) {
-			assert.Equal(t, e.GetProperty("spring.profiles.active"), "dev")
-			//keys := e.Properties().Keys()
+		app := startApplication("testdata/config/", func(ctx gs.Context) {
+			assert.Equal(t, ctx.GetProperty("spring.profiles.active"), "dev")
+			//keys := ctx.Properties().Keys()
 			//sort.Strings(keys)
 			//for _, k := range keys {
-			//	fmt.Println(k, "=", e.GetProperty(k))
+			//	fmt.Println(k, "=", ctx.GetProperty(k))
 			//}
 		})
 		defer app.ShutDown("run test end")

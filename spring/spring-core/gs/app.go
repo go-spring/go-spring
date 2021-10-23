@@ -41,16 +41,14 @@ import (
 // SpringBannerVisible 是否显示 banner。
 const SpringBannerVisible = "spring.banner.visible"
 
-type AppContext Environment
-
 // AppRunner 命令行启动器接口
 type AppRunner interface {
-	Run(ctx AppContext)
+	Run(ctx Context)
 }
 
 // AppEvent 应用运行过程中的事件
 type AppEvent interface {
-	OnAppStart(ctx AppContext)     // 应用启动的事件
+	OnAppStart(ctx Context)        // 应用启动的事件
 	OnAppStop(ctx context.Context) // 应用停止的事件
 }
 
@@ -220,11 +218,10 @@ func (app *App) start() error {
 	app.clear()
 
 	// 通知应用停止事件
-	app.c.Go(func(c context.Context) {
-		<-c.Done()
-		ctx := context.TODO()
+	app.c.Go(func(ctx context.Context) {
+		<-ctx.Done()
 		for _, event := range app.Events {
-			event.OnAppStop(ctx)
+			event.OnAppStop(context.Background())
 		}
 	})
 
@@ -354,6 +351,11 @@ func (app *App) ShutDown(msg ...string) {
 	default:
 		close(app.exitChan)
 	}
+}
+
+// Go 参考 Container.Go 的解释。
+func (app *App) Go(fn func(ctx context.Context)) {
+	app.c.Go(fn)
 }
 
 // Bootstrap 返回 *bootstrap 对象。

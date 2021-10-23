@@ -86,7 +86,7 @@ type container struct {
 
 // New 创建 IoC 容器。
 func New() Container {
-	ctx, cancel := context.WithCancel(context.TODO())
+	ctx, cancel := context.WithCancel(context.Background())
 	return &container{
 		ctx:    ctx,
 		cancel: cancel,
@@ -262,7 +262,7 @@ func (c *container) Refresh(opts ...internal.RefreshOption) (err error) {
 		opt(optArg)
 	}
 
-	c.Object(c).Export((*Environment)(nil))
+	c.Object(c).Export((*Context)(nil))
 	c.state = Refreshing
 
 	for _, b := range c.beans {
