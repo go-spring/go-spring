@@ -23,6 +23,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-spring/spring-base/assert"
 	"github.com/go-spring/spring-base/log"
 )
 
@@ -216,4 +217,38 @@ func TestEntry(t *testing.T) {
 	logger.Ctx(ctx).Panicf("level:%s", "panic")
 	logger.Ctx(ctx).Fatal("level:", "fatal")
 	logger.Ctx(ctx).Fatalf("level:%s", "fatal")
+}
+
+func TestCaller(t *testing.T) {
+
+	fn := func(i int) {
+		file, line, loaded := log.Caller(0, true)
+		if i == 0 {
+			assert.False(t, loaded)
+		} else {
+			assert.True(t, loaded)
+		}
+		_ = fmt.Sprintf("%s:%d\n", file, line)
+	}
+
+	for i := 0; i < 2; i++ {
+		fn(i)
+	}
+}
+
+func BenchmarkCaller(b *testing.B) {
+
+	b.Run("fast", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			file, line, _ := log.Caller(0, true)
+			_ = fmt.Sprintf("%s:%d\n", file, line)
+		}
+	})
+
+	b.Run("slow", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			file, line, _ := log.Caller(0, false)
+			_ = fmt.Sprintf("%s:%d\n", file, line)
+		}
+	})
 }

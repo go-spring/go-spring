@@ -137,7 +137,7 @@ func Console(level Level, e *Entry) {
 }
 
 var config = struct {
-	mutex  sync.Mutex
+	mutex  sync.RWMutex
 	level  Level
 	output Output
 }{
@@ -151,6 +151,13 @@ func Reset() {
 	defer config.mutex.Unlock()
 	config.level = InfoLevel
 	config.output = Console
+}
+
+// GetLevel 获取日志的输出级别。
+func GetLevel() Level {
+	config.mutex.RLock()
+	defer config.mutex.RUnlock()
+	return config.level
 }
 
 // SetLevel 设置日志的输出级别。
@@ -167,8 +174,49 @@ func SetOutput(output Output) {
 	config.output = output
 }
 
+var (
+	frameMap sync.Map
+)
+
+// Caller 获取调用栈的文件及行号信息，fast 为 true 时使用缓存进行加速。
+// 基准测试表明获取调用栈的信息时使用缓存相比不使用缓存有 50% 的速度提升。
+func Caller(skip int, fast bool) (file string, line int, loaded bool) {
+
+	if !fast {
+		_, file, line, loaded = runtime.Caller(skip + 1)
+		return
+	}
+
+	rpc := make([]uintptr, 1)
+	n := runtime.Callers(skip+2, rpc[:])
+	if n < 1 {
+		return
+	}
+	pc := rpc[0]
+	if v, ok := frameMap.Load(pc); ok {
+		e := v.(*runtime.Frame)
+		return e.File, e.Line, true
+	}
+	frame, _ := runtime.CallersFrames(rpc).Next()
+	frameMap.Store(pc, &frame)
+	return frame.File, frame.Line, false
+}
+
 func outputf(level Level, e Entry, format string, args ...interface{}) {
-	if config.level > level {
+
+	var (
+		configLevel  Level
+		configOutput Output
+	)
+
+	{
+		config.mutex.RLock()
+		defer config.mutex.RUnlock()
+		configLevel = config.level
+		configOutput = config.output
+	}
+
+	if configLevel > level {
 		return
 	}
 	if len(args) == 1 {
@@ -176,8 +224,8 @@ func outputf(level Level, e Entry, format string, args ...interface{}) {
 			args = fn()
 		}
 	}
-	_, e.file, e.line, _ = runtime.Caller(2)
-	config.output(level, e.format(format, args...))
+	e.file, e.line, _ = Caller(2, true)
+	configOutput(level, e.format(format, args...))
 }
 
 // T 将可变参数转换成切片形式。
@@ -257,37 +305,37 @@ func (e Entry) Fatalf(format string, args ...interface{}) {
 
 // EnableTrace 是否允许输出 TRACE 级别的日志。
 func EnableTrace() bool {
-	return config.level <= TraceLevel
+	return GetLevel() <= TraceLevel
 }
 
 // EnableDebug 是否允许输出 DEBUG 级别的日志。
 func EnableDebug() bool {
-	return config.level <= DebugLevel
+	return GetLevel() <= DebugLevel
 }
 
 // EnableInfo 是否允许输出 INFO 级别的日志。
 func EnableInfo() bool {
-	return config.level <= InfoLevel
+	return GetLevel() <= InfoLevel
 }
 
 // EnableWarn 是否允许输出 WARN 级别的日志。
 func EnableWarn() bool {
-	return config.level <= WarnLevel
+	return GetLevel() <= WarnLevel
 }
 
 // EnableError 是否允许输出 ERROR 级别的日志。
 func EnableError() bool {
-	return config.level <= ErrorLevel
+	return GetLevel() <= ErrorLevel
 }
 
 // EnablePanic 是否允许输出 PANIC 级别的日志。
 func EnablePanic() bool {
-	return config.level <= PanicLevel
+	return GetLevel() <= PanicLevel
 }
 
 // EnableFatal 是否允许输出 FATAL 级别的日志。
 func EnableFatal() bool {
-	return config.level <= FatalLevel
+	return GetLevel() <= FatalLevel
 }
 
 // Trace 输出 TRACE 级别的日志。
