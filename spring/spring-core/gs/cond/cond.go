@@ -33,9 +33,9 @@ type BeanSelector = internal.BeanSelector
 type BeanDefinition = internal.BeanDefinition
 
 type Context interface {
-	HasProperty(key string) bool
-	GetProperty(key string, opts ...conf.GetOption) string
-	FindBean(selector BeanSelector) ([]BeanDefinition, error)
+	Has(key string) bool
+	Prop(key string, opts ...conf.GetOption) string
+	Find(selector BeanSelector) ([]BeanDefinition, error)
 }
 
 // Condition 条件接口，条件成立 Matches 方法返回 true，否则返回 false。
@@ -86,7 +86,7 @@ type onProperty struct {
 func (c *onProperty) Matches(ctx Context) (bool, error) {
 	// 参考 /usr/local/go/src/go/types/eval_test.go 示例
 
-	if !ctx.HasProperty(c.name) {
+	if !ctx.Has(c.name) {
 		return c.matchIfMissing, nil
 	}
 
@@ -94,7 +94,7 @@ func (c *onProperty) Matches(ctx Context) (bool, error) {
 		return true, nil
 	}
 
-	val := ctx.GetProperty(c.name)
+	val := ctx.Prop(c.name)
 	if !strings.HasPrefix(c.havingValue, "go:") {
 		return val == c.havingValue, nil
 	}
@@ -114,7 +114,7 @@ type onMissingProperty struct {
 }
 
 func (c *onMissingProperty) Matches(ctx Context) (bool, error) {
-	return !ctx.HasProperty(c.name), nil
+	return !ctx.Has(c.name), nil
 }
 
 // onBean 基于符合条件的 bean 必须存在的 Condition 实现。
@@ -123,7 +123,7 @@ type onBean struct {
 }
 
 func (c *onBean) Matches(ctx Context) (bool, error) {
-	beans, err := ctx.FindBean(c.selector)
+	beans, err := ctx.Find(c.selector)
 	return len(beans) > 0, err
 }
 
@@ -133,7 +133,7 @@ type onMissingBean struct {
 }
 
 func (c *onMissingBean) Matches(ctx Context) (bool, error) {
-	beans, err := ctx.FindBean(c.selector)
+	beans, err := ctx.Find(c.selector)
 	return len(beans) == 0, err
 }
 
@@ -143,7 +143,7 @@ type onSingleCandidate struct {
 }
 
 func (c *onSingleCandidate) Matches(ctx Context) (bool, error) {
-	beans, err := ctx.FindBean(c.selector)
+	beans, err := ctx.Find(c.selector)
 	return len(beans) == 1, err
 }
 

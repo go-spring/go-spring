@@ -53,7 +53,7 @@ func TestConfig(t *testing.T) {
 		os.Clearenv()
 		gs.Setenv("GS_SPRING_PROFILES_ACTIVE", "dev")
 		app := startApplication("testdata/config/", func(ctx gs.Context) {
-			assert.Equal(t, ctx.GetProperty("spring.profiles.active"), "dev")
+			assert.Equal(t, ctx.Prop("spring.profiles.active"), "dev")
 		})
 		defer app.ShutDown("run test end")
 	})
@@ -62,7 +62,7 @@ func TestConfig(t *testing.T) {
 		os.Clearenv()
 		gs.Setenv("GS_SPRING_PROFILES_ACTIVE", "dev")
 		app := startApplication("testdata/config/", func(ctx gs.Context) {
-			assert.Equal(t, ctx.GetProperty("spring.profiles.active"), "dev")
+			assert.Equal(t, ctx.Prop("spring.profiles.active"), "dev")
 		})
 		defer app.ShutDown("run test end")
 	})
@@ -71,11 +71,11 @@ func TestConfig(t *testing.T) {
 		os.Clearenv()
 		gs.Setenv("GS_SPRING_PROFILES_ACTIVE", "dev")
 		app := startApplication("testdata/config/", func(ctx gs.Context) {
-			assert.Equal(t, ctx.GetProperty("spring.profiles.active"), "dev")
+			assert.Equal(t, ctx.Prop("spring.profiles.active"), "dev")
 			//keys := ctx.Properties().Keys()
 			//sort.Strings(keys)
 			//for _, k := range keys {
-			//	fmt.Println(k, "=", ctx.GetProperty(k))
+			//	fmt.Println(k, "=", ctx.Prop(k))
 			//}
 		})
 		defer app.ShutDown("run test end")
