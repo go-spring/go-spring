@@ -19,10 +19,16 @@ github.com/envoyproxy/protoc-gen-validate v0.1.0/go.mod h1:iSmxcyjqTsJpI2R4NaDN7
 github.com/ghodss/yaml v1.0.0/go.mod h1:4dBDuWmgqj2HViK6kFavaiC9ZROes6MMH2rRYeMEF04=
 github.com/go-spring/spring-base v1.1.0-beta.0.20211022224302-dea9f41f5f6d h1:IcQjBUAyXH4rrpJvgiKqEQQB/76jR1vDF7/Pn8MFeqU=
 github.com/go-spring/spring-base v1.1.0-beta.0.20211022224302-dea9f41f5f6d/go.mod h1:q6x78FrbScapdjoLQ+vwuaEn/AasYyKpkks4Qw7fBOg=
+github.com/go-spring/spring-base v1.1.0-rc1 h1:/ym0A/C1kmNsFj3939zLuqn+ZT3COTLe4qGwBqV4y60=
+github.com/go-spring/spring-base v1.1.0-rc1/go.mod h1:q6x78FrbScapdjoLQ+vwuaEn/AasYyKpkks4Qw7fBOg=
 github.com/go-spring/spring-core v1.0.6-0.20211022224649-f0f6fffd8bc2 h1:+ZZmy+brXYFsOyrX+3NDHvWNwalufyrOmXXakLVNC4U=
 github.com/go-spring/spring-core v1.0.6-0.20211022224649-f0f6fffd8bc2/go.mod h1:OQDUJapvg+9GKqnS+ESMgoAiyzy7v3YB9NvuECeijPI=
+github.com/go-spring/spring-core v1.1.0-rc1 h1:1NxEflBu3wwLSOzg9YeVfh6TaeVoR54LaWJFw6Qulrw=
+github.com/go-spring/spring-core v1.1.0-rc1/go.mod h1:M9thF3xJEGqsXPrrTyyae0cmpohaWcxKfCHOn0JAZL0=
 github.com/go-spring/starter-core v1.1.0-beta.0.20211022230035-68dc9bcad473 h1:EbMlkOKLcd78tOYCGv0QXUR2HadGtaK4vSxyQermhWc=
 github.com/go-spring/starter-core v1.1.0-beta.0.20211022230035-68dc9bcad473/go.mod h1:f8r68vQJ/rQe7EtvRrhkElG5LlTuT7RcOmJs73IAL50=
+github.com/go-spring/starter-core v1.1.0-rc1 h1:dyXCG2Vsn968xlkbvGjPXetJx+M3OdnvIIrc0z64rmU=
+github.com/go-spring/starter-core v1.1.0-rc1/go.mod h1:f8r68vQJ/rQe7EtvRrhkElG5LlTuT7RcOmJs73IAL50=
 github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b/go.mod h1:SBH7ygxi8pfUlaOkMMuAQtPIUF8ecWP5IEl/CR7VP2Q=
 github.com/golang/mock v1.1.1/go.mod h1:oTYuIxOrZwtPieC+H1uAHpcLFnEyAGVDL/k47Jfbm0A=
 github.com/golang/protobuf v1.2.0/go.mod h1:6lQm79b+lXiMfvg/cZm0SGofjICqVBUtrP5yJMmIC1U=

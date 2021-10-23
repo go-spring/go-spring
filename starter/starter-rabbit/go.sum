@@ -1,8 +1,12 @@
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/go-spring/spring-base v1.1.0-beta.0.20211022224302-dea9f41f5f6d h1:IcQjBUAyXH4rrpJvgiKqEQQB/76jR1vDF7/Pn8MFeqU=
 github.com/go-spring/spring-base v1.1.0-beta.0.20211022224302-dea9f41f5f6d/go.mod h1:q6x78FrbScapdjoLQ+vwuaEn/AasYyKpkks4Qw7fBOg=
+github.com/go-spring/spring-base v1.1.0-rc1 h1:/ym0A/C1kmNsFj3939zLuqn+ZT3COTLe4qGwBqV4y60=
+github.com/go-spring/spring-base v1.1.0-rc1/go.mod h1:q6x78FrbScapdjoLQ+vwuaEn/AasYyKpkks4Qw7fBOg=
 github.com/go-spring/spring-core v1.0.6-0.20211022224649-f0f6fffd8bc2 h1:+ZZmy+brXYFsOyrX+3NDHvWNwalufyrOmXXakLVNC4U=
 github.com/go-spring/spring-core v1.0.6-0.20211022224649-f0f6fffd8bc2/go.mod h1:OQDUJapvg+9GKqnS+ESMgoAiyzy7v3YB9NvuECeijPI=
+github.com/go-spring/spring-core v1.1.0-rc1 h1:1NxEflBu3wwLSOzg9YeVfh6TaeVoR54LaWJFw6Qulrw=
+github.com/go-spring/spring-core v1.1.0-rc1/go.mod h1:M9thF3xJEGqsXPrrTyyae0cmpohaWcxKfCHOn0JAZL0=
 github.com/magiconair/properties v1.8.5 h1:b6kJs+EmPFMYGkow9GiUyCyOvIwYetYJ3fSaWak/Gls=
 github.com/magiconair/properties v1.8.5/go.mod h1:y3VJvCyxH9uVvJTWEGAELF3aiYNyPKd5NZ3oSwXrF60=
 github.com/pelletier/go-toml v1.9.4 h1:tjENF6MfZAg8e4ZmZTeWaWiT2vXtsoO6+iuOjFhECwM=
