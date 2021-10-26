@@ -43,7 +43,6 @@ func Load(ctx context.Context, key string, out interface{}) (ok bool, err error)
 		return replayer.Replay(ctx, &recorder.Action{
 			Protocol: Protocol,
 			Key:      key,
-			Output:   out,
 		})
 	}
 
@@ -53,7 +52,6 @@ func Load(ctx context.Context, key string, out interface{}) (ok bool, err error)
 				return &recorder.Action{
 					Protocol: Protocol,
 					Key:      key,
-					Output:   out,
 				}
 			})
 		}

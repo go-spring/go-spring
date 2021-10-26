@@ -1,0 +1,59 @@
+{
+  "id": "54c8fab33dcb4f46899a3a3b70987164",
+  "actions": [
+    {
+      "protocol": "http",
+      "key": "GET^/index",
+      "data": {
+        "method": "GET",
+        "uri": "/index",
+        "version": "HTTP/1.1",
+        "request": {
+          "query": {
+            "ticket": [
+              "IvOSbAkTHZNntCWTqrwKk"
+            ]
+          },
+          "header": {
+            "Content-Type": [
+              "application/json"
+            ]
+          },
+          "body": "{\"id\":\"580502622244281\"}"
+        },
+        "response": {
+          "status": "HTTP/1.1 200 OK",
+          "header": {
+            "Content-Type": [
+              "application/json"
+            ]
+          },
+          "body": "{\"errno\":0,\"errmsg\":\"SUCCESS\"}"
+        }
+      }
+    },
+    {
+      "protocol": "redis",
+      "key": "SET^a^1",
+      "data": {
+        "req": [
+           "SET",
+           "a",
+           1
+        ],
+        "resp": "OK"
+      }
+    },
+    {
+      "protocol": "redis",
+      "key": "GET^a",
+      "data": {
+        "req": [
+          "GET",
+          "a"
+        ],
+        "resp": "1"
+      }
+    }
+  ]
+}

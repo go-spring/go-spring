@@ -19,26 +19,43 @@ package main
 import (
 	"fmt"
 
+	"github.com/go-spring/spring-base/knife"
+	"github.com/go-spring/spring-base/replayer"
 	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/redis"
+	"github.com/go-spring/spring-core/web"
+	_ "github.com/go-spring/starter-echo"
 	_ "github.com/go-spring/starter-go-redis"
 )
 
-type runner struct {
+func init() {
+	replayer.SetReplayMode()
+}
+
+type controller struct {
 	RedisClient redis.Client `autowire:""`
 }
 
-func (r *runner) Run(ctx gs.Context) {
-	_, err := r.RedisClient.Set(ctx.Context(), "a", 1)
+func (c *controller) index(webCtx web.Context) {
+	ctx := knife.New(webCtx.Context())
+
+	sessionID := "54c8fab33dcb4f46899a3a3b70987164"
+	err := knife.Set(ctx, replayer.SessionIDKey, sessionID)
 	util.Panic(err).When(err != nil)
-	v, err := r.RedisClient.Get(ctx.Context(), "a")
+
+	_, err = c.RedisClient.Set(ctx, "a", float64(1))
 	util.Panic(err).When(err != nil)
+
+	v, err := c.RedisClient.Get(ctx, "a")
+	util.Panic(err).When(err != nil)
+
 	fmt.Printf("get redis a=%v\n", v)
-	go gs.ShutDown()
 }
 
 func main() {
-	gs.Object(&runner{}).Export((*gs.AppRunner)(nil))
+	gs.Object(new(controller)).Init(func(c *controller) {
+		gs.GetMapping("/index", c.index)
+	})
 	fmt.Printf("program exited %v\n", gs.Run())
 }

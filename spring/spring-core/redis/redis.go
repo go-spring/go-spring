@@ -17,8 +17,14 @@
 package redis
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
+
+	"github.com/go-spring/spring-base/cast"
+	"github.com/go-spring/spring-base/recorder"
+	"github.com/go-spring/spring-base/replayer"
 )
 
 var ErrNil = errors.New("redis: nil")
@@ -67,8 +73,43 @@ type BaseClient struct {
 	DoFunc func(ctx context.Context, args ...interface{}) (Reply, error)
 }
 
+func (c *BaseClient) do(ctx context.Context, args ...interface{}) (Reply, error) {
+
+	key := func() string {
+		var buf bytes.Buffer
+		for i, arg := range args {
+			buf.WriteString(cast.ToString(arg))
+			if i < len(args)-1 {
+				buf.WriteByte('^')
+			}
+		}
+		return buf.String()
+	}
+
+	fmt.Println(key())
+
+	if replayer.ReplayMode() {
+		data := &recorder.Redis{Request: args}
+		action := &recorder.Action{
+			Protocol: recorder.REDIS,
+			Key:      key(),
+			Data:     data,
+		}
+		ok, err := replayer.Replay(ctx, action)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, errors.New("xxx")
+		}
+		return &reply{data.Response}, nil
+	}
+
+	return c.DoFunc(ctx, args...)
+}
+
 func (c *BaseClient) Bool(ctx context.Context, args ...interface{}) (bool, error) {
-	reply, err := c.DoFunc(ctx, args...)
+	reply, err := c.do(ctx, args...)
 	if err != nil {
 		return false, err
 	}
@@ -76,7 +117,7 @@ func (c *BaseClient) Bool(ctx context.Context, args ...interface{}) (bool, error
 }
 
 func (c *BaseClient) Int64(ctx context.Context, args ...interface{}) (int64, error) {
-	reply, err := c.DoFunc(ctx, args...)
+	reply, err := c.do(ctx, args...)
 	if err != nil {
 		return -1, err
 	}
@@ -84,7 +125,7 @@ func (c *BaseClient) Int64(ctx context.Context, args ...interface{}) (int64, err
 }
 
 func (c *BaseClient) Float64(ctx context.Context, args ...interface{}) (float64, error) {
-	reply, err := c.DoFunc(ctx, args...)
+	reply, err := c.do(ctx, args...)
 	if err != nil {
 		return -1, err
 	}
@@ -92,7 +133,7 @@ func (c *BaseClient) Float64(ctx context.Context, args ...interface{}) (float64,
 }
 
 func (c *BaseClient) String(ctx context.Context, args ...interface{}) (string, error) {
-	reply, err := c.DoFunc(ctx, args...)
+	reply, err := c.do(ctx, args...)
 	if err != nil {
 		return "", err
 	}
@@ -100,7 +141,7 @@ func (c *BaseClient) String(ctx context.Context, args ...interface{}) (string, e
 }
 
 func (c *BaseClient) Slice(ctx context.Context, args ...interface{}) ([]interface{}, error) {
-	reply, err := c.DoFunc(ctx, args...)
+	reply, err := c.do(ctx, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +149,7 @@ func (c *BaseClient) Slice(ctx context.Context, args ...interface{}) ([]interfac
 }
 
 func (c *BaseClient) BoolSlice(ctx context.Context, args ...interface{}) ([]bool, error) {
-	reply, err := c.DoFunc(ctx, args...)
+	reply, err := c.do(ctx, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -116,7 +157,7 @@ func (c *BaseClient) BoolSlice(ctx context.Context, args ...interface{}) ([]bool
 }
 
 func (c *BaseClient) Int64Slice(ctx context.Context, args ...interface{}) ([]int64, error) {
-	reply, err := c.DoFunc(ctx, args...)
+	reply, err := c.do(ctx, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +165,7 @@ func (c *BaseClient) Int64Slice(ctx context.Context, args ...interface{}) ([]int
 }
 
 func (c *BaseClient) Float64Slice(ctx context.Context, args ...interface{}) ([]float64, error) {
-	reply, err := c.DoFunc(ctx, args...)
+	reply, err := c.do(ctx, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +173,7 @@ func (c *BaseClient) Float64Slice(ctx context.Context, args ...interface{}) ([]f
 }
 
 func (c *BaseClient) StringSlice(ctx context.Context, args ...interface{}) ([]string, error) {
-	reply, err := c.DoFunc(ctx, args...)
+	reply, err := c.do(ctx, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -140,7 +181,7 @@ func (c *BaseClient) StringSlice(ctx context.Context, args ...interface{}) ([]st
 }
 
 func (c *BaseClient) ZItemSlice(ctx context.Context, args ...interface{}) ([]ZItem, error) {
-	reply, err := c.DoFunc(ctx, args...)
+	reply, err := c.do(ctx, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -148,9 +189,104 @@ func (c *BaseClient) ZItemSlice(ctx context.Context, args ...interface{}) ([]ZIt
 }
 
 func (c *BaseClient) StringMap(ctx context.Context, args ...interface{}) (map[string]string, error) {
-	reply, err := c.DoFunc(ctx, args...)
+	reply, err := c.do(ctx, args...)
 	if err != nil {
 		return nil, err
 	}
 	return reply.StringMap()
+}
+
+type reply struct {
+	v interface{}
+}
+
+func (r *reply) Bool() (bool, error) {
+	switch v := r.v.(type) {
+	case int64:
+		return v == 1, nil
+	case string:
+		return v == "OK", nil
+	default:
+		return false, fmt.Errorf("redis: unexpected type %T for bool", v)
+	}
+}
+
+func (r *reply) Int64() (int64, error) {
+	v, ok := r.v.(int64)
+	if !ok {
+		return 0, fmt.Errorf("redis: unexpected type %T for int64", r.v)
+	}
+	return v, nil
+}
+
+func (r *reply) Float64() (float64, error) {
+	v, ok := r.v.(float64)
+	if !ok {
+		return 0, fmt.Errorf("redis: unexpected type %T for float64", r.v)
+	}
+	return v, nil
+}
+
+func (r *reply) String() (string, error) {
+	v, ok := r.v.(string)
+	if !ok {
+		return "", fmt.Errorf("redis: unexpected type %T for string", r.v)
+	}
+	return v, nil
+}
+
+func (r *reply) Slice() ([]interface{}, error) {
+	v, ok := r.v.([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("redis: unexpected type %T for []interface{}", r.v)
+	}
+	return v, nil
+}
+
+func (r *reply) BoolSlice() ([]bool, error) {
+	v, ok := r.v.([]bool)
+	if !ok {
+		return nil, fmt.Errorf("redis: unexpected type %T for []bool", r.v)
+	}
+	return v, nil
+}
+
+func (r *reply) Int64Slice() ([]int64, error) {
+	v, ok := r.v.([]int64)
+	if !ok {
+		return nil, fmt.Errorf("redis: unexpected type %T for []int64", r.v)
+	}
+	return v, nil
+}
+
+func (r *reply) Float64Slice() ([]float64, error) {
+	v, ok := r.v.([]float64)
+	if !ok {
+		return nil, fmt.Errorf("redis: unexpected type %T for []float64", r.v)
+	}
+	return v, nil
+}
+
+func (r *reply) StringSlice() ([]string, error) {
+	v, ok := r.v.([]string)
+	if !ok {
+		return nil, fmt.Errorf("redis: unexpected type %T for []string", r.v)
+	}
+	return v, nil
+}
+
+func (r *reply) ZItemSlice() ([]ZItem, error) {
+	v, ok := r.v.([]ZItem)
+	if !ok {
+		return nil, fmt.Errorf("redis: unexpected type %T for []redis.ZItem", r.v)
+	}
+	return v, nil
+}
+
+func (r *reply) StringMap() (map[string]string, error) {
+	v, ok := r.v.(map[string]string)
+	if !ok {
+		return nil, fmt.Errorf("redis: unexpected type %T for map[string]string", r.v)
+	}
+	return v, nil
 }

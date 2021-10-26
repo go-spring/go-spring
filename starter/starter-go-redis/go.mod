@@ -10,7 +10,8 @@ require (
 	github.com/go-spring/starter-core v1.1.0-rc1
 )
 
-//replace (
-//	github.com/go-spring/spring-core => ../../spring/spring-core
-//	github.com/go-spring/starter-core => ../starter-core
-//)
+replace (
+	github.com/go-spring/spring-core => ../../spring/spring-core
+	github.com/go-spring/spring-base => ../../spring/spring-base
+	github.com/go-spring/starter-core => ../starter-core
+)
