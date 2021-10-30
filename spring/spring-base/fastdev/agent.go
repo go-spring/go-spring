@@ -14,10 +14,9 @@
  * limitations under the License.
  */
 
-package replayer
+package fastdev
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -25,39 +24,42 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/go-spring/spring-base/cast"
-	"github.com/go-spring/spring-base/recorder"
 )
 
-func init() {
-	runAgent()
-}
-
-var agentCfg = AgentConfig{
-	Port:    8991,
-	DataDir: "replay",
-}
-
+// AgentConfig 回放代理的配置。
 type AgentConfig struct {
 	Port    int
 	DataDir string
 }
 
+// agentCfg 回放代理的配置。
+var agentCfg = AgentConfig{
+	Port:    8991,
+	DataDir: "replay",
+}
+
+// SetAgentConfig 设置回放代理的配置。
 func SetAgentConfig(config AgentConfig) {
 	agentCfg = config
 }
 
 func runAgent() {
+	c := new(controller)
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", home)
-	mux.HandleFunc("/replay", replay)
+	mux.HandleFunc("/", c.home)
+	mux.HandleFunc("/replay", c.replay)
 	go func() {
 		addr := fmt.Sprintf(":%d", agentCfg.Port)
 		fmt.Println(http.ListenAndServe(addr, mux))
 	}()
 }
 
+type controller struct{}
+
+// checkDataDir 检查回放目录是否有效。
 func checkDataDir(w http.ResponseWriter, r *http.Request) (ok bool) {
 
 	defer func() {
@@ -82,6 +84,7 @@ func checkDataDir(w http.ResponseWriter, r *http.Request) (ok bool) {
 	return stat.IsDir()
 }
 
+// readDirNames 读取回放文件列表。
 func readDirNames(dirname string) ([]string, error) {
 	f, err := os.Open(dirname)
 	if err != nil {
@@ -96,7 +99,7 @@ func readDirNames(dirname string) ([]string, error) {
 	return names, nil
 }
 
-func home(w http.ResponseWriter, r *http.Request) {
+func (c *controller) home(w http.ResponseWriter, r *http.Request) {
 
 	if !checkDataDir(w, r) {
 		return
@@ -108,15 +111,10 @@ func home(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var buf bytes.Buffer
-	for _, name := range names {
-		buf.WriteString(name)
-		buf.WriteByte('\n')
-	}
-	w.Write(buf.Bytes())
+	w.Write([]byte(strings.Join(names, "\n")))
 }
 
-func replay(w http.ResponseWriter, r *http.Request) {
+func (c *controller) replay(w http.ResponseWriter, r *http.Request) {
 
 	if !checkDataDir(w, r) {
 		return
@@ -127,13 +125,13 @@ func replay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id := r.Form.Get("id")
-	if id == "" {
-		w.Write([]byte(fmt.Sprintf("error replay id %s", id)))
+	sessionID := r.Form.Get("session")
+	if sessionID == "" {
+		w.Write([]byte(fmt.Sprintf("empty session id %s", sessionID)))
 		return
 	}
 
-	dataFile := filepath.Join(agentCfg.DataDir, id+".data")
+	dataFile := filepath.Join(agentCfg.DataDir, sessionID+".data")
 	info, err := os.Stat(dataFile)
 	if err != nil {
 		w.Write([]byte(fmt.Sprintf("stat file %s error %s", dataFile, err.Error())))
@@ -150,38 +148,48 @@ func replay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	session := new(recorder.Session)
+	var session *Session
 	if err = json.Unmarshal(data, &session); err != nil {
 		w.Write([]byte(fmt.Sprintf("unmarshal file %s error %s", dataFile, err.Error())))
 		return
 	}
 
+	if session.Inbound == nil {
+		w.Write([]byte(fmt.Sprintf("inbound not found in file %s", dataFile)))
+		return
+	}
+
+	if session.Inbound.Protocol != HTTP {
+		w.Write([]byte(fmt.Sprintf("inbound not http in file %s", dataFile)))
+		return
+	}
+
+	Store(session)
+	defer Delete(session.Session)
+
+	if err = c.replaySession(session); err != nil {
+		w.Write([]byte(fmt.Sprintf("replay file %s error %s", dataFile, err.Error())))
+		return
+	}
+
 	w.Write([]byte(cast.ToString(session)))
+}
 
-	if len(session.Actions) == 0 {
-		w.Write([]byte(fmt.Sprintf("actions not found in file %s", dataFile)))
-		return
-	}
+func (c *controller) replaySession(session *Session) error {
 
-	action := session.Actions[0]
-	if action.Protocol != recorder.HTTP {
-		w.Write([]byte(fmt.Sprintf("first action not http in file %s", dataFile)))
-		return
-	}
-
-	Store(session.ID, session)
-	defer Delete(session.ID)
-
-	//httpData := action.Data.(*recorder.Http)
 	url := "http://127.0.0.1:8080/index"
 	resp, err := http.Get(url)
 	if err != nil {
-		w.Write([]byte(fmt.Sprintf("post form %s return error %s", url, err.Error())))
-		return
+		return fmt.Errorf("get url %s return error %s", url, err.Error())
 	}
 
 	defer resp.Body.Close()
 
 	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("read url %s data return error %s", url, err.Error())
+	}
+
 	fmt.Println(string(body))
+	return nil
 }

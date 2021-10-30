@@ -1,5 +1,3 @@
-// +build !gs_recorder
-
 /*
  * Copyright 2012-2019 the original author or authors.
  *
@@ -16,13 +14,41 @@
  * limitations under the License.
  */
 
-package recorder
+package fastdev
 
 import (
 	"context"
+	"testing"
+
+	"github.com/go-spring/spring-base/assert"
+	"github.com/go-spring/spring-base/knife"
 )
 
-// Record 流量录制。
-func Record(ctx context.Context, f func() *Action) {
+func TestRecordAction(t *testing.T) {
 
+	recordMode = true
+	defer func() {
+		recordMode = false
+	}()
+
+	ctx := knife.New(context.Background())
+	err := knife.Set(ctx, RecordSessionIDKey, NewSessionID())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	RecordAction(ctx, &Action{
+		Protocol: REDIS,
+		Request:  "GET a",
+		Response: "1",
+	})
+
+	session := RecordInbound(ctx, &Action{
+		Protocol: HTTP,
+		Request:  "GET ...",
+		Response: "... 200 ...",
+	})
+
+	_, ok := recordData.Load(session.Session)
+	assert.False(t, ok)
 }

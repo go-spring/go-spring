@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-// Package koala 提供了进程内缓存组件。
-package koala
+// Package apcu 提供了进程内缓存组件。
+package apcu
 
 import (
 	"context"
@@ -26,33 +26,32 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-spring/spring-base/recorder"
-	"github.com/go-spring/spring-base/replayer"
+	"github.com/go-spring/spring-base/cast"
+	"github.com/go-spring/spring-base/fastdev"
 )
 
-const Protocol = "apcu"
-
 var cache sync.Map
+
+// EmptyValue 流量录制时表示空值。
+const EmptyValue = "::empty::"
 
 // Load 获取 key 对应的缓存值，注意 out 的类型必须和 Store 的时候存入的类
 // 型一致，否则 Load 会失败。但是如果 Store 的时候存入的内容是一个字符串，
 // 那么 out 可以是该字符串 JSON 反序列化之后的类型。
 func Load(ctx context.Context, key string, out interface{}) (ok bool, err error) {
 
-	if replayer.ReplayMode() {
-		return replayer.Replay(ctx, &recorder.Action{
-			Protocol: Protocol,
-			Key:      key,
-		})
-	}
-
 	defer func() {
-		if ok {
-			recorder.Record(ctx, func() *recorder.Action {
-				return &recorder.Action{
-					Protocol: Protocol,
-					Key:      key,
-				}
+		if err == nil && fastdev.RecordMode() {
+			var resp string
+			if ok {
+				resp = cast.ToString(out)
+			} else {
+				resp = EmptyValue
+			}
+			fastdev.RecordAction(ctx, &fastdev.Action{
+				Protocol: fastdev.APCU,
+				Request:  key,
+				Response: resp,
 			})
 		}
 	}()

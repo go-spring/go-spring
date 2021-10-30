@@ -14,71 +14,76 @@
  * limitations under the License.
  */
 
-// Package replayer 流量回放。
-package replayer
+package fastdev
 
 import (
 	"context"
 	"errors"
-	"reflect"
+	"os"
+	"strings"
+	"sync"
 
 	"github.com/go-spring/spring-base/knife"
-	"github.com/go-spring/spring-base/recorder"
 )
 
-var replayMode bool
+var (
+	replayMode bool     // 是否是回放模式。
+	replayData sync.Map // 正在回放的数据。
+)
+
+func init() {
+	s := os.Getenv("fastdev_mode")
+	ss := strings.Split(s, ",")
+	for _, c := range ss {
+		if c == "replay" {
+			replayMode = true
+			runAgent()
+			break
+		}
+	}
+}
 
 // ReplayMode 返回是否是回放模式。
 func ReplayMode() bool {
 	return replayMode
 }
 
-// SetReplayMode 设置为回放模式。
-func SetReplayMode() {
-	replayMode = true
-}
-
-var replayData = map[string]*recorder.Session{}
-
 // Delete 删除 sessionID 对应的回放数据。
 func Delete(sessionID string) {
-	delete(replayData, sessionID)
+	replayData.Delete(sessionID)
 }
 
 // Store 存储 sessionID 对应的回放数据。
-func Store(sessionID string, session *recorder.Session) {
-	replayData[sessionID] = session
+func Store(session *Session) {
+	replayData.Store(session.Session, session)
 }
 
-// SessionIDKey 回放数据 ID 存储使用的 Key 。
-const SessionIDKey = "REPLAYER-SESSION-ID"
+// ReplayAction 根据 action 传入的匹配信息返回对应的响应数据。
+func ReplayAction(ctx context.Context, action *Action) (bool, error) {
 
-// Replay 根据 action 传入的匹配信息返回对应的数据。
-func Replay(ctx context.Context, action *recorder.Action) (ok bool, err error) {
-	sessionID, ok := knife.Get(ctx, SessionIDKey)
+	if !replayMode {
+		return false, errors.New("replay mode not enabled")
+	}
+
+	sessionID, ok := knife.Get(ctx, ReplaySessionIDKey)
 	if !ok {
 		return false, errors.New("session id not found")
 	}
-	session, ok := replayData[sessionID.(string)]
+
+	session, ok := replayData.Load(sessionID.(string))
 	if !ok {
 		return false, errors.New("session not found")
 	}
-	for _, r := range session.Actions {
+
+	for _, r := range session.(*Session).Actions {
 		if r.Protocol != action.Protocol {
 			continue
 		}
-		if r.Key != action.Key {
+		if r.Request != action.Request {
 			continue
 		}
-		switch action.Protocol {
-		case recorder.REDIS:
-			a1 := r.Data.(*recorder.Redis)
-			a2 := action.Data.(*recorder.Redis)
-			if reflect.DeepEqual(a1.Request, a2.Request) {
-				a2.Response = a1.Response
-				return true, nil
-			}
-		}
+		action.Response = r.Response
+		return true, nil
 	}
 	return false, nil
 }

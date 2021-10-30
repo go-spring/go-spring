@@ -14,14 +14,14 @@
  * limitations under the License.
  */
 
-package koala_test
+package apcu_test
 
 import (
 	"context"
 	"testing"
 
+	"github.com/go-spring/spring-base/apcu"
 	"github.com/go-spring/spring-base/assert"
-	"github.com/go-spring/spring-base/koala"
 )
 
 func TestStore(t *testing.T) {
@@ -32,34 +32,34 @@ func TestStore(t *testing.T) {
 	}
 
 	t.Run("", func(t *testing.T) {
-		koala.Store("success", `{"errno":200,"errmsg":"OK"}`)
+		apcu.Store("success", `{"errno":200,"errmsg":"OK"}`)
 
 		var resp *Resp
-		load, err := koala.Load(context.TODO(), "success", &resp)
+		load, err := apcu.Load(context.TODO(), "success", &resp)
 		assert.Nil(t, err)
 		assert.True(t, load)
 		assert.Equal(t, resp, &Resp{200, "OK"})
 
-		load, err = koala.Load(context.TODO(), "success", &resp)
+		load, err = apcu.Load(context.TODO(), "success", &resp)
 		assert.Nil(t, err)
 		assert.True(t, load)
 		assert.Equal(t, resp, &Resp{200, "OK"})
 	})
 
-	koala.Delete("success")
+	apcu.Delete("success")
 
 	t.Run("", func(t *testing.T) {
-		koala.Store("success", `{"errno":200,"errmsg":"OK"}`)
+		apcu.Store("success", `{"errno":200,"errmsg":"OK"}`)
 
 		var resp map[string]interface{}
-		load, err := koala.Load(context.TODO(), "success", &resp)
+		load, err := apcu.Load(context.TODO(), "success", &resp)
 		assert.Nil(t, err)
 		assert.True(t, load)
 		assert.Equal(t, resp, map[string]interface{}{
 			"errno": float64(200), "errmsg": "OK",
 		})
 
-		load, err = koala.Load(context.TODO(), "success", &resp)
+		load, err = apcu.Load(context.TODO(), "success", &resp)
 		assert.Nil(t, err)
 		assert.True(t, load)
 		assert.Equal(t, resp, map[string]interface{}{
