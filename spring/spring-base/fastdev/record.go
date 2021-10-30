@@ -20,37 +20,24 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"strings"
 	"sync"
 
 	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-base/knife"
 )
 
-var (
-	recordMode bool     // 是否为录制模式。
-	recordData sync.Map // 正在录制的数据。
-)
-
-func init() {
-	e := os.Getenv("fastdev_mode")
-	ss := strings.Split(e, ",")
-	for _, s := range ss {
-		if s == "record" {
-			recordMode = true
-			break
-		}
-	}
+var recorder struct {
+	mode bool     // 是否为录制模式。
+	data sync.Map // 正在录制的数据。
 }
 
 // RecordMode 返回是否是录制模式。
 func RecordMode() bool {
-	return recordMode
+	return recorder.mode
 }
 
 func checkRecordMode() {
-	if !recordMode {
+	if !recorder.mode {
 		panic(errors.New("record mode not enabled"))
 	}
 }
@@ -72,13 +59,13 @@ func getRecordSession(ctx context.Context) *recordSession {
 		}
 	}
 
-	v, ok := recordData.Load(sessionID)
+	v, ok := recorder.data.Load(sessionID)
 	if ok {
 		return v.(*recordSession)
 	}
 
 	s := &recordSession{s: &Session{Session: sessionID}}
-	actual, _ := recordData.LoadOrStore(sessionID, s)
+	actual, _ := recorder.data.LoadOrStore(sessionID, s)
 	return actual.(*recordSession)
 }
 
@@ -101,7 +88,7 @@ func RecordInbound(ctx context.Context, inbound *Action) *Session {
 	s := getRecordSession(ctx)
 
 	defer func() {
-		recordData.Delete(s.s.Session)
+		recorder.data.Delete(s.s.Session)
 	}()
 
 	s.m.Lock()

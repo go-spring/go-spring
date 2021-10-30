@@ -28,9 +28,9 @@ func TestReplayAction(t *testing.T) {
 
 	sessionID := NewSessionID()
 
-	replayMode = true
+	SetReplayMode(true)
 	defer func() {
-		replayMode = false
+		SetReplayMode(false)
 	}()
 
 	session := &Session{

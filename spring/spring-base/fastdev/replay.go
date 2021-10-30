@@ -19,49 +19,35 @@ package fastdev
 import (
 	"context"
 	"errors"
-	"os"
-	"strings"
 	"sync"
 
 	"github.com/go-spring/spring-base/knife"
 )
 
-var (
-	replayMode bool     // 是否是回放模式。
-	replayData sync.Map // 正在回放的数据。
-)
-
-func init() {
-	s := os.Getenv("fastdev_mode")
-	ss := strings.Split(s, ",")
-	for _, c := range ss {
-		if c == "replay" {
-			replayMode = true
-			runAgent()
-			break
-		}
-	}
+var replayer struct {
+	mode bool     // 是否是回放模式。
+	data sync.Map // 正在回放的数据。
 }
 
 // ReplayMode 返回是否是回放模式。
 func ReplayMode() bool {
-	return replayMode
+	return replayer.mode
 }
 
 // Delete 删除 sessionID 对应的回放数据。
 func Delete(sessionID string) {
-	replayData.Delete(sessionID)
+	replayer.data.Delete(sessionID)
 }
 
 // Store 存储 sessionID 对应的回放数据。
 func Store(session *Session) {
-	replayData.Store(session.Session, session)
+	replayer.data.Store(session.Session, session)
 }
 
 // ReplayAction 根据 action 传入的匹配信息返回对应的响应数据。
 func ReplayAction(ctx context.Context, action *Action) (bool, error) {
 
-	if !replayMode {
+	if !replayer.mode {
 		return false, errors.New("replay mode not enabled")
 	}
 
@@ -70,7 +56,7 @@ func ReplayAction(ctx context.Context, action *Action) (bool, error) {
 		return false, errors.New("session id not found")
 	}
 
-	session, ok := replayData.Load(sessionID.(string))
+	session, ok := replayer.data.Load(sessionID.(string))
 	if !ok {
 		return false, errors.New("session not found")
 	}

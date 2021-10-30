@@ -17,6 +17,7 @@
 package fastdev
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -35,26 +36,39 @@ type AgentConfig struct {
 	DataDir string
 }
 
-// agentCfg 回放代理的配置。
-var agentCfg = AgentConfig{
-	Port:    8991,
-	DataDir: "replay",
+var agent = struct {
+	server *http.Server
+	config AgentConfig
+}{
+	config: AgentConfig{
+		Port:    8991,
+		DataDir: "replay",
+	},
 }
 
-// SetAgentConfig 设置回放代理的配置。
-func SetAgentConfig(config AgentConfig) {
-	agentCfg = config
-}
-
-func runAgent() {
+// startAgent 启动回放代理。
+func startAgent() {
 	c := new(controller)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", c.home)
 	mux.HandleFunc("/replay", c.replay)
 	go func() {
-		addr := fmt.Sprintf(":%d", agentCfg.Port)
-		fmt.Println(http.ListenAndServe(addr, mux))
+		addr := fmt.Sprintf(":%d", agent.config.Port)
+		agent.server = &http.Server{Addr: addr, Handler: mux}
+		fmt.Println(agent.server.ListenAndServe())
 	}()
+}
+
+// stopAgent 停止回放代理。
+func stopAgent() {
+	if agent.server != nil {
+		agent.server.Shutdown(context.Background())
+	}
+}
+
+// SetAgentConfig 设置回放代理的配置。
+func SetAgentConfig(config AgentConfig) {
+	agent.config = config
 }
 
 type controller struct{}
@@ -64,15 +78,15 @@ func checkDataDir(w http.ResponseWriter, r *http.Request) (ok bool) {
 
 	defer func() {
 		if !ok {
-			w.Write([]byte(fmt.Sprintf("error replay data dir %q", agentCfg.DataDir)))
+			w.Write([]byte(fmt.Sprintf("error replay data dir %q", agent.config.DataDir)))
 		}
 	}()
 
-	if agentCfg.DataDir == "" {
+	if agent.config.DataDir == "" {
 		return false
 	}
 
-	dir, err := filepath.Abs(agentCfg.DataDir)
+	dir, err := filepath.Abs(agent.config.DataDir)
 	if err != nil {
 		return false
 	}
@@ -105,9 +119,9 @@ func (c *controller) home(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	names, err := readDirNames(agentCfg.DataDir)
+	names, err := readDirNames(agent.config.DataDir)
 	if err != nil {
-		w.Write([]byte(fmt.Sprintf("read %q names error %s", agentCfg.DataDir, err.Error())))
+		w.Write([]byte(fmt.Sprintf("read %q names error %s", agent.config.DataDir, err.Error())))
 		return
 	}
 
@@ -131,7 +145,7 @@ func (c *controller) replay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dataFile := filepath.Join(agentCfg.DataDir, sessionID+".data")
+	dataFile := filepath.Join(agent.config.DataDir, sessionID+".data")
 	info, err := os.Stat(dataFile)
 	if err != nil {
 		w.Write([]byte(fmt.Sprintf("stat file %s error %s", dataFile, err.Error())))

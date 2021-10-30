@@ -28,9 +28,10 @@ import (
 
 func TestRecord(t *testing.T) {
 
-	if !fastdev.RecordMode() {
-		t.SkipNow()
-	}
+	fastdev.SetRecordMode(true)
+	defer func() {
+		fastdev.SetRecordMode(false)
+	}()
 
 	sessionID := fastdev.NewSessionID()
 	ctx := knife.New(context.Background())

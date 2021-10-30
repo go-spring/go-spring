@@ -17,38 +17,42 @@
 package fastdev
 
 import (
-	"context"
-	"testing"
-
-	"github.com/go-spring/spring-base/assert"
-	"github.com/go-spring/spring-base/knife"
+	"errors"
+	"os"
+	"strings"
 )
 
-func TestRecordAction(t *testing.T) {
-
-	SetRecordMode(true)
-	defer func() {
-		SetRecordMode(false)
-	}()
-
-	ctx := knife.New(context.Background())
-	err := knife.Set(ctx, RecordSessionIDKey, NewSessionID())
-	if err != nil {
-		t.Fatal(err)
+// checkTestMode 检查是否是测试模式
+func checkTestMode() {
+	var testMode bool
+	for _, arg := range os.Args {
+		if strings.HasPrefix(arg, "-test.") {
+			testMode = true
+			break
+		}
 	}
+	if !testMode {
+		panic(errors.New("must call under test mode"))
+	}
+}
 
-	RecordAction(ctx, &Action{
-		Protocol: REDIS,
-		Request:  "GET a",
-		Response: "1",
-	})
+// SetRecordMode 打开或者关闭录制模式。
+func SetRecordMode(mode bool) {
+	checkTestMode()
+	if recorder.mode != mode {
+		recorder.mode = mode
+	}
+}
 
-	session := RecordInbound(ctx, &Action{
-		Protocol: HTTP,
-		Request:  "GET ...",
-		Response: "... 200 ...",
-	})
-
-	_, ok := recorder.data.Load(session.Session)
-	assert.False(t, ok)
+// SetReplayMode 打开或者关闭回放模式。
+func SetReplayMode(mode bool) {
+	checkTestMode()
+	if replayer.mode != mode {
+		replayer.mode = mode
+		if mode {
+			startAgent()
+		} else {
+			stopAgent()
+		}
+	}
 }
