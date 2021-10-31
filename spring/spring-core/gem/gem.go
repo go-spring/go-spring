@@ -14,4 +14,5 @@
  * limitations under the License.
  */
 
-package batis
+// Package gem 模仿 Java 的 MyBatis 实现。
+package gem

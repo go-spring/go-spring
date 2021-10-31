@@ -91,7 +91,7 @@ type ResponseWriter interface {
 	Size() int
 
 	// Body 返回发送给客户端的数据，当前仅支持 MIMEApplicationJSON 格式.
-	Body() []byte
+	Body() string
 }
 
 // Context 封装 *http.Request 和 http.ResponseWriter 对象，简化操作接口。
@@ -264,12 +264,23 @@ type Context interface {
 type BufferedResponseWriter struct {
 	http.ResponseWriter
 	buffer bytes.Buffer
-	size   int
+	status int
 }
 
-func (w *BufferedResponseWriter) Size() int { return w.size }
+// Status Returns the HTTP response status code of the current request.
+func (w *BufferedResponseWriter) Status() int {
+	return w.status
+}
 
-func (w *BufferedResponseWriter) Body() []byte { return w.buffer.Bytes() }
+// Size Returns the number of bytes already written into the response http body.
+func (w *BufferedResponseWriter) Size() int {
+	return w.buffer.Len()
+}
+
+// Body 返回发送给客户端的数据，当前仅支持 MIMEApplicationJSON 格式.
+func (w *BufferedResponseWriter) Body() string {
+	return w.buffer.String()
+}
 
 func filterFlags(content string) string {
 	for i, char := range strings.ToLower(content) {
@@ -290,12 +301,16 @@ func canPrintResponse(response http.ResponseWriter) bool {
 	return false
 }
 
+func (w *BufferedResponseWriter) WriteHeader(code int) {
+	w.ResponseWriter.WriteHeader(code)
+	w.status = code
+}
+
 func (w *BufferedResponseWriter) Write(data []byte) (n int, err error) {
 	if n, err = w.ResponseWriter.Write(data); err == nil {
 		if canPrintResponse(w.ResponseWriter) {
 			w.buffer.Write(data[:n])
 		}
 	}
-	w.size += n
 	return
 }

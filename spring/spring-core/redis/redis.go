@@ -19,12 +19,13 @@ package redis
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 
 	"github.com/go-spring/spring-base/cast"
-	"github.com/go-spring/spring-base/recorder"
-	"github.com/go-spring/spring-base/replayer"
+	"github.com/go-spring/spring-base/fastdev"
 )
 
 var ErrNil = errors.New("redis: nil")
@@ -56,6 +57,7 @@ type BaseCommand interface {
 }
 
 type Reply interface {
+	Value() interface{}
 	Bool() (bool, error)
 	Int64() (int64, error)
 	Float64() (float64, error)
@@ -73,36 +75,67 @@ type BaseClient struct {
 	DoFunc func(ctx context.Context, args ...interface{}) (Reply, error)
 }
 
-func (c *BaseClient) do(ctx context.Context, args ...interface{}) (Reply, error) {
-
-	key := func() string {
-		var buf bytes.Buffer
-		for i, arg := range args {
-			buf.WriteString(cast.ToString(arg))
-			if i < len(args)-1 {
-				buf.WriteByte('^')
-			}
+// needQuote 判断是否需要双引号包裹。
+func needQuote(s string) bool {
+	for _, c := range s {
+		switch c {
+		case '"', '\t', '\n', '\v', '\f', '\r', ' ', 0x85, 0xA0:
+			return true
 		}
-		return buf.String()
 	}
+	return false
+}
 
-	fmt.Println(key())
-
-	if replayer.ReplayMode() {
-		data := &recorder.Redis{Request: args}
-		action := &recorder.Action{
-			Protocol: recorder.REDIS,
-			Key:      key(),
-			Data:     data,
+func cmdString(args []interface{}) string {
+	var buf bytes.Buffer
+	for i, arg := range args {
+		switch s := arg.(type) {
+		case string:
+			if needQuote(s) {
+				s = strconv.Quote(s)
+			}
+			buf.WriteString(s)
+		default:
+			buf.WriteString(cast.ToString(arg))
 		}
-		ok, err := replayer.Replay(ctx, action)
+		if i < len(args)-1 {
+			buf.WriteByte(' ')
+		}
+	}
+	return buf.String()
+}
+
+func (c *BaseClient) do(ctx context.Context, args ...interface{}) (r Reply, err error) {
+
+	defer func() {
+		if err == nil && fastdev.RecordMode() {
+			fastdev.RecordAction(ctx, &fastdev.Action{
+				Protocol: fastdev.REDIS,
+				Request:  cmdString(args),
+				Response: cast.ToString(r.Value()),
+			})
+		}
+	}()
+
+	if fastdev.ReplayMode() {
+		action := &fastdev.Action{
+			Protocol: fastdev.REDIS,
+			Request:  cmdString(args),
+		}
+		var ok bool
+		ok, err = fastdev.ReplayAction(ctx, action)
 		if err != nil {
 			return nil, err
 		}
 		if !ok {
-			return nil, errors.New("xxx")
+			return nil, errors.New("replay action not match")
 		}
-		return &reply{data.Response}, nil
+		var v interface{}
+		err = json.Unmarshal([]byte(action.Response), &v)
+		if err != nil {
+			return nil, err
+		}
+		return &reply{v}, nil
 	}
 
 	return c.DoFunc(ctx, args...)
@@ -198,6 +231,10 @@ func (c *BaseClient) StringMap(ctx context.Context, args ...interface{}) (map[st
 
 type reply struct {
 	v interface{}
+}
+
+func (r *reply) Value() interface{} {
+	return r.v
 }
 
 func (r *reply) Bool() (bool, error) {
