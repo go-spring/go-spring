@@ -21,7 +21,7 @@ import (
 	"fmt"
 
 	g "github.com/go-redis/redis/v8"
-	"github.com/go-spring/spring-base/replayer"
+	"github.com/go-spring/spring-base/fastdev"
 	"github.com/go-spring/spring-core/redis"
 	"github.com/go-spring/spring-go-redis"
 	"github.com/go-spring/starter-core"
@@ -30,7 +30,7 @@ import (
 // NewClient 创建 Redis 客户端
 func NewClient(config StarterCore.RedisConfig) (redis.Client, error) {
 
-	if replayer.ReplayMode() {
+	if fastdev.ReplayMode() {
 		return SpringGoRedis.NewClient(nil), nil
 	}
 

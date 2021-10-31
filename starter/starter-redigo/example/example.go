@@ -29,7 +29,7 @@ type runner struct {
 	RedisClient redis.Client `autowire:""`
 }
 
-func (r *runner) Run(ctx gs.AppContext) {
+func (r *runner) Run(ctx gs.Context) {
 	_, err := r.RedisClient.Set(ctx.Context(), "a", 1)
 	util.Panic(err).When(err != nil)
 	v, err := r.RedisClient.Get(ctx.Context(), "a")

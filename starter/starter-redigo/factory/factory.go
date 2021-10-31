@@ -19,6 +19,7 @@ package factory
 import (
 	"fmt"
 
+	"github.com/go-spring/spring-base/fastdev"
 	"github.com/go-spring/spring-core/redis"
 	"github.com/go-spring/spring-redigo"
 	"github.com/go-spring/starter-core"
@@ -27,6 +28,10 @@ import (
 
 // NewClient 创建 Redis 客户端
 func NewClient(config StarterCore.RedisConfig) (redis.Client, error) {
+
+	if fastdev.ReplayMode() {
+		return SpringRedigo.NewClient(nil), nil
+	}
 
 	address := fmt.Sprintf("%s:%d", config.Host, config.Port)
 	conn, err := g.Dial("tcp", address)
