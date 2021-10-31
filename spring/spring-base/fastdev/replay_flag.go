@@ -18,4 +18,5 @@ package fastdev
 
 func init() {
 	replayer.mode = true
+	startAgent()
 }

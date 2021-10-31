@@ -26,6 +26,7 @@ import (
 
 	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-base/fastdev"
+	"github.com/go-spring/spring-base/util"
 )
 
 var ErrNil = errors.New("redis: nil")
@@ -130,12 +131,7 @@ func (c *BaseClient) do(ctx context.Context, args ...interface{}) (r Reply, err 
 		if !ok {
 			return nil, errors.New("replay action not match")
 		}
-		var v interface{}
-		err = json.Unmarshal([]byte(action.Response), &v)
-		if err != nil {
-			return nil, err
-		}
-		return &reply{v}, nil
+		return &reply{action.Response}, nil
 	}
 
 	return c.DoFunc(ctx, args...)
@@ -234,7 +230,7 @@ type reply struct {
 }
 
 func (r *reply) Value() interface{} {
-	return r.v
+	panic(util.UnsupportedMethod)
 }
 
 func (r *reply) Bool() (bool, error) {
@@ -249,81 +245,66 @@ func (r *reply) Bool() (bool, error) {
 }
 
 func (r *reply) Int64() (int64, error) {
-	v, ok := r.v.(int64)
-	if !ok {
-		return 0, fmt.Errorf("redis: unexpected type %T for int64", r.v)
-	}
-	return v, nil
+	return cast.ToInt64E(r.v)
 }
 
 func (r *reply) Float64() (float64, error) {
-	v, ok := r.v.(float64)
-	if !ok {
-		return 0, fmt.Errorf("redis: unexpected type %T for float64", r.v)
-	}
-	return v, nil
+	return cast.ToFloat64E(r.v)
 }
 
 func (r *reply) String() (string, error) {
-	v, ok := r.v.(string)
-	if !ok {
-		return "", fmt.Errorf("redis: unexpected type %T for string", r.v)
+	return cast.ToStringE(r.v)
+}
+
+func (r *reply) toValue(v interface{}) error {
+	return json.Unmarshal([]byte(cast.ToString(r.v)), v)
+}
+
+func (r *reply) Slice() (v []interface{}, err error) {
+	if err = r.toValue(&v); err != nil {
+		return nil, err
 	}
 	return v, nil
 }
 
-func (r *reply) Slice() ([]interface{}, error) {
-	v, ok := r.v.([]interface{})
-	if !ok {
-		return nil, fmt.Errorf("redis: unexpected type %T for []interface{}", r.v)
+func (r *reply) BoolSlice() (v []bool, err error) {
+	if err = r.toValue(&v); err != nil {
+		return nil, err
 	}
 	return v, nil
 }
 
-func (r *reply) BoolSlice() ([]bool, error) {
-	v, ok := r.v.([]bool)
-	if !ok {
-		return nil, fmt.Errorf("redis: unexpected type %T for []bool", r.v)
+func (r *reply) Int64Slice() (v []int64, err error) {
+	if err = r.toValue(&v); err != nil {
+		return nil, err
 	}
 	return v, nil
 }
 
-func (r *reply) Int64Slice() ([]int64, error) {
-	v, ok := r.v.([]int64)
-	if !ok {
-		return nil, fmt.Errorf("redis: unexpected type %T for []int64", r.v)
+func (r *reply) Float64Slice() (v []float64, err error) {
+	if err = r.toValue(&v); err != nil {
+		return nil, err
 	}
 	return v, nil
 }
 
-func (r *reply) Float64Slice() ([]float64, error) {
-	v, ok := r.v.([]float64)
-	if !ok {
-		return nil, fmt.Errorf("redis: unexpected type %T for []float64", r.v)
+func (r *reply) StringSlice() (v []string, err error) {
+	if err = r.toValue(&v); err != nil {
+		return nil, err
 	}
 	return v, nil
 }
 
-func (r *reply) StringSlice() ([]string, error) {
-	v, ok := r.v.([]string)
-	if !ok {
-		return nil, fmt.Errorf("redis: unexpected type %T for []string", r.v)
+func (r *reply) ZItemSlice() (v []ZItem, err error) {
+	if err = r.toValue(&v); err != nil {
+		return nil, err
 	}
 	return v, nil
 }
 
-func (r *reply) ZItemSlice() ([]ZItem, error) {
-	v, ok := r.v.([]ZItem)
-	if !ok {
-		return nil, fmt.Errorf("redis: unexpected type %T for []redis.ZItem", r.v)
-	}
-	return v, nil
-}
-
-func (r *reply) StringMap() (map[string]string, error) {
-	v, ok := r.v.(map[string]string)
-	if !ok {
-		return nil, fmt.Errorf("redis: unexpected type %T for map[string]string", r.v)
+func (r *reply) StringMap() (v map[string]string, err error) {
+	if err = r.toValue(&v); err != nil {
+		return nil, err
 	}
 	return v, nil
 }

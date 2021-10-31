@@ -19,8 +19,8 @@ package main
 import (
 	"fmt"
 
+	"github.com/go-spring/spring-base/fastdev"
 	"github.com/go-spring/spring-base/knife"
-	"github.com/go-spring/spring-base/replayer"
 	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/redis"
@@ -28,10 +28,6 @@ import (
 	_ "github.com/go-spring/starter-echo"
 	_ "github.com/go-spring/starter-go-redis"
 )
-
-func init() {
-	replayer.SetReplayMode()
-}
 
 type controller struct {
 	RedisClient redis.Client `autowire:""`
@@ -41,16 +37,18 @@ func (c *controller) index(webCtx web.Context) {
 	ctx := knife.New(webCtx.Context())
 
 	sessionID := "54c8fab33dcb4f46899a3a3b70987164"
-	err := knife.Set(ctx, replayer.SessionIDKey, sessionID)
+	err := knife.Set(ctx, fastdev.ReplaySessionIDKey, sessionID)
 	util.Panic(err).When(err != nil)
 
-	_, err = c.RedisClient.Set(ctx, "a", float64(1))
+	b, err := c.RedisClient.Set(ctx, "a", 1)
 	util.Panic(err).When(err != nil)
+	fmt.Printf("set redis a=1 return %v\n", b)
 
 	v, err := c.RedisClient.Get(ctx, "a")
 	util.Panic(err).When(err != nil)
 
 	fmt.Printf("get redis a=%v\n", v)
+	webCtx.JSON(map[string]interface{}{"code": 200})
 }
 
 func main() {
