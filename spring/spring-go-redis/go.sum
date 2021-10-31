@@ -8,14 +8,10 @@ github.com/fsnotify/fsnotify v1.4.7/go.mod h1:jwhsz4b93w/PPRr/qN1Yymfu8t87LnFCMo
 github.com/fsnotify/fsnotify v1.4.9/go.mod h1:znqG4EE+3YCdAaPaxE2ZRY/06pZUdp0tY4IgpuI1SZQ=
 github.com/go-redis/redis/v8 v8.11.4 h1:kHoYkfZP6+pe04aFTnhDH6GDROa5yJdHJVNxV3F46Tg=
 github.com/go-redis/redis/v8 v8.11.4/go.mod h1:2Z2wHZXdQpCDXEGzqMockDpNyYvi2l4Pxt6RJr792+w=
-github.com/go-spring/spring-base v1.1.0-beta.0.20211022224302-dea9f41f5f6d h1:IcQjBUAyXH4rrpJvgiKqEQQB/76jR1vDF7/Pn8MFeqU=
-github.com/go-spring/spring-base v1.1.0-beta.0.20211022224302-dea9f41f5f6d/go.mod h1:q6x78FrbScapdjoLQ+vwuaEn/AasYyKpkks4Qw7fBOg=
-github.com/go-spring/spring-base v1.1.0-rc1 h1:/ym0A/C1kmNsFj3939zLuqn+ZT3COTLe4qGwBqV4y60=
-github.com/go-spring/spring-base v1.1.0-rc1/go.mod h1:q6x78FrbScapdjoLQ+vwuaEn/AasYyKpkks4Qw7fBOg=
-github.com/go-spring/spring-core v1.0.6-0.20211022224649-f0f6fffd8bc2 h1:+ZZmy+brXYFsOyrX+3NDHvWNwalufyrOmXXakLVNC4U=
-github.com/go-spring/spring-core v1.0.6-0.20211022224649-f0f6fffd8bc2/go.mod h1:OQDUJapvg+9GKqnS+ESMgoAiyzy7v3YB9NvuECeijPI=
-github.com/go-spring/spring-core v1.1.0-rc1 h1:1NxEflBu3wwLSOzg9YeVfh6TaeVoR54LaWJFw6Qulrw=
-github.com/go-spring/spring-core v1.1.0-rc1/go.mod h1:M9thF3xJEGqsXPrrTyyae0cmpohaWcxKfCHOn0JAZL0=
+github.com/go-spring/spring-base v1.1.0-rc1.0.20211030141542-4d3ac8ed9e93 h1:/ZWx6vWYvi9U9exoJ3N4vPHUGKMot9rtq6NK0kW7B6Q=
+github.com/go-spring/spring-base v1.1.0-rc1.0.20211030141542-4d3ac8ed9e93/go.mod h1:Z0cuF53BYtZmcAPB6JtwTgfUnZhtQlns7R2Wbh6jPHA=
+github.com/go-spring/spring-core v1.1.0-rc1.0.20211031004208-3997c4df4f37 h1:79GUtq5MWbX81pjJcY9eKWNRp/qtakoYO3mnB5jXqsg=
+github.com/go-spring/spring-core v1.1.0-rc1.0.20211031004208-3997c4df4f37/go.mod h1:aROFPg/PHGMJuOOttNYOoQAPWxdSUUZyU4Xc/P+zyoU=
 github.com/go-task/slim-sprig v0.0.0-20210107165309-348f09dbbbc0/go.mod h1:fyg7847qk6SyHyPtNmDHnmrv/HOrqktSC+C9fM+CJOE=
 github.com/golang/protobuf v1.2.0/go.mod h1:6lQm79b+lXiMfvg/cZm0SGofjICqVBUtrP5yJMmIC1U=
 github.com/golang/protobuf v1.4.0-rc.1/go.mod h1:ceaxUfeHdC40wWswd/P6IGgMaK3YpKi5j83Wpe3EHw8=
@@ -31,6 +27,8 @@ github.com/google/go-cmp v0.3.1/go.mod h1:8QqcDgzrUqlUb/G2PQTWiueGozuR1884gddMyw
 github.com/google/go-cmp v0.4.0/go.mod h1:v8dTdLbMG2kIc/vJvl+f65V22dbkXbowE6jgT/gNBxE=
 github.com/google/go-cmp v0.5.5/go.mod h1:v8dTdLbMG2kIc/vJvl+f65V22dbkXbowE6jgT/gNBxE=
 github.com/google/go-cmp v0.5.6/go.mod h1:v8dTdLbMG2kIc/vJvl+f65V22dbkXbowE6jgT/gNBxE=
+github.com/google/uuid v1.3.0 h1:t6JiXgmwXMjEs8VusXIJk2BXHsn+wx8BZdTaoZ5fu7I=
+github.com/google/uuid v1.3.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
 github.com/hpcloud/tail v1.0.0/go.mod h1:ab1qPbhIpdTxEkNHXyeSf5vhxWSCs/tWer42PpOxQnU=
 github.com/magiconair/properties v1.8.5/go.mod h1:y3VJvCyxH9uVvJTWEGAELF3aiYNyPKd5NZ3oSwXrF60=
 github.com/nxadm/tail v1.4.4/go.mod h1:kenIhsEOeOJmVchQTgglprH7qJGnHDVpk1VPCcaMI8A=
@@ -43,6 +41,7 @@ github.com/onsi/gomega v1.10.1/go.mod h1:iN09h71vgCQne3DLsj+A5owkum+a2tYe+TOCB1y
 github.com/onsi/gomega v1.16.0/go.mod h1:HnhC7FXeEQY45zxNK3PPoIUhzk/80Xly9PcubAlGdZY=
 github.com/pelletier/go-toml v1.9.4/go.mod h1:u1nR/EPcESfeI/szUZKdtJ0xRNbUoANCkoOuaOx1Y+c=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
+github.com/spf13/cast v1.4.1 h1:s0hze+J0196ZfEMTs80N7UlFt0BDuQ7Q+JDnHiMWKdA=
 github.com/spf13/cast v1.4.1/go.mod h1:Qx5cxh0v+4UWYiBimWS+eyWzqEqokIECu5etghLkUJE=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/testify v1.2.2/go.mod h1:a8OnRcib4nhh0OaRAV+Yts87kKdq0PP7pXfy6kDkUVs=

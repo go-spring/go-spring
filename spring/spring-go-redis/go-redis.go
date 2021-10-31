@@ -52,6 +52,10 @@ type reply struct {
 	cmd *g.Cmd
 }
 
+func (r *reply) Value() interface{} {
+	return r.cmd.Val()
+}
+
 func (r *reply) Bool() (bool, error) {
 	switch v := r.cmd.Val().(type) {
 	case int64:

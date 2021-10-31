@@ -47,36 +47,6 @@ func WebContext(echoCtx echo.Context) web.Context {
 	return nil
 }
 
-// 同时继承了 web.ResponseWriter 接口
-type responseWriter struct {
-	response *echo.Response
-	writer   *web.BufferedResponseWriter
-}
-
-func (w *responseWriter) Header() http.Header {
-	return w.writer.Header()
-}
-
-func (w *responseWriter) Write(data []byte) (n int, err error) {
-	return w.writer.Write(data)
-}
-
-func (w *responseWriter) WriteHeader(code int) {
-	w.writer.WriteHeader(code)
-}
-
-func (w *responseWriter) Status() int {
-	return w.response.Status
-}
-
-func (w *responseWriter) Size() int {
-	return w.writer.Size()
-}
-
-func (w *responseWriter) Body() []byte {
-	return w.writer.Body()
-}
-
 // Context 适配 echo 的 Web 上下文
 type Context struct {
 
@@ -99,11 +69,8 @@ func NewContext(fn web.Handler, wildCardName string, echoCtx echo.Context) *Cont
 		echoCtx.SetRequest(req.WithContext(ctx))
 	}
 
-	echoCtx.Response().Writer = &responseWriter{
-		writer: &web.BufferedResponseWriter{
-			ResponseWriter: echoCtx.Response().Writer,
-		},
-		response: echoCtx.Response(),
+	echoCtx.Response().Writer = &web.BufferedResponseWriter{
+		ResponseWriter: echoCtx.Response().Writer,
 	}
 
 	ctx := &Context{
@@ -291,7 +258,7 @@ func (ctx *Context) Bind(i interface{}) error {
 
 // ResponseWriter returns `http.ResponseWriter`.
 func (ctx *Context) ResponseWriter() web.ResponseWriter {
-	return ctx.echoContext.Response().Writer.(*responseWriter)
+	return ctx.echoContext.Response().Writer.(web.ResponseWriter)
 }
 
 // Status sets the HTTP response code.

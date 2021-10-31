@@ -62,6 +62,10 @@ func toBool(val interface{}) (bool, error) {
 	}
 }
 
+func (r *reply) Value() interface{} {
+	return r.v
+}
+
 func (r *reply) Bool() (bool, error) {
 	return toBool(r.v)
 }

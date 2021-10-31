@@ -24,6 +24,8 @@ import (
 	"runtime/debug"
 
 	"github.com/go-spring/spring-base/cast"
+	"github.com/go-spring/spring-base/fastdev"
+	"github.com/go-spring/spring-base/knife"
 	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/web"
@@ -69,7 +71,7 @@ func (c *Container) Start() error {
 	}
 
 	loggerFilter := c.GetLoggerFilter()
-	recoveryFilter := &recoveryFilter{}
+	recoveryFilter := new(recoveryFilter)
 
 	// 添加容器级别的过滤器，这样在路由不存在时也会调用这些过滤器
 	c.echoServer.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
@@ -84,8 +86,24 @@ func (c *Container) Start() error {
 				NewContext(nil, echoCtx.Path(), echoCtx)
 			}
 
+			if fastdev.RecordMode() {
+				session := fastdev.NewSessionID()
+				ctx := echoCtx.Request().Context()
+				err := knife.Set(ctx, fastdev.RecordSessionIDKey, session)
+				if err != nil {
+					log.Error(err)
+				}
+			}
+
+			defer func() {
+				if fastdev.RecordMode() {
+					web.Record(WebContext(echoCtx))
+				}
+			}()
+
 			chain := web.NewDefaultFilterChain([]web.Filter{
-				loggerFilter, recoveryFilter,
+				loggerFilter,
+				recoveryFilter,
 				web.HandlerFilter(Handler(next)),
 			})
 			chain.Next(WebContext(echoCtx))
@@ -212,7 +230,7 @@ func (f *recoveryFilter) Invoke(ctx web.Context, chain web.FilterChain) {
 			echoCtx := EchoContext(ctx)
 			if !echoCtx.Response().Committed {
 				if echoCtx.Request().Method == http.MethodHead { // Issue #608
-					if err := echoCtx.NoContent(httpE.Code); err != nil {
+					if err = echoCtx.NoContent(httpE.Code); err != nil {
 						ctxLogger.Error(err)
 					}
 				} else {
