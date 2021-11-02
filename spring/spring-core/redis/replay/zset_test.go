@@ -21,34 +21,36 @@ import (
 	"testing"
 
 	"github.com/go-spring/spring-base/assert"
+	"github.com/go-spring/spring-base/fastdev"
 	"github.com/go-spring/spring-core/redis"
+	"github.com/go-spring/spring-core/redis/testcases"
 )
 
-func ZAdd(t *testing.T, ctx context.Context, c redis.Client) {
-
-	r1, err := c.ZAdd(ctx, "myzset", 1, "one")
-	if err != nil {
-		t.Fatal(err)
-	}
-	assert.Equal(t, r1, int64(1))
-
-	r2, err := c.ZAdd(ctx, "myzset", 1, "uno")
-	if err != nil {
-		t.Fatal(err)
-	}
-	assert.Equal(t, r2, int64(1))
-
-	r3, err := c.ZAdd(ctx, "myzset", 2, "two", 3, "three")
-	if err != nil {
-		t.Fatal(err)
-	}
-	assert.Equal(t, r3, int64(2))
-
-	r4, err := c.ZRangeWithScores(ctx, "myzset", 0, -1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	assert.Equal(t, r4, []redis.ZItem{{1, "one"}, {1, "uno"}, {2, "two"}, {3, "three"}})
+func TestZAdd(t *testing.T) {
+	runTest(t, testcases.ZAdd, func() []*fastdev.Action {
+		return []*fastdev.Action{
+			{
+				Protocol: fastdev.REDIS,
+				Request:  "ZADD myzset 1 one",
+				Response: "1",
+			},
+			{
+				Protocol: fastdev.REDIS,
+				Request:  "ZADD myzset 1 uno",
+				Response: "1",
+			},
+			{
+				Protocol: fastdev.REDIS,
+				Request:  "ZADD myzset 2 two 3 three",
+				Response: "2",
+			},
+			{
+				Protocol: fastdev.REDIS,
+				Request:  "ZRANGE myzset 0 -1 WITHSCORES",
+				Response: "[{\"Score\":1,\"Member\":\"one\"},{\"Score\":1,\"Member\":\"uno\"},{\"Score\":2,\"Member\":\"two\"},{\"Score\":3,\"Member\":\"three\"}]",
+			},
+		}
+	})
 }
 
 func ZCard(t *testing.T, ctx context.Context, c redis.Client) {

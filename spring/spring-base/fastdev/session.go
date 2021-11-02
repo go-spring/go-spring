@@ -49,14 +49,14 @@ const (
 
 // Action 将上下游调用、缓存获取、文件写入等抽象为一个动作。
 type Action struct {
-	Protocol string `json:"protocol"` // 协议
-	Request  string `json:"request"`  // 请求
-	Response string `json:"response"` // 响应
+	Protocol string `json:"protocol,omitempty"` // 协议
+	Request  string `json:"request,omitempty"`  // 请求
+	Response string `json:"response,omitempty"` // 响应
 }
 
 // Session 一次上游调用称为一个会话。
 type Session struct {
-	Session string    `json:"session"` // 会话 ID
-	Inbound *Action   `json:"inbound"` // 上游数据
-	Actions []*Action `json:"actions"` // 动作数据
+	Session string    `json:"session,omitempty"` // 会话 ID
+	Inbound *Action   `json:"inbound,omitempty"` // 上游数据
+	Actions []*Action `json:"actions,omitempty"` // 动作数据
 }

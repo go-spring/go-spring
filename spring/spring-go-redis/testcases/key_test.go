@@ -23,61 +23,76 @@ import (
 )
 
 func TestDel(t *testing.T) {
-	RunCase(t, testcases.Del)
+	str := `{"session":"df3b64266ebe4e63a464e135000a07cd","inbound":{},"actions":[{"protocol":"redis","request":"SET key1 Hello","response":"OK"},{"protocol":"redis","request":"SET key2 World","response":"OK"},{"protocol":"redis","request":"DEL key1 key2 key3","response":"2"}]}`
+	RunCase(t, testcases.Del, str)
 }
 
 func TestDump(t *testing.T) {
-	RunCase(t, testcases.Dump)
+	str := `{"session":"df3b64266ebe4e63a464e135000a07cd","inbound":{},"actions":[{"protocol":"redis","request":"SET mykey 10","response":"OK"},{"protocol":"redis","request":"DUMP mykey","response":"\u0000\ufffd\n\t\u0000\ufffdm\u0006\ufffdZ(\u0000\n"}]}`
+	RunCase(t, testcases.Dump, str)
 }
 
 func TestExists(t *testing.T) {
-	RunCase(t, testcases.Exists)
+	str := `{"session":"df3b64266ebe4e63a464e135000a07cd","inbound":{},"actions":[{"protocol":"redis","request":"SET key1 Hello","response":"OK"},{"protocol":"redis","request":"EXISTS key1","response":"1"},{"protocol":"redis","request":"EXISTS nosuchkey","response":"0"},{"protocol":"redis","request":"SET key2 World","response":"OK"},{"protocol":"redis","request":"EXISTS key1 key2 nosuchkey","response":"2"}]}`
+	RunCase(t, testcases.Exists, str)
 }
 
 func TestExpire(t *testing.T) {
-	RunCase(t, testcases.Expire)
+	str := `{"session":"df3b64266ebe4e63a464e135000a07cd","inbound":{},"actions":[{"protocol":"redis","request":"SET mykey Hello","response":"OK"},{"protocol":"redis","request":"EXPIRE mykey 10","response":"1"},{"protocol":"redis","request":"TTL mykey","response":"10"},{"protocol":"redis","request":"SET mykey \"Hello World\"","response":"OK"},{"protocol":"redis","request":"TTL mykey","response":"-1"}]}`
+	RunCase(t, testcases.Expire, str)
 }
 
 func TestExpireAt(t *testing.T) {
-	RunCase(t, testcases.ExpireAt)
+	str := `{"session":"df3b64266ebe4e63a464e135000a07cd","inbound":{},"actions":[{"protocol":"redis","request":"SET mykey Hello","response":"OK"},{"protocol":"redis","request":"EXISTS mykey","response":"1"},{"protocol":"redis","request":"EXPIREAT mykey 1293840000","response":"1"},{"protocol":"redis","request":"EXISTS mykey","response":"0"}]}`
+	RunCase(t, testcases.ExpireAt, str)
 }
 
 func TestKeys(t *testing.T) {
-	RunCase(t, testcases.Keys)
+	str := `skip`
+	RunCase(t, testcases.Keys, str)
 }
 
 func TestPersist(t *testing.T) {
-	RunCase(t, testcases.Persist)
+	str := `{"session":"df3b64266ebe4e63a464e135000a07cd","inbound":{},"actions":[{"protocol":"redis","request":"SET mykey Hello","response":"OK"},{"protocol":"redis","request":"EXPIRE mykey 10","response":"1"},{"protocol":"redis","request":"TTL mykey","response":"10"},{"protocol":"redis","request":"PERSIST mykey","response":"1"},{"protocol":"redis","request":"TTL mykey","response":"-1"}]}`
+	RunCase(t, testcases.Persist, str)
 }
 
 func TestPExpire(t *testing.T) {
-	RunCase(t, testcases.PExpire)
+	str := `skip`
+	RunCase(t, testcases.PExpire, str)
 }
 
 func TestPExpireAt(t *testing.T) {
-	RunCase(t, testcases.PExpireAt)
+	str := `{"session":"df3b64266ebe4e63a464e135000a07cd","inbound":{},"actions":[{"protocol":"redis","request":"SET mykey Hello","response":"OK"},{"protocol":"redis","request":"PEXPIREAT mykey 1555555555005","response":"1"},{"protocol":"redis","request":"TTL mykey","response":"-2"},{"protocol":"redis","request":"PTTL mykey","response":"-2"}]}`
+	RunCase(t, testcases.PExpireAt, str)
 }
 
 func TestPTTL(t *testing.T) {
-	RunCase(t, testcases.PTTL)
+	str := `skip`
+	RunCase(t, testcases.PTTL, str)
 }
 
 func TestRename(t *testing.T) {
-	RunCase(t, testcases.Rename)
+	str := `{"session":"df3b64266ebe4e63a464e135000a07cd","inbound":{},"actions":[{"protocol":"redis","request":"SET mykey Hello","response":"OK"},{"protocol":"redis","request":"RENAME mykey myotherkey","response":"OK"},{"protocol":"redis","request":"GET myotherkey","response":"Hello"}]}`
+	RunCase(t, testcases.Rename, str)
 }
 
 func TestRenameNX(t *testing.T) {
-	RunCase(t, testcases.RenameNX)
+	str := `{"session":"df3b64266ebe4e63a464e135000a07cd","inbound":{},"actions":[{"protocol":"redis","request":"SET mykey Hello","response":"OK"},{"protocol":"redis","request":"SET myotherkey World","response":"OK"},{"protocol":"redis","request":"RENAMENX mykey myotherkey","response":"0"},{"protocol":"redis","request":"GET myotherkey","response":"World"}]}`
+	RunCase(t, testcases.RenameNX, str)
 }
 
 func TestTouch(t *testing.T) {
-	RunCase(t, testcases.Touch)
+	str := `{"session":"df3b64266ebe4e63a464e135000a07cd","inbound":{},"actions":[{"protocol":"redis","request":"SET key1 Hello","response":"OK"},{"protocol":"redis","request":"SET key2 World","response":"OK"},{"protocol":"redis","request":"TOUCH key1 key2","response":"2"}]}`
+	RunCase(t, testcases.Touch, str)
 }
 
 func TestTTL(t *testing.T) {
-	RunCase(t, testcases.TTL)
+	str := `{"session":"df3b64266ebe4e63a464e135000a07cd","inbound":{},"actions":[{"protocol":"redis","request":"SET mykey Hello","response":"OK"},{"protocol":"redis","request":"EXPIRE mykey 10","response":"1"},{"protocol":"redis","request":"TTL mykey","response":"10"}]}`
+	RunCase(t, testcases.TTL, str)
 }
 
 func TestType(t *testing.T) {
-	RunCase(t, testcases.Type)
+	str := `{"session":"df3b64266ebe4e63a464e135000a07cd","inbound":{},"actions":[{"protocol":"redis","request":"SET key1 value","response":"OK"},{"protocol":"redis","request":"LPUSH key2 value","response":"1"},{"protocol":"redis","request":"SADD key3 value","response":"1"},{"protocol":"redis","request":"TYPE key1","response":"string"},{"protocol":"redis","request":"TYPE key2","response":"list"},{"protocol":"redis","request":"TYPE key3","response":"set"}]}`
+	RunCase(t, testcases.Type, str)
 }

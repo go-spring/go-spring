@@ -53,31 +53,31 @@ func TestBitCount(t *testing.T) {
 	})
 }
 
-func BitOpAnd(t *testing.T, ctx context.Context, c redis.Client) {
-
-	r1, err := c.Set(ctx, "key1", "foobar")
-	if err != nil {
-		t.Fatal(err)
-	}
-	assert.Equal(t, r1, true)
-
-	r2, err := c.Set(ctx, "key2", "abcdef")
-	if err != nil {
-		t.Fatal(err)
-	}
-	assert.Equal(t, r2, true)
-
-	r3, err := c.BitOpAnd(ctx, "dest", "key1", "key2")
-	if err != nil {
-		t.Fatal(err)
-	}
-	assert.Equal(t, r3, int64(6))
-
-	r4, err := c.Get(ctx, "dest")
-	if err != nil {
-		t.Fatal(err)
-	}
-	assert.Equal(t, r4, "`bc`ab")
+func TestBitOpAnd(t *testing.T) {
+	runTest(t, testcases.BitOpAnd, func() []*fastdev.Action {
+		return []*fastdev.Action{
+			{
+				Protocol: fastdev.REDIS,
+				Request:  "SET key1 foobar",
+				Response: "OK",
+			},
+			{
+				Protocol: fastdev.REDIS,
+				Request:  "SET key2 abcdef",
+				Response: "OK",
+			},
+			{
+				Protocol: fastdev.REDIS,
+				Request:  "BITOP AND dest key1 key2",
+				Response: "6",
+			},
+			{
+				Protocol: fastdev.REDIS,
+				Request:  "GET dest",
+				Response: "`bc`ab",
+			},
+		}
+	})
 }
 
 func BitPos(t *testing.T, ctx context.Context, c redis.Client) {
@@ -125,50 +125,51 @@ func BitPos(t *testing.T, ctx context.Context, c redis.Client) {
 	assert.Equal(t, r7, int64(-1))
 }
 
-func GetBit(t *testing.T, ctx context.Context, c redis.Client) {
-
-	r1, err := c.SetBit(ctx, "mykey", 7, 1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	assert.Equal(t, r1, int64(0))
-
-	r2, err := c.GetBit(ctx, "mykey", 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	assert.Equal(t, r2, int64(0))
-
-	r3, err := c.GetBit(ctx, "mykey", 7)
-	if err != nil {
-		t.Fatal(err)
-	}
-	assert.Equal(t, r3, int64(1))
-
-	r4, err := c.GetBit(ctx, "mykey", 100)
-	if err != nil {
-		t.Fatal(err)
-	}
-	assert.Equal(t, r4, int64(0))
+func TestGetBit(t *testing.T) {
+	runTest(t, testcases.GetBit, func() []*fastdev.Action {
+		return []*fastdev.Action{
+			{
+				Protocol: fastdev.REDIS,
+				Request:  "SETBIT mykey 7 1",
+				Response: "0",
+			},
+			{
+				Protocol: fastdev.REDIS,
+				Request:  "GETBIT mykey 0",
+				Response: "0",
+			},
+			{
+				Protocol: fastdev.REDIS,
+				Request:  "GETBIT mykey 7",
+				Response: "1",
+			},
+			{
+				Protocol: fastdev.REDIS,
+				Request:  "GETBIT mykey 100",
+				Response: "0",
+			},
+		}
+	})
 }
 
-func SetBit(t *testing.T, ctx context.Context, c redis.Client) {
-
-	r1, err := c.SetBit(ctx, "mykey", 7, 1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	assert.Equal(t, r1, int64(0))
-
-	r2, err := c.SetBit(ctx, "mykey", 7, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	assert.Equal(t, r2, int64(1))
-
-	r3, err := c.Get(ctx, "mykey")
-	if err != nil {
-		t.Fatal(err)
-	}
-	assert.Equal(t, r3, "\u0000")
+func TestSetBit(t *testing.T) {
+	runTest(t, testcases.SetBit, func() []*fastdev.Action {
+		return []*fastdev.Action{
+			{
+				Protocol: fastdev.REDIS,
+				Request:  "SETBIT mykey 7 1",
+				Response: "0",
+			},
+			{
+				Protocol: fastdev.REDIS,
+				Request:  "SETBIT mykey 7 0",
+				Response: "1",
+			},
+			{
+				Protocol: fastdev.REDIS,
+				Request:  "GET mykey",
+				Response: "\u0000",
+			},
+		}
+	})
 }

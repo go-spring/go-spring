@@ -34,5 +34,5 @@ type ServerCommand interface {
 
 func (c *BaseClient) FlushAll(ctx context.Context, args ...interface{}) (string, error) {
 	args = append([]interface{}{CommandFlushAll}, args...)
-	return c.String(ctx, args...)
+	return String(c.Do(ctx, args...))
 }

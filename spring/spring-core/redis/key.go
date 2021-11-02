@@ -133,12 +133,12 @@ func (c *BaseClient) Del(ctx context.Context, keys ...string) (int64, error) {
 	for _, key := range keys {
 		args = append(args, key)
 	}
-	return c.Int64(ctx, args...)
+	return Int64(c.Do(ctx, args...))
 }
 
 func (c *BaseClient) Dump(ctx context.Context, key string) (string, error) {
 	args := []interface{}{CommandDump, key}
-	return c.String(ctx, args...)
+	return String(c.Do(ctx, args...))
 }
 
 func (c *BaseClient) Exists(ctx context.Context, keys ...string) (int64, error) {
@@ -146,57 +146,57 @@ func (c *BaseClient) Exists(ctx context.Context, keys ...string) (int64, error) 
 	for _, key := range keys {
 		args = append(args, key)
 	}
-	return c.Int64(ctx, args...)
+	return Int64(c.Do(ctx, args...))
 }
 
 func (c *BaseClient) Expire(ctx context.Context, key string, expire int64, args ...interface{}) (bool, error) {
 	args = append([]interface{}{CommandExpire, key, expire}, args...)
-	return c.Bool(ctx, args...)
+	return Bool(c.Do(ctx, args...))
 }
 
 func (c *BaseClient) ExpireAt(ctx context.Context, key string, expireAt int64, args ...interface{}) (bool, error) {
 	args = append([]interface{}{CommandExpireAt, key, expireAt}, args...)
-	return c.Bool(ctx, args...)
+	return Bool(c.Do(ctx, args...))
 }
 
 func (c *BaseClient) Keys(ctx context.Context, pattern string) ([]string, error) {
 	args := []interface{}{CommandKeys, pattern}
-	return c.StringSlice(ctx, args...)
+	return StringSlice(c.Do(ctx, args...))
 }
 
 func (c *BaseClient) Persist(ctx context.Context, key string) (bool, error) {
 	args := []interface{}{CommandPersist, key}
-	return c.Bool(ctx, args...)
+	return Bool(c.Do(ctx, args...))
 }
 
 func (c *BaseClient) PExpire(ctx context.Context, key string, expire int64, args ...interface{}) (bool, error) {
 	args = append([]interface{}{CommandPExpire, key, expire}, args...)
-	return c.Bool(ctx, args...)
+	return Bool(c.Do(ctx, args...))
 }
 
 func (c *BaseClient) PExpireAt(ctx context.Context, key string, expireAt int64, args ...interface{}) (bool, error) {
 	args = append([]interface{}{CommandPExpireAt, key, expireAt}, args...)
-	return c.Bool(ctx, args...)
+	return Bool(c.Do(ctx, args...))
 }
 
 func (c *BaseClient) PTTL(ctx context.Context, key string) (int64, error) {
 	args := []interface{}{CommandPTTL, key}
-	return c.Int64(ctx, args...)
+	return Int64(c.Do(ctx, args...))
 }
 
 func (c *BaseClient) RandomKey(ctx context.Context) (string, error) {
 	args := []interface{}{CommandRandomKey}
-	return c.String(ctx, args...)
+	return String(c.Do(ctx, args...))
 }
 
 func (c *BaseClient) Rename(ctx context.Context, key, newKey string) (bool, error) {
 	args := []interface{}{CommandRename, key, newKey}
-	return c.Bool(ctx, args...)
+	return Bool(c.Do(ctx, args...))
 }
 
 func (c *BaseClient) RenameNX(ctx context.Context, key, newKey string) (bool, error) {
 	args := []interface{}{CommandRenameNX, key, newKey}
-	return c.Bool(ctx, args...)
+	return Bool(c.Do(ctx, args...))
 }
 
 func (c *BaseClient) Touch(ctx context.Context, keys ...string) (int64, error) {
@@ -204,15 +204,15 @@ func (c *BaseClient) Touch(ctx context.Context, keys ...string) (int64, error) {
 	for _, key := range keys {
 		args = append(args, key)
 	}
-	return c.Int64(ctx, args...)
+	return Int64(c.Do(ctx, args...))
 }
 
 func (c *BaseClient) TTL(ctx context.Context, key string) (int64, error) {
 	args := []interface{}{CommandTTL, key}
-	return c.Int64(ctx, args...)
+	return Int64(c.Do(ctx, args...))
 }
 
 func (c *BaseClient) Type(ctx context.Context, key string) (string, error) {
 	args := []interface{}{CommandType, key}
-	return c.String(ctx, args...)
+	return String(c.Do(ctx, args...))
 }

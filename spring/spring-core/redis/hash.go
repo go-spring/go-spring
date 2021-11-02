@@ -116,42 +116,42 @@ func (c *BaseClient) HDel(ctx context.Context, key string, fields ...string) (in
 	for _, field := range fields {
 		args = append(args, field)
 	}
-	return c.Int64(ctx, args...)
+	return Int64(c.Do(ctx, args...))
 }
 
 func (c *BaseClient) HExists(ctx context.Context, key, field string) (bool, error) {
 	args := []interface{}{CommandHExists, key, field}
-	return c.Bool(ctx, args...)
+	return Bool(c.Do(ctx, args...))
 }
 
 func (c *BaseClient) HGet(ctx context.Context, key string, field string) (string, error) {
 	args := []interface{}{CommandHGet, key, field}
-	return c.String(ctx, args...)
+	return String(c.Do(ctx, args...))
 }
 
 func (c *BaseClient) HGetAll(ctx context.Context, key string) (map[string]string, error) {
 	args := []interface{}{CommandHGetAll, key}
-	return c.StringMap(ctx, args...)
+	return StringMap(c.Do(ctx, args...))
 }
 
 func (c *BaseClient) HIncrBy(ctx context.Context, key, field string, incr int64) (int64, error) {
 	args := []interface{}{CommandHIncrBy, key, field, incr}
-	return c.Int64(ctx, args...)
+	return Int64(c.Do(ctx, args...))
 }
 
 func (c *BaseClient) HIncrByFloat(ctx context.Context, key, field string, incr float64) (float64, error) {
 	args := []interface{}{CommandHIncrByFloat, key, field, incr}
-	return c.Float64(ctx, args...)
+	return Float64(c.Do(ctx, args...))
 }
 
 func (c *BaseClient) HKeys(ctx context.Context, key string) ([]string, error) {
 	args := []interface{}{CommandHKeys, key}
-	return c.StringSlice(ctx, args...)
+	return StringSlice(c.Do(ctx, args...))
 }
 
 func (c *BaseClient) HLen(ctx context.Context, key string) (int64, error) {
 	args := []interface{}{CommandHLen, key}
-	return c.Int64(ctx, args...)
+	return Int64(c.Do(ctx, args...))
 }
 
 func (c *BaseClient) HMGet(ctx context.Context, key string, fields ...string) ([]interface{}, error) {
@@ -159,25 +159,25 @@ func (c *BaseClient) HMGet(ctx context.Context, key string, fields ...string) ([
 	for _, field := range fields {
 		args = append(args, field)
 	}
-	return c.Slice(ctx, args...)
+	return Slice(c.Do(ctx, args...))
 }
 
 func (c *BaseClient) HSet(ctx context.Context, key string, args ...interface{}) (int64, error) {
 	args = append([]interface{}{CommandHSet, key}, args...)
-	return c.Int64(ctx, args...)
+	return Int64(c.Do(ctx, args...))
 }
 
 func (c *BaseClient) HSetNX(ctx context.Context, key, field string, value interface{}) (bool, error) {
 	args := []interface{}{CommandHSetNX, key, field, value}
-	return c.Bool(ctx, args...)
+	return Bool(c.Do(ctx, args...))
 }
 
 func (c *BaseClient) HStrLen(ctx context.Context, key, field string) (int64, error) {
 	args := []interface{}{CommandHStrLen, key, field}
-	return c.Int64(ctx, args...)
+	return Int64(c.Do(ctx, args...))
 }
 
 func (c *BaseClient) HVals(ctx context.Context, key string) ([]string, error) {
 	args := []interface{}{CommandHVals, key}
-	return c.StringSlice(ctx, args...)
+	return StringSlice(c.Do(ctx, args...))
 }

@@ -23,65 +23,81 @@ import (
 )
 
 func TestLIndex(t *testing.T) {
-	RunCase(t, testcases.LIndex)
+	str := `{"session":"df3b64266ebe4e63a464e135000a07cd","inbound":{},"actions":[{"protocol":"redis","request":"LPUSH mylist World","response":"1"},{"protocol":"redis","request":"LPUSH mylist Hello","response":"2"},{"protocol":"redis","request":"LINDEX mylist 0","response":"Hello"},{"protocol":"redis","request":"LINDEX mylist -1","response":"World"}]}`
+	RunCase(t, testcases.LIndex, str)
 }
 
 func TestLInsert(t *testing.T) {
-	RunCase(t, testcases.LInsert)
+	str := `{"session":"df3b64266ebe4e63a464e135000a07cd","inbound":{},"actions":[{"protocol":"redis","request":"RPUSH mylist Hello","response":"1"},{"protocol":"redis","request":"RPUSH mylist World","response":"2"},{"protocol":"redis","request":"LINSERT mylist BEFORE World There","response":"3"},{"protocol":"redis","request":"LRANGE mylist 0 -1","response":"[\"Hello\",\"There\",\"World\"]"}]}`
+	RunCase(t, testcases.LInsert, str)
 }
 
 func TestLLen(t *testing.T) {
-	RunCase(t, testcases.LLen)
+	str := `{"session":"df3b64266ebe4e63a464e135000a07cd","inbound":{},"actions":[{"protocol":"redis","request":"LPUSH mylist World","response":"1"},{"protocol":"redis","request":"LPUSH mylist Hello","response":"2"},{"protocol":"redis","request":"LLEN mylist","response":"2"}]}`
+	RunCase(t, testcases.LLen, str)
 }
 
 func TestLMove(t *testing.T) {
-	RunCase(t, testcases.LMove)
+	str := `{"session":"df3b64266ebe4e63a464e135000a07cd","inbound":{},"actions":[{"protocol":"redis","request":"RPUSH mylist one","response":"1"},{"protocol":"redis","request":"RPUSH mylist two","response":"2"},{"protocol":"redis","request":"RPUSH mylist three","response":"3"},{"protocol":"redis","request":"LMOVE mylist myotherlist RIGHT LEFT","response":"three"},{"protocol":"redis","request":"LMOVE mylist myotherlist LEFT RIGHT","response":"one"},{"protocol":"redis","request":"LRANGE mylist 0 -1","response":"[\"two\"]"},{"protocol":"redis","request":"LRANGE myotherlist 0 -1","response":"[\"three\",\"one\"]"}]}`
+	RunCase(t, testcases.LMove, str)
 }
 
 func TestLPop(t *testing.T) {
-	RunCase(t, testcases.LPop)
+	str := `{"session":"df3b64266ebe4e63a464e135000a07cd","inbound":{},"actions":[{"protocol":"redis","request":"RPUSH mylist one two three four five","response":"5"},{"protocol":"redis","request":"LPOP mylist","response":"one"},{"protocol":"redis","request":"LPOP mylist 2","response":"[\"two\",\"three\"]"},{"protocol":"redis","request":"LRANGE mylist 0 -1","response":"[\"four\",\"five\"]"}]}`
+	RunCase(t, testcases.LPop, str)
 }
 
 func TestLPos(t *testing.T) {
-	RunCase(t, testcases.LPos)
+	str := `{"session":"df3b64266ebe4e63a464e135000a07cd","inbound":{},"actions":[{"protocol":"redis","request":"RPUSH mylist 97 98 99 100 1 2 3 4 3 3 3","response":"11"},{"protocol":"redis","request":"LPOS mylist 3","response":"6"},{"protocol":"redis","request":"LPOS mylist 3 COUNT 0 RANK 2","response":"[8,9,10]"}]}`
+	RunCase(t, testcases.LPos, str)
 }
 
 func TestLPush(t *testing.T) {
-	RunCase(t, testcases.LPush)
+	str := `{"session":"df3b64266ebe4e63a464e135000a07cd","inbound":{},"actions":[{"protocol":"redis","request":"LPUSH mylist world","response":"1"},{"protocol":"redis","request":"LPUSH mylist hello","response":"2"},{"protocol":"redis","request":"LRANGE mylist 0 -1","response":"[\"hello\",\"world\"]"}]}`
+	RunCase(t, testcases.LPush, str)
 }
 
 func TestLPushX(t *testing.T) {
-	RunCase(t, testcases.LPushX)
+	str := `{"session":"df3b64266ebe4e63a464e135000a07cd","inbound":{},"actions":[{"protocol":"redis","request":"LPUSH mylist World","response":"1"},{"protocol":"redis","request":"LPUSHX mylist Hello","response":"2"},{"protocol":"redis","request":"LPUSHX myotherlist Hello","response":"0"},{"protocol":"redis","request":"LRANGE mylist 0 -1","response":"[\"Hello\",\"World\"]"},{"protocol":"redis","request":"LRANGE myotherlist 0 -1","response":"[]"}]}`
+	RunCase(t, testcases.LPushX, str)
 }
 
 func TestLRange(t *testing.T) {
-	RunCase(t, testcases.LRange)
+	str := `{"session":"df3b64266ebe4e63a464e135000a07cd","inbound":{},"actions":[{"protocol":"redis","request":"RPUSH mylist one","response":"1"},{"protocol":"redis","request":"RPUSH mylist two","response":"2"},{"protocol":"redis","request":"RPUSH mylist three","response":"3"},{"protocol":"redis","request":"LRANGE mylist 0 0","response":"[\"one\"]"},{"protocol":"redis","request":"LRANGE mylist -3 2","response":"[\"one\",\"two\",\"three\"]"},{"protocol":"redis","request":"LRANGE mylist -100 100","response":"[\"one\",\"two\",\"three\"]"},{"protocol":"redis","request":"LRANGE mylist 5 10","response":"[]"}]}`
+	RunCase(t, testcases.LRange, str)
 }
 
 func TestLRem(t *testing.T) {
-	RunCase(t, testcases.LRem)
+	str := `{"session":"df3b64266ebe4e63a464e135000a07cd","inbound":{},"actions":[{"protocol":"redis","request":"RPUSH mylist hello","response":"1"},{"protocol":"redis","request":"RPUSH mylist hello","response":"2"},{"protocol":"redis","request":"RPUSH mylist foo","response":"3"},{"protocol":"redis","request":"RPUSH mylist hello","response":"4"},{"protocol":"redis","request":"LREM mylist -2 hello","response":"2"},{"protocol":"redis","request":"LRANGE mylist 0 -1","response":"[\"hello\",\"foo\"]"}]}`
+	RunCase(t, testcases.LRem, str)
 }
 
 func TestLSet(t *testing.T) {
-	RunCase(t, testcases.LSet)
+	str := `{"session":"df3b64266ebe4e63a464e135000a07cd","inbound":{},"actions":[{"protocol":"redis","request":"RPUSH mylist one","response":"1"},{"protocol":"redis","request":"RPUSH mylist two","response":"2"},{"protocol":"redis","request":"RPUSH mylist three","response":"3"},{"protocol":"redis","request":"LSET mylist 0 four","response":"OK"},{"protocol":"redis","request":"LSET mylist -2 five","response":"OK"},{"protocol":"redis","request":"LRANGE mylist 0 -1","response":"[\"four\",\"five\",\"three\"]"}]}`
+	RunCase(t, testcases.LSet, str)
 }
 
 func TestLTrim(t *testing.T) {
-	RunCase(t, testcases.LTrim)
+	str := `{"session":"df3b64266ebe4e63a464e135000a07cd","inbound":{},"actions":[{"protocol":"redis","request":"RPUSH mylist one","response":"1"},{"protocol":"redis","request":"RPUSH mylist two","response":"2"},{"protocol":"redis","request":"RPUSH mylist three","response":"3"},{"protocol":"redis","request":"LTRIM mylist 1 -1","response":"OK"},{"protocol":"redis","request":"LRANGE mylist 0 -1","response":"[\"two\",\"three\"]"}]}`
+	RunCase(t, testcases.LTrim, str)
 }
 
 func TestRPop(t *testing.T) {
-	RunCase(t, testcases.RPop)
+	str := `{"session":"df3b64266ebe4e63a464e135000a07cd","inbound":{},"actions":[{"protocol":"redis","request":"RPUSH mylist one two three four five","response":"5"},{"protocol":"redis","request":"RPOP mylist","response":"five"},{"protocol":"redis","request":"RPOP mylist 2","response":"[\"four\",\"three\"]"},{"protocol":"redis","request":"LRANGE mylist 0 -1","response":"[\"one\",\"two\"]"}]}`
+	RunCase(t, testcases.RPop, str)
 }
 
 func TestRPopLPush(t *testing.T) {
-	RunCase(t, testcases.RPopLPush)
+	str := `{"session":"df3b64266ebe4e63a464e135000a07cd","inbound":{},"actions":[{"protocol":"redis","request":"RPUSH mylist one","response":"1"},{"protocol":"redis","request":"RPUSH mylist two","response":"2"},{"protocol":"redis","request":"RPUSH mylist three","response":"3"},{"protocol":"redis","request":"RPOPLPUSH mylist myotherlist","response":"three"},{"protocol":"redis","request":"LRANGE mylist 0 -1","response":"[\"one\",\"two\"]"},{"protocol":"redis","request":"LRANGE myotherlist 0 -1","response":"[\"three\"]"}]}`
+	RunCase(t, testcases.RPopLPush, str)
 }
 
 func TestRPush(t *testing.T) {
-	RunCase(t, testcases.RPush)
+	str := `{"session":"df3b64266ebe4e63a464e135000a07cd","inbound":{},"actions":[{"protocol":"redis","request":"RPUSH mylist hello","response":"1"},{"protocol":"redis","request":"RPUSH mylist world","response":"2"},{"protocol":"redis","request":"LRANGE mylist 0 -1","response":"[\"hello\",\"world\"]"}]}`
+	RunCase(t, testcases.RPush, str)
 }
 
 func TestRPushX(t *testing.T) {
-	RunCase(t, testcases.RPushX)
+	str := `{"session":"df3b64266ebe4e63a464e135000a07cd","inbound":{},"actions":[{"protocol":"redis","request":"RPUSH mylist Hello","response":"1"},{"protocol":"redis","request":"RPUSHX mylist World","response":"2"},{"protocol":"redis","request":"RPUSHX myotherlist World","response":"0"},{"protocol":"redis","request":"LRANGE mylist 0 -1","response":"[\"Hello\",\"World\"]"},{"protocol":"redis","request":"LRANGE myotherlist 0 -1","response":"[]"}]}`
+	RunCase(t, testcases.RPushX, str)
 }

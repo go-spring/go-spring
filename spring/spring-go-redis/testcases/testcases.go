@@ -21,13 +21,41 @@ import (
 	"testing"
 
 	g "github.com/go-redis/redis/v8"
+	"github.com/go-spring/spring-base/assert"
+	"github.com/go-spring/spring-base/cast"
+	"github.com/go-spring/spring-base/fastdev"
+	"github.com/go-spring/spring-base/knife"
 	"github.com/go-spring/spring-core/redis"
 	SpringGoRedis "github.com/go-spring/spring-go-redis"
 )
 
-func RunCase(t *testing.T, fn func(t *testing.T, ctx context.Context, c redis.Client)) {
+func RunCase(t *testing.T,
+	testFunc func(t *testing.T, ctx context.Context, c redis.Client),
+	recordResult string) {
+
+	fastdev.SetRecordMode(true)
+	defer func() {
+		fastdev.SetRecordMode(false)
+	}()
+
+	ctx := knife.New(context.Background())
+	sessionID := "df3b64266ebe4e63a464e135000a07cd"
+	err := knife.Set(ctx, fastdev.RecordSessionIDKey, sessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	c := SpringGoRedis.NewClient(g.NewClient(&g.Options{}))
-	ctx := context.Background()
-	defer c.FlushAll(ctx)
-	fn(t, ctx, c)
+
+	defer func() {
+		fastdev.SetRecordMode(false)
+		c.FlushAll(ctx)
+	}()
+
+	testFunc(t, ctx, c)
+
+	session := fastdev.RecordInbound(ctx, &fastdev.Action{})
+	if recordResult != `skip` {
+		assert.Equal(t, cast.ToString(session), recordResult)
+	}
 }
