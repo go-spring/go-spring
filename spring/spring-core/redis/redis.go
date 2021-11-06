@@ -44,6 +44,7 @@ type Client interface {
 }
 
 type DoCommand interface {
+	Int(ctx context.Context, args ...interface{}) (int, error)
 	Int64(ctx context.Context, args ...interface{}) (int64, error)
 	Float64(ctx context.Context, args ...interface{}) (float64, error)
 	String(ctx context.Context, args ...interface{}) (string, error)
@@ -77,6 +78,11 @@ func cmdString(args []interface{}) string {
 		case string:
 			if needQuote(s) {
 				s = strconv.Quote(s)
+			} else {
+				q := strconv.Quote(s)
+				if q[1:len(q)-1] != s {
+					s = q
+				}
 			}
 			buf.WriteString(s)
 		default:
@@ -94,11 +100,19 @@ type transform func(interface{}, error) (interface{}, error)
 func (c *BaseClient) do(ctx context.Context, args []interface{}, trans transform) (r interface{}, err error) {
 
 	defer func() {
-		if err == nil && fastdev.RecordMode() {
+		if fastdev.RecordMode() {
+			var resp interface{}
+			if err == nil {
+				resp = r
+			} else if err == ErrNil {
+				resp = "(nil)"
+			} else {
+				resp = "(err) " + err.Error()
+			}
 			fastdev.RecordAction(ctx, &fastdev.Action{
 				Protocol: fastdev.REDIS,
 				Request:  cmdString(args),
-				Response: r,
+				Response: resp,
 			})
 		}
 	}()

@@ -19,9 +19,12 @@ package record
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"path/filepath"
+	"reflect"
+	"runtime"
 	"testing"
 
-	"github.com/go-spring/spring-base/assert"
 	"github.com/go-spring/spring-base/fastdev"
 	"github.com/go-spring/spring-base/knife"
 	"github.com/go-spring/spring-core/redis"
@@ -74,6 +77,15 @@ func RunCase(t *testing.T, c redis.Client,
 			t.Fatal(err)
 		}
 
-		assert.Equal(t, s1, s2)
+		if !reflect.DeepEqual(s1, s2) {
+			fail(t, 0, "got %v but expect %v", string(testResult), recordResult)
+		}
 	}
+}
+
+func fail(t *testing.T, skip int, format string, args ...interface{}) {
+	msg := fmt.Sprintf(format, args...)
+	_, file, line, _ := runtime.Caller(skip + 1)
+	fmt.Printf("\t%s:%d: %s\n", filepath.Base(file), line, msg)
+	t.Fail()
 }

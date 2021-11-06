@@ -132,6 +132,10 @@ func toVal(data []byte) (interface{}, error) {
 		return nil, nil
 	}
 
+	if bytes.Equal(data, []byte("(nil)")) {
+		return nil, nil
+	}
+
 	if bytes.Equal(data, []byte("null")) {
 		return nil, nil
 	}
