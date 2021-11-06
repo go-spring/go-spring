@@ -30,7 +30,7 @@ func BitCount(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r1, true)
+	assert.Equal(t, r1, redis.OK)
 
 	r2, err := c.BitCount(ctx, "mykey")
 	if err != nil {
@@ -57,13 +57,13 @@ func BitOpAnd(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r1, true)
+	assert.Equal(t, r1, redis.OK)
 
 	r2, err := c.Set(ctx, "key2", "abcdef")
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r2, true)
+	assert.Equal(t, r2, redis.OK)
 
 	r3, err := c.BitOpAnd(ctx, "dest", "key1", "key2")
 	if err != nil {
@@ -84,7 +84,7 @@ func BitPos(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r1, true)
+	assert.Equal(t, r1, redis.OK)
 
 	r2, err := c.BitPos(ctx, "mykey", 0)
 	if err != nil {
@@ -96,7 +96,7 @@ func BitPos(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r3, true)
+	assert.Equal(t, r3, redis.OK)
 
 	r4, err := c.BitPos(ctx, "mykey", 1, 0)
 	if err != nil {
@@ -114,7 +114,7 @@ func BitPos(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r6, true)
+	assert.Equal(t, r6, redis.OK)
 
 	r7, err := c.BitPos(ctx, "mykey", 1)
 	if err != nil {

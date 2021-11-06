@@ -115,12 +115,12 @@ type ListCommand interface {
 	// LSet https://redis.io/commands/lset
 	// Command: LSET key index element
 	// Simple string reply
-	LSet(ctx context.Context, key string, index int64, value interface{}) (bool, error)
+	LSet(ctx context.Context, key string, index int64, value interface{}) (string, error)
 
 	// LTrim https://redis.io/commands/ltrim
 	// Command: LTRIM key start stop
 	// Simple string reply
-	LTrim(ctx context.Context, key string, start, stop int64) (bool, error)
+	LTrim(ctx context.Context, key string, start, stop int64) (string, error)
 
 	// RPop https://redis.io/commands/rpop
 	// Command: RPOP key [count]
@@ -150,47 +150,47 @@ type ListCommand interface {
 
 func (c *BaseClient) LIndex(ctx context.Context, key string, index int64) (string, error) {
 	args := []interface{}{CommandLIndex, key, index}
-	return String(c.Do(ctx, args...))
+	return c.String(ctx, args...)
 }
 
 func (c *BaseClient) LInsertBefore(ctx context.Context, key string, pivot, value interface{}) (int64, error) {
 	args := []interface{}{CommandLInsert, key, "BEFORE", pivot, value}
-	return Int64(c.Do(ctx, args...))
+	return c.Int64(ctx, args...)
 }
 
 func (c *BaseClient) LInsertAfter(ctx context.Context, key string, pivot, value interface{}) (int64, error) {
 	args := []interface{}{CommandLInsert, key, "AFTER", pivot, value}
-	return Int64(c.Do(ctx, args...))
+	return c.Int64(ctx, args...)
 }
 
 func (c *BaseClient) LLen(ctx context.Context, key string) (int64, error) {
 	args := []interface{}{CommandLLen, key}
-	return Int64(c.Do(ctx, args...))
+	return c.Int64(ctx, args...)
 }
 
 func (c *BaseClient) LMove(ctx context.Context, source, destination, srcPos, destPos string) (string, error) {
 	args := []interface{}{CommandLMove, source, destination, srcPos, destPos}
-	return String(c.Do(ctx, args...))
+	return c.String(ctx, args...)
 }
 
 func (c *BaseClient) LPop(ctx context.Context, key string) (string, error) {
 	args := []interface{}{CommandLPop, key}
-	return String(c.Do(ctx, args...))
+	return c.String(ctx, args...)
 }
 
 func (c *BaseClient) LPopN(ctx context.Context, key string, count int) ([]string, error) {
 	args := []interface{}{CommandLPop, key, count}
-	return StringSlice(c.Do(ctx, args...))
+	return c.StringSlice(ctx, args...)
 }
 
 func (c *BaseClient) LPos(ctx context.Context, key string, value interface{}, args ...interface{}) (int64, error) {
 	args = append([]interface{}{CommandLPos, key, value}, args...)
-	return Int64(c.Do(ctx, args...))
+	return c.Int64(ctx, args...)
 }
 
 func (c *BaseClient) LPosN(ctx context.Context, key string, value interface{}, count int64, args ...interface{}) ([]int64, error) {
 	args = append([]interface{}{CommandLPos, key, value, "COUNT", count}, args...)
-	return Int64Slice(c.Do(ctx, args...))
+	return c.Int64Slice(ctx, args...)
 }
 
 func (c *BaseClient) LPush(ctx context.Context, key string, values ...interface{}) (int64, error) {
@@ -198,7 +198,7 @@ func (c *BaseClient) LPush(ctx context.Context, key string, values ...interface{
 	for _, value := range values {
 		args = append(args, value)
 	}
-	return Int64(c.Do(ctx, args...))
+	return c.Int64(ctx, args...)
 }
 
 func (c *BaseClient) LPushX(ctx context.Context, key string, values ...interface{}) (int64, error) {
@@ -206,42 +206,42 @@ func (c *BaseClient) LPushX(ctx context.Context, key string, values ...interface
 	for _, value := range values {
 		args = append(args, value)
 	}
-	return Int64(c.Do(ctx, args...))
+	return c.Int64(ctx, args...)
 }
 
 func (c *BaseClient) LRange(ctx context.Context, key string, start, stop int64) ([]string, error) {
 	args := []interface{}{CommandLRange, key, start, stop}
-	return StringSlice(c.Do(ctx, args...))
+	return c.StringSlice(ctx, args...)
 }
 
 func (c *BaseClient) LRem(ctx context.Context, key string, count int64, value interface{}) (int64, error) {
 	args := []interface{}{CommandLRem, key, count, value}
-	return Int64(c.Do(ctx, args...))
+	return c.Int64(ctx, args...)
 }
 
-func (c *BaseClient) LSet(ctx context.Context, key string, index int64, value interface{}) (bool, error) {
+func (c *BaseClient) LSet(ctx context.Context, key string, index int64, value interface{}) (string, error) {
 	args := []interface{}{CommandLSet, key, index, value}
-	return Bool(c.Do(ctx, args...))
+	return c.String(ctx, args...)
 }
 
-func (c *BaseClient) LTrim(ctx context.Context, key string, start, stop int64) (bool, error) {
+func (c *BaseClient) LTrim(ctx context.Context, key string, start, stop int64) (string, error) {
 	args := []interface{}{CommandLTrim, key, start, stop}
-	return Bool(c.Do(ctx, args...))
+	return c.String(ctx, args...)
 }
 
 func (c *BaseClient) RPop(ctx context.Context, key string) (string, error) {
 	args := []interface{}{CommandRPop, key}
-	return String(c.Do(ctx, args...))
+	return c.String(ctx, args...)
 }
 
 func (c *BaseClient) RPopN(ctx context.Context, key string, count int) ([]string, error) {
 	args := []interface{}{CommandRPop, key, count}
-	return StringSlice(c.Do(ctx, args...))
+	return c.StringSlice(ctx, args...)
 }
 
 func (c *BaseClient) RPopLPush(ctx context.Context, source, destination string) (string, error) {
 	args := []interface{}{CommandRPopLPush, source, destination}
-	return String(c.Do(ctx, args...))
+	return c.String(ctx, args...)
 }
 
 func (c *BaseClient) RPush(ctx context.Context, key string, values ...interface{}) (int64, error) {
@@ -249,7 +249,7 @@ func (c *BaseClient) RPush(ctx context.Context, key string, values ...interface{
 	for _, value := range values {
 		args = append(args, value)
 	}
-	return Int64(c.Do(ctx, args...))
+	return c.Int64(ctx, args...)
 }
 
 func (c *BaseClient) RPushX(ctx context.Context, key string, values ...interface{}) (int64, error) {
@@ -257,5 +257,5 @@ func (c *BaseClient) RPushX(ctx context.Context, key string, values ...interface
 	for _, value := range values {
 		args = append(args, value)
 	}
-	return Int64(c.Do(ctx, args...))
+	return c.Int64(ctx, args...)
 }

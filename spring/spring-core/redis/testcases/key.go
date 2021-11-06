@@ -31,13 +31,13 @@ func Del(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r1, true)
+	assert.Equal(t, r1, redis.OK)
 
 	r2, err := c.Set(ctx, "key2", "World")
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r2, true)
+	assert.Equal(t, r2, redis.OK)
 
 	r3, err := c.Del(ctx, "key1", "key2", "key3")
 	if err != nil {
@@ -52,7 +52,7 @@ func Dump(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r1, true)
+	assert.Equal(t, r1, redis.OK)
 
 	r2, err := c.Dump(ctx, "mykey")
 	if err != nil {
@@ -67,7 +67,7 @@ func Exists(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r1, true)
+	assert.Equal(t, r1, redis.OK)
 
 	r2, err := c.Exists(ctx, "key1")
 	if err != nil {
@@ -86,7 +86,7 @@ func Exists(t *testing.T, ctx context.Context, c redis.Client) {
 		t.Fatal(err)
 	}
 
-	assert.Equal(t, r4, true)
+	assert.Equal(t, r4, redis.OK)
 
 	r5, err := c.Exists(ctx, "key1", "key2", "nosuchkey")
 	if err != nil {
@@ -101,13 +101,13 @@ func Expire(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r1, true)
+	assert.Equal(t, r1, redis.OK)
 
 	r2, err := c.Expire(ctx, "mykey", 10)
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r2, true)
+	assert.Equal(t, r2, 1)
 
 	r3, err := c.TTL(ctx, "mykey")
 	if err != nil {
@@ -119,7 +119,7 @@ func Expire(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r4, true)
+	assert.Equal(t, r4, redis.OK)
 
 	r5, err := c.TTL(ctx, "mykey")
 	if err != nil {
@@ -134,7 +134,7 @@ func ExpireAt(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r1, true)
+	assert.Equal(t, r1, redis.OK)
 
 	r2, err := c.Exists(ctx, "mykey")
 	if err != nil {
@@ -146,7 +146,7 @@ func ExpireAt(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r3, true)
+	assert.Equal(t, r3, 1)
 
 	r4, err := c.Exists(ctx, "mykey")
 	if err != nil {
@@ -161,7 +161,7 @@ func Keys(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r1, true)
+	assert.Equal(t, r1, redis.OK)
 
 	r2, err := c.Keys(ctx, "*name*")
 	if err != nil {
@@ -190,13 +190,13 @@ func Persist(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r1, true)
+	assert.Equal(t, r1, redis.OK)
 
 	r2, err := c.Expire(ctx, "mykey", 10)
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r2, true)
+	assert.Equal(t, r2, 1)
 
 	r3, err := c.TTL(ctx, "mykey")
 	if err != nil {
@@ -208,7 +208,7 @@ func Persist(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r4, true)
+	assert.Equal(t, r4, 1)
 
 	r5, err := c.TTL(ctx, "mykey")
 	if err != nil {
@@ -223,13 +223,13 @@ func PExpire(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r1, true)
+	assert.Equal(t, r1, redis.OK)
 
 	r2, err := c.PExpire(ctx, "mykey", 1500)
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r2, true)
+	assert.Equal(t, r2, 1)
 
 	r3, err := c.TTL(ctx, "mykey")
 	if err != nil {
@@ -250,13 +250,13 @@ func PExpireAt(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r1, true)
+	assert.Equal(t, r1, redis.OK)
 
 	r2, err := c.PExpireAt(ctx, "mykey", 1555555555005)
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r2, true)
+	assert.Equal(t, r2, 1)
 
 	r3, err := c.TTL(ctx, "mykey")
 	if err != nil {
@@ -277,13 +277,13 @@ func PTTL(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r1, true)
+	assert.Equal(t, r1, redis.OK)
 
 	r2, err := c.Expire(ctx, "mykey", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r2, true)
+	assert.Equal(t, r2, 1)
 
 	r3, err := c.PTTL(ctx, "mykey")
 	if err != nil {
@@ -298,13 +298,13 @@ func Rename(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r1, true)
+	assert.Equal(t, r1, redis.OK)
 
 	r2, err := c.Rename(ctx, "mykey", "myotherkey")
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r2, true)
+	assert.Equal(t, r2, redis.OK)
 
 	r3, err := c.Get(ctx, "myotherkey")
 	if err != nil {
@@ -319,19 +319,19 @@ func RenameNX(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r1, true)
+	assert.Equal(t, r1, redis.OK)
 
 	r2, err := c.Set(ctx, "myotherkey", "World")
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r2, true)
+	assert.Equal(t, r2, redis.OK)
 
 	r3, err := c.RenameNX(ctx, "mykey", "myotherkey")
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r3, false)
+	assert.Equal(t, r3, 0)
 
 	r4, err := c.Get(ctx, "myotherkey")
 	if err != nil {
@@ -346,13 +346,13 @@ func Touch(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r1, true)
+	assert.Equal(t, r1, redis.OK)
 
 	r2, err := c.Set(ctx, "key2", "World")
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r2, true)
+	assert.Equal(t, r2, redis.OK)
 
 	r3, err := c.Touch(ctx, "key1", "key2")
 	if err != nil {
@@ -367,13 +367,13 @@ func TTL(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r1, true)
+	assert.Equal(t, r1, redis.OK)
 
 	r2, err := c.Expire(ctx, "mykey", 10)
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r2, true)
+	assert.Equal(t, r2, 1)
 
 	r3, err := c.TTL(ctx, "mykey")
 	if err != nil {
@@ -388,7 +388,7 @@ func Type(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		return
 	}
-	assert.Equal(t, r1, true)
+	assert.Equal(t, r1, redis.OK)
 
 	r2, err := c.LPush(ctx, "key2", "value")
 	if err != nil {

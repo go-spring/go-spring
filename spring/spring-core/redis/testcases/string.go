@@ -57,7 +57,7 @@ func Decr(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r1, true)
+	assert.Equal(t, r1, redis.OK)
 
 	r2, err := c.Decr(ctx, "mykey")
 	if err != nil {
@@ -69,7 +69,7 @@ func Decr(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r3, true)
+	assert.Equal(t, r3, redis.OK)
 
 	_, err = c.Decr(ctx, "mykey")
 	assert.Error(t, err, "ERR value is not an integer or out of range")
@@ -81,7 +81,7 @@ func DecrBy(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r1, true)
+	assert.Equal(t, r1, redis.OK)
 
 	r2, err := c.DecrBy(ctx, "mykey", 3)
 	if err != nil {
@@ -99,7 +99,7 @@ func Get(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r2, true)
+	assert.Equal(t, r2, redis.OK)
 
 	r3, err := c.Get(ctx, "mykey")
 	if err != nil {
@@ -114,7 +114,7 @@ func GetDel(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r1, true)
+	assert.Equal(t, r1, redis.OK)
 
 	r2, err := c.GetDel(ctx, "mykey")
 	if err != nil {
@@ -132,7 +132,7 @@ func GetRange(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r1, true)
+	assert.Equal(t, r1, redis.OK)
 
 	r2, err := c.GetRange(ctx, "mykey", 0, 3)
 	if err != nil {
@@ -183,7 +183,7 @@ func GetSet(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r4, true)
+	assert.Equal(t, r4, redis.OK)
 
 	r5, err := c.GetSet(ctx, "mykey", "World")
 	if err != nil {
@@ -204,7 +204,7 @@ func Incr(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r1, true)
+	assert.Equal(t, r1, redis.OK)
 
 	r2, err := c.Incr(ctx, "mykey")
 	if err != nil {
@@ -225,7 +225,7 @@ func IncrBy(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r1, true)
+	assert.Equal(t, r1, redis.OK)
 
 	r2, err := c.IncrBy(ctx, "mykey", 5)
 	if err != nil {
@@ -240,7 +240,7 @@ func IncrByFloat(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r1, true)
+	assert.Equal(t, r1, redis.OK)
 
 	r2, err := c.IncrByFloat(ctx, "mykey", 0.1)
 	if err != nil {
@@ -258,7 +258,7 @@ func IncrByFloat(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r4, true)
+	assert.Equal(t, r4, redis.OK)
 
 	r5, err := c.IncrByFloat(ctx, "mykey", 2.0e2)
 	if err != nil {
@@ -273,13 +273,13 @@ func MGet(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r1, true)
+	assert.Equal(t, r1, redis.OK)
 
 	r2, err := c.Set(ctx, "key2", "World")
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r2, true)
+	assert.Equal(t, r2, redis.OK)
 
 	r3, err := c.MGet(ctx, "key1", "key2", "nonexisting")
 	if err != nil {
@@ -294,7 +294,7 @@ func MSet(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r1, true)
+	assert.Equal(t, r1, redis.OK)
 
 	r2, err := c.Get(ctx, "key1")
 	if err != nil {
@@ -315,13 +315,13 @@ func MSetNX(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r1, true)
+	assert.Equal(t, r1, 1)
 
 	r2, err := c.MSetNX(ctx, "key2", "new", "key3", "world")
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r2, false)
+	assert.Equal(t, r2, 0)
 
 	r3, err := c.MGet(ctx, "key1", "key2", "key3")
 	if err != nil {
@@ -336,7 +336,7 @@ func PSetEX(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r1, true)
+	assert.Equal(t, r1, redis.OK)
 
 	r2, err := c.PTTL(ctx, "mykey")
 	if err != nil {
@@ -357,7 +357,7 @@ func Set(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r1, true)
+	assert.Equal(t, r1, redis.OK)
 
 	r2, err := c.Get(ctx, "mykey")
 	if err != nil {
@@ -369,7 +369,7 @@ func Set(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r3, true)
+	assert.Equal(t, r3, redis.OK)
 }
 
 func SetEX(t *testing.T, ctx context.Context, c redis.Client) {
@@ -378,7 +378,7 @@ func SetEX(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r1, true)
+	assert.Equal(t, r1, redis.OK)
 
 	r2, err := c.TTL(ctx, "mykey")
 	if err != nil {
@@ -399,13 +399,13 @@ func SetNX(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r1, true)
+	assert.Equal(t, r1, 1)
 
 	r2, err := c.SetNX(ctx, "mykey", "World")
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r2, false)
+	assert.Equal(t, r2, 0)
 
 	r3, err := c.Get(ctx, "mykey")
 	if err != nil {
@@ -420,7 +420,7 @@ func SetRange(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r1, true)
+	assert.Equal(t, r1, redis.OK)
 
 	r2, err := c.SetRange(ctx, "key1", 6, "Redis")
 	if err != nil {
@@ -453,7 +453,7 @@ func StrLen(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r1, true)
+	assert.Equal(t, r1, redis.OK)
 
 	r2, err := c.StrLen(ctx, "mykey")
 	if err != nil {

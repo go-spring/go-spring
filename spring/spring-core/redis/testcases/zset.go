@@ -48,7 +48,7 @@ func ZAdd(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r4, []redis.ZItem{{1, "one"}, {1, "uno"}, {2, "two"}, {3, "three"}})
+	assert.Equal(t, r4, []redis.ZItem{{"one", 1}, {"uno", 1}, {"two", 2}, {"three", 3}})
 }
 
 func ZCard(t *testing.T, ctx context.Context, c redis.Client) {
@@ -147,7 +147,7 @@ func ZDiff(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r7, []redis.ZItem{{3, "three"}})
+	assert.Equal(t, r7, []redis.ZItem{{"three", 3}})
 }
 
 func ZIncrBy(t *testing.T, ctx context.Context, c redis.Client) {
@@ -174,7 +174,7 @@ func ZIncrBy(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r4, []redis.ZItem{{2, "two"}, {3, "one"}})
+	assert.Equal(t, r4, []redis.ZItem{{"two", 2}, {"one", 3}})
 }
 
 func ZInter(t *testing.T, ctx context.Context, c redis.Client) {
@@ -219,7 +219,7 @@ func ZInter(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r7, []redis.ZItem{{2, "one"}, {4, "two"}})
+	assert.Equal(t, r7, []redis.ZItem{{"one", 2}, {"two", 4}})
 }
 
 func ZLexCount(t *testing.T, ctx context.Context, c redis.Client) {
@@ -294,7 +294,7 @@ func ZPopMax(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r4, []redis.ZItem{{3, "three"}})
+	assert.Equal(t, r4, []redis.ZItem{{"three", 3}})
 }
 
 func ZPopMin(t *testing.T, ctx context.Context, c redis.Client) {
@@ -321,7 +321,7 @@ func ZPopMin(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r4, []redis.ZItem{{1, "one"}})
+	assert.Equal(t, r4, []redis.ZItem{{"one", 1}})
 }
 
 func ZRandMember(t *testing.T, ctx context.Context, c redis.Client) {
@@ -393,7 +393,7 @@ func ZRange(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r7, []redis.ZItem{{1, "one"}, {2, "two"}})
+	assert.Equal(t, r7, []redis.ZItem{{"one", 1}, {"two", 2}})
 }
 
 func ZRangeByLex(t *testing.T, ctx context.Context, c redis.Client) {
@@ -528,7 +528,7 @@ func ZRem(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r5, []redis.ZItem{{1, "one"}, {3, "three"}})
+	assert.Equal(t, r5, []redis.ZItem{{"one", 1}, {"three", 3}})
 }
 
 func ZRemRangeByLex(t *testing.T, ctx context.Context, c redis.Client) {
@@ -596,7 +596,7 @@ func ZRemRangeByRank(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r5, []redis.ZItem{{3, "three"}})
+	assert.Equal(t, r5, []redis.ZItem{{"three", 3}})
 }
 
 func ZRemRangeByScore(t *testing.T, ctx context.Context, c redis.Client) {
@@ -629,7 +629,7 @@ func ZRemRangeByScore(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r5, []redis.ZItem{{2, "two"}, {3, "three"}})
+	assert.Equal(t, r5, []redis.ZItem{{"two", 2}, {"three", 3}})
 }
 
 func ZRevRange(t *testing.T, ctx context.Context, c redis.Client) {
@@ -830,7 +830,7 @@ func ZUnion(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r7, []redis.ZItem{{2, "one"}, {3, "three"}, {4, "two"}})
+	assert.Equal(t, r7, []redis.ZItem{{"one", 2}, {"three", 3}, {"two", 4}})
 }
 
 func ZUnionStore(t *testing.T, ctx context.Context, c redis.Client) {
@@ -875,5 +875,5 @@ func ZUnionStore(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r7, []redis.ZItem{{5, "one"}, {9, "three"}, {10, "two"}})
+	assert.Equal(t, r7, []redis.ZItem{{"one", 5}, {"three", 9}, {"two", 10}})
 }

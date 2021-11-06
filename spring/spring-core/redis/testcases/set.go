@@ -329,7 +329,7 @@ func SMIsMember(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r3, []bool{true, false})
+	assert.Equal(t, r3, []int64{int64(1), int64(0)})
 }
 
 func SMove(t *testing.T, ctx context.Context, c redis.Client) {
@@ -356,7 +356,7 @@ func SMove(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.True(t, r4)
+	assert.Equal(t, r4, 1)
 
 	r5, err := c.SMembers(ctx, "myset")
 	if err != nil {

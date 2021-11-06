@@ -62,12 +62,12 @@ type KeyCommand interface {
 	// Expire https://redis.io/commands/expire
 	// Command: EXPIRE key seconds [NX|XX|GT|LT]
 	// Integer reply: 1 if the timeout was set, 0 if the timeout was not set.
-	Expire(ctx context.Context, key string, expire int64, args ...interface{}) (bool, error)
+	Expire(ctx context.Context, key string, expire int64, args ...interface{}) (int, error)
 
 	// ExpireAt https://redis.io/commands/expireat
 	// Command: EXPIREAT key timestamp [NX|XX|GT|LT]
 	// Integer reply: 1 if the timeout was set, 0 if the timeout was not set.
-	ExpireAt(ctx context.Context, key string, expireAt int64, args ...interface{}) (bool, error)
+	ExpireAt(ctx context.Context, key string, expireAt int64, args ...interface{}) (int, error)
 
 	// Keys https://redis.io/commands/keys
 	// Command: KEYS pattern
@@ -78,17 +78,17 @@ type KeyCommand interface {
 	// Command: PERSIST key
 	// Integer reply: 1 if the timeout was removed,
 	// 0 if key does not exist or does not have an associated timeout.
-	Persist(ctx context.Context, key string) (bool, error)
+	Persist(ctx context.Context, key string) (int, error)
 
 	// PExpire https://redis.io/commands/pexpire
 	// Command: PEXPIRE key milliseconds [NX|XX|GT|LT]
 	// Integer reply: 1 if the timeout was set, 0 if the timeout was not set.
-	PExpire(ctx context.Context, key string, expire int64, args ...interface{}) (bool, error)
+	PExpire(ctx context.Context, key string, expire int64, args ...interface{}) (int, error)
 
 	// PExpireAt https://redis.io/commands/pexpireat
 	// Command: PEXPIREAT key milliseconds-timestamp [NX|XX|GT|LT]
 	// Integer reply: 1 if the timeout was set, 0 if the timeout was not set.
-	PExpireAt(ctx context.Context, key string, expireAt int64, args ...interface{}) (bool, error)
+	PExpireAt(ctx context.Context, key string, expireAt int64, args ...interface{}) (int, error)
 
 	// PTTL https://redis.io/commands/pttl
 	// Command: PTTL key
@@ -104,12 +104,12 @@ type KeyCommand interface {
 	// Rename https://redis.io/commands/rename
 	// Command: RENAME key newkey
 	// Simple string reply.
-	Rename(ctx context.Context, key, newKey string) (bool, error)
+	Rename(ctx context.Context, key, newKey string) (string, error)
 
 	// RenameNX https://redis.io/commands/renamenx
 	// Command: RENAMENX key newkey
 	// Integer reply: 1 if key was renamed to newKey, 0 if newKey already exists.
-	RenameNX(ctx context.Context, key, newKey string) (bool, error)
+	RenameNX(ctx context.Context, key, newKey string) (int, error)
 
 	// Touch https://redis.io/commands/touch
 	// Command: TOUCH key [key ...]
@@ -133,12 +133,12 @@ func (c *BaseClient) Del(ctx context.Context, keys ...string) (int64, error) {
 	for _, key := range keys {
 		args = append(args, key)
 	}
-	return Int64(c.Do(ctx, args...))
+	return c.Int64(ctx, args...)
 }
 
 func (c *BaseClient) Dump(ctx context.Context, key string) (string, error) {
 	args := []interface{}{CommandDump, key}
-	return String(c.Do(ctx, args...))
+	return c.String(ctx, args...)
 }
 
 func (c *BaseClient) Exists(ctx context.Context, keys ...string) (int64, error) {
@@ -146,57 +146,57 @@ func (c *BaseClient) Exists(ctx context.Context, keys ...string) (int64, error) 
 	for _, key := range keys {
 		args = append(args, key)
 	}
-	return Int64(c.Do(ctx, args...))
+	return c.Int64(ctx, args...)
 }
 
-func (c *BaseClient) Expire(ctx context.Context, key string, expire int64, args ...interface{}) (bool, error) {
+func (c *BaseClient) Expire(ctx context.Context, key string, expire int64, args ...interface{}) (int, error) {
 	args = append([]interface{}{CommandExpire, key, expire}, args...)
-	return Bool(c.Do(ctx, args...))
+	return c.Int(ctx, args...)
 }
 
-func (c *BaseClient) ExpireAt(ctx context.Context, key string, expireAt int64, args ...interface{}) (bool, error) {
+func (c *BaseClient) ExpireAt(ctx context.Context, key string, expireAt int64, args ...interface{}) (int, error) {
 	args = append([]interface{}{CommandExpireAt, key, expireAt}, args...)
-	return Bool(c.Do(ctx, args...))
+	return c.Int(ctx, args...)
 }
 
 func (c *BaseClient) Keys(ctx context.Context, pattern string) ([]string, error) {
 	args := []interface{}{CommandKeys, pattern}
-	return StringSlice(c.Do(ctx, args...))
+	return c.StringSlice(ctx, args...)
 }
 
-func (c *BaseClient) Persist(ctx context.Context, key string) (bool, error) {
+func (c *BaseClient) Persist(ctx context.Context, key string) (int, error) {
 	args := []interface{}{CommandPersist, key}
-	return Bool(c.Do(ctx, args...))
+	return c.Int(ctx, args...)
 }
 
-func (c *BaseClient) PExpire(ctx context.Context, key string, expire int64, args ...interface{}) (bool, error) {
+func (c *BaseClient) PExpire(ctx context.Context, key string, expire int64, args ...interface{}) (int, error) {
 	args = append([]interface{}{CommandPExpire, key, expire}, args...)
-	return Bool(c.Do(ctx, args...))
+	return c.Int(ctx, args...)
 }
 
-func (c *BaseClient) PExpireAt(ctx context.Context, key string, expireAt int64, args ...interface{}) (bool, error) {
+func (c *BaseClient) PExpireAt(ctx context.Context, key string, expireAt int64, args ...interface{}) (int, error) {
 	args = append([]interface{}{CommandPExpireAt, key, expireAt}, args...)
-	return Bool(c.Do(ctx, args...))
+	return c.Int(ctx, args...)
 }
 
 func (c *BaseClient) PTTL(ctx context.Context, key string) (int64, error) {
 	args := []interface{}{CommandPTTL, key}
-	return Int64(c.Do(ctx, args...))
+	return c.Int64(ctx, args...)
 }
 
 func (c *BaseClient) RandomKey(ctx context.Context) (string, error) {
 	args := []interface{}{CommandRandomKey}
-	return String(c.Do(ctx, args...))
+	return c.String(ctx, args...)
 }
 
-func (c *BaseClient) Rename(ctx context.Context, key, newKey string) (bool, error) {
+func (c *BaseClient) Rename(ctx context.Context, key, newKey string) (string, error) {
 	args := []interface{}{CommandRename, key, newKey}
-	return Bool(c.Do(ctx, args...))
+	return c.String(ctx, args...)
 }
 
-func (c *BaseClient) RenameNX(ctx context.Context, key, newKey string) (bool, error) {
+func (c *BaseClient) RenameNX(ctx context.Context, key, newKey string) (int, error) {
 	args := []interface{}{CommandRenameNX, key, newKey}
-	return Bool(c.Do(ctx, args...))
+	return c.Int(ctx, args...)
 }
 
 func (c *BaseClient) Touch(ctx context.Context, keys ...string) (int64, error) {
@@ -204,15 +204,15 @@ func (c *BaseClient) Touch(ctx context.Context, keys ...string) (int64, error) {
 	for _, key := range keys {
 		args = append(args, key)
 	}
-	return Int64(c.Do(ctx, args...))
+	return c.Int64(ctx, args...)
 }
 
 func (c *BaseClient) TTL(ctx context.Context, key string) (int64, error) {
 	args := []interface{}{CommandTTL, key}
-	return Int64(c.Do(ctx, args...))
+	return c.Int64(ctx, args...)
 }
 
 func (c *BaseClient) Type(ctx context.Context, key string) (string, error) {
 	args := []interface{}{CommandType, key}
-	return String(c.Do(ctx, args...))
+	return c.String(ctx, args...)
 }

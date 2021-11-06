@@ -109,34 +109,34 @@ type StringCommand interface {
 	// MSet https://redis.io/commands/mset
 	// Command: MSET key value [key value ...]
 	// Simple string reply: always OK since MSET can't fail.
-	MSet(ctx context.Context, args ...interface{}) (bool, error)
+	MSet(ctx context.Context, args ...interface{}) (string, error)
 
 	// MSetNX https://redis.io/commands/msetnx
 	// Command: MSETNX key value [key value ...]
 	// MSETNX is atomic, so all given keys are set at once
 	// Integer reply: 1 if the all the keys were set, 0 if no
 	// key was set (at least one key already existed).
-	MSetNX(ctx context.Context, args ...interface{}) (bool, error)
+	MSetNX(ctx context.Context, args ...interface{}) (int, error)
 
 	// PSetEX https://redis.io/commands/psetex
 	// Command: PSETEX key milliseconds value
 	// Simple string reply
-	PSetEX(ctx context.Context, key string, value interface{}, expire int64) (bool, error)
+	PSetEX(ctx context.Context, key string, value interface{}, expire int64) (string, error)
 
 	// Set https://redis.io/commands/set
 	// Command: SET key value [EX seconds|PX milliseconds|EXAT timestamp|PXAT milliseconds-timestamp|KEEPTTL] [NX|XX] [GET]
 	// Simple string reply: OK if SET was executed correctly.
-	Set(ctx context.Context, key string, value interface{}, args ...interface{}) (bool, error)
+	Set(ctx context.Context, key string, value interface{}, args ...interface{}) (string, error)
 
 	// SetEX https://redis.io/commands/setex
 	// Command: SETEX key seconds value
 	// Simple string reply
-	SetEX(ctx context.Context, key string, value interface{}, expire int64) (bool, error)
+	SetEX(ctx context.Context, key string, value interface{}, expire int64) (string, error)
 
 	// SetNX https://redis.io/commands/setnx
 	// Command: SETNX key value
 	// Integer reply: 1 if the key was set, 0 if the key was not set.
-	SetNX(ctx context.Context, key string, value interface{}) (bool, error)
+	SetNX(ctx context.Context, key string, value interface{}) (int, error)
 
 	// SetRange https://redis.io/commands/setrange
 	// Command: SETRANGE key offset value
@@ -151,57 +151,57 @@ type StringCommand interface {
 
 func (c *BaseClient) Append(ctx context.Context, key, value string) (int64, error) {
 	args := []interface{}{CommandAppend, key, value}
-	return Int64(c.Do(ctx, args...))
+	return c.Int64(ctx, args...)
 }
 
 func (c *BaseClient) Decr(ctx context.Context, key string) (int64, error) {
 	args := []interface{}{CommandDecr, key}
-	return Int64(c.Do(ctx, args...))
+	return c.Int64(ctx, args...)
 }
 
 func (c *BaseClient) DecrBy(ctx context.Context, key string, decrement int64) (int64, error) {
 	args := []interface{}{CommandDecrBy, key, decrement}
-	return Int64(c.Do(ctx, args...))
+	return c.Int64(ctx, args...)
 }
 
 func (c *BaseClient) Get(ctx context.Context, key string) (string, error) {
 	args := []interface{}{CommandGet, key}
-	return String(c.Do(ctx, args...))
+	return c.String(ctx, args...)
 }
 
 func (c *BaseClient) GetDel(ctx context.Context, key string) (string, error) {
 	args := []interface{}{CommandGetDel, key}
-	return String(c.Do(ctx, args...))
+	return c.String(ctx, args...)
 }
 
 func (c *BaseClient) GetEx(ctx context.Context, key string, args ...interface{}) (string, error) {
 	args = append([]interface{}{CommandGetEx, key}, args...)
-	return String(c.Do(ctx, args...))
+	return c.String(ctx, args...)
 }
 
 func (c *BaseClient) GetRange(ctx context.Context, key string, start, end int64) (string, error) {
 	args := []interface{}{CommandGetRange, key, start, end}
-	return String(c.Do(ctx, args...))
+	return c.String(ctx, args...)
 }
 
 func (c *BaseClient) GetSet(ctx context.Context, key string, value interface{}) (string, error) {
 	args := []interface{}{CommandGetSet, key, value}
-	return String(c.Do(ctx, args...))
+	return c.String(ctx, args...)
 }
 
 func (c *BaseClient) Incr(ctx context.Context, key string) (int64, error) {
 	args := []interface{}{CommandIncr, key}
-	return Int64(c.Do(ctx, args...))
+	return c.Int64(ctx, args...)
 }
 
 func (c *BaseClient) IncrBy(ctx context.Context, key string, value int64) (int64, error) {
 	args := []interface{}{CommandIncrBy, key, value}
-	return Int64(c.Do(ctx, args...))
+	return c.Int64(ctx, args...)
 }
 
 func (c *BaseClient) IncrByFloat(ctx context.Context, key string, value float64) (float64, error) {
 	args := []interface{}{CommandIncrByFloat, key, value}
-	return Float64(c.Do(ctx, args...))
+	return c.Float64(ctx, args...)
 }
 
 func (c *BaseClient) MGet(ctx context.Context, keys ...string) ([]interface{}, error) {
@@ -209,45 +209,45 @@ func (c *BaseClient) MGet(ctx context.Context, keys ...string) ([]interface{}, e
 	for _, key := range keys {
 		args = append(args, key)
 	}
-	return Slice(c.Do(ctx, args...))
+	return c.Slice(ctx, args...)
 }
 
-func (c *BaseClient) MSet(ctx context.Context, args ...interface{}) (bool, error) {
+func (c *BaseClient) MSet(ctx context.Context, args ...interface{}) (string, error) {
 	args = append([]interface{}{CommandMSet}, args...)
-	return Bool(c.Do(ctx, args...))
+	return c.String(ctx, args...)
 }
 
-func (c *BaseClient) MSetNX(ctx context.Context, args ...interface{}) (bool, error) {
+func (c *BaseClient) MSetNX(ctx context.Context, args ...interface{}) (int, error) {
 	args = append([]interface{}{CommandMSetNX}, args...)
-	return Bool(c.Do(ctx, args...))
+	return c.Int(ctx, args...)
 }
 
-func (c *BaseClient) PSetEX(ctx context.Context, key string, value interface{}, expire int64) (bool, error) {
+func (c *BaseClient) PSetEX(ctx context.Context, key string, value interface{}, expire int64) (string, error) {
 	args := []interface{}{CommandPSetEX, key, expire, value}
-	return Bool(c.Do(ctx, args...))
+	return c.String(ctx, args...)
 }
 
-func (c *BaseClient) Set(ctx context.Context, key string, value interface{}, args ...interface{}) (bool, error) {
+func (c *BaseClient) Set(ctx context.Context, key string, value interface{}, args ...interface{}) (string, error) {
 	args = append([]interface{}{CommandSet, key, value}, args...)
-	return Bool(c.Do(ctx, args...))
+	return c.String(ctx, args...)
 }
 
-func (c *BaseClient) SetEX(ctx context.Context, key string, value interface{}, expire int64) (bool, error) {
+func (c *BaseClient) SetEX(ctx context.Context, key string, value interface{}, expire int64) (string, error) {
 	args := []interface{}{CommandSetEX, key, expire, value}
-	return Bool(c.Do(ctx, args...))
+	return c.String(ctx, args...)
 }
 
-func (c *BaseClient) SetNX(ctx context.Context, key string, value interface{}) (bool, error) {
+func (c *BaseClient) SetNX(ctx context.Context, key string, value interface{}) (int, error) {
 	args := []interface{}{CommandSetNX, key, value}
-	return Bool(c.Do(ctx, args...))
+	return c.Int(ctx, args...)
 }
 
 func (c *BaseClient) SetRange(ctx context.Context, key string, offset int64, value string) (int64, error) {
 	args := []interface{}{CommandSetRange, key, offset, value}
-	return Int64(c.Do(ctx, args...))
+	return c.Int64(ctx, args...)
 }
 
 func (c *BaseClient) StrLen(ctx context.Context, key string) (int64, error) {
 	args := []interface{}{CommandStrLen, key}
-	return Int64(c.Do(ctx, args...))
+	return c.Int64(ctx, args...)
 }

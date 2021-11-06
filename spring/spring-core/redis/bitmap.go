@@ -78,7 +78,7 @@ type BitmapCommand interface {
 
 func (c *BaseClient) BitCount(ctx context.Context, key string, args ...interface{}) (int64, error) {
 	args = append([]interface{}{CommandBitCount, key}, args...)
-	return Int64(c.Do(ctx, args...))
+	return c.Int64(ctx, args...)
 }
 
 func (c *BaseClient) BitOpAnd(ctx context.Context, destKey string, keys ...string) (int64, error) {
@@ -86,7 +86,7 @@ func (c *BaseClient) BitOpAnd(ctx context.Context, destKey string, keys ...strin
 	for _, key := range keys {
 		args = append(args, key)
 	}
-	return Int64(c.Do(ctx, args...))
+	return c.Int64(ctx, args...)
 }
 
 func (c *BaseClient) BitOpOr(ctx context.Context, destKey string, keys ...string) (int64, error) {
@@ -94,7 +94,7 @@ func (c *BaseClient) BitOpOr(ctx context.Context, destKey string, keys ...string
 	for _, key := range keys {
 		args = append(args, key)
 	}
-	return Int64(c.Do(ctx, args...))
+	return c.Int64(ctx, args...)
 }
 
 func (c *BaseClient) BitOpXor(ctx context.Context, destKey string, keys ...string) (int64, error) {
@@ -102,25 +102,25 @@ func (c *BaseClient) BitOpXor(ctx context.Context, destKey string, keys ...strin
 	for _, key := range keys {
 		args = append(args, key)
 	}
-	return Int64(c.Do(ctx, args...))
+	return c.Int64(ctx, args...)
 }
 
 func (c *BaseClient) BitOpNot(ctx context.Context, destKey string, key string) (int64, error) {
 	args := []interface{}{CommandBitOp, "NOT", destKey, key}
-	return Int64(c.Do(ctx, args...))
+	return c.Int64(ctx, args...)
 }
 
 func (c *BaseClient) BitPos(ctx context.Context, key string, bit int64, args ...interface{}) (int64, error) {
 	args = append([]interface{}{CommandBitPos, key, bit}, args...)
-	return Int64(c.Do(ctx, args...))
+	return c.Int64(ctx, args...)
 }
 
 func (c *BaseClient) GetBit(ctx context.Context, key string, offset int64) (int64, error) {
 	args := []interface{}{CommandGetBit, key, offset}
-	return Int64(c.Do(ctx, args...))
+	return c.Int64(ctx, args...)
 }
 
 func (c *BaseClient) SetBit(ctx context.Context, key string, offset int64, value int) (int64, error) {
 	args := []interface{}{CommandSetBit, key, offset, value}
-	return Int64(c.Do(ctx, args...))
+	return c.Int64(ctx, args...)
 }

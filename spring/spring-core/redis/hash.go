@@ -48,7 +48,7 @@ type HashCommand interface {
 	// Command: HEXISTS key field
 	// Integer reply: 1 if the hash contains field,
 	// 0 if the hash does not contain field, or key does not exist.
-	HExists(ctx context.Context, key, field string) (bool, error)
+	HExists(ctx context.Context, key, field string) (int, error)
 
 	// HGet https://redis.io/commands/hget
 	// Command: HGET key field
@@ -97,7 +97,7 @@ type HashCommand interface {
 	// Command: HSETNX key field value
 	// Integer reply: 1 if field is a new field in the hash and value was set,
 	// 0 if field already exists in the hash and no operation was performed.
-	HSetNX(ctx context.Context, key, field string, value interface{}) (bool, error)
+	HSetNX(ctx context.Context, key, field string, value interface{}) (int, error)
 
 	// HStrLen https://redis.io/commands/hstrlen
 	// Command: HSTRLEN key field
@@ -116,42 +116,42 @@ func (c *BaseClient) HDel(ctx context.Context, key string, fields ...string) (in
 	for _, field := range fields {
 		args = append(args, field)
 	}
-	return Int64(c.Do(ctx, args...))
+	return c.Int64(ctx, args...)
 }
 
-func (c *BaseClient) HExists(ctx context.Context, key, field string) (bool, error) {
+func (c *BaseClient) HExists(ctx context.Context, key, field string) (int, error) {
 	args := []interface{}{CommandHExists, key, field}
-	return Bool(c.Do(ctx, args...))
+	return c.Int(ctx, args...)
 }
 
 func (c *BaseClient) HGet(ctx context.Context, key string, field string) (string, error) {
 	args := []interface{}{CommandHGet, key, field}
-	return String(c.Do(ctx, args...))
+	return c.String(ctx, args...)
 }
 
 func (c *BaseClient) HGetAll(ctx context.Context, key string) (map[string]string, error) {
 	args := []interface{}{CommandHGetAll, key}
-	return StringMap(c.Do(ctx, args...))
+	return c.StringMap(ctx, args...)
 }
 
 func (c *BaseClient) HIncrBy(ctx context.Context, key, field string, incr int64) (int64, error) {
 	args := []interface{}{CommandHIncrBy, key, field, incr}
-	return Int64(c.Do(ctx, args...))
+	return c.Int64(ctx, args...)
 }
 
 func (c *BaseClient) HIncrByFloat(ctx context.Context, key, field string, incr float64) (float64, error) {
 	args := []interface{}{CommandHIncrByFloat, key, field, incr}
-	return Float64(c.Do(ctx, args...))
+	return c.Float64(ctx, args...)
 }
 
 func (c *BaseClient) HKeys(ctx context.Context, key string) ([]string, error) {
 	args := []interface{}{CommandHKeys, key}
-	return StringSlice(c.Do(ctx, args...))
+	return c.StringSlice(ctx, args...)
 }
 
 func (c *BaseClient) HLen(ctx context.Context, key string) (int64, error) {
 	args := []interface{}{CommandHLen, key}
-	return Int64(c.Do(ctx, args...))
+	return c.Int64(ctx, args...)
 }
 
 func (c *BaseClient) HMGet(ctx context.Context, key string, fields ...string) ([]interface{}, error) {
@@ -159,25 +159,25 @@ func (c *BaseClient) HMGet(ctx context.Context, key string, fields ...string) ([
 	for _, field := range fields {
 		args = append(args, field)
 	}
-	return Slice(c.Do(ctx, args...))
+	return c.Slice(ctx, args...)
 }
 
 func (c *BaseClient) HSet(ctx context.Context, key string, args ...interface{}) (int64, error) {
 	args = append([]interface{}{CommandHSet, key}, args...)
-	return Int64(c.Do(ctx, args...))
+	return c.Int64(ctx, args...)
 }
 
-func (c *BaseClient) HSetNX(ctx context.Context, key, field string, value interface{}) (bool, error) {
+func (c *BaseClient) HSetNX(ctx context.Context, key, field string, value interface{}) (int, error) {
 	args := []interface{}{CommandHSetNX, key, field, value}
-	return Bool(c.Do(ctx, args...))
+	return c.Int(ctx, args...)
 }
 
 func (c *BaseClient) HStrLen(ctx context.Context, key, field string) (int64, error) {
 	args := []interface{}{CommandHStrLen, key, field}
-	return Int64(c.Do(ctx, args...))
+	return c.Int64(ctx, args...)
 }
 
 func (c *BaseClient) HVals(ctx context.Context, key string) ([]string, error) {
 	args := []interface{}{CommandHVals, key}
-	return StringSlice(c.Do(ctx, args...))
+	return c.StringSlice(ctx, args...)
 }

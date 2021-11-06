@@ -14,25 +14,16 @@
  * limitations under the License.
  */
 
-package redis
+package record
 
 import (
-	"context"
+	"testing"
+
+	g "github.com/go-redis/redis/v8"
+	"github.com/go-spring/spring-core/redis"
+	SpringGoRedis "github.com/go-spring/spring-go-redis"
 )
 
-const (
-	CommandFlushAll = "FLUSHALL"
-)
-
-type ServerCommand interface {
-
-	// FlushAll https://redis.io/commands/flushall
-	// Command: FLUSHALL [ASYNC|SYNC]
-	// Simple string reply
-	FlushAll(ctx context.Context, args ...interface{}) (string, error)
-}
-
-func (c *BaseClient) FlushAll(ctx context.Context, args ...interface{}) (string, error) {
-	args = append([]interface{}{CommandFlushAll}, args...)
-	return c.String(ctx, args...)
+func RunCase(t *testing.T, fn func(t *testing.T, c redis.Client)) {
+	fn(t, SpringGoRedis.NewClient(g.NewClient(&g.Options{})))
 }

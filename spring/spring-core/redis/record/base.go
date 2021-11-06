@@ -14,22 +14,20 @@
  * limitations under the License.
  */
 
-package testcases
+package record
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
-	g "github.com/go-redis/redis/v8"
 	"github.com/go-spring/spring-base/assert"
-	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-base/fastdev"
 	"github.com/go-spring/spring-base/knife"
 	"github.com/go-spring/spring-core/redis"
-	SpringGoRedis "github.com/go-spring/spring-go-redis"
 )
 
-func RunCase(t *testing.T,
+func RunCase(t *testing.T, c redis.Client,
 	testFunc func(t *testing.T, ctx context.Context, c redis.Client),
 	recordResult string) {
 
@@ -45,8 +43,6 @@ func RunCase(t *testing.T,
 		t.Fatal(err)
 	}
 
-	c := SpringGoRedis.NewClient(g.NewClient(&g.Options{}))
-
 	defer func() {
 		fastdev.SetRecordMode(false)
 		c.FlushAll(ctx)
@@ -56,6 +52,28 @@ func RunCase(t *testing.T,
 
 	session := fastdev.RecordInbound(ctx, &fastdev.Action{})
 	if recordResult != `skip` {
-		assert.Equal(t, cast.ToString(session), recordResult)
+
+		var testResult []byte
+		testResult, err = json.Marshal(session)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var (
+			s1 *fastdev.Session
+			s2 *fastdev.Session
+		)
+
+		s1, err = fastdev.BytesToSession(testResult)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		s2, err = fastdev.BytesToSession([]byte(recordResult))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		assert.Equal(t, s1, s2)
 	}
 }

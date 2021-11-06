@@ -357,13 +357,13 @@ func LSet(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r4, true)
+	assert.Equal(t, r4, redis.OK)
 
 	r5, err := c.LSet(ctx, "mylist", -2, "five")
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r5, true)
+	assert.Equal(t, r5, redis.OK)
 
 	r6, err := c.LRange(ctx, "mylist", 0, -1)
 	if err != nil {
@@ -396,7 +396,7 @@ func LTrim(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r4, true)
+	assert.Equal(t, r4, redis.OK)
 
 	r5, err := c.LRange(ctx, "mylist", 0, -1)
 	if err != nil {

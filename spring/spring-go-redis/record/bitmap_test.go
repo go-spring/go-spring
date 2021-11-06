@@ -14,25 +14,30 @@
  * limitations under the License.
  */
 
-package redis
+package record
 
 import (
-	"context"
+	"testing"
+
+	"github.com/go-spring/spring-core/redis/record"
 )
 
-const (
-	CommandFlushAll = "FLUSHALL"
-)
-
-type ServerCommand interface {
-
-	// FlushAll https://redis.io/commands/flushall
-	// Command: FLUSHALL [ASYNC|SYNC]
-	// Simple string reply
-	FlushAll(ctx context.Context, args ...interface{}) (string, error)
+func TestBitCount(t *testing.T) {
+	RunCase(t, record.BitCount)
 }
 
-func (c *BaseClient) FlushAll(ctx context.Context, args ...interface{}) (string, error) {
-	args = append([]interface{}{CommandFlushAll}, args...)
-	return c.String(ctx, args...)
+func TestBitOpAnd(t *testing.T) {
+	RunCase(t, record.BitOpAnd)
+}
+
+func TestBitPos(t *testing.T) {
+	RunCase(t, record.BitPos)
+}
+
+func TestGetBit(t *testing.T) {
+	RunCase(t, record.GetBit)
+}
+
+func TestSetBit(t *testing.T) {
+	RunCase(t, record.SetBit)
 }

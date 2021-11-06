@@ -57,13 +57,13 @@ func HExists(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r2, true)
+	assert.Equal(t, r2, 1)
 
 	r3, err := c.HExists(ctx, "myhash", "field2")
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r3, false)
+	assert.Equal(t, r3, 0)
 }
 
 func HGet(t *testing.T, ctx context.Context, c redis.Client) {
@@ -252,13 +252,13 @@ func HSetNX(t *testing.T, ctx context.Context, c redis.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r1, true)
+	assert.Equal(t, r1, 1)
 
 	r2, err := c.HSetNX(ctx, "myhash", "field", "World")
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, r2, false)
+	assert.Equal(t, r2, 0)
 
 	r3, err := c.HGet(ctx, "myhash", "field")
 	if err != nil {

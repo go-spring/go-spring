@@ -76,7 +76,7 @@ type SetCommand interface {
 	// Command: SISMEMBER key member
 	// Integer reply: 1 if the element is a member of the set,
 	// 0 if the element is not a member of the set, or if key does not exist.
-	SIsMember(ctx context.Context, key string, member interface{}) (bool, error)
+	SIsMember(ctx context.Context, key string, member interface{}) (int, error)
 
 	// SMembers https://redis.io/commands/smembers
 	// Command: SMEMBERS key
@@ -87,13 +87,13 @@ type SetCommand interface {
 	// Command: SMISMEMBER key member [member ...]
 	// Array reply: list representing the membership of the given elements,
 	// in the same order as they are requested.
-	SMIsMember(ctx context.Context, key string, members ...interface{}) ([]bool, error)
+	SMIsMember(ctx context.Context, key string, members ...interface{}) ([]int64, error)
 
 	// SMove https://redis.io/commands/smove
 	// Command: SMOVE source destination member
 	// Integer reply: 1 if the element is moved, 0 if the element
 	// is not a member of source and no operation was performed.
-	SMove(ctx context.Context, source, destination string, member interface{}) (bool, error)
+	SMove(ctx context.Context, source, destination string, member interface{}) (int, error)
 
 	// SPop https://redis.io/commands/spop
 	// Command: SPOP key [count]
@@ -136,12 +136,12 @@ type SetCommand interface {
 func (c *BaseClient) SAdd(ctx context.Context, key string, members ...interface{}) (int64, error) {
 	args := []interface{}{CommandSAdd, key}
 	args = append(args, members...)
-	return Int64(c.Do(ctx, args...))
+	return c.Int64(ctx, args...)
 }
 
 func (c *BaseClient) SCard(ctx context.Context, key string) (int64, error) {
 	args := []interface{}{CommandSCard, key}
-	return Int64(c.Do(ctx, args...))
+	return c.Int64(ctx, args...)
 }
 
 func (c *BaseClient) SDiff(ctx context.Context, keys ...string) ([]string, error) {
@@ -149,7 +149,7 @@ func (c *BaseClient) SDiff(ctx context.Context, keys ...string) ([]string, error
 	for _, key := range keys {
 		args = append(args, key)
 	}
-	return StringSlice(c.Do(ctx, args...))
+	return c.StringSlice(ctx, args...)
 }
 
 func (c *BaseClient) SDiffStore(ctx context.Context, destination string, keys ...string) (int64, error) {
@@ -157,7 +157,7 @@ func (c *BaseClient) SDiffStore(ctx context.Context, destination string, keys ..
 	for _, key := range keys {
 		args = append(args, key)
 	}
-	return Int64(c.Do(ctx, args...))
+	return c.Int64(ctx, args...)
 }
 
 func (c *BaseClient) SInter(ctx context.Context, keys ...string) ([]string, error) {
@@ -165,7 +165,7 @@ func (c *BaseClient) SInter(ctx context.Context, keys ...string) ([]string, erro
 	for _, key := range keys {
 		args = append(args, key)
 	}
-	return StringSlice(c.Do(ctx, args...))
+	return c.StringSlice(ctx, args...)
 }
 
 func (c *BaseClient) SInterStore(ctx context.Context, destination string, keys ...string) (int64, error) {
@@ -173,50 +173,50 @@ func (c *BaseClient) SInterStore(ctx context.Context, destination string, keys .
 	for _, key := range keys {
 		args = append(args, key)
 	}
-	return Int64(c.Do(ctx, args...))
+	return c.Int64(ctx, args...)
 }
 
-func (c *BaseClient) SIsMember(ctx context.Context, key string, member interface{}) (bool, error) {
+func (c *BaseClient) SIsMember(ctx context.Context, key string, member interface{}) (int, error) {
 	args := []interface{}{CommandSIsMember, key, member}
-	return Bool(c.Do(ctx, args...))
+	return c.Int(ctx, args...)
 }
 
 func (c *BaseClient) SMembers(ctx context.Context, key string) ([]string, error) {
 	args := []interface{}{CommandSMembers, key}
-	return StringSlice(c.Do(ctx, args...))
+	return c.StringSlice(ctx, args...)
 }
 
-func (c *BaseClient) SMIsMember(ctx context.Context, key string, members ...interface{}) ([]bool, error) {
+func (c *BaseClient) SMIsMember(ctx context.Context, key string, members ...interface{}) ([]int64, error) {
 	args := []interface{}{CommandSMIsMember, key}
 	for _, member := range members {
 		args = append(args, member)
 	}
-	return BoolSlice(c.Do(ctx, args...))
+	return c.Int64Slice(ctx, args...)
 }
 
-func (c *BaseClient) SMove(ctx context.Context, source, destination string, member interface{}) (bool, error) {
+func (c *BaseClient) SMove(ctx context.Context, source, destination string, member interface{}) (int, error) {
 	args := []interface{}{CommandSMove, source, destination, member}
-	return Bool(c.Do(ctx, args...))
+	return c.Int(ctx, args...)
 }
 
 func (c *BaseClient) SPop(ctx context.Context, key string) (string, error) {
 	args := []interface{}{CommandSPop, key}
-	return String(c.Do(ctx, args...))
+	return c.String(ctx, args...)
 }
 
 func (c *BaseClient) SPopN(ctx context.Context, key string, count int64) ([]string, error) {
 	args := []interface{}{CommandSPop, key, count}
-	return StringSlice(c.Do(ctx, args...))
+	return c.StringSlice(ctx, args...)
 }
 
 func (c *BaseClient) SRandMember(ctx context.Context, key string) (string, error) {
 	args := []interface{}{CommandSRandMember, key}
-	return String(c.Do(ctx, args...))
+	return c.String(ctx, args...)
 }
 
 func (c *BaseClient) SRandMemberN(ctx context.Context, key string, count int64) ([]string, error) {
 	args := []interface{}{CommandSRandMember, key, count}
-	return StringSlice(c.Do(ctx, args...))
+	return c.StringSlice(ctx, args...)
 }
 
 func (c *BaseClient) SRem(ctx context.Context, key string, members ...interface{}) (int64, error) {
@@ -224,7 +224,7 @@ func (c *BaseClient) SRem(ctx context.Context, key string, members ...interface{
 	for _, member := range members {
 		args = append(args, member)
 	}
-	return Int64(c.Do(ctx, args...))
+	return c.Int64(ctx, args...)
 }
 
 func (c *BaseClient) SUnion(ctx context.Context, keys ...string) ([]string, error) {
@@ -232,7 +232,7 @@ func (c *BaseClient) SUnion(ctx context.Context, keys ...string) ([]string, erro
 	for _, key := range keys {
 		args = append(args, key)
 	}
-	return StringSlice(c.Do(ctx, args...))
+	return c.StringSlice(ctx, args...)
 }
 
 func (c *BaseClient) SUnionStore(ctx context.Context, destination string, keys ...string) (int64, error) {
@@ -240,5 +240,5 @@ func (c *BaseClient) SUnionStore(ctx context.Context, destination string, keys .
 	for _, key := range keys {
 		args = append(args, key)
 	}
-	return Int64(c.Do(ctx, args...))
+	return c.Int64(ctx, args...)
 }
