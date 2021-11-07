@@ -18,7 +18,6 @@ package fastdev
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -28,6 +27,7 @@ import (
 	"strings"
 
 	"github.com/go-spring/spring-base/cast"
+	"github.com/go-spring/spring-base/fastdev/json"
 )
 
 // AgentConfig 回放代理的配置。

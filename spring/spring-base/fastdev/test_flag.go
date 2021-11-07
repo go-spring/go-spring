@@ -45,14 +45,16 @@ func SetRecordMode(mode bool) {
 }
 
 // SetReplayMode 打开或者关闭回放模式。
-func SetReplayMode(mode bool) {
+func SetReplayMode(mode bool, agent bool) {
 	checkTestMode()
 	if replayer.mode != mode {
 		replayer.mode = mode
-		if mode {
-			startAgent()
-		} else {
-			stopAgent()
+		if agent {
+			if mode {
+				startAgent()
+			} else {
+				stopAgent()
+			}
 		}
 	}
 }

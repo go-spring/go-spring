@@ -21,385 +21,61 @@ import (
 
 	"github.com/go-spring/spring-core/redis"
 	"github.com/go-spring/spring-core/redis/testcases"
+	"github.com/go-spring/spring-core/redis/testdata"
 )
 
 func SAdd(t *testing.T, c redis.Client) {
-	str := `
-	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SADD myset Hello",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SADD myset World",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SADD myset World",
-			"response": 0
-		}, {
-			"protocol": "redis",
-			"request": "SMEMBERS myset",
-			"response": ["Hello", "World"]
-		}]
-	}`
-	RunCase(t, c, testcases.SAdd, str)
+	RunCase(t, c, testcases.SAdd, testdata.SAdd)
 }
 
 func SCard(t *testing.T, c redis.Client) {
-	str := `
-	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SADD myset Hello",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SADD myset World",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SCARD myset",
-			"response": 2
-		}]
-	}`
-	RunCase(t, c, testcases.SCard, str)
+	RunCase(t, c, testcases.SCard, testdata.SCard)
 }
 
 func SDiff(t *testing.T, c redis.Client) {
-	str := `
-	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SADD key1 a",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SADD key1 b",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SADD key1 c",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SADD key2 c",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SADD key2 d",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SADD key2 e",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SDIFF key1 key2",
-			"response": ["a", "b"]
-		}]
-	}`
-	RunCase(t, c, testcases.SDiff, str)
+	RunCase(t, c, testcases.SDiff, testdata.SDiff)
 }
 
 func SDiffStore(t *testing.T, c redis.Client) {
-	str := `
-	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SADD key1 a",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SADD key1 b",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SADD key1 c",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SADD key2 c",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SADD key2 d",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SADD key2 e",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SDIFFSTORE key key1 key2",
-			"response": 2
-		}, {
-			"protocol": "redis",
-			"request": "SMEMBERS key",
-			"response": ["a", "b"]
-		}]
-	}`
-	RunCase(t, c, testcases.SDiffStore, str)
+	RunCase(t, c, testcases.SDiffStore, testdata.SDiffStore)
 }
 
 func SInter(t *testing.T, c redis.Client) {
-	str := `
-	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SADD key1 a",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SADD key1 b",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SADD key1 c",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SADD key2 c",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SADD key2 d",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SADD key2 e",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SINTER key1 key2",
-			"response": ["c"]
-		}]
-	}`
-	RunCase(t, c, testcases.SInter, str)
+	RunCase(t, c, testcases.SInter, testdata.SInter)
 }
 
 func SInterStore(t *testing.T, c redis.Client) {
-	str := `
-	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SADD key1 a",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SADD key1 b",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SADD key1 c",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SADD key2 c",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SADD key2 d",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SADD key2 e",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SINTERSTORE key key1 key2",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SMEMBERS key",
-			"response": ["c"]
-		}]
-	}`
-	RunCase(t, c, testcases.SInterStore, str)
+	RunCase(t, c, testcases.SInterStore, testdata.SInterStore)
 }
 
 func SMembers(t *testing.T, c redis.Client) {
-	str := `
-	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SADD myset Hello",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SADD myset World",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SMEMBERS myset",
-			"response": ["Hello", "World"]
-		}]
-	}`
-	RunCase(t, c, testcases.SMembers, str)
+	RunCase(t, c, testcases.SMembers, testdata.SMembers)
 }
 
 func SMIsMember(t *testing.T, c redis.Client) {
-	str := `
-	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SADD myset one",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SADD myset one",
-			"response": 0
-		}, {
-			"protocol": "redis",
-			"request": "SMISMEMBER myset one notamember",
-			"response": [1, 0]
-		}]
-	}`
-	RunCase(t, c, testcases.SMIsMember, str)
+	RunCase(t, c, testcases.SMIsMember, testdata.SMIsMember)
 }
 
 func SMove(t *testing.T, c redis.Client) {
-	str := `
-	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SADD myset one",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SADD myset two",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SADD myotherset three",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SMOVE myset myotherset two",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SMEMBERS myset",
-			"response": ["one"]
-		}, {
-			"protocol": "redis",
-			"request": "SMEMBERS myotherset",
-			"response": ["three", "two"]
-		}]
-	}`
-	RunCase(t, c, testcases.SMove, str)
+	RunCase(t, c, testcases.SMove, testdata.SMove)
 }
 
 func SPop(t *testing.T, c redis.Client) {
-	str := `skip`
-	RunCase(t, c, testcases.SPop, str)
+	RunCase(t, c, testcases.SPop, "skip")
 }
 
 func SRandMember(t *testing.T, c redis.Client) {
-	str := `skip`
-	RunCase(t, c, testcases.SRandMember, str)
+	RunCase(t, c, testcases.SRandMember, "skip")
 }
 
 func SRem(t *testing.T, c redis.Client) {
-	str := `skip`
-	RunCase(t, c, testcases.SRem, str)
+	RunCase(t, c, testcases.SRem, "skip")
 }
 
 func SUnion(t *testing.T, c redis.Client) {
-	str := `
-	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SADD key1 a",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SADD key1 b",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SADD key1 c",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SADD key2 c",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SADD key2 d",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SADD key2 e",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SUNION key1 key2",
-			"response": ["a", "b", "c", "e", "d"]
-		}]
-	}`
-	RunCase(t, c, testcases.SUnion, str)
+	RunCase(t, c, testcases.SUnion, testdata.SUnion)
 }
 
 func SUnionStore(t *testing.T, c redis.Client) {
-	str := `
-	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SADD key1 a",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SADD key1 b",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SADD key1 c",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SADD key2 c",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SADD key2 d",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SADD key2 e",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "SUNIONSTORE key key1 key2",
-			"response": 5
-		}, {
-			"protocol": "redis",
-			"request": "SMEMBERS key",
-			"response": ["a", "b", "c", "e", "d"]
-		}]
-	}`
-	RunCase(t, c, testcases.SUnionStore, str)
+	RunCase(t, c, testcases.SUnionStore, testdata.SUnionStore)
 }

@@ -14,31 +14,28 @@
  * limitations under the License.
  */
 
-package replay
+package fastdev
 
 import (
+	stdJson "encoding/json"
 	"testing"
 
-	"github.com/go-spring/spring-core/redis/testcases"
-	"github.com/go-spring/spring-core/redis/testdata"
+	"github.com/go-spring/spring-base/assert"
+	"github.com/go-spring/spring-base/fastdev/json"
 )
 
-func TestBitCount(t *testing.T) {
-	RunCase(t, testcases.BitCount, testdata.BitCount)
-}
-
-func TestBitOpAnd(t *testing.T) {
-	RunCase(t, testcases.BitOpAnd, testdata.BitOpAnd)
-}
-
-func TestBitPos(t *testing.T) {
-	RunCase(t, testcases.BitPos, testdata.BitPos)
-}
-
-func TestGetBit(t *testing.T) {
-	RunCase(t, testcases.GetBit, testdata.GetBit)
-}
-
-func TestSetBit(t *testing.T) {
-	RunCase(t, testcases.SetBit, testdata.SetBit)
+func TestMyJson(t *testing.T) {
+	var s = struct {
+		S string `json:"s"`
+	}{"\u0000\xC0\n\t\u0000\xBEm\u0006\x89Z(\u0000\n"}
+	b1, err := stdJson.Marshal(&s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b2, err := json.Marshal(&s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, string(b1), `{"s":"\u0000\ufffd\n\t\u0000\ufffdm\u0006\ufffdZ(\u0000\n"}`)
+	assert.Equal(t, string(b2), `{"s":"@\"\\x00\\xc0\\n\\t\\x00\\xbem\\x06\\x89Z(\\x00\\n\"@"}`)
 }

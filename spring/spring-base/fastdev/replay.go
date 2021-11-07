@@ -24,6 +24,11 @@ import (
 	"github.com/go-spring/spring-base/knife"
 )
 
+type replayData struct {
+	session *Session
+	matches sync.Map
+}
+
 var replayer struct {
 	mode bool     // 是否是回放模式。
 	data sync.Map // 正在回放的数据。
@@ -41,7 +46,7 @@ func Delete(sessionID string) {
 
 // Store 存储 sessionID 对应的回放数据。
 func Store(session *Session) {
-	replayer.data.Store(session.Session, session)
+	replayer.data.Store(session.Session, &replayData{session: session})
 }
 
 // ReplayAction 根据 action 传入的匹配信息返回对应的响应数据。
@@ -56,16 +61,22 @@ func ReplayAction(ctx context.Context, action *Action) (bool, error) {
 		return false, errors.New("session id not found")
 	}
 
-	session, ok := replayer.data.Load(sessionID.(string))
+	value, ok := replayer.data.Load(sessionID.(string))
 	if !ok {
 		return false, errors.New("session not found")
 	}
 
-	for _, r := range session.(*Session).Actions {
+	data := value.(*replayData)
+	actions := data.session.Actions
+
+	for i, r := range actions {
 		if r.Protocol != action.Protocol {
 			continue
 		}
 		if r.Request != action.Request {
+			continue
+		}
+		if _, loaded := data.matches.LoadOrStore(i, true); loaded {
 			continue
 		}
 		action.Response = r.Response

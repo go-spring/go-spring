@@ -29,28 +29,28 @@ func TestCmdString(t *testing.T) {
 		val string
 	}{
 		{
-			[]interface{}{"SET", "a", 1},
-			"SET a 1",
+			[]interface{}{"CMD", "a", 1, ""},
+			"CMD a 1 @\"\"@",
 		},
 		{
-			[]interface{}{"SET", "a", "1 "},
-			"SET a \"1 \"",
+			[]interface{}{"CMD", "a", "1 ", ""},
+			"CMD a @\"1 \"@ @\"\"@",
 		},
 		{
-			[]interface{}{"SET", "a", "1 2"},
-			"SET a \"1 2\"",
+			[]interface{}{"CMD", "a", "1 2", ""},
+			"CMD a @\"1 2\"@ @\"\"@",
 		},
 		{
-			[]interface{}{"SET", "a", "1 \""},
-			"SET a \"1 \\\"\"",
+			[]interface{}{"CMD", "a", "1 \"", ""},
+			"CMD a @\"1 \\\"\"@ @\"\"@",
 		},
 		{
-			[]interface{}{"SET", "a", "1 '"},
-			"SET a \"1 '\"",
+			[]interface{}{"CMD", "a", "1 '", ""},
+			"CMD a @\"1 '\"@ @\"\"@",
 		},
 		{
-			[]interface{}{"SET", "a", "1 \t"},
-			"SET a \"1 \\t\"",
+			[]interface{}{"CMD", "a", "1 \t", ""},
+			"CMD a @\"1 \\t\"@ @\"\"@",
 		},
 	}
 

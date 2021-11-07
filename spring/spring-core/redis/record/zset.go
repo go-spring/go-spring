@@ -21,799 +21,109 @@ import (
 
 	"github.com/go-spring/spring-core/redis"
 	"github.com/go-spring/spring-core/redis/testcases"
+	"github.com/go-spring/spring-core/redis/testdata"
 )
 
 func ZAdd(t *testing.T, c redis.Client) {
-	str := `
-	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD myzset 1 one",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 1 uno",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 2 two 3 three",
-			"response": 2
-		}, {
-			"protocol": "redis",
-			"request": "ZRANGE myzset 0 -1 WITHSCORES",
-			"response": [
-				["one", "1"],
-				["uno", "1"],
-				["two", "2"],
-				["three", "3"]
-			]
-		}]
-	}`
-	RunCase(t, c, testcases.ZAdd, str)
+	RunCase(t, c, testcases.ZAdd, testdata.ZAdd)
 }
 
 func ZCard(t *testing.T, c redis.Client) {
-	str := `
-	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD myzset 1 one",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 2 two",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZCARD myzset",
-			"response": 2
-		}]
-	}`
-	RunCase(t, c, testcases.ZCard, str)
+	RunCase(t, c, testcases.ZCard, testdata.ZCard)
 }
 
 func ZCount(t *testing.T, c redis.Client) {
-	str := `
-	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD myzset 1 one",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 2 two",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 3 three",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZCOUNT myzset -inf +inf",
-			"response": 3
-		}, {
-			"protocol": "redis",
-			"request": "ZCOUNT myzset (1 3",
-			"response": 2
-		}]
-	}`
-	RunCase(t, c, testcases.ZCount, str)
+	RunCase(t, c, testcases.ZCount, testdata.ZCount)
 }
 
 func ZDiff(t *testing.T, c redis.Client) {
-	str := `
-	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD zset1 1 one",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZADD zset1 2 two",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZADD zset1 3 three",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZADD zset2 1 one",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZADD zset2 2 two",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZDIFF 2 zset1 zset2",
-			"response": ["three"]
-		}, {
-			"protocol": "redis",
-			"request": "ZDIFF 2 zset1 zset2 WITHSCORES",
-			"response": [
-				["three", "3"]
-			]
-		}]
-	}`
-	RunCase(t, c, testcases.ZDiff, str)
+	RunCase(t, c, testcases.ZDiff, testdata.ZDiff)
 }
 
 func ZIncrBy(t *testing.T, c redis.Client) {
-	str := `
-	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD myzset 1 one",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 2 two",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZINCRBY myzset 2 one",
-			"response": "3"
-		}, {
-			"protocol": "redis",
-			"request": "ZRANGE myzset 0 -1 WITHSCORES",
-			"response": [
-				["two", "2"],
-				["one", "3"]
-			]
-		}]
-	}`
-	RunCase(t, c, testcases.ZIncrBy, str)
+	RunCase(t, c, testcases.ZIncrBy, testdata.ZIncrBy)
 }
 
 func ZInter(t *testing.T, c redis.Client) {
-	str := `
-	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD zset1 1 one",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZADD zset1 2 two",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZADD zset2 1 one",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZADD zset2 2 two",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZADD zset2 3 three",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZINTER 2 zset1 zset2",
-			"response": ["one", "two"]
-		}, {
-			"protocol": "redis",
-			"request": "ZINTER 2 zset1 zset2 WITHSCORES",
-			"response": [
-				["one", "2"],
-				["two", "4"]
-			]
-		}]
-	}`
-	RunCase(t, c, testcases.ZInter, str)
+	RunCase(t, c, testcases.ZInter, testdata.ZInter)
 }
 
 func ZLexCount(t *testing.T, c redis.Client) {
-	str := `
-	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD myzset 0 a 0 b 0 c 0 d 0 e",
-			"response": 5
-		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 0 f 0 g",
-			"response": 2
-		}, {
-			"protocol": "redis",
-			"request": "ZLEXCOUNT myzset - +",
-			"response": 7
-		}, {
-			"protocol": "redis",
-			"request": "ZLEXCOUNT myzset [b [f",
-			"response": 5
-		}]
-	}`
-	RunCase(t, c, testcases.ZLexCount, str)
+	RunCase(t, c, testcases.ZLexCount, testdata.ZLexCount)
 }
 
 func ZMScore(t *testing.T, c redis.Client) {
-	str := `
-	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD myzset 1 one",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 2 two",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZMSCORE myzset one two nofield",
-			"response": ["1", "2", null]
-		}]
-	}`
-	RunCase(t, c, testcases.ZMScore, str)
+	RunCase(t, c, testcases.ZMScore, testdata.ZMScore)
 }
 
 func ZPopMax(t *testing.T, c redis.Client) {
-	str := `
-	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD myzset 1 one",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 2 two",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 3 three",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZPOPMAX myzset",
-			"response": [
-				["three", "3"]
-			]
-		}]
-	}`
-	RunCase(t, c, testcases.ZPopMax, str)
+	RunCase(t, c, testcases.ZPopMax, testdata.ZPopMax)
 }
 
 func ZPopMin(t *testing.T, c redis.Client) {
-	str := `
-	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD myzset 1 one",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 2 two",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 3 three",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZPOPMIN myzset",
-			"response": [
-				["one", "1"]
-			]
-		}]
-	}`
-	RunCase(t, c, testcases.ZPopMin, str)
+	RunCase(t, c, testcases.ZPopMin, testdata.ZPopMin)
 }
 
 func ZRandMember(t *testing.T, c redis.Client) {
-	str := `skip`
-	RunCase(t, c, testcases.ZRandMember, str)
+	RunCase(t, c, testcases.ZRandMember, "skip")
 }
 
 func ZRange(t *testing.T, c redis.Client) {
-	str := `
-	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD myzset 1 one",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 2 two",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 3 three",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZRANGE myzset 0 -1",
-			"response": ["one", "two", "three"]
-		}, {
-			"protocol": "redis",
-			"request": "ZRANGE myzset 2 3",
-			"response": ["three"]
-		}, {
-			"protocol": "redis",
-			"request": "ZRANGE myzset -2 -1",
-			"response": ["two", "three"]
-		}, {
-			"protocol": "redis",
-			"request": "ZRANGE myzset 0 1 WITHSCORES",
-			"response": [
-				["one", "1"],
-				["two", "2"]
-			]
-		}]
-	}`
-	RunCase(t, c, testcases.ZRange, str)
+	RunCase(t, c, testcases.ZRange, testdata.ZRange)
 }
 
 func ZRangeByLex(t *testing.T, c redis.Client) {
-	str := `
-	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD myzset 0 a 0 b 0 c 0 d 0 e 0 f 0 g",
-			"response": 7
-		}, {
-			"protocol": "redis",
-			"request": "ZRANGEBYLEX myzset - [c",
-			"response": ["a", "b", "c"]
-		}, {
-			"protocol": "redis",
-			"request": "ZRANGEBYLEX myzset - (c",
-			"response": ["a", "b"]
-		}, {
-			"protocol": "redis",
-			"request": "ZRANGEBYLEX myzset [aaa (g",
-			"response": ["b", "c", "d", "e", "f"]
-		}]
-	}`
-	RunCase(t, c, testcases.ZRangeByLex, str)
+	RunCase(t, c, testcases.ZRangeByLex, testdata.ZRangeByLex)
 }
 
 func ZRangeByScore(t *testing.T, c redis.Client) {
-	str := `
-	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD myzset 1 one",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 2 two",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 3 three",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZRANGEBYSCORE myzset -inf +inf",
-			"response": ["one", "two", "three"]
-		}, {
-			"protocol": "redis",
-			"request": "ZRANGEBYSCORE myzset 1 2",
-			"response": ["one", "two"]
-		}, {
-			"protocol": "redis",
-			"request": "ZRANGEBYSCORE myzset (1 2",
-			"response": ["two"]
-		}, {
-			"protocol": "redis",
-			"request": "ZRANGEBYSCORE myzset (1 (2",
-			"response": []
-		}]
-	}`
-	RunCase(t, c, testcases.ZRangeByScore, str)
+	RunCase(t, c, testcases.ZRangeByScore, testdata.ZRangeByScore)
 }
 
 func ZRank(t *testing.T, c redis.Client) {
-	str := `
-	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD myzset 1 one",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 2 two",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 3 three",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZRANK myzset three",
-			"response": 2
-		}, {
-			"protocol": "redis",
-			"request": "ZRANK myzset four",
-			"response": "(nil)"
-		}]
-	}`
-	RunCase(t, c, testcases.ZRank, str)
+	RunCase(t, c, testcases.ZRank, testdata.ZRank)
 }
 
 func ZRem(t *testing.T, c redis.Client) {
-	str := `
-	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD myzset 1 one",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 2 two",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 3 three",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZREM myzset two",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZRANGE myzset 0 -1 WITHSCORES",
-			"response": [
-				["one", "1"],
-				["three", "3"]
-			]
-		}]
-	}`
-	RunCase(t, c, testcases.ZRem, str)
+	RunCase(t, c, testcases.ZRem, testdata.ZRem)
 }
 
 func ZRemRangeByLex(t *testing.T, c redis.Client) {
-	str := `
-	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD myzset 0 aaaa 0 b 0 c 0 d 0 e",
-			"response": 5
-		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 0 foo 0 zap 0 zip 0 ALPHA 0 alpha",
-			"response": 5
-		}, {
-			"protocol": "redis",
-			"request": "ZRANGE myzset 0 -1",
-			"response": ["ALPHA", "aaaa", "alpha", "b", "c", "d", "e", "foo", "zap", "zip"]
-		}, {
-			"protocol": "redis",
-			"request": "ZREMRANGEBYLEX myzset [alpha [omega",
-			"response": 6
-		}, {
-			"protocol": "redis",
-			"request": "ZRANGE myzset 0 -1",
-			"response": ["ALPHA", "aaaa", "zap", "zip"]
-		}]
-	}`
-	RunCase(t, c, testcases.ZRemRangeByLex, str)
+	RunCase(t, c, testcases.ZRemRangeByLex, testdata.ZRemRangeByLex)
 }
 
 func ZRemRangeByRank(t *testing.T, c redis.Client) {
-	str := `
-	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD myzset 1 one",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 2 two",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 3 three",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZREMRANGEBYRANK myzset 0 1",
-			"response": 2
-		}, {
-			"protocol": "redis",
-			"request": "ZRANGE myzset 0 -1 WITHSCORES",
-			"response": [
-				["three", "3"]
-			]
-		}]
-	}`
-	RunCase(t, c, testcases.ZRemRangeByRank, str)
+	RunCase(t, c, testcases.ZRemRangeByRank, testdata.ZRemRangeByRank)
 }
 
 func ZRemRangeByScore(t *testing.T, c redis.Client) {
-	str := `
-	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD myzset 1 one",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 2 two",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 3 three",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZREMRANGEBYSCORE myzset -inf (2",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZRANGE myzset 0 -1 WITHSCORES",
-			"response": [
-				["two", "2"],
-				["three", "3"]
-			]
-		}]
-	}`
-	RunCase(t, c, testcases.ZRemRangeByScore, str)
+	RunCase(t, c, testcases.ZRemRangeByScore, testdata.ZRemRangeByScore)
 }
 
 func ZRevRange(t *testing.T, c redis.Client) {
-	str := `
-	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD myzset 1 one",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 2 two",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 3 three",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZREVRANGE myzset 0 -1",
-			"response": ["three", "two", "one"]
-		}, {
-			"protocol": "redis",
-			"request": "ZREVRANGE myzset 2 3",
-			"response": ["one"]
-		}, {
-			"protocol": "redis",
-			"request": "ZREVRANGE myzset -2 -1",
-			"response": ["two", "one"]
-		}]
-	}`
-	RunCase(t, c, testcases.ZRevRange, str)
+	RunCase(t, c, testcases.ZRevRange, testdata.ZRevRange)
 }
 
 func ZRevRangeByLex(t *testing.T, c redis.Client) {
-	str := `
-	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD myzset 0 a 0 b 0 c 0 d 0 e 0 f 0 g",
-			"response": 7
-		}, {
-			"protocol": "redis",
-			"request": "ZREVRANGEBYLEX myzset [c -",
-			"response": ["c", "b", "a"]
-		}, {
-			"protocol": "redis",
-			"request": "ZREVRANGEBYLEX myzset (c -",
-			"response": ["b", "a"]
-		}, {
-			"protocol": "redis",
-			"request": "ZREVRANGEBYLEX myzset (g [aaa",
-			"response": ["f", "e", "d", "c", "b"]
-		}]
-	}`
-	RunCase(t, c, testcases.ZRevRangeByLex, str)
+	RunCase(t, c, testcases.ZRevRangeByLex, testdata.ZRevRangeByLex)
 }
 
 func ZRevRangeByScore(t *testing.T, c redis.Client) {
-	str := `
-	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD myzset 1 one",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 2 two",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 3 three",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZREVRANGEBYSCORE myzset +inf -inf",
-			"response": ["three", "two", "one"]
-		}, {
-			"protocol": "redis",
-			"request": "ZREVRANGEBYSCORE myzset 2 1",
-			"response": ["two", "one"]
-		}, {
-			"protocol": "redis",
-			"request": "ZREVRANGEBYSCORE myzset 2 (1",
-			"response": ["two"]
-		}, {
-			"protocol": "redis",
-			"request": "ZREVRANGEBYSCORE myzset (2 (1",
-			"response": []
-		}]
-	}`
-	RunCase(t, c, testcases.ZRevRangeByScore, str)
+	RunCase(t, c, testcases.ZRevRangeByScore, testdata.ZRevRangeByScore)
 }
 
 func ZRevRank(t *testing.T, c redis.Client) {
-	str := `
-	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD myzset 1 one",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 2 two",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 3 three",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZREVRANK myzset one",
-			"response": 2
-		}, {
-			"protocol": "redis",
-			"request": "ZREVRANK myzset four",
-			"response": "(nil)"
-		}]
-	}`
-	RunCase(t, c, testcases.ZRevRank, str)
+	RunCase(t, c, testcases.ZRevRank, testdata.ZRevRank)
 }
 
 func ZScore(t *testing.T, c redis.Client) {
-	str := `
-	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD myzset 1 one",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZSCORE myzset one",
-			"response": "1"
-		}]
-	}`
-	RunCase(t, c, testcases.ZScore, str)
+	RunCase(t, c, testcases.ZScore, testdata.ZScore)
 }
 
 func ZUnion(t *testing.T, c redis.Client) {
-	str := `
-	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD zset1 1 one",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZADD zset1 2 two",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZADD zset2 1 one",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZADD zset2 2 two",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZADD zset2 3 three",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZUNION 2 zset1 zset2",
-			"response": ["one", "three", "two"]
-		}, {
-			"protocol": "redis",
-			"request": "ZUNION 2 zset1 zset2 WITHSCORES",
-			"response": [
-				["one", "2"],
-				["three", "3"],
-				["two", "4"]
-			]
-		}]
-	}`
-	RunCase(t, c, testcases.ZUnion, str)
+	RunCase(t, c, testcases.ZUnion, testdata.ZUnion)
 }
 
 func ZUnionStore(t *testing.T, c redis.Client) {
-	str := `
-	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD zset1 1 one",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZADD zset1 2 two",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZADD zset2 1 one",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZADD zset2 2 two",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZADD zset2 3 three",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "ZUNIONSTORE out 2 zset1 zset2 WEIGHTS 2 3",
-			"response": 3
-		}, {
-			"protocol": "redis",
-			"request": "ZRANGE out 0 -1 WITHSCORES",
-			"response": [
-				["one", "5"],
-				["three", "9"],
-				["two", "10"]
-			]
-		}]
-	}`
-	RunCase(t, c, testcases.ZUnionStore, str)
+	RunCase(t, c, testcases.ZUnionStore, testdata.ZUnionStore)
 }

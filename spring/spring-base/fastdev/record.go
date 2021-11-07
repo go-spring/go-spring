@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/go-spring/spring-base/cast"
+	"github.com/go-spring/spring-base/fastdev/json"
 	"github.com/go-spring/spring-base/knife"
 )
 
@@ -95,6 +95,12 @@ func RecordInbound(ctx context.Context, inbound *Action) *Session {
 	defer s.m.Unlock()
 
 	s.s.Inbound = inbound
-	fmt.Println(cast.ToString(s.s))
+
+	b, err := json.Marshal(s.s)
+	if err != nil {
+		b = []byte(err.Error())
+	}
+
+	fmt.Println(string(b))
 	return s.s
 }

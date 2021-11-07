@@ -17,12 +17,12 @@
 package fastdev_test
 
 import (
-	"encoding/json"
 	"fmt"
 	"reflect"
 	"testing"
 
 	"github.com/go-spring/spring-base/fastdev"
+	"github.com/go-spring/spring-base/fastdev/json"
 )
 
 func TestNewSessionID(t *testing.T) {

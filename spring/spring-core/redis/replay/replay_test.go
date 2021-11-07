@@ -25,22 +25,22 @@ import (
 	"github.com/go-spring/spring-core/redis"
 )
 
-func runTest(t *testing.T,
+func RunCase(t *testing.T,
 	testFunc func(t *testing.T, ctx context.Context, c redis.Client),
-	data func() []*fastdev.Action) {
+	replayData string) {
 
-	fastdev.SetReplayMode(true)
+	fastdev.SetReplayMode(true, false)
 	defer func() {
-		fastdev.SetReplayMode(false)
+		fastdev.SetReplayMode(false, false)
 	}()
 
-	session := &fastdev.Session{
-		Session: fastdev.NewSessionID(),
-		Actions: data(),
+	session, err := fastdev.ToSession([]byte(replayData), false)
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	ctx := knife.New(context.Background())
-	err := knife.Set(ctx, fastdev.ReplaySessionIDKey, session.Session)
+	err = knife.Set(ctx, fastdev.ReplaySessionIDKey, session.Session)
 	if err != nil {
 		t.Fatal(err)
 	}

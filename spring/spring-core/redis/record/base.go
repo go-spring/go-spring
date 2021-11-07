@@ -18,7 +18,6 @@ package record
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"reflect"
@@ -54,31 +53,26 @@ func RunCase(t *testing.T, c redis.Client,
 	testFunc(t, ctx, c)
 
 	session := fastdev.RecordInbound(ctx, &fastdev.Action{})
-	if recordResult != `skip` {
-
-		var testResult []byte
-		testResult, err = json.Marshal(session)
-		if err != nil {
-			t.Fatal(err)
-		}
+	if recordResult != "skip" {
+		testResult := session.ToJson()
 
 		var (
 			s1 *fastdev.Session
 			s2 *fastdev.Session
 		)
 
-		s1, err = fastdev.BytesToSession(testResult)
+		s1, err = fastdev.ToSession([]byte(testResult), true)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		s2, err = fastdev.BytesToSession([]byte(recordResult))
+		s2, err = fastdev.ToSession([]byte(recordResult), true)
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		if !reflect.DeepEqual(s1, s2) {
-			fail(t, 0, "got %v but expect %v", string(testResult), recordResult)
+			fail(t, 0, "got %v but expect %v", testResult, recordResult)
 		}
 	}
 }

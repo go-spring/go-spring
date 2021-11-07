@@ -20,9 +20,11 @@ package fastdev
 import (
 	"bytes"
 	"encoding/hex"
-	"encoding/json"
 	"sort"
+	"strconv"
+	"strings"
 
+	"github.com/go-spring/spring-base/fastdev/json"
 	"github.com/google/uuid"
 )
 
@@ -64,6 +66,14 @@ type Session struct {
 	Actions []*Action `json:"actions,omitempty"` // 动作数据
 }
 
+func (s *Session) ToJson() string {
+	b, err := json.Marshal(s)
+	if err != nil {
+		return err.Error()
+	}
+	return string(b)
+}
+
 //////////////////////////// for test ////////////////////////////
 
 type rawAction struct {
@@ -78,8 +88,8 @@ type rawSession struct {
 	Actions []*rawAction `json:"actions,omitempty"` // 动作数据
 }
 
-// BytesToSession 反序列化 *Session 对象，列表项会进行排序。
-func BytesToSession(data []byte) (*Session, error) {
+// ToSession 反序列化 *Session 对象，列表项会进行排序。
+func ToSession(data []byte, sorted bool) (*Session, error) {
 
 	var s *rawSession
 	err := json.Unmarshal(data, &s)
@@ -90,7 +100,7 @@ func BytesToSession(data []byte) (*Session, error) {
 	ret := &Session{Session: s.Session}
 
 	if s.Inbound != nil {
-		ret.Inbound, err = toAction(s.Inbound)
+		ret.Inbound, err = toAction(s.Inbound, sorted)
 		if err != nil {
 			return nil, err
 		}
@@ -98,7 +108,7 @@ func BytesToSession(data []byte) (*Session, error) {
 
 	ret.Actions = make([]*Action, len(s.Actions))
 	for i := 0; i < len(s.Actions); i++ {
-		ret.Actions[i], err = toAction(s.Actions[i])
+		ret.Actions[i], err = toAction(s.Actions[i], sorted)
 		if err != nil {
 			return nil, err
 		}
@@ -107,13 +117,13 @@ func BytesToSession(data []byte) (*Session, error) {
 	return ret, nil
 }
 
-func toAction(action *rawAction) (ret *Action, err error) {
+func toAction(action *rawAction, sorted bool) (ret *Action, err error) {
 	ret = &Action{Protocol: action.Protocol}
-	ret.Request, err = toVal(action.Request)
+	ret.Request, err = toVal(action.Request, sorted)
 	if err != nil {
 		return nil, err
 	}
-	ret.Response, err = toVal(action.Response)
+	ret.Response, err = toVal(action.Response, sorted)
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +136,7 @@ func (p RawMessageSlice) Len() int           { return len(p) }
 func (p RawMessageSlice) Less(i, j int) bool { return bytes.Compare(p[i], p[j]) < 0 }
 func (p RawMessageSlice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 
-func toVal(data []byte) (interface{}, error) {
+func toVal(data []byte, sorted bool) (interface{}, error) {
 
 	if data == nil {
 		return nil, nil
@@ -145,7 +155,7 @@ func toVal(data []byte) (interface{}, error) {
 		ret := make(map[string]interface{})
 		for k, v := range m {
 			var r interface{}
-			r, err = toVal(v)
+			r, err = toVal(v, sorted)
 			if err != nil {
 				return nil, err
 			}
@@ -156,11 +166,13 @@ func toVal(data []byte) (interface{}, error) {
 
 	var a []json.RawMessage
 	if err := json.Unmarshal(data, &a); err == nil {
-		sort.Sort(RawMessageSlice(a))
+		if sorted {
+			sort.Sort(RawMessageSlice(a))
+		}
 		ret := make([]interface{}, len(a))
 		for i, v := range a {
 			var r interface{}
-			r, err = toVal(v)
+			r, err = toVal(v, sorted)
 			if err != nil {
 				return nil, err
 			}
@@ -172,6 +184,17 @@ func toVal(data []byte) (interface{}, error) {
 	var i interface{}
 	if err := json.Unmarshal(data, &i); err != nil {
 		return nil, err
+	}
+
+	switch s := i.(type) {
+	case string:
+		if strings.HasPrefix(s, "@\"") {
+			b, err := strconv.Unquote(s[1 : len(s)-1])
+			if err != nil {
+				return nil, err
+			}
+			return b, nil
+		}
 	}
 	return i, nil
 }

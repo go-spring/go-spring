@@ -21,142 +21,25 @@ import (
 
 	"github.com/go-spring/spring-core/redis"
 	"github.com/go-spring/spring-core/redis/testcases"
+	"github.com/go-spring/spring-core/redis/testdata"
 )
 
 func BitCount(t *testing.T, c redis.Client) {
-	str := `
-	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SET mykey foobar",
-			"response": "OK"
-		}, {
-			"protocol": "redis",
-			"request": "BITCOUNT mykey",
-			"response": 26
-		}, {
-			"protocol": "redis",
-			"request": "BITCOUNT mykey 0 0",
-			"response": 4
-		}, {
-			"protocol": "redis",
-			"request": "BITCOUNT mykey 1 1",
-			"response": 6
-		}]
-	}`
-	RunCase(t, c, testcases.BitCount, str)
+	RunCase(t, c, testcases.BitCount, testdata.BitCount)
 }
 
 func BitOpAnd(t *testing.T, c redis.Client) {
-	str := `
-	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SET key1 foobar",
-			"response": "OK"
-		}, {
-			"protocol": "redis",
-			"request": "SET key2 abcdef",
-			"response": "OK"
-		}, {
-			"protocol": "redis",
-			"request": "BITOP AND dest key1 key2",
-			"response": 6
-		}, {
-			"protocol": "redis",
-			"request": "GET dest",
-			"response": "` + "`bc`ab\"" + `
-		}]
-	}`
-	RunCase(t, c, testcases.BitOpAnd, str)
+	RunCase(t, c, testcases.BitOpAnd, testdata.BitOpAnd)
 }
 
 func BitPos(t *testing.T, c redis.Client) {
-	str := `
-	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SET mykey \"\\xff\\xf0\\x00\"",
-			"response": "OK"
-		}, {
-			"protocol": "redis",
-			"request": "BITPOS mykey 0",
-			"response": 12
-		}, {
-			"protocol": "redis",
-			"request": "SET mykey \"\\x00\\xff\\xf0\"",
-			"response": "OK"
-		}, {
-			"protocol": "redis",
-			"request": "BITPOS mykey 1 0",
-			"response": 8
-		}, {
-			"protocol": "redis",
-			"request": "BITPOS mykey 1 2",
-			"response": 16
-		}, {
-			"protocol": "redis",
-			"request": "SET mykey \"\\x00\\x00\\x00\"",
-			"response": "OK"
-		}, {
-			"protocol": "redis",
-			"request": "BITPOS mykey 1",
-			"response": -1
-		}]
-	}`
-	RunCase(t, c, testcases.BitPos, str)
+	RunCase(t, c, testcases.BitPos, testdata.BitPos)
 }
 
 func GetBit(t *testing.T, c redis.Client) {
-	str := `
-	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SETBIT mykey 7 1",
-			"response": 0
-		}, {
-			"protocol": "redis",
-			"request": "GETBIT mykey 0",
-			"response": 0
-		}, {
-			"protocol": "redis",
-			"request": "GETBIT mykey 7",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "GETBIT mykey 100",
-			"response": 0
-		}]
-	}`
-	RunCase(t, c, testcases.GetBit, str)
+	RunCase(t, c, testcases.GetBit, testdata.GetBit)
 }
 
 func SetBit(t *testing.T, c redis.Client) {
-	str := `
-	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SETBIT mykey 7 1",
-			"response": 0
-		}, {
-			"protocol": "redis",
-			"request": "SETBIT mykey 7 0",
-			"response": 1
-		}, {
-			"protocol": "redis",
-			"request": "GET mykey",
-			"response": "\u0000"
-		}]
-	}`
-	RunCase(t, c, testcases.SetBit, str)
+	RunCase(t, c, testcases.SetBit, testdata.SetBit)
 }

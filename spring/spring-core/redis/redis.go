@@ -22,9 +22,11 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-base/fastdev"
+	"github.com/go-spring/spring-base/fastdev/json"
 )
 
 const OK = "OK"
@@ -68,7 +70,14 @@ func needQuote(s string) bool {
 			return true
 		}
 	}
-	return false
+	return len(s) == 0
+}
+
+func quoteString(s string) string {
+	if needQuote(s) || json.NeedQuote(s) {
+		return json.Quote(s)
+	}
+	return s
 }
 
 func cmdString(args []interface{}) string {
@@ -76,15 +85,7 @@ func cmdString(args []interface{}) string {
 	for i, arg := range args {
 		switch s := arg.(type) {
 		case string:
-			if needQuote(s) {
-				s = strconv.Quote(s)
-			} else {
-				q := strconv.Quote(s)
-				if q[1:len(q)-1] != s {
-					s = q
-				}
-			}
-			buf.WriteString(s)
+			buf.WriteString(quoteString(s))
 		default:
 			buf.WriteString(cast.ToString(arg))
 		}
@@ -130,6 +131,17 @@ func (c *BaseClient) do(ctx context.Context, args []interface{}, trans transform
 		if !ok {
 			return nil, errors.New("replay action not match")
 		}
+		if action.Response == "(nil)" {
+			return nil, ErrNil
+		} else {
+			var s string
+			s, ok = action.Response.(string)
+			if ok {
+				if strings.HasPrefix(s, "(err) ") {
+					return nil, errors.New(strings.TrimPrefix(s, "(err) "))
+				}
+			}
+		}
 		return action.Response, nil
 	}
 
@@ -145,6 +157,8 @@ func toInt(v interface{}, err error) (int, error) {
 	}
 	switch r := v.(type) {
 	case int64:
+		return int(r), nil
+	case float64:
 		return int(r), nil
 	default:
 		return 0, fmt.Errorf("redis: unexpected type %T for int64", v)
@@ -162,6 +176,8 @@ func toInt64(v interface{}, err error) (int64, error) {
 	switch r := v.(type) {
 	case int64:
 		return r, nil
+	case float64:
+		return int64(r), nil
 	default:
 		return 0, fmt.Errorf("redis: unexpected type %T for int64", v)
 	}
@@ -286,8 +302,31 @@ func (c *BaseClient) StringSlice(ctx context.Context, args ...interface{}) ([]st
 	return toStringSlice(c.do(ctx, args, nil))
 }
 
+func toStringMap(v interface{}, err error) (map[string]string, error) {
+	if err != nil {
+		return nil, err
+	}
+	switch r := v.(type) {
+	case map[string]string:
+		return r, nil
+	case map[string]interface{}:
+		ret := make(map[string]string)
+		for key, val := range r {
+			var str string
+			str, err = toString(val, nil)
+			if err != nil {
+				return nil, err
+			}
+			ret[key] = str
+		}
+		return ret, nil
+	default:
+		return nil, fmt.Errorf("redis: unexpected type %T for map[string]string", v)
+	}
+}
+
 func (c *BaseClient) StringMap(ctx context.Context, args ...interface{}) (map[string]string, error) {
-	v, err := c.do(ctx, args, func(v interface{}, err error) (interface{}, error) {
+	return toStringMap(c.do(ctx, args, func(v interface{}, err error) (interface{}, error) {
 		slice, err := toStringSlice(v, err)
 		if err != nil {
 			return nil, err
@@ -297,15 +336,53 @@ func (c *BaseClient) StringMap(ctx context.Context, args ...interface{}) (map[st
 			val[slice[i]] = slice[i+1]
 		}
 		return val, nil
-	})
+	}))
+}
+
+func toZItemSlice(v interface{}, err error) ([]ZItem, error) {
 	if err != nil {
 		return nil, err
 	}
-	return v.(map[string]string), nil
+	switch r := v.(type) {
+	case [][]string:
+		val := make([]ZItem, len(r))
+		for i := 0; i < len(val); i++ {
+			var score float64
+			score, err = toFloat64(r[i][1], nil)
+			if err != nil {
+				return nil, err
+			}
+			val[i].Member = r[i][0]
+			val[i].Score = score
+		}
+		return val, nil
+	case []interface{}:
+		val := make([]ZItem, len(r))
+		for i := 0; i < len(val); i++ {
+			var slice []interface{}
+			slice, err = toSlice(r[i], nil)
+			if err != nil {
+				return nil, err
+			}
+			if len(slice) != 2 {
+				return nil, errors.New("redis: error replay data")
+			}
+			var score float64
+			score, err = toFloat64(slice[1], nil)
+			if err != nil {
+				return nil, err
+			}
+			val[i].Member = slice[0]
+			val[i].Score = score
+		}
+		return val, nil
+	default:
+		return nil, fmt.Errorf("redis: unexpected type %T for []ZItem", v)
+	}
 }
 
 func (c *BaseClient) ZItemSlice(ctx context.Context, args ...interface{}) ([]ZItem, error) {
-	v, err := c.do(ctx, args, func(v interface{}, err error) (interface{}, error) {
+	return toZItemSlice(c.do(ctx, args, func(v interface{}, err error) (interface{}, error) {
 		slice, err := toStringSlice(v, err)
 		if err != nil {
 			return nil, err
@@ -316,21 +393,5 @@ func (c *BaseClient) ZItemSlice(ctx context.Context, args ...interface{}) ([]ZIt
 			val[i] = []string{slice[idx], slice[idx+1]}
 		}
 		return val, nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	slice := v.([][]string)
-	val := make([]ZItem, len(slice))
-	for i := 0; i < len(val); i++ {
-		member := slice[i][0]
-		var score float64
-		score, err = strconv.ParseFloat(slice[i][1], 64)
-		if err != nil {
-			return nil, err
-		}
-		val[i].Member = member
-		val[i].Score = score
-	}
-	return val, nil
+	}))
 }
