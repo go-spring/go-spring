@@ -14,62 +14,62 @@
  * limitations under the License.
  */
 
-package testcases
+package record
 
 import (
 	"testing"
 
-	"github.com/go-spring/spring-core/redis/testcases"
+	"github.com/go-spring/spring-core/redis/record"
 )
 
 func TestHDel(t *testing.T) {
-	RunCase(t, testcases.HDel)
+	RunCase(t, record.HDel)
 }
 
 func TestHExists(t *testing.T) {
-	RunCase(t, testcases.HExists)
+	RunCase(t, record.HExists)
 }
 
 func TestHGet(t *testing.T) {
-	RunCase(t, testcases.HGet)
+	RunCase(t, record.HGet)
 }
 
 func TestHGetAll(t *testing.T) {
-	RunCase(t, testcases.HGetAll)
+	RunCase(t, record.HGetAll)
 }
 
 func TestHIncrBy(t *testing.T) {
-	RunCase(t, testcases.HIncrBy)
+	RunCase(t, record.HIncrBy)
 }
 
 func TestHIncrByFloat(t *testing.T) {
-	RunCase(t, testcases.HIncrByFloat)
+	RunCase(t, record.HIncrByFloat)
 }
 
 func TestHKeys(t *testing.T) {
-	RunCase(t, testcases.HKeys)
+	RunCase(t, record.HKeys)
 }
 
 func TestHLen(t *testing.T) {
-	RunCase(t, testcases.HLen)
+	RunCase(t, record.HLen)
 }
 
 func TestHMGet(t *testing.T) {
-	RunCase(t, testcases.HMGet)
+	RunCase(t, record.HMGet)
 }
 
 func TestHSet(t *testing.T) {
-	RunCase(t, testcases.HSet)
+	RunCase(t, record.HSet)
 }
 
 func TestHSetNX(t *testing.T) {
-	RunCase(t, testcases.HSetNX)
+	RunCase(t, record.HSetNX)
 }
 
 func TestHStrLen(t *testing.T) {
-	RunCase(t, testcases.HStrLen)
+	RunCase(t, record.HStrLen)
 }
 
 func TestHVals(t *testing.T) {
-	RunCase(t, testcases.HVals)
+	RunCase(t, record.HVals)
 }

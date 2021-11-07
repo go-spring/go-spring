@@ -14,74 +14,74 @@
  * limitations under the License.
  */
 
-package testcases
+package record
 
 import (
 	"testing"
 
-	"github.com/go-spring/spring-core/redis/testcases"
+	"github.com/go-spring/spring-core/redis/record"
 )
 
 func TestLIndex(t *testing.T) {
-	RunCase(t, testcases.LIndex)
+	RunCase(t, record.LIndex)
 }
 
 func TestLInsert(t *testing.T) {
-	RunCase(t, testcases.LInsert)
+	RunCase(t, record.LInsert)
 }
 
 func TestLLen(t *testing.T) {
-	RunCase(t, testcases.LLen)
+	RunCase(t, record.LLen)
 }
 
 func TestLMove(t *testing.T) {
-	RunCase(t, testcases.LMove)
+	RunCase(t, record.LMove)
 }
 
 func TestLPop(t *testing.T) {
-	RunCase(t, testcases.LPop)
+	RunCase(t, record.LPop)
 }
 
 func TestLPos(t *testing.T) {
-	RunCase(t, testcases.LPos)
+	RunCase(t, record.LPos)
 }
 
 func TestLPush(t *testing.T) {
-	RunCase(t, testcases.LPush)
+	RunCase(t, record.LPush)
 }
 
 func TestLPushX(t *testing.T) {
-	RunCase(t, testcases.LPushX)
+	RunCase(t, record.LPushX)
 }
 
 func TestLRange(t *testing.T) {
-	RunCase(t, testcases.LRange)
+	RunCase(t, record.LRange)
 }
 
 func TestLRem(t *testing.T) {
-	RunCase(t, testcases.LRem)
+	RunCase(t, record.LRem)
 }
 
 func TestLSet(t *testing.T) {
-	RunCase(t, testcases.LSet)
+	RunCase(t, record.LSet)
 }
 
 func TestLTrim(t *testing.T) {
-	RunCase(t, testcases.LTrim)
+	RunCase(t, record.LTrim)
 }
 
 func TestRPop(t *testing.T) {
-	RunCase(t, testcases.RPop)
+	RunCase(t, record.RPop)
 }
 
 func TestRPopLPush(t *testing.T) {
-	RunCase(t, testcases.RPopLPush)
+	RunCase(t, record.RPopLPush)
 }
 
 func TestRPush(t *testing.T) {
-	RunCase(t, testcases.RPush)
+	RunCase(t, record.RPush)
 }
 
 func TestRPushX(t *testing.T) {
-	RunCase(t, testcases.RPushX)
+	RunCase(t, record.RPushX)
 }

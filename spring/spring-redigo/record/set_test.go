@@ -14,66 +14,66 @@
  * limitations under the License.
  */
 
-package testcases
+package record
 
 import (
 	"testing"
 
-	"github.com/go-spring/spring-core/redis/testcases"
+	"github.com/go-spring/spring-core/redis/record"
 )
 
 func TestSAdd(t *testing.T) {
-	RunCase(t, testcases.SAdd)
+	RunCase(t, record.SAdd)
 }
 
 func TestSCard(t *testing.T) {
-	RunCase(t, testcases.SCard)
+	RunCase(t, record.SCard)
 }
 
 func TestSDiff(t *testing.T) {
-	RunCase(t, testcases.SDiff)
+	RunCase(t, record.SDiff)
 }
 
 func TestSDiffStore(t *testing.T) {
-	RunCase(t, testcases.SDiffStore)
+	RunCase(t, record.SDiffStore)
 }
 
 func TestSInter(t *testing.T) {
-	RunCase(t, testcases.SInter)
+	RunCase(t, record.SInter)
 }
 
 func TestSInterStore(t *testing.T) {
-	RunCase(t, testcases.SInterStore)
+	RunCase(t, record.SInterStore)
 }
 
 func TestSMembers(t *testing.T) {
-	RunCase(t, testcases.SMembers)
+	RunCase(t, record.SMembers)
 }
 
 func TestSMIsMember(t *testing.T) {
-	RunCase(t, testcases.SMIsMember)
+	RunCase(t, record.SMIsMember)
 }
 
 func TestSMove(t *testing.T) {
-	RunCase(t, testcases.SMove)
+	RunCase(t, record.SMove)
 }
 
 func TestSPop(t *testing.T) {
-	RunCase(t, testcases.SPop)
+	RunCase(t, record.SPop)
 }
 
 func TestSRandMember(t *testing.T) {
-	RunCase(t, testcases.SRandMember)
+	RunCase(t, record.SRandMember)
 }
 
 func TestSRem(t *testing.T) {
-	RunCase(t, testcases.SRem)
+	RunCase(t, record.SRem)
 }
 
 func TestSUnion(t *testing.T) {
-	RunCase(t, testcases.SUnion)
+	RunCase(t, record.SUnion)
 }
 
 func TestSUnionStore(t *testing.T) {
-	RunCase(t, testcases.SUnionStore)
+	RunCase(t, record.SUnionStore)
 }

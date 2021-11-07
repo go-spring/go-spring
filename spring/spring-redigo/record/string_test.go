@@ -14,86 +14,86 @@
  * limitations under the License.
  */
 
-package testcases
+package record
 
 import (
 	"testing"
 
-	"github.com/go-spring/spring-core/redis/testcases"
+	"github.com/go-spring/spring-core/redis/record"
 )
 
 func TestAppend(t *testing.T) {
-	RunCase(t, testcases.Append)
+	RunCase(t, record.Append)
 }
 
 func TestDecr(t *testing.T) {
-	RunCase(t, testcases.Decr)
+	RunCase(t, record.Decr)
 }
 
 func TestDecrBy(t *testing.T) {
-	RunCase(t, testcases.DecrBy)
+	RunCase(t, record.DecrBy)
 }
 
 func TestGet(t *testing.T) {
-	RunCase(t, testcases.Get)
+	RunCase(t, record.Get)
 }
 
 func TestGetDel(t *testing.T) {
-	RunCase(t, testcases.GetDel)
+	RunCase(t, record.GetDel)
 }
 
 func TestGetRange(t *testing.T) {
-	RunCase(t, testcases.GetRange)
+	RunCase(t, record.GetRange)
 }
 
 func TestGetSet(t *testing.T) {
-	RunCase(t, testcases.GetSet)
+	RunCase(t, record.GetSet)
 }
 
 func TestIncr(t *testing.T) {
-	RunCase(t, testcases.Incr)
+	RunCase(t, record.Incr)
 }
 
 func TestIncrBy(t *testing.T) {
-	RunCase(t, testcases.IncrBy)
+	RunCase(t, record.IncrBy)
 }
 
 func TestIncrByFloat(t *testing.T) {
-	RunCase(t, testcases.IncrByFloat)
+	RunCase(t, record.IncrByFloat)
 }
 
 func TestMGet(t *testing.T) {
-	RunCase(t, testcases.MGet)
+	RunCase(t, record.MGet)
 }
 
 func TestMSet(t *testing.T) {
-	RunCase(t, testcases.MSet)
+	RunCase(t, record.MSet)
 }
 
 func TestMSetNX(t *testing.T) {
-	RunCase(t, testcases.MSetNX)
+	RunCase(t, record.MSetNX)
 }
 
 func TestPSetEX(t *testing.T) {
-	RunCase(t, testcases.PSetEX)
+	RunCase(t, record.PSetEX)
 }
 
 func TestSet(t *testing.T) {
-	RunCase(t, testcases.Set)
+	RunCase(t, record.Set)
 }
 
 func TestSetEX(t *testing.T) {
-	RunCase(t, testcases.SetEX)
+	RunCase(t, record.SetEX)
 }
 
 func TestSetNX(t *testing.T) {
-	RunCase(t, testcases.SetNX)
+	RunCase(t, record.SetNX)
 }
 
 func TestSetRange(t *testing.T) {
-	RunCase(t, testcases.SetRange)
+	RunCase(t, record.SetRange)
 }
 
 func TestStrLen(t *testing.T) {
-	RunCase(t, testcases.StrLen)
+	RunCase(t, record.StrLen)
 }

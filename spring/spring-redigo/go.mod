@@ -7,8 +7,8 @@ require (
 	github.com/gomodule/redigo v1.8.5
 )
 
-//
-//replace (
-//	github.com/go-spring/spring-core => ../spring-core
-//	github.com/go-spring/spring-base => ../spring-base
-//)
+
+replace (
+	github.com/go-spring/spring-core => ../spring-core
+	github.com/go-spring/spring-base => ../spring-base
+)

@@ -14,70 +14,70 @@
  * limitations under the License.
  */
 
-package testcases
+package record
 
 import (
 	"testing"
 
-	"github.com/go-spring/spring-core/redis/testcases"
+	"github.com/go-spring/spring-core/redis/record"
 )
 
 func TestDel(t *testing.T) {
-	RunCase(t, testcases.Del)
+	RunCase(t, record.Del)
 }
 
 func TestDump(t *testing.T) {
-	RunCase(t, testcases.Dump)
+	RunCase(t, record.Dump)
 }
 
 func TestExists(t *testing.T) {
-	RunCase(t, testcases.Exists)
+	RunCase(t, record.Exists)
 }
 
 func TestExpire(t *testing.T) {
-	RunCase(t, testcases.Expire)
+	RunCase(t, record.Expire)
 }
 
 func TestExpireAt(t *testing.T) {
-	RunCase(t, testcases.ExpireAt)
+	RunCase(t, record.ExpireAt)
 }
 
 func TestKeys(t *testing.T) {
-	RunCase(t, testcases.Keys)
+	RunCase(t, record.Keys)
 }
 
 func TestPersist(t *testing.T) {
-	RunCase(t, testcases.Persist)
+	RunCase(t, record.Persist)
 }
 
 func TestPExpire(t *testing.T) {
-	RunCase(t, testcases.PExpire)
+	RunCase(t, record.PExpire)
 }
 
 func TestPExpireAt(t *testing.T) {
-	RunCase(t, testcases.PExpireAt)
+	RunCase(t, record.PExpireAt)
 }
 
 func TestPTTL(t *testing.T) {
-	RunCase(t, testcases.PTTL)
+	RunCase(t, record.PTTL)
 }
 
 func TestRename(t *testing.T) {
-	RunCase(t, testcases.Rename)
+	RunCase(t, record.Rename)
 }
 
 func TestRenameNX(t *testing.T) {
-	RunCase(t, testcases.RenameNX)
+	RunCase(t, record.RenameNX)
 }
 
 func TestTouch(t *testing.T) {
-	RunCase(t, testcases.Touch)
+	RunCase(t, record.Touch)
 }
 
 func TestTTL(t *testing.T) {
-	RunCase(t, testcases.TTL)
+	RunCase(t, record.TTL)
 }
 
 func TestType(t *testing.T) {
-	RunCase(t, testcases.Type)
+	RunCase(t, record.Type)
 }

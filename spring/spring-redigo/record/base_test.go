@@ -14,30 +14,20 @@
  * limitations under the License.
  */
 
-package testcases
+package record
 
 import (
 	"testing"
 
-	"github.com/go-spring/spring-core/redis/testcases"
+	"github.com/go-spring/spring-core/redis"
+	"github.com/go-spring/spring-redigo"
+	g "github.com/gomodule/redigo/redis"
 )
 
-func TestBitCount(t *testing.T) {
-	RunCase(t, testcases.BitCount)
-}
-
-func TestBitOpAnd(t *testing.T) {
-	RunCase(t, testcases.BitOpAnd)
-}
-
-func TestBitPos(t *testing.T) {
-	RunCase(t, testcases.BitPos)
-}
-
-func TestGetBit(t *testing.T) {
-	RunCase(t, testcases.GetBit)
-}
-
-func TestSetBit(t *testing.T) {
-	RunCase(t, testcases.SetBit)
+func RunCase(t *testing.T, fn func(t *testing.T, c redis.Client)) {
+	conn, err := g.Dial("tcp", ":6379")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fn(t, SpringRedigo.NewClient(conn))
 }
