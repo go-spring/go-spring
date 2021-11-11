@@ -26,21 +26,17 @@ import (
 	"github.com/go-spring/spring-base/knife"
 )
 
-func TestRecord(t *testing.T) {
+func TestReplay(t *testing.T) {
 
-	fastdev.SetRecordMode(true)
+	fastdev.SetReplayMode(true, false)
 	defer func() {
-		fastdev.SetRecordMode(false)
+		fastdev.SetReplayMode(false, false)
 	}()
 
-	sessionID := fastdev.NewSessionID()
+	sessionID := "fdcc085347f540ed94facbab14ae3cc4"
 	ctx := knife.New(context.Background())
-	err := knife.Set(ctx, fastdev.RecordSessionIDKey, sessionID)
+	err := knife.Set(ctx, fastdev.ReplaySessionIDKey, sessionID)
 	assert.Nil(t, err)
-
-	defer func() {
-		apcu.Delete(ctx, "a")
-	}()
 
 	type dataType struct {
 		Data string `json:"a"`
@@ -55,22 +51,16 @@ func TestRecord(t *testing.T) {
 		Data: "success",
 	})
 
+	ok, err = apcu.Load(ctx, "a", &b)
+	assert.Nil(t, err)
+	assert.True(t, ok)
+
 	m := make(map[string]interface{})
 	apcu.Range(func(key, value interface{}) bool {
 		m[key.(string)] = value
 		return true
 	})
-	assert.Equal(t, m["a"], &dataType{
+	assert.Equal(t, m[sessionID+"a"], &dataType{
 		Data: "success",
 	})
-
-	ok, err = apcu.Load(ctx, "a", &b)
-	assert.Nil(t, err)
-	assert.True(t, ok)
-
-	ok, err = apcu.Load(ctx, "a", &b)
-	assert.Nil(t, err)
-	assert.True(t, ok)
-
-	fastdev.RecordInbound(ctx, &fastdev.Action{})
 }

@@ -19,12 +19,14 @@ package fastdev
 
 import (
 	"bytes"
+	"context"
 	"encoding/hex"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/go-spring/spring-base/fastdev/json"
+	"github.com/go-spring/spring-base/knife"
 	"github.com/google/uuid"
 )
 
@@ -44,6 +46,13 @@ func NewSessionID() string {
 	hex.Encode(buf[16:20], u[8:10])
 	hex.Encode(buf[20:], u[10:])
 	return string(buf)
+}
+
+// GetReplaySessionID 获取绑定在 context.Context 对象上的 Session ID 。
+func GetReplaySessionID(ctx context.Context) string {
+	var s string
+	_, _ = knife.Fetch(ctx, ReplaySessionIDKey, &s)
+	return s
 }
 
 const (

@@ -26,7 +26,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-base/fastdev"
 )
 
@@ -35,6 +34,14 @@ var cache sync.Map
 // EmptyValue 流量录制时表示空值。
 const EmptyValue = "::empty::"
 
+func getKey(ctx context.Context, key string) string {
+	if fastdev.ReplayMode() {
+		sessionID := fastdev.GetReplaySessionID(ctx)
+		return sessionID + key
+	}
+	return key
+}
+
 // Load 获取 key 对应的缓存值，注意 out 的类型必须和 Store 的时候存入的类
 // 型一致，否则 Load 会失败。但是如果 Store 的时候存入的内容是一个字符串，
 // 那么 out 可以是该字符串 JSON 反序列化之后的类型。
@@ -42,11 +49,9 @@ func Load(ctx context.Context, key string, out interface{}) (ok bool, err error)
 
 	defer func() {
 		if err == nil && fastdev.RecordMode() {
-			var resp string
+			resp := interface{}(EmptyValue)
 			if ok {
-				resp = cast.ToString(out)
-			} else {
-				resp = EmptyValue
+				resp = out
 			}
 			fastdev.RecordAction(ctx, &fastdev.Action{
 				Protocol: fastdev.APCU,
@@ -56,7 +61,7 @@ func Load(ctx context.Context, key string, out interface{}) (ok bool, err error)
 		}
 	}()
 
-	return load(key, out)
+	return load(getKey(ctx, key), out)
 }
 
 type cacheItem struct {
@@ -100,6 +105,10 @@ func load(key string, out interface{}) (ok bool, err error) {
 	case string:
 		err = json.Unmarshal([]byte(source), out)
 		if err != nil {
+			if outVal.Elem().Kind() == reflect.String {
+				outVal.Elem().SetString(source)
+				return true, nil
+			}
 			return false, err
 		}
 		item.source = outVal.Elem()
@@ -133,7 +142,7 @@ func TTL(ttl time.Duration) StoreOption {
 // 但是这里有一个例外情况，考虑到很多场景下，用户需要缓存一个由字符串反序列
 // 化后的对象，所以该库提供了一个功能，就是用户可以 Store 一个字符串，然后
 // Load 的时候按照指定类型返回。
-func Store(key string, val interface{}, opts ...StoreOption) {
+func Store(ctx context.Context, key string, val interface{}, opts ...StoreOption) {
 	arg := StoreArg{}
 	for _, opt := range opts {
 		opt(&arg)
@@ -142,15 +151,17 @@ func Store(key string, val interface{}, opts ...StoreOption) {
 	if arg.TTL > 0 {
 		expireAt = time.Now().Add(arg.TTL)
 	}
-	cache.Store(key, &cacheItem{source: val, expireAt: expireAt})
+	cache.Store(getKey(ctx, key), &cacheItem{source: val, expireAt: expireAt})
+}
+
+// Delete 删除 key 对应的缓存内容。
+func Delete(ctx context.Context, key string) {
+	cache.Delete(getKey(ctx, key))
 }
 
 // Range 遍历缓存的内容。
 func Range(f func(key, value interface{}) bool) {
-	cache.Range(f)
-}
-
-// Delete 删除 key 对应的缓存内容。
-func Delete(key string) {
-	cache.Delete(key)
+	cache.Range(func(key, value interface{}) bool {
+		return f(key, value.(*cacheItem).source)
+	})
 }
