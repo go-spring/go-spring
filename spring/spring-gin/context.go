@@ -59,7 +59,7 @@ func (w *responseWriter) Size() int {
 	return w.writer.Size()
 }
 
-func (w *responseWriter) Body() []byte {
+func (w *responseWriter) Body() string {
 	return w.writer.Body()
 }
 

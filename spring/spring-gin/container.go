@@ -70,19 +70,32 @@ func (c *Container) Start() error {
 
 	// 添加容器级别的过滤器，这样在路由不存在时也会调用这些过滤器
 	c.ginEngine.Use(func(ginCtx *gin.Context) {
+		var webCtx web.Context
 
 		// 如果 method+path 是 spring gin 注册过的，那么可以保证 Context
 		// 的 Handler 是准确的，否则是不准确的，请优先使用 spring gin 注册路由。
 		key := ginCtx.Request.Method + ginCtx.FullPath()
 		if r, ok := c.routes[key]; ok {
-			NewContext(r.fn, r.wildCardName, ginCtx)
+			webCtx = NewContext(r.fn, r.wildCardName, ginCtx)
 		} else {
-			NewContext(nil, ginCtx.FullPath(), ginCtx)
+			webCtx = NewContext(nil, ginCtx.FullPath(), ginCtx)
 		}
+
+		web.StartRecord(webCtx)
+		defer func() {
+			web.StopRecord(webCtx)
+		}()
+
+		web.StartReplay(webCtx)
+		defer func() {
+			web.StopReplay(webCtx)
+		}()
+
+		ginCtx.Next()
 	})
 
 	loggerFilter := c.GetLoggerFilter()
-	recoveryFilter := &recoveryFilter{}
+	recoveryFilter := new(recoveryFilter)
 
 	for _, filter := range []web.Filter{loggerFilter, recoveryFilter} {
 		f := filter // 避免延迟绑定
