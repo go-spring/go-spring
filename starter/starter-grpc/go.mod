@@ -3,9 +3,9 @@ module github.com/go-spring/starter-grpc
 go 1.14
 
 require (
-	github.com/go-spring/spring-base v1.1.0-rc1.0.20211113013245-ace7b4d73418
-	github.com/go-spring/spring-core v1.1.0-rc1.0.20211113013626-adb083a077e7
-	github.com/go-spring/starter-core v1.1.0-rc1
+	github.com/go-spring/spring-base  v1.1.0-rc2
+	github.com/go-spring/spring-core  v1.1.0-rc2
+	github.com/go-spring/starter-core  v1.1.0-rc2
 	google.golang.org/grpc v1.41.0
 )
 
