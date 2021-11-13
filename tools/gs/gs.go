@@ -128,7 +128,7 @@ func main() {
 		}
 		endIndex += beginIndex + 1
 		version := data[beginIndex+1 : endIndex]
-		currVersion = string(version)
+		currVersion = string(bytes.Split(version, []byte("@"))[1])
 		fmt.Println("current version:\n ", string(version))
 	}
 
