@@ -35,7 +35,7 @@ type resourceLocator struct {
 	tempDir        string
 }
 
-func (r *resourceLocator) OnInit(e gs.Environment) error {
+func (r *resourceLocator) OnInit(e gs.Context) error {
 
 	v := viper.New()
 	v.SetConfigFile(r.ConfigLocation)

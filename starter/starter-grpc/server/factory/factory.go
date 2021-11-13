@@ -46,7 +46,7 @@ func NewStarter(config StarterCore.GrpcServerConfig) *Starter {
 	}
 }
 
-func (starter *Starter) OnAppStart(ctx gs.AppContext) {
+func (starter *Starter) OnAppStart(ctx gs.Context) {
 
 	server := reflect.ValueOf(starter.server)
 	srvMap := make(map[string]reflect.Value)

@@ -34,16 +34,16 @@ type Starter struct {
 	Server *StarterRabbitServer.AMQPServer `autowire:""`
 }
 
-func (starter *Starter) OnAppStart(ctx gs.AppContext) {
+func (starter *Starter) OnAppStart(ctx gs.Context) {
 
 	cMap := map[string][]mq.Consumer{}
 	{
 		var consumers []mq.Consumer
-		err := ctx.GetBean(&consumers)
+		err := ctx.Get(&consumers)
 		util.Panic(err).When(err != nil)
 
 		var bindConsumers *gs.Consumers
-		err = ctx.GetBean(&bindConsumers)
+		err = ctx.Get(&bindConsumers)
 		util.Panic(err).When(err != nil)
 
 		bindConsumers.ForEach(func(c mq.Consumer) {
