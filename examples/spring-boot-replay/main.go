@@ -19,13 +19,12 @@ package main
 import (
 	"fmt"
 
-	"github.com/go-spring/spring-base/fastdev"
-	"github.com/go-spring/spring-base/knife"
 	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/redis"
 	"github.com/go-spring/spring-core/web"
-	_ "github.com/go-spring/starter-echo"
+	//_ "github.com/go-spring/starter-echo"
+	_ "github.com/go-spring/starter-gin"
 	_ "github.com/go-spring/starter-go-redis"
 )
 
@@ -34,11 +33,7 @@ type controller struct {
 }
 
 func (c *controller) index(webCtx web.Context) {
-	ctx := knife.New(webCtx.Context())
-
-	sessionID := "54c8fab33dcb4f46899a3a3b70987164"
-	err := knife.Set(ctx, fastdev.ReplaySessionIDKey, sessionID)
-	util.Panic(err).When(err != nil)
+	ctx := webCtx.Context()
 
 	b, err := c.RedisClient.Set(ctx, "a", 1)
 	util.Panic(err).When(err != nil)

@@ -35,7 +35,7 @@ func init() {
 
 type MyModule struct{}
 
-func (m *MyModule) OnAppStart(ctx gs.AppContext) {
+func (m *MyModule) OnAppStart(ctx gs.Context) {
 	log.Info("MyModule start")
 	ctx.Go(Process)
 }
@@ -75,7 +75,7 @@ func Process(ctx context.Context) {
 		}
 	}
 
-	if resp, err := http.Get("http://localhost:8080/echo?str=echo"); err != nil {
+	if resp, err := http.Get("http://localhost:8080/api/echo?str=echo"); err != nil {
 		panic(err)
 	} else {
 		if body, e := ioutil.ReadAll(resp.Body); e != nil {

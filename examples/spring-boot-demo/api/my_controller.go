@@ -49,8 +49,8 @@ type MyController struct {
 	DB          *gorm.DB      `autowire:""`
 }
 
-func (c *MyController) onInit(e gs.Environment) error {
-	e.Go(func(ctx context.Context) {
+func (c *MyController) onInit(ctx gs.Context) error {
+	ctx.Go(func(ctx context.Context) {
 		defer func() { log.Info("exit after waiting in ::Go") }()
 
 		ticker := time.NewTicker(10 * time.Millisecond)

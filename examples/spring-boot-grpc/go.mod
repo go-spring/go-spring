@@ -3,9 +3,9 @@ module github.com/go-spring/examples/spring-boot-grpc
 go 1.14
 
 require (
-	github.com/go-spring/spring-core v1.1.0-rc1
-	github.com/go-spring/starter-gin v1.1.0-rc1
-	github.com/go-spring/starter-grpc v1.1.0-rc1
+	github.com/go-spring/spring-core v1.1.0-rc1.0.20211113013626-adb083a077e7
+	github.com/go-spring/starter-gin v1.1.0-rc1.0.20211113031421-da22b61392e2
+	github.com/go-spring/starter-grpc v1.1.0-rc1.0.20211113024046-4751c8a8490f
 	github.com/golang/protobuf v1.4.3
 	google.golang.org/grpc v1.41.0
 )

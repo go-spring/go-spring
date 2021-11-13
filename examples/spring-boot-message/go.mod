@@ -1,6 +1,6 @@
 module github.com/go-spring/examples/spring-boot-message
 
-go 1.12
+go 1.14
 
 require (
 	github.com/go-spring/spring-boot v1.1.0-rc1

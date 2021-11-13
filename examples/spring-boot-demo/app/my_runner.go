@@ -30,7 +30,7 @@ func init() {
 
 type MyRunner struct{}
 
-func (r *MyRunner) Run(ctx gs.AppContext) {
+func (r *MyRunner) Run(ctx gs.Context) {
 	ctx.Go(func(ctx context.Context) {
 		defer func() { log.Info("exit after waiting in MyRunner::Run") }()
 
