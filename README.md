@@ -14,7 +14,7 @@ Go-Spring 的愿景是让 Go 程序员也能用上如 Java Spring 那般威力�
 2. 提供了强大的启动器框架，支持自动装配、开箱即用；
 3. 提供了常见组件的抽象层，支持灵活地替换底层实现；
 
-Go-Spring 当前使用 Go1.12 进行开发，使用 Go Modules 进行依赖管理。
+Go-Spring 当前使用 Go1.14 进行开发，使用 Go Modules 进行依赖管理。
 
 ### IoC 容器
 
@@ -81,40 +81,40 @@ Go-Spring 提供了一个功能强大的启动器框架，不仅实现了自动�
 
 ### 快速示例
 
-下面的示例使用 v1.0.5 版本测试通过。
+下面的示例使用 v1.1.0-rc2 版本测试通过。
 
 ```
 import (
-	"context"
+	"fmt"
 
-	"github.com/go-spring/spring-boot"
+	"github.com/go-spring/spring-core/gs"
+	"github.com/go-spring/spring-core/web"
 	_ "github.com/go-spring/starter-echo"
 )
 
 func init() {
-	SpringBoot.RegisterBean(new(Service)).Init(func(s *Service) {
-		SpringBoot.GetBinding("/", s.Echo)
+	gs.Object(new(Controller)).Init(func(c *Controller) {
+		gs.GetMapping("/", c.Hello)
 	})
 }
 
-type Service struct {
-	GoPath string `value:"${GOPATH}"`
+type Controller struct {
+	GOPATH string `value:"${GOPATH}"`
 }
 
-type EchoRequest struct{}
-
-func (s *Service) Echo(ctx context.Context, req *EchoRequest) interface{} {
-	return s.GoPath
+func (c *Controller) Hello(ctx web.Context) {
+	ctx.String("%s - hello world!", c.GOPATH)
 }
 
 func main() {
-	SpringBoot.RunApplication()
+	fmt.Println(gs.Run())
 }
+
 ```
 
 启动上面的程序，控制台输入 `curl http://localhost:8080/`， 可得到如下结果：
 ```
-{"code":200,"msg":"SUCCESS","data":"/Users/didi/go"}
+/Users/didi/go - hello world!
 ```
 
 更多示例： https://github.com/go-spring/go-spring/tree/master/examples
