@@ -23,6 +23,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-spring/spring-base/color"
 )
@@ -79,6 +80,7 @@ type Entry struct {
 	msg  string
 	file string
 	line int
+	time time.Time
 }
 
 func (e *Entry) GetCtx() context.Context {
@@ -101,6 +103,10 @@ func (e *Entry) GetLine() int {
 	return e.line
 }
 
+func (e *Entry) GetTime() time.Time {
+	return e.time
+}
+
 func (e Entry) Tag(tag string) Entry {
 	e.tag = tag
 	return e
@@ -117,6 +123,7 @@ func (e Entry) format(format string, a ...interface{}) *Entry {
 	} else {
 		e.msg = fmt.Sprintf(format, a...)
 	}
+	e.time = time.Now()
 	return &e
 }
 
@@ -133,7 +140,8 @@ func Console(level Level, e *Entry) {
 	} else if level == TraceLevel {
 		strLevel = color.Green.Sprint(strLevel)
 	}
-	_, _ = fmt.Printf("[%s] %s:%d %s\n", strLevel, e.file, e.line, e.msg)
+	strTime := e.time.Format("2006-01-02 03-04-05.000")
+	_, _ = fmt.Printf("[%s] %s %s:%d %s\n", strLevel, strTime, e.file, e.line, e.msg)
 }
 
 var config = struct {

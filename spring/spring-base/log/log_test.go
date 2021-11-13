@@ -120,7 +120,8 @@ func myOutput(level log.Level, e *log.Entry) {
 	line := e.GetLine()
 	file := e.GetFile()
 	strLevel := strings.ToUpper(level.String())
-	fmt.Printf("[%s] %s:%d %s %s%s\n", strLevel, file, line, strCtx, tag, msg)
+	strTime := e.GetTime().Format("2006-01-02 03-04-05.000")
+	fmt.Printf("[%s] %s %s:%d %s %s%s\n", strLevel, strTime, file, line, strCtx, tag, msg)
 }
 
 func TestEntry(t *testing.T) {
