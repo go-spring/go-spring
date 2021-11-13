@@ -27,6 +27,7 @@ import (
 	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-base/fastdev"
 	"github.com/go-spring/spring-base/fastdev/json"
+	"github.com/go-spring/spring-base/util"
 )
 
 const OK = "OK"
@@ -100,6 +101,11 @@ type transform func(interface{}, error) (interface{}, error)
 
 func (c *BaseClient) do(ctx context.Context, args []interface{}, trans transform) (r interface{}, err error) {
 
+	var timeNow int64
+	if fastdev.RecordMode() {
+		timeNow = util.Now(ctx).UnixNano()
+	}
+
 	defer func() {
 		if fastdev.RecordMode() {
 			var resp interface{}
@@ -111,9 +117,10 @@ func (c *BaseClient) do(ctx context.Context, args []interface{}, trans transform
 				resp = "(err) " + err.Error()
 			}
 			fastdev.RecordAction(ctx, &fastdev.Action{
-				Protocol: fastdev.REDIS,
-				Request:  cmdString(args),
-				Response: resp,
+				Protocol:  fastdev.REDIS,
+				Request:   cmdString(args),
+				Response:  resp,
+				Timestamp: timeNow,
 			})
 		}
 	}()

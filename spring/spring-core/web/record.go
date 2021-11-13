@@ -18,16 +18,32 @@ package web
 
 import (
 	"bytes"
-	"fmt"
 	"net/http"
 	"strconv"
 
 	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-base/fastdev"
+	"github.com/go-spring/spring-base/knife"
+	"github.com/go-spring/spring-base/log"
+	"github.com/go-spring/spring-base/util"
 )
 
-// Record 流量录制
-func Record(ctx Context) {
+// StartRecord 启动流量录制
+func StartRecord(ctx Context) {
+	if !fastdev.RecordMode() {
+		return
+	}
+	session := fastdev.NewSessionID()
+	err := knife.Set(ctx.Context(), fastdev.RecordSessionIDKey, session)
+	util.Panic(err).When(err != nil)
+}
+
+// StopRecord 停止流量录制
+func StopRecord(ctx Context) {
+
+	if !fastdev.RecordMode() {
+		return
+	}
 
 	req := ctx.Request()
 	resp := ctx.ResponseWriter()
@@ -35,7 +51,7 @@ func Record(ctx Context) {
 	var bufReq bytes.Buffer
 	err := req.Write(&bufReq)
 	if err != nil {
-		fmt.Println(err)
+		log.Ctx(ctx.Context()).Error(err)
 		return
 	}
 
@@ -45,7 +61,7 @@ func Record(ctx Context) {
 	writeStatusLine(&bufResp, is11, resp.Status())
 	err = resp.Header().WriteSubset(&bufResp, nil)
 	if err != nil {
-		fmt.Println(err)
+		log.Ctx(ctx.Context()).Error(err)
 		return
 	}
 
