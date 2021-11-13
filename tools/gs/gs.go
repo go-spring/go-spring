@@ -59,6 +59,9 @@ func arg(index int) string {
 	panic("not enough arg")
 }
 
+// currVersion 当前版本号
+var currVersion string
+
 // projectsXml 配置文件
 var projectsXml internal.ProjectsXml
 
@@ -102,6 +105,32 @@ func main() {
 			}
 		}
 	}()
+
+	// 发布新版本前需要确认版本号是否已经更新
+	{
+		file := filepath.Join(rootDir, "spring/spring-core/gs/version.go")
+		data, err := ioutil.ReadFile(file)
+		if err != nil {
+			panic(err)
+		}
+		index := bytes.LastIndex(data, []byte("Version"))
+		if index <= 0 {
+			panic(errors.New("can't find version"))
+		}
+		beginIndex := bytes.IndexByte(data[index:], '"')
+		if beginIndex <= 0 {
+			panic(errors.New("can't find version"))
+		}
+		beginIndex += index
+		endIndex := bytes.IndexByte(data[beginIndex+1:], '"')
+		if endIndex <= 0 {
+			panic(errors.New("can't find version"))
+		}
+		endIndex += beginIndex + 1
+		version := data[beginIndex+1 : endIndex]
+		currVersion = string(version)
+		fmt.Println("current version:\n ", string(version))
+	}
 
 	fmt.Print(os.Args, " 输入 Yes 执行该命令: ")
 	input, _ := bufio.NewReader(os.Stdin).ReadString('\n')
@@ -177,6 +206,10 @@ func remove(rootDir string) {
 func release(rootDir string) {
 
 	tag := arg(2)
+	if tag != currVersion {
+		panic("发版前请确认版本号是否正确!")
+	}
+
 	err := filepath.Walk(rootDir, func(walkFile string, _ os.FileInfo, err error) error {
 		if err != nil {
 			return err
