@@ -17,6 +17,8 @@
 package fastdev
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"fmt"
 	"io/ioutil"
@@ -191,17 +193,27 @@ func (c *controller) replay(w http.ResponseWriter, r *http.Request) {
 
 func (c *controller) replaySession(session *Session) error {
 
-	url := "http://127.0.0.1:8080/index"
-	resp, err := http.Get(url)
+	reqBuf := bytes.NewBufferString(session.Inbound.Request.(string))
+	req, err := http.ReadRequest(bufio.NewReader(reqBuf))
 	if err != nil {
-		return fmt.Errorf("get url %s return error %s", url, err.Error())
+		return err
+	}
+
+	req.RequestURI = ""
+	req.URL.Scheme = "http"
+	req.URL.Host = req.Host
+
+	req.Header.Set("REPLAY-SESSION-ID", session.Session)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
 	}
 
 	defer resp.Body.Close()
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("read url %s data return error %s", url, err.Error())
+		return fmt.Errorf("read url %s data return error %s", req.URL, err.Error())
 	}
 
 	fmt.Println(string(body))

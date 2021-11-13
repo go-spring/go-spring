@@ -63,9 +63,10 @@ const (
 
 // Action 将上下游调用、缓存获取、文件写入等抽象为一个动作。
 type Action struct {
-	Protocol string      `json:"protocol,omitempty"` // 协议
-	Request  interface{} `json:"request,omitempty"`  // 请求
-	Response interface{} `json:"response,omitempty"` // 响应
+	Protocol  string      `json:"protocol,omitempty"` // 协议名称
+	Request   interface{} `json:"request,omitempty"`  // 请求内容
+	Response  interface{} `json:"response,omitempty"` // 响应内容
+	Timestamp int64       `json:"timestamp"`          // 时间戳
 }
 
 // Session 一次上游调用称为一个会话。
@@ -86,9 +87,10 @@ func (s *Session) ToJson() string {
 //////////////////////////// for test ////////////////////////////
 
 type rawAction struct {
-	Protocol string          `json:"protocol,omitempty"` // 协议
-	Request  json.RawMessage `json:"request,omitempty"`  // 请求
-	Response json.RawMessage `json:"response,omitempty"` // 响应
+	Protocol  string          `json:"protocol,omitempty"` // 协议名称
+	Request   json.RawMessage `json:"request,omitempty"`  // 请求内容
+	Response  json.RawMessage `json:"response,omitempty"` // 响应内容
+	Timestamp int64           `json:"timestamp"`          // 时间戳
 }
 
 type rawSession struct {
