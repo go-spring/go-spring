@@ -24,8 +24,6 @@ import (
 	"runtime/debug"
 
 	"github.com/go-spring/spring-base/cast"
-	"github.com/go-spring/spring-base/fastdev"
-	"github.com/go-spring/spring-base/knife"
 	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/web"
@@ -76,29 +74,25 @@ func (c *Container) Start() error {
 	// 添加容器级别的过滤器，这样在路由不存在时也会调用这些过滤器
 	c.echoServer.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(echoCtx echo.Context) error {
+			var webCtx web.Context
 
 			// 如果 method+path 是 spring-echo 注册过的，那么可以保证 Context
 			// 的 Handler 是准确的，否则是不准确的，请优先使用 spring-echo 注册路由。
 			key := echoCtx.Request().Method + echoCtx.Path()
 			if r, ok := c.routes[key]; ok {
-				NewContext(r.fn, r.wildCardName, echoCtx)
+				webCtx = NewContext(r.fn, r.wildCardName, echoCtx)
 			} else {
-				NewContext(nil, echoCtx.Path(), echoCtx)
+				webCtx = NewContext(nil, echoCtx.Path(), echoCtx)
 			}
 
-			if fastdev.RecordMode() {
-				session := fastdev.NewSessionID()
-				ctx := echoCtx.Request().Context()
-				err := knife.Set(ctx, fastdev.RecordSessionIDKey, session)
-				if err != nil {
-					log.Error(err)
-				}
-			}
-
+			web.StartRecord(webCtx)
 			defer func() {
-				if fastdev.RecordMode() {
-					web.Record(WebContext(echoCtx))
-				}
+				web.StopRecord(webCtx)
+			}()
+
+			web.StartReplay(webCtx)
+			defer func() {
+				web.StopReplay(webCtx)
 			}()
 
 			chain := web.NewDefaultFilterChain([]web.Filter{
