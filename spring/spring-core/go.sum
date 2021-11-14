@@ -2,6 +2,8 @@ github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/go-spring/spring-base v1.1.0-rc1.0.20211113013245-ace7b4d73418 h1:dOo2gD6ep3Tc6UozZoUHBj7b9PmRY56qCd1OZaTAdfA=
 github.com/go-spring/spring-base v1.1.0-rc1.0.20211113013245-ace7b4d73418/go.mod h1:Z0cuF53BYtZmcAPB6JtwTgfUnZhtQlns7R2Wbh6jPHA=
+github.com/go-spring/spring-base v1.1.0-rc2 h1:oaQ8u23LkZvbe4QYR51wZeMrODRcapTmHlAmkie8Pzc=
+github.com/go-spring/spring-base v1.1.0-rc2/go.mod h1:Z0cuF53BYtZmcAPB6JtwTgfUnZhtQlns7R2Wbh6jPHA=
 github.com/google/uuid v1.3.0 h1:t6JiXgmwXMjEs8VusXIJk2BXHsn+wx8BZdTaoZ5fu7I=
 github.com/google/uuid v1.3.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
 github.com/magiconair/properties v1.8.5 h1:b6kJs+EmPFMYGkow9GiUyCyOvIwYetYJ3fSaWak/Gls=

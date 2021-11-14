@@ -18,7 +18,9 @@ package SpringRedigo
 
 import (
 	"context"
+	"fmt"
 
+	"github.com/go-spring/spring-base/fastdev"
 	"github.com/go-spring/spring-core/redis"
 	g "github.com/gomodule/redigo/redis"
 )
@@ -28,10 +30,28 @@ type client struct {
 	conn g.Conn
 }
 
-func NewClient(conn g.Conn) redis.Client {
+// NewClient 创建 Redis 客户端
+func NewClient(config redis.Config) (redis.Client, error) {
+
+	if fastdev.ReplayMode() {
+		return &redis.BaseClient{}, nil
+	}
+
+	address := fmt.Sprintf("%s:%d", config.Host, config.Port)
+	conn, err := g.Dial("tcp", address)
+	if err != nil {
+		return nil, err
+	}
+
+	if config.Ping {
+		if _, err = conn.Do("PING"); err != nil {
+			return nil, err
+		}
+	}
+
 	c := &client{conn: conn}
 	c.DoFunc = c.do
-	return c
+	return c, nil
 }
 
 func (c *client) do(ctx context.Context, args ...interface{}) (interface{}, error) {
@@ -42,13 +62,9 @@ func (c *client) do(ctx context.Context, args ...interface{}) (interface{}, erro
 	if result == nil {
 		return nil, redis.ErrNil
 	}
-	return transform(result), nil
-}
-
-func transform(v interface{}) interface{} {
-	switch r := v.(type) {
+	switch r := result.(type) {
 	case []byte:
-		return string(r)
+		return string(r), nil
 	case []interface{}:
 		for i := 0; i < len(r); i++ {
 			if s, ok := r[i].([]byte); ok {
@@ -56,5 +72,5 @@ func transform(v interface{}) interface{} {
 			}
 		}
 	}
-	return v
+	return result, nil
 }

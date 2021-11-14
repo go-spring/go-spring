@@ -20,9 +20,9 @@ import (
 	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/gs/cond"
 	"github.com/go-spring/spring-core/redis"
-	"github.com/go-spring/starter-go-redis/factory"
+	"github.com/go-spring/spring-go-redis"
 )
 
 func init() {
-	gs.Provide(factory.NewClient).On(cond.OnMissingBean((*redis.Client)(nil)))
+	gs.Provide(SpringGoRedis.NewClient).On(cond.OnMissingBean((*redis.Client)(nil)))
 }

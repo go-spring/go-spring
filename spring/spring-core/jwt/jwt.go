@@ -14,8 +14,4 @@
  * limitations under the License.
  */
 
-package StarterCore
-
-type MongoConfig struct {
-	Url string `value:"${mongo.url:=mongodb://localhost}"`
-}
+package jwt

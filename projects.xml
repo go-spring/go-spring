@@ -49,12 +49,6 @@
         <branch>main</branch>
     </project>
     <project>
-        <name>starter-core</name>
-        <dir>starter/starter-core</dir>
-        <url>https://github.com/go-spring/starter-core.git</url>
-        <branch>main</branch>
-    </project>
-    <project>
         <name>starter-echo</name>
         <dir>starter/starter-echo</dir>
         <url>https://github.com/go-spring/starter-echo.git</url>

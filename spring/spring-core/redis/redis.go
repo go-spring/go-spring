@@ -59,6 +59,16 @@ type DoCommand interface {
 	ZItemSlice(ctx context.Context, args ...interface{}) ([]ZItem, error)
 }
 
+// Config 客户端配置
+type Config struct {
+	Host     string `value:"${redis.host:=127.0.0.1}"`
+	Port     int    `value:"${redis.port:=6379}"`
+	Password string `value:"${redis.password:=}"`
+	Database int    `value:"${redis.database:=0}"`
+	Ping     bool   `value:"${redis.ping:=true}"`
+}
+
+// BaseClient Client 的基础实现
 type BaseClient struct {
 	DoFunc func(ctx context.Context, args ...interface{}) (interface{}, error)
 }
