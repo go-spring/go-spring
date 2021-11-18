@@ -27,6 +27,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/go-spring/spring-base/assert"
 	"github.com/go-spring/spring-core/web"
 	"github.com/go-spring/spring-gin"
@@ -129,4 +130,72 @@ func TestFilter_PanicWebHttpError(t *testing.T) {
 	b, _ := ioutil.ReadAll(response.Body)
 	fmt.Println(response.Status, string(b))
 	assert.Equal(t, response.StatusCode, http.StatusNotFound)
+}
+
+func TestFilter_Abort(t *testing.T) {
+	c := SpringGin.NewContainer(web.ContainerConfig{Port: 8080})
+	c.AddFilter(web.FuncFilter(func(ctx web.Context, chain web.FilterChain) {
+		if ctx.FormValue("filter") == "1" {
+			ctx.String("1")
+			return
+		}
+		chain.Next(ctx)
+	}))
+	c.AddFilter(SpringGin.Filter(func(ctx *gin.Context) {
+		if ctx.Request.FormValue("filter") == "2" {
+			ctx.String(200, "2")
+			return
+		}
+		ctx.Next()
+	}))
+	c.AddFilter(web.FuncFilter(func(ctx web.Context, chain web.FilterChain) {
+		if ctx.FormValue("filter") == "p1" {
+			panic("p1")
+		}
+		chain.Next(ctx)
+	}))
+	c.AddFilter(web.FuncFilter(func(ctx web.Context, chain web.FilterChain) {
+		if ctx.FormValue("filter") == "3" {
+			ctx.String("3")
+			return
+		}
+		chain.Next(ctx)
+	}))
+	c.AddFilter(SpringGin.Filter(func(ctx *gin.Context) {
+		if ctx.Request.FormValue("filter") == "p2" {
+			panic("p2")
+		}
+		ctx.Next()
+	}))
+	c.AddFilter(SpringGin.Filter(func(ctx *gin.Context) {
+		if ctx.Request.FormValue("filter") == "4" {
+			ctx.String(200, "4")
+			return
+		}
+		ctx.Next()
+	}))
+	c.GetMapping("/index", func(ctx web.Context) {
+		ctx.String("ok")
+	})
+
+	go c.Start()
+	defer c.Stop(context.Background())
+	time.Sleep(10 * time.Millisecond)
+
+	testFunc := func(path, expectBody string, expectCode int) {
+		response, err := http.Get(path)
+		assert.Nil(t, err)
+		defer response.Body.Close()
+		b, _ := ioutil.ReadAll(response.Body)
+		assert.Equal(t, string(b), expectBody)
+		assert.Equal(t, response.StatusCode, expectCode)
+	}
+
+	testFunc("http://127.0.0.1:8080/index", "ok", 200)
+	testFunc("http://127.0.0.1:8080/index?filter=1", "1", 200)
+	testFunc("http://127.0.0.1:8080/index?filter=2", "2", 200)
+	testFunc("http://127.0.0.1:8080/index?filter=3", "3", 200)
+	testFunc("http://127.0.0.1:8080/index?filter=4", "4", 200)
+	testFunc("http://127.0.0.1:8080/index?filter=p1", "\"p1\"", 500)
+	testFunc("http://127.0.0.1:8080/index?filter=p2", "\"p2\"", 500)
 }

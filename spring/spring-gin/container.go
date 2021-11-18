@@ -101,6 +101,7 @@ func (c *Container) Start() error {
 		f := filter // 避免延迟绑定
 		c.ginEngine.Use(func(ginCtx *gin.Context) {
 			f.Invoke(WebContext(ginCtx), &ginFilterChain{ginCtx})
+			ginCtx.Abort()
 		})
 	}
 
@@ -166,6 +167,7 @@ func HandlerWrapper(fn web.Handler, wildCardName string, filters []web.Filter) [
 		f := filter // 避免延迟绑定
 		handlers = append(handlers, func(ginCtx *gin.Context) {
 			f.Invoke(WebContext(ginCtx), &ginFilterChain{ginCtx})
+			ginCtx.Abort()
 		})
 	}
 
