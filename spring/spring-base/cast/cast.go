@@ -115,7 +115,7 @@ func ToStringE(i interface{}) (string, error) {
 	case uint:
 		return strconv.FormatUint(uint64(s), 10), nil
 	case uint64:
-		return strconv.FormatUint(uint64(s), 10), nil
+		return strconv.FormatUint(s, 10), nil
 	case uint32:
 		return strconv.FormatUint(uint64(s), 10), nil
 	case uint16:
