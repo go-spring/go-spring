@@ -17,11 +17,11 @@
 package factory
 
 import (
-	"github.com/go-spring/starter-core"
+	"github.com/go-spring/spring-core/conf"
 	"google.golang.org/grpc"
 )
 
 // NewClient 根据配置创建 grpc.ClientConnInterface 对象
-func NewClient(config StarterCore.GrpcEndpointConfig) (grpc.ClientConnInterface, error) {
+func NewClient(config conf.GrpcEndpointConfig) (grpc.ClientConnInterface, error) {
 	return grpc.Dial(config.Address, grpc.WithInsecure())
 }

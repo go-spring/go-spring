@@ -30,6 +30,7 @@ import (
 	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-base/util"
+	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/web"
 )
 
@@ -52,7 +53,7 @@ type Container struct {
 }
 
 // NewContainer 创建 gin 实现的 WebContainer
-func NewContainer(config web.ContainerConfig) *Container {
+func NewContainer(config conf.WebServerConfig) web.Container {
 	c := &Container{}
 	c.ginEngine = gin.New()
 	c.ginEngine.HandleMethodNotAllowed = true

@@ -25,21 +25,21 @@ import (
 
 	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-base/util"
+	"github.com/go-spring/spring-core/conf"
 	SpringGrpc "github.com/go-spring/spring-core/grpc"
 	"github.com/go-spring/spring-core/gs"
-	"github.com/go-spring/starter-core"
 	"google.golang.org/grpc"
 )
 
 // Starter gRPC 服务器启动器
 type Starter struct {
-	config  StarterCore.GrpcServerConfig
+	config  conf.GrpcServerConfig
 	server  *grpc.Server
 	Servers *gs.GrpcServers `autowire:""`
 }
 
 // NewStarter Starter 的构造函数
-func NewStarter(config StarterCore.GrpcServerConfig) *Starter {
+func NewStarter(config conf.GrpcServerConfig) *Starter {
 	return &Starter{
 		config: config,
 		server: grpc.NewServer(),

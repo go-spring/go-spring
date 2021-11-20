@@ -26,6 +26,7 @@ import (
 
 	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-base/util"
+	"github.com/go-spring/spring-core/conf"
 )
 
 // HandlerFunc 标准 Web 处理函数
@@ -41,25 +42,12 @@ type Handler interface {
 	FileLine() (file string, line int, fnName string)
 }
 
-// ContainerConfig Web 容器配置
-type ContainerConfig struct {
-	IP        string // 监听 IP
-	Port      int    // 监听端口
-	EnableSSL bool   // 使用 SSL
-	KeyFile   string // SSL 证书
-	CertFile  string // SSL 秘钥
-	BasePath  string // 根路径
-
-	ReadTimeout  time.Duration
-	WriteTimeout time.Duration
-}
-
 // Container Web 容器
 type Container interface {
 	Router
 
 	// Config 获取 Web 容器配置
-	Config() ContainerConfig
+	Config() conf.WebServerConfig
 
 	// GetFilters 返回过滤器列表
 	GetFilters() []Filter
@@ -87,14 +75,14 @@ type Container interface {
 type AbstractContainer struct {
 	router
 
-	config  ContainerConfig // 容器配置项
-	filters []Filter        // 其他过滤器
-	logger  Filter          // 日志过滤器
-	swagger Swagger         // Swagger根
+	config  conf.WebServerConfig // 容器配置项
+	filters []Filter             // 其他过滤器
+	logger  Filter               // 日志过滤器
+	swagger Swagger              // Swagger根
 }
 
 // NewAbstractContainer AbstractContainer 的构造函数
-func NewAbstractContainer(config ContainerConfig) *AbstractContainer {
+func NewAbstractContainer(config conf.WebServerConfig) *AbstractContainer {
 	return &AbstractContainer{config: config}
 }
 
@@ -104,7 +92,7 @@ func (c *AbstractContainer) Address() string {
 }
 
 // Config 获取 Web 容器配置
-func (c *AbstractContainer) Config() ContainerConfig {
+func (c *AbstractContainer) Config() conf.WebServerConfig {
 	return c.config
 }
 

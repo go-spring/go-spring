@@ -26,13 +26,14 @@ import (
 	"time"
 
 	"github.com/go-spring/spring-base/assert"
+	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/web"
 	"github.com/go-spring/spring-echo"
 	"github.com/labstack/echo"
 )
 
 func TestContext_PanicEchoHttpError(t *testing.T) {
-	c := SpringEcho.NewContainer(web.ContainerConfig{Port: 8080})
+	c := SpringEcho.NewContainer(conf.WebServerConfig{Port: 8080})
 	c.GetMapping("/", func(ctx web.Context) {
 		panic(echo.ErrTooManyRequests)
 	})
@@ -48,11 +49,11 @@ func TestContext_PanicEchoHttpError(t *testing.T) {
 	fmt.Println(string(b))
 	fmt.Println(response.Status)
 	assert.Equal(t, response.StatusCode, http.StatusTooManyRequests)
-	assert.Equal(t, string(b), `Too Many Requests`)
+	assert.Equal(t, string(b), "Too Many Requests")
 }
 
 func TestContext_PanicString(t *testing.T) {
-	c := SpringEcho.NewContainer(web.ContainerConfig{Port: 8080})
+	c := SpringEcho.NewContainer(conf.WebServerConfig{Port: 8080})
 	c.GetMapping("/", func(ctx web.Context) {
 		panic("this is an error")
 	})
@@ -68,11 +69,11 @@ func TestContext_PanicString(t *testing.T) {
 	fmt.Println(string(b))
 	fmt.Println(response.Status)
 	assert.Equal(t, response.StatusCode, http.StatusOK)
-	assert.Equal(t, string(b), "\"this is an error\"")
+	assert.Equal(t, string(b), "this is an error")
 }
 
 func TestContext_PanicError(t *testing.T) {
-	c := SpringEcho.NewContainer(web.ContainerConfig{Port: 8080})
+	c := SpringEcho.NewContainer(conf.WebServerConfig{Port: 8080})
 	c.GetMapping("/", func(ctx web.Context) {
 		panic(errors.New("this is an error"))
 	})
@@ -88,11 +89,11 @@ func TestContext_PanicError(t *testing.T) {
 	fmt.Println(string(b))
 	fmt.Println(response.Status)
 	assert.Equal(t, response.StatusCode, http.StatusInternalServerError)
-	assert.Equal(t, string(b), `this is an error`)
+	assert.Equal(t, string(b), "this is an error")
 }
 
 func TestContext_PanicWebHttpError(t *testing.T) {
-	c := SpringEcho.NewContainer(web.ContainerConfig{Port: 8080})
+	c := SpringEcho.NewContainer(conf.WebServerConfig{Port: 8080})
 	c.GetMapping("/", func(ctx web.Context) {
 		panic(&web.HttpError{
 			Code:    http.StatusInternalServerError,
@@ -111,11 +112,11 @@ func TestContext_PanicWebHttpError(t *testing.T) {
 	fmt.Println(string(b))
 	fmt.Println(response.Status)
 	assert.Equal(t, response.StatusCode, http.StatusInternalServerError)
-	assert.Equal(t, string(b), `Internal Server Error`)
+	assert.Equal(t, string(b), "Internal Server Error")
 }
 
 func TestContext_PathNotFound(t *testing.T) {
-	c := SpringEcho.NewContainer(web.ContainerConfig{Port: 8080})
+	c := SpringEcho.NewContainer(conf.WebServerConfig{Port: 8080})
 	go c.Start()
 	defer c.Stop(context.Background())
 	time.Sleep(10 * time.Millisecond)

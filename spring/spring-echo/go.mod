@@ -10,7 +10,7 @@ require (
 	golang.org/x/crypto v0.0.0-20210616213533-5ff15b29337e // indirect
 )
 
-//replace (
-//	github.com/go-spring/spring-core => ../spring-core
-//	github.com/go-spring/spring-base => ../spring-base
-//)
+replace (
+	github.com/go-spring/spring-core => ../spring-core
+	github.com/go-spring/spring-base => ../spring-base
+)

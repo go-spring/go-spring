@@ -22,16 +22,6 @@ github.com/fsnotify/fsnotify v1.4.9 h1:hsms1Qyu0jgnwNXIxa+/V/PDsU6CfLf6CNO8H7IWo
 github.com/fsnotify/fsnotify v1.4.9/go.mod h1:znqG4EE+3YCdAaPaxE2ZRY/06pZUdp0tY4IgpuI1SZQ=
 github.com/go-redis/redis/v8 v8.11.4 h1:kHoYkfZP6+pe04aFTnhDH6GDROa5yJdHJVNxV3F46Tg=
 github.com/go-redis/redis/v8 v8.11.4/go.mod h1:2Z2wHZXdQpCDXEGzqMockDpNyYvi2l4Pxt6RJr792+w=
-github.com/go-spring/spring-base v1.1.0-rc1.0.20211113013245-ace7b4d73418/go.mod h1:Z0cuF53BYtZmcAPB6JtwTgfUnZhtQlns7R2Wbh6jPHA=
-github.com/go-spring/spring-base v1.1.0-rc2 h1:oaQ8u23LkZvbe4QYR51wZeMrODRcapTmHlAmkie8Pzc=
-github.com/go-spring/spring-base v1.1.0-rc2/go.mod h1:Z0cuF53BYtZmcAPB6JtwTgfUnZhtQlns7R2Wbh6jPHA=
-github.com/go-spring/spring-core v1.1.0-rc1.0.20211113013626-adb083a077e7/go.mod h1:5u0hbSmLb2wWNEkW7ROCSBfsk+yNtcFdiFcZQBVfOac=
-github.com/go-spring/spring-core v1.1.0-rc2 h1:MUkeG4lehmNLeRBUhQEZal/Hz7vuQ7XzfCrq/NT25yE=
-github.com/go-spring/spring-core v1.1.0-rc2/go.mod h1:gN4RbS67mC8V0c1O7ZLW0ofNrwODBFjyzymYh2ZLXDY=
-github.com/go-spring/spring-echo v1.1.0-rc2 h1:EgR6hPkcDNGLuGs9ctZRxqb73e4rBBUWn7gqR4YMZDg=
-github.com/go-spring/spring-echo v1.1.0-rc2/go.mod h1:tFabF8DdW2fvs+GZsdTqGKV7D4j3IiNcqn42CiSJQsE=
-github.com/go-spring/spring-go-redis v1.1.0-rc2 h1:upbfXXTKLHiDBxMnhnK7oqfy3r5ukL1C6eD1C34vGwE=
-github.com/go-spring/spring-go-redis v1.1.0-rc2/go.mod h1:CEIcxrDHGcjrAlwA6H3osaZmwBPfnwHtKCk0YecIb1g=
 github.com/go-spring/starter-core v1.1.0-rc2 h1:Pvwc9D8LWsDN2QEje6zH9Vy4uUsIAtx1wSJqH9n1H94=
 github.com/go-spring/starter-core v1.1.0-rc2/go.mod h1:f8r68vQJ/rQe7EtvRrhkElG5LlTuT7RcOmJs73IAL50=
 github.com/go-spring/starter-echo v1.1.0-rc2 h1:zh7Nswo1Qsg9GfeTPNLQio8jGvXF/AsqapGVretD+4M=
@@ -40,8 +30,6 @@ github.com/go-spring/starter-go-redis v1.1.0-rc2 h1:c9tv0U10GheMPBGzY1unru7xg8Ne
 github.com/go-spring/starter-go-redis v1.1.0-rc2/go.mod h1:jqlXYFGdy+Bm2z+GnoS9V6/P1t9RU8GCulKJpPEmYBE=
 github.com/go-spring/starter-gorm v1.1.0-rc2 h1:7AW1K7r2dla5iT0cb3oS6Yyp0o5SZoibdw9RztMbT5Y=
 github.com/go-spring/starter-gorm v1.1.0-rc2/go.mod h1:iAI26nRSPw+k2dk9JZ4FIWVilG4TQKTM6v6iuX8O124=
-github.com/go-spring/starter-web v1.1.0-rc2 h1:RNGoQBlpjOnfeghOKPjmbdK/sOehriCI4199gTM0UIE=
-github.com/go-spring/starter-web v1.1.0-rc2/go.mod h1:D//h9BA4oJpLHkXajXBDSTbkK2xxZJ4rAurBzhuEZEk=
 github.com/go-sql-driver/mysql v1.5.0 h1:ozyZYNQW3x3HtqT1jira07DN2PArx2v7/mN66gGcHOs=
 github.com/go-sql-driver/mysql v1.5.0/go.mod h1:DCzpHaOWr8IXmIStZouvnhqoel9Qv2LBy8hT2VhHyBg=
 github.com/go-stack/stack v1.8.0 h1:5SgMzNM5HxrEjV0ww2lTmX6E2Izsfxas4+YHWRs3Lsk=

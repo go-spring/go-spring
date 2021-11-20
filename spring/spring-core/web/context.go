@@ -43,7 +43,13 @@ var ErrorHandler = func(ctx Context, err *HttpError) {
 	if err.Internal == nil {
 		ctx.Status(err.Code)
 		ctx.String(err.Message)
-	} else {
+		return
+	}
+
+	switch v := err.Internal.(type) {
+	case string:
+		ctx.String(v)
+	default:
 		ctx.JSON(err.Internal)
 	}
 }
