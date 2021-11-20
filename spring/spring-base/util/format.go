@@ -17,10 +17,42 @@
 package util
 
 import (
+	"bytes"
 	"time"
 )
 
+// maps
+var standards = map[byte]string{
+	'd': "02",
+	'D': "Mon",
+	'j': "1",
+	'Y': "2006",
+	'y': "06",
+	'm': "01",
+	'M': "Jan",
+	'a': "pm",
+	'A': "PM",
+	'H': "15",
+	'h': "3",
+	'i': "04",
+	's': "05",
+}
+
 // Format time 支持 YY-MM-DD 格式化会不会更好呢？
 func Format(t time.Time, layout string) string {
-	return ""
+	layout = toStandardLayout(layout)
+	return t.Format(layout)
+}
+
+// toStandardLayout
+func toStandardLayout(format string) string {
+	buf := bytes.NewBuffer(nil)
+	for i := 0; i < len(format); i++ {
+		if layout, ok := standards[format[i]]; ok {
+			buf.WriteString(layout)
+		} else {
+			buf.WriteByte(format[i])
+		}
+	}
+	return buf.String()
 }
