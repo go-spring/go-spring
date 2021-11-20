@@ -59,6 +59,18 @@ type DoCommand interface {
 	ZItemSlice(ctx context.Context, args ...interface{}) ([]ZItem, error)
 }
 
+type Hook struct {
+	BeforeDoFunc func(ctx context.Context, args []interface{}) (err error)
+	AfterDoFunc  func(ctx context.Context, args []interface{}, ret interface{}, err error)
+}
+
+var hook Hook
+
+// SetHook 设置钩子方法。
+func SetHook(h Hook) {
+	hook = h
+}
+
 type BaseClient struct {
 	DoFunc func(ctx context.Context, args ...interface{}) (interface{}, error)
 }
@@ -99,7 +111,7 @@ func cmdString(args []interface{}) string {
 
 type transform func(interface{}, error) (interface{}, error)
 
-func (c *BaseClient) do(ctx context.Context, args []interface{}, trans transform) (r interface{}, err error) {
+func (c *BaseClient) do(ctx context.Context, args []interface{}, trans transform) (ret interface{}, err error) {
 
 	var timeNow int64
 	if fastdev.RecordMode() {
@@ -110,7 +122,7 @@ func (c *BaseClient) do(ctx context.Context, args []interface{}, trans transform
 		if fastdev.RecordMode() {
 			var resp interface{}
 			if err == nil {
-				resp = r
+				resp = ret
 			} else if err == ErrNil {
 				resp = "(nil)"
 			} else {
@@ -122,6 +134,18 @@ func (c *BaseClient) do(ctx context.Context, args []interface{}, trans transform
 				Response:  resp,
 				Timestamp: timeNow,
 			})
+		}
+	}()
+
+	if hook.BeforeDoFunc != nil {
+		if err := hook.BeforeDoFunc(ctx, args); err != nil {
+			return nil, err
+		}
+	}
+
+	defer func() {
+		if hook.AfterDoFunc != nil {
+			hook.AfterDoFunc(ctx, args, ret, err)
 		}
 	}()
 

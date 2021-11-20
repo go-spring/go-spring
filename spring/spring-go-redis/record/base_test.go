@@ -19,11 +19,15 @@ package record
 import (
 	"testing"
 
-	g "github.com/go-redis/redis/v8"
+	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/redis"
-	SpringGoRedis "github.com/go-spring/spring-go-redis"
+	"github.com/go-spring/spring-go-redis"
 )
 
 func RunCase(t *testing.T, fn func(t *testing.T, c redis.Client)) {
-	fn(t, SpringGoRedis.NewClient(g.NewClient(&g.Options{})))
+	c, err := SpringGoRedis.NewClient(conf.DefaultRedisClientConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	fn(t, c)
 }

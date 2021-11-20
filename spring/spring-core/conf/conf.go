@@ -32,6 +32,13 @@ type WebServerConfig struct {
 	WriteTimeout time.Duration
 }
 
+func DefaultWebServerConfig() WebServerConfig {
+	return WebServerConfig{
+		Port:     8080,
+		BasePath: "/",
+	}
+}
+
 // DatabaseClientConfig 关系型数据库客户端配置。
 type DatabaseClientConfig struct {
 	Url string `value:"${db.url}"`
@@ -44,6 +51,14 @@ type RedisClientConfig struct {
 	Password string `value:"${redis.password:=}"`
 	Database int    `value:"${redis.database:=0}"`
 	Ping     bool   `value:"${redis.ping:=true}"`
+}
+
+func DefaultRedisClientConfig() RedisClientConfig {
+	return RedisClientConfig{
+		Host: "127.0.0.1",
+		Port: 6379,
+		Ping: true,
+	}
 }
 
 // MongoClientConfig MongoDB 客户端配置。
