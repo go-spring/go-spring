@@ -17,11 +17,14 @@
 package i18n
 
 import (
+	"context"
 	"errors"
+
+	"github.com/go-spring/spring-base/knife"
 )
 
 // Languages 语言缩写代码表。
-var Languages = []string{
+var _ = []string{
 	"af",     //南非语
 	"af-ZA",  //南非语
 	"ar",     //阿拉伯语
@@ -273,26 +276,23 @@ func RegisterLanguage(language string, data map[string]string) error {
 	return nil
 }
 
-type getArg struct {
-	language string
+const languageKey = "::language::"
+
+// SetLanguage 设置上下文语言。
+func SetLanguage(ctx context.Context, language string) error {
+	return knife.Set(ctx, languageKey, language)
 }
 
-type GetOption func(arg *getArg)
+// Get 获取语言对应的配置项，从 context.Context 中获取上下文语言。
+func Get(ctx context.Context, key string) string {
 
-// Language Get 方法的参数。
-func Language(language string) GetOption {
-	return func(arg *getArg) {
-		arg.language = language
+	var language string
+	ok, err := knife.Fetch(ctx, languageKey, &language)
+	if err != nil || !ok {
+		language = "zh-CN"
 	}
-}
 
-// Get 获取语言对应的配置项。
-func Get(key string, opts ...GetOption) string {
-	arg := getArg{language: "zh-CN"}
-	for _, opt := range opts {
-		opt(&arg)
-	}
-	m, ok := languages[arg.language]
+	m, ok := languages[language]
 	if !ok {
 		return ""
 	}
