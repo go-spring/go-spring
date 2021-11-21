@@ -75,7 +75,75 @@ func ToFloat64(i interface{}) float64 {
 
 // ToFloat64E casts an interface{} to a float64.
 func ToFloat64E(i interface{}) (float64, error) {
-	return cast.ToFloat64E(i)
+	if i == nil {
+		return 0, nil
+	}
+	switch s := i.(type) {
+	case float64:
+		return s, nil
+	case *float64:
+		return *s, nil
+	case float32:
+		return float64(s), nil
+	case *float32:
+		return float64(*s), nil
+	case int:
+		return float64(s), nil
+	case *int:
+		return float64(*s), nil
+	case int64:
+		return float64(s), nil
+	case *int64:
+		return float64(*s), nil
+	case int32:
+		return float64(s), nil
+	case *int32:
+		return float64(*s), nil
+	case int16:
+		return float64(s), nil
+	case *int16:
+		return float64(*s), nil
+	case int8:
+		return float64(s), nil
+	case *int8:
+		return float64(*s), nil
+	case uint:
+		return float64(s), nil
+	case *uint:
+		return float64(*s), nil
+	case uint64:
+		return float64(s), nil
+	case *uint64:
+		return float64(*s), nil
+	case uint32:
+		return float64(s), nil
+	case *uint32:
+		return float64(*s), nil
+	case uint16:
+		return float64(s), nil
+	case *uint16:
+		return float64(*s), nil
+	case uint8:
+		return float64(s), nil
+	case *uint8:
+		return float64(*s), nil
+	case string:
+		return strconv.ParseFloat(s, 64)
+	case *string:
+		return strconv.ParseFloat(*s, 64)
+	case bool:
+		if s {
+			return 1, nil
+		}
+		return 0, nil
+	case *bool:
+		if *s {
+			return 1, nil
+		}
+		return 0, nil
+	default:
+		return 0, fmt.Errorf("unable to cast %#v of type %T to float64", i, i)
+	}
 }
 
 // ToString casts an interface{} to a string.
@@ -96,6 +164,8 @@ func ToStringE(i interface{}) (string, error) {
 	switch s := i.(type) {
 	case string:
 		return s, nil
+	case *string:
+		return *s, nil
 	case bool:
 		return strconv.FormatBool(s), nil
 	case *bool:
@@ -160,8 +230,6 @@ func ToStringE(i interface{}) (string, error) {
 		return string(s), nil
 	case template.HTMLAttr:
 		return string(s), nil
-	case nil:
-		return "", nil
 	case fmt.Stringer:
 		return s.String(), nil
 	case error:

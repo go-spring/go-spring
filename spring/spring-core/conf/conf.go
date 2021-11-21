@@ -32,6 +32,13 @@ type WebServerConfig struct {
 	WriteTimeout time.Duration
 }
 
+func DefaultWebServerConfig() WebServerConfig {
+	return WebServerConfig{
+		Port:     8080,
+		BasePath: "/",
+	}
+}
+
 // DatabaseClientConfig 关系型数据库客户端配置。
 type DatabaseClientConfig struct {
 	Url string `value:"${db.url}"`
@@ -39,11 +46,24 @@ type DatabaseClientConfig struct {
 
 // RedisClientConfig Redis 客户端配置。
 type RedisClientConfig struct {
-	Host     string `value:"${redis.host:=127.0.0.1}"`
-	Port     int    `value:"${redis.port:=6379}"`
-	Password string `value:"${redis.password:=}"`
-	Database int    `value:"${redis.database:=0}"`
-	Ping     bool   `value:"${redis.ping:=true}"`
+	Host           string `value:"${redis.host:=127.0.0.1}"`   // IP
+	Port           int    `value:"${redis.port:=6379}"`        // 端口号
+	Username       string `value:"${redis.username:=}"`        // 用户名
+	Password       string `value:"${redis.password:=}"`        // 密码
+	Database       int    `value:"${redis.database:=0}"`       // DB 序号
+	Ping           bool   `value:"${redis.ping:=true}"`        // 是否 PING 探测
+	ConnectTimeout int    `value:"${redis.connect-timeout:=}"` // 连接超时，毫秒
+	ReadTimeout    int    `value:"${redis.read-timeout:=}"`    // 读取超时，毫秒
+	WriteTimeout   int    `value:"${redis.write-timeout:=}"`   // 写入超时，毫秒
+	IdleTimeout    int    `value:"${redis.idle-timeout:=}"`    // 空闲连接超时，毫秒
+}
+
+func DefaultRedisClientConfig() RedisClientConfig {
+	return RedisClientConfig{
+		Host: "127.0.0.1",
+		Port: 6379,
+		Ping: true,
+	}
 }
 
 // MongoClientConfig MongoDB 客户端配置。

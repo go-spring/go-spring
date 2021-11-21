@@ -19,6 +19,7 @@ package SpringGoRedis
 import (
 	"context"
 	"fmt"
+	"time"
 
 	g "github.com/go-redis/redis/v8"
 	"github.com/go-spring/spring-base/fastdev"
@@ -40,9 +41,14 @@ func NewClient(config conf.RedisClientConfig) (redis.Client, error) {
 
 	address := fmt.Sprintf("%s:%d", config.Host, config.Port)
 	clt := g.NewClient(&g.Options{
-		Addr:     address,
-		Password: config.Password,
-		DB:       config.Database,
+		Addr:         address,
+		Username:     config.Username,
+		Password:     config.Password,
+		DB:           config.Database,
+		DialTimeout:  time.Duration(config.ConnectTimeout) * time.Millisecond,
+		ReadTimeout:  time.Duration(config.ReadTimeout) * time.Millisecond,
+		WriteTimeout: time.Duration(config.WriteTimeout) * time.Millisecond,
+		IdleTimeout:  time.Duration(config.IdleTimeout) * time.Millisecond,
 	})
 
 	if config.Ping {

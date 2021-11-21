@@ -14,20 +14,17 @@
  * limitations under the License.
  */
 
-package record
+package testcases
 
 import (
-	"testing"
+	"context"
+	"fmt"
 
-	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/redis"
-	"github.com/go-spring/spring-redigo"
 )
 
-func RunCase(t *testing.T, fn func(t *testing.T, c redis.Client)) {
-	c, err := SpringRedigo.NewClient(conf.DefaultRedisClientConfig())
-	if err != nil {
-		t.Fatal(err)
-	}
-	fn(t, c)
+func init() {
+	redis.SetHook(redis.Hook{AfterDoFunc: func(ctx context.Context, args []interface{}, ret interface{}, err error) {
+		fmt.Printf("%v return (%v) %v\n", args, err, ret)
+	}})
 }

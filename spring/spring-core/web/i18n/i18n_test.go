@@ -17,9 +17,11 @@
 package i18n_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/go-spring/spring-base/assert"
+	"github.com/go-spring/spring-base/knife"
 	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/web/i18n"
 )
@@ -38,7 +40,19 @@ func init() {
 }
 
 func TestGet(t *testing.T) {
-	assert.Equal(t, i18n.Get("message"), "这是一条消息")
-	assert.Equal(t, i18n.Get("message", i18n.Language("en-US")), "this is a message")
-	assert.Equal(t, i18n.Get("message", i18n.Language("fr")), "")
+
+	ctx := knife.New(context.Background())
+	assert.Equal(t, i18n.Get(ctx, "message"), "这是一条消息")
+
+	ctx = knife.New(context.Background())
+	if err := i18n.SetLanguage(ctx, "en-US"); err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, i18n.Get(ctx, "message"), "this is a message")
+
+	ctx = knife.New(context.Background())
+	if err := i18n.SetLanguage(ctx, "fr"); err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, i18n.Get(ctx, "message"), "")
 }
