@@ -19,6 +19,7 @@ package SpringRedigo
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/go-spring/spring-base/fastdev"
 	"github.com/go-spring/spring-core/conf"
@@ -39,21 +40,15 @@ func NewClient(config conf.RedisClientConfig) (redis.Client, error) {
 	}
 
 	address := fmt.Sprintf("%s:%d", config.Host, config.Port)
-	conn, err := g.Dial("tcp", address)
+	conn, err := g.Dial("tcp", address,
+		g.DialUsername(config.Username),
+		g.DialPassword(config.Password),
+		g.DialDatabase(config.Database),
+		g.DialConnectTimeout(time.Duration(config.ConnectTimeout)*time.Millisecond),
+		g.DialReadTimeout(time.Duration(config.ReadTimeout)*time.Millisecond),
+		g.DialWriteTimeout(time.Duration(config.WriteTimeout)*time.Millisecond))
 	if err != nil {
 		return nil, err
-	}
-
-	if config.Password != "" {
-		if _, err = conn.Do("AUTH", config.Password); err != nil {
-			return nil, err
-		}
-	}
-
-	if config.Database != 0 {
-		if _, err = conn.Do("SELECT", config.Database); err != nil {
-			return nil, err
-		}
 	}
 
 	if config.Ping {

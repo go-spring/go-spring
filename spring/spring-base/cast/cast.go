@@ -164,6 +164,8 @@ func ToStringE(i interface{}) (string, error) {
 	switch s := i.(type) {
 	case string:
 		return s, nil
+	case *string:
+		return *s, nil
 	case bool:
 		return strconv.FormatBool(s), nil
 	case *bool:
@@ -228,8 +230,6 @@ func ToStringE(i interface{}) (string, error) {
 		return string(s), nil
 	case template.HTMLAttr:
 		return string(s), nil
-	case nil:
-		return "", nil
 	case fmt.Stringer:
 		return s.String(), nil
 	case error:
