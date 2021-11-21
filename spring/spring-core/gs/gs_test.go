@@ -704,8 +704,15 @@ type historyTeacher struct {
 }
 
 func newHistoryTeacher(name string) *historyTeacher {
-	return &historyTeacher{
-		name: name,
+	return &historyTeacher{name: name}
+}
+
+func newTeacher(course string, name string) Teacher {
+	switch course {
+	case "history":
+		return &historyTeacher{name: name}
+	default:
+		return nil
 	}
 }
 
@@ -746,6 +753,10 @@ func TestApplicationContext_RegisterBeanFn(t *testing.T) {
 	c.Provide(NewPtrStudent, "", "${room}").Name("st2")
 	c.Provide(NewStudent, "?", "${room:=https://}").Name("st3")
 	c.Provide(NewPtrStudent, "?", "${room:=4567}").Name("st4")
+
+	c.Object(newTeacher("history", "")).Init(func(teacher Teacher) {
+		fmt.Println(teacher.Course())
+	}).Name("newTeacher")
 
 	err := runTest(c, func(p gs.Context) {
 

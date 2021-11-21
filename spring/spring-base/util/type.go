@@ -179,7 +179,14 @@ func ReturnOnlyError(t reflect.Type) bool {
 
 // HasReceiver 函数是否具有接收者。
 func HasReceiver(t reflect.Type, receiver reflect.Type) bool {
-	return t.NumIn() >= 1 && t.In(0) == receiver
+	if t.NumIn() < 1 {
+		return false
+	}
+	t0 := t.In(0)
+	if t0.Kind() != reflect.Interface {
+		return t0 == receiver
+	}
+	return receiver.Implements(t0)
 }
 
 // IsStructPtr 返回是否是结构体的指针类型。
