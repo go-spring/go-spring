@@ -44,6 +44,18 @@ func NewClient(config conf.RedisClientConfig) (redis.Client, error) {
 		return nil, err
 	}
 
+	if config.Password != "" {
+		if _, err = conn.Do("AUTH", config.Password); err != nil {
+			return nil, err
+		}
+	}
+
+	if config.Database != 0 {
+		if _, err = conn.Do("SELECT", config.Database); err != nil {
+			return nil, err
+		}
+	}
+
 	if config.Ping {
 		if _, err = conn.Do("PING"); err != nil {
 			return nil, err
