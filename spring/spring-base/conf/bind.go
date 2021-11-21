@@ -102,32 +102,37 @@ func BindValue(p *Properties, v reflect.Value, param BindParam) error {
 		u, err := cast.ToUint64E(val)
 		if err == nil {
 			v.SetUint(u)
+			return nil
 		}
-		return err
+		return util.Errorf(code.Line(), "%+v %w", param, err)
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		i, err := cast.ToInt64E(val)
 		if err == nil {
 			v.SetInt(i)
+			return nil
 		}
-		return err
+		return util.Errorf(code.Line(), "%+v %w", param, err)
 	case reflect.Float32, reflect.Float64:
 		f, err := cast.ToFloat64E(val)
 		if err == nil {
 			v.SetFloat(f)
+			return nil
 		}
-		return err
+		return util.Errorf(code.Line(), "%+v %w", param, err)
 	case reflect.Bool:
 		b, err := cast.ToBoolE(val)
 		if err == nil {
 			v.SetBool(b)
+			return nil
 		}
-		return err
+		return util.Errorf(code.Line(), "%+v %w", param, err)
 	case reflect.String:
 		s, err := cast.ToStringE(val)
 		if err == nil {
 			v.SetString(s)
+			return nil
 		}
-		return err
+		return util.Errorf(code.Line(), "%+v %w", param, err)
 	}
 
 	return util.Errorf(code.Line(), "unsupported bind type %q", param.Type.String())

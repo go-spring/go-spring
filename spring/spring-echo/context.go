@@ -31,7 +31,7 @@ import (
 	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/validator"
 	"github.com/go-spring/spring-core/web"
-	"github.com/labstack/echo"
+	"github.com/labstack/echo/v4"
 )
 
 // EchoContext 将 web.Context 转换为 echo.Context

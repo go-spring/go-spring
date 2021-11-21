@@ -11,12 +11,12 @@ require (
 	github.com/go-spring/starter-web  v1.1.0-rc2 // indirect
 )
 
-//replace (
-//	github.com/go-spring/spring-base => ../../spring/spring-base
-//	github.com/go-spring/spring-core => ../../spring/spring-core
-//	github.com/go-spring/spring-echo => ../../spring/spring-echo
-//	github.com/go-spring/spring-gin => ../../spring/spring-gin
-//	github.com/go-spring/spring-go-redis => ../../spring/spring-go-redis
-//	github.com/go-spring/starter-go-redis => ../../starter/starter-go-redis
-//	github.com/go-spring/starter-web => ../../starter/starter-web
-//)
+replace (
+	github.com/go-spring/spring-base => ../../spring/spring-base
+	github.com/go-spring/spring-core => ../../spring/spring-core
+	github.com/go-spring/spring-echo => ../../spring/spring-echo
+	github.com/go-spring/spring-gin => ../../spring/spring-gin
+	github.com/go-spring/spring-go-redis => ../../spring/spring-go-redis
+	github.com/go-spring/starter-go-redis => ../../starter/starter-go-redis
+	github.com/go-spring/starter-web => ../../starter/starter-web
+)
