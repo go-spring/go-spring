@@ -260,14 +260,8 @@ func ToDurationE(i interface{}) (time.Duration, error) {
 	case float32, float64,
 		*float32, *float64:
 		return time.Duration(ToFloat64(s)), nil
-	case string:
-		if strings.ContainsAny(s, "nsuµmh") {
-			return time.ParseDuration(s)
-		} else {
-			return time.ParseDuration(s + "ns")
-		}
-	case *string:
-		v := *s
+	case string, *string:
+		v := ToString(s)
 		if strings.ContainsAny(v, "nsuµmh") {
 			return time.ParseDuration(v)
 		} else {
