@@ -23,6 +23,7 @@ import (
 	"html/template"
 	"reflect"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/spf13/cast"
@@ -247,7 +248,34 @@ func ToDuration(i interface{}) time.Duration {
 
 // ToDurationE casts an interface{} to a time.Duration.
 func ToDurationE(i interface{}) (time.Duration, error) {
-	return cast.ToDurationE(i)
+	if i == nil {
+		return 0, nil
+	}
+	switch s := i.(type) {
+	case time.Duration:
+		return s, nil
+	case int, int64, int32, int16, int8, uint, uint64, uint32, uint16, uint8,
+		*int, *int64, *int32, *int16, *int8, *uint, *uint64, *uint32, *uint16, *uint8:
+		return time.Duration(ToInt64(s)), nil
+	case float32, float64,
+		*float32, *float64:
+		return time.Duration(ToFloat64(s)), nil
+	case string:
+		if strings.ContainsAny(s, "nsuµmh") {
+			return time.ParseDuration(s)
+		} else {
+			return time.ParseDuration(s + "ns")
+		}
+	case *string:
+		v := *s
+		if strings.ContainsAny(v, "nsuµmh") {
+			return time.ParseDuration(v)
+		} else {
+			return time.ParseDuration(v + "ns")
+		}
+	default:
+		return 0, fmt.Errorf("unable to cast %#v of type %T to Duration", i, i)
+	}
 }
 
 // ToTime casts an interface{} to a time.Time.
