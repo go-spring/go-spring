@@ -37,7 +37,27 @@ func ToBool(i interface{}) bool {
 
 // ToBoolE casts an interface{} to a bool.
 func ToBoolE(i interface{}) (bool, error) {
-	return cast.ToBoolE(i)
+	if i == nil {
+		return false, nil
+	}
+	switch b := i.(type) {
+	case bool:
+		return b, nil
+	case *bool:
+		return *b, nil
+	case nil:
+		return false, nil
+	case int, int64, int32, int16, int8, uint, uint64, uint32, uint16, uint8,
+		*int, *int64, *int32, *int16, *int8, *uint, *uint64, *uint32, *uint16, *uint8:
+		return ToInt64(i) != 0, nil
+	case float32, float64,
+		*float32, *float64:
+		return ToFloat64(i) != 0, nil
+	case string, *string:
+		return strconv.ParseBool(ToString(i))
+	default:
+		return false, fmt.Errorf("unable to cast %#v of type %T to bool", i, i)
+	}
 }
 
 // ToInt casts an interface{} to an int.
