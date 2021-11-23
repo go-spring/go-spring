@@ -20,6 +20,7 @@ db:
     url: 1.1.1.1
     port: 3306
     db: db1
+    Test: ping
   - username: root
     password: 123456
     url: 1.1.1.1
@@ -33,6 +34,7 @@ tagged:
         password: 123456
         url: 1.1.1.1
         port: 3306
+        Test: ping
       db: db1
     - tag:
         username: root
@@ -48,6 +50,7 @@ prefix:
       url: 1.1.1.1
       port: 3306
       db: db1
+      Test: ping
     - username: root
       password: 123456
       url: 1.1.1.1
@@ -66,6 +69,7 @@ db_map:
     url: 1.1.1.1
     port: 3306
     db: db1
+    Test: ping
   d2:
     username: root
     password: 123456
@@ -81,6 +85,7 @@ prefix_map:
       url: 1.1.1.1
       port: 3306
       db: db1
+      Test: ping
     d2:
       username: root
       password: 123456

@@ -492,6 +492,7 @@ type DB struct {
 	Url      string `value:"${url}"`
 	Port     string `value:"${port}"`
 	DB       string `value:"${db}"`
+	Test     string // 相当于 `value:"${Test}"`
 }
 
 type DbConfig struct {
@@ -503,6 +504,7 @@ type DBConnection struct {
 	Password string `value:"${password}"`
 	Url      string `value:"${url}"`
 	Port     string `value:"${port}"`
+	Test     string // 相当于 `value:"${Test}"`
 }
 
 type UntaggedNestedDB struct {
@@ -566,6 +568,7 @@ func TestProperties_Bind(t *testing.T) {
 
 		// 实际上是取的两个节点，只是值是一样的而已
 		assert.Equal(t, dbConfig1, dbConfig2)
+		assert.Equal(t, dbConfig1.DB[0].Test, "ping")
 	})
 
 	t.Run("struct bind with tag", func(t *testing.T) {
@@ -596,6 +599,7 @@ func TestProperties_Bind(t *testing.T) {
 		// 实际上是取的两个节点，只是值是一样的而已
 		assert.Equal(t, dbConfig1, dbConfig2)
 		assert.Equal(t, len(dbConfig1.DB), 2)
+		assert.Equal(t, dbConfig1.DB[0].Test, "ping")
 	})
 
 	t.Run("simple map bind", func(t *testing.T) {
@@ -788,7 +792,7 @@ func TestBindMap(t *testing.T) {
 		p := conf.Map(map[string]interface{}{"a.b1": "ab1"})
 		var r map[string]string
 		err := p.Bind(&r)
-		assert.Error(t, err, "bind.go:87 type \"string\" bind error\nbind.go:417 property \"a\" not exist")
+		assert.Error(t, err, "bind.go:87 type \"string\" bind error\nbind.go:437 property \"a\" not exist")
 	})
 
 	t.Run("", func(t *testing.T) {

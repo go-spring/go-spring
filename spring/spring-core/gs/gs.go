@@ -714,9 +714,25 @@ func (c *container) wireStruct(v reflect.Value, opt conf.BindParam, stack *wirin
 			continue
 		}
 
-		if ft.Anonymous && ft.Type.Kind() == reflect.Struct {
+		if ft.Anonymous {
+			// 指针或者结构体类型可能出现无限递归的情况。
+			if ft.Type.Kind() != reflect.Struct {
+				continue
+			}
 			if err := c.wireStruct(fv, subParam, stack); err != nil {
 				return err
+			}
+			continue
+		}
+
+		if util.IsPrimitiveValueType(ft.Type) {
+			if subParam.Key == "" {
+				subParam.Key = ft.Name
+			} else {
+				subParam.Key = subParam.Key + "." + ft.Name
+			}
+			if err := conf.BindValue(c.p, fv, subParam); err != nil {
+				continue
 			}
 		}
 	}
