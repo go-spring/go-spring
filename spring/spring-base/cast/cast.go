@@ -41,20 +41,62 @@ func ToBoolE(i interface{}) (bool, error) {
 		return false, nil
 	}
 	switch b := i.(type) {
+	case int:
+		return b != 0, nil
+	case int8:
+		return b != 0, nil
+	case int16:
+		return b != 0, nil
+	case int32:
+		return b != 0, nil
+	case int64:
+		return b != 0, nil
+	case *int:
+		return *b != 0, nil
+	case *int8:
+		return *b != 0, nil
+	case *int16:
+		return *b != 0, nil
+	case *int32:
+		return *b != 0, nil
+	case *int64:
+		return *b != 0, nil
+	case uint:
+		return b != 0, nil
+	case uint8:
+		return b != 0, nil
+	case uint16:
+		return b != 0, nil
+	case uint32:
+		return b != 0, nil
+	case uint64:
+		return b != 0, nil
+	case *uint:
+		return *b != 0, nil
+	case *uint8:
+		return *b != 0, nil
+	case *uint16:
+		return *b != 0, nil
+	case *uint32:
+		return *b != 0, nil
+	case *uint64:
+		return *b != 0, nil
+	case float32:
+		return b != 0, nil
+	case float64:
+		return b != 0, nil
+	case *float32:
+		return *b != 0, nil
+	case *float64:
+		return *b != 0, nil
+	case string:
+		return strconv.ParseBool(b)
+	case *string:
+		return strconv.ParseBool(*b)
 	case bool:
 		return b, nil
 	case *bool:
 		return *b, nil
-	case nil:
-		return false, nil
-	case int, int64, int32, int16, int8, uint, uint64, uint32, uint16, uint8,
-		*int, *int64, *int32, *int16, *int8, *uint, *uint64, *uint32, *uint16, *uint8:
-		return ToInt64(i) != 0, nil
-	case float32, float64,
-		*float32, *float64:
-		return ToFloat64(i) != 0, nil
-	case string, *string:
-		return strconv.ParseBool(ToString(i))
 	default:
 		return false, fmt.Errorf("unable to cast %#v of type %T to bool", i, i)
 	}
@@ -80,112 +122,166 @@ func ToInt64E(i interface{}) (int64, error) {
 	switch s := i.(type) {
 	case int:
 		return int64(s), nil
-	case *int:
-		return int64(*s), nil
-	case int64:
-		return s, nil
-	case *int64:
-		return *s, nil
-	case int32:
-		return int64(s), nil
-	case *int32:
-		return int64(*s), nil
-	case int16:
-		return int64(s), nil
-	case *int16:
-		return int64(*s), nil
 	case int8:
 		return int64(s), nil
+	case int16:
+		return int64(s), nil
+	case int32:
+		return int64(s), nil
+	case int64:
+		return s, nil
+	case *int:
+		return int64(*s), nil
 	case *int8:
 		return int64(*s), nil
+	case *int16:
+		return int64(*s), nil
+	case *int32:
+		return int64(*s), nil
+	case *int64:
+		return *s, nil
 	case uint:
+		return int64(s), nil
+	case uint8:
+		return int64(s), nil
+	case uint16:
+		return int64(s), nil
+	case uint32:
+		return int64(s), nil
+	case uint64:
 		return int64(s), nil
 	case *uint:
 		return int64(*s), nil
-	case uint64:
-		return int64(s), nil
-	case *uint64:
-		return int64(*s), nil
-	case uint32:
-		return int64(s), nil
-	case *uint32:
-		return int64(*s), nil
-	case uint16:
-		return int64(s), nil
-	case *uint16:
-		return int64(*s), nil
-	case uint8:
-		return int64(s), nil
 	case *uint8:
 		return int64(*s), nil
-	case float64:
-		return int64(s), nil
-	case *float64:
+	case *uint16:
+		return int64(*s), nil
+	case *uint32:
+		return int64(*s), nil
+	case *uint64:
 		return int64(*s), nil
 	case float32:
 		return int64(s), nil
+	case float64:
+		return int64(s), nil
 	case *float32:
 		return int64(*s), nil
-	case string, *string:
-		v, err := strconv.ParseInt(ToString(s), 0, 0)
-		if err == nil {
+	case *float64:
+		return int64(*s), nil
+	case string:
+		if v, err := strconv.ParseInt(s, 0, 0); err == nil {
 			return v, nil
 		}
-		return 0, fmt.Errorf("unable to cast %#v of type %T to int64", i, i)
-	case bool, *bool:
-		if ToBool(i) {
+	case *string:
+		if v, err := strconv.ParseInt(*s, 0, 0); err == nil {
+			return v, nil
+		}
+	case bool:
+		if s {
 			return 1, nil
 		}
 		return 0, nil
-	case nil:
+	case *bool:
+		if *s {
+			return 1, nil
+		}
 		return 0, nil
-	default:
-		return 0, fmt.Errorf("unable to cast %#v of type %T to int64", i, i)
 	}
+	return 0, fmt.Errorf("unable to cast %#v of type %T to int64", i, i)
 }
 
-// ToUint64 casts an interface{} to a uint64.
+// ToUint casts an interface{} to an uint.
+func ToUint(i interface{}) uint {
+	v, _ := ToUint64E(i)
+	return uint(v)
+}
+
+// ToUint64 casts an interface{} to an uint64.
 func ToUint64(i interface{}) uint64 {
 	v, _ := ToUint64E(i)
 	return v
 }
 
-// ToUint64E casts an interface{} to a uint64.
+// ToUint64E casts an interface{} to an uint64.
 func ToUint64E(i interface{}) (uint64, error) {
 	if i == nil {
 		return 0, nil
 	}
 	switch s := i.(type) {
-	case string, *string:
-		v, err := strconv.ParseUint(ToString(s), 0, 64)
-		if err == nil {
+	case int:
+		return uint64(s), nil
+	case int8:
+		return uint64(s), nil
+	case int16:
+		return uint64(s), nil
+	case int32:
+		return uint64(s), nil
+	case int64:
+		return uint64(s), nil
+	case *int:
+		return uint64(*s), nil
+	case *int8:
+		return uint64(*s), nil
+	case *int16:
+		return uint64(*s), nil
+	case *int32:
+		return uint64(*s), nil
+	case *int64:
+		return uint64(*s), nil
+	case uint:
+		return uint64(s), nil
+	case uint8:
+		return uint64(s), nil
+	case uint16:
+		return uint64(s), nil
+	case uint32:
+		return uint64(s), nil
+	case uint64:
+		return s, nil
+	case *uint:
+		return uint64(*s), nil
+	case *uint8:
+		return uint64(*s), nil
+	case *uint16:
+		return uint64(*s), nil
+	case *uint32:
+		return uint64(*s), nil
+	case *uint64:
+		return *s, nil
+	case float32:
+		return uint64(s), nil
+	case float64:
+		return uint64(s), nil
+	case *float32:
+		return uint64(*s), nil
+	case *float64:
+		return uint64(*s), nil
+	case string:
+		if v, err := strconv.ParseUint(s, 0, 0); err == nil {
 			return v, nil
 		}
-		return 0, fmt.Errorf("unable to cast %#v to uint64: %s", i, err)
-	case int, int64, int32, int16, int8, uint, uint64, uint32, uint16, uint8,
-		*int, *int64, *int32, *int16, *int8, *uint, *uint64, *uint32, *uint16, *uint8:
-		v := ToInt64(i)
-		if v < 0 {
-			return 0, fmt.Errorf("unable to cast negative value")
+	case *string:
+		if v, err := strconv.ParseUint(*s, 0, 0); err == nil {
+			return v, nil
 		}
-		return uint64(v), nil
-	case float32, float64,
-		*float32, *float64:
-		v := ToFloat64(s)
-		if v < 0 {
-			return 0, fmt.Errorf("unable to cast negative value")
-		}
-		return uint64(v), nil
-	case bool, *bool:
-		if ToBool(s) {
+	case bool:
+		if s {
 			return 1, nil
 		}
 		return 0, nil
-	case nil:
+	case *bool:
+		if *s {
+			return 1, nil
+		}
 		return 0, nil
-	default:
-		return 0, fmt.Errorf("unable to cast %#v of type %T to uint64", i, i)
 	}
+	return 0, fmt.Errorf("unable to cast %#v of type %T to uint64", i, i)
+}
+
+// ToFloat32 casts an interface{} to a float32.
+func ToFloat32(i interface{}) float32 {
+	v, _ := ToFloat64E(i)
+	return float32(v)
 }
 
 // ToFloat64 casts an interface{} to a float64.
@@ -200,54 +296,54 @@ func ToFloat64E(i interface{}) (float64, error) {
 		return 0, nil
 	}
 	switch s := i.(type) {
-	case float64:
-		return s, nil
-	case *float64:
-		return *s, nil
-	case float32:
-		return float64(s), nil
-	case *float32:
-		return float64(*s), nil
 	case int:
+		return float64(s), nil
+	case int8:
+		return float64(s), nil
+	case int16:
+		return float64(s), nil
+	case int32:
+		return float64(s), nil
+	case int64:
 		return float64(s), nil
 	case *int:
 		return float64(*s), nil
-	case int64:
-		return float64(s), nil
-	case *int64:
+	case *int8:
 		return float64(*s), nil
-	case int32:
-		return float64(s), nil
-	case *int32:
-		return float64(*s), nil
-	case int16:
-		return float64(s), nil
 	case *int16:
 		return float64(*s), nil
-	case int8:
-		return float64(s), nil
-	case *int8:
+	case *int32:
+		return float64(*s), nil
+	case *int64:
 		return float64(*s), nil
 	case uint:
 		return float64(s), nil
-	case *uint:
-		return float64(*s), nil
-	case uint64:
-		return float64(s), nil
-	case *uint64:
-		return float64(*s), nil
-	case uint32:
-		return float64(s), nil
-	case *uint32:
-		return float64(*s), nil
-	case uint16:
-		return float64(s), nil
-	case *uint16:
-		return float64(*s), nil
 	case uint8:
 		return float64(s), nil
+	case uint16:
+		return float64(s), nil
+	case uint32:
+		return float64(s), nil
+	case uint64:
+		return float64(s), nil
+	case *uint:
+		return float64(*s), nil
 	case *uint8:
 		return float64(*s), nil
+	case *uint16:
+		return float64(*s), nil
+	case *uint32:
+		return float64(*s), nil
+	case *uint64:
+		return float64(*s), nil
+	case float32:
+		return float64(s), nil
+	case float64:
+		return s, nil
+	case *float32:
+		return float64(*s), nil
+	case *float64:
+		return *s, nil
 	case string:
 		return strconv.ParseFloat(s, 64)
 	case *string:
@@ -269,12 +365,8 @@ func ToFloat64E(i interface{}) (float64, error) {
 
 // ToString casts an interface{} to a string.
 func ToString(i interface{}) string {
-	// interface 转 string
-	result, err := ToStringE(i)
-	if err != nil {
-		return err.Error()
-	}
-	return result
+	v, _ := ToStringE(i)
+	return v
 }
 
 // ToStringE casts an interface{} to a string.
@@ -283,6 +375,54 @@ func ToStringE(i interface{}) (string, error) {
 		return "", nil
 	}
 	switch s := i.(type) {
+	case int:
+		return strconv.Itoa(s), nil
+	case int8:
+		return strconv.FormatInt(int64(s), 10), nil
+	case int16:
+		return strconv.FormatInt(int64(s), 10), nil
+	case int32:
+		return strconv.Itoa(int(s)), nil
+	case int64:
+		return strconv.FormatInt(s, 10), nil
+	case *int:
+		return strconv.Itoa(*s), nil
+	case *int8:
+		return strconv.FormatInt(int64(*s), 10), nil
+	case *int16:
+		return strconv.FormatInt(int64(*s), 10), nil
+	case *int32:
+		return strconv.Itoa(int(*s)), nil
+	case *int64:
+		return strconv.FormatInt(*s, 10), nil
+	case uint:
+		return strconv.FormatUint(uint64(s), 10), nil
+	case uint8:
+		return strconv.FormatUint(uint64(s), 10), nil
+	case uint16:
+		return strconv.FormatUint(uint64(s), 10), nil
+	case uint32:
+		return strconv.FormatUint(uint64(s), 10), nil
+	case uint64:
+		return strconv.FormatUint(s, 10), nil
+	case *uint:
+		return strconv.FormatUint(uint64(*s), 10), nil
+	case *uint8:
+		return strconv.FormatUint(uint64(*s), 10), nil
+	case *uint16:
+		return strconv.FormatUint(uint64(*s), 10), nil
+	case *uint32:
+		return strconv.FormatUint(uint64(*s), 10), nil
+	case *uint64:
+		return strconv.FormatUint(*s, 10), nil
+	case float32:
+		return strconv.FormatFloat(float64(s), 'f', -1, 32), nil
+	case float64:
+		return strconv.FormatFloat(s, 'f', -1, 64), nil
+	case *float32:
+		return strconv.FormatFloat(float64(*s), 'f', -1, 32), nil
+	case *float64:
+		return strconv.FormatFloat(*s, 'f', -1, 64), nil
 	case string:
 		return s, nil
 	case *string:
@@ -291,54 +431,6 @@ func ToStringE(i interface{}) (string, error) {
 		return strconv.FormatBool(s), nil
 	case *bool:
 		return strconv.FormatBool(*s), nil
-	case float64:
-		return strconv.FormatFloat(s, 'f', -1, 64), nil
-	case *float64:
-		return strconv.FormatFloat(*s, 'f', -1, 64), nil
-	case float32:
-		return strconv.FormatFloat(float64(s), 'f', -1, 32), nil
-	case *float32:
-		return strconv.FormatFloat(float64(*s), 'f', -1, 32), nil
-	case int:
-		return strconv.Itoa(s), nil
-	case *int:
-		return strconv.Itoa(*s), nil
-	case int64:
-		return strconv.FormatInt(s, 10), nil
-	case *int64:
-		return strconv.FormatInt(*s, 10), nil
-	case int32:
-		return strconv.Itoa(int(s)), nil
-	case *int32:
-		return strconv.Itoa(int(*s)), nil
-	case int16:
-		return strconv.FormatInt(int64(s), 10), nil
-	case *int16:
-		return strconv.FormatInt(int64(*s), 10), nil
-	case int8:
-		return strconv.FormatInt(int64(s), 10), nil
-	case *int8:
-		return strconv.FormatInt(int64(*s), 10), nil
-	case uint:
-		return strconv.FormatUint(uint64(s), 10), nil
-	case *uint:
-		return strconv.FormatUint(uint64(*s), 10), nil
-	case uint64:
-		return strconv.FormatUint(s, 10), nil
-	case *uint64:
-		return strconv.FormatUint(*s, 10), nil
-	case uint32:
-		return strconv.FormatUint(uint64(s), 10), nil
-	case *uint32:
-		return strconv.FormatUint(uint64(*s), 10), nil
-	case uint16:
-		return strconv.FormatUint(uint64(s), 10), nil
-	case *uint16:
-		return strconv.FormatUint(uint64(*s), 10), nil
-	case uint8:
-		return strconv.FormatUint(uint64(s), 10), nil
-	case *uint8:
-		return strconv.FormatUint(uint64(*s), 10), nil
 	case []byte:
 		return string(s), nil
 	case template.HTML:
@@ -372,23 +464,70 @@ func ToDurationE(i interface{}) (time.Duration, error) {
 		return 0, nil
 	}
 	switch s := i.(type) {
+	case int:
+		return time.Duration(s), nil
+	case int8:
+		return time.Duration(s), nil
+	case int16:
+		return time.Duration(s), nil
+	case int32:
+		return time.Duration(s), nil
+	case int64:
+		return time.Duration(s), nil
+	case *int:
+		return time.Duration(*s), nil
+	case *int8:
+		return time.Duration(*s), nil
+	case *int16:
+		return time.Duration(*s), nil
+	case *int32:
+		return time.Duration(*s), nil
+	case *int64:
+		return time.Duration(*s), nil
+	case uint:
+		return time.Duration(s), nil
+	case uint8:
+		return time.Duration(s), nil
+	case uint16:
+		return time.Duration(s), nil
+	case uint32:
+		return time.Duration(s), nil
+	case uint64:
+		return time.Duration(s), nil
+	case *uint:
+		return time.Duration(*s), nil
+	case *uint8:
+		return time.Duration(*s), nil
+	case *uint16:
+		return time.Duration(*s), nil
+	case *uint32:
+		return time.Duration(*s), nil
+	case *uint64:
+		return time.Duration(*s), nil
+	case float32:
+		return time.Duration(s), nil
+	case float64:
+		return time.Duration(s), nil
+	case *float32:
+		return time.Duration(*s), nil
+	case *float64:
+		return time.Duration(*s), nil
+	case string:
+		if strings.ContainsAny(s, "nsuµmh") {
+			return time.ParseDuration(s)
+		} else {
+			return time.ParseDuration(s + "ns")
+		}
+	case *string:
+		if strings.ContainsAny(*s, "nsuµmh") {
+			return time.ParseDuration(*s)
+		} else {
+			return time.ParseDuration(*s + "ns")
+		}
 	case time.Duration:
 		return s, nil
-	case int, int64, int32, int16, int8, uint, uint64, uint32, uint16, uint8,
-		*int, *int64, *int32, *int16, *int8, *uint, *uint64, *uint32, *uint16, *uint8:
-		return time.Duration(ToInt64(s)), nil
-	case float32, float64,
-		*float32, *float64:
-		return time.Duration(ToFloat64(s)), nil
-	case string, *string:
-		v := ToString(s)
-		if strings.ContainsAny(v, "nsuµmh") {
-			return time.ParseDuration(v)
-		} else {
-			return time.ParseDuration(v + "ns")
-		}
 	default:
-		return 0, fmt.Errorf("unable to cast %#v of type %T to Duration", i, i)
+		return 0, fmt.Errorf("unable to cast %#v of type %T to time.Duration", i, i)
 	}
 }
 
