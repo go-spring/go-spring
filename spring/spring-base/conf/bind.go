@@ -338,14 +338,14 @@ func bindStruct(p *Properties, v reflect.Value, param BindParam) error {
 			continue
 		}
 
-		if util.IsPrimitiveValueType(ft.Type) {
+		if util.IsValueType(ft.Type) {
 			if subParam.Key == "" {
 				subParam.Key = ft.Name
 			} else {
 				subParam.Key = subParam.Key + "." + ft.Name
 			}
 			if err := BindValue(p, fv, subParam); err != nil {
-				continue
+				return err
 			}
 		}
 	}

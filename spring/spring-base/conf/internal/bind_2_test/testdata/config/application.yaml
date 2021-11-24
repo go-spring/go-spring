@@ -59,7 +59,7 @@ camera:
   floor2: camera_floor2
   floor3: camera_floor3
 
-db_map:
+DBMap:
   d1:
     username: root
     password: 123456
@@ -74,7 +74,7 @@ db_map:
     db: db2
 
 prefix_map:
-  db_map:
+  DBMap:
     d1:
       username: root
       password: 123456
