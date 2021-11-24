@@ -152,7 +152,40 @@ func ToUint64(i interface{}) uint64 {
 
 // ToUint64E casts an interface{} to a uint64.
 func ToUint64E(i interface{}) (uint64, error) {
-	return cast.ToUint64E(i)
+	if i == nil {
+		return 0, nil
+	}
+	switch s := i.(type) {
+	case string, *string:
+		v, err := strconv.ParseUint(ToString(s), 0, 64)
+		if err == nil {
+			return v, nil
+		}
+		return 0, fmt.Errorf("unable to cast %#v to uint64: %s", i, err)
+	case int, int64, int32, int16, int8, uint, uint64, uint32, uint16, uint8,
+		*int, *int64, *int32, *int16, *int8, *uint, *uint64, *uint32, *uint16, *uint8:
+		v := ToInt64(i)
+		if v < 0 {
+			return 0, fmt.Errorf("unable to cast negative value")
+		}
+		return uint64(v), nil
+	case float32, float64,
+		*float32, *float64:
+		v := ToFloat64(s)
+		if v < 0 {
+			return 0, fmt.Errorf("unable to cast negative value")
+		}
+		return uint64(v), nil
+	case bool, *bool:
+		if ToBool(s) {
+			return 1, nil
+		}
+		return 0, nil
+	case nil:
+		return 0, nil
+	default:
+		return 0, fmt.Errorf("unable to cast %#v of type %T to uint64", i, i)
+	}
 }
 
 // ToFloat64 casts an interface{} to a float64.
