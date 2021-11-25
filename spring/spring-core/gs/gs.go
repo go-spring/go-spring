@@ -60,10 +60,10 @@ type Container interface {
 
 type tempContainer struct {
 	p           *conf.Properties
-	beans       []*BeanDefinition
 	beansById   map[string]*BeanDefinition
 	beansByName map[string][]*BeanDefinition
 	beansByType map[reflect.Type][]*BeanDefinition
+	beans       []*BeanDefinition
 }
 
 // container 是 go-spring 框架的基石，实现了 Martin Fowler 在 << Inversion
@@ -75,13 +75,11 @@ type tempContainer struct {
 // 性绑定，要么同时使用依赖注入和属性绑定。
 type container struct {
 	*tempContainer
-	state refreshState
-
-	wg     sync.WaitGroup
-	ctx    context.Context
-	cancel context.CancelFunc
-
-	destroyers []func() // 使用函数闭包来避免引入新的类型。
+	ctx        context.Context
+	cancel     context.CancelFunc
+	destroyers []func()
+	state      refreshState
+	wg         sync.WaitGroup
 }
 
 // New 创建 IoC 容器。
@@ -169,9 +167,9 @@ func getBeforeDestroyers(destroyers *list.List, i interface{}) *list.List {
 
 // wiringStack 记录 bean 的注入路径。
 type wiringStack struct {
-	beans        []*BeanDefinition
 	destroyers   *list.List
 	destroyerMap map[string]*destroyer
+	beans        []*BeanDefinition
 }
 
 func newWiringStack() *wiringStack {

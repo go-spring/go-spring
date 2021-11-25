@@ -1,6 +1,6 @@
 # spring-echo
 
-封装 github.com/labstack/echo 实现的 Web 框架。
+封装 github.com/labstack/echo/v4 实现的 Web 框架。
 
 - [创建 Web 容器](#创建-web-容器)
     - [NewContainer](#newcontainer)

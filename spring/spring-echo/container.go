@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-// Package SpringEcho 封装 github.com/labstack/echo 实现的 Web 框架
+// Package SpringEcho 封装 github.com/labstack/echo/v4 实现的 Web 框架
 package SpringEcho
 
 import (
@@ -28,7 +28,7 @@ import (
 	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/web"
-	"github.com/labstack/echo"
+	"github.com/labstack/echo/v4"
 )
 
 func init() {

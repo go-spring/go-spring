@@ -29,7 +29,7 @@ import (
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/web"
 	"github.com/go-spring/spring-echo"
-	"github.com/labstack/echo"
+	"github.com/labstack/echo/v4"
 )
 
 func TestContext_PanicEchoHttpError(t *testing.T) {
