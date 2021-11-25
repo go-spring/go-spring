@@ -24,41 +24,60 @@ import (
 	"github.com/go-spring/spring-base/util"
 )
 
-func Test_Format(t *testing.T) {
+func Test_toNativeLayout(t *testing.T) {
+
 	layouts := []struct {
 		Custom string
 		Native string
 	}{
-		{"d", "02"},
-		{"D", "Mon"},
-		{"j", "1"},
-		{"Y", "2006"},
-		{"y", "06"},
-		{"m", "01"},
-		{"M", "Jan"},
-		{"a", "pm"},
-		{"A", "PM"},
-		{"H", "15"},
-		{"h", "3"},
-		{"i", "04"},
-		{"s", "05"},
-		{"Y-m-d H:i:s", "2006-01-02 15:04:05"},
+		{Custom: "yyyy", Native: "2006"},
+		{Custom: "MM", Native: "01"},
+		{Custom: "dd", Native: "02"},
+		{Custom: "D", Native: "002"},
+		{Custom: "H", Native: "15"},
+		{Custom: "h", Native: "03"},
+		{Custom: "m", Native: "04"},
+		{Custom: "s", Native: "05"},
+		{Custom: "yyyy-MM-dd H:m:s", Native: "2006-01-02 15:04:05"},
+	}
+
+	for _, layout := range layouts {
+		format := util.ToNativeLayout(layout.Custom)
+		assert.Equal(t, layout.Native, format)
+	}
+}
+
+func Test_format(t *testing.T) {
+
+	layouts := []struct {
+		Custom string
+		Native string
+	}{
+		{Custom: "yyyy", Native: "2006"},
+		{Custom: "MM", Native: "01"},
+		{Custom: "dd", Native: "02"},
+		{Custom: "D", Native: "002"},
+		{Custom: "H", Native: "15"},
+		{Custom: "h", Native: "03"},
+		{Custom: "m", Native: "04"},
+		{Custom: "s", Native: "05"},
+		{Custom: "yyyy-MM-dd H:m:s", Native: "2006-01-02 15:04:05"},
 	}
 
 	now := time.Now()
 
 	for _, layout := range layouts {
-		custom := util.Format(now, layout.Custom)
 		native := now.Format(layout.Native)
+		custom := util.Format(now, layout.Custom)
 		assert.Equal(t, native, custom)
 	}
 }
 
 // BenchmarkFormat
 // BenchmarkFormat/native
-// BenchmarkFormat/native-8         	 4865997	       217 ns/op
+// BenchmarkFormat/native-8         	 6000045	       198 ns/op
 // BenchmarkFormat/custom
-// BenchmarkFormat/custom-8         	 2150994	       551 ns/op
+// BenchmarkFormat/custom-8         	 3217158	       373 ns/op
 func BenchmarkFormat(b *testing.B) {
 	now := time.Now()
 
@@ -70,7 +89,7 @@ func BenchmarkFormat(b *testing.B) {
 
 	b.Run("custom", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			util.Format(now, "Y-m-d H:i:s")
+			util.Format(now, "yyyy-MM-dd H:m:s")
 		}
 	})
 }

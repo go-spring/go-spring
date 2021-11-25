@@ -21,38 +21,74 @@ import (
 	"time"
 )
 
-// maps
-var standards = map[byte]string{
-	'd': "02",
-	'D': "Mon",
-	'j': "1",
-	'Y': "2006",
-	'y': "06",
-	'm': "01",
-	'M': "Jan",
-	'a': "pm",
-	'A': "PM",
-	'H': "15",
-	'h': "3",
-	'i': "04",
-	's': "05",
-}
-
 // Format time 支持 YY-MM-DD 格式化会不会更好呢？
 func Format(t time.Time, layout string) string {
-	layout = toStandardLayout(layout)
+	layout = ToNativeLayout(layout)
 	return t.Format(layout)
 }
 
-// toStandardLayout
-func toStandardLayout(format string) string {
+// ToNativeLayout timestamp convert 2006/01/02 15:04:05
+func ToNativeLayout(layout string) string {
 	buf := bytes.NewBuffer(nil)
-	for i := 0; i < len(format); i++ {
-		if layout, ok := standards[format[i]]; ok {
-			buf.WriteString(layout)
-		} else {
-			buf.WriteByte(format[i])
+
+	for layout != "" {
+		prefix, std, suffix := nextChunk(layout)
+		if prefix != "" {
+			buf.WriteString(prefix)
+		}
+		layout = suffix
+		if std != "" {
+			buf.WriteString(std)
 		}
 	}
+
 	return buf.String()
+}
+
+// nextChunk
+func nextChunk(layout string) (prefix string, now string, suffix string) {
+	for i := 0; i < len(layout); i++ {
+		switch b := layout[i]; b {
+		case 'y': // yy yyyy
+			if len(layout) >= i+4 && layout[i:i+4] == "yyyy" {
+				return layout[0:i], "2006", layout[i+4:]
+			}
+			if len(layout) >= i+2 && layout[i:i+2] == "yy" {
+				return layout[0:i], "06", layout[i+2:]
+			}
+		case 'M': // MM MMM
+			if len(layout) >= i+3 && layout[i:i+3] == "MMM" {
+				return layout[0:i], "Jan", layout[i+3:]
+			}
+			if len(layout) >= i+2 && layout[i:i+2] == "MM" {
+				return layout[0:i], "01", layout[i+2:]
+			}
+		case 'd': // dd
+			if len(layout) >= i+2 && layout[i:i+2] == "dd" {
+				return layout[0:i], "02", layout[i+2:]
+			}
+		case 'D': // d
+			if len(layout) >= i+1 && layout[i:i+1] == "D" {
+				return layout[0:i], "002", layout[i+1:]
+			}
+		case 'H': // H
+			if len(layout) >= i+1 && layout[i:i+1] == "H" {
+				return layout[0:i], "15", layout[i+1:]
+			}
+		case 'h': // h
+			if len(layout) >= i+1 && layout[i:i+1] == "h" {
+				return layout[0:i], "03", layout[i+1:]
+			}
+		case 'm': // m
+			if len(layout) >= i+1 && layout[i:i+1] == "m" {
+				return layout[0:i], "04", layout[i+1:]
+			}
+		case 's': // s
+			if len(layout) >= i+1 && layout[i:i+1] == "s" {
+				return layout[0:i], "05", layout[i+1:]
+			}
+		}
+	}
+
+	return layout, "", ""
 }
