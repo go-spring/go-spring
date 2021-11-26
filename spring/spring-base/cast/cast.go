@@ -25,8 +25,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/spf13/cast"
 )
 
 // ToBool casts an interface{} to a bool.
@@ -539,7 +537,69 @@ func ToTime(i interface{}) time.Time {
 
 // ToTimeE casts an interface{} to a time.Time.
 func ToTimeE(i interface{}) (time.Time, error) {
-	return cast.ToTimeE(i)
+	if i == nil {
+		return time.Time{}, nil
+	}
+	switch v := i.(type) {
+	case time.Time:
+		return v, nil
+	case *time.Time:
+		return *v, nil
+	case string:
+		return parseDateWith(v, time.Local)
+	case *string:
+		return parseDateWith(*v, time.Local)
+	case int:
+		return time.Unix(int64(v), 0), nil
+	case int8:
+		return time.Unix(int64(v), 0), nil
+	case int16:
+		return time.Unix(int64(v), 0), nil
+	case int32:
+		return time.Unix(int64(v), 0), nil
+	case int64:
+		return time.Unix(v, 0), nil
+	case *int:
+		return time.Unix(int64(*v), 0), nil
+	case *int8:
+		return time.Unix(int64(*v), 0), nil
+	case *int16:
+		return time.Unix(int64(*v), 0), nil
+	case *int32:
+		return time.Unix(int64(*v), 0), nil
+	case *int64:
+		return time.Unix(*v, 0), nil
+	case uint:
+		return time.Unix(int64(v), 0), nil
+	case uint8:
+		return time.Unix(int64(v), 0), nil
+	case uint16:
+		return time.Unix(int64(v), 0), nil
+	case uint32:
+		return time.Unix(int64(v), 0), nil
+	case uint64:
+		return time.Unix(int64(v), 0), nil
+	case *uint:
+		return time.Unix(int64(*v), 0), nil
+	case *uint8:
+		return time.Unix(int64(*v), 0), nil
+	case *uint16:
+		return time.Unix(int64(*v), 0), nil
+	case *uint32:
+		return time.Unix(int64(*v), 0), nil
+	case *uint64:
+		return time.Unix(int64(*v), 0), nil
+	case float32:
+		return time.Unix(int64(v), 0), nil
+	case float64:
+		return time.Unix(int64(v), 0), nil
+	case *float32:
+		return time.Unix(int64(*v), 0), nil
+	case *float64:
+		return time.Unix(int64(*v), 0), nil
+	default:
+		return time.Time{}, fmt.Errorf("unable to cast %#v of type %T to Time", i, i)
+	}
 }
 
 // ToStringSlice casts an interface to a []string type.
