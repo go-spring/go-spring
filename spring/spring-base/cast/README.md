@@ -21,5 +21,5 @@
 | ToDurationE | casts an interface{} to a time.Duration. |
 | ToTime | casts an interface{} to a time.Time. |
 | ToTimeE | casts an interface{} to a time.Time. |
-| ToStringSlice | casts an interface to a []string type. |
-| ToStringSliceE | casts an interface to a []string type. |
+| ToStringSlice | casts an interface{} to a []string. |
+| ToStringSliceE | casts an interface{} to a []string. |

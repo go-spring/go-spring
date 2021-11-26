@@ -34,10 +34,9 @@ func ToBool(i interface{}) bool {
 
 // ToBoolE casts an interface{} to a bool.
 func ToBoolE(i interface{}) (bool, error) {
-	if i == nil {
-		return false, nil
-	}
 	switch b := i.(type) {
+	case nil:
+		return false, nil
 	case int:
 		return b != 0, nil
 	case int8:
@@ -131,10 +130,9 @@ func ToInt64(i interface{}) int64 {
 
 // ToInt64E casts an interface{} to an int64.
 func ToInt64E(i interface{}) (int64, error) {
-	if i == nil {
-		return 0, nil
-	}
 	switch s := i.(type) {
+	case nil:
+		return 0, nil
 	case int:
 		return int64(s), nil
 	case int8:
@@ -237,10 +235,9 @@ func ToUint64(i interface{}) uint64 {
 
 // ToUint64E casts an interface{} to an uint64.
 func ToUint64E(i interface{}) (uint64, error) {
-	if i == nil {
-		return 0, nil
-	}
 	switch s := i.(type) {
+	case nil:
+		return 0, nil
 	case int:
 		return uint64(s), nil
 	case int8:
@@ -325,10 +322,9 @@ func ToFloat64(i interface{}) float64 {
 
 // ToFloat64E casts an interface{} to a float64.
 func ToFloat64E(i interface{}) (float64, error) {
-	if i == nil {
-		return 0, nil
-	}
 	switch s := i.(type) {
+	case nil:
+		return 0, nil
 	case int:
 		return float64(s), nil
 	case int8:
@@ -404,10 +400,9 @@ func ToString(i interface{}) string {
 
 // ToStringE casts an interface{} to a string.
 func ToStringE(i interface{}) (string, error) {
-	if i == nil {
-		return "", nil
-	}
 	switch s := i.(type) {
+	case nil:
+		return "", nil
 	case int:
 		return strconv.Itoa(s), nil
 	case int8:
@@ -493,10 +488,9 @@ func ToDuration(i interface{}) time.Duration {
 
 // ToDurationE casts an interface{} to a time.Duration.
 func ToDurationE(i interface{}) (time.Duration, error) {
-	if i == nil {
-		return 0, nil
-	}
 	switch s := i.(type) {
+	case nil:
+		return 0, nil
 	case int:
 		return time.Duration(s), nil
 	case int8:
@@ -578,16 +572,14 @@ func ToTime(i interface{}, opts ...TimeOption) time.Time {
 // ToTimeE casts an interface{} to a time.Time.
 func ToTimeE(i interface{}, opts ...TimeOption) (time.Time, error) {
 
-	if i == nil {
-		return time.Time{}, nil
-	}
-
 	var arg timeArg
 	for _, opt := range opts {
 		opt(&arg)
 	}
 
 	switch v := i.(type) {
+	case nil:
+		return time.Time{}, nil
 	case int:
 		return time.Unix(int64(v), 0), nil
 	case int8:
@@ -659,6 +651,10 @@ func ToStringSlice(i interface{}) []string {
 func ToStringSliceE(i interface{}) ([]string, error) {
 
 	switch v := i.(type) {
+	case nil:
+		return nil, nil
+	case []string:
+		return v, nil
 	case []interface{}:
 		var slice []string
 		for j := 0; j < len(v); j++ {
@@ -669,8 +665,6 @@ func ToStringSliceE(i interface{}) ([]string, error) {
 			slice = append(slice, s)
 		}
 		return slice, nil
-	case []string:
-		return v, nil
 	}
 
 	switch v := reflect.ValueOf(i); v.Kind() {
