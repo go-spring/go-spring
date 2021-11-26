@@ -25,8 +25,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/spf13/cast"
 )
 
 // ToBool casts an interface{} to a bool.
@@ -532,14 +530,76 @@ func ToDurationE(i interface{}) (time.Duration, error) {
 }
 
 // ToTime casts an interface{} to a time.Time.
-func ToTime(i interface{}) time.Time {
-	v, _ := ToTimeE(i)
+func ToTime(i interface{}, options ...*TimeCastOption) time.Time {
+	v, _ := ToTimeE(i, options...)
 	return v
 }
 
 // ToTimeE casts an interface{} to a time.Time.
-func ToTimeE(i interface{}) (time.Time, error) {
-	return cast.ToTimeE(i)
+func ToTimeE(i interface{}, options ...*TimeCastOption) (time.Time, error) {
+	if i == nil {
+		return time.Time{}, nil
+	}
+	switch v := i.(type) {
+	case time.Time:
+		return v, nil
+	case *time.Time:
+		return *v, nil
+	case string:
+		return time.Parse(getTimeCastOption(options...).GetFormat(), v)
+	case *string:
+		return time.Parse(getTimeCastOption(options...).GetFormat(), *v)
+	case int:
+		return time.Unix(int64(v), 0), nil
+	case int8:
+		return time.Unix(int64(v), 0), nil
+	case int16:
+		return time.Unix(int64(v), 0), nil
+	case int32:
+		return time.Unix(int64(v), 0), nil
+	case int64:
+		return time.Unix(v, 0), nil
+	case *int:
+		return time.Unix(int64(*v), 0), nil
+	case *int8:
+		return time.Unix(int64(*v), 0), nil
+	case *int16:
+		return time.Unix(int64(*v), 0), nil
+	case *int32:
+		return time.Unix(int64(*v), 0), nil
+	case *int64:
+		return time.Unix(*v, 0), nil
+	case uint:
+		return time.Unix(int64(v), 0), nil
+	case uint8:
+		return time.Unix(int64(v), 0), nil
+	case uint16:
+		return time.Unix(int64(v), 0), nil
+	case uint32:
+		return time.Unix(int64(v), 0), nil
+	case uint64:
+		return time.Unix(int64(v), 0), nil
+	case *uint:
+		return time.Unix(int64(*v), 0), nil
+	case *uint8:
+		return time.Unix(int64(*v), 0), nil
+	case *uint16:
+		return time.Unix(int64(*v), 0), nil
+	case *uint32:
+		return time.Unix(int64(*v), 0), nil
+	case *uint64:
+		return time.Unix(int64(*v), 0), nil
+	case float32:
+		return time.Unix(int64(v), 0), nil
+	case float64:
+		return time.Unix(int64(v), 0), nil
+	case *float32:
+		return time.Unix(int64(*v), 0), nil
+	case *float64:
+		return time.Unix(int64(*v), 0), nil
+	default:
+		return time.Time{}, fmt.Errorf("unable to cast %#v of type %T to Time", i, i)
+	}
 }
 
 // ToStringSlice casts an interface to a []string type.
