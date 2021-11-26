@@ -530,13 +530,13 @@ func ToDurationE(i interface{}) (time.Duration, error) {
 }
 
 // ToTime casts an interface{} to a time.Time.
-func ToTime(i interface{}) time.Time {
-	v, _ := ToTimeE(i)
+func ToTime(i interface{}, options ...*TimeCastOption) time.Time {
+	v, _ := ToTimeE(i, options...)
 	return v
 }
 
 // ToTimeE casts an interface{} to a time.Time.
-func ToTimeE(i interface{}) (time.Time, error) {
+func ToTimeE(i interface{}, options ...*TimeCastOption) (time.Time, error) {
 	if i == nil {
 		return time.Time{}, nil
 	}
@@ -546,9 +546,9 @@ func ToTimeE(i interface{}) (time.Time, error) {
 	case *time.Time:
 		return *v, nil
 	case string:
-		return parseDateWith(v, time.Local)
+		return time.Parse(getTimeCastOption(options...).GetFormat(), v)
 	case *string:
-		return parseDateWith(*v, time.Local)
+		return time.Parse(getTimeCastOption(options...).GetFormat(), *v)
 	case int:
 		return time.Unix(int64(v), 0), nil
 	case int8:
