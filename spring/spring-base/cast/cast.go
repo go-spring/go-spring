@@ -23,7 +23,6 @@ import (
 	"html/template"
 	"reflect"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -104,6 +103,24 @@ func ToBoolE(i interface{}) (bool, error) {
 func ToInt(i interface{}) int {
 	v, _ := ToInt64E(i)
 	return int(v)
+}
+
+// ToInt8 casts an interface{} to an int8.
+func ToInt8(i interface{}) int8 {
+	v, _ := ToInt64E(i)
+	return int8(v)
+}
+
+// ToInt16 casts an interface{} to an int16.
+func ToInt16(i interface{}) int16 {
+	v, _ := ToInt64E(i)
+	return int16(v)
+}
+
+// ToInt32 casts an interface{} to an int32.
+func ToInt32(i interface{}) int32 {
+	v, _ := ToInt64E(i)
+	return int32(v)
 }
 
 // ToInt64 casts an interface{} to an int64.
@@ -192,6 +209,24 @@ func ToInt64E(i interface{}) (int64, error) {
 func ToUint(i interface{}) uint {
 	v, _ := ToUint64E(i)
 	return uint(v)
+}
+
+// ToUint8 casts an interface{} to an uint8.
+func ToUint8(i interface{}) uint8 {
+	v, _ := ToUint64E(i)
+	return uint8(v)
+}
+
+// ToUint16 casts an interface{} to an uint16.
+func ToUint16(i interface{}) uint16 {
+	v, _ := ToUint64E(i)
+	return uint16(v)
+}
+
+// ToUint32 casts an interface{} to an uint32.
+func ToUint32(i interface{}) uint32 {
+	v, _ := ToUint64E(i)
+	return uint32(v)
 }
 
 // ToUint64 casts an interface{} to an uint64.
@@ -511,17 +546,9 @@ func ToDurationE(i interface{}) (time.Duration, error) {
 	case *float64:
 		return time.Duration(*s), nil
 	case string:
-		if strings.ContainsAny(s, "nsuµmh") {
-			return time.ParseDuration(s)
-		} else {
-			return time.ParseDuration(s + "ns")
-		}
+		return time.ParseDuration(s)
 	case *string:
-		if strings.ContainsAny(*s, "nsuµmh") {
-			return time.ParseDuration(*s)
-		} else {
-			return time.ParseDuration(*s + "ns")
-		}
+		return time.ParseDuration(*s)
 	case time.Duration:
 		return s, nil
 	default:
@@ -529,26 +556,38 @@ func ToDurationE(i interface{}) (time.Duration, error) {
 	}
 }
 
+type timeArg struct {
+	format string
+}
+
+type TimeOption func(*timeArg)
+
+// TimeFormat sets format to time.Parse.
+func TimeFormat(format string) TimeOption {
+	return func(arg *timeArg) {
+		arg.format = format
+	}
+}
+
 // ToTime casts an interface{} to a time.Time.
-func ToTime(i interface{}, options ...*TimeCastOption) time.Time {
-	v, _ := ToTimeE(i, options...)
+func ToTime(i interface{}, opts ...TimeOption) time.Time {
+	v, _ := ToTimeE(i, opts...)
 	return v
 }
 
 // ToTimeE casts an interface{} to a time.Time.
-func ToTimeE(i interface{}, options ...*TimeCastOption) (time.Time, error) {
+func ToTimeE(i interface{}, opts ...TimeOption) (time.Time, error) {
+
 	if i == nil {
 		return time.Time{}, nil
 	}
+
+	var arg timeArg
+	for _, opt := range opts {
+		opt(&arg)
+	}
+
 	switch v := i.(type) {
-	case time.Time:
-		return v, nil
-	case *time.Time:
-		return *v, nil
-	case string:
-		return time.Parse(getTimeCastOption(options...).GetFormat(), v)
-	case *string:
-		return time.Parse(getTimeCastOption(options...).GetFormat(), *v)
 	case int:
 		return time.Unix(int64(v), 0), nil
 	case int8:
@@ -597,28 +636,55 @@ func ToTimeE(i interface{}, options ...*TimeCastOption) (time.Time, error) {
 		return time.Unix(int64(*v), 0), nil
 	case *float64:
 		return time.Unix(int64(*v), 0), nil
+	case string:
+		return time.Parse(arg.format, v)
+	case *string:
+		return time.Parse(arg.format, *v)
+	case time.Time:
+		return v, nil
+	case *time.Time:
+		return *v, nil
 	default:
 		return time.Time{}, fmt.Errorf("unable to cast %#v of type %T to Time", i, i)
 	}
 }
 
-// ToStringSlice casts an interface to a []string type.
+// ToStringSlice casts an interface{} to a []string.
 func ToStringSlice(i interface{}) []string {
 	v, _ := ToStringSliceE(i)
 	return v
 }
 
-// ToStringSliceE casts an interface to a []string type.
+// ToStringSliceE casts an interface{} to a []string.
 func ToStringSliceE(i interface{}) ([]string, error) {
-	// TODO 使用具体的类型判断，看看是否有更好的性能。
+
+	switch v := i.(type) {
+	case []interface{}:
+		var slice []string
+		for j := 0; j < len(v); j++ {
+			s, err := ToStringE(v[j])
+			if err != nil {
+				return nil, err
+			}
+			slice = append(slice, s)
+		}
+		return slice, nil
+	case []string:
+		return v, nil
+	}
+
 	switch v := reflect.ValueOf(i); v.Kind() {
 	case reflect.Slice, reflect.Array:
 		var slice []string
 		for j := 0; j < v.Len(); j++ {
-			s := ToString(v.Index(j).Interface())
+			s, err := ToStringE(v.Index(j).Interface())
+			if err != nil {
+				return nil, err
+			}
 			slice = append(slice, s)
 		}
 		return slice, nil
 	}
+
 	return nil, fmt.Errorf("unable to cast %#v of type %T to []string", i, i)
 }
