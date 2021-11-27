@@ -181,13 +181,9 @@ func ToInt64E(i interface{}) (int64, error) {
 	case *float64:
 		return int64(*s), nil
 	case string:
-		if v, err := strconv.ParseInt(s, 0, 0); err == nil {
-			return v, nil
-		}
+		return strconv.ParseInt(s, 0, 0)
 	case *string:
-		if v, err := strconv.ParseInt(*s, 0, 0); err == nil {
-			return v, nil
-		}
+		return strconv.ParseInt(*s, 0, 0)
 	case bool:
 		if s {
 			return 1, nil
@@ -286,13 +282,9 @@ func ToUint64E(i interface{}) (uint64, error) {
 	case *float64:
 		return uint64(*s), nil
 	case string:
-		if v, err := strconv.ParseUint(s, 0, 0); err == nil {
-			return v, nil
-		}
+		return strconv.ParseUint(s, 0, 0)
 	case *string:
-		if v, err := strconv.ParseUint(*s, 0, 0); err == nil {
-			return v, nil
-		}
+		return strconv.ParseUint(*s, 0, 0)
 	case bool:
 		if s {
 			return 1, nil
