@@ -550,88 +550,74 @@ func ToDurationE(i interface{}) (time.Duration, error) {
 	}
 }
 
-type timeArg struct {
-	format string
-}
-
-type TimeOption func(*timeArg)
-
-// TimeFormat sets format to time.Parse.
-func TimeFormat(format string) TimeOption {
-	return func(arg *timeArg) {
-		arg.format = format
-	}
+type TimeArg struct {
+	Format string        // 解析日期字符串时使用该参数
+	Unit   time.Duration // 解析整数日期值时使用该参数
 }
 
 // ToTime casts an interface{} to a time.Time.
-func ToTime(i interface{}, opts ...TimeOption) time.Time {
-	v, _ := ToTimeE(i, opts...)
+func ToTime(i interface{}, arg TimeArg) time.Time {
+	v, _ := ToTimeE(i, arg)
 	return v
 }
 
 // ToTimeE casts an interface{} to a time.Time.
-func ToTimeE(i interface{}, opts ...TimeOption) (time.Time, error) {
-
-	var arg timeArg
-	for _, opt := range opts {
-		opt(&arg)
-	}
-
+func ToTimeE(i interface{}, arg TimeArg) (time.Time, error) {
 	switch v := i.(type) {
 	case nil:
 		return time.Time{}, nil
 	case int:
-		return time.Unix(int64(v), 0), nil
+		return parseTimestamp(int64(v) * int64(arg.Unit)), nil
 	case int8:
-		return time.Unix(int64(v), 0), nil
+		return parseTimestamp(int64(v) * int64(arg.Unit)), nil
 	case int16:
-		return time.Unix(int64(v), 0), nil
+		return parseTimestamp(int64(v) * int64(arg.Unit)), nil
 	case int32:
-		return time.Unix(int64(v), 0), nil
+		return parseTimestamp(int64(v) * int64(arg.Unit)), nil
 	case int64:
-		return time.Unix(v, 0), nil
+		return parseTimestamp((v) * int64(arg.Unit)), nil
 	case *int:
-		return time.Unix(int64(*v), 0), nil
+		return parseTimestamp(int64(*v) * int64(arg.Unit)), nil
 	case *int8:
-		return time.Unix(int64(*v), 0), nil
+		return parseTimestamp(int64(*v) * int64(arg.Unit)), nil
 	case *int16:
-		return time.Unix(int64(*v), 0), nil
+		return parseTimestamp(int64(*v) * int64(arg.Unit)), nil
 	case *int32:
-		return time.Unix(int64(*v), 0), nil
+		return parseTimestamp(int64(*v) * int64(arg.Unit)), nil
 	case *int64:
-		return time.Unix(*v, 0), nil
+		return parseTimestamp((*v) * int64(arg.Unit)), nil
 	case uint:
-		return time.Unix(int64(v), 0), nil
+		return parseTimestamp(int64(v) * int64(arg.Unit)), nil
 	case uint8:
-		return time.Unix(int64(v), 0), nil
+		return parseTimestamp(int64(v) * int64(arg.Unit)), nil
 	case uint16:
-		return time.Unix(int64(v), 0), nil
+		return parseTimestamp(int64(v) * int64(arg.Unit)), nil
 	case uint32:
-		return time.Unix(int64(v), 0), nil
+		return parseTimestamp(int64(v) * int64(arg.Unit)), nil
 	case uint64:
-		return time.Unix(int64(v), 0), nil
+		return parseTimestamp(int64(v) * int64(arg.Unit)), nil
 	case *uint:
-		return time.Unix(int64(*v), 0), nil
+		return parseTimestamp(int64(*v) * int64(arg.Unit)), nil
 	case *uint8:
-		return time.Unix(int64(*v), 0), nil
+		return parseTimestamp(int64(*v) * int64(arg.Unit)), nil
 	case *uint16:
-		return time.Unix(int64(*v), 0), nil
+		return parseTimestamp(int64(*v) * int64(arg.Unit)), nil
 	case *uint32:
-		return time.Unix(int64(*v), 0), nil
+		return parseTimestamp(int64(*v) * int64(arg.Unit)), nil
 	case *uint64:
-		return time.Unix(int64(*v), 0), nil
+		return parseTimestamp(int64(*v) * int64(arg.Unit)), nil
 	case float32:
-		return time.Unix(int64(v), 0), nil
+		return parseTimestamp(int64(float64(v) * float64(arg.Unit))), nil
 	case float64:
-		return time.Unix(int64(v), 0), nil
+		return parseTimestamp(int64((v) * float64(arg.Unit))), nil
 	case *float32:
-		return time.Unix(int64(*v), 0), nil
+		return parseTimestamp(int64(float64(*v) * float64(arg.Unit))), nil
 	case *float64:
-		return time.Unix(int64(*v), 0), nil
+		return parseTimestamp(int64((*v) * float64(arg.Unit))), nil
 	case string:
-		return time.Parse(arg.format, v)
+		return time.Parse(arg.Format, v)
 	case *string:
-		return time.Parse(arg.format, *v)
+		return time.Parse(arg.Format, *v)
 	case time.Time:
 		return v, nil
 	case *time.Time:
@@ -639,6 +625,11 @@ func ToTimeE(i interface{}, opts ...TimeOption) (time.Time, error) {
 	default:
 		return time.Time{}, fmt.Errorf("unable to cast %#v of type %T to Time", i, i)
 	}
+}
+
+// parseTimestamp parse nanosecond time.
+func parseTimestamp(v int64) time.Time {
+	return time.Unix(v/int64(time.Second), v%int64(time.Second))
 }
 
 // ToStringSlice casts an interface{} to a []string.
