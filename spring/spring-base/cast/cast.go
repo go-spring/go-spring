@@ -21,7 +21,6 @@ package cast
 import (
 	"fmt"
 	"html/template"
-	"reflect"
 	"strconv"
 	"time"
 )
@@ -640,7 +639,6 @@ func ToStringSlice(i interface{}) []string {
 
 // ToStringSliceE casts an interface{} to a []string.
 func ToStringSliceE(i interface{}) ([]string, error) {
-
 	switch v := i.(type) {
 	case nil:
 		return nil, nil
@@ -657,19 +655,84 @@ func ToStringSliceE(i interface{}) ([]string, error) {
 		}
 		return slice, nil
 	}
+	return nil, fmt.Errorf("unable to cast %#v of type %T to []string", i, i)
+}
 
-	switch v := reflect.ValueOf(i); v.Kind() {
-	case reflect.Slice, reflect.Array:
-		var slice []string
-		for j := 0; j < v.Len(); j++ {
-			s, err := ToStringE(v.Index(j).Interface())
+// ToStringMap casts an interface{} to a map[string]interface{}.
+func ToStringMap(i interface{}) map[string]interface{} {
+	v, _ := ToStringMapE(i)
+	return v
+}
+
+// ToStringMapE casts an interface{} to a map[string]interface{}.
+func ToStringMapE(i interface{}) (map[string]interface{}, error) {
+	switch v := i.(type) {
+	case nil:
+		return nil, nil
+	case map[string]interface{}:
+		return v, nil
+	case map[interface{}]interface{}:
+		var m = map[string]interface{}{}
+		for key, val := range v {
+			k, err := ToStringE(key)
 			if err != nil {
 				return nil, err
 			}
-			slice = append(slice, s)
+			m[k] = val
 		}
-		return slice, nil
+		return m, nil
+	default:
+		return nil, fmt.Errorf("unable to cast %#v of type %T to map[string]interface{}", i, i)
 	}
+}
 
-	return nil, fmt.Errorf("unable to cast %#v of type %T to []string", i, i)
+// ToStringMapString casts an interface{} to a map[string]string.
+func ToStringMapString(i interface{}) map[string]string {
+	v, _ := ToStringMapStringE(i)
+	return v
+}
+
+// ToStringMapStringE casts an interface{} to a map[string]string.
+func ToStringMapStringE(i interface{}) (map[string]string, error) {
+	switch v := i.(type) {
+	case nil:
+		return nil, nil
+	case map[string]string:
+		return v, nil
+	case map[string]interface{}:
+		var err error
+		var m = map[string]string{}
+		for key, val := range v {
+			m[key], err = ToStringE(val)
+			if err != nil {
+				return nil, err
+			}
+		}
+		return m, nil
+	case map[interface{}]string:
+		var m = map[string]string{}
+		for key, val := range v {
+			k, err := ToStringE(key)
+			if err != nil {
+				return nil, err
+			}
+			m[k] = val
+		}
+		return m, nil
+	case map[interface{}]interface{}:
+		var m = map[string]string{}
+		for key, val := range v {
+			k, err := ToStringE(key)
+			if err != nil {
+				return nil, err
+			}
+			m[k], err = ToStringE(val)
+			if err != nil {
+				return nil, err
+			}
+		}
+		return m, nil
+	default:
+		return nil, fmt.Errorf("unable to cast %#v of type %T to map[string]string", i, i)
+	}
 }
