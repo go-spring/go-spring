@@ -21,13 +21,17 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"reflect"
 	"regexp"
-	"runtime"
 	"strings"
-	"testing"
 )
+
+// T testing.T 的简化接口。
+type T interface {
+	Helper()
+	Fail()
+	Log(args ...interface{})
+}
 
 type Cases = []struct {
 	Condition bool
@@ -51,68 +55,64 @@ func Check(cases Cases) error {
 }
 
 // True asserts that got is true.
-func True(t *testing.T, got bool, msg ...string) {
+func True(t T, got bool, msg ...string) {
+	t.Helper()
 	if !got {
-		str := "got false but expect true"
-		args := append([]string{str}, msg...)
-		fail(t, 1, strings.Join(args, "; "))
+		fail(t, "got false but expect true", msg...)
 	}
 }
 
 // False asserts that got is false.
-func False(t *testing.T, got bool, msg ...string) {
+func False(t T, got bool, msg ...string) {
+	t.Helper()
 	if got {
-		str := "got true but expect false"
-		args := append([]string{str}, msg...)
-		fail(t, 1, strings.Join(args, "; "))
+		fail(t, "got true but expect false", msg...)
 	}
 }
 
 // Nil asserts that got is nil.
-func Nil(t *testing.T, got interface{}, msg ...string) {
+func Nil(t T, got interface{}, msg ...string) {
+	t.Helper()
 	if got != nil {
 		str := fmt.Sprintf("got (%T) %v but expect nil", got, got)
-		args := append([]string{str}, msg...)
-		fail(t, 1, strings.Join(args, "; "))
+		fail(t, str, msg...)
 	}
 }
 
 // NotNil asserts that got is not nil.
-func NotNil(t *testing.T, got interface{}, msg ...string) {
+func NotNil(t T, got interface{}, msg ...string) {
+	t.Helper()
 	if got == nil {
-		str := "got nil but expect not nil"
-		args := append([]string{str}, msg...)
-		fail(t, 1, strings.Join(args, "; "))
+		fail(t, "got nil but expect not nil", msg...)
 	}
 }
 
 // Equal asserts that got and expect are equal.
-func Equal(t *testing.T, got interface{}, expect interface{}, msg ...string) {
+func Equal(t T, got interface{}, expect interface{}, msg ...string) {
+	t.Helper()
 	if !reflect.DeepEqual(got, expect) {
 		str := fmt.Sprintf("got (%T) %v but expect (%T) %v", got, got, expect, expect)
-		args := append([]string{str}, msg...)
-		fail(t, 1, strings.Join(args, "; "))
+		fail(t, str, msg...)
 	}
 }
 
 // NotEqual asserts that got and expect are not equal.
-func NotEqual(t *testing.T, got interface{}, expect interface{}, msg ...string) {
+func NotEqual(t T, got interface{}, expect interface{}, msg ...string) {
+	t.Helper()
 	if reflect.DeepEqual(got, expect) {
 		str := fmt.Sprintf("expect not (%T) %v", expect, expect)
-		args := append([]string{str}, msg...)
-		fail(t, 1, strings.Join(args, "; "))
+		fail(t, str, msg...)
 	}
 }
 
 // Panic asserts that function fn() would panic. It fails if the panic
 // message does not match the regular expression.
-func Panic(t *testing.T, fn func(), expr string, msg ...string) {
+func Panic(t T, fn func(), expr string, msg ...string) {
 	// TODO 使用 util.Panic(err).When(err != nil) 时堆栈信息不对
+	t.Helper()
 	defer func() {
 		if r := recover(); r == nil {
-			str := "did not panic"
-			args := append([]string{str}, msg...)
-			fail(t, 2, strings.Join(args, "; "))
+			fail(t, "did not panic", msg...)
 		} else {
 			var str string
 			switch v := r.(type) {
@@ -123,41 +123,41 @@ func Panic(t *testing.T, fn func(), expr string, msg ...string) {
 			default:
 				str = fmt.Sprint(r)
 			}
-			matches(t, 1, str, expr, msg...)
+			matches(t, str, expr, msg...)
 		}
 	}()
 	fn()
 }
 
 // Matches asserts that a got value matches a given regular expression.
-func Matches(t *testing.T, got string, expr string, msg ...string) {
-	matches(t, 1, got, expr, msg...)
+func Matches(t T, got string, expr string, msg ...string) {
+	t.Helper()
+	matches(t, got, expr, msg...)
 }
 
 // Error asserts that a got error string matches a given regular expression.
-func Error(t *testing.T, got error, expr string, msg ...string) {
+func Error(t T, got error, expr string, msg ...string) {
+	t.Helper()
 	if got == nil {
-		str := fmt.Sprintf("got nil error but expect %q", expr)
-		args := append([]string{str}, msg...)
-		fail(t, 1, strings.Join(args, "; "))
+		fail(t, "expect not nil error", msg...)
 		return
 	}
-	matches(t, 1, got.Error(), expr)
+	matches(t, got.Error(), expr, msg...)
 }
 
-func matches(t *testing.T, skip int, got string, expr string, msg ...string) {
+func matches(t T, got string, expr string, msg ...string) {
+	t.Helper()
 	if ok, err := regexp.MatchString(expr, got); err != nil {
-		str := fmt.Sprintf("invalid pattern %q %s", expr, err.Error())
-		fail(t, skip+1, str)
+		fail(t, "invalid pattern", msg...)
 	} else if !ok {
 		str := fmt.Sprintf("got %q which does not match %q", got, expr)
-		args := append([]string{str}, msg...)
-		fail(t, skip+1, strings.Join(args, "; "))
+		fail(t, str, msg...)
 	}
 }
 
-func fail(t *testing.T, skip int, msg string) {
-	_, file, line, _ := runtime.Caller(skip + 1)
-	fmt.Printf("\t%s:%d: %s\n", filepath.Base(file), line, msg)
+func fail(t T, str string, msg ...string) {
+	t.Helper()
+	args := append([]string{str}, msg...)
+	t.Log(strings.Join(args, "; "))
 	t.Fail()
 }
