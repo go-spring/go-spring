@@ -2,16 +2,30 @@
 
 提供了一些常用的断言函数。
 
-## 方法列表
+## Install
 
-| 方法名 | 功能 |
-| :--- | :--- |
-| True | asserts that got is true. |
-| False | asserts that got is false. |
-| Nil | asserts that got is nil. |
-| NotNil | asserts that got is not nil. |
-| Equal | asserts that got and expect are equal. |
-| NotEqual | asserts that got and expect are not equal. |
-| Panic | asserts that function would panic. |
-| Matches | asserts that a got value matches a given regular expression. |
-| Error | asserts that a got error string matches a given regular expression. |
+```
+go get github.com/go-spring/spring-base@v1.1.0-rc2 
+```
+
+## Import
+
+```
+import "github.com/go-spring/spring-base/assert"
+```
+
+## Example
+
+```
+assert.True(t, true)
+assert.Nil(t, nil)
+assert.Equal(t, 0, "0")
+assert.NotEqual(t, "0", 0)
+assert.Same(t, 0, "0")
+assert.NotSame(t, "0", "0")
+assert.Panic(g, func() {}, "an error")
+assert.Matches(g, "there's no error", "an error")
+assert.Error(g, errors.New("there's no error"), "an error")
+assert.TypeOf(g, new(int), (*int)(nil))
+assert.Implements(g, errors.New("error"), (*error)(nil))
+```

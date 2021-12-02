@@ -18,6 +18,7 @@ package assert_test
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/go-spring/spring-base/assert"
@@ -209,6 +210,62 @@ func TestNotEqual(t *testing.T) {
 	}
 }
 
+func TestSame(t *testing.T) {
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		assert.Same(g, "0", "0")
+	}
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		g.EXPECT().Log([]interface{}{"got (int) 0 but expect (string) 0"})
+		g.EXPECT().Fail()
+		assert.Same(g, 0, "0")
+	}
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		g.EXPECT().Log([]interface{}{"got (int) 0 but expect (string) 0; param (index=0)"})
+		g.EXPECT().Fail()
+		assert.Same(g, 0, "0", "param (index=0)")
+	}
+}
+
+func TestNotSame(t *testing.T) {
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		assert.NotSame(g, "0", 0)
+	}
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		g.EXPECT().Log([]interface{}{"expect not (string) 0"})
+		g.EXPECT().Fail()
+		assert.NotSame(g, "0", "0")
+	}
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		g.EXPECT().Log([]interface{}{"expect not (string) 0; param (index=0)"})
+		g.EXPECT().Fail()
+		assert.NotSame(g, "0", "0", "param (index=0)")
+	}
+}
+
 func TestPanic(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
@@ -338,5 +395,45 @@ func TestError(t *testing.T) {
 		g.EXPECT().Log([]interface{}{"got \"there's no error\" which does not match \"an error\"; param (index=0)"})
 		g.EXPECT().Fail()
 		assert.Error(g, errors.New("there's no error"), "an error", "param (index=0)")
+	}
+}
+
+func TestTypeOf(t *testing.T) {
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		assert.TypeOf(g, new(int), (*int)(nil))
+	}
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		g.EXPECT().Log([]interface{}{"got type (string) but expect type (fmt.Stringer)"})
+		g.EXPECT().Fail()
+		assert.TypeOf(g, "string", (*fmt.Stringer)(nil))
+	}
+}
+
+func TestImplements(t *testing.T) {
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		assert.Implements(g, errors.New("error"), (*error)(nil))
+	}
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		g.EXPECT().Log([]interface{}{"expect should be interface"})
+		g.EXPECT().Fail()
+		assert.Implements(g, new(int), (*int)(nil))
 	}
 }

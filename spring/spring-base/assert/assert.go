@@ -105,6 +105,24 @@ func NotEqual(t T, got interface{}, expect interface{}, msg ...string) {
 	}
 }
 
+// Same asserts that got and expect are same.
+func Same(t T, got interface{}, expect interface{}, msg ...string) {
+	t.Helper()
+	if got != expect {
+		str := fmt.Sprintf("got (%T) %v but expect (%T) %v", got, got, expect, expect)
+		fail(t, str, msg...)
+	}
+}
+
+// NotSame asserts that got and expect are not same.
+func NotSame(t T, got interface{}, expect interface{}, msg ...string) {
+	t.Helper()
+	if got == expect {
+		str := fmt.Sprintf("expect not (%T) %v", expect, expect)
+		fail(t, str, msg...)
+	}
+}
+
 // Panic asserts that function fn() would panic. It fails if the panic
 // message does not match the regular expression.
 func Panic(t T, fn func(), expr string, msg ...string) {
@@ -160,4 +178,43 @@ func fail(t T, str string, msg ...string) {
 	args := append([]string{str}, msg...)
 	t.Log(strings.Join(args, "; "))
 	t.Fail()
+}
+
+// TypeOf asserts that got and expect are same type.
+func TypeOf(t T, got interface{}, expect interface{}, msg ...string) {
+	t.Helper()
+
+	e2 := reflect.TypeOf(expect)
+	if e2.Kind() == reflect.Ptr {
+		if e2.Elem().Kind() == reflect.Interface {
+			e2 = e2.Elem()
+		}
+	}
+
+	e1 := reflect.TypeOf(got)
+	if !e1.AssignableTo(e2) {
+		str := fmt.Sprintf("got type (%s) but expect type (%s)", e1, e2)
+		fail(t, str, msg...)
+	}
+}
+
+// Implements asserts that got implements expect.
+func Implements(t T, got interface{}, expect interface{}, msg ...string) {
+	t.Helper()
+
+	e2 := reflect.TypeOf(expect)
+	if e2.Kind() == reflect.Ptr {
+		if e2.Elem().Kind() == reflect.Interface {
+			e2 = e2.Elem()
+		} else {
+			fail(t, "expect should be interface", msg...)
+			return
+		}
+	}
+
+	e1 := reflect.TypeOf(got)
+	if !e1.Implements(e2) {
+		str := fmt.Sprintf("got type (%s) but expect type (%s)", e1, e2)
+		fail(t, str, msg...)
+	}
 }
