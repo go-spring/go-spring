@@ -69,6 +69,12 @@ type Container interface {
 
 	// Stop 停止 Web 容器
 	Stop(ctx context.Context) error
+
+	// File 定义单个文件资源
+	File(path string, file string)
+
+	// Static 定义一组文件资源
+	Static(prefix string, root string)
 }
 
 // AbstractContainer 抽象的 Container 实现
@@ -167,6 +173,20 @@ func (c *AbstractContainer) Start() error {
 // Stop 停止 Web 容器
 func (c *AbstractContainer) Stop(ctx context.Context) error {
 	panic(util.UnimplementedMethod)
+}
+
+// File 定义单个文件资源
+func (c *AbstractContainer) File(path string, file string) {
+	c.router.GetMapping(path, func(ctx Context) {
+		ctx.File(file)
+	})
+}
+
+// Static 定义文件服务器
+func (c *AbstractContainer) Static(prefix string, root string) {
+	fileServer := http.FileServer(http.Dir(root))
+	h := WrapH(http.StripPrefix(prefix, fileServer))
+	c.router.HandleGet(prefix+"/*", h)
 }
 
 /////////////////// Invoke Handler //////////////////////
