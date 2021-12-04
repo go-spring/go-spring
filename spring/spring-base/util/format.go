@@ -21,74 +21,96 @@ import (
 	"time"
 )
 
-// Format time 支持 YY-MM-DD 格式化会不会更好呢？
+const (
+	stdNone        = ""
+	stdLongYear    = "2006"
+	stdYear        = "06"
+	stdMonth       = "Jan"
+	stdZeroMonth   = "01"
+	stdZeroDay     = "02"
+	stdZeroYearDay = "002"
+	stdHour        = "15"
+	stdZeroHour12  = "03"
+	stdZeroMinute  = "04"
+	stdZeroSecond  = "05"
+)
+
+// Format time
 func Format(t time.Time, layout string) string {
-	layout = ToNativeLayout(layout)
+	layout = ToStdLayout(layout)
+
+	// convert std layout failed
+	if layout == "" {
+		return ""
+	}
+
 	return t.Format(layout)
 }
 
-// ToNativeLayout timestamp convert 2006/01/02 15:04:05
-func ToNativeLayout(layout string) string {
+// ToStdLayout
+// 将 yyyy-MM-dd H:m:s 转换为 2006-01-02 15:04:05
+// yyyy -> 2006 MM -> 01 dd -> 02
+// H -> 15	m -> 04 s -> 05
+func ToStdLayout(layout string) string {
 	buf := bytes.NewBuffer(nil)
-
 	for layout != "" {
-		prefix, std, suffix := nextChunk(layout)
+		prefix, std, suffix := nextStdChunk(layout)
 		if prefix != "" {
 			buf.WriteString(prefix)
 		}
-		layout = suffix
 		if std != "" {
 			buf.WriteString(std)
 		}
+		layout = suffix
 	}
-
 	return buf.String()
 }
 
 // nextChunk
-func nextChunk(layout string) (prefix string, now string, suffix string) {
+func nextStdChunk(layout string) (prefix string, std string, suffix string) {
+
 	for i := 0; i < len(layout); i++ {
 		switch b := layout[i]; b {
 		case 'y': // yy yyyy
 			if len(layout) >= i+4 && layout[i:i+4] == "yyyy" {
-				return layout[0:i], "2006", layout[i+4:]
+				return layout[0:i], stdLongYear, layout[i+4:]
 			}
 			if len(layout) >= i+2 && layout[i:i+2] == "yy" {
-				return layout[0:i], "06", layout[i+2:]
+				return layout[0:i], stdYear, layout[i+2:]
 			}
 		case 'M': // MM MMM
 			if len(layout) >= i+3 && layout[i:i+3] == "MMM" {
-				return layout[0:i], "Jan", layout[i+3:]
+				return layout[0:i], stdMonth, layout[i+3:]
 			}
 			if len(layout) >= i+2 && layout[i:i+2] == "MM" {
-				return layout[0:i], "01", layout[i+2:]
+				return layout[0:i], stdZeroMonth, layout[i+2:]
 			}
 		case 'd': // dd
 			if len(layout) >= i+2 && layout[i:i+2] == "dd" {
-				return layout[0:i], "02", layout[i+2:]
+				return layout[0:i], stdZeroDay, layout[i+2:]
 			}
 		case 'D': // d
 			if len(layout) >= i+1 && layout[i:i+1] == "D" {
-				return layout[0:i], "002", layout[i+1:]
+				return layout[0:i], stdZeroYearDay, layout[i+1:]
 			}
 		case 'H': // H
 			if len(layout) >= i+1 && layout[i:i+1] == "H" {
-				return layout[0:i], "15", layout[i+1:]
+				return layout[0:i], stdHour, layout[i+1:]
 			}
 		case 'h': // h
 			if len(layout) >= i+1 && layout[i:i+1] == "h" {
-				return layout[0:i], "03", layout[i+1:]
+				return layout[0:i], stdZeroHour12, layout[i+1:]
 			}
 		case 'm': // m
 			if len(layout) >= i+1 && layout[i:i+1] == "m" {
-				return layout[0:i], "04", layout[i+1:]
+				return layout[0:i], stdZeroMinute, layout[i+1:]
 			}
 		case 's': // s
 			if len(layout) >= i+1 && layout[i:i+1] == "s" {
-				return layout[0:i], "05", layout[i+1:]
+				return layout[0:i], stdZeroSecond, layout[i+1:]
 			}
 		}
 	}
 
-	return layout, "", ""
+	return layout, stdNone, ""
 }

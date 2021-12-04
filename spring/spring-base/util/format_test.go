@@ -24,7 +24,7 @@ import (
 	"github.com/go-spring/spring-base/util"
 )
 
-func Test_toNativeLayout(t *testing.T) {
+func Test_toStdLayout(t *testing.T) {
 
 	layouts := []struct {
 		Custom string
@@ -42,7 +42,7 @@ func Test_toNativeLayout(t *testing.T) {
 	}
 
 	for _, layout := range layouts {
-		format := util.ToNativeLayout(layout.Custom)
+		format := util.ToStdLayout(layout.Custom)
 		assert.Equal(t, layout.Native, format)
 	}
 }
@@ -62,6 +62,32 @@ func Test_format(t *testing.T) {
 		{Custom: "m", Native: "04"},
 		{Custom: "s", Native: "05"},
 		{Custom: "yyyy-MM-dd H:m:s", Native: "2006-01-02 15:04:05"},
+	}
+
+	now := time.Now()
+
+	for _, layout := range layouts {
+		native := now.Format(layout.Native)
+		custom := util.Format(now, layout.Custom)
+		assert.Equal(t, native, custom)
+	}
+}
+
+func Test_unitFormat(t *testing.T) {
+	layouts := []struct {
+		Custom string
+		Native string
+	}{
+		{Custom: "yyyy年", Native: "2006年"},
+		{Custom: "yy年", Native: "06年"},
+		{Custom: "MM月", Native: "01月"},
+		{Custom: "dd日", Native: "02日"},
+		{Custom: "D年天", Native: "002年天"},
+		{Custom: "H24小时", Native: "1524小时"},
+		{Custom: "h12小时", Native: "0312小时"},
+		{Custom: "m分钟", Native: "04分钟"},
+		{Custom: "s秒数", Native: "05秒数"},
+		{Custom: "yyyy年MM月dd日 H时m分s秒", Native: "2006年01月02日 15时04分05秒"},
 	}
 
 	now := time.Now()
