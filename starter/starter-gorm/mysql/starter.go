@@ -21,24 +21,16 @@ import (
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/gs/cond"
-	"github.com/jinzhu/gorm"
-	_ "github.com/jinzhu/gorm/dialects/mysql"
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
 )
 
 func init() {
-	gs.Provide(createDB).Destroy(closeDB).On(cond.OnMissingBean((*gorm.DB)(nil)))
+	gs.Provide(createDB).On(cond.OnMissingBean((*gorm.DB)(nil)))
 }
 
 // createDB 从配置文件创建 *gorm.DB 客户端
 func createDB(config conf.DatabaseClientConfig) (*gorm.DB, error) {
 	log.Info("open gorm mysql ", config.Url)
-	return gorm.Open("mysql", config.Url)
-}
-
-// closeDB 关闭 *gorm.DB 客户端
-func closeDB(db *gorm.DB) {
-	log.Info("close gorm mysql")
-	if err := db.Close(); err != nil {
-		log.Error(err)
-	}
+	return gorm.Open(mysql.Open(config.Url))
 }

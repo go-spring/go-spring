@@ -16,6 +16,45 @@ Go-Spring 的愿景是让 Go 程序员也能用上如 Java Spring 那般威力�
 
 Go-Spring 当前使用 Go1.14 进行开发，使用 Go Modules 进行依赖管理。
 
+- [spring-base](#spring-base)
+    - [apcu](#apcu)
+    - [assert](#assert)
+    - [atomic](#atomic)
+- [spring-core](#spring-core)
+  - [gs](#gs)
+  - [redis](#redis)
+  - [web](#web)
+
+### spring-base
+
+golang 准标准库 (like cpp boost to go)。
+
+#### apcu
+
+提供了进程内缓存组件。
+
+#### assert
+
+提供了一些常用的断言函数。
+
+#### atomic
+
+封装标准库 atomic 包的操作函数。
+
+### spring-core
+
+Go-Spring 核心模块，依赖注入框架 (IoC)，web 框架 (web framework)，redis 封装 (redis)，mysql 封装 (gem) ...
+
+#### gs
+
+实现了 go-spring 的核心骨架，包含 IoC 容器、基于 IoC 容器的 App 以及全局 App 对象封装三个部分，可以应用于多种使用场景。
+
+#### redis
+
+#### web
+
+为社区优秀的 Web 服务器提供一个抽象层，使得底层可以灵活切换。
+
 ### IoC 容器
 
 Go-Spring 不仅实现了如 Java Spring 那般功能强大的 IoC 容器，还扩充了 Bean 的概念。在 Go 中，对象(即指针)、数组、Map、函数指针，这些都是 Bean，都可以放到 IoC 容器里。
