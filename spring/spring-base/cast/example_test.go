@@ -14,23 +14,17 @@
  * limitations under the License.
  */
 
-package StarterMySqlGorm
+package cast_test
 
 import (
-	"github.com/go-spring/spring-base/log"
-	"github.com/go-spring/spring-core/conf"
-	"github.com/go-spring/spring-core/gs"
-	"github.com/go-spring/spring-core/gs/cond"
-	"gorm.io/driver/mysql"
-	"gorm.io/gorm"
+	"fmt"
+
+	"github.com/go-spring/spring-base/cast"
 )
 
-func init() {
-	gs.Provide(createDB).On(cond.OnMissingBean((*gorm.DB)(nil)))
-}
-
-// createDB 从配置文件创建 *gorm.DB 客户端
-func createDB(config conf.DatabaseClientConfig) (*gorm.DB, error) {
-	log.Info("open gorm mysql ", config.Url)
-	return gorm.Open(mysql.Open(config.Url))
+func ExampleToInt() {
+	fmt.Println(cast.ToInt(10))   // 10
+	fmt.Println(cast.ToInt(10.0)) // 10
+	fmt.Println(cast.ToInt("10")) // 10
+	fmt.Println(cast.ToInt(true)) // 1
 }

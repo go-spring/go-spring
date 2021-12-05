@@ -1,5 +1,7 @@
 # spring-base
 
+[仅发布] 该项目仅为最终发布，开发请关注 [go-spring](https://github.com/go-spring/go-spring) 项目。
+
 Go-Spring 基础库，可以作为 Golang 标准库的补充。
 
 | 模块名 | 功能介绍 |

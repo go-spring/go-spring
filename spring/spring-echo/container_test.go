@@ -131,3 +131,39 @@ func TestContext_PathNotFound(t *testing.T) {
 	assert.Equal(t, response.StatusCode, http.StatusNotFound)
 	assert.Equal(t, string(b), "404 page not found")
 }
+
+func TestContainer_Static(t *testing.T) {
+
+	c := SpringEcho.NewContainer(conf.WebServerConfig{Port: 8080})
+	go c.Start()
+	defer c.Stop(context.Background())
+	c.File("/", "testdata/public/a.txt")
+	c.Static("/public", "testdata/public/")
+	time.Sleep(10 * time.Millisecond)
+
+	{
+		response, err := http.Get("http://127.0.0.1:8080/public/a.txt")
+		if err != nil {
+			panic(err)
+		}
+		defer response.Body.Close()
+		b, _ := ioutil.ReadAll(response.Body)
+		fmt.Println(string(b))
+		fmt.Println(response.Status)
+		assert.Equal(t, response.StatusCode, http.StatusOK)
+		assert.Equal(t, string(b), "hello world!")
+	}
+
+	{
+		response, err := http.Get("http://127.0.0.1:8080/")
+		if err != nil {
+			panic(err)
+		}
+		defer response.Body.Close()
+		b, _ := ioutil.ReadAll(response.Body)
+		fmt.Println(string(b))
+		fmt.Println(response.Status)
+		assert.Equal(t, response.StatusCode, http.StatusOK)
+		assert.Equal(t, string(b), "hello world!")
+	}
+}

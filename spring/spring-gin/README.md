@@ -1,5 +1,7 @@
 # spring-gin
 
+[仅发布] 该项目仅为最终发布，开发请关注 [go-spring](https://github.com/go-spring/go-spring) 项目。
+
 封装 github.com/gin-gonic/gin 实现的 Web 框架。
 
 - [创建 Web 容器](#创建-web-容器)

@@ -2,7 +2,7 @@
  <img src="https://raw.githubusercontent.com/go-spring/go-spring/master/logo@h.png" width="140" height="*" alt="logo"/>
  <br/>
  <img src="https://img.shields.io/github/license/go-spring/go-spring" alt="license"/>
- <img src="https://img.shields.io/github/go-mod/go-version/go-spring/spring-boot" alt="go-version"/>
+ <img src="https://img.shields.io/github/go-mod/go-version/go-spring/spring-core" alt="go-version"/>
  <img src="https://img.shields.io/github/v/release/go-spring/go-spring?include_prereleases" alt="release"/>
 </div>
 
@@ -15,6 +15,45 @@ Go-Spring 的愿景是让 Go 程序员也能用上如 Java Spring 那般威力�
 3. 提供了常见组件的抽象层，支持灵活地替换底层实现；
 
 Go-Spring 当前使用 Go1.14 进行开发，使用 Go Modules 进行依赖管理。
+
+- [spring-base](#spring-base)
+    - [apcu](#apcu)
+    - [assert](#assert)
+    - [atomic](#atomic)
+- [spring-core](#spring-core)
+  - [gs](#gs)
+  - [redis](#redis)
+  - [web](#web)
+
+### spring-base
+
+golang 准标准库 (like cpp boost to go)。
+
+#### apcu
+
+提供了进程内缓存组件。
+
+#### assert
+
+提供了一些常用的断言函数。
+
+#### atomic
+
+封装标准库 atomic 包的操作函数。
+
+### spring-core
+
+Go-Spring 核心模块，依赖注入框架 (IoC)，web 框架 (web framework)，redis 封装 (redis)，mysql 封装 (gem) ...
+
+#### gs
+
+实现了 go-spring 的核心骨架，包含 IoC 容器、基于 IoC 容器的 App 以及全局 App 对象封装三个部分，可以应用于多种使用场景。
+
+#### redis
+
+#### web
+
+为社区优秀的 Web 服务器提供一个抽象层，使得底层可以灵活切换。
 
 ### IoC 容器
 

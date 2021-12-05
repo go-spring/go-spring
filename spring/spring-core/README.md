@@ -1,5 +1,7 @@
 # spring-core
 
+[仅发布] 该项目仅为最终发布，开发请关注 [go-spring](https://github.com/go-spring/go-spring) 项目。
+
 实现了一个功能完善的运行时 IoC 容器。
 
 - [SpringContext](#springcontext)

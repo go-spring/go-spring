@@ -18,9 +18,11 @@ package assert_test
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/go-spring/spring-base/assert"
+	"github.com/golang/mock/gomock"
 )
 
 func TestCheck(t *testing.T) {
@@ -40,53 +42,398 @@ func TestCheck(t *testing.T) {
 	assert.Error(t, err, "r.True want true but is false")
 }
 
-func checkFailed(t *testing.T) {
-	if t.Failed() {
-		t.Fatalf("failed but expect not failed")
+func TestTrue(t *testing.T) {
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		assert.True(g, true)
+	}
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		g.EXPECT().Log([]interface{}{"got false but expect true"})
+		g.EXPECT().Fail()
+		assert.True(g, false)
+	}
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		g.EXPECT().Log([]interface{}{"got false but expect true; param (index=0)"})
+		g.EXPECT().Fail()
+		assert.True(g, false, "param (index=0)")
 	}
 }
 
-func TestTrue(t *testing.T) {
-	assert.True(t, true)
-	checkFailed(t)
-}
-
 func TestFalse(t *testing.T) {
-	assert.False(t, false)
-	checkFailed(t)
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		assert.False(g, false)
+	}
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		g.EXPECT().Log([]interface{}{"got true but expect false"})
+		g.EXPECT().Fail()
+		assert.False(g, true)
+	}
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		g.EXPECT().Log([]interface{}{"got true but expect false; param (index=0)"})
+		g.EXPECT().Fail()
+		assert.False(g, true, "param (index=0)")
+	}
 }
 
 func TestNil(t *testing.T) {
-	assert.Nil(t, nil)
-	checkFailed(t)
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		assert.Nil(g, nil)
+	}
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		g.EXPECT().Log([]interface{}{"got (int) 3 but expect nil"})
+		g.EXPECT().Fail()
+		assert.Nil(g, 3)
+	}
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		g.EXPECT().Log([]interface{}{"got (int) 3 but expect nil; param (index=0)"})
+		g.EXPECT().Fail()
+		assert.Nil(g, 3, "param (index=0)")
+	}
 }
 
 func TestNotNil(t *testing.T) {
-	assert.NotNil(t, new(int))
-	checkFailed(t)
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		assert.NotNil(g, 3)
+	}
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		g.EXPECT().Log([]interface{}{"got nil but expect not nil"})
+		g.EXPECT().Fail()
+		assert.NotNil(g, nil)
+	}
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		g.EXPECT().Log([]interface{}{"got nil but expect not nil; param (index=0)"})
+		g.EXPECT().Fail()
+		assert.NotNil(g, nil, "param (index=0)")
+	}
 }
 
 func TestEqual(t *testing.T) {
-	assert.Equal(t, 0, 0)
-	checkFailed(t)
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		assert.Equal(g, 0, 0)
+	}
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		g.EXPECT().Log([]interface{}{"got (int) 0 but expect (string) 0"})
+		g.EXPECT().Fail()
+		assert.Equal(g, 0, "0")
+	}
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		g.EXPECT().Log([]interface{}{"got (int) 0 but expect (string) 0; param (index=0)"})
+		g.EXPECT().Fail()
+		assert.Equal(g, 0, "0", "param (index=0)")
+	}
 }
 
 func TestNotEqual(t *testing.T) {
-	assert.NotEqual(t, 1, 0)
-	checkFailed(t)
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		assert.NotEqual(g, "0", 0)
+	}
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		g.EXPECT().Log([]interface{}{"expect not (string) 0"})
+		g.EXPECT().Fail()
+		assert.NotEqual(g, "0", "0")
+	}
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		g.EXPECT().Log([]interface{}{"expect not (string) 0; param (index=0)"})
+		g.EXPECT().Fail()
+		assert.NotEqual(g, "0", "0", "param (index=0)")
+	}
+}
+
+func TestSame(t *testing.T) {
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		assert.Same(g, "0", "0")
+	}
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		g.EXPECT().Log([]interface{}{"got (int) 0 but expect (string) 0"})
+		g.EXPECT().Fail()
+		assert.Same(g, 0, "0")
+	}
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		g.EXPECT().Log([]interface{}{"got (int) 0 but expect (string) 0; param (index=0)"})
+		g.EXPECT().Fail()
+		assert.Same(g, 0, "0", "param (index=0)")
+	}
+}
+
+func TestNotSame(t *testing.T) {
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		assert.NotSame(g, "0", 0)
+	}
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		g.EXPECT().Log([]interface{}{"expect not (string) 0"})
+		g.EXPECT().Fail()
+		assert.NotSame(g, "0", "0")
+	}
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		g.EXPECT().Log([]interface{}{"expect not (string) 0; param (index=0)"})
+		g.EXPECT().Fail()
+		assert.NotSame(g, "0", "0", "param (index=0)")
+	}
 }
 
 func TestPanic(t *testing.T) {
-	assert.Panic(t, func() { panic("error") }, "error")
-	checkFailed(t)
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		assert.Panic(g, func() { panic("this is an error") }, "an error")
+	}
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		g.EXPECT().Log([]interface{}{"did not panic"})
+		g.EXPECT().Fail()
+		assert.Panic(g, func() {}, "an error")
+	}
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		g.EXPECT().Log([]interface{}{"invalid pattern"})
+		g.EXPECT().Fail()
+		assert.Panic(g, func() { panic("this is an error") }, "an error \\")
+	}
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		g.EXPECT().Log([]interface{}{"got \"there's no error\" which does not match \"an error\""})
+		g.EXPECT().Fail()
+		assert.Panic(g, func() { panic("there's no error") }, "an error")
+	}
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		g.EXPECT().Log([]interface{}{"got \"there's no error\" which does not match \"an error\"; param (index=0)"})
+		g.EXPECT().Fail()
+		assert.Panic(g, func() { panic("there's no error") }, "an error", "param (index=0)")
+	}
 }
 
 func TestMatches(t *testing.T) {
-	assert.Matches(t, "this is an error", "this is an error")
-	checkFailed(t)
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		assert.Matches(g, "this is an error", "this is an error")
+	}
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		g.EXPECT().Log([]interface{}{"invalid pattern"})
+		g.EXPECT().Fail()
+		assert.Matches(g, "this is an error", "an error \\")
+	}
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		g.EXPECT().Log([]interface{}{"got \"there's no error\" which does not match \"an error\""})
+		g.EXPECT().Fail()
+		assert.Matches(g, "there's no error", "an error")
+	}
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		g.EXPECT().Log([]interface{}{"got \"there's no error\" which does not match \"an error\"; param (index=0)"})
+		g.EXPECT().Fail()
+		assert.Matches(g, "there's no error", "an error", "param (index=0)")
+	}
 }
 
 func TestError(t *testing.T) {
-	assert.Error(t, errors.New("this is an error"), "an error")
-	checkFailed(t)
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		assert.Error(g, errors.New("this is an error"), "an error")
+	}
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		g.EXPECT().Log([]interface{}{"invalid pattern"})
+		g.EXPECT().Fail()
+		assert.Error(g, errors.New("there's no error"), "an error \\")
+	}
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		g.EXPECT().Log([]interface{}{"expect not nil error"})
+		g.EXPECT().Fail()
+		assert.Error(g, nil, "an error")
+	}
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		g.EXPECT().Log([]interface{}{"expect not nil error; param (index=0)"})
+		g.EXPECT().Fail()
+		assert.Error(g, nil, "an error", "param (index=0)")
+	}
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		g.EXPECT().Log([]interface{}{"got \"there's no error\" which does not match \"an error\""})
+		g.EXPECT().Fail()
+		assert.Error(g, errors.New("there's no error"), "an error")
+	}
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		g.EXPECT().Log([]interface{}{"got \"there's no error\" which does not match \"an error\"; param (index=0)"})
+		g.EXPECT().Fail()
+		assert.Error(g, errors.New("there's no error"), "an error", "param (index=0)")
+	}
+}
+
+func TestTypeOf(t *testing.T) {
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		assert.TypeOf(g, new(int), (*int)(nil))
+	}
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		g.EXPECT().Log([]interface{}{"got type (string) but expect type (fmt.Stringer)"})
+		g.EXPECT().Fail()
+		assert.TypeOf(g, "string", (*fmt.Stringer)(nil))
+	}
+}
+
+func TestImplements(t *testing.T) {
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		assert.Implements(g, errors.New("error"), (*error)(nil))
+	}
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
+		g.EXPECT().Log([]interface{}{"expect should be interface"})
+		g.EXPECT().Fail()
+		assert.Implements(g, new(int), (*int)(nil))
+	}
 }
