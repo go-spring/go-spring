@@ -176,6 +176,16 @@ func RequestBinding(method uint32, path string, fn interface{}) *web.Mapper {
 	return app().RequestBinding(method, path, fn)
 }
 
+// File 定义单个文件资源
+func File(path string, file string) *web.Mapper {
+	return app().File(path, file)
+}
+
+// Static 定义一组文件资源
+func Static(prefix string, root string) *web.Mapper {
+	return app().Static(prefix, root)
+}
+
 // Consume 参考 App.Consume 的解释。
 func Consume(fn interface{}, topics ...string) {
 	app().Consume(fn, topics...)

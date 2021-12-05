@@ -14,8 +14,7 @@
  * limitations under the License.
  */
 
-// Package cast 提供了很多类型之间相互转换的函数。
-// Thanks the github.com/spf13/cast project.
+// Package cast 提供了很多类型之间相互转换的函数，但是在类型明确的情况下推荐使用标准库函数。
 package cast
 
 import (
@@ -25,13 +24,13 @@ import (
 	"time"
 )
 
-// ToBool casts an interface{} to a bool.
+// ToBool casts an interface{} to a bool. 在类型明确的情况下推荐使用标准库函数。
 func ToBool(i interface{}) bool {
 	v, _ := ToBoolE(i)
 	return v
 }
 
-// ToBoolE casts an interface{} to a bool.
+// ToBoolE casts an interface{} to a bool. 在类型明确的情况下推荐使用标准库函数。
 func ToBoolE(i interface{}) (bool, error) {
 	switch b := i.(type) {
 	case nil:
@@ -97,37 +96,37 @@ func ToBoolE(i interface{}) (bool, error) {
 	}
 }
 
-// ToInt casts an interface{} to an int.
+// ToInt casts an interface{} to an int. 在类型明确的情况下推荐使用标准库函数。
 func ToInt(i interface{}) int {
 	v, _ := ToInt64E(i)
 	return int(v)
 }
 
-// ToInt8 casts an interface{} to an int8.
+// ToInt8 casts an interface{} to an int8. 在类型明确的情况下推荐使用标准库函数。
 func ToInt8(i interface{}) int8 {
 	v, _ := ToInt64E(i)
 	return int8(v)
 }
 
-// ToInt16 casts an interface{} to an int16.
+// ToInt16 casts an interface{} to an int16. 在类型明确的情况下推荐使用标准库函数。
 func ToInt16(i interface{}) int16 {
 	v, _ := ToInt64E(i)
 	return int16(v)
 }
 
-// ToInt32 casts an interface{} to an int32.
+// ToInt32 casts an interface{} to an int32. 在类型明确的情况下推荐使用标准库函数。
 func ToInt32(i interface{}) int32 {
 	v, _ := ToInt64E(i)
 	return int32(v)
 }
 
-// ToInt64 casts an interface{} to an int64.
+// ToInt64 casts an interface{} to an int64. 在类型明确的情况下推荐使用标准库函数。
 func ToInt64(i interface{}) int64 {
 	v, _ := ToInt64E(i)
 	return v
 }
 
-// ToInt64E casts an interface{} to an int64.
+// ToInt64E casts an interface{} to an int64. 在类型明确的情况下推荐使用标准库函数。
 func ToInt64E(i interface{}) (int64, error) {
 	switch s := i.(type) {
 	case nil:
@@ -198,37 +197,37 @@ func ToInt64E(i interface{}) (int64, error) {
 	return 0, fmt.Errorf("unable to cast %#v of type %T to int64", i, i)
 }
 
-// ToUint casts an interface{} to an uint.
+// ToUint casts an interface{} to an uint. 在类型明确的情况下推荐使用标准库函数。
 func ToUint(i interface{}) uint {
 	v, _ := ToUint64E(i)
 	return uint(v)
 }
 
-// ToUint8 casts an interface{} to an uint8.
+// ToUint8 casts an interface{} to an uint8. 在类型明确的情况下推荐使用标准库函数。
 func ToUint8(i interface{}) uint8 {
 	v, _ := ToUint64E(i)
 	return uint8(v)
 }
 
-// ToUint16 casts an interface{} to an uint16.
+// ToUint16 casts an interface{} to an uint16. 在类型明确的情况下推荐使用标准库函数。
 func ToUint16(i interface{}) uint16 {
 	v, _ := ToUint64E(i)
 	return uint16(v)
 }
 
-// ToUint32 casts an interface{} to an uint32.
+// ToUint32 casts an interface{} to an uint32. 在类型明确的情况下推荐使用标准库函数。
 func ToUint32(i interface{}) uint32 {
 	v, _ := ToUint64E(i)
 	return uint32(v)
 }
 
-// ToUint64 casts an interface{} to an uint64.
+// ToUint64 casts an interface{} to an uint64. 在类型明确的情况下推荐使用标准库函数。
 func ToUint64(i interface{}) uint64 {
 	v, _ := ToUint64E(i)
 	return v
 }
 
-// ToUint64E casts an interface{} to an uint64.
+// ToUint64E casts an interface{} to an uint64. 在类型明确的情况下推荐使用标准库函数。
 func ToUint64E(i interface{}) (uint64, error) {
 	switch s := i.(type) {
 	case nil:
@@ -299,19 +298,19 @@ func ToUint64E(i interface{}) (uint64, error) {
 	return 0, fmt.Errorf("unable to cast %#v of type %T to uint64", i, i)
 }
 
-// ToFloat32 casts an interface{} to a float32.
+// ToFloat32 casts an interface{} to a float32. 在类型明确的情况下推荐使用标准库函数。
 func ToFloat32(i interface{}) float32 {
 	v, _ := ToFloat64E(i)
 	return float32(v)
 }
 
-// ToFloat64 casts an interface{} to a float64.
+// ToFloat64 casts an interface{} to a float64. 在类型明确的情况下推荐使用标准库函数。
 func ToFloat64(i interface{}) float64 {
 	v, _ := ToFloat64E(i)
 	return v
 }
 
-// ToFloat64E casts an interface{} to a float64.
+// ToFloat64E casts an interface{} to a float64. 在类型明确的情况下推荐使用标准库函数。
 func ToFloat64E(i interface{}) (float64, error) {
 	switch s := i.(type) {
 	case nil:
@@ -383,13 +382,13 @@ func ToFloat64E(i interface{}) (float64, error) {
 	}
 }
 
-// ToString casts an interface{} to a string.
+// ToString casts an interface{} to a string. 在类型明确的情况下推荐使用标准库函数。
 func ToString(i interface{}) string {
 	v, _ := ToStringE(i)
 	return v
 }
 
-// ToStringE casts an interface{} to a string.
+// ToStringE casts an interface{} to a string. 在类型明确的情况下推荐使用标准库函数。
 func ToStringE(i interface{}) (string, error) {
 	switch s := i.(type) {
 	case nil:
@@ -560,7 +559,7 @@ func ToDurationE(i interface{}, unit ...string) (time.Duration, error) {
 }
 
 func parseIntDuration(v int64, unit ...string) time.Duration {
-	var unitN int64
+	unitN := int64(time.Nanosecond)
 	if len(unit) > 0 {
 		unitN, _ = unitMap[unit[0]]
 	}
@@ -568,7 +567,7 @@ func parseIntDuration(v int64, unit ...string) time.Duration {
 }
 
 func parseFloatDuration(v float64, unit ...string) time.Duration {
-	var unitN int64
+	unitN := int64(time.Nanosecond)
 	if len(unit) > 0 {
 		unitN, _ = unitMap[unit[0]]
 	}
@@ -648,6 +647,11 @@ func ToTimeE(i interface{}, arg ...string) (time.Time, error) {
 }
 
 func parseFormatTime(v string, arg ...string) (time.Time, error) {
+
+	if d, err := time.ParseDuration(v); err == nil {
+		return time.Unix(int64(d/time.Second), int64(d%time.Second)), nil
+	}
+
 	layout := "2006-01-02 15:04:05 -0700"
 	if len(arg) > 0 {
 		layout = arg[0]
@@ -656,7 +660,7 @@ func parseFormatTime(v string, arg ...string) (time.Time, error) {
 }
 
 func parseIntTimestamp(v int64, arg ...string) time.Time {
-	var unitN int64
+	unitN := int64(time.Nanosecond)
 	if len(arg) > 0 {
 		unitN, _ = unitMap[arg[0]]
 	}
@@ -665,12 +669,12 @@ func parseIntTimestamp(v int64, arg ...string) time.Time {
 }
 
 func parseFloatTimestamp(v float64, arg ...string) time.Time {
-	var unitN int64
+	unitN := int64(time.Nanosecond)
 	if len(arg) > 0 {
 		unitN, _ = unitMap[arg[0]]
 	}
 	i := int64(v * float64(unitN))
-	return time.Unix((i)/int64(time.Second), (i)%int64(time.Second))
+	return time.Unix(i/int64(time.Second), i%int64(time.Second))
 }
 
 // ToStringSlice casts an interface{} to a []string.

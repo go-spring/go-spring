@@ -20,14 +20,15 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"syscall"
 
-	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-base/conf"
 	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-base/util"
@@ -171,7 +172,7 @@ func (app *App) start() error {
 		return err
 	}
 
-	showBanner := cast.ToBool(e.p.Get(SpringBannerVisible))
+	showBanner, _ := strconv.ParseBool(e.p.Get(SpringBannerVisible))
 	if showBanner {
 		app.printBanner(app.getBanner(e))
 	}
@@ -461,6 +462,18 @@ func (app *App) RequestMapping(method uint32, path string, fn web.HandlerFunc) *
 // RequestBinding 注册任意 HTTP 方法处理函数。
 func (app *App) RequestBinding(method uint32, path string, fn interface{}) *web.Mapper {
 	return app.router.RequestBinding(method, path, fn)
+}
+
+// File 定义单个文件资源
+func (app *App) File(path string, file string) *web.Mapper {
+	return app.GetMapping(path, func(c web.Context) { c.File(file) })
+}
+
+// Static 定义一组文件资源
+func (app *App) Static(prefix string, root string) *web.Mapper {
+	fileServer := http.FileServer(http.Dir(root))
+	handler := web.WrapH(http.StripPrefix(prefix, fileServer))
+	return app.HandleGet(prefix+"/*", handler)
 }
 
 // Consume 注册 MQ 消费者。
