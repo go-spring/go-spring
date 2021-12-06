@@ -770,14 +770,14 @@ func ToStringSliceE(i interface{}) ([]string, error) {
 	case []float32:
 		var slice []string
 		for j := 0; j < len(v); j++ {
-			s := strconv.FormatFloat(float64(v[j]), 'f', 0, 64)
+			s := strconv.FormatFloat(float64(v[j]), 'f', -1, 32)
 			slice = append(slice, s)
 		}
 		return slice, nil
 	case []float64:
 		var slice []string
 		for j := 0; j < len(v); j++ {
-			s := strconv.FormatFloat(v[j], 'f', 0, 64)
+			s := strconv.FormatFloat(v[j], 'f', -1, 64)
 			slice = append(slice, s)
 		}
 		return slice, nil

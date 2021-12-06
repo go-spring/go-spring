@@ -370,7 +370,7 @@ func TestProperties_Get(t *testing.T) {
 		assert.Nil(t, err)
 		err = p.Set("StringSlice", []string{"3", "4"})
 		assert.Nil(t, err)
-		err = p.Set("Time", "2020-02-04 20:02:04")
+		err = p.Set("Time", "2020-02-04 20:02:04 >> 2006-01-02 15:04:05")
 		assert.Nil(t, err)
 		err = p.Set("MapStringInterface", []interface{}{
 			map[interface{}]interface{}{
@@ -440,9 +440,14 @@ func TestProperties_Get(t *testing.T) {
 		d := cast.ToDuration(v)
 		assert.Equal(t, d, time.Second*3)
 
-		v = p.Get("Time")
-		ti := cast.ToTime(v)
+		var ti time.Time
+		err = p.Bind(&ti, conf.Key("Time"))
+		assert.Nil(t, err)
 		assert.Equal(t, ti, time.Date(2020, 02, 04, 20, 02, 04, 0, time.UTC))
+
+		err = p.Bind(&ti, conf.Key("Duration"))
+		assert.Nil(t, err)
+		assert.Equal(t, ti, time.Date(1970, 01, 01, 00, 00, 03, 0, time.UTC).Local())
 
 		var ss2 []string
 		err = p.Bind(&ss2, conf.Key("StringSlice"))
@@ -611,7 +616,7 @@ func TestBindMap(t *testing.T) {
 		p := conf.Map(map[string]interface{}{"a.b1": "ab1"})
 		var r map[string]string
 		err := p.Bind(&r)
-		assert.Error(t, err, "bind.go:87 type \"string\" bind error\nbind.go:437 property \"a\" not exist")
+		assert.Error(t, err, "bind.go:87 type \"string\" bind error\nbind.go:433 property \"a\" not exist")
 	})
 
 	t.Run("", func(t *testing.T) {
