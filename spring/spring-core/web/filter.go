@@ -25,33 +25,25 @@ type Filter interface {
 	Invoke(ctx Context, chain FilterChain)
 }
 
+// funcFilter 封装 func 形式的过滤器。
 type funcFilter struct {
 	f func(ctx Context, chain FilterChain)
+	p []string
 }
 
+// FuncFilter 封装 func 形式的过滤器。
 func FuncFilter(f func(ctx Context, chain FilterChain)) *funcFilter {
 	return &funcFilter{f: f}
 }
 
+// URLPatterns 为过滤器设置 url 匹配模式。
+func (f *funcFilter) URLPatterns(p ...string) *funcFilter {
+	f.p = p
+	return f
+}
+
 func (f *funcFilter) Invoke(ctx Context, chain FilterChain) {
 	f.f(ctx, chain)
-}
-
-func (f *funcFilter) URLPatterns(s []string) *funcFilterWithURLPatterns {
-	return &funcFilterWithURLPatterns{f: f.f, s: s}
-}
-
-type funcFilterWithURLPatterns struct {
-	f func(ctx Context, chain FilterChain)
-	s []string
-}
-
-func (f *funcFilterWithURLPatterns) Invoke(ctx Context, chain FilterChain) {
-	f.f(ctx, chain)
-}
-
-func (f *funcFilterWithURLPatterns) URLPatterns() []string {
-	return f.s
 }
 
 // handlerFilter 包装 Web 处理接口的过滤器
@@ -59,7 +51,7 @@ type handlerFilter struct {
 	fn Handler
 }
 
-// HandlerFilter 把 Web 处理接口转换成过滤器
+// HandlerFilter 把 Web 处理接口转换成过滤器。
 func HandlerFilter(fn Handler) Filter {
 	return &handlerFilter{fn: fn}
 }
@@ -70,13 +62,19 @@ func (h *handlerFilter) Invoke(ctx Context, _ FilterChain) {
 
 // FilterChain 过滤器链条接口
 type FilterChain interface {
+
+	// Next 立即执行下一个节点。
 	Next(ctx Context)
+
+	// Continue 结束当前节点后执行下一个节点，用于减少调用栈深度。
+	Continue(ctx Context)
 }
 
 // DefaultFilterChain 默认的过滤器链条
 type DefaultFilterChain struct {
-	filters []Filter // 过滤器列表
-	next    int      // 下一个等待执行的过滤器的序号
+	filters  []Filter
+	index    int
+	lazyNext bool
 }
 
 // NewDefaultFilterChain DefaultFilterChain 的构造函数
@@ -84,17 +82,24 @@ func NewDefaultFilterChain(filters []Filter) *DefaultFilterChain {
 	return &DefaultFilterChain{filters: filters}
 }
 
-func (chain *DefaultFilterChain) Next(ctx Context) {
-
-	// 链条执行到此结束
-	if chain.next >= len(chain.filters) {
-		return
-	}
-
-	// 执行下一个过滤器
-	f := chain.filters[chain.next]
-	chain.next++
+func (chain *DefaultFilterChain) next(ctx Context) {
+	f := chain.filters[chain.index]
+	chain.index++
 	f.Invoke(ctx, chain)
+}
+
+func (chain *DefaultFilterChain) Next(ctx Context) {
+	if chain.index < len(chain.filters) {
+		chain.next(ctx)
+		for chain.lazyNext {
+			chain.lazyNext = false
+			chain.next(ctx)
+		}
+	}
+}
+
+func (chain *DefaultFilterChain) Continue(ctx Context) {
+	chain.lazyNext = true
 }
 
 type urlPatterns struct {

@@ -30,7 +30,7 @@ func TestFuncFilter(t *testing.T) {
 	funcFilter := web.FuncFilter(func(ctx web.Context, chain web.FilterChain) {
 		fmt.Println("@FuncFilter")
 		chain.Next(ctx)
-	})
+	}).URLPatterns("/func")
 
 	handlerFilter := web.HandlerFilter(web.FUNC(func(ctx web.Context) {
 		fmt.Println("@HandlerFilter")
