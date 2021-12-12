@@ -181,7 +181,7 @@ func newWiringStack() *wiringStack {
 
 // pushBack 添加一个即将注入的 bean 。
 func (s *wiringStack) pushBack(b *BeanDefinition) {
-	log.Tracef("wiring %s", b)
+	log.Tracef("push %s %s", b, getStatusString(b.status))
 	s.beans = append(s.beans, b)
 }
 
@@ -190,7 +190,7 @@ func (s *wiringStack) popBack() {
 	n := len(s.beans)
 	b := s.beans[n-1]
 	s.beans = s.beans[:n-1]
-	log.Tracef("wired %s", b)
+	log.Tracef("pop %s %s", b, getStatusString(b.status))
 }
 
 // path 返回 bean 的注入路径。
@@ -284,9 +284,18 @@ func (c *container) Refresh(opts ...internal.RefreshOption) (err error) {
 		}
 	}()
 
-	for _, b := range c.beansById {
-		if err = c.wireBean(b, stack); err != nil {
-			return err
+	// 按照 bean id 升序注入，保证注入过程始终一致。
+	{
+		var keys []string
+		for s := range c.beansById {
+			keys = append(keys, s)
+		}
+		sort.Strings(keys)
+		for _, s := range keys {
+			b := c.beansById[s]
+			if err = c.wireBean(b, stack); err != nil {
+				return err
+			}
 		}
 	}
 

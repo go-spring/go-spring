@@ -1736,7 +1736,7 @@ func TestApplicationContext_UserDefinedTypeProperty(t *testing.T) {
 		return 0, errors.New("error level")
 	})
 
-	c.Property("time", "2018-12-20")
+	c.Property("time", "2018-12-20>>2006-01-02")
 	c.Property("duration", "1h")
 	c.Property("level", "debug")
 	c.Property("complex", "1+i")
