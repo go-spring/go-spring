@@ -65,11 +65,17 @@ func FileLine(fn interface{}) (file string, line int, fnName string) {
 	return file, line, s
 }
 
-// IsNil 返回 reflect.Value 的值是否为 nil，比原生方法更安全
+// IsNil 返回 v 的值是否为 nil，但是不会 panic 。
 func IsNil(v reflect.Value) bool {
 	switch v.Kind() {
-	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Ptr, reflect.Slice, reflect.UnsafePointer:
+	case reflect.Chan,
+		reflect.Func,
+		reflect.Interface,
+		reflect.Map,
+		reflect.Ptr,
+		reflect.Slice,
+		reflect.UnsafePointer:
 		return v.IsNil()
 	}
-	return false
+	return !v.IsValid()
 }

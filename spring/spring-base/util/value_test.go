@@ -18,8 +18,10 @@ package util_test
 
 import (
 	"fmt"
+	"reflect"
 	"testing"
 
+	"github.com/go-spring/spring-base/assert"
 	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-base/util/testdata"
 )
@@ -61,4 +63,21 @@ func TestFileLine(t *testing.T) {
 	fmt.Println(util.FileLine(testdata.Receiver.FnWithArgs))
 	fmt.Println(util.FileLine((*testdata.Receiver).PtrFnNoArgs))
 	fmt.Println(util.FileLine((*testdata.Receiver).PtrFnWithArgs))
+}
+
+func TestIsNil(t *testing.T) {
+
+	a := (*int)(nil)        // %T == *int
+	b := (interface{})(nil) // %T == <nil>
+	assert.False(t, a == b)
+
+	v := reflect.ValueOf((*int)(nil)) // %T == *int
+	assert.True(t, util.IsNil(v))
+
+	assert.True(t, util.IsNil(reflect.Value{}))              // %T == <nil>
+	assert.True(t, util.IsNil(reflect.ValueOf(nil)))         // %T == <nil>
+	assert.True(t, util.IsNil(reflect.ValueOf((*int)(nil)))) // %T == *int
+
+	assert.False(t, util.IsNil(reflect.ValueOf(3)))
+	assert.False(t, util.IsNil(reflect.ValueOf("3")))
 }
