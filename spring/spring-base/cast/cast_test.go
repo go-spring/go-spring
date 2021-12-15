@@ -116,6 +116,16 @@ func TestToTime(t *testing.T) {
 				"2006-01-02 15:04:05.000000000 -0700",
 				time.Unix(0, 1),
 			},
+			{
+				"1s",
+				"",
+				time.Unix(1, 0),
+			},
+			{
+				"1h1m1s",
+				"",
+				time.Unix(3661, 0),
+			},
 		}
 
 		for i, testcase := range testcases {

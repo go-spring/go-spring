@@ -17,6 +17,7 @@
 package main_test
 
 import (
+	"strconv"
 	"testing"
 	"time"
 
@@ -70,10 +71,19 @@ func BenchmarkToBool(b *testing.B) {
 		})
 	})
 
-	// string/go-spring-8  41272039 28.3 ns/op
-	// string/spf13/cast-8 37898732 31.2 ns/op
+	// string/strconv-8    957624752 1.27 ns/op
+	// string/go-spring-8  41272039  28.3 ns/op
+	// string/spf13/cast-8 37898732  31.2 ns/op
 	b.Run("string", func(b *testing.B) {
 		v := "true"
+		b.Run("strconv", func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				_, err := strconv.ParseBool(v)
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 		b.Run("go-spring", func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				_, err := SpringCast.ToBoolE(v)
@@ -161,10 +171,19 @@ func BenchmarkToInt(b *testing.B) {
 		})
 	})
 
+	// string/strconv-8    81830738	13.7 ns/op
 	// string/go-spring-8  26871295 44.7 ns/op
 	// string/spf13/cast-8 27892414 44.1 ns/op
 	b.Run("string", func(b *testing.B) {
 		v := "10"
+		b.Run("strconv", func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				_, err := strconv.ParseInt(v, 0, 0)
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 		b.Run("go-spring", func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				_, err := SpringCast.ToInt64E(v)
@@ -252,10 +271,19 @@ func BenchmarkToFloat(b *testing.B) {
 		})
 	})
 
+	// string/strconv-8    59966035 20.0 ns/op
 	// string/go-spring-8  22259067 47.3 ns/op
 	// string/spf13/cast-8 24166567 51.0 ns/op
 	b.Run("string", func(b *testing.B) {
 		v := "10"
+		b.Run("strconv", func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				_, err := strconv.ParseFloat(v, 64)
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 		b.Run("go-spring", func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				_, err := SpringCast.ToFloat64E(v)
@@ -299,10 +327,16 @@ func BenchmarkToFloat(b *testing.B) {
 
 func BenchmarkToString(b *testing.B) {
 
-	// int/go-spring-8  60869038 18.2 ns/op
-	// int/spf13/cast-8 24028012 50.8 ns/op
+	// int/strconv-8    419501868 2.87 ns/op
+	// int/go-spring-8  60869038  18.2 ns/op
+	// int/spf13/cast-8 24028012  50.8 ns/op
 	b.Run("int", func(b *testing.B) {
 		v := 10
+		b.Run("strconv", func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				_ = strconv.Itoa(v)
+			}
+		})
 		b.Run("go-spring", func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				_, err := SpringCast.ToStringE(v)
@@ -434,10 +468,20 @@ func BenchmarkToDuration(b *testing.B) {
 		})
 	})
 
+	// string/parse-8      28863253 38.5 ns/op
 	// string/go-spring-8  18037459 66.7 ns/op
 	// string/spf13/cast-8  4729190 259 ns/op
 	b.Run("string", func(b *testing.B) {
 		v := SpringCast.ToString(time.Now().UnixNano()) + "ns"
+		b.Run("parse", func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				_, err := time.ParseDuration(v)
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+
 		b.Run("go-spring", func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				_, err := SpringCast.ToDurationE(v)
@@ -487,7 +531,7 @@ func BenchmarkToTime(b *testing.B) {
 		v := time.Now().Unix()
 		b.Run("go-spring", func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				_, err := SpringCast.ToTimeE(v, SpringCast.TimeArg{Unit: time.Second})
+				_, err := SpringCast.ToTimeE(v, SpringCast.Second)
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -509,7 +553,7 @@ func BenchmarkToTime(b *testing.B) {
 		v := time.Now().Unix()
 		b.Run("go-spring", func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				_, err := SpringCast.ToTimeE(&v, SpringCast.TimeArg{Unit: time.Second})
+				_, err := SpringCast.ToTimeE(&v, SpringCast.Second)
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -525,14 +569,23 @@ func BenchmarkToTime(b *testing.B) {
 		})
 	})
 
+	// string/parse-8      4266552 277 ns/op
 	// string/go-spring-8  3559998 324 ns/op
 	// string/spf13/cast-8 332461  3490 ns/op
 	b.Run("string", func(b *testing.B) {
 		format := "2006-01-02 15:04:05 -0700"
 		v := time.Now().Format(format)
+		b.Run("parse", func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				_, err := time.Parse(format, v)
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 		b.Run("go-spring", func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				_, err := SpringCast.ToTimeE(v, SpringCast.TimeArg{Format: format})
+				_, err := SpringCast.ToTimeE(v, format)
 				if err != nil {
 					b.Fatal(err)
 				}
@@ -548,14 +601,14 @@ func BenchmarkToTime(b *testing.B) {
 		})
 	})
 
-	// string#01/go-spring-8  3701358 279 ns/op
-	// string#01/spf13/cast-8 316292  3498 ns/op
-	b.Run("string", func(b *testing.B) {
+	// *string#01/go-spring-8  3701358 279 ns/op
+	// *string#01/spf13/cast-8 316292  3498 ns/op
+	b.Run("*string", func(b *testing.B) {
 		format := "2006-01-02 15:04:05 -0700"
 		v := time.Now().Format(format)
 		b.Run("go-spring", func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				_, err := SpringCast.ToTimeE(&v, SpringCast.TimeArg{Format: format})
+				_, err := SpringCast.ToTimeE(&v, format)
 				if err != nil {
 					b.Fatal(err)
 				}

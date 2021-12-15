@@ -19,8 +19,14 @@ package i18n
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
+	"strings"
 
+	"github.com/go-spring/spring-base/code"
+	"github.com/go-spring/spring-base/conf"
 	"github.com/go-spring/spring-base/knife"
+	"github.com/go-spring/spring-base/util"
 )
 
 // Languages 语言缩写代码表。
@@ -264,19 +270,73 @@ var _ = []string{
 	"zu-ZA",  //祖鲁语
 }
 
-// languages 语言配置表。
-var languages = make(map[string]map[string]string)
+// defaultLanguage 设置默认语言。
+var defaultLanguage = "zh-CN"
 
-// RegisterLanguage 注册语言配置表。
-func RegisterLanguage(language string, data map[string]string) error {
-	if _, ok := languages[language]; ok {
+// languageMap 语言配置表。
+var languageMap = make(map[string]*conf.Properties)
+
+// Register 注册语言配置表。
+func Register(language string, data *conf.Properties) error {
+	if _, ok := languageMap[language]; ok {
 		return errors.New("duplicate language")
 	}
-	languages[language] = data
+	languageMap[language] = data
 	return nil
 }
 
+// LoadLanguage 加载语言文件。
+func LoadLanguage(filename string) error {
+	fileInfo, err := os.Stat(filename)
+	if err != nil {
+		return err
+	}
+	if fileInfo.IsDir() {
+		return loadLanguageFromDir(filename)
+	}
+	return loadLanguageFromFile(filename)
+}
+
+func loadLanguageFromDir(dir string) error {
+	dirNames, err := util.ReadDirNames(dir)
+	if err != nil {
+		return err
+	}
+	p := conf.New()
+	var fileInfo os.FileInfo
+	for _, name := range dirNames {
+		filename := filepath.Join(dir, name)
+		fileInfo, err = os.Stat(filename)
+		if err != nil {
+			return err
+		}
+		if fileInfo.IsDir() {
+			continue
+		}
+		if err = p.Load(filename); err != nil {
+			return err
+		}
+	}
+	language := filepath.Base(dir)
+	return Register(language, p)
+}
+
+func loadLanguageFromFile(file string) error {
+	p, err := conf.Load(file)
+	if err != nil {
+		return err
+	}
+	filename := filepath.Base(file)
+	language := strings.Split(filename, ".")[0]
+	return Register(language, p)
+}
+
 const languageKey = "::language::"
+
+// SetDefaultLanguage 设置默认语言。
+func SetDefaultLanguage(language string) {
+	defaultLanguage = language
+}
 
 // SetLanguage 设置上下文语言。
 func SetLanguage(ctx context.Context, language string) error {
@@ -286,19 +346,81 @@ func SetLanguage(ctx context.Context, language string) error {
 // Get 获取语言对应的配置项，从 context.Context 中获取上下文语言。
 func Get(ctx context.Context, key string) string {
 
-	var language string
-	ok, err := knife.Fetch(ctx, languageKey, &language)
-	if err != nil || !ok {
-		language = "zh-CN"
+	language := defaultLanguage
+	_, _ = knife.Fetch(ctx, languageKey, &language)
+
+	if m, ok := languageMap[language]; ok && m != nil {
+		if m.Has(key) {
+			return m.Get(key)
+		}
 	}
 
-	m, ok := languages[language]
-	if !ok {
+	ss := strings.SplitN(language, "-", 2)
+	if len(ss) < 2 {
 		return ""
 	}
-	v, ok := m[key]
-	if !ok {
-		return ""
+
+	if m, ok := languageMap[ss[0]]; ok && m != nil {
+		return m.Get(key)
 	}
-	return v
+	return ""
+}
+
+// Resolve 获取语言对应的配置项，从 context.Context 中获取上下文语言。
+func Resolve(ctx context.Context, s string) (string, error) {
+	return resolveString(ctx, s)
+}
+
+func resolveString(ctx context.Context, s string) (string, error) {
+
+	n := len(s)
+	count := 0
+	found := false
+	start, end := -1, -1
+
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '{':
+			if i < n-1 {
+				if s[i+1] == '{' {
+					if count == 0 {
+						start = i
+					}
+					count++
+				}
+			}
+		case '}':
+			if i < n-1 {
+				if s[i+1] == '}' {
+					count--
+					if count == 0 {
+						found = true
+						i++
+						end = i
+					}
+				}
+			}
+		}
+		if found {
+			break
+		}
+	}
+
+	if start < 0 || end < 0 {
+		return s, nil
+	}
+
+	if count > 0 {
+		return "", util.Errorf(code.Line(), "%s 语法错误", s)
+	}
+
+	key := strings.TrimSpace(s[start+2 : end-1])
+	s1 := Get(ctx, key)
+
+	s2, err := resolveString(ctx, s[end+1:])
+	if err != nil {
+		return "", err
+	}
+
+	return s[:start] + s1 + s2, nil
 }

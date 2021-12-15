@@ -70,10 +70,29 @@ func False(t T, got bool, msg ...string) {
 	}
 }
 
+// isNil 返回 v 的值是否为 nil，但是不会 panic 。
+func isNil(v reflect.Value) bool {
+	switch v.Kind() {
+	case reflect.Chan,
+		reflect.Func,
+		reflect.Interface,
+		reflect.Map,
+		reflect.Ptr,
+		reflect.Slice,
+		reflect.UnsafePointer:
+		return v.IsNil()
+	}
+	return !v.IsValid()
+}
+
 // Nil asserts that got is nil.
 func Nil(t T, got interface{}, msg ...string) {
 	t.Helper()
-	if got != nil {
+	// 为什么不能使用 got == nil 进行判断呢？因为如果
+	// a := (*int)(nil)        // %T == *int
+	// b := (interface{})(nil) // %T == <nil>
+	// 那么 a==b 的结果是 false，因为二者类型不一致。
+	if !isNil(reflect.ValueOf(got)) {
 		str := fmt.Sprintf("got (%T) %v but expect nil", got, got)
 		fail(t, str, msg...)
 	}
@@ -82,7 +101,7 @@ func Nil(t T, got interface{}, msg ...string) {
 // NotNil asserts that got is not nil.
 func NotNil(t T, got interface{}, msg ...string) {
 	t.Helper()
-	if got == nil {
+	if isNil(reflect.ValueOf(got)) {
 		fail(t, "got nil but expect not nil", msg...)
 	}
 }

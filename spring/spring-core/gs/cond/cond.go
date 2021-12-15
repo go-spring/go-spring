@@ -21,9 +21,9 @@ import (
 	"errors"
 	"go/token"
 	"go/types"
+	"strconv"
 	"strings"
 
-	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-base/conf"
 	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/gs/internal"
@@ -99,13 +99,13 @@ func (c *onProperty) Matches(ctx Context) (bool, error) {
 		return val == c.havingValue, nil
 	}
 
-	expr := strings.Replace(c.havingValue[3:], "$", cast.ToString(val), -1)
+	expr := strings.Replace(c.havingValue[3:], "$", val, -1)
 	ret, err := types.Eval(token.NewFileSet(), nil, token.NoPos, expr)
 	if err != nil {
 		return false, err
 	}
 
-	return cast.ToBoolE(ret.Value.String())
+	return strconv.ParseBool(ret.Value.String())
 }
 
 // onMissingProperty 基于属性值不存在的 Condition 实现。

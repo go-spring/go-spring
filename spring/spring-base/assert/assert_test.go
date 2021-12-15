@@ -112,6 +112,12 @@ func TestNil(t *testing.T) {
 	{
 		g := assert.NewMockT(ctrl)
 		g.EXPECT().Helper().AnyTimes()
+		assert.Nil(g, (*int)(nil))
+	}
+
+	{
+		g := assert.NewMockT(ctrl)
+		g.EXPECT().Helper().AnyTimes()
 		g.EXPECT().Log([]interface{}{"got (int) 3 but expect nil"})
 		g.EXPECT().Fail()
 		assert.Nil(g, 3)

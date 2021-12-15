@@ -20,9 +20,9 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 
-	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-base/code"
 	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-base/util"
@@ -99,40 +99,36 @@ func BindValue(p *Properties, v reflect.Value, param BindParam) error {
 
 	switch v.Kind() {
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		u, err := cast.ToUint64E(val)
-		if err == nil {
+		var u uint64
+		if u, err = strconv.ParseUint(val, 0, 0); err == nil {
 			v.SetUint(u)
 			return nil
 		}
 		return util.Errorf(code.Line(), "%+v %w", param, err)
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		i, err := cast.ToInt64E(val)
-		if err == nil {
+		var i int64
+		if i, err = strconv.ParseInt(val, 0, 0); err == nil {
 			v.SetInt(i)
 			return nil
 		}
 		return util.Errorf(code.Line(), "%+v %w", param, err)
 	case reflect.Float32, reflect.Float64:
-		f, err := cast.ToFloat64E(val)
-		if err == nil {
+		var f float64
+		if f, err = strconv.ParseFloat(val, 64); err == nil {
 			v.SetFloat(f)
 			return nil
 		}
 		return util.Errorf(code.Line(), "%+v %w", param, err)
 	case reflect.Bool:
-		b, err := cast.ToBoolE(val)
-		if err == nil {
+		var b bool
+		if b, err = strconv.ParseBool(val); err == nil {
 			v.SetBool(b)
 			return nil
 		}
 		return util.Errorf(code.Line(), "%+v %w", param, err)
 	case reflect.String:
-		s, err := cast.ToStringE(val)
-		if err == nil {
-			v.SetString(s)
-			return nil
-		}
-		return util.Errorf(code.Line(), "%+v %w", param, err)
+		v.SetString(val)
+		return nil
 	}
 
 	return util.Errorf(code.Line(), "unsupported bind type %q", param.Type.String())
