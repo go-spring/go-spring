@@ -49,14 +49,14 @@ type Container interface {
 	// Config 获取 Web 容器配置
 	Config() conf.WebServerConfig
 
-	// GetFilters 返回过滤器列表
-	GetFilters() []Filter
+	// Filters 返回过滤器列表
+	Filters() []Filter
 
 	// AddFilter 添加过滤器
 	AddFilter(filter ...Filter)
 
-	// GetLoggerFilter 获取 Logger Filter
-	GetLoggerFilter() Filter
+	// LoggerFilter 获取 Logger Filter
+	LoggerFilter() Filter
 
 	// SetLoggerFilter 设置 Logger Filter
 	SetLoggerFilter(filter Filter)
@@ -102,8 +102,8 @@ func (c *AbstractContainer) Config() conf.WebServerConfig {
 	return c.config
 }
 
-// GetFilters 返回过滤器列表
-func (c *AbstractContainer) GetFilters() []Filter {
+// Filters 返回过滤器列表
+func (c *AbstractContainer) Filters() []Filter {
 	return c.filters
 }
 
@@ -112,8 +112,8 @@ func (c *AbstractContainer) AddFilter(filter ...Filter) {
 	c.filters = append(c.filters, filter...)
 }
 
-// GetLoggerFilter 获取 Logger Filter
-func (c *AbstractContainer) GetLoggerFilter() Filter {
+// LoggerFilter 获取 Logger Filter
+func (c *AbstractContainer) LoggerFilter() Filter {
 	if c.logger != nil {
 		return c.logger
 	}

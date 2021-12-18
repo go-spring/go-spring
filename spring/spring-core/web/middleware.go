@@ -16,15 +16,6 @@
 
 package web
 
-// logger
-// echo: https://github.com/labstack/echo/blob/master/middleware/logger.go
-// gin: https://github.com/gin-contrib/logger/blob/master/logger.go
-//      https://github.com/gin-contrib/zap/blob/master/zap.go
-
-// recover
-// echo: https://github.com/labstack/echo/blob/master/middleware/recover.go
-// gin: https://github.com/gin-contrib/rollbar/blob/master/recovey.go
-
 // method_override
 // echo: https://github.com/labstack/echo/blob/master/middleware/method_override.go
 // gin:
