@@ -25,12 +25,12 @@ import (
 	"github.com/go-spring/spring-core/web"
 )
 
-func TestMethodOverride(t *testing.T) {
-	r, _ := http.NewRequest(http.MethodPost, "http://127.0.0.1:8080/?_method=GET", nil)
+func TestRedirectFilter(t *testing.T) {
+	r, _ := http.NewRequest(http.MethodPost, "http://127.0.0.1:8080/", nil)
 	w := httptest.NewRecorder()
 	ctx := web.NewHttpContext(nil, w, r)
-	f := web.NewMethodOverrideFilter(web.NewMethodOverrideConfig().ByQueryParam("_method"))
+	f := web.HTTPSRedirect(web.NewRedirectConfig())
 	web.NewDefaultFilterChain([]web.Filter{f}).Next(ctx)
-	assert.Equal(t, ctx.Request().Method, http.MethodGet)
-	assert.True(t, web.IsPrefilter(f))
+	assert.Equal(t, w.Result().StatusCode, http.StatusMovedPermanently)
+	assert.Equal(t, w.Result().Header.Get(web.HeaderLocation), "https://127.0.0.1:8080")
 }

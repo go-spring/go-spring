@@ -16,14 +16,6 @@
 
 package web
 
-// method_override
-// echo: https://github.com/labstack/echo/blob/master/middleware/method_override.go
-// gin:
-
-// redirect
-// echo: https://github.com/labstack/echo/blob/master/middleware/redirect.go
-// gin:
-
 // request_id
 // echo: https://github.com/labstack/echo/blob/master/middleware/request_id.go
 // gin: https://github.com/gin-contrib/requestid/blob/master/requestid.go
