@@ -106,6 +106,12 @@ type Context interface {
 	// NativeContext 返回封装的底层上下文对象
 	NativeContext() interface{}
 
+	// Get retrieves data from the context.
+	Get(key string) interface{}
+
+	// Set saves data in the context.
+	Set(key string, val interface{})
+
 	/////////////////////////////////////////
 	// Request Part
 

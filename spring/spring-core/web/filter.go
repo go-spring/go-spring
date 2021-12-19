@@ -25,27 +25,6 @@ type Filter interface {
 	Invoke(ctx Context, chain FilterChain)
 }
 
-// funcFilter 封装 func 形式的过滤器。
-type funcFilter struct {
-	f func(ctx Context, chain FilterChain)
-	p []string
-}
-
-// FuncFilter 封装 func 形式的过滤器。
-func FuncFilter(f func(ctx Context, chain FilterChain)) *funcFilter {
-	return &funcFilter{f: f}
-}
-
-// URLPatterns 为过滤器设置 url 匹配模式。
-func (f *funcFilter) URLPatterns(p ...string) *funcFilter {
-	f.p = p
-	return f
-}
-
-func (f *funcFilter) Invoke(ctx Context, chain FilterChain) {
-	f.f(ctx, chain)
-}
-
 // handlerFilter 包装 Web 处理接口的过滤器
 type handlerFilter struct {
 	fn Handler
@@ -58,6 +37,56 @@ func HandlerFilter(fn Handler) Filter {
 
 func (h *handlerFilter) Invoke(ctx Context, _ FilterChain) {
 	h.fn.Invoke(ctx)
+}
+
+// funcFilter 封装 func 形式的过滤器。
+type funcFilter struct {
+	f func(ctx Context, chain FilterChain)
+}
+
+// FuncFilter 封装 func 形式的过滤器。
+func FuncFilter(f func(ctx Context, chain FilterChain)) *funcFilter {
+	return &funcFilter{f: f}
+}
+
+func (f *funcFilter) Invoke(ctx Context, chain FilterChain) {
+	f.f(ctx, chain)
+}
+
+// URLPatterns 返回带 URLPatterns 信息的过滤器。
+func (f *funcFilter) URLPatterns(s ...string) *urlPatternFilter {
+	return &urlPatternFilter{Filter: f, s: s}
+}
+
+// urlPatternFilter 封装带 URLPatterns 信息的过滤器。
+type urlPatternFilter struct {
+	Filter
+	s []string
+}
+
+// URLPatternFilter 封装带 URLPatterns 信息的过滤器。
+func URLPatternFilter(f Filter, s ...string) *urlPatternFilter {
+	return &urlPatternFilter{Filter: f, s: s}
+}
+
+func (f *urlPatternFilter) URLPatterns() []string {
+	return f.s
+}
+
+// prefilter 前置过滤器，用于路由未决策前。
+type prefilter struct {
+	Filter
+}
+
+// Prefilter 封装前置过滤器，用于路由未决策前。
+func Prefilter(f Filter) *prefilter {
+	return &prefilter{Filter: f}
+}
+
+// IsPrefilter 返回是否是前置过滤器。
+func IsPrefilter(f Filter) bool {
+	_, ok := f.(*prefilter)
+	return ok
 }
 
 // FilterChain 过滤器链条接口
@@ -91,7 +120,7 @@ func (chain *DefaultFilterChain) next(ctx Context) {
 func (chain *DefaultFilterChain) Next(ctx Context) {
 	if chain.index < len(chain.filters) {
 		chain.next(ctx)
-		for chain.lazyNext {
+		for chain.lazyNext && chain.index < len(chain.filters) {
 			chain.lazyNext = false
 			chain.next(ctx)
 		}
