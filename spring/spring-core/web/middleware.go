@@ -16,32 +16,8 @@
 
 package web
 
-// method_override
-// echo: https://github.com/labstack/echo/blob/master/middleware/method_override.go
-// gin:
-
-// redirect
-// echo: https://github.com/labstack/echo/blob/master/middleware/redirect.go
-// gin:
-
-// request_id
-// echo: https://github.com/labstack/echo/blob/master/middleware/request_id.go
-// gin: https://github.com/gin-contrib/requestid/blob/master/requestid.go
-
-// rewrite
-// echo: https://github.com/labstack/echo/blob/master/middleware/rewrite.go
-// gin:
-
-// basic_auth
-// echo: https://github.com/labstack/echo/blob/master/middleware/basic_auth.go
-// gin:
-
 // key_auth
 // echo: https://github.com/labstack/echo/blob/master/middleware/key_auth.go
-// gin:
-
-// body_dump
-// echo: https://github.com/labstack/echo/blob/master/middleware/body_dump.go
 // gin:
 
 // body_limit (413 - Request Entity Too Large)
@@ -72,14 +48,6 @@ package web
 // echo: https://github.com/labstack/echo/blob/master/middleware/proxy.go
 // gin:
 
-// slash
-// echo: https://github.com/labstack/echo/blob/master/middleware/slash.go
-// gin:
-
-// static
-// echo: https://github.com/labstack/echo/blob/master/middleware/static.go
-// gin: https://github.com/gin-contrib/static/blob/master/static.go
-
 // casbin
 // echo: https://github.com/labstack/echo-contrib/blob/master/casbin/casbin.go
 // gin: https://github.com/gin-contrib/authz/blob/master/authz.go
@@ -99,27 +67,6 @@ package web
 // pprof
 // echo:
 // gin: https://github.com/gin-contrib/pprof/blob/master/pprof.go
-
-// cache
-// echo:
-// gin: https://github.com/gin-contrib/cache/blob/master/cache.go
-
-// location
-// echo:
-// gin: https://github.com/gin-contrib/location/blob/master/location.go
-
-// httpsign
-// echo:
-// gin: https://github.com/gin-contrib/httpsign/blob/master/signatureheader.go
-//      https://github.com/gin-contrib/httpsign/blob/master/authenticator.go
-
-// limiter
-// echo:
-// gin: https://github.com/ulule/limiter/blob/master/drivers/middleware/gin/middleware.go
-
-// swagger
-// echo: https://github.com/swaggo/echo-swagger/blob/master/swagger.go
-// gin: https://github.com/swaggo/gin-swagger/blob/master/swagger.go
 
 // oauth2
 // echo:

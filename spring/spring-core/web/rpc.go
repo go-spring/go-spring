@@ -17,10 +17,16 @@
 package web
 
 import (
+	"context"
 	"errors"
 	"reflect"
 
+	"github.com/go-spring/spring-base/knife"
 	"github.com/go-spring/spring-base/util"
+)
+
+const (
+	ctxKey = "::request::"
 )
 
 // bindHandler BIND 形式的 Web 处理接口
@@ -32,6 +38,8 @@ type bindHandler struct {
 }
 
 func (b *bindHandler) Invoke(ctx Context) {
+	err := knife.Set(ctx.Context(), ctxKey, ctx)
+	util.Panic(err).When(err != nil)
 	RpcInvoke(ctx, b.call)
 }
 
@@ -82,7 +90,17 @@ func BIND(fn interface{}) Handler {
 	panic(errors.New("fn should be func(context.Context, *struct})anything"))
 }
 
-// RpcInvoke 可自定义的 rpc 执行函数
+// GetRequest 获取 ctx 对象上绑定的 web.Context 对象。
+func GetRequest(ctx context.Context) Context {
+	v, ok := knife.Get(ctx, ctxKey)
+	if !ok {
+		return nil
+	}
+	webCtx, _ := v.(Context)
+	return webCtx
+}
+
+// RpcInvoke 可自定义的 rpc 执行函数。
 var RpcInvoke = func(ctx Context, fn func(Context) interface{}) {
 	ctx.JSON(fn(ctx))
 }

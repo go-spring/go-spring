@@ -46,6 +46,9 @@ type basicAuthFilter struct {
 
 // NewBasicAuthFilter 创建封装 http 基础认证功能的过滤器。
 func NewBasicAuthFilter(config BasicAuthConfig) Filter {
+	if config.Realm == "" {
+		config.Realm = defaultRealm
+	}
 	return &basicAuthFilter{config: config}
 }
 
@@ -92,9 +95,5 @@ func (f *basicAuthFilter) Invoke(ctx Context, chain FilterChain) {
 }
 
 func (f *basicAuthFilter) unauthorized(ctx Context) {
-	realm := f.config.Realm
-	if realm == "" {
-		realm = defaultRealm
-	}
-	ctx.Header(HeaderWWWAuthenticate, fmt.Sprintf("Basic realm=%q", realm))
+	ctx.Header(HeaderWWWAuthenticate, fmt.Sprintf("Basic realm=%q", f.config.Realm))
 }

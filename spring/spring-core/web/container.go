@@ -117,7 +117,12 @@ func (c *AbstractContainer) LoggerFilter() Filter {
 	if c.logger != nil {
 		return c.logger
 	}
-	return defaultLoggerFilter
+	return FuncFilter(func(ctx Context, chain FilterChain) {
+		start := time.Now()
+		chain.Next(ctx)
+		w := ctx.ResponseWriter()
+		log.Ctx(ctx.Context()).Infof("cost:%v size:%d code:%d %s", time.Since(start), w.Size(), w.Status(), w.Body())
+	})
 }
 
 // SetLoggerFilter 设置 Logger Filter
@@ -189,19 +194,6 @@ func (c *AbstractContainer) Static(prefix string, root string) {
 	c.router.HandleGet(prefix+"/*", h)
 }
 
-/////////////////// Invoke Handler //////////////////////
-
-// InvokeHandler 执行 Web 处理函数
-func InvokeHandler(ctx Context, fn Handler, filters []Filter) {
-	if len(filters) > 0 {
-		filters = append(filters, HandlerFilter(fn))
-		chain := NewDefaultFilterChain(filters)
-		chain.Next(ctx)
-	} else {
-		fn.Invoke(ctx)
-	}
-}
-
 /////////////////// Web Handlers //////////////////////
 
 // fnHandler 封装 Web 处理函数
@@ -254,13 +246,3 @@ func (h httpHandler) FileLine() (file string, line int, fnName string) {
 func WrapH(h http.Handler) Handler {
 	return &httpHandler{h}
 }
-
-/////////////////// Web Filters //////////////////////
-
-// defaultLoggerFilter 全局的日志过滤器，Container 如果没有设置日志过滤器则会使用全局的日志过滤器
-var defaultLoggerFilter = Filter(FuncFilter(func(ctx Context, chain FilterChain) {
-	start := time.Now()
-	chain.Next(ctx)
-	w := ctx.ResponseWriter()
-	log.Ctx(ctx.Context()).Infof("cost:%v size:%d code:%d %s", time.Since(start), w.Size(), w.Status(), string(w.Body()))
-}))

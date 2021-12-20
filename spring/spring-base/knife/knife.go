@@ -25,11 +25,16 @@ import (
 	"sync"
 )
 
-var ErrUninitialized = errors.New("knife uninitialized")
-
 type ctxKeyType int
 
 var ctxKey ctxKeyType
+
+var ErrUninitialized = errors.New("knife uninitialized")
+
+func cache(ctx context.Context) (*sync.Map, bool) {
+	c, ok := ctx.Value(ctxKey).(*sync.Map)
+	return c, ok
+}
 
 // New 返回带有缓存空间的 context.Context 对象。
 func New(ctx context.Context) context.Context {
@@ -39,9 +44,12 @@ func New(ctx context.Context) context.Context {
 	return context.WithValue(ctx, ctxKey, new(sync.Map))
 }
 
-func cache(ctx context.Context) (*sync.Map, bool) {
-	c, ok := ctx.Value(ctxKey).(*sync.Map)
-	return c, ok
+// Copy 拷贝 context.Context 对象中的内容到另一个 context.Context 对象。
+func Copy(src context.Context) context.Context {
+	if v, ok := cache(src); ok {
+		return context.WithValue(context.Background(), ctxKey, v)
+	}
+	return context.WithValue(context.Background(), ctxKey, new(sync.Map))
 }
 
 // Get 从 context.Context 对象中获取 key 对应的 val。
@@ -60,12 +68,7 @@ func Fetch(ctx context.Context, key string, out interface{}) (bool, error) {
 		return false, errors.New("out should be ptr and not nil")
 	}
 
-	c, ok := cache(ctx)
-	if !ok {
-		return false, nil
-	}
-
-	v, ok := c.Load(key)
+	v, ok := Get(ctx, key)
 	if !ok {
 		return false, nil
 	}

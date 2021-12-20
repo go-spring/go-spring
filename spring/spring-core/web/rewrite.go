@@ -14,23 +14,10 @@
  * limitations under the License.
  */
 
-package web_test
+package web
 
-import (
-	"net/http"
-	"net/http/httptest"
-	"testing"
-
-	"github.com/go-spring/spring-base/assert"
-	"github.com/go-spring/spring-core/web"
-)
-
-func TestMethodOverride(t *testing.T) {
-	r, _ := http.NewRequest(http.MethodPost, "http://127.0.0.1:8080/?_method=GET", nil)
-	w := httptest.NewRecorder()
-	ctx := web.NewHttpContext(nil, w, r)
-	f := web.NewMethodOverrideFilter(web.NewMethodOverrideConfig().ByQueryParam("_method"))
-	web.NewDefaultFilterChain([]web.Filter{f}).Next(ctx)
-	assert.Equal(t, ctx.Request().Method, http.MethodGet)
-	assert.True(t, web.IsPrefilter(f))
+func NewRewriteFilter() Filter {
+	return Prefilter(FuncFilter(func(ctx Context, chain FilterChain) {
+		// https://github.com/labstack/echo/blob/master/middleware/rewrite.go
+	}))
 }

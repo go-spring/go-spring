@@ -18,6 +18,7 @@ package web
 
 import (
 	"context"
+	"fmt"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -85,7 +86,26 @@ func (ctx *httpContext) IsWebSocket() bool {
 
 // Scheme returns the HTTP protocol scheme, `http` or `https`.
 func (ctx *httpContext) Scheme() string {
-	panic(util.UnimplementedMethod)
+
+	// Can't use `r.Request.URL.Scheme`
+	// See: https://groups.google.com/forum/#!topic/golang-nuts/pMUkBlQBDF0
+
+	if ctx.r.TLS != nil {
+		return "https"
+	}
+	if scheme := ctx.GetHeader(HeaderXForwardedProto); scheme != "" {
+		return scheme
+	}
+	if scheme := ctx.GetHeader(HeaderXForwardedProtocol); scheme != "" {
+		return scheme
+	}
+	if ssl := ctx.GetHeader(HeaderXForwardedSsl); ssl == "on" {
+		return "https"
+	}
+	if scheme := ctx.GetHeader(HeaderXUrlScheme); scheme != "" {
+		return scheme
+	}
+	return "http"
 }
 
 // ClientIP implements a best effort algorithm to return the real client IP.
@@ -293,7 +313,10 @@ func (ctx *httpContext) Inline(file string, name string) {
 
 // Redirect redirects the request to a provided URL with status code.
 func (ctx *httpContext) Redirect(code int, url string) {
-	panic(util.UnimplementedMethod)
+	if (code < http.StatusMultipleChoices || code > http.StatusPermanentRedirect) && code != http.StatusCreated {
+		panic(fmt.Sprintf("cann't redirect with status code %d", code))
+	}
+	http.Redirect(ctx.w, ctx.r, url, code)
 }
 
 // SSEvent writes a Server-Sent Event into the body stream.
