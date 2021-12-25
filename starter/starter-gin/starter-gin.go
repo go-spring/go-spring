@@ -19,9 +19,8 @@ package StarterGin
 import (
 	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-gin"
-	_ "github.com/go-spring/starter-web"
 )
 
 func init() {
-	gs.Provide(SpringGin.NewContainer).Name("WebContainer")
+	gs.Provide(SpringGin.NewContainer, "${web.server}").Name("WebContainer")
 }
