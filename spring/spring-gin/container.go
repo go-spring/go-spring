@@ -24,13 +24,13 @@ import (
 	"os"
 	"runtime/debug"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
 	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-base/util"
-	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/web"
 )
 
@@ -53,7 +53,7 @@ type Container struct {
 }
 
 // NewContainer 创建 gin 实现的 WebContainer
-func NewContainer(config conf.WebServerConfig) web.Container {
+func NewContainer(config web.ContainerConfig) web.Container {
 	c := &Container{}
 	c.ginEngine = gin.New()
 	c.ginEngine.HandleMethodNotAllowed = true
@@ -82,11 +82,13 @@ func (c *Container) Start() error {
 			webCtx = NewContext(nil, ginCtx.FullPath(), ginCtx)
 		}
 
+		// 流量录制
 		web.StartRecord(webCtx)
 		defer func() {
 			web.StopRecord(webCtx)
 		}()
 
+		// 流量回放
 		web.StartReplay(webCtx)
 		defer func() {
 			web.StopReplay(webCtx)
@@ -95,7 +97,7 @@ func (c *Container) Start() error {
 		ginCtx.Next()
 	})
 
-	loggerFilter := c.GetLoggerFilter()
+	loggerFilter := c.LoggerFilter()
 	recoveryFilter := new(recoveryFilter)
 
 	for _, filter := range []web.Filter{loggerFilter, recoveryFilter} {
@@ -106,7 +108,7 @@ func (c *Container) Start() error {
 		})
 	}
 
-	urlPatterns, err := web.URLPatterns(c.GetFilters())
+	urlPatterns, err := web.URLPatterns(c.Filters())
 	if err != nil {
 		return err
 	}
@@ -129,8 +131,8 @@ func (c *Container) Start() error {
 	c.httpServer = &http.Server{
 		Addr:         c.Address(),
 		Handler:      c.ginEngine,
-		ReadTimeout:  cfg.ReadTimeout,
-		WriteTimeout: cfg.WriteTimeout,
+		ReadTimeout:  time.Duration(cfg.ReadTimeout) * time.Millisecond,
+		WriteTimeout: time.Duration(cfg.WriteTimeout) * time.Millisecond,
 	}
 
 	log.Info("⇨ http server started on ", c.Address())
@@ -215,6 +217,8 @@ type ginFilterChain struct {
 
 // Next 内部调用 gin.Context 对象的 Next 函数驱动链条向后执行
 func (chain *ginFilterChain) Next(_ web.Context) { chain.ginCtx.Next() }
+
+func (chain *ginFilterChain) Continue(_ web.Context) {}
 
 // recoveryFilter 适配 gin 的恢复过滤器
 type recoveryFilter struct{}

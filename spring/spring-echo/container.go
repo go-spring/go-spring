@@ -26,7 +26,6 @@ import (
 	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-base/util"
-	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/web"
 	"github.com/labstack/echo/v4"
 )
@@ -53,7 +52,7 @@ type Container struct {
 }
 
 // NewContainer 创建 echo 实现的 Web 容器
-func NewContainer(config conf.WebServerConfig) web.Container {
+func NewContainer(config web.ContainerConfig) web.Container {
 	c := &Container{}
 	c.echoServer = echo.New()
 	c.echoServer.HideBanner = true
@@ -69,7 +68,7 @@ func (c *Container) Start() error {
 		return err
 	}
 
-	loggerFilter := c.GetLoggerFilter()
+	loggerFilter := c.LoggerFilter()
 	recoveryFilter := new(recoveryFilter)
 
 	// 添加容器级别的过滤器，这样在路由不存在时也会调用这些过滤器
@@ -86,11 +85,13 @@ func (c *Container) Start() error {
 				webCtx = NewContext(nil, echoCtx.Path(), echoCtx)
 			}
 
+			// 流量录制
 			web.StartRecord(webCtx)
 			defer func() {
 				web.StopRecord(webCtx)
 			}()
 
+			// 流量回放
 			web.StartReplay(webCtx)
 			defer func() {
 				web.StopReplay(webCtx)
@@ -101,12 +102,12 @@ func (c *Container) Start() error {
 				recoveryFilter,
 				web.HandlerFilter(Handler(next)),
 			})
-			chain.Next(WebContext(echoCtx))
+			chain.Next(webCtx)
 			return nil
 		}
 	})
 
-	urlPatterns, err := web.URLPatterns(c.GetFilters())
+	urlPatterns, err := web.URLPatterns(c.Filters())
 	if err != nil {
 		return err
 	}
@@ -145,7 +146,8 @@ func HandlerWrapper(fn web.Handler, wildCardName string, filters []web.Filter) e
 		if ctx == nil {
 			ctx = NewContext(fn, wildCardName, echoCtx)
 		}
-		web.InvokeHandler(ctx, fn, filters)
+		filters = append(filters, web.HandlerFilter(fn))
+		web.NewDefaultFilterChain(filters).Next(ctx)
 		return nil
 	}
 }

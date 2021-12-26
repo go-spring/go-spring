@@ -88,6 +88,16 @@ func (ctx *Context) NativeContext() interface{} {
 	return ctx.echoContext
 }
 
+// Get retrieves data from the context.
+func (ctx *Context) Get(key string) (interface{}, bool) {
+	return knife.Get(ctx.Context(), key)
+}
+
+// Set saves data in the context.
+func (ctx *Context) Set(key string, val interface{}) error {
+	return knife.Set(ctx.Context(), key, val)
+}
+
 // Request returns `*http.Request`.
 func (ctx *Context) Request() *http.Request {
 	return ctx.echoContext.Request()
