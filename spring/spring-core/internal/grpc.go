@@ -14,19 +14,14 @@
  * limitations under the License.
  */
 
-package record
+package internal
 
-import (
-	"testing"
+// GrpcServerConfig gRPC 服务器配置，通常配合服务器名称前缀一起使用。
+type GrpcServerConfig struct {
+	Port int `value:"${grpc.server.port:=9090}"`
+}
 
-	"github.com/go-spring/spring-core/redis"
-	"github.com/go-spring/spring-redigo"
-)
-
-func RunCase(t *testing.T, fn func(t *testing.T, c redis.Client)) {
-	c, err := SpringRedigo.NewClient(redis.ClientConfig{Port: 6379})
-	if err != nil {
-		t.Fatal(err)
-	}
-	fn(t, c)
+// GrpcEndpointConfig gRPC 服务端点配置，通常配合端点名称前缀一起使用。
+type GrpcEndpointConfig struct {
+	Address string `value:"${address:=127.0.0.1:9090}"`
 }

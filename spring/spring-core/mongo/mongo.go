@@ -14,19 +14,8 @@
  * limitations under the License.
  */
 
-package record
+package mongo
 
-import (
-	"testing"
+import "github.com/go-spring/spring-core/internal"
 
-	"github.com/go-spring/spring-core/redis"
-	"github.com/go-spring/spring-redigo"
-)
-
-func RunCase(t *testing.T, fn func(t *testing.T, c redis.Client)) {
-	c, err := SpringRedigo.NewClient(redis.ClientConfig{Port: 6379})
-	if err != nil {
-		t.Fatal(err)
-	}
-	fn(t, c)
-}
+type ClientConfig = internal.MongoClientConfig

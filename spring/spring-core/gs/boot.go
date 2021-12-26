@@ -41,7 +41,10 @@ func init() {
 	}
 }
 
-var gApp *App
+var (
+	gApp   *App
+	gInits []func(*startup)
+)
 
 func app() *App {
 	if gApp == nil {
@@ -61,9 +64,24 @@ func Go(fn func(ctx context.Context)) {
 	gApp.Go(fn)
 }
 
+type startup struct {
+	web bool
+}
+
+func Web(enable bool) *startup {
+	return &startup{web: enable}
+}
+
+func (s *startup) Run() error {
+	for _, f := range gInits {
+		f(s)
+	}
+	return gApp.Run()
+}
+
 // Run 启动程序。
 func Run() error {
-	return gApp.Run()
+	return Web(true).Run()
 }
 
 // ShutDown 停止程序。

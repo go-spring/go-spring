@@ -14,19 +14,9 @@
  * limitations under the License.
  */
 
-package record
+package internal
 
-import (
-	"testing"
-
-	"github.com/go-spring/spring-core/redis"
-	"github.com/go-spring/spring-redigo"
-)
-
-func RunCase(t *testing.T, fn func(t *testing.T, c redis.Client)) {
-	c, err := SpringRedigo.NewClient(redis.ClientConfig{Port: 6379})
-	if err != nil {
-		t.Fatal(err)
-	}
-	fn(t, c)
+// DatabaseClientConfig 关系型数据库客户端配置，通常配合数据库名称前缀一起使用。
+type DatabaseClientConfig struct {
+	Url string `value:"${db.url}"`
 }
