@@ -22,7 +22,6 @@ import (
 	"time"
 
 	"github.com/go-spring/spring-base/fastdev"
-	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/redis"
 	g "github.com/gomodule/redigo/redis"
 )
@@ -33,7 +32,7 @@ type client struct {
 }
 
 // NewClient 创建 Redis 客户端
-func NewClient(config conf.RedisClientConfig) (redis.Client, error) {
+func NewClient(config redis.ClientConfig) (redis.Client, error) {
 
 	if fastdev.ReplayMode() {
 		return &redis.BaseClient{}, nil

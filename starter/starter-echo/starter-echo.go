@@ -19,9 +19,8 @@ package StarterEcho
 import (
 	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-echo"
-	_ "github.com/go-spring/starter-web"
 )
 
 func init() {
-	gs.Provide(SpringEcho.NewContainer).Name("WebContainer")
+	gs.Provide(SpringEcho.NewContainer, "${web.server}").Name("WebContainer")
 }

@@ -28,6 +28,7 @@ import (
 	"github.com/go-spring/spring-base/fastdev"
 	"github.com/go-spring/spring-base/fastdev/json"
 	"github.com/go-spring/spring-base/util"
+	"github.com/go-spring/spring-core/internal"
 )
 
 const OK = "OK"
@@ -70,6 +71,8 @@ var hook Hook
 func SetHook(h Hook) {
 	hook = h
 }
+
+type ClientConfig internal.RedisClientConfig
 
 type BaseClient struct {
 	DoFunc func(ctx context.Context, args ...interface{}) (interface{}, error)

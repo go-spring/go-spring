@@ -107,10 +107,10 @@ type Context interface {
 	NativeContext() interface{}
 
 	// Get retrieves data from the context.
-	Get(key string) interface{}
+	Get(key string) (interface{}, bool)
 
 	// Set saves data in the context.
-	Set(key string, val interface{})
+	Set(key string, val interface{}) error
 
 	/////////////////////////////////////////
 	// Request Part

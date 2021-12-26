@@ -19,13 +19,12 @@ package record
 import (
 	"testing"
 
-	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/redis"
 	"github.com/go-spring/spring-go-redis"
 )
 
 func RunCase(t *testing.T, fn func(t *testing.T, c redis.Client)) {
-	c, err := SpringGoRedis.NewClient(conf.DefaultRedisClientConfig())
+	c, err := SpringGoRedis.NewClient(redis.ClientConfig{Port: 6379})
 	if err != nil {
 		t.Fatal(err)
 	}
