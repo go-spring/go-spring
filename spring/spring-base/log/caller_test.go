@@ -14,20 +14,40 @@
  * limitations under the License.
  */
 
-package util_test
+package log
 
 import (
-	"context"
+	"fmt"
 	"testing"
-	"time"
 
 	"github.com/go-spring/spring-base/assert"
-	"github.com/go-spring/spring-base/util"
 )
 
-func TestNow(t *testing.T) {
-	assert.True(t, time.Now().Sub(util.Now(nil)).Milliseconds() < 1)
-	assert.True(t, time.Now().Sub(util.Now(context.TODO())).Milliseconds() < 1)
-	ctx := util.MockNow(context.TODO(), time.Now().Add(-60*time.Second))
-	assert.True(t, time.Now().Sub(util.Now(ctx).Add(60*time.Second)).Milliseconds() < 1)
+func TestCaller(t *testing.T) {
+	for i := 0; i < 2; i++ {
+		file, line, loaded := Caller(0, true)
+		if i == 0 {
+			assert.False(t, loaded)
+		} else {
+			assert.True(t, loaded)
+		}
+		_ = fmt.Sprintf("%s:%d\n", file, line)
+	}
+}
+
+func BenchmarkCaller(b *testing.B) {
+
+	b.Run("fast", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			file, line, _ := Caller(0, true)
+			_ = fmt.Sprintf("%s:%d\n", file, line)
+		}
+	})
+
+	b.Run("slow", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			file, line, _ := Caller(0, false)
+			_ = fmt.Sprintf("%s:%d\n", file, line)
+		}
+	})
 }

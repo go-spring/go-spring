@@ -52,6 +52,13 @@ func Copy(src context.Context) context.Context {
 	return context.WithValue(context.Background(), ctxKey, new(sync.Map))
 }
 
+// Del 从 context.Context 删除 key 及其对应的值。
+func Del(ctx context.Context, key string) {
+	if c, ok := cache(ctx); ok {
+		c.Delete(key)
+	}
+}
+
 // Get 从 context.Context 对象中获取 key 对应的 val。
 func Get(ctx context.Context, key string) (interface{}, bool) {
 	if c, ok := cache(ctx); ok {
@@ -93,4 +100,14 @@ func Set(ctx context.Context, key string, val interface{}) error {
 		return fmt.Errorf("duplicate set %s value", key)
 	}
 	return nil
+}
+
+func Dump(ctx context.Context) {
+	fmt.Println("knife.Dump")
+	if c, ok := cache(ctx); ok {
+		c.Range(func(key, value interface{}) bool {
+			fmt.Println(key, value)
+			return true
+		})
+	}
 }
