@@ -18,13 +18,42 @@ package code
 
 import (
 	"fmt"
-	"path/filepath"
 	"runtime"
+	"sync"
 )
 
+var frameMap sync.Map
+
+func fileLine() (string, int) {
+	rpc := make([]uintptr, 1)
+	n := runtime.Callers(3, rpc[:])
+	if n < 1 {
+		return "", 0
+	}
+	pc := rpc[0]
+	if v, ok := frameMap.Load(pc); ok {
+		e := v.(*runtime.Frame)
+		return e.File, e.Line
+	}
+	frame, _ := runtime.CallersFrames(rpc).Next()
+	frameMap.Store(pc, &frame)
+	return frame.File, frame.Line
+}
+
+// File 获取当前调用点的文件信息，希望未来可以实现编译期计算。
+func File() string {
+	file, _ := fileLine()
+	return file
+}
+
 // Line 获取当前调用点的文件信息，希望未来可以实现编译期计算。
-func Line() string {
-	_, file, line, _ := runtime.Caller(1)
-	_, file = filepath.Split(file)
+func Line() int {
+	_, line := fileLine()
+	return line
+}
+
+// FileLine 获取当前调用点的文件信息，希望未来可以实现编译期计算。
+func FileLine() string {
+	file, line := fileLine()
 	return fmt.Sprintf("%s:%d", file, line)
 }

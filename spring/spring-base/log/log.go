@@ -92,8 +92,8 @@ var Console = FuncOutput(func(level Level, msg *Message) {
 
 // config 日志模块全局设置。
 var config struct {
-	level  atomic.Uint32
 	output Output
+	level  atomic.Uint32
 }
 
 func init() {
