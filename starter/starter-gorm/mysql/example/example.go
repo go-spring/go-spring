@@ -14,27 +14,29 @@
  * limitations under the License.
  */
 
-package util_test
+package main
 
 import (
-	"testing"
+	"fmt"
 
-	"github.com/go-spring/spring-base/assert"
-	"github.com/go-spring/spring-base/code"
-	"github.com/go-spring/spring-base/util"
+	"github.com/go-spring/spring-base/log"
+	"github.com/go-spring/spring-core/gs"
+	_ "github.com/go-spring/starter-gorm/mysql"
+	"gorm.io/gorm"
 )
 
-func TestError(t *testing.T) {
+type runner struct {
+	DB *gorm.DB `autowire:""`
+}
 
-	e0 := util.Error(code.FileLine(), "error")
-	assert.Error(t, e0, "error_test.go:29 error")
+func (r *runner) Run(ctx gs.Context) {
+	var engines []string
+	r.DB.Raw("select engine from engines").Scan(&engines)
+	log.Infof("got mysql engines %v", engines)
+	go gs.ShutDown()
+}
 
-	e1 := util.Errorf(code.FileLine(), "error: %d", 0)
-	assert.Error(t, e1, "error_test.go:32 error: 0")
-
-	e2 := util.Wrap(e0, code.FileLine(), "error")
-	assert.Error(t, e2, "error_test.go:35 error\nerror_test.go:29 error")
-
-	e3 := util.Wrapf(e1, code.FileLine(), "error: %d", 1)
-	assert.Error(t, e3, "error_test.go:38 error: 1\nerror_test.go:32 error: 0")
+func main() {
+	gs.Object(&runner{}).Export((*gs.AppRunner)(nil))
+	fmt.Printf("program exited %v\n", gs.Web(false).Run())
 }

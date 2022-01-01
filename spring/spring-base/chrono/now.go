@@ -48,7 +48,7 @@ func (t *baseTime) Get() time.Time {
 
 // ResetTime 恢复正常时间。
 func ResetTime(ctx context.Context) {
-	knife.Del(ctx, nowKey)
+	knife.Delete(ctx, nowKey)
 }
 
 // SetFixedTime 设置固定时间。

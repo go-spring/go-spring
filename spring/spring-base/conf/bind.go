@@ -43,7 +43,7 @@ type BindParam struct {
 func (param *BindParam) BindTag(tag string) error {
 
 	if !validTag(tag) {
-		return util.Errorf(code.Line(), "%s 属性绑定字符串 %q 语法错误", param.Path, tag)
+		return util.Errorf(code.FileLine(), "%s 属性绑定字符串 %q 语法错误", param.Path, tag)
 	}
 
 	key, def, hasDef := parseTag(tag)
@@ -61,7 +61,7 @@ func (param *BindParam) BindTag(tag string) error {
 func BindValue(p *Properties, v reflect.Value, param BindParam) error {
 
 	if !util.IsValueType(param.Type) {
-		return util.Errorf(code.Line(), "%s 属性绑定的目标必须是值类型", param.Path)
+		return util.Errorf(code.FileLine(), "%s 属性绑定的目标必须是值类型", param.Path)
 	}
 
 	log.Tracef("::<>:: %#v", param)
@@ -84,7 +84,7 @@ func BindValue(p *Properties, v reflect.Value, param BindParam) error {
 
 	val, err := resolve(p, param)
 	if err != nil {
-		return util.Wrapf(err, code.Line(), "type %q bind error", param.Type)
+		return util.Wrapf(err, code.FileLine(), "type %q bind error", param.Type)
 	}
 
 	if fn != nil {
@@ -104,34 +104,34 @@ func BindValue(p *Properties, v reflect.Value, param BindParam) error {
 			v.SetUint(u)
 			return nil
 		}
-		return util.Errorf(code.Line(), "%+v %w", param, err)
+		return util.Errorf(code.FileLine(), "%+v %w", param, err)
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		var i int64
 		if i, err = strconv.ParseInt(val, 0, 0); err == nil {
 			v.SetInt(i)
 			return nil
 		}
-		return util.Errorf(code.Line(), "%+v %w", param, err)
+		return util.Errorf(code.FileLine(), "%+v %w", param, err)
 	case reflect.Float32, reflect.Float64:
 		var f float64
 		if f, err = strconv.ParseFloat(val, 64); err == nil {
 			v.SetFloat(f)
 			return nil
 		}
-		return util.Errorf(code.Line(), "%+v %w", param, err)
+		return util.Errorf(code.FileLine(), "%+v %w", param, err)
 	case reflect.Bool:
 		var b bool
 		if b, err = strconv.ParseBool(val); err == nil {
 			v.SetBool(b)
 			return nil
 		}
-		return util.Errorf(code.Line(), "%+v %w", param, err)
+		return util.Errorf(code.FileLine(), "%+v %w", param, err)
 	case reflect.String:
 		v.SetString(val)
 		return nil
 	}
 
-	return util.Errorf(code.Line(), "unsupported bind type %q", param.Type.String())
+	return util.Errorf(code.FileLine(), "unsupported bind type %q", param.Type.String())
 }
 
 func getSliceValue(p *Properties, et reflect.Type, param BindParam) (*Properties, error) {
@@ -162,7 +162,7 @@ func getSliceValue(p *Properties, et reflect.Type, param BindParam) (*Properties
 			return nil, nil
 		}
 		if !primitive {
-			return nil, util.Errorf(code.Line(), "%s array 类型不能为简单类型指定非空默认值", param.Path)
+			return nil, util.Errorf(code.FileLine(), "%s array 类型不能为简单类型指定非空默认值", param.Path)
 		}
 		strVal = param.def
 	}
@@ -241,7 +241,7 @@ func bindMap(p *Properties, v reflect.Value, param BindParam) error {
 		if param.def == "" {
 			return nil
 		}
-		return util.Errorf(code.Line(), "%s map 类型不能指定非空默认值", param.Path)
+		return util.Errorf(code.FileLine(), "%s map 类型不能指定非空默认值", param.Path)
 	}
 
 	var keys []string
@@ -254,11 +254,11 @@ func bindMap(p *Properties, v reflect.Value, param BindParam) error {
 		for i, s := range keyPath {
 			vt, ok := t[s]
 			if !ok {
-				return util.Errorf(code.Line(), "property %q %w", param.Key, ErrNotExist)
+				return util.Errorf(code.FileLine(), "property %q %w", param.Key, ErrNotExist)
 			}
 			if _, ok = vt.(struct{}); ok {
 				oldKey := strings.Join(keyPath[:i+1], ".")
-				return util.Errorf(code.Line(), "property %q has a value but want another sub key %q", oldKey, param.Key+".*")
+				return util.Errorf(code.FileLine(), "property %q has a value but want another sub key %q", oldKey, param.Key+".*")
 			}
 			t = vt.(map[string]interface{})
 		}
@@ -293,7 +293,7 @@ func bindMap(p *Properties, v reflect.Value, param BindParam) error {
 func bindStruct(p *Properties, v reflect.Value, param BindParam) error {
 
 	if param.hasDef && param.def != "" {
-		return util.Errorf(code.Line(), "%s struct 类型不能指定非空默认值", param.Path)
+		return util.Errorf(code.FileLine(), "%s struct 类型不能指定非空默认值", param.Path)
 	}
 
 	for i := 0; i < param.Type.NumField(); i++ {
@@ -399,7 +399,7 @@ func resolveString(p *Properties, s string) (string, error) {
 	}
 
 	if count > 0 {
-		return "", util.Errorf(code.Line(), "%s 语法错误", s)
+		return "", util.Errorf(code.FileLine(), "%s 语法错误", s)
 	}
 
 	param := BindParam{}
@@ -430,5 +430,5 @@ func resolve(p *Properties, param BindParam) (string, error) {
 	if param.hasDef {
 		return resolveString(p, param.def)
 	}
-	return "", util.Errorf(code.Line(), "property %q %w", param.Key, ErrNotExist)
+	return "", util.Errorf(code.FileLine(), "property %q %w", param.Key, ErrNotExist)
 }

@@ -25,6 +25,7 @@ import (
 	"github.com/go-spring/spring-base/atomic"
 	"github.com/go-spring/spring-base/chrono"
 	"github.com/go-spring/spring-base/color"
+	"github.com/go-spring/spring-base/util"
 )
 
 // empty 用于创建其他的 Entry 对象。
@@ -86,8 +87,9 @@ var Console = FuncOutput(func(level Level, msg *Message) {
 	} else if level == TraceLevel {
 		strLevel = color.Green.Sprint(strLevel)
 	}
-	strTime := msg.Time().Format("2006-01-02 03-04-05.000")
-	_, _ = fmt.Printf("[%s] %s %s:%d %s\n", strLevel, strTime, msg.File(), msg.Line(), msg.Text())
+	strTime := msg.Time().Format("2006-01-02T15:04:05.000")
+	fileLine := util.Contract(fmt.Sprintf("%s:%d", msg.File(), msg.Line()), 48)
+	_, _ = fmt.Printf("[%s][%s][%s] %s\n", strLevel, strTime, fileLine, msg.Text())
 })
 
 // config 日志模块全局设置。
