@@ -46,7 +46,7 @@ type route struct {
 
 // Container gin 实现的 WebContainer
 type Container struct {
-	*web.AbstractContainer
+	*web.BaseContainer
 	httpServer *http.Server
 	ginEngine  *gin.Engine
 	routes     map[string]route // 记录所有通过 spring gin 注册的路由
@@ -58,14 +58,14 @@ func NewContainer(config web.ContainerConfig) web.Container {
 	c.ginEngine = gin.New()
 	c.ginEngine.HandleMethodNotAllowed = true
 	c.routes = make(map[string]route)
-	c.AbstractContainer = web.NewAbstractContainer(config)
+	c.BaseContainer = web.NewBaseContainer(config)
 	return c
 }
 
 // Start 启动 Web 容器
 func (c *Container) Start() error {
 
-	if err := c.AbstractContainer.Start(); err != nil {
+	if err := c.BaseContainer.Start(); err != nil {
 		return err
 	}
 
@@ -130,7 +130,7 @@ func (c *Container) Start() error {
 	cfg := c.Config()
 	c.httpServer = &http.Server{
 		Addr:         c.Address(),
-		Handler:      c.ginEngine,
+		Handler:      c.ServeHTTP(c.ginEngine.ServeHTTP),
 		ReadTimeout:  time.Duration(cfg.ReadTimeout) * time.Millisecond,
 		WriteTimeout: time.Duration(cfg.WriteTimeout) * time.Millisecond,
 	}
@@ -218,7 +218,7 @@ type ginFilterChain struct {
 // Next 内部调用 gin.Context 对象的 Next 函数驱动链条向后执行
 func (chain *ginFilterChain) Next(_ web.Context) { chain.ginCtx.Next() }
 
-func (chain *ginFilterChain) Continue(_ web.Context) {}
+func (chain *ginFilterChain) Continue(_ web.Context) { chain.ginCtx.Next() }
 
 // recoveryFilter 适配 gin 的恢复过滤器
 type recoveryFilter struct{}

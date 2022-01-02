@@ -37,7 +37,7 @@ func TestFuncFilter(t *testing.T) {
 		fmt.Println("@HandlerFilter")
 	}))
 
-	web.NewDefaultFilterChain([]web.Filter{funcFilter, handlerFilter}).Next(nil)
+	web.NewFilterChain([]web.Filter{funcFilter, handlerFilter}).Next(nil)
 }
 
 type Counter struct{}
@@ -79,7 +79,7 @@ func TestFilterChain_Continue(t *testing.T) {
 		})
 	}
 
-	web.NewDefaultFilterChain([]web.Filter{
+	web.NewFilterChain([]web.Filter{
 		filterImpl(1),
 		filterImpl(2),
 		filterImpl(3),
@@ -125,7 +125,7 @@ func TestFilterChain_Next(t *testing.T) {
 		})
 	}
 
-	web.NewDefaultFilterChain([]web.Filter{
+	web.NewFilterChain([]web.Filter{
 		filterImpl(1),
 		filterImpl(2),
 		filterImpl(3),

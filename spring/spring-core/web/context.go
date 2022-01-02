@@ -41,7 +41,7 @@ var ErrorHandler = func(ctx Context, err *HttpError) {
 	}()
 
 	if err.Internal == nil {
-		ctx.Status(err.Code)
+		ctx.SetStatus(err.Code)
 		ctx.String(err.Message)
 		return
 	}
@@ -118,9 +118,6 @@ type Context interface {
 	// Request returns `*http.Request`.
 	Request() *http.Request
 
-	// SetRequest sets `*http.Request`.
-	SetRequest(r *http.Request)
-
 	// Context 返回 Request 绑定的 context.Context 对象
 	Context() context.Context
 
@@ -148,14 +145,14 @@ type Context interface {
 	// ContentType returns the Content-Type header of the request.
 	ContentType() string
 
-	// GetHeader returns value from request headers.
-	GetHeader(key string) string
+	// Header returns value from request headers.
+	Header(key string) string
 
-	// GetRawData return stream data.
-	GetRawData() ([]byte, error)
+	// Cookies returns the HTTP cookies sent with the request.
+	Cookies() []*http.Cookie
 
-	// PathParam returns path parameter by name.
-	PathParam(name string) string
+	// Cookie returns the named cookie provided in the request.
+	Cookie(name string) (*http.Cookie, error)
 
 	// PathParamNames returns path parameter names.
 	PathParamNames() []string
@@ -163,20 +160,26 @@ type Context interface {
 	// PathParamValues returns path parameter values.
 	PathParamValues() []string
 
-	// QueryParam returns the query param for the provided name.
-	QueryParam(name string) string
-
-	// QueryParams returns the query parameters as `url.Values`.
-	QueryParams() url.Values
+	// PathParam returns path parameter by name.
+	PathParam(name string) string
 
 	// QueryString returns the URL query string.
 	QueryString() string
 
-	// FormValue returns the form field value for the provided name.
-	FormValue(name string) string
+	// QueryParams returns the query parameters as `url.Values`.
+	QueryParams() url.Values
+
+	// QueryParam returns the query param for the provided name.
+	QueryParam(name string) string
 
 	// FormParams returns the form parameters as `url.Values`.
 	FormParams() (url.Values, error)
+
+	// FormValue returns the form field value for the provided name.
+	FormValue(name string) string
+
+	// MultipartForm returns the multipart form.
+	MultipartForm() (*multipart.Form, error)
 
 	// FormFile returns the multipart form file for the provided name.
 	FormFile(name string) (*multipart.FileHeader, error)
@@ -184,14 +187,8 @@ type Context interface {
 	// SaveUploadedFile uploads the form file to specific dst.
 	SaveUploadedFile(file *multipart.FileHeader, dst string) error
 
-	// MultipartForm returns the multipart form.
-	MultipartForm() (*multipart.Form, error)
-
-	// Cookie returns the named cookie provided in the request.
-	Cookie(name string) (*http.Cookie, error)
-
-	// Cookies returns the HTTP cookies sent with the request.
-	Cookies() []*http.Cookie
+	// RequestBody return stream data.
+	RequestBody() ([]byte, error)
 
 	// Bind binds the request body into provided type `i`. The default binder
 	// does it based on Content-Type header.
@@ -200,16 +197,19 @@ type Context interface {
 	/////////////////////////////////////////
 	// Response Part
 
-	// ResponseWriter returns `http.ResponseWriter`.
+	// ResponseWriter returns ResponseWriter.
 	ResponseWriter() ResponseWriter
 
-	// Status sets the HTTP response code.
-	Status(code int)
+	// SetStatus sets the HTTP response code.
+	SetStatus(code int)
 
-	// Header is a intelligent shortcut for c.Writer.Header().Set(key, value).
+	// SetHeader is a intelligent shortcut for c.Writer.Header().Set(key, value).
 	// It writes a header in the response.
 	// If value == "", this method removes the header `c.Writer.Header().Del(key)`
-	Header(key, value string)
+	SetHeader(key, value string)
+
+	// SetContentType 设置 ResponseWriter 的 ContentType 。
+	SetContentType(typ string)
 
 	// SetCookie adds a `Set-Cookie` header in HTTP response.
 	SetCookie(cookie *http.Cookie)

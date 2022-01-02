@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net/http"
 	"runtime/debug"
+	"time"
 
 	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-base/log"
@@ -46,8 +47,9 @@ type route struct {
 
 // Container echo 实现的 Web 容器
 type Container struct {
-	*web.AbstractContainer
+	*web.BaseContainer
 	echoServer *echo.Echo
+	httpServer *http.Server
 	routes     map[string]route // 记录所有通过 spring-echo 注册的路由
 }
 
@@ -57,14 +59,14 @@ func NewContainer(config web.ContainerConfig) web.Container {
 	c.echoServer = echo.New()
 	c.echoServer.HideBanner = true
 	c.routes = make(map[string]route)
-	c.AbstractContainer = web.NewAbstractContainer(config)
+	c.BaseContainer = web.NewBaseContainer(config)
 	return c
 }
 
 // Start 启动 Web 容器
 func (c *Container) Start() error {
 
-	if err := c.AbstractContainer.Start(); err != nil {
+	if err := c.BaseContainer.Start(); err != nil {
 		return err
 	}
 
@@ -97,7 +99,7 @@ func (c *Container) Start() error {
 				web.StopReplay(webCtx)
 			}()
 
-			chain := web.NewDefaultFilterChain([]web.Filter{
+			chain := web.NewFilterChain([]web.Filter{
 				loggerFilter,
 				recoveryFilter,
 				web.HandlerFilter(Handler(next)),
@@ -122,10 +124,20 @@ func (c *Container) Start() error {
 		}
 	}
 
-	if cfg := c.Config(); cfg.EnableSSL {
-		err = c.echoServer.StartTLS(c.Address(), cfg.CertFile, cfg.KeyFile)
+	cfg := c.Config()
+	c.httpServer = &http.Server{
+		Addr:         c.Address(),
+		Handler:      c.ServeHTTP(c.echoServer.ServeHTTP),
+		ReadTimeout:  time.Duration(cfg.ReadTimeout) * time.Millisecond,
+		WriteTimeout: time.Duration(cfg.WriteTimeout) * time.Millisecond,
+	}
+
+	log.Info("⇨ http server started on ", c.Address())
+
+	if cfg.EnableSSL {
+		err = c.httpServer.ListenAndServeTLS(cfg.CertFile, cfg.KeyFile)
 	} else {
-		err = c.echoServer.Start(c.Address())
+		err = c.httpServer.ListenAndServe()
 	}
 
 	log.Infof("exit echo server on %s return %s", c.Address(), cast.ToString(err))
@@ -147,7 +159,7 @@ func HandlerWrapper(fn web.Handler, wildCardName string, filters []web.Filter) e
 			ctx = NewContext(fn, wildCardName, echoCtx)
 		}
 		filters = append(filters, web.HandlerFilter(fn))
-		web.NewDefaultFilterChain(filters).Next(ctx)
+		web.NewFilterChain(filters).Next(ctx)
 		return nil
 	}
 }

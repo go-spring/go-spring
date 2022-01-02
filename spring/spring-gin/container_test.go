@@ -29,6 +29,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-spring/spring-base/assert"
+	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-core/web"
 	"github.com/go-spring/spring-gin"
 )
@@ -60,6 +61,10 @@ func TestContext_PanicSysError(t *testing.T) {
 
 func TestContext_PanicString(t *testing.T) {
 	c := SpringGin.NewContainer(web.ContainerConfig{Port: 8080})
+	c.AddFilter(web.FuncPrefilter(func(ctx web.Context, chain web.FilterChain) {
+		log.Info("<<log>>")
+		chain.Continue(ctx)
+	}))
 	c.GetMapping("/", func(webCtx web.Context) {
 		panic("this is an error")
 	})

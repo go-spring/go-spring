@@ -54,7 +54,7 @@ func NewBasicAuthFilter(config BasicAuthConfig) Filter {
 
 func (f *basicAuthFilter) Invoke(ctx Context, chain FilterChain) {
 
-	auth := ctx.GetHeader(HeaderWWWAuthenticate)
+	auth := ctx.Header(HeaderWWWAuthenticate)
 	if len(auth) <= len(basicPrefix) {
 		f.unauthorized(ctx)
 		return
@@ -95,5 +95,5 @@ func (f *basicAuthFilter) Invoke(ctx Context, chain FilterChain) {
 }
 
 func (f *basicAuthFilter) unauthorized(ctx Context) {
-	ctx.Header(HeaderWWWAuthenticate, fmt.Sprintf("Basic realm=%q", f.config.Realm))
+	ctx.SetHeader(HeaderWWWAuthenticate, fmt.Sprintf("Basic realm=%q", f.config.Realm))
 }

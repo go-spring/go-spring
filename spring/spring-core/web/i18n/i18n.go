@@ -411,7 +411,7 @@ func resolveString(ctx context.Context, s string) (string, error) {
 	}
 
 	if count > 0 {
-		return "", util.Errorf(code.Line(), "%s 语法错误", s)
+		return "", util.Errorf(code.FileLine(), "%s 语法错误", s)
 	}
 
 	key := strings.TrimSpace(s[start+2 : end-1])

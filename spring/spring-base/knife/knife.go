@@ -37,17 +37,18 @@ func cache(ctx context.Context) (*sync.Map, bool) {
 	return m, ok
 }
 
-// New 返回带有缓存空间的 context.Context 对象。
-func New(ctx context.Context) context.Context {
+// New 返回带有缓存空间的 context.Context 对象，已经绑定缓存空间时 cached 返回 true 。
+func New(ctx context.Context) (dst context.Context, cached bool) {
 	if _, ok := cache(ctx); ok {
-		return ctx
+		return ctx, true
 	}
-	return context.WithValue(ctx, ctxKey, new(sync.Map))
+	dst = context.WithValue(ctx, ctxKey, new(sync.Map))
+	return dst, false
 }
 
 // Copy 拷贝 context.Context 对象中的内容到另一个 context.Context 对象。
 func Copy(src context.Context, keys ...string) (context.Context, error) {
-	dst := New(context.Background())
+	dst, _ := New(context.Background())
 	m, ok := cache(src)
 	if !ok {
 		return dst, nil

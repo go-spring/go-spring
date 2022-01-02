@@ -16,8 +16,8 @@
 
 package web
 
-func NewRewriteFilter() Filter {
-	return Prefilter(FuncFilter(func(ctx Context, chain FilterChain) {
+func NewRewriteFilter() *Prefilter {
+	return FuncPrefilter(func(ctx Context, chain FilterChain) {
 		// https://github.com/labstack/echo/blob/master/middleware/rewrite.go
-	}))
+	})
 }

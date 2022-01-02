@@ -24,6 +24,7 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/go-spring/spring-base/knife"
 	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/internal"
@@ -51,6 +52,12 @@ type Container interface {
 
 	// Config 获取 Web 容器配置
 	Config() ContainerConfig
+
+	// Prefilters 返回前置过滤器列表
+	Prefilters() []*Prefilter
+
+	// AddPrefilter 添加前置过滤器
+	AddPrefilter(filter ...*Prefilter)
 
 	// Filters 返回过滤器列表
 	Filters() []Filter
@@ -80,43 +87,54 @@ type Container interface {
 	Static(prefix string, root string)
 }
 
-// AbstractContainer 抽象的 Container 实现
-type AbstractContainer struct {
+// BaseContainer 抽象的 Container 实现
+type BaseContainer struct {
 	router
 
-	config  ContainerConfig // 容器配置项
-	filters []Filter        // 其他过滤器
-	logger  Filter          // 日志过滤器
-	swagger Swagger         // Swagger根
+	config     ContainerConfig // 容器配置项
+	prefilters []*Prefilter    // 前置过滤器
+	filters    []Filter        // 其他过滤器
+	logger     Filter          // 日志过滤器
+	swagger    Swagger         // Swagger根
 }
 
-// NewAbstractContainer AbstractContainer 的构造函数
-func NewAbstractContainer(config ContainerConfig) *AbstractContainer {
-	return &AbstractContainer{config: config}
+// NewBaseContainer BaseContainer 的构造函数
+func NewBaseContainer(config ContainerConfig) *BaseContainer {
+	return &BaseContainer{config: config}
 }
 
 // Address 返回监听地址
-func (c *AbstractContainer) Address() string {
+func (c *BaseContainer) Address() string {
 	return fmt.Sprintf("%s:%d", c.config.Host, c.config.Port)
 }
 
 // Config 获取 Web 容器配置
-func (c *AbstractContainer) Config() ContainerConfig {
+func (c *BaseContainer) Config() ContainerConfig {
 	return c.config
 }
 
+// Prefilters 返回前置过滤器列表
+func (c *BaseContainer) Prefilters() []*Prefilter {
+	return c.prefilters
+}
+
+// AddPrefilter 添加前置过滤器
+func (c *BaseContainer) AddPrefilter(filter ...*Prefilter) {
+	c.prefilters = append(c.prefilters, filter...)
+}
+
 // Filters 返回过滤器列表
-func (c *AbstractContainer) Filters() []Filter {
+func (c *BaseContainer) Filters() []Filter {
 	return c.filters
 }
 
 // AddFilter 添加过滤器
-func (c *AbstractContainer) AddFilter(filter ...Filter) {
+func (c *BaseContainer) AddFilter(filter ...Filter) {
 	c.filters = append(c.filters, filter...)
 }
 
 // LoggerFilter 获取 Logger Filter
-func (c *AbstractContainer) LoggerFilter() Filter {
+func (c *BaseContainer) LoggerFilter() Filter {
 	if c.logger != nil {
 		return c.logger
 	}
@@ -129,12 +147,12 @@ func (c *AbstractContainer) LoggerFilter() Filter {
 }
 
 // SetLoggerFilter 设置 Logger Filter
-func (c *AbstractContainer) SetLoggerFilter(filter Filter) {
+func (c *BaseContainer) SetLoggerFilter(filter Filter) {
 	c.logger = filter
 }
 
 // Swagger 设置与容器绑定的 Swagger 对象
-func (c *AbstractContainer) Swagger(swagger Swagger) {
+func (c *BaseContainer) Swagger(swagger Swagger) {
 	c.swagger = swagger
 }
 
@@ -150,7 +168,7 @@ func RegisterSwaggerHandler(handler SwaggerHandler) {
 }
 
 // Start 启动 Web 容器
-func (c *AbstractContainer) Start() error {
+func (c *BaseContainer) Start() error {
 
 	if c.swagger != nil && swaggerHandler != nil {
 		for _, mapper := range c.Mappers() {
@@ -179,22 +197,37 @@ func (c *AbstractContainer) Start() error {
 }
 
 // Stop 停止 Web 容器
-func (c *AbstractContainer) Stop(ctx context.Context) error {
+func (c *BaseContainer) Stop(ctx context.Context) error {
 	panic(util.UnimplementedMethod)
 }
 
 // File 定义单个文件资源
-func (c *AbstractContainer) File(path string, file string) {
+func (c *BaseContainer) File(path string, file string) {
 	c.router.GetMapping(path, func(ctx Context) {
 		ctx.File(file)
 	})
 }
 
 // Static 定义文件服务器
-func (c *AbstractContainer) Static(prefix string, root string) {
+func (c *BaseContainer) Static(prefix string, root string) {
 	fileServer := http.FileServer(http.Dir(root))
 	h := WrapH(http.StripPrefix(prefix, fileServer))
 	c.router.HandleGet(prefix+"/*", h)
+}
+
+func (c *BaseContainer) ServeHTTP(handler http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if ctx, cached := knife.New(r.Context()); !cached {
+			r = r.WithContext(ctx)
+		}
+		var prefilters []Filter
+		for _, f := range c.Prefilters() {
+			prefilters = append(prefilters, f)
+		}
+		prefilters = append(prefilters, NewPrefilter(HandlerFilter(HTTP(handler))))
+		ctx := NewBaseContext(r, &BufferedResponseWriter{ResponseWriter: w})
+		NewFilterChain(prefilters).Next(ctx)
+	}
 }
 
 /////////////////// Web Handlers //////////////////////

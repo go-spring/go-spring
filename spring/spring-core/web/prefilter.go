@@ -14,22 +14,19 @@
  * limitations under the License.
  */
 
-package web_test
+package web
 
-import (
-	"net/http"
-	"net/http/httptest"
-	"testing"
+// Prefilter 前置过滤器，用于路由未决策前。
+type Prefilter struct {
+	Filter
+}
 
-	"github.com/go-spring/spring-base/assert"
-	"github.com/go-spring/spring-core/web"
-)
+// NewPrefilter 封装前置过滤器，用于路由未决策前。
+func NewPrefilter(f Filter) *Prefilter {
+	return &Prefilter{Filter: f}
+}
 
-func TestMethodOverride(t *testing.T) {
-	r, _ := http.NewRequest(http.MethodPost, "http://127.0.0.1:8080/?_method=GET", nil)
-	w := httptest.NewRecorder()
-	ctx := web.NewBaseContext(r, &web.BufferedResponseWriter{ResponseWriter: w})
-	f := web.NewMethodOverrideFilter(web.NewMethodOverrideConfig().ByQueryParam("_method"))
-	web.NewFilterChain([]web.Filter{f}).Next(ctx)
-	assert.Equal(t, ctx.Request().Method, http.MethodGet)
+// FuncPrefilter 封装前置过滤器，用于路由未决策前。
+func FuncPrefilter(f FilterFunc) *Prefilter {
+	return &Prefilter{Filter: FuncFilter(f)}
 }

@@ -39,13 +39,15 @@ func (h *handlerFilter) Invoke(ctx Context, _ FilterChain) {
 	h.fn.Invoke(ctx)
 }
 
+type FilterFunc func(ctx Context, chain FilterChain)
+
 // funcFilter 封装 func 形式的过滤器。
 type funcFilter struct {
-	f func(ctx Context, chain FilterChain)
+	f FilterFunc
 }
 
 // FuncFilter 封装 func 形式的过滤器。
-func FuncFilter(f func(ctx Context, chain FilterChain)) *funcFilter {
+func FuncFilter(f FilterFunc) *funcFilter {
 	return &funcFilter{f: f}
 }
 
@@ -55,7 +57,7 @@ func (f *funcFilter) Invoke(ctx Context, chain FilterChain) {
 
 // URLPatterns 返回带 URLPatterns 信息的过滤器。
 func (f *funcFilter) URLPatterns(s ...string) *urlPatternFilter {
-	return &urlPatternFilter{Filter: f, s: s}
+	return URLPatternFilter(f, s...)
 }
 
 // urlPatternFilter 封装带 URLPatterns 信息的过滤器。
@@ -73,22 +75,6 @@ func (f *urlPatternFilter) URLPatterns() []string {
 	return f.s
 }
 
-// prefilter 前置过滤器，用于路由未决策前。
-type prefilter struct {
-	Filter
-}
-
-// Prefilter 封装前置过滤器，用于路由未决策前。
-func Prefilter(f Filter) *prefilter {
-	return &prefilter{Filter: f}
-}
-
-// IsPrefilter 返回是否是前置过滤器。
-func IsPrefilter(f Filter) bool {
-	_, ok := f.(*prefilter)
-	return ok
-}
-
 // FilterChain 过滤器链条接口
 type FilterChain interface {
 
@@ -99,25 +85,25 @@ type FilterChain interface {
 	Continue(ctx Context)
 }
 
-// DefaultFilterChain 默认的过滤器链条
-type DefaultFilterChain struct {
+// filterChain 默认的过滤器链条
+type filterChain struct {
 	filters  []Filter
 	index    int
 	lazyNext bool
 }
 
-// NewDefaultFilterChain DefaultFilterChain 的构造函数
-func NewDefaultFilterChain(filters []Filter) *DefaultFilterChain {
-	return &DefaultFilterChain{filters: filters}
+// NewFilterChain filterChain 的构造函数
+func NewFilterChain(filters []Filter) *filterChain {
+	return &filterChain{filters: filters}
 }
 
-func (chain *DefaultFilterChain) next(ctx Context) {
+func (chain *filterChain) next(ctx Context) {
 	f := chain.filters[chain.index]
 	chain.index++
 	f.Invoke(ctx, chain)
 }
 
-func (chain *DefaultFilterChain) Next(ctx Context) {
+func (chain *filterChain) Next(ctx Context) {
 	if chain.index < len(chain.filters) {
 		chain.next(ctx)
 		for chain.lazyNext && chain.index < len(chain.filters) {
@@ -127,7 +113,7 @@ func (chain *DefaultFilterChain) Next(ctx Context) {
 	}
 }
 
-func (chain *DefaultFilterChain) Continue(ctx Context) {
+func (chain *filterChain) Continue(ctx Context) {
 	chain.lazyNext = true
 }
 
