@@ -24,6 +24,7 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-base/knife"
 	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-base/util"
@@ -43,15 +44,15 @@ type Handler interface {
 	FileLine() (file string, line int, fnName string)
 }
 
-// ContainerConfig 定义 Web 容器配置
-type ContainerConfig = internal.WebServerConfig
+// ServerConfig 定义 web 服务器配置
+type ServerConfig = internal.WebServerConfig
 
-// Container Web 容器
-type Container interface {
+// Server web 服务器
+type Server interface {
 	Router
 
-	// Config 获取 Web 容器配置
-	Config() ContainerConfig
+	// Config 获取 web 服务器配置
+	Config() ServerConfig
 
 	// Prefilters 返回前置过滤器列表
 	Prefilters() []*Prefilter
@@ -71,13 +72,13 @@ type Container interface {
 	// SetLoggerFilter 设置 Logger Filter
 	SetLoggerFilter(filter Filter)
 
-	// Swagger 设置与容器绑定的 Swagger 对象
+	// Swagger 设置与服务器绑定的 Swagger 对象
 	Swagger(swagger Swagger)
 
-	// Start 启动 Web 容器
+	// Start 启动 web 服务器
 	Start() error
 
-	// Stop 停止 Web 容器
+	// Stop 停止 web 服务器
 	Stop(ctx context.Context) error
 
 	// File 定义单个文件资源
@@ -87,56 +88,64 @@ type Container interface {
 	Static(prefix string, root string)
 }
 
-// BaseContainer 抽象的 Container 实现
-type BaseContainer struct {
-	router
-
-	config     ContainerConfig // 容器配置项
-	prefilters []*Prefilter    // 前置过滤器
-	filters    []Filter        // 其他过滤器
-	logger     Filter          // 日志过滤器
-	swagger    Swagger         // Swagger根
+type ServerHandler interface {
+	http.Handler
+	Start(s Server) error
 }
 
-// NewBaseContainer BaseContainer 的构造函数
-func NewBaseContainer(config ContainerConfig) *BaseContainer {
-	return &BaseContainer{config: config}
+type server struct {
+	router
+
+	config  ServerConfig // 容器配置项
+	server  *http.Server
+	handler ServerHandler
+
+	logger     Filter       // 日志过滤器
+	filters    []Filter     // 其他过滤器
+	prefilters []*Prefilter // 前置过滤器
+
+	swagger Swagger // Swagger根
+}
+
+// NewServer server 的构造函数
+func NewServer(config ServerConfig, handler ServerHandler) *server {
+	return &server{config: config, handler: handler}
 }
 
 // Address 返回监听地址
-func (c *BaseContainer) Address() string {
-	return fmt.Sprintf("%s:%d", c.config.Host, c.config.Port)
+func (s *server) Address() string {
+	return fmt.Sprintf("%s:%d", s.config.Host, s.config.Port)
 }
 
-// Config 获取 Web 容器配置
-func (c *BaseContainer) Config() ContainerConfig {
-	return c.config
+// Config 获取 web 服务器配置
+func (s *server) Config() ServerConfig {
+	return s.config
 }
 
 // Prefilters 返回前置过滤器列表
-func (c *BaseContainer) Prefilters() []*Prefilter {
-	return c.prefilters
+func (s *server) Prefilters() []*Prefilter {
+	return s.prefilters
 }
 
 // AddPrefilter 添加前置过滤器
-func (c *BaseContainer) AddPrefilter(filter ...*Prefilter) {
-	c.prefilters = append(c.prefilters, filter...)
+func (s *server) AddPrefilter(filter ...*Prefilter) {
+	s.prefilters = append(s.prefilters, filter...)
 }
 
 // Filters 返回过滤器列表
-func (c *BaseContainer) Filters() []Filter {
-	return c.filters
+func (s *server) Filters() []Filter {
+	return s.filters
 }
 
 // AddFilter 添加过滤器
-func (c *BaseContainer) AddFilter(filter ...Filter) {
-	c.filters = append(c.filters, filter...)
+func (s *server) AddFilter(filter ...Filter) {
+	s.filters = append(s.filters, filter...)
 }
 
 // LoggerFilter 获取 Logger Filter
-func (c *BaseContainer) LoggerFilter() Filter {
-	if c.logger != nil {
-		return c.logger
+func (s *server) LoggerFilter() Filter {
+	if s.logger != nil {
+		return s.logger
 	}
 	return FuncFilter(func(ctx Context, chain FilterChain) {
 		start := time.Now()
@@ -147,13 +156,8 @@ func (c *BaseContainer) LoggerFilter() Filter {
 }
 
 // SetLoggerFilter 设置 Logger Filter
-func (c *BaseContainer) SetLoggerFilter(filter Filter) {
-	c.logger = filter
-}
-
-// Swagger 设置与容器绑定的 Swagger 对象
-func (c *BaseContainer) Swagger(swagger Swagger) {
-	c.swagger = swagger
+func (s *server) SetLoggerFilter(filter Filter) {
+	s.logger = filter
 }
 
 // SwaggerHandler Swagger 处理器
@@ -167,11 +171,17 @@ func RegisterSwaggerHandler(handler SwaggerHandler) {
 	swaggerHandler = handler
 }
 
-// Start 启动 Web 容器
-func (c *BaseContainer) Start() error {
+// Swagger 设置与服务器绑定的 Swagger 对象
+func (s *server) Swagger(swagger Swagger) {
+	s.swagger = swagger
+}
 
-	if c.swagger != nil && swaggerHandler != nil {
-		for _, mapper := range c.Mappers() {
+// prepare 启动 web 服务器之前的准备工作
+func (s *server) prepare() error {
+
+	// 处理 swagger 注册相关
+	if s.swagger != nil && swaggerHandler != nil {
+		for _, mapper := range s.Mappers() {
 			if mapper.swagger == nil {
 				continue
 			}
@@ -179,55 +189,78 @@ func (c *BaseContainer) Start() error {
 				return err
 			}
 			for _, method := range GetMethod(mapper.Method()) {
-				c.swagger.AddPath(mapper.Path(), method, mapper.swagger)
+				s.swagger.AddPath(mapper.Path(), method, mapper.swagger)
 			}
 		}
-		swaggerHandler(&c.router, c.swagger.ReadDoc())
+		swaggerHandler(&s.router, s.swagger.ReadDoc())
 	}
 
-	for _, mapper := range c.Mappers() {
+	// 打印所有的路由信息
+	for _, mapper := range s.Mappers() {
 		log.Infof("%v :%d %s -> %s:%d %s", func() []interface{} {
 			method := GetMethod(mapper.method)
 			file, line, fnName := mapper.handler.FileLine()
-			return log.T(method, c.config.Port, mapper.path, file, line, fnName)
+			return log.T(method, s.config.Port, mapper.path, file, line, fnName)
 		})
 	}
 
 	return nil
 }
 
-// Stop 停止 Web 容器
-func (c *BaseContainer) Stop(ctx context.Context) error {
-	panic(util.UnimplementedMethod)
+// Start 启动 web 服务器
+func (s *server) Start() (err error) {
+	if err = s.prepare(); err != nil {
+		return err
+	}
+	if err = s.handler.Start(s); err != nil {
+		return err
+	}
+	s.server = &http.Server{
+		Handler:      s,
+		Addr:         s.Address(),
+		ReadTimeout:  time.Duration(s.config.ReadTimeout) * time.Millisecond,
+		WriteTimeout: time.Duration(s.config.WriteTimeout) * time.Millisecond,
+	}
+	log.Info("⇨ http server started on ", s.Address())
+	if !s.config.EnableSSL {
+		err = s.server.ListenAndServe()
+	} else {
+		err = s.server.ListenAndServeTLS(s.config.CertFile, s.config.KeyFile)
+	}
+	log.Infof("http server stopped on %s return %s", s.Address(), cast.ToString(err))
+	return err
+}
+
+// Stop 停止 web 服务器
+func (s *server) Stop(ctx context.Context) error {
+	return s.server.Shutdown(ctx)
 }
 
 // File 定义单个文件资源
-func (c *BaseContainer) File(path string, file string) {
-	c.router.GetMapping(path, func(ctx Context) {
+func (s *server) File(path string, file string) {
+	s.router.GetMapping(path, func(ctx Context) {
 		ctx.File(file)
 	})
 }
 
 // Static 定义文件服务器
-func (c *BaseContainer) Static(prefix string, root string) {
+func (s *server) Static(prefix string, root string) {
 	fileServer := http.FileServer(http.Dir(root))
 	h := WrapH(http.StripPrefix(prefix, fileServer))
-	c.router.HandleGet(prefix+"/*", h)
+	s.router.HandleGet(prefix+"/*", h)
 }
 
-func (c *BaseContainer) ServeHTTP(handler http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if ctx, cached := knife.New(r.Context()); !cached {
-			r = r.WithContext(ctx)
-		}
-		var prefilters []Filter
-		for _, f := range c.Prefilters() {
-			prefilters = append(prefilters, f)
-		}
-		prefilters = append(prefilters, NewPrefilter(HandlerFilter(HTTP(handler))))
-		ctx := NewBaseContext(r, &BufferedResponseWriter{ResponseWriter: w})
-		NewFilterChain(prefilters).Next(ctx)
+func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if ctx, cached := knife.New(r.Context()); !cached {
+		r = r.WithContext(ctx)
 	}
+	var prefilters []Filter
+	for _, f := range s.Prefilters() {
+		prefilters = append(prefilters, f)
+	}
+	prefilters = append(prefilters, NewPrefilter(HandlerFilter(WrapH(s.handler))))
+	ctx := NewBaseContext(r, &BufferedResponseWriter{ResponseWriter: w})
+	NewFilterChain(prefilters).Next(ctx)
 }
 
 /////////////////// Web Handlers //////////////////////

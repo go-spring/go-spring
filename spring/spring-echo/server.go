@@ -18,13 +18,10 @@
 package SpringEcho
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"runtime/debug"
-	"time"
 
-	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/web"
@@ -45,43 +42,35 @@ type route struct {
 	wildCardName string      // 通配符的名称
 }
 
-// Container echo 实现的 Web 容器
-type Container struct {
-	*web.BaseContainer
-	echoServer *echo.Echo
-	httpServer *http.Server
-	routes     map[string]route // 记录所有通过 spring-echo 注册的路由
+// serverHandler echo 实现的 web 服务器
+type serverHandler struct {
+	echo   *echo.Echo
+	routes map[string]route
 }
 
-// NewContainer 创建 echo 实现的 Web 容器
-func NewContainer(config web.ContainerConfig) web.Container {
-	c := &Container{}
-	c.echoServer = echo.New()
-	c.echoServer.HideBanner = true
-	c.routes = make(map[string]route)
-	c.BaseContainer = web.NewBaseContainer(config)
-	return c
+// New 创建 echo 实现的 web 服务器
+func New(config web.ServerConfig) web.Server {
+	h := new(serverHandler)
+	h.echo = echo.New()
+	h.echo.HideBanner = true
+	h.routes = make(map[string]route)
+	return web.NewServer(config, h)
 }
 
-// Start 启动 Web 容器
-func (c *Container) Start() error {
+func (h *serverHandler) Start(s web.Server) error {
 
-	if err := c.BaseContainer.Start(); err != nil {
-		return err
-	}
-
-	loggerFilter := c.LoggerFilter()
+	loggerFilter := s.LoggerFilter()
 	recoveryFilter := new(recoveryFilter)
 
-	// 添加容器级别的过滤器，这样在路由不存在时也会调用这些过滤器
-	c.echoServer.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+	// 添加服务器级别的过滤器，这样在路由不存在时也会调用这些过滤器
+	h.echo.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(echoCtx echo.Context) error {
 			var webCtx web.Context
 
 			// 如果 method+path 是 spring-echo 注册过的，那么可以保证 Context
 			// 的 Handler 是准确的，否则是不准确的，请优先使用 spring-echo 注册路由。
 			key := echoCtx.Request().Method + echoCtx.Path()
-			if r, ok := c.routes[key]; ok {
+			if r, ok := h.routes[key]; ok {
 				webCtx = NewContext(r.fn, r.wildCardName, echoCtx)
 			} else {
 				webCtx = NewContext(nil, echoCtx.Path(), echoCtx)
@@ -109,57 +98,33 @@ func (c *Container) Start() error {
 		}
 	})
 
-	urlPatterns, err := web.URLPatterns(c.Filters())
+	urlPatterns, err := web.URLPatterns(s.Filters())
 	if err != nil {
 		return err
 	}
 
 	// 映射 Web 处理函数
-	for _, mapper := range c.Mappers() {
-		path, wildCardName := web.ToPathStyle(mapper.Path(), web.EchoPathStyle)
-		fn := HandlerWrapper(mapper.Handler(), wildCardName, urlPatterns.Get(mapper.Path()))
-		for _, method := range web.GetMethod(mapper.Method()) {
-			c.echoServer.Add(method, path, fn)
-			c.routes[method+path] = route{fn: mapper.Handler(), wildCardName: wildCardName}
+	for _, m := range s.Mappers() {
+		filters := urlPatterns.Get(m.Path())
+		handler := wrapperHandler(m.Handler(), filters)
+		path, wildCardName := web.ToPathStyle(m.Path(), web.EchoPathStyle)
+		for _, method := range web.GetMethod(m.Method()) {
+			h.echo.Add(method, path, handler)
+			h.routes[method+path] = route{m.Handler(), wildCardName}
 		}
 	}
-
-	cfg := c.Config()
-	c.httpServer = &http.Server{
-		Addr:         c.Address(),
-		Handler:      c.ServeHTTP(c.echoServer.ServeHTTP),
-		ReadTimeout:  time.Duration(cfg.ReadTimeout) * time.Millisecond,
-		WriteTimeout: time.Duration(cfg.WriteTimeout) * time.Millisecond,
-	}
-
-	log.Info("⇨ http server started on ", c.Address())
-
-	if cfg.EnableSSL {
-		err = c.httpServer.ListenAndServeTLS(cfg.CertFile, cfg.KeyFile)
-	} else {
-		err = c.httpServer.ListenAndServe()
-	}
-
-	log.Infof("exit echo server on %s return %s", c.Address(), cast.ToString(err))
-	return err
+	return nil
 }
 
-// Stop 停止 Web 容器
-func (c *Container) Stop(ctx context.Context) error {
-	err := c.echoServer.Shutdown(ctx)
-	log.Infof("shutdown echo server on %s return %s", c.Address(), cast.ToString(err))
-	return err
+func (h *serverHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.echo.ServeHTTP(w, r)
 }
 
-// HandlerWrapper Web 处理函数包装器
-func HandlerWrapper(fn web.Handler, wildCardName string, filters []web.Filter) echo.HandlerFunc {
-	return func(echoCtx echo.Context) error {
-		ctx := WebContext(echoCtx)
-		if ctx == nil {
-			ctx = NewContext(fn, wildCardName, echoCtx)
-		}
+// wrapperHandler Web 处理函数包装器
+func wrapperHandler(fn web.Handler, filters []web.Filter) echo.HandlerFunc {
+	return func(c echo.Context) error {
 		filters = append(filters, web.HandlerFilter(fn))
-		web.NewFilterChain(filters).Next(ctx)
+		web.NewFilterChain(filters).Next(WebContext(c))
 		return nil
 	}
 }
@@ -170,9 +135,8 @@ func HandlerWrapper(fn web.Handler, wildCardName string, filters []web.Filter) e
 type echoHandler echo.HandlerFunc
 
 func (e echoHandler) Invoke(ctx web.Context) {
-	if err := e(EchoContext(ctx)); err != nil {
-		panic(err)
-	}
+	err := e(EchoContext(ctx))
+	util.Panic(err).When(err != nil)
 }
 
 func (e echoHandler) FileLine() (file string, line int, fnName string) {

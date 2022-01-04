@@ -35,7 +35,7 @@ import (
 )
 
 func TestContext_PanicSysError(t *testing.T) {
-	c := SpringGin.NewContainer(web.ContainerConfig{Port: 8080})
+	c := SpringGin.New(web.ServerConfig{Port: 8080})
 	c.GetMapping("/", func(webCtx web.Context) {
 		panic(&net.OpError{
 			Op:     "dial",
@@ -60,7 +60,7 @@ func TestContext_PanicSysError(t *testing.T) {
 }
 
 func TestContext_PanicString(t *testing.T) {
-	c := SpringGin.NewContainer(web.ContainerConfig{Port: 8080})
+	c := SpringGin.New(web.ServerConfig{Port: 8080})
 	c.AddFilter(web.FuncPrefilter(func(ctx web.Context, chain web.FilterChain) {
 		log.Info("<<log>>")
 		chain.Continue(ctx)
@@ -83,7 +83,7 @@ func TestContext_PanicString(t *testing.T) {
 }
 
 func TestContext_PanicError(t *testing.T) {
-	c := SpringGin.NewContainer(web.ContainerConfig{Port: 8080})
+	c := SpringGin.New(web.ServerConfig{Port: 8080})
 	c.GetMapping("/", func(webCtx web.Context) {
 		panic(errors.New("this is an error"))
 	})
@@ -102,7 +102,7 @@ func TestContext_PanicError(t *testing.T) {
 }
 
 func TestContext_PanicWebHttpError(t *testing.T) {
-	c := SpringGin.NewContainer(web.ContainerConfig{Port: 8080})
+	c := SpringGin.New(web.ServerConfig{Port: 8080})
 	c.GetMapping("/", func(webCtx web.Context) {
 		panic(&web.HttpError{
 			Code:    http.StatusNotFound,
@@ -123,7 +123,7 @@ func TestContext_PanicWebHttpError(t *testing.T) {
 }
 
 func TestFilter_PanicWebHttpError(t *testing.T) {
-	c := SpringGin.NewContainer(web.ContainerConfig{Port: 8080})
+	c := SpringGin.New(web.ServerConfig{Port: 8080})
 	go c.Start()
 	defer c.Stop(context.Background())
 	time.Sleep(10 * time.Millisecond)
@@ -138,7 +138,7 @@ func TestFilter_PanicWebHttpError(t *testing.T) {
 }
 
 func TestFilter_Abort(t *testing.T) {
-	c := SpringGin.NewContainer(web.ContainerConfig{Port: 8080})
+	c := SpringGin.New(web.ServerConfig{Port: 8080})
 	c.AddFilter(web.FuncFilter(func(ctx web.Context, chain web.FilterChain) {
 		if ctx.FormValue("filter") == "1" {
 			ctx.String("1")
@@ -207,7 +207,7 @@ func TestFilter_Abort(t *testing.T) {
 
 func TestContainer_Static(t *testing.T) {
 
-	c := SpringGin.NewContainer(web.ContainerConfig{Port: 8080})
+	c := SpringGin.New(web.ServerConfig{Port: 8080})
 	go c.Start()
 	defer c.Stop(context.Background())
 	c.File("/", "testdata/public/a.txt")

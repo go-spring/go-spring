@@ -32,7 +32,7 @@ import (
 )
 
 func TestContext_PanicEchoHttpError(t *testing.T) {
-	c := SpringEcho.NewContainer(web.ContainerConfig{Port: 8080})
+	c := SpringEcho.New(web.ServerConfig{Port: 8080})
 	c.AddPrefilter(web.FuncPrefilter(func(ctx web.Context, chain web.FilterChain) {
 		fmt.Println("<<log>>")
 		chain.Continue(ctx)
@@ -56,7 +56,7 @@ func TestContext_PanicEchoHttpError(t *testing.T) {
 }
 
 func TestContext_PanicString(t *testing.T) {
-	c := SpringEcho.NewContainer(web.ContainerConfig{Port: 8080})
+	c := SpringEcho.New(web.ServerConfig{Port: 8080})
 	c.GetMapping("/", func(ctx web.Context) {
 		panic("this is an error")
 	})
@@ -76,7 +76,7 @@ func TestContext_PanicString(t *testing.T) {
 }
 
 func TestContext_PanicError(t *testing.T) {
-	c := SpringEcho.NewContainer(web.ContainerConfig{Port: 8080})
+	c := SpringEcho.New(web.ServerConfig{Port: 8080})
 	c.GetMapping("/", func(ctx web.Context) {
 		panic(errors.New("this is an error"))
 	})
@@ -96,7 +96,7 @@ func TestContext_PanicError(t *testing.T) {
 }
 
 func TestContext_PanicWebHttpError(t *testing.T) {
-	c := SpringEcho.NewContainer(web.ContainerConfig{Port: 8080})
+	c := SpringEcho.New(web.ServerConfig{Port: 8080})
 	c.GetMapping("/", func(ctx web.Context) {
 		panic(&web.HttpError{
 			Code:    http.StatusInternalServerError,
@@ -119,7 +119,7 @@ func TestContext_PanicWebHttpError(t *testing.T) {
 }
 
 func TestContext_PathNotFound(t *testing.T) {
-	c := SpringEcho.NewContainer(web.ContainerConfig{Port: 8080})
+	c := SpringEcho.New(web.ServerConfig{Port: 8080})
 	go c.Start()
 	defer c.Stop(context.Background())
 	time.Sleep(10 * time.Millisecond)
@@ -137,7 +137,7 @@ func TestContext_PathNotFound(t *testing.T) {
 
 func TestContainer_Static(t *testing.T) {
 
-	c := SpringEcho.NewContainer(web.ContainerConfig{Port: 8080})
+	c := SpringEcho.New(web.ServerConfig{Port: 8080})
 	go c.Start()
 	defer c.Stop(context.Background())
 	c.File("/", "testdata/public/a.txt")
@@ -180,7 +180,7 @@ func TestContainer_Static(t *testing.T) {
 //	err := i18n.Register("zh", conf.Map(langMap))
 //	assert.Nil(t, err)
 //
-//	c := SpringEcho.NewContainer(web.ContainerConfig{Port: 8080})
+//	c := SpringEcho.New(web.ServerConfig{Port: 8080})
 //	c.AddFilter(web.FuncFilter(func(ctx web.Context, chain web.FilterChain) {
 //		lang := ctx.Header("Accept-Language")
 //		err := i18n.SetLanguage(ctx.Context(), lang)
@@ -216,7 +216,7 @@ func TestContainer_Static(t *testing.T) {
 //
 //func TestMethodOverride(t *testing.T) {
 //
-//	c := SpringEcho.NewContainer(web.ContainerConfig{Port: 8080})
+//	c := SpringEcho.New(web.ServerConfig{Port: 8080})
 //	c.AddFilter(web.NewMethodOverrideFilter(web.NewMethodOverrideConfig()))
 //	c.GetMapping("/", func(ctx web.Context) { ctx.String("ok!") })
 //
