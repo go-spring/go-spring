@@ -251,15 +251,21 @@ func (s *server) Static(prefix string, root string) {
 }
 
 func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	writer := &BufferedResponseWriter{ResponseWriter: w, cache: true}
 	if ctx, cached := knife.New(r.Context()); !cached {
 		r = r.WithContext(ctx)
+	}
+	if len(s.prefilters) == 0 {
+		s.handler.ServeHTTP(writer, r)
+		return
 	}
 	var prefilters []Filter
 	for _, f := range s.Prefilters() {
 		prefilters = append(prefilters, f)
 	}
-	prefilters = append(prefilters, NewPrefilter(HandlerFilter(WrapH(s.handler))))
-	ctx := NewBaseContext(r, &BufferedResponseWriter{ResponseWriter: w})
+	h := HandlerFilter(WrapH(s.handler))
+	prefilters = append(prefilters, h)
+	ctx := NewBaseContext(r, writer)
 	NewFilterChain(prefilters).Next(ctx)
 }
 

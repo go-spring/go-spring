@@ -926,7 +926,7 @@ func NewManager() Manager {
 }
 
 func NewManagerRetError() (Manager, error) {
-	return localManager{}, util.Error(code.Line(), "error")
+	return localManager{}, util.Error(code.FileLine(), "error")
 }
 
 func NewManagerRetErrorNil() (Manager, error) {
@@ -1049,7 +1049,7 @@ func (d *callDestroy) InitWithError() error {
 		d.inited = true
 		return nil
 	}
-	return util.Error(code.Line(), "error")
+	return util.Error(code.FileLine(), "error")
 }
 
 func (d *callDestroy) DestroyWithError() error {
@@ -1057,7 +1057,7 @@ func (d *callDestroy) DestroyWithError() error {
 		d.destroyed = true
 		return nil
 	}
-	return util.Error(code.Line(), "error")
+	return util.Error(code.FileLine(), "error")
 }
 
 type nestedCallDestroy struct {

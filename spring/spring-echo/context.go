@@ -35,34 +35,45 @@ func WebContext(echoCtx echo.Context) web.Context {
 	return nil
 }
 
-// Context 适配 echo 的 Web 上下文
-type Context struct {
-	*web.BaseContext
-
-	// echoContext echo 上下文对象
-	echoContext echo.Context
-
-	// handlerFunc Web 处理函数
-	handlerFunc web.Handler
-
-	// wildCardName 通配符的名称
-	wildCardName string
+type responseWriter struct {
+	*echo.Response
 }
 
-// NewContext Context 的构造函数
-func NewContext(fn web.Handler, wildCardName string, echoCtx echo.Context) *Context {
+// Status Returns the HTTP response status code of the current request.
+func (w *responseWriter) Status() int {
+	return w.Response.Status
+}
+
+// Size Returns the number of bytes already written into the response http body.
+func (w *responseWriter) Size() int {
+	return int(w.Response.Size)
+}
+
+// Body 返回发送给客户端的数据，当前仅支持 MIMEApplicationJSON 格式.
+func (w *responseWriter) Body() string {
+	return w.Response.Writer.(web.ResponseWriter).Body()
+}
+
+// context 适配 echo 的 Web 上下文
+type context struct {
+	*web.BaseContext
+
+	echoCtx  echo.Context // echo 上下文对象
+	handler  web.Handler  // web 处理函数
+	wildcard string       // 通配符的名称
+}
+
+// newContext Context 的构造函数
+func newContext(h web.Handler, wildcard string, echoCtx echo.Context) *context {
 
 	r := echoCtx.Request()
-	w := &web.BufferedResponseWriter{
-		ResponseWriter: echoCtx.Response().Writer,
-	}
-	echoCtx.Response().Writer = w
+	w := &responseWriter{echoCtx.Response()}
 
-	ctx := &Context{
-		handlerFunc:  fn,
-		echoContext:  echoCtx,
-		wildCardName: wildCardName,
-		BaseContext:  web.NewBaseContext(r, w),
+	ctx := &context{
+		handler:     h,
+		echoCtx:     echoCtx,
+		wildcard:    wildcard,
+		BaseContext: web.NewBaseContext(r, w),
 	}
 
 	echoCtx.Set(web.ContextKey, ctx)
@@ -70,41 +81,41 @@ func NewContext(fn web.Handler, wildCardName string, echoCtx echo.Context) *Cont
 }
 
 // NativeContext 返回封装的底层上下文对象
-func (ctx *Context) NativeContext() interface{} {
-	return ctx.echoContext
+func (c *context) NativeContext() interface{} {
+	return c.echoCtx
 }
 
 // Path returns the registered path for the handler.
-func (ctx *Context) Path() string {
-	return ctx.echoContext.Path()
+func (c *context) Path() string {
+	return c.echoCtx.Path()
 }
 
 // Handler returns the matched handler by router.
-func (ctx *Context) Handler() web.Handler {
-	return ctx.handlerFunc
+func (c *context) Handler() web.Handler {
+	return c.handler
 }
 
 // PathParam returns path parameter by name.
-func (ctx *Context) PathParam(name string) string {
-	if name == ctx.wildCardName {
+func (c *context) PathParam(name string) string {
+	if name == c.wildcard {
 		name = "*"
 	}
-	return ctx.echoContext.Param(name)
+	return c.echoCtx.Param(name)
 }
 
 // PathParamNames returns path parameter names.
-func (ctx *Context) PathParamNames() []string {
-	return ctx.echoContext.ParamNames()
+func (c *context) PathParamNames() []string {
+	return c.echoCtx.ParamNames()
 }
 
 // PathParamValues returns path parameter values.
-func (ctx *Context) PathParamValues() []string {
-	return ctx.echoContext.ParamValues()
+func (c *context) PathParamValues() []string {
+	return c.echoCtx.ParamValues()
 }
 
 // Bind binds the request body into provided type `i`.
-func (ctx *Context) Bind(i interface{}) error {
-	if err := ctx.echoContext.Bind(i); err != nil {
+func (c *context) Bind(i interface{}) error {
+	if err := c.echoCtx.Bind(i); err != nil {
 		return err
 	}
 	return validator.Validate(i)

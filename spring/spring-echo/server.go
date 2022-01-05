@@ -38,8 +38,8 @@ func init() {
 }
 
 type route struct {
-	fn           web.Handler // Web 处理函数
-	wildCardName string      // 通配符的名称
+	handler  web.Handler // Web 处理函数
+	wildcard string      // 通配符的名称
 }
 
 // serverHandler echo 实现的 web 服务器
@@ -59,9 +59,6 @@ func New(config web.ServerConfig) web.Server {
 
 func (h *serverHandler) Start(s web.Server) error {
 
-	loggerFilter := s.LoggerFilter()
-	recoveryFilter := new(recoveryFilter)
-
 	// 添加服务器级别的过滤器，这样在路由不存在时也会调用这些过滤器
 	h.echo.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(echoCtx echo.Context) error {
@@ -71,29 +68,25 @@ func (h *serverHandler) Start(s web.Server) error {
 			// 的 Handler 是准确的，否则是不准确的，请优先使用 spring-echo 注册路由。
 			key := echoCtx.Request().Method + echoCtx.Path()
 			if r, ok := h.routes[key]; ok {
-				webCtx = NewContext(r.fn, r.wildCardName, echoCtx)
+				webCtx = newContext(r.handler, r.wildcard, echoCtx)
 			} else {
-				webCtx = NewContext(nil, echoCtx.Path(), echoCtx)
+				webCtx = newContext(nil, echoCtx.Path(), echoCtx)
 			}
 
 			// 流量录制
 			web.StartRecord(webCtx)
-			defer func() {
-				web.StopRecord(webCtx)
-			}()
+			defer func() { web.StopRecord(webCtx) }()
 
 			// 流量回放
 			web.StartReplay(webCtx)
-			defer func() {
-				web.StopReplay(webCtx)
-			}()
+			defer func() { web.StopReplay(webCtx) }()
 
-			chain := web.NewFilterChain([]web.Filter{
-				loggerFilter,
-				recoveryFilter,
+			filters := []web.Filter{
+				s.LoggerFilter(),
+				new(recoveryFilter),
 				web.HandlerFilter(Handler(next)),
-			})
-			chain.Next(webCtx)
+			}
+			web.NewFilterChain(filters).Next(webCtx)
 			return nil
 		}
 	})
@@ -144,7 +137,9 @@ func (e echoHandler) FileLine() (file string, line int, fnName string) {
 }
 
 // Handler 适配 echo 形式的处理函数
-func Handler(fn echo.HandlerFunc) web.Handler { return echoHandler(fn) }
+func Handler(fn echo.HandlerFunc) web.Handler {
+	return echoHandler(fn)
+}
 
 /////////////////// filter //////////////////////
 
@@ -152,19 +147,18 @@ func Handler(fn echo.HandlerFunc) web.Handler { return echoHandler(fn) }
 type echoFilter echo.MiddlewareFunc
 
 func (filter echoFilter) Invoke(ctx web.Context, chain web.FilterChain) {
-
-	h := filter(func(echoCtx echo.Context) error {
+	next := func(echoCtx echo.Context) error {
 		chain.Next(ctx)
 		return nil
-	})
-
-	if err := h(EchoContext(ctx)); err != nil {
-		panic(err)
 	}
+	err := filter(next)(EchoContext(ctx))
+	util.Panic(err).When(err != nil)
 }
 
 // Filter 适配 echo 形式的中间件函数
-func Filter(fn echo.MiddlewareFunc) web.Filter { return echoFilter(fn) }
+func Filter(fn echo.MiddlewareFunc) web.Filter {
+	return echoFilter(fn)
+}
 
 // recoveryFilter 适配 echo 的恢复过滤器
 type recoveryFilter struct{}

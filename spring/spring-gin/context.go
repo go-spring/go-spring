@@ -17,6 +17,8 @@
 package SpringGin
 
 import (
+	"reflect"
+
 	"github.com/gin-gonic/gin"
 	"github.com/go-spring/spring-core/validator"
 	"github.com/go-spring/spring-core/web"
@@ -35,22 +37,14 @@ func WebContext(ginCtx *gin.Context) web.Context {
 	return nil
 }
 
-// 同时继承了 web.ResponseWriter 接口
 type responseWriter struct {
 	gin.ResponseWriter
-	bufRW *web.BufferedResponseWriter
 }
 
-func (w *responseWriter) Size() int {
-	return w.bufRW.Size()
-}
-
+// Body 返回发送给客户端的数据，当前仅支持 MIMEApplicationJSON 格式.
 func (w *responseWriter) Body() string {
-	return w.bufRW.Body()
-}
-
-func (w *responseWriter) Write(data []byte) (n int, err error) {
-	return w.bufRW.Write(data)
+	s := reflect.ValueOf(w.ResponseWriter).Elem()
+	return s.Field(0).Interface().(web.ResponseWriter).Body()
 }
 
 // Context 适配 gin 的 Web 上下文
@@ -74,13 +68,7 @@ type Context struct {
 func NewContext(fn web.Handler, wildCardName string, ginCtx *gin.Context) *Context {
 
 	r := ginCtx.Request
-	w := &web.BufferedResponseWriter{
-		ResponseWriter: ginCtx.Writer,
-	}
-	ginCtx.Writer = &responseWriter{
-		bufRW:          w,
-		ResponseWriter: ginCtx.Writer,
-	}
+	w := &responseWriter{ginCtx.Writer}
 
 	webCtx := &Context{
 		handlerFunc:  fn,

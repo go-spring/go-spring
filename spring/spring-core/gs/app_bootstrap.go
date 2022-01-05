@@ -17,16 +17,13 @@
 package gs
 
 import (
-	"errors"
 	"reflect"
 
 	"github.com/go-spring/spring-base/conf"
-	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/gs/arg"
 )
 
 type tempBootstrap struct {
-	mapOfOnProperty  map[string]interface{}
 	resourceLocators []ResourceLocator `autowire:""`
 }
 
@@ -38,9 +35,6 @@ type bootstrap struct {
 func newBootstrap() *bootstrap {
 	return &bootstrap{
 		c: New().(*container),
-		tempBootstrap: &tempBootstrap{
-			mapOfOnProperty: make(map[string]interface{}),
-		},
 	}
 }
 
@@ -48,22 +42,9 @@ func (b *bootstrap) clear() {
 	b.tempBootstrap = nil
 }
 
-func validOnProperty(fn interface{}) error {
-	t := reflect.TypeOf(fn)
-	if t.Kind() != reflect.Func {
-		return errors.New("fn should be a func(value_type)")
-	}
-	if t.NumIn() != 1 || !util.IsValueType(t.In(0)) || t.NumOut() != 0 {
-		return errors.New("fn should be a func(value_type)")
-	}
-	return nil
-}
-
 // OnProperty 参考 App.OnProperty 的解释。
 func (b *bootstrap) OnProperty(key string, fn interface{}) {
-	err := validOnProperty(fn)
-	util.Panic(err).When(err != nil)
-	b.mapOfOnProperty[key] = fn
+	b.c.OnProperty(key, fn)
 }
 
 // Property 参考 Container.Property 的解释。
@@ -97,16 +78,6 @@ func (b *bootstrap) start(e *configuration) error {
 	// 保存从环境变量和命令行解析的属性
 	for _, k := range e.p.Keys() {
 		b.c.p.Set(k, e.p.Get(k))
-	}
-
-	for key, f := range b.mapOfOnProperty {
-		t := reflect.TypeOf(f)
-		in := reflect.New(t.In(0)).Elem()
-		err := b.c.p.Bind(in, conf.Key(key))
-		if err != nil {
-			return err
-		}
-		reflect.ValueOf(f).Call([]reflect.Value{in})
 	}
 
 	return b.c.Refresh()
