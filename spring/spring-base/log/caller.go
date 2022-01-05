@@ -14,46 +14,35 @@
  * limitations under the License.
  */
 
-package code
+package log
 
 import (
-	"fmt"
 	"runtime"
 	"sync"
 )
 
+// frameMap 用于缓存调用点，基准测试表明使用缓存大约有 50% 的性能提升。
 var frameMap sync.Map
 
-func fileLine() (string, int) {
+// Caller 获取调用点的文件及行号信息，fast 为 true 时使用缓存进行加速。
+func Caller(skip int, fast bool) (file string, line int, loaded bool) {
+
+	if !fast {
+		_, file, line, loaded = runtime.Caller(skip + 1)
+		return
+	}
+
 	rpc := make([]uintptr, 1)
-	n := runtime.Callers(3, rpc[:])
+	n := runtime.Callers(skip+2, rpc[:])
 	if n < 1 {
-		return "", 0
+		return
 	}
 	pc := rpc[0]
 	if v, ok := frameMap.Load(pc); ok {
 		e := v.(*runtime.Frame)
-		return e.File, e.Line
+		return e.File, e.Line, true
 	}
 	frame, _ := runtime.CallersFrames(rpc).Next()
 	frameMap.Store(pc, &frame)
-	return frame.File, frame.Line
-}
-
-// File 获取当前调用点的文件信息，希望未来可以实现编译期计算。
-func File() string {
-	file, _ := fileLine()
-	return file
-}
-
-// Line 获取当前调用点的文件信息，希望未来可以实现编译期计算。
-func Line() int {
-	_, line := fileLine()
-	return line
-}
-
-// FileLine 获取当前调用点的文件信息，希望未来可以实现编译期计算。
-func FileLine() string {
-	file, line := fileLine()
-	return fmt.Sprintf("%s:%d", file, line)
+	return frame.File, frame.Line, false
 }

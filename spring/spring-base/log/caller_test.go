@@ -14,27 +14,40 @@
  * limitations under the License.
  */
 
-package util_test
+package log
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/go-spring/spring-base/assert"
-	"github.com/go-spring/spring-base/code"
-	"github.com/go-spring/spring-base/util"
 )
 
-func TestError(t *testing.T) {
+func TestCaller(t *testing.T) {
+	for i := 0; i < 2; i++ {
+		file, line, loaded := Caller(0, true)
+		if i == 0 {
+			assert.False(t, loaded)
+		} else {
+			assert.True(t, loaded)
+		}
+		_ = fmt.Sprintf("%s:%d\n", file, line)
+	}
+}
 
-	e0 := util.Error(code.FileLine(), "error")
-	assert.Error(t, e0, "error_test.go:29 error")
+func BenchmarkCaller(b *testing.B) {
 
-	e1 := util.Errorf(code.FileLine(), "error: %d", 0)
-	assert.Error(t, e1, "error_test.go:32 error: 0")
+	b.Run("fast", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			file, line, _ := Caller(0, true)
+			_ = fmt.Sprintf("%s:%d\n", file, line)
+		}
+	})
 
-	e2 := util.Wrap(e0, code.FileLine(), "error")
-	assert.Error(t, e2, "error_test.go:35 error\nerror_test.go:29 error")
-
-	e3 := util.Wrapf(e1, code.FileLine(), "error: %d", 1)
-	assert.Error(t, e3, "error_test.go:38 error: 1\nerror_test.go:32 error: 0")
+	b.Run("slow", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			file, line, _ := Caller(0, false)
+			_ = fmt.Sprintf("%s:%d\n", file, line)
+		}
+	})
 }

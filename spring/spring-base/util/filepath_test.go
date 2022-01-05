@@ -24,17 +24,13 @@ import (
 	"github.com/go-spring/spring-base/util"
 )
 
-func TestError(t *testing.T) {
-
-	e0 := util.Error(code.FileLine(), "error")
-	assert.Error(t, e0, "error_test.go:29 error")
-
-	e1 := util.Errorf(code.FileLine(), "error: %d", 0)
-	assert.Error(t, e1, "error_test.go:32 error: 0")
-
-	e2 := util.Wrap(e0, code.FileLine(), "error")
-	assert.Error(t, e2, "error_test.go:35 error\nerror_test.go:29 error")
-
-	e3 := util.Wrapf(e1, code.FileLine(), "error: %d", 1)
-	assert.Error(t, e3, "error_test.go:38 error: 1\nerror_test.go:32 error: 0")
+func TestContract(t *testing.T) {
+	file := code.File()
+	assert.Equal(t, util.Contract(file, -1), file)
+	assert.Equal(t, util.Contract(file, 0), file)
+	assert.Equal(t, util.Contract(file, 1), file)
+	assert.Equal(t, util.Contract(file, 3), file)
+	assert.Equal(t, util.Contract(file, 4), "...o")
+	assert.Equal(t, util.Contract(file, 5), "...go")
+	assert.Equal(t, util.Contract(file, 10000), file)
 }

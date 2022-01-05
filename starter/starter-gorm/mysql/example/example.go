@@ -14,20 +14,29 @@
  * limitations under the License.
  */
 
-package util_test
+package main
 
 import (
-	"context"
-	"testing"
-	"time"
+	"fmt"
 
-	"github.com/go-spring/spring-base/assert"
-	"github.com/go-spring/spring-base/util"
+	"github.com/go-spring/spring-base/log"
+	"github.com/go-spring/spring-core/gs"
+	_ "github.com/go-spring/starter-gorm/mysql"
+	"gorm.io/gorm"
 )
 
-func TestNow(t *testing.T) {
-	assert.True(t, time.Now().Sub(util.Now(nil)).Milliseconds() < 1)
-	assert.True(t, time.Now().Sub(util.Now(context.TODO())).Milliseconds() < 1)
-	ctx := util.MockNow(context.TODO(), time.Now().Add(-60*time.Second))
-	assert.True(t, time.Now().Sub(util.Now(ctx).Add(60*time.Second)).Milliseconds() < 1)
+type runner struct {
+	DB *gorm.DB `autowire:""`
+}
+
+func (r *runner) Run(ctx gs.Context) {
+	var engines []string
+	r.DB.Raw("select engine from engines").Scan(&engines)
+	log.Infof("got mysql engines %v", engines)
+	go gs.ShutDown()
+}
+
+func main() {
+	gs.Object(&runner{}).Export((*gs.AppRunner)(nil))
+	fmt.Printf("program exited %v\n", gs.Web(false).Run())
 }

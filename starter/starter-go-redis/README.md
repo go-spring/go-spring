@@ -1,6 +1,10 @@
 # starter-go-redis
 
-[仅发布] 该项目仅为最终发布，开发请关注 [go-spring](https://github.com/go-spring/go-spring) 项目。
+[仅发布] 该项目仅为最终发布，不要向该项目直接提交代码，开发请关注 [go-spring](https://github.com/go-spring/go-spring) 项目。
+
+- [Installation](#installation)
+- [Quick Start](#quick start)
+- [Customization](#customization)
 
 ## Install
 
@@ -20,6 +24,7 @@ import "github.com/go-spring/starter-go-redis"
 package main
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/go-spring/spring-base/util"
@@ -29,20 +34,31 @@ import (
 )
 
 type runner struct {
-	RedisClient redis.Client `autowire:""`
+	Client redis.Client `autowire:""`
 }
 
 func (r *runner) Run(ctx gs.Context) {
-	_, err := r.RedisClient.Set(ctx.Context(), "a", 1)
+
+	_, err := r.Client.Get(ctx.Context(), "nonexisting")
+	if err != redis.ErrNil {
+		panic(errors.New("should be redis.ErrNil"))
+	}
+
+	_, err = r.Client.Set(ctx.Context(), "mykey", "Hello")
 	util.Panic(err).When(err != nil)
-	v, err := r.RedisClient.Get(ctx.Context(), "a")
+
+	v, err := r.Client.Get(ctx.Context(), "mykey")
 	util.Panic(err).When(err != nil)
-	fmt.Printf("get redis a=%v\n", v)
+	if v != "Hello" {
+		panic(errors.New("should be \"Hello\""))
+	}
+
+	fmt.Printf("GET mykey=%q\n", v)
 	go gs.ShutDown()
 }
 
 func main() {
 	gs.Object(&runner{}).Export((*gs.AppRunner)(nil))
-	fmt.Printf("program exited %v\n", gs.Run())
+	fmt.Printf("program exited %v\n", gs.Web(false).Run())
 }
 ```

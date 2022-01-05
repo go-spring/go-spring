@@ -33,7 +33,7 @@ func NewMethodOverrideConfig() *MethodOverrideConfig {
 
 func (config *MethodOverrideConfig) ByHeader(key string) *MethodOverrideConfig {
 	config.getters = append(config.getters, func(ctx Context) string {
-		return ctx.GetHeader(key)
+		return ctx.Header(key)
 	})
 	return config
 }
@@ -61,7 +61,7 @@ func (config *MethodOverrideConfig) get(ctx Context) string {
 	return ""
 }
 
-func NewMethodOverrideFilter(config *MethodOverrideConfig) Filter {
+func NewMethodOverrideFilter(config *MethodOverrideConfig) *Prefilter {
 	if len(config.getters) == 0 {
 		config.ByHeader("X-HTTP-Method").
 			ByHeader("X-HTTP-Method-Override").
@@ -69,7 +69,7 @@ func NewMethodOverrideFilter(config *MethodOverrideConfig) Filter {
 			ByQueryParam("_method").
 			ByFormValue("_method")
 	}
-	return Prefilter(FuncFilter(func(ctx Context, chain FilterChain) {
+	return FuncPrefilter(func(ctx Context, chain FilterChain) {
 		req := ctx.Request()
 		if strings.ToUpper(req.Method) == http.MethodPost {
 			if method := config.get(ctx); method != "" {
@@ -77,5 +77,5 @@ func NewMethodOverrideFilter(config *MethodOverrideConfig) Filter {
 			}
 		}
 		chain.Continue(ctx)
-	}))
+	})
 }

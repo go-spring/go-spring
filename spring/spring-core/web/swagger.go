@@ -23,12 +23,12 @@ type Operation interface {
 	Process() error
 }
 
-// Swagger 与容器绑定的 API 描述文档
+// Swagger 与服务器绑定的 API 描述文档
 type Swagger interface {
 
 	// ReadDoc 读取标准格式的描述文档
 	ReadDoc() string
 
-	// AddPath 添加与容器绑定的路由节点
+	// AddPath 添加与服务器绑定的路由节点
 	AddPath(path string, method string, op Operation)
 }

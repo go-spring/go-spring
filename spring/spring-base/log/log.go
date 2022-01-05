@@ -20,13 +20,16 @@ package log
 import (
 	"context"
 	"fmt"
-	"runtime"
 	"strings"
-	"sync"
-	"time"
 
+	"github.com/go-spring/spring-base/atomic"
+	"github.com/go-spring/spring-base/chrono"
 	"github.com/go-spring/spring-base/color"
+	"github.com/go-spring/spring-base/util"
 )
+
+// empty 用于创建其他的 Entry 对象。
+var empty = Entry{}
 
 const (
 	TraceLevel = Level(iota)
@@ -61,7 +64,102 @@ func (level Level) String() string {
 	return ""
 }
 
-var empty = Entry{}
+// Output 自定义日志的输出格式。
+type Output interface {
+	Do(level Level, msg *Message)
+}
+
+// FuncOutput 函数的形式自定义日志的输出格式。
+type FuncOutput func(level Level, msg *Message)
+
+func (fn FuncOutput) Do(level Level, msg *Message) {
+	fn(level, msg)
+}
+
+// Console 将日志输出到控制台。
+var Console = FuncOutput(func(level Level, msg *Message) {
+	defer func() { msg.Reuse() }()
+	strLevel := strings.ToUpper(level.String())
+	if level >= ErrorLevel {
+		strLevel = color.Red.Sprint(strLevel)
+	} else if level == WarnLevel {
+		strLevel = color.Yellow.Sprint(strLevel)
+	} else if level == TraceLevel {
+		strLevel = color.Green.Sprint(strLevel)
+	}
+	strTime := msg.Time().Format("2006-01-02T15:04:05.000")
+	fileLine := util.Contract(fmt.Sprintf("%s:%d", msg.File(), msg.Line()), 48)
+	_, _ = fmt.Printf("[%s][%s][%s] %s\n", strLevel, strTime, fileLine, msg.Text())
+})
+
+// config 日志模块全局设置。
+var config struct {
+	output Output
+	level  atomic.Uint32
+}
+
+func init() {
+	Reset()
+}
+
+// Reset 恢复默认的日志输出配置。
+func Reset() {
+	SetOutput(Console)
+	SetLevel(InfoLevel)
+}
+
+// GetLevel 获取日志的输出级别。
+func GetLevel() Level {
+	return Level(config.level.Load())
+}
+
+// SetLevel 设置日志的输出级别。
+func SetLevel(level Level) {
+	v := uint32(level)
+	for {
+		o := config.level.Load()
+		if config.level.CompareAndSwap(o, v) {
+			break
+		}
+	}
+}
+
+// SetOutput 设置日志的输出格式。
+func SetOutput(output Output) {
+	if output == nil {
+		panic("output is nil")
+	}
+	config.output = output
+}
+
+// defaultContext 用于单元测试设置时间。
+var defaultContext context.Context
+
+func outputf(level Level, e Entry, format string, args ...interface{}) {
+	if GetLevel() > level {
+		return
+	}
+	if len(args) == 1 {
+		if fn, ok := args[0].(func() []interface{}); ok {
+			args = fn()
+		}
+	}
+	msg := newMessage()
+	msg.ctx = e.ctx
+	msg.tag = e.tag
+	ctx := e.ctx
+	if ctx == nil {
+		ctx = defaultContext
+	}
+	msg.time = chrono.Now(ctx)
+	if format == "" {
+		msg.text = fmt.Sprint(args...)
+	} else {
+		msg.text = fmt.Sprintf(format, args...)
+	}
+	msg.file, msg.line, _ = Caller(e.skip+2, true)
+	config.output.Do(level, msg)
+}
 
 // Ctx 创建包含 context.Context 对象的 Entry 。
 func Ctx(ctx context.Context) Entry {
@@ -73,167 +171,33 @@ func Tag(tag string) Entry {
 	return empty.Tag(tag)
 }
 
-// Entry 打包日志信息。
+// Skip 创建包含 skip 信息的 Entry 。
+func Skip(n int) Entry {
+	return empty.Skip(n)
+}
+
 type Entry struct {
 	ctx  context.Context
 	tag  string
-	msg  string
-	file string
-	line int
-	time time.Time
+	skip int
 }
 
-func (e *Entry) GetCtx() context.Context {
-	return e.ctx
-}
-
-func (e *Entry) GetTag() string {
-	return e.tag
-}
-
-func (e *Entry) GetMsg() string {
-	return e.msg
-}
-
-func (e *Entry) GetFile() string {
-	return e.file
-}
-
-func (e *Entry) GetLine() int {
-	return e.line
-}
-
-func (e *Entry) GetTime() time.Time {
-	return e.time
-}
-
-func (e Entry) Tag(tag string) Entry {
-	e.tag = tag
-	return e
-}
-
+// Ctx 创建包含 context.Context 对象的 Entry 。
 func (e Entry) Ctx(ctx context.Context) Entry {
 	e.ctx = ctx
 	return e
 }
 
-func (e Entry) format(format string, a ...interface{}) *Entry {
-	if format == "" {
-		e.msg = fmt.Sprint(a...)
-	} else {
-		e.msg = fmt.Sprintf(format, a...)
-	}
-	e.time = time.Now()
-	return &e
+// Tag 创建包含 tag 信息的 Entry 。
+func (e Entry) Tag(tag string) Entry {
+	e.tag = tag
+	return e
 }
 
-// Output 自定义日志的输出格式。
-type Output func(level Level, e *Entry)
-
-// Console 将日志输出到控制台。
-func Console(level Level, e *Entry) {
-	strLevel := strings.ToUpper(level.String())
-	if level >= ErrorLevel {
-		strLevel = color.Red.Sprint(strLevel)
-	} else if level == WarnLevel {
-		strLevel = color.Yellow.Sprint(strLevel)
-	} else if level == TraceLevel {
-		strLevel = color.Green.Sprint(strLevel)
-	}
-	strTime := e.time.Format("2006-01-02 03-04-05.000")
-	_, _ = fmt.Printf("[%s] %s %s:%d %s\n", strLevel, strTime, e.file, e.line, e.msg)
-}
-
-var config = struct {
-	mutex  sync.RWMutex
-	level  Level
-	output Output
-}{
-	level:  InfoLevel,
-	output: Console,
-}
-
-// Reset 恢复默认的日志输出配置。
-func Reset() {
-	config.mutex.Lock()
-	defer config.mutex.Unlock()
-	config.level = InfoLevel
-	config.output = Console
-}
-
-// GetLevel 获取日志的输出级别。
-func GetLevel() Level {
-	config.mutex.RLock()
-	defer config.mutex.RUnlock()
-	return config.level
-}
-
-// SetLevel 设置日志的输出级别。
-func SetLevel(level Level) {
-	config.mutex.Lock()
-	defer config.mutex.Unlock()
-	config.level = level
-}
-
-// SetOutput 设置日志的输出格式。
-func SetOutput(output Output) {
-	config.mutex.Lock()
-	defer config.mutex.Unlock()
-	config.output = output
-}
-
-var (
-	frameMap sync.Map
-)
-
-// Caller 获取调用栈的文件及行号信息，fast 为 true 时使用缓存进行加速。
-// 基准测试表明获取调用栈的信息时使用缓存相比不使用缓存有 50% 的速度提升。
-func Caller(skip int, fast bool) (file string, line int, loaded bool) {
-
-	if !fast {
-		_, file, line, loaded = runtime.Caller(skip + 1)
-		return
-	}
-
-	rpc := make([]uintptr, 1)
-	n := runtime.Callers(skip+2, rpc[:])
-	if n < 1 {
-		return
-	}
-	pc := rpc[0]
-	if v, ok := frameMap.Load(pc); ok {
-		e := v.(*runtime.Frame)
-		return e.File, e.Line, true
-	}
-	frame, _ := runtime.CallersFrames(rpc).Next()
-	frameMap.Store(pc, &frame)
-	return frame.File, frame.Line, false
-}
-
-func outputf(level Level, e Entry, format string, args ...interface{}) {
-
-	var (
-		configLevel  Level
-		configOutput Output
-	)
-
-	{
-		config.mutex.RLock()
-		defer config.mutex.RUnlock()
-		configLevel = config.level
-		configOutput = config.output
-	}
-
-	if configLevel > level {
-		return
-	}
-	if len(args) == 1 {
-		if fn, ok := args[0].(func() []interface{}); ok {
-			args = fn()
-		}
-	}
-	e.file, e.line, _ = Caller(2, true)
-	configOutput(level, e.format(format, args...))
+// Skip 创建包含 skip 信息的 Entry 。
+func (e Entry) Skip(n int) Entry {
+	e.skip = n
+	return e
 }
 
 // T 将可变参数转换成切片形式。

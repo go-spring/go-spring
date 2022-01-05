@@ -36,7 +36,8 @@ func TestGet(t *testing.T) {
 	v, ok = knife.Get(ctx, "a")
 	assert.False(t, ok)
 
-	ctx = knife.New(ctx)
+	ctx, cached := knife.New(ctx)
+	assert.False(t, cached)
 
 	v, ok = knife.Get(ctx, "a")
 	assert.False(t, ok)
@@ -49,7 +50,8 @@ func TestGet(t *testing.T) {
 }
 
 func TestFetch(t *testing.T) {
-	ctx := knife.New(context.Background())
+	ctx, cached := knife.New(context.Background())
+	assert.False(t, cached)
 
 	err := knife.Set(ctx, "a", map[string]string{"b": "c"})
 	assert.Nil(t, err)

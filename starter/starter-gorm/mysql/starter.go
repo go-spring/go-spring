@@ -18,7 +18,7 @@ package StarterMySqlGorm
 
 import (
 	"github.com/go-spring/spring-base/log"
-	"github.com/go-spring/spring-core/conf"
+	"github.com/go-spring/spring-core/database"
 	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/gs/cond"
 	"gorm.io/driver/mysql"
@@ -30,7 +30,7 @@ func init() {
 }
 
 // createDB 从配置文件创建 *gorm.DB 客户端
-func createDB(config conf.DatabaseClientConfig) (*gorm.DB, error) {
-	log.Info("open gorm mysql ", config.Url)
+func createDB(config database.ClientConfig) (*gorm.DB, error) {
+	log.Infof("open gorm mysql %s", config.Url)
 	return gorm.Open(mysql.Open(config.Url))
 }

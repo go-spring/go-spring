@@ -39,11 +39,11 @@ func NewRequestIDFilter(config RequestIDConfig) Filter {
 		}
 	}
 	return FuncFilter(func(ctx Context, chain FilterChain) {
-		reqID := ctx.GetHeader(config.Header)
+		reqID := ctx.Header(config.Header)
 		if reqID == "" {
 			reqID = config.Generator()
 		}
-		ctx.Header(HeaderXRequestID, reqID)
+		ctx.SetHeader(HeaderXRequestID, reqID)
 		chain.Continue(ctx)
 	})
 }

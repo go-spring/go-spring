@@ -27,7 +27,7 @@ const ReplaySessionID = "REPLAY-SESSION-ID"
 
 // StartReplay 开始流量回放
 func StartReplay(ctx Context) {
-	session := ctx.GetHeader(ReplaySessionID)
+	session := ctx.Header(ReplaySessionID)
 	if session == "" {
 		return
 	}

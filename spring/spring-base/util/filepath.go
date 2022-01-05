@@ -34,3 +34,11 @@ func ReadDirNames(dirname string) ([]string, error) {
 	}
 	return names, nil
 }
+
+// Contract 压缩 filename 的长度，超出的部分使用 ... 代替。
+func Contract(filename string, maxLength int) string {
+	if n := len(filename); maxLength > 3 && n > maxLength-3 {
+		return "..." + filename[n-maxLength+3:]
+	}
+	return filename
+}
