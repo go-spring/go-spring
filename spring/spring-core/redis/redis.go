@@ -25,9 +25,9 @@ import (
 	"strings"
 
 	"github.com/go-spring/spring-base/cast"
+	"github.com/go-spring/spring-base/chrono"
 	"github.com/go-spring/spring-base/fastdev"
 	"github.com/go-spring/spring-base/fastdev/json"
-	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/internal"
 )
 
@@ -118,7 +118,7 @@ func (c *BaseClient) do(ctx context.Context, args []interface{}, trans transform
 
 	var timeNow int64
 	if fastdev.RecordMode() {
-		timeNow = util.Now(ctx).UnixNano()
+		timeNow = chrono.Now(ctx).UnixNano()
 	}
 
 	defer func() {

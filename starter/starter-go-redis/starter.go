@@ -24,5 +24,7 @@ import (
 )
 
 func init() {
-	gs.Provide(SpringGoRedis.NewClient, "${redis}").Name("RedisClient").On(cond.OnMissingBean((*redis.Client)(nil)))
+	gs.Provide(SpringGoRedis.NewClient, "${redis}").
+		Name("RedisClient").
+		On(cond.OnMissingBean(gs.BeanID((*redis.Client)(nil), "RedisClient")))
 }
