@@ -1,6 +1,6 @@
-# starter-echo
+# starter-gin
 
-[English](README_EN.md)
+[中文](README.md)
 
 [仅发布] 该项目仅为最终发布，不要向该项目直接提交代码，开发请关注 [go-spring](https://github.com/go-spring/go-spring) 项目。
 
@@ -13,13 +13,13 @@
 ### Using go get
 
 ```
-go get github.com/go-spring/starter-echo@v1.1.0-rc2 
+go get github.com/go-spring/starter-gin@v1.1.0-rc2 
 ```
 
 ## Quick Start
 
 ```
-import _ "github.com/go-spring/starter-echo"
+import _ "github.com/go-spring/starter-gin"
 ```
 
 `main.go`
@@ -32,7 +32,7 @@ import (
 
 	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/web"
-	_ "github.com/go-spring/starter-echo"
+	_ "github.com/go-spring/starter-gin"
 )
 
 func init() {

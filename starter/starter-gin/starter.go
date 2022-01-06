@@ -14,13 +14,13 @@
  * limitations under the License.
  */
 
-package StarterEcho
+package StarterGin
 
 import (
 	"github.com/go-spring/spring-core/gs"
-	"github.com/go-spring/spring-echo"
+	"github.com/go-spring/spring-gin"
 )
 
 func init() {
-	gs.Provide(SpringEcho.NewContainer, "${web.server}").Name("WebContainer")
+	gs.Provide(SpringGin.New, "${web.server}")
 }
