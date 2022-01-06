@@ -1,20 +1,22 @@
-# starter-grpc
+/*
+ *
+ * Copyright 2015 gRPC authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ */
 
-## Install
-
-```
-go get github.com/go-spring/starter-grpc@v1.1.0-rc2 
-```
-
-## Import
-
-```
-import "github.com/go-spring/starter-grpc/server"
-```
-
-## Example
-
-```
+// Package main implements a server for Greeter service.
 package main
 
 import (
@@ -22,10 +24,10 @@ import (
 	"fmt"
 	"log"
 
-	pb "github.com/go-spring/examples/spring-boot-grpc/helloworld"
 	"github.com/go-spring/spring-core/grpc"
 	"github.com/go-spring/spring-core/gs"
-	
+	pb "github.com/go-spring/starter-grpc/example/helloworld"
+
 	_ "github.com/go-spring/starter-grpc/server"
 )
 
@@ -50,6 +52,5 @@ func (s *GreeterServer) SayHello(ctx context.Context, in *pb.HelloRequest) (*pb.
 func main() {
 	gs.Property("spring.application.name", "GreeterServer")
 	gs.Property("grpc.server.port", 50051)
-	fmt.Println("application exit: ", gs.Run())
+	fmt.Println("application exit: ", gs.Web(false).Run())
 }
-```

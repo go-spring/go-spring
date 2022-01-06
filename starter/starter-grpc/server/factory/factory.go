@@ -25,24 +25,23 @@ import (
 
 	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-base/util"
-	"github.com/go-spring/spring-core/conf"
-	SpringGrpc "github.com/go-spring/spring-core/grpc"
+	"github.com/go-spring/spring-core/grpc"
 	"github.com/go-spring/spring-core/gs"
-	"google.golang.org/grpc"
+	g "google.golang.org/grpc"
 )
 
 // Starter gRPC 服务器启动器
 type Starter struct {
-	config  conf.GrpcServerConfig
-	server  *grpc.Server
+	config  grpc.ServerConfig
+	server  *g.Server
 	Servers *gs.GrpcServers `autowire:""`
 }
 
 // NewStarter Starter 的构造函数
-func NewStarter(config conf.GrpcServerConfig) *Starter {
+func NewStarter(config grpc.ServerConfig) *Starter {
 	return &Starter{
 		config: config,
-		server: grpc.NewServer(),
+		server: g.NewServer(),
 	}
 }
 
@@ -51,7 +50,7 @@ func (starter *Starter) OnAppStart(ctx gs.Context) {
 	server := reflect.ValueOf(starter.server)
 	srvMap := make(map[string]reflect.Value)
 
-	starter.Servers.ForEach(func(serviceName string, rpcServer *SpringGrpc.Server) {
+	starter.Servers.ForEach(func(serviceName string, rpcServer *grpc.Server) {
 		service := reflect.ValueOf(rpcServer.Service)
 		srvMap[serviceName] = service
 		fn := reflect.ValueOf(rpcServer.Register)
@@ -75,7 +74,7 @@ func (starter *Starter) OnAppStart(ctx gs.Context) {
 
 	ctx.Go(func(_ context.Context) {
 		if err = starter.server.Serve(listener); err != nil {
-			log.Error(err)
+			log.Error(nil, err)
 		}
 	})
 }

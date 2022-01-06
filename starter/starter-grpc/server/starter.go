@@ -22,5 +22,5 @@ import (
 )
 
 func init() {
-	gs.Provide(factory.NewStarter).Export((*gs.AppEvent)(nil))
+	gs.Provide(factory.NewStarter, "${grpc.server}").Export((*gs.AppEvent)(nil))
 }
