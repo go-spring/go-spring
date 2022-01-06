@@ -25,16 +25,23 @@ import (
 )
 
 // GinContext 将 web.Context 转换为 *gin.Context
-func GinContext(webCtx web.Context) *gin.Context {
-	return webCtx.NativeContext().(*gin.Context)
+func GinContext(c web.Context) *gin.Context {
+	v := c.NativeContext()
+	if v == nil {
+		return nil
+	}
+	ctx, _ := v.(*gin.Context)
+	return ctx
 }
 
 // WebContext 将 *gin.Context 转换为 web.Context
-func WebContext(ginCtx *gin.Context) web.Context {
-	if webCtx, _ := ginCtx.Get(web.ContextKey); webCtx != nil {
-		return webCtx.(web.Context)
+func WebContext(c *gin.Context) web.Context {
+	v, _ := c.Get(web.ContextKey)
+	if v == nil {
+		return nil
 	}
-	return nil
+	ctx, _ := v.(web.Context)
+	return ctx
 }
 
 type responseWriter struct {

@@ -51,7 +51,7 @@ func NewBaseContext(r *http.Request, w ResponseWriter) *BaseContext {
 
 // NativeContext 返回封装的底层上下文对象
 func (c *BaseContext) NativeContext() interface{} {
-	panic(util.UnimplementedMethod)
+	return nil
 }
 
 // Get retrieves data from the context.

@@ -57,6 +57,10 @@ func New(config web.ServerConfig) web.Server {
 	return web.NewServer(config, h)
 }
 
+func (h *serverHandler) RecoveryFilter() web.Filter {
+	return new(recoveryFilter)
+}
+
 func (h *serverHandler) Start(s web.Server) error {
 
 	// 添加服务器级别的过滤器，这样在路由不存在时也会调用这些过滤器
@@ -81,13 +85,7 @@ func (h *serverHandler) Start(s web.Server) error {
 			web.StartReplay(webCtx)
 			defer func() { web.StopReplay(webCtx) }()
 
-			filters := []web.Filter{
-				s.LoggerFilter(),
-				new(recoveryFilter),
-				web.HandlerFilter(Handler(next)),
-			}
-			web.NewFilterChain(filters).Next(webCtx)
-			return nil
+			return next(EchoContext(webCtx))
 		}
 	})
 
@@ -169,7 +167,7 @@ func (f *recoveryFilter) Invoke(ctx web.Context, chain web.FilterChain) {
 		if err := recover(); err != nil {
 
 			ctxLogger := log.Ctx(ctx.Context())
-			ctxLogger.Error(err, "\n", string(debug.Stack()))
+			ctxLogger.Error(nil, err, "\n", string(debug.Stack()))
 
 			httpE := web.HttpError{Code: http.StatusInternalServerError}
 			switch e := err.(type) {
@@ -195,14 +193,19 @@ func (f *recoveryFilter) Invoke(ctx web.Context, chain web.FilterChain) {
 			}
 
 			echoCtx := EchoContext(ctx)
-			if !echoCtx.Response().Committed {
-				if echoCtx.Request().Method == http.MethodHead { // Issue #608
-					if err = echoCtx.NoContent(httpE.Code); err != nil {
-						ctxLogger.Error(err)
-					}
-				} else {
-					web.ErrorHandler(ctx, &httpE)
-				}
+			if echoCtx == nil {
+				web.ErrorHandler(ctx, &httpE)
+				return
+			}
+			if echoCtx.Response().Committed {
+				return
+			}
+			if echoCtx.Request().Method != http.MethodHead { // Issue #608
+				web.ErrorHandler(ctx, &httpE)
+				return
+			}
+			if err = echoCtx.NoContent(httpE.Code); err != nil {
+				ctxLogger.Error(nil, err)
 			}
 		}
 	}()

@@ -23,16 +23,23 @@ import (
 )
 
 // EchoContext 将 web.Context 转换为 echo.Context
-func EchoContext(ctx web.Context) echo.Context {
-	return ctx.NativeContext().(echo.Context)
+func EchoContext(c web.Context) echo.Context {
+	v := c.NativeContext()
+	if v == nil {
+		return nil
+	}
+	ctx, _ := v.(echo.Context)
+	return ctx
 }
 
 // WebContext 将 echo.Context 转换为 web.Context
-func WebContext(echoCtx echo.Context) web.Context {
-	if ctx := echoCtx.Get(web.ContextKey); ctx != nil {
-		return ctx.(web.Context)
+func WebContext(c echo.Context) web.Context {
+	v := c.Get(web.ContextKey)
+	if v == nil {
+		return nil
 	}
-	return nil
+	ctx, _ := v.(web.Context)
+	return ctx
 }
 
 type responseWriter struct {
