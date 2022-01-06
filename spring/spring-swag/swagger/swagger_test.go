@@ -26,9 +26,9 @@ import (
 )
 
 func Test_Doc(t *testing.T) {
-	c := web.NewAbstractContainer(web.ContainerConfig{})
+	c := web.NewServer(web.ServerConfig{Port: 8080}, nil)
 	swagger.Doc(c).WithID("go-spring").WithHost("https://go-spring.com")
-	m := c.HandleGet("/idx", web.FUNC(func(ctx web.Context) {}))
+	m := c.HandleGet("/index", web.FUNC(func(ctx web.Context) {}))
 	swagger.Path(m).WithDescription("welcome to go-spring")
 	web.RegisterSwaggerHandler(func(router web.Router, doc string) { fmt.Println(doc) })
 	_ = c.Start()

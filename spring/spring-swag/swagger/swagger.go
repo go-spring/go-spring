@@ -21,9 +21,9 @@ import (
 	"github.com/go-spring/spring-swag"
 )
 
-func Doc(container web.Container) *SpringSwagger.Swagger {
+func Doc(server web.Server) *SpringSwagger.Swagger {
 	swagger := SpringSwagger.NewSwagger()
-	container.Swagger(swagger)
+	server.Swagger(swagger)
 	return swagger
 }
 

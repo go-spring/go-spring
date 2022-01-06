@@ -9,7 +9,7 @@ require (
 	github.com/swaggo/http-swagger v1.1.2
 )
 
-//replace (
-//	github.com/go-spring/spring-core => ../spring-core
-//	github.com/go-spring/spring-base => ../spring-base
-//)
+replace (
+	github.com/go-spring/spring-core => ../spring-core
+	github.com/go-spring/spring-base => ../spring-base
+)

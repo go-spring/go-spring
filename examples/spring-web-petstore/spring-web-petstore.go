@@ -90,42 +90,42 @@ type UserController struct {
 }
 
 func (c *UserController) CreateUser(ctx web.Context) {
-	ctx.Header("Content-Type", "application/json; charset=UTF-8")
+	ctx.SetContentType("application/json; charset=UTF-8")
 	ctx.NoContent(http.StatusOK)
 }
 
 func (c *UserController) CreateUsersWithArrayInput(ctx web.Context) {
-	ctx.Header("Content-Type", "application/json; charset=UTF-8")
+	ctx.SetContentType("application/json; charset=UTF-8")
 	ctx.NoContent(http.StatusOK)
 }
 
 func (c *UserController) CreateUsersWithListInput(ctx web.Context) {
-	ctx.Header("Content-Type", "application/json; charset=UTF-8")
+	ctx.SetContentType("application/json; charset=UTF-8")
 	ctx.NoContent(http.StatusOK)
 }
 
 func (c *UserController) GetUserByName(ctx web.Context) {
-	ctx.Header("Content-Type", "application/json; charset=UTF-8")
+	ctx.SetContentType("application/json; charset=UTF-8")
 	ctx.NoContent(http.StatusOK)
 }
 
 func (c *UserController) DeleteUser(ctx web.Context) {
-	ctx.Header("Content-Type", "application/json; charset=UTF-8")
+	ctx.SetContentType("application/json; charset=UTF-8")
 	ctx.NoContent(http.StatusOK)
 }
 
 func (c *UserController) LoginUser(ctx web.Context) {
-	ctx.Header("Content-Type", "application/json; charset=UTF-8")
+	ctx.SetContentType("application/json; charset=UTF-8")
 	ctx.NoContent(http.StatusOK)
 }
 
 func (c *UserController) LogoutUser(ctx web.Context) {
-	ctx.Header("Content-Type", "application/json; charset=UTF-8")
+	ctx.SetContentType("application/json; charset=UTF-8")
 	ctx.NoContent(http.StatusOK)
 }
 
 func (c *UserController) UpdateUser(ctx web.Context) {
-	ctx.Header("Content-Type", "application/json; charset=UTF-8")
+	ctx.SetContentType("application/json; charset=UTF-8")
 	ctx.NoContent(http.StatusOK)
 }
 
@@ -133,22 +133,22 @@ type OrderController struct {
 }
 
 func (c *OrderController) DeleteOrder(ctx web.Context) {
-	ctx.Header("Content-Type", "application/json; charset=UTF-8")
+	ctx.SetContentType("application/json; charset=UTF-8")
 	ctx.NoContent(http.StatusOK)
 }
 
 func (c *OrderController) GetInventory(ctx web.Context) {
-	ctx.Header("Content-Type", "application/json; charset=UTF-8")
+	ctx.SetContentType("application/json; charset=UTF-8")
 	ctx.NoContent(http.StatusOK)
 }
 
 func (c *OrderController) GetOrderById(ctx web.Context) {
-	ctx.Header("Content-Type", "application/json; charset=UTF-8")
+	ctx.SetContentType("application/json; charset=UTF-8")
 	ctx.NoContent(http.StatusOK)
 }
 
 func (c *OrderController) PlaceOrder(ctx web.Context) {
-	ctx.Header("Content-Type", "application/json; charset=UTF-8")
+	ctx.SetContentType("application/json; charset=UTF-8")
 	ctx.NoContent(http.StatusOK)
 }
 
@@ -156,49 +156,48 @@ type PetController struct {
 }
 
 func (c *PetController) AddPet(ctx web.Context) {
-	ctx.Header("Content-Type", "application/json; charset=UTF-8")
+	ctx.SetContentType("application/json; charset=UTF-8")
 	ctx.NoContent(http.StatusOK)
 }
 
 func (c *PetController) DeletePet(ctx web.Context) {
-	ctx.Header("Content-Type", "application/json; charset=UTF-8")
+	ctx.SetContentType("application/json; charset=UTF-8")
 	ctx.NoContent(http.StatusOK)
 }
 
 func (c *PetController) FindPetsByStatus(ctx web.Context) {
-	ctx.Header("Content-Type", "application/json; charset=UTF-8")
+	ctx.SetContentType("application/json; charset=UTF-8")
 	ctx.NoContent(http.StatusOK)
 }
 
 func (c *PetController) FindPetsByTags(ctx web.Context) {
-	ctx.Header("Content-Type", "application/json; charset=UTF-8")
+	ctx.SetContentType("application/json; charset=UTF-8")
 	ctx.NoContent(http.StatusOK)
 }
 
 func (c *PetController) GetPetById(ctx web.Context) {
-	ctx.Header("Content-Type", "application/json; charset=UTF-8")
+	ctx.SetContentType("application/json; charset=UTF-8")
 	ctx.NoContent(http.StatusOK)
 }
 
 func (c *PetController) UpdatePet(ctx web.Context) {
-	ctx.Header("Content-Type", "application/json; charset=UTF-8")
+	ctx.SetContentType("application/json; charset=UTF-8")
 	ctx.NoContent(http.StatusOK)
 }
 
 func (c *PetController) UpdatePetWithForm(ctx web.Context) {
-	ctx.Header("Content-Type", "application/json; charset=UTF-8")
+	ctx.SetContentType("application/json; charset=UTF-8")
 	ctx.NoContent(http.StatusOK)
 }
 
 func (c *PetController) UploadFile(ctx web.Context) {
-	ctx.Header("Content-Type", "application/json; charset=UTF-8")
+	ctx.SetContentType("application/json; charset=UTF-8")
 	ctx.NoContent(http.StatusOK)
 }
 
 func main() {
 
-	cfg := web.ContainerConfig{Port: 8080, BasePath: "/v2"}
-	c := SpringEcho.NewContainer(cfg)
+	c := SpringEcho.New(web.ServerConfig{Port: 8080, BasePath: "/v2"})
 	rootSW := swagger.Doc(c).
 		WithDescription("This is a sample server Petstore server.  You can find out more about Swagger at [http://swagger.io](http://swagger.io) or on [irc.freenode.net, #swagger](http://swagger.io/irc/).  For this sample, you can use the api key `special-key` to test the authorization filters.").
 		WithVersion("1.0.5").
