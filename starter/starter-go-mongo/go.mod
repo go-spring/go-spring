@@ -8,4 +8,7 @@ require (
 	go.mongodb.org/mongo-driver v1.7.3
 )
 
-replace github.com/go-spring/spring-core => ../../spring/spring-core
+replace (
+	github.com/go-spring/spring-base => ../../spring/spring-base
+	github.com/go-spring/spring-core => ../../spring/spring-core
+)

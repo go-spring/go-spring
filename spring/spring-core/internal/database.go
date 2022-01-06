@@ -18,5 +18,5 @@ package internal
 
 // DatabaseClientConfig 关系型数据库客户端配置，通常配合数据库名称前缀一起使用。
 type DatabaseClientConfig struct {
-	Url string `value:"${db.url}"`
+	Url string `value:"${url}"`
 }
