@@ -146,6 +146,7 @@ func do(level Level, e Entry, args []interface{}) {
 	msg.ctx = e.ctx
 	msg.tag = e.tag
 	msg.args = args
+	msg.errno = e.errno
 	ctx := e.ctx
 	if ctx == nil {
 		ctx = defaultContext
@@ -195,9 +196,15 @@ func Skip(n int) Entry {
 }
 
 type Entry struct {
-	ctx  context.Context
-	tag  string
-	skip int
+	ctx   context.Context
+	tag   string
+	skip  int
+	errno ErrNo
+}
+
+func (e Entry) ErrNo(errno ErrNo) Entry {
+	e.errno = errno
+	return e
 }
 
 // Ctx 创建包含 context.Context 对象的 Entry 。
@@ -264,13 +271,13 @@ func (e Entry) Warnf(format string, args ...interface{}) {
 }
 
 // Error 输出 ERROR 级别的日志。
-func (e Entry) Error(args ...interface{}) {
-	output(ErrorLevel, e, args)
+func (e Entry) Error(errno ErrNo, args ...interface{}) {
+	output(ErrorLevel, e.ErrNo(errno), args)
 }
 
 // Errorf 输出 ERROR 级别的日志。
-func (e Entry) Errorf(format string, args ...interface{}) {
-	outputf(ErrorLevel, e, format, args)
+func (e Entry) Errorf(errno ErrNo, format string, args ...interface{}) {
+	outputf(ErrorLevel, e.ErrNo(errno), format, args)
 }
 
 // Panic 输出 PANIC 级别的日志。
@@ -369,13 +376,13 @@ func Warnf(format string, args ...interface{}) {
 }
 
 // Error 输出 ERROR 级别的日志。
-func Error(args ...interface{}) {
-	output(ErrorLevel, empty, args)
+func Error(errno ErrNo, args ...interface{}) {
+	output(ErrorLevel, empty.ErrNo(errno), args)
 }
 
 // Errorf 输出 ERROR 级别的日志。
-func Errorf(format string, args ...interface{}) {
-	outputf(ErrorLevel, empty, format, args)
+func Errorf(errno ErrNo, format string, args ...interface{}) {
+	outputf(ErrorLevel, empty.ErrNo(errno), format, args)
 }
 
 // Panic 输出 PANIC 级别的日志。

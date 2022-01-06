@@ -31,12 +31,13 @@ var msgPool = sync.Pool{
 
 // Message 定义日志消息。
 type Message struct {
-	time time.Time
-	ctx  context.Context
-	tag  string
-	file string
-	line int
-	args []interface{}
+	time  time.Time
+	ctx   context.Context
+	tag   string
+	file  string
+	line  int
+	args  []interface{}
+	errno ErrNo
 }
 
 // newMessage 创建新的 *Message 对象。
@@ -75,6 +76,10 @@ func (msg *Message) Time() time.Time {
 
 func (msg *Message) Args() []interface{} {
 	return msg.args
+}
+
+func (msg *Message) ErrNo() ErrNo {
+	return msg.errno
 }
 
 // Reuse 将 *Message 放回对象池，以便重用。
