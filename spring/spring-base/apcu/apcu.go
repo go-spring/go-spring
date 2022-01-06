@@ -97,13 +97,10 @@ func load(key string, out interface{}) (ok bool, err error) {
 	}
 
 	switch source := item.source.(type) {
-	case reflect.Value:
-		if outVal.Type().Elem() == source.Type() {
-			outVal.Elem().Set(source)
-			return true, nil
-		}
 	case string:
-		err = json.Unmarshal([]byte(source), out)
+		outType := reflect.TypeOf(out)
+		val := reflect.New(outType.Elem())
+		err = json.Unmarshal([]byte(source), val.Interface())
 		if err != nil {
 			if outVal.Elem().Kind() == reflect.String {
 				outVal.Elem().SetString(source)
@@ -111,8 +108,14 @@ func load(key string, out interface{}) (ok bool, err error) {
 			}
 			return false, err
 		}
-		item.source = outVal.Elem()
+		item.source = val.Elem()
+		outVal.Elem().Set(val.Elem())
 		return true, nil
+	case reflect.Value:
+		if outVal.Type().Elem() == source.Type() {
+			outVal.Elem().Set(source)
+			return true, nil
+		}
 	default:
 		srcVal := reflect.ValueOf(source)
 		if srcVal.Type() == outVal.Type().Elem() {
