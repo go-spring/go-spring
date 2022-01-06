@@ -37,8 +37,9 @@ func init() {
 }
 
 type route struct {
-	fn           web.Handler // Web 处理函数
-	wildCardName string      // 通配符的名称
+	handler  web.Handler // Web 处理函数
+	path     string      // 注册时候的路径
+	wildcard string      // 通配符的名称
 }
 
 // serverHandler gin 实现的 web 服务器
@@ -70,9 +71,9 @@ func (h *serverHandler) Start(s web.Server) error {
 		// 的 Handler 是准确的，否则是不准确的，请优先使用 spring gin 注册路由。
 		key := ginCtx.Request.Method + ginCtx.FullPath()
 		if r, ok := h.routes[key]; ok {
-			webCtx = NewContext(r.fn, r.wildCardName, ginCtx)
+			webCtx = newContext(r.handler, r.path, r.wildcard, ginCtx)
 		} else {
-			webCtx = NewContext(nil, ginCtx.FullPath(), ginCtx)
+			webCtx = newContext(nil, "", "", ginCtx)
 		}
 
 		// 流量录制
@@ -95,10 +96,10 @@ func (h *serverHandler) Start(s web.Server) error {
 	for _, mapper := range s.Mappers() {
 		filters := urlPatterns.Get(mapper.Path())
 		handlers := wrapperHandler(mapper.Handler(), filters)
-		path, wildCardName := web.ToPathStyle(mapper.Path(), web.GinPathStyle)
+		path, wildcard := web.ToPathStyle(mapper.Path(), web.GinPathStyle)
 		for _, method := range web.GetMethod(mapper.Method()) {
 			h.engine.Handle(method, path, handlers...)
-			h.routes[method+path] = route{mapper.Handler(), wildCardName}
+			h.routes[method+path] = route{mapper.Handler(), mapper.Path(), wildcard}
 		}
 	}
 	return nil

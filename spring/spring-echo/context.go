@@ -65,24 +65,19 @@ func (w *responseWriter) Body() string {
 type context struct {
 	*web.BaseContext
 
-	echoCtx  echo.Context // echo 上下文对象
-	handler  web.Handler  // web 处理函数
+	echoCtx  echo.Context // echo 上下文
 	wildcard string       // 通配符的名称
 }
 
 // newContext Context 的构造函数
-func newContext(h web.Handler, wildcard string, echoCtx echo.Context) *context {
-
+func newContext(handler web.Handler, path, wildcard string, echoCtx echo.Context) *context {
 	r := echoCtx.Request()
 	w := &responseWriter{echoCtx.Response()}
-
 	ctx := &context{
-		handler:     h,
 		echoCtx:     echoCtx,
 		wildcard:    wildcard,
-		BaseContext: web.NewBaseContext(r, w),
+		BaseContext: web.NewBaseContext(path, handler, r, w),
 	}
-
 	echoCtx.Set(web.ContextKey, ctx)
 	return ctx
 }
@@ -90,16 +85,6 @@ func newContext(h web.Handler, wildcard string, echoCtx echo.Context) *context {
 // NativeContext 返回封装的底层上下文对象
 func (c *context) NativeContext() interface{} {
 	return c.echoCtx
-}
-
-// Path returns the registered path for the handler.
-func (c *context) Path() string {
-	return c.echoCtx.Path()
-}
-
-// Handler returns the matched handler by router.
-func (c *context) Handler() web.Handler {
-	return c.handler
 }
 
 // PathParam returns path parameter by name.

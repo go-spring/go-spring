@@ -38,8 +38,9 @@ func init() {
 }
 
 type route struct {
-	handler  web.Handler // Web 处理函数
-	wildcard string      // 通配符的名称
+	handler  web.Handler
+	path     string
+	wildcard string
 }
 
 // serverHandler echo 实现的 web 服务器
@@ -72,9 +73,9 @@ func (h *serverHandler) Start(s web.Server) error {
 			// 的 Handler 是准确的，否则是不准确的，请优先使用 spring-echo 注册路由。
 			key := echoCtx.Request().Method + echoCtx.Path()
 			if r, ok := h.routes[key]; ok {
-				webCtx = newContext(r.handler, r.wildcard, echoCtx)
+				webCtx = newContext(r.handler, r.path, r.wildcard, echoCtx)
 			} else {
-				webCtx = newContext(nil, echoCtx.Path(), echoCtx)
+				webCtx = newContext(nil, "", "", echoCtx)
 			}
 
 			// 流量录制
@@ -101,7 +102,7 @@ func (h *serverHandler) Start(s web.Server) error {
 		path, wildCardName := web.ToPathStyle(m.Path(), web.EchoPathStyle)
 		for _, method := range web.GetMethod(m.Method()) {
 			h.echo.Add(method, path, handler)
-			h.routes[method+path] = route{m.Handler(), wildCardName}
+			h.routes[method+path] = route{m.Handler(), m.Path(), wildCardName}
 		}
 	}
 	return nil

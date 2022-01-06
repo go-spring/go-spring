@@ -61,29 +61,22 @@ type Context struct {
 	// ginContext gin 上下文对象
 	ginContext *gin.Context
 
-	// handlerFunc Web 处理函数
-	handlerFunc web.Handler
-
 	pathNames  []string
 	pathValues []string
 
-	// wildCardName 通配符名称
-	wildCardName string
+	// wildcard 通配符的名称
+	wildcard string
 }
 
-// NewContext Context 的构造函数
-func NewContext(fn web.Handler, wildCardName string, ginCtx *gin.Context) *Context {
-
+// newContext Context 的构造函数
+func newContext(handler web.Handler, path, wildcard string, ginCtx *gin.Context) *Context {
 	r := ginCtx.Request
 	w := &responseWriter{ginCtx.Writer}
-
 	webCtx := &Context{
-		handlerFunc:  fn,
-		ginContext:   ginCtx,
-		wildCardName: wildCardName,
-		BaseContext:  web.NewBaseContext(r, w),
+		ginContext:  ginCtx,
+		wildcard:    wildcard,
+		BaseContext: web.NewBaseContext(path, handler, r, w),
 	}
-
 	ginCtx.Set(web.ContextKey, webCtx)
 	return webCtx
 }
@@ -91,16 +84,6 @@ func NewContext(fn web.Handler, wildCardName string, ginCtx *gin.Context) *Conte
 // NativeContext 返回封装的底层上下文对象
 func (ctx *Context) NativeContext() interface{} {
 	return ctx.ginContext
-}
-
-// Path returns the registered path for the handler.
-func (ctx *Context) Path() string {
-	return ctx.ginContext.FullPath()
-}
-
-// Handler returns the matched handler by router.
-func (ctx *Context) Handler() web.Handler {
-	return ctx.handlerFunc
 }
 
 // filterPathValue gin 的路由比较怪，* 路由多一个 /
@@ -114,7 +97,7 @@ func filterPathValue(v string) string {
 // PathParam returns path parameter by name.
 func (ctx *Context) PathParam(name string) string {
 	if name == "*" {
-		name = ctx.wildCardName
+		name = ctx.wildcard
 	}
 	return filterPathValue(ctx.ginContext.Param(name))
 }
@@ -125,7 +108,7 @@ func (ctx *Context) PathParamNames() []string {
 		ctx.pathNames = make([]string, 0)
 		for _, entry := range ctx.ginContext.Params {
 			name := entry.Key
-			if name == ctx.wildCardName {
+			if name == ctx.wildcard {
 				name = "*"
 			}
 			ctx.pathNames = append(ctx.pathNames, name)

@@ -36,29 +36,29 @@ const (
 	JavaPathStyle = PathStyleEnum(2)
 )
 
-// DefaultWildCardName 默认通配符的名称
-const DefaultWildCardName = "@_@"
+// DefaultWildcardName 默认通配符的名称
+const DefaultWildcardName = "@_@"
 
 // pathStyle URL 地址风格
 type pathStyle interface {
+	Path() string
+	Wildcard() string
 	addKnownPath(path string)
 	addNamedPath(path string)
 	addWildCard(name string)
-	wildCardName() string
-	String() string
 }
 
 type basePathStyle struct {
-	s strings.Builder
-	w string // 通配符的名称
+	strings.Builder
+	wildcard string // 通配符的名称
 }
 
-func (p *basePathStyle) wildCardName() string {
-	return p.w
+func (p *basePathStyle) Path() string {
+	return p.String()
 }
 
-func (p *basePathStyle) String() string {
-	return p.s.String()
+func (p *basePathStyle) Wildcard() string {
+	return p.wildcard
 }
 
 // echoPathStyle Echo 地址风格
@@ -67,16 +67,16 @@ type echoPathStyle struct {
 }
 
 func (p *echoPathStyle) addKnownPath(path string) {
-	p.s.WriteString("/" + path)
+	p.WriteString("/" + path)
 }
 
 func (p *echoPathStyle) addNamedPath(path string) {
-	p.s.WriteString("/:" + path)
+	p.WriteString("/:" + path)
 }
 
 func (p *echoPathStyle) addWildCard(name string) {
-	p.s.WriteString("/*")
-	p.w = name
+	p.WriteString("/*")
+	p.wildcard = name
 }
 
 // ginPathStyle Gin 地址风格
@@ -85,19 +85,19 @@ type ginPathStyle struct {
 }
 
 func (p *ginPathStyle) addKnownPath(path string) {
-	p.s.WriteString("/" + path)
+	p.WriteString("/" + path)
 }
 
 func (p *ginPathStyle) addNamedPath(path string) {
-	p.s.WriteString("/:" + path)
+	p.WriteString("/:" + path)
 }
 
 func (p *ginPathStyle) addWildCard(name string) {
 	if name == "" { // gin 的路由需要指定一个名称
-		name = DefaultWildCardName
+		name = DefaultWildcardName
 	}
-	p.s.WriteString("/*" + name)
-	p.w = name
+	p.WriteString("/*" + name)
+	p.wildcard = name
 }
 
 // javaPathStyle {} 地址风格
@@ -106,24 +106,24 @@ type javaPathStyle struct {
 }
 
 func (p *javaPathStyle) addKnownPath(path string) {
-	p.s.WriteString("/" + path)
+	p.WriteString("/" + path)
 }
 
 func (p *javaPathStyle) addNamedPath(path string) {
-	p.s.WriteString("/{" + path + "}")
+	p.WriteString("/{" + path + "}")
 }
 
 func (p *javaPathStyle) addWildCard(name string) {
 	if name != "" {
-		p.s.WriteString("/{*:" + name + "}")
+		p.WriteString("/{*:" + name + "}")
 	} else {
-		p.s.WriteString("/{*}")
+		p.WriteString("/{*}")
 	}
-	p.w = name
+	p.wildcard = name
 }
 
 // ToPathStyle 将 URL 转换为指定风格的表示形式
-func ToPathStyle(path string, style PathStyleEnum) (string, string) {
+func ToPathStyle(path string, style PathStyleEnum) (newPath string, wildcard string) {
 
 	var p pathStyle
 	switch style {
@@ -180,5 +180,5 @@ func ToPathStyle(path string, style PathStyleEnum) (string, string) {
 			p.addKnownPath(s)
 		}
 	}
-	return p.String(), p.wildCardName()
+	return p.Path(), p.Wildcard()
 }

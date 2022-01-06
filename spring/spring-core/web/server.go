@@ -263,7 +263,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	prefilters = append(prefilters, s.LoggerFilter())
 	prefilters = append(prefilters, s.handler.RecoveryFilter())
 	prefilters = append(prefilters, HandlerFilter(WrapH(s.handler)))
-	NewFilterChain(prefilters).Next(NewBaseContext(r, writer))
+	NewFilterChain(prefilters).Next(NewBaseContext("", nil, r, writer))
 }
 
 /////////////////// Web Handlers //////////////////////
