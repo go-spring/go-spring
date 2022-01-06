@@ -47,6 +47,11 @@ type Handler interface {
 // ServerConfig 定义 web 服务器配置
 type ServerConfig = internal.WebServerConfig
 
+// ErrorHandler 错误处理接口
+type ErrorHandler interface {
+	Invoke(ctx Context, err *HttpError)
+}
+
 // Server web 服务器
 type Server interface {
 	Router
@@ -72,6 +77,12 @@ type Server interface {
 	// SetLoggerFilter 设置 Logger Filter
 	SetLoggerFilter(filter Filter)
 
+	// ErrorHandler 获取错误处理接口
+	ErrorHandler() ErrorHandler
+
+	// SetErrorHandler 设置错误处理接口
+	SetErrorHandler(errHandler ErrorHandler)
+
 	// Swagger 设置与服务器绑定的 Swagger 对象
 	Swagger(swagger Swagger)
 
@@ -91,7 +102,7 @@ type Server interface {
 type ServerHandler interface {
 	http.Handler
 	Start(s Server) error
-	RecoveryFilter() Filter
+	RecoveryFilter(errHandler ErrorHandler) Filter
 }
 
 type server struct {
@@ -104,6 +115,7 @@ type server struct {
 	logger     Filter       // 日志过滤器
 	filters    []Filter     // 其他过滤器
 	prefilters []*Prefilter // 前置过滤器
+	errHandler ErrorHandler // 错误处理接口
 
 	swagger Swagger // Swagger根
 }
@@ -148,17 +160,22 @@ func (s *server) LoggerFilter() Filter {
 	if s.logger != nil {
 		return s.logger
 	}
-	return FuncFilter(func(ctx Context, chain FilterChain) {
-		start := time.Now()
-		chain.Next(ctx)
-		w := ctx.ResponseWriter()
-		log.Ctx(ctx.Context()).Infof("cost:%v size:%d code:%d %s", time.Since(start), w.Size(), w.Status(), w.Body())
-	})
+	return AccessLog()
 }
 
 // SetLoggerFilter 设置 Logger Filter
 func (s *server) SetLoggerFilter(filter Filter) {
 	s.logger = filter
+}
+
+// ErrorHandler 获取错误处理接口
+func (s *server) ErrorHandler() ErrorHandler {
+	return s.errHandler
+}
+
+// SetErrorHandler 设置错误处理接口
+func (s *server) SetErrorHandler(errHandler ErrorHandler) {
+	s.errHandler = errHandler
 }
 
 // SwaggerHandler Swagger 处理器
@@ -261,7 +278,11 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		prefilters = append(prefilters, f)
 	}
 	prefilters = append(prefilters, s.LoggerFilter())
-	prefilters = append(prefilters, s.handler.RecoveryFilter())
+	errHandler := s.errHandler
+	if errHandler == nil {
+		errHandler = defaultErrorHandler
+	}
+	prefilters = append(prefilters, s.handler.RecoveryFilter(errHandler))
 	prefilters = append(prefilters, HandlerFilter(WrapH(s.handler)))
 	NewFilterChain(prefilters).Next(NewBaseContext("", nil, r, writer))
 }

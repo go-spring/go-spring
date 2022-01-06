@@ -32,6 +32,10 @@ import (
 
 type BeanSelector = internal.BeanSelector
 
+func BeanID(typ interface{}, name string) string {
+	return util.TypeName(reflect.TypeOf(typ)) + ":" + name
+}
+
 const (
 	HighestOrder = math.MinInt32
 	LowestOrder  = math.MaxInt32

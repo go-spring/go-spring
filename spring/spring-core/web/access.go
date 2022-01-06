@@ -14,17 +14,21 @@
  * limitations under the License.
  */
 
-package StarterGoRedis
+package web
 
 import (
-	"github.com/go-spring/spring-core/gs"
-	"github.com/go-spring/spring-core/gs/cond"
-	"github.com/go-spring/spring-core/redis"
-	"github.com/go-spring/spring-go-redis"
+	"time"
+
+	"github.com/go-spring/spring-base/log"
 )
 
-func init() {
-	gs.Provide(SpringGoRedis.NewClient, "${redis}").
-		Name("RedisClient").
-		On(cond.OnMissingBean(gs.BeanID((*redis.Client)(nil), "RedisClient")))
+func AccessLog() Filter {
+	return FuncFilter(func(ctx Context, chain FilterChain) {
+		start := time.Now()
+		chain.Next(ctx)
+		r := ctx.Request()
+		w := ctx.ResponseWriter()
+		cost := time.Since(start)
+		log.Ctx(ctx.Context()).Infof("%s %s %s %d %d %s", r.Method, r.RequestURI, cost, w.Size(), w.Status(), r.UserAgent())
+	})
 }

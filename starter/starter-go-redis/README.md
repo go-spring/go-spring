@@ -1,24 +1,32 @@
 # starter-go-redis
 
+[English](README_EN.md)
+
 [仅发布] 该项目仅为最终发布，不要向该项目直接提交代码，开发请关注 [go-spring](https://github.com/go-spring/go-spring) 项目。
 
 - [Installation](#installation)
 - [Quick Start](#quick start)
-- [Customization](#customization)
+- [Configuration](#configuration)
 
-## Install
+## Installation
+
+### Prerequisites
+
+- Go >= 1.12
+
+### Using go get
 
 ```
 go get github.com/go-spring/starter-go-redis@v1.1.0-rc2 
 ```
 
-## Import
+## Quick Start
 
 ```
 import "github.com/go-spring/starter-go-redis"
 ```
 
-## Example
+`main.go`
 
 ```
 package main
@@ -30,6 +38,7 @@ import (
 	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/redis"
+	
 	_ "github.com/go-spring/starter-go-redis"
 )
 
@@ -62,3 +71,5 @@ func main() {
 	fmt.Printf("program exited %v\n", gs.Web(false).Run())
 }
 ```
+
+## Configuration
