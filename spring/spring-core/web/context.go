@@ -31,8 +31,15 @@ import (
 // ContextKey Context 和 NativeContext 相互转换的 Key
 const ContextKey = "@WebCtx"
 
-// ErrorHandler 用户自定义错误处理函数
-var ErrorHandler = func(ctx Context, err *HttpError) {
+// FuncErrorHandler func 形式定义错误处理接口
+type FuncErrorHandler func(ctx Context, err *HttpError)
+
+func (f FuncErrorHandler) Invoke(ctx Context, err *HttpError) {
+	f(ctx, err)
+}
+
+// defaultErrorHandler 默认实现的错误处理接口
+var defaultErrorHandler = FuncErrorHandler(func(ctx Context, err *HttpError) {
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -52,7 +59,7 @@ var ErrorHandler = func(ctx Context, err *HttpError) {
 	default:
 		ctx.JSON(err.Internal)
 	}
-}
+})
 
 // HttpError represents an error that occurred while handling a request.
 type HttpError struct {

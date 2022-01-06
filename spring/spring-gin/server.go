@@ -57,8 +57,8 @@ func New(config web.ServerConfig) web.Server {
 	return web.NewServer(config, h)
 }
 
-func (h *serverHandler) RecoveryFilter() web.Filter {
-	return new(recoveryFilter)
+func (h *serverHandler) RecoveryFilter(errHandler web.ErrorHandler) web.Filter {
+	return &recoveryFilter{errHandler: errHandler}
 }
 
 func (h *serverHandler) Start(s web.Server) error {
@@ -169,7 +169,9 @@ func (chain *ginFilterChain) Next(_ web.Context) { chain.ginCtx.Next() }
 func (chain *ginFilterChain) Continue(_ web.Context) { chain.ginCtx.Next() }
 
 // recoveryFilter 适配 gin 的恢复过滤器
-type recoveryFilter struct{}
+type recoveryFilter struct {
+	errHandler web.ErrorHandler
+}
 
 func (f *recoveryFilter) Invoke(webCtx web.Context, chain web.FilterChain) {
 
@@ -213,7 +215,7 @@ func (f *recoveryFilter) Invoke(webCtx web.Context, chain web.FilterChain) {
 				httpE.Internal = err
 			}
 
-			web.ErrorHandler(webCtx, &httpE)
+			f.errHandler.Invoke(webCtx, &httpE)
 		}
 	}()
 
