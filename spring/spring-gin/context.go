@@ -17,40 +17,41 @@
 package SpringGin
 
 import (
+	"reflect"
+
 	"github.com/gin-gonic/gin"
 	"github.com/go-spring/spring-core/validator"
 	"github.com/go-spring/spring-core/web"
 )
 
 // GinContext 将 web.Context 转换为 *gin.Context
-func GinContext(webCtx web.Context) *gin.Context {
-	return webCtx.NativeContext().(*gin.Context)
+func GinContext(c web.Context) *gin.Context {
+	v := c.NativeContext()
+	if v == nil {
+		return nil
+	}
+	ctx, _ := v.(*gin.Context)
+	return ctx
 }
 
 // WebContext 将 *gin.Context 转换为 web.Context
-func WebContext(ginCtx *gin.Context) web.Context {
-	if webCtx, _ := ginCtx.Get(web.ContextKey); webCtx != nil {
-		return webCtx.(web.Context)
+func WebContext(c *gin.Context) web.Context {
+	v, _ := c.Get(web.ContextKey)
+	if v == nil {
+		return nil
 	}
-	return nil
+	ctx, _ := v.(web.Context)
+	return ctx
 }
 
-// 同时继承了 web.ResponseWriter 接口
 type responseWriter struct {
 	gin.ResponseWriter
-	bufRW *web.BufferedResponseWriter
 }
 
-func (w *responseWriter) Size() int {
-	return w.bufRW.Size()
-}
-
+// Body 返回发送给客户端的数据，当前仅支持 MIMEApplicationJSON 格式.
 func (w *responseWriter) Body() string {
-	return w.bufRW.Body()
-}
-
-func (w *responseWriter) Write(data []byte) (n int, err error) {
-	return w.bufRW.Write(data)
+	s := reflect.ValueOf(w.ResponseWriter).Elem()
+	return s.Field(0).Interface().(web.ResponseWriter).Body()
 }
 
 // Context 适配 gin 的 Web 上下文
@@ -60,35 +61,22 @@ type Context struct {
 	// ginContext gin 上下文对象
 	ginContext *gin.Context
 
-	// handlerFunc Web 处理函数
-	handlerFunc web.Handler
-
 	pathNames  []string
 	pathValues []string
 
-	// wildCardName 通配符名称
-	wildCardName string
+	// wildcard 通配符的名称
+	wildcard string
 }
 
-// NewContext Context 的构造函数
-func NewContext(fn web.Handler, wildCardName string, ginCtx *gin.Context) *Context {
-
+// newContext Context 的构造函数
+func newContext(handler web.Handler, path, wildcard string, ginCtx *gin.Context) *Context {
 	r := ginCtx.Request
-	w := &web.BufferedResponseWriter{
-		ResponseWriter: ginCtx.Writer,
-	}
-	ginCtx.Writer = &responseWriter{
-		bufRW:          w,
-		ResponseWriter: ginCtx.Writer,
-	}
-
+	w := &responseWriter{ginCtx.Writer}
 	webCtx := &Context{
-		handlerFunc:  fn,
-		ginContext:   ginCtx,
-		wildCardName: wildCardName,
-		BaseContext:  web.NewBaseContext(r, w),
+		ginContext:  ginCtx,
+		wildcard:    wildcard,
+		BaseContext: web.NewBaseContext(path, handler, r, w),
 	}
-
 	ginCtx.Set(web.ContextKey, webCtx)
 	return webCtx
 }
@@ -96,16 +84,6 @@ func NewContext(fn web.Handler, wildCardName string, ginCtx *gin.Context) *Conte
 // NativeContext 返回封装的底层上下文对象
 func (ctx *Context) NativeContext() interface{} {
 	return ctx.ginContext
-}
-
-// Path returns the registered path for the handler.
-func (ctx *Context) Path() string {
-	return ctx.ginContext.FullPath()
-}
-
-// Handler returns the matched handler by router.
-func (ctx *Context) Handler() web.Handler {
-	return ctx.handlerFunc
 }
 
 // filterPathValue gin 的路由比较怪，* 路由多一个 /
@@ -119,7 +97,7 @@ func filterPathValue(v string) string {
 // PathParam returns path parameter by name.
 func (ctx *Context) PathParam(name string) string {
 	if name == "*" {
-		name = ctx.wildCardName
+		name = ctx.wildcard
 	}
 	return filterPathValue(ctx.ginContext.Param(name))
 }
@@ -130,7 +108,7 @@ func (ctx *Context) PathParamNames() []string {
 		ctx.pathNames = make([]string, 0)
 		for _, entry := range ctx.ginContext.Params {
 			name := entry.Key
-			if name == ctx.wildCardName {
+			if name == ctx.wildcard {
 				name = "*"
 			}
 			ctx.pathNames = append(ctx.pathNames, name)

@@ -34,9 +34,9 @@ func init() {
 
 // WebStarter Web 服务器启动器
 type WebStarter struct {
-	Containers []web.Container `autowire:""`
-	Filters    []web.Filter    `autowire:"${web.server.filters:=*?}"`
-	Router     web.Router      `autowire:""`
+	Containers []web.Server `autowire:""`
+	Filters    []web.Filter `autowire:"${web.server.filters:=*?}"`
+	Router     web.Router   `autowire:""`
 }
 
 // OnAppStart 应用程序启动事件。
@@ -52,8 +52,8 @@ func (starter *WebStarter) OnAppStart(ctx Context) {
 	starter.startContainers(ctx)
 }
 
-func (starter *WebStarter) getContainers(mapper *web.Mapper) []web.Container {
-	var ret []web.Container
+func (starter *WebStarter) getContainers(mapper *web.Mapper) []web.Server {
+	var ret []web.Server
 	for _, c := range starter.Containers {
 		if strings.HasPrefix(mapper.Path(), c.Config().BasePath) {
 			ret = append(ret, c)

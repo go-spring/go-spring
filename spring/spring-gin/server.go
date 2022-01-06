@@ -37,8 +37,9 @@ func init() {
 }
 
 type route struct {
-	fn           web.Handler // Web 处理函数
-	wildCardName string      // 通配符的名称
+	handler  web.Handler // Web 处理函数
+	path     string      // 注册时候的路径
+	wildcard string      // 通配符的名称
 }
 
 // serverHandler gin 实现的 web 服务器
@@ -56,6 +57,10 @@ func New(config web.ServerConfig) web.Server {
 	return web.NewServer(config, h)
 }
 
+func (h *serverHandler) RecoveryFilter() web.Filter {
+	return new(recoveryFilter)
+}
+
 func (h *serverHandler) Start(s web.Server) error {
 
 	// 添加服务器级别的过滤器，这样在路由不存在时也会调用这些过滤器
@@ -66,36 +71,21 @@ func (h *serverHandler) Start(s web.Server) error {
 		// 的 Handler 是准确的，否则是不准确的，请优先使用 spring gin 注册路由。
 		key := ginCtx.Request.Method + ginCtx.FullPath()
 		if r, ok := h.routes[key]; ok {
-			webCtx = NewContext(r.fn, r.wildCardName, ginCtx)
+			webCtx = newContext(r.handler, r.path, r.wildcard, ginCtx)
 		} else {
-			webCtx = NewContext(nil, ginCtx.FullPath(), ginCtx)
+			webCtx = newContext(nil, "", "", ginCtx)
 		}
 
 		// 流量录制
 		web.StartRecord(webCtx)
-		defer func() {
-			web.StopRecord(webCtx)
-		}()
+		defer func() { web.StopRecord(webCtx) }()
 
 		// 流量回放
 		web.StartReplay(webCtx)
-		defer func() {
-			web.StopReplay(webCtx)
-		}()
+		defer func() { web.StopReplay(webCtx) }()
 
 		ginCtx.Next()
 	})
-
-	loggerFilter := s.LoggerFilter()
-	recoveryFilter := new(recoveryFilter)
-
-	for _, filter := range []web.Filter{loggerFilter, recoveryFilter} {
-		f := filter // 避免延迟绑定
-		h.engine.Use(func(ginCtx *gin.Context) {
-			f.Invoke(WebContext(ginCtx), &ginFilterChain{ginCtx})
-			ginCtx.Abort()
-		})
-	}
 
 	urlPatterns, err := web.URLPatterns(s.Filters())
 	if err != nil {
@@ -106,10 +96,10 @@ func (h *serverHandler) Start(s web.Server) error {
 	for _, mapper := range s.Mappers() {
 		filters := urlPatterns.Get(mapper.Path())
 		handlers := wrapperHandler(mapper.Handler(), filters)
-		path, wildCardName := web.ToPathStyle(mapper.Path(), web.GinPathStyle)
+		path, wildcard := web.ToPathStyle(mapper.Path(), web.GinPathStyle)
 		for _, method := range web.GetMethod(mapper.Method()) {
 			h.engine.Handle(method, path, handlers...)
-			h.routes[method+path] = route{mapper.Handler(), wildCardName}
+			h.routes[method+path] = route{mapper.Handler(), mapper.Path(), wildcard}
 		}
 	}
 	return nil
@@ -187,7 +177,7 @@ func (f *recoveryFilter) Invoke(webCtx web.Context, chain web.FilterChain) {
 		if err := recover(); err != nil {
 
 			ctxLogger := log.Ctx(webCtx.Context())
-			ctxLogger.Error(err, "\n", string(debug.Stack()))
+			ctxLogger.Error(nil, err, "\n", string(debug.Stack()))
 
 			// Check for a broken connection, as it is not really a
 			// condition that warrants a panic stack trace.
@@ -201,7 +191,9 @@ func (f *recoveryFilter) Invoke(webCtx web.Context, chain web.FilterChain) {
 			}
 
 			ginCtx := GinContext(webCtx)
-			ginCtx.Abort()
+			if ginCtx != nil {
+				ginCtx.Abort()
+			}
 
 			// If the connection is dead, we can't write a status to it.
 			if brokenPipe {

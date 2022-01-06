@@ -91,6 +91,7 @@ type Server interface {
 type ServerHandler interface {
 	http.Handler
 	Start(s Server) error
+	RecoveryFilter() Filter
 }
 
 type server struct {
@@ -251,6 +252,7 @@ func (s *server) Static(prefix string, root string) {
 }
 
 func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	writer := &BufferedResponseWriter{ResponseWriter: w, cache: true}
 	if ctx, cached := knife.New(r.Context()); !cached {
 		r = r.WithContext(ctx)
 	}
@@ -258,9 +260,10 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	for _, f := range s.Prefilters() {
 		prefilters = append(prefilters, f)
 	}
-	prefilters = append(prefilters, NewPrefilter(HandlerFilter(WrapH(s.handler))))
-	ctx := NewBaseContext(r, &BufferedResponseWriter{ResponseWriter: w})
-	NewFilterChain(prefilters).Next(ctx)
+	prefilters = append(prefilters, s.LoggerFilter())
+	prefilters = append(prefilters, s.handler.RecoveryFilter())
+	prefilters = append(prefilters, HandlerFilter(WrapH(s.handler)))
+	NewFilterChain(prefilters).Next(NewBaseContext("", nil, r, writer))
 }
 
 /////////////////// Web Handlers //////////////////////

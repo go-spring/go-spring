@@ -38,20 +38,22 @@ type BaseContext struct {
 	r *http.Request
 	w ResponseWriter
 
-	query url.Values
+	path    string
+	handler Handler
+	query   url.Values
 }
 
 // NewBaseContext 创建 *BaseContext 对象。
-func NewBaseContext(r *http.Request, w ResponseWriter) *BaseContext {
+func NewBaseContext(path string, handler Handler, r *http.Request, w ResponseWriter) *BaseContext {
 	if ctx, cached := knife.New(r.Context()); !cached {
 		r = r.WithContext(ctx)
 	}
-	return &BaseContext{r: r, w: w}
+	return &BaseContext{r: r, w: w, path: path, handler: handler}
 }
 
 // NativeContext 返回封装的底层上下文对象
 func (c *BaseContext) NativeContext() interface{} {
-	panic(util.UnimplementedMethod)
+	return nil
 }
 
 // Get retrieves data from the context.
@@ -123,12 +125,12 @@ func (c *BaseContext) ClientIP() string {
 
 // Path returns the registered path for the handler.
 func (c *BaseContext) Path() string {
-	panic(util.UnimplementedMethod)
+	return c.path
 }
 
 // Handler returns the matched handler by router.
 func (c *BaseContext) Handler() Handler {
-	panic(util.UnimplementedMethod)
+	return c.handler
 }
 
 // ContentType returns the Content-Type header of the request.

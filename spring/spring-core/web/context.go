@@ -36,7 +36,7 @@ var ErrorHandler = func(ctx Context, err *HttpError) {
 
 	defer func() {
 		if r := recover(); r != nil {
-			log.Ctx(ctx.Context()).Error(r)
+			log.Ctx(ctx.Context()).Error(nil, r)
 		}
 	}()
 
@@ -275,7 +275,9 @@ type Context interface {
 // BufferedResponseWriter http.ResponseWriter 的一种增强型实现.
 type BufferedResponseWriter struct {
 	http.ResponseWriter
-	buffer bytes.Buffer
+	cache  bool
+	buf    bytes.Buffer
+	size   int
 	status int
 }
 
@@ -286,12 +288,12 @@ func (w *BufferedResponseWriter) Status() int {
 
 // Size Returns the number of bytes already written into the response http body.
 func (w *BufferedResponseWriter) Size() int {
-	return w.buffer.Len()
+	return w.size
 }
 
 // Body 返回发送给客户端的数据，当前仅支持 MIMEApplicationJSON 格式.
 func (w *BufferedResponseWriter) Body() string {
-	return w.buffer.String()
+	return w.buf.String()
 }
 
 func filterFlags(content string) string {
@@ -319,9 +321,10 @@ func (w *BufferedResponseWriter) WriteHeader(code int) {
 }
 
 func (w *BufferedResponseWriter) Write(data []byte) (n int, err error) {
-	if n, err = w.ResponseWriter.Write(data); err == nil {
-		if canPrintResponse(w.ResponseWriter) {
-			w.buffer.Write(data[:n])
+	if n, err = w.ResponseWriter.Write(data); err == nil && n > 0 {
+		if w.cache && canPrintResponse(w.ResponseWriter) {
+			w.buf.Write(data[:n])
+			w.size += n
 		}
 	}
 	return
