@@ -31,7 +31,7 @@ func TestRecordAction(t *testing.T) {
 		SetRecordMode(false)
 	}()
 
-	ctx := knife.New(context.Background())
+	ctx, _ := knife.New(context.Background())
 	err := knife.Set(ctx, RecordSessionIDKey, NewSessionID())
 	if err != nil {
 		t.Fatal(err)

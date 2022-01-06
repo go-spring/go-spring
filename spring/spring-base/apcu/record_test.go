@@ -34,7 +34,7 @@ func TestRecord(t *testing.T) {
 	}()
 
 	sessionID := fastdev.NewSessionID()
-	ctx := knife.New(context.Background())
+	ctx, _ := knife.New(context.Background())
 	err := knife.Set(ctx, fastdev.RecordSessionIDKey, sessionID)
 	assert.Nil(t, err)
 

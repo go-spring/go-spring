@@ -616,7 +616,7 @@ func TestBindMap(t *testing.T) {
 		p := conf.Map(map[string]interface{}{"a.b1": "ab1"})
 		var r map[string]string
 		err := p.Bind(&r)
-		assert.Error(t, err, "bind.go:87 type \"string\" bind error\nbind.go:433 property \"a\" not exist")
+		assert.Error(t, err, ".*/bind.go:87 type \"string\" bind error\n.*/bind.go:433 property \"a\" not exist")
 	})
 
 	t.Run("", func(t *testing.T) {

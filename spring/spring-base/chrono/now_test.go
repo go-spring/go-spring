@@ -27,7 +27,7 @@ import (
 )
 
 func TestNow(t *testing.T) {
-	ctx := knife.New(context.Background())
+	ctx, _ := knife.New(context.Background())
 	trueNow := time.Now()
 
 	t.Run("SetFixedTime", func(t *testing.T) {

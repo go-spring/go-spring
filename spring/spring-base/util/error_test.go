@@ -27,14 +27,14 @@ import (
 func TestError(t *testing.T) {
 
 	e0 := util.Error(code.FileLine(), "error")
-	assert.Error(t, e0, "error_test.go:29 error")
+	assert.Error(t, e0, ".*/error_test.go:29 error")
 
 	e1 := util.Errorf(code.FileLine(), "error: %d", 0)
-	assert.Error(t, e1, "error_test.go:32 error: 0")
+	assert.Error(t, e1, ".*/error_test.go:32 error: 0")
 
 	e2 := util.Wrap(e0, code.FileLine(), "error")
-	assert.Error(t, e2, "error_test.go:35 error\nerror_test.go:29 error")
+	assert.Error(t, e2, ".*/error_test.go:35 error\n.*/error_test.go:29 error")
 
 	e3 := util.Wrapf(e1, code.FileLine(), "error: %d", 1)
-	assert.Error(t, e3, "error_test.go:38 error: 1\nerror_test.go:32 error: 0")
+	assert.Error(t, e3, ".*/error_test.go:38 error: 1\n.*/error_test.go:32 error: 0")
 }

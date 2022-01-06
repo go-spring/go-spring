@@ -39,7 +39,7 @@ func RunCase(t *testing.T,
 		t.Fatal(err)
 	}
 
-	ctx := knife.New(context.Background())
+	ctx, _ := knife.New(context.Background())
 	err = knife.Set(ctx, fastdev.ReplaySessionIDKey, session.Session)
 	if err != nil {
 		t.Fatal(err)

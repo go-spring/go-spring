@@ -34,7 +34,7 @@ func TestReplay(t *testing.T) {
 	}()
 
 	sessionID := "fdcc085347f540ed94facbab14ae3cc4"
-	ctx := knife.New(context.Background())
+	ctx, _ := knife.New(context.Background())
 	err := knife.Set(ctx, fastdev.ReplaySessionIDKey, sessionID)
 	assert.Nil(t, err)
 

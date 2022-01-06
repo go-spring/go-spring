@@ -197,6 +197,6 @@ func TestProperties_Bind(t *testing.T) {
 	t.Run("ignore pointer", func(t *testing.T) {
 		p := conf.New()
 		err := p.Bind(list.New())
-		assert.Error(t, err, "bind.go:87 type \"int\" bind error\nbind.go:433 property \"len\" not exist")
+		assert.Error(t, err, ".*/bind.go:87 type \"int\" bind error\n.*/bind.go:433 property \"len\" not exist")
 	})
 }

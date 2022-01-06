@@ -55,7 +55,7 @@ func TestReplayAction(t *testing.T) {
 
 	Store(session)
 
-	ctx := knife.New(context.Background())
+	ctx, _ := knife.New(context.Background())
 	err := knife.Set(ctx, ReplaySessionIDKey, sessionID)
 	if err != nil {
 		t.Fatal(err)

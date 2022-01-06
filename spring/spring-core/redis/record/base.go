@@ -38,7 +38,7 @@ func RunCase(t *testing.T, c redis.Client,
 		fastdev.SetRecordMode(false)
 	}()
 
-	ctx := knife.New(context.Background())
+	ctx, _ := knife.New(context.Background())
 	sessionID := "df3b64266ebe4e63a464e135000a07cd"
 	err := knife.Set(ctx, fastdev.RecordSessionIDKey, sessionID)
 	if err != nil {
