@@ -21,8 +21,9 @@ import (
 
 	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-core/gs"
-	_ "github.com/go-spring/starter-gorm/mysql"
 	"gorm.io/gorm"
+
+	_ "github.com/go-spring/starter-gorm/mysql"
 )
 
 type runner struct {

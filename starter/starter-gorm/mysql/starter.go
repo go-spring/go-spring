@@ -26,10 +26,11 @@ import (
 )
 
 func init() {
-	gs.Provide(createDB).On(cond.OnMissingBean((*gorm.DB)(nil)))
+	gs.Provide(createDB, "${db}").
+		Name("GormDB").
+		On(cond.OnMissingBean(gs.BeanID((*gorm.DB)(nil), "GormDB")))
 }
 
-// createDB 从配置文件创建 *gorm.DB 客户端
 func createDB(config database.ClientConfig) (*gorm.DB, error) {
 	log.Infof("open gorm mysql %s", config.Url)
 	return gorm.Open(mysql.Open(config.Url))
