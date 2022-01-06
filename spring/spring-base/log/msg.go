@@ -34,9 +34,9 @@ type Message struct {
 	time time.Time
 	ctx  context.Context
 	tag  string
-	text string
 	file string
 	line int
+	args []interface{}
 }
 
 // newMessage 创建新的 *Message 对象。
@@ -47,10 +47,10 @@ func newMessage() *Message {
 func (msg *Message) reset() {
 	msg.ctx = nil
 	msg.tag = ""
-	msg.text = ""
 	msg.file = ""
 	msg.line = 0
 	msg.time = time.Time{}
+	msg.args = msg.args[:0]
 }
 
 func (msg *Message) Ctx() context.Context {
@@ -59,10 +59,6 @@ func (msg *Message) Ctx() context.Context {
 
 func (msg *Message) Tag() string {
 	return msg.tag
-}
-
-func (msg *Message) Text() string {
-	return msg.text
 }
 
 func (msg *Message) File() string {
@@ -75,6 +71,10 @@ func (msg *Message) Line() int {
 
 func (msg *Message) Time() time.Time {
 	return msg.time
+}
+
+func (msg *Message) Args() []interface{} {
+	return msg.args
 }
 
 // Reuse 将 *Message 放回对象池，以便重用。
