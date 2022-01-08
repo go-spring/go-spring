@@ -31,7 +31,25 @@ import (
 )
 
 // empty 用于创建其他的 Entry 对象。
-var empty = Entry{}
+var empty = BaseEntry{}
+
+// defaultContext 仅用于 log 单元测试。
+var defaultContext context.Context
+
+// config 日志模块全局设置。
+var config = struct {
+	output Output
+	level  atomic.Uint32
+}{
+	output: Console,
+	level:  *atomic.NewUint32(uint32(InfoLevel)),
+}
+
+// Reset 恢复默认的日志输出配置。
+func Reset() {
+	SetOutput(Console)
+	SetLevel(InfoLevel)
+}
 
 const (
 	TraceLevel = Level(iota)
@@ -98,22 +116,6 @@ var Console = FuncOutput(func(level Level, msg *Message) {
 	_, _ = fmt.Printf("[%s][%s][%s] %s\n", strLevel, strTime, fileLine, buf.String())
 })
 
-// config 日志模块全局设置。
-var config struct {
-	output Output
-	level  atomic.Uint32
-}
-
-func init() {
-	Reset()
-}
-
-// Reset 恢复默认的日志输出配置。
-func Reset() {
-	SetOutput(Console)
-	SetLevel(InfoLevel)
-}
-
 // GetLevel 获取日志的输出级别。
 func GetLevel() Level {
 	return Level(config.level.Load())
@@ -138,21 +140,18 @@ func SetOutput(output Output) {
 	config.output = output
 }
 
-// defaultContext 用于单元测试设置时间。
-var defaultContext context.Context
-
 func do(level Level, e Entry, args []interface{}) {
 	msg := newMessage()
-	msg.ctx = e.ctx
-	msg.tag = e.tag
 	msg.args = args
-	msg.errno = e.errno
-	ctx := e.ctx
+	msg.tag = e.GetTag()
+	msg.ctx = e.GetContext()
+	msg.errno = e.GetErrNo()
+	ctx := msg.ctx
 	if ctx == nil {
 		ctx = defaultContext
 	}
 	msg.time = chrono.Now(ctx)
-	msg.file, msg.line, _ = Caller(e.skip+3, true)
+	msg.file, msg.line, _ = Caller(e.GetSkip()+3, true)
 	config.output.Do(level, msg)
 }
 
@@ -180,124 +179,24 @@ func outputf(level Level, e Entry, format string, args []interface{}) {
 	do(level, e, []interface{}{fmt.Sprintf(format, args...)})
 }
 
-// Ctx 创建包含 context.Context 对象的 Entry 。
-func Ctx(ctx context.Context) Entry {
-	return empty.Ctx(ctx)
-}
-
-// Tag 创建包含 tag 信息的 Entry 。
-func Tag(tag string) Entry {
-	return empty.Tag(tag)
-}
-
 // Skip 创建包含 skip 信息的 Entry 。
-func Skip(n int) Entry {
+func Skip(n int) BaseEntry {
 	return empty.Skip(n)
 }
 
-type Entry struct {
-	ctx   context.Context
-	tag   string
-	skip  int
-	errno ErrNo
-}
-
-func (e Entry) ErrNo(errno ErrNo) Entry {
-	e.errno = errno
-	return e
+// Tag 创建包含 tag 信息的 Entry 。
+func Tag(tag string) BaseEntry {
+	return empty.Tag(tag)
 }
 
 // Ctx 创建包含 context.Context 对象的 Entry 。
-func (e Entry) Ctx(ctx context.Context) Entry {
-	e.ctx = ctx
-	return e
-}
-
-// Tag 创建包含 tag 信息的 Entry 。
-func (e Entry) Tag(tag string) Entry {
-	e.tag = tag
-	return e
-}
-
-// Skip 创建包含 skip 信息的 Entry 。
-func (e Entry) Skip(n int) Entry {
-	e.skip = n
-	return e
+func Ctx(ctx context.Context) CtxEntry {
+	return empty.Ctx(ctx)
 }
 
 // T 将可变参数转换成切片形式。
 func T(a ...interface{}) []interface{} {
 	return a
-}
-
-// Trace 输出 TRACE 级别的日志。
-func (e Entry) Trace(args ...interface{}) {
-	output(TraceLevel, e, args)
-}
-
-// Tracef 输出 TRACE 级别的日志。
-func (e Entry) Tracef(format string, args ...interface{}) {
-	outputf(TraceLevel, e, format, args)
-}
-
-// Debug 输出 DEBUG 级别的日志。
-func (e Entry) Debug(args ...interface{}) {
-	output(DebugLevel, e, args)
-}
-
-// Debugf 输出 DEBUG 级别的日志。
-func (e Entry) Debugf(format string, args ...interface{}) {
-	outputf(DebugLevel, e, format, args)
-}
-
-// Info 输出 INFO 级别的日志。
-func (e Entry) Info(args ...interface{}) {
-	output(InfoLevel, e, args)
-}
-
-// Infof 输出 INFO 级别的日志。
-func (e Entry) Infof(format string, args ...interface{}) {
-	outputf(InfoLevel, e, format, args)
-}
-
-// Warn 输出 WARN 级别的日志。
-func (e Entry) Warn(args ...interface{}) {
-	output(WarnLevel, e, args)
-}
-
-// Warnf 输出 WARN 级别的日志。
-func (e Entry) Warnf(format string, args ...interface{}) {
-	outputf(WarnLevel, e, format, args)
-}
-
-// Error 输出 ERROR 级别的日志。
-func (e Entry) Error(errno ErrNo, args ...interface{}) {
-	output(ErrorLevel, e.ErrNo(errno), args)
-}
-
-// Errorf 输出 ERROR 级别的日志。
-func (e Entry) Errorf(errno ErrNo, format string, args ...interface{}) {
-	outputf(ErrorLevel, e.ErrNo(errno), format, args)
-}
-
-// Panic 输出 PANIC 级别的日志。
-func (e Entry) Panic(args ...interface{}) {
-	output(PanicLevel, e, args)
-}
-
-// Panicf 输出 PANIC 级别的日志。
-func (e Entry) Panicf(format string, args ...interface{}) {
-	outputf(PanicLevel, e, format, args)
-}
-
-// Fatal 输出 FATAL 级别的日志。
-func (e Entry) Fatal(args ...interface{}) {
-	output(FatalLevel, e, args)
-}
-
-// Fatalf 输出 FATAL 级别的日志。
-func (e Entry) Fatalf(format string, args ...interface{}) {
-	outputf(FatalLevel, e, format, args)
 }
 
 // EnableTrace 是否允许输出 TRACE 级别的日志。
@@ -376,13 +275,13 @@ func Warnf(format string, args ...interface{}) {
 }
 
 // Error 输出 ERROR 级别的日志。
-func Error(errno ErrNo, args ...interface{}) {
-	output(ErrorLevel, empty.ErrNo(errno), args)
+func Error(args ...interface{}) {
+	output(ErrorLevel, empty, args)
 }
 
 // Errorf 输出 ERROR 级别的日志。
-func Errorf(errno ErrNo, format string, args ...interface{}) {
-	outputf(ErrorLevel, empty.ErrNo(errno), format, args)
+func Errorf(format string, args ...interface{}) {
+	outputf(ErrorLevel, empty, format, args)
 }
 
 // Panic 输出 PANIC 级别的日志。

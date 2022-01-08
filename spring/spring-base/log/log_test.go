@@ -19,7 +19,6 @@ package log
 import (
 	"context"
 	"errors"
-	"fmt"
 	"testing"
 	"time"
 
@@ -29,26 +28,6 @@ import (
 	"github.com/go-spring/spring-base/knife"
 	"github.com/golang/mock/gomock"
 )
-
-var UnknownError = newErrNo(1000, 001, "UNKNOWN ERROR")
-
-type errNo struct {
-	proj int
-	code int
-	msg  string
-}
-
-func newErrNo(proj int, code int, msg string) ErrNo {
-	return &errNo{proj: proj, code: code, msg: msg}
-}
-
-func (e *errNo) Code() string {
-	return fmt.Sprintf("%.6d%.5d", e.proj, e.code)
-}
-
-func (e *errNo) Msg() string {
-	return e.msg
-}
 
 func TestDefault(t *testing.T) {
 
@@ -125,17 +104,17 @@ func TestDefault(t *testing.T) {
 		return T(1)
 	})
 
-	o.EXPECT().Do(ErrorLevel, &Message{args: []interface{}{"a", "=", "1"}, errno: UnknownError, file: code.File(), line: code.Line() + 1, time: fixedTime})
-	Error(UnknownError, "a", "=", "1")
-	o.EXPECT().Do(ErrorLevel, &Message{args: []interface{}{"a=1"}, errno: UnknownError, file: code.File(), line: code.Line() + 1, time: fixedTime})
-	Errorf(UnknownError, "a=%d", 1)
+	o.EXPECT().Do(ErrorLevel, &Message{args: []interface{}{"a", "=", "1"}, file: code.File(), line: code.Line() + 1, time: fixedTime})
+	Error("a", "=", "1")
+	o.EXPECT().Do(ErrorLevel, &Message{args: []interface{}{"a=1"}, file: code.File(), line: code.Line() + 1, time: fixedTime})
+	Errorf("a=%d", 1)
 
-	o.EXPECT().Do(ErrorLevel, &Message{args: []interface{}{"a", "=", "1"}, errno: UnknownError, file: code.File(), line: code.Line() + 1, time: fixedTime})
-	Error(UnknownError, func() []interface{} {
+	o.EXPECT().Do(ErrorLevel, &Message{args: []interface{}{"a", "=", "1"}, file: code.File(), line: code.Line() + 1, time: fixedTime})
+	Error(func() []interface{} {
 		return T("a", "=", "1")
 	})
-	o.EXPECT().Do(ErrorLevel, &Message{args: []interface{}{"a=1"}, errno: UnknownError, file: code.File(), line: code.Line() + 1, time: fixedTime})
-	Errorf(UnknownError, "a=%d", func() []interface{} {
+	o.EXPECT().Do(ErrorLevel, &Message{args: []interface{}{"a=1"}, file: code.File(), line: code.Line() + 1, time: fixedTime})
+	Errorf("a=%d", func() []interface{} {
 		return T(1)
 	})
 
@@ -167,117 +146,117 @@ func TestEntry(t *testing.T) {
 	SetOutput(o)
 	defer Reset()
 
-	logger := Ctx(ctx)
+	ctxLogger := Ctx(ctx)
 	o.EXPECT().Do(TraceLevel, &Message{ctx: ctx, args: []interface{}{"level:", "trace"}, file: code.File(), line: code.Line() + 1, time: fixedTime})
-	logger.Trace("level:", "trace")
+	ctxLogger.Trace("level:", "trace")
 	o.EXPECT().Do(TraceLevel, &Message{ctx: ctx, args: []interface{}{"level:trace"}, file: code.File(), line: code.Line() + 1, time: fixedTime})
-	logger.Tracef("level:%s", "trace")
+	ctxLogger.Tracef("level:%s", "trace")
 	o.EXPECT().Do(DebugLevel, &Message{ctx: ctx, args: []interface{}{"level:", "debug"}, file: code.File(), line: code.Line() + 1, time: fixedTime})
-	logger.Debug("level:", "debug")
+	ctxLogger.Debug("level:", "debug")
 	o.EXPECT().Do(DebugLevel, &Message{ctx: ctx, args: []interface{}{"level:debug"}, file: code.File(), line: code.Line() + 1, time: fixedTime})
-	logger.Debugf("level:%s", "debug")
+	ctxLogger.Debugf("level:%s", "debug")
 	o.EXPECT().Do(InfoLevel, &Message{ctx: ctx, args: []interface{}{"level:", "info"}, file: code.File(), line: code.Line() + 1, time: fixedTime})
-	logger.Info("level:", "info")
+	ctxLogger.Info("level:", "info")
 	o.EXPECT().Do(InfoLevel, &Message{ctx: ctx, args: []interface{}{"level:info"}, file: code.File(), line: code.Line() + 1, time: fixedTime})
-	logger.Infof("level:%s", "info")
+	ctxLogger.Infof("level:%s", "info")
 	o.EXPECT().Do(WarnLevel, &Message{ctx: ctx, args: []interface{}{"level:", "warn"}, file: code.File(), line: code.Line() + 1, time: fixedTime})
-	logger.Warn("level:", "warn")
+	ctxLogger.Warn("level:", "warn")
 	o.EXPECT().Do(WarnLevel, &Message{ctx: ctx, args: []interface{}{"level:warn"}, file: code.File(), line: code.Line() + 1, time: fixedTime})
-	logger.Warnf("level:%s", "warn")
+	ctxLogger.Warnf("level:%s", "warn")
 	o.EXPECT().Do(ErrorLevel, &Message{ctx: ctx, args: []interface{}{"level:", "error"}, errno: UnknownError, file: code.File(), line: code.Line() + 1, time: fixedTime})
-	logger.Error(UnknownError, "level:", "error")
+	ctxLogger.Error(UnknownError, "level:", "error")
 	o.EXPECT().Do(ErrorLevel, &Message{ctx: ctx, args: []interface{}{"level:error"}, errno: UnknownError, file: code.File(), line: code.Line() + 1, time: fixedTime})
-	logger.Errorf(UnknownError, "level:%s", "error")
+	ctxLogger.Errorf(UnknownError, "level:%s", "error")
 	o.EXPECT().Do(PanicLevel, &Message{ctx: ctx, args: []interface{}{"level:", "panic"}, file: code.File(), line: code.Line() + 1, time: fixedTime})
-	logger.Panic("level:", "panic")
+	ctxLogger.Panic("level:", "panic")
 	o.EXPECT().Do(PanicLevel, &Message{ctx: ctx, args: []interface{}{"level:panic"}, file: code.File(), line: code.Line() + 1, time: fixedTime})
-	logger.Panicf("level:%s", "panic")
+	ctxLogger.Panicf("level:%s", "panic")
 	o.EXPECT().Do(FatalLevel, &Message{ctx: ctx, args: []interface{}{"level:", "fatal"}, file: code.File(), line: code.Line() + 1, time: fixedTime})
-	logger.Fatal("level:", "fatal")
+	ctxLogger.Fatal("level:", "fatal")
 	o.EXPECT().Do(FatalLevel, &Message{ctx: ctx, args: []interface{}{"level:fatal"}, file: code.File(), line: code.Line() + 1, time: fixedTime})
-	logger.Fatalf("level:%s", "fatal")
+	ctxLogger.Fatalf("level:%s", "fatal")
 
 	o.EXPECT().Do(TraceLevel, &Message{ctx: ctx, args: []interface{}{"level:", "trace"}, file: code.File(), line: code.Line() + 1, time: fixedTime})
-	logger.Trace(func() []interface{} {
+	ctxLogger.Trace(func() []interface{} {
 		return T("level:", "trace")
 	})
 
 	o.EXPECT().Do(TraceLevel, &Message{ctx: ctx, args: []interface{}{"level:trace"}, file: code.File(), line: code.Line() + 1, time: fixedTime})
-	logger.Tracef("level:%s", func() []interface{} {
+	ctxLogger.Tracef("level:%s", func() []interface{} {
 		return T("trace")
 	})
 
 	o.EXPECT().Do(DebugLevel, &Message{ctx: ctx, args: []interface{}{"level:", "debug"}, file: code.File(), line: code.Line() + 1, time: fixedTime})
-	logger.Debug(func() []interface{} {
+	ctxLogger.Debug(func() []interface{} {
 		return T("level:", "debug")
 	})
 
 	o.EXPECT().Do(DebugLevel, &Message{ctx: ctx, args: []interface{}{"level:debug"}, file: code.File(), line: code.Line() + 1, time: fixedTime})
-	logger.Debugf("level:%s", func() []interface{} {
+	ctxLogger.Debugf("level:%s", func() []interface{} {
 		return T("debug")
 	})
 
 	o.EXPECT().Do(InfoLevel, &Message{ctx: ctx, args: []interface{}{"level:", "info"}, file: code.File(), line: code.Line() + 1, time: fixedTime})
-	logger.Info(func() []interface{} {
+	ctxLogger.Info(func() []interface{} {
 		return T("level:", "info")
 	})
 
 	o.EXPECT().Do(InfoLevel, &Message{ctx: ctx, args: []interface{}{"level:info"}, file: code.File(), line: code.Line() + 1, time: fixedTime})
-	logger.Infof("level:%s", func() []interface{} {
+	ctxLogger.Infof("level:%s", func() []interface{} {
 		return T("info")
 	})
 
 	o.EXPECT().Do(WarnLevel, &Message{ctx: ctx, args: []interface{}{"level:", "warn"}, file: code.File(), line: code.Line() + 1, time: fixedTime})
-	logger.Warn(func() []interface{} {
+	ctxLogger.Warn(func() []interface{} {
 		return T("level:", "warn")
 	})
 
 	o.EXPECT().Do(WarnLevel, &Message{ctx: ctx, args: []interface{}{"level:warn"}, file: code.File(), line: code.Line() + 1, time: fixedTime})
-	logger.Warnf("level:%s", func() []interface{} {
+	ctxLogger.Warnf("level:%s", func() []interface{} {
 		return T("warn")
 	})
 
 	o.EXPECT().Do(ErrorLevel, &Message{ctx: ctx, args: []interface{}{"level:", "error"}, errno: UnknownError, file: code.File(), line: code.Line() + 1, time: fixedTime})
-	logger.Error(UnknownError, func() []interface{} {
+	ctxLogger.Error(UnknownError, func() []interface{} {
 		return T("level:", "error")
 	})
 
 	o.EXPECT().Do(ErrorLevel, &Message{ctx: ctx, args: []interface{}{"level:error"}, errno: UnknownError, file: code.File(), line: code.Line() + 1, time: fixedTime})
-	logger.Errorf(UnknownError, "level:%s", func() []interface{} {
+	ctxLogger.Errorf(UnknownError, "level:%s", func() []interface{} {
 		return T("error")
 	})
 
-	logger = logger.Tag("__in")
+	ctxLogger = ctxLogger.Tag("__in")
 	o.EXPECT().Do(TraceLevel, &Message{ctx: ctx, tag: "__in", args: []interface{}{"level:", "trace"}, file: code.File(), line: code.Line() + 1, time: fixedTime})
-	logger.Trace("level:", "trace")
+	ctxLogger.Trace("level:", "trace")
 	o.EXPECT().Do(TraceLevel, &Message{ctx: ctx, tag: "__in", args: []interface{}{"level:trace"}, file: code.File(), line: code.Line() + 1, time: fixedTime})
-	logger.Tracef("level:%s", "trace")
+	ctxLogger.Tracef("level:%s", "trace")
 	o.EXPECT().Do(DebugLevel, &Message{ctx: ctx, tag: "__in", args: []interface{}{"level:", "debug"}, file: code.File(), line: code.Line() + 1, time: fixedTime})
-	logger.Debug("level:", "debug")
+	ctxLogger.Debug("level:", "debug")
 	o.EXPECT().Do(DebugLevel, &Message{ctx: ctx, tag: "__in", args: []interface{}{"level:debug"}, file: code.File(), line: code.Line() + 1, time: fixedTime})
-	logger.Debugf("level:%s", "debug")
+	ctxLogger.Debugf("level:%s", "debug")
 	o.EXPECT().Do(InfoLevel, &Message{ctx: ctx, tag: "__in", args: []interface{}{"level:", "info"}, file: code.File(), line: code.Line() + 1, time: fixedTime})
-	logger.Info("level:", "info")
+	ctxLogger.Info("level:", "info")
 	o.EXPECT().Do(InfoLevel, &Message{ctx: ctx, tag: "__in", args: []interface{}{"level:info"}, file: code.File(), line: code.Line() + 1, time: fixedTime})
-	logger.Infof("level:%s", "info")
+	ctxLogger.Infof("level:%s", "info")
 	o.EXPECT().Do(WarnLevel, &Message{ctx: ctx, tag: "__in", args: []interface{}{"level:", "warn"}, file: code.File(), line: code.Line() + 1, time: fixedTime})
-	logger.Warn("level:", "warn")
+	ctxLogger.Warn("level:", "warn")
 	o.EXPECT().Do(WarnLevel, &Message{ctx: ctx, tag: "__in", args: []interface{}{"level:warn"}, file: code.File(), line: code.Line() + 1, time: fixedTime})
-	logger.Warnf("level:%s", "warn")
+	ctxLogger.Warnf("level:%s", "warn")
 	o.EXPECT().Do(ErrorLevel, &Message{ctx: ctx, tag: "__in", args: []interface{}{"level:", "error"}, errno: UnknownError, file: code.File(), line: code.Line() + 1, time: fixedTime})
-	logger.Error(UnknownError, "level:", "error")
+	ctxLogger.Error(UnknownError, "level:", "error")
 	o.EXPECT().Do(ErrorLevel, &Message{ctx: ctx, tag: "__in", args: []interface{}{"level:error"}, errno: UnknownError, file: code.File(), line: code.Line() + 1, time: fixedTime})
-	logger.Errorf(UnknownError, "level:%s", "error")
+	ctxLogger.Errorf(UnknownError, "level:%s", "error")
 	o.EXPECT().Do(PanicLevel, &Message{ctx: ctx, tag: "__in", args: []interface{}{"level:", "panic"}, file: code.File(), line: code.Line() + 1, time: fixedTime})
-	logger.Panic("level:", "panic")
+	ctxLogger.Panic("level:", "panic")
 	o.EXPECT().Do(PanicLevel, &Message{ctx: ctx, tag: "__in", args: []interface{}{"level:panic"}, file: code.File(), line: code.Line() + 1, time: fixedTime})
-	logger.Panicf("level:%s", "panic")
+	ctxLogger.Panicf("level:%s", "panic")
 	o.EXPECT().Do(FatalLevel, &Message{ctx: ctx, tag: "__in", args: []interface{}{"level:", "fatal"}, file: code.File(), line: code.Line() + 1, time: fixedTime})
-	logger.Fatal("level:", "fatal")
+	ctxLogger.Fatal("level:", "fatal")
 	o.EXPECT().Do(FatalLevel, &Message{ctx: ctx, tag: "__in", args: []interface{}{"level:fatal"}, file: code.File(), line: code.Line() + 1, time: fixedTime})
-	logger.Fatalf("level:%s", "fatal")
+	ctxLogger.Fatalf("level:%s", "fatal")
 
-	logger = Tag("__in")
+	logger := Tag("__in")
 	o.EXPECT().Do(TraceLevel, &Message{ctx: ctx, tag: "__in", args: []interface{}{"level:", "trace"}, file: code.File(), line: code.Line() + 1, time: fixedTime})
 	logger.Ctx(ctx).Trace("level:", "trace")
 	o.EXPECT().Do(TraceLevel, &Message{ctx: ctx, tag: "__in", args: []interface{}{"level:trace"}, file: code.File(), line: code.Line() + 1, time: fixedTime})
