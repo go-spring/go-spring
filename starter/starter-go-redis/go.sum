@@ -8,6 +8,12 @@ github.com/fsnotify/fsnotify v1.4.7/go.mod h1:jwhsz4b93w/PPRr/qN1Yymfu8t87LnFCMo
 github.com/fsnotify/fsnotify v1.4.9/go.mod h1:znqG4EE+3YCdAaPaxE2ZRY/06pZUdp0tY4IgpuI1SZQ=
 github.com/go-redis/redis/v8 v8.11.4 h1:kHoYkfZP6+pe04aFTnhDH6GDROa5yJdHJVNxV3F46Tg=
 github.com/go-redis/redis/v8 v8.11.4/go.mod h1:2Z2wHZXdQpCDXEGzqMockDpNyYvi2l4Pxt6RJr792+w=
+github.com/go-spring/spring-base v1.1.0-rc2.0.20220108065257-1c285a12bc84 h1:PBMx/w/NYBlzMyiTe+ehi3kKZoIRknssBoV2aD6cejk=
+github.com/go-spring/spring-base v1.1.0-rc2.0.20220108065257-1c285a12bc84/go.mod h1:gJCBukN0ZmjhGygd31Yfan3SG2iRdAwPUTpxYW62exE=
+github.com/go-spring/spring-core v1.1.0-rc2.0.20220108070439-49a57f1c5839 h1:cMAyRVor8Ii1Ew6nV/nQbcvqCBb9Vsin5nCXPkwTxUk=
+github.com/go-spring/spring-core v1.1.0-rc2.0.20220108070439-49a57f1c5839/go.mod h1:xN8smuLbXLyf3M6b2gCCP9l02bYEs5xH7AaSqpMmzGk=
+github.com/go-spring/spring-go-redis v1.1.0-rc2.0.20220108071503-ce28a639d6d0 h1:+2Zt0/ZWrAdXnJUS+q55EIS6CwaFnVpy8kjTTjkUPH0=
+github.com/go-spring/spring-go-redis v1.1.0-rc2.0.20220108071503-ce28a639d6d0/go.mod h1:PnvXvbekrSOZi9U4SpmCO5nm+TwgaMjYa106y2bcL+Q=
 github.com/go-task/slim-sprig v0.0.0-20210107165309-348f09dbbbc0/go.mod h1:fyg7847qk6SyHyPtNmDHnmrv/HOrqktSC+C9fM+CJOE=
 github.com/golang/mock v1.6.0 h1:ErTB+efbowRARo13NNdxyJji2egdxLGQhRaY+DUumQc=
 github.com/golang/mock v1.6.0/go.mod h1:p6yTPP+5HYm5mzsMV8JkE6ZKdX+/wYM6Hr+LicevLPs=
@@ -41,10 +47,7 @@ github.com/onsi/gomega v1.16.0/go.mod h1:HnhC7FXeEQY45zxNK3PPoIUhzk/80Xly9PcubAl
 github.com/pelletier/go-toml v1.9.4 h1:tjENF6MfZAg8e4ZmZTeWaWiT2vXtsoO6+iuOjFhECwM=
 github.com/pelletier/go-toml v1.9.4/go.mod h1:u1nR/EPcESfeI/szUZKdtJ0xRNbUoANCkoOuaOx1Y+c=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
-github.com/spf13/cast v1.4.1 h1:s0hze+J0196ZfEMTs80N7UlFt0BDuQ7Q+JDnHiMWKdA=
-github.com/spf13/cast v1.4.1/go.mod h1:Qx5cxh0v+4UWYiBimWS+eyWzqEqokIECu5etghLkUJE=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
-github.com/stretchr/testify v1.2.2/go.mod h1:a8OnRcib4nhh0OaRAV+Yts87kKdq0PP7pXfy6kDkUVs=
 github.com/stretchr/testify v1.5.1/go.mod h1:5W2xD1RspED5o8YsWQXVCued0rvSQ+mT+I5cxcmMvtA=
 github.com/yuin/goldmark v1.2.1/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 github.com/yuin/goldmark v1.3.5/go.mod h1:mwnBkeHKe2W/ZEtQ+71ViKU8L12m81fl3OWwC1Zlc8k=

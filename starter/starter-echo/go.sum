@@ -1,7 +1,10 @@
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
-github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
-github.com/go-spring/spring-base v1.1.0-rc2 h1:oaQ8u23LkZvbe4QYR51wZeMrODRcapTmHlAmkie8Pzc=
-github.com/go-spring/spring-base v1.1.0-rc2/go.mod h1:Z0cuF53BYtZmcAPB6JtwTgfUnZhtQlns7R2Wbh6jPHA=
+github.com/go-spring/spring-base v1.1.0-rc2.0.20220108065257-1c285a12bc84 h1:PBMx/w/NYBlzMyiTe+ehi3kKZoIRknssBoV2aD6cejk=
+github.com/go-spring/spring-base v1.1.0-rc2.0.20220108065257-1c285a12bc84/go.mod h1:gJCBukN0ZmjhGygd31Yfan3SG2iRdAwPUTpxYW62exE=
+github.com/go-spring/spring-core v1.1.0-rc2.0.20220108070439-49a57f1c5839 h1:cMAyRVor8Ii1Ew6nV/nQbcvqCBb9Vsin5nCXPkwTxUk=
+github.com/go-spring/spring-core v1.1.0-rc2.0.20220108070439-49a57f1c5839/go.mod h1:xN8smuLbXLyf3M6b2gCCP9l02bYEs5xH7AaSqpMmzGk=
+github.com/go-spring/spring-echo v1.1.0-rc2.0.20220108071440-33243b5b325a h1:fk2DcJ2xMAXCMQ91evXKC1CcyDlF8rdhuLvmuTXzk5E=
+github.com/go-spring/spring-echo v1.1.0-rc2.0.20220108071440-33243b5b325a/go.mod h1:fnsIxx4jCZ5gwPVu00XXeno/Fgn8a2Z4r3vxuZ/GiA4=
 github.com/golang-jwt/jwt v3.2.2+incompatible/go.mod h1:8pz2t5EyA70fFQQSrl6XZXzqecmYZeUEB8OUGHkxJ+I=
 github.com/golang/mock v1.6.0 h1:ErTB+efbowRARo13NNdxyJji2egdxLGQhRaY+DUumQc=
 github.com/golang/mock v1.6.0/go.mod h1:p6yTPP+5HYm5mzsMV8JkE6ZKdX+/wYM6Hr+LicevLPs=
@@ -24,10 +27,7 @@ github.com/mattn/go-isatty v0.0.14/go.mod h1:7GGIvUiUoEMVVmxf/4nioHXj79iQHKdU27k
 github.com/pelletier/go-toml v1.9.4 h1:tjENF6MfZAg8e4ZmZTeWaWiT2vXtsoO6+iuOjFhECwM=
 github.com/pelletier/go-toml v1.9.4/go.mod h1:u1nR/EPcESfeI/szUZKdtJ0xRNbUoANCkoOuaOx1Y+c=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
-github.com/spf13/cast v1.4.1 h1:s0hze+J0196ZfEMTs80N7UlFt0BDuQ7Q+JDnHiMWKdA=
-github.com/spf13/cast v1.4.1/go.mod h1:Qx5cxh0v+4UWYiBimWS+eyWzqEqokIECu5etghLkUJE=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
-github.com/stretchr/testify v1.2.2/go.mod h1:a8OnRcib4nhh0OaRAV+Yts87kKdq0PP7pXfy6kDkUVs=
 github.com/stretchr/testify v1.4.0/go.mod h1:j7eGeouHqKxXV5pUuKE4zz7dFj8WfuZ+81PSLYec5m4=
 github.com/valyala/bytebufferpool v1.0.0 h1:GqA5TC/0021Y/b9FG4Oi9Mr3q7XYx6KllzawFIhcdPw=
 github.com/valyala/bytebufferpool v1.0.0/go.mod h1:6bBcMArwyJ5K/AmCkWv1jt77kVWyCJ6HpOuEn7z0Csc=
