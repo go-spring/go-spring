@@ -28,7 +28,7 @@ import (
 func init() {
 	gs.Provide(createDB, "${gorm}").
 		Name("GormDB").
-		On(cond.OnMissingBean(gs.BeanID((*gorm.DB)(nil), "GormDB")))
+		On(cond.OnMissingBean(gs.BeanID((*gorm.DB)(nil), "GormDB_Override")))
 }
 
 func createDB(config database.ClientConfig) (*gorm.DB, error) {

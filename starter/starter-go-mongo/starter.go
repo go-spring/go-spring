@@ -27,5 +27,5 @@ func init() {
 	gs.Provide(factory.NewClient, "${mongo}").
 		Destroy(factory.CloseClient).
 		Name("MongoDB").
-		On(cond.OnMissingBean(gs.BeanID((*mongo.Client)(nil), "MongoDB")))
+		On(cond.OnMissingBean(gs.BeanID((*mongo.Client)(nil), "MongoDB_Override")))
 }
