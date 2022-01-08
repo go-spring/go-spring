@@ -242,7 +242,7 @@ func (s *wiringStack) sortDestroyers() []func() {
 				fnValue := reflect.ValueOf(f)
 				out := fnValue.Call([]reflect.Value{v})
 				if len(out) > 0 && !out[0].IsNil() {
-					log.Error(nil, out[0].Interface().(error))
+					log.Error(out[0].Interface().(error))
 				}
 			}
 		}
@@ -309,7 +309,7 @@ func (c *container) Refresh(opts ...internal.RefreshOption) (err error) {
 	defer func() {
 		if err != nil || len(stack.beans) > 0 {
 			err = fmt.Errorf("%s ↩\n%s", err, stack.path())
-			log.Error(nil, err)
+			log.Error(err)
 		}
 	}()
 
