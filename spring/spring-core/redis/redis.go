@@ -14,6 +14,9 @@
  * limitations under the License.
  */
 
+// 在当前目录下执行下面的命令可以生成 mock 代码，
+// mockgen -build_flags="-mod=mod" -package=redis -destination=mock.go github.com/go-spring/spring-core/redis Client
+
 package redis
 
 import (
@@ -141,7 +144,7 @@ func (c *BaseClient) do(ctx context.Context, args []interface{}, trans transform
 	}()
 
 	if hook.BeforeDoFunc != nil {
-		if err := hook.BeforeDoFunc(ctx, args); err != nil {
+		if err = hook.BeforeDoFunc(ctx, args); err != nil {
 			return nil, err
 		}
 	}
