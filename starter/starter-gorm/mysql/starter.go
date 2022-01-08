@@ -26,7 +26,7 @@ import (
 )
 
 func init() {
-	gs.Provide(createDB, "${db}").
+	gs.Provide(createDB, "${gorm}").
 		Name("GormDB").
 		On(cond.OnMissingBean(gs.BeanID((*gorm.DB)(nil), "GormDB")))
 }

@@ -47,6 +47,7 @@ func (r *runner) Run(ctx gs.Context) {
 }
 
 func main() {
+	gs.Property("mongo.url", "mongodb://localhost")
 	gs.Object(&runner{}).Export((*gs.AppRunner)(nil))
 	fmt.Printf("program exited %v\n", gs.Web(false).Run())
 }

@@ -44,6 +44,22 @@ Go-Spring 当前使用 Go1.14 进行开发，使用 Go Modules 进行依赖管�
   - [starter-k8s](starter/starter-k8s/README.md) - k8s 启动器。
   - [starter-rabbit](starter/starter-rabbit/README.md) - rabbitmq 启动器。
 
+### 优秀教程
+
+《Go-Spring 学习笔记》
+- [Go-Spring 学习笔记一](https://blog.csdn.net/qq_33129963/article/details/121378573)
+- [Go-Spring 学习笔记二](https://blog.csdn.net/qq_33129963/article/details/121387401)
+- [Go-Spring 学习笔记三](https://blog.csdn.net/qq_33129963/article/details/121402740)
+- [Go-Spring 学习笔记四](https://blog.csdn.net/qq_33129963/article/details/121521937)
+
+《Go-Spring 入门篇》
+- [Go-Spring 入门篇 一](https://learnku.com/articles/63101)
+- [Go-Spring 入门篇 二](https://learnku.com/articles/63131)
+- [Go-Spring 入门篇 三](https://learnku.com/articles/63133)
+- [Go-Spring 入门篇 四](https://learnku.com/articles/63175)
+- [Go-Spring 入门篇 五](https://learnku.com/articles/63332)
+- [Go-Spring 入门篇 六](https://learnku.com/articles/63341)
+
 ### IoC 容器
 
 Go-Spring 不仅实现了如 Java Spring 那般功能强大的 IoC 容器，还扩充了 Bean 的概念。在 Go 中，对象(即指针)、数组、Map、函数指针，这些都是 Bean，都可以放到 IoC 容器里。

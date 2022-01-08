@@ -273,16 +273,15 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if ctx, cached := knife.New(r.Context()); !cached {
 		r = r.WithContext(ctx)
 	}
-	var prefilters []Filter
-	for _, f := range s.Prefilters() {
-		prefilters = append(prefilters, f)
-	}
-	prefilters = append(prefilters, s.LoggerFilter())
+	prefilters := append([]Filter{}, s.LoggerFilter())
 	errHandler := s.errHandler
 	if errHandler == nil {
 		errHandler = defaultErrorHandler
 	}
 	prefilters = append(prefilters, s.handler.RecoveryFilter(errHandler))
+	for _, f := range s.Prefilters() {
+		prefilters = append(prefilters, f)
+	}
 	prefilters = append(prefilters, HandlerFilter(WrapH(s.handler)))
 	NewFilterChain(prefilters).Next(NewBaseContext("", nil, r, writer))
 }

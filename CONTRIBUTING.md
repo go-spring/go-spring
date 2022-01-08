@@ -55,6 +55,8 @@ Following information can help us to resolve the issue faster.
 * 几乎所有的 panic 都应该打印其调用栈。
 * 和包名同名的文件作为了解包的入口。
 * 类型或函数的内容较短时也不能写在一行上，必须换行。
+* client 类型 starter 必须具有名字、排除同名同类型的 bean。
+* 有共同抽象的 starter 实现使用相同的属性前缀，否则使用自身前缀。
 
 ## 注释
 
