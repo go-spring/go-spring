@@ -61,7 +61,6 @@ type Container interface {
 type tempContainer struct {
 	p               *conf.Properties
 	beans           []*BeanDefinition
-	beansById       map[string]*BeanDefinition
 	beansByName     map[string][]*BeanDefinition
 	beansByType     map[reflect.Type][]*BeanDefinition
 	mapOfOnProperty map[string]interface{}
@@ -91,7 +90,6 @@ func New() Container {
 		cancel: cancel,
 		tempContainer: &tempContainer{
 			p:               conf.New(),
-			beansById:       make(map[string]*BeanDefinition),
 			beansByName:     make(map[string][]*BeanDefinition),
 			beansByType:     make(map[reflect.Type][]*BeanDefinition),
 			mapOfOnProperty: make(map[string]interface{}),
@@ -293,14 +291,29 @@ func (c *container) Refresh(opts ...internal.RefreshOption) (err error) {
 	c.state = Refreshing
 
 	for _, b := range c.beans {
-		if err = c.registerBean(b); err != nil {
+		c.registerBean(b)
+	}
+
+	for _, b := range c.beans {
+		if err = c.resolveBean(b); err != nil {
 			return err
 		}
 	}
 
-	for _, b := range c.beansById {
-		if err = c.resolveBean(b); err != nil {
-			return err
+	beansById := make(map[string]*BeanDefinition)
+	{
+		for _, b := range c.beans {
+			if b.status == Deleted {
+				continue
+			}
+			if b.status != Resolved {
+				return fmt.Errorf("unexpected status %d", b.status)
+			}
+			beanID := b.ID()
+			if d, ok := beansById[beanID]; ok {
+				return fmt.Errorf("found duplicate beans [%s] [%s]", b, d)
+			}
+			beansById[beanID] = b
 		}
 	}
 
@@ -316,12 +329,12 @@ func (c *container) Refresh(opts ...internal.RefreshOption) (err error) {
 	// 按照 bean id 升序注入，保证注入过程始终一致。
 	{
 		var keys []string
-		for s := range c.beansById {
+		for s := range beansById {
 			keys = append(keys, s)
 		}
 		sort.Strings(keys)
 		for _, s := range keys {
-			b := c.beansById[s]
+			b := beansById[s]
 			if err = c.wireBean(b, stack); err != nil {
 				return err
 			}
@@ -332,7 +345,7 @@ func (c *container) Refresh(opts ...internal.RefreshOption) (err error) {
 	c.state = Refreshed
 
 	cost := time.Now().Sub(start)
-	log.Infof("refresh %d beans cost %v", len(c.beansById), cost)
+	log.Infof("refresh %d beans cost %v", len(beansById), cost)
 
 	if optArg.AutoClear {
 		c.clear()
@@ -342,12 +355,14 @@ func (c *container) Refresh(opts ...internal.RefreshOption) (err error) {
 	return nil
 }
 
-func (c *container) registerBean(b *BeanDefinition) error {
-	if d, ok := c.beansById[b.ID()]; ok {
-		return fmt.Errorf("found duplicate beans [%s] [%s]", b, d)
+func (c *container) registerBean(b *BeanDefinition) {
+	log.Debugf("register %s name:%q type:%q %s", b.getClass(), b.BeanName(), b.Type(), b.FileLine())
+	c.beansByName[b.name] = append(c.beansByName[b.name], b)
+	c.beansByType[b.Type()] = append(c.beansByType[b.Type()], b)
+	for _, t := range b.exports {
+		log.Debugf("register %s name:%q type:%q %s", b.getClass(), b.BeanName(), t, b.FileLine())
+		c.beansByType[t] = append(c.beansByType[t], b)
 	}
-	c.beansById[b.ID()] = b
-	return nil
 }
 
 // resolveBean 判断 bean 的有效性，如果 bean 是无效的则被标记为已删除。
@@ -378,7 +393,6 @@ func (c *container) resolveBean(b *BeanDefinition) error {
 			msg = msg[:len(msg)-2] + "]"
 			return errors.New(msg)
 		} else if n == 0 {
-			delete(c.beansById, b.ID())
 			b.status = Deleted
 			return nil
 		}
@@ -388,20 +402,9 @@ func (c *container) resolveBean(b *BeanDefinition) error {
 		if ok, err := b.cond.Matches(c); err != nil {
 			return err
 		} else if !ok {
-			delete(c.beansById, b.ID())
 			b.status = Deleted
 			return nil
 		}
-	}
-
-	log.Debugf("register %s name:%q type:%q %s", b.getClass(), b.BeanName(), b.Type(), b.FileLine())
-
-	c.beansByName[b.name] = append(c.beansByName[b.name], b)
-	c.beansByType[b.Type()] = append(c.beansByType[b.Type()], b)
-
-	for _, t := range b.exports {
-		log.Debugf("register %s name:%q type:%q %s", b.getClass(), b.BeanName(), t, b.FileLine())
-		c.beansByType[t] = append(c.beansByType[t], b)
 	}
 
 	b.status = Resolved
@@ -482,8 +485,8 @@ func (c *container) findBean(selector BeanSelector) ([]*BeanDefinition, error) {
 
 	finder := func(fn func(*BeanDefinition) bool) ([]*BeanDefinition, error) {
 		var result []*BeanDefinition
-		for _, b := range c.beansById {
-			if b.status == Resolving || !fn(b) {
+		for _, b := range c.beans {
+			if b.status == Resolving || b.status == Deleted || !fn(b) {
 				continue
 			}
 			if err := c.resolveBean(b); err != nil {
@@ -808,33 +811,41 @@ func (c *container) getBean(v reflect.Value, tag wireTag, stack *wiringStack) er
 		return fmt.Errorf("%s is not valid receiver type", t.String())
 	}
 
-	foundBeans := make([]*BeanDefinition, 0)
+	var foundBeans []*BeanDefinition
 
-	cache := c.beansByType[t]
-	for i := 0; i < len(cache); i++ {
-		b := cache[i]
-		if b.Match(tag.typeName, tag.beanName) {
-			foundBeans = append(foundBeans, b)
+	for _, b := range c.beansByType[t] {
+		if b.status == Deleted {
+			continue
 		}
+		if !b.Match(tag.typeName, tag.beanName) {
+			continue
+		}
+		foundBeans = append(foundBeans, b)
 	}
 
 	// 指定 bean 名称时通过名称获取，防止未通过 Export 方法导出接口。
 	if t.Kind() == reflect.Interface && tag.beanName != "" {
-		cache = c.beansByName[tag.beanName]
-		for i := 0; i < len(cache); i++ {
-			b := cache[i]
-			if b.Type().AssignableTo(t) && b.Match(tag.typeName, tag.beanName) {
-				found := false // 对结果排重
-				for _, r := range foundBeans {
-					if r == b {
-						found = true
-						break
-					}
+		for _, b := range c.beansByName[tag.beanName] {
+			if b.status == Deleted {
+				continue
+			}
+			if !b.Type().AssignableTo(t) {
+				continue
+			}
+			if !b.Match(tag.typeName, tag.beanName) {
+				continue
+			}
+
+			found := false // 对结果排重
+			for _, r := range foundBeans {
+				if r == b {
+					found = true
+					break
 				}
-				if !found {
-					foundBeans = append(foundBeans, b)
-					log.Warnf("you should call Export() on %s", b)
-				}
+			}
+			if !found {
+				foundBeans = append(foundBeans, b)
+				log.Warnf("you should call Export() on %s", b)
 			}
 		}
 	}
@@ -895,9 +906,13 @@ func filterBean(beans []*BeanDefinition, tag wireTag, t reflect.Type) (int, erro
 
 	var found []int
 	for i, b := range beans {
-		if b.Match(tag.typeName, tag.beanName) {
-			found = append(found, i)
+		if b.status == Deleted {
+			continue
 		}
+		if !b.Match(tag.typeName, tag.beanName) {
+			continue
+		}
+		found = append(found, i)
 	}
 
 	if len(found) > 1 {
