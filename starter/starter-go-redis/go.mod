@@ -4,7 +4,7 @@ go 1.14
 
 require (
 	github.com/go-spring/spring-base v1.1.0-rc2.0.20220108065257-1c285a12bc84
-	github.com/go-spring/spring-core v1.1.0-rc2.0.20220108070439-49a57f1c5839
+	github.com/go-spring/spring-core v1.1.0-rc2.0.20220109004946-9b2ba5cad23d
 	github.com/go-spring/spring-go-redis v1.1.0-rc2.0.20220108071503-ce28a639d6d0
 )
 

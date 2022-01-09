@@ -1,8 +1,9 @@
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/go-spring/spring-base v1.1.0-rc2.0.20220108065257-1c285a12bc84 h1:PBMx/w/NYBlzMyiTe+ehi3kKZoIRknssBoV2aD6cejk=
 github.com/go-spring/spring-base v1.1.0-rc2.0.20220108065257-1c285a12bc84/go.mod h1:gJCBukN0ZmjhGygd31Yfan3SG2iRdAwPUTpxYW62exE=
-github.com/go-spring/spring-core v1.1.0-rc2.0.20220108070439-49a57f1c5839 h1:cMAyRVor8Ii1Ew6nV/nQbcvqCBb9Vsin5nCXPkwTxUk=
 github.com/go-spring/spring-core v1.1.0-rc2.0.20220108070439-49a57f1c5839/go.mod h1:xN8smuLbXLyf3M6b2gCCP9l02bYEs5xH7AaSqpMmzGk=
+github.com/go-spring/spring-core v1.1.0-rc2.0.20220109004946-9b2ba5cad23d h1:vE2USVBhHSpPb3sDcSnYyEHJlOqfq1fbmoi5VOrioOw=
+github.com/go-spring/spring-core v1.1.0-rc2.0.20220109004946-9b2ba5cad23d/go.mod h1:xN8smuLbXLyf3M6b2gCCP9l02bYEs5xH7AaSqpMmzGk=
 github.com/go-spring/spring-redigo v1.1.0-rc2.0.20220108071523-3e07e7b3767f h1:DwxyOTkQVftuVOi8KHYNg9aO5uX0AYEmg6KzFgwUlgs=
 github.com/go-spring/spring-redigo v1.1.0-rc2.0.20220108071523-3e07e7b3767f/go.mod h1:BCzC9SNIlpLRIUTgSSWwiIAWeE9sU9NzxFcgqiZF5AY=
 github.com/golang/mock v1.6.0 h1:ErTB+efbowRARo13NNdxyJji2egdxLGQhRaY+DUumQc=
