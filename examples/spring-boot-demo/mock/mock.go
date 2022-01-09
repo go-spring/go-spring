@@ -20,21 +20,19 @@ import (
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-core/gs"
-	"github.com/jinzhu/gorm"
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
 )
 
 func init() {
-
 	gs.Provide(mockDB(func(mock sqlmock.Sqlmock) {
+		mock.ExpectQuery("SELECT VERSION()").WillReturnRows(
+			mock.NewRows([]string{"VERSION()"}).AddRow("8.0.27"),
+		)
 		mock.ExpectQuery("SELECT ENGINE FROM `ENGINES`").WillReturnRows(
 			mock.NewRows([]string{"ENGINE"}).AddRow("sql-mock"),
 		)
-	})).Name("mockDB")
-
-	//gs.Provide(mockRedis(func(mock *redismock.ClientMock) {
-	//	mock.On("Set", "key", "ok", time.Second*10).Return(redis.NewStatusResult("", nil))
-	//	mock.On("Get", "key").Return(redis.NewStringResult("ok", nil))
-	//})).Name("mockRedis")
+	})).Name("GormDB")
 }
 
 // mockDB 创建 gorm.DB Mock 客户端
@@ -46,15 +44,6 @@ func mockDB(fn func(sqlmock.Sqlmock)) func() (*gorm.DB, error) {
 			return nil, err
 		}
 		fn(mock)
-		return gorm.Open("mysql", db)
+		return gorm.Open(mysql.New(mysql.Config{Conn: db}))
 	}
 }
-
-//// mockRedis 创建 Redis Mock 客户端
-//func mockRedis(fn func(*redismock.ClientMock)) func() redis.Cmdable {
-//	return func() redis.Cmdable {
-//		mock := redismock.NewMock()
-//		fn(mock)
-//		return mock
-//	}
-//}

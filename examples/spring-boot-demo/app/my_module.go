@@ -107,7 +107,7 @@ func Process(ctx context.Context) {
 		}
 	}
 
-	if resp, err := http.Get("http://127.0.0.1:8080/static/config/config-map.yaml"); err != nil {
+	if resp, err := http.Get("http://127.0.0.1:8080/static/config/banner.txt"); err != nil {
 		panic(err)
 	} else {
 		if body, e := ioutil.ReadAll(resp.Body); e != nil {

@@ -27,11 +27,12 @@ import (
 	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/redis"
 	"github.com/go-spring/spring-core/web"
-	"github.com/jinzhu/gorm"
 	"go.mongodb.org/mongo-driver/mongo"
+	"gorm.io/gorm"
 )
 
 func init() {
+	gs.Static("/static/config", "config")
 
 	gs.GetMapping("/api/func", func(ctx web.Context) {
 		ctx.String("func() return ok")

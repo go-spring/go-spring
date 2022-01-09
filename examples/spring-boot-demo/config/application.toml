@@ -1,2 +1,2 @@
-[db]
+[gorm]
 url = "root:root@/information_schema?charset=utf8&parseTime=True&loc=Local"
