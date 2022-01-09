@@ -18,6 +18,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"testing"
@@ -55,10 +56,10 @@ go 1.14
 require (
 	github.com/DATA-DOG/go-sqlmock v1.4.1
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible // indirect
-	github.com/go-spring/spring-base  v1.0.0 // indirect
-	github.com/go-spring/spring-core  v1.0.0
-	github.com/go-spring/starter-echo  v1.0.0 // indirect
-	github.com/go-spring/starter-go-redis  v1.0.0
+	github.com/go-spring/spring-base v1.0.0 // indirect
+	github.com/go-spring/spring-core v1.0.0
+	github.com/go-spring/starter-echo v1.0.0 // indirect
+	github.com/go-spring/starter-go-redis v1.0.0
 )
 
 //replace (
@@ -68,5 +69,7 @@ require (
 
 	if !bytes.Equal(b, []byte(expect)) {
 		t.Fail()
+		return
 	}
+	fmt.Println("test success")
 }
