@@ -3,8 +3,8 @@ module github.com/go-spring/starter-go-mongo
 go 1.14
 
 require (
-	github.com/go-spring/spring-base v1.1.0-rc2.0.20220108065257-1c285a12bc84
-	github.com/go-spring/spring-core v1.1.0-rc2.0.20220109004946-9b2ba5cad23d
+	github.com/go-spring/spring-base v1.1.0-rc3
+	github.com/go-spring/spring-core v1.1.0-rc3
 	go.mongodb.org/mongo-driver v1.7.3
 )
 
