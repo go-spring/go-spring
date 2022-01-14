@@ -23,106 +23,106 @@ import (
 	"github.com/go-spring/spring-core/redis/test/cases"
 )
 
-func ZAdd(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.ZAdd)
+func ZAdd(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.ZAdd)
 }
 
-func ZCard(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.ZCard)
+func ZCard(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.ZCard)
 }
 
-func ZCount(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.ZCount)
+func ZCount(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.ZCount)
 }
 
-func ZDiff(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.ZDiff)
+func ZDiff(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.ZDiff)
 }
 
-func ZIncrBy(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.ZIncrBy)
+func ZIncrBy(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.ZIncrBy)
 }
 
-func ZInter(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.ZInter)
+func ZInter(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.ZInter)
 }
 
-func ZLexCount(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.ZLexCount)
+func ZLexCount(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.ZLexCount)
 }
 
-func ZMScore(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.ZMScore)
+func ZMScore(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.ZMScore)
 }
 
-func ZPopMax(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.ZPopMax)
+func ZPopMax(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.ZPopMax)
 }
 
-func ZPopMin(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.ZPopMin)
+func ZPopMin(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.ZPopMin)
 }
 
-func ZRandMember(t *testing.T, c redis.Client) {
-	// RunCase(t, c, cases.ZRandMember)
+func ZRandMember(t *testing.T, d redis.Driver) {
+	// RunCase(t, d, cases.ZRandMember)
 }
 
-func ZRange(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.ZRange)
+func ZRange(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.ZRange)
 }
 
-func ZRangeByLex(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.ZRangeByLex)
+func ZRangeByLex(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.ZRangeByLex)
 }
 
-func ZRangeByScore(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.ZRangeByScore)
+func ZRangeByScore(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.ZRangeByScore)
 }
 
-func ZRank(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.ZRank)
+func ZRank(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.ZRank)
 }
 
-func ZRem(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.ZRem)
+func ZRem(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.ZRem)
 }
 
-func ZRemRangeByLex(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.ZRemRangeByLex)
+func ZRemRangeByLex(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.ZRemRangeByLex)
 }
 
-func ZRemRangeByRank(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.ZRemRangeByRank)
+func ZRemRangeByRank(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.ZRemRangeByRank)
 }
 
-func ZRemRangeByScore(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.ZRemRangeByScore)
+func ZRemRangeByScore(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.ZRemRangeByScore)
 }
 
-func ZRevRange(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.ZRevRange)
+func ZRevRange(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.ZRevRange)
 }
 
-func ZRevRangeByLex(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.ZRevRangeByLex)
+func ZRevRangeByLex(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.ZRevRangeByLex)
 }
 
-func ZRevRangeByScore(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.ZRevRangeByScore)
+func ZRevRangeByScore(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.ZRevRangeByScore)
 }
 
-func ZRevRank(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.ZRevRank)
+func ZRevRank(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.ZRevRank)
 }
 
-func ZScore(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.ZScore)
+func ZScore(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.ZScore)
 }
 
-func ZUnion(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.ZUnion)
+func ZUnion(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.ZUnion)
 }
 
-func ZUnionStore(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.ZUnionStore)
+func ZUnionStore(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.ZUnionStore)
 }

@@ -128,7 +128,7 @@ type KeyCommand interface {
 	Type(ctx context.Context, key string) (string, error)
 }
 
-func (c *BaseClient) Del(ctx context.Context, keys ...string) (int64, error) {
+func (c *client) Del(ctx context.Context, keys ...string) (int64, error) {
 	args := []interface{}{CommandDel}
 	for _, key := range keys {
 		args = append(args, key)
@@ -136,12 +136,12 @@ func (c *BaseClient) Del(ctx context.Context, keys ...string) (int64, error) {
 	return c.Int64(ctx, args...)
 }
 
-func (c *BaseClient) Dump(ctx context.Context, key string) (string, error) {
+func (c *client) Dump(ctx context.Context, key string) (string, error) {
 	args := []interface{}{CommandDump, key}
 	return c.String(ctx, args...)
 }
 
-func (c *BaseClient) Exists(ctx context.Context, keys ...string) (int64, error) {
+func (c *client) Exists(ctx context.Context, keys ...string) (int64, error) {
 	args := []interface{}{CommandExists}
 	for _, key := range keys {
 		args = append(args, key)
@@ -149,57 +149,57 @@ func (c *BaseClient) Exists(ctx context.Context, keys ...string) (int64, error) 
 	return c.Int64(ctx, args...)
 }
 
-func (c *BaseClient) Expire(ctx context.Context, key string, expire int64, args ...interface{}) (int, error) {
+func (c *client) Expire(ctx context.Context, key string, expire int64, args ...interface{}) (int, error) {
 	args = append([]interface{}{CommandExpire, key, expire}, args...)
 	return c.Int(ctx, args...)
 }
 
-func (c *BaseClient) ExpireAt(ctx context.Context, key string, expireAt int64, args ...interface{}) (int, error) {
+func (c *client) ExpireAt(ctx context.Context, key string, expireAt int64, args ...interface{}) (int, error) {
 	args = append([]interface{}{CommandExpireAt, key, expireAt}, args...)
 	return c.Int(ctx, args...)
 }
 
-func (c *BaseClient) Keys(ctx context.Context, pattern string) ([]string, error) {
+func (c *client) Keys(ctx context.Context, pattern string) ([]string, error) {
 	args := []interface{}{CommandKeys, pattern}
 	return c.StringSlice(ctx, args...)
 }
 
-func (c *BaseClient) Persist(ctx context.Context, key string) (int, error) {
+func (c *client) Persist(ctx context.Context, key string) (int, error) {
 	args := []interface{}{CommandPersist, key}
 	return c.Int(ctx, args...)
 }
 
-func (c *BaseClient) PExpire(ctx context.Context, key string, expire int64, args ...interface{}) (int, error) {
+func (c *client) PExpire(ctx context.Context, key string, expire int64, args ...interface{}) (int, error) {
 	args = append([]interface{}{CommandPExpire, key, expire}, args...)
 	return c.Int(ctx, args...)
 }
 
-func (c *BaseClient) PExpireAt(ctx context.Context, key string, expireAt int64, args ...interface{}) (int, error) {
+func (c *client) PExpireAt(ctx context.Context, key string, expireAt int64, args ...interface{}) (int, error) {
 	args = append([]interface{}{CommandPExpireAt, key, expireAt}, args...)
 	return c.Int(ctx, args...)
 }
 
-func (c *BaseClient) PTTL(ctx context.Context, key string) (int64, error) {
+func (c *client) PTTL(ctx context.Context, key string) (int64, error) {
 	args := []interface{}{CommandPTTL, key}
 	return c.Int64(ctx, args...)
 }
 
-func (c *BaseClient) RandomKey(ctx context.Context) (string, error) {
+func (c *client) RandomKey(ctx context.Context) (string, error) {
 	args := []interface{}{CommandRandomKey}
 	return c.String(ctx, args...)
 }
 
-func (c *BaseClient) Rename(ctx context.Context, key, newKey string) (string, error) {
+func (c *client) Rename(ctx context.Context, key, newKey string) (string, error) {
 	args := []interface{}{CommandRename, key, newKey}
 	return c.String(ctx, args...)
 }
 
-func (c *BaseClient) RenameNX(ctx context.Context, key, newKey string) (int, error) {
+func (c *client) RenameNX(ctx context.Context, key, newKey string) (int, error) {
 	args := []interface{}{CommandRenameNX, key, newKey}
 	return c.Int(ctx, args...)
 }
 
-func (c *BaseClient) Touch(ctx context.Context, keys ...string) (int64, error) {
+func (c *client) Touch(ctx context.Context, keys ...string) (int64, error) {
 	args := []interface{}{CommandTouch}
 	for _, key := range keys {
 		args = append(args, key)
@@ -207,12 +207,12 @@ func (c *BaseClient) Touch(ctx context.Context, keys ...string) (int64, error) {
 	return c.Int64(ctx, args...)
 }
 
-func (c *BaseClient) TTL(ctx context.Context, key string) (int64, error) {
+func (c *client) TTL(ctx context.Context, key string) (int64, error) {
 	args := []interface{}{CommandTTL, key}
 	return c.Int64(ctx, args...)
 }
 
-func (c *BaseClient) Type(ctx context.Context, key string) (string, error) {
+func (c *client) Type(ctx context.Context, key string) (string, error) {
 	args := []interface{}{CommandType, key}
 	return c.String(ctx, args...)
 }

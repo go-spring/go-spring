@@ -111,7 +111,7 @@ type HashCommand interface {
 	HVals(ctx context.Context, key string) ([]string, error)
 }
 
-func (c *BaseClient) HDel(ctx context.Context, key string, fields ...string) (int64, error) {
+func (c *client) HDel(ctx context.Context, key string, fields ...string) (int64, error) {
 	args := []interface{}{CommandHDel, key}
 	for _, field := range fields {
 		args = append(args, field)
@@ -119,42 +119,42 @@ func (c *BaseClient) HDel(ctx context.Context, key string, fields ...string) (in
 	return c.Int64(ctx, args...)
 }
 
-func (c *BaseClient) HExists(ctx context.Context, key, field string) (int, error) {
+func (c *client) HExists(ctx context.Context, key, field string) (int, error) {
 	args := []interface{}{CommandHExists, key, field}
 	return c.Int(ctx, args...)
 }
 
-func (c *BaseClient) HGet(ctx context.Context, key string, field string) (string, error) {
+func (c *client) HGet(ctx context.Context, key string, field string) (string, error) {
 	args := []interface{}{CommandHGet, key, field}
 	return c.String(ctx, args...)
 }
 
-func (c *BaseClient) HGetAll(ctx context.Context, key string) (map[string]string, error) {
+func (c *client) HGetAll(ctx context.Context, key string) (map[string]string, error) {
 	args := []interface{}{CommandHGetAll, key}
 	return c.StringMap(ctx, args...)
 }
 
-func (c *BaseClient) HIncrBy(ctx context.Context, key, field string, incr int64) (int64, error) {
+func (c *client) HIncrBy(ctx context.Context, key, field string, incr int64) (int64, error) {
 	args := []interface{}{CommandHIncrBy, key, field, incr}
 	return c.Int64(ctx, args...)
 }
 
-func (c *BaseClient) HIncrByFloat(ctx context.Context, key, field string, incr float64) (float64, error) {
+func (c *client) HIncrByFloat(ctx context.Context, key, field string, incr float64) (float64, error) {
 	args := []interface{}{CommandHIncrByFloat, key, field, incr}
 	return c.Float64(ctx, args...)
 }
 
-func (c *BaseClient) HKeys(ctx context.Context, key string) ([]string, error) {
+func (c *client) HKeys(ctx context.Context, key string) ([]string, error) {
 	args := []interface{}{CommandHKeys, key}
 	return c.StringSlice(ctx, args...)
 }
 
-func (c *BaseClient) HLen(ctx context.Context, key string) (int64, error) {
+func (c *client) HLen(ctx context.Context, key string) (int64, error) {
 	args := []interface{}{CommandHLen, key}
 	return c.Int64(ctx, args...)
 }
 
-func (c *BaseClient) HMGet(ctx context.Context, key string, fields ...string) ([]interface{}, error) {
+func (c *client) HMGet(ctx context.Context, key string, fields ...string) ([]interface{}, error) {
 	args := []interface{}{CommandHMGet, key}
 	for _, field := range fields {
 		args = append(args, field)
@@ -162,22 +162,22 @@ func (c *BaseClient) HMGet(ctx context.Context, key string, fields ...string) ([
 	return c.Slice(ctx, args...)
 }
 
-func (c *BaseClient) HSet(ctx context.Context, key string, args ...interface{}) (int64, error) {
+func (c *client) HSet(ctx context.Context, key string, args ...interface{}) (int64, error) {
 	args = append([]interface{}{CommandHSet, key}, args...)
 	return c.Int64(ctx, args...)
 }
 
-func (c *BaseClient) HSetNX(ctx context.Context, key, field string, value interface{}) (int, error) {
+func (c *client) HSetNX(ctx context.Context, key, field string, value interface{}) (int, error) {
 	args := []interface{}{CommandHSetNX, key, field, value}
 	return c.Int(ctx, args...)
 }
 
-func (c *BaseClient) HStrLen(ctx context.Context, key, field string) (int64, error) {
+func (c *client) HStrLen(ctx context.Context, key, field string) (int64, error) {
 	args := []interface{}{CommandHStrLen, key, field}
 	return c.Int64(ctx, args...)
 }
 
-func (c *BaseClient) HVals(ctx context.Context, key string) ([]string, error) {
+func (c *client) HVals(ctx context.Context, key string) ([]string, error) {
 	args := []interface{}{CommandHVals, key}
 	return c.StringSlice(ctx, args...)
 }

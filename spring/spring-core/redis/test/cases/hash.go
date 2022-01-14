@@ -122,7 +122,7 @@ var HGet = Case{
 		assert.Equal(t, r2, "foo")
 
 		_, err = c.HGet(ctx, "myhash", "field2")
-		assert.Equal(t, err, redis.ErrNil)
+		assert.True(t, redis.IsErrNil(err))
 	},
 	Data: `
 	{
@@ -183,10 +183,7 @@ var HGetAll = Case{
 		}, {
 			"protocol": "redis",
 			"request": "HGETALL myhash",
-			"response": {
-				"field1": "Hello",
-				"field2": "World"
-			}
+			"response": ["field1", "Hello", "field2", "World"]
 		}]
 	}`,
 }

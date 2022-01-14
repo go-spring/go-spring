@@ -30,7 +30,7 @@ import (
 	"github.com/go-spring/spring-core/redis/test/cases"
 )
 
-func RunCase(t *testing.T, c redis.Client, cc cases.Case) {
+func RunCase(t *testing.T, d redis.Driver, c cases.Case) {
 
 	fastdev.SetRecordMode(true)
 	defer func() {
@@ -44,15 +44,21 @@ func RunCase(t *testing.T, c redis.Client, cc cases.Case) {
 		t.Fatal(err)
 	}
 
+	config := redis.ClientConfig{Port: 6379}
+	client, err := redis.NewClient(config, d)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	defer func() {
 		fastdev.SetRecordMode(false)
-		c.FlushAll(ctx)
+		client.FlushAll(ctx)
 	}()
 
-	cc.Func(t, ctx, c)
+	c.Func(t, ctx, client)
 
 	session := fastdev.RecordInbound(ctx, &fastdev.Action{})
-	if cc.Data != "skip" {
+	if c.Data != "skip" {
 		testResult := session.ToJson()
 
 		var (
@@ -65,13 +71,13 @@ func RunCase(t *testing.T, c redis.Client, cc cases.Case) {
 			t.Fatal(err)
 		}
 
-		s2, err = fastdev.ToSession([]byte(cc.Data), true)
+		s2, err = fastdev.ToSession([]byte(c.Data), true)
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		if !reflect.DeepEqual(s1, s2) {
-			fail(t, 0, "got %v but expect %v", testResult, cc.Data)
+			fail(t, 0, "got %v but expect %v", testResult, c.Data)
 		}
 	}
 }

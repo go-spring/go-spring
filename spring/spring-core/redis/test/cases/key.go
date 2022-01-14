@@ -32,13 +32,13 @@ var Del = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r1, redis.OK)
+		assert.True(t, redis.OK(r1))
 
 		r2, err := c.Set(ctx, "key2", "World")
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r2, redis.OK)
+		assert.True(t, redis.OK(r2))
 
 		r3, err := c.Del(ctx, "key1", "key2", "key3")
 		if err != nil {
@@ -73,7 +73,7 @@ var Dump = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r1, redis.OK)
+		assert.True(t, redis.OK(r1))
 
 		r2, err := c.Dump(ctx, "mykey")
 		if err != nil {
@@ -104,7 +104,7 @@ var Exists = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r1, redis.OK)
+		assert.True(t, redis.OK(r1))
 
 		r2, err := c.Exists(ctx, "key1")
 		if err != nil {
@@ -122,8 +122,7 @@ var Exists = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-
-		assert.Equal(t, r4, redis.OK)
+		assert.True(t, redis.OK(r4))
 
 		r5, err := c.Exists(ctx, "key1", "key2", "nosuchkey")
 		if err != nil {
@@ -166,7 +165,7 @@ var Expire = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r1, redis.OK)
+		assert.True(t, redis.OK(r1))
 
 		r2, err := c.Expire(ctx, "mykey", 10)
 		if err != nil {
@@ -184,7 +183,7 @@ var Expire = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r4, redis.OK)
+		assert.True(t, redis.OK(r4))
 
 		r5, err := c.TTL(ctx, "mykey")
 		if err != nil {
@@ -227,7 +226,7 @@ var ExpireAt = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r1, redis.OK)
+		assert.True(t, redis.OK(r1))
 
 		r2, err := c.Exists(ctx, "mykey")
 		if err != nil {
@@ -278,7 +277,7 @@ var Keys = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r1, redis.OK)
+		assert.True(t, redis.OK(r1))
 
 		r2, err := c.Keys(ctx, "*name*")
 		if err != nil {
@@ -331,7 +330,7 @@ var Persist = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r1, redis.OK)
+		assert.True(t, redis.OK(r1))
 
 		r2, err := c.Expire(ctx, "mykey", 10)
 		if err != nil {
@@ -392,7 +391,7 @@ var PExpire = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r1, redis.OK)
+		assert.True(t, redis.OK(r1))
 
 		r2, err := c.PExpire(ctx, "mykey", 1500)
 		if err != nil {
@@ -443,7 +442,7 @@ var PExpireAt = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r1, redis.OK)
+		assert.True(t, redis.OK(r1))
 
 		r2, err := c.PExpireAt(ctx, "mykey", 1555555555005)
 		if err != nil {
@@ -494,7 +493,7 @@ var PTTL = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r1, redis.OK)
+		assert.True(t, redis.OK(r1))
 
 		r2, err := c.Expire(ctx, "mykey", 1)
 		if err != nil {
@@ -535,13 +534,13 @@ var Rename = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r1, redis.OK)
+		assert.True(t, redis.OK(r1))
 
 		r2, err := c.Rename(ctx, "mykey", "myotherkey")
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r2, redis.OK)
+		assert.True(t, redis.OK(r2))
 
 		r3, err := c.Get(ctx, "myotherkey")
 		if err != nil {
@@ -576,13 +575,13 @@ var RenameNX = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r1, redis.OK)
+		assert.True(t, redis.OK(r1))
 
 		r2, err := c.Set(ctx, "myotherkey", "World")
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r2, redis.OK)
+		assert.True(t, redis.OK(r2))
 
 		r3, err := c.RenameNX(ctx, "mykey", "myotherkey")
 		if err != nil {
@@ -627,13 +626,13 @@ var Touch = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r1, redis.OK)
+		assert.True(t, redis.OK(r1))
 
 		r2, err := c.Set(ctx, "key2", "World")
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r2, redis.OK)
+		assert.True(t, redis.OK(r2))
 
 		r3, err := c.Touch(ctx, "key1", "key2")
 		if err != nil {
@@ -668,7 +667,7 @@ var TTL = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r1, redis.OK)
+		assert.True(t, redis.OK(r1))
 
 		r2, err := c.Expire(ctx, "mykey", 10)
 		if err != nil {
@@ -709,7 +708,7 @@ var Type = Case{
 		if err != nil {
 			return
 		}
-		assert.Equal(t, r1, redis.OK)
+		assert.True(t, redis.OK(r1))
 
 		r2, err := c.LPush(ctx, "key2", "value")
 		if err != nil {

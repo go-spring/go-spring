@@ -47,5 +47,11 @@ func RunCase(t *testing.T, c cases.Case) {
 	fastdev.Store(session)
 	defer fastdev.Delete(session.Session)
 
-	c.Func(t, ctx, new(redis.BaseClient))
+	config := redis.ClientConfig{Port: 6379}
+	client, err := redis.NewClient(config, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	c.Func(t, ctx, client)
 }

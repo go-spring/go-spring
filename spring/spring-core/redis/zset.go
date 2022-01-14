@@ -238,22 +238,22 @@ type ZSetCommand interface {
 	ZUnionStore(ctx context.Context, dest string, args ...interface{}) (int64, error)
 }
 
-func (c *BaseClient) ZAdd(ctx context.Context, key string, args ...interface{}) (int64, error) {
+func (c *client) ZAdd(ctx context.Context, key string, args ...interface{}) (int64, error) {
 	args = append([]interface{}{CommandZAdd, key}, args...)
 	return c.Int64(ctx, args...)
 }
 
-func (c *BaseClient) ZCard(ctx context.Context, key string) (int64, error) {
+func (c *client) ZCard(ctx context.Context, key string) (int64, error) {
 	args := []interface{}{CommandZCard, key}
 	return c.Int64(ctx, args...)
 }
 
-func (c *BaseClient) ZCount(ctx context.Context, key, min, max string) (int64, error) {
+func (c *client) ZCount(ctx context.Context, key, min, max string) (int64, error) {
 	args := []interface{}{CommandZCount, key, min, max}
 	return c.Int64(ctx, args...)
 }
 
-func (c *BaseClient) ZDiff(ctx context.Context, keys ...string) ([]string, error) {
+func (c *client) ZDiff(ctx context.Context, keys ...string) ([]string, error) {
 	args := []interface{}{CommandZDiff, len(keys)}
 	for _, key := range keys {
 		args = append(args, key)
@@ -261,7 +261,7 @@ func (c *BaseClient) ZDiff(ctx context.Context, keys ...string) ([]string, error
 	return c.StringSlice(ctx, args...)
 }
 
-func (c *BaseClient) ZDiffWithScores(ctx context.Context, keys ...string) ([]ZItem, error) {
+func (c *client) ZDiffWithScores(ctx context.Context, keys ...string) ([]ZItem, error) {
 	args := []interface{}{CommandZDiff, len(keys)}
 	for _, key := range keys {
 		args = append(args, key)
@@ -270,28 +270,28 @@ func (c *BaseClient) ZDiffWithScores(ctx context.Context, keys ...string) ([]ZIt
 	return c.ZItemSlice(ctx, args...)
 }
 
-func (c *BaseClient) ZIncrBy(ctx context.Context, key string, increment float64, member string) (float64, error) {
+func (c *client) ZIncrBy(ctx context.Context, key string, increment float64, member string) (float64, error) {
 	args := []interface{}{CommandZIncrBy, key, increment, member}
 	return c.Float64(ctx, args...)
 }
 
-func (c *BaseClient) ZInter(ctx context.Context, args ...interface{}) ([]string, error) {
+func (c *client) ZInter(ctx context.Context, args ...interface{}) ([]string, error) {
 	args = append([]interface{}{CommandZInter}, args...)
 	return c.StringSlice(ctx, args...)
 }
 
-func (c *BaseClient) ZInterWithScores(ctx context.Context, args ...interface{}) ([]ZItem, error) {
+func (c *client) ZInterWithScores(ctx context.Context, args ...interface{}) ([]ZItem, error) {
 	args = append([]interface{}{CommandZInter}, args...)
 	args = append(args, "WITHSCORES")
 	return c.ZItemSlice(ctx, args...)
 }
 
-func (c *BaseClient) ZLexCount(ctx context.Context, key, min, max string) (int64, error) {
+func (c *client) ZLexCount(ctx context.Context, key, min, max string) (int64, error) {
 	args := []interface{}{CommandZLexCount, key, min, max}
 	return c.Int64(ctx, args...)
 }
 
-func (c *BaseClient) ZMScore(ctx context.Context, key string, members ...string) ([]float64, error) {
+func (c *client) ZMScore(ctx context.Context, key string, members ...string) ([]float64, error) {
 	args := []interface{}{CommandZMScore, key}
 	for _, member := range members {
 		args = append(args, member)
@@ -299,68 +299,68 @@ func (c *BaseClient) ZMScore(ctx context.Context, key string, members ...string)
 	return c.Float64Slice(ctx, args...)
 }
 
-func (c *BaseClient) ZPopMax(ctx context.Context, key string) ([]ZItem, error) {
+func (c *client) ZPopMax(ctx context.Context, key string) ([]ZItem, error) {
 	args := []interface{}{CommandZPopMax, key}
 	return c.ZItemSlice(ctx, args...)
 }
 
-func (c *BaseClient) ZPopMaxN(ctx context.Context, key string, count int64) ([]ZItem, error) {
+func (c *client) ZPopMaxN(ctx context.Context, key string, count int64) ([]ZItem, error) {
 	args := []interface{}{CommandZPopMax, key, count}
 	return c.ZItemSlice(ctx, args...)
 }
 
-func (c *BaseClient) ZPopMin(ctx context.Context, key string) ([]ZItem, error) {
+func (c *client) ZPopMin(ctx context.Context, key string) ([]ZItem, error) {
 	args := []interface{}{CommandZPopMin, key}
 	return c.ZItemSlice(ctx, args...)
 }
 
-func (c *BaseClient) ZPopMinN(ctx context.Context, key string, count int64) ([]ZItem, error) {
+func (c *client) ZPopMinN(ctx context.Context, key string, count int64) ([]ZItem, error) {
 	args := []interface{}{CommandZPopMin, key, count}
 	return c.ZItemSlice(ctx, args...)
 }
 
-func (c *BaseClient) ZRandMember(ctx context.Context, key string) (string, error) {
+func (c *client) ZRandMember(ctx context.Context, key string) (string, error) {
 	args := []interface{}{CommandZRandMember, key}
 	return c.String(ctx, args...)
 }
 
-func (c *BaseClient) ZRandMemberN(ctx context.Context, key string, count int) ([]string, error) {
+func (c *client) ZRandMemberN(ctx context.Context, key string, count int) ([]string, error) {
 	args := []interface{}{CommandZRandMember, key, count}
 	return c.StringSlice(ctx, args...)
 }
 
-func (c *BaseClient) ZRandMemberWithScores(ctx context.Context, key string, count int) ([]ZItem, error) {
+func (c *client) ZRandMemberWithScores(ctx context.Context, key string, count int) ([]ZItem, error) {
 	args := []interface{}{CommandZRandMember, key, count, "WITHSCORES"}
 	return c.ZItemSlice(ctx, args...)
 }
 
-func (c *BaseClient) ZRange(ctx context.Context, key string, start, stop int64, args ...interface{}) ([]string, error) {
+func (c *client) ZRange(ctx context.Context, key string, start, stop int64, args ...interface{}) ([]string, error) {
 	args = append([]interface{}{CommandZRange, key, start, stop}, args...)
 	return c.StringSlice(ctx, args...)
 }
 
-func (c *BaseClient) ZRangeWithScores(ctx context.Context, key string, start, stop int64, args ...interface{}) ([]ZItem, error) {
+func (c *client) ZRangeWithScores(ctx context.Context, key string, start, stop int64, args ...interface{}) ([]ZItem, error) {
 	args = append([]interface{}{CommandZRange, key, start, stop}, args...)
 	args = append(args, "WITHSCORES")
 	return c.ZItemSlice(ctx, args...)
 }
 
-func (c *BaseClient) ZRangeByLex(ctx context.Context, key string, min, max string, args ...interface{}) ([]string, error) {
+func (c *client) ZRangeByLex(ctx context.Context, key string, min, max string, args ...interface{}) ([]string, error) {
 	args = append([]interface{}{CommandZRangeByLex, key, min, max}, args...)
 	return c.StringSlice(ctx, args...)
 }
 
-func (c *BaseClient) ZRangeByScore(ctx context.Context, key string, min, max string, args ...interface{}) ([]string, error) {
+func (c *client) ZRangeByScore(ctx context.Context, key string, min, max string, args ...interface{}) ([]string, error) {
 	args = append([]interface{}{CommandZRangeByScore, key, min, max}, args...)
 	return c.StringSlice(ctx, args...)
 }
 
-func (c *BaseClient) ZRank(ctx context.Context, key, member string) (int64, error) {
+func (c *client) ZRank(ctx context.Context, key, member string) (int64, error) {
 	args := []interface{}{CommandZRank, key, member}
 	return c.Int64(ctx, args...)
 }
 
-func (c *BaseClient) ZRem(ctx context.Context, key string, members ...interface{}) (int64, error) {
+func (c *client) ZRem(ctx context.Context, key string, members ...interface{}) (int64, error) {
 	args := []interface{}{CommandZRem, key}
 	for _, member := range members {
 		args = append(args, member)
@@ -368,63 +368,63 @@ func (c *BaseClient) ZRem(ctx context.Context, key string, members ...interface{
 	return c.Int64(ctx, args...)
 }
 
-func (c *BaseClient) ZRemRangeByLex(ctx context.Context, key, min, max string) (int64, error) {
+func (c *client) ZRemRangeByLex(ctx context.Context, key, min, max string) (int64, error) {
 	args := []interface{}{CommandZRemRangeByLex, key, min, max}
 	return c.Int64(ctx, args...)
 }
 
-func (c *BaseClient) ZRemRangeByRank(ctx context.Context, key string, start, stop int64) (int64, error) {
+func (c *client) ZRemRangeByRank(ctx context.Context, key string, start, stop int64) (int64, error) {
 	args := []interface{}{CommandZRemRangeByRank, key, start, stop}
 	return c.Int64(ctx, args...)
 }
 
-func (c *BaseClient) ZRemRangeByScore(ctx context.Context, key, min, max string) (int64, error) {
+func (c *client) ZRemRangeByScore(ctx context.Context, key, min, max string) (int64, error) {
 	args := []interface{}{CommandZRemRangeByScore, key, min, max}
 	return c.Int64(ctx, args...)
 }
 
-func (c *BaseClient) ZRevRange(ctx context.Context, key string, start, stop int64) ([]string, error) {
+func (c *client) ZRevRange(ctx context.Context, key string, start, stop int64) ([]string, error) {
 	args := []interface{}{CommandZRevRange, key, start, stop}
 	return c.StringSlice(ctx, args...)
 }
 
-func (c *BaseClient) ZRevRangeWithScores(ctx context.Context, key string, start, stop int64) ([]string, error) {
+func (c *client) ZRevRangeWithScores(ctx context.Context, key string, start, stop int64) ([]string, error) {
 	args := []interface{}{CommandZRevRange, key, start, stop, "WITHSCORES"}
 	return c.StringSlice(ctx, args...)
 }
 
-func (c *BaseClient) ZRevRangeByLex(ctx context.Context, key string, min, max string, args ...interface{}) ([]string, error) {
+func (c *client) ZRevRangeByLex(ctx context.Context, key string, min, max string, args ...interface{}) ([]string, error) {
 	args = append([]interface{}{CommandZRevRangeByLex, key, min, max}, args...)
 	return c.StringSlice(ctx, args...)
 }
 
-func (c *BaseClient) ZRevRangeByScore(ctx context.Context, key string, min, max string, args ...interface{}) ([]string, error) {
+func (c *client) ZRevRangeByScore(ctx context.Context, key string, min, max string, args ...interface{}) ([]string, error) {
 	args = append([]interface{}{CommandZRevRangeByScore, key, min, max}, args...)
 	return c.StringSlice(ctx, args...)
 }
 
-func (c *BaseClient) ZRevRank(ctx context.Context, key, member string) (int64, error) {
+func (c *client) ZRevRank(ctx context.Context, key, member string) (int64, error) {
 	args := []interface{}{CommandZRevRank, key, member}
 	return c.Int64(ctx, args...)
 }
 
-func (c *BaseClient) ZScore(ctx context.Context, key, member string) (float64, error) {
+func (c *client) ZScore(ctx context.Context, key, member string) (float64, error) {
 	args := []interface{}{CommandZScore, key, member}
 	return c.Float64(ctx, args...)
 }
 
-func (c *BaseClient) ZUnion(ctx context.Context, args ...interface{}) ([]string, error) {
+func (c *client) ZUnion(ctx context.Context, args ...interface{}) ([]string, error) {
 	args = append([]interface{}{CommandZUnion}, args...)
 	return c.StringSlice(ctx, args...)
 }
 
-func (c *BaseClient) ZUnionWithScores(ctx context.Context, args ...interface{}) ([]ZItem, error) {
+func (c *client) ZUnionWithScores(ctx context.Context, args ...interface{}) ([]ZItem, error) {
 	args = append([]interface{}{CommandZUnion}, args...)
 	args = append(args, "WITHSCORES")
 	return c.ZItemSlice(ctx, args...)
 }
 
-func (c *BaseClient) ZUnionStore(ctx context.Context, dest string, args ...interface{}) (int64, error) {
+func (c *client) ZUnionStore(ctx context.Context, dest string, args ...interface{}) (int64, error) {
 	args = append([]interface{}{CommandZUnionStore, dest}, args...)
 	return c.Int64(ctx, args...)
 }

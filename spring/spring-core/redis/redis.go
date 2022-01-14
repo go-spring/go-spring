@@ -20,23 +20,28 @@
 package redis
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"strconv"
-	"strings"
 
-	"github.com/go-spring/spring-base/cast"
-	"github.com/go-spring/spring-base/chrono"
 	"github.com/go-spring/spring-base/fastdev"
-	"github.com/go-spring/spring-base/fastdev/json"
 	"github.com/go-spring/spring-core/internal"
 )
 
-const OK = "OK"
+var errNil = errors.New("redis: nil")
 
-var ErrNil = errors.New("redis: nil")
+func OK(s string) bool {
+	return "OK" == s
+}
+
+func ErrNil() error {
+	return errNil
+}
+
+func IsErrNil(err error) bool {
+	return errors.Is(err, errNil)
+}
 
 type Client interface {
 	DoCommand
@@ -63,129 +68,49 @@ type DoCommand interface {
 	ZItemSlice(ctx context.Context, args ...interface{}) ([]ZItem, error)
 }
 
-type Hook struct {
-	BeforeDoFunc func(ctx context.Context, args []interface{}) (err error)
-	AfterDoFunc  func(ctx context.Context, args []interface{}, ret interface{}, err error)
+type ClientConfig = internal.RedisClientConfig
+
+type Driver interface {
+	Open(config ClientConfig) (Conn, error)
 }
 
-var hook Hook
-
-// SetHook 设置钩子方法。
-func SetHook(h Hook) {
-	hook = h
+type Conn interface {
+	Exec(ctx context.Context, args ...interface{}) (interface{}, error)
 }
 
-type ClientConfig internal.RedisClientConfig
-
-type BaseClient struct {
-	DoFunc func(ctx context.Context, args ...interface{}) (interface{}, error)
+type client struct {
+	conn Conn
 }
 
-// needQuote 判断是否需要双引号包裹。
-func needQuote(s string) bool {
-	for _, c := range s {
-		switch c {
-		case '"', '\t', '\n', '\v', '\f', '\r', ' ', 0x85, 0xA0:
-			return true
+func NewClient(config ClientConfig, d Driver) (Client, error) {
+
+	var (
+		conn Conn
+		err  error
+	)
+
+	if fastdev.ReplayMode() {
+		conn = &replayConn{}
+	} else {
+		conn, err = d.Open(config)
+		if err != nil {
+			return nil, err
 		}
 	}
-	return len(s) == 0
-}
 
-func quoteString(s string) string {
-	if needQuote(s) || json.NeedQuote(s) {
-		return json.Quote(s)
+	if fastdev.RecordMode() {
+		conn = &recordConn{conn: conn}
 	}
-	return s
-}
-
-func cmdString(args []interface{}) string {
-	var buf bytes.Buffer
-	for i, arg := range args {
-		switch s := arg.(type) {
-		case string:
-			buf.WriteString(quoteString(s))
-		default:
-			buf.WriteString(cast.ToString(arg))
-		}
-		if i < len(args)-1 {
-			buf.WriteByte(' ')
-		}
-	}
-	return buf.String()
+	return &client{conn: conn}, nil
 }
 
 type transform func(interface{}, error) (interface{}, error)
 
-func (c *BaseClient) do(ctx context.Context, args []interface{}, trans transform) (ret interface{}, err error) {
-
-	var timeNow int64
-	if fastdev.RecordMode() {
-		timeNow = chrono.Now(ctx).UnixNano()
-	}
-
-	defer func() {
-		if fastdev.RecordMode() {
-			var resp interface{}
-			if err == nil {
-				resp = ret
-			} else if err == ErrNil {
-				resp = "(nil)"
-			} else {
-				resp = "(err) " + err.Error()
-			}
-			fastdev.RecordAction(ctx, &fastdev.Action{
-				Protocol:  fastdev.REDIS,
-				Request:   cmdString(args),
-				Response:  resp,
-				Timestamp: timeNow,
-			})
-		}
-	}()
-
-	if hook.BeforeDoFunc != nil {
-		if err = hook.BeforeDoFunc(ctx, args); err != nil {
-			return nil, err
-		}
-	}
-
-	defer func() {
-		if hook.AfterDoFunc != nil {
-			hook.AfterDoFunc(ctx, args, ret, err)
-		}
-	}()
-
-	if fastdev.ReplayMode() {
-		action := &fastdev.Action{
-			Protocol: fastdev.REDIS,
-			Request:  cmdString(args),
-		}
-		var ok bool
-		ok, err = fastdev.ReplayAction(ctx, action)
-		if err != nil {
-			return nil, err
-		}
-		if !ok {
-			return nil, errors.New("replay action not match")
-		}
-		if action.Response == "(nil)" {
-			return nil, ErrNil
-		} else {
-			var s string
-			s, ok = action.Response.(string)
-			if ok {
-				if strings.HasPrefix(s, "(err) ") {
-					return nil, errors.New(strings.TrimPrefix(s, "(err) "))
-				}
-			}
-		}
-		return action.Response, nil
-	}
-
+func (c *client) do(ctx context.Context, args []interface{}, trans transform) (ret interface{}, err error) {
 	if trans == nil {
-		return c.DoFunc(ctx, args...)
+		return c.conn.Exec(ctx, args...)
 	}
-	return trans(c.DoFunc(ctx, args...))
+	return trans(c.conn.Exec(ctx, args...))
 }
 
 func toInt(v interface{}, err error) (int, error) {
@@ -202,7 +127,7 @@ func toInt(v interface{}, err error) (int, error) {
 	}
 }
 
-func (c *BaseClient) Int(ctx context.Context, args ...interface{}) (int, error) {
+func (c *client) Int(ctx context.Context, args ...interface{}) (int, error) {
 	return toInt(c.do(ctx, args, nil))
 }
 
@@ -220,7 +145,7 @@ func toInt64(v interface{}, err error) (int64, error) {
 	}
 }
 
-func (c *BaseClient) Int64(ctx context.Context, args ...interface{}) (int64, error) {
+func (c *client) Int64(ctx context.Context, args ...interface{}) (int64, error) {
 	return toInt64(c.do(ctx, args, nil))
 }
 
@@ -240,7 +165,7 @@ func toFloat64(v interface{}, err error) (float64, error) {
 	}
 }
 
-func (c *BaseClient) Float64(ctx context.Context, args ...interface{}) (float64, error) {
+func (c *client) Float64(ctx context.Context, args ...interface{}) (float64, error) {
 	return toFloat64(c.do(ctx, args, nil))
 }
 
@@ -256,7 +181,7 @@ func toString(v interface{}, err error) (string, error) {
 	}
 }
 
-func (c *BaseClient) String(ctx context.Context, args ...interface{}) (string, error) {
+func (c *client) String(ctx context.Context, args ...interface{}) (string, error) {
 	return toString(c.do(ctx, args, nil))
 }
 
@@ -272,7 +197,7 @@ func toSlice(v interface{}, err error) ([]interface{}, error) {
 	}
 }
 
-func (c *BaseClient) Slice(ctx context.Context, args ...interface{}) ([]interface{}, error) {
+func (c *client) Slice(ctx context.Context, args ...interface{}) ([]interface{}, error) {
 	return toSlice(c.do(ctx, args, nil))
 }
 
@@ -293,7 +218,7 @@ func toInt64Slice(v interface{}, err error) ([]int64, error) {
 	return val, nil
 }
 
-func (c *BaseClient) Int64Slice(ctx context.Context, args ...interface{}) ([]int64, error) {
+func (c *client) Int64Slice(ctx context.Context, args ...interface{}) ([]int64, error) {
 	return toInt64Slice(c.do(ctx, args, nil))
 }
 
@@ -314,7 +239,7 @@ func toFloat64Slice(v interface{}, err error) ([]float64, error) {
 	return val, nil
 }
 
-func (c *BaseClient) Float64Slice(ctx context.Context, args ...interface{}) ([]float64, error) {
+func (c *client) Float64Slice(ctx context.Context, args ...interface{}) ([]float64, error) {
 	return toFloat64Slice(c.do(ctx, args, nil))
 }
 
@@ -335,7 +260,7 @@ func toStringSlice(v interface{}, err error) ([]string, error) {
 	return val, nil
 }
 
-func (c *BaseClient) StringSlice(ctx context.Context, args ...interface{}) ([]string, error) {
+func (c *client) StringSlice(ctx context.Context, args ...interface{}) ([]string, error) {
 	return toStringSlice(c.do(ctx, args, nil))
 }
 
@@ -362,7 +287,7 @@ func toStringMap(v interface{}, err error) (map[string]string, error) {
 	}
 }
 
-func (c *BaseClient) StringMap(ctx context.Context, args ...interface{}) (map[string]string, error) {
+func (c *client) StringMap(ctx context.Context, args ...interface{}) (map[string]string, error) {
 	return toStringMap(c.do(ctx, args, func(v interface{}, err error) (interface{}, error) {
 		slice, err := toStringSlice(v, err)
 		if err != nil {
@@ -418,7 +343,7 @@ func toZItemSlice(v interface{}, err error) ([]ZItem, error) {
 	}
 }
 
-func (c *BaseClient) ZItemSlice(ctx context.Context, args ...interface{}) ([]ZItem, error) {
+func (c *client) ZItemSlice(ctx context.Context, args ...interface{}) ([]ZItem, error) {
 	return toZItemSlice(c.do(ctx, args, func(v interface{}, err error) (interface{}, error) {
 		slice, err := toStringSlice(v, err)
 		if err != nil {

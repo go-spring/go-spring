@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/go-spring/spring-base/assert"
+	"github.com/go-spring/spring-base/cast"
 )
 
 func TestCmdString(t *testing.T) {
@@ -55,6 +56,6 @@ func TestCmdString(t *testing.T) {
 	}
 
 	for _, testcase := range testcases {
-		assert.Equal(t, cmdString(testcase.cmd), testcase.val)
+		assert.Equal(t, cast.CmdString(testcase.cmd), testcase.val)
 	}
 }

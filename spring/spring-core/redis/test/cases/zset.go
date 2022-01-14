@@ -70,12 +70,7 @@ var ZAdd = Case{
 		}, {
 			"protocol": "redis",
 			"request": "ZRANGE myzset 0 -1 WITHSCORES",
-			"response": [
-				["one", "1"],
-				["uno", "1"],
-				["two", "2"],
-				["three", "3"]
-			]
+			"response": ["one", "1", "uno", "1", "two", "2", "three", "3"]
 		}]
 	}`,
 }
@@ -258,9 +253,7 @@ var ZDiff = Case{
 		}, {
 			"protocol": "redis",
 			"request": "ZDIFF 2 zset1 zset2 WITHSCORES",
-			"response": [
-				["three", "3"]
-			]
+			"response": ["three", "3"]
 		}]
 	}`,
 }
@@ -311,10 +304,7 @@ var ZIncrBy = Case{
 		}, {
 			"protocol": "redis",
 			"request": "ZRANGE myzset 0 -1 WITHSCORES",
-			"response": [
-				["two", "2"],
-				["one", "3"]
-			]
+			"response": ["two", "2", "one", "3"]
 		}]
 	}`,
 }
@@ -395,10 +385,7 @@ var ZInter = Case{
 		}, {
 			"protocol": "redis",
 			"request": "ZINTER 2 zset1 zset2 WITHSCORES",
-			"response": [
-				["one", "2"],
-				["two", "4"]
-			]
+			"response": ["one", "2", "two", "4"]
 		}]
 	}`,
 }
@@ -541,9 +528,7 @@ var ZPopMax = Case{
 		}, {
 			"protocol": "redis",
 			"request": "ZPOPMAX myzset",
-			"response": [
-				["three", "3"]
-			]
+			"response": ["three", "3"]
 		}]
 	}`,
 }
@@ -594,9 +579,7 @@ var ZPopMin = Case{
 		}, {
 			"protocol": "redis",
 			"request": "ZPOPMIN myzset",
-			"response": [
-				["one", "1"]
-			]
+			"response": ["one", "1"]
 		}]
 	}`,
 }
@@ -647,13 +630,7 @@ var ZRandMember = Case{
 		}, {
 			"protocol": "redis",
 			"request": "ZRANDMEMBER dadi -5 WITHSCORES",
-			"response": [
-				["uno", "1"],
-				["uno", "1"],
-				["cinque", "5"],
-				["sei", "6"],
-				["due", "2"]
-			]
+			"response": ["uno", "1", "uno", "1", "cinque", "5", "sei", "6", "due", "2"]
 		}]
 	}`,
 }
@@ -734,10 +711,7 @@ var ZRange = Case{
 		}, {
 			"protocol": "redis",
 			"request": "ZRANGE myzset 0 1 WITHSCORES",
-			"response": [
-				["one", "1"],
-				["two", "2"]
-			]
+			"response": ["one", "1", "two", "2"]
 		}]
 	}`,
 }
@@ -902,7 +876,7 @@ var ZRank = Case{
 		assert.Equal(t, r4, int64(2))
 
 		_, err = c.ZRank(ctx, "myzset", "four")
-		assert.Equal(t, err, redis.ErrNil)
+		assert.True(t, redis.IsErrNil(err))
 	},
 	Data: `
 	{
@@ -988,10 +962,7 @@ var ZRem = Case{
 		}, {
 			"protocol": "redis",
 			"request": "ZRANGE myzset 0 -1 WITHSCORES",
-			"response": [
-				["one", "1"],
-				["three", "3"]
-			]
+			"response": ["one", "1", "three", "3"]
 		}]
 	}`,
 }
@@ -1115,9 +1086,7 @@ var ZRemRangeByRank = Case{
 		}, {
 			"protocol": "redis",
 			"request": "ZRANGE myzset 0 -1 WITHSCORES",
-			"response": [
-				["three", "3"]
-			]
+			"response": ["three", "3"]
 		}]
 	}`,
 }
@@ -1178,10 +1147,7 @@ var ZRemRangeByScore = Case{
 		}, {
 			"protocol": "redis",
 			"request": "ZRANGE myzset 0 -1 WITHSCORES",
-			"response": [
-				["two", "2"],
-				["three", "3"]
-			]
+			"response": ["two", "2", "three", "3"]
 		}]
 	}`,
 }
@@ -1417,7 +1383,7 @@ var ZRevRank = Case{
 		assert.Equal(t, r4, int64(2))
 
 		_, err = c.ZRevRank(ctx, "myzset", "four")
-		assert.Equal(t, err, redis.ErrNil)
+		assert.True(t, redis.IsErrNil(err))
 	},
 	Data: `
 	{
@@ -1554,11 +1520,7 @@ var ZUnion = Case{
 		}, {
 			"protocol": "redis",
 			"request": "ZUNION 2 zset1 zset2 WITHSCORES",
-			"response": [
-				["one", "2"],
-				["three", "3"],
-				["two", "4"]
-			]
+			"response": ["one", "2", "three", "3", "two", "4"]
 		}]
 	}`,
 }
@@ -1639,11 +1601,7 @@ var ZUnionStore = Case{
 		}, {
 			"protocol": "redis",
 			"request": "ZRANGE out 0 -1 WITHSCORES",
-			"response": [
-				["one", "5"],
-				["three", "9"],
-				["two", "10"]
-			]
+			"response": ["one", "5", "three", "9", "two", "10"]
 		}]
 	}`,
 }

@@ -82,7 +82,7 @@ var Decr = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r1, redis.OK)
+		assert.True(t, redis.OK(r1))
 
 		r2, err := c.Decr(ctx, "mykey")
 		if err != nil {
@@ -94,7 +94,7 @@ var Decr = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r3, redis.OK)
+		assert.True(t, redis.OK(r3))
 
 		_, err = c.Decr(ctx, "mykey")
 		assert.Error(t, err, "ERR value is not an integer or out of range")
@@ -130,7 +130,7 @@ var DecrBy = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r1, redis.OK)
+		assert.True(t, redis.OK(r1))
 
 		r2, err := c.DecrBy(ctx, "mykey", 3)
 		if err != nil {
@@ -158,13 +158,13 @@ var Get = Case{
 	Func: func(t *testing.T, ctx context.Context, c redis.Client) {
 
 		_, err := c.Get(ctx, "nonexisting")
-		assert.Equal(t, err, redis.ErrNil)
+		assert.True(t, redis.IsErrNil(err))
 
 		r2, err := c.Set(ctx, "mykey", "Hello")
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r2, redis.OK)
+		assert.True(t, redis.OK(r2))
 
 		r3, err := c.Get(ctx, "mykey")
 		if err != nil {
@@ -199,7 +199,7 @@ var GetDel = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r1, redis.OK)
+		assert.True(t, redis.OK(r1))
 
 		r2, err := c.GetDel(ctx, "mykey")
 		if err != nil {
@@ -208,7 +208,7 @@ var GetDel = Case{
 		assert.Equal(t, r2, "Hello")
 
 		_, err = c.Get(ctx, "mykey")
-		assert.Equal(t, err, redis.ErrNil)
+		assert.True(t, redis.IsErrNil(err))
 	},
 	Data: `
 	{
@@ -237,7 +237,7 @@ var GetRange = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r1, redis.OK)
+		assert.True(t, redis.OK(r1))
 
 		r2, err := c.GetRange(ctx, "mykey", 0, 3)
 		if err != nil {
@@ -316,7 +316,7 @@ var GetSet = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r4, redis.OK)
+		assert.True(t, redis.OK(r4))
 
 		r5, err := c.GetSet(ctx, "mykey", "World")
 		if err != nil {
@@ -369,7 +369,7 @@ var Incr = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r1, redis.OK)
+		assert.True(t, redis.OK(r1))
 
 		r2, err := c.Incr(ctx, "mykey")
 		if err != nil {
@@ -410,7 +410,7 @@ var IncrBy = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r1, redis.OK)
+		assert.True(t, redis.OK(r1))
 
 		r2, err := c.IncrBy(ctx, "mykey", 5)
 		if err != nil {
@@ -441,7 +441,7 @@ var IncrByFloat = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r1, redis.OK)
+		assert.True(t, redis.OK(r1))
 
 		r2, err := c.IncrByFloat(ctx, "mykey", 0.1)
 		if err != nil {
@@ -459,7 +459,7 @@ var IncrByFloat = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r4, redis.OK)
+		assert.True(t, redis.OK(r4))
 
 		r5, err := c.IncrByFloat(ctx, "mykey", 2.0e2)
 		if err != nil {
@@ -502,13 +502,13 @@ var MGet = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r1, redis.OK)
+		assert.True(t, redis.OK(r1))
 
 		r2, err := c.Set(ctx, "key2", "World")
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r2, redis.OK)
+		assert.True(t, redis.OK(r2))
 
 		r3, err := c.MGet(ctx, "key1", "key2", "nonexisting")
 		if err != nil {
@@ -543,7 +543,7 @@ var MSet = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r1, redis.OK)
+		assert.True(t, redis.OK(r1))
 
 		r2, err := c.Get(ctx, "key1")
 		if err != nil {
@@ -625,7 +625,7 @@ var PSetEX = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r1, redis.OK)
+		assert.True(t, redis.OK(r1))
 
 		r2, err := c.PTTL(ctx, "mykey")
 		if err != nil {
@@ -666,7 +666,7 @@ var Set = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r1, redis.OK)
+		assert.True(t, redis.OK(r1))
 
 		r2, err := c.Get(ctx, "mykey")
 		if err != nil {
@@ -678,7 +678,7 @@ var Set = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r3, redis.OK)
+		assert.True(t, redis.OK(r3))
 	},
 	Data: `
 	{
@@ -707,7 +707,7 @@ var SetEX = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r1, redis.OK)
+		assert.True(t, redis.OK(r1))
 
 		r2, err := c.TTL(ctx, "mykey")
 		if err != nil {
@@ -789,7 +789,7 @@ var SetRange = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r1, redis.OK)
+		assert.True(t, redis.OK(r1))
 
 		r2, err := c.SetRange(ctx, "key1", 6, "Redis")
 		if err != nil {
@@ -850,7 +850,7 @@ var StrLen = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r1, redis.OK)
+		assert.True(t, redis.OK(r1))
 
 		r2, err := c.StrLen(ctx, "mykey")
 		if err != nil {

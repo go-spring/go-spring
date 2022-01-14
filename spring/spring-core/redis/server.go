@@ -32,7 +32,7 @@ type ServerCommand interface {
 	FlushAll(ctx context.Context, args ...interface{}) (string, error)
 }
 
-func (c *BaseClient) FlushAll(ctx context.Context, args ...interface{}) (string, error) {
+func (c *client) FlushAll(ctx context.Context, args ...interface{}) (string, error) {
 	args = append([]interface{}{CommandFlushAll}, args...)
 	return c.String(ctx, args...)
 }

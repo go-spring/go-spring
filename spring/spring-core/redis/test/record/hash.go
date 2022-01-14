@@ -23,54 +23,54 @@ import (
 	"github.com/go-spring/spring-core/redis/test/cases"
 )
 
-func HDel(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.HDel)
+func HDel(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.HDel)
 }
 
-func HExists(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.HExists)
+func HExists(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.HExists)
 }
 
-func HGet(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.HGet)
+func HGet(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.HGet)
 }
 
-func HGetAll(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.HGetAll)
+func HGetAll(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.HGetAll)
 }
 
-func HIncrBy(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.HIncrBy)
+func HIncrBy(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.HIncrBy)
 }
 
-func HIncrByFloat(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.HIncrByFloat)
+func HIncrByFloat(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.HIncrByFloat)
 }
 
-func HKeys(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.HKeys)
+func HKeys(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.HKeys)
 }
 
-func HLen(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.HLen)
+func HLen(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.HLen)
 }
 
-func HMGet(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.HMGet)
+func HMGet(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.HMGet)
 }
 
-func HSet(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.HSet)
+func HSet(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.HSet)
 }
 
-func HSetNX(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.HSetNX)
+func HSetNX(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.HSetNX)
 }
 
-func HStrLen(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.HStrLen)
+func HStrLen(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.HStrLen)
 }
 
-func HVals(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.HVals)
+func HVals(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.HVals)
 }

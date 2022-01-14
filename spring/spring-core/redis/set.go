@@ -133,18 +133,18 @@ type SetCommand interface {
 	SUnionStore(ctx context.Context, destination string, keys ...string) (int64, error)
 }
 
-func (c *BaseClient) SAdd(ctx context.Context, key string, members ...interface{}) (int64, error) {
+func (c *client) SAdd(ctx context.Context, key string, members ...interface{}) (int64, error) {
 	args := []interface{}{CommandSAdd, key}
 	args = append(args, members...)
 	return c.Int64(ctx, args...)
 }
 
-func (c *BaseClient) SCard(ctx context.Context, key string) (int64, error) {
+func (c *client) SCard(ctx context.Context, key string) (int64, error) {
 	args := []interface{}{CommandSCard, key}
 	return c.Int64(ctx, args...)
 }
 
-func (c *BaseClient) SDiff(ctx context.Context, keys ...string) ([]string, error) {
+func (c *client) SDiff(ctx context.Context, keys ...string) ([]string, error) {
 	args := []interface{}{CommandSDiff}
 	for _, key := range keys {
 		args = append(args, key)
@@ -152,7 +152,7 @@ func (c *BaseClient) SDiff(ctx context.Context, keys ...string) ([]string, error
 	return c.StringSlice(ctx, args...)
 }
 
-func (c *BaseClient) SDiffStore(ctx context.Context, destination string, keys ...string) (int64, error) {
+func (c *client) SDiffStore(ctx context.Context, destination string, keys ...string) (int64, error) {
 	args := []interface{}{CommandSDiffStore, destination}
 	for _, key := range keys {
 		args = append(args, key)
@@ -160,7 +160,7 @@ func (c *BaseClient) SDiffStore(ctx context.Context, destination string, keys ..
 	return c.Int64(ctx, args...)
 }
 
-func (c *BaseClient) SInter(ctx context.Context, keys ...string) ([]string, error) {
+func (c *client) SInter(ctx context.Context, keys ...string) ([]string, error) {
 	args := []interface{}{CommandSInter}
 	for _, key := range keys {
 		args = append(args, key)
@@ -168,7 +168,7 @@ func (c *BaseClient) SInter(ctx context.Context, keys ...string) ([]string, erro
 	return c.StringSlice(ctx, args...)
 }
 
-func (c *BaseClient) SInterStore(ctx context.Context, destination string, keys ...string) (int64, error) {
+func (c *client) SInterStore(ctx context.Context, destination string, keys ...string) (int64, error) {
 	args := []interface{}{CommandSInterStore, destination}
 	for _, key := range keys {
 		args = append(args, key)
@@ -176,17 +176,17 @@ func (c *BaseClient) SInterStore(ctx context.Context, destination string, keys .
 	return c.Int64(ctx, args...)
 }
 
-func (c *BaseClient) SIsMember(ctx context.Context, key string, member interface{}) (int, error) {
+func (c *client) SIsMember(ctx context.Context, key string, member interface{}) (int, error) {
 	args := []interface{}{CommandSIsMember, key, member}
 	return c.Int(ctx, args...)
 }
 
-func (c *BaseClient) SMembers(ctx context.Context, key string) ([]string, error) {
+func (c *client) SMembers(ctx context.Context, key string) ([]string, error) {
 	args := []interface{}{CommandSMembers, key}
 	return c.StringSlice(ctx, args...)
 }
 
-func (c *BaseClient) SMIsMember(ctx context.Context, key string, members ...interface{}) ([]int64, error) {
+func (c *client) SMIsMember(ctx context.Context, key string, members ...interface{}) ([]int64, error) {
 	args := []interface{}{CommandSMIsMember, key}
 	for _, member := range members {
 		args = append(args, member)
@@ -194,32 +194,32 @@ func (c *BaseClient) SMIsMember(ctx context.Context, key string, members ...inte
 	return c.Int64Slice(ctx, args...)
 }
 
-func (c *BaseClient) SMove(ctx context.Context, source, destination string, member interface{}) (int, error) {
+func (c *client) SMove(ctx context.Context, source, destination string, member interface{}) (int, error) {
 	args := []interface{}{CommandSMove, source, destination, member}
 	return c.Int(ctx, args...)
 }
 
-func (c *BaseClient) SPop(ctx context.Context, key string) (string, error) {
+func (c *client) SPop(ctx context.Context, key string) (string, error) {
 	args := []interface{}{CommandSPop, key}
 	return c.String(ctx, args...)
 }
 
-func (c *BaseClient) SPopN(ctx context.Context, key string, count int64) ([]string, error) {
+func (c *client) SPopN(ctx context.Context, key string, count int64) ([]string, error) {
 	args := []interface{}{CommandSPop, key, count}
 	return c.StringSlice(ctx, args...)
 }
 
-func (c *BaseClient) SRandMember(ctx context.Context, key string) (string, error) {
+func (c *client) SRandMember(ctx context.Context, key string) (string, error) {
 	args := []interface{}{CommandSRandMember, key}
 	return c.String(ctx, args...)
 }
 
-func (c *BaseClient) SRandMemberN(ctx context.Context, key string, count int64) ([]string, error) {
+func (c *client) SRandMemberN(ctx context.Context, key string, count int64) ([]string, error) {
 	args := []interface{}{CommandSRandMember, key, count}
 	return c.StringSlice(ctx, args...)
 }
 
-func (c *BaseClient) SRem(ctx context.Context, key string, members ...interface{}) (int64, error) {
+func (c *client) SRem(ctx context.Context, key string, members ...interface{}) (int64, error) {
 	args := []interface{}{CommandSRem, key}
 	for _, member := range members {
 		args = append(args, member)
@@ -227,7 +227,7 @@ func (c *BaseClient) SRem(ctx context.Context, key string, members ...interface{
 	return c.Int64(ctx, args...)
 }
 
-func (c *BaseClient) SUnion(ctx context.Context, keys ...string) ([]string, error) {
+func (c *client) SUnion(ctx context.Context, keys ...string) ([]string, error) {
 	args := []interface{}{CommandSUnion}
 	for _, key := range keys {
 		args = append(args, key)
@@ -235,7 +235,7 @@ func (c *BaseClient) SUnion(ctx context.Context, keys ...string) ([]string, erro
 	return c.StringSlice(ctx, args...)
 }
 
-func (c *BaseClient) SUnionStore(ctx context.Context, destination string, keys ...string) (int64, error) {
+func (c *client) SUnionStore(ctx context.Context, destination string, keys ...string) (int64, error) {
 	args := []interface{}{CommandSUnionStore, destination}
 	for _, key := range keys {
 		args = append(args, key)

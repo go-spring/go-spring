@@ -23,62 +23,62 @@ import (
 	"github.com/go-spring/spring-core/redis/test/cases"
 )
 
-func Del(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.Del)
+func Del(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.Del)
 }
 
-func Dump(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.Dump)
+func Dump(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.Dump)
 }
 
-func Exists(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.Exists)
+func Exists(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.Exists)
 }
 
-func Expire(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.Expire)
+func Expire(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.Expire)
 }
 
-func ExpireAt(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.ExpireAt)
+func ExpireAt(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.ExpireAt)
 }
 
-func Keys(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.Keys)
+func Keys(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.Keys)
 }
 
-func Persist(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.Persist)
+func Persist(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.Persist)
 }
 
-func PExpire(t *testing.T, c redis.Client) {
-	// RunCase(t, c, cases.PExpire)
+func PExpire(t *testing.T, d redis.Driver) {
+	// RunCase(t, d, cases.PExpire)
 }
 
-func PExpireAt(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.PExpireAt)
+func PExpireAt(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.PExpireAt)
 }
 
-func PTTL(t *testing.T, c redis.Client) {
-	// RunCase(t, c, cases.PTTL)
+func PTTL(t *testing.T, d redis.Driver) {
+	// RunCase(t, d, cases.PTTL)
 }
 
-func Rename(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.Rename)
+func Rename(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.Rename)
 }
 
-func RenameNX(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.RenameNX)
+func RenameNX(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.RenameNX)
 }
 
-func Touch(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.Touch)
+func Touch(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.Touch)
 }
 
-func TTL(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.TTL)
+func TTL(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.TTL)
 }
 
-func Type(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.Type)
+func Type(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.Type)
 }

@@ -52,7 +52,7 @@ var LIndex = Case{
 		assert.Equal(t, r4, "World")
 
 		_, err = c.LIndex(ctx, "mylist", 3)
-		assert.Equal(t, err, redis.ErrNil)
+		assert.True(t, redis.IsErrNil(err))
 	},
 	Data: `
 	{
@@ -626,13 +626,13 @@ var LSet = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r4, redis.OK)
+		assert.True(t, redis.OK(r4))
 
 		r5, err := c.LSet(ctx, "mylist", -2, "five")
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r5, redis.OK)
+		assert.True(t, redis.OK(r5))
 
 		r6, err := c.LRange(ctx, "mylist", 0, -1)
 		if err != nil {
@@ -697,7 +697,7 @@ var LTrim = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r4, redis.OK)
+		assert.True(t, redis.OK(r4))
 
 		r5, err := c.LRange(ctx, "mylist", 0, -1)
 		if err != nil {

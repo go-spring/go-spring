@@ -23,58 +23,58 @@ import (
 	"github.com/go-spring/spring-core/redis/test/cases"
 )
 
-func SAdd(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.SAdd)
+func SAdd(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.SAdd)
 }
 
-func SCard(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.SCard)
+func SCard(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.SCard)
 }
 
-func SDiff(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.SDiff)
+func SDiff(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.SDiff)
 }
 
-func SDiffStore(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.SDiffStore)
+func SDiffStore(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.SDiffStore)
 }
 
-func SInter(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.SInter)
+func SInter(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.SInter)
 }
 
-func SInterStore(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.SInterStore)
+func SInterStore(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.SInterStore)
 }
 
-func SMembers(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.SMembers)
+func SMembers(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.SMembers)
 }
 
-func SMIsMember(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.SMIsMember)
+func SMIsMember(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.SMIsMember)
 }
 
-func SMove(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.SMove)
+func SMove(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.SMove)
 }
 
-func SPop(t *testing.T, c redis.Client) {
-	// RunCase(t, c, cases.SPop)
+func SPop(t *testing.T, d redis.Driver) {
+	// RunCase(t, d, cases.SPop)
 }
 
-func SRandMember(t *testing.T, c redis.Client) {
-	//RunCase(t, c, cases.SRandMember)
+func SRandMember(t *testing.T, d redis.Driver) {
+	//RunCase(t, d, cases.SRandMember)
 }
 
-func SRem(t *testing.T, c redis.Client) {
-	// RunCase(t, c, cases.SRem)
+func SRem(t *testing.T, d redis.Driver) {
+	// RunCase(t, d, cases.SRem)
 }
 
-func SUnion(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.SUnion)
+func SUnion(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.SUnion)
 }
 
-func SUnionStore(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.SUnionStore)
+func SUnionStore(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.SUnionStore)
 }

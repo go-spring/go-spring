@@ -149,62 +149,62 @@ type StringCommand interface {
 	StrLen(ctx context.Context, key string) (int64, error)
 }
 
-func (c *BaseClient) Append(ctx context.Context, key, value string) (int64, error) {
+func (c *client) Append(ctx context.Context, key, value string) (int64, error) {
 	args := []interface{}{CommandAppend, key, value}
 	return c.Int64(ctx, args...)
 }
 
-func (c *BaseClient) Decr(ctx context.Context, key string) (int64, error) {
+func (c *client) Decr(ctx context.Context, key string) (int64, error) {
 	args := []interface{}{CommandDecr, key}
 	return c.Int64(ctx, args...)
 }
 
-func (c *BaseClient) DecrBy(ctx context.Context, key string, decrement int64) (int64, error) {
+func (c *client) DecrBy(ctx context.Context, key string, decrement int64) (int64, error) {
 	args := []interface{}{CommandDecrBy, key, decrement}
 	return c.Int64(ctx, args...)
 }
 
-func (c *BaseClient) Get(ctx context.Context, key string) (string, error) {
+func (c *client) Get(ctx context.Context, key string) (string, error) {
 	args := []interface{}{CommandGet, key}
 	return c.String(ctx, args...)
 }
 
-func (c *BaseClient) GetDel(ctx context.Context, key string) (string, error) {
+func (c *client) GetDel(ctx context.Context, key string) (string, error) {
 	args := []interface{}{CommandGetDel, key}
 	return c.String(ctx, args...)
 }
 
-func (c *BaseClient) GetEx(ctx context.Context, key string, args ...interface{}) (string, error) {
+func (c *client) GetEx(ctx context.Context, key string, args ...interface{}) (string, error) {
 	args = append([]interface{}{CommandGetEx, key}, args...)
 	return c.String(ctx, args...)
 }
 
-func (c *BaseClient) GetRange(ctx context.Context, key string, start, end int64) (string, error) {
+func (c *client) GetRange(ctx context.Context, key string, start, end int64) (string, error) {
 	args := []interface{}{CommandGetRange, key, start, end}
 	return c.String(ctx, args...)
 }
 
-func (c *BaseClient) GetSet(ctx context.Context, key string, value interface{}) (string, error) {
+func (c *client) GetSet(ctx context.Context, key string, value interface{}) (string, error) {
 	args := []interface{}{CommandGetSet, key, value}
 	return c.String(ctx, args...)
 }
 
-func (c *BaseClient) Incr(ctx context.Context, key string) (int64, error) {
+func (c *client) Incr(ctx context.Context, key string) (int64, error) {
 	args := []interface{}{CommandIncr, key}
 	return c.Int64(ctx, args...)
 }
 
-func (c *BaseClient) IncrBy(ctx context.Context, key string, value int64) (int64, error) {
+func (c *client) IncrBy(ctx context.Context, key string, value int64) (int64, error) {
 	args := []interface{}{CommandIncrBy, key, value}
 	return c.Int64(ctx, args...)
 }
 
-func (c *BaseClient) IncrByFloat(ctx context.Context, key string, value float64) (float64, error) {
+func (c *client) IncrByFloat(ctx context.Context, key string, value float64) (float64, error) {
 	args := []interface{}{CommandIncrByFloat, key, value}
 	return c.Float64(ctx, args...)
 }
 
-func (c *BaseClient) MGet(ctx context.Context, keys ...string) ([]interface{}, error) {
+func (c *client) MGet(ctx context.Context, keys ...string) ([]interface{}, error) {
 	args := []interface{}{CommandMGet}
 	for _, key := range keys {
 		args = append(args, key)
@@ -212,42 +212,42 @@ func (c *BaseClient) MGet(ctx context.Context, keys ...string) ([]interface{}, e
 	return c.Slice(ctx, args...)
 }
 
-func (c *BaseClient) MSet(ctx context.Context, args ...interface{}) (string, error) {
+func (c *client) MSet(ctx context.Context, args ...interface{}) (string, error) {
 	args = append([]interface{}{CommandMSet}, args...)
 	return c.String(ctx, args...)
 }
 
-func (c *BaseClient) MSetNX(ctx context.Context, args ...interface{}) (int, error) {
+func (c *client) MSetNX(ctx context.Context, args ...interface{}) (int, error) {
 	args = append([]interface{}{CommandMSetNX}, args...)
 	return c.Int(ctx, args...)
 }
 
-func (c *BaseClient) PSetEX(ctx context.Context, key string, value interface{}, expire int64) (string, error) {
+func (c *client) PSetEX(ctx context.Context, key string, value interface{}, expire int64) (string, error) {
 	args := []interface{}{CommandPSetEX, key, expire, value}
 	return c.String(ctx, args...)
 }
 
-func (c *BaseClient) Set(ctx context.Context, key string, value interface{}, args ...interface{}) (string, error) {
+func (c *client) Set(ctx context.Context, key string, value interface{}, args ...interface{}) (string, error) {
 	args = append([]interface{}{CommandSet, key, value}, args...)
 	return c.String(ctx, args...)
 }
 
-func (c *BaseClient) SetEX(ctx context.Context, key string, value interface{}, expire int64) (string, error) {
+func (c *client) SetEX(ctx context.Context, key string, value interface{}, expire int64) (string, error) {
 	args := []interface{}{CommandSetEX, key, expire, value}
 	return c.String(ctx, args...)
 }
 
-func (c *BaseClient) SetNX(ctx context.Context, key string, value interface{}) (int, error) {
+func (c *client) SetNX(ctx context.Context, key string, value interface{}) (int, error) {
 	args := []interface{}{CommandSetNX, key, value}
 	return c.Int(ctx, args...)
 }
 
-func (c *BaseClient) SetRange(ctx context.Context, key string, offset int64, value string) (int64, error) {
+func (c *client) SetRange(ctx context.Context, key string, offset int64, value string) (int64, error) {
 	args := []interface{}{CommandSetRange, key, offset, value}
 	return c.Int64(ctx, args...)
 }
 
-func (c *BaseClient) StrLen(ctx context.Context, key string) (int64, error) {
+func (c *client) StrLen(ctx context.Context, key string) (int64, error) {
 	args := []interface{}{CommandStrLen, key}
 	return c.Int64(ctx, args...)
 }

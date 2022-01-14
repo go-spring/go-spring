@@ -31,7 +31,7 @@ var BitCount = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r1, redis.OK)
+		assert.True(t, redis.OK(r1))
 
 		r2, err := c.BitCount(ctx, "mykey")
 		if err != nil {
@@ -82,13 +82,13 @@ var BitOpAnd = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r1, redis.OK)
+		assert.True(t, redis.OK(r1))
 
 		r2, err := c.Set(ctx, "key2", "abcdef")
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r2, redis.OK)
+		assert.True(t, redis.OK(r2))
 
 		r3, err := c.BitOpAnd(ctx, "dest", "key1", "key2")
 		if err != nil {
@@ -133,7 +133,7 @@ var BitPos = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r1, redis.OK)
+		assert.True(t, redis.OK(r1))
 
 		r2, err := c.BitPos(ctx, "mykey", 0)
 		if err != nil {
@@ -145,7 +145,7 @@ var BitPos = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r3, redis.OK)
+		assert.True(t, redis.OK(r3))
 
 		r4, err := c.BitPos(ctx, "mykey", 1, 0)
 		if err != nil {
@@ -163,7 +163,7 @@ var BitPos = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r6, redis.OK)
+		assert.True(t, redis.OK(r6))
 
 		r7, err := c.BitPos(ctx, "mykey", 1)
 		if err != nil {

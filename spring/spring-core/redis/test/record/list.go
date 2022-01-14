@@ -23,66 +23,66 @@ import (
 	"github.com/go-spring/spring-core/redis/test/cases"
 )
 
-func LIndex(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.LIndex)
+func LIndex(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.LIndex)
 }
 
-func LInsert(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.LInsert)
+func LInsert(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.LInsert)
 }
 
-func LLen(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.LLen)
+func LLen(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.LLen)
 }
 
-func LMove(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.LMove)
+func LMove(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.LMove)
 }
 
-func LPop(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.LPop)
+func LPop(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.LPop)
 }
 
-func LPos(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.LPos)
+func LPos(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.LPos)
 }
 
-func LPush(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.LPush)
+func LPush(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.LPush)
 }
 
-func LPushX(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.LPushX)
+func LPushX(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.LPushX)
 }
 
-func LRange(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.LRange)
+func LRange(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.LRange)
 }
 
-func LRem(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.LRem)
+func LRem(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.LRem)
 }
 
-func LSet(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.LSet)
+func LSet(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.LSet)
 }
 
-func LTrim(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.LTrim)
+func LTrim(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.LTrim)
 }
 
-func RPop(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.RPop)
+func RPop(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.RPop)
 }
 
-func RPopLPush(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.RPopLPush)
+func RPopLPush(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.RPopLPush)
 }
 
-func RPush(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.RPush)
+func RPush(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.RPush)
 }
 
-func RPushX(t *testing.T, c redis.Client) {
-	RunCase(t, c, cases.RPushX)
+func RPushX(t *testing.T, d redis.Driver) {
+	RunCase(t, d, cases.RPushX)
 }
