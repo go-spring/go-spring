@@ -10,11 +10,17 @@ github.com/go-redis/redis/v8 v8.11.4 h1:kHoYkfZP6+pe04aFTnhDH6GDROa5yJdHJVNxV3F4
 github.com/go-redis/redis/v8 v8.11.4/go.mod h1:2Z2wHZXdQpCDXEGzqMockDpNyYvi2l4Pxt6RJr792+w=
 github.com/go-spring/spring-base v1.1.0-rc2.0.20220108065257-1c285a12bc84 h1:PBMx/w/NYBlzMyiTe+ehi3kKZoIRknssBoV2aD6cejk=
 github.com/go-spring/spring-base v1.1.0-rc2.0.20220108065257-1c285a12bc84/go.mod h1:gJCBukN0ZmjhGygd31Yfan3SG2iRdAwPUTpxYW62exE=
+github.com/go-spring/spring-base v1.1.0-rc3 h1:ZtNqLkPLXZWnZORWRQH63IeJvv8z/fjFm/4Qt7/lXTs=
+github.com/go-spring/spring-base v1.1.0-rc3/go.mod h1:gJCBukN0ZmjhGygd31Yfan3SG2iRdAwPUTpxYW62exE=
 github.com/go-spring/spring-core v1.1.0-rc2.0.20220108070439-49a57f1c5839/go.mod h1:xN8smuLbXLyf3M6b2gCCP9l02bYEs5xH7AaSqpMmzGk=
 github.com/go-spring/spring-core v1.1.0-rc2.0.20220109004946-9b2ba5cad23d h1:vE2USVBhHSpPb3sDcSnYyEHJlOqfq1fbmoi5VOrioOw=
 github.com/go-spring/spring-core v1.1.0-rc2.0.20220109004946-9b2ba5cad23d/go.mod h1:xN8smuLbXLyf3M6b2gCCP9l02bYEs5xH7AaSqpMmzGk=
+github.com/go-spring/spring-core v1.1.0-rc3 h1:i8EzGOGxUbHE2pfXcOUvMV8cSwcJq63M+pXqYJd33Ok=
+github.com/go-spring/spring-core v1.1.0-rc3/go.mod h1:3NOUQhvZA/RQmiaG88PWeaqpqU7gp0JWHL0rnhb/FRI=
 github.com/go-spring/spring-go-redis v1.1.0-rc2.0.20220108071503-ce28a639d6d0 h1:+2Zt0/ZWrAdXnJUS+q55EIS6CwaFnVpy8kjTTjkUPH0=
 github.com/go-spring/spring-go-redis v1.1.0-rc2.0.20220108071503-ce28a639d6d0/go.mod h1:PnvXvbekrSOZi9U4SpmCO5nm+TwgaMjYa106y2bcL+Q=
+github.com/go-spring/spring-go-redis v1.1.0-rc3 h1:Ht7p6TKD09ImB2HdnRcIlwKTjg0SLESqb0zKpjolxFM=
+github.com/go-spring/spring-go-redis v1.1.0-rc3/go.mod h1:8nG59A+X9/PfUPwSeuJvfHyY9CLgQY2Lh1sgwMrVt6s=
 github.com/go-task/slim-sprig v0.0.0-20210107165309-348f09dbbbc0/go.mod h1:fyg7847qk6SyHyPtNmDHnmrv/HOrqktSC+C9fM+CJOE=
 github.com/golang/mock v1.6.0 h1:ErTB+efbowRARo13NNdxyJji2egdxLGQhRaY+DUumQc=
 github.com/golang/mock v1.6.0/go.mod h1:p6yTPP+5HYm5mzsMV8JkE6ZKdX+/wYM6Hr+LicevLPs=

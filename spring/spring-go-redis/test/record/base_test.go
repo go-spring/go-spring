@@ -23,10 +23,6 @@ import (
 	"github.com/go-spring/spring-go-redis"
 )
 
-func RunCase(t *testing.T, fn func(t *testing.T, c redis.Client)) {
-	c, err := SpringGoRedis.NewClient(redis.ClientConfig{Port: 6379})
-	if err != nil {
-		t.Fatal(err)
-	}
-	fn(t, c)
+func RunCase(t *testing.T, fn func(t *testing.T, d redis.Driver)) {
+	fn(t, SpringGoRedis.NewDriver())
 }

@@ -51,7 +51,7 @@ func StopRecord(ctx Context) {
 	var bufReq bytes.Buffer
 	err := req.Write(&bufReq)
 	if err != nil {
-		log.Ctx(ctx.Context()).Error(log.UnknownError, err)
+		log.Ctx(ctx.Context()).Error(log.ERROR, err)
 		return
 	}
 
@@ -61,7 +61,7 @@ func StopRecord(ctx Context) {
 	writeStatusLine(&bufResp, is11, resp.Status())
 	err = resp.Header().WriteSubset(&bufResp, nil)
 	if err != nil {
-		log.Ctx(ctx.Context()).Error(log.UnknownError, err)
+		log.Ctx(ctx.Context()).Error(log.ERROR, err)
 		return
 	}
 

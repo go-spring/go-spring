@@ -43,7 +43,7 @@ var defaultErrorHandler = FuncErrorHandler(func(ctx Context, err *HttpError) {
 
 	defer func() {
 		if r := recover(); r != nil {
-			log.Ctx(ctx.Context()).Error(log.UnknownError, r)
+			log.Ctx(ctx.Context()).Error(log.ERROR, r)
 		}
 	}()
 
