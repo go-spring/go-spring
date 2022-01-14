@@ -49,8 +49,10 @@ func Store(session *Session) {
 	replayer.data.Store(session.Session, &replayData{session: session})
 }
 
+type RequestCompare func(r1, r2 interface{}) bool
+
 // ReplayAction 根据 action 传入的匹配信息返回对应的响应数据。
-func ReplayAction(ctx context.Context, action *Action) (bool, error) {
+func ReplayAction(ctx context.Context, action *Action, cmp RequestCompare) (bool, error) {
 
 	if !replayer.mode {
 		return false, errors.New("replay mode not enabled")
@@ -73,7 +75,7 @@ func ReplayAction(ctx context.Context, action *Action) (bool, error) {
 		if r.Protocol != action.Protocol {
 			continue
 		}
-		if r.Request != action.Request {
+		if !cmp(r.Request, action.Request) {
 			continue
 		}
 		if _, loaded := data.matches.LoadOrStore(i, true); loaded {

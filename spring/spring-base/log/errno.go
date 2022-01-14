@@ -16,34 +16,31 @@
 
 package log
 
-import (
-	"fmt"
+var (
+	OK    = &errNo{project: 0, code: 0, message: "OK"}
+	ERROR = &errNo{project: 999, code: 999, message: "ERROR"}
 )
 
-var UnknownError = NewErrNo(999, 999, "UNKNOWN ERROR")
-
 type ErrNo interface {
-	Code() string
 	Msg() string
+	Code() uint32
 }
 
 type errNo struct {
-	prefix uint32
-	code   uint16
-	msg    string
+	project uint32
+	code    uint16
+	message string
 }
 
-func NewErrNo(prefix uint32, code uint16, msg string) ErrNo {
-	if code >= 1000 {
-		panic("code overflow, should be 0~999")
+func NewErrNo(project uint32, code uint16, msg string) ErrNo {
+	if project < 1000 {
+		panic("project invalid, should be >= 1000")
 	}
-	return &errNo{prefix: prefix, code: code, msg: msg}
+	if code < 1 || code > 999 {
+		panic("code invalid, should be 1~999")
+	}
+	return &errNo{project: project, code: code, message: msg}
 }
 
-func (e *errNo) Code() string {
-	return fmt.Sprintf("%d%.3d", e.prefix, e.code)
-}
-
-func (e *errNo) Msg() string {
-	return e.msg
-}
+func (e *errNo) Msg() string  { return e.message }
+func (e *errNo) Code() uint32 { return e.project*1000 + uint32(e.code) }
