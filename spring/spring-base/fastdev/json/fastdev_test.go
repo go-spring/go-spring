@@ -24,7 +24,7 @@ import (
 	"github.com/go-spring/spring-base/fastdev/json"
 )
 
-func TestMyJson(t *testing.T) {
+func TestString(t *testing.T) {
 	var src, dst struct {
 		S string `json:"s"`
 	}
@@ -44,4 +44,26 @@ func TestMyJson(t *testing.T) {
 		t.Fatal(err)
 	}
 	assert.Equal(t, dst.S, "\u0000\xC0\n\t\u0000\xBEm\u0006\x89Z(\u0000\n")
+}
+
+func TestBytes(t *testing.T) {
+	var src, dst struct {
+		S []byte `json:"s"`
+	}
+	src.S = []byte("\u0000\xC0\n\t\u0000\xBEm\u0006\x89Z(\u0000\n")
+	b1, err := stdJson.Marshal(&src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b2, err := json.Marshal(&src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, string(b1), `{"s":"AMAKCQC+bQaJWigACg=="}`)
+	assert.Equal(t, string(b2), `{"s":"(@Bytes@)(@Quote@)\"\\x00\\xc0\\n\\t\\x00\\xbem\\x06\\x89Z(\\x00\\n\""}`)
+	err = json.Unmarshal(b2, &dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, string(dst.S), "\u0000\xC0\n\t\u0000\xBEm\u0006\x89Z(\u0000\n")
 }

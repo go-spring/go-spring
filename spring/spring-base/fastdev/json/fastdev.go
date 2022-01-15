@@ -15,11 +15,18 @@
 package json
 
 import (
+	"bytes"
 	"fmt"
 	"reflect"
 	"strconv"
 	"strings"
 	"unicode/utf8"
+	"unsafe"
+)
+
+const (
+	stringPrefix    = "(@Quote@)"
+	byteSlicePrefix = "(@Bytes@)"
 )
 
 // stringEncoderV2 对于 "\u0000\xC0\n\t\u0000\xBEm\u0006\x89Z(\u0000\n"
@@ -77,16 +84,56 @@ func NeedQuote(s string) bool {
 	return false
 }
 
-// Quote 添加 "(@Quote@)" 前缀，反序列化时需要移除。
+// Quote 添加 (@Quote@) 前缀，反序列化时需要移除。
 func Quote(s string) string {
-	return "(@Quote@)" + strconv.Quote(s)
+	return stringPrefix + strconv.Quote(s)
 }
 
-// Unquote 存在 "(@Quote@)" 前缀，反序列化时需要移除。
+// Unquote 存在 (@Quote@) 前缀，反序列化时需要移除。
 func Unquote(s string) (string, error) {
-	if strings.HasPrefix(s, "(@Quote@)") {
-		s = strings.TrimLeft(s, "(@Quote@)")
+	if strings.HasPrefix(s, stringPrefix) {
+		s = strings.TrimPrefix(s, stringPrefix)
 		return strconv.Unquote(s)
 	}
 	return s, nil
+}
+
+// encodeByteSliceV2 对于 byte slice 标准库的做法是进行 base64 编码，而且当
+// byte slice 为合法的字符串时仍然会进行 base64 编码，这种方式非常不利于阅读。
+// 新方法认为 byte slice 都是字符窜，但是需要使用 Quote 进行编码，同时在结果的
+// 前面添加 (@Bytes@) 前缀，反序列化时会将前缀去除并且使用 Unquote 进行解码。
+func encodeByteSliceV2(e *encodeState, v reflect.Value, _ encOpts) {
+	if v.IsNil() {
+		e.WriteString("null")
+		return
+	}
+	b := v.Bytes()
+	e.WriteByte('"')
+	e.WriteString(QuoteBytes(b))
+	e.WriteByte('"')
+}
+
+func bytesToString(b []byte) string {
+	return *(*string)(unsafe.Pointer(&b))
+}
+
+func QuoteBytes(b []byte) string {
+	s := Quote(bytesToString(b))
+	s = strconv.Quote(s)
+	s = s[1 : len(s)-1]
+	return byteSlicePrefix + s
+}
+
+func UnquoteBytes(b []byte) ([]byte, error) {
+	if bytes.HasPrefix(b, []byte(byteSlicePrefix)) {
+		s := bytesToString(b)
+		s = strings.TrimPrefix(s, byteSlicePrefix)
+		var err error
+		s, err = Unquote(s)
+		if err != nil {
+			return nil, err
+		}
+		return []byte(s), nil
+	}
+	return b, nil
 }

@@ -9,7 +9,6 @@ package json
 
 import (
 	"encoding"
-	"encoding/base64"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -941,13 +940,11 @@ func (d *decodeState) literalStore(item []byte, v reflect.Value, fromQuoted bool
 				d.saveError(&UnmarshalTypeError{Value: "string", Type: v.Type(), Offset: int64(d.readIndex())})
 				break
 			}
-			b := make([]byte, base64.StdEncoding.DecodedLen(len(s)))
-			n, err := base64.StdEncoding.Decode(b, s)
+			b, err := UnquoteBytes(s)
 			if err != nil {
-				d.saveError(err)
-				break
+				return err
 			}
-			v.SetBytes(b[:n])
+			v.SetBytes(b)
 		case reflect.String:
 			if v.Type() == numberType && !isValidNumber(string(s)) {
 				return fmt.Errorf("json: invalid number literal, trying to unmarshal %q into Number", item)
