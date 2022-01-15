@@ -952,7 +952,11 @@ func (d *decodeState) literalStore(item []byte, v reflect.Value, fromQuoted bool
 			if v.Type() == numberType && !isValidNumber(string(s)) {
 				return fmt.Errorf("json: invalid number literal, trying to unmarshal %q into Number", item)
 			}
-			v.SetString(string(s))
+			str, err := Unquote(string(s))
+			if err != nil {
+				return err
+			}
+			v.SetString(str)
 		case reflect.Interface:
 			if v.NumMethod() == 0 {
 				v.Set(reflect.ValueOf(string(s)))
@@ -974,6 +978,10 @@ func (d *decodeState) literalStore(item []byte, v reflect.Value, fromQuoted bool
 			if v.Kind() == reflect.String && v.Type() == numberType {
 				// s must be a valid number, because it's
 				// already been tokenized.
+				var err error
+				if s, err = Unquote(s); err != nil {
+					return err
+				}
 				v.SetString(s)
 				break
 			}

@@ -18,12 +18,13 @@ import (
 	"fmt"
 	"reflect"
 	"strconv"
+	"strings"
 	"unicode/utf8"
 )
 
 // stringEncoderV2 对于 "\u0000\xC0\n\t\u0000\xBEm\u0006\x89Z(\u0000\n"
 // 这样的字符串，标准库的序列化结果不正确，不能逆向转换回去。新方法对于上面的字符串，
-// 会进行 quote 操作，然后添加 @ 前缀和后缀以指示反序列化时需要 unquote 操作。
+// 会进行 quote 操作，然后添加 (@Quote@) 前缀以指示反序列化时需要 unquote 操作。
 func stringEncoderV2(e *encodeState, v reflect.Value, opts encOpts) {
 	if v.Type() == numberType {
 		numStr := v.String()
@@ -76,7 +77,16 @@ func NeedQuote(s string) bool {
 	return false
 }
 
-// Quote 添加 "@" 前缀和后缀，反序列化时需要移除。
+// Quote 添加 "(@Quote@)" 前缀，反序列化时需要移除。
 func Quote(s string) string {
-	return "@" + strconv.Quote(s) + "@"
+	return "(@Quote@)" + strconv.Quote(s)
+}
+
+// Unquote 存在 "(@Quote@)" 前缀，反序列化时需要移除。
+func Unquote(s string) (string, error) {
+	if strings.HasPrefix(s, "(@Quote@)") {
+		s = strings.TrimLeft(s, "(@Quote@)")
+		return strconv.Unquote(s)
+	}
+	return s, nil
 }
