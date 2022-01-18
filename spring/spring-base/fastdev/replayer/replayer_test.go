@@ -14,60 +14,84 @@
  * limitations under the License.
  */
 
-package fastdev
+package replayer_test
 
 import (
 	"context"
 	"testing"
 
 	"github.com/go-spring/spring-base/assert"
+	"github.com/go-spring/spring-base/fastdev"
+	"github.com/go-spring/spring-base/fastdev/recorder"
+	"github.com/go-spring/spring-base/fastdev/replayer"
 	"github.com/go-spring/spring-base/knife"
 )
 
 func TestReplayAction(t *testing.T) {
 
-	sessionID := NewSessionID()
-
-	SetReplayMode(true, false)
+	replayer.SetReplayMode(true)
 	defer func() {
-		SetReplayMode(false, false)
+		replayer.SetReplayMode(false)
 	}()
 
-	session := &Session{
-		Session: sessionID,
-		Inbound: &Action{
-			Protocol: HTTP,
-			Request:  "GET ...",
-			Response: "... 200 ...",
-		},
-		Actions: []*Action{
-			{
-				Protocol: REDIS,
-				Request:  "SET a 1",
-				Response: "OK",
-			}, {
-				Protocol: REDIS,
-				Request:  "GET a",
-				Response: "1",
-			},
-		},
-	}
-
-	Store(session)
-
+	sessionID := fastdev.NewSessionID()
 	ctx, _ := knife.New(context.Background())
-	err := knife.Set(ctx, ReplaySessionIDKey, sessionID)
+	err := replayer.SetSessionID(ctx, sessionID)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	action := &Action{
-		Protocol: REDIS,
+	recordSession := &recorder.Session{
+		Session: sessionID,
+		Inbound: &recorder.Action{
+			ID:       2,
+			Protocol: fastdev.HTTP,
+			Request:  "GET ...",
+			Response: "... 200 ...",
+		},
+		Actions: []*recorder.Action{
+			{
+				ID:       0,
+				Protocol: fastdev.REDIS,
+				Request:  "SET a 1",
+				Response: "OK",
+			}, {
+				ID:       1,
+				Protocol: fastdev.REDIS,
+				Request:  "GET a",
+				Response: int64(1),
+			},
+		},
+	}
+
+	data, err := recorder.ToJson(recordSession)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	session, err := replayer.ToSession(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = replayer.Store(session)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	action := &replayer.Action{
+		Protocol: fastdev.REDIS,
 		Request:  "GET a",
 	}
 
-	ok, err := ReplayAction(ctx, action)
+	ok, err := replayer.GetAction(ctx, action)
 	assert.Nil(t, err)
 	assert.True(t, ok)
-	assert.Equal(t, action.Response, "1")
+
+	var i int64
+	err = action.Response.ToValue(&i)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, i, int64(1))
 }

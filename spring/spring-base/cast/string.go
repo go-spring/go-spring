@@ -17,12 +17,9 @@
 package cast
 
 import (
-	"bytes"
 	"fmt"
 	"html/template"
 	"strconv"
-
-	"github.com/go-spring/spring-base/fastdev/json"
 )
 
 // ToString casts an interface{} to a string. 在类型明确的情况下推荐使用标准库函数。
@@ -308,38 +305,4 @@ func ToStringMapStringE(i interface{}) (map[string]string, error) {
 	default:
 		return nil, fmt.Errorf("unable to cast %#v of type %T to map[string]string", i, i)
 	}
-}
-
-// needQuote 判断是否需要双引号包裹。
-func needQuote(s string) bool {
-	for _, c := range s {
-		switch c {
-		case '"', '\t', '\n', '\v', '\f', '\r', ' ', 0x85, 0xA0:
-			return true
-		}
-	}
-	return len(s) == 0
-}
-
-func quoteString(s string) string {
-	if needQuote(s) || json.NeedQuote(s) {
-		return json.Quote(s)
-	}
-	return s
-}
-
-func CmdString(args []interface{}) string {
-	var buf bytes.Buffer
-	for i, arg := range args {
-		switch s := arg.(type) {
-		case string:
-			buf.WriteString(quoteString(s))
-		default:
-			buf.WriteString(ToString(arg))
-		}
-		if i < len(args)-1 {
-			buf.WriteByte(' ')
-		}
-	}
-	return buf.String()
 }

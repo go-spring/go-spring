@@ -14,41 +14,55 @@
  * limitations under the License.
  */
 
-package fastdev
+package recorder_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
-	"github.com/go-spring/spring-base/assert"
+	"github.com/go-spring/spring-base/fastdev"
+	"github.com/go-spring/spring-base/fastdev/recorder"
 	"github.com/go-spring/spring-base/knife"
 )
 
 func TestRecordAction(t *testing.T) {
 
-	SetRecordMode(true)
+	recorder.SetRecordMode(true)
 	defer func() {
-		SetRecordMode(false)
+		recorder.SetRecordMode(false)
 	}()
 
 	ctx, _ := knife.New(context.Background())
-	err := knife.Set(ctx, RecordSessionIDKey, NewSessionID())
+	_, err := recorder.StartRecord(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	RecordAction(ctx, &Action{
-		Protocol: REDIS,
-		Request:  "GET a",
-		Response: "1",
-	})
+	defer func() {
+		var session *recorder.Session
+		session, err = recorder.StopRecord(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fmt.Println(recorder.ToPrettyJson(session, "  "))
+	}()
 
-	session := RecordInbound(ctx, &Action{
-		Protocol: HTTP,
+	err = recorder.RecordAction(ctx, &recorder.Action{
+		Protocol: fastdev.REDIS,
+		Request:  "GET a",
+		Response: int64(1),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = recorder.RecordInbound(ctx, &recorder.Action{
+		Protocol: fastdev.HTTP,
 		Request:  "GET ...",
 		Response: "... 200 ...",
 	})
-
-	_, ok := recorder.data.Load(session.Session)
-	assert.False(t, ok)
+	if err != nil {
+		t.Fatal(err)
+	}
 }
