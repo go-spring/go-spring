@@ -19,6 +19,7 @@ package assert
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -234,6 +235,23 @@ func Implements(t T, got interface{}, expect interface{}, msg ...string) {
 	e1 := reflect.TypeOf(got)
 	if !e1.Implements(e2) {
 		str := fmt.Sprintf("got type (%s) but expect type (%s)", e1, e2)
+		fail(t, str, msg...)
+	}
+}
+
+// JsonEqual asserts that got and expect are equal.
+func JsonEqual(t T, got string, expect string, msg ...string) {
+	t.Helper()
+	var gotJson interface{}
+	if err := json.Unmarshal([]byte(got), &gotJson); err != nil {
+		fail(t, err.Error(), msg...)
+	}
+	var expectJson interface{}
+	if err := json.Unmarshal([]byte(expect), &expectJson); err != nil {
+		fail(t, err.Error(), msg...)
+	}
+	if !reflect.DeepEqual(gotJson, expectJson) {
+		str := fmt.Sprintf("got (%T) %v but expect (%T) %v", got, got, expect, expect)
 		fail(t, str, msg...)
 	}
 }

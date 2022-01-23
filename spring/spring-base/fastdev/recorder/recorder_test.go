@@ -18,9 +18,9 @@ package recorder_test
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
+	"github.com/go-spring/spring-base/assert"
 	"github.com/go-spring/spring-base/fastdev"
 	"github.com/go-spring/spring-base/fastdev/recorder"
 	"github.com/go-spring/spring-base/knife"
@@ -33,25 +33,17 @@ func TestRecordAction(t *testing.T) {
 		recorder.SetRecordMode(false)
 	}()
 
+	sessionID := "df3b64266ebe4e63a464e135000a07cd"
 	ctx, _ := knife.New(context.Background())
-	_, err := recorder.StartRecord(ctx)
+	err := recorder.StartRecord(ctx, sessionID)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	defer func() {
-		var session *recorder.Session
-		session, err = recorder.StopRecord(ctx)
-		if err != nil {
-			t.Fatal(err)
-		}
-		fmt.Println(recorder.ToPrettyJson(session, "  "))
-	}()
-
 	err = recorder.RecordAction(ctx, &recorder.Action{
 		Protocol: fastdev.REDIS,
-		Request:  "GET a",
-		Response: int64(1),
+		Request:  recorder.NewMessage("SET a \"\\u0000\\xC0\\n\\t\\u0000\\xBEm\\u0006\\x89Z(\\u0000\\n\""),
+		Response: recorder.NewMessage("\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n"),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -59,10 +51,38 @@ func TestRecordAction(t *testing.T) {
 
 	err = recorder.RecordInbound(ctx, &recorder.Action{
 		Protocol: fastdev.HTTP,
-		Request:  "GET ...",
-		Response: "... 200 ...",
+		Request:  recorder.NewMessage("GET ..."),
+		Response: recorder.NewMessage("... 200 ..."),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	s, err := recorder.StopRecord(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	str, err := recorder.ToPrettyJson(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	assert.JsonEqual(t, str, `{
+	  "session": "df3b64266ebe4e63a464e135000a07cd",
+	  "inbound": {
+		"protocol": "HTTP",
+		"request": "GET ...",
+		"response": "... 200 ...",
+		"timestamp": 0
+	  },
+	  "actions": [
+		{
+		  "protocol": "REDIS",
+		  "request": "SET a \"\\u0000\\xC0\\n\\t\\u0000\\xBEm\\u0006\\x89Z(\\u0000\\n\"",
+		  "response": "@\"\\x00\\xc0\\n\\t\\x00\\xbem\\x06\\x89Z(\\x00\\n\"",
+		  "timestamp": 0
+		}
+	  ]
+	}`)
 }

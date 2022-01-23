@@ -18,13 +18,16 @@ package recorder
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
+	"reflect"
+	"strconv"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-base/fastdev"
-	"github.com/go-spring/spring-base/fastdev/internal/json"
 	"github.com/go-spring/spring-base/knife"
 )
 
@@ -35,12 +38,11 @@ func init() {
 }
 
 const (
-	sessionIDKey = "::RECORD-SESSION-ID::"
+	sessionKey = "::RECORD-SESSION::"
 )
 
 var recorder struct {
-	mode bool     // 是否为录制模式。
-	data sync.Map // 正在录制的数据。
+	mode bool // 是否为录制模式。
 }
 
 // RecordMode 返回是否是录制模式。
@@ -54,6 +56,63 @@ func SetRecordMode(mode bool) {
 	recorder.mode = mode
 }
 
+type Message struct {
+	data interface{}
+}
+
+func NewMessage(data interface{}) *Message {
+	return &Message{data: data}
+}
+
+func (msg *Message) MarshalJSON() ([]byte, error) {
+	v := reflect.ValueOf(msg.data)
+	v = reflect.Indirect(v)
+	switch v.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		s := strconv.FormatInt(v.Int(), 10)
+		return []byte(s), nil
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		s := strconv.FormatUint(v.Uint(), 10)
+		return []byte(s), nil
+	case reflect.Float32, reflect.Float64:
+		s := strconv.FormatFloat(v.Float(), 'f', -1, 64)
+		return []byte(s), nil
+	case reflect.Bool:
+		s := strconv.FormatBool(v.Bool())
+		return []byte(s), nil
+	case reflect.String:
+		s := v.String()
+		if c := quoteCount(s); c == 0 {
+			return []byte("\"" + s + "\""), nil
+		} else if c == 1 {
+			return []byte(strconv.Quote(s)), nil
+		} else {
+			return []byte(strconv.Quote("@" + strconv.Quote(s))), nil
+		}
+	default:
+		return json.Marshal(msg.data)
+	}
+}
+
+// quoteCount 查询 quote 的次数。
+func quoteCount(s string) int {
+	for i := 0; i < len(s); {
+		if b := s[i]; b < utf8.RuneSelf {
+			if b == '"' {
+				return 1
+			}
+			i++
+			continue
+		}
+		c, size := utf8.DecodeRuneInString(s[i:])
+		if c == utf8.RuneError && size == 1 {
+			return 2
+		}
+		i += size
+	}
+	return 0
+}
+
 // Session 一次上游调用称为一个会话。
 type Session struct {
 	Session string    `json:"session,omitempty"` // 会话 ID
@@ -63,12 +122,11 @@ type Session struct {
 
 // Action 将上下游调用、缓存获取、文件写入等抽象为一个动作。
 type Action struct {
-	ID        int32       `json:"id"`                 // 序号
-	Protocol  string      `json:"protocol,omitempty"` // 协议名称
-	Label     string      `json:"label,omitempty"`    // 分类标签
-	Request   interface{} `json:"request,omitempty"`  // 请求内容
-	Response  interface{} `json:"response,omitempty"` // 响应内容
-	Timestamp int64       `json:"timestamp"`          // 时间戳
+	Protocol  string   `json:"protocol,omitempty"` // 协议名称
+	Label     string   `json:"label,omitempty"`    // 分类标签
+	Request   *Message `json:"request,omitempty"`  // 请求内容
+	Response  *Message `json:"response,omitempty"` // 响应内容
+	Timestamp int64    `json:"timestamp"`          // 时间戳
 }
 
 func ToJson(session *Session) (string, error) {
@@ -79,8 +137,8 @@ func ToJson(session *Session) (string, error) {
 	return string(b), nil
 }
 
-func ToPrettyJson(session *Session, indent string) (string, error) {
-	b, err := json.MarshalIndent(session, "", indent)
+func ToPrettyJson(session *Session) (string, error) {
+	b, err := json.MarshalIndent(session, "", "  ")
 	if err != nil {
 		return "", err
 	}
@@ -90,104 +148,67 @@ func ToPrettyJson(session *Session, indent string) (string, error) {
 type recordSession struct {
 	session *Session
 	mutex   sync.Mutex
-	count   int32
+	close   bool
 }
 
-func (r *recordSession) lock(f func()) {
+func onSession(ctx context.Context, f func(*recordSession) error) (*recordSession, error) {
+	v, ok := knife.Get(ctx, sessionKey)
+	if !ok {
+		return nil, errors.New("record session not found")
+	}
+	r, ok := v.(*recordSession)
+	if !ok {
+		return nil, errors.New("invalid record session")
+	}
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
-	f()
-}
-
-func getSessionID(ctx context.Context) (string, error) {
-	if !recorder.mode {
-		return "", errors.New("record mode not enabled")
-	}
-	v, ok := knife.Get(ctx, sessionIDKey)
-	if !ok {
-		return "", errors.New("no session id found")
-	}
-	sessionID, ok := v.(string)
-	if !ok {
-		return "", errors.New("session id isn't string")
-	}
-	return sessionID, nil
-}
-
-func setSessionID(ctx context.Context, sessionID string) error {
-	return knife.Set(ctx, sessionIDKey, sessionID)
-}
-
-func getRecordSession(ctx context.Context) (*recordSession, error) {
-	sessionID, err := getSessionID(ctx)
-	if err != nil {
+	if err := f(r); err != nil {
 		return nil, err
 	}
-	v, ok := recorder.data.Load(sessionID)
-	if ok {
-		return v.(*recordSession), nil
-	}
-	return nil, errors.New("recording isn't started")
-}
-
-func saveRecordSession(r *recordSession) error {
-	_, loaded := recorder.data.LoadOrStore(r.session.Session, r)
-	if loaded {
-		return errors.New("session already started")
-	}
-	return nil
+	return r, nil
 }
 
 // StartRecord 开始流量录制
-func StartRecord(ctx context.Context) (string, error) {
-	sessionID := fastdev.NewSessionID()
-	err := setSessionID(ctx, sessionID)
-	if err != nil {
-		return "", err
-	}
-	err = saveRecordSession(&recordSession{
-		session: &Session{Session: sessionID},
-	})
-	if err != nil {
-		return "", err
-	}
-	return sessionID, nil
+func StartRecord(ctx context.Context, sessionID string) error {
+	s := &recordSession{session: &Session{Session: sessionID}}
+	return knife.Set(ctx, sessionKey, s)
 }
 
 // StopRecord 停止流量录制
 func StopRecord(ctx context.Context) (*Session, error) {
-	r, err := getRecordSession(ctx)
+	r, err := onSession(ctx, func(r *recordSession) error {
+		r.close = true
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	recorder.data.Delete(r.session.Session)
 	return r.session, nil
 }
 
 // RecordInbound 录制 inbound 流量。
 func RecordInbound(ctx context.Context, inbound *Action) error {
-	r, err := getRecordSession(ctx)
-	if err != nil {
-		return err
-	}
-	r.lock(func() {
-		inbound.ID = r.count
-		r.count++
+	_, err := onSession(ctx, func(r *recordSession) error {
+		if r.close {
+			return errors.New("recording already stopped")
+		}
+		if r.session.Inbound != nil {
+			return errors.New("inbound already set")
+		}
 		r.session.Inbound = inbound
+		return nil
 	})
-	return nil
+	return err
 }
 
 // RecordAction 录制 outbound 流量。
 func RecordAction(ctx context.Context, action *Action) error {
-	r, err := getRecordSession(ctx)
-	if err != nil {
-		return err
-	}
-	r.lock(func() {
-		action.ID = r.count
-		r.count++
+	_, err := onSession(ctx, func(r *recordSession) error {
+		if r.close {
+			return errors.New("recording already stopped")
+		}
 		r.session.Actions = append(r.session.Actions, action)
+		return nil
 	})
-	return nil
+	return err
 }
