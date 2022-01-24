@@ -18,13 +18,18 @@ package replayer
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
+	"reflect"
+	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-base/fastdev"
-	"github.com/go-spring/spring-base/fastdev/internal/json"
+	"github.com/go-spring/spring-base/fastdev/recorder"
 	"github.com/go-spring/spring-base/knife"
 )
 
@@ -54,14 +59,41 @@ func SetReplayMode(mode bool) {
 	replayer.mode = mode
 }
 
-type RawMessage []byte
-
-func (raw RawMessage) ToValue(v interface{}) error {
-	return json.Unmarshal(raw, v)
+type Message struct {
+	data string
 }
 
-func (raw *RawMessage) UnmarshalJSON(data []byte) error {
-	*raw = append((*raw)[0:0], data...)
+func (msg *Message) ToValue(i interface{}) error {
+	if strings.HasPrefix(msg.data, "@\"") {
+		s, err := strconv.Unquote(msg.data[1:])
+		if err != nil {
+			return err
+		}
+		v := reflect.ValueOf(i).Elem()
+		switch i.(type) {
+		case *string:
+			v.Set(reflect.ValueOf(s))
+			return nil
+		case *[]byte:
+			v.Set(reflect.ValueOf([]byte(s)))
+			return nil
+		default:
+			return fmt.Errorf("expect *string or *[]byte but %T", i)
+		}
+	}
+	return json.Unmarshal([]byte(msg.data), i)
+}
+
+func (msg *Message) UnmarshalJSON(data []byte) error {
+	if data[0] != '"' {
+		msg.data = string(data)
+		return nil
+	}
+	s, err := strconv.Unquote(string(data))
+	if err != nil {
+		return err
+	}
+	msg.data = s
 	return nil
 }
 
@@ -72,22 +104,20 @@ type Session struct {
 }
 
 type Action struct {
-	ID        int32      `json:"id"`                 // 序号
-	Protocol  string     `json:"protocol,omitempty"` // 协议名称
-	Label     string     `json:"label,omitempty"`    // 分类标签
-	Request   string     `json:"request,omitempty"`  // 请求内容
-	Response  RawMessage `json:"response,omitempty"` // 响应内容
-	Timestamp int64      `json:"timestamp"`          // 时间戳
+	Protocol  string   `json:"protocol,omitempty"` // 协议名称
+	Label     string   `json:"label,omitempty"`    // 分类标签
+	Request   *Message `json:"request,omitempty"`  // 请求内容
+	Response  *Message `json:"response,omitempty"` // 响应内容
+	Timestamp int64    `json:"timestamp"`          // 时间戳
 }
 
-// ToSession 反序列化 *Session 对象。
 func ToSession(data string) (*Session, error) {
-	var session *Session
-	err := json.Unmarshal([]byte(data), &session)
+	var s *Session
+	err := json.Unmarshal([]byte(data), &s)
 	if err != nil {
 		return nil, err
 	}
-	return session, nil
+	return s, nil
 }
 
 type replayData struct {
@@ -98,6 +128,12 @@ type replayData struct {
 
 // Store 存储 sessionID 对应的回放数据。
 func Store(session *Session) error {
+
+	r := &replayData{session: session}
+	_, loaded := replayer.data.LoadOrStore(session.Session, r)
+	if loaded {
+		return errors.New("session already stored")
+	}
 
 	actions := make(map[string]map[string][]*Action)
 	for _, a := range session.Actions {
@@ -111,14 +147,7 @@ func Store(session *Session) error {
 		}
 		p[a.Label] = append(p[a.Label], a)
 	}
-
-	_, loaded := replayer.data.LoadOrStore(session.Session, &replayData{
-		session: session,
-		actions: actions,
-	})
-	if loaded {
-		return errors.New("session already stored")
-	}
+	r.actions = actions
 	return nil
 }
 
@@ -147,38 +176,48 @@ func SetSessionID(ctx context.Context, sessionID string) error {
 }
 
 // GetAction 根据 action 传入的匹配信息返回对应的响应数据。
-func GetAction(ctx context.Context, action *Action) (bool, error) {
+func GetAction(ctx context.Context, action *recorder.Action) (*Action, error) {
 
 	sessionID, err := getSessionID(ctx)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 
 	v, ok := replayer.data.Load(sessionID)
 	if !ok {
-		return false, errors.New("session not found")
+		return nil, errors.New("session not found")
 	}
 
 	p := v.(*replayData)
 	m, ok := p.actions[action.Protocol]
 	if !ok {
-		return false, errors.New("invalid protocol")
+		return nil, errors.New("invalid protocol")
 	}
 
 	actions, ok := m[action.Label]
 	if !ok {
-		return false, errors.New("invalid label")
+		return nil, errors.New("invalid label")
+	}
+
+	data, err := json.Marshal(action.Request)
+	if err != nil {
+		return nil, err
+	}
+
+	var req *Message
+	err = json.Unmarshal(data, &req)
+	if err != nil {
+		return nil, err
 	}
 
 	for _, r := range actions {
-		if r.Request != action.Request {
+		if r.Request.data != req.data {
 			continue
 		}
-		if _, loaded := p.matched.LoadOrStore(r.ID, true); loaded {
+		if _, loaded := p.matched.LoadOrStore(action, true); loaded {
 			continue
 		}
-		action.Response = r.Response
-		return true, nil
+		return r, nil
 	}
-	return false, nil
+	return nil, nil
 }

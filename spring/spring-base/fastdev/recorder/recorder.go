@@ -38,11 +38,12 @@ func init() {
 }
 
 const (
-	sessionKey = "::RECORD-SESSION::"
+	sessionIDKey = "::RECORD-SESSION-ID::"
 )
 
 var recorder struct {
-	mode bool // 是否为录制模式。
+	mode bool     // 是否为录制模式。
+	data sync.Map // 正在录制的数据。
 }
 
 // RecordMode 返回是否是录制模式。
@@ -152,14 +153,19 @@ type recordSession struct {
 }
 
 func onSession(ctx context.Context, f func(*recordSession) error) (*recordSession, error) {
-	v, ok := knife.Get(ctx, sessionKey)
-	if !ok {
-		return nil, errors.New("record session not found")
+	if !recorder.mode {
+		return nil, errors.New("record mode not enabled")
 	}
-	r, ok := v.(*recordSession)
+	v, ok := knife.Get(ctx, sessionIDKey)
 	if !ok {
-		return nil, errors.New("invalid record session")
+		return nil, errors.New("session id not found")
 	}
+	sessionID := v.(string)
+	v, ok = recorder.data.Load(sessionID)
+	if !ok {
+		return nil, errors.New("session not found")
+	}
+	r := v.(*recordSession)
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 	if err := f(r); err != nil {
@@ -170,8 +176,15 @@ func onSession(ctx context.Context, f func(*recordSession) error) (*recordSessio
 
 // StartRecord 开始流量录制
 func StartRecord(ctx context.Context, sessionID string) error {
-	s := &recordSession{session: &Session{Session: sessionID}}
-	return knife.Set(ctx, sessionKey, s)
+	if err := knife.Set(ctx, sessionIDKey, sessionID); err != nil {
+		return err
+	}
+	r := &recordSession{session: &Session{Session: sessionID}}
+	_, loaded := recorder.data.LoadOrStore(sessionID, r)
+	if loaded {
+		return errors.New("session already started")
+	}
+	return nil
 }
 
 // StopRecord 停止流量录制

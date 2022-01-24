@@ -17,23 +17,19 @@
 package fastdev
 
 import (
-	"bytes"
 	"encoding/hex"
 	"errors"
 	"os"
-	"strconv"
 	"strings"
 
-	"github.com/go-spring/spring-base/cast"
-	"github.com/go-spring/spring-base/fastdev/internal/json"
 	"github.com/google/uuid"
 )
 
 const (
 	HTTP  = "HTTP"
+	SQL   = "SQL"
 	REDIS = "REDIS"
 	APCU  = "APCU"
-	SQL   = "SQL"
 )
 
 // NewSessionID 使用 uuid 算法生成新的 Session ID 。
@@ -50,49 +46,10 @@ func NewSessionID() string {
 
 // CheckTestMode 检查是否是测试模式
 func CheckTestMode() {
-	var testMode bool
 	for _, arg := range os.Args {
 		if strings.HasPrefix(arg, "-test.") {
-			testMode = true
-			break
+			return
 		}
 	}
-	if !testMode {
-		panic(errors.New("must call under test mode"))
-	}
-}
-
-// needQuote 判断是否需要双引号包裹。
-func needQuote(s string) bool {
-	for _, c := range s {
-		switch c {
-		case '"', '\t', '\n', '\v', '\f', '\r', ' ', 0x85, 0xA0:
-			return true
-		}
-	}
-	return len(s) == 0
-}
-
-func quoteString(s string) string {
-	if needQuote(s) || json.NeedQuote(s) {
-		return strconv.Quote(s)
-	}
-	return s
-}
-
-// CmdString 格式化命令行有效的字符串。
-func CmdString(args []interface{}) string {
-	var buf bytes.Buffer
-	for i, arg := range args {
-		switch s := arg.(type) {
-		case string:
-			buf.WriteString(quoteString(s))
-		default:
-			buf.WriteString(cast.ToString(arg))
-		}
-		if i < len(args)-1 {
-			buf.WriteByte(' ')
-		}
-	}
-	return buf.String()
+	panic(errors.New("must call under test mode"))
 }

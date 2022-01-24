@@ -18,6 +18,7 @@ package replayer_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/go-spring/spring-base/assert"
@@ -44,27 +45,33 @@ func TestReplayAction(t *testing.T) {
 	recordSession := &recorder.Session{
 		Session: sessionID,
 		Inbound: &recorder.Action{
-			ID:       2,
 			Protocol: fastdev.HTTP,
-			Request:  "GET ...",
-			Response: "... 200 ...",
+			Request:  recorder.NewMessage("GET ..."),
+			Response: recorder.NewMessage("... 200 ..."),
 		},
 		Actions: []*recorder.Action{
 			{
-				ID:       0,
 				Protocol: fastdev.REDIS,
-				Request:  "SET a 1",
-				Response: "OK",
+				Request:  recorder.NewMessage("SET a 1"),
+				Response: recorder.NewMessage([]interface{}{1, "2", 3}),
 			}, {
-				ID:       1,
 				Protocol: fastdev.REDIS,
-				Request:  "GET a",
-				Response: int64(1),
+				Request:  recorder.NewMessage("GET a"),
+				Response: recorder.NewMessage("\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n"),
+			},
+			{
+				Protocol: fastdev.REDIS,
+				Request:  recorder.NewMessage("HGET a"),
+				Response: recorder.NewMessage(map[string]interface{}{
+					"a": "b",
+					"c": 3,
+					"d": "\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n",
+				}),
 			},
 		},
 	}
 
-	data, err := recorder.ToJson(recordSession)
+	data, err := recorder.ToPrettyJson(recordSession)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,19 +86,20 @@ func TestReplayAction(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	action := &replayer.Action{
+	query := &recorder.Action{
 		Protocol: fastdev.REDIS,
-		Request:  "GET a",
+		Request:  recorder.NewMessage("GET a"),
 	}
 
-	ok, err := replayer.GetAction(ctx, action)
+	var action *replayer.Action
+	action, err = replayer.GetAction(ctx, query)
 	assert.Nil(t, err)
-	assert.True(t, ok)
+	assert.NotNil(t, action)
 
-	var i int64
+	var i string
 	err = action.Response.ToValue(&i)
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, i, int64(1))
+	fmt.Printf("%#v %T\n", i, i)
 }
