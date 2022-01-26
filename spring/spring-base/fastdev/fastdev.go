@@ -32,6 +32,50 @@ const (
 	APCU  = "APCU"
 )
 
+var (
+	labelStrategyMap = map[string]LabelStrategy{}
+)
+
+type LabelStrategy interface {
+	GetLabel(str string) string
+}
+
+func GetLabelStrategy(protocol string) LabelStrategy {
+	strategy, ok := labelStrategyMap[protocol]
+	if !ok {
+		strategy = LengthLabelStrategy{length: 4}
+	}
+	return strategy
+}
+
+func RegisterLabelStrategy(protocol string, labelStrategy LabelStrategy) {
+	labelStrategyMap[protocol] = labelStrategy
+}
+
+type SplitLabelStrategy struct {
+	split string // 分隔符
+	count int    // 前几段
+}
+
+func (s SplitLabelStrategy) GetLabel(str string) string {
+	ss := strings.SplitN(str, s.split, s.count+1)
+	if len(ss) < s.count {
+		return strings.Join(ss, "@")
+	}
+	return strings.Join(ss[0:s.count], "@")
+}
+
+type LengthLabelStrategy struct {
+	length int // 固定长度
+}
+
+func (s LengthLabelStrategy) GetLabel(str string) string {
+	if len(str) < s.length {
+		return str
+	}
+	return str[0:s.length]
+}
+
 // NewSessionID 使用 uuid 算法生成新的 Session ID 。
 func NewSessionID() string {
 	u := uuid.New()

@@ -124,7 +124,6 @@ type Session struct {
 // Action 将上下游调用、缓存获取、文件写入等抽象为一个动作。
 type Action struct {
 	Protocol  string   `json:"protocol,omitempty"` // 协议名称
-	Label     string   `json:"label,omitempty"`    // 分类标签
 	Request   *Message `json:"request,omitempty"`  // 请求内容
 	Response  *Message `json:"response,omitempty"` // 响应内容
 	Timestamp int64    `json:"timestamp"`          // 时间戳

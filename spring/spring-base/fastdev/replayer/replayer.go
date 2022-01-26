@@ -105,7 +105,7 @@ type Session struct {
 
 type Action struct {
 	Protocol  string   `json:"protocol,omitempty"` // 协议名称
-	Label     string   `json:"label,omitempty"`    // 分类标签
+	Label     string   `json:"-"`                  // 分类标签
 	Request   *Message `json:"request,omitempty"`  // 请求内容
 	Response  *Message `json:"response,omitempty"` // 响应内容
 	Timestamp int64    `json:"timestamp"`          // 时间戳
@@ -145,7 +145,8 @@ func Store(session *Session) error {
 			p = make(map[string][]*Action)
 			actions[a.Protocol] = p
 		}
-		p[a.Label] = append(p[a.Label], a)
+		label := fastdev.GetLabelStrategy(a.Protocol).GetLabel(a.Request.data)
+		p[label] = append(p[label], a)
 	}
 	r.actions = actions
 	return nil
@@ -194,11 +195,6 @@ func GetAction(ctx context.Context, action *recorder.Action) (*Action, error) {
 		return nil, errors.New("invalid protocol")
 	}
 
-	actions, ok := m[action.Label]
-	if !ok {
-		return nil, errors.New("invalid label")
-	}
-
 	data, err := json.Marshal(action.Request)
 	if err != nil {
 		return nil, err
@@ -210,7 +206,8 @@ func GetAction(ctx context.Context, action *recorder.Action) (*Action, error) {
 		return nil, err
 	}
 
-	for _, r := range actions {
+	label := fastdev.GetLabelStrategy(action.Protocol).GetLabel(req.data)
+	for _, r := range m[label] {
 		if r.Request.data != req.data {
 			continue
 		}
