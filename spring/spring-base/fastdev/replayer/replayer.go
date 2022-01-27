@@ -20,11 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
-	"reflect"
-	"strconv"
-	"strings"
 	"sync"
 
 	"github.com/go-spring/spring-base/cast"
@@ -57,44 +53,6 @@ func ReplayMode() bool {
 func SetReplayMode(mode bool) {
 	fastdev.CheckTestMode()
 	replayer.mode = mode
-}
-
-type Message struct {
-	data string
-}
-
-func (msg *Message) ToValue(i interface{}) error {
-	if strings.HasPrefix(msg.data, "@\"") {
-		s, err := strconv.Unquote(msg.data[1:])
-		if err != nil {
-			return err
-		}
-		v := reflect.ValueOf(i).Elem()
-		switch i.(type) {
-		case *string:
-			v.Set(reflect.ValueOf(s))
-			return nil
-		case *[]byte:
-			v.Set(reflect.ValueOf([]byte(s)))
-			return nil
-		default:
-			return fmt.Errorf("expect *string or *[]byte but %T", i)
-		}
-	}
-	return json.Unmarshal([]byte(msg.data), i)
-}
-
-func (msg *Message) UnmarshalJSON(data []byte) error {
-	if data[0] != '"' {
-		msg.data = string(data)
-		return nil
-	}
-	s, err := strconv.Unquote(string(data))
-	if err != nil {
-		return err
-	}
-	msg.data = s
-	return nil
 }
 
 type Session struct {
@@ -157,7 +115,7 @@ func Delete(sessionID string) {
 	replayer.data.Delete(sessionID)
 }
 
-func getSessionID(ctx context.Context) (string, error) {
+func GetSessionID(ctx context.Context) (string, error) {
 	if !replayer.mode {
 		return "", errors.New("replay mode not enabled")
 	}
@@ -179,7 +137,7 @@ func SetSessionID(ctx context.Context, sessionID string) error {
 // GetAction 根据 action 传入的匹配信息返回对应的响应数据。
 func GetAction(ctx context.Context, action *recorder.Action) (*Action, error) {
 
-	sessionID, err := getSessionID(ctx)
+	sessionID, err := GetSessionID(ctx)
 	if err != nil {
 		return nil, err
 	}

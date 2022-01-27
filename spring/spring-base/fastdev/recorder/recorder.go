@@ -21,10 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
-	"reflect"
-	"strconv"
 	"sync"
-	"unicode/utf8"
 
 	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-base/fastdev"
@@ -57,63 +54,6 @@ func SetRecordMode(mode bool) {
 	recorder.mode = mode
 }
 
-type Message struct {
-	data interface{}
-}
-
-func NewMessage(data interface{}) *Message {
-	return &Message{data: data}
-}
-
-func (msg *Message) MarshalJSON() ([]byte, error) {
-	v := reflect.ValueOf(msg.data)
-	v = reflect.Indirect(v)
-	switch v.Kind() {
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		s := strconv.FormatInt(v.Int(), 10)
-		return []byte(s), nil
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		s := strconv.FormatUint(v.Uint(), 10)
-		return []byte(s), nil
-	case reflect.Float32, reflect.Float64:
-		s := strconv.FormatFloat(v.Float(), 'f', -1, 64)
-		return []byte(s), nil
-	case reflect.Bool:
-		s := strconv.FormatBool(v.Bool())
-		return []byte(s), nil
-	case reflect.String:
-		s := v.String()
-		if c := quoteCount(s); c == 0 {
-			return []byte("\"" + s + "\""), nil
-		} else if c == 1 {
-			return []byte(strconv.Quote(s)), nil
-		} else {
-			return []byte(strconv.Quote("@" + strconv.Quote(s))), nil
-		}
-	default:
-		return json.Marshal(msg.data)
-	}
-}
-
-// quoteCount 查询 quote 的次数。
-func quoteCount(s string) int {
-	for i := 0; i < len(s); {
-		if b := s[i]; b < utf8.RuneSelf {
-			if b == '"' {
-				return 1
-			}
-			i++
-			continue
-		}
-		c, size := utf8.DecodeRuneInString(s[i:])
-		if c == utf8.RuneError && size == 1 {
-			return 2
-		}
-		i += size
-	}
-	return 0
-}
-
 // Session 一次上游调用称为一个会话。
 type Session struct {
 	Session string    `json:"session,omitempty"` // 会话 ID
@@ -123,10 +63,10 @@ type Session struct {
 
 // Action 将上下游调用、缓存获取、文件写入等抽象为一个动作。
 type Action struct {
-	Protocol  string   `json:"protocol,omitempty"` // 协议名称
-	Request   *Message `json:"request,omitempty"`  // 请求内容
-	Response  *Message `json:"response,omitempty"` // 响应内容
-	Timestamp int64    `json:"timestamp"`          // 时间戳
+	Protocol  string  `json:"protocol,omitempty"` // 协议名称
+	Request   Message `json:"request,omitempty"`  // 请求内容
+	Response  Message `json:"response,omitempty"` // 响应内容
+	Timestamp int64   `json:"timestamp"`          // 时间戳
 }
 
 func ToJson(session *Session) (string, error) {

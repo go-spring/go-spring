@@ -22,21 +22,23 @@ import (
 
 	"github.com/go-spring/spring-base/apcu"
 	"github.com/go-spring/spring-base/assert"
-	"github.com/go-spring/spring-base/fastdev"
+	"github.com/go-spring/spring-base/fastdev/recorder"
 	"github.com/go-spring/spring-base/knife"
 )
 
 func TestRecord(t *testing.T) {
 
-	fastdev.SetRecordMode(true)
+	recorder.SetRecordMode(true)
 	defer func() {
-		fastdev.SetRecordMode(false)
+		recorder.SetRecordMode(false)
 	}()
 
-	sessionID := fastdev.NewSessionID()
+	sessionID := "bdb243dc7cea4f1aa96080da38da35ab"
 	ctx, _ := knife.New(context.Background())
-	err := knife.Set(ctx, fastdev.RecordSessionIDKey, sessionID)
-	assert.Nil(t, err)
+	err := recorder.StartRecord(ctx, sessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	defer func() {
 		apcu.Delete(ctx, "a")
@@ -72,5 +74,41 @@ func TestRecord(t *testing.T) {
 	assert.Nil(t, err)
 	assert.True(t, ok)
 
-	fastdev.RecordInbound(ctx, &fastdev.Action{})
+	s, err := recorder.StopRecord(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	str, err := recorder.ToPrettyJson(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	assert.JsonEqual(t, str, `{
+	  "session": "bdb243dc7cea4f1aa96080da38da35ab",
+	  "actions": [
+		{
+		  "protocol": "APCU",
+		  "request": "a",
+		  "response": "::empty::",
+		  "timestamp": 0
+		},
+		{
+		  "protocol": "APCU",
+		  "request": "a",
+		  "response": {
+			"a": "success"
+		  },
+		  "timestamp": 0
+		},
+		{
+		  "protocol": "APCU",
+		  "request": "a",
+		  "response": {
+			"a": "success"
+		  },
+		  "timestamp": 0
+		}
+	  ]
+	}`)
 }

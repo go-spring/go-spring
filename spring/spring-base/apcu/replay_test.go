@@ -22,21 +22,23 @@ import (
 
 	"github.com/go-spring/spring-base/apcu"
 	"github.com/go-spring/spring-base/assert"
-	"github.com/go-spring/spring-base/fastdev"
+	"github.com/go-spring/spring-base/fastdev/replayer"
 	"github.com/go-spring/spring-base/knife"
 )
 
 func TestReplay(t *testing.T) {
 
-	fastdev.SetReplayMode(true, false)
+	replayer.SetReplayMode(true)
 	defer func() {
-		fastdev.SetReplayMode(false, false)
+		replayer.SetReplayMode(false)
 	}()
 
-	sessionID := "fdcc085347f540ed94facbab14ae3cc4"
+	sessionID := "39fc5c13443f47da9ff320cc4b02c789"
 	ctx, _ := knife.New(context.Background())
-	err := knife.Set(ctx, fastdev.ReplaySessionIDKey, sessionID)
-	assert.Nil(t, err)
+	err := replayer.SetSessionID(ctx, sessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	type dataType struct {
 		Data string `json:"a"`

@@ -27,6 +27,8 @@ import (
 	"time"
 
 	"github.com/go-spring/spring-base/fastdev"
+	"github.com/go-spring/spring-base/fastdev/recorder"
+	"github.com/go-spring/spring-base/fastdev/replayer"
 )
 
 var cache sync.Map
@@ -34,12 +36,15 @@ var cache sync.Map
 // EmptyValue 流量录制时表示空值。
 const EmptyValue = "::empty::"
 
-func getKey(ctx context.Context, key string) string {
-	if fastdev.ReplayMode() {
-		sessionID := fastdev.GetReplaySessionID(ctx)
-		return sessionID + key
+func getKey(ctx context.Context, key string) (string, error) {
+	if replayer.ReplayMode() {
+		sessionID, err := replayer.GetSessionID(ctx)
+		if err != nil {
+			return "", err
+		}
+		return sessionID + key, nil
 	}
-	return key
+	return key, nil
 }
 
 // Load 获取 key 对应的缓存值，注意 out 的类型必须和 Store 的时候存入的类
@@ -48,20 +53,23 @@ func getKey(ctx context.Context, key string) string {
 func Load(ctx context.Context, key string, out interface{}) (ok bool, err error) {
 
 	defer func() {
-		if err == nil && fastdev.RecordMode() {
+		if err == nil && recorder.RecordMode() {
 			resp := interface{}(EmptyValue)
 			if ok {
 				resp = out
 			}
-			fastdev.RecordAction(ctx, &fastdev.Action{
+			recorder.RecordAction(ctx, &recorder.Action{
 				Protocol: fastdev.APCU,
-				Request:  key,
-				Response: resp,
+				Request:  recorder.NewMessage(key),
+				Response: recorder.NewMessage(resp),
 			})
 		}
 	}()
 
-	return load(getKey(ctx, key), out)
+	if key, err = getKey(ctx, key); err != nil {
+		return false, err
+	}
+	return load(key, out)
 }
 
 type cacheItem struct {
@@ -145,7 +153,7 @@ func TTL(ttl time.Duration) StoreOption {
 // 但是这里有一个例外情况，考虑到很多场景下，用户需要缓存一个由字符串反序列
 // 化后的对象，所以该库提供了一个功能，就是用户可以 Store 一个字符串，然后
 // Load 的时候按照指定类型返回。
-func Store(ctx context.Context, key string, val interface{}, opts ...StoreOption) {
+func Store(ctx context.Context, key string, val interface{}, opts ...StoreOption) error {
 	arg := StoreArg{}
 	for _, opt := range opts {
 		opt(&arg)
@@ -154,12 +162,18 @@ func Store(ctx context.Context, key string, val interface{}, opts ...StoreOption
 	if arg.TTL > 0 {
 		expireAt = time.Now().Add(arg.TTL)
 	}
-	cache.Store(getKey(ctx, key), &cacheItem{source: val, expireAt: expireAt})
+	key, err := getKey(ctx, key)
+	if err != nil {
+		return err
+	}
+	cache.Store(key, &cacheItem{source: val, expireAt: expireAt})
+	return nil
 }
 
 // Delete 删除 key 对应的缓存内容。
 func Delete(ctx context.Context, key string) {
-	cache.Delete(getKey(ctx, key))
+	key, _ = getKey(ctx, key)
+	cache.Delete(key)
 }
 
 // Range 遍历缓存的内容。

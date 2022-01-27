@@ -19,6 +19,7 @@ package replayer_test
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"testing"
 
 	"github.com/go-spring/spring-base/assert"
@@ -35,7 +36,7 @@ func TestReplayAction(t *testing.T) {
 		replayer.SetReplayMode(false)
 	}()
 
-	sessionID := fastdev.NewSessionID()
+	sessionID := "39fc5c13443f47da9ff320cc4b02c789"
 	ctx, _ := knife.New(context.Background())
 	err := replayer.SetSessionID(ctx, sessionID)
 	if err != nil {
@@ -53,10 +54,10 @@ func TestReplayAction(t *testing.T) {
 			{
 				Protocol: fastdev.REDIS,
 				Request:  recorder.NewMessage("SET a 1"),
-				Response: recorder.NewMessage([]interface{}{1, "2", 3}),
+				Response: recorder.NewCSV(1, "2", 3),
 			}, {
 				Protocol: fastdev.REDIS,
-				Request:  recorder.NewMessage("GET a"),
+				Request:  recorder.NewCommandLine("SET", "a", "\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n"),
 				Response: recorder.NewMessage("\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n"),
 			},
 			{
@@ -86,20 +87,52 @@ func TestReplayAction(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	query := &recorder.Action{
-		Protocol: fastdev.REDIS,
-		Request:  recorder.NewMessage("GET a"),
+	{
+		query := &recorder.Action{
+			Protocol: fastdev.REDIS,
+			Request:  recorder.NewMessage("SET a 1"),
+		}
+
+		var action *replayer.Action
+		action, err = replayer.GetAction(ctx, query)
+		assert.Nil(t, err)
+		assert.NotNil(t, action)
+
+		var csv []string
+		csv, err = action.Response.ToCSV()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, s := range csv {
+			fmt.Println(strconv.Quote(s))
+		}
 	}
 
-	var action *replayer.Action
-	action, err = replayer.GetAction(ctx, query)
-	assert.Nil(t, err)
-	assert.NotNil(t, action)
+	{
+		query := &recorder.Action{
+			Protocol: fastdev.REDIS,
+			Request:  recorder.NewCommandLine("SET", "a", "\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n"),
+		}
 
-	var i string
-	err = action.Response.ToValue(&i)
-	if err != nil {
-		t.Fatal(err)
+		var action *replayer.Action
+		action, err = replayer.GetAction(ctx, query)
+		assert.Nil(t, err)
+		assert.NotNil(t, action)
+
+		var cmdLine []string
+		cmdLine, err = action.Request.ToCommandLine()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, s := range cmdLine {
+			fmt.Println(strconv.Quote(s))
+		}
+
+		var i string
+		err = action.Response.ToValue(&i)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fmt.Printf("%#v %T\n", i, i)
 	}
-	fmt.Printf("%#v %T\n", i, i)
 }

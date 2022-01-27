@@ -42,8 +42,17 @@ func TestRecordAction(t *testing.T) {
 
 	err = recorder.RecordAction(ctx, &recorder.Action{
 		Protocol: fastdev.REDIS,
-		Request:  recorder.NewMessage("SET a \"\\u0000\\xC0\\n\\t\\u0000\\xBEm\\u0006\\x89Z(\\u0000\\n\""),
-		Response: recorder.NewMessage("\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n"),
+		Request:  recorder.NewCommandLine("SET", "a", "\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n"),
+		Response: recorder.NewCSV("\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = recorder.RecordAction(ctx, &recorder.Action{
+		Protocol: fastdev.REDIS,
+		Request:  recorder.NewCommandLine("LRANGE", "list", 0, -1),
+		Response: recorder.NewCSV("1", 2, "3"),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -79,8 +88,14 @@ func TestRecordAction(t *testing.T) {
 	  "actions": [
 		{
 		  "protocol": "REDIS",
-		  "request": "SET a \"\\u0000\\xC0\\n\\t\\u0000\\xBEm\\u0006\\x89Z(\\u0000\\n\"",
-		  "response": "@\"\\x00\\xc0\\n\\t\\x00\\xbem\\x06\\x89Z(\\x00\\n\"",
+		  "request": "SET a \"\\x00\\xc0\\n\\t\\x00\\xbem\\x06\\x89Z(\\x00\\n\"",
+		  "response": "\"\\x00\\xc0\\n\\t\\x00\\xbem\\x06\\x89Z(\\x00\\n\"",
+		  "timestamp": 0
+		},
+		{
+		  "protocol": "REDIS",
+		  "request": "LRANGE list 0 -1",
+		  "response": "\"1\",\"2\",\"3\"",
 		  "timestamp": 0
 		}
 	  ]
