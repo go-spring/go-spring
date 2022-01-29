@@ -36,8 +36,8 @@ func TestFlat(t *testing.T) {
 		M []struct {
 			N string `json:"n"`
 		} `json:"m"`
-		Q []string `json:"q"`
-		R []int    `json:"r"`
+		Q []string      `json:"q"`
+		R []interface{} `json:"r"`
 	}{
 		A: "a",
 		B: struct {
@@ -45,7 +45,7 @@ func TestFlat(t *testing.T) {
 			D map[string]interface{} `json:"d"`
 		}{
 			C: "c",
-			D: map[string]interface{}{"e": "\"{\\\"f\\\":\\\"g\\\",\\\"h\\\":\\\"i\\\"}\""},
+			D: map[string]interface{}{"e": " \n\t\"{\\\"f\\\":\\\"g\\\",\\\"h\\\":\\\"i\\\"}\"\t\n "},
 		},
 		M: []struct {
 			N string `json:"n"`
@@ -53,24 +53,27 @@ func TestFlat(t *testing.T) {
 			{N: "\"n1\""},
 			{N: "n2"},
 		},
-		Q: []string{"q1", "\"q2\"", "q3"},
-		R: []int{1, 2, 3},
+		Q: []string{"q1", "\"q2\"", " q3\t\n", "{\"a\":\"b\"}"},
+		R: []interface{}{1, "2", 3},
 	}
-	b, err := json.Marshal(s)
+	b, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		t.Fatal(err)
 	}
-	m, err := cast.Flat(b)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fmt.Println(string(b))
+	m := cast.FlatBytes(b)
 	var keys []string
 	for k := range m {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
-		fmt.Println(k, "=", m[k])
+		v := m[k]
+		b, err = json.Marshal(v)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fmt.Println(k, "=", string(b))
 	}
 	assert.Equal(t, m, map[string]interface{}{
 		"a":            "a",
@@ -81,9 +84,10 @@ func TestFlat(t *testing.T) {
 		"m[1].n":       "n2",
 		"q[0]":         "q1",
 		"q[1].\"\"":    "q2",
-		"q[2]":         "q3",
+		"q[2]":         " q3\t\n",
+		"q[3].\"\".a":  "b",
 		"r[0]":         float64(1),
-		"r[1]":         float64(2),
+		"r[1]":         "2",
 		"r[2]":         float64(3),
 	})
 }

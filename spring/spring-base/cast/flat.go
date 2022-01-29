@@ -17,96 +17,91 @@
 package cast
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 )
 
-// Flat 将任意 json 字符串解析成扁平映射表，如 {"a":{"b":"c"}} 解析成 a.b=c 映射。
-func Flat(data []byte) (map[string]interface{}, error) {
-	return flat("", data)
+// FlatBytes 将任意字符切片解析成一维映射表，如 {"a":{"b":"c"}} 解析成 a.b=c 映射表。
+func FlatBytes(data []byte) map[string]interface{} {
+	result := make(map[string]interface{})
+	flatBytes("", data, result)
+	return result
 }
 
-func flat(key string, data []byte) (map[string]interface{}, error) {
-
-	var (
-		result    = make(map[string]interface{})
-		tempMap   map[string]json.RawMessage
-		tempSlice []json.RawMessage
-	)
-
-	// 下面分支表示 json 字符串是 struct 或者 map 结构。
-	if json.Unmarshal(data, &tempMap) == nil {
+func flatBytes(prefix string, data []byte, result map[string]interface{}) {
+	switch trimData := bytes.TrimSpace(data); trimData[0] {
+	case '{':
+		var tempMap map[string]json.RawMessage
+		if json.Unmarshal(trimData, &tempMap) != nil {
+			result[prefix] = string(data)
+			return
+		}
 		for k, v := range tempMap {
-			b := v
-			if b[0] == '"' { // 如果是字符串需要解引用一次。
-				s, err := strconv.Unquote(string(b))
-				if err == nil {
-					b = []byte(s)
+			tempBytes := v
+			if tempBytes[0] == '"' {
+				if s, err := strconv.Unquote(string(tempBytes)); err == nil {
+					tempBytes = []byte(s)
 				}
 			}
-			ret, err := flat(k, b)
-			if err != nil {
-				return nil, err
+			if prefix != "" {
+				k = prefix + "." + k
 			}
-			for tempKey, tempVal := range ret {
-				if key != "" {
-					tempKey = key + "." + tempKey
+			if trimBytes := bytes.TrimSpace(tempBytes); trimBytes[0] == '"' {
+				if s, err := strconv.Unquote(string(trimBytes)); err == nil {
+					tempBytes = []byte(s)
+					k += ".\"\""
 				}
-				result[tempKey] = tempVal
 			}
+			flatBytes(k, tempBytes, result)
 		}
-		return result, nil
-	}
-
-	// 下面分支表示 json 字符串是 slice 或者 array 结构。
-	if json.Unmarshal(data, &tempSlice) == nil {
+	case '[':
+		var tempSlice []json.RawMessage
+		if json.Unmarshal(trimData, &tempSlice) != nil {
+			result[prefix] = string(data)
+			return
+		}
 		for i, v := range tempSlice {
-			b := v
-			if b[0] == '"' { // 如果是字符串需要解引用一次。
-				s, err := strconv.Unquote(string(b))
-				if err == nil {
-					b = []byte(s)
-				}
+			k := fmt.Sprintf("[%d]", i)
+			if prefix != "" {
+				k = prefix + k
 			}
-			ret, err := flat(fmt.Sprintf("[%d]", i), b)
-			if err != nil {
-				return nil, err
-			}
-			for tempKey, tempVal := range ret {
-				if key != "" {
-					tempKey = key + tempKey
-				}
-				result[tempKey] = tempVal
-			}
+			flatBytes(k, v, result)
 		}
-		return result, nil
-	}
-
-	if data[0] == '"' { // 执行到这里表明嵌套了 json 字符串。
-		s, err := strconv.Unquote(string(data))
-		if err == nil {
-			var ret map[string]interface{}
-			ret, err = flat("\"\"", []byte(s))
+	default:
+		var i interface{}
+		if json.Unmarshal(data, &i) != nil {
+			result[prefix] = string(data)
+			return
+		}
+		s, ok := i.(string)
+		if !ok {
+			result[prefix] = i
+			return
+		}
+		switch trimStr := strings.TrimSpace(s); trimStr[0] {
+		case '{', '[':
+			k := "\"\""
+			if prefix != "" {
+				k = prefix + "." + k
+			}
+			flatBytes(k, []byte(trimStr), result)
+		case '"':
+			var err error
+			trimStr, err = strconv.Unquote(trimStr)
 			if err != nil {
-				return nil, err
+				result[prefix] = i
+				return
 			}
-			for tempKey, tempVal := range ret {
-				if key != "" {
-					tempKey = key + "." + tempKey
-				}
-				result[tempKey] = tempVal
+			k := "\"\""
+			if prefix != "" {
+				k = prefix + "." + k
 			}
-			return result, nil
+			flatBytes(k, []byte(trimStr), result)
+		default:
+			result[prefix] = i
 		}
 	}
-
-	var i interface{}
-	if json.Unmarshal(data, &i) == nil {
-		result[key] = i
-		return result, nil
-	}
-
-	result[key] = string(data)
-	return result, nil
 }
