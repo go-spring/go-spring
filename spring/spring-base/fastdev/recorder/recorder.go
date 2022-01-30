@@ -18,12 +18,12 @@ package recorder
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"os"
 	"sync"
 
 	"github.com/go-spring/spring-base/cast"
+	"github.com/go-spring/spring-base/chrono"
 	"github.com/go-spring/spring-base/fastdev"
 	"github.com/go-spring/spring-base/knife"
 )
@@ -54,39 +54,8 @@ func SetRecordMode(mode bool) {
 	recorder.mode = mode
 }
 
-// Session 一次上游调用称为一个会话。
-type Session struct {
-	Session string    `json:"session,omitempty"` // 会话 ID
-	Inbound *Action   `json:"inbound,omitempty"` // 上游数据
-	Actions []*Action `json:"actions,omitempty"` // 动作数据
-}
-
-// Action 将上下游调用、缓存获取、文件写入等抽象为一个动作。
-type Action struct {
-	Protocol  string  `json:"protocol,omitempty"` // 协议名称
-	Request   Message `json:"request,omitempty"`  // 请求内容
-	Response  Message `json:"response,omitempty"` // 响应内容
-	Timestamp int64   `json:"timestamp"`          // 时间戳
-}
-
-func ToJson(session *Session) (string, error) {
-	b, err := json.Marshal(session)
-	if err != nil {
-		return "", err
-	}
-	return string(b), nil
-}
-
-func ToPrettyJson(session *Session) (string, error) {
-	b, err := json.MarshalIndent(session, "", "  ")
-	if err != nil {
-		return "", err
-	}
-	return string(b), nil
-}
-
 type recordSession struct {
-	session *Session
+	session *fastdev.Session
 	mutex   sync.Mutex
 	close   bool
 }
@@ -118,7 +87,10 @@ func StartRecord(ctx context.Context, sessionID string) error {
 	if err := knife.Set(ctx, sessionIDKey, sessionID); err != nil {
 		return err
 	}
-	r := &recordSession{session: &Session{Session: sessionID}}
+	r := &recordSession{session: &fastdev.Session{
+		Session:   sessionID,
+		Timestamp: chrono.Now(ctx).UnixNano(),
+	}}
 	_, loaded := recorder.data.LoadOrStore(sessionID, r)
 	if loaded {
 		return errors.New("session already started")
@@ -127,8 +99,9 @@ func StartRecord(ctx context.Context, sessionID string) error {
 }
 
 // StopRecord 停止流量录制
-func StopRecord(ctx context.Context) (*Session, error) {
+func StopRecord(ctx context.Context) (*fastdev.Session, error) {
 	r, err := onSession(ctx, func(r *recordSession) error {
+		recorder.data.Delete(r.session.Session)
 		r.close = true
 		return nil
 	})
@@ -139,7 +112,7 @@ func StopRecord(ctx context.Context) (*Session, error) {
 }
 
 // RecordInbound 录制 inbound 流量。
-func RecordInbound(ctx context.Context, inbound *Action) error {
+func RecordInbound(ctx context.Context, inbound *fastdev.Action) error {
 	_, err := onSession(ctx, func(r *recordSession) error {
 		if r.close {
 			return errors.New("recording already stopped")
@@ -147,6 +120,7 @@ func RecordInbound(ctx context.Context, inbound *Action) error {
 		if r.session.Inbound != nil {
 			return errors.New("inbound already set")
 		}
+		inbound.Timestamp = chrono.Now(ctx).UnixNano()
 		r.session.Inbound = inbound
 		return nil
 	})
@@ -154,11 +128,12 @@ func RecordInbound(ctx context.Context, inbound *Action) error {
 }
 
 // RecordAction 录制 outbound 流量。
-func RecordAction(ctx context.Context, action *Action) error {
+func RecordAction(ctx context.Context, action *fastdev.Action) error {
 	_, err := onSession(ctx, func(r *recordSession) error {
 		if r.close {
 			return errors.New("recording already stopped")
 		}
+		action.Timestamp = r.session.Timestamp
 		r.session.Actions = append(r.session.Actions, action)
 		return nil
 	})

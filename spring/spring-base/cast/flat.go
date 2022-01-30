@@ -24,10 +24,12 @@ import (
 	"strings"
 )
 
+const rootKey = "$"
+
 // FlatBytes 将任意字符切片解析成一维映射表，如 {"a":{"b":"c"}} 解析成 a.b=c 映射表。
 func FlatBytes(data []byte) map[string]interface{} {
 	result := make(map[string]interface{})
-	flatBytes("", data, result)
+	flatBytes(rootKey, data, result)
 	return result
 }
 
@@ -46,7 +48,7 @@ func flatBytes(prefix string, data []byte, result map[string]interface{}) {
 					tempBytes = []byte(s)
 				}
 			}
-			if prefix != "" {
+			if prefix != rootKey {
 				k = prefix + "." + k
 			}
 			if trimBytes := bytes.TrimSpace(tempBytes); trimBytes[0] == '"' {
@@ -65,7 +67,7 @@ func flatBytes(prefix string, data []byte, result map[string]interface{}) {
 		}
 		for i, v := range tempSlice {
 			k := fmt.Sprintf("[%d]", i)
-			if prefix != "" {
+			if prefix != rootKey {
 				k = prefix + k
 			}
 			flatBytes(k, v, result)
@@ -84,7 +86,7 @@ func flatBytes(prefix string, data []byte, result map[string]interface{}) {
 		switch trimStr := strings.TrimSpace(s); trimStr[0] {
 		case '{', '[':
 			k := "\"\""
-			if prefix != "" {
+			if prefix != rootKey {
 				k = prefix + "." + k
 			}
 			flatBytes(k, []byte(trimStr), result)
@@ -96,7 +98,7 @@ func flatBytes(prefix string, data []byte, result map[string]interface{}) {
 				return
 			}
 			k := "\"\""
-			if prefix != "" {
+			if prefix != rootKey {
 				k = prefix + "." + k
 			}
 			flatBytes(k, []byte(trimStr), result)

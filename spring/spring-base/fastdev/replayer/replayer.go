@@ -21,11 +21,11 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"reflect"
 	"sync"
 
 	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-base/fastdev"
-	"github.com/go-spring/spring-base/fastdev/recorder"
 	"github.com/go-spring/spring-base/knife"
 )
 
@@ -55,37 +55,14 @@ func SetReplayMode(mode bool) {
 	replayer.mode = mode
 }
 
-type Session struct {
-	Session string    `json:"session,omitempty"` // 会话 ID
-	Inbound *Action   `json:"inbound,omitempty"` // 上游数据
-	Actions []*Action `json:"actions,omitempty"` // 动作数据
-}
-
-type Action struct {
-	Protocol  string   `json:"protocol,omitempty"` // 协议名称
-	Label     string   `json:"-"`                  // 分类标签
-	Request   *Message `json:"request,omitempty"`  // 请求内容
-	Response  *Message `json:"response,omitempty"` // 响应内容
-	Timestamp int64    `json:"timestamp"`          // 时间戳
-}
-
-func ToSession(data string) (*Session, error) {
-	var s *Session
-	err := json.Unmarshal([]byte(data), &s)
-	if err != nil {
-		return nil, err
-	}
-	return s, nil
-}
-
 type replayData struct {
-	session *Session
-	actions map[string]map[string][]*Action
+	session *fastdev.Session
 	matched sync.Map
+	actions map[string]map[string][]*fastdev.Action
 }
 
 // Store 存储 sessionID 对应的回放数据。
-func Store(session *Session) error {
+func Store(session *fastdev.Session) error {
 
 	r := &replayData{session: session}
 	_, loaded := replayer.data.LoadOrStore(session.Session, r)
@@ -93,17 +70,17 @@ func Store(session *Session) error {
 		return errors.New("session already stored")
 	}
 
-	actions := make(map[string]map[string][]*Action)
+	actions := make(map[string]map[string][]*fastdev.Action)
 	for _, a := range session.Actions {
 		var (
 			ok bool
-			p  map[string][]*Action
+			p  map[string][]*fastdev.Action
 		)
 		if p, ok = actions[a.Protocol]; !ok {
-			p = make(map[string][]*Action)
+			p = make(map[string][]*fastdev.Action)
 			actions[a.Protocol] = p
 		}
-		label := fastdev.GetLabelStrategy(a.Protocol).GetLabel(a.Request.data)
+		label := fastdev.GetProtocol(a.Protocol).GetLabel(a.Request)
 		p[label] = append(p[label], a)
 	}
 	r.actions = actions
@@ -135,7 +112,7 @@ func SetSessionID(ctx context.Context, sessionID string) error {
 }
 
 // GetAction 根据 action 传入的匹配信息返回对应的响应数据。
-func GetAction(ctx context.Context, action *recorder.Action) (*Action, error) {
+func GetAction(ctx context.Context, action *fastdev.Action) (*fastdev.Action, error) {
 
 	sessionID, err := GetSessionID(ctx)
 	if err != nil {
@@ -158,15 +135,15 @@ func GetAction(ctx context.Context, action *recorder.Action) (*Action, error) {
 		return nil, err
 	}
 
-	var req *Message
+	var req interface{}
 	err = json.Unmarshal(data, &req)
 	if err != nil {
 		return nil, err
 	}
 
-	label := fastdev.GetLabelStrategy(action.Protocol).GetLabel(req.data)
+	label := fastdev.GetProtocol(action.Protocol).GetLabel(req)
 	for _, r := range m[label] {
-		if r.Request.data != req.data {
+		if reflect.DeepEqual(r.Request, req) {
 			continue
 		}
 		if _, loaded := p.matched.LoadOrStore(action, true); loaded {

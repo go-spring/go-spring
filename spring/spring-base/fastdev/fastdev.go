@@ -19,9 +19,14 @@ package fastdev
 import (
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"os"
+	"reflect"
 	"strings"
+	"time"
 
+	"github.com/go-spring/spring-base/cast"
+	"github.com/go-spring/spring-base/fastdev/internal/json"
 	"github.com/google/uuid"
 )
 
@@ -33,47 +38,22 @@ const (
 )
 
 var (
-	labelStrategyMap = map[string]LabelStrategy{}
+	protocols = map[string]Protocol{}
 )
 
-type LabelStrategy interface {
-	GetLabel(str string) string
+type Protocol interface {
+	GetLabel(request interface{}) string
 }
 
-func GetLabelStrategy(protocol string) LabelStrategy {
-	strategy, ok := labelStrategyMap[protocol]
-	if !ok {
-		strategy = LengthLabelStrategy{length: 4}
+func GetProtocol(name string) Protocol {
+	return protocols[name]
+}
+
+func RegisterProtocol(name string, protocol Protocol) {
+	if _, ok := protocols[name]; ok {
+		panic(fmt.Errorf("%s: duplicate registration", name))
 	}
-	return strategy
-}
-
-func RegisterLabelStrategy(protocol string, labelStrategy LabelStrategy) {
-	labelStrategyMap[protocol] = labelStrategy
-}
-
-type SplitLabelStrategy struct {
-	split string // 分隔符
-	count int    // 前几段
-}
-
-func (s SplitLabelStrategy) GetLabel(str string) string {
-	ss := strings.SplitN(str, s.split, s.count+1)
-	if len(ss) < s.count {
-		return strings.Join(ss, "@")
-	}
-	return strings.Join(ss[0:s.count], "@")
-}
-
-type LengthLabelStrategy struct {
-	length int // 固定长度
-}
-
-func (s LengthLabelStrategy) GetLabel(str string) string {
-	if len(str) < s.length {
-		return str
-	}
-	return str[0:s.length]
+	protocols[name] = protocol
 }
 
 // NewSessionID 使用 uuid 算法生成新的 Session ID 。
@@ -96,4 +76,168 @@ func CheckTestMode() {
 		}
 	}
 	panic(errors.New("must call under test mode"))
+}
+
+type Session struct {
+	Session   string    `json:"session,omitempty"`   // 会话 ID
+	Timestamp int64     `json:"timestamp,omitempty"` // 时间戳
+	Inbound   *Action   `json:"inbound,omitempty"`   // 上游数据
+	Actions   []*Action `json:"actions,omitempty"`   // 动作数据
+}
+
+func (session *Session) String() (string, error) {
+	b, err := json.Marshal(session)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+func (session *Session) Pretty() (string, error) {
+	b, err := json.MarshalIndent(session, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+type Action struct {
+	Protocol     string                 `json:"protocol,omitempty"`     // 协议名称
+	Timestamp    int64                  `json:"timestamp,omitempty"`    // 时间戳
+	Request      interface{}            `json:"request,omitempty"`      // 请求内容
+	Response     interface{}            `json:"response,omitempty"`     // 响应内容
+	FlatRequest  map[string]interface{} `json:"flatRequest,omitempty"`  // 请求内容
+	FlatResponse map[string]interface{} `json:"flatResponse,omitempty"` // 响应内容
+}
+
+func (action *Action) String() (string, error) {
+	b, err := json.Marshal(action)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+func (action *Action) Pretty() (string, error) {
+	b, err := json.MarshalIndent(action, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+type rawSession struct {
+	Session   string       `json:"session,omitempty"`   // 会话 ID
+	Inbound   *rawAction   `json:"inbound,omitempty"`   // 上游数据
+	Actions   []*rawAction `json:"actions,omitempty"`   // 动作数据
+	Timestamp int64        `json:"timestamp,omitempty"` // 时间戳
+}
+
+type rawAction struct {
+	Protocol  string          `json:"protocol,omitempty"`  // 协议名称
+	Request   json.RawMessage `json:"request,omitempty"`   // 请求内容
+	Response  json.RawMessage `json:"response,omitempty"`  // 响应内容
+	Timestamp int64           `json:"timestamp,omitempty"` // 时间戳
+}
+
+func (r *rawAction) ToAction() (*Action, error) {
+	var req interface{}
+	if err := json.Unmarshal(r.Request, &req); err != nil {
+		return nil, err
+	}
+	var resp interface{}
+	if err := json.Unmarshal(r.Response, &resp); err != nil {
+		return nil, err
+	}
+	return &Action{
+		Protocol:     r.Protocol,
+		Timestamp:    r.Timestamp,
+		Request:      req,
+		Response:     resp,
+		FlatRequest:  cast.FlatBytes(r.Request),
+		FlatResponse: cast.FlatBytes(r.Response),
+	}, nil
+}
+
+func ToSession(data string) (*Session, error) {
+	var r *rawSession
+	err := json.Unmarshal([]byte(data), &r)
+	if err != nil {
+		return nil, err
+	}
+	inbound, err := r.Inbound.ToAction()
+	if err != nil {
+		return nil, err
+	}
+	var actions []*Action
+	for _, a := range r.Actions {
+		var c *Action
+		c, err = a.ToAction()
+		if err != nil {
+			return nil, err
+		}
+		actions = append(actions, c)
+	}
+	return &Session{
+		Session:   r.Session,
+		Inbound:   inbound,
+		Actions:   actions,
+		Timestamp: r.Timestamp,
+	}, nil
+}
+
+func Equal(b1 string, b2 string, ignores []string) (bool, error) {
+
+	s1, err := ToSession(b1)
+	if err != nil {
+		return false, err
+	}
+	fmt.Println(s1.Pretty())
+
+	s2, err := ToSession(b2)
+	if err != nil {
+		return false, err
+	}
+	fmt.Println(s2.Pretty())
+
+	return DiffSession(s1, s2, ignores)
+}
+
+func DiffSession(s1 *Session, s2 *Session, ignores []string) (bool, error) {
+	if s1.Session != s2.Session {
+		return false, errors.New("session id not equal")
+	}
+	if n := s1.Timestamp - s2.Timestamp; n > int64(time.Second) || n < -int64(time.Second) {
+		return false, errors.New("timestamp not equal")
+	}
+	_, err := diffAction(s1.Inbound, s2.Inbound, ignores)
+	if err != nil {
+		return false, err
+	}
+	if len(s1.Actions) != len(s2.Actions) {
+		return false, errors.New("actions not equal")
+	}
+	for i := 0; i < len(s1.Actions); i++ {
+		_, err = diffAction(s1.Actions[i], s2.Actions[i], ignores)
+		if err != nil {
+			return false, err
+		}
+	}
+	return true, nil
+}
+
+func diffAction(a1 *Action, a2 *Action, ignores []string) (bool, error) {
+	if a1.Protocol != a2.Protocol {
+		return false, errors.New("protocol not equal")
+	}
+	if n := a1.Timestamp - a2.Timestamp; n > int64(time.Second) || n < -int64(time.Second) {
+		return false, errors.New("timestamp not equal")
+	}
+	if !reflect.DeepEqual(a1.Request, a2.Request) {
+		return false, errors.New("request not equal")
+	}
+	if !reflect.DeepEqual(a1.Response, a2.Response) {
+		return false, errors.New("response not equal")
+	}
+	return true, nil
 }

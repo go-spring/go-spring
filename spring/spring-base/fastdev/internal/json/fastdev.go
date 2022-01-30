@@ -15,18 +15,12 @@
 package json
 
 import (
-	"bytes"
 	"fmt"
 	"reflect"
 	"strconv"
 	"strings"
 	"unicode/utf8"
 	"unsafe"
-)
-
-const (
-	stringPrefix    = "(@Quote@)"
-	byteSlicePrefix = "(@Bytes@)"
 )
 
 // stringEncoderV2 对于 "\u0000\xC0\n\t\u0000\xBEm\u0006\x89Z(\u0000\n"
@@ -86,14 +80,13 @@ func NeedQuote(s string) bool {
 
 // Quote 添加 (@Quote@) 前缀，反序列化时需要移除。
 func Quote(s string) string {
-	return stringPrefix + strconv.Quote(s)
+	return "@" + strconv.Quote(s)
 }
 
 // Unquote 存在 (@Quote@) 前缀，反序列化时需要移除。
 func Unquote(s string) (string, error) {
-	if strings.HasPrefix(s, stringPrefix) {
-		s = strings.TrimPrefix(s, stringPrefix)
-		return strconv.Unquote(s)
+	if strings.HasPrefix(s, "@\"") {
+		return strconv.Unquote(s[1:])
 	}
 	return s, nil
 }
@@ -120,20 +113,13 @@ func bytesToString(b []byte) string {
 func QuoteBytes(b []byte) string {
 	s := Quote(bytesToString(b))
 	s = strconv.Quote(s)
-	s = s[1 : len(s)-1]
-	return byteSlicePrefix + s
+	return s[1 : len(s)-1]
 }
 
 func UnquoteBytes(b []byte) ([]byte, error) {
-	if bytes.HasPrefix(b, []byte(byteSlicePrefix)) {
-		s := bytesToString(b)
-		s = strings.TrimPrefix(s, byteSlicePrefix)
-		var err error
-		s, err = Unquote(s)
-		if err != nil {
-			return nil, err
-		}
-		return []byte(s), nil
+	s, err := Unquote(bytesToString(b))
+	if err != nil {
+		return nil, err
 	}
-	return b, nil
+	return []byte(s), nil
 }

@@ -21,7 +21,7 @@ import (
 	"testing"
 
 	"github.com/go-spring/spring-base/assert"
-	"github.com/go-spring/spring-base/fastdev/json"
+	"github.com/go-spring/spring-base/fastdev/internal/json"
 )
 
 func TestString(t *testing.T) {
@@ -38,7 +38,7 @@ func TestString(t *testing.T) {
 		t.Fatal(err)
 	}
 	assert.Equal(t, string(b1), `{"s":"\u0000\ufffd\n\t\u0000\ufffdm\u0006\ufffdZ(\u0000\n"}`)
-	assert.Equal(t, string(b2), `{"s":"(@Quote@)\"\\x00\\xc0\\n\\t\\x00\\xbem\\x06\\x89Z(\\x00\\n\""}`)
+	assert.Equal(t, string(b2), `{"s":"@\"\\x00\\xc0\\n\\t\\x00\\xbem\\x06\\x89Z(\\x00\\n\""}`)
 	err = json.Unmarshal(b2, &dst)
 	if err != nil {
 		t.Fatal(err)
@@ -60,7 +60,7 @@ func TestBytes(t *testing.T) {
 		t.Fatal(err)
 	}
 	assert.Equal(t, string(b1), `{"s":"AMAKCQC+bQaJWigACg=="}`)
-	assert.Equal(t, string(b2), `{"s":"(@Bytes@)(@Quote@)\"\\x00\\xc0\\n\\t\\x00\\xbem\\x06\\x89Z(\\x00\\n\""}`)
+	assert.Equal(t, string(b2), `{"s":"@\"\\x00\\xc0\\n\\t\\x00\\xbem\\x06\\x89Z(\\x00\\n\""}`)
 	err = json.Unmarshal(b2, &dst)
 	if err != nil {
 		t.Fatal(err)
