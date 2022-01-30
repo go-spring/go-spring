@@ -14,17 +14,34 @@
  * limitations under the License.
  */
 
-package cases
+package cast_test
 
 import (
-	"context"
-	"fmt"
+	"testing"
 
-	"github.com/go-spring/spring-core/redis"
+	"github.com/go-spring/spring-base/assert"
+	"github.com/go-spring/spring-base/cast"
 )
 
-func init() {
-	redis.SetHook(redis.Hook{AfterDoFunc: func(ctx context.Context, args []interface{}, ret interface{}, err error) {
-		fmt.Printf("%v return (%v) %v\n", args, err, ret)
-	}})
+func TestCommandLine(t *testing.T) {
+	inputs := []interface{}{
+		"CMD",
+		1,
+		true,
+		"string",
+		"\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n",
+	}
+	data := cast.ToCommandLine(inputs)
+	assert.Equal(t, data, `CMD 1 true string "\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n"`)
+	outputs, err := cast.ParseCommandLine(data)
+	if err != nil {
+		return
+	}
+	assert.Equal(t, outputs, []string{
+		"CMD",
+		"1",
+		"true",
+		"string",
+		"\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n",
+	})
 }
