@@ -20,90 +20,74 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
 )
 
 const rootKey = "$"
 
-// FlatBytes 将任意字符切片解析成一维映射表，如 {"a":{"b":"c"}} 解析成 a.b=c 映射表。
-func FlatBytes(data []byte) map[string]interface{} {
+// Flat 将 json 字符串解析成一维映射表，如 {"a":{"b":"c"}} 解析成 a.b=c 映射表。
+func Flat(data []byte) map[string]interface{} {
 	result := make(map[string]interface{})
-	flatBytes(rootKey, data, result)
+	if !flat(rootKey, data, result) {
+		result[rootKey] = string(data)
+	}
 	return result
 }
 
-func flatBytes(prefix string, data []byte, result map[string]interface{}) {
+func flat(prefix string, data []byte, result map[string]interface{}) bool {
 	switch trimData := bytes.TrimSpace(data); trimData[0] {
 	case '{':
-		var tempMap map[string]json.RawMessage
-		if json.Unmarshal(trimData, &tempMap) != nil {
-			result[prefix] = string(data)
-			return
+		var m map[string]json.RawMessage
+		if json.Unmarshal(trimData, &m) != nil {
+			return false
 		}
-		for k, v := range tempMap {
-			tempBytes := v
-			if tempBytes[0] == '"' {
-				if s, err := strconv.Unquote(string(tempBytes)); err == nil {
-					tempBytes = []byte(s)
-				}
-			}
+		for k, v := range m {
 			if prefix != rootKey {
 				k = prefix + "." + k
 			}
-			if trimBytes := bytes.TrimSpace(tempBytes); trimBytes[0] == '"' {
-				if s, err := strconv.Unquote(string(trimBytes)); err == nil {
-					tempBytes = []byte(s)
-					k += ".\"\""
-				}
+			if !flat(k, v, result) {
+				result[k] = string(v)
 			}
-			flatBytes(k, tempBytes, result)
 		}
+		return true
 	case '[':
-		var tempSlice []json.RawMessage
-		if json.Unmarshal(trimData, &tempSlice) != nil {
-			result[prefix] = string(data)
-			return
+		var s []json.RawMessage
+		if json.Unmarshal(trimData, &s) != nil {
+			return false
 		}
-		for i, v := range tempSlice {
+		for i, v := range s {
 			k := fmt.Sprintf("[%d]", i)
 			if prefix != rootKey {
 				k = prefix + k
 			}
-			flatBytes(k, v, result)
+			if !flat(k, v, result) {
+				result[k] = string(v)
+			}
 		}
+		return true
 	default:
 		var i interface{}
 		if json.Unmarshal(data, &i) != nil {
-			result[prefix] = string(data)
-			return
+			return false
 		}
 		s, ok := i.(string)
 		if !ok {
 			result[prefix] = i
-			return
+			return true
 		}
 		switch trimStr := strings.TrimSpace(s); trimStr[0] {
-		case '{', '[':
+		case '{', '[', '"':
 			k := "\"\""
 			if prefix != rootKey {
 				k = prefix + "." + k
 			}
-			flatBytes(k, []byte(trimStr), result)
-		case '"':
-			var err error
-			trimStr, err = strconv.Unquote(trimStr)
-			if err != nil {
-				result[prefix] = i
-				return
+			if !flat(k, []byte(trimStr), result) {
+				result[prefix] = s
 			}
-			k := "\"\""
-			if prefix != rootKey {
-				k = prefix + "." + k
-			}
-			flatBytes(k, []byte(trimStr), result)
+			return true
 		default:
-			result[prefix] = i
+			result[prefix] = s
+			return true
 		}
 	}
 }

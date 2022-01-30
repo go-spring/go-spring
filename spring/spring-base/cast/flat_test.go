@@ -27,41 +27,19 @@ import (
 )
 
 func TestFlat(t *testing.T) {
-	s := struct {
-		A string `json:"a"`
-		B struct {
-			C string                 `json:"c"`
-			D map[string]interface{} `json:"d"`
-		} `json:"b"`
-		M []struct {
-			N string `json:"n"`
-		} `json:"m"`
-		Q []string      `json:"q"`
-		R []interface{} `json:"r"`
-	}{
-		A: "a",
-		B: struct {
-			C string                 `json:"c"`
-			D map[string]interface{} `json:"d"`
-		}{
-			C: "c",
-			D: map[string]interface{}{"e": " \n\t\"{\\\"f\\\":\\\"g\\\",\\\"h\\\":\\\"i\\\"}\"\t\n "},
+	str := `{
+		"a": "a",
+		"b": {
+			"c": "c",
+			"d": "{\"e\":\"e\",\"f\":\"{\\\"g\\\":\\\"}\\\",\\\"h\\\":\\\"{\\\\\\\"i\\\\\\\":\\\\\\\"{\\\\\\\"}\\\"}\"}"
 		},
-		M: []struct {
-			N string `json:"n"`
-		}{
-			{N: "\"n1\""},
-			{N: "n2"},
-		},
-		Q: []string{"q1", "\"q2\"", " q3\t\n", "{\"a\":\"b\"}"},
-		R: []interface{}{1, "2", 3},
-	}
-	b, err := json.MarshalIndent(s, "", "  ")
-	if err != nil {
-		t.Fatal(err)
-	}
-	fmt.Println(string(b))
-	m := cast.FlatBytes(b)
+		"q": ["1", "2", "3"],
+		"q": [1, "2", 3],
+		"r": ["1", "{\"e\":\"e\",\"f\":\"{\\\"g\\\":\\\"]\\\",\\\"h\\\":\\\"{\\\\\\\"i\\\\\\\":\\\\\\\"[\\\\\\\"}\\\"}\"}", 3],
+		"s": "{",
+		"t": "["
+	}`
+	m := cast.Flat([]byte(str))
 	var keys []string
 	for k := range m {
 		keys = append(keys, k)
@@ -69,25 +47,27 @@ func TestFlat(t *testing.T) {
 	sort.Strings(keys)
 	for _, k := range keys {
 		v := m[k]
-		b, err = json.Marshal(v)
+		b, err := json.Marshal(v)
 		if err != nil {
 			t.Fatal(err)
 		}
 		fmt.Println(k, "=", string(b))
 	}
 	assert.Equal(t, m, map[string]interface{}{
-		"a":            "a",
-		"b.c":          "c",
-		"b.d.e.\"\".f": "g",
-		"b.d.e.\"\".h": "i",
-		"m[0].n.\"\"":  "n1",
-		"m[1].n":       "n2",
-		"q[0]":         "q1",
-		"q[1].\"\"":    "q2",
-		"q[2]":         " q3\t\n",
-		"q[3].\"\".a":  "b",
-		"r[0]":         float64(1),
-		"r[1]":         "2",
-		"r[2]":         float64(3),
+		"a":                         "a",
+		"b.c":                       "c",
+		"b.d.\"\".e":                "e",
+		"b.d.\"\".f.\"\".g":         "}",
+		"b.d.\"\".f.\"\".h.\"\".i":  "{",
+		"q[0]":                      float64(1),
+		"q[1]":                      "2",
+		"q[2]":                      float64(3),
+		"r[0]":                      "1",
+		"r[1].\"\".e":               "e",
+		"r[1].\"\".f.\"\".g":        "]",
+		"r[1].\"\".f.\"\".h.\"\".i": "[",
+		"r[2]":                      float64(3),
+		"s":                         "{",
+		"t":                         "[",
 	})
 }
