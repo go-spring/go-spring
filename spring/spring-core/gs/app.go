@@ -456,7 +456,12 @@ func (app *App) File(path string, file string) *web.Mapper {
 
 // Static 定义一组文件资源
 func (app *App) Static(prefix string, root string) *web.Mapper {
-	fileServer := http.FileServer(http.Dir(root))
+	return app.StaticFS(prefix, http.Dir(root))
+}
+
+// StaticFS 定义一组文件资源
+func (app *App) StaticFS(prefix string, root http.FileSystem) *web.Mapper {
+	fileServer := http.FileServer(root)
 	handler := web.WrapH(http.StripPrefix(prefix, fileServer))
 	return app.HandleGet(prefix+"/*", handler)
 }
