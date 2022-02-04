@@ -19,10 +19,10 @@ package replayer_test
 import (
 	"context"
 	"fmt"
-	"strings"
 	"testing"
 
 	"github.com/go-spring/spring-base/assert"
+	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-base/chrono"
 	"github.com/go-spring/spring-base/fastdev"
 	"github.com/go-spring/spring-base/fastdev/replayer"
@@ -54,30 +54,42 @@ func TestReplayAction(t *testing.T) {
 		Inbound: &fastdev.Action{
 			Protocol:  fastdev.HTTP,
 			Timestamp: chrono.Now(ctx).UnixNano(),
-			Request:   []interface{}{"GET", "..."},
-			Response:  []interface{}{200, "..."},
+			Request: fastdev.NewMessage(func() string {
+				return "GET ..."
+			}),
+			Response: fastdev.NewMessage(func() string {
+				return "200 ..."
+			}),
 		},
 		Actions: []*fastdev.Action{
 			{
 				Protocol:  fastdev.REDIS,
 				Timestamp: chrono.Now(ctx).UnixNano(),
-				Request:   []interface{}{"SET", "a", "1"},
-				Response:  []interface{}{1, "2", 3},
+				Request: fastdev.NewMessage(func() string {
+					return cast.ToCommandLine("SET", "a", "1")
+				}),
+				Response: fastdev.NewMessage(func() string {
+					return cast.ToCSV(1, "2", 3)
+				}),
 			}, {
 				Protocol:  fastdev.REDIS,
 				Timestamp: chrono.Now(ctx).UnixNano(),
-				Request:   []interface{}{"SET", "a", "\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n"},
-				Response:  []interface{}{"\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n"},
+				Request: fastdev.NewMessage(func() string {
+					return cast.ToCommandLine("SET", "a", "\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n")
+				}),
+				Response: fastdev.NewMessage(func() string {
+					return cast.ToCSV("\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n")
+				}),
 			},
 			{
 				Protocol:  fastdev.REDIS,
 				Timestamp: chrono.Now(ctx).UnixNano(),
-				Request:   []interface{}{"HGET", "a"},
-				Response: map[string]interface{}{
-					"a": "b",
-					"c": 3,
-					"d": "\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n",
-				},
+				Request: fastdev.NewMessage(func() string {
+					return cast.ToCommandLine("HGET", "a")
+				}),
+				Response: fastdev.NewMessage(func() string {
+					return cast.ToCSV("a", "b", "c", 3, "d", "\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n")
+				}),
 			},
 		},
 	}
@@ -86,12 +98,20 @@ func TestReplayAction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Println("encode:", str)
+	fmt.Println("record:", str)
 
-	session, err := fastdev.ToSession(str)
+	rawSession, err := fastdev.ToRawSession(str)
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	session, err := replayer.ToSession(rawSession)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fmt.Print("json(record): ")
+	fmt.Println(session.Pretty())
 
 	err = replayer.Store(session)
 	if err != nil {
@@ -99,13 +119,11 @@ func TestReplayAction(t *testing.T) {
 	}
 
 	{
-		query := &fastdev.Action{
-			Protocol: fastdev.REDIS,
-			Request:  []interface{}{"SET", "a", "1"},
-		}
-
-		var action *fastdev.Action
-		action, err = replayer.GetAction(ctx, query)
+		var (
+			action  *replayer.Action
+			request = cast.ToCommandLine("SET", "a", "1")
+		)
+		action, err = replayer.ReplayAction(ctx, fastdev.REDIS, request)
 		assert.Nil(t, err)
 		assert.NotNil(t, action)
 
@@ -114,31 +132,71 @@ func TestReplayAction(t *testing.T) {
 	}
 
 	{
-		query := &fastdev.Action{
-			Protocol: fastdev.REDIS,
-			Request:  []interface{}{"SET", "a", "\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n"},
-		}
-
-		var action *fastdev.Action
-		action, err = replayer.GetAction(ctx, query)
+		var (
+			action  *replayer.Action
+			request = cast.ToCommandLine("SET", "a", "\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n")
+		)
+		action, err = replayer.ReplayAction(ctx, fastdev.REDIS, request)
 		assert.Nil(t, err)
 		assert.NotNil(t, action)
 
 		fmt.Print("action: ")
 		fmt.Println(action.Pretty())
 	}
+
+	err = replayer.ReplayInbound(ctx, "200 ...")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = session.Flat()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fmt.Println(session.Pretty())
 }
 
 type httpProtocol struct{}
 
-func (p *httpProtocol) GetLabel(req interface{}) string {
-	r := req.([]interface{})
-	return r[0].(string) + "@" + strings.SplitN(r[1].(string), "?", 2)[0]
+func (p *httpProtocol) ShouldDiff() bool {
+	return true
+}
+
+func (p *httpProtocol) GetLabel(data string) string {
+	return data[:4]
+}
+
+func (p *httpProtocol) FlatRequest(data string) (map[string]string, error) {
+	return nil, nil
+}
+
+func (p *httpProtocol) FlatResponse(data string) (map[string]string, error) {
+	return nil, nil
 }
 
 type redisProtocol struct{}
 
-func (p *redisProtocol) GetLabel(req interface{}) string {
-	r := req.([]interface{})
-	return r[0].(string)
+func (p *redisProtocol) ShouldDiff() bool {
+	return true
+}
+
+func (p *redisProtocol) GetLabel(data string) string {
+	return data[:4]
+}
+
+func (p *redisProtocol) FlatRequest(data string) (map[string]string, error) {
+	csv, err := cast.ParseCommandLine(data)
+	if err != nil {
+		return nil, err
+	}
+	return cast.FlatSlice(csv), nil
+}
+
+func (p *redisProtocol) FlatResponse(data string) (map[string]string, error) {
+	csv, err := cast.ParseCSV(data)
+	if err != nil {
+		return nil, err
+	}
+	return cast.FlatSlice(csv), nil
 }

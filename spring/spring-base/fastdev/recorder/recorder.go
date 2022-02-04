@@ -60,26 +60,23 @@ type recordSession struct {
 	close   bool
 }
 
-func onSession(ctx context.Context, f func(*recordSession) error) (*recordSession, error) {
+func onSession(ctx context.Context, f func(*recordSession) error) error {
 	if !recorder.mode {
-		return nil, errors.New("record mode not enabled")
+		return errors.New("record mode not enabled")
 	}
 	v, ok := knife.Get(ctx, sessionIDKey)
 	if !ok {
-		return nil, errors.New("session id not found")
+		return errors.New("session id not found")
 	}
 	sessionID := v.(string)
 	v, ok = recorder.data.Load(sessionID)
 	if !ok {
-		return nil, errors.New("session not found")
+		return errors.New("session not found")
 	}
 	r := v.(*recordSession)
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
-	if err := f(r); err != nil {
-		return nil, err
-	}
-	return r, nil
+	return f(r)
 }
 
 // StartRecord 开始流量录制
@@ -100,20 +97,22 @@ func StartRecord(ctx context.Context, sessionID string) error {
 
 // StopRecord 停止流量录制
 func StopRecord(ctx context.Context) (*fastdev.Session, error) {
-	r, err := onSession(ctx, func(r *recordSession) error {
+	var ret *fastdev.Session
+	err := onSession(ctx, func(r *recordSession) error {
 		recorder.data.Delete(r.session.Session)
 		r.close = true
+		ret = r.session
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	return r.session, nil
+	return ret, nil
 }
 
 // RecordInbound 录制 inbound 流量。
 func RecordInbound(ctx context.Context, inbound *fastdev.Action) error {
-	_, err := onSession(ctx, func(r *recordSession) error {
+	return onSession(ctx, func(r *recordSession) error {
 		if r.close {
 			return errors.New("recording already stopped")
 		}
@@ -124,12 +123,11 @@ func RecordInbound(ctx context.Context, inbound *fastdev.Action) error {
 		r.session.Inbound = inbound
 		return nil
 	})
-	return err
 }
 
 // RecordAction 录制 outbound 流量。
 func RecordAction(ctx context.Context, action *fastdev.Action) error {
-	_, err := onSession(ctx, func(r *recordSession) error {
+	return onSession(ctx, func(r *recordSession) error {
 		if r.close {
 			return errors.New("recording already stopped")
 		}
@@ -137,5 +135,4 @@ func RecordAction(ctx context.Context, action *fastdev.Action) error {
 		r.session.Actions = append(r.session.Actions, action)
 		return nil
 	})
-	return err
 }

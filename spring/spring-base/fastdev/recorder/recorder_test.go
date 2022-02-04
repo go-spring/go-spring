@@ -22,7 +22,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-spring/spring-base/assert"
+	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-base/chrono"
 	"github.com/go-spring/spring-base/fastdev"
 	"github.com/go-spring/spring-base/fastdev/recorder"
@@ -51,8 +51,12 @@ func TestRecordAction(t *testing.T) {
 
 	err = recorder.RecordAction(ctx, &fastdev.Action{
 		Protocol: fastdev.REDIS,
-		Request:  []interface{}{"SET", "a", "\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n"},
-		Response: []interface{}{"\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n"},
+		Request: fastdev.NewMessage(func() string {
+			return cast.ToCommandLine("SET", "a", "\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n")
+		}),
+		Response: fastdev.NewMessage(func() string {
+			return cast.ToCSV("\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n")
+		}),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -60,8 +64,12 @@ func TestRecordAction(t *testing.T) {
 
 	err = recorder.RecordAction(ctx, &fastdev.Action{
 		Protocol: fastdev.REDIS,
-		Request:  []interface{}{"LRANGE", "list", 0, -1},
-		Response: []interface{}{"1", 2, "3"},
+		Request: fastdev.NewMessage(func() string {
+			return cast.ToCommandLine("LRANGE", "list", 0, -1)
+		}),
+		Response: fastdev.NewMessage(func() string {
+			return cast.ToCSV("1", 2, "3")
+		}),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -69,8 +77,12 @@ func TestRecordAction(t *testing.T) {
 
 	err = recorder.RecordInbound(ctx, &fastdev.Action{
 		Protocol: fastdev.HTTP,
-		Request:  []interface{}{"GET", "..."},
-		Response: []interface{}{200, "..."},
+		Request: fastdev.NewMessage(func() string {
+			return "GET ..."
+		}),
+		Response: fastdev.NewMessage(func() string {
+			return "200 ..."
+		}),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -85,50 +97,44 @@ func TestRecordAction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Println("encode:", str)
+	fmt.Println("got:", str)
 
-	s1, err := fastdev.ToSession(str)
+	s1, err := fastdev.ToRawSession(str)
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Print("decode: ")
+	fmt.Print("json(got): ")
 	fmt.Println(s1.Pretty())
 
 	expect := `{
-	  "session": "df3b64266ebe4e63a464e135000a07cd",
-	  "timestamp": 1643364150000047753,
-	  "inbound": {
-		"protocol": "HTTP",
-		"timestamp": 1643364150000054648,
-		"request": ["GET", "..."],
-		"response": [200, "..."]
+	  "Session": "df3b64266ebe4e63a464e135000a07cd",
+	  "Timestamp": 1643364150000040916,
+	  "Inbound": {
+		"Protocol": "HTTP",
+		"Timestamp": 1643364150000045348,
+		"Request": "GET ...",
+		"Response": "200 ..."
 	  },
-	  "actions": [
+	  "Actions": [
 		{
-		  "protocol": "REDIS",
-		  "timestamp": 1643364150000047753,
-		  "request": ["SET", "a", "@\"\\x00\\xc0\\n\\t\\x00\\xbem\\x06\\x89Z(\\x00\\n\""],
-		  "response": ["@\"\\x00\\xc0\\n\\t\\x00\\xbem\\x06\\x89Z(\\x00\\n\""]
+		  "Protocol": "REDIS",
+		  "Timestamp": 1643364150000040916,
+		  "Request": "SET a \"\\x00\\xc0\\n\\t\\x00\\xbem\\x06\\x89Z(\\x00\\n\"",
+		  "Response": "\"\\x00\\xc0\\n\\t\\x00\\xbem\\x06\\x89Z(\\x00\\n\""
 		},
 		{
-		  "protocol": "REDIS",
-		  "timestamp": 1643364150000047753,
-		  "request": ["LRANGE", "list", 0, -1],
-		  "response": ["1", 2, "3"]
+		  "Protocol": "REDIS",
+		  "Timestamp": 1643364150000040916,
+		  "Request": "LRANGE list 0 -1",
+		  "Response": "\"1\",\"2\",\"3\""
 		}
 	  ]
 	}`
 
-	s2, err := fastdev.ToSession(expect)
+	s2, err := fastdev.ToRawSession(expect)
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Print("expect: ")
+	fmt.Print("json(expect): ")
 	fmt.Println(s2.Pretty())
-
-	eq, err := fastdev.DiffSession(s1, s2, []string{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	assert.True(t, eq)
 }

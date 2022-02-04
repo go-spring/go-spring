@@ -23,7 +23,7 @@ import (
 )
 
 // ToCSV 将数据转换为 CSV 格式，可用于 redis 结果格式化。
-func ToCSV(data []interface{}) string {
+func ToCSV(data ...interface{}) string {
 	var buf bytes.Buffer
 	for i, arg := range data {
 		switch s := arg.(type) {

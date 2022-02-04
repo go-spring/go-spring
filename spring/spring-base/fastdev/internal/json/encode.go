@@ -865,7 +865,7 @@ func newSliceEncoder(t reflect.Type) encoderFunc {
 	if t.Elem().Kind() == reflect.Uint8 {
 		p := reflect.PtrTo(t.Elem())
 		if !p.Implements(marshalerType) && !p.Implements(textMarshalerType) {
-			return encodeByteSliceV2
+			return encodeByteSlice
 		}
 	}
 	enc := sliceEncoder{newArrayEncoder(t)}

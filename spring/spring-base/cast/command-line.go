@@ -45,7 +45,7 @@ func QuoteCount(s string) int {
 }
 
 // ToCommandLine 将数据转换为命令行格式，可用于 redis 参数格式化。
-func ToCommandLine(data []interface{}) string {
+func ToCommandLine(data ...interface{}) string {
 	var buf bytes.Buffer
 	for i, arg := range data {
 		switch s := arg.(type) {

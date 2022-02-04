@@ -26,62 +26,66 @@ import (
 const rootKey = "$"
 
 // Flat 将 json 字符串解析成一维映射表，如 {"a":{"b":"c"}} 解析成 a.b=c 映射表。
-func Flat(data []byte) map[string]interface{} {
-	result := make(map[string]interface{})
-	if !flat(rootKey, data, result) {
+func Flat(data []byte) map[string]string {
+	result := make(map[string]string)
+	if !flatPrefix(rootKey, data, result) {
 		result[rootKey] = string(data)
 	}
 	return result
 }
 
-func flat(prefix string, data []byte, result map[string]interface{}) bool {
+func FlatSlice(data []string) map[string]string {
+	result := make(map[string]string)
+	for i, v := range data {
+		k := rootKey + fmt.Sprintf("[%d]", i)
+		if !flatPrefix(k, []byte(v), result) {
+			result[k] = v
+		}
+	}
+	return result
+}
+
+func flatPrefix(prefix string, data []byte, result map[string]string) bool {
 	switch trimData := bytes.TrimSpace(data); trimData[0] {
 	case '{':
 		var m map[string]json.RawMessage
-		if json.Unmarshal(trimData, &m) != nil {
+		if json.Unmarshal(trimData, &m) != nil || len(m) == 0 {
 			return false
 		}
 		for k, v := range m {
-			if prefix != rootKey {
-				k = prefix + "." + k
-			}
-			if !flat(k, v, result) {
+			k = prefix + "." + k
+			if !flatPrefix(k, v, result) {
 				result[k] = string(v)
 			}
 		}
 		return true
 	case '[':
 		var s []json.RawMessage
-		if json.Unmarshal(trimData, &s) != nil {
+		if json.Unmarshal(trimData, &s) != nil || len(s) == 0 {
 			return false
 		}
 		for i, v := range s {
-			k := fmt.Sprintf("[%d]", i)
-			if prefix != rootKey {
-				k = prefix + k
-			}
-			if !flat(k, v, result) {
+			k := prefix + fmt.Sprintf("[%d]", i)
+			if !flatPrefix(k, v, result) {
 				result[k] = string(v)
 			}
 		}
 		return true
 	default:
-		var i interface{}
-		if json.Unmarshal(data, &i) != nil {
-			return false
-		}
-		s, ok := i.(string)
-		if !ok {
-			result[prefix] = i
+		var s string
+		if json.Unmarshal(data, &s) != nil {
+			result[prefix] = string(data)
 			return true
 		}
-		switch trimStr := strings.TrimSpace(s); trimStr[0] {
+		trimStr := strings.TrimSpace(s)
+		if len(trimStr) == 0 {
+			result[prefix] = s
+			return true
+		}
+		switch trimStr[0] {
 		case '{', '[', '"':
-			k := "\"\""
-			if prefix != rootKey {
-				k = prefix + "." + k
-			}
-			if !flat(k, []byte(trimStr), result) {
+			k := prefix + ".\"\""
+			if !flatPrefix(k, []byte(trimStr), result) {
 				result[prefix] = s
 			}
 			return true

@@ -31,7 +31,7 @@ func TestCommandLine(t *testing.T) {
 		"string",
 		"\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n",
 	}
-	data := cast.ToCommandLine(inputs)
+	data := cast.ToCommandLine(inputs...)
 	assert.Equal(t, data, `CMD 1 true string "\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n"`)
 	outputs, err := cast.ParseCommandLine(data)
 	if err != nil {

@@ -20,12 +20,11 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf8"
-	"unsafe"
 )
 
 // stringEncoderV2 对于 "\u0000\xC0\n\t\u0000\xBEm\u0006\x89Z(\u0000\n"
-// 这样的字符串，标准库的序列化结果不正确，不能逆向转换回去。新方法对于上面的字符串，
-// 会进行 quote 操作，然后添加 (@Quote@) 前缀以指示反序列化时需要 unquote 操作。
+// 这样的字符串，标准库的序列化结果不正确，不能逆向转换回去。新方法是对原字符串多做
+// 一次 quote 操作，同时使用 @ 前缀指示是否进行二次 quote 以便能够正确反序列化。
 func stringEncoderV2(e *encodeState, v reflect.Value, opts encOpts) {
 	if v.Type() == numberType {
 		numStr := v.String()
@@ -54,11 +53,7 @@ func stringEncoderV2(e *encodeState, v reflect.Value, opts encOpts) {
 		e.stringBytes(e2.Bytes(), false)
 		encodeStatePool.Put(e2)
 	} else {
-		s := v.String()
-		if NeedQuote(s) {
-			s = Quote(s)
-		}
-		e.string(s, opts.escapeHTML)
+		e.string(Quote(v.String()), opts.escapeHTML)
 	}
 }
 
@@ -80,7 +75,10 @@ func NeedQuote(s string) bool {
 
 // Quote 添加 (@Quote@) 前缀，反序列化时需要移除。
 func Quote(s string) string {
-	return "@" + strconv.Quote(s)
+	if NeedQuote(s) {
+		return "@" + strconv.Quote(s)
+	}
+	return s
 }
 
 // Unquote 存在 (@Quote@) 前缀，反序列化时需要移除。
@@ -89,37 +87,4 @@ func Unquote(s string) (string, error) {
 		return strconv.Unquote(s[1:])
 	}
 	return s, nil
-}
-
-// encodeByteSliceV2 对于 byte slice 标准库的做法是进行 base64 编码，而且当
-// byte slice 为合法的字符串时仍然会进行 base64 编码，这种方式非常不利于阅读。
-// 新方法认为 byte slice 都是字符窜，但是需要使用 Quote 进行编码，同时在结果的
-// 前面添加 (@Bytes@) 前缀，反序列化时会将前缀去除并且使用 Unquote 进行解码。
-func encodeByteSliceV2(e *encodeState, v reflect.Value, _ encOpts) {
-	if v.IsNil() {
-		e.WriteString("null")
-		return
-	}
-	b := v.Bytes()
-	e.WriteByte('"')
-	e.WriteString(QuoteBytes(b))
-	e.WriteByte('"')
-}
-
-func bytesToString(b []byte) string {
-	return *(*string)(unsafe.Pointer(&b))
-}
-
-func QuoteBytes(b []byte) string {
-	s := Quote(bytesToString(b))
-	s = strconv.Quote(s)
-	return s[1 : len(s)-1]
-}
-
-func UnquoteBytes(b []byte) ([]byte, error) {
-	s, err := Unquote(bytesToString(b))
-	if err != nil {
-		return nil, err
-	}
-	return []byte(s), nil
 }

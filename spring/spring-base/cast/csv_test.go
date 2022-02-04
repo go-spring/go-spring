@@ -31,7 +31,7 @@ func TestCSV(t *testing.T) {
 		"string",
 		"\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n",
 	}
-	data := cast.ToCSV(inputs)
+	data := cast.ToCSV(inputs...)
 	assert.Equal(t, data, `"CMD","1","true","string","\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n"`)
 	outputs, err := cast.ParseCSV(data)
 	if err != nil {

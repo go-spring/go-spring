@@ -37,7 +37,16 @@ func TestFlat(t *testing.T) {
 		"q": [1, "2", 3],
 		"r": ["1", "{\"e\":\"e\",\"f\":\"{\\\"g\\\":\\\"]\\\",\\\"h\\\":\\\"{\\\\\\\"i\\\\\\\":\\\\\\\"[\\\\\\\"}\\\"}\"}", 3],
 		"s": "{",
-		"t": "["
+		"t": "[",
+		"x": "{}",
+		"y": "[]",
+		"z": {
+			"a": " ",
+			"b": "\t",
+			"c": "\n",
+			"d": "\r\n",
+			"e": "@\"\\x00\""
+		}
 	}`
 	m := cast.Flat([]byte(str))
 	var keys []string
@@ -53,21 +62,54 @@ func TestFlat(t *testing.T) {
 		}
 		fmt.Println(k, "=", string(b))
 	}
-	assert.Equal(t, m, map[string]interface{}{
-		"a":                         "a",
-		"b.c":                       "c",
-		"b.d.\"\".e":                "e",
-		"b.d.\"\".f.\"\".g":         "}",
-		"b.d.\"\".f.\"\".h.\"\".i":  "{",
-		"q[0]":                      float64(1),
-		"q[1]":                      "2",
-		"q[2]":                      float64(3),
-		"r[0]":                      "1",
-		"r[1].\"\".e":               "e",
-		"r[1].\"\".f.\"\".g":        "]",
-		"r[1].\"\".f.\"\".h.\"\".i": "[",
-		"r[2]":                      float64(3),
-		"s":                         "{",
-		"t":                         "[",
+	assert.Equal(t, m, map[string]string{
+		"$.a":                         "a",
+		"$.b.c":                       "c",
+		"$.b.d.\"\".e":                "e",
+		"$.b.d.\"\".f.\"\".g":         "}",
+		"$.b.d.\"\".f.\"\".h.\"\".i":  "{",
+		"$.q[0]":                      "1",
+		"$.q[1]":                      "2",
+		"$.q[2]":                      "3",
+		"$.r[0]":                      "1",
+		"$.r[1].\"\".e":               "e",
+		"$.r[1].\"\".f.\"\".g":        "]",
+		"$.r[1].\"\".f.\"\".h.\"\".i": "[",
+		"$.r[2]":                      "3",
+		"$.s":                         "{",
+		"$.t":                         "[",
+		"$.x":                         "{}",
+		"$.y":                         "[]",
+		"$.z.a":                       " ",
+		"$.z.b":                       "\t",
+		"$.z.c":                       "\n",
+		"$.z.d":                       "\r\n",
+		"$.z.e":                       "@\"\\x00\"",
+	})
+}
+
+func TestFlatSlice(t *testing.T) {
+	m := cast.FlatSlice([]string{
+		"a", "[\"b\",\"c\"]", "{\"c\":\"d\",\"e\":[\"f\"]}",
+	})
+	var keys []string
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		v := m[k]
+		b, err := json.Marshal(v)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fmt.Println(k, "=", string(b))
+	}
+	assert.Equal(t, m, map[string]string{
+		"$[0]":      "a",
+		"$[1][0]":   "b",
+		"$[1][1]":   "c",
+		"$[2].c":    "d",
+		"$[2].e[0]": "f",
 	})
 }
