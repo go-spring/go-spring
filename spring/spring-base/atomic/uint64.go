@@ -16,14 +16,15 @@
 
 package atomic
 
-import "sync/atomic"
+import (
+	"sync/atomic"
+
+	"github.com/go-spring/spring-base/util"
+)
 
 type Uint64 struct {
+	_ util.NoCopy
 	v uint64
-}
-
-func NewUint64(val uint64) *Uint64 {
-	return &Uint64{v: val}
 }
 
 // Add wrapper for atomic.AddUint64.

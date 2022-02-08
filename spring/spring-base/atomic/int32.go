@@ -16,14 +16,15 @@
 
 package atomic
 
-import "sync/atomic"
+import (
+	"sync/atomic"
+
+	"github.com/go-spring/spring-base/util"
+)
 
 type Int32 struct {
+	_ util.NoCopy
 	v int32
-}
-
-func NewInt32(val int32) *Int32 {
-	return &Int32{v: val}
 }
 
 // Add wrapper for atomic.AddInt32.

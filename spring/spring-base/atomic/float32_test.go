@@ -14,15 +14,24 @@
  * limitations under the License.
  */
 
-package atomic
+package atomic_test
 
 import (
-	"sync/atomic"
+	"testing"
+	"unsafe"
 
-	"github.com/go-spring/spring-base/util"
+	"github.com/go-spring/spring-base/assert"
+	"github.com/go-spring/spring-base/atomic"
 )
 
-type Value struct {
-	_ util.NoCopy
-	atomic.Value
+func TestFloat32(t *testing.T) {
+
+	// atomic.Float32 和 uint32 占用的空间大小一样
+	assert.Equal(t, unsafe.Sizeof(atomic.Float32{}), uintptr(4))
+
+	var f atomic.Float32
+	assert.Equal(t, f.Load(), float32(0))
+
+	f.Store(1)
+	assert.Equal(t, f.Load(), float32(1))
 }

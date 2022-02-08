@@ -19,14 +19,13 @@ package atomic
 import (
 	"sync/atomic"
 	"time"
+
+	"github.com/go-spring/spring-base/util"
 )
 
 type Duration struct {
+	_ util.NoCopy
 	v int64
-}
-
-func NewDuration(val time.Duration) *Duration {
-	return &Duration{v: int64(val)}
 }
 
 // Add wrapper for atomic.AddInt64.

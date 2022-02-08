@@ -19,14 +19,13 @@ package atomic
 import (
 	"math"
 	"sync/atomic"
+
+	"github.com/go-spring/spring-base/util"
 )
 
 type Float64 struct {
+	_ util.NoCopy
 	v uint64
-}
-
-func NewFloat64(val float64) *Float64 {
-	return &Float64{v: math.Float64bits(val)}
 }
 
 // Add wrapper for atomic.AddUint64.

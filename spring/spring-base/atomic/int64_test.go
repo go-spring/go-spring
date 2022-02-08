@@ -26,43 +26,16 @@ import (
 	"github.com/go-spring/spring-base/atomic"
 )
 
-func TestSize(t *testing.T) {
-	assert.Equal(t, unsafe.Sizeof(int64(0)), uintptr(8))
-	assert.Equal(t, unsafe.Sizeof(atomic.Int64{}), uintptr(8))
-}
-
 func TestInt64(t *testing.T) {
 
-	var i64 atomic.Int64
-	var wg sync.WaitGroup
+	// atomic.Int64 和 int64 占用的空间大小一样
+	assert.Equal(t, unsafe.Sizeof(atomic.Int64{}), uintptr(8))
 
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		for i := 0; i < 10; i++ {
-			i64.Add(1)
-		}
-	}()
-	go func() {
-		defer wg.Done()
-		for i := 0; i < 10; i++ {
-			i64.Add(2)
-		}
-	}()
-	wg.Wait()
-	assert.Equal(t, int64(30), i64.Load())
+	var i atomic.Int64
+	assert.Equal(t, i.Load(), int64(0))
 
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		i64.Store(3)
-	}()
-	go func() {
-		defer wg.Done()
-		i64.Store(4)
-	}()
-	wg.Wait()
-	assert.True(t, i64.Load() == 3 || i64.Load() == 4)
+	i.Store(1)
+	assert.Equal(t, i.Load(), int64(1))
 }
 
 func TestReflectInt64(t *testing.T) {

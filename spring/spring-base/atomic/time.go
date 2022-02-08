@@ -16,16 +16,16 @@
 
 package atomic
 
-import "time"
+import (
+	"sync/atomic"
+	"time"
+
+	"github.com/go-spring/spring-base/util"
+)
 
 type Time struct {
-	v Value
-}
-
-func NewTime(val time.Time) *Time {
-	t := &Time{}
-	t.Store(val)
-	return t
+	_ util.NoCopy
+	v atomic.Value
 }
 
 func (t *Time) Load() time.Time {

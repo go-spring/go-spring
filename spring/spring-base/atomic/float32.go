@@ -19,14 +19,13 @@ package atomic
 import (
 	"math"
 	"sync/atomic"
+
+	"github.com/go-spring/spring-base/util"
 )
 
 type Float32 struct {
+	_ util.NoCopy
 	v uint32
-}
-
-func NewFloat32(val float32) *Float32 {
-	return &Float32{v: math.Float32bits(val)}
 }
 
 // Add wrapper for atomic.AddUint32.

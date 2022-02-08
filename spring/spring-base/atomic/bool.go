@@ -16,14 +16,15 @@
 
 package atomic
 
-import "sync/atomic"
+import (
+	"sync/atomic"
+
+	"github.com/go-spring/spring-base/util"
+)
 
 type Bool struct {
+	_ util.NoCopy
 	v int32
-}
-
-func NewBool(val bool) *Bool {
-	return &Bool{v: bool2int(val)}
 }
 
 func bool2int(val bool) int32 {

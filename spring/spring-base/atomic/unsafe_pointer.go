@@ -19,14 +19,13 @@ package atomic
 import (
 	"sync/atomic"
 	"unsafe"
+
+	"github.com/go-spring/spring-base/util"
 )
 
 type UnsafePointer struct {
+	_ util.NoCopy
 	v unsafe.Pointer
-}
-
-func NewPointer(val unsafe.Pointer) *UnsafePointer {
-	return &UnsafePointer{v: val}
 }
 
 // Load wrapper for atomic.LoadPointer.

@@ -16,14 +16,15 @@
 
 package atomic
 
-import "sync/atomic"
+import (
+	"sync/atomic"
+
+	"github.com/go-spring/spring-base/util"
+)
 
 type Uintptr struct {
+	_ util.NoCopy
 	v uintptr
-}
-
-func NewUintptr(val uintptr) *Uintptr {
-	return &Uintptr{v: val}
 }
 
 // Add wrapper for atomic.AddUintptr.
