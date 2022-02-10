@@ -24,14 +24,14 @@ import (
 	"github.com/go-spring/spring-base/knife"
 )
 
-func TestGet(t *testing.T) {
+func TestKnife(t *testing.T) {
 	ctx := context.Background()
 
 	v, ok := knife.Get(ctx, "a")
 	assert.False(t, ok)
 
 	err := knife.Set(ctx, "a", "b")
-	assert.Equal(t, err, knife.ErrUninitialized)
+	assert.Error(t, err, "knife uninitialized")
 
 	v, ok = knife.Get(ctx, "a")
 	assert.False(t, ok)
@@ -45,23 +45,9 @@ func TestGet(t *testing.T) {
 	err = knife.Set(ctx, "a", "b")
 	assert.Nil(t, err)
 
+	ctx, cached = knife.New(ctx)
+	assert.True(t, cached)
+
 	v, ok = knife.Get(ctx, "a")
 	assert.Equal(t, v, "b")
-}
-
-func TestFetch(t *testing.T) {
-	ctx, cached := knife.New(context.Background())
-	assert.False(t, cached)
-
-	err := knife.Set(ctx, "a", map[string]string{"b": "c"})
-	assert.Nil(t, err)
-
-	var m map[string]string
-	ok, err := knife.Fetch(ctx, "a", &m)
-	assert.True(t, ok)
-
-	var b bool
-	ok, err = knife.Fetch(ctx, "a", &b)
-	assert.False(t, ok)
-	assert.Error(t, err, "want bool but got map\\[string]string")
 }

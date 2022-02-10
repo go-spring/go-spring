@@ -21,7 +21,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"reflect"
 	"sync"
 )
 
@@ -29,39 +28,44 @@ type ctxKeyType int
 
 var ctxKey ctxKeyType
 
-// ErrUninitialized context.Context 对象未初始化。
-var ErrUninitialized = errors.New("knife uninitialized")
-
 func cache(ctx context.Context) (*sync.Map, bool) {
 	m, ok := ctx.Value(ctxKey).(*sync.Map)
 	return m, ok
 }
 
-// New 返回带有缓存空间的 context.Context 对象，已经绑定缓存空间时 cached 返回 true 。
-func New(ctx context.Context) (dst context.Context, cached bool) {
+// New 返回带有缓存空间的 context.Context 对象，已绑定缓存空间时 cached 返回 true 。
+func New(ctx context.Context) (c context.Context, cached bool) {
 	if _, ok := cache(ctx); ok {
 		return ctx, true
 	}
-	dst = context.WithValue(ctx, ctxKey, new(sync.Map))
-	return dst, false
+	c = context.WithValue(ctx, ctxKey, new(sync.Map))
+	return c, false
 }
 
 // Copy 拷贝 context.Context 对象中的内容到另一个 context.Context 对象。
 func Copy(src context.Context, keys ...string) (context.Context, error) {
-	dst, _ := New(context.Background())
 	m, ok := cache(src)
 	if !ok {
-		return dst, nil
+		return nil, nil
 	}
-	var v interface{}
-	for _, key := range keys {
-		if v, ok = m.Load(key); ok {
-			if err := Set(dst, key, v); err != nil {
-				return nil, err
+	dest, _ := New(context.Background())
+	if len(keys) == 0 {
+		c, _ := cache(dest)
+		m.Range(func(key, value interface{}) bool {
+			c.Store(key, value)
+			return true
+		})
+	} else {
+		for _, key := range keys {
+			var v interface{}
+			if v, ok = m.Load(key); ok {
+				if err := Set(dest, key, v); err != nil {
+					return nil, err
+				}
 			}
 		}
 	}
-	return dst, nil
+	return dest, nil
 }
 
 // Get 从 context.Context 对象中获取 key 对应的 val。
@@ -76,7 +80,7 @@ func Get(ctx context.Context, key string) (interface{}, bool) {
 func Set(ctx context.Context, key string, val interface{}) error {
 	m, ok := cache(ctx)
 	if !ok {
-		return ErrUninitialized
+		return errors.New("knife uninitialized")
 	}
 	if _, loaded := m.LoadOrStore(key, val); loaded {
 		return fmt.Errorf("duplicate key %s", key)
@@ -96,23 +100,4 @@ func Range(ctx context.Context, f func(key, value interface{}) bool) {
 	if m, ok := cache(ctx); ok {
 		m.Range(f)
 	}
-}
-
-// Fetch 从 context.Context 对象中获取 key 对应的 val。
-func Fetch(ctx context.Context, key string, out interface{}) (bool, error) {
-	ov := reflect.ValueOf(out)
-	if ov.Kind() != reflect.Ptr || ov.IsNil() {
-		return false, errors.New("out should be ptr and not nil")
-	}
-	v, ok := Get(ctx, key)
-	if !ok {
-		return false, nil
-	}
-	ev := ov.Elem()
-	rv := reflect.ValueOf(v)
-	if rv.Type() != ev.Type() {
-		return false, fmt.Errorf("want %s but got %T", ev.Type(), v)
-	}
-	ev.Set(rv)
-	return true, nil
 }
