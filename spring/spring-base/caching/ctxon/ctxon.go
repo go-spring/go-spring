@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-// Package knife 提供了 context.Context 上的缓存。
-package knife
+// Package ctxon 提供了 context.Context 上的缓存。
+package ctxon
 
 import (
 	"context"
@@ -34,38 +34,12 @@ func cache(ctx context.Context) (*sync.Map, bool) {
 }
 
 // New 返回带有缓存空间的 context.Context 对象，已绑定缓存空间时 cached 返回 true 。
-func New(ctx context.Context) (c context.Context, cached bool) {
+func New(ctx context.Context) (_ context.Context, cached bool) {
 	if _, ok := cache(ctx); ok {
 		return ctx, true
 	}
-	c = context.WithValue(ctx, ctxKey, new(sync.Map))
-	return c, false
-}
-
-// Copy 拷贝 context.Context 对象中的内容到另一个 context.Context 对象。
-func Copy(src context.Context, keys ...string) (context.Context, error) {
-	m, ok := cache(src)
-	if !ok {
-		return nil, nil
-	}
-	dest, _ := New(context.Background())
-	if len(keys) == 0 {
-		c, _ := cache(dest)
-		m.Range(func(key, value interface{}) bool {
-			c.Store(key, value)
-			return true
-		})
-	} else {
-		for _, key := range keys {
-			var v interface{}
-			if v, ok = m.Load(key); ok {
-				if err := Set(dest, key, v); err != nil {
-					return nil, err
-				}
-			}
-		}
-	}
-	return dest, nil
+	ctx = context.WithValue(ctx, ctxKey, new(sync.Map))
+	return ctx, false
 }
 
 // Get 从 context.Context 对象中获取 key 对应的 val。
@@ -80,7 +54,7 @@ func Get(ctx context.Context, key string) (interface{}, bool) {
 func Set(ctx context.Context, key string, val interface{}) error {
 	m, ok := cache(ctx)
 	if !ok {
-		return errors.New("knife uninitialized")
+		return errors.New("ctxon uninitialized")
 	}
 	if _, loaded := m.LoadOrStore(key, val); loaded {
 		return fmt.Errorf("duplicate key %s", key)
@@ -100,4 +74,28 @@ func Range(ctx context.Context, f func(key, value interface{}) bool) {
 	if m, ok := cache(ctx); ok {
 		m.Range(f)
 	}
+}
+
+// Copy 拷贝 context.Context 对象中的内容到另一个 context.Context 对象。
+func Copy(src context.Context, keys ...string) (context.Context, error) {
+	srcMap, ok := cache(src)
+	if !ok {
+		return nil, errors.New("ctxon uninitialized")
+	}
+	dest, _ := New(context.Background())
+	destMap, _ := cache(dest)
+	if len(keys) == 0 {
+		srcMap.Range(func(key, value interface{}) bool {
+			destMap.Store(key, value)
+			return true
+		})
+	} else {
+		for _, key := range keys {
+			var v interface{}
+			if v, ok = srcMap.Load(key); ok {
+				destMap.Store(key, v)
+			}
+		}
+	}
+	return dest, nil
 }

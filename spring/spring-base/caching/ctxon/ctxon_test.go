@@ -14,40 +14,43 @@
  * limitations under the License.
  */
 
-package knife_test
+package ctxon_test
 
 import (
 	"context"
 	"testing"
 
 	"github.com/go-spring/spring-base/assert"
-	"github.com/go-spring/spring-base/knife"
+	"github.com/go-spring/spring-base/caching/ctxon"
 )
 
-func TestKnife(t *testing.T) {
+func TestCtxOn(t *testing.T) {
 	ctx := context.Background()
 
-	v, ok := knife.Get(ctx, "a")
+	v, ok := ctxon.Get(ctx, "a")
 	assert.False(t, ok)
 
-	err := knife.Set(ctx, "a", "b")
-	assert.Error(t, err, "knife uninitialized")
+	err := ctxon.Set(ctx, "a", "b")
+	assert.Error(t, err, "ctxon uninitialized")
 
-	v, ok = knife.Get(ctx, "a")
+	v, ok = ctxon.Get(ctx, "a")
 	assert.False(t, ok)
 
-	ctx, cached := knife.New(ctx)
+	ctx, cached := ctxon.New(ctx)
 	assert.False(t, cached)
 
-	v, ok = knife.Get(ctx, "a")
+	v, ok = ctxon.Get(ctx, "a")
 	assert.False(t, ok)
 
-	err = knife.Set(ctx, "a", "b")
+	err = ctxon.Set(ctx, "a", "b")
 	assert.Nil(t, err)
 
-	ctx, cached = knife.New(ctx)
+	v, ok = ctxon.Get(ctx, "a")
+	assert.True(t, ok)
+
+	ctx, cached = ctxon.New(ctx)
 	assert.True(t, cached)
 
-	v, ok = knife.Get(ctx, "a")
+	v, ok = ctxon.Get(ctx, "a")
 	assert.Equal(t, v, "b")
 }
