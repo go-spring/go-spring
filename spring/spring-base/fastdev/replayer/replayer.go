@@ -20,18 +20,21 @@ import (
 	"context"
 	"errors"
 	"os"
-	"sync"
+	"strings"
 
-	"github.com/go-spring/spring-base/cast"
-	"github.com/go-spring/spring-base/chrono"
 	"github.com/go-spring/spring-base/fastdev"
 	"github.com/go-spring/spring-base/fastdev/internal/json"
 	"github.com/go-spring/spring-base/knife"
 )
 
 func init() {
-	if cast.ToBool(os.Getenv("GS_FASTDEV_REPLAY")) {
-		replayer.mode = true
+	switch strings.ToLower(os.Getenv("GS_FASTDEV_REPLAY")) {
+	case "remote":
+		replayer.enable = true
+		replayer.agent = new(RemoteAgent)
+	case "local":
+		replayer.enable = true
+		replayer.agent = new(LocalAgent)
 	}
 }
 
@@ -40,19 +43,25 @@ const (
 )
 
 var replayer struct {
-	mode bool     // 是否是回放模式。
-	data sync.Map // 正在回放的数据。
+	enable bool  // 是否启用回放模式。
+	agent  Agent // 本地还是远程回放。
 }
 
 // ReplayMode 返回是否是回放模式。
 func ReplayMode() bool {
-	return replayer.mode
+	return replayer.enable
 }
 
 // SetReplayMode 打开或者关闭回放模式，仅用于单元测试。
-func SetReplayMode(mode bool) {
+func SetReplayMode(enable bool) {
 	fastdev.CheckTestMode()
-	replayer.mode = mode
+	replayer.enable = enable
+}
+
+// SetReplayAgent 设置本地还是远程回放。
+func SetReplayAgent(agent Agent) {
+	fastdev.CheckTestMode()
+	replayer.agent = agent
 }
 
 type Session struct {
@@ -63,8 +72,10 @@ type Session struct {
 }
 
 func (session *Session) Flat() error {
-	if err := session.Inbound.Flat(); err != nil {
-		return err
+	if session.Inbound != nil {
+		if err := session.Inbound.Flat(); err != nil {
+			return err
+		}
 	}
 	for _, action := range session.Actions {
 		if err := action.Flat(); err != nil {
@@ -95,13 +106,13 @@ type Action struct {
 	Timestamp       int64             `json:",omitempty"` // 时间戳
 	Request         string            `json:",omitempty"` // 请求内容
 	Response        string            `json:",omitempty"` // 响应内容
-	FlatRequest     map[string]string `json:",omitempty"` // 请求内容
-	FlatResponse    map[string]string `json:",omitempty"` // 响应内容
+	FlatRequest     map[string]string `json:",omitempty"`
+	FlatResponse    map[string]string `json:",omitempty"`
 	RecTimestamp    int64             `json:",omitempty"` // 时间戳
 	RecRequest      string            `json:",omitempty"` // 请求内容
 	RecResponse     string            `json:",omitempty"` // 响应内容
-	RecFlatRequest  map[string]string `json:",omitempty"` // 请求内容
-	RecFlatResponse map[string]string `json:",omitempty"` // 响应内容
+	RecFlatRequest  map[string]string `json:",omitempty"`
+	RecFlatResponse map[string]string `json:",omitempty"`
 }
 
 func (action *Action) Flat() error {
@@ -145,7 +156,20 @@ func (action *Action) Pretty() (string, error) {
 	return string(b), nil
 }
 
+func ToAction(action *fastdev.RawAction) *Action {
+	return &Action{
+		Protocol:  action.Protocol,
+		Timestamp: action.Timestamp,
+		Request:   action.Request,
+		Response:  action.Response,
+	}
+}
+
 func ToSession(session *fastdev.RawSession) (*Session, error) {
+	var inbound *Action
+	if session.Inbound != nil {
+		inbound = ToAction(session.Inbound)
+	}
 	var actions []*Action
 	for _, action := range session.Actions {
 		p := fastdev.GetProtocol(action.Protocol)
@@ -159,64 +183,20 @@ func ToSession(session *fastdev.RawSession) (*Session, error) {
 	return &Session{
 		Session:   session.Session,
 		Timestamp: session.Timestamp,
-		Inbound:   ToAction(session.Inbound),
+		Inbound:   inbound,
 		Actions:   actions,
 	}, nil
 }
 
-func ToAction(action *fastdev.RawAction) *Action {
-	return &Action{
-		Protocol:  action.Protocol,
-		Timestamp: action.Timestamp,
-		Request:   action.Request,
-		Response:  action.Response,
-	}
-}
-
-type replayData struct {
-	session *Session
-	matched sync.Map
-	actions map[string]map[string][]*Action
-}
-
-// Store 存储 sessionID 对应的回放数据。
-func Store(session *Session) error {
-
-	r := &replayData{session: session}
-	_, loaded := replayer.data.LoadOrStore(session.Session, r)
-	if loaded {
-		return errors.New("session already stored")
-	}
-
-	actions := make(map[string]map[string][]*Action)
-	for _, a := range session.Actions {
-		p := fastdev.GetProtocol(a.Protocol)
-		if p == nil {
-			return errors.New("invalid protocol")
-		}
-		m, ok := actions[a.Protocol]
-		if !ok {
-			m = make(map[string][]*Action)
-			actions[a.Protocol] = m
-		}
-		label := p.GetLabel(a.Request)
-		m[label] = append(m[label], a)
-	}
-	r.actions = actions
-	return nil
-}
-
-// Delete 删除 sessionID 对应的回放数据。
-func Delete(sessionID string) {
-	replayer.data.Delete(sessionID)
-}
-
 func GetSessionID(ctx context.Context) (string, error) {
-	if !replayer.mode {
+	if !replayer.enable {
 		return "", errors.New("replay mode not enabled")
 	}
-	v, ok := knife.Get(ctx, sessionIDKey)
-	if !ok {
+	v, err := knife.Load(ctx, sessionIDKey)
+	if err != nil {
+		return "", err
+	}
+	if v == nil {
 		return "", errors.New("no session id found")
 	}
 	sessionID, ok := v.(string)
@@ -227,61 +207,12 @@ func GetSessionID(ctx context.Context) (string, error) {
 }
 
 func SetSessionID(ctx context.Context, sessionID string) error {
-	return knife.Set(ctx, sessionIDKey, sessionID)
+	return knife.Store(ctx, sessionIDKey, sessionID)
 }
 
-func getReplayData(ctx context.Context) (*replayData, error) {
-	sessionID, err := GetSessionID(ctx)
-	if err != nil {
-		return nil, err
+func QueryAction(ctx context.Context, protocol, request string, matchStrategy MatchStrategy) (response interface{}, err error) {
+	if replayer.agent == nil {
+		return "", errors.New("replay agent is nil")
 	}
-	v, ok := replayer.data.Load(sessionID)
-	if !ok {
-		return nil, errors.New("session not found")
-	}
-	return v.(*replayData), nil
-}
-
-func ReplayInbound(ctx context.Context, response string) error {
-	r, err := getReplayData(ctx)
-	if err != nil {
-		return err
-	}
-	r.session.Inbound.RecResponse = response
-	r.session.Inbound.RecRequest = r.session.Inbound.Request
-	r.session.Inbound.RecTimestamp = chrono.Now(ctx).UnixNano()
-	return nil
-}
-
-func ReplayAction(ctx context.Context, protocol string, request string) (*Action, error) {
-
-	r, err := getReplayData(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	p := fastdev.GetProtocol(protocol)
-	if p == nil {
-		return nil, errors.New("invalid protocol")
-	}
-
-	m, ok := r.actions[protocol]
-	if !ok {
-		return nil, errors.New("invalid protocol")
-	}
-
-	label := p.GetLabel(request)
-	for _, action := range m[label] {
-		if action.Request != request { // TODO 改为模糊匹配方式
-			continue
-		}
-		if _, loaded := r.matched.LoadOrStore(action, true); loaded {
-			continue
-		}
-		action.RecRequest = request
-		action.RecResponse = action.Response
-		action.RecTimestamp = chrono.Now(ctx).UnixNano()
-		return action, nil
-	}
-	return nil, nil
+	return replayer.agent.QueryAction(ctx, protocol, request, matchStrategy)
 }

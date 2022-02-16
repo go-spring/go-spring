@@ -41,6 +41,9 @@ func TestReplayAction(t *testing.T) {
 		replayer.SetReplayMode(false)
 	}()
 
+	agent := replayer.NewLocalAgent()
+	replayer.SetReplayAgent(agent)
+
 	sessionID := "39fc5c13443f47da9ff320cc4b02c789"
 	ctx, _ := knife.New(context.Background())
 	err := replayer.SetSessionID(ctx, sessionID)
@@ -94,7 +97,7 @@ func TestReplayAction(t *testing.T) {
 		},
 	}
 
-	str, err := recordSession.Pretty()
+	str, err := recordSession.PrettyJson()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,48 +116,44 @@ func TestReplayAction(t *testing.T) {
 	fmt.Print("json(record): ")
 	fmt.Println(session.Pretty())
 
-	err = replayer.Store(session)
+	err = agent.Store(session)
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer agent.Delete(session.Session)
 
-	{
-		var (
-			action  *replayer.Action
-			request = cast.ToCommandLine("SET", "a", "1")
-		)
-		action, err = replayer.ReplayAction(ctx, fastdev.REDIS, request)
-		assert.Nil(t, err)
-		assert.NotNil(t, action)
+	request := cast.ToCommandLine("SET", "a", "1")
+	response, _ := replayer.QueryAction(ctx, fastdev.REDIS, request, replayer.BestMatch)
+	assert.Equal(t, response, "\"1\",\"2\",\"3\"")
 
-		fmt.Print("action: ")
-		fmt.Println(action.Pretty())
-	}
-
-	{
-		var (
-			action  *replayer.Action
-			request = cast.ToCommandLine("SET", "a", "\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n")
-		)
-		action, err = replayer.ReplayAction(ctx, fastdev.REDIS, request)
-		assert.Nil(t, err)
-		assert.NotNil(t, action)
-
-		fmt.Print("action: ")
-		fmt.Println(action.Pretty())
-	}
-
-	err = replayer.ReplayInbound(ctx, "200 ...")
-	if err != nil {
-		t.Fatal(err)
-	}
+	request = cast.ToCommandLine("SET", "a", "\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n")
+	response, _ = replayer.QueryAction(ctx, fastdev.REDIS, request, replayer.BestMatch)
+	assert.Equal(t, response, "\"\\x00\\xc0\\n\\t\\x00\\xbem\\x06\\x89Z(\\x00\\n\"")
 
 	err = session.Flat()
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	fmt.Println(session.Pretty())
+
+	assert.Equal(t, session.Actions[0].FlatRequest, map[string]string{
+		"$[0]": "SET",
+		"$[1]": "a",
+		"$[2]": "1",
+	})
+	assert.Equal(t, session.Actions[0].FlatResponse, map[string]string{
+		"$[0]": "1",
+		"$[1]": "2",
+		"$[2]": "3",
+	})
+	assert.Equal(t, session.Actions[1].FlatRequest, map[string]string{
+		"$[0]": "SET",
+		"$[1]": "a",
+		"$[2]": "\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n",
+	})
+	assert.Equal(t, session.Actions[1].FlatResponse, map[string]string{
+		"$[0]": "\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n",
+	})
 }
 
 type httpProtocol struct{}

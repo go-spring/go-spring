@@ -17,14 +17,12 @@
 package fastdev
 
 import (
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
 	"strings"
 
 	"github.com/go-spring/spring-base/fastdev/internal/json"
-	"github.com/google/uuid"
 )
 
 const (
@@ -54,18 +52,6 @@ func RegisterProtocol(name string, protocol Protocol) {
 		panic(fmt.Errorf("%s: duplicate registration", name))
 	}
 	protocols[name] = protocol
-}
-
-// NewSessionID 使用 uuid 算法生成新的 Session ID 。
-func NewSessionID() string {
-	u := uuid.New()
-	buf := make([]byte, 32)
-	hex.Encode(buf, u[:4])
-	hex.Encode(buf[8:12], u[4:6])
-	hex.Encode(buf[12:16], u[6:8])
-	hex.Encode(buf[16:20], u[8:10])
-	hex.Encode(buf[20:], u[10:])
-	return string(buf)
 }
 
 // CheckTestMode 检查是否是测试模式
@@ -99,7 +85,7 @@ type Session struct {
 	Actions   []*Action `json:",omitempty"` // 动作数据
 }
 
-func (session *Session) String() (string, error) {
+func (session *Session) Json() (string, error) {
 	b, err := json.Marshal(session)
 	if err != nil {
 		return "", err
@@ -107,7 +93,7 @@ func (session *Session) String() (string, error) {
 	return string(b), nil
 }
 
-func (session *Session) Pretty() (string, error) {
+func (session *Session) PrettyJson() (string, error) {
 	b, err := json.MarshalIndent(session, "", "  ")
 	if err != nil {
 		return "", err
@@ -122,7 +108,7 @@ type Action struct {
 	Response  Message `json:",omitempty"` // 响应内容
 }
 
-func (action *Action) String() (string, error) {
+func (action *Action) Json() (string, error) {
 	b, err := json.Marshal(action)
 	if err != nil {
 		return "", err
@@ -130,7 +116,7 @@ func (action *Action) String() (string, error) {
 	return string(b), nil
 }
 
-func (action *Action) Pretty() (string, error) {
+func (action *Action) PrettyJson() (string, error) {
 	b, err := json.MarshalIndent(action, "", "  ")
 	if err != nil {
 		return "", err
@@ -145,7 +131,7 @@ type RawSession struct {
 	Actions   []*RawAction `json:",omitempty"` // 动作数据
 }
 
-func (session *RawSession) String() (string, error) {
+func (session *RawSession) Json() (string, error) {
 	b, err := json.Marshal(session)
 	if err != nil {
 		return "", err
@@ -153,7 +139,7 @@ func (session *RawSession) String() (string, error) {
 	return string(b), nil
 }
 
-func (session *RawSession) Pretty() (string, error) {
+func (session *RawSession) PrettyJson() (string, error) {
 	b, err := json.MarshalIndent(session, "", "  ")
 	if err != nil {
 		return "", err
@@ -168,7 +154,7 @@ type RawAction struct {
 	Response  string `json:",omitempty"` // 响应内容
 }
 
-func (action *RawAction) String() (string, error) {
+func (action *RawAction) Json() (string, error) {
 	b, err := json.Marshal(action)
 	if err != nil {
 		return "", err
@@ -176,7 +162,7 @@ func (action *RawAction) String() (string, error) {
 	return string(b), nil
 }
 
-func (action *RawAction) Pretty() (string, error) {
+func (action *RawAction) PrettyJson() (string, error) {
 	b, err := json.MarshalIndent(action, "", "  ")
 	if err != nil {
 		return "", err
@@ -190,4 +176,20 @@ func ToRawSession(data string) (*RawSession, error) {
 		return nil, err
 	}
 	return session, nil
+}
+
+func ToJson(v interface{}) string {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err.Error()
+	}
+	return string(b)
+}
+
+func ToPrettyJson(v interface{}) string {
+	b, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return err.Error()
+	}
+	return string(b)
 }

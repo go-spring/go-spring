@@ -60,39 +60,29 @@ type recordSession struct {
 	close   bool
 }
 
-func onSession(ctx context.Context, f func(*recordSession) error) error {
-	if !recorder.mode {
-		return errors.New("record mode not enabled")
-	}
-	v, ok := knife.Get(ctx, sessionIDKey)
-	if !ok {
-		return errors.New("session id not found")
-	}
-	sessionID := v.(string)
-	v, ok = recorder.data.Load(sessionID)
-	if !ok {
-		return errors.New("session not found")
-	}
-	r := v.(*recordSession)
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-	return f(r)
+type ctxRecordKeyType int
+
+var ctxRecordKey ctxRecordKeyType
+
+// EnableRecord 从 context.Context 对象是否开启流量录制。
+func EnableRecord(ctx context.Context) bool {
+	return ctx.Value(ctxRecordKey) == true
 }
 
 // StartRecord 开始流量录制
-func StartRecord(ctx context.Context, sessionID string) error {
-	if err := knife.Set(ctx, sessionIDKey, sessionID); err != nil {
-		return err
-	}
+func StartRecord(ctx context.Context, sessionID string) (context.Context, error) {
 	r := &recordSession{session: &fastdev.Session{
 		Session:   sessionID,
 		Timestamp: chrono.Now(ctx).UnixNano(),
 	}}
 	_, loaded := recorder.data.LoadOrStore(sessionID, r)
 	if loaded {
-		return errors.New("session already started")
+		return nil, errors.New("session already started")
 	}
-	return nil
+	if err := knife.Store(ctx, sessionIDKey, sessionID); err != nil {
+		return nil, err
+	}
+	return context.WithValue(ctx, ctxRecordKey, true), nil
 }
 
 // StopRecord 停止流量录制
@@ -135,4 +125,26 @@ func RecordAction(ctx context.Context, action *fastdev.Action) error {
 		r.session.Actions = append(r.session.Actions, action)
 		return nil
 	})
+}
+
+func onSession(ctx context.Context, f func(*recordSession) error) error {
+	if !recorder.mode {
+		return errors.New("record mode not enabled")
+	}
+	v, err := knife.Load(ctx, sessionIDKey)
+	if err != nil {
+		return err
+	}
+	if v == nil {
+		return errors.New("session id not found")
+	}
+	sessionID := v.(string)
+	v, ok := recorder.data.Load(sessionID)
+	if !ok {
+		return errors.New("session not found")
+	}
+	r := v.(*recordSession)
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	return f(r)
 }

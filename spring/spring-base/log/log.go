@@ -37,12 +37,14 @@ var empty = BaseEntry{}
 var defaultContext context.Context
 
 // config 日志模块全局设置。
-var config = struct {
+var config struct {
 	output Output
 	level  atomic.Uint32
-}{
-	output: Console,
-	level:  *atomic.NewUint32(uint32(InfoLevel)),
+}
+
+func init() {
+	config.output = Console
+	config.level.Store(uint32(InfoLevel))
 }
 
 // Reset 恢复默认的日志输出配置。

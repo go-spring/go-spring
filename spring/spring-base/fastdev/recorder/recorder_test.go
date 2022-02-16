@@ -44,7 +44,7 @@ func TestRecordAction(t *testing.T) {
 	}
 
 	sessionID := "df3b64266ebe4e63a464e135000a07cd"
-	err = recorder.StartRecord(ctx, sessionID)
+	ctx, err = recorder.StartRecord(ctx, sessionID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +93,7 @@ func TestRecordAction(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	str, err := s.Pretty()
+	str, err := s.PrettyJson()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func TestRecordAction(t *testing.T) {
 		t.Fatal(err)
 	}
 	fmt.Print("json(got): ")
-	fmt.Println(s1.Pretty())
+	fmt.Println(s1.PrettyJson())
 
 	expect := `{
 	  "Session": "df3b64266ebe4e63a464e135000a07cd",
@@ -136,5 +136,5 @@ func TestRecordAction(t *testing.T) {
 		t.Fatal(err)
 	}
 	fmt.Print("json(expect): ")
-	fmt.Println(s2.Pretty())
+	fmt.Println(s2.PrettyJson())
 }
