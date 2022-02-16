@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-// Package ctxon 提供了 context.Context 上的缓存。
-package ctxon
+// Package knife 提供了 context.Context 上的缓存。
+package knife
 
 import (
 	"context"
@@ -42,24 +42,36 @@ func New(ctx context.Context) (_ context.Context, cached bool) {
 	return ctx, false
 }
 
-// Get 从 context.Context 对象中获取 key 对应的 val。
-func Get(ctx context.Context, key string) (interface{}, bool) {
-	if m, ok := cache(ctx); ok {
-		return m.Load(key)
-	}
-	return nil, false
-}
-
-// Set 将 key 及其 val 保存到 context.Context 对象。
-func Set(ctx context.Context, key string, val interface{}) error {
+// Load 从 context.Context 对象中获取 key 对应的 val。
+func Load(ctx context.Context, key string) (interface{}, error) {
 	m, ok := cache(ctx)
 	if !ok {
-		return errors.New("ctxon uninitialized")
+		return nil, errors.New("knife uninitialized")
+	}
+	v, _ := m.Load(key)
+	return v, nil
+}
+
+// Store 将 key 及其 val 保存到 context.Context 对象。
+func Store(ctx context.Context, key string, val interface{}) error {
+	m, ok := cache(ctx)
+	if !ok {
+		return errors.New("knife uninitialized")
 	}
 	if _, loaded := m.LoadOrStore(key, val); loaded {
 		return fmt.Errorf("duplicate key %s", key)
 	}
 	return nil
+}
+
+// LoadOrStore 将 key 及其 val 保存到 context.Context 对象。
+func LoadOrStore(ctx context.Context, key string, val interface{}) (actual interface{}, err error) {
+	m, ok := cache(ctx)
+	if !ok {
+		return nil, errors.New("knife uninitialized")
+	}
+	v, _ := m.LoadOrStore(key, val)
+	return v, nil
 }
 
 // Delete 从 context.Context 对象中删除 key 及其对应的 val 。
@@ -80,7 +92,7 @@ func Range(ctx context.Context, f func(key, value interface{}) bool) {
 func Copy(src context.Context, keys ...string) (context.Context, error) {
 	srcMap, ok := cache(src)
 	if !ok {
-		return nil, errors.New("ctxon uninitialized")
+		return nil, errors.New("knife uninitialized")
 	}
 	dest, _ := New(context.Background())
 	destMap, _ := cache(dest)
