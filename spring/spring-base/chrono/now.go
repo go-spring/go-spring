@@ -53,12 +53,12 @@ func ResetTime(ctx context.Context) {
 
 // SetFixedTime 设置固定时间。
 func SetFixedTime(ctx context.Context, t time.Time) error {
-	return knife.Set(ctx, nowKey, &fixedTime{fixed: t})
+	return knife.Store(ctx, nowKey, &fixedTime{fixed: t})
 }
 
 // SetBaseTime 设置基准时间。
 func SetBaseTime(ctx context.Context, t time.Time) error {
-	return knife.Set(ctx, nowKey, &baseTime{base: t, from: time.Now()})
+	return knife.Store(ctx, nowKey, &baseTime{base: t, from: time.Now()})
 }
 
 // Now 获取当前时间。
@@ -66,8 +66,8 @@ func Now(ctx context.Context) time.Time {
 	if ctx == nil {
 		return time.Now()
 	}
-	v, ok := knife.Get(ctx, nowKey)
-	if !ok {
+	v, err := knife.Load(ctx, nowKey)
+	if err != nil || v == nil {
 		return time.Now()
 	}
 	t, ok := v.(TimeNow)
