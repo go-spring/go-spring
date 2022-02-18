@@ -35,7 +35,6 @@ import (
 
 func init() {
 	fastdev.RegisterProtocol(fastdev.REDIS, &redisProtocol{})
-	fastdev.RegisterProtocol(fastdev.APCU, &apcuProtocol{})
 }
 
 type response struct {
@@ -170,17 +169,7 @@ func TestGuavaReplay(t *testing.T) {
 		agent := replayer.NewLocalAgent()
 		replayer.SetReplayAgent(agent)
 
-		rawSession, err := fastdev.ToRawSession(str)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		session, err := replayer.ToSession(rawSession)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		err = agent.Store(session) // TODO 接受字符串
+		session, err := agent.Store(str)
 		assert.Nil(t, err)
 		defer agent.Delete(session.Session)
 
@@ -252,23 +241,5 @@ func (p *redisProtocol) FlatRequest(data string) (map[string]string, error) {
 }
 
 func (p *redisProtocol) FlatResponse(data string) (map[string]string, error) {
-	return nil, nil
-}
-
-type apcuProtocol struct{}
-
-func (p *apcuProtocol) ShouldDiff() bool {
-	return true
-}
-
-func (p *apcuProtocol) GetLabel(data string) string {
-	return data[:4]
-}
-
-func (p *apcuProtocol) FlatRequest(data string) (map[string]string, error) {
-	return nil, nil
-}
-
-func (p *apcuProtocol) FlatResponse(data string) (map[string]string, error) {
 	return nil, nil
 }

@@ -51,7 +51,23 @@ func NewLocalAgent() *LocalAgent {
 }
 
 // Store 存储 sessionID 对应的回放数据。
-func (agent *LocalAgent) Store(session *Session) error {
+func (agent *LocalAgent) Store(str string) (*Session, error) {
+	rawSession, err := fastdev.ToRawSession(str)
+	if err != nil {
+		return nil, err
+	}
+	session, err := ToSession(rawSession)
+	if err != nil {
+		return nil, err
+	}
+	err = agent.store(session)
+	if err != nil {
+		return nil, err
+	}
+	return session, nil
+}
+
+func (agent *LocalAgent) store(session *Session) error {
 
 	actions := make(map[string]map[string][]*Action)
 	for _, a := range session.Actions {

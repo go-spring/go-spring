@@ -103,23 +103,13 @@ func TestReplayAction(t *testing.T) {
 	}
 	fmt.Println("record:", str)
 
-	rawSession, err := fastdev.ToRawSession(str)
+	session, err := agent.Store(str)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	session, err := replayer.ToSession(rawSession)
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	fmt.Print("json(record): ")
 	fmt.Println(session.Pretty())
 
-	err = agent.Store(session)
-	if err != nil {
-		t.Fatal(err)
-	}
 	defer agent.Delete(session.Session)
 
 	request := cast.ToCommandLine("SET", "a", "1")
