@@ -65,13 +65,13 @@ func Store(ctx context.Context, key string, val interface{}) error {
 }
 
 // LoadOrStore 将 key 及其 val 保存到 context.Context 对象。
-func LoadOrStore(ctx context.Context, key string, val interface{}) (actual interface{}, err error) {
+func LoadOrStore(ctx context.Context, key string, val interface{}) (actual interface{}, loaded bool, err error) {
 	m, ok := cache(ctx)
 	if !ok {
-		return nil, errors.New("knife uninitialized")
+		return nil, false, errors.New("knife uninitialized")
 	}
-	v, _ := m.LoadOrStore(key, val)
-	return v, nil
+	actual, loaded = m.LoadOrStore(key, val)
+	return
 }
 
 // Delete 从 context.Context 对象中删除 key 及其对应的 val 。

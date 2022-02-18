@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -75,7 +76,7 @@ func (r *redis) getValue(ctx context.Context, key string) (ret string, err error
 }
 
 func getResponse(ctx context.Context, r *redis, key string) (*response, error) {
-	loadType, result, err := guava.Load(ctx, key, 0, func(ctx context.Context, key string) (interface{}, error) {
+	loadType, result, err := guava.GetOrLoad(ctx, key, 0, func(ctx context.Context, key string) (interface{}, error) {
 		data, err := r.getValue(ctx, key)
 		if err != nil {
 			return nil, err
@@ -115,13 +116,19 @@ func testFunc(t *testing.T, ctx context.Context, key string, count int) {
 	}
 
 	r := &redis{}
+	wg := sync.WaitGroup{}
 	for i := 0; i < 3; i++ {
-		resp, err := getResponse(ctx, r, key)
-		if err != nil {
-			t.Fatal(err)
-		}
-		fmt.Printf("%#v\n", resp)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			resp, err := getResponse(ctx, r, key)
+			if err != nil {
+				t.Fatal(err)
+			}
+			fmt.Printf("%#v\n", resp)
+		}()
 	}
+	wg.Wait()
 	assert.Equal(t, r.count, count)
 
 	if recorder.EnableRecord(ctx) {

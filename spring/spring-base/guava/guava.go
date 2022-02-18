@@ -39,18 +39,10 @@ const (
 	LoadBack                  // 从用户回调中获取
 )
 
-var localCache sync.Map
+var cache = &sync.Map{}
 
-func cache(ctx context.Context) (*sync.Map, error) {
-	if replayer.ReplayMode() {
-		key := "::CacheOnContext::"
-		v, err := knife.LoadOrStore(ctx, key, &sync.Map{})
-		if err != nil {
-			return nil, err
-		}
-		return v.(*sync.Map), nil
-	}
-	return &localCache, nil
+func InvalidateAll() {
+	cache = &sync.Map{}
 }
 
 type Result interface {
@@ -60,6 +52,10 @@ type Result interface {
 
 type valueResult struct {
 	value interface{}
+}
+
+func (r *valueResult) Json() string {
+	return fastdev.ToJson(r.value)
 }
 
 func (r *valueResult) Load(v interface{}) error {
@@ -72,72 +68,84 @@ func (r *valueResult) Load(v interface{}) error {
 	return nil
 }
 
-func (r *valueResult) Json() string {
-	return fastdev.ToJson(r.value)
-}
-
 type jsonResult struct {
 	value string
-}
-
-func (r *jsonResult) Load(v interface{}) error {
-	return json.Unmarshal([]byte(r.value), v)
 }
 
 func (r *jsonResult) Json() string {
 	return r.value
 }
 
+func (r *jsonResult) Load(v interface{}) error {
+	return json.Unmarshal([]byte(r.value), v)
+}
+
+type ResultLoader func(ctx context.Context, key string) (Result, error)
+
 type cacheItem struct {
 	value  Result
-	loader func(ctx context.Context, key string) (Result, error)
-	locker sync.Mutex
-	ttl    time.Duration
-	start  time.Time
+	loader ResultLoader
+	locker sync.RWMutex
+
+	expireAfterWrite time.Duration
+	writeTime        time.Time
 }
 
 func (item *cacheItem) expired() bool {
-	if item.ttl <= 0 {
+	if item.expireAfterWrite <= 0 {
 		return false
 	}
-	return time.Since(item.start)-item.ttl > 0
+	return time.Since(item.writeTime)-item.expireAfterWrite > 0
 }
 
 func (item *cacheItem) Load(ctx context.Context, key string) (LoadType, Result, error) {
+	loadType, result := item.fastLoad()
+	if loadType != LoadNone {
+		return loadType, result, nil
+	}
+	return item.slowLoad(ctx, key)
+}
 
+func (item *cacheItem) fastLoad() (LoadType, Result) {
+	item.locker.RLock()
+	defer item.locker.RUnlock()
+	if item.value != nil && !item.expired() {
+		return LoadCache, item.value
+	}
+	return LoadNone, nil
+}
+
+func (item *cacheItem) slowLoad(ctx context.Context, key string) (LoadType, Result, error) {
 	item.locker.Lock()
 	defer item.locker.Unlock()
-
-	i, err := knife.Load(ctx, key)
-	if err != nil {
-		return LoadNone, nil, err
-	}
-	if i != nil {
-		return LoadOnCtx, i.(Result), nil
-	}
-
-	defer func() {
-		knife.Store(ctx, key, item.value)
-	}()
-
 	if item.value != nil && !item.expired() {
 		return LoadCache, item.value, nil
 	}
-
 	v, err := item.loader(ctx, key)
 	if err != nil {
 		return LoadNone, nil, err
 	}
 	item.value = v
-	item.start = time.Now()
+	item.writeTime = time.Now()
 	return LoadBack, item.value, nil
+}
+
+type ctxItem struct {
+	val Result
+	err error
+	wg  sync.WaitGroup
+}
+
+func newCtxItem() *ctxItem {
+	c := &ctxItem{}
+	c.wg.Add(1)
+	return c
 }
 
 type Loader func(ctx context.Context, key string) (interface{}, error)
 
-func Load(ctx context.Context, key string, ttl time.Duration, loader Loader) (loadType LoadType, result Result, _ error) {
-
-	newLoader := func(ctx context.Context, key string) (Result, error) {
+func toResultLoader(loader Loader) ResultLoader {
+	return func(ctx context.Context, key string) (Result, error) {
 		if replayer.ReplayMode() {
 			resp, err := replayer.QueryAction(ctx, fastdev.APCU, key, replayer.ExactMatch)
 			if err != nil {
@@ -152,6 +160,39 @@ func Load(ctx context.Context, key string, ttl time.Duration, loader Loader) (lo
 			return nil, err
 		}
 		return &valueResult{value: i}, nil
+	}
+}
+
+func GetOrLoad(ctx context.Context, key string, expireAfterWrite time.Duration, loader Loader) (loadType LoadType, result Result, err error) {
+
+	i, loaded, err := knife.LoadOrStore(ctx, key, newCtxItem())
+	if err != nil {
+		return LoadNone, nil, err
+	}
+	cItem := i.(*ctxItem)
+	if loaded {
+		if cItem.val != nil {
+			return LoadOnCtx, cItem.val, nil
+		}
+		cItem.wg.Wait()
+		return LoadOnCtx, cItem.val, cItem.err
+	}
+
+	defer func() {
+		cItem.val = result
+		cItem.err = err
+		cItem.wg.Done()
+	}()
+
+	m := cache
+	if replayer.ReplayMode() {
+		var v interface{}
+		const ctxKey = "::CacheOnContext::"
+		v, _, err = knife.LoadOrStore(ctx, ctxKey, &sync.Map{})
+		if err != nil {
+			return LoadNone, nil, err
+		}
+		m = v.(*sync.Map)
 	}
 
 	defer func() {
@@ -168,11 +209,7 @@ func Load(ctx context.Context, key string, ttl time.Duration, loader Loader) (lo
 		}
 	}()
 
-	m, err := cache(ctx)
-	if err != nil {
-		return LoadNone, nil, err
-	}
 	// TODO 检测 loader 是否发生变化，以便确认是否多个位置调用 Load 方法。
-	actual, _ := m.LoadOrStore(key, &cacheItem{ttl: ttl, loader: newLoader})
+	actual, _ := m.LoadOrStore(key, &cacheItem{expireAfterWrite: expireAfterWrite, loader: toResultLoader(loader)})
 	return actual.(*cacheItem).Load(ctx, key)
 }
