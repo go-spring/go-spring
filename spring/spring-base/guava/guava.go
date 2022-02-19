@@ -94,7 +94,7 @@ func (r *jsonResult) Load(v interface{}) error {
 	return json.Unmarshal([]byte(r.v), v)
 }
 
-type ResultLoader func(ctx context.Context, key string) (Result, error)
+type ResultLoader func(ctx context.Context, key string) (Result, LoadType, error)
 
 type cacheItem struct {
 	value            Result
@@ -108,7 +108,6 @@ type cacheItem struct {
 type cacheItemLoading struct {
 	v   Result
 	err error
-	mu  sync.Mutex
 	wg  sync.WaitGroup
 }
 
@@ -139,7 +138,8 @@ func (e *cacheItem) load(ctx context.Context, key string) (LoadType, Result, err
 	e.loading = c
 	e.locker.Unlock()
 
-	c.v, c.err = e.loader(ctx, key)
+	var loadType LoadType
+	c.v, loadType, c.err = e.loader(ctx, key)
 	c.wg.Done()
 
 	e.locker.Lock()
@@ -151,7 +151,7 @@ func (e *cacheItem) load(ctx context.Context, key string) (LoadType, Result, err
 	if c.err != nil {
 		return LoadNone, nil, c.err
 	}
-	return LoadBack, c.v, nil
+	return loadType, c.v, nil
 }
 
 type ctxItem struct {
@@ -169,25 +169,37 @@ func newCtxItem() *ctxItem {
 type Loader func(ctx context.Context, key string) (interface{}, error)
 
 func toResultLoader(loader Loader) ResultLoader {
-	return func(ctx context.Context, key string) (Result, error) {
+	return func(ctx context.Context, key string) (Result, LoadType, error) {
 		if replayer.ReplayMode() {
-			resp, err := replayer.QueryAction(ctx, fastdev.APCU, key, replayer.ExactMatch)
+			resp, ok, err := replayer.QueryAction(ctx, fastdev.APCU, key, replayer.ExactMatch)
 			if err != nil {
-				return nil, err
+				return nil, LoadNone, err
 			}
-			if resp != nil {
-				return &jsonResult{v: resp.(string)}, nil
+			if ok {
+				return &jsonResult{v: resp}, LoadCache, nil
 			}
 		}
 		v, err := loader(ctx, key)
 		if err != nil {
-			return nil, err
+			return nil, LoadNone, err
 		}
-		return newValueResult(v), nil
+		return newValueResult(v), LoadBack, nil
 	}
 }
 
-func GetOrLoad(ctx context.Context, key string, expireAfterWrite time.Duration, loader Loader) (loadType LoadType, result Result, err error) {
+type optionArg struct {
+	expireAfterWrite time.Duration
+}
+
+type Option func(*optionArg)
+
+func ExpireAfterWrite(v time.Duration) Option {
+	return func(arg *optionArg) {
+		arg.expireAfterWrite = v
+	}
+}
+
+func GetOrLoad(ctx context.Context, key string, loader Loader, opts ...Option) (loadType LoadType, result Result, err error) {
 
 	i, loaded, err := knife.LoadOrStore(ctx, key, newCtxItem())
 	if err != nil {
@@ -207,6 +219,11 @@ func GetOrLoad(ctx context.Context, key string, expireAfterWrite time.Duration, 
 			knife.Delete(ctx, key)
 		}
 	}()
+
+	arg := &optionArg{}
+	for _, opt := range opts {
+		opt(arg)
+	}
 
 	m := cache
 	if replayer.ReplayMode() {
@@ -234,6 +251,9 @@ func GetOrLoad(ctx context.Context, key string, expireAfterWrite time.Duration, 
 	}()
 
 	// TODO 检测 loader 是否发生变化，以便确认是否多个位置调用 Load 方法。
-	actual, _ := m.LoadOrStore(key, &cacheItem{expireAfterWrite: expireAfterWrite, loader: toResultLoader(loader)})
+	actual, _ := m.LoadOrStore(key, &cacheItem{
+		expireAfterWrite: arg.expireAfterWrite,
+		loader:           toResultLoader(loader),
+	})
 	return actual.(*cacheItem).load(ctx, key)
 }

@@ -21,6 +21,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -36,201 +38,6 @@ import (
 
 func init() {
 	fastdev.RegisterProtocol(fastdev.REDIS, &redisProtocol{})
-}
-
-type response struct {
-	Name string `json:"name"`
-}
-
-type redis struct {
-	count int
-}
-
-func (r *redis) getValue(ctx context.Context, key string) (ret string, err error) {
-	r.count++
-	defer func() {
-		if recorder.EnableRecord(ctx) {
-			recorder.RecordAction(ctx, &fastdev.Action{
-				Protocol: fastdev.REDIS,
-				Request: fastdev.NewMessage(func() string {
-					return key
-				}),
-				Response: fastdev.NewMessage(func() string {
-					return ret
-				}),
-			})
-		}
-	}()
-	if replayer.ReplayMode() {
-		var resp interface{}
-		resp, err = replayer.QueryAction(ctx, fastdev.REDIS, key, replayer.BestMatch)
-		if err != nil {
-			return "", err
-		}
-		if resp == nil {
-			return "", errors.New("no replay data")
-		}
-		return resp.(string), nil
-	}
-	return fmt.Sprintf("{\"name\":\"%s\"}", key), nil
-}
-
-func getResponse(ctx context.Context, r *redis, key string) (*response, error) {
-	loadType, result, err := guava.GetOrLoad(ctx, key, 0, func(ctx context.Context, key string) (interface{}, error) {
-		data, err := r.getValue(ctx, key)
-		if err != nil {
-			return nil, err
-		}
-		var v *response
-		err = json.Unmarshal([]byte(data), &v)
-		if err != nil {
-			return nil, err
-		}
-		return v, nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	var resp *response
-	err = result.Load(&resp)
-	if err != nil {
-		return nil, err
-	}
-	fmt.Println(loadType)
-	return resp, nil
-}
-
-func testFunc(t *testing.T, ctx context.Context, key string, count int) {
-
-	if recorder.RecordMode() {
-		sessionID := "39fc5c13443f47da9ff320cc4b02c789"
-		var err error
-		ctx, err = recorder.StartRecord(ctx, sessionID)
-		assert.Nil(t, err)
-	}
-
-	if replayer.ReplayMode() {
-		sessionID := "39fc5c13443f47da9ff320cc4b02c789"
-		err := replayer.SetSessionID(ctx, sessionID)
-		assert.Nil(t, err)
-	}
-
-	r := &redis{}
-	wg := sync.WaitGroup{}
-	for i := 0; i < 3; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			resp, err := getResponse(ctx, r, key)
-			if err != nil {
-				t.Fatal(err)
-			}
-			fmt.Printf("%#v\n", resp)
-		}()
-	}
-	wg.Wait()
-	assert.Equal(t, r.count, count)
-
-	if recorder.EnableRecord(ctx) {
-		session, err := recorder.StopRecord(ctx)
-		assert.Nil(t, err)
-		fmt.Println(session.PrettyJson())
-	}
-}
-
-func TestGuavaRecord(t *testing.T) {
-
-	recorder.SetRecordMode(true)
-	defer func() {
-		recorder.SetRecordMode(false)
-	}()
-
-	key := "test"
-	f := func(str string, count int) {
-
-		ctx, cached := knife.New(context.Background())
-		assert.False(t, cached)
-
-		timeNow := time.Unix(1643364150, 0)
-		err := chrono.SetBaseTime(ctx, timeNow)
-		assert.Nil(t, err)
-
-		testFunc(t, ctx, key, count)
-	}
-
-	f(``, 1)
-	f(``, 0)
-	f(``, 0)
-}
-
-func TestGuavaReplay(t *testing.T) {
-
-	replayer.SetReplayMode(true)
-	defer func() {
-		replayer.SetReplayMode(false)
-	}()
-
-	key := "test"
-	f := func(str string, count int) {
-
-		agent := replayer.NewLocalAgent()
-		replayer.SetReplayAgent(agent)
-
-		session, err := agent.Store(str)
-		assert.Nil(t, err)
-		defer agent.Delete(session.Session)
-
-		ctx, cached := knife.New(context.Background())
-		assert.False(t, cached)
-
-		timeNow := time.Unix(1643364150, 0)
-		err = chrono.SetBaseTime(ctx, timeNow)
-		assert.Nil(t, err)
-
-		testFunc(t, ctx, key, count)
-	}
-
-	f(`
-	{
-	  "Session": "39fc5c13443f47da9ff320cc4b02c789",
-	  "Timestamp": 1643364150000015602,
-	  "Actions": [
-		{
-		  "Protocol": "REDIS",
-		  "Timestamp": 1643364150000015602,
-		  "Request": "test",
-		  "Response": "{\"name\":\"test\"}"
-		}
-	  ]
-	}`, 1)
-
-	f(`
-	{
-	  "Session": "39fc5c13443f47da9ff320cc4b02c789",
-	  "Timestamp": 1643364150000001919,
-	  "Actions": [
-		{
-		  "Protocol": "APCU",
-		  "Timestamp": 1643364150000001919,
-		  "Request": "test",
-		  "Response": "{\"name\":\"test\"}"
-		}
-	  ]
-	}`, 0)
-
-	f(`
-	{
-	  "Session": "39fc5c13443f47da9ff320cc4b02c789",
-	  "Timestamp": 1643364150000001503,
-	  "Actions": [
-		{
-		  "Protocol": "APCU",
-		  "Timestamp": 1643364150000001503,
-		  "Request": "test",
-		  "Response": "{\"name\":\"test\"}"
-		}
-	  ]
-	}`, 0)
 }
 
 type redisProtocol struct{}
@@ -249,4 +56,279 @@ func (p *redisProtocol) FlatRequest(data string) (map[string]string, error) {
 
 func (p *redisProtocol) FlatResponse(data string) (map[string]string, error) {
 	return nil, nil
+}
+
+type response struct {
+	Name string `json:"name"`
+}
+
+type redis struct{}
+
+func (r *redis) getValue(ctx context.Context, key string) (ret string, err error) {
+	defer func() {
+		if recorder.EnableRecord(ctx) {
+			recorder.RecordAction(ctx, &fastdev.Action{
+				Protocol: fastdev.REDIS,
+				Request: fastdev.NewMessage(func() string {
+					return key
+				}),
+				Response: fastdev.NewMessage(func() string {
+					return ret
+				}),
+			})
+		}
+	}()
+	if replayer.ReplayMode() {
+		var (
+			ok   bool
+			resp interface{}
+		)
+		resp, ok, err = replayer.QueryAction(ctx, fastdev.REDIS, key, replayer.BestMatch)
+		if err != nil {
+			return "", err
+		}
+		if !ok {
+			return "", errors.New("no replay data")
+		}
+		return resp.(string), nil
+	}
+	return fmt.Sprintf("{\"name\":\"%s\"}", key), nil
+}
+
+func getResponse(ctx context.Context, r *redis, key string) (*response, guava.LoadType, error) {
+	loadType, result, err := guava.GetOrLoad(ctx, key, func(ctx context.Context, key string) (interface{}, error) {
+		data, err := r.getValue(ctx, key)
+		if err != nil {
+			return nil, err
+		}
+		var v *response
+		err = json.Unmarshal([]byte(data), &v)
+		if err != nil {
+			return nil, err
+		}
+		return v, nil
+	}, guava.ExpireAfterWrite(0))
+	if err != nil {
+		return nil, guava.LoadNone, err
+	}
+	var resp *response
+	err = result.Load(&resp)
+	if err != nil {
+		return nil, guava.LoadNone, err
+	}
+	return resp, loadType, nil
+}
+
+func testFunc(t *testing.T, ctx context.Context, key string) []guava.LoadType {
+
+	var (
+		ret  []guava.LoadType
+		lock sync.Mutex
+	)
+
+	r := &redis{}
+	wg := sync.WaitGroup{}
+	for i := 0; i < 3; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			resp, loadType, err := getResponse(ctx, r, key)
+			lock.Lock()
+			ret = append(ret, loadType)
+			lock.Unlock()
+			assert.Nil(t, err)
+			fmt.Printf("%v %#v\n", loadType, resp)
+		}()
+	}
+	wg.Wait()
+
+	return ret
+}
+
+type SessionSlice []*fastdev.Session
+
+func (p SessionSlice) Len() int           { return len(p) }
+func (p SessionSlice) Less(i, j int) bool { return p[i].Actions[0].Protocol > p[j].Actions[0].Protocol }
+func (p SessionSlice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
+
+type LoadTypeSlice []guava.LoadType
+
+func (p LoadTypeSlice) Len() int           { return len(p) }
+func (p LoadTypeSlice) Less(i, j int) bool { return p[i] > p[j] }
+func (p LoadTypeSlice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
+
+type LoadTypeSliceSlice [][]guava.LoadType
+
+func (p LoadTypeSliceSlice) Len() int           { return len(p) }
+func (p LoadTypeSliceSlice) Less(i, j int) bool { return p[i][0] > p[j][0] }
+func (p LoadTypeSliceSlice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
+
+func TestGuavaRecord(t *testing.T) {
+	defer guava.InvalidateAll()
+
+	recorder.SetRecordMode(true)
+	defer func() {
+		recorder.SetRecordMode(false)
+	}()
+
+	key := "test"
+	f := func(sessionID string) (*fastdev.Session, []guava.LoadType) {
+
+		ctx, cached := knife.New(context.Background())
+		assert.False(t, cached)
+
+		err := chrono.SetFixedTime(ctx, time.Unix(0, 0))
+		assert.Nil(t, err)
+
+		ctx, err = recorder.StartRecord(ctx, sessionID)
+		assert.Nil(t, err)
+
+		loadTypes := testFunc(t, ctx, key)
+
+		session, err := recorder.StopRecord(ctx)
+		assert.Nil(t, err)
+		fmt.Println(session.PrettyJson())
+		return session, loadTypes
+	}
+
+	var (
+		loadTypes [][]guava.LoadType
+		sessions  []*fastdev.Session
+		lock      sync.Mutex
+	)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 3; i++ {
+		sessionID := strconv.Itoa(i)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s1, s2 := f(sessionID)
+			lock.Lock()
+			sessions = append(sessions, s1)
+			loadTypes = append(loadTypes, s2)
+			lock.Unlock()
+		}()
+	}
+	wg.Wait()
+
+	for i := 0; i < 3; i++ {
+		sort.Sort(LoadTypeSlice(loadTypes[i]))
+	}
+	sort.Sort(LoadTypeSliceSlice(loadTypes))
+
+	assert.Equal(t, loadTypes, [][]guava.LoadType{
+		{guava.LoadBack, guava.LoadOnCtx, guava.LoadOnCtx},
+		{guava.LoadCache, guava.LoadOnCtx, guava.LoadOnCtx},
+		{guava.LoadCache, guava.LoadOnCtx, guava.LoadOnCtx},
+	})
+
+	sort.Sort(SessionSlice(sessions))
+
+	var ss []string
+	for _, s := range sessions {
+		s.Session = ""
+		ss = append(ss, fastdev.ToJson(s))
+	}
+
+	assert.Equal(t, ss, []string{
+		`{"Actions":[{"Protocol":"REDIS","Request":"test","Response":"{\"name\":\"test\"}"}]}`,
+		`{"Actions":[{"Protocol":"APCU","Request":"test","Response":"{\"name\":\"test\"}"}]}`,
+		`{"Actions":[{"Protocol":"APCU","Request":"test","Response":"{\"name\":\"test\"}"}]}`,
+	})
+}
+
+func TestGuavaReplay(t *testing.T) {
+	defer guava.InvalidateAll()
+
+	replayer.SetReplayMode(true)
+	defer func() {
+		replayer.SetReplayMode(false)
+	}()
+
+	agent := replayer.NewLocalAgent()
+	replayer.SetReplayAgent(agent)
+
+	key := "test"
+	f := func(str string) []guava.LoadType {
+
+		session, err := agent.Store(str)
+		assert.Nil(t, err)
+		defer agent.Delete(session.Session)
+
+		ctx, cached := knife.New(context.Background())
+		assert.False(t, cached)
+
+		timeNow := time.Unix(1643364150, 0)
+		err = chrono.SetBaseTime(ctx, timeNow)
+		assert.Nil(t, err)
+
+		err = replayer.SetSessionID(ctx, session.Session)
+		assert.Nil(t, err)
+
+		return testFunc(t, ctx, key)
+	}
+
+	sessions := []string{
+		`{
+		  "Session": "0",
+		  "Actions": [
+			{
+			  "Protocol": "REDIS",
+			  "Request": "test",
+			  "Response": "{\"name\":\"test\"}"
+			}
+		  ]
+		}`,
+		`{
+		  "Session": "1",
+		  "Actions": [
+			{
+			  "Protocol": "APCU",
+			  "Request": "test",
+			  "Response": "{\"name\":\"test\"}"
+			}
+		  ]
+		}`,
+		`{
+		  "Session": "2",
+		  "Actions": [
+			{
+			  "Protocol": "APCU",
+			  "Request": "test",
+			  "Response": "{\"name\":\"test\"}"
+			}
+		  ]
+		}`,
+	}
+
+	var (
+		loadTypes [][]guava.LoadType
+		lock      sync.Mutex
+	)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 3; i++ {
+		j := i
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s2 := f(sessions[j])
+			lock.Lock()
+			loadTypes = append(loadTypes, s2)
+			lock.Unlock()
+		}()
+	}
+	wg.Wait()
+
+	for i := 0; i < 3; i++ {
+		sort.Sort(LoadTypeSlice(loadTypes[i]))
+	}
+	sort.Sort(LoadTypeSliceSlice(loadTypes))
+
+	assert.Equal(t, loadTypes, [][]guava.LoadType{
+		{guava.LoadBack, guava.LoadOnCtx, guava.LoadOnCtx},
+		{guava.LoadCache, guava.LoadOnCtx, guava.LoadOnCtx},
+		{guava.LoadCache, guava.LoadOnCtx, guava.LoadOnCtx},
+	})
 }

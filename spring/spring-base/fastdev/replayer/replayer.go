@@ -211,9 +211,9 @@ func SetSessionID(ctx context.Context, sessionID string) error {
 	return knife.Store(ctx, sessionIDKey, sessionID)
 }
 
-func QueryAction(ctx context.Context, protocol, request string, matchStrategy MatchStrategy) (response interface{}, err error) {
+func QueryAction(ctx context.Context, protocol, request string, matchStrategy MatchStrategy) (response string, ok bool, err error) {
 	if replayer.agent == nil {
-		return "", errors.New("replay agent is nil")
+		return "", false, errors.New("replay agent is nil")
 	}
 	return replayer.agent.QueryAction(ctx, protocol, request, matchStrategy)
 }

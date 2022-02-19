@@ -33,7 +33,7 @@ const (
 )
 
 type Agent interface {
-	QueryAction(ctx context.Context, protocol, request string, matchStrategy MatchStrategy) (response interface{}, err error)
+	QueryAction(ctx context.Context, protocol, request string, matchStrategy MatchStrategy) (response string, ok bool, err error)
 }
 
 type LocalAgent struct {
@@ -114,21 +114,21 @@ func (agent *LocalAgent) getReplayData(ctx context.Context) (*replayData, error)
 	return v.(*replayData), nil
 }
 
-func (agent *LocalAgent) QueryAction(ctx context.Context, protocol, request string, matchStrategy MatchStrategy) (response interface{}, err error) {
+func (agent *LocalAgent) QueryAction(ctx context.Context, protocol, request string, matchStrategy MatchStrategy) (response string, ok bool, err error) {
 
 	r, err := agent.getReplayData(ctx)
 	if err != nil {
-		return nil, err
+		return "", false, err
 	}
 
 	p := fastdev.GetProtocol(protocol)
 	if p == nil {
-		return nil, errors.New("invalid protocol")
+		return "", false, errors.New("invalid protocol")
 	}
 
 	m, ok := r.actions[protocol]
 	if !ok {
-		return nil, nil
+		return "", false, nil
 	}
 
 	label := p.GetLabel(request)
@@ -142,14 +142,14 @@ func (agent *LocalAgent) QueryAction(ctx context.Context, protocol, request stri
 		action.RecRequest = request
 		action.RecResponse = action.Response
 		action.RecTimestamp = chrono.Now(ctx).UnixNano()
-		return action.Response, nil
+		return action.Response, true, nil
 	}
-	return nil, nil
+	return "", false, nil
 }
 
 type RemoteAgent struct {
 }
 
-func (agent *RemoteAgent) QueryAction(ctx context.Context, protocol, request string, matchStrategy MatchStrategy) (response interface{}, err error) {
-	return "", nil
+func (agent *RemoteAgent) QueryAction(ctx context.Context, protocol, request string, matchStrategy MatchStrategy) (response string, ok bool, err error) {
+	return "", false, nil
 }
