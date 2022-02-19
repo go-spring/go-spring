@@ -26,6 +26,7 @@ import (
 	"github.com/go-spring/spring-base/chrono"
 	"github.com/go-spring/spring-base/fastdev"
 	"github.com/go-spring/spring-base/knife"
+	"github.com/go-spring/spring-base/util"
 )
 
 func init() {
@@ -50,7 +51,7 @@ func RecordMode() bool {
 
 // SetRecordMode 打开或者关闭录制模式，仅用于单元测试。
 func SetRecordMode(mode bool) {
-	fastdev.CheckTestMode()
+	util.MustTestMode()
 	recorder.mode = mode
 }
 

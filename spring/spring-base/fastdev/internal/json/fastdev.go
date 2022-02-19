@@ -22,6 +22,31 @@ import (
 	"unicode/utf8"
 )
 
+func MarshalValue(v reflect.Value) ([]byte, error) {
+	e := newEncodeState()
+	err := e.marshalValue(v, encOpts{escapeHTML: true})
+	if err != nil {
+		return nil, err
+	}
+	buf := append([]byte(nil), e.Bytes()...)
+	encodeStatePool.Put(e)
+	return buf, nil
+}
+
+func (e *encodeState) marshalValue(v reflect.Value, opts encOpts) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			if je, ok := r.(jsonError); ok {
+				err = je.error
+			} else {
+				panic(r)
+			}
+		}
+	}()
+	e.reflectValue(v, opts)
+	return nil
+}
+
 // stringEncoderV2 对于 "\u0000\xC0\n\t\u0000\xBEm\u0006\x89Z(\u0000\n"
 // 这样的字符串，标准库的序列化结果不正确，不能逆向转换回去。新方法是对原字符串多做
 // 一次 quote 操作，同时使用 @ 前缀指示是否进行二次 quote 以便能够正确反序列化。

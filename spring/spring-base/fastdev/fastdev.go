@@ -17,10 +17,8 @@
 package fastdev
 
 import (
-	"errors"
 	"fmt"
-	"os"
-	"strings"
+	"reflect"
 
 	"github.com/go-spring/spring-base/fastdev/internal/json"
 )
@@ -52,16 +50,6 @@ func RegisterProtocol(name string, protocol Protocol) {
 		panic(fmt.Errorf("%s: duplicate registration", name))
 	}
 	protocols[name] = protocol
-}
-
-// CheckTestMode 检查是否是测试模式
-func CheckTestMode() {
-	for _, arg := range os.Args {
-		if strings.HasPrefix(arg, "-test.") {
-			return
-		}
-	}
-	panic(errors.New("must call under test mode"))
 }
 
 type Message func() string
@@ -180,6 +168,14 @@ func ToRawSession(data string) (*RawSession, error) {
 
 func ToJson(v interface{}) string {
 	b, err := json.Marshal(v)
+	if err != nil {
+		return err.Error()
+	}
+	return string(b)
+}
+
+func ToJsonValue(v reflect.Value) string {
+	b, err := json.MarshalValue(v)
 	if err != nil {
 		return err.Error()
 	}

@@ -25,6 +25,7 @@ import (
 	"github.com/go-spring/spring-base/fastdev"
 	"github.com/go-spring/spring-base/fastdev/internal/json"
 	"github.com/go-spring/spring-base/knife"
+	"github.com/go-spring/spring-base/util"
 )
 
 func init() {
@@ -54,13 +55,13 @@ func ReplayMode() bool {
 
 // SetReplayMode 打开或者关闭回放模式，仅用于单元测试。
 func SetReplayMode(enable bool) {
-	fastdev.CheckTestMode()
+	util.MustTestMode()
 	replayer.enable = enable
 }
 
 // SetReplayAgent 设置本地还是远程回放。
 func SetReplayAgent(agent Agent) {
-	fastdev.CheckTestMode()
+	util.MustTestMode()
 	replayer.agent = agent
 }
 

@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"sync"
 	"time"
@@ -28,6 +29,7 @@ import (
 	"github.com/go-spring/spring-base/fastdev/recorder"
 	"github.com/go-spring/spring-base/fastdev/replayer"
 	"github.com/go-spring/spring-base/knife"
+	"github.com/go-spring/spring-base/util"
 )
 
 type LoadType int
@@ -41,21 +43,31 @@ const (
 
 var cache = &sync.Map{}
 
+// InvalidateAll 删除所有缓存值，只用于单元测试。
 func InvalidateAll() {
+	util.MustTestMode()
 	cache = &sync.Map{}
 }
 
 type Result interface {
-	Load(v interface{}) error
 	Json() string
+	Load(v interface{}) error
 }
 
 type valueResult struct {
-	value interface{}
+	v reflect.Value
+	t reflect.Type
+}
+
+func newValueResult(v interface{}) Result {
+	return &valueResult{
+		v: reflect.ValueOf(v),
+		t: reflect.TypeOf(v),
+	}
 }
 
 func (r *valueResult) Json() string {
-	return fastdev.ToJson(r.value)
+	return fastdev.ToJsonValue(r.v)
 }
 
 func (r *valueResult) Load(v interface{}) error {
@@ -63,71 +75,83 @@ func (r *valueResult) Load(v interface{}) error {
 	if outVal.Kind() != reflect.Ptr || outVal.IsNil() {
 		return errors.New("value should be ptr and not nil")
 	}
-	srcVal := reflect.ValueOf(r.value)
-	outVal.Elem().Set(srcVal)
+	if outVal.Type().Elem() != r.t {
+		return fmt.Errorf("type not match %s", outVal.Elem().Type())
+	}
+	outVal.Elem().Set(r.v)
 	return nil
 }
 
 type jsonResult struct {
-	value string
+	v string
 }
 
 func (r *jsonResult) Json() string {
-	return r.value
+	return r.v
 }
 
 func (r *jsonResult) Load(v interface{}) error {
-	return json.Unmarshal([]byte(r.value), v)
+	return json.Unmarshal([]byte(r.v), v)
 }
 
 type ResultLoader func(ctx context.Context, key string) (Result, error)
 
 type cacheItem struct {
-	value  Result
-	loader ResultLoader
-	locker sync.RWMutex
-
-	expireAfterWrite time.Duration
+	value            Result
 	writeTime        time.Time
+	locker           sync.Mutex
+	loader           ResultLoader
+	expireAfterWrite time.Duration
+	loading          *cacheItemLoading
 }
 
-func (item *cacheItem) expired() bool {
-	if item.expireAfterWrite <= 0 {
+type cacheItemLoading struct {
+	v   Result
+	err error
+	mu  sync.Mutex
+	wg  sync.WaitGroup
+}
+
+func (e *cacheItem) expired() bool {
+	if e.expireAfterWrite <= 0 {
 		return false
 	}
-	return time.Since(item.writeTime)-item.expireAfterWrite > 0
+	return time.Since(e.writeTime)-e.expireAfterWrite > 0
 }
 
-func (item *cacheItem) Load(ctx context.Context, key string) (LoadType, Result, error) {
-	loadType, result := item.fastLoad()
-	if loadType != LoadNone {
-		return loadType, result, nil
-	}
-	return item.slowLoad(ctx, key)
-}
+func (e *cacheItem) load(ctx context.Context, key string) (LoadType, Result, error) {
 
-func (item *cacheItem) fastLoad() (LoadType, Result) {
-	item.locker.RLock()
-	defer item.locker.RUnlock()
-	if item.value != nil && !item.expired() {
-		return LoadCache, item.value
+	e.locker.Lock()
+	if p := e.loading; p != nil {
+		e.locker.Unlock()
+		p.wg.Wait()
+		if p.err != nil {
+			return LoadNone, nil, p.err
+		}
+		return LoadCache, p.v, nil
 	}
-	return LoadNone, nil
-}
+	if e.value != nil && !e.expired() {
+		e.locker.Unlock()
+		return LoadCache, e.value, nil
+	}
+	c := &cacheItemLoading{}
+	c.wg.Add(1)
+	e.loading = c
+	e.locker.Unlock()
 
-func (item *cacheItem) slowLoad(ctx context.Context, key string) (LoadType, Result, error) {
-	item.locker.Lock()
-	defer item.locker.Unlock()
-	if item.value != nil && !item.expired() {
-		return LoadCache, item.value, nil
+	c.v, c.err = e.loader(ctx, key)
+	c.wg.Done()
+
+	e.locker.Lock()
+	e.value = c.v
+	e.writeTime = time.Now()
+	e.loading = nil
+	e.locker.Unlock()
+
+	if c.err != nil {
+		return LoadNone, nil, c.err
 	}
-	v, err := item.loader(ctx, key)
-	if err != nil {
-		return LoadNone, nil, err
-	}
-	item.value = v
-	item.writeTime = time.Now()
-	return LoadBack, item.value, nil
+	return LoadBack, c.v, nil
 }
 
 type ctxItem struct {
@@ -152,14 +176,14 @@ func toResultLoader(loader Loader) ResultLoader {
 				return nil, err
 			}
 			if resp != nil {
-				return &jsonResult{value: resp.(string)}, nil
+				return &jsonResult{v: resp.(string)}, nil
 			}
 		}
-		i, err := loader(ctx, key)
+		v, err := loader(ctx, key)
 		if err != nil {
 			return nil, err
 		}
-		return &valueResult{value: i}, nil
+		return newValueResult(v), nil
 	}
 }
 
@@ -171,9 +195,6 @@ func GetOrLoad(ctx context.Context, key string, expireAfterWrite time.Duration, 
 	}
 	cItem := i.(*ctxItem)
 	if loaded {
-		if cItem.val != nil {
-			return LoadOnCtx, cItem.val, nil
-		}
 		cItem.wg.Wait()
 		return LoadOnCtx, cItem.val, cItem.err
 	}
@@ -182,6 +203,9 @@ func GetOrLoad(ctx context.Context, key string, expireAfterWrite time.Duration, 
 		cItem.val = result
 		cItem.err = err
 		cItem.wg.Done()
+		if err != nil {
+			knife.Delete(ctx, key)
+		}
 	}()
 
 	m := cache
@@ -211,5 +235,5 @@ func GetOrLoad(ctx context.Context, key string, expireAfterWrite time.Duration, 
 
 	// TODO 检测 loader 是否发生变化，以便确认是否多个位置调用 Load 方法。
 	actual, _ := m.LoadOrStore(key, &cacheItem{expireAfterWrite: expireAfterWrite, loader: toResultLoader(loader)})
-	return actual.(*cacheItem).Load(ctx, key)
+	return actual.(*cacheItem).load(ctx, key)
 }
