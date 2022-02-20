@@ -33,14 +33,28 @@ func (m *MockOutput) EXPECT() *MockOutputMockRecorder {
 	return m.recorder
 }
 
-// Do mocks base method.
-func (m *MockOutput) Do(level Level, msg *Message) {
+// Level mocks base method.
+func (m *MockOutput) Level() Level {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "Do", level, msg)
+	ret := m.ctrl.Call(m, "Level")
+	ret0, _ := ret[0].(Level)
+	return ret0
 }
 
-// Do indicates an expected call of Do.
-func (mr *MockOutputMockRecorder) Do(level, msg interface{}) *gomock.Call {
+// Level indicates an expected call of Level.
+func (mr *MockOutputMockRecorder) Level() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Do", reflect.TypeOf((*MockOutput)(nil).Do), level, msg)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Level", reflect.TypeOf((*MockOutput)(nil).Level))
+}
+
+// Print mocks base method.
+func (m *MockOutput) Print(msg *Message) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Print", msg)
+}
+
+// Print indicates an expected call of Print.
+func (mr *MockOutputMockRecorder) Print(msg interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Print", reflect.TypeOf((*MockOutput)(nil).Print), msg)
 }

@@ -19,10 +19,10 @@ package log
 import "context"
 
 type Entry interface {
-	GetSkip() int
-	GetTag() string
-	GetContext() context.Context
-	GetErrNo() ErrNo
+	Skip() int
+	Tag() string
+	Errno() Errno
+	Context() context.Context
 }
 
 type BaseEntry struct {
@@ -30,211 +30,211 @@ type BaseEntry struct {
 	tag  string
 }
 
-func (e BaseEntry) GetSkip() int {
+func (e *BaseEntry) Skip() int {
 	return e.skip
 }
 
-func (e BaseEntry) GetTag() string {
+func (e *BaseEntry) Tag() string {
 	return e.tag
 }
 
-func (e BaseEntry) GetContext() context.Context {
+func (e *BaseEntry) Errno() Errno {
 	return nil
 }
 
-func (e BaseEntry) GetErrNo() ErrNo {
+func (e *BaseEntry) Context() context.Context {
 	return nil
 }
 
-func (e BaseEntry) Skip(n int) BaseEntry {
+func (e BaseEntry) WithSkip(n int) BaseEntry {
 	e.skip = n
 	return e
 }
 
-func (e BaseEntry) Tag(tag string) BaseEntry {
+func (e BaseEntry) WithTag(tag string) BaseEntry {
 	e.tag = tag
 	return e
 }
 
-func (e BaseEntry) Ctx(ctx context.Context) CtxEntry {
+func (e BaseEntry) WithContext(ctx context.Context) CtxEntry {
 	return CtxEntry{
-		ctx:  ctx,
-		tag:  e.tag,
 		skip: e.skip,
+		tag:  e.tag,
+		ctx:  ctx,
 	}
 }
 
 // Trace 输出 TRACE 级别的日志。
 func (e BaseEntry) Trace(args ...interface{}) {
-	output(TraceLevel, e, args)
+	outputf(TraceLevel, &e, "", args)
 }
 
 // Tracef 输出 TRACE 级别的日志。
 func (e BaseEntry) Tracef(format string, args ...interface{}) {
-	outputf(TraceLevel, e, format, args)
+	outputf(TraceLevel, &e, format, args)
 }
 
 // Debug 输出 DEBUG 级别的日志。
 func (e BaseEntry) Debug(args ...interface{}) {
-	output(DebugLevel, e, args)
+	outputf(DebugLevel, &e, "", args)
 }
 
 // Debugf 输出 DEBUG 级别的日志。
 func (e BaseEntry) Debugf(format string, args ...interface{}) {
-	outputf(DebugLevel, e, format, args)
+	outputf(DebugLevel, &e, format, args)
 }
 
 // Info 输出 INFO 级别的日志。
 func (e BaseEntry) Info(args ...interface{}) {
-	output(InfoLevel, e, args)
+	outputf(InfoLevel, &e, "", args)
 }
 
 // Infof 输出 INFO 级别的日志。
 func (e BaseEntry) Infof(format string, args ...interface{}) {
-	outputf(InfoLevel, e, format, args)
+	outputf(InfoLevel, &e, format, args)
 }
 
 // Warn 输出 WARN 级别的日志。
 func (e BaseEntry) Warn(args ...interface{}) {
-	output(WarnLevel, e, args)
+	outputf(WarnLevel, &e, "", args)
 }
 
 // Warnf 输出 WARN 级别的日志。
 func (e BaseEntry) Warnf(format string, args ...interface{}) {
-	outputf(WarnLevel, e, format, args)
+	outputf(WarnLevel, &e, format, args)
 }
 
 // Error 输出 ERROR 级别的日志。
 func (e BaseEntry) Error(args ...interface{}) {
-	output(ErrorLevel, e, args)
+	outputf(ErrorLevel, &e, "", args)
 }
 
 // Errorf 输出 ERROR 级别的日志。
 func (e BaseEntry) Errorf(format string, args ...interface{}) {
-	outputf(ErrorLevel, e, format, args)
+	outputf(ErrorLevel, &e, format, args)
 }
 
 // Panic 输出 PANIC 级别的日志。
 func (e BaseEntry) Panic(args ...interface{}) {
-	output(PanicLevel, e, args)
+	outputf(PanicLevel, &e, "", args)
 }
 
 // Panicf 输出 PANIC 级别的日志。
 func (e BaseEntry) Panicf(format string, args ...interface{}) {
-	outputf(PanicLevel, e, format, args)
+	outputf(PanicLevel, &e, format, args)
 }
 
 // Fatal 输出 FATAL 级别的日志。
 func (e BaseEntry) Fatal(args ...interface{}) {
-	output(FatalLevel, e, args)
+	outputf(FatalLevel, &e, "", args)
 }
 
 // Fatalf 输出 FATAL 级别的日志。
 func (e BaseEntry) Fatalf(format string, args ...interface{}) {
-	outputf(FatalLevel, e, format, args)
+	outputf(FatalLevel, &e, format, args)
 }
 
 type CtxEntry struct {
 	skip  int
 	tag   string
 	ctx   context.Context
-	errno ErrNo
+	errno Errno
 }
 
-func (e CtxEntry) GetSkip() int {
+func (e *CtxEntry) Skip() int {
 	return e.skip
 }
 
-func (e CtxEntry) GetTag() string {
+func (e *CtxEntry) Tag() string {
 	return e.tag
 }
 
-func (e CtxEntry) GetContext() context.Context {
-	return e.ctx
-}
-
-func (e CtxEntry) GetErrNo() ErrNo {
+func (e *CtxEntry) Errno() Errno {
 	return e.errno
 }
 
-func (e CtxEntry) Skip(n int) CtxEntry {
+func (e *CtxEntry) Context() context.Context {
+	return e.ctx
+}
+
+func (e CtxEntry) WithSkip(n int) CtxEntry {
 	e.skip = n
 	return e
 }
 
-func (e CtxEntry) Tag(tag string) CtxEntry {
+func (e CtxEntry) WithTag(tag string) CtxEntry {
 	e.tag = tag
 	return e
 }
 
 // Trace 输出 TRACE 级别的日志。
 func (e CtxEntry) Trace(args ...interface{}) {
-	output(TraceLevel, e, args)
+	outputf(TraceLevel, &e, "", args)
 }
 
 // Tracef 输出 TRACE 级别的日志。
 func (e CtxEntry) Tracef(format string, args ...interface{}) {
-	outputf(TraceLevel, e, format, args)
+	outputf(TraceLevel, &e, format, args)
 }
 
 // Debug 输出 DEBUG 级别的日志。
 func (e CtxEntry) Debug(args ...interface{}) {
-	output(DebugLevel, e, args)
+	outputf(DebugLevel, &e, "", args)
 }
 
 // Debugf 输出 DEBUG 级别的日志。
 func (e CtxEntry) Debugf(format string, args ...interface{}) {
-	outputf(DebugLevel, e, format, args)
+	outputf(DebugLevel, &e, format, args)
 }
 
 // Info 输出 INFO 级别的日志。
 func (e CtxEntry) Info(args ...interface{}) {
-	output(InfoLevel, e, args)
+	outputf(InfoLevel, &e, "", args)
 }
 
 // Infof 输出 INFO 级别的日志。
 func (e CtxEntry) Infof(format string, args ...interface{}) {
-	outputf(InfoLevel, e, format, args)
+	outputf(InfoLevel, &e, format, args)
 }
 
 // Warn 输出 WARN 级别的日志。
 func (e CtxEntry) Warn(args ...interface{}) {
-	output(WarnLevel, e, args)
+	outputf(WarnLevel, &e, "", args)
 }
 
 // Warnf 输出 WARN 级别的日志。
 func (e CtxEntry) Warnf(format string, args ...interface{}) {
-	outputf(WarnLevel, e, format, args)
+	outputf(WarnLevel, &e, format, args)
 }
 
 // Error 输出 ERROR 级别的日志。
-func (e CtxEntry) Error(errno ErrNo, args ...interface{}) {
+func (e CtxEntry) Error(errno Errno, args ...interface{}) {
 	e.errno = errno
-	output(ErrorLevel, e, args)
+	outputf(ErrorLevel, &e, "", args)
 }
 
 // Errorf 输出 ERROR 级别的日志。
-func (e CtxEntry) Errorf(errno ErrNo, format string, args ...interface{}) {
+func (e CtxEntry) Errorf(errno Errno, format string, args ...interface{}) {
 	e.errno = errno
-	outputf(ErrorLevel, e, format, args)
+	outputf(ErrorLevel, &e, format, args)
 }
 
 // Panic 输出 PANIC 级别的日志。
 func (e CtxEntry) Panic(args ...interface{}) {
-	output(PanicLevel, e, args)
+	outputf(PanicLevel, &e, "", args)
 }
 
 // Panicf 输出 PANIC 级别的日志。
 func (e CtxEntry) Panicf(format string, args ...interface{}) {
-	outputf(PanicLevel, e, format, args)
+	outputf(PanicLevel, &e, format, args)
 }
 
 // Fatal 输出 FATAL 级别的日志。
 func (e CtxEntry) Fatal(args ...interface{}) {
-	output(FatalLevel, e, args)
+	outputf(FatalLevel, &e, "", args)
 }
 
 // Fatalf 输出 FATAL 级别的日志。
 func (e CtxEntry) Fatalf(format string, args ...interface{}) {
-	outputf(FatalLevel, e, format, args)
+	outputf(FatalLevel, &e, format, args)
 }

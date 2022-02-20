@@ -26,12 +26,12 @@ import (
 
 func TestNewErrNo(t *testing.T) {
 	assert.Panic(t, func() {
-		log.NewErrNo(200, 0, "")
+		log.NewErrno(200, 0, "")
 	}, "project invalid, should be >= 1000")
 	assert.Panic(t, func() {
-		log.NewErrNo(1000, 0, "")
+		log.NewErrno(1000, 0, "")
 	}, "code invalid, should be 1~999")
-	fmt.Println(log.NewErrNo(1000, 1, "").Code())
+	fmt.Println(log.NewErrno(1000, 1, "").Code())
 	fmt.Println(log.OK.Code(), log.OK.Msg())
 	fmt.Println(log.ERROR.Code(), log.ERROR.Msg())
 }
