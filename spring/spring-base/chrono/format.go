@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package util
+package chrono
 
 import (
 	"bytes"
@@ -38,12 +38,9 @@ const (
 // Format time
 func Format(t time.Time, layout string) string {
 	layout = ToStdLayout(layout)
-
-	// convert std layout failed
 	if layout == "" {
 		return ""
 	}
-
 	return t.Format(layout)
 }
 
@@ -68,7 +65,6 @@ func ToStdLayout(layout string) string {
 
 // nextChunk
 func nextStdChunk(layout string) (prefix string, std string, suffix string) {
-
 	for i := 0; i < len(layout); i++ {
 		switch b := layout[i]; b {
 		case 'y': // yy yyyy
@@ -111,6 +107,5 @@ func nextStdChunk(layout string) (prefix string, std string, suffix string) {
 			}
 		}
 	}
-
 	return layout, stdNone, ""
 }
