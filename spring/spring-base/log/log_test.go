@@ -165,7 +165,6 @@ func TestEntry(t *testing.T) {
 	const tagIn = "__in"
 	o := NewMockOutput(ctrl)
 	RegisterDefaultOutput(o)
-	RegisterOutput(o, tagIn)
 	defer ClearOutputs()
 
 	ctxLogger := WithContext(ctx)

@@ -20,17 +20,10 @@
 package log
 
 import (
-	"bytes"
 	"context"
-	"errors"
 	"fmt"
-	"strings"
 
-	"github.com/go-spring/spring-base/atomic"
-	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-base/chrono"
-	"github.com/go-spring/spring-base/color"
-	"github.com/go-spring/spring-base/util"
 )
 
 const (
@@ -45,9 +38,9 @@ const (
 )
 
 var (
-	Console        = newConsole()
 	outputs        = make(map[string]Output)
 	emptyEntry     = &BaseEntry{}
+	defaultOutput  = Output(Console)
 	defaultContext context.Context
 )
 
@@ -82,71 +75,28 @@ func (level Level) String() string {
 }
 
 func ClearOutputs() {
+	defaultOutput = Output(Console)
 	outputs = make(map[string]Output)
 }
 
 func GetOutput(tag string) Output {
 	v, ok := outputs[tag]
 	if !ok {
-		return Console
+		return defaultOutput
 	}
 	return v
 }
 
-func RegisterDefaultOutput(outputf Output) {
-	_, ok := outputs[""]
-	if ok {
-		panic(errors.New("duplicate default outputf"))
-	}
-	outputs[""] = outputf
+// RegisterDefaultOutput 为空 tag 或者未知的 tag 设置相应的 Output 对象。
+func RegisterDefaultOutput(output Output) {
+	defaultOutput = output
 }
 
-func RegisterOutput(outputf Output, tags ...string) {
+// RegisterOutput 为指定的 tag 设置对应的 Output 对象。
+func RegisterOutput(output Output, tags ...string) {
 	for _, tag := range tags {
-		_, ok := outputs[tag]
-		if ok {
-			panic(errors.New("duplicate outputf for tag " + tag))
-		}
-		outputs[tag] = outputf
+		outputs[tag] = output
 	}
-}
-
-type console struct {
-	level atomic.Int32
-}
-
-func newConsole() *console {
-	c := &console{}
-	c.SetLevel(InfoLevel)
-	return c
-}
-
-func (c *console) Level() Level {
-	return Level(c.level.Load())
-}
-
-func (c *console) SetLevel(level Level) {
-	c.level.Store(int32(level))
-}
-
-func (c *console) Print(msg *Message) {
-	defer func() { msg.Reuse() }()
-	level := msg.Level()
-	strLevel := strings.ToUpper(level.String())
-	if level >= ErrorLevel {
-		strLevel = color.Red.Sprint(strLevel)
-	} else if level == WarnLevel {
-		strLevel = color.Yellow.Sprint(strLevel)
-	} else if level == TraceLevel {
-		strLevel = color.Green.Sprint(strLevel)
-	}
-	var buf bytes.Buffer
-	for _, a := range msg.Args() {
-		buf.WriteString(cast.ToString(a))
-	}
-	strTime := msg.Time().Format("2006-01-02T15:04:05.000")
-	fileLine := util.Contract(fmt.Sprintf("%s:%d", msg.File(), msg.Line()), 48)
-	_, _ = fmt.Printf("[%s][%s][%s] %s\n", strLevel, strTime, fileLine, buf.String())
 }
 
 // WithSkip 创建包含 skip 信息的 Entry 。
