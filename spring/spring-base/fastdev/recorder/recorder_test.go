@@ -44,12 +44,9 @@ func TestRecordAction(t *testing.T) {
 	}
 
 	sessionID := "df3b64266ebe4e63a464e135000a07cd"
-	ctx, err = recorder.StartRecord(ctx, sessionID)
-	if err != nil {
-		t.Fatal(err)
-	}
+	ctx = recorder.StartRecord(ctx, sessionID)
 
-	err = recorder.RecordAction(ctx, &fastdev.Action{
+	recorder.RecordAction(ctx, &fastdev.Action{
 		Protocol: fastdev.REDIS,
 		Request: fastdev.NewMessage(func() string {
 			return cast.ToCommandLine("SET", "a", "\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n")
@@ -58,11 +55,8 @@ func TestRecordAction(t *testing.T) {
 			return cast.ToCSV("\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n")
 		}),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
 
-	err = recorder.RecordAction(ctx, &fastdev.Action{
+	recorder.RecordAction(ctx, &fastdev.Action{
 		Protocol: fastdev.REDIS,
 		Request: fastdev.NewMessage(func() string {
 			return cast.ToCommandLine("LRANGE", "list", 0, -1)
@@ -71,11 +65,8 @@ func TestRecordAction(t *testing.T) {
 			return cast.ToCSV("1", 2, "3")
 		}),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
 
-	err = recorder.RecordInbound(ctx, &fastdev.Action{
+	recorder.RecordInbound(ctx, &fastdev.Action{
 		Protocol: fastdev.HTTP,
 		Request: fastdev.NewMessage(func() string {
 			return "GET ..."
@@ -84,15 +75,8 @@ func TestRecordAction(t *testing.T) {
 			return "200 ..."
 		}),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
 
-	s, err := recorder.StopRecord(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-
+	s := recorder.StopRecord(ctx)
 	str, err := s.PrettyJson()
 	if err != nil {
 		t.Fatal(err)
