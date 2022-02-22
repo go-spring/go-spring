@@ -38,14 +38,14 @@ const (
 )
 
 var (
-	outputs        = make(map[string]Output)
+	loggers        = make(map[string]Logger)
 	emptyEntry     = &BaseEntry{}
-	defaultOutput  = Output(Console)
+	defaultLogger  = Logger(Console)
 	defaultContext context.Context
 )
 
-// Output 自定义日志的输出格式。
-type Output interface {
+// Logger 自定义日志的输出格式。
+type Logger interface {
 	Level() Level
 	Print(msg *Message)
 }
@@ -74,28 +74,28 @@ func (level Level) String() string {
 	}
 }
 
-func ClearOutputs() {
-	defaultOutput = Output(Console)
-	outputs = make(map[string]Output)
+func ClearLoggers() {
+	defaultLogger = Logger(Console)
+	loggers = make(map[string]Logger)
 }
 
-func GetOutput(tag string) Output {
-	v, ok := outputs[tag]
+func GetLogger(tag string) Logger {
+	v, ok := loggers[tag]
 	if !ok {
-		return defaultOutput
+		return defaultLogger
 	}
 	return v
 }
 
-// RegisterDefaultOutput 为空 tag 或者未知的 tag 设置相应的 Output 对象。
-func RegisterDefaultOutput(output Output) {
-	defaultOutput = output
+// RegisterDefaultLogger 为空 tag 或者未知的 tag 设置相应的 Logger 对象。
+func RegisterDefaultLogger(logger Logger) {
+	defaultLogger = logger
 }
 
-// RegisterOutput 为指定的 tag 设置对应的 Output 对象。
-func RegisterOutput(output Output, tags ...string) {
+// RegisterLogger 为指定的 tag 设置对应的 Logger 对象。
+func RegisterLogger(logger Logger, tags ...string) {
 	for _, tag := range tags {
-		outputs[tag] = output
+		loggers[tag] = logger
 	}
 }
 
@@ -121,76 +121,76 @@ func T(a ...interface{}) []interface{} {
 
 // Trace 输出 TRACE 级别的日志。
 func Trace(args ...interface{}) {
-	outputf(TraceLevel, emptyEntry, "", args)
+	printf(TraceLevel, emptyEntry, "", args)
 }
 
 // Tracef 输出 TRACE 级别的日志。
 func Tracef(format string, args ...interface{}) {
-	outputf(TraceLevel, emptyEntry, format, args)
+	printf(TraceLevel, emptyEntry, format, args)
 }
 
 // Debug 输出 DEBUG 级别的日志。
 func Debug(args ...interface{}) {
-	outputf(DebugLevel, emptyEntry, "", args)
+	printf(DebugLevel, emptyEntry, "", args)
 }
 
 // Debugf 输出 DEBUG 级别的日志。
 func Debugf(format string, args ...interface{}) {
-	outputf(DebugLevel, emptyEntry, format, args)
+	printf(DebugLevel, emptyEntry, format, args)
 }
 
 // Info 输出 INFO 级别的日志。
 func Info(args ...interface{}) {
-	outputf(InfoLevel, emptyEntry, "", args)
+	printf(InfoLevel, emptyEntry, "", args)
 }
 
 // Infof 输出 INFO 级别的日志。
 func Infof(format string, args ...interface{}) {
-	outputf(InfoLevel, emptyEntry, format, args)
+	printf(InfoLevel, emptyEntry, format, args)
 }
 
 // Warn 输出 WARN 级别的日志。
 func Warn(args ...interface{}) {
-	outputf(WarnLevel, emptyEntry, "", args)
+	printf(WarnLevel, emptyEntry, "", args)
 }
 
 // Warnf 输出 WARN 级别的日志。
 func Warnf(format string, args ...interface{}) {
-	outputf(WarnLevel, emptyEntry, format, args)
+	printf(WarnLevel, emptyEntry, format, args)
 }
 
 // Error 输出 ERROR 级别的日志。
 func Error(args ...interface{}) {
-	outputf(ErrorLevel, emptyEntry, "", args)
+	printf(ErrorLevel, emptyEntry, "", args)
 }
 
 // Errorf 输出 ERROR 级别的日志。
 func Errorf(format string, args ...interface{}) {
-	outputf(ErrorLevel, emptyEntry, format, args)
+	printf(ErrorLevel, emptyEntry, format, args)
 }
 
 // Panic 输出 PANIC 级别的日志。
 func Panic(args ...interface{}) {
-	outputf(PanicLevel, emptyEntry, "", args)
+	printf(PanicLevel, emptyEntry, "", args)
 }
 
 // Panicf 输出 PANIC 级别的日志。
 func Panicf(format string, args ...interface{}) {
-	outputf(PanicLevel, emptyEntry, format, args)
+	printf(PanicLevel, emptyEntry, format, args)
 }
 
 // Fatal 输出 FATAL 级别的日志。
 func Fatal(args ...interface{}) {
-	outputf(FatalLevel, emptyEntry, "", args)
+	printf(FatalLevel, emptyEntry, "", args)
 }
 
 // Fatalf 输出 FATAL 级别的日志。
 func Fatalf(format string, args ...interface{}) {
-	outputf(FatalLevel, emptyEntry, format, args)
+	printf(FatalLevel, emptyEntry, format, args)
 }
 
-func outputf(level Level, e Entry, format string, args []interface{}) {
-	o := GetOutput(e.Tag())
+func printf(level Level, e Entry, format string, args []interface{}) {
+	o := GetLogger(e.Tag())
 	if o.Level() > level {
 		return
 	}
@@ -206,7 +206,7 @@ func outputf(level Level, e Entry, format string, args []interface{}) {
 	doPrint(o, level, e, []interface{}{fmt.Sprintf(format, args...)})
 }
 
-func doPrint(o Output, level Level, e Entry, args []interface{}) {
+func doPrint(o Logger, level Level, e Entry, args []interface{}) {
 	msg := newMessage()
 	msg.level = level
 	msg.args = args

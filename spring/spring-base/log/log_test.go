@@ -42,9 +42,9 @@ func TestDefault(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	o := NewMockOutput(ctrl)
-	RegisterDefaultOutput(o)
-	defer ClearOutputs()
+	o := NewMockLogger(ctrl)
+	RegisterDefaultLogger(o)
+	defer ClearLoggers()
 
 	o.EXPECT().Level()
 	o.EXPECT().Print(&Message{level: TraceLevel, args: []interface{}{"a", "=", "1"}, file: code.File(), line: code.Line() + 1, time: fixedTime})
@@ -163,9 +163,9 @@ func TestEntry(t *testing.T) {
 	defer ctrl.Finish()
 
 	const tagIn = "__in"
-	o := NewMockOutput(ctrl)
-	RegisterDefaultOutput(o)
-	defer ClearOutputs()
+	o := NewMockLogger(ctrl)
+	RegisterDefaultLogger(o)
+	defer ClearLoggers()
 
 	ctxLogger := WithContext(ctx)
 	o.EXPECT().Level()

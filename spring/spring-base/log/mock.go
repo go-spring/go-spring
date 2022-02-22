@@ -10,31 +10,31 @@ import (
 	gomock "github.com/golang/mock/gomock"
 )
 
-// MockOutput is a mock of Output interface.
-type MockOutput struct {
+// MockLogger is a mock of Logger interface.
+type MockLogger struct {
 	ctrl     *gomock.Controller
-	recorder *MockOutputMockRecorder
+	recorder *MockLoggerMockRecorder
 }
 
-// MockOutputMockRecorder is the mock recorder for MockOutput.
-type MockOutputMockRecorder struct {
-	mock *MockOutput
+// MockLoggerMockRecorder is the mock recorder for MockLogger.
+type MockLoggerMockRecorder struct {
+	mock *MockLogger
 }
 
-// NewMockOutput creates a new mock instance.
-func NewMockOutput(ctrl *gomock.Controller) *MockOutput {
-	mock := &MockOutput{ctrl: ctrl}
-	mock.recorder = &MockOutputMockRecorder{mock}
+// NewMockLogger creates a new mock instance.
+func NewMockLogger(ctrl *gomock.Controller) *MockLogger {
+	mock := &MockLogger{ctrl: ctrl}
+	mock.recorder = &MockLoggerMockRecorder{mock}
 	return mock
 }
 
 // EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockOutput) EXPECT() *MockOutputMockRecorder {
+func (m *MockLogger) EXPECT() *MockLoggerMockRecorder {
 	return m.recorder
 }
 
 // Level mocks base method.
-func (m *MockOutput) Level() Level {
+func (m *MockLogger) Level() Level {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Level")
 	ret0, _ := ret[0].(Level)
@@ -42,19 +42,19 @@ func (m *MockOutput) Level() Level {
 }
 
 // Level indicates an expected call of Level.
-func (mr *MockOutputMockRecorder) Level() *gomock.Call {
+func (mr *MockLoggerMockRecorder) Level() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Level", reflect.TypeOf((*MockOutput)(nil).Level))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Level", reflect.TypeOf((*MockLogger)(nil).Level))
 }
 
 // Print mocks base method.
-func (m *MockOutput) Print(msg *Message) {
+func (m *MockLogger) Print(msg *Message) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "Print", msg)
 }
 
 // Print indicates an expected call of Print.
-func (mr *MockOutputMockRecorder) Print(msg interface{}) *gomock.Call {
+func (mr *MockLoggerMockRecorder) Print(msg interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Print", reflect.TypeOf((*MockOutput)(nil).Print), msg)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Print", reflect.TypeOf((*MockLogger)(nil).Print), msg)
 }
