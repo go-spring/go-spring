@@ -24,6 +24,7 @@ import (
 	"fmt"
 
 	"github.com/go-spring/spring-base/chrono"
+	"github.com/go-spring/spring-base/util"
 )
 
 const (
@@ -74,7 +75,10 @@ func (level Level) String() string {
 	}
 }
 
-func ClearLoggers() {
+// ResetToDefault 重置为默认配置。
+func ResetToDefault() {
+	util.MustTestMode()
+	defaultContext = nil
 	defaultLogger = Logger(Console)
 	loggers = make(map[string]Logger)
 }
@@ -87,8 +91,8 @@ func GetLogger(tag string) Logger {
 	return v
 }
 
-// RegisterDefaultLogger 为空 tag 或者未知的 tag 设置相应的 Logger 对象。
-func RegisterDefaultLogger(logger Logger) {
+// SetDefaultLogger 为空 tag 或者未知的 tag 设置相应的 Logger 对象。
+func SetDefaultLogger(logger Logger) {
 	defaultLogger = logger
 }
 
@@ -97,6 +101,12 @@ func RegisterLogger(logger Logger, tags ...string) {
 	for _, tag := range tags {
 		loggers[tag] = logger
 	}
+}
+
+// SetDefaultContext 设置默认的 context.Context 对象。
+func SetDefaultContext(ctx context.Context) {
+	util.MustTestMode()
+	defaultContext = ctx
 }
 
 // WithSkip 创建包含 skip 信息的 Entry 。
@@ -208,16 +218,16 @@ func printf(level Level, e Entry, format string, args []interface{}) {
 
 func doPrint(o Logger, level Level, e Entry, args []interface{}) {
 	msg := newMessage()
-	msg.level = level
-	msg.args = args
-	msg.tag = e.Tag()
-	msg.ctx = e.Context()
-	msg.errno = e.Errno()
-	ctx := msg.ctx
+	msg.Level = level
+	msg.Args = args
+	msg.Tag = e.Tag()
+	msg.Ctx = e.Context()
+	msg.Errno = e.Errno()
+	ctx := msg.Ctx
 	if ctx == nil {
 		ctx = defaultContext
 	}
-	msg.time = chrono.Now(ctx)
-	msg.file, msg.line, _ = Caller(e.Skip()+3, true)
+	msg.Time = chrono.Now(ctx)
+	msg.File, msg.Line, _ = Caller(e.Skip()+3, true)
 	o.Print(msg)
 }

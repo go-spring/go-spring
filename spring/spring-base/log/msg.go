@@ -31,14 +31,14 @@ var msgPool = sync.Pool{
 
 // Message 定义日志消息。
 type Message struct {
-	level Level
-	time  time.Time
-	ctx   context.Context
-	tag   string
-	file  string
-	line  int
-	args  []interface{}
-	errno Errno
+	Level Level
+	Time  time.Time
+	Ctx   context.Context
+	Tag   string
+	File  string
+	Line  int
+	Args  []interface{}
+	Errno Errno
 }
 
 // newMessage 创建新的 *Message 对象。
@@ -46,50 +46,19 @@ func newMessage() *Message {
 	return msgPool.Get().(*Message)
 }
 
-func (msg *Message) reset() {
-	msg.level = NoneLevel
-	msg.ctx = nil
-	msg.tag = ""
-	msg.file = ""
-	msg.line = 0
-	msg.time = time.Time{}
-	msg.args = msg.args[:0]
-}
-
-func (msg *Message) Level() Level {
-	return msg.level
-}
-
-func (msg *Message) Tag() string {
-	return msg.tag
-}
-
-func (msg *Message) File() string {
-	return msg.file
-}
-
-func (msg *Message) Line() int {
-	return msg.line
-}
-
-func (msg *Message) Time() time.Time {
-	return msg.time
-}
-
-func (msg *Message) Args() []interface{} {
-	return msg.args
-}
-
-func (msg *Message) ErrNo() Errno {
-	return msg.errno
-}
-
-func (msg *Message) Context() context.Context {
-	return msg.ctx
-}
-
 // Reuse 将 *Message 放回对象池，以便重用。
 func (msg *Message) Reuse() {
 	msg.reset()
 	msgPool.Put(msg)
+}
+
+func (msg *Message) reset() {
+	msg.Level = NoneLevel
+	msg.Ctx = nil
+	msg.Tag = ""
+	msg.File = ""
+	msg.Line = 0
+	msg.Time = time.Time{}
+	msg.Args = nil
+	msg.Errno = nil
 }

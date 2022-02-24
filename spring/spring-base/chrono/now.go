@@ -25,15 +25,15 @@ import (
 
 const nowKey = "::now::"
 
-type TimeNow interface {
-	Get() time.Time
+type FakeTime interface {
+	Now() time.Time
 }
 
 type fixedTime struct {
 	fixed time.Time
 }
 
-func (t *fixedTime) Get() time.Time {
+func (t *fixedTime) Now() time.Time {
 	return t.fixed
 }
 
@@ -42,7 +42,7 @@ type baseTime struct {
 	from time.Time
 }
 
-func (t *baseTime) Get() time.Time {
+func (t *baseTime) Now() time.Time {
 	return t.base.Add(time.Since(t.from))
 }
 
@@ -70,11 +70,11 @@ func Now(ctx context.Context) time.Time {
 	if err != nil || v == nil {
 		return time.Now()
 	}
-	t, ok := v.(TimeNow)
+	t, ok := v.(FakeTime)
 	if !ok {
 		return time.Now()
 	}
-	return t.Get()
+	return t.Now()
 }
 
 // MilliSeconds 返回 time.Time 的毫秒时间。
