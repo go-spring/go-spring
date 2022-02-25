@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package chrono
+package clock
 
 import (
 	"context"

@@ -23,10 +23,9 @@ import (
 	"time"
 
 	"github.com/go-spring/spring-base/cast"
-	"github.com/go-spring/spring-base/chrono"
-	"github.com/go-spring/spring-base/fastdev"
-	"github.com/go-spring/spring-base/fastdev/recorder"
+	"github.com/go-spring/spring-base/clock"
 	"github.com/go-spring/spring-base/knife"
+	"github.com/go-spring/spring-base/net/recorder"
 )
 
 func TestRecordAction(t *testing.T) {
@@ -38,7 +37,7 @@ func TestRecordAction(t *testing.T) {
 
 	timeNow := time.Unix(1643364150, 0)
 	ctx, _ := knife.New(context.Background())
-	err := chrono.SetBaseTime(ctx, timeNow)
+	err := clock.SetBaseTime(ctx, timeNow)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,32 +45,32 @@ func TestRecordAction(t *testing.T) {
 	sessionID := "df3b64266ebe4e63a464e135000a07cd"
 	ctx = recorder.StartRecord(ctx, sessionID)
 
-	recorder.RecordAction(ctx, &fastdev.Action{
-		Protocol: fastdev.REDIS,
-		Request: fastdev.NewMessage(func() string {
+	recorder.RecordAction(ctx, &recorder.Action{
+		Protocol: recorder.REDIS,
+		Request: recorder.NewMessage(func() string {
 			return cast.ToCommandLine("SET", "a", "\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n")
 		}),
-		Response: fastdev.NewMessage(func() string {
+		Response: recorder.NewMessage(func() string {
 			return cast.ToCSV("\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n")
 		}),
 	})
 
-	recorder.RecordAction(ctx, &fastdev.Action{
-		Protocol: fastdev.REDIS,
-		Request: fastdev.NewMessage(func() string {
+	recorder.RecordAction(ctx, &recorder.Action{
+		Protocol: recorder.REDIS,
+		Request: recorder.NewMessage(func() string {
 			return cast.ToCommandLine("LRANGE", "list", 0, -1)
 		}),
-		Response: fastdev.NewMessage(func() string {
+		Response: recorder.NewMessage(func() string {
 			return cast.ToCSV("1", 2, "3")
 		}),
 	})
 
-	recorder.RecordInbound(ctx, &fastdev.Action{
-		Protocol: fastdev.HTTP,
-		Request: fastdev.NewMessage(func() string {
+	recorder.RecordInbound(ctx, &recorder.Action{
+		Protocol: recorder.HTTP,
+		Request: recorder.NewMessage(func() string {
 			return "GET ..."
 		}),
-		Response: fastdev.NewMessage(func() string {
+		Response: recorder.NewMessage(func() string {
 			return "200 ..."
 		}),
 	})
@@ -83,7 +82,7 @@ func TestRecordAction(t *testing.T) {
 	}
 	fmt.Println("got:", str)
 
-	s1, err := fastdev.ToRawSession(str)
+	s1, err := recorder.ToRawSession(str)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +114,7 @@ func TestRecordAction(t *testing.T) {
 	  ]
 	}`
 
-	s2, err := fastdev.ToRawSession(expect)
+	s2, err := recorder.ToRawSession(expect)
 	if err != nil {
 		t.Fatal(err)
 	}

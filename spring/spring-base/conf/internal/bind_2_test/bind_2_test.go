@@ -27,7 +27,7 @@ import (
 )
 
 func init() {
-	log.SetLevel(log.TraceLevel)
+	log.Console.SetLevel(log.TraceLevel)
 }
 
 type DB struct {

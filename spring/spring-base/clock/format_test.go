@@ -14,14 +14,14 @@
  * limitations under the License.
  */
 
-package chrono_test
+package clock_test
 
 import (
 	"testing"
 	"time"
 
 	"github.com/go-spring/spring-base/assert"
-	"github.com/go-spring/spring-base/chrono"
+	"github.com/go-spring/spring-base/clock"
 )
 
 func Test_toStdLayout(t *testing.T) {
@@ -42,7 +42,7 @@ func Test_toStdLayout(t *testing.T) {
 	}
 
 	for _, layout := range layouts {
-		format := chrono.ToStdLayout(layout.Custom)
+		format := clock.ToStdLayout(layout.Custom)
 		assert.Equal(t, layout.Native, format)
 	}
 }
@@ -68,7 +68,7 @@ func Test_format(t *testing.T) {
 
 	for _, layout := range layouts {
 		native := now.Format(layout.Native)
-		custom := chrono.Format(now, layout.Custom)
+		custom := clock.Format(now, layout.Custom)
 		assert.Equal(t, native, custom)
 	}
 }
@@ -94,7 +94,7 @@ func Test_unitFormat(t *testing.T) {
 
 	for _, layout := range layouts {
 		native := now.Format(layout.Native)
-		custom := chrono.Format(now, layout.Custom)
+		custom := clock.Format(now, layout.Custom)
 		assert.Equal(t, native, custom)
 	}
 }
@@ -115,7 +115,7 @@ func BenchmarkFormat(b *testing.B) {
 
 	b.Run("custom", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			chrono.Format(now, "yyyy-MM-dd H:m:s")
+			clock.Format(now, "yyyy-MM-dd H:m:s")
 		}
 	})
 }

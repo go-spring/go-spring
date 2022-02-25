@@ -14,13 +14,13 @@
  * limitations under the License.
  */
 
-package fastdev
+package recorder
 
 import (
 	"fmt"
 	"reflect"
 
-	"github.com/go-spring/spring-base/fastdev/internal/json"
+	"github.com/go-spring/spring-base/net/internal/json"
 )
 
 const (

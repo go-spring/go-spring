@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"github.com/go-spring/spring-base/assert"
-	"github.com/go-spring/spring-base/chrono"
+	"github.com/go-spring/spring-base/clock"
 	"github.com/go-spring/spring-base/code"
 	"github.com/go-spring/spring-base/knife"
 	"github.com/go-spring/spring-base/log"
@@ -34,7 +34,7 @@ func TestDefault(t *testing.T) {
 
 	fixedTime := time.Now()
 	ctx, _ := knife.New(context.Background())
-	err := chrono.SetFixedTime(ctx, fixedTime)
+	err := clock.SetFixedTime(ctx, fixedTime)
 	assert.Nil(t, err)
 
 	log.SetDefaultContext(ctx)
@@ -156,7 +156,7 @@ func TestEntry(t *testing.T) {
 
 	ctx, _ = knife.New(ctx)
 	fixedTime := time.Now()
-	err := chrono.SetFixedTime(ctx, fixedTime)
+	err := clock.SetFixedTime(ctx, fixedTime)
 	assert.Nil(t, err)
 
 	ctrl := gomock.NewController(t)

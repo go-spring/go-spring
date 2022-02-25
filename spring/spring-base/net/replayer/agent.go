@@ -21,8 +21,8 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/go-spring/spring-base/chrono"
-	"github.com/go-spring/spring-base/fastdev"
+	"github.com/go-spring/spring-base/clock"
+	"github.com/go-spring/spring-base/net/recorder"
 )
 
 type MatchStrategy int
@@ -52,7 +52,7 @@ func NewLocalAgent() *LocalAgent {
 
 // Store 存储 sessionID 对应的回放数据。
 func (agent *LocalAgent) Store(str string) (*Session, error) {
-	rawSession, err := fastdev.ToRawSession(str)
+	rawSession, err := recorder.ToRawSession(str)
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +71,7 @@ func (agent *LocalAgent) store(session *Session) error {
 
 	actions := make(map[string]map[string][]*Action)
 	for _, a := range session.Actions {
-		p := fastdev.GetProtocol(a.Protocol)
+		p := recorder.GetProtocol(a.Protocol)
 		if p == nil {
 			return errors.New("invalid protocol")
 		}
@@ -121,7 +121,7 @@ func (agent *LocalAgent) QueryAction(ctx context.Context, protocol, request stri
 		return "", false, err
 	}
 
-	p := fastdev.GetProtocol(protocol)
+	p := recorder.GetProtocol(protocol)
 	if p == nil {
 		return "", false, errors.New("invalid protocol")
 	}
@@ -141,7 +141,7 @@ func (agent *LocalAgent) QueryAction(ctx context.Context, protocol, request stri
 		}
 		action.RecRequest = request
 		action.RecResponse = action.Response
-		action.RecTimestamp = chrono.Now(ctx).UnixNano()
+		action.RecTimestamp = clock.Now(ctx).UnixNano()
 		return action.Response, true, nil
 	}
 	return "", false, nil

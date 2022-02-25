@@ -14,28 +14,30 @@
  * limitations under the License.
  */
 
-package guava
+package cache
 
-import "github.com/go-spring/spring-base/fastdev"
+import (
+	"github.com/go-spring/spring-base/net/recorder"
+)
 
 func init() {
-	fastdev.RegisterProtocol(fastdev.APCU, &proto{})
+	recorder.RegisterProtocol(recorder.APCU, &protocol{})
 }
 
-type proto struct{}
+type protocol struct{}
 
-func (p *proto) ShouldDiff() bool {
+func (p *protocol) ShouldDiff() bool {
 	return true
 }
 
-func (p *proto) GetLabel(data string) string {
+func (p *protocol) GetLabel(data string) string {
 	return data[:4]
 }
 
-func (p *proto) FlatRequest(data string) (map[string]string, error) {
+func (p *protocol) FlatRequest(data string) (map[string]string, error) {
 	return nil, nil
 }
 
-func (p *proto) FlatResponse(data string) (map[string]string, error) {
+func (p *protocol) FlatResponse(data string) (map[string]string, error) {
 	return nil, nil
 }

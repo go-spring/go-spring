@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package guava_test
+package cache_test
 
 import (
 	"context"
@@ -28,16 +28,15 @@ import (
 	"time"
 
 	"github.com/go-spring/spring-base/assert"
-	"github.com/go-spring/spring-base/chrono"
-	"github.com/go-spring/spring-base/fastdev"
-	"github.com/go-spring/spring-base/fastdev/recorder"
-	"github.com/go-spring/spring-base/fastdev/replayer"
-	"github.com/go-spring/spring-base/guava"
+	"github.com/go-spring/spring-base/cache"
+	"github.com/go-spring/spring-base/clock"
 	"github.com/go-spring/spring-base/knife"
+	"github.com/go-spring/spring-base/net/recorder"
+	"github.com/go-spring/spring-base/net/replayer"
 )
 
 func init() {
-	fastdev.RegisterProtocol(fastdev.REDIS, &redisProtocol{})
+	recorder.RegisterProtocol(recorder.REDIS, &redisProtocol{})
 }
 
 type redisProtocol struct{}
@@ -67,12 +66,12 @@ type redis struct{}
 func (r *redis) getValue(ctx context.Context, key string) (ret string, err error) {
 	defer func() {
 		if recorder.EnableRecord(ctx) {
-			recorder.RecordAction(ctx, &fastdev.Action{
-				Protocol: fastdev.REDIS,
-				Request: fastdev.NewMessage(func() string {
+			recorder.RecordAction(ctx, &recorder.Action{
+				Protocol: recorder.REDIS,
+				Request: recorder.NewMessage(func() string {
 					return key
 				}),
-				Response: fastdev.NewMessage(func() string {
+				Response: recorder.NewMessage(func() string {
 					return ret
 				}),
 			})
@@ -83,7 +82,7 @@ func (r *redis) getValue(ctx context.Context, key string) (ret string, err error
 			ok   bool
 			resp interface{}
 		)
-		resp, ok, err = replayer.QueryAction(ctx, fastdev.REDIS, key, replayer.BestMatch)
+		resp, ok, err = replayer.QueryAction(ctx, recorder.REDIS, key, replayer.BestMatch)
 		if err != nil {
 			return "", err
 		}
@@ -95,8 +94,8 @@ func (r *redis) getValue(ctx context.Context, key string) (ret string, err error
 	return fmt.Sprintf("{\"name\":\"%s\"}", key), nil
 }
 
-func getResponse(ctx context.Context, r *redis, key string) (*response, guava.LoadType, error) {
-	loadType, result, err := guava.GetOrLoad(ctx, key, func(ctx context.Context, key string) (interface{}, error) {
+func getResponse(ctx context.Context, r *redis, key string) (*response, cache.LoadType, error) {
+	loadType, result, err := cache.Load(ctx, key, func(ctx context.Context, key string) (interface{}, error) {
 		data, err := r.getValue(ctx, key)
 		if err != nil {
 			return nil, err
@@ -107,22 +106,22 @@ func getResponse(ctx context.Context, r *redis, key string) (*response, guava.Lo
 			return nil, err
 		}
 		return v, nil
-	}, guava.ExpireAfterWrite(0))
+	}, cache.ExpireAfterWrite(0))
 	if err != nil {
-		return nil, guava.LoadNone, err
+		return nil, cache.LoadNone, err
 	}
 	var resp *response
 	err = result.Load(&resp)
 	if err != nil {
-		return nil, guava.LoadNone, err
+		return nil, cache.LoadNone, err
 	}
 	return resp, loadType, nil
 }
 
-func testFunc(t *testing.T, ctx context.Context, key string) []guava.LoadType {
+func testFunc(t *testing.T, ctx context.Context, key string) []cache.LoadType {
 
 	var (
-		ret  []guava.LoadType
+		ret  []cache.LoadType
 		lock sync.Mutex
 	)
 
@@ -145,26 +144,26 @@ func testFunc(t *testing.T, ctx context.Context, key string) []guava.LoadType {
 	return ret
 }
 
-type SessionSlice []*fastdev.Session
+type SessionSlice []*recorder.Session
 
 func (p SessionSlice) Len() int           { return len(p) }
 func (p SessionSlice) Less(i, j int) bool { return p[i].Actions[0].Protocol > p[j].Actions[0].Protocol }
 func (p SessionSlice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 
-type LoadTypeSlice []guava.LoadType
+type LoadTypeSlice []cache.LoadType
 
 func (p LoadTypeSlice) Len() int           { return len(p) }
 func (p LoadTypeSlice) Less(i, j int) bool { return p[i] > p[j] }
 func (p LoadTypeSlice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 
-type LoadTypeSliceSlice [][]guava.LoadType
+type LoadTypeSliceSlice [][]cache.LoadType
 
 func (p LoadTypeSliceSlice) Len() int           { return len(p) }
 func (p LoadTypeSliceSlice) Less(i, j int) bool { return p[i][0] > p[j][0] }
 func (p LoadTypeSliceSlice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 
 func TestGuavaRecord(t *testing.T) {
-	defer guava.InvalidateAll()
+	defer cache.InvalidateAll()
 
 	recorder.SetRecordMode(true)
 	defer func() {
@@ -172,28 +171,24 @@ func TestGuavaRecord(t *testing.T) {
 	}()
 
 	key := "test"
-	f := func(sessionID string) (*fastdev.Session, []guava.LoadType) {
+	f := func(sessionID string) (*recorder.Session, []cache.LoadType) {
 
 		ctx, cached := knife.New(context.Background())
 		assert.False(t, cached)
 
-		err := chrono.SetFixedTime(ctx, time.Unix(0, 0))
+		err := clock.SetFixedTime(ctx, time.Unix(0, 0))
 		assert.Nil(t, err)
 
-		ctx, err = recorder.StartRecord(ctx, sessionID)
-		assert.Nil(t, err)
-
+		ctx = recorder.StartRecord(ctx, sessionID)
 		loadTypes := testFunc(t, ctx, key)
-
-		session, err := recorder.StopRecord(ctx)
-		assert.Nil(t, err)
+		session := recorder.StopRecord(ctx)
 		fmt.Println(session.PrettyJson())
 		return session, loadTypes
 	}
 
 	var (
-		loadTypes [][]guava.LoadType
-		sessions  []*fastdev.Session
+		loadTypes [][]cache.LoadType
+		sessions  []*recorder.Session
 		lock      sync.Mutex
 	)
 
@@ -217,10 +212,10 @@ func TestGuavaRecord(t *testing.T) {
 	}
 	sort.Sort(LoadTypeSliceSlice(loadTypes))
 
-	assert.Equal(t, loadTypes, [][]guava.LoadType{
-		{guava.LoadBack, guava.LoadOnCtx, guava.LoadOnCtx},
-		{guava.LoadCache, guava.LoadOnCtx, guava.LoadOnCtx},
-		{guava.LoadCache, guava.LoadOnCtx, guava.LoadOnCtx},
+	assert.Equal(t, loadTypes, [][]cache.LoadType{
+		{cache.LoadBack, cache.LoadOnCtx, cache.LoadOnCtx},
+		{cache.LoadCache, cache.LoadOnCtx, cache.LoadOnCtx},
+		{cache.LoadCache, cache.LoadOnCtx, cache.LoadOnCtx},
 	})
 
 	sort.Sort(SessionSlice(sessions))
@@ -228,7 +223,7 @@ func TestGuavaRecord(t *testing.T) {
 	var ss []string
 	for _, s := range sessions {
 		s.Session = ""
-		ss = append(ss, fastdev.ToJson(s))
+		ss = append(ss, recorder.ToJson(s))
 	}
 
 	assert.Equal(t, ss, []string{
@@ -239,7 +234,7 @@ func TestGuavaRecord(t *testing.T) {
 }
 
 func TestGuavaReplay(t *testing.T) {
-	defer guava.InvalidateAll()
+	defer cache.InvalidateAll()
 
 	replayer.SetReplayMode(true)
 	defer func() {
@@ -250,7 +245,7 @@ func TestGuavaReplay(t *testing.T) {
 	replayer.SetReplayAgent(agent)
 
 	key := "test"
-	f := func(str string) []guava.LoadType {
+	f := func(str string) []cache.LoadType {
 
 		session, err := agent.Store(str)
 		assert.Nil(t, err)
@@ -260,7 +255,7 @@ func TestGuavaReplay(t *testing.T) {
 		assert.False(t, cached)
 
 		timeNow := time.Unix(1643364150, 0)
-		err = chrono.SetBaseTime(ctx, timeNow)
+		err = clock.SetBaseTime(ctx, timeNow)
 		assert.Nil(t, err)
 
 		err = replayer.SetSessionID(ctx, session.Session)
@@ -303,7 +298,7 @@ func TestGuavaReplay(t *testing.T) {
 	}
 
 	var (
-		loadTypes [][]guava.LoadType
+		loadTypes [][]cache.LoadType
 		lock      sync.Mutex
 	)
 
@@ -326,9 +321,9 @@ func TestGuavaReplay(t *testing.T) {
 	}
 	sort.Sort(LoadTypeSliceSlice(loadTypes))
 
-	assert.Equal(t, loadTypes, [][]guava.LoadType{
-		{guava.LoadBack, guava.LoadOnCtx, guava.LoadOnCtx},
-		{guava.LoadCache, guava.LoadOnCtx, guava.LoadOnCtx},
-		{guava.LoadCache, guava.LoadOnCtx, guava.LoadOnCtx},
+	assert.Equal(t, loadTypes, [][]cache.LoadType{
+		{cache.LoadBack, cache.LoadOnCtx, cache.LoadOnCtx},
+		{cache.LoadCache, cache.LoadOnCtx, cache.LoadOnCtx},
+		{cache.LoadCache, cache.LoadOnCtx, cache.LoadOnCtx},
 	})
 }

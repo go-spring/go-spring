@@ -22,9 +22,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/go-spring/spring-base/fastdev"
-	"github.com/go-spring/spring-base/fastdev/internal/json"
 	"github.com/go-spring/spring-base/knife"
+	"github.com/go-spring/spring-base/net/internal/json"
+	"github.com/go-spring/spring-base/net/recorder"
 	"github.com/go-spring/spring-base/util"
 )
 
@@ -117,7 +117,7 @@ type Action struct {
 }
 
 func (action *Action) Flat() error {
-	p := fastdev.GetProtocol(action.Protocol)
+	p := recorder.GetProtocol(action.Protocol)
 	if p == nil {
 		return errors.New("invalid protocol")
 	}
@@ -157,7 +157,7 @@ func (action *Action) Pretty() (string, error) {
 	return string(b), nil
 }
 
-func ToAction(action *fastdev.RawAction) *Action {
+func ToAction(action *recorder.RawAction) *Action {
 	return &Action{
 		Protocol:  action.Protocol,
 		Timestamp: action.Timestamp,
@@ -166,14 +166,14 @@ func ToAction(action *fastdev.RawAction) *Action {
 	}
 }
 
-func ToSession(session *fastdev.RawSession) (*Session, error) {
+func ToSession(session *recorder.RawSession) (*Session, error) {
 	var inbound *Action
 	if session.Inbound != nil {
 		inbound = ToAction(session.Inbound)
 	}
 	var actions []*Action
 	for _, action := range session.Actions {
-		p := fastdev.GetProtocol(action.Protocol)
+		p := recorder.GetProtocol(action.Protocol)
 		if p == nil {
 			return nil, errors.New("invalid protocol")
 		}

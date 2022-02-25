@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package fastdev
+package net
 
 //
 //// AgentConfig 回放代理的配置。

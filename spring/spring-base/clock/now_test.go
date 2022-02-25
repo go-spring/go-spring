@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package chrono_test
+package clock_test
 
 import (
 	"context"
@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/go-spring/spring-base/assert"
-	"github.com/go-spring/spring-base/chrono"
+	"github.com/go-spring/spring-base/clock"
 	"github.com/go-spring/spring-base/knife"
 )
 
@@ -31,21 +31,21 @@ func TestNow(t *testing.T) {
 	trueNow := time.Now()
 
 	t.Run("SetFixedTime", func(t *testing.T) {
-		err := chrono.SetFixedTime(ctx, time.Unix(100, 0))
+		err := clock.SetFixedTime(ctx, time.Unix(100, 0))
 		assert.Nil(t, err)
-		defer chrono.ResetTime(ctx)
-		now := chrono.Now(ctx)
+		defer clock.ResetTime(ctx)
+		now := clock.Now(ctx)
 		assert.Equal(t, now, time.Unix(100, 0))
 	})
 
 	t.Run("SetBaseTime", func(t *testing.T) {
-		err := chrono.SetBaseTime(ctx, time.Unix(100, 0))
+		err := clock.SetBaseTime(ctx, time.Unix(100, 0))
 		assert.Nil(t, err)
-		defer chrono.ResetTime(ctx)
+		defer clock.ResetTime(ctx)
 		time.Sleep(2 * time.Second)
-		now := chrono.Now(ctx)
+		now := clock.Now(ctx)
 		assert.True(t, now.Sub(time.Unix(100, 0)) < 2500*time.Millisecond)
 	})
 
-	assert.True(t, chrono.Now(ctx).Sub(trueNow) < 3*time.Second)
+	assert.True(t, clock.Now(ctx).Sub(trueNow) < 3*time.Second)
 }

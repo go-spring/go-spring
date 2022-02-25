@@ -21,7 +21,7 @@ import (
 	"testing"
 
 	"github.com/go-spring/spring-base/assert"
-	"github.com/go-spring/spring-base/fastdev/internal/json"
+	"github.com/go-spring/spring-base/net/internal/json"
 )
 
 func TestString(t *testing.T) {

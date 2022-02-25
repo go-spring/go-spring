@@ -30,7 +30,7 @@ import (
 )
 
 func init() {
-	log.SetLevel(log.TraceLevel)
+	log.Console.SetLevel(log.TraceLevel)
 }
 
 func TestProperties_Load(t *testing.T) {

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package guava
+package cache
 
 import (
 	"context"
@@ -25,10 +25,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-spring/spring-base/fastdev"
-	"github.com/go-spring/spring-base/fastdev/recorder"
-	"github.com/go-spring/spring-base/fastdev/replayer"
 	"github.com/go-spring/spring-base/knife"
+	"github.com/go-spring/spring-base/net/recorder"
+	"github.com/go-spring/spring-base/net/replayer"
 	"github.com/go-spring/spring-base/util"
 )
 
@@ -67,7 +66,7 @@ func newValueResult(v interface{}) Result {
 }
 
 func (r *valueResult) Json() string {
-	return fastdev.ToJsonValue(r.v)
+	return recorder.ToJsonValue(r.v)
 }
 
 func (r *valueResult) Load(v interface{}) error {
@@ -171,7 +170,7 @@ type Loader func(ctx context.Context, key string) (interface{}, error)
 func toResultLoader(loader Loader) ResultLoader {
 	return func(ctx context.Context, key string) (Result, LoadType, error) {
 		if replayer.ReplayMode() {
-			resp, ok, err := replayer.QueryAction(ctx, fastdev.APCU, key, replayer.ExactMatch)
+			resp, ok, err := replayer.QueryAction(ctx, recorder.APCU, key, replayer.ExactMatch)
 			if err != nil {
 				return nil, LoadNone, err
 			}
@@ -199,7 +198,7 @@ func ExpireAfterWrite(v time.Duration) Option {
 	}
 }
 
-func GetOrLoad(ctx context.Context, key string, loader Loader, opts ...Option) (loadType LoadType, result Result, err error) {
+func Load(ctx context.Context, key string, loader Loader, opts ...Option) (loadType LoadType, result Result, err error) {
 
 	i, loaded, err := knife.LoadOrStore(ctx, key, newCtxItem())
 	if err != nil {
@@ -238,12 +237,12 @@ func GetOrLoad(ctx context.Context, key string, loader Loader, opts ...Option) (
 
 	defer func() {
 		if loadType == LoadCache && recorder.EnableRecord(ctx) {
-			recorder.RecordAction(ctx, &fastdev.Action{
-				Protocol: fastdev.APCU,
-				Request: fastdev.NewMessage(func() string {
+			recorder.RecordAction(ctx, &recorder.Action{
+				Protocol: recorder.APCU,
+				Request: recorder.NewMessage(func() string {
 					return key
 				}),
-				Response: fastdev.NewMessage(func() string {
+				Response: recorder.NewMessage(func() string {
 					return result.Json()
 				}),
 			})

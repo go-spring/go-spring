@@ -23,8 +23,7 @@ import (
 	"sync"
 
 	"github.com/go-spring/spring-base/cast"
-	"github.com/go-spring/spring-base/chrono"
-	"github.com/go-spring/spring-base/fastdev"
+	"github.com/go-spring/spring-base/clock"
 	"github.com/go-spring/spring-base/knife"
 	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-base/util"
@@ -64,7 +63,7 @@ func SetRecordMode(mode bool) {
 }
 
 type recordSession struct {
-	session *fastdev.Session
+	session *Session
 	mutex   sync.Mutex
 	close   bool
 }
@@ -86,9 +85,9 @@ func StartRecord(ctx context.Context, sessionID string) context.Context {
 			log.WithSkip(1).Error(err)
 		}
 	}()
-	r := &recordSession{session: &fastdev.Session{
+	r := &recordSession{session: &Session{
 		Session:   sessionID,
-		Timestamp: chrono.Now(ctx).UnixNano(),
+		Timestamp: clock.Now(ctx).UnixNano(),
 	}}
 	_, loaded := recorder.data.LoadOrStore(sessionID, r)
 	if loaded {
@@ -103,8 +102,8 @@ func StartRecord(ctx context.Context, sessionID string) context.Context {
 }
 
 // StopRecord 停止流量录制
-func StopRecord(ctx context.Context) *fastdev.Session {
-	var ret *fastdev.Session
+func StopRecord(ctx context.Context) *Session {
+	var ret *Session
 	onSession(ctx, func(r *recordSession) error {
 		recorder.data.Delete(r.session.Session)
 		r.close = true
@@ -115,7 +114,7 @@ func StopRecord(ctx context.Context) *fastdev.Session {
 }
 
 // RecordInbound 录制 inbound 流量。
-func RecordInbound(ctx context.Context, inbound *fastdev.Action) {
+func RecordInbound(ctx context.Context, inbound *Action) {
 	onSession(ctx, func(r *recordSession) error {
 		if r.close {
 			return errors.New("recording already stopped")
@@ -123,14 +122,14 @@ func RecordInbound(ctx context.Context, inbound *fastdev.Action) {
 		if r.session.Inbound != nil {
 			return errors.New("inbound already set")
 		}
-		inbound.Timestamp = chrono.Now(ctx).UnixNano()
+		inbound.Timestamp = clock.Now(ctx).UnixNano()
 		r.session.Inbound = inbound
 		return nil
 	})
 }
 
 // RecordAction 录制 outbound 流量。
-func RecordAction(ctx context.Context, action *fastdev.Action) {
+func RecordAction(ctx context.Context, action *Action) {
 	onSession(ctx, func(r *recordSession) error {
 		if r.close {
 			return errors.New("recording already stopped")

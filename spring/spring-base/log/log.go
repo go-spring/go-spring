@@ -23,7 +23,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/go-spring/spring-base/chrono"
+	"github.com/go-spring/spring-base/clock"
 	"github.com/go-spring/spring-base/util"
 )
 
@@ -227,7 +227,7 @@ func doPrint(o Logger, level Level, e Entry, args []interface{}) {
 	if ctx == nil {
 		ctx = defaultContext
 	}
-	msg.Time = chrono.Now(ctx)
+	msg.Time = clock.Now(ctx)
 	msg.File, msg.Line, _ = Caller(e.Skip()+3, true)
 	o.Print(msg)
 }

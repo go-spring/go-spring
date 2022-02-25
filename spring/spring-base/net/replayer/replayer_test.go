@@ -23,15 +23,15 @@ import (
 
 	"github.com/go-spring/spring-base/assert"
 	"github.com/go-spring/spring-base/cast"
-	"github.com/go-spring/spring-base/chrono"
-	"github.com/go-spring/spring-base/fastdev"
-	"github.com/go-spring/spring-base/fastdev/replayer"
+	"github.com/go-spring/spring-base/clock"
 	"github.com/go-spring/spring-base/knife"
+	"github.com/go-spring/spring-base/net/recorder"
+	"github.com/go-spring/spring-base/net/replayer"
 )
 
 func init() {
-	fastdev.RegisterProtocol(fastdev.HTTP, &httpProtocol{})
-	fastdev.RegisterProtocol(fastdev.REDIS, &redisProtocol{})
+	recorder.RegisterProtocol(recorder.HTTP, &httpProtocol{})
+	recorder.RegisterProtocol(recorder.REDIS, &redisProtocol{})
 }
 
 func TestReplayAction(t *testing.T) {
@@ -51,46 +51,46 @@ func TestReplayAction(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	recordSession := &fastdev.Session{
+	recordSession := &recorder.Session{
 		Session:   sessionID,
-		Timestamp: chrono.Now(ctx).UnixNano(),
-		Inbound: &fastdev.Action{
-			Protocol:  fastdev.HTTP,
-			Timestamp: chrono.Now(ctx).UnixNano(),
-			Request: fastdev.NewMessage(func() string {
+		Timestamp: clock.Now(ctx).UnixNano(),
+		Inbound: &recorder.Action{
+			Protocol:  recorder.HTTP,
+			Timestamp: clock.Now(ctx).UnixNano(),
+			Request: recorder.NewMessage(func() string {
 				return "GET ..."
 			}),
-			Response: fastdev.NewMessage(func() string {
+			Response: recorder.NewMessage(func() string {
 				return "200 ..."
 			}),
 		},
-		Actions: []*fastdev.Action{
+		Actions: []*recorder.Action{
 			{
-				Protocol:  fastdev.REDIS,
-				Timestamp: chrono.Now(ctx).UnixNano(),
-				Request: fastdev.NewMessage(func() string {
+				Protocol:  recorder.REDIS,
+				Timestamp: clock.Now(ctx).UnixNano(),
+				Request: recorder.NewMessage(func() string {
 					return cast.ToCommandLine("SET", "a", "1")
 				}),
-				Response: fastdev.NewMessage(func() string {
+				Response: recorder.NewMessage(func() string {
 					return cast.ToCSV(1, "2", 3)
 				}),
 			}, {
-				Protocol:  fastdev.REDIS,
-				Timestamp: chrono.Now(ctx).UnixNano(),
-				Request: fastdev.NewMessage(func() string {
+				Protocol:  recorder.REDIS,
+				Timestamp: clock.Now(ctx).UnixNano(),
+				Request: recorder.NewMessage(func() string {
 					return cast.ToCommandLine("SET", "a", "\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n")
 				}),
-				Response: fastdev.NewMessage(func() string {
+				Response: recorder.NewMessage(func() string {
 					return cast.ToCSV("\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n")
 				}),
 			},
 			{
-				Protocol:  fastdev.REDIS,
-				Timestamp: chrono.Now(ctx).UnixNano(),
-				Request: fastdev.NewMessage(func() string {
+				Protocol:  recorder.REDIS,
+				Timestamp: clock.Now(ctx).UnixNano(),
+				Request: recorder.NewMessage(func() string {
 					return cast.ToCommandLine("HGET", "a")
 				}),
-				Response: fastdev.NewMessage(func() string {
+				Response: recorder.NewMessage(func() string {
 					return cast.ToCSV("a", "b", "c", 3, "d", "\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n")
 				}),
 			},
@@ -113,11 +113,11 @@ func TestReplayAction(t *testing.T) {
 	defer agent.Delete(session.Session)
 
 	request := cast.ToCommandLine("SET", "a", "1")
-	response, _ := replayer.QueryAction(ctx, fastdev.REDIS, request, replayer.BestMatch)
+	response, _, _ := replayer.QueryAction(ctx, recorder.REDIS, request, replayer.BestMatch)
 	assert.Equal(t, response, "\"1\",\"2\",\"3\"")
 
 	request = cast.ToCommandLine("SET", "a", "\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n")
-	response, _ = replayer.QueryAction(ctx, fastdev.REDIS, request, replayer.BestMatch)
+	response, _, _ = replayer.QueryAction(ctx, recorder.REDIS, request, replayer.BestMatch)
 	assert.Equal(t, response, "\"\\x00\\xc0\\n\\t\\x00\\xbem\\x06\\x89Z(\\x00\\n\"")
 
 	err = session.Flat()
