@@ -31,11 +31,11 @@ func NewDriver() redis.Driver {
 	return new(Driver)
 }
 
-func NewClient(config redis.ClientConfig) (redis.Client, error) {
+func NewClient(config redis.Config) (redis.Client, error) {
 	return redis.NewClient(config, NewDriver())
 }
 
-func (d *Driver) Open(config redis.ClientConfig) (redis.Conn, error) {
+func (d *Driver) Open(config redis.Config) (redis.Conn, error) {
 
 	address := fmt.Sprintf("%s:%d", config.Host, config.Port)
 	conn, err := g.Dial("tcp", address,
@@ -62,8 +62,8 @@ type Conn struct {
 	conn g.Conn
 }
 
-func (c *Conn) Exec(ctx context.Context, args ...interface{}) (interface{}, error) {
-	result, err := c.conn.Do(args[0].(string), args[1:]...)
+func (c *Conn) Exec(ctx context.Context, cmd string, args []interface{}) (interface{}, error) {
+	result, err := c.conn.Do(cmd, args...)
 	if err != nil {
 		return nil, err
 	}

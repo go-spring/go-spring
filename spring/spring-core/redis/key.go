@@ -129,90 +129,89 @@ type KeyCommand interface {
 }
 
 func (c *client) Del(ctx context.Context, keys ...string) (int64, error) {
-	args := []interface{}{CommandDel}
+	var args []interface{}
 	for _, key := range keys {
 		args = append(args, key)
 	}
-	return c.Int64(ctx, args...)
+	return c.Int64(ctx, CommandDel, args...)
 }
 
 func (c *client) Dump(ctx context.Context, key string) (string, error) {
-	args := []interface{}{CommandDump, key}
-	return c.String(ctx, args...)
+	args := []interface{}{key}
+	return c.String(ctx, CommandDump, args...)
 }
 
 func (c *client) Exists(ctx context.Context, keys ...string) (int64, error) {
-	args := []interface{}{CommandExists}
+	var args []interface{}
 	for _, key := range keys {
 		args = append(args, key)
 	}
-	return c.Int64(ctx, args...)
+	return c.Int64(ctx, CommandExists, args...)
 }
 
 func (c *client) Expire(ctx context.Context, key string, expire int64, args ...interface{}) (int, error) {
-	args = append([]interface{}{CommandExpire, key, expire}, args...)
-	return c.Int(ctx, args...)
+	args = append([]interface{}{key, expire}, args...)
+	return c.Int(ctx, CommandExpire, args...)
 }
 
 func (c *client) ExpireAt(ctx context.Context, key string, expireAt int64, args ...interface{}) (int, error) {
-	args = append([]interface{}{CommandExpireAt, key, expireAt}, args...)
-	return c.Int(ctx, args...)
+	args = append([]interface{}{key, expireAt}, args...)
+	return c.Int(ctx, CommandExpireAt, args...)
 }
 
 func (c *client) Keys(ctx context.Context, pattern string) ([]string, error) {
-	args := []interface{}{CommandKeys, pattern}
-	return c.StringSlice(ctx, args...)
+	args := []interface{}{pattern}
+	return c.StringSlice(ctx, CommandKeys, args...)
 }
 
 func (c *client) Persist(ctx context.Context, key string) (int, error) {
-	args := []interface{}{CommandPersist, key}
-	return c.Int(ctx, args...)
+	args := []interface{}{key}
+	return c.Int(ctx, CommandPersist, args...)
 }
 
 func (c *client) PExpire(ctx context.Context, key string, expire int64, args ...interface{}) (int, error) {
-	args = append([]interface{}{CommandPExpire, key, expire}, args...)
-	return c.Int(ctx, args...)
+	args = append([]interface{}{key, expire}, args...)
+	return c.Int(ctx, CommandPExpire, args...)
 }
 
 func (c *client) PExpireAt(ctx context.Context, key string, expireAt int64, args ...interface{}) (int, error) {
-	args = append([]interface{}{CommandPExpireAt, key, expireAt}, args...)
-	return c.Int(ctx, args...)
+	args = append([]interface{}{key, expireAt}, args...)
+	return c.Int(ctx, CommandPExpireAt, args...)
 }
 
 func (c *client) PTTL(ctx context.Context, key string) (int64, error) {
-	args := []interface{}{CommandPTTL, key}
-	return c.Int64(ctx, args...)
+	args := []interface{}{key}
+	return c.Int64(ctx, CommandPTTL, args...)
 }
 
 func (c *client) RandomKey(ctx context.Context) (string, error) {
-	args := []interface{}{CommandRandomKey}
-	return c.String(ctx, args...)
+	return c.String(ctx, CommandRandomKey)
 }
 
 func (c *client) Rename(ctx context.Context, key, newKey string) (string, error) {
-	args := []interface{}{CommandRename, key, newKey}
-	return c.String(ctx, args...)
+	args := []interface{}{key, newKey}
+	return c.String(ctx, CommandRename, args...)
 }
 
 func (c *client) RenameNX(ctx context.Context, key, newKey string) (int, error) {
-	args := []interface{}{CommandRenameNX, key, newKey}
-	return c.Int(ctx, args...)
+	args := []interface{}{key, newKey}
+	return c.Int(ctx, CommandRenameNX, args...)
 }
 
 func (c *client) Touch(ctx context.Context, keys ...string) (int64, error) {
-	args := []interface{}{CommandTouch}
+	var args []interface{}
 	for _, key := range keys {
 		args = append(args, key)
 	}
-	return c.Int64(ctx, args...)
+	return c.Int64(ctx, CommandTouch, args...)
 }
 
 func (c *client) TTL(ctx context.Context, key string) (int64, error) {
-	args := []interface{}{CommandTTL, key}
-	return c.Int64(ctx, args...)
+	args := []interface{}{key}
+	return c.Int64(ctx, CommandTTL, args...)
 }
 
 func (c *client) Type(ctx context.Context, key string) (string, error) {
-	args := []interface{}{CommandType, key}
-	return c.String(ctx, args...)
+	args := []interface{}{key}
+	return c.String(ctx, CommandType, args...)
 }

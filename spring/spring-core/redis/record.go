@@ -18,20 +18,31 @@ package redis
 
 import (
 	"context"
+
+	"github.com/go-spring/spring-base/cast"
+	"github.com/go-spring/spring-base/net/recorder"
 )
 
-const (
-	CommandFlushAll = "FLUSHALL"
-)
-
-type ServerCommand interface {
-
-	// FlushAll https://redis.io/commands/flushall
-	// Command: FLUSHALL [ASYNC|SYNC]
-	// Simple string reply
-	FlushAll(ctx context.Context, args ...interface{}) (string, error)
+type recordConn struct {
+	conn Conn
 }
 
-func (c *client) FlushAll(ctx context.Context, args ...interface{}) (string, error) {
-	return c.String(ctx, CommandFlushAll, args...)
+func (c *recordConn) Exec(ctx context.Context, cmd string, args []interface{}) (ret interface{}, err error) {
+	defer func() {
+		recorder.RecordAction(ctx, recorder.REDIS, &recorder.SimpleAction{
+			Request: func() string {
+				return cast.ToTTY(append([]interface{}{cmd}, args...)...)
+			},
+			Response: func() string {
+				if err == nil {
+					return cast.ToCSV(ret)
+				}
+				if IsErrNil(err) {
+					return cast.ToCSV("(nil)")
+				}
+				return cast.ToCSV("(err) " + err.Error())
+			},
+		})
+	}()
+	return c.conn.Exec(ctx, cmd, args)
 }

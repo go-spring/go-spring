@@ -31,7 +31,7 @@ var BitCount = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.True(t, redis.OK(r1))
+		assert.True(t, redis.IsOK(r1))
 
 		r2, err := c.BitCount(ctx, "mykey")
 		if err != nil {
@@ -51,27 +51,30 @@ var BitCount = Case{
 		}
 		assert.Equal(t, r4, int64(6))
 	},
-	Data: `
-	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SET mykey foobar",
-			"response": "OK"
-		}, {
-			"protocol": "redis",
-			"request": "BITCOUNT mykey",
-			"response": 26
-		}, {
-			"protocol": "redis",
-			"request": "BITCOUNT mykey 0 0",
-			"response": 4
-		}, {
-			"protocol": "redis",
-			"request": "BITCOUNT mykey 1 1",
-			"response": 6
-		}]
+	Data: `{
+	  "Session": "df3b64266ebe4e63a464e135000a07cd",
+	  "Actions": [
+		{
+		  "Protocol": "REDIS",
+		  "Request": "SET mykey foobar",
+		  "Response": "\"OK\""
+		},
+		{
+		  "Protocol": "REDIS",
+		  "Request": "BITCOUNT mykey",
+		  "Response": "\"26\""
+		},
+		{
+		  "Protocol": "REDIS",
+		  "Request": "BITCOUNT mykey 0 0",
+		  "Response": "\"4\""
+		},
+		{
+		  "Protocol": "REDIS",
+		  "Request": "BITCOUNT mykey 1 1",
+		  "Response": "\"6\""
+		}
+	  ]
 	}`,
 }
 
@@ -82,13 +85,13 @@ var BitOpAnd = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.True(t, redis.OK(r1))
+		assert.True(t, redis.IsOK(r1))
 
 		r2, err := c.Set(ctx, "key2", "abcdef")
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.True(t, redis.OK(r2))
+		assert.True(t, redis.IsOK(r2))
 
 		r3, err := c.BitOpAnd(ctx, "dest", "key1", "key2")
 		if err != nil {
@@ -102,27 +105,30 @@ var BitOpAnd = Case{
 		}
 		assert.Equal(t, r4, "`bc`ab")
 	},
-	Data: `
-	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SET key1 foobar",
-			"response": "OK"
-		}, {
-			"protocol": "redis",
-			"request": "SET key2 abcdef",
-			"response": "OK"
-		}, {
-			"protocol": "redis",
-			"request": "BITOP AND dest key1 key2",
-			"response": 6
-		}, {
-			"protocol": "redis",
-			"request": "GET dest",
-			"response": "` + "`bc`ab\"" + `
-		}]
+	Data: `{
+	  "Session": "df3b64266ebe4e63a464e135000a07cd",
+	  "Actions": [
+		{
+		  "Protocol": "REDIS",
+		  "Request": "SET key1 foobar",
+		  "Response": "\"OK\""
+		},
+		{
+		  "Protocol": "REDIS",
+		  "Request": "SET key2 abcdef",
+		  "Response": "\"OK\""
+		},
+		{
+		  "Protocol": "REDIS",
+		  "Request": "BITOP AND dest key1 key2",
+		  "Response": "\"6\""
+		},
+		{
+		  "Protocol": "REDIS",
+		  "Request": "GET dest",
+		  "Response": "\"` + "`bc`ab" + `\""
+		}
+	  ]
 	}`,
 }
 
@@ -133,7 +139,7 @@ var BitPos = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.True(t, redis.OK(r1))
+		assert.True(t, redis.IsOK(r1))
 
 		r2, err := c.BitPos(ctx, "mykey", 0)
 		if err != nil {
@@ -145,7 +151,7 @@ var BitPos = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.True(t, redis.OK(r3))
+		assert.True(t, redis.IsOK(r3))
 
 		r4, err := c.BitPos(ctx, "mykey", 1, 0)
 		if err != nil {
@@ -163,7 +169,7 @@ var BitPos = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.True(t, redis.OK(r6))
+		assert.True(t, redis.IsOK(r6))
 
 		r7, err := c.BitPos(ctx, "mykey", 1)
 		if err != nil {
@@ -173,36 +179,35 @@ var BitPos = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SET mykey @\"\\xff\\xf0\\x00\"@",
-			"response": "OK"
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "SET mykey \"\\xff\\xf0\\x00\"",
+			"Response": "\"OK\""
 		}, {
-			"protocol": "redis",
-			"request": "BITPOS mykey 0",
-			"response": 12
+			"Protocol": "REDIS",
+			"Request": "BITPOS mykey 0",
+			"Response": "\"12\""
 		}, {
-			"protocol": "redis",
-			"request": "SET mykey @\"\\x00\\xff\\xf0\"@",
-			"response": "OK"
+			"Protocol": "REDIS",
+			"Request": "SET mykey \"\\x00\\xff\\xf0\"",
+			"Response": "\"OK\""
 		}, {
-			"protocol": "redis",
-			"request": "BITPOS mykey 1 0",
-			"response": 8
+			"Protocol": "REDIS",
+			"Request": "BITPOS mykey 1 0",
+			"Response": "\"8\""
 		}, {
-			"protocol": "redis",
-			"request": "BITPOS mykey 1 2",
-			"response": 16
+			"Protocol": "REDIS",
+			"Request": "BITPOS mykey 1 2",
+			"Response": "\"16\""
 		}, {
-			"protocol": "redis",
-			"request": "SET mykey \u0000\u0000\u0000",
-			"response": "OK"
+			"Protocol": "REDIS",
+			"Request": "SET mykey \u0000\u0000\u0000",
+			"Response": "\"OK\""
 		}, {
-			"protocol": "redis",
-			"request": "BITPOS mykey 1",
-			"response": -1
+			"Protocol": "REDIS",
+			"Request": "BITPOS mykey 1",
+			"Response": "\"-1\""
 		}]
 	}`,
 }
@@ -236,24 +241,23 @@ var GetBit = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SETBIT mykey 7 1",
-			"response": 0
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "SETBIT mykey 7 1",
+			"Response": "\"0\""
 		}, {
-			"protocol": "redis",
-			"request": "GETBIT mykey 0",
-			"response": 0
+			"Protocol": "REDIS",
+			"Request": "GETBIT mykey 0",
+			"Response": "\"0\""
 		}, {
-			"protocol": "redis",
-			"request": "GETBIT mykey 7",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "GETBIT mykey 7",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "GETBIT mykey 100",
-			"response": 0
+			"Protocol": "REDIS",
+			"Request": "GETBIT mykey 100",
+			"Response": "\"0\""
 		}]
 	}`,
 }
@@ -281,20 +285,19 @@ var SetBit = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SETBIT mykey 7 1",
-			"response": 0
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "SETBIT mykey 7 1",
+			"Response": "\"0\""
 		}, {
-			"protocol": "redis",
-			"request": "SETBIT mykey 7 0",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "SETBIT mykey 7 0",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "GET mykey",
-			"response": "\u0000"
+			"Protocol": "REDIS",
+			"Request": "GET mykey",
+			"Response": "\"\\x00\""
 		}]
 	}`,
 }

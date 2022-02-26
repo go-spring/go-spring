@@ -32,13 +32,13 @@ var Del = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.True(t, redis.OK(r1))
+		assert.True(t, redis.IsOK(r1))
 
 		r2, err := c.Set(ctx, "key2", "World")
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.True(t, redis.OK(r2))
+		assert.True(t, redis.IsOK(r2))
 
 		r3, err := c.Del(ctx, "key1", "key2", "key3")
 		if err != nil {
@@ -48,20 +48,19 @@ var Del = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SET key1 Hello",
-			"response": "OK"
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "SET key1 Hello",
+			"Response": "\"OK\""
 		}, {
-			"protocol": "redis",
-			"request": "SET key2 World",
-			"response": "OK"
+			"Protocol": "REDIS",
+			"Request": "SET key2 World",
+			"Response": "\"OK\""
 		}, {
-			"protocol": "redis",
-			"request": "DEL key1 key2 key3",
-			"response": 2
+			"Protocol": "REDIS",
+			"Request": "DEL key1 key2 key3",
+			"Response": "\"2\""
 		}]
 	}`,
 }
@@ -73,7 +72,7 @@ var Dump = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.True(t, redis.OK(r1))
+		assert.True(t, redis.IsOK(r1))
 
 		r2, err := c.Dump(ctx, "mykey")
 		if err != nil {
@@ -83,16 +82,15 @@ var Dump = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SET mykey 10",
-			"response": "OK"
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "SET mykey 10",
+			"Response": "\"OK\""
 		}, {
-			"protocol": "redis",
-			"request": "DUMP mykey",
-			"response": "@\"\\x00\\xc0\\n\\t\\x00\\xbem\\x06\\x89Z(\\x00\\n\"@"
+			"Protocol": "REDIS",
+			"Request": "DUMP mykey",
+			"Response": "\"\\x00\\xc0\\n\\t\\x00\\xbem\\x06\\x89Z(\\x00\\n\""
 		}]
 	}`,
 }
@@ -104,7 +102,7 @@ var Exists = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.True(t, redis.OK(r1))
+		assert.True(t, redis.IsOK(r1))
 
 		r2, err := c.Exists(ctx, "key1")
 		if err != nil {
@@ -122,7 +120,7 @@ var Exists = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.True(t, redis.OK(r4))
+		assert.True(t, redis.IsOK(r4))
 
 		r5, err := c.Exists(ctx, "key1", "key2", "nosuchkey")
 		if err != nil {
@@ -132,28 +130,27 @@ var Exists = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SET key1 Hello",
-			"response": "OK"
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "SET key1 Hello",
+			"Response": "\"OK\""
 		}, {
-			"protocol": "redis",
-			"request": "EXISTS key1",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "EXISTS key1",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "EXISTS nosuchkey",
-			"response": 0
+			"Protocol": "REDIS",
+			"Request": "EXISTS nosuchkey",
+			"Response": "\"0\""
 		}, {
-			"protocol": "redis",
-			"request": "SET key2 World",
-			"response": "OK"
+			"Protocol": "REDIS",
+			"Request": "SET key2 World",
+			"Response": "\"OK\""
 		}, {
-			"protocol": "redis",
-			"request": "EXISTS key1 key2 nosuchkey",
-			"response": 2
+			"Protocol": "REDIS",
+			"Request": "EXISTS key1 key2 nosuchkey",
+			"Response": "\"2\""
 		}]
 	}`,
 }
@@ -165,7 +162,7 @@ var Expire = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.True(t, redis.OK(r1))
+		assert.True(t, redis.IsOK(r1))
 
 		r2, err := c.Expire(ctx, "mykey", 10)
 		if err != nil {
@@ -183,7 +180,7 @@ var Expire = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.True(t, redis.OK(r4))
+		assert.True(t, redis.IsOK(r4))
 
 		r5, err := c.TTL(ctx, "mykey")
 		if err != nil {
@@ -193,28 +190,27 @@ var Expire = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SET mykey Hello",
-			"response": "OK"
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "SET mykey Hello",
+			"Response": "\"OK\""
 		}, {
-			"protocol": "redis",
-			"request": "EXPIRE mykey 10",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "EXPIRE mykey 10",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "TTL mykey",
-			"response": 10
+			"Protocol": "REDIS",
+			"Request": "TTL mykey",
+			"Response": "\"10\""
 		}, {
-			"protocol": "redis",
-			"request": "SET mykey @\"Hello World\"@",
-			"response": "OK"
+			"Protocol": "REDIS",
+			"Request": "SET mykey \"Hello World\"",
+			"Response": "\"OK\""
 		}, {
-			"protocol": "redis",
-			"request": "TTL mykey",
-			"response": -1
+			"Protocol": "REDIS",
+			"Request": "TTL mykey",
+			"Response": "\"-1\""
 		}]
 	}`,
 }
@@ -226,7 +222,7 @@ var ExpireAt = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.True(t, redis.OK(r1))
+		assert.True(t, redis.IsOK(r1))
 
 		r2, err := c.Exists(ctx, "mykey")
 		if err != nil {
@@ -248,24 +244,23 @@ var ExpireAt = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SET mykey Hello",
-			"response": "OK"
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "SET mykey Hello",
+			"Response": "\"OK\""
 		}, {
-			"protocol": "redis",
-			"request": "EXISTS mykey",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "EXISTS mykey",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "EXPIREAT mykey 1293840000",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "EXPIREAT mykey 1293840000",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "EXISTS mykey",
-			"response": 0
+			"Protocol": "REDIS",
+			"Request": "EXISTS mykey",
+			"Response": "\"0\""
 		}]
 	}`,
 }
@@ -277,7 +272,7 @@ var Keys = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.True(t, redis.OK(r1))
+		assert.True(t, redis.IsOK(r1))
 
 		r2, err := c.Keys(ctx, "*name*")
 		if err != nil {
@@ -301,24 +296,23 @@ var Keys = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "MSET firstname Jack lastname Stuntman age 35",
-			"response": "OK"
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "MSET firstname Jack lastname Stuntman age 35",
+			"Response": "\"OK\""
 		}, {
-			"protocol": "redis",
-			"request": "KEYS *name*",
-			"response": ["lastname", "firstname"]
+			"Protocol": "REDIS",
+			"Request": "KEYS *name*",
+			"Response": "\"lastname\",\"firstname\""
 		}, {
-			"protocol": "redis",
-			"request": "KEYS a??",
-			"response": ["age"]
+			"Protocol": "REDIS",
+			"Request": "KEYS a??",
+			"Response": "\"age\""
 		}, {
-			"protocol": "redis",
-			"request": "KEYS *",
-			"response": ["age", "lastname", "firstname"]
+			"Protocol": "REDIS",
+			"Request": "KEYS *",
+			"Response": "\"age\",\"lastname\",\"firstname\""
 		}]
 	}`,
 }
@@ -330,7 +324,7 @@ var Persist = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.True(t, redis.OK(r1))
+		assert.True(t, redis.IsOK(r1))
 
 		r2, err := c.Expire(ctx, "mykey", 10)
 		if err != nil {
@@ -358,28 +352,27 @@ var Persist = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SET mykey Hello",
-			"response": "OK"
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "SET mykey Hello",
+			"Response": "\"OK\""
 		}, {
-			"protocol": "redis",
-			"request": "EXPIRE mykey 10",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "EXPIRE mykey 10",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "TTL mykey",
-			"response": 10
+			"Protocol": "REDIS",
+			"Request": "TTL mykey",
+			"Response": "\"10\""
 		}, {
-			"protocol": "redis",
-			"request": "PERSIST mykey",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "PERSIST mykey",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "TTL mykey",
-			"response": -1
+			"Protocol": "REDIS",
+			"Request": "TTL mykey",
+			"Response": "\"-1\""
 		}]
 	}`,
 }
@@ -391,7 +384,7 @@ var PExpire = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.True(t, redis.OK(r1))
+		assert.True(t, redis.IsOK(r1))
 
 		r2, err := c.PExpire(ctx, "mykey", 1500)
 		if err != nil {
@@ -413,24 +406,23 @@ var PExpire = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SET mykey Hello",
-			"response": "OK"
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "SET mykey Hello",
+			"Response": "\"OK\""
 		}, {
-			"protocol": "redis",
-			"request": "PEXPIRE mykey 1500",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "PEXPIRE mykey 1500",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "TTL mykey",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "TTL mykey",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "PTTL mykey",
-			"response": 1499
+			"Protocol": "REDIS",
+			"Request": "PTTL mykey",
+			"Response": "\"1499\""
 		}]
 	}`,
 }
@@ -442,7 +434,7 @@ var PExpireAt = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.True(t, redis.OK(r1))
+		assert.True(t, redis.IsOK(r1))
 
 		r2, err := c.PExpireAt(ctx, "mykey", 1555555555005)
 		if err != nil {
@@ -464,24 +456,23 @@ var PExpireAt = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SET mykey Hello",
-			"response": "OK"
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "SET mykey Hello",
+			"Response": "\"OK\""
 		}, {
-			"protocol": "redis",
-			"request": "PEXPIREAT mykey 1555555555005",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "PEXPIREAT mykey 1555555555005",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "TTL mykey",
-			"response": -2
+			"Protocol": "REDIS",
+			"Request": "TTL mykey",
+			"Response": "\"-2\""
 		}, {
-			"protocol": "redis",
-			"request": "PTTL mykey",
-			"response": -2
+			"Protocol": "REDIS",
+			"Request": "PTTL mykey",
+			"Response": "\"-2\""
 		}]
 	}`,
 }
@@ -493,7 +484,7 @@ var PTTL = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.True(t, redis.OK(r1))
+		assert.True(t, redis.IsOK(r1))
 
 		r2, err := c.Expire(ctx, "mykey", 1)
 		if err != nil {
@@ -509,20 +500,19 @@ var PTTL = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SET mykey Hello",
-			"response": "OK"
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "SET mykey Hello",
+			"Response": "\"OK\""
 		}, {
-			"protocol": "redis",
-			"request": "EXPIRE mykey 1",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "EXPIRE mykey 1",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "PTTL mykey",
-			"response": 1000
+			"Protocol": "REDIS",
+			"Request": "PTTL mykey",
+			"Response": "\"1000\""
 		}]
 	}`,
 }
@@ -534,13 +524,13 @@ var Rename = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.True(t, redis.OK(r1))
+		assert.True(t, redis.IsOK(r1))
 
 		r2, err := c.Rename(ctx, "mykey", "myotherkey")
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.True(t, redis.OK(r2))
+		assert.True(t, redis.IsOK(r2))
 
 		r3, err := c.Get(ctx, "myotherkey")
 		if err != nil {
@@ -550,20 +540,19 @@ var Rename = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SET mykey Hello",
-			"response": "OK"
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "SET mykey Hello",
+			"Response": "\"OK\""
 		}, {
-			"protocol": "redis",
-			"request": "RENAME mykey myotherkey",
-			"response": "OK"
+			"Protocol": "REDIS",
+			"Request": "RENAME mykey myotherkey",
+			"Response": "\"OK\""
 		}, {
-			"protocol": "redis",
-			"request": "GET myotherkey",
-			"response": "Hello"
+			"Protocol": "REDIS",
+			"Request": "GET myotherkey",
+			"Response": "\"Hello\""
 		}]
 	}`,
 }
@@ -575,13 +564,13 @@ var RenameNX = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.True(t, redis.OK(r1))
+		assert.True(t, redis.IsOK(r1))
 
 		r2, err := c.Set(ctx, "myotherkey", "World")
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.True(t, redis.OK(r2))
+		assert.True(t, redis.IsOK(r2))
 
 		r3, err := c.RenameNX(ctx, "mykey", "myotherkey")
 		if err != nil {
@@ -597,24 +586,23 @@ var RenameNX = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SET mykey Hello",
-			"response": "OK"
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "SET mykey Hello",
+			"Response": "\"OK\""
 		}, {
-			"protocol": "redis",
-			"request": "SET myotherkey World",
-			"response": "OK"
+			"Protocol": "REDIS",
+			"Request": "SET myotherkey World",
+			"Response": "\"OK\""
 		}, {
-			"protocol": "redis",
-			"request": "RENAMENX mykey myotherkey",
-			"response": 0
+			"Protocol": "REDIS",
+			"Request": "RENAMENX mykey myotherkey",
+			"Response": "\"0\""
 		}, {
-			"protocol": "redis",
-			"request": "GET myotherkey",
-			"response": "World"
+			"Protocol": "REDIS",
+			"Request": "GET myotherkey",
+			"Response": "\"World\""
 		}]
 	}`,
 }
@@ -626,13 +614,13 @@ var Touch = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.True(t, redis.OK(r1))
+		assert.True(t, redis.IsOK(r1))
 
 		r2, err := c.Set(ctx, "key2", "World")
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.True(t, redis.OK(r2))
+		assert.True(t, redis.IsOK(r2))
 
 		r3, err := c.Touch(ctx, "key1", "key2")
 		if err != nil {
@@ -642,20 +630,19 @@ var Touch = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SET key1 Hello",
-			"response": "OK"
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "SET key1 Hello",
+			"Response": "\"OK\""
 		}, {
-			"protocol": "redis",
-			"request": "SET key2 World",
-			"response": "OK"
+			"Protocol": "REDIS",
+			"Request": "SET key2 World",
+			"Response": "\"OK\""
 		}, {
-			"protocol": "redis",
-			"request": "TOUCH key1 key2",
-			"response": 2
+			"Protocol": "REDIS",
+			"Request": "TOUCH key1 key2",
+			"Response": "\"2\""
 		}]
 	}`,
 }
@@ -667,7 +654,7 @@ var TTL = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.True(t, redis.OK(r1))
+		assert.True(t, redis.IsOK(r1))
 
 		r2, err := c.Expire(ctx, "mykey", 10)
 		if err != nil {
@@ -683,20 +670,19 @@ var TTL = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SET mykey Hello",
-			"response": "OK"
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "SET mykey Hello",
+			"Response": "\"OK\""
 		}, {
-			"protocol": "redis",
-			"request": "EXPIRE mykey 10",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "EXPIRE mykey 10",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "TTL mykey",
-			"response": 10
+			"Protocol": "REDIS",
+			"Request": "TTL mykey",
+			"Response": "\"10\""
 		}]
 	}`,
 }
@@ -708,7 +694,7 @@ var Type = Case{
 		if err != nil {
 			return
 		}
-		assert.True(t, redis.OK(r1))
+		assert.True(t, redis.IsOK(r1))
 
 		r2, err := c.LPush(ctx, "key2", "value")
 		if err != nil {
@@ -742,32 +728,31 @@ var Type = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SET key1 value",
-			"response": "OK"
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "SET key1 value",
+			"Response": "\"OK\""
 		}, {
-			"protocol": "redis",
-			"request": "LPUSH key2 value",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "LPUSH key2 value",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SADD key3 value",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "SADD key3 value",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "TYPE key1",
-			"response": "string"
+			"Protocol": "REDIS",
+			"Request": "TYPE key1",
+			"Response": "\"string\""
 		}, {
-			"protocol": "redis",
-			"request": "TYPE key2",
-			"response": "list"
+			"Protocol": "REDIS",
+			"Request": "TYPE key2",
+			"Response": "\"list\""
 		}, {
-			"protocol": "redis",
-			"request": "TYPE key3",
-			"response": "set"
+			"Protocol": "REDIS",
+			"Request": "TYPE key3",
+			"Response": "\"set\""
 		}]
 	}`,
 }

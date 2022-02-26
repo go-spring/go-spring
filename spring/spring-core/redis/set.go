@@ -134,111 +134,111 @@ type SetCommand interface {
 }
 
 func (c *client) SAdd(ctx context.Context, key string, members ...interface{}) (int64, error) {
-	args := []interface{}{CommandSAdd, key}
+	args := []interface{}{key}
 	args = append(args, members...)
-	return c.Int64(ctx, args...)
+	return c.Int64(ctx, CommandSAdd, args...)
 }
 
 func (c *client) SCard(ctx context.Context, key string) (int64, error) {
-	args := []interface{}{CommandSCard, key}
-	return c.Int64(ctx, args...)
+	args := []interface{}{key}
+	return c.Int64(ctx, CommandSCard, args...)
 }
 
 func (c *client) SDiff(ctx context.Context, keys ...string) ([]string, error) {
-	args := []interface{}{CommandSDiff}
+	var args []interface{}
 	for _, key := range keys {
 		args = append(args, key)
 	}
-	return c.StringSlice(ctx, args...)
+	return c.StringSlice(ctx, CommandSDiff, args...)
 }
 
 func (c *client) SDiffStore(ctx context.Context, destination string, keys ...string) (int64, error) {
-	args := []interface{}{CommandSDiffStore, destination}
+	args := []interface{}{destination}
 	for _, key := range keys {
 		args = append(args, key)
 	}
-	return c.Int64(ctx, args...)
+	return c.Int64(ctx, CommandSDiffStore, args...)
 }
 
 func (c *client) SInter(ctx context.Context, keys ...string) ([]string, error) {
-	args := []interface{}{CommandSInter}
+	var args []interface{}
 	for _, key := range keys {
 		args = append(args, key)
 	}
-	return c.StringSlice(ctx, args...)
+	return c.StringSlice(ctx, CommandSInter, args...)
 }
 
 func (c *client) SInterStore(ctx context.Context, destination string, keys ...string) (int64, error) {
-	args := []interface{}{CommandSInterStore, destination}
+	args := []interface{}{destination}
 	for _, key := range keys {
 		args = append(args, key)
 	}
-	return c.Int64(ctx, args...)
+	return c.Int64(ctx, CommandSInterStore, args...)
 }
 
 func (c *client) SIsMember(ctx context.Context, key string, member interface{}) (int, error) {
-	args := []interface{}{CommandSIsMember, key, member}
-	return c.Int(ctx, args...)
+	args := []interface{}{key, member}
+	return c.Int(ctx, CommandSIsMember, args...)
 }
 
 func (c *client) SMembers(ctx context.Context, key string) ([]string, error) {
-	args := []interface{}{CommandSMembers, key}
-	return c.StringSlice(ctx, args...)
+	args := []interface{}{key}
+	return c.StringSlice(ctx, CommandSMembers, args...)
 }
 
 func (c *client) SMIsMember(ctx context.Context, key string, members ...interface{}) ([]int64, error) {
-	args := []interface{}{CommandSMIsMember, key}
+	args := []interface{}{key}
 	for _, member := range members {
 		args = append(args, member)
 	}
-	return c.Int64Slice(ctx, args...)
+	return c.Int64Slice(ctx, CommandSMIsMember, args...)
 }
 
 func (c *client) SMove(ctx context.Context, source, destination string, member interface{}) (int, error) {
-	args := []interface{}{CommandSMove, source, destination, member}
-	return c.Int(ctx, args...)
+	args := []interface{}{source, destination, member}
+	return c.Int(ctx, CommandSMove, args...)
 }
 
 func (c *client) SPop(ctx context.Context, key string) (string, error) {
-	args := []interface{}{CommandSPop, key}
-	return c.String(ctx, args...)
+	args := []interface{}{key}
+	return c.String(ctx, CommandSPop, args...)
 }
 
 func (c *client) SPopN(ctx context.Context, key string, count int64) ([]string, error) {
-	args := []interface{}{CommandSPop, key, count}
-	return c.StringSlice(ctx, args...)
+	args := []interface{}{key, count}
+	return c.StringSlice(ctx, CommandSPop, args...)
 }
 
 func (c *client) SRandMember(ctx context.Context, key string) (string, error) {
-	args := []interface{}{CommandSRandMember, key}
-	return c.String(ctx, args...)
+	args := []interface{}{key}
+	return c.String(ctx, CommandSRandMember, args...)
 }
 
 func (c *client) SRandMemberN(ctx context.Context, key string, count int64) ([]string, error) {
-	args := []interface{}{CommandSRandMember, key, count}
-	return c.StringSlice(ctx, args...)
+	args := []interface{}{key, count}
+	return c.StringSlice(ctx, CommandSRandMember, args...)
 }
 
 func (c *client) SRem(ctx context.Context, key string, members ...interface{}) (int64, error) {
-	args := []interface{}{CommandSRem, key}
+	args := []interface{}{key}
 	for _, member := range members {
 		args = append(args, member)
 	}
-	return c.Int64(ctx, args...)
+	return c.Int64(ctx, CommandSRem, args...)
 }
 
 func (c *client) SUnion(ctx context.Context, keys ...string) ([]string, error) {
-	args := []interface{}{CommandSUnion}
+	var args []interface{}
 	for _, key := range keys {
 		args = append(args, key)
 	}
-	return c.StringSlice(ctx, args...)
+	return c.StringSlice(ctx, CommandSUnion, args...)
 }
 
 func (c *client) SUnionStore(ctx context.Context, destination string, keys ...string) (int64, error) {
-	args := []interface{}{CommandSUnionStore, destination}
+	args := []interface{}{destination}
 	for _, key := range keys {
 		args = append(args, key)
 	}
-	return c.Int64(ctx, args...)
+	return c.Int64(ctx, CommandSUnionStore, args...)
 }

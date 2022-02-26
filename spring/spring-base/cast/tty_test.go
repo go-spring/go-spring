@@ -29,10 +29,12 @@ func TestTTY(t *testing.T) {
 		1,
 		true,
 		"string",
+		"hello world",
+		"this is a quote \"",
 		"\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n",
 	}
 	data := cast.ToTTY(inputs...)
-	assert.Equal(t, data, `CMD 1 true string "\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n"`)
+	assert.Equal(t, data, `CMD 1 true string "hello world" "this is a quote \"" "\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n"`)
 	outputs, err := cast.ParseTTY(data)
 	if err != nil {
 		return
@@ -42,6 +44,8 @@ func TestTTY(t *testing.T) {
 		"1",
 		"true",
 		"string",
+		"hello world",
+		"this is a quote \"",
 		"\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n",
 	})
 }

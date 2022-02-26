@@ -20,35 +20,47 @@ import (
 	"context"
 	"testing"
 
-	"github.com/go-spring/spring-base/fastdev"
+	"github.com/go-spring/spring-base/assert"
 	"github.com/go-spring/spring-base/knife"
+	"github.com/go-spring/spring-base/net/replayer"
+	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/redis"
 	"github.com/go-spring/spring-core/redis/test/cases"
 )
 
+type driver struct{}
+
+func (d *driver) Open(config redis.Config) (redis.Conn, error) {
+	return &conn{}, nil
+}
+
+type conn struct{}
+
+func (c *conn) Exec(ctx context.Context, cmd string, args []interface{}) (interface{}, error) {
+	panic(util.ForbiddenMethod)
+}
+
 func RunCase(t *testing.T, c cases.Case) {
 
-	fastdev.SetReplayMode(true, false)
+	replayer.SetReplayMode(true)
 	defer func() {
-		fastdev.SetReplayMode(false, false)
+		replayer.SetReplayMode(false)
 	}()
 
-	session, err := fastdev.ToSession([]byte(c.Data), false)
-	if err != nil {
-		t.Fatal(err)
-	}
+	agent := replayer.NewLocalAgent()
+	replayer.SetReplayAgent(agent)
+
+	session, err := agent.Store(c.Data)
+	assert.Nil(t, err)
 
 	ctx, _ := knife.New(context.Background())
-	err = knife.Set(ctx, fastdev.ReplaySessionIDKey, session.Session)
+	err = replayer.SetSessionID(ctx, session.Session)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	fastdev.Store(session)
-	defer fastdev.Delete(session.Session)
-
-	config := redis.ClientConfig{Port: 6379}
-	client, err := redis.NewClient(config, nil)
+	config := redis.Config{Port: 6379}
+	client, err := redis.NewClient(config, &driver{})
 	if err != nil {
 		t.Fatal(err)
 	}

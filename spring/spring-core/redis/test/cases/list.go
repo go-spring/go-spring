@@ -56,28 +56,27 @@ var LIndex = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "LPUSH mylist World",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "LPUSH mylist World",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "LPUSH mylist Hello",
-			"response": 2
+			"Protocol": "REDIS",
+			"Request": "LPUSH mylist Hello",
+			"Response": "\"2\""
 		}, {
-			"protocol": "redis",
-			"request": "LINDEX mylist 0",
-			"response": "Hello"
+			"Protocol": "REDIS",
+			"Request": "LINDEX mylist 0",
+			"Response": "\"Hello\""
 		}, {
-			"protocol": "redis",
-			"request": "LINDEX mylist -1",
-			"response": "World"
+			"Protocol": "REDIS",
+			"Request": "LINDEX mylist -1",
+			"Response": "\"World\""
 		}, {
-			"protocol": "redis",
-			"request": "LINDEX mylist 3",
-			"response": "(nil)"
+			"Protocol": "REDIS",
+			"Request": "LINDEX mylist 3",
+			"Response": "\"(nil)\""
 		}]
 	}`,
 }
@@ -111,24 +110,23 @@ var LInsert = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "RPUSH mylist Hello",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "RPUSH mylist Hello",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "RPUSH mylist World",
-			"response": 2
+			"Protocol": "REDIS",
+			"Request": "RPUSH mylist World",
+			"Response": "\"2\""
 		}, {
-			"protocol": "redis",
-			"request": "LINSERT mylist BEFORE World There",
-			"response": 3
+			"Protocol": "REDIS",
+			"Request": "LINSERT mylist BEFORE World There",
+			"Response": "\"3\""
 		}, {
-			"protocol": "redis",
-			"request": "LRANGE mylist 0 -1",
-			"response": ["Hello", "There", "World"]
+			"Protocol": "REDIS",
+			"Request": "LRANGE mylist 0 -1",
+			"Response": "\"Hello\",\"There\",\"World\""
 		}]
 	}`,
 }
@@ -156,20 +154,19 @@ var LLen = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "LPUSH mylist World",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "LPUSH mylist World",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "LPUSH mylist Hello",
-			"response": 2
+			"Protocol": "REDIS",
+			"Request": "LPUSH mylist Hello",
+			"Response": "\"2\""
 		}, {
-			"protocol": "redis",
-			"request": "LLEN mylist",
-			"response": 2
+			"Protocol": "REDIS",
+			"Request": "LLEN mylist",
+			"Response": "\"2\""
 		}]
 	}`,
 }
@@ -221,36 +218,35 @@ var LMove = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "RPUSH mylist one",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "RPUSH mylist one",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "RPUSH mylist two",
-			"response": 2
+			"Protocol": "REDIS",
+			"Request": "RPUSH mylist two",
+			"Response": "\"2\""
 		}, {
-			"protocol": "redis",
-			"request": "RPUSH mylist three",
-			"response": 3
+			"Protocol": "REDIS",
+			"Request": "RPUSH mylist three",
+			"Response": "\"3\""
 		}, {
-			"protocol": "redis",
-			"request": "LMOVE mylist myotherlist RIGHT LEFT",
-			"response": "three"
+			"Protocol": "REDIS",
+			"Request": "LMOVE mylist myotherlist RIGHT LEFT",
+			"Response": "\"three\""
 		}, {
-			"protocol": "redis",
-			"request": "LMOVE mylist myotherlist LEFT RIGHT",
-			"response": "one"
+			"Protocol": "REDIS",
+			"Request": "LMOVE mylist myotherlist LEFT RIGHT",
+			"Response": "\"one\""
 		}, {
-			"protocol": "redis",
-			"request": "LRANGE mylist 0 -1",
-			"response": ["two"]
+			"Protocol": "REDIS",
+			"Request": "LRANGE mylist 0 -1",
+			"Response": "\"two\""
 		}, {
-			"protocol": "redis",
-			"request": "LRANGE myotherlist 0 -1",
-			"response": ["three", "one"]
+			"Protocol": "REDIS",
+			"Request": "LRANGE myotherlist 0 -1",
+			"Response": "\"three\",\"one\""
 		}]
 	}`,
 }
@@ -284,24 +280,23 @@ var LPop = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "RPUSH mylist one two three four five",
-			"response": 5
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "RPUSH mylist one two three four five",
+			"Response": "\"5\""
 		}, {
-			"protocol": "redis",
-			"request": "LPOP mylist",
-			"response": "one"
+			"Protocol": "REDIS",
+			"Request": "LPOP mylist",
+			"Response": "\"one\""
 		}, {
-			"protocol": "redis",
-			"request": "LPOP mylist 2",
-			"response": ["two", "three"]
+			"Protocol": "REDIS",
+			"Request": "LPOP mylist 2",
+			"Response": "\"two\",\"three\""
 		}, {
-			"protocol": "redis",
-			"request": "LRANGE mylist 0 -1",
-			"response": ["four", "five"]
+			"Protocol": "REDIS",
+			"Request": "LRANGE mylist 0 -1",
+			"Response": "\"four\",\"five\""
 		}]
 	}`,
 }
@@ -329,20 +324,19 @@ var LPos = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "RPUSH mylist 97 98 99 100 1 2 3 4 3 3 3",
-			"response": 11
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "RPUSH mylist 97 98 99 100 1 2 3 4 3 3 3",
+			"Response": "\"11\""
 		}, {
-			"protocol": "redis",
-			"request": "LPOS mylist 3",
-			"response": 6
+			"Protocol": "REDIS",
+			"Request": "LPOS mylist 3",
+			"Response": "\"6\""
 		}, {
-			"protocol": "redis",
-			"request": "LPOS mylist 3 COUNT 0 RANK 2",
-			"response": [8, 9, 10]
+			"Protocol": "REDIS",
+			"Request": "LPOS mylist 3 COUNT 0 RANK 2",
+			"Response": "\"8\",\"9\",\"10\""
 		}]
 	}`,
 }
@@ -370,20 +364,19 @@ var LPush = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "LPUSH mylist world",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "LPUSH mylist world",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "LPUSH mylist hello",
-			"response": 2
+			"Protocol": "REDIS",
+			"Request": "LPUSH mylist hello",
+			"Response": "\"2\""
 		}, {
-			"protocol": "redis",
-			"request": "LRANGE mylist 0 -1",
-			"response": ["hello", "world"]
+			"Protocol": "REDIS",
+			"Request": "LRANGE mylist 0 -1",
+			"Response": "\"hello\",\"world\""
 		}]
 	}`,
 }
@@ -423,28 +416,27 @@ var LPushX = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "LPUSH mylist World",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "LPUSH mylist World",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "LPUSHX mylist Hello",
-			"response": 2
+			"Protocol": "REDIS",
+			"Request": "LPUSHX mylist Hello",
+			"Response": "\"2\""
 		}, {
-			"protocol": "redis",
-			"request": "LPUSHX myotherlist Hello",
-			"response": 0
+			"Protocol": "REDIS",
+			"Request": "LPUSHX myotherlist Hello",
+			"Response": "\"0\""
 		}, {
-			"protocol": "redis",
-			"request": "LRANGE mylist 0 -1",
-			"response": ["Hello", "World"]
+			"Protocol": "REDIS",
+			"Request": "LRANGE mylist 0 -1",
+			"Response": "\"Hello\",\"World\""
 		}, {
-			"protocol": "redis",
-			"request": "LRANGE myotherlist 0 -1",
-			"response": []
+			"Protocol": "REDIS",
+			"Request": "LRANGE myotherlist 0 -1",
+			"Response": ""
 		}]
 	}`,
 }
@@ -496,36 +488,35 @@ var LRange = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "RPUSH mylist one",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "RPUSH mylist one",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "RPUSH mylist two",
-			"response": 2
+			"Protocol": "REDIS",
+			"Request": "RPUSH mylist two",
+			"Response": "\"2\""
 		}, {
-			"protocol": "redis",
-			"request": "RPUSH mylist three",
-			"response": 3
+			"Protocol": "REDIS",
+			"Request": "RPUSH mylist three",
+			"Response": "\"3\""
 		}, {
-			"protocol": "redis",
-			"request": "LRANGE mylist 0 0",
-			"response": ["one"]
+			"Protocol": "REDIS",
+			"Request": "LRANGE mylist 0 0",
+			"Response": "\"one\""
 		}, {
-			"protocol": "redis",
-			"request": "LRANGE mylist -3 2",
-			"response": ["one", "two", "three"]
+			"Protocol": "REDIS",
+			"Request": "LRANGE mylist -3 2",
+			"Response": "\"one\",\"two\",\"three\""
 		}, {
-			"protocol": "redis",
-			"request": "LRANGE mylist -100 100",
-			"response": ["one", "two", "three"]
+			"Protocol": "REDIS",
+			"Request": "LRANGE mylist -100 100",
+			"Response": "\"one\",\"two\",\"three\""
 		}, {
-			"protocol": "redis",
-			"request": "LRANGE mylist 5 10",
-			"response": []
+			"Protocol": "REDIS",
+			"Request": "LRANGE mylist 5 10",
+			"Response": ""
 		}]
 	}`,
 }
@@ -571,32 +562,31 @@ var LRem = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "RPUSH mylist hello",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "RPUSH mylist hello",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "RPUSH mylist hello",
-			"response": 2
+			"Protocol": "REDIS",
+			"Request": "RPUSH mylist hello",
+			"Response": "\"2\""
 		}, {
-			"protocol": "redis",
-			"request": "RPUSH mylist foo",
-			"response": 3
+			"Protocol": "REDIS",
+			"Request": "RPUSH mylist foo",
+			"Response": "\"3\""
 		}, {
-			"protocol": "redis",
-			"request": "RPUSH mylist hello",
-			"response": 4
+			"Protocol": "REDIS",
+			"Request": "RPUSH mylist hello",
+			"Response": "\"4\""
 		}, {
-			"protocol": "redis",
-			"request": "LREM mylist -2 hello",
-			"response": 2
+			"Protocol": "REDIS",
+			"Request": "LREM mylist -2 hello",
+			"Response": "\"2\""
 		}, {
-			"protocol": "redis",
-			"request": "LRANGE mylist 0 -1",
-			"response": ["hello", "foo"]
+			"Protocol": "REDIS",
+			"Request": "LRANGE mylist 0 -1",
+			"Response": "\"hello\",\"foo\""
 		}]
 	}`,
 }
@@ -626,13 +616,13 @@ var LSet = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.True(t, redis.OK(r4))
+		assert.True(t, redis.IsOK(r4))
 
 		r5, err := c.LSet(ctx, "mylist", -2, "five")
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.True(t, redis.OK(r5))
+		assert.True(t, redis.IsOK(r5))
 
 		r6, err := c.LRange(ctx, "mylist", 0, -1)
 		if err != nil {
@@ -642,32 +632,31 @@ var LSet = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "RPUSH mylist one",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "RPUSH mylist one",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "RPUSH mylist two",
-			"response": 2
+			"Protocol": "REDIS",
+			"Request": "RPUSH mylist two",
+			"Response": "\"2\""
 		}, {
-			"protocol": "redis",
-			"request": "RPUSH mylist three",
-			"response": 3
+			"Protocol": "REDIS",
+			"Request": "RPUSH mylist three",
+			"Response": "\"3\""
 		}, {
-			"protocol": "redis",
-			"request": "LSET mylist 0 four",
-			"response": "OK"
+			"Protocol": "REDIS",
+			"Request": "LSET mylist 0 four",
+			"Response": "\"OK\""
 		}, {
-			"protocol": "redis",
-			"request": "LSET mylist -2 five",
-			"response": "OK"
+			"Protocol": "REDIS",
+			"Request": "LSET mylist -2 five",
+			"Response": "\"OK\""
 		}, {
-			"protocol": "redis",
-			"request": "LRANGE mylist 0 -1",
-			"response": ["four", "five", "three"]
+			"Protocol": "REDIS",
+			"Request": "LRANGE mylist 0 -1",
+			"Response": "\"four\",\"five\",\"three\""
 		}]
 	}`,
 }
@@ -697,7 +686,7 @@ var LTrim = Case{
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.True(t, redis.OK(r4))
+		assert.True(t, redis.IsOK(r4))
 
 		r5, err := c.LRange(ctx, "mylist", 0, -1)
 		if err != nil {
@@ -707,28 +696,27 @@ var LTrim = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "RPUSH mylist one",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "RPUSH mylist one",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "RPUSH mylist two",
-			"response": 2
+			"Protocol": "REDIS",
+			"Request": "RPUSH mylist two",
+			"Response": "\"2\""
 		}, {
-			"protocol": "redis",
-			"request": "RPUSH mylist three",
-			"response": 3
+			"Protocol": "REDIS",
+			"Request": "RPUSH mylist three",
+			"Response": "\"3\""
 		}, {
-			"protocol": "redis",
-			"request": "LTRIM mylist 1 -1",
-			"response": "OK"
+			"Protocol": "REDIS",
+			"Request": "LTRIM mylist 1 -1",
+			"Response": "\"OK\""
 		}, {
-			"protocol": "redis",
-			"request": "LRANGE mylist 0 -1",
-			"response": ["two", "three"]
+			"Protocol": "REDIS",
+			"Request": "LRANGE mylist 0 -1",
+			"Response": "\"two\",\"three\""
 		}]
 	}`,
 }
@@ -762,24 +750,23 @@ var RPop = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "RPUSH mylist one two three four five",
-			"response": 5
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "RPUSH mylist one two three four five",
+			"Response": "\"5\""
 		}, {
-			"protocol": "redis",
-			"request": "RPOP mylist",
-			"response": "five"
+			"Protocol": "REDIS",
+			"Request": "RPOP mylist",
+			"Response": "\"five\""
 		}, {
-			"protocol": "redis",
-			"request": "RPOP mylist 2",
-			"response": ["four", "three"]
+			"Protocol": "REDIS",
+			"Request": "RPOP mylist 2",
+			"Response": "\"four\",\"three\""
 		}, {
-			"protocol": "redis",
-			"request": "LRANGE mylist 0 -1",
-			"response": ["one", "two"]
+			"Protocol": "REDIS",
+			"Request": "LRANGE mylist 0 -1",
+			"Response": "\"one\",\"two\""
 		}]
 	}`,
 }
@@ -825,32 +812,31 @@ var RPopLPush = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "RPUSH mylist one",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "RPUSH mylist one",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "RPUSH mylist two",
-			"response": 2
+			"Protocol": "REDIS",
+			"Request": "RPUSH mylist two",
+			"Response": "\"2\""
 		}, {
-			"protocol": "redis",
-			"request": "RPUSH mylist three",
-			"response": 3
+			"Protocol": "REDIS",
+			"Request": "RPUSH mylist three",
+			"Response": "\"3\""
 		}, {
-			"protocol": "redis",
-			"request": "RPOPLPUSH mylist myotherlist",
-			"response": "three"
+			"Protocol": "REDIS",
+			"Request": "RPOPLPUSH mylist myotherlist",
+			"Response": "\"three\""
 		}, {
-			"protocol": "redis",
-			"request": "LRANGE mylist 0 -1",
-			"response": ["one", "two"]
+			"Protocol": "REDIS",
+			"Request": "LRANGE mylist 0 -1",
+			"Response": "\"one\",\"two\""
 		}, {
-			"protocol": "redis",
-			"request": "LRANGE myotherlist 0 -1",
-			"response": ["three"]
+			"Protocol": "REDIS",
+			"Request": "LRANGE myotherlist 0 -1",
+			"Response": "\"three\""
 		}]
 	}`,
 }
@@ -878,20 +864,19 @@ var RPush = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "RPUSH mylist hello",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "RPUSH mylist hello",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "RPUSH mylist world",
-			"response": 2
+			"Protocol": "REDIS",
+			"Request": "RPUSH mylist world",
+			"Response": "\"2\""
 		}, {
-			"protocol": "redis",
-			"request": "LRANGE mylist 0 -1",
-			"response": ["hello", "world"]
+			"Protocol": "REDIS",
+			"Request": "LRANGE mylist 0 -1",
+			"Response": "\"hello\",\"world\""
 		}]
 	}`,
 }
@@ -931,28 +916,27 @@ var RPushX = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "RPUSH mylist Hello",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "RPUSH mylist Hello",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "RPUSHX mylist World",
-			"response": 2
+			"Protocol": "REDIS",
+			"Request": "RPUSHX mylist World",
+			"Response": "\"2\""
 		}, {
-			"protocol": "redis",
-			"request": "RPUSHX myotherlist World",
-			"response": 0
+			"Protocol": "REDIS",
+			"Request": "RPUSHX myotherlist World",
+			"Response": "\"0\""
 		}, {
-			"protocol": "redis",
-			"request": "LRANGE mylist 0 -1",
-			"response": ["Hello", "World"]
+			"Protocol": "REDIS",
+			"Request": "LRANGE mylist 0 -1",
+			"Response": "\"Hello\",\"World\""
 		}, {
-			"protocol": "redis",
-			"request": "LRANGE myotherlist 0 -1",
-			"response": []
+			"Protocol": "REDIS",
+			"Request": "LRANGE myotherlist 0 -1",
+			"Response": ""
 		}]
 	}`,
 }

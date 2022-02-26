@@ -53,24 +53,23 @@ var ZAdd = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD myzset 1 one",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 1 one",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 1 uno",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 1 uno",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 2 two 3 three",
-			"response": 2
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 2 two 3 three",
+			"Response": "\"2\""
 		}, {
-			"protocol": "redis",
-			"request": "ZRANGE myzset 0 -1 WITHSCORES",
-			"response": ["one", "1", "uno", "1", "two", "2", "three", "3"]
+			"Protocol": "REDIS",
+			"Request": "ZRANGE myzset 0 -1 WITHSCORES",
+			"Response": "\"one\",\"1\",\"uno\",\"1\",\"two\",\"2\",\"three\",\"3\""
 		}]
 	}`,
 }
@@ -98,20 +97,19 @@ var ZCard = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD myzset 1 one",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 1 one",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 2 two",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 2 two",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZCARD myzset",
-			"response": 2
+			"Protocol": "REDIS",
+			"Request": "ZCARD myzset",
+			"Response": "\"2\""
 		}]
 	}`,
 }
@@ -151,28 +149,27 @@ var ZCount = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD myzset 1 one",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 1 one",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 2 two",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 2 two",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 3 three",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 3 three",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZCOUNT myzset -inf +inf",
-			"response": 3
+			"Protocol": "REDIS",
+			"Request": "ZCOUNT myzset -inf +inf",
+			"Response": "\"3\""
 		}, {
-			"protocol": "redis",
-			"request": "ZCOUNT myzset (1 3",
-			"response": 2
+			"Protocol": "REDIS",
+			"Request": "ZCOUNT myzset (1 3",
+			"Response": "\"2\""
 		}]
 	}`,
 }
@@ -224,36 +221,35 @@ var ZDiff = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD zset1 1 one",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "ZADD zset1 1 one",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD zset1 2 two",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZADD zset1 2 two",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD zset1 3 three",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZADD zset1 3 three",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD zset2 1 one",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZADD zset2 1 one",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD zset2 2 two",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZADD zset2 2 two",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZDIFF 2 zset1 zset2",
-			"response": ["three"]
+			"Protocol": "REDIS",
+			"Request": "ZDIFF 2 zset1 zset2",
+			"Response": "\"three\""
 		}, {
-			"protocol": "redis",
-			"request": "ZDIFF 2 zset1 zset2 WITHSCORES",
-			"response": ["three", "3"]
+			"Protocol": "REDIS",
+			"Request": "ZDIFF 2 zset1 zset2 WITHSCORES",
+			"Response": "\"three\",\"3\""
 		}]
 	}`,
 }
@@ -287,24 +283,23 @@ var ZIncrBy = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD myzset 1 one",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 1 one",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 2 two",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 2 two",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZINCRBY myzset 2 one",
-			"response": "3"
+			"Protocol": "REDIS",
+			"Request": "ZINCRBY myzset 2 one",
+			"Response": "\"3\""
 		}, {
-			"protocol": "redis",
-			"request": "ZRANGE myzset 0 -1 WITHSCORES",
-			"response": ["two", "2", "one", "3"]
+			"Protocol": "REDIS",
+			"Request": "ZRANGE myzset 0 -1 WITHSCORES",
+			"Response": "\"two\",\"2\",\"one\",\"3\""
 		}]
 	}`,
 }
@@ -356,36 +351,35 @@ var ZInter = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD zset1 1 one",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "ZADD zset1 1 one",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD zset1 2 two",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZADD zset1 2 two",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD zset2 1 one",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZADD zset2 1 one",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD zset2 2 two",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZADD zset2 2 two",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD zset2 3 three",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZADD zset2 3 three",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZINTER 2 zset1 zset2",
-			"response": ["one", "two"]
+			"Protocol": "REDIS",
+			"Request": "ZINTER 2 zset1 zset2",
+			"Response": "\"one\",\"two\""
 		}, {
-			"protocol": "redis",
-			"request": "ZINTER 2 zset1 zset2 WITHSCORES",
-			"response": ["one", "2", "two", "4"]
+			"Protocol": "REDIS",
+			"Request": "ZINTER 2 zset1 zset2 WITHSCORES",
+			"Response": "\"one\",\"2\",\"two\",\"4\""
 		}]
 	}`,
 }
@@ -419,24 +413,23 @@ var ZLexCount = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD myzset 0 a 0 b 0 c 0 d 0 e",
-			"response": 5
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 0 a 0 b 0 c 0 d 0 e",
+			"Response": "\"5\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 0 f 0 g",
-			"response": 2
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 0 f 0 g",
+			"Response": "\"2\""
 		}, {
-			"protocol": "redis",
-			"request": "ZLEXCOUNT myzset - +",
-			"response": 7
+			"Protocol": "REDIS",
+			"Request": "ZLEXCOUNT myzset - +",
+			"Response": "\"7\""
 		}, {
-			"protocol": "redis",
-			"request": "ZLEXCOUNT myzset [b [f",
-			"response": 5
+			"Protocol": "REDIS",
+			"Request": "ZLEXCOUNT myzset [b [f",
+			"Response": "\"5\""
 		}]
 	}`,
 }
@@ -464,20 +457,19 @@ var ZMScore = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD myzset 1 one",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 1 one",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 2 two",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 2 two",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZMSCORE myzset one two nofield",
-			"response": ["1", "2", null]
+			"Protocol": "REDIS",
+			"Request": "ZMSCORE myzset one two nofield",
+			"Response": "\"1\",\"2\",NULL"
 		}]
 	}`,
 }
@@ -511,24 +503,23 @@ var ZPopMax = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD myzset 1 one",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 1 one",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 2 two",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 2 two",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 3 three",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 3 three",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZPOPMAX myzset",
-			"response": ["three", "3"]
+			"Protocol": "REDIS",
+			"Request": "ZPOPMAX myzset",
+			"Response": "\"three\",\"3\""
 		}]
 	}`,
 }
@@ -562,24 +553,23 @@ var ZPopMin = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD myzset 1 one",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 1 one",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 2 two",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 2 two",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 3 three",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 3 three",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZPOPMIN myzset",
-			"response": ["one", "1"]
+			"Protocol": "REDIS",
+			"Request": "ZPOPMIN myzset",
+			"Response": "\"one\",\"1\""
 		}]
 	}`,
 }
@@ -613,24 +603,23 @@ var ZRandMember = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD dadi 1 uno 2 due 3 tre 4 quattro 5 cinque 6 sei",
-			"response": 6
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "ZADD dadi 1 uno 2 due 3 tre 4 quattro 5 cinque 6 sei",
+			"Response": "\"6\""
 		}, {
-			"protocol": "redis",
-			"request": "ZRANDMEMBER dadi",
-			"response": "sei"
+			"Protocol": "REDIS",
+			"Request": "ZRANDMEMBER dadi",
+			"Response": "\"sei\""
 		}, {
-			"protocol": "redis",
-			"request": "ZRANDMEMBER dadi",
-			"response": "sei"
+			"Protocol": "REDIS",
+			"Request": "ZRANDMEMBER dadi",
+			"Response": "\"sei\""
 		}, {
-			"protocol": "redis",
-			"request": "ZRANDMEMBER dadi -5 WITHSCORES",
-			"response": ["uno", "1", "uno", "1", "cinque", "5", "sei", "6", "due", "2"]
+			"Protocol": "REDIS",
+			"Request": "ZRANDMEMBER dadi -5 WITHSCORES",
+			"Response": "\"uno\",\"1\",\"uno\",\"1\",\"cinque\",\"5\",\"sei\",\"6\",\"due\",\"2\""
 		}]
 	}`,
 }
@@ -682,36 +671,35 @@ var ZRange = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD myzset 1 one",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 1 one",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 2 two",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 2 two",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 3 three",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 3 three",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZRANGE myzset 0 -1",
-			"response": ["one", "two", "three"]
+			"Protocol": "REDIS",
+			"Request": "ZRANGE myzset 0 -1",
+			"Response": "\"one\",\"two\",\"three\""
 		}, {
-			"protocol": "redis",
-			"request": "ZRANGE myzset 2 3",
-			"response": ["three"]
+			"Protocol": "REDIS",
+			"Request": "ZRANGE myzset 2 3",
+			"Response": "\"three\""
 		}, {
-			"protocol": "redis",
-			"request": "ZRANGE myzset -2 -1",
-			"response": ["two", "three"]
+			"Protocol": "REDIS",
+			"Request": "ZRANGE myzset -2 -1",
+			"Response": "\"two\",\"three\""
 		}, {
-			"protocol": "redis",
-			"request": "ZRANGE myzset 0 1 WITHSCORES",
-			"response": ["one", "1", "two", "2"]
+			"Protocol": "REDIS",
+			"Request": "ZRANGE myzset 0 1 WITHSCORES",
+			"Response": "\"one\",\"1\",\"two\",\"2\""
 		}]
 	}`,
 }
@@ -745,24 +733,23 @@ var ZRangeByLex = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD myzset 0 a 0 b 0 c 0 d 0 e 0 f 0 g",
-			"response": 7
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 0 a 0 b 0 c 0 d 0 e 0 f 0 g",
+			"Response": "\"7\""
 		}, {
-			"protocol": "redis",
-			"request": "ZRANGEBYLEX myzset - [c",
-			"response": ["a", "b", "c"]
+			"Protocol": "REDIS",
+			"Request": "ZRANGEBYLEX myzset - [c",
+			"Response": "\"a\",\"b\",\"c\""
 		}, {
-			"protocol": "redis",
-			"request": "ZRANGEBYLEX myzset - (c",
-			"response": ["a", "b"]
+			"Protocol": "REDIS",
+			"Request": "ZRANGEBYLEX myzset - (c",
+			"Response": "\"a\",\"b\""
 		}, {
-			"protocol": "redis",
-			"request": "ZRANGEBYLEX myzset [aaa (g",
-			"response": ["b", "c", "d", "e", "f"]
+			"Protocol": "REDIS",
+			"Request": "ZRANGEBYLEX myzset [aaa (g",
+			"Response": "\"b\",\"c\",\"d\",\"e\",\"f\""
 		}]
 	}`,
 }
@@ -814,36 +801,35 @@ var ZRangeByScore = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD myzset 1 one",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 1 one",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 2 two",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 2 two",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 3 three",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 3 three",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZRANGEBYSCORE myzset -inf +inf",
-			"response": ["one", "two", "three"]
+			"Protocol": "REDIS",
+			"Request": "ZRANGEBYSCORE myzset -inf +inf",
+			"Response": "\"one\",\"two\",\"three\""
 		}, {
-			"protocol": "redis",
-			"request": "ZRANGEBYSCORE myzset 1 2",
-			"response": ["one", "two"]
+			"Protocol": "REDIS",
+			"Request": "ZRANGEBYSCORE myzset 1 2",
+			"Response": "\"one\",\"two\""
 		}, {
-			"protocol": "redis",
-			"request": "ZRANGEBYSCORE myzset (1 2",
-			"response": ["two"]
+			"Protocol": "REDIS",
+			"Request": "ZRANGEBYSCORE myzset (1 2",
+			"Response": "\"two\""
 		}, {
-			"protocol": "redis",
-			"request": "ZRANGEBYSCORE myzset (1 (2",
-			"response": []
+			"Protocol": "REDIS",
+			"Request": "ZRANGEBYSCORE myzset (1 (2",
+			"Response": ""
 		}]
 	}`,
 }
@@ -880,28 +866,27 @@ var ZRank = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD myzset 1 one",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 1 one",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 2 two",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 2 two",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 3 three",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 3 three",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZRANK myzset three",
-			"response": 2
+			"Protocol": "REDIS",
+			"Request": "ZRANK myzset three",
+			"Response": "\"2\""
 		}, {
-			"protocol": "redis",
-			"request": "ZRANK myzset four",
-			"response": "(nil)"
+			"Protocol": "REDIS",
+			"Request": "ZRANK myzset four",
+			"Response": "\"(nil)\""
 		}]
 	}`,
 }
@@ -941,28 +926,27 @@ var ZRem = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD myzset 1 one",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 1 one",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 2 two",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 2 two",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 3 three",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 3 three",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZREM myzset two",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZREM myzset two",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZRANGE myzset 0 -1 WITHSCORES",
-			"response": ["one", "1", "three", "3"]
+			"Protocol": "REDIS",
+			"Request": "ZRANGE myzset 0 -1 WITHSCORES",
+			"Response": "\"one\",\"1\",\"three\",\"3\""
 		}]
 	}`,
 }
@@ -1004,28 +988,27 @@ var ZRemRangeByLex = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD myzset 0 aaaa 0 b 0 c 0 d 0 e",
-			"response": 5
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 0 aaaa 0 b 0 c 0 d 0 e",
+			"Response": "\"5\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 0 foo 0 zap 0 zip 0 ALPHA 0 alpha",
-			"response": 5
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 0 foo 0 zap 0 zip 0 ALPHA 0 alpha",
+			"Response": "\"5\""
 		}, {
-			"protocol": "redis",
-			"request": "ZRANGE myzset 0 -1",
-			"response": ["ALPHA", "aaaa", "alpha", "b", "c", "d", "e", "foo", "zap", "zip"]
+			"Protocol": "REDIS",
+			"Request": "ZRANGE myzset 0 -1",
+			"Response": "\"ALPHA\",\"aaaa\",\"alpha\",\"b\",\"c\",\"d\",\"e\",\"foo\",\"zap\",\"zip\""
 		}, {
-			"protocol": "redis",
-			"request": "ZREMRANGEBYLEX myzset [alpha [omega",
-			"response": 6
+			"Protocol": "REDIS",
+			"Request": "ZREMRANGEBYLEX myzset [alpha [omega",
+			"Response": "\"6\""
 		}, {
-			"protocol": "redis",
-			"request": "ZRANGE myzset 0 -1",
-			"response": ["ALPHA", "aaaa", "zap", "zip"]
+			"Protocol": "REDIS",
+			"Request": "ZRANGE myzset 0 -1",
+			"Response": "\"ALPHA\",\"aaaa\",\"zap\",\"zip\""
 		}]
 	}`,
 }
@@ -1065,28 +1048,27 @@ var ZRemRangeByRank = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD myzset 1 one",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 1 one",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 2 two",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 2 two",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 3 three",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 3 three",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZREMRANGEBYRANK myzset 0 1",
-			"response": 2
+			"Protocol": "REDIS",
+			"Request": "ZREMRANGEBYRANK myzset 0 1",
+			"Response": "\"2\""
 		}, {
-			"protocol": "redis",
-			"request": "ZRANGE myzset 0 -1 WITHSCORES",
-			"response": ["three", "3"]
+			"Protocol": "REDIS",
+			"Request": "ZRANGE myzset 0 -1 WITHSCORES",
+			"Response": "\"three\",\"3\""
 		}]
 	}`,
 }
@@ -1126,28 +1108,27 @@ var ZRemRangeByScore = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD myzset 1 one",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 1 one",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 2 two",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 2 two",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 3 three",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 3 three",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZREMRANGEBYSCORE myzset -inf (2",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZREMRANGEBYSCORE myzset -inf (2",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZRANGE myzset 0 -1 WITHSCORES",
-			"response": ["two", "2", "three", "3"]
+			"Protocol": "REDIS",
+			"Request": "ZRANGE myzset 0 -1 WITHSCORES",
+			"Response": "\"two\",\"2\",\"three\",\"3\""
 		}]
 	}`,
 }
@@ -1193,32 +1174,31 @@ var ZRevRange = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD myzset 1 one",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 1 one",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 2 two",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 2 two",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 3 three",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 3 three",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZREVRANGE myzset 0 -1",
-			"response": ["three", "two", "one"]
+			"Protocol": "REDIS",
+			"Request": "ZREVRANGE myzset 0 -1",
+			"Response": "\"three\",\"two\",\"one\""
 		}, {
-			"protocol": "redis",
-			"request": "ZREVRANGE myzset 2 3",
-			"response": ["one"]
+			"Protocol": "REDIS",
+			"Request": "ZREVRANGE myzset 2 3",
+			"Response": "\"one\""
 		}, {
-			"protocol": "redis",
-			"request": "ZREVRANGE myzset -2 -1",
-			"response": ["two", "one"]
+			"Protocol": "REDIS",
+			"Request": "ZREVRANGE myzset -2 -1",
+			"Response": "\"two\",\"one\""
 		}]
 	}`,
 }
@@ -1252,24 +1232,23 @@ var ZRevRangeByLex = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD myzset 0 a 0 b 0 c 0 d 0 e 0 f 0 g",
-			"response": 7
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 0 a 0 b 0 c 0 d 0 e 0 f 0 g",
+			"Response": "\"7\""
 		}, {
-			"protocol": "redis",
-			"request": "ZREVRANGEBYLEX myzset [c -",
-			"response": ["c", "b", "a"]
+			"Protocol": "REDIS",
+			"Request": "ZREVRANGEBYLEX myzset [c -",
+			"Response": "\"c\",\"b\",\"a\""
 		}, {
-			"protocol": "redis",
-			"request": "ZREVRANGEBYLEX myzset (c -",
-			"response": ["b", "a"]
+			"Protocol": "REDIS",
+			"Request": "ZREVRANGEBYLEX myzset (c -",
+			"Response": "\"b\",\"a\""
 		}, {
-			"protocol": "redis",
-			"request": "ZREVRANGEBYLEX myzset (g [aaa",
-			"response": ["f", "e", "d", "c", "b"]
+			"Protocol": "REDIS",
+			"Request": "ZREVRANGEBYLEX myzset (g [aaa",
+			"Response": "\"f\",\"e\",\"d\",\"c\",\"b\""
 		}]
 	}`,
 }
@@ -1321,36 +1300,35 @@ var ZRevRangeByScore = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD myzset 1 one",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 1 one",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 2 two",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 2 two",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 3 three",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 3 three",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZREVRANGEBYSCORE myzset +inf -inf",
-			"response": ["three", "two", "one"]
+			"Protocol": "REDIS",
+			"Request": "ZREVRANGEBYSCORE myzset +inf -inf",
+			"Response": "\"three\",\"two\",\"one\""
 		}, {
-			"protocol": "redis",
-			"request": "ZREVRANGEBYSCORE myzset 2 1",
-			"response": ["two", "one"]
+			"Protocol": "REDIS",
+			"Request": "ZREVRANGEBYSCORE myzset 2 1",
+			"Response": "\"two\",\"one\""
 		}, {
-			"protocol": "redis",
-			"request": "ZREVRANGEBYSCORE myzset 2 (1",
-			"response": ["two"]
+			"Protocol": "REDIS",
+			"Request": "ZREVRANGEBYSCORE myzset 2 (1",
+			"Response": "\"two\""
 		}, {
-			"protocol": "redis",
-			"request": "ZREVRANGEBYSCORE myzset (2 (1",
-			"response": []
+			"Protocol": "REDIS",
+			"Request": "ZREVRANGEBYSCORE myzset (2 (1",
+			"Response": ""
 		}]
 	}`,
 }
@@ -1387,28 +1365,27 @@ var ZRevRank = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD myzset 1 one",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 1 one",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 2 two",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 2 two",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD myzset 3 three",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 3 three",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZREVRANK myzset one",
-			"response": 2
+			"Protocol": "REDIS",
+			"Request": "ZREVRANK myzset one",
+			"Response": "\"2\""
 		}, {
-			"protocol": "redis",
-			"request": "ZREVRANK myzset four",
-			"response": "(nil)"
+			"Protocol": "REDIS",
+			"Request": "ZREVRANK myzset four",
+			"Response": "\"(nil)\""
 		}]
 	}`,
 }
@@ -1430,16 +1407,15 @@ var ZScore = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD myzset 1 one",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "ZADD myzset 1 one",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZSCORE myzset one",
-			"response": "1"
+			"Protocol": "REDIS",
+			"Request": "ZSCORE myzset one",
+			"Response": "\"1\""
 		}]
 	}`,
 }
@@ -1491,36 +1467,35 @@ var ZUnion = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD zset1 1 one",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "ZADD zset1 1 one",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD zset1 2 two",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZADD zset1 2 two",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD zset2 1 one",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZADD zset2 1 one",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD zset2 2 two",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZADD zset2 2 two",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD zset2 3 three",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZADD zset2 3 three",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZUNION 2 zset1 zset2",
-			"response": ["one", "three", "two"]
+			"Protocol": "REDIS",
+			"Request": "ZUNION 2 zset1 zset2",
+			"Response": "\"one\",\"three\",\"two\""
 		}, {
-			"protocol": "redis",
-			"request": "ZUNION 2 zset1 zset2 WITHSCORES",
-			"response": ["one", "2", "three", "3", "two", "4"]
+			"Protocol": "REDIS",
+			"Request": "ZUNION 2 zset1 zset2 WITHSCORES",
+			"Response": "\"one\",\"2\",\"three\",\"3\",\"two\",\"4\""
 		}]
 	}`,
 }
@@ -1572,36 +1547,35 @@ var ZUnionStore = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "ZADD zset1 1 one",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "ZADD zset1 1 one",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD zset1 2 two",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZADD zset1 2 two",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD zset2 1 one",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZADD zset2 1 one",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD zset2 2 two",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZADD zset2 2 two",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZADD zset2 3 three",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "ZADD zset2 3 three",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "ZUNIONSTORE out 2 zset1 zset2 WEIGHTS 2 3",
-			"response": 3
+			"Protocol": "REDIS",
+			"Request": "ZUNIONSTORE out 2 zset1 zset2 WEIGHTS 2 3",
+			"Response": "\"3\""
 		}, {
-			"protocol": "redis",
-			"request": "ZRANGE out 0 -1 WITHSCORES",
-			"response": ["one", "5", "three", "9", "two", "10"]
+			"Protocol": "REDIS",
+			"Request": "ZRANGE out 0 -1 WITHSCORES",
+			"Response": "\"one\",\"5\",\"three\",\"9\",\"two\",\"10\""
 		}]
 	}`,
 }

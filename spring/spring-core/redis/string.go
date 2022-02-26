@@ -150,104 +150,102 @@ type StringCommand interface {
 }
 
 func (c *client) Append(ctx context.Context, key, value string) (int64, error) {
-	args := []interface{}{CommandAppend, key, value}
-	return c.Int64(ctx, args...)
+	args := []interface{}{key, value}
+	return c.Int64(ctx, CommandAppend, args...)
 }
 
 func (c *client) Decr(ctx context.Context, key string) (int64, error) {
-	args := []interface{}{CommandDecr, key}
-	return c.Int64(ctx, args...)
+	args := []interface{}{key}
+	return c.Int64(ctx, CommandDecr, args...)
 }
 
 func (c *client) DecrBy(ctx context.Context, key string, decrement int64) (int64, error) {
-	args := []interface{}{CommandDecrBy, key, decrement}
-	return c.Int64(ctx, args...)
+	args := []interface{}{key, decrement}
+	return c.Int64(ctx, CommandDecrBy, args...)
 }
 
 func (c *client) Get(ctx context.Context, key string) (string, error) {
-	args := []interface{}{CommandGet, key}
-	return c.String(ctx, args...)
+	args := []interface{}{key}
+	return c.String(ctx, CommandGet, args...)
 }
 
 func (c *client) GetDel(ctx context.Context, key string) (string, error) {
-	args := []interface{}{CommandGetDel, key}
-	return c.String(ctx, args...)
+	args := []interface{}{key}
+	return c.String(ctx, CommandGetDel, args...)
 }
 
 func (c *client) GetEx(ctx context.Context, key string, args ...interface{}) (string, error) {
-	args = append([]interface{}{CommandGetEx, key}, args...)
-	return c.String(ctx, args...)
+	args = append([]interface{}{key}, args...)
+	return c.String(ctx, CommandGetEx, args...)
 }
 
 func (c *client) GetRange(ctx context.Context, key string, start, end int64) (string, error) {
-	args := []interface{}{CommandGetRange, key, start, end}
-	return c.String(ctx, args...)
+	args := []interface{}{key, start, end}
+	return c.String(ctx, CommandGetRange, args...)
 }
 
 func (c *client) GetSet(ctx context.Context, key string, value interface{}) (string, error) {
-	args := []interface{}{CommandGetSet, key, value}
-	return c.String(ctx, args...)
+	args := []interface{}{key, value}
+	return c.String(ctx, CommandGetSet, args...)
 }
 
 func (c *client) Incr(ctx context.Context, key string) (int64, error) {
-	args := []interface{}{CommandIncr, key}
-	return c.Int64(ctx, args...)
+	args := []interface{}{key}
+	return c.Int64(ctx, CommandIncr, args...)
 }
 
 func (c *client) IncrBy(ctx context.Context, key string, value int64) (int64, error) {
-	args := []interface{}{CommandIncrBy, key, value}
-	return c.Int64(ctx, args...)
+	args := []interface{}{key, value}
+	return c.Int64(ctx, CommandIncrBy, args...)
 }
 
 func (c *client) IncrByFloat(ctx context.Context, key string, value float64) (float64, error) {
-	args := []interface{}{CommandIncrByFloat, key, value}
-	return c.Float64(ctx, args...)
+	args := []interface{}{key, value}
+	return c.Float64(ctx, CommandIncrByFloat, args...)
 }
 
 func (c *client) MGet(ctx context.Context, keys ...string) ([]interface{}, error) {
-	args := []interface{}{CommandMGet}
+	var args []interface{}
 	for _, key := range keys {
 		args = append(args, key)
 	}
-	return c.Slice(ctx, args...)
+	return c.Slice(ctx, CommandMGet, args...)
 }
 
 func (c *client) MSet(ctx context.Context, args ...interface{}) (string, error) {
-	args = append([]interface{}{CommandMSet}, args...)
-	return c.String(ctx, args...)
+	return c.String(ctx, CommandMSet, args...)
 }
 
 func (c *client) MSetNX(ctx context.Context, args ...interface{}) (int, error) {
-	args = append([]interface{}{CommandMSetNX}, args...)
-	return c.Int(ctx, args...)
+	return c.Int(ctx, CommandMSetNX, args...)
 }
 
 func (c *client) PSetEX(ctx context.Context, key string, value interface{}, expire int64) (string, error) {
-	args := []interface{}{CommandPSetEX, key, expire, value}
-	return c.String(ctx, args...)
+	args := []interface{}{key, expire, value}
+	return c.String(ctx, CommandPSetEX, args...)
 }
 
 func (c *client) Set(ctx context.Context, key string, value interface{}, args ...interface{}) (string, error) {
-	args = append([]interface{}{CommandSet, key, value}, args...)
-	return c.String(ctx, args...)
+	args = append([]interface{}{key, value}, args...)
+	return c.String(ctx, CommandSet, args...)
 }
 
 func (c *client) SetEX(ctx context.Context, key string, value interface{}, expire int64) (string, error) {
-	args := []interface{}{CommandSetEX, key, expire, value}
-	return c.String(ctx, args...)
+	args := []interface{}{key, expire, value}
+	return c.String(ctx, CommandSetEX, args...)
 }
 
 func (c *client) SetNX(ctx context.Context, key string, value interface{}) (int, error) {
-	args := []interface{}{CommandSetNX, key, value}
-	return c.Int(ctx, args...)
+	args := []interface{}{key, value}
+	return c.Int(ctx, CommandSetNX, args...)
 }
 
 func (c *client) SetRange(ctx context.Context, key string, offset int64, value string) (int64, error) {
-	args := []interface{}{CommandSetRange, key, offset, value}
-	return c.Int64(ctx, args...)
+	args := []interface{}{key, offset, value}
+	return c.Int64(ctx, CommandSetRange, args...)
 }
 
 func (c *client) StrLen(ctx context.Context, key string) (int64, error) {
-	args := []interface{}{CommandStrLen, key}
-	return c.Int64(ctx, args...)
+	args := []interface{}{key}
+	return c.Int64(ctx, CommandStrLen, args...)
 }

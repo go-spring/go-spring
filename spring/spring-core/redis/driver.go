@@ -14,24 +14,22 @@
  * limitations under the License.
  */
 
+//go:generate mockgen -build_flags="-mod=mod" -package=redis -source=driver.go -destination=mock.go
+
 package redis
 
 import (
 	"context"
+
+	"github.com/go-spring/spring-core/internal"
 )
 
-const (
-	CommandFlushAll = "FLUSHALL"
-)
+type Config = internal.RedisClientConfig
 
-type ServerCommand interface {
-
-	// FlushAll https://redis.io/commands/flushall
-	// Command: FLUSHALL [ASYNC|SYNC]
-	// Simple string reply
-	FlushAll(ctx context.Context, args ...interface{}) (string, error)
+type Driver interface {
+	Open(config Config) (Conn, error)
 }
 
-func (c *client) FlushAll(ctx context.Context, args ...interface{}) (string, error) {
-	return c.String(ctx, CommandFlushAll, args...)
+type Conn interface {
+	Exec(ctx context.Context, cmd string, args []interface{}) (interface{}, error)
 }

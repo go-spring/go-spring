@@ -24,12 +24,13 @@ import (
 	"unicode/utf8"
 )
 
-// QuoteCount 查询字符串需要 quote 的次数，无需 quote 返回 0，
-// 包含引号 " 返回 1，包含非法的 unicode 字符返回 2。
-func QuoteCount(s string) int {
+// ttyQuoteCount 查询字符串需要 quote 的次数，无需 quote 返回 0，
+// 包含引号及空格等返回 1，包含非法的 unicode 字符返回 2。
+func ttyQuoteCount(s string) int {
 	for i := 0; i < len(s); {
 		if b := s[i]; b < utf8.RuneSelf {
-			if b == '"' {
+			switch b {
+			case '"', '\t', '\n', '\v', '\f', '\r', ' ', 0x85, 0xA0:
 				return 1
 			}
 			i++
@@ -50,7 +51,7 @@ func ToTTY(data ...interface{}) string {
 	for i, arg := range data {
 		switch s := arg.(type) {
 		case string:
-			if c := QuoteCount(s); c > 1 {
+			if c := ttyQuoteCount(s); c > 0 {
 				s = strconv.Quote(s)
 			}
 			buf.WriteString(s)

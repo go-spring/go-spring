@@ -77,50 +77,50 @@ type BitmapCommand interface {
 }
 
 func (c *client) BitCount(ctx context.Context, key string, args ...interface{}) (int64, error) {
-	args = append([]interface{}{CommandBitCount, key}, args...)
-	return c.Int64(ctx, args...)
+	args = append([]interface{}{key}, args...)
+	return c.Int64(ctx, CommandBitCount, args...)
 }
 
 func (c *client) BitOpAnd(ctx context.Context, destKey string, keys ...string) (int64, error) {
-	args := []interface{}{CommandBitOp, "AND", destKey}
+	args := []interface{}{"AND", destKey}
 	for _, key := range keys {
 		args = append(args, key)
 	}
-	return c.Int64(ctx, args...)
+	return c.Int64(ctx, CommandBitOp, args...)
 }
 
 func (c *client) BitOpOr(ctx context.Context, destKey string, keys ...string) (int64, error) {
-	args := []interface{}{CommandBitOp, "OR", destKey}
+	args := []interface{}{"OR", destKey}
 	for _, key := range keys {
 		args = append(args, key)
 	}
-	return c.Int64(ctx, args...)
+	return c.Int64(ctx, CommandBitOp, args...)
 }
 
 func (c *client) BitOpXor(ctx context.Context, destKey string, keys ...string) (int64, error) {
-	args := []interface{}{CommandBitOp, "XOR", destKey}
+	args := []interface{}{"XOR", destKey}
 	for _, key := range keys {
 		args = append(args, key)
 	}
-	return c.Int64(ctx, args...)
+	return c.Int64(ctx, CommandBitOp, args...)
 }
 
 func (c *client) BitOpNot(ctx context.Context, destKey string, key string) (int64, error) {
-	args := []interface{}{CommandBitOp, "NOT", destKey, key}
-	return c.Int64(ctx, args...)
+	args := []interface{}{"NOT", destKey, key}
+	return c.Int64(ctx, CommandBitOp, args...)
 }
 
 func (c *client) BitPos(ctx context.Context, key string, bit int64, args ...interface{}) (int64, error) {
-	args = append([]interface{}{CommandBitPos, key, bit}, args...)
-	return c.Int64(ctx, args...)
+	args = append([]interface{}{key, bit}, args...)
+	return c.Int64(ctx, CommandBitPos, args...)
 }
 
 func (c *client) GetBit(ctx context.Context, key string, offset int64) (int64, error) {
-	args := []interface{}{CommandGetBit, key, offset}
-	return c.Int64(ctx, args...)
+	args := []interface{}{key, offset}
+	return c.Int64(ctx, CommandGetBit, args...)
 }
 
 func (c *client) SetBit(ctx context.Context, key string, offset int64, value int) (int64, error) {
-	args := []interface{}{CommandSetBit, key, offset, value}
-	return c.Int64(ctx, args...)
+	args := []interface{}{key, offset, value}
+	return c.Int64(ctx, CommandSetBit, args...)
 }

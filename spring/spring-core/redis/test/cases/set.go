@@ -53,26 +53,26 @@ var SAdd = Case{
 		sort.Strings(r4)
 		assert.Equal(t, r4, []string{"Hello", "World"})
 	},
+	Skip: true,
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SADD myset Hello",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "SADD myset Hello",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SADD myset World",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "SADD myset World",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SADD myset World",
-			"response": 0
+			"Protocol": "REDIS",
+			"Request": "SADD myset World",
+			"Response": "\"0\""
 		}, {
-			"protocol": "redis",
-			"request": "SMEMBERS myset",
-			"response": ["Hello", "World"]
+			"Protocol": "REDIS",
+			"Request": "SMEMBERS myset",
+			"Response": "\"Hello\",\"World\""
 		}]
 	}`,
 }
@@ -100,20 +100,19 @@ var SCard = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SADD myset Hello",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "SADD myset Hello",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SADD myset World",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "SADD myset World",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SCARD myset",
-			"response": 2
+			"Protocol": "REDIS",
+			"Request": "SCARD myset",
+			"Response": "\"2\""
 		}]
 	}`,
 }
@@ -166,36 +165,35 @@ var SDiff = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SADD key1 a",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "SADD key1 a",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SADD key1 b",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "SADD key1 b",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SADD key1 c",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "SADD key1 c",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SADD key2 c",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "SADD key2 c",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SADD key2 d",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "SADD key2 d",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SADD key2 e",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "SADD key2 e",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SDIFF key1 key2",
-			"response": ["a", "b"]
+			"Protocol": "REDIS",
+			"Request": "SDIFF key1 key2",
+			"Response": "\"a\",\"b\""
 		}]
 	}`,
 }
@@ -254,40 +252,39 @@ var SDiffStore = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SADD key1 a",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "SADD key1 a",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SADD key1 b",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "SADD key1 b",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SADD key1 c",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "SADD key1 c",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SADD key2 c",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "SADD key2 c",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SADD key2 d",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "SADD key2 d",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SADD key2 e",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "SADD key2 e",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SDIFFSTORE key key1 key2",
-			"response": 2
+			"Protocol": "REDIS",
+			"Request": "SDIFFSTORE key key1 key2",
+			"Response": "\"2\""
 		}, {
-			"protocol": "redis",
-			"request": "SMEMBERS key",
-			"response": ["a", "b"]
+			"Protocol": "REDIS",
+			"Request": "SMEMBERS key",
+			"Response": "\"a\",\"b\""
 		}]
 	}`,
 }
@@ -339,36 +336,35 @@ var SInter = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SADD key1 a",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "SADD key1 a",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SADD key1 b",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "SADD key1 b",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SADD key1 c",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "SADD key1 c",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SADD key2 c",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "SADD key2 c",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SADD key2 d",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "SADD key2 d",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SADD key2 e",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "SADD key2 e",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SINTER key1 key2",
-			"response": ["c"]
+			"Protocol": "REDIS",
+			"Request": "SINTER key1 key2",
+			"Response": "\"c\""
 		}]
 	}`,
 }
@@ -426,40 +422,39 @@ var SInterStore = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SADD key1 a",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "SADD key1 a",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SADD key1 b",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "SADD key1 b",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SADD key1 c",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "SADD key1 c",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SADD key2 c",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "SADD key2 c",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SADD key2 d",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "SADD key2 d",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SADD key2 e",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "SADD key2 e",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SINTERSTORE key key1 key2",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "SINTERSTORE key key1 key2",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SMEMBERS key",
-			"response": ["c"]
+			"Protocol": "REDIS",
+			"Request": "SMEMBERS key",
+			"Response": "\"c\""
 		}]
 	}`,
 }
@@ -510,22 +505,22 @@ var SMembers = Case{
 		sort.Strings(r3)
 		assert.Equal(t, r3, []string{"Hello", "World"})
 	},
+	Skip: true,
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SADD myset Hello",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "SADD myset Hello",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SADD myset World",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "SADD myset World",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SMEMBERS myset",
-			"response": ["Hello", "World"]
+			"Protocol": "REDIS",
+			"Request": "SMEMBERS myset",
+			"Response": "\"Hello\",\"World\""
 		}]
 	}`,
 }
@@ -553,20 +548,19 @@ var SMIsMember = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SADD myset one",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "SADD myset one",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SADD myset one",
-			"response": 0
+			"Protocol": "REDIS",
+			"Request": "SADD myset one",
+			"Response": "\"0\""
 		}, {
-			"protocol": "redis",
-			"request": "SMISMEMBER myset one notamember",
-			"response": [1, 0]
+			"Protocol": "REDIS",
+			"Request": "SMISMEMBER myset one notamember",
+			"Response": "\"1\",\"0\""
 		}]
 	}`,
 }
@@ -613,32 +607,31 @@ var SMove = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SADD myset one",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "SADD myset one",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SADD myset two",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "SADD myset two",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SADD myotherset three",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "SADD myotherset three",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SMOVE myset myotherset two",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "SMOVE myset myotherset two",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SMEMBERS myset",
-			"response": ["one"]
+			"Protocol": "REDIS",
+			"Request": "SMEMBERS myset",
+			"Response": "\"one\""
 		}, {
-			"protocol": "redis",
-			"request": "SMEMBERS myotherset",
-			"response": ["three", "two"]
+			"Protocol": "REDIS",
+			"Request": "SMEMBERS myotherset",
+			"Response": "\"two\",\"three\""
 		}]
 	}`,
 }
@@ -680,28 +673,27 @@ var SPop = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SADD myset one",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "SADD myset one",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SADD myset two",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "SADD myset two",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SADD myset three",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "SADD myset three",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SPOP myset",
-			"response": "two"
+			"Protocol": "REDIS",
+			"Request": "SPOP myset",
+			"Response": "\"two\""
 		}, {
-			"protocol": "redis",
-			"request": "SMEMBERS myset",
-			"response": ["three", "one"]
+			"Protocol": "REDIS",
+			"Request": "SMEMBERS myset",
+			"Response": "\"three\",\"one\""
 		}]
 	}`,
 }
@@ -734,24 +726,23 @@ var SRandMember = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SADD myset one two three",
-			"response": 3
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "SADD myset one two three",
+			"Response": "\"3\""
 		}, {
-			"protocol": "redis",
-			"request": "SRANDMEMBER myset",
-			"response": "one"
+			"Protocol": "REDIS",
+			"Request": "SRANDMEMBER myset",
+			"Response": "\"one\""
 		}, {
-			"protocol": "redis",
-			"request": "SRANDMEMBER myset 2",
-			"response": ["one", "three"]
+			"Protocol": "REDIS",
+			"Request": "SRANDMEMBER myset 2",
+			"Response": "\"one\",\"three\""
 		}, {
-			"protocol": "redis",
-			"request": "SRANDMEMBER myset -5",
-			"response": ["one", "one", "one", "two", "one"]
+			"Protocol": "REDIS",
+			"Request": "SRANDMEMBER myset -5",
+			"Response": "\"one\",\"one\",\"one\",\"two\",\"one\""
 		}]
 	}`,
 }
@@ -798,32 +789,31 @@ var SRem = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SADD myset one",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "SADD myset one",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SADD myset two",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "SADD myset two",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SADD myset three",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "SADD myset three",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SREM myset one",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "SREM myset one",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SREM myset four",
-			"response": 0
+			"Protocol": "REDIS",
+			"Request": "SREM myset four",
+			"Response": "\"0\""
 		}, {
-			"protocol": "redis",
-			"request": "SMEMBERS myset",
-			"response": ["three", "two"]
+			"Protocol": "REDIS",
+			"Request": "SMEMBERS myset",
+			"Response": "\"three\",\"two\""
 		}]
 	}`,
 }
@@ -876,36 +866,35 @@ var SUnion = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SADD key1 a",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "SADD key1 a",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SADD key1 b",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "SADD key1 b",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SADD key1 c",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "SADD key1 c",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SADD key2 c",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "SADD key2 c",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SADD key2 d",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "SADD key2 d",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SADD key2 e",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "SADD key2 e",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SUNION key1 key2",
-			"response": ["a", "b", "c", "e", "d"]
+			"Protocol": "REDIS",
+			"Request": "SUNION key1 key2",
+			"Response": "\"a\",\"b\",\"c\",\"d\",\"e\""
 		}]
 	}`,
 }
@@ -964,40 +953,39 @@ var SUnionStore = Case{
 	},
 	Data: `
 	{
-		"session": "df3b64266ebe4e63a464e135000a07cd",
-		"inbound": {},
-		"actions": [{
-			"protocol": "redis",
-			"request": "SADD key1 a",
-			"response": 1
+		"Session": "df3b64266ebe4e63a464e135000a07cd",
+		"Actions": [{
+			"Protocol": "REDIS",
+			"Request": "SADD key1 a",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SADD key1 b",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "SADD key1 b",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SADD key1 c",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "SADD key1 c",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SADD key2 c",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "SADD key2 c",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SADD key2 d",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "SADD key2 d",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SADD key2 e",
-			"response": 1
+			"Protocol": "REDIS",
+			"Request": "SADD key2 e",
+			"Response": "\"1\""
 		}, {
-			"protocol": "redis",
-			"request": "SUNIONSTORE key key1 key2",
-			"response": 5
+			"Protocol": "REDIS",
+			"Request": "SUNIONSTORE key key1 key2",
+			"Response": "\"5\""
 		}, {
-			"protocol": "redis",
-			"request": "SMEMBERS key",
-			"response": ["a", "b", "c", "e", "d"]
+			"Protocol": "REDIS",
+			"Request": "SMEMBERS key",
+			"Response": "\"a\",\"b\",\"c\",\"d\",\"e\""
 		}]
 	}`,
 }

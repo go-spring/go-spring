@@ -74,7 +74,7 @@ var ctxRecordKey ctxRecordKeyType
 
 // EnableRecord 从 context.Context 对象是否开启流量录制。
 func EnableRecord(ctx context.Context) bool {
-	return ctx.Value(ctxRecordKey) == true
+	return RecordMode() && ctx.Value(ctxRecordKey) == true
 }
 
 // StartRecord 开始流量录制

@@ -20,15 +20,40 @@ import (
 	"bytes"
 	"errors"
 	"strconv"
+	"unicode/utf8"
 )
+
+// csvQuoteCount 查询字符串需要 quote 的次数，无需 quote 返回 0，
+// 包含引号 " 返回 1，包含非法的 unicode 字符返回 2。
+func csvQuoteCount(s string) int {
+	for i := 0; i < len(s); {
+		if b := s[i]; b < utf8.RuneSelf {
+			if b == '"' {
+				return 1
+			}
+			i++
+			continue
+		}
+		c, size := utf8.DecodeRuneInString(s[i:])
+		if c == utf8.RuneError && size == 1 {
+			return 2
+		}
+		i += size
+	}
+	return 0
+}
 
 // ToCSV 将数据转换为 CSV 格式，可用于 redis 结果格式化。
 func ToCSV(data ...interface{}) string {
 	var buf bytes.Buffer
 	for i, arg := range data {
 		switch s := arg.(type) {
+		case nil:
+			buf.WriteString("NULL")
+		case []interface{}:
+			return ToCSV(s...)
 		case string:
-			if c := QuoteCount(s); c == 1 {
+			if c := csvQuoteCount(s); c == 1 {
 				s = strconv.Quote(s)
 			}
 			buf.WriteString(strconv.Quote(s))
