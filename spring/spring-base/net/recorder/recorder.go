@@ -30,8 +30,8 @@ import (
 )
 
 const (
-	loggerTag    = "__recorder_tag"
-	sessionIDKey = "::RECORD-SESSION-ID::"
+	loggerTag  = "_recorder_tag"
+	sessionKey = "::RECORD-SESSION-ID::"
 )
 
 func init() {
@@ -94,7 +94,7 @@ func StartRecord(ctx context.Context, sessionID string) context.Context {
 		err = errors.New("session already started")
 		return ctx
 	}
-	err = knife.Store(ctx, sessionIDKey, sessionID)
+	err = knife.Store(ctx, sessionKey, sessionID)
 	if err != nil {
 		return ctx
 	}
@@ -113,8 +113,24 @@ func StopRecord(ctx context.Context) *Session {
 	return ret
 }
 
+type SimpleAction struct {
+	Protocol  string        `json:",omitempty"` // 协议名称
+	Timestamp int64         `json:",omitempty"` // 时间戳
+	Request   func() string `json:",omitempty"` // 请求内容
+	Response  func() string `json:",omitempty"` // 响应内容
+}
+
+func toAction(action *SimpleAction) *Action {
+	return &Action{
+		Protocol:  action.Protocol,
+		Timestamp: action.Timestamp,
+		Request:   Message(action.Request),
+		Response:  Message(action.Response),
+	}
+}
+
 // RecordInbound 录制 inbound 流量。
-func RecordInbound(ctx context.Context, inbound *Action) {
+func RecordInbound(ctx context.Context, protocol string, inbound *SimpleAction) {
 	onSession(ctx, func(r *recordSession) error {
 		if r.close {
 			return errors.New("recording already stopped")
@@ -123,19 +139,21 @@ func RecordInbound(ctx context.Context, inbound *Action) {
 			return errors.New("inbound already set")
 		}
 		inbound.Timestamp = clock.Now(ctx).UnixNano()
-		r.session.Inbound = inbound
+		inbound.Protocol = protocol
+		r.session.Inbound = toAction(inbound)
 		return nil
 	})
 }
 
 // RecordAction 录制 outbound 流量。
-func RecordAction(ctx context.Context, action *Action) {
+func RecordAction(ctx context.Context, protocol string, action *SimpleAction) {
 	onSession(ctx, func(r *recordSession) error {
 		if r.close {
 			return errors.New("recording already stopped")
 		}
-		action.Timestamp = r.session.Timestamp
-		r.session.Actions = append(r.session.Actions, action)
+		action.Timestamp = clock.Now(ctx).UnixNano()
+		action.Protocol = protocol
+		r.session.Actions = append(r.session.Actions, toAction(action))
 		return nil
 	})
 }
@@ -151,7 +169,7 @@ func onSession(ctx context.Context, f func(*recordSession) error) {
 		err = errors.New("record mode not enabled")
 		return
 	}
-	v, err := knife.Load(ctx, sessionIDKey)
+	v, err := knife.Load(ctx, sessionKey)
 	if err != nil {
 		return
 	}

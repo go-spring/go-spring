@@ -14,30 +14,34 @@
  * limitations under the License.
  */
 
-package cache
+package recorder
 
-import (
-	"github.com/go-spring/spring-base/net/recorder"
+import "fmt"
+
+const (
+	CACHE = "CACHE"
+	HTTP  = "HTTP"
+	SQL   = "SQL"
+	REDIS = "REDIS"
 )
 
-func init() {
-	recorder.RegisterProtocol(recorder.CACHE, &protocol{})
+var (
+	protocols = map[string]Protocol{}
+)
+
+type Protocol interface {
+	GetLabel(data string) string
+	FlatRequest(data string) (map[string]string, error)
+	FlatResponse(data string) (map[string]string, error)
 }
 
-type protocol struct{}
-
-func (p *protocol) ShouldDiff() bool {
-	return true
+func GetProtocol(name string) Protocol {
+	return protocols[name]
 }
 
-func (p *protocol) GetLabel(data string) string {
-	return data[:4]
-}
-
-func (p *protocol) FlatRequest(data string) (map[string]string, error) {
-	return nil, nil
-}
-
-func (p *protocol) FlatResponse(data string) (map[string]string, error) {
-	return nil, nil
+func RegisterProtocol(name string, protocol Protocol) {
+	if _, ok := protocols[name]; ok {
+		panic(fmt.Errorf("%s: duplicate registration", name))
+	}
+	protocols[name] = protocol
 }

@@ -170,7 +170,7 @@ type Loader func(ctx context.Context, key string) (interface{}, error)
 func toResultLoader(loader Loader) ResultLoader {
 	return func(ctx context.Context, key string) (Result, LoadType, error) {
 		if replayer.ReplayMode() {
-			resp, ok, err := replayer.QueryAction(ctx, recorder.APCU, key, replayer.ExactMatch)
+			resp, ok, err := replayer.Query(ctx, recorder.CACHE, key)
 			if err != nil {
 				return nil, LoadNone, err
 			}
@@ -237,14 +237,13 @@ func Load(ctx context.Context, key string, loader Loader, opts ...Option) (loadT
 
 	defer func() {
 		if loadType == LoadCache && recorder.EnableRecord(ctx) {
-			recorder.RecordAction(ctx, &recorder.Action{
-				Protocol: recorder.APCU,
-				Request: recorder.NewMessage(func() string {
+			recorder.RecordAction(ctx, recorder.CACHE, &recorder.SimpleAction{
+				Request: func() string {
 					return key
-				}),
-				Response: recorder.NewMessage(func() string {
+				},
+				Response: func() string {
 					return result.Json()
-				}),
+				},
 			})
 		}
 	}()

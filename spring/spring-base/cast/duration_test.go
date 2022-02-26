@@ -14,30 +14,36 @@
  * limitations under the License.
  */
 
-package cache
+package cast_test
 
 import (
-	"github.com/go-spring/spring-base/net/recorder"
+	"testing"
+	"time"
+
+	"github.com/go-spring/spring-base/cast"
 )
 
-func init() {
-	recorder.RegisterProtocol(recorder.CACHE, &protocol{})
-}
+func BenchmarkToDuration(b *testing.B) {
+	// string/parse-8      28863253 38.5 ns/op
+	// string/go-spring-8  18037459 66.7 ns/op
+	b.Run("string", func(b *testing.B) {
+		v := cast.ToString(time.Now().UnixNano()) + "ns"
+		b.Run("parse", func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				_, err := time.ParseDuration(v)
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 
-type protocol struct{}
-
-func (p *protocol) ShouldDiff() bool {
-	return true
-}
-
-func (p *protocol) GetLabel(data string) string {
-	return data[:4]
-}
-
-func (p *protocol) FlatRequest(data string) (map[string]string, error) {
-	return nil, nil
-}
-
-func (p *protocol) FlatResponse(data string) (map[string]string, error) {
-	return nil, nil
+		b.Run("go-spring", func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				_, err := cast.ToDurationE(v)
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	})
 }

@@ -25,31 +25,6 @@ import (
 	"github.com/go-spring/spring-base/cast"
 )
 
-func BenchmarkToDuration(b *testing.B) {
-	// string/parse-8      28863253 38.5 ns/op
-	// string/go-spring-8  18037459 66.7 ns/op
-	b.Run("string", func(b *testing.B) {
-		v := cast.ToString(time.Now().UnixNano()) + "ns"
-		b.Run("parse", func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
-				_, err := time.ParseDuration(v)
-				if err != nil {
-					b.Fatal(err)
-				}
-			}
-		})
-
-		b.Run("go-spring", func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
-				_, err := cast.ToDurationE(v)
-				if err != nil {
-					b.Fatal(err)
-				}
-			}
-		})
-	})
-}
-
 func BenchmarkToTime(b *testing.B) {
 	// string/parse-8      4266552 277 ns/op
 	// string/go-spring-8  3559998 324 ns/op

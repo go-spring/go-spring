@@ -66,14 +66,13 @@ type redis struct{}
 func (r *redis) getValue(ctx context.Context, key string) (ret string, err error) {
 	defer func() {
 		if recorder.EnableRecord(ctx) {
-			recorder.RecordAction(ctx, &recorder.Action{
-				Protocol: recorder.REDIS,
-				Request: recorder.NewMessage(func() string {
+			recorder.RecordAction(ctx, recorder.REDIS, &recorder.SimpleAction{
+				Request: func() string {
 					return key
-				}),
-				Response: recorder.NewMessage(func() string {
+				},
+				Response: func() string {
 					return ret
-				}),
+				},
 			})
 		}
 	}()
@@ -82,7 +81,7 @@ func (r *redis) getValue(ctx context.Context, key string) (ret string, err error
 			ok   bool
 			resp interface{}
 		)
-		resp, ok, err = replayer.QueryAction(ctx, recorder.REDIS, key, replayer.BestMatch)
+		resp, ok, err = replayer.Query(ctx, recorder.REDIS, key)
 		if err != nil {
 			return "", err
 		}
@@ -162,7 +161,7 @@ func (p LoadTypeSliceSlice) Len() int           { return len(p) }
 func (p LoadTypeSliceSlice) Less(i, j int) bool { return p[i][0] > p[j][0] }
 func (p LoadTypeSliceSlice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
 
-func TestGuavaRecord(t *testing.T) {
+func TestRecord(t *testing.T) {
 	defer cache.InvalidateAll()
 
 	recorder.SetRecordMode(true)
@@ -182,7 +181,7 @@ func TestGuavaRecord(t *testing.T) {
 		ctx = recorder.StartRecord(ctx, sessionID)
 		loadTypes := testFunc(t, ctx, key)
 		session := recorder.StopRecord(ctx)
-		fmt.Println(session.PrettyJson())
+		fmt.Println(recorder.ToPrettyJson(session))
 		return session, loadTypes
 	}
 
@@ -228,12 +227,12 @@ func TestGuavaRecord(t *testing.T) {
 
 	assert.Equal(t, ss, []string{
 		`{"Actions":[{"Protocol":"REDIS","Request":"test","Response":"{\"name\":\"test\"}"}]}`,
-		`{"Actions":[{"Protocol":"APCU","Request":"test","Response":"{\"name\":\"test\"}"}]}`,
-		`{"Actions":[{"Protocol":"APCU","Request":"test","Response":"{\"name\":\"test\"}"}]}`,
+		`{"Actions":[{"Protocol":"CACHE","Request":"test","Response":"{\"name\":\"test\"}"}]}`,
+		`{"Actions":[{"Protocol":"CACHE","Request":"test","Response":"{\"name\":\"test\"}"}]}`,
 	})
 }
 
-func TestGuavaReplay(t *testing.T) {
+func TestReplay(t *testing.T) {
 	defer cache.InvalidateAll()
 
 	replayer.SetReplayMode(true)
@@ -279,7 +278,7 @@ func TestGuavaReplay(t *testing.T) {
 		  "Session": "1",
 		  "Actions": [
 			{
-			  "Protocol": "APCU",
+			  "Protocol": "CACHE",
 			  "Request": "test",
 			  "Response": "{\"name\":\"test\"}"
 			}
@@ -289,7 +288,7 @@ func TestGuavaReplay(t *testing.T) {
 		  "Session": "2",
 		  "Actions": [
 			{
-			  "Protocol": "APCU",
+			  "Protocol": "CACHE",
 			  "Request": "test",
 			  "Response": "{\"name\":\"test\"}"
 			}

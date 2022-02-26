@@ -14,30 +14,4 @@
  * limitations under the License.
  */
 
-package cache
-
-import (
-	"github.com/go-spring/spring-base/net/recorder"
-)
-
-func init() {
-	recorder.RegisterProtocol(recorder.CACHE, &protocol{})
-}
-
-type protocol struct{}
-
-func (p *protocol) ShouldDiff() bool {
-	return true
-}
-
-func (p *protocol) GetLabel(data string) string {
-	return data[:4]
-}
-
-func (p *protocol) FlatRequest(data string) (map[string]string, error) {
-	return nil, nil
-}
-
-func (p *protocol) FlatResponse(data string) (map[string]string, error) {
-	return nil, nil
-}
+package cast_test

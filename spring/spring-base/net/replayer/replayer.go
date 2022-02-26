@@ -40,7 +40,7 @@ func init() {
 }
 
 const (
-	sessionIDKey = "REPLAY-SESSION-ID"
+	sessionKey = "REPLAY-SESSION-ID"
 )
 
 var replayer struct {
@@ -177,9 +177,7 @@ func ToSession(session *recorder.RawSession) (*Session, error) {
 		if p == nil {
 			return nil, errors.New("invalid protocol")
 		}
-		if p.ShouldDiff() {
-			actions = append(actions, ToAction(action))
-		}
+		actions = append(actions, ToAction(action))
 	}
 	return &Session{
 		Session:   session.Session,
@@ -193,7 +191,7 @@ func GetSessionID(ctx context.Context) (string, error) {
 	if !replayer.enable {
 		return "", errors.New("replay mode not enabled")
 	}
-	v, err := knife.Load(ctx, sessionIDKey)
+	v, err := knife.Load(ctx, sessionKey)
 	if err != nil {
 		return "", err
 	}
@@ -208,12 +206,19 @@ func GetSessionID(ctx context.Context) (string, error) {
 }
 
 func SetSessionID(ctx context.Context, sessionID string) error {
-	return knife.Store(ctx, sessionIDKey, sessionID)
+	return knife.Store(ctx, sessionKey, sessionID)
 }
 
-func QueryAction(ctx context.Context, protocol, request string, matchStrategy MatchStrategy) (response string, ok bool, err error) {
+func Query(ctx context.Context, protocol, request string) (response string, ok bool, err error) {
 	if replayer.agent == nil {
 		return "", false, errors.New("replay agent is nil")
 	}
-	return replayer.agent.QueryAction(ctx, protocol, request, matchStrategy)
+	return replayer.agent.QueryAction(ctx, protocol, request, ExactMatch)
+}
+
+func BestQuery(ctx context.Context, protocol, request string) (response string, ok bool, err error) {
+	if replayer.agent == nil {
+		return "", false, errors.New("replay agent is nil")
+	}
+	return replayer.agent.QueryAction(ctx, protocol, request, BestMatch)
 }

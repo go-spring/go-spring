@@ -57,10 +57,10 @@ func TestReplayAction(t *testing.T) {
 		Inbound: &recorder.Action{
 			Protocol:  recorder.HTTP,
 			Timestamp: clock.Now(ctx).UnixNano(),
-			Request: recorder.NewMessage(func() string {
+			Request: recorder.Message(func() string {
 				return "GET ..."
 			}),
-			Response: recorder.NewMessage(func() string {
+			Response: recorder.Message(func() string {
 				return "200 ..."
 			}),
 		},
@@ -68,39 +68,36 @@ func TestReplayAction(t *testing.T) {
 			{
 				Protocol:  recorder.REDIS,
 				Timestamp: clock.Now(ctx).UnixNano(),
-				Request: recorder.NewMessage(func() string {
-					return cast.ToCommandLine("SET", "a", "1")
+				Request: recorder.Message(func() string {
+					return cast.ToTTY("SET", "a", "1")
 				}),
-				Response: recorder.NewMessage(func() string {
+				Response: recorder.Message(func() string {
 					return cast.ToCSV(1, "2", 3)
 				}),
 			}, {
 				Protocol:  recorder.REDIS,
 				Timestamp: clock.Now(ctx).UnixNano(),
-				Request: recorder.NewMessage(func() string {
-					return cast.ToCommandLine("SET", "a", "\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n")
+				Request: recorder.Message(func() string {
+					return cast.ToTTY("SET", "a", "\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n")
 				}),
-				Response: recorder.NewMessage(func() string {
+				Response: recorder.Message(func() string {
 					return cast.ToCSV("\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n")
 				}),
 			},
 			{
 				Protocol:  recorder.REDIS,
 				Timestamp: clock.Now(ctx).UnixNano(),
-				Request: recorder.NewMessage(func() string {
-					return cast.ToCommandLine("HGET", "a")
+				Request: recorder.Message(func() string {
+					return cast.ToTTY("HGET", "a")
 				}),
-				Response: recorder.NewMessage(func() string {
+				Response: recorder.Message(func() string {
 					return cast.ToCSV("a", "b", "c", 3, "d", "\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n")
 				}),
 			},
 		},
 	}
 
-	str, err := recordSession.PrettyJson()
-	if err != nil {
-		t.Fatal(err)
-	}
+	str := recorder.ToPrettyJson(recordSession)
 	fmt.Println("record:", str)
 
 	session, err := agent.Store(str)
@@ -112,12 +109,12 @@ func TestReplayAction(t *testing.T) {
 
 	defer agent.Delete(session.Session)
 
-	request := cast.ToCommandLine("SET", "a", "1")
-	response, _, _ := replayer.QueryAction(ctx, recorder.REDIS, request, replayer.BestMatch)
+	request := cast.ToTTY("SET", "a", "1")
+	response, _, _ := replayer.Query(ctx, recorder.REDIS, request)
 	assert.Equal(t, response, "\"1\",\"2\",\"3\"")
 
-	request = cast.ToCommandLine("SET", "a", "\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n")
-	response, _, _ = replayer.QueryAction(ctx, recorder.REDIS, request, replayer.BestMatch)
+	request = cast.ToTTY("SET", "a", "\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n")
+	response, _, _ = replayer.Query(ctx, recorder.REDIS, request)
 	assert.Equal(t, response, "\"\\x00\\xc0\\n\\t\\x00\\xbem\\x06\\x89Z(\\x00\\n\"")
 
 	err = session.Flat()
@@ -175,7 +172,7 @@ func (p *redisProtocol) GetLabel(data string) string {
 }
 
 func (p *redisProtocol) FlatRequest(data string) (map[string]string, error) {
-	csv, err := cast.ParseCommandLine(data)
+	csv, err := cast.ParseTTY(data)
 	if err != nil {
 		return nil, err
 	}

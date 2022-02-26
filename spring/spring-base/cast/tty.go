@@ -44,8 +44,8 @@ func QuoteCount(s string) int {
 	return 0
 }
 
-// ToCommandLine 将数据转换为命令行格式，可用于 redis 参数格式化。
-func ToCommandLine(data ...interface{}) string {
+// ToTTY 将数据转换为命令行格式，可用于 redis 参数格式化。
+func ToTTY(data ...interface{}) string {
 	var buf bytes.Buffer
 	for i, arg := range data {
 		switch s := arg.(type) {
@@ -64,8 +64,8 @@ func ToCommandLine(data ...interface{}) string {
 	return buf.String()
 }
 
-// ParseCommandLine 将命令行格式的数据转换为字符串数组。
-func ParseCommandLine(data string) ([]string, error) {
+// ParseTTY 将命令行格式的数据转换为字符串数组。
+func ParseTTY(data string) ([]string, error) {
 	var (
 		ret []string
 		buf bytes.Buffer

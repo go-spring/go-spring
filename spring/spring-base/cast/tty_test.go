@@ -14,30 +14,34 @@
  * limitations under the License.
  */
 
-package cache
+package cast_test
 
 import (
-	"github.com/go-spring/spring-base/net/recorder"
+	"testing"
+
+	"github.com/go-spring/spring-base/assert"
+	"github.com/go-spring/spring-base/cast"
 )
 
-func init() {
-	recorder.RegisterProtocol(recorder.CACHE, &protocol{})
-}
-
-type protocol struct{}
-
-func (p *protocol) ShouldDiff() bool {
-	return true
-}
-
-func (p *protocol) GetLabel(data string) string {
-	return data[:4]
-}
-
-func (p *protocol) FlatRequest(data string) (map[string]string, error) {
-	return nil, nil
-}
-
-func (p *protocol) FlatResponse(data string) (map[string]string, error) {
-	return nil, nil
+func TestTTY(t *testing.T) {
+	inputs := []interface{}{
+		"CMD",
+		1,
+		true,
+		"string",
+		"\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n",
+	}
+	data := cast.ToTTY(inputs...)
+	assert.Equal(t, data, `CMD 1 true string "\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n"`)
+	outputs, err := cast.ParseTTY(data)
+	if err != nil {
+		return
+	}
+	assert.Equal(t, outputs, []string{
+		"CMD",
+		"1",
+		"true",
+		"string",
+		"\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n",
+	})
 }

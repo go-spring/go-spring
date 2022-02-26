@@ -28,8 +28,8 @@ import (
 type MatchStrategy int
 
 const (
-	ExactMatch MatchStrategy = iota
-	BestMatch
+	ExactMatch = MatchStrategy(0) // 精确匹配
+	BestMatch  = MatchStrategy(1) // 最佳匹配
 )
 
 type Agent interface {
