@@ -18,6 +18,7 @@ package gs
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"reflect"
 	"strings"
@@ -202,6 +203,11 @@ func File(path string, file string) *web.Mapper {
 // Static 定义一组文件资源
 func Static(prefix string, root string) *web.Mapper {
 	return app().Static(prefix, root)
+}
+
+// StaticFS 定义一组文件资源
+func StaticFS(prefix string, root http.FileSystem) *web.Mapper {
+	return app().StaticFS(prefix, root)
 }
 
 // Consume 参考 App.Consume 的解释。
