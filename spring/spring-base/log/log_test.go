@@ -27,6 +27,7 @@ import (
 	"github.com/go-spring/spring-base/code"
 	"github.com/go-spring/spring-base/knife"
 	"github.com/go-spring/spring-base/log"
+	"github.com/go-spring/spring-base/util"
 	"github.com/golang/mock/gomock"
 )
 
@@ -56,12 +57,12 @@ func TestDefault(t *testing.T) {
 	o.EXPECT().Level()
 	o.EXPECT().Print(&log.Message{Level: log.TraceLevel, Args: []interface{}{"a", "=", "1"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime})
 	log.Trace(func() []interface{} {
-		return log.T("a", "=", "1")
+		return util.T("a", "=", "1")
 	})
 	o.EXPECT().Level()
 	o.EXPECT().Print(&log.Message{Level: log.TraceLevel, Args: []interface{}{"a=1"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime})
 	log.Tracef("a=%d", func() []interface{} {
-		return log.T(1)
+		return util.T(1)
 	})
 
 	o.EXPECT().Level()
@@ -74,12 +75,12 @@ func TestDefault(t *testing.T) {
 	o.EXPECT().Level()
 	o.EXPECT().Print(&log.Message{Level: log.DebugLevel, Args: []interface{}{"a", "=", "1"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime})
 	log.Debug(func() []interface{} {
-		return log.T("a", "=", "1")
+		return util.T("a", "=", "1")
 	})
 	o.EXPECT().Level()
 	o.EXPECT().Print(&log.Message{Level: log.DebugLevel, Args: []interface{}{"a=1"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime})
 	log.Debugf("a=%d", func() []interface{} {
-		return log.T(1)
+		return util.T(1)
 	})
 
 	o.EXPECT().Level()
@@ -92,12 +93,12 @@ func TestDefault(t *testing.T) {
 	o.EXPECT().Level()
 	o.EXPECT().Print(&log.Message{Level: log.InfoLevel, Args: []interface{}{"a", "=", "1"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime})
 	log.Info(func() []interface{} {
-		return log.T("a", "=", "1")
+		return util.T("a", "=", "1")
 	})
 	o.EXPECT().Level()
 	o.EXPECT().Print(&log.Message{Level: log.InfoLevel, Args: []interface{}{"a=1"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime})
 	log.Infof("a=%d", func() []interface{} {
-		return log.T(1)
+		return util.T(1)
 	})
 
 	o.EXPECT().Level()
@@ -110,12 +111,12 @@ func TestDefault(t *testing.T) {
 	o.EXPECT().Level()
 	o.EXPECT().Print(&log.Message{Level: log.WarnLevel, Args: []interface{}{"a", "=", "1"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime})
 	log.Warn(func() []interface{} {
-		return log.T("a", "=", "1")
+		return util.T("a", "=", "1")
 	})
 	o.EXPECT().Level()
 	o.EXPECT().Print(&log.Message{Level: log.WarnLevel, Args: []interface{}{"a=1"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime})
 	log.Warnf("a=%d", func() []interface{} {
-		return log.T(1)
+		return util.T(1)
 	})
 
 	o.EXPECT().Level()
@@ -128,12 +129,12 @@ func TestDefault(t *testing.T) {
 	o.EXPECT().Level()
 	o.EXPECT().Print(&log.Message{Level: log.ErrorLevel, Args: []interface{}{"a", "=", "1"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime})
 	log.Error(func() []interface{} {
-		return log.T("a", "=", "1")
+		return util.T("a", "=", "1")
 	})
 	o.EXPECT().Level()
 	o.EXPECT().Print(&log.Message{Level: log.ErrorLevel, Args: []interface{}{"a=1"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime})
 	log.Errorf("a=%d", func() []interface{} {
-		return log.T(1)
+		return util.T(1)
 	})
 
 	o.EXPECT().Level()
@@ -215,61 +216,61 @@ func TestEntry(t *testing.T) {
 	o.EXPECT().Level()
 	o.EXPECT().Print(&log.Message{Level: log.TraceLevel, Ctx: ctx, Args: []interface{}{"Level:", "trace"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime})
 	ctxLogger.Trace(func() []interface{} {
-		return log.T("Level:", "trace")
+		return util.T("Level:", "trace")
 	})
 
 	o.EXPECT().Level()
 	o.EXPECT().Print(&log.Message{Level: log.TraceLevel, Ctx: ctx, Args: []interface{}{"Level:trace"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime})
 	ctxLogger.Tracef("Level:%s", func() []interface{} {
-		return log.T("trace")
+		return util.T("trace")
 	})
 
 	o.EXPECT().Level()
 	o.EXPECT().Print(&log.Message{Level: log.DebugLevel, Ctx: ctx, Args: []interface{}{"Level:", "debug"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime})
 	ctxLogger.Debug(func() []interface{} {
-		return log.T("Level:", "debug")
+		return util.T("Level:", "debug")
 	})
 
 	o.EXPECT().Level()
 	o.EXPECT().Print(&log.Message{Level: log.DebugLevel, Ctx: ctx, Args: []interface{}{"Level:debug"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime})
 	ctxLogger.Debugf("Level:%s", func() []interface{} {
-		return log.T("debug")
+		return util.T("debug")
 	})
 
 	o.EXPECT().Level()
 	o.EXPECT().Print(&log.Message{Level: log.InfoLevel, Ctx: ctx, Args: []interface{}{"Level:", "info"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime})
 	ctxLogger.Info(func() []interface{} {
-		return log.T("Level:", "info")
+		return util.T("Level:", "info")
 	})
 
 	o.EXPECT().Level()
 	o.EXPECT().Print(&log.Message{Level: log.InfoLevel, Ctx: ctx, Args: []interface{}{"Level:info"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime})
 	ctxLogger.Infof("Level:%s", func() []interface{} {
-		return log.T("info")
+		return util.T("info")
 	})
 
 	o.EXPECT().Level()
 	o.EXPECT().Print(&log.Message{Level: log.WarnLevel, Ctx: ctx, Args: []interface{}{"Level:", "warn"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime})
 	ctxLogger.Warn(func() []interface{} {
-		return log.T("Level:", "warn")
+		return util.T("Level:", "warn")
 	})
 
 	o.EXPECT().Level()
 	o.EXPECT().Print(&log.Message{Level: log.WarnLevel, Ctx: ctx, Args: []interface{}{"Level:warn"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime})
 	ctxLogger.Warnf("Level:%s", func() []interface{} {
-		return log.T("warn")
+		return util.T("warn")
 	})
 
 	o.EXPECT().Level()
 	o.EXPECT().Print(&log.Message{Level: log.ErrorLevel, Ctx: ctx, Args: []interface{}{"Level:", "error"}, Errno: log.ERROR, File: code.File(), Line: code.Line() + 1, Time: fixedTime})
 	ctxLogger.Error(log.ERROR, func() []interface{} {
-		return log.T("Level:", "error")
+		return util.T("Level:", "error")
 	})
 
 	o.EXPECT().Level()
 	o.EXPECT().Print(&log.Message{Level: log.ErrorLevel, Ctx: ctx, Args: []interface{}{"Level:error"}, Errno: log.ERROR, File: code.File(), Line: code.Line() + 1, Time: fixedTime})
 	ctxLogger.Errorf(log.ERROR, "Level:%s", func() []interface{} {
-		return log.T("error")
+		return util.T("error")
 	})
 
 	ctxLogger = ctxLogger.WithTag(tagIn)

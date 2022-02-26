@@ -116,7 +116,7 @@ var Decr = Case{
 		}, {
 			"Protocol": "REDIS",
 			"Request": "DECR mykey",
-			"Response": "\"(err) ERR value is not an integer or out of range\""
+			"Response": "(err) ERR value is not an integer or out of range"
 		}]
 	}`,
 }
@@ -175,7 +175,7 @@ var Get = Case{
 		"Actions": [{
 			"Protocol": "REDIS",
 			"Request": "GET nonexisting",
-			"Response": "\"(nil)\""
+			"Response": "NULL"
 		}, {
 			"Protocol": "REDIS",
 			"Request": "SET mykey Hello",
@@ -220,7 +220,7 @@ var GetDel = Case{
 		}, {
 			"Protocol": "REDIS",
 			"Request": "GET mykey",
-			"Response": "\"(nil)\""
+			"Response": "NULL"
 		}]
 	}`,
 }

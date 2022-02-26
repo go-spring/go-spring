@@ -20,6 +20,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/go-spring/spring-base/assert"
+	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/redis"
 	"github.com/go-spring/spring-core/redis/test/cases"
 	"github.com/golang/mock/gomock"
@@ -31,12 +33,17 @@ func TestMock(t *testing.T) {
 	defer ctrl.Finish()
 
 	ctx := context.Background()
-	c := redis.NewMockClient(ctrl)
+	conn := redis.NewMockConn(ctrl)
+	conn.EXPECT().Exec(ctx, "EXISTS", util.T("mykey")).Return(int64(0), nil)
+	conn.EXPECT().Exec(ctx, "APPEND", util.T("mykey", "Hello")).Return(int64(5), nil)
+	conn.EXPECT().Exec(ctx, "APPEND", util.T("mykey", " World")).Return(int64(11), nil)
+	conn.EXPECT().Exec(ctx, "GET", util.T("mykey")).Return("Hello World", nil)
 
-	c.EXPECT().Exists(ctx, "mykey").Return(int64(0), nil)
-	c.EXPECT().Append(ctx, "mykey", "Hello").Return(int64(5), nil)
-	c.EXPECT().Append(ctx, "mykey", " World").Return(int64(11), nil)
-	c.EXPECT().Get(ctx, "mykey").Return("Hello World", nil)
+	driver := redis.NewMockDriver(ctrl)
+	driver.EXPECT().Open(gomock.Any()).Return(conn, nil)
+
+	c, err := redis.NewClient(redis.Config{}, driver)
+	assert.Nil(t, err)
 
 	cases.Append.Func(t, ctx, c)
 }

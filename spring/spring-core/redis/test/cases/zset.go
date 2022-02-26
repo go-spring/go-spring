@@ -886,7 +886,7 @@ var ZRank = Case{
 		}, {
 			"Protocol": "REDIS",
 			"Request": "ZRANK myzset four",
-			"Response": "\"(nil)\""
+			"Response": "NULL"
 		}]
 	}`,
 }
@@ -1385,7 +1385,7 @@ var ZRevRank = Case{
 		}, {
 			"Protocol": "REDIS",
 			"Request": "ZREVRANK myzset four",
-			"Response": "\"(nil)\""
+			"Response": "NULL"
 		}]
 	}`,
 }

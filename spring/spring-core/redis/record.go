@@ -38,9 +38,9 @@ func (c *recordConn) Exec(ctx context.Context, cmd string, args []interface{}) (
 					return cast.ToCSV(ret)
 				}
 				if IsErrNil(err) {
-					return cast.ToCSV("(nil)")
+					return "NULL"
 				}
-				return cast.ToCSV("(err) " + err.Error())
+				return "(err) " + err.Error()
 			},
 		})
 	}()

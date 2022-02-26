@@ -56,7 +56,7 @@ func (c *replayConn) Exec(ctx context.Context, cmd string, args []interface{}) (
 
 	if len(csv) == 1 {
 		s := csv[0]
-		if s == "(nil)" {
+		if s == "NULL" {
 			return nil, ErrNil()
 		}
 		if strings.HasPrefix(s, "(err) ") {

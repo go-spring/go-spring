@@ -124,11 +124,6 @@ func WithContext(ctx context.Context) CtxEntry {
 	return emptyEntry.WithContext(ctx)
 }
 
-// T 将可变参数转换成切片形式。
-func T(a ...interface{}) []interface{} {
-	return a
-}
-
 // Trace 输出 TRACE 级别的日志。
 func Trace(args ...interface{}) {
 	printf(TraceLevel, emptyEntry, "", args)

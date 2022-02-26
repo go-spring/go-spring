@@ -294,6 +294,7 @@ var Keys = Case{
 		sort.Strings(r4)
 		assert.Equal(t, r4, []string{"age", "firstname", "lastname"})
 	},
+	Skip: true,
 	Data: `
 	{
 		"Session": "df3b64266ebe4e63a464e135000a07cd",

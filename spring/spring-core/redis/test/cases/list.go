@@ -76,7 +76,7 @@ var LIndex = Case{
 		}, {
 			"Protocol": "REDIS",
 			"Request": "LINDEX mylist 3",
-			"Response": "\"(nil)\""
+			"Response": "NULL"
 		}]
 	}`,
 }

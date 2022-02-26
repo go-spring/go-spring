@@ -163,6 +163,7 @@ var SDiff = Case{
 		sort.Strings(r7)
 		assert.Equal(t, r7, []string{"a", "b"})
 	},
+	Skip: true,
 	Data: `
 	{
 		"Session": "df3b64266ebe4e63a464e135000a07cd",
@@ -250,6 +251,7 @@ var SDiffStore = Case{
 		sort.Strings(r8)
 		assert.Equal(t, r8, []string{"a", "b"})
 	},
+	Skip: true,
 	Data: `
 	{
 		"Session": "df3b64266ebe4e63a464e135000a07cd",
@@ -605,6 +607,7 @@ var SMove = Case{
 		sort.Strings(r6)
 		assert.Equal(t, r6, []string{"three", "two"})
 	},
+	Skip: true,
 	Data: `
 	{
 		"Session": "df3b64266ebe4e63a464e135000a07cd",
@@ -864,6 +867,7 @@ var SUnion = Case{
 		sort.Strings(r7)
 		assert.Equal(t, r7, []string{"a", "b", "c", "d", "e"})
 	},
+	Skip: true,
 	Data: `
 	{
 		"Session": "df3b64266ebe4e63a464e135000a07cd",
@@ -951,6 +955,7 @@ var SUnionStore = Case{
 		sort.Strings(r8)
 		assert.Equal(t, r8, []string{"a", "b", "c", "d", "e"})
 	},
+	Skip: true,
 	Data: `
 	{
 		"Session": "df3b64266ebe4e63a464e135000a07cd",

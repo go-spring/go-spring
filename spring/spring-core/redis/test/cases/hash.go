@@ -136,7 +136,7 @@ var HGet = Case{
 		}, {
 			"Protocol": "REDIS",
 			"Request": "HGET myhash field2",
-			"Response": "\"(nil)\""
+			"Response": "NULL"
 		}]
 	}`,
 }
