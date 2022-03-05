@@ -19,6 +19,7 @@ package log
 import "context"
 
 type Entry interface {
+	Logger() *Logger
 	Skip() int
 	Tag() string
 	Errno() Errno
@@ -26,8 +27,13 @@ type Entry interface {
 }
 
 type BaseEntry struct {
-	skip int
-	tag  string
+	logger *Logger
+	skip   int
+	tag    string
+}
+
+func (e *BaseEntry) Logger() *Logger {
+	return e.logger
 }
 
 func (e *BaseEntry) Skip() int {
@@ -58,9 +64,10 @@ func (e BaseEntry) WithTag(tag string) BaseEntry {
 
 func (e BaseEntry) WithContext(ctx context.Context) CtxEntry {
 	return CtxEntry{
-		skip: e.skip,
-		tag:  e.tag,
-		ctx:  ctx,
+		logger: e.logger,
+		skip:   e.skip,
+		tag:    e.tag,
+		ctx:    ctx,
 	}
 }
 
@@ -135,10 +142,15 @@ func (e BaseEntry) Fatalf(format string, args ...interface{}) {
 }
 
 type CtxEntry struct {
-	skip  int
-	tag   string
-	ctx   context.Context
-	errno Errno
+	logger *Logger
+	skip   int
+	tag    string
+	ctx    context.Context
+	errno  Errno
+}
+
+func (e *CtxEntry) Logger() *Logger {
+	return e.logger
 }
 
 func (e *CtxEntry) Skip() int {

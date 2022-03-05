@@ -21,35 +21,42 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/go-spring/spring-base/atomic"
 	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-base/color"
 	"github.com/go-spring/spring-base/util"
 )
 
-// Console 控制台日志输出。
-var Console = newConsole()
-
-type console struct {
-	level atomic.Int32
+func init() {
+	RegisterAppenderFactory("ConsoleAppender", new(ConsoleAppenderFactory))
 }
 
-func newConsole() *console {
-	c := &console{}
-	c.SetLevel(InfoLevel)
-	return c
+type ConsoleAppenderFactory struct{}
+
+func (f *ConsoleAppenderFactory) NewAppenderConfig() AppenderConfig {
+	return new(ConsoleAppenderConfig)
 }
 
-func (c *console) Level() Level {
-	return Level(c.level.Load())
+func (f *ConsoleAppenderFactory) NewAppender(config AppenderConfig) (Appender, error) {
+	return NewConsoleAppender(config.(*ConsoleAppenderConfig)), nil
 }
 
-func (c *console) SetLevel(level Level) {
-	c.level.Store(int32(level))
+type ConsoleAppenderConfig struct {
+	Name string `xml:"name,attr"`
 }
 
-func (c *console) Print(msg *Message) {
-	defer func() { msg.Reuse() }()
+func (c *ConsoleAppenderConfig) GetName() string {
+	return c.Name
+}
+
+type ConsoleAppender struct {
+	config *ConsoleAppenderConfig
+}
+
+func NewConsoleAppender(config *ConsoleAppenderConfig) *ConsoleAppender {
+	return &ConsoleAppender{config: config}
+}
+
+func (c *ConsoleAppender) Append(msg *Message) {
 	level := msg.Level
 	strLevel := strings.ToUpper(level.String())
 	if level >= ErrorLevel {
