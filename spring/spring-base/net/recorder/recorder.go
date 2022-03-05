@@ -30,20 +30,17 @@ import (
 )
 
 const (
-	loggerTag  = "_recorder_tag"
-	sessionKey = "::RECORD-SESSION-ID::"
+	sessionKey = "RECORD-SESSION-ID"
+)
+
+var (
+	logger = log.GetLogger("GS_RECORDER")
 )
 
 func init() {
 	if cast.ToBool(os.Getenv("GS_FASTDEV_RECORD")) {
 		recorder.mode = true
-		SetLogger(log.Console)
 	}
-}
-
-// SetLogger 设置录制模块使用的日志。
-func SetLogger(o log.Logger) {
-	log.RegisterLogger(o, loggerTag)
 }
 
 var recorder struct {
@@ -68,21 +65,12 @@ type recordSession struct {
 	close   bool
 }
 
-type ctxRecordKeyType int
-
-var ctxRecordKey ctxRecordKeyType
-
-// EnableRecord 从 context.Context 对象是否开启流量录制。
-func EnableRecord(ctx context.Context) bool {
-	return RecordMode() && ctx.Value(ctxRecordKey) == true
-}
-
 // StartRecord 开始流量录制
-func StartRecord(ctx context.Context, sessionID string) context.Context {
+func StartRecord(ctx context.Context, sessionID string) {
 	var err error
 	defer func() {
 		if err != nil {
-			log.WithSkip(1).Error(err)
+			logger.WithSkip(1).Error(err)
 		}
 	}()
 	r := &recordSession{session: &Session{
@@ -92,25 +80,18 @@ func StartRecord(ctx context.Context, sessionID string) context.Context {
 	_, loaded := recorder.data.LoadOrStore(sessionID, r)
 	if loaded {
 		err = errors.New("session already started")
-		return ctx
+		return
 	}
 	err = knife.Store(ctx, sessionKey, sessionID)
-	if err != nil {
-		return ctx
-	}
-	return context.WithValue(ctx, ctxRecordKey, true)
 }
 
 // StopRecord 停止流量录制
 func StopRecord(ctx context.Context) *Session {
-	var ret *Session
-	onSession(ctx, func(r *recordSession) error {
+	return onSession(ctx, func(r *recordSession) error {
 		recorder.data.Delete(r.session.Session)
 		r.close = true
-		ret = r.session
 		return nil
 	})
-	return ret
 }
 
 type SimpleAction struct {
@@ -158,33 +139,36 @@ func RecordAction(ctx context.Context, protocol string, action *SimpleAction) {
 	})
 }
 
-func onSession(ctx context.Context, f func(*recordSession) error) {
+func onSession(ctx context.Context, f func(*recordSession) error) *Session {
 	var err error
 	defer func() {
 		if err != nil {
-			log.WithSkip(2).Error(err)
+			logger.WithSkip(2).Error(err)
 		}
 	}()
 	if !recorder.mode {
 		err = errors.New("record mode not enabled")
-		return
+		return nil
 	}
 	v, err := knife.Load(ctx, sessionKey)
 	if err != nil {
-		return
+		return nil
 	}
 	if v == nil {
 		err = errors.New("session id not found")
-		return
+		return nil
 	}
 	sessionID := v.(string)
 	v, ok := recorder.data.Load(sessionID)
 	if !ok {
 		err = errors.New("session not found")
-		return
+		return nil
 	}
 	r := v.(*recordSession)
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
-	err = f(r)
+	if err = f(r); err != nil {
+		return nil
+	}
+	return r.session
 }

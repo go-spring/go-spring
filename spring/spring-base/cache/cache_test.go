@@ -65,7 +65,7 @@ type redis struct{}
 
 func (r *redis) getValue(ctx context.Context, key string) (ret string, err error) {
 	defer func() {
-		if recorder.EnableRecord(ctx) {
+		if recorder.RecordMode() {
 			recorder.RecordAction(ctx, recorder.REDIS, &recorder.SimpleAction{
 				Request: func() string {
 					return key
@@ -178,7 +178,7 @@ func TestRecord(t *testing.T) {
 		err := clock.SetFixedTime(ctx, time.Unix(0, 0))
 		assert.Nil(t, err)
 
-		ctx = recorder.StartRecord(ctx, sessionID)
+		recorder.StartRecord(ctx, sessionID)
 		loadTypes := testFunc(t, ctx, key)
 		session := recorder.StopRecord(ctx)
 		fmt.Println(recorder.ToPrettyJson(session))

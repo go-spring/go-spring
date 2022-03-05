@@ -236,7 +236,7 @@ func Load(ctx context.Context, key string, loader Loader, opts ...Option) (loadT
 	}
 
 	defer func() {
-		if loadType == LoadCache && recorder.EnableRecord(ctx) {
+		if loadType == LoadCache && recorder.RecordMode() {
 			recorder.RecordAction(ctx, recorder.CACHE, &recorder.SimpleAction{
 				Request: func() string {
 					return key

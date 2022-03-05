@@ -42,7 +42,7 @@ func TestRecordAction(t *testing.T) {
 	assert.Nil(t, err)
 
 	sessionID := "df3b64266ebe4e63a464e135000a07cd"
-	ctx = recorder.StartRecord(ctx, sessionID)
+	recorder.StartRecord(ctx, sessionID)
 
 	recorder.RecordAction(ctx, recorder.REDIS, &recorder.SimpleAction{
 		Request: func() string {

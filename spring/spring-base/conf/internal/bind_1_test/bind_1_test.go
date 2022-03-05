@@ -27,7 +27,22 @@ import (
 )
 
 func init() {
-	log.Console.SetLevel(log.TraceLevel)
+	err := log.Load(`
+		<Configuration>
+			<Appenders>
+				<ConsoleAppender name="Console">
+				</ConsoleAppender>
+			</Appenders>
+			<Loggers>
+				<Root level="TRACE">
+					<AppenderRef ref="Console"/>
+				</Root>
+			</Loggers>
+		</Configuration>
+	`)
+	if err != nil {
+		panic(err)
+	}
 }
 
 type DB struct {
@@ -202,6 +217,6 @@ func TestProperties_Bind(t *testing.T) {
 	t.Run("ignore pointer", func(t *testing.T) {
 		p := conf.New()
 		err := p.Bind(list.New())
-		assert.Error(t, err, ".*/bind.go:87 type \"int\" bind error\n.*/bind.go:433 property \"len\" not exist")
+		assert.Error(t, err, ".*/bind.go:.* type \"int\" bind error\n.*/bind.go:.* property \"len\" not exist")
 	})
 }
