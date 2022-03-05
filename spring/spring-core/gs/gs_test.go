@@ -41,7 +41,22 @@ import (
 )
 
 func init() {
-	log.SetLevel(log.TraceLevel)
+	err := log.Load(`
+		<Configuration>
+			<Appenders>
+				<ConsoleAppender name="Console">
+				</ConsoleAppender>
+			</Appenders>
+			<Loggers>
+				<Root level="TRACE">
+					<AppenderRef ref="Console"/>
+				</Root>
+			</Loggers>
+		</Configuration>
+	`)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func runTest(c gs.Container, fn func(gs.Context)) error {
@@ -540,8 +555,7 @@ func TestApplicationContext_LoadProperties(t *testing.T) {
 	}
 
 	err := runTest(c, func(ctx gs.Context) {
-		assert.Equal(t, ctx.Prop("yaml.list[0]"), "1")
-		assert.Equal(t, ctx.Prop("yaml.list[1]"), "2")
+		assert.Equal(t, ctx.Prop("yaml.list"), "1\r\n2")
 		assert.Equal(t, ctx.Prop("spring.application.name"), "test")
 	})
 	assert.Nil(t, err)
@@ -1864,7 +1878,31 @@ func NewVarObj(s string, options ...VarOptionFunc) *VarObj {
 	return &VarObj{opt.v, s}
 }
 
+func NewNilVarObj(i interface{}, options ...VarOptionFunc) *VarObj {
+	opt := new(VarOption)
+	for _, option := range options {
+		option(opt)
+	}
+	return &VarObj{opt.v, fmt.Sprint(i)}
+}
+
 func TestApplicationContext_RegisterOptionBean(t *testing.T) {
+
+	t.Run("nil param 0", func(t *testing.T) {
+		c := gs.New()
+		c.Property("var.obj", "description")
+		c.Object(&Var{"v1"}).Name("v1")
+		c.Object(&Var{"v2"}).Name("v2")
+		c.Provide(NewNilVarObj, arg.Nil())
+		err := runTest(c, func(p gs.Context) {
+			var obj *VarObj
+			err := p.Get(&obj)
+			assert.Nil(t, err)
+			assert.Equal(t, len(obj.v), 0)
+			assert.Equal(t, obj.s, "<nil>")
+		})
+		assert.Nil(t, err)
+	})
 
 	t.Run("variable option param 1", func(t *testing.T) {
 		c := gs.New()

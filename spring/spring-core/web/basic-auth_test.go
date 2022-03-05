@@ -34,7 +34,6 @@ func TestBasicAuthFilter(t *testing.T) {
 		Accounts: map[string]string{"Aladdin": "open sesame"},
 	})
 	web.NewFilterChain([]web.Filter{f}).Next(ctx)
-	user, ok := ctx.Get(web.AuthUserKey)
-	assert.True(t, ok)
+	user := ctx.Get(web.AuthUserKey)
 	assert.Equal(t, user, "Aladdin")
 }

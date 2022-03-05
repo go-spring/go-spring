@@ -58,7 +58,7 @@ func RunCase(t *testing.T, d redis.Driver, c cases.Case) {
 	assert.Nil(t, err)
 
 	sessionID := "df3b64266ebe4e63a464e135000a07cd"
-	ctx = recorder.StartRecord(ctx, sessionID)
+	recorder.StartRecord(ctx, sessionID)
 
 	c.Func(t, ctx, client)
 

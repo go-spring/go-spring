@@ -142,9 +142,10 @@ func getSliceValue(p *Properties, et reflect.Type, param BindParam) (*Properties
 
 	strVal := ""
 	wantDef := false
+	fn := converters[et]
 	primitive := util.IsPrimitiveValueType(et)
 
-	if primitive {
+	if fn != nil || primitive {
 		if !p.Has(param.Key) {
 			wantDef = true
 		} else {
@@ -160,7 +161,7 @@ func getSliceValue(p *Properties, et reflect.Type, param BindParam) (*Properties
 
 	if wantDef {
 		if !param.hasDef {
-			return nil, ErrNotExist
+			return nil, util.Errorf(code.FileLine(), "property %q %w", param.Key, ErrNotExist)
 		}
 		if param.def == "" {
 			return nil, nil
@@ -176,7 +177,7 @@ func getSliceValue(p *Properties, et reflect.Type, param BindParam) (*Properties
 	}
 
 	p = New()
-	for i, s := range strings.Split(strVal, ",") {
+	for i, s := range strings.Split(strVal, delimiter) {
 		k := fmt.Sprintf("%s[%d]", param.Key, i)
 		if err := p.Set(k, s); err != nil {
 			return nil, err

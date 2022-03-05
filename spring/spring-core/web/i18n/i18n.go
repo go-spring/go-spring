@@ -340,14 +340,20 @@ func SetDefaultLanguage(language string) {
 
 // SetLanguage 设置上下文语言。
 func SetLanguage(ctx context.Context, language string) error {
-	return knife.Set(ctx, languageKey, language)
+	return knife.Store(ctx, languageKey, language)
 }
 
 // Get 获取语言对应的配置项，从 context.Context 中获取上下文语言。
 func Get(ctx context.Context, key string) string {
 
 	language := defaultLanguage
-	_, _ = knife.Fetch(ctx, languageKey, &language)
+	v, err := knife.Load(ctx, languageKey)
+	if err == nil {
+		str, ok := v.(string)
+		if ok {
+			language = str
+		}
+	}
 
 	if m, ok := languageMap[language]; ok && m != nil {
 		if m.Has(key) {

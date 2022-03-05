@@ -31,6 +31,8 @@ import (
 	"github.com/go-spring/spring-base/util"
 )
 
+const delimiter = "\r\n"
+
 // Properties 提供创建和读取属性列表的方法。它使用扁平的 map[string]string 结
 // 构存储数据，属性的 key 可以是 a.b.c 或者 a[0].b 两种形式，a.b.c 表示从 map
 // 结构中获取属性值，a[0].b 表示从切片结构中获取属性值，并且 key 是大小写敏感的。
@@ -275,9 +277,11 @@ func (p *Properties) Set(key string, val interface{}) error {
 			p.m[key] = ""
 			return p.checkKey(key, true)
 		}
-		if util.IsPrimitiveValueType(v.Type().Elem()) {
+		vItem0 := v.Index(0).Interface()
+		tItem0 := reflect.TypeOf(vItem0)
+		if util.IsPrimitiveValueType(tItem0) {
 			ss := cast.ToStringSlice(val)
-			err := p.Set(key, strings.Join(ss, ","))
+			err := p.Set(key, strings.Join(ss, delimiter))
 			if err != nil {
 				return err
 			}

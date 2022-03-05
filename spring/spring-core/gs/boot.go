@@ -35,8 +35,21 @@ func init() {
 	{
 		s := os.Getenv("CGO_CFLAGS")
 		if strings.Contains(s, "-O0") && strings.Contains(s, "-g") {
-			if !log.EnableDebug() {
-				log.SetLevel(log.DebugLevel)
+			err := log.Load(`
+				<Configuration>
+					<Appenders>
+						<ConsoleAppender name="Console">
+						</ConsoleAppender>
+					</Appenders>
+					<Loggers>
+						<Root level="DEBUG">
+							<AppenderRef ref="Console"/>
+						</Root>
+					</Loggers>
+				</Configuration>
+			`)
+			if err != nil {
+				panic(err)
 			}
 		}
 	}
@@ -201,13 +214,13 @@ func File(path string, file string) *web.Mapper {
 }
 
 // Static 定义一组文件资源
-func Static(prefix string, root string) *web.Mapper {
-	return app().Static(prefix, root)
+func Static(prefix string, dir string) *web.Mapper {
+	return app().Static(prefix, dir)
 }
 
 // StaticFS 定义一组文件资源
-func StaticFS(prefix string, root http.FileSystem) *web.Mapper {
-	return app().StaticFS(prefix, root)
+func StaticFS(prefix string, fs http.FileSystem) *web.Mapper {
+	return app().StaticFS(prefix, fs)
 }
 
 // Consume 参考 App.Consume 的解释。

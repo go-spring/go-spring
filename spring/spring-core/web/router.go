@@ -142,6 +142,15 @@ type Router interface {
 
 	// RequestBinding 注册任意 HTTP 方法处理函数
 	RequestBinding(method uint32, path string, fn interface{}) *Mapper
+
+	// File 定义单个文件资源
+	File(path string, file string) *Mapper
+
+	// Static 定义一组文件资源
+	Static(prefix string, dir string) *Mapper
+
+	// StaticFS 定义一组文件资源
+	StaticFS(prefix string, fs http.FileSystem) *Mapper
 }
 
 // router 路由注册接口的默认实现
@@ -243,4 +252,23 @@ func (r *router) RequestMapping(method uint32, path string, fn HandlerFunc) *Map
 // RequestBinding 注册任意 HTTP 方法处理函数
 func (r *router) RequestBinding(method uint32, path string, fn interface{}) *Mapper {
 	return r.request(method, path, BIND(fn))
+}
+
+// File 定义单个文件资源
+func (r *router) File(path string, file string) *Mapper {
+	return r.GetMapping(path, func(ctx Context) {
+		ctx.File(file)
+	})
+}
+
+// Static 定义一组文件资源
+func (r *router) Static(prefix string, dir string) *Mapper {
+	return r.StaticFS(prefix, http.Dir(dir))
+}
+
+// StaticFS 定义一组文件资源
+func (r *router) StaticFS(prefix string, fs http.FileSystem) *Mapper {
+	fileServer := http.FileServer(fs)
+	h := WrapH(http.StripPrefix(prefix, fileServer))
+	return r.HandleGet(prefix+"/*", h)
 }

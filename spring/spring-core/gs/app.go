@@ -30,7 +30,6 @@ import (
 	"syscall"
 
 	"github.com/go-spring/spring-base/conf"
-	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-core/grpc"
 	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/gs/internal"
@@ -141,7 +140,7 @@ func (app *App) Run() error {
 	}
 
 	app.c.Close()
-	log.Info("application exited")
+	logger.Info("application exited")
 	return nil
 }
 
@@ -213,7 +212,7 @@ func (app *App) start() error {
 		}
 	})
 
-	log.Info("application started successfully")
+	logger.Info("application started successfully")
 	return nil
 }
 
@@ -332,7 +331,7 @@ func (app *App) loadResource(e *configuration, filename string) ([]Resource, err
 
 // ShutDown 关闭执行器
 func (app *App) ShutDown(msg ...string) {
-	log.Infof("program will exit %s", strings.Join(msg, " "))
+	logger.Infof("program will exit %s", strings.Join(msg, " "))
 	select {
 	case <-app.exitChan:
 		// chan 已关闭，无需再次关闭。
@@ -451,19 +450,17 @@ func (app *App) RequestBinding(method uint32, path string, fn interface{}) *web.
 
 // File 定义单个文件资源
 func (app *App) File(path string, file string) *web.Mapper {
-	return app.GetMapping(path, func(c web.Context) { c.File(file) })
+	return app.router.File(path, file)
 }
 
 // Static 定义一组文件资源
-func (app *App) Static(prefix string, root string) *web.Mapper {
-	return app.StaticFS(prefix, http.Dir(root))
+func (app *App) Static(prefix string, dir string) *web.Mapper {
+	return app.router.Static(prefix, dir)
 }
 
 // StaticFS 定义一组文件资源
-func (app *App) StaticFS(prefix string, root http.FileSystem) *web.Mapper {
-	fileServer := http.FileServer(root)
-	handler := web.WrapH(http.StripPrefix(prefix, fileServer))
-	return app.HandleGet(prefix+"/*", handler)
+func (app *App) StaticFS(prefix string, fs http.FileSystem) *web.Mapper {
+	return app.router.StaticFS(prefix, fs)
 }
 
 // Consume 注册 MQ 消费者。

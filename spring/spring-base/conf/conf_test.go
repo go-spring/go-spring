@@ -231,11 +231,11 @@ func TestProperties_ReadYaml(t *testing.T) {
 			val  interface{}
 			kind reflect.Kind
 		}{
-			{"bool[0]", "bool: [false]", "false", reflect.Bool},
-			{"int[0]", "int: [3]", "3", reflect.Int},
-			{"float[0]", "float: [3.0]", "3", reflect.Float64},
-			{"string[0]", "string: [\"3\"]", "3", reflect.String},
-			{"string[0]", "string: [hello]", "hello", reflect.String},
+			{"bool", "bool: [false,true]", "false\r\ntrue", reflect.Bool},
+			{"int", "int: [3,4]", "3\r\n4", reflect.Int},
+			{"float", "float: [3.0,4.1]", "3\r\n4.1", reflect.Float64},
+			{"string", "string: [\"3\",\"4\"]", "3\r\n4", reflect.String},
+			{"string", "string: [hello,world]", "hello\r\nworld", reflect.String},
 		}
 
 		for _, d := range data {
@@ -352,6 +352,16 @@ func TestProperties_ReadYaml(t *testing.T) {
 		assert.Nil(t, err)
 		assert.True(t, p.Has("map"))
 		assert.True(t, p.Has("array"))
+	})
+
+	t.Run("string_list", func(t *testing.T) {
+		p, err := conf.Bytes([]byte("string_list: \n  - a\n  - b\n  - c\n"), ".yaml")
+		assert.Nil(t, err)
+		assert.True(t, p.Has("string_list"))
+		var v []string
+		err = p.Bind(&v, conf.Key("string_list"))
+		assert.Nil(t, err)
+		assert.Equal(t, v, []string{"a", "b", "c"})
 	})
 }
 
@@ -481,27 +491,14 @@ func TestProperties_Get(t *testing.T) {
 				},
 			},
 		})
-		v := p.Get("a[0][0]")
-		assert.Equal(t, v, "1")
-		v = p.Get("a[0][1]")
-		assert.Equal(t, v, "2")
-		v = p.Get("a[1][0]")
-		assert.Equal(t, v, "3")
-		v = p.Get("a[1][1]")
-		assert.Equal(t, v, "4")
+		v := p.Get("a[0]")
+		assert.Equal(t, v, "1\r\n2")
+		v = p.Get("a[1]")
+		assert.Equal(t, v, "3\r\n4")
 		v = p.Get("a[2].b")
 		assert.Equal(t, v, "c")
-		v = p.Get("a[2].d[0]")
-		assert.Equal(t, v, "5")
-		v = p.Get("a[2].d[0]")
-		assert.Equal(t, v, "5")
-		v = p.Get("a[2].d[1]")
-		assert.Equal(t, v, "6")
-		v = p.Get("a[2].d[1]")
-		assert.Equal(t, v, "6")
-
-		assert.False(t, p.Has("a[2].d[2]"))
-		assert.Equal(t, p.Get("a[2].d[2]"), "")
+		v = p.Get("a[2].d")
+		assert.Equal(t, v, "5\r\n6")
 	})
 }
 
@@ -733,7 +730,7 @@ func TestProperties_Set(t *testing.T) {
 	assert.Nil(t, err)
 	err = p.Set("c", []float32{1, 1.1, 1.11})
 	assert.Nil(t, err)
-	assert.Equal(t, p.Get("a"), "a,aa,aaa")
-	assert.Equal(t, p.Get("b"), "1,11,111")
-	assert.Equal(t, p.Get("c"), "1,1.1,1.11")
+	assert.Equal(t, p.Get("a"), "a\r\naa\r\naaa")
+	assert.Equal(t, p.Get("b"), "1\r\n11\r\n111")
+	assert.Equal(t, p.Get("c"), "1\r\n1.1\r\n1.11")
 }

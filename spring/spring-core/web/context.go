@@ -31,6 +31,10 @@ import (
 // ContextKey Context 和 NativeContext 相互转换的 Key
 const ContextKey = "@WebCtx"
 
+var (
+	logger = log.GetLogger("GS_WEB")
+)
+
 // FuncErrorHandler func 形式定义错误处理接口
 type FuncErrorHandler func(ctx Context, err *HttpError)
 
@@ -43,7 +47,7 @@ var defaultErrorHandler = FuncErrorHandler(func(ctx Context, err *HttpError) {
 
 	defer func() {
 		if r := recover(); r != nil {
-			log.Ctx(ctx.Context()).Error(log.ERROR, r)
+			logger.WithContext(ctx.Context()).Error(log.ERROR, r)
 		}
 	}()
 
@@ -114,7 +118,7 @@ type Context interface {
 	NativeContext() interface{}
 
 	// Get retrieves data from the context.
-	Get(key string) (interface{}, bool)
+	Get(key string) interface{}
 
 	// Set saves data in the context.
 	Set(key string, val interface{}) error

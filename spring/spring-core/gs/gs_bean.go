@@ -19,7 +19,6 @@ package gs
 import (
 	"errors"
 	"fmt"
-	"math"
 	"reflect"
 	"runtime"
 	"strings"
@@ -35,11 +34,6 @@ type BeanSelector = internal.BeanSelector
 func BeanID(typ interface{}, name string) string {
 	return util.TypeName(reflect.TypeOf(typ)) + ":" + name
 }
-
-const (
-	HighestOrder = math.MinInt32
-	LowestOrder  = math.MaxInt32
-)
 
 type beanStatus int8
 
@@ -100,7 +94,7 @@ type BeanDefinition struct {
 	primary bool           // 是否为主版本
 	method  bool           // 是否为成员方法
 	cond    cond.Condition // 判断条件
-	order   int            // 收集时的顺序
+	order   float32        // 收集时的顺序
 	init    interface{}    // 初始化函数
 	destroy interface{}    // 销毁函数
 	depends []BeanSelector // 间接依赖项
@@ -193,7 +187,7 @@ func (d *BeanDefinition) On(cond cond.Condition) *BeanDefinition {
 }
 
 // Order 设置 bean 的排序序号，值越小顺序越靠前(优先级越高)。
-func (d *BeanDefinition) Order(order int) *BeanDefinition {
+func (d *BeanDefinition) Order(order float32) *BeanDefinition {
 	d.order = order
 	return d
 }
@@ -345,7 +339,6 @@ func NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 		typeName: util.TypeName(t),
 		status:   Default,
 		method:   method,
-		order:    LowestOrder,
 		file:     file,
 		line:     line,
 	}

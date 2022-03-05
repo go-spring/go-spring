@@ -17,8 +17,7 @@
 package web
 
 import (
-	"github.com/go-spring/spring-base/fastdev"
-	"github.com/go-spring/spring-base/knife"
+	"github.com/go-spring/spring-base/net/replayer"
 	"github.com/go-spring/spring-base/util"
 )
 
@@ -27,11 +26,11 @@ const ReplaySessionID = "REPLAY-SESSION-ID"
 
 // StartReplay 开始流量回放
 func StartReplay(ctx Context) {
-	session := ctx.Header(ReplaySessionID)
-	if session == "" {
+	sessionID := ctx.Header(ReplaySessionID)
+	if sessionID == "" {
 		return
 	}
-	err := knife.Set(ctx.Context(), fastdev.ReplaySessionIDKey, session)
+	err := replayer.SetSessionID(ctx.Context(), sessionID)
 	util.Panic(err).When(err != nil)
 }
 

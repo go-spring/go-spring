@@ -29,6 +29,10 @@ import (
 	"github.com/go-spring/spring-core/gs/internal"
 )
 
+var (
+	logger = log.GetRootLogger()
+)
+
 // Context IoC 容器对 arg 模块提供的最小功能集。
 type Context interface {
 
@@ -83,6 +87,11 @@ func R6(arg Arg) IndexArg { return Index(7, arg) }
 // ValueArg 包含具体值的参数绑定。
 type ValueArg struct {
 	v interface{}
+}
+
+// Nil 返回 nil 的参数绑定。
+func Nil() ValueArg {
+	return ValueArg{v: nil}
 }
 
 // Value 返回包含具体值的参数绑定。
@@ -216,12 +225,12 @@ func (r *argList) getArg(ctx Context, arg Arg, t reflect.Type, fileLine string) 
 	)
 
 	description := fmt.Sprintf("arg:\"%v\" %s", arg, fileLine)
-	log.Tracef("get value %s", description)
+	logger.Tracef("get value %s", description)
 	defer func() {
 		if err == nil {
-			log.Tracef("get value success %s", description)
+			logger.Tracef("get value success %s", description)
 		} else {
-			log.Tracef("get value error %s %s", err.Error(), description)
+			logger.Tracef("get value error %s %s", err.Error(), description)
 		}
 	}()
 
@@ -235,6 +244,9 @@ func (r *argList) getArg(ctx Context, arg Arg, t reflect.Type, fileLine string) 
 			return results[0], nil
 		}
 	case ValueArg:
+		if g.v == nil {
+			return reflect.Zero(t), nil
+		}
 		return reflect.ValueOf(g.v), nil
 	case *optionArg:
 		return g.call(ctx)
@@ -309,12 +321,12 @@ func (arg *optionArg) call(ctx Context) (reflect.Value, error) {
 		err error
 	)
 
-	log.Tracef("call option func %s", arg.r.fileLine)
+	logger.Tracef("call option func %s", arg.r.fileLine)
 	defer func() {
 		if err == nil {
-			log.Tracef("call option func success %s", arg.r.fileLine)
+			logger.Tracef("call option func success %s", arg.r.fileLine)
 		} else {
-			log.Tracef("call option func error %s %s", err.Error(), arg.r.fileLine)
+			logger.Tracef("call option func error %s %s", err.Error(), arg.r.fileLine)
 		}
 	}()
 

@@ -22,74 +22,58 @@ import (
 	"strconv"
 
 	"github.com/go-spring/spring-base/cast"
-	"github.com/go-spring/spring-base/fastdev"
-	"github.com/go-spring/spring-base/knife"
 	"github.com/go-spring/spring-base/log"
-	"github.com/go-spring/spring-base/util"
+	"github.com/go-spring/spring-base/net/recorder"
+	"github.com/google/uuid"
 )
 
 // StartRecord 启动流量录制
 func StartRecord(ctx Context) {
-	if !fastdev.RecordMode() {
+	r, err := uuid.NewRandom()
+	if err != nil {
+		logger.WithContext(ctx.Context()).Error(log.ERROR, err)
 		return
 	}
-	session := fastdev.NewSessionID()
-	err := knife.Set(ctx.Context(), fastdev.RecordSessionIDKey, session)
-	util.Panic(err).When(err != nil)
+	recorder.StartRecord(ctx.Context(), r.String())
 }
 
 // StopRecord 停止流量录制
 func StopRecord(ctx Context) {
-
-	if !fastdev.RecordMode() {
-		return
-	}
-
 	req := ctx.Request()
 	resp := ctx.ResponseWriter()
-
-	var bufReq bytes.Buffer
-	err := req.Write(&bufReq)
-	if err != nil {
-		log.Ctx(ctx.Context()).Error(log.ERROR, err)
-		return
-	}
-
-	var bufResp bytes.Buffer
-
-	is11 := req.ProtoAtLeast(1, 1)
-	writeStatusLine(&bufResp, is11, resp.Status())
-	err = resp.Header().WriteSubset(&bufResp, nil)
-	if err != nil {
-		log.Ctx(ctx.Context()).Error(log.ERROR, err)
-		return
-	}
-
-	if resp.Header().Get("Content-Length") == "" {
-		bufResp.WriteString("Content-Length: ")
-		bufResp.WriteString(cast.ToString(resp.Size()))
-		bufResp.WriteString("\r\n")
-	}
-
-	bufResp.WriteString("\r\n")
-	bufResp.WriteString(resp.Body())
-
-	fastdev.RecordInbound(ctx.Request().Context(), &fastdev.Action{
-		Protocol: fastdev.HTTP,
-		Request:  bufReq.String(),
-		Response: bufResp.String(),
+	recorder.RecordInbound(req.Context(), recorder.HTTP, &recorder.SimpleAction{
+		Request: func() string {
+			var buf bytes.Buffer
+			err := req.Write(&buf)
+			if err != nil {
+				return err.Error()
+			}
+			return buf.String()
+		},
+		Response: func() string {
+			var buf bytes.Buffer
+			is11 := req.ProtoAtLeast(1, 1)
+			if is11 {
+				buf.WriteString("HTTP/1.1 ")
+			} else {
+				buf.WriteString("HTTP/1.0 ")
+			}
+			buf.Write(strconv.AppendInt([]byte{}, int64(resp.Status()), 10))
+			buf.WriteByte(' ')
+			buf.WriteString(http.StatusText(resp.Status()))
+			buf.WriteString("\r\n")
+			err := resp.Header().WriteSubset(&buf, nil)
+			if err != nil {
+				return err.Error()
+			}
+			if resp.Header().Get("Content-Length") == "" {
+				buf.WriteString("Content-Length: ")
+				buf.WriteString(cast.ToString(resp.Size()))
+				buf.WriteString("\r\n")
+			}
+			buf.WriteString("\r\n")
+			buf.WriteString(resp.Body())
+			return buf.String()
+		},
 	})
-}
-
-func writeStatusLine(buf *bytes.Buffer, is11 bool, code int) {
-	if is11 {
-		buf.WriteString("HTTP/1.1 ")
-	} else {
-		buf.WriteString("HTTP/1.0 ")
-	}
-	text := http.StatusText(code)
-	buf.Write(strconv.AppendInt([]byte{}, int64(code), 10))
-	buf.WriteByte(' ')
-	buf.WriteString(text)
-	buf.WriteString("\r\n")
 }

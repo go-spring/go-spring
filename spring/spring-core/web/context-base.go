@@ -31,6 +31,7 @@ import (
 	"strings"
 
 	"github.com/go-spring/spring-base/knife"
+	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-base/util"
 )
 
@@ -57,13 +58,18 @@ func (c *BaseContext) NativeContext() interface{} {
 }
 
 // Get retrieves data from the context.
-func (c *BaseContext) Get(key string) (interface{}, bool) {
-	return knife.Get(c.Context(), key)
+func (c *BaseContext) Get(key string) interface{} {
+	v, err := knife.Load(c.Context(), key)
+	if err != nil {
+		logger.WithContext(c.Context()).Error(log.ERROR, err)
+		return nil
+	}
+	return v
 }
 
 // Set saves data in the context.
 func (c *BaseContext) Set(key string, val interface{}) error {
-	return knife.Set(c.Context(), key, val)
+	return knife.Store(c.Context(), key, val)
 }
 
 // Request returns `*http.Request`.

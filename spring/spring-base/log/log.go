@@ -279,11 +279,16 @@ func Load(configFile string) error {
 		}
 	}
 
+	rootLogger, ok := configLoggers[RootLoggerName]
+	if !ok {
+		return fmt.Errorf("no logger `%s` found", RootLoggerName)
+	}
+
 	for name, usingLogger := range usingLoggers {
-		if configLogger, ok := configLoggers[name]; ok {
-			usingLogger.config.Store(configLogger.config.Load())
+		if l, ok := configLoggers[name]; ok {
+			usingLogger.config.Store(l.config.Load())
 		} else {
-			return fmt.Errorf("no logger `%s` found", name)
+			usingLogger.config.Store(rootLogger.config.Load())
 		}
 	}
 	return nil

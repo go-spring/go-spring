@@ -58,11 +58,11 @@ func TestProperties_ReadToml(t *testing.T) {
 			val  interface{}
 			kind reflect.Kind
 		}{
-			{"bool[0]", "bool=[false]", "false", reflect.Bool},
-			{"int[0]", "int=[3]", "3", reflect.Int},
-			{"float[0]", "float=[3.0]", "3", reflect.Float64},
-			{"string[0]", "string=[\"3\"]", "3", reflect.String},
-			{"string[0]", "string=[\"hello\"]", "hello", reflect.String},
+			{"bool", "bool=[false,true]", "false\r\ntrue", reflect.Bool},
+			{"int", "int=[3,4]", "3\r\n4", reflect.Int},
+			{"float", "float=[3.0,4.1]", "3\r\n4.1", reflect.Float64},
+			{"string", "string=[\"3\",\"4\"]", "3\r\n4", reflect.String},
+			{"string", "string=[\"hello\",\"world\"]", "hello\r\nworld", reflect.String},
 		}
 
 		for _, d := range data {
