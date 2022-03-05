@@ -23,7 +23,6 @@ import (
 	"io"
 	"runtime"
 	"strings"
-	"time"
 
 	"github.com/go-spring/spring-base/atomic"
 )
@@ -36,23 +35,6 @@ var (
 	configAppenders   = map[string]Appender{}
 	appenderFactories = map[string]AppenderFactory{}
 )
-
-// Message 定义日志消息。
-type Message struct {
-	Level Level
-	Time  time.Time
-	Ctx   context.Context
-	Tag   string
-	File  string
-	Line  int
-	Args  []interface{}
-	Errno Errno
-}
-
-// Appender 定义日志输出目标。
-type Appender interface {
-	Append(msg *Message)
-}
 
 type AppenderConfig interface {
 	GetName() string
@@ -69,9 +51,9 @@ func RegisterAppenderFactory(appender string, factory AppenderFactory) {
 	appenderFactories[appender] = factory
 }
 
-type loggerConfig struct {
-	level     Level
-	appenders []Appender
+type LoggerConfig struct {
+	Level     Level
+	Appenders []Appender
 }
 
 type Logger struct {
@@ -106,8 +88,15 @@ func GetLogger(name ...string) *Logger {
 	return l
 }
 
-func (l *Logger) getConfig() *loggerConfig {
-	config, _ := l.config.Load().(*loggerConfig)
+func NewLogger(config *LoggerConfig) *Logger {
+	l := &Logger{}
+	l.entry.logger = l
+	l.config.Store(config)
+	return l
+}
+
+func (l *Logger) getConfig() *LoggerConfig {
+	config, _ := l.config.Load().(*LoggerConfig)
 	return config
 }
 
@@ -272,9 +261,9 @@ func Load(configFile string) error {
 				}
 				l := &Logger{}
 				l.entry.logger = l
-				l.config.Store(&loggerConfig{
-					level:     level,
-					appenders: appenders,
+				l.config.Store(&LoggerConfig{
+					Level:     level,
+					Appenders: appenders,
 				})
 				configLoggers[config.Name] = l
 			}

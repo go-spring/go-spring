@@ -57,7 +57,7 @@ func NewConsoleAppender(config *ConsoleAppenderConfig) *ConsoleAppender {
 }
 
 func (c *ConsoleAppender) Append(msg *Message) {
-	level := msg.Level
+	level := msg.Level()
 	strLevel := strings.ToUpper(level.String())
 	if level >= ErrorLevel {
 		strLevel = color.Red.Sprint(strLevel)
@@ -67,10 +67,10 @@ func (c *ConsoleAppender) Append(msg *Message) {
 		strLevel = color.Green.Sprint(strLevel)
 	}
 	var buf bytes.Buffer
-	for _, a := range msg.Args {
+	for _, a := range msg.Args() {
 		buf.WriteString(cast.ToString(a))
 	}
-	strTime := msg.Time.Format("2006-01-02T15:04:05.000")
-	fileLine := util.Contract(fmt.Sprintf("%s:%d", msg.File, msg.Line), 48)
+	strTime := msg.Time().Format("2006-01-02T15:04:05.000")
+	fileLine := util.Contract(fmt.Sprintf("%s:%d", msg.File(), msg.Line()), 48)
 	_, _ = fmt.Printf("[%s][%s][%s] %s\n", strLevel, strTime, fileLine, buf.String())
 }

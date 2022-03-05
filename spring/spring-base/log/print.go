@@ -21,11 +21,20 @@ import (
 	"fmt"
 
 	"github.com/go-spring/spring-base/clock"
+	"github.com/go-spring/spring-base/util"
 )
 
-var defaultLoggerConfig = &loggerConfig{
-	level:     InfoLevel,
-	appenders: []Appender{NewConsoleAppender(new(ConsoleAppenderConfig))},
+var defaultContext context.Context
+
+// SetDefaultContext 设置默认的 context.Context 对象。
+func SetDefaultContext(ctx context.Context) {
+	util.MustTestMode()
+	defaultContext = ctx
+}
+
+var defaultLoggerConfig = &LoggerConfig{
+	Level:     InfoLevel,
+	Appenders: []Appender{NewConsoleAppender(new(ConsoleAppenderConfig))},
 }
 
 func printf(level Level, e Entry, format string, args []interface{}) {
@@ -33,7 +42,7 @@ func printf(level Level, e Entry, format string, args []interface{}) {
 	if config == nil {
 		config = defaultLoggerConfig
 	}
-	if config.level > level {
+	if config.Level > level {
 		return
 	}
 	if len(args) == 1 {
@@ -44,22 +53,22 @@ func printf(level Level, e Entry, format string, args []interface{}) {
 	if format != "" {
 		args = []interface{}{fmt.Sprintf(format, args...)}
 	}
-	doPrint(config.appenders, level, e, args)
+	doPrint(config.Appenders, level, e, args)
 }
 
 func doPrint(appenders []Appender, level Level, e Entry, args []interface{}) {
 	msg := new(Message)
-	msg.Level = level
-	msg.Args = args
-	msg.Tag = e.Tag()
-	msg.Ctx = e.Context()
-	msg.Errno = e.Errno()
-	ctx := msg.Ctx
+	msg.level = level
+	msg.args = args
+	msg.tag = e.Tag()
+	msg.ctx = e.Context()
+	msg.errno = e.Errno()
+	ctx := msg.ctx
 	if ctx == nil {
-		ctx = context.TODO()
+		ctx = defaultContext
 	}
-	msg.Time = clock.Now(ctx)
-	msg.File, msg.Line, _ = Caller(e.Skip()+3, true)
+	msg.time = clock.Now(ctx)
+	msg.file, msg.line, _ = Caller(e.Skip()+3, true)
 	for _, appender := range appenders {
 		appender.Append(msg)
 	}
