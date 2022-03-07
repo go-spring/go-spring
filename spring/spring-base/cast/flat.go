@@ -46,11 +46,15 @@ func FlatSlice(data []string) map[string]string {
 }
 
 func flatPrefix(prefix string, data []byte, result map[string]string) bool {
-	switch trimData := bytes.TrimSpace(data); trimData[0] {
+	switch tempData := bytes.TrimSpace(data); tempData[0] {
 	case '{':
 		var m map[string]json.RawMessage
-		if json.Unmarshal(trimData, &m) != nil || len(m) == 0 {
+		if json.Unmarshal(tempData, &m) != nil {
 			return false
+		}
+		if len(m) == 0 {
+			result[prefix] = "{}"
+			return true
 		}
 		for k, v := range m {
 			k = prefix + "." + k
@@ -60,11 +64,15 @@ func flatPrefix(prefix string, data []byte, result map[string]string) bool {
 		}
 		return true
 	case '[':
-		var s []json.RawMessage
-		if json.Unmarshal(trimData, &s) != nil || len(s) == 0 {
+		var m []json.RawMessage
+		if json.Unmarshal(tempData, &m) != nil {
 			return false
 		}
-		for i, v := range s {
+		if len(m) == 0 {
+			result[prefix] = "[]"
+			return true
+		}
+		for i, v := range m {
 			k := prefix + fmt.Sprintf("[%d]", i)
 			if !flatPrefix(k, v, result) {
 				result[k] = string(v)
@@ -72,25 +80,25 @@ func flatPrefix(prefix string, data []byte, result map[string]string) bool {
 		}
 		return true
 	default:
-		var s string
-		if json.Unmarshal(data, &s) != nil {
+		var strTemp string
+		if json.Unmarshal(data, &strTemp) != nil {
 			result[prefix] = string(data)
 			return true
 		}
-		trimStr := strings.TrimSpace(s)
-		if len(trimStr) == 0 {
-			result[prefix] = s
+		strTemp = strings.TrimSpace(strTemp)
+		if len(strTemp) == 0 {
+			result[prefix] = string(data)
 			return true
 		}
-		switch trimStr[0] {
+		switch strTemp[0] {
 		case '{', '[', '"':
 			k := prefix + ".\"\""
-			if !flatPrefix(k, []byte(trimStr), result) {
-				result[prefix] = s
+			if !flatPrefix(k, []byte(strTemp), result) {
+				result[prefix] = string(data)
 			}
 			return true
 		default:
-			result[prefix] = s
+			result[prefix] = string(data)
 			return true
 		}
 	}
