@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+//go:generate mockgen -build_flags="-mod=mod" -package=assert -source=assert.go -destination=mock.go
+
 // Package assert 提供了一些常用的断言函数。
 package assert
 

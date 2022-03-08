@@ -69,29 +69,29 @@ func TestReplayAction(t *testing.T) {
 				Protocol:  recorder.REDIS,
 				Timestamp: clock.Now(ctx).UnixNano(),
 				Request: recorder.Message(func() string {
-					return cast.ToTTY("SET", "a", "1")
+					return recorder.EncodeTTY("SET", "a", "1")
 				}),
 				Response: recorder.Message(func() string {
-					return cast.ToCSV(1, "2", 3)
+					return recorder.EncodeCSV(1, "2", 3)
 				}),
 			}, {
 				Protocol:  recorder.REDIS,
 				Timestamp: clock.Now(ctx).UnixNano(),
 				Request: recorder.Message(func() string {
-					return cast.ToTTY("SET", "a", "\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n")
+					return recorder.EncodeTTY("SET", "a", "\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n")
 				}),
 				Response: recorder.Message(func() string {
-					return cast.ToCSV("\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n")
+					return recorder.EncodeCSV("\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n")
 				}),
 			},
 			{
 				Protocol:  recorder.REDIS,
 				Timestamp: clock.Now(ctx).UnixNano(),
 				Request: recorder.Message(func() string {
-					return cast.ToTTY("HGET", "a")
+					return recorder.EncodeTTY("HGET", "a")
 				}),
 				Response: recorder.Message(func() string {
-					return cast.ToCSV("a", "b", "c", 3, "d", "\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n")
+					return recorder.EncodeCSV("a", "b", "c", 3, "d", "\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n")
 				}),
 			},
 		},
@@ -109,11 +109,11 @@ func TestReplayAction(t *testing.T) {
 
 	defer agent.Delete(session.Session)
 
-	request := cast.ToTTY("SET", "a", "1")
+	request := recorder.EncodeTTY("SET", "a", "1")
 	response, _, _ := replayer.Query(ctx, recorder.REDIS, request)
 	assert.Equal(t, response, "\"1\",\"2\",\"3\"")
 
-	request = cast.ToTTY("SET", "a", "\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n")
+	request = recorder.EncodeTTY("SET", "a", "\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n")
 	response, _, _ = replayer.Query(ctx, recorder.REDIS, request)
 	assert.Equal(t, response, "\"\\x00\\xc0\\n\\t\\x00\\xbem\\x06\\x89Z(\\x00\\n\"")
 
@@ -172,7 +172,7 @@ func (p *redisProtocol) GetLabel(data string) string {
 }
 
 func (p *redisProtocol) FlatRequest(data string) (map[string]string, error) {
-	csv, err := cast.ParseTTY(data)
+	csv, err := recorder.DecodeTTY(data)
 	if err != nil {
 		return nil, err
 	}
@@ -180,7 +180,7 @@ func (p *redisProtocol) FlatRequest(data string) (map[string]string, error) {
 }
 
 func (p *redisProtocol) FlatResponse(data string) (map[string]string, error) {
-	csv, err := cast.ParseCSV(data)
+	csv, err := recorder.DecodeCSV(data)
 	if err != nil {
 		return nil, err
 	}

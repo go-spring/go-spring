@@ -14,14 +14,37 @@
  * limitations under the License.
  */
 
-package cast_test
+package recorder_test
 
 import (
 	"testing"
 
 	"github.com/go-spring/spring-base/assert"
-	"github.com/go-spring/spring-base/cast"
+	"github.com/go-spring/spring-base/net/recorder"
 )
+
+func TestCSV(t *testing.T) {
+	inputs := []interface{}{
+		"CMD",
+		1,
+		true,
+		"string",
+		"\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n",
+	}
+	data := recorder.EncodeCSV(inputs...)
+	assert.Equal(t, data, `"CMD","1","true","string","\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n"`)
+	outputs, err := recorder.DecodeCSV(data)
+	if err != nil {
+		return
+	}
+	assert.Equal(t, outputs, []string{
+		"CMD",
+		"1",
+		"true",
+		"string",
+		"\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n",
+	})
+}
 
 func TestTTY(t *testing.T) {
 	inputs := []interface{}{
@@ -33,9 +56,9 @@ func TestTTY(t *testing.T) {
 		"this is a quote \"",
 		"\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n",
 	}
-	data := cast.ToTTY(inputs...)
+	data := recorder.EncodeTTY(inputs...)
 	assert.Equal(t, data, `CMD 1 true string "hello world" "this is a quote \"" "\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n"`)
-	outputs, err := cast.ParseTTY(data)
+	outputs, err := recorder.DecodeTTY(data)
 	if err != nil {
 		return
 	}

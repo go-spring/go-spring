@@ -23,7 +23,6 @@ import (
 	"time"
 
 	"github.com/go-spring/spring-base/assert"
-	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-base/clock"
 	"github.com/go-spring/spring-base/knife"
 	"github.com/go-spring/spring-base/net/recorder"
@@ -46,19 +45,19 @@ func TestRecordAction(t *testing.T) {
 
 	recorder.RecordAction(ctx, recorder.REDIS, &recorder.SimpleAction{
 		Request: func() string {
-			return cast.ToTTY("SET", "a", "\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n")
+			return recorder.EncodeTTY("SET", "a", "\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n")
 		},
 		Response: func() string {
-			return cast.ToCSV("\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n")
+			return recorder.EncodeCSV("\x00\xc0\n\t\x00\xbem\x06\x89Z(\x00\n")
 		},
 	})
 
 	recorder.RecordAction(ctx, recorder.REDIS, &recorder.SimpleAction{
 		Request: func() string {
-			return cast.ToTTY("LRANGE", "list", 0, -1)
+			return recorder.EncodeTTY("LRANGE", "list", 0, -1)
 		},
 		Response: func() string {
-			return cast.ToCSV("1", 2, "3")
+			return recorder.EncodeCSV("1", 2, "3")
 		},
 	})
 
