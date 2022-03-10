@@ -25,27 +25,39 @@ import (
 
 const rootKey = "$"
 
-// Flat 将 json 字符串解析成一维映射表，如 {"a":{"b":"c"}} 解析成 a.b=c 映射表。
-func Flat(data []byte) map[string]string {
+// FlatJSON 将 JSON 字符串解析成一维映射表，如 {"a":{"b":"c"}} 解析为 {"$a.b":"c"}。
+func FlatJSON(data interface{}) map[string]string {
 	result := make(map[string]string)
-	if !flatPrefix(rootKey, data, result) {
-		result[rootKey] = string(data)
-	}
-	return result
-}
-
-func FlatSlice(data []string) map[string]string {
-	result := make(map[string]string)
-	for i, v := range data {
-		k := rootKey + fmt.Sprintf("[%d]", i)
-		if !flatPrefix(k, []byte(v), result) {
-			result[k] = v
+	switch v := data.(type) {
+	case []byte:
+		if !flatJsonPrefix(rootKey, v, result) {
+			result[rootKey] = string(v)
+		}
+	case string:
+		if !flatJsonPrefix(rootKey, []byte(v), result) {
+			result[rootKey] = v
+		}
+	case [][]byte:
+		for i, b := range v {
+			k := rootKey + fmt.Sprintf("[%d]", i)
+			if !flatJsonPrefix(k, b, result) {
+				result[k] = string(b)
+			}
+		}
+	case []string:
+		for i, s := range v {
+			k := rootKey + fmt.Sprintf("[%d]", i)
+			if !flatJsonPrefix(k, []byte(s), result) {
+				result[k] = s
+			}
 		}
 	}
 	return result
 }
 
-func flatPrefix(prefix string, data []byte, result map[string]string) bool {
+// flatJsonPrefix JSON 可以是数字(整数或浮点数)、字符串("")、布尔值(true/false)、数组([])、
+// 对象({})、空值(null)。
+func flatJsonPrefix(prefix string, data []byte, result map[string]string) bool {
 	switch tempData := bytes.TrimSpace(data); tempData[0] {
 	case '{':
 		var m map[string]json.RawMessage
@@ -58,7 +70,7 @@ func flatPrefix(prefix string, data []byte, result map[string]string) bool {
 		}
 		for k, v := range m {
 			k = prefix + "." + k
-			if !flatPrefix(k, v, result) {
+			if !flatJsonPrefix(k, v, result) {
 				result[k] = string(v)
 			}
 		}
@@ -74,7 +86,7 @@ func flatPrefix(prefix string, data []byte, result map[string]string) bool {
 		}
 		for i, v := range m {
 			k := prefix + fmt.Sprintf("[%d]", i)
-			if !flatPrefix(k, v, result) {
+			if !flatJsonPrefix(k, v, result) {
 				result[k] = string(v)
 			}
 		}
@@ -93,7 +105,7 @@ func flatPrefix(prefix string, data []byte, result map[string]string) bool {
 		switch strTemp[0] {
 		case '{', '[', '"':
 			k := prefix + ".\"\""
-			if !flatPrefix(k, []byte(strTemp), result) {
+			if !flatJsonPrefix(k, []byte(strTemp), result) {
 				result[prefix] = string(data)
 			}
 			return true

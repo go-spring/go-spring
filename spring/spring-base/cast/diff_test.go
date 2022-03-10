@@ -43,7 +43,7 @@ func printDiff(t *testing.T, m map[string]cast.DiffItem) {
 	}
 }
 
-func TestJsonDiff(t *testing.T) {
+func TestDiffJSON(t *testing.T) {
 
 	var testcases = []struct {
 		a, b   string
@@ -118,10 +118,10 @@ func TestJsonDiff(t *testing.T) {
 		},
 	}
 
-	for _, testcase := range testcases {
-		m, err := cast.JsonDiff([]byte(testcase.a), []byte(testcase.b), testcase.opts...)
+	for _, c := range testcases {
+		m, err := cast.DiffJSON(c.a, c.b, c.opts...)
 		assert.Nil(t, err)
 		printDiff(t, m)
-		assert.Equal(t, m, testcase.expect)
+		assert.Equal(t, m, c.expect)
 	}
 }

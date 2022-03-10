@@ -30,6 +30,7 @@ type diffArg struct {
 
 type DiffOption func(arg *diffArg)
 
+// Ignore 忽略某些项。
 func Ignore(a ...string) DiffOption {
 	return func(arg *diffArg) {
 		for _, k := range a {
@@ -38,13 +39,15 @@ func Ignore(a ...string) DiffOption {
 	}
 }
 
+// Compare 设置某些项的比较规则。
 func Compare(key string, differ Differ) DiffOption {
 	return func(arg *diffArg) {
 		arg.differs[key] = differ
 	}
 }
 
-func JsonDiff(a, b []byte, opts ...DiffOption) (map[string]DiffItem, error) {
+// DiffMap 比较两个映射表。
+func DiffMap(a, b map[string]string, opts ...DiffOption) (map[string]DiffItem, error) {
 
 	arg := diffArg{
 		ignores: make(map[string]struct{}),
@@ -54,17 +57,15 @@ func JsonDiff(a, b []byte, opts ...DiffOption) (map[string]DiffItem, error) {
 		opt(&arg)
 	}
 
-	ma := Flat(a)
-	mb := Flat(b)
 	same := make(map[string]struct{})
 	result := make(map[string]DiffItem)
 
-	for k, va := range ma {
+	for k, va := range a {
 		_, ok := arg.ignores[k]
 		if ok {
 			continue
 		}
-		vb, ok := mb[k]
+		vb, ok := b[k]
 		if !ok {
 			result[k] = DiffItem{A: va}
 			continue
@@ -81,7 +82,7 @@ func JsonDiff(a, b []byte, opts ...DiffOption) (map[string]DiffItem, error) {
 		result[k] = DiffItem{A: va, B: vb}
 	}
 
-	for k, vb := range mb {
+	for k, vb := range b {
 		if _, ok := arg.ignores[k]; ok {
 			continue
 		}
@@ -94,4 +95,9 @@ func JsonDiff(a, b []byte, opts ...DiffOption) (map[string]DiffItem, error) {
 		result[k] = DiffItem{B: vb}
 	}
 	return result, nil
+}
+
+// DiffJSON 比较 a,b 执行 FlatJSON 操作之后的结果。
+func DiffJSON(a, b interface{}, opts ...DiffOption) (map[string]DiffItem, error) {
+	return DiffMap(FlatJSON(a), FlatJSON(b), opts...)
 }

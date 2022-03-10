@@ -42,7 +42,7 @@ func printResult(t *testing.T, m map[string]string) {
 	}
 }
 
-func TestFlat(t *testing.T) {
+func TestFlatJSON_String(t *testing.T) {
 
 	var testcases = []struct {
 		data   string
@@ -322,14 +322,14 @@ func TestFlat(t *testing.T) {
 		},
 	}
 
-	for _, testcase := range testcases {
-		m := cast.Flat([]byte(testcase.data))
+	for _, c := range testcases {
+		m := cast.FlatJSON(c.data)
 		printResult(t, m)
-		assert.Equal(t, m, testcase.expect)
+		assert.Equal(t, m, c.expect)
 	}
 }
 
-func TestFlatSlice(t *testing.T) {
+func TestFlatJSON_StringSlice(t *testing.T) {
 
 	var testcases = []struct {
 		data   []string
@@ -609,9 +609,9 @@ func TestFlatSlice(t *testing.T) {
 		},
 	}
 
-	for _, testcase := range testcases {
-		m := cast.FlatSlice(testcase.data)
+	for _, c := range testcases {
+		m := cast.FlatJSON(c.data)
 		printResult(t, m)
-		assert.Equal(t, m, testcase.expect)
+		assert.Equal(t, m, c.expect)
 	}
 }
