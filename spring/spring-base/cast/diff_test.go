@@ -17,7 +17,6 @@
 package cast_test
 
 import (
-	"encoding/json"
 	"fmt"
 	"math"
 	"sort"
@@ -25,6 +24,7 @@ import (
 
 	"github.com/go-spring/spring-base/assert"
 	"github.com/go-spring/spring-base/cast"
+	"github.com/go-spring/spring-base/json"
 )
 
 func printDiff(t *testing.T, m map[string]cast.DiffItem) {
@@ -44,6 +44,9 @@ func printDiff(t *testing.T, m map[string]cast.DiffItem) {
 }
 
 func TestDiffJSON(t *testing.T) {
+
+	rootPath, err := json.CompilePath("$")
+	assert.Nil(t, err)
 
 	var testcases = []struct {
 		a, b   string
@@ -70,7 +73,7 @@ func TestDiffJSON(t *testing.T) {
 			b:      "b",
 			expect: map[string]cast.DiffItem{},
 			opts: []cast.DiffOption{
-				cast.Ignore("$"),
+				cast.IgnorePath(rootPath),
 			},
 		},
 		{
@@ -118,10 +121,10 @@ func TestDiffJSON(t *testing.T) {
 		},
 	}
 
-	for _, c := range testcases {
+	for i, c := range testcases {
 		m, err := cast.DiffJSON(c.a, c.b, c.opts...)
 		assert.Nil(t, err)
 		printDiff(t, m)
-		assert.Equal(t, m, c.expect)
+		assert.Equal(t, m, c.expect, fmt.Sprintf("index=%d", i))
 	}
 }

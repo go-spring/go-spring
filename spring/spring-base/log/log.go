@@ -31,8 +31,6 @@ const RootLoggerName = "Root"
 
 var (
 	usingLoggers      = map[string]*Logger{}
-	configLoggers     = map[string]*Logger{}
-	configAppenders   = map[string]Appender{}
 	appenderFactories = map[string]AppenderFactory{}
 )
 
@@ -57,6 +55,7 @@ type LoggerConfig struct {
 }
 
 type Logger struct {
+	name   string
 	entry  BaseEntry
 	config atomic.Value
 }
@@ -82,9 +81,9 @@ func GetLogger(name ...string) *Logger {
 	if ok {
 		return l
 	}
-	l = &Logger{}
+	l = &Logger{name: name[0]}
 	l.entry.logger = l
-	usingLoggers[name[0]] = l
+	usingLoggers[l.name] = l
 	return l
 }
 
@@ -93,6 +92,10 @@ func NewLogger(config *LoggerConfig) *Logger {
 	l.entry.logger = l
 	l.config.Store(config)
 	return l
+}
+
+func (l *Logger) Name() string {
+	return l.name
 }
 
 func (l *Logger) getConfig() *LoggerConfig {
@@ -188,11 +191,18 @@ func (l *Logger) Fatalf(format string, args ...interface{}) {
 // Load 加载日志配置文件。
 func Load(configFile string) error {
 
-	var (
-		inAppenders bool
-		inLoggers   bool
+	const (
+		EnterConfiguration = 1
+		ExitConfiguration  = 2
+		EnterAppenders     = 3
+		ExitAppenders      = 4
+		EnterLoggers       = 5
+		ExitLoggers        = 6
 	)
 
+	state := 0
+	configLoggers := map[string]*Logger{}
+	configAppenders := map[string]Appender{}
 	d := xml.NewDecoder(strings.NewReader(configFile))
 	for {
 		token, err := d.Token()
@@ -206,15 +216,16 @@ func Load(configFile string) error {
 		case xml.StartElement:
 			switch t.Name.Local {
 			case "Configuration":
+				state = EnterConfiguration
 				continue
 			case "Appenders":
-				inAppenders = true
+				state = EnterAppenders
 				continue
 			case "Loggers":
-				inLoggers = true
+				state = EnterLoggers
 				continue
 			}
-			if inAppenders {
+			if state == EnterAppenders {
 				factory, ok := appenderFactories[t.Name.Local]
 				if !ok {
 					return fmt.Errorf("no appender factory `%s` found", t.Name.Local)
@@ -232,7 +243,7 @@ func Load(configFile string) error {
 				configAppenders[config.GetName()] = appender
 				continue
 			}
-			if inLoggers {
+			if state == EnterLoggers {
 				var config struct {
 					Name         string `xml:"name,attr"`
 					Level        string `xml:"level,attr"`
@@ -269,11 +280,14 @@ func Load(configFile string) error {
 			}
 		case xml.EndElement:
 			switch t.Name.Local {
+			case "Configuration":
+				state = ExitConfiguration
+				continue
 			case "Appenders":
-				inAppenders = false
+				state = ExitAppenders
 				continue
 			case "Loggers":
-				inLoggers = false
+				state = ExitLoggers
 				continue
 			}
 		}

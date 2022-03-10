@@ -84,6 +84,13 @@ func TestAtomicAndMutex(t *testing.T) {
 	fmt.Println(time.Since(start))
 }
 
+func TestGetLogger(t *testing.T) {
+	logger := log.GetLogger("log_test")
+	assert.Equal(t, logger.Name(), "log_test")
+	logger = log.GetLogger()
+	assert.Equal(t, logger.Name(), "github.com/go-spring/spring-base/log_test")
+}
+
 func TestRootLogger(t *testing.T) {
 
 	logger := log.GetLogger(log.RootLoggerName)
