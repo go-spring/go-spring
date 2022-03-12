@@ -26,23 +26,16 @@ import (
 	"github.com/go-spring/spring-base/util"
 )
 
-var converters = map[reflect.Type]interface{}{}
+// Converter 类型转换器，函数原型为 func(string)(type,error)。
+type Converter interface{}
 
-func init() {
+// Splitter 字符串分割器，用于将字符串按逗号分割成字符串切片。
+type Splitter func(string) ([]string, error)
 
-	// time.Time 转换函数，支持时间戳格式，支持日期字符串(日期字符串>>日期字符串的格式)。
-	Convert(func(s string) (time.Time, error) {
-		format := "2006-01-02 15:04:05 -0700"
-		if ss := strings.Split(s, ">>"); len(ss) == 2 {
-			format = strings.TrimSpace(ss[1])
-			s = strings.TrimSpace(ss[0])
-		}
-		return cast.ToTimeE(s, format)
-	})
-
-	// time.Duration 转换函数，支持 "ns", "us" (or "µs"), "ms", "s", "m", "h" 等。
-	Convert(func(s string) (time.Duration, error) { return cast.ToDurationE(s) })
-}
+var (
+	splitters  = map[string]Splitter{}
+	converters = map[reflect.Type]Converter{}
+)
 
 func validConverter(t reflect.Type) bool {
 	return t.Kind() == reflect.Func &&
@@ -53,11 +46,31 @@ func validConverter(t reflect.Type) bool {
 		util.IsErrorType(t.Out(1))
 }
 
-// Convert 注册类型转换器，转换器的函数原型为 func(string)(type,error) 。
-func Convert(fn interface{}) {
+// RegisterConverter 注册类型转换器。
+func RegisterConverter(fn interface{}) {
 	t := reflect.TypeOf(fn)
 	if !validConverter(t) {
 		panic(errors.New("fn must be func(string)(type,error)"))
 	}
 	converters[t.Out(0)] = fn
+}
+
+// RegisterSplitter 注册字符串分割器。
+func RegisterSplitter(name string, fn Splitter) {
+	splitters[name] = fn
+}
+
+// TimeConverter 转换函数，支持时间戳格式，支持日期字符串(日期字符串>>日期字符串的格式)。
+func TimeConverter(s string) (time.Time, error) {
+	format := "2006-01-02 15:04:05 -0700"
+	if ss := strings.Split(s, ">>"); len(ss) == 2 {
+		format = strings.TrimSpace(ss[1])
+		s = strings.TrimSpace(ss[0])
+	}
+	return cast.ToTimeE(s, format)
+}
+
+// DurationConverter 转换函数，支持 "ns", "us" (or "µs"), "ms", "s", "m", "h" 等。
+func DurationConverter(s string) (time.Duration, error) {
+	return cast.ToDurationE(s)
 }

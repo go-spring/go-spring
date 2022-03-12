@@ -37,28 +37,30 @@ var (
 )
 
 type BindParam struct {
-	Type   reflect.Type // 绑定对象的类型
-	Key    string       // 完整的属性名
-	Path   string       // 绑定对象的路径
-	def    string       // 默认值
-	hasDef bool         // 是否具有默认值
+	Type reflect.Type // 绑定对象的类型
+	Key  string       // 完整的属性名
+	Path string       // 绑定对象的路径
+	Tag  ParsedTag    // 解析后的 tag
+}
+
+type ParsedTag struct {
+	Key    string // 简短属性名
+	Def    string // 默认值
+	HasDef bool   // 是否具有默认值
+	Split  string // 字符串分割器
 }
 
 func (param *BindParam) BindTag(tag string) error {
-
-	if !validTag(tag) {
-		return util.Errorf(code.FileLine(), "%s 属性绑定字符串 %q 语法错误", param.Path, tag)
+	parsedTag, err := ParseTag(tag)
+	if err != nil {
+		return err
 	}
-
-	key, def, hasDef := parseTag(tag)
+	param.Tag = parsedTag
 	if param.Key == "" {
-		param.Key = key
-	} else if key != "" {
-		param.Key = param.Key + "." + key
+		param.Key = parsedTag.Key
+	} else if parsedTag.Key != "" {
+		param.Key = param.Key + "." + parsedTag.Key
 	}
-
-	param.hasDef = hasDef
-	param.def = def
 	return nil
 }
 
@@ -142,10 +144,9 @@ func getSliceValue(p *Properties, et reflect.Type, param BindParam) (*Properties
 
 	strVal := ""
 	wantDef := false
-	fn := converters[et]
 	primitive := util.IsPrimitiveValueType(et)
 
-	if fn != nil || primitive {
+	if converters[et] != nil || primitive {
 		if !p.Has(param.Key) {
 			wantDef = true
 		} else {
@@ -160,26 +161,39 @@ func getSliceValue(p *Properties, et reflect.Type, param BindParam) (*Properties
 	}
 
 	if wantDef {
-		if !param.hasDef {
+		if !param.Tag.HasDef {
 			return nil, util.Errorf(code.FileLine(), "property %q %w", param.Key, ErrNotExist)
 		}
-		if param.def == "" {
+		if param.Tag.Def == "" {
 			return nil, nil
 		}
-		if !primitive {
-			return nil, util.Errorf(code.FileLine(), "%s array 类型不能为简单类型指定非空默认值", param.Path)
+		if !primitive && converters[et] == nil {
+			return nil, util.Errorf(code.FileLine(), "%s 不能为非自定义的复杂类型数组指定非空默认值", param.Path)
 		}
-		strVal = param.def
+		strVal = param.Tag.Def
 	}
 
 	if strVal == "" {
 		return nil, nil
 	}
 
+	var (
+		err    error
+		arrVal []string
+	)
+
+	if s := param.Tag.Split; s == "" {
+		arrVal = strings.Split(strVal, ",")
+	} else if fn := splitters[s]; fn != nil {
+		if arrVal, err = fn(strVal); err != nil {
+			return nil, err
+		}
+	}
+
 	p = New()
-	for i, s := range strings.Split(strVal, delimiter) {
+	for i, s := range arrVal {
 		k := fmt.Sprintf("%s[%d]", param.Key, i)
-		if err := p.Set(k, s); err != nil {
+		if err = p.Set(k, s); err != nil {
 			return nil, err
 		}
 	}
@@ -242,8 +256,8 @@ func bindSlice(p *Properties, v reflect.Value, param BindParam) error {
 
 func bindMap(p *Properties, v reflect.Value, param BindParam) error {
 
-	if param.hasDef {
-		if param.def == "" {
+	if param.Tag.HasDef {
+		if param.Tag.Def == "" {
 			return nil
 		}
 		return util.Errorf(code.FileLine(), "%s map 类型不能指定非空默认值", param.Path)
@@ -297,7 +311,7 @@ func bindMap(p *Properties, v reflect.Value, param BindParam) error {
 
 func bindStruct(p *Properties, v reflect.Value, param BindParam) error {
 
-	if param.hasDef && param.def != "" {
+	if param.Tag.HasDef && param.Tag.Def != "" {
 		return util.Errorf(code.FileLine(), "%s struct 类型不能指定非空默认值", param.Path)
 	}
 
@@ -353,19 +367,38 @@ func bindStruct(p *Properties, v reflect.Value, param BindParam) error {
 	return nil
 }
 
-// validTag 返回是否为 ${key:=def} 格式的字符串。
-func validTag(tag string) bool {
-	return strings.HasPrefix(tag, "${") && strings.HasSuffix(tag, "}")
-}
-
-// parseTag 解析 ${key:=def} 格式的字符串，然后返回 key 和 def 的值。
-func parseTag(tag string) (key string, def string, hasDef bool) {
-	ss := strings.SplitN(tag[2:len(tag)-1], ":=", 2)
-	if len(ss) > 1 {
-		hasDef = true
-		def = ss[1]
+// ParseTag 解析 ${key:=def}|split 格式的字符串，然后返回 key 和 def 的值。
+func ParseTag(tag string) (ret ParsedTag, err error) {
+	i := strings.LastIndex(tag, "|")
+	if i == 0 {
+		err = util.Errorf(code.FileLine(), "%q 语法错误", tag)
+		return
 	}
-	key = ss[0]
+	j := strings.LastIndex(tag, "}")
+	if j <= 0 {
+		err = util.Errorf(code.FileLine(), "%q 语法错误", tag)
+		return
+	}
+	var (
+		left  = tag[:j]
+		right string
+	)
+	if i > j {
+		right = tag[i+1:]
+	}
+	k := strings.Index(left, "${")
+	if k < 0 {
+		err = util.Errorf(code.FileLine(), "%q 语法错误", tag)
+		return
+	}
+	left = left[k+2:]
+	ret.Split = right
+	ssLeft := strings.SplitN(left, ":=", 2)
+	ret.Key = ssLeft[0]
+	if len(ssLeft) > 1 {
+		ret.HasDef = true
+		ret.Def = ssLeft[1]
+	}
 	return
 }
 
@@ -432,8 +465,8 @@ func resolve(p *Properties, param BindParam) (string, error) {
 	if val, ok := p.m[param.Key]; ok {
 		return resolveString(p, val)
 	}
-	if param.hasDef {
-		return resolveString(p, param.def)
+	if param.Tag.HasDef {
+		return resolveString(p, param.Tag.Def)
 	}
 	return "", util.Errorf(code.FileLine(), "property %q %w", param.Key, ErrNotExist)
 }

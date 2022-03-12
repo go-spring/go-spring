@@ -17,9 +17,12 @@
 package conf_test
 
 import (
+	"errors"
 	"fmt"
+	"image"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -61,6 +64,9 @@ func TestProperties_Load(t *testing.T) {
 	for _, k := range keys {
 		fmt.Println(k+":", p.Get(k))
 	}
+
+	assert.Equal(t, p.Get("properties.list"), "1,2")
+	assert.Equal(t, p.Get("yaml.list"), "1,2")
 }
 
 func TestProperties_ReadProperties(t *testing.T) {
@@ -97,11 +103,11 @@ func TestProperties_ReadProperties(t *testing.T) {
 			val  interface{}
 			kind reflect.Kind
 		}{
-			{"bool[0]", "bool[0]=false", "false", reflect.String},
-			{"int[0]", "int[0]=3", "3", reflect.String},
-			{"float[0]", "float[0]=3.0", "3.0", reflect.String},
-			{"string[0]", "string[0]=\"3\"", "\"3\"", reflect.String},
-			{"string[0]", "string[0]=hello", "hello", reflect.String},
+			{"bool", "bool[0]=false", "false", reflect.String},
+			{"int", "int[0]=3", "3", reflect.String},
+			{"float", "float[0]=3.0", "3.0", reflect.String},
+			{"string", "string[0]=\"3\"", "\"3\"", reflect.String},
+			{"string", "string[0]=hello", "hello", reflect.String},
 		}
 
 		for _, d := range data {
@@ -231,11 +237,11 @@ func TestProperties_ReadYaml(t *testing.T) {
 			val  interface{}
 			kind reflect.Kind
 		}{
-			{"bool", "bool: [false,true]", "false\r\ntrue", reflect.Bool},
-			{"int", "int: [3,4]", "3\r\n4", reflect.Int},
-			{"float", "float: [3.0,4.1]", "3\r\n4.1", reflect.Float64},
-			{"string", "string: [\"3\",\"4\"]", "3\r\n4", reflect.String},
-			{"string", "string: [hello,world]", "hello\r\nworld", reflect.String},
+			{"bool", "bool: [false,true]", "false,true", reflect.Bool},
+			{"int", "int: [3,4]", "3,4", reflect.Int},
+			{"float", "float: [3.0,4.1]", "3,4.1", reflect.Float64},
+			{"string", "string: [\"3\",\"4\"]", "3,4", reflect.String},
+			{"string", "string: [hello,world]", "hello,world", reflect.String},
 		}
 
 		for _, d := range data {
@@ -492,13 +498,13 @@ func TestProperties_Get(t *testing.T) {
 			},
 		})
 		v := p.Get("a[0]")
-		assert.Equal(t, v, "1\r\n2")
+		assert.Equal(t, v, "1,2")
 		v = p.Get("a[1]")
-		assert.Equal(t, v, "3\r\n4")
+		assert.Equal(t, v, "3,4")
 		v = p.Get("a[2].b")
 		assert.Equal(t, v, "c")
 		v = p.Get("a[2].d")
-		assert.Equal(t, v, "5\r\n6")
+		assert.Equal(t, v, "5,6")
 	})
 }
 
@@ -694,9 +700,7 @@ func TestProperties_Has(t *testing.T) {
 	assert.Nil(t, err)
 	err = p.Set("a.b.d", "4")
 	assert.Nil(t, err)
-	err = p.Set("a.b.e[0]", "5")
-	assert.Nil(t, err)
-	err = p.Set("a.b.e[1]", "6")
+	err = p.Set("a.b.e", "5,6")
 	assert.Nil(t, err)
 	err = p.Set("a.b.f", []string{"7", "8"})
 	assert.Nil(t, err)
@@ -707,8 +711,8 @@ func TestProperties_Has(t *testing.T) {
 	assert.True(t, p.Has("a.b.d"))
 
 	assert.True(t, p.Has("a.b.e"))
-	assert.True(t, p.Has("a.b.e[0]"))
-	assert.True(t, p.Has("a.b.e[1]"))
+	assert.False(t, p.Has("a.b.e[0]"))
+	assert.False(t, p.Has("a.b.e[1]"))
 
 	assert.False(t, p.Has("a.b[0].c"))
 }
@@ -730,7 +734,35 @@ func TestProperties_Set(t *testing.T) {
 	assert.Nil(t, err)
 	err = p.Set("c", []float32{1, 1.1, 1.11})
 	assert.Nil(t, err)
-	assert.Equal(t, p.Get("a"), "a\r\naa\r\naaa")
-	assert.Equal(t, p.Get("b"), "1\r\n11\r\n111")
-	assert.Equal(t, p.Get("c"), "1\r\n1.1\r\n1.11")
+	assert.Equal(t, p.Get("a"), "a,aa,aaa")
+	assert.Equal(t, p.Get("b"), "1,11,111")
+	assert.Equal(t, p.Get("c"), "1,1.1,1.11")
+}
+
+func PointConverter(val string) (image.Point, error) {
+	if !(strings.HasPrefix(val, "(") && strings.HasSuffix(val, ")")) {
+		return image.Point{}, errors.New("数据格式错误")
+	}
+	ss := strings.Split(val[1:len(val)-1], ",")
+	x := cast.ToInt(ss[0])
+	y := cast.ToInt(ss[1])
+	return image.Point{X: x, Y: y}, nil
+}
+
+func PointSplitter(str string) ([]string, error) {
+	ss := strings.Split(str, ",")
+	ret := make([]string, len(ss)/2)
+	for i := 0; i < len(ss); i += 2 {
+		ret[i/2] = ss[i] + "," + ss[i+1]
+	}
+	return ret, nil
+}
+
+func TestSplitter(t *testing.T) {
+	conf.RegisterConverter(PointConverter)
+	conf.RegisterSplitter("PointSplitter", PointSplitter)
+	var points []image.Point
+	err := conf.New().Bind(&points, conf.Tag("${:=(1,2),(3,4)}|PointSplitter"))
+	assert.Nil(t, err)
+	assert.Equal(t, points, []image.Point{{X: 1, Y: 2}, {X: 3, Y: 4}})
 }
