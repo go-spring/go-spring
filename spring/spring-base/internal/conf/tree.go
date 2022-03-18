@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"fmt"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -32,6 +33,7 @@ var (
 
 type Node interface {
 	Clone() Node
+	JSON() string
 }
 
 type NilNode struct{}
@@ -44,6 +46,10 @@ func (n *NilNode) Clone() Node {
 	return nilNode
 }
 
+func (n *NilNode) JSON() string {
+	return "null"
+}
+
 type ValueNode struct {
 	Data string
 }
@@ -54,6 +60,10 @@ func NewValueNode(data string) *ValueNode {
 
 func (n *ValueNode) Clone() Node {
 	return &ValueNode{Data: n.Data}
+}
+
+func (n *ValueNode) JSON() string {
+	return strconv.Quote(n.Data)
 }
 
 type MapNode struct {
@@ -80,6 +90,24 @@ func (n *MapNode) Get(key string) Node {
 
 func (n *MapNode) Set(key string, node Node) {
 	n.Data[key] = node
+}
+
+func (n *MapNode) JSON() string {
+	var buf bytes.Buffer
+	buf.WriteByte('{')
+	index := 0
+	count := len(n.Data)
+	for key, value := range n.Data {
+		buf.WriteString(strconv.Quote(key))
+		buf.WriteByte(':')
+		buf.WriteString(value.JSON())
+		if index < count-1 {
+			buf.WriteByte(',')
+		}
+		index++
+	}
+	buf.WriteByte('}')
+	return buf.String()
 }
 
 type ArrayNode struct {
@@ -118,6 +146,24 @@ func (n *ArrayNode) Set(index int, node Node) {
 	n.Data = data
 }
 
+func (n *ArrayNode) JSON() string {
+	var buf bytes.Buffer
+	buf.WriteByte('[')
+	count := len(n.Data)
+	for i, value := range n.Data {
+		if value == nil {
+			buf.WriteString("null")
+		} else {
+			buf.WriteString(value.JSON())
+		}
+		if i < count-1 {
+			buf.WriteByte(',')
+		}
+	}
+	buf.WriteByte(']')
+	return buf.String()
+}
+
 func keyToPath(key string) []string {
 	var buf bytes.Buffer
 	for _, c := range key {
@@ -132,71 +178,66 @@ func keyToPath(key string) []string {
 	return strings.Split(buf.String(), ".")
 }
 
-func Parse(node *Node, value interface{}) error {
+func Parse(value interface{}) (Node, error) {
 	switch value.(type) {
 	case nil:
-		*node = NewNilNode()
-		return nil
+		return NewNilNode(), nil
 	default:
 		switch v := reflect.ValueOf(value); v.Kind() {
 		case reflect.Map:
 			if v.Len() == 0 {
-				*node = NewMapNode()
-				return nil
+				return NewMapNode(), nil
 			}
-			iter := v.MapRange()
-			for iter.Next() {
-				var pathNode Node
-				err := Parse(&pathNode, iter.Value().Interface())
+			keys := make([]string, v.Len())
+			for i, k := range v.MapKeys() {
+				strKey, err := cast.ToStringE(k.Interface())
 				if err != nil {
-					return err
+					return nil, err
 				}
-				srcKey, err := cast.ToStringE(iter.Key().Interface())
+				keys[i] = strKey
+			}
+			sort.Strings(keys)
+			var retNode Node
+			for _, key := range keys {
+				val := v.MapIndex(reflect.ValueOf(key))
+				pathNode, err := Parse(val.Interface())
 				if err != nil {
-					return err
+					return nil, err
 				}
-				path := keyToPath(srcKey)
-				err = buildNode(node, srcKey, path, pathNode)
+				err = buildNode(&retNode, keyToPath(key), 0, pathNode)
 				if err != nil {
-					return err
+					return nil, err
 				}
 			}
-			return nil
+			return retNode, nil
 		case reflect.Array, reflect.Slice:
 			retNode := NewArrayNode()
 			for i := v.Len() - 1; i >= 0; i-- {
-				var tmpNode Node
-				err := Parse(&tmpNode, v.Index(i).Interface())
+				tmpNode, err := Parse(v.Index(i).Interface())
 				if err != nil {
-					return err
+					return nil, err
 				}
 				retNode.Set(i, tmpNode)
 			}
-			*node = retNode
-			return nil
+			return retNode, nil
 		case reflect.Bool:
-			*node = NewValueNode(strconv.FormatBool(v.Bool()))
-			return nil
+			return NewValueNode(strconv.FormatBool(v.Bool())), nil
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-			*node = NewValueNode(strconv.FormatInt(v.Int(), 10))
-			return nil
+			return NewValueNode(strconv.FormatInt(v.Int(), 10)), nil
 		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-			*node = NewValueNode(strconv.FormatUint(v.Uint(), 10))
-			return nil
+			return NewValueNode(strconv.FormatUint(v.Uint(), 10)), nil
 		case reflect.Float32, reflect.Float64:
-			*node = NewValueNode(strconv.FormatFloat(v.Float(), 'f', -1, 64))
-			return nil
+			return NewValueNode(strconv.FormatFloat(v.Float(), 'f', -1, 64)), nil
 		case reflect.String:
-			*node = NewValueNode(v.String())
-			return nil
+			return NewValueNode(v.String()), nil
 		default:
-			return fmt.Errorf("unsupported value kind %s", v.Kind())
+			return nil, fmt.Errorf("unsupported value kind %s", v.Kind())
 		}
 	}
 }
 
-func buildNode(node *Node, srcKey string, path []string, pathNode Node) error {
-	switch n, err := strconv.ParseInt(path[0], 10, 64); err != nil {
+func buildNode(node *Node, path []string, depth int, pathNode Node) error {
+	switch n, err := strconv.ParseInt(path[depth], 10, 64); err != nil {
 	case true:
 		var (
 			valNode  Node
@@ -208,26 +249,30 @@ func buildNode(node *Node, srcKey string, path []string, pathNode Node) error {
 			*node = tempNode
 		case *MapNode:
 			tempNode = v
-			valNode = v.Get(path[0])
+			valNode = v.Get(path[depth])
 		default:
-			return fmt.Errorf("key %q conflicts with other key", srcKey)
+			nodeConf := strings.Join(path[:depth], ".") + ":" + v.JSON()
+			pathNodeConf := strings.Join(path[:depth+1], ".") + ":" + pathNode.JSON()
+			return fmt.Errorf("conf %s conflicts with %s", pathNodeConf, nodeConf)
 		}
-		if len(path) == 1 {
+		if depth == len(path)-1 {
 			if valNode != nil {
-				return fmt.Errorf("key %q conflicts with other key", srcKey)
+				valNodeConf := strings.Join(path[:depth+1], ".") + ":" + valNode.JSON()
+				pathNodeConf := strings.Join(path[:depth+1], ".") + ":" + pathNode.JSON()
+				return fmt.Errorf("conf %s conflicts with %s", pathNodeConf, valNodeConf)
 			}
 			valNode = pathNode
 		} else {
-			err = buildNode(&valNode, srcKey, path[1:], pathNode)
+			err = buildNode(&valNode, path, depth+1, pathNode)
 			if err != nil {
 				return err
 			}
 		}
-		tempNode.Set(path[0], valNode)
+		tempNode.Set(path[depth], valNode)
 		return nil
 	default:
 		if n < 0 {
-			return fmt.Errorf("invalid indexed key %s", srcKey)
+			return fmt.Errorf("invalid indexed key %s", strings.Join(path, "."))
 		}
 		var (
 			valNode  Node
@@ -241,15 +286,19 @@ func buildNode(node *Node, srcKey string, path []string, pathNode Node) error {
 			tempNode = v
 			valNode = v.Get(int(n))
 		default:
-			return fmt.Errorf("key %q conflicts with other key", srcKey)
+			nodeConf := strings.Join(path[:depth], ".") + ":" + v.JSON()
+			pathNodeConf := strings.Join(path[:depth], ".") + "[" + path[depth] + "]:" + pathNode.JSON()
+			return fmt.Errorf("conf %s conflicts with %s", pathNodeConf, nodeConf)
 		}
-		if len(path) == 1 {
+		if depth == len(path)-1 {
 			if valNode != nil {
-				return fmt.Errorf("key %q conflicts with other key", srcKey)
+				valNodeConf := strings.Join(path[:depth], ".") + ":" + valNode.JSON()
+				pathNodeConf := strings.Join(path[:depth], ".") + "[" + path[depth] + "]:" + pathNode.JSON()
+				return fmt.Errorf("conf %s conflicts with %s", pathNodeConf, valNodeConf)
 			}
 			valNode = pathNode
 		} else {
-			err = buildNode(&valNode, srcKey, path[1:], pathNode)
+			err = buildNode(&valNode, path, depth+1, pathNode)
 			if err != nil {
 				return err
 			}
