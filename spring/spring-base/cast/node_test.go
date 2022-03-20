@@ -17,7 +17,6 @@
 package cast_test
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/go-spring/spring-base/assert"
@@ -227,7 +226,6 @@ func TestFlatNode(t *testing.T) {
 			}},
 		}},
 	}}
-	fmt.Printf("%#v\n", cast.FlatNode(node))
 	assert.Equal(t, cast.FlatNode(node), map[string]string{
 		"$.[array.in.map][0]": "<nil>",
 		"$.[array.in.map][1]": "value.in.array",
@@ -249,5 +247,41 @@ func TestFlatNode(t *testing.T) {
 		"$.[map.in.map].[val.in.map]":                           "val.in.map",
 		"$.[nil.in.map]":                                        "<nil>",
 		"$.[val.in.map]":                                        "val.in.map",
+	})
+}
+
+func TestMergeNode(t *testing.T) {
+
+	t.Run("merge array", func(t *testing.T) {
+		a := &cast.ArrayNode{Data: []cast.Node{
+			&cast.ValueNode{Data: "3"},
+		}}
+		b := &cast.ArrayNode{Data: []cast.Node{
+			&cast.ValueNode{Data: "4"},
+		}}
+		c, err := cast.MergeNode(a, b)
+		assert.Nil(t, err)
+		assert.Equal(t, c.Value(), []interface{}{"4"})
+	})
+
+	t.Run("merge map", func(t *testing.T) {
+		a := &cast.MapNode{Data: map[string]cast.Node{
+			"a": &cast.MapNode{Data: map[string]cast.Node{
+				"b": &cast.ValueNode{Data: "3"},
+			}},
+		}}
+		b := &cast.MapNode{Data: map[string]cast.Node{
+			"a": &cast.MapNode{Data: map[string]cast.Node{
+				"c": &cast.ValueNode{Data: "4"},
+			}},
+		}}
+		c, err := cast.MergeNode(a, b)
+		assert.Nil(t, err)
+		assert.Equal(t, c.Value(), map[string]interface{}{
+			"a": map[string]interface{}{
+				"b": "3",
+				"c": "4",
+			},
+		})
 	})
 }

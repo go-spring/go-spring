@@ -18,7 +18,10 @@ package cast
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"strconv"
+	"strings"
 )
 
 var (
@@ -180,4 +183,99 @@ func (n *ArrayNode) Value() interface{} {
 		arr[i] = value.Value()
 	}
 	return arr
+}
+
+func MergeNode(a, b Node) (Node, error) {
+	c := a.Clone()
+	err := mergeNode(rootKey, c, b)
+	if err != nil {
+		return nil, err
+	}
+	return c, nil
+}
+
+func mergeNode(prefix string, a, b Node) error {
+	switch v := a.(type) {
+	case *MapNode:
+		return mergeMapNode(prefix, v, b)
+	case *ArrayNode:
+		return mergeArrayNode(prefix, v, b)
+	case *ValueNode:
+		return mergeValueNode(prefix, v, b)
+	case *NilNode:
+		return mergeNilNode(prefix, v, b)
+	default:
+		return errors.New("error node type")
+	}
+}
+
+func mergeMapNode(prefix string, a *MapNode, b Node) error {
+	switch v := b.(type) {
+	case *MapNode:
+		for key, nodeB := range v.Data {
+			nodeA := a.Get(key)
+			if nodeA == nil {
+				a.Set(key, nodeB)
+				continue
+			}
+			if strings.Contains(key, ".") {
+				key = "[" + key + "]"
+			}
+			err := mergeNode(prefix+"."+key, nodeA, nodeB)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	default:
+		nodeA := prefix + ":" + a.JSON()
+		nodeB := prefix + ":" + b.JSON()
+		return fmt.Errorf("conf %s conflicts with %s", nodeA, nodeB)
+	}
+}
+
+func mergeArrayNode(prefix string, a *ArrayNode, b Node) error {
+	switch v := b.(type) {
+	case *ArrayNode:
+		for i := len(v.Data) - 1; i >= 0; i-- {
+			nodeB := v.Get(i)
+			nodeA := a.Get(i)
+			if nodeA == nil {
+				a.Set(i, nodeB)
+				continue
+			}
+			err := mergeNode(prefix+"["+strconv.Itoa(i)+"]", nodeA, nodeB)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	default:
+		nodeA := prefix + ":" + a.JSON()
+		nodeB := prefix + ":" + b.JSON()
+		return fmt.Errorf("conf %s conflicts with %s", nodeA, nodeB)
+	}
+}
+
+func mergeValueNode(prefix string, a *ValueNode, b Node) error {
+	switch v := b.(type) {
+	case *ValueNode:
+		a.Data = v.Data
+		return nil
+	default:
+		nodeA := prefix + ":" + a.JSON()
+		nodeB := prefix + ":" + b.JSON()
+		return fmt.Errorf("conf %s conflicts with %s", nodeA, nodeB)
+	}
+}
+
+func mergeNilNode(prefix string, a *NilNode, b Node) error {
+	switch b.(type) {
+	case *NilNode:
+		return nil
+	default:
+		nodeA := prefix + ":" + a.JSON()
+		nodeB := prefix + ":" + b.JSON()
+		return fmt.Errorf("conf %s conflicts with %s", nodeA, nodeB)
+	}
 }
