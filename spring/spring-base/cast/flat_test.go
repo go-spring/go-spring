@@ -62,11 +62,11 @@ func TestFlatJSON_String(t *testing.T) {
 		},
 		{
 			data:   `"\"3\""`,
-			expect: map[string]string{`$.""`: `"3"`},
+			expect: map[string]string{`$[""]`: `"3"`},
 		},
 		{
 			data:   `"\"\\\"3\\\"\""`,
-			expect: map[string]string{`$."".""`: `"3"`},
+			expect: map[string]string{`$[""][""]`: `"3"`},
 		},
 		{
 			data:   `true`,
@@ -78,11 +78,11 @@ func TestFlatJSON_String(t *testing.T) {
 		},
 		{
 			data:   `"\"true\""`,
-			expect: map[string]string{`$.""`: `"true"`},
+			expect: map[string]string{`$[""]`: `"true"`},
 		},
 		{
 			data:   `"\"\\\"true\\\"\""`,
-			expect: map[string]string{`$."".""`: `"true"`},
+			expect: map[string]string{`$[""][""]`: `"true"`},
 		},
 		{
 			data:   `abc`,
@@ -94,11 +94,11 @@ func TestFlatJSON_String(t *testing.T) {
 		},
 		{
 			data:   `"\"abc\""`,
-			expect: map[string]string{`$.""`: `"abc"`},
+			expect: map[string]string{`$[""]`: `"abc"`},
 		},
 		{
 			data:   `"\"\\\"abc\\\"\""`,
-			expect: map[string]string{`$."".""`: `"abc"`},
+			expect: map[string]string{`$[""][""]`: `"abc"`},
 		},
 		{
 			data:   `{`,
@@ -110,11 +110,11 @@ func TestFlatJSON_String(t *testing.T) {
 		},
 		{
 			data:   `"\"{\""`,
-			expect: map[string]string{`$.""`: `"{"`},
+			expect: map[string]string{`$[""]`: `"{"`},
 		},
 		{
 			data:   `"\"\\\"{\\\"\""`,
-			expect: map[string]string{`$."".""`: `"{"`},
+			expect: map[string]string{`$[""][""]`: `"{"`},
 		},
 		{
 			data:   `}`,
@@ -126,11 +126,11 @@ func TestFlatJSON_String(t *testing.T) {
 		},
 		{
 			data:   `"\"}\""`,
-			expect: map[string]string{`$.""`: `"}"`},
+			expect: map[string]string{`$[""]`: `"}"`},
 		},
 		{
 			data:   `"\"\\\"}\\\"\""`,
-			expect: map[string]string{`$."".""`: `"}"`},
+			expect: map[string]string{`$[""][""]`: `"}"`},
 		},
 		{
 			data:   `{}`,
@@ -138,11 +138,11 @@ func TestFlatJSON_String(t *testing.T) {
 		},
 		{
 			data:   `"{}"`,
-			expect: map[string]string{`$.""`: `{}`},
+			expect: map[string]string{`$[""]`: `{}`},
 		},
 		{
 			data:   `"\"{}\""`,
-			expect: map[string]string{`$."".""`: `{}`},
+			expect: map[string]string{`$[""][""]`: `{}`},
 		},
 		{
 			data:   `[`,
@@ -154,11 +154,11 @@ func TestFlatJSON_String(t *testing.T) {
 		},
 		{
 			data:   `"\"[\""`,
-			expect: map[string]string{`$.""`: `"["`},
+			expect: map[string]string{`$[""]`: `"["`},
 		},
 		{
 			data:   `"\"\\\"[\\\"\""`,
-			expect: map[string]string{`$."".""`: `"["`},
+			expect: map[string]string{`$[""][""]`: `"["`},
 		},
 		{
 			data:   `]`,
@@ -170,11 +170,11 @@ func TestFlatJSON_String(t *testing.T) {
 		},
 		{
 			data:   `"\"]\""`,
-			expect: map[string]string{`$.""`: `"]"`},
+			expect: map[string]string{`$[""]`: `"]"`},
 		},
 		{
 			data:   `"\"\\\"]\\\"\""`,
-			expect: map[string]string{`$."".""`: `"]"`},
+			expect: map[string]string{`$[""][""]`: `"]"`},
 		},
 		{
 			data:   `[]`,
@@ -182,39 +182,39 @@ func TestFlatJSON_String(t *testing.T) {
 		},
 		{
 			data:   `"[]"`,
-			expect: map[string]string{`$.""`: `[]`},
+			expect: map[string]string{`$[""]`: `[]`},
 		},
 		{
 			data:   `"\"[]\""`,
-			expect: map[string]string{`$."".""`: `[]`},
+			expect: map[string]string{`$[""][""]`: `[]`},
 		},
 		{
 			data:   `{"a":null}`,
-			expect: map[string]string{`$.a`: `null`},
+			expect: map[string]string{`$[a]`: `null`},
 		},
 		{
 			data:   `{"a":3}`,
-			expect: map[string]string{`$.a`: `3`},
+			expect: map[string]string{`$[a]`: `3`},
 		},
 		{
 			data:   `{"a":"3"}`,
-			expect: map[string]string{`$.a`: `"3"`},
+			expect: map[string]string{`$[a]`: `"3"`},
 		},
 		{
 			data:   `{"a":"\"3\""}`,
-			expect: map[string]string{`$.a.""`: `"3"`},
+			expect: map[string]string{`$[a][""]`: `"3"`},
 		},
 		{
 			data:   `{"a":true}`,
-			expect: map[string]string{`$.a`: `true`},
+			expect: map[string]string{`$[a]`: `true`},
 		},
 		{
 			data:   `{"a":"true"}`,
-			expect: map[string]string{`$.a`: `"true"`},
+			expect: map[string]string{`$[a]`: `"true"`},
 		},
 		{
 			data:   `{"a":"\"true\""}`,
-			expect: map[string]string{`$.a.""`: `"true"`},
+			expect: map[string]string{`$[a][""]`: `"true"`},
 		},
 		{
 			data:   `{"a":b}`,
@@ -222,11 +222,11 @@ func TestFlatJSON_String(t *testing.T) {
 		},
 		{
 			data:   `{"a":"b"}`,
-			expect: map[string]string{`$.a`: `"b"`},
+			expect: map[string]string{`$[a]`: `"b"`},
 		},
 		{
 			data:   `{"a":"\"b\""}`,
-			expect: map[string]string{`$.a.""`: `"b"`},
+			expect: map[string]string{`$[a][""]`: `"b"`},
 		},
 		{
 			data:   `{"a":{}`,
@@ -234,11 +234,11 @@ func TestFlatJSON_String(t *testing.T) {
 		},
 		{
 			data:   `{"a":"{"}`,
-			expect: map[string]string{`$.a`: `"{"`},
+			expect: map[string]string{`$[a]`: `"{"`},
 		},
 		{
 			data:   `{"a":"\"{\""}`,
-			expect: map[string]string{`$.a.""`: `"{"`},
+			expect: map[string]string{`$[a][""]`: `"{"`},
 		},
 		{
 			data:   `{"a":}}`,
@@ -246,19 +246,19 @@ func TestFlatJSON_String(t *testing.T) {
 		},
 		{
 			data:   `{"a":"}"}`,
-			expect: map[string]string{`$.a`: `"}"`},
+			expect: map[string]string{`$[a]`: `"}"`},
 		},
 		{
 			data:   `{"a":"\"}\""}`,
-			expect: map[string]string{`$.a.""`: `"}"`},
+			expect: map[string]string{`$[a][""]`: `"}"`},
 		},
 		{
 			data:   `{"a":{}}`,
-			expect: map[string]string{`$.a`: `{}`},
+			expect: map[string]string{`$[a]`: `{}`},
 		},
 		{
 			data:   `{"a":"{}"}`,
-			expect: map[string]string{`$.a.""`: `{}`},
+			expect: map[string]string{`$[a][""]`: `{}`},
 		},
 		{
 			data:   `{"a":[}`,
@@ -266,11 +266,11 @@ func TestFlatJSON_String(t *testing.T) {
 		},
 		{
 			data:   `{"a":"["}`,
-			expect: map[string]string{`$.a`: `"["`},
+			expect: map[string]string{`$[a]`: `"["`},
 		},
 		{
 			data:   `{"a":"\"[\""}`,
-			expect: map[string]string{`$.a.""`: `"["`},
+			expect: map[string]string{`$[a][""]`: `"["`},
 		},
 		{
 			data:   `{"a":]}`,
@@ -278,31 +278,31 @@ func TestFlatJSON_String(t *testing.T) {
 		},
 		{
 			data:   `{"a":"]"}`,
-			expect: map[string]string{`$.a`: `"]"`},
+			expect: map[string]string{`$[a]`: `"]"`},
 		},
 		{
 			data:   `{"a":"\"]\""}`,
-			expect: map[string]string{`$.a.""`: `"]"`},
+			expect: map[string]string{`$[a][""]`: `"]"`},
 		},
 		{
 			data:   `{"a":[]}`,
-			expect: map[string]string{`$.a`: `[]`},
+			expect: map[string]string{`$[a]`: `[]`},
 		},
 		{
 			data:   `{"a":"[]"}`,
-			expect: map[string]string{`$.a.""`: `[]`},
+			expect: map[string]string{`$[a][""]`: `[]`},
 		},
 		{
 			data:   `[3,"3","\"3\""]`,
-			expect: map[string]string{`$[0]`: `3`, `$[1]`: `"3"`, `$[2].""`: `"3"`},
+			expect: map[string]string{`$[0]`: `3`, `$[1]`: `"3"`, `$[2][""]`: `"3"`},
 		},
 		{
 			data:   `[true,"true","\"true\""]`,
-			expect: map[string]string{`$[0]`: `true`, `$[1]`: `"true"`, `$[2].""`: `"true"`},
+			expect: map[string]string{`$[0]`: `true`, `$[1]`: `"true"`, `$[2][""]`: `"true"`},
 		},
 		{
 			data:   `[null,"null","\"null\""]`,
-			expect: map[string]string{`$[0]`: `null`, `$[1]`: `"null"`, `$[2].""`: `"null"`},
+			expect: map[string]string{`$[0]`: `null`, `$[1]`: `"null"`, `$[2][""]`: `"null"`},
 		},
 		{
 			data:   `[a]`,
@@ -314,11 +314,11 @@ func TestFlatJSON_String(t *testing.T) {
 		},
 		{
 			data:   `[{},"{}","\"{}\""]`,
-			expect: map[string]string{`$[0]`: `{}`, `$[1].""`: `{}`, `$[2]."".""`: `{}`},
+			expect: map[string]string{`$[0]`: `{}`, `$[1][""]`: `{}`, `$[2][""][""]`: `{}`},
 		},
 		{
 			data:   `[[],"[]","\"[]\""]`,
-			expect: map[string]string{`$[0]`: `[]`, `$[1].""`: `[]`, `$[2]."".""`: `[]`},
+			expect: map[string]string{`$[0]`: `[]`, `$[1][""]`: `[]`, `$[2][""][""]`: `[]`},
 		},
 	}
 
@@ -349,11 +349,11 @@ func TestFlatJSON_StringSlice(t *testing.T) {
 		},
 		{
 			data:   []string{`"\"3\""`},
-			expect: map[string]string{`$[0].""`: `"3"`},
+			expect: map[string]string{`$[0][""]`: `"3"`},
 		},
 		{
 			data:   []string{`"\"\\\"3\\\"\""`},
-			expect: map[string]string{`$[0]."".""`: `"3"`},
+			expect: map[string]string{`$[0][""][""]`: `"3"`},
 		},
 		{
 			data:   []string{`true`},
@@ -365,11 +365,11 @@ func TestFlatJSON_StringSlice(t *testing.T) {
 		},
 		{
 			data:   []string{`"\"true\""`},
-			expect: map[string]string{`$[0].""`: `"true"`},
+			expect: map[string]string{`$[0][""]`: `"true"`},
 		},
 		{
 			data:   []string{`"\"\\\"true\\\"\""`},
-			expect: map[string]string{`$[0]."".""`: `"true"`},
+			expect: map[string]string{`$[0][""][""]`: `"true"`},
 		},
 		{
 			data:   []string{`abc`},
@@ -381,11 +381,11 @@ func TestFlatJSON_StringSlice(t *testing.T) {
 		},
 		{
 			data:   []string{`"\"abc\""`},
-			expect: map[string]string{`$[0].""`: `"abc"`},
+			expect: map[string]string{`$[0][""]`: `"abc"`},
 		},
 		{
 			data:   []string{`"\"\\\"abc\\\"\""`},
-			expect: map[string]string{`$[0]."".""`: `"abc"`},
+			expect: map[string]string{`$[0][""][""]`: `"abc"`},
 		},
 		{
 			data:   []string{`{`},
@@ -397,11 +397,11 @@ func TestFlatJSON_StringSlice(t *testing.T) {
 		},
 		{
 			data:   []string{`"\"{\""`},
-			expect: map[string]string{`$[0].""`: `"{"`},
+			expect: map[string]string{`$[0][""]`: `"{"`},
 		},
 		{
 			data:   []string{`"\"\\\"{\\\"\""`},
-			expect: map[string]string{`$[0]."".""`: `"{"`},
+			expect: map[string]string{`$[0][""][""]`: `"{"`},
 		},
 		{
 			data:   []string{`}`},
@@ -413,11 +413,11 @@ func TestFlatJSON_StringSlice(t *testing.T) {
 		},
 		{
 			data:   []string{`"\"}\""`},
-			expect: map[string]string{`$[0].""`: `"}"`},
+			expect: map[string]string{`$[0][""]`: `"}"`},
 		},
 		{
 			data:   []string{`"\"\\\"}\\\"\""`},
-			expect: map[string]string{`$[0]."".""`: `"}"`},
+			expect: map[string]string{`$[0][""][""]`: `"}"`},
 		},
 		{
 			data:   []string{`{}`},
@@ -425,11 +425,11 @@ func TestFlatJSON_StringSlice(t *testing.T) {
 		},
 		{
 			data:   []string{`"{}"`},
-			expect: map[string]string{`$[0].""`: `{}`},
+			expect: map[string]string{`$[0][""]`: `{}`},
 		},
 		{
 			data:   []string{`"\"{}\""`},
-			expect: map[string]string{`$[0]."".""`: `{}`},
+			expect: map[string]string{`$[0][""][""]`: `{}`},
 		},
 		{
 			data:   []string{`[`},
@@ -441,11 +441,11 @@ func TestFlatJSON_StringSlice(t *testing.T) {
 		},
 		{
 			data:   []string{`"\"[\""`},
-			expect: map[string]string{`$[0].""`: `"["`},
+			expect: map[string]string{`$[0][""]`: `"["`},
 		},
 		{
 			data:   []string{`"\"\\\"[\\\"\""`},
-			expect: map[string]string{`$[0]."".""`: `"["`},
+			expect: map[string]string{`$[0][""][""]`: `"["`},
 		},
 		{
 			data:   []string{`]`},
@@ -457,11 +457,11 @@ func TestFlatJSON_StringSlice(t *testing.T) {
 		},
 		{
 			data:   []string{`"\"]\""`},
-			expect: map[string]string{`$[0].""`: `"]"`},
+			expect: map[string]string{`$[0][""]`: `"]"`},
 		},
 		{
 			data:   []string{`"\"\\\"]\\\"\""`},
-			expect: map[string]string{`$[0]."".""`: `"]"`},
+			expect: map[string]string{`$[0][""][""]`: `"]"`},
 		},
 		{
 			data:   []string{`[]`},
@@ -469,39 +469,39 @@ func TestFlatJSON_StringSlice(t *testing.T) {
 		},
 		{
 			data:   []string{`"[]"`},
-			expect: map[string]string{`$[0].""`: `[]`},
+			expect: map[string]string{`$[0][""]`: `[]`},
 		},
 		{
 			data:   []string{`"\"[]\""`},
-			expect: map[string]string{`$[0]."".""`: `[]`},
+			expect: map[string]string{`$[0][""][""]`: `[]`},
 		},
 		{
 			data:   []string{`{"a":null}`},
-			expect: map[string]string{`$[0].a`: `null`},
+			expect: map[string]string{`$[0][a]`: `null`},
 		},
 		{
 			data:   []string{`{"a":3}`},
-			expect: map[string]string{`$[0].a`: `3`},
+			expect: map[string]string{`$[0][a]`: `3`},
 		},
 		{
 			data:   []string{`{"a":"3"}`},
-			expect: map[string]string{`$[0].a`: `"3"`},
+			expect: map[string]string{`$[0][a]`: `"3"`},
 		},
 		{
 			data:   []string{`{"a":"\"3\""}`},
-			expect: map[string]string{`$[0].a.""`: `"3"`},
+			expect: map[string]string{`$[0][a][""]`: `"3"`},
 		},
 		{
 			data:   []string{`{"a":true}`},
-			expect: map[string]string{`$[0].a`: `true`},
+			expect: map[string]string{`$[0][a]`: `true`},
 		},
 		{
 			data:   []string{`{"a":"true"}`},
-			expect: map[string]string{`$[0].a`: `"true"`},
+			expect: map[string]string{`$[0][a]`: `"true"`},
 		},
 		{
 			data:   []string{`{"a":"\"true\""}`},
-			expect: map[string]string{`$[0].a.""`: `"true"`},
+			expect: map[string]string{`$[0][a][""]`: `"true"`},
 		},
 		{
 			data:   []string{`{"a":b}`},
@@ -509,11 +509,11 @@ func TestFlatJSON_StringSlice(t *testing.T) {
 		},
 		{
 			data:   []string{`{"a":"b"}`},
-			expect: map[string]string{`$[0].a`: `"b"`},
+			expect: map[string]string{`$[0][a]`: `"b"`},
 		},
 		{
 			data:   []string{`{"a":"\"b\""}`},
-			expect: map[string]string{`$[0].a.""`: `"b"`},
+			expect: map[string]string{`$[0][a][""]`: `"b"`},
 		},
 		{
 			data:   []string{`{"a":{}`},
@@ -521,11 +521,11 @@ func TestFlatJSON_StringSlice(t *testing.T) {
 		},
 		{
 			data:   []string{`{"a":"{"}`},
-			expect: map[string]string{`$[0].a`: `"{"`},
+			expect: map[string]string{`$[0][a]`: `"{"`},
 		},
 		{
 			data:   []string{`{"a":"\"{\""}`},
-			expect: map[string]string{`$[0].a.""`: `"{"`},
+			expect: map[string]string{`$[0][a][""]`: `"{"`},
 		},
 		{
 			data:   []string{`{"a":}}`},
@@ -533,19 +533,19 @@ func TestFlatJSON_StringSlice(t *testing.T) {
 		},
 		{
 			data:   []string{`{"a":"}"}`},
-			expect: map[string]string{`$[0].a`: `"}"`},
+			expect: map[string]string{`$[0][a]`: `"}"`},
 		},
 		{
 			data:   []string{`{"a":"\"}\""}`},
-			expect: map[string]string{`$[0].a.""`: `"}"`},
+			expect: map[string]string{`$[0][a][""]`: `"}"`},
 		},
 		{
 			data:   []string{`{"a":{}}`},
-			expect: map[string]string{`$[0].a`: `{}`},
+			expect: map[string]string{`$[0][a]`: `{}`},
 		},
 		{
 			data:   []string{`{"a":"{}"}`},
-			expect: map[string]string{`$[0].a.""`: `{}`},
+			expect: map[string]string{`$[0][a][""]`: `{}`},
 		},
 		{
 			data:   []string{`{"a":[}`},
@@ -553,11 +553,11 @@ func TestFlatJSON_StringSlice(t *testing.T) {
 		},
 		{
 			data:   []string{`{"a":"["}`},
-			expect: map[string]string{`$[0].a`: `"["`},
+			expect: map[string]string{`$[0][a]`: `"["`},
 		},
 		{
 			data:   []string{`{"a":"\"[\""}`},
-			expect: map[string]string{`$[0].a.""`: `"["`},
+			expect: map[string]string{`$[0][a][""]`: `"["`},
 		},
 		{
 			data:   []string{`{"a":]}`},
@@ -565,31 +565,31 @@ func TestFlatJSON_StringSlice(t *testing.T) {
 		},
 		{
 			data:   []string{`{"a":"]"}`},
-			expect: map[string]string{`$[0].a`: `"]"`},
+			expect: map[string]string{`$[0][a]`: `"]"`},
 		},
 		{
 			data:   []string{`{"a":"\"]\""}`},
-			expect: map[string]string{`$[0].a.""`: `"]"`},
+			expect: map[string]string{`$[0][a][""]`: `"]"`},
 		},
 		{
 			data:   []string{`{"a":[]}`},
-			expect: map[string]string{`$[0].a`: `[]`},
+			expect: map[string]string{`$[0][a]`: `[]`},
 		},
 		{
 			data:   []string{`{"a":"[]"}`},
-			expect: map[string]string{`$[0].a.""`: `[]`},
+			expect: map[string]string{`$[0][a][""]`: `[]`},
 		},
 		{
 			data:   []string{`[3,"3","\"3\""]`},
-			expect: map[string]string{`$[0][0]`: `3`, `$[0][1]`: `"3"`, `$[0][2].""`: `"3"`},
+			expect: map[string]string{`$[0][0]`: `3`, `$[0][1]`: `"3"`, `$[0][2][""]`: `"3"`},
 		},
 		{
 			data:   []string{`[true,"true","\"true\""]`},
-			expect: map[string]string{`$[0][0]`: `true`, `$[0][1]`: `"true"`, `$[0][2].""`: `"true"`},
+			expect: map[string]string{`$[0][0]`: `true`, `$[0][1]`: `"true"`, `$[0][2][""]`: `"true"`},
 		},
 		{
 			data:   []string{`[null,"null","\"null\""]`},
-			expect: map[string]string{`$[0][0]`: `null`, `$[0][1]`: `"null"`, `$[0][2].""`: `"null"`},
+			expect: map[string]string{`$[0][0]`: `null`, `$[0][1]`: `"null"`, `$[0][2][""]`: `"null"`},
 		},
 		{
 			data:   []string{`[a]`},
@@ -601,11 +601,11 @@ func TestFlatJSON_StringSlice(t *testing.T) {
 		},
 		{
 			data:   []string{`[{},"{}","\"{}\""]`},
-			expect: map[string]string{`$[0][0]`: `{}`, `$[0][1].""`: `{}`, `$[0][2]."".""`: `{}`},
+			expect: map[string]string{`$[0][0]`: `{}`, `$[0][1][""]`: `{}`, `$[0][2][""][""]`: `{}`},
 		},
 		{
 			data:   []string{`[[],"[]","\"[]\""]`},
-			expect: map[string]string{`$[0][0]`: `[]`, `$[0][1].""`: `[]`, `$[0][2]."".""`: `[]`},
+			expect: map[string]string{`$[0][0]`: `[]`, `$[0][1][""]`: `[]`, `$[0][2][""][""]`: `[]`},
 		},
 	}
 

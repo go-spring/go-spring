@@ -17,8 +17,11 @@
 package recorder
 
 import (
+	"bytes"
 	"reflect"
+	"strconv"
 
+	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-base/net/internal/json"
 )
 
@@ -98,4 +101,89 @@ func ToRawSession(data string) (*RawSession, error) {
 		return nil, err
 	}
 	return session, nil
+}
+
+const rootKey = "$"
+
+var (
+	numberType = reflect.TypeOf(json.Number(""))
+)
+
+func FlatJSON(b []byte) map[string]string {
+	result := make(map[string]string)
+	if !flatJSON(rootKey, b, result) {
+		result[rootKey] = string(b)
+	}
+	return result
+}
+
+func flatJSON(prefix string, b []byte, result map[string]string) bool {
+	var v interface{}
+	d := json.NewDecoder(bytes.NewReader(b))
+	d.UseNumber()
+	if err := d.Decode(&v); err != nil {
+		return false
+	}
+	flatValue(prefix, v, result)
+	return true
+}
+
+func flatValue(prefix string, v interface{}, result map[string]string) {
+	val := reflect.ValueOf(v)
+	if !val.IsValid() {
+		result[prefix] = "null"
+		return
+	}
+	switch val.Kind() {
+	case reflect.Map:
+		if val.Len() == 0 {
+			result[prefix] = "{}"
+			return
+		}
+		iter := val.MapRange()
+		for iter.Next() {
+			key := cast.ToString(iter.Key().Interface())
+			key = prefix + "[" + key + "]"
+			flatValue(key, iter.Value().Interface(), result)
+		}
+	case reflect.Array, reflect.Slice:
+		if val.Len() == 0 {
+			result[prefix] = "[]"
+			return
+		}
+		for i := 0; i < val.Len(); i++ {
+			key := prefix + "[" + strconv.Itoa(i) + "]"
+			flatValue(key, val.Index(i).Interface(), result)
+		}
+	case reflect.Bool:
+		result[prefix] = strconv.FormatBool(val.Bool())
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		result[prefix] = strconv.FormatInt(val.Int(), 10)
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		result[prefix] = strconv.FormatUint(val.Uint(), 10)
+	case reflect.Float32, reflect.Float64:
+		result[prefix] = strconv.FormatFloat(val.Float(), 'f', -1, 64)
+	case reflect.String:
+		if val.Type() == numberType {
+			result[prefix] = val.String()
+		} else {
+			flatString(prefix, val.String(), result)
+		}
+	}
+}
+
+func flatString(prefix string, str string, result map[string]string) {
+	trimBytes := bytes.TrimSpace([]byte(str))
+	if len(trimBytes) == 0 {
+		result[prefix] = strconv.Quote(str)
+		return
+	}
+	switch trimBytes[0] {
+	case '{', '[', '"':
+		if !flatJSON(prefix+`[""]`, trimBytes, result) {
+			result[prefix] = strconv.Quote(str)
+		}
+	default:
+		result[prefix] = strconv.Quote(str)
+	}
 }

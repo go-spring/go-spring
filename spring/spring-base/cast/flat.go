@@ -19,36 +19,39 @@ package cast
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 )
 
 const rootKey = "$"
 
-// FlatJSON 将 JSON 字符串解析成一维映射表，如 {"a":{"b":"c"}} 解析为 {"$a.b":"c"}。
+var (
+	numberType = reflect.TypeOf(json.Number(""))
+)
+
 func FlatJSON(data interface{}) map[string]string {
 	result := make(map[string]string)
 	switch v := data.(type) {
 	case []byte:
-		if !flatJsonPrefix(rootKey, v, result) {
+		if !flatJSON(rootKey, v, result) {
 			result[rootKey] = string(v)
 		}
 	case string:
-		if !flatJsonPrefix(rootKey, []byte(v), result) {
+		if !flatJSON(rootKey, []byte(v), result) {
 			result[rootKey] = v
 		}
 	case [][]byte:
 		for i, b := range v {
-			k := rootKey + fmt.Sprintf("[%d]", i)
-			if !flatJsonPrefix(k, b, result) {
+			k := rootKey + "[" + strconv.Itoa(i) + "]"
+			if !flatJSON(k, b, result) {
 				result[k] = string(b)
 			}
 		}
 	case []string:
 		for i, s := range v {
-			k := rootKey + fmt.Sprintf("[%d]", i)
-			if !flatJsonPrefix(k, []byte(s), result) {
+			k := rootKey + "[" + strconv.Itoa(i) + "]"
+			if !flatJSON(k, []byte(s), result) {
 				result[k] = s
 			}
 		}
@@ -56,64 +59,74 @@ func FlatJSON(data interface{}) map[string]string {
 	return result
 }
 
-// flatJsonPrefix JSON 可以是数字(整数或浮点数)、字符串("")、布尔值(true/false)、数组([])、
-// 对象({})、空值(null)。
-func flatJsonPrefix(prefix string, data []byte, result map[string]string) bool {
-	switch tempData := bytes.TrimSpace(data); tempData[0] {
-	case '{':
-		var m map[string]json.RawMessage
-		if json.Unmarshal(tempData, &m) != nil {
-			return false
-		}
-		if len(m) == 0 {
+func flatJSON(prefix string, b []byte, result map[string]string) bool {
+	var v interface{}
+	d := json.NewDecoder(bytes.NewReader(b))
+	d.UseNumber()
+	if err := d.Decode(&v); err != nil {
+		return false
+	}
+	flatValue(prefix, v, result)
+	return true
+}
+
+func flatValue(prefix string, v interface{}, result map[string]string) {
+	val := reflect.ValueOf(v)
+	if !val.IsValid() {
+		result[prefix] = "null"
+		return
+	}
+	switch val.Kind() {
+	case reflect.Map:
+		if val.Len() == 0 {
 			result[prefix] = "{}"
-			return true
+			return
 		}
-		for k, v := range m {
-			k = prefix + "." + k
-			if !flatJsonPrefix(k, v, result) {
-				result[k] = string(v)
-			}
+		iter := val.MapRange()
+		for iter.Next() {
+			key := ToString(iter.Key().Interface())
+			key = prefix + "[" + key + "]"
+			flatValue(key, iter.Value().Interface(), result)
 		}
-		return true
-	case '[':
-		var m []json.RawMessage
-		if json.Unmarshal(tempData, &m) != nil {
-			return false
-		}
-		if len(m) == 0 {
+	case reflect.Array, reflect.Slice:
+		if val.Len() == 0 {
 			result[prefix] = "[]"
-			return true
+			return
 		}
-		for i, v := range m {
-			k := prefix + fmt.Sprintf("[%d]", i)
-			if !flatJsonPrefix(k, v, result) {
-				result[k] = string(v)
-			}
+		for i := 0; i < val.Len(); i++ {
+			key := prefix + "[" + strconv.Itoa(i) + "]"
+			flatValue(key, val.Index(i).Interface(), result)
 		}
-		return true
+	case reflect.Bool:
+		result[prefix] = strconv.FormatBool(val.Bool())
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		result[prefix] = strconv.FormatInt(val.Int(), 10)
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		result[prefix] = strconv.FormatUint(val.Uint(), 10)
+	case reflect.Float32, reflect.Float64:
+		result[prefix] = strconv.FormatFloat(val.Float(), 'f', -1, 64)
+	case reflect.String:
+		if val.Type() == numberType {
+			result[prefix] = val.String()
+		} else {
+			flatString(prefix, val.String(), result)
+		}
+	}
+}
+
+func flatString(prefix string, str string, result map[string]string) {
+	trimBytes := bytes.TrimSpace([]byte(str))
+	if len(trimBytes) == 0 {
+		result[prefix] = strconv.Quote(str)
+		return
+	}
+	switch trimBytes[0] {
+	case '{', '[', '"':
+		if !flatJSON(prefix+`[""]`, trimBytes, result) {
+			result[prefix] = strconv.Quote(str)
+		}
 	default:
-		var strTemp string
-		if json.Unmarshal(data, &strTemp) != nil {
-			result[prefix] = string(data)
-			return true
-		}
-		strTemp = strings.TrimSpace(strTemp)
-		if len(strTemp) == 0 {
-			result[prefix] = string(data)
-			return true
-		}
-		switch strTemp[0] {
-		case '{', '[', '"':
-			k := prefix + ".\"\""
-			if !flatJsonPrefix(k, []byte(strTemp), result) {
-				result[prefix] = string(data)
-			}
-			return true
-		default:
-			result[prefix] = string(data)
-			return true
-		}
+		result[prefix] = strconv.Quote(str)
 	}
 }
 
