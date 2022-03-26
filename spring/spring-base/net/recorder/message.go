@@ -109,23 +109,36 @@ var (
 	numberType = reflect.TypeOf(json.Number(""))
 )
 
-func FlatJSON(b []byte) map[string]string {
+func FlatJSON(data interface{}) map[string]string {
 	result := make(map[string]string)
-	if !flatJSON(rootKey, b, result) {
-		result[rootKey] = string(b)
+	switch v := data.(type) {
+	case []byte:
+		flatJSON(rootKey, v, result)
+	case string:
+		flatJSON(rootKey, []byte(v), result)
+	case [][]byte:
+		for i, b := range v {
+			key := rootKey + "[" + strconv.Itoa(i) + "]"
+			flatJSON(key, b, result)
+		}
+	case []string:
+		for i, s := range v {
+			key := rootKey + "[" + strconv.Itoa(i) + "]"
+			flatJSON(key, []byte(s), result)
+		}
 	}
 	return result
 }
 
-func flatJSON(prefix string, b []byte, result map[string]string) bool {
+func flatJSON(prefix string, b []byte, result map[string]string) {
 	var v interface{}
 	d := json.NewDecoder(bytes.NewReader(b))
 	d.UseNumber()
 	if err := d.Decode(&v); err != nil {
-		return false
+		result[prefix] = string(b)
+	} else {
+		flatValue(prefix, v, result)
 	}
-	flatValue(prefix, v, result)
-	return true
 }
 
 func flatValue(prefix string, v interface{}, result map[string]string) {
@@ -167,23 +180,7 @@ func flatValue(prefix string, v interface{}, result map[string]string) {
 		if val.Type() == numberType {
 			result[prefix] = val.String()
 		} else {
-			flatString(prefix, val.String(), result)
+			flatJSON(prefix+`[""]`, []byte(val.String()), result)
 		}
-	}
-}
-
-func flatString(prefix string, str string, result map[string]string) {
-	trimBytes := bytes.TrimSpace([]byte(str))
-	if len(trimBytes) == 0 {
-		result[prefix] = strconv.Quote(str)
-		return
-	}
-	switch trimBytes[0] {
-	case '{', '[', '"':
-		if !flatJSON(prefix+`[""]`, trimBytes, result) {
-			result[prefix] = strconv.Quote(str)
-		}
-	default:
-		result[prefix] = strconv.Quote(str)
 	}
 }

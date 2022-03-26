@@ -22,8 +22,8 @@ import (
 	"testing"
 
 	"github.com/go-spring/spring-base/assert"
+	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-base/net/internal/json"
-	"github.com/go-spring/spring-base/net/recorder"
 )
 
 func printResult(t *testing.T, m map[string]string) {
@@ -49,282 +49,587 @@ func TestFlatJSON_String(t *testing.T) {
 		expect map[string]string
 	}{
 		{
-			data:   `null`,
-			expect: map[string]string{`$`: `null`},
+			data: `\r\n`,
+			expect: map[string]string{
+				`$`: `\r\n`,
+			},
 		},
 		{
-			data:   `3`,
-			expect: map[string]string{`$`: `3`},
+			data: `"\\r\\n"`,
+			expect: map[string]string{
+				`$[""]`: `\r\n`,
+			},
 		},
 		{
-			data:   `"3"`,
-			expect: map[string]string{`$`: `"3"`},
+			data: `null`,
+			expect: map[string]string{
+				`$`: `null`,
+			},
 		},
 		{
-			data:   `"\"3\""`,
-			expect: map[string]string{`$[""]`: `"3"`},
+			data: `3`,
+			expect: map[string]string{
+				`$`: `3`,
+			},
 		},
 		{
-			data:   `"\"\\\"3\\\"\""`,
-			expect: map[string]string{`$[""][""]`: `"3"`},
+			data: `"3"`,
+			expect: map[string]string{
+				`$[""]`: `3`,
+			},
 		},
 		{
-			data:   `true`,
-			expect: map[string]string{`$`: `true`},
+			data: `true`,
+			expect: map[string]string{
+				`$`: `true`,
+			},
 		},
 		{
-			data:   `"true"`,
-			expect: map[string]string{`$`: `"true"`},
+			data: `"true"`,
+			expect: map[string]string{
+				`$[""]`: `true`,
+			},
 		},
 		{
-			data:   `"\"true\""`,
-			expect: map[string]string{`$[""]`: `"true"`},
+			data: `abc`,
+			expect: map[string]string{
+				`$`: `abc`,
+			},
 		},
 		{
-			data:   `"\"\\\"true\\\"\""`,
-			expect: map[string]string{`$[""][""]`: `"true"`},
+			data: `"abc"`,
+			expect: map[string]string{
+				`$[""]`: `abc`,
+			},
 		},
 		{
-			data:   `abc`,
-			expect: map[string]string{`$`: `abc`},
+			data: `{`,
+			expect: map[string]string{
+				`$`: `{`,
+			},
 		},
 		{
-			data:   `"abc"`,
-			expect: map[string]string{`$`: `"abc"`},
+			data: `"{"`,
+			expect: map[string]string{
+				`$[""]`: `{`,
+			},
 		},
 		{
-			data:   `"\"abc\""`,
-			expect: map[string]string{`$[""]`: `"abc"`},
+			data: `}`,
+			expect: map[string]string{
+				`$`: `}`,
+			},
 		},
 		{
-			data:   `"\"\\\"abc\\\"\""`,
-			expect: map[string]string{`$[""][""]`: `"abc"`},
+			data: `"}"`,
+			expect: map[string]string{
+				`$[""]`: `}`,
+			},
 		},
 		{
-			data:   `{`,
-			expect: map[string]string{`$`: `{`},
+			data: `{}`,
+			expect: map[string]string{
+				`$`: `{}`,
+			},
 		},
 		{
-			data:   `"{"`,
-			expect: map[string]string{`$`: `"{"`},
+			data: `"{}"`,
+			expect: map[string]string{
+				`$[""]`: `{}`,
+			},
 		},
 		{
-			data:   `"\"{\""`,
-			expect: map[string]string{`$[""]`: `"{"`},
+			data: `[`,
+			expect: map[string]string{
+				`$`: `[`,
+			},
 		},
 		{
-			data:   `"\"\\\"{\\\"\""`,
-			expect: map[string]string{`$[""][""]`: `"{"`},
+			data: `"["`,
+			expect: map[string]string{
+				`$[""]`: `[`,
+			},
 		},
 		{
-			data:   `}`,
-			expect: map[string]string{`$`: `}`},
+			data: `]`,
+			expect: map[string]string{
+				`$`: `]`,
+			},
 		},
 		{
-			data:   `"}"`,
-			expect: map[string]string{`$`: `"}"`},
+			data: `"]"`,
+			expect: map[string]string{
+				`$[""]`: `]`,
+			},
 		},
 		{
-			data:   `"\"}\""`,
-			expect: map[string]string{`$[""]`: `"}"`},
+			data: `[]`,
+			expect: map[string]string{
+				`$`: `[]`,
+			},
 		},
 		{
-			data:   `"\"\\\"}\\\"\""`,
-			expect: map[string]string{`$[""][""]`: `"}"`},
+			data: `"[]"`,
+			expect: map[string]string{
+				`$[""]`: `[]`,
+			},
 		},
 		{
-			data:   `{}`,
-			expect: map[string]string{`$`: `{}`},
+			data: `{"a":null}`,
+			expect: map[string]string{
+				`$[a]`: `null`,
+			},
 		},
 		{
-			data:   `"{}"`,
-			expect: map[string]string{`$[""]`: `{}`},
+			data: `{"a":3}`,
+			expect: map[string]string{
+				`$[a]`: `3`,
+			},
 		},
 		{
-			data:   `"\"{}\""`,
-			expect: map[string]string{`$[""][""]`: `{}`},
+			data: `{"a":"3"}`,
+			expect: map[string]string{
+				`$[a][""]`: `3`,
+			},
 		},
 		{
-			data:   `[`,
-			expect: map[string]string{`$`: `[`},
+			data: `{"a":true}`,
+			expect: map[string]string{
+				`$[a]`: `true`,
+			},
 		},
 		{
-			data:   `"["`,
-			expect: map[string]string{`$`: `"["`},
+			data: `{"a":"true"}`,
+			expect: map[string]string{
+				`$[a][""]`: `true`,
+			},
 		},
 		{
-			data:   `"\"[\""`,
-			expect: map[string]string{`$[""]`: `"["`},
+			data: `{"a":b}`,
+			expect: map[string]string{
+				`$`: `{"a":b}`,
+			},
 		},
 		{
-			data:   `"\"\\\"[\\\"\""`,
-			expect: map[string]string{`$[""][""]`: `"["`},
+			data: `{"a":"b"}`,
+			expect: map[string]string{
+				`$[a][""]`: `b`,
+			},
 		},
 		{
-			data:   `]`,
-			expect: map[string]string{`$`: `]`},
+			data: `{"a":{}`,
+			expect: map[string]string{
+				`$`: `{"a":{}`,
+			},
 		},
 		{
-			data:   `"]"`,
-			expect: map[string]string{`$`: `"]"`},
+			data: `{"a":"{"}`,
+			expect: map[string]string{
+				`$[a][""]`: `{`,
+			},
 		},
 		{
-			data:   `"\"]\""`,
-			expect: map[string]string{`$[""]`: `"]"`},
+			data: `{"a":}}`,
+			expect: map[string]string{
+				`$`: `{"a":}}`,
+			},
 		},
 		{
-			data:   `"\"\\\"]\\\"\""`,
-			expect: map[string]string{`$[""][""]`: `"]"`},
+			data: `{"a":"}"}`,
+			expect: map[string]string{
+				`$[a][""]`: `}`,
+			},
 		},
 		{
-			data:   `[]`,
-			expect: map[string]string{`$`: `[]`},
+			data: `{"a":{}}`,
+			expect: map[string]string{
+				`$[a]`: `{}`,
+			},
 		},
 		{
-			data:   `"[]"`,
-			expect: map[string]string{`$[""]`: `[]`},
+			data: `{"a":"{}"}`,
+			expect: map[string]string{
+				`$[a][""]`: `{}`,
+			},
 		},
 		{
-			data:   `"\"[]\""`,
-			expect: map[string]string{`$[""][""]`: `[]`},
+			data: `{"a":[}`,
+			expect: map[string]string{
+				`$`: `{"a":[}`,
+			},
 		},
 		{
-			data:   `{"a":null}`,
-			expect: map[string]string{`$[a]`: `null`},
+			data: `{"a":"["}`,
+			expect: map[string]string{
+				`$[a][""]`: `[`,
+			},
 		},
 		{
-			data:   `{"a":3}`,
-			expect: map[string]string{`$[a]`: `3`},
+			data: `{"a":]}`,
+			expect: map[string]string{
+				`$`: `{"a":]}`,
+			},
 		},
 		{
-			data:   `{"a":"3"}`,
-			expect: map[string]string{`$[a]`: `"3"`},
+			data: `{"a":"]"}`,
+			expect: map[string]string{
+				`$[a][""]`: `]`,
+			},
 		},
 		{
-			data:   `{"a":"\"3\""}`,
-			expect: map[string]string{`$[a][""]`: `"3"`},
+			data: `{"a":[]}`,
+			expect: map[string]string{
+				`$[a]`: `[]`,
+			},
 		},
 		{
-			data:   `{"a":true}`,
-			expect: map[string]string{`$[a]`: `true`},
+			data: `{"a":"[]"}`,
+			expect: map[string]string{
+				`$[a][""]`: `[]`,
+			},
 		},
 		{
-			data:   `{"a":"true"}`,
-			expect: map[string]string{`$[a]`: `"true"`},
+			data: `[3,"3"]`,
+			expect: map[string]string{
+				`$[0]`:     `3`,
+				`$[1][""]`: `3`,
+			},
 		},
 		{
-			data:   `{"a":"\"true\""}`,
-			expect: map[string]string{`$[a][""]`: `"true"`},
+			data: `[true,"true"]`,
+			expect: map[string]string{
+				`$[0]`:     `true`,
+				`$[1][""]`: `true`,
+			},
 		},
 		{
-			data:   `{"a":b}`,
-			expect: map[string]string{`$`: `{"a":b}`},
+			data: `[null,"null"]`,
+			expect: map[string]string{
+				`$[0]`:     `null`,
+				`$[1][""]`: `null`,
+			},
 		},
 		{
-			data:   `{"a":"b"}`,
-			expect: map[string]string{`$[a]`: `"b"`},
+			data: `[a]`,
+			expect: map[string]string{
+				`$`: `[a]`,
+			},
 		},
 		{
-			data:   `{"a":"\"b\""}`,
-			expect: map[string]string{`$[a][""]`: `"b"`},
+			data: `["a"]`,
+			expect: map[string]string{
+				`$[0][""]`: `a`,
+			},
 		},
 		{
-			data:   `{"a":{}`,
-			expect: map[string]string{`$`: `{"a":{}`},
+			data: `[{},"{}"]`,
+			expect: map[string]string{
+				`$[0]`:     `{}`,
+				`$[1][""]`: `{}`,
+			},
 		},
 		{
-			data:   `{"a":"{"}`,
-			expect: map[string]string{`$[a]`: `"{"`},
-		},
-		{
-			data:   `{"a":"\"{\""}`,
-			expect: map[string]string{`$[a][""]`: `"{"`},
-		},
-		{
-			data:   `{"a":}}`,
-			expect: map[string]string{`$`: `{"a":}}`},
-		},
-		{
-			data:   `{"a":"}"}`,
-			expect: map[string]string{`$[a]`: `"}"`},
-		},
-		{
-			data:   `{"a":"\"}\""}`,
-			expect: map[string]string{`$[a][""]`: `"}"`},
-		},
-		{
-			data:   `{"a":{}}`,
-			expect: map[string]string{`$[a]`: `{}`},
-		},
-		{
-			data:   `{"a":"{}"}`,
-			expect: map[string]string{`$[a][""]`: `{}`},
-		},
-		{
-			data:   `{"a":[}`,
-			expect: map[string]string{`$`: `{"a":[}`},
-		},
-		{
-			data:   `{"a":"["}`,
-			expect: map[string]string{`$[a]`: `"["`},
-		},
-		{
-			data:   `{"a":"\"[\""}`,
-			expect: map[string]string{`$[a][""]`: `"["`},
-		},
-		{
-			data:   `{"a":]}`,
-			expect: map[string]string{`$`: `{"a":]}`},
-		},
-		{
-			data:   `{"a":"]"}`,
-			expect: map[string]string{`$[a]`: `"]"`},
-		},
-		{
-			data:   `{"a":"\"]\""}`,
-			expect: map[string]string{`$[a][""]`: `"]"`},
-		},
-		{
-			data:   `{"a":[]}`,
-			expect: map[string]string{`$[a]`: `[]`},
-		},
-		{
-			data:   `{"a":"[]"}`,
-			expect: map[string]string{`$[a][""]`: `[]`},
-		},
-		{
-			data:   `[3,"3","\"3\""]`,
-			expect: map[string]string{`$[0]`: `3`, `$[1]`: `"3"`, `$[2][""]`: `"3"`},
-		},
-		{
-			data:   `[true,"true","\"true\""]`,
-			expect: map[string]string{`$[0]`: `true`, `$[1]`: `"true"`, `$[2][""]`: `"true"`},
-		},
-		{
-			data:   `[null,"null","\"null\""]`,
-			expect: map[string]string{`$[0]`: `null`, `$[1]`: `"null"`, `$[2][""]`: `"null"`},
-		},
-		{
-			data:   `[a]`,
-			expect: map[string]string{`$`: `[a]`},
-		},
-		{
-			data:   `["a"]`,
-			expect: map[string]string{`$[0]`: `"a"`},
-		},
-		{
-			data:   `[{},"{}","\"{}\""]`,
-			expect: map[string]string{`$[0]`: `{}`, `$[1][""]`: `{}`, `$[2][""][""]`: `{}`},
-		},
-		{
-			data:   `[[],"[]","\"[]\""]`,
-			expect: map[string]string{`$[0]`: `[]`, `$[1][""]`: `[]`, `$[2][""][""]`: `[]`},
+			data: `[[],"[]"]`,
+			expect: map[string]string{
+				`$[0]`:     `[]`,
+				`$[1][""]`: `[]`,
+			},
 		},
 	}
 
-	for i, c := range testcases {
-		m := recorder.FlatJSON([]byte(c.data))
+	for _, c := range testcases {
+		m := cast.FlatJSON(c.data)
 		printResult(t, m)
-		assert.Equal(t, m, c.expect, fmt.Sprintf("%d", i))
+		assert.Equal(t, m, c.expect)
+	}
+}
+
+func TestFlatJSON_StringSlice(t *testing.T) {
+
+	var testcases = []struct {
+		data   []string
+		expect map[string]string
+	}{
+		{
+			data: []string{`null`},
+			expect: map[string]string{
+				`$[0]`: `null`,
+			},
+		},
+		{
+			data: []string{`3`},
+			expect: map[string]string{
+				`$[0]`: `3`,
+			},
+		},
+		{
+			data: []string{`"3"`},
+			expect: map[string]string{
+				`$[0][""]`: `3`,
+			},
+		},
+		{
+			data: []string{`true`},
+			expect: map[string]string{
+				`$[0]`: `true`,
+			},
+		},
+		{
+			data: []string{`"true"`},
+			expect: map[string]string{
+				`$[0][""]`: `true`,
+			},
+		},
+		{
+			data: []string{`abc`},
+			expect: map[string]string{
+				`$[0]`: `abc`,
+			},
+		},
+		{
+			data: []string{`"abc"`},
+			expect: map[string]string{
+				`$[0][""]`: `abc`,
+			},
+		},
+		{
+			data: []string{`{`},
+			expect: map[string]string{
+				`$[0]`: `{`,
+			},
+		},
+		{
+			data: []string{`"{"`},
+			expect: map[string]string{
+				`$[0][""]`: `{`,
+			},
+		},
+		{
+			data: []string{`}`},
+			expect: map[string]string{
+				`$[0]`: `}`,
+			},
+		},
+		{
+			data: []string{`"}"`},
+			expect: map[string]string{
+				`$[0][""]`: `}`,
+			},
+		},
+		{
+			data: []string{`{}`},
+			expect: map[string]string{
+				`$[0]`: `{}`,
+			},
+		},
+		{
+			data: []string{`"{}"`},
+			expect: map[string]string{
+				`$[0][""]`: `{}`,
+			},
+		},
+		{
+			data: []string{`[`},
+			expect: map[string]string{
+				`$[0]`: `[`,
+			},
+		},
+		{
+			data: []string{`"["`},
+			expect: map[string]string{
+				`$[0][""]`: `[`,
+			},
+		},
+		{
+			data: []string{`]`},
+			expect: map[string]string{
+				`$[0]`: `]`,
+			},
+		},
+		{
+			data: []string{`"]"`},
+			expect: map[string]string{
+				`$[0][""]`: `]`,
+			},
+		},
+		{
+			data: []string{`[]`},
+			expect: map[string]string{
+				`$[0]`: `[]`,
+			},
+		},
+		{
+			data: []string{`"[]"`},
+			expect: map[string]string{
+				`$[0][""]`: `[]`,
+			},
+		},
+		{
+			data: []string{`{"a":null}`},
+			expect: map[string]string{
+				`$[0][a]`: `null`,
+			},
+		},
+		{
+			data: []string{`{"a":3}`},
+			expect: map[string]string{
+				`$[0][a]`: `3`,
+			},
+		},
+		{
+			data: []string{`{"a":"3"}`},
+			expect: map[string]string{
+				`$[0][a][""]`: `3`,
+			},
+		},
+		{
+			data: []string{`{"a":true}`},
+			expect: map[string]string{
+				`$[0][a]`: `true`,
+			},
+		},
+		{
+			data: []string{`{"a":"true"}`},
+			expect: map[string]string{
+				`$[0][a][""]`: `true`,
+			},
+		},
+		{
+			data: []string{`{"a":b}`},
+			expect: map[string]string{
+				`$[0]`: `{"a":b}`,
+			},
+		},
+		{
+			data: []string{`{"a":"b"}`},
+			expect: map[string]string{
+				`$[0][a][""]`: `b`,
+			},
+		},
+		{
+			data: []string{`{"a":{}`},
+			expect: map[string]string{
+				`$[0]`: `{"a":{}`,
+			},
+		},
+		{
+			data: []string{`{"a":"{"}`},
+			expect: map[string]string{
+				`$[0][a][""]`: `{`,
+			},
+		},
+		{
+			data: []string{`{"a":}}`},
+			expect: map[string]string{
+				`$[0]`: `{"a":}}`,
+			},
+		},
+		{
+			data: []string{`{"a":"}"}`},
+			expect: map[string]string{
+				`$[0][a][""]`: `}`,
+			},
+		},
+		{
+			data: []string{`{"a":{}}`},
+			expect: map[string]string{
+				`$[0][a]`: `{}`,
+			},
+		},
+		{
+			data: []string{`{"a":"{}"}`},
+			expect: map[string]string{
+				`$[0][a][""]`: `{}`,
+			},
+		},
+		{
+			data: []string{`{"a":[}`},
+			expect: map[string]string{
+				`$[0]`: `{"a":[}`,
+			},
+		},
+		{
+			data: []string{`{"a":"["}`},
+			expect: map[string]string{
+				`$[0][a][""]`: `[`,
+			},
+		},
+		{
+			data: []string{`{"a":]}`},
+			expect: map[string]string{
+				`$[0]`: `{"a":]}`,
+			},
+		},
+		{
+			data: []string{`{"a":"]"}`},
+			expect: map[string]string{
+				`$[0][a][""]`: `]`,
+			},
+		},
+		{
+			data: []string{`{"a":[]}`},
+			expect: map[string]string{
+				`$[0][a]`: `[]`,
+			},
+		},
+		{
+			data: []string{`{"a":"[]"}`},
+			expect: map[string]string{
+				`$[0][a][""]`: `[]`,
+			},
+		},
+		{
+			data: []string{`[3,"3"]`},
+			expect: map[string]string{
+				`$[0][0]`:     `3`,
+				`$[0][1][""]`: `3`,
+			},
+		},
+		{
+			data: []string{`[true,"true"]`},
+			expect: map[string]string{
+				`$[0][0]`:     `true`,
+				`$[0][1][""]`: `true`,
+			},
+		},
+		{
+			data: []string{`[null,"null"]`},
+			expect: map[string]string{
+				`$[0][0]`:     `null`,
+				`$[0][1][""]`: `null`,
+			},
+		},
+		{
+			data: []string{`[a]`},
+			expect: map[string]string{
+				`$[0]`: `[a]`,
+			},
+		},
+		{
+			data: []string{`["a"]`},
+			expect: map[string]string{
+				`$[0][0][""]`: `a`,
+			},
+		},
+		{
+			data: []string{`[{},"{}"]`},
+			expect: map[string]string{
+				`$[0][0]`:     `{}`,
+				`$[0][1][""]`: `{}`,
+			},
+		},
+		{
+			data: []string{`[[],"[]"]`},
+			expect: map[string]string{
+				`$[0][0]`:     `[]`,
+				`$[0][1][""]`: `[]`,
+			},
+		},
+	}
+
+	for _, c := range testcases {
+		m := cast.FlatJSON(c.data)
+		printResult(t, m)
+		assert.Equal(t, m, c.expect)
 	}
 }
