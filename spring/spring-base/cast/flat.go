@@ -21,7 +21,6 @@ import (
 	"encoding/json"
 	"reflect"
 	"strconv"
-	"strings"
 )
 
 const rootKey = "$"
@@ -102,40 +101,6 @@ func flatValue(prefix string, v interface{}, result map[string]string) {
 			result[prefix] = val.String()
 		} else {
 			flatJSON(prefix+`[""]`, []byte(val.String()), result)
-		}
-	}
-}
-
-func FlatNode(node Node) map[string]string {
-	result := map[string]string{}
-	flatNodePrefix(rootKey, node, result)
-	return result
-}
-
-func flatNodePrefix(prefix string, node Node, result map[string]string) {
-	switch v := node.(type) {
-	case *NilNode:
-		result[prefix] = "<nil>"
-	case *ValueNode:
-		result[prefix] = v.Data
-	case *MapNode:
-		if len(v.Data) == 0 {
-			result[prefix] = "{}"
-			return
-		}
-		for key, data := range v.Data {
-			if strings.Contains(key, ".") {
-				key = "[" + key + "]"
-			}
-			flatNodePrefix(prefix+"."+key, data, result)
-		}
-	case *ArrayNode:
-		if len(v.Data) == 0 {
-			result[prefix] = "[]"
-			return
-		}
-		for i, data := range v.Data {
-			flatNodePrefix(prefix+"["+strconv.Itoa(i)+"]", data, result)
 		}
 	}
 }
