@@ -16,13 +16,7 @@
 
 package prop
 
-import (
-	"fmt"
-	"sort"
-	"strings"
-
-	"github.com/magiconair/properties"
-)
+import "github.com/magiconair/properties"
 
 // Read 将 properties 格式的字节数组解析成 map 数据。
 func Read(b []byte) (map[string]interface{}, error) {
@@ -35,26 +29,8 @@ func Read(b []byte) (map[string]interface{}, error) {
 		return nil, err
 	}
 
-	m := p.Map()
-	var keys []string
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
 	ret := make(map[string]interface{})
-	for _, k := range keys {
-		v := m[k]
-		if k[len(k)-1] == ']' {
-			i := strings.LastIndex(k, "[")
-			if i <= 0 {
-				return nil, fmt.Errorf("invalid key %q", k)
-			}
-			k = k[0:i]
-			if s, ok := ret[k]; ok {
-				v = s.(string) + "," + v
-			}
-		}
+	for k, v := range p.Map() {
 		ret[k] = v
 	}
 	return ret, nil

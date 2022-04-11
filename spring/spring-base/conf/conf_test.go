@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"image"
 	"reflect"
-	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -59,14 +58,12 @@ func TestProperties_Load(t *testing.T) {
 	err = p.Load("testdata/config/application.properties")
 	assert.Nil(t, err)
 
-	keys := p.Keys()
-	sort.Strings(keys)
-	for _, k := range keys {
+	for _, k := range p.Keys() {
 		fmt.Println(k+":", p.Get(k))
 	}
 
-	assert.Equal(t, p.Get("properties.list"), "1,2")
-	assert.Equal(t, p.Get("yaml.list"), "1,2")
+	assert.True(t, p.Has("yaml.list"))
+	assert.True(t, p.Has("properties.list"))
 }
 
 func TestProperties_ReadProperties(t *testing.T) {
@@ -86,28 +83,6 @@ func TestProperties_ReadProperties(t *testing.T) {
 			{"string", "string=hello", "hello", reflect.String},
 			{"date", "date=2018-02-17", "2018-02-17", reflect.String},
 			{"time", "time=2018-02-17T15:02:31+08:00", "2018-02-17T15:02:31+08:00", reflect.String},
-		}
-
-		for _, d := range data {
-			p, _ := conf.Bytes([]byte(d.str), ".properties")
-			v := p.Get(d.key)
-			assert.Equal(t, v, d.val)
-		}
-	})
-
-	t.Run("array", func(t *testing.T) {
-
-		data := []struct {
-			key  string
-			str  string
-			val  interface{}
-			kind reflect.Kind
-		}{
-			{"bool", "bool[0]=false", "false", reflect.String},
-			{"int", "int[0]=3", "3", reflect.String},
-			{"float", "float[0]=3.0", "3.0", reflect.String},
-			{"string", "string[0]=\"3\"", "\"3\"", reflect.String},
-			{"string", "string[0]=hello", "hello", reflect.String},
 		}
 
 		for _, d := range data {
@@ -229,28 +204,6 @@ func TestProperties_ReadYaml(t *testing.T) {
 		}
 	})
 
-	t.Run("array", func(t *testing.T) {
-
-		data := []struct {
-			key  string
-			str  string
-			val  interface{}
-			kind reflect.Kind
-		}{
-			{"bool", "bool: [false,true]", "false,true", reflect.Bool},
-			{"int", "int: [3,4]", "3,4", reflect.Int},
-			{"float", "float: [3.0,4.1]", "3,4.1", reflect.Float64},
-			{"string", "string: [\"3\",\"4\"]", "3,4", reflect.String},
-			{"string", "string: [hello,world]", "hello,world", reflect.String},
-		}
-
-		for _, d := range data {
-			p, _ := conf.Bytes([]byte(d.str), ".yaml")
-			v := p.Get(d.key)
-			assert.Equal(t, v, d.val)
-		}
-	})
-
 	t.Run("map", func(t *testing.T) {
 
 		str := `
@@ -359,16 +312,6 @@ func TestProperties_ReadYaml(t *testing.T) {
 		assert.True(t, p.Has("map"))
 		assert.True(t, p.Has("array"))
 	})
-
-	t.Run("string_list", func(t *testing.T) {
-		p, err := conf.Bytes([]byte("string_list: \n  - a\n  - b\n  - c\n"), ".yaml")
-		assert.Nil(t, err)
-		assert.True(t, p.Has("string_list"))
-		var v []string
-		err = p.Bind(&v, conf.Key("string_list"))
-		assert.Nil(t, err)
-		assert.Equal(t, v, []string{"a", "b", "c"})
-	})
 }
 
 func TestProperties_Get(t *testing.T) {
@@ -384,7 +327,7 @@ func TestProperties_Get(t *testing.T) {
 
 		v := p.Get("a.b.c")
 		assert.Equal(t, v, "3")
-		v = p.Get("a.b.d")
+		v = p.Get("a.b.d[0]")
 		assert.Equal(t, v, "3")
 
 		err = p.Set("Bool", true)
@@ -497,14 +440,20 @@ func TestProperties_Get(t *testing.T) {
 				},
 			},
 		})
-		v := p.Get("a[0]")
-		assert.Equal(t, v, "1,2")
-		v = p.Get("a[1]")
-		assert.Equal(t, v, "3,4")
+		v := p.Get("a[0][0]")
+		assert.Equal(t, v, "1")
+		v = p.Get("a[0][1]")
+		assert.Equal(t, v, "2")
+		v = p.Get("a[1][0]")
+		assert.Equal(t, v, "3")
+		v = p.Get("a[1][1]")
+		assert.Equal(t, v, "4")
 		v = p.Get("a[2].b")
 		assert.Equal(t, v, "c")
-		v = p.Get("a[2].d")
-		assert.Equal(t, v, "5,6")
+		v = p.Get("a[2].d[0]")
+		assert.Equal(t, v, "5")
+		v = p.Get("a[2].d[1]")
+		assert.Equal(t, v, "6")
 	})
 }
 
@@ -734,9 +683,15 @@ func TestProperties_Set(t *testing.T) {
 	assert.Nil(t, err)
 	err = p.Set("c", []float32{1, 1.1, 1.11})
 	assert.Nil(t, err)
-	assert.Equal(t, p.Get("a"), "a,aa,aaa")
-	assert.Equal(t, p.Get("b"), "1,11,111")
-	assert.Equal(t, p.Get("c"), "1,1.1,1.11")
+	assert.Equal(t, p.Get("a[0]"), "a")
+	assert.Equal(t, p.Get("a[1]"), "aa")
+	assert.Equal(t, p.Get("a[2]"), "aaa")
+	assert.Equal(t, p.Get("b[0]"), "1")
+	assert.Equal(t, p.Get("b[1]"), "11")
+	assert.Equal(t, p.Get("b[2]"), "111")
+	assert.Equal(t, p.Get("c[0]"), "1")
+	assert.Equal(t, p.Get("c[1]"), "1.1")
+	assert.Equal(t, p.Get("c[2]"), "1.11")
 }
 
 func PointConverter(val string) (image.Point, error) {
@@ -750,10 +705,13 @@ func PointConverter(val string) (image.Point, error) {
 }
 
 func PointSplitter(str string) ([]string, error) {
-	ss := strings.Split(str, ",")
-	ret := make([]string, len(ss)/2)
-	for i := 0; i < len(ss); i += 2 {
-		ret[i/2] = ss[i] + "," + ss[i+1]
+	var ret []string
+	var lastIndex int
+	for i, c := range str {
+		if c == ')' {
+			ret = append(ret, str[lastIndex:i+1])
+			lastIndex = i + 1
+		}
 	}
 	return ret, nil
 }
@@ -762,7 +720,7 @@ func TestSplitter(t *testing.T) {
 	conf.RegisterConverter(PointConverter)
 	conf.RegisterSplitter("PointSplitter", PointSplitter)
 	var points []image.Point
-	err := conf.New().Bind(&points, conf.Tag("${:=(1,2),(3,4)}|PointSplitter"))
+	err := conf.New().Bind(&points, conf.Tag("${:=(1,2)(3,4)}|PointSplitter"))
 	assert.Nil(t, err)
 	assert.Equal(t, points, []image.Point{{X: 1, Y: 2}, {X: 3, Y: 4}})
 }

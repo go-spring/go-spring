@@ -142,25 +142,16 @@ func BindValue(p *Properties, v reflect.Value, param BindParam) error {
 
 func getSliceValue(p *Properties, et reflect.Type, param BindParam) (*Properties, error) {
 
-	strVal := ""
-	wantDef := false
-	primitive := util.IsPrimitiveValueType(et)
-
-	if converters[et] != nil || primitive {
-		if !p.Has(param.Key) {
-			wantDef = true
-		} else {
-			strVal = p.Get(param.Key)
-		}
-	} else {
-		if !p.Has(fmt.Sprintf("%s[%d]", param.Key, 0)) {
-			wantDef = true
-		} else {
-			return p, nil
-		}
+	if p.Has(fmt.Sprintf("%s[%d]", param.Key, 0)) {
+		return p, nil
 	}
 
-	if wantDef {
+	strVal := ""
+	primitive := util.IsPrimitiveValueType(et)
+
+	if p.Has(param.Key) {
+		strVal = p.Get(param.Key)
+	} else {
 		if !param.Tag.HasDef {
 			return nil, util.Errorf(code.FileLine(), "property %q %w", param.Key, ErrNotExist)
 		}

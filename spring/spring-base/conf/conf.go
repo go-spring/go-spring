@@ -25,10 +25,10 @@ import (
 	"io/ioutil"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 
 	"github.com/go-spring/spring-base/cast"
-	"github.com/go-spring/spring-base/util"
 )
 
 func init() {
@@ -103,19 +103,22 @@ func Bytes(b []byte, ext string) (*Properties, error) {
 // Bytes 从 []byte 加载属性列表，ext 是文件扩展名，如 .yaml、.toml 等。该方法会覆
 // 盖已有的属性值。
 func (p *Properties) Bytes(b []byte, ext string) error {
-
 	r, ok := readers[ext]
 	if !ok {
 		return fmt.Errorf("unsupported file type %s", ext)
 	}
-
 	m, err := r(b)
 	if err != nil {
 		return err
 	}
-
-	for k, v := range m {
-		if err = p.Set(k, v); err != nil {
+	var keys []string
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		err = p.Set(k, m[k])
+		if err != nil {
 			return err
 		}
 	}
@@ -128,6 +131,7 @@ func (p *Properties) Keys() []string {
 	for k := range p.m {
 		keys = append(keys, k)
 	}
+	sort.Strings(keys)
 	return keys
 }
 
@@ -146,7 +150,7 @@ func (p *Properties) convertKey(key string) string {
 }
 
 // checkKey 检查属性 key 是否合法，collection 表示是否为空的集合数据。
-func (p *Properties) checkKey(key string, collection bool) error {
+func (p *Properties) checkKey(key string, collection bool) (exist bool, err error) {
 
 	var (
 		ok bool
@@ -155,6 +159,7 @@ func (p *Properties) checkKey(key string, collection bool) error {
 	)
 
 	t = p.t
+	exist = true
 	key = p.convertKey(key)
 	keyPath := strings.Split(key, ".")
 	for i, s := range keyPath {
@@ -167,6 +172,7 @@ func (p *Properties) checkKey(key string, collection bool) error {
 			} else {
 				t[s] = struct{}{}
 			}
+			exist = false
 			continue
 		}
 
@@ -175,7 +181,8 @@ func (p *Properties) checkKey(key string, collection bool) error {
 				t = v.(map[string]interface{})
 				continue
 			}
-			return fmt.Errorf("property %q want a value but has sub keys %v", key, v)
+			err = fmt.Errorf("property %q want a value but has sub keys %v", key, v)
+			return
 		}
 
 		if _, ok = v.(struct{}); ok {
@@ -183,10 +190,11 @@ func (p *Properties) checkKey(key string, collection bool) error {
 				continue
 			}
 			oldKey := strings.Join(keyPath[:i+1], ".")
-			return fmt.Errorf("property %q has a value but want another sub key %q", oldKey, key)
+			err = fmt.Errorf("property %q has a value but want another sub key %q", oldKey, key)
+			return
 		}
 	}
-	return nil
+	return
 }
 
 // Has 返回属性 key 是否存在。
@@ -240,11 +248,9 @@ func Def(v string) GetOption {
 // 当 key 对应的属性值不存在且没有设置默认值时 Get 方法返回 nil。因此可以通过判断
 // Get 方法的返回值是否为 nil 来判断 key 对应的属性值是否存在。
 func (p *Properties) Get(key string, opts ...GetOption) string {
-
 	if val, ok := p.m[key]; ok {
 		return val
 	}
-
 	arg := getArg{}
 	for _, opt := range opts {
 		opt(&arg)
@@ -256,18 +262,23 @@ func (p *Properties) Get(key string, opts ...GetOption) string {
 // 值。Set 方法除了支持 string 类型的属性值，还支持 int、uint、bool 等其他基础
 // 数据类型的属性值。特殊情况下，Set 方法也支持 slice 、map 与基础数据类型组合构
 // 成的属性值，其处理方式是将组合结构层层展开，可以将组合结构看成一棵树，那么叶子结
-// 点的路径就是属性的 key，叶子结点的值就是属性的值。
+// 点的路径就是属性的 key，叶子结点的值就是属性的值。注意: conf 的配置文件是补充
+// 关系，而不是替换关系，这一条原则我也经常会搞混，尤其在和其他配置库相比较的时候。
 func (p *Properties) Set(key string, val interface{}) error {
 	switch v := reflect.ValueOf(val); v.Kind() {
 	case reflect.Map:
-		if v.Len() == 0 {
+		exist, err := p.checkKey(key, true)
+		if err != nil {
+			return err
+		}
+		if v.Len() == 0 && !exist {
 			p.m[key] = ""
-			return p.checkKey(key, true)
+			return nil
 		}
 		for _, k := range v.MapKeys() {
 			mapValue := v.MapIndex(k).Interface()
 			mapKey := cast.ToString(k.Interface())
-			err := p.Set(key+"."+mapKey, mapValue)
+			err = p.Set(key+"."+mapKey, mapValue)
 			if err != nil {
 				return err
 			}
@@ -276,34 +287,31 @@ func (p *Properties) Set(key string, val interface{}) error {
 			delete(p.m, key)
 		}
 	case reflect.Array, reflect.Slice:
-		if v.Len() == 0 {
-			p.m[key] = ""
-			return p.checkKey(key, true)
+		exist, err := p.checkKey(key, true)
+		if err != nil {
+			return err
 		}
-		vItem0 := v.Index(0).Interface()
-		tItem0 := reflect.TypeOf(vItem0)
-		if util.IsPrimitiveValueType(tItem0) {
-			ss := cast.ToStringSlice(val)
-			err := p.Set(key, strings.Join(ss, ","))
+		if v.Len() == 0 && !exist {
+			p.m[key] = ""
+			return nil
+		}
+		for i := 0; i < v.Len(); i++ {
+			subKey := fmt.Sprintf("%s[%d]", key, i)
+			subValue := v.Index(i).Interface()
+			err := p.Set(subKey, subValue)
 			if err != nil {
 				return err
 			}
-		} else {
-			for i := 0; i < v.Len(); i++ {
-				subKey := fmt.Sprintf("%s[%d]", key, i)
-				subValue := v.Index(i).Interface()
-				err := p.Set(subKey, subValue)
-				if err != nil {
-					return err
-				}
-			}
-			if _, ok := p.m[key]; ok {
-				delete(p.m, key)
-			}
+		}
+		if _, ok := p.m[key]; ok {
+			delete(p.m, key)
 		}
 	default:
+		_, err := p.checkKey(key, false)
+		if err != nil {
+			return err
+		}
 		p.m[key] = cast.ToString(val)
-		return p.checkKey(key, false)
 	}
 	return nil
 }
