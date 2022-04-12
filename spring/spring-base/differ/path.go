@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package path
+package differ
 
 import (
 	"strings"
@@ -30,17 +30,21 @@ const (
 )
 
 // JsonPath 使用 JSON 路径表达式定义的路径。
-type JsonPath struct {
+type JsonPath interface {
+	Match(path string) MatchResult
+}
+
+type jsonPath struct {
 	expr string
 }
 
-// ParseJsonPath 解析使用 JSON 路径表达式定义的路径。
-func ParseJsonPath(expr string) JsonPath {
-	return JsonPath{expr: expr}
+// ToJsonPath 解析使用 JSON 路径表达式定义的路径。
+func ToJsonPath(expr string) JsonPath {
+	return &jsonPath{expr: expr}
 }
 
 // Match 匹配使用 JSON 路径表达式定义的路径，返回匹配结果。
-func (p JsonPath) Match(path string) MatchResult {
+func (p *jsonPath) Match(path string) MatchResult {
 	if p.expr == path {
 		return MatchFull
 	}

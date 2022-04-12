@@ -21,8 +21,6 @@ import (
 	"encoding/json"
 	"reflect"
 	"strconv"
-
-	"github.com/go-spring/spring-base/differ/path"
 )
 
 const (
@@ -111,19 +109,18 @@ type JsonDiffResult struct {
 
 // JsonDiffer JSON 比较器。
 type JsonDiffer struct {
-	config map[path.JsonPath]*jsonPathConfig
+	config map[JsonPath]*jsonPathConfig
 }
 
 // NewJsonDiffer 创建新的 JSON 比较器。
 func NewJsonDiffer() *JsonDiffer {
 	return &JsonDiffer{
-		config: make(map[path.JsonPath]*jsonPathConfig),
+		config: make(map[JsonPath]*jsonPathConfig),
 	}
 }
 
 // Path 获取路径的配置。
-func (d *JsonDiffer) Path(expr string) *jsonPathConfig {
-	p := path.ParseJsonPath(expr)
+func (d *JsonDiffer) Path(p JsonPath) *jsonPathConfig {
 	c, ok := d.config[p]
 	if !ok {
 		c = &jsonPathConfig{}
@@ -175,7 +172,7 @@ func (d *JsonDiffer) Diff(a, b string) *JsonDiffResult {
 
 type diffParam struct {
 	jsonPathConfig
-	config map[path.JsonPath]*jsonPathConfig
+	config map[JsonPath]*jsonPathConfig
 }
 
 func diffValue(prefix string, a, b interface{}, parent diffParam, result *JsonDiffResult) {
@@ -189,15 +186,15 @@ func diffValue(prefix string, a, b interface{}, parent diffParam, result *JsonDi
 	}
 
 	current := diffParam{
-		config: make(map[path.JsonPath]*jsonPathConfig),
+		config: make(map[JsonPath]*jsonPathConfig),
 	}
 
 	for p, c := range parent.config {
 		r := p.Match(prefix)
-		if r == path.MatchFull {
+		if r == MatchFull {
 			current.jsonPathConfig = *c
 			break
-		} else if r == path.MatchPrefix {
+		} else if r == MatchPrefix {
 			current.config[p] = c
 		}
 	}

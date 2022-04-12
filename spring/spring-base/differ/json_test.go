@@ -62,7 +62,7 @@ func TestDiffJSON(t *testing.T) {
 				`"3"`,
 				`"3"`,
 				func(d *differ.JsonDiffer) {
-					d.Path("$").UnquoteExpand()
+					d.Path(differ.ToJsonPath("$")).UnquoteExpand()
 				},
 				&differ.JsonDiffResult{
 					Differs: map[string]differ.JsonDiffItem{},
@@ -88,7 +88,7 @@ func TestDiffJSON(t *testing.T) {
 				`"true"`,
 				`"true"`,
 				func(d *differ.JsonDiffer) {
-					d.Path("$").UnquoteExpand()
+					d.Path(differ.ToJsonPath("$")).UnquoteExpand()
 				},
 				&differ.JsonDiffResult{
 					Differs: map[string]differ.JsonDiffItem{},
@@ -138,7 +138,7 @@ func TestDiffJSON(t *testing.T) {
 				`"{}"`,
 				`"{}"`,
 				func(d *differ.JsonDiffer) {
-					d.Path("$").UnquoteExpand()
+					d.Path(differ.ToJsonPath("$")).UnquoteExpand()
 				},
 				&differ.JsonDiffResult{
 					Differs: map[string]differ.JsonDiffItem{},
@@ -164,7 +164,7 @@ func TestDiffJSON(t *testing.T) {
 				`"[]"`,
 				`"[]"`,
 				func(d *differ.JsonDiffer) {
-					d.Path("$").UnquoteExpand()
+					d.Path(differ.ToJsonPath("$")).UnquoteExpand()
 				},
 				&differ.JsonDiffResult{
 					Differs: map[string]differ.JsonDiffItem{},
@@ -202,7 +202,7 @@ func TestDiffJSON(t *testing.T) {
 				`{"a":"3"}`,
 				`{"a":"3"}`,
 				func(d *differ.JsonDiffer) {
-					d.Path("$[a]").UnquoteExpand()
+					d.Path(differ.ToJsonPath("$[a]")).UnquoteExpand()
 				},
 				&differ.JsonDiffResult{
 					Differs: map[string]differ.JsonDiffItem{},
@@ -228,7 +228,7 @@ func TestDiffJSON(t *testing.T) {
 				`{"a":"true"}`,
 				`{"a":"true"}`,
 				func(d *differ.JsonDiffer) {
-					d.Path("$[a]").UnquoteExpand()
+					d.Path(differ.ToJsonPath("$[a]")).UnquoteExpand()
 				},
 				&differ.JsonDiffResult{
 					Differs: map[string]differ.JsonDiffItem{},
@@ -266,7 +266,7 @@ func TestDiffJSON(t *testing.T) {
 				`{"a":"{}"}`,
 				`{"a":"{}"}`,
 				func(d *differ.JsonDiffer) {
-					d.Path("$[a]").UnquoteExpand()
+					d.Path(differ.ToJsonPath("$[a]")).UnquoteExpand()
 				},
 				&differ.JsonDiffResult{
 					Differs: map[string]differ.JsonDiffItem{},
@@ -292,7 +292,7 @@ func TestDiffJSON(t *testing.T) {
 				`{"a":"[]"}`,
 				`{"a":"[]"}`,
 				func(d *differ.JsonDiffer) {
-					d.Path("$[a]").UnquoteExpand()
+					d.Path(differ.ToJsonPath("$[a]")).UnquoteExpand()
 				},
 				&differ.JsonDiffResult{
 					Differs: map[string]differ.JsonDiffItem{},
@@ -306,7 +306,7 @@ func TestDiffJSON(t *testing.T) {
 				`[3,"3"]`,
 				`[3,"3"]`,
 				func(d *differ.JsonDiffer) {
-					d.Path("$[1]").UnquoteExpand()
+					d.Path(differ.ToJsonPath("$[1]")).UnquoteExpand()
 				},
 				&differ.JsonDiffResult{
 					Differs: map[string]differ.JsonDiffItem{},
@@ -321,7 +321,7 @@ func TestDiffJSON(t *testing.T) {
 				`[true,"true"]`,
 				`[true,"true"]`,
 				func(d *differ.JsonDiffer) {
-					d.Path("$[1]").UnquoteExpand()
+					d.Path(differ.ToJsonPath("$[1]")).UnquoteExpand()
 				},
 				&differ.JsonDiffResult{
 					Differs: map[string]differ.JsonDiffItem{},
@@ -336,7 +336,7 @@ func TestDiffJSON(t *testing.T) {
 				`[null,"null"]`,
 				`[null,"null"]`,
 				func(d *differ.JsonDiffer) {
-					d.Path("$[1]").UnquoteExpand()
+					d.Path(differ.ToJsonPath("$[1]")).UnquoteExpand()
 				},
 				&differ.JsonDiffResult{
 					Differs: map[string]differ.JsonDiffItem{},
@@ -375,7 +375,7 @@ func TestDiffJSON(t *testing.T) {
 				`[{},"{}"]`,
 				`[{},"{}"]`,
 				func(d *differ.JsonDiffer) {
-					d.Path("$[1]").UnquoteExpand()
+					d.Path(differ.ToJsonPath("$[1]")).UnquoteExpand()
 				},
 				&differ.JsonDiffResult{
 					Differs: map[string]differ.JsonDiffItem{},
@@ -390,7 +390,7 @@ func TestDiffJSON(t *testing.T) {
 				`[[],"[]"]`,
 				`[[],"[]"]`,
 				func(d *differ.JsonDiffer) {
-					d.Path("$[1]").UnquoteExpand()
+					d.Path(differ.ToJsonPath("$[1]")).UnquoteExpand()
 				},
 				&differ.JsonDiffResult{
 					Differs: map[string]differ.JsonDiffItem{},
