@@ -187,11 +187,18 @@ func getBeforeDestroyers(destroyers *list.List, i interface{}) *list.List {
 	return result
 }
 
+type lazyField struct {
+	v    reflect.Value
+	path string
+	tag  string
+}
+
 // wiringStack 记录 bean 的注入路径。
 type wiringStack struct {
 	destroyers   *list.List
 	destroyerMap map[string]*destroyer
 	beans        []*BeanDefinition
+	lazyFields   []lazyField
 }
 
 func newWiringStack() *wiringStack {
@@ -342,6 +349,14 @@ func (c *container) Refresh(opts ...internal.RefreshOption) (err error) {
 			if err = c.wireBean(b, stack); err != nil {
 				return err
 			}
+		}
+	}
+
+	// 处理被标记为延迟注入的那些 bean 字段
+	for _, f := range stack.lazyFields {
+		tag := strings.TrimSuffix(f.tag, ",lazy")
+		if err := c.wireByTag(f.v, tag, stack); err != nil {
+			return fmt.Errorf("%q wired error: %s", f.path, err.Error())
 		}
 	}
 
@@ -731,8 +746,13 @@ func (c *container) wireStruct(v reflect.Value, opt conf.BindParam, stack *wirin
 			tag, ok = ft.Tag.Lookup("inject")
 		}
 		if ok {
-			if err := c.wireByTag(fv, tag, stack); err != nil {
-				return fmt.Errorf("%q wired error: %w", fieldPath, err)
+			if strings.HasSuffix(tag, ",lazy") {
+				f := lazyField{v: fv, path: fieldPath, tag: tag}
+				stack.lazyFields = append(stack.lazyFields, f)
+			} else {
+				if err := c.wireByTag(fv, tag, stack); err != nil {
+					return fmt.Errorf("%q wired error: %w", fieldPath, err)
+				}
 			}
 			continue
 		}

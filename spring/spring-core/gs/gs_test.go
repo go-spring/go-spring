@@ -2919,7 +2919,7 @@ func newCircularA(b *circularB) *circularA {
 }
 
 type circularB struct {
-	A *circularA `autowire:""`
+	A *circularA `autowire:",lazy"`
 }
 
 func newCircularB() *circularB {
@@ -2927,16 +2927,18 @@ func newCircularB() *circularB {
 }
 
 func TestLazy(t *testing.T) {
-	for i := 0; i < 20; i++ {
+	for i := 0; i < 1; i++ {
 		c := gs.New()
 		c.Provide(newCircularA)
 		c.Provide(newCircularB)
-		err := runTest(c, func(p gs.Context) {
-			var a *circularA
-			err := p.Get(&a)
-			assert.Nil(t, err)
-		})
+		d := struct {
+			b *circularB `autowire:""`
+		}{}
+		c.Object(&d)
+		err := c.Refresh()
 		assert.Nil(t, err)
+		assert.NotNil(t, d.b)
+		assert.NotNil(t, d.b.A)
 	}
 }
 
