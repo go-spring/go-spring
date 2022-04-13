@@ -22,7 +22,6 @@ import (
 	"testing"
 
 	"github.com/go-spring/spring-base/assert"
-	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-base/clock"
 	"github.com/go-spring/spring-base/knife"
 	"github.com/go-spring/spring-base/net/recorder"
@@ -176,7 +175,7 @@ func (p *redisProtocol) FlatRequest(data string) (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	return cast.FlatSlice(csv), nil
+	return recorder.FlatJSON(csv), nil
 }
 
 func (p *redisProtocol) FlatResponse(data string) (map[string]string, error) {
@@ -184,5 +183,5 @@ func (p *redisProtocol) FlatResponse(data string) (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	return cast.FlatSlice(csv), nil
+	return recorder.FlatJSON(csv), nil
 }

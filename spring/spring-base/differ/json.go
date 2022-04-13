@@ -32,66 +32,67 @@ const (
 	jsonUnquoteExpand     = Strategy(1 << 5) // 解析引号里面的内容
 )
 
-type jsonPathConfig struct {
+type JsonPathConfig struct {
+	path       JsonPath
 	strategy   Strategy
 	comparator Comparator
 }
 
-func (c *jsonPathConfig) ignorePath() bool {
+func (c *JsonPathConfig) ignorePath() bool {
 	return c.strategy&jsonIgnorePath == jsonIgnorePath
 }
 
-func (c *jsonPathConfig) IgnorePath() *jsonPathConfig {
+func (c *JsonPathConfig) IgnorePath() *JsonPathConfig {
 	c.strategy |= jsonIgnorePath
 	return c
 }
 
-func (c *jsonPathConfig) ignoreValue() bool {
+func (c *JsonPathConfig) ignoreValue() bool {
 	return c.strategy&jsonIgnoreValue == jsonIgnoreValue
 }
 
-func (c *jsonPathConfig) IgnoreValue() *jsonPathConfig {
+func (c *JsonPathConfig) IgnoreValue() *JsonPathConfig {
 	c.strategy |= jsonIgnoreValue
 	return c
 }
 
-func (c *jsonPathConfig) ignoreArrayOrder() bool {
+func (c *JsonPathConfig) ignoreArrayOrder() bool {
 	return c.strategy&jsonIgnoreArrayOrder == jsonIgnoreArrayOrder
 }
 
-func (c *jsonPathConfig) IgnoreArrayOrder() *jsonPathConfig {
+func (c *JsonPathConfig) IgnoreArrayOrder() *JsonPathConfig {
 	c.strategy |= jsonIgnoreArrayOrder
 	return c
 }
 
-func (c *jsonPathConfig) ignoreExtraItems() bool {
+func (c *JsonPathConfig) ignoreExtraItems() bool {
 	return c.strategy&jsonIgnoreExtraItems == jsonIgnoreExtraItems
 }
 
-func (c *jsonPathConfig) IgnoreExtraItems() *jsonPathConfig {
+func (c *JsonPathConfig) IgnoreExtraItems() *JsonPathConfig {
 	c.strategy |= jsonIgnoreExtraItems
 	return c
 }
 
-func (c *jsonPathConfig) treatNullAsAbsent() bool {
+func (c *JsonPathConfig) treatNullAsAbsent() bool {
 	return c.strategy&jsonTreatNullAsAbsent == jsonTreatNullAsAbsent
 }
 
-func (c *jsonPathConfig) TreatNullAsAbsent() *jsonPathConfig {
+func (c *JsonPathConfig) TreatNullAsAbsent() *JsonPathConfig {
 	c.strategy |= jsonTreatNullAsAbsent
 	return c
 }
 
-func (c *jsonPathConfig) unquoteExpand() bool {
+func (c *JsonPathConfig) unquoteExpand() bool {
 	return c.strategy&jsonUnquoteExpand == jsonUnquoteExpand
 }
 
-func (c *jsonPathConfig) UnquoteExpand() *jsonPathConfig {
+func (c *JsonPathConfig) UnquoteExpand() *JsonPathConfig {
 	c.strategy |= jsonUnquoteExpand
 	return c
 }
 
-func (c *jsonPathConfig) SetComparator(comparator Comparator) *jsonPathConfig {
+func (c *JsonPathConfig) SetComparator(comparator Comparator) *JsonPathConfig {
 	c.comparator = comparator
 	return c
 }
@@ -109,23 +110,18 @@ type JsonDiffResult struct {
 
 // JsonDiffer JSON 比较器。
 type JsonDiffer struct {
-	config map[JsonPath]*jsonPathConfig
+	configs []*JsonPathConfig
 }
 
 // NewJsonDiffer 创建新的 JSON 比较器。
 func NewJsonDiffer() *JsonDiffer {
-	return &JsonDiffer{
-		config: make(map[JsonPath]*jsonPathConfig),
-	}
+	return &JsonDiffer{}
 }
 
 // Path 获取路径的配置。
-func (d *JsonDiffer) Path(p JsonPath) *jsonPathConfig {
-	c, ok := d.config[p]
-	if !ok {
-		c = &jsonPathConfig{}
-		d.config[p] = c
-	}
+func (d *JsonDiffer) Path(path JsonPath) *JsonPathConfig {
+	c := &JsonPathConfig{path: path}
+	d.configs = append(d.configs, c)
 	return c
 }
 
@@ -162,20 +158,18 @@ func (d *JsonDiffer) Diff(a, b string) *JsonDiffResult {
 			}
 		}
 	} else {
-		param := diffParam{
-			config: d.config,
-		}
+		param := &diffParam{configs: d.configs}
 		diffValue(prefix, va, vb, param, result)
 	}
 	return result
 }
 
 type diffParam struct {
-	jsonPathConfig
-	config map[JsonPath]*jsonPathConfig
+	JsonPathConfig
+	configs []*JsonPathConfig
 }
 
-func diffValue(prefix string, a, b interface{}, parent diffParam, result *JsonDiffResult) {
+func diffValue(prefix string, a, b interface{}, parent *diffParam, result *JsonDiffResult) {
 
 	if a == nil && b == nil {
 		result.Equals[prefix] = JsonDiffItem{
@@ -185,17 +179,15 @@ func diffValue(prefix string, a, b interface{}, parent diffParam, result *JsonDi
 		return
 	}
 
-	current := diffParam{
-		config: make(map[JsonPath]*jsonPathConfig),
-	}
+	current := &diffParam{}
 
-	for p, c := range parent.config {
-		r := p.Match(prefix)
+	for _, c := range parent.configs {
+		r := c.path.Match(prefix)
 		if r == MatchFull {
-			current.jsonPathConfig = *c
+			current.JsonPathConfig = *c
 			break
 		} else if r == MatchPrefix {
-			current.config[p] = c
+			current.configs = append(current.configs, c)
 		}
 	}
 
@@ -306,7 +298,7 @@ func diffValue(prefix string, a, b interface{}, parent diffParam, result *JsonDi
 	}
 }
 
-func diffMap(prefix string, a, b map[string]interface{}, param diffParam, result *JsonDiffResult) {
+func diffMap(prefix string, a, b map[string]interface{}, param *diffParam, result *JsonDiffResult) {
 
 	if len(a) == 0 && len(b) == 0 {
 		result.Equals[prefix] = JsonDiffItem{
@@ -351,7 +343,7 @@ func diffMap(prefix string, a, b map[string]interface{}, param diffParam, result
 	}
 }
 
-func diffSliceHaveOrder(prefix string, a, b []interface{}, param diffParam, result *JsonDiffResult) {
+func diffSliceHaveOrder(prefix string, a, b []interface{}, param *diffParam, result *JsonDiffResult) {
 
 	if len(a) == 0 && len(b) == 0 {
 		result.Equals[prefix] = JsonDiffItem{
@@ -385,11 +377,11 @@ func diffSliceHaveOrder(prefix string, a, b []interface{}, param diffParam, resu
 	}
 }
 
-func diffSliceIgnoreOrder(prefix string, a, b []interface{}, param diffParam, result *JsonDiffResult) {
+func diffSliceIgnoreOrder(prefix string, a, b []interface{}, param *diffParam, result *JsonDiffResult) {
 
 }
 
-func diffStringOrBool(prefix string, va, vb interface{}, param diffParam, result *JsonDiffResult) {
+func diffStringOrBool(prefix string, va, vb interface{}, param *diffParam, result *JsonDiffResult) {
 	if va != vb {
 		result.Differs[prefix] = JsonDiffItem{
 			A: toJsonString(va),
@@ -436,7 +428,12 @@ func toJsonString(v interface{}) string {
 	return string(b)
 }
 
+func ConfigJsonPath(path JsonPath) *JsonPathConfig {
+	return &JsonPathConfig{path: path}
+}
+
 // DiffJSON 比较 a,b 两个 JSON 字符串，返回它们异同之处。
-func DiffJSON(a, b string) *JsonDiffResult {
-	return NewJsonDiffer().Diff(a, b)
+func DiffJSON(a, b string, configs ...*JsonPathConfig) *JsonDiffResult {
+	d := &JsonDiffer{configs: configs}
+	return d.Diff(a, b)
 }

@@ -30,6 +30,7 @@ import (
 	"github.com/go-spring/spring-base/assert"
 	"github.com/go-spring/spring-base/cache"
 	"github.com/go-spring/spring-base/clock"
+	"github.com/go-spring/spring-base/differ"
 	"github.com/go-spring/spring-base/knife"
 	"github.com/go-spring/spring-base/net/recorder"
 	"github.com/go-spring/spring-base/net/replayer"
@@ -171,13 +172,7 @@ func TestRecord(t *testing.T) {
 
 	key := "test"
 	f := func(sessionID string) (*recorder.Session, []cache.LoadType) {
-
-		ctx, cached := knife.New(context.Background())
-		assert.False(t, cached)
-
-		err := clock.SetFixedTime(ctx, time.Unix(0, 0))
-		assert.Nil(t, err)
-
+		ctx, _ := knife.New(context.Background())
 		recorder.StartRecord(ctx, sessionID)
 		loadTypes := testFunc(t, ctx, key)
 		session := recorder.StopRecord(ctx)
@@ -225,11 +220,16 @@ func TestRecord(t *testing.T) {
 		ss = append(ss, recorder.ToJson(s))
 	}
 
-	assert.Equal(t, ss, []string{
-		`{"Actions":[{"Protocol":"REDIS","Request":"test","Response":"{\"name\":\"test\"}"}]}`,
-		`{"Actions":[{"Protocol":"CACHE","Request":"test","Response":"{\"name\":\"test\"}"}]}`,
-		`{"Actions":[{"Protocol":"CACHE","Request":"test","Response":"{\"name\":\"test\"}"}]}`,
+	d := differ.NewJsonDiffer()
+	d.Path(recorder.TimestampPath).SetComparator(func(a, b interface{}) bool {
+		return true
 	})
+	r := d.Diff(ss[0], `{"Actions":[{"Protocol":"REDIS","Request":"test","Response":"{\"name\":\"test\"}"}]}`)
+	assert.Equal(t, r.Differs, map[string]differ.JsonDiffItem{})
+	d.Diff(ss[1], `{"Actions":[{"Protocol":"CACHE","Request":"test","Response":"{\"name\":\"test\"}"}]}`)
+	assert.Equal(t, r.Differs, map[string]differ.JsonDiffItem{})
+	d.Diff(ss[2], `{"Actions":[{"Protocol":"CACHE","Request":"test","Response":"{\"name\":\"test\"}"}]}`)
+	assert.Equal(t, r.Differs, map[string]differ.JsonDiffItem{})
 }
 
 func TestReplay(t *testing.T) {
