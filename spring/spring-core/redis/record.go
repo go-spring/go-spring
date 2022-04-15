@@ -19,7 +19,6 @@ package redis
 import (
 	"context"
 
-	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-base/net/recorder"
 )
 
@@ -31,11 +30,11 @@ func (c *recordConn) Exec(ctx context.Context, cmd string, args []interface{}) (
 	defer func() {
 		recorder.RecordAction(ctx, recorder.REDIS, &recorder.SimpleAction{
 			Request: func() string {
-				return cast.ToTTY(append([]interface{}{cmd}, args...)...)
+				return recorder.EncodeTTY(append([]interface{}{cmd}, args...)...)
 			},
 			Response: func() string {
 				if err == nil {
-					return cast.ToCSV(ret)
+					return recorder.EncodeCSV(ret)
 				}
 				if IsErrNil(err) {
 					return "NULL"

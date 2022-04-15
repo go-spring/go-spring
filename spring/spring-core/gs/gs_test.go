@@ -454,7 +454,7 @@ func TestApplicationContext_TypeConverter(t *testing.T) {
 	p := &PointBean{}
 	c.Object(p)
 
-	conf.Convert(PointConverter)
+	conf.RegisterConverter(PointConverter)
 	c.Property("point", "(7,5)")
 
 	dbConfig := &DbConfig{}
@@ -555,7 +555,8 @@ func TestApplicationContext_LoadProperties(t *testing.T) {
 	}
 
 	err := runTest(c, func(ctx gs.Context) {
-		assert.Equal(t, ctx.Prop("yaml.list"), "1\r\n2")
+		assert.Equal(t, ctx.Prop("yaml.list[0]"), "1")
+		assert.Equal(t, ctx.Prop("yaml.list[1]"), "2")
 		assert.Equal(t, ctx.Prop("spring.application.name"), "test")
 	})
 	assert.Nil(t, err)
@@ -1743,7 +1744,7 @@ func TestApplicationContext_UserDefinedTypeProperty(t *testing.T) {
 
 	c := gs.New()
 
-	conf.Convert(func(v string) (level, error) {
+	conf.RegisterConverter(func(v string) (level, error) {
 		if v == "debug" {
 			return 1, nil
 		}

@@ -21,7 +21,6 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-base/net/recorder"
 	"github.com/go-spring/spring-base/net/replayer"
 )
@@ -40,7 +39,7 @@ type replayConn struct {
 
 func (c *replayConn) Exec(ctx context.Context, cmd string, args []interface{}) (interface{}, error) {
 
-	req := cast.ToTTY(append([]interface{}{cmd}, args...)...)
+	req := recorder.EncodeTTY(append([]interface{}{cmd}, args...)...)
 	response, ok, err := replayer.BestQuery(ctx, recorder.REDIS, req)
 	if err != nil {
 		return nil, err
@@ -49,7 +48,7 @@ func (c *replayConn) Exec(ctx context.Context, cmd string, args []interface{}) (
 		return c.conn.Exec(ctx, cmd, args)
 	}
 
-	csv, err := cast.ParseCSV(response)
+	csv, err := recorder.DecodeCSV(response)
 	if err != nil {
 		return nil, err
 	}
@@ -74,17 +73,17 @@ func (p *protocol) GetLabel(data string) string {
 }
 
 func (p *protocol) FlatRequest(data string) (map[string]string, error) {
-	csv, err := cast.ParseTTY(data)
+	csv, err := recorder.DecodeTTY(data)
 	if err != nil {
 		return nil, err
 	}
-	return cast.FlatSlice(csv), nil
+	return recorder.FlatJSON(csv), nil
 }
 
 func (p *protocol) FlatResponse(data string) (map[string]string, error) {
-	csv, err := cast.ParseCSV(data)
+	csv, err := recorder.DecodeCSV(data)
 	if err != nil {
 		return nil, err
 	}
-	return cast.FlatSlice(csv), nil
+	return recorder.FlatJSON(csv), nil
 }

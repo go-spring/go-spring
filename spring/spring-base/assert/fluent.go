@@ -14,10 +14,39 @@
  * limitations under the License.
  */
 
-package json
+package assert
 
-import "encoding/json"
+import (
+	"fmt"
+	"strings"
+)
 
-func Marshal(v interface{}) ([]byte, error) {
-	return json.Marshal(v)
+type Assertion struct {
+	t T
+	v interface{}
+}
+
+func That(t T, v interface{}) *Assertion {
+	return &Assertion{
+		t: t,
+		v: v,
+	}
+}
+
+func (a *Assertion) IsTrue(msg ...string) *Assertion {
+	a.t.Helper()
+	v := a.v.(bool)
+	if !v {
+		fail(a.t, "got false but expect true", msg...)
+	}
+	return a
+}
+
+func (a *Assertion) HasPrefix(prefix string, msg ...string) *Assertion {
+	a.t.Helper()
+	v := a.v.(string)
+	if !strings.HasPrefix(v, prefix) {
+		fail(a.t, fmt.Sprintf("'%s' doesn't hava prefix '%s'", v, prefix), msg...)
+	}
+	return a
 }

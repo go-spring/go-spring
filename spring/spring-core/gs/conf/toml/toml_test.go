@@ -50,28 +50,6 @@ func TestProperties_ReadToml(t *testing.T) {
 		}
 	})
 
-	t.Run("array", func(t *testing.T) {
-
-		data := []struct {
-			key  string
-			str  string
-			val  interface{}
-			kind reflect.Kind
-		}{
-			{"bool", "bool=[false,true]", "false\r\ntrue", reflect.Bool},
-			{"int", "int=[3,4]", "3\r\n4", reflect.Int},
-			{"float", "float=[3.0,4.1]", "3\r\n4.1", reflect.Float64},
-			{"string", "string=[\"3\",\"4\"]", "3\r\n4", reflect.String},
-			{"string", "string=[\"hello\",\"world\"]", "hello\r\nworld", reflect.String},
-		}
-
-		for _, d := range data {
-			p, _ := conf.Bytes([]byte(d.str), ".toml")
-			v := p.Get(d.key)
-			assert.Equal(t, v, d.val)
-		}
-	})
-
 	t.Run("map", func(t *testing.T) {
 
 		str := `
