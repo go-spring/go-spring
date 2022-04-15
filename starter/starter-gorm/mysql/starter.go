@@ -25,6 +25,10 @@ import (
 	"gorm.io/gorm"
 )
 
+var (
+	logger = log.GetRootLogger()
+)
+
 func init() {
 	gs.Provide(createDB, "${gorm}").
 		Name("GormDB").
@@ -32,6 +36,6 @@ func init() {
 }
 
 func createDB(config database.ClientConfig) (*gorm.DB, error) {
-	log.Infof("open gorm mysql %s", config.Url)
+	logger.Infof("open gorm mysql %s", config.Url)
 	return gorm.Open(mysql.Open(config.Url))
 }

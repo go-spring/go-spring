@@ -26,6 +26,10 @@ import (
 	_ "github.com/go-spring/starter-gorm/mysql"
 )
 
+var (
+	logger = log.GetRootLogger()
+)
+
 type runner struct {
 	DB *gorm.DB `autowire:""`
 }
@@ -33,7 +37,7 @@ type runner struct {
 func (r *runner) Run(ctx gs.Context) {
 	var engines []string
 	r.DB.Raw("select engine from engines").Scan(&engines)
-	log.Infof("got mysql engines %v", engines)
+	logger.Infof("got mysql engines %v", engines)
 	go gs.ShutDown()
 }
 

@@ -14,19 +14,33 @@
  * limitations under the License.
  */
 
-package json_test
+package jpath_test
 
 import (
 	"testing"
 
 	"github.com/go-spring/spring-base/assert"
-	"github.com/go-spring/spring-base/json"
+	"github.com/go-spring/spring-base/jpath"
+	"github.com/golang/mock/gomock"
 )
 
-func TestCompilePath(t *testing.T) {
-	p, err := json.CompilePath("$.a")
-	if err != nil {
-		t.Fatal(err)
+func TestRead(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	p := jpath.NewMockPath(ctrl)
+	e := map[string]interface{}{
+		"$[a][b][0]": "c",
 	}
-	assert.True(t, p.Matches("$.a"))
+	p.EXPECT().Read(gomock.Any()).Return(e)
+	r := jpath.Read(map[string]interface{}{
+		"a": map[string]interface{}{
+			"b": []interface{}{
+				"c",
+				map[string]interface{}{
+					"d": "e",
+				},
+			},
+		},
+	}, p)
+	assert.Equal(t, r, e)
 }

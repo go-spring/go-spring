@@ -37,6 +37,7 @@ import (
 // App 对象，从而实现使用方式的统一。
 type Context interface {
 	Context() context.Context
+	Keys() []string
 	Has(key string) bool
 	Prop(key string, opts ...conf.GetOption) string
 	Bind(i interface{}, opts ...conf.BindOption) error
@@ -44,6 +45,10 @@ type Context interface {
 	Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error)
 	Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, error)
 	Go(fn func(ctx context.Context))
+}
+
+func (c *container) Keys() []string {
+	return c.p.Keys()
 }
 
 func (c *container) Has(key string) bool {
