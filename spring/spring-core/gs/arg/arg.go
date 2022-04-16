@@ -251,13 +251,13 @@ func (r *argList) getArg(ctx Context, arg Arg, t reflect.Type, fileLine string) 
 	case string:
 		tag = g
 	default:
-		tag = util.TypeName(g) + ":"
+		tag = internal.TypeName(g) + ":"
 	}
 
 	v := reflect.New(t).Elem()
 
 	// 处理 bean 类型
-	if util.IsBeanReceiver(t) {
+	if internal.IsBeanReceiver(t) {
 		if err = ctx.Wire(v, tag); err != nil {
 			return reflect.Value{}, err
 		}

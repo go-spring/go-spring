@@ -24,9 +24,9 @@ import (
 	"strings"
 
 	"github.com/go-spring/spring-base/code"
-	"github.com/go-spring/spring-base/conf"
 	"github.com/go-spring/spring-base/knife"
 	"github.com/go-spring/spring-base/util"
+	"github.com/go-spring/spring-core/conf"
 )
 
 // Languages 语言缩写代码表。

@@ -30,14 +30,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-spring/spring-base/conf"
 	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-base/util"
+	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/gs/cond"
 	"github.com/go-spring/spring-core/gs/internal"
-
-	_ "github.com/go-spring/spring-core/gs/conf/toml"
 )
 
 type refreshState int
@@ -107,7 +105,7 @@ func validOnProperty(fn interface{}) error {
 	if t.Kind() != reflect.Func {
 		return errors.New("fn should be a func(value_type)")
 	}
-	if t.NumIn() != 1 || !util.IsValueType(t.In(0)) || t.NumOut() != 0 {
+	if t.NumIn() != 1 || !conf.IsValueType(t.In(0)) || t.NumOut() != 0 {
 		return errors.New("fn should be a func(value_type)")
 	}
 	return nil
@@ -479,7 +477,7 @@ func toWireTag(selector BeanSelector) wireTag {
 	case *BeanDefinition:
 		return parseWireTag(s.ID())
 	default:
-		return parseWireTag(util.TypeName(s) + ":")
+		return parseWireTag(internal.TypeName(s) + ":")
 	}
 }
 
@@ -673,9 +671,9 @@ func (c *container) getBeanValue(b *BeanDefinition, stack *wiringStack) (reflect
 	}
 
 	// 构造函数的返回值为值类型时 b.Type() 返回其指针类型。
-	if val := out[0]; util.IsBeanType(val.Type()) {
+	if val := out[0]; internal.IsBeanType(val.Type()) {
 		// 如果实现接口的是值类型，那么需要转换成指针类型然后再赋值给接口。
-		if !val.IsNil() && val.Kind() == reflect.Interface && util.IsValueType(val.Elem().Type()) {
+		if !val.IsNil() && val.Kind() == reflect.Interface && conf.IsValueType(val.Elem().Type()) {
 			v := reflect.New(val.Elem().Type())
 			v.Elem().Set(val.Elem())
 			b.Value().Set(v)
@@ -827,7 +825,7 @@ func (c *container) getBean(v reflect.Value, tag wireTag, stack *wiringStack) er
 	}
 
 	t := v.Type()
-	if !util.IsBeanReceiver(t) {
+	if !internal.IsBeanReceiver(t) {
 		return fmt.Errorf("%s is not valid receiver type", t.String())
 	}
 
@@ -970,7 +968,7 @@ func (c *container) collectBeans(v reflect.Value, tags []wireTag, stack *wiringS
 	}
 
 	et := t.Elem()
-	if !util.IsBeanReceiver(et) {
+	if !internal.IsBeanReceiver(et) {
 		return fmt.Errorf("%s is not valid receiver type", t.String())
 	}
 

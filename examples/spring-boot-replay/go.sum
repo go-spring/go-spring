@@ -35,10 +35,13 @@ github.com/go-spring/starter-core v1.1.0-rc2/go.mod h1:f8r68vQJ/rQe7EtvRrhkElG5L
 github.com/go-spring/starter-echo v1.1.0-rc2/go.mod h1:yiSHbn2TTRBwBe8cNwhqyFz9JC0BT+Rd0AiFQr+Dd5s=
 github.com/go-spring/starter-echo v1.1.0-rc2.0.20220108073115-4928aa3f69b8 h1:b6GV/YurSHPEbgbYMrWKtypOvMTB78+rra31GQhYWWw=
 github.com/go-spring/starter-echo v1.1.0-rc2.0.20220108073115-4928aa3f69b8/go.mod h1:W7YUGOZPOOBQVyKOoLjC0fg/azLu+A/Ab5E8qplpavE=
+github.com/go-spring/starter-echo v1.1.0-rc3/go.mod h1:hHsG3uVmX8Eqfi3HhyP3DonBahRN2XvM61VIjKTZbCg=
 github.com/go-spring/starter-gin v1.1.0-rc2 h1:jbKYme1ypytxjluXFkKZXKjL1eiWJbsoSzm2pRfjgBE=
 github.com/go-spring/starter-gin v1.1.0-rc2/go.mod h1:wCbGmXLNYzHVyJ5xKGlC25v6d3jRj+DxAdSaag76uYE=
 github.com/go-spring/starter-gin v1.1.0-rc2.0.20220108073127-5d7676f95c00 h1:G9e+eRnny20gxPCAOjdd6hlw105RWoaoP1LujQR/Snk=
 github.com/go-spring/starter-gin v1.1.0-rc2.0.20220108073127-5d7676f95c00/go.mod h1:9zz4tnARD0dk3U5Shv3Ci7knFYgadjs1infIrmneuoc=
+github.com/go-spring/starter-gin v1.1.0-rc3 h1:IkzNuYHWsQoOgrbeICWhdckaxnWlvjmBEHSPG7l0EGo=
+github.com/go-spring/starter-gin v1.1.0-rc3/go.mod h1:cjwLGtuvK0vxDxY5fSIjhAWtAfPzLiRnKdW4JzfL60Q=
 github.com/go-spring/starter-go-redis v1.1.0-rc2.0.20220109005414-8ce9e0c354d0 h1:rbZA1DQYpHukuZUm3amzRf76gOFjsXvzCEapx8whb4o=
 github.com/go-spring/starter-go-redis v1.1.0-rc2.0.20220109005414-8ce9e0c354d0/go.mod h1:kq+93fWitK+FJMSpm1RTZAQseiOTwJNf91Zhv2dGclE=
 github.com/go-task/slim-sprig v0.0.0-20210107165309-348f09dbbbc0/go.mod h1:fyg7847qk6SyHyPtNmDHnmrv/HOrqktSC+C9fM+CJOE=

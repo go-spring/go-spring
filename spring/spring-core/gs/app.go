@@ -29,8 +29,8 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/go-spring/spring-base/conf"
 	"github.com/go-spring/spring-base/log"
+	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/grpc"
 	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/gs/internal"

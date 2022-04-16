@@ -21,9 +21,9 @@ import (
 	"errors"
 	"reflect"
 
-	"github.com/go-spring/spring-base/conf"
 	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-base/util"
+	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/gs/cond"
 )

@@ -21,9 +21,9 @@ import (
 	"testing"
 
 	"github.com/go-spring/spring-base/assert"
-	"github.com/go-spring/spring-base/conf"
 	"github.com/go-spring/spring-base/knife"
 	"github.com/go-spring/spring-base/util"
+	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/web/i18n"
 )
 

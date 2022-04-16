@@ -21,7 +21,7 @@ import (
 	"testing"
 
 	"github.com/go-spring/spring-base/assert"
-	"github.com/go-spring/spring-base/conf"
+	"github.com/go-spring/spring-core/conf"
 )
 
 func TestProperties_ReadToml(t *testing.T) {

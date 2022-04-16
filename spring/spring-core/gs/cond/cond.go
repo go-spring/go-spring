@@ -24,8 +24,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/go-spring/spring-base/conf"
 	"github.com/go-spring/spring-base/util"
+	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/gs/internal"
 )
 

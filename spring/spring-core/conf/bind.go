@@ -32,6 +32,47 @@ var (
 	ErrNotExist = errors.New("not exist")
 )
 
+// IsPrimitiveValueType 返回是否是原生值类型。首先，什么是值类型？在发生赋值时，如
+// 果传递的是数据本身而不是数据的引用，则称这种类型为值类型。那什么是原生值类型？所谓原
+// 生值类型是指 golang 定义的 26 种基础类型里面符合值类型定义的类型。罗列下来，就是说
+// Bool、Int、Int8、Int16、Int32、Int64、Uint、Uint8、Uint16、Uint32、Uint64、
+// Float32、Float64、Complex64、Complex128、String、Struct 这些基础数据类型都
+// 是值类型。当然，需要特别说明的是 Struct 类型必须在保证所有字段都是值类型的时候才是
+// 值类型，只要有不是值类型的字段就不是值类型。
+func IsPrimitiveValueType(t reflect.Type) bool {
+	switch t.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return true
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return true
+	case reflect.Complex64, reflect.Complex128:
+		return true
+	case reflect.Float32, reflect.Float64:
+		return true
+	case reflect.String:
+		return true
+	case reflect.Bool:
+		return true
+	}
+	return false
+}
+
+// IsValueType 返回是否是 value 类型。除了原生值类型，它们的集合类型也是值类型，但
+// 是仅限于一层复合结构，即 []string、map[string]struct 这种，像 [][]string 则
+// 不是值类型，map[string]map[string]string 也不是值类型，因为程序开发过程中，配
+// 置项应当越明确越好，而多层次嵌套结构显然会造成信息的不明确，因此不能是值类型。
+func IsValueType(t reflect.Type) bool {
+	fn := func(t reflect.Type) bool {
+		return IsPrimitiveValueType(t) || t.Kind() == reflect.Struct
+	}
+	switch t.Kind() {
+	case reflect.Map, reflect.Slice, reflect.Array:
+		return fn(t.Elem())
+	default:
+		return fn(t)
+	}
+}
+
 type BindParam struct {
 	Type reflect.Type // 绑定对象的类型
 	Key  string       // 完整的属性名
@@ -62,7 +103,7 @@ func (param *BindParam) BindTag(tag string) error {
 
 func BindValue(p *Properties, v reflect.Value, param BindParam) error {
 
-	if !util.IsValueType(param.Type) {
+	if !IsValueType(param.Type) {
 		return util.Errorf(code.FileLine(), "%s 属性绑定的目标必须是值类型", param.Path)
 	}
 
@@ -143,7 +184,7 @@ func getSliceValue(p *Properties, et reflect.Type, param BindParam) (*Properties
 	}
 
 	strVal := ""
-	primitive := util.IsPrimitiveValueType(et)
+	primitive := IsPrimitiveValueType(et)
 
 	if p.Has(param.Key) {
 		strVal = p.Get(param.Key)
@@ -340,7 +381,7 @@ func bindStruct(p *Properties, v reflect.Value, param BindParam) error {
 			continue
 		}
 
-		if util.IsValueType(ft.Type) {
+		if IsValueType(ft.Type) {
 			if subParam.Key == "" {
 				subParam.Key = ft.Name
 			} else {

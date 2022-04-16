@@ -17,13 +17,15 @@
 package conf
 
 import (
-	"github.com/go-spring/spring-base/conf/prop"
-	"github.com/go-spring/spring-base/conf/yaml"
+	"github.com/go-spring/spring-core/conf/prop"
+	"github.com/go-spring/spring-core/conf/toml"
+	"github.com/go-spring/spring-core/conf/yaml"
 )
 
 func init() {
 	NewReader(prop.Read, ".properties")
 	NewReader(yaml.Read, ".yaml", ".yml")
+	NewReader(toml.Read, ".toml", ".tml")
 }
 
 var readers = make(map[string]Reader)

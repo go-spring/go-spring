@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package bind_1_test
+package bind_2_test
 
 import (
 	"container/list"
@@ -22,8 +22,8 @@ import (
 	"testing"
 
 	"github.com/go-spring/spring-base/assert"
-	"github.com/go-spring/spring-base/conf"
 	"github.com/go-spring/spring-base/log"
+	"github.com/go-spring/spring-core/conf"
 )
 
 func init() {
@@ -31,55 +31,50 @@ func init() {
 }
 
 type DB struct {
-	UserName string `value:"${username}"`
-	Password string `value:"${password}"`
-	Url      string `value:"${url}"`
-	Port     string `value:"${port}"`
-	DB       string `value:"${db}"`
+	username string // 相当于 `value:"${username}"`
+	password string // 相当于 `value:"${password}"`
+	url      string // 相当于 `value:"${url}"`
+	port     string // 相当于 `value:"${port}"`
+	db       string // 相当于 `value:"${db}"`
 }
 
 type DbConfig struct {
-	DB []DB `value:"${db}"`
+	db []DB // 相当于 `value:"${db}"`
 }
 
 type DBConnection struct {
-	UserName string `value:"${username}"`
-	Password string `value:"${password}"`
-	Url      string `value:"${url}"`
-	Port     string `value:"${port}"`
+	username string // 相当于 `value:"${username}"`
+	password string // 相当于 `value:"${password}"`
+	url      string // 相当于 `value:"${url}"`
+	port     string // 相当于 `value:"${port}"`
 }
 
 type UntaggedNestedDB struct {
 	DBConnection
-	DB string `value:"${db}"`
+	db string // 相当于 `value:"${db}"`
 }
 
 type TaggedNestedDB struct {
 	DBConnection `value:"${tag}"`
-	DB           string `value:"${db}"`
+	db           string // 相当于 `value:"${db}"`
 }
 
 type TagNestedDbConfig struct {
 	DB0 []TaggedNestedDB   `value:"${tagged.db}"`
-	DB1 []UntaggedNestedDB `value:"${db}"`
+	db  []UntaggedNestedDB // 相当于 `value:"${db}"`
 }
 
 type NestedDB struct {
 	DBConnection
-	DB string `value:"${db}"`
+	db string // 相当于 `value:"${db}"`
 }
 
 type NestedDbConfig struct {
-	DB      []NestedDB     `value:"${db}"`
-	Ints    []int          `value:"${:=}"`
-	Map     map[string]int `value:"${:=}"`
-	Structs []struct {
-		V string `value:"${v:=#v}"`
-	} `value:"${:=}"`
+	db []NestedDB // 相当于 `value:"${db}"`
 }
 
 type NestedDbMapConfig struct {
-	DB map[string]NestedDB `value:"${db_map}"`
+	DBMap map[string]NestedDB // 相当于 `value:"${DBMap}"`
 }
 
 func TestProperties_Bind(t *testing.T) {
@@ -97,7 +92,7 @@ func TestProperties_Bind(t *testing.T) {
 	})
 
 	t.Run("simple bind", func(t *testing.T) {
-		p, err := conf.Load("../../testdata/config/application.yaml")
+		p, err := conf.Load("testdata/config/application.yaml")
 		assert.Nil(t, err)
 
 		dbConfig1 := DbConfig{}
@@ -114,7 +109,7 @@ func TestProperties_Bind(t *testing.T) {
 
 	t.Run("struct bind with tag", func(t *testing.T) {
 
-		p, err := conf.Load("../../testdata/config/application.yaml")
+		p, err := conf.Load("testdata/config/application.yaml")
 		assert.Nil(t, err)
 
 		dbConfig := TagNestedDbConfig{}
@@ -126,7 +121,7 @@ func TestProperties_Bind(t *testing.T) {
 
 	t.Run("struct bind without tag", func(t *testing.T) {
 
-		p, err := conf.Load("../../testdata/config/application.yaml")
+		p, err := conf.Load("testdata/config/application.yaml")
 		assert.Nil(t, err)
 
 		dbConfig1 := NestedDbConfig{}
@@ -139,7 +134,7 @@ func TestProperties_Bind(t *testing.T) {
 
 		// 实际上是取的两个节点，只是值是一样的而已
 		assert.Equal(t, dbConfig1, dbConfig2)
-		assert.Equal(t, len(dbConfig1.DB), 2)
+		assert.Equal(t, len(dbConfig1.db), 2)
 	})
 
 	t.Run("simple map bind", func(t *testing.T) {
@@ -162,7 +157,7 @@ func TestProperties_Bind(t *testing.T) {
 
 	t.Run("simple bind from file", func(t *testing.T) {
 
-		p, err := conf.Load("../../testdata/config/application.yaml")
+		p, err := conf.Load("testdata/config/application.yaml")
 		assert.Nil(t, err)
 
 		var m map[string]string
@@ -175,22 +170,22 @@ func TestProperties_Bind(t *testing.T) {
 
 	t.Run("struct bind from file", func(t *testing.T) {
 
-		p, err := conf.Load("../../testdata/config/application.yaml")
+		p, err := conf.Load("testdata/config/application.yaml")
 		assert.Nil(t, err)
 
 		var m map[string]NestedDB
-		err = p.Bind(&m, conf.Tag("${db_map}"))
+		err = p.Bind(&m, conf.Tag("${DBMap}"))
 		assert.Nil(t, err)
 
 		assert.Equal(t, len(m), 2)
-		assert.Equal(t, m["d1"].DB, "db1")
+		assert.Equal(t, m["d1"].db, "db1")
 
 		dbConfig2 := NestedDbMapConfig{}
 		err = p.Bind(&dbConfig2, conf.Tag("${prefix_map}"))
 		assert.Nil(t, err)
 
-		assert.Equal(t, len(dbConfig2.DB), 2)
-		assert.Equal(t, dbConfig2.DB["d1"].DB, "db1")
+		assert.Equal(t, len(dbConfig2.DBMap), 2)
+		assert.Equal(t, dbConfig2.DBMap["d1"].db, "db1")
 	})
 
 	t.Run("ignore interface", func(t *testing.T) {
