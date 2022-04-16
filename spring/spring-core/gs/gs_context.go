@@ -22,6 +22,7 @@ import (
 	"reflect"
 
 	"github.com/go-spring/spring-base/conf"
+	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/gs/cond"
@@ -101,7 +102,7 @@ func (c *container) Get(i interface{}, selectors ...BeanSelector) error {
 
 	defer func() {
 		if len(stack.beans) > 0 {
-			logger.Infof("wiring path %s", stack.path())
+			log.Infof("wiring path %s", stack.path())
 		}
 	}()
 
@@ -121,7 +122,7 @@ func (c *container) Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{
 
 	defer func() {
 		if len(stack.beans) > 0 {
-			logger.Infof("wiring path %s", stack.path())
+			log.Infof("wiring path %s", stack.path())
 		}
 	}()
 
@@ -143,7 +144,7 @@ func (c *container) Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, erro
 
 	defer func() {
 		if len(stack.beans) > 0 {
-			logger.Infof("wiring path %s", stack.path())
+			log.Infof("wiring path %s", stack.path())
 		}
 	}()
 

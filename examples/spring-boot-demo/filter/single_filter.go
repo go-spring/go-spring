@@ -40,6 +40,6 @@ func (f *SingleBeanFilter) Invoke(ctx web.Context, chain web.FilterChain) {
 	if f.DefaultValue != "app-test" {
 		panic(fmt.Errorf("${default-value} expect 'app-test' but '%s'", f.DefaultValue))
 	}
-	log.Ctx(ctx.Context()).Info("::SingleBeanFilter")
+	log.WithContext(ctx.Context()).Info("::SingleBeanFilter")
 	chain.Next(ctx)
 }

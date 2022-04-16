@@ -28,10 +28,6 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-var (
-	logger = log.GetRootLogger()
-)
-
 func init() {
 	echo.NotFoundHandler = func(c echo.Context) error {
 		panic(echo.ErrNotFound)
@@ -173,7 +169,7 @@ func (f *recoveryFilter) Invoke(ctx web.Context, chain web.FilterChain) {
 	defer func() {
 		if err := recover(); err != nil {
 
-			ctxLogger := logger.WithContext(ctx.Context())
+			ctxLogger := log.WithContext(ctx.Context())
 			ctxLogger.Error(nil, err, "\n", string(debug.Stack()))
 
 			httpE := web.HttpError{Code: http.StatusInternalServerError}

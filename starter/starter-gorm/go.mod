@@ -3,6 +3,7 @@ module github.com/go-spring/starter-gorm
 go 1.14
 
 require (
+	github.com/DATA-DOG/go-sqlmock v1.5.0
 	github.com/go-spring/spring-base v1.1.0-rc3
 	github.com/go-spring/spring-core v1.1.0-rc3
 	gorm.io/driver/mysql v1.2.1

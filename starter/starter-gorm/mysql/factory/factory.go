@@ -14,26 +14,25 @@
  * limitations under the License.
  */
 
-package filter
+package factory
 
 import (
-	"github.com/go-spring/spring-base/log"
-	"github.com/go-spring/spring-core/gs"
-	"github.com/go-spring/spring-core/web"
+	"github.com/DATA-DOG/go-sqlmock"
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
 )
 
-func init() {
-	gs.Object(&StringFilter{"server"}).Export((*web.Filter)(nil))
-}
-
-type StringFilter struct{ s string }
-
-func (f *StringFilter) Invoke(ctx web.Context, chain web.FilterChain) {
-	ctxLogger := log.WithContext(ctx.Context())
-
-	defer func() { ctxLogger.Info("after ", f.s, " code:", ctx.ResponseWriter().Status()) }()
-	ctxLogger.Info("before ", f.s)
-	log.Info(f.s)
-
-	chain.Next(ctx)
+func MockDB() (*gorm.DB, sqlmock.Sqlmock, error) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		return nil, nil, err
+	}
+	mock.ExpectQuery("SELECT VERSION()").WillReturnRows(
+		mock.NewRows([]string{"VERSION()"}).AddRow("8.0.27"),
+	)
+	gormDB, err := gorm.Open(mysql.New(mysql.Config{Conn: db}))
+	if err != nil {
+		return nil, nil, err
+	}
+	return gormDB, mock, nil
 }

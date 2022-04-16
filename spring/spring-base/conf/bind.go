@@ -29,10 +29,6 @@ import (
 )
 
 var (
-	logger = log.GetRootLogger()
-)
-
-var (
 	ErrNotExist = errors.New("not exist")
 )
 
@@ -70,7 +66,7 @@ func BindValue(p *Properties, v reflect.Value, param BindParam) error {
 		return util.Errorf(code.FileLine(), "%s 属性绑定的目标必须是值类型", param.Path)
 	}
 
-	logger.Tracef("::<>:: %#v", param)
+	log.Tracef("::<>:: %#v", param)
 
 	switch v.Kind() {
 	case reflect.Map:

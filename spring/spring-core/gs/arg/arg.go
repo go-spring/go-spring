@@ -29,10 +29,6 @@ import (
 	"github.com/go-spring/spring-core/gs/internal"
 )
 
-var (
-	logger = log.GetRootLogger()
-)
-
 // Context IoC 容器对 arg 模块提供的最小功能集。
 type Context interface {
 
@@ -225,12 +221,12 @@ func (r *argList) getArg(ctx Context, arg Arg, t reflect.Type, fileLine string) 
 	)
 
 	description := fmt.Sprintf("arg:\"%v\" %s", arg, fileLine)
-	logger.Tracef("get value %s", description)
+	log.Tracef("get value %s", description)
 	defer func() {
 		if err == nil {
-			logger.Tracef("get value success %s", description)
+			log.Tracef("get value success %s", description)
 		} else {
-			logger.Tracef("get value error %s %s", err.Error(), description)
+			log.Tracef("get value error %s %s", err.Error(), description)
 		}
 	}()
 
@@ -321,12 +317,12 @@ func (arg *optionArg) call(ctx Context) (reflect.Value, error) {
 		err error
 	)
 
-	logger.Tracef("call option func %s", arg.r.fileLine)
+	log.Tracef("call option func %s", arg.r.fileLine)
 	defer func() {
 		if err == nil {
-			logger.Tracef("call option func success %s", arg.r.fileLine)
+			log.Tracef("call option func success %s", arg.r.fileLine)
 		} else {
-			logger.Tracef("call option func error %s %s", err.Error(), arg.r.fileLine)
+			log.Tracef("call option func error %s %s", err.Error(), arg.r.fileLine)
 		}
 	}()
 

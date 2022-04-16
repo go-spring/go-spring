@@ -30,10 +30,6 @@ import (
 	g "google.golang.org/grpc"
 )
 
-var (
-	logger = log.GetRootLogger()
-)
-
 // Starter gRPC 服务器启动器
 type Starter struct {
 	config  grpc.ServerConfig
@@ -68,7 +64,7 @@ func (starter *Starter) OnAppStart(ctx gs.Context) {
 			fnPtr := m.Func.Pointer()
 			fnInfo := runtime.FuncForPC(fnPtr)
 			file, line := fnInfo.FileLine(fnPtr)
-			logger.Infof("/%s/%s %s:%d ", service, method.Name, file, line)
+			log.Infof("/%s/%s %s:%d ", service, method.Name, file, line)
 		}
 	}
 
@@ -78,7 +74,7 @@ func (starter *Starter) OnAppStart(ctx gs.Context) {
 
 	ctx.Go(func(_ context.Context) {
 		if err = starter.server.Serve(listener); err != nil {
-			logger.Error(nil, err)
+			log.Error(nil, err)
 		}
 	})
 }

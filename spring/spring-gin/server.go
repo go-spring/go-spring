@@ -31,10 +31,6 @@ import (
 	"github.com/go-spring/spring-core/web"
 )
 
-var (
-	logger = log.GetRootLogger()
-)
-
 func init() {
 	gin.SetMode(gin.ReleaseMode)
 	binding.Validator = nil // 关闭 gin 的校验器
@@ -182,7 +178,7 @@ func (f *recoveryFilter) Invoke(webCtx web.Context, chain web.FilterChain) {
 	defer func() {
 		if err := recover(); err != nil {
 
-			ctxLogger := logger.WithContext(webCtx.Context())
+			ctxLogger := log.WithContext(webCtx.Context())
 			ctxLogger.Error(nil, err, "\n", string(debug.Stack()))
 
 			// Check for a broken connection, as it is not really a

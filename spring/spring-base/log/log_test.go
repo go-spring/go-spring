@@ -93,10 +93,6 @@ func TestGetLogger(t *testing.T) {
 
 func TestRootLogger(t *testing.T) {
 
-	logger := log.GetLogger(log.RootLoggerName)
-	rootLogger := log.GetRootLogger()
-	assert.Equal(t, logger, rootLogger)
-
 	err := log.Load(`
 		<Configuration>
 			<Appenders>
@@ -116,7 +112,7 @@ func TestRootLogger(t *testing.T) {
 
 	go func() {
 		for {
-			logger.Info()
+			log.Info()
 		}
 	}()
 
