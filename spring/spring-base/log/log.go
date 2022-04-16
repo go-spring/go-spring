@@ -64,8 +64,12 @@ func GetLogger(name ...string) *Logger {
 	if ok {
 		return l
 	}
-	l = &Logger{name: name[0]}
-	l.entry.logger = l
+	l = NewLogger(name[0], &LoggerConfig{
+		Level: InfoLevel,
+		Appenders: []Appender{
+			NewConsoleAppender(nil),
+		},
+	})
 	usingLoggers[l.name] = l
 	return l
 }
@@ -152,9 +156,7 @@ func Load(configFile string) error {
 					}
 					appenders = append(appenders, v)
 				}
-				l := &Logger{}
-				l.entry.logger = l
-				l.config.Store(&LoggerConfig{
+				l := NewLogger(config.Name, &LoggerConfig{
 					Level:     level,
 					Appenders: appenders,
 				})
@@ -182,12 +184,17 @@ func Load(configFile string) error {
 
 	for name, usingLogger := range usingLoggers {
 		if l, ok := configLoggers[name]; ok {
-			usingLogger.config.Store(l.config.Load())
+			usingLogger.value.Store(l.value.Load())
 		} else {
-			usingLogger.config.Store(root.config.Load())
+			usingLogger.value.Store(root.value.Load())
 		}
 	}
 	return nil
+}
+
+// SetLevel 设置日志输出等级。
+func SetLevel(level Level) {
+	rootLogger.SetLevel(level)
 }
 
 // WithSkip 创建包含 skip 信息的 Entry 。

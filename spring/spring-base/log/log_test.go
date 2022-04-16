@@ -135,7 +135,7 @@ func TestLogger(t *testing.T) {
 	defer ctrl.Finish()
 
 	appender := log.NewMockAppender(ctrl)
-	logger := log.NewLogger(&log.LoggerConfig{
+	logger := log.NewLogger("l", &log.LoggerConfig{
 		Level:     log.TraceLevel,
 		Appenders: []log.Appender{appender},
 	})
@@ -250,7 +250,7 @@ func TestEntry(t *testing.T) {
 	defer ctrl.Finish()
 
 	appender := log.NewMockAppender(ctrl)
-	logger := log.NewLogger(&log.LoggerConfig{
+	logger := log.NewLogger("l", &log.LoggerConfig{
 		Level:     log.TraceLevel,
 		Appenders: []log.Appender{appender},
 	})

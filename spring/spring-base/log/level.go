@@ -27,6 +27,7 @@ const (
 	ErrorLevel = Level(4)
 	PanicLevel = Level(5)
 	FatalLevel = Level(6)
+	OffLevel   = Level(7)
 )
 
 // Level 日志输出级别。
@@ -48,6 +49,8 @@ func (level Level) String() string {
 		return "panic"
 	case FatalLevel:
 		return "fatal"
+	case OffLevel:
+		return "off"
 	default:
 		return "none"
 	}
@@ -69,6 +72,8 @@ func StringToLevel(str string) Level {
 		return PanicLevel
 	case "fatal":
 		return FatalLevel
+	case "off":
+		return OffLevel
 	default:
 		return NoneLevel
 	}

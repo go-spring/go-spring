@@ -32,22 +32,7 @@ import (
 )
 
 func init() {
-	err := log.Load(`
-		<Configuration>
-			<Appenders>
-				<ConsoleAppender name="Console">
-				</ConsoleAppender>
-			</Appenders>
-			<Loggers>
-				<Root level="TRACE">
-					<AppenderRef ref="Console"/>
-				</Root>
-			</Loggers>
-		</Configuration>
-	`)
-	if err != nil {
-		panic(err)
-	}
+	log.SetLevel(log.TraceLevel)
 }
 
 func TestProperties_Load(t *testing.T) {

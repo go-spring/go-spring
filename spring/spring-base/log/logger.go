@@ -23,9 +23,9 @@ import (
 )
 
 type Logger struct {
-	name   string
-	entry  BaseEntry
-	config atomic.Value
+	name  string
+	entry BaseEntry
+	value atomic.Value
 }
 
 type LoggerConfig struct {
@@ -33,10 +33,12 @@ type LoggerConfig struct {
 	Appenders []Appender
 }
 
-func NewLogger(config *LoggerConfig) *Logger {
-	l := &Logger{}
+func NewLogger(name string, config *LoggerConfig) *Logger {
+	l := &Logger{
+		name: name,
+	}
 	l.entry.logger = l
-	l.config.Store(config)
+	l.value.Store(config)
 	return l
 }
 
@@ -44,9 +46,16 @@ func (l *Logger) Name() string {
 	return l.name
 }
 
-func (l *Logger) getConfig() *LoggerConfig {
-	config, _ := l.config.Load().(*LoggerConfig)
-	return config
+func (l *Logger) config() *LoggerConfig {
+	v := l.value.Load()
+	return v.(*LoggerConfig)
+}
+
+func (l *Logger) SetLevel(level Level) {
+	l.value.Store(&LoggerConfig{
+		Level:     level,
+		Appenders: l.config().Appenders,
+	})
 }
 
 // WithSkip 创建包含 skip 信息的 Entry 。

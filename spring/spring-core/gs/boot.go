@@ -35,22 +35,7 @@ func init() {
 	{
 		s := os.Getenv("CGO_CFLAGS")
 		if strings.Contains(s, "-O0") && strings.Contains(s, "-g") {
-			err := log.Load(`
-				<Configuration>
-					<Appenders>
-						<ConsoleAppender name="Console">
-						</ConsoleAppender>
-					</Appenders>
-					<Loggers>
-						<Root level="DEBUG">
-							<AppenderRef ref="Console"/>
-						</Root>
-					</Loggers>
-				</Configuration>
-			`)
-			if err != nil {
-				panic(err)
-			}
+			log.SetLevel(log.DebugLevel)
 		}
 	}
 }

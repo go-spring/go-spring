@@ -38,7 +38,7 @@ var defaultLoggerConfig = &LoggerConfig{
 }
 
 func printf(level Level, e Entry, format string, args []interface{}) {
-	config := e.Logger().getConfig()
+	config := e.Logger().config()
 	if config == nil {
 		config = defaultLoggerConfig
 	}
