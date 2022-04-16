@@ -47,7 +47,7 @@ func TestFluentTrue(t *testing.T) {
 		g.EXPECT().Helper().AnyTimes()
 		g.EXPECT().Log([]interface{}{"got false but expect true; param (index=0)"})
 		g.EXPECT().Fail()
-		assert.That(g, false).IsTrue("param (index=0)")
+		assert.ThatBool(g, false).IsTrue("param (index=0)")
 	}
 }
 
@@ -64,7 +64,7 @@ func TestFluentHasPrefix(t *testing.T) {
 	{
 		g := assert.NewMockT(ctrl)
 		g.EXPECT().Helper().AnyTimes()
-		g.EXPECT().Log([]interface{}{"'hello, world!' doesn't hava prefix 'xxx'"})
+		g.EXPECT().Log([]interface{}{"'hello, world!' doesn't have prefix 'xxx'"})
 		g.EXPECT().Fail()
 		assert.That(g, "hello, world!").HasPrefix("xxx")
 	}
@@ -72,8 +72,8 @@ func TestFluentHasPrefix(t *testing.T) {
 	{
 		g := assert.NewMockT(ctrl)
 		g.EXPECT().Helper().AnyTimes()
-		g.EXPECT().Log([]interface{}{"'hello, world!' doesn't hava prefix 'xxx'; param (index=0)"})
+		g.EXPECT().Log([]interface{}{"'hello, world!' doesn't have prefix 'xxx'; param (index=0)"})
 		g.EXPECT().Fail()
-		assert.That(g, "hello, world!").HasPrefix("xxx", "param (index=0)")
+		assert.ThatString(g, "hello, world!").HasPrefix("xxx", "param (index=0)")
 	}
 }
