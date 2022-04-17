@@ -36,148 +36,127 @@ const (
 	CommandHVals        = "HVALS"
 )
 
-type HashCommand interface {
-
-	// HDel https://redis.io/commands/hdel
-	// Command: HDEL key field [field ...]
-	// Integer reply: the number of fields that were removed
-	// from the hash, not including specified but non existing fields.
-	HDel(ctx context.Context, key string, fields ...string) (int64, error)
-
-	// HExists https://redis.io/commands/hexists
-	// Command: HEXISTS key field
-	// Integer reply: 1 if the hash contains field,
-	// 0 if the hash does not contain field, or key does not exist.
-	HExists(ctx context.Context, key, field string) (int, error)
-
-	// HGet https://redis.io/commands/hget
-	// Command: HGET key field
-	// Bulk string reply: the value associated with field,
-	// or nil when field is not present in the hash or key does not exist.
-	HGet(ctx context.Context, key, field string) (string, error)
-
-	// HGetAll https://redis.io/commands/hgetall
-	// Command: HGETALL key
-	// Array reply: list of fields and their values stored
-	// in the hash, or an empty list when key does not exist.
-	HGetAll(ctx context.Context, key string) (map[string]string, error)
-
-	// HIncrBy https://redis.io/commands/hincrby
-	// Command: HINCRBY key field increment
-	// Integer reply: the value at field after the increment operation.
-	HIncrBy(ctx context.Context, key, field string, incr int64) (int64, error)
-
-	// HIncrByFloat https://redis.io/commands/hincrbyfloat
-	// Command: HINCRBYFLOAT key field increment
-	// Bulk string reply: the value of field after the increment.
-	HIncrByFloat(ctx context.Context, key, field string, incr float64) (float64, error)
-
-	// HKeys https://redis.io/commands/hkeys
-	// Command: HKEYS key
-	// Array reply: list of fields in the hash, or an empty list when key does not exist.
-	HKeys(ctx context.Context, key string) ([]string, error)
-
-	// HLen https://redis.io/commands/hlen
-	// Command: HLEN key
-	// Integer reply: number of fields in the hash, or 0 when key does not exist.
-	HLen(ctx context.Context, key string) (int64, error)
-
-	// HMGet https://redis.io/commands/hmget
-	// Command: HMGET key field [field ...]
-	// Array reply: list of values associated with the
-	// given fields, in the same order as they are requested.
-	HMGet(ctx context.Context, key string, fields ...string) ([]interface{}, error)
-
-	// HSet https://redis.io/commands/hset
-	// Command: HSET key field value [field value ...]
-	// Integer reply: The number of fields that were added.
-	HSet(ctx context.Context, key string, args ...interface{}) (int64, error)
-
-	// HSetNX https://redis.io/commands/hsetnx
-	// Command: HSETNX key field value
-	// Integer reply: 1 if field is a new field in the hash and value was set,
-	// 0 if field already exists in the hash and no operation was performed.
-	HSetNX(ctx context.Context, key, field string, value interface{}) (int, error)
-
-	// HStrLen https://redis.io/commands/hstrlen
-	// Command: HSTRLEN key field
-	// Integer reply: the string length of the value associated with field,
-	// or zero when field is not present in the hash or key does not exist at all.
-	HStrLen(ctx context.Context, key, field string) (int64, error)
-
-	// HVals https://redis.io/commands/hvals
-	// Command: HVALS key
-	// Array reply: list of values in the hash, or an empty list when key does not exist.
-	HVals(ctx context.Context, key string) ([]string, error)
+type HashCommand struct {
+	c Redis
 }
 
-func (c *client) HDel(ctx context.Context, key string, fields ...string) (int64, error) {
+func NewHashCommand(c Redis) *HashCommand {
+	return &HashCommand{c: c}
+}
+
+// HDel https://redis.io/commands/hdel
+// Command: HDEL key field [field ...]
+// Integer reply: the number of fields that were removed
+// from the hash, not including specified but non existing fields.
+func (c *HashCommand) HDel(ctx context.Context, key string, fields ...string) (int64, error) {
 	args := []interface{}{key}
 	for _, field := range fields {
 		args = append(args, field)
 	}
-	return c.Int64(ctx, CommandHDel, args...)
+	return c.c.Int64(ctx, CommandHDel, args...)
 }
 
-func (c *client) HExists(ctx context.Context, key, field string) (int, error) {
+// HExists https://redis.io/commands/hexists
+// Command: HEXISTS key field
+// Integer reply: 1 if the hash contains field,
+// 0 if the hash does not contain field, or key does not exist.
+func (c *HashCommand) HExists(ctx context.Context, key, field string) (int, error) {
 	args := []interface{}{key, field}
-	return c.Int(ctx, CommandHExists, args...)
+	return c.c.Int(ctx, CommandHExists, args...)
 }
 
-func (c *client) HGet(ctx context.Context, key string, field string) (string, error) {
+// HGet https://redis.io/commands/hget
+// Command: HGET key field
+// Bulk string reply: the value associated with field,
+// or nil when field is not present in the hash or key does not exist.
+func (c *HashCommand) HGet(ctx context.Context, key string, field string) (string, error) {
 	args := []interface{}{key, field}
-	return c.String(ctx, CommandHGet, args...)
+	return c.c.String(ctx, CommandHGet, args...)
 }
 
-func (c *client) HGetAll(ctx context.Context, key string) (map[string]string, error) {
+// HGetAll https://redis.io/commands/hgetall
+// Command: HGETALL key
+// Array reply: list of fields and their values stored
+// in the hash, or an empty list when key does not exist.
+func (c *HashCommand) HGetAll(ctx context.Context, key string) (map[string]string, error) {
 	args := []interface{}{key}
-	return c.StringMap(ctx, CommandHGetAll, args...)
+	return c.c.StringMap(ctx, CommandHGetAll, args...)
 }
 
-func (c *client) HIncrBy(ctx context.Context, key, field string, incr int64) (int64, error) {
+// HIncrBy https://redis.io/commands/hincrby
+// Command: HINCRBY key field increment
+// Integer reply: the value at field after the increment operation.
+func (c *HashCommand) HIncrBy(ctx context.Context, key, field string, incr int64) (int64, error) {
 	args := []interface{}{key, field, incr}
-	return c.Int64(ctx, CommandHIncrBy, args...)
+	return c.c.Int64(ctx, CommandHIncrBy, args...)
 }
 
-func (c *client) HIncrByFloat(ctx context.Context, key, field string, incr float64) (float64, error) {
+// HIncrByFloat https://redis.io/commands/hincrbyfloat
+// Command: HINCRBYFLOAT key field increment
+// Bulk string reply: the value of field after the increment.
+func (c *HashCommand) HIncrByFloat(ctx context.Context, key, field string, incr float64) (float64, error) {
 	args := []interface{}{key, field, incr}
-	return c.Float64(ctx, CommandHIncrByFloat, args...)
+	return c.c.Float64(ctx, CommandHIncrByFloat, args...)
 }
 
-func (c *client) HKeys(ctx context.Context, key string) ([]string, error) {
+// HKeys https://redis.io/commands/hkeys
+// Command: HKEYS key
+// Array reply: list of fields in the hash, or an empty list when key does not exist.
+func (c *HashCommand) HKeys(ctx context.Context, key string) ([]string, error) {
 	args := []interface{}{key}
-	return c.StringSlice(ctx, CommandHKeys, args...)
+	return c.c.StringSlice(ctx, CommandHKeys, args...)
 }
 
-func (c *client) HLen(ctx context.Context, key string) (int64, error) {
+// HLen https://redis.io/commands/hlen
+// Command: HLEN key
+// Integer reply: number of fields in the hash, or 0 when key does not exist.
+func (c *HashCommand) HLen(ctx context.Context, key string) (int64, error) {
 	args := []interface{}{key}
-	return c.Int64(ctx, CommandHLen, args...)
+	return c.c.Int64(ctx, CommandHLen, args...)
 }
 
-func (c *client) HMGet(ctx context.Context, key string, fields ...string) ([]interface{}, error) {
+// HMGet https://redis.io/commands/hmget
+// Command: HMGET key field [field ...]
+// Array reply: list of values associated with the
+// given fields, in the same order as they are requested.
+func (c *HashCommand) HMGet(ctx context.Context, key string, fields ...string) ([]interface{}, error) {
 	args := []interface{}{key}
 	for _, field := range fields {
 		args = append(args, field)
 	}
-	return c.Slice(ctx, CommandHMGet, args...)
+	return c.c.Slice(ctx, CommandHMGet, args...)
 }
 
-func (c *client) HSet(ctx context.Context, key string, args ...interface{}) (int64, error) {
+// HSet https://redis.io/commands/hset
+// Command: HSET key field value [field value ...]
+// Integer reply: The number of fields that were added.
+func (c *HashCommand) HSet(ctx context.Context, key string, args ...interface{}) (int64, error) {
 	args = append([]interface{}{key}, args...)
-	return c.Int64(ctx, CommandHSet, args...)
+	return c.c.Int64(ctx, CommandHSet, args...)
 }
 
-func (c *client) HSetNX(ctx context.Context, key, field string, value interface{}) (int, error) {
+// HSetNX https://redis.io/commands/hsetnx
+// Command: HSETNX key field value
+// Integer reply: 1 if field is a new field in the hash and value was set,
+// 0 if field already exists in the hash and no operation was performed.
+func (c *HashCommand) HSetNX(ctx context.Context, key, field string, value interface{}) (int, error) {
 	args := []interface{}{key, field, value}
-	return c.Int(ctx, CommandHSetNX, args...)
+	return c.c.Int(ctx, CommandHSetNX, args...)
 }
 
-func (c *client) HStrLen(ctx context.Context, key, field string) (int64, error) {
+// HStrLen https://redis.io/commands/hstrlen
+// Command: HSTRLEN key field
+// Integer reply: the string length of the value associated with field,
+// or zero when field is not present in the hash or key does not exist at all.
+func (c *HashCommand) HStrLen(ctx context.Context, key, field string) (int64, error) {
 	args := []interface{}{key, field}
-	return c.Int64(ctx, CommandHStrLen, args...)
+	return c.c.Int64(ctx, CommandHStrLen, args...)
 }
 
-func (c *client) HVals(ctx context.Context, key string) ([]string, error) {
+// HVals https://redis.io/commands/hvals
+// Command: HVALS key
+// Array reply: list of values in the hash, or an empty list when key does not exist.
+func (c *HashCommand) HVals(ctx context.Context, key string) ([]string, error) {
 	args := []interface{}{key}
-	return c.StringSlice(ctx, CommandHVals, args...)
+	return c.c.StringSlice(ctx, CommandHVals, args...)
 }

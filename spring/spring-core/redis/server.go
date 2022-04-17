@@ -24,14 +24,17 @@ const (
 	CommandFlushAll = "FLUSHALL"
 )
 
-type ServerCommand interface {
-
-	// FlushAll https://redis.io/commands/flushall
-	// Command: FLUSHALL [ASYNC|SYNC]
-	// Simple string reply
-	FlushAll(ctx context.Context, args ...interface{}) (string, error)
+type ServerCommand struct {
+	c Redis
 }
 
-func (c *client) FlushAll(ctx context.Context, args ...interface{}) (string, error) {
-	return c.String(ctx, CommandFlushAll, args...)
+func NewServerCommand(c Redis) *ServerCommand {
+	return &ServerCommand{c: c}
+}
+
+// FlushAll https://redis.io/commands/flushall
+// Command: FLUSHALL [ASYNC|SYNC]
+// Simple string reply
+func (c *ServerCommand) FlushAll(ctx context.Context, args ...interface{}) (string, error) {
+	return c.c.String(ctx, CommandFlushAll, args...)
 }

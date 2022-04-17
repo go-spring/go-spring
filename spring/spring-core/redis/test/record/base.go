@@ -35,7 +35,7 @@ func flushAll(d redis.Driver) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return c.FlushAll(context.Background())
+	return c.ServerCommand().FlushAll(context.Background())
 }
 
 func RunCase(t *testing.T, d redis.Driver, c cases.Case) {

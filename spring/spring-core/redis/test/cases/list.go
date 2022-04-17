@@ -25,33 +25,33 @@ import (
 )
 
 var LIndex = Case{
-	Func: func(t *testing.T, ctx context.Context, c redis.Client) {
+	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.LPush(ctx, "mylist", "World")
+		r1, err := c.ListCommand().LPush(ctx, "mylist", "World")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.LPush(ctx, "mylist", "Hello")
+		r2, err := c.ListCommand().LPush(ctx, "mylist", "Hello")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(2))
 
-		r3, err := c.LIndex(ctx, "mylist", 0)
+		r3, err := c.ListCommand().LIndex(ctx, "mylist", 0)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, "Hello")
 
-		r4, err := c.LIndex(ctx, "mylist", -1)
+		r4, err := c.ListCommand().LIndex(ctx, "mylist", -1)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r4, "World")
 
-		_, err = c.LIndex(ctx, "mylist", 3)
+		_, err = c.ListCommand().LIndex(ctx, "mylist", 3)
 		assert.True(t, redis.IsErrNil(err))
 	},
 	Data: `
@@ -82,27 +82,27 @@ var LIndex = Case{
 }
 
 var LInsert = Case{
-	Func: func(t *testing.T, ctx context.Context, c redis.Client) {
+	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.RPush(ctx, "mylist", "Hello")
+		r1, err := c.ListCommand().RPush(ctx, "mylist", "Hello")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.RPush(ctx, "mylist", "World")
+		r2, err := c.ListCommand().RPush(ctx, "mylist", "World")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(2))
 
-		r3, err := c.LInsertBefore(ctx, "mylist", "World", "There")
+		r3, err := c.ListCommand().LInsertBefore(ctx, "mylist", "World", "There")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, int64(3))
 
-		r4, err := c.LRange(ctx, "mylist", 0, -1)
+		r4, err := c.ListCommand().LRange(ctx, "mylist", 0, -1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -132,21 +132,21 @@ var LInsert = Case{
 }
 
 var LLen = Case{
-	Func: func(t *testing.T, ctx context.Context, c redis.Client) {
+	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.LPush(ctx, "mylist", "World")
+		r1, err := c.ListCommand().LPush(ctx, "mylist", "World")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.LPush(ctx, "mylist", "Hello")
+		r2, err := c.ListCommand().LPush(ctx, "mylist", "Hello")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(2))
 
-		r3, err := c.LLen(ctx, "mylist")
+		r3, err := c.ListCommand().LLen(ctx, "mylist")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -172,45 +172,45 @@ var LLen = Case{
 }
 
 var LMove = Case{
-	Func: func(t *testing.T, ctx context.Context, c redis.Client) {
+	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.RPush(ctx, "mylist", "one")
+		r1, err := c.ListCommand().RPush(ctx, "mylist", "one")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.RPush(ctx, "mylist", "two")
+		r2, err := c.ListCommand().RPush(ctx, "mylist", "two")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(2))
 
-		r3, err := c.RPush(ctx, "mylist", "three")
+		r3, err := c.ListCommand().RPush(ctx, "mylist", "three")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, int64(3))
 
-		r4, err := c.LMove(ctx, "mylist", "myotherlist", "RIGHT", "LEFT")
+		r4, err := c.ListCommand().LMove(ctx, "mylist", "myotherlist", "RIGHT", "LEFT")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r4, "three")
 
-		r5, err := c.LMove(ctx, "mylist", "myotherlist", "LEFT", "RIGHT")
+		r5, err := c.ListCommand().LMove(ctx, "mylist", "myotherlist", "LEFT", "RIGHT")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r5, "one")
 
-		r6, err := c.LRange(ctx, "mylist", 0, -1)
+		r6, err := c.ListCommand().LRange(ctx, "mylist", 0, -1)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r6, []string{"two"})
 
-		r7, err := c.LRange(ctx, "myotherlist", 0, -1)
+		r7, err := c.ListCommand().LRange(ctx, "myotherlist", 0, -1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -252,27 +252,27 @@ var LMove = Case{
 }
 
 var LPop = Case{
-	Func: func(t *testing.T, ctx context.Context, c redis.Client) {
+	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.RPush(ctx, "mylist", "one", "two", "three", "four", "five")
+		r1, err := c.ListCommand().RPush(ctx, "mylist", "one", "two", "three", "four", "five")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(5))
 
-		r2, err := c.LPop(ctx, "mylist")
+		r2, err := c.ListCommand().LPop(ctx, "mylist")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, "one")
 
-		r3, err := c.LPopN(ctx, "mylist", 2)
+		r3, err := c.ListCommand().LPopN(ctx, "mylist", 2)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, []string{"two", "three"})
 
-		r4, err := c.LRange(ctx, "mylist", 0, -1)
+		r4, err := c.ListCommand().LRange(ctx, "mylist", 0, -1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -302,21 +302,21 @@ var LPop = Case{
 }
 
 var LPos = Case{
-	Func: func(t *testing.T, ctx context.Context, c redis.Client) {
+	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.RPush(ctx, "mylist", 'a', 'b', 'c', 'd', 1, 2, 3, 4, 3, 3, 3)
+		r1, err := c.ListCommand().RPush(ctx, "mylist", 'a', 'b', 'c', 'd', 1, 2, 3, 4, 3, 3, 3)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(11))
 
-		r2, err := c.LPos(ctx, "mylist", 3)
+		r2, err := c.ListCommand().LPos(ctx, "mylist", 3)
 		if err != nil {
 			return
 		}
 		assert.Equal(t, r2, int64(6))
 
-		r3, err := c.LPosN(ctx, "mylist", "3", 0, "RANK", 2)
+		r3, err := c.ListCommand().LPosN(ctx, "mylist", "3", 0, "RANK", 2)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -342,21 +342,21 @@ var LPos = Case{
 }
 
 var LPush = Case{
-	Func: func(t *testing.T, ctx context.Context, c redis.Client) {
+	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.LPush(ctx, "mylist", "world")
+		r1, err := c.ListCommand().LPush(ctx, "mylist", "world")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.LPush(ctx, "mylist", "hello")
+		r2, err := c.ListCommand().LPush(ctx, "mylist", "hello")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(2))
 
-		r3, err := c.LRange(ctx, "mylist", 0, -1)
+		r3, err := c.ListCommand().LRange(ctx, "mylist", 0, -1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -382,33 +382,33 @@ var LPush = Case{
 }
 
 var LPushX = Case{
-	Func: func(t *testing.T, ctx context.Context, c redis.Client) {
+	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.LPush(ctx, "mylist", "World")
+		r1, err := c.ListCommand().LPush(ctx, "mylist", "World")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.LPushX(ctx, "mylist", "Hello")
+		r2, err := c.ListCommand().LPushX(ctx, "mylist", "Hello")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(2))
 
-		r3, err := c.LPushX(ctx, "myotherlist", "Hello")
+		r3, err := c.ListCommand().LPushX(ctx, "myotherlist", "Hello")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, int64(0))
 
-		r4, err := c.LRange(ctx, "mylist", 0, -1)
+		r4, err := c.ListCommand().LRange(ctx, "mylist", 0, -1)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r4, []string{"Hello", "World"})
 
-		r5, err := c.LRange(ctx, "myotherlist", 0, -1)
+		r5, err := c.ListCommand().LRange(ctx, "myotherlist", 0, -1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -442,45 +442,45 @@ var LPushX = Case{
 }
 
 var LRange = Case{
-	Func: func(t *testing.T, ctx context.Context, c redis.Client) {
+	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.RPush(ctx, "mylist", "one")
+		r1, err := c.ListCommand().RPush(ctx, "mylist", "one")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.RPush(ctx, "mylist", "two")
+		r2, err := c.ListCommand().RPush(ctx, "mylist", "two")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(2))
 
-		r3, err := c.RPush(ctx, "mylist", "three")
+		r3, err := c.ListCommand().RPush(ctx, "mylist", "three")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, int64(3))
 
-		r4, err := c.LRange(ctx, "mylist", 0, 0)
+		r4, err := c.ListCommand().LRange(ctx, "mylist", 0, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r4, []string{"one"})
 
-		r5, err := c.LRange(ctx, "mylist", -3, 2)
+		r5, err := c.ListCommand().LRange(ctx, "mylist", -3, 2)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r5, []string{"one", "two", "three"})
 
-		r6, err := c.LRange(ctx, "mylist", -100, 100)
+		r6, err := c.ListCommand().LRange(ctx, "mylist", -100, 100)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r6, []string{"one", "two", "three"})
 
-		r7, err := c.LRange(ctx, "mylist", 5, 10)
+		r7, err := c.ListCommand().LRange(ctx, "mylist", 5, 10)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -522,39 +522,39 @@ var LRange = Case{
 }
 
 var LRem = Case{
-	Func: func(t *testing.T, ctx context.Context, c redis.Client) {
+	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.RPush(ctx, "mylist", "hello")
+		r1, err := c.ListCommand().RPush(ctx, "mylist", "hello")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.RPush(ctx, "mylist", "hello")
+		r2, err := c.ListCommand().RPush(ctx, "mylist", "hello")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(2))
 
-		r3, err := c.RPush(ctx, "mylist", "foo")
+		r3, err := c.ListCommand().RPush(ctx, "mylist", "foo")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, int64(3))
 
-		r4, err := c.RPush(ctx, "mylist", "hello")
+		r4, err := c.ListCommand().RPush(ctx, "mylist", "hello")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r4, int64(4))
 
-		r5, err := c.LRem(ctx, "mylist", -2, "hello")
+		r5, err := c.ListCommand().LRem(ctx, "mylist", -2, "hello")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r5, int64(2))
 
-		r6, err := c.LRange(ctx, "mylist", 0, -1)
+		r6, err := c.ListCommand().LRange(ctx, "mylist", 0, -1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -592,39 +592,39 @@ var LRem = Case{
 }
 
 var LSet = Case{
-	Func: func(t *testing.T, ctx context.Context, c redis.Client) {
+	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.RPush(ctx, "mylist", "one")
+		r1, err := c.ListCommand().RPush(ctx, "mylist", "one")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.RPush(ctx, "mylist", "two")
+		r2, err := c.ListCommand().RPush(ctx, "mylist", "two")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(2))
 
-		r3, err := c.RPush(ctx, "mylist", "three")
+		r3, err := c.ListCommand().RPush(ctx, "mylist", "three")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, int64(3))
 
-		r4, err := c.LSet(ctx, "mylist", 0, "four")
+		r4, err := c.ListCommand().LSet(ctx, "mylist", 0, "four")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.True(t, redis.IsOK(r4))
 
-		r5, err := c.LSet(ctx, "mylist", -2, "five")
+		r5, err := c.ListCommand().LSet(ctx, "mylist", -2, "five")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.True(t, redis.IsOK(r5))
 
-		r6, err := c.LRange(ctx, "mylist", 0, -1)
+		r6, err := c.ListCommand().LRange(ctx, "mylist", 0, -1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -662,33 +662,33 @@ var LSet = Case{
 }
 
 var LTrim = Case{
-	Func: func(t *testing.T, ctx context.Context, c redis.Client) {
+	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.RPush(ctx, "mylist", "one")
+		r1, err := c.ListCommand().RPush(ctx, "mylist", "one")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.RPush(ctx, "mylist", "two")
+		r2, err := c.ListCommand().RPush(ctx, "mylist", "two")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(2))
 
-		r3, err := c.RPush(ctx, "mylist", "three")
+		r3, err := c.ListCommand().RPush(ctx, "mylist", "three")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, int64(3))
 
-		r4, err := c.LTrim(ctx, "mylist", 1, -1)
+		r4, err := c.ListCommand().LTrim(ctx, "mylist", 1, -1)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.True(t, redis.IsOK(r4))
 
-		r5, err := c.LRange(ctx, "mylist", 0, -1)
+		r5, err := c.ListCommand().LRange(ctx, "mylist", 0, -1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -722,27 +722,27 @@ var LTrim = Case{
 }
 
 var RPop = Case{
-	Func: func(t *testing.T, ctx context.Context, c redis.Client) {
+	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.RPush(ctx, "mylist", "one", "two", "three", "four", "five")
+		r1, err := c.ListCommand().RPush(ctx, "mylist", "one", "two", "three", "four", "five")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(5))
 
-		r2, err := c.RPop(ctx, "mylist")
+		r2, err := c.ListCommand().RPop(ctx, "mylist")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, "five")
 
-		r3, err := c.RPopN(ctx, "mylist", 2)
+		r3, err := c.ListCommand().RPopN(ctx, "mylist", 2)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, []string{"four", "three"})
 
-		r4, err := c.LRange(ctx, "mylist", 0, -1)
+		r4, err := c.ListCommand().LRange(ctx, "mylist", 0, -1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -772,39 +772,39 @@ var RPop = Case{
 }
 
 var RPopLPush = Case{
-	Func: func(t *testing.T, ctx context.Context, c redis.Client) {
+	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.RPush(ctx, "mylist", "one")
+		r1, err := c.ListCommand().RPush(ctx, "mylist", "one")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.RPush(ctx, "mylist", "two")
+		r2, err := c.ListCommand().RPush(ctx, "mylist", "two")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(2))
 
-		r3, err := c.RPush(ctx, "mylist", "three")
+		r3, err := c.ListCommand().RPush(ctx, "mylist", "three")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, int64(3))
 
-		r4, err := c.RPopLPush(ctx, "mylist", "myotherlist")
+		r4, err := c.ListCommand().RPopLPush(ctx, "mylist", "myotherlist")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r4, "three")
 
-		r5, err := c.LRange(ctx, "mylist", 0, -1)
+		r5, err := c.ListCommand().LRange(ctx, "mylist", 0, -1)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r5, []string{"one", "two"})
 
-		r6, err := c.LRange(ctx, "myotherlist", 0, -1)
+		r6, err := c.ListCommand().LRange(ctx, "myotherlist", 0, -1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -842,21 +842,21 @@ var RPopLPush = Case{
 }
 
 var RPush = Case{
-	Func: func(t *testing.T, ctx context.Context, c redis.Client) {
+	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.RPush(ctx, "mylist", "hello")
+		r1, err := c.ListCommand().RPush(ctx, "mylist", "hello")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.RPush(ctx, "mylist", "world")
+		r2, err := c.ListCommand().RPush(ctx, "mylist", "world")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(2))
 
-		r3, err := c.LRange(ctx, "mylist", 0, -1)
+		r3, err := c.ListCommand().LRange(ctx, "mylist", 0, -1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -882,33 +882,33 @@ var RPush = Case{
 }
 
 var RPushX = Case{
-	Func: func(t *testing.T, ctx context.Context, c redis.Client) {
+	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.RPush(ctx, "mylist", "Hello")
+		r1, err := c.ListCommand().RPush(ctx, "mylist", "Hello")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.RPushX(ctx, "mylist", "World")
+		r2, err := c.ListCommand().RPushX(ctx, "mylist", "World")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(2))
 
-		r3, err := c.RPushX(ctx, "myotherlist", "World")
+		r3, err := c.ListCommand().RPushX(ctx, "myotherlist", "World")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, int64(0))
 
-		r4, err := c.LRange(ctx, "mylist", 0, -1)
+		r4, err := c.ListCommand().LRange(ctx, "mylist", 0, -1)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r4, []string{"Hello", "World"})
 
-		r5, err := c.LRange(ctx, "myotherlist", 0, -1)
+		r5, err := c.ListCommand().LRange(ctx, "myotherlist", 0, -1)
 		if err != nil {
 			t.Fatal(err)
 		}

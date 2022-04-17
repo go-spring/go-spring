@@ -40,19 +40,7 @@ func IsErrNil(err error) bool {
 	return errors.Is(err, errNil)
 }
 
-type Client interface {
-	DoCommand
-	KeyCommand
-	BitmapCommand
-	StringCommand
-	HashCommand
-	ListCommand
-	SetCommand
-	ZSetCommand
-	ServerCommand
-}
-
-type DoCommand interface {
+type Redis interface {
 	Int(ctx context.Context, cmd string, args ...interface{}) (int, error)
 	Int64(ctx context.Context, cmd string, args ...interface{}) (int64, error)
 	Float64(ctx context.Context, cmd string, args ...interface{}) (float64, error)
@@ -65,11 +53,11 @@ type DoCommand interface {
 	ZItemSlice(ctx context.Context, cmd string, args ...interface{}) ([]ZItem, error)
 }
 
-type client struct {
+type Client struct {
 	conn Conn
 }
 
-func NewClient(config Config, driver Driver) (Client, error) {
+func NewClient(config Config, driver Driver) (*Client, error) {
 	conn, err := driver.Open(config)
 	if err != nil {
 		return nil, err
@@ -80,7 +68,39 @@ func NewClient(config Config, driver Driver) (Client, error) {
 	if replayer.ReplayMode() {
 		conn = &replayConn{conn: conn}
 	}
-	return &client{conn: conn}, nil
+	return &Client{conn: conn}, nil
+}
+
+func (c *Client) KeyCommand() *KeyCommand {
+	return NewKeyCommand(c)
+}
+
+func (c *Client) BitmapCommand() *BitmapCommand {
+	return NewBitmapCommand(c)
+}
+
+func (c *Client) StringCommand() *StringCommand {
+	return NewStringCommand(c)
+}
+
+func (c *Client) HashCommand() *HashCommand {
+	return NewHashCommand(c)
+}
+
+func (c *Client) ListCommand() *ListCommand {
+	return NewListCommand(c)
+}
+
+func (c *Client) SetCommand() *SetCommand {
+	return NewSetCommand(c)
+}
+
+func (c *Client) ZSetCommand() *ZSetCommand {
+	return NewZSetCommand(c)
+}
+
+func (c *Client) ServerCommand() *ServerCommand {
+	return NewServerCommand(c)
 }
 
 func toInt(v interface{}, err error) (int, error) {
@@ -109,7 +129,7 @@ func toInt(v interface{}, err error) (int, error) {
 	}
 }
 
-func (c *client) Int(ctx context.Context, cmd string, args ...interface{}) (int, error) {
+func (c *Client) Int(ctx context.Context, cmd string, args ...interface{}) (int, error) {
 	return toInt(c.conn.Exec(ctx, cmd, args))
 }
 
@@ -134,7 +154,7 @@ func toInt64(v interface{}, err error) (int64, error) {
 	}
 }
 
-func (c *client) Int64(ctx context.Context, cmd string, args ...interface{}) (int64, error) {
+func (c *Client) Int64(ctx context.Context, cmd string, args ...interface{}) (int64, error) {
 	return toInt64(c.conn.Exec(ctx, cmd, args))
 }
 
@@ -159,7 +179,7 @@ func toFloat64(v interface{}, err error) (float64, error) {
 	}
 }
 
-func (c *client) Float64(ctx context.Context, cmd string, args ...interface{}) (float64, error) {
+func (c *Client) Float64(ctx context.Context, cmd string, args ...interface{}) (float64, error) {
 	return toFloat64(c.conn.Exec(ctx, cmd, args))
 }
 
@@ -180,7 +200,7 @@ func toString(v interface{}, err error) (string, error) {
 	}
 }
 
-func (c *client) String(ctx context.Context, cmd string, args ...interface{}) (string, error) {
+func (c *Client) String(ctx context.Context, cmd string, args ...interface{}) (string, error) {
 	return toString(c.conn.Exec(ctx, cmd, args))
 }
 
@@ -208,7 +228,7 @@ func toSlice(v interface{}, err error) ([]interface{}, error) {
 	}
 }
 
-func (c *client) Slice(ctx context.Context, cmd string, args ...interface{}) ([]interface{}, error) {
+func (c *Client) Slice(ctx context.Context, cmd string, args ...interface{}) ([]interface{}, error) {
 	return toSlice(c.conn.Exec(ctx, cmd, args))
 }
 
@@ -229,7 +249,7 @@ func toInt64Slice(v interface{}, err error) ([]int64, error) {
 	return val, nil
 }
 
-func (c *client) Int64Slice(ctx context.Context, cmd string, args ...interface{}) ([]int64, error) {
+func (c *Client) Int64Slice(ctx context.Context, cmd string, args ...interface{}) ([]int64, error) {
 	return toInt64Slice(c.conn.Exec(ctx, cmd, args))
 }
 
@@ -250,7 +270,7 @@ func toFloat64Slice(v interface{}, err error) ([]float64, error) {
 	return val, nil
 }
 
-func (c *client) Float64Slice(ctx context.Context, cmd string, args ...interface{}) ([]float64, error) {
+func (c *Client) Float64Slice(ctx context.Context, cmd string, args ...interface{}) ([]float64, error) {
 	return toFloat64Slice(c.conn.Exec(ctx, cmd, args))
 }
 
@@ -271,7 +291,7 @@ func toStringSlice(v interface{}, err error) ([]string, error) {
 	return val, nil
 }
 
-func (c *client) StringSlice(ctx context.Context, cmd string, args ...interface{}) ([]string, error) {
+func (c *Client) StringSlice(ctx context.Context, cmd string, args ...interface{}) ([]string, error) {
 	return toStringSlice(c.conn.Exec(ctx, cmd, args))
 }
 
@@ -290,7 +310,7 @@ func toStringMap(v interface{}, err error) (map[string]string, error) {
 	return val, nil
 }
 
-func (c *client) StringMap(ctx context.Context, cmd string, args ...interface{}) (map[string]string, error) {
+func (c *Client) StringMap(ctx context.Context, cmd string, args ...interface{}) (map[string]string, error) {
 	return toStringMap(c.conn.Exec(ctx, cmd, args))
 }
 
@@ -316,6 +336,6 @@ func toZItemSlice(v interface{}, err error) ([]ZItem, error) {
 	return val, nil
 }
 
-func (c *client) ZItemSlice(ctx context.Context, cmd string, args ...interface{}) ([]ZItem, error) {
+func (c *Client) ZItemSlice(ctx context.Context, cmd string, args ...interface{}) ([]ZItem, error) {
 	return toZItemSlice(c.conn.Exec(ctx, cmd, args))
 }

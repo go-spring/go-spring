@@ -26,27 +26,27 @@ import (
 )
 
 var SAdd = Case{
-	Func: func(t *testing.T, ctx context.Context, c redis.Client) {
+	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.SAdd(ctx, "myset", "Hello")
+		r1, err := c.SetCommand().SAdd(ctx, "myset", "Hello")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.SAdd(ctx, "myset", "World")
+		r2, err := c.SetCommand().SAdd(ctx, "myset", "World")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(1))
 
-		r3, err := c.SAdd(ctx, "myset", "World")
+		r3, err := c.SetCommand().SAdd(ctx, "myset", "World")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, int64(0))
 
-		r4, err := c.SMembers(ctx, "myset")
+		r4, err := c.SetCommand().SMembers(ctx, "myset")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -78,21 +78,21 @@ var SAdd = Case{
 }
 
 var SCard = Case{
-	Func: func(t *testing.T, ctx context.Context, c redis.Client) {
+	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.SAdd(ctx, "myset", "Hello")
+		r1, err := c.SetCommand().SAdd(ctx, "myset", "Hello")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.SAdd(ctx, "myset", "World")
+		r2, err := c.SetCommand().SAdd(ctx, "myset", "World")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(1))
 
-		r3, err := c.SCard(ctx, "myset")
+		r3, err := c.SetCommand().SCard(ctx, "myset")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -118,45 +118,45 @@ var SCard = Case{
 }
 
 var SDiff = Case{
-	Func: func(t *testing.T, ctx context.Context, c redis.Client) {
+	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.SAdd(ctx, "key1", "a")
+		r1, err := c.SetCommand().SAdd(ctx, "key1", "a")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.SAdd(ctx, "key1", "b")
+		r2, err := c.SetCommand().SAdd(ctx, "key1", "b")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(1))
 
-		r3, err := c.SAdd(ctx, "key1", "c")
+		r3, err := c.SetCommand().SAdd(ctx, "key1", "c")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, int64(1))
 
-		r4, err := c.SAdd(ctx, "key2", "c")
+		r4, err := c.SetCommand().SAdd(ctx, "key2", "c")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r4, int64(1))
 
-		r5, err := c.SAdd(ctx, "key2", "d")
+		r5, err := c.SetCommand().SAdd(ctx, "key2", "d")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r5, int64(1))
 
-		r6, err := c.SAdd(ctx, "key2", "e")
+		r6, err := c.SetCommand().SAdd(ctx, "key2", "e")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r6, int64(1))
 
-		r7, err := c.SDiff(ctx, "key1", "key2")
+		r7, err := c.SetCommand().SDiff(ctx, "key1", "key2")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -200,51 +200,51 @@ var SDiff = Case{
 }
 
 var SDiffStore = Case{
-	Func: func(t *testing.T, ctx context.Context, c redis.Client) {
+	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.SAdd(ctx, "key1", "a")
+		r1, err := c.SetCommand().SAdd(ctx, "key1", "a")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.SAdd(ctx, "key1", "b")
+		r2, err := c.SetCommand().SAdd(ctx, "key1", "b")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(1))
 
-		r3, err := c.SAdd(ctx, "key1", "c")
+		r3, err := c.SetCommand().SAdd(ctx, "key1", "c")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, int64(1))
 
-		r4, err := c.SAdd(ctx, "key2", "c")
+		r4, err := c.SetCommand().SAdd(ctx, "key2", "c")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r4, int64(1))
 
-		r5, err := c.SAdd(ctx, "key2", "d")
+		r5, err := c.SetCommand().SAdd(ctx, "key2", "d")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r5, int64(1))
 
-		r6, err := c.SAdd(ctx, "key2", "e")
+		r6, err := c.SetCommand().SAdd(ctx, "key2", "e")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r6, int64(1))
 
-		r7, err := c.SDiffStore(ctx, "key", "key1", "key2")
+		r7, err := c.SetCommand().SDiffStore(ctx, "key", "key1", "key2")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r7, int64(2))
 
-		r8, err := c.SMembers(ctx, "key")
+		r8, err := c.SetCommand().SMembers(ctx, "key")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -292,45 +292,45 @@ var SDiffStore = Case{
 }
 
 var SInter = Case{
-	Func: func(t *testing.T, ctx context.Context, c redis.Client) {
+	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.SAdd(ctx, "key1", "a")
+		r1, err := c.SetCommand().SAdd(ctx, "key1", "a")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.SAdd(ctx, "key1", "b")
+		r2, err := c.SetCommand().SAdd(ctx, "key1", "b")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(1))
 
-		r3, err := c.SAdd(ctx, "key1", "c")
+		r3, err := c.SetCommand().SAdd(ctx, "key1", "c")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, int64(1))
 
-		r4, err := c.SAdd(ctx, "key2", "c")
+		r4, err := c.SetCommand().SAdd(ctx, "key2", "c")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r4, int64(1))
 
-		r5, err := c.SAdd(ctx, "key2", "d")
+		r5, err := c.SetCommand().SAdd(ctx, "key2", "d")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r5, int64(1))
 
-		r6, err := c.SAdd(ctx, "key2", "e")
+		r6, err := c.SetCommand().SAdd(ctx, "key2", "e")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r6, int64(1))
 
-		r7, err := c.SInter(ctx, "key1", "key2")
+		r7, err := c.SetCommand().SInter(ctx, "key1", "key2")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -372,51 +372,51 @@ var SInter = Case{
 }
 
 var SInterStore = Case{
-	Func: func(t *testing.T, ctx context.Context, c redis.Client) {
+	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.SAdd(ctx, "key1", "a")
+		r1, err := c.SetCommand().SAdd(ctx, "key1", "a")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.SAdd(ctx, "key1", "b")
+		r2, err := c.SetCommand().SAdd(ctx, "key1", "b")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(1))
 
-		r3, err := c.SAdd(ctx, "key1", "c")
+		r3, err := c.SetCommand().SAdd(ctx, "key1", "c")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, int64(1))
 
-		r4, err := c.SAdd(ctx, "key2", "c")
+		r4, err := c.SetCommand().SAdd(ctx, "key2", "c")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r4, int64(1))
 
-		r5, err := c.SAdd(ctx, "key2", "d")
+		r5, err := c.SetCommand().SAdd(ctx, "key2", "d")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r5, int64(1))
 
-		r6, err := c.SAdd(ctx, "key2", "e")
+		r6, err := c.SetCommand().SAdd(ctx, "key2", "e")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r6, int64(1))
 
-		r7, err := c.SInterStore(ctx, "key", "key1", "key2")
+		r7, err := c.SetCommand().SInterStore(ctx, "key", "key1", "key2")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r7, int64(1))
 
-		r8, err := c.SMembers(ctx, "key")
+		r8, err := c.SetCommand().SMembers(ctx, "key")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -462,21 +462,21 @@ var SInterStore = Case{
 }
 
 var SIsMember = Case{
-	Func: func(t *testing.T, ctx context.Context, c redis.Client) {
+	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.SAdd(ctx, "myset", "one")
+		r1, err := c.SetCommand().SAdd(ctx, "myset", "one")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.SIsMember(ctx, "myset", "one")
+		r2, err := c.SetCommand().SIsMember(ctx, "myset", "one")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(1))
 
-		r3, err := c.SIsMember(ctx, "myset", "two")
+		r3, err := c.SetCommand().SIsMember(ctx, "myset", "two")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -486,21 +486,21 @@ var SIsMember = Case{
 }
 
 var SMembers = Case{
-	Func: func(t *testing.T, ctx context.Context, c redis.Client) {
+	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.SAdd(ctx, "myset", "Hello")
+		r1, err := c.SetCommand().SAdd(ctx, "myset", "Hello")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.SAdd(ctx, "myset", "World")
+		r2, err := c.SetCommand().SAdd(ctx, "myset", "World")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(1))
 
-		r3, err := c.SMembers(ctx, "myset")
+		r3, err := c.SetCommand().SMembers(ctx, "myset")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -528,21 +528,21 @@ var SMembers = Case{
 }
 
 var SMIsMember = Case{
-	Func: func(t *testing.T, ctx context.Context, c redis.Client) {
+	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.SAdd(ctx, "myset", "one")
+		r1, err := c.SetCommand().SAdd(ctx, "myset", "one")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.SAdd(ctx, "myset", "one")
+		r2, err := c.SetCommand().SAdd(ctx, "myset", "one")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(0))
 
-		r3, err := c.SMIsMember(ctx, "myset", "one", "notamember")
+		r3, err := c.SetCommand().SMIsMember(ctx, "myset", "one", "notamember")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -568,39 +568,39 @@ var SMIsMember = Case{
 }
 
 var SMove = Case{
-	Func: func(t *testing.T, ctx context.Context, c redis.Client) {
+	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.SAdd(ctx, "myset", "one")
+		r1, err := c.SetCommand().SAdd(ctx, "myset", "one")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.SAdd(ctx, "myset", "two")
+		r2, err := c.SetCommand().SAdd(ctx, "myset", "two")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(1))
 
-		r3, err := c.SAdd(ctx, "myotherset", "three")
+		r3, err := c.SetCommand().SAdd(ctx, "myotherset", "three")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, int64(1))
 
-		r4, err := c.SMove(ctx, "myset", "myotherset", "two")
+		r4, err := c.SetCommand().SMove(ctx, "myset", "myotherset", "two")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r4, 1)
 
-		r5, err := c.SMembers(ctx, "myset")
+		r5, err := c.SetCommand().SMembers(ctx, "myset")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r5, []string{"one"})
 
-		r6, err := c.SMembers(ctx, "myotherset")
+		r6, err := c.SetCommand().SMembers(ctx, "myotherset")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -640,32 +640,32 @@ var SMove = Case{
 }
 
 var SPop = Case{
-	Func: func(t *testing.T, ctx context.Context, c redis.Client) {
+	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.SAdd(ctx, "myset", "one")
+		r1, err := c.SetCommand().SAdd(ctx, "myset", "one")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.SAdd(ctx, "myset", "two")
+		r2, err := c.SetCommand().SAdd(ctx, "myset", "two")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(1))
 
-		r3, err := c.SAdd(ctx, "myset", "three")
+		r3, err := c.SetCommand().SAdd(ctx, "myset", "three")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, int64(1))
 
-		r4, err := c.SPop(ctx, "myset")
+		r4, err := c.SetCommand().SPop(ctx, "myset")
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		r5, err := c.SMembers(ctx, "myset")
+		r5, err := c.SetCommand().SMembers(ctx, "myset")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -702,26 +702,26 @@ var SPop = Case{
 }
 
 var SRandMember = Case{
-	Func: func(t *testing.T, ctx context.Context, c redis.Client) {
+	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.SAdd(ctx, "myset", "one", "two", "three")
+		r1, err := c.SetCommand().SAdd(ctx, "myset", "one", "two", "three")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(3))
 
-		_, err = c.SRandMember(ctx, "myset")
+		_, err = c.SetCommand().SRandMember(ctx, "myset")
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		r3, err := c.SRandMemberN(ctx, "myset", 2)
+		r3, err := c.SetCommand().SRandMemberN(ctx, "myset", 2)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, len(r3), 2)
 
-		r4, err := c.SRandMemberN(ctx, "myset", -5)
+		r4, err := c.SetCommand().SRandMemberN(ctx, "myset", -5)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -751,39 +751,39 @@ var SRandMember = Case{
 }
 
 var SRem = Case{
-	Func: func(t *testing.T, ctx context.Context, c redis.Client) {
+	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.SAdd(ctx, "myset", "one")
+		r1, err := c.SetCommand().SAdd(ctx, "myset", "one")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.SAdd(ctx, "myset", "two")
+		r2, err := c.SetCommand().SAdd(ctx, "myset", "two")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(1))
 
-		r3, err := c.SAdd(ctx, "myset", "three")
+		r3, err := c.SetCommand().SAdd(ctx, "myset", "three")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, int64(1))
 
-		r4, err := c.SRem(ctx, "myset", "one")
+		r4, err := c.SetCommand().SRem(ctx, "myset", "one")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r4, int64(1))
 
-		r5, err := c.SRem(ctx, "myset", "four")
+		r5, err := c.SetCommand().SRem(ctx, "myset", "four")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r5, int64(0))
 
-		r6, err := c.SMembers(ctx, "myset")
+		r6, err := c.SetCommand().SMembers(ctx, "myset")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -822,45 +822,45 @@ var SRem = Case{
 }
 
 var SUnion = Case{
-	Func: func(t *testing.T, ctx context.Context, c redis.Client) {
+	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.SAdd(ctx, "key1", "a")
+		r1, err := c.SetCommand().SAdd(ctx, "key1", "a")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.SAdd(ctx, "key1", "b")
+		r2, err := c.SetCommand().SAdd(ctx, "key1", "b")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(1))
 
-		r3, err := c.SAdd(ctx, "key1", "c")
+		r3, err := c.SetCommand().SAdd(ctx, "key1", "c")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, int64(1))
 
-		r4, err := c.SAdd(ctx, "key2", "c")
+		r4, err := c.SetCommand().SAdd(ctx, "key2", "c")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r4, int64(1))
 
-		r5, err := c.SAdd(ctx, "key2", "d")
+		r5, err := c.SetCommand().SAdd(ctx, "key2", "d")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r5, int64(1))
 
-		r6, err := c.SAdd(ctx, "key2", "e")
+		r6, err := c.SetCommand().SAdd(ctx, "key2", "e")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r6, int64(1))
 
-		r7, err := c.SUnion(ctx, "key1", "key2")
+		r7, err := c.SetCommand().SUnion(ctx, "key1", "key2")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -904,51 +904,51 @@ var SUnion = Case{
 }
 
 var SUnionStore = Case{
-	Func: func(t *testing.T, ctx context.Context, c redis.Client) {
+	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.SAdd(ctx, "key1", "a")
+		r1, err := c.SetCommand().SAdd(ctx, "key1", "a")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.SAdd(ctx, "key1", "b")
+		r2, err := c.SetCommand().SAdd(ctx, "key1", "b")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(1))
 
-		r3, err := c.SAdd(ctx, "key1", "c")
+		r3, err := c.SetCommand().SAdd(ctx, "key1", "c")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, int64(1))
 
-		r4, err := c.SAdd(ctx, "key2", "c")
+		r4, err := c.SetCommand().SAdd(ctx, "key2", "c")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r4, int64(1))
 
-		r5, err := c.SAdd(ctx, "key2", "d")
+		r5, err := c.SetCommand().SAdd(ctx, "key2", "d")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r5, int64(1))
 
-		r6, err := c.SAdd(ctx, "key2", "e")
+		r6, err := c.SetCommand().SAdd(ctx, "key2", "e")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r6, int64(1))
 
-		r7, err := c.SUnionStore(ctx, "key", "key1", "key2")
+		r7, err := c.SetCommand().SUnionStore(ctx, "key", "key1", "key2")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r7, int64(5))
 
-		r8, err := c.SMembers(ctx, "key")
+		r8, err := c.SetCommand().SMembers(ctx, "key")
 		if err != nil {
 			t.Fatal(err)
 		}

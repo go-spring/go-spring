@@ -60,89 +60,49 @@ func Check(cases Cases) error {
 // True asserts that got is true.
 func True(t T, got bool, msg ...string) {
 	t.Helper()
-	if !got {
-		fail(t, "got false but expect true", msg...)
-	}
+	ThatBool(t, got).IsTrue(msg...)
 }
 
 // False asserts that got is false.
 func False(t T, got bool, msg ...string) {
 	t.Helper()
-	if got {
-		fail(t, "got true but expect false", msg...)
-	}
-}
-
-// isNil 返回 v 的值是否为 nil，但是不会 panic 。
-func isNil(v reflect.Value) bool {
-	switch v.Kind() {
-	case reflect.Chan,
-		reflect.Func,
-		reflect.Interface,
-		reflect.Map,
-		reflect.Ptr,
-		reflect.Slice,
-		reflect.UnsafePointer:
-		return v.IsNil()
-	}
-	return !v.IsValid()
+	ThatBool(t, got).IsFalse(msg...)
 }
 
 // Nil asserts that got is nil.
 func Nil(t T, got interface{}, msg ...string) {
 	t.Helper()
-	// 为什么不能使用 got == nil 进行判断呢？因为如果
-	// a := (*int)(nil)        // %T == *int
-	// b := (interface{})(nil) // %T == <nil>
-	// 那么 a==b 的结果是 false，因为二者类型不一致。
-	if !isNil(reflect.ValueOf(got)) {
-		str := fmt.Sprintf("got (%T) %v but expect nil", got, got)
-		fail(t, str, msg...)
-	}
+	That(t, got).IsNil(msg...)
 }
 
 // NotNil asserts that got is not nil.
 func NotNil(t T, got interface{}, msg ...string) {
 	t.Helper()
-	if isNil(reflect.ValueOf(got)) {
-		fail(t, "got nil but expect not nil", msg...)
-	}
+	That(t, got).IsNotNil(msg...)
 }
 
 // Equal asserts that got and expect are equal.
 func Equal(t T, got interface{}, expect interface{}, msg ...string) {
 	t.Helper()
-	if !reflect.DeepEqual(got, expect) {
-		str := fmt.Sprintf("got (%T) %v but expect (%T) %v", got, got, expect, expect)
-		fail(t, str, msg...)
-	}
+	That(t, got).IsEqualTo(expect, msg...)
 }
 
 // NotEqual asserts that got and expect are not equal.
 func NotEqual(t T, got interface{}, expect interface{}, msg ...string) {
 	t.Helper()
-	if reflect.DeepEqual(got, expect) {
-		str := fmt.Sprintf("expect not (%T) %v", expect, expect)
-		fail(t, str, msg...)
-	}
+	That(t, got).IsNotEqualTo(expect, msg...)
 }
 
 // Same asserts that got and expect are same.
 func Same(t T, got interface{}, expect interface{}, msg ...string) {
 	t.Helper()
-	if got != expect {
-		str := fmt.Sprintf("got (%T) %v but expect (%T) %v", got, got, expect, expect)
-		fail(t, str, msg...)
-	}
+	That(t, got).IsSame(expect, msg...)
 }
 
 // NotSame asserts that got and expect are not same.
 func NotSame(t T, got interface{}, expect interface{}, msg ...string) {
 	t.Helper()
-	if got == expect {
-		str := fmt.Sprintf("expect not (%T) %v", expect, expect)
-		fail(t, str, msg...)
-	}
+	That(t, got).IsNotSame(expect, msg...)
 }
 
 // Panic asserts that function fn() would panic. It fails if the panic

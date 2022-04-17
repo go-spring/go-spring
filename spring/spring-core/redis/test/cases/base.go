@@ -24,7 +24,7 @@ import (
 )
 
 type Case struct {
-	Func func(t *testing.T, ctx context.Context, c redis.Client)
+	Func func(t *testing.T, ctx context.Context, c *redis.Client)
 	Skip bool
 	Data string
 }

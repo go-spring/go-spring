@@ -18,6 +18,7 @@ package assert
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 )
 
@@ -33,11 +34,92 @@ func That(t T, v interface{}) *Assertion {
 	}
 }
 
+// IsNil 返回 v 的值是否为 nil，但是不会 panic 。
+func IsNil(v reflect.Value) bool {
+	switch v.Kind() {
+	case reflect.Chan,
+		reflect.Func,
+		reflect.Interface,
+		reflect.Map,
+		reflect.Ptr,
+		reflect.Slice,
+		reflect.UnsafePointer:
+		return v.IsNil()
+	}
+	return !v.IsValid()
+}
+
+func (a *Assertion) IsNil(msg ...string) *Assertion {
+	a.t.Helper()
+	// 为什么不能使用 got == nil 进行判断呢？因为如果
+	// a := (*int)(nil)        // %T == *int
+	// b := (interface{})(nil) // %T == <nil>
+	// 那么 a==b 的结果是 false，因为二者类型不一致。
+	if !IsNil(reflect.ValueOf(a.v)) {
+		str := fmt.Sprintf("got (%T) %v but expect nil", a.v, a.v)
+		fail(a.t, str, msg...)
+	}
+	return a
+}
+
+func (a *Assertion) IsNotNil(msg ...string) *Assertion {
+	a.t.Helper()
+	if IsNil(reflect.ValueOf(a.v)) {
+		fail(a.t, "got nil but expect not nil", msg...)
+	}
+	return a
+}
+
 func (a *Assertion) IsTrue(msg ...string) *Assertion {
 	a.t.Helper()
 	v := a.v.(bool)
 	if !v {
 		fail(a.t, "got false but expect true", msg...)
+	}
+	return a
+}
+
+func (a *Assertion) IsFalse(msg ...string) *Assertion {
+	a.t.Helper()
+	v := a.v.(bool)
+	if v {
+		fail(a.t, "got true but expect false", msg...)
+	}
+	return a
+}
+
+func (a *Assertion) IsEqualTo(expect interface{}, msg ...string) *Assertion {
+	a.t.Helper()
+	if !reflect.DeepEqual(a.v, expect) {
+		str := fmt.Sprintf("got (%T) %v but expect (%T) %v", a.v, a.v, expect, expect)
+		fail(a.t, str, msg...)
+	}
+	return a
+}
+
+func (a *Assertion) IsNotEqualTo(expect interface{}, msg ...string) *Assertion {
+	a.t.Helper()
+	if reflect.DeepEqual(a.v, expect) {
+		str := fmt.Sprintf("expect not (%T) %v", expect, expect)
+		fail(a.t, str, msg...)
+	}
+	return a
+}
+
+func (a *Assertion) IsSame(expect interface{}, msg ...string) *Assertion {
+	a.t.Helper()
+	if a.v != expect {
+		str := fmt.Sprintf("got (%T) %v but expect (%T) %v", a.v, a.v, expect, expect)
+		fail(a.t, str, msg...)
+	}
+	return a
+}
+
+func (a *Assertion) IsNotSame(expect interface{}, msg ...string) *Assertion {
+	a.t.Helper()
+	if a.v == expect {
+		str := fmt.Sprintf("expect not (%T) %v", expect, expect)
+		fail(a.t, str, msg...)
 	}
 	return a
 }
@@ -91,7 +173,7 @@ func ThatString(t T, v string) *StringAssertion {
 	}
 }
 
-func (a *StringAssertion) EqualFold(s string, msg ...string) *StringAssertion {
+func (a *StringAssertion) IsEqualFold(s string, msg ...string) *StringAssertion {
 	a.t.Helper()
 	if !strings.EqualFold(a.v, s) {
 		fail(a.t, fmt.Sprintf("'%s' doesn't equal fold '%s'", a.v, s), msg...)
@@ -115,7 +197,7 @@ func (a *StringAssertion) HasSuffix(suffix string, msg ...string) *StringAsserti
 	return a
 }
 
-func (a *StringAssertion) Contains(substr string, msg ...string) *StringAssertion {
+func (a *StringAssertion) HasSubString(substr string, msg ...string) *StringAssertion {
 	a.t.Helper()
 	if !strings.Contains(a.v, substr) {
 		fail(a.t, fmt.Sprintf("'%s' doesn't contain substr '%s'", a.v, substr), msg...)
