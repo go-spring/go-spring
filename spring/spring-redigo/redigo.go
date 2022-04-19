@@ -25,17 +25,15 @@ import (
 	g "github.com/gomodule/redigo/redis"
 )
 
-type Driver struct{}
-
-func NewDriver() redis.Driver {
-	return new(Driver)
+func NewClient(config redis.Config) (*redis.Client, error) {
+	connPool, err := Open(config)
+	if err != nil {
+		return nil, err
+	}
+	return redis.NewClient(connPool)
 }
 
-func NewClient(config redis.Config) (redis.Client, error) {
-	return redis.NewClient(config, NewDriver())
-}
-
-func (d *Driver) Open(config redis.Config) (redis.Conn, error) {
+func Open(config redis.Config) (redis.ConnPool, error) {
 
 	address := fmt.Sprintf("%s:%d", config.Host, config.Port)
 	conn, err := g.Dial("tcp", address,

@@ -34,7 +34,7 @@ type replayResult struct {
 }
 
 type replayConn struct {
-	conn Conn
+	conn ConnPool
 }
 
 func (c *replayConn) Exec(ctx context.Context, cmd string, args []interface{}) (interface{}, error) {

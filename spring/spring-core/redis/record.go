@@ -23,7 +23,7 @@ import (
 )
 
 type recordConn struct {
-	conn Conn
+	conn ConnPool
 }
 
 func (c *recordConn) Exec(ctx context.Context, cmd string, args []interface{}) (ret interface{}, err error) {

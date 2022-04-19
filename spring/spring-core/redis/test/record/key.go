@@ -23,62 +23,62 @@ import (
 	"github.com/go-spring/spring-core/redis/test/cases"
 )
 
-func Del(t *testing.T, d redis.Driver) {
-	RunCase(t, d, cases.Del)
+func Del(t *testing.T, conn redis.ConnPool) {
+	RunCase(t, conn, cases.Del)
 }
 
-func Dump(t *testing.T, d redis.Driver) {
-	RunCase(t, d, cases.Dump)
+func Dump(t *testing.T, conn redis.ConnPool) {
+	RunCase(t, conn, cases.Dump)
 }
 
-func Exists(t *testing.T, d redis.Driver) {
-	RunCase(t, d, cases.Exists)
+func Exists(t *testing.T, conn redis.ConnPool) {
+	RunCase(t, conn, cases.Exists)
 }
 
-func Expire(t *testing.T, d redis.Driver) {
-	RunCase(t, d, cases.Expire)
+func Expire(t *testing.T, conn redis.ConnPool) {
+	RunCase(t, conn, cases.Expire)
 }
 
-func ExpireAt(t *testing.T, d redis.Driver) {
-	RunCase(t, d, cases.ExpireAt)
+func ExpireAt(t *testing.T, conn redis.ConnPool) {
+	RunCase(t, conn, cases.ExpireAt)
 }
 
-func Keys(t *testing.T, d redis.Driver) {
-	RunCase(t, d, cases.Keys)
+func Keys(t *testing.T, conn redis.ConnPool) {
+	RunCase(t, conn, cases.Keys)
 }
 
-func Persist(t *testing.T, d redis.Driver) {
-	RunCase(t, d, cases.Persist)
+func Persist(t *testing.T, conn redis.ConnPool) {
+	RunCase(t, conn, cases.Persist)
 }
 
-func PExpire(t *testing.T, d redis.Driver) {
-	// RunCase(t, d, cases.PExpire)
+func PExpire(t *testing.T, conn redis.ConnPool) {
+	// RunCase(t, conn, cases.PExpire)
 }
 
-func PExpireAt(t *testing.T, d redis.Driver) {
-	RunCase(t, d, cases.PExpireAt)
+func PExpireAt(t *testing.T, conn redis.ConnPool) {
+	RunCase(t, conn, cases.PExpireAt)
 }
 
-func PTTL(t *testing.T, d redis.Driver) {
-	// RunCase(t, d, cases.PTTL)
+func PTTL(t *testing.T, conn redis.ConnPool) {
+	// RunCase(t, conn, cases.PTTL)
 }
 
-func Rename(t *testing.T, d redis.Driver) {
-	RunCase(t, d, cases.Rename)
+func Rename(t *testing.T, conn redis.ConnPool) {
+	RunCase(t, conn, cases.Rename)
 }
 
-func RenameNX(t *testing.T, d redis.Driver) {
-	RunCase(t, d, cases.RenameNX)
+func RenameNX(t *testing.T, conn redis.ConnPool) {
+	RunCase(t, conn, cases.RenameNX)
 }
 
-func Touch(t *testing.T, d redis.Driver) {
-	RunCase(t, d, cases.Touch)
+func Touch(t *testing.T, conn redis.ConnPool) {
+	RunCase(t, conn, cases.Touch)
 }
 
-func TTL(t *testing.T, d redis.Driver) {
-	RunCase(t, d, cases.TTL)
+func TTL(t *testing.T, conn redis.ConnPool) {
+	RunCase(t, conn, cases.TTL)
 }
 
-func Type(t *testing.T, d redis.Driver) {
-	RunCase(t, d, cases.Type)
+func Type(t *testing.T, conn redis.ConnPool) {
+	RunCase(t, conn, cases.Type)
 }

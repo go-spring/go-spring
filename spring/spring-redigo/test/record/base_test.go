@@ -23,6 +23,10 @@ import (
 	"github.com/go-spring/spring-redigo"
 )
 
-func RunCase(t *testing.T, fn func(t *testing.T, d redis.Driver)) {
-	fn(t, SpringRedigo.NewDriver())
+func RunCase(t *testing.T, fn func(t *testing.T, connPool redis.ConnPool)) {
+	connPool, err := SpringRedigo.Open(redis.Config{Port: 6379})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fn(t, connPool)
 }

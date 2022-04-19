@@ -25,17 +25,15 @@ import (
 	"github.com/go-spring/spring-core/redis"
 )
 
-type Driver struct{}
-
-func NewDriver() redis.Driver {
-	return new(Driver)
+func NewClient(config redis.Config) (*redis.Client, error) {
+	connPool, err := Open(config)
+	if err != nil {
+		return nil, err
+	}
+	return redis.NewClient(connPool)
 }
 
-func NewClient(config redis.Config) (redis.Client, error) {
-	return redis.NewClient(config, NewDriver())
-}
-
-func (d *Driver) Open(config redis.Config) (redis.Conn, error) {
+func Open(config redis.Config) (redis.ConnPool, error) {
 
 	address := fmt.Sprintf("%s:%d", config.Host, config.Port)
 	client := g.NewClient(&g.Options{
@@ -55,14 +53,14 @@ func (d *Driver) Open(config redis.Config) (redis.Conn, error) {
 		}
 	}
 
-	return &Conn{client: client}, nil
+	return &ConnPool{client: client}, nil
 }
 
-type Conn struct {
+type ConnPool struct {
 	client *g.Client
 }
 
-func (c *Conn) Exec(ctx context.Context, cmd string, args []interface{}) (interface{}, error) {
+func (c *ConnPool) Exec(ctx context.Context, cmd string, args []interface{}) (interface{}, error) {
 	ret := c.client.Do(ctx, append([]interface{}{cmd}, args...)...)
 	_, err := ret.Result()
 	if err != nil {

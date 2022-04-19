@@ -24,6 +24,7 @@ import (
 
 	"github.com/go-spring/spring-base/net/recorder"
 	"github.com/go-spring/spring-base/net/replayer"
+	"github.com/go-spring/spring-core/internal"
 )
 
 var errNil = errors.New("redis: nil")
@@ -53,15 +54,13 @@ type Redis interface {
 	ZItemSlice(ctx context.Context, cmd string, args ...interface{}) ([]ZItem, error)
 }
 
+type Config = internal.RedisClientConfig
+
 type Client struct {
-	conn Conn
+	conn ConnPool
 }
 
-func NewClient(config Config, driver Driver) (*Client, error) {
-	conn, err := driver.Open(config)
-	if err != nil {
-		return nil, err
-	}
+func NewClient(conn ConnPool) (*Client, error) {
 	if recorder.RecordMode() {
 		conn = &recordConn{conn: conn}
 	}

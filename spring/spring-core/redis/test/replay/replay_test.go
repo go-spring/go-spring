@@ -23,22 +23,9 @@ import (
 	"github.com/go-spring/spring-base/assert"
 	"github.com/go-spring/spring-base/knife"
 	"github.com/go-spring/spring-base/net/replayer"
-	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/redis"
 	"github.com/go-spring/spring-core/redis/test/cases"
 )
-
-type driver struct{}
-
-func (d *driver) Open(config redis.Config) (redis.Conn, error) {
-	return &conn{}, nil
-}
-
-type conn struct{}
-
-func (c *conn) Exec(ctx context.Context, cmd string, args []interface{}) (interface{}, error) {
-	panic(util.ForbiddenMethod)
-}
 
 func RunCase(t *testing.T, c cases.Case) {
 
@@ -59,8 +46,7 @@ func RunCase(t *testing.T, c cases.Case) {
 		t.Fatal(err)
 	}
 
-	config := redis.Config{Port: 6379}
-	client, err := redis.NewClient(config, &driver{})
+	client, err := redis.NewClient(nil)
 	if err != nil {
 		t.Fatal(err)
 	}

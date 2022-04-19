@@ -29,18 +29,17 @@ import (
 	"github.com/go-spring/spring-core/redis/test/cases"
 )
 
-func flushAll(d redis.Driver) (string, error) {
-	config := redis.Config{Port: 6379}
-	c, err := redis.NewClient(config, d)
+func flushAll(conn redis.ConnPool) (string, error) {
+	c, err := redis.NewClient(conn)
 	if err != nil {
 		return "", err
 	}
 	return c.ServerCommand().FlushAll(context.Background())
 }
 
-func RunCase(t *testing.T, d redis.Driver, c cases.Case) {
+func RunCase(t *testing.T, conn redis.ConnPool, c cases.Case) {
 
-	ok, err := flushAll(d)
+	ok, err := flushAll(conn)
 	assert.Nil(t, err)
 	assert.True(t, redis.IsOK(ok))
 
@@ -49,8 +48,7 @@ func RunCase(t *testing.T, d redis.Driver, c cases.Case) {
 		recorder.SetRecordMode(false)
 	}()
 
-	config := redis.Config{Port: 6379}
-	client, err := redis.NewClient(config, d)
+	client, err := redis.NewClient(conn)
 	assert.Nil(t, err)
 
 	ctx, _ := knife.New(context.Background())

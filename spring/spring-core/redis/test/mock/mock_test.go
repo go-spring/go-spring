@@ -33,16 +33,13 @@ func TestMock(t *testing.T) {
 	defer ctrl.Finish()
 
 	ctx := context.Background()
-	conn := redis.NewMockConn(ctrl)
+	conn := redis.NewMockConnPool(ctrl)
 	conn.EXPECT().Exec(ctx, "EXISTS", util.T("mykey")).Return(int64(0), nil)
 	conn.EXPECT().Exec(ctx, "APPEND", util.T("mykey", "Hello")).Return(int64(5), nil)
 	conn.EXPECT().Exec(ctx, "APPEND", util.T("mykey", " World")).Return(int64(11), nil)
 	conn.EXPECT().Exec(ctx, "GET", util.T("mykey")).Return("Hello World", nil)
 
-	driver := redis.NewMockDriver(ctrl)
-	driver.EXPECT().Open(gomock.Any()).Return(conn, nil)
-
-	c, err := redis.NewClient(redis.Config{}, driver)
+	c, err := redis.NewClient(conn)
 	assert.Nil(t, err)
 
 	cases.Append.Func(t, ctx, c)

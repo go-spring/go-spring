@@ -23,106 +23,106 @@ import (
 	"github.com/go-spring/spring-core/redis/test/cases"
 )
 
-func ZAdd(t *testing.T, d redis.Driver) {
-	RunCase(t, d, cases.ZAdd)
+func ZAdd(t *testing.T, conn redis.ConnPool) {
+	RunCase(t, conn, cases.ZAdd)
 }
 
-func ZCard(t *testing.T, d redis.Driver) {
-	RunCase(t, d, cases.ZCard)
+func ZCard(t *testing.T, conn redis.ConnPool) {
+	RunCase(t, conn, cases.ZCard)
 }
 
-func ZCount(t *testing.T, d redis.Driver) {
-	RunCase(t, d, cases.ZCount)
+func ZCount(t *testing.T, conn redis.ConnPool) {
+	RunCase(t, conn, cases.ZCount)
 }
 
-func ZDiff(t *testing.T, d redis.Driver) {
-	RunCase(t, d, cases.ZDiff)
+func ZDiff(t *testing.T, conn redis.ConnPool) {
+	RunCase(t, conn, cases.ZDiff)
 }
 
-func ZIncrBy(t *testing.T, d redis.Driver) {
-	RunCase(t, d, cases.ZIncrBy)
+func ZIncrBy(t *testing.T, conn redis.ConnPool) {
+	RunCase(t, conn, cases.ZIncrBy)
 }
 
-func ZInter(t *testing.T, d redis.Driver) {
-	RunCase(t, d, cases.ZInter)
+func ZInter(t *testing.T, conn redis.ConnPool) {
+	RunCase(t, conn, cases.ZInter)
 }
 
-func ZLexCount(t *testing.T, d redis.Driver) {
-	RunCase(t, d, cases.ZLexCount)
+func ZLexCount(t *testing.T, conn redis.ConnPool) {
+	RunCase(t, conn, cases.ZLexCount)
 }
 
-func ZMScore(t *testing.T, d redis.Driver) {
-	RunCase(t, d, cases.ZMScore)
+func ZMScore(t *testing.T, conn redis.ConnPool) {
+	RunCase(t, conn, cases.ZMScore)
 }
 
-func ZPopMax(t *testing.T, d redis.Driver) {
-	RunCase(t, d, cases.ZPopMax)
+func ZPopMax(t *testing.T, conn redis.ConnPool) {
+	RunCase(t, conn, cases.ZPopMax)
 }
 
-func ZPopMin(t *testing.T, d redis.Driver) {
-	RunCase(t, d, cases.ZPopMin)
+func ZPopMin(t *testing.T, conn redis.ConnPool) {
+	RunCase(t, conn, cases.ZPopMin)
 }
 
-func ZRandMember(t *testing.T, d redis.Driver) {
-	// RunCase(t, d, cases.ZRandMember)
+func ZRandMember(t *testing.T, conn redis.ConnPool) {
+	// RunCase(t, conn, cases.ZRandMember)
 }
 
-func ZRange(t *testing.T, d redis.Driver) {
-	RunCase(t, d, cases.ZRange)
+func ZRange(t *testing.T, conn redis.ConnPool) {
+	RunCase(t, conn, cases.ZRange)
 }
 
-func ZRangeByLex(t *testing.T, d redis.Driver) {
-	RunCase(t, d, cases.ZRangeByLex)
+func ZRangeByLex(t *testing.T, conn redis.ConnPool) {
+	RunCase(t, conn, cases.ZRangeByLex)
 }
 
-func ZRangeByScore(t *testing.T, d redis.Driver) {
-	RunCase(t, d, cases.ZRangeByScore)
+func ZRangeByScore(t *testing.T, conn redis.ConnPool) {
+	RunCase(t, conn, cases.ZRangeByScore)
 }
 
-func ZRank(t *testing.T, d redis.Driver) {
-	RunCase(t, d, cases.ZRank)
+func ZRank(t *testing.T, conn redis.ConnPool) {
+	RunCase(t, conn, cases.ZRank)
 }
 
-func ZRem(t *testing.T, d redis.Driver) {
-	RunCase(t, d, cases.ZRem)
+func ZRem(t *testing.T, conn redis.ConnPool) {
+	RunCase(t, conn, cases.ZRem)
 }
 
-func ZRemRangeByLex(t *testing.T, d redis.Driver) {
-	RunCase(t, d, cases.ZRemRangeByLex)
+func ZRemRangeByLex(t *testing.T, conn redis.ConnPool) {
+	RunCase(t, conn, cases.ZRemRangeByLex)
 }
 
-func ZRemRangeByRank(t *testing.T, d redis.Driver) {
-	RunCase(t, d, cases.ZRemRangeByRank)
+func ZRemRangeByRank(t *testing.T, conn redis.ConnPool) {
+	RunCase(t, conn, cases.ZRemRangeByRank)
 }
 
-func ZRemRangeByScore(t *testing.T, d redis.Driver) {
-	RunCase(t, d, cases.ZRemRangeByScore)
+func ZRemRangeByScore(t *testing.T, conn redis.ConnPool) {
+	RunCase(t, conn, cases.ZRemRangeByScore)
 }
 
-func ZRevRange(t *testing.T, d redis.Driver) {
-	RunCase(t, d, cases.ZRevRange)
+func ZRevRange(t *testing.T, conn redis.ConnPool) {
+	RunCase(t, conn, cases.ZRevRange)
 }
 
-func ZRevRangeByLex(t *testing.T, d redis.Driver) {
-	RunCase(t, d, cases.ZRevRangeByLex)
+func ZRevRangeByLex(t *testing.T, conn redis.ConnPool) {
+	RunCase(t, conn, cases.ZRevRangeByLex)
 }
 
-func ZRevRangeByScore(t *testing.T, d redis.Driver) {
-	RunCase(t, d, cases.ZRevRangeByScore)
+func ZRevRangeByScore(t *testing.T, conn redis.ConnPool) {
+	RunCase(t, conn, cases.ZRevRangeByScore)
 }
 
-func ZRevRank(t *testing.T, d redis.Driver) {
-	RunCase(t, d, cases.ZRevRank)
+func ZRevRank(t *testing.T, conn redis.ConnPool) {
+	RunCase(t, conn, cases.ZRevRank)
 }
 
-func ZScore(t *testing.T, d redis.Driver) {
-	RunCase(t, d, cases.ZScore)
+func ZScore(t *testing.T, conn redis.ConnPool) {
+	RunCase(t, conn, cases.ZScore)
 }
 
-func ZUnion(t *testing.T, d redis.Driver) {
-	RunCase(t, d, cases.ZUnion)
+func ZUnion(t *testing.T, conn redis.ConnPool) {
+	RunCase(t, conn, cases.ZUnion)
 }
 
-func ZUnionStore(t *testing.T, d redis.Driver) {
-	RunCase(t, d, cases.ZUnionStore)
+func ZUnionStore(t *testing.T, conn redis.ConnPool) {
+	RunCase(t, conn, cases.ZUnionStore)
 }

@@ -14,19 +14,14 @@
  * limitations under the License.
  */
 
-package record
+//go:generate mockgen -build_flags="-mod=mod" -package=redis -source=conn.go -destination=mock.go
+
+package redis
 
 import (
-	"testing"
-
-	"github.com/go-spring/spring-core/redis"
-	"github.com/go-spring/spring-go-redis"
+	"context"
 )
 
-func RunCase(t *testing.T, fn func(t *testing.T, connPool redis.ConnPool)) {
-	connPool, err := SpringGoRedis.Open(redis.Config{Port: 6379})
-	if err != nil {
-		t.Fatal(err)
-	}
-	fn(t, connPool)
+type ConnPool interface {
+	Exec(ctx context.Context, cmd string, args []interface{}) (interface{}, error)
 }

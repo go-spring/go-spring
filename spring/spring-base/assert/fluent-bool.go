@@ -14,22 +14,32 @@
  * limitations under the License.
  */
 
-//go:generate mockgen -build_flags="-mod=mod" -package=redis -source=driver.go -destination=mock.go
+package assert
 
-package redis
-
-import (
-	"context"
-
-	"github.com/go-spring/spring-core/internal"
-)
-
-type Config = internal.RedisClientConfig
-
-type Driver interface {
-	Open(config Config) (Conn, error)
+type BoolAssertion struct {
+	t T
+	v bool
 }
 
-type Conn interface {
-	Exec(ctx context.Context, cmd string, args []interface{}) (interface{}, error)
+func ThatBool(t T, v bool) *BoolAssertion {
+	return &BoolAssertion{
+		t: t,
+		v: v,
+	}
+}
+
+func (a *BoolAssertion) IsTrue(msg ...string) *BoolAssertion {
+	a.t.Helper()
+	if !a.v {
+		fail(a.t, "got false but expect true", msg...)
+	}
+	return a
+}
+
+func (a *BoolAssertion) IsFalse(msg ...string) *BoolAssertion {
+	a.t.Helper()
+	if a.v {
+		fail(a.t, "got true but expect false", msg...)
+	}
+	return a
 }
