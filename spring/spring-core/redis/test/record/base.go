@@ -34,7 +34,7 @@ func flushAll(conn redis.ConnPool) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return c.ServerCommand().FlushAll(context.Background())
+	return c.OpsForServer().FlushAll(context.Background())
 }
 
 func RunCase(t *testing.T, conn redis.ConnPool, c cases.Case) {

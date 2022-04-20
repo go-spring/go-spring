@@ -27,25 +27,25 @@ import (
 var Append = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.KeyCommand().Exists(ctx, "mykey")
+		r1, err := c.OpsForKey().Exists(ctx, "mykey")
 		if err != nil {
 			t.Fatal()
 		}
 		assert.Equal(t, r1, int64(0))
 
-		r2, err := c.StringCommand().Append(ctx, "mykey", "Hello")
+		r2, err := c.OpsForString().Append(ctx, "mykey", "Hello")
 		if err != nil {
 			t.Fatal()
 		}
 		assert.Equal(t, r2, int64(5))
 
-		r3, err := c.StringCommand().Append(ctx, "mykey", " World")
+		r3, err := c.OpsForString().Append(ctx, "mykey", " World")
 		if err != nil {
 			t.Fatal()
 		}
 		assert.Equal(t, r3, int64(11))
 
-		r4, err := c.StringCommand().Get(ctx, "mykey")
+		r4, err := c.OpsForString().Get(ctx, "mykey")
 		if err != nil {
 			t.Fatal()
 		}
@@ -77,25 +77,25 @@ var Append = Case{
 var Decr = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.StringCommand().Set(ctx, "mykey", "10")
+		r1, err := c.OpsForString().Set(ctx, "mykey", "10")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.True(t, redis.IsOK(r1))
 
-		r2, err := c.StringCommand().Decr(ctx, "mykey")
+		r2, err := c.OpsForString().Decr(ctx, "mykey")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(9))
 
-		r3, err := c.StringCommand().Set(ctx, "mykey", "234293482390480948029348230948")
+		r3, err := c.OpsForString().Set(ctx, "mykey", "234293482390480948029348230948")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.True(t, redis.IsOK(r3))
 
-		_, err = c.StringCommand().Decr(ctx, "mykey")
+		_, err = c.OpsForString().Decr(ctx, "mykey")
 		assert.Error(t, err, "ERR value is not an integer or out of range")
 	},
 	Data: `
@@ -124,13 +124,13 @@ var Decr = Case{
 var DecrBy = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.StringCommand().Set(ctx, "mykey", "10")
+		r1, err := c.OpsForString().Set(ctx, "mykey", "10")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.True(t, redis.IsOK(r1))
 
-		r2, err := c.StringCommand().DecrBy(ctx, "mykey", 3)
+		r2, err := c.OpsForString().DecrBy(ctx, "mykey", 3)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -154,16 +154,16 @@ var DecrBy = Case{
 var Get = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		_, err := c.StringCommand().Get(ctx, "nonexisting")
+		_, err := c.OpsForString().Get(ctx, "nonexisting")
 		assert.True(t, redis.IsErrNil(err))
 
-		r2, err := c.StringCommand().Set(ctx, "mykey", "Hello")
+		r2, err := c.OpsForString().Set(ctx, "mykey", "Hello")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.True(t, redis.IsOK(r2))
 
-		r3, err := c.StringCommand().Get(ctx, "mykey")
+		r3, err := c.OpsForString().Get(ctx, "mykey")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -191,19 +191,19 @@ var Get = Case{
 var GetDel = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.StringCommand().Set(ctx, "mykey", "Hello")
+		r1, err := c.OpsForString().Set(ctx, "mykey", "Hello")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.True(t, redis.IsOK(r1))
 
-		r2, err := c.StringCommand().GetDel(ctx, "mykey")
+		r2, err := c.OpsForString().GetDel(ctx, "mykey")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, "Hello")
 
-		_, err = c.StringCommand().Get(ctx, "mykey")
+		_, err = c.OpsForString().Get(ctx, "mykey")
 		assert.True(t, redis.IsErrNil(err))
 	},
 	Data: `
@@ -228,31 +228,31 @@ var GetDel = Case{
 var GetRange = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.StringCommand().Set(ctx, "mykey", "This is a string")
+		r1, err := c.OpsForString().Set(ctx, "mykey", "This is a string")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.True(t, redis.IsOK(r1))
 
-		r2, err := c.StringCommand().GetRange(ctx, "mykey", 0, 3)
+		r2, err := c.OpsForString().GetRange(ctx, "mykey", 0, 3)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, "This")
 
-		r3, err := c.StringCommand().GetRange(ctx, "mykey", -3, -1)
+		r3, err := c.OpsForString().GetRange(ctx, "mykey", -3, -1)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, "ing")
 
-		r4, err := c.StringCommand().GetRange(ctx, "mykey", 0, -1)
+		r4, err := c.OpsForString().GetRange(ctx, "mykey", 0, -1)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r4, "This is a string")
 
-		r5, err := c.StringCommand().GetRange(ctx, "mykey", 10, 100)
+		r5, err := c.OpsForString().GetRange(ctx, "mykey", 10, 100)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -288,37 +288,37 @@ var GetRange = Case{
 var GetSet = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.StringCommand().Incr(ctx, "mycounter")
+		r1, err := c.OpsForString().Incr(ctx, "mycounter")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.StringCommand().GetSet(ctx, "mycounter", "0")
+		r2, err := c.OpsForString().GetSet(ctx, "mycounter", "0")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, "1")
 
-		r3, err := c.StringCommand().Get(ctx, "mycounter")
+		r3, err := c.OpsForString().Get(ctx, "mycounter")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, "0")
 
-		r4, err := c.StringCommand().Set(ctx, "mykey", "Hello")
+		r4, err := c.OpsForString().Set(ctx, "mykey", "Hello")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.True(t, redis.IsOK(r4))
 
-		r5, err := c.StringCommand().GetSet(ctx, "mykey", "World")
+		r5, err := c.OpsForString().GetSet(ctx, "mykey", "World")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r5, "Hello")
 
-		r6, err := c.StringCommand().Get(ctx, "mykey")
+		r6, err := c.OpsForString().Get(ctx, "mykey")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -358,19 +358,19 @@ var GetSet = Case{
 var Incr = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.StringCommand().Set(ctx, "mykey", "10")
+		r1, err := c.OpsForString().Set(ctx, "mykey", "10")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.True(t, redis.IsOK(r1))
 
-		r2, err := c.StringCommand().Incr(ctx, "mykey")
+		r2, err := c.OpsForString().Incr(ctx, "mykey")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(11))
 
-		r3, err := c.StringCommand().Get(ctx, "mykey")
+		r3, err := c.OpsForString().Get(ctx, "mykey")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -398,13 +398,13 @@ var Incr = Case{
 var IncrBy = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.StringCommand().Set(ctx, "mykey", "10")
+		r1, err := c.OpsForString().Set(ctx, "mykey", "10")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.True(t, redis.IsOK(r1))
 
-		r2, err := c.StringCommand().IncrBy(ctx, "mykey", 5)
+		r2, err := c.OpsForString().IncrBy(ctx, "mykey", 5)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -428,31 +428,31 @@ var IncrBy = Case{
 var IncrByFloat = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.StringCommand().Set(ctx, "mykey", 10.50)
+		r1, err := c.OpsForString().Set(ctx, "mykey", 10.50)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.True(t, redis.IsOK(r1))
 
-		r2, err := c.StringCommand().IncrByFloat(ctx, "mykey", 0.1)
+		r2, err := c.OpsForString().IncrByFloat(ctx, "mykey", 0.1)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, 10.6)
 
-		r3, err := c.StringCommand().IncrByFloat(ctx, "mykey", -5)
+		r3, err := c.OpsForString().IncrByFloat(ctx, "mykey", -5)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, 5.6)
 
-		r4, err := c.StringCommand().Set(ctx, "mykey", 5.0e3)
+		r4, err := c.OpsForString().Set(ctx, "mykey", 5.0e3)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.True(t, redis.IsOK(r4))
 
-		r5, err := c.StringCommand().IncrByFloat(ctx, "mykey", 2.0e2)
+		r5, err := c.OpsForString().IncrByFloat(ctx, "mykey", 2.0e2)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -488,19 +488,19 @@ var IncrByFloat = Case{
 var MGet = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.StringCommand().Set(ctx, "key1", "Hello")
+		r1, err := c.OpsForString().Set(ctx, "key1", "Hello")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.True(t, redis.IsOK(r1))
 
-		r2, err := c.StringCommand().Set(ctx, "key2", "World")
+		r2, err := c.OpsForString().Set(ctx, "key2", "World")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.True(t, redis.IsOK(r2))
 
-		r3, err := c.StringCommand().MGet(ctx, "key1", "key2", "nonexisting")
+		r3, err := c.OpsForString().MGet(ctx, "key1", "key2", "nonexisting")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -528,19 +528,19 @@ var MGet = Case{
 var MSet = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.StringCommand().MSet(ctx, "key1", "Hello", "key2", "World")
+		r1, err := c.OpsForString().MSet(ctx, "key1", "Hello", "key2", "World")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.True(t, redis.IsOK(r1))
 
-		r2, err := c.StringCommand().Get(ctx, "key1")
+		r2, err := c.OpsForString().Get(ctx, "key1")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, "Hello")
 
-		r3, err := c.StringCommand().Get(ctx, "key2")
+		r3, err := c.OpsForString().Get(ctx, "key2")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -568,19 +568,19 @@ var MSet = Case{
 var MSetNX = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.StringCommand().MSetNX(ctx, "key1", "Hello", "key2", "there")
+		r1, err := c.OpsForString().MSetNX(ctx, "key1", "Hello", "key2", "there")
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r1, 1)
+		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.StringCommand().MSetNX(ctx, "key2", "new", "key3", "world")
+		r2, err := c.OpsForString().MSetNX(ctx, "key2", "new", "key3", "world")
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r2, 0)
+		assert.Equal(t, r2, int64(0))
 
-		r3, err := c.StringCommand().MGet(ctx, "key1", "key2", "key3")
+		r3, err := c.OpsForString().MGet(ctx, "key1", "key2", "key3")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -608,19 +608,19 @@ var MSetNX = Case{
 var PSetEX = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.StringCommand().PSetEX(ctx, "mykey", "Hello", 1000)
+		r1, err := c.OpsForString().PSetEX(ctx, "mykey", "Hello", 1000)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.True(t, redis.IsOK(r1))
 
-		r2, err := c.KeyCommand().PTTL(ctx, "mykey")
+		r2, err := c.OpsForKey().PTTL(ctx, "mykey")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.True(t, r2 <= 1000 && r2 >= 900)
 
-		r3, err := c.StringCommand().Get(ctx, "mykey")
+		r3, err := c.OpsForString().Get(ctx, "mykey")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -648,19 +648,19 @@ var PSetEX = Case{
 var Set = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.StringCommand().Set(ctx, "mykey", "Hello")
+		r1, err := c.OpsForString().Set(ctx, "mykey", "Hello")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.True(t, redis.IsOK(r1))
 
-		r2, err := c.StringCommand().Get(ctx, "mykey")
+		r2, err := c.OpsForString().Get(ctx, "mykey")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, "Hello")
 
-		r3, err := c.StringCommand().SetEX(ctx, "anotherkey", "will expire in a minute", 60)
+		r3, err := c.OpsForString().SetEX(ctx, "anotherkey", "will expire in a minute", 60)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -688,19 +688,19 @@ var Set = Case{
 var SetEX = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.StringCommand().SetEX(ctx, "mykey", "Hello", 10)
+		r1, err := c.OpsForString().SetEX(ctx, "mykey", "Hello", 10)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.True(t, redis.IsOK(r1))
 
-		r2, err := c.KeyCommand().TTL(ctx, "mykey")
+		r2, err := c.OpsForKey().TTL(ctx, "mykey")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(10))
 
-		r3, err := c.StringCommand().Get(ctx, "mykey")
+		r3, err := c.OpsForString().Get(ctx, "mykey")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -728,19 +728,19 @@ var SetEX = Case{
 var SetNX = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.StringCommand().SetNX(ctx, "mykey", "Hello")
+		r1, err := c.OpsForString().SetNX(ctx, "mykey", "Hello")
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r1, 1)
+		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.StringCommand().SetNX(ctx, "mykey", "World")
+		r2, err := c.OpsForString().SetNX(ctx, "mykey", "World")
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r2, 0)
+		assert.Equal(t, r2, int64(0))
 
-		r3, err := c.StringCommand().Get(ctx, "mykey")
+		r3, err := c.OpsForString().Get(ctx, "mykey")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -768,31 +768,31 @@ var SetNX = Case{
 var SetRange = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.StringCommand().Set(ctx, "key1", "Hello World")
+		r1, err := c.OpsForString().Set(ctx, "key1", "Hello World")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.True(t, redis.IsOK(r1))
 
-		r2, err := c.StringCommand().SetRange(ctx, "key1", 6, "Redis")
+		r2, err := c.OpsForString().SetRange(ctx, "key1", 6, "Redis")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(11))
 
-		r3, err := c.StringCommand().Get(ctx, "key1")
+		r3, err := c.OpsForString().Get(ctx, "key1")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, "Hello Redis")
 
-		r4, err := c.StringCommand().SetRange(ctx, "key2", 6, "Redis")
+		r4, err := c.OpsForString().SetRange(ctx, "key2", 6, "Redis")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r4, int64(11))
 
-		r5, err := c.StringCommand().Get(ctx, "key2")
+		r5, err := c.OpsForString().Get(ctx, "key2")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -828,19 +828,19 @@ var SetRange = Case{
 var StrLen = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.StringCommand().Set(ctx, "mykey", "Hello world")
+		r1, err := c.OpsForString().Set(ctx, "mykey", "Hello world")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.True(t, redis.IsOK(r1))
 
-		r2, err := c.StringCommand().StrLen(ctx, "mykey")
+		r2, err := c.OpsForString().StrLen(ctx, "mykey")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(11))
 
-		r3, err := c.StringCommand().StrLen(ctx, "nonexisting")
+		r3, err := c.OpsForString().StrLen(ctx, "nonexisting")
 		if err != nil {
 			t.Fatal(err)
 		}

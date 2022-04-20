@@ -20,21 +20,17 @@ import (
 	"context"
 )
 
-const (
-	CommandFlushAll = "FLUSHALL"
-)
-
-type ServerCommand struct {
-	c Redis
+type ServerOperations struct {
+	c *Client
 }
 
-func NewServerCommand(c Redis) *ServerCommand {
-	return &ServerCommand{c: c}
+func NewServerOperations(c *Client) *ServerOperations {
+	return &ServerOperations{c: c}
 }
 
 // FlushAll https://redis.io/commands/flushall
 // Command: FLUSHALL [ASYNC|SYNC]
 // Simple string reply
-func (c *ServerCommand) FlushAll(ctx context.Context, args ...interface{}) (string, error) {
-	return c.c.String(ctx, CommandFlushAll, args...)
+func (c *ServerOperations) FlushAll(ctx context.Context, args ...interface{}) (string, error) {
+	return c.c.String(ctx, "FLUSHALL", args...)
 }

@@ -27,19 +27,19 @@ import (
 var HDel = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.HashCommand().HSet(ctx, "myhash", "field1", "foo")
+		r1, err := c.OpsForHash().HSet(ctx, "myhash", "field1", "foo")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.HashCommand().HDel(ctx, "myhash", "field1")
+		r2, err := c.OpsForHash().HDel(ctx, "myhash", "field1")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(1))
 
-		r3, err := c.HashCommand().HDel(ctx, "myhash", "field2")
+		r3, err := c.OpsForHash().HDel(ctx, "myhash", "field2")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -67,23 +67,23 @@ var HDel = Case{
 var HExists = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.HashCommand().HSet(ctx, "myhash", "field1", "foo")
+		r1, err := c.OpsForHash().HSet(ctx, "myhash", "field1", "foo")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.HashCommand().HExists(ctx, "myhash", "field1")
+		r2, err := c.OpsForHash().HExists(ctx, "myhash", "field1")
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r2, 1)
+		assert.Equal(t, r2, int64(1))
 
-		r3, err := c.HashCommand().HExists(ctx, "myhash", "field2")
+		r3, err := c.OpsForHash().HExists(ctx, "myhash", "field2")
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r3, 0)
+		assert.Equal(t, r3, int64(0))
 	},
 	Data: `
 	{
@@ -107,19 +107,19 @@ var HExists = Case{
 var HGet = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.HashCommand().HSet(ctx, "myhash", "field1", "foo")
+		r1, err := c.OpsForHash().HSet(ctx, "myhash", "field1", "foo")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.HashCommand().HGet(ctx, "myhash", "field1")
+		r2, err := c.OpsForHash().HGet(ctx, "myhash", "field1")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, "foo")
 
-		_, err = c.HashCommand().HGet(ctx, "myhash", "field2")
+		_, err = c.OpsForHash().HGet(ctx, "myhash", "field2")
 		assert.True(t, redis.IsErrNil(err))
 	},
 	Data: `
@@ -144,19 +144,19 @@ var HGet = Case{
 var HGetAll = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.HashCommand().HSet(ctx, "myhash", "field1", "Hello")
+		r1, err := c.OpsForHash().HSet(ctx, "myhash", "field1", "Hello")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.HashCommand().HSet(ctx, "myhash", "field2", "World")
+		r2, err := c.OpsForHash().HSet(ctx, "myhash", "field2", "World")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(1))
 
-		r3, err := c.HashCommand().HGetAll(ctx, "myhash")
+		r3, err := c.OpsForHash().HGetAll(ctx, "myhash")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -187,25 +187,25 @@ var HGetAll = Case{
 var HIncrBy = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.HashCommand().HSet(ctx, "myhash", "field", 5)
+		r1, err := c.OpsForHash().HSet(ctx, "myhash", "field", 5)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.HashCommand().HIncrBy(ctx, "myhash", "field", 1)
+		r2, err := c.OpsForHash().HIncrBy(ctx, "myhash", "field", 1)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(6))
 
-		r3, err := c.HashCommand().HIncrBy(ctx, "myhash", "field", -1)
+		r3, err := c.OpsForHash().HIncrBy(ctx, "myhash", "field", -1)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, int64(5))
 
-		r4, err := c.HashCommand().HIncrBy(ctx, "myhash", "field", -10)
+		r4, err := c.OpsForHash().HIncrBy(ctx, "myhash", "field", -10)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -237,31 +237,31 @@ var HIncrBy = Case{
 var HIncrByFloat = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.HashCommand().HSet(ctx, "mykey", "field", 10.50)
+		r1, err := c.OpsForHash().HSet(ctx, "mykey", "field", 10.50)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.HashCommand().HIncrByFloat(ctx, "mykey", "field", 0.1)
+		r2, err := c.OpsForHash().HIncrByFloat(ctx, "mykey", "field", 0.1)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, 10.6)
 
-		r3, err := c.HashCommand().HIncrByFloat(ctx, "mykey", "field", -5)
+		r3, err := c.OpsForHash().HIncrByFloat(ctx, "mykey", "field", -5)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, 5.6)
 
-		r4, err := c.HashCommand().HSet(ctx, "mykey", "field", 5.0e3)
+		r4, err := c.OpsForHash().HSet(ctx, "mykey", "field", 5.0e3)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r4, int64(0))
 
-		r5, err := c.HashCommand().HIncrByFloat(ctx, "mykey", "field", 2.0e2)
+		r5, err := c.OpsForHash().HIncrByFloat(ctx, "mykey", "field", 2.0e2)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -297,19 +297,19 @@ var HIncrByFloat = Case{
 var HKeys = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.HashCommand().HSet(ctx, "myhash", "field1", "Hello")
+		r1, err := c.OpsForHash().HSet(ctx, "myhash", "field1", "Hello")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.HashCommand().HSet(ctx, "myhash", "field2", "World")
+		r2, err := c.OpsForHash().HSet(ctx, "myhash", "field2", "World")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(1))
 
-		r3, err := c.HashCommand().HKeys(ctx, "myhash")
+		r3, err := c.OpsForHash().HKeys(ctx, "myhash")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -337,19 +337,19 @@ var HKeys = Case{
 var HLen = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.HashCommand().HSet(ctx, "myhash", "field1", "Hello")
+		r1, err := c.OpsForHash().HSet(ctx, "myhash", "field1", "Hello")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.HashCommand().HSet(ctx, "myhash", "field2", "World")
+		r2, err := c.OpsForHash().HSet(ctx, "myhash", "field2", "World")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(1))
 
-		r3, err := c.HashCommand().HLen(ctx, "myhash")
+		r3, err := c.OpsForHash().HLen(ctx, "myhash")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -377,19 +377,19 @@ var HLen = Case{
 var HMGet = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.HashCommand().HSet(ctx, "myhash", "field1", "Hello")
+		r1, err := c.OpsForHash().HSet(ctx, "myhash", "field1", "Hello")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.HashCommand().HSet(ctx, "myhash", "field2", "World")
+		r2, err := c.OpsForHash().HSet(ctx, "myhash", "field2", "World")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(1))
 
-		r3, err := c.HashCommand().HMGet(ctx, "myhash", "field1", "field2", "nofield")
+		r3, err := c.OpsForHash().HMGet(ctx, "myhash", "field1", "field2", "nofield")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -417,13 +417,13 @@ var HMGet = Case{
 var HSet = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.HashCommand().HSet(ctx, "myhash", "field1", "Hello")
+		r1, err := c.OpsForHash().HSet(ctx, "myhash", "field1", "Hello")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.HashCommand().HGet(ctx, "myhash", "field1")
+		r2, err := c.OpsForHash().HGet(ctx, "myhash", "field1")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -447,19 +447,19 @@ var HSet = Case{
 var HSetNX = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.HashCommand().HSetNX(ctx, "myhash", "field", "Hello")
+		r1, err := c.OpsForHash().HSetNX(ctx, "myhash", "field", "Hello")
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r1, 1)
+		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.HashCommand().HSetNX(ctx, "myhash", "field", "World")
+		r2, err := c.OpsForHash().HSetNX(ctx, "myhash", "field", "World")
 		if err != nil {
 			t.Fatal(err)
 		}
-		assert.Equal(t, r2, 0)
+		assert.Equal(t, r2, int64(0))
 
-		r3, err := c.HashCommand().HGet(ctx, "myhash", "field")
+		r3, err := c.OpsForHash().HGet(ctx, "myhash", "field")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -487,25 +487,25 @@ var HSetNX = Case{
 var HStrLen = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.HashCommand().HSet(ctx, "myhash", "f1", "HelloWorld", "f2", 99, "f3", -256)
+		r1, err := c.OpsForHash().HSet(ctx, "myhash", "f1", "HelloWorld", "f2", 99, "f3", -256)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(3))
 
-		r2, err := c.HashCommand().HStrLen(ctx, "myhash", "f1")
+		r2, err := c.OpsForHash().HStrLen(ctx, "myhash", "f1")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(10))
 
-		r3, err := c.HashCommand().HStrLen(ctx, "myhash", "f2")
+		r3, err := c.OpsForHash().HStrLen(ctx, "myhash", "f2")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, int64(2))
 
-		r4, err := c.HashCommand().HStrLen(ctx, "myhash", "f3")
+		r4, err := c.OpsForHash().HStrLen(ctx, "myhash", "f3")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -537,19 +537,19 @@ var HStrLen = Case{
 var HVals = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.HashCommand().HSet(ctx, "myhash", "field1", "Hello")
+		r1, err := c.OpsForHash().HSet(ctx, "myhash", "field1", "Hello")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.HashCommand().HSet(ctx, "myhash", "field2", "World")
+		r2, err := c.OpsForHash().HSet(ctx, "myhash", "field2", "World")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(1))
 
-		r3, err := c.HashCommand().HVals(ctx, "myhash")
+		r3, err := c.OpsForHash().HVals(ctx, "myhash")
 		if err != nil {
 			t.Fatal(err)
 		}

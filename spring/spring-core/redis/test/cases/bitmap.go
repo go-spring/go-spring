@@ -27,25 +27,25 @@ import (
 var BitCount = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.StringCommand().Set(ctx, "mykey", "foobar")
+		r1, err := c.OpsForString().Set(ctx, "mykey", "foobar")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.True(t, redis.IsOK(r1))
 
-		r2, err := c.BitmapCommand().BitCount(ctx, "mykey")
+		r2, err := c.OpsForBitmap().BitCount(ctx, "mykey")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(26))
 
-		r3, err := c.BitmapCommand().BitCount(ctx, "mykey", 0, 0)
+		r3, err := c.OpsForBitmap().BitCount(ctx, "mykey", 0, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, int64(4))
 
-		r4, err := c.BitmapCommand().BitCount(ctx, "mykey", 1, 1)
+		r4, err := c.OpsForBitmap().BitCount(ctx, "mykey", 1, 1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -81,25 +81,25 @@ var BitCount = Case{
 var BitOpAnd = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.StringCommand().Set(ctx, "key1", "foobar")
+		r1, err := c.OpsForString().Set(ctx, "key1", "foobar")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.True(t, redis.IsOK(r1))
 
-		r2, err := c.StringCommand().Set(ctx, "key2", "abcdef")
+		r2, err := c.OpsForString().Set(ctx, "key2", "abcdef")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.True(t, redis.IsOK(r2))
 
-		r3, err := c.BitmapCommand().BitOpAnd(ctx, "dest", "key1", "key2")
+		r3, err := c.OpsForBitmap().BitOpAnd(ctx, "dest", "key1", "key2")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, int64(6))
 
-		r4, err := c.StringCommand().Get(ctx, "dest")
+		r4, err := c.OpsForString().Get(ctx, "dest")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -135,43 +135,43 @@ var BitOpAnd = Case{
 var BitPos = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.StringCommand().Set(ctx, "mykey", "\xff\xf0\x00")
+		r1, err := c.OpsForString().Set(ctx, "mykey", "\xff\xf0\x00")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.True(t, redis.IsOK(r1))
 
-		r2, err := c.BitmapCommand().BitPos(ctx, "mykey", 0)
+		r2, err := c.OpsForBitmap().BitPos(ctx, "mykey", 0)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(12))
 
-		r3, err := c.StringCommand().Set(ctx, "mykey", "\x00\xff\xf0")
+		r3, err := c.OpsForString().Set(ctx, "mykey", "\x00\xff\xf0")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.True(t, redis.IsOK(r3))
 
-		r4, err := c.BitmapCommand().BitPos(ctx, "mykey", 1, 0)
+		r4, err := c.OpsForBitmap().BitPos(ctx, "mykey", 1, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r4, int64(8))
 
-		r5, err := c.BitmapCommand().BitPos(ctx, "mykey", 1, 2)
+		r5, err := c.OpsForBitmap().BitPos(ctx, "mykey", 1, 2)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r5, int64(16))
 
-		r6, err := c.StringCommand().Set(ctx, "mykey", "\x00\x00\x00")
+		r6, err := c.OpsForString().Set(ctx, "mykey", "\x00\x00\x00")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.True(t, redis.IsOK(r6))
 
-		r7, err := c.BitmapCommand().BitPos(ctx, "mykey", 1)
+		r7, err := c.OpsForBitmap().BitPos(ctx, "mykey", 1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -215,25 +215,25 @@ var BitPos = Case{
 var GetBit = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.BitmapCommand().SetBit(ctx, "mykey", 7, 1)
+		r1, err := c.OpsForBitmap().SetBit(ctx, "mykey", 7, 1)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(0))
 
-		r2, err := c.BitmapCommand().GetBit(ctx, "mykey", 0)
+		r2, err := c.OpsForBitmap().GetBit(ctx, "mykey", 0)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(0))
 
-		r3, err := c.BitmapCommand().GetBit(ctx, "mykey", 7)
+		r3, err := c.OpsForBitmap().GetBit(ctx, "mykey", 7)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, int64(1))
 
-		r4, err := c.BitmapCommand().GetBit(ctx, "mykey", 100)
+		r4, err := c.OpsForBitmap().GetBit(ctx, "mykey", 100)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -265,19 +265,19 @@ var GetBit = Case{
 var SetBit = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.BitmapCommand().SetBit(ctx, "mykey", 7, 1)
+		r1, err := c.OpsForBitmap().SetBit(ctx, "mykey", 7, 1)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(0))
 
-		r2, err := c.BitmapCommand().SetBit(ctx, "mykey", 7, 0)
+		r2, err := c.OpsForBitmap().SetBit(ctx, "mykey", 7, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(1))
 
-		r3, err := c.StringCommand().Get(ctx, "mykey")
+		r3, err := c.OpsForString().Get(ctx, "mykey")
 		if err != nil {
 			t.Fatal(err)
 		}

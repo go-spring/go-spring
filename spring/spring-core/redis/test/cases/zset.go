@@ -27,25 +27,25 @@ import (
 var ZAdd = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.ZSetCommand().ZAdd(ctx, "myzset", 1, "one")
+		r1, err := c.OpsForZSet().ZAdd(ctx, "myzset", 1, "one")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.ZSetCommand().ZAdd(ctx, "myzset", 1, "uno")
+		r2, err := c.OpsForZSet().ZAdd(ctx, "myzset", 1, "uno")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(1))
 
-		r3, err := c.ZSetCommand().ZAdd(ctx, "myzset", 2, "two", 3, "three")
+		r3, err := c.OpsForZSet().ZAdd(ctx, "myzset", 2, "two", 3, "three")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, int64(2))
 
-		r4, err := c.ZSetCommand().ZRangeWithScores(ctx, "myzset", 0, -1)
+		r4, err := c.OpsForZSet().ZRangeWithScores(ctx, "myzset", 0, -1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -77,19 +77,19 @@ var ZAdd = Case{
 var ZCard = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.ZSetCommand().ZAdd(ctx, "myzset", 1, "one")
+		r1, err := c.OpsForZSet().ZAdd(ctx, "myzset", 1, "one")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.ZSetCommand().ZAdd(ctx, "myzset", 2, "two")
+		r2, err := c.OpsForZSet().ZAdd(ctx, "myzset", 2, "two")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(1))
 
-		r3, err := c.ZSetCommand().ZCard(ctx, "myzset")
+		r3, err := c.OpsForZSet().ZCard(ctx, "myzset")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -117,31 +117,31 @@ var ZCard = Case{
 var ZCount = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.ZSetCommand().ZAdd(ctx, "myzset", 1, "one")
+		r1, err := c.OpsForZSet().ZAdd(ctx, "myzset", 1, "one")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.ZSetCommand().ZAdd(ctx, "myzset", 2, "two")
+		r2, err := c.OpsForZSet().ZAdd(ctx, "myzset", 2, "two")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(1))
 
-		r3, err := c.ZSetCommand().ZAdd(ctx, "myzset", 3, "three")
+		r3, err := c.OpsForZSet().ZAdd(ctx, "myzset", 3, "three")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, int64(1))
 
-		r4, err := c.ZSetCommand().ZCount(ctx, "myzset", "-inf", "+inf")
+		r4, err := c.OpsForZSet().ZCount(ctx, "myzset", "-inf", "+inf")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r4, int64(3))
 
-		r5, err := c.ZSetCommand().ZCount(ctx, "myzset", "(1", "3")
+		r5, err := c.OpsForZSet().ZCount(ctx, "myzset", "(1", "3")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -177,43 +177,43 @@ var ZCount = Case{
 var ZDiff = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.ZSetCommand().ZAdd(ctx, "zset1", 1, "one")
+		r1, err := c.OpsForZSet().ZAdd(ctx, "zset1", 1, "one")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.ZSetCommand().ZAdd(ctx, "zset1", 2, "two")
+		r2, err := c.OpsForZSet().ZAdd(ctx, "zset1", 2, "two")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(1))
 
-		r3, err := c.ZSetCommand().ZAdd(ctx, "zset1", 3, "three")
+		r3, err := c.OpsForZSet().ZAdd(ctx, "zset1", 3, "three")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, int64(1))
 
-		r4, err := c.ZSetCommand().ZAdd(ctx, "zset2", 1, "one")
+		r4, err := c.OpsForZSet().ZAdd(ctx, "zset2", 1, "one")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r4, int64(1))
 
-		r5, err := c.ZSetCommand().ZAdd(ctx, "zset2", 2, "two")
+		r5, err := c.OpsForZSet().ZAdd(ctx, "zset2", 2, "two")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r5, int64(1))
 
-		r6, err := c.ZSetCommand().ZDiff(ctx, "zset1", "zset2")
+		r6, err := c.OpsForZSet().ZDiff(ctx, "zset1", "zset2")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r6, []string{"three"})
 
-		r7, err := c.ZSetCommand().ZDiffWithScores(ctx, "zset1", "zset2")
+		r7, err := c.OpsForZSet().ZDiffWithScores(ctx, "zset1", "zset2")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -257,25 +257,25 @@ var ZDiff = Case{
 var ZIncrBy = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.ZSetCommand().ZAdd(ctx, "myzset", 1, "one")
+		r1, err := c.OpsForZSet().ZAdd(ctx, "myzset", 1, "one")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.ZSetCommand().ZAdd(ctx, "myzset", 2, "two")
+		r2, err := c.OpsForZSet().ZAdd(ctx, "myzset", 2, "two")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(1))
 
-		r3, err := c.ZSetCommand().ZIncrBy(ctx, "myzset", 2, "one")
+		r3, err := c.OpsForZSet().ZIncrBy(ctx, "myzset", 2, "one")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, float64(3))
 
-		r4, err := c.ZSetCommand().ZRangeWithScores(ctx, "myzset", 0, -1)
+		r4, err := c.OpsForZSet().ZRangeWithScores(ctx, "myzset", 0, -1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -307,43 +307,43 @@ var ZIncrBy = Case{
 var ZInter = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.ZSetCommand().ZAdd(ctx, "zset1", 1, "one")
+		r1, err := c.OpsForZSet().ZAdd(ctx, "zset1", 1, "one")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.ZSetCommand().ZAdd(ctx, "zset1", 2, "two")
+		r2, err := c.OpsForZSet().ZAdd(ctx, "zset1", 2, "two")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(1))
 
-		r3, err := c.ZSetCommand().ZAdd(ctx, "zset2", 1, "one")
+		r3, err := c.OpsForZSet().ZAdd(ctx, "zset2", 1, "one")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, int64(1))
 
-		r4, err := c.ZSetCommand().ZAdd(ctx, "zset2", 2, "two")
+		r4, err := c.OpsForZSet().ZAdd(ctx, "zset2", 2, "two")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r4, int64(1))
 
-		r5, err := c.ZSetCommand().ZAdd(ctx, "zset2", 3, "three")
+		r5, err := c.OpsForZSet().ZAdd(ctx, "zset2", 3, "three")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r5, int64(1))
 
-		r6, err := c.ZSetCommand().ZInter(ctx, 2, "zset1", "zset2")
+		r6, err := c.OpsForZSet().ZInter(ctx, 2, "zset1", "zset2")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r6, []string{"one", "two"})
 
-		r7, err := c.ZSetCommand().ZInterWithScores(ctx, 2, "zset1", "zset2")
+		r7, err := c.OpsForZSet().ZInterWithScores(ctx, 2, "zset1", "zset2")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -387,25 +387,25 @@ var ZInter = Case{
 var ZLexCount = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.ZSetCommand().ZAdd(ctx, "myzset", 0, "a", 0, "b", 0, "c", 0, "d", 0, "e")
+		r1, err := c.OpsForZSet().ZAdd(ctx, "myzset", 0, "a", 0, "b", 0, "c", 0, "d", 0, "e")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(5))
 
-		r2, err := c.ZSetCommand().ZAdd(ctx, "myzset", 0, "f", 0, "g")
+		r2, err := c.OpsForZSet().ZAdd(ctx, "myzset", 0, "f", 0, "g")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(2))
 
-		r3, err := c.ZSetCommand().ZLexCount(ctx, "myzset", "-", "+")
+		r3, err := c.OpsForZSet().ZLexCount(ctx, "myzset", "-", "+")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, int64(7))
 
-		r4, err := c.ZSetCommand().ZLexCount(ctx, "myzset", "[b", "[f")
+		r4, err := c.OpsForZSet().ZLexCount(ctx, "myzset", "[b", "[f")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -437,19 +437,19 @@ var ZLexCount = Case{
 var ZMScore = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.ZSetCommand().ZAdd(ctx, "myzset", 1, "one")
+		r1, err := c.OpsForZSet().ZAdd(ctx, "myzset", 1, "one")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.ZSetCommand().ZAdd(ctx, "myzset", 2, "two")
+		r2, err := c.OpsForZSet().ZAdd(ctx, "myzset", 2, "two")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(1))
 
-		r3, err := c.ZSetCommand().ZMScore(ctx, "myzset", "one", "two", "nofield")
+		r3, err := c.OpsForZSet().ZMScore(ctx, "myzset", "one", "two", "nofield")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -477,25 +477,25 @@ var ZMScore = Case{
 var ZPopMax = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.ZSetCommand().ZAdd(ctx, "myzset", 1, "one")
+		r1, err := c.OpsForZSet().ZAdd(ctx, "myzset", 1, "one")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.ZSetCommand().ZAdd(ctx, "myzset", 2, "two")
+		r2, err := c.OpsForZSet().ZAdd(ctx, "myzset", 2, "two")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(1))
 
-		r3, err := c.ZSetCommand().ZAdd(ctx, "myzset", 3, "three")
+		r3, err := c.OpsForZSet().ZAdd(ctx, "myzset", 3, "three")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, int64(1))
 
-		r4, err := c.ZSetCommand().ZPopMax(ctx, "myzset")
+		r4, err := c.OpsForZSet().ZPopMax(ctx, "myzset")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -527,25 +527,25 @@ var ZPopMax = Case{
 var ZPopMin = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.ZSetCommand().ZAdd(ctx, "myzset", 1, "one")
+		r1, err := c.OpsForZSet().ZAdd(ctx, "myzset", 1, "one")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.ZSetCommand().ZAdd(ctx, "myzset", 2, "two")
+		r2, err := c.OpsForZSet().ZAdd(ctx, "myzset", 2, "two")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(1))
 
-		r3, err := c.ZSetCommand().ZAdd(ctx, "myzset", 3, "three")
+		r3, err := c.OpsForZSet().ZAdd(ctx, "myzset", 3, "three")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, int64(1))
 
-		r4, err := c.ZSetCommand().ZPopMin(ctx, "myzset")
+		r4, err := c.OpsForZSet().ZPopMin(ctx, "myzset")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -577,25 +577,25 @@ var ZPopMin = Case{
 var ZRandMember = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.ZSetCommand().ZAdd(ctx, "dadi", 1, "uno", 2, "due", 3, "tre", 4, "quattro", 5, "cinque", 6, "sei")
+		r1, err := c.OpsForZSet().ZAdd(ctx, "dadi", 1, "uno", 2, "due", 3, "tre", 4, "quattro", 5, "cinque", 6, "sei")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(6))
 
-		r2, err := c.ZSetCommand().ZRandMember(ctx, "dadi")
+		r2, err := c.OpsForZSet().ZRandMember(ctx, "dadi")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.NotEqual(t, r2, "")
 
-		r3, err := c.ZSetCommand().ZRandMember(ctx, "dadi")
+		r3, err := c.OpsForZSet().ZRandMember(ctx, "dadi")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.NotEqual(t, r3, "")
 
-		r4, err := c.ZSetCommand().ZRandMemberWithScores(ctx, "dadi", -5)
+		r4, err := c.OpsForZSet().ZRandMemberWithScores(ctx, "dadi", -5)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -627,43 +627,43 @@ var ZRandMember = Case{
 var ZRange = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.ZSetCommand().ZAdd(ctx, "myzset", 1, "one")
+		r1, err := c.OpsForZSet().ZAdd(ctx, "myzset", 1, "one")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.ZSetCommand().ZAdd(ctx, "myzset", 2, "two")
+		r2, err := c.OpsForZSet().ZAdd(ctx, "myzset", 2, "two")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(1))
 
-		r3, err := c.ZSetCommand().ZAdd(ctx, "myzset", 3, "three")
+		r3, err := c.OpsForZSet().ZAdd(ctx, "myzset", 3, "three")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, int64(1))
 
-		r4, err := c.ZSetCommand().ZRange(ctx, "myzset", 0, -1)
+		r4, err := c.OpsForZSet().ZRange(ctx, "myzset", 0, -1)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r4, []string{"one", "two", "three"})
 
-		r5, err := c.ZSetCommand().ZRange(ctx, "myzset", 2, 3)
+		r5, err := c.OpsForZSet().ZRange(ctx, "myzset", 2, 3)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r5, []string{"three"})
 
-		r6, err := c.ZSetCommand().ZRange(ctx, "myzset", -2, -1)
+		r6, err := c.OpsForZSet().ZRange(ctx, "myzset", -2, -1)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r6, []string{"two", "three"})
 
-		r7, err := c.ZSetCommand().ZRangeWithScores(ctx, "myzset", 0, 1)
+		r7, err := c.OpsForZSet().ZRangeWithScores(ctx, "myzset", 0, 1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -707,25 +707,25 @@ var ZRange = Case{
 var ZRangeByLex = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.ZSetCommand().ZAdd(ctx, "myzset", 0, "a", 0, "b", 0, "c", 0, "d", 0, "e", 0, "f", 0, "g")
+		r1, err := c.OpsForZSet().ZAdd(ctx, "myzset", 0, "a", 0, "b", 0, "c", 0, "d", 0, "e", 0, "f", 0, "g")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(7))
 
-		r2, err := c.ZSetCommand().ZRangeByLex(ctx, "myzset", "-", "[c")
+		r2, err := c.OpsForZSet().ZRangeByLex(ctx, "myzset", "-", "[c")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, []string{"a", "b", "c"})
 
-		r3, err := c.ZSetCommand().ZRangeByLex(ctx, "myzset", "-", "(c")
+		r3, err := c.OpsForZSet().ZRangeByLex(ctx, "myzset", "-", "(c")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, []string{"a", "b"})
 
-		r4, err := c.ZSetCommand().ZRangeByLex(ctx, "myzset", "[aaa", "(g")
+		r4, err := c.OpsForZSet().ZRangeByLex(ctx, "myzset", "[aaa", "(g")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -757,43 +757,43 @@ var ZRangeByLex = Case{
 var ZRangeByScore = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.ZSetCommand().ZAdd(ctx, "myzset", 1, "one")
+		r1, err := c.OpsForZSet().ZAdd(ctx, "myzset", 1, "one")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.ZSetCommand().ZAdd(ctx, "myzset", 2, "two")
+		r2, err := c.OpsForZSet().ZAdd(ctx, "myzset", 2, "two")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(1))
 
-		r3, err := c.ZSetCommand().ZAdd(ctx, "myzset", 3, "three")
+		r3, err := c.OpsForZSet().ZAdd(ctx, "myzset", 3, "three")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, int64(1))
 
-		r4, err := c.ZSetCommand().ZRangeByScore(ctx, "myzset", "-inf", "+inf")
+		r4, err := c.OpsForZSet().ZRangeByScore(ctx, "myzset", "-inf", "+inf")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r4, []string{"one", "two", "three"})
 
-		r5, err := c.ZSetCommand().ZRangeByScore(ctx, "myzset", "1", "2")
+		r5, err := c.OpsForZSet().ZRangeByScore(ctx, "myzset", "1", "2")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r5, []string{"one", "two"})
 
-		r6, err := c.ZSetCommand().ZRangeByScore(ctx, "myzset", "(1", "2")
+		r6, err := c.OpsForZSet().ZRangeByScore(ctx, "myzset", "(1", "2")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r6, []string{"two"})
 
-		r7, err := c.ZSetCommand().ZRangeByScore(ctx, "myzset", "(1", "(2")
+		r7, err := c.OpsForZSet().ZRangeByScore(ctx, "myzset", "(1", "(2")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -837,31 +837,31 @@ var ZRangeByScore = Case{
 var ZRank = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.ZSetCommand().ZAdd(ctx, "myzset", 1, "one")
+		r1, err := c.OpsForZSet().ZAdd(ctx, "myzset", 1, "one")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.ZSetCommand().ZAdd(ctx, "myzset", 2, "two")
+		r2, err := c.OpsForZSet().ZAdd(ctx, "myzset", 2, "two")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(1))
 
-		r3, err := c.ZSetCommand().ZAdd(ctx, "myzset", 3, "three")
+		r3, err := c.OpsForZSet().ZAdd(ctx, "myzset", 3, "three")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, int64(1))
 
-		r4, err := c.ZSetCommand().ZRank(ctx, "myzset", "three")
+		r4, err := c.OpsForZSet().ZRank(ctx, "myzset", "three")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r4, int64(2))
 
-		_, err = c.ZSetCommand().ZRank(ctx, "myzset", "four")
+		_, err = c.OpsForZSet().ZRank(ctx, "myzset", "four")
 		assert.True(t, redis.IsErrNil(err))
 	},
 	Data: `
@@ -894,31 +894,31 @@ var ZRank = Case{
 var ZRem = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.ZSetCommand().ZAdd(ctx, "myzset", 1, "one")
+		r1, err := c.OpsForZSet().ZAdd(ctx, "myzset", 1, "one")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.ZSetCommand().ZAdd(ctx, "myzset", 2, "two")
+		r2, err := c.OpsForZSet().ZAdd(ctx, "myzset", 2, "two")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(1))
 
-		r3, err := c.ZSetCommand().ZAdd(ctx, "myzset", 3, "three")
+		r3, err := c.OpsForZSet().ZAdd(ctx, "myzset", 3, "three")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, int64(1))
 
-		r4, err := c.ZSetCommand().ZRem(ctx, "myzset", "two")
+		r4, err := c.OpsForZSet().ZRem(ctx, "myzset", "two")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r4, int64(1))
 
-		r5, err := c.ZSetCommand().ZRangeWithScores(ctx, "myzset", 0, -1)
+		r5, err := c.OpsForZSet().ZRangeWithScores(ctx, "myzset", 0, -1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -954,19 +954,19 @@ var ZRem = Case{
 var ZRemRangeByLex = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.ZSetCommand().ZAdd(ctx, "myzset", 0, "aaaa", 0, "b", 0, "c", 0, "d", 0, "e")
+		r1, err := c.OpsForZSet().ZAdd(ctx, "myzset", 0, "aaaa", 0, "b", 0, "c", 0, "d", 0, "e")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(5))
 
-		r2, err := c.ZSetCommand().ZAdd(ctx, "myzset", 0, "foo", 0, "zap", 0, "zip", 0, "ALPHA", 0, "alpha")
+		r2, err := c.OpsForZSet().ZAdd(ctx, "myzset", 0, "foo", 0, "zap", 0, "zip", 0, "ALPHA", 0, "alpha")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(5))
 
-		r3, err := c.ZSetCommand().ZRange(ctx, "myzset", 0, -1)
+		r3, err := c.OpsForZSet().ZRange(ctx, "myzset", 0, -1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -974,13 +974,13 @@ var ZRemRangeByLex = Case{
 			"ALPHA", "aaaa", "alpha", "b", "c", "d", "e", "foo", "zap", "zip",
 		})
 
-		r4, err := c.ZSetCommand().ZRemRangeByLex(ctx, "myzset", "[alpha", "[omega")
+		r4, err := c.OpsForZSet().ZRemRangeByLex(ctx, "myzset", "[alpha", "[omega")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r4, int64(6))
 
-		r5, err := c.ZSetCommand().ZRange(ctx, "myzset", 0, -1)
+		r5, err := c.OpsForZSet().ZRange(ctx, "myzset", 0, -1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1016,31 +1016,31 @@ var ZRemRangeByLex = Case{
 var ZRemRangeByRank = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.ZSetCommand().ZAdd(ctx, "myzset", 1, "one")
+		r1, err := c.OpsForZSet().ZAdd(ctx, "myzset", 1, "one")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.ZSetCommand().ZAdd(ctx, "myzset", 2, "two")
+		r2, err := c.OpsForZSet().ZAdd(ctx, "myzset", 2, "two")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(1))
 
-		r3, err := c.ZSetCommand().ZAdd(ctx, "myzset", 3, "three")
+		r3, err := c.OpsForZSet().ZAdd(ctx, "myzset", 3, "three")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, int64(1))
 
-		r4, err := c.ZSetCommand().ZRemRangeByRank(ctx, "myzset", 0, 1)
+		r4, err := c.OpsForZSet().ZRemRangeByRank(ctx, "myzset", 0, 1)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r4, int64(2))
 
-		r5, err := c.ZSetCommand().ZRangeWithScores(ctx, "myzset", 0, -1)
+		r5, err := c.OpsForZSet().ZRangeWithScores(ctx, "myzset", 0, -1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1076,31 +1076,31 @@ var ZRemRangeByRank = Case{
 var ZRemRangeByScore = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.ZSetCommand().ZAdd(ctx, "myzset", 1, "one")
+		r1, err := c.OpsForZSet().ZAdd(ctx, "myzset", 1, "one")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.ZSetCommand().ZAdd(ctx, "myzset", 2, "two")
+		r2, err := c.OpsForZSet().ZAdd(ctx, "myzset", 2, "two")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(1))
 
-		r3, err := c.ZSetCommand().ZAdd(ctx, "myzset", 3, "three")
+		r3, err := c.OpsForZSet().ZAdd(ctx, "myzset", 3, "three")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, int64(1))
 
-		r4, err := c.ZSetCommand().ZRemRangeByScore(ctx, "myzset", "-inf", "(2")
+		r4, err := c.OpsForZSet().ZRemRangeByScore(ctx, "myzset", "-inf", "(2")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r4, int64(1))
 
-		r5, err := c.ZSetCommand().ZRangeWithScores(ctx, "myzset", 0, -1)
+		r5, err := c.OpsForZSet().ZRangeWithScores(ctx, "myzset", 0, -1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1136,37 +1136,37 @@ var ZRemRangeByScore = Case{
 var ZRevRange = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.ZSetCommand().ZAdd(ctx, "myzset", 1, "one")
+		r1, err := c.OpsForZSet().ZAdd(ctx, "myzset", 1, "one")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.ZSetCommand().ZAdd(ctx, "myzset", 2, "two")
+		r2, err := c.OpsForZSet().ZAdd(ctx, "myzset", 2, "two")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(1))
 
-		r3, err := c.ZSetCommand().ZAdd(ctx, "myzset", 3, "three")
+		r3, err := c.OpsForZSet().ZAdd(ctx, "myzset", 3, "three")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, int64(1))
 
-		r4, err := c.ZSetCommand().ZRevRange(ctx, "myzset", 0, -1)
+		r4, err := c.OpsForZSet().ZRevRange(ctx, "myzset", 0, -1)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r4, []string{"three", "two", "one"})
 
-		r5, err := c.ZSetCommand().ZRevRange(ctx, "myzset", 2, 3)
+		r5, err := c.OpsForZSet().ZRevRange(ctx, "myzset", 2, 3)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r5, []string{"one"})
 
-		r6, err := c.ZSetCommand().ZRevRange(ctx, "myzset", -2, -1)
+		r6, err := c.OpsForZSet().ZRevRange(ctx, "myzset", -2, -1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1206,25 +1206,25 @@ var ZRevRange = Case{
 var ZRevRangeByLex = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.ZSetCommand().ZAdd(ctx, "myzset", 0, "a", 0, "b", 0, "c", 0, "d", 0, "e", 0, "f", 0, "g")
+		r1, err := c.OpsForZSet().ZAdd(ctx, "myzset", 0, "a", 0, "b", 0, "c", 0, "d", 0, "e", 0, "f", 0, "g")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(7))
 
-		r2, err := c.ZSetCommand().ZRevRangeByLex(ctx, "myzset", "[c", "-")
+		r2, err := c.OpsForZSet().ZRevRangeByLex(ctx, "myzset", "[c", "-")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, []string{"c", "b", "a"})
 
-		r3, err := c.ZSetCommand().ZRevRangeByLex(ctx, "myzset", "(c", "-")
+		r3, err := c.OpsForZSet().ZRevRangeByLex(ctx, "myzset", "(c", "-")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, []string{"b", "a"})
 
-		r4, err := c.ZSetCommand().ZRevRangeByLex(ctx, "myzset", "(g", "[aaa")
+		r4, err := c.OpsForZSet().ZRevRangeByLex(ctx, "myzset", "(g", "[aaa")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1256,43 +1256,43 @@ var ZRevRangeByLex = Case{
 var ZRevRangeByScore = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.ZSetCommand().ZAdd(ctx, "myzset", 1, "one")
+		r1, err := c.OpsForZSet().ZAdd(ctx, "myzset", 1, "one")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.ZSetCommand().ZAdd(ctx, "myzset", 2, "two")
+		r2, err := c.OpsForZSet().ZAdd(ctx, "myzset", 2, "two")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(1))
 
-		r3, err := c.ZSetCommand().ZAdd(ctx, "myzset", 3, "three")
+		r3, err := c.OpsForZSet().ZAdd(ctx, "myzset", 3, "three")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, int64(1))
 
-		r4, err := c.ZSetCommand().ZRevRangeByScore(ctx, "myzset", "+inf", "-inf")
+		r4, err := c.OpsForZSet().ZRevRangeByScore(ctx, "myzset", "+inf", "-inf")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r4, []string{"three", "two", "one"})
 
-		r5, err := c.ZSetCommand().ZRevRangeByScore(ctx, "myzset", "2", "1")
+		r5, err := c.OpsForZSet().ZRevRangeByScore(ctx, "myzset", "2", "1")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r5, []string{"two", "one"})
 
-		r6, err := c.ZSetCommand().ZRevRangeByScore(ctx, "myzset", "2", "(1")
+		r6, err := c.OpsForZSet().ZRevRangeByScore(ctx, "myzset", "2", "(1")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r6, []string{"two"})
 
-		r7, err := c.ZSetCommand().ZRevRangeByScore(ctx, "myzset", "(2", "(1")
+		r7, err := c.OpsForZSet().ZRevRangeByScore(ctx, "myzset", "(2", "(1")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1336,31 +1336,31 @@ var ZRevRangeByScore = Case{
 var ZRevRank = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.ZSetCommand().ZAdd(ctx, "myzset", 1, "one")
+		r1, err := c.OpsForZSet().ZAdd(ctx, "myzset", 1, "one")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.ZSetCommand().ZAdd(ctx, "myzset", 2, "two")
+		r2, err := c.OpsForZSet().ZAdd(ctx, "myzset", 2, "two")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(1))
 
-		r3, err := c.ZSetCommand().ZAdd(ctx, "myzset", 3, "three")
+		r3, err := c.OpsForZSet().ZAdd(ctx, "myzset", 3, "three")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, int64(1))
 
-		r4, err := c.ZSetCommand().ZRevRank(ctx, "myzset", "one")
+		r4, err := c.OpsForZSet().ZRevRank(ctx, "myzset", "one")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r4, int64(2))
 
-		_, err = c.ZSetCommand().ZRevRank(ctx, "myzset", "four")
+		_, err = c.OpsForZSet().ZRevRank(ctx, "myzset", "four")
 		assert.True(t, redis.IsErrNil(err))
 	},
 	Data: `
@@ -1393,13 +1393,13 @@ var ZRevRank = Case{
 var ZScore = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.ZSetCommand().ZAdd(ctx, "myzset", 1, "one")
+		r1, err := c.OpsForZSet().ZAdd(ctx, "myzset", 1, "one")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.ZSetCommand().ZScore(ctx, "myzset", "one")
+		r2, err := c.OpsForZSet().ZScore(ctx, "myzset", "one")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1423,43 +1423,43 @@ var ZScore = Case{
 var ZUnion = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.ZSetCommand().ZAdd(ctx, "zset1", 1, "one")
+		r1, err := c.OpsForZSet().ZAdd(ctx, "zset1", 1, "one")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.ZSetCommand().ZAdd(ctx, "zset1", 2, "two")
+		r2, err := c.OpsForZSet().ZAdd(ctx, "zset1", 2, "two")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(1))
 
-		r3, err := c.ZSetCommand().ZAdd(ctx, "zset2", 1, "one")
+		r3, err := c.OpsForZSet().ZAdd(ctx, "zset2", 1, "one")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, int64(1))
 
-		r4, err := c.ZSetCommand().ZAdd(ctx, "zset2", 2, "two")
+		r4, err := c.OpsForZSet().ZAdd(ctx, "zset2", 2, "two")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r4, int64(1))
 
-		r5, err := c.ZSetCommand().ZAdd(ctx, "zset2", 3, "three")
+		r5, err := c.OpsForZSet().ZAdd(ctx, "zset2", 3, "three")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r5, int64(1))
 
-		r6, err := c.ZSetCommand().ZUnion(ctx, 2, "zset1", "zset2")
+		r6, err := c.OpsForZSet().ZUnion(ctx, 2, "zset1", "zset2")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r6, []string{"one", "three", "two"})
 
-		r7, err := c.ZSetCommand().ZUnionWithScores(ctx, 2, "zset1", "zset2")
+		r7, err := c.OpsForZSet().ZUnionWithScores(ctx, 2, "zset1", "zset2")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1503,43 +1503,43 @@ var ZUnion = Case{
 var ZUnionStore = Case{
 	Func: func(t *testing.T, ctx context.Context, c *redis.Client) {
 
-		r1, err := c.ZSetCommand().ZAdd(ctx, "zset1", 1, "one")
+		r1, err := c.OpsForZSet().ZAdd(ctx, "zset1", 1, "one")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r1, int64(1))
 
-		r2, err := c.ZSetCommand().ZAdd(ctx, "zset1", 2, "two")
+		r2, err := c.OpsForZSet().ZAdd(ctx, "zset1", 2, "two")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r2, int64(1))
 
-		r3, err := c.ZSetCommand().ZAdd(ctx, "zset2", 1, "one")
+		r3, err := c.OpsForZSet().ZAdd(ctx, "zset2", 1, "one")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r3, int64(1))
 
-		r4, err := c.ZSetCommand().ZAdd(ctx, "zset2", 2, "two")
+		r4, err := c.OpsForZSet().ZAdd(ctx, "zset2", 2, "two")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r4, int64(1))
 
-		r5, err := c.ZSetCommand().ZAdd(ctx, "zset2", 3, "three")
+		r5, err := c.OpsForZSet().ZAdd(ctx, "zset2", 3, "three")
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r5, int64(1))
 
-		r6, err := c.ZSetCommand().ZUnionStore(ctx, "out", 2, "zset1", "zset2", "WEIGHTS", 2, 3)
+		r6, err := c.OpsForZSet().ZUnionStore(ctx, "out", 2, "zset1", "zset2", "WEIGHTS", 2, 3)
 		if err != nil {
 			t.Fatal(err)
 		}
 		assert.Equal(t, r6, int64(3))
 
-		r7, err := c.ZSetCommand().ZRangeWithScores(ctx, "out", 0, -1)
+		r7, err := c.OpsForZSet().ZRangeWithScores(ctx, "out", 0, -1)
 		if err != nil {
 			t.Fatal(err)
 		}

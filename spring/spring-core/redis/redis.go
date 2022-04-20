@@ -27,7 +27,9 @@ import (
 	"github.com/go-spring/spring-core/internal"
 )
 
-var errNil = errors.New("redis: nil")
+var (
+	errNil = errors.New("redis: nil")
+)
 
 func IsOK(s string) bool {
 	return "OK" == s
@@ -39,19 +41,6 @@ func ErrNil() error {
 
 func IsErrNil(err error) bool {
 	return errors.Is(err, errNil)
-}
-
-type Redis interface {
-	Int(ctx context.Context, cmd string, args ...interface{}) (int, error)
-	Int64(ctx context.Context, cmd string, args ...interface{}) (int64, error)
-	Float64(ctx context.Context, cmd string, args ...interface{}) (float64, error)
-	String(ctx context.Context, cmd string, args ...interface{}) (string, error)
-	Slice(ctx context.Context, cmd string, args ...interface{}) ([]interface{}, error)
-	Int64Slice(ctx context.Context, cmd string, args ...interface{}) ([]int64, error)
-	Float64Slice(ctx context.Context, cmd string, args ...interface{}) ([]float64, error)
-	StringSlice(ctx context.Context, cmd string, args ...interface{}) ([]string, error)
-	StringMap(ctx context.Context, cmd string, args ...interface{}) (map[string]string, error)
-	ZItemSlice(ctx context.Context, cmd string, args ...interface{}) ([]ZItem, error)
 }
 
 type Config = internal.RedisClientConfig
@@ -70,66 +59,36 @@ func NewClient(conn ConnPool) (*Client, error) {
 	return &Client{conn: conn}, nil
 }
 
-func (c *Client) KeyCommand() *KeyCommand {
-	return NewKeyCommand(c)
+func (c *Client) OpsForKey() *KeyOperations {
+	return NewKeyOperations(c)
 }
 
-func (c *Client) BitmapCommand() *BitmapCommand {
-	return NewBitmapCommand(c)
+func (c *Client) OpsForBitmap() *BitmapOperations {
+	return NewBitmapOperations(c)
 }
 
-func (c *Client) StringCommand() *StringCommand {
-	return NewStringCommand(c)
+func (c *Client) OpsForString() *StringOperations {
+	return NewStringOperations(c)
 }
 
-func (c *Client) HashCommand() *HashCommand {
-	return NewHashCommand(c)
+func (c *Client) OpsForHash() *HashOperations {
+	return NewHashOperations(c)
 }
 
-func (c *Client) ListCommand() *ListCommand {
-	return NewListCommand(c)
+func (c *Client) OpsForList() *ListOperations {
+	return NewListOperations(c)
 }
 
-func (c *Client) SetCommand() *SetCommand {
-	return NewSetCommand(c)
+func (c *Client) OpsForSet() *SetOperations {
+	return NewSetOperations(c)
 }
 
-func (c *Client) ZSetCommand() *ZSetCommand {
-	return NewZSetCommand(c)
+func (c *Client) OpsForZSet() *ZSetOperations {
+	return NewZSetOperations(c)
 }
 
-func (c *Client) ServerCommand() *ServerCommand {
-	return NewServerCommand(c)
-}
-
-func toInt(v interface{}, err error) (int, error) {
-	if err != nil {
-		return 0, err
-	}
-	switch r := v.(type) {
-	case int64:
-		return int(r), nil
-	case float64:
-		return int(r), nil
-	case string:
-		var n int64
-		n, err = strconv.ParseInt(r, 10, 64)
-		if err != nil {
-			return 0, err
-		}
-		return int(n), nil
-	case *replayResult:
-		if len(r.data) == 0 {
-			return 0, fmt.Errorf("redis: no data")
-		}
-		return toInt(r.data[0], nil)
-	default:
-		return 0, fmt.Errorf("redis: unexpected type %T for int64", v)
-	}
-}
-
-func (c *Client) Int(ctx context.Context, cmd string, args ...interface{}) (int, error) {
-	return toInt(c.conn.Exec(ctx, cmd, args))
+func (c *Client) OpsForServer() *ServerOperations {
+	return NewServerOperations(c)
 }
 
 func toInt64(v interface{}, err error) (int64, error) {
@@ -153,7 +112,7 @@ func toInt64(v interface{}, err error) (int64, error) {
 	}
 }
 
-func (c *Client) Int64(ctx context.Context, cmd string, args ...interface{}) (int64, error) {
+func (c *Client) Int(ctx context.Context, cmd string, args ...interface{}) (int64, error) {
 	return toInt64(c.conn.Exec(ctx, cmd, args))
 }
 
@@ -178,7 +137,7 @@ func toFloat64(v interface{}, err error) (float64, error) {
 	}
 }
 
-func (c *Client) Float64(ctx context.Context, cmd string, args ...interface{}) (float64, error) {
+func (c *Client) Float(ctx context.Context, cmd string, args ...interface{}) (float64, error) {
 	return toFloat64(c.conn.Exec(ctx, cmd, args))
 }
 
@@ -248,7 +207,7 @@ func toInt64Slice(v interface{}, err error) ([]int64, error) {
 	return val, nil
 }
 
-func (c *Client) Int64Slice(ctx context.Context, cmd string, args ...interface{}) ([]int64, error) {
+func (c *Client) IntSlice(ctx context.Context, cmd string, args ...interface{}) ([]int64, error) {
 	return toInt64Slice(c.conn.Exec(ctx, cmd, args))
 }
 
@@ -269,7 +228,7 @@ func toFloat64Slice(v interface{}, err error) ([]float64, error) {
 	return val, nil
 }
 
-func (c *Client) Float64Slice(ctx context.Context, cmd string, args ...interface{}) ([]float64, error) {
+func (c *Client) FloatSlice(ctx context.Context, cmd string, args ...interface{}) ([]float64, error) {
 	return toFloat64Slice(c.conn.Exec(ctx, cmd, args))
 }
 
