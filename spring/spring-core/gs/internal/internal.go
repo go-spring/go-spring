@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+//go:generate mockgen -build_flags="-mod=mod" -package=internal -source=internal.go -destination=mock.go
+
 package internal
 
 import (

@@ -47,6 +47,15 @@ type Config = internal.RedisClientConfig
 
 type Client struct {
 	conn ConnPool
+
+	opsForKey    *KeyOperations
+	opsForBitmap *BitmapOperations
+	opsForString *StringOperations
+	opsForHash   *HashOperations
+	opsForList   *ListOperations
+	opsForSet    *SetOperations
+	opsForZSet   *ZSetOperations
+	opsForServer *ServerOperations
 }
 
 func NewClient(conn ConnPool) (*Client, error) {
@@ -56,39 +65,48 @@ func NewClient(conn ConnPool) (*Client, error) {
 	if replayer.ReplayMode() {
 		conn = &replayConn{conn: conn}
 	}
-	return &Client{conn: conn}, nil
+	c := &Client{conn: conn}
+	c.opsForKey = NewKeyOperations(c)
+	c.opsForBitmap = NewBitmapOperations(c)
+	c.opsForString = NewStringOperations(c)
+	c.opsForHash = NewHashOperations(c)
+	c.opsForList = NewListOperations(c)
+	c.opsForSet = NewSetOperations(c)
+	c.opsForZSet = NewZSetOperations(c)
+	c.opsForServer = NewServerOperations(c)
+	return c, nil
 }
 
 func (c *Client) OpsForKey() *KeyOperations {
-	return NewKeyOperations(c)
+	return c.opsForKey
 }
 
 func (c *Client) OpsForBitmap() *BitmapOperations {
-	return NewBitmapOperations(c)
+	return c.opsForBitmap
 }
 
 func (c *Client) OpsForString() *StringOperations {
-	return NewStringOperations(c)
+	return c.opsForString
 }
 
 func (c *Client) OpsForHash() *HashOperations {
-	return NewHashOperations(c)
+	return c.opsForHash
 }
 
 func (c *Client) OpsForList() *ListOperations {
-	return NewListOperations(c)
+	return c.opsForList
 }
 
 func (c *Client) OpsForSet() *SetOperations {
-	return NewSetOperations(c)
+	return c.opsForSet
 }
 
 func (c *Client) OpsForZSet() *ZSetOperations {
-	return NewZSetOperations(c)
+	return c.opsForZSet
 }
 
 func (c *Client) OpsForServer() *ServerOperations {
-	return NewServerOperations(c)
+	return c.opsForServer
 }
 
 func toInt64(v interface{}, err error) (int64, error) {

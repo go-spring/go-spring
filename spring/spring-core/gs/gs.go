@@ -56,6 +56,26 @@ type Container interface {
 	Close()
 }
 
+// Context 提供了一些在 IoC 容器启动后基于反射获取和使用 property 与 bean 的接
+// 口。因为很多人会担心在运行时大量使用反射会降低程序性能，所以命名为 Context，取
+// 其诱人但危险的含义。事实上，这些在 IoC 容器启动后使用属性绑定和依赖注入的方案，
+// 都可以转换为启动阶段的方案以提高程序的性能。
+// 另一方面，为了统一 Container 和 App 两种启动方式下这些方法的使用方式，需要提取
+// 出一个可共用的接口来，也就是说，无论程序是 Container 方式启动还是 App 方式启动，
+// 都可以在需要使用这些方法的地方注入一个 Context 对象而不是 Container 对象或者
+// App 对象，从而实现使用方式的统一。
+type Context interface {
+	Context() context.Context
+	Keys() []string
+	Has(key string) bool
+	Prop(key string, opts ...conf.GetOption) string
+	Bind(i interface{}, opts ...conf.BindOption) error
+	Get(i interface{}, selectors ...BeanSelector) error
+	Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error)
+	Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, error)
+	Go(fn func(ctx context.Context))
+}
+
 type tempContainer struct {
 	p               *conf.Properties
 	beans           []*BeanDefinition

@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+//go:generate mockgen -build_flags="-mod=mod" -package=cond -source=cond.go -destination=mock.go
+
 // Package cond 提供了判断 bean 注册是否有效的条件。
 package cond
 
@@ -43,22 +45,17 @@ type Condition interface {
 	Matches(ctx Context) (bool, error)
 }
 
-type Matches func(ctx Context) (bool, error)
+type MatchesFunc func(ctx Context) (bool, error)
 
-// onMatches 基于 Matches 方法的 Condition 实现。
-type onMatches struct {
-	fn Matches
-}
-
-func (c *onMatches) Matches(ctx Context) (bool, error) {
-	return c.fn(ctx)
+func (c MatchesFunc) Matches(ctx Context) (bool, error) {
+	return c(ctx)
 }
 
 // OK 永远成立的 Condition 实现。
 func OK() Condition {
-	return &onMatches{fn: func(ctx Context) (bool, error) {
+	return MatchesFunc(func(ctx Context) (bool, error) {
 		return true, nil
-	}}
+	})
 }
 
 // not 对一个条件进行取反的 Condition 实现。
@@ -99,12 +96,19 @@ func (c *onProperty) Matches(ctx Context) (bool, error) {
 		return val == c.havingValue, nil
 	}
 
-	expr := strings.Replace(c.havingValue[3:], "$", val, -1)
+	var expr string
+	if _, err := strconv.ParseBool(val); err == nil {
+		expr = strings.ReplaceAll(c.havingValue[3:], "$", val)
+	} else if _, err = strconv.ParseFloat(val, 64); err == nil {
+		expr = strings.ReplaceAll(c.havingValue[3:], "$", val)
+	} else {
+		expr = strings.ReplaceAll(c.havingValue[3:], "$", strconv.Quote(val))
+	}
+
 	ret, err := types.Eval(token.NewFileSet(), nil, token.NoPos, expr)
 	if err != nil {
 		return false, err
 	}
-
 	return strconv.ParseBool(ret.Value.String())
 }
 
@@ -137,12 +141,12 @@ func (c *onMissingBean) Matches(ctx Context) (bool, error) {
 	return len(beans) == 0, err
 }
 
-// onSingleCandidate 基于符合条件的 bean 只有一个的 Condition 实现。
-type onSingleCandidate struct {
+// onSingleBean 基于符合条件的 bean 只有一个的 Condition 实现。
+type onSingleBean struct {
 	selector BeanSelector
 }
 
-func (c *onSingleCandidate) Matches(ctx Context) (bool, error) {
+func (c *onSingleBean) Matches(ctx Context) (bool, error) {
 	beans, err := ctx.Find(c.selector)
 	return len(beans) == 1, err
 }
@@ -365,14 +369,14 @@ func (c *conditional) OnMissingBean(selector BeanSelector) *conditional {
 	return c.On(&onMissingBean{selector: selector})
 }
 
-// OnSingleCandidate 返回一个以 onSingleCandidate 为开始条件的计算式。
-func OnSingleCandidate(selector BeanSelector) *conditional {
-	return New().OnSingleCandidate(selector)
+// OnSingleBean 返回一个以 onSingleBean 为开始条件的计算式。
+func OnSingleBean(selector BeanSelector) *conditional {
+	return New().OnSingleBean(selector)
 }
 
-// OnSingleCandidate 添加一个 onMissingBean 条件。
-func (c *conditional) OnSingleCandidate(selector BeanSelector) *conditional {
-	return c.On(&onSingleCandidate{selector: selector})
+// OnSingleBean 添加一个 onMissingBean 条件。
+func (c *conditional) OnSingleBean(selector BeanSelector) *conditional {
+	return c.On(&onSingleBean{selector: selector})
 }
 
 // OnExpression 返回一个以 onExpression 为开始条件的计算式。
@@ -386,13 +390,13 @@ func (c *conditional) OnExpression(expression string) *conditional {
 }
 
 // OnMatches 返回一个以 onMatches 为开始条件的计算式。
-func OnMatches(fn Matches) *conditional {
+func OnMatches(fn MatchesFunc) *conditional {
 	return New().OnMatches(fn)
 }
 
 // OnMatches 添加一个 onMatches 条件。
-func (c *conditional) OnMatches(fn Matches) *conditional {
-	return c.On(&onMatches{fn: fn})
+func (c *conditional) OnMatches(fn MatchesFunc) *conditional {
+	return c.On(fn)
 }
 
 // OnProfile 返回一个以 spring.profile 属性值是否匹配为开始条件的计算式。
