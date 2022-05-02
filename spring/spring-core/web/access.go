@@ -18,8 +18,6 @@ package web
 
 import (
 	"time"
-
-	"github.com/go-spring/spring-base/log"
 )
 
 func AccessLog() Filter {
@@ -29,6 +27,7 @@ func AccessLog() Filter {
 		r := ctx.Request()
 		w := ctx.ResponseWriter()
 		cost := time.Since(start)
-		log.Ctx(ctx.Context()).Infof("%s %s %s %d %d %s", r.Method, r.RequestURI, cost, w.Size(), w.Status(), r.UserAgent())
+		logger.WithContext(ctx.Context()).Infof("%s %s %s %d %d %s",
+			r.Method, r.RequestURI, cost, w.Size(), w.Status(), r.UserAgent())
 	})
 }

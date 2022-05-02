@@ -14,393 +14,270 @@
  * limitations under the License.
  */
 
-// Package log 重新定义标准日志接口，可以灵活适配各种日志框架。
 package log
 
 import (
-	"bytes"
 	"context"
+	"encoding/xml"
 	"fmt"
+	"io"
+	"runtime"
 	"strings"
-
-	"github.com/go-spring/spring-base/atomic"
-	"github.com/go-spring/spring-base/cast"
-	"github.com/go-spring/spring-base/chrono"
-	"github.com/go-spring/spring-base/color"
-	"github.com/go-spring/spring-base/util"
 )
 
-// empty 用于创建其他的 Entry 对象。
-var empty = Entry{}
+const RootLoggerName = "Root"
 
-const (
-	TraceLevel = Level(iota)
-	DebugLevel
-	InfoLevel
-	WarnLevel
-	ErrorLevel
-	PanicLevel
-	FatalLevel
+var (
+	rootLogger        = GetLogger(RootLoggerName)
+	usingLoggers      = map[string]*Logger{}
+	appenderFactories = map[string]AppenderFactory{}
 )
 
-// Level 日志输出级别。
-type Level uint32
+type AppenderConfig interface {
+	GetName() string
+}
 
-func (level Level) String() string {
-	switch level {
-	case TraceLevel:
-		return "trace"
-	case DebugLevel:
-		return "debug"
-	case InfoLevel:
-		return "info"
-	case WarnLevel:
-		return "warn"
-	case ErrorLevel:
-		return "error"
-	case PanicLevel:
-		return "panic"
-	case FatalLevel:
-		return "fatal"
+// AppenderFactory 定义 Appender 工厂。
+type AppenderFactory interface {
+	NewAppenderConfig() AppenderConfig
+	NewAppender(config AppenderConfig) (Appender, error)
+}
+
+// RegisterAppenderFactory 注册 Appender 工厂。
+func RegisterAppenderFactory(appender string, factory AppenderFactory) {
+	appenderFactories[appender] = factory
+}
+
+// GetLogger 获取名为 name 的 *Logger 对象。
+func GetLogger(name ...string) *Logger {
+	if len(name) == 0 {
+		if pc, _, _, ok := runtime.Caller(1); ok {
+			funcName := runtime.FuncForPC(pc).Name()
+			i := strings.LastIndex(funcName, "/")
+			j := strings.Index(funcName[i:], ".")
+			name = append(name, funcName[:i+j])
+		} else {
+			name = append(name, RootLoggerName)
+		}
 	}
-	return ""
-}
-
-// Output 自定义日志的输出格式。
-type Output interface {
-	Do(level Level, msg *Message)
-}
-
-// FuncOutput 函数的形式自定义日志的输出格式。
-type FuncOutput func(level Level, msg *Message)
-
-func (fn FuncOutput) Do(level Level, msg *Message) {
-	fn(level, msg)
-}
-
-// Console 将日志输出到控制台。
-var Console = FuncOutput(func(level Level, msg *Message) {
-	defer func() { msg.Reuse() }()
-	strLevel := strings.ToUpper(level.String())
-	if level >= ErrorLevel {
-		strLevel = color.Red.Sprint(strLevel)
-	} else if level == WarnLevel {
-		strLevel = color.Yellow.Sprint(strLevel)
-	} else if level == TraceLevel {
-		strLevel = color.Green.Sprint(strLevel)
+	l, ok := usingLoggers[name[0]]
+	if ok {
+		return l
 	}
-	var buf bytes.Buffer
-	for _, a := range msg.Args() {
-		buf.WriteString(cast.ToString(a))
-	}
-	strTime := msg.Time().Format("2006-01-02T15:04:05.000")
-	fileLine := util.Contract(fmt.Sprintf("%s:%d", msg.File(), msg.Line()), 48)
-	_, _ = fmt.Printf("[%s][%s][%s] %s\n", strLevel, strTime, fileLine, buf.String())
-})
-
-// config 日志模块全局设置。
-var config struct {
-	output Output
-	level  atomic.Uint32
+	l = NewLogger(name[0], &LoggerConfig{
+		Level: InfoLevel,
+		Appenders: []Appender{
+			NewConsoleAppender(nil),
+		},
+	})
+	usingLoggers[l.name] = l
+	return l
 }
 
-func init() {
-	Reset()
-}
+// Load 加载日志配置文件。
+func Load(configFile string) error {
 
-// Reset 恢复默认的日志输出配置。
-func Reset() {
-	SetOutput(Console)
-	SetLevel(InfoLevel)
-}
+	const (
+		EnterConfiguration = 1
+		ExitConfiguration  = 2
+		EnterAppenders     = 3
+		ExitAppenders      = 4
+		EnterLoggers       = 5
+		ExitLoggers        = 6
+	)
 
-// GetLevel 获取日志的输出级别。
-func GetLevel() Level {
-	return Level(config.level.Load())
-}
-
-// SetLevel 设置日志的输出级别。
-func SetLevel(level Level) {
-	v := uint32(level)
+	state := 0
+	configLoggers := map[string]*Logger{}
+	configAppenders := map[string]Appender{}
+	d := xml.NewDecoder(strings.NewReader(configFile))
 	for {
-		o := config.level.Load()
-		if config.level.CompareAndSwap(o, v) {
+		token, err := d.Token()
+		if err == io.EOF {
 			break
 		}
-	}
-}
-
-// SetOutput 设置日志的输出格式。
-func SetOutput(output Output) {
-	if output == nil {
-		panic("output is nil")
-	}
-	config.output = output
-}
-
-// defaultContext 用于单元测试设置时间。
-var defaultContext context.Context
-
-func do(level Level, e Entry, args []interface{}) {
-	msg := newMessage()
-	msg.ctx = e.ctx
-	msg.tag = e.tag
-	msg.args = args
-	msg.errno = e.errno
-	ctx := e.ctx
-	if ctx == nil {
-		ctx = defaultContext
-	}
-	msg.time = chrono.Now(ctx)
-	msg.file, msg.line, _ = Caller(e.skip+3, true)
-	config.output.Do(level, msg)
-}
-
-func output(level Level, e Entry, args []interface{}) {
-	if GetLevel() > level {
-		return
-	}
-	if len(args) == 1 {
-		if fn, ok := args[0].(func() []interface{}); ok {
-			args = fn()
+		if err != nil {
+			return err
+		}
+		switch t := token.(type) {
+		case xml.StartElement:
+			switch t.Name.Local {
+			case "Configuration":
+				state = EnterConfiguration
+				continue
+			case "Appenders":
+				state = EnterAppenders
+				continue
+			case "Loggers":
+				state = EnterLoggers
+				continue
+			}
+			if state == EnterAppenders {
+				factory, ok := appenderFactories[t.Name.Local]
+				if !ok {
+					return fmt.Errorf("no appender factory `%s` found", t.Name.Local)
+				}
+				config := factory.NewAppenderConfig()
+				err = d.DecodeElement(&config, &t)
+				if err != nil {
+					return err
+				}
+				var appender Appender
+				appender, err = factory.NewAppender(config)
+				if err != nil {
+					return err
+				}
+				configAppenders[config.GetName()] = appender
+				continue
+			}
+			if state == EnterLoggers {
+				var config struct {
+					Name         string `xml:"name,attr"`
+					Level        string `xml:"level,attr"`
+					AppenderRefs []struct {
+						Ref string `xml:"ref,attr"`
+					} `xml:"AppenderRef"`
+				}
+				err = d.DecodeElement(&config, &t)
+				if err != nil {
+					return err
+				}
+				if t.Name.Local == RootLoggerName {
+					config.Name = RootLoggerName
+				}
+				level := StringToLevel(config.Level)
+				if level == NoneLevel {
+					return fmt.Errorf("error level `%s` for logger `%s`", config.Level, config.Name)
+				}
+				var appenders []Appender
+				for _, ref := range config.AppenderRefs {
+					v, ok := configAppenders[ref.Ref]
+					if !ok {
+						return fmt.Errorf("no appender ref `%s` found", ref.Ref)
+					}
+					appenders = append(appenders, v)
+				}
+				l := NewLogger(config.Name, &LoggerConfig{
+					Level:     level,
+					Appenders: appenders,
+				})
+				configLoggers[config.Name] = l
+			}
+		case xml.EndElement:
+			switch t.Name.Local {
+			case "Configuration":
+				state = ExitConfiguration
+				continue
+			case "Appenders":
+				state = ExitAppenders
+				continue
+			case "Loggers":
+				state = ExitLoggers
+				continue
+			}
 		}
 	}
-	do(level, e, args)
-}
 
-func outputf(level Level, e Entry, format string, args []interface{}) {
-	if GetLevel() > level {
-		return
+	root, ok := configLoggers[RootLoggerName]
+	if !ok {
+		return fmt.Errorf("no logger `%s` found", RootLoggerName)
 	}
-	if len(args) == 1 {
-		if fn, ok := args[0].(func() []interface{}); ok {
-			args = fn()
+
+	for name, usingLogger := range usingLoggers {
+		if l, ok := configLoggers[name]; ok {
+			usingLogger.value.Store(l.value.Load())
+		} else {
+			usingLogger.value.Store(root.value.Load())
 		}
 	}
-	do(level, e, []interface{}{fmt.Sprintf(format, args...)})
+	return nil
 }
 
-// Ctx 创建包含 context.Context 对象的 Entry 。
-func Ctx(ctx context.Context) Entry {
-	return empty.Ctx(ctx)
+// SetLevel 设置日志输出等级。
+func SetLevel(level Level) {
+	rootLogger.SetLevel(level)
 }
 
-// Tag 创建包含 tag 信息的 Entry 。
-func Tag(tag string) Entry {
-	return empty.Tag(tag)
+// WithSkip 创建包含 skip 信息的 Entry 。
+func WithSkip(n int) BaseEntry {
+	return rootLogger.WithSkip(n)
 }
 
-// Skip 创建包含 skip 信息的 Entry 。
-func Skip(n int) Entry {
-	return empty.Skip(n)
+// WithTag 创建包含 tag 信息的 Entry 。
+func WithTag(tag string) BaseEntry {
+	return rootLogger.WithTag(tag)
 }
 
-type Entry struct {
-	ctx   context.Context
-	tag   string
-	skip  int
-	errno ErrNo
-}
-
-func (e Entry) ErrNo(errno ErrNo) Entry {
-	e.errno = errno
-	return e
-}
-
-// Ctx 创建包含 context.Context 对象的 Entry 。
-func (e Entry) Ctx(ctx context.Context) Entry {
-	e.ctx = ctx
-	return e
-}
-
-// Tag 创建包含 tag 信息的 Entry 。
-func (e Entry) Tag(tag string) Entry {
-	e.tag = tag
-	return e
-}
-
-// Skip 创建包含 skip 信息的 Entry 。
-func (e Entry) Skip(n int) Entry {
-	e.skip = n
-	return e
-}
-
-// T 将可变参数转换成切片形式。
-func T(a ...interface{}) []interface{} {
-	return a
-}
-
-// Trace 输出 TRACE 级别的日志。
-func (e Entry) Trace(args ...interface{}) {
-	output(TraceLevel, e, args)
-}
-
-// Tracef 输出 TRACE 级别的日志。
-func (e Entry) Tracef(format string, args ...interface{}) {
-	outputf(TraceLevel, e, format, args)
-}
-
-// Debug 输出 DEBUG 级别的日志。
-func (e Entry) Debug(args ...interface{}) {
-	output(DebugLevel, e, args)
-}
-
-// Debugf 输出 DEBUG 级别的日志。
-func (e Entry) Debugf(format string, args ...interface{}) {
-	outputf(DebugLevel, e, format, args)
-}
-
-// Info 输出 INFO 级别的日志。
-func (e Entry) Info(args ...interface{}) {
-	output(InfoLevel, e, args)
-}
-
-// Infof 输出 INFO 级别的日志。
-func (e Entry) Infof(format string, args ...interface{}) {
-	outputf(InfoLevel, e, format, args)
-}
-
-// Warn 输出 WARN 级别的日志。
-func (e Entry) Warn(args ...interface{}) {
-	output(WarnLevel, e, args)
-}
-
-// Warnf 输出 WARN 级别的日志。
-func (e Entry) Warnf(format string, args ...interface{}) {
-	outputf(WarnLevel, e, format, args)
-}
-
-// Error 输出 ERROR 级别的日志。
-func (e Entry) Error(errno ErrNo, args ...interface{}) {
-	output(ErrorLevel, e.ErrNo(errno), args)
-}
-
-// Errorf 输出 ERROR 级别的日志。
-func (e Entry) Errorf(errno ErrNo, format string, args ...interface{}) {
-	outputf(ErrorLevel, e.ErrNo(errno), format, args)
-}
-
-// Panic 输出 PANIC 级别的日志。
-func (e Entry) Panic(args ...interface{}) {
-	output(PanicLevel, e, args)
-}
-
-// Panicf 输出 PANIC 级别的日志。
-func (e Entry) Panicf(format string, args ...interface{}) {
-	outputf(PanicLevel, e, format, args)
-}
-
-// Fatal 输出 FATAL 级别的日志。
-func (e Entry) Fatal(args ...interface{}) {
-	output(FatalLevel, e, args)
-}
-
-// Fatalf 输出 FATAL 级别的日志。
-func (e Entry) Fatalf(format string, args ...interface{}) {
-	outputf(FatalLevel, e, format, args)
-}
-
-// EnableTrace 是否允许输出 TRACE 级别的日志。
-func EnableTrace() bool {
-	return GetLevel() <= TraceLevel
-}
-
-// EnableDebug 是否允许输出 DEBUG 级别的日志。
-func EnableDebug() bool {
-	return GetLevel() <= DebugLevel
-}
-
-// EnableInfo 是否允许输出 INFO 级别的日志。
-func EnableInfo() bool {
-	return GetLevel() <= InfoLevel
-}
-
-// EnableWarn 是否允许输出 WARN 级别的日志。
-func EnableWarn() bool {
-	return GetLevel() <= WarnLevel
-}
-
-// EnableError 是否允许输出 ERROR 级别的日志。
-func EnableError() bool {
-	return GetLevel() <= ErrorLevel
-}
-
-// EnablePanic 是否允许输出 PANIC 级别的日志。
-func EnablePanic() bool {
-	return GetLevel() <= PanicLevel
-}
-
-// EnableFatal 是否允许输出 FATAL 级别的日志。
-func EnableFatal() bool {
-	return GetLevel() <= FatalLevel
+// WithContext 创建包含 context.Context 对象的 Entry 。
+func WithContext(ctx context.Context) CtxEntry {
+	return rootLogger.WithContext(ctx)
 }
 
 // Trace 输出 TRACE 级别的日志。
 func Trace(args ...interface{}) {
-	output(TraceLevel, empty, args)
+	rootLogger.WithSkip(1).Trace(args...)
 }
 
 // Tracef 输出 TRACE 级别的日志。
 func Tracef(format string, args ...interface{}) {
-	outputf(TraceLevel, empty, format, args)
+	rootLogger.WithSkip(1).Tracef(format, args...)
 }
 
 // Debug 输出 DEBUG 级别的日志。
 func Debug(args ...interface{}) {
-	output(DebugLevel, empty, args)
+	rootLogger.WithSkip(1).Debug(args...)
 }
 
 // Debugf 输出 DEBUG 级别的日志。
 func Debugf(format string, args ...interface{}) {
-	outputf(DebugLevel, empty, format, args)
+	rootLogger.WithSkip(1).Debugf(format, args...)
 }
 
 // Info 输出 INFO 级别的日志。
 func Info(args ...interface{}) {
-	output(InfoLevel, empty, args)
+	rootLogger.WithSkip(1).Info(args...)
 }
 
 // Infof 输出 INFO 级别的日志。
 func Infof(format string, args ...interface{}) {
-	outputf(InfoLevel, empty, format, args)
+	rootLogger.WithSkip(1).Infof(format, args...)
 }
 
 // Warn 输出 WARN 级别的日志。
 func Warn(args ...interface{}) {
-	output(WarnLevel, empty, args)
+	rootLogger.WithSkip(1).Warn(args...)
 }
 
 // Warnf 输出 WARN 级别的日志。
 func Warnf(format string, args ...interface{}) {
-	outputf(WarnLevel, empty, format, args)
+	rootLogger.WithSkip(1).Warnf(format, args...)
 }
 
 // Error 输出 ERROR 级别的日志。
-func Error(errno ErrNo, args ...interface{}) {
-	output(ErrorLevel, empty.ErrNo(errno), args)
+func Error(args ...interface{}) {
+	rootLogger.WithSkip(1).Error(args...)
 }
 
 // Errorf 输出 ERROR 级别的日志。
-func Errorf(errno ErrNo, format string, args ...interface{}) {
-	outputf(ErrorLevel, empty.ErrNo(errno), format, args)
+func Errorf(format string, args ...interface{}) {
+	rootLogger.WithSkip(1).Errorf(format, args...)
 }
 
 // Panic 输出 PANIC 级别的日志。
 func Panic(args ...interface{}) {
-	output(PanicLevel, empty, args)
+	rootLogger.WithSkip(1).Panic(args...)
 }
 
 // Panicf 输出 PANIC 级别的日志。
 func Panicf(format string, args ...interface{}) {
-	outputf(PanicLevel, empty, format, args)
+	rootLogger.WithSkip(1).Panicf(format, args...)
 }
 
 // Fatal 输出 FATAL 级别的日志。
 func Fatal(args ...interface{}) {
-	output(FatalLevel, empty, args)
+	rootLogger.WithSkip(1).Fatal(args...)
 }
 
 // Fatalf 输出 FATAL 级别的日志。
 func Fatalf(format string, args ...interface{}) {
-	outputf(FatalLevel, empty, format, args)
+	rootLogger.WithSkip(1).Fatalf(format, args...)
 }

@@ -21,9 +21,9 @@ import (
 	"testing"
 
 	"github.com/go-spring/spring-base/assert"
-	"github.com/go-spring/spring-base/conf"
 	"github.com/go-spring/spring-base/knife"
 	"github.com/go-spring/spring-base/util"
+	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/web/i18n"
 )
 
@@ -48,25 +48,25 @@ func init() {
 
 func TestGet(t *testing.T) {
 
-	ctx := knife.New(context.Background())
+	ctx, _ := knife.New(context.Background())
 	assert.Equal(t, i18n.Get(ctx, "message"), "这是一条消息")
 
-	ctx = knife.New(context.Background())
+	ctx, _ = knife.New(context.Background())
 	err := i18n.SetLanguage(ctx, "en-US")
 	assert.Nil(t, err)
 	assert.Equal(t, i18n.Get(ctx, "message"), "this is a message")
 
-	ctx = knife.New(context.Background())
+	ctx, _ = knife.New(context.Background())
 	err = i18n.SetLanguage(ctx, "en")
 	assert.Nil(t, err)
 	assert.Equal(t, i18n.Get(ctx, "hello"), "hello world!")
 
-	ctx = knife.New(context.Background())
+	ctx, _ = knife.New(context.Background())
 	err = i18n.SetLanguage(ctx, "fr")
 	assert.Nil(t, err)
 	assert.Equal(t, i18n.Get(ctx, "message"), "")
 
-	ctx = knife.New(context.Background())
+	ctx, _ = knife.New(context.Background())
 	err = i18n.SetLanguage(ctx, "zh-CN")
 	assert.Nil(t, err)
 	assert.Equal(t, i18n.Get(ctx, "hello"), "你好，世界！")
@@ -74,7 +74,7 @@ func TestGet(t *testing.T) {
 
 func TestResolve(t *testing.T) {
 
-	ctx := knife.New(context.Background())
+	ctx, _ := knife.New(context.Background())
 	err := i18n.SetLanguage(ctx, "zh-CN")
 	assert.Nil(t, err)
 

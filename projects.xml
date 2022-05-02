@@ -102,10 +102,4 @@
         <url>https://github.com/go-spring/starter-redigo.git</url>
         <branch>main</branch>
     </project>
-    <project>
-        <name>starter-web</name>
-        <dir>starter/starter-web</dir>
-        <url>https://github.com/go-spring/starter-web.git</url>
-        <branch>master</branch>
-    </project>
 </projects>

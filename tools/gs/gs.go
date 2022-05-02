@@ -38,7 +38,7 @@ func init() {
 	log.SetFlags(log.Lshortfile)
 }
 
-const help = `(v0.0.1) command:
+const help = `(v0.0.2) command:
   gs pull spring-*/starter-* [branch]
   gs push spring-*/starter-*
   gs remove spring-*/starter-*
@@ -288,7 +288,7 @@ func replaceModVersion(file string, version string) error {
 			}
 
 			ss := strings.Split(s, " ")
-			ss[0] = string(line[:index+2])
+			ss[0] = string(line[:index+1])
 			ss[1] = version
 
 			outBuf.WriteString(strings.Join(ss, " "))

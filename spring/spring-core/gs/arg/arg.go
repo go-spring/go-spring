@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+//go:generate mockgen -build_flags="-mod=mod" -package=arg -source=arg.go -destination=mock.go
+
 // Package arg 用于实现函数参数绑定。
 package arg
 
@@ -83,6 +85,11 @@ func R6(arg Arg) IndexArg { return Index(7, arg) }
 // ValueArg 包含具体值的参数绑定。
 type ValueArg struct {
 	v interface{}
+}
+
+// Nil 返回 nil 的参数绑定。
+func Nil() ValueArg {
+	return ValueArg{v: nil}
 }
 
 // Value 返回包含具体值的参数绑定。
@@ -235,6 +242,9 @@ func (r *argList) getArg(ctx Context, arg Arg, t reflect.Type, fileLine string) 
 			return results[0], nil
 		}
 	case ValueArg:
+		if g.v == nil {
+			return reflect.Zero(t), nil
+		}
 		return reflect.ValueOf(g.v), nil
 	case *optionArg:
 		return g.call(ctx)
@@ -243,13 +253,13 @@ func (r *argList) getArg(ctx Context, arg Arg, t reflect.Type, fileLine string) 
 	case string:
 		tag = g
 	default:
-		tag = util.TypeName(g) + ":"
+		tag = internal.TypeName(g) + ":"
 	}
 
 	v := reflect.New(t).Elem()
 
 	// 处理 bean 类型
-	if util.IsBeanReceiver(t) {
+	if internal.IsBeanReceiver(t) {
 		if err = ctx.Wire(v, tag); err != nil {
 			return reflect.Value{}, err
 		}

@@ -30,14 +30,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-spring/spring-base/conf"
 	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-base/util"
+	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/gs/cond"
 	"github.com/go-spring/spring-core/gs/internal"
-
-	_ "github.com/go-spring/spring-core/gs/conf/toml"
 )
 
 type refreshState int
@@ -58,10 +56,29 @@ type Container interface {
 	Close()
 }
 
+// Context 提供了一些在 IoC 容器启动后基于反射获取和使用 property 与 bean 的接
+// 口。因为很多人会担心在运行时大量使用反射会降低程序性能，所以命名为 Context，取
+// 其诱人但危险的含义。事实上，这些在 IoC 容器启动后使用属性绑定和依赖注入的方案，
+// 都可以转换为启动阶段的方案以提高程序的性能。
+// 另一方面，为了统一 Container 和 App 两种启动方式下这些方法的使用方式，需要提取
+// 出一个可共用的接口来，也就是说，无论程序是 Container 方式启动还是 App 方式启动，
+// 都可以在需要使用这些方法的地方注入一个 Context 对象而不是 Container 对象或者
+// App 对象，从而实现使用方式的统一。
+type Context interface {
+	Context() context.Context
+	Keys() []string
+	Has(key string) bool
+	Prop(key string, opts ...conf.GetOption) string
+	Bind(i interface{}, opts ...conf.BindOption) error
+	Get(i interface{}, selectors ...BeanSelector) error
+	Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error)
+	Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, error)
+	Go(fn func(ctx context.Context))
+}
+
 type tempContainer struct {
 	p               *conf.Properties
 	beans           []*BeanDefinition
-	beansById       map[string]*BeanDefinition
 	beansByName     map[string][]*BeanDefinition
 	beansByType     map[reflect.Type][]*BeanDefinition
 	mapOfOnProperty map[string]interface{}
@@ -91,7 +108,6 @@ func New() Container {
 		cancel: cancel,
 		tempContainer: &tempContainer{
 			p:               conf.New(),
-			beansById:       make(map[string]*BeanDefinition),
 			beansByName:     make(map[string][]*BeanDefinition),
 			beansByType:     make(map[reflect.Type][]*BeanDefinition),
 			mapOfOnProperty: make(map[string]interface{}),
@@ -109,7 +125,7 @@ func validOnProperty(fn interface{}) error {
 	if t.Kind() != reflect.Func {
 		return errors.New("fn should be a func(value_type)")
 	}
-	if t.NumIn() != 1 || !util.IsValueType(t.In(0)) || t.NumOut() != 0 {
+	if t.NumIn() != 1 || !conf.IsValueType(t.In(0)) || t.NumOut() != 0 {
 		return errors.New("fn should be a func(value_type)")
 	}
 	return nil
@@ -185,11 +201,18 @@ func getBeforeDestroyers(destroyers *list.List, i interface{}) *list.List {
 	return result
 }
 
+type lazyField struct {
+	v    reflect.Value
+	path string
+	tag  string
+}
+
 // wiringStack 记录 bean 的注入路径。
 type wiringStack struct {
 	destroyers   *list.List
 	destroyerMap map[string]*destroyer
 	beans        []*BeanDefinition
+	lazyFields   []lazyField
 }
 
 func newWiringStack() *wiringStack {
@@ -242,7 +265,7 @@ func (s *wiringStack) sortDestroyers() []func() {
 				fnValue := reflect.ValueOf(f)
 				out := fnValue.Call([]reflect.Value{v})
 				if len(out) > 0 && !out[0].IsNil() {
-					log.Error(nil, out[0].Interface().(error))
+					log.Error(out[0].Interface().(error))
 				}
 			}
 		}
@@ -293,14 +316,29 @@ func (c *container) Refresh(opts ...internal.RefreshOption) (err error) {
 	c.state = Refreshing
 
 	for _, b := range c.beans {
-		if err = c.registerBean(b); err != nil {
+		c.registerBean(b)
+	}
+
+	for _, b := range c.beans {
+		if err = c.resolveBean(b); err != nil {
 			return err
 		}
 	}
 
-	for _, b := range c.beansById {
-		if err = c.resolveBean(b); err != nil {
-			return err
+	beansById := make(map[string]*BeanDefinition)
+	{
+		for _, b := range c.beans {
+			if b.status == Deleted {
+				continue
+			}
+			if b.status != Resolved {
+				return fmt.Errorf("unexpected status %d", b.status)
+			}
+			beanID := b.ID()
+			if d, ok := beansById[beanID]; ok {
+				return fmt.Errorf("found duplicate beans [%s] [%s]", b, d)
+			}
+			beansById[beanID] = b
 		}
 	}
 
@@ -309,22 +347,30 @@ func (c *container) Refresh(opts ...internal.RefreshOption) (err error) {
 	defer func() {
 		if err != nil || len(stack.beans) > 0 {
 			err = fmt.Errorf("%s ↩\n%s", err, stack.path())
-			log.Error(nil, err)
+			log.Error(err)
 		}
 	}()
 
 	// 按照 bean id 升序注入，保证注入过程始终一致。
 	{
 		var keys []string
-		for s := range c.beansById {
+		for s := range beansById {
 			keys = append(keys, s)
 		}
 		sort.Strings(keys)
 		for _, s := range keys {
-			b := c.beansById[s]
+			b := beansById[s]
 			if err = c.wireBean(b, stack); err != nil {
 				return err
 			}
+		}
+	}
+
+	// 处理被标记为延迟注入的那些 bean 字段
+	for _, f := range stack.lazyFields {
+		tag := strings.TrimSuffix(f.tag, ",lazy")
+		if err := c.wireByTag(f.v, tag, stack); err != nil {
+			return fmt.Errorf("%q wired error: %s", f.path, err.Error())
 		}
 	}
 
@@ -332,7 +378,7 @@ func (c *container) Refresh(opts ...internal.RefreshOption) (err error) {
 	c.state = Refreshed
 
 	cost := time.Now().Sub(start)
-	log.Infof("refresh %d beans cost %v", len(c.beansById), cost)
+	log.Infof("refresh %d beans cost %v", len(beansById), cost)
 
 	if optArg.AutoClear {
 		c.clear()
@@ -342,12 +388,14 @@ func (c *container) Refresh(opts ...internal.RefreshOption) (err error) {
 	return nil
 }
 
-func (c *container) registerBean(b *BeanDefinition) error {
-	if d, ok := c.beansById[b.ID()]; ok {
-		return fmt.Errorf("found duplicate beans [%s] [%s]", b, d)
+func (c *container) registerBean(b *BeanDefinition) {
+	log.Debugf("register %s name:%q type:%q %s", b.getClass(), b.BeanName(), b.Type(), b.FileLine())
+	c.beansByName[b.name] = append(c.beansByName[b.name], b)
+	c.beansByType[b.Type()] = append(c.beansByType[b.Type()], b)
+	for _, t := range b.exports {
+		log.Debugf("register %s name:%q type:%q %s", b.getClass(), b.BeanName(), t, b.FileLine())
+		c.beansByType[t] = append(c.beansByType[t], b)
 	}
-	c.beansById[b.ID()] = b
-	return nil
 }
 
 // resolveBean 判断 bean 的有效性，如果 bean 是无效的则被标记为已删除。
@@ -378,7 +426,6 @@ func (c *container) resolveBean(b *BeanDefinition) error {
 			msg = msg[:len(msg)-2] + "]"
 			return errors.New(msg)
 		} else if n == 0 {
-			delete(c.beansById, b.ID())
 			b.status = Deleted
 			return nil
 		}
@@ -388,20 +435,9 @@ func (c *container) resolveBean(b *BeanDefinition) error {
 		if ok, err := b.cond.Matches(c); err != nil {
 			return err
 		} else if !ok {
-			delete(c.beansById, b.ID())
 			b.status = Deleted
 			return nil
 		}
-	}
-
-	log.Debugf("register %s name:%q type:%q %s", b.getClass(), b.BeanName(), b.Type(), b.FileLine())
-
-	c.beansByName[b.name] = append(c.beansByName[b.name], b)
-	c.beansByType[b.Type()] = append(c.beansByType[b.Type()], b)
-
-	for _, t := range b.exports {
-		log.Debugf("register %s name:%q type:%q %s", b.getClass(), b.BeanName(), t, b.FileLine())
-		c.beansByType[t] = append(c.beansByType[t], b)
 	}
 
 	b.status = Resolved
@@ -461,7 +497,7 @@ func toWireTag(selector BeanSelector) wireTag {
 	case *BeanDefinition:
 		return parseWireTag(s.ID())
 	default:
-		return parseWireTag(util.TypeName(s) + ":")
+		return parseWireTag(internal.TypeName(s) + ":")
 	}
 }
 
@@ -482,8 +518,8 @@ func (c *container) findBean(selector BeanSelector) ([]*BeanDefinition, error) {
 
 	finder := func(fn func(*BeanDefinition) bool) ([]*BeanDefinition, error) {
 		var result []*BeanDefinition
-		for _, b := range c.beansById {
-			if b.status == Resolving || !fn(b) {
+		for _, b := range c.beans {
+			if b.status == Resolving || b.status == Deleted || !fn(b) {
 				continue
 			}
 			if err := c.resolveBean(b); err != nil {
@@ -655,9 +691,9 @@ func (c *container) getBeanValue(b *BeanDefinition, stack *wiringStack) (reflect
 	}
 
 	// 构造函数的返回值为值类型时 b.Type() 返回其指针类型。
-	if val := out[0]; util.IsBeanType(val.Type()) {
+	if val := out[0]; internal.IsBeanType(val.Type()) {
 		// 如果实现接口的是值类型，那么需要转换成指针类型然后再赋值给接口。
-		if !val.IsNil() && val.Kind() == reflect.Interface && util.IsValueType(val.Elem().Type()) {
+		if !val.IsNil() && val.Kind() == reflect.Interface && conf.IsValueType(val.Elem().Type()) {
 			v := reflect.New(val.Elem().Type())
 			v.Elem().Set(val.Elem())
 			b.Value().Set(v)
@@ -724,8 +760,13 @@ func (c *container) wireStruct(v reflect.Value, opt conf.BindParam, stack *wirin
 			tag, ok = ft.Tag.Lookup("inject")
 		}
 		if ok {
-			if err := c.wireByTag(fv, tag, stack); err != nil {
-				return fmt.Errorf("%q wired error: %w", fieldPath, err)
+			if strings.HasSuffix(tag, ",lazy") {
+				f := lazyField{v: fv, path: fieldPath, tag: tag}
+				stack.lazyFields = append(stack.lazyFields, f)
+			} else {
+				if err := c.wireByTag(fv, tag, stack); err != nil {
+					return fmt.Errorf("%q wired error: %w", fieldPath, err)
+				}
 			}
 			continue
 		}
@@ -804,37 +845,45 @@ func (c *container) getBean(v reflect.Value, tag wireTag, stack *wiringStack) er
 	}
 
 	t := v.Type()
-	if !util.IsBeanReceiver(t) {
+	if !internal.IsBeanReceiver(t) {
 		return fmt.Errorf("%s is not valid receiver type", t.String())
 	}
 
-	foundBeans := make([]*BeanDefinition, 0)
+	var foundBeans []*BeanDefinition
 
-	cache := c.beansByType[t]
-	for i := 0; i < len(cache); i++ {
-		b := cache[i]
-		if b.Match(tag.typeName, tag.beanName) {
-			foundBeans = append(foundBeans, b)
+	for _, b := range c.beansByType[t] {
+		if b.status == Deleted {
+			continue
 		}
+		if !b.Match(tag.typeName, tag.beanName) {
+			continue
+		}
+		foundBeans = append(foundBeans, b)
 	}
 
 	// 指定 bean 名称时通过名称获取，防止未通过 Export 方法导出接口。
 	if t.Kind() == reflect.Interface && tag.beanName != "" {
-		cache = c.beansByName[tag.beanName]
-		for i := 0; i < len(cache); i++ {
-			b := cache[i]
-			if b.Type().AssignableTo(t) && b.Match(tag.typeName, tag.beanName) {
-				found := false // 对结果排重
-				for _, r := range foundBeans {
-					if r == b {
-						found = true
-						break
-					}
+		for _, b := range c.beansByName[tag.beanName] {
+			if b.status == Deleted {
+				continue
+			}
+			if !b.Type().AssignableTo(t) {
+				continue
+			}
+			if !b.Match(tag.typeName, tag.beanName) {
+				continue
+			}
+
+			found := false // 对结果排重
+			for _, r := range foundBeans {
+				if r == b {
+					found = true
+					break
 				}
-				if !found {
-					foundBeans = append(foundBeans, b)
-					log.Warnf("you should call Export() on %s", b)
-				}
+			}
+			if !found {
+				foundBeans = append(foundBeans, b)
+				log.Warnf("you should call Export() on %s", b)
 			}
 		}
 	}
@@ -895,9 +944,13 @@ func filterBean(beans []*BeanDefinition, tag wireTag, t reflect.Type) (int, erro
 
 	var found []int
 	for i, b := range beans {
-		if b.Match(tag.typeName, tag.beanName) {
-			found = append(found, i)
+		if b.status == Deleted {
+			continue
 		}
+		if !b.Match(tag.typeName, tag.beanName) {
+			continue
+		}
+		found = append(found, i)
 	}
 
 	if len(found) > 1 {
@@ -935,7 +988,7 @@ func (c *container) collectBeans(v reflect.Value, tags []wireTag, stack *wiringS
 	}
 
 	et := t.Elem()
-	if !util.IsBeanReceiver(et) {
+	if !internal.IsBeanReceiver(et) {
 		return fmt.Errorf("%s is not valid receiver type", t.String())
 	}
 
@@ -974,7 +1027,8 @@ func (c *container) collectBeans(v reflect.Value, tags []wireTag, stack *wiringS
 				beforeAny = append(beforeAny, beans[index])
 			}
 
-			beans = append(beans[:index], beans[index+1:]...)
+			tmpBeans := append([]*BeanDefinition{}, beans[:index]...)
+			beans = append(tmpBeans, beans[index+1:]...)
 		}
 
 		if foundAny {

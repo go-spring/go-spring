@@ -33,7 +33,7 @@ type runner struct {
 func (r *runner) Run(ctx gs.Context) {
 
 	_, err := r.Client.Get(ctx.Context(), "nonexisting")
-	if err != redis.ErrNil {
+	if !redis.IsErrNil(err) {
 		panic(errors.New("should be redis.ErrNil"))
 	}
 

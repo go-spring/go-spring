@@ -28,7 +28,7 @@ import (
 func TestRedirectFilter(t *testing.T) {
 	r, _ := http.NewRequest(http.MethodPost, "http://127.0.0.1:8080/", nil)
 	w := httptest.NewRecorder()
-	ctx := web.NewBaseContext(r, &web.BufferedResponseWriter{ResponseWriter: w})
+	ctx := web.NewBaseContext("", nil, r, &web.BufferedResponseWriter{ResponseWriter: w})
 	f := web.HTTPSRedirect(web.NewRedirectConfig())
 	web.NewFilterChain([]web.Filter{f}).Next(ctx)
 	assert.Equal(t, w.Result().StatusCode, http.StatusMovedPermanently)

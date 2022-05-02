@@ -18,44 +18,23 @@ package log
 
 import (
 	"context"
-	"sync"
 	"time"
 )
 
-// msgPool *Message 对象池。
-var msgPool = sync.Pool{
-	New: func() interface{} {
-		return &Message{}
-	},
-}
-
 // Message 定义日志消息。
 type Message struct {
+	level Level
 	time  time.Time
 	ctx   context.Context
 	tag   string
 	file  string
 	line  int
 	args  []interface{}
-	errno ErrNo
+	errno Errno
 }
 
-// newMessage 创建新的 *Message 对象。
-func newMessage() *Message {
-	return msgPool.Get().(*Message)
-}
-
-func (msg *Message) reset() {
-	msg.ctx = nil
-	msg.tag = ""
-	msg.file = ""
-	msg.line = 0
-	msg.time = time.Time{}
-	msg.args = msg.args[:0]
-}
-
-func (msg *Message) Ctx() context.Context {
-	return msg.ctx
+func (msg *Message) Level() Level {
+	return msg.level
 }
 
 func (msg *Message) Tag() string {
@@ -78,12 +57,78 @@ func (msg *Message) Args() []interface{} {
 	return msg.args
 }
 
-func (msg *Message) ErrNo() ErrNo {
+func (msg *Message) Errno() Errno {
 	return msg.errno
 }
 
-// Reuse 将 *Message 放回对象池，以便重用。
-func (msg *Message) Reuse() {
-	msg.reset()
-	msgPool.Put(msg)
+func (msg *Message) Context() context.Context {
+	return msg.ctx
+}
+
+type MessageBuilder struct {
+	Level Level
+	Time  time.Time
+	Ctx   context.Context
+	Tag   string
+	File  string
+	Line  int
+	Args  []interface{}
+	Errno Errno
+}
+
+func NewMessageBuilder() *MessageBuilder {
+	return &MessageBuilder{}
+}
+
+func (b *MessageBuilder) WithLevel(level Level) *MessageBuilder {
+	b.Level = level
+	return b
+}
+
+func (b *MessageBuilder) WithTag(tag string) *MessageBuilder {
+	b.Tag = tag
+	return b
+}
+
+func (b *MessageBuilder) WithFile(file string) *MessageBuilder {
+	b.File = file
+	return b
+}
+
+func (b *MessageBuilder) WithLine(line int) *MessageBuilder {
+	b.Line = line
+	return b
+}
+
+func (b *MessageBuilder) WithTime(time time.Time) *MessageBuilder {
+	b.Time = time
+	return b
+}
+
+func (b *MessageBuilder) WithArgs(args []interface{}) *MessageBuilder {
+	b.Args = args
+	return b
+}
+
+func (b *MessageBuilder) WithErrno(errno Errno) *MessageBuilder {
+	b.Errno = errno
+	return b
+}
+
+func (b *MessageBuilder) WithContext(ctx context.Context) *MessageBuilder {
+	b.Ctx = ctx
+	return b
+}
+
+func (b *MessageBuilder) Build() *Message {
+	return &Message{
+		level: b.Level,
+		time:  b.Time,
+		ctx:   b.Ctx,
+		tag:   b.Tag,
+		file:  b.File,
+		line:  b.Line,
+		args:  b.Args,
+		errno: b.Errno,
+	}
 }

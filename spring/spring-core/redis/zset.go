@@ -20,411 +20,313 @@ import (
 	"context"
 )
 
-const (
-	CommandZAdd             = "ZADD"
-	CommandZCard            = "ZCARD"
-	CommandZCount           = "ZCOUNT"
-	CommandZDiff            = "ZDIFF"
-	CommandZIncrBy          = "ZINCRBY"
-	CommandZInter           = "ZINTER"
-	CommandZLexCount        = "ZLEXCOUNT"
-	CommandZMScore          = "ZMSCORE"
-	CommandZPopMax          = "ZPOPMAX"
-	CommandZPopMin          = "ZPOPMIN"
-	CommandZRandMember      = "ZRANDMEMBER"
-	CommandZRange           = "ZRANGE"
-	CommandZRangeByLex      = "ZRANGEBYLEX"
-	CommandZRangeByScore    = "ZRANGEBYSCORE"
-	CommandZRank            = "ZRANK"
-	CommandZRem             = "ZREM"
-	CommandZRemRangeByLex   = "ZREMRANGEBYLEX"
-	CommandZRemRangeByRank  = "ZREMRANGEBYRANK"
-	CommandZRemRangeByScore = "ZREMRANGEBYSCORE"
-	CommandZRevRange        = "ZREVRANGE"
-	CommandZRevRangeByLex   = "ZREVRANGEBYLEX"
-	CommandZRevRangeByScore = "ZREVRANGEBYSCORE"
-	CommandZRevRank         = "ZREVRANK"
-	CommandZScore           = "ZSCORE"
-	CommandZUnion           = "ZUNION"
-	CommandZUnionStore      = "ZUNIONSTORE"
-)
-
 type ZItem struct {
 	Member interface{}
 	Score  float64
 }
 
-type ZSetCommand interface {
-
-	// ZAdd https://redis.io/commands/zadd
-	// Command: ZADD key [NX|XX] [GT|LT] [CH] [INCR] score member [score member ...]
-	// Integer reply, the number of elements added to the
-	// sorted set (excluding score updates).
-	ZAdd(ctx context.Context, key string, args ...interface{}) (int64, error)
-
-	// ZCard https://redis.io/commands/zcard
-	// Command: ZCARD key
-	// Integer reply: the cardinality (number of elements)
-	// of the sorted set, or 0 if key does not exist.
-	ZCard(ctx context.Context, key string) (int64, error)
-
-	// ZCount https://redis.io/commands/zcount
-	// Command: ZCOUNT key min max
-	// Integer reply: the number of elements in the specified score range.
-	ZCount(ctx context.Context, key, min, max string) (int64, error)
-
-	// ZDiff https://redis.io/commands/zdiff
-	// Command: ZDIFF numkeys key [key ...] [WITHSCORES]
-	// Array reply: the result of the difference.
-	ZDiff(ctx context.Context, keys ...string) ([]string, error)
-
-	// ZDiffWithScores https://redis.io/commands/zdiff
-	// Command: ZDIFF numkeys key [key ...] [WITHSCORES]
-	// Array reply: the result of the difference.
-	ZDiffWithScores(ctx context.Context, keys ...string) ([]ZItem, error)
-
-	// ZIncrBy https://redis.io/commands/zincrby
-	// Command: ZINCRBY key increment member
-	// Bulk string reply: the new score of member
-	// (a double precision floating point number), represented as string.
-	ZIncrBy(ctx context.Context, key string, increment float64, member string) (float64, error)
-
-	// ZInter https://redis.io/commands/zinter
-	// Command: ZINTER numkeys key [key ...] [WEIGHTS weight [weight ...]] [AGGREGATE SUM|MIN|MAX] [WITHSCORES]
-	// Array reply: the result of intersection.
-	ZInter(ctx context.Context, args ...interface{}) ([]string, error)
-
-	// ZInterWithScores https://redis.io/commands/zinter
-	// Command: ZINTER numkeys key [key ...] [WEIGHTS weight [weight ...]] [AGGREGATE SUM|MIN|MAX] [WITHSCORES]
-	// Array reply: the result of intersection.
-	ZInterWithScores(ctx context.Context, args ...interface{}) ([]ZItem, error)
-
-	// ZLexCount https://redis.io/commands/zlexcount
-	// Command: ZLEXCOUNT key min max
-	// Integer reply: the number of elements in the specified score range.
-	ZLexCount(ctx context.Context, key, min, max string) (int64, error)
-
-	// ZMScore https://redis.io/commands/zmscore
-	// Command: ZMSCORE key member [member ...]
-	// Array reply: list of scores or nil associated with the specified member
-	// values (a double precision floating point number), represented as strings.
-	ZMScore(ctx context.Context, key string, members ...string) ([]float64, error)
-
-	// ZPopMax https://redis.io/commands/zpopmax
-	// Command: ZPOPMAX key [count]
-	// Array reply: list of popped elements and scores.
-	ZPopMax(ctx context.Context, key string) ([]ZItem, error)
-
-	// ZPopMaxN https://redis.io/commands/zpopmax
-	// Command: ZPOPMAX key [count]
-	// Array reply: list of popped elements and scores.
-	ZPopMaxN(ctx context.Context, key string, count int64) ([]ZItem, error)
-
-	// ZPopMin https://redis.io/commands/zpopmin
-	// Command: ZPOPMIN key [count]
-	// Array reply: list of popped elements and scores.
-	ZPopMin(ctx context.Context, key string) ([]ZItem, error)
-
-	// ZPopMinN https://redis.io/commands/zpopmin
-	// Command: ZPOPMIN key [count]
-	// Array reply: list of popped elements and scores.
-	ZPopMinN(ctx context.Context, key string, count int64) ([]ZItem, error)
-
-	// ZRandMember https://redis.io/commands/zrandmember
-	// Command: ZRANDMEMBER key [count [WITHSCORES]]
-	// Bulk Reply with the randomly selected element, or nil when key does not exist.
-	ZRandMember(ctx context.Context, key string) (string, error)
-
-	// ZRandMemberN https://redis.io/commands/zrandmember
-	// Command: ZRANDMEMBER key [count [WITHSCORES]]
-	// Bulk Reply with the randomly selected element, or nil when key does not exist.
-	ZRandMemberN(ctx context.Context, key string, count int) ([]string, error)
-
-	// ZRandMemberWithScores https://redis.io/commands/zrandmember
-	// Command: ZRANDMEMBER key [count [WITHSCORES]]
-	// Bulk Reply with the randomly selected element, or nil when key does not exist.
-	ZRandMemberWithScores(ctx context.Context, key string, count int) ([]ZItem, error)
-
-	// ZRange https://redis.io/commands/zrange
-	// Command: ZRANGE key min max [BYSCORE|BYLEX] [REV] [LIMIT offset count] [WITHSCORES]
-	// Array reply: list of elements in the specified range.
-	ZRange(ctx context.Context, key string, start, stop int64, args ...interface{}) ([]string, error)
-
-	// ZRangeWithScores https://redis.io/commands/zrange
-	// Command: ZRANGE key min max [BYSCORE|BYLEX] [REV] [LIMIT offset count] [WITHSCORES]
-	// Array reply: list of elements in the specified range.
-	ZRangeWithScores(ctx context.Context, key string, start, stop int64, args ...interface{}) ([]ZItem, error)
-
-	// ZRangeByLex https://redis.io/commands/zrangebylex
-	// Command: ZRANGEBYLEX key min max [LIMIT offset count]
-	// Array reply: list of elements in the specified score range.
-	ZRangeByLex(ctx context.Context, key string, min, max string, args ...interface{}) ([]string, error)
-
-	// ZRangeByScore https://redis.io/commands/zrangebyscore
-	// Command: ZRANGEBYSCORE key min max [WITHSCORES] [LIMIT offset count]
-	// Array reply: list of elements in the specified score range.
-	ZRangeByScore(ctx context.Context, key string, min, max string, args ...interface{}) ([]string, error)
-
-	// ZRank https://redis.io/commands/zrank
-	// Command: ZRANK key member
-	// If member exists in the sorted set, Integer reply: the rank of member.
-	// If member does not exist in the sorted set or key does not exist, Bulk string reply: nil.
-	ZRank(ctx context.Context, key, member string) (int64, error)
-
-	// ZRem https://redis.io/commands/zrem
-	// Command: ZREM key member [member ...]
-	// Integer reply, The number of members removed from the sorted set, not including non existing members.
-	ZRem(ctx context.Context, key string, members ...interface{}) (int64, error)
-
-	// ZRemRangeByLex https://redis.io/commands/zremrangebylex
-	// Command: ZREMRANGEBYLEX key min max
-	// Integer reply: the number of elements removed.
-	ZRemRangeByLex(ctx context.Context, key, min, max string) (int64, error)
-
-	// ZRemRangeByRank https://redis.io/commands/zremrangebyrank
-	// Command: ZREMRANGEBYRANK key start stop
-	// Integer reply: the number of elements removed.
-	ZRemRangeByRank(ctx context.Context, key string, start, stop int64) (int64, error)
-
-	// ZRemRangeByScore https://redis.io/commands/zremrangebyscore
-	// Command: ZREMRANGEBYSCORE key min max
-	// Integer reply: the number of elements removed.
-	ZRemRangeByScore(ctx context.Context, key, min, max string) (int64, error)
-
-	// ZRevRange https://redis.io/commands/zrevrange
-	// Command: ZREVRANGE key start stop [WITHSCORES]
-	// Array reply: list of elements in the specified range.
-	ZRevRange(ctx context.Context, key string, start, stop int64) ([]string, error)
-
-	// ZRevRangeWithScores https://redis.io/commands/zrevrange
-	// Command: ZREVRANGE key start stop [WITHSCORES]
-	// Array reply: list of elements in the specified range.
-	ZRevRangeWithScores(ctx context.Context, key string, start, stop int64) ([]string, error)
-
-	// ZRevRangeByLex https://redis.io/commands/zrevrangebylex
-	// Command: ZREVRANGEBYLEX key max min [LIMIT offset count]
-	// Array reply: list of elements in the specified score range.
-	ZRevRangeByLex(ctx context.Context, key string, min, max string, args ...interface{}) ([]string, error)
-
-	// ZRevRangeByScore https://redis.io/commands/zrevrangebyscore
-	// Command: ZREVRANGEBYSCORE key max min [WITHSCORES] [LIMIT offset count]
-	// Array reply: list of elements in the specified score range.
-	ZRevRangeByScore(ctx context.Context, key string, min, max string, args ...interface{}) ([]string, error)
-
-	// ZRevRank https://redis.io/commands/zrevrank
-	// Command: ZREVRANK key member
-	// If member exists in the sorted set, Integer reply: the rank of member.
-	// If member does not exist in the sorted set or key does not exist, Bulk string reply: nil.
-	ZRevRank(ctx context.Context, key, member string) (int64, error)
-
-	// ZScore https://redis.io/commands/zscore
-	// Command: ZSCORE key member
-	// Bulk string reply: the score of member (a double precision floating point number), represented as string.
-	ZScore(ctx context.Context, key, member string) (float64, error)
-
-	// ZUnion https://redis.io/commands/zunion
-	// Command: ZUNION numkeys key [key ...] [WEIGHTS weight [weight ...]] [AGGREGATE SUM|MIN|MAX] [WITHSCORES]
-	// Array reply: the result of union.
-	ZUnion(ctx context.Context, args ...interface{}) ([]string, error)
-
-	// ZUnionWithScores https://redis.io/commands/zunion
-	// Command: ZUNION numkeys key [key ...] [WEIGHTS weight [weight ...]] [AGGREGATE SUM|MIN|MAX] [WITHSCORES]
-	// Array reply: the result of union.
-	ZUnionWithScores(ctx context.Context, args ...interface{}) ([]ZItem, error)
-
-	// ZUnionStore https://redis.io/commands/zunionstore
-	// Command: ZUNIONSTORE destination numkeys key [key ...] [WEIGHTS weight [weight ...]] [AGGREGATE SUM|MIN|MAX]
-	// Integer reply: the number of elements in the resulting sorted set at destination.
-	ZUnionStore(ctx context.Context, dest string, args ...interface{}) (int64, error)
+type ZSetOperations struct {
+	c *Client
 }
 
-func (c *BaseClient) ZAdd(ctx context.Context, key string, args ...interface{}) (int64, error) {
-	args = append([]interface{}{CommandZAdd, key}, args...)
-	return c.Int64(ctx, args...)
+func NewZSetOperations(c *Client) *ZSetOperations {
+	return &ZSetOperations{c: c}
 }
 
-func (c *BaseClient) ZCard(ctx context.Context, key string) (int64, error) {
-	args := []interface{}{CommandZCard, key}
-	return c.Int64(ctx, args...)
+// ZAdd https://redis.io/commands/zadd
+// Command: ZADD key [NX|XX] [GT|LT] [CH] [INCR] score member [score member ...]
+// Integer reply, the number of elements added to the
+// sorted set (excluding score updates).
+func (c *ZSetOperations) ZAdd(ctx context.Context, key string, args ...interface{}) (int64, error) {
+	args = append([]interface{}{key}, args...)
+	return c.c.Int(ctx, "ZADD", args...)
 }
 
-func (c *BaseClient) ZCount(ctx context.Context, key, min, max string) (int64, error) {
-	args := []interface{}{CommandZCount, key, min, max}
-	return c.Int64(ctx, args...)
+// ZCard https://redis.io/commands/zcard
+// Command: ZCARD key
+// Integer reply: the cardinality (number of elements)
+// of the sorted set, or 0 if key does not exist.
+func (c *ZSetOperations) ZCard(ctx context.Context, key string) (int64, error) {
+	args := []interface{}{key}
+	return c.c.Int(ctx, "ZCARD", args...)
 }
 
-func (c *BaseClient) ZDiff(ctx context.Context, keys ...string) ([]string, error) {
-	args := []interface{}{CommandZDiff, len(keys)}
+// ZCount https://redis.io/commands/zcount
+// Command: ZCOUNT key min max
+// Integer reply: the number of elements in the specified score range.
+func (c *ZSetOperations) ZCount(ctx context.Context, key, min, max string) (int64, error) {
+	args := []interface{}{key, min, max}
+	return c.c.Int(ctx, "ZCOUNT", args...)
+}
+
+// ZDiff https://redis.io/commands/zdiff
+// Command: ZDIFF numkeys key [key ...] [WITHSCORES]
+// Array reply: the result of the difference.
+func (c *ZSetOperations) ZDiff(ctx context.Context, keys ...string) ([]string, error) {
+	args := []interface{}{len(keys)}
 	for _, key := range keys {
 		args = append(args, key)
 	}
-	return c.StringSlice(ctx, args...)
+	return c.c.StringSlice(ctx, "ZDIFF", args...)
 }
 
-func (c *BaseClient) ZDiffWithScores(ctx context.Context, keys ...string) ([]ZItem, error) {
-	args := []interface{}{CommandZDiff, len(keys)}
+// ZDiffWithScores https://redis.io/commands/zdiff
+// Command: ZDIFF numkeys key [key ...] [WITHSCORES]
+// Array reply: the result of the difference.
+func (c *ZSetOperations) ZDiffWithScores(ctx context.Context, keys ...string) ([]ZItem, error) {
+	args := []interface{}{len(keys)}
 	for _, key := range keys {
 		args = append(args, key)
 	}
 	args = append(args, "WITHSCORES")
-	return c.ZItemSlice(ctx, args...)
+	return c.c.ZItemSlice(ctx, "ZDIFF", args...)
 }
 
-func (c *BaseClient) ZIncrBy(ctx context.Context, key string, increment float64, member string) (float64, error) {
-	args := []interface{}{CommandZIncrBy, key, increment, member}
-	return c.Float64(ctx, args...)
+// ZIncrBy https://redis.io/commands/zincrby
+// Command: ZINCRBY key increment member
+// Bulk string reply: the new score of member
+// (a double precision floating point number), represented as string.
+func (c *ZSetOperations) ZIncrBy(ctx context.Context, key string, increment float64, member string) (float64, error) {
+	args := []interface{}{key, increment, member}
+	return c.c.Float(ctx, "ZINCRBY", args...)
 }
 
-func (c *BaseClient) ZInter(ctx context.Context, args ...interface{}) ([]string, error) {
-	args = append([]interface{}{CommandZInter}, args...)
-	return c.StringSlice(ctx, args...)
+// ZInter https://redis.io/commands/zinter
+// Command: ZINTER numkeys key [key ...] [WEIGHTS weight [weight ...]] [AGGREGATE SUM|MIN|MAX] [WITHSCORES]
+// Array reply: the result of intersection.
+func (c *ZSetOperations) ZInter(ctx context.Context, args ...interface{}) ([]string, error) {
+	return c.c.StringSlice(ctx, "ZINTER", args...)
 }
 
-func (c *BaseClient) ZInterWithScores(ctx context.Context, args ...interface{}) ([]ZItem, error) {
-	args = append([]interface{}{CommandZInter}, args...)
+// ZInterWithScores https://redis.io/commands/zinter
+// Command: ZINTER numkeys key [key ...] [WEIGHTS weight [weight ...]] [AGGREGATE SUM|MIN|MAX] [WITHSCORES]
+// Array reply: the result of intersection.
+func (c *ZSetOperations) ZInterWithScores(ctx context.Context, args ...interface{}) ([]ZItem, error) {
 	args = append(args, "WITHSCORES")
-	return c.ZItemSlice(ctx, args...)
+	return c.c.ZItemSlice(ctx, "ZINTER", args...)
 }
 
-func (c *BaseClient) ZLexCount(ctx context.Context, key, min, max string) (int64, error) {
-	args := []interface{}{CommandZLexCount, key, min, max}
-	return c.Int64(ctx, args...)
+// ZLexCount https://redis.io/commands/zlexcount
+// Command: ZLEXCOUNT key min max
+// Integer reply: the number of elements in the specified score range.
+func (c *ZSetOperations) ZLexCount(ctx context.Context, key, min, max string) (int64, error) {
+	args := []interface{}{key, min, max}
+	return c.c.Int(ctx, "ZLEXCOUNT", args...)
 }
 
-func (c *BaseClient) ZMScore(ctx context.Context, key string, members ...string) ([]float64, error) {
-	args := []interface{}{CommandZMScore, key}
+// ZMScore https://redis.io/commands/zmscore
+// Command: ZMSCORE key member [member ...]
+// Array reply: list of scores or nil associated with the specified member
+// values (a double precision floating point number), represented as strings.
+func (c *ZSetOperations) ZMScore(ctx context.Context, key string, members ...string) ([]float64, error) {
+	args := []interface{}{key}
 	for _, member := range members {
 		args = append(args, member)
 	}
-	return c.Float64Slice(ctx, args...)
+	return c.c.FloatSlice(ctx, "ZMSCORE", args...)
 }
 
-func (c *BaseClient) ZPopMax(ctx context.Context, key string) ([]ZItem, error) {
-	args := []interface{}{CommandZPopMax, key}
-	return c.ZItemSlice(ctx, args...)
+// ZPopMax https://redis.io/commands/zpopmax
+// Command: ZPOPMAX key [count]
+// Array reply: list of popped elements and scores.
+func (c *ZSetOperations) ZPopMax(ctx context.Context, key string) ([]ZItem, error) {
+	args := []interface{}{key}
+	return c.c.ZItemSlice(ctx, "ZPOPMAX", args...)
 }
 
-func (c *BaseClient) ZPopMaxN(ctx context.Context, key string, count int64) ([]ZItem, error) {
-	args := []interface{}{CommandZPopMax, key, count}
-	return c.ZItemSlice(ctx, args...)
+// ZPopMaxN https://redis.io/commands/zpopmax
+// Command: ZPOPMAX key [count]
+// Array reply: list of popped elements and scores.
+func (c *ZSetOperations) ZPopMaxN(ctx context.Context, key string, count int64) ([]ZItem, error) {
+	args := []interface{}{key, count}
+	return c.c.ZItemSlice(ctx, "ZPOPMAX", args...)
 }
 
-func (c *BaseClient) ZPopMin(ctx context.Context, key string) ([]ZItem, error) {
-	args := []interface{}{CommandZPopMin, key}
-	return c.ZItemSlice(ctx, args...)
+// ZPopMin https://redis.io/commands/zpopmin
+// Command: ZPOPMIN key [count]
+// Array reply: list of popped elements and scores.
+func (c *ZSetOperations) ZPopMin(ctx context.Context, key string) ([]ZItem, error) {
+	args := []interface{}{key}
+	return c.c.ZItemSlice(ctx, "ZPOPMIN", args...)
 }
 
-func (c *BaseClient) ZPopMinN(ctx context.Context, key string, count int64) ([]ZItem, error) {
-	args := []interface{}{CommandZPopMin, key, count}
-	return c.ZItemSlice(ctx, args...)
+// ZPopMinN https://redis.io/commands/zpopmin
+// Command: ZPOPMIN key [count]
+// Array reply: list of popped elements and scores.
+func (c *ZSetOperations) ZPopMinN(ctx context.Context, key string, count int64) ([]ZItem, error) {
+	args := []interface{}{key, count}
+	return c.c.ZItemSlice(ctx, "ZPOPMIN", args...)
 }
 
-func (c *BaseClient) ZRandMember(ctx context.Context, key string) (string, error) {
-	args := []interface{}{CommandZRandMember, key}
-	return c.String(ctx, args...)
+// ZRandMember https://redis.io/commands/zrandmember
+// Command: ZRANDMEMBER key [count [WITHSCORES]]
+// Bulk Reply with the randomly selected element, or nil when key does not exist.
+func (c *ZSetOperations) ZRandMember(ctx context.Context, key string) (string, error) {
+	args := []interface{}{key}
+	return c.c.String(ctx, "ZRANDMEMBER", args...)
 }
 
-func (c *BaseClient) ZRandMemberN(ctx context.Context, key string, count int) ([]string, error) {
-	args := []interface{}{CommandZRandMember, key, count}
-	return c.StringSlice(ctx, args...)
+// ZRandMemberN https://redis.io/commands/zrandmember
+// Command: ZRANDMEMBER key [count [WITHSCORES]]
+// Bulk Reply with the randomly selected element, or nil when key does not exist.
+func (c *ZSetOperations) ZRandMemberN(ctx context.Context, key string, count int) ([]string, error) {
+	args := []interface{}{key, count}
+	return c.c.StringSlice(ctx, "ZRANDMEMBER", args...)
 }
 
-func (c *BaseClient) ZRandMemberWithScores(ctx context.Context, key string, count int) ([]ZItem, error) {
-	args := []interface{}{CommandZRandMember, key, count, "WITHSCORES"}
-	return c.ZItemSlice(ctx, args...)
+// ZRandMemberWithScores https://redis.io/commands/zrandmember
+// Command: ZRANDMEMBER key [count [WITHSCORES]]
+// Bulk Reply with the randomly selected element, or nil when key does not exist.
+func (c *ZSetOperations) ZRandMemberWithScores(ctx context.Context, key string, count int) ([]ZItem, error) {
+	args := []interface{}{key, count, "WITHSCORES"}
+	return c.c.ZItemSlice(ctx, "ZRANDMEMBER", args...)
 }
 
-func (c *BaseClient) ZRange(ctx context.Context, key string, start, stop int64, args ...interface{}) ([]string, error) {
-	args = append([]interface{}{CommandZRange, key, start, stop}, args...)
-	return c.StringSlice(ctx, args...)
+// ZRange https://redis.io/commands/zrange
+// Command: ZRANGE key min max [BYSCORE|BYLEX] [REV] [LIMIT offset count] [WITHSCORES]
+// Array reply: list of elements in the specified range.
+func (c *ZSetOperations) ZRange(ctx context.Context, key string, start, stop int64, args ...interface{}) ([]string, error) {
+	args = append([]interface{}{key, start, stop}, args...)
+	return c.c.StringSlice(ctx, "ZRANGE", args...)
 }
 
-func (c *BaseClient) ZRangeWithScores(ctx context.Context, key string, start, stop int64, args ...interface{}) ([]ZItem, error) {
-	args = append([]interface{}{CommandZRange, key, start, stop}, args...)
+// ZRangeWithScores https://redis.io/commands/zrange
+// Command: ZRANGE key min max [BYSCORE|BYLEX] [REV] [LIMIT offset count] [WITHSCORES]
+// Array reply: list of elements in the specified range.
+func (c *ZSetOperations) ZRangeWithScores(ctx context.Context, key string, start, stop int64, args ...interface{}) ([]ZItem, error) {
+	args = append([]interface{}{key, start, stop}, args...)
 	args = append(args, "WITHSCORES")
-	return c.ZItemSlice(ctx, args...)
+	return c.c.ZItemSlice(ctx, "ZRANGE", args...)
 }
 
-func (c *BaseClient) ZRangeByLex(ctx context.Context, key string, min, max string, args ...interface{}) ([]string, error) {
-	args = append([]interface{}{CommandZRangeByLex, key, min, max}, args...)
-	return c.StringSlice(ctx, args...)
+// ZRangeByLex https://redis.io/commands/zrangebylex
+// Command: ZRANGEBYLEX key min max [LIMIT offset count]
+// Array reply: list of elements in the specified score range.
+func (c *ZSetOperations) ZRangeByLex(ctx context.Context, key string, min, max string, args ...interface{}) ([]string, error) {
+	args = append([]interface{}{key, min, max}, args...)
+	return c.c.StringSlice(ctx, "ZRANGEBYLEX", args...)
 }
 
-func (c *BaseClient) ZRangeByScore(ctx context.Context, key string, min, max string, args ...interface{}) ([]string, error) {
-	args = append([]interface{}{CommandZRangeByScore, key, min, max}, args...)
-	return c.StringSlice(ctx, args...)
+// ZRangeByScore https://redis.io/commands/zrangebyscore
+// Command: ZRANGEBYSCORE key min max [WITHSCORES] [LIMIT offset count]
+// Array reply: list of elements in the specified score range.
+func (c *ZSetOperations) ZRangeByScore(ctx context.Context, key string, min, max string, args ...interface{}) ([]string, error) {
+	args = append([]interface{}{key, min, max}, args...)
+	return c.c.StringSlice(ctx, "ZRANGEBYSCORE", args...)
 }
 
-func (c *BaseClient) ZRank(ctx context.Context, key, member string) (int64, error) {
-	args := []interface{}{CommandZRank, key, member}
-	return c.Int64(ctx, args...)
+// ZRank https://redis.io/commands/zrank
+// Command: ZRANK key member
+// If member exists in the sorted set, Integer reply: the rank of member.
+// If member does not exist in the sorted set or key does not exist, Bulk string reply: nil.
+func (c *ZSetOperations) ZRank(ctx context.Context, key, member string) (int64, error) {
+	args := []interface{}{key, member}
+	return c.c.Int(ctx, "ZRANK", args...)
 }
 
-func (c *BaseClient) ZRem(ctx context.Context, key string, members ...interface{}) (int64, error) {
-	args := []interface{}{CommandZRem, key}
+// ZRem https://redis.io/commands/zrem
+// Command: ZREM key member [member ...]
+// Integer reply, The number of members removed from the sorted set, not including non existing members.
+func (c *ZSetOperations) ZRem(ctx context.Context, key string, members ...interface{}) (int64, error) {
+	args := []interface{}{key}
 	for _, member := range members {
 		args = append(args, member)
 	}
-	return c.Int64(ctx, args...)
+	return c.c.Int(ctx, "ZREM", args...)
 }
 
-func (c *BaseClient) ZRemRangeByLex(ctx context.Context, key, min, max string) (int64, error) {
-	args := []interface{}{CommandZRemRangeByLex, key, min, max}
-	return c.Int64(ctx, args...)
+// ZRemRangeByLex https://redis.io/commands/zremrangebylex
+// Command: ZREMRANGEBYLEX key min max
+// Integer reply: the number of elements removed.
+func (c *ZSetOperations) ZRemRangeByLex(ctx context.Context, key, min, max string) (int64, error) {
+	args := []interface{}{key, min, max}
+	return c.c.Int(ctx, "ZREMRANGEBYLEX", args...)
 }
 
-func (c *BaseClient) ZRemRangeByRank(ctx context.Context, key string, start, stop int64) (int64, error) {
-	args := []interface{}{CommandZRemRangeByRank, key, start, stop}
-	return c.Int64(ctx, args...)
+// ZRemRangeByRank https://redis.io/commands/zremrangebyrank
+// Command: ZREMRANGEBYRANK key start stop
+// Integer reply: the number of elements removed.
+func (c *ZSetOperations) ZRemRangeByRank(ctx context.Context, key string, start, stop int64) (int64, error) {
+	args := []interface{}{key, start, stop}
+	return c.c.Int(ctx, "ZREMRANGEBYRANK", args...)
 }
 
-func (c *BaseClient) ZRemRangeByScore(ctx context.Context, key, min, max string) (int64, error) {
-	args := []interface{}{CommandZRemRangeByScore, key, min, max}
-	return c.Int64(ctx, args...)
+// ZRemRangeByScore https://redis.io/commands/zremrangebyscore
+// Command: ZREMRANGEBYSCORE key min max
+// Integer reply: the number of elements removed.
+func (c *ZSetOperations) ZRemRangeByScore(ctx context.Context, key, min, max string) (int64, error) {
+	args := []interface{}{key, min, max}
+	return c.c.Int(ctx, "ZREMRANGEBYSCORE", args...)
 }
 
-func (c *BaseClient) ZRevRange(ctx context.Context, key string, start, stop int64) ([]string, error) {
-	args := []interface{}{CommandZRevRange, key, start, stop}
-	return c.StringSlice(ctx, args...)
+// ZRevRange https://redis.io/commands/zrevrange
+// Command: ZREVRANGE key start stop [WITHSCORES]
+// Array reply: list of elements in the specified range.
+func (c *ZSetOperations) ZRevRange(ctx context.Context, key string, start, stop int64) ([]string, error) {
+	args := []interface{}{key, start, stop}
+	return c.c.StringSlice(ctx, "ZREVRANGE", args...)
 }
 
-func (c *BaseClient) ZRevRangeWithScores(ctx context.Context, key string, start, stop int64) ([]string, error) {
-	args := []interface{}{CommandZRevRange, key, start, stop, "WITHSCORES"}
-	return c.StringSlice(ctx, args...)
+// ZRevRangeWithScores https://redis.io/commands/zrevrange
+// Command: ZREVRANGE key start stop [WITHSCORES]
+// Array reply: list of elements in the specified range.
+func (c *ZSetOperations) ZRevRangeWithScores(ctx context.Context, key string, start, stop int64) ([]string, error) {
+	args := []interface{}{key, start, stop, "WITHSCORES"}
+	return c.c.StringSlice(ctx, "ZREVRANGE", args...)
 }
 
-func (c *BaseClient) ZRevRangeByLex(ctx context.Context, key string, min, max string, args ...interface{}) ([]string, error) {
-	args = append([]interface{}{CommandZRevRangeByLex, key, min, max}, args...)
-	return c.StringSlice(ctx, args...)
+// ZRevRangeByLex https://redis.io/commands/zrevrangebylex
+// Command: ZREVRANGEBYLEX key max min [LIMIT offset count]
+// Array reply: list of elements in the specified score range.
+func (c *ZSetOperations) ZRevRangeByLex(ctx context.Context, key string, min, max string, args ...interface{}) ([]string, error) {
+	args = append([]interface{}{key, min, max}, args...)
+	return c.c.StringSlice(ctx, "ZREVRANGEBYLEX", args...)
 }
 
-func (c *BaseClient) ZRevRangeByScore(ctx context.Context, key string, min, max string, args ...interface{}) ([]string, error) {
-	args = append([]interface{}{CommandZRevRangeByScore, key, min, max}, args...)
-	return c.StringSlice(ctx, args...)
+// ZRevRangeByScore https://redis.io/commands/zrevrangebyscore
+// Command: ZREVRANGEBYSCORE key max min [WITHSCORES] [LIMIT offset count]
+// Array reply: list of elements in the specified score range.
+func (c *ZSetOperations) ZRevRangeByScore(ctx context.Context, key string, min, max string, args ...interface{}) ([]string, error) {
+	args = append([]interface{}{key, min, max}, args...)
+	return c.c.StringSlice(ctx, "ZREVRANGEBYSCORE", args...)
 }
 
-func (c *BaseClient) ZRevRank(ctx context.Context, key, member string) (int64, error) {
-	args := []interface{}{CommandZRevRank, key, member}
-	return c.Int64(ctx, args...)
+// ZRevRank https://redis.io/commands/zrevrank
+// Command: ZREVRANK key member
+// If member exists in the sorted set, Integer reply: the rank of member.
+// If member does not exist in the sorted set or key does not exist, Bulk string reply: nil.
+func (c *ZSetOperations) ZRevRank(ctx context.Context, key, member string) (int64, error) {
+	args := []interface{}{key, member}
+	return c.c.Int(ctx, "ZREVRANK", args...)
 }
 
-func (c *BaseClient) ZScore(ctx context.Context, key, member string) (float64, error) {
-	args := []interface{}{CommandZScore, key, member}
-	return c.Float64(ctx, args...)
+// ZScore https://redis.io/commands/zscore
+// Command: ZSCORE key member
+// Bulk string reply: the score of member (a double precision floating point number), represented as string.
+func (c *ZSetOperations) ZScore(ctx context.Context, key, member string) (float64, error) {
+	args := []interface{}{key, member}
+	return c.c.Float(ctx, "ZSCORE", args...)
 }
 
-func (c *BaseClient) ZUnion(ctx context.Context, args ...interface{}) ([]string, error) {
-	args = append([]interface{}{CommandZUnion}, args...)
-	return c.StringSlice(ctx, args...)
+// ZUnion https://redis.io/commands/zunion
+// Command: ZUNION numkeys key [key ...] [WEIGHTS weight [weight ...]] [AGGREGATE SUM|MIN|MAX] [WITHSCORES]
+// Array reply: the result of union.
+func (c *ZSetOperations) ZUnion(ctx context.Context, args ...interface{}) ([]string, error) {
+	return c.c.StringSlice(ctx, "ZUNION", args...)
 }
 
-func (c *BaseClient) ZUnionWithScores(ctx context.Context, args ...interface{}) ([]ZItem, error) {
-	args = append([]interface{}{CommandZUnion}, args...)
+// ZUnionWithScores https://redis.io/commands/zunion
+// Command: ZUNION numkeys key [key ...] [WEIGHTS weight [weight ...]] [AGGREGATE SUM|MIN|MAX] [WITHSCORES]
+// Array reply: the result of union.
+func (c *ZSetOperations) ZUnionWithScores(ctx context.Context, args ...interface{}) ([]ZItem, error) {
 	args = append(args, "WITHSCORES")
-	return c.ZItemSlice(ctx, args...)
+	return c.c.ZItemSlice(ctx, "ZUNION", args...)
 }
 
-func (c *BaseClient) ZUnionStore(ctx context.Context, dest string, args ...interface{}) (int64, error) {
-	args = append([]interface{}{CommandZUnionStore, dest}, args...)
-	return c.Int64(ctx, args...)
+// ZUnionStore https://redis.io/commands/zunionstore
+// Command: ZUNIONSTORE destination numkeys key [key ...] [WEIGHTS weight [weight ...]] [AGGREGATE SUM|MIN|MAX]
+// Integer reply: the number of elements in the resulting sorted set at destination.
+func (c *ZSetOperations) ZUnionStore(ctx context.Context, dest string, args ...interface{}) (int64, error) {
+	args = append([]interface{}{dest}, args...)
+	return c.c.Int(ctx, "ZUNIONSTORE", args...)
 }

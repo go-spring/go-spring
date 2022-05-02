@@ -29,8 +29,8 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/go-spring/spring-base/conf"
 	"github.com/go-spring/spring-base/log"
+	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/grpc"
 	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/gs/internal"
@@ -451,14 +451,17 @@ func (app *App) RequestBinding(method uint32, path string, fn interface{}) *web.
 
 // File 定义单个文件资源
 func (app *App) File(path string, file string) *web.Mapper {
-	return app.GetMapping(path, func(c web.Context) { c.File(file) })
+	return app.router.File(path, file)
 }
 
 // Static 定义一组文件资源
-func (app *App) Static(prefix string, root string) *web.Mapper {
-	fileServer := http.FileServer(http.Dir(root))
-	handler := web.WrapH(http.StripPrefix(prefix, fileServer))
-	return app.HandleGet(prefix+"/*", handler)
+func (app *App) Static(prefix string, dir string) *web.Mapper {
+	return app.router.Static(prefix, dir)
+}
+
+// StaticFS 定义一组文件资源
+func (app *App) StaticFS(prefix string, fs http.FileSystem) *web.Mapper {
+	return app.router.StaticFS(prefix, fs)
 }
 
 // Consume 注册 MQ 消费者。

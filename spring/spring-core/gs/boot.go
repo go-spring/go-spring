@@ -18,6 +18,7 @@ package gs
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"reflect"
 	"strings"
@@ -34,9 +35,7 @@ func init() {
 	{
 		s := os.Getenv("CGO_CFLAGS")
 		if strings.Contains(s, "-O0") && strings.Contains(s, "-g") {
-			if !log.EnableDebug() {
-				log.SetLevel(log.DebugLevel)
-			}
+			log.SetLevel(log.DebugLevel)
 		}
 	}
 }
@@ -200,8 +199,13 @@ func File(path string, file string) *web.Mapper {
 }
 
 // Static 定义一组文件资源
-func Static(prefix string, root string) *web.Mapper {
-	return app().Static(prefix, root)
+func Static(prefix string, dir string) *web.Mapper {
+	return app().Static(prefix, dir)
+}
+
+// StaticFS 定义一组文件资源
+func StaticFS(prefix string, fs http.FileSystem) *web.Mapper {
+	return app().StaticFS(prefix, fs)
 }
 
 // Consume 参考 App.Consume 的解释。

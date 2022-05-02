@@ -20,242 +20,188 @@ import (
 	"context"
 )
 
-const (
-	CommandLIndex    = "LINDEX"
-	CommandLInsert   = "LINSERT"
-	CommandLLen      = "LLEN"
-	CommandLMove     = "LMOVE"
-	CommandLPop      = "LPOP"
-	CommandLPos      = "LPOS"
-	CommandLPush     = "LPUSH"
-	CommandLPushX    = "LPUSHX"
-	CommandLRange    = "LRANGE"
-	CommandLRem      = "LREM"
-	CommandLSet      = "LSET"
-	CommandLTrim     = "LTRIM"
-	CommandRPop      = "RPOP"
-	CommandRPopLPush = "RPOPLPUSH"
-	CommandRPush     = "RPUSH"
-	CommandRPushX    = "RPUSHX"
-)
-
-type ListCommand interface {
-
-	// LIndex https://redis.io/commands/lindex
-	// Command: LINDEX key index
-	// Bulk string reply: the requested element, or nil when index is out of range.
-	LIndex(ctx context.Context, key string, index int64) (string, error)
-
-	// LInsertBefore https://redis.io/commands/linsert
-	// Command: LINSERT key BEFORE|AFTER pivot element
-	// Integer reply: the length of the list after the
-	// insert operation, or -1 when the value pivot was not found.
-	LInsertBefore(ctx context.Context, key string, pivot, value interface{}) (int64, error)
-
-	// LInsertAfter https://redis.io/commands/linsert
-	// Command: LINSERT key BEFORE|AFTER pivot element
-	// Integer reply: the length of the list after the
-	// insert operation, or -1 when the value pivot was not found.
-	LInsertAfter(ctx context.Context, key string, pivot, value interface{}) (int64, error)
-
-	// LLen https://redis.io/commands/llen
-	// Command: LLEN key
-	// Integer reply: the length of the list at key.
-	LLen(ctx context.Context, key string) (int64, error)
-
-	// LMove https://redis.io/commands/lmove
-	// Command: LMOVE source destination LEFT|RIGHT LEFT|RIGHT
-	// Bulk string reply: the element being popped and pushed.
-	LMove(ctx context.Context, source, destination, srcPos, destPos string) (string, error)
-
-	// LPop https://redis.io/commands/lpop
-	// Command: LPOP key [count]
-	// Bulk string reply: the value of the first element, or nil when key does not exist.
-	LPop(ctx context.Context, key string) (string, error)
-
-	// LPopN https://redis.io/commands/lpop
-	// Command: LPOP key [count]
-	// Array reply: list of popped elements, or nil when key does not exist.
-	LPopN(ctx context.Context, key string, count int) ([]string, error)
-
-	// LPos https://redis.io/commands/lpos
-	// Command: LPOS key element [RANK rank] [COUNT num-matches] [MAXLEN len]
-	// The command returns the integer representing the matching element,
-	// or nil if there is no match. However, if the COUNT option is given
-	// the command returns an array (empty if there are no matches).
-	LPos(ctx context.Context, key string, value interface{}, args ...interface{}) (int64, error)
-
-	// LPosN https://redis.io/commands/lpos
-	// Command: LPOS key element [RANK rank] [COUNT num-matches] [MAXLEN len]
-	// The command returns the integer representing the matching element,
-	// or nil if there is no match. However, if the COUNT option is given
-	// the command returns an array (empty if there are no matches).
-	LPosN(ctx context.Context, key string, value interface{}, count int64, args ...interface{}) ([]int64, error)
-
-	// LPush https://redis.io/commands/lpush
-	// Command: LPUSH key element [element ...]
-	// Integer reply: the length of the list after the push operations.
-	LPush(ctx context.Context, key string, values ...interface{}) (int64, error)
-
-	// LPushX https://redis.io/commands/lpushx
-	// Command: LPUSHX key element [element ...]
-	// Integer reply: the length of the list after the push operation.
-	LPushX(ctx context.Context, key string, values ...interface{}) (int64, error)
-
-	// LRange https://redis.io/commands/lrange
-	// Command: LRANGE key start stop
-	// Array reply: list of elements in the specified range.
-	LRange(ctx context.Context, key string, start, stop int64) ([]string, error)
-
-	// LRem https://redis.io/commands/lrem
-	// Command: LREM key count element
-	// Integer reply: the number of removed elements.
-	LRem(ctx context.Context, key string, count int64, value interface{}) (int64, error)
-
-	// LSet https://redis.io/commands/lset
-	// Command: LSET key index element
-	// Simple string reply
-	LSet(ctx context.Context, key string, index int64, value interface{}) (string, error)
-
-	// LTrim https://redis.io/commands/ltrim
-	// Command: LTRIM key start stop
-	// Simple string reply
-	LTrim(ctx context.Context, key string, start, stop int64) (string, error)
-
-	// RPop https://redis.io/commands/rpop
-	// Command: RPOP key [count]
-	// Bulk string reply: the value of the last element, or nil when key does not exist.
-	RPop(ctx context.Context, key string) (string, error)
-
-	// RPopN https://redis.io/commands/rpop
-	// Command: RPOP key [count]
-	// Array reply: list of popped elements, or nil when key does not exist.
-	RPopN(ctx context.Context, key string, count int) ([]string, error)
-
-	// RPopLPush https://redis.io/commands/rpoplpush
-	// Command: RPOPLPUSH source destination
-	// Bulk string reply: the element being popped and pushed.
-	RPopLPush(ctx context.Context, source, destination string) (string, error)
-
-	// RPush https://redis.io/commands/rpush
-	// Command: RPUSH key element [element ...]
-	// Integer reply: the length of the list after the push operation.
-	RPush(ctx context.Context, key string, values ...interface{}) (int64, error)
-
-	// RPushX https://redis.io/commands/rpushx
-	// Command: RPUSHX key element [element ...]
-	// Integer reply: the length of the list after the push operation.
-	RPushX(ctx context.Context, key string, values ...interface{}) (int64, error)
+type ListOperations struct {
+	c *Client
 }
 
-func (c *BaseClient) LIndex(ctx context.Context, key string, index int64) (string, error) {
-	args := []interface{}{CommandLIndex, key, index}
-	return c.String(ctx, args...)
+func NewListOperations(c *Client) *ListOperations {
+	return &ListOperations{c: c}
 }
 
-func (c *BaseClient) LInsertBefore(ctx context.Context, key string, pivot, value interface{}) (int64, error) {
-	args := []interface{}{CommandLInsert, key, "BEFORE", pivot, value}
-	return c.Int64(ctx, args...)
+// LIndex https://redis.io/commands/lindex
+// Command: LINDEX key index
+// Bulk string reply: the requested element, or nil when index is out of range.
+func (c *ListOperations) LIndex(ctx context.Context, key string, index int64) (string, error) {
+	args := []interface{}{key, index}
+	return c.c.String(ctx, "LINDEX", args...)
 }
 
-func (c *BaseClient) LInsertAfter(ctx context.Context, key string, pivot, value interface{}) (int64, error) {
-	args := []interface{}{CommandLInsert, key, "AFTER", pivot, value}
-	return c.Int64(ctx, args...)
+// LInsertBefore https://redis.io/commands/linsert
+// Command: LINSERT key BEFORE|AFTER pivot element
+// Integer reply: the length of the list after the
+// insert operation, or -1 when the value pivot was not found.
+func (c *ListOperations) LInsertBefore(ctx context.Context, key string, pivot, value interface{}) (int64, error) {
+	args := []interface{}{key, "BEFORE", pivot, value}
+	return c.c.Int(ctx, "LINSERT", args...)
 }
 
-func (c *BaseClient) LLen(ctx context.Context, key string) (int64, error) {
-	args := []interface{}{CommandLLen, key}
-	return c.Int64(ctx, args...)
+// LInsertAfter https://redis.io/commands/linsert
+// Command: LINSERT key BEFORE|AFTER pivot element
+// Integer reply: the length of the list after the
+// insert operation, or -1 when the value pivot was not found.
+func (c *ListOperations) LInsertAfter(ctx context.Context, key string, pivot, value interface{}) (int64, error) {
+	args := []interface{}{key, "AFTER", pivot, value}
+	return c.c.Int(ctx, "LINSERT", args...)
 }
 
-func (c *BaseClient) LMove(ctx context.Context, source, destination, srcPos, destPos string) (string, error) {
-	args := []interface{}{CommandLMove, source, destination, srcPos, destPos}
-	return c.String(ctx, args...)
+// LLen https://redis.io/commands/llen
+// Command: LLEN key
+// Integer reply: the length of the list at key.
+func (c *ListOperations) LLen(ctx context.Context, key string) (int64, error) {
+	args := []interface{}{key}
+	return c.c.Int(ctx, "LLEN", args...)
 }
 
-func (c *BaseClient) LPop(ctx context.Context, key string) (string, error) {
-	args := []interface{}{CommandLPop, key}
-	return c.String(ctx, args...)
+// LMove https://redis.io/commands/lmove
+// Command: LMOVE source destination LEFT|RIGHT LEFT|RIGHT
+// Bulk string reply: the element being popped and pushed.
+func (c *ListOperations) LMove(ctx context.Context, source, destination, srcPos, destPos string) (string, error) {
+	args := []interface{}{source, destination, srcPos, destPos}
+	return c.c.String(ctx, "LMOVE", args...)
 }
 
-func (c *BaseClient) LPopN(ctx context.Context, key string, count int) ([]string, error) {
-	args := []interface{}{CommandLPop, key, count}
-	return c.StringSlice(ctx, args...)
+// LPop https://redis.io/commands/lpop
+// Command: LPOP key [count]
+// Bulk string reply: the value of the first element, or nil when key does not exist.
+func (c *ListOperations) LPop(ctx context.Context, key string) (string, error) {
+	args := []interface{}{key}
+	return c.c.String(ctx, "LPOP", args...)
 }
 
-func (c *BaseClient) LPos(ctx context.Context, key string, value interface{}, args ...interface{}) (int64, error) {
-	args = append([]interface{}{CommandLPos, key, value}, args...)
-	return c.Int64(ctx, args...)
+// LPopN https://redis.io/commands/lpop
+// Command: LPOP key [count]
+// Array reply: list of popped elements, or nil when key does not exist.
+func (c *ListOperations) LPopN(ctx context.Context, key string, count int) ([]string, error) {
+	args := []interface{}{key, count}
+	return c.c.StringSlice(ctx, "LPOP", args...)
 }
 
-func (c *BaseClient) LPosN(ctx context.Context, key string, value interface{}, count int64, args ...interface{}) ([]int64, error) {
-	args = append([]interface{}{CommandLPos, key, value, "COUNT", count}, args...)
-	return c.Int64Slice(ctx, args...)
+// LPos https://redis.io/commands/lpos
+// Command: LPOS key element [RANK rank] [COUNT num-matches] [MAXLEN len]
+// The command returns the integer representing the matching element,
+// or nil if there is no match. However, if the COUNT option is given
+// the command returns an array (empty if there are no matches).
+func (c *ListOperations) LPos(ctx context.Context, key string, value interface{}, args ...interface{}) (int64, error) {
+	args = append([]interface{}{key, value}, args...)
+	return c.c.Int(ctx, "LPOS", args...)
 }
 
-func (c *BaseClient) LPush(ctx context.Context, key string, values ...interface{}) (int64, error) {
-	args := []interface{}{CommandLPush, key}
+// LPosN https://redis.io/commands/lpos
+// Command: LPOS key element [RANK rank] [COUNT num-matches] [MAXLEN len]
+// The command returns the integer representing the matching element,
+// or nil if there is no match. However, if the COUNT option is given
+// the command returns an array (empty if there are no matches).
+func (c *ListOperations) LPosN(ctx context.Context, key string, value interface{}, count int64, args ...interface{}) ([]int64, error) {
+	args = append([]interface{}{key, value, "COUNT", count}, args...)
+	return c.c.IntSlice(ctx, "LPOS", args...)
+}
+
+// LPush https://redis.io/commands/lpush
+// Command: LPUSH key element [element ...]
+// Integer reply: the length of the list after the push operations.
+func (c *ListOperations) LPush(ctx context.Context, key string, values ...interface{}) (int64, error) {
+	args := []interface{}{key}
 	for _, value := range values {
 		args = append(args, value)
 	}
-	return c.Int64(ctx, args...)
+	return c.c.Int(ctx, "LPUSH", args...)
 }
 
-func (c *BaseClient) LPushX(ctx context.Context, key string, values ...interface{}) (int64, error) {
-	args := []interface{}{CommandLPushX, key}
+// LPushX https://redis.io/commands/lpushx
+// Command: LPUSHX key element [element ...]
+// Integer reply: the length of the list after the push operation.
+func (c *ListOperations) LPushX(ctx context.Context, key string, values ...interface{}) (int64, error) {
+	args := []interface{}{key}
 	for _, value := range values {
 		args = append(args, value)
 	}
-	return c.Int64(ctx, args...)
+	return c.c.Int(ctx, "LPUSHX", args...)
 }
 
-func (c *BaseClient) LRange(ctx context.Context, key string, start, stop int64) ([]string, error) {
-	args := []interface{}{CommandLRange, key, start, stop}
-	return c.StringSlice(ctx, args...)
+// LRange https://redis.io/commands/lrange
+// Command: LRANGE key start stop
+// Array reply: list of elements in the specified range.
+func (c *ListOperations) LRange(ctx context.Context, key string, start, stop int64) ([]string, error) {
+	args := []interface{}{key, start, stop}
+	return c.c.StringSlice(ctx, "LRANGE", args...)
 }
 
-func (c *BaseClient) LRem(ctx context.Context, key string, count int64, value interface{}) (int64, error) {
-	args := []interface{}{CommandLRem, key, count, value}
-	return c.Int64(ctx, args...)
+// LRem https://redis.io/commands/lrem
+// Command: LREM key count element
+// Integer reply: the number of removed elements.
+func (c *ListOperations) LRem(ctx context.Context, key string, count int64, value interface{}) (int64, error) {
+	args := []interface{}{key, count, value}
+	return c.c.Int(ctx, "LREM", args...)
 }
 
-func (c *BaseClient) LSet(ctx context.Context, key string, index int64, value interface{}) (string, error) {
-	args := []interface{}{CommandLSet, key, index, value}
-	return c.String(ctx, args...)
+// LSet https://redis.io/commands/lset
+// Command: LSET key index element
+// Simple string reply
+func (c *ListOperations) LSet(ctx context.Context, key string, index int64, value interface{}) (string, error) {
+	args := []interface{}{key, index, value}
+	return c.c.String(ctx, "LSET", args...)
 }
 
-func (c *BaseClient) LTrim(ctx context.Context, key string, start, stop int64) (string, error) {
-	args := []interface{}{CommandLTrim, key, start, stop}
-	return c.String(ctx, args...)
+// LTrim https://redis.io/commands/ltrim
+// Command: LTRIM key start stop
+// Simple string reply
+func (c *ListOperations) LTrim(ctx context.Context, key string, start, stop int64) (string, error) {
+	args := []interface{}{key, start, stop}
+	return c.c.String(ctx, "LTRIM", args...)
 }
 
-func (c *BaseClient) RPop(ctx context.Context, key string) (string, error) {
-	args := []interface{}{CommandRPop, key}
-	return c.String(ctx, args...)
+// RPop https://redis.io/commands/rpop
+// Command: RPOP key [count]
+// Bulk string reply: the value of the last element, or nil when key does not exist.
+func (c *ListOperations) RPop(ctx context.Context, key string) (string, error) {
+	args := []interface{}{key}
+	return c.c.String(ctx, "RPOP", args...)
 }
 
-func (c *BaseClient) RPopN(ctx context.Context, key string, count int) ([]string, error) {
-	args := []interface{}{CommandRPop, key, count}
-	return c.StringSlice(ctx, args...)
+// RPopN https://redis.io/commands/rpop
+// Command: RPOP key [count]
+// Array reply: list of popped elements, or nil when key does not exist.
+func (c *ListOperations) RPopN(ctx context.Context, key string, count int) ([]string, error) {
+	args := []interface{}{key, count}
+	return c.c.StringSlice(ctx, "RPOP", args...)
 }
 
-func (c *BaseClient) RPopLPush(ctx context.Context, source, destination string) (string, error) {
-	args := []interface{}{CommandRPopLPush, source, destination}
-	return c.String(ctx, args...)
+// RPopLPush https://redis.io/commands/rpoplpush
+// Command: RPOPLPUSH source destination
+// Bulk string reply: the element being popped and pushed.
+func (c *ListOperations) RPopLPush(ctx context.Context, source, destination string) (string, error) {
+	args := []interface{}{source, destination}
+	return c.c.String(ctx, "RPOPLPUSH", args...)
 }
 
-func (c *BaseClient) RPush(ctx context.Context, key string, values ...interface{}) (int64, error) {
-	args := []interface{}{CommandRPush, key}
+// RPush https://redis.io/commands/rpush
+// Command: RPUSH key element [element ...]
+// Integer reply: the length of the list after the push operation.
+func (c *ListOperations) RPush(ctx context.Context, key string, values ...interface{}) (int64, error) {
+	args := []interface{}{key}
 	for _, value := range values {
 		args = append(args, value)
 	}
-	return c.Int64(ctx, args...)
+	return c.c.Int(ctx, "RPUSH", args...)
 }
 
-func (c *BaseClient) RPushX(ctx context.Context, key string, values ...interface{}) (int64, error) {
-	args := []interface{}{CommandRPushX, key}
+// RPushX https://redis.io/commands/rpushx
+// Command: RPUSHX key element [element ...]
+// Integer reply: the length of the list after the push operation.
+func (c *ListOperations) RPushX(ctx context.Context, key string, values ...interface{}) (int64, error) {
+	args := []interface{}{key}
 	for _, value := range values {
 		args = append(args, value)
 	}
-	return c.Int64(ctx, args...)
+	return c.c.Int(ctx, "RPUSHX", args...)
 }

@@ -19,12 +19,12 @@ package gs
 import (
 	"errors"
 	"fmt"
-	"math"
 	"reflect"
 	"runtime"
 	"strings"
 
 	"github.com/go-spring/spring-base/util"
+	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/gs/cond"
 	"github.com/go-spring/spring-core/gs/internal"
@@ -33,13 +33,8 @@ import (
 type BeanSelector = internal.BeanSelector
 
 func BeanID(typ interface{}, name string) string {
-	return util.TypeName(reflect.TypeOf(typ)) + ":" + name
+	return internal.TypeName(reflect.TypeOf(typ)) + ":" + name
 }
-
-const (
-	HighestOrder = math.MinInt32
-	LowestOrder  = math.MaxInt32
-)
 
 type beanStatus int8
 
@@ -100,7 +95,7 @@ type BeanDefinition struct {
 	primary bool           // 是否为主版本
 	method  bool           // 是否为成员方法
 	cond    cond.Condition // 判断条件
-	order   int            // 收集时的顺序
+	order   float32        // 收集时的顺序
 	init    interface{}    // 初始化函数
 	destroy interface{}    // 销毁函数
 	depends []BeanSelector // 间接依赖项
@@ -193,7 +188,7 @@ func (d *BeanDefinition) On(cond cond.Condition) *BeanDefinition {
 }
 
 // Order 设置 bean 的排序序号，值越小顺序越靠前(优先级越高)。
-func (d *BeanDefinition) Order(order int) *BeanDefinition {
+func (d *BeanDefinition) Order(order float32) *BeanDefinition {
 	d.order = order
 	return d
 }
@@ -313,7 +308,7 @@ func NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 		v = reflect.New(out0)
 
 		// 引用类型去掉指针，值类型则刚刚好。
-		if util.IsBeanType(out0) {
+		if internal.IsBeanType(out0) {
 			v = v.Elem()
 		}
 
@@ -324,11 +319,11 @@ func NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 	}
 
 	t := v.Type()
-	if !util.IsBeanType(t) {
+	if !internal.IsBeanType(t) {
 		panic(errors.New("bean must be ref type"))
 	}
 
-	if t.Kind() == reflect.Ptr && !util.IsValueType(t.Elem()) {
+	if t.Kind() == reflect.Ptr && !conf.IsValueType(t.Elem()) {
 		panic(errors.New("bean should be *val but not *ref"))
 	}
 
@@ -342,10 +337,9 @@ func NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 		v:        v,
 		f:        f,
 		name:     name,
-		typeName: util.TypeName(t),
+		typeName: internal.TypeName(t),
 		status:   Default,
 		method:   method,
-		order:    LowestOrder,
 		file:     file,
 		line:     line,
 	}

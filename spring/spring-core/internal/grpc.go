@@ -18,7 +18,7 @@ package internal
 
 // GrpcServerConfig gRPC 服务器配置，通常配合服务器名称前缀一起使用。
 type GrpcServerConfig struct {
-	Port int `value:"${grpc.server.port:=9090}"`
+	Port int `value:"${port:=9090}"`
 }
 
 // GrpcEndpointConfig gRPC 服务端点配置，通常配合端点名称前缀一起使用。

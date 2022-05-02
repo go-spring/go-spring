@@ -21,22 +21,19 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/go-spring/spring-base/fastdev"
 	"github.com/go-spring/spring-core/redis"
 	g "github.com/gomodule/redigo/redis"
 )
 
-type client struct {
-	redis.BaseClient
-	conn g.Conn
+func NewClient(config redis.Config) (*redis.Client, error) {
+	connPool, err := Open(config)
+	if err != nil {
+		return nil, err
+	}
+	return redis.NewClient(connPool)
 }
 
-// NewClient 创建 Redis 客户端
-func NewClient(config redis.ClientConfig) (redis.Client, error) {
-
-	if fastdev.ReplayMode() {
-		return &redis.BaseClient{}, nil
-	}
+func Open(config redis.Config) (redis.ConnPool, error) {
 
 	address := fmt.Sprintf("%s:%d", config.Host, config.Port)
 	conn, err := g.Dial("tcp", address,
@@ -56,18 +53,20 @@ func NewClient(config redis.ClientConfig) (redis.Client, error) {
 		}
 	}
 
-	c := &client{conn: conn}
-	c.DoFunc = c.do
-	return c, nil
+	return &Conn{conn: conn}, nil
 }
 
-func (c *client) do(ctx context.Context, args ...interface{}) (interface{}, error) {
-	result, err := c.conn.Do(args[0].(string), args[1:]...)
+type Conn struct {
+	conn g.Conn
+}
+
+func (c *Conn) Exec(ctx context.Context, cmd string, args []interface{}) (interface{}, error) {
+	result, err := c.conn.Do(cmd, args...)
 	if err != nil {
 		return nil, err
 	}
 	if result == nil {
-		return nil, redis.ErrNil
+		return nil, redis.ErrNil()
 	}
 	switch r := result.(type) {
 	case []byte:

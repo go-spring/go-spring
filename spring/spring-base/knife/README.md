@@ -18,10 +18,6 @@ import "github.com/go-spring/spring-base/knife"
 
 ```
 ctx = knife.New(context.Background())
-
-err = knife.Set(ctx, "a", "b")
-v, ok = knife.Get(ctx, "a")
-
-var m map[string]string
-ok, err := knife.Fetch(ctx, "a", &m)
+err = knife.Store(ctx, "a", "b")
+v, err := knife.Load(ctx, "a")
 ```

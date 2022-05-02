@@ -16,7 +16,31 @@
 
 package log
 
-type ErrNo interface {
-	Code() string
+var (
+	OK    Errno = &errno{project: 0, code: 0, message: "OK"}
+	ERROR Errno = &errno{project: 999, code: 999, message: "ERROR"}
+)
+
+type Errno interface {
 	Msg() string
+	Code() uint32
 }
+
+type errno struct {
+	project uint32
+	code    uint16
+	message string
+}
+
+func NewErrno(project uint32, code uint16, msg string) Errno {
+	if project < 1000 {
+		panic("project invalid, should be >= 1000")
+	}
+	if code < 1 || code > 999 {
+		panic("code invalid, should be 1~999")
+	}
+	return &errno{project: project, code: code, message: msg}
+}
+
+func (e *errno) Msg() string  { return e.message }
+func (e *errno) Code() uint32 { return e.project*1000 + uint32(e.code) }

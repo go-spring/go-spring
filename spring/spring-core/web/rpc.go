@@ -22,6 +22,7 @@ import (
 	"reflect"
 
 	"github.com/go-spring/spring-base/knife"
+	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-base/util"
 )
 
@@ -38,7 +39,7 @@ type bindHandler struct {
 }
 
 func (b *bindHandler) Invoke(ctx Context) {
-	err := knife.Set(ctx.Context(), ctxKey, ctx)
+	err := knife.Store(ctx.Context(), ctxKey, ctx)
 	util.Panic(err).When(err != nil)
 	RpcInvoke(ctx, b.call)
 }
@@ -92,8 +93,9 @@ func BIND(fn interface{}) Handler {
 
 // GetRequest 获取 ctx 对象上绑定的 web.Context 对象。
 func GetRequest(ctx context.Context) Context {
-	v, ok := knife.Get(ctx, ctxKey)
-	if !ok {
+	v, err := knife.Load(ctx, ctxKey)
+	if err != nil {
+		logger.WithContext(ctx).Error(log.ERROR, err)
 		return nil
 	}
 	webCtx, _ := v.(Context)

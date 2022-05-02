@@ -17,7 +17,9 @@
 package swagger_test
 
 import (
+	"errors"
 	"fmt"
+	"net/http"
 	"testing"
 
 	"github.com/go-spring/spring-base/assert"
@@ -25,10 +27,24 @@ import (
 	"github.com/go-spring/spring-swag/swagger"
 )
 
+type ServerHandler struct {
+}
+
+func (h *ServerHandler) ServeHTTP(http.ResponseWriter, *http.Request) {
+}
+
+func (h *ServerHandler) Start(s web.Server) error {
+	return errors.New("shutdown")
+}
+
+func (h *ServerHandler) RecoveryFilter(errHandler web.ErrorHandler) web.Filter {
+	return nil
+}
+
 func Test_Doc(t *testing.T) {
-	c := web.NewAbstractContainer(web.ContainerConfig{})
+	c := web.NewServer(web.ServerConfig{Port: 8080}, &ServerHandler{})
 	swagger.Doc(c).WithID("go-spring").WithHost("https://go-spring.com")
-	m := c.HandleGet("/idx", web.FUNC(func(ctx web.Context) {}))
+	m := c.HandleGet("/index", web.FUNC(func(ctx web.Context) {}))
 	swagger.Path(m).WithDescription("welcome to go-spring")
 	web.RegisterSwaggerHandler(func(router web.Router, doc string) { fmt.Println(doc) })
 	_ = c.Start()

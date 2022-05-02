@@ -18,5 +18,6 @@ package internal
 
 // MongoClientConfig MongoDB 客户端配置，通常配合客户端名称前缀一起使用。
 type MongoClientConfig struct {
-	Url string `value:"${mongo.url:=mongodb://localhost}"`
+	Url  string `value:"${url:=mongodb://localhost}"`
+	Ping bool   `value:"${ping:=true}"` // 是否 PING 探测
 }

@@ -30,9 +30,9 @@ import (
 	"github.com/go-spring/spring-base/assert"
 	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-base/code"
-	"github.com/go-spring/spring-base/conf"
 	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-base/util"
+	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/gs/cond"
@@ -439,7 +439,7 @@ func TestApplicationContext_TypeConverter(t *testing.T) {
 	p := &PointBean{}
 	c.Object(p)
 
-	conf.Convert(PointConverter)
+	conf.RegisterConverter(PointConverter)
 	c.Property("point", "(7,5)")
 
 	dbConfig := &DbConfig{}
@@ -1729,7 +1729,7 @@ func TestApplicationContext_UserDefinedTypeProperty(t *testing.T) {
 
 	c := gs.New()
 
-	conf.Convert(func(v string) (level, error) {
+	conf.RegisterConverter(func(v string) (level, error) {
 		if v == "debug" {
 			return 1, nil
 		}
@@ -1864,7 +1864,31 @@ func NewVarObj(s string, options ...VarOptionFunc) *VarObj {
 	return &VarObj{opt.v, s}
 }
 
+func NewNilVarObj(i interface{}, options ...VarOptionFunc) *VarObj {
+	opt := new(VarOption)
+	for _, option := range options {
+		option(opt)
+	}
+	return &VarObj{opt.v, fmt.Sprint(i)}
+}
+
 func TestApplicationContext_RegisterOptionBean(t *testing.T) {
+
+	t.Run("nil param 0", func(t *testing.T) {
+		c := gs.New()
+		c.Property("var.obj", "description")
+		c.Object(&Var{"v1"}).Name("v1")
+		c.Object(&Var{"v2"}).Name("v2")
+		c.Provide(NewNilVarObj, arg.Nil())
+		err := runTest(c, func(p gs.Context) {
+			var obj *VarObj
+			err := p.Get(&obj)
+			assert.Nil(t, err)
+			assert.Equal(t, len(obj.v), 0)
+			assert.Equal(t, obj.s, "<nil>")
+		})
+		assert.Nil(t, err)
+	})
 
 	t.Run("variable option param 1", func(t *testing.T) {
 		c := gs.New()
@@ -2881,7 +2905,7 @@ func newCircularA(b *circularB) *circularA {
 }
 
 type circularB struct {
-	A *circularA `autowire:""`
+	A *circularA `autowire:",lazy"`
 }
 
 func newCircularB() *circularB {
@@ -2889,16 +2913,18 @@ func newCircularB() *circularB {
 }
 
 func TestLazy(t *testing.T) {
-	for i := 0; i < 20; i++ {
+	for i := 0; i < 1; i++ {
 		c := gs.New()
 		c.Provide(newCircularA)
 		c.Provide(newCircularB)
-		err := runTest(c, func(p gs.Context) {
-			var a *circularA
-			err := p.Get(&a)
-			assert.Nil(t, err)
-		})
+		d := struct {
+			b *circularB `autowire:""`
+		}{}
+		c.Object(&d)
+		err := c.Refresh()
 		assert.Nil(t, err)
+		assert.NotNil(t, d.b)
+		assert.NotNil(t, d.b.A)
 	}
 }
 

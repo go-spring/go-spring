@@ -14,18 +14,19 @@
  * limitations under the License.
  */
 
-package log
+package log_test
 
 import (
 	"fmt"
 	"testing"
 
 	"github.com/go-spring/spring-base/assert"
+	"github.com/go-spring/spring-base/log"
 )
 
 func TestCaller(t *testing.T) {
 	for i := 0; i < 2; i++ {
-		file, line, loaded := Caller(0, true)
+		file, line, loaded := log.Caller(0, true)
 		if i == 0 {
 			assert.False(t, loaded)
 		} else {
@@ -39,14 +40,14 @@ func BenchmarkCaller(b *testing.B) {
 
 	b.Run("fast", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			file, line, _ := Caller(0, true)
+			file, line, _ := log.Caller(0, true)
 			_ = fmt.Sprintf("%s:%d\n", file, line)
 		}
 	})
 
 	b.Run("slow", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			file, line, _ := Caller(0, false)
+			file, line, _ := log.Caller(0, false)
 			_ = fmt.Sprintf("%s:%d\n", file, line)
 		}
 	})

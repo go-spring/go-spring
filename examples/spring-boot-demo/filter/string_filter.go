@@ -29,7 +29,7 @@ func init() {
 type StringFilter struct{ s string }
 
 func (f *StringFilter) Invoke(ctx web.Context, chain web.FilterChain) {
-	ctxLogger := log.Ctx(ctx.Context())
+	ctxLogger := log.WithContext(ctx.Context())
 
 	defer func() { ctxLogger.Info("after ", f.s, " code:", ctx.ResponseWriter().Status()) }()
 	ctxLogger.Info("before ", f.s)

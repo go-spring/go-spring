@@ -8,4 +8,4 @@ command-line-runner:
 
 # 设置 starter 收集顺序
 application-event:
-  collection: "*,github.com/go-spring/starter-web/StarterWeb.Starter:Starter"
+  collection: "*"

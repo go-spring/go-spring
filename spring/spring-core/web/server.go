@@ -26,7 +26,6 @@ import (
 
 	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-base/knife"
-	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/internal"
 )
@@ -91,12 +90,6 @@ type Server interface {
 
 	// Stop 停止 web 服务器
 	Stop(ctx context.Context) error
-
-	// File 定义单个文件资源
-	File(path string, file string)
-
-	// Static 定义一组文件资源
-	Static(prefix string, root string)
 }
 
 type ServerHandler interface {
@@ -215,10 +208,10 @@ func (s *server) prepare() error {
 
 	// 打印所有的路由信息
 	for _, mapper := range s.Mappers() {
-		log.Infof("%v :%d %s -> %s:%d %s", func() []interface{} {
+		logger.Infof("%v :%d %s -> %s:%d %s", func() []interface{} {
 			method := GetMethod(mapper.method)
 			file, line, fnName := mapper.handler.FileLine()
-			return log.T(method, s.config.Port, mapper.path, file, line, fnName)
+			return util.T(method, s.config.Port, mapper.path, file, line, fnName)
 		})
 	}
 
@@ -239,13 +232,13 @@ func (s *server) Start() (err error) {
 		ReadTimeout:  time.Duration(s.config.ReadTimeout) * time.Millisecond,
 		WriteTimeout: time.Duration(s.config.WriteTimeout) * time.Millisecond,
 	}
-	log.Info("⇨ http server started on ", s.Address())
+	logger.Info("⇨ http server started on ", s.Address())
 	if !s.config.EnableSSL {
 		err = s.server.ListenAndServe()
 	} else {
 		err = s.server.ListenAndServeTLS(s.config.CertFile, s.config.KeyFile)
 	}
-	log.Infof("http server stopped on %s return %s", s.Address(), cast.ToString(err))
+	logger.Infof("http server stopped on %s return %s", s.Address(), cast.ToString(err))
 	return err
 }
 
@@ -254,35 +247,20 @@ func (s *server) Stop(ctx context.Context) error {
 	return s.server.Shutdown(ctx)
 }
 
-// File 定义单个文件资源
-func (s *server) File(path string, file string) {
-	s.router.GetMapping(path, func(ctx Context) {
-		ctx.File(file)
-	})
-}
-
-// Static 定义文件服务器
-func (s *server) Static(prefix string, root string) {
-	fileServer := http.FileServer(http.Dir(root))
-	h := WrapH(http.StripPrefix(prefix, fileServer))
-	s.router.HandleGet(prefix+"/*", h)
-}
-
 func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	writer := &BufferedResponseWriter{ResponseWriter: w, cache: true}
 	if ctx, cached := knife.New(r.Context()); !cached {
 		r = r.WithContext(ctx)
 	}
-	var prefilters []Filter
-	for _, f := range s.Prefilters() {
-		prefilters = append(prefilters, f)
-	}
-	prefilters = append(prefilters, s.LoggerFilter())
+	prefilters := append([]Filter{}, s.LoggerFilter())
 	errHandler := s.errHandler
 	if errHandler == nil {
 		errHandler = defaultErrorHandler
 	}
 	prefilters = append(prefilters, s.handler.RecoveryFilter(errHandler))
+	for _, f := range s.Prefilters() {
+		prefilters = append(prefilters, f)
+	}
 	prefilters = append(prefilters, HandlerFilter(WrapH(s.handler)))
 	NewFilterChain(prefilters).Next(NewBaseContext("", nil, r, writer))
 }

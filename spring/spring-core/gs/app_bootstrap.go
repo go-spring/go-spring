@@ -19,7 +19,7 @@ package gs
 import (
 	"reflect"
 
-	"github.com/go-spring/spring-base/conf"
+	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/gs/arg"
 )
 

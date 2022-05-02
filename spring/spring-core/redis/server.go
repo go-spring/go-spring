@@ -20,19 +20,17 @@ import (
 	"context"
 )
 
-const (
-	CommandFlushAll = "FLUSHALL"
-)
-
-type ServerCommand interface {
-
-	// FlushAll https://redis.io/commands/flushall
-	// Command: FLUSHALL [ASYNC|SYNC]
-	// Simple string reply
-	FlushAll(ctx context.Context, args ...interface{}) (string, error)
+type ServerOperations struct {
+	c *Client
 }
 
-func (c *BaseClient) FlushAll(ctx context.Context, args ...interface{}) (string, error) {
-	args = append([]interface{}{CommandFlushAll}, args...)
-	return c.String(ctx, args...)
+func NewServerOperations(c *Client) *ServerOperations {
+	return &ServerOperations{c: c}
+}
+
+// FlushAll https://redis.io/commands/flushall
+// Command: FLUSHALL [ASYNC|SYNC]
+// Simple string reply
+func (c *ServerOperations) FlushAll(ctx context.Context, args ...interface{}) (string, error) {
+	return c.c.String(ctx, "FLUSHALL", args...)
 }

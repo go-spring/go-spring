@@ -21,7 +21,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"reflect"
 	"sync"
 )
 
@@ -29,59 +28,50 @@ type ctxKeyType int
 
 var ctxKey ctxKeyType
 
-// ErrUninitialized context.Context 对象未初始化。
-var ErrUninitialized = errors.New("knife uninitialized")
-
 func cache(ctx context.Context) (*sync.Map, bool) {
 	m, ok := ctx.Value(ctxKey).(*sync.Map)
 	return m, ok
 }
 
-// New 返回带有缓存空间的 context.Context 对象，已经绑定缓存空间时 cached 返回 true 。
-func New(ctx context.Context) (dst context.Context, cached bool) {
+// New 返回带有缓存空间的 context.Context 对象，已绑定缓存空间时 cached 返回 true 。
+func New(ctx context.Context) (_ context.Context, cached bool) {
 	if _, ok := cache(ctx); ok {
 		return ctx, true
 	}
-	dst = context.WithValue(ctx, ctxKey, new(sync.Map))
-	return dst, false
+	ctx = context.WithValue(ctx, ctxKey, new(sync.Map))
+	return ctx, false
 }
 
-// Copy 拷贝 context.Context 对象中的内容到另一个 context.Context 对象。
-func Copy(src context.Context, keys ...string) (context.Context, error) {
-	dst, _ := New(context.Background())
-	m, ok := cache(src)
-	if !ok {
-		return dst, nil
-	}
-	var v interface{}
-	for _, key := range keys {
-		if v, ok = m.Load(key); ok {
-			if err := Set(dst, key, v); err != nil {
-				return nil, err
-			}
-		}
-	}
-	return dst, nil
-}
-
-// Get 从 context.Context 对象中获取 key 对应的 val。
-func Get(ctx context.Context, key string) (interface{}, bool) {
-	if m, ok := cache(ctx); ok {
-		return m.Load(key)
-	}
-	return nil, false
-}
-
-// Set 将 key 及其 val 保存到 context.Context 对象。
-func Set(ctx context.Context, key string, val interface{}) error {
+// Load 从 context.Context 对象中获取 key 对应的 val。
+func Load(ctx context.Context, key string) (interface{}, error) {
 	m, ok := cache(ctx)
 	if !ok {
-		return ErrUninitialized
+		return nil, errors.New("knife uninitialized")
+	}
+	v, _ := m.Load(key)
+	return v, nil
+}
+
+// Store 将 key 及其 val 保存到 context.Context 对象。
+func Store(ctx context.Context, key string, val interface{}) error {
+	m, ok := cache(ctx)
+	if !ok {
+		return errors.New("knife uninitialized")
 	}
 	if _, loaded := m.LoadOrStore(key, val); loaded {
 		return fmt.Errorf("duplicate key %s", key)
 	}
 	return nil
+}
+
+// LoadOrStore 将 key 及其 val 保存到 context.Context 对象。
+func LoadOrStore(ctx context.Context, key string, val interface{}) (actual interface{}, loaded bool, err error) {
+	m, ok := cache(ctx)
+	if !ok {
+		return nil, false, errors.New("knife uninitialized")
+	}
+	actual, loaded = m.LoadOrStore(key, val)
+	return
 }
 
 // Delete 从 context.Context 对象中删除 key 及其对应的 val 。
@@ -98,21 +88,26 @@ func Range(ctx context.Context, f func(key, value interface{}) bool) {
 	}
 }
 
-// Fetch 从 context.Context 对象中获取 key 对应的 val。
-func Fetch(ctx context.Context, key string, out interface{}) (bool, error) {
-	ov := reflect.ValueOf(out)
-	if ov.Kind() != reflect.Ptr || ov.IsNil() {
-		return false, errors.New("out should be ptr and not nil")
-	}
-	v, ok := Get(ctx, key)
+// Copy 拷贝 context.Context 对象中的内容到另一个 context.Context 对象。
+func Copy(src context.Context, keys ...string) (context.Context, error) {
+	srcMap, ok := cache(src)
 	if !ok {
-		return false, nil
+		return nil, errors.New("knife uninitialized")
 	}
-	ev := ov.Elem()
-	rv := reflect.ValueOf(v)
-	if rv.Type() != ev.Type() {
-		return false, fmt.Errorf("want %s but got %T", ev.Type(), v)
+	dest, _ := New(context.Background())
+	destMap, _ := cache(dest)
+	if len(keys) == 0 {
+		srcMap.Range(func(key, value interface{}) bool {
+			destMap.Store(key, value)
+			return true
+		})
+	} else {
+		for _, key := range keys {
+			var v interface{}
+			if v, ok = srcMap.Load(key); ok {
+				destMap.Store(key, v)
+			}
+		}
 	}
-	ev.Set(rv)
-	return true, nil
+	return dest, nil
 }

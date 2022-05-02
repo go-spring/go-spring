@@ -24,7 +24,7 @@ function run(){
         case $2 in
           "test")
             # 执行当前目录及子目录下的测试用例
-            go test -count=1 ./... ;;
+            go test -race -count=1 ./... ;;
           "lint")
             # https://github.com/golangci/golangci-lint
             golangci-lint run ;;

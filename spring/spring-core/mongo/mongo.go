@@ -18,4 +18,5 @@ package mongo
 
 import "github.com/go-spring/spring-core/internal"
 
+// ClientConfig 客户端配置。
 type ClientConfig = internal.MongoClientConfig

@@ -21,7 +21,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/go-spring/spring-base/conf"
+	"github.com/go-spring/spring-core/conf"
 )
 
 // EnvPrefix 属性覆盖的环境变量需要携带该前缀。
@@ -38,7 +38,7 @@ type configuration struct {
 
 	resourceLocator  ResourceLocator
 	ActiveProfiles   []string `value:"${spring.profiles.active:=}"`
-	ConfigExtensions []string `value:"${spring.config.extensions:=.properties,.prop,.yaml,.yml,.toml,.tml}"`
+	ConfigExtensions []string `value:"${spring.config.extensions:=.properties,.yaml,.yml,.toml,.tml}"`
 }
 
 // loadCmdArgs 加载 -name value 形式的命令行参数。

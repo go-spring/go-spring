@@ -24,44 +24,36 @@ import (
 	"github.com/go-spring/spring-base/knife"
 )
 
-func TestGet(t *testing.T) {
+func TestCocache(t *testing.T) {
 	ctx := context.Background()
 
-	v, ok := knife.Get(ctx, "a")
-	assert.False(t, ok)
+	v, err := knife.Load(ctx, "a")
+	assert.Error(t, err, "knife uninitialized")
 
-	err := knife.Set(ctx, "a", "b")
-	assert.Equal(t, err, knife.ErrUninitialized)
+	err = knife.Store(ctx, "a", "b")
+	assert.Error(t, err, "knife uninitialized")
 
-	v, ok = knife.Get(ctx, "a")
-	assert.False(t, ok)
+	v, err = knife.Load(ctx, "a")
+	assert.Error(t, err, "knife uninitialized")
 
 	ctx, cached := knife.New(ctx)
 	assert.False(t, cached)
 
-	v, ok = knife.Get(ctx, "a")
-	assert.False(t, ok)
+	v, err = knife.Load(ctx, "a")
+	assert.Nil(t, err)
+	assert.Nil(t, v)
 
-	err = knife.Set(ctx, "a", "b")
+	err = knife.Store(ctx, "a", "b")
 	assert.Nil(t, err)
 
-	v, ok = knife.Get(ctx, "a")
+	v, err = knife.Load(ctx, "a")
+	assert.Nil(t, err)
 	assert.Equal(t, v, "b")
-}
 
-func TestFetch(t *testing.T) {
-	ctx, cached := knife.New(context.Background())
-	assert.False(t, cached)
+	ctx, cached = knife.New(ctx)
+	assert.True(t, cached)
 
-	err := knife.Set(ctx, "a", map[string]string{"b": "c"})
+	v, err = knife.Load(ctx, "a")
 	assert.Nil(t, err)
-
-	var m map[string]string
-	ok, err := knife.Fetch(ctx, "a", &m)
-	assert.True(t, ok)
-
-	var b bool
-	ok, err = knife.Fetch(ctx, "a", &b)
-	assert.False(t, ok)
-	assert.Error(t, err, "want bool but got map\\[string]string")
+	assert.Equal(t, v, "b")
 }

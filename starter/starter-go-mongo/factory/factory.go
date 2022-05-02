@@ -20,32 +20,31 @@ import (
 	"context"
 
 	"github.com/go-spring/spring-base/log"
-	"github.com/go-spring/spring-core/conf"
-	"go.mongodb.org/mongo-driver/mongo"
+	"github.com/go-spring/spring-core/mongo"
+	g "go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
 )
 
 // NewClient 创建 MongoDB 客户端
-func NewClient(config conf.MongoClientConfig) (*mongo.Client, error) {
-	log.Info("open mongo db ", config.Url)
-	ctx := context.Background()
-
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(config.Url))
+func NewClient(config mongo.ClientConfig) (*g.Client, error) {
+	log.Infof("open mongo db %s", config.Url)
+	client, err := g.Connect(context.Background(), options.Client().ApplyURI(config.Url))
 	if err != nil {
 		return nil, err
 	}
-
-	if err = client.Ping(ctx, readpref.Primary()); err != nil {
-		return nil, err
+	if config.Ping {
+		if err = client.Ping(context.Background(), readpref.Primary()); err != nil {
+			return nil, err
+		}
 	}
 	return client, err
 }
 
 // CloseClient 关闭 MongoDB 客户端
-func CloseClient(client *mongo.Client) {
+func CloseClient(client *g.Client) {
 	log.Info("close mongo db")
 	if err := client.Disconnect(context.Background()); err != nil {
-		log.Error(err)
+		log.Error(nil, err)
 	}
 }

@@ -45,6 +45,9 @@ Following information can help us to resolve the issue faster.
 
 ## 编程规约
 
+* 禁止导出全局变量。
+* 错误分支优先处理，不要进行 err==nil 判断。
+* ~~ 所有的抽象封装都必须使用桥接模式实现。
 * 慎用嵌套(继承)，避免暴露不必要的方法。
 * 限制每行长度最大不超过 100 个字符。
 * 放心使用选项模式。
@@ -55,6 +58,10 @@ Following information can help us to resolve the issue faster.
 * 几乎所有的 panic 都应该打印其调用栈。
 * 和包名同名的文件作为了解包的入口。
 * 类型或函数的内容较短时也不能写在一行上，必须换行。
+* client 类型 starter 必须具有名字、排除同名同类型的 bean。
+* 有共同抽象的 starter 实现使用相同的属性前缀，否则使用自身前缀。
+* 在回放和测试模式下，尽量通过 panic 减少错误处理。
+* 在录制模式下，通过打印日志的方式避免对主流程产生影响。
 
 ## 注释
 
@@ -78,3 +85,7 @@ Following information can help us to resolve the issue faster.
 ## 实战
 
 * 原型 bean 可以使用工厂模式进行注入，高并发场景下应该使用缓存以提高效率。
+
+## Commit message format
+
+项目名/模块名: 提交信息，可以多行。

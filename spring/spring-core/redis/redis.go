@@ -17,190 +17,96 @@
 package redis
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"strconv"
-	"strings"
 
-	"github.com/go-spring/spring-base/cast"
-	"github.com/go-spring/spring-base/chrono"
-	"github.com/go-spring/spring-base/fastdev"
-	"github.com/go-spring/spring-base/fastdev/json"
+	"github.com/go-spring/spring-base/net/recorder"
+	"github.com/go-spring/spring-base/net/replayer"
 	"github.com/go-spring/spring-core/internal"
 )
 
-const OK = "OK"
+var (
+	errNil = errors.New("redis: nil")
+)
 
-var ErrNil = errors.New("redis: nil")
-
-type Client interface {
-	DoCommand
-	KeyCommand
-	BitmapCommand
-	StringCommand
-	HashCommand
-	ListCommand
-	SetCommand
-	ZSetCommand
-	ServerCommand
+func IsOK(s string) bool {
+	return "OK" == s
 }
 
-type DoCommand interface {
-	Int(ctx context.Context, args ...interface{}) (int, error)
-	Int64(ctx context.Context, args ...interface{}) (int64, error)
-	Float64(ctx context.Context, args ...interface{}) (float64, error)
-	String(ctx context.Context, args ...interface{}) (string, error)
-	Slice(ctx context.Context, args ...interface{}) ([]interface{}, error)
-	Int64Slice(ctx context.Context, args ...interface{}) ([]int64, error)
-	Float64Slice(ctx context.Context, args ...interface{}) ([]float64, error)
-	StringSlice(ctx context.Context, args ...interface{}) ([]string, error)
-	StringMap(ctx context.Context, args ...interface{}) (map[string]string, error)
-	ZItemSlice(ctx context.Context, args ...interface{}) ([]ZItem, error)
+func ErrNil() error {
+	return errNil
 }
 
-type Hook struct {
-	BeforeDoFunc func(ctx context.Context, args []interface{}) (err error)
-	AfterDoFunc  func(ctx context.Context, args []interface{}, ret interface{}, err error)
+func IsErrNil(err error) bool {
+	return errors.Is(err, errNil)
 }
 
-var hook Hook
+type Config = internal.RedisClientConfig
 
-// SetHook 设置钩子方法。
-func SetHook(h Hook) {
-	hook = h
+type Client struct {
+	conn ConnPool
+
+	opsForKey    *KeyOperations
+	opsForBitmap *BitmapOperations
+	opsForString *StringOperations
+	opsForHash   *HashOperations
+	opsForList   *ListOperations
+	opsForSet    *SetOperations
+	opsForZSet   *ZSetOperations
+	opsForServer *ServerOperations
 }
 
-type ClientConfig internal.RedisClientConfig
-
-type BaseClient struct {
-	DoFunc func(ctx context.Context, args ...interface{}) (interface{}, error)
-}
-
-// needQuote 判断是否需要双引号包裹。
-func needQuote(s string) bool {
-	for _, c := range s {
-		switch c {
-		case '"', '\t', '\n', '\v', '\f', '\r', ' ', 0x85, 0xA0:
-			return true
-		}
+func NewClient(conn ConnPool) (*Client, error) {
+	if recorder.RecordMode() {
+		conn = &recordConn{conn: conn}
 	}
-	return len(s) == 0
+	if replayer.ReplayMode() {
+		conn = &replayConn{conn: conn}
+	}
+	c := &Client{conn: conn}
+	c.opsForKey = NewKeyOperations(c)
+	c.opsForBitmap = NewBitmapOperations(c)
+	c.opsForString = NewStringOperations(c)
+	c.opsForHash = NewHashOperations(c)
+	c.opsForList = NewListOperations(c)
+	c.opsForSet = NewSetOperations(c)
+	c.opsForZSet = NewZSetOperations(c)
+	c.opsForServer = NewServerOperations(c)
+	return c, nil
 }
 
-func quoteString(s string) string {
-	if needQuote(s) || json.NeedQuote(s) {
-		return json.Quote(s)
-	}
-	return s
+func (c *Client) OpsForKey() *KeyOperations {
+	return c.opsForKey
 }
 
-func cmdString(args []interface{}) string {
-	var buf bytes.Buffer
-	for i, arg := range args {
-		switch s := arg.(type) {
-		case string:
-			buf.WriteString(quoteString(s))
-		default:
-			buf.WriteString(cast.ToString(arg))
-		}
-		if i < len(args)-1 {
-			buf.WriteByte(' ')
-		}
-	}
-	return buf.String()
+func (c *Client) OpsForBitmap() *BitmapOperations {
+	return c.opsForBitmap
 }
 
-type transform func(interface{}, error) (interface{}, error)
-
-func (c *BaseClient) do(ctx context.Context, args []interface{}, trans transform) (ret interface{}, err error) {
-
-	var timeNow int64
-	if fastdev.RecordMode() {
-		timeNow = chrono.Now(ctx).UnixNano()
-	}
-
-	defer func() {
-		if fastdev.RecordMode() {
-			var resp interface{}
-			if err == nil {
-				resp = ret
-			} else if err == ErrNil {
-				resp = "(nil)"
-			} else {
-				resp = "(err) " + err.Error()
-			}
-			fastdev.RecordAction(ctx, &fastdev.Action{
-				Protocol:  fastdev.REDIS,
-				Request:   cmdString(args),
-				Response:  resp,
-				Timestamp: timeNow,
-			})
-		}
-	}()
-
-	if hook.BeforeDoFunc != nil {
-		if err := hook.BeforeDoFunc(ctx, args); err != nil {
-			return nil, err
-		}
-	}
-
-	defer func() {
-		if hook.AfterDoFunc != nil {
-			hook.AfterDoFunc(ctx, args, ret, err)
-		}
-	}()
-
-	if fastdev.ReplayMode() {
-		action := &fastdev.Action{
-			Protocol: fastdev.REDIS,
-			Request:  cmdString(args),
-		}
-		var ok bool
-		ok, err = fastdev.ReplayAction(ctx, action)
-		if err != nil {
-			return nil, err
-		}
-		if !ok {
-			return nil, errors.New("replay action not match")
-		}
-		if action.Response == "(nil)" {
-			return nil, ErrNil
-		} else {
-			var s string
-			s, ok = action.Response.(string)
-			if ok {
-				if strings.HasPrefix(s, "(err) ") {
-					return nil, errors.New(strings.TrimPrefix(s, "(err) "))
-				}
-			}
-		}
-		return action.Response, nil
-	}
-
-	if trans == nil {
-		return c.DoFunc(ctx, args...)
-	}
-	return trans(c.DoFunc(ctx, args...))
+func (c *Client) OpsForString() *StringOperations {
+	return c.opsForString
 }
 
-func toInt(v interface{}, err error) (int, error) {
-	if err != nil {
-		return 0, err
-	}
-	switch r := v.(type) {
-	case int64:
-		return int(r), nil
-	case float64:
-		return int(r), nil
-	default:
-		return 0, fmt.Errorf("redis: unexpected type %T for int64", v)
-	}
+func (c *Client) OpsForHash() *HashOperations {
+	return c.opsForHash
 }
 
-func (c *BaseClient) Int(ctx context.Context, args ...interface{}) (int, error) {
-	return toInt(c.do(ctx, args, nil))
+func (c *Client) OpsForList() *ListOperations {
+	return c.opsForList
+}
+
+func (c *Client) OpsForSet() *SetOperations {
+	return c.opsForSet
+}
+
+func (c *Client) OpsForZSet() *ZSetOperations {
+	return c.opsForZSet
+}
+
+func (c *Client) OpsForServer() *ServerOperations {
+	return c.opsForServer
 }
 
 func toInt64(v interface{}, err error) (int64, error) {
@@ -212,13 +118,20 @@ func toInt64(v interface{}, err error) (int64, error) {
 		return r, nil
 	case float64:
 		return int64(r), nil
+	case string:
+		return strconv.ParseInt(r, 10, 64)
+	case *replayResult:
+		if len(r.data) == 0 {
+			return 0, fmt.Errorf("redis: no data")
+		}
+		return toInt64(r.data[0], nil)
 	default:
 		return 0, fmt.Errorf("redis: unexpected type %T for int64", v)
 	}
 }
 
-func (c *BaseClient) Int64(ctx context.Context, args ...interface{}) (int64, error) {
-	return toInt64(c.do(ctx, args, nil))
+func (c *Client) Int(ctx context.Context, cmd string, args ...interface{}) (int64, error) {
+	return toInt64(c.conn.Exec(ctx, cmd, args))
 }
 
 func toFloat64(v interface{}, err error) (float64, error) {
@@ -232,13 +145,18 @@ func toFloat64(v interface{}, err error) (float64, error) {
 		return float64(r), nil
 	case string:
 		return strconv.ParseFloat(r, 64)
+	case *replayResult:
+		if len(r.data) == 0 {
+			return 0, fmt.Errorf("redis: no data")
+		}
+		return toFloat64(r.data[0], nil)
 	default:
 		return 0, fmt.Errorf("redis: unexpected type=%T for float64", r)
 	}
 }
 
-func (c *BaseClient) Float64(ctx context.Context, args ...interface{}) (float64, error) {
-	return toFloat64(c.do(ctx, args, nil))
+func (c *Client) Float(ctx context.Context, cmd string, args ...interface{}) (float64, error) {
+	return toFloat64(c.conn.Exec(ctx, cmd, args))
 }
 
 func toString(v interface{}, err error) (string, error) {
@@ -248,13 +166,18 @@ func toString(v interface{}, err error) (string, error) {
 	switch r := v.(type) {
 	case string:
 		return r, nil
+	case *replayResult:
+		if len(r.data) == 0 {
+			return "", fmt.Errorf("redis: no data")
+		}
+		return r.data[0], nil
 	default:
 		return "", fmt.Errorf("redis: unexpected type %T for string", v)
 	}
 }
 
-func (c *BaseClient) String(ctx context.Context, args ...interface{}) (string, error) {
-	return toString(c.do(ctx, args, nil))
+func (c *Client) String(ctx context.Context, cmd string, args ...interface{}) (string, error) {
+	return toString(c.conn.Exec(ctx, cmd, args))
 }
 
 func toSlice(v interface{}, err error) ([]interface{}, error) {
@@ -264,13 +187,25 @@ func toSlice(v interface{}, err error) ([]interface{}, error) {
 	switch r := v.(type) {
 	case []interface{}:
 		return r, nil
+	case []string:
+		var slice []interface{}
+		for _, str := range r {
+			if str == "NULL" {
+				slice = append(slice, nil)
+			} else {
+				slice = append(slice, str)
+			}
+		}
+		return slice, nil
+	case *replayResult:
+		return toSlice(r.data, nil)
 	default:
 		return nil, fmt.Errorf("redis: unexpected type %T for []interface{}", v)
 	}
 }
 
-func (c *BaseClient) Slice(ctx context.Context, args ...interface{}) ([]interface{}, error) {
-	return toSlice(c.do(ctx, args, nil))
+func (c *Client) Slice(ctx context.Context, cmd string, args ...interface{}) ([]interface{}, error) {
+	return toSlice(c.conn.Exec(ctx, cmd, args))
 }
 
 func toInt64Slice(v interface{}, err error) ([]int64, error) {
@@ -290,8 +225,8 @@ func toInt64Slice(v interface{}, err error) ([]int64, error) {
 	return val, nil
 }
 
-func (c *BaseClient) Int64Slice(ctx context.Context, args ...interface{}) ([]int64, error) {
-	return toInt64Slice(c.do(ctx, args, nil))
+func (c *Client) IntSlice(ctx context.Context, cmd string, args ...interface{}) ([]int64, error) {
+	return toInt64Slice(c.conn.Exec(ctx, cmd, args))
 }
 
 func toFloat64Slice(v interface{}, err error) ([]float64, error) {
@@ -311,8 +246,8 @@ func toFloat64Slice(v interface{}, err error) ([]float64, error) {
 	return val, nil
 }
 
-func (c *BaseClient) Float64Slice(ctx context.Context, args ...interface{}) ([]float64, error) {
-	return toFloat64Slice(c.do(ctx, args, nil))
+func (c *Client) FloatSlice(ctx context.Context, cmd string, args ...interface{}) ([]float64, error) {
+	return toFloat64Slice(c.conn.Exec(ctx, cmd, args))
 }
 
 func toStringSlice(v interface{}, err error) ([]string, error) {
@@ -332,100 +267,51 @@ func toStringSlice(v interface{}, err error) ([]string, error) {
 	return val, nil
 }
 
-func (c *BaseClient) StringSlice(ctx context.Context, args ...interface{}) ([]string, error) {
-	return toStringSlice(c.do(ctx, args, nil))
+func (c *Client) StringSlice(ctx context.Context, cmd string, args ...interface{}) ([]string, error) {
+	return toStringSlice(c.conn.Exec(ctx, cmd, args))
 }
 
 func toStringMap(v interface{}, err error) (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	switch r := v.(type) {
-	case map[string]string:
-		return r, nil
-	case map[string]interface{}:
-		ret := make(map[string]string)
-		for key, val := range r {
-			var str string
-			str, err = toString(val, nil)
-			if err != nil {
-				return nil, err
-			}
-			ret[key] = str
-		}
-		return ret, nil
-	default:
-		return nil, fmt.Errorf("redis: unexpected type %T for map[string]string", v)
+	slice, err := toStringSlice(v, err)
+	if err != nil {
+		return nil, err
 	}
+	val := make(map[string]string, len(slice)/2)
+	for i := 0; i < len(slice); i += 2 {
+		val[slice[i]] = slice[i+1]
+	}
+	return val, nil
 }
 
-func (c *BaseClient) StringMap(ctx context.Context, args ...interface{}) (map[string]string, error) {
-	return toStringMap(c.do(ctx, args, func(v interface{}, err error) (interface{}, error) {
-		slice, err := toStringSlice(v, err)
-		if err != nil {
-			return nil, err
-		}
-		val := make(map[string]string, len(slice)/2)
-		for i := 0; i < len(slice); i += 2 {
-			val[slice[i]] = slice[i+1]
-		}
-		return val, nil
-	}))
+func (c *Client) StringMap(ctx context.Context, cmd string, args ...interface{}) (map[string]string, error) {
+	return toStringMap(c.conn.Exec(ctx, cmd, args))
 }
 
 func toZItemSlice(v interface{}, err error) ([]ZItem, error) {
 	if err != nil {
 		return nil, err
 	}
-	switch r := v.(type) {
-	case [][]string:
-		val := make([]ZItem, len(r))
-		for i := 0; i < len(val); i++ {
-			var score float64
-			score, err = toFloat64(r[i][1], nil)
-			if err != nil {
-				return nil, err
-			}
-			val[i].Member = r[i][0]
-			val[i].Score = score
-		}
-		return val, nil
-	case []interface{}:
-		val := make([]ZItem, len(r))
-		for i := 0; i < len(val); i++ {
-			var slice []interface{}
-			slice, err = toSlice(r[i], nil)
-			if err != nil {
-				return nil, err
-			}
-			if len(slice) != 2 {
-				return nil, errors.New("redis: error replay data")
-			}
-			var score float64
-			score, err = toFloat64(slice[1], nil)
-			if err != nil {
-				return nil, err
-			}
-			val[i].Member = slice[0]
-			val[i].Score = score
-		}
-		return val, nil
-	default:
-		return nil, fmt.Errorf("redis: unexpected type %T for []ZItem", v)
+	slice, err := toStringSlice(v, err)
+	if err != nil {
+		return nil, err
 	}
-}
-
-func (c *BaseClient) ZItemSlice(ctx context.Context, args ...interface{}) ([]ZItem, error) {
-	return toZItemSlice(c.do(ctx, args, func(v interface{}, err error) (interface{}, error) {
-		slice, err := toStringSlice(v, err)
+	val := make([]ZItem, len(slice)/2)
+	for i := 0; i < len(val); i++ {
+		idx := i * 2
+		var score float64
+		score, err = toFloat64(slice[idx+1], nil)
 		if err != nil {
 			return nil, err
 		}
-		val := make([][]string, len(slice)/2)
-		for i := 0; i < len(val); i++ {
-			idx := i * 2
-			val[i] = []string{slice[idx], slice[idx+1]}
-		}
-		return val, nil
-	}))
+		val[i].Member = slice[idx]
+		val[i].Score = score
+	}
+	return val, nil
+}
+
+func (c *Client) ZItemSlice(ctx context.Context, cmd string, args ...interface{}) ([]ZItem, error) {
+	return toZItemSlice(c.conn.Exec(ctx, cmd, args))
 }
