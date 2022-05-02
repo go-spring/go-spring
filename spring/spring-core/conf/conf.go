@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-// Package conf 提供读取属性列表的方法，并且通过扩展机制支持各种格式的属性文件。
+// Package conf reads configuration from any format file, including Java
+// properties, yaml, toml, etc.
 package conf
 
 import (
@@ -27,16 +28,95 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/go-spring/spring-base/cast"
+	"github.com/go-spring/spring-base/util"
+	"github.com/go-spring/spring-core/conf/prop"
+	"github.com/go-spring/spring-core/conf/toml"
+	"github.com/go-spring/spring-core/conf/yaml"
+)
+
+// Converter 类型转换器，函数原型为 func(string)(type,error)。
+type Converter interface{}
+
+// Splitter 字符串分割器，用于将字符串按逗号分割成字符串切片。
+type Splitter func(string) ([]string, error)
+
+// Reader 属性列表解析器，将字节数组解析成 map 数据。
+type Reader func(b []byte) (map[string]interface{}, error)
+
+var (
+	readers    = map[string]Reader{}
+	splitters  = map[string]Splitter{}
+	converters = map[reflect.Type]Converter{}
 )
 
 func init() {
-	RegisterConverter(TimeConverter)
-	RegisterConverter(DurationConverter)
+
+	RegisterReader(prop.Read, ".properties")
+	RegisterReader(yaml.Read, ".yaml", ".yml")
+	RegisterReader(toml.Read, ".toml", ".tml")
+
+	// 日期转换函数，支持时间戳格式，支持日期字符串(日期字符串>>日期字符串的格式)。
+	RegisterConverter(func(s string) (time.Time, error) {
+		format := "2006-01-02 15:04:05 -0700"
+		if ss := strings.Split(s, ">>"); len(ss) == 2 {
+			format = strings.TrimSpace(ss[1])
+			s = strings.TrimSpace(ss[0])
+		}
+		return cast.ToTimeE(s, format)
+	})
+
+	// 时长转换函数，支持 "ns", "us" (or "µs"), "ms", "s", "m", "h" 等。
+	RegisterConverter(func(s string) (time.Duration, error) {
+		return cast.ToDurationE(s)
+	})
 }
 
-// Properties 提供创建和读取属性列表的方法。它使用扁平的 map[string]string 结
+// RegisterReader 注册属性列表解析器，ext 是解析器支持的文件扩展名。
+func RegisterReader(r Reader, ext ...string) {
+	for _, s := range ext {
+		readers[s] = r
+	}
+}
+
+// RegisterSplitter 注册字符串分割器。
+func RegisterSplitter(name string, fn Splitter) {
+	splitters[name] = fn
+}
+
+func validConverter(t reflect.Type) bool {
+	return t.Kind() == reflect.Func &&
+		t.NumIn() == 1 &&
+		t.In(0).Kind() == reflect.String &&
+		t.NumOut() == 2 &&
+		IsValueType(t.Out(0)) &&
+		util.IsErrorType(t.Out(1))
+}
+
+// RegisterConverter 注册类型转换器。
+func RegisterConverter(fn interface{}) {
+	t := reflect.TypeOf(fn)
+	if !validConverter(t) {
+		panic(errors.New("fn must be func(string)(type,error)"))
+	}
+	converters[t.Out(0)] = fn
+}
+
+// Properties There are too many formats of configuration files, and too many
+// conflicts between them. Each format of configuration file provides its special
+// characteristics, but usually they are not all necessary, and complementary. For
+// example, conf disabled Java properties' expansion when reading file, but it also
+// provides similar function when getting properties.
+// A good rule of thumb is that treating application configuration as a tree, but not
+// all formats of configuration files designed like this or not ideal, such as Java
+// properties which not strictly verified. Although configuration can store as a tree,
+// but it costs more CPU time when getting properties because it reads property node
+// by node. So conf uses a tree to strictly verify and a flat map to store.
+//
+//
+//提供创建和读取属性列表的方法。它使用扁平的 map[string]string 结
 // 构存储数据，属性的 key 可以是 a.b.c 或者 a[0].b 两种形式，a.b.c 表示从 map
 // 结构中获取属性值，a[0].b 表示从切片结构中获取属性值，并且 key 是大小写敏感的。
 type Properties struct {

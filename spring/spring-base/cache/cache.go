@@ -40,6 +40,7 @@ const (
 	LoadBack                  // 从用户回调中获取
 )
 
+// TODO 可以增加分片功能，并发度较高时可以进一步提高性能。
 var cache = &sync.Map{}
 
 // InvalidateAll 删除所有缓存值，只用于单元测试。

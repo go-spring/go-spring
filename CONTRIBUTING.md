@@ -85,3 +85,7 @@ Following information can help us to resolve the issue faster.
 ## 实战
 
 * 原型 bean 可以使用工厂模式进行注入，高并发场景下应该使用缓存以提高效率。
+
+## Commit message format
+
+项目名/模块名: 提交信息，可以多行。

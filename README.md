@@ -430,6 +430,10 @@ Unauthorized
 
 为了更好地吸引和激励开发者，我们需要您的捐赠，帮助项目快速发展。
 
+### 特别鸣谢！
+
+感谢 JetBrains 公司的 IntelliJ IDEA 产品提供方便快捷的代码编辑和测试环境。
+
 ### License
 
 The Go-Spring is released under version 2.0 of the Apache License.
