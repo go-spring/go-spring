@@ -32,15 +32,15 @@ type runner struct {
 
 func (r *runner) Run(ctx gs.Context) {
 
-	_, err := r.Client.Get(ctx.Context(), "nonexisting")
+	_, err := r.Client.OpsForString().Get(ctx.Context(), "nonexisting")
 	if !redis.IsErrNil(err) {
 		panic(errors.New("should be redis.ErrNil"))
 	}
 
-	_, err = r.Client.Set(ctx.Context(), "mykey", "Hello")
+	_, err = r.Client.OpsForString().Set(ctx.Context(), "mykey", "Hello")
 	util.Panic(err).When(err != nil)
 
-	v, err := r.Client.Get(ctx.Context(), "mykey")
+	v, err := r.Client.OpsForString().Get(ctx.Context(), "mykey")
 	util.Panic(err).When(err != nil)
 	if v != "Hello" {
 		panic(errors.New("should be \"Hello\""))
