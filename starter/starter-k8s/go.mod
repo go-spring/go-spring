@@ -3,7 +3,7 @@ module github.com/go-spring/starter-grpc
 go 1.14
 
 require (
-	github.com/go-spring/spring-core v1.1.0-rc3.0.20220504021535-bb85dfe5bd69
+	github.com/go-spring/spring-core v1.1.0-rc4
 	github.com/spf13/viper v1.6.1
 )
 
