@@ -113,7 +113,7 @@ func Process(ctx context.Context) {
 		if body, e := ioutil.ReadAll(resp.Body); e != nil {
 			panic(e)
 		} else {
-			log.Infof("resp code=%d body=%s", resp.StatusCode, string(body))
+			log.Infof("resp code=%d body=(banner.txt)\n%s", resp.StatusCode, string(body))
 		}
 	}
 }
