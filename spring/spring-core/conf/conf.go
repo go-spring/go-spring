@@ -120,27 +120,27 @@ func RegisterConverter(fn interface{}) {
 // 构存储数据，属性的 key 可以是 a.b.c 或者 a[0].b 两种形式，a.b.c 表示从 map
 // 结构中获取属性值，a[0].b 表示从切片结构中获取属性值，并且 key 是大小写敏感的。
 type Properties struct {
-	m map[string]string      // 一维，存储 key 和 value。
-	t map[string]interface{} // 树形，存储 key 的节点路由。
+	data map[string]string      // stores key and value.
+	tree map[string]interface{} // stores split key path.
 }
 
-// New 返回一个空的属性列表。
+// New creates an empty *Properties.
 func New() *Properties {
 	return &Properties{
-		m: make(map[string]string),
-		t: make(map[string]interface{}),
+		data: make(map[string]string),
+		tree: make(map[string]interface{}),
 	}
 }
 
-// Map 返回一个由 map 创建的属性列表。
-func Map(m map[string]interface{}) *Properties {
+// Map creates a *Properties which filled by a map data.
+func Map(m map[string]interface{}) (*Properties, error) {
 	p := New()
 	for k, v := range m {
 		if err := p.Set(k, v); err != nil {
-			return nil
+			return nil, err
 		}
 	}
-	return p
+	return p, nil
 }
 
 // Load 返回一个由属性文件创建的属性列表，file 可以是绝对路径，也可以是相对路径。
@@ -207,8 +207,8 @@ func (p *Properties) Bytes(b []byte, ext string) error {
 
 // Keys 返回所有属性 key 的列表。
 func (p *Properties) Keys() []string {
-	keys := make([]string, 0, len(p.m))
-	for k := range p.m {
+	keys := make([]string, 0, len(p.data))
+	for k := range p.data {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
@@ -238,7 +238,7 @@ func (p *Properties) checkKey(key string, collection bool) (exist bool, err erro
 		t  map[string]interface{}
 	)
 
-	t = p.t
+	t = p.tree
 	exist = true
 	key = p.convertKey(key)
 	keyPath := strings.Split(key, ".")
@@ -286,7 +286,7 @@ func (p *Properties) Has(key string) bool {
 		t  map[string]interface{}
 	)
 
-	t = p.t
+	t = p.tree
 	key = p.convertKey(key)
 	keyPath := strings.Split(key, ".")
 	for i, s := range keyPath {
@@ -328,7 +328,7 @@ func Def(v string) GetOption {
 // 当 key 对应的属性值不存在且没有设置默认值时 Get 方法返回 nil。因此可以通过判断
 // Get 方法的返回值是否为 nil 来判断 key 对应的属性值是否存在。
 func (p *Properties) Get(key string, opts ...GetOption) string {
-	if val, ok := p.m[key]; ok {
+	if val, ok := p.data[key]; ok {
 		return val
 	}
 	arg := getArg{}
@@ -352,7 +352,7 @@ func (p *Properties) Set(key string, val interface{}) error {
 			return err
 		}
 		if v.Len() == 0 && !exist {
-			p.m[key] = ""
+			p.data[key] = ""
 			return nil
 		}
 		for _, k := range v.MapKeys() {
@@ -363,8 +363,8 @@ func (p *Properties) Set(key string, val interface{}) error {
 				return err
 			}
 		}
-		if _, ok := p.m[key]; ok {
-			delete(p.m, key)
+		if _, ok := p.data[key]; ok {
+			delete(p.data, key)
 		}
 	case reflect.Array, reflect.Slice:
 		exist, err := p.checkKey(key, true)
@@ -372,7 +372,7 @@ func (p *Properties) Set(key string, val interface{}) error {
 			return err
 		}
 		if v.Len() == 0 && !exist {
-			p.m[key] = ""
+			p.data[key] = ""
 			return nil
 		}
 		for i := 0; i < v.Len(); i++ {
@@ -383,15 +383,15 @@ func (p *Properties) Set(key string, val interface{}) error {
 				return err
 			}
 		}
-		if _, ok := p.m[key]; ok {
-			delete(p.m, key)
+		if _, ok := p.data[key]; ok {
+			delete(p.data, key)
 		}
 	default:
 		_, err := p.checkKey(key, false)
 		if err != nil {
 			return err
 		}
-		p.m[key] = cast.ToString(val)
+		p.data[key] = cast.ToString(val)
 	}
 	return nil
 }

@@ -596,7 +596,7 @@ func TestProperties_Get(t *testing.T) {
 	})
 
 	t.Run("slice slice", func(t *testing.T) {
-		p := conf.Map(map[string]interface{}{
+		p, err := conf.Map(map[string]interface{}{
 			"a": []interface{}{
 				[]interface{}{1, 2},
 				[]interface{}{3, 4},
@@ -606,6 +606,7 @@ func TestProperties_Get(t *testing.T) {
 				},
 			},
 		})
+		assert.Nil(t, err)
 		v := p.Get("a[0][0]")
 		assert.Equal(t, v, "1")
 		v = p.Get("a[0][1]")
@@ -708,8 +709,9 @@ func TestBindMap(t *testing.T) {
 			M [3]map[string]string `value:"${}"`
 		}
 		var r map[string]S
-		p := conf.Map(m)
-		err := p.Bind(&r)
+		p, err := conf.Map(m)
+		assert.Nil(t, err)
+		err = p.Bind(&r)
 		assert.Error(t, err, "map\\[string]conf_test.S.M 属性绑定的目标必须是值类型")
 	})
 
@@ -718,8 +720,9 @@ func TestBindMap(t *testing.T) {
 			M []map[string]string `value:"${}"`
 		}
 		var r map[string]S
-		p := conf.Map(m)
-		err := p.Bind(&r)
+		p, err := conf.Map(m)
+		assert.Nil(t, err)
+		err = p.Bind(&r)
 		assert.Error(t, err, "map\\[string]conf_test.S.M 属性绑定的目标必须是值类型")
 	})
 
@@ -728,8 +731,9 @@ func TestBindMap(t *testing.T) {
 			M map[string]map[string]string `value:"${}"`
 		}
 		var r map[string]S
-		p := conf.Map(m)
-		err := p.Bind(&r)
+		p, err := conf.Map(m)
+		assert.Nil(t, err)
+		err = p.Bind(&r)
 		assert.Error(t, err, "map\\[string]conf_test.S.M 属性绑定的目标必须是值类型")
 	})
 
@@ -739,16 +743,18 @@ func TestBindMap(t *testing.T) {
 			B2 string `value:"${b2}"`
 			B3 string `value:"${b3}"`
 		}
-		p := conf.Map(m)
-		err := p.Bind(&r)
+		p, err := conf.Map(m)
+		assert.Nil(t, err)
+		err = p.Bind(&r)
 		assert.Nil(t, err)
 		assert.Equal(t, r["a"].B1, "ab1")
 	})
 
 	t.Run("", func(t *testing.T) {
-		p := conf.Map(map[string]interface{}{"a.b1": "ab1"})
+		p, err := conf.Map(map[string]interface{}{"a.b1": "ab1"})
+		assert.Nil(t, err)
 		var r map[string]string
-		err := p.Bind(&r)
+		err = p.Bind(&r)
 		assert.Error(t, err, ".*/bind.go:.* type \"string\" bind error\n.*/bind.go:.* property \"a\" not exist")
 	})
 
@@ -757,10 +763,11 @@ func TestBindMap(t *testing.T) {
 			A map[string]string `value:"${a}"`
 			B map[string]string `value:"${b}"`
 		}
-		p := conf.Map(map[string]interface{}{
+		p, err := conf.Map(map[string]interface{}{
 			"a": "1", "b": 2,
 		})
-		err := p.Bind(&r)
+		assert.Nil(t, err)
+		err = p.Bind(&r)
 		assert.Error(t, err, "property \"a\" has a value but want another sub key \"a\\.\\*\"")
 	})
 
@@ -769,8 +776,9 @@ func TestBindMap(t *testing.T) {
 			A map[string]string `value:"${a}"`
 			B map[string]string `value:"${b}"`
 		}
-		p := conf.Map(m)
-		err := p.Bind(&r)
+		p, err := conf.Map(m)
+		assert.Nil(t, err)
+		err = p.Bind(&r)
 		assert.Nil(t, err)
 		assert.Equal(t, r.A["b1"], "ab1")
 	})

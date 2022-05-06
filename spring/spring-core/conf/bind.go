@@ -297,7 +297,7 @@ func bindMap(p *Properties, v reflect.Value, param BindParam) error {
 		if param.Key != "" {
 			keyPath = strings.Split(param.Key, ".")
 		}
-		t := p.t
+		t := p.tree
 		for i, s := range keyPath {
 			vt, ok := t[s]
 			if !ok {
@@ -490,7 +490,7 @@ func resolveString(p *Properties, s string) (string, error) {
 // resolve 解析 ${key:=def} 字符串，返回 key 对应的属性值，如果没有找到则返回
 // def 值，如果 def 存在引用则递归解析直到获取最终的属性值。
 func resolve(p *Properties, param BindParam) (string, error) {
-	if val, ok := p.m[param.Key]; ok {
+	if val, ok := p.data[param.Key]; ok {
 		return resolveString(p, val)
 	}
 	if param.Tag.HasDef {

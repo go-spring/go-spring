@@ -12,7 +12,7 @@
 > 如果你觉得 Go-Spring 项目很棒，但是没有时间亲身加入，你也可以通过捐赠的方式助力和守护 Go-Spring 项目的成长，所有
 > 捐赠的资金都将透明地用于 Go-Spring 项目团队的人员激励和项目推广。
 > 
-> 最后，欢迎 🌟 &nbsp;本项目，你的关注是我和团队继续前进的动力！破釜沉舟，百二秦关终属楚；卧薪尝胆，三千越甲可吞吴！
+> 最后，欢迎 🌟 本项目，你的关注是我和团队继续前进的动力！破釜沉舟，百二秦关终属楚；卧薪尝胆，三千越甲可吞吴！
 
 Go-Spring 的愿景是让 Go 程序员也能用上如 Java Spring 那般威力强大的编程框架。
 
@@ -59,6 +59,42 @@ Go-Spring 当前使用 Go1.14 进行开发，使用 Go Modules 进行依赖管�
   - [starter-grpc](starter/starter-grpc/README.md) - grpc 启动器。
   - [starter-k8s](starter/starter-k8s/README.md) - k8s 启动器。
   - [starter-rabbit](starter/starter-rabbit/README.md) - rabbitmq 启动器。
+
+### 路线图
+
+- [x] 完善 Base 基础库的能力。
+  - [x] 实现 assert 包常用的断言能力。
+  - [x] 实现 atomic 包常用原子操作的封装。
+  - [x] 实现 cast 包常用的类型转换。
+  - [x] 实现上下文缓存组件包 knife。
+  - [x] 实现进程内缓存组件包 cache。
+  - [ ] 实现 jsonpath 操作 json 数据的能力。
+- [x] 实现基本完善的 IoC 和 Boot 框架。
+  - [x] 实现读取应用程序配置的组件。
+  - [x] 实现 IoC 依赖注入框架。
+  - [x] 实现 Boot 自动装配框架。
+- [x] 实现 Log4J 风格的日志框架。
+- [x] 实现 Web 框架以及对 Echo 和 Gin 的适配。
+  - [x] 实现 Web 服务器以及中间件能力。
+  - [x] 实现 Echo 适配以及开箱即用的能力。
+  - [x] 实现 Gin 适配以及开箱即用的能力。
+- [x] 实现 Redis 框架以及对 Redigo 和 Go-Redis 的适配。
+  - [x] 实现 Redis 客户端以及中间件能力。
+  - [x] 实现 Redigo 适配以及开箱即用的能力。
+  - [x] 实现 Go-Redis 适配以及开箱即用的能力。
+- [ ] 实现 MyBatis 风格的 SQL 框架。
+- [ ] 实现 MQ 框架以及对 RabbitMQ 和 RocketMQ 的适配。
+  - [ ] 实现 MQ 服务器和客户端能力。
+  - [ ] 实现 RabbitMQ 适配以及开箱即用的能力。
+  - [ ] 实现 RocketMQ 适配以及开箱即用的能力。
+- [x] 实现 go-mongo 开箱即用的能力。
+- [x] 实现 gorm 开箱即用的能力。
+- [ ] 实现基本完善的流量录制和回放框架。
+- [ ] 实现 Web 组件的流量录制和回放。
+- [ ] 实现 Redis 组件的流量录制和回放。
+- [ ] 实现 Gorm 组件的流量录制和回放。
+- [ ] 实现 MQ 组件的流量录制和回放。
+- [ ] 实现前后端分离的应用程序组织标准。
 
 ### 优秀教程
 
