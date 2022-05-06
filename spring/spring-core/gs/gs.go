@@ -944,13 +944,9 @@ func filterBean(beans []*BeanDefinition, tag wireTag, t reflect.Type) (int, erro
 
 	var found []int
 	for i, b := range beans {
-		if b.status == Deleted {
-			continue
+		if b.Match(tag.typeName, tag.beanName) {
+			found = append(found, i)
 		}
-		if !b.Match(tag.typeName, tag.beanName) {
-			continue
-		}
-		found = append(found, i)
 	}
 
 	if len(found) > 1 {
@@ -993,6 +989,16 @@ func (c *container) collectBeans(v reflect.Value, tags []wireTag, stack *wiringS
 	}
 
 	beans := c.beansByType[et]
+	{
+		var arr []*BeanDefinition
+		for _, b := range beans {
+			if b.status == Deleted {
+				continue
+			}
+			arr = append(arr, b)
+		}
+		beans = arr
+	}
 	if len(tags) > 0 {
 
 		var (
