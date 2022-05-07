@@ -19,7 +19,6 @@
 package conf
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -124,7 +123,7 @@ type Properties struct {
 	tree map[string]interface{} // stores split key path.
 }
 
-// New creates an empty *Properties.
+// New creates empty *Properties.
 func New() *Properties {
 	return &Properties{
 		data: make(map[string]string),
@@ -132,18 +131,23 @@ func New() *Properties {
 	}
 }
 
-// Map creates a *Properties which filled by a map data.
+// Map creates *Properties from map.
 func Map(m map[string]interface{}) (*Properties, error) {
 	p := New()
-	for k, v := range m {
-		if err := p.Set(k, v); err != nil {
+	var keys []string
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		if err := p.Set(k, m[k]); err != nil {
 			return nil, err
 		}
 	}
 	return p, nil
 }
 
-// Load 返回一个由属性文件创建的属性列表，file 可以是绝对路径，也可以是相对路径。
+// Load creates *Properties from file.
 func Load(file string) (*Properties, error) {
 	p := New()
 	if err := p.Load(file); err != nil {
@@ -152,8 +156,7 @@ func Load(file string) (*Properties, error) {
 	return p, nil
 }
 
-// Load 从属性文件加载属性列表，file 可以是绝对路径，也可以是相对路径。该方法会覆盖
-// 已有的属性值。
+// Load loads properties from file.
 func (p *Properties) Load(file string) error {
 	b, err := ioutil.ReadFile(file)
 	if err != nil {
@@ -162,7 +165,7 @@ func (p *Properties) Load(file string) error {
 	return p.Bytes(b, filepath.Ext(file))
 }
 
-// Read 返回一个由 io.Reader 创建的属性列表，ext 是文件扩展名，如 .yaml、.toml 等。
+// Read creates *Properties from io.Reader, ext is the file name extension.
 func Read(r io.Reader, ext string) (*Properties, error) {
 	b, err := ioutil.ReadAll(r)
 	if err != nil {
@@ -171,7 +174,7 @@ func Read(r io.Reader, ext string) (*Properties, error) {
 	return Bytes(b, ext)
 }
 
-// Bytes 返回一个由 []byte 创建的属性列表，ext 是文件扩展名，如 .yaml、.toml 等。
+// Bytes creates *Properties from []byte, ext is the file name extension.
 func Bytes(b []byte, ext string) (*Properties, error) {
 	p := New()
 	if err := p.Bytes(b, ext); err != nil {
@@ -180,8 +183,7 @@ func Bytes(b []byte, ext string) (*Properties, error) {
 	return p, nil
 }
 
-// Bytes 从 []byte 加载属性列表，ext 是文件扩展名，如 .yaml、.toml 等。该方法会覆
-// 盖已有的属性值。
+// Bytes loads properties from []byte, ext is the file name extension.
 func (p *Properties) Bytes(b []byte, ext string) error {
 	r, ok := readers[ext]
 	if !ok {
@@ -197,15 +199,14 @@ func (p *Properties) Bytes(b []byte, ext string) error {
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
-		err = p.Set(k, m[k])
-		if err != nil {
+		if err = p.Set(k, m[k]); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// Keys 返回所有属性 key 的列表。
+// Keys returns all sorted keys.
 func (p *Properties) Keys() []string {
 	keys := make([]string, 0, len(p.data))
 	for k := range p.data {
@@ -215,18 +216,71 @@ func (p *Properties) Keys() []string {
 	return keys
 }
 
-func (p *Properties) convertKey(key string) string {
-	var buf bytes.Buffer
-	for _, c := range key {
+func splitPath(key string) ([]string, error) {
+	if len(key) == 0 {
+		return nil, fmt.Errorf("error key '%s'", key)
+	}
+	var (
+		keyPath      []string
+		lastIndex    int
+		leftBracket  bool
+		rightBracket bool
+	)
+	for i, c := range key {
 		switch c {
+		case '.':
+			s := strings.TrimSpace(key[lastIndex:i])
+			if s == "" {
+				if rightBracket {
+					lastIndex = i + 1
+					rightBracket = false
+					continue
+				}
+				return nil, fmt.Errorf("error key '%s'", key)
+			}
+			keyPath = append(keyPath, s)
+			lastIndex = i + 1
+			rightBracket = false
 		case '[':
-			buf.WriteByte('.')
+			if leftBracket {
+				return nil, fmt.Errorf("error key '%s'", key)
+			}
+			s := strings.TrimSpace(key[lastIndex:i])
+			if s == "" {
+				if len(keyPath) == 0 || rightBracket {
+					lastIndex = i + 1
+					leftBracket = true
+					rightBracket = false
+					continue
+				}
+				return nil, fmt.Errorf("error key '%s'", key)
+			}
+			keyPath = append(keyPath, s)
+			lastIndex = i + 1
+			leftBracket = true
+			rightBracket = false
 		case ']':
-		default:
-			buf.WriteByte(byte(c))
+			if !leftBracket {
+				return nil, fmt.Errorf("error key '%s'", key)
+			}
+			s := strings.TrimSpace(key[lastIndex:i])
+			if s == "" {
+				return nil, fmt.Errorf("error key '%s'", key)
+			}
+			keyPath = append(keyPath, s)
+			lastIndex = i + 1
+			leftBracket = false
+			rightBracket = true
 		}
 	}
-	return buf.String()
+	if lastIndex < len(key) {
+		s := strings.TrimSpace(key[lastIndex:])
+		if s == "" {
+			return nil, fmt.Errorf("error key '%s'", key)
+		}
+		keyPath = append(keyPath, s)
+	}
+	return keyPath, nil
 }
 
 // checkKey 检查属性 key 是否合法，collection 表示是否为空的集合数据。
@@ -240,8 +294,10 @@ func (p *Properties) checkKey(key string, collection bool) (exist bool, err erro
 
 	t = p.tree
 	exist = true
-	key = p.convertKey(key)
-	keyPath := strings.Split(key, ".")
+	keyPath, err := splitPath(key)
+	if err != nil {
+		return false, err
+	}
 	for i, s := range keyPath {
 
 		if v, ok = t[s]; !ok {
@@ -287,8 +343,10 @@ func (p *Properties) Has(key string) bool {
 	)
 
 	t = p.tree
-	key = p.convertKey(key)
-	keyPath := strings.Split(key, ".")
+	keyPath, err := splitPath(key)
+	if err != nil {
+		return false
+	}
 	for i, s := range keyPath {
 		if v, ok = t[s]; !ok {
 			if i < len(keyPath)-1 {
