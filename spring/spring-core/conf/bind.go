@@ -73,13 +73,6 @@ func IsValueType(t reflect.Type) bool {
 	}
 }
 
-type BindParam struct {
-	Type reflect.Type // 绑定对象的类型
-	Key  string       // 完整的属性名
-	Path string       // 绑定对象的路径
-	Tag  ParsedTag    // 解析后的 tag
-}
-
 type ParsedTag struct {
 	Key    string // 简短属性名
 	Def    string // 默认值
@@ -87,12 +80,19 @@ type ParsedTag struct {
 	Split  string // 字符串分割器
 }
 
+type BindParam struct {
+	Type reflect.Type // 绑定对象的类型
+	Key  string       // 完整的属性名
+	Path string       // 绑定对象的路径
+	tag  ParsedTag    // 解析后的 tag
+}
+
 func (param *BindParam) BindTag(tag string) error {
 	parsedTag, err := ParseTag(tag)
 	if err != nil {
 		return err
 	}
-	param.Tag = parsedTag
+	param.tag = parsedTag
 	if param.Key == "" {
 		param.Key = parsedTag.Key
 	} else if parsedTag.Key != "" {
@@ -189,16 +189,16 @@ func getSliceValue(p *Properties, et reflect.Type, param BindParam) (*Properties
 	if p.Has(param.Key) {
 		strVal = p.Get(param.Key)
 	} else {
-		if !param.Tag.HasDef {
+		if !param.tag.HasDef {
 			return nil, util.Errorf(code.FileLine(), "property %q %w", param.Key, ErrNotExist)
 		}
-		if param.Tag.Def == "" {
+		if param.tag.Def == "" {
 			return nil, nil
 		}
 		if !primitive && converters[et] == nil {
 			return nil, util.Errorf(code.FileLine(), "%s 不能为非自定义的复杂类型数组指定非空默认值", param.Path)
 		}
-		strVal = param.Tag.Def
+		strVal = param.tag.Def
 	}
 
 	if strVal == "" {
@@ -210,7 +210,7 @@ func getSliceValue(p *Properties, et reflect.Type, param BindParam) (*Properties
 		arrVal []string
 	)
 
-	if s := param.Tag.Split; s == "" {
+	if s := param.tag.Split; s == "" {
 		arrVal = strings.Split(strVal, ",")
 	} else if fn := splitters[s]; fn != nil {
 		if arrVal, err = fn(strVal); err != nil {
@@ -284,8 +284,8 @@ func bindSlice(p *Properties, v reflect.Value, param BindParam) error {
 
 func bindMap(p *Properties, v reflect.Value, param BindParam) error {
 
-	if param.Tag.HasDef {
-		if param.Tag.Def == "" {
+	if param.tag.HasDef {
+		if param.tag.Def == "" {
 			return nil
 		}
 		return util.Errorf(code.FileLine(), "%s map 类型不能指定非空默认值", param.Path)
@@ -339,7 +339,7 @@ func bindMap(p *Properties, v reflect.Value, param BindParam) error {
 
 func bindStruct(p *Properties, v reflect.Value, param BindParam) error {
 
-	if param.Tag.HasDef && param.Tag.Def != "" {
+	if param.tag.HasDef && param.tag.Def != "" {
 		return util.Errorf(code.FileLine(), "%s struct 类型不能指定非空默认值", param.Path)
 	}
 
@@ -493,8 +493,8 @@ func resolve(p *Properties, param BindParam) (string, error) {
 	if val, ok := p.data[param.Key]; ok {
 		return resolveString(p, val)
 	}
-	if param.Tag.HasDef {
-		return resolveString(p, param.Tag.Def)
+	if param.tag.HasDef {
+		return resolveString(p, param.tag.Def)
 	}
 	return "", util.Errorf(code.FileLine(), "property %q %w", param.Key, ErrNotExist)
 }

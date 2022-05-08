@@ -36,13 +36,14 @@ import (
 	"github.com/go-spring/spring-core/conf/yaml"
 )
 
-// Converter 类型转换器，函数原型为 func(string)(type,error)。
+// Converter converts string value into user-defined value. It should
+// be function type, and its prototype is func(string)(type,error).
 type Converter interface{}
 
-// Splitter 字符串分割器，用于将字符串按逗号分割成字符串切片。
+// Splitter splits string value into []string value.
 type Splitter func(string) ([]string, error)
 
-// Reader 属性列表解析器，将字节数组解析成 map 数据。
+// Reader parses []byte value into nested map[string]interface{}.
 type Reader func(b []byte) (map[string]interface{}, error)
 
 var (
@@ -57,8 +58,11 @@ func init() {
 	RegisterReader(yaml.Read, ".yaml", ".yml")
 	RegisterReader(toml.Read, ".toml", ".tml")
 
-	// 日期转换函数，支持时间戳格式，支持日期字符串(日期字符串>>日期字符串的格式)。
+	// Converts string value into time.Time value. The string value
+	// may have its own time format after >> splitter, otherwise it
+	// uses a default time format 2006-01-02 15:04:05 -0700.
 	RegisterConverter(func(s string) (time.Time, error) {
+		s = strings.TrimSpace(s)
 		format := "2006-01-02 15:04:05 -0700"
 		if ss := strings.Split(s, ">>"); len(ss) == 2 {
 			format = strings.TrimSpace(ss[1])
@@ -67,20 +71,21 @@ func init() {
 		return cast.ToTimeE(s, format)
 	})
 
-	// 时长转换函数，支持 "ns", "us" (or "µs"), "ms", "s", "m", "h" 等。
+	// Converts string value into time.Duration value. The string value
+	// should have its own time unit such as "ns", "ms", "s", "m", etc.
 	RegisterConverter(func(s string) (time.Duration, error) {
 		return cast.ToDurationE(s)
 	})
 }
 
-// RegisterReader 注册属性列表解析器，ext 是解析器支持的文件扩展名。
+// RegisterReader registers Reader for some file extensions.
 func RegisterReader(r Reader, ext ...string) {
 	for _, s := range ext {
 		readers[s] = r
 	}
 }
 
-// RegisterSplitter 注册字符串分割器。
+// RegisterSplitter registers Splitter and named it.
 func RegisterSplitter(name string, fn Splitter) {
 	splitters[name] = fn
 }
@@ -94,8 +99,9 @@ func validConverter(t reflect.Type) bool {
 		util.IsErrorType(t.Out(1))
 }
 
-// RegisterConverter 注册类型转换器。
-func RegisterConverter(fn interface{}) {
+// RegisterConverter registers Converter for non-primitive type such as
+// time.Time, time.Duration, or other user-defined value type.
+func RegisterConverter(fn Converter) {
 	t := reflect.TypeOf(fn)
 	if !validConverter(t) {
 		panic(errors.New("fn must be func(string)(type,error)"))
@@ -320,7 +326,8 @@ func (p *Properties) Set(key string, val interface{}) error {
 	return nil
 }
 
-// Resolve 解析字符串中包含的所有属性引用即 ${key:=def} 的内容，并且支持递归引用。
+// Resolve resolves string value that contains references to other
+// properties, the references are defined by ${key:=def}.
 func (p *Properties) Resolve(s string) (string, error) {
 	return resolveString(p, s)
 }
@@ -331,14 +338,14 @@ type bindArg struct {
 
 type BindOption func(arg *bindArg)
 
-// Key 设置属性绑定使用的 key 。
+// Key binds properties using one key.
 func Key(key string) BindOption {
 	return func(arg *bindArg) {
 		arg.tag = "${" + key + "}"
 	}
 }
 
-// Tag 设置属性绑定使用的 tag 。
+// Tag binds properties using one tag.
 func Tag(tag string) BindOption {
 	return func(arg *bindArg) {
 		arg.tag = tag
@@ -358,15 +365,17 @@ func Tag(tag string) BindOption {
 func (p *Properties) Bind(i interface{}, opts ...BindOption) error {
 
 	var v reflect.Value
-
-	switch e := i.(type) {
-	case reflect.Value:
-		v = e
-	default:
-		if v = reflect.ValueOf(i); v.Kind() != reflect.Ptr {
-			return errors.New("属性绑定的对象必须是一个指针")
+	{
+		switch e := i.(type) {
+		case reflect.Value:
+			v = e
+		default:
+			v = reflect.ValueOf(i)
+			if v.Kind() != reflect.Ptr {
+				return errors.New("i should be a ptr")
+			}
+			v = v.Elem()
 		}
-		v = v.Elem()
 	}
 
 	arg := bindArg{tag: "${}"}
@@ -376,12 +385,16 @@ func (p *Properties) Bind(i interface{}, opts ...BindOption) error {
 
 	t := v.Type()
 	typeName := t.Name()
-	if typeName == "" { // 简单类型没有名字
+	if typeName == "" { // primitive type has no name
 		typeName = t.String()
 	}
 
-	param := BindParam{Type: t, Path: typeName}
-	if err := param.BindTag(arg.tag); err != nil {
+	param := BindParam{
+		Type: t,
+		Path: typeName,
+	}
+	err := param.BindTag(arg.tag)
+	if err != nil {
 		return err
 	}
 	return BindValue(p, v, param)
