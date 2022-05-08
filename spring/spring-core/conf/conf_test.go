@@ -898,3 +898,109 @@ func TestSplitter(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, points, []image.Point{{X: 1, Y: 2}, {X: 3, Y: 4}})
 }
+
+func TestSplitPath(t *testing.T) {
+	var testcases = []struct {
+		Key  string
+		Err  error
+		Path []string
+	}{
+		{
+			Key: "",
+			Err: errors.New("error key ''"),
+		},
+		{
+			Key: " ",
+			Err: errors.New("error key ' '"),
+		},
+		{
+			Key: ".",
+			Err: errors.New("error key '.'"),
+		},
+		{
+			Key: "[",
+			Err: errors.New("error key '['"),
+		},
+		{
+			Key: "]",
+			Err: errors.New("error key ']'"),
+		},
+		{
+			Key: "[]",
+			Err: errors.New("error key '[]'"),
+		},
+		{
+			Key:  "[0]",
+			Path: []string{"0"},
+		},
+		{
+			Key: "[0][",
+			Err: errors.New("error key '[0]['"),
+		},
+		{
+			Key: "[0]]",
+			Err: errors.New("error key '[0]]'"),
+		},
+		{
+			Key: "[[0]]",
+			Err: errors.New("error key '[[0]]'"),
+		},
+		{
+			Key: "[.]",
+			Err: errors.New("error key '[.]'"),
+		},
+		{
+			Key: "[a.b]",
+			Err: errors.New("error key '[a.b]'"),
+		},
+		{
+			Key:  "a",
+			Path: []string{"a"},
+		},
+		{
+			Key: "a.",
+			Err: errors.New("error key 'a.'"),
+		},
+		{
+			Key:  "a.b",
+			Path: []string{"a", "b"},
+		},
+		{
+			Key: "a[",
+			Err: errors.New("error key 'a['"),
+		},
+		{
+			Key: "a]",
+			Err: errors.New("error key 'a]'"),
+		},
+		{
+			Key:  "a[0]",
+			Path: []string{"a", "0"},
+		},
+		{
+			Key:  "a.[0]",
+			Path: []string{"a", "0"},
+		},
+		{
+			Key:  "a[0].b",
+			Path: []string{"a", "0", "b"},
+		},
+		{
+			Key:  "a.[0].b",
+			Path: []string{"a", "0", "b"},
+		},
+		{
+			Key:  "a[0][0]",
+			Path: []string{"a", "0", "0"},
+		},
+		{
+			Key:  "a.[0].[0]",
+			Path: []string{"a", "0", "0"},
+		},
+	}
+	for i, c := range testcases {
+		p, err := conf.SplitPath(c.Key)
+		assert.Equal(t, err, c.Err, fmt.Sprintf("index: %d key: %q", i, c.Key))
+		assert.Equal(t, p, c.Path, fmt.Sprintf("index:%d key: %q", i, c.Key))
+	}
+}

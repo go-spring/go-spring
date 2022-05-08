@@ -216,123 +216,6 @@ func (p *Properties) Keys() []string {
 	return keys
 }
 
-func splitPath(key string) ([]string, error) {
-	if len(key) == 0 {
-		return nil, fmt.Errorf("error key '%s'", key)
-	}
-	var (
-		keyPath      []string
-		lastIndex    int
-		leftBracket  bool
-		rightBracket bool
-	)
-	for i, c := range key {
-		switch c {
-		case '.':
-			s := strings.TrimSpace(key[lastIndex:i])
-			if s == "" {
-				if rightBracket {
-					lastIndex = i + 1
-					rightBracket = false
-					continue
-				}
-				return nil, fmt.Errorf("error key '%s'", key)
-			}
-			keyPath = append(keyPath, s)
-			lastIndex = i + 1
-			rightBracket = false
-		case '[':
-			if leftBracket {
-				return nil, fmt.Errorf("error key '%s'", key)
-			}
-			s := strings.TrimSpace(key[lastIndex:i])
-			if s == "" {
-				if len(keyPath) == 0 || rightBracket {
-					lastIndex = i + 1
-					leftBracket = true
-					rightBracket = false
-					continue
-				}
-				return nil, fmt.Errorf("error key '%s'", key)
-			}
-			keyPath = append(keyPath, s)
-			lastIndex = i + 1
-			leftBracket = true
-			rightBracket = false
-		case ']':
-			if !leftBracket {
-				return nil, fmt.Errorf("error key '%s'", key)
-			}
-			s := strings.TrimSpace(key[lastIndex:i])
-			if s == "" {
-				return nil, fmt.Errorf("error key '%s'", key)
-			}
-			keyPath = append(keyPath, s)
-			lastIndex = i + 1
-			leftBracket = false
-			rightBracket = true
-		}
-	}
-	if lastIndex < len(key) {
-		s := strings.TrimSpace(key[lastIndex:])
-		if s == "" {
-			return nil, fmt.Errorf("error key '%s'", key)
-		}
-		keyPath = append(keyPath, s)
-	}
-	return keyPath, nil
-}
-
-// checkKey 检查属性 key 是否合法，collection 表示是否为空的集合数据。
-func (p *Properties) checkKey(key string, collection bool) (exist bool, err error) {
-
-	var (
-		ok bool
-		v  interface{}
-		t  map[string]interface{}
-	)
-
-	t = p.tree
-	exist = true
-	keyPath, err := splitPath(key)
-	if err != nil {
-		return false, err
-	}
-	for i, s := range keyPath {
-
-		if v, ok = t[s]; !ok {
-			if i < len(keyPath)-1 || collection {
-				m := make(map[string]interface{})
-				t[s] = m
-				t = m
-			} else {
-				t[s] = struct{}{}
-			}
-			exist = false
-			continue
-		}
-
-		if _, ok = v.(map[string]interface{}); ok {
-			if i < len(keyPath)-1 || collection {
-				t = v.(map[string]interface{})
-				continue
-			}
-			err = fmt.Errorf("property %q want a value but has sub keys %v", key, v)
-			return
-		}
-
-		if _, ok = v.(struct{}); ok {
-			if i == len(keyPath)-1 && !collection {
-				continue
-			}
-			oldKey := strings.Join(keyPath[:i+1], ".")
-			err = fmt.Errorf("property %q has a value but want another sub key %q", oldKey, key)
-			return
-		}
-	}
-	return
-}
-
 // Has 返回属性 key 是否存在。
 func (p *Properties) Has(key string) bool {
 
@@ -343,7 +226,7 @@ func (p *Properties) Has(key string) bool {
 	)
 
 	t = p.tree
-	keyPath, err := splitPath(key)
+	keyPath, err := SplitPath(key)
 	if err != nil {
 		return false
 	}
@@ -519,4 +402,122 @@ func (p *Properties) Bind(i interface{}, opts ...BindOption) error {
 		return err
 	}
 	return BindValue(p, v, param)
+}
+
+// SplitPath splits the key into individual parts.
+func SplitPath(key string) ([]string, error) {
+	if len(key) == 0 {
+		return nil, fmt.Errorf("error key '%s'", key)
+	}
+	var (
+		keyPath     []string
+		lastChar    int32
+		lastIndex   int
+		leftBracket bool
+	)
+	for i, c := range key {
+		switch c {
+		case ' ':
+			return nil, fmt.Errorf("error key '%s'", key)
+		case '.':
+			if leftBracket {
+				return nil, fmt.Errorf("error key '%s'", key)
+			}
+			if lastChar == ']' {
+				lastIndex = i + 1
+				lastChar = c
+				continue
+			}
+			if lastIndex == i {
+				return nil, fmt.Errorf("error key '%s'", key)
+			}
+			keyPath = append(keyPath, key[lastIndex:i])
+			lastIndex = i + 1
+			lastChar = c
+		case '[':
+			if leftBracket {
+				return nil, fmt.Errorf("error key '%s'", key)
+			}
+			if i == 0 || lastChar == ']' || lastChar == '.' {
+				lastIndex = i + 1
+				leftBracket = true
+				lastChar = c
+				continue
+			}
+			if lastIndex == i {
+				return nil, fmt.Errorf("error key '%s'", key)
+			}
+			keyPath = append(keyPath, key[lastIndex:i])
+			lastIndex = i + 1
+			leftBracket = true
+			lastChar = c
+		case ']':
+			if !leftBracket || lastIndex == i {
+				return nil, fmt.Errorf("error key '%s'", key)
+			}
+			keyPath = append(keyPath, key[lastIndex:i])
+			lastIndex = i + 1
+			leftBracket = false
+			lastChar = c
+		default:
+			lastChar = c
+		}
+	}
+	if leftBracket || lastChar == '.' {
+		return nil, fmt.Errorf("error key '%s'", key)
+	}
+	if lastChar != ']' {
+		keyPath = append(keyPath, key[lastIndex:])
+	}
+	return keyPath, nil
+}
+
+// checkKey 检查属性 key 是否合法，collection 表示是否为空的集合数据。
+func (p *Properties) checkKey(key string, collection bool) (exist bool, err error) {
+
+	var (
+		ok bool
+		v  interface{}
+		t  map[string]interface{}
+	)
+
+	t = p.tree
+	exist = true
+	keyPath, err := SplitPath(key)
+	if err != nil {
+		return false, err
+	}
+	for i, s := range keyPath {
+
+		if v, ok = t[s]; !ok {
+			if i < len(keyPath)-1 || collection {
+				m := make(map[string]interface{})
+				t[s] = m
+				t = m
+			} else {
+				t[s] = struct{}{}
+			}
+			exist = false
+			continue
+		}
+
+		if _, ok = v.(map[string]interface{}); ok {
+			if i < len(keyPath)-1 || collection {
+				t = v.(map[string]interface{})
+				continue
+			}
+			err = fmt.Errorf("property %q want a value but has sub keys %v", key, v)
+			return
+		}
+
+		if _, ok = v.(struct{}); ok {
+			if i == len(keyPath)-1 && !collection {
+				continue
+			}
+			oldKey := strings.Join(keyPath[:i+1], ".")
+			err = fmt.Errorf("property %q has a value but want another sub key %q", oldKey, key)
+			return
+		}
+	}
+	return
 }
