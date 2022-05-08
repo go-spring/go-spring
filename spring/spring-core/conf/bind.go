@@ -179,7 +179,7 @@ func BindValue(p *Properties, v reflect.Value, param BindParam) error {
 
 func getSliceValue(p *Properties, et reflect.Type, param BindParam) (*Properties, error) {
 
-	if p.Has(fmt.Sprintf("%s[%d]", param.Key, 0)) {
+	if p.Has(param.Key + "[0]") {
 		return p, nil
 	}
 

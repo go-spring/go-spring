@@ -801,43 +801,21 @@ func TestInterpolate(t *testing.T) {
 }
 
 func TestProperties_Has(t *testing.T) {
-
-	t.Run("", func(t *testing.T) {
-		p := conf.New()
-		err := p.Set("a", "1")
-		assert.Nil(t, err)
-		err = p.Set("a.b", "2")
-		assert.Error(t, err, "property \\\"a\\\" has a value but want another sub key \\\"a.b\\\"")
+	p, err := conf.Map(map[string]interface{}{
+		"a.b.c": "3",
+		"a.b.d": []string{"7", "8"},
 	})
-
-	t.Run("", func(t *testing.T) {
-		p := conf.New()
-		err := p.Set("a.b", "2")
-		assert.Nil(t, err)
-		err = p.Set("a", "1")
-		assert.Error(t, err, "property \\\"a\\\" want a value but has sub keys map\\[b\\:\\{}]")
-	})
-
-	p := conf.New()
-	err := p.Set("a.b.c", "3")
 	assert.Nil(t, err)
-	err = p.Set("a.b.d", "4")
-	assert.Nil(t, err)
-	err = p.Set("a.b.e", "5,6")
-	assert.Nil(t, err)
-	err = p.Set("a.b.f", []string{"7", "8"})
-	assert.Nil(t, err)
-
 	assert.True(t, p.Has("a"))
+	assert.False(t, p.Has("a[0]"))
 	assert.True(t, p.Has("a.b"))
+	assert.False(t, p.Has("a.c"))
 	assert.True(t, p.Has("a.b.c"))
 	assert.True(t, p.Has("a.b.d"))
-
-	assert.True(t, p.Has("a.b.e"))
-	assert.False(t, p.Has("a.b.e[0]"))
-	assert.False(t, p.Has("a.b.e[1]"))
-
-	assert.False(t, p.Has("a.b[0].c"))
+	assert.True(t, p.Has("a.b.d[0]"))
+	assert.True(t, p.Has("a.b.d[1]"))
+	assert.False(t, p.Has("a.b.d[2]"))
+	assert.False(t, p.Has("a.b.e"))
 }
 
 func TestProperties_Set(t *testing.T) {

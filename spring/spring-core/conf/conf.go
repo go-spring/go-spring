@@ -216,35 +216,21 @@ func (p *Properties) Keys() []string {
 	return keys
 }
 
-// Has 返回属性 key 是否存在。
+// Has returns whether key exists.
 func (p *Properties) Has(key string) bool {
-
-	var (
-		ok bool
-		v  interface{}
-		t  map[string]interface{}
-	)
-
-	t = p.tree
 	keyPath, err := SplitPath(key)
 	if err != nil {
 		return false
 	}
+	t := p.tree
 	for i, s := range keyPath {
-		if v, ok = t[s]; !ok {
-			if i < len(keyPath)-1 {
-				return false
-			}
-			if _, ok = t[s+"[0]"]; !ok {
-				return false
-			}
-			return true
+		v, ok := t[s]
+		if !ok {
+			return false
 		}
-		if _, ok = v.(struct{}); ok {
-			if i < len(keyPath)-1 {
-				return false
-			}
-			return true
+		_, ok = v.(struct{})
+		if ok {
+			return i == len(keyPath)-1
 		}
 		t = v.(map[string]interface{})
 	}
@@ -257,17 +243,14 @@ type getArg struct {
 
 type GetOption func(arg *getArg)
 
-// Def 为 Get 方法设置默认值。
+// Def returns v when key not exits.
 func Def(v string) GetOption {
 	return func(arg *getArg) {
 		arg.def = v
 	}
 }
 
-// Get 获取 key 对应的属性值，注意 key 是大小写敏感的。当 key 对应的属性值存在时，
-// 或者 key 对应的属性值不存在但设置了默认值时，Get 方法返回 string 类型的数据，
-// 当 key 对应的属性值不存在且没有设置默认值时 Get 方法返回 nil。因此可以通过判断
-// Get 方法的返回值是否为 nil 来判断 key 对应的属性值是否存在。
+// Get returns key's value, using Def to return a default value.
 func (p *Properties) Get(key string, opts ...GetOption) string {
 	if val, ok := p.data[key]; ok {
 		return val
@@ -279,12 +262,12 @@ func (p *Properties) Get(key string, opts ...GetOption) string {
 	return arg.def
 }
 
-// Set 设置 key 对应的属性值，如果 key 对应的属性值已经存在则 Set 方法会覆盖旧
-// 值。Set 方法除了支持 string 类型的属性值，还支持 int、uint、bool 等其他基础
-// 数据类型的属性值。特殊情况下，Set 方法也支持 slice 、map 与基础数据类型组合构
-// 成的属性值，其处理方式是将组合结构层层展开，可以将组合结构看成一棵树，那么叶子结
-// 点的路径就是属性的 key，叶子结点的值就是属性的值。注意: conf 的配置文件是补充
-// 关系，而不是替换关系，这一条原则我也经常会搞混，尤其在和其他配置库相比较的时候。
+// Set sets key's value to be a primitive type as int or string,
+// or a slice or map nested with primitive type elements. One thing
+// you should know is Set actions as overlap but not replace, that
+// means when you set a slice or a map, an existing path will remain
+// when it doesn't exist in the slice or map even they share a same
+// prefix path.
 func (p *Properties) Set(key string, val interface{}) error {
 	switch v := reflect.ValueOf(val); v.Kind() {
 	case reflect.Map:
@@ -297,8 +280,8 @@ func (p *Properties) Set(key string, val interface{}) error {
 			return nil
 		}
 		for _, k := range v.MapKeys() {
-			mapValue := v.MapIndex(k).Interface()
 			mapKey := cast.ToString(k.Interface())
+			mapValue := v.MapIndex(k).Interface()
 			err = p.Set(key+"."+mapKey, mapValue)
 			if err != nil {
 				return err
@@ -319,7 +302,7 @@ func (p *Properties) Set(key string, val interface{}) error {
 		for i := 0; i < v.Len(); i++ {
 			subKey := fmt.Sprintf("%s[%d]", key, i)
 			subValue := v.Index(i).Interface()
-			err := p.Set(subKey, subValue)
+			err = p.Set(subKey, subValue)
 			if err != nil {
 				return err
 			}
