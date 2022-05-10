@@ -108,14 +108,19 @@ func Property(key string, value interface{}) {
 	app().Property(key, value)
 }
 
+// Accept 参考 Container.Accept 的解释。
+func Accept(b *BeanDefinition) *BeanDefinition {
+	return app().c.Accept(b)
+}
+
 // Object 参考 Container.Object 的解释。
 func Object(i interface{}) *BeanDefinition {
-	return app().c.register(NewBean(reflect.ValueOf(i)))
+	return app().c.Accept(NewBean(reflect.ValueOf(i)))
 }
 
 // Provide 参考 Container.Provide 的解释。
 func Provide(ctor interface{}, args ...arg.Arg) *BeanDefinition {
-	return app().c.register(NewBean(ctor, args...))
+	return app().c.Accept(NewBean(ctor, args...))
 }
 
 // HandleGet 参考 App.HandleGet 的解释。
@@ -220,5 +225,5 @@ func GrpcServer(serviceName string, server *grpc.Server) {
 
 // GrpcClient 参考 App.GrpcClient 的解释。
 func GrpcClient(fn interface{}, endpoint string) *BeanDefinition {
-	return app().c.register(NewBean(fn, endpoint))
+	return app().c.Accept(NewBean(fn, endpoint))
 }

@@ -54,17 +54,17 @@ func (b *bootstrap) Property(key string, value interface{}) {
 
 // Object 参考 Container.Object 的解释。
 func (b *bootstrap) Object(i interface{}) *BeanDefinition {
-	return b.c.register(NewBean(reflect.ValueOf(i)))
+	return b.c.Accept(NewBean(reflect.ValueOf(i)))
 }
 
 // Provide 参考 Container.Provide 的解释。
 func (b *bootstrap) Provide(ctor interface{}, args ...arg.Arg) *BeanDefinition {
-	return b.c.register(NewBean(ctor, args...))
+	return b.c.Accept(NewBean(ctor, args...))
 }
 
 // ResourceLocator 参考 Container.Object 的解释。
 func (b *bootstrap) ResourceLocator(i interface{}) *BeanDefinition {
-	return b.c.register(NewBean(reflect.ValueOf(i))).Export((*ResourceLocator)(nil))
+	return b.c.Accept(NewBean(reflect.ValueOf(i))).Export((*ResourceLocator)(nil))
 }
 
 func (b *bootstrap) start(e *configuration) error {

@@ -147,7 +147,7 @@ func (c *container) Property(key string, value interface{}) {
 	c.p.Set(key, value)
 }
 
-func (c *container) register(b *BeanDefinition) *BeanDefinition {
+func (c *container) Accept(b *BeanDefinition) *BeanDefinition {
 	if c.state != Unrefreshed {
 		panic(errors.New("should call before Refresh"))
 	}
@@ -157,12 +157,12 @@ func (c *container) register(b *BeanDefinition) *BeanDefinition {
 
 // Object 注册对象形式的 bean ，需要注意的是该方法在注入开始后就不能再调用了。
 func (c *container) Object(i interface{}) *BeanDefinition {
-	return c.register(NewBean(reflect.ValueOf(i)))
+	return c.Accept(NewBean(reflect.ValueOf(i)))
 }
 
 // Provide 注册构造函数形式的 bean ，需要注意的是该方法在注入开始后就不能再调用了。
 func (c *container) Provide(ctor interface{}, args ...arg.Arg) *BeanDefinition {
-	return c.register(NewBean(ctor, args...))
+	return c.Accept(NewBean(ctor, args...))
 }
 
 // destroyer 保存具有销毁函数的 bean 以及销毁函数的调用顺序。
@@ -1002,7 +1002,7 @@ func (c *container) collectBeans(v reflect.Value, tags []wireTag, stack *wiringS
 	if len(tags) > 0 {
 
 		var (
-			any       []*BeanDefinition
+			anyBeans  []*BeanDefinition
 			afterAny  []*BeanDefinition
 			beforeAny []*BeanDefinition
 		)
@@ -1038,13 +1038,13 @@ func (c *container) collectBeans(v reflect.Value, tags []wireTag, stack *wiringS
 		}
 
 		if foundAny {
-			any = append(any, beans...)
+			anyBeans = append(anyBeans, beans...)
 		}
 
-		n := len(beforeAny) + len(any) + len(afterAny)
+		n := len(beforeAny) + len(anyBeans) + len(afterAny)
 		arr := make([]*BeanDefinition, 0, n)
 		arr = append(arr, beforeAny...)
-		arr = append(arr, any...)
+		arr = append(arr, anyBeans...)
 		arr = append(arr, afterAny...)
 		beans = arr
 	}
