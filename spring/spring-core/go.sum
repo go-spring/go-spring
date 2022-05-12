@@ -1,7 +1,5 @@
-github.com/go-spring/spring-base v1.1.0-rc2.0.20220108065257-1c285a12bc84 h1:PBMx/w/NYBlzMyiTe+ehi3kKZoIRknssBoV2aD6cejk=
-github.com/go-spring/spring-base v1.1.0-rc2.0.20220108065257-1c285a12bc84/go.mod h1:gJCBukN0ZmjhGygd31Yfan3SG2iRdAwPUTpxYW62exE=
-github.com/go-spring/spring-base v1.1.0-rc3 h1:ZtNqLkPLXZWnZORWRQH63IeJvv8z/fjFm/4Qt7/lXTs=
-github.com/go-spring/spring-base v1.1.0-rc3/go.mod h1:gJCBukN0ZmjhGygd31Yfan3SG2iRdAwPUTpxYW62exE=
+github.com/go-spring/spring-base v1.1.0-rc4 h1:ImfCTPm8+sLoL2e44NXs91EmRr2ridFM4CTjBS4wS9k=
+github.com/go-spring/spring-base v1.1.0-rc4/go.mod h1:tdngm+6agA34HQ5YADitIGaQ04e1pmxuR5cd6Eaobmw=
 github.com/golang/mock v1.6.0 h1:ErTB+efbowRARo13NNdxyJji2egdxLGQhRaY+DUumQc=
 github.com/golang/mock v1.6.0/go.mod h1:p6yTPP+5HYm5mzsMV8JkE6ZKdX+/wYM6Hr+LicevLPs=
 github.com/google/uuid v1.3.0 h1:t6JiXgmwXMjEs8VusXIJk2BXHsn+wx8BZdTaoZ5fu7I=

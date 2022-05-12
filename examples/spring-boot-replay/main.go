@@ -29,17 +29,17 @@ import (
 )
 
 type controller struct {
-	RedisClient redis.Client `autowire:""`
+	RedisClient *redis.Client `autowire:""`
 }
 
 func (c *controller) index(webCtx web.Context) {
 	ctx := webCtx.Context()
 
-	b, err := c.RedisClient.Set(ctx, "a", 1)
+	b, err := c.RedisClient.OpsForString().Set(ctx, "a", 1)
 	util.Panic(err).When(err != nil)
 	fmt.Printf("set redis a=1 return %v\n", b)
 
-	v, err := c.RedisClient.Get(ctx, "a")
+	v, err := c.RedisClient.OpsForString().Get(ctx, "a")
 	util.Panic(err).When(err != nil)
 
 	fmt.Printf("get redis a=%v\n", v)

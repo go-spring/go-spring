@@ -596,7 +596,7 @@ func TestProperties_Get(t *testing.T) {
 	})
 
 	t.Run("slice slice", func(t *testing.T) {
-		p := conf.Map(map[string]interface{}{
+		p, err := conf.Map(map[string]interface{}{
 			"a": []interface{}{
 				[]interface{}{1, 2},
 				[]interface{}{3, 4},
@@ -606,6 +606,7 @@ func TestProperties_Get(t *testing.T) {
 				},
 			},
 		})
+		assert.Nil(t, err)
 		v := p.Get("a[0][0]")
 		assert.Equal(t, v, "1")
 		v = p.Get("a[0][1]")
@@ -708,8 +709,9 @@ func TestBindMap(t *testing.T) {
 			M [3]map[string]string `value:"${}"`
 		}
 		var r map[string]S
-		p := conf.Map(m)
-		err := p.Bind(&r)
+		p, err := conf.Map(m)
+		assert.Nil(t, err)
+		err = p.Bind(&r)
 		assert.Error(t, err, "map\\[string]conf_test.S.M 属性绑定的目标必须是值类型")
 	})
 
@@ -718,8 +720,9 @@ func TestBindMap(t *testing.T) {
 			M []map[string]string `value:"${}"`
 		}
 		var r map[string]S
-		p := conf.Map(m)
-		err := p.Bind(&r)
+		p, err := conf.Map(m)
+		assert.Nil(t, err)
+		err = p.Bind(&r)
 		assert.Error(t, err, "map\\[string]conf_test.S.M 属性绑定的目标必须是值类型")
 	})
 
@@ -728,8 +731,9 @@ func TestBindMap(t *testing.T) {
 			M map[string]map[string]string `value:"${}"`
 		}
 		var r map[string]S
-		p := conf.Map(m)
-		err := p.Bind(&r)
+		p, err := conf.Map(m)
+		assert.Nil(t, err)
+		err = p.Bind(&r)
 		assert.Error(t, err, "map\\[string]conf_test.S.M 属性绑定的目标必须是值类型")
 	})
 
@@ -739,16 +743,18 @@ func TestBindMap(t *testing.T) {
 			B2 string `value:"${b2}"`
 			B3 string `value:"${b3}"`
 		}
-		p := conf.Map(m)
-		err := p.Bind(&r)
+		p, err := conf.Map(m)
+		assert.Nil(t, err)
+		err = p.Bind(&r)
 		assert.Nil(t, err)
 		assert.Equal(t, r["a"].B1, "ab1")
 	})
 
 	t.Run("", func(t *testing.T) {
-		p := conf.Map(map[string]interface{}{"a.b1": "ab1"})
+		p, err := conf.Map(map[string]interface{}{"a.b1": "ab1"})
+		assert.Nil(t, err)
 		var r map[string]string
-		err := p.Bind(&r)
+		err = p.Bind(&r)
 		assert.Error(t, err, ".*/bind.go:.* type \"string\" bind error\n.*/bind.go:.* property \"a\" not exist")
 	})
 
@@ -757,10 +763,11 @@ func TestBindMap(t *testing.T) {
 			A map[string]string `value:"${a}"`
 			B map[string]string `value:"${b}"`
 		}
-		p := conf.Map(map[string]interface{}{
+		p, err := conf.Map(map[string]interface{}{
 			"a": "1", "b": 2,
 		})
-		err := p.Bind(&r)
+		assert.Nil(t, err)
+		err = p.Bind(&r)
 		assert.Error(t, err, "property \"a\" has a value but want another sub key \"a\\.\\*\"")
 	})
 
@@ -769,8 +776,9 @@ func TestBindMap(t *testing.T) {
 			A map[string]string `value:"${a}"`
 			B map[string]string `value:"${b}"`
 		}
-		p := conf.Map(m)
-		err := p.Bind(&r)
+		p, err := conf.Map(m)
+		assert.Nil(t, err)
+		err = p.Bind(&r)
 		assert.Nil(t, err)
 		assert.Equal(t, r.A["b1"], "ab1")
 	})
@@ -793,43 +801,21 @@ func TestInterpolate(t *testing.T) {
 }
 
 func TestProperties_Has(t *testing.T) {
-
-	t.Run("", func(t *testing.T) {
-		p := conf.New()
-		err := p.Set("a", "1")
-		assert.Nil(t, err)
-		err = p.Set("a.b", "2")
-		assert.Error(t, err, "property \\\"a\\\" has a value but want another sub key \\\"a.b\\\"")
+	p, err := conf.Map(map[string]interface{}{
+		"a.b.c": "3",
+		"a.b.d": []string{"7", "8"},
 	})
-
-	t.Run("", func(t *testing.T) {
-		p := conf.New()
-		err := p.Set("a.b", "2")
-		assert.Nil(t, err)
-		err = p.Set("a", "1")
-		assert.Error(t, err, "property \\\"a\\\" want a value but has sub keys map\\[b\\:\\{}]")
-	})
-
-	p := conf.New()
-	err := p.Set("a.b.c", "3")
 	assert.Nil(t, err)
-	err = p.Set("a.b.d", "4")
-	assert.Nil(t, err)
-	err = p.Set("a.b.e", "5,6")
-	assert.Nil(t, err)
-	err = p.Set("a.b.f", []string{"7", "8"})
-	assert.Nil(t, err)
-
 	assert.True(t, p.Has("a"))
+	assert.False(t, p.Has("a[0]"))
 	assert.True(t, p.Has("a.b"))
+	assert.False(t, p.Has("a.c"))
 	assert.True(t, p.Has("a.b.c"))
 	assert.True(t, p.Has("a.b.d"))
-
-	assert.True(t, p.Has("a.b.e"))
-	assert.False(t, p.Has("a.b.e[0]"))
-	assert.False(t, p.Has("a.b.e[1]"))
-
-	assert.False(t, p.Has("a.b[0].c"))
+	assert.True(t, p.Has("a.b.d[0]"))
+	assert.True(t, p.Has("a.b.d[1]"))
+	assert.False(t, p.Has("a.b.d[2]"))
+	assert.False(t, p.Has("a.b.e"))
 }
 
 func TestProperties_Set(t *testing.T) {
@@ -889,4 +875,110 @@ func TestSplitter(t *testing.T) {
 	err := conf.New().Bind(&points, conf.Tag("${:=(1,2)(3,4)}|PointSplitter"))
 	assert.Nil(t, err)
 	assert.Equal(t, points, []image.Point{{X: 1, Y: 2}, {X: 3, Y: 4}})
+}
+
+func TestSplitPath(t *testing.T) {
+	var testcases = []struct {
+		Key  string
+		Err  error
+		Path []string
+	}{
+		{
+			Key: "",
+			Err: errors.New("error key ''"),
+		},
+		{
+			Key: " ",
+			Err: errors.New("error key ' '"),
+		},
+		{
+			Key: ".",
+			Err: errors.New("error key '.'"),
+		},
+		{
+			Key: "[",
+			Err: errors.New("error key '['"),
+		},
+		{
+			Key: "]",
+			Err: errors.New("error key ']'"),
+		},
+		{
+			Key: "[]",
+			Err: errors.New("error key '[]'"),
+		},
+		{
+			Key:  "[0]",
+			Path: []string{"0"},
+		},
+		{
+			Key: "[0][",
+			Err: errors.New("error key '[0]['"),
+		},
+		{
+			Key: "[0]]",
+			Err: errors.New("error key '[0]]'"),
+		},
+		{
+			Key: "[[0]]",
+			Err: errors.New("error key '[[0]]'"),
+		},
+		{
+			Key: "[.]",
+			Err: errors.New("error key '[.]'"),
+		},
+		{
+			Key: "[a.b]",
+			Err: errors.New("error key '[a.b]'"),
+		},
+		{
+			Key:  "a",
+			Path: []string{"a"},
+		},
+		{
+			Key: "a.",
+			Err: errors.New("error key 'a.'"),
+		},
+		{
+			Key:  "a.b",
+			Path: []string{"a", "b"},
+		},
+		{
+			Key: "a[",
+			Err: errors.New("error key 'a['"),
+		},
+		{
+			Key: "a]",
+			Err: errors.New("error key 'a]'"),
+		},
+		{
+			Key:  "a[0]",
+			Path: []string{"a", "0"},
+		},
+		{
+			Key:  "a.[0]",
+			Path: []string{"a", "0"},
+		},
+		{
+			Key:  "a[0].b",
+			Path: []string{"a", "0", "b"},
+		},
+		{
+			Key:  "a.[0].b",
+			Path: []string{"a", "0", "b"},
+		},
+		{
+			Key:  "a[0][0]",
+			Path: []string{"a", "0", "0"},
+		},
+		{
+			Key:  "a.[0].[0]",
+			Path: []string{"a", "0", "0"},
+		},
+	}
+	for i, c := range testcases {
+		p, err := conf.SplitPath(c.Key)
+		assert.Equal(t, err, c.Err, fmt.Sprintf("index: %d key: %q", i, c.Key))
+		assert.Equal(t, p, c.Path, fmt.Sprintf("index:%d key: %q", i, c.Key))
+	}
 }

@@ -1,10 +1,16 @@
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/go-spring/spring-base v1.1.0-rc2.0.20220108065257-1c285a12bc84 h1:PBMx/w/NYBlzMyiTe+ehi3kKZoIRknssBoV2aD6cejk=
 github.com/go-spring/spring-base v1.1.0-rc2.0.20220108065257-1c285a12bc84/go.mod h1:gJCBukN0ZmjhGygd31Yfan3SG2iRdAwPUTpxYW62exE=
+github.com/go-spring/spring-base v1.1.0-rc3.0.20220504021136-8ace13a580ab h1:iM9NMrqZUFpmQfeygjMj6pchThGKhmeIJwW267+j/CA=
+github.com/go-spring/spring-base v1.1.0-rc3.0.20220504021136-8ace13a580ab/go.mod h1:tdngm+6agA34HQ5YADitIGaQ04e1pmxuR5cd6Eaobmw=
 github.com/go-spring/spring-core v1.1.0-rc2.0.20220108070439-49a57f1c5839 h1:cMAyRVor8Ii1Ew6nV/nQbcvqCBb9Vsin5nCXPkwTxUk=
 github.com/go-spring/spring-core v1.1.0-rc2.0.20220108070439-49a57f1c5839/go.mod h1:xN8smuLbXLyf3M6b2gCCP9l02bYEs5xH7AaSqpMmzGk=
+github.com/go-spring/spring-core v1.1.0-rc3.0.20220504021535-bb85dfe5bd69 h1:cUf3wsAbml6NHcOU7VBfTFYVsZxiPajNjvM2N9Nm+YQ=
+github.com/go-spring/spring-core v1.1.0-rc3.0.20220504021535-bb85dfe5bd69/go.mod h1:aHYbpU0mRbDpTMcfWlSfqo0WiKi0P9GY+AKLrVXeW0E=
 github.com/go-spring/spring-echo v1.1.0-rc2.0.20220108071440-33243b5b325a h1:fk2DcJ2xMAXCMQ91evXKC1CcyDlF8rdhuLvmuTXzk5E=
 github.com/go-spring/spring-echo v1.1.0-rc2.0.20220108071440-33243b5b325a/go.mod h1:fnsIxx4jCZ5gwPVu00XXeno/Fgn8a2Z4r3vxuZ/GiA4=
+github.com/go-spring/spring-echo v1.1.0-rc3.0.20220504022033-9417856c7303 h1:H4TRobt0D68Es/BCr+Slg6SkBPYSudHvI+1G8wG8ADk=
+github.com/go-spring/spring-echo v1.1.0-rc3.0.20220504022033-9417856c7303/go.mod h1:W/6AiN7HCwHvjBVRwrRUYT3cM/fArMIIij7i2WELA9s=
 github.com/golang-jwt/jwt v3.2.2+incompatible/go.mod h1:8pz2t5EyA70fFQQSrl6XZXzqecmYZeUEB8OUGHkxJ+I=
 github.com/golang/mock v1.6.0 h1:ErTB+efbowRARo13NNdxyJji2egdxLGQhRaY+DUumQc=
 github.com/golang/mock v1.6.0/go.mod h1:p6yTPP+5HYm5mzsMV8JkE6ZKdX+/wYM6Hr+LicevLPs=

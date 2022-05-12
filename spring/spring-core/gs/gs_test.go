@@ -2880,6 +2880,8 @@ func TestMapCollection(t *testing.T) {
 		c := gs.New()
 		c.Object(&mapValue{"a"}).Name("a").Order(1)
 		c.Object(&mapValue{"b"}).Name("b").Order(2)
+		c.Object(&mapValue{"c"}).Name("c").On(cond.Not(cond.OK()))
+		c.Provide(func(vSlice []*mapValue) int { return 3 }, "*")
 		err := runTest(c, func(p gs.Context) {
 
 			var vSlice []*mapValue

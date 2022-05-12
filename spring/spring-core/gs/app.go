@@ -364,14 +364,19 @@ func (app *App) Property(key string, value interface{}) {
 	app.c.Property(key, value)
 }
 
+// Accept 参考 Container.Accept 的解释。
+func (app *App) Accept(b *BeanDefinition) *BeanDefinition {
+	return app.c.Accept(b)
+}
+
 // Object 参考 Container.Object 的解释。
 func (app *App) Object(i interface{}) *BeanDefinition {
-	return app.c.register(NewBean(reflect.ValueOf(i)))
+	return app.c.Accept(NewBean(reflect.ValueOf(i)))
 }
 
 // Provide 参考 Container.Provide 的解释。
 func (app *App) Provide(ctor interface{}, args ...arg.Arg) *BeanDefinition {
-	return app.c.register(NewBean(ctor, args...))
+	return app.c.Accept(NewBean(ctor, args...))
 }
 
 // HandleGet 注册 GET 方法处理函数。
@@ -478,5 +483,5 @@ func (app *App) GrpcServer(serviceName string, server *grpc.Server) {
 
 // GrpcClient 注册 gRPC 服务客户端，fn 是 gRPC 自动生成的客户端构造函数。
 func (app *App) GrpcClient(fn interface{}, endpoint string) *BeanDefinition {
-	return app.c.register(NewBean(fn, endpoint))
+	return app.c.Accept(NewBean(fn, endpoint))
 }

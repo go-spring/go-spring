@@ -29,17 +29,19 @@ import (
 
 func init() {
 
-	err := i18n.Register("zh-CN", conf.Map(map[string]interface{}{
+	p, err := conf.Map(map[string]interface{}{
 		"message": "这是一条消息",
-	}))
+	})
+	err = i18n.Register("zh-CN", p)
 	util.Panic(err).When(err != nil)
 
 	err = i18n.LoadLanguage("testdata/zh.properties")
 	util.Panic(err).When(err != nil)
 
-	err = i18n.Register("en-US", conf.Map(map[string]interface{}{
+	p, err = conf.Map(map[string]interface{}{
 		"message": "this is a message",
-	}))
+	})
+	err = i18n.Register("en-US", p)
 	util.Panic(err).When(err != nil)
 
 	err = i18n.LoadLanguage("testdata/en/")

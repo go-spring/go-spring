@@ -45,7 +45,7 @@ func init() {
 }
 
 type MyController struct {
-	RedisClient redis.Client  `autowire:""`
+	RedisClient *redis.Client `autowire:""`
 	MongoClient *mongo.Client `autowire:"?"`
 	DB          *gorm.DB      `autowire:""`
 }
@@ -86,10 +86,10 @@ func (c *MyController) Echo(ctx context.Context, request *EchoRequest) *web.RpcR
 
 func (c *MyController) OK(ctx web.Context) {
 
-	_, err := c.RedisClient.SetEX(ctx.Context(), "key", "ok", 10)
+	_, err := c.RedisClient.OpsForString().SetEX(ctx.Context(), "key", "ok", 10)
 	util.Panic(err).When(err != nil)
 
-	val, err := c.RedisClient.Get(ctx.Context(), "key")
+	val, err := c.RedisClient.OpsForString().Get(ctx.Context(), "key")
 	util.Panic(err).When(err != nil)
 
 	rows, err := c.DB.Table("ENGINES").Select("ENGINE").Rows()
