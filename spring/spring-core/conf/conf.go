@@ -352,16 +352,12 @@ func Tag(tag string) BindOption {
 	}
 }
 
-// Bind 将 key 对应的属性值绑定到某个数据类型的实例上。i 必须是一个指针，只有这
-// 样才能将修改传递出去。Bind 方法使用 tag 字符串对数据实例进行属性绑定，其语法
-// 为 value:"${a:=b}"，其中 value 表示属性绑定，${} 表示属性引用，a 表示属性
-// 的名称，:=b 表示为属性设置默认值。而且 tag 字符串还支持在默认值中进行嵌套引用
-// ，即 ${a:=${b}}。当然，还有两点需要特别说明：
-// 一是对 array、slice、map、struct 这些复合类型不能设置非空默认值，因为如果
-// 默认值太长会影响阅读体验，而且解析起来也并不容易；
-// 二是可以省略属性名而只有默认值，即 ${:=b}，原因是某些情况下属性名可能没想好或
-// 者不太重要，比如，得益于字符串差值的实现，这种语法可以用于动态生成新的属性值，
-// 也有人认为这是一种对 Golang 缺少默认值语法的补充，Bug is Feature。
+// Bind binds properties to a value, the bind value can be primitive type,
+// map, slice, struct. When binding to struct, the tag 'value' indicates
+// which properties should be bind. The 'value' tags are defined by
+// value:"${a:=b|splitter}", 'a' is the key, 'b' is the default value,
+// 'splitter' is the Splitter's name when you want split string value
+// into []string value.
 func (p *Properties) Bind(i interface{}, opts ...BindOption) error {
 
 	var v reflect.Value
@@ -468,24 +464,18 @@ func SplitPath(key string) ([]string, error) {
 	return keyPath, nil
 }
 
-// checkKey 检查属性 key 是否合法，collection 表示是否为空的集合数据。
+// checkKey checks whether the key exists, if the key is collection then it will be
+// stored as map[string]interface{}, otherwise it will be stored as struct{}.
 func (p *Properties) checkKey(key string, collection bool) (exist bool, err error) {
-
-	var (
-		ok bool
-		v  interface{}
-		t  map[string]interface{}
-	)
-
-	t = p.tree
-	exist = true
 	keyPath, err := SplitPath(key)
 	if err != nil {
 		return false, err
 	}
+	t := p.tree
+	exist = true
 	for i, s := range keyPath {
-
-		if v, ok = t[s]; !ok {
+		v, ok := t[s]
+		if !ok {
 			if i < len(keyPath)-1 || collection {
 				m := make(map[string]interface{})
 				t[s] = m
@@ -496,8 +486,8 @@ func (p *Properties) checkKey(key string, collection bool) (exist bool, err erro
 			exist = false
 			continue
 		}
-
-		if _, ok = v.(map[string]interface{}); ok {
+		_, ok = v.(map[string]interface{})
+		if ok {
 			if i < len(keyPath)-1 || collection {
 				t = v.(map[string]interface{})
 				continue
@@ -505,8 +495,8 @@ func (p *Properties) checkKey(key string, collection bool) (exist bool, err erro
 			err = fmt.Errorf("property %q want a value but has sub keys %v", key, v)
 			return
 		}
-
-		if _, ok = v.(struct{}); ok {
+		_, ok = v.(struct{})
+		if ok {
 			if i == len(keyPath)-1 && !collection {
 				continue
 			}

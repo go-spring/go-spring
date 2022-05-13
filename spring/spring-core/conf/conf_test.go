@@ -680,19 +680,19 @@ func TestBindMap(t *testing.T) {
 	t.Run("", func(t *testing.T) {
 		var r [3]map[string]string
 		err := conf.New().Bind(&r)
-		assert.Error(t, err, "\\[3]map\\[string]string 属性绑定的目标必须是值类型")
+		assert.Error(t, err, "\\[3]map\\[string]string target should be value type")
 	})
 
 	t.Run("", func(t *testing.T) {
 		var r []map[string]string
 		err := conf.New().Bind(&r)
-		assert.Error(t, err, "\\[]map\\[string]string 属性绑定的目标必须是值类型")
+		assert.Error(t, err, "\\[]map\\[string]string target should be value type")
 	})
 
 	t.Run("", func(t *testing.T) {
 		var r map[string]map[string]string
 		err := conf.New().Bind(&r)
-		assert.Error(t, err, "map\\[string]map\\[string]string 属性绑定的目标必须是值类型")
+		assert.Error(t, err, "map\\[string]map\\[string]string target should be value type")
 	})
 
 	m := map[string]interface{}{
@@ -712,7 +712,7 @@ func TestBindMap(t *testing.T) {
 		p, err := conf.Map(m)
 		assert.Nil(t, err)
 		err = p.Bind(&r)
-		assert.Error(t, err, "map\\[string]conf_test.S.M 属性绑定的目标必须是值类型")
+		assert.Error(t, err, "map\\[string]conf_test.S.M target should be value type")
 	})
 
 	t.Run("", func(t *testing.T) {
@@ -723,7 +723,7 @@ func TestBindMap(t *testing.T) {
 		p, err := conf.Map(m)
 		assert.Nil(t, err)
 		err = p.Bind(&r)
-		assert.Error(t, err, "map\\[string]conf_test.S.M 属性绑定的目标必须是值类型")
+		assert.Error(t, err, "map\\[string]conf_test.S.M target should be value type")
 	})
 
 	t.Run("", func(t *testing.T) {
@@ -734,7 +734,7 @@ func TestBindMap(t *testing.T) {
 		p, err := conf.Map(m)
 		assert.Nil(t, err)
 		err = p.Bind(&r)
-		assert.Error(t, err, "map\\[string]conf_test.S.M 属性绑定的目标必须是值类型")
+		assert.Error(t, err, "map\\[string]conf_test.S.M target should be value type")
 	})
 
 	t.Run("", func(t *testing.T) {

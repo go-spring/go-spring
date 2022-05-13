@@ -24,7 +24,6 @@ import (
 	"strings"
 
 	"github.com/go-spring/spring-base/code"
-	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-base/util"
 )
 
@@ -101,13 +100,12 @@ func (param *BindParam) BindTag(tag string) error {
 	return nil
 }
 
+// BindValue binds properties to a value.
 func BindValue(p *Properties, v reflect.Value, param BindParam) error {
 
 	if !IsValueType(param.Type) {
-		return util.Errorf(code.FileLine(), "%s 属性绑定的目标必须是值类型", param.Path)
+		return util.Errorf(code.FileLine(), "%s target should be value type", param.Path)
 	}
-
-	log.Tracef("::<>:: %#v", param)
 
 	switch v.Kind() {
 	case reflect.Map:
@@ -177,6 +175,62 @@ func BindValue(p *Properties, v reflect.Value, param BindParam) error {
 	return util.Errorf(code.FileLine(), "unsupported bind type %q", param.Type.String())
 }
 
+// bindArray binds properties to an array value.
+func bindArray(p *Properties, v reflect.Value, param BindParam) error {
+
+	et := param.Type.Elem()
+	p, err := getSliceValue(p, et, param)
+	if err != nil || p == nil {
+		return err
+	}
+
+	for i := 0; i < v.Len(); i++ {
+		subParam := BindParam{
+			Type: et,
+			Key:  fmt.Sprintf("%s[%d]", param.Key, i),
+			Path: fmt.Sprintf("%s[%d]", param.Path, i),
+		}
+		err = BindValue(p, v.Index(i), subParam)
+		if errors.Is(err, ErrNotExist) {
+			break
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// bindSlice binds properties to a slice value.
+func bindSlice(p *Properties, v reflect.Value, param BindParam) error {
+
+	et := param.Type.Elem()
+	p, err := getSliceValue(p, et, param)
+	if err != nil || p == nil {
+		return err
+	}
+
+	slice := reflect.MakeSlice(param.Type, 0, 0)
+	for i := 0; ; i++ {
+		e := reflect.New(et).Elem()
+		subParam := BindParam{
+			Type: et,
+			Key:  fmt.Sprintf("%s[%d]", param.Key, i),
+			Path: fmt.Sprintf("%s[%d]", param.Path, i),
+		}
+		err = BindValue(p, e, subParam)
+		if errors.Is(err, ErrNotExist) {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		slice = reflect.Append(slice, e)
+	}
+	v.Set(slice)
+	return nil
+}
+
 func getSliceValue(p *Properties, et reflect.Type, param BindParam) (*Properties, error) {
 
 	if p.Has(param.Key + "[0]") {
@@ -228,67 +282,14 @@ func getSliceValue(p *Properties, et reflect.Type, param BindParam) (*Properties
 	return p, nil
 }
 
-func bindArray(p *Properties, v reflect.Value, param BindParam) error {
-
-	et := param.Type.Elem()
-	p, err := getSliceValue(p, et, param)
-	if p == nil || err != nil {
-		return err
-	}
-
-	for i := 0; i < v.Len(); i++ {
-		subParam := BindParam{
-			Type: et,
-			Key:  fmt.Sprintf("%s[%d]", param.Key, i),
-			Path: fmt.Sprintf("%s[%d]", param.Path, i),
-		}
-		err = BindValue(p, v.Index(i), subParam)
-		if errors.Is(err, ErrNotExist) {
-			break
-		}
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func bindSlice(p *Properties, v reflect.Value, param BindParam) error {
-
-	et := param.Type.Elem()
-	p, err := getSliceValue(p, et, param)
-	if p == nil || err != nil {
-		return err
-	}
-
-	slice := reflect.MakeSlice(param.Type, 0, 0)
-	for i := 0; ; i++ {
-		subParam := BindParam{
-			Type: et,
-			Key:  fmt.Sprintf("%s[%d]", param.Key, i),
-			Path: fmt.Sprintf("%s[%d]", param.Path, i),
-		}
-		e := reflect.New(et).Elem()
-		err = BindValue(p, e, subParam)
-		if errors.Is(err, ErrNotExist) {
-			break
-		}
-		if err != nil {
-			return err
-		}
-		slice = reflect.Append(slice, e)
-	}
-	v.Set(slice)
-	return nil
-}
-
+// bindMap binds properties to a map value.
 func bindMap(p *Properties, v reflect.Value, param BindParam) error {
 
 	if param.tag.HasDef {
 		if param.tag.Def == "" {
 			return nil
 		}
-		return util.Errorf(code.FileLine(), "%s map 类型不能指定非空默认值", param.Path)
+		return util.Errorf(code.FileLine(), "%s map type can't have a non empty default value", param.Path)
 	}
 
 	var keys []string
@@ -303,7 +304,8 @@ func bindMap(p *Properties, v reflect.Value, param BindParam) error {
 			if !ok {
 				return util.Errorf(code.FileLine(), "property %q %w", param.Key, ErrNotExist)
 			}
-			if _, ok = vt.(struct{}); ok {
+			_, ok = vt.(struct{})
+			if ok {
 				oldKey := strings.Join(keyPath[:i+1], ".")
 				return util.Errorf(code.FileLine(), "property %q has a value but want another sub key %q", oldKey, param.Key+".*")
 			}
@@ -315,7 +317,7 @@ func bindMap(p *Properties, v reflect.Value, param BindParam) error {
 	}
 
 	et := param.Type.Elem()
-	m := reflect.MakeMap(param.Type)
+	ret := reflect.MakeMap(param.Type)
 	for _, key := range keys {
 		e := reflect.New(et).Elem()
 		subKey := key
@@ -331,16 +333,17 @@ func bindMap(p *Properties, v reflect.Value, param BindParam) error {
 		if err != nil {
 			return err
 		}
-		m.SetMapIndex(reflect.ValueOf(key), e)
+		ret.SetMapIndex(reflect.ValueOf(key), e)
 	}
-	v.Set(m)
+	v.Set(ret)
 	return nil
 }
 
+// bindStruct binds properties to a struct value.
 func bindStruct(p *Properties, v reflect.Value, param BindParam) error {
 
 	if param.tag.HasDef && param.tag.Def != "" {
-		return util.Errorf(code.FileLine(), "%s struct 类型不能指定非空默认值", param.Path)
+		return util.Errorf(code.FileLine(), "%s struct type can't have a non empty default value", param.Path)
 	}
 
 	for i := 0; i < param.Type.NumField(); i++ {
@@ -371,7 +374,7 @@ func bindStruct(p *Properties, v reflect.Value, param BindParam) error {
 		}
 
 		if ft.Anonymous {
-			// 指针或者结构体类型可能出现无限递归的情况。
+			// embed pointer type may be infinite recursion.
 			if ft.Type.Kind() != reflect.Struct {
 				continue
 			}
@@ -430,6 +433,18 @@ func ParseTag(tag string) (ret ParsedTag, err error) {
 	return
 }
 
+// resolve 解析 ${key:=def} 字符串，返回 key 对应的属性值，如果没有找到则返回
+// def 值，如果 def 存在引用则递归解析直到获取最终的属性值。
+func resolve(p *Properties, param BindParam) (string, error) {
+	if val, ok := p.data[param.Key]; ok {
+		return resolveString(p, val)
+	}
+	if param.tag.HasDef {
+		return resolveString(p, param.tag.Def)
+	}
+	return "", util.Errorf(code.FileLine(), "property %q %w", param.Key, ErrNotExist)
+}
+
 func resolveString(p *Properties, s string) (string, error) {
 
 	n := len(s)
@@ -485,16 +500,4 @@ func resolveString(p *Properties, s string) (string, error) {
 	}
 
 	return s[:start] + s1 + s2, nil
-}
-
-// resolve 解析 ${key:=def} 字符串，返回 key 对应的属性值，如果没有找到则返回
-// def 值，如果 def 存在引用则递归解析直到获取最终的属性值。
-func resolve(p *Properties, param BindParam) (string, error) {
-	if val, ok := p.data[param.Key]; ok {
-		return resolveString(p, val)
-	}
-	if param.tag.HasDef {
-		return resolveString(p, param.tag.Def)
-	}
-	return "", util.Errorf(code.FileLine(), "property %q %w", param.Key, ErrNotExist)
 }
