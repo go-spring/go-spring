@@ -24,21 +24,16 @@ import (
 	"strings"
 
 	"github.com/go-spring/spring-base/code"
-	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-base/util"
 )
 
 var (
-	ErrNotExist = errors.New("not exist")
+	errNotExist      = errors.New("not exist")
+	errInvalidSyntax = errors.New("invalid syntax")
 )
 
-// IsPrimitiveValueType 返回是否是原生值类型。首先，什么是值类型？在发生赋值时，如
-// 果传递的是数据本身而不是数据的引用，则称这种类型为值类型。那什么是原生值类型？所谓原
-// 生值类型是指 golang 定义的 26 种基础类型里面符合值类型定义的类型。罗列下来，就是说
-// Bool、Int、Int8、Int16、Int32、Int64、Uint、Uint8、Uint16、Uint32、Uint64、
-// Float32、Float64、Complex64、Complex128、String、Struct 这些基础数据类型都
-// 是值类型。当然，需要特别说明的是 Struct 类型必须在保证所有字段都是值类型的时候才是
-// 值类型，只要有不是值类型的字段就不是值类型。
+// IsPrimitiveValueType returns whether the input type is the primitive value
+// type which only is int, unit, float, bool, string and complex.
 func IsPrimitiveValueType(t reflect.Type) bool {
 	switch t.Kind() {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
@@ -57,10 +52,9 @@ func IsPrimitiveValueType(t reflect.Type) bool {
 	return false
 }
 
-// IsValueType 返回是否是 value 类型。除了原生值类型，它们的集合类型也是值类型，但
-// 是仅限于一层复合结构，即 []string、map[string]struct 这种，像 [][]string 则
-// 不是值类型，map[string]map[string]string 也不是值类型，因为程序开发过程中，配
-// 置项应当越明确越好，而多层次嵌套结构显然会造成信息的不明确，因此不能是值类型。
+// IsValueType returns whether the input type is the value type which is the
+// primitive value type and their one dimensional composite type including array,
+// slice, map and struct, such as [3]string, []string, []int, map[int]int, etc.
 func IsValueType(t reflect.Type) bool {
 	fn := func(t reflect.Type) bool {
 		return IsPrimitiveValueType(t) || t.Kind() == reflect.Struct
@@ -73,18 +67,56 @@ func IsValueType(t reflect.Type) bool {
 	}
 }
 
+// ParsedTag a value tag includes at most three parts: required key, optional
+// default value, and optional splitter, the syntax is ${key:=value}||splitter.
 type ParsedTag struct {
-	Key    string // 简短属性名
-	Def    string // 默认值
-	HasDef bool   // 是否具有默认值
-	Split  string // 字符串分割器
+	Key      string // short property key
+	Def      string // default value
+	HasDef   bool   // has default value
+	Splitter string // splitter's name
+}
+
+// ParseTag parses a value tag, returns its key, and default value, and splitter.
+func ParseTag(tag string) (ret ParsedTag, err error) {
+	i := strings.LastIndex(tag, "||")
+	if i == 0 {
+		err = errInvalidSyntax
+		err = util.Wrapf(err, code.FileLine(), "parse tag %q error", tag)
+		return
+	}
+	j := strings.LastIndex(tag, "}")
+	if j <= 0 {
+		err = errInvalidSyntax
+		err = util.Wrapf(err, code.FileLine(), "parse tag %q error", tag)
+		return
+	}
+	k := strings.Index(tag, "${")
+	if k < 0 {
+		err = errInvalidSyntax
+		err = util.Wrapf(err, code.FileLine(), "parse tag %q error", tag)
+		return
+	}
+	if i > j {
+		ret.Splitter = strings.TrimSpace(tag[i+2:])
+	}
+	ss := strings.SplitN(tag[k+2:j], ":=", 2)
+	ret.Key = ss[0]
+	if len(ss) > 1 {
+		ret.HasDef = true
+		ret.Def = ss[1]
+	}
+	return
 }
 
 type BindParam struct {
-	Type reflect.Type // 绑定对象的类型
-	Key  string       // 完整的属性名
-	Path string       // 绑定对象的路径
-	tag  ParsedTag    // 解析后的 tag
+	Type reflect.Type // reflection type of binding value
+	Key  string       // full property key
+	Path string       // binding path
+	tag  ParsedTag    // parsed tag
+}
+
+func (param *BindParam) Tag() ParsedTag {
+	return param.tag
 }
 
 func (param *BindParam) BindTag(tag string) error {
@@ -101,13 +133,12 @@ func (param *BindParam) BindTag(tag string) error {
 	return nil
 }
 
+// BindValue binds properties to a value.
 func BindValue(p *Properties, v reflect.Value, param BindParam) error {
 
 	if !IsValueType(param.Type) {
-		return util.Errorf(code.FileLine(), "%s 属性绑定的目标必须是值类型", param.Path)
+		return util.Errorf(code.FileLine(), "%s target should be value type", param.Path)
 	}
-
-	log.Tracef("::<>:: %#v", param)
 
 	switch v.Kind() {
 	case reflect.Map:
@@ -119,10 +150,8 @@ func BindValue(p *Properties, v reflect.Value, param BindParam) error {
 	}
 
 	fn := converters[param.Type]
-	if v.Kind() == reflect.Struct {
-		if fn == nil {
-			return bindStruct(p, v, param)
-		}
+	if fn == nil && v.Kind() == reflect.Struct {
+		return bindStruct(p, v, param)
 	}
 
 	val, err := resolve(p, param)
@@ -177,6 +206,62 @@ func BindValue(p *Properties, v reflect.Value, param BindParam) error {
 	return util.Errorf(code.FileLine(), "unsupported bind type %q", param.Type.String())
 }
 
+// bindArray binds properties to an array value.
+func bindArray(p *Properties, v reflect.Value, param BindParam) error {
+
+	et := param.Type.Elem()
+	p, err := getSliceValue(p, et, param)
+	if err != nil || p == nil {
+		return err
+	}
+
+	for i := 0; i < v.Len(); i++ {
+		subParam := BindParam{
+			Type: et,
+			Key:  fmt.Sprintf("%s[%d]", param.Key, i),
+			Path: fmt.Sprintf("%s[%d]", param.Path, i),
+		}
+		err = BindValue(p, v.Index(i), subParam)
+		if errors.Is(err, errNotExist) {
+			break
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// bindSlice binds properties to a slice value.
+func bindSlice(p *Properties, v reflect.Value, param BindParam) error {
+
+	et := param.Type.Elem()
+	p, err := getSliceValue(p, et, param)
+	if err != nil || p == nil {
+		return err
+	}
+
+	slice := reflect.MakeSlice(param.Type, 0, 0)
+	for i := 0; ; i++ {
+		e := reflect.New(et).Elem()
+		subParam := BindParam{
+			Type: et,
+			Key:  fmt.Sprintf("%s[%d]", param.Key, i),
+			Path: fmt.Sprintf("%s[%d]", param.Path, i),
+		}
+		err = BindValue(p, e, subParam)
+		if errors.Is(err, errNotExist) {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		slice = reflect.Append(slice, e)
+	}
+	v.Set(slice)
+	return nil
+}
+
 func getSliceValue(p *Properties, et reflect.Type, param BindParam) (*Properties, error) {
 
 	if p.Has(param.Key + "[0]") {
@@ -190,7 +275,7 @@ func getSliceValue(p *Properties, et reflect.Type, param BindParam) (*Properties
 		strVal = p.Get(param.Key)
 	} else {
 		if !param.tag.HasDef {
-			return nil, util.Errorf(code.FileLine(), "property %q %w", param.Key, ErrNotExist)
+			return nil, util.Errorf(code.FileLine(), "property %q %w", param.Key, errNotExist)
 		}
 		if param.tag.Def == "" {
 			return nil, nil
@@ -210,7 +295,7 @@ func getSliceValue(p *Properties, et reflect.Type, param BindParam) (*Properties
 		arrVal []string
 	)
 
-	if s := param.tag.Split; s == "" {
+	if s := param.tag.Splitter; s == "" {
 		arrVal = strings.Split(strVal, ",")
 	} else if fn := splitters[s]; fn != nil {
 		if arrVal, err = fn(strVal); err != nil {
@@ -228,67 +313,14 @@ func getSliceValue(p *Properties, et reflect.Type, param BindParam) (*Properties
 	return p, nil
 }
 
-func bindArray(p *Properties, v reflect.Value, param BindParam) error {
-
-	et := param.Type.Elem()
-	p, err := getSliceValue(p, et, param)
-	if p == nil || err != nil {
-		return err
-	}
-
-	for i := 0; i < v.Len(); i++ {
-		subParam := BindParam{
-			Type: et,
-			Key:  fmt.Sprintf("%s[%d]", param.Key, i),
-			Path: fmt.Sprintf("%s[%d]", param.Path, i),
-		}
-		err = BindValue(p, v.Index(i), subParam)
-		if errors.Is(err, ErrNotExist) {
-			break
-		}
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func bindSlice(p *Properties, v reflect.Value, param BindParam) error {
-
-	et := param.Type.Elem()
-	p, err := getSliceValue(p, et, param)
-	if p == nil || err != nil {
-		return err
-	}
-
-	slice := reflect.MakeSlice(param.Type, 0, 0)
-	for i := 0; ; i++ {
-		subParam := BindParam{
-			Type: et,
-			Key:  fmt.Sprintf("%s[%d]", param.Key, i),
-			Path: fmt.Sprintf("%s[%d]", param.Path, i),
-		}
-		e := reflect.New(et).Elem()
-		err = BindValue(p, e, subParam)
-		if errors.Is(err, ErrNotExist) {
-			break
-		}
-		if err != nil {
-			return err
-		}
-		slice = reflect.Append(slice, e)
-	}
-	v.Set(slice)
-	return nil
-}
-
+// bindMap binds properties to a map value.
 func bindMap(p *Properties, v reflect.Value, param BindParam) error {
 
 	if param.tag.HasDef {
 		if param.tag.Def == "" {
 			return nil
 		}
-		return util.Errorf(code.FileLine(), "%s map 类型不能指定非空默认值", param.Path)
+		return util.Errorf(code.FileLine(), "%s map type can't have a non empty default value", param.Path)
 	}
 
 	var keys []string
@@ -301,9 +333,10 @@ func bindMap(p *Properties, v reflect.Value, param BindParam) error {
 		for i, s := range keyPath {
 			vt, ok := t[s]
 			if !ok {
-				return util.Errorf(code.FileLine(), "property %q %w", param.Key, ErrNotExist)
+				return util.Errorf(code.FileLine(), "property %q %w", param.Key, errNotExist)
 			}
-			if _, ok = vt.(struct{}); ok {
+			_, ok = vt.(struct{})
+			if ok {
 				oldKey := strings.Join(keyPath[:i+1], ".")
 				return util.Errorf(code.FileLine(), "property %q has a value but want another sub key %q", oldKey, param.Key+".*")
 			}
@@ -315,7 +348,7 @@ func bindMap(p *Properties, v reflect.Value, param BindParam) error {
 	}
 
 	et := param.Type.Elem()
-	m := reflect.MakeMap(param.Type)
+	ret := reflect.MakeMap(param.Type)
 	for _, key := range keys {
 		e := reflect.New(et).Elem()
 		subKey := key
@@ -331,16 +364,17 @@ func bindMap(p *Properties, v reflect.Value, param BindParam) error {
 		if err != nil {
 			return err
 		}
-		m.SetMapIndex(reflect.ValueOf(key), e)
+		ret.SetMapIndex(reflect.ValueOf(key), e)
 	}
-	v.Set(m)
+	v.Set(ret)
 	return nil
 }
 
+// bindStruct binds properties to a struct value.
 func bindStruct(p *Properties, v reflect.Value, param BindParam) error {
 
 	if param.tag.HasDef && param.tag.Def != "" {
-		return util.Errorf(code.FileLine(), "%s struct 类型不能指定非空默认值", param.Path)
+		return util.Errorf(code.FileLine(), "%s struct type can't have a non empty default value", param.Path)
 	}
 
 	for i := 0; i < param.Type.NumField(); i++ {
@@ -371,7 +405,7 @@ func bindStruct(p *Properties, v reflect.Value, param BindParam) error {
 		}
 
 		if ft.Anonymous {
-			// 指针或者结构体类型可能出现无限递归的情况。
+			// embed pointer type may be infinite recursion.
 			if ft.Type.Kind() != reflect.Struct {
 				continue
 			}
@@ -395,98 +429,6 @@ func bindStruct(p *Properties, v reflect.Value, param BindParam) error {
 	return nil
 }
 
-// ParseTag 解析 ${key:=def}|split 格式的字符串，然后返回 key 和 def 的值。
-func ParseTag(tag string) (ret ParsedTag, err error) {
-	i := strings.LastIndex(tag, "|")
-	if i == 0 {
-		err = util.Errorf(code.FileLine(), "%q 语法错误", tag)
-		return
-	}
-	j := strings.LastIndex(tag, "}")
-	if j <= 0 {
-		err = util.Errorf(code.FileLine(), "%q 语法错误", tag)
-		return
-	}
-	var (
-		left  = tag[:j]
-		right string
-	)
-	if i > j {
-		right = tag[i+1:]
-	}
-	k := strings.Index(left, "${")
-	if k < 0 {
-		err = util.Errorf(code.FileLine(), "%q 语法错误", tag)
-		return
-	}
-	left = left[k+2:]
-	ret.Split = right
-	ssLeft := strings.SplitN(left, ":=", 2)
-	ret.Key = ssLeft[0]
-	if len(ssLeft) > 1 {
-		ret.HasDef = true
-		ret.Def = ssLeft[1]
-	}
-	return
-}
-
-func resolveString(p *Properties, s string) (string, error) {
-
-	n := len(s)
-	count := 0
-	found := false
-	start, end := -1, -1
-
-	for i := 0; i < len(s); i++ {
-		switch s[i] {
-		case '$':
-			if i < n-1 {
-				if s[i+1] == '{' {
-					if count == 0 {
-						start = i
-					}
-					count++
-				}
-			}
-		case '}':
-			count--
-			if count == 0 {
-				found = true
-				end = i
-			}
-		}
-		if found {
-			break
-		}
-	}
-
-	if start < 0 || end < 0 {
-		return s, nil
-	}
-
-	if count > 0 {
-		return "", util.Errorf(code.FileLine(), "%s 语法错误", s)
-	}
-
-	param := BindParam{}
-	err := param.BindTag(s[start : end+1])
-	if err != nil {
-		return "", err
-	}
-
-	s1, err := resolve(p, param)
-	if err != nil {
-		return "", err
-	}
-
-	s2, err := resolveString(p, s[end+1:])
-	if err != nil {
-		return "", err
-	}
-
-	return s[:start] + s1 + s2, nil
-}
-
 // resolve 解析 ${key:=def} 字符串，返回 key 对应的属性值，如果没有找到则返回
 // def 值，如果 def 存在引用则递归解析直到获取最终的属性值。
 func resolve(p *Properties, param BindParam) (string, error) {
@@ -496,5 +438,62 @@ func resolve(p *Properties, param BindParam) (string, error) {
 	if param.tag.HasDef {
 		return resolveString(p, param.tag.Def)
 	}
-	return "", util.Errorf(code.FileLine(), "property %q %w", param.Key, ErrNotExist)
+	return "", util.Errorf(code.FileLine(), "property %q %w", param.Key, errNotExist)
+}
+
+// resolveString returns property references processed string.
+func resolveString(p *Properties, s string) (string, error) {
+
+	var (
+		length = len(s)
+		count  = 0
+		start  = -1
+		end    = -1
+	)
+
+	for i := 0; i < length; i++ {
+		if s[i] == '$' {
+			if i < length-1 && s[i+1] == '{' {
+				if count == 0 {
+					start = i
+				}
+				count++
+			}
+		} else if s[i] == '}' {
+			if count > 0 {
+				count--
+				if count == 0 {
+					end = i
+					break
+				}
+			}
+		}
+	}
+
+	if start < 0 {
+		return s, nil
+	}
+
+	if end < 0 || count > 0 {
+		err := errInvalidSyntax
+		return "", util.Wrapf(err, code.FileLine(), "resolve %q error", s)
+	}
+
+	var param BindParam
+	err := param.BindTag(s[start : end+1])
+	if err != nil {
+		return "", util.Wrapf(err, code.FileLine(), "resolve %q error", s)
+	}
+
+	s1, err := resolve(p, param)
+	if err != nil {
+		return "", util.Wrapf(err, code.FileLine(), "resolve %q error", s)
+	}
+
+	s2, err := resolveString(p, s[end+1:])
+	if err != nil {
+		return "", util.Wrapf(err, code.FileLine(), "resolve %q error", s)
+	}
+
+	return s[:start] + s1 + s2, nil
 }

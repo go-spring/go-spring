@@ -436,7 +436,7 @@ func (app *App) DeleteMapping(path string, fn web.HandlerFunc) *web.Mapper {
 
 // DeleteBinding 注册 DELETE 方法处理函数。
 func (app *App) DeleteBinding(path string, fn interface{}) *web.Mapper {
-	return app.router.DeleteBinding(path, web.BIND(fn))
+	return app.router.DeleteBinding(path, fn)
 }
 
 // HandleRequest 注册任意 HTTP 方法处理函数。

@@ -680,19 +680,19 @@ func TestBindMap(t *testing.T) {
 	t.Run("", func(t *testing.T) {
 		var r [3]map[string]string
 		err := conf.New().Bind(&r)
-		assert.Error(t, err, "\\[3]map\\[string]string 属性绑定的目标必须是值类型")
+		assert.Error(t, err, "\\[3]map\\[string]string target should be value type")
 	})
 
 	t.Run("", func(t *testing.T) {
 		var r []map[string]string
 		err := conf.New().Bind(&r)
-		assert.Error(t, err, "\\[]map\\[string]string 属性绑定的目标必须是值类型")
+		assert.Error(t, err, "\\[]map\\[string]string target should be value type")
 	})
 
 	t.Run("", func(t *testing.T) {
 		var r map[string]map[string]string
 		err := conf.New().Bind(&r)
-		assert.Error(t, err, "map\\[string]map\\[string]string 属性绑定的目标必须是值类型")
+		assert.Error(t, err, "map\\[string]map\\[string]string target should be value type")
 	})
 
 	m := map[string]interface{}{
@@ -712,7 +712,7 @@ func TestBindMap(t *testing.T) {
 		p, err := conf.Map(m)
 		assert.Nil(t, err)
 		err = p.Bind(&r)
-		assert.Error(t, err, "map\\[string]conf_test.S.M 属性绑定的目标必须是值类型")
+		assert.Error(t, err, "map\\[string]conf_test.S.M target should be value type")
 	})
 
 	t.Run("", func(t *testing.T) {
@@ -723,7 +723,7 @@ func TestBindMap(t *testing.T) {
 		p, err := conf.Map(m)
 		assert.Nil(t, err)
 		err = p.Bind(&r)
-		assert.Error(t, err, "map\\[string]conf_test.S.M 属性绑定的目标必须是值类型")
+		assert.Error(t, err, "map\\[string]conf_test.S.M target should be value type")
 	})
 
 	t.Run("", func(t *testing.T) {
@@ -734,7 +734,7 @@ func TestBindMap(t *testing.T) {
 		p, err := conf.Map(m)
 		assert.Nil(t, err)
 		err = p.Bind(&r)
-		assert.Error(t, err, "map\\[string]conf_test.S.M 属性绑定的目标必须是值类型")
+		assert.Error(t, err, "map\\[string]conf_test.S.M target should be value type")
 	})
 
 	t.Run("", func(t *testing.T) {
@@ -755,7 +755,7 @@ func TestBindMap(t *testing.T) {
 		assert.Nil(t, err)
 		var r map[string]string
 		err = p.Bind(&r)
-		assert.Error(t, err, ".*/bind.go:.* type \"string\" bind error\n.*/bind.go:.* property \"a\" not exist")
+		assert.Error(t, err, ".*/bind.go:.* type \"string\" bind error; .*/bind.go:.* property \"a\" not exist")
 	})
 
 	t.Run("", func(t *testing.T) {
@@ -784,18 +784,18 @@ func TestBindMap(t *testing.T) {
 	})
 }
 
-func TestInterpolate(t *testing.T) {
+func TestResolve(t *testing.T) {
 	p := conf.New()
 	err := p.Set("name", "Jim")
 	assert.Nil(t, err)
-	str, _ := p.Resolve("my name is ${name")
-	assert.Equal(t, str, "my name is ${name")
-	str, _ = p.Resolve("my name is ${name}")
+	_, err = p.Resolve("my name is ${name")
+	assert.Error(t, err, ".*bind.go:.* resolve \"my name is \\${name\" error; invalid syntax")
+	str, _ := p.Resolve("my name is ${name}")
 	assert.Equal(t, str, "my name is Jim")
 	str, _ = p.Resolve("my name is ${name}${name}")
 	assert.Equal(t, str, "my name is JimJim")
-	str, _ = p.Resolve("my name is ${name} my name is ${name")
-	assert.Equal(t, str, "my name is Jim my name is ${name")
+	_, err = p.Resolve("my name is ${name} my name is ${name")
+	assert.NotNil(t, err)
 	str, _ = p.Resolve("my name is ${name} my name is ${name}")
 	assert.Equal(t, str, "my name is Jim my name is Jim")
 }
@@ -872,7 +872,7 @@ func TestSplitter(t *testing.T) {
 	conf.RegisterConverter(PointConverter)
 	conf.RegisterSplitter("PointSplitter", PointSplitter)
 	var points []image.Point
-	err := conf.New().Bind(&points, conf.Tag("${:=(1,2)(3,4)}|PointSplitter"))
+	err := conf.New().Bind(&points, conf.Tag("${:=(1,2)(3,4)}||PointSplitter"))
 	assert.Nil(t, err)
 	assert.Equal(t, points, []image.Point{{X: 1, Y: 2}, {X: 3, Y: 4}})
 }

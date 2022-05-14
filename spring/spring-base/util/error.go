@@ -35,9 +35,9 @@ var WrapFormat = func(err error, fileline string, format string, a ...interface{
 		return errors.New(fileline + " " + fmt.Sprint(a...))
 	}
 	if format == "" {
-		return fmt.Errorf("%s %s\n%w", fileline, fmt.Sprint(a...), err)
+		return fmt.Errorf("%s %s; %w", fileline, fmt.Sprint(a...), err)
 	}
-	return fmt.Errorf("%s %s\n%w", fileline, fmt.Sprintf(format, a...), err)
+	return fmt.Errorf("%s %s; %w", fileline, fmt.Sprintf(format, a...), err)
 }
 
 // Error 创建携带文件信息的 error 对象。文件信息未来也许可以在编译期计算。

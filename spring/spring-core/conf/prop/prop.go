@@ -18,7 +18,7 @@ package prop
 
 import "github.com/magiconair/properties"
 
-// Read 将 properties 格式的字节数组解析成 map 数据。
+// Read parses []byte int the properties format into map.
 func Read(b []byte) (map[string]interface{}, error) {
 
 	p := properties.NewProperties()
