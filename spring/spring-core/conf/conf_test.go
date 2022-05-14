@@ -755,7 +755,7 @@ func TestBindMap(t *testing.T) {
 		assert.Nil(t, err)
 		var r map[string]string
 		err = p.Bind(&r)
-		assert.Error(t, err, ".*/bind.go:.* type \"string\" bind error\n.*/bind.go:.* property \"a\" not exist")
+		assert.Error(t, err, ".*/bind.go:.* type \"string\" bind error; .*/bind.go:.* property \"a\" not exist")
 	})
 
 	t.Run("", func(t *testing.T) {
@@ -784,18 +784,18 @@ func TestBindMap(t *testing.T) {
 	})
 }
 
-func TestInterpolate(t *testing.T) {
+func TestResolve(t *testing.T) {
 	p := conf.New()
 	err := p.Set("name", "Jim")
 	assert.Nil(t, err)
-	str, _ := p.Resolve("my name is ${name")
-	assert.Equal(t, str, "my name is ${name")
-	str, _ = p.Resolve("my name is ${name}")
+	_, err = p.Resolve("my name is ${name")
+	assert.Error(t, err, ".*bind.go:.* resolve \"my name is \\${name\" error; invalid syntax")
+	str, _ := p.Resolve("my name is ${name}")
 	assert.Equal(t, str, "my name is Jim")
 	str, _ = p.Resolve("my name is ${name}${name}")
 	assert.Equal(t, str, "my name is JimJim")
-	str, _ = p.Resolve("my name is ${name} my name is ${name")
-	assert.Equal(t, str, "my name is Jim my name is ${name")
+	_, err = p.Resolve("my name is ${name} my name is ${name")
+	assert.NotNil(t, err)
 	str, _ = p.Resolve("my name is ${name} my name is ${name}")
 	assert.Equal(t, str, "my name is Jim my name is Jim")
 }

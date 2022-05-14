@@ -28,7 +28,8 @@ import (
 )
 
 var (
-	errNotExist = errors.New("not exist")
+	errNotExist      = errors.New("not exist")
+	errInvalidSyntax = errors.New("invalid syntax")
 )
 
 // IsPrimitiveValueType returns whether the input type is the primitive value
@@ -79,17 +80,20 @@ type ParsedTag struct {
 func ParseTag(tag string) (ret ParsedTag, err error) {
 	i := strings.LastIndex(tag, "||")
 	if i == 0 {
-		err = util.Errorf(code.FileLine(), "%q syntax error", tag)
+		err = errInvalidSyntax
+		err = util.Wrapf(err, code.FileLine(), "parse tag %q error", tag)
 		return
 	}
 	j := strings.LastIndex(tag, "}")
 	if j <= 0 {
-		err = util.Errorf(code.FileLine(), "%q syntax error", tag)
+		err = errInvalidSyntax
+		err = util.Wrapf(err, code.FileLine(), "parse tag %q error", tag)
 		return
 	}
 	k := strings.Index(tag, "${")
 	if k < 0 {
-		err = util.Errorf(code.FileLine(), "%q syntax error", tag)
+		err = errInvalidSyntax
+		err = util.Wrapf(err, code.FileLine(), "parse tag %q error", tag)
 		return
 	}
 	if i > j {
@@ -146,10 +150,8 @@ func BindValue(p *Properties, v reflect.Value, param BindParam) error {
 	}
 
 	fn := converters[param.Type]
-	if v.Kind() == reflect.Struct {
-		if fn == nil {
-			return bindStruct(p, v, param)
-		}
+	if fn == nil && v.Kind() == reflect.Struct {
+		return bindStruct(p, v, param)
 	}
 
 	val, err := resolve(p, param)
@@ -439,58 +441,58 @@ func resolve(p *Properties, param BindParam) (string, error) {
 	return "", util.Errorf(code.FileLine(), "property %q %w", param.Key, errNotExist)
 }
 
+// resolveString returns property references processed string.
 func resolveString(p *Properties, s string) (string, error) {
 
-	n := len(s)
-	count := 0
-	found := false
-	start, end := -1, -1
+	var (
+		length = len(s)
+		count  = 0
+		start  = -1
+		end    = -1
+	)
 
-	for i := 0; i < len(s); i++ {
-		switch s[i] {
-		case '$':
-			if i < n-1 {
-				if s[i+1] == '{' {
-					if count == 0 {
-						start = i
-					}
-					count++
+	for i := 0; i < length; i++ {
+		if s[i] == '$' {
+			if i < length-1 && s[i+1] == '{' {
+				if count == 0 {
+					start = i
+				}
+				count++
+			}
+		} else if s[i] == '}' {
+			if count > 0 {
+				count--
+				if count == 0 {
+					end = i
+					break
 				}
 			}
-		case '}':
-			count--
-			if count == 0 {
-				found = true
-				end = i
-			}
-		}
-		if found {
-			break
 		}
 	}
 
-	if start < 0 || end < 0 {
+	if start < 0 {
 		return s, nil
 	}
 
-	if count > 0 {
-		return "", util.Errorf(code.FileLine(), "%s 语法错误", s)
+	if end < 0 || count > 0 {
+		err := errInvalidSyntax
+		return "", util.Wrapf(err, code.FileLine(), "resolve %q error", s)
 	}
 
-	param := BindParam{}
+	var param BindParam
 	err := param.BindTag(s[start : end+1])
 	if err != nil {
-		return "", err
+		return "", util.Wrapf(err, code.FileLine(), "resolve %q error", s)
 	}
 
 	s1, err := resolve(p, param)
 	if err != nil {
-		return "", err
+		return "", util.Wrapf(err, code.FileLine(), "resolve %q error", s)
 	}
 
 	s2, err := resolveString(p, s[end+1:])
 	if err != nil {
-		return "", err
+		return "", util.Wrapf(err, code.FileLine(), "resolve %q error", s)
 	}
 
 	return s[:start] + s1 + s2, nil

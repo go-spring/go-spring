@@ -54,7 +54,6 @@ Following information can help us to resolve the issue faster.
 * 不对外直接暴露指针类型，使用值或者接口。
 * 包名不能和 Golang 标准库重名。
 * 注释里面的 bean 都是小写格式。
-* 函数内部调用的函数一般放在它的上方并且靠近它。
 * 几乎所有的 panic 都应该打印其调用栈。
 * 和包名同名的文件作为了解包的入口。
 * 类型或函数的内容较短时也不能写在一行上，必须换行。
@@ -62,6 +61,7 @@ Following information can help us to resolve the issue faster.
 * 有共同抽象的 starter 实现使用相同的属性前缀，否则使用自身前缀。
 * 在回放和测试模式下，尽量通过 panic 减少错误处理。
 * 在录制模式下，通过打印日志的方式避免对主流程产生影响。
+* 所有错误都需要打印错误发生位置的文件名和行号，保证错误排查的底线。
 
 ## 注释
 
