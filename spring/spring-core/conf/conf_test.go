@@ -872,7 +872,7 @@ func TestSplitter(t *testing.T) {
 	conf.RegisterConverter(PointConverter)
 	conf.RegisterSplitter("PointSplitter", PointSplitter)
 	var points []image.Point
-	err := conf.New().Bind(&points, conf.Tag("${:=(1,2)(3,4)}|PointSplitter"))
+	err := conf.New().Bind(&points, conf.Tag("${:=(1,2)(3,4)}||PointSplitter"))
 	assert.Nil(t, err)
 	assert.Equal(t, points, []image.Point{{X: 1, Y: 2}, {X: 3, Y: 4}})
 }
