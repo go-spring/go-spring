@@ -374,7 +374,7 @@ func (p *Properties) Bind(i interface{}, opts ...BindOption) error {
 		}
 	}
 
-	arg := bindArg{tag: "${}"}
+	arg := bindArg{tag: "${ROOT}"}
 	for _, opt := range opts {
 		opt(&arg)
 	}

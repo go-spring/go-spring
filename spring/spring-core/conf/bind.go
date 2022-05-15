@@ -124,6 +124,11 @@ func (param *BindParam) BindTag(tag string) error {
 	if err != nil {
 		return err
 	}
+	if parsedTag.Key == "ROOT" {
+		parsedTag.Key = ""
+	} else if parsedTag.Key == "" {
+		parsedTag.Key = "ANONYMOUS"
+	}
 	param.tag = parsedTag
 	if param.Key == "" {
 		param.Key = parsedTag.Key
@@ -137,33 +142,39 @@ func (param *BindParam) BindTag(tag string) error {
 func BindValue(p *Properties, v reflect.Value, param BindParam) error {
 
 	if !IsValueType(param.Type) {
-		return util.Errorf(code.FileLine(), "%s target should be value type", param.Path)
+		err := errors.New("target should be value type")
+		return util.Wrapf(err, code.FileLine(), "bind %s error", param.Path)
 	}
 
 	switch v.Kind() {
 	case reflect.Map:
 		return bindMap(p, v, param)
 	case reflect.Array:
-		return bindArray(p, v, param)
+		err := errors.New("use slice instead of array")
+		return util.Wrapf(err, code.FileLine(), "bind %s error", param.Path)
 	case reflect.Slice:
 		return bindSlice(p, v, param)
 	}
 
 	fn := converters[param.Type]
 	if fn == nil && v.Kind() == reflect.Struct {
-		return bindStruct(p, v, param)
+		if err := bindStruct(p, v, param); err != nil {
+			return util.Wrapf(err, code.FileLine(), "bind %s error", param.Path)
+		}
+		return nil
 	}
 
 	val, err := resolve(p, param)
 	if err != nil {
-		return util.Wrapf(err, code.FileLine(), "type %q bind error", param.Type)
+		return util.Wrapf(err, code.FileLine(), "bind %s error", param.Path)
 	}
 
 	if fn != nil {
 		fnValue := reflect.ValueOf(fn)
 		out := fnValue.Call([]reflect.Value{reflect.ValueOf(val)})
 		if !out[1].IsNil() {
-			return out[1].Interface().(error)
+			err = out[1].Interface().(error)
+			return util.Wrapf(err, code.FileLine(), "bind %s error", param.Path)
 		}
 		v.Set(out[0])
 		return nil
@@ -176,69 +187,47 @@ func BindValue(p *Properties, v reflect.Value, param BindParam) error {
 			v.SetUint(u)
 			return nil
 		}
-		return util.Errorf(code.FileLine(), "%+v %w", param, err)
+		return util.Wrapf(err, code.FileLine(), "bind %s error", param.Path)
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		var i int64
 		if i, err = strconv.ParseInt(val, 0, 0); err == nil {
 			v.SetInt(i)
 			return nil
 		}
-		return util.Errorf(code.FileLine(), "%+v %w", param, err)
+		return util.Wrapf(err, code.FileLine(), "bind %s error", param.Path)
 	case reflect.Float32, reflect.Float64:
 		var f float64
 		if f, err = strconv.ParseFloat(val, 64); err == nil {
 			v.SetFloat(f)
 			return nil
 		}
-		return util.Errorf(code.FileLine(), "%+v %w", param, err)
+		return util.Wrapf(err, code.FileLine(), "bind %s error", param.Path)
 	case reflect.Bool:
 		var b bool
 		if b, err = strconv.ParseBool(val); err == nil {
 			v.SetBool(b)
 			return nil
 		}
-		return util.Errorf(code.FileLine(), "%+v %w", param, err)
+		return util.Wrapf(err, code.FileLine(), "bind %s error", param.Path)
 	case reflect.String:
 		v.SetString(val)
 		return nil
 	}
 
-	return util.Errorf(code.FileLine(), "unsupported bind type %q", param.Type.String())
+	err = fmt.Errorf("unsupported bind type %q", param.Type.String())
+	return util.Wrapf(err, code.FileLine(), "bind %s error", param.Path)
 }
 
-// bindArray binds properties to an array value.
-func bindArray(p *Properties, v reflect.Value, param BindParam) error {
-
-	et := param.Type.Elem()
-	p, err := getSliceValue(p, et, param)
-	if err != nil || p == nil {
-		return err
-	}
-
-	for i := 0; i < v.Len(); i++ {
-		subParam := BindParam{
-			Type: et,
-			Key:  fmt.Sprintf("%s[%d]", param.Key, i),
-			Path: fmt.Sprintf("%s[%d]", param.Path, i),
-		}
-		err = BindValue(p, v.Index(i), subParam)
-		if errors.Is(err, errNotExist) {
-			break
-		}
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// bindSlice binds properties to a slice value.
+// bindSlice binds properties to slice.
 func bindSlice(p *Properties, v reflect.Value, param BindParam) error {
 
 	et := param.Type.Elem()
-	p, err := getSliceValue(p, et, param)
-	if err != nil || p == nil {
-		return err
+	p, err := getSlice(p, et, param)
+	if err != nil {
+		return util.Wrapf(err, code.FileLine(), "bind %s error", param.Path)
+	}
+	if p == nil {
+		return nil
 	}
 
 	slice := reflect.MakeSlice(param.Type, 0, 0)
@@ -254,7 +243,7 @@ func bindSlice(p *Properties, v reflect.Value, param BindParam) error {
 			break
 		}
 		if err != nil {
-			return err
+			return util.Wrapf(err, code.FileLine(), "bind %s error", param.Path)
 		}
 		slice = reflect.Append(slice, e)
 	}
@@ -262,30 +251,31 @@ func bindSlice(p *Properties, v reflect.Value, param BindParam) error {
 	return nil
 }
 
-func getSliceValue(p *Properties, et reflect.Type, param BindParam) (*Properties, error) {
+func getSlice(p *Properties, et reflect.Type, param BindParam) (*Properties, error) {
 
+	// properties defined as list.
 	if p.Has(param.Key + "[0]") {
 		return p, nil
 	}
 
-	strVal := ""
-	primitive := IsPrimitiveValueType(et)
-
-	if p.Has(param.Key) {
-		strVal = p.Get(param.Key)
-	} else {
-		if !param.tag.HasDef {
-			return nil, util.Errorf(code.FileLine(), "property %q %w", param.Key, errNotExist)
+	// properties defined as string and needs to split into []string.
+	var strVal string
+	{
+		if p.Has(param.Key) {
+			strVal = p.Get(param.Key)
+		} else {
+			if !param.tag.HasDef {
+				return nil, util.Errorf(code.FileLine(), "property %q %w", param.Key, errNotExist)
+			}
+			if param.tag.Def == "" {
+				return nil, nil
+			}
+			if !IsPrimitiveValueType(et) && converters[et] == nil {
+				return nil, util.Error(code.FileLine(), "slice can't have a non empty default value")
+			}
+			strVal = param.tag.Def
 		}
-		if param.tag.Def == "" {
-			return nil, nil
-		}
-		if !primitive && converters[et] == nil {
-			return nil, util.Errorf(code.FileLine(), "%s 不能为非自定义的复杂类型数组指定非空默认值", param.Path)
-		}
-		strVal = param.tag.Def
 	}
-
 	if strVal == "" {
 		return nil, nil
 	}
@@ -320,7 +310,8 @@ func bindMap(p *Properties, v reflect.Value, param BindParam) error {
 		if param.tag.Def == "" {
 			return nil
 		}
-		return util.Errorf(code.FileLine(), "%s map type can't have a non empty default value", param.Path)
+		err := errors.New("map can't have a non empty default value")
+		return util.Wrapf(err, code.FileLine(), "bind %s error", param.Path)
 	}
 
 	var keys []string
@@ -333,12 +324,14 @@ func bindMap(p *Properties, v reflect.Value, param BindParam) error {
 		for i, s := range keyPath {
 			vt, ok := t[s]
 			if !ok {
-				return util.Errorf(code.FileLine(), "property %q %w", param.Key, errNotExist)
+				err := fmt.Errorf("property %q %w", param.Key, errNotExist)
+				return util.Wrapf(err, code.FileLine(), "bind %s error", param.Path)
 			}
 			_, ok = vt.(struct{})
 			if ok {
 				oldKey := strings.Join(keyPath[:i+1], ".")
-				return util.Errorf(code.FileLine(), "property %q has a value but want another sub key %q", oldKey, param.Key+".*")
+				err := fmt.Errorf("property %q isn't map", oldKey)
+				return util.Wrapf(err, code.FileLine(), "bind %s error", param.Path)
 			}
 			t = vt.(map[string]interface{})
 		}
@@ -374,7 +367,8 @@ func bindMap(p *Properties, v reflect.Value, param BindParam) error {
 func bindStruct(p *Properties, v reflect.Value, param BindParam) error {
 
 	if param.tag.HasDef && param.tag.Def != "" {
-		return util.Errorf(code.FileLine(), "%s struct type can't have a non empty default value", param.Path)
+		err := errors.New("struct can't have a non empty default value")
+		return util.Wrapf(err, code.FileLine(), "bind %s error", param.Path)
 	}
 
 	for i := 0; i < param.Type.NumField(); i++ {
@@ -429,8 +423,7 @@ func bindStruct(p *Properties, v reflect.Value, param BindParam) error {
 	return nil
 }
 
-// resolve 解析 ${key:=def} 字符串，返回 key 对应的属性值，如果没有找到则返回
-// def 值，如果 def 存在引用则递归解析直到获取最终的属性值。
+// resolve returns property references processed property value.
 func resolve(p *Properties, param BindParam) (string, error) {
 	if val, ok := p.data[param.Key]; ok {
 		return resolveString(p, val)
@@ -438,7 +431,8 @@ func resolve(p *Properties, param BindParam) (string, error) {
 	if param.tag.HasDef {
 		return resolveString(p, param.tag.Def)
 	}
-	return "", util.Errorf(code.FileLine(), "property %q %w", param.Key, errNotExist)
+	err := fmt.Errorf("property %q %w", param.Key, errNotExist)
+	return "", util.Wrapf(err, code.FileLine(), "resolve property %q error", param.Key)
 }
 
 // resolveString returns property references processed string.
@@ -476,23 +470,23 @@ func resolveString(p *Properties, s string) (string, error) {
 
 	if end < 0 || count > 0 {
 		err := errInvalidSyntax
-		return "", util.Wrapf(err, code.FileLine(), "resolve %q error", s)
+		return "", util.Wrapf(err, code.FileLine(), "resolve string %q error", s)
 	}
 
 	var param BindParam
 	err := param.BindTag(s[start : end+1])
 	if err != nil {
-		return "", util.Wrapf(err, code.FileLine(), "resolve %q error", s)
+		return "", util.Wrapf(err, code.FileLine(), "resolve string %q error", s)
 	}
 
 	s1, err := resolve(p, param)
 	if err != nil {
-		return "", util.Wrapf(err, code.FileLine(), "resolve %q error", s)
+		return "", util.Wrapf(err, code.FileLine(), "resolve string %q error", s)
 	}
 
 	s2, err := resolveString(p, s[end+1:])
 	if err != nil {
-		return "", util.Wrapf(err, code.FileLine(), "resolve %q error", s)
+		return "", util.Wrapf(err, code.FileLine(), "resolve string %q error", s)
 	}
 
 	return s[:start] + s1 + s2, nil

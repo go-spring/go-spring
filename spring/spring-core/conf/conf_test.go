@@ -680,19 +680,19 @@ func TestBindMap(t *testing.T) {
 	t.Run("", func(t *testing.T) {
 		var r [3]map[string]string
 		err := conf.New().Bind(&r)
-		assert.Error(t, err, "\\[3]map\\[string]string target should be value type")
+		assert.Error(t, err, ".*bind.go:.* bind \\[3]map\\[string]string error; target should be value type")
 	})
 
 	t.Run("", func(t *testing.T) {
 		var r []map[string]string
 		err := conf.New().Bind(&r)
-		assert.Error(t, err, "\\[]map\\[string]string target should be value type")
+		assert.Error(t, err, ".*bind.go:.* bind \\[]map\\[string]string error; target should be value type")
 	})
 
 	t.Run("", func(t *testing.T) {
 		var r map[string]map[string]string
 		err := conf.New().Bind(&r)
-		assert.Error(t, err, "map\\[string]map\\[string]string target should be value type")
+		assert.Error(t, err, ".*bind.go:.* bind map\\[string]map\\[string]string error; target should be value type")
 	})
 
 	m := map[string]interface{}{
@@ -712,7 +712,7 @@ func TestBindMap(t *testing.T) {
 		p, err := conf.Map(m)
 		assert.Nil(t, err)
 		err = p.Bind(&r)
-		assert.Error(t, err, "map\\[string]conf_test.S.M target should be value type")
+		assert.Error(t, err, ".*bind.go:.* bind map\\[string]conf_test.S.M error; target should be value type")
 	})
 
 	t.Run("", func(t *testing.T) {
@@ -723,7 +723,7 @@ func TestBindMap(t *testing.T) {
 		p, err := conf.Map(m)
 		assert.Nil(t, err)
 		err = p.Bind(&r)
-		assert.Error(t, err, "map\\[string]conf_test.S.M target should be value type")
+		assert.Error(t, err, ".*bind.go:.* bind map\\[string]conf_test.S.M error; target should be value type")
 	})
 
 	t.Run("", func(t *testing.T) {
@@ -734,7 +734,7 @@ func TestBindMap(t *testing.T) {
 		p, err := conf.Map(m)
 		assert.Nil(t, err)
 		err = p.Bind(&r)
-		assert.Error(t, err, "map\\[string]conf_test.S.M target should be value type")
+		assert.Error(t, err, ".*bind.go:.* bind map\\[string]conf_test.S.M error; target should be value type")
 	})
 
 	t.Run("", func(t *testing.T) {
@@ -755,20 +755,21 @@ func TestBindMap(t *testing.T) {
 		assert.Nil(t, err)
 		var r map[string]string
 		err = p.Bind(&r)
-		assert.Error(t, err, ".*/bind.go:.* type \"string\" bind error; .*/bind.go:.* property \"a\" not exist")
+		assert.Error(t, err, ".*bind.go:.* bind map\\[string]string error; .*bind.go:.* resolve property \"a\" error; property \"a\" not exist")
 	})
 
 	t.Run("", func(t *testing.T) {
-		var r struct {
+		type S struct {
 			A map[string]string `value:"${a}"`
 			B map[string]string `value:"${b}"`
 		}
+		var r S
 		p, err := conf.Map(map[string]interface{}{
 			"a": "1", "b": 2,
 		})
 		assert.Nil(t, err)
 		err = p.Bind(&r)
-		assert.Error(t, err, "property \"a\" has a value but want another sub key \"a\\.\\*\"")
+		assert.Error(t, err, ".*bind.go:.* bind S error; .*bind.go:.* bind S.A error; property \"a\" isn't map")
 	})
 
 	t.Run("", func(t *testing.T) {
@@ -789,7 +790,7 @@ func TestResolve(t *testing.T) {
 	err := p.Set("name", "Jim")
 	assert.Nil(t, err)
 	_, err = p.Resolve("my name is ${name")
-	assert.Error(t, err, ".*bind.go:.* resolve \"my name is \\${name\" error; invalid syntax")
+	assert.Error(t, err, ".*bind.go:.* resolve string \"my name is \\${name\" error; invalid syntax")
 	str, _ := p.Resolve("my name is ${name}")
 	assert.Equal(t, str, "my name is Jim")
 	str, _ = p.Resolve("my name is ${name}${name}")
