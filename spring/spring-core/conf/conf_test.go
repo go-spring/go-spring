@@ -886,27 +886,27 @@ func TestSplitPath(t *testing.T) {
 	}{
 		{
 			Key: "",
-			Err: errors.New("error key ''"),
+			Err: errors.New("invalid key ''"),
 		},
 		{
 			Key: " ",
-			Err: errors.New("error key ' '"),
+			Err: errors.New("invalid key ' '"),
 		},
 		{
 			Key: ".",
-			Err: errors.New("error key '.'"),
+			Err: errors.New("invalid key '.'"),
 		},
 		{
 			Key: "[",
-			Err: errors.New("error key '['"),
+			Err: errors.New("invalid key '['"),
 		},
 		{
 			Key: "]",
-			Err: errors.New("error key ']'"),
+			Err: errors.New("invalid key ']'"),
 		},
 		{
 			Key: "[]",
-			Err: errors.New("error key '[]'"),
+			Err: errors.New("invalid key '[]'"),
 		},
 		{
 			Key:  "[0]",
@@ -914,23 +914,23 @@ func TestSplitPath(t *testing.T) {
 		},
 		{
 			Key: "[0][",
-			Err: errors.New("error key '[0]['"),
+			Err: errors.New("invalid key '[0]['"),
 		},
 		{
 			Key: "[0]]",
-			Err: errors.New("error key '[0]]'"),
+			Err: errors.New("invalid key '[0]]'"),
 		},
 		{
 			Key: "[[0]]",
-			Err: errors.New("error key '[[0]]'"),
+			Err: errors.New("invalid key '[[0]]'"),
 		},
 		{
 			Key: "[.]",
-			Err: errors.New("error key '[.]'"),
+			Err: errors.New("invalid key '[.]'"),
 		},
 		{
 			Key: "[a.b]",
-			Err: errors.New("error key '[a.b]'"),
+			Err: errors.New("invalid key '[a.b]'"),
 		},
 		{
 			Key:  "a",
@@ -938,7 +938,7 @@ func TestSplitPath(t *testing.T) {
 		},
 		{
 			Key: "a.",
-			Err: errors.New("error key 'a.'"),
+			Err: errors.New("invalid key 'a.'"),
 		},
 		{
 			Key:  "a.b",
@@ -946,11 +946,11 @@ func TestSplitPath(t *testing.T) {
 		},
 		{
 			Key: "a[",
-			Err: errors.New("error key 'a['"),
+			Err: errors.New("invalid key 'a['"),
 		},
 		{
 			Key: "a]",
-			Err: errors.New("error key 'a]'"),
+			Err: errors.New("invalid key 'a]'"),
 		},
 		{
 			Key:  "a[0]",

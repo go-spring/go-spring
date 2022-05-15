@@ -218,7 +218,7 @@ func BindValue(p *Properties, v reflect.Value, param BindParam) error {
 	return util.Wrapf(err, code.FileLine(), "bind %s error", param.Path)
 }
 
-// bindSlice binds properties to slice.
+// bindSlice binds properties to a slice value.
 func bindSlice(p *Properties, v reflect.Value, param BindParam) error {
 
 	et := param.Type.Elem()
@@ -355,7 +355,7 @@ func bindMap(p *Properties, v reflect.Value, param BindParam) error {
 		}
 		err := BindValue(p, e, subParam)
 		if err != nil {
-			return err
+			return util.Wrapf(err, code.FileLine(), "bind %s error", param.Path)
 		}
 		ret.SetMapIndex(reflect.ValueOf(key), e)
 	}
@@ -390,21 +390,21 @@ func bindStruct(p *Properties, v reflect.Value, param BindParam) error {
 
 		if tag, ok := ft.Tag.Lookup("value"); ok {
 			if err := subParam.BindTag(tag); err != nil {
-				return err
+				return util.Wrapf(err, code.FileLine(), "bind %s error", param.Path)
 			}
 			if err := BindValue(p, fv, subParam); err != nil {
-				return err
+				return util.Wrapf(err, code.FileLine(), "bind %s error", param.Path)
 			}
 			continue
 		}
 
 		if ft.Anonymous {
-			// embed pointer type may be infinite recursion.
+			// embed pointer type may lead to infinite recursion.
 			if ft.Type.Kind() != reflect.Struct {
 				continue
 			}
 			if err := bindStruct(p, fv, subParam); err != nil {
-				return err
+				return util.Wrapf(err, code.FileLine(), "bind %s error", param.Path)
 			}
 			continue
 		}
@@ -416,7 +416,7 @@ func bindStruct(p *Properties, v reflect.Value, param BindParam) error {
 				subParam.Key = subParam.Key + "." + ft.Name
 			}
 			if err := BindValue(p, fv, subParam); err != nil {
-				return err
+				return util.Wrapf(err, code.FileLine(), "bind %s error", param.Path)
 			}
 		}
 	}
