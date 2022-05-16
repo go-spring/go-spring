@@ -28,7 +28,7 @@ import (
 	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/gs/cond"
-	"github.com/go-spring/spring-core/gs/internal"
+	"github.com/go-spring/spring-core/gs/gsutil"
 )
 
 // Context IoC 容器对 arg 模块提供的最小功能集。
@@ -248,18 +248,18 @@ func (r *argList) getArg(ctx Context, arg Arg, t reflect.Type, fileLine string) 
 		return reflect.ValueOf(g.v), nil
 	case *optionArg:
 		return g.call(ctx)
-	case internal.BeanDefinition:
+	case gsutil.BeanDefinition:
 		tag = g.ID()
 	case string:
 		tag = g
 	default:
-		tag = internal.TypeName(g) + ":"
+		tag = gsutil.TypeName(g) + ":"
 	}
 
 	v := reflect.New(t).Elem()
 
 	// 处理 bean 类型
-	if internal.IsBeanReceiver(t) {
+	if gsutil.IsBeanReceiver(t) {
 		if err = ctx.Wire(v, tag); err != nil {
 			return reflect.Value{}, err
 		}

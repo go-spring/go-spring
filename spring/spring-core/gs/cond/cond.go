@@ -28,16 +28,13 @@ import (
 
 	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/conf"
-	"github.com/go-spring/spring-core/gs/internal"
+	"github.com/go-spring/spring-core/gs/gsutil"
 )
-
-type BeanSelector = internal.BeanSelector
-type BeanDefinition = internal.BeanDefinition
 
 type Context interface {
 	Has(key string) bool
 	Prop(key string, opts ...conf.GetOption) string
-	Find(selector BeanSelector) ([]BeanDefinition, error)
+	Find(selector gsutil.BeanSelector) ([]gsutil.BeanDefinition, error)
 }
 
 // Condition 条件接口，条件成立 Matches 方法返回 true，否则返回 false。
@@ -123,7 +120,7 @@ func (c *onMissingProperty) Matches(ctx Context) (bool, error) {
 
 // onBean 基于符合条件的 bean 必须存在的 Condition 实现。
 type onBean struct {
-	selector BeanSelector
+	selector gsutil.BeanSelector
 }
 
 func (c *onBean) Matches(ctx Context) (bool, error) {
@@ -133,7 +130,7 @@ func (c *onBean) Matches(ctx Context) (bool, error) {
 
 // onMissingBean 基于符合条件的 bean 必须不存在的 Condition 实现。
 type onMissingBean struct {
-	selector BeanSelector
+	selector gsutil.BeanSelector
 }
 
 func (c *onMissingBean) Matches(ctx Context) (bool, error) {
@@ -143,7 +140,7 @@ func (c *onMissingBean) Matches(ctx Context) (bool, error) {
 
 // onSingleBean 基于符合条件的 bean 只有一个的 Condition 实现。
 type onSingleBean struct {
-	selector BeanSelector
+	selector gsutil.BeanSelector
 }
 
 func (c *onSingleBean) Matches(ctx Context) (bool, error) {
@@ -350,32 +347,32 @@ func (c *conditional) OnMissingProperty(name string) *conditional {
 }
 
 // OnBean 返回一个以 onBean 为开始条件的计算式。
-func OnBean(selector BeanSelector) *conditional {
+func OnBean(selector gsutil.BeanSelector) *conditional {
 	return New().OnBean(selector)
 }
 
 // OnBean 添加一个 onBean 条件。
-func (c *conditional) OnBean(selector BeanSelector) *conditional {
+func (c *conditional) OnBean(selector gsutil.BeanSelector) *conditional {
 	return c.On(&onBean{selector: selector})
 }
 
 // OnMissingBean 返回一个以 onMissingBean 为开始条件的计算式。
-func OnMissingBean(selector BeanSelector) *conditional {
+func OnMissingBean(selector gsutil.BeanSelector) *conditional {
 	return New().OnMissingBean(selector)
 }
 
 // OnMissingBean 添加一个 onMissingBean 条件。
-func (c *conditional) OnMissingBean(selector BeanSelector) *conditional {
+func (c *conditional) OnMissingBean(selector gsutil.BeanSelector) *conditional {
 	return c.On(&onMissingBean{selector: selector})
 }
 
 // OnSingleBean 返回一个以 onSingleBean 为开始条件的计算式。
-func OnSingleBean(selector BeanSelector) *conditional {
+func OnSingleBean(selector gsutil.BeanSelector) *conditional {
 	return New().OnSingleBean(selector)
 }
 
 // OnSingleBean 添加一个 onMissingBean 条件。
-func (c *conditional) OnSingleBean(selector BeanSelector) *conditional {
+func (c *conditional) OnSingleBean(selector gsutil.BeanSelector) *conditional {
 	return c.On(&onSingleBean{selector: selector})
 }
 

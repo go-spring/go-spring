@@ -28,7 +28,7 @@ import (
 	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/gs/arg"
-	"github.com/go-spring/spring-core/gs/internal"
+	"github.com/go-spring/spring-core/gs/gsutil"
 	pkg1 "github.com/go-spring/spring-core/gs/testdata/pkg/bar"
 	pkg2 "github.com/go-spring/spring-core/gs/testdata/pkg/foo"
 )
@@ -83,7 +83,7 @@ func TestRefType(t *testing.T) {
 		default:
 			typ = reflect.TypeOf(i)
 		}
-		if r := internal.IsBeanType(typ); d.v != r {
+		if r := gsutil.IsBeanType(typ); d.v != r {
 			t.Errorf("%v expect %v but %v", typ, d.v, r)
 		}
 	}
@@ -214,7 +214,7 @@ func TestTypeName(t *testing.T) {
 	}
 
 	for typ, v := range data {
-		typeName := internal.TypeName(typ)
+		typeName := gsutil.TypeName(typ)
 		assert.Equal(t, typeName, v.typeName)
 		assert.Equal(t, typ.String(), v.baseName)
 	}
@@ -224,7 +224,7 @@ func TestTypeName(t *testing.T) {
 	iPtrPtr := &iPtr
 	iPtrPtrPtr := &iPtrPtr
 	typ := reflect.TypeOf(iPtrPtrPtr)
-	typeName := internal.TypeName(typ)
+	typeName := gsutil.TypeName(typ)
 	assert.Equal(t, typeName, "int")
 	assert.Equal(t, typ.String(), "***int")
 }

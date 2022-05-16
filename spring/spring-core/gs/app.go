@@ -33,7 +33,6 @@ import (
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/grpc"
 	"github.com/go-spring/spring-core/gs/arg"
-	"github.com/go-spring/spring-core/gs/internal"
 	"github.com/go-spring/spring-core/mq"
 	"github.com/go-spring/spring-core/web"
 )
@@ -189,7 +188,7 @@ func (app *App) start() error {
 		app.c.p.Set(k, e.p.Get(k))
 	}
 
-	if err := app.c.Refresh(internal.AutoClear(false)); err != nil {
+	if err := app.c.refresh(false); err != nil {
 		return err
 	}
 
