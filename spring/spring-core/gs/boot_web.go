@@ -46,16 +46,17 @@ func (starter *WebStarter) OnAppStart(ctx Context) {
 	}
 	for _, m := range starter.Router.Mappers() {
 		for _, c := range starter.getContainers(m) {
-			c.AddMapper(web.NewMapper(m.Method(), m.Path(), m.Handler()))
+			path := c.Config().BasePath + m.Path()
+			c.AddMapper(web.NewMapper(m.Method(), path, m.Handler()))
 		}
 	}
 	starter.startContainers(ctx)
 }
 
-func (starter *WebStarter) getContainers(mapper *web.Mapper) []web.Server {
+func (starter *WebStarter) getContainers(m *web.Mapper) []web.Server {
 	var ret []web.Server
 	for _, c := range starter.Containers {
-		if strings.HasPrefix(mapper.Path(), c.Config().BasePath) {
+		if strings.HasPrefix(m.Path(), c.Config().Prefix) {
 			ret = append(ret, c)
 		}
 	}
