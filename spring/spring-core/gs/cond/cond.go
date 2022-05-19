@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-//go:generate mockgen -build_flags="-mod=mod" -package=cond -source=cond.go -destination=mock.go
+//go:generate mockgen -build_flags="-mod=mod" -package=cond -source=cond.go -destination=cond_mock.go
 
 // Package cond 提供了判断 bean 注册是否有效的条件。
 package cond

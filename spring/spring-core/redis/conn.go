@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-//go:generate mockgen -build_flags="-mod=mod" -package=redis -source=conn.go -destination=mock.go
+//go:generate mockgen -build_flags="-mod=mod" -package=redis -source=conn.go -destination=conn_mock.go
 
 package redis
 

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-//go:generate mockgen -build_flags="-mod=mod" -package=log -source=appender.go -destination=mock.go
+//go:generate mockgen -build_flags="-mod=mod" -package=log -source=appender.go -destination=appender_mock.go
 
 package log
 

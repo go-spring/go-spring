@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-//go:generate mockgen -build_flags="-mod=mod" -package=arg -source=arg.go -destination=mock.go
+//go:generate mockgen -build_flags="-mod=mod" -package=arg -source=arg.go -destination=arg_mock.go
 
 // Package arg 用于实现函数参数绑定。
 package arg

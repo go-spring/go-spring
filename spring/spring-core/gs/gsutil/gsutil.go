@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-//go:generate mockgen -build_flags="-mod=mod" -package=gsutil -source=gsutil.go -destination=mock.go
+//go:generate mockgen -build_flags="-mod=mod" -package=gsutil -source=gsutil.go -destination=gsutil_mock.go
 
 package gsutil
 
