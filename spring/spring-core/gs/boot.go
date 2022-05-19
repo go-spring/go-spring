@@ -60,7 +60,7 @@ func Setenv(key string, value string) {
 
 // Go 参考 App.Go 的解释。
 func Go(fn func(ctx context.Context)) {
-	gApp.Go(fn)
+	app().Go(fn)
 }
 
 type startup struct {
@@ -75,7 +75,7 @@ func (s *startup) Run() error {
 	for _, f := range gInits {
 		f(s)
 	}
-	return gApp.Run()
+	return app().Run()
 }
 
 // Run 启动程序。
@@ -85,12 +85,12 @@ func Run() error {
 
 // ShutDown 停止程序。
 func ShutDown(msg ...string) {
-	gApp.ShutDown(msg...)
+	app().ShutDown(msg...)
 }
 
 // Banner 参考 App.Banner 的解释。
 func Banner(banner string) {
-	gApp.Banner(banner)
+	app().Banner(banner)
 }
 
 // Bootstrap 参考 App.Bootstrap 的解释。
