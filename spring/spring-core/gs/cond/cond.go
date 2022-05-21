@@ -16,7 +16,7 @@
 
 //go:generate mockgen -build_flags="-mod=mod" -package=cond -source=cond.go -destination=cond_mock.go
 
-// Package cond 提供了判断 bean 注册是否有效的条件。
+// Package cond provides many conditions used when registering bean.
 package cond
 
 import (
@@ -31,37 +31,42 @@ import (
 	"github.com/go-spring/spring-core/gs/gsutil"
 )
 
+// Context defines some methods of IoC container that conditions use.
 type Context interface {
+	// Has returns whether the IoC container has a property.
 	Has(key string) bool
+	// Prop returns the property's value when the IoC container has it, or
+	// returns empty string when the IoC container doesn't have it.
 	Prop(key string, opts ...conf.GetOption) string
+	// Find returns bean definitions that matched with the bean selector.
 	Find(selector gsutil.BeanSelector) ([]gsutil.BeanDefinition, error)
 }
 
-// Condition 条件接口，条件成立 Matches 方法返回 true，否则返回 false。
+// Condition is used when registering a bean to determine whether it's valid.
 type Condition interface {
 	Matches(ctx Context) (bool, error)
 }
 
-type MatchesFunc func(ctx Context) (bool, error)
+type FuncCond func(ctx Context) (bool, error)
 
-func (c MatchesFunc) Matches(ctx Context) (bool, error) {
+func (c FuncCond) Matches(ctx Context) (bool, error) {
 	return c(ctx)
 }
 
-// OK 永远成立的 Condition 实现。
+// OK returns a Condition that always returns true.
 func OK() Condition {
-	return MatchesFunc(func(ctx Context) (bool, error) {
+	return FuncCond(func(ctx Context) (bool, error) {
 		return true, nil
 	})
 }
 
-// not 对一个条件进行取反的 Condition 实现。
+// not is a Condition that negating to another.
 type not struct {
 	c Condition
 }
 
-// Not 返回对一个条件取反后的 Condition 对象。
-func Not(c Condition) *not {
+// Not returns a Condition that negating to another.
+func Not(c Condition) Condition {
 	return &not{c: c}
 }
 
@@ -70,7 +75,7 @@ func (c *not) Matches(ctx Context) (bool, error) {
 	return !ok, err
 }
 
-// onProperty 基于属性值匹配的 Condition 实现。
+// onProperty is a Condition that checks a property and its value.
 type onProperty struct {
 	name           string
 	havingValue    string
@@ -78,7 +83,6 @@ type onProperty struct {
 }
 
 func (c *onProperty) Matches(ctx Context) (bool, error) {
-	// 参考 /usr/local/go/src/go/types/eval_test.go 示例
 
 	if !ctx.Has(c.name) {
 		return c.matchIfMissing, nil
@@ -109,7 +113,7 @@ func (c *onProperty) Matches(ctx Context) (bool, error) {
 	return strconv.ParseBool(ret.Value.String())
 }
 
-// onMissingProperty 基于属性值不存在的 Condition 实现。
+// onMissingProperty is a Condition that returns true when a property doesn't exist.
 type onMissingProperty struct {
 	name string
 }
@@ -118,7 +122,7 @@ func (c *onMissingProperty) Matches(ctx Context) (bool, error) {
 	return !ctx.Has(c.name), nil
 }
 
-// onBean 基于符合条件的 bean 必须存在的 Condition 实现。
+// onBean is a Condition that returns true when finding more than one beans.
 type onBean struct {
 	selector gsutil.BeanSelector
 }
@@ -128,7 +132,7 @@ func (c *onBean) Matches(ctx Context) (bool, error) {
 	return len(beans) > 0, err
 }
 
-// onMissingBean 基于符合条件的 bean 必须不存在的 Condition 实现。
+// onMissingBean is a Condition that returns true when finding no beans.
 type onMissingBean struct {
 	selector gsutil.BeanSelector
 }
@@ -138,7 +142,7 @@ func (c *onMissingBean) Matches(ctx Context) (bool, error) {
 	return len(beans) == 0, err
 }
 
-// onSingleBean 基于符合条件的 bean 只有一个的 Condition 实现。
+// onSingleBean is a Condition that returns true when finding only one bean.
 type onSingleBean struct {
 	selector gsutil.BeanSelector
 }
@@ -148,7 +152,7 @@ func (c *onSingleBean) Matches(ctx Context) (bool, error) {
 	return len(beans) == 1, err
 }
 
-// onExpression 基于表达式的 Condition 实现。
+// onExpression is a Condition that returns true when an expression is true.
 type onExpression struct {
 	expression string
 }
@@ -322,12 +326,12 @@ func HavingValue(havingValue string) PropertyOption {
 	}
 }
 
-// OnProperty 返回一个以 onProperty 为开始条件的计算式。
+// OnProperty returns a Condition that checks a property and its value.
 func OnProperty(name string, options ...PropertyOption) *conditional {
 	return New().OnProperty(name, options...)
 }
 
-// OnProperty 添加一个 onProperty 条件。
+// OnProperty adds a Condition that checks a property and its value.
 func (c *conditional) OnProperty(name string, options ...PropertyOption) *conditional {
 	cond := &onProperty{name: name}
 	for _, option := range options {
@@ -336,64 +340,64 @@ func (c *conditional) OnProperty(name string, options ...PropertyOption) *condit
 	return c.On(cond)
 }
 
-// OnMissingProperty 返回一个以 onMissingProperty 为开始条件的计算式。
+// OnMissingProperty returns a Condition that returns true when a property doesn't exist.
 func OnMissingProperty(name string) *conditional {
 	return New().OnMissingProperty(name)
 }
 
-// OnMissingProperty 添加一个 onMissingProperty 条件。
+// OnMissingProperty adds a Condition that returns true when a property doesn't exist.
 func (c *conditional) OnMissingProperty(name string) *conditional {
 	return c.On(&onMissingProperty{name: name})
 }
 
-// OnBean 返回一个以 onBean 为开始条件的计算式。
+// OnBean returns a Condition that returns true when finding more than one beans.
 func OnBean(selector gsutil.BeanSelector) *conditional {
 	return New().OnBean(selector)
 }
 
-// OnBean 添加一个 onBean 条件。
+// OnBean adds a Condition that returns true when finding more than one beans.
 func (c *conditional) OnBean(selector gsutil.BeanSelector) *conditional {
 	return c.On(&onBean{selector: selector})
 }
 
-// OnMissingBean 返回一个以 onMissingBean 为开始条件的计算式。
+// OnMissingBean returns a Condition that returns true when finding no beans.
 func OnMissingBean(selector gsutil.BeanSelector) *conditional {
 	return New().OnMissingBean(selector)
 }
 
-// OnMissingBean 添加一个 onMissingBean 条件。
+// OnMissingBean adds a Condition that returns true when finding no beans.
 func (c *conditional) OnMissingBean(selector gsutil.BeanSelector) *conditional {
 	return c.On(&onMissingBean{selector: selector})
 }
 
-// OnSingleBean 返回一个以 onSingleBean 为开始条件的计算式。
+// OnSingleBean returns a Condition that returns true when finding only one bean.
 func OnSingleBean(selector gsutil.BeanSelector) *conditional {
 	return New().OnSingleBean(selector)
 }
 
-// OnSingleBean 添加一个 onMissingBean 条件。
+// OnSingleBean adds a Condition that returns true when finding only one bean.
 func (c *conditional) OnSingleBean(selector gsutil.BeanSelector) *conditional {
 	return c.On(&onSingleBean{selector: selector})
 }
 
-// OnExpression 返回一个以 onExpression 为开始条件的计算式。
+// OnExpression returns a Condition that returns true when an expression is true.
 func OnExpression(expression string) *conditional {
 	return New().OnExpression(expression)
 }
 
-// OnExpression 添加一个 onExpression 条件。
+// OnExpression adds a Condition that returns true when an expression is true.
 func (c *conditional) OnExpression(expression string) *conditional {
 	return c.On(&onExpression{expression: expression})
 }
 
 // OnMatches 返回一个以 onMatches 为开始条件的计算式。
-func OnMatches(fn MatchesFunc) *conditional {
+func OnMatches(fn func(ctx Context) (bool, error)) *conditional {
 	return New().OnMatches(fn)
 }
 
 // OnMatches 添加一个 onMatches 条件。
-func (c *conditional) OnMatches(fn MatchesFunc) *conditional {
-	return c.On(fn)
+func (c *conditional) OnMatches(fn func(ctx Context) (bool, error)) *conditional {
+	return c.On(FuncCond(fn))
 }
 
 // OnProfile 返回一个以 spring.profile 属性值是否匹配为开始条件的计算式。
