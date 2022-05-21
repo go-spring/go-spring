@@ -21,11 +21,13 @@ package cond
 
 import (
 	"errors"
+	"fmt"
 	"go/token"
 	"go/types"
 	"strconv"
 	"strings"
 
+	"github.com/go-spring/spring-base/code"
 	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/gs/gsutil"
@@ -108,9 +110,13 @@ func (c *onProperty) Matches(ctx Context) (bool, error) {
 
 	ret, err := types.Eval(token.NewFileSet(), nil, token.NoPos, expr)
 	if err != nil {
-		return false, err
+		return false, util.Wrapf(err, code.FileLine(), "eval %q returns error", expr)
 	}
-	return strconv.ParseBool(ret.Value.String())
+	b, err := strconv.ParseBool(ret.Value.String())
+	if err != nil {
+		return false, util.Wrapf(err, code.FileLine(), "eval %q returns error", expr)
+	}
+	return b, nil
 }
 
 // onMissingProperty is a Condition that returns true when a property doesn't exist.
@@ -152,7 +158,7 @@ func (c *onSingleBean) Matches(ctx Context) (bool, error) {
 	return len(beans) == 1, err
 }
 
-// onExpression is a Condition that returns true when an expression is true.
+// onExpression is a Condition that returns true when an expression returns true.
 type onExpression struct {
 	expression string
 }
@@ -161,23 +167,23 @@ func (c *onExpression) Matches(ctx Context) (bool, error) {
 	return false, util.UnimplementedMethod
 }
 
-// Operator 条件操作符，包含 Or、And、None 三种。
+// Operator defines operation between conditions, including Or、And、None.
 type Operator int
 
 const (
-	Or   = Operator(1) // 条件成立必须至少一个满足。
-	And  = Operator(2) // 条件成立必须所有都要满足。
-	None = Operator(3) // 条件成立必须没有一个满足。
+	Or   = Operator(1) // at least one of the conditions must be met.
+	And  = Operator(2) // all conditions must be met.
+	None = Operator(3) // all conditions must be not met.
 )
 
-// group 基于条件组的 Condition 实现。
+// group is a Condition implemented by operation of Condition(s).
 type group struct {
 	op   Operator
 	cond []Condition
 }
 
-// Group 返回基于条件组的 Condition 对象。
-func Group(op Operator, cond ...Condition) *group {
+// Group returns a Condition implemented by operation of Condition(s).
+func Group(op Operator, cond ...Condition) Condition {
 	return &group{op: op, cond: cond}
 }
 
@@ -217,19 +223,19 @@ func (g *group) Matches(ctx Context) (bool, error) {
 		return true, nil
 	}
 
-	return false, errors.New("error condition operator")
+	return false, fmt.Errorf("error condition operator %d", g.op)
 }
 
-// node 基于条件链的 Condition 实现。
+// node is a Condition implemented by link of Condition(s).
 type node struct {
-	cond Condition // 条件
-	op   Operator  // 操作符
-	next *node     // 下一个节点
+	cond Condition
+	op   Operator
+	next *node
 }
 
 func (n *node) Matches(ctx Context) (bool, error) {
 
-	if n.cond == nil { // 空节点返回 true
+	if n.cond == nil {
 		return true, nil
 	}
 
@@ -259,16 +265,16 @@ func (n *node) Matches(ctx Context) (bool, error) {
 		}
 	}
 
-	return false, errors.New("error condition operator")
+	return false, fmt.Errorf("error condition operator %d", n.op)
 }
 
-// conditional Condition 计算式。
+// conditional is a Condition implemented by link of Condition(s).
 type conditional struct {
 	head *node
 	curr *node
 }
 
-// New 返回 Condition 计算式对象。
+// New returns a Condition implemented by link of Condition(s).
 func New() *conditional {
 	n := &node{}
 	return &conditional{head: n, curr: n}
@@ -278,7 +284,7 @@ func (c *conditional) Matches(ctx Context) (bool, error) {
 	return c.head.Matches(ctx)
 }
 
-// Or 添加一个 or 操作符。
+// Or sets a Or operator.
 func (c *conditional) Or() *conditional {
 	n := &node{}
 	c.curr.op = Or
@@ -287,7 +293,7 @@ func (c *conditional) Or() *conditional {
 	return c
 }
 
-// And 添加一个 and 操作符。
+// And sets a And operator.
 func (c *conditional) And() *conditional {
 	n := &node{}
 	c.curr.op = And
@@ -296,12 +302,12 @@ func (c *conditional) And() *conditional {
 	return c
 }
 
-// On 返回一个以给定 Condition 为开始条件的计算式。
+// On returns a conditional that starts with one Condition.
 func On(cond Condition) *conditional {
 	return New().On(cond)
 }
 
-// On 添加一个条件。
+// On adds one Condition.
 func (c *conditional) On(cond Condition) *conditional {
 	if c.curr.cond != nil {
 		c.And()
@@ -312,21 +318,22 @@ func (c *conditional) On(cond Condition) *conditional {
 
 type PropertyOption func(*onProperty)
 
-// MatchIfMissing 当属性不存在时条件成立。
+// MatchIfMissing sets a Condition to return true when property doesn't exist.
 func MatchIfMissing() PropertyOption {
 	return func(c *onProperty) {
 		c.matchIfMissing = true
 	}
 }
 
-// HavingValue 当 havingValue 与属性值相同时条件成立。
+// HavingValue sets a Condition to return true when property value equals to havingValue.
 func HavingValue(havingValue string) PropertyOption {
 	return func(c *onProperty) {
 		c.havingValue = havingValue
 	}
 }
 
-// OnProperty returns a Condition that checks a property and its value.
+// OnProperty returns a conditional that starts with a Condition that checks a property
+// and its value.
 func OnProperty(name string, options ...PropertyOption) *conditional {
 	return New().OnProperty(name, options...)
 }
@@ -340,17 +347,19 @@ func (c *conditional) OnProperty(name string, options ...PropertyOption) *condit
 	return c.On(cond)
 }
 
-// OnMissingProperty returns a Condition that returns true when a property doesn't exist.
+// OnMissingProperty returns a conditional that starts with a Condition that returns
+// true when property doesn't exist.
 func OnMissingProperty(name string) *conditional {
 	return New().OnMissingProperty(name)
 }
 
-// OnMissingProperty adds a Condition that returns true when a property doesn't exist.
+// OnMissingProperty adds a Condition that returns true when property doesn't exist.
 func (c *conditional) OnMissingProperty(name string) *conditional {
 	return c.On(&onMissingProperty{name: name})
 }
 
-// OnBean returns a Condition that returns true when finding more than one beans.
+// OnBean returns a conditional that starts with a Condition that returns true when
+// finding more than one beans.
 func OnBean(selector gsutil.BeanSelector) *conditional {
 	return New().OnBean(selector)
 }
@@ -360,7 +369,8 @@ func (c *conditional) OnBean(selector gsutil.BeanSelector) *conditional {
 	return c.On(&onBean{selector: selector})
 }
 
-// OnMissingBean returns a Condition that returns true when finding no beans.
+// OnMissingBean returns a conditional that starts with a Condition that returns
+// true when finding no beans.
 func OnMissingBean(selector gsutil.BeanSelector) *conditional {
 	return New().OnMissingBean(selector)
 }
@@ -370,7 +380,8 @@ func (c *conditional) OnMissingBean(selector gsutil.BeanSelector) *conditional {
 	return c.On(&onMissingBean{selector: selector})
 }
 
-// OnSingleBean returns a Condition that returns true when finding only one bean.
+// OnSingleBean returns a conditional that starts with a Condition that returns
+// true when finding only one bean.
 func OnSingleBean(selector gsutil.BeanSelector) *conditional {
 	return New().OnSingleBean(selector)
 }
@@ -380,32 +391,35 @@ func (c *conditional) OnSingleBean(selector gsutil.BeanSelector) *conditional {
 	return c.On(&onSingleBean{selector: selector})
 }
 
-// OnExpression returns a Condition that returns true when an expression is true.
+// OnExpression returns a conditional that starts with a Condition that returns
+// true when an expression returns true.
 func OnExpression(expression string) *conditional {
 	return New().OnExpression(expression)
 }
 
-// OnExpression adds a Condition that returns true when an expression is true.
+// OnExpression adds a Condition that returns true when an expression returns true.
 func (c *conditional) OnExpression(expression string) *conditional {
 	return c.On(&onExpression{expression: expression})
 }
 
-// OnMatches 返回一个以 onMatches 为开始条件的计算式。
+// OnMatches returns a conditional that starts with a Condition that returns true
+// when function returns true.
 func OnMatches(fn func(ctx Context) (bool, error)) *conditional {
 	return New().OnMatches(fn)
 }
 
-// OnMatches 添加一个 onMatches 条件。
+// OnMatches adds a Condition that returns true when function returns true.
 func (c *conditional) OnMatches(fn func(ctx Context) (bool, error)) *conditional {
 	return c.On(FuncCond(fn))
 }
 
-// OnProfile 返回一个以 spring.profile 属性值是否匹配为开始条件的计算式。
+// OnProfile returns a conditional that starts with a Condition that returns true
+// when property value equals to profile.
 func OnProfile(profile string) *conditional {
 	return New().OnProfile(profile)
 }
 
-// OnProfile 添加一个 spring.profile 属性值是否匹配的条件。
+// OnProfile adds a Condition that returns true when property value equals to profile.
 func (c *conditional) OnProfile(profile string) *conditional {
 	return c.OnProperty("spring.profiles.active", HavingValue(profile))
 }
