@@ -40,19 +40,20 @@ func fileLine() (string, int) {
 	return frame.File, frame.Line
 }
 
-// File 获取当前调用点的文件信息，希望未来可以实现编译期计算。
+// File returns the file name of the call point.
 func File() string {
 	file, _ := fileLine()
 	return file
 }
 
-// Line 获取当前调用点的文件信息，希望未来可以实现编译期计算。
+// Line returns the file line of the call point.
 func Line() int {
 	_, line := fileLine()
 	return line
 }
 
-// FileLine 获取当前调用点的文件信息，希望未来可以实现编译期计算。
+// FileLine returns the file name and line of the call point.
+// and, in fact code.FileLine costs less time than debug.Stack.
 func FileLine() string {
 	file, line := fileLine()
 	return fmt.Sprintf("%s:%d", file, line)
