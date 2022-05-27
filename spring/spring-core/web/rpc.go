@@ -17,27 +17,30 @@
 package web
 
 import (
+	"context"
 	"errors"
-	"net/http"
 	"reflect"
 
+	"github.com/go-spring/spring-base/knife"
+	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-base/util"
 )
 
-var (
-	httpRequestType = reflect.TypeOf((*http.Request)(nil))
+const (
+	ctxKey = "::request::"
 )
 
 // bindHandler BIND 形式的 Web 处理接口
 type bindHandler struct {
-	fn          interface{}
-	fnType      reflect.Type
-	fnValue     reflect.Value
-	bindType    reflect.Type
-	httpRequest bool
+	fn       interface{}
+	fnType   reflect.Type
+	fnValue  reflect.Value
+	bindType reflect.Type
 }
 
 func (b *bindHandler) Invoke(ctx Context) {
+	err := knife.Store(ctx.Context(), ctxKey, ctx)
+	util.Panic(err).When(err != nil)
 	RpcInvoke(ctx, b.call)
 }
 
@@ -45,10 +48,6 @@ func (b *bindHandler) call(ctx Context) interface{} {
 
 	// 反射创建需要绑定请求参数
 	bindVal := reflect.New(b.bindType.Elem())
-	if b.httpRequest {
-		v := bindVal.FieldByName("HttpRequest")
-		v.Set(reflect.ValueOf(ctx.Request()))
-	}
 	if err := ctx.Bind(bindVal.Interface()); err != nil {
 		panic(err)
 	}
@@ -82,18 +81,25 @@ func validBindFn(fnType reflect.Type) bool {
 // BIND 转换成 BIND 形式的 Web 处理接口
 func BIND(fn interface{}) Handler {
 	if fnType := reflect.TypeOf(fn); validBindFn(fnType) {
-		bindType := fnType.In(1)
-		ft, ok := bindType.FieldByName("HttpRequest")
-		httpRequest := ok && ft.Type.AssignableTo(httpRequestType)
 		return &bindHandler{
-			fn:          fn,
-			fnType:      fnType,
-			fnValue:     reflect.ValueOf(fn),
-			bindType:    bindType,
-			httpRequest: httpRequest,
+			fn:       fn,
+			fnType:   fnType,
+			fnValue:  reflect.ValueOf(fn),
+			bindType: fnType.In(1),
 		}
 	}
 	panic(errors.New("fn should be func(context.Context, *struct})anything"))
+}
+
+// GetRequest 获取 ctx 对象上绑定的 web.Context 对象。
+func GetRequest(ctx context.Context) Context {
+	v, err := knife.Load(ctx, ctxKey)
+	if err != nil {
+		logger.WithContext(ctx).Error(log.ERROR, err)
+		return nil
+	}
+	webCtx, _ := v.(Context)
+	return webCtx
 }
 
 // RpcInvoke 可自定义的 rpc 执行函数。

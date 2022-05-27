@@ -23,14 +23,14 @@ import (
 )
 
 type Logger struct {
+	value atomic.Value
 	name  string
 	entry BaseEntry
-	value atomic.Value
 }
 
 type LoggerConfig struct {
-	Level     Level
 	Appenders []Appender
+	Level     Level
 }
 
 func NewLogger(name string, config *LoggerConfig) *Logger {
@@ -73,72 +73,72 @@ func (l *Logger) WithContext(ctx context.Context) CtxEntry {
 	return l.entry.WithContext(ctx)
 }
 
-// Trace 输出 TRACE 级别的日志。
+// Trace outputs log with level TraceLevel.
 func (l *Logger) Trace(args ...interface{}) {
 	printf(TraceLevel, &l.entry, "", args)
 }
 
-// Tracef 输出 TRACE 级别的日志。
+// Tracef outputs log with level TraceLevel.
 func (l *Logger) Tracef(format string, args ...interface{}) {
 	printf(TraceLevel, &l.entry, format, args)
 }
 
-// Debug 输出 DEBUG 级别的日志。
+// Debug outputs log with level DebugLevel.
 func (l *Logger) Debug(args ...interface{}) {
 	printf(DebugLevel, &l.entry, "", args)
 }
 
-// Debugf 输出 DEBUG 级别的日志。
+// Debugf outputs log with level DebugLevel.
 func (l *Logger) Debugf(format string, args ...interface{}) {
 	printf(DebugLevel, &l.entry, format, args)
 }
 
-// Info 输出 INFO 级别的日志。
+// Info outputs log with level InfoLevel.
 func (l *Logger) Info(args ...interface{}) {
 	printf(InfoLevel, &l.entry, "", args)
 }
 
-// Infof 输出 INFO 级别的日志。
+// Infof outputs log with level InfoLevel.
 func (l *Logger) Infof(format string, args ...interface{}) {
 	printf(InfoLevel, &l.entry, format, args)
 }
 
-// Warn 输出 WARN 级别的日志。
+// Warn outputs log with level WarnLevel.
 func (l *Logger) Warn(args ...interface{}) {
 	printf(WarnLevel, &l.entry, "", args)
 }
 
-// Warnf 输出 WARN 级别的日志。
+// Warnf outputs log with level WarnLevel.
 func (l *Logger) Warnf(format string, args ...interface{}) {
 	printf(WarnLevel, &l.entry, format, args)
 }
 
-// Error 输出 ERROR 级别的日志。
+// Error outputs log with level ErrorLevel.
 func (l *Logger) Error(args ...interface{}) {
 	printf(ErrorLevel, &l.entry, "", args)
 }
 
-// Errorf 输出 ERROR 级别的日志。
+// Errorf outputs log with level ErrorLevel.
 func (l *Logger) Errorf(format string, args ...interface{}) {
 	printf(ErrorLevel, &l.entry, format, args)
 }
 
-// Panic 输出 PANIC 级别的日志。
+// Panic outputs log with level PanicLevel.
 func (l *Logger) Panic(args ...interface{}) {
 	printf(PanicLevel, &l.entry, "", args)
 }
 
-// Panicf 输出 PANIC 级别的日志。
+// Panicf outputs log with level PanicLevel.
 func (l *Logger) Panicf(format string, args ...interface{}) {
 	printf(PanicLevel, &l.entry, format, args)
 }
 
-// Fatal 输出 FATAL 级别的日志。
+// Fatal outputs log with level FatalLevel.
 func (l *Logger) Fatal(args ...interface{}) {
 	printf(FatalLevel, &l.entry, "", args)
 }
 
-// Fatalf 输出 FATAL 级别的日志。
+// Fatalf outputs log with level FatalLevel.
 func (l *Logger) Fatalf(format string, args ...interface{}) {
 	printf(FatalLevel, &l.entry, format, args)
 }

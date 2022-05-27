@@ -27,9 +27,9 @@ type Errno interface {
 }
 
 type errno struct {
+	message string
 	project uint32
 	code    uint16
-	message string
 }
 
 func NewErrno(project uint32, code uint16, msg string) Errno {

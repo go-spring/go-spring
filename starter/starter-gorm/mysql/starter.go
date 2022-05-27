@@ -21,6 +21,7 @@ import (
 	"github.com/go-spring/spring-core/database"
 	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/gs/cond"
+	"github.com/go-spring/spring-core/gs/gsutil"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
@@ -28,7 +29,7 @@ import (
 func init() {
 	gs.Provide(createDB, "${gorm}").
 		Name("GormDB").
-		On(cond.OnMissingBean(gs.BeanID((*gorm.DB)(nil), "GormDB")))
+		On(cond.OnMissingBean(gsutil.BeanID((*gorm.DB)(nil), "GormDB")))
 }
 
 func createDB(config database.ClientConfig) (*gorm.DB, error) {

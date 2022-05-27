@@ -25,8 +25,6 @@ import (
 	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/web"
 	"github.com/go-spring/spring-echo"
-	"github.com/go-spring/starter-core"
-	_ "github.com/go-spring/starter-web"
 )
 
 var config struct {
@@ -44,8 +42,8 @@ func init() {
 }
 
 func init() {
-	gs.Provide(func(config StarterCore.WebServerConfig) web.Container {
-		c := SpringEcho.NewContainer(web.ContainerConfig(config))
+	gs.Provide(func(config web.ServerConfig) web.Server {
+		c := SpringEcho.New(config)
 		c.SetLoggerFilter(web.FuncFilter(func(ctx web.Context, chain web.FilterChain) {
 			start := time.Now()
 			chain.Next(ctx)

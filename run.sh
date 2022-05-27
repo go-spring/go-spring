@@ -12,6 +12,10 @@ function isProjectDir(){
 function run(){
   for element in `ls $1`
   do
+    if [ $element == "documents" ]; then
+      continue
+    fi
+
     dir_or_file=$1"/"$element
     if [ -d $dir_or_file ]; then
       isProjectDir $dir_or_file
@@ -24,7 +28,7 @@ function run(){
         case $2 in
           "test")
             # 执行当前目录及子目录下的测试用例
-            go test -race -count=1 ./... ;;
+            go mod vendor && go test -race -count=1 ./... ;;
           "lint")
             # https://github.com/golangci/golangci-lint
             golangci-lint run ;;

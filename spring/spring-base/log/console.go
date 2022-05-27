@@ -17,11 +17,9 @@
 package log
 
 import (
-	"bytes"
 	"fmt"
 	"strings"
 
-	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-base/color"
 	"github.com/go-spring/spring-base/util"
 )
@@ -66,11 +64,7 @@ func (c *ConsoleAppender) Append(msg *Message) {
 	} else if level == TraceLevel {
 		strLevel = color.Green.Sprint(strLevel)
 	}
-	var buf bytes.Buffer
-	for _, a := range msg.Args() {
-		buf.WriteString(cast.ToString(a))
-	}
 	strTime := msg.Time().Format("2006-01-02T15:04:05.000")
 	fileLine := util.Contract(fmt.Sprintf("%s:%d", msg.File(), msg.Line()), 48)
-	_, _ = fmt.Printf("[%s][%s][%s] %s\n", strLevel, strTime, fileLine, buf.String())
+	_, _ = fmt.Printf("[%s][%s][%s] %s\n", strLevel, strTime, fileLine, msg.text)
 }

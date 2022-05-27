@@ -17,20 +17,9 @@
 package log
 
 import (
-	"context"
 	"fmt"
-
-	"github.com/go-spring/spring-base/clock"
-	"github.com/go-spring/spring-base/util"
+	"time"
 )
-
-var defaultContext context.Context
-
-// SetDefaultContext 设置默认的 context.Context 对象。
-func SetDefaultContext(ctx context.Context) {
-	util.MustTestMode()
-	defaultContext = ctx
-}
 
 var defaultLoggerConfig = &LoggerConfig{
 	Level:     InfoLevel,
@@ -50,25 +39,27 @@ func printf(level Level, e Entry, format string, args []interface{}) {
 			args = fn()
 		}
 	}
-	if format != "" {
-		args = []interface{}{fmt.Sprintf(format, args...)}
+	var text string
+	if format == "" {
+		text = fmt.Sprint(args...)
+	} else {
+		text = fmt.Sprintf(format, args...)
 	}
-	doPrint(config.Appenders, level, e, args)
+	doPrint(config.Appenders, level, e, text)
 }
 
-func doPrint(appenders []Appender, level Level, e Entry, args []interface{}) {
-	msg := new(Message)
-	msg.level = level
-	msg.args = args
-	msg.tag = e.Tag()
-	msg.ctx = e.Context()
-	msg.errno = e.Errno()
-	ctx := msg.ctx
-	if ctx == nil {
-		ctx = defaultContext
+func doPrint(appenders []Appender, level Level, e Entry, text string) {
+	file, line, _ := Caller(e.Skip()+3, true)
+	msg := &Message{
+		level: level,
+		time:  time.Now(),
+		ctx:   e.Context(),
+		tag:   e.Tag(),
+		file:  file,
+		line:  line,
+		text:  text,
+		errno: e.Errno(),
 	}
-	msg.time = clock.Now(ctx)
-	msg.file, msg.line, _ = Caller(e.Skip()+3, true)
 	for _, appender := range appenders {
 		appender.Append(msg)
 	}

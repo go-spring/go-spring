@@ -33,6 +33,11 @@ var (
 	appenderFactories = map[string]AppenderFactory{}
 )
 
+// Appender 定义日志输出目标。
+type Appender interface {
+	Append(msg *Message)
+}
+
 type AppenderConfig interface {
 	GetName() string
 }
@@ -74,8 +79,8 @@ func GetLogger(name ...string) *Logger {
 	return l
 }
 
-// Load 加载日志配置文件。
-func Load(configFile string) error {
+// RefreshXML 加载日志配置文件。
+func RefreshXML(configFile string) error {
 
 	const (
 		EnterConfiguration = 1
@@ -212,72 +217,72 @@ func WithContext(ctx context.Context) CtxEntry {
 	return rootLogger.WithContext(ctx)
 }
 
-// Trace 输出 TRACE 级别的日志。
+// Trace outputs log to ROOT logger with level TraceLevel.
 func Trace(args ...interface{}) {
 	rootLogger.WithSkip(1).Trace(args...)
 }
 
-// Tracef 输出 TRACE 级别的日志。
+// Tracef outputs log to ROOT logger with level TraceLevel.
 func Tracef(format string, args ...interface{}) {
 	rootLogger.WithSkip(1).Tracef(format, args...)
 }
 
-// Debug 输出 DEBUG 级别的日志。
+// Debug outputs log to ROOT logger with level DebugLevel.
 func Debug(args ...interface{}) {
 	rootLogger.WithSkip(1).Debug(args...)
 }
 
-// Debugf 输出 DEBUG 级别的日志。
+// Debugf outputs log to ROOT logger with level DebugLevel.
 func Debugf(format string, args ...interface{}) {
 	rootLogger.WithSkip(1).Debugf(format, args...)
 }
 
-// Info 输出 INFO 级别的日志。
+// Info outputs log to ROOT logger with level InfoLevel.
 func Info(args ...interface{}) {
 	rootLogger.WithSkip(1).Info(args...)
 }
 
-// Infof 输出 INFO 级别的日志。
+// Infof outputs log to ROOT logger with level InfoLevel.
 func Infof(format string, args ...interface{}) {
 	rootLogger.WithSkip(1).Infof(format, args...)
 }
 
-// Warn 输出 WARN 级别的日志。
+// Warn outputs log to ROOT logger with level WarnLevel.
 func Warn(args ...interface{}) {
 	rootLogger.WithSkip(1).Warn(args...)
 }
 
-// Warnf 输出 WARN 级别的日志。
+// Warnf outputs log to ROOT logger with level WarnLevel.
 func Warnf(format string, args ...interface{}) {
 	rootLogger.WithSkip(1).Warnf(format, args...)
 }
 
-// Error 输出 ERROR 级别的日志。
+// Error outputs log to ROOT logger with level ErrorLevel.
 func Error(args ...interface{}) {
 	rootLogger.WithSkip(1).Error(args...)
 }
 
-// Errorf 输出 ERROR 级别的日志。
+// Errorf outputs log to ROOT logger with level ErrorLevel.
 func Errorf(format string, args ...interface{}) {
 	rootLogger.WithSkip(1).Errorf(format, args...)
 }
 
-// Panic 输出 PANIC 级别的日志。
+// Panic outputs log to ROOT logger with level PanicLevel.
 func Panic(args ...interface{}) {
 	rootLogger.WithSkip(1).Panic(args...)
 }
 
-// Panicf 输出 PANIC 级别的日志。
+// Panicf outputs log to ROOT logger with level PanicLevel.
 func Panicf(format string, args ...interface{}) {
 	rootLogger.WithSkip(1).Panicf(format, args...)
 }
 
-// Fatal 输出 FATAL 级别的日志。
+// Fatal outputs log to ROOT logger with level FatalLevel.
 func Fatal(args ...interface{}) {
 	rootLogger.WithSkip(1).Fatal(args...)
 }
 
-// Fatalf 输出 FATAL 级别的日志。
+// Fatalf outputs log to ROOT logger with level FatalLevel.
 func Fatalf(format string, args ...interface{}) {
 	rootLogger.WithSkip(1).Fatalf(format, args...)
 }
