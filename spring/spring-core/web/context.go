@@ -29,7 +29,7 @@ import (
 )
 
 // ContextKey Context 和 NativeContext 相互转换的 Key
-const ContextKey = "@WebCtx"
+const ContextKey = "@@WebCtx@@"
 
 var (
 	logger = log.GetLogger("GS_WEB")

@@ -27,7 +27,6 @@ import (
 	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-base/knife"
 	"github.com/go-spring/spring-base/util"
-	"github.com/go-spring/spring-core/internal"
 )
 
 // HandlerFunc 标准 Web 处理函数
@@ -44,7 +43,17 @@ type Handler interface {
 }
 
 // ServerConfig 定义 web 服务器配置
-type ServerConfig = internal.WebServerConfig
+type ServerConfig struct {
+	Host         string `value:"${host:=}"`            // 监听 IP
+	Port         int    `value:"${port:=8080}"`        // HTTP 端口
+	EnableSSL    bool   `value:"${ssl.enable:=false}"` // 是否启用 HTTPS
+	KeyFile      string `value:"${ssl.key:=}"`         // SSL 秘钥
+	CertFile     string `value:"${ssl.cert:=}"`        // SSL 证书
+	BasePath     string `value:"${base-path:=}"`       // 根路径
+	Prefix       string `value:"${prefix:=}"`          // 路由前缀
+	ReadTimeout  int    `value:"${read-timeout:=0}"`   // 读取超时，毫秒
+	WriteTimeout int    `value:"${write-timeout:=0}"`  // 写入超时，毫秒
+}
 
 // ErrorHandler 错误处理接口
 type ErrorHandler interface {

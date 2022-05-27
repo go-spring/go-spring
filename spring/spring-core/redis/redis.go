@@ -24,7 +24,6 @@ import (
 
 	"github.com/go-spring/spring-base/net/recorder"
 	"github.com/go-spring/spring-base/net/replayer"
-	"github.com/go-spring/spring-core/internal"
 )
 
 var (
@@ -43,7 +42,18 @@ func IsErrNil(err error) bool {
 	return errors.Is(err, errNil)
 }
 
-type Config = internal.RedisClientConfig
+type Config struct {
+	Host           string `value:"${host:=127.0.0.1}"`    // IP
+	Port           int    `value:"${port:=6379}"`         // 端口号
+	Username       string `value:"${username:=}"`         // 用户名
+	Password       string `value:"${password:=}"`         // 密码
+	Database       int    `value:"${database:=0}"`        // DB 序号
+	Ping           bool   `value:"${ping:=true}"`         // 是否 PING 探测
+	ConnectTimeout int    `value:"${connect-timeout:=0}"` // 连接超时，毫秒
+	ReadTimeout    int    `value:"${read-timeout:=0}"`    // 读取超时，毫秒
+	WriteTimeout   int    `value:"${write-timeout:=0}"`   // 写入超时，毫秒
+	IdleTimeout    int    `value:"${idle-timeout:=0}"`    // 空闲连接超时，毫秒
+}
 
 type Client struct {
 	conn ConnPool

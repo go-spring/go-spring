@@ -33,6 +33,6 @@ func init() {
 }
 
 func createDB(config database.ClientConfig) (*gorm.DB, error) {
-	log.Infof("open gorm mysql %s", config.Url)
-	return gorm.Open(mysql.Open(config.Url))
+	log.Infof("open gorm mysql %s", config.URL)
+	return gorm.Open(mysql.Open(config.URL))
 }

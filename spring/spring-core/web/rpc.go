@@ -19,15 +19,15 @@ package web
 import (
 	"context"
 	"errors"
+	"net/http"
 	"reflect"
 
 	"github.com/go-spring/spring-base/knife"
-	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-base/util"
 )
 
 const (
-	ctxKey = "::request::"
+	httpRequestKey = "::HttpRequest::"
 )
 
 // bindHandler BIND 形式的 Web 处理接口
@@ -39,18 +39,17 @@ type bindHandler struct {
 }
 
 func (b *bindHandler) Invoke(ctx Context) {
-	err := knife.Store(ctx.Context(), ctxKey, ctx)
+	err := knife.Store(ctx.Context(), httpRequestKey, ctx.Request())
 	util.Panic(err).When(err != nil)
-	RpcInvoke(ctx, b.call)
+	RPCInvoke(ctx, b.call)
 }
 
 func (b *bindHandler) call(ctx Context) interface{} {
 
 	// 反射创建需要绑定请求参数
 	bindVal := reflect.New(b.bindType.Elem())
-	if err := ctx.Bind(bindVal.Interface()); err != nil {
-		panic(err)
-	}
+	err := ctx.Bind(bindVal.Interface())
+	util.Panic(err).When(err != nil)
 
 	// 执行处理函数，并返回结果
 	ctxVal := reflect.ValueOf(ctx.Request().Context())
@@ -91,18 +90,15 @@ func BIND(fn interface{}) Handler {
 	panic(errors.New("fn should be func(context.Context, *struct})anything"))
 }
 
-// GetRequest 获取 ctx 对象上绑定的 web.Context 对象。
-func GetRequest(ctx context.Context) Context {
-	v, err := knife.Load(ctx, ctxKey)
-	if err != nil {
-		logger.WithContext(ctx).Error(log.ERROR, err)
-		return nil
-	}
-	webCtx, _ := v.(Context)
-	return webCtx
+// GetHTTPRequest returns the *http.Request storing in the context.Context.
+func GetHTTPRequest(ctx context.Context) *http.Request {
+	v, err := knife.Load(ctx, httpRequestKey)
+	util.Panic(err).When(err != nil)
+	r, _ := v.(*http.Request)
+	return r
 }
 
-// RpcInvoke 可自定义的 rpc 执行函数。
-var RpcInvoke = func(ctx Context, fn func(Context) interface{}) {
+// RPCInvoke 可自定义的 rpc 执行函数。
+var RPCInvoke = func(ctx Context, fn func(Context) interface{}) {
 	ctx.JSON(fn(ctx))
 }
