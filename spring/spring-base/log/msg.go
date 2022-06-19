@@ -17,50 +17,53 @@
 package log
 
 import (
-	"context"
-	"time"
+	"encoding/json"
+	"fmt"
 )
 
-// Message 定义日志消息。
-type Message struct {
-	time  time.Time
-	ctx   context.Context
-	errno Errno
-	text  string
-	tag   string
-	file  string
-	line  int
-	level Level
+type Message interface {
+	Text() string
 }
 
-func (msg *Message) Level() Level {
-	return msg.level
+type FormatMessage struct {
+	format string
+	args   []interface{}
 }
 
-func (msg *Message) Tag() string {
-	return msg.tag
+func NewFormatMessage(format string, args []interface{}) Message {
+	return &FormatMessage{
+		format: format,
+		args:   args,
+	}
 }
 
-func (msg *Message) File() string {
-	return msg.file
+func (msg *FormatMessage) Text() string {
+	if len(msg.args) == 1 {
+		fn, ok := msg.args[0].(func() []interface{})
+		if ok {
+			msg.args = fn()
+		}
+	}
+	if msg.format == "" {
+		return fmt.Sprint(msg.args...)
+	}
+	return fmt.Sprintf(msg.format, msg.args...)
 }
 
-func (msg *Message) Line() int {
-	return msg.line
+type JsonMessage struct {
+	data interface{}
 }
 
-func (msg *Message) Time() time.Time {
-	return msg.time
+func NewJsonMessage(data interface{}) Message {
+	return &JsonMessage{
+		data: data,
+	}
 }
 
-func (msg *Message) Text() string {
-	return msg.text
-}
-
-func (msg *Message) Errno() Errno {
-	return msg.errno
-}
-
-func (msg *Message) Context() context.Context {
-	return msg.ctx
+func (msg *JsonMessage) Text() string {
+	b, err := json.Marshal(msg.data)
+	if err != nil {
+		return err.Error()
+	}
+	return string(b)
 }

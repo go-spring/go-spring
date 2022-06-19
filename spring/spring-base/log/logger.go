@@ -19,126 +19,159 @@ package log
 import (
 	"context"
 
-	"github.com/go-spring/spring-base/atomic"
+	"github.com/go-spring/spring-base/log/queue"
 )
 
-type Logger struct {
-	value atomic.Value
-	name  string
-	entry BaseEntry
+var (
+	empty = &emptyConfig{}
+)
+
+func init() {
+	RegisterPlugin("Root", "Root", (*LoggerConfig)(nil))
+	RegisterPlugin("Logger", "Logger", (*LoggerConfig)(nil))
+	RegisterPlugin("AsyncRoot", "AsyncRoot", (*AsyncLoggerConfig)(nil))
+	RegisterPlugin("AsyncLogger", "AsyncLogger", (*AsyncLoggerConfig)(nil))
+	RegisterPlugin("AppenderRef", "AppenderRef", (*AppenderRef)(nil))
+}
+
+type PrivateConfig interface {
+	publisher
+	start() error
+	stop(ctx context.Context)
+	GetEntry() SimpleEntry
+	GetParent() PrivateConfig
+	GetName() string
+	GetLevel() Level
+	GetFilters() []Filter
+	GetAppenders() []*AppenderRef
+}
+
+type emptyConfig struct {
+	publisher
+}
+
+func (c *emptyConfig) Start() error                 { return nil }
+func (c *emptyConfig) Stop(ctx context.Context)     {}
+func (c *emptyConfig) GetEntry() SimpleEntry        { return SimpleEntry{} }
+func (c *emptyConfig) GetParent() PrivateConfig     { return nil }
+func (c *emptyConfig) GetName() string              { return "" }
+func (c *emptyConfig) GetLevel() Level              { return NoneLevel }
+func (c *emptyConfig) GetFilters() []Filter         { return nil }
+func (c *emptyConfig) GetAppenders() []*AppenderRef { return nil }
+
+type AppenderRef struct {
+	appender Appender
+	Ref      string   `PluginAttribute:"ref"`
+	Level    Level    `PluginAttribute:"level,default=info"`
+	Filters  []Filter `PluginElement:"Filter"`
+}
+
+func (r *AppenderRef) Append(e *Event) {
+	if e.level < r.Level {
+		return
+	}
+	for _, filter := range r.Filters {
+		if filter.Filter(e.level, e.entry, e.msg) {
+			return
+		}
+	}
+	r.appender.Append(e)
+}
+
+type BaseLoggerConfig struct {
+	entry        SimpleEntry
+	parent       PrivateConfig
+	Name         string         `PluginAttribute:"name"`
+	Level        Level          `PluginAttribute:"level,default=info"`
+	Additivity   bool           `PluginAttribute:"additivity,default=true"`
+	Filters      []Filter       `PluginElement:"Filter"`
+	AppenderRefs []*AppenderRef `PluginElement:"AppenderRef"`
+}
+
+func (c *BaseLoggerConfig) GetName() string {
+	return c.Name
+}
+
+func (c *BaseLoggerConfig) GetEntry() SimpleEntry {
+	return c.entry
+}
+
+func (c *BaseLoggerConfig) GetParent() PrivateConfig {
+	return c.parent
+}
+
+func (c *BaseLoggerConfig) GetLevel() Level {
+	return c.Level
+}
+
+func (c *BaseLoggerConfig) GetFilters() []Filter {
+	return c.Filters
+}
+
+func (c *BaseLoggerConfig) GetAppenders() []*AppenderRef {
+	return c.AppenderRefs
+}
+
+func (c *BaseLoggerConfig) callAppenders(e *Event) {
+	for _, r := range c.AppenderRefs {
+		r.Append(e)
+	}
+	if c.parent != nil && c.Additivity {
+		c.parent.publish(e)
+	}
+}
+
+func (c *BaseLoggerConfig) filter(level Level, e Entry, msg Message) bool {
+	if level < c.Level {
+		return true
+	}
+	for _, filter := range c.Filters {
+		if filter.Filter(level, e, msg) {
+			return true
+		}
+	}
+	return false
 }
 
 type LoggerConfig struct {
-	Appenders []Appender
-	Level     Level
+	BaseLoggerConfig
 }
 
-func NewLogger(name string, config *LoggerConfig) *Logger {
-	l := &Logger{
-		name: name,
-	}
-	l.entry.logger = l
-	l.value.Store(config)
-	return l
+func (c *LoggerConfig) start() error {
+	c.entry = SimpleEntry{pub: c}
+	return nil
 }
 
-func (l *Logger) Name() string {
-	return l.name
+func (c *LoggerConfig) stop(ctx context.Context) {
+
 }
 
-func (l *Logger) config() *LoggerConfig {
-	v := l.value.Load()
-	return v.(*LoggerConfig)
+func (c *LoggerConfig) publish(e *Event) {
+	c.callAppenders(e)
 }
 
-func (l *Logger) SetLevel(level Level) {
-	l.value.Store(&LoggerConfig{
-		Level:     level,
-		Appenders: l.config().Appenders,
-	})
+type AsyncLoggerConfig struct {
+	BaseLoggerConfig
 }
 
-// WithSkip 创建包含 skip 信息的 Entry 。
-func (l *Logger) WithSkip(n int) BaseEntry {
-	return l.entry.WithSkip(n)
+func (c *AsyncLoggerConfig) start() error {
+	c.entry = SimpleEntry{pub: c}
+	return nil
 }
 
-// WithTag 创建包含 tag 信息的 Entry 。
-func (l *Logger) WithTag(tag string) BaseEntry {
-	return l.entry.WithTag(tag)
+func (c *AsyncLoggerConfig) stop(ctx context.Context) {
+
 }
 
-// WithContext 创建包含 context.Context 对象的 Entry 。
-func (l *Logger) WithContext(ctx context.Context) CtxEntry {
-	return l.entry.WithContext(ctx)
+type eventWrapper struct {
+	c *AsyncLoggerConfig
+	e *Event
 }
 
-// Trace outputs log with level TraceLevel.
-func (l *Logger) Trace(args ...interface{}) {
-	printf(TraceLevel, &l.entry, "", args)
+func (w *eventWrapper) OnEvent() {
+	w.c.callAppenders(w.e)
 }
 
-// Tracef outputs log with level TraceLevel.
-func (l *Logger) Tracef(format string, args ...interface{}) {
-	printf(TraceLevel, &l.entry, format, args)
-}
-
-// Debug outputs log with level DebugLevel.
-func (l *Logger) Debug(args ...interface{}) {
-	printf(DebugLevel, &l.entry, "", args)
-}
-
-// Debugf outputs log with level DebugLevel.
-func (l *Logger) Debugf(format string, args ...interface{}) {
-	printf(DebugLevel, &l.entry, format, args)
-}
-
-// Info outputs log with level InfoLevel.
-func (l *Logger) Info(args ...interface{}) {
-	printf(InfoLevel, &l.entry, "", args)
-}
-
-// Infof outputs log with level InfoLevel.
-func (l *Logger) Infof(format string, args ...interface{}) {
-	printf(InfoLevel, &l.entry, format, args)
-}
-
-// Warn outputs log with level WarnLevel.
-func (l *Logger) Warn(args ...interface{}) {
-	printf(WarnLevel, &l.entry, "", args)
-}
-
-// Warnf outputs log with level WarnLevel.
-func (l *Logger) Warnf(format string, args ...interface{}) {
-	printf(WarnLevel, &l.entry, format, args)
-}
-
-// Error outputs log with level ErrorLevel.
-func (l *Logger) Error(args ...interface{}) {
-	printf(ErrorLevel, &l.entry, "", args)
-}
-
-// Errorf outputs log with level ErrorLevel.
-func (l *Logger) Errorf(format string, args ...interface{}) {
-	printf(ErrorLevel, &l.entry, format, args)
-}
-
-// Panic outputs log with level PanicLevel.
-func (l *Logger) Panic(args ...interface{}) {
-	printf(PanicLevel, &l.entry, "", args)
-}
-
-// Panicf outputs log with level PanicLevel.
-func (l *Logger) Panicf(format string, args ...interface{}) {
-	printf(PanicLevel, &l.entry, format, args)
-}
-
-// Fatal outputs log with level FatalLevel.
-func (l *Logger) Fatal(args ...interface{}) {
-	printf(FatalLevel, &l.entry, "", args)
-}
-
-// Fatalf outputs log with level FatalLevel.
-func (l *Logger) Fatalf(format string, args ...interface{}) {
-	printf(FatalLevel, &l.entry, format, args)
+func (c *AsyncLoggerConfig) publish(e *Event) {
+	queue.Instance().Publish(&eventWrapper{c: c, e: e})
 }

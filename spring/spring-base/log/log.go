@@ -18,271 +18,408 @@ package log
 
 import (
 	"context"
-	"encoding/xml"
+	"errors"
 	"fmt"
-	"io"
+	"io/ioutil"
+	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
+
+	"github.com/go-spring/spring-base/atomic"
 )
 
-const RootLoggerName = "Root"
+const (
+	RootLoggerName      = "Root"
+	AsyncRootLoggerName = "AsyncRoot"
+)
 
 var (
-	rootLogger        = GetLogger(RootLoggerName)
-	usingLoggers      = map[string]*Logger{}
-	appenderFactories = map[string]AppenderFactory{}
+	loggers = map[string]*Logger{}
 )
 
-// Appender 定义日志输出目标。
+// Filter 日志过滤器。
+type Filter interface {
+	Filter(level Level, e Entry, msg Message) bool
+}
+
+// Appender 日志输出器。不要试图实现异步的 Appender，因为我们会提供异步的 Logger。
 type Appender interface {
-	Append(msg *Message)
+	Append(e *Event)
 }
 
-type AppenderConfig interface {
-	GetName() string
+// LifeCycle 生命周期。
+type LifeCycle interface {
+	Start() error
+	Stop(ctx context.Context)
 }
 
-// AppenderFactory 定义 Appender 工厂。
-type AppenderFactory interface {
-	NewAppenderConfig() AppenderConfig
-	NewAppender(config AppenderConfig) (Appender, error)
+type Node struct {
+	Label      string
+	Attributes map[string]string
+	Children   []*Node
 }
 
-// RegisterAppenderFactory 注册 Appender 工厂。
-func RegisterAppenderFactory(appender string, factory AppenderFactory) {
-	appenderFactories[appender] = factory
-}
-
-// GetLogger 获取名为 name 的 *Logger 对象。
-func GetLogger(name ...string) *Logger {
-	if len(name) == 0 {
-		if pc, _, _, ok := runtime.Caller(1); ok {
-			funcName := runtime.FuncForPC(pc).Name()
-			i := strings.LastIndex(funcName, "/")
-			j := strings.Index(funcName[i:], ".")
-			name = append(name, funcName[:i+j])
-		} else {
-			name = append(name, RootLoggerName)
-		}
-	}
-	l, ok := usingLoggers[name[0]]
-	if ok {
-		return l
-	}
-	l = NewLogger(name[0], &LoggerConfig{
-		Level: InfoLevel,
-		Appenders: []Appender{
-			NewConsoleAppender(nil),
-		},
-	})
-	usingLoggers[l.name] = l
-	return l
-}
-
-// RefreshXML 加载日志配置文件。
-func RefreshXML(configFile string) error {
-
-	const (
-		EnterConfiguration = 1
-		ExitConfiguration  = 2
-		EnterAppenders     = 3
-		ExitAppenders      = 4
-		EnterLoggers       = 5
-		ExitLoggers        = 6
-	)
-
-	state := 0
-	configLoggers := map[string]*Logger{}
-	configAppenders := map[string]Appender{}
-	d := xml.NewDecoder(strings.NewReader(configFile))
-	for {
-		token, err := d.Token()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return err
-		}
-		switch t := token.(type) {
-		case xml.StartElement:
-			switch t.Name.Local {
-			case "Configuration":
-				state = EnterConfiguration
-				continue
-			case "Appenders":
-				state = EnterAppenders
-				continue
-			case "Loggers":
-				state = EnterLoggers
-				continue
-			}
-			if state == EnterAppenders {
-				factory, ok := appenderFactories[t.Name.Local]
-				if !ok {
-					return fmt.Errorf("no appender factory `%s` found", t.Name.Local)
-				}
-				config := factory.NewAppenderConfig()
-				err = d.DecodeElement(&config, &t)
-				if err != nil {
-					return err
-				}
-				var appender Appender
-				appender, err = factory.NewAppender(config)
-				if err != nil {
-					return err
-				}
-				configAppenders[config.GetName()] = appender
-				continue
-			}
-			if state == EnterLoggers {
-				var config struct {
-					Name         string `xml:"name,attr"`
-					Level        string `xml:"level,attr"`
-					AppenderRefs []struct {
-						Ref string `xml:"ref,attr"`
-					} `xml:"AppenderRef"`
-				}
-				err = d.DecodeElement(&config, &t)
-				if err != nil {
-					return err
-				}
-				if t.Name.Local == RootLoggerName {
-					config.Name = RootLoggerName
-				}
-				level := StringToLevel(config.Level)
-				if level == NoneLevel {
-					return fmt.Errorf("error level `%s` for logger `%s`", config.Level, config.Name)
-				}
-				var appenders []Appender
-				for _, ref := range config.AppenderRefs {
-					v, ok := configAppenders[ref.Ref]
-					if !ok {
-						return fmt.Errorf("no appender ref `%s` found", ref.Ref)
-					}
-					appenders = append(appenders, v)
-				}
-				l := NewLogger(config.Name, &LoggerConfig{
-					Level:     level,
-					Appenders: appenders,
-				})
-				configLoggers[config.Name] = l
-			}
-		case xml.EndElement:
-			switch t.Name.Local {
-			case "Configuration":
-				state = ExitConfiguration
-				continue
-			case "Appenders":
-				state = ExitAppenders
-				continue
-			case "Loggers":
-				state = ExitLoggers
-				continue
-			}
-		}
-	}
-
-	root, ok := configLoggers[RootLoggerName]
-	if !ok {
-		return fmt.Errorf("no logger `%s` found", RootLoggerName)
-	}
-
-	for name, usingLogger := range usingLoggers {
-		if l, ok := configLoggers[name]; ok {
-			usingLogger.value.Store(l.value.Load())
-		} else {
-			usingLogger.value.Store(root.value.Load())
+func (node *Node) child(label string) *Node {
+	for _, c := range node.Children {
+		if c.Label == label {
+			return c
 		}
 	}
 	return nil
 }
 
-// SetLevel 设置日志输出等级。
-func SetLevel(level Level) {
-	rootLogger.SetLevel(level)
+// GetLogger 获取名字为声明位置的包名的 *Logger 对象。
+func GetLogger(level ...Level) *Logger {
+	pc, _, _, _ := runtime.Caller(1)
+	funcName := runtime.FuncForPC(pc).Name()
+	i := strings.LastIndex(funcName, "/")
+	j := strings.Index(funcName[i:], ".")
+	return getLogger(funcName[:i+j], level...)
+}
+
+// getLogger 获取名字为 name 的 *Logger 对象。
+func getLogger(name string, level ...Level) *Logger {
+	if l, ok := loggers[name]; ok {
+		return l
+	}
+	if len(level) == 0 {
+		level = append(level, InfoLevel)
+	}
+	l := NewLogger(name, level[0])
+	loggers[name] = l
+	return l
+}
+
+type Configuration struct {
+	root      PrivateConfig
+	appenders map[string]Appender
+	loggers   map[string]PrivateConfig
+}
+
+// Refresh 加载日志配置文件。
+func Refresh(fileName string) error {
+
+	ext := filepath.Ext(fileName)
+	r, ok := readers[ext]
+	if !ok {
+		return fmt.Errorf("unsupported file type %s", ext)
+	}
+
+	b, err := ioutil.ReadFile(fileName)
+	if err != nil {
+		return err
+	}
+
+	rootNode, err := r.Read(b)
+	if err != nil {
+		return err
+	}
+
+	if rootNode.Label != "Configuration" {
+		return errors.New("no Configuration root")
+	}
+
+	c := &Configuration{
+		appenders: make(map[string]Appender),
+		loggers:   make(map[string]PrivateConfig),
+	}
+
+	if n := rootNode.child("Appenders"); n != nil {
+		for _, node := range n.Children {
+			p := getPluginByName(node.Label)
+			if p == nil {
+				return fmt.Errorf("xxxxxxxxxxxxxxxxxxxxxxxxxx")
+			}
+			name, ok := node.Attributes["name"]
+			if !ok {
+				return fmt.Errorf("xxxxxxxxxxxxxxxxxxxxxxxxxx")
+			}
+			v := reflect.New(p.Class)
+			err = inject(v.Elem(), v.Type().Elem(), node)
+			if err != nil {
+				return err
+			}
+			c.appenders[name] = v.Interface().(Appender)
+		}
+	}
+
+	if n := rootNode.child("Loggers"); n != nil {
+		for _, node := range n.Children {
+			isRootLogger := false
+			if node.Label == RootLoggerName {
+				isRootLogger = true
+				node.Attributes["name"] = RootLoggerName
+			} else if node.Label == AsyncRootLoggerName {
+				isRootLogger = true
+				node.Attributes["name"] = AsyncRootLoggerName
+			}
+			p := getPluginByName(node.Label)
+			if p == nil {
+				return fmt.Errorf("xxxxxxxxxxxxxxxxxxxxxxxxxx")
+			}
+			name, ok := node.Attributes["name"]
+			if !ok {
+				return fmt.Errorf("xxxxxxxxxxxxxxxxxxxxxxxxxx")
+			}
+			v := reflect.New(p.Class)
+			err = inject(v.Elem(), v.Type().Elem(), node)
+			if err != nil {
+				return err
+			}
+			config := v.Interface().(PrivateConfig)
+			if isRootLogger {
+				if c.root != nil {
+					return fmt.Errorf("xxxxxxxxxxxxxxxxxxxxxxxxxx")
+				}
+				c.root = config
+			}
+			c.loggers[name] = config
+		}
+	}
+
+	for name, config := range c.loggers {
+
+		var base *BaseLoggerConfig
+		switch v := config.(type) {
+		case *LoggerConfig:
+			base = &v.BaseLoggerConfig
+		case *AsyncLoggerConfig:
+			base = &v.BaseLoggerConfig
+		}
+
+		if name != c.root.GetName() {
+			base.parent = c.root
+		}
+
+		for {
+			n := strings.LastIndex(name, "/")
+			if n < 0 {
+				break
+			}
+			name = name[:n]
+			if parent, ok := c.loggers[name]; ok {
+				base.parent = parent
+			}
+		}
+
+		for _, ref := range base.AppenderRefs {
+			appender, ok := c.appenders[ref.Ref]
+			if !ok {
+				return fmt.Errorf("xxxxxxxxxxxxxxxxxxxxxxxxxx")
+			}
+			ref.appender = appender
+		}
+
+		if err = config.start(); err != nil {
+			return err
+		}
+	}
+
+	for name, l := range loggers {
+		l.reconfigure(c.loggers[name])
+	}
+
+	return nil
+}
+
+type Logger struct {
+	name  string
+	entry SimpleEntry
+	value atomic.Value
+}
+
+func NewLogger(name string, level Level) *Logger {
+	l := &Logger{
+		name: name,
+		entry: SimpleEntry{
+			pub: &pubAppender{
+				level:    level,
+				appender: &ConsoleAppender{},
+			},
+		},
+	}
+	l.reconfigure(nil)
+	return l
+}
+
+// Name ...
+func (l *Logger) Name() string {
+	return l.name
+}
+
+func (l *Logger) config() PrivateConfig {
+	v := l.value.Load()
+	if v == empty {
+		return nil
+	}
+	return v.(PrivateConfig)
+}
+
+func (l *Logger) reconfigure(config PrivateConfig) {
+	if config == nil {
+		l.value.Store(empty)
+	} else {
+		l.value.Store(config)
+	}
+}
+
+func (l *Logger) Level() Level {
+	if c := l.config(); c != nil {
+		return c.GetLevel()
+	}
+	return l.entry.pub.(*pubAppender).level
+}
+
+func (l *Logger) GetFilters() []Filter {
+	if c := l.config(); c != nil {
+		return c.GetFilters()
+	}
+	return nil
+}
+
+func (l *Logger) GetAppenders() []*AppenderRef {
+	if c := l.config(); c != nil {
+		return c.GetAppenders()
+	}
+	return nil
 }
 
 // WithSkip 创建包含 skip 信息的 Entry 。
-func WithSkip(n int) BaseEntry {
-	return rootLogger.WithSkip(n)
+func (l *Logger) WithSkip(n int) SimpleEntry {
+	if c := l.config(); c != nil {
+		return SimpleEntry{
+			pub:  c,
+			skip: n,
+		}
+	}
+	return l.entry.WithSkip(n)
 }
 
 // WithTag 创建包含 tag 信息的 Entry 。
-func WithTag(tag string) BaseEntry {
-	return rootLogger.WithTag(tag)
+func (l *Logger) WithTag(tag string) SimpleEntry {
+	if c := l.config(); c != nil {
+		return SimpleEntry{pub: c, tag: tag}
+	}
+	return l.entry.WithTag(tag)
 }
 
 // WithContext 创建包含 context.Context 对象的 Entry 。
-func WithContext(ctx context.Context) CtxEntry {
-	return rootLogger.WithContext(ctx)
+func (l *Logger) WithContext(ctx context.Context) ContextEntry {
+	if c := l.config(); c != nil {
+		return ContextEntry{pub: c, ctx: ctx}
+	}
+	return l.entry.WithContext(ctx)
 }
 
-// Trace outputs log to ROOT logger with level TraceLevel.
-func Trace(args ...interface{}) {
-	rootLogger.WithSkip(1).Trace(args...)
+// Trace outputs log with level TraceLevel.
+func (l *Logger) Trace(args ...interface{}) *Event {
+	if c := l.config(); c != nil {
+		return c.GetEntry().WithSkip(1).Trace(args...)
+	}
+	return l.entry.WithSkip(1).Trace(args...)
 }
 
-// Tracef outputs log to ROOT logger with level TraceLevel.
-func Tracef(format string, args ...interface{}) {
-	rootLogger.WithSkip(1).Tracef(format, args...)
+// Tracef outputs log with level TraceLevel.
+func (l *Logger) Tracef(format string, args ...interface{}) *Event {
+	if c := l.config(); c != nil {
+		return c.GetEntry().WithSkip(1).Tracef(format, args...)
+	}
+	return l.entry.WithSkip(1).Tracef(format, args...)
 }
 
-// Debug outputs log to ROOT logger with level DebugLevel.
-func Debug(args ...interface{}) {
-	rootLogger.WithSkip(1).Debug(args...)
+// Debug outputs log with level DebugLevel.
+func (l *Logger) Debug(args ...interface{}) *Event {
+	if c := l.config(); c != nil {
+		return c.GetEntry().WithSkip(1).Debug(args...)
+	}
+	return l.entry.WithSkip(1).Debug(args...)
 }
 
-// Debugf outputs log to ROOT logger with level DebugLevel.
-func Debugf(format string, args ...interface{}) {
-	rootLogger.WithSkip(1).Debugf(format, args...)
+// Debugf outputs log with level DebugLevel.
+func (l *Logger) Debugf(format string, args ...interface{}) *Event {
+	if c := l.config(); c != nil {
+		return c.GetEntry().WithSkip(1).Debugf(format, args...)
+	}
+	return l.entry.WithSkip(1).Debugf(format, args...)
 }
 
-// Info outputs log to ROOT logger with level InfoLevel.
-func Info(args ...interface{}) {
-	rootLogger.WithSkip(1).Info(args...)
+// Info outputs log with level InfoLevel.
+func (l *Logger) Info(args ...interface{}) *Event {
+	if c := l.config(); c != nil {
+		return c.GetEntry().WithSkip(1).Info(args...)
+	}
+	return l.entry.WithSkip(1).Info(args...)
 }
 
-// Infof outputs log to ROOT logger with level InfoLevel.
-func Infof(format string, args ...interface{}) {
-	rootLogger.WithSkip(1).Infof(format, args...)
+// Infof outputs log with level InfoLevel.
+func (l *Logger) Infof(format string, args ...interface{}) *Event {
+	if c := l.config(); c != nil {
+		return c.GetEntry().WithSkip(1).Infof(format, args...)
+	}
+	return l.entry.WithSkip(1).Infof(format, args...)
 }
 
-// Warn outputs log to ROOT logger with level WarnLevel.
-func Warn(args ...interface{}) {
-	rootLogger.WithSkip(1).Warn(args...)
+// Warn outputs log with level WarnLevel.
+func (l *Logger) Warn(args ...interface{}) *Event {
+	if c := l.config(); c != nil {
+		return c.GetEntry().WithSkip(1).Warn(args...)
+	}
+	return l.entry.WithSkip(1).Warn(args...)
 }
 
-// Warnf outputs log to ROOT logger with level WarnLevel.
-func Warnf(format string, args ...interface{}) {
-	rootLogger.WithSkip(1).Warnf(format, args...)
+// Warnf outputs log with level WarnLevel.
+func (l *Logger) Warnf(format string, args ...interface{}) *Event {
+	if c := l.config(); c != nil {
+		return c.GetEntry().WithSkip(1).Warnf(format, args...)
+	}
+	return l.entry.WithSkip(1).Warnf(format, args...)
 }
 
-// Error outputs log to ROOT logger with level ErrorLevel.
-func Error(args ...interface{}) {
-	rootLogger.WithSkip(1).Error(args...)
+// Error outputs log with level ErrorLevel.
+func (l *Logger) Error(args ...interface{}) *Event {
+	if c := l.config(); c != nil {
+		return c.GetEntry().WithSkip(1).Error(args...)
+	}
+	return l.entry.WithSkip(1).Error(args...)
 }
 
-// Errorf outputs log to ROOT logger with level ErrorLevel.
-func Errorf(format string, args ...interface{}) {
-	rootLogger.WithSkip(1).Errorf(format, args...)
+// Errorf outputs log with level ErrorLevel.
+func (l *Logger) Errorf(format string, args ...interface{}) *Event {
+	if c := l.config(); c != nil {
+		return c.GetEntry().WithSkip(1).Errorf(format, args...)
+	}
+	return l.entry.WithSkip(1).Errorf(format, args...)
 }
 
-// Panic outputs log to ROOT logger with level PanicLevel.
-func Panic(args ...interface{}) {
-	rootLogger.WithSkip(1).Panic(args...)
+// Panic outputs log with level PanicLevel.
+func (l *Logger) Panic(args ...interface{}) *Event {
+	if c := l.config(); c != nil {
+		return c.GetEntry().WithSkip(1).Panic(args...)
+	}
+	return l.entry.WithSkip(1).Panic(args...)
 }
 
-// Panicf outputs log to ROOT logger with level PanicLevel.
-func Panicf(format string, args ...interface{}) {
-	rootLogger.WithSkip(1).Panicf(format, args...)
+// Panicf outputs log with level PanicLevel.
+func (l *Logger) Panicf(format string, args ...interface{}) *Event {
+	if c := l.config(); c != nil {
+		return c.GetEntry().WithSkip(1).Panicf(format, args...)
+	}
+	return l.entry.WithSkip(1).Panicf(format, args...)
 }
 
-// Fatal outputs log to ROOT logger with level FatalLevel.
-func Fatal(args ...interface{}) {
-	rootLogger.WithSkip(1).Fatal(args...)
+// Fatal outputs log with level FatalLevel.
+func (l *Logger) Fatal(args ...interface{}) *Event {
+	if c := l.config(); c != nil {
+		return c.GetEntry().WithSkip(1).Fatal(args...)
+	}
+	return l.entry.WithSkip(1).Fatal(args...)
 }
 
-// Fatalf outputs log to ROOT logger with level FatalLevel.
-func Fatalf(format string, args ...interface{}) {
-	rootLogger.WithSkip(1).Fatalf(format, args...)
+// Fatalf outputs log with level FatalLevel.
+func (l *Logger) Fatalf(format string, args ...interface{}) *Event {
+	if c := l.config(); c != nil {
+		return c.GetEntry().WithSkip(1).Fatalf(format, args...)
+	}
+	return l.entry.WithSkip(1).Fatalf(format, args...)
 }
