@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-//go:generate mockgen -build_flags="-mod=mod" -package=jpath -source=jpath.go -destination=mock.go
+//go:generate mockgen -build_flags="-mod=mod" -package=jpath -source=jpath.go -destination=jpath_mock.go
 
 package jpath
 

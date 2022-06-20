@@ -14,18 +14,44 @@
  * limitations under the License.
  */
 
-package StarterGoRedis
+package log
 
-import (
-	"github.com/go-spring/spring-core/gs"
-	"github.com/go-spring/spring-core/gs/cond"
-	"github.com/go-spring/spring-core/gs/gsutil"
-	"github.com/go-spring/spring-core/redis"
-	"github.com/go-spring/spring-go-redis"
-)
+import "time"
 
-func init() {
-	gs.Provide(SpringGoRedis.NewClient, "${redis}").
-		Name("RedisClient").
-		On(cond.OnMissingBean(gsutil.BeanID((*redis.Client)(nil), "RedisClient")))
+type Event struct {
+	entry Entry
+	time  time.Time
+	msg   Message
+	text  string
+	file  string
+	line  int
+	level Level
+}
+
+func (e *Event) Entry() Entry {
+	return e.entry
+}
+
+func (e *Event) Time() time.Time {
+	return e.time
+}
+
+func (e *Event) Msg() Message {
+	return e.msg
+}
+
+func (e *Event) Text() string {
+	return e.text
+}
+
+func (e *Event) File() string {
+	return e.file
+}
+
+func (e *Event) Line() int {
+	return e.line
+}
+
+func (e *Event) Level() Level {
+	return e.level
 }

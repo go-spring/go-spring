@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-//go:generate mockgen -build_flags="-mod=mod" -package=internal -source=internal.go -destination=mock.go
+//go:generate mockgen -build_flags="-mod=mod" -package=gsutil -source=gsutil.go -destination=gsutil_mock.go
 
-package internal
+package gsutil
 
 import (
 	"reflect"
@@ -41,28 +41,8 @@ type BeanDefinition interface {
 	Wired() bool            // 返回是否已注入
 }
 
-type RefreshArg struct {
-	AutoClear bool
-}
-
-type RefreshOption func(arg *RefreshArg)
-
-func AutoClear(enable bool) RefreshOption {
-	return func(arg *RefreshArg) {
-		arg.AutoClear = enable
-	}
-}
-
-// TypeOf 获取任意数据的真实类型。
-func TypeOf(i interface{}) reflect.Type {
-	switch o := i.(type) {
-	case reflect.Type:
-		return o
-	case reflect.Value:
-		return o.Type()
-	default:
-		return reflect.TypeOf(o)
-	}
+func BeanID(typ interface{}, name string) string {
+	return TypeName(typ) + ":" + name
 }
 
 // TypeName 返回原始类型的全限定名，类型的全限定名用于严格区分相同名称的 bean 对象。
@@ -72,7 +52,16 @@ func TypeOf(i interface{}) reflect.Type {
 // 相同的但实际上类型不相同的 bean 对象，因此有类型的全限定名这样的概念，用以严格区分
 // 同名的 bean 对象。
 func TypeName(i interface{}) string {
-	typ := TypeOf(i)
+
+	var typ reflect.Type
+	switch o := i.(type) {
+	case reflect.Type:
+		typ = o
+	case reflect.Value:
+		typ = o.Type()
+	default:
+		typ = reflect.TypeOf(o)
+	}
 
 	for { // 去掉指针和数组的包装，以获得原始类型
 		if k := typ.Kind(); k == reflect.Ptr || k == reflect.Slice {
@@ -104,17 +93,11 @@ func IsBeanType(t reflect.Type) bool {
 	case reflect.Chan, reflect.Func, reflect.Interface:
 		return true
 	case reflect.Ptr:
-		return isValueType(t.Elem())
+		et := t.Elem()
+		return et.Kind() == reflect.Struct || conf.IsPrimitiveValueType(et)
 	default:
 		return false
 	}
-}
-
-func isValueType(t reflect.Type) bool {
-	if t.Kind() == reflect.Struct {
-		return true
-	}
-	return conf.IsPrimitiveValueType(t)
 }
 
 // IsBeanReceiver 返回是否是合法的 bean receiver 类型。顾名思义，bean receiver

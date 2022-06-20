@@ -14,9 +14,16 @@
  * limitations under the License.
  */
 
-package internal
+package log
 
-// DatabaseClientConfig 关系型数据库客户端配置，通常配合数据库名称前缀一起使用。
-type DatabaseClientConfig struct {
-	Url string `value:"${url}"`
+func init() {
+	RegisterPlugin("LevelFilter", PluginTypeFilter, new(LevelFilter))
+}
+
+type LevelFilter struct {
+	Level Level `PluginAttribute:"level"`
+}
+
+func (filter *LevelFilter) Filter(level Level, e Entry, msg Message) bool {
+	return level >= filter.Level
 }

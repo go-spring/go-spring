@@ -19,15 +19,14 @@ package log
 import "strings"
 
 const (
-	NoneLevel  = Level(-1)
-	TraceLevel = Level(0)
-	DebugLevel = Level(1)
-	InfoLevel  = Level(2)
-	WarnLevel  = Level(3)
-	ErrorLevel = Level(4)
-	PanicLevel = Level(5)
-	FatalLevel = Level(6)
-	OffLevel   = Level(7)
+	NoneLevel  = Level(0)
+	TraceLevel = Level(1)
+	DebugLevel = Level(2)
+	InfoLevel  = Level(3)
+	WarnLevel  = Level(4)
+	ErrorLevel = Level(5)
+	PanicLevel = Level(6)
+	FatalLevel = Level(7)
 )
 
 // Level 日志输出级别。
@@ -49,8 +48,6 @@ func (level Level) String() string {
 		return "panic"
 	case FatalLevel:
 		return "fatal"
-	case OffLevel:
-		return "off"
 	default:
 		return "none"
 	}
@@ -72,8 +69,6 @@ func StringToLevel(str string) Level {
 		return PanicLevel
 	case "fatal":
 		return FatalLevel
-	case "off":
-		return OffLevel
 	default:
 		return NoneLevel
 	}

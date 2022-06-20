@@ -16,13 +16,15 @@
 
 package grpc
 
-import "github.com/go-spring/spring-core/internal"
-
 // ServerConfig gRPC 服务器配置。
-type ServerConfig = internal.GrpcServerConfig
+type ServerConfig struct {
+	Port int `value:"${port:=9090}"`
+}
 
 // EndpointConfig gRPC 客户端配置。
-type EndpointConfig = internal.GrpcEndpointConfig
+type EndpointConfig struct {
+	Address string `value:"${address:=localhost:9090}"`
+}
 
 type Server struct {
 	Register interface{} // 服务注册函数

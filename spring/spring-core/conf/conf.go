@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-// Package conf reads configuration from any format file, including Java
+// Package conf reads configuration from many format file, such as Java
 // properties, yaml, toml, etc.
 package conf
 
@@ -58,7 +58,7 @@ func init() {
 	RegisterReader(yaml.Read, ".yaml", ".yml")
 	RegisterReader(toml.Read, ".toml", ".tml")
 
-	// Converts string value into time.Time value. The string value
+	// converts string value into time.Time value. The string value
 	// may have its own time format after >> splitter, otherwise it
 	// uses a default time format 2006-01-02 15:04:05 -0700.
 	RegisterConverter(func(s string) (time.Time, error) {
@@ -71,7 +71,7 @@ func init() {
 		return cast.ToTimeE(s, format)
 	})
 
-	// Converts string value into time.Duration value. The string value
+	// converts string value into time.Duration value. The string value
 	// should have its own time unit such as "ns", "ms", "s", "m", etc.
 	RegisterConverter(func(s string) (time.Duration, error) {
 		return cast.ToDurationE(s)
@@ -109,21 +109,18 @@ func RegisterConverter(fn Converter) {
 	converters[t.Out(0)] = fn
 }
 
-// Properties There are too many formats of configuration files, and too many
-// conflicts between them. Each format of configuration file provides its special
-// characteristics, but usually they are not all necessary, and complementary. For
-// example, conf disabled Java properties' expansion when reading file, but it also
-// provides similar function when getting properties.
+// Properties stores properties with map[string]string and keys are case-sensitive,
+// you can get one of them by its key, or bind some of them to a value.
+// There are too many formats of configuration files, and too many conflicts between
+// them. Each format of configuration file provides its special characteristics, but
+// usually they are not all necessary, and complementary. For example, conf disabled
+// Java properties' expansion when reading file, but also provides similar function
+// when get or bind properties.
 // A good rule of thumb is that treating application configuration as a tree, but not
 // all formats of configuration files designed like this or not ideal, such as Java
 // properties which not strictly verified. Although configuration can store as a tree,
 // but it costs more CPU time when getting properties because it reads property node
 // by node. So conf uses a tree to strictly verify and a flat map to store.
-//
-//
-//提供创建和读取属性列表的方法。它使用扁平的 map[string]string 结
-// 构存储数据，属性的 key 可以是 a.b.c 或者 a[0].b 两种形式，a.b.c 表示从 map
-// 结构中获取属性值，a[0].b 表示从切片结构中获取属性值，并且 key 是大小写敏感的。
 type Properties struct {
 	data map[string]string      // stores key and value.
 	tree map[string]interface{} // stores split key path.
@@ -374,7 +371,7 @@ func (p *Properties) Bind(i interface{}, opts ...BindOption) error {
 		}
 	}
 
-	arg := bindArg{tag: "${}"}
+	arg := bindArg{tag: "${ROOT}"}
 	for _, opt := range opts {
 		opt(&arg)
 	}
@@ -399,7 +396,7 @@ func (p *Properties) Bind(i interface{}, opts ...BindOption) error {
 // SplitPath splits the key into individual parts.
 func SplitPath(key string) ([]string, error) {
 	if len(key) == 0 {
-		return nil, fmt.Errorf("error key '%s'", key)
+		return nil, fmt.Errorf("invalid key '%s'", key)
 	}
 	var (
 		keyPath     []string
@@ -410,10 +407,10 @@ func SplitPath(key string) ([]string, error) {
 	for i, c := range key {
 		switch c {
 		case ' ':
-			return nil, fmt.Errorf("error key '%s'", key)
+			return nil, fmt.Errorf("invalid key '%s'", key)
 		case '.':
 			if leftBracket {
-				return nil, fmt.Errorf("error key '%s'", key)
+				return nil, fmt.Errorf("invalid key '%s'", key)
 			}
 			if lastChar == ']' {
 				lastIndex = i + 1
@@ -421,14 +418,14 @@ func SplitPath(key string) ([]string, error) {
 				continue
 			}
 			if lastIndex == i {
-				return nil, fmt.Errorf("error key '%s'", key)
+				return nil, fmt.Errorf("invalid key '%s'", key)
 			}
 			keyPath = append(keyPath, key[lastIndex:i])
 			lastIndex = i + 1
 			lastChar = c
 		case '[':
 			if leftBracket {
-				return nil, fmt.Errorf("error key '%s'", key)
+				return nil, fmt.Errorf("invalid key '%s'", key)
 			}
 			if i == 0 || lastChar == ']' || lastChar == '.' {
 				lastIndex = i + 1
@@ -437,7 +434,7 @@ func SplitPath(key string) ([]string, error) {
 				continue
 			}
 			if lastIndex == i {
-				return nil, fmt.Errorf("error key '%s'", key)
+				return nil, fmt.Errorf("invalid key '%s'", key)
 			}
 			keyPath = append(keyPath, key[lastIndex:i])
 			lastIndex = i + 1
@@ -445,7 +442,7 @@ func SplitPath(key string) ([]string, error) {
 			lastChar = c
 		case ']':
 			if !leftBracket || lastIndex == i {
-				return nil, fmt.Errorf("error key '%s'", key)
+				return nil, fmt.Errorf("invalid key '%s'", key)
 			}
 			keyPath = append(keyPath, key[lastIndex:i])
 			lastIndex = i + 1
@@ -456,7 +453,7 @@ func SplitPath(key string) ([]string, error) {
 		}
 	}
 	if leftBracket || lastChar == '.' {
-		return nil, fmt.Errorf("error key '%s'", key)
+		return nil, fmt.Errorf("invalid key '%s'", key)
 	}
 	if lastChar != ']' {
 		keyPath = append(keyPath, key[lastIndex:])
@@ -492,7 +489,7 @@ func (p *Properties) checkKey(key string, collection bool) (exist bool, err erro
 				t = v.(map[string]interface{})
 				continue
 			}
-			err = fmt.Errorf("property %q want a value but has sub keys %v", key, v)
+			err = fmt.Errorf("property %q should be a value but has sub keys %v", key, v)
 			return
 		}
 		_, ok = v.(struct{})
@@ -501,7 +498,7 @@ func (p *Properties) checkKey(key string, collection bool) (exist bool, err erro
 				continue
 			}
 			oldKey := strings.Join(keyPath[:i+1], ".")
-			err = fmt.Errorf("property %q has a value but want another sub key %q", oldKey, key)
+			err = fmt.Errorf("property %q is a value but wants another sub key %q", oldKey, key)
 			return
 		}
 	}

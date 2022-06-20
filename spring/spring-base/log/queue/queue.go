@@ -14,14 +14,49 @@
  * limitations under the License.
  */
 
-package internal
+package queue
 
-// GrpcServerConfig gRPC 服务器配置，通常配合服务器名称前缀一起使用。
-type GrpcServerConfig struct {
-	Port int `value:"${port:=9090}"`
+import "sync"
+
+var (
+	queue *Queue
+	once  sync.Once
+)
+
+func Instance() *Queue {
+	once.Do(func() {
+		queue = &Queue{
+			ringBuffer: make(chan Item, 100000),
+		}
+		queue.consume()
+	})
+	return queue
 }
 
-// GrpcEndpointConfig gRPC 服务端点配置，通常配合端点名称前缀一起使用。
-type GrpcEndpointConfig struct {
-	Address string `value:"${address:=127.0.0.1:9090}"`
+type Item interface {
+	OnEvent()
+}
+
+type Queue struct {
+	ringBuffer chan Item
+}
+
+func (q *Queue) Publish(item Item) bool {
+	select {
+	case q.ringBuffer <- item:
+		return true
+	default:
+		return false
+	}
+}
+
+func (q *Queue) consume() {
+	go func() {
+		for {
+			v := <-q.ringBuffer
+			if v != nil {
+				v.OnEvent()
+			}
+		}
+	}()
 }

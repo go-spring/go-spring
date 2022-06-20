@@ -33,8 +33,8 @@ func TestError(t *testing.T) {
 	assert.Error(t, e1, ".*/error_test.go:32 error: 0")
 
 	e2 := util.Wrap(e0, code.FileLine(), "error")
-	assert.Error(t, e2, ".*/error_test.go:35 error\n.*/error_test.go:29 error")
+	assert.Error(t, e2, ".*/error_test.go:35 error; .*/error_test.go:29 error")
 
 	e3 := util.Wrapf(e1, code.FileLine(), "error: %d", 1)
-	assert.Error(t, e3, ".*/error_test.go:38 error: 1\n.*/error_test.go:32 error: 0")
+	assert.Error(t, e3, ".*/error_test.go:38 error: 1; .*/error_test.go:32 error: 0")
 }

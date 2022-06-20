@@ -14,10 +14,14 @@
  * limitations under the License.
  */
 
-package internal
+package replayer
 
-// MongoClientConfig MongoDB 客户端配置，通常配合客户端名称前缀一起使用。
-type MongoClientConfig struct {
-	Url  string `value:"${url:=mongodb://localhost}"`
-	Ping bool   `value:"${ping:=true}"` // 是否 PING 探测
+import "net/http"
+
+type HttpTransport struct {
+	Transport http.RoundTripper
+}
+
+func (t *HttpTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	return t.Transport.RoundTrip(req)
 }

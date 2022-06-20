@@ -208,10 +208,10 @@ func TestFilter_Abort(t *testing.T) {
 func TestContainer_Static(t *testing.T) {
 
 	c := SpringGin.New(web.ServerConfig{Port: 8080})
-	go c.Start()
-	defer c.Stop(context.Background())
 	c.File("/", "testdata/public/a.txt")
 	c.Static("/public", "testdata/public/")
+	go c.Start()
+	defer c.Stop(context.Background())
 	time.Sleep(10 * time.Millisecond)
 
 	{

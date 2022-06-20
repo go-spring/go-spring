@@ -26,20 +26,20 @@ import (
 	"time"
 
 	"github.com/go-spring/spring-base/assert"
-	"github.com/go-spring/spring-base/clock"
 	"github.com/go-spring/spring-base/code"
-	"github.com/go-spring/spring-base/knife"
 	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-base/util"
-	"github.com/golang/mock/gomock"
 )
 
 func TestAtomicAndMutex(t *testing.T) {
+	t.SkipNow()
+
 	k := int32(0)
+	count := 1000000000
 
 	// 直接读取，10亿次，313.234156ms。
 	start := time.Now()
-	for i := 0; i < 1000000000; i++ {
+	for i := 0; i < count; i++ {
 		j := k
 		_ = j
 	}
@@ -47,7 +47,7 @@ func TestAtomicAndMutex(t *testing.T) {
 
 	// 原子读取，10亿次，332.547066ms。
 	start = time.Now()
-	for i := 0; i < 1000000000; i++ {
+	for i := 0; i < count; i++ {
 		j := atomic.LoadInt32(&k)
 		_ = j
 	}
@@ -56,7 +56,7 @@ func TestAtomicAndMutex(t *testing.T) {
 
 	// 原子累加，10亿次，6.251721832s。
 	start = time.Now()
-	for i := 0; i < 100000000; i++ {
+	for i := 0; i < count; i++ {
 		atomic.AddInt32(&k, 1)
 	}
 	k = 0
@@ -66,7 +66,7 @@ func TestAtomicAndMutex(t *testing.T) {
 	var v atomic.Value
 	v.Store(k)
 	start = time.Now()
-	for i := 0; i < 1000000000; i++ {
+	for i := 0; i < count; i++ {
 		j := v.Load().(int32)
 		_ = j
 	}
@@ -75,7 +75,7 @@ func TestAtomicAndMutex(t *testing.T) {
 	// 使用读锁，10亿次，12.758831296s。
 	var mux sync.RWMutex
 	start = time.Now()
-	for i := 0; i < 100000000; i++ {
+	for i := 0; i < count; i++ {
 		mux.RLock()
 		j := k
 		_ = j
@@ -85,356 +85,638 @@ func TestAtomicAndMutex(t *testing.T) {
 }
 
 func TestGetLogger(t *testing.T) {
-	logger := log.GetLogger("log_test")
-	assert.Equal(t, logger.Name(), "log_test")
-	logger = log.GetLogger()
+	logger := log.GetLogger()
 	assert.Equal(t, logger.Name(), "github.com/go-spring/spring-base/log_test")
 }
 
 func TestRootLogger(t *testing.T) {
+	_ = log.GetLogger()
 
-	err := log.Load(`
-		<Configuration>
-			<Appenders>
-				<ConsoleAppender name="Console">
-				</ConsoleAppender>
-			</Appenders>
-			<Loggers>
-				<Root level="INFO">
-					<AppenderRef ref="Console"/>
-				</Root>
-			</Loggers>
-		</Configuration>
-	`)
+	err := log.Refresh("./testdata/root.xml")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	go func() {
-		for {
-			log.Info()
-		}
-	}()
+	//exit := int32(0)
+	//go func() {
+	//	for {
+	//		if atomic.LoadInt32(&exit) > 0 {
+	//			break
+	//		}
+	//		//log.Info()
+	//	}
+	//}()
 
 	time.Sleep(time.Millisecond)
 	fmt.Println("done")
+	//atomic.StoreInt32(&exit, 1)
 	time.Sleep(time.Millisecond)
 }
 
 func TestLogger(t *testing.T) {
+	logger := log.NewLogger("", log.TraceLevel)
 
-	fixedTime := time.Now()
-	ctx, _ := knife.New(context.Background())
-	err := clock.SetFixedTime(ctx, fixedTime)
-	assert.Nil(t, err)
-
-	log.SetDefaultContext(ctx)
-	defer log.SetDefaultContext(nil)
-
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	appender := log.NewMockAppender(ctrl)
-	logger := log.NewLogger("l", &log.LoggerConfig{
-		Level:     log.TraceLevel,
-		Appenders: []log.Appender{appender},
-	})
-
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.InfoLevel, Args: []interface{}{"log skip test"}, File: code.File(), Line: code.Line() + 3, Time: fixedTime}).Build())
-	func(format string, args ...interface{}) {
-		logger.WithSkip(1).Infof(format, args...)
+	msg := func(format string, args ...interface{}) *log.Event {
+		return logger.WithSkip(1).Infof(format, args...)
 	}("log skip test")
+	assert.Equal(t, msg.Level(), log.InfoLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Text(), "log skip test")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.TraceLevel, Args: []interface{}{"a", "=", "1"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	logger.Trace("a", "=", "1")
+	msg = logger.Trace("a", "=", "1")
+	assert.Equal(t, msg.Level(), log.TraceLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Text(), "a=1")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.TraceLevel, Args: []interface{}{"a=1"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	logger.Tracef("a=%d", 1)
+	msg = logger.Tracef("a=%d", 1)
+	assert.Equal(t, msg.Level(), log.TraceLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Text(), "a=1")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.TraceLevel, Args: []interface{}{"a", "=", "1"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	logger.Trace(func() []interface{} {
+	msg = logger.Trace(func() []interface{} {
 		return util.T("a", "=", "1")
 	})
+	assert.Equal(t, msg.Level(), log.TraceLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-5)
+	assert.Equal(t, msg.Text(), "a=1")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.TraceLevel, Args: []interface{}{"a=1"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	logger.Tracef("a=%d", func() []interface{} {
+	msg = logger.Tracef("a=%d", func() []interface{} {
 		return util.T(1)
 	})
+	assert.Equal(t, msg.Level(), log.TraceLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-5)
+	assert.Equal(t, msg.Text(), "a=1")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.DebugLevel, Args: []interface{}{"a", "=", "1"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	logger.Debug("a", "=", "1")
+	msg = logger.Debug("a", "=", "1")
+	assert.Equal(t, msg.Level(), log.DebugLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Text(), "a=1")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.DebugLevel, Args: []interface{}{"a=1"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	logger.Debugf("a=%d", 1)
+	msg = logger.Debugf("a=%d", 1)
+	assert.Equal(t, msg.Level(), log.DebugLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Text(), "a=1")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.DebugLevel, Args: []interface{}{"a", "=", "1"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	logger.Debug(func() []interface{} {
+	msg = logger.Debug(func() []interface{} {
 		return util.T("a", "=", "1")
 	})
+	assert.Equal(t, msg.Level(), log.DebugLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-5)
+	assert.Equal(t, msg.Text(), "a=1")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.DebugLevel, Args: []interface{}{"a=1"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	logger.Debugf("a=%d", func() []interface{} {
+	msg = logger.Debugf("a=%d", func() []interface{} {
 		return util.T(1)
 	})
+	assert.Equal(t, msg.Level(), log.DebugLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-5)
+	assert.Equal(t, msg.Text(), "a=1")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.InfoLevel, Args: []interface{}{"a", "=", "1"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	logger.Info("a", "=", "1")
+	msg = logger.Info("a", "=", "1")
+	assert.Equal(t, msg.Level(), log.InfoLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Text(), "a=1")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.InfoLevel, Args: []interface{}{"a=1"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	logger.Infof("a=%d", 1)
+	msg = logger.Infof("a=%d", 1)
+	assert.Equal(t, msg.Level(), log.InfoLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Text(), "a=1")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.InfoLevel, Args: []interface{}{"a", "=", "1"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	logger.Info(func() []interface{} {
+	msg = logger.Info(func() []interface{} {
 		return util.T("a", "=", "1")
 	})
+	assert.Equal(t, msg.Level(), log.InfoLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-5)
+	assert.Equal(t, msg.Text(), "a=1")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.InfoLevel, Args: []interface{}{"a=1"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	logger.Infof("a=%d", func() []interface{} {
+	msg = logger.Infof("a=%d", func() []interface{} {
 		return util.T(1)
 	})
+	assert.Equal(t, msg.Level(), log.InfoLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-5)
+	assert.Equal(t, msg.Text(), "a=1")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.WarnLevel, Args: []interface{}{"a", "=", "1"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	logger.Warn("a", "=", "1")
+	msg = logger.Warn("a", "=", "1")
+	assert.Equal(t, msg.Level(), log.WarnLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Text(), "a=1")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.WarnLevel, Args: []interface{}{"a=1"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	logger.Warnf("a=%d", 1)
+	msg = logger.Warnf("a=%d", 1)
+	assert.Equal(t, msg.Level(), log.WarnLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Text(), "a=1")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.WarnLevel, Args: []interface{}{"a", "=", "1"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	logger.Warn(func() []interface{} {
+	msg = logger.Warn(func() []interface{} {
 		return util.T("a", "=", "1")
 	})
+	assert.Equal(t, msg.Level(), log.WarnLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-5)
+	assert.Equal(t, msg.Text(), "a=1")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.WarnLevel, Args: []interface{}{"a=1"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	logger.Warnf("a=%d", func() []interface{} {
+	msg = logger.Warnf("a=%d", func() []interface{} {
 		return util.T(1)
 	})
+	assert.Equal(t, msg.Level(), log.WarnLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-5)
+	assert.Equal(t, msg.Text(), "a=1")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.ErrorLevel, Args: []interface{}{"a", "=", "1"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	logger.Error("a", "=", "1")
+	msg = logger.Error("a", "=", "1")
+	assert.Equal(t, msg.Level(), log.ErrorLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Text(), "a=1")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.ErrorLevel, Args: []interface{}{"a=1"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	logger.Errorf("a=%d", 1)
+	msg = logger.Errorf("a=%d", 1)
+	assert.Equal(t, msg.Level(), log.ErrorLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Text(), "a=1")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.ErrorLevel, Args: []interface{}{"a", "=", "1"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	logger.Error(func() []interface{} {
+	msg = logger.Error(func() []interface{} {
 		return util.T("a", "=", "1")
 	})
+	assert.Equal(t, msg.Level(), log.ErrorLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-5)
+	assert.Equal(t, msg.Text(), "a=1")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.ErrorLevel, Args: []interface{}{"a=1"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	logger.Errorf("a=%d", func() []interface{} {
+	msg = logger.Errorf("a=%d", func() []interface{} {
 		return util.T(1)
 	})
+	assert.Equal(t, msg.Level(), log.ErrorLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-5)
+	assert.Equal(t, msg.Text(), "a=1")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.PanicLevel, Args: []interface{}{errors.New("error")}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	logger.Panic(errors.New("error"))
+	msg = logger.Panic(errors.New("error"))
+	assert.Equal(t, msg.Level(), log.PanicLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Text(), "error")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.PanicLevel, Args: []interface{}{"error:404"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	logger.Panicf("error:%d", 404)
+	msg = logger.Panicf("error:%d", 404)
+	assert.Equal(t, msg.Level(), log.PanicLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Text(), "error:404")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.FatalLevel, Args: []interface{}{"a", "=", "1"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	logger.Fatal("a", "=", "1")
+	msg = logger.Fatal("a", "=", "1")
+	assert.Equal(t, msg.Level(), log.FatalLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Text(), "a=1")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.FatalLevel, Args: []interface{}{"a=1"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	logger.Fatalf("a=%d", 1)
+	msg = logger.Fatalf("a=%d", 1)
+	assert.Equal(t, msg.Level(), log.FatalLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Text(), "a=1")
 }
 
 func TestEntry(t *testing.T) {
 	ctx := context.WithValue(context.Background(), "trace", "110110")
-
-	ctx, _ = knife.New(ctx)
-	fixedTime := time.Now()
-	err := clock.SetFixedTime(ctx, fixedTime)
-	assert.Nil(t, err)
-
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	appender := log.NewMockAppender(ctrl)
-	logger := log.NewLogger("l", &log.LoggerConfig{
-		Level:     log.TraceLevel,
-		Appenders: []log.Appender{appender},
-	})
+	logger := log.NewLogger("", log.TraceLevel)
 
 	const tagIn = "__in"
 	ctxLogger := logger.WithContext(ctx)
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.TraceLevel, Ctx: ctx, Args: []interface{}{"Level:", "trace"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	ctxLogger.Trace("Level:", "trace")
+	msg := ctxLogger.Trace("Level:", "trace")
+	assert.Equal(t, msg.Level(), log.TraceLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Text(), "Level:trace")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.TraceLevel, Ctx: ctx, Args: []interface{}{"Level:trace"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	ctxLogger.Tracef("Level:%s", "trace")
+	msg = ctxLogger.Tracef("Level:%s", "trace")
+	assert.Equal(t, msg.Level(), log.TraceLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Text(), "Level:trace")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.DebugLevel, Ctx: ctx, Args: []interface{}{"Level:", "debug"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	ctxLogger.Debug("Level:", "debug")
+	msg = ctxLogger.Debug("Level:", "debug")
+	assert.Equal(t, msg.Level(), log.DebugLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Text(), "Level:debug")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.DebugLevel, Ctx: ctx, Args: []interface{}{"Level:debug"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	ctxLogger.Debugf("Level:%s", "debug")
+	msg = ctxLogger.Debugf("Level:%s", "debug")
+	assert.Equal(t, msg.Level(), log.DebugLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Text(), "Level:debug")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.InfoLevel, Ctx: ctx, Args: []interface{}{"Level:", "info"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	ctxLogger.Info("Level:", "info")
+	msg = ctxLogger.Info("Level:", "info")
+	assert.Equal(t, msg.Level(), log.InfoLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Text(), "Level:info")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.InfoLevel, Ctx: ctx, Args: []interface{}{"Level:info"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	ctxLogger.Infof("Level:%s", "info")
+	msg = ctxLogger.Infof("Level:%s", "info")
+	assert.Equal(t, msg.Level(), log.InfoLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Text(), "Level:info")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.WarnLevel, Ctx: ctx, Args: []interface{}{"Level:", "warn"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	ctxLogger.Warn("Level:", "warn")
+	msg = ctxLogger.Warn("Level:", "warn")
+	assert.Equal(t, msg.Level(), log.WarnLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Text(), "Level:warn")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.WarnLevel, Ctx: ctx, Args: []interface{}{"Level:warn"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	ctxLogger.Warnf("Level:%s", "warn")
+	msg = ctxLogger.Warnf("Level:%s", "warn")
+	assert.Equal(t, msg.Level(), log.WarnLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Text(), "Level:warn")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.ErrorLevel, Ctx: ctx, Args: []interface{}{"Level:", "error"}, Errno: log.ERROR, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	ctxLogger.Error(log.ERROR, "Level:", "error")
+	msg = ctxLogger.Error(log.ERROR, "Level:", "error")
+	assert.Equal(t, msg.Level(), log.ErrorLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Entry().Errno(), log.ERROR)
+	assert.Equal(t, msg.Text(), "Level:error")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.ErrorLevel, Ctx: ctx, Args: []interface{}{"Level:error"}, Errno: log.ERROR, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	ctxLogger.Errorf(log.ERROR, "Level:%s", "error")
+	msg = ctxLogger.Errorf(log.ERROR, "Level:%s", "error")
+	assert.Equal(t, msg.Level(), log.ErrorLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Entry().Errno(), log.ERROR)
+	assert.Equal(t, msg.Text(), "Level:error")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.PanicLevel, Ctx: ctx, Args: []interface{}{"Level:", "panic"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	ctxLogger.Panic("Level:", "panic")
+	msg = ctxLogger.Panic("Level:", "panic")
+	assert.Equal(t, msg.Level(), log.PanicLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Text(), "Level:panic")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.PanicLevel, Ctx: ctx, Args: []interface{}{"Level:panic"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	ctxLogger.Panicf("Level:%s", "panic")
+	msg = ctxLogger.Panicf("Level:%s", "panic")
+	assert.Equal(t, msg.Level(), log.PanicLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Text(), "Level:panic")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.FatalLevel, Ctx: ctx, Args: []interface{}{"Level:", "fatal"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	ctxLogger.Fatal("Level:", "fatal")
+	msg = ctxLogger.Fatal("Level:", "fatal")
+	assert.Equal(t, msg.Level(), log.FatalLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Text(), "Level:fatal")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.FatalLevel, Ctx: ctx, Args: []interface{}{"Level:fatal"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	ctxLogger.Fatalf("Level:%s", "fatal")
+	msg = ctxLogger.Fatalf("Level:%s", "fatal")
+	assert.Equal(t, msg.Level(), log.FatalLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Text(), "Level:fatal")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.TraceLevel, Ctx: ctx, Args: []interface{}{"Level:", "trace"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	ctxLogger.Trace(func() []interface{} {
+	msg = ctxLogger.Trace(func() []interface{} {
 		return util.T("Level:", "trace")
 	})
+	assert.Equal(t, msg.Level(), log.TraceLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-5)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Text(), "Level:trace")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.TraceLevel, Ctx: ctx, Args: []interface{}{"Level:trace"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	ctxLogger.Tracef("Level:%s", func() []interface{} {
+	msg = ctxLogger.Tracef("Level:%s", func() []interface{} {
 		return util.T("trace")
 	})
+	assert.Equal(t, msg.Level(), log.TraceLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-5)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Text(), "Level:trace")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.DebugLevel, Ctx: ctx, Args: []interface{}{"Level:", "debug"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	ctxLogger.Debug(func() []interface{} {
+	msg = ctxLogger.Debug(func() []interface{} {
 		return util.T("Level:", "debug")
 	})
+	assert.Equal(t, msg.Level(), log.DebugLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-5)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Text(), "Level:debug")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.DebugLevel, Ctx: ctx, Args: []interface{}{"Level:debug"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	ctxLogger.Debugf("Level:%s", func() []interface{} {
+	msg = ctxLogger.Debugf("Level:%s", func() []interface{} {
 		return util.T("debug")
 	})
+	assert.Equal(t, msg.Level(), log.DebugLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-5)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Text(), "Level:debug")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.InfoLevel, Ctx: ctx, Args: []interface{}{"Level:", "info"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	ctxLogger.Info(func() []interface{} {
+	msg = ctxLogger.Info(func() []interface{} {
 		return util.T("Level:", "info")
 	})
+	assert.Equal(t, msg.Level(), log.InfoLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-5)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Text(), "Level:info")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.InfoLevel, Ctx: ctx, Args: []interface{}{"Level:info"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	ctxLogger.Infof("Level:%s", func() []interface{} {
+	msg = ctxLogger.Infof("Level:%s", func() []interface{} {
 		return util.T("info")
 	})
+	assert.Equal(t, msg.Level(), log.InfoLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-5)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Text(), "Level:info")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.WarnLevel, Ctx: ctx, Args: []interface{}{"Level:", "warn"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	ctxLogger.Warn(func() []interface{} {
+	msg = ctxLogger.Warn(func() []interface{} {
 		return util.T("Level:", "warn")
 	})
+	assert.Equal(t, msg.Level(), log.WarnLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-5)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Text(), "Level:warn")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.WarnLevel, Ctx: ctx, Args: []interface{}{"Level:warn"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	ctxLogger.Warnf("Level:%s", func() []interface{} {
+	msg = ctxLogger.Warnf("Level:%s", func() []interface{} {
 		return util.T("warn")
 	})
+	assert.Equal(t, msg.Level(), log.WarnLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-5)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Text(), "Level:warn")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.ErrorLevel, Ctx: ctx, Args: []interface{}{"Level:", "error"}, Errno: log.ERROR, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	ctxLogger.Error(log.ERROR, func() []interface{} {
+	msg = ctxLogger.Error(log.ERROR, func() []interface{} {
 		return util.T("Level:", "error")
 	})
+	assert.Equal(t, msg.Level(), log.ErrorLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-5)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Entry().Errno(), log.ERROR)
+	assert.Equal(t, msg.Text(), "Level:error")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.ErrorLevel, Ctx: ctx, Args: []interface{}{"Level:error"}, Errno: log.ERROR, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	ctxLogger.Errorf(log.ERROR, "Level:%s", func() []interface{} {
+	msg = ctxLogger.Errorf(log.ERROR, "Level:%s", func() []interface{} {
 		return util.T("error")
 	})
+	assert.Equal(t, msg.Level(), log.ErrorLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-5)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Entry().Errno(), log.ERROR)
+	assert.Equal(t, msg.Text(), "Level:error")
 
 	ctxLogger = ctxLogger.WithTag(tagIn)
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.TraceLevel, Ctx: ctx, Tag: tagIn, Args: []interface{}{"Level:", "trace"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	ctxLogger.Trace("Level:", "trace")
+	msg = ctxLogger.Trace("Level:", "trace")
+	assert.Equal(t, msg.Level(), log.TraceLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Entry().Tag(), tagIn)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Text(), "Level:trace")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.TraceLevel, Ctx: ctx, Tag: tagIn, Args: []interface{}{"Level:trace"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	ctxLogger.Tracef("Level:%s", "trace")
+	msg = ctxLogger.Tracef("Level:%s", "trace")
+	assert.Equal(t, msg.Level(), log.TraceLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Entry().Tag(), tagIn)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Text(), "Level:trace")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.DebugLevel, Ctx: ctx, Tag: tagIn, Args: []interface{}{"Level:", "debug"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	ctxLogger.Debug("Level:", "debug")
+	msg = ctxLogger.Debug("Level:", "debug")
+	assert.Equal(t, msg.Level(), log.DebugLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Entry().Tag(), tagIn)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Text(), "Level:debug")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.DebugLevel, Ctx: ctx, Tag: tagIn, Args: []interface{}{"Level:debug"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	ctxLogger.Debugf("Level:%s", "debug")
+	msg = ctxLogger.Debugf("Level:%s", "debug")
+	assert.Equal(t, msg.Level(), log.DebugLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Entry().Tag(), tagIn)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Text(), "Level:debug")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.InfoLevel, Ctx: ctx, Tag: tagIn, Args: []interface{}{"Level:", "info"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	ctxLogger.Info("Level:", "info")
+	msg = ctxLogger.Info("Level:", "info")
+	assert.Equal(t, msg.Level(), log.InfoLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Entry().Tag(), tagIn)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Text(), "Level:info")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.InfoLevel, Ctx: ctx, Tag: tagIn, Args: []interface{}{"Level:info"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	ctxLogger.Infof("Level:%s", "info")
+	msg = ctxLogger.Infof("Level:%s", "info")
+	assert.Equal(t, msg.Level(), log.InfoLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Entry().Tag(), tagIn)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Text(), "Level:info")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.WarnLevel, Ctx: ctx, Tag: tagIn, Args: []interface{}{"Level:", "warn"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	ctxLogger.Warn("Level:", "warn")
+	msg = ctxLogger.Warn("Level:", "warn")
+	assert.Equal(t, msg.Level(), log.WarnLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Entry().Tag(), tagIn)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Text(), "Level:warn")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.WarnLevel, Ctx: ctx, Tag: tagIn, Args: []interface{}{"Level:warn"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	ctxLogger.Warnf("Level:%s", "warn")
+	msg = ctxLogger.Warnf("Level:%s", "warn")
+	assert.Equal(t, msg.Level(), log.WarnLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Entry().Tag(), tagIn)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Text(), "Level:warn")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.ErrorLevel, Ctx: ctx, Tag: tagIn, Args: []interface{}{"Level:", "error"}, Errno: log.ERROR, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	ctxLogger.Error(log.ERROR, "Level:", "error")
+	msg = ctxLogger.Error(log.ERROR, "Level:", "error")
+	assert.Equal(t, msg.Level(), log.ErrorLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Entry().Tag(), tagIn)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Entry().Errno(), log.ERROR)
+	assert.Equal(t, msg.Text(), "Level:error")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.ErrorLevel, Ctx: ctx, Tag: tagIn, Args: []interface{}{"Level:error"}, Errno: log.ERROR, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	ctxLogger.Errorf(log.ERROR, "Level:%s", "error")
+	msg = ctxLogger.Errorf(log.ERROR, "Level:%s", "error")
+	assert.Equal(t, msg.Level(), log.ErrorLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Entry().Tag(), tagIn)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Entry().Errno(), log.ERROR)
+	assert.Equal(t, msg.Text(), "Level:error")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.PanicLevel, Ctx: ctx, Tag: tagIn, Args: []interface{}{"Level:", "panic"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	ctxLogger.Panic("Level:", "panic")
+	msg = ctxLogger.Panic("Level:", "panic")
+	assert.Equal(t, msg.Level(), log.PanicLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Entry().Tag(), tagIn)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Text(), "Level:panic")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.PanicLevel, Ctx: ctx, Tag: tagIn, Args: []interface{}{"Level:panic"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	ctxLogger.Panicf("Level:%s", "panic")
+	msg = ctxLogger.Panicf("Level:%s", "panic")
+	assert.Equal(t, msg.Level(), log.PanicLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Entry().Tag(), tagIn)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Text(), "Level:panic")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.FatalLevel, Ctx: ctx, Tag: tagIn, Args: []interface{}{"Level:", "fatal"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	ctxLogger.Fatal("Level:", "fatal")
+	msg = ctxLogger.Fatal("Level:", "fatal")
+	assert.Equal(t, msg.Level(), log.FatalLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Entry().Tag(), tagIn)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Text(), "Level:fatal")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.FatalLevel, Ctx: ctx, Tag: tagIn, Args: []interface{}{"Level:fatal"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	ctxLogger.Fatalf("Level:%s", "fatal")
+	msg = ctxLogger.Fatalf("Level:%s", "fatal")
+	assert.Equal(t, msg.Level(), log.FatalLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Entry().Tag(), tagIn)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Text(), "Level:fatal")
 
 	tagLogger := logger.WithTag(tagIn)
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.TraceLevel, Ctx: ctx, Tag: tagIn, Args: []interface{}{"Level:", "trace"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	tagLogger.WithContext(ctx).Trace("Level:", "trace")
+	msg = tagLogger.WithContext(ctx).Trace("Level:", "trace")
+	assert.Equal(t, msg.Level(), log.TraceLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Entry().Tag(), tagIn)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Text(), "Level:trace")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.TraceLevel, Ctx: ctx, Tag: tagIn, Args: []interface{}{"Level:trace"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	tagLogger.WithContext(ctx).Tracef("Level:%s", "trace")
+	msg = tagLogger.WithContext(ctx).Tracef("Level:%s", "trace")
+	assert.Equal(t, msg.Level(), log.TraceLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Entry().Tag(), tagIn)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Text(), "Level:trace")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.DebugLevel, Ctx: ctx, Tag: tagIn, Args: []interface{}{"Level:", "debug"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	tagLogger.WithContext(ctx).Debug("Level:", "debug")
+	msg = tagLogger.WithContext(ctx).Debug("Level:", "debug")
+	assert.Equal(t, msg.Level(), log.DebugLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Entry().Tag(), tagIn)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Text(), "Level:debug")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.DebugLevel, Ctx: ctx, Tag: tagIn, Args: []interface{}{"Level:debug"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	tagLogger.WithContext(ctx).Debugf("Level:%s", "debug")
+	msg = tagLogger.WithContext(ctx).Debugf("Level:%s", "debug")
+	assert.Equal(t, msg.Level(), log.DebugLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Entry().Tag(), tagIn)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Text(), "Level:debug")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.InfoLevel, Ctx: ctx, Tag: tagIn, Args: []interface{}{"Level:", "info"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	tagLogger.WithContext(ctx).Info("Level:", "info")
+	msg = tagLogger.WithContext(ctx).Info("Level:", "info")
+	assert.Equal(t, msg.Level(), log.InfoLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Entry().Tag(), tagIn)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Text(), "Level:info")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.InfoLevel, Ctx: ctx, Tag: tagIn, Args: []interface{}{"Level:info"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	tagLogger.WithContext(ctx).Infof("Level:%s", "info")
+	msg = tagLogger.WithContext(ctx).Infof("Level:%s", "info")
+	assert.Equal(t, msg.Level(), log.InfoLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Entry().Tag(), tagIn)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Text(), "Level:info")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.WarnLevel, Ctx: ctx, Tag: tagIn, Args: []interface{}{"Level:", "warn"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	tagLogger.WithContext(ctx).Warn("Level:", "warn")
+	msg = tagLogger.WithContext(ctx).Warn("Level:", "warn")
+	assert.Equal(t, msg.Level(), log.WarnLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Entry().Tag(), tagIn)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Text(), "Level:warn")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.WarnLevel, Ctx: ctx, Tag: tagIn, Args: []interface{}{"Level:warn"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	tagLogger.WithContext(ctx).Warnf("Level:%s", "warn")
+	msg = tagLogger.WithContext(ctx).Warnf("Level:%s", "warn")
+	assert.Equal(t, msg.Level(), log.WarnLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Entry().Tag(), tagIn)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Text(), "Level:warn")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.ErrorLevel, Ctx: ctx, Tag: tagIn, Args: []interface{}{"Level:", "error"}, Errno: log.ERROR, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	tagLogger.WithContext(ctx).Error(log.ERROR, "Level:", "error")
+	msg = tagLogger.WithContext(ctx).Error(log.ERROR, "Level:", "error")
+	assert.Equal(t, msg.Level(), log.ErrorLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Entry().Tag(), tagIn)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Entry().Errno(), log.ERROR)
+	assert.Equal(t, msg.Text(), "Level:error")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.ErrorLevel, Ctx: ctx, Tag: tagIn, Args: []interface{}{"Level:error"}, Errno: log.ERROR, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	tagLogger.WithContext(ctx).Errorf(log.ERROR, "Level:%s", "error")
+	msg = tagLogger.WithContext(ctx).Errorf(log.ERROR, "Level:%s", "error")
+	assert.Equal(t, msg.Level(), log.ErrorLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Entry().Tag(), tagIn)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Entry().Errno(), log.ERROR)
+	assert.Equal(t, msg.Text(), "Level:error")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.PanicLevel, Ctx: ctx, Tag: tagIn, Args: []interface{}{"Level:", "panic"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	tagLogger.WithContext(ctx).Panic("Level:", "panic")
+	msg = tagLogger.WithContext(ctx).Panic("Level:", "panic")
+	assert.Equal(t, msg.Level(), log.PanicLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Entry().Tag(), tagIn)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Text(), "Level:panic")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.PanicLevel, Ctx: ctx, Tag: tagIn, Args: []interface{}{"Level:panic"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	tagLogger.WithContext(ctx).Panicf("Level:%s", "panic")
+	msg = tagLogger.WithContext(ctx).Panicf("Level:%s", "panic")
+	assert.Equal(t, msg.Level(), log.PanicLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Entry().Tag(), tagIn)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Text(), "Level:panic")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.FatalLevel, Ctx: ctx, Tag: tagIn, Args: []interface{}{"Level:", "fatal"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	tagLogger.WithContext(ctx).Fatal("Level:", "fatal")
+	msg = tagLogger.WithContext(ctx).Fatal("Level:", "fatal")
+	assert.Equal(t, msg.Level(), log.FatalLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Entry().Tag(), tagIn)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Text(), "Level:fatal")
 
-	appender.EXPECT().Append((&log.MessageBuilder{Level: log.FatalLevel, Ctx: ctx, Tag: tagIn, Args: []interface{}{"Level:fatal"}, File: code.File(), Line: code.Line() + 1, Time: fixedTime}).Build())
-	tagLogger.WithContext(ctx).Fatalf("Level:%s", "fatal")
+	msg = tagLogger.WithContext(ctx).Fatalf("Level:%s", "fatal")
+	assert.Equal(t, msg.Level(), log.FatalLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-3)
+	assert.Equal(t, msg.Entry().Tag(), tagIn)
+	assert.Equal(t, msg.Entry().Context(), ctx)
+	assert.Equal(t, msg.Text(), "Level:fatal")
 }

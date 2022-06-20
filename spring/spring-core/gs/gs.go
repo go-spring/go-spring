@@ -35,7 +35,7 @@ import (
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/gs/cond"
-	"github.com/go-spring/spring-core/gs/internal"
+	"github.com/go-spring/spring-core/gs/gsutil"
 )
 
 type refreshState int
@@ -51,7 +51,7 @@ type Container interface {
 	Property(key string, value interface{})
 	Object(i interface{}) *BeanDefinition
 	Provide(ctor interface{}, args ...arg.Arg) *BeanDefinition
-	Refresh(opts ...internal.RefreshOption) error
+	Refresh() error
 	Go(fn func(ctx context.Context))
 	Close()
 }
@@ -70,7 +70,7 @@ type Context interface {
 	Has(key string) bool
 	Prop(key string, opts ...conf.GetOption) string
 	Bind(i interface{}, opts ...conf.BindOption) error
-	Get(i interface{}, selectors ...BeanSelector) error
+	Get(i interface{}, selectors ...gsutil.BeanSelector) error
 	Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error)
 	Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, error)
 	Go(fn func(ctx context.Context))
@@ -290,7 +290,11 @@ func (c *container) clear() {
 }
 
 // Refresh 刷新容器的内容，对 bean 进行有效性判断以及完成属性绑定和依赖注入。
-func (c *container) Refresh(opts ...internal.RefreshOption) (err error) {
+func (c *container) Refresh() error {
+	return c.refresh(true)
+}
+
+func (c *container) refresh(autoClear bool) (err error) {
 
 	for key, f := range c.mapOfOnProperty {
 		t := reflect.TypeOf(f)
@@ -306,11 +310,6 @@ func (c *container) Refresh(opts ...internal.RefreshOption) (err error) {
 	}
 
 	start := time.Now()
-
-	optArg := &internal.RefreshArg{AutoClear: true}
-	for _, opt := range opts {
-		opt(optArg)
-	}
 
 	c.Object(c).Export((*Context)(nil))
 	c.state = Refreshing
@@ -380,7 +379,7 @@ func (c *container) Refresh(opts ...internal.RefreshOption) (err error) {
 	cost := time.Now().Sub(start)
 	log.Infof("refresh %d beans cost %v", len(beansById), cost)
 
-	if optArg.AutoClear {
+	if autoClear {
 		c.clear()
 	}
 
@@ -488,7 +487,7 @@ func (tag wireTag) String() string {
 	return b.String()
 }
 
-func toWireTag(selector BeanSelector) wireTag {
+func toWireTag(selector gsutil.BeanSelector) wireTag {
 	switch s := selector.(type) {
 	case string:
 		return parseWireTag(s)
@@ -497,7 +496,7 @@ func toWireTag(selector BeanSelector) wireTag {
 	case *BeanDefinition:
 		return parseWireTag(s.ID())
 	default:
-		return parseWireTag(internal.TypeName(s) + ":")
+		return parseWireTag(gsutil.TypeName(s) + ":")
 	}
 }
 
@@ -514,7 +513,7 @@ func toWireString(tags []wireTag) string {
 
 // findBean 查找符合条件的 bean 对象，注意该函数只能保证返回的 bean 是有效的，
 // 即未被标记为删除的，而不能保证已经完成属性绑定和依赖注入。
-func (c *container) findBean(selector BeanSelector) ([]*BeanDefinition, error) {
+func (c *container) findBean(selector gsutil.BeanSelector) ([]*BeanDefinition, error) {
 
 	finder := func(fn func(*BeanDefinition) bool) ([]*BeanDefinition, error) {
 		var result []*BeanDefinition
@@ -691,7 +690,7 @@ func (c *container) getBeanValue(b *BeanDefinition, stack *wiringStack) (reflect
 	}
 
 	// 构造函数的返回值为值类型时 b.Type() 返回其指针类型。
-	if val := out[0]; internal.IsBeanType(val.Type()) {
+	if val := out[0]; gsutil.IsBeanType(val.Type()) {
 		// 如果实现接口的是值类型，那么需要转换成指针类型然后再赋值给接口。
 		if !val.IsNil() && val.Kind() == reflect.Interface && conf.IsValueType(val.Elem().Type()) {
 			v := reflect.New(val.Elem().Type())
@@ -845,7 +844,7 @@ func (c *container) getBean(v reflect.Value, tag wireTag, stack *wiringStack) er
 	}
 
 	t := v.Type()
-	if !internal.IsBeanReceiver(t) {
+	if !gsutil.IsBeanReceiver(t) {
 		return fmt.Errorf("%s is not valid receiver type", t.String())
 	}
 
@@ -984,7 +983,7 @@ func (c *container) collectBeans(v reflect.Value, tags []wireTag, stack *wiringS
 	}
 
 	et := t.Elem()
-	if !internal.IsBeanReceiver(et) {
+	if !gsutil.IsBeanReceiver(et) {
 		return fmt.Errorf("%s is not valid receiver type", t.String())
 	}
 

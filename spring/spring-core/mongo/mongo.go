@@ -16,7 +16,8 @@
 
 package mongo
 
-import "github.com/go-spring/spring-core/internal"
-
 // ClientConfig 客户端配置。
-type ClientConfig = internal.MongoClientConfig
+type ClientConfig struct {
+	URL  string `value:"${url:=mongodb://localhost}"`
+	Ping bool   `value:"${ping:=true}"` // 是否 PING 探测
+}

@@ -14,11 +14,14 @@
  * limitations under the License.
  */
 
-//go:generate mockgen -build_flags="-mod=mod" -package=log -source=appender.go -destination=mock.go
+package recorder
 
-package log
+import "net/http"
 
-// Appender 定义日志输出目标。
-type Appender interface {
-	Append(msg *Message)
+type HttpTransport struct {
+	Transport http.RoundTripper
+}
+
+func (t *HttpTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	return t.Transport.RoundTrip(req)
 }

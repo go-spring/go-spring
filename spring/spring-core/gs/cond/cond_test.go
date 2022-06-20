@@ -22,7 +22,7 @@ import (
 
 	"github.com/go-spring/spring-base/assert"
 	"github.com/go-spring/spring-core/gs/cond"
-	"github.com/go-spring/spring-core/gs/internal"
+	"github.com/go-spring/spring-core/gs/gsutil"
 	"github.com/golang/mock/gomock"
 )
 
@@ -238,8 +238,8 @@ func TestOnBean(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		ctx := cond.NewMockContext(ctrl)
-		ctx.EXPECT().Find("a").Return([]cond.BeanDefinition{
-			internal.NewMockBeanDefinition(nil),
+		ctx.EXPECT().Find("a").Return([]gsutil.BeanDefinition{
+			gsutil.NewMockBeanDefinition(nil),
 		}, nil)
 		ok, err := cond.OnBean("a").Matches(ctx)
 		assert.Nil(t, err)
@@ -249,9 +249,9 @@ func TestOnBean(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		ctx := cond.NewMockContext(ctrl)
-		ctx.EXPECT().Find("a").Return([]cond.BeanDefinition{
-			internal.NewMockBeanDefinition(nil),
-			internal.NewMockBeanDefinition(nil),
+		ctx.EXPECT().Find("a").Return([]gsutil.BeanDefinition{
+			gsutil.NewMockBeanDefinition(nil),
+			gsutil.NewMockBeanDefinition(nil),
 		}, nil)
 		ok, err := cond.OnBean("a").Matches(ctx)
 		assert.Nil(t, err)
@@ -282,8 +282,8 @@ func TestOnMissingBean(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		ctx := cond.NewMockContext(ctrl)
-		ctx.EXPECT().Find("a").Return([]cond.BeanDefinition{
-			internal.NewMockBeanDefinition(nil),
+		ctx.EXPECT().Find("a").Return([]gsutil.BeanDefinition{
+			gsutil.NewMockBeanDefinition(nil),
 		}, nil)
 		ok, err := cond.OnMissingBean("a").Matches(ctx)
 		assert.Nil(t, err)
@@ -293,9 +293,9 @@ func TestOnMissingBean(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		ctx := cond.NewMockContext(ctrl)
-		ctx.EXPECT().Find("a").Return([]cond.BeanDefinition{
-			internal.NewMockBeanDefinition(nil),
-			internal.NewMockBeanDefinition(nil),
+		ctx.EXPECT().Find("a").Return([]gsutil.BeanDefinition{
+			gsutil.NewMockBeanDefinition(nil),
+			gsutil.NewMockBeanDefinition(nil),
 		}, nil)
 		ok, err := cond.OnMissingBean("a").Matches(ctx)
 		assert.Nil(t, err)
@@ -326,8 +326,8 @@ func TestOnSingleBean(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		ctx := cond.NewMockContext(ctrl)
-		ctx.EXPECT().Find("a").Return([]cond.BeanDefinition{
-			internal.NewMockBeanDefinition(nil),
+		ctx.EXPECT().Find("a").Return([]gsutil.BeanDefinition{
+			gsutil.NewMockBeanDefinition(nil),
 		}, nil)
 		ok, err := cond.OnSingleBean("a").Matches(ctx)
 		assert.Nil(t, err)
@@ -337,9 +337,9 @@ func TestOnSingleBean(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		ctx := cond.NewMockContext(ctrl)
-		ctx.EXPECT().Find("a").Return([]cond.BeanDefinition{
-			internal.NewMockBeanDefinition(nil),
-			internal.NewMockBeanDefinition(nil),
+		ctx.EXPECT().Find("a").Return([]gsutil.BeanDefinition{
+			gsutil.NewMockBeanDefinition(nil),
+			gsutil.NewMockBeanDefinition(nil),
 		}, nil)
 		ok, err := cond.OnSingleBean("a").Matches(ctx)
 		assert.Nil(t, err)

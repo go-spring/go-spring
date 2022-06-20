@@ -19,6 +19,7 @@ package StarterRedigo
 import (
 	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/gs/cond"
+	"github.com/go-spring/spring-core/gs/gsutil"
 	"github.com/go-spring/spring-core/redis"
 	"github.com/go-spring/spring-redigo"
 )
@@ -26,5 +27,5 @@ import (
 func init() {
 	gs.Provide(SpringRedigo.NewClient, "${redis}").
 		Name("RedisClient").
-		On(cond.OnMissingBean(gs.BeanID((*redis.Client)(nil), "RedisClient")))
+		On(cond.OnMissingBean(gsutil.BeanID((*redis.Client)(nil), "RedisClient")))
 }

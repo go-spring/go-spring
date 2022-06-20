@@ -1,0 +1,18 @@
+<Configuration>
+    <Appenders>
+        <Console name="Console">
+            <LevelFilter level="warn"/>
+        </Console>
+    </Appenders>
+    <Loggers>
+        <Logger name="spring/spring-base/log_test" level="debug">
+            <AppenderRef ref="Console">
+                <LevelFilter level="info"/>
+            </AppenderRef>
+        </Logger>
+        <Root level="debug">
+            <LevelFilter level="info"/>
+            <AppenderRef ref="Console"/>
+        </Root>
+    </Loggers>
+</Configuration>

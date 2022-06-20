@@ -16,6 +16,6 @@
 
 package database
 
-import "github.com/go-spring/spring-core/internal"
-
-type ClientConfig = internal.DatabaseClientConfig
+type ClientConfig struct {
+	URL string `value:"${url}"`
+}

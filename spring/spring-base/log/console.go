@@ -17,60 +17,34 @@
 package log
 
 import (
-	"bytes"
 	"fmt"
 	"strings"
 
-	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-base/color"
 	"github.com/go-spring/spring-base/util"
 )
 
 func init() {
-	RegisterAppenderFactory("ConsoleAppender", new(ConsoleAppenderFactory))
+	RegisterPlugin("Console", PluginTypeAppender, (*ConsoleAppender)(nil))
 }
 
-type ConsoleAppenderFactory struct{}
-
-func (f *ConsoleAppenderFactory) NewAppenderConfig() AppenderConfig {
-	return new(ConsoleAppenderConfig)
-}
-
-func (f *ConsoleAppenderFactory) NewAppender(config AppenderConfig) (Appender, error) {
-	return NewConsoleAppender(config.(*ConsoleAppenderConfig)), nil
-}
-
-type ConsoleAppenderConfig struct {
-	Name string `xml:"name,attr"`
-}
-
-func (c *ConsoleAppenderConfig) GetName() string {
-	return c.Name
-}
-
+// ConsoleAppender is an Appender writing messages to os.Stdout.
 type ConsoleAppender struct {
-	config *ConsoleAppenderConfig
+	Name   string `PluginAttribute:"name"`
+	Filter Filter `PluginElement:"Filter"`
 }
 
-func NewConsoleAppender(config *ConsoleAppenderConfig) *ConsoleAppender {
-	return &ConsoleAppender{config: config}
-}
-
-func (c *ConsoleAppender) Append(msg *Message) {
-	level := msg.Level()
+func (c *ConsoleAppender) Append(e *Event) {
+	level := e.Level()
 	strLevel := strings.ToUpper(level.String())
 	if level >= ErrorLevel {
 		strLevel = color.Red.Sprint(strLevel)
 	} else if level == WarnLevel {
 		strLevel = color.Yellow.Sprint(strLevel)
-	} else if level == TraceLevel {
+	} else if level <= DebugLevel {
 		strLevel = color.Green.Sprint(strLevel)
 	}
-	var buf bytes.Buffer
-	for _, a := range msg.Args() {
-		buf.WriteString(cast.ToString(a))
-	}
-	strTime := msg.Time().Format("2006-01-02T15:04:05.000")
-	fileLine := util.Contract(fmt.Sprintf("%s:%d", msg.File(), msg.Line()), 48)
-	_, _ = fmt.Printf("[%s][%s][%s] %s\n", strLevel, strTime, fileLine, buf.String())
+	strTime := e.Time().Format("2006-01-02T15:04:05.000")
+	fileLine := util.Contract(fmt.Sprintf("%s:%d", e.File(), e.Line()), 48)
+	_, _ = fmt.Printf("[%s][%s][%s] %s\n", strLevel, strTime, fileLine, e.Text())
 }

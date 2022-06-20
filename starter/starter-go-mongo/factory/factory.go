@@ -28,8 +28,8 @@ import (
 
 // NewClient 创建 MongoDB 客户端
 func NewClient(config mongo.ClientConfig) (*g.Client, error) {
-	log.Infof("open mongo db %s", config.Url)
-	client, err := g.Connect(context.Background(), options.Client().ApplyURI(config.Url))
+	log.Infof("open mongo db %s", config.URL)
+	client, err := g.Connect(context.Background(), options.Client().ApplyURI(config.URL))
 	if err != nil {
 		return nil, err
 	}
