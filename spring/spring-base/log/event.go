@@ -18,11 +18,11 @@ package log
 
 import "time"
 
+// Event provides contextual information about a log message.
 type Event struct {
 	entry Entry
 	time  time.Time
 	msg   Message
-	text  string
 	file  string
 	line  int
 	level Level
@@ -38,10 +38,6 @@ func (e *Event) Time() time.Time {
 
 func (e *Event) Msg() Message {
 	return e.msg
-}
-
-func (e *Event) Text() string {
-	return e.text
 }
 
 func (e *Event) File() string {
