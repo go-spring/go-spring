@@ -29,9 +29,9 @@ import (
 )
 
 type FormattedMessage struct {
+	text   atomic.Value
 	format string
 	args   []interface{}
-	text   atomic.Value
 }
 
 func (msg *FormattedMessage) gen() string {
@@ -82,8 +82,8 @@ func BenchmarkFormattedMessage(b *testing.B) {
 
 	testcases := []struct {
 		format string
-		args   []interface{}
 		expect string
+		args   []interface{}
 	}{
 		{
 			args:   []interface{}{"a", "%", "b"},
@@ -164,8 +164,8 @@ func BenchmarkFormattedMessage(b *testing.B) {
 func TestFormattedMessage(t *testing.T) {
 	testcases := []struct {
 		format string
-		args   []interface{}
 		expect string
+		args   []interface{}
 	}{
 		{
 			args:   []interface{}{"a", "%", "b"},
