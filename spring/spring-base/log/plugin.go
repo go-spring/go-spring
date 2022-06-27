@@ -25,13 +25,13 @@ import (
 const (
 	PluginTypeAppender = "Appender"
 	PluginTypeFilter   = "Filter"
+	PluginTypeLayout   = "Layout"
 )
 
-var (
-	pluginsByName = map[string]*Plugin{}
-	pluginsByType = map[string][]*Plugin{}
-)
+// plugins stores user registered Plugin(s) .
+var plugins = map[string]*Plugin{}
 
+// Plugin is the name of node label or XML element.
 type Plugin struct {
 	Name  string
 	Type  string
@@ -40,18 +40,11 @@ type Plugin struct {
 	Line  int
 }
 
-func getPluginByName(name string) *Plugin {
-	return pluginsByName[name]
-}
-
-func getPluginsByType(typ string) []*Plugin {
-	return pluginsByType[typ]
-}
-
+// RegisterPlugin registers a Plugin, `i` is used to obtain the type of Plugin.
 func RegisterPlugin(name string, typ string, i interface{}) {
 	_, file, line, _ := runtime.Caller(1)
-	if p, ok := pluginsByName[name]; ok {
-		panic(fmt.Errorf("duplicate plugin %s on %s:%d and %s:%d", typ, p.File, p.Line, file, line))
+	if p, ok := plugins[name]; ok {
+		panic(fmt.Errorf("duplicate plugin %s in %s:%d and %s:%d", typ, p.File, p.Line, file, line))
 	}
 	class := reflect.TypeOf(i).Elem()
 	p := &Plugin{
@@ -61,6 +54,5 @@ func RegisterPlugin(name string, typ string, i interface{}) {
 		File:  file,
 		Line:  line,
 	}
-	pluginsByName[name] = p
-	pluginsByType[typ] = append(pluginsByType[typ], p)
+	plugins[name] = p
 }

@@ -17,154 +17,150 @@
 package log
 
 import (
-	"context"
-
 	"github.com/go-spring/spring-base/log/queue"
 )
 
-var (
-	empty = &emptyConfig{}
-)
+var empty privateConfig = &emptyConfig{}
 
 func init() {
-	RegisterPlugin("Root", "Root", (*LoggerConfig)(nil))
-	RegisterPlugin("Logger", "Logger", (*LoggerConfig)(nil))
-	RegisterPlugin("AsyncRoot", "AsyncRoot", (*AsyncLoggerConfig)(nil))
-	RegisterPlugin("AsyncLogger", "AsyncLogger", (*AsyncLoggerConfig)(nil))
+	RegisterPlugin("Root", "Root", (*loggerConfig)(nil))
+	RegisterPlugin("Logger", "Logger", (*loggerConfig)(nil))
+	RegisterPlugin("AsyncRoot", "AsyncRoot", (*asyncLoggerConfig)(nil))
+	RegisterPlugin("AsyncLogger", "AsyncLogger", (*asyncLoggerConfig)(nil))
 	RegisterPlugin("AppenderRef", "AppenderRef", (*AppenderRef)(nil))
 }
 
-type PrivateConfig interface {
+// privateConfig is the inner Logger.
+type privateConfig interface {
 	publisher
-	start() error
-	stop(ctx context.Context)
-	GetEntry() SimpleEntry
-	GetParent() PrivateConfig
-	GetName() string
-	GetLevel() Level
-	GetFilters() []Filter
-	GetAppenders() []*AppenderRef
+	logEvent(e *Event)
+	getParent() privateConfig
+	getEntry() SimpleEntry
+	getName() string
+	getLevel() Level
+	getFilter() Filter
+	getAppenders() []*AppenderRef
 }
 
 type emptyConfig struct {
 	publisher
 }
 
-func (c *emptyConfig) Start() error                 { return nil }
-func (c *emptyConfig) Stop(ctx context.Context)     {}
-func (c *emptyConfig) GetEntry() SimpleEntry        { return SimpleEntry{} }
-func (c *emptyConfig) GetParent() PrivateConfig     { return nil }
-func (c *emptyConfig) GetName() string              { return "" }
-func (c *emptyConfig) GetLevel() Level              { return NoneLevel }
-func (c *emptyConfig) GetFilters() []Filter         { return nil }
-func (c *emptyConfig) GetAppenders() []*AppenderRef { return nil }
+func (c *emptyConfig) logEvent(e *Event)            {}
+func (c *emptyConfig) getParent() privateConfig     { return nil }
+func (c *emptyConfig) getEntry() SimpleEntry        { return SimpleEntry{} }
+func (c *emptyConfig) getName() string              { return "" }
+func (c *emptyConfig) getLevel() Level              { return OffLevel }
+func (c *emptyConfig) getFilter() Filter            { return nil }
+func (c *emptyConfig) getAppenders() []*AppenderRef { return nil }
 
+// AppenderRef is a reference to an Appender.
 type AppenderRef struct {
 	appender Appender
-	Ref      string   `PluginAttribute:"ref"`
-	Level    Level    `PluginAttribute:"level,default=info"`
-	Filters  []Filter `PluginElement:"Filter"`
+	Ref      string `PluginAttribute:"ref"`
+	Filter   Filter `PluginElement:"Filter"`
+	Level    Level  `PluginAttribute:"level,default=none"`
 }
 
 func (r *AppenderRef) Append(e *Event) {
-	if e.level < r.Level {
+	if r.Level != NoneLevel && e.level < r.Level {
 		return
 	}
-	for _, filter := range r.Filters {
-		if filter.Filter(e.level, e.entry, e.msg) {
-			return
-		}
+	if r.Filter != nil && ResultDeny == r.Filter.Filter(e.level, e.entry, e.msg) {
+		return
 	}
 	r.appender.Append(e)
 }
 
-type BaseLoggerConfig struct {
+// baseLoggerConfig is the base of loggerConfig and asyncLoggerConfig.
+type baseLoggerConfig struct {
+	parent       privateConfig
 	entry        SimpleEntry
-	parent       PrivateConfig
 	Name         string         `PluginAttribute:"name"`
-	Level        Level          `PluginAttribute:"level,default=info"`
-	Additivity   bool           `PluginAttribute:"additivity,default=true"`
-	Filters      []Filter       `PluginElement:"Filter"`
+	Filter       Filter         `PluginElement:"Filter"`
 	AppenderRefs []*AppenderRef `PluginElement:"AppenderRef"`
+	Level        Level          `PluginAttribute:"level,default=none"`
+	Additivity   bool           `PluginAttribute:"additivity,default=true"`
 }
 
-func (c *BaseLoggerConfig) GetName() string {
-	return c.Name
-}
-
-func (c *BaseLoggerConfig) GetEntry() SimpleEntry {
-	return c.entry
-}
-
-func (c *BaseLoggerConfig) GetParent() PrivateConfig {
+func (c *baseLoggerConfig) getParent() privateConfig {
 	return c.parent
 }
 
-func (c *BaseLoggerConfig) GetLevel() Level {
+func (c *baseLoggerConfig) getEntry() SimpleEntry {
+	return c.entry
+}
+
+func (c *baseLoggerConfig) getName() string {
+	return c.Name
+}
+
+func (c *baseLoggerConfig) getLevel() Level {
 	return c.Level
 }
 
-func (c *BaseLoggerConfig) GetFilters() []Filter {
-	return c.Filters
+func (c *baseLoggerConfig) getFilter() Filter {
+	return c.Filter
 }
 
-func (c *BaseLoggerConfig) GetAppenders() []*AppenderRef {
+func (c *baseLoggerConfig) getAppenders() []*AppenderRef {
 	return c.AppenderRefs
 }
 
-func (c *BaseLoggerConfig) callAppenders(e *Event) {
+// logEvent is used only for parent logging events.
+func (c *baseLoggerConfig) logEvent(e *Event) {
+	if ResultDeny != c.parent.filter(e.level, e.entry, e.msg) {
+		c.callAppenders(e)
+	}
+}
+
+// filter returns whether the event should be logged.
+func (c *baseLoggerConfig) filter(level Level, e Entry, msg Message) Result {
+	if c.Filter != nil && ResultDeny == c.Filter.Filter(level, e, msg) {
+		return ResultDeny
+	}
+	if c.Level != NoneLevel && level < c.Level {
+		return ResultDeny
+	}
+	return ResultAccept
+}
+
+// callAppenders calls all the appenders inherited from the hierarchy circumventing.
+func (c *baseLoggerConfig) callAppenders(e *Event) {
 	for _, r := range c.AppenderRefs {
 		r.Append(e)
 	}
 	if c.parent != nil && c.Additivity {
-		c.parent.publish(e)
+		c.parent.logEvent(e)
 	}
 }
 
-func (c *BaseLoggerConfig) filter(level Level, e Entry, msg Message) bool {
-	if level < c.Level {
-		return true
-	}
-	for _, filter := range c.Filters {
-		if filter.Filter(level, e, msg) {
-			return true
-		}
-	}
-	return false
+// loggerConfig publishes events synchronously.
+type loggerConfig struct {
+	baseLoggerConfig
 }
 
-type LoggerConfig struct {
-	BaseLoggerConfig
-}
-
-func (c *LoggerConfig) start() error {
+func (c *loggerConfig) Init() error {
 	c.entry = SimpleEntry{pub: c}
 	return nil
 }
 
-func (c *LoggerConfig) stop(ctx context.Context) {
-
-}
-
-func (c *LoggerConfig) publish(e *Event) {
+func (c *loggerConfig) publish(e *Event) {
 	c.callAppenders(e)
 }
 
-type AsyncLoggerConfig struct {
-	BaseLoggerConfig
+// asyncLoggerConfig publishes events synchronously.
+type asyncLoggerConfig struct {
+	baseLoggerConfig
 }
 
-func (c *AsyncLoggerConfig) start() error {
+func (c *asyncLoggerConfig) Init() error {
 	c.entry = SimpleEntry{pub: c}
 	return nil
 }
 
-func (c *AsyncLoggerConfig) stop(ctx context.Context) {
-
-}
-
 type eventWrapper struct {
-	c *AsyncLoggerConfig
+	c *asyncLoggerConfig
 	e *Event
 }
 
@@ -172,6 +168,8 @@ func (w *eventWrapper) OnEvent() {
 	w.c.callAppenders(w.e)
 }
 
-func (c *AsyncLoggerConfig) publish(e *Event) {
-	queue.Instance().Publish(&eventWrapper{c: c, e: e})
+// publish pushes events into the queue and these events will consumed by other
+// goroutine, so the current goroutine will not be blocked.
+func (c *asyncLoggerConfig) publish(e *Event) {
+	queue.Publish(&eventWrapper{c: c, e: e})
 }

@@ -18,12 +18,9 @@ package log
 
 import (
 	"context"
-	"fmt"
-	"strings"
+	"os"
 
 	"github.com/go-spring/spring-base/atomic"
-	"github.com/go-spring/spring-base/color"
-	"github.com/go-spring/spring-base/util"
 )
 
 func init() {
@@ -34,49 +31,60 @@ func init() {
 	RegisterPlugin("RollingFile", PluginTypeAppender, new(RollingFileAppender))
 }
 
+// Appender represents an output destination. Do not provide an asynchronous
+// appender, because we have asynchronous logger.
+type Appender interface {
+	LifeCycle
+	GetName() string
+	GetLayout() Layout
+	Append(e *Event)
+}
+
+type BaseAppender struct {
+	Name   string `PluginAttribute:"name"`
+	Layout Layout `PluginElement:"Layout,default=DefaultLayout"`
+}
+
+func (c *BaseAppender) Start() error             { return nil }
+func (c *BaseAppender) Stop(ctx context.Context) {}
+func (c *BaseAppender) GetName() string          { return c.Name }
+func (c *BaseAppender) GetLayout() Layout        { return c.Layout }
+
 // NullAppender is an Appender that ignores log events.
 type NullAppender struct{}
 
-func (c *NullAppender) Append(e *Event) {}
+func (c *NullAppender) Start() error             { return nil }
+func (c *NullAppender) Stop(ctx context.Context) {}
+func (c *NullAppender) Append(e *Event)          {}
 
 // CountingNoOpAppender is a no-operation Appender that counts events.
 type CountingNoOpAppender struct {
 	count atomic.Int64
 }
 
-func (c *CountingNoOpAppender) Count() int64 {
-	return c.count.Load()
-}
-
-func (c *CountingNoOpAppender) Append(e *Event) {
-	c.count.Add(1)
-}
+func (c *CountingNoOpAppender) Start() error             { return nil }
+func (c *CountingNoOpAppender) Stop(ctx context.Context) {}
+func (c *CountingNoOpAppender) Count() int64             { return c.count.Load() }
+func (c *CountingNoOpAppender) Append(e *Event)          { c.count.Add(1) }
 
 // ConsoleAppender is an Appender that writing messages to os.Stdout.
 type ConsoleAppender struct {
-	Filter Filter `PluginElement:"Filter"`
-	Name   string `PluginAttribute:"name"`
+	BaseAppender
 }
 
 func (c *ConsoleAppender) Append(e *Event) {
-	level := e.Level()
-	strLevel := strings.ToUpper(level.String())
-	if level >= ErrorLevel {
-		strLevel = color.Red.Sprint(strLevel)
-	} else if level == WarnLevel {
-		strLevel = color.Yellow.Sprint(strLevel)
-	} else if level <= DebugLevel {
-		strLevel = color.Green.Sprint(strLevel)
+	data, err := c.Layout.ToBytes(e)
+	if err != nil {
+		Status.Errorf("append error %s", err.Error())
+		return
 	}
-	strTime := e.Time().Format("2006-01-02T15:04:05.000")
-	fileLine := util.Contract(fmt.Sprintf("%s:%d", e.File(), e.Line()), 48)
-	_, _ = fmt.Printf("[%s][%s][%s] %s\n", strLevel, strTime, fileLine, e.Msg().Text())
+	_, _ = os.Stdout.Write(data)
 }
 
 // FileAppender is an Appender writing messages to *os.File.
 type FileAppender struct {
+	BaseAppender
 	writer   Writer
-	Name     string `PluginAttribute:"name"`
 	FileName string `PluginAttribute:"fileName"`
 }
 
@@ -96,16 +104,19 @@ func (c *FileAppender) Stop(ctx context.Context) {
 }
 
 func (c *FileAppender) Append(e *Event) {
-	strTime := e.Time().Format("2006-01-02T15:04:05.000")
-	fileLine := util.Contract(fmt.Sprintf("%s:%d", e.File(), e.Line()), 48)
-	data := fmt.Sprintf("[%s][%s][%s] %s\n", e.Level(), strTime, fileLine, e.Msg().Text())
-	_, err := c.writer.Write([]byte(data))
+	data, err := c.Layout.ToBytes(e)
 	if err != nil {
-		Status.Errorf("write log event to file %s error %s", c.FileName, err.Error())
+		Status.Errorf("append error %s", err.Error())
+		return
+	}
+	_, err = c.writer.Write(data)
+	if err != nil {
+		Status.Errorf("append error %s", err.Error())
 	}
 }
 
 type RollingFileAppender struct {
+	BaseAppender
 }
 
 func (c *RollingFileAppender) Append(e *Event) {

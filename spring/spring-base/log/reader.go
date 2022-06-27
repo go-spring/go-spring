@@ -31,6 +31,21 @@ func init() {
 	RegisterReader(new(XMLReader), ".xml")
 }
 
+type Node struct {
+	Label      string
+	Children   []*Node
+	Attributes map[string]string
+}
+
+func (node *Node) child(label string) *Node {
+	for _, c := range node.Children {
+		if c.Label == label {
+			return c
+		}
+	}
+	return nil
+}
+
 // Reader 配置项解析器。
 type Reader interface {
 	Read(b []byte) (*Node, error)

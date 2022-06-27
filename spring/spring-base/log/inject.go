@@ -17,6 +17,7 @@
 package log
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -26,6 +27,25 @@ import (
 	"github.com/go-spring/spring-base/util"
 )
 
+var converters = map[reflect.Type]util.Converter{}
+
+func init() {
+	RegisterConverter(ParseLevel)
+	RegisterConverter(ParseResult)
+	RegisterConverter(ParseColorStyle)
+}
+
+// RegisterConverter registers Converter for non-primitive type such as
+// time.Time, time.Duration, or other user-defined value type.
+func RegisterConverter(fn util.Converter) {
+	t := reflect.TypeOf(fn)
+	if !util.IsValidConverter(t) {
+		panic(errors.New("fn must be func(string)(type,error)"))
+	}
+	converters[t.Out(0)] = fn
+}
+
+// inject handles the struct field with the PluginAttribute or PluginElement tag.
 func inject(v reflect.Value, t reflect.Type, node *Node) error {
 	for i := 0; i < v.NumField(); i++ {
 		ft := t.Field(i)
@@ -40,6 +60,7 @@ func inject(v reflect.Value, t reflect.Type, node *Node) error {
 			if err := injectElement(tag, fv, ft, node); err != nil {
 				return err
 			}
+			continue
 		}
 		if ft.Anonymous && ft.Type.Kind() == reflect.Struct {
 			if err := inject(fv, fv.Type(), node); err != nil {
@@ -50,64 +71,79 @@ func inject(v reflect.Value, t reflect.Type, node *Node) error {
 	return nil
 }
 
+type PluginTag string
+
+func (tag PluginTag) Get(key string) string {
+	v, _ := tag.Lookup(key)
+	return v
+}
+
+func (tag PluginTag) Lookup(key string) (value string, ok bool) {
+	kvs := strings.Split(string(tag), ",")
+	if key == "" {
+		return kvs[0], true
+	}
+	for i := 1; i < len(kvs); i++ {
+		ss := strings.Split(kvs[i], "=")
+		if ss[0] == key {
+			if len(ss) > 1 {
+				return ss[1], true
+			}
+			return "", true
+		}
+	}
+	return "", false
+}
+
+// injectAttribute handles the struct field with the PluginAttribute tag.
 func injectAttribute(tag string, fv reflect.Value, ft reflect.StructField, node *Node) error {
 
-	var (
-		err   error
-		attrs map[string]string
-	)
-
-	if ss := strings.Split(tag, ","); len(ss) > 0 {
-		tag = ss[0]
-		attrs = make(map[string]string)
-		for j := 1; j < len(ss); j++ {
-			rs := strings.Split(ss[j], "=")
-			if len(rs) > 1 {
-				attrs[rs[0]] = rs[1]
-			} else {
-				attrs[rs[0]] = ""
-			}
-		}
-	}
-
-	val, ok := node.Attributes[tag]
+	attrTag := PluginTag(tag)
+	attrName := attrTag.Get("")
+	val, ok := node.Attributes[attrName]
 	if !ok {
-		val, ok = attrs["default"]
+		val, ok = attrTag.Lookup("default")
 		if !ok {
-			return fmt.Errorf("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
+			return fmt.Errorf("found no attribute for %s", attrName)
 		}
 	}
 
-	if ft.Name == "Level" {
-		fv.Set(reflect.ValueOf(StringToLevel(val)))
+	if fn := converters[ft.Type]; fn != nil {
+		fnValue := reflect.ValueOf(fn)
+		out := fnValue.Call([]reflect.Value{reflect.ValueOf(val)})
+		if !out[1].IsNil() {
+			err := out[1].Interface().(error)
+			return util.Wrapf(err, code.FileLine(), "inject error")
+		}
+		fv.Set(out[0])
 		return nil
 	}
 
 	switch fv.Kind() {
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		var u uint64
-		if u, err = strconv.ParseUint(val, 0, 0); err == nil {
+		u, err := strconv.ParseUint(val, 0, 0)
+		if err == nil {
 			fv.SetUint(u)
 			return nil
 		}
 		return util.Wrapf(err, code.FileLine(), "inject %s error", ft.Name)
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		var i int64
-		if i, err = strconv.ParseInt(val, 0, 0); err == nil {
+		i, err := strconv.ParseInt(val, 0, 0)
+		if err == nil {
 			fv.SetInt(i)
 			return nil
 		}
 		return util.Wrapf(err, code.FileLine(), "inject %s error", ft.Name)
 	case reflect.Float32, reflect.Float64:
-		var f float64
-		if f, err = strconv.ParseFloat(val, 64); err == nil {
+		f, err := strconv.ParseFloat(val, 64)
+		if err == nil {
 			fv.SetFloat(f)
 			return nil
 		}
 		return util.Wrapf(err, code.FileLine(), "inject %s error", ft.Name)
 	case reflect.Bool:
-		var b bool
-		if b, err = strconv.ParseBool(val); err == nil {
+		b, err := strconv.ParseBool(val)
+		if err == nil {
 			fv.SetBool(b)
 			return nil
 		}
@@ -116,42 +152,67 @@ func injectAttribute(tag string, fv reflect.Value, ft reflect.StructField, node 
 		fv.SetString(val)
 		return nil
 	}
-	return nil
+	return fmt.Errorf("unsupported inject type %s for struct field %s", ft.Type.String(), ft.Name)
 }
 
+// injectElement handles the struct field with the PluginElement tag.
 func injectElement(tag string, fv reflect.Value, ft reflect.StructField, node *Node) error {
+
+	elemTag := PluginTag(tag)
+	elemType := elemTag.Get("")
+
 	var children []reflect.Value
-	for _, childNode := range node.Children {
-		if p := getPluginByName(childNode.Label); p != nil {
-			if p.Type != tag {
-				continue
-			}
-			pv := reflect.New(p.Class)
-			err := inject(pv.Elem(), pv.Type().Elem(), childNode)
-			if err != nil {
-				return err
-			}
-			children = append(children, pv)
+	for _, c := range node.Children {
+		p, ok := plugins[c.Label]
+		if !ok {
+			err := fmt.Errorf("plugin %s not found", c.Label)
+			return util.Wrap(err, code.FileLine(), "inject element")
 		}
+		if p.Type != elemType {
+			continue
+		}
+		pv := reflect.New(p.Class)
+		ev := pv.Elem()
+		err := inject(ev, ev.Type(), c)
+		if err != nil {
+			return util.Wrap(err, code.FileLine(), "inject element")
+		}
+		children = append(children, pv)
 	}
+
 	if len(children) == 0 {
-		return nil
+		elemLabel, ok := elemTag.Lookup("default")
+		if !ok {
+			return nil
+		}
+		p, ok := plugins[elemLabel]
+		if !ok {
+			err := fmt.Errorf("plugin %s not found", elemLabel)
+			return util.Wrap(err, code.FileLine(), "inject element")
+		}
+		pv := reflect.New(p.Class)
+		ev := pv.Elem()
+		err := inject(ev, ev.Type(), &Node{Label: elemLabel})
+		if err != nil {
+			return err
+		}
+		children = append(children, pv)
 	}
+
 	switch fv.Kind() {
 	case reflect.Slice:
-		slice := reflect.MakeSlice(ft.Type, 0, 0)
+		slice := reflect.MakeSlice(ft.Type, 0, len(children))
 		for j := 0; j < len(children); j++ {
 			slice = reflect.Append(slice, children[j])
 		}
 		fv.Set(slice)
 	case reflect.Interface:
 		if len(children) > 1 {
-			return fmt.Errorf("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
+			return fmt.Errorf("found %d plugin elements for struct field %s", len(children), ft.Name)
 		}
 		fv.Set(children[0])
 	default:
-		return fmt.Errorf("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
+		return fmt.Errorf("unsupported inject type %s for struct field %s", ft.Type.String(), ft.Name)
 	}
-	fmt.Println(children)
 	return nil
 }

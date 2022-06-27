@@ -18,6 +18,8 @@ package log
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"time"
 )
 
@@ -30,10 +32,38 @@ func init() {
 	RegisterPlugin("TimeFilter", PluginTypeFilter, (*TimeFilter)(nil))
 }
 
+type Result int
+
+const (
+	ResultAccept = Result(iota)
+	ResultDeny
+)
+
+func ParseResult(s string) (Result, error) {
+	switch strings.ToLower(s) {
+	case "accept":
+		return ResultAccept, nil
+	case "deny":
+		return ResultDeny, nil
+	default:
+		return -1, fmt.Errorf("invalid result %s", s)
+	}
+}
+
+// Filter is an interface that tells the logger a log message should
+// be dropped when the Filter method returns ResultDeny.
+type Filter interface {
+	LifeCycle
+	Filter(level Level, e Entry, msg Message) Result
+}
+
 type BaseFilter struct {
 	OnMatch    Result `PluginAttribute:"onMatch,default=accept"`
 	OnMismatch Result `PluginAttribute:"onMismatch,default=deny"`
 }
+
+func (c *BaseFilter) Start() error             { return nil }
+func (c *BaseFilter) Stop(ctx context.Context) {}
 
 // CompositeFilter composes and invokes one or more filters.
 type CompositeFilter struct {
@@ -42,11 +72,8 @@ type CompositeFilter struct {
 
 func (f *CompositeFilter) Start() error {
 	for _, filter := range f.Filters {
-		s, ok := filter.(interface{ Start() error })
-		if ok {
-			if err := s.Start(); err != nil {
-				return err
-			}
+		if err := filter.Start(); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -54,10 +81,7 @@ func (f *CompositeFilter) Start() error {
 
 func (f *CompositeFilter) Stop(ctx context.Context) {
 	for _, filter := range f.Filters {
-		s, ok := filter.(interface{ Stop(ctx context.Context) })
-		if ok {
-			s.Stop(ctx)
-		}
+		filter.Stop(ctx)
 	}
 }
 
@@ -73,9 +97,9 @@ func (f *CompositeFilter) Filter(level Level, e Entry, msg Message) Result {
 // DenyAllFilter causes all logging events to be dropped.
 type DenyAllFilter struct{}
 
-func (f *DenyAllFilter) Filter(level Level, e Entry, msg Message) Result {
-	return ResultDeny
-}
+func (f *DenyAllFilter) Start() error                              { return nil }
+func (f *DenyAllFilter) Stop(ctx context.Context)                  {}
+func (f *DenyAllFilter) Filter(_ Level, _ Entry, _ Message) Result { return ResultDeny }
 
 // LevelFilter logs events if the level in the Event is same or more specific
 // than the configured level.

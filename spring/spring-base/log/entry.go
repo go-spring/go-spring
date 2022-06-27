@@ -42,7 +42,7 @@ type Entry interface {
 	Context() context.Context
 }
 
-// publisher will drop a log message when the Filter method returns true.
+// publisher will drop a log message when the filter method returns true.
 type publisher interface {
 	filter(level Level, e Entry, msg Message) Result
 	publish(e *Event)

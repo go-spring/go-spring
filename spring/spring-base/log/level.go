@@ -22,7 +22,8 @@ import (
 )
 
 const (
-	TraceLevel = Level(iota)
+	NoneLevel = Level(iota)
+	TraceLevel
 	DebugLevel
 	InfoLevel
 	WarnLevel
@@ -37,6 +38,8 @@ type Level int32
 
 func (level Level) String() string {
 	switch level {
+	case NoneLevel:
+		return "NONE"
 	case TraceLevel:
 		return "TRACE"
 	case DebugLevel:
@@ -61,6 +64,8 @@ func (level Level) String() string {
 // ParseLevel parses string to a level, and returns error if the conversion fails.
 func ParseLevel(str string) (Level, error) {
 	switch strings.ToUpper(str) {
+	case "NONE":
+		return NoneLevel, nil
 	case "TRACE":
 		return TraceLevel, nil
 	case "DEBUG":
