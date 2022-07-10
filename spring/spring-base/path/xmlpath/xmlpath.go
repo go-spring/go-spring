@@ -14,33 +14,5 @@
  * limitations under the License.
  */
 
-package jpath_test
-
-import (
-	"testing"
-
-	"github.com/go-spring/spring-base/assert"
-	"github.com/go-spring/spring-base/jpath"
-	"github.com/golang/mock/gomock"
-)
-
-func TestRead(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-	p := jpath.NewMockPath(ctrl)
-	e := map[string]interface{}{
-		"$[a][b][0]": "c",
-	}
-	p.EXPECT().Read(gomock.Any()).Return(e)
-	r := jpath.Read(map[string]interface{}{
-		"a": map[string]interface{}{
-			"b": []interface{}{
-				"c",
-				map[string]interface{}{
-					"d": "e",
-				},
-			},
-		},
-	}, p)
-	assert.Equal(t, r, e)
-}
+// Package xmlpath https://en.wikipedia.org/wiki/XPath
+package xmlpath
