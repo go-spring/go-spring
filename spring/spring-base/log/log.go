@@ -35,38 +35,29 @@ const (
 )
 
 var (
+	// console is used to record events when Logger is not configured.
+	console = &ConsoleAppender{
+		BaseAppender: BaseAppender{
+			Layout: &DefaultLayout{
+				LineBreak:  true,
+				ColorStyle: ColorStyleNormal,
+			},
+		},
+	}
+
 	loggers = map[string]*Logger{}
+
+	// Status records events that occur in the logging system.
+	Status = NewLogger("", ErrorLevel)
 )
 
-// Filter 日志过滤器。
-type Filter interface {
-	Filter(level Level, e Entry, msg Message) bool
+type Initializer interface {
+	Init() error
 }
 
-// Appender 日志输出器。不要试图实现异步的 Appender，因为我们会提供异步的 Logger。
-type Appender interface {
-	Append(e *Event)
-}
-
-// LifeCycle 生命周期。
 type LifeCycle interface {
 	Start() error
 	Stop(ctx context.Context)
-}
-
-type Node struct {
-	Label      string
-	Attributes map[string]string
-	Children   []*Node
-}
-
-func (node *Node) child(label string) *Node {
-	for _, c := range node.Children {
-		if c.Label == label {
-			return c
-		}
-	}
-	return nil
 }
 
 // GetLogger 获取名字为声明位置的包名的 *Logger 对象。
@@ -91,105 +82,127 @@ func getLogger(name string, level ...Level) *Logger {
 	return l
 }
 
-type Configuration struct {
-	root      PrivateConfig
-	appenders map[string]Appender
-	loggers   map[string]PrivateConfig
-}
-
 // Refresh 加载日志配置文件。
 func Refresh(fileName string) error {
 
-	ext := filepath.Ext(fileName)
-	r, ok := readers[ext]
-	if !ok {
-		return fmt.Errorf("unsupported file type %s", ext)
-	}
-
-	b, err := ioutil.ReadFile(fileName)
-	if err != nil {
-		return err
-	}
-
-	rootNode, err := r.Read(b)
-	if err != nil {
-		return err
+	var rootNode *Node
+	{
+		ext := filepath.Ext(fileName)
+		r, ok := readers[ext]
+		if !ok {
+			return fmt.Errorf("unsupported file type %s", ext)
+		}
+		data, err := ioutil.ReadFile(fileName)
+		if err != nil {
+			return err
+		}
+		rootNode, err = r.Read(data)
+		if err != nil {
+			return err
+		}
 	}
 
 	if rootNode.Label != "Configuration" {
-		return errors.New("no Configuration root")
+		return errors.New("the Configuration root not found")
 	}
 
-	c := &Configuration{
-		appenders: make(map[string]Appender),
-		loggers:   make(map[string]PrivateConfig),
-	}
+	var (
+		cRoot      privateConfig
+		cAppenders = make(map[string]Appender)
+		cLoggers   = make(map[string]privateConfig)
+	)
 
-	if n := rootNode.child("Appenders"); n != nil {
-		for _, node := range n.Children {
-			p := getPluginByName(node.Label)
-			if p == nil {
-				return fmt.Errorf("xxxxxxxxxxxxxxxxxxxxxxxxxx")
-			}
-			name, ok := node.Attributes["name"]
+	if node := rootNode.child("Appenders"); node != nil {
+		for _, c := range node.Children {
+			p, ok := plugins[c.Label]
 			if !ok {
-				return fmt.Errorf("xxxxxxxxxxxxxxxxxxxxxxxxxx")
+				return fmt.Errorf("plugin %s not found", c.Label)
+			}
+			name, ok := c.Attributes["name"]
+			if !ok {
+				return errors.New("attribute 'name' not found")
 			}
 			v := reflect.New(p.Class)
-			err = inject(v.Elem(), v.Type().Elem(), node)
+			ev := v.Elem()
+			err := inject(ev, ev.Type(), c)
 			if err != nil {
 				return err
 			}
-			c.appenders[name] = v.Interface().(Appender)
-		}
-	}
-
-	if n := rootNode.child("Loggers"); n != nil {
-		for _, node := range n.Children {
-			isRootLogger := false
-			if node.Label == RootLoggerName {
-				isRootLogger = true
-				node.Attributes["name"] = RootLoggerName
-			} else if node.Label == AsyncRootLoggerName {
-				isRootLogger = true
-				node.Attributes["name"] = AsyncRootLoggerName
-			}
-			p := getPluginByName(node.Label)
-			if p == nil {
-				return fmt.Errorf("xxxxxxxxxxxxxxxxxxxxxxxxxx")
-			}
-			name, ok := node.Attributes["name"]
-			if !ok {
-				return fmt.Errorf("xxxxxxxxxxxxxxxxxxxxxxxxxx")
-			}
-			v := reflect.New(p.Class)
-			err = inject(v.Elem(), v.Type().Elem(), node)
-			if err != nil {
-				return err
-			}
-			config := v.Interface().(PrivateConfig)
-			if isRootLogger {
-				if c.root != nil {
-					return fmt.Errorf("xxxxxxxxxxxxxxxxxxxxxxxxxx")
+			i, ok := v.Interface().(Initializer)
+			if ok {
+				if err = i.Init(); err != nil {
+					return err
 				}
-				c.root = config
 			}
-			c.loggers[name] = config
+			cAppenders[name] = v.Interface().(Appender)
 		}
 	}
 
-	for name, config := range c.loggers {
+	if node := rootNode.child("Loggers"); node != nil {
+		for _, c := range node.Children {
 
-		var base *BaseLoggerConfig
+			isRootLogger := false
+			if c.Label == RootLoggerName {
+				isRootLogger = true
+				c.Attributes["name"] = RootLoggerName
+			} else if c.Label == AsyncRootLoggerName {
+				isRootLogger = true
+				c.Attributes["name"] = AsyncRootLoggerName
+			}
+
+			p, ok := plugins[c.Label]
+			if !ok || p == nil {
+				return fmt.Errorf("plugin %s not found", c.Label)
+			}
+			name, ok := c.Attributes["name"]
+			if !ok {
+				return errors.New("attribute 'name' not found")
+			}
+
+			v := reflect.New(p.Class)
+			ev := v.Elem()
+			err := inject(ev, ev.Type(), c)
+			if err != nil {
+				return err
+			}
+			i, ok := v.Interface().(Initializer)
+			if ok {
+				if err = i.Init(); err != nil {
+					return err
+				}
+			}
+
+			config := v.Interface().(privateConfig)
+			if isRootLogger {
+				if cRoot != nil {
+					return errors.New("found more than one root loggers")
+				}
+				cRoot = config
+			}
+			cLoggers[name] = config
+		}
+	}
+
+	for name, config := range cLoggers {
+
+		var base *baseLoggerConfig
 		switch v := config.(type) {
-		case *LoggerConfig:
-			base = &v.BaseLoggerConfig
-		case *AsyncLoggerConfig:
-			base = &v.BaseLoggerConfig
+		case *loggerConfig:
+			base = &v.baseLoggerConfig
+		case *asyncLoggerConfig:
+			base = &v.baseLoggerConfig
 		}
 
-		if name != c.root.GetName() {
-			base.parent = c.root
+		if name != cRoot.getName() {
+			base.parent = cRoot
+		}
+
+		for _, r := range base.AppenderRefs {
+			appender, ok := cAppenders[r.Ref]
+			if !ok {
+				return fmt.Errorf("appender %s not found", r.Ref)
+			}
+			r.appender = appender
 		}
 
 		for {
@@ -198,65 +211,47 @@ func Refresh(fileName string) error {
 				break
 			}
 			name = name[:n]
-			if parent, ok := c.loggers[name]; ok {
+			if parent, ok := cLoggers[name]; ok {
 				base.parent = parent
 			}
-		}
-
-		for _, ref := range base.AppenderRefs {
-			appender, ok := c.appenders[ref.Ref]
-			if !ok {
-				return fmt.Errorf("xxxxxxxxxxxxxxxxxxxxxxxxxx")
-			}
-			ref.appender = appender
-		}
-
-		if err = config.start(); err != nil {
-			return err
 		}
 	}
 
 	for name, l := range loggers {
-		l.reconfigure(c.loggers[name])
+		l.reconfigure(cLoggers[name])
 	}
 
 	return nil
 }
 
 type Logger struct {
+	value atomic.Value
 	name  string
 	entry SimpleEntry
-	value atomic.Value
+	level Level
 }
 
 func NewLogger(name string, level Level) *Logger {
-	l := &Logger{
-		name: name,
-		entry: SimpleEntry{
-			pub: &pubAppender{
-				level:    level,
-				appender: &ConsoleAppender{},
-			},
-		},
-	}
+	l := &Logger{name: name, level: level}
 	l.reconfigure(nil)
+	l.entry.pub = l
 	return l
 }
 
-// Name ...
+// Name returns the logger's name.
 func (l *Logger) Name() string {
 	return l.name
 }
 
-func (l *Logger) config() PrivateConfig {
+func (l *Logger) config() privateConfig {
 	v := l.value.Load()
 	if v == empty {
 		return nil
 	}
-	return v.(PrivateConfig)
+	return v.(privateConfig)
 }
 
-func (l *Logger) reconfigure(config PrivateConfig) {
+func (l *Logger) reconfigure(config privateConfig) {
 	if config == nil {
 		l.value.Store(empty)
 	} else {
@@ -264,23 +259,38 @@ func (l *Logger) reconfigure(config PrivateConfig) {
 	}
 }
 
-func (l *Logger) Level() Level {
-	if c := l.config(); c != nil {
-		return c.GetLevel()
+func (l *Logger) filter(level Level, e Entry, msg Message) Result {
+	if level >= l.level {
+		return ResultAccept
 	}
-	return l.entry.pub.(*pubAppender).level
+	return ResultDeny
 }
 
-func (l *Logger) GetFilters() []Filter {
+func (l *Logger) publish(e *Event) {
+	console.Append(e)
+}
+
+func (l *Logger) Level() Level {
 	if c := l.config(); c != nil {
-		return c.GetFilters()
+		return c.getLevel()
+	}
+	return l.level
+}
+
+func (l *Logger) Filter() Filter {
+	if c := l.config(); c != nil {
+		return c.getFilter()
 	}
 	return nil
 }
 
-func (l *Logger) GetAppenders() []*AppenderRef {
+func (l *Logger) Appenders() []Appender {
 	if c := l.config(); c != nil {
-		return c.GetAppenders()
+		var appenders []Appender
+		for _, ref := range c.getAppenders() {
+			appenders = append(appenders, ref.appender)
+		}
+		return appenders
 	}
 	return nil
 }
@@ -299,7 +309,10 @@ func (l *Logger) WithSkip(n int) SimpleEntry {
 // WithTag 创建包含 tag 信息的 Entry 。
 func (l *Logger) WithTag(tag string) SimpleEntry {
 	if c := l.config(); c != nil {
-		return SimpleEntry{pub: c, tag: tag}
+		return SimpleEntry{
+			pub: c,
+			tag: tag,
+		}
 	}
 	return l.entry.WithTag(tag)
 }
@@ -307,7 +320,10 @@ func (l *Logger) WithTag(tag string) SimpleEntry {
 // WithContext 创建包含 context.Context 对象的 Entry 。
 func (l *Logger) WithContext(ctx context.Context) ContextEntry {
 	if c := l.config(); c != nil {
-		return ContextEntry{pub: c, ctx: ctx}
+		return ContextEntry{
+			pub: c,
+			ctx: ctx,
+		}
 	}
 	return l.entry.WithContext(ctx)
 }
@@ -315,7 +331,7 @@ func (l *Logger) WithContext(ctx context.Context) ContextEntry {
 // Trace outputs log with level TraceLevel.
 func (l *Logger) Trace(args ...interface{}) *Event {
 	if c := l.config(); c != nil {
-		return c.GetEntry().WithSkip(1).Trace(args...)
+		return c.getEntry().WithSkip(1).Trace(args...)
 	}
 	return l.entry.WithSkip(1).Trace(args...)
 }
@@ -323,7 +339,7 @@ func (l *Logger) Trace(args ...interface{}) *Event {
 // Tracef outputs log with level TraceLevel.
 func (l *Logger) Tracef(format string, args ...interface{}) *Event {
 	if c := l.config(); c != nil {
-		return c.GetEntry().WithSkip(1).Tracef(format, args...)
+		return c.getEntry().WithSkip(1).Tracef(format, args...)
 	}
 	return l.entry.WithSkip(1).Tracef(format, args...)
 }
@@ -331,7 +347,7 @@ func (l *Logger) Tracef(format string, args ...interface{}) *Event {
 // Debug outputs log with level DebugLevel.
 func (l *Logger) Debug(args ...interface{}) *Event {
 	if c := l.config(); c != nil {
-		return c.GetEntry().WithSkip(1).Debug(args...)
+		return c.getEntry().WithSkip(1).Debug(args...)
 	}
 	return l.entry.WithSkip(1).Debug(args...)
 }
@@ -339,7 +355,7 @@ func (l *Logger) Debug(args ...interface{}) *Event {
 // Debugf outputs log with level DebugLevel.
 func (l *Logger) Debugf(format string, args ...interface{}) *Event {
 	if c := l.config(); c != nil {
-		return c.GetEntry().WithSkip(1).Debugf(format, args...)
+		return c.getEntry().WithSkip(1).Debugf(format, args...)
 	}
 	return l.entry.WithSkip(1).Debugf(format, args...)
 }
@@ -347,7 +363,7 @@ func (l *Logger) Debugf(format string, args ...interface{}) *Event {
 // Info outputs log with level InfoLevel.
 func (l *Logger) Info(args ...interface{}) *Event {
 	if c := l.config(); c != nil {
-		return c.GetEntry().WithSkip(1).Info(args...)
+		return c.getEntry().WithSkip(1).Info(args...)
 	}
 	return l.entry.WithSkip(1).Info(args...)
 }
@@ -355,7 +371,7 @@ func (l *Logger) Info(args ...interface{}) *Event {
 // Infof outputs log with level InfoLevel.
 func (l *Logger) Infof(format string, args ...interface{}) *Event {
 	if c := l.config(); c != nil {
-		return c.GetEntry().WithSkip(1).Infof(format, args...)
+		return c.getEntry().WithSkip(1).Infof(format, args...)
 	}
 	return l.entry.WithSkip(1).Infof(format, args...)
 }
@@ -363,7 +379,7 @@ func (l *Logger) Infof(format string, args ...interface{}) *Event {
 // Warn outputs log with level WarnLevel.
 func (l *Logger) Warn(args ...interface{}) *Event {
 	if c := l.config(); c != nil {
-		return c.GetEntry().WithSkip(1).Warn(args...)
+		return c.getEntry().WithSkip(1).Warn(args...)
 	}
 	return l.entry.WithSkip(1).Warn(args...)
 }
@@ -371,7 +387,7 @@ func (l *Logger) Warn(args ...interface{}) *Event {
 // Warnf outputs log with level WarnLevel.
 func (l *Logger) Warnf(format string, args ...interface{}) *Event {
 	if c := l.config(); c != nil {
-		return c.GetEntry().WithSkip(1).Warnf(format, args...)
+		return c.getEntry().WithSkip(1).Warnf(format, args...)
 	}
 	return l.entry.WithSkip(1).Warnf(format, args...)
 }
@@ -379,7 +395,7 @@ func (l *Logger) Warnf(format string, args ...interface{}) *Event {
 // Error outputs log with level ErrorLevel.
 func (l *Logger) Error(args ...interface{}) *Event {
 	if c := l.config(); c != nil {
-		return c.GetEntry().WithSkip(1).Error(args...)
+		return c.getEntry().WithSkip(1).Error(args...)
 	}
 	return l.entry.WithSkip(1).Error(args...)
 }
@@ -387,7 +403,7 @@ func (l *Logger) Error(args ...interface{}) *Event {
 // Errorf outputs log with level ErrorLevel.
 func (l *Logger) Errorf(format string, args ...interface{}) *Event {
 	if c := l.config(); c != nil {
-		return c.GetEntry().WithSkip(1).Errorf(format, args...)
+		return c.getEntry().WithSkip(1).Errorf(format, args...)
 	}
 	return l.entry.WithSkip(1).Errorf(format, args...)
 }
@@ -395,7 +411,7 @@ func (l *Logger) Errorf(format string, args ...interface{}) *Event {
 // Panic outputs log with level PanicLevel.
 func (l *Logger) Panic(args ...interface{}) *Event {
 	if c := l.config(); c != nil {
-		return c.GetEntry().WithSkip(1).Panic(args...)
+		return c.getEntry().WithSkip(1).Panic(args...)
 	}
 	return l.entry.WithSkip(1).Panic(args...)
 }
@@ -403,7 +419,7 @@ func (l *Logger) Panic(args ...interface{}) *Event {
 // Panicf outputs log with level PanicLevel.
 func (l *Logger) Panicf(format string, args ...interface{}) *Event {
 	if c := l.config(); c != nil {
-		return c.GetEntry().WithSkip(1).Panicf(format, args...)
+		return c.getEntry().WithSkip(1).Panicf(format, args...)
 	}
 	return l.entry.WithSkip(1).Panicf(format, args...)
 }
@@ -411,7 +427,7 @@ func (l *Logger) Panicf(format string, args ...interface{}) *Event {
 // Fatal outputs log with level FatalLevel.
 func (l *Logger) Fatal(args ...interface{}) *Event {
 	if c := l.config(); c != nil {
-		return c.GetEntry().WithSkip(1).Fatal(args...)
+		return c.getEntry().WithSkip(1).Fatal(args...)
 	}
 	return l.entry.WithSkip(1).Fatal(args...)
 }
@@ -419,7 +435,7 @@ func (l *Logger) Fatal(args ...interface{}) *Event {
 // Fatalf outputs log with level FatalLevel.
 func (l *Logger) Fatalf(format string, args ...interface{}) *Event {
 	if c := l.config(); c != nil {
-		return c.GetEntry().WithSkip(1).Fatalf(format, args...)
+		return c.getEntry().WithSkip(1).Fatalf(format, args...)
 	}
 	return l.entry.WithSkip(1).Fatalf(format, args...)
 }

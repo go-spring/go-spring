@@ -14,56 +14,36 @@
  * limitations under the License.
  */
 
-package queue
+package log_test
 
-import "sync"
+import (
+	"sync"
+	"testing"
 
-const (
-	MaxEventCount = 10000
+	"github.com/go-spring/spring-base/assert"
+	"github.com/go-spring/spring-base/log"
 )
 
-var (
-	inst *queue
-	once sync.Once
-)
-
-type Event interface {
-	OnEvent()
-}
-
-type queue struct {
-	ring chan Event
-}
-
-func get() *queue {
-	once.Do(func() {
-		inst = &queue{
-			ring: make(chan Event, MaxEventCount),
-		}
-		inst.consume()
-	})
-	return inst
-}
-
-func Publish(e Event) bool {
-	return get().publish(e)
-}
-
-func (q *queue) publish(e Event) bool {
-	select {
-	case q.ring <- e:
-		return true
-	default:
-		return false
-	}
-}
-
-func (q *queue) consume() {
+func TestCountingNoOpAppender(t *testing.T) {
+	appender := &log.CountingNoOpAppender{}
+	var wg sync.WaitGroup
+	wg.Add(2)
 	go func() {
-		for {
-			if e := <-q.ring; e != nil {
-				e.OnEvent()
-			}
+		defer wg.Done()
+		for i := 0; i < 3; i++ {
+			appender.Append(nil)
 		}
 	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 6; i++ {
+			appender.Append(nil)
+		}
+	}()
+	wg.Wait()
+	assert.Equal(t, appender.Count(), int64(9))
+}
+
+func TestConsoleAppender(t *testing.T) {
+
 }

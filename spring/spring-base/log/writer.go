@@ -21,71 +21,82 @@ import (
 	"io"
 	"os"
 	"sync"
-
-	"github.com/go-spring/spring-base/atomic"
 )
 
-var (
-	writers sync.Map
-)
+// Writers manages the Get and Release of Writer(s).
+var Writers = &writers{
+	writers: make(map[string]*sharedWriter),
+}
 
+// Writer is io.Writer with a name and a Stop method.
 type Writer interface {
 	io.Writer
 	Name() string
 	Stop(ctx context.Context)
 }
 
-type result struct {
-	wg  sync.WaitGroup
-	cnt atomic.Int32
-	w   Writer
-	err error
+// writers manages the Get and Release of Writer(s).
+type writers struct {
+	lock    sync.Mutex
+	writers map[string]*sharedWriter
 }
 
-func NewWriter(name string, fn func() (Writer, error)) (Writer, error) {
-	c := &result{}
-	c.wg.Add(1)
-	actual, loaded := writers.LoadOrStore(name, c)
-	if loaded {
-		c = actual.(*result)
-		c.wg.Wait()
-		if c.err != nil {
-			return nil, c.err
-		}
-		c.cnt.Add(1)
-		return c.w, nil
-	}
-	c.w, c.err = fn()
-	c.wg.Done()
-	if c.err != nil {
-		writers.Delete(name)
-		return nil, c.err
-	}
-	c.cnt.Add(1)
-	return c.w, nil
+// sharedWriter wrappers count when decreases to 0 the Writer will be released.
+type sharedWriter struct {
+	writer Writer
+	count  int32
 }
 
-func DestroyWriter(w Writer) {
-	v, ok := writers.Load(w.Name())
+// Has returns true if a Writer named by name is cached, otherwise false.
+func (s *writers) Has(name string) bool {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	_, ok := s.writers[name]
+	return ok
+}
+
+// Get returns a Writer that created by fn and named by name.
+func (s *writers) Get(name string, fn func() (Writer, error)) (Writer, error) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	sw, ok := s.writers[name]
+	if ok {
+		sw.count++
+		return sw.writer, nil
+	}
+	w, err := fn()
+	if err != nil {
+		return nil, err
+	}
+	sw = &sharedWriter{writer: w}
+	s.writers[name] = sw
+	sw.count++
+	return sw.writer, nil
+}
+
+// Release removes a Writer when its share count decreases to 0.
+func (s *writers) Release(ctx context.Context, writer Writer) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	sw, ok := s.writers[writer.Name()]
 	if !ok {
 		return
 	}
-	c := v.(*result)
-	if c.w != w {
+	sw.count--
+	if sw.count > 0 {
 		return
 	}
-	n := c.cnt.Add(-1)
-	if n > 0 {
-		return
-	}
-	writers.Delete(w.Name())
+	delete(s.writers, writer.Name())
+	writer.Stop(ctx)
 }
 
+// FileWriter is a Writer implementation by *os.File.
 type FileWriter struct {
 	file *os.File
 }
 
-func NewFileWriter(fileName string) (*FileWriter, error) {
+// NewFileWriter returns a FileWriter that a Writer implementation.
+func NewFileWriter(fileName string) (Writer, error) {
 	flag := os.O_RDWR | os.O_CREATE | os.O_APPEND
 	file, err := os.OpenFile(fileName, flag, 666)
 	if err != nil {

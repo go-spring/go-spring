@@ -35,30 +35,20 @@ const (
 	RedisFailure = "_redis_failure"
 )
 
-type publisher interface {
-	filter(level Level, e Entry, msg Message) bool
-	publish(e *Event)
-}
-
-type pubAppender struct {
-	level    Level
-	appender Appender
-}
-
-func (p *pubAppender) filter(level Level, e Entry, msg Message) bool {
-	return level < p.level
-}
-
-func (p *pubAppender) publish(e *Event) {
-	p.appender.Append(e)
-}
-
+// Entry provides context, errno and tag about a log message.
 type Entry interface {
 	Tag() string
 	Errno() Errno
 	Context() context.Context
 }
 
+// publisher will drop a log message when the filter method returns true.
+type publisher interface {
+	filter(level Level, e Entry, msg Message) Result
+	publish(e *Event)
+}
+
+// SimpleEntry is an Entry implementation that has no context.
 type SimpleEntry struct {
 	pub  publisher
 	tag  string
@@ -166,6 +156,7 @@ func (e SimpleEntry) Fatalf(format string, args ...interface{}) *Event {
 	return printf(e.pub, FatalLevel, e.skip, &e, format, args)
 }
 
+// ContextEntry is an Entry implementation that has context and errno.
 type ContextEntry struct {
 	ctx   context.Context
 	errno Errno
@@ -276,9 +267,9 @@ func printf(p publisher, level Level, skip int, e Entry, format string, args []i
 		}
 	}
 	if msg == nil {
-		msg = NewFormatMessage(format, args)
+		msg = NewFormattedMessage(format, args)
 	}
-	if p.filter(level, e, msg) {
+	if ResultDeny == p.filter(level, e, msg) {
 		return nil
 	}
 	file, line, _ := Caller(skip+2, true)
@@ -286,7 +277,6 @@ func printf(p publisher, level Level, skip int, e Entry, format string, args []i
 		entry: e,
 		time:  time.Now(),
 		msg:   msg,
-		text:  msg.Text(),
 		file:  file,
 		line:  line,
 		level: level,

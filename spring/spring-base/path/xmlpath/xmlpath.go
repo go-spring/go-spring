@@ -14,10 +14,5 @@
  * limitations under the License.
  */
 
-package differ_test
-
-import "testing"
-
-func TestDiffValue(t *testing.T) {
-
-}
+// Package xmlpath https://en.wikipedia.org/wiki/XPath
+package xmlpath

@@ -14,10 +14,4 @@
  * limitations under the License.
  */
 
-package differ_test
-
-import "testing"
-
-func TestDiffXML(t *testing.T) {
-
-}
+package xmldiff_test
