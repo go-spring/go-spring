@@ -153,8 +153,14 @@ func (s *server) Filters() []Filter {
 }
 
 // AddFilter 添加过滤器
-func (s *server) AddFilter(filter ...Filter) {
-	s.filters = append(s.filters, filter...)
+func (s *server) AddFilter(filters ...Filter) {
+	for _, filter := range filters {
+		if prefilter, ok := filter.(*Prefilter); ok {
+			s.AddPrefilter(prefilter)
+		} else {
+			s.filters = append(s.filters, filter)
+		}
+	}
 }
 
 // LoggerFilter 获取 Logger Filter
