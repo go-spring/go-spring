@@ -65,6 +65,9 @@ func GetLogger(level ...Level) *Logger {
 	pc, _, _, _ := runtime.Caller(1)
 	funcName := runtime.FuncForPC(pc).Name()
 	i := strings.LastIndex(funcName, "/")
+	if i < 0 { // example: main.init
+		i = 0
+	}
 	j := strings.Index(funcName[i:], ".")
 	return getLogger(funcName[:i+j], level...)
 }

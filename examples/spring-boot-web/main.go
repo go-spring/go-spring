@@ -15,6 +15,10 @@ import (
 	//_ "github.com/go-spring/starter-gin"
 )
 
+var (
+	logger = log.GetLogger()
+)
+
 type request struct{}
 
 func init() {
@@ -68,7 +72,7 @@ func read(response *http.Response, err error, expected string) {
 	b, _ := ioutil.ReadAll(response.Body)
 	fmt.Println("status:", response.Status, "body:", string(b))
 	if string(b) != expected {
-		log.Errorf("get %s but want %s", string(b), expected)
+		logger.Errorf("get %s but want %s", string(b), expected)
 	}
 }
 
