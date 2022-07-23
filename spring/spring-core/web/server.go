@@ -276,6 +276,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	for _, f := range s.Prefilters() {
 		prefilters = append(prefilters, f)
 	}
+	prefilters = append(prefilters, s.filters...)
 	prefilters = append(prefilters, HandlerFilter(WrapH(s.handler)))
 	NewFilterChain(prefilters).Next(NewBaseContext("", nil, r, writer))
 }
