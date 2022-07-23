@@ -3,7 +3,7 @@ module github.com/go-spring/benchmarks/spring-base-cast
 go 1.14
 
 require (
-	github.com/go-spring/spring-base v1.1.0-rc4.0.20220723014310-0954983fa7c4
+	github.com/go-spring/spring-base v1.1.0
 	github.com/spf13/cast v1.4.1
 )
 

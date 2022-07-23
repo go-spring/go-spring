@@ -3,7 +3,7 @@ module github.com/go-spring/spring-core
 go 1.14
 
 require (
-	github.com/go-spring/spring-base v1.1.0-rc4.0.20220723014310-0954983fa7c4
+	github.com/go-spring/spring-base v1.1.0
 	github.com/golang/mock v1.6.0
 	github.com/google/uuid v1.3.0
 	github.com/magiconair/properties v1.8.5
