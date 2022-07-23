@@ -29,6 +29,9 @@ import (
 
 // StartRecord 启动流量录制
 func StartRecord(ctx Context) {
+	if !recorder.RecordMode() {
+		return
+	}
 	r, err := uuid.NewRandom()
 	if err != nil {
 		logger.WithContext(ctx.Context()).Error(log.ERROR, err)
@@ -39,6 +42,9 @@ func StartRecord(ctx Context) {
 
 // StopRecord 停止流量录制
 func StopRecord(ctx Context) {
+	if !recorder.RecordMode() {
+		return
+	}
 	req := ctx.Request()
 	resp := ctx.ResponseWriter()
 	recorder.RecordInbound(req.Context(), recorder.HTTP, &recorder.SimpleAction{

@@ -20,10 +20,8 @@ import (
 	"bytes"
 	"reflect"
 	"strconv"
-	"strings"
 
 	"github.com/go-spring/spring-base/cast"
-	"github.com/go-spring/spring-base/differ"
 	"github.com/go-spring/spring-base/net/internal/json"
 )
 
@@ -185,15 +183,4 @@ func flatValue(prefix string, v interface{}, result map[string]string) {
 			flatJSON(prefix+`[""]`, []byte(val.String()), result)
 		}
 	}
-}
-
-type timestampPath struct{}
-
-var TimestampPath = &timestampPath{}
-
-func (p *timestampPath) Match(path string) differ.MatchResult {
-	if strings.HasSuffix(path, "[Timestamp]") {
-		return differ.MatchFull
-	}
-	return differ.MatchPrefix
 }

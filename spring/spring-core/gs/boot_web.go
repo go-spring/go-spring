@@ -24,14 +24,6 @@ import (
 	"github.com/go-spring/spring-core/web"
 )
 
-func init() {
-	gInits = append(gInits, func(s *startup) {
-		if s.web {
-			Object(new(WebStarter)).Export((*AppEvent)(nil))
-		}
-	})
-}
-
 // WebStarter Web 服务器启动器
 type WebStarter struct {
 	Containers []web.Server `autowire:""`

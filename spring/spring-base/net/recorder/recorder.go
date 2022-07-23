@@ -34,7 +34,7 @@ const (
 )
 
 var (
-	logger = log.GetLogger("GS_RECORDER")
+	logger = log.GetLogger()
 )
 
 func init() {
@@ -105,8 +105,8 @@ func toAction(action *SimpleAction) *Action {
 	return &Action{
 		Protocol:  action.Protocol,
 		Timestamp: action.Timestamp,
-		Request:   Message(action.Request),
-		Response:  Message(action.Response),
+		Request:   action.Request,
+		Response:  action.Response,
 	}
 }
 
@@ -146,10 +146,6 @@ func onSession(ctx context.Context, f func(*recordSession) error) *Session {
 			logger.WithSkip(2).Error(err)
 		}
 	}()
-	if !recorder.mode {
-		err = errors.New("record mode not enabled")
-		return nil
-	}
 	v, err := knife.Load(ctx, sessionKey)
 	if err != nil {
 		return nil

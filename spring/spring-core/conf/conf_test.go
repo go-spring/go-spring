@@ -28,13 +28,8 @@ import (
 
 	"github.com/go-spring/spring-base/assert"
 	"github.com/go-spring/spring-base/cast"
-	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-core/conf"
 )
-
-func init() {
-	log.SetLevel(log.TraceLevel)
-}
 
 func TestIsValueType(t *testing.T) {
 

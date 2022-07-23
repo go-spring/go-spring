@@ -42,7 +42,8 @@ import (
 )
 
 func init() {
-	log.SetLevel(log.TraceLevel)
+	err := log.Refresh("testdata/config/logger.xml")
+	util.Panic(err).When(err != nil)
 }
 
 func runTest(c gs.Container, fn func(gs.Context)) error {

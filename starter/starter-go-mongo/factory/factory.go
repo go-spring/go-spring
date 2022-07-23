@@ -26,9 +26,13 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/readpref"
 )
 
+var (
+	logger = log.GetLogger()
+)
+
 // NewClient 创建 MongoDB 客户端
 func NewClient(config mongo.ClientConfig) (*g.Client, error) {
-	log.Infof("open mongo db %s", config.URL)
+	logger.Infof("open mongo db %s", config.URL)
 	client, err := g.Connect(context.Background(), options.Client().ApplyURI(config.URL))
 	if err != nil {
 		return nil, err
@@ -43,8 +47,8 @@ func NewClient(config mongo.ClientConfig) (*g.Client, error) {
 
 // CloseClient 关闭 MongoDB 客户端
 func CloseClient(client *g.Client) {
-	log.Info("close mongo db")
+	logger.Info("close mongo db")
 	if err := client.Disconnect(context.Background()); err != nil {
-		log.Error(nil, err)
+		logger.Error(nil, err)
 	}
 }

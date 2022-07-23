@@ -33,6 +33,10 @@ import (
 	"github.com/go-spring/spring-core/gs/gsutil"
 )
 
+var (
+	logger = log.GetLogger()
+)
+
 // Context defines some methods of IoC container that Callable use.
 type Context interface {
 	// Matches returns true when the Condition returns true,
@@ -218,12 +222,12 @@ func (r *argList) getArg(ctx Context, arg Arg, t reflect.Type, fileLine string) 
 	)
 
 	description := fmt.Sprintf("arg:\"%v\" %s", arg, fileLine)
-	log.Tracef("get value %s", description)
+	logger.Tracef("get value %s", description)
 	defer func() {
 		if err == nil {
-			log.Tracef("get value success %s", description)
+			logger.Tracef("get value success %s", description)
 		} else {
-			log.Tracef("get value error %s %s", err.Error(), description)
+			logger.Tracef("get value error %s %s", err.Error(), description)
 		}
 	}()
 
@@ -314,12 +318,12 @@ func (arg *optionArg) call(ctx Context) (reflect.Value, error) {
 		err error
 	)
 
-	log.Tracef("call option func %s", arg.r.fileLine)
+	logger.Tracef("call option func %s", arg.r.fileLine)
 	defer func() {
 		if err == nil {
-			log.Tracef("call option func success %s", arg.r.fileLine)
+			logger.Tracef("call option func success %s", arg.r.fileLine)
 		} else {
-			log.Tracef("call option func error %s %s", err.Error(), arg.r.fileLine)
+			logger.Tracef("call option func error %s %s", err.Error(), arg.r.fileLine)
 		}
 	}()
 

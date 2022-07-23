@@ -26,6 +26,10 @@ import (
 	"github.com/go-spring/starter-rabbit/server"
 )
 
+var (
+	logger = log.GetLogger()
+)
+
 func init() {
 	gs.Object(new(Starter)).Export((*gs.AppEvent)(nil))
 }
@@ -70,7 +74,7 @@ func (starter *Starter) OnAppStart(ctx gs.Context) {
 				nil,   // args
 			)
 			if err != nil {
-				log.Error(err)
+				logger.Error(err)
 				continue
 			}
 			d := <-delivery

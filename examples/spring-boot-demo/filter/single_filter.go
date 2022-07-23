@@ -19,7 +19,6 @@ package filter
 import (
 	"fmt"
 
-	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/web"
 )
@@ -40,6 +39,6 @@ func (f *SingleBeanFilter) Invoke(ctx web.Context, chain web.FilterChain) {
 	if f.DefaultValue != "app-test" {
 		panic(fmt.Errorf("${default-value} expect 'app-test' but '%s'", f.DefaultValue))
 	}
-	log.WithContext(ctx.Context()).Info("::SingleBeanFilter")
+	logger.WithContext(ctx.Context()).Info("::SingleBeanFilter")
 	chain.Next(ctx)
 }

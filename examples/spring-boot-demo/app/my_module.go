@@ -29,6 +29,10 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 )
 
+var (
+	logger = log.GetLogger()
+)
+
 func init() {
 	gs.Provide(new(MyModule)).Export((*gs.AppEvent)(nil))
 }
@@ -36,19 +40,19 @@ func init() {
 type MyModule struct{}
 
 func (m *MyModule) OnAppStart(ctx gs.Context) {
-	log.Info("MyModule start")
+	logger.Info("MyModule start")
 	ctx.Go(Process)
 }
 
 func (m *MyModule) OnAppStop(ctx context.Context) {
-	log.Info("MyModule stop")
+	logger.Info("MyModule stop")
 }
 
 func Process(ctx context.Context) {
 	defer gs.ShutDown("run end")
 
-	defer func() { log.Info("go stop") }()
-	log.Info("go start")
+	defer func() { logger.Info("go stop") }()
+	logger.Info("go start")
 
 	time.Sleep(200 * time.Millisecond)
 
@@ -58,7 +62,7 @@ func Process(ctx context.Context) {
 		if body, e := ioutil.ReadAll(resp.Body); e != nil {
 			panic(e)
 		} else {
-			log.Infof("resp code=%d body=%s", resp.StatusCode, string(body))
+			logger.Infof("resp code=%d body=%s", resp.StatusCode, string(body))
 			if string(body) != "ok" {
 				panic(errors.New("error"))
 			}
@@ -71,7 +75,7 @@ func Process(ctx context.Context) {
 		if body, e := ioutil.ReadAll(resp.Body); e != nil {
 			panic(e)
 		} else {
-			log.Infof("resp code=%d body=%s", resp.StatusCode, string(body))
+			logger.Infof("resp code=%d body=%s", resp.StatusCode, string(body))
 		}
 	}
 
@@ -81,7 +85,7 @@ func Process(ctx context.Context) {
 		if body, e := ioutil.ReadAll(resp.Body); e != nil {
 			panic(e)
 		} else {
-			log.Infof("resp code=%d body=%s", resp.StatusCode, string(body))
+			logger.Infof("resp code=%d body=%s", resp.StatusCode, string(body))
 			if string(body) != "{\"code\":200,\"msg\":\"SUCCESS\",\"data\":{\"echo\":\"echo echo\"}}" {
 				panic(errors.New("error"))
 			}
@@ -99,7 +103,7 @@ func Process(ctx context.Context) {
 			if body, e0 := ioutil.ReadAll(resp.Body); e0 != nil {
 				panic(e0)
 			} else {
-				log.Infof("resp code=%d body=%s", resp.StatusCode, string(body))
+				logger.Infof("resp code=%d body=%s", resp.StatusCode, string(body))
 				if string(body) != "func() return ok" {
 					panic(errors.New("error"))
 				}
@@ -113,7 +117,7 @@ func Process(ctx context.Context) {
 		if body, e := ioutil.ReadAll(resp.Body); e != nil {
 			panic(e)
 		} else {
-			log.Infof("resp code=%d body=(banner.txt)\n%s", resp.StatusCode, string(body))
+			logger.Infof("resp code=%d body=(banner.txt)\n%s", resp.StatusCode, string(body))
 		}
 	}
 }

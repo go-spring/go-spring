@@ -31,6 +31,10 @@ import (
 	"gorm.io/gorm"
 )
 
+var (
+	logger = log.GetLogger()
+)
+
 func init() {
 	gs.Static("/static/config", "config")
 
@@ -52,7 +56,7 @@ type MyController struct {
 
 func (c *MyController) onInit(ctx gs.Context) error {
 	ctx.Go(func(ctx context.Context) {
-		defer func() { log.Info("exit after waiting in ::Go") }()
+		defer func() { logger.Info("exit after waiting in ::Go") }()
 
 		ticker := time.NewTicker(10 * time.Millisecond)
 		defer ticker.Stop()
@@ -62,7 +66,7 @@ func (c *MyController) onInit(ctx gs.Context) error {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				log.Info("::Go")
+				logger.Info("::Go")
 			}
 		}
 	})
@@ -103,7 +107,7 @@ func (c *MyController) OK(ctx web.Context) {
 
 		var engine string
 		_ = rows.Scan(&engine)
-		log.Info(engine)
+		logger.Info(engine)
 
 		if engine != "sql-mock" {
 			panic(errors.New("error"))

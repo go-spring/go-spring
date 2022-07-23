@@ -29,7 +29,6 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/grpc"
 	"github.com/go-spring/spring-core/gs/arg"
@@ -140,7 +139,7 @@ func (app *App) Run() error {
 	}
 
 	app.c.Close()
-	log.Info("application exited")
+	logger.Info("application exited")
 	return nil
 }
 
@@ -212,7 +211,7 @@ func (app *App) start() error {
 		}
 	})
 
-	log.Info("application started successfully")
+	logger.Info("application started successfully")
 	return nil
 }
 
@@ -331,7 +330,7 @@ func (app *App) loadResource(e *configuration, filename string) ([]Resource, err
 
 // ShutDown 关闭执行器
 func (app *App) ShutDown(msg ...string) {
-	log.Infof("program will exit %s", strings.Join(msg, " "))
+	logger.Infof("program will exit %s", strings.Join(msg, " "))
 	select {
 	case <-app.exitChan:
 		// chan 已关闭，无需再次关闭。

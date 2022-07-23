@@ -231,6 +231,11 @@ type Logger struct {
 	level Level
 }
 
+// wrapperConfig atomic.Value 要求底层数据完全一致。
+type wrapperConfig struct {
+	config privateConfig
+}
+
 func NewLogger(name string, level Level) *Logger {
 	l := &Logger{name: name, level: level}
 	l.reconfigure(nil)
@@ -244,18 +249,18 @@ func (l *Logger) Name() string {
 }
 
 func (l *Logger) config() privateConfig {
-	v := l.value.Load()
-	if v == empty {
+	v := l.value.Load().(*wrapperConfig)
+	if v.config == empty {
 		return nil
 	}
-	return v.(privateConfig)
+	return v.config
 }
 
 func (l *Logger) reconfigure(config privateConfig) {
 	if config == nil {
-		l.value.Store(empty)
+		l.value.Store(&wrapperConfig{empty})
 	} else {
-		l.value.Store(config)
+		l.value.Store(&wrapperConfig{config})
 	}
 }
 

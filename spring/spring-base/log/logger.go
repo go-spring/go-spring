@@ -109,7 +109,7 @@ func (c *baseLoggerConfig) getAppenders() []*AppenderRef {
 
 // logEvent is used only for parent logging events.
 func (c *baseLoggerConfig) logEvent(e *Event) {
-	if ResultDeny != c.parent.filter(e.level, e.entry, e.msg) {
+	if ResultDeny != c.filter(e.level, e.entry, e.msg) {
 		c.callAppenders(e)
 	}
 }
