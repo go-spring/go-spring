@@ -24,10 +24,10 @@ github.com/go-openapi/spec v0.20.6/go.mod h1:2OpW+JddWPrpXSCIX8eOx7lZ5iyuWj3RYR6
 github.com/go-openapi/swag v0.19.5/go.mod h1:POnQmlKehdgb5mhVOsnJFsivZCEZ/vjK9gh66Z9tfKk=
 github.com/go-openapi/swag v0.19.15 h1:D2NRCBzS9/pEY3gP9Nl8aDqGUcPFrwG2p+CNFrLyrCM=
 github.com/go-openapi/swag v0.19.15/go.mod h1:QYRuS/SOXUCsnplDa677K7+DxSOj6IPNl/eQntq43wQ=
-github.com/go-spring/spring-base v1.1.0-rc4.0.20220723014310-0954983fa7c4 h1:/MHYg8xICMIaJOFzkdXcR+Qa143XUDGAmhABTgzvU7I=
-github.com/go-spring/spring-base v1.1.0-rc4.0.20220723014310-0954983fa7c4/go.mod h1:tdngm+6agA34HQ5YADitIGaQ04e1pmxuR5cd6Eaobmw=
-github.com/go-spring/spring-core v1.1.0-rc4.0.20220723014617-b854e072484a h1:LkHIchQGi18LlcSWqgUREvIdkC5fpR+87CCE2eClKQE=
-github.com/go-spring/spring-core v1.1.0-rc4.0.20220723014617-b854e072484a/go.mod h1:l+kPbGgZV4HjcS/cg44xoRVh7osgLJIC6s7ZUDyeMxo=
+github.com/go-spring/spring-base v1.1.0 h1:7zNRZ+N+2T49ixR7CxtnGTu9M5sq/Gqyyl/SVdtTmiM=
+github.com/go-spring/spring-base v1.1.0/go.mod h1:tdngm+6agA34HQ5YADitIGaQ04e1pmxuR5cd6Eaobmw=
+github.com/go-spring/spring-core v1.1.0 h1:bfb4ZexbIacvkuhROi9YBHCMrA9HJCJAKOPEXFGKYlM=
+github.com/go-spring/spring-core v1.1.0/go.mod h1:C6qg7jK3ENb0a41J5jZWY46QCKf9a1/28Q0EsSHAHtE=
 github.com/golang/mock v1.6.0 h1:ErTB+efbowRARo13NNdxyJji2egdxLGQhRaY+DUumQc=
 github.com/golang/mock v1.6.0/go.mod h1:p6yTPP+5HYm5mzsMV8JkE6ZKdX+/wYM6Hr+LicevLPs=
 github.com/google/uuid v1.3.0 h1:t6JiXgmwXMjEs8VusXIJk2BXHsn+wx8BZdTaoZ5fu7I=
