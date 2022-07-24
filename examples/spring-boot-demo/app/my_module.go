@@ -19,6 +19,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"time"
@@ -37,18 +38,20 @@ func init() {
 	gs.Provide(new(MyModule)).Export((*gs.AppEvent)(nil))
 }
 
-type MyModule struct{}
+type MyModule struct {
+	BasePath string `value:"${web.server.base-path:=}"`
+}
 
 func (m *MyModule) OnAppStart(ctx gs.Context) {
 	logger.Info("MyModule start")
-	ctx.Go(Process)
+	ctx.Go(m.Process)
 }
 
 func (m *MyModule) OnAppStop(ctx context.Context) {
 	logger.Info("MyModule stop")
 }
 
-func Process(ctx context.Context) {
+func (m *MyModule) Process(ctx context.Context) {
 	defer gs.ShutDown("run end")
 
 	defer func() { logger.Info("go stop") }()
@@ -56,7 +59,8 @@ func Process(ctx context.Context) {
 
 	time.Sleep(200 * time.Millisecond)
 
-	if resp, err := http.Get("http://localhost:8080/api/ok"); err != nil {
+	path := fmt.Sprintf("http://localhost:8080%s/api/ok", m.BasePath)
+	if resp, err := http.Get(path); err != nil {
 		panic(err)
 	} else {
 		if body, e := ioutil.ReadAll(resp.Body); e != nil {
@@ -69,7 +73,8 @@ func Process(ctx context.Context) {
 		}
 	}
 
-	if resp, err := http.Get("http://127.0.0.1:8080/swagger/doc.json"); err != nil {
+	path = fmt.Sprintf("http://localhost:8080%s/swagger/doc.json", m.BasePath)
+	if resp, err := http.Get(path); err != nil {
 		panic(err)
 	} else {
 		if body, e := ioutil.ReadAll(resp.Body); e != nil {
@@ -79,7 +84,8 @@ func Process(ctx context.Context) {
 		}
 	}
 
-	if resp, err := http.Get("http://localhost:8080/api/echo?str=echo"); err != nil {
+	path = fmt.Sprintf("http://localhost:8080%s/api/echo?str=echo", m.BasePath)
+	if resp, err := http.Get(path); err != nil {
 		panic(err)
 	} else {
 		if body, e := ioutil.ReadAll(resp.Body); e != nil {
@@ -92,7 +98,8 @@ func Process(ctx context.Context) {
 		}
 	}
 
-	if req, err := http.NewRequest("GET", "http://localhost:8080/api/func", nil); err != nil {
+	path = fmt.Sprintf("http://localhost:8080%s/api/func", m.BasePath)
+	if req, err := http.NewRequest("GET", path, nil); err != nil {
 		panic(err)
 	} else {
 		auth := middleware.DefaultKeyAuthConfig.AuthScheme + " " + "key_auth"
@@ -111,13 +118,25 @@ func Process(ctx context.Context) {
 		}
 	}
 
-	if resp, err := http.Get("http://127.0.0.1:8080/static/config/banner.txt"); err != nil {
+	path = fmt.Sprintf("http://localhost:8080%s/static/config/banner.txt", m.BasePath)
+	if resp, err := http.Get(path); err != nil {
 		panic(err)
 	} else {
 		if body, e := ioutil.ReadAll(resp.Body); e != nil {
 			panic(e)
 		} else {
 			logger.Infof("resp code=%d body=(banner.txt)\n%s", resp.StatusCode, string(body))
+		}
+	}
+
+	path = fmt.Sprintf("http://localhost:8080%s/static/html/hello.html", m.BasePath)
+	if resp, err := http.Get(path); err != nil {
+		panic(err)
+	} else {
+		if body, e := ioutil.ReadAll(resp.Body); e != nil {
+			panic(e)
+		} else {
+			logger.Infof("resp code=%d body=(hello.html)\n%s", resp.StatusCode, string(body))
 		}
 	}
 }

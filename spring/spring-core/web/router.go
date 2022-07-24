@@ -18,6 +18,8 @@ package web
 
 import (
 	"net/http"
+
+	"github.com/go-spring/spring-base/util"
 )
 
 const (
@@ -268,7 +270,22 @@ func (r *router) Static(prefix string, dir string) *Mapper {
 
 // StaticFS 定义一组文件资源
 func (r *router) StaticFS(prefix string, fs http.FileSystem) *Mapper {
-	fileServer := http.FileServer(fs)
-	h := WrapH(http.StripPrefix(prefix, fileServer))
-	return r.HandleGet(prefix+"/*", h)
+	return r.HandleGet(prefix+"/*", &FileHandler{
+		Prefix: prefix,
+		Server: http.FileServer(fs),
+	})
+}
+
+type FileHandler struct {
+	Prefix string
+	Server http.Handler
+}
+
+func (f *FileHandler) Invoke(ctx Context) {
+	h := http.StripPrefix(f.Prefix, f.Server)
+	h.ServeHTTP(ctx.ResponseWriter(), ctx.Request())
+}
+
+func (f *FileHandler) FileLine() (file string, line int, fnName string) {
+	return util.FileLine(f.Invoke)
 }

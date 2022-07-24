@@ -18,8 +18,10 @@ package api
 
 import (
 	"context"
+	"embed"
 	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/go-spring/spring-base/log"
@@ -31,12 +33,14 @@ import (
 	"gorm.io/gorm"
 )
 
-var (
-	logger = log.GetLogger()
-)
+var logger = log.GetLogger()
+
+//go:embed html
+var htmlFS embed.FS
 
 func init() {
 	gs.Static("/static/config", "config")
+	gs.StaticFS("/static", http.FS(htmlFS))
 
 	gs.GetMapping("/api/func", func(ctx web.Context) {
 		ctx.String("func() return ok")

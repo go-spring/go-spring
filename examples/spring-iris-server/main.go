@@ -19,7 +19,7 @@ type HelloController struct {
 }
 
 func (c *HelloController) Hello(ctx iris.Context) {
-	s := c.Service.Hello(ctx.Params().Get("name"))
+	s := c.Service.Hello(ctx.URLParam("name"))
 	ctx.Text(s)
 }
 

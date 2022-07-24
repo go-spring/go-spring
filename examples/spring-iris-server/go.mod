@@ -5,7 +5,7 @@ go 1.14
 require (
 	github.com/go-spring/spring-base v1.1.0
 	github.com/go-spring/spring-core v1.1.0
-	github.com/kataras/iris/v12 v12.1.8
+	github.com/kataras/iris/v12 v12.2.0-alpha8
 	github.com/shurcooL/sanitized_anchor_name v1.0.0 // indirect
 )
 
