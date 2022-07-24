@@ -44,13 +44,13 @@ type Handler interface {
 
 // ServerConfig 定义 web 服务器配置
 type ServerConfig struct {
+	Prefix       string `value:"${prefix:=}"`          // 用于 WebStarter 选择路由匹配的 Server
 	Host         string `value:"${host:=}"`            // 监听 IP
 	Port         int    `value:"${port:=8080}"`        // HTTP 端口
 	EnableSSL    bool   `value:"${ssl.enable:=false}"` // 是否启用 HTTPS
 	KeyFile      string `value:"${ssl.key:=}"`         // SSL 秘钥
 	CertFile     string `value:"${ssl.cert:=}"`        // SSL 证书
-	BasePath     string `value:"${base-path:=}"`       // 根路径
-	Prefix       string `value:"${prefix:=}"`          // 路由前缀
+	BasePath     string `value:"${base-path:=}"`       // 当前 Server 的所有路由都具有这个路径前缀
 	ReadTimeout  int    `value:"${read-timeout:=0}"`   // 读取超时，毫秒
 	WriteTimeout int    `value:"${write-timeout:=0}"`  // 写入超时，毫秒
 }
@@ -216,11 +216,12 @@ func (s *server) prepare() error {
 	}
 
 	// 打印所有的路由信息
-	for _, mapper := range s.Mappers() {
+	for _, m := range s.Mappers() {
 		logger.Infof("%v :%d %s -> %s:%d %s", func() []interface{} {
-			method := GetMethod(mapper.method)
-			file, line, fnName := mapper.handler.FileLine()
-			return util.T(method, s.config.Port, mapper.path, file, line, fnName)
+			method := GetMethod(m.method)
+			path := s.config.BasePath + m.path
+			file, line, fnName := m.handler.FileLine()
+			return util.T(method, s.config.Port, path, file, line, fnName)
 		})
 	}
 

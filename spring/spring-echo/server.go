@@ -49,8 +49,9 @@ type route struct {
 
 // serverHandler echo 实现的 web 服务器
 type serverHandler struct {
-	echo   *echo.Echo
-	routes map[string]route
+	basePath string
+	echo     *echo.Echo
+	routes   map[string]route
 }
 
 // New 创建 echo 实现的 web 服务器
@@ -59,6 +60,7 @@ func New(config web.ServerConfig) web.Server {
 	h.echo = echo.New()
 	h.echo.HideBanner = true
 	h.routes = make(map[string]route)
+	h.basePath = config.BasePath
 	return web.NewServer(config, h)
 }
 
@@ -104,6 +106,12 @@ func (h *serverHandler) Start(s web.Server) error {
 		filters := urlPatterns.Get(m.Path())
 		handler := wrapperHandler(m.Handler(), filters)
 		path, wildCardName := web.ToPathStyle(m.Path(), web.EchoPathStyle)
+		{
+			path = h.basePath + path
+			if f, ok := m.Handler().(*web.FileHandler); ok {
+				f.Prefix = h.basePath + f.Prefix
+			}
+		}
 		for _, method := range web.GetMethod(m.Method()) {
 			h.echo.Add(method, path, handler)
 			h.routes[method+path] = route{m.Handler(), m.Path(), wildCardName}

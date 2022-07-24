@@ -38,11 +38,7 @@ func (starter *WebStarter) OnAppStart(ctx Context) {
 	}
 	for _, m := range starter.Router.Mappers() {
 		for _, c := range starter.getContainers(m) {
-			path := c.Config().BasePath + m.Path()
-			if f, ok := m.Handler().(*web.FileHandler); ok {
-				f.Prefix = c.Config().BasePath + f.Prefix
-			}
-			c.AddMapper(web.NewMapper(m.Method(), path, m.Handler()))
+			c.AddMapper(m)
 		}
 	}
 	starter.startContainers(ctx)

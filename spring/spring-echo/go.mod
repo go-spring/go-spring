@@ -8,7 +8,7 @@ require (
 	github.com/labstack/echo/v4 v4.6.1
 )
 
-//replace (
-//	github.com/go-spring/spring-base => ../spring-base
-//	github.com/go-spring/spring-core => ../spring-core
-//)
+replace (
+	github.com/go-spring/spring-base => ../spring-base
+	github.com/go-spring/spring-core => ../spring-core
+)
