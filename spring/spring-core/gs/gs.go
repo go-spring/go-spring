@@ -129,11 +129,12 @@ type tempContainer struct {
 // 性绑定，要么同时使用依赖注入和属性绑定。
 type container struct {
 	*tempContainer
-	ctx        context.Context
-	cancel     context.CancelFunc
-	destroyers []func()
-	state      refreshState
-	wg         sync.WaitGroup
+	ctx                     context.Context
+	cancel                  context.CancelFunc
+	destroyers              []func()
+	state                   refreshState
+	wg                      sync.WaitGroup
+	AllowCircularReferences bool `value:"${spring.main.allow-circular-references:=false}"`
 }
 
 // New 创建 IoC 容器。
@@ -401,12 +402,16 @@ func (c *container) refresh(autoClear bool) (err error) {
 		}
 	}
 
-	// 处理被标记为延迟注入的那些 bean 字段
-	for _, f := range stack.lazyFields {
-		tag := strings.TrimSuffix(f.tag, ",lazy")
-		if err := c.wireByTag(f.v, tag, stack); err != nil {
-			return fmt.Errorf("%q wired error: %s", f.path, err.Error())
+	if c.AllowCircularReferences {
+		// 处理被标记为延迟注入的那些 bean 字段
+		for _, f := range stack.lazyFields {
+			tag := strings.TrimSuffix(f.tag, ",lazy")
+			if err := c.wireByTag(f.v, tag, stack); err != nil {
+				return fmt.Errorf("%q wired error: %s", f.path, err.Error())
+			}
 		}
+	} else if len(stack.lazyFields) > 0 {
+		return errors.New("remove the dependency cycle between beans")
 	}
 
 	c.destroyers = stack.sortDestroyers()

@@ -38,7 +38,7 @@ func init() {
 	log.SetFlags(log.Lshortfile)
 }
 
-const help = `(v0.0.2) command:
+const help = `(v0.0.3) command:
   gs pull spring-*/starter-* [branch]
   gs push spring-*/starter-*
   gs remove spring-*/starter-*
@@ -108,7 +108,7 @@ func main() {
 
 	// 发布新版本前需要确认版本号是否已经更新
 	{
-		file := filepath.Join(rootDir, "spring/spring-core/gs/version.go")
+		file := filepath.Join(rootDir, "spring/spring-core/gs/gs_version.go")
 		data, err := ioutil.ReadFile(file)
 		if err != nil {
 			panic(err)

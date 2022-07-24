@@ -2919,6 +2919,7 @@ func newCircularB() *circularB {
 func TestLazy(t *testing.T) {
 	for i := 0; i < 1; i++ {
 		c := gs.New()
+		c.Property("spring.main.allow-circular-references", "true")
 		c.Provide(newCircularA)
 		c.Provide(newCircularB)
 		d := struct {
