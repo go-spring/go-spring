@@ -153,8 +153,8 @@ func (s *server) Filters() []Filter {
 }
 
 // AddFilter 添加过滤器
-func (s *server) AddFilter(filter ...Filter) {
-	s.filters = append(s.filters, filter...)
+func (s *server) AddFilter(filters ...Filter) {
+	s.filters = append(s.filters, filters...)
 }
 
 // LoggerFilter 获取 Logger Filter
@@ -270,6 +270,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	for _, f := range s.Prefilters() {
 		prefilters = append(prefilters, f)
 	}
+	prefilters = append(prefilters, s.filters...)
 	prefilters = append(prefilters, HandlerFilter(WrapH(s.handler)))
 	NewFilterChain(prefilters).Next(NewBaseContext("", nil, r, writer))
 }
