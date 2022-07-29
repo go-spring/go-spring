@@ -52,6 +52,10 @@ var (
 	logger = log.GetLogger()
 )
 
+var (
+	contextType = reflect.TypeOf((*Context)(nil)).Elem()
+)
+
 func init() {
 	// 如果发现是调试模式则设置日志级别为 Debug 级别。
 	{
@@ -112,6 +116,11 @@ type Context interface {
 	Go(fn func(ctx context.Context))
 }
 
+// ContextAware injects the Context into a struct as the field GSContext.
+type ContextAware struct {
+	GSContext Context `autowire:""`
+}
+
 type tempContainer struct {
 	p               *conf.Properties
 	beans           []*BeanDefinition
@@ -134,6 +143,7 @@ type container struct {
 	destroyers              []func()
 	state                   refreshState
 	wg                      sync.WaitGroup
+	ContextAware            bool
 	AllowCircularReferences bool `value:"${spring.main.allow-circular-references:=false}"`
 }
 
@@ -420,7 +430,7 @@ func (c *container) refresh(autoClear bool) (err error) {
 	cost := time.Now().Sub(start)
 	logger.Infof("refresh %d beans cost %v", len(beansById), cost)
 
-	if autoClear {
+	if autoClear && !c.ContextAware {
 		c.clear()
 	}
 
@@ -804,6 +814,9 @@ func (c *container) wireStruct(v reflect.Value, opt conf.BindParam, stack *wirin
 				f := lazyField{v: fv, path: fieldPath, tag: tag}
 				stack.lazyFields = append(stack.lazyFields, f)
 			} else {
+				if ft.Type == contextType {
+					c.ContextAware = true
+				}
 				if err := c.wireByTag(fv, tag, stack); err != nil {
 					return fmt.Errorf("%q wired error: %w", fieldPath, err)
 				}

@@ -2966,3 +2966,21 @@ func TestDestroyDependence(t *testing.T) {
 	err := c.Refresh()
 	assert.Nil(t, err)
 }
+
+type ContextAware struct {
+	gs.ContextAware
+}
+
+func (c *ContextAware) Echo(str string) string {
+	return c.GSContext.Prop("prefix") + " " + str + "!"
+}
+
+func TestContextAware(t *testing.T) {
+	c := gs.New()
+	c.Property("prefix", "hello")
+	b := c.Object(new(ContextAware))
+	err := c.Refresh()
+	assert.Nil(t, err)
+	a := b.Interface().(*ContextAware)
+	assert.Equal(t, a.Echo("gopher"), "hello gopher!")
+}
