@@ -34,18 +34,24 @@ const (
 )
 
 var (
-	logger = log.GetLogger()
+	recorder Recorder
 )
 
-func init() {
-	if cast.ToBool(os.Getenv("GS_FASTDEV_RECORD")) {
-		recorder.mode = true
-	}
+// Init 模块初始化，由于日志组件导致当前模块需要延迟初始化。
+func Init() {
+	recorder.once.Do(func() {
+		if cast.ToBool(os.Getenv("GS_FASTDEV_RECORD")) {
+			recorder.mode = true
+		}
+		recorder.logger = log.GetLogger(util.TypeName(&recorder))
+	})
 }
 
-var recorder struct {
-	mode bool     // 是否为录制模式。
-	data sync.Map // 正在录制的数据。
+type Recorder struct {
+	once   sync.Once
+	mode   bool     // 是否为录制模式。
+	data   sync.Map // 正在录制的数据。
+	logger *log.Logger
 }
 
 // RecordMode 返回是否是录制模式。
@@ -66,13 +72,17 @@ type recordSession struct {
 }
 
 // StartRecord 开始流量录制
-func StartRecord(ctx context.Context, sessionID string) {
+func StartRecord(ctx context.Context, fn func() (string, error)) {
 	var err error
 	defer func() {
 		if err != nil {
-			logger.WithSkip(1).Error(err)
+			recorder.logger.WithSkip(1).Error(err)
 		}
 	}()
+	sessionID, err := fn()
+	if err != nil {
+		return
+	}
 	r := &recordSession{session: &Session{
 		Session:   sessionID,
 		Timestamp: clock.Now(ctx).UnixNano(),
@@ -143,7 +153,7 @@ func onSession(ctx context.Context, f func(*recordSession) error) *Session {
 	var err error
 	defer func() {
 		if err != nil {
-			logger.WithSkip(2).Error(err)
+			recorder.logger.WithSkip(2).Error(err)
 		}
 	}()
 	v, err := knife.Load(ctx, sessionKey)

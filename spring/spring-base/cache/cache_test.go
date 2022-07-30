@@ -31,11 +31,22 @@ import (
 	"github.com/go-spring/spring-base/cache"
 	"github.com/go-spring/spring-base/clock"
 	"github.com/go-spring/spring-base/knife"
+	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-base/net/recorder"
 	"github.com/go-spring/spring-base/net/replayer"
+	"github.com/go-spring/spring-base/util"
 )
 
 func init() {
+
+	config := `
+		<?xml version="1.0" encoding="UTF-8"?>
+		<Configuration/>
+	`
+	err := log.RefreshBuffer(config, ".xml")
+	util.Panic(err).When(err != nil)
+
+	recorder.Init()
 	recorder.RegisterProtocol(recorder.REDIS, &redisProtocol{})
 }
 
@@ -172,7 +183,9 @@ func TestRecord(t *testing.T) {
 	key := "test"
 	f := func(sessionID string) (*recorder.Session, []cache.LoadType) {
 		ctx, _ := knife.New(context.Background())
-		recorder.StartRecord(ctx, sessionID)
+		recorder.StartRecord(ctx, func() (string, error) {
+			return sessionID, nil
+		})
 		loadTypes := testFunc(t, ctx, key)
 		session := recorder.StopRecord(ctx)
 		fmt.Println(recorder.ToPrettyJson(session))

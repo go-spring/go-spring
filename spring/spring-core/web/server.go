@@ -26,6 +26,7 @@ import (
 
 	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-base/knife"
+	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-base/util"
 )
 
@@ -79,11 +80,11 @@ type Server interface {
 	// AddFilter 添加过滤器
 	AddFilter(filter ...Filter)
 
-	// LoggerFilter 获取 Logger Filter
-	LoggerFilter() Filter
+	// AccessFilter 获取访问记录 Filter
+	AccessFilter() Filter
 
-	// SetLoggerFilter 设置 Logger Filter
-	SetLoggerFilter(filter Filter)
+	// SetAccessFilter 设置访问记录 Filter
+	SetAccessFilter(filter Filter)
 
 	// ErrorHandler 获取错误处理接口
 	ErrorHandler() ErrorHandler
@@ -110,11 +111,12 @@ type ServerHandler interface {
 type server struct {
 	router
 
+	logger  *log.Logger
 	config  ServerConfig // 容器配置项
 	server  *http.Server
 	handler ServerHandler
 
-	logger     Filter       // 日志过滤器
+	access     Filter       // 日志过滤器
 	filters    []Filter     // 其他过滤器
 	prefilters []*Prefilter // 前置过滤器
 	errHandler ErrorHandler // 错误处理接口
@@ -124,7 +126,9 @@ type server struct {
 
 // NewServer server 的构造函数
 func NewServer(config ServerConfig, handler ServerHandler) *server {
-	return &server{config: config, handler: handler}
+	ret := &server{config: config, handler: handler}
+	ret.logger = log.GetLogger(util.TypeName(ret))
+	return ret
 }
 
 // Address 返回监听地址
@@ -157,22 +161,49 @@ func (s *server) AddFilter(filter ...Filter) {
 	s.filters = append(s.filters, filter...)
 }
 
-// LoggerFilter 获取 Logger Filter
-func (s *server) LoggerFilter() Filter {
-	if s.logger != nil {
-		return s.logger
+// AccessFilter 获取访问记录 Filter
+func (s *server) AccessFilter() Filter {
+	if s.access != nil {
+		return s.access
 	}
-	return AccessLog()
+	return FuncFilter(func(ctx Context, chain FilterChain) {
+		start := time.Now()
+		chain.Next(ctx)
+		r := ctx.Request()
+		w := ctx.ResponseWriter()
+		cost := time.Since(start)
+		s.logger.WithContext(ctx.Context()).Infof("%s %s %s %d %d %s", r.Method, r.RequestURI, cost, w.Size(), w.Status(), r.UserAgent())
+	})
 }
 
-// SetLoggerFilter 设置 Logger Filter
-func (s *server) SetLoggerFilter(filter Filter) {
-	s.logger = filter
+// SetAccessFilter 设置访问记录 Filter
+func (s *server) SetAccessFilter(filter Filter) {
+	s.access = filter
 }
 
 // ErrorHandler 获取错误处理接口
 func (s *server) ErrorHandler() ErrorHandler {
-	return s.errHandler
+	if s.errHandler != nil {
+		return s.errHandler
+	}
+	return FuncErrorHandler(func(ctx Context, err *HttpError) {
+		defer func() {
+			if r := recover(); r != nil {
+				s.logger.WithContext(ctx.Context()).Error(log.ERROR, r)
+			}
+		}()
+		if err.Internal == nil {
+			ctx.SetStatus(err.Code)
+			ctx.String(err.Message)
+			return
+		}
+		switch v := err.Internal.(type) {
+		case string:
+			ctx.String(v)
+		default:
+			ctx.JSON(err.Internal)
+		}
+	})
 }
 
 // SetErrorHandler 设置错误处理接口
@@ -217,7 +248,7 @@ func (s *server) prepare() error {
 
 	// 打印所有的路由信息
 	for _, m := range s.Mappers() {
-		logger.Infof("%v :%d %s -> %s:%d %s", func() []interface{} {
+		s.logger.Infof("%v :%d %s -> %s:%d %s", func() []interface{} {
 			method := GetMethod(m.method)
 			path := s.config.BasePath + m.path
 			file, line, fnName := m.handler.FileLine()
@@ -242,13 +273,13 @@ func (s *server) Start() (err error) {
 		ReadTimeout:  time.Duration(s.config.ReadTimeout) * time.Millisecond,
 		WriteTimeout: time.Duration(s.config.WriteTimeout) * time.Millisecond,
 	}
-	logger.Info("⇨ http server started on ", s.Address())
+	s.logger.Info("⇨ http server started on ", s.Address())
 	if !s.config.EnableSSL {
 		err = s.server.ListenAndServe()
 	} else {
 		err = s.server.ListenAndServeTLS(s.config.CertFile, s.config.KeyFile)
 	}
-	logger.Infof("http server stopped on %s return %s", s.Address(), cast.ToString(err))
+	s.logger.Infof("http server stopped on %s return %s", s.Address(), cast.ToString(err))
 	return err
 }
 
@@ -262,12 +293,10 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if ctx, cached := knife.New(r.Context()); !cached {
 		r = r.WithContext(ctx)
 	}
-	prefilters := append([]Filter{}, s.LoggerFilter())
-	errHandler := s.errHandler
-	if errHandler == nil {
-		errHandler = defaultErrorHandler
+	prefilters := []Filter{
+		s.AccessFilter(),
+		s.handler.RecoveryFilter(s.ErrorHandler()),
 	}
-	prefilters = append(prefilters, s.handler.RecoveryFilter(errHandler))
 	for _, f := range s.Prefilters() {
 		prefilters = append(prefilters, f)
 	}

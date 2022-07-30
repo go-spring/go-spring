@@ -33,10 +33,6 @@ import (
 	"github.com/go-spring/spring-core/gs/gsutil"
 )
 
-var (
-	logger = log.GetLogger()
-)
-
 // Context defines some methods of IoC container that Callable use.
 type Context interface {
 	// Matches returns true when the Condition returns true,
@@ -103,6 +99,7 @@ func Value(v interface{}) ValueArg {
 
 // argList stores the arguments of a function.
 type argList struct {
+	logger *log.Logger
 	fnType reflect.Type
 	args   []Arg
 }
@@ -181,7 +178,9 @@ func newArgList(fnType reflect.Type, args []Arg) (*argList, error) {
 		}
 	}
 
-	return &argList{fnType: fnType, args: fnArgs}, nil
+	ret := &argList{fnType: fnType, args: fnArgs}
+	ret.logger = log.GetLogger(util.TypeName(ret))
+	return ret, nil
 }
 
 // get returns all processed Args value. fileLine is the binding position of Callable.
@@ -222,12 +221,12 @@ func (r *argList) getArg(ctx Context, arg Arg, t reflect.Type, fileLine string) 
 	)
 
 	description := fmt.Sprintf("arg:\"%v\" %s", arg, fileLine)
-	logger.Tracef("get value %s", description)
+	r.logger.Tracef("get value %s", description)
 	defer func() {
 		if err == nil {
-			logger.Tracef("get value success %s", description)
+			r.logger.Tracef("get value success %s", description)
 		} else {
-			logger.Tracef("get value error %s %s", err.Error(), description)
+			r.logger.Tracef("get value error %s %s", err.Error(), description)
 		}
 	}()
 
@@ -281,8 +280,9 @@ func (r *argList) getArg(ctx Context, arg Arg, t reflect.Type, fileLine string) 
 
 // optionArg Option 函数的参数绑定。
 type optionArg struct {
-	r *Callable
-	c cond.Condition
+	logger *log.Logger
+	r      *Callable
+	c      cond.Condition
 }
 
 // Provide 为 Option 方法绑定运行时参数。
@@ -302,7 +302,9 @@ func Option(fn interface{}, args ...Arg) *optionArg {
 
 	r, err := Bind(fn, args, 1)
 	util.Panic(err).When(err != nil)
-	return &optionArg{r: r}
+	ret := &optionArg{r: r}
+	ret.logger = log.GetLogger(util.TypeName(ret))
+	return ret
 }
 
 // On 设置一个 cond.Condition 对象。
@@ -318,12 +320,12 @@ func (arg *optionArg) call(ctx Context) (reflect.Value, error) {
 		err error
 	)
 
-	logger.Tracef("call option func %s", arg.r.fileLine)
+	arg.logger.Tracef("call option func %s", arg.r.fileLine)
 	defer func() {
 		if err == nil {
-			logger.Tracef("call option func success %s", arg.r.fileLine)
+			arg.logger.Tracef("call option func success %s", arg.r.fileLine)
 		} else {
-			logger.Tracef("call option func error %s %s", err.Error(), arg.r.fileLine)
+			arg.logger.Tracef("call option func error %s %s", err.Error(), arg.r.fileLine)
 		}
 	}()
 

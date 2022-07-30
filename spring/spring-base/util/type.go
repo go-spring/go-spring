@@ -127,3 +127,35 @@ func IsValidConverter(t reflect.Type) bool {
 		IsValueType(t.Out(0)) &&
 		IsErrorType(t.Out(1))
 }
+
+// TypeName 返回原始类型的全限定名，类型的全限定名用于严格区分相同名称的 bean 对象。
+// 类型的全限定名是指包的全路径加上类型名称，例如，gs 包里面的 Container 类型，它的
+// 类型全限定名是 github.com/go-spring/spring-core/gs/gs.Container。因为 go
+// 语言允许在不同的路径下存在名称相同的包，所以有可能出现(简单)类型名称相同、实例名称
+// 相同的但实际上类型不相同的 bean 对象，因此有类型的全限定名这样的概念，用以严格区分
+// 同名的 bean 对象。
+func TypeName(i interface{}) string {
+
+	var typ reflect.Type
+	switch o := i.(type) {
+	case reflect.Type:
+		typ = o
+	case reflect.Value:
+		typ = o.Type()
+	default:
+		typ = reflect.TypeOf(o)
+	}
+
+	for { // 去掉指针和数组的包装，以获得原始类型
+		if k := typ.Kind(); k == reflect.Ptr || k == reflect.Slice {
+			typ = typ.Elem()
+		} else {
+			break
+		}
+	}
+
+	if pkgPath := typ.PkgPath(); pkgPath != "" {
+		return pkgPath + "/" + typ.String()
+	}
+	return typ.String() // 内置类型的路径为空
+}

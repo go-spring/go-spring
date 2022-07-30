@@ -21,6 +21,7 @@ package gsutil
 import (
 	"reflect"
 
+	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/conf"
 )
 
@@ -52,29 +53,7 @@ func BeanID(typ interface{}, name string) string {
 // 相同的但实际上类型不相同的 bean 对象，因此有类型的全限定名这样的概念，用以严格区分
 // 同名的 bean 对象。
 func TypeName(i interface{}) string {
-
-	var typ reflect.Type
-	switch o := i.(type) {
-	case reflect.Type:
-		typ = o
-	case reflect.Value:
-		typ = o.Type()
-	default:
-		typ = reflect.TypeOf(o)
-	}
-
-	for { // 去掉指针和数组的包装，以获得原始类型
-		if k := typ.Kind(); k == reflect.Ptr || k == reflect.Slice {
-			typ = typ.Elem()
-		} else {
-			break
-		}
-	}
-
-	if pkgPath := typ.PkgPath(); pkgPath != "" {
-		return pkgPath + "/" + typ.String()
-	}
-	return typ.String() // 内置类型的路径为空
+	return util.TypeName(i)
 }
 
 // IsBeanType 返回是否是 bean 类型。在 go-spring 里，变量的类型分为三种: bean 类

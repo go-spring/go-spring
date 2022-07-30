@@ -76,11 +76,11 @@ func (c *container) Get(i interface{}, selectors ...gsutil.BeanSelector) error {
 		return errors.New("i must be pointer")
 	}
 
-	stack := newWiringStack()
+	stack := newWiringStack(c.logger)
 
 	defer func() {
 		if len(stack.beans) > 0 {
-			logger.Infof("wiring path %s", stack.path())
+			c.logger.Infof("wiring path %s", stack.path())
 		}
 	}()
 
@@ -96,11 +96,11 @@ func (c *container) Get(i interface{}, selectors ...gsutil.BeanSelector) error {
 // 种方式，该函数执行完后都会返回 bean 对象的真实值。
 func (c *container) Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error) {
 
-	stack := newWiringStack()
+	stack := newWiringStack(c.logger)
 
 	defer func() {
 		if len(stack.beans) > 0 {
-			logger.Infof("wiring path %s", stack.path())
+			c.logger.Infof("wiring path %s", stack.path())
 		}
 	}()
 
@@ -118,11 +118,11 @@ func (c *container) Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, erro
 		return nil, errors.New("fn should be func type")
 	}
 
-	stack := newWiringStack()
+	stack := newWiringStack(c.logger)
 
 	defer func() {
 		if len(stack.beans) > 0 {
-			logger.Infof("wiring path %s", stack.path())
+			c.logger.Infof("wiring path %s", stack.path())
 		}
 	}()
 

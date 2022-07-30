@@ -25,8 +25,22 @@ import (
 	"github.com/go-spring/spring-base/assert"
 	"github.com/go-spring/spring-base/clock"
 	"github.com/go-spring/spring-base/knife"
+	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-base/net/recorder"
+	"github.com/go-spring/spring-base/util"
 )
+
+func init() {
+
+	config := `
+		<?xml version="1.0" encoding="UTF-8"?>
+		<Configuration/>
+	`
+	err := log.RefreshBuffer(config, ".xml")
+	util.Panic(err).When(err != nil)
+
+	recorder.Init()
+}
 
 func TestRecordAction(t *testing.T) {
 
@@ -40,8 +54,9 @@ func TestRecordAction(t *testing.T) {
 	err := clock.SetBaseTime(ctx, timeNow)
 	assert.Nil(t, err)
 
-	sessionID := "df3b64266ebe4e63a464e135000a07cd"
-	recorder.StartRecord(ctx, sessionID)
+	recorder.StartRecord(ctx, func() (string, error) {
+		return "df3b64266ebe4e63a464e135000a07cd", nil
+	})
 
 	recorder.RecordAction(ctx, recorder.REDIS, &recorder.SimpleAction{
 		Request: func() string {
