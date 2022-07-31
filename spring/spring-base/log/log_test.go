@@ -120,16 +120,19 @@ func TestGetLogger(t *testing.T) {
 	type class struct{}
 
 	logger := log.GetLogger(util.TypeName(new(Student)))
-	assert.Equal(t, logger.Name(), "github.com/go-spring/spring-base/log_test/log_test.Student")
+	assert.Equal(t, logger.Name(), "github.com/go-spring/spring-base/log/log_test.Student")
 
 	logger = log.GetLogger(util.TypeName(new(student)))
-	assert.Equal(t, logger.Name(), "github.com/go-spring/spring-base/log_test/log_test.student")
+	assert.Equal(t, logger.Name(), "github.com/go-spring/spring-base/log/log_test.student")
 
 	logger = log.GetLogger(util.TypeName(new(Class)))
-	assert.Equal(t, logger.Name(), "github.com/go-spring/spring-base/log_test/log_test.Class")
+	assert.Equal(t, logger.Name(), "github.com/go-spring/spring-base/log/log_test.Class")
 
 	logger = log.GetLogger(util.TypeName(new(class)))
-	assert.Equal(t, logger.Name(), "github.com/go-spring/spring-base/log_test/log_test.class")
+	assert.Equal(t, logger.Name(), "github.com/go-spring/spring-base/log/log_test.class")
+
+	logger = nil
+	assert.Equal(t, util.TypeName(logger), "github.com/go-spring/spring-base/log/log.Logger")
 }
 
 func TestLogger(t *testing.T) {

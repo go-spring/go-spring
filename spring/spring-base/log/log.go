@@ -31,11 +31,6 @@ import (
 	"github.com/go-spring/spring-base/atomic"
 )
 
-const (
-	RootLoggerName      = "Root"
-	AsyncRootLoggerName = "AsyncRoot"
-)
-
 var (
 	// console is used to record events when Logger is not configured.
 	console = &ConsoleAppender{
@@ -199,13 +194,12 @@ func RefreshReader(input io.Reader, ext string) error {
 	if node := rootNode.child("Loggers"); node != nil {
 		for _, c := range node.Children {
 
-			isRootLogger := false
-			if c.Label == RootLoggerName {
-				isRootLogger = true
-				c.Attributes["name"] = RootLoggerName
-			} else if c.Label == AsyncRootLoggerName {
-				isRootLogger = true
-				c.Attributes["name"] = AsyncRootLoggerName
+			isRootLogger := c.Label == "Root" || c.Label == "AsyncRoot"
+			if isRootLogger {
+				if cRoot != nil {
+					return errors.New("found more than one root loggers")
+				}
+				c.Attributes["name"] = c.Label
 			}
 
 			p, ok := plugins[c.Label]
@@ -232,9 +226,6 @@ func RefreshReader(input io.Reader, ext string) error {
 
 			config := v.Interface().(privateConfig)
 			if isRootLogger {
-				if cRoot != nil {
-					return errors.New("found more than one root loggers")
-				}
 				cRoot = config
 			}
 			cLoggers[name] = config

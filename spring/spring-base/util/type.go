@@ -19,6 +19,7 @@ package util
 import (
 	"context"
 	"reflect"
+	"strings"
 )
 
 // errorType error 的反射类型。
@@ -155,6 +156,7 @@ func TypeName(i interface{}) string {
 	}
 
 	if pkgPath := typ.PkgPath(); pkgPath != "" {
+		pkgPath = strings.TrimSuffix(pkgPath, "_test")
 		return pkgPath + "/" + typ.String()
 	}
 	return typ.String() // 内置类型的路径为空
