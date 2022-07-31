@@ -24,8 +24,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
-	"os"
 	"reflect"
 	"sort"
 	"strings"
@@ -50,38 +48,9 @@ const (
 )
 
 var (
+	loggerType  = reflect.TypeOf((*log.Logger)(nil))
 	contextType = reflect.TypeOf((*Context)(nil)).Elem()
 )
-
-func init() {
-	// 如果发现是调试模式则设置日志级别为 Debug 级别。
-	{
-		s := os.Getenv("CGO_CFLAGS")
-		if strings.Contains(s, "-O0") && strings.Contains(s, "-g") {
-			file, err := ioutil.TempFile("", "*.xml")
-			util.Panic(err).When(err != nil)
-			_, err = file.WriteString(`
-				<?xml version="1.0" encoding="UTF-8"?>
-				<Configuration>
-					<Appenders>
-						<Console name="Console"/>
-					</Appenders>
-					<Loggers>
-						<Logger name="github.com/go-spring/spring-core/gs" level="debug">
-							<AppenderRef ref="Console"/>
-						</Logger>
-						<Root level="info">
-							<AppenderRef ref="Console"/>
-						</Root>
-					</Loggers>
-				</Configuration>
-			`)
-			util.Panic(err).When(err != nil)
-			err = log.Refresh(file.Name())
-			util.Panic(err).When(err != nil)
-		}
-	}
-}
 
 type Container interface {
 	Context() context.Context
@@ -304,12 +273,12 @@ func (s *wiringStack) saveDestroyer(b *BeanDefinition) *destroyer {
 // sortDestroyers 对具有销毁函数的 bean 按照销毁函数的依赖顺序进行排序。
 func (s *wiringStack) sortDestroyers() []func() {
 
-	destroy := func(v reflect.Value, f interface{}) func() {
+	destroy := func(v reflect.Value, fn interface{}) func() {
 		return func() {
-			if f == nil {
+			if fn == nil {
 				v.Interface().(BeanDestroy).OnDestroy()
 			} else {
-				fnValue := reflect.ValueOf(f)
+				fnValue := reflect.ValueOf(fn)
 				out := fnValue.Call([]reflect.Value{v})
 				if len(out) > 0 && !out[0].IsNil() {
 					s.logger.Error(out[0].Interface().(error))
@@ -462,8 +431,8 @@ func (c *container) resolveBean(b *BeanDefinition) error {
 	// method bean 先确定 parent bean 是否存在
 	if b.method {
 		selector, ok := b.f.Arg(0)
-		if !ok || selector == nil {
-			selector = b.t.In(0)
+		if !ok || selector == "" {
+			selector, _ = b.f.In(0)
 		}
 		parents, err := c.findBean(selector)
 		if err != nil {
@@ -585,15 +554,19 @@ func (c *container) findBean(selector gsutil.BeanSelector) ([]*BeanDefinition, e
 		return result, nil
 	}
 
-	switch selector.(type) {
+	var t reflect.Type
+	switch st := selector.(type) {
 	case string, BeanDefinition, *BeanDefinition:
 		tag := toWireTag(selector)
 		return finder(func(b *BeanDefinition) bool {
 			return b.Match(tag.typeName, tag.beanName)
 		})
+	case reflect.Type:
+		t = st
+	default:
+		t = reflect.TypeOf(st)
 	}
 
-	t := reflect.TypeOf(selector)
 	if t.Kind() == reflect.Ptr {
 		if e := t.Elem(); e.Kind() == reflect.Interface {
 			t = e // 指 (*error)(nil) 形式的 bean 选择器
@@ -806,8 +779,18 @@ func (c *container) wireStruct(v reflect.Value, opt conf.BindParam, stack *wirin
 
 		fieldPath := opt.Path + "." + ft.Name
 
+		tag, ok := ft.Tag.Lookup("logger")
+		if ok {
+			if ft.Type != loggerType {
+				return fmt.Errorf("field expects type *log.Logger")
+			}
+			l := log.GetLogger(util.TypeName(v))
+			fv.Set(reflect.ValueOf(l))
+			continue
+		}
+
 		// 支持 autowire 和 inject 两个标签。
-		tag, ok := ft.Tag.Lookup("autowire")
+		tag, ok = ft.Tag.Lookup("autowire")
 		if !ok {
 			tag, ok = ft.Tag.Lookup("inject")
 		}

@@ -124,6 +124,14 @@ func (app *App) Banner(banner string) {
 
 func (app *App) Run() error {
 
+	config := `
+		<?xml version="1.0" encoding="UTF-8"?>
+		<Configuration/>
+	`
+	if err := log.RefreshBuffer(config, ".xml"); err != nil {
+		return err
+	}
+
 	app.Object(app)
 	app.Object(app.consumers)
 	app.Object(app.grpcServers)

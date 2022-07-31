@@ -178,13 +178,16 @@ func newArgList(fnType reflect.Type, args []Arg) (*argList, error) {
 		}
 	}
 
-	ret := &argList{fnType: fnType, args: fnArgs}
-	ret.logger = log.GetLogger(util.TypeName(ret))
-	return ret, nil
+	return &argList{fnType: fnType, args: fnArgs}, nil
 }
 
 // get returns all processed Args value. fileLine is the binding position of Callable.
 func (r *argList) get(ctx Context, fileLine string) ([]reflect.Value, error) {
+
+	// TODO 也许可以通过参数传递 *log.Logger 对象
+	if r.logger == nil {
+		r.logger = log.GetLogger(util.TypeName(r))
+	}
 
 	fnType := r.fnType
 	numIn := fnType.NumIn()
@@ -302,9 +305,7 @@ func Option(fn interface{}, args ...Arg) *optionArg {
 
 	r, err := Bind(fn, args, 1)
 	util.Panic(err).When(err != nil)
-	ret := &optionArg{r: r}
-	ret.logger = log.GetLogger(util.TypeName(ret))
-	return ret
+	return &optionArg{r: r}
 }
 
 // On 设置一个 cond.Condition 对象。
@@ -314,6 +315,11 @@ func (arg *optionArg) On(c cond.Condition) *optionArg {
 }
 
 func (arg *optionArg) call(ctx Context) (reflect.Value, error) {
+
+	// TODO 也许可以通过参数传递 *log.Logger 对象
+	if arg.logger == nil {
+		arg.logger = log.GetLogger(util.TypeName(arg))
+	}
 
 	var (
 		ok  bool
@@ -349,6 +355,7 @@ func (arg *optionArg) call(ctx Context) (reflect.Value, error) {
 // the Call method of Callable to get the function's result.
 type Callable struct {
 	fn       interface{}
+	fnType   reflect.Type
 	argList  *argList
 	fileLine string
 }
@@ -366,6 +373,7 @@ func Bind(fn interface{}, args []Arg, skip int) (*Callable, error) {
 	_, file, line, _ := runtime.Caller(skip + 1)
 	r := &Callable{
 		fn:       fn,
+		fnType:   fnType,
 		argList:  argList,
 		fileLine: fmt.Sprintf("%s:%d", file, line),
 	}
@@ -378,6 +386,13 @@ func (r *Callable) Arg(i int) (Arg, bool) {
 		return nil, false
 	}
 	return r.argList.args[i], true
+}
+
+func (r *Callable) In(i int) (reflect.Type, bool) {
+	if i >= r.fnType.NumIn() {
+		return nil, false
+	}
+	return r.fnType.In(i), true
 }
 
 // Call invokes the function with its binding arguments processed in the IoC
