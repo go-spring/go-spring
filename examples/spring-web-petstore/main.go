@@ -26,6 +26,8 @@ import (
 
 	"github.com/go-openapi/spec"
 	"github.com/go-spring/spring-base/cast"
+	"github.com/go-spring/spring-base/log"
+	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/web"
 	"github.com/go-spring/spring-echo"
 	"github.com/go-spring/spring-swag"
@@ -196,6 +198,13 @@ func (c *PetController) UploadFile(ctx web.Context) {
 }
 
 func main() {
+
+	config := `
+		<?xml version="1.0" encoding="UTF-8"?>
+		<Configuration/>
+	`
+	err := log.RefreshBuffer(config, ".xml")
+	util.Panic(err).When(err != nil)
 
 	c := SpringEcho.New(web.ServerConfig{Port: 8080, BasePath: "/v2"})
 	rootSW := swagger.Doc(c).

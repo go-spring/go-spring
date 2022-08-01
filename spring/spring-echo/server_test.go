@@ -26,10 +26,21 @@ import (
 	"time"
 
 	"github.com/go-spring/spring-base/assert"
+	"github.com/go-spring/spring-base/log"
+	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/web"
 	"github.com/go-spring/spring-echo"
 	"github.com/labstack/echo/v4"
 )
+
+func init() {
+	config := `
+		<?xml version="1.0" encoding="UTF-8"?>
+		<Configuration/>
+	`
+	err := log.RefreshBuffer(config, ".xml")
+	util.Panic(err).When(err != nil)
+}
 
 func TestContext_PanicEchoHttpError(t *testing.T) {
 	c := SpringEcho.New(web.ServerConfig{Port: 8080})

@@ -24,16 +24,10 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-
-	"github.com/go-spring/spring-base/log"
 )
 
 // ContextKey Context 和 NativeContext 相互转换的 Key
 const ContextKey = "@@WebCtx@@"
-
-var (
-	logger = log.GetLogger()
-)
 
 // FuncErrorHandler func 形式定义错误处理接口
 type FuncErrorHandler func(ctx Context, err *HttpError)
@@ -41,29 +35,6 @@ type FuncErrorHandler func(ctx Context, err *HttpError)
 func (f FuncErrorHandler) Invoke(ctx Context, err *HttpError) {
 	f(ctx, err)
 }
-
-// defaultErrorHandler 默认实现的错误处理接口
-var defaultErrorHandler = FuncErrorHandler(func(ctx Context, err *HttpError) {
-
-	defer func() {
-		if r := recover(); r != nil {
-			logger.WithContext(ctx.Context()).Error(log.ERROR, r)
-		}
-	}()
-
-	if err.Internal == nil {
-		ctx.SetStatus(err.Code)
-		ctx.String(err.Message)
-		return
-	}
-
-	switch v := err.Internal.(type) {
-	case string:
-		ctx.String(v)
-	default:
-		ctx.JSON(err.Internal)
-	}
-})
 
 // HttpError represents an error that occurred while handling a request.
 type HttpError struct {

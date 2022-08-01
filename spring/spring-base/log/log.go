@@ -17,21 +17,18 @@
 package log
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
+	"os"
 	"path/filepath"
 	"reflect"
-	"runtime"
 	"strings"
+	"sync"
 
 	"github.com/go-spring/spring-base/atomic"
-)
-
-const (
-	RootLoggerName      = "Root"
-	AsyncRootLoggerName = "AsyncRoot"
 )
 
 var (
@@ -45,7 +42,11 @@ var (
 		},
 	}
 
-	loggers = map[string]*Logger{}
+	// configLoggers 配置文件中的 Logger 对象，is safe for map[string]privateConfig.
+	configLoggers atomic.Value
+
+	// usingLoggers 用户代码中的 Logger 对象，is safe for map[string]*Logger.
+	usingLoggers sync.Map
 
 	// Status records events that occur in the logging system.
 	Status = NewLogger("", ErrorLevel)
@@ -60,42 +61,91 @@ type LifeCycle interface {
 	Stop(ctx context.Context)
 }
 
-// GetLogger 获取名字为声明位置的包名的 *Logger 对象。
-func GetLogger(level ...Level) *Logger {
-	pc, _, _, _ := runtime.Caller(1)
-	funcName := runtime.FuncForPC(pc).Name()
-	i := strings.LastIndex(funcName, "/")
-	if i < 0 { // example: main.init
-		i = 0
-	}
-	j := strings.Index(funcName[i:], ".")
-	return getLogger(funcName[:i+j], level...)
+type loggerHolder interface {
+	Get() *Logger
 }
 
-// getLogger 获取名字为 name 的 *Logger 对象。
-func getLogger(name string, level ...Level) *Logger {
-	if l, ok := loggers[name]; ok {
-		return l
+type simLoggerHolder struct {
+	logger *Logger
+}
+
+func (h *simLoggerHolder) Get() *Logger {
+	return h.logger
+}
+
+type initLoggerHolder struct {
+	name   string
+	level  []Level
+	once   sync.Once
+	logger *Logger
+}
+
+func (h *initLoggerHolder) Get() *Logger {
+	h.once.Do(func() {
+		if len(h.level) == 0 {
+			h.level = append(h.level, InfoLevel)
+		}
+		h.logger = NewLogger(h.name, h.level[0])
+		{
+			var cLoggers map[string]privateConfig
+			if v := configLoggers.Load(); v != nil {
+				cLoggers = v.(map[string]privateConfig)
+			}
+			h.logger.reconfigure(cLoggers[h.name])
+		}
+	})
+	return h.logger
+}
+
+func GetLogger(name string, level ...Level) *Logger {
+
+	var cLoggers map[string]privateConfig
+	if v := configLoggers.Load(); v != nil {
+		cLoggers = v.(map[string]privateConfig)
 	}
-	if len(level) == 0 {
-		level = append(level, InfoLevel)
+	if cLoggers == nil {
+		Status.WithSkip(1).Fatal("should call refresh first")
+		os.Exit(-1)
 	}
-	l := NewLogger(name, level[0])
-	loggers[name] = l
-	return l
+
+	var h loggerHolder = &initLoggerHolder{name: name, level: level}
+	actual, loaded := usingLoggers.LoadOrStore(name, h)
+	if loaded {
+		return actual.(loggerHolder).Get()
+	}
+
+	h = &simLoggerHolder{logger: h.Get()}
+	usingLoggers.LoadOrStore(name, h)
+	return h.Get()
 }
 
 // Refresh 加载日志配置文件。
 func Refresh(fileName string) error {
+	ext := filepath.Ext(fileName)
+	file, err := os.Open(fileName)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	return RefreshReader(file, ext)
+}
+
+// RefreshBuffer 加载日志配置文件。
+func RefreshBuffer(buffer string, ext string) error {
+	input := bytes.NewBufferString(buffer)
+	return RefreshReader(input, ext)
+}
+
+// RefreshReader 加载日志配置文件。
+func RefreshReader(input io.Reader, ext string) error {
 
 	var rootNode *Node
 	{
-		ext := filepath.Ext(fileName)
 		r, ok := readers[ext]
 		if !ok {
 			return fmt.Errorf("unsupported file type %s", ext)
 		}
-		data, err := ioutil.ReadFile(fileName)
+		data, err := io.ReadAll(input)
 		if err != nil {
 			return err
 		}
@@ -144,13 +194,12 @@ func Refresh(fileName string) error {
 	if node := rootNode.child("Loggers"); node != nil {
 		for _, c := range node.Children {
 
-			isRootLogger := false
-			if c.Label == RootLoggerName {
-				isRootLogger = true
-				c.Attributes["name"] = RootLoggerName
-			} else if c.Label == AsyncRootLoggerName {
-				isRootLogger = true
-				c.Attributes["name"] = AsyncRootLoggerName
+			isRootLogger := c.Label == "Root" || c.Label == "AsyncRoot"
+			if isRootLogger {
+				if cRoot != nil {
+					return errors.New("found more than one root loggers")
+				}
+				c.Attributes["name"] = c.Label
 			}
 
 			p, ok := plugins[c.Label]
@@ -177,9 +226,6 @@ func Refresh(fileName string) error {
 
 			config := v.Interface().(privateConfig)
 			if isRootLogger {
-				if cRoot != nil {
-					return errors.New("found more than one root loggers")
-				}
 				cRoot = config
 			}
 			cLoggers[name] = config
@@ -220,9 +266,14 @@ func Refresh(fileName string) error {
 		}
 	}
 
-	for name, l := range loggers {
-		l.reconfigure(cLoggers[name])
-	}
+	configLoggers.Store(cLoggers)
+
+	// 对用户代码中的 Logger 对象应用最新的配置。
+	usingLoggers.Range(func(key, value interface{}) bool {
+		l := value.(loggerHolder).Get()
+		l.reconfigure(cLoggers[key.(string)])
+		return true
+	})
 
 	return nil
 }

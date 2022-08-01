@@ -20,6 +20,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-core/gs"
 )
 
@@ -27,11 +28,13 @@ func init() {
 	gs.Object(new(MyRunner)).Export((*gs.AppRunner)(nil))
 }
 
-type MyRunner struct{}
+type MyRunner struct {
+	Logger *log.Logger `logger:""`
+}
 
 func (r *MyRunner) Run(ctx gs.Context) {
 	ctx.Go(func(ctx context.Context) {
-		defer func() { logger.Info("exit after waiting in MyRunner::Run") }()
+		defer func() { r.Logger.Info("exit after waiting in MyRunner::Run") }()
 
 		ticker := time.NewTicker(10 * time.Millisecond)
 		defer ticker.Stop()
@@ -41,7 +44,7 @@ func (r *MyRunner) Run(ctx gs.Context) {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				logger.Info("MyRunner::Run")
+				r.Logger.Info("MyRunner::Run")
 			}
 		}
 	})

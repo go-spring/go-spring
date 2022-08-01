@@ -27,7 +27,7 @@ import (
 )
 
 type runner struct {
-	Client redis.Client `autowire:""`
+	Client *redis.Client `autowire:""`
 }
 
 func (r *runner) Run(ctx gs.Context) {

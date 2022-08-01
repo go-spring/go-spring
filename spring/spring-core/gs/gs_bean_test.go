@@ -217,7 +217,7 @@ func TestObjectBean(t *testing.T) {
 
 			newBean(newHistoryTeacher("")): {
 				"historyTeacher",
-				"github.com/go-spring/spring-core/gs_test/gs_test.historyTeacher",
+				"github.com/go-spring/spring-core/gs/gs_test.historyTeacher",
 			},
 
 			newBean(new(int)): {

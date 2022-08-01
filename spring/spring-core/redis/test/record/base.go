@@ -55,8 +55,9 @@ func RunCase(t *testing.T, conn redis.ConnPool, c cases.Case) {
 	err = clock.SetFixedTime(ctx, time.Unix(0, 0))
 	assert.Nil(t, err)
 
-	sessionID := "df3b64266ebe4e63a464e135000a07cd"
-	recorder.StartRecord(ctx, sessionID)
+	recorder.StartRecord(ctx, func() (string, error) {
+		return "df3b64266ebe4e63a464e135000a07cd", nil
+	})
 
 	c.Func(t, ctx, client)
 

@@ -22,7 +22,6 @@ import (
 	"strconv"
 
 	"github.com/go-spring/spring-base/cast"
-	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-base/net/recorder"
 	"github.com/google/uuid"
 )
@@ -32,12 +31,13 @@ func StartRecord(ctx Context) {
 	if !recorder.RecordMode() {
 		return
 	}
-	r, err := uuid.NewRandom()
-	if err != nil {
-		logger.WithContext(ctx.Context()).Error(log.ERROR, err)
-		return
-	}
-	recorder.StartRecord(ctx.Context(), r.String())
+	recorder.StartRecord(ctx.Context(), func() (string, error) {
+		r, err := uuid.NewRandom()
+		if err != nil {
+			return "", err
+		}
+		return r.String(), nil
+	})
 }
 
 // StopRecord 停止流量录制

@@ -30,13 +30,19 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/go-spring/spring-base/assert"
 	"github.com/go-spring/spring-base/log"
+	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/web"
 	"github.com/go-spring/spring-gin"
 )
 
-var (
-	logger = log.GetLogger()
-)
+func init() {
+	config := `
+		<?xml version="1.0" encoding="UTF-8"?>
+		<Configuration/>
+	`
+	err := log.RefreshBuffer(config, ".xml")
+	util.Panic(err).When(err != nil)
+}
 
 func TestContext_PanicSysError(t *testing.T) {
 	c := SpringGin.New(web.ServerConfig{Port: 8080})
@@ -66,7 +72,7 @@ func TestContext_PanicSysError(t *testing.T) {
 func TestContext_PanicString(t *testing.T) {
 	c := SpringGin.New(web.ServerConfig{Port: 8080})
 	c.AddFilter(web.FuncPrefilter(func(ctx web.Context, chain web.FilterChain) {
-		logger.Info("<<log>>")
+		fmt.Println("<<log>>")
 		chain.Continue(ctx)
 	}))
 	c.GetMapping("/", func(webCtx web.Context) {

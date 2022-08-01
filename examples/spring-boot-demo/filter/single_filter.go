@@ -19,6 +19,7 @@ package filter
 import (
 	"fmt"
 
+	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/web"
 )
@@ -28,7 +29,8 @@ func init() {
 }
 
 type SingleBeanFilter struct {
-	DefaultValue string `value:"${default-value:=default}"`
+	Logger       *log.Logger `logger:""`
+	DefaultValue string      `value:"${default-value:=default}"`
 }
 
 func (f *SingleBeanFilter) URLPatterns() []string {
@@ -39,6 +41,6 @@ func (f *SingleBeanFilter) Invoke(ctx web.Context, chain web.FilterChain) {
 	if f.DefaultValue != "app-test" {
 		panic(fmt.Errorf("${default-value} expect 'app-test' but '%s'", f.DefaultValue))
 	}
-	logger.WithContext(ctx.Context()).Info("::SingleBeanFilter")
+	f.Logger.WithContext(ctx.Context()).Info("::SingleBeanFilter")
 	chain.Next(ctx)
 }

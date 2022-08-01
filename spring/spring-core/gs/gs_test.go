@@ -515,7 +515,7 @@ func (d *DiffPkgTwo) Package() {
 
 type DiffPkgHolder struct {
 	// Pkg `autowire:"same"` // 如果两个 Object 不小心重名了，也会找到多个符合条件的 Object
-	Pkg `autowire:"github.com/go-spring/spring-core/gs_test/gs_test.DiffPkgTwo:same"`
+	Pkg `autowire:"github.com/go-spring/spring-core/gs/gs_test.DiffPkgTwo:same"`
 }
 
 func TestApplicationContext_DiffNameBean(t *testing.T) {
@@ -633,10 +633,10 @@ func TestApplicationContext_Get(t *testing.T) {
 			err = p.Get(&grouper, ":BeanTwo")
 			assert.Nil(t, err)
 
-			err = p.Get(&two, "github.com/go-spring/spring-core/gs_test/gs_test.BeanTwo:BeanTwo")
+			err = p.Get(&two, "github.com/go-spring/spring-core/gs/gs_test.BeanTwo:BeanTwo")
 			assert.Nil(t, err)
 
-			err = p.Get(&grouper, "github.com/go-spring/spring-core/gs_test/gs_test.BeanTwo:BeanTwo")
+			err = p.Get(&grouper, "github.com/go-spring/spring-core/gs/gs_test.BeanTwo:BeanTwo")
 			assert.Nil(t, err)
 
 			err = p.Get(&two, "xxx:BeanTwo")
@@ -678,7 +678,7 @@ func TestApplicationContext_Get(t *testing.T) {
 //	fmt.Println(util.ToJsonString(b))
 //	assert.Equal(t, len(b), 1)
 //
-//	b, _ = p.Find("github.com/go-spring/spring-core/gs_test/gs_test.BeanTwo:BeanTwo")
+//	b, _ = p.Find("github.com/go-spring/spring-core/gs/gs_test.BeanTwo:BeanTwo")
 //	fmt.Println(util.ToJsonString(b))
 //	assert.Equal(t, len(b), 1)
 //
@@ -839,7 +839,7 @@ func TestApplicationContext_DependsOn(t *testing.T) {
 
 		dependsOn := []gsutil.BeanSelector{
 			(*BeanOne)(nil), // 通过类型定义查找
-			"github.com/go-spring/spring-core/gs_test/gs_test.BeanZero:BeanZero",
+			"github.com/go-spring/spring-core/gs/gs_test.BeanZero:BeanZero",
 		}
 
 		c := gs.New()
@@ -2965,4 +2965,22 @@ func TestDestroyDependence(t *testing.T) {
 	c.Object(new(table)).Name("bbb")
 	err := c.Refresh()
 	assert.Nil(t, err)
+}
+
+type ContextAware struct {
+	gs.ContextAware
+}
+
+func (c *ContextAware) Echo(str string) string {
+	return c.GSContext.Prop("prefix") + " " + str + "!"
+}
+
+func TestContextAware(t *testing.T) {
+	c := gs.New()
+	c.Property("prefix", "hello")
+	b := c.Object(new(ContextAware))
+	err := c.Refresh()
+	assert.Nil(t, err)
+	a := b.Interface().(*ContextAware)
+	assert.Equal(t, a.Echo("gopher"), "hello gopher!")
 }

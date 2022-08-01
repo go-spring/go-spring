@@ -9,14 +9,11 @@ import (
 	"time"
 
 	"github.com/go-spring/spring-base/log"
+	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/web"
 	_ "github.com/go-spring/starter-echo"
 	//_ "github.com/go-spring/starter-gin"
-)
-
-var (
-	logger = log.GetLogger()
 )
 
 type request struct{}
@@ -64,7 +61,7 @@ func init() {
 		})
 }
 
-func read(response *http.Response, err error, expected string) {
+func read(logger *log.Logger, response *http.Response, err error, expected string) {
 	if err != nil {
 		panic(err)
 	}
@@ -76,29 +73,31 @@ func read(response *http.Response, err error, expected string) {
 	}
 }
 
-func get(url string, expected string) {
+func get(logger *log.Logger, url string, expected string) {
 	response, err := http.Get(url)
-	read(response, err, expected)
+	read(logger, response, err, expected)
 }
 
-func postForm(url string, expected string) {
+func postForm(logger *log.Logger, url string, expected string) {
 	response, err := http.PostForm(url, nil)
-	read(response, err, expected)
+	read(logger, response, err, expected)
 }
 
 func main() {
 	go func() {
 		time.Sleep(20 * time.Millisecond)
-		get("http://127.0.0.1:8080/404", `404 page not found`)
-		postForm("http://127.0.0.1:8080/mapping/json/error", `405 method not allowed`)
-		get("http://127.0.0.1:8080/mapping/json/error", `{"code":-1,"msg":"ERROR","err":"/Users/didi/GitHub/go-spring/go-spring/examples/spring-boot-web/main.go:24: this is an error"}`)
-		get("http://127.0.0.1:8080/mapping/json/success", `{"code":200,"msg":"SUCCESS","data":"ok"}`)
-		get("http://127.0.0.1:8080/mapping/panic/error", `this is an error`)
-		get("http://127.0.0.1:8080/mapping/panic/rpc_result", `{"code":-1,"msg":"ERROR","err":"/Users/didi/GitHub/go-spring/go-spring/examples/spring-boot-web/main.go:37: this is a rpc_result"}`)
-		get("http://127.0.0.1:8080/binding/json/error", `{"code":-1,"msg":"ERROR","err":"/Users/didi/GitHub/go-spring/go-spring/examples/spring-boot-web/main.go:42: this is an error"}`)
-		get("http://127.0.0.1:8080/binding/json/success", `{"code":200,"msg":"SUCCESS","data":"ok"}`)
-		get("http://127.0.0.1:8080/binding/panic/error", `this is an error`)
-		get("http://127.0.0.1:8080/binding/panic/rpc_result", `{"code":-1,"msg":"ERROR","err":"/Users/didi/GitHub/go-spring/go-spring/examples/spring-boot-web/main.go:59: this is a rpc_result"}`)
+		// TODO 将这里的 logger 及测试封装到结构体里边
+		logger := log.GetLogger(util.TypeName((*request)(nil)))
+		get(logger, "http://127.0.0.1:8080/404", `404 page not found`)
+		postForm(logger, "http://127.0.0.1:8080/mapping/json/error", `405 method not allowed`)
+		get(logger, "http://127.0.0.1:8080/mapping/json/error", `{"code":-1,"msg":"ERROR","err":"/Users/didi/GitHub/go-spring/go-spring/examples/spring-boot-web/main.go:24: this is an error"}`)
+		get(logger, "http://127.0.0.1:8080/mapping/json/success", `{"code":200,"msg":"SUCCESS","data":"ok"}`)
+		get(logger, "http://127.0.0.1:8080/mapping/panic/error", `this is an error`)
+		get(logger, "http://127.0.0.1:8080/mapping/panic/rpc_result", `{"code":-1,"msg":"ERROR","err":"/Users/didi/GitHub/go-spring/go-spring/examples/spring-boot-web/main.go:37: this is a rpc_result"}`)
+		get(logger, "http://127.0.0.1:8080/binding/json/error", `{"code":-1,"msg":"ERROR","err":"/Users/didi/GitHub/go-spring/go-spring/examples/spring-boot-web/main.go:42: this is an error"}`)
+		get(logger, "http://127.0.0.1:8080/binding/json/success", `{"code":200,"msg":"SUCCESS","data":"ok"}`)
+		get(logger, "http://127.0.0.1:8080/binding/panic/error", `this is an error`)
+		get(logger, "http://127.0.0.1:8080/binding/panic/rpc_result", `{"code":-1,"msg":"ERROR","err":"/Users/didi/GitHub/go-spring/go-spring/examples/spring-boot-web/main.go:59: this is a rpc_result"}`)
 		gs.ShutDown("app run end")
 	}()
 	fmt.Println(gs.Run())

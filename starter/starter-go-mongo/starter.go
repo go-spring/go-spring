@@ -17,16 +17,53 @@
 package StarterGoMongo
 
 import (
+	"context"
+
+	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-core/gs"
+	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/gs/cond"
 	"github.com/go-spring/spring-core/gs/gsutil"
-	"github.com/go-spring/starter-go-mongo/factory"
-	"go.mongodb.org/mongo-driver/mongo"
+	"github.com/go-spring/spring-core/mongo"
+	g "go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/mongo/readpref"
 )
 
+type Factory struct {
+	Logger *log.Logger `logger:""`
+}
+
+// NewClient 创建 MongoDB 客户端
+func (f *Factory) NewClient(config mongo.ClientConfig) (*g.Client, error) {
+	f.Logger.Infof("open mongo db %s", config.URL)
+	client, err := g.Connect(context.Background(), options.Client().ApplyURI(config.URL))
+	if err != nil {
+		return nil, err
+	}
+	if config.Ping {
+		err = client.Ping(context.Background(), readpref.Primary())
+		if err != nil {
+			return nil, err
+		}
+	}
+	return client, err
+}
+
+// CloseClient 关闭 MongoDB 客户端
+func (f *Factory) CloseClient(client *g.Client) {
+	f.Logger.Info("close mongo db")
+	err := client.Disconnect(context.Background())
+	if err != nil {
+		f.Logger.Error(nil, err)
+	}
+}
+
 func init() {
-	gs.Provide(factory.NewClient, "${mongo}").
-		Destroy(factory.CloseClient).
+	var factory *Factory
+	gs.Object(new(Factory)).Init(func(f *Factory) { factory = f })
+	gs.Provide((*Factory).NewClient, arg.R1("${mongo}")).
+		Destroy(func(client *g.Client) { factory.CloseClient(client) }).
 		Name("MongoDB").
-		On(cond.OnMissingBean(gsutil.BeanID((*mongo.Client)(nil), "MongoDB")))
+		On(cond.OnMissingBean(gsutil.BeanID((*g.Client)(nil), "MongoDB")))
 }

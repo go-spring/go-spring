@@ -28,6 +28,13 @@ import (
 	pkg2 "github.com/go-spring/spring-core/gs/testdata/pkg/foo"
 )
 
+// golang 允许不同的路径下存在相同的包，而且允许存在相同的包。
+type SamePkg struct{}
+
+func (p *SamePkg) Package() {
+	fmt.Println("github.com/go-spring/spring-core/gs/gsutil/gsutil_test.SamePkg")
+}
+
 func TestTypeName(t *testing.T) {
 
 	data := map[reflect.Type]struct {
@@ -150,6 +157,12 @@ func TestTypeName(t *testing.T) {
 		reflect.TypeOf(make([]pkg2.SamePkg, 0)):    {"github.com/go-spring/spring-core/gs/testdata/pkg/foo/pkg.SamePkg", "[]pkg.SamePkg"},
 		reflect.TypeOf(&[]pkg2.SamePkg{}):          {"github.com/go-spring/spring-core/gs/testdata/pkg/foo/pkg.SamePkg", "*[]pkg.SamePkg"},
 		reflect.TypeOf(make(map[int]pkg2.SamePkg)): {"map[int]pkg.SamePkg", "map[int]pkg.SamePkg"},
+
+		reflect.TypeOf(SamePkg{}):             {"github.com/go-spring/spring-core/gs/gsutil/gsutil_test.SamePkg", "gsutil_test.SamePkg"},
+		reflect.TypeOf(new(SamePkg)):          {"github.com/go-spring/spring-core/gs/gsutil/gsutil_test.SamePkg", "*gsutil_test.SamePkg"},
+		reflect.TypeOf(make([]SamePkg, 0)):    {"github.com/go-spring/spring-core/gs/gsutil/gsutil_test.SamePkg", "[]gsutil_test.SamePkg"},
+		reflect.TypeOf(&[]SamePkg{}):          {"github.com/go-spring/spring-core/gs/gsutil/gsutil_test.SamePkg", "*[]gsutil_test.SamePkg"},
+		reflect.TypeOf(make(map[int]SamePkg)): {"map[int]gsutil_test.SamePkg", "map[int]gsutil_test.SamePkg"},
 	}
 
 	for typ, v := range data {

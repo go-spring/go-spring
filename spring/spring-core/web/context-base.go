@@ -36,6 +36,8 @@ import (
 )
 
 type BaseContext struct {
+	Logger *log.Logger
+
 	r *http.Request
 	w ResponseWriter
 
@@ -49,7 +51,9 @@ func NewBaseContext(path string, handler Handler, r *http.Request, w ResponseWri
 	if ctx, cached := knife.New(r.Context()); !cached {
 		r = r.WithContext(ctx)
 	}
-	return &BaseContext{r: r, w: w, path: path, handler: handler}
+	ret := &BaseContext{r: r, w: w, path: path, handler: handler}
+	ret.Logger = log.GetLogger(util.TypeName(ret))
+	return ret
 }
 
 // NativeContext 返回封装的底层上下文对象
@@ -61,7 +65,7 @@ func (c *BaseContext) NativeContext() interface{} {
 func (c *BaseContext) Get(key string) interface{} {
 	v, err := knife.Load(c.Context(), key)
 	if err != nil {
-		logger.WithContext(c.Context()).Error(log.ERROR, err)
+		c.Logger.WithContext(c.Context()).Error(log.ERROR, err)
 		return nil
 	}
 	return v

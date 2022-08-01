@@ -84,9 +84,55 @@ func TestAtomicAndMutex(t *testing.T) {
 	fmt.Println(time.Since(start))
 }
 
+type Student struct{}
+type student struct{}
+
 func TestGetLogger(t *testing.T) {
-	logger := log.GetLogger()
-	assert.Equal(t, logger.Name(), "github.com/go-spring/spring-base/log_test")
+
+	config := `
+		<?xml version="1.0" encoding="UTF-8"?>
+		<Configuration>
+			<Appenders>
+				<Console name="Console"/>
+			</Appenders>
+			<Loggers>
+				<Logger name="spring/spring-base/log_test" level="debug">
+					<AppenderRef ref="Console">
+						<Filters>
+							<LevelFilter level="info"/>
+						</Filters>
+					</AppenderRef>
+				</Logger>
+				<Root level="debug">
+					<AppenderRef ref="Console"/>
+					<LevelFilter level="info"/>
+				</Root>
+			</Loggers>
+		</Configuration>
+	`
+
+	err := log.RefreshBuffer(config, ".xml")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	type Class struct{}
+	type class struct{}
+
+	logger := log.GetLogger(util.TypeName(new(Student)))
+	assert.Equal(t, logger.Name(), "github.com/go-spring/spring-base/log/log_test.Student")
+
+	logger = log.GetLogger(util.TypeName(new(student)))
+	assert.Equal(t, logger.Name(), "github.com/go-spring/spring-base/log/log_test.student")
+
+	logger = log.GetLogger(util.TypeName(new(Class)))
+	assert.Equal(t, logger.Name(), "github.com/go-spring/spring-base/log/log_test.Class")
+
+	logger = log.GetLogger(util.TypeName(new(class)))
+	assert.Equal(t, logger.Name(), "github.com/go-spring/spring-base/log/log_test.class")
+
+	logger = nil
+	assert.Equal(t, util.TypeName(logger), "github.com/go-spring/spring-base/log/log.Logger")
 }
 
 func TestLogger(t *testing.T) {
@@ -695,11 +741,4 @@ func TestEntry(t *testing.T) {
 	assert.Equal(t, msg.Entry().Tag(), tagIn)
 	assert.Equal(t, msg.Entry().Context(), ctx)
 	assert.Equal(t, msg.Msg().Text(), "Level:fatal")
-}
-
-func TestRefresh(t *testing.T) {
-	err := log.Refresh("./testdata/root.xml")
-	if err != nil {
-		t.Fatal(err)
-	}
 }

@@ -14,20 +14,18 @@
  * limitations under the License.
  */
 
-package web
+package web_test
 
 import (
-	"time"
+	"github.com/go-spring/spring-base/log"
+	"github.com/go-spring/spring-base/util"
 )
 
-func AccessLog() Filter {
-	return FuncFilter(func(ctx Context, chain FilterChain) {
-		start := time.Now()
-		chain.Next(ctx)
-		r := ctx.Request()
-		w := ctx.ResponseWriter()
-		cost := time.Since(start)
-		logger.WithContext(ctx.Context()).Infof("%s %s %s %d %d %s",
-			r.Method, r.RequestURI, cost, w.Size(), w.Status(), r.UserAgent())
-	})
+func init() {
+	config := `
+		<?xml version="1.0" encoding="UTF-8"?>
+		<Configuration/>
+	`
+	err := log.RefreshBuffer(config, ".xml")
+	util.Panic(err).When(err != nil)
 }

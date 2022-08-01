@@ -26,15 +26,12 @@ import (
 	"github.com/go-spring/starter-rabbit/server"
 )
 
-var (
-	logger = log.GetLogger()
-)
-
 func init() {
 	gs.Object(new(Starter)).Export((*gs.AppEvent)(nil))
 }
 
 type Starter struct {
+	Logger *log.Logger                     `logger:""`
 	Server *StarterRabbitServer.AMQPServer `autowire:""`
 }
 
@@ -74,7 +71,7 @@ func (starter *Starter) OnAppStart(ctx gs.Context) {
 				nil,   // args
 			)
 			if err != nil {
-				logger.Error(err)
+				starter.Logger.Error(err)
 				continue
 			}
 			d := <-delivery

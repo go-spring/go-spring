@@ -31,10 +31,6 @@ import (
 	"github.com/go-spring/spring-core/web"
 )
 
-var (
-	logger = log.GetLogger()
-)
-
 func init() {
 	gin.SetMode(gin.ReleaseMode)
 	binding.Validator = nil // 关闭 gin 的校验器
@@ -48,8 +44,10 @@ type route struct {
 
 // serverHandler gin 实现的 web 服务器
 type serverHandler struct {
-	engine *gin.Engine
-	routes map[string]route
+	logger   *log.Logger
+	basePath string
+	engine   *gin.Engine
+	routes   map[string]route
 }
 
 // New 创建 gin 实现的 web 服务器
@@ -58,11 +56,13 @@ func New(config web.ServerConfig) web.Server {
 	h.engine = gin.New()
 	h.engine.HandleMethodNotAllowed = true
 	h.routes = make(map[string]route)
+	h.basePath = config.BasePath
+	h.logger = log.GetLogger(util.TypeName(h))
 	return web.NewServer(config, h)
 }
 
 func (h *serverHandler) RecoveryFilter(errHandler web.ErrorHandler) web.Filter {
-	return &recoveryFilter{errHandler: errHandler}
+	return &recoveryFilter{logger: h.logger, errHandler: errHandler}
 }
 
 func (h *serverHandler) Start(s web.Server) error {
@@ -97,13 +97,19 @@ func (h *serverHandler) Start(s web.Server) error {
 	}
 
 	// 映射 Web 处理函数
-	for _, mapper := range s.Mappers() {
-		filters := urlPatterns.Get(mapper.Path())
-		handlers := wrapperHandler(mapper.Handler(), filters)
-		path, wildcard := web.ToPathStyle(mapper.Path(), web.GinPathStyle)
-		for _, method := range web.GetMethod(mapper.Method()) {
+	for _, m := range s.Mappers() {
+		filters := urlPatterns.Get(m.Path())
+		handlers := wrapperHandler(m.Handler(), filters)
+		path, wildcard := web.ToPathStyle(m.Path(), web.GinPathStyle)
+		{
+			path = h.basePath + path
+			if f, ok := m.Handler().(*web.FileHandler); ok {
+				f.Prefix = h.basePath + f.Prefix
+			}
+		}
+		for _, method := range web.GetMethod(m.Method()) {
 			h.engine.Handle(method, path, handlers...)
-			h.routes[method+path] = route{mapper.Handler(), mapper.Path(), wildcard}
+			h.routes[method+path] = route{m.Handler(), m.Path(), wildcard}
 		}
 	}
 	return nil
@@ -174,6 +180,7 @@ func (chain *ginFilterChain) Continue(_ web.Context) { chain.ginCtx.Next() }
 
 // recoveryFilter 适配 gin 的恢复过滤器
 type recoveryFilter struct {
+	logger     *log.Logger
 	errHandler web.ErrorHandler
 }
 
@@ -182,7 +189,7 @@ func (f *recoveryFilter) Invoke(webCtx web.Context, chain web.FilterChain) {
 	defer func() {
 		if err := recover(); err != nil {
 
-			ctxLogger := logger.WithContext(webCtx.Context())
+			ctxLogger := f.logger.WithContext(webCtx.Context())
 			ctxLogger.Error(nil, err, "\n", string(debug.Stack()))
 
 			// Check for a broken connection, as it is not really a

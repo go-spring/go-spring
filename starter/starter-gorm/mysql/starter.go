@@ -20,23 +20,29 @@ import (
 	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-core/database"
 	"github.com/go-spring/spring-core/gs"
+	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/gs/cond"
 	"github.com/go-spring/spring-core/gs/gsutil"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
 
-var (
-	logger = log.GetLogger()
-)
-
-func init() {
-	gs.Provide(createDB, "${gorm}").
-		Name("GormDB").
-		On(cond.OnMissingBean(gsutil.BeanID((*gorm.DB)(nil), "GormDB")))
+type Factory struct {
+	Logger *log.Logger `logger:""`
 }
 
-func createDB(config database.ClientConfig) (*gorm.DB, error) {
-	logger.Infof("open gorm mysql %s", config.URL)
-	return gorm.Open(mysql.Open(config.URL))
+func (factory *Factory) CreateDB(config database.ClientConfig) (*gorm.DB, error) {
+	factory.Logger.Infof("open gorm mysql %s", config.URL)
+	db, err := gorm.Open(mysql.Open(config.URL))
+	if err != nil {
+		return nil, err
+	}
+	return db, nil
+}
+
+func init() {
+	gs.Object(&Factory{})
+	gs.Provide((*Factory).CreateDB, arg.R1("${gorm}")).
+		Name("GormDB").
+		On(cond.OnMissingBean(gsutil.BeanID((*gorm.DB)(nil), "GormDB")))
 }
