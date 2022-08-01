@@ -33,8 +33,6 @@ import (
 	"gorm.io/gorm"
 )
 
-var logger = log.GetLogger()
-
 //go:embed html
 var htmlFS embed.FS
 
@@ -53,6 +51,7 @@ func init() {
 }
 
 type MyController struct {
+	Logger      *log.Logger   `logger:""`
 	RedisClient *redis.Client `autowire:""`
 	MongoClient *mongo.Client `autowire:"?"`
 	DB          *gorm.DB      `autowire:""`
@@ -60,7 +59,7 @@ type MyController struct {
 
 func (c *MyController) onInit(ctx gs.Context) error {
 	ctx.Go(func(ctx context.Context) {
-		defer func() { logger.Info("exit after waiting in ::Go") }()
+		defer func() { c.Logger.Info("exit after waiting in ::Go") }()
 
 		ticker := time.NewTicker(10 * time.Millisecond)
 		defer ticker.Stop()
@@ -70,7 +69,7 @@ func (c *MyController) onInit(ctx gs.Context) error {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				logger.Info("::Go")
+				c.Logger.Info("::Go")
 			}
 		}
 	})
@@ -111,7 +110,7 @@ func (c *MyController) OK(ctx web.Context) {
 
 		var engine string
 		_ = rows.Scan(&engine)
-		logger.Info(engine)
+		c.Logger.Info(engine)
 
 		if engine != "sql-mock" {
 			panic(errors.New("error"))

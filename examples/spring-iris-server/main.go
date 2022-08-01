@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 
+	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/gs"
 	"github.com/kataras/iris/v12"
@@ -54,13 +55,21 @@ func (e *Engine) Init() {
 //---------------- main ---------------------------------//
 
 func main() {
+
+	config := `
+		<?xml version="1.0" encoding="UTF-8"?>
+		<Configuration/>
+	`
+	err := log.RefreshBuffer(config, ".xml")
+	util.Panic(err).When(err != nil)
+
 	exit := make(chan struct{})
 	c := gs.New()
 	c.Object(exit)
 	c.Object(new(Controller))
 	c.Object(new(HelloService))
 	c.Object(new(Engine)).Init((*Engine).Init)
-	err := c.Refresh()
+	err = c.Refresh()
 	util.Panic(err).When(err != nil)
 	<-exit
 	c.Close()

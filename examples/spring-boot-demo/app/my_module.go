@@ -30,32 +30,29 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 )
 
-var (
-	logger = log.GetLogger()
-)
-
 func init() {
 	gs.Provide(new(MyModule)).Export((*gs.AppEvent)(nil))
 }
 
 type MyModule struct {
-	BasePath string `value:"${web.server.base-path:=}"`
+	Logger   *log.Logger `logger:""`
+	BasePath string      `value:"${web.server.base-path:=}"`
 }
 
 func (m *MyModule) OnAppStart(ctx gs.Context) {
-	logger.Info("MyModule start")
+	m.Logger.Info("MyModule start")
 	ctx.Go(m.Process)
 }
 
 func (m *MyModule) OnAppStop(ctx context.Context) {
-	logger.Info("MyModule stop")
+	m.Logger.Info("MyModule stop")
 }
 
 func (m *MyModule) Process(ctx context.Context) {
 	defer gs.ShutDown("run end")
 
-	defer func() { logger.Info("go stop") }()
-	logger.Info("go start")
+	defer func() { m.Logger.Info("go stop") }()
+	m.Logger.Info("go start")
 
 	time.Sleep(200 * time.Millisecond)
 
@@ -66,7 +63,7 @@ func (m *MyModule) Process(ctx context.Context) {
 		if body, e := ioutil.ReadAll(resp.Body); e != nil {
 			panic(e)
 		} else {
-			logger.Infof("resp code=%d body=%s", resp.StatusCode, string(body))
+			m.Logger.Infof("resp code=%d body=%s", resp.StatusCode, string(body))
 			if string(body) != "ok" {
 				panic(errors.New("error"))
 			}
@@ -80,7 +77,7 @@ func (m *MyModule) Process(ctx context.Context) {
 		if body, e := ioutil.ReadAll(resp.Body); e != nil {
 			panic(e)
 		} else {
-			logger.Infof("resp code=%d body=%s", resp.StatusCode, string(body))
+			m.Logger.Infof("resp code=%d body=%s", resp.StatusCode, string(body))
 		}
 	}
 
@@ -91,7 +88,7 @@ func (m *MyModule) Process(ctx context.Context) {
 		if body, e := ioutil.ReadAll(resp.Body); e != nil {
 			panic(e)
 		} else {
-			logger.Infof("resp code=%d body=%s", resp.StatusCode, string(body))
+			m.Logger.Infof("resp code=%d body=%s", resp.StatusCode, string(body))
 			if string(body) != "{\"code\":200,\"msg\":\"SUCCESS\",\"data\":{\"echo\":\"echo echo\"}}" {
 				panic(errors.New("error"))
 			}
@@ -110,7 +107,7 @@ func (m *MyModule) Process(ctx context.Context) {
 			if body, e0 := ioutil.ReadAll(resp.Body); e0 != nil {
 				panic(e0)
 			} else {
-				logger.Infof("resp code=%d body=%s", resp.StatusCode, string(body))
+				m.Logger.Infof("resp code=%d body=%s", resp.StatusCode, string(body))
 				if string(body) != "func() return ok" {
 					panic(errors.New("error"))
 				}
@@ -125,7 +122,7 @@ func (m *MyModule) Process(ctx context.Context) {
 		if body, e := ioutil.ReadAll(resp.Body); e != nil {
 			panic(e)
 		} else {
-			logger.Infof("resp code=%d body=(banner.txt)\n%s", resp.StatusCode, string(body))
+			m.Logger.Infof("resp code=%d body=(banner.txt)\n%s", resp.StatusCode, string(body))
 		}
 	}
 
@@ -136,7 +133,7 @@ func (m *MyModule) Process(ctx context.Context) {
 		if body, e := ioutil.ReadAll(resp.Body); e != nil {
 			panic(e)
 		} else {
-			logger.Infof("resp code=%d body=(hello.html)\n%s", resp.StatusCode, string(body))
+			m.Logger.Infof("resp code=%d body=(hello.html)\n%s", resp.StatusCode, string(body))
 		}
 	}
 }

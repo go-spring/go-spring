@@ -22,22 +22,21 @@ import (
 	"github.com/go-spring/spring-core/web"
 )
 
-var (
-	logger = log.GetLogger()
-)
-
 func init() {
-	gs.Object(&StringFilter{"server"}).Export((*web.Filter)(nil))
+	gs.Object(&StringFilter{Text: "server"}).Export((*web.Filter)(nil))
 }
 
-type StringFilter struct{ s string }
+type StringFilter struct {
+	Logger *log.Logger `logger:""`
+	Text   string
+}
 
 func (f *StringFilter) Invoke(ctx web.Context, chain web.FilterChain) {
-	ctxLogger := logger.WithContext(ctx.Context())
+	ctxLogger := f.Logger.WithContext(ctx.Context())
 
-	defer func() { ctxLogger.Info("after ", f.s, " code:", ctx.ResponseWriter().Status()) }()
-	ctxLogger.Info("before ", f.s)
-	logger.Info(f.s)
+	defer func() { ctxLogger.Info("after ", f.Text, " code:", ctx.ResponseWriter().Status()) }()
+	ctxLogger.Info("before ", f.Text)
+	f.Logger.Info(f.Text)
 
 	chain.Next(ctx)
 }

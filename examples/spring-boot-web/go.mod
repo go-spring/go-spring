@@ -8,9 +8,9 @@ require (
 	github.com/go-spring/starter-echo v1.1.0
 )
 
-//replace (
-//	github.com/go-spring/spring-base => ../../spring/spring-base
-//	github.com/go-spring/spring-core => ../../spring/spring-core
-//	github.com/go-spring/spring-echo => ../../spring/spring-echo
-//	github.com/go-spring/starter-echo => ../../starter/starter-echo
-//)
+replace (
+	github.com/go-spring/spring-base => ../../spring/spring-base
+	github.com/go-spring/spring-core => ../../spring/spring-core
+	github.com/go-spring/spring-echo => ../../spring/spring-echo
+	github.com/go-spring/starter-echo => ../../starter/starter-echo
+)

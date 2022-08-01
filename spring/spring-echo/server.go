@@ -28,10 +28,6 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-var (
-	logger = log.GetLogger()
-)
-
 func init() {
 	echo.NotFoundHandler = func(c echo.Context) error {
 		panic(echo.ErrNotFound)
@@ -49,6 +45,7 @@ type route struct {
 
 // serverHandler echo 实现的 web 服务器
 type serverHandler struct {
+	logger   *log.Logger
 	basePath string
 	echo     *echo.Echo
 	routes   map[string]route
@@ -61,11 +58,12 @@ func New(config web.ServerConfig) web.Server {
 	h.echo.HideBanner = true
 	h.routes = make(map[string]route)
 	h.basePath = config.BasePath
+	h.logger = log.GetLogger(util.TypeName(h))
 	return web.NewServer(config, h)
 }
 
 func (h *serverHandler) RecoveryFilter(errHandler web.ErrorHandler) web.Filter {
-	return &recoveryFilter{errHandler: errHandler}
+	return &recoveryFilter{logger: h.logger, errHandler: errHandler}
 }
 
 func (h *serverHandler) Start(s web.Server) error {
@@ -173,6 +171,7 @@ func Filter(fn echo.MiddlewareFunc) web.Filter {
 
 // recoveryFilter 适配 echo 的恢复过滤器
 type recoveryFilter struct {
+	logger     *log.Logger
 	errHandler web.ErrorHandler
 }
 
@@ -181,7 +180,7 @@ func (f *recoveryFilter) Invoke(ctx web.Context, chain web.FilterChain) {
 	defer func() {
 		if err := recover(); err != nil {
 
-			ctxLogger := logger.WithContext(ctx.Context())
+			ctxLogger := f.logger.WithContext(ctx.Context())
 			ctxLogger.Error(nil, err, "\n", string(debug.Stack()))
 
 			httpE := web.HttpError{Code: http.StatusInternalServerError}
