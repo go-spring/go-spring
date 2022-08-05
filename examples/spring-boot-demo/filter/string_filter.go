@@ -17,6 +17,8 @@
 package filter
 
 import (
+	"net/http"
+
 	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/web"
@@ -33,10 +35,25 @@ type StringFilter struct {
 
 func (f *StringFilter) Invoke(ctx web.Context, chain web.FilterChain) {
 	ctxLogger := f.Logger.WithContext(ctx.Context())
+	w := &StatusResponseWriter{ResponseWriter: ctx.Response().Get()}
+	ctx.Response().Set(w)
 
-	defer func() { ctxLogger.Info("after ", f.Text, " code:", ctx.ResponseWriter().Status()) }()
+	defer func() { ctxLogger.Info("after ", f.Text, " code:", w.Status()) }()
 	ctxLogger.Info("before ", f.Text)
 	f.Logger.Info(f.Text)
 
 	chain.Next(ctx)
+}
+
+type StatusResponseWriter struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (w *StatusResponseWriter) Status() int {
+	return w.statusCode
+}
+
+func (w *StatusResponseWriter) WriteHeader(statusCode int) {
+	w.statusCode = statusCode
 }

@@ -17,6 +17,7 @@
 package SpringGin
 
 import (
+	"net/http"
 	"reflect"
 
 	"github.com/gin-gonic/gin"
@@ -44,14 +45,18 @@ func WebContext(c *gin.Context) web.Context {
 	return ctx
 }
 
-type responseWriter struct {
+type Response struct {
 	gin.ResponseWriter
 }
 
-// Body 返回发送给客户端的数据，当前仅支持 MIMEApplicationJSON 格式.
-func (w *responseWriter) Body() string {
-	s := reflect.ValueOf(w.ResponseWriter).Elem()
-	return s.Field(0).Interface().(web.ResponseWriter).Body()
+func (resp *Response) Get() http.ResponseWriter {
+	e := reflect.ValueOf(resp.ResponseWriter).Elem()
+	return e.Field(0).Interface().(http.ResponseWriter)
+}
+
+func (resp *Response) Set(w http.ResponseWriter) {
+	e := reflect.ValueOf(resp.ResponseWriter).Elem()
+	e.Field(0).Set(reflect.ValueOf(w))
 }
 
 // Context 适配 gin 的 Web 上下文
@@ -71,7 +76,7 @@ type Context struct {
 // newContext Context 的构造函数
 func newContext(handler web.Handler, path, wildcard string, ginCtx *gin.Context) *Context {
 	r := ginCtx.Request
-	w := &responseWriter{ginCtx.Writer}
+	w := &Response{ResponseWriter: ginCtx.Writer}
 	webCtx := &Context{
 		ginContext:  ginCtx,
 		wildcard:    wildcard,

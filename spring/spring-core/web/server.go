@@ -25,7 +25,6 @@ import (
 	"time"
 
 	"github.com/go-spring/spring-base/cast"
-	"github.com/go-spring/spring-base/knife"
 	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-base/util"
 )
@@ -167,10 +166,11 @@ func (s *server) AccessFilter() Filter {
 		return s.access
 	}
 	return FuncFilter(func(ctx Context, chain FilterChain) {
+		w := &BufferedResponseWriter{ResponseWriter: ctx.Response().Get()}
+		ctx.Response().Set(w)
 		start := time.Now()
 		chain.Next(ctx)
 		r := ctx.Request()
-		w := ctx.ResponseWriter()
 		cost := time.Since(start)
 		s.logger.WithContext(ctx.Context()).Infof("%s %s %s %d %d %s", r.Method, r.RequestURI, cost, w.Size(), w.Status(), r.UserAgent())
 	})
@@ -289,10 +289,6 @@ func (s *server) Stop(ctx context.Context) error {
 }
 
 func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	writer := &BufferedResponseWriter{ResponseWriter: w, cache: true}
-	if ctx, cached := knife.New(r.Context()); !cached {
-		r = r.WithContext(ctx)
-	}
 	prefilters := []Filter{
 		s.AccessFilter(),
 		s.handler.RecoveryFilter(s.ErrorHandler()),
@@ -301,7 +297,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		prefilters = append(prefilters, f)
 	}
 	prefilters = append(prefilters, HandlerFilter(WrapH(s.handler)))
-	NewFilterChain(prefilters).Next(NewBaseContext("", nil, r, writer))
+	NewFilterChain(prefilters).Next(NewBaseContext("", nil, r, &SimpleResponse{ResponseWriter: w}))
 }
 
 /////////////////// Web Handlers //////////////////////
@@ -322,7 +318,7 @@ func FUNC(fn HandlerFunc) Handler { return fnHandler(fn) }
 type httpFuncHandler http.HandlerFunc
 
 func (h httpFuncHandler) Invoke(ctx Context) {
-	h(ctx.ResponseWriter(), ctx.Request())
+	h(ctx.Response(), ctx.Request())
 }
 
 func (h httpFuncHandler) FileLine() (file string, line int, fnName string) {
@@ -343,7 +339,7 @@ func WrapF(fn http.HandlerFunc) Handler {
 type httpHandler struct{ http.Handler }
 
 func (h httpHandler) Invoke(ctx Context) {
-	h.Handler.ServeHTTP(ctx.ResponseWriter(), ctx.Request())
+	h.Handler.ServeHTTP(ctx.Response(), ctx.Request())
 }
 
 func (h httpHandler) FileLine() (file string, line int, fnName string) {

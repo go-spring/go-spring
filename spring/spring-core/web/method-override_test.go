@@ -28,7 +28,7 @@ import (
 func TestMethodOverride(t *testing.T) {
 	r, _ := http.NewRequest(http.MethodPost, "http://127.0.0.1:8080/?_method=GET", nil)
 	w := httptest.NewRecorder()
-	ctx := web.NewBaseContext("", nil, r, &web.BufferedResponseWriter{ResponseWriter: w})
+	ctx := web.NewBaseContext("", nil, r, &web.SimpleResponse{ResponseWriter: w})
 	f := web.NewMethodOverrideFilter(web.NewMethodOverrideConfig().ByQueryParam("_method"))
 	web.NewFilterChain([]web.Filter{f}).Next(ctx)
 	assert.Equal(t, ctx.Request().Method, http.MethodGet)

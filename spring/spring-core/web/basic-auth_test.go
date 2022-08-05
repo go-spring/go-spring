@@ -29,7 +29,7 @@ func TestBasicAuthFilter(t *testing.T) {
 	r, _ := http.NewRequest(http.MethodPost, "http://127.0.0.1:8080/", nil)
 	r.Header.Set(web.HeaderWWWAuthenticate, "Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==")
 	w := httptest.NewRecorder()
-	ctx := web.NewBaseContext("", nil, r, &web.BufferedResponseWriter{ResponseWriter: w})
+	ctx := web.NewBaseContext("", nil, r, &web.SimpleResponse{ResponseWriter: w})
 	f := web.NewBasicAuthFilter(web.BasicAuthConfig{
 		Accounts: map[string]string{"Aladdin": "open sesame"},
 	})

@@ -17,6 +17,8 @@
 package SpringEcho
 
 import (
+	"net/http"
+
 	"github.com/go-spring/spring-core/validator"
 	"github.com/go-spring/spring-core/web"
 	"github.com/labstack/echo/v4"
@@ -42,23 +44,16 @@ func WebContext(c echo.Context) web.Context {
 	return ctx
 }
 
-type responseWriter struct {
+type Response struct {
 	*echo.Response
 }
 
-// Status Returns the HTTP response status code of the current request.
-func (w *responseWriter) Status() int {
-	return w.Response.Status
+func (resp *Response) Get() http.ResponseWriter {
+	return resp.Response.Writer
 }
 
-// Size Returns the number of bytes already written into the response http body.
-func (w *responseWriter) Size() int {
-	return int(w.Response.Size)
-}
-
-// Body 返回发送给客户端的数据，当前仅支持 MIMEApplicationJSON 格式.
-func (w *responseWriter) Body() string {
-	return w.Response.Writer.(web.ResponseWriter).Body()
+func (resp *Response) Set(w http.ResponseWriter) {
+	resp.Response.Writer = w
 }
 
 // context 适配 echo 的 Web 上下文
@@ -72,7 +67,7 @@ type context struct {
 // newContext Context 的构造函数
 func newContext(handler web.Handler, path, wildcard string, echoCtx echo.Context) *context {
 	r := echoCtx.Request()
-	w := &responseWriter{echoCtx.Response()}
+	w := &Response{Response: echoCtx.Response()}
 	ctx := &context{
 		echoCtx:     echoCtx,
 		wildcard:    wildcard,

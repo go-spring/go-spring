@@ -38,8 +38,8 @@ import (
 type BaseContext struct {
 	Logger *log.Logger
 
+	w Response
 	r *http.Request
-	w ResponseWriter
 
 	path    string
 	handler Handler
@@ -47,7 +47,7 @@ type BaseContext struct {
 }
 
 // NewBaseContext 创建 *BaseContext 对象。
-func NewBaseContext(path string, handler Handler, r *http.Request, w ResponseWriter) *BaseContext {
+func NewBaseContext(path string, handler Handler, r *http.Request, w Response) *BaseContext {
 	if ctx, cached := knife.New(r.Context()); !cached {
 		r = r.WithContext(ctx)
 	}
@@ -79,6 +79,11 @@ func (c *BaseContext) Set(key string, val interface{}) error {
 // Request returns `*http.Request`.
 func (c *BaseContext) Request() *http.Request {
 	return c.r
+}
+
+// SetContext sets context.Context.
+func (c *BaseContext) SetContext(ctx context.Context) {
+	c.r = c.r.WithContext(ctx)
 }
 
 // Context 返回 Request 绑定的 context.Context 对象
@@ -263,8 +268,8 @@ func (c *BaseContext) Bind(i interface{}) error {
 	panic(util.UnimplementedMethod)
 }
 
-// ResponseWriter returns ResponseWriter.
-func (c *BaseContext) ResponseWriter() ResponseWriter {
+// Response returns Response.
+func (c *BaseContext) Response() Response {
 	return c.w
 }
 
@@ -285,7 +290,7 @@ func (c *BaseContext) SetContentType(typ string) {
 
 // SetCookie adds a `Set-Cookie` header in HTTP response.
 func (c *BaseContext) SetCookie(cookie *http.Cookie) {
-	http.SetCookie(c.ResponseWriter(), cookie)
+	http.SetCookie(c.Response(), cookie)
 }
 
 // NoContent sends a response with no body and a status code.
