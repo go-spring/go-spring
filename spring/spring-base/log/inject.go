@@ -171,9 +171,12 @@ func injectElement(tag string, fv reflect.Value, ft reflect.StructField, node *N
 		if p.Type != elemType {
 			continue
 		}
-		pv := reflect.New(p.Class)
+		pv, err := p.NewInstance()
+		if err != nil {
+			return util.Wrap(err, code.FileLine(), "inject element")
+		}
 		ev := pv.Elem()
-		err := inject(ev, ev.Type(), c)
+		err = inject(ev, ev.Type(), c)
 		if err != nil {
 			return util.Wrap(err, code.FileLine(), "inject element")
 		}
@@ -190,11 +193,14 @@ func injectElement(tag string, fv reflect.Value, ft reflect.StructField, node *N
 			err := fmt.Errorf("plugin %s not found", elemLabel)
 			return util.Wrap(err, code.FileLine(), "inject element")
 		}
-		pv := reflect.New(p.Class)
-		ev := pv.Elem()
-		err := inject(ev, ev.Type(), &Node{Label: elemLabel})
+		pv, err := p.NewInstance()
 		if err != nil {
-			return err
+			return util.Wrap(err, code.FileLine(), "inject element")
+		}
+		ev := pv.Elem()
+		err = inject(ev, ev.Type(), &Node{Label: elemLabel})
+		if err != nil {
+			return util.Wrap(err, code.FileLine(), "inject element")
 		}
 		children = append(children, pv)
 	}

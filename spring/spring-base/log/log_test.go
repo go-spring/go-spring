@@ -121,22 +121,46 @@ func TestGetLogger(t *testing.T) {
 
 	logger := log.GetLogger(util.TypeName(new(Student)))
 	assert.Equal(t, logger.Name(), "github.com/go-spring/spring-base/log/log_test.Student")
+	logger.Info("1")
 
 	logger = log.GetLogger(util.TypeName(new(student)))
 	assert.Equal(t, logger.Name(), "github.com/go-spring/spring-base/log/log_test.student")
+	logger.Info("2")
 
 	logger = log.GetLogger(util.TypeName(new(Class)))
 	assert.Equal(t, logger.Name(), "github.com/go-spring/spring-base/log/log_test.Class")
+	logger.Info("3")
 
 	logger = log.GetLogger(util.TypeName(new(class)))
 	assert.Equal(t, logger.Name(), "github.com/go-spring/spring-base/log/log_test.class")
+	logger.Info("4")
 
 	logger = nil
 	assert.Equal(t, util.TypeName(logger), "github.com/go-spring/spring-base/log/log.Logger")
 }
 
 func TestLogger(t *testing.T) {
-	logger := log.NewLogger("", log.TraceLevel)
+
+	config := `
+		<?xml version="1.0" encoding="UTF-8"?>
+		<Configuration>
+			<Appenders>
+				<Console name="Console"/>
+			</Appenders>
+			<Loggers>
+				<Root level="trace">
+					<AppenderRef ref="Console"/>
+				</Root>
+			</Loggers>
+		</Configuration>
+	`
+
+	err := log.RefreshBuffer(config, ".xml")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	logger := log.GetLogger("xxx", log.TraceLevel)
 
 	msg := func(format string, args ...interface{}) *log.Event {
 		return logger.WithSkip(1).Infof(format, args...)
@@ -312,8 +336,28 @@ func TestLogger(t *testing.T) {
 }
 
 func TestEntry(t *testing.T) {
+
+	config := `
+		<?xml version="1.0" encoding="UTF-8"?>
+		<Configuration>
+			<Appenders>
+				<Console name="Console"/>
+			</Appenders>
+			<Loggers>
+				<Root level="trace">
+					<AppenderRef ref="Console"/>
+				</Root>
+			</Loggers>
+		</Configuration>
+	`
+
+	err := log.RefreshBuffer(config, ".xml")
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	ctx := context.WithValue(context.Background(), "trace", "110110")
-	logger := log.NewLogger("", log.TraceLevel)
+	logger := log.GetLogger("xxx", log.TraceLevel)
 
 	const tagIn = "__in"
 	ctxLogger := logger.WithContext(ctx)

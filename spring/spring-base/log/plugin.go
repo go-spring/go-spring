@@ -40,6 +40,17 @@ type Plugin struct {
 	Line  int
 }
 
+func (p *Plugin) NewInstance() (reflect.Value, error) {
+	v := reflect.New(p.Class)
+	i, ok := v.Interface().(Initializer)
+	if ok {
+		if err := i.Init(); err != nil {
+			return reflect.Value{}, err
+		}
+	}
+	return v, nil
+}
+
 // RegisterPlugin registers a Plugin, `i` is used to obtain the type of Plugin.
 func RegisterPlugin(name string, typ string, i interface{}) {
 	_, file, line, _ := runtime.Caller(1)
