@@ -28,7 +28,7 @@ import (
 func TestRequestIDFilter(t *testing.T) {
 	r, _ := http.NewRequest(http.MethodPost, "http://127.0.0.1:8080/", nil)
 	w := httptest.NewRecorder()
-	ctx := web.NewBaseContext("", nil, r, &web.BufferedResponseWriter{ResponseWriter: w})
+	ctx := web.NewBaseContext("", nil, r, &web.SimpleResponse{ResponseWriter: w})
 	f := web.NewRequestIDFilter(web.RequestIDConfig{
 		Generator: func() string { return "0d9ad123-327f-bde5-14b4-8f93c36c3546" },
 	})

@@ -20,8 +20,6 @@ import (
 	"github.com/go-spring/spring-base/log/queue"
 )
 
-var empty privateConfig = &emptyConfig{}
-
 func init() {
 	RegisterPlugin("Root", "Root", (*loggerConfig)(nil))
 	RegisterPlugin("Logger", "Logger", (*loggerConfig)(nil))
@@ -41,18 +39,6 @@ type privateConfig interface {
 	getFilter() Filter
 	getAppenders() []*AppenderRef
 }
-
-type emptyConfig struct {
-	publisher
-}
-
-func (c *emptyConfig) logEvent(e *Event)            {}
-func (c *emptyConfig) getParent() privateConfig     { return nil }
-func (c *emptyConfig) getEntry() SimpleEntry        { return SimpleEntry{} }
-func (c *emptyConfig) getName() string              { return "" }
-func (c *emptyConfig) getLevel() Level              { return OffLevel }
-func (c *emptyConfig) getFilter() Filter            { return nil }
-func (c *emptyConfig) getAppenders() []*AppenderRef { return nil }
 
 // AppenderRef is a reference to an Appender.
 type AppenderRef struct {

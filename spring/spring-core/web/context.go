@@ -68,18 +68,22 @@ func (e *HttpError) SetInternal(err error) *HttpError {
 	return e
 }
 
-// ResponseWriter Override http.ResponseWriter to supply more method.
-type ResponseWriter interface {
+type Response interface {
 	http.ResponseWriter
+	Get() http.ResponseWriter
+	Set(w http.ResponseWriter)
+}
 
-	// Status Returns the HTTP response status code of the current request.
-	Status() int
+type SimpleResponse struct {
+	http.ResponseWriter
+}
 
-	// Size Returns the number of bytes already written into the response http body.
-	Size() int
+func (resp *SimpleResponse) Get() http.ResponseWriter {
+	return resp.ResponseWriter
+}
 
-	// Body 返回发送给客户端的数据，当前仅支持 MIMEApplicationJSON 格式.
-	Body() string
+func (resp *SimpleResponse) Set(w http.ResponseWriter) {
+	resp.ResponseWriter = w
 }
 
 // Context 封装 *http.Request 和 http.ResponseWriter 对象，简化操作接口。
@@ -102,6 +106,9 @@ type Context interface {
 
 	// Context 返回 Request 绑定的 context.Context 对象
 	Context() context.Context
+
+	// SetContext sets context.Context.
+	SetContext(ctx context.Context)
 
 	// IsTLS returns true if HTTP connection is TLS otherwise false.
 	IsTLS() bool
@@ -179,8 +186,8 @@ type Context interface {
 	/////////////////////////////////////////
 	// Response Part
 
-	// ResponseWriter returns ResponseWriter.
-	ResponseWriter() ResponseWriter
+	// Response returns Response.
+	Response() Response
 
 	// SetStatus sets the HTTP response code.
 	SetStatus(code int)
@@ -257,7 +264,6 @@ type Context interface {
 // BufferedResponseWriter http.ResponseWriter 的一种增强型实现.
 type BufferedResponseWriter struct {
 	http.ResponseWriter
-	cache  bool
 	buf    bytes.Buffer
 	size   int
 	status int
@@ -304,7 +310,7 @@ func (w *BufferedResponseWriter) WriteHeader(code int) {
 
 func (w *BufferedResponseWriter) Write(data []byte) (n int, err error) {
 	if n, err = w.ResponseWriter.Write(data); err == nil && n > 0 {
-		if w.cache && canPrintResponse(w.ResponseWriter) {
+		if canPrintResponse(w.ResponseWriter) {
 			w.buf.Write(data[:n])
 			w.size += n
 		}

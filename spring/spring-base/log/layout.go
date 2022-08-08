@@ -17,6 +17,7 @@
 package log
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 
@@ -54,12 +55,58 @@ func ParseColorStyle(s string) (ColorStyle, error) {
 	}
 }
 
+type FormatFunc func(e *Event) string
+
 type DefaultLayout struct {
 	LineBreak  bool       `PluginAttribute:"lineBreak,default=true"`
 	ColorStyle ColorStyle `PluginAttribute:"colorStyle,default=none"`
+	Formatter  string     `PluginAttribute:"formatter,default="`
+	steps      []FormatFunc
+}
+
+func (c *DefaultLayout) Init() error {
+	if c.Formatter == "" {
+		c.Formatter = "[:level][:time][:fileline][:msg]"
+	}
+	return c.parse(c.Formatter)
 }
 
 func (c *DefaultLayout) ToBytes(e *Event) ([]byte, error) {
+	buf := bytes.NewBuffer(nil)
+	for _, step := range c.steps {
+		buf.WriteString(step(e))
+	}
+	if c.LineBreak {
+		buf.WriteByte('\n')
+	}
+	return buf.Bytes(), nil
+}
+
+func (c *DefaultLayout) parse(formatter string) error {
+	write := func(s string) FormatFunc {
+		return func(e *Event) string {
+			return s
+		}
+	}
+	c.steps = append(c.steps, write("["))
+	c.steps = append(c.steps, c.getLevel)
+	c.steps = append(c.steps, write("]"))
+	c.steps = append(c.steps, write("["))
+	c.steps = append(c.steps, c.getTime)
+	c.steps = append(c.steps, write("]"))
+	c.steps = append(c.steps, write("["))
+	c.steps = append(c.steps, c.getFileLine)
+	c.steps = append(c.steps, write("]"))
+	c.steps = append(c.steps, write(" "))
+	c.steps = append(c.steps, c.getMsg)
+	return nil
+}
+
+func (c *DefaultLayout) getMsg(e *Event) string {
+	return e.Msg().Text()
+}
+
+func (c *DefaultLayout) getLevel(e *Event) string {
 	level := e.Level()
 	strLevel := strings.ToUpper(level.String())
 	switch c.ColorStyle {
@@ -72,12 +119,13 @@ func (c *DefaultLayout) ToBytes(e *Event) ([]byte, error) {
 			strLevel = color.Green.Sprint(strLevel)
 		}
 	}
-	strTime := e.Time().Format("2006-01-02T15:04:05.000")
-	fileLine := util.Contract(fmt.Sprintf("%s:%d", e.File(), e.Line()), 48)
-	format := "[%s][%s][%s] %s"
-	if c.LineBreak {
-		format += "\n"
-	}
-	data := fmt.Sprintf(format, strLevel, strTime, fileLine, e.Msg().Text())
-	return []byte(data), nil
+	return strLevel
+}
+
+func (c *DefaultLayout) getTime(e *Event) string {
+	return e.Time().Format("2006-01-02T15:04:05.000")
+}
+
+func (c *DefaultLayout) getFileLine(e *Event) string {
+	return util.Contract(fmt.Sprintf("%s:%d", e.File(), e.Line()), 48)
 }

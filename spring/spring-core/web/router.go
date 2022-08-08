@@ -283,7 +283,7 @@ type FileHandler struct {
 
 func (f *FileHandler) Invoke(ctx Context) {
 	h := http.StripPrefix(f.Prefix, f.Server)
-	h.ServeHTTP(ctx.ResponseWriter(), ctx.Request())
+	h.ServeHTTP(ctx.Response(), ctx.Request())
 }
 
 func (f *FileHandler) FileLine() (file string, line int, fnName string) {
