@@ -41,36 +41,6 @@ type configuration struct {
 	ConfigExtensions []string `value:"${spring.config.extensions:=.properties,.yaml,.yml,.toml,.tml}"`
 }
 
-// loadCmdArgs 加载 -name value 形式的命令行参数。
-func loadCmdArgs(p *conf.Properties) error {
-	for i := 0; i < len(os.Args); i++ {
-		s := os.Args[i]
-		if strings.HasPrefix(s, "--") {
-			ss := strings.SplitN(strings.TrimPrefix(s, "--"), "=", 2)
-			k, v := ss[0], ""
-			if len(ss) > 1 {
-				v = ss[1]
-			}
-			p.Set(k, v)
-			continue
-		}
-		if strings.HasPrefix(s, "-") {
-			k, v := s[1:], ""
-			if i >= len(os.Args)-1 {
-				p.Set(k, v)
-				return nil
-			}
-			next := os.Args[i+1]
-			if !strings.HasPrefix(next, "-") && !strings.HasPrefix(next, "--") {
-				v = os.Args[i+1]
-				i++
-			}
-			p.Set(k, v)
-		}
-	}
-	return nil
-}
-
 // loadSystemEnv 添加符合 includes 条件的环境变量，排除符合 excludes 条件的
 // 环境变量。如果发现存在允许通过环境变量覆盖的属性名，那么保存时转换成真正的属性名。
 func loadSystemEnv(p *conf.Properties) error {
@@ -138,7 +108,7 @@ func (e *configuration) prepare() error {
 	if err := loadSystemEnv(e.p); err != nil {
 		return err
 	}
-	if err := loadCmdArgs(e.p); err != nil {
+	if err := LoadCmdArgs(os.Args, e.p); err != nil {
 		return err
 	}
 	if err := e.p.Bind(e); err != nil {
