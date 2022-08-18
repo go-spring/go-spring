@@ -126,7 +126,16 @@ func (app *App) Run() error {
 
 	config := `
 		<?xml version="1.0" encoding="UTF-8"?>
-		<Configuration/>
+		<Configuration>
+			<Appenders>
+				<Console name="Console"/>
+			</Appenders>
+			<Loggers>
+				<Root level="info">
+					<AppenderRef ref="Console"/>
+				</Root>
+			</Loggers>
+		</Configuration>
 	`
 	if err := log.RefreshBuffer(config, ".xml"); err != nil {
 		return err

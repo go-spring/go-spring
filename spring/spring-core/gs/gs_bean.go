@@ -24,10 +24,8 @@ import (
 	"strings"
 
 	"github.com/go-spring/spring-base/util"
-	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/gs/cond"
-	"github.com/go-spring/spring-core/gs/gsutil"
 )
 
 type beanStatus int8
@@ -63,6 +61,10 @@ func getStatusString(status beanStatus) string {
 	}
 }
 
+func BeanID(typ interface{}, name string) string {
+	return util.TypeName(typ) + ":" + name
+}
+
 type BeanInit interface {
 	OnInit(ctx Context) error
 }
@@ -84,16 +86,16 @@ type BeanDefinition struct {
 	file string // 注册点所在文件
 	line int    // 注册点所在行数
 
-	name    string                // 名称
-	status  beanStatus            // 状态
-	primary bool                  // 是否为主版本
-	method  bool                  // 是否为成员方法
-	cond    cond.Condition        // 判断条件
-	order   float32               // 收集时的顺序
-	init    interface{}           // 初始化函数
-	destroy interface{}           // 销毁函数
-	depends []gsutil.BeanSelector // 间接依赖项
-	exports []reflect.Type        // 导出的接口
+	name    string              // 名称
+	status  beanStatus          // 状态
+	primary bool                // 是否为主版本
+	method  bool                // 是否为成员方法
+	cond    cond.Condition      // 判断条件
+	order   float32             // 收集时的顺序
+	init    interface{}         // 初始化函数
+	destroy interface{}         // 销毁函数
+	depends []util.BeanSelector // 间接依赖项
+	exports []reflect.Type      // 导出的接口
 }
 
 // Type 返回 bean 的类型。
@@ -188,7 +190,7 @@ func (d *BeanDefinition) Order(order float32) *BeanDefinition {
 }
 
 // DependsOn 设置 bean 的间接依赖项。
-func (d *BeanDefinition) DependsOn(selectors ...gsutil.BeanSelector) *BeanDefinition {
+func (d *BeanDefinition) DependsOn(selectors ...util.BeanSelector) *BeanDefinition {
 	d.depends = append(d.depends, selectors...)
 	return d
 }
@@ -302,7 +304,7 @@ func NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 		v = reflect.New(out0)
 
 		// 引用类型去掉指针，值类型则刚刚好。
-		if gsutil.IsBeanType(out0) {
+		if util.IsBeanType(out0) {
 			v = v.Elem()
 		}
 
@@ -313,11 +315,11 @@ func NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 	}
 
 	t := v.Type()
-	if !gsutil.IsBeanType(t) {
+	if !util.IsBeanType(t) {
 		panic(errors.New("bean must be ref type"))
 	}
 
-	if t.Kind() == reflect.Ptr && !conf.IsValueType(t.Elem()) {
+	if t.Kind() == reflect.Ptr && !util.IsValueType(t.Elem()) {
 		panic(errors.New("bean should be *val but not *ref"))
 	}
 
@@ -331,7 +333,7 @@ func NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 		v:        v,
 		f:        f,
 		name:     name,
-		typeName: gsutil.TypeName(t),
+		typeName: util.TypeName(t),
 		status:   Default,
 		method:   method,
 		file:     file,

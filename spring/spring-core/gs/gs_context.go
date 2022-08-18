@@ -23,7 +23,6 @@ import (
 	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/gs/arg"
-	"github.com/go-spring/spring-core/gs/gsutil"
 )
 
 func (c *container) Keys() []string {
@@ -44,12 +43,12 @@ func (c *container) Bind(i interface{}, opts ...conf.BindOption) error {
 
 // Find 查找符合条件的 bean 对象，注意该函数只能保证返回的 bean 是有效的，即未被
 // 标记为删除的，而不能保证已经完成属性绑定和依赖注入。
-func (c *container) Find(selector gsutil.BeanSelector) ([]gsutil.BeanDefinition, error) {
+func (c *container) Find(selector util.BeanSelector) ([]util.BeanDefinition, error) {
 	beans, err := c.findBean(selector)
 	if err != nil {
 		return nil, err
 	}
-	var ret []gsutil.BeanDefinition
+	var ret []util.BeanDefinition
 	for _, b := range beans {
 		ret = append(ret, b)
 	}
@@ -65,7 +64,7 @@ func (c *container) Find(selector gsutil.BeanSelector) ([]gsutil.BeanDefinition,
 // 工作模式称为自动模式，否则根据传入的选择器列表进行排序，这种工作模式成为指派模式。
 // 该方法和 Find 方法的区别是该方法保证返回的所有 bean 对象都已经完成属性绑定和依
 // 赖注入，而 Find 方法只能保证返回的 bean 对象是有效的，即未被标记为删除的。
-func (c *container) Get(i interface{}, selectors ...gsutil.BeanSelector) error {
+func (c *container) Get(i interface{}, selectors ...util.BeanSelector) error {
 
 	if i == nil {
 		return errors.New("i can't be nil")

@@ -7,8 +7,8 @@ package cond
 import (
 	reflect "reflect"
 
+	util "github.com/go-spring/spring-base/util"
 	conf "github.com/go-spring/spring-core/conf"
-	gsutil "github.com/go-spring/spring-core/gs/gsutil"
 	gomock "github.com/golang/mock/gomock"
 )
 
@@ -36,10 +36,10 @@ func (m *MockContext) EXPECT() *MockContextMockRecorder {
 }
 
 // Find mocks base method.
-func (m *MockContext) Find(selector gsutil.BeanSelector) ([]gsutil.BeanDefinition, error) {
+func (m *MockContext) Find(selector util.BeanSelector) ([]util.BeanDefinition, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Find", selector)
-	ret0, _ := ret[0].([]gsutil.BeanDefinition)
+	ret0, _ := ret[0].([]util.BeanDefinition)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

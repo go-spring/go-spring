@@ -41,7 +41,16 @@ func init() {
 
 	config := `
 		<?xml version="1.0" encoding="UTF-8"?>
-		<Configuration/>
+		<Configuration>
+			<Appenders>
+				<Console name="Console"/>
+			</Appenders>
+			<Loggers>
+				<Root level="info">
+					<AppenderRef ref="Console"/>
+				</Root>
+			</Loggers>
+		</Configuration>
 	`
 	err := log.RefreshBuffer(config, ".xml")
 	util.Panic(err).When(err != nil)

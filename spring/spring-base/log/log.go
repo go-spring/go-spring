@@ -224,6 +224,10 @@ func RefreshReader(input io.Reader, ext string) error {
 		}
 	}
 
+	if cRoot == nil {
+		return errors.New("found no root logger")
+	}
+
 	for name, config := range cLoggers {
 
 		var base *baseLoggerConfig

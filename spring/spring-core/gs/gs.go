@@ -35,7 +35,6 @@ import (
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/gs/cond"
-	"github.com/go-spring/spring-core/gs/gsutil"
 )
 
 type refreshState int
@@ -76,7 +75,7 @@ type Context interface {
 	Has(key string) bool
 	Prop(key string, opts ...conf.GetOption) string
 	Bind(i interface{}, opts ...conf.BindOption) error
-	Get(i interface{}, selectors ...gsutil.BeanSelector) error
+	Get(i interface{}, selectors ...util.BeanSelector) error
 	Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error)
 	Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, error)
 	Go(fn func(ctx context.Context))
@@ -139,7 +138,7 @@ func validOnProperty(fn interface{}) error {
 	if t.Kind() != reflect.Func {
 		return errors.New("fn should be a func(value_type)")
 	}
-	if t.NumIn() != 1 || !conf.IsValueType(t.In(0)) || t.NumOut() != 0 {
+	if t.NumIn() != 1 || !util.IsValueType(t.In(0)) || t.NumOut() != 0 {
 		return errors.New("fn should be a func(value_type)")
 	}
 	return nil
@@ -509,7 +508,7 @@ func (tag wireTag) String() string {
 	return b.String()
 }
 
-func toWireTag(selector gsutil.BeanSelector) wireTag {
+func toWireTag(selector util.BeanSelector) wireTag {
 	switch s := selector.(type) {
 	case string:
 		return parseWireTag(s)
@@ -518,7 +517,7 @@ func toWireTag(selector gsutil.BeanSelector) wireTag {
 	case *BeanDefinition:
 		return parseWireTag(s.ID())
 	default:
-		return parseWireTag(gsutil.TypeName(s) + ":")
+		return parseWireTag(util.TypeName(s) + ":")
 	}
 }
 
@@ -535,7 +534,7 @@ func toWireString(tags []wireTag) string {
 
 // findBean 查找符合条件的 bean 对象，注意该函数只能保证返回的 bean 是有效的，
 // 即未被标记为删除的，而不能保证已经完成属性绑定和依赖注入。
-func (c *container) findBean(selector gsutil.BeanSelector) ([]*BeanDefinition, error) {
+func (c *container) findBean(selector util.BeanSelector) ([]*BeanDefinition, error) {
 
 	finder := func(fn func(*BeanDefinition) bool) ([]*BeanDefinition, error) {
 		var result []*BeanDefinition
@@ -716,9 +715,9 @@ func (c *container) getBeanValue(b *BeanDefinition, stack *wiringStack) (reflect
 	}
 
 	// 构造函数的返回值为值类型时 b.Type() 返回其指针类型。
-	if val := out[0]; gsutil.IsBeanType(val.Type()) {
+	if val := out[0]; util.IsBeanType(val.Type()) {
 		// 如果实现接口的是值类型，那么需要转换成指针类型然后再赋值给接口。
-		if !val.IsNil() && val.Kind() == reflect.Interface && conf.IsValueType(val.Elem().Type()) {
+		if !val.IsNil() && val.Kind() == reflect.Interface && util.IsValueType(val.Elem().Type()) {
 			v := reflect.New(val.Elem().Type())
 			v.Elem().Set(val.Elem())
 			b.Value().Set(v)
@@ -883,7 +882,7 @@ func (c *container) getBean(v reflect.Value, tag wireTag, stack *wiringStack) er
 	}
 
 	t := v.Type()
-	if !gsutil.IsBeanReceiver(t) {
+	if !util.IsBeanReceiver(t) {
 		return fmt.Errorf("%s is not valid receiver type", t.String())
 	}
 
@@ -1022,7 +1021,7 @@ func (c *container) collectBeans(v reflect.Value, tags []wireTag, stack *wiringS
 	}
 
 	et := t.Elem()
-	if !gsutil.IsBeanReceiver(et) {
+	if !util.IsBeanReceiver(et) {
 		return fmt.Errorf("%s is not valid receiver type", t.String())
 	}
 

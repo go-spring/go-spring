@@ -23,7 +23,7 @@ import (
 	"unsafe"
 
 	"github.com/go-spring/spring-base/assert"
-	"github.com/go-spring/spring-core/gs/gsutil"
+	"github.com/go-spring/spring-base/util"
 	pkg1 "github.com/go-spring/spring-core/gs/testdata/pkg/bar"
 	pkg2 "github.com/go-spring/spring-core/gs/testdata/pkg/foo"
 )
@@ -166,7 +166,7 @@ func TestTypeName(t *testing.T) {
 	}
 
 	for typ, v := range data {
-		typeName := gsutil.TypeName(typ)
+		typeName := util.TypeName(typ)
 		assert.Equal(t, typeName, v.typeName)
 		assert.Equal(t, typ.String(), v.baseName)
 	}
@@ -176,7 +176,7 @@ func TestTypeName(t *testing.T) {
 	iPtrPtr := &iPtr
 	iPtrPtrPtr := &iPtrPtr
 	typ := reflect.TypeOf(iPtrPtrPtr)
-	typeName := gsutil.TypeName(typ)
+	typeName := util.TypeName(typ)
 	assert.Equal(t, typeName, "int")
 	assert.Equal(t, typ.String(), "***int")
 }
@@ -226,7 +226,7 @@ func TestIsBeanType(t *testing.T) {
 		default:
 			typ = reflect.TypeOf(i)
 		}
-		if r := gsutil.IsBeanType(typ); d.v != r {
+		if r := util.IsBeanType(typ); d.v != r {
 			t.Errorf("%v expect %v but %v", typ, d.v, r)
 		}
 	}

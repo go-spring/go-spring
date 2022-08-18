@@ -28,6 +28,7 @@ import (
 
 	"github.com/go-spring/spring-base/assert"
 	"github.com/go-spring/spring-base/cast"
+	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/conf"
 )
 
@@ -76,7 +77,7 @@ func TestIsValueType(t *testing.T) {
 		default:
 			typ = reflect.TypeOf(i)
 		}
-		if r := conf.IsValueType(typ); d.v != r {
+		if r := util.IsValueType(typ); d.v != r {
 			t.Errorf("%v expect %v but %v", typ, d.v, r)
 		}
 	}

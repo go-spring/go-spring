@@ -68,6 +68,7 @@ type NestedDbConfig struct {
 	DB      []NestedDB     `value:"${db}"`
 	Ints    []int          `value:"${:=}"`
 	Map     map[string]int `value:"${:=}"`
+	MapDef  map[string]int `value:"${x:=}"`
 	Structs []struct {
 		V string `value:"${v:=#v}"`
 	} `value:"${:=}"`

@@ -32,41 +32,6 @@ var (
 	errInvalidSyntax = errors.New("invalid syntax")
 )
 
-// IsPrimitiveValueType returns whether the input type is the primitive value
-// type which only is int, unit, float, bool, string and complex.
-func IsPrimitiveValueType(t reflect.Type) bool {
-	switch t.Kind() {
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return true
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		return true
-	case reflect.Complex64, reflect.Complex128:
-		return true
-	case reflect.Float32, reflect.Float64:
-		return true
-	case reflect.String:
-		return true
-	case reflect.Bool:
-		return true
-	}
-	return false
-}
-
-// IsValueType returns whether the input type is the value type which is the
-// primitive value type and their one dimensional composite type including array,
-// slice, map and struct, such as [3]string, []string, []int, map[int]int, etc.
-func IsValueType(t reflect.Type) bool {
-	fn := func(t reflect.Type) bool {
-		return IsPrimitiveValueType(t) || t.Kind() == reflect.Struct
-	}
-	switch t.Kind() {
-	case reflect.Map, reflect.Slice, reflect.Array:
-		return fn(t.Elem())
-	default:
-		return fn(t)
-	}
-}
-
 // ParsedTag a value tag includes at most three parts: required key, optional
 // default value, and optional splitter, the syntax is ${key:=value}||splitter.
 type ParsedTag struct {
@@ -141,7 +106,7 @@ func (param *BindParam) BindTag(tag string) error {
 // BindValue binds properties to a value.
 func BindValue(p *Properties, v reflect.Value, param BindParam) error {
 
-	if !IsValueType(param.Type) {
+	if !util.IsValueType(param.Type) {
 		err := errors.New("target should be value type")
 		return util.Wrapf(err, code.FileLine(), "bind %s error", param.Path)
 	}
@@ -270,7 +235,7 @@ func getSlice(p *Properties, et reflect.Type, param BindParam) (*Properties, err
 			if param.tag.Def == "" {
 				return nil, nil
 			}
-			if !IsPrimitiveValueType(et) && converters[et] == nil {
+			if !util.IsPrimitiveValueType(et) && converters[et] == nil {
 				return nil, util.Error(code.FileLine(), "slice can't have a non empty default value")
 			}
 			strVal = param.tag.Def
@@ -306,13 +271,14 @@ func getSlice(p *Properties, et reflect.Type, param BindParam) (*Properties, err
 // bindMap binds properties to a map value.
 func bindMap(p *Properties, v reflect.Value, param BindParam) error {
 
-	if param.tag.HasDef {
-		if param.tag.Def == "" {
-			return nil
-		}
+	if param.tag.HasDef && param.tag.Def != "" {
 		err := errors.New("map can't have a non empty default value")
 		return util.Wrapf(err, code.FileLine(), "bind %s error", param.Path)
 	}
+
+	et := param.Type.Elem()
+	ret := reflect.MakeMap(param.Type)
+	defer v.Set(ret)
 
 	var keys []string
 	{
@@ -324,6 +290,9 @@ func bindMap(p *Properties, v reflect.Value, param BindParam) error {
 		for i, s := range keyPath {
 			vt, ok := t[s]
 			if !ok {
+				if param.tag.Def == "" {
+					return nil
+				}
 				err := fmt.Errorf("property %q %w", param.Key, errNotExist)
 				return util.Wrapf(err, code.FileLine(), "bind %s error", param.Path)
 			}
@@ -340,8 +309,6 @@ func bindMap(p *Properties, v reflect.Value, param BindParam) error {
 		}
 	}
 
-	et := param.Type.Elem()
-	ret := reflect.MakeMap(param.Type)
 	for _, key := range keys {
 		e := reflect.New(et).Elem()
 		subKey := key
@@ -359,7 +326,6 @@ func bindMap(p *Properties, v reflect.Value, param BindParam) error {
 		}
 		ret.SetMapIndex(reflect.ValueOf(key), e)
 	}
-	v.Set(ret)
 	return nil
 }
 
@@ -409,7 +375,7 @@ func bindStruct(p *Properties, v reflect.Value, param BindParam) error {
 			continue
 		}
 
-		if IsValueType(ft.Type) {
+		if util.IsValueType(ft.Type) {
 			if subParam.Key == "" {
 				subParam.Key = ft.Name
 			} else {

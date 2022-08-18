@@ -28,9 +28,7 @@ import (
 	"github.com/go-spring/spring-base/code"
 	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-base/util"
-	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/gs/cond"
-	"github.com/go-spring/spring-core/gs/gsutil"
 )
 
 // Context defines some methods of IoC container that Callable use.
@@ -249,16 +247,16 @@ func (r *argList) getArg(ctx Context, arg Arg, t reflect.Type, fileLine string) 
 		return reflect.ValueOf(g.v), nil
 	case *optionArg:
 		return g.call(ctx)
-	case gsutil.BeanDefinition:
+	case util.BeanDefinition:
 		tag = g.ID()
 	case string:
 		tag = g
 	default:
-		tag = gsutil.TypeName(g) + ":"
+		tag = util.TypeName(g) + ":"
 	}
 
 	// binds properties value by the "value" tag.
-	if conf.IsValueType(t) {
+	if util.IsValueType(t) {
 		if tag == "" {
 			tag = "${}"
 		}
@@ -270,7 +268,7 @@ func (r *argList) getArg(ctx Context, arg Arg, t reflect.Type, fileLine string) 
 	}
 
 	// wires dependent beans by the "autowire" tag.
-	if gsutil.IsBeanReceiver(t) {
+	if util.IsBeanReceiver(t) {
 		v := reflect.New(t).Elem()
 		if err = ctx.Wire(v, tag); err != nil {
 			return reflect.Value{}, err
