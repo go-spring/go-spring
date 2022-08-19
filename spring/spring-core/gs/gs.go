@@ -57,7 +57,6 @@ type Container interface {
 	Object(i interface{}) *BeanDefinition
 	Provide(ctor interface{}, args ...arg.Arg) *BeanDefinition
 	Refresh() error
-	Go(fn func(ctx context.Context))
 	Close()
 }
 
@@ -851,24 +850,28 @@ func (c *container) wireByTag(v reflect.Value, tag string, stack *wiringStack) e
 	}
 
 	if tag == "" {
-		return c.autowire(v, nil, stack)
+		return c.autowire(v, nil, false, stack)
 	}
 
 	var tags []wireTag
-	for _, s := range strings.Split(tag, ",") {
-		tags = append(tags, toWireTag(s))
+	if tag != "?" {
+		for _, s := range strings.Split(tag, ",") {
+			tags = append(tags, toWireTag(s))
+		}
 	}
-	return c.autowire(v, tags, stack)
+	return c.autowire(v, tags, tag == "?", stack)
 }
 
-func (c *container) autowire(v reflect.Value, tags []wireTag, stack *wiringStack) error {
+func (c *container) autowire(v reflect.Value, tags []wireTag, nullable bool, stack *wiringStack) error {
 	switch v.Kind() {
 	case reflect.Map, reflect.Slice, reflect.Array:
-		return c.collectBeans(v, tags, stack)
+		return c.collectBeans(v, tags, nullable, stack)
 	default:
 		var tag wireTag
 		if len(tags) > 0 {
 			tag = tags[0]
+		} else if nullable {
+			tag.nullable = true
 		}
 		return c.getBean(v, tag, stack)
 	}
@@ -1013,7 +1016,7 @@ func (b byOrder) Len() int           { return len(b) }
 func (b byOrder) Less(i, j int) bool { return b[i].order < b[j].order }
 func (b byOrder) Swap(i, j int)      { b[i], b[j] = b[j], b[i] }
 
-func (c *container) collectBeans(v reflect.Value, tags []wireTag, stack *wiringStack) error {
+func (c *container) collectBeans(v reflect.Value, tags []wireTag, nullable bool, stack *wiringStack) error {
 
 	t := v.Type()
 	if t.Kind() != reflect.Slice && t.Kind() != reflect.Map {
@@ -1025,7 +1028,13 @@ func (c *container) collectBeans(v reflect.Value, tags []wireTag, stack *wiringS
 		return fmt.Errorf("%s is not valid receiver type", t.String())
 	}
 
-	beans := c.beansByType[et]
+	var beans []*BeanDefinition
+	if et.Kind() == reflect.Interface && et.NumMethod() == 0 {
+		beans = c.beans
+	} else {
+		beans = c.beansByType[et]
+	}
+
 	{
 		var arr []*BeanDefinition
 		for _, b := range beans {
@@ -1036,6 +1045,7 @@ func (c *container) collectBeans(v reflect.Value, tags []wireTag, stack *wiringS
 		}
 		beans = arr
 	}
+
 	if len(tags) > 0 {
 
 		var (
@@ -1086,7 +1096,7 @@ func (c *container) collectBeans(v reflect.Value, tags []wireTag, stack *wiringS
 		beans = arr
 	}
 
-	if len(beans) == 0 {
+	if len(beans) == 0 && !nullable {
 		if len(tags) == 0 {
 			return fmt.Errorf("no beans collected for %q", toWireString(tags))
 		}

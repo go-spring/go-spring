@@ -87,7 +87,7 @@ func (c *container) Get(i interface{}, selectors ...util.BeanSelector) error {
 	for _, s := range selectors {
 		tags = append(tags, toWireTag(s))
 	}
-	return c.autowire(v.Elem(), tags, stack)
+	return c.autowire(v.Elem(), tags, false, stack)
 }
 
 // Wire 如果传入的是 bean 对象，则对 bean 对象进行属性绑定和依赖注入，如果传入的

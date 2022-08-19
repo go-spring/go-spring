@@ -361,11 +361,6 @@ func (app *App) ShutDown(msg ...string) {
 	}
 }
 
-// Go 参考 Container.Go 的解释。
-func (app *App) Go(fn func(ctx context.Context)) {
-	app.c.Go(fn)
-}
-
 // Bootstrap 返回 *bootstrap 对象。
 func (app *App) Bootstrap() *bootstrap {
 	if app.b == nil {

@@ -17,7 +17,6 @@
 package gs
 
 import (
-	"context"
 	"net/http"
 	"os"
 	"reflect"
@@ -94,11 +93,6 @@ func Object(i interface{}) *BeanDefinition {
 // Provide 参考 Container.Provide 的解释。
 func Provide(ctor interface{}, args ...arg.Arg) *BeanDefinition {
 	return app.c.Accept(NewBean(ctor, args...))
-}
-
-// Go 参考 App.Go 的解释。
-func Go(fn func(ctx context.Context)) {
-	app.Go(fn)
 }
 
 // HandleGet 参考 App.HandleGet 的解释。

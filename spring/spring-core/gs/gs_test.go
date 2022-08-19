@@ -183,7 +183,7 @@ type TestObject struct {
 
 	// 基础类型指针数组
 	IntPtrSliceByType []*int `inject:"?"`
-	IntPtrCollection  []*int `autowire:"${key_2:=[int_ptr]}?"`
+	IntPtrCollection  []*int `autowire:"${key_2:=int_ptr}?"`
 	IntPtrSliceByName []*int `autowire:"int_ptr_slice?"`
 
 	// 自定义类型指针
@@ -210,6 +210,7 @@ type TestObject struct {
 
 	MapTyType map[string]interface{} `inject:"?"`
 	MapByName map[string]interface{} `autowire:"map?"`
+	MapByNam2 map[string]interface{} `autowire:"struct_ptr?"`
 }
 
 func TestApplicationContext_AutoWireBeans(t *testing.T) {
@@ -255,6 +256,9 @@ func TestApplicationContext_AutoWireBeans(t *testing.T) {
 	})
 	assert.Nil(t, err)
 
+	assert.Equal(t, len(obj.MapTyType), 7)
+	assert.Equal(t, len(obj.MapByName), 0)
+	assert.Equal(t, len(obj.MapByNam2), 1)
 	fmt.Printf("%+v\n", obj)
 }
 
