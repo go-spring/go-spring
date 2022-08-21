@@ -27,12 +27,19 @@ import (
 func TestEncoder(t *testing.T) {
 	var (
 		fields = []log.Field{
+
 			log.Bool("bool", true),
 			log.Int("int", 1),
 			log.String("string", "abc"),
 			log.Reflect("reflect", map[string]string{"string": "abc"}),
+
+			log.Any("bool_any", true),
+			log.Any("int_any", 1),
+			log.Any("string_any", "abc"),
+			log.Any("reflect_any", map[string]string{"string": "abc"}),
+
 			log.Array("array", log.BoolValue(true), log.StringValue("abc")),
-			log.Object("object", map[string]log.Value{"bool": log.BoolValue(true), "string": log.StringValue("abc")}),
+			log.Object("object", log.Bool("bool", true), log.String("string", "abc")),
 		}
 		buffer = bytes.NewBuffer(nil)
 	)
@@ -42,11 +49,11 @@ func TestEncoder(t *testing.T) {
 	}{
 		{
 			encoder: log.NewJSONEncoder(buffer),
-			expect:  `{"bool":true,"int":1,"string":"abc","reflect":{"string":"abc"},"array":[true,"abc"],"object":{"bool":true,"string":"abc"}}`,
+			expect:  `{"bool":true,"int":1,"string":"abc","reflect":{"string":"abc"},"bool_any":true,"int_any":1,"string_any":"abc","reflect_any":{"string":"abc"},"array":[true,"abc"],"object":{"bool":true,"string":"abc"}}`,
 		},
 		{
 			encoder: log.NewFlatEncoder(buffer, "||"),
-			expect:  `bool=true||int=1||string="abc"||reflect={"string":"abc"}||array=[true,"abc"]||object={"bool":true,"string":"abc"}`,
+			expect:  `bool=true||int=1||string="abc"||reflect={"string":"abc"}||bool_any=true||int_any=1||string_any="abc"||reflect_any={"string":"abc"}||array=[true,"abc"]||object={"bool":true,"string":"abc"}`,
 		},
 	}
 	for _, c := range testcases {

@@ -25,16 +25,16 @@ type Field struct {
 	Val Value
 }
 
-func nilField(key string) Field {
-	return Reflect(key, nil)
-}
-
-func Object(key string, val map[string]Value) Field {
-	return Field{Key: key, Val: ObjectValue(val)}
-}
-
 func Array(key string, val ...Value) Field {
 	return Field{Key: key, Val: ArrayValue(val)}
+}
+
+func Object(key string, fields ...Field) Field {
+	return Field{Key: key, Val: ObjectValue(fields)}
+}
+
+func nilField(key string) Field {
+	return Reflect(key, nil)
 }
 
 // Bool constructs a field that carries a bool.
@@ -42,9 +42,9 @@ func Bool(key string, val bool) Field {
 	return Field{Key: key, Val: BoolValue(val)}
 }
 
-// BoolPtr constructs a field that carries a *bool. The returned Field will safely
+// Boolp constructs a field that carries a *bool. The returned Field will safely
 // and explicitly represent `nil` when appropriate.
-func BoolPtr(key string, val *bool) Field {
+func Boolp(key string, val *bool) Field {
 	if val == nil {
 		return nilField(key)
 	}
@@ -56,9 +56,9 @@ func Int(key string, val int) Field {
 	return Field{Key: key, Val: Int64Value(val)}
 }
 
-// IntPtr constructs a field that carries a *int. The returned Field will safely
+// Intp constructs a field that carries a *int. The returned Field will safely
 // and explicitly represent `nil` when appropriate.
-func IntPtr(key string, val *int) Field {
+func Intp(key string, val *int) Field {
 	if val == nil {
 		return nilField(key)
 	}
@@ -70,9 +70,9 @@ func Int8(key string, val int8) Field {
 	return Field{Key: key, Val: Int64Value(val)}
 }
 
-// Int8Ptr constructs a field that carries a *int8. The returned Field will safely
+// Int8p constructs a field that carries a *int8. The returned Field will safely
 // and explicitly represent `nil` when appropriate.
-func Int8Ptr(key string, val *int8) Field {
+func Int8p(key string, val *int8) Field {
 	if val == nil {
 		return nilField(key)
 	}
@@ -84,9 +84,9 @@ func Int16(key string, val int16) Field {
 	return Field{Key: key, Val: Int64Value(val)}
 }
 
-// Int16Ptr constructs a field that carries a *int16. The returned Field will safely
+// Int16p constructs a field that carries a *int16. The returned Field will safely
 // and explicitly represent `nil` when appropriate.
-func Int16Ptr(key string, val *int16) Field {
+func Int16p(key string, val *int16) Field {
 	if val == nil {
 		return nilField(key)
 	}
@@ -98,9 +98,9 @@ func Int32(key string, val int32) Field {
 	return Field{Key: key, Val: Int64Value(val)}
 }
 
-// Int32Ptr constructs a field that carries a *int32. The returned Field will safely
+// Int32p constructs a field that carries a *int32. The returned Field will safely
 // and explicitly represent `nil` when appropriate.
-func Int32Ptr(key string, val *int32) Field {
+func Int32p(key string, val *int32) Field {
 	if val == nil {
 		return nilField(key)
 	}
@@ -112,9 +112,9 @@ func Int64(key string, val int64) Field {
 	return Field{Key: key, Val: Int64Value(val)}
 }
 
-// Int64Ptr constructs a field that carries a *int64. The returned Field will safely
+// Int64p constructs a field that carries a *int64. The returned Field will safely
 // and explicitly represent `nil` when appropriate.
-func Int64Ptr(key string, val *int64) Field {
+func Int64p(key string, val *int64) Field {
 	if val == nil {
 		return nilField(key)
 	}
@@ -126,9 +126,9 @@ func Uint(key string, val uint) Field {
 	return Field{Key: key, Val: Uint64Value(val)}
 }
 
-// UintPtr constructs a field that carries a *uint. The returned Field will safely
+// Uintp constructs a field that carries a *uint. The returned Field will safely
 // and explicitly represent `nil` when appropriate.
-func UintPtr(key string, val *uint) Field {
+func Uintp(key string, val *uint) Field {
 	if val == nil {
 		return nilField(key)
 	}
@@ -140,9 +140,9 @@ func Uint8(key string, val uint8) Field {
 	return Field{Key: key, Val: Uint64Value(val)}
 }
 
-// Uint8Ptr constructs a field that carries a *uint8. The returned Field will safely
+// Uint8p constructs a field that carries a *uint8. The returned Field will safely
 // and explicitly represent `nil` when appropriate.
-func Uint8Ptr(key string, val *uint8) Field {
+func Uint8p(key string, val *uint8) Field {
 	if val == nil {
 		return nilField(key)
 	}
@@ -154,9 +154,9 @@ func Uint16(key string, val uint16) Field {
 	return Field{Key: key, Val: Uint64Value(val)}
 }
 
-// Uint16Ptr constructs a field that carries a *uint16. The returned Field will safely
+// Uint16p constructs a field that carries a *uint16. The returned Field will safely
 // and explicitly represent `nil` when appropriate.
-func Uint16Ptr(key string, val *uint16) Field {
+func Uint16p(key string, val *uint16) Field {
 	if val == nil {
 		return nilField(key)
 	}
@@ -168,9 +168,9 @@ func Uint32(key string, val uint32) Field {
 	return Field{Key: key, Val: Uint64Value(val)}
 }
 
-// Uint32Ptr constructs a field that carries a *uint32. The returned Field will safely
+// Uint32p constructs a field that carries a *uint32. The returned Field will safely
 // and explicitly represent `nil` when appropriate.
-func Uint32Ptr(key string, val *uint32) Field {
+func Uint32p(key string, val *uint32) Field {
 	if val == nil {
 		return nilField(key)
 	}
@@ -182,9 +182,9 @@ func Uint64(key string, val uint64) Field {
 	return Field{Key: key, Val: Uint64Value(val)}
 }
 
-// Uint64Ptr constructs a field that carries a *uint64. The returned Field will safely
+// Uint64p constructs a field that carries a *uint64. The returned Field will safely
 // and explicitly represent `nil` when appropriate.
-func Uint64Ptr(key string, val *uint64) Field {
+func Uint64p(key string, val *uint64) Field {
 	if val == nil {
 		return nilField(key)
 	}
@@ -198,9 +198,9 @@ func Float32(key string, val float32) Field {
 	return Field{Key: key, Val: Float64Value(val)}
 }
 
-// Float32Ptr constructs a field that carries a *float32. The returned Field will safely
+// Float32p constructs a field that carries a *float32. The returned Field will safely
 // and explicitly represent `nil` when appropriate.
-func Float32Ptr(key string, val *float32) Field {
+func Float32p(key string, val *float32) Field {
 	if val == nil {
 		return nilField(key)
 	}
@@ -214,9 +214,9 @@ func Float64(key string, val float64) Field {
 	return Field{Key: key, Val: Float64Value(val)}
 }
 
-// Float64Ptr constructs a field that carries a *float64. The returned Field will safely
+// Float64p constructs a field that carries a *float64. The returned Field will safely
 // and explicitly represent `nil` when appropriate.
-func Float64Ptr(key string, val *float64) Field {
+func Float64p(key string, val *float64) Field {
 	if val == nil {
 		return nilField(key)
 	}
@@ -228,9 +228,9 @@ func String(key string, val string) Field {
 	return Field{Key: key, Val: StringValue(val)}
 }
 
-// StringPtr constructs a field that carries a *string. The returned Field will safely
+// Stringp constructs a field that carries a *string. The returned Field will safely
 // and explicitly represent `nil` when appropriate.
-func StringPtr(key string, val *string) Field {
+func Stringp(key string, val *string) Field {
 	if val == nil {
 		return nilField(key)
 	}
@@ -242,19 +242,19 @@ func Reflect(key string, val interface{}) Field {
 	return Field{Key: key, Val: ReflectValue{Val: val}}
 }
 
-type ObjectValue map[string]Value
+type ObjectValue []Field
 
 func (v ObjectValue) Encode(enc Encoder) error {
 	err := enc.AppendObjectBegin()
 	if err != nil {
 		return err
 	}
-	for key, val := range v {
-		err = enc.AppendKey(key)
+	for _, f := range v {
+		err = enc.AppendKey(f.Key)
 		if err != nil {
 			return err
 		}
-		err = val.Encode(enc)
+		err = f.Val.Encode(enc)
 		if err != nil {
 			return err
 		}
@@ -314,4 +314,377 @@ type ReflectValue struct {
 
 func (v ReflectValue) Encode(enc Encoder) error {
 	return enc.AppendReflect(v.Val)
+}
+
+func Bools(key string, val []bool) Field {
+	return Field{Key: key, Val: BoolsValue(val)}
+}
+
+func Ints(key string, val []int) Field {
+	return Field{Key: key, Val: IntsValue(val)}
+}
+
+func Int8s(key string, val []int8) Field {
+	return Field{Key: key, Val: Int8sValue(val)}
+}
+
+func Int16s(key string, val []int16) Field {
+	return Field{Key: key, Val: Int16sValue(val)}
+}
+
+func Int32s(key string, val []int32) Field {
+	return Field{Key: key, Val: Int32sValue(val)}
+}
+
+func Int64s(key string, val []int64) Field {
+	return Field{Key: key, Val: Int64sValue(val)}
+}
+
+func Uints(key string, val []uint) Field {
+	return Field{Key: key, Val: UintsValue(val)}
+}
+
+func Uint8s(key string, val []uint8) Field {
+	return Field{Key: key, Val: Uint8sValue(val)}
+}
+
+func Uint16s(key string, val []uint16) Field {
+	return Field{Key: key, Val: Uint16sValue(val)}
+}
+
+func Uint32s(key string, val []uint32) Field {
+	return Field{Key: key, Val: Uint32sValue(val)}
+}
+
+func Uint64s(key string, val []uint64) Field {
+	return Field{Key: key, Val: Uint64sValue(val)}
+}
+
+func Float32s(key string, val []float32) Field {
+	return Field{Key: key, Val: Float32sValue(val)}
+}
+
+func Float64s(key string, val []float64) Field {
+	return Field{Key: key, Val: Float64sValue(val)}
+}
+
+func Strings(key string, val []string) Field {
+	return Field{Key: key, Val: StringsValue(val)}
+}
+
+type BoolsValue []bool
+
+func (v BoolsValue) Encode(enc Encoder) error {
+	err := enc.AppendArrayBegin()
+	if err != nil {
+		return err
+	}
+	for _, val := range v {
+		err = enc.AppendBool(val)
+		if err != nil {
+			return err
+		}
+	}
+	return enc.AppendArrayEnd()
+}
+
+type IntsValue []int
+
+func (v IntsValue) Encode(enc Encoder) error {
+	err := enc.AppendArrayBegin()
+	if err != nil {
+		return err
+	}
+	for _, val := range v {
+		err = enc.AppendInt64(int64(val))
+		if err != nil {
+			return err
+		}
+	}
+	return enc.AppendArrayEnd()
+}
+
+type Int8sValue []int8
+
+func (v Int8sValue) Encode(enc Encoder) error {
+	err := enc.AppendArrayBegin()
+	if err != nil {
+		return err
+	}
+	for _, val := range v {
+		err = enc.AppendInt64(int64(val))
+		if err != nil {
+			return err
+		}
+	}
+	return enc.AppendArrayEnd()
+}
+
+type Int16sValue []int16
+
+func (v Int16sValue) Encode(enc Encoder) error {
+	err := enc.AppendArrayBegin()
+	if err != nil {
+		return err
+	}
+	for _, val := range v {
+		err = enc.AppendInt64(int64(val))
+		if err != nil {
+			return err
+		}
+	}
+	return enc.AppendArrayEnd()
+}
+
+type Int32sValue []int32
+
+func (v Int32sValue) Encode(enc Encoder) error {
+	err := enc.AppendArrayBegin()
+	if err != nil {
+		return err
+	}
+	for _, val := range v {
+		err = enc.AppendInt64(int64(val))
+		if err != nil {
+			return err
+		}
+	}
+	return enc.AppendArrayEnd()
+}
+
+type Int64sValue []int64
+
+func (v Int64sValue) Encode(enc Encoder) error {
+	err := enc.AppendArrayBegin()
+	if err != nil {
+		return err
+	}
+	for _, val := range v {
+		err = enc.AppendInt64(val)
+		if err != nil {
+			return err
+		}
+	}
+	return enc.AppendArrayEnd()
+}
+
+type UintsValue []uint
+
+func (v UintsValue) Encode(enc Encoder) error {
+	err := enc.AppendArrayBegin()
+	if err != nil {
+		return err
+	}
+	for _, val := range v {
+		err = enc.AppendUint64(uint64(val))
+		if err != nil {
+			return err
+		}
+	}
+	return enc.AppendArrayEnd()
+}
+
+type Uint8sValue []uint8
+
+func (v Uint8sValue) Encode(enc Encoder) error {
+	err := enc.AppendArrayBegin()
+	if err != nil {
+		return err
+	}
+	for _, val := range v {
+		err = enc.AppendUint64(uint64(val))
+		if err != nil {
+			return err
+		}
+	}
+	return enc.AppendArrayEnd()
+}
+
+type Uint16sValue []uint16
+
+func (v Uint16sValue) Encode(enc Encoder) error {
+	err := enc.AppendArrayBegin()
+	if err != nil {
+		return err
+	}
+	for _, val := range v {
+		err = enc.AppendUint64(uint64(val))
+		if err != nil {
+			return err
+		}
+	}
+	return enc.AppendArrayEnd()
+}
+
+type Uint32sValue []uint32
+
+func (v Uint32sValue) Encode(enc Encoder) error {
+	err := enc.AppendArrayBegin()
+	if err != nil {
+		return err
+	}
+	for _, val := range v {
+		err = enc.AppendUint64(uint64(val))
+		if err != nil {
+			return err
+		}
+	}
+	return enc.AppendArrayEnd()
+}
+
+type Uint64sValue []uint64
+
+func (v Uint64sValue) Encode(enc Encoder) error {
+	err := enc.AppendArrayBegin()
+	if err != nil {
+		return err
+	}
+	for _, val := range v {
+		err = enc.AppendUint64(val)
+		if err != nil {
+			return err
+		}
+	}
+	return enc.AppendArrayEnd()
+}
+
+type Float32sValue []float32
+
+func (v Float32sValue) Encode(enc Encoder) error {
+	err := enc.AppendArrayBegin()
+	if err != nil {
+		return err
+	}
+	for _, val := range v {
+		err = enc.AppendFloat64(float64(val))
+		if err != nil {
+			return err
+		}
+	}
+	return enc.AppendArrayEnd()
+}
+
+type Float64sValue []float64
+
+func (v Float64sValue) Encode(enc Encoder) error {
+	err := enc.AppendArrayBegin()
+	if err != nil {
+		return err
+	}
+	for _, val := range v {
+		err = enc.AppendFloat64(val)
+		if err != nil {
+			return err
+		}
+	}
+	return enc.AppendArrayEnd()
+}
+
+type StringsValue []string
+
+func (v StringsValue) Encode(enc Encoder) error {
+	err := enc.AppendArrayBegin()
+	if err != nil {
+		return err
+	}
+	for _, val := range v {
+		err = enc.AppendString(val)
+		if err != nil {
+			return err
+		}
+	}
+	return enc.AppendArrayEnd()
+}
+
+func Any(key string, value interface{}) Field {
+	switch val := value.(type) {
+	case nil:
+		return nilField(key)
+	case bool:
+		return Bool(key, val)
+	case *bool:
+		return Boolp(key, val)
+	case []bool:
+		return Bools(key, val)
+	case int:
+		return Int(key, val)
+	case *int:
+		return Intp(key, val)
+	case []int:
+		return Ints(key, val)
+	case int8:
+		return Int8(key, val)
+	case *int8:
+		return Int8p(key, val)
+	case []int8:
+		return Int8s(key, val)
+	case int16:
+		return Int16(key, val)
+	case *int16:
+		return Int16p(key, val)
+	case []int16:
+		return Int16s(key, val)
+	case int32:
+		return Int32(key, val)
+	case *int32:
+		return Int32p(key, val)
+	case []int32:
+		return Int32s(key, val)
+	case int64:
+		return Int64(key, val)
+	case *int64:
+		return Int64p(key, val)
+	case []int64:
+		return Int64s(key, val)
+	case uint:
+		return Uint(key, val)
+	case *uint:
+		return Uintp(key, val)
+	case []uint:
+		return Uints(key, val)
+	case uint8:
+		return Uint8(key, val)
+	case *uint8:
+		return Uint8p(key, val)
+	case []uint8:
+		return Uint8s(key, val)
+	case uint16:
+		return Uint16(key, val)
+	case *uint16:
+		return Uint16p(key, val)
+	case []uint16:
+		return Uint16s(key, val)
+	case uint32:
+		return Uint32(key, val)
+	case *uint32:
+		return Uint32p(key, val)
+	case []uint32:
+		return Uint32s(key, val)
+	case uint64:
+		return Uint64(key, val)
+	case *uint64:
+		return Uint64p(key, val)
+	case []uint64:
+		return Uint64s(key, val)
+	case float32:
+		return Float32(key, val)
+	case *float32:
+		return Float32p(key, val)
+	case []float32:
+		return Float32s(key, val)
+	case float64:
+		return Float64(key, val)
+	case *float64:
+		return Float64p(key, val)
+	case []float64:
+		return Float64s(key, val)
+	case string:
+		return String(key, val)
+	case *string:
+		return Stringp(key, val)
+	case []string:
+		return Strings(key, val)
+	default:
+		return Reflect(key, val)
+	}
 }
