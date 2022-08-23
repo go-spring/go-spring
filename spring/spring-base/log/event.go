@@ -20,12 +20,12 @@ import "time"
 
 // Event provides contextual information about a log message.
 type Event struct {
-	entry Entry
-	time  time.Time
-	msg   Message
-	file  string
-	line  int
-	level Level
+	entry  Entry
+	time   time.Time
+	file   string
+	line   int
+	level  Level
+	fields []Field
 }
 
 func (e *Event) Entry() Entry {
@@ -34,10 +34,6 @@ func (e *Event) Entry() Entry {
 
 func (e *Event) Time() time.Time {
 	return e.time
-}
-
-func (e *Event) Msg() Message {
-	return e.msg
 }
 
 func (e *Event) File() string {
@@ -50,4 +46,8 @@ func (e *Event) Line() int {
 
 func (e *Event) Level() Level {
 	return e.level
+}
+
+func (e *Event) Fields() []Field {
+	return e.fields
 }

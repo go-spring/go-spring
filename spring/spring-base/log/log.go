@@ -364,6 +364,15 @@ func (l *Logger) Tracef(format string, args ...interface{}) *Event {
 	return c.getEntry().WithSkip(1).Tracef(format, args...)
 }
 
+// Tracew outputs log with level TraceLevel.
+func (l *Logger) Tracew(fields ...Field) *Event {
+	c, ok := l.enableLog(TraceLevel)
+	if !ok {
+		return nil
+	}
+	return c.getEntry().WithSkip(1).Tracew(fields...)
+}
+
 // Debug outputs log with level DebugLevel.
 func (l *Logger) Debug(args ...interface{}) *Event {
 	c, ok := l.enableLog(DebugLevel)
@@ -380,6 +389,15 @@ func (l *Logger) Debugf(format string, args ...interface{}) *Event {
 		return nil
 	}
 	return c.getEntry().WithSkip(1).Debugf(format, args...)
+}
+
+// Debugw outputs log with level DebugLevel.
+func (l *Logger) Debugw(fields ...Field) *Event {
+	c, ok := l.enableLog(DebugLevel)
+	if !ok {
+		return nil
+	}
+	return c.getEntry().WithSkip(1).Debugw(fields...)
 }
 
 // Info outputs log with level InfoLevel.
@@ -400,6 +418,15 @@ func (l *Logger) Infof(format string, args ...interface{}) *Event {
 	return c.getEntry().WithSkip(1).Infof(format, args...)
 }
 
+// Infow outputs log with level InfoLevel.
+func (l *Logger) Infow(fields ...Field) *Event {
+	c, ok := l.enableLog(InfoLevel)
+	if !ok {
+		return nil
+	}
+	return c.getEntry().WithSkip(1).Infow(fields...)
+}
+
 // Warn outputs log with level WarnLevel.
 func (l *Logger) Warn(args ...interface{}) *Event {
 	c, ok := l.enableLog(WarnLevel)
@@ -416,6 +443,15 @@ func (l *Logger) Warnf(format string, args ...interface{}) *Event {
 		return nil
 	}
 	return c.getEntry().WithSkip(1).Warnf(format, args...)
+}
+
+// Warnw outputs log with level WarnLevel.
+func (l *Logger) Warnw(fields ...Field) *Event {
+	c, ok := l.enableLog(WarnLevel)
+	if !ok {
+		return nil
+	}
+	return c.getEntry().WithSkip(1).Warnw(fields...)
 }
 
 // Error outputs log with level ErrorLevel.
@@ -436,6 +472,15 @@ func (l *Logger) Errorf(format string, args ...interface{}) *Event {
 	return c.getEntry().WithSkip(1).Errorf(format, args...)
 }
 
+// Errorw outputs log with level ErrorLevel.
+func (l *Logger) Errorw(fields ...Field) *Event {
+	c, ok := l.enableLog(ErrorLevel)
+	if !ok {
+		return nil
+	}
+	return c.getEntry().WithSkip(1).Errorw(fields...)
+}
+
 // Panic outputs log with level PanicLevel.
 func (l *Logger) Panic(args ...interface{}) *Event {
 	c, ok := l.enableLog(PanicLevel)
@@ -454,6 +499,15 @@ func (l *Logger) Panicf(format string, args ...interface{}) *Event {
 	return c.getEntry().WithSkip(1).Panicf(format, args...)
 }
 
+// Panicw outputs log with level PanicLevel.
+func (l *Logger) Panicw(fields ...Field) *Event {
+	c, ok := l.enableLog(PanicLevel)
+	if !ok {
+		return nil
+	}
+	return c.getEntry().WithSkip(1).Panicw(fields...)
+}
+
 // Fatal outputs log with level FatalLevel.
 func (l *Logger) Fatal(args ...interface{}) *Event {
 	c, ok := l.enableLog(FatalLevel)
@@ -470,4 +524,13 @@ func (l *Logger) Fatalf(format string, args ...interface{}) *Event {
 		return nil
 	}
 	return c.getEntry().WithSkip(1).Fatalf(format, args...)
+}
+
+// Fatalw outputs log with level FatalLevel.
+func (l *Logger) Fatalw(fields ...Field) *Event {
+	c, ok := l.enableLog(FatalLevel)
+	if !ok {
+		return nil
+	}
+	return c.getEntry().WithSkip(1).Fatalw(fields...)
 }

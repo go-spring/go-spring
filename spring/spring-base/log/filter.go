@@ -52,9 +52,11 @@ func ParseResult(s string) (Result, error) {
 
 // Filter is an interface that tells the logger a log message should
 // be dropped when the Filter method returns ResultDeny.
+// Filter 只应该出现在两个地方，一个是 Logger 上，用于控制消息是否打印，另一个是
+// AppenderRef，用于控制消息是否输出到 Appender 上，即控制消息路由。
 type Filter interface {
 	LifeCycle
-	Filter(level Level, e Entry, msg Message) Result
+	Filter(level Level, e Entry, fields []Field) Result
 }
 
 type BaseFilter struct {
@@ -85,9 +87,9 @@ func (f *CompositeFilter) Stop(ctx context.Context) {
 	}
 }
 
-func (f *CompositeFilter) Filter(level Level, e Entry, msg Message) Result {
+func (f *CompositeFilter) Filter(level Level, e Entry, fields []Field) Result {
 	for _, filter := range f.Filters {
-		if ResultDeny == filter.Filter(level, e, msg) {
+		if ResultDeny == filter.Filter(level, e, fields) {
 			return ResultDeny
 		}
 	}
@@ -99,7 +101,7 @@ type DenyAllFilter struct{}
 
 func (f *DenyAllFilter) Start() error                              { return nil }
 func (f *DenyAllFilter) Stop(ctx context.Context)                  {}
-func (f *DenyAllFilter) Filter(_ Level, _ Entry, _ Message) Result { return ResultDeny }
+func (f *DenyAllFilter) Filter(_ Level, _ Entry, _ []Field) Result { return ResultDeny }
 
 // LevelFilter logs events if the level in the Event is same or more specific
 // than the configured level.
@@ -108,7 +110,7 @@ type LevelFilter struct {
 	Level Level `PluginAttribute:"level"`
 }
 
-func (f *LevelFilter) Filter(level Level, e Entry, msg Message) Result {
+func (f *LevelFilter) Filter(level Level, e Entry, fields []Field) Result {
 	if level >= f.Level {
 		return f.OnMatch
 	}
@@ -122,7 +124,7 @@ type LevelMatchFilter struct {
 	Level Level `PluginAttribute:"level"`
 }
 
-func (f *LevelMatchFilter) Filter(level Level, e Entry, msg Message) Result {
+func (f *LevelMatchFilter) Filter(level Level, e Entry, fields []Field) Result {
 	if level == f.Level {
 		return f.OnMatch
 	}
@@ -137,7 +139,7 @@ type LevelRangeFilter struct {
 	MaxLevel Level `PluginAttribute:"maxLevel"`
 }
 
-func (f *LevelRangeFilter) Filter(level Level, e Entry, msg Message) Result {
+func (f *LevelRangeFilter) Filter(level Level, e Entry, fields []Field) Result {
 	if level >= f.MinLevel && level <= f.MaxLevel {
 		return f.OnMatch
 	}
@@ -189,7 +191,7 @@ func (f *TimeFilter) Init() error {
 	return nil
 }
 
-func (f *TimeFilter) Filter(level Level, e Entry, msg Message) Result {
+func (f *TimeFilter) Filter(level Level, e Entry, fields []Field) Result {
 	t := int(f.TimeFunc().Sub(f.abs)/time.Second) % 86400
 	if t >= f.start && t <= f.end {
 		return f.OnMatch

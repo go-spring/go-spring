@@ -26,6 +26,7 @@ import (
 )
 
 func init() {
+	RegisterPlugin("JSONLayout", PluginTypeLayout, (*JSONLayout)(nil))
 	RegisterPlugin("DefaultLayout", PluginTypeLayout, (*DefaultLayout)(nil))
 }
 
@@ -103,7 +104,27 @@ func (c *DefaultLayout) parse(formatter string) error {
 }
 
 func (c *DefaultLayout) getMsg(e *Event) string {
-	return e.Msg().Text()
+	buf := bytes.NewBuffer(nil)
+	enc := NewFlatEncoder(buf, "||")
+	err := enc.AppendEncoderBegin()
+	if err != nil {
+		return err.Error()
+	}
+	for _, f := range e.fields {
+		err = enc.AppendKey(f.Key)
+		if err != nil {
+			return err.Error()
+		}
+		err = f.Val.Encode(enc)
+		if err != nil {
+			return err.Error()
+		}
+	}
+	err = enc.AppendEncoderEnd()
+	if err != nil {
+		return err.Error()
+	}
+	return buf.String()
 }
 
 func (c *DefaultLayout) getLevel(e *Event) string {
@@ -128,4 +149,36 @@ func (c *DefaultLayout) getTime(e *Event) string {
 
 func (c *DefaultLayout) getFileLine(e *Event) string {
 	return util.Contract(fmt.Sprintf("%s:%d", e.File(), e.Line()), 48)
+}
+
+type JSONLayout struct {
+	LineBreak bool `PluginAttribute:"lineBreak,default=true"`
+}
+
+func (c *JSONLayout) ToBytes(e *Event) ([]byte, error) {
+
+	buf := bytes.NewBuffer(nil)
+	enc := NewJSONEncoder(buf)
+	err := enc.AppendEncoderBegin()
+	if err != nil {
+		return nil, err
+	}
+	for _, f := range e.fields {
+		err = enc.AppendKey(f.Key)
+		if err != nil {
+			return nil, err
+		}
+		err = f.Val.Encode(enc)
+		if err != nil {
+			return nil, err
+		}
+	}
+	err = enc.AppendEncoderEnd()
+	if err != nil {
+		return nil, err
+	}
+	if c.LineBreak {
+		buf.WriteByte('\n')
+	}
+	return buf.Bytes(), nil
 }

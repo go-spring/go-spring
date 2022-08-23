@@ -16,6 +16,8 @@
 
 package log
 
+import "fmt"
+
 type Value interface {
 	Encode(enc Encoder) error
 }
@@ -687,4 +689,36 @@ func Any(key string, value interface{}) Field {
 	default:
 		return Reflect(key, val)
 	}
+}
+
+func Message(format string, args ...interface{}) Field {
+	return Field{
+		Key: "msg",
+		Val: MessageValue{format: format, args: args},
+	}
+}
+
+type MessageValue struct {
+	format string
+	args   []interface{}
+}
+
+func (v MessageValue) Encode(enc Encoder) error {
+	if len(v.args) == 1 {
+		fn, ok := v.args[0].(func() []interface{})
+		if ok {
+			v.args = fn()
+		}
+	}
+	var text string
+	if len(v.args) == 0 {
+		text = v.format
+	} else {
+		if v.format == "" {
+			text = fmt.Sprint(v.args...)
+		} else {
+			text = fmt.Sprintf(v.format, v.args...)
+		}
+	}
+	return enc.AppendString(text)
 }
