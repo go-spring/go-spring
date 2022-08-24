@@ -36,7 +36,13 @@ type Encoder interface {
 	AppendFloat64(float64) error
 	AppendString(string) error
 	AppendReflect(v interface{}) error
+	AppendBuffer([]byte) error
 }
+
+var (
+	_ Encoder = (*jsonEncoder)(nil)
+	_ Encoder = (*flatEncoder)(nil)
+)
 
 type jsonToken int
 
@@ -55,7 +61,7 @@ type jsonEncoder struct {
 	last jsonToken
 }
 
-func NewJSONEncoder(buf *bytes.Buffer) Encoder {
+func NewJSONEncoder(buf *bytes.Buffer) *jsonEncoder {
 	return &jsonEncoder{
 		buf:  buf,
 		last: jsonTokenUnknown,
@@ -202,15 +208,25 @@ func (enc *jsonEncoder) AppendReflect(v interface{}) error {
 	return err
 }
 
+func (enc *jsonEncoder) AppendBuffer(b []byte) error {
+	err := enc.appendSeparator(jsonTokenKey)
+	if err != nil {
+		return err
+	}
+	enc.last = jsonTokenValue
+	_, err = enc.buf.Write(b)
+	return err
+}
+
 type flatEncoder struct {
 	buf         *bytes.Buffer
 	separator   string
 	jsonEncoder *jsonEncoder
 	jsonDepth   int
-	count       int
+	init        bool
 }
 
-func NewFlatEncoder(buf *bytes.Buffer, separator string) Encoder {
+func NewFlatEncoder(buf *bytes.Buffer, separator string) *flatEncoder {
 	return &flatEncoder{
 		buf:         buf,
 		separator:   separator,
@@ -258,13 +274,13 @@ func (enc *flatEncoder) AppendKey(key string) error {
 	if enc.jsonDepth > 0 {
 		return enc.jsonEncoder.AppendKey(key)
 	}
-	if enc.count > 0 {
+	if enc.init {
 		_, err := enc.buf.WriteString(enc.separator)
 		if err != nil {
 			return err
 		}
 	}
-	enc.count++
+	enc.init = true
 	_, err := enc.buf.WriteString(key)
 	if err != nil {
 		return err
@@ -308,15 +324,8 @@ func (enc *flatEncoder) AppendString(s string) error {
 	if enc.jsonDepth > 0 {
 		return enc.jsonEncoder.AppendString(s)
 	}
-	err := enc.buf.WriteByte('"')
-	if err != nil {
-		return err
-	}
-	_, err = enc.buf.WriteString(s)
-	if err != nil {
-		return err
-	}
-	return enc.buf.WriteByte('"')
+	_, err := enc.buf.WriteString(s)
+	return err
 }
 
 func (enc *flatEncoder) AppendReflect(v interface{}) error {
@@ -328,5 +337,13 @@ func (enc *flatEncoder) AppendReflect(v interface{}) error {
 		return err
 	}
 	_, err = enc.buf.Write(b)
+	return err
+}
+
+func (enc *flatEncoder) AppendBuffer(b []byte) error {
+	if enc.jsonDepth > 0 {
+		return enc.jsonEncoder.AppendBuffer(b)
+	}
+	_, err := enc.buf.Write(b)
 	return err
 }

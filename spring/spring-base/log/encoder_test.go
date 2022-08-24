@@ -53,7 +53,7 @@ func TestEncoder(t *testing.T) {
 		},
 		{
 			encoder: log.NewFlatEncoder(buffer, "||"),
-			expect:  `bool=true||int=1||string="abc"||reflect={"string":"abc"}||bool_any=true||int_any=1||string_any="abc"||reflect_any={"string":"abc"}||array=[true,"abc"]||object={"bool":true,"string":"abc"}`,
+			expect:  `bool=true||int=1||string=abc||reflect={"string":"abc"}||bool_any=true||int_any=1||string_any=abc||reflect_any={"string":"abc"}||array=[true,"abc"]||object={"bool":true,"string":"abc"}`,
 		},
 	}
 	for _, c := range testcases {
