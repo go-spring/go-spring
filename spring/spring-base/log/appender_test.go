@@ -21,11 +21,20 @@ import (
 	"testing"
 
 	"github.com/go-spring/spring-base/assert"
+	"github.com/go-spring/spring-base/atomic"
 	"github.com/go-spring/spring-base/log"
 )
 
+type CountingNoOpAppender struct {
+	log.BaseAppender
+	count atomic.Int64
+}
+
+func (c *CountingNoOpAppender) Count() int64        { return c.count.Load() }
+func (c *CountingNoOpAppender) Append(e *log.Event) { c.count.Add(1) }
+
 func TestCountingNoOpAppender(t *testing.T) {
-	appender := &log.CountingNoOpAppender{}
+	appender := &CountingNoOpAppender{}
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {

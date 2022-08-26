@@ -30,14 +30,14 @@ func TestLoadCmdArgs(t *testing.T) {
 		assert.Error(t, err, "cmd option -D needs arg")
 	})
 	t.Run("", func(t *testing.T) {
-		err := gs.LoadCmdArgs([]string{"-D", "key"}, nil)
-		assert.Error(t, err, "cmd option -D arg likes <key>=<value>")
-	})
-	t.Run("", func(t *testing.T) {
 		p := conf.New()
-		err := gs.LoadCmdArgs([]string{"-D", "key=value"}, p)
+		err := gs.LoadCmdArgs([]string{
+			"-D", "language=go",
+			"-D", "server",
+		}, p)
 		assert.Nil(t, err)
-		assert.Equal(t, p.Keys(), []string{"key"})
-		assert.Equal(t, p.Get("key"), "value")
+		assert.Equal(t, p.Keys(), []string{"language", "server"})
+		assert.Equal(t, p.Get("language"), "go")
+		assert.Equal(t, p.Get("server"), "true")
 	})
 }

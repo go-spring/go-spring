@@ -23,7 +23,7 @@ import (
 	"github.com/go-spring/spring-core/conf"
 )
 
-// LoadCmdArgs 加载以 -D key=value 形式传入的命令行参数。
+// LoadCmdArgs 加载以 -D key=value 或者 -D key[=true] 形式传入的命令行参数。
 func LoadCmdArgs(args []string, p *conf.Properties) error {
 	for i := 0; i < len(args); i++ {
 		s := args[i]
@@ -33,8 +33,8 @@ func LoadCmdArgs(args []string, p *conf.Properties) error {
 			}
 			next := args[i+1]
 			ss := strings.SplitN(next, "=", 2)
-			if len(ss) != 2 {
-				return errors.New("cmd option -D arg likes <key>=<value>")
+			if len(ss) == 1 {
+				ss = append(ss, "true")
 			}
 			if err := p.Set(ss[0], ss[1]); err != nil {
 				return err

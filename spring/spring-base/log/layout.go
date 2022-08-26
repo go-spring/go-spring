@@ -105,6 +105,10 @@ func (c *DefaultLayout) parse(formatter string) error {
 
 func (c *DefaultLayout) getMsg(e *Event) string {
 	buf := bytes.NewBuffer(nil)
+	if tag := e.entry.Tag(); tag != "" {
+		buf.WriteString(tag)
+		buf.WriteString("||")
+	}
 	enc := NewFlatEncoder(buf, "||")
 	err := enc.AppendEncoderBegin()
 	if err != nil {

@@ -19,16 +19,13 @@ package log
 import (
 	"context"
 	"os"
-
-	"github.com/go-spring/spring-base/atomic"
 )
 
 func init() {
 	RegisterPlugin("Null", PluginTypeAppender, (*NullAppender)(nil))
-	RegisterPlugin("CountingNoOp", PluginTypeAppender, (*CountingNoOpAppender)(nil))
 	RegisterPlugin("Console", PluginTypeAppender, (*ConsoleAppender)(nil))
-	RegisterPlugin("File", PluginTypeAppender, new(FileAppender))
-	RegisterPlugin("RollingFile", PluginTypeAppender, new(RollingFileAppender))
+	RegisterPlugin("File", PluginTypeAppender, (*FileAppender)(nil))
+	RegisterPlugin("RollingFile", PluginTypeAppender, (*RollingFileAppender)(nil))
 }
 
 // Appender represents an output destination. Do not provide an asynchronous
@@ -39,6 +36,13 @@ type Appender interface {
 	GetLayout() Layout
 	Append(e *Event)
 }
+
+var (
+	_ Appender = (*NullAppender)(nil)
+	_ Appender = (*ConsoleAppender)(nil)
+	_ Appender = (*FileAppender)(nil)
+	_ Appender = (*RollingFileAppender)(nil)
+)
 
 type BaseAppender struct {
 	Name   string `PluginAttribute:"name"`
@@ -55,17 +59,9 @@ type NullAppender struct{}
 
 func (c *NullAppender) Start() error             { return nil }
 func (c *NullAppender) Stop(ctx context.Context) {}
+func (c *NullAppender) GetName() string          { return "" }
+func (c *NullAppender) GetLayout() Layout        { return nil }
 func (c *NullAppender) Append(e *Event)          {}
-
-// CountingNoOpAppender is a no-operation Appender that counts events.
-type CountingNoOpAppender struct {
-	count atomic.Int64
-}
-
-func (c *CountingNoOpAppender) Start() error             { return nil }
-func (c *CountingNoOpAppender) Stop(ctx context.Context) {}
-func (c *CountingNoOpAppender) Count() int64             { return c.count.Load() }
-func (c *CountingNoOpAppender) Append(e *Event)          { c.count.Add(1) }
 
 // ConsoleAppender is an Appender that writing messages to os.Stdout.
 type ConsoleAppender struct {

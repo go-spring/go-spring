@@ -45,6 +45,21 @@ func RegisterConverter(fn util.Converter) {
 	converters[t.Out(0)] = fn
 }
 
+func newPlugin(t reflect.Type, node *Node) (reflect.Value, error) {
+	v := reflect.New(t)
+	err := inject(v.Elem(), v.Type().Elem(), node)
+	if err != nil {
+		return reflect.Value{}, err
+	}
+	i, ok := v.Interface().(Initializer)
+	if ok {
+		if err = i.Init(); err != nil {
+			return reflect.Value{}, err
+		}
+	}
+	return v, nil
+}
+
 // inject handles the struct field with the PluginAttribute or PluginElement tag.
 func inject(v reflect.Value, t reflect.Type, node *Node) error {
 	for i := 0; i < v.NumField(); i++ {
@@ -171,16 +186,11 @@ func injectElement(tag string, fv reflect.Value, ft reflect.StructField, node *N
 		if p.Type != elemType {
 			continue
 		}
-		pv, err := p.NewInstance()
+		v, err := newPlugin(p.Class, c)
 		if err != nil {
-			return util.Wrap(err, code.FileLine(), "inject element")
+			return err
 		}
-		ev := pv.Elem()
-		err = inject(ev, ev.Type(), c)
-		if err != nil {
-			return util.Wrap(err, code.FileLine(), "inject element")
-		}
-		children = append(children, pv)
+		children = append(children, v)
 	}
 
 	if len(children) == 0 {
@@ -193,16 +203,11 @@ func injectElement(tag string, fv reflect.Value, ft reflect.StructField, node *N
 			err := fmt.Errorf("plugin %s not found", elemLabel)
 			return util.Wrap(err, code.FileLine(), "inject element")
 		}
-		pv, err := p.NewInstance()
+		v, err := newPlugin(p.Class, &Node{Label: elemLabel})
 		if err != nil {
-			return util.Wrap(err, code.FileLine(), "inject element")
+			return err
 		}
-		ev := pv.Elem()
-		err = inject(ev, ev.Type(), &Node{Label: elemLabel})
-		if err != nil {
-			return util.Wrap(err, code.FileLine(), "inject element")
-		}
-		children = append(children, pv)
+		children = append(children, v)
 	}
 
 	switch fv.Kind() {

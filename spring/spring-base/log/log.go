@@ -173,16 +173,11 @@ func RefreshReader(input io.Reader, ext string) error {
 			if !ok {
 				return errors.New("attribute 'name' not found")
 			}
-			pv, err := p.NewInstance()
+			v, err := newPlugin(p.Class, c)
 			if err != nil {
 				return err
 			}
-			ev := pv.Elem()
-			err = inject(ev, ev.Type(), c)
-			if err != nil {
-				return err
-			}
-			cAppenders[name] = pv.Interface().(Appender)
+			cAppenders[name] = v.Interface().(Appender)
 		}
 	}
 
@@ -206,17 +201,11 @@ func RefreshReader(input io.Reader, ext string) error {
 				return errors.New("attribute 'name' not found")
 			}
 
-			pv, err := p.NewInstance()
+			v, err := newPlugin(p.Class, c)
 			if err != nil {
 				return err
 			}
-			ev := pv.Elem()
-			err = inject(ev, ev.Type(), c)
-			if err != nil {
-				return err
-			}
-
-			config := pv.Interface().(privateConfig)
+			config := v.Interface().(privateConfig)
 			if isRootLogger {
 				cRoot = config
 			}

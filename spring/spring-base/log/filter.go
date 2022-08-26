@@ -18,6 +18,7 @@ package log
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -30,6 +31,7 @@ func init() {
 	RegisterPlugin("LevelMatchFilter", PluginTypeFilter, (*LevelMatchFilter)(nil))
 	RegisterPlugin("LevelRangeFilter", PluginTypeFilter, (*LevelRangeFilter)(nil))
 	RegisterPlugin("TimeFilter", PluginTypeFilter, (*TimeFilter)(nil))
+	RegisterPlugin("TagFilter", PluginTypeFilter, (*TagFilter)(nil))
 }
 
 type Result int
@@ -195,6 +197,37 @@ func (f *TimeFilter) Filter(level Level, e Entry, fields []Field) Result {
 	t := int(f.TimeFunc().Sub(f.abs)/time.Second) % 86400
 	if t >= f.start && t <= f.end {
 		return f.OnMatch
+	}
+	return f.OnMismatch
+}
+
+type TagFilter struct {
+	BaseFilter
+	Prefix string `PluginAttribute:"prefix,default="`
+	Suffix string `PluginAttribute:"suffix,default="`
+	Tag    string `PluginAttribute:"tag,default="`
+	tags   []string
+}
+
+func (f *TagFilter) Init() error {
+	f.tags = strings.Split(f.Tag, ",")
+	if f.Prefix == "" && f.Suffix == "" && f.Tag == "" {
+		return errors.New("TagFilter needs tag/prefix/suffix attribute")
+	}
+	return nil
+}
+
+func (f *TagFilter) Filter(level Level, e Entry, fields []Field) Result {
+	if f.Prefix != "" && strings.HasPrefix(e.Tag(), f.Prefix) {
+		return f.OnMatch
+	}
+	if f.Suffix != "" && strings.HasSuffix(e.Tag(), f.Suffix) {
+		return f.OnMatch
+	}
+	for _, tag := range f.tags {
+		if e.Tag() == tag {
+			return f.OnMatch
+		}
 	}
 	return f.OnMismatch
 }
