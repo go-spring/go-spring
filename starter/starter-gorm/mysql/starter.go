@@ -22,7 +22,6 @@ import (
 	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/gs/cond"
-	"github.com/go-spring/spring-core/gs/gsutil"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
@@ -44,5 +43,5 @@ func init() {
 	gs.Object(&Factory{})
 	gs.Provide((*Factory).CreateDB, arg.R1("${gorm}")).
 		Name("GormDB").
-		On(cond.OnMissingBean(gsutil.BeanID((*gorm.DB)(nil), "GormDB")))
+		On(cond.OnMissingBean(gs.BeanID((*gorm.DB)(nil), "GormDB")))
 }

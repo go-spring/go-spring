@@ -23,7 +23,6 @@ import (
 	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/gs/cond"
-	"github.com/go-spring/spring-core/gs/gsutil"
 	"github.com/go-spring/spring-core/mongo"
 	g "go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -65,5 +64,5 @@ func init() {
 	gs.Provide((*Factory).NewClient, arg.R1("${mongo}")).
 		Destroy(func(client *g.Client) { factory.CloseClient(client) }).
 		Name("MongoDB").
-		On(cond.OnMissingBean(gsutil.BeanID((*g.Client)(nil), "MongoDB")))
+		On(cond.OnMissingBean(gs.BeanID((*g.Client)(nil), "MongoDB")))
 }

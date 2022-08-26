@@ -32,7 +32,7 @@ func init() {
 			if webCtx.PathParam("*") == "doc.json" {
 				webCtx.Blob(web.MIMEApplicationJSONCharsetUTF8, []byte(doc))
 			} else {
-				hSwagger(webCtx.ResponseWriter(), webCtx.Request())
+				hSwagger(webCtx.Response().Get(), webCtx.Request())
 			}
 		})
 
@@ -50,7 +50,7 @@ func ReDoc(ctx web.Context) {
 	}
 
 	// 不确定 Execute 是否线程安全，官方文档表示也许是线程安全的，谁知道呢
-	_ = index.Execute(ctx.ResponseWriter(), map[string]interface{}{
+	_ = index.Execute(ctx.Response().Get(), map[string]interface{}{
 		"URL": "/swagger/doc.json",
 	})
 }
