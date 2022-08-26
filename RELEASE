@@ -1,5 +1,11 @@
 Release History:
 
+v1.1.1 2022-08-26
+
+    继续完善日志架构，包括支持结构化日志、支持 tag 过滤器、支持 logger 注入等；
+    命令行修改为仅支持 -D <key>=<value> 或者 -D <key> 形式；
+    优化 http.ResponseWriter 赋值方式。
+
 v1.1.0 2022-07-23
 
     在经历了一年半的折腾后，go-spring 1.1.0 终于发布了。
