@@ -27,7 +27,8 @@ import (
 )
 
 type runner struct {
-	Client *redis.Client `autowire:""`
+	Client *redis.Client           `autowire:""`
+	StrOps *redis.StringOperations `autowire:"RedisClient"`
 }
 
 func (r *runner) Run(ctx gs.Context) {
@@ -42,11 +43,18 @@ func (r *runner) Run(ctx gs.Context) {
 
 	v, err := r.Client.OpsForString().Get(ctx.Context(), "mykey")
 	util.Panic(err).When(err != nil)
+	fmt.Printf("GET mykey=%q\n", v)
 	if v != "Hello" {
 		panic(errors.New("should be \"Hello\""))
 	}
 
+	v, err = r.StrOps.Get(ctx.Context(), "mykey")
+	util.Panic(err).When(err != nil)
 	fmt.Printf("GET mykey=%q\n", v)
+	if v != "Hello" {
+		panic(errors.New("should be \"Hello\""))
+	}
+
 	go gs.ShutDown()
 }
 

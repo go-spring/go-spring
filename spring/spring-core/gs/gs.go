@@ -889,41 +889,61 @@ func (c *container) getBean(v reflect.Value, tag wireTag, stack *wiringStack) er
 		return fmt.Errorf("%s is not valid receiver type", t.String())
 	}
 
-	var foundBeans []*BeanDefinition
+	var (
+		converter  BeanConverter
+		foundBeans []*BeanDefinition
+	)
 
-	for _, b := range c.beansByType[t] {
-		if b.status == Deleted {
-			continue
+	converter, ok := beanConverters[t]
+	if ok {
+		if tag.beanName == "" {
+			return fmt.Errorf("conversion bean must have a name")
 		}
-		if !b.Match(tag.typeName, tag.beanName) {
-			continue
-		}
-		foundBeans = append(foundBeans, b)
-	}
-
-	// 指定 bean 名称时通过名称获取，防止未通过 Export 方法导出接口。
-	if t.Kind() == reflect.Interface && tag.beanName != "" {
 		for _, b := range c.beansByName[tag.beanName] {
 			if b.status == Deleted {
-				continue
-			}
-			if !b.Type().AssignableTo(t) {
 				continue
 			}
 			if !b.Match(tag.typeName, tag.beanName) {
 				continue
 			}
+			foundBeans = append(foundBeans, b)
+		}
 
-			found := false // 对结果排重
-			for _, r := range foundBeans {
-				if r == b {
-					found = true
-					break
-				}
+	} else {
+		for _, b := range c.beansByType[t] {
+			if b.status == Deleted {
+				continue
 			}
-			if !found {
-				foundBeans = append(foundBeans, b)
-				c.logger.Warnf("you should call Export() on %s", b)
+			if !b.Match(tag.typeName, tag.beanName) {
+				continue
+			}
+			foundBeans = append(foundBeans, b)
+		}
+
+		// 指定 bean 名称时通过名称获取，防止未通过 Export 方法导出接口。
+		if t.Kind() == reflect.Interface && tag.beanName != "" {
+			for _, b := range c.beansByName[tag.beanName] {
+				if b.status == Deleted {
+					continue
+				}
+				if !b.Type().AssignableTo(t) {
+					continue
+				}
+				if !b.Match(tag.typeName, tag.beanName) {
+					continue
+				}
+
+				found := false // 对结果排重
+				for _, r := range foundBeans {
+					if r == b {
+						found = true
+						break
+					}
+				}
+				if !found {
+					foundBeans = append(foundBeans, b)
+					c.logger.Warnf("you should call Export() on %s", b)
+				}
 			}
 		}
 	}
@@ -975,7 +995,16 @@ func (c *container) getBean(v reflect.Value, tag wireTag, stack *wiringStack) er
 		return err
 	}
 
-	v.Set(result.Value())
+	if converter == nil {
+		v.Set(result.Value())
+		return nil
+	}
+
+	i, err := converter(result.Interface())
+	if err != nil {
+		return err
+	}
+	v.Set(reflect.ValueOf(i))
 	return nil
 }
 
