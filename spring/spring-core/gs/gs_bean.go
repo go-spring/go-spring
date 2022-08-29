@@ -269,6 +269,7 @@ func NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 
 	var v reflect.Value
 	var fromValue bool
+	var method bool
 
 	switch i := objOrCtor.(type) {
 	case reflect.Value:
@@ -283,8 +284,8 @@ func NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 	}
 
 	const skip = 2
-	var method bool
 	var f *arg.Callable
+	var fnInfo *runtime.Func
 	_, file, line, _ := runtime.Caller(skip)
 
 	// 以 reflect.ValueOf(fn) 形式注册的函数被视为函数对象 bean 。
@@ -310,7 +311,7 @@ func NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 
 		// 成员方法一般是 xxx/gs_test.(*Server).Consumer 形式命名
 		fnPtr := reflect.ValueOf(objOrCtor).Pointer()
-		fnInfo := runtime.FuncForPC(fnPtr)
+		fnInfo = runtime.FuncForPC(fnPtr)
 		method = strings.LastIndexByte(fnInfo.Name(), ')') > 0
 	}
 
@@ -325,7 +326,12 @@ func NewBean(objOrCtor interface{}, ctorArgs ...arg.Arg) *BeanDefinition {
 
 	// Type.String() 一般返回 *pkg.Type 形式的字符串，
 	// 我们只取最后的类型名，如有需要请自定义 bean 名称。
-	s := strings.Split(t.String(), ".")
+	var s []string
+	if fnInfo != nil {
+		s = strings.Split(fnInfo.Name(), ".")
+	} else {
+		s = strings.Split(t.String(), ".")
+	}
 	name := strings.TrimPrefix(s[len(s)-1], "*")
 
 	return &BeanDefinition{

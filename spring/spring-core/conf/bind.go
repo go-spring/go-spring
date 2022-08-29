@@ -298,6 +298,10 @@ func bindMap(p *Properties, v reflect.Value, param BindParam) error {
 			}
 			_, ok = vt.(struct{})
 			if ok {
+				if i == len(keyPath)-1 {
+					t = nil
+					break
+				}
 				oldKey := strings.Join(keyPath[:i+1], ".")
 				err := fmt.Errorf("property %q isn't map", oldKey)
 				return util.Wrapf(err, code.FileLine(), "bind %s error", param.Path)
