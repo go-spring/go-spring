@@ -985,10 +985,10 @@ func TestApplicationContext_RegisterBeanFn2(t *testing.T) {
 		c.Property("manager.version", "1.0.0")
 
 		bd := c.Provide(NewManager)
-		assert.Equal(t, bd.BeanName(), "Manager")
+		assert.Equal(t, bd.BeanName(), "NewManager")
 
 		bd = c.Provide(NewInt)
-		assert.Equal(t, bd.BeanName(), "int")
+		assert.Equal(t, bd.BeanName(), "NewInt")
 
 		err := runTest(c, func(p gs.Context) {
 
@@ -1291,7 +1291,7 @@ func TestApplicationContext_Collect(t *testing.T) {
 
 			return new(int)
 		})
-		assert.Equal(t, intBean.BeanName(), "int")
+		assert.Equal(t, intBean.BeanName(), "TestApplicationContext_Collect.func6.1")
 
 		err := c.Refresh()
 		assert.Nil(t, err)
@@ -2173,7 +2173,7 @@ func TestApplicationContext_NestValueField(t *testing.T) {
 		c.Property("sdk.wx.enable", true)
 
 		bd := c.Provide(func() int { return 3 })
-		assert.Equal(t, bd.BeanName(), "int")
+		assert.Equal(t, bd.BeanName(), "TestApplicationContext_NestValueField.func1.1")
 
 		c.Object(new(wxChannel))
 		err := runTest(c, func(p gs.Context) {
@@ -2413,48 +2413,6 @@ func TestApplicationContext_Destroy(t *testing.T) {
 	c.Close()
 
 	assert.Equal(t, destroyArray, []int{1, 2, 2, 4})
-}
-
-type Registry interface {
-	got()
-}
-
-type registry struct{}
-
-func (r *registry) got() {}
-
-func NewRegistry() *registry {
-	return &registry{}
-}
-
-func NewRegistryInterface() Registry {
-	return &registry{}
-}
-
-var DefaultRegistry Registry = NewRegistry()
-
-type registryFactory struct{}
-
-func (f *registryFactory) Create() Registry { return NewRegistry() }
-
-func TestApplicationContext_NameEquivalence(t *testing.T) {
-
-	t.Run("", func(t *testing.T) {
-		c := gs.New()
-		c.Object(DefaultRegistry)
-		c.Provide(NewRegistry)
-		err := c.Refresh()
-		assert.Error(t, err, "duplicate beans")
-	})
-
-	t.Run("", func(t *testing.T) {
-		c := gs.New()
-		bd := c.Object(&registryFactory{})
-		c.Provide(func(f *registryFactory) Registry { return f.Create() }, bd)
-		c.Provide(NewRegistryInterface)
-		err := c.Refresh()
-		assert.Error(t, err, "duplicate beans")
-	})
 }
 
 type Obj struct {

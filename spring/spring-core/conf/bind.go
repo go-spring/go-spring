@@ -303,6 +303,10 @@ func bindMap(p *Properties, v reflect.Value, param BindParam) error {
 					break
 				}
 				oldKey := strings.Join(keyPath[:i+1], ".")
+				if i == len(keyPath)-1 && p.Get(oldKey) == "" {
+					t = nil
+					break
+				}
 				err := fmt.Errorf("property %q isn't map", oldKey)
 				return util.Wrapf(err, code.FileLine(), "bind %s error", param.Path)
 			}
