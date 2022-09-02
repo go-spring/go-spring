@@ -390,7 +390,7 @@ func (p *Properties) Bind(i interface{}, opts ...BindOption) error {
 	if err != nil {
 		return err
 	}
-	return BindValue(p, v, param)
+	return BindValue(p, v, param, nil)
 }
 
 // SplitPath splits the key into individual parts.

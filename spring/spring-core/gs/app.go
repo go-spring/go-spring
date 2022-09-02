@@ -206,7 +206,7 @@ func (app *App) start() error {
 
 	// 保存从环境变量和命令行解析的属性
 	for _, k := range e.p.Keys() {
-		app.c.p.Set(k, e.p.Get(k))
+		app.c.p.Value().Set(k, e.p.Get(k))
 	}
 
 	if err := app.c.refresh(false); err != nil {
@@ -324,7 +324,7 @@ func (app *App) loadProperties(e *configuration) error {
 			return err
 		}
 		for _, key := range p.Keys() {
-			app.c.p.Set(key, p.Get(key))
+			app.c.p.Value().Set(key, p.Get(key))
 		}
 	}
 
