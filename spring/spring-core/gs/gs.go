@@ -33,6 +33,7 @@ import (
 	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/conf"
+	"github.com/go-spring/spring-core/dync"
 	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/gs/cond"
 )
@@ -53,6 +54,7 @@ var (
 
 type Container interface {
 	Context() context.Context
+	Properties() *dync.Properties
 	Property(key string, value interface{})
 	Object(i interface{}) *BeanDefinition
 	Provide(ctor interface{}, args ...arg.Arg) *BeanDefinition
@@ -86,7 +88,6 @@ type ContextAware struct {
 }
 
 type tempContainer struct {
-	p               *conf.Properties
 	beans           []*BeanDefinition
 	beansByName     map[string][]*BeanDefinition
 	beansByType     map[reflect.Type][]*BeanDefinition
@@ -108,6 +109,7 @@ type container struct {
 	destroyers              []func()
 	state                   refreshState
 	wg                      sync.WaitGroup
+	p                       *dync.Properties
 	ContextAware            bool
 	AllowCircularReferences bool `value:"${spring.main.allow-circular-references:=false}"`
 }
@@ -118,8 +120,8 @@ func New() Container {
 	return &container{
 		ctx:    ctx,
 		cancel: cancel,
+		p:      dync.New(),
 		tempContainer: &tempContainer{
-			p:               conf.New(),
 			beansByName:     make(map[string][]*BeanDefinition),
 			beansByType:     make(map[reflect.Type][]*BeanDefinition),
 			mapOfOnProperty: make(map[string]interface{}),
@@ -130,6 +132,10 @@ func New() Container {
 // Context 返回 IoC 容器的 ctx 对象。
 func (c *container) Context() context.Context {
 	return c.ctx
+}
+
+func (c *container) Properties() *dync.Properties {
+	return c.p
 }
 
 func validOnProperty(fn interface{}) error {
@@ -156,7 +162,7 @@ func (c *container) OnProperty(key string, fn interface{}) {
 // 类型组合构成的属性值，其处理方式是将组合结构层层展开，可以将组合结构看成一棵树，
 // 那么叶子结点的路径就是属性的 key，叶子结点的值就是属性的值。
 func (c *container) Property(key string, value interface{}) {
-	c.p.Set(key, value)
+	c.p.Value().Set(key, value)
 }
 
 func (c *container) Accept(b *BeanDefinition) *BeanDefinition {
@@ -322,7 +328,7 @@ func (c *container) refresh(autoClear bool) (err error) {
 	for key, f := range c.mapOfOnProperty {
 		t := reflect.TypeOf(f)
 		in := reflect.New(t.In(0)).Elem()
-		if err = c.p.Bind(in, conf.Key(key)); err != nil {
+		if err = c.p.Value().Bind(in, conf.Key(key)); err != nil {
 			return err
 		}
 		reflect.ValueOf(f).Call([]reflect.Value{in})
@@ -694,7 +700,7 @@ func (a *argContext) Matches(c cond.Condition) (bool, error) {
 }
 
 func (a *argContext) Bind(v reflect.Value, tag string) error {
-	return a.c.p.Bind(v, conf.Tag(tag))
+	return a.c.p.Value().Bind(v, conf.Tag(tag))
 }
 
 func (a *argContext) Wire(v reflect.Value, tag string) error {
@@ -761,6 +767,20 @@ func (c *container) wireBeanValue(v reflect.Value, t reflect.Type, stack *wiring
 	return c.wireStruct(v, param, stack)
 }
 
+func (c *container) watchField(i interface{}, param conf.BindParam) (bool, error) {
+	r, ok := i.(dync.Value)
+	if !ok {
+		return false, nil
+	}
+	r.SetParam(param)
+	err := c.p.Watch(r)
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+
+}
+
 // wireStruct 对结构体进行依赖注入，需要注意的是这里不需要进行属性绑定。
 func (c *container) wireStruct(v reflect.Value, opt conf.BindParam, stack *wiringStack) error {
 
@@ -817,12 +837,21 @@ func (c *container) wireStruct(v reflect.Value, opt conf.BindParam, stack *wirin
 			if err := subParam.BindTag(tag); err != nil {
 				return err
 			}
+			ret, err := c.watchField(fv.Addr().Interface(), subParam)
+			if err != nil {
+				return err
+			}
+			if ret {
+				continue
+			}
 			if ft.Anonymous {
-				if err := c.wireStruct(fv, subParam, stack); err != nil {
+				err = c.wireStruct(fv, subParam, stack)
+				if err != nil {
 					return err
 				}
 			} else {
-				if err := conf.BindValue(c.p, fv, subParam); err != nil {
+				err = conf.BindValue(c.p.Value(), fv, subParam, c.watchField)
+				if err != nil {
 					return err
 				}
 			}
@@ -842,7 +871,7 @@ func (c *container) wireByTag(v reflect.Value, tag string, stack *wiringStack) e
 
 	// tag 预处理，可能通过属性值进行指定。
 	if strings.HasPrefix(tag, "${") {
-		s, err := c.p.Resolve(tag)
+		s, err := c.p.Value().Resolve(tag)
 		if err != nil {
 			return err
 		}

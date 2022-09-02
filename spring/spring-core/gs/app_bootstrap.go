@@ -77,7 +77,7 @@ func (b *bootstrap) start(e *configuration) error {
 
 	// 保存从环境变量和命令行解析的属性
 	for _, k := range e.p.Keys() {
-		b.c.p.Set(k, e.p.Get(k))
+		b.c.p.Value().Set(k, e.p.Get(k))
 	}
 
 	return b.c.Refresh()
@@ -108,7 +108,7 @@ func (b *bootstrap) loadConfigFile(e *configuration, filename string) error {
 			}
 		}
 		for _, key := range p.Keys() {
-			b.c.p.Set(key, p.Get(key))
+			b.c.p.Value().Set(key, p.Get(key))
 		}
 	}
 	return nil
