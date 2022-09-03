@@ -18,7 +18,6 @@ package middleware
 
 import (
 	"compress/gzip"
-	"github.com/go-spring/spring-core/gs"
 	"github.com/go-spring/spring-core/web"
 	"net/http"
 	"path/filepath"
@@ -27,52 +26,34 @@ import (
 
 // compress writer by gzip
 
-func init() {
-	gs.Object(new(GzipResponse)).Export((*web.Filter)(nil))
-}
-
-type GzipResponse struct {
-	// level: -1 ~ 9
-	Level  int  `value:"${web.server.compression.level:=1}"`
-	Enable bool `value:"${web.server.compression.enable:=false}"`
-}
-
-func (g GzipResponse) Invoke(ctx web.Context, chain web.FilterChain) {
-	if !g.Enable {
-		chain.Next(ctx)
-		return
-	}
-
-	gzipWriterProcess(g.Level, ctx, chain)
-}
-
 func GzipResponseFilter(level int) web.Filter {
 	return web.FuncFilter(func(ctx web.Context, chain web.FilterChain) {
-		gzipWriterProcess(level, ctx, chain)
+		if level == 0 {
+			chain.Next(ctx)
+			return
+		}
+
+		if !shouldCompress(ctx.Request()) {
+			chain.Next(ctx)
+			return
+		}
+
+		gw, err := gzip.NewWriterLevel(ctx.Response().Get(), level)
+		if err != nil {
+			chain.Next(ctx)
+			return
+		}
+
+		ctx.SetHeader(web.HeaderContentEncoding, "gzip")
+		ctx.SetHeader(web.HeaderVary, web.HeaderAcceptEncoding)
+		defer func() {
+			ctx.SetHeader(web.HeaderContentLength, "0")
+			_ = gw.Close()
+		}()
+
+		ctx.Response().Set(&gzipWriter{ctx.Response().Get(), gw})
+		chain.Next(ctx)
 	})
-}
-
-func gzipWriterProcess(level int, ctx web.Context, chain web.FilterChain) {
-	if !shouldCompress(ctx.Request()) {
-		chain.Next(ctx)
-		return
-	}
-
-	gw, err := gzip.NewWriterLevel(ctx.Response().Get(), level)
-	if err != nil {
-		chain.Next(ctx)
-		return
-	}
-
-	ctx.SetHeader(web.HeaderContentEncoding, "gzip")
-	ctx.SetHeader(web.HeaderVary, web.HeaderAcceptEncoding)
-	defer func() {
-		ctx.SetHeader(web.HeaderContentLength, "0")
-		_ = gw.Close()
-	}()
-
-	ctx.Response().Set(&gzipWriter{ctx.Response().Get(), gw})
-	chain.Next(ctx)
 }
 
 func shouldCompress(req *http.Request) bool {

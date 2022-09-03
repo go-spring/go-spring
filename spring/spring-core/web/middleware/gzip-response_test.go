@@ -24,19 +24,6 @@ import (
 )
 
 func TestShouldCompress(t *testing.T) {
-	fmt.Println(`
-       yaml example-
-
-               web:
-                 server:
-                    compression:
-                      level: 1
-                      enable: true
-
-	  main.go import-
-		_ "github.com/go-spring/spring-core/web/middleware"
-`, "")
-
 	req, _ := http.NewRequest("GET", "http://t.dev:8080/user", nil)
 	req.Header.Set(web.HeaderAcceptEncoding, "gzip")
 	req.Header.Set(web.HeaderAccept, "application/json")
