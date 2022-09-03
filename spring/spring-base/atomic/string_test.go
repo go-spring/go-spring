@@ -14,30 +14,4 @@
  * limitations under the License.
  */
 
-package atomic
-
-import (
-	"encoding/json"
-	"sync/atomic"
-	"time"
-)
-
-type Time struct {
-	_ nocopy
-	v atomic.Value
-}
-
-func (x *Time) Load() time.Time {
-	if x, ok := x.v.Load().(time.Time); ok {
-		return x
-	}
-	return time.Time{}
-}
-
-func (x *Time) Store(val time.Time) {
-	x.v.Store(val)
-}
-
-func (x *Time) MarshalJSON() ([]byte, error) {
-	return json.Marshal(x.Load())
-}
+package atomic_test

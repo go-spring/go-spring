@@ -17,37 +17,41 @@
 package atomic
 
 import (
+	"encoding/json"
 	"sync/atomic"
-
-	"github.com/go-spring/spring-base/util"
 )
 
 type Int64 struct {
-	_ util.NoCopy
+	_ nocopy
+	_ align64
 	v int64
 }
 
 // Add wrapper for atomic.AddInt64.
-func (i *Int64) Add(delta int64) int64 {
-	return atomic.AddInt64(&i.v, delta)
+func (x *Int64) Add(delta int64) int64 {
+	return atomic.AddInt64(&x.v, delta)
 }
 
 // Load wrapper for atomic.LoadInt64.
-func (i *Int64) Load() int64 {
-	return atomic.LoadInt64(&i.v)
+func (x *Int64) Load() int64 {
+	return atomic.LoadInt64(&x.v)
 }
 
 // Store wrapper for atomic.StoreInt64.
-func (i *Int64) Store(val int64) {
-	atomic.StoreInt64(&i.v, val)
+func (x *Int64) Store(val int64) {
+	atomic.StoreInt64(&x.v, val)
 }
 
 // Swap wrapper for atomic.SwapInt64.
-func (i *Int64) Swap(new int64) int64 {
-	return atomic.SwapInt64(&i.v, new)
+func (x *Int64) Swap(new int64) int64 {
+	return atomic.SwapInt64(&x.v, new)
 }
 
 // CompareAndSwap wrapper for atomic.CompareAndSwapInt64.
-func (i *Int64) CompareAndSwap(old, new int64) bool {
-	return atomic.CompareAndSwapInt64(&i.v, old, new)
+func (x *Int64) CompareAndSwap(old, new int64) bool {
+	return atomic.CompareAndSwapInt64(&x.v, old, new)
+}
+
+func (x *Int64) MarshalJSON() ([]byte, error) {
+	return json.Marshal(x.Load())
 }

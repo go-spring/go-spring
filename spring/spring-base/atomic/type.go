@@ -16,28 +16,20 @@
 
 package atomic
 
-import (
-	"encoding/json"
-	"sync/atomic"
-	"time"
-)
+// nocopy may be added to structs which must not be copied
+// after the first use.
+//
+// See https://golang.org/issues/8005#issuecomment-190753527
+// for details.
+//
+// Note that it must not be embedded, due to the Lock and Unlock methods.
+type nocopy struct{}
 
-type Time struct {
-	_ nocopy
-	v atomic.Value
-}
+// Lock is a no-op used by -copylocks checker from `go vet`.
+func (*nocopy) Lock()   {}
+func (*nocopy) Unlock() {}
 
-func (x *Time) Load() time.Time {
-	if x, ok := x.v.Load().(time.Time); ok {
-		return x
-	}
-	return time.Time{}
-}
-
-func (x *Time) Store(val time.Time) {
-	x.v.Store(val)
-}
-
-func (x *Time) MarshalJSON() ([]byte, error) {
-	return json.Marshal(x.Load())
-}
+// align64 may be added to structs that must be 64-bit aligned.
+// This struct is recognized by a special case in the compiler
+// and will not work if copied to any other package.
+type align64 struct{}

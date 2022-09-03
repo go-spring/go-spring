@@ -17,43 +17,46 @@
 package atomic
 
 import (
+	"encoding/json"
 	"sync/atomic"
-
-	"github.com/go-spring/spring-base/util"
 )
 
 type Bool struct {
-	_ util.NoCopy
-	v int32
+	_ nocopy
+	v uint32
 }
 
-func bool2int(val bool) int32 {
+func bool2uint(val bool) uint32 {
 	if val {
 		return 1
 	}
 	return 0
 }
 
-func int2bool(val int32) bool {
-	return val == 1
+func uint2bool(val uint32) bool {
+	return val != 0
 }
 
-// Store wrapper for atomic.StoreInt32.
-func (i *Bool) Store(val bool) {
-	atomic.StoreInt32(&i.v, bool2int(val))
+// Store wrapper for atomic.StoreUint32.
+func (x *Bool) Store(val bool) {
+	atomic.StoreUint32(&x.v, bool2uint(val))
 }
 
-// Load wrapper for atomic.LoadInt32.
-func (i *Bool) Load() (val bool) {
-	return int2bool(atomic.LoadInt32(&i.v))
+// Load wrapper for atomic.LoadUint32.
+func (x *Bool) Load() (val bool) {
+	return uint2bool(atomic.LoadUint32(&x.v))
 }
 
-// Swap wrapper for atomic.SwapInt32.
-func (i *Bool) Swap(new bool) (old bool) {
-	return int2bool(atomic.SwapInt32(&i.v, bool2int(new)))
+// Swap wrapper for atomic.SwapUint32.
+func (x *Bool) Swap(new bool) (old bool) {
+	return uint2bool(atomic.SwapUint32(&x.v, bool2uint(new)))
 }
 
-// CompareAndSwap wrapper for atomic.CompareAndSwapInt32.
-func (i *Bool) CompareAndSwap(old, new bool) (swapped bool) {
-	return atomic.CompareAndSwapInt32(&i.v, bool2int(old), bool2int(new))
+// CompareAndSwap wrapper for atomic.CompareAndSwapUint32.
+func (x *Bool) CompareAndSwap(old, new bool) (swapped bool) {
+	return atomic.CompareAndSwapUint32(&x.v, bool2uint(old), bool2uint(new))
+}
+
+func (x *Bool) MarshalJSON() ([]byte, error) {
+	return json.Marshal(x.Load())
 }
