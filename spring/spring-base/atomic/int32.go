@@ -17,37 +17,40 @@
 package atomic
 
 import (
+	"encoding/json"
 	"sync/atomic"
-
-	"github.com/go-spring/spring-base/util"
 )
 
 type Int32 struct {
-	_ util.NoCopy
+	_ nocopy
 	v int32
 }
 
 // Add wrapper for atomic.AddInt32.
-func (i *Int32) Add(delta int32) (new int32) {
-	return atomic.AddInt32(&i.v, delta)
+func (x *Int32) Add(delta int32) (new int32) {
+	return atomic.AddInt32(&x.v, delta)
 }
 
 // Store wrapper for atomic.StoreInt32.
-func (i *Int32) Store(val int32) {
-	atomic.StoreInt32(&i.v, val)
+func (x *Int32) Store(val int32) {
+	atomic.StoreInt32(&x.v, val)
 }
 
 // Load wrapper for atomic.LoadInt32.
-func (i *Int32) Load() (val int32) {
-	return atomic.LoadInt32(&i.v)
+func (x *Int32) Load() (val int32) {
+	return atomic.LoadInt32(&x.v)
 }
 
 // Swap wrapper for atomic.SwapInt32.
-func (i *Int32) Swap(new int32) (old int32) {
-	return atomic.SwapInt32(&i.v, new)
+func (x *Int32) Swap(new int32) (old int32) {
+	return atomic.SwapInt32(&x.v, new)
 }
 
 // CompareAndSwap wrapper for atomic.CompareAndSwapInt32.
-func (i *Int32) CompareAndSwap(old, new int32) (swapped bool) {
-	return atomic.CompareAndSwapInt32(&i.v, old, new)
+func (x *Int32) CompareAndSwap(old, new int32) (swapped bool) {
+	return atomic.CompareAndSwapInt32(&x.v, old, new)
+}
+
+func (x *Int32) MarshalJSON() ([]byte, error) {
+	return json.Marshal(x.Load())
 }

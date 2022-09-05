@@ -18,41 +18,36 @@ package atomic
 
 import (
 	"encoding/json"
-	"sync/atomic"
-	"time"
 )
 
-type Duration struct {
+type String struct {
 	_ nocopy
-	_ align64
-	v int64
-}
-
-// Add wrapper for atomic.AddInt64.
-func (x *Duration) Add(delta time.Duration) time.Duration {
-	return time.Duration(atomic.AddInt64(&x.v, int64(delta)))
+	v Value
 }
 
 // Load wrapper for atomic.LoadInt64.
-func (x *Duration) Load() time.Duration {
-	return time.Duration(atomic.LoadInt64(&x.v))
+func (x *String) Load() string {
+	if r := x.v.Load(); r != nil {
+		return r.(string)
+	}
+	return ""
 }
 
 // Store wrapper for atomic.StoreInt64.
-func (x *Duration) Store(val time.Duration) {
-	atomic.StoreInt64(&x.v, int64(val))
+func (x *String) Store(val string) {
+	x.v.Store(val)
 }
 
 // Swap wrapper for atomic.SwapInt64.
-func (x *Duration) Swap(new time.Duration) time.Duration {
-	return time.Duration(atomic.SwapInt64(&x.v, int64(new)))
+func (x *String) Swap(new string) string {
+	return x.v.Swap(new).(string)
 }
 
 // CompareAndSwap wrapper for atomic.CompareAndSwapInt64.
-func (x *Duration) CompareAndSwap(old, new time.Duration) bool {
-	return atomic.CompareAndSwapInt64(&x.v, int64(old), int64(new))
+func (x *String) CompareAndSwap(old, new string) bool {
+	return x.v.CompareAndSwap(old, new)
 }
 
-func (x *Duration) MarshalJSON() ([]byte, error) {
+func (x *String) MarshalJSON() ([]byte, error) {
 	return json.Marshal(x.Load())
 }

@@ -18,11 +18,9 @@ package atomic
 
 import (
 	"sync/atomic"
-
-	"github.com/go-spring/spring-base/util"
 )
 
 type Value struct {
-	_ util.NoCopy
+	_ nocopy
 	atomic.Value
 }

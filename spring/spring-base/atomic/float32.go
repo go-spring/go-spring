@@ -17,38 +17,41 @@
 package atomic
 
 import (
+	"encoding/json"
 	"math"
 	"sync/atomic"
-
-	"github.com/go-spring/spring-base/util"
 )
 
 type Float32 struct {
-	_ util.NoCopy
+	_ nocopy
 	v uint32
 }
 
 // Add wrapper for atomic.AddUint32.
-func (u *Float32) Add(delta float32) (new float32) {
-	return math.Float32frombits(atomic.AddUint32(&u.v, math.Float32bits(delta)))
+func (x *Float32) Add(delta float32) (new float32) {
+	return math.Float32frombits(atomic.AddUint32(&x.v, math.Float32bits(delta)))
 }
 
 // Load wrapper for atomic.LoadUint32.
-func (u *Float32) Load() (val float32) {
-	return math.Float32frombits(atomic.LoadUint32(&u.v))
+func (x *Float32) Load() (val float32) {
+	return math.Float32frombits(atomic.LoadUint32(&x.v))
 }
 
 // Store wrapper for atomic.StoreUint32.
-func (u *Float32) Store(val float32) {
-	atomic.StoreUint32(&u.v, math.Float32bits(val))
+func (x *Float32) Store(val float32) {
+	atomic.StoreUint32(&x.v, math.Float32bits(val))
 }
 
 // Swap wrapper for atomic.SwapUint32.
-func (u *Float32) Swap(new float32) (old float32) {
-	return math.Float32frombits(atomic.SwapUint32(&u.v, math.Float32bits(new)))
+func (x *Float32) Swap(new float32) (old float32) {
+	return math.Float32frombits(atomic.SwapUint32(&x.v, math.Float32bits(new)))
 }
 
 // CompareAndSwap wrapper for atomic.CompareAndSwapUint32.
-func (u *Float32) CompareAndSwap(old, new float32) (swapped bool) {
-	return atomic.CompareAndSwapUint32(&u.v, math.Float32bits(old), math.Float32bits(new))
+func (x *Float32) CompareAndSwap(old, new float32) (swapped bool) {
+	return atomic.CompareAndSwapUint32(&x.v, math.Float32bits(old), math.Float32bits(new))
+}
+
+func (x *Float32) MarshalJSON() ([]byte, error) {
+	return json.Marshal(x.Load())
 }

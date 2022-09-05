@@ -17,38 +17,41 @@
 package atomic
 
 import (
+	"encoding/json"
 	"math"
 	"sync/atomic"
-
-	"github.com/go-spring/spring-base/util"
 )
 
 type Float64 struct {
-	_ util.NoCopy
+	_ nocopy
 	v uint64
 }
 
 // Add wrapper for atomic.AddUint64.
-func (u *Float64) Add(delta float64) (new float64) {
-	return math.Float64frombits(atomic.AddUint64(&u.v, math.Float64bits(delta)))
+func (x *Float64) Add(delta float64) (new float64) {
+	return math.Float64frombits(atomic.AddUint64(&x.v, math.Float64bits(delta)))
 }
 
 // Load wrapper for atomic.LoadUint64.
-func (u *Float64) Load() (val float64) {
-	return math.Float64frombits(atomic.LoadUint64(&u.v))
+func (x *Float64) Load() (val float64) {
+	return math.Float64frombits(atomic.LoadUint64(&x.v))
 }
 
 // Store wrapper for atomic.StoreUint64.
-func (u *Float64) Store(val float64) {
-	atomic.StoreUint64(&u.v, math.Float64bits(val))
+func (x *Float64) Store(val float64) {
+	atomic.StoreUint64(&x.v, math.Float64bits(val))
 }
 
 // Swap wrapper for atomic.SwapUint64.
-func (u *Float64) Swap(new float64) (old float64) {
-	return math.Float64frombits(atomic.SwapUint64(&u.v, math.Float64bits(new)))
+func (x *Float64) Swap(new float64) (old float64) {
+	return math.Float64frombits(atomic.SwapUint64(&x.v, math.Float64bits(new)))
 }
 
 // CompareAndSwap wrapper for atomic.CompareAndSwapUint64.
-func (u *Float64) CompareAndSwap(old, new float64) (swapped bool) {
-	return atomic.CompareAndSwapUint64(&u.v, math.Float64bits(old), math.Float64bits(new))
+func (x *Float64) CompareAndSwap(old, new float64) (swapped bool) {
+	return atomic.CompareAndSwapUint64(&x.v, math.Float64bits(old), math.Float64bits(new))
+}
+
+func (x *Float64) MarshalJSON() ([]byte, error) {
+	return json.Marshal(x.Load())
 }

@@ -18,36 +18,34 @@ package atomic
 
 import (
 	"sync/atomic"
-
-	"github.com/go-spring/spring-base/util"
 )
 
 type Uintptr struct {
-	_ util.NoCopy
+	_ nocopy
 	v uintptr
 }
 
 // Add wrapper for atomic.AddUintptr.
-func (u *Uintptr) Add(delta uintptr) (new uintptr) {
-	return atomic.AddUintptr(&u.v, delta)
+func (x *Uintptr) Add(delta uintptr) (new uintptr) {
+	return atomic.AddUintptr(&x.v, delta)
 }
 
 // Load wrapper for atomic.LoadUintptr.
-func (u *Uintptr) Load() (val uintptr) {
-	return atomic.LoadUintptr(&u.v)
+func (x *Uintptr) Load() (val uintptr) {
+	return atomic.LoadUintptr(&x.v)
 }
 
 // Store wrapper for atomic.StoreUintptr.
-func (u *Uintptr) Store(val uintptr) {
-	atomic.StoreUintptr(&u.v, val)
+func (x *Uintptr) Store(val uintptr) {
+	atomic.StoreUintptr(&x.v, val)
 }
 
 // Swap wrapper for atomic.SwapUintptr.
-func (u *Uintptr) Swap(new uintptr) (old uintptr) {
-	return atomic.SwapUintptr(&u.v, new)
+func (x *Uintptr) Swap(new uintptr) (old uintptr) {
+	return atomic.SwapUintptr(&x.v, new)
 }
 
 // CompareAndSwap wrapper for atomic.CompareAndSwapUintptr.
-func (u *Uintptr) CompareAndSwap(old, new uintptr) (swapped bool) {
-	return atomic.CompareAndSwapUintptr(&u.v, old, new)
+func (x *Uintptr) CompareAndSwap(old, new uintptr) (swapped bool) {
+	return atomic.CompareAndSwapUintptr(&x.v, old, new)
 }
