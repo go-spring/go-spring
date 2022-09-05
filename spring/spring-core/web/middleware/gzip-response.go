@@ -28,7 +28,7 @@ import (
 
 func GzipResponseFilter(level int) web.Filter {
 	return web.FuncFilter(func(ctx web.Context, chain web.FilterChain) {
-		if level == 0 {
+		if level <= 0 {
 			chain.Next(ctx)
 			return
 		}
