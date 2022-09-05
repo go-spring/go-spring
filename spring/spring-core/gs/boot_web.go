@@ -18,7 +18,6 @@ package gs
 
 import (
 	"context"
-	"github.com/go-spring/spring-core/web/middleware"
 	"net/http"
 	"strings"
 
@@ -36,7 +35,6 @@ type WebStarter struct {
 func (starter *WebStarter) OnAppStart(ctx Context) {
 	for _, c := range starter.Containers {
 		c.AddFilter(starter.Filters...)
-		addInternalFilter(c)
 	}
 	for _, m := range starter.Router.Mappers() {
 		for _, c := range starter.getContainers(m) {
@@ -44,17 +42,6 @@ func (starter *WebStarter) OnAppStart(ctx Context) {
 		}
 	}
 	starter.startContainers(ctx)
-}
-
-// 添加内置web.Filter | Prefilter
-func addInternalFilter(c web.Server) {
-	// GzipResponseFilter
-	compressLevel := c.Config().CompressLevel
-	if !(0 <= compressLevel && compressLevel <= 9) {
-		panic("CompressLevel parse value error")
-	}
-
-	c.AddFilter(middleware.GzipResponseFilter(compressLevel))
 }
 
 func (starter *WebStarter) getContainers(m *web.Mapper) []web.Server {
