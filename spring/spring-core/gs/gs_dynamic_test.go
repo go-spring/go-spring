@@ -48,7 +48,7 @@ func TestDynamic(t *testing.T) {
 	c.Object(cfg).Init(func(p *DynamicConfig) {
 		p.Slice.Init(make([]string, 0))
 		p.Map.Init(make(map[string]string))
-		p.Event.Init(func(prop *conf.Properties) error {
+		p.Event.OnEvent(func(prop *conf.Properties) error {
 			fmt.Println("event fired.")
 			return nil
 		})
@@ -56,7 +56,7 @@ func TestDynamic(t *testing.T) {
 	c.Object(wrapper).Init(func(p *DynamicConfigWrapper) {
 		p.Wrapper.Slice.Init(make([]string, 0))
 		p.Wrapper.Map.Init(make(map[string]string))
-		p.Wrapper.Event.Init(func(prop *conf.Properties) error {
+		p.Wrapper.Event.OnEvent(func(prop *conf.Properties) error {
 			fmt.Println("event fired.")
 			return nil
 		})
@@ -66,9 +66,9 @@ func TestDynamic(t *testing.T) {
 
 	{
 		b, _ := json.Marshal(cfg)
-		fmt.Printf("%s\n", string(b))
+		assert.Equal(t, string(b), `{"Int":3,"Float":1.2,"Map":{},"Slice":[],"Event":{}}`)
 		b, _ = json.Marshal(wrapper)
-		fmt.Printf("%s\n", string(b))
+		assert.Equal(t, string(b), `{"Wrapper":{"Int":3,"Float":1.2,"Map":{},"Slice":[],"Event":{}}}`)
 	}
 
 	{
@@ -90,9 +90,9 @@ func TestDynamic(t *testing.T) {
 
 	{
 		b, _ := json.Marshal(cfg)
-		fmt.Printf("%s\n", string(b))
+		assert.Equal(t, string(b), `{"Int":4,"Float":2.3,"Map":{"a":"1","b":"2"},"Slice":["3","4"],"Event":{}}`)
 		b, _ = json.Marshal(wrapper)
-		fmt.Printf("%s\n", string(b))
+		assert.Equal(t, string(b), `{"Wrapper":{"Int":3,"Float":1.5,"Map":{"a":"9","b":"8"},"Slice":["4","6"],"Event":{}}}`)
 	}
 
 	{
@@ -114,8 +114,8 @@ func TestDynamic(t *testing.T) {
 
 	{
 		b, _ := json.Marshal(cfg)
-		fmt.Printf("%s\n", string(b))
+		assert.Equal(t, string(b), `{"Int":6,"Float":5.1,"Map":{"a":"9","b":"8"},"Slice":["7","6"],"Event":{}}`)
 		b, _ = json.Marshal(wrapper)
-		fmt.Printf("%s\n", string(b))
+		assert.Equal(t, string(b), `{"Wrapper":{"Int":9,"Float":8.4,"Map":{"a":"3","b":"4"},"Slice":["2","1"],"Event":{}}}`)
 	}
 }

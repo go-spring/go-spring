@@ -383,14 +383,13 @@ func (p *Properties) Bind(i interface{}, opts ...BindOption) error {
 	}
 
 	param := BindParam{
-		Type: t,
 		Path: typeName,
 	}
 	err := param.BindTag(arg.tag)
 	if err != nil {
 		return err
 	}
-	return BindValue(p, v, param, nil)
+	return BindValue(p, v, t, param, nil)
 }
 
 // SplitPath splits the key into individual parts.

@@ -26,19 +26,23 @@ import (
 )
 
 func (c *container) Keys() []string {
-	return c.p.Value().Keys()
+	return c.p.Keys()
 }
 
 func (c *container) Has(key string) bool {
-	return c.p.Value().Has(key)
+	return c.p.Has(key)
 }
 
 func (c *container) Prop(key string, opts ...conf.GetOption) string {
-	return c.p.Value().Get(key, opts...)
+	return c.p.Get(key, opts...)
+}
+
+func (c *container) Resolve(s string) (string, error) {
+	return c.p.Resolve(s)
 }
 
 func (c *container) Bind(i interface{}, opts ...conf.BindOption) error {
-	return c.p.Value().Bind(i, opts...)
+	return c.p.Bind(i, opts...)
 }
 
 // Find 查找符合条件的 bean 对象，注意该函数只能保证返回的 bean 是有效的，即未被
