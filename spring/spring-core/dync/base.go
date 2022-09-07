@@ -20,6 +20,7 @@ import (
 	"fmt"
 
 	"github.com/go-spring/spring-core/conf"
+	"github.com/go-spring/spring-core/gsl"
 )
 
 type Base struct {
@@ -41,4 +42,18 @@ func (v *Base) Property(prop *conf.Properties) (string, error) {
 	}
 	s := prop.Get(key, conf.Def(v.param.Tag.Def))
 	return s, nil
+}
+
+func (v *Base) Validate(val string) error {
+	if v.param.Validate == "" {
+		return nil
+	}
+	b, err := gsl.Eval(v.param.Validate, val)
+	if err != nil {
+		return err
+	}
+	if !b {
+		return fmt.Errorf("validate failed on %q for value %s", v.param.Validate, val)
+	}
+	return nil
 }

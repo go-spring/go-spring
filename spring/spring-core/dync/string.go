@@ -57,6 +57,10 @@ func (x *String) onValidate(prop *conf.Properties) error {
 	if err != nil {
 		return err
 	}
+	err = x.Validate(v)
+	if err != nil {
+		return err
+	}
 	if x.f != nil {
 		return x.f(v)
 	}

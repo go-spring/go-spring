@@ -40,20 +40,20 @@ func (x *Float64) OnValidate(f Float64ValidateFunc) {
 	x.f = f
 }
 
-func (x *Float64) getFloat64(prop *conf.Properties) (float64, error) {
+func (x *Float64) getFloat64(prop *conf.Properties) (string, float64, error) {
 	s, err := x.Property(prop)
 	if err != nil {
-		return 0, err
+		return "", 0, err
 	}
 	v, err := cast.ToFloat64E(s)
 	if err != nil {
-		return 0, err
+		return "", 0, err
 	}
-	return v, nil
+	return s, v, nil
 }
 
 func (x *Float64) onRefresh(prop *conf.Properties) error {
-	v, err := x.getFloat64(prop)
+	_, v, err := x.getFloat64(prop)
 	if err != nil {
 		return err
 	}
@@ -62,7 +62,11 @@ func (x *Float64) onRefresh(prop *conf.Properties) error {
 }
 
 func (x *Float64) onValidate(prop *conf.Properties) error {
-	v, err := x.getFloat64(prop)
+	s, v, err := x.getFloat64(prop)
+	if err != nil {
+		return err
+	}
+	err = x.Validate(s)
 	if err != nil {
 		return err
 	}

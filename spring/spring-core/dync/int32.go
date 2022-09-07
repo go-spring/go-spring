@@ -40,20 +40,20 @@ func (x *Int32) OnValidate(f Int32ValidateFunc) {
 	x.f = f
 }
 
-func (x *Int32) getInt32(prop *conf.Properties) (int32, error) {
+func (x *Int32) getInt32(prop *conf.Properties) (string, int32, error) {
 	s, err := x.Property(prop)
 	if err != nil {
-		return 0, err
+		return "", 0, err
 	}
 	v, err := cast.ToInt64E(s)
 	if err != nil {
-		return 0, err
+		return "", 0, err
 	}
-	return int32(v), nil
+	return s, int32(v), nil
 }
 
 func (x *Int32) onRefresh(prop *conf.Properties) error {
-	v, err := x.getInt32(prop)
+	_, v, err := x.getInt32(prop)
 	if err != nil {
 		return err
 	}
@@ -62,7 +62,11 @@ func (x *Int32) onRefresh(prop *conf.Properties) error {
 }
 
 func (x *Int32) onValidate(prop *conf.Properties) error {
-	v, err := x.getInt32(prop)
+	s, v, err := x.getInt32(prop)
+	if err != nil {
+		return err
+	}
+	err = x.Validate(s)
 	if err != nil {
 		return err
 	}

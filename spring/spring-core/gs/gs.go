@@ -89,7 +89,7 @@ type ContextAware struct {
 }
 
 type tempContainer struct {
-	properties      *conf.Properties
+	initProperties  *conf.Properties
 	beans           []*BeanDefinition
 	beansByName     map[string][]*BeanDefinition
 	beansByType     map[reflect.Type][]*BeanDefinition
@@ -124,7 +124,7 @@ func New() Container {
 		cancel: cancel,
 		p:      dync.New(),
 		tempContainer: &tempContainer{
-			properties:      conf.New(),
+			initProperties:  conf.New(),
 			beansByName:     make(map[string][]*BeanDefinition),
 			beansByType:     make(map[reflect.Type][]*BeanDefinition),
 			mapOfOnProperty: make(map[string]interface{}),
@@ -165,7 +165,7 @@ func (c *container) OnProperty(key string, fn interface{}) {
 // 类型组合构成的属性值，其处理方式是将组合结构层层展开，可以将组合结构看成一棵树，
 // 那么叶子结点的路径就是属性的 key，叶子结点的值就是属性的值。
 func (c *container) Property(key string, value interface{}) {
-	c.properties.Set(key, value)
+	c.initProperties.Set(key, value)
 }
 
 func (c *container) Accept(b *BeanDefinition) *BeanDefinition {
@@ -324,7 +324,7 @@ func (c *container) refresh(autoClear bool) (err error) {
 	}
 	c.state = RefreshInit
 
-	c.p.Refresh(c.properties)
+	c.p.Refresh(c.initProperties)
 
 	start := time.Now()
 	c.Object(c).Export((*Context)(nil))
