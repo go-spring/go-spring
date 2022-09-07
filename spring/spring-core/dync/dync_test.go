@@ -18,10 +18,12 @@ package dync_test
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 	"testing"
 
+	"github.com/go-spring/spring-base/assert"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/dync"
 )
@@ -34,106 +36,140 @@ type Config struct {
 	Event dync.Event   `value:"${event}"`
 }
 
+func newTest() (*dync.Properties, *Config, error) {
+	mgr := dync.New()
+	cfg := new(Config)
+	err := mgr.BindValue(reflect.ValueOf(cfg), conf.BindParam{})
+	if err != nil {
+		return nil, nil, err
+	}
+	return mgr, cfg, nil
+}
+
 func TestDynamic(t *testing.T) {
 
-	mgr := dync.New()
-
-	p := conf.New()
-	p.Set("int", 1)
-	p.Set("float", 5.4)
-	p.Set("map.a", 3)
-	p.Set("map.b", 7)
-	p.Set("slice[0]", 2)
-	p.Set("slice[1]", 9)
-	mgr.Refresh(p)
-
-	cfg := new(Config)
-
-	b, _ := json.Marshal(cfg)
-	fmt.Printf("%s\n", string(b))
-
-	cfgValue := reflect.ValueOf(cfg).Elem()
-	cfgType := cfgValue.Type()
-
-	{
-		{
-			var param conf.BindParam
-			if err := param.BindTag(cfgType.Field(0).Tag.Get("value")); err != nil {
-				t.Fatal(err)
-			}
-			v := cfgValue.Field(0).Addr().Interface().(dync.Value)
-			v.SetParam(param)
-			mgr.Watch(v)
+	t.Run("default", func(t *testing.T) {
+		_, cfg, err := newTest()
+		if err != nil {
+			return
 		}
-		{
-			var param conf.BindParam
-			if err := param.BindTag(cfgType.Field(1).Tag.Get("value")); err != nil {
-				t.Fatal(err)
-			}
-			v := cfgValue.Field(1).Addr().Interface().(dync.Value)
-			v.SetParam(param)
-			mgr.Watch(v)
-		}
-		{
-			var param conf.BindParam
-			if err := param.BindTag(cfgType.Field(2).Tag.Get("value")); err != nil {
-				t.Fatal(err)
-			}
-			v := cfgValue.Field(2).Addr().Interface().(dync.Value)
-			v.SetParam(param)
-			mgr.Watch(v)
-		}
-		{
-			var param conf.BindParam
-			if err := param.BindTag(cfgType.Field(3).Tag.Get("value")); err != nil {
-				t.Fatal(err)
-			}
-			v := cfgValue.Field(3).Addr().Interface().(dync.Value)
-			v.SetParam(param)
-			mgr.Watch(v)
-		}
-		{
-			var param conf.BindParam
-			if err := param.BindTag(cfgType.Field(4).Tag.Get("value")); err != nil {
-				t.Fatal(err)
-			}
-			v := cfgValue.Field(4).Addr().Interface().(dync.Value)
-			v.SetParam(param)
-			mgr.Watch(v)
-		}
-	}
-
-	cfg.Slice.Init(make([]string, 0))
-	cfg.Map.Init(make(map[string]string))
-	cfg.Event.Init(func(prop *conf.Properties) error {
-		fmt.Println("event fired.")
-		return nil
+		b, _ := json.Marshal(cfg)
+		assert.Equal(t, string(b), `{"Int":3,"Float":1.2,"Map":null,"Slice":null,"Event":{}}`)
 	})
 
-	b, _ = json.Marshal(cfg)
-	fmt.Printf("%s\n", string(b))
+	t.Run("init", func(t *testing.T) {
+		_, cfg, err := newTest()
+		if err != nil {
+			return
+		}
+		cfg.Slice.Init(make([]string, 0))
+		cfg.Map.Init(make(map[string]string))
+		cfg.Event.OnEvent(func(prop *conf.Properties) error {
+			fmt.Println("event fired.")
+			return nil
+		})
+		b, _ := json.Marshal(cfg)
+		assert.Equal(t, string(b), `{"Int":3,"Float":1.2,"Map":{},"Slice":[],"Event":{}}`)
+	})
 
-	p = conf.New()
-	p.Set("int", 4)
-	p.Set("float", 2.3)
-	p.Set("map.a", 1)
-	p.Set("map.b", 2)
-	p.Set("slice[0]", 3)
-	p.Set("slice[1]", 4)
-	mgr.Refresh(p)
+	t.Run("default validate error", func(t *testing.T) {
+		mgr := dync.New()
+		cfg := new(Config)
+		cfg.Int.OnValidate(func(v int64) error {
+			if v < 6 {
+				return errors.New("should greeter than 6")
+			}
+			return nil
+		})
+		err := mgr.BindValue(reflect.ValueOf(cfg), conf.BindParam{})
+		assert.Error(t, err, "should greeter than 6")
+	})
 
-	b, _ = json.Marshal(cfg)
-	fmt.Printf("%s\n", string(b))
+	t.Run("init validate error", func(t *testing.T) {
 
-	p = conf.New()
-	p.Set("int", 6)
-	p.Set("float", 5.1)
-	p.Set("map.a", 9)
-	p.Set("map.b", 8)
-	p.Set("slice[0]", 7)
-	p.Set("slice[1]", 6)
-	mgr.Refresh(p)
+		mgr := dync.New()
+		cfg := new(Config)
+		cfg.Int.OnValidate(func(v int64) error {
+			if v < 3 {
+				return errors.New("should greeter than 3")
+			}
+			return nil
+		})
+		cfg.Slice.Init(make([]string, 0))
+		cfg.Map.Init(make(map[string]string))
+		cfg.Event.OnEvent(func(prop *conf.Properties) error {
+			fmt.Println("event fired.")
+			return nil
+		})
+		err := mgr.BindValue(reflect.ValueOf(cfg), conf.BindParam{})
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	b, _ = json.Marshal(cfg)
-	fmt.Printf("%s\n", string(b))
+		b, _ := json.Marshal(cfg)
+		assert.Equal(t, string(b), `{"Int":3,"Float":1.2,"Map":{},"Slice":[],"Event":{}}`)
+
+		p := conf.New()
+		p.Set("int", 1)
+		p.Set("float", 5.4)
+		p.Set("map.a", 3)
+		p.Set("map.b", 7)
+		p.Set("slice[0]", 2)
+		p.Set("slice[1]", 9)
+		err = mgr.Refresh(p)
+		assert.Error(t, err, "should greeter than 3")
+
+		b, _ = json.Marshal(cfg)
+		assert.Equal(t, string(b), `{"Int":3,"Float":1.2,"Map":{},"Slice":[],"Event":{}}`)
+	})
+
+	t.Run("success", func(t *testing.T) {
+
+		mgr := dync.New()
+		cfg := new(Config)
+		cfg.Int.OnValidate(func(v int64) error {
+			if v < 3 {
+				return errors.New("should greeter than 3")
+			}
+			return nil
+		})
+		cfg.Slice.Init(make([]string, 0))
+		cfg.Map.Init(make(map[string]string))
+		cfg.Event.OnEvent(func(prop *conf.Properties) error {
+			fmt.Println("event fired.")
+			return nil
+		})
+		err := mgr.BindValue(reflect.ValueOf(cfg), conf.BindParam{})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		b, _ := json.Marshal(cfg)
+		assert.Equal(t, string(b), `{"Int":3,"Float":1.2,"Map":{},"Slice":[],"Event":{}}`)
+
+		p := conf.New()
+		p.Set("int", 1)
+		p.Set("float", 5.4)
+		p.Set("map.a", 3)
+		p.Set("map.b", 7)
+		p.Set("slice[0]", 2)
+		p.Set("slice[1]", 9)
+		err = mgr.Refresh(p)
+		assert.Error(t, err, "should greeter than 3")
+
+		b, _ = json.Marshal(cfg)
+		assert.Equal(t, string(b), `{"Int":3,"Float":1.2,"Map":{},"Slice":[],"Event":{}}`)
+
+		p = conf.New()
+		p.Set("int", 4)
+		p.Set("float", 2.3)
+		p.Set("map.a", 1)
+		p.Set("map.b", 2)
+		p.Set("slice[0]", 3)
+		p.Set("slice[1]", 4)
+		mgr.Refresh(p)
+
+		b, _ = json.Marshal(cfg)
+		assert.Equal(t, string(b), `{"Int":4,"Float":2.3,"Map":{"a":"1","b":"2"},"Slice":["3","4"],"Event":{}}`)
+	})
 }

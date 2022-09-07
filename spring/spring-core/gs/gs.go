@@ -75,6 +75,7 @@ type Context interface {
 	Keys() []string
 	Has(key string) bool
 	Prop(key string, opts ...conf.GetOption) string
+	Resolve(s string) (string, error)
 	Bind(i interface{}, opts ...conf.BindOption) error
 	Get(i interface{}, selectors ...util.BeanSelector) error
 	Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{}, error)
@@ -88,6 +89,7 @@ type ContextAware struct {
 }
 
 type tempContainer struct {
+	properties      *conf.Properties
 	beans           []*BeanDefinition
 	beansByName     map[string][]*BeanDefinition
 	beansByType     map[reflect.Type][]*BeanDefinition
@@ -122,6 +124,7 @@ func New() Container {
 		cancel: cancel,
 		p:      dync.New(),
 		tempContainer: &tempContainer{
+			properties:      conf.New(),
 			beansByName:     make(map[string][]*BeanDefinition),
 			beansByType:     make(map[reflect.Type][]*BeanDefinition),
 			mapOfOnProperty: make(map[string]interface{}),
@@ -162,7 +165,7 @@ func (c *container) OnProperty(key string, fn interface{}) {
 // 类型组合构成的属性值，其处理方式是将组合结构层层展开，可以将组合结构看成一棵树，
 // 那么叶子结点的路径就是属性的 key，叶子结点的值就是属性的值。
 func (c *container) Property(key string, value interface{}) {
-	c.p.Value().Set(key, value)
+	c.properties.Set(key, value)
 }
 
 func (c *container) Accept(b *BeanDefinition) *BeanDefinition {
@@ -321,6 +324,8 @@ func (c *container) refresh(autoClear bool) (err error) {
 	}
 	c.state = RefreshInit
 
+	c.p.Refresh(c.properties)
+
 	start := time.Now()
 	c.Object(c).Export((*Context)(nil))
 	c.logger = log.GetLogger(util.TypeName(c))
@@ -328,7 +333,7 @@ func (c *container) refresh(autoClear bool) (err error) {
 	for key, f := range c.mapOfOnProperty {
 		t := reflect.TypeOf(f)
 		in := reflect.New(t.In(0)).Elem()
-		if err = c.p.Value().Bind(in, conf.Key(key)); err != nil {
+		if err = c.p.Bind(in, conf.Key(key)); err != nil {
 			return err
 		}
 		reflect.ValueOf(f).Call([]reflect.Value{in})
@@ -700,7 +705,7 @@ func (a *argContext) Matches(c cond.Condition) (bool, error) {
 }
 
 func (a *argContext) Bind(v reflect.Value, tag string) error {
-	return a.c.p.Value().Bind(v, conf.Tag(tag))
+	return a.c.p.Bind(v, conf.Tag(tag))
 }
 
 func (a *argContext) Wire(v reflect.Value, tag string) error {
@@ -763,29 +768,15 @@ func (c *container) wireBeanValue(v reflect.Value, t reflect.Type, stack *wiring
 		typeName = t.String()
 	}
 
-	param := conf.BindParam{Type: t, Path: typeName}
-	return c.wireStruct(v, param, stack)
-}
-
-func (c *container) watchField(i interface{}, param conf.BindParam) (bool, error) {
-	r, ok := i.(dync.Value)
-	if !ok {
-		return false, nil
-	}
-	r.SetParam(param)
-	err := c.p.Watch(r)
-	if err != nil {
-		return false, err
-	}
-	return true, nil
-
+	param := conf.BindParam{Path: typeName}
+	return c.wireStruct(v, t, param, stack)
 }
 
 // wireStruct 对结构体进行依赖注入，需要注意的是这里不需要进行属性绑定。
-func (c *container) wireStruct(v reflect.Value, opt conf.BindParam, stack *wiringStack) error {
+func (c *container) wireStruct(v reflect.Value, t reflect.Type, opt conf.BindParam, stack *wiringStack) error {
 
-	for i := 0; i < opt.Type.NumField(); i++ {
-		ft := opt.Type.Field(i)
+	for i := 0; i < t.NumField(); i++ {
+		ft := t.Field(i)
 		fv := v.Field(i)
 
 		if !fv.CanInterface() {
@@ -828,7 +819,6 @@ func (c *container) wireStruct(v reflect.Value, opt conf.BindParam, stack *wirin
 		}
 
 		subParam := conf.BindParam{
-			Type: ft.Type,
 			Key:  opt.Key,
 			Path: fieldPath,
 		}
@@ -837,20 +827,13 @@ func (c *container) wireStruct(v reflect.Value, opt conf.BindParam, stack *wirin
 			if err := subParam.BindTag(tag); err != nil {
 				return err
 			}
-			ret, err := c.watchField(fv.Addr().Interface(), subParam)
-			if err != nil {
-				return err
-			}
-			if ret {
-				continue
-			}
 			if ft.Anonymous {
-				err = c.wireStruct(fv, subParam, stack)
+				err := c.wireStruct(fv, ft.Type, subParam, stack)
 				if err != nil {
 					return err
 				}
 			} else {
-				err = conf.BindValue(c.p.Value(), fv, subParam, c.watchField)
+				err := c.p.BindValue(fv.Addr(), subParam)
 				if err != nil {
 					return err
 				}
@@ -859,7 +842,7 @@ func (c *container) wireStruct(v reflect.Value, opt conf.BindParam, stack *wirin
 		}
 
 		if ft.Anonymous && ft.Type.Kind() == reflect.Struct {
-			if err := c.wireStruct(fv, subParam, stack); err != nil {
+			if err := c.wireStruct(fv, ft.Type, subParam, stack); err != nil {
 				return err
 			}
 		}
@@ -871,7 +854,7 @@ func (c *container) wireByTag(v reflect.Value, tag string, stack *wiringStack) e
 
 	// tag 预处理，可能通过属性值进行指定。
 	if strings.HasPrefix(tag, "${") {
-		s, err := c.p.Value().Resolve(tag)
+		s, err := c.p.Resolve(tag)
 		if err != nil {
 			return err
 		}

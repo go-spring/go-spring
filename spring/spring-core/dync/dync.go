@@ -17,177 +17,128 @@
 package dync
 
 import (
-	"encoding/json"
 	"fmt"
 	"reflect"
 
 	"github.com/go-spring/spring-base/atomic"
-	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-core/conf"
 )
 
+// Value 可动态刷新的对象
+type Value interface {
+	setParam(param conf.BindParam)
+	onRefresh(prop *conf.Properties) error
+	onValidate(prop *conf.Properties) error
+}
+
+// Properties 动态属性
 type Properties struct {
 	value  atomic.Value
-	fields []EventObserver
+	fields []Value
 }
 
 func New() *Properties {
 	p := &Properties{}
-	p.Refresh(conf.New())
+	p.value.Store(conf.New())
 	return p
 }
 
-func (p *Properties) Value() *conf.Properties {
+func (p *Properties) load() *conf.Properties {
 	return p.value.Load().(*conf.Properties)
 }
 
-func (p *Properties) Refresh(prop *conf.Properties) {
-	p.value.Store(prop)
-	p.fireEvent()
+func (p *Properties) Keys() []string {
+	return p.load().Keys()
 }
 
-func (p *Properties) fireEvent() {
-	prop := p.Value()
+func (p *Properties) Has(key string) bool {
+	return p.load().Has(key)
+}
+
+func (p *Properties) Get(key string, opts ...conf.GetOption) string {
+	return p.load().Get(key, opts...)
+}
+
+func (p *Properties) Resolve(s string) (string, error) {
+	return p.load().Resolve(s)
+}
+
+func (p *Properties) Bind(i interface{}, opts ...conf.BindOption) error {
+	return p.load().Bind(i, opts...)
+}
+
+func (p *Properties) Refresh(prop *conf.Properties) (err error) {
+
+	if err = p.validate(prop); err != nil {
+		return
+	}
+
+	old := p.load()
+	defer func() {
+		if r := recover(); err != nil || r != nil {
+			if err == nil {
+				err = fmt.Errorf("%v", r)
+			}
+			p.value.Store(old)
+			_ = p.refresh(old)
+		}
+	}()
+
+	p.value.Store(prop)
+	return p.refresh(p.load())
+}
+
+func (p *Properties) validate(prop *conf.Properties) error {
 	for _, field := range p.fields {
-		err := field.OnEvent(prop)
-		if err != nil { // TODO
-			fmt.Println(err)
+		err := field.onValidate(prop)
+		if err != nil {
+			return err
 		}
 	}
-}
-
-func (p *Properties) Watch(o EventObserver) error {
-	p.fields = append(p.fields, o)
-	return o.OnEvent(p.Value())
-}
-
-type EventObserver interface {
-	OnEvent(prop *conf.Properties) error
-}
-
-type Value interface {
-	EventObserver
-	SetParam(param conf.BindParam)
-}
-
-type Base struct {
-	conf.BindParam
-}
-
-func (v *Base) SetParam(param conf.BindParam) {
-	v.BindParam = param
-}
-
-type Int64 struct {
-	Base
-	v atomic.Int64
-}
-
-func (i *Int64) Value() int64 {
-	return i.v.Load()
-}
-
-func (i *Int64) OnEvent(prop *conf.Properties) error {
-	key := i.BindParam.Key
-	if !prop.Has(key) && !i.BindParam.Tag.HasDef {
-		return fmt.Errorf("property %q not exist", key)
-	}
-	s := prop.Get(key, conf.Def(i.BindParam.Tag.Def))
-	v, err := cast.ToInt64E(s)
-	if err != nil {
-		return err
-	}
-	i.v.Store(v)
 	return nil
 }
 
-func (i *Int64) MarshalJSON() ([]byte, error) {
-	return json.Marshal(i.Value())
-}
-
-type Float64 struct {
-	Base
-	v atomic.Float64
-}
-
-func (i *Float64) Value() float64 {
-	return i.v.Load()
-}
-
-func (i *Float64) OnEvent(prop *conf.Properties) error {
-	key := i.BindParam.Key
-	if !prop.Has(key) && !i.BindParam.Tag.HasDef {
-		return fmt.Errorf("property %q not exist", key)
+func (p *Properties) refresh(prop *conf.Properties) error {
+	for _, field := range p.fields {
+		err := field.onRefresh(prop)
+		if err != nil {
+			return err
+		}
 	}
-	s := prop.Get(key, conf.Def(i.BindParam.Tag.Def))
-	v, err := cast.ToFloat64E(s)
-	if err != nil {
-		return err
-	}
-	i.v.Store(v)
 	return nil
 }
 
-func (i *Float64) MarshalJSON() ([]byte, error) {
-	return json.Marshal(i.Value())
-}
-
-type Ref struct {
-	Base
-	v atomic.Value
-	p *conf.Properties // just for init
-}
-
-func (r *Ref) Init(i interface{}) error {
-	prop := r.p
-	r.p = nil // release p
-	r.v.Store(i)
-	return r.OnEvent(prop)
-}
-
-func (r *Ref) Value() interface{} {
-	return r.v.Load()
-}
-
-func (r *Ref) OnEvent(prop *conf.Properties) error {
-	o := r.Value()
-	if o == nil {
-		r.p = prop
-		return nil
+func (p *Properties) BindValue(v reflect.Value, param conf.BindParam) error {
+	if v.Kind() == reflect.Ptr {
+		ok, err := p.bindValue(v.Interface(), param)
+		if err != nil {
+			return err
+		}
+		if ok {
+			return nil
+		}
 	}
-	t := reflect.TypeOf(o)
-	v := reflect.New(t)
-	err := prop.Bind(v.Interface(), conf.Key(r.BindParam.Key))
+	return conf.BindValue(p.load(), v.Elem(), v.Elem().Type(), param, p.bindValue)
+}
+
+func (p *Properties) bindValue(i interface{}, param conf.BindParam) (bool, error) {
+
+	v, ok := i.(Value)
+	if !ok {
+		return false, nil
+	}
+	v.setParam(param)
+
+	prop := p.load()
+	err := v.onValidate(prop)
 	if err != nil {
-		return err
+		return false, err
 	}
-	r.v.Store(v.Elem().Interface())
-	return nil
-}
-
-func (r *Ref) MarshalJSON() ([]byte, error) {
-	return json.Marshal(r.Value())
-}
-
-type EventFunc func(prop *conf.Properties) error
-
-type Event struct {
-	Base
-	f EventFunc
-	p *conf.Properties // just for init
-}
-
-func (e *Event) Init(fn EventFunc) error {
-	prop := e.p
-	e.p = nil // release p
-	e.f = fn
-	return e.OnEvent(prop)
-}
-
-func (e *Event) OnEvent(prop *conf.Properties) error {
-	if e.f == nil {
-		e.p = prop
-		return nil
+	err = v.onRefresh(prop)
+	if err != nil {
+		return false, err
 	}
-	return e.f(prop)
+
+	p.fields = append(p.fields, v)
+	return true, nil
 }
