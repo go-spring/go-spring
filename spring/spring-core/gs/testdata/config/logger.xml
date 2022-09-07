@@ -4,7 +4,7 @@
         <Console name="Console"/>
     </Appenders>
     <Loggers>
-        <Logger name="github.com/go-spring/spring-core/gs" level="trace">
+        <Logger name="github.com/go-spring/spring-core/gs" level="trace" additivity="false">
             <AppenderRef ref="Console"/>
         </Logger>
         <Root level="info">

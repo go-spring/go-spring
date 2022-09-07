@@ -671,6 +671,17 @@ func TestProperties_Ref(t *testing.T) {
 	})
 }
 
+func TestBindSlice(t *testing.T) {
+	p := conf.New()
+	p.Set("a", []string{"1", "2"})
+	var ss []string
+	err := p.Bind(&ss, conf.Key("a"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, ss, []string{"1", "2"})
+}
+
 func TestBindMap(t *testing.T) {
 
 	t.Run("", func(t *testing.T) {
