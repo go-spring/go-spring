@@ -17,9 +17,14 @@
 package middleware
 
 import (
+	"compress/gzip"
 	"fmt"
+	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/web"
+	"io/ioutil"
 	"net/http"
+	"net/http/httptest"
+	"sync"
 	"testing"
 )
 
@@ -40,4 +45,43 @@ func TestShouldCompress(t *testing.T) {
 	req3.Header.Set(web.HeaderAcceptEncoding, "gzip")
 	b3 := shouldCompress(req3)
 	fmt.Println("is should compress: ", b3)
+}
+
+func BenchmarkCreateGzipPoolWriter(b *testing.B) {
+	gzipPool = &sync.Pool{New: func() interface{} {
+		w, err := gzip.NewWriterLevel(ioutil.Discard, 5)
+		util.Panic(err).When(err != nil)
+		return w
+	}}
+
+	// 使用pool
+	var wg sync.WaitGroup
+	wg.Add(1000000)
+	for n := 0; n < 1000000; n++ {
+		go func() {
+			defer wg.Done()
+			w := httptest.NewRecorder()
+			gw := gzipPool.Get().(*gzip.Writer)
+			gw.Reset(w)
+			defer gzipPool.Put(gw)
+			defer gw.Reset(ioutil.Discard)
+			_ = &gzipWriter{w, gw}
+		}()
+	}
+	wg.Wait()
+}
+
+func BenchmarkCreateGzipWriter(b *testing.B) {
+	// 直接new
+	var wg sync.WaitGroup
+	wg.Add(1000000)
+	for n := 0; n < 1000000; n++ {
+		go func() {
+			defer wg.Done()
+			w := httptest.NewRecorder()
+			gw, _ := gzip.NewWriterLevel(w, 5)
+			_ = &gzipWriter{w, gw}
+		}()
+	}
+	wg.Wait()
 }
