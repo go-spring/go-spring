@@ -824,7 +824,8 @@ func (c *container) wireStruct(v reflect.Value, t reflect.Type, opt conf.BindPar
 		}
 
 		if tag, ok = ft.Tag.Lookup("value"); ok {
-			if err := subParam.BindTag(tag); err != nil {
+			validate, _ := ft.Tag.Lookup("validate")
+			if err := subParam.BindTag(tag, validate); err != nil {
 				return err
 			}
 			if ft.Anonymous {

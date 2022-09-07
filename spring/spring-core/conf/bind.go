@@ -25,6 +25,7 @@ import (
 
 	"github.com/go-spring/spring-base/code"
 	"github.com/go-spring/spring-base/util"
+	"github.com/go-spring/spring-core/gsl"
 )
 
 var (
@@ -74,12 +75,13 @@ func ParseTag(tag string) (ret ParsedTag, err error) {
 }
 
 type BindParam struct {
-	Key  string    // full property key
-	Path string    // binding path
-	Tag  ParsedTag // parsed tag
+	Key      string    // full property key
+	Path     string    // binding path
+	Tag      ParsedTag // parsed tag
+	Validate string
 }
 
-func (param *BindParam) BindTag(tag string) error {
+func (param *BindParam) BindTag(tag string, validate string) error {
 	parsedTag, err := ParseTag(tag)
 	if err != nil {
 		return err
@@ -95,6 +97,7 @@ func (param *BindParam) BindTag(tag string) error {
 	} else if parsedTag.Key != "" {
 		param.Key = param.Key + "." + parsedTag.Key
 	}
+	param.Validate = validate
 	return nil
 }
 
@@ -142,10 +145,27 @@ func BindValue(p *Properties, v reflect.Value, t reflect.Type, param BindParam, 
 		return nil
 	}
 
+	validate := func(expr string, val string) error {
+		if expr != "" {
+			var b bool
+			b, err = gsl.Eval(expr, val)
+			if err != nil {
+				return err
+			}
+			if !b {
+				return fmt.Errorf("validate failed on %q for value %s", expr, val)
+			}
+		}
+		return nil
+	}
+
 	switch v.Kind() {
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		var u uint64
 		if u, err = strconv.ParseUint(val, 0, 0); err == nil {
+			if err = validate(param.Validate, val); err != nil {
+				return err
+			}
 			v.SetUint(u)
 			return nil
 		}
@@ -153,6 +173,9 @@ func BindValue(p *Properties, v reflect.Value, t reflect.Type, param BindParam, 
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		var i int64
 		if i, err = strconv.ParseInt(val, 0, 0); err == nil {
+			if err = validate(param.Validate, val); err != nil {
+				return err
+			}
 			v.SetInt(i)
 			return nil
 		}
@@ -160,6 +183,9 @@ func BindValue(p *Properties, v reflect.Value, t reflect.Type, param BindParam, 
 	case reflect.Float32, reflect.Float64:
 		var f float64
 		if f, err = strconv.ParseFloat(val, 64); err == nil {
+			if err = validate(param.Validate, val); err != nil {
+				return err
+			}
 			v.SetFloat(f)
 			return nil
 		}
@@ -167,11 +193,17 @@ func BindValue(p *Properties, v reflect.Value, t reflect.Type, param BindParam, 
 	case reflect.Bool:
 		var b bool
 		if b, err = strconv.ParseBool(val); err == nil {
+			if err = validate(param.Validate, val); err != nil {
+				return err
+			}
 			v.SetBool(b)
 			return nil
 		}
 		return util.Wrapf(err, code.FileLine(), "bind %s error", param.Path)
 	case reflect.String:
+		if err = validate(param.Validate, val); err != nil {
+			return err
+		}
 		v.SetString(val)
 		return nil
 	}
@@ -355,7 +387,8 @@ func bindStruct(p *Properties, v reflect.Value, t reflect.Type, param BindParam,
 		}
 
 		if tag, ok := ft.Tag.Lookup("value"); ok {
-			if err := subParam.BindTag(tag); err != nil {
+			validate, _ := ft.Tag.Lookup("validate")
+			if err := subParam.BindTag(tag, validate); err != nil {
 				return util.Wrapf(err, code.FileLine(), "bind %s error", param.Path)
 			}
 			if filter != nil {
@@ -449,7 +482,7 @@ func resolveString(p *Properties, s string) (string, error) {
 	}
 
 	var param BindParam
-	err := param.BindTag(s[start : end+1])
+	err := param.BindTag(s[start:end+1], "")
 	if err != nil {
 		return "", util.Wrapf(err, code.FileLine(), "resolve string %q error", s)
 	}

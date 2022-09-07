@@ -18,9 +18,11 @@ type Controller struct {
 
 type HelloController struct {
 	Service *HelloService `autowire:""`
+	Logger  *log.Logger   `logger:""`
 }
 
 func (c *HelloController) Hello(ctx *gin.Context) {
+	c.Logger.Infof("hello")
 	s := c.Service.Hello(ctx.Query("name"))
 	ctx.String(http.StatusOK, s)
 }
@@ -28,10 +30,13 @@ func (c *HelloController) Hello(ctx *gin.Context) {
 //---------------- Service -------------------------------//
 
 type HelloService struct {
+	Logger *log.Logger `logger:""`
 }
 
 func (s *HelloService) Hello(name string) string {
-	return "hello " + name + "!"
+	v := "hello " + name + "!"
+	s.Logger.Infof(v)
+	return v
 }
 
 //---------------- Engine --------------------------------//

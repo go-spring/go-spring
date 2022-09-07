@@ -26,7 +26,7 @@ import (
 )
 
 type DB struct {
-	UserName string `value:"${username}"`
+	UserName string `value:"${username}" validate:"len($)>=4"`
 	Password string `value:"${password}"`
 	Url      string `value:"${url}"`
 	Port     string `value:"${port}"`
@@ -214,5 +214,16 @@ func TestProperties_Bind(t *testing.T) {
 			t.Fatal(err)
 		}
 		assert.Equal(t, s.M, map[string]string{})
+	})
+}
+
+func TestProperties_Validate(t *testing.T) {
+	t.Run("", func(t *testing.T) {
+		p := conf.New()
+		v := &struct {
+			V int `value:"${:=3}" validate:"$<3"`
+		}{}
+		err := p.Bind(v)
+		assert.Error(t, err, "validate failed on \"\\$<3\" for value 3")
 	})
 }

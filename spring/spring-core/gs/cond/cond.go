@@ -22,14 +22,11 @@ package cond
 import (
 	"errors"
 	"fmt"
-	"go/token"
-	"go/types"
-	"strconv"
 	"strings"
 
-	"github.com/go-spring/spring-base/code"
 	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/conf"
+	"github.com/go-spring/spring-core/gsl"
 )
 
 // Context defines some methods of IoC container that conditions use.
@@ -98,24 +95,7 @@ func (c *onProperty) Matches(ctx Context) (bool, error) {
 		return val == c.havingValue, nil
 	}
 
-	var expr string
-	if _, err := strconv.ParseBool(val); err == nil {
-		expr = strings.ReplaceAll(c.havingValue[3:], "$", val)
-	} else if _, err = strconv.ParseFloat(val, 64); err == nil {
-		expr = strings.ReplaceAll(c.havingValue[3:], "$", val)
-	} else {
-		expr = strings.ReplaceAll(c.havingValue[3:], "$", strconv.Quote(val))
-	}
-
-	ret, err := types.Eval(token.NewFileSet(), nil, token.NoPos, expr)
-	if err != nil {
-		return false, util.Wrapf(err, code.FileLine(), "eval %q returns error", expr)
-	}
-	b, err := strconv.ParseBool(ret.Value.String())
-	if err != nil {
-		return false, util.Wrapf(err, code.FileLine(), "eval %q returns error", expr)
-	}
-	return b, nil
+	return gsl.Eval(c.havingValue[3:], val)
 }
 
 // onMissingProperty is a Condition that returns true when a property doesn't exist.

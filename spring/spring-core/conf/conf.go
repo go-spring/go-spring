@@ -385,7 +385,7 @@ func (p *Properties) Bind(i interface{}, opts ...BindOption) error {
 	param := BindParam{
 		Path: typeName,
 	}
-	err := param.BindTag(arg.tag)
+	err := param.BindTag(arg.tag, "")
 	if err != nil {
 		return err
 	}
