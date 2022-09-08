@@ -18,7 +18,7 @@ package prop
 
 import "github.com/magiconair/properties"
 
-// Read parses []byte int the properties format into map.
+// Read parses []byte in the properties format into map.
 func Read(b []byte) (map[string]interface{}, error) {
 
 	p := properties.NewProperties()

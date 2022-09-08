@@ -20,7 +20,7 @@ import (
 	"github.com/pelletier/go-toml"
 )
 
-// Read parses []byte int the toml format into map.
+// Read parses []byte in the toml format into map.
 func Read(b []byte) (map[string]interface{}, error) {
 	tree, err := toml.LoadBytes(b)
 	if err != nil {
