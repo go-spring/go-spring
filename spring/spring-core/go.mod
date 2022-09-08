@@ -3,6 +3,7 @@ module github.com/go-spring/spring-core
 go 1.14
 
 require (
+	github.com/antonmedv/expr v1.9.0
 	github.com/go-spring/spring-base v1.1.1
 	github.com/golang/mock v1.6.0
 	github.com/google/uuid v1.3.0

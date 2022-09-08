@@ -20,7 +20,7 @@ import (
 	"fmt"
 
 	"github.com/go-spring/spring-core/conf"
-	"github.com/go-spring/spring-core/gsl"
+	"github.com/go-spring/spring-core/expr"
 )
 
 type Base struct {
@@ -44,16 +44,14 @@ func (v *Base) Property(prop *conf.Properties) (string, error) {
 	return s, nil
 }
 
-func (v *Base) Validate(val string) error {
+func (v *Base) Validate(val interface{}) error {
 	if v.param.Validate == "" {
 		return nil
 	}
-	b, err := gsl.Eval(v.param.Validate, val)
-	if err != nil {
+	if b, err := expr.Eval(v.param.Validate, val); err != nil {
 		return err
-	}
-	if !b {
-		return fmt.Errorf("validate failed on %q for value %s", v.param.Validate, val)
+	} else if !b {
+		return fmt.Errorf("validate failed on %q for value %v", v.param.Validate, val)
 	}
 	return nil
 }

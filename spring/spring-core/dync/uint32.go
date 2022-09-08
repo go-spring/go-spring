@@ -40,20 +40,20 @@ func (x *Uint32) OnValidate(f Uint32ValidateFunc) {
 	x.f = f
 }
 
-func (x *Uint32) getUint32(prop *conf.Properties) (string, uint32, error) {
+func (x *Uint32) getUint32(prop *conf.Properties) (uint32, error) {
 	s, err := x.Property(prop)
 	if err != nil {
-		return "", 0, err
+		return 0, err
 	}
 	v, err := cast.ToUint64E(s)
 	if err != nil {
-		return "", 0, err
+		return 0, err
 	}
-	return s, uint32(v), nil
+	return uint32(v), nil
 }
 
 func (x *Uint32) onRefresh(prop *conf.Properties) error {
-	_, v, err := x.getUint32(prop)
+	v, err := x.getUint32(prop)
 	if err != nil {
 		return err
 	}
@@ -62,11 +62,11 @@ func (x *Uint32) onRefresh(prop *conf.Properties) error {
 }
 
 func (x *Uint32) onValidate(prop *conf.Properties) error {
-	s, v, err := x.getUint32(prop)
+	v, err := x.getUint32(prop)
 	if err != nil {
 		return err
 	}
-	err = x.Validate(s)
+	err = x.Validate(v)
 	if err != nil {
 		return err
 	}

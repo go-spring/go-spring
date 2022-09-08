@@ -40,20 +40,20 @@ func (x *Int64) OnValidate(f Int64ValidateFunc) {
 	x.f = f
 }
 
-func (x *Int64) getInt64(prop *conf.Properties) (string, int64, error) {
+func (x *Int64) getInt64(prop *conf.Properties) (int64, error) {
 	s, err := x.Property(prop)
 	if err != nil {
-		return "", 0, err
+		return 0, err
 	}
 	v, err := cast.ToInt64E(s)
 	if err != nil {
-		return "", 0, err
+		return 0, err
 	}
-	return s, v, nil
+	return v, nil
 }
 
 func (x *Int64) onRefresh(prop *conf.Properties) error {
-	_, v, err := x.getInt64(prop)
+	v, err := x.getInt64(prop)
 	if err != nil {
 		return err
 	}
@@ -62,11 +62,11 @@ func (x *Int64) onRefresh(prop *conf.Properties) error {
 }
 
 func (x *Int64) onValidate(prop *conf.Properties) error {
-	s, v, err := x.getInt64(prop)
+	v, err := x.getInt64(prop)
 	if err != nil {
 		return err
 	}
-	err = x.Validate(s)
+	err = x.Validate(v)
 	if err != nil {
 		return err
 	}

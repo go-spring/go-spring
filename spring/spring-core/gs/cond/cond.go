@@ -22,11 +22,12 @@ package cond
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/conf"
-	"github.com/go-spring/spring-core/gsl"
+	"github.com/go-spring/spring-core/expr"
 )
 
 // Context defines some methods of IoC container that conditions use.
@@ -95,7 +96,22 @@ func (c *onProperty) Matches(ctx Context) (bool, error) {
 		return val == c.havingValue, nil
 	}
 
-	return gsl.Eval(c.havingValue[3:], val)
+	getValue := func(val string) interface{} {
+		if b, err := strconv.ParseBool(val); err == nil {
+			return b
+		}
+		if i, err := strconv.ParseInt(val, 10, 64); err == nil {
+			return i
+		}
+		if u, err := strconv.ParseUint(val, 10, 64); err == nil {
+			return u
+		}
+		if f, err := strconv.ParseFloat(val, 64); err == nil {
+			return f
+		}
+		return val
+	}
+	return expr.Eval(c.havingValue[3:], getValue(val))
 }
 
 // onMissingProperty is a Condition that returns true when a property doesn't exist.

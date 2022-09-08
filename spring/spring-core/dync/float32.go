@@ -40,20 +40,20 @@ func (x *Float32) OnValidate(f Float32ValidateFunc) {
 	x.f = f
 }
 
-func (x *Float32) getFloat32(prop *conf.Properties) (string, float32, error) {
+func (x *Float32) getFloat32(prop *conf.Properties) (float32, error) {
 	s, err := x.Property(prop)
 	if err != nil {
-		return "", 0, err
+		return 0, err
 	}
 	v, err := cast.ToFloat64E(s)
 	if err != nil {
-		return "", 0, err
+		return 0, err
 	}
-	return s, float32(v), nil
+	return float32(v), nil
 }
 
 func (x *Float32) onRefresh(prop *conf.Properties) error {
-	_, v, err := x.getFloat32(prop)
+	v, err := x.getFloat32(prop)
 	if err != nil {
 		return err
 	}
@@ -62,11 +62,11 @@ func (x *Float32) onRefresh(prop *conf.Properties) error {
 }
 
 func (x *Float32) onValidate(prop *conf.Properties) error {
-	s, v, err := x.getFloat32(prop)
+	v, err := x.getFloat32(prop)
 	if err != nil {
 		return err
 	}
-	err = x.Validate(s)
+	err = x.Validate(v)
 	if err != nil {
 		return err
 	}

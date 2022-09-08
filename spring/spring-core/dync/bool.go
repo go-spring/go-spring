@@ -33,20 +33,20 @@ func (x *Bool) Value() bool {
 	return x.v.Load()
 }
 
-func (x *Bool) getBool(prop *conf.Properties) (string, bool, error) {
+func (x *Bool) getBool(prop *conf.Properties) (bool, error) {
 	s, err := x.Property(prop)
 	if err != nil {
-		return "", false, err
+		return false, err
 	}
 	v, err := cast.ToBoolE(s)
 	if err != nil {
-		return "", false, err
+		return false, err
 	}
-	return s, v, nil
+	return v, nil
 }
 
 func (x *Bool) onRefresh(prop *conf.Properties) error {
-	_, v, err := x.getBool(prop)
+	v, err := x.getBool(prop)
 	if err != nil {
 		return err
 	}
@@ -55,11 +55,8 @@ func (x *Bool) onRefresh(prop *conf.Properties) error {
 }
 
 func (x *Bool) onValidate(prop *conf.Properties) error {
-	s, _, err := x.getBool(prop)
-	if err != nil {
-		return err
-	}
-	return x.Validate(s)
+	_, err := x.getBool(prop)
+	return err
 }
 
 func (x *Bool) MarshalJSON() ([]byte, error) {
