@@ -23,27 +23,27 @@ import (
 	"github.com/go-spring/spring-base/util"
 )
 
-type UnsafePointer struct {
+type Pointer struct {
 	_ util.NoCopy
 	v unsafe.Pointer
 }
 
 // Load wrapper for atomic.LoadPointer.
-func (p *UnsafePointer) Load() (val unsafe.Pointer) {
+func (p *Pointer) Load() (val unsafe.Pointer) {
 	return atomic.LoadPointer(&p.v)
 }
 
 // Store wrapper for atomic.StorePointer.
-func (p *UnsafePointer) Store(val unsafe.Pointer) {
+func (p *Pointer) Store(val unsafe.Pointer) {
 	atomic.StorePointer(&p.v, val)
 }
 
 // Swap wrapper for atomic.SwapPointer.
-func (p *UnsafePointer) Swap(new unsafe.Pointer) (old unsafe.Pointer) {
+func (p *Pointer) Swap(new unsafe.Pointer) (old unsafe.Pointer) {
 	return atomic.SwapPointer(&p.v, new)
 }
 
 // CompareAndSwap wrapper for atomic.CompareAndSwapPointer.
-func (p *UnsafePointer) CompareAndSwap(old, new unsafe.Pointer) (swapped bool) {
+func (p *Pointer) CompareAndSwap(old, new unsafe.Pointer) (swapped bool) {
 	return atomic.CompareAndSwapPointer(&p.v, old, new)
 }

@@ -21,87 +21,69 @@ import (
 	"time"
 )
 
-const (
-	Nanosecond  = "ns" // 纳秒
-	Microsecond = "μs" // 微秒
-	Millisecond = "ms" // 毫秒
-	Second      = "s"  // 秒
-	Minute      = "m"  // 分
-	Hour        = "h"  // 小时
-)
-
-var unitMap = map[string]int64{
-	"ns": int64(time.Nanosecond),
-	"μs": int64(time.Microsecond),
-	"ms": int64(time.Millisecond),
-	"s":  int64(time.Second),
-	"m":  int64(time.Minute),
-	"h":  int64(time.Hour),
-}
-
 // ToTime casts an interface{} to a time.Time.
-func ToTime(i interface{}, arg ...string) time.Time {
-	v, _ := ToTimeE(i, arg...)
+func ToTime(i interface{}, format ...string) time.Time {
+	v, _ := ToTimeE(i, format...)
 	return v
 }
 
 // ToTimeE casts an interface{} to a time.Time.
-func ToTimeE(i interface{}, arg ...string) (time.Time, error) {
+func ToTimeE(i interface{}, format ...string) (time.Time, error) {
 	switch v := i.(type) {
 	case nil:
 		return time.Time{}, nil
 	case int:
-		return parseIntTimestamp(int64(v), arg...), nil
+		return parseIntTimestamp(int64(v), format...), nil
 	case int8:
-		return parseIntTimestamp(int64(v), arg...), nil
+		return parseIntTimestamp(int64(v), format...), nil
 	case int16:
-		return parseIntTimestamp(int64(v), arg...), nil
+		return parseIntTimestamp(int64(v), format...), nil
 	case int32:
-		return parseIntTimestamp(int64(v), arg...), nil
+		return parseIntTimestamp(int64(v), format...), nil
 	case int64:
-		return parseIntTimestamp(v, arg...), nil
+		return parseIntTimestamp(v, format...), nil
 	case *int:
-		return parseIntTimestamp(int64(*v), arg...), nil
+		return parseIntTimestamp(int64(*v), format...), nil
 	case *int8:
-		return parseIntTimestamp(int64(*v), arg...), nil
+		return parseIntTimestamp(int64(*v), format...), nil
 	case *int16:
-		return parseIntTimestamp(int64(*v), arg...), nil
+		return parseIntTimestamp(int64(*v), format...), nil
 	case *int32:
-		return parseIntTimestamp(int64(*v), arg...), nil
+		return parseIntTimestamp(int64(*v), format...), nil
 	case *int64:
-		return parseIntTimestamp(*v, arg...), nil
+		return parseIntTimestamp(*v, format...), nil
 	case uint:
-		return parseIntTimestamp(int64(v), arg...), nil
+		return parseIntTimestamp(int64(v), format...), nil
 	case uint8:
-		return parseIntTimestamp(int64(v), arg...), nil
+		return parseIntTimestamp(int64(v), format...), nil
 	case uint16:
-		return parseIntTimestamp(int64(v), arg...), nil
+		return parseIntTimestamp(int64(v), format...), nil
 	case uint32:
-		return parseIntTimestamp(int64(v), arg...), nil
+		return parseIntTimestamp(int64(v), format...), nil
 	case uint64:
-		return parseIntTimestamp(int64(v), arg...), nil
+		return parseIntTimestamp(int64(v), format...), nil
 	case *uint:
-		return parseIntTimestamp(int64(*v), arg...), nil
+		return parseIntTimestamp(int64(*v), format...), nil
 	case *uint8:
-		return parseIntTimestamp(int64(*v), arg...), nil
+		return parseIntTimestamp(int64(*v), format...), nil
 	case *uint16:
-		return parseIntTimestamp(int64(*v), arg...), nil
+		return parseIntTimestamp(int64(*v), format...), nil
 	case *uint32:
-		return parseIntTimestamp(int64(*v), arg...), nil
+		return parseIntTimestamp(int64(*v), format...), nil
 	case *uint64:
-		return parseIntTimestamp(int64(*v), arg...), nil
+		return parseIntTimestamp(int64(*v), format...), nil
 	case float32:
-		return parseFloatTimestamp(float64(v), arg...), nil
+		return parseFloatTimestamp(float64(v), format...), nil
 	case float64:
-		return parseFloatTimestamp(v, arg...), nil
+		return parseFloatTimestamp(v, format...), nil
 	case *float32:
-		return parseFloatTimestamp(float64(*v), arg...), nil
+		return parseFloatTimestamp(float64(*v), format...), nil
 	case *float64:
-		return parseFloatTimestamp(*v, arg...), nil
+		return parseFloatTimestamp(*v, format...), nil
 	case string:
-		return parseFormatTime(v, arg...)
+		return parseFormatTime(v, format...)
 	case *string:
-		return parseFormatTime(*v, arg...)
+		return parseFormatTime(*v, format...)
 	case time.Time:
 		return v, nil
 	case *time.Time:
@@ -111,32 +93,30 @@ func ToTimeE(i interface{}, arg ...string) (time.Time, error) {
 	}
 }
 
-func parseFormatTime(v string, arg ...string) (time.Time, error) {
-
+func parseFormatTime(v string, format ...string) (time.Time, error) {
 	if d, err := time.ParseDuration(v); err == nil {
 		return time.Unix(int64(d/time.Second), int64(d%time.Second)), nil
 	}
-
 	layout := "2006-01-02 15:04:05 -0700"
-	if len(arg) > 0 {
-		layout = arg[0]
+	if len(format) > 0 {
+		layout = format[0]
 	}
 	return time.Parse(layout, v)
 }
 
-func parseIntTimestamp(v int64, arg ...string) time.Time {
+func parseIntTimestamp(v int64, format ...string) time.Time {
 	unitN := int64(time.Nanosecond)
-	if len(arg) > 0 {
-		unitN, _ = unitMap[arg[0]]
+	if len(format) > 0 {
+		unitN, _ = unitMap[format[0]]
 	}
 	v = v * unitN
 	return time.Unix(v/int64(time.Second), v%int64(time.Second))
 }
 
-func parseFloatTimestamp(v float64, arg ...string) time.Time {
+func parseFloatTimestamp(v float64, format ...string) time.Time {
 	unitN := int64(time.Nanosecond)
-	if len(arg) > 0 {
-		unitN, _ = unitMap[arg[0]]
+	if len(format) > 0 {
+		unitN, _ = unitMap[format[0]]
 	}
 	i := int64(v * float64(unitN))
 	return time.Unix(i/int64(time.Second), i%int64(time.Second))

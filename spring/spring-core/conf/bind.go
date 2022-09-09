@@ -297,7 +297,7 @@ func getSlice(p *Properties, et reflect.Type, param BindParam) (*Properties, err
 }
 
 // bindMap binds properties to a map value.
-func bindMap(p *Properties, v reflect.Value, t reflect.Type, param BindParam, filter Filter) error {
+func bindMap(p *Properties, v reflect.Value, t reflect.Type, param BindParam, filter Filter) (err error) {
 
 	if param.Tag.HasDef && param.Tag.Def != "" {
 		err := errors.New("map can't have a non empty default value")
@@ -308,37 +308,9 @@ func bindMap(p *Properties, v reflect.Value, t reflect.Type, param BindParam, fi
 	ret := reflect.MakeMap(t)
 	defer func() { v.Set(ret) }()
 
-	var keys []string
-	{
-		var keyPath []string
-		if param.Key != "" {
-			keyPath = strings.Split(param.Key, ".")
-		}
-		t := p.tree
-		for i, s := range keyPath {
-			vt, ok := t[s]
-			if !ok {
-				if param.Tag.Def == "" {
-					return nil
-				}
-				err := fmt.Errorf("property %q %w", param.Key, errNotExist)
-				return util.Wrapf(err, code.FileLine(), "bind %s error", param.Path)
-			}
-			_, ok = vt.(struct{})
-			if ok {
-				oldKey := strings.Join(keyPath[:i+1], ".")
-				if i == len(keyPath)-1 && p.Get(oldKey) == "" {
-					t = nil
-					break
-				}
-				err := fmt.Errorf("property %q isn't map", oldKey)
-				return util.Wrapf(err, code.FileLine(), "bind %s error", param.Path)
-			}
-			t = vt.(map[string]interface{})
-		}
-		for k := range t {
-			keys = append(keys, k)
-		}
+	keys, err := p.storage.SubKeys(param.Key)
+	if err != nil {
+		return util.Wrapf(err, code.FileLine(), "bind %s error", param.Path)
 	}
 
 	for _, key := range keys {
@@ -351,7 +323,7 @@ func bindMap(p *Properties, v reflect.Value, t reflect.Type, param BindParam, fi
 			Key:  subKey,
 			Path: param.Path,
 		}
-		err := BindValue(p, e, et, subParam, filter)
+		err = BindValue(p, e, et, subParam, filter)
 		if err != nil {
 			return util.Wrapf(err, code.FileLine(), "bind %s error", param.Path)
 		}
@@ -431,7 +403,8 @@ func bindStruct(p *Properties, v reflect.Value, t reflect.Type, param BindParam,
 
 // resolve returns property references processed property value.
 func resolve(p *Properties, param BindParam) (string, error) {
-	if val, ok := p.data[param.Key]; ok {
+	val := p.storage.Get(param.Key)
+	if val != "" {
 		return resolveString(p, val)
 	}
 	if param.Tag.HasDef {

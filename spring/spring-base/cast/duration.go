@@ -21,6 +21,24 @@ import (
 	"time"
 )
 
+const (
+	Nanosecond  = "ns" // 纳秒
+	Microsecond = "μs" // 微秒
+	Millisecond = "ms" // 毫秒
+	Second      = "s"  // 秒
+	Minute      = "m"  // 分
+	Hour        = "h"  // 小时
+)
+
+var unitMap = map[string]int64{
+	"ns": int64(time.Nanosecond),
+	"μs": int64(time.Microsecond),
+	"ms": int64(time.Millisecond),
+	"s":  int64(time.Second),
+	"m":  int64(time.Minute),
+	"h":  int64(time.Hour),
+}
+
 // ToDuration casts an interface{} to a time.Duration.
 func ToDuration(i interface{}, unit ...string) time.Duration {
 	v, _ := ToDurationE(i, unit...)

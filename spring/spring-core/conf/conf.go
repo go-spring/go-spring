@@ -31,25 +31,22 @@ import (
 
 	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-base/util"
+	"github.com/go-spring/spring-core/conf/internal"
 	"github.com/go-spring/spring-core/conf/prop"
 	"github.com/go-spring/spring-core/conf/toml"
 	"github.com/go-spring/spring-core/conf/yaml"
 )
 
-// Converter converts string value into user-defined value. It should
-// be function type, and its prototype is func(string)(type,error).
-type Converter interface{}
-
-// Splitter splits string value into []string value.
+// Splitter splits string into []string by some characters.
 type Splitter func(string) ([]string, error)
 
-// Reader parses []byte value into nested map[string]interface{}.
+// Reader parses []byte into nested map[string]interface{}.
 type Reader func(b []byte) (map[string]interface{}, error)
 
 var (
 	readers    = map[string]Reader{}
 	splitters  = map[string]Splitter{}
-	converters = map[reflect.Type]Converter{}
+	converters = map[reflect.Type]util.Converter{}
 )
 
 func init() {
@@ -58,9 +55,9 @@ func init() {
 	RegisterReader(yaml.Read, ".yaml", ".yml")
 	RegisterReader(toml.Read, ".toml", ".tml")
 
-	// converts string value into time.Time value. The string value
-	// may have its own time format after >> splitter, otherwise it
-	// uses a default time format 2006-01-02 15:04:05 -0700.
+	// converts string into time.Time. The string value may have its own
+	// time format defined after >> splitter, otherwise it uses a default
+	// time format `2006-01-02 15:04:05 -0700`.
 	RegisterConverter(func(s string) (time.Time, error) {
 		s = strings.TrimSpace(s)
 		format := "2006-01-02 15:04:05 -0700"
@@ -71,67 +68,56 @@ func init() {
 		return cast.ToTimeE(s, format)
 	})
 
-	// converts string value into time.Duration value. The string value
-	// should have its own time unit such as "ns", "ms", "s", "m", etc.
+	// converts string into time.Duration. The string should have its own
+	// time unit such as "ns", "ms", "s", "m", etc.
 	RegisterConverter(func(s string) (time.Duration, error) {
 		return cast.ToDurationE(s)
 	})
 }
 
-// RegisterReader registers Reader for some file extensions.
+// RegisterReader registers its Reader for some kind of file extension.
 func RegisterReader(r Reader, ext ...string) {
 	for _, s := range ext {
 		readers[s] = r
 	}
 }
 
-// RegisterSplitter registers Splitter and named it.
+// RegisterSplitter registers a Splitter and named it.
 func RegisterSplitter(name string, fn Splitter) {
 	splitters[name] = fn
 }
 
-func validConverter(t reflect.Type) bool {
-	return t.Kind() == reflect.Func &&
-		t.NumIn() == 1 &&
-		t.In(0).Kind() == reflect.String &&
-		t.NumOut() == 2 &&
-		util.IsValueType(t.Out(0)) &&
-		util.IsErrorType(t.Out(1))
-}
-
-// RegisterConverter registers Converter for non-primitive type such as
+// RegisterConverter registers its converter for non-primitive type such as
 // time.Time, time.Duration, or other user-defined value type.
-func RegisterConverter(fn Converter) {
+func RegisterConverter(fn util.Converter) {
 	t := reflect.TypeOf(fn)
-	if !validConverter(t) {
-		panic(errors.New("fn must be func(string)(type,error)"))
+	if !util.IsValidConverter(t) {
+		panic(errors.New("converter should be func(string)(type,error)"))
 	}
 	converters[t.Out(0)] = fn
 }
 
-// Properties stores properties with map[string]string and keys are case-sensitive,
+// Properties stores the data with map[string]string and the keys are case-sensitive,
 // you can get one of them by its key, or bind some of them to a value.
 // There are too many formats of configuration files, and too many conflicts between
 // them. Each format of configuration file provides its special characteristics, but
-// usually they are not all necessary, and complementary. For example, conf disabled
+// usually they are not all necessary, and complementary. For example, `conf` disabled
 // Java properties' expansion when reading file, but also provides similar function
-// when get or bind properties.
+// when getting or binding properties.
 // A good rule of thumb is that treating application configuration as a tree, but not
-// all formats of configuration files designed like this or not ideal, such as Java
-// properties which not strictly verified. Although configuration can store as a tree,
+// all formats of configuration files designed as a tree or not ideal, for instance
+// Java properties isn't strictly verified. Although configuration can store as a tree,
 // but it costs more CPU time when getting properties because it reads property node
-// by node. So conf uses a tree to strictly verify and a flat map to store.
+// by node. So `conf` uses a tree to strictly verify and a flat map to store.
 type Properties struct {
-	data map[string]string      // stores key and value.
-	tree map[string]interface{} // stores split key path.
+	storage internal.Storage
 }
 
 // New creates empty *Properties.
 func New() *Properties {
-	return &Properties{
-		data: make(map[string]string),
-		tree: make(map[string]interface{}),
-	}
+	p := &Properties{}
+	p.storage.Init()
+	return p
 }
 
 // Map creates *Properties from map.
@@ -211,33 +197,12 @@ func (p *Properties) Bytes(b []byte, ext string) error {
 
 // Keys returns all sorted keys.
 func (p *Properties) Keys() []string {
-	keys := make([]string, 0, len(p.data))
-	for k := range p.data {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
+	return p.storage.Keys()
 }
 
 // Has returns whether key exists.
 func (p *Properties) Has(key string) bool {
-	keyPath, err := SplitPath(key)
-	if err != nil {
-		return false
-	}
-	t := p.tree
-	for i, s := range keyPath {
-		v, ok := t[s]
-		if !ok {
-			return false
-		}
-		_, ok = v.(struct{})
-		if ok {
-			return i == len(keyPath)-1
-		}
-		t = v.(map[string]interface{})
-	}
-	return true
+	return p.storage.Has(key)
 }
 
 type getArg struct {
@@ -255,7 +220,8 @@ func Def(v string) GetOption {
 
 // Get returns key's value, using Def to return a default value.
 func (p *Properties) Get(key string, opts ...GetOption) string {
-	if val, ok := p.data[key]; ok {
+	val := p.storage.Get(key)
+	if val != "" {
 		return val
 	}
 	arg := getArg{}
@@ -265,6 +231,40 @@ func (p *Properties) Get(key string, opts ...GetOption) string {
 	return arg.def
 }
 
+func flatten(key string, val interface{}, result map[string]string) error {
+	switch v := reflect.ValueOf(val); v.Kind() {
+	case reflect.Map:
+		if v.Len() == 0 {
+			result[key] = ""
+			return nil
+		}
+		for _, k := range v.MapKeys() {
+			mapKey := cast.ToString(k.Interface())
+			mapValue := v.MapIndex(k).Interface()
+			err := flatten(key+"."+mapKey, mapValue, result)
+			if err != nil {
+				return err
+			}
+		}
+	case reflect.Array, reflect.Slice:
+		if v.Len() == 0 {
+			result[key] = ""
+			return nil
+		}
+		for i := 0; i < v.Len(); i++ {
+			subKey := fmt.Sprintf("%s[%d]", key, i)
+			subValue := v.Index(i).Interface()
+			err := flatten(subKey, subValue, result)
+			if err != nil {
+				return err
+			}
+		}
+	default:
+		result[key] = cast.ToString(val)
+	}
+	return nil
+}
+
 // Set sets key's value to be a primitive type as int or string,
 // or a slice or map nested with primitive type elements. One thing
 // you should know is Set actions as overlap but not replace, that
@@ -272,53 +272,21 @@ func (p *Properties) Get(key string, opts ...GetOption) string {
 // when it doesn't exist in the slice or map even they share a same
 // prefix path.
 func (p *Properties) Set(key string, val interface{}) error {
-	switch v := reflect.ValueOf(val); v.Kind() {
-	case reflect.Map:
-		exist, err := p.checkKey(key, true)
+	m := make(map[string]string)
+	err := flatten(key, val, m)
+	if err != nil {
+		return err
+	}
+	var keys []string
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		err = p.storage.Set(k, m[k])
 		if err != nil {
 			return err
 		}
-		if v.Len() == 0 && !exist {
-			p.data[key] = ""
-			return nil
-		}
-		for _, k := range v.MapKeys() {
-			mapKey := cast.ToString(k.Interface())
-			mapValue := v.MapIndex(k).Interface()
-			err = p.Set(key+"."+mapKey, mapValue)
-			if err != nil {
-				return err
-			}
-		}
-		if _, ok := p.data[key]; ok {
-			delete(p.data, key)
-		}
-	case reflect.Array, reflect.Slice:
-		exist, err := p.checkKey(key, true)
-		if err != nil {
-			return err
-		}
-		if v.Len() == 0 && !exist {
-			p.data[key] = ""
-			return nil
-		}
-		for i := 0; i < v.Len(); i++ {
-			subKey := fmt.Sprintf("%s[%d]", key, i)
-			subValue := v.Index(i).Interface()
-			err = p.Set(subKey, subValue)
-			if err != nil {
-				return err
-			}
-		}
-		if _, ok := p.data[key]; ok {
-			delete(p.data, key)
-		}
-	default:
-		_, err := p.checkKey(key, false)
-		if err != nil {
-			return err
-		}
-		p.data[key] = cast.ToString(val)
 	}
 	return nil
 }
@@ -390,116 +358,4 @@ func (p *Properties) Bind(i interface{}, opts ...BindOption) error {
 		return err
 	}
 	return BindValue(p, v, t, param, nil)
-}
-
-// SplitPath splits the key into individual parts.
-func SplitPath(key string) ([]string, error) {
-	if len(key) == 0 {
-		return nil, fmt.Errorf("invalid key '%s'", key)
-	}
-	var (
-		keyPath     []string
-		lastChar    int32
-		lastIndex   int
-		leftBracket bool
-	)
-	for i, c := range key {
-		switch c {
-		case ' ':
-			return nil, fmt.Errorf("invalid key '%s'", key)
-		case '.':
-			if leftBracket {
-				return nil, fmt.Errorf("invalid key '%s'", key)
-			}
-			if lastChar == ']' {
-				lastIndex = i + 1
-				lastChar = c
-				continue
-			}
-			if lastIndex == i {
-				return nil, fmt.Errorf("invalid key '%s'", key)
-			}
-			keyPath = append(keyPath, key[lastIndex:i])
-			lastIndex = i + 1
-			lastChar = c
-		case '[':
-			if leftBracket {
-				return nil, fmt.Errorf("invalid key '%s'", key)
-			}
-			if i == 0 || lastChar == ']' || lastChar == '.' {
-				lastIndex = i + 1
-				leftBracket = true
-				lastChar = c
-				continue
-			}
-			if lastIndex == i {
-				return nil, fmt.Errorf("invalid key '%s'", key)
-			}
-			keyPath = append(keyPath, key[lastIndex:i])
-			lastIndex = i + 1
-			leftBracket = true
-			lastChar = c
-		case ']':
-			if !leftBracket || lastIndex == i {
-				return nil, fmt.Errorf("invalid key '%s'", key)
-			}
-			keyPath = append(keyPath, key[lastIndex:i])
-			lastIndex = i + 1
-			leftBracket = false
-			lastChar = c
-		default:
-			lastChar = c
-		}
-	}
-	if leftBracket || lastChar == '.' {
-		return nil, fmt.Errorf("invalid key '%s'", key)
-	}
-	if lastChar != ']' {
-		keyPath = append(keyPath, key[lastIndex:])
-	}
-	return keyPath, nil
-}
-
-// checkKey checks whether the key exists, if the key is collection then it will be
-// stored as map[string]interface{}, otherwise it will be stored as struct{}.
-func (p *Properties) checkKey(key string, collection bool) (exist bool, err error) {
-	keyPath, err := SplitPath(key)
-	if err != nil {
-		return false, err
-	}
-	t := p.tree
-	exist = true
-	for i, s := range keyPath {
-		v, ok := t[s]
-		if !ok {
-			if i < len(keyPath)-1 || collection {
-				m := make(map[string]interface{})
-				t[s] = m
-				t = m
-			} else {
-				t[s] = struct{}{}
-			}
-			exist = false
-			continue
-		}
-		_, ok = v.(map[string]interface{})
-		if ok {
-			if i < len(keyPath)-1 || collection {
-				t = v.(map[string]interface{})
-				continue
-			}
-			err = fmt.Errorf("property %q should be a value but has sub keys %v", key, v)
-			return
-		}
-		_, ok = v.(struct{})
-		if ok {
-			if i == len(keyPath)-1 && !collection {
-				continue
-			}
-			oldKey := strings.Join(keyPath[:i+1], ".")
-			err = fmt.Errorf("property %q is a value but wants another sub key %q", oldKey, key)
-			return
-		}
-	}
-	return
 }

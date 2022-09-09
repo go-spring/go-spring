@@ -397,30 +397,76 @@ func TestProperties_Has(t *testing.T) {
 
 func TestProperties_Set(t *testing.T) {
 
-	t.Run("", func(t *testing.T) {
+	t.Run("map nil", func(t *testing.T) {
+
+		p := conf.New()
+		err := p.Set("m", nil)
+		assert.Nil(t, err)
+		assert.True(t, p.Has("m"))
+		assert.Equal(t, p.Get("m"), "")
+
+		err = p.Set("m", map[string]string{"a": "b"})
+		assert.Nil(t, err)
+		assert.Equal(t, p.Keys(), []string{"m.a"})
+
+		err = p.Set("m", 1)
+		assert.Error(t, err, "property \"m\" is a map but \"m\" wants other type")
+
+		err = p.Set("m", []string{"b"})
+		assert.Error(t, err, "property \"m\" is a map but \"m\\[0]\" wants other type")
+	})
+
+	t.Run("map empty", func(t *testing.T) {
+		p := conf.New()
+		err := p.Set("m", map[string]string{})
+		assert.Nil(t, err)
+		assert.True(t, p.Has("m"))
+		assert.Equal(t, p.Get("m"), "")
+		err = p.Set("m", map[string]string{"a": "b"})
+		assert.Nil(t, err)
+		assert.Equal(t, p.Keys(), []string{"m.a"})
+	})
+
+	t.Run("list nil", func(t *testing.T) {
+		p := conf.New()
+		err := p.Set("a", nil)
+		assert.Nil(t, err)
+		assert.True(t, p.Has("a"))
+		assert.Equal(t, p.Get("a"), "")
+		err = p.Set("a", []string{"b"})
+		assert.Nil(t, err)
+		assert.Equal(t, p.Keys(), []string{"a[0]"})
+	})
+
+	t.Run("list empty", func(t *testing.T) {
 		p := conf.New()
 		err := p.Set("a", []string{})
 		assert.Nil(t, err)
-		val := p.Get("a")
-		assert.Equal(t, val, "")
+		assert.True(t, p.Has("a"))
+		assert.Equal(t, p.Get("a"), "")
+		err = p.Set("a", []string{"b"})
+		assert.Nil(t, err)
+		assert.Equal(t, p.Keys(), []string{"a[0]"})
 	})
 
-	p := conf.New()
-	err := p.Set("a", []string{"a", "aa", "aaa"})
-	assert.Nil(t, err)
-	err = p.Set("b", []int{1, 11, 111})
-	assert.Nil(t, err)
-	err = p.Set("c", []float32{1, 1.1, 1.11})
-	assert.Nil(t, err)
-	assert.Equal(t, p.Get("a[0]"), "a")
-	assert.Equal(t, p.Get("a[1]"), "aa")
-	assert.Equal(t, p.Get("a[2]"), "aaa")
-	assert.Equal(t, p.Get("b[0]"), "1")
-	assert.Equal(t, p.Get("b[1]"), "11")
-	assert.Equal(t, p.Get("b[2]"), "111")
-	assert.Equal(t, p.Get("c[0]"), "1")
-	assert.Equal(t, p.Get("c[1]"), "1.1")
-	assert.Equal(t, p.Get("c[2]"), "1.11")
+	t.Run("list", func(t *testing.T) {
+		p := conf.New()
+		err := p.Set("a", []string{"a", "aa", "aaa"})
+		assert.Nil(t, err)
+		err = p.Set("b", []int{1, 11, 111})
+		assert.Nil(t, err)
+		err = p.Set("c", []float32{1, 1.1, 1.11})
+		assert.Nil(t, err)
+		assert.Equal(t, p.Get("a[0]"), "a")
+		assert.Equal(t, p.Get("a[1]"), "aa")
+		assert.Equal(t, p.Get("a[2]"), "aaa")
+		assert.Equal(t, p.Get("b[0]"), "1")
+		assert.Equal(t, p.Get("b[1]"), "11")
+		assert.Equal(t, p.Get("b[2]"), "111")
+		assert.Equal(t, p.Get("c[0]"), "1")
+		assert.Equal(t, p.Get("c[1]"), "1.1")
+		assert.Equal(t, p.Get("c[2]"), "1.11")
+	})
 }
 
 func PointConverter(val string) (image.Point, error) {
@@ -452,110 +498,4 @@ func TestSplitter(t *testing.T) {
 	err := conf.New().Bind(&points, conf.Tag("${:=(1,2)(3,4)}||PointSplitter"))
 	assert.Nil(t, err)
 	assert.Equal(t, points, []image.Point{{X: 1, Y: 2}, {X: 3, Y: 4}})
-}
-
-func TestSplitPath(t *testing.T) {
-	var testcases = []struct {
-		Key  string
-		Err  error
-		Path []string
-	}{
-		{
-			Key: "",
-			Err: errors.New("invalid key ''"),
-		},
-		{
-			Key: " ",
-			Err: errors.New("invalid key ' '"),
-		},
-		{
-			Key: ".",
-			Err: errors.New("invalid key '.'"),
-		},
-		{
-			Key: "[",
-			Err: errors.New("invalid key '['"),
-		},
-		{
-			Key: "]",
-			Err: errors.New("invalid key ']'"),
-		},
-		{
-			Key: "[]",
-			Err: errors.New("invalid key '[]'"),
-		},
-		{
-			Key:  "[0]",
-			Path: []string{"0"},
-		},
-		{
-			Key: "[0][",
-			Err: errors.New("invalid key '[0]['"),
-		},
-		{
-			Key: "[0]]",
-			Err: errors.New("invalid key '[0]]'"),
-		},
-		{
-			Key: "[[0]]",
-			Err: errors.New("invalid key '[[0]]'"),
-		},
-		{
-			Key: "[.]",
-			Err: errors.New("invalid key '[.]'"),
-		},
-		{
-			Key: "[a.b]",
-			Err: errors.New("invalid key '[a.b]'"),
-		},
-		{
-			Key:  "a",
-			Path: []string{"a"},
-		},
-		{
-			Key: "a.",
-			Err: errors.New("invalid key 'a.'"),
-		},
-		{
-			Key:  "a.b",
-			Path: []string{"a", "b"},
-		},
-		{
-			Key: "a[",
-			Err: errors.New("invalid key 'a['"),
-		},
-		{
-			Key: "a]",
-			Err: errors.New("invalid key 'a]'"),
-		},
-		{
-			Key:  "a[0]",
-			Path: []string{"a", "0"},
-		},
-		{
-			Key:  "a.[0]",
-			Path: []string{"a", "0"},
-		},
-		{
-			Key:  "a[0].b",
-			Path: []string{"a", "0", "b"},
-		},
-		{
-			Key:  "a.[0].b",
-			Path: []string{"a", "0", "b"},
-		},
-		{
-			Key:  "a[0][0]",
-			Path: []string{"a", "0", "0"},
-		},
-		{
-			Key:  "a.[0].[0]",
-			Path: []string{"a", "0", "0"},
-		},
-	}
-	for i, c := range testcases {
-		p, err := conf.SplitPath(c.Key)
-		assert.Equal(t, err, c.Err, fmt.Sprintf("index: %d key: %q", i, c.Key))
-		assert.Equal(t, p, c.Path, fmt.Sprintf("index:%d key: %q", i, c.Key))
-	}
 }
