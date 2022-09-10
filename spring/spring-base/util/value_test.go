@@ -17,7 +17,6 @@
 package util_test
 
 import (
-	"fmt"
 	"reflect"
 	"testing"
 
@@ -25,6 +24,25 @@ import (
 	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-base/util/testdata"
 )
+
+func TestPatchValue(t *testing.T) {
+	var r struct{ v int }
+	v := reflect.ValueOf(&r)
+	v = v.Elem().Field(0)
+	assert.Panic(t, func() {
+		v.SetInt(4)
+	}, "using value obtained using unexported field")
+	v = util.PatchValue(v)
+	v.SetInt(4)
+}
+
+func TestIndirect(t *testing.T) {
+	var r struct{ v int }
+	typ := reflect.TypeOf(r)
+	assert.Equal(t, util.Indirect(typ), reflect.TypeOf(r))
+	typ = reflect.TypeOf(&r)
+	assert.Equal(t, util.Indirect(typ), reflect.TypeOf(r))
+}
 
 func fnNoArgs() {}
 
@@ -41,43 +59,138 @@ func (r *receiver) ptrFnNoArgs() {}
 func (r *receiver) ptrFnWithArgs(i int) {}
 
 func TestFileLine(t *testing.T) {
-
-	fmt.Println(util.FileLine(fnNoArgs))
-	fmt.Println(util.FileLine(fnWithArgs))
-	fmt.Println(util.FileLine(receiver{}.fnNoArgs))
-	fmt.Println(util.FileLine(receiver{}.fnWithArgs))
-	fmt.Println(util.FileLine((&receiver{}).ptrFnNoArgs))
-	fmt.Println(util.FileLine((&receiver{}).ptrFnWithArgs))
-	fmt.Println(util.FileLine(receiver.fnNoArgs))
-	fmt.Println(util.FileLine(receiver.fnWithArgs))
-	fmt.Println(util.FileLine((*receiver).ptrFnNoArgs))
-	fmt.Println(util.FileLine((*receiver).ptrFnWithArgs))
-
-	fmt.Println(util.FileLine(testdata.FnNoArgs))
-	fmt.Println(util.FileLine(testdata.FnWithArgs))
-	fmt.Println(util.FileLine(testdata.Receiver{}.FnNoArgs))
-	fmt.Println(util.FileLine(testdata.Receiver{}.FnWithArgs))
-	fmt.Println(util.FileLine((&testdata.Receiver{}).PtrFnNoArgs))
-	fmt.Println(util.FileLine((&testdata.Receiver{}).PtrFnWithArgs))
-	fmt.Println(util.FileLine(testdata.Receiver.FnNoArgs))
-	fmt.Println(util.FileLine(testdata.Receiver.FnWithArgs))
-	fmt.Println(util.FileLine((*testdata.Receiver).PtrFnNoArgs))
-	fmt.Println(util.FileLine((*testdata.Receiver).PtrFnWithArgs))
-}
-
-func TestIsNil(t *testing.T) {
-
-	a := (*int)(nil)        // %T == *int
-	b := (interface{})(nil) // %T == <nil>
-	assert.False(t, a == b)
-
-	v := reflect.ValueOf((*int)(nil)) // %T == *int
-	assert.True(t, util.IsNil(v))
-
-	assert.True(t, util.IsNil(reflect.Value{}))              // %T == <nil>
-	assert.True(t, util.IsNil(reflect.ValueOf(nil)))         // %T == <nil>
-	assert.True(t, util.IsNil(reflect.ValueOf((*int)(nil)))) // %T == *int
-
-	assert.False(t, util.IsNil(reflect.ValueOf(3)))
-	assert.False(t, util.IsNil(reflect.ValueOf("3")))
+	offset := 62
+	testcases := []struct {
+		fn     interface{}
+		file   string
+		line   int
+		fnName string
+	}{
+		{
+			fn:     fnNoArgs,
+			file:   "spring-base/util/value_test.go",
+			line:   offset - 15,
+			fnName: "fnNoArgs",
+		},
+		{
+			fnWithArgs,
+			"spring-base/util/value_test.go",
+			offset - 13,
+			"fnWithArgs",
+		},
+		{
+			receiver{}.fnNoArgs,
+			"spring-base/util/value_test.go",
+			offset - 9,
+			"receiver.fnNoArgs",
+		},
+		{
+			receiver.fnNoArgs,
+			"spring-base/util/value_test.go",
+			offset - 9,
+			"receiver.fnNoArgs",
+		},
+		{
+			receiver{}.fnWithArgs,
+			"spring-base/util/value_test.go",
+			offset - 7,
+			"receiver.fnWithArgs",
+		},
+		{
+			receiver.fnWithArgs,
+			"spring-base/util/value_test.go",
+			offset - 7,
+			"receiver.fnWithArgs",
+		},
+		{
+			(&receiver{}).ptrFnNoArgs,
+			"spring-base/util/value_test.go",
+			offset - 5,
+			"(*receiver).ptrFnNoArgs",
+		},
+		{
+			(*receiver).ptrFnNoArgs,
+			"spring-base/util/value_test.go",
+			offset - 5,
+			"(*receiver).ptrFnNoArgs",
+		},
+		{
+			(&receiver{}).ptrFnWithArgs,
+			"spring-base/util/value_test.go",
+			offset - 3,
+			"(*receiver).ptrFnWithArgs",
+		},
+		{
+			(*receiver).ptrFnWithArgs,
+			"spring-base/util/value_test.go",
+			offset - 3,
+			"(*receiver).ptrFnWithArgs",
+		},
+		{
+			testdata.FnNoArgs,
+			"spring-base/util/testdata/pkg.go",
+			19,
+			"FnNoArgs",
+		},
+		{
+			testdata.FnWithArgs,
+			"spring-base/util/testdata/pkg.go",
+			21,
+			"FnWithArgs",
+		},
+		{
+			testdata.Receiver{}.FnNoArgs,
+			"spring-base/util/testdata/pkg.go",
+			25,
+			"Receiver.FnNoArgs",
+		},
+		{
+			testdata.Receiver{}.FnWithArgs,
+			"spring-base/util/testdata/pkg.go",
+			27,
+			"Receiver.FnWithArgs",
+		},
+		{
+			(&testdata.Receiver{}).PtrFnNoArgs,
+			"spring-base/util/testdata/pkg.go",
+			29,
+			"(*Receiver).PtrFnNoArgs",
+		},
+		{
+			(&testdata.Receiver{}).PtrFnWithArgs,
+			"spring-base/util/testdata/pkg.go",
+			31,
+			"(*Receiver).PtrFnWithArgs",
+		},
+		{
+			testdata.Receiver.FnNoArgs,
+			"spring-base/util/testdata/pkg.go",
+			25,
+			"Receiver.FnNoArgs",
+		},
+		{
+			testdata.Receiver.FnWithArgs,
+			"spring-base/util/testdata/pkg.go",
+			27,
+			"Receiver.FnWithArgs",
+		},
+		{
+			(*testdata.Receiver).PtrFnNoArgs,
+			"spring-base/util/testdata/pkg.go",
+			29,
+			"(*Receiver).PtrFnNoArgs",
+		},
+		{
+			(*testdata.Receiver).PtrFnWithArgs,
+			"spring-base/util/testdata/pkg.go",
+			31,
+			"(*Receiver).PtrFnWithArgs",
+		},
+	}
+	for _, c := range testcases {
+		file, line, fnName := util.FileLine(c.fn)
+		assert.ThatString(t, file).HasSuffix(c.file)
+		assert.Equal(t, line, c.line)
+		assert.Equal(t, fnName, c.fnName)
+	}
 }

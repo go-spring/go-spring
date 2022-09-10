@@ -57,75 +57,14 @@ func runTest(c gs.Container, fn func(gs.Context)) error {
 func TestApplicationContext_RegisterBeanFrozen(t *testing.T) {
 	assert.Panic(t, func() {
 		c := gs.New()
-		c.Object(new(int)).Init(func(i *int) {
-			c.Object(new(bool)) // 不能在这里注册新的 Object
+		c.Object(func() {}).Init(func(f func()) {
+			c.Object(func() {}) // 不能在这里注册新的 Object
 		})
 		_ = c.Refresh()
 	}, "should call before Refresh")
 }
 
 func TestApplicationContext(t *testing.T) {
-
-	t.Run("int", func(t *testing.T) {
-
-		c := gs.New()
-		e := int(3)
-
-		// 普通类型用属性注入
-		assert.Panic(t, func() {
-			c.Object(e)
-		}, "bean must be ref type")
-
-		c.Object(&e)
-
-		// 相同类型不同名称的 bean 都可注册
-		c.Object(&e).Name("i3")
-
-		// 相同类型不同名称的 bean 都可注册
-		c.Object(&e).Name("i4")
-
-		err := runTest(c, func(p gs.Context) {
-
-			{
-				var i int
-				err := p.Get(&i)
-				assert.Error(t, err, "int is not valid receiver type")
-			}
-
-			// 找到多个符合条件的值
-			{
-				var i *int
-				err := p.Get(&i)
-				assert.Error(t, err, "found 3 beans, bean:\"\" type:\"\\*int\" ")
-			}
-
-			// 入参不是可赋值的对象
-			{
-				var i int
-				err := p.Get(&i, "i3")
-				assert.Error(t, err, "int is not valid receiver type")
-			}
-
-			{
-				var i *int
-				err := p.Get(&i, "i3")
-				assert.Nil(t, err)
-			}
-
-			{
-				var i []int
-				err := p.Get(&i)
-				assert.NotNil(t, err)
-			}
-
-			{
-				var i *[]int
-				err := p.Get(&i)
-				assert.NotNil(t, err)
-			}
-		})
-		assert.Nil(t, err)
-	})
 
 	/////////////////////////////////////////
 	// 自定义数据类型
@@ -177,14 +116,6 @@ func (b *TestBincoreng) String() string {
 }
 
 type TestObject struct {
-	// 基础类型指针
-	IntPtrByType *int `inject:"?"`
-	IntPtrByName *int `autowire:"${key_1:=int_ptr}?"`
-
-	// 基础类型指针数组
-	IntPtrSliceByType []*int `inject:"?"`
-	IntPtrCollection  []*int `autowire:"${key_2:=int_ptr}?"`
-	IntPtrSliceByName []*int `autowire:"int_ptr_slice?"`
 
 	// 自定义类型指针
 	StructByType *TestBincoreng `inject:"?"`
@@ -215,48 +146,18 @@ type TestObject struct {
 
 func TestApplicationContext_AutoWireBeans(t *testing.T) {
 
-	t.Run("wired error", func(t *testing.T) {
-		c := gs.New()
-
-		obj := &TestObject{}
-		c.Object(obj)
-
-		i := int(3)
-		c.Object(&i).Name("int_ptr")
-
-		i2 := int(3)
-		c.Object(&i2).Name("int_ptr_2")
-
-		err := c.Refresh()
-		assert.Error(t, err, "\"TestObject.IntPtrByType\" wired error: found 2 beans, bean:\"\\?\" type:\"\\*int\"")
-	})
-
-	f1 := float32(11.0)
-	f2 := float32(12.0)
-
 	c := gs.New()
 
 	obj := &TestObject{}
 	c.Object(obj)
 
-	i := int(3)
-	c.Object(&i).Name("int_ptr")
-
 	b := TestBincoreng{1}
 	c.Object(&b).Name("struct_ptr").Export((*fmt.Stringer)(nil))
 
-	c.Object(&f1).Name("float_ptr_1")
-	c.Object(&f2).Name("float_ptr_2")
-
-	err := runTest(c, func(p gs.Context) {
-		var ff []*float32
-		err := p.Get(&ff, "float_ptr_2", "float_ptr_1")
-		assert.Nil(t, err)
-		assert.Equal(t, ff, []*float32{&f2, &f1})
-	})
+	err := runTest(c, func(p gs.Context) {})
 	assert.Nil(t, err)
 
-	assert.Equal(t, len(obj.MapTyType), 7)
+	assert.Equal(t, len(obj.MapTyType), 4)
 	assert.Equal(t, len(obj.MapByName), 0)
 	assert.Equal(t, len(obj.MapByNam2), 1)
 	fmt.Printf("%+v\n", obj)
@@ -557,37 +458,11 @@ func TestApplicationContext_Get(t *testing.T) {
 	t.Run("panic", func(t *testing.T) {
 		c := gs.New()
 		err := runTest(c, func(p gs.Context) {
-
-			{
-				var i int
-				err := p.Get(i)
-				assert.Error(t, err, "i must be pointer")
-			}
-
-			{
-				var i *int
-				err := p.Get(i)
-				assert.Error(t, err, "receiver must be ref type")
-			}
-
-			{
-				i := new(int)
-				err := p.Get(i)
-				assert.Error(t, err, "int is not valid receiver type")
-			}
-
-			{
-				var i *int
-				err := p.Get(&i)
-				assert.Error(t, err, "can't find bean, bean:\"\"")
-			}
-
 			{
 				var s fmt.Stringer
 				err := p.Get(s)
 				assert.Error(t, err, "i can't be nil")
 			}
-
 			{
 				var s fmt.Stringer
 				err := p.Get(&s)
@@ -954,17 +829,12 @@ func (m localManager) Cluster() string {
 	return "local"
 }
 
-func NewInt() int {
-	return 32
-}
-
 func TestApplicationContext_RegisterBeanFn2(t *testing.T) {
 
 	t.Run("ptr manager", func(t *testing.T) {
 		c := gs.New()
 		c.Property("manager.version", "1.0.0")
 		c.Provide(NewPtrManager)
-		c.Provide(NewInt)
 		err := runTest(c, func(p gs.Context) {
 
 			var m Manager
@@ -986,9 +856,6 @@ func TestApplicationContext_RegisterBeanFn2(t *testing.T) {
 
 		bd := c.Provide(NewManager)
 		assert.Equal(t, bd.BeanName(), "NewManager")
-
-		bd = c.Provide(NewInt)
-		assert.Equal(t, bd.BeanName(), "NewInt")
 
 		err := runTest(c, func(p gs.Context) {
 
@@ -1074,39 +941,6 @@ type nestedDestroyable struct {
 }
 
 func TestRegisterBean_InitFunc(t *testing.T) {
-
-	t.Run("int", func(t *testing.T) {
-
-		assert.Panic(t, func() {
-			c := gs.New()
-			c.Object(new(int)).Init(func() {})
-		}, "init should be func\\(bean\\) or func\\(bean\\)error")
-
-		assert.Panic(t, func() {
-			c := gs.New()
-			c.Object(new(int)).Init(func() int { return 0 })
-		}, "init should be func\\(bean\\) or func\\(bean\\)error")
-
-		assert.Panic(t, func() {
-			c := gs.New()
-			c.Object(new(int)).Init(func(int) {})
-		}, "init should be func\\(bean\\) or func\\(bean\\)error")
-
-		assert.Panic(t, func() {
-			c := gs.New()
-			c.Object(new(int)).Init(func(int, int) {})
-		}, "init should be func\\(bean\\) or func\\(bean\\)error")
-
-		c := gs.New()
-		c.Object(new(int)).Init(func(i *int) { *i = 3 })
-		err := runTest(c, func(p gs.Context) {
-			var i *int
-			err := p.Get(&i)
-			assert.Nil(t, err)
-			assert.Equal(t, *i, 3)
-		})
-		assert.Nil(t, err)
-	})
 
 	t.Run("call init", func(t *testing.T) {
 
@@ -1280,7 +1114,7 @@ func TestApplicationContext_Collect(t *testing.T) {
 		c.Object(new(RecoresCluster)).Name("a").Order(1)
 		c.Object(new(RecoresCluster)).Name("b").Order(2)
 
-		intBean := c.Provide(func(p gs.Context) *int {
+		intBean := c.Provide(func(p gs.Context) func() {
 
 			var rcs []*RecoresCluster
 			err := p.Get(&rcs)
@@ -1289,7 +1123,7 @@ func TestApplicationContext_Collect(t *testing.T) {
 			assert.Equal(t, len(rcs), 2)
 			assert.Equal(t, rcs[0].Endpoints, "redis://localhost:6379")
 
-			return new(int)
+			return func() {}
 		})
 		assert.Equal(t, intBean.BeanName(), "TestApplicationContext_Collect.func6.1")
 
@@ -1965,22 +1799,22 @@ func TestApplicationContext_Close(t *testing.T) {
 
 		assert.Panic(t, func() {
 			c := gs.New()
-			c.Object(new(int)).Destroy(func() {})
+			c.Object(func() {}).Destroy(func() {})
 		}, "destroy should be func\\(bean\\) or func\\(bean\\)error")
 
 		assert.Panic(t, func() {
 			c := gs.New()
-			c.Object(new(int)).Destroy(func() int { return 0 })
+			c.Object(func() {}).Destroy(func() int { return 0 })
 		}, "destroy should be func\\(bean\\) or func\\(bean\\)error")
 
 		assert.Panic(t, func() {
 			c := gs.New()
-			c.Object(new(int)).Destroy(func(int) {})
+			c.Object(func() {}).Destroy(func(int) {})
 		}, "destroy should be func\\(bean\\) or func\\(bean\\)error")
 
 		assert.Panic(t, func() {
 			c := gs.New()
-			c.Object(new(int)).Destroy(func(int, int) {})
+			c.Object(func() {}).Destroy(func(int, int) {})
 		}, "destroy should be func\\(bean\\) or func\\(bean\\)error")
 	})
 
@@ -1988,7 +1822,7 @@ func TestApplicationContext_Close(t *testing.T) {
 		called := false
 
 		c := gs.New()
-		c.Object(new(int)).Destroy(func(i *int) { called = true })
+		c.Object(func() {}).Destroy(func(f func()) { called = true })
 		err := c.Refresh()
 		assert.Nil(t, err)
 		c.Close()
@@ -2092,32 +1926,19 @@ func TestApplicationContext_Close(t *testing.T) {
 	})
 }
 
-func TestApplicationContext_BeanNotFound(t *testing.T) {
-	c := gs.New()
-	c.Provide(func(i *int) bool { return false }, "")
-	err := c.Refresh()
-	assert.Error(t, err, "can't find bean, bean:\"\" type:\"\\*int\"")
-}
-
 type SubNestedAutowireBean struct {
-	Int *int `autowire:""`
 }
 
 type NestedAutowireBean struct {
 	SubNestedAutowireBean
-	_ *float32
-	_ bool
 }
 
 type PtrNestedAutowireBean struct {
-	*SubNestedAutowireBean // 不处理
-	_                      *float32
-	_                      bool
+	*SubNestedAutowireBean
 }
 
 func TestApplicationContext_NestedAutowireBean(t *testing.T) {
 	c := gs.New()
-	c.Provide(func() int { return 3 })
 	c.Object(new(NestedAutowireBean))
 	c.Object(&PtrNestedAutowireBean{
 		SubNestedAutowireBean: new(SubNestedAutowireBean),
@@ -2127,29 +1948,24 @@ func TestApplicationContext_NestedAutowireBean(t *testing.T) {
 		var b *NestedAutowireBean
 		err := p.Get(&b)
 		assert.Nil(t, err)
-		assert.Equal(t, *b.Int, 3)
 
 		var b0 *PtrNestedAutowireBean
 		err = p.Get(&b0)
 		assert.Nil(t, err)
-		assert.Equal(t, b0.Int, (*int)(nil))
 	})
 	assert.Nil(t, err)
 }
 
 type BaseChannel struct {
-	Int        *int `autowire:""`
 	AutoCreate bool `value:"${auto-create}"`
 	Enable     bool `value:"${enable:=false}"`
 }
 
 type WXChannel struct {
 	BaseChannel `value:"${sdk.wx}"`
-	Int         *int `autowire:""`
 }
 
 type baseChannel struct {
-	Int        *int `autowire:""`
 	AutoCreate bool `value:"${auto-create}"`
 
 	// nolint 支持对私有字段注入，但是不推荐！代码扫描请忽略这行。
@@ -2158,9 +1974,6 @@ type baseChannel struct {
 
 type wxChannel struct {
 	baseChannel `value:"${sdk.wx}"`
-
-	// 支持对私有字段注入，但是不推荐！代码扫描请忽略这行。
-	int *int `autowire:""`
 }
 
 func TestApplicationContext_NestValueField(t *testing.T) {
@@ -2172,17 +1985,11 @@ func TestApplicationContext_NestValueField(t *testing.T) {
 		c.Property("sdk.wx.auto-create", true)
 		c.Property("sdk.wx.enable", true)
 
-		bd := c.Provide(func() int { return 3 })
-		assert.Equal(t, bd.BeanName(), "TestApplicationContext_NestValueField.func1.1")
-
 		c.Object(new(wxChannel))
 		err := runTest(c, func(p gs.Context) {
 			var channel *wxChannel
 			err := p.Get(&channel)
 			assert.Nil(t, err)
-			assert.Equal(t, *channel.baseChannel.Int, 3)
-			assert.Equal(t, *channel.int, 3)
-			assert.Equal(t, channel.baseChannel.Int, channel.int)
 			assert.Equal(t, channel.enable, true)
 			assert.Equal(t, channel.AutoCreate, true)
 		})
@@ -2193,15 +2000,11 @@ func TestApplicationContext_NestValueField(t *testing.T) {
 		c := gs.New()
 		c.Property("sdk.wx.auto-create", true)
 		c.Property("sdk.wx.enable", true)
-		c.Provide(func() int { return 3 })
 		c.Object(new(WXChannel))
 		err := runTest(c, func(p gs.Context) {
 			var channel *WXChannel
 			err := p.Get(&channel)
 			assert.Nil(t, err)
-			assert.Equal(t, *channel.BaseChannel.Int, 3)
-			assert.Equal(t, *channel.Int, 3)
-			assert.Equal(t, channel.BaseChannel.Int, channel.Int)
 			assert.True(t, channel.Enable)
 			assert.True(t, channel.AutoCreate)
 		})
@@ -2211,35 +2014,18 @@ func TestApplicationContext_NestValueField(t *testing.T) {
 
 func TestApplicationContext_FnArgCollectBean(t *testing.T) {
 
-	t.Run("base type", func(t *testing.T) {
-		c := gs.New()
-		c.Provide(func() int { return 3 }).Name("i1")
-		c.Provide(func() int { return 4 }).Name("i2")
-		c.Provide(func(i []*int) bool {
-			nums := make([]int, 0)
-			for _, e := range i {
-				nums = append(nums, *e)
-			}
-			sort.Ints(nums)
-			assert.Equal(t, nums, []int{3, 4})
-			return false
-		})
-		err := c.Refresh()
-		assert.Nil(t, err)
-	})
-
 	t.Run("interface type", func(t *testing.T) {
 		c := gs.New()
 		c.Provide(newHistoryTeacher("t1")).Name("t1").Export((*Teacher)(nil))
 		c.Provide(newHistoryTeacher("t2")).Name("t2").Export((*Teacher)(nil))
-		c.Provide(func(teachers []Teacher) bool {
+		c.Provide(func(teachers []Teacher) func() {
 			names := make([]string, 0)
 			for _, teacher := range teachers {
 				names = append(names, teacher.(*historyTeacher).name)
 			}
 			sort.Strings(names)
 			assert.Equal(t, names, []string{"t1", "t2"})
-			return false
+			return func() {}
 		})
 		err := c.Refresh()
 		assert.Nil(t, err)
@@ -2261,7 +2047,7 @@ func TestApplicationContext_BeanCache(t *testing.T) {
 
 	t.Run("not implement interface", func(t *testing.T) {
 		c := gs.New()
-		c.Object(new(int)).Export((*filter)(nil))
+		c.Object(func() {}).Export((*filter)(nil))
 		err := c.Refresh()
 		assert.Error(t, err, "doesn't implement interface gs_test.filter")
 	})
@@ -2348,18 +2134,6 @@ func TestApplicationContext_Properties(t *testing.T) {
 		assert.Equal(t, obj.Int, 5)
 		assert.Equal(t, obj.IntA, 3)
 	})
-}
-
-func TestFnStringBincorengArg(t *testing.T) {
-	c := gs.New()
-	c.Provide(func(i *int) bool {
-		fmt.Printf("i=%d\n", *i)
-		return false
-	}, "${key.name:=int}")
-	i := 5
-	c.Object(&i)
-	err := c.Refresh()
-	assert.Nil(t, err)
 }
 
 type FirstDestroy struct {
@@ -2787,12 +2561,11 @@ func TestApplicationContext_Invoke(t *testing.T) {
 
 	t.Run("not run", func(t *testing.T) {
 		c := gs.New()
-		c.Provide(func() int { return 3 })
+		c.Object(func() {})
 		c.Property("version", "v0.0.1")
 		err := runTest(c, func(p gs.Context) {
-			_, _ = p.Invoke(func(i *int, version string) {
+			_, _ = p.Invoke(func(f func(), version string) {
 				fmt.Println("version:", version)
-				fmt.Println("int:", *i)
 			}, "", "${version}")
 		})
 		assert.Nil(t, err)
@@ -2800,13 +2573,12 @@ func TestApplicationContext_Invoke(t *testing.T) {
 
 	t.Run("run", func(t *testing.T) {
 		c := gs.New()
-		c.Provide(func() int { return 3 })
+		c.Object(func() {})
 		c.Property("version", "v0.0.1")
 		c.Property("spring.profiles.active", "dev")
 		err := runTest(c, func(p gs.Context) {
-			fn := func(i *int, version string) {
+			fn := func(f func(), version string) {
 				fmt.Println("version:", version)
-				fmt.Println("int:", *i)
 			}
 			_, _ = p.Invoke(fn, "", "${version}")
 		})
@@ -2844,7 +2616,6 @@ func TestMapCollection(t *testing.T) {
 		c.Object(&mapValue{"a"}).Name("a").Order(1)
 		c.Object(&mapValue{"b"}).Name("b").Order(2)
 		c.Object(&mapValue{"c"}).Name("c").On(cond.Not(cond.OK()))
-		c.Provide(func(vSlice []*mapValue) int { return 3 }, "*")
 		err := runTest(c, func(p gs.Context) {
 
 			var vSlice []*mapValue

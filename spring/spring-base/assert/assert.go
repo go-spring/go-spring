@@ -108,13 +108,18 @@ func NotSame(t T, got interface{}, expect interface{}, msg ...string) {
 // Panic asserts that function fn() would panic. It fails if the panic
 // message does not match the regular expression.
 func Panic(t T, fn func(), expr string, msg ...string) {
-	// TODO 使用 util.Panic(err).When(err != nil) 时堆栈信息不对
 	t.Helper()
+	str := recovery(fn)
+	if str == "<<SUCCESS>>" {
+		fail(t, "did not panic", msg...)
+	} else {
+		matches(t, str, expr, msg...)
+	}
+}
+
+func recovery(fn func()) (str string) {
 	defer func() {
-		if r := recover(); r == nil {
-			fail(t, "did not panic", msg...)
-		} else {
-			var str string
+		if r := recover(); r != nil {
 			switch v := r.(type) {
 			case error:
 				str = v.Error()
@@ -123,10 +128,10 @@ func Panic(t T, fn func(), expr string, msg ...string) {
 			default:
 				str = fmt.Sprint(r)
 			}
-			matches(t, str, expr, msg...)
 		}
 	}()
 	fn()
+	return "<<SUCCESS>>"
 }
 
 // Matches asserts that a got value matches a given regular expression.
