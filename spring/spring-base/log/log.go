@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -143,7 +144,7 @@ func RefreshReader(input io.Reader, ext string) error {
 		if !ok {
 			return fmt.Errorf("unsupported file type %s", ext)
 		}
-		data, err := io.ReadAll(input)
+		data, err := ioutil.ReadAll(input)
 		if err != nil {
 			return err
 		}

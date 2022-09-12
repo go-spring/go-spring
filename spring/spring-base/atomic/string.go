@@ -38,15 +38,18 @@ func (x *String) Store(val string) {
 	x.v.Store(val)
 }
 
+// Only for go 1.14+
 // Swap wrapper for atomic.SwapInt64.
-func (x *String) Swap(new string) string {
-	return x.v.Swap(new).(string)
-}
+//func (x *String) Swap(new string) string {
+//	return x.v.Swap(new).(string)
+//}
+//
 
+// Only for go 1.14+
 // CompareAndSwap wrapper for atomic.CompareAndSwapInt64.
-func (x *String) CompareAndSwap(old, new string) bool {
-	return x.v.CompareAndSwap(old, new)
-}
+//func (x *String) CompareAndSwap(old, new string) bool {
+//	return x.v.CompareAndSwap(old, new)
+//}
 
 func (x *String) MarshalJSON() ([]byte, error) {
 	return json.Marshal(x.Load())
