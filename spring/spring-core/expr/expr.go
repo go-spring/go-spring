@@ -14,24 +14,23 @@
  * limitations under the License.
  */
 
-package prop
+package expr
 
-import "github.com/magiconair/properties"
+import (
+	"github.com/antonmedv/expr"
+	"github.com/go-spring/spring-base/code"
+	"github.com/go-spring/spring-base/util"
+)
 
-// Read parses []byte in the properties format into map.
-func Read(b []byte) (map[string]interface{}, error) {
-
-	p := properties.NewProperties()
-	p.DisableExpansion = true
-
-	err := p.Load(b, properties.UTF8)
+// Eval returns the value for the expression expr.
+func Eval(input string, val interface{}) (bool, error) {
+	r, err := expr.Eval(input, map[string]interface{}{"$": val})
 	if err != nil {
-		return nil, err
+		return false, util.Wrapf(err, code.FileLine(), "eval %q returns error", input)
 	}
-
-	ret := make(map[string]interface{})
-	for k, v := range p.Map() {
-		ret[k] = v
+	b, ok := r.(bool)
+	if !ok {
+		return false, util.Wrapf(err, code.FileLine(), "eval %q doesn't return bool", input)
 	}
-	return ret, nil
+	return b, nil
 }

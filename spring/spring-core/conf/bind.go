@@ -25,6 +25,7 @@ import (
 
 	"github.com/go-spring/spring-base/code"
 	"github.com/go-spring/spring-base/util"
+	"github.com/go-spring/spring-core/expr"
 )
 
 var (
@@ -74,12 +75,13 @@ func ParseTag(tag string) (ret ParsedTag, err error) {
 }
 
 type BindParam struct {
-	Key  string    // full property key
-	Path string    // binding path
-	Tag  ParsedTag // parsed tag
+	Key      string    // full property key
+	Path     string    // binding path
+	Tag      ParsedTag // parsed tag
+	Validate string
 }
 
-func (param *BindParam) BindTag(tag string) error {
+func (param *BindParam) BindTag(tag string, validate string) error {
 	parsedTag, err := ParseTag(tag)
 	if err != nil {
 		return err
@@ -95,6 +97,7 @@ func (param *BindParam) BindTag(tag string) error {
 	} else if parsedTag.Key != "" {
 		param.Key = param.Key + "." + parsedTag.Key
 	}
+	param.Validate = validate
 	return nil
 }
 
@@ -142,10 +145,25 @@ func BindValue(p *Properties, v reflect.Value, t reflect.Type, param BindParam, 
 		return nil
 	}
 
+	validate := func(input string, val interface{}) error {
+		if input == "" {
+			return nil
+		}
+		if b, err := expr.Eval(input, val); err != nil {
+			return err
+		} else if !b {
+			return fmt.Errorf("validate failed on %q for value %v", input, val)
+		}
+		return nil
+	}
+
 	switch v.Kind() {
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		var u uint64
 		if u, err = strconv.ParseUint(val, 0, 0); err == nil {
+			if err = validate(param.Validate, u); err != nil {
+				return err
+			}
 			v.SetUint(u)
 			return nil
 		}
@@ -153,6 +171,9 @@ func BindValue(p *Properties, v reflect.Value, t reflect.Type, param BindParam, 
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		var i int64
 		if i, err = strconv.ParseInt(val, 0, 0); err == nil {
+			if err = validate(param.Validate, i); err != nil {
+				return err
+			}
 			v.SetInt(i)
 			return nil
 		}
@@ -160,6 +181,9 @@ func BindValue(p *Properties, v reflect.Value, t reflect.Type, param BindParam, 
 	case reflect.Float32, reflect.Float64:
 		var f float64
 		if f, err = strconv.ParseFloat(val, 64); err == nil {
+			if err = validate(param.Validate, f); err != nil {
+				return err
+			}
 			v.SetFloat(f)
 			return nil
 		}
@@ -167,11 +191,17 @@ func BindValue(p *Properties, v reflect.Value, t reflect.Type, param BindParam, 
 	case reflect.Bool:
 		var b bool
 		if b, err = strconv.ParseBool(val); err == nil {
+			if err = validate(param.Validate, b); err != nil {
+				return err
+			}
 			v.SetBool(b)
 			return nil
 		}
 		return util.Wrapf(err, code.FileLine(), "bind %s error", param.Path)
 	case reflect.String:
+		if err = validate(param.Validate, val); err != nil {
+			return err
+		}
 		v.SetString(val)
 		return nil
 	}
@@ -267,7 +297,7 @@ func getSlice(p *Properties, et reflect.Type, param BindParam) (*Properties, err
 }
 
 // bindMap binds properties to a map value.
-func bindMap(p *Properties, v reflect.Value, t reflect.Type, param BindParam, filter Filter) error {
+func bindMap(p *Properties, v reflect.Value, t reflect.Type, param BindParam, filter Filter) (err error) {
 
 	if param.Tag.HasDef && param.Tag.Def != "" {
 		err := errors.New("map can't have a non empty default value")
@@ -278,41 +308,9 @@ func bindMap(p *Properties, v reflect.Value, t reflect.Type, param BindParam, fi
 	ret := reflect.MakeMap(t)
 	defer func() { v.Set(ret) }()
 
-	var keys []string
-	{
-		var keyPath []string
-		if param.Key != "" {
-			keyPath = strings.Split(param.Key, ".")
-		}
-		t := p.tree
-		for i, s := range keyPath {
-			vt, ok := t[s]
-			if !ok {
-				if param.Tag.Def == "" {
-					return nil
-				}
-				err := fmt.Errorf("property %q %w", param.Key, errNotExist)
-				return util.Wrapf(err, code.FileLine(), "bind %s error", param.Path)
-			}
-			_, ok = vt.(struct{})
-			if ok {
-				if i == len(keyPath)-1 {
-					t = nil
-					break
-				}
-				oldKey := strings.Join(keyPath[:i+1], ".")
-				if i == len(keyPath)-1 && p.Get(oldKey) == "" {
-					t = nil
-					break
-				}
-				err := fmt.Errorf("property %q isn't map", oldKey)
-				return util.Wrapf(err, code.FileLine(), "bind %s error", param.Path)
-			}
-			t = vt.(map[string]interface{})
-		}
-		for k := range t {
-			keys = append(keys, k)
-		}
+	keys, err := p.storage.SubKeys(param.Key)
+	if err != nil {
+		return util.Wrapf(err, code.FileLine(), "bind %s error", param.Path)
 	}
 
 	for _, key := range keys {
@@ -325,7 +323,7 @@ func bindMap(p *Properties, v reflect.Value, t reflect.Type, param BindParam, fi
 			Key:  subKey,
 			Path: param.Path,
 		}
-		err := BindValue(p, e, et, subParam, filter)
+		err = BindValue(p, e, et, subParam, filter)
 		if err != nil {
 			return util.Wrapf(err, code.FileLine(), "bind %s error", param.Path)
 		}
@@ -359,7 +357,8 @@ func bindStruct(p *Properties, v reflect.Value, t reflect.Type, param BindParam,
 		}
 
 		if tag, ok := ft.Tag.Lookup("value"); ok {
-			if err := subParam.BindTag(tag); err != nil {
+			validate, _ := ft.Tag.Lookup("validate")
+			if err := subParam.BindTag(tag, validate); err != nil {
 				return util.Wrapf(err, code.FileLine(), "bind %s error", param.Path)
 			}
 			if filter != nil {
@@ -404,7 +403,8 @@ func bindStruct(p *Properties, v reflect.Value, t reflect.Type, param BindParam,
 
 // resolve returns property references processed property value.
 func resolve(p *Properties, param BindParam) (string, error) {
-	if val, ok := p.data[param.Key]; ok {
+	val := p.storage.Get(param.Key)
+	if val != "" {
 		return resolveString(p, val)
 	}
 	if param.Tag.HasDef {
@@ -453,7 +453,7 @@ func resolveString(p *Properties, s string) (string, error) {
 	}
 
 	var param BindParam
-	err := param.BindTag(s[start : end+1])
+	err := param.BindTag(s[start:end+1], "")
 	if err != nil {
 		return "", util.Wrapf(err, code.FileLine(), "resolve string %q error", s)
 	}

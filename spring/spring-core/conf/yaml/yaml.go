@@ -20,7 +20,7 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-// Read parses []byte int the yaml format into map.
+// Read parses []byte in the yaml format into map.
 func Read(b []byte) (map[string]interface{}, error) {
 	m := make(map[string]interface{})
 	err := yaml.Unmarshal(b, &m)

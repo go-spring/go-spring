@@ -29,7 +29,7 @@ import (
 )
 
 type Config struct {
-	Int   dync.Int64   `value:"${int:=3}"`
+	Int   dync.Int64   `value:"${int:=3}" validate:"$<6"`
 	Float dync.Float64 `value:"${float:=1.2}"`
 	Map   dync.Ref     `value:"${map:=}"`
 	Slice dync.Ref     `value:"${slice:=}"`
@@ -156,6 +156,19 @@ func TestDynamic(t *testing.T) {
 		p.Set("slice[1]", 9)
 		err = mgr.Refresh(p)
 		assert.Error(t, err, "should greeter than 3")
+
+		b, _ = json.Marshal(cfg)
+		assert.Equal(t, string(b), `{"Int":3,"Float":1.2,"Map":{},"Slice":[],"Event":{}}`)
+
+		p = conf.New()
+		p.Set("int", 6)
+		p.Set("float", 2.3)
+		p.Set("map.a", 1)
+		p.Set("map.b", 2)
+		p.Set("slice[0]", 3)
+		p.Set("slice[1]", 4)
+		err = mgr.Refresh(p)
+		assert.Error(t, err, "validate failed on \"\\$<6\" for value 6")
 
 		b, _ = json.Marshal(cfg)
 		assert.Equal(t, string(b), `{"Int":3,"Float":1.2,"Map":{},"Slice":[],"Event":{}}`)

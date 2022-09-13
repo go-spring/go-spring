@@ -29,7 +29,7 @@ const (
 	flagRO       = flagStickyRO | flagEmbedRO
 )
 
-// PatchValue 开放 v 的私有字段，返回修改后的副本。
+// PatchValue makes an unexported field can be assignable.
 func PatchValue(v reflect.Value) reflect.Value {
 	rv := reflect.ValueOf(&v)
 	flag := rv.Elem().FieldByName("flag")
@@ -38,7 +38,7 @@ func PatchValue(v reflect.Value) reflect.Value {
 	return v
 }
 
-// Indirect 解除 Type 所有层级的指针。
+// Indirect returns its element type when t is a pointer type.
 func Indirect(t reflect.Type) reflect.Type {
 	if t.Kind() != reflect.Ptr {
 		return t
@@ -46,7 +46,7 @@ func Indirect(t reflect.Type) reflect.Type {
 	return t.Elem()
 }
 
-// FileLine 获取函数所在文件、行数以及函数名
+// FileLine returns a function's name, file name and line number.
 func FileLine(fn interface{}) (file string, line int, fnName string) {
 
 	fnPtr := reflect.ValueOf(fn).Pointer()
@@ -60,22 +60,7 @@ func FileLine(fn interface{}) (file string, line int, fnName string) {
 		s = s[i+1:]
 	}
 
-	// 带 Receiver 的方法有 -fm 标记
+	// method values are printed as "T.m-fm"
 	s = strings.TrimRight(s, "-fm")
 	return file, line, s
-}
-
-// IsNil 返回 v 的值是否为 nil，但是不会 panic 。
-func IsNil(v reflect.Value) bool {
-	switch v.Kind() {
-	case reflect.Chan,
-		reflect.Func,
-		reflect.Interface,
-		reflect.Map,
-		reflect.Ptr,
-		reflect.Slice,
-		reflect.UnsafePointer:
-		return v.IsNil()
-	}
-	return !v.IsValid()
 }

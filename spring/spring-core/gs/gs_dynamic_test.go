@@ -18,6 +18,7 @@ package gs_test
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -28,7 +29,7 @@ import (
 )
 
 type DynamicConfig struct {
-	Int   dync.Int64   `value:"${int:=3}"`
+	Int   dync.Int64   `value:"${int:=3}" validate:"$<6"`
 	Float dync.Float64 `value:"${float:=1.2}"`
 	Map   dync.Ref     `value:"${map:=}"`
 	Slice dync.Ref     `value:"${slice:=}"`
@@ -41,17 +42,27 @@ type DynamicConfigWrapper struct {
 
 func TestDynamic(t *testing.T) {
 
-	cfg := new(DynamicConfig)
+	var cfg *DynamicConfig
 	wrapper := new(DynamicConfigWrapper)
 
 	c := gs.New()
-	c.Object(cfg).Init(func(p *DynamicConfig) {
-		p.Slice.Init(make([]string, 0))
-		p.Map.Init(make(map[string]string))
-		p.Event.OnEvent(func(prop *conf.Properties) error {
+	c.Provide(func() *DynamicConfig {
+		config := new(DynamicConfig)
+		config.Int.OnValidate(func(v int64) error {
+			if v < 3 {
+				return errors.New("should greeter than 3")
+			}
+			return nil
+		})
+		config.Slice.Init(make([]string, 0))
+		config.Map.Init(make(map[string]string))
+		config.Event.OnEvent(func(prop *conf.Properties) error {
 			fmt.Println("event fired.")
 			return nil
 		})
+		return config
+	}).Init(func(config *DynamicConfig) {
+		cfg = config
 	})
 	c.Object(wrapper).Init(func(p *DynamicConfigWrapper) {
 		p.Wrapper.Slice.Init(make([]string, 0))
@@ -109,13 +120,39 @@ func TestDynamic(t *testing.T) {
 		p.Set("wrapper.map.b", 4)
 		p.Set("wrapper.slice[0]", 2)
 		p.Set("wrapper.slice[1]", 1)
-		c.Properties().Refresh(p)
+		err = c.Properties().Refresh(p)
+		assert.Error(t, err, "validate failed on \"\\$<6\" for value 6")
 	}
 
 	{
 		b, _ := json.Marshal(cfg)
-		assert.Equal(t, string(b), `{"Int":6,"Float":5.1,"Map":{"a":"9","b":"8"},"Slice":["7","6"],"Event":{}}`)
+		assert.Equal(t, string(b), `{"Int":4,"Float":2.3,"Map":{"a":"1","b":"2"},"Slice":["3","4"],"Event":{}}`)
 		b, _ = json.Marshal(wrapper)
-		assert.Equal(t, string(b), `{"Wrapper":{"Int":9,"Float":8.4,"Map":{"a":"3","b":"4"},"Slice":["2","1"],"Event":{}}}`)
+		assert.Equal(t, string(b), `{"Wrapper":{"Int":3,"Float":1.5,"Map":{"a":"9","b":"8"},"Slice":["4","6"],"Event":{}}}`)
+	}
+
+	{
+		p := conf.New()
+		p.Set("int", 1)
+		p.Set("float", 5.1)
+		p.Set("map.a", 9)
+		p.Set("map.b", 8)
+		p.Set("slice[0]", 7)
+		p.Set("slice[1]", 6)
+		p.Set("wrapper.int", 9)
+		p.Set("wrapper.float", 8.4)
+		p.Set("wrapper.map.a", 3)
+		p.Set("wrapper.map.b", 4)
+		p.Set("wrapper.slice[0]", 2)
+		p.Set("wrapper.slice[1]", 1)
+		err = c.Properties().Refresh(p)
+		assert.Error(t, err, "should greeter than 3")
+	}
+
+	{
+		b, _ := json.Marshal(cfg)
+		assert.Equal(t, string(b), `{"Int":4,"Float":2.3,"Map":{"a":"1","b":"2"},"Slice":["3","4"],"Event":{}}`)
+		b, _ = json.Marshal(wrapper)
+		assert.Equal(t, string(b), `{"Wrapper":{"Int":3,"Float":1.5,"Map":{"a":"9","b":"8"},"Slice":["4","6"],"Event":{}}}`)
 	}
 }

@@ -20,68 +20,14 @@ import (
 	"errors"
 	"fmt"
 	"image"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
-	"unsafe"
 
 	"github.com/go-spring/spring-base/assert"
 	"github.com/go-spring/spring-base/cast"
-	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/conf"
 )
-
-func TestIsValueType(t *testing.T) {
-
-	data := []struct {
-		i interface{}
-		v bool
-	}{
-		{true, true},                 // Bool
-		{int(1), true},               // Int
-		{int8(1), true},              // Int8
-		{int16(1), true},             // Int16
-		{int32(1), true},             // Int32
-		{int64(1), true},             // Int64
-		{uint(1), true},              // Uint
-		{uint8(1), true},             // Uint8
-		{uint16(1), true},            // Uint16
-		{uint32(1), true},            // Uint32
-		{uint64(1), true},            // Uint64
-		{uintptr(0), false},          // Uintptr
-		{float32(1), true},           // Float32
-		{float64(1), true},           // Float64
-		{complex64(1), true},         // Complex64
-		{complex128(1), true},        // Complex128
-		{[1]int{0}, true},            // Array
-		{make(chan struct{}), false}, // Chan
-		{func() {}, false},           // Func
-		{reflect.TypeOf((*error)(nil)).Elem(), false}, // Interface
-		{make(map[int]int), true},                     // Map
-		{make(map[string]*int), false},                //
-		{new(int), false},                             // Ptr
-		{new(struct{}), false},                        //
-		{[]int{0}, true},                              // Slice
-		{[]*int{}, false},                             //
-		{"this is a string", true},                    // String
-		{struct{}{}, true},                            // Struct
-		{unsafe.Pointer(new(int)), false},             // UnsafePointer
-	}
-
-	for _, d := range data {
-		var typ reflect.Type
-		switch i := d.i.(type) {
-		case reflect.Type:
-			typ = i
-		default:
-			typ = reflect.TypeOf(i)
-		}
-		if r := util.IsValueType(typ); d.v != r {
-			t.Errorf("%v expect %v but %v", typ, d.v, r)
-		}
-	}
-}
 
 func TestProperties_Load(t *testing.T) {
 
@@ -97,383 +43,6 @@ func TestProperties_Load(t *testing.T) {
 
 	assert.True(t, p.Has("yaml.list"))
 	assert.True(t, p.Has("properties.list"))
-}
-
-func TestProperties_ReadProperties(t *testing.T) {
-
-	t.Run("basic type", func(t *testing.T) {
-
-		data := []struct {
-			key  string
-			str  string
-			val  interface{}
-			kind reflect.Kind
-		}{
-			{"bool", "bool=false", "false", reflect.String},
-			{"int", "int=3", "3", reflect.String},
-			{"float", "float=3.0", "3.0", reflect.String},
-			{"string", "string=3", "3", reflect.String},
-			{"string", "string=hello", "hello", reflect.String},
-			{"date", "date=2018-02-17", "2018-02-17", reflect.String},
-			{"time", "time=2018-02-17T15:02:31+08:00", "2018-02-17T15:02:31+08:00", reflect.String},
-		}
-
-		for _, d := range data {
-			p, _ := conf.Bytes([]byte(d.str), ".properties")
-			v := p.Get(d.key)
-			assert.Equal(t, v, d.val)
-		}
-	})
-
-	t.Run("map", func(t *testing.T) {
-
-		str := `
-          map.bool=false
-          map.int=3
-          map.float=3.0
-          map.string=hello
-        `
-
-		data := map[string]interface{}{
-			"map.bool":   "false",
-			"map.float":  "3.0",
-			"map.int":    "3",
-			"map.string": "hello",
-		}
-
-		p, _ := conf.Bytes([]byte(str), ".properties")
-		for k, expect := range data {
-			v := p.Get(k)
-			assert.Equal(t, v, expect)
-		}
-	})
-
-	t.Run("array struct", func(t *testing.T) {
-
-		str := `
-	         array[0].bool=false
-	         array[0].int=3
-	         array[0].float=3.0
-	         array[0].string=hello
-	         array[1].bool=true
-	         array[1].int=20
-	         array[1].float=0.2
-	         array[1].string=hello
-	       `
-
-		p, _ := conf.Bytes([]byte(str), ".properties")
-		data := map[string]interface{}{
-			"array[0].bool":   "false",
-			"array[0].int":    "3",
-			"array[0].float":  "3.0",
-			"array[0].string": "hello",
-			"array[1].bool":   "true",
-			"array[1].int":    "20",
-			"array[1].float":  "0.2",
-			"array[1].string": "hello",
-		}
-
-		for k, expect := range data {
-			v := p.Get(k)
-			assert.Equal(t, v, expect)
-		}
-	})
-
-	t.Run("map struct", func(t *testing.T) {
-
-		str := `
-          map.k1.bool: false
-          map.k1.int: 3
-          map.k1.float: 3.0
-          map.k1.string: hello
-          map.k2.bool: true
-          map.k2.int: 20
-          map.k2.float: 0.2
-          map.k2.string: hello
-        `
-
-		data := map[string]interface{}{
-			"map.k1.bool":   "false",
-			"map.k1.float":  "3.0",
-			"map.k1.int":    "3",
-			"map.k1.string": "hello",
-			"map.k2.bool":   "true",
-			"map.k2.float":  "0.2",
-			"map.k2.int":    "20",
-			"map.k2.string": "hello",
-		}
-
-		p, _ := conf.Bytes([]byte(str), ".properties")
-		for k, expect := range data {
-			v := p.Get(k)
-			assert.Equal(t, v, expect)
-		}
-	})
-}
-
-func TestProperties_ReadYaml(t *testing.T) {
-
-	t.Run("basic type", func(t *testing.T) {
-
-		data := []struct {
-			key  string
-			str  string
-			val  interface{}
-			kind reflect.Kind
-		}{
-			{"bool", "bool: false", "false", reflect.Bool},
-			{"int", "int: 3", "3", reflect.Int},
-			{"float", "float: 3.0", "3", reflect.Float64},
-			{"string", "string: \"3\"", "3", reflect.String},
-			{"string", "string: hello", "hello", reflect.String},
-			{"date", "date: 2018-02-17", "2018-02-17", reflect.String},
-			{"time", "time: 2018-02-17T15:02:31+08:00", "2018-02-17T15:02:31+08:00", reflect.String},
-		}
-
-		for _, d := range data {
-			p, _ := conf.Bytes([]byte(d.str), ".yaml")
-			v := p.Get(d.key)
-			assert.Equal(t, v, d.val)
-		}
-	})
-
-	t.Run("map", func(t *testing.T) {
-
-		str := `
-          map: 
-              bool: false
-              int: 3
-              float: 3.0
-              string: hello
-        `
-
-		data := map[string]interface{}{
-			"map.bool":   "false",
-			"map.float":  "3",
-			"map.int":    "3",
-			"map.string": "hello",
-		}
-
-		p, _ := conf.Bytes([]byte(str), ".yaml")
-		for k, expect := range data {
-			v := p.Get(k)
-			assert.Equal(t, v, expect)
-		}
-	})
-
-	t.Run("array struct", func(t *testing.T) {
-
-		str := `
-          array: 
-              -
-                  bool: false
-                  int: 3
-                  float: 3.0
-                  string: hello
-              -
-                  bool: true
-                  int: 20
-                  float: 0.2
-                  string: hello
-        `
-
-		p, _ := conf.Bytes([]byte(str), ".yaml")
-
-		data := []struct {
-			key  string
-			val  interface{}
-			kind reflect.Kind
-		}{
-			{"array[0].bool", "false", reflect.Bool},
-			{"array[0].int", "3", reflect.Int},
-			{"array[0].float", "3", reflect.Float64},
-			{"array[0].string", "hello", reflect.String},
-			{"array[1].bool", "true", reflect.Bool},
-			{"array[1].int", "20", reflect.Int},
-			{"array[1].float", "0.2", reflect.Float64},
-			{"array[1].string", "hello", reflect.String},
-		}
-
-		for _, d := range data {
-			v := p.Get(d.key)
-			assert.Equal(t, v, d.val)
-		}
-	})
-
-	t.Run("map struct", func(t *testing.T) {
-
-		str := `
-          map: 
-              k1: 
-                  bool: false
-                  int: 3
-                  float: 3.0
-                  string: hello
-              k2: 
-                  bool: true
-                  int: 20
-                  float: 0.2
-                  string: hello
-        `
-
-		p, _ := conf.Bytes([]byte(str), ".yaml")
-
-		data := []struct {
-			key  string
-			val  interface{}
-			kind reflect.Kind
-		}{
-			{"map.k1.bool", "false", reflect.Bool},
-			{"map.k1.int", "3", reflect.Int},
-			{"map.k1.float", "3", reflect.Float64},
-			{"map.k1.string", "hello", reflect.String},
-			{"map.k2.bool", "true", reflect.Bool},
-			{"map.k2.int", "20", reflect.Int},
-			{"map.k2.float", "0.2", reflect.Float64},
-			{"map.k2.string", "hello", reflect.String},
-		}
-
-		for _, d := range data {
-			v := p.Get(d.key)
-			assert.Equal(t, v, d.val)
-		}
-	})
-
-	t.Run("", func(t *testing.T) {
-		p, err := conf.Bytes([]byte("array: []\nmap: {}\n"), ".yaml")
-		assert.Nil(t, err)
-		assert.True(t, p.Has("map"))
-		assert.True(t, p.Has("array"))
-	})
-}
-
-func TestProperties_ReadToml(t *testing.T) {
-
-	t.Run("basic type", func(t *testing.T) {
-
-		data := []struct {
-			key  string
-			str  string
-			val  interface{}
-			kind reflect.Kind
-		}{
-			{"bool", "bool=false", "false", reflect.Bool},
-			{"int", "int=3", "3", reflect.Int},
-			{"float", "float=3.0", "3", reflect.Float64},
-			{"string", "string=\"3\"", "3", reflect.String},
-			{"string", "string=\"hello\"", "hello", reflect.String},
-			{"date", "date=\"2018-02-17\"", "2018-02-17", reflect.String},
-			{"time", "time=\"2018-02-17T15:02:31+08:00\"", "2018-02-17T15:02:31+08:00", reflect.String},
-		}
-
-		for _, d := range data {
-			p, _ := conf.Bytes([]byte(d.str), ".toml")
-			v := p.Get(d.key)
-			assert.Equal(t, v, d.val)
-		}
-	})
-
-	t.Run("map", func(t *testing.T) {
-
-		str := `
-          [map]
-          bool=false
-          int=3
-          float=3.0
-          string="hello"
-        `
-
-		data := map[string]interface{}{
-			"map.bool":   "false",
-			"map.float":  "3",
-			"map.int":    "3",
-			"map.string": "hello",
-		}
-
-		p, _ := conf.Bytes([]byte(str), ".toml")
-		for k, expect := range data {
-			v := p.Get(k)
-			assert.Equal(t, v, expect)
-		}
-	})
-
-	t.Run("array struct", func(t *testing.T) {
-
-		str := `
-          [[array]]
-          bool=false
-          int=3
-          float=3.0
-          string="hello"
-
-          [[array]]
-          bool=true
-          int=20
-          float=0.2
-          string="hello"
-        `
-
-		p, _ := conf.Bytes([]byte(str), ".toml")
-
-		data := []struct {
-			key  string
-			val  interface{}
-			kind reflect.Kind
-		}{
-			{"array[0].bool", "false", reflect.Bool},
-			{"array[0].int", "3", reflect.Int},
-			{"array[0].float", "3", reflect.Float64},
-			{"array[0].string", "hello", reflect.String},
-			{"array[1].bool", "true", reflect.Bool},
-			{"array[1].int", "20", reflect.Int},
-			{"array[1].float", "0.2", reflect.Float64},
-			{"array[1].string", "hello", reflect.String},
-		}
-
-		for _, d := range data {
-			v := p.Get(d.key)
-			assert.Equal(t, v, d.val)
-		}
-	})
-
-	t.Run("map struct", func(t *testing.T) {
-
-		str := `
-          [map.k1]
-          bool=false
-          int=3
-          float=3.0
-          string="hello"
-          
-          [map.k2]
-          bool=true
-          int=20
-          float=0.2
-          string="hello"
-        `
-
-		p, _ := conf.Bytes([]byte(str), ".toml")
-
-		data := []struct {
-			key  string
-			val  interface{}
-			kind reflect.Kind
-		}{
-			{"map.k1.bool", "false", reflect.Bool},
-			{"map.k1.int", "3", reflect.Int},
-			{"map.k1.float", "3", reflect.Float64},
-			{"map.k1.string", "hello", reflect.String},
-			{"map.k2.bool", "true", reflect.Bool},
-			{"map.k2.int", "20", reflect.Int},
-			{"map.k2.float", "0.2", reflect.Float64},
-			{"map.k2.string", "hello", reflect.String},
-		}
-
-		for _, d := range data {
-			v := p.Get(d.key)
-			assert.Equal(t, v, d.val)
-		}
-	})
 }
 
 func TestProperties_Get(t *testing.T) {
@@ -828,30 +397,76 @@ func TestProperties_Has(t *testing.T) {
 
 func TestProperties_Set(t *testing.T) {
 
-	t.Run("", func(t *testing.T) {
+	t.Run("map nil", func(t *testing.T) {
+
+		p := conf.New()
+		err := p.Set("m", nil)
+		assert.Nil(t, err)
+		assert.True(t, p.Has("m"))
+		assert.Equal(t, p.Get("m"), "")
+
+		err = p.Set("m", map[string]string{"a": "b"})
+		assert.Nil(t, err)
+		assert.Equal(t, p.Keys(), []string{"m.a"})
+
+		err = p.Set("m", 1)
+		assert.Error(t, err, "property \"m\" is a map but \"m\" wants other type")
+
+		err = p.Set("m", []string{"b"})
+		assert.Error(t, err, "property \"m\" is a map but \"m\\[0]\" wants other type")
+	})
+
+	t.Run("map empty", func(t *testing.T) {
+		p := conf.New()
+		err := p.Set("m", map[string]string{})
+		assert.Nil(t, err)
+		assert.True(t, p.Has("m"))
+		assert.Equal(t, p.Get("m"), "")
+		err = p.Set("m", map[string]string{"a": "b"})
+		assert.Nil(t, err)
+		assert.Equal(t, p.Keys(), []string{"m.a"})
+	})
+
+	t.Run("list nil", func(t *testing.T) {
+		p := conf.New()
+		err := p.Set("a", nil)
+		assert.Nil(t, err)
+		assert.True(t, p.Has("a"))
+		assert.Equal(t, p.Get("a"), "")
+		err = p.Set("a", []string{"b"})
+		assert.Nil(t, err)
+		assert.Equal(t, p.Keys(), []string{"a[0]"})
+	})
+
+	t.Run("list empty", func(t *testing.T) {
 		p := conf.New()
 		err := p.Set("a", []string{})
 		assert.Nil(t, err)
-		val := p.Get("a")
-		assert.Equal(t, val, "")
+		assert.True(t, p.Has("a"))
+		assert.Equal(t, p.Get("a"), "")
+		err = p.Set("a", []string{"b"})
+		assert.Nil(t, err)
+		assert.Equal(t, p.Keys(), []string{"a[0]"})
 	})
 
-	p := conf.New()
-	err := p.Set("a", []string{"a", "aa", "aaa"})
-	assert.Nil(t, err)
-	err = p.Set("b", []int{1, 11, 111})
-	assert.Nil(t, err)
-	err = p.Set("c", []float32{1, 1.1, 1.11})
-	assert.Nil(t, err)
-	assert.Equal(t, p.Get("a[0]"), "a")
-	assert.Equal(t, p.Get("a[1]"), "aa")
-	assert.Equal(t, p.Get("a[2]"), "aaa")
-	assert.Equal(t, p.Get("b[0]"), "1")
-	assert.Equal(t, p.Get("b[1]"), "11")
-	assert.Equal(t, p.Get("b[2]"), "111")
-	assert.Equal(t, p.Get("c[0]"), "1")
-	assert.Equal(t, p.Get("c[1]"), "1.1")
-	assert.Equal(t, p.Get("c[2]"), "1.11")
+	t.Run("list", func(t *testing.T) {
+		p := conf.New()
+		err := p.Set("a", []string{"a", "aa", "aaa"})
+		assert.Nil(t, err)
+		err = p.Set("b", []int{1, 11, 111})
+		assert.Nil(t, err)
+		err = p.Set("c", []float32{1, 1.1, 1.11})
+		assert.Nil(t, err)
+		assert.Equal(t, p.Get("a[0]"), "a")
+		assert.Equal(t, p.Get("a[1]"), "aa")
+		assert.Equal(t, p.Get("a[2]"), "aaa")
+		assert.Equal(t, p.Get("b[0]"), "1")
+		assert.Equal(t, p.Get("b[1]"), "11")
+		assert.Equal(t, p.Get("b[2]"), "111")
+		assert.Equal(t, p.Get("c[0]"), "1")
+		assert.Equal(t, p.Get("c[1]"), "1.1")
+		assert.Equal(t, p.Get("c[2]"), "1.11")
+	})
 }
 
 func PointConverter(val string) (image.Point, error) {
@@ -883,110 +498,4 @@ func TestSplitter(t *testing.T) {
 	err := conf.New().Bind(&points, conf.Tag("${:=(1,2)(3,4)}||PointSplitter"))
 	assert.Nil(t, err)
 	assert.Equal(t, points, []image.Point{{X: 1, Y: 2}, {X: 3, Y: 4}})
-}
-
-func TestSplitPath(t *testing.T) {
-	var testcases = []struct {
-		Key  string
-		Err  error
-		Path []string
-	}{
-		{
-			Key: "",
-			Err: errors.New("invalid key ''"),
-		},
-		{
-			Key: " ",
-			Err: errors.New("invalid key ' '"),
-		},
-		{
-			Key: ".",
-			Err: errors.New("invalid key '.'"),
-		},
-		{
-			Key: "[",
-			Err: errors.New("invalid key '['"),
-		},
-		{
-			Key: "]",
-			Err: errors.New("invalid key ']'"),
-		},
-		{
-			Key: "[]",
-			Err: errors.New("invalid key '[]'"),
-		},
-		{
-			Key:  "[0]",
-			Path: []string{"0"},
-		},
-		{
-			Key: "[0][",
-			Err: errors.New("invalid key '[0]['"),
-		},
-		{
-			Key: "[0]]",
-			Err: errors.New("invalid key '[0]]'"),
-		},
-		{
-			Key: "[[0]]",
-			Err: errors.New("invalid key '[[0]]'"),
-		},
-		{
-			Key: "[.]",
-			Err: errors.New("invalid key '[.]'"),
-		},
-		{
-			Key: "[a.b]",
-			Err: errors.New("invalid key '[a.b]'"),
-		},
-		{
-			Key:  "a",
-			Path: []string{"a"},
-		},
-		{
-			Key: "a.",
-			Err: errors.New("invalid key 'a.'"),
-		},
-		{
-			Key:  "a.b",
-			Path: []string{"a", "b"},
-		},
-		{
-			Key: "a[",
-			Err: errors.New("invalid key 'a['"),
-		},
-		{
-			Key: "a]",
-			Err: errors.New("invalid key 'a]'"),
-		},
-		{
-			Key:  "a[0]",
-			Path: []string{"a", "0"},
-		},
-		{
-			Key:  "a.[0]",
-			Path: []string{"a", "0"},
-		},
-		{
-			Key:  "a[0].b",
-			Path: []string{"a", "0", "b"},
-		},
-		{
-			Key:  "a.[0].b",
-			Path: []string{"a", "0", "b"},
-		},
-		{
-			Key:  "a[0][0]",
-			Path: []string{"a", "0", "0"},
-		},
-		{
-			Key:  "a.[0].[0]",
-			Path: []string{"a", "0", "0"},
-		},
-	}
-	for i, c := range testcases {
-		p, err := conf.SplitPath(c.Key)
-		assert.Equal(t, err, c.Err, fmt.Sprintf("index: %d key: %q", i, c.Key))
-		assert.Equal(t, p, c.Path, fmt.Sprintf("index:%d key: %q", i, c.Key))
-	}
 }

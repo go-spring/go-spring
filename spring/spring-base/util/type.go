@@ -196,8 +196,7 @@ func IsBeanType(t reflect.Type) bool {
 	case reflect.Chan, reflect.Func, reflect.Interface:
 		return true
 	case reflect.Ptr:
-		et := t.Elem()
-		return et.Kind() == reflect.Struct || IsPrimitiveValueType(et)
+		return t.Elem().Kind() == reflect.Struct
 	default:
 		return false
 	}

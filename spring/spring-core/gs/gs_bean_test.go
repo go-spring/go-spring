@@ -113,12 +113,6 @@ func TestBeanDefinition_Match(t *testing.T) {
 		beanName string
 		expect   bool
 	}{
-		{newBean(new(int)), "int", "int", true},
-		{newBean(new(int)), "", "int", true},
-		{newBean(new(int)), "int", "", true},
-		{newBean(new(int)).Name("i"), "int", "i", true},
-		{newBean(new(int)).Name("i"), "", "i", true},
-		{newBean(new(int)).Name("i"), "int", "", true},
 		{newBean(new(pkg2.SamePkg)), "github.com/go-spring/spring-core/gs/testdata/pkg/foo/pkg.SamePkg", "SamePkg", true},
 		{newBean(new(pkg2.SamePkg)), "", "SamePkg", true},
 		{newBean(new(pkg2.SamePkg)), "github.com/go-spring/spring-core/gs/testdata/pkg/foo/pkg.SamePkg", "", true},
@@ -165,23 +159,6 @@ func (t *BeanThree) String() string {
 
 func TestObjectBean(t *testing.T) {
 
-	t.Run("bean can't be nil", func(t *testing.T) {
-
-		assert.Panic(t, func() {
-			newBean(nil)
-		}, "bean can't be nil")
-
-		assert.Panic(t, func() {
-			var i *int
-			newBean(i)
-		}, "bean can't be nil")
-
-		assert.Panic(t, func() {
-			var m map[string]string
-			newBean(m)
-		}, "bean can't be nil")
-	})
-
 	t.Run("bean must be ref type", func(t *testing.T) {
 
 		data := []func(){
@@ -201,7 +178,6 @@ func TestObjectBean(t *testing.T) {
 	t.Run("valid bean", func(t *testing.T) {
 		newBean(make(chan int))
 		newBean(reflect.ValueOf(func() {}))
-		newBean(new(int))
 		newBean(&BeanZero{})
 	})
 
@@ -218,14 +194,6 @@ func TestObjectBean(t *testing.T) {
 			newBean(newHistoryTeacher("")): {
 				"historyTeacher",
 				"github.com/go-spring/spring-core/gs/gs_test.historyTeacher",
-			},
-
-			newBean(new(int)): {
-				"int", "int",
-			},
-
-			newBean(new(int)).Name("i"): {
-				"i", "int",
 			},
 
 			newBean(new(pkg2.SamePkg)): {
@@ -266,10 +234,6 @@ func TestConstructorBean(t *testing.T) {
 	bd = newBean(funcFn)
 	assert.Equal(t, bd.Type().String(), "func(int)")
 
-	intFn := func() int { return 0 }
-	bd = newBean(intFn)
-	assert.Equal(t, bd.Type().String(), "*int")
-
 	interfaceFn := func(name string) Teacher { return newHistoryTeacher(name) }
 	bd = newBean(interfaceFn)
 	assert.Equal(t, bd.Type().String(), "gs_test.Teacher")
@@ -277,9 +241,6 @@ func TestConstructorBean(t *testing.T) {
 	assert.Panic(t, func() {
 		_ = newBean(func() (*int, *int) { return nil, nil })
 	}, "constructor should be func\\(...\\)bean or func\\(...\\)\\(bean, error\\)")
-
-	bd = newBean(func() (*int, error) { return nil, nil })
-	assert.Equal(t, bd.Type().String(), "*int")
 }
 
 type Runner interface {

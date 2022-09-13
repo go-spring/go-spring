@@ -14,24 +14,4 @@
  * limitations under the License.
  */
 
-package prop
-
-import "github.com/magiconair/properties"
-
-// Read parses []byte in the properties format into map.
-func Read(b []byte) (map[string]interface{}, error) {
-
-	p := properties.NewProperties()
-	p.DisableExpansion = true
-
-	err := p.Load(b, properties.UTF8)
-	if err != nil {
-		return nil, err
-	}
-
-	ret := make(map[string]interface{})
-	for k, v := range p.Map() {
-		ret[k] = v
-	}
-	return ret, nil
-}
+package expr_test

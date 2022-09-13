@@ -20,6 +20,7 @@ import (
 	"fmt"
 
 	"github.com/go-spring/spring-core/conf"
+	"github.com/go-spring/spring-core/expr"
 )
 
 type Base struct {
@@ -41,4 +42,16 @@ func (v *Base) Property(prop *conf.Properties) (string, error) {
 	}
 	s := prop.Get(key, conf.Def(v.param.Tag.Def))
 	return s, nil
+}
+
+func (v *Base) Validate(val interface{}) error {
+	if v.param.Validate == "" {
+		return nil
+	}
+	if b, err := expr.Eval(v.param.Validate, val); err != nil {
+		return err
+	} else if !b {
+		return fmt.Errorf("validate failed on %q for value %v", v.param.Validate, val)
+	}
+	return nil
 }

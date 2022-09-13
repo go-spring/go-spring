@@ -14,4 +14,4 @@
  * limitations under the License.
  */
 
-package gsutil
+package atomic_test
