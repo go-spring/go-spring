@@ -14,13 +14,11 @@
  * limitations under the License.
  */
 
-package middleware
+package web
 
 import (
 	"compress/gzip"
-	"github.com/go-spring/spring-base/util"
-	"github.com/go-spring/spring-core/web"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -33,14 +31,16 @@ var gzipPool *sync.Pool
 
 // GzipResponseFilter compress responseBody
 // level: 0~9
-func GzipResponseFilter(level int) web.Filter {
+func GzipResponseFilter(level int) Filter {
 	gzipPool = &sync.Pool{New: func() interface{} {
-		w, err := gzip.NewWriterLevel(ioutil.Discard, level)
-		util.Panic(err).When(err != nil)
+		w, err := gzip.NewWriterLevel(io.Discard, level)
+		if err != nil {
+			panic(err)
+		}
 		return w
 	}}
 
-	return web.FuncFilter(func(ctx web.Context, chain web.FilterChain) {
+	return FuncFilter(func(ctx Context, chain FilterChain) {
 		if gzipPool == nil {
 			panic("gzipPool not initialized")
 		}
@@ -52,13 +52,13 @@ func GzipResponseFilter(level int) web.Filter {
 
 		gw := gzipPool.Get().(*gzip.Writer)
 		defer gzipPool.Put(gw)
-		defer gw.Reset(ioutil.Discard)
+		defer gw.Reset(io.Discard)
 		gw.Reset(ctx.Response().Get())
 
 		ctx.Response().Set(&gzipWriter{ctx.Response().Get(), gw})
 
-		ctx.SetHeader(web.HeaderContentEncoding, "gzip")
-		ctx.SetHeader(web.HeaderVary, web.HeaderAcceptEncoding)
+		ctx.SetHeader(HeaderContentEncoding, "gzip")
+		ctx.SetHeader(HeaderVary, HeaderAcceptEncoding)
 		defer func() {
 			_ = gw.Close()
 		}()
@@ -68,7 +68,7 @@ func GzipResponseFilter(level int) web.Filter {
 }
 
 func shouldCompress(req *http.Request) bool {
-	if !strings.Contains(req.Header.Get(web.HeaderAcceptEncoding), "gzip") {
+	if !strings.Contains(req.Header.Get(HeaderAcceptEncoding), "gzip") {
 		return false
 	}
 
