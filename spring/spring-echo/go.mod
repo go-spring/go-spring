@@ -3,8 +3,8 @@ module github.com/go-spring/spring-echo
 go 1.14
 
 require (
-	github.com/go-spring/spring-base v1.1.2-0.20220912232223-ad27a0e73218
-	github.com/go-spring/spring-core v1.1.2-0.20220912232602-72c7fd83f924
+	github.com/go-spring/spring-base v1.1.2
+	github.com/go-spring/spring-core v1.1.2
 	github.com/labstack/echo/v4 v4.6.1
 )
 

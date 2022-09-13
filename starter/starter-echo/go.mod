@@ -3,8 +3,8 @@ module github.com/go-spring/starter-echo
 go 1.14
 
 require (
-	github.com/go-spring/spring-core v1.1.2-0.20220912232602-72c7fd83f924
-	github.com/go-spring/spring-echo v1.1.2-0.20220912233044-ede424a78aa8
+	github.com/go-spring/spring-core v1.1.2
+	github.com/go-spring/spring-echo v1.1.2
 )
 
 //replace (
