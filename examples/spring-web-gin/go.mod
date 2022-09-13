@@ -3,9 +3,9 @@ module github.com/go-spring/examples/spring-web-gin
 go 1.16
 
 require (
-	github.com/go-spring/spring-base v1.1.1
-	github.com/go-spring/spring-core v1.1.1
-	github.com/go-spring/spring-gin v1.1.1
+	github.com/go-spring/spring-base v1.1.2
+	github.com/go-spring/spring-core v1.1.2
+	github.com/go-spring/spring-gin v1.1.2
 )
 
 //replace (

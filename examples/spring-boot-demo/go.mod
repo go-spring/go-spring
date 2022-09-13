@@ -3,11 +3,11 @@ module github.com/go-spring/examples/spring-boot-demo
 go 1.16
 
 require (
-	github.com/go-spring/spring-base v1.1.1
-	github.com/go-spring/spring-core v1.1.1
-	github.com/go-spring/starter-echo v1.1.1
-	github.com/go-spring/starter-go-redis v1.1.1
-	github.com/go-spring/starter-gorm v1.1.1
+	github.com/go-spring/spring-base v1.1.2
+	github.com/go-spring/spring-core v1.1.2
+	github.com/go-spring/starter-echo v1.1.2
+	github.com/go-spring/starter-go-redis v1.1.2
+	github.com/go-spring/starter-gorm v1.1.2
 	github.com/labstack/echo/v4 v4.6.1
 	github.com/spf13/viper v1.3.1
 	go.mongodb.org/mongo-driver v1.7.3

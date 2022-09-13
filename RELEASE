@@ -1,5 +1,15 @@
 Release History:
 
+v1.1.2 2022-09-13
+
+    新增 atomic.String 类型；
+    新增 bean convert 机制，可以实现 bean 共享；
+    新增 spring-core/dync 包，实现动态配置安全刷新；
+    统一 expr 表达式求值实现，用于结构体字段求值及校验；
+    使用更加严格的 conf 键值校验，完善对 nil 键值的处理；
+    收窄 bean 类型判断，基础类型指针不再认为是 bean 类型；
+    函数 bean 使用方法的名称而不再使用 bean 的类型作为名称；
+
 v1.1.1 2022-08-26
 
     继续完善日志架构，包括支持结构化日志、支持 tag 过滤器、支持 logger 注入等；

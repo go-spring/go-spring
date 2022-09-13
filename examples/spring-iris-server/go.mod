@@ -3,8 +3,8 @@ module github.com/go-spring/examples/spring-iris-server
 go 1.14
 
 require (
-	github.com/go-spring/spring-base v1.1.1
-	github.com/go-spring/spring-core v1.1.1
+	github.com/go-spring/spring-base v1.1.2
+	github.com/go-spring/spring-core v1.1.2
 	github.com/kataras/iris/v12 v12.2.0-alpha8
 )
 
