@@ -28,7 +28,6 @@ import (
 type DurationValidateFunc func(v time.Duration) error
 
 type Duration struct {
-	Base
 	v atomic.Duration
 	f DurationValidateFunc
 }
@@ -41,8 +40,8 @@ func (x *Duration) OnValidate(f DurationValidateFunc) {
 	x.f = f
 }
 
-func (x *Duration) getDuration(prop *conf.Properties) (time.Duration, error) {
-	s, err := x.Property(prop)
+func (x *Duration) getDuration(prop *conf.Properties, param conf.BindParam) (time.Duration, error) {
+	s, err := GetProperty(prop, param)
 	if err != nil {
 		return 0, err
 	}
@@ -53,8 +52,8 @@ func (x *Duration) getDuration(prop *conf.Properties) (time.Duration, error) {
 	return v, nil
 }
 
-func (x *Duration) onRefresh(prop *conf.Properties) error {
-	v, err := x.getDuration(prop)
+func (x *Duration) Refresh(prop *conf.Properties, param conf.BindParam) error {
+	v, err := x.getDuration(prop, param)
 	if err != nil {
 		return err
 	}
@@ -62,8 +61,8 @@ func (x *Duration) onRefresh(prop *conf.Properties) error {
 	return nil
 }
 
-func (x *Duration) onValidate(prop *conf.Properties) error {
-	v, err := x.getDuration(prop)
+func (x *Duration) Validate(prop *conf.Properties, param conf.BindParam) error {
+	v, err := x.getDuration(prop, param)
 	if err != nil {
 		return err
 	}

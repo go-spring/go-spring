@@ -22,19 +22,24 @@ import (
 
 	"github.com/go-spring/spring-base/atomic"
 	"github.com/go-spring/spring-core/conf"
+	"github.com/go-spring/spring-core/expr"
 )
 
 // Value 可动态刷新的对象
 type Value interface {
-	setParam(param conf.BindParam)
-	onRefresh(prop *conf.Properties) error
-	onValidate(prop *conf.Properties) error
+	Refresh(prop *conf.Properties, param conf.BindParam) error
+	Validate(prop *conf.Properties, param conf.BindParam) error
+}
+
+type Field struct {
+	value Value
+	param conf.BindParam
 }
 
 // Properties 动态属性
 type Properties struct {
 	value  atomic.Value
-	fields []Value
+	fields []*Field
 }
 
 func New() *Properties {
@@ -89,8 +94,8 @@ func (p *Properties) Refresh(prop *conf.Properties) (err error) {
 }
 
 func (p *Properties) validate(prop *conf.Properties) error {
-	for _, field := range p.fields {
-		err := field.onValidate(prop)
+	for _, f := range p.fields {
+		err := f.value.Validate(prop, f.param)
 		if err != nil {
 			return err
 		}
@@ -99,8 +104,8 @@ func (p *Properties) validate(prop *conf.Properties) error {
 }
 
 func (p *Properties) refresh(prop *conf.Properties) error {
-	for _, field := range p.fields {
-		err := field.onRefresh(prop)
+	for _, f := range p.fields {
+		err := f.value.Refresh(prop, f.param)
 		if err != nil {
 			return err
 		}
@@ -127,18 +132,41 @@ func (p *Properties) bindValue(i interface{}, param conf.BindParam) (bool, error
 	if !ok {
 		return false, nil
 	}
-	v.setParam(param)
 
 	prop := p.load()
-	err := v.onValidate(prop)
+	err := v.Validate(prop, param)
 	if err != nil {
 		return false, err
 	}
-	err = v.onRefresh(prop)
+	err = v.Refresh(prop, param)
 	if err != nil {
 		return false, err
 	}
 
-	p.fields = append(p.fields, v)
+	p.fields = append(p.fields, &Field{
+		value: v,
+		param: param,
+	})
 	return true, nil
+}
+
+func GetProperty(prop *conf.Properties, param conf.BindParam) (string, error) {
+	key := param.Key
+	if !prop.Has(key) && !param.Tag.HasDef {
+		return "", fmt.Errorf("property %q not exist", key)
+	}
+	s := prop.Get(key, conf.Def(param.Tag.Def))
+	return s, nil
+}
+
+func Validate(val interface{}, param conf.BindParam) error {
+	if param.Validate == "" {
+		return nil
+	}
+	if b, err := expr.Eval(param.Validate, val); err != nil {
+		return err
+	} else if !b {
+		return fmt.Errorf("validate failed on %q for value %v", param.Validate, val)
+	}
+	return nil
 }

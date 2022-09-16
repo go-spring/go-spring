@@ -6,8 +6,8 @@ github.com/davecgh/go-spew v1.1.0 h1:ZDRjVQ15GmhC3fiQ8ni8+OwkZQO4DARzQgrnXU1Liz8
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/gdamore/encoding v1.0.0/go.mod h1:alR0ol34c49FCSBLjhosxzcPHQbf2trDkoo5dl+VrEg=
 github.com/gdamore/tcell v1.3.0/go.mod h1:Hjvr+Ofd+gLglo7RYKxxnzCBmev3BzsS67MebKS4zMM=
-github.com/go-spring/spring-base v1.1.2-0.20220912232223-ad27a0e73218 h1:AD6dDAqG5F7WS0mAxWIfKOwSSWK8/M2Gr/SnYE90hZ0=
-github.com/go-spring/spring-base v1.1.2-0.20220912232223-ad27a0e73218/go.mod h1:tdngm+6agA34HQ5YADitIGaQ04e1pmxuR5cd6Eaobmw=
+github.com/go-spring/spring-base v1.1.2 h1:lFJyed0X1vNdShYcC4yv3GzBB3ryKvBZBO/AMwfBiQQ=
+github.com/go-spring/spring-base v1.1.2/go.mod h1:tdngm+6agA34HQ5YADitIGaQ04e1pmxuR5cd6Eaobmw=
 github.com/golang/mock v1.6.0 h1:ErTB+efbowRARo13NNdxyJji2egdxLGQhRaY+DUumQc=
 github.com/golang/mock v1.6.0/go.mod h1:p6yTPP+5HYm5mzsMV8JkE6ZKdX+/wYM6Hr+LicevLPs=
 github.com/google/uuid v1.3.0 h1:t6JiXgmwXMjEs8VusXIJk2BXHsn+wx8BZdTaoZ5fu7I=

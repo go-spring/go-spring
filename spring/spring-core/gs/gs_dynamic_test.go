@@ -56,7 +56,7 @@ func TestDynamic(t *testing.T) {
 		})
 		config.Slice.Init(make([]string, 0))
 		config.Map.Init(make(map[string]string))
-		config.Event.OnEvent(func(prop *conf.Properties) error {
+		config.Event.OnEvent(func(prop *conf.Properties, param conf.BindParam) error {
 			fmt.Println("event fired.")
 			return nil
 		})
@@ -67,7 +67,7 @@ func TestDynamic(t *testing.T) {
 	c.Object(wrapper).Init(func(p *DynamicConfigWrapper) {
 		p.Wrapper.Slice.Init(make([]string, 0))
 		p.Wrapper.Map.Init(make(map[string]string))
-		p.Wrapper.Event.OnEvent(func(prop *conf.Properties) error {
+		p.Wrapper.Event.OnEvent(func(prop *conf.Properties, param conf.BindParam) error {
 			fmt.Println("event fired.")
 			return nil
 		})

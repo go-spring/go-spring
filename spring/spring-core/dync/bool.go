@@ -25,7 +25,6 @@ import (
 )
 
 type Bool struct {
-	Base
 	v atomic.Bool
 }
 
@@ -33,8 +32,8 @@ func (x *Bool) Value() bool {
 	return x.v.Load()
 }
 
-func (x *Bool) getBool(prop *conf.Properties) (bool, error) {
-	s, err := x.Property(prop)
+func (x *Bool) getBool(prop *conf.Properties, param conf.BindParam) (bool, error) {
+	s, err := GetProperty(prop, param)
 	if err != nil {
 		return false, err
 	}
@@ -45,8 +44,8 @@ func (x *Bool) getBool(prop *conf.Properties) (bool, error) {
 	return v, nil
 }
 
-func (x *Bool) onRefresh(prop *conf.Properties) error {
-	v, err := x.getBool(prop)
+func (x *Bool) Refresh(prop *conf.Properties, param conf.BindParam) error {
+	v, err := x.getBool(prop, param)
 	if err != nil {
 		return err
 	}
@@ -54,8 +53,8 @@ func (x *Bool) onRefresh(prop *conf.Properties) error {
 	return nil
 }
 
-func (x *Bool) onValidate(prop *conf.Properties) error {
-	_, err := x.getBool(prop)
+func (x *Bool) Validate(prop *conf.Properties, param conf.BindParam) error {
+	_, err := x.getBool(prop, param)
 	return err
 }
 

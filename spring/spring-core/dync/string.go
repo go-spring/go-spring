@@ -26,7 +26,6 @@ import (
 type StringValidateFunc func(v string) error
 
 type String struct {
-	Base
 	v atomic.String
 	f StringValidateFunc
 }
@@ -39,12 +38,12 @@ func (x *String) OnValidate(f StringValidateFunc) {
 	x.f = f
 }
 
-func (x *String) getString(prop *conf.Properties) (string, error) {
-	return x.Property(prop)
+func (x *String) getString(prop *conf.Properties, param conf.BindParam) (string, error) {
+	return GetProperty(prop, param)
 }
 
-func (x *String) onRefresh(prop *conf.Properties) error {
-	v, err := x.getString(prop)
+func (x *String) Refresh(prop *conf.Properties, param conf.BindParam) error {
+	v, err := x.getString(prop, param)
 	if err != nil {
 		return err
 	}
@@ -52,12 +51,12 @@ func (x *String) onRefresh(prop *conf.Properties) error {
 	return nil
 }
 
-func (x *String) onValidate(prop *conf.Properties) error {
-	v, err := x.getString(prop)
+func (x *String) Validate(prop *conf.Properties, param conf.BindParam) error {
+	v, err := x.getString(prop, param)
 	if err != nil {
 		return err
 	}
-	err = x.Validate(v)
+	err = Validate(v, param)
 	if err != nil {
 		return err
 	}

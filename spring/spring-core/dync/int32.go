@@ -27,7 +27,6 @@ import (
 type Int32ValidateFunc func(v int32) error
 
 type Int32 struct {
-	Base
 	v atomic.Int32
 	f Int32ValidateFunc
 }
@@ -40,8 +39,8 @@ func (x *Int32) OnValidate(f Int32ValidateFunc) {
 	x.f = f
 }
 
-func (x *Int32) getInt32(prop *conf.Properties) (int32, error) {
-	s, err := x.Property(prop)
+func (x *Int32) getInt32(prop *conf.Properties, param conf.BindParam) (int32, error) {
+	s, err := GetProperty(prop, param)
 	if err != nil {
 		return 0, err
 	}
@@ -52,8 +51,8 @@ func (x *Int32) getInt32(prop *conf.Properties) (int32, error) {
 	return int32(v), nil
 }
 
-func (x *Int32) onRefresh(prop *conf.Properties) error {
-	v, err := x.getInt32(prop)
+func (x *Int32) Refresh(prop *conf.Properties, param conf.BindParam) error {
+	v, err := x.getInt32(prop, param)
 	if err != nil {
 		return err
 	}
@@ -61,12 +60,12 @@ func (x *Int32) onRefresh(prop *conf.Properties) error {
 	return nil
 }
 
-func (x *Int32) onValidate(prop *conf.Properties) error {
-	v, err := x.getInt32(prop)
+func (x *Int32) Validate(prop *conf.Properties, param conf.BindParam) error {
+	v, err := x.getInt32(prop, param)
 	if err != nil {
 		return err
 	}
-	err = x.Validate(v)
+	err = Validate(v, param)
 	if err != nil {
 		return err
 	}

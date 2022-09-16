@@ -27,7 +27,6 @@ import (
 type Float64ValidateFunc func(v float64) error
 
 type Float64 struct {
-	Base
 	v atomic.Float64
 	f Float64ValidateFunc
 }
@@ -40,8 +39,8 @@ func (x *Float64) OnValidate(f Float64ValidateFunc) {
 	x.f = f
 }
 
-func (x *Float64) getFloat64(prop *conf.Properties) (float64, error) {
-	s, err := x.Property(prop)
+func (x *Float64) getFloat64(prop *conf.Properties, param conf.BindParam) (float64, error) {
+	s, err := GetProperty(prop, param)
 	if err != nil {
 		return 0, err
 	}
@@ -52,8 +51,8 @@ func (x *Float64) getFloat64(prop *conf.Properties) (float64, error) {
 	return v, nil
 }
 
-func (x *Float64) onRefresh(prop *conf.Properties) error {
-	v, err := x.getFloat64(prop)
+func (x *Float64) Refresh(prop *conf.Properties, param conf.BindParam) error {
+	v, err := x.getFloat64(prop, param)
 	if err != nil {
 		return err
 	}
@@ -61,12 +60,12 @@ func (x *Float64) onRefresh(prop *conf.Properties) error {
 	return nil
 }
 
-func (x *Float64) onValidate(prop *conf.Properties) error {
-	v, err := x.getFloat64(prop)
+func (x *Float64) Validate(prop *conf.Properties, param conf.BindParam) error {
+	v, err := x.getFloat64(prop, param)
 	if err != nil {
 		return err
 	}
-	err = x.Validate(v)
+	err = Validate(v, param)
 	if err != nil {
 		return err
 	}
