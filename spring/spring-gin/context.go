@@ -136,7 +136,15 @@ func (ctx *Context) PathParamValues() []string {
 
 // Bind binds the request body into provided type `i`.
 func (ctx *Context) Bind(i interface{}) error {
-	err := ctx.ginContext.ShouldBind(i)
+	err := ctx.ginContext.ShouldBindUri(i)
+	if err != nil {
+		return err
+	}
+	err = ctx.ginContext.ShouldBindQuery(i)
+	if err != nil {
+		return err
+	}
+	err = ctx.ginContext.ShouldBind(i)
 	if err != nil {
 		return err
 	}
