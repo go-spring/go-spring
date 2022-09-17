@@ -124,6 +124,10 @@ func (s *Storage) Set(key, val string) error {
 	return nil
 }
 
+func (s *Storage) Remove(key string) {
+	_ = s.checkKey(key, "")
+}
+
 func (s *Storage) checkKey(key, val string) error {
 	path, err := SplitPath(key)
 	if err != nil {
@@ -139,11 +143,6 @@ func (s *Storage) checkKey(key, val string) error {
 				return fmt.Errorf("property %q is a map but %q wants other type", GenPath(path[:i]), key)
 			}
 		}
-		//if tree.node == nodeTypeList {
-		//	if pathNode.Type == PathTypeKey {
-		//		return fmt.Errorf("property %q is a list but %q wants other type", GenPath(path[:i]), key)
-		//	}
-		//}
 		m := tree.data.(map[string]*treeNode)
 		v, ok := m[pathNode.Elem]
 		if !ok || v.node == nodeTypeNil {

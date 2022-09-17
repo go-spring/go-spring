@@ -21,7 +21,7 @@ import (
 	"reflect"
 	"strconv"
 
-	"github.com/go-spring/spring-core/validator"
+	"github.com/go-spring/spring-core/validate"
 )
 
 type BindScope int
@@ -77,7 +77,7 @@ func Bind(i interface{}, ctx Context) error {
 	if err := bindBody(i, ctx); err != nil {
 		return err
 	}
-	return validator.Validate(i)
+	return validate.Validate(i)
 }
 
 func bindBody(i interface{}, ctx Context) error {
