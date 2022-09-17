@@ -77,7 +77,7 @@ func Bind(i interface{}, ctx Context) error {
 	if err := bindBody(i, ctx); err != nil {
 		return err
 	}
-	return validate.Validate(i)
+	return validate.Struct(i)
 }
 
 func bindBody(i interface{}, ctx Context) error {

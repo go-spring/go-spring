@@ -16,11 +16,52 @@
 
 package validate
 
-var Validator func(i interface{}) error
+import (
+	"fmt"
 
-func Validate(i interface{}) error {
-	if Validator == nil {
+	"github.com/go-spring/spring-core/expr"
+)
+
+type Interface interface {
+	TagName() string
+	Struct(i interface{}) error
+	Field(i interface{}, tag string) error
+}
+
+var Validator Interface = &Validate{}
+
+func TagName() string {
+	return Validator.TagName()
+}
+
+func Struct(i interface{}) error {
+	return Validator.Struct(i)
+}
+
+func Field(i interface{}, tag string) error {
+	return Validator.Field(i, tag)
+}
+
+type Validate struct{}
+
+func (d Validate) TagName() string {
+	return "expr"
+}
+
+func (d Validate) Struct(i interface{}) error {
+	return nil
+}
+
+func (d Validate) Field(i interface{}, tag string) error {
+	if tag == "" {
 		return nil
 	}
-	return Validator(i)
+	ok, err := expr.Eval(tag, i)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("validate failed on %q for value %v", tag, i)
+	}
+	return nil
 }

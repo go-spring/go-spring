@@ -22,5 +22,23 @@ import (
 )
 
 func init() {
-	validate.Validator = validator.New().Struct
+	validate.Validator = &Validate{
+		v: validator.New(),
+	}
+}
+
+type Validate struct {
+	v *validator.Validate
+}
+
+func (v *Validate) TagName() string {
+	return "validate"
+}
+
+func (v *Validate) Struct(i interface{}) error {
+	return v.v.Struct(i)
+}
+
+func (v *Validate) Field(i interface{}, tag string) error {
+	return v.v.Var(i, tag)
 }

@@ -55,8 +55,8 @@ func (x *Integer) MarshalJSON() ([]byte, error) {
 }
 
 type Config struct {
-	Integer Integer      `value:"${int:=3}" validate:"$<6"`
-	Int     dync.Int64   `value:"${int:=3}" validate:"$<6"`
+	Integer Integer      `value:"${int:=3}" expr:"$<6"`
+	Int     dync.Int64   `value:"${int:=3}" expr:"$<6"`
 	Float   dync.Float64 `value:"${float:=1.2}"`
 	Map     dync.Ref     `value:"${map:=}"`
 	Slice   dync.Ref     `value:"${slice:=}"`
