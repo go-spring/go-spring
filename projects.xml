@@ -102,4 +102,10 @@
         <url>https://github.com/go-spring/starter-redigo.git</url>
         <branch>main</branch>
     </project>
+    <project>
+        <name>starter-validate</name>
+        <dir>starter/starter-validate</dir>
+        <url>https://github.com/go-spring/starter-validate.git</url>
+        <branch>main</branch>
+    </project>
 </projects>
