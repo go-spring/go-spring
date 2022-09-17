@@ -20,6 +20,8 @@ import (
 	"fmt"
 	"reflect"
 	"strconv"
+
+	"github.com/go-spring/spring-core/validator"
 )
 
 type BindScope int
@@ -75,7 +77,7 @@ func Bind(i interface{}, ctx Context) error {
 	if err := bindBody(i, ctx); err != nil {
 		return err
 	}
-	return nil
+	return validator.Validate(i)
 }
 
 func bindBody(i interface{}, ctx Context) error {
@@ -100,7 +102,7 @@ func bindScope(i interface{}, ctx Context) error {
 		fv := ev.Field(j)
 		ft := et.Field(j)
 		for scope := BindScopeURI; scope < BindScopeBody; scope++ {
-			err := bindField(scope, fv, ft, ctx)
+			err := bindScopeField(scope, fv, ft, ctx)
 			if err != nil {
 				return err
 			}
@@ -109,7 +111,7 @@ func bindScope(i interface{}, ctx Context) error {
 	return nil
 }
 
-func bindField(scope BindScope, v reflect.Value, field reflect.StructField, ctx Context) error {
+func bindScopeField(scope BindScope, v reflect.Value, field reflect.StructField, ctx Context) error {
 	for _, tag := range scopeBinders[scope] {
 		if name, ok := field.Tag.Lookup(tag); ok {
 			if name == "-" {

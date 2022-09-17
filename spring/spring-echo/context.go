@@ -19,7 +19,6 @@ package SpringEcho
 import (
 	"net/http"
 
-	"github.com/go-spring/spring-core/validator"
 	"github.com/go-spring/spring-core/web"
 	"github.com/labstack/echo/v4"
 )
@@ -98,12 +97,4 @@ func (c *context) PathParamNames() []string {
 // PathParamValues returns path parameter values.
 func (c *context) PathParamValues() []string {
 	return c.echoCtx.ParamValues()
-}
-
-// Bind binds the request body into provided type `i`.
-func (c *context) Bind(i interface{}) error {
-	if err := c.echoCtx.Bind(i); err != nil {
-		return err
-	}
-	return validator.Validate(i)
 }
