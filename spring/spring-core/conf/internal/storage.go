@@ -36,6 +36,7 @@ type treeNode struct {
 	data interface{}
 }
 
+// Copy returns a new copy of the *treeNode object.
 func (t *treeNode) Copy() *treeNode {
 	r := &treeNode{
 		node: t.node,
@@ -53,47 +54,13 @@ func (t *treeNode) Copy() *treeNode {
 	return r
 }
 
-func (t *treeNode) Keys() []string {
-	m := make(map[string]struct{})
-	t.keys("", m)
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
-}
-
-func (t *treeNode) keys(key string, ret map[string]struct{}) {
-	switch m := t.data.(type) {
-	case map[string]*treeNode:
-		if len(m) == 0 {
-			ret[key] = struct{}{}
-			return
-		}
-		for k, v := range m {
-			var subKey string
-			if t.node == nodeTypeMap {
-				if key == "" {
-					subKey = k
-				} else {
-					subKey = key + "." + k
-				}
-			} else {
-				subKey = key + "[" + k + "]"
-			}
-			v.keys(subKey, ret)
-		}
-	default:
-		ret[key] = struct{}{}
-	}
-}
-
+// Storage stores data in the properties format.
 type Storage struct {
 	tree *treeNode
 	data map[string]string
 }
 
+// NewStorage returns a new *Storage object.
 func NewStorage() *Storage {
 	return &Storage{
 		tree: &treeNode{
@@ -104,21 +71,34 @@ func NewStorage() *Storage {
 	}
 }
 
+// Copy returns a new copy of the *Storage object.
 func (s *Storage) Copy() *Storage {
-	r := &Storage{
+	return &Storage{
 		tree: s.tree.Copy(),
+		data: s.Data(),
 	}
+}
+
+// Data returns key-value pairs of the properties.
+func (s *Storage) Data() map[string]string {
+	m := make(map[string]string)
 	for k, v := range s.data {
-		r.data[k] = v
+		m[k] = v
 	}
-	return r
+	return m
 }
 
-// Keys returns all sorted keys.
+// Keys returns keys of the properties.
 func (s *Storage) Keys() []string {
-	return s.tree.Keys()
+	keys := make([]string, 0, len(s.data))
+	for k := range s.data {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
+// SubKeys returns the sub keys of the key item.
 func (s *Storage) SubKeys(key string) ([]string, error) {
 	path, err := SplitPath(key)
 	if err != nil {
@@ -146,16 +126,16 @@ func (s *Storage) SubKeys(key string) ([]string, error) {
 	return keys, nil
 }
 
-// Has returns whether key exists.
+// Has returns whether the key exists.
 func (s *Storage) Has(key string) bool {
 	path, err := SplitPath(key)
 	if err != nil {
 		return false
 	}
 	tree := s.tree
-	for i, n := range path {
+	for i, node := range path {
 		m := tree.data.(map[string]*treeNode)
-		v, ok := m[n.Elem]
+		v, ok := m[node.Elem]
 		if !ok {
 			return false
 		}
@@ -167,28 +147,39 @@ func (s *Storage) Has(key string) bool {
 	return true
 }
 
+// Get returns the key's value.
 func (s *Storage) Get(key string) string {
 	val, _ := s.data[key]
 	return val
 }
 
+// Set stores the key and its value.
 func (s *Storage) Set(key, val string) error {
 	val = strings.TrimSpace(val)
-	err := s.checkKey(key, val)
+	err := s.buildTree(key, val)
 	if err != nil {
 		return err
 	}
-	if val != "" {
-		s.data[key] = val
+	path, err := SplitPath(key)
+	if err != nil {
+		return err
 	}
+	for i := range path {
+		k := GenPath(path[:i+1])
+		if _, ok := s.data[k]; ok {
+			delete(s.data, k)
+		}
+	}
+	s.data[key] = val
 	return nil
 }
 
+// Remove removes the key and its value.
 func (s *Storage) Remove(key string) {
-	_ = s.checkKey(key, "")
+	_ = s.buildTree(key, "")
 }
 
-func (s *Storage) checkKey(key, val string) error {
+func (s *Storage) buildTree(key, val string) error {
 	path, err := SplitPath(key)
 	if err != nil {
 		return err
