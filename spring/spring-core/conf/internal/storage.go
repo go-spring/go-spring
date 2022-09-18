@@ -36,27 +36,87 @@ type treeNode struct {
 	data interface{}
 }
 
+func (t *treeNode) Copy() *treeNode {
+	r := &treeNode{
+		node: t.node,
+	}
+	switch m := t.data.(type) {
+	case map[string]*treeNode:
+		c := make(map[string]*treeNode)
+		for k, v := range m {
+			c[k] = v.Copy()
+		}
+		r.data = c
+	default:
+		r.data = t.data
+	}
+	return r
+}
+
+func (t *treeNode) Keys() []string {
+	m := make(map[string]struct{})
+	t.keys("", m)
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func (t *treeNode) keys(key string, ret map[string]struct{}) {
+	switch m := t.data.(type) {
+	case map[string]*treeNode:
+		if len(m) == 0 {
+			ret[key] = struct{}{}
+			return
+		}
+		for k, v := range m {
+			var subKey string
+			if t.node == nodeTypeMap {
+				if key == "" {
+					subKey = k
+				} else {
+					subKey = key + "." + k
+				}
+			} else {
+				subKey = key + "[" + k + "]"
+			}
+			v.keys(subKey, ret)
+		}
+	default:
+		ret[key] = struct{}{}
+	}
+}
+
 type Storage struct {
 	tree *treeNode
 	data map[string]string
 }
 
-func (s *Storage) Init() {
-	s.tree = &treeNode{
-		node: nodeTypeMap,
-		data: make(map[string]*treeNode),
+func NewStorage() *Storage {
+	return &Storage{
+		tree: &treeNode{
+			node: nodeTypeMap,
+			data: make(map[string]*treeNode),
+		},
+		data: make(map[string]string),
 	}
-	s.data = make(map[string]string)
+}
+
+func (s *Storage) Copy() *Storage {
+	r := &Storage{
+		tree: s.tree.Copy(),
+	}
+	for k, v := range s.data {
+		r.data[k] = v
+	}
+	return r
 }
 
 // Keys returns all sorted keys.
 func (s *Storage) Keys() []string {
-	keys := make([]string, 0, len(s.data))
-	for k := range s.data {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
+	return s.tree.Keys()
 }
 
 func (s *Storage) SubKeys(key string) ([]string, error) {

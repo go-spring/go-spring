@@ -25,11 +25,11 @@ import (
 
 func TestStorage(t *testing.T) {
 
-	var s internal.Storage
+	var s *internal.Storage
 
 	// 初始值是简单的 KV 值
 	{
-		s.Init()
+		s = internal.NewStorage()
 
 		err := s.Set("a", "b")
 		assert.Nil(t, err)
@@ -39,6 +39,7 @@ func TestStorage(t *testing.T) {
 		assert.Error(t, err, "property \"a\" is a value but \"a\\[0]\" wants other type")
 		err = s.Set("a.y", "x")
 		assert.Error(t, err, "property \"a\" is a value but \"a\\.y\" wants other type")
+		assert.Equal(t, s.Keys(), []string{"a"})
 
 		err = s.Set("a", "c")
 		assert.Nil(t, err)
@@ -52,6 +53,7 @@ func TestStorage(t *testing.T) {
 		assert.Error(t, err, "property \"a\" is a value but \"a\\[0]\" wants other type")
 		err = s.Set("a.y", "x")
 		assert.Error(t, err, "property \"a\" is a value but \"a\\.y\" wants other type")
+		assert.Equal(t, s.Keys(), []string{"a"})
 
 		err = s.Set("a", "c")
 		assert.Nil(t, err)
@@ -61,11 +63,12 @@ func TestStorage(t *testing.T) {
 		assert.Error(t, err, "property \"a\" is a value but \"a\\[0]\" wants other type")
 		err = s.Set("a.y", "x")
 		assert.Error(t, err, "property \"a\" is a value but \"a\\.y\" wants other type")
+		assert.Equal(t, s.Keys(), []string{"a"})
 	}
 
 	// 初始值是嵌套的 KV 值
 	{
-		s.Init()
+		s = internal.NewStorage()
 
 		err := s.Set("m.x", "y")
 		assert.Nil(t, err)
@@ -76,6 +79,7 @@ func TestStorage(t *testing.T) {
 		assert.Error(t, err, "property \"m\" is a map but \"m\" wants other type")
 		err = s.Set("m[0]", "f")
 		assert.Error(t, err, "property \"m\" is a map but \"m\\[0]\" wants other type")
+		assert.Equal(t, s.Keys(), []string{"m.x"})
 
 		err = s.Set("m.x", "z")
 		assert.Nil(t, err)
@@ -90,6 +94,7 @@ func TestStorage(t *testing.T) {
 		assert.Error(t, err, "property \"m\" is a map but \"m\" wants other type")
 		err = s.Set("m[0]", "f")
 		assert.Error(t, err, "property \"m\" is a map but \"m\\[0]\" wants other type")
+		assert.Equal(t, s.Keys(), []string{"m"})
 
 		err = s.Set("m.t", "q")
 		assert.Nil(t, err)
@@ -102,11 +107,12 @@ func TestStorage(t *testing.T) {
 		assert.Error(t, err, "property \"m\" is a map but \"m\" wants other type")
 		err = s.Set("m[0]", "f")
 		assert.Error(t, err, "property \"m\" is a map but \"m\\[0]\" wants other type")
+		assert.Equal(t, s.Keys(), []string{"m.t"})
 	}
 
 	// 初始值是数组 KV 值
 	{
-		s.Init()
+		s = internal.NewStorage()
 
 		err := s.Set("s[0]", "p")
 		assert.Nil(t, err)
@@ -117,6 +123,7 @@ func TestStorage(t *testing.T) {
 		assert.Error(t, err, "property \"s\" is a list but \"s\" wants other type")
 		err = s.Set("s.x", "f")
 		assert.Error(t, err, "property \"s\" is a list but \"s\\.x\" wants other type")
+		assert.Equal(t, s.Keys(), []string{"s[0]"})
 
 		err = s.Set("s[0]", "q")
 		assert.Nil(t, err)
@@ -131,6 +138,7 @@ func TestStorage(t *testing.T) {
 		assert.Error(t, err, "property \"s\" is a list but \"s\" wants other type")
 		err = s.Set("s.x", "f")
 		assert.Error(t, err, "property \"s\" is a list but \"s\\.x\" wants other type")
+		assert.Equal(t, s.Keys(), []string{"s"})
 
 		err = s.Set("s[1]", "o")
 		assert.Nil(t, err)
@@ -143,5 +151,6 @@ func TestStorage(t *testing.T) {
 		assert.Error(t, err, "property \"s\" is a list but \"s\" wants other type")
 		err = s.Set("s.x", "f")
 		assert.Error(t, err, "property \"s\" is a list but \"s\\.x\" wants other type")
+		assert.Equal(t, s.Keys(), []string{"s[1]"})
 	}
 }

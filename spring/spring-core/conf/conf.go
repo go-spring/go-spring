@@ -110,14 +110,14 @@ func RegisterConverter(fn util.Converter) {
 // but it costs more CPU time when getting properties because it reads property node
 // by node. So `conf` uses a tree to strictly verify and a flat map to store.
 type Properties struct {
-	storage internal.Storage
+	storage *internal.Storage
 }
 
 // New creates empty *Properties.
 func New() *Properties {
-	p := &Properties{}
-	p.storage.Init()
-	return p
+	return &Properties{
+		storage: internal.NewStorage(),
+	}
 }
 
 // Map creates *Properties from map.
@@ -195,6 +195,12 @@ func (p *Properties) Bytes(b []byte, ext string) error {
 	return nil
 }
 
+func (p *Properties) Copy() *Properties {
+	return &Properties{
+		storage: p.storage.Copy(),
+	}
+}
+
 // Keys returns all sorted keys.
 func (p *Properties) Keys() []string {
 	return p.storage.Keys()
@@ -231,7 +237,7 @@ func (p *Properties) Get(key string, opts ...GetOption) string {
 	return arg.def
 }
 
-func flatten(key string, val interface{}, result map[string]string) error {
+func Flatten(key string, val interface{}, result map[string]string) error {
 	switch v := reflect.ValueOf(val); v.Kind() {
 	case reflect.Map:
 		if v.Len() == 0 {
@@ -241,7 +247,7 @@ func flatten(key string, val interface{}, result map[string]string) error {
 		for _, k := range v.MapKeys() {
 			mapKey := cast.ToString(k.Interface())
 			mapValue := v.MapIndex(k).Interface()
-			err := flatten(key+"."+mapKey, mapValue, result)
+			err := Flatten(key+"."+mapKey, mapValue, result)
 			if err != nil {
 				return err
 			}
@@ -254,7 +260,7 @@ func flatten(key string, val interface{}, result map[string]string) error {
 		for i := 0; i < v.Len(); i++ {
 			subKey := fmt.Sprintf("%s[%d]", key, i)
 			subValue := v.Index(i).Interface()
-			err := flatten(subKey, subValue, result)
+			err := Flatten(subKey, subValue, result)
 			if err != nil {
 				return err
 			}
@@ -273,7 +279,7 @@ func flatten(key string, val interface{}, result map[string]string) error {
 // prefix path.
 func (p *Properties) Set(key string, val interface{}) error {
 	m := make(map[string]string)
-	err := flatten(key, val, m)
+	err := Flatten(key, val, m)
 	if err != nil {
 		return err
 	}
