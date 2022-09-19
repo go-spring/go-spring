@@ -146,7 +146,7 @@ func TestSplitPath(t *testing.T) {
 		assert.Equal(t, err, c.Err, fmt.Sprintf("index: %d key: %q", i, c.Key))
 		assert.Equal(t, p, c.Path, fmt.Sprintf("index:%d key: %q", i, c.Key))
 		if err == nil {
-			s := internal.GenPath(p)
+			s := internal.JoinPath(p)
 			assert.Equal(t, s, c.Key, fmt.Sprintf("index:%d key: %q", i, c.Key))
 		}
 	}

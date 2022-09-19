@@ -14,9 +14,12 @@
  * limitations under the License.
  */
 
-package util
+package cast_test
 
-// T 将可变参数转换成切片形式。
-func T(a ...interface{}) []interface{} {
-	return a
+import (
+	"testing"
+)
+
+func TestToBean(t *testing.T) {
+
 }

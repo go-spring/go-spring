@@ -14,17 +14,45 @@
  * limitations under the License.
  */
 
-package util
+package cast
 
 import (
 	"encoding/json"
 )
 
-// CopyBean 使用 JSON 序列化的方式进行拷贝，支持匿名字段，支持类型转换。
-func CopyBean(src interface{}, dest interface{}) error {
-	bytes, err := json.Marshal(src)
+var (
+	FAST = &fastEncoding{}
+	JSON = &jsonEncoding{}
+)
+
+type Encoding interface {
+	Convert(src interface{}, dest interface{}) error
+}
+
+func ToBean(src interface{}, dest interface{}, enc ...Encoding) error {
+	var e Encoding
+	if len(enc) == 0 {
+		e = JSON
+	} else {
+		e = enc[0]
+	}
+	return e.Convert(src, dest)
+}
+
+type fastEncoding struct {
+	DeepCopy bool
+}
+
+func (e *fastEncoding) Convert(src interface{}, dest interface{}) error {
+	return nil
+}
+
+type jsonEncoding struct{}
+
+func (e *jsonEncoding) Convert(src interface{}, dest interface{}) error {
+	b, err := json.Marshal(src)
 	if err != nil {
 		return err
 	}
-	return json.Unmarshal(bytes, dest)
+	return json.Unmarshal(b, dest)
 }

@@ -22,8 +22,8 @@ import (
 	"testing"
 
 	"github.com/go-spring/spring-base/assert"
-	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-base/net/internal/json"
+	"github.com/go-spring/spring-base/net/recorder"
 )
 
 func printResult(t *testing.T, m map[string]string) {
@@ -338,7 +338,7 @@ func TestFlatJSON_String(t *testing.T) {
 	}
 
 	for _, c := range testcases {
-		m := cast.FlatJSON(c.data)
+		m := recorder.FlatJSON(c.data)
 		printResult(t, m)
 		assert.Equal(t, m, c.expect)
 	}
@@ -628,7 +628,7 @@ func TestFlatJSON_StringSlice(t *testing.T) {
 	}
 
 	for _, c := range testcases {
-		m := cast.FlatJSON(c.data)
+		m := recorder.FlatJSON(c.data)
 		printResult(t, m)
 		assert.Equal(t, m, c.expect)
 	}
