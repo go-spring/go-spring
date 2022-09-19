@@ -18,6 +18,7 @@ package internal
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -84,7 +85,12 @@ func SplitPath(key string) ([]Path, error) {
 			if !leftBracket || lastIndex == i {
 				return nil, fmt.Errorf("invalid key '%s'", key)
 			}
-			path = append(path, Path{PathTypeIndex, key[lastIndex:i]})
+			s := key[lastIndex:i]
+			_, err := strconv.ParseUint(s, 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("invalid key '%s'", key)
+			}
+			path = append(path, Path{PathTypeIndex, s})
 			lastIndex = i + 1
 			leftBracket = false
 			lastChar = c
