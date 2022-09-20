@@ -28,7 +28,6 @@ import (
 type TimeValidateFunc func(v time.Time) error
 
 type Time struct {
-	Base
 	v atomic.Time
 	f TimeValidateFunc
 }
@@ -41,8 +40,8 @@ func (x *Time) OnValidate(f TimeValidateFunc) {
 	x.f = f
 }
 
-func (x *Time) getTime(prop *conf.Properties) (time.Time, error) {
-	s, err := x.Property(prop)
+func (x *Time) getTime(prop *conf.Properties, param conf.BindParam) (time.Time, error) {
+	s, err := GetProperty(prop, param)
 	if err != nil {
 		return time.Time{}, err
 	}
@@ -53,8 +52,8 @@ func (x *Time) getTime(prop *conf.Properties) (time.Time, error) {
 	return v, nil
 }
 
-func (x *Time) onRefresh(prop *conf.Properties) error {
-	v, err := x.getTime(prop)
+func (x *Time) Refresh(prop *conf.Properties, param conf.BindParam) error {
+	v, err := x.getTime(prop, param)
 	if err != nil {
 		return err
 	}
@@ -62,8 +61,8 @@ func (x *Time) onRefresh(prop *conf.Properties) error {
 	return nil
 }
 
-func (x *Time) onValidate(prop *conf.Properties) error {
-	v, err := x.getTime(prop)
+func (x *Time) Validate(prop *conf.Properties, param conf.BindParam) error {
+	v, err := x.getTime(prop, param)
 	if err != nil {
 		return err
 	}

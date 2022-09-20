@@ -27,7 +27,6 @@ import (
 type Int64ValidateFunc func(v int64) error
 
 type Int64 struct {
-	Base
 	v atomic.Int64
 	f Int64ValidateFunc
 }
@@ -40,8 +39,8 @@ func (x *Int64) OnValidate(f Int64ValidateFunc) {
 	x.f = f
 }
 
-func (x *Int64) getInt64(prop *conf.Properties) (int64, error) {
-	s, err := x.Property(prop)
+func (x *Int64) getInt64(prop *conf.Properties, param conf.BindParam) (int64, error) {
+	s, err := GetProperty(prop, param)
 	if err != nil {
 		return 0, err
 	}
@@ -52,8 +51,8 @@ func (x *Int64) getInt64(prop *conf.Properties) (int64, error) {
 	return v, nil
 }
 
-func (x *Int64) onRefresh(prop *conf.Properties) error {
-	v, err := x.getInt64(prop)
+func (x *Int64) Refresh(prop *conf.Properties, param conf.BindParam) error {
+	v, err := x.getInt64(prop, param)
 	if err != nil {
 		return err
 	}
@@ -61,12 +60,12 @@ func (x *Int64) onRefresh(prop *conf.Properties) error {
 	return nil
 }
 
-func (x *Int64) onValidate(prop *conf.Properties) error {
-	v, err := x.getInt64(prop)
+func (x *Int64) Validate(prop *conf.Properties, param conf.BindParam) error {
+	v, err := x.getInt64(prop, param)
 	if err != nil {
 		return err
 	}
-	err = x.Validate(v)
+	err = Validate(v, param)
 	if err != nil {
 		return err
 	}

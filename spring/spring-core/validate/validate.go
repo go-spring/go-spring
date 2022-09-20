@@ -14,44 +14,54 @@
  * limitations under the License.
  */
 
-package dync
+package validate
 
 import (
 	"fmt"
 
-	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/expr"
 )
 
-type Base struct {
-	param conf.BindParam
+type Interface interface {
+	TagName() string
+	Struct(i interface{}) error
+	Field(i interface{}, tag string) error
 }
 
-func (v *Base) GetParam() conf.BindParam {
-	return v.param
+var Validator Interface = &Validate{}
+
+func TagName() string {
+	return Validator.TagName()
 }
 
-func (v *Base) setParam(param conf.BindParam) {
-	v.param = param
+func Struct(i interface{}) error {
+	return Validator.Struct(i)
 }
 
-func (v *Base) Property(prop *conf.Properties) (string, error) {
-	key := v.param.Key
-	if !prop.Has(key) && !v.param.Tag.HasDef {
-		return "", fmt.Errorf("property %q not exist", key)
-	}
-	s := prop.Get(key, conf.Def(v.param.Tag.Def))
-	return s, nil
+func Field(i interface{}, tag string) error {
+	return Validator.Field(i, tag)
 }
 
-func (v *Base) Validate(val interface{}) error {
-	if v.param.Validate == "" {
+type Validate struct{}
+
+func (d Validate) TagName() string {
+	return "expr"
+}
+
+func (d Validate) Struct(i interface{}) error {
+	return nil
+}
+
+func (d Validate) Field(i interface{}, tag string) error {
+	if tag == "" {
 		return nil
 	}
-	if b, err := expr.Eval(v.param.Validate, val); err != nil {
+	ok, err := expr.Eval(tag, i)
+	if err != nil {
 		return err
-	} else if !b {
-		return fmt.Errorf("validate failed on %q for value %v", v.param.Validate, val)
+	}
+	if !ok {
+		return fmt.Errorf("validate failed on %q for value %v", tag, i)
 	}
 	return nil
 }

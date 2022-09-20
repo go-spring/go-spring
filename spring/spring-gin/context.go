@@ -21,7 +21,6 @@ import (
 	"reflect"
 
 	"github.com/gin-gonic/gin"
-	"github.com/go-spring/spring-core/validator"
 	"github.com/go-spring/spring-core/web"
 )
 
@@ -132,15 +131,6 @@ func (ctx *Context) PathParamValues() []string {
 		}
 	}
 	return ctx.pathValues
-}
-
-// Bind binds the request body into provided type `i`.
-func (ctx *Context) Bind(i interface{}) error {
-	err := ctx.ginContext.ShouldBind(i)
-	if err != nil {
-		return err
-	}
-	return validator.Validate(i)
 }
 
 // SSEvent writes a Server-Sent Event into the body stream.

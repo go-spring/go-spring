@@ -265,7 +265,7 @@ func (c *BaseContext) RequestBody() ([]byte, error) {
 
 // Bind binds the request body into provided type `i`.
 func (c *BaseContext) Bind(i interface{}) error {
-	panic(util.UnimplementedMethod)
+	return Bind(i, c)
 }
 
 // Response returns Response.

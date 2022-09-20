@@ -36,6 +36,7 @@ import (
 	"github.com/go-spring/spring-core/dync"
 	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/gs/cond"
+	"github.com/go-spring/spring-core/validate"
 )
 
 type refreshState int
@@ -824,8 +825,8 @@ func (c *container) wireStruct(v reflect.Value, t reflect.Type, opt conf.BindPar
 		}
 
 		if tag, ok = ft.Tag.Lookup("value"); ok {
-			validate, _ := ft.Tag.Lookup("validate")
-			if err := subParam.BindTag(tag, validate); err != nil {
+			validateTag, _ := ft.Tag.Lookup(validate.TagName())
+			if err := subParam.BindTag(tag, validateTag); err != nil {
 				return err
 			}
 			if ft.Anonymous {

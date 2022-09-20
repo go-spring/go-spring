@@ -27,20 +27,19 @@ import (
 type RefValidateFunc func(v interface{}) error
 
 type Ref struct {
-	Base
-	v atomic.Value
-	f RefValidateFunc
-	p *conf.Properties // just for init
+	v    atomic.Value
+	f    RefValidateFunc
+	init func() (*conf.Properties, conf.BindParam)
 }
 
 func (r *Ref) Init(i interface{}) error {
 	r.v.Store(i)
-	prop := r.p
-	if prop == nil {
+	if r.init == nil {
 		return nil
 	}
-	r.p = nil // release p
-	return r.onRefresh(prop)
+	prop, param := r.init()
+	r.init = nil
+	return r.Refresh(prop, param)
 }
 
 func (r *Ref) Value() interface{} {
@@ -51,23 +50,25 @@ func (r *Ref) OnValidate(f RefValidateFunc) {
 	r.f = f
 }
 
-func (r *Ref) getRef(prop *conf.Properties) (interface{}, error) {
+func (r *Ref) getRef(prop *conf.Properties, param conf.BindParam) (interface{}, error) {
 	o := r.Value()
 	if o == nil {
-		r.p = prop
+		r.init = func() (*conf.Properties, conf.BindParam) {
+			return prop, param
+		}
 		return nil, nil
 	}
 	t := reflect.TypeOf(o)
 	v := reflect.New(t)
-	err := conf.BindValue(prop, v.Elem(), t, r.param, nil)
+	err := conf.BindValue(prop, v.Elem(), t, param, nil)
 	if err != nil {
 		return nil, err
 	}
 	return v.Elem().Interface(), nil
 }
 
-func (r *Ref) onRefresh(prop *conf.Properties) error {
-	v, err := r.getRef(prop)
+func (r *Ref) Refresh(prop *conf.Properties, param conf.BindParam) error {
+	v, err := r.getRef(prop, param)
 	if err != nil {
 		return err
 	}
@@ -78,8 +79,8 @@ func (r *Ref) onRefresh(prop *conf.Properties) error {
 	return nil
 }
 
-func (r *Ref) onValidate(prop *conf.Properties) error {
-	v, err := r.getRef(prop)
+func (r *Ref) Validate(prop *conf.Properties, param conf.BindParam) error {
+	v, err := r.getRef(prop, param)
 	if r.f != nil {
 		return r.f(v)
 	}

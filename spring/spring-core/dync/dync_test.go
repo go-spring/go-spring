@@ -24,16 +24,43 @@ import (
 	"testing"
 
 	"github.com/go-spring/spring-base/assert"
+	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/dync"
 )
 
+type Integer struct {
+	v int
+}
+
+func (x *Integer) Refresh(prop *conf.Properties, param conf.BindParam) error {
+	s, err := dync.GetProperty(prop, param)
+	if err != nil {
+		return err
+	}
+	v, err := cast.ToInt64E(s)
+	if err != nil {
+		return err
+	}
+	x.v = int(v)
+	return nil
+}
+
+func (x *Integer) Validate(prop *conf.Properties, param conf.BindParam) error {
+	return nil
+}
+
+func (x *Integer) MarshalJSON() ([]byte, error) {
+	return json.Marshal(x.v)
+}
+
 type Config struct {
-	Int   dync.Int64   `value:"${int:=3}" validate:"$<6"`
-	Float dync.Float64 `value:"${float:=1.2}"`
-	Map   dync.Ref     `value:"${map:=}"`
-	Slice dync.Ref     `value:"${slice:=}"`
-	Event dync.Event   `value:"${event}"`
+	Integer Integer      `value:"${int:=3}" expr:"$<6"`
+	Int     dync.Int64   `value:"${int:=3}" expr:"$<6"`
+	Float   dync.Float64 `value:"${float:=1.2}"`
+	Map     dync.Ref     `value:"${map:=}"`
+	Slice   dync.Ref     `value:"${slice:=}"`
+	Event   dync.Event   `value:"${event}"`
 }
 
 func newTest() (*dync.Properties, *Config, error) {
@@ -54,7 +81,7 @@ func TestDynamic(t *testing.T) {
 			return
 		}
 		b, _ := json.Marshal(cfg)
-		assert.Equal(t, string(b), `{"Int":3,"Float":1.2,"Map":null,"Slice":null,"Event":{}}`)
+		assert.Equal(t, string(b), `{"Integer":3,"Int":3,"Float":1.2,"Map":null,"Slice":null,"Event":{}}`)
 	})
 
 	t.Run("init", func(t *testing.T) {
@@ -64,12 +91,12 @@ func TestDynamic(t *testing.T) {
 		}
 		cfg.Slice.Init(make([]string, 0))
 		cfg.Map.Init(make(map[string]string))
-		cfg.Event.OnEvent(func(prop *conf.Properties) error {
+		cfg.Event.OnEvent(func(prop *conf.Properties, param conf.BindParam) error {
 			fmt.Println("event fired.")
 			return nil
 		})
 		b, _ := json.Marshal(cfg)
-		assert.Equal(t, string(b), `{"Int":3,"Float":1.2,"Map":{},"Slice":[],"Event":{}}`)
+		assert.Equal(t, string(b), `{"Integer":3,"Int":3,"Float":1.2,"Map":{},"Slice":[],"Event":{}}`)
 	})
 
 	t.Run("default validate error", func(t *testing.T) {
@@ -97,7 +124,7 @@ func TestDynamic(t *testing.T) {
 		})
 		cfg.Slice.Init(make([]string, 0))
 		cfg.Map.Init(make(map[string]string))
-		cfg.Event.OnEvent(func(prop *conf.Properties) error {
+		cfg.Event.OnEvent(func(prop *conf.Properties, param conf.BindParam) error {
 			fmt.Println("event fired.")
 			return nil
 		})
@@ -107,7 +134,7 @@ func TestDynamic(t *testing.T) {
 		}
 
 		b, _ := json.Marshal(cfg)
-		assert.Equal(t, string(b), `{"Int":3,"Float":1.2,"Map":{},"Slice":[],"Event":{}}`)
+		assert.Equal(t, string(b), `{"Integer":3,"Int":3,"Float":1.2,"Map":{},"Slice":[],"Event":{}}`)
 
 		p := conf.New()
 		p.Set("int", 1)
@@ -120,7 +147,7 @@ func TestDynamic(t *testing.T) {
 		assert.Error(t, err, "should greeter than 3")
 
 		b, _ = json.Marshal(cfg)
-		assert.Equal(t, string(b), `{"Int":3,"Float":1.2,"Map":{},"Slice":[],"Event":{}}`)
+		assert.Equal(t, string(b), `{"Integer":3,"Int":3,"Float":1.2,"Map":{},"Slice":[],"Event":{}}`)
 	})
 
 	t.Run("success", func(t *testing.T) {
@@ -135,7 +162,7 @@ func TestDynamic(t *testing.T) {
 		})
 		cfg.Slice.Init(make([]string, 0))
 		cfg.Map.Init(make(map[string]string))
-		cfg.Event.OnEvent(func(prop *conf.Properties) error {
+		cfg.Event.OnEvent(func(prop *conf.Properties, param conf.BindParam) error {
 			fmt.Println("event fired.")
 			return nil
 		})
@@ -145,7 +172,7 @@ func TestDynamic(t *testing.T) {
 		}
 
 		b, _ := json.Marshal(cfg)
-		assert.Equal(t, string(b), `{"Int":3,"Float":1.2,"Map":{},"Slice":[],"Event":{}}`)
+		assert.Equal(t, string(b), `{"Integer":3,"Int":3,"Float":1.2,"Map":{},"Slice":[],"Event":{}}`)
 
 		p := conf.New()
 		p.Set("int", 1)
@@ -158,7 +185,7 @@ func TestDynamic(t *testing.T) {
 		assert.Error(t, err, "should greeter than 3")
 
 		b, _ = json.Marshal(cfg)
-		assert.Equal(t, string(b), `{"Int":3,"Float":1.2,"Map":{},"Slice":[],"Event":{}}`)
+		assert.Equal(t, string(b), `{"Integer":3,"Int":3,"Float":1.2,"Map":{},"Slice":[],"Event":{}}`)
 
 		p = conf.New()
 		p.Set("int", 6)
@@ -171,7 +198,7 @@ func TestDynamic(t *testing.T) {
 		assert.Error(t, err, "validate failed on \"\\$<6\" for value 6")
 
 		b, _ = json.Marshal(cfg)
-		assert.Equal(t, string(b), `{"Int":3,"Float":1.2,"Map":{},"Slice":[],"Event":{}}`)
+		assert.Equal(t, string(b), `{"Integer":3,"Int":3,"Float":1.2,"Map":{},"Slice":[],"Event":{}}`)
 
 		p = conf.New()
 		p.Set("int", 4)
@@ -183,6 +210,6 @@ func TestDynamic(t *testing.T) {
 		mgr.Refresh(p)
 
 		b, _ = json.Marshal(cfg)
-		assert.Equal(t, string(b), `{"Int":4,"Float":2.3,"Map":{"a":"1","b":"2"},"Slice":["3","4"],"Event":{}}`)
+		assert.Equal(t, string(b), `{"Integer":4,"Int":4,"Float":2.3,"Map":{"a":"1","b":"2"},"Slice":["3","4"],"Event":{}}`)
 	})
 }

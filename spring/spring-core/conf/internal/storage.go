@@ -36,21 +36,66 @@ type treeNode struct {
 	data interface{}
 }
 
+// Copy returns a new copy of the *treeNode object.
+func (t *treeNode) Copy() *treeNode {
+	r := &treeNode{
+		node: t.node,
+	}
+	switch m := t.data.(type) {
+	case map[string]*treeNode:
+		c := make(map[string]*treeNode)
+		for k, v := range m {
+			c[k] = v.Copy()
+		}
+		r.data = c
+	default:
+		r.data = t.data
+	}
+	return r
+}
+
+// Storage stores data in the properties format.
 type Storage struct {
 	tree *treeNode
 	data map[string]string
 }
 
-func (s *Storage) Init() {
-	s.tree = &treeNode{
-		node: nodeTypeMap,
-		data: make(map[string]*treeNode),
+// NewStorage returns a new *Storage object.
+func NewStorage() *Storage {
+	return &Storage{
+		tree: &treeNode{
+			node: nodeTypeMap,
+			data: make(map[string]*treeNode),
+		},
+		data: make(map[string]string),
 	}
-	s.data = make(map[string]string)
 }
 
-// Keys returns all sorted keys.
+// Copy returns a new copy of the *Storage object.
+func (s *Storage) Copy() *Storage {
+	return &Storage{
+		tree: s.tree.Copy(),
+		data: s.Data(),
+	}
+}
+
+// Data returns key-value pairs of the properties.
+func (s *Storage) Data() map[string]string {
+	if len(s.data) == 0 {
+		return nil
+	}
+	m := make(map[string]string)
+	for k, v := range s.data {
+		m[k] = v
+	}
+	return m
+}
+
+// Keys returns keys of the properties.
 func (s *Storage) Keys() []string {
+	if len(s.data) == 0 {
+		return nil
+	}
 	keys := make([]string, 0, len(s.data))
 	for k := range s.data {
 		keys = append(keys, k)
@@ -59,6 +104,7 @@ func (s *Storage) Keys() []string {
 	return keys
 }
 
+// SubKeys returns the sub keys of the key item.
 func (s *Storage) SubKeys(key string) ([]string, error) {
 	path, err := SplitPath(key)
 	if err != nil {
@@ -73,7 +119,7 @@ func (s *Storage) SubKeys(key string) ([]string, error) {
 		}
 		switch v.node {
 		case nodeTypeValue:
-			return nil, fmt.Errorf("property %q isn't map", GenPath(path[:i+1]))
+			return nil, fmt.Errorf("property '%s' is value", GenPath(path[:i+1]))
 		case nodeTypeList, nodeTypeMap:
 			tree = v
 		}
@@ -86,16 +132,16 @@ func (s *Storage) SubKeys(key string) ([]string, error) {
 	return keys, nil
 }
 
-// Has returns whether key exists.
+// Has returns whether the key exists.
 func (s *Storage) Has(key string) bool {
 	path, err := SplitPath(key)
 	if err != nil {
 		return false
 	}
 	tree := s.tree
-	for i, n := range path {
+	for i, node := range path {
 		m := tree.data.(map[string]*treeNode)
-		v, ok := m[n.Elem]
+		v, ok := m[node.Elem]
 		if !ok {
 			return false
 		}
@@ -107,43 +153,45 @@ func (s *Storage) Has(key string) bool {
 	return true
 }
 
+// Get returns the key's value.
 func (s *Storage) Get(key string) string {
 	val, _ := s.data[key]
 	return val
 }
 
+// Set stores the key and its value.
 func (s *Storage) Set(key, val string) error {
 	val = strings.TrimSpace(val)
-	err := s.checkKey(key, val)
+	err := s.buildTree(key, val)
 	if err != nil {
 		return err
 	}
-	if val != "" {
-		s.data[key] = val
+	path, _ := SplitPath(key)
+	for i := range path {
+		k := GenPath(path[:i+1])
+		if _, ok := s.data[k]; ok {
+			delete(s.data, k)
+		}
 	}
+	s.data[key] = val
 	return nil
 }
 
-func (s *Storage) checkKey(key, val string) error {
+func (s *Storage) buildTree(key, val string) error {
 	path, err := SplitPath(key)
 	if err != nil {
 		return err
 	}
 	if path[0].Type == PathTypeIndex {
-		return fmt.Errorf("property %q shouldn't begin with index", key)
+		return fmt.Errorf("invalid key '%s'", key)
 	}
 	tree := s.tree
 	for i, pathNode := range path {
 		if tree.node == nodeTypeMap {
-			if pathNode.Type == PathTypeIndex {
-				return fmt.Errorf("property %q is a map but %q wants other type", GenPath(path[:i]), key)
+			if pathNode.Type != PathTypeKey {
+				return fmt.Errorf("property '%s' is a map but '%s' wants other type", GenPath(path[:i]), key)
 			}
 		}
-		//if tree.node == nodeTypeList {
-		//	if pathNode.Type == PathTypeKey {
-		//		return fmt.Errorf("property %q is a list but %q wants other type", GenPath(path[:i]), key)
-		//	}
-		//}
 		m := tree.data.(map[string]*treeNode)
 		v, ok := m[pathNode.Elem]
 		if !ok || v.node == nodeTypeNil {
@@ -179,9 +227,6 @@ func (s *Storage) checkKey(key, val string) error {
 		}
 		switch v.node {
 		case nodeTypeMap:
-			if pathNode.Type != PathTypeKey {
-				return fmt.Errorf("property %q is a map but %q wants other type", GenPath(path[:i+1]), key)
-			}
 			if i < len(path)-1 {
 				tree = v
 				continue
@@ -191,11 +236,11 @@ func (s *Storage) checkKey(key, val string) error {
 				v.data = make(map[string]*treeNode)
 				return nil
 			}
-			return fmt.Errorf("property %q is a map but %q wants other type", GenPath(path[:i+1]), key)
+			return fmt.Errorf("property '%s' is a map but '%s' wants other type", GenPath(path[:i+1]), key)
 		case nodeTypeList:
 			if pathNode.Type != PathTypeIndex {
 				if i < len(path)-1 && path[i+1].Type != PathTypeIndex {
-					return fmt.Errorf("property %q is a list but %q wants other type", GenPath(path[:i+1]), key)
+					return fmt.Errorf("property '%s' is a list but '%s' wants other type", GenPath(path[:i+1]), key)
 				}
 			}
 			if i < len(path)-1 {
@@ -207,7 +252,7 @@ func (s *Storage) checkKey(key, val string) error {
 				v.data = make(map[string]*treeNode)
 				return nil
 			}
-			return fmt.Errorf("property %q is a list but %q wants other type", GenPath(path[:i+1]), key)
+			return fmt.Errorf("property '%s' is a list but '%s' wants other type", GenPath(path[:i+1]), key)
 		case nodeTypeValue:
 			if i == len(path)-1 {
 				if val == "" {
@@ -215,7 +260,7 @@ func (s *Storage) checkKey(key, val string) error {
 				}
 				return nil
 			}
-			return fmt.Errorf("property %q is a value but %q wants other type", GenPath(path[:i+1]), key)
+			return fmt.Errorf("property '%s' is a value but '%s' wants other type", GenPath(path[:i+1]), key)
 		}
 	}
 	return nil
