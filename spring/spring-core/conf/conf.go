@@ -297,10 +297,6 @@ func (p *Properties) Set(key string, val interface{}) error {
 	return nil
 }
 
-func (p *Properties) Remove(key string) {
-	p.storage.Remove(key)
-}
-
 // Resolve resolves string value that contains references to other
 // properties, the references are defined by ${key:=def}.
 func (p *Properties) Resolve(s string) (string, error) {

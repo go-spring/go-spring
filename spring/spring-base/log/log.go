@@ -51,6 +51,11 @@ type LifeCycle interface {
 	Stop(ctx context.Context)
 }
 
+// T 将可变参数转换成切片形式。
+func T(a ...interface{}) []interface{} {
+	return a
+}
+
 type privateConfigMap struct {
 	loggers map[string]privateConfig
 }

@@ -25,8 +25,8 @@ import (
 type PathType int
 
 const (
-	PathTypeKey PathType = iota
-	PathTypeIndex
+	PathTypeKey   PathType = iota // PathTypeKey is map key like a/b in a[0][1].b
+	PathTypeIndex                 // PathTypeIndex is array index like 0/1 in a[0][1].b
 )
 
 type Path struct {
@@ -34,95 +34,94 @@ type Path struct {
 	Elem string
 }
 
-// SplitPath splits the key into individual parts.
+// JoinPath joins path elements into a single path.
+func JoinPath(path []Path) string {
+	var s strings.Builder
+	for i, p := range path {
+		switch p.Type {
+		case PathTypeKey:
+			if i > 0 {
+				s.WriteString(".")
+			}
+			s.WriteString(p.Elem)
+		case PathTypeIndex:
+			s.WriteString("[")
+			s.WriteString(p.Elem)
+			s.WriteString("]")
+		}
+	}
+	return s.String()
+}
+
+// SplitPath splits key into individual path elements.
 func SplitPath(key string) ([]Path, error) {
 	if key == "" {
 		return nil, nil
 	}
 	var (
 		path        []Path
+		lastPos     int
 		lastChar    int32
-		lastIndex   int
-		leftBracket bool
+		openBracket bool
 	)
 	for i, c := range key {
 		switch c {
 		case ' ':
 			return nil, fmt.Errorf("invalid key '%s'", key)
 		case '.':
-			if leftBracket {
+			if openBracket {
 				return nil, fmt.Errorf("invalid key '%s'", key)
 			}
 			if lastChar == ']' {
-				lastIndex = i + 1
+				lastPos = i + 1
 				lastChar = c
 				continue
 			}
-			if lastIndex == i {
+			if lastPos == i {
 				return nil, fmt.Errorf("invalid key '%s'", key)
 			}
-			path = append(path, Path{PathTypeKey, key[lastIndex:i]})
-			lastIndex = i + 1
+			path = append(path, Path{PathTypeKey, key[lastPos:i]})
+			lastPos = i + 1
 			lastChar = c
 		case '[':
-			if leftBracket {
+			if openBracket {
 				return nil, fmt.Errorf("invalid key '%s'", key)
 			}
 			if i == 0 || lastChar == ']' {
-				lastIndex = i + 1
-				leftBracket = true
+				lastPos = i + 1
+				openBracket = true
 				lastChar = c
 				continue
 			}
-			if lastChar == '.' || lastIndex == i {
+			if lastChar == '.' || lastPos == i {
 				return nil, fmt.Errorf("invalid key '%s'", key)
 			}
-			path = append(path, Path{PathTypeKey, key[lastIndex:i]})
-			lastIndex = i + 1
-			leftBracket = true
+			path = append(path, Path{PathTypeKey, key[lastPos:i]})
+			lastPos = i + 1
+			openBracket = true
 			lastChar = c
 		case ']':
-			if !leftBracket || lastIndex == i {
+			if !openBracket || lastPos == i {
 				return nil, fmt.Errorf("invalid key '%s'", key)
 			}
-			s := key[lastIndex:i]
+			s := key[lastPos:i]
 			_, err := strconv.ParseUint(s, 10, 64)
 			if err != nil {
 				return nil, fmt.Errorf("invalid key '%s'", key)
 			}
 			path = append(path, Path{PathTypeIndex, s})
-			lastIndex = i + 1
-			leftBracket = false
+			lastPos = i + 1
+			openBracket = false
 			lastChar = c
 		default:
 			lastChar = c
 		}
 	}
-	if leftBracket || lastChar == '.' {
+	if openBracket || lastChar == '.' {
 		return nil, fmt.Errorf("invalid key '%s'", key)
 	}
 	if lastChar != ']' {
-		path = append(path, Path{PathTypeKey, key[lastIndex:]})
+		path = append(path, Path{PathTypeKey, key[lastPos:]})
 	}
 	return path, nil
-}
-
-func GenPath(path []Path) string {
-	var s strings.Builder
-	for i, p := range path {
-		if p.Type == PathTypeKey {
-			if i > 0 {
-				s.WriteString(".")
-			}
-			s.WriteString(p.Elem)
-			continue
-		}
-		if p.Type == PathTypeIndex {
-			s.WriteString("[")
-			s.WriteString(p.Elem)
-			s.WriteString("]")
-			continue
-		}
-	}
-	return s.String()
 }
