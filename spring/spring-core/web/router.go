@@ -100,6 +100,9 @@ type Router interface {
 	// AddMapper 添加一个 Mapper
 	AddMapper(m *Mapper)
 
+	// HttpGet 注册 GET 方法处理函数
+	HttpGet(path string, h http.HandlerFunc) *Mapper
+
 	// HandleGet 注册 GET 方法处理函数
 	HandleGet(path string, h Handler) *Mapper
 
@@ -108,6 +111,9 @@ type Router interface {
 
 	// GetBinding 注册 GET 方法处理函数
 	GetBinding(path string, fn interface{}) *Mapper
+
+	// HttpPost 注册 POST 方法处理函数
+	HttpPost(path string, h http.HandlerFunc) *Mapper
 
 	// HandlePost 注册 POST 方法处理函数
 	HandlePost(path string, h Handler) *Mapper
@@ -118,6 +124,9 @@ type Router interface {
 	// PostBinding 注册 POST 方法处理函数
 	PostBinding(path string, fn interface{}) *Mapper
 
+	// HttpPut 注册 PUT 方法处理函数
+	HttpPut(path string, h http.HandlerFunc) *Mapper
+
 	// HandlePut 注册 PUT 方法处理函数
 	HandlePut(path string, h Handler) *Mapper
 
@@ -126,6 +135,9 @@ type Router interface {
 
 	// PutBinding 注册 PUT 方法处理函数
 	PutBinding(path string, fn interface{}) *Mapper
+
+	// HttpDelete 注册 DELETE 方法处理函数
+	HttpDelete(path string, h http.HandlerFunc) *Mapper
 
 	// HandleDelete 注册 DELETE 方法处理函数
 	HandleDelete(path string, h Handler) *Mapper
@@ -181,6 +193,11 @@ func (r *router) request(method uint32, path string, h Handler) *Mapper {
 	return m
 }
 
+// HttpGet 注册 GET 方法处理函数
+func (r *router) HttpGet(path string, h http.HandlerFunc) *Mapper {
+	return r.request(MethodGet, path, HTTP(h))
+}
+
 // HandleGet 注册 GET 方法处理函数
 func (r *router) HandleGet(path string, h Handler) *Mapper {
 	return r.request(MethodGet, path, h)
@@ -194,6 +211,11 @@ func (r *router) GetMapping(path string, fn HandlerFunc) *Mapper {
 // GetBinding 注册 GET 方法处理函数
 func (r *router) GetBinding(path string, fn interface{}) *Mapper {
 	return r.request(MethodGet, path, BIND(fn))
+}
+
+// HttpPost 注册 POST 方法处理函数
+func (r *router) HttpPost(path string, h http.HandlerFunc) *Mapper {
+	return r.request(MethodPost, path, HTTP(h))
 }
 
 // HandlePost 注册 POST 方法处理函数
@@ -211,6 +233,11 @@ func (r *router) PostBinding(path string, fn interface{}) *Mapper {
 	return r.request(MethodPost, path, BIND(fn))
 }
 
+// HttpPut 注册 PUT 方法处理函数
+func (r *router) HttpPut(path string, h http.HandlerFunc) *Mapper {
+	return r.request(MethodPut, path, HTTP(h))
+}
+
 // HandlePut 注册 PUT 方法处理函数
 func (r *router) HandlePut(path string, h Handler) *Mapper {
 	return r.request(MethodPut, path, h)
@@ -224,6 +251,11 @@ func (r *router) PutMapping(path string, fn HandlerFunc) *Mapper {
 // PutBinding 注册 PUT 方法处理函数
 func (r *router) PutBinding(path string, fn interface{}) *Mapper {
 	return r.request(MethodPut, path, BIND(fn))
+}
+
+// HttpDelete 注册 DELETE 方法处理函数
+func (r *router) HttpDelete(path string, h http.HandlerFunc) *Mapper {
+	return r.request(MethodDelete, path, HTTP(h))
 }
 
 // HandleDelete 注册 DELETE 方法处理函数
