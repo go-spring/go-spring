@@ -345,7 +345,7 @@ func TestBindMap(t *testing.T) {
 		})
 		assert.Nil(t, err)
 		err = p.Bind(&r)
-		assert.Error(t, err, ".*bind.go:.* bind S error; .*bind.go:.* bind S.A error; property \"a\" isn't map")
+		assert.Error(t, err, ".*bind.go:.* bind S error; .*bind.go:.* bind S.A error; property 'a' is value")
 	})
 
 	t.Run("", func(t *testing.T) {
@@ -410,10 +410,10 @@ func TestProperties_Set(t *testing.T) {
 		assert.Equal(t, p.Keys(), []string{"m.a"})
 
 		err = p.Set("m", 1)
-		assert.Error(t, err, "property \"m\" is a map but \"m\" wants other type")
+		assert.Error(t, err, "property 'm' is a map but 'm' wants other type")
 
 		err = p.Set("m", []string{"b"})
-		assert.Error(t, err, "property \"m\" is a map but \"m\\[0]\" wants other type")
+		assert.Error(t, err, "property 'm' is a map but 'm\\[0]' wants other type")
 	})
 
 	t.Run("map empty", func(t *testing.T) {
