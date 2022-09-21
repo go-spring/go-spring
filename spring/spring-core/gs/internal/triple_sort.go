@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package util
+package internal
 
 import (
 	"container/list"
@@ -39,6 +39,16 @@ func TripleSort(sorting *list.List, fn GetBeforeItems) *list.List {
 	return sorted
 }
 
+// searchInList 在列表中查询指定元素，存在则返回列表项指针，不存在返回 nil。
+func searchInList(l *list.List, v interface{}) *list.Element {
+	for e := l.Front(); e != nil; e = e.Next() {
+		if e.Value == v {
+			return e
+		}
+	}
+	return nil
+}
+
 // tripleSortByAfter 递归选出依赖链条最前端的元素
 func tripleSortByAfter(sorting *list.List, toSort *list.List, sorted *list.List,
 	processing *list.List, current interface{}, fn GetBeforeItems) {
@@ -55,23 +65,23 @@ func tripleSortByAfter(sorting *list.List, toSort *list.List, sorted *list.List,
 		c := e.Value
 
 		// 自己不可能是自己前面的元素，除非出现了循环依赖，因此抛出 Panic
-		if SearchList(processing, c) != nil {
+		if searchInList(processing, c) != nil {
 			panic(errors.New("found sorting cycle"))
 		}
 
-		inSorted := SearchList(sorted, c) != nil
-		inToSort := SearchList(toSort, c) != nil
+		inSorted := searchInList(sorted, c) != nil
+		inToSort := searchInList(toSort, c) != nil
 
 		if !inSorted && inToSort { // 如果是待排元素则对其进行排序
 			tripleSortByAfter(sorting, toSort, sorted, processing, c, fn)
 		}
 	}
 
-	if e := SearchList(processing, current); e != nil {
+	if e := searchInList(processing, current); e != nil {
 		processing.Remove(e)
 	}
 
-	if e := SearchList(toSort, current); e != nil {
+	if e := searchInList(toSort, current); e != nil {
 		toSort.Remove(e)
 	}
 

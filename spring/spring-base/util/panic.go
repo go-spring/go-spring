@@ -20,29 +20,29 @@ import (
 	"fmt"
 )
 
-// PanicCond 封装触发 panic 的条件。
+// PanicCond panic condition.
 type PanicCond struct {
 	fn func() interface{}
 }
 
-// When 满足给定条件时抛出一个 panic 。
+// When throws a panic when `isPanic` is true.
 func (p *PanicCond) When(isPanic bool) {
 	if isPanic {
 		panic(p.fn())
 	}
 }
 
-// NewPanicCond PanicCond 的构造函数。
+// NewPanicCond returns a panic condition.
 func NewPanicCond(fn func() interface{}) *PanicCond {
 	return &PanicCond{fn}
 }
 
-// Panic 抛出一个异常值。
-func Panic(err error) *PanicCond {
+// Panic returns a panic condition that throws an error.
+func Panic(err interface{}) *PanicCond {
 	return NewPanicCond(func() interface{} { return err })
 }
 
-// Panicf 抛出一段需要格式化的错误字符串。
+// Panicf returns a panic condition that throws a formatted error.
 func Panicf(format string, a ...interface{}) *PanicCond {
 	return NewPanicCond(func() interface{} { return fmt.Errorf(format, a...) })
 }
