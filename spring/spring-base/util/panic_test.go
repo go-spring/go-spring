@@ -14,27 +14,30 @@
  * limitations under the License.
  */
 
-package util
+package util_test
 
 import (
-	"container/list"
+	"errors"
+	"testing"
+
+	"github.com/go-spring/spring-base/assert"
+	"github.com/go-spring/spring-base/util"
 )
 
-// NewList 使用输入的元素创建列表。
-func NewList(v ...interface{}) *list.List {
-	l := list.New()
-	for _, val := range v {
-		l.PushBack(val)
-	}
-	return l
-}
+func TestPanicCond(t *testing.T) {
 
-// SearchList 在列表中查询指定元素，存在则返回列表项指针，不存在返回 nil。
-func SearchList(l *list.List, v interface{}) *list.Element {
-	for e := l.Front(); e != nil; e = e.Next() {
-		if e.Value == v {
-			return e
-		}
-	}
-	return nil
+	util.Panic("this is an error").When(false)
+	assert.Panic(t, func() {
+		util.Panic("this is an error").When(true)
+	}, "this is an error")
+
+	util.Panic(errors.New("this is an error")).When(false)
+	assert.Panic(t, func() {
+		util.Panic(errors.New("this is an error")).When(true)
+	}, "this is an error")
+
+	util.Panicf("this is an %s", "error").When(false)
+	assert.Panic(t, func() {
+		util.Panicf("this is an %s", "error").When(true)
+	}, "this is an error")
 }
