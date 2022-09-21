@@ -95,6 +95,11 @@ func Provide(ctor interface{}, args ...arg.Arg) *BeanDefinition {
 	return app.c.Accept(NewBean(ctor, args...))
 }
 
+// HttpGet 参考 App.HttpGet 的解释。
+func HttpGet(path string, h http.HandlerFunc) *web.Mapper {
+	return app.HttpGet(path, h)
+}
+
 // HandleGet 参考 App.HandleGet 的解释。
 func HandleGet(path string, h web.Handler) *web.Mapper {
 	return app.HandleGet(path, h)
@@ -108,6 +113,11 @@ func GetMapping(path string, fn web.HandlerFunc) *web.Mapper {
 // GetBinding 参考 App.GetBinding 的解释。
 func GetBinding(path string, fn interface{}) *web.Mapper {
 	return app.GetBinding(path, fn)
+}
+
+// HttpPost 参考 App.HttpPost 的解释。
+func HttpPost(path string, h http.HandlerFunc) *web.Mapper {
+	return app.HttpPost(path, h)
 }
 
 // HandlePost 参考 App.HandlePost 的解释。
@@ -125,6 +135,11 @@ func PostBinding(path string, fn interface{}) *web.Mapper {
 	return app.PostBinding(path, fn)
 }
 
+// HttpPut 参考 App.HttpPut 的解释。
+func HttpPut(path string, h http.HandlerFunc) *web.Mapper {
+	return app.HttpPut(path, h)
+}
+
 // HandlePut 参考 App.HandlePut 的解释。
 func HandlePut(path string, h web.Handler) *web.Mapper {
 	return app.HandlePut(path, h)
@@ -138,6 +153,11 @@ func PutMapping(path string, fn web.HandlerFunc) *web.Mapper {
 // PutBinding 参考 App.PutBinding 的解释。
 func PutBinding(path string, fn interface{}) *web.Mapper {
 	return app.PutBinding(path, fn)
+}
+
+// HttpDelete 参考 App.HttpDelete 的解释。
+func HttpDelete(path string, h http.HandlerFunc) *web.Mapper {
+	return app.HttpDelete(path, h)
 }
 
 // HandleDelete 参考 App.HandleDelete 的解释。

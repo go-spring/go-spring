@@ -394,6 +394,11 @@ func (app *App) Provide(ctor interface{}, args ...arg.Arg) *BeanDefinition {
 	return app.c.Accept(NewBean(ctor, args...))
 }
 
+// HttpGet 注册 GET 方法处理函数。
+func (app *App) HttpGet(path string, h http.HandlerFunc) *web.Mapper {
+	return app.router.HttpGet(path, h)
+}
+
 // HandleGet 注册 GET 方法处理函数。
 func (app *App) HandleGet(path string, h web.Handler) *web.Mapper {
 	return app.router.HandleGet(path, h)
@@ -407,6 +412,11 @@ func (app *App) GetMapping(path string, fn web.HandlerFunc) *web.Mapper {
 // GetBinding 注册 GET 方法处理函数。
 func (app *App) GetBinding(path string, fn interface{}) *web.Mapper {
 	return app.router.GetBinding(path, fn)
+}
+
+// HttpPost 注册 POST 方法处理函数。
+func (app *App) HttpPost(path string, h http.HandlerFunc) *web.Mapper {
+	return app.router.HttpPost(path, h)
 }
 
 // HandlePost 注册 POST 方法处理函数。
@@ -424,6 +434,11 @@ func (app *App) PostBinding(path string, fn interface{}) *web.Mapper {
 	return app.router.PostBinding(path, fn)
 }
 
+// HttpPut 注册 PUT 方法处理函数。
+func (app *App) HttpPut(path string, h http.HandlerFunc) *web.Mapper {
+	return app.router.HttpPut(path, h)
+}
+
 // HandlePut 注册 PUT 方法处理函数。
 func (app *App) HandlePut(path string, h web.Handler) *web.Mapper {
 	return app.router.HandlePut(path, h)
@@ -437,6 +452,11 @@ func (app *App) PutMapping(path string, fn web.HandlerFunc) *web.Mapper {
 // PutBinding 注册 PUT 方法处理函数。
 func (app *App) PutBinding(path string, fn interface{}) *web.Mapper {
 	return app.router.PutBinding(path, fn)
+}
+
+// HttpDelete 注册 DELETE 方法处理函数。
+func (app *App) HttpDelete(path string, h http.HandlerFunc) *web.Mapper {
+	return app.router.HttpDelete(path, h)
 }
 
 // HandleDelete 注册 DELETE 方法处理函数。
