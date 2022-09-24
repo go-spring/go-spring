@@ -29,5 +29,5 @@ func TestGzipFilter(t *testing.T) {
 	r.Header.Set(web.HeaderAcceptEncoding, "gzip")
 	w := httptest.NewRecorder()
 	ctx := web.NewBaseContext("", nil, r, &web.SimpleResponse{ResponseWriter: w})
-	web.NewFilterChain([]web.Filter{filter}).Next(ctx)
+	web.NewFilterChain([]web.Filter{filter}).Next(ctx, web.Recursive)
 }

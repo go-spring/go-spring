@@ -109,5 +109,5 @@ func (f *redirectFilter) Invoke(ctx Context, chain FilterChain) {
 		ctx.Redirect(code, url)
 		return
 	}
-	chain.Continue(ctx)
+	chain.Next(ctx, Iterative)
 }

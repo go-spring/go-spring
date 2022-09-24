@@ -75,14 +75,16 @@ func (f *urlPatternFilter) URLPatterns() []string {
 	return f.s
 }
 
+type NextOperation int
+
+const (
+	Recursive NextOperation = 0
+	Iterative               = 1
+)
+
 // FilterChain 过滤器链条接口
 type FilterChain interface {
-
-	// Next 立即执行下一个节点。
-	Next(ctx Context)
-
-	// Continue 结束当前节点后执行下一个节点，用于减少调用栈深度。
-	Continue(ctx Context)
+	Next(ctx Context, op NextOperation)
 }
 
 // filterChain 默认的过滤器链条
@@ -93,17 +95,15 @@ type filterChain struct {
 }
 
 // NewFilterChain filterChain 的构造函数
-func NewFilterChain(filters []Filter) *filterChain {
+func NewFilterChain(filters []Filter) FilterChain {
 	return &filterChain{filters: filters}
 }
 
-func (chain *filterChain) next(ctx Context) {
-	f := chain.filters[chain.index]
-	chain.index++
-	f.Invoke(ctx, chain)
-}
-
-func (chain *filterChain) Next(ctx Context) {
+func (chain *filterChain) Next(ctx Context, op NextOperation) {
+	if op == Iterative {
+		chain.lazyNext = true
+		return
+	}
 	if chain.index < len(chain.filters) {
 		chain.next(ctx)
 		for chain.lazyNext && chain.index < len(chain.filters) {
@@ -113,8 +113,10 @@ func (chain *filterChain) Next(ctx Context) {
 	}
 }
 
-func (chain *filterChain) Continue(ctx Context) {
-	chain.lazyNext = true
+func (chain *filterChain) next(ctx Context) {
+	f := chain.filters[chain.index]
+	chain.index++
+	f.Invoke(ctx, chain)
 }
 
 type urlPatterns struct {

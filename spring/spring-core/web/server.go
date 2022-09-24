@@ -169,7 +169,7 @@ func (s *server) AccessFilter() Filter {
 		w := &BufferedResponseWriter{ResponseWriter: ctx.Response().Get()}
 		ctx.Response().Set(w)
 		start := time.Now()
-		chain.Next(ctx)
+		chain.Next(ctx, Recursive)
 		r := ctx.Request()
 		cost := time.Since(start)
 		s.logger.WithContext(ctx.Context()).Infof("%s %s %s %d %d %s", r.Method, r.RequestURI, cost, w.Size(), w.Status(), r.UserAgent())
@@ -297,7 +297,8 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		prefilters = append(prefilters, f)
 	}
 	prefilters = append(prefilters, HandlerFilter(WrapH(s.handler)))
-	NewFilterChain(prefilters).Next(NewBaseContext("", nil, r, &SimpleResponse{ResponseWriter: w}))
+	ctx := NewBaseContext("", nil, r, &SimpleResponse{ResponseWriter: w})
+	NewFilterChain(prefilters).Next(ctx, Recursive)
 }
 
 /////////////////// Web Handlers //////////////////////

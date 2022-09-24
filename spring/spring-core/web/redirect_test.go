@@ -30,7 +30,7 @@ func TestRedirectFilter(t *testing.T) {
 	w := httptest.NewRecorder()
 	ctx := web.NewBaseContext("", nil, r, &web.SimpleResponse{ResponseWriter: w})
 	f := web.HTTPSRedirect(web.NewRedirectConfig())
-	web.NewFilterChain([]web.Filter{f}).Next(ctx)
+	web.NewFilterChain([]web.Filter{f}).Next(ctx, web.Recursive)
 	assert.Equal(t, w.Result().StatusCode, http.StatusMovedPermanently)
 	assert.Equal(t, w.Result().Header.Get(web.HeaderLocation), "https://127.0.0.1:8080")
 }

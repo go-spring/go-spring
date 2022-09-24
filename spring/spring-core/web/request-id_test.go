@@ -32,6 +32,6 @@ func TestRequestIDFilter(t *testing.T) {
 	f := web.NewRequestIDFilter(web.RequestIDConfig{
 		Generator: func() string { return "0d9ad123-327f-bde5-14b4-8f93c36c3546" },
 	})
-	web.NewFilterChain([]web.Filter{f}).Next(ctx)
+	web.NewFilterChain([]web.Filter{f}).Next(ctx, web.Recursive)
 	assert.Equal(t, w.Result().Header.Get(web.HeaderXRequestID), "0d9ad123-327f-bde5-14b4-8f93c36c3546")
 }

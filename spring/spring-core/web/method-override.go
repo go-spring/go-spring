@@ -76,6 +76,6 @@ func NewMethodOverrideFilter(config *MethodOverrideConfig) *Prefilter {
 				req.Method = strings.ToUpper(method)
 			}
 		}
-		chain.Continue(ctx)
+		chain.Next(ctx, Iterative)
 	})
 }

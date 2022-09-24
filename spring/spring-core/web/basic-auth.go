@@ -91,7 +91,7 @@ func (f *basicAuthFilter) Invoke(ctx Context, chain FilterChain) {
 	}
 
 	ctx.Set(AuthUserKey, user)
-	chain.Continue(ctx)
+	chain.Next(ctx, Iterative)
 }
 
 func (f *basicAuthFilter) unauthorized(ctx Context) {

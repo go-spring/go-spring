@@ -55,7 +55,7 @@ func NewGzipFilter(level int) (Filter, error) {
 func (f *GzipFilter) Invoke(ctx Context, chain FilterChain) {
 
 	if !f.shouldCompress(ctx.Request()) {
-		chain.Next(ctx)
+		chain.Next(ctx, Iterative)
 		return
 	}
 
@@ -75,7 +75,7 @@ func (f *GzipFilter) Invoke(ctx Context, chain FilterChain) {
 		ctx.SetHeader(HeaderContentLength, strconv.Itoa(zw.size))
 	}()
 
-	chain.Next(ctx)
+	chain.Next(ctx, Recursive)
 }
 
 func (f *GzipFilter) shouldCompress(req *http.Request) bool {
