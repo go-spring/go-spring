@@ -16,32 +16,27 @@
 
 package redis
 
-import (
-	"context"
-
-	"github.com/go-spring/spring-base/net/recorder"
-)
-
-type recordConn struct {
-	conn ConnPool
-}
-
-func (c *recordConn) Exec(ctx context.Context, cmd string, args []interface{}) (ret interface{}, err error) {
-	defer func() {
-		recorder.RecordAction(ctx, recorder.REDIS, &recorder.SimpleAction{
-			Request: func() string {
-				return recorder.EncodeTTY(append([]interface{}{cmd}, args...)...)
-			},
-			Response: func() string {
-				if err == nil {
-					return recorder.EncodeCSV(ret)
-				}
-				if IsErrNil(err) {
-					return "NULL"
-				}
-				return "(err) " + err.Error()
-			},
-		})
-	}()
-	return c.conn.Exec(ctx, cmd, args)
-}
+//
+//type recordConn struct {
+//	conn ConnPool
+//}
+//
+//func (c *recordConn) Exec(ctx context.Context, cmd string, args []interface{}) (ret interface{}, err error) {
+//	defer func() {
+//		recorder.RecordAction(ctx, recorder.REDIS, &recorder.SimpleAction{
+//			Request: func() string {
+//				return recorder.EncodeTTY(append([]interface{}{cmd}, args...)...)
+//			},
+//			Response: func() string {
+//				if err == nil {
+//					return recorder.EncodeCSV(ret)
+//				}
+//				if IsErrNil(err) {
+//					return "NULL"
+//				}
+//				return "(err) " + err.Error()
+//			},
+//		})
+//	}()
+//	return c.conn.Exec(ctx, cmd, args)
+//}

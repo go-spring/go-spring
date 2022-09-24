@@ -252,7 +252,7 @@ func (s *server) prepare() error {
 			method := GetMethod(m.method)
 			path := s.config.BasePath + m.path
 			file, line, fnName := m.handler.FileLine()
-			return util.T(method, s.config.Port, path, file, line, fnName)
+			return log.T(method, s.config.Port, path, file, line, fnName)
 		})
 	}
 

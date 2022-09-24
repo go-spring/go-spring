@@ -22,7 +22,7 @@ import (
 	"sync"
 
 	"github.com/go-spring/spring-base/clock"
-	"github.com/go-spring/spring-base/net/recorder"
+	"github.com/go-spring/spring-replay/recorder"
 )
 
 type MatchStrategy int

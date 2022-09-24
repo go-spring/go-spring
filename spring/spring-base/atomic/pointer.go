@@ -19,12 +19,10 @@ package atomic
 import (
 	"sync/atomic"
 	"unsafe"
-
-	"github.com/go-spring/spring-base/util"
 )
 
 type Pointer struct {
-	_ util.NoCopy
+	_ nocopy
 	v unsafe.Pointer
 }
 

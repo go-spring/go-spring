@@ -14,15 +14,20 @@
  * limitations under the License.
  */
 
-package util
+package web_test
 
-// NoCopy may be embedded into structs which must not be copied
-// after the first use.
-//
-// See https://golang.org/issues/8005#issuecomment-190753527
-// for details.
-type NoCopy struct{}
+import (
+	"net/http/httptest"
+	"testing"
 
-// Lock is a no-op used by -copylocks checker from `go vet`.
-func (*NoCopy) Lock()   {}
-func (*NoCopy) Unlock() {}
+	"github.com/go-spring/spring-core/web"
+)
+
+func TestGzipFilter(t *testing.T) {
+	filter, _ := web.NewGzipFilter(5)
+	r := httptest.NewRequest("GET", "http://127.0.0.1/test", nil)
+	r.Header.Set(web.HeaderAcceptEncoding, "gzip")
+	w := httptest.NewRecorder()
+	ctx := web.NewBaseContext("", nil, r, &web.SimpleResponse{ResponseWriter: w})
+	web.NewFilterChain([]web.Filter{filter}).Next(ctx)
+}

@@ -61,22 +61,19 @@ func init() {
 			panic(web.ERROR.Error(err))
 		})
 
-	gs.HttpGet("/httpget", func(w http.ResponseWriter, r *http.Request) {
-		d, err := json.Marshal(web.SUCCESS.Data("httpget"))
+	gs.HttpGet("/http/get", func(w http.ResponseWriter, r *http.Request) {
+		data, err := json.Marshal(web.SUCCESS.Data("http/get"))
 		util.Panic(err).When(err != nil)
-		i, err := w.Write(d)
-		fmt.Println(i)
-		util.Panic(err).When(err != nil)
-	})
-
-	gs.HttpPost("/httppost", func(w http.ResponseWriter, r *http.Request) {
-		d, err := json.Marshal(web.SUCCESS.Data("httppost"))
-		util.Panic(err).When(err != nil)
-		i, err := w.Write(d)
-		fmt.Println(i)
+		_, err = w.Write(data)
 		util.Panic(err).When(err != nil)
 	})
 
+	gs.HttpPost("/http/post", func(w http.ResponseWriter, r *http.Request) {
+		data, err := json.Marshal(web.SUCCESS.Data("http/post"))
+		util.Panic(err).When(err != nil)
+		_, err = w.Write(data)
+		util.Panic(err).When(err != nil)
+	})
 }
 
 func read(logger *log.Logger, response *http.Response, err error, expected string) {
@@ -116,10 +113,8 @@ func main() {
 		get(logger, "http://127.0.0.1:8080/binding/json/success", `{"code":200,"msg":"SUCCESS","data":"ok"}`)
 		get(logger, "http://127.0.0.1:8080/binding/panic/error", `this is an error`)
 		get(logger, "http://127.0.0.1:8080/binding/panic/rpc_result", `{"code":-1,"msg":"ERROR","err":"/Users/didi/GitHub/go-spring/go-spring/examples/spring-boot-web/main.go:59: this is a rpc_result"}`)
-
-		get(logger, "http://127.0.0.1:8080/httpget", `{"code":200,"msg":"SUCCESS","data":"httpget"}`)
-		postForm(logger, "http://127.0.0.1:8080/httppost", `{"code":200,"msg":"SUCCESS","data":"httppost"}`)
-
+		get(logger, "http://127.0.0.1:8080/http/get", `{"code":200,"msg":"SUCCESS","data":"http/get"}`)
+		postForm(logger, "http://127.0.0.1:8080/http/post", `{"code":200,"msg":"SUCCESS","data":"http/post"}`)
 		gs.ShutDown("app run end")
 	}()
 	fmt.Println(gs.Run())

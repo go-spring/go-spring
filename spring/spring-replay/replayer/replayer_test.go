@@ -24,8 +24,8 @@ import (
 	"github.com/go-spring/spring-base/assert"
 	"github.com/go-spring/spring-base/clock"
 	"github.com/go-spring/spring-base/knife"
-	"github.com/go-spring/spring-base/net/recorder"
-	"github.com/go-spring/spring-base/net/replayer"
+	"github.com/go-spring/spring-replay/recorder"
+	"github.com/go-spring/spring-replay/replayer"
 )
 
 func init() {

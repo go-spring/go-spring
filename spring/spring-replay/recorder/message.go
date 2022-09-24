@@ -22,7 +22,7 @@ import (
 	"strconv"
 
 	"github.com/go-spring/spring-base/cast"
-	"github.com/go-spring/spring-base/net/internal/json"
+	"github.com/go-spring/spring-replay/internal/json"
 )
 
 type Message func() string

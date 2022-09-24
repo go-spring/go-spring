@@ -23,9 +23,9 @@ import (
 	"strings"
 
 	"github.com/go-spring/spring-base/knife"
-	"github.com/go-spring/spring-base/net/internal/json"
-	"github.com/go-spring/spring-base/net/recorder"
 	"github.com/go-spring/spring-base/util"
+	"github.com/go-spring/spring-replay/internal/json"
+	"github.com/go-spring/spring-replay/recorder"
 )
 
 func init() {
