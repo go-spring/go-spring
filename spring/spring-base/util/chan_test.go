@@ -14,15 +14,24 @@
  * limitations under the License.
  */
 
-package util
+package util_test
 
 import (
-	"crypto/md5"
-	"encoding/hex"
+	"testing"
+
+	"github.com/go-spring/spring-base/assert"
+	"github.com/go-spring/spring-base/util"
 )
 
-// MD5 获取 MD5 计算后的字符串。
-func MD5(str string) string {
-	hash := md5.Sum([]byte(str))
-	return hex.EncodeToString(hash[:])
+func TestSafeCloseChan(t *testing.T) {
+
+	assert.Panic(t, func() {
+		c := make(chan struct{})
+		close(c)
+		close(c)
+	}, "close of closed channel")
+
+	c := make(chan struct{})
+	util.SafeCloseChan(c)
+	util.SafeCloseChan(c)
 }

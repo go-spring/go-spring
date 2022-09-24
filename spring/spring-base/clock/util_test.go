@@ -14,29 +14,16 @@
  * limitations under the License.
  */
 
-package util
+package clock_test
 
 import (
-	"net"
-	"sync"
+	"testing"
+	"time"
+
+	"github.com/go-spring/spring-base/assert"
+	"github.com/go-spring/spring-base/clock"
 )
 
-var localIPv4Str = "0.0.0.0"
-var localIPv4Once = new(sync.Once)
-
-// LocalIPv4 returns the IPv4 address of the local computer.
-func LocalIPv4() string {
-	localIPv4Once.Do(func() {
-		if ias, err := net.InterfaceAddrs(); err == nil {
-			for _, address := range ias {
-				if ipNet, ok := address.(*net.IPNet); ok && !ipNet.IP.IsLoopback() {
-					if ipNet.IP.To4() != nil {
-						localIPv4Str = ipNet.IP.String()
-						return
-					}
-				}
-			}
-		}
-	})
-	return localIPv4Str
+func TestUnixMilli(t *testing.T) {
+	assert.Equal(t, clock.UnixMilli(time.Unix(5, 0)), int64(5000))
 }

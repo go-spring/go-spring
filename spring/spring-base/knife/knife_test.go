@@ -24,7 +24,7 @@ import (
 	"github.com/go-spring/spring-base/knife"
 )
 
-func TestCocache(t *testing.T) {
+func TestKnife(t *testing.T) {
 	ctx := context.Background()
 
 	v, err := knife.Load(ctx, "a")

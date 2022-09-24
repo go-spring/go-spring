@@ -26,7 +26,6 @@ import (
 	"time"
 
 	"github.com/go-spring/spring-base/knife"
-	"github.com/go-spring/spring-base/util"
 )
 
 type LoadType int
@@ -43,7 +42,6 @@ var cache = &sync.Map{}
 
 // InvalidateAll 删除所有缓存值，只用于单元测试。
 func InvalidateAll() {
-	util.MustTestMode()
 	cache = &sync.Map{}
 }
 

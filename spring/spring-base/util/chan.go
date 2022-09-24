@@ -16,11 +16,11 @@
 
 package util
 
-// SafeCloseChan 安全地关闭一个通道。
+// SafeCloseChan closes the channel safely.
 func SafeCloseChan(ch chan struct{}) {
 	select {
 	case <-ch:
-		// chan 已关闭，无需再次关闭。
+		// The chan has been closed, there is no need to close it again.
 	default:
 		close(ch)
 	}

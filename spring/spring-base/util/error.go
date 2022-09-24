@@ -21,10 +21,10 @@ import (
 	"fmt"
 )
 
-// ForbiddenMethod 如果某个方法禁止被调用则可以抛出此错误。
+// ForbiddenMethod throws this error when calling a method is prohibited.
 var ForbiddenMethod = errors.New("forbidden method")
 
-// UnimplementedMethod 如果某个方法未实现则可以抛出此错误。
+// UnimplementedMethod throws this error when calling an unimplemented method.
 var UnimplementedMethod = errors.New("unimplemented method")
 
 var WrapFormat = func(err error, fileline string, format string, a ...interface{}) error {
@@ -40,22 +40,26 @@ var WrapFormat = func(err error, fileline string, format string, a ...interface{
 	return fmt.Errorf("%s %s; %w", fileline, fmt.Sprintf(format, a...), err)
 }
 
-// Error 创建携带文件信息的 error 对象。文件信息未来也许可以在编译期计算。
+// Error returns an error with the file and line.
+// The file and line may be calculated at the compile time in the future.
 func Error(fileline string, text string) error {
 	return WrapFormat(nil, fileline, "", text)
 }
 
-// Errorf 创建携带文件信息的 error 对象。文件信息未来也许可以在编译期计算。
+// Errorf returns an error with the file and line.
+// The file and line may be calculated at the compile time in the future.
 func Errorf(fileline string, format string, a ...interface{}) error {
 	return WrapFormat(nil, fileline, format, a...)
 }
 
-// Wrap 创建携带文件信息的 error 对象。文件信息未来也许可以在编译期计算。
+// Wrap returns an error with the file and line.
+// The file and line may be calculated at the compile time in the future.
 func Wrap(err error, fileline string, text string) error {
 	return WrapFormat(err, fileline, "", text)
 }
 
-// Wrapf 创建携带文件信息的 error 对象。文件信息未来也许可以在编译期计算。
+// Wrapf returns an error with the file and line.
+// The file and line may be calculated at the compile time in the future.
 func Wrapf(err error, fileline string, format string, a ...interface{}) error {
 	return WrapFormat(err, fileline, format, a...)
 }

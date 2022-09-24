@@ -14,29 +14,11 @@
  * limitations under the License.
  */
 
-package util
+package clock
 
-import (
-	"net"
-	"sync"
-)
+import "time"
 
-var localIPv4Str = "0.0.0.0"
-var localIPv4Once = new(sync.Once)
-
-// LocalIPv4 returns the IPv4 address of the local computer.
-func LocalIPv4() string {
-	localIPv4Once.Do(func() {
-		if ias, err := net.InterfaceAddrs(); err == nil {
-			for _, address := range ias {
-				if ipNet, ok := address.(*net.IPNet); ok && !ipNet.IP.IsLoopback() {
-					if ipNet.IP.To4() != nil {
-						localIPv4Str = ipNet.IP.String()
-						return
-					}
-				}
-			}
-		}
-	})
-	return localIPv4Str
+// UnixMilli returns t as a Unix time.
+func UnixMilli(t time.Time) int64 {
+	return t.UnixNano() / 1e6
 }

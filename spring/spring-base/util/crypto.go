@@ -17,17 +17,12 @@
 package util
 
 import (
-	"errors"
-	"os"
-	"strings"
+	"crypto/md5"
+	"encoding/hex"
 )
 
-// MustTestMode 非测试模式下调用此函数会发生 panic 。
-func MustTestMode() {
-	for _, arg := range os.Args {
-		if strings.HasPrefix(arg, "-test.") {
-			return
-		}
-	}
-	panic(errors.New("must call under test mode"))
+// MD5 returns the MD5 checksum in hexadecimal encoding of the src.
+func MD5(str string) string {
+	hash := md5.Sum([]byte(str))
+	return hex.EncodeToString(hash[:])
 }

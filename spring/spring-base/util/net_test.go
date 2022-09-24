@@ -14,29 +14,15 @@
  * limitations under the License.
  */
 
-package util
+package util_test
 
 import (
-	"net"
-	"sync"
+	"testing"
+
+	"github.com/go-spring/spring-base/assert"
+	"github.com/go-spring/spring-base/util"
 )
 
-var localIPv4Str = "0.0.0.0"
-var localIPv4Once = new(sync.Once)
-
-// LocalIPv4 returns the IPv4 address of the local computer.
-func LocalIPv4() string {
-	localIPv4Once.Do(func() {
-		if ias, err := net.InterfaceAddrs(); err == nil {
-			for _, address := range ias {
-				if ipNet, ok := address.(*net.IPNet); ok && !ipNet.IP.IsLoopback() {
-					if ipNet.IP.To4() != nil {
-						localIPv4Str = ipNet.IP.String()
-						return
-					}
-				}
-			}
-		}
-	})
-	return localIPv4Str
+func TestLocalIPv4(t *testing.T) {
+	assert.Equal(t, util.LocalIPv4(), util.LocalIPv4())
 }

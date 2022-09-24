@@ -21,7 +21,7 @@ import (
 	"testing"
 
 	"github.com/go-spring/spring-base/assert"
-	"github.com/go-spring/spring-base/diff/jsondiff"
+	"github.com/go-spring/spring-replay/jsondiff"
 )
 
 func TestDiff(t *testing.T) {
