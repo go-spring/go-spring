@@ -65,7 +65,7 @@ func TestMode() bool {
 	return mode&0x00ff == testMode
 }
 
-// MustTestMode panic occurs when calling in non-test mode.
+// MustTestMode panic occurs when calling not in test mode.
 func MustTestMode() {
 	if !TestMode() {
 		panic(errors.New("should be called in test mode"))

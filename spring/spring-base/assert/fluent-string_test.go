@@ -14,35 +14,4 @@
  * limitations under the License.
  */
 
-package assert
-
-// BoolAssertion assertion for type bool.
-type BoolAssertion struct {
-	t T
-	v bool
-}
-
-// Bool returns an assertion for type bool.
-func Bool(t T, v bool) *BoolAssertion {
-	return &BoolAssertion{
-		t: t,
-		v: v,
-	}
-}
-
-// IsTrue assertion failed when v is false.
-func (a *BoolAssertion) IsTrue(msg ...string) {
-	a.t.Helper()
-	if a.v {
-		return
-	}
-	fail(a.t, "got false but expect true", msg...)
-}
-
-// IsFalse assertion failed when v is true.
-func (a *BoolAssertion) IsFalse(msg ...string) {
-	a.t.Helper()
-	if a.v {
-		fail(a.t, "got true but expect false", msg...)
-	}
-}
+package assert_test

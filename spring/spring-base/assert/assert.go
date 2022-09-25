@@ -32,8 +32,7 @@ import (
 // T testing.T 的简化接口。
 type T interface {
 	Helper()
-	Fail()
-	Log(args ...interface{})
+	Error(args ...interface{})
 }
 
 type Cases = []struct {
@@ -60,13 +59,13 @@ func Check(cases Cases) error {
 // True asserts that got is true.
 func True(t T, got bool, msg ...string) {
 	t.Helper()
-	ThatBool(t, got).IsTrue(msg...)
+	Bool(t, got).IsTrue(msg...)
 }
 
 // False asserts that got is false.
 func False(t T, got bool, msg ...string) {
 	t.Helper()
-	ThatBool(t, got).IsFalse(msg...)
+	Bool(t, got).IsFalse(msg...)
 }
 
 // Nil asserts that got is nil.
@@ -163,8 +162,7 @@ func matches(t T, got string, expr string, msg ...string) {
 func fail(t T, str string, msg ...string) {
 	t.Helper()
 	args := append([]string{str}, msg...)
-	t.Log(strings.Join(args, "; "))
-	t.Fail()
+	t.Error(strings.Join(args, "; "))
 }
 
 // TypeOf asserts that got and expect are same type.

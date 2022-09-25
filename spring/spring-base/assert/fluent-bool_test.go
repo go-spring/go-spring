@@ -22,36 +22,26 @@ import (
 	"github.com/go-spring/spring-base/assert"
 )
 
-func TestFluentTrue(t *testing.T) {
+func TestBoolAssertion_IsTrue(t *testing.T) {
 
 	Case(t, func(g *assert.MockT) {
-		assert.That(g, true).IsTrue()
+		assert.Bool(g, true).IsTrue()
 	})
 
 	Case(t, func(g *assert.MockT) {
 		g.EXPECT().Error([]interface{}{"got false but expect true"})
-		assert.That(g, false).IsTrue()
-	})
-
-	Case(t, func(g *assert.MockT) {
-		g.EXPECT().Error([]interface{}{"got false but expect true; param (index=0)"})
-		assert.Bool(g, false).IsTrue("param (index=0)")
+		assert.Bool(g, false).IsTrue()
 	})
 }
 
-func TestFluentHasPrefix(t *testing.T) {
+func TestBoolAssertion_IsFalse(t *testing.T) {
 
 	Case(t, func(g *assert.MockT) {
-		assert.That(g, "hello, world!").HasPrefix("hello")
+		assert.Bool(g, false).IsFalse()
 	})
 
 	Case(t, func(g *assert.MockT) {
-		g.EXPECT().Error([]interface{}{"'hello, world!' doesn't have prefix 'xxx'"})
-		assert.That(g, "hello, world!").HasPrefix("xxx")
-	})
-
-	Case(t, func(g *assert.MockT) {
-		g.EXPECT().Error([]interface{}{"'hello, world!' doesn't have prefix 'xxx'; param (index=0)"})
-		assert.String(g, "hello, world!").HasPrefix("xxx", "param (index=0)")
+		g.EXPECT().Error([]interface{}{"got true but expect false"})
+		assert.Bool(g, true).IsFalse()
 	})
 }

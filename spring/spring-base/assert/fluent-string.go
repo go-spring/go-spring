@@ -21,12 +21,14 @@ import (
 	"strings"
 )
 
+// StringAssertion assertion for type string.
 type StringAssertion struct {
 	t T
 	v string
 }
 
-func ThatString(t T, v string) *StringAssertion {
+// String returns an assertion for type string.
+func String(t T, v string) *StringAssertion {
 	return &StringAssertion{
 		t: t,
 		v: v,
