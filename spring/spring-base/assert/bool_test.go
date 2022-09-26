@@ -32,6 +32,11 @@ func TestBoolAssertion_IsTrue(t *testing.T) {
 		g.EXPECT().Error([]interface{}{"got false but expect true"})
 		assert.Bool(g, false).IsTrue()
 	})
+
+	Case(t, func(g *assert.MockT) {
+		g.EXPECT().Error([]interface{}{"got false but expect true; param (index=0)"})
+		assert.Bool(g, false).IsTrue("param (index=0)")
+	})
 }
 
 func TestBoolAssertion_IsFalse(t *testing.T) {
@@ -43,5 +48,10 @@ func TestBoolAssertion_IsFalse(t *testing.T) {
 	Case(t, func(g *assert.MockT) {
 		g.EXPECT().Error([]interface{}{"got true but expect false"})
 		assert.Bool(g, true).IsFalse()
+	})
+
+	Case(t, func(g *assert.MockT) {
+		g.EXPECT().Error([]interface{}{"got true but expect false; param (index=0)"})
+		assert.Bool(g, true).IsFalse("param (index=0)")
 	})
 }

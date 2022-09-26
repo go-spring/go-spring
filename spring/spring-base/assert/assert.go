@@ -16,96 +16,131 @@
 
 //go:generate mockgen -build_flags="-mod=mod" -package=assert -source=assert.go -destination=assert_mock.go
 
-// Package assert 提供了一些常用的断言函数。
+// Package assert provides some useful assertion methods.
 package assert
 
 import (
-	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"reflect"
 	"regexp"
 	"strings"
 )
 
-// T testing.T 的简化接口。
+// T is minimum interface of *testing.T.
 type T interface {
 	Helper()
 	Error(args ...interface{})
 }
 
-type Cases = []struct {
-	Condition bool
-	Message   string
+func fail(t T, str string, msg ...string) {
+	t.Helper()
+	args := append([]string{str}, msg...)
+	t.Error(strings.Join(args, "; "))
 }
 
-// Check 用于检查参数有效性。
-func Check(cases Cases) error {
-	buf := bytes.Buffer{}
-	for _, c := range cases {
-		if c.Condition {
-			continue
-		}
-		buf.WriteString(c.Message)
-		buf.WriteString("; ")
-	}
-	if buf.Len() == 0 {
-		return nil
-	}
-	return errors.New(string(buf.Bytes()[:buf.Len()-2]))
-}
-
-// True asserts that got is true.
+// True assertion failed when got is false.
 func True(t T, got bool, msg ...string) {
 	t.Helper()
 	Bool(t, got).IsTrue(msg...)
 }
 
-// False asserts that got is false.
+// False assertion failed when got is true.
 func False(t T, got bool, msg ...string) {
 	t.Helper()
 	Bool(t, got).IsFalse(msg...)
 }
 
-// Nil asserts that got is nil.
+// IsNil reports v is nil, but will not panic.
+func IsNil(v reflect.Value) bool {
+	switch v.Kind() {
+	case reflect.Chan,
+		reflect.Func,
+		reflect.Interface,
+		reflect.Map,
+		reflect.Ptr,
+		reflect.Slice,
+		reflect.UnsafePointer:
+		return v.IsNil()
+	}
+	return !v.IsValid()
+}
+
+// Nil assertion failed when got is not nil.
 func Nil(t T, got interface{}, msg ...string) {
 	t.Helper()
-	That(t, got).IsNil(msg...)
+	// 为什么不能使用 got == nil 进行判断呢？因为如果
+	// a := (*int)(nil)        // %T == *int
+	// b := (interface{})(nil) // %T == <nil>
+	// 那么 a==b 的结果是 false，因为二者类型不一致。
+	if !IsNil(reflect.ValueOf(got)) {
+		str := fmt.Sprintf("got (%T) %v but expect nil", got, got)
+		fail(t, str, msg...)
+	}
 }
 
-// NotNil asserts that got is not nil.
+// NotNil assertion failed when got is nil.
 func NotNil(t T, got interface{}, msg ...string) {
 	t.Helper()
-	That(t, got).IsNotNil(msg...)
+	if IsNil(reflect.ValueOf(got)) {
+		fail(t, "got nil but expect not nil", msg...)
+	}
 }
 
-// Equal asserts that got and expect are equal.
+// Equal assertion failed when got and expect are not `deeply equal`.
 func Equal(t T, got interface{}, expect interface{}, msg ...string) {
 	t.Helper()
-	That(t, got).IsEqualTo(expect, msg...)
+	if !reflect.DeepEqual(got, expect) {
+		str := fmt.Sprintf("got (%T) %v but expect (%T) %v", got, got, expect, expect)
+		fail(t, str, msg...)
+	}
 }
 
-// NotEqual asserts that got and expect are not equal.
+// NotEqual assertion failed when got and expect are `deeply equal`.
 func NotEqual(t T, got interface{}, expect interface{}, msg ...string) {
 	t.Helper()
-	That(t, got).IsNotEqualTo(expect, msg...)
+	if reflect.DeepEqual(got, expect) {
+		str := fmt.Sprintf("expect not (%T) %v", expect, expect)
+		fail(t, str, msg...)
+	}
 }
 
-// Same asserts that got and expect are same.
+// JsonEqual assertion failed when got and expect are not `json equal`.
+func JsonEqual(t T, got string, expect string, msg ...string) {
+	t.Helper()
+	var gotJson interface{}
+	if err := json.Unmarshal([]byte(got), &gotJson); err != nil {
+		fail(t, err.Error(), msg...)
+	}
+	var expectJson interface{}
+	if err := json.Unmarshal([]byte(expect), &expectJson); err != nil {
+		fail(t, err.Error(), msg...)
+	}
+	if !reflect.DeepEqual(gotJson, expectJson) {
+		str := fmt.Sprintf("got (%T) %v but expect (%T) %v", got, got, expect, expect)
+		fail(t, str, msg...)
+	}
+}
+
+// Same assertion failed when got and expect are not same.
 func Same(t T, got interface{}, expect interface{}, msg ...string) {
 	t.Helper()
-	That(t, got).IsSame(expect, msg...)
+	if got != expect {
+		str := fmt.Sprintf("got (%T) %v but expect (%T) %v", got, got, expect, expect)
+		fail(t, str, msg...)
+	}
 }
 
-// NotSame asserts that got and expect are not same.
+// NotSame assertion failed when got and expect are same.
 func NotSame(t T, got interface{}, expect interface{}, msg ...string) {
 	t.Helper()
-	That(t, got).IsNotSame(expect, msg...)
+	if got == expect {
+		str := fmt.Sprintf("expect not (%T) %v", expect, expect)
+		fail(t, str, msg...)
+	}
 }
 
-// Panic asserts that function fn() would panic. It fails if the panic
-// message does not match the regular expression.
+// Panic assertion failed when fn doesn't panic or not match expr expression.
 func Panic(t T, fn func(), expr string, msg ...string) {
 	t.Helper()
 	str := recovery(fn)
@@ -133,13 +168,13 @@ func recovery(fn func()) (str string) {
 	return "<<SUCCESS>>"
 }
 
-// Matches asserts that a got value matches a given regular expression.
+// Matches assertion failed when got doesn't match expr expression.
 func Matches(t T, got string, expr string, msg ...string) {
 	t.Helper()
 	matches(t, got, expr, msg...)
 }
 
-// Error asserts that a got error string matches a given regular expression.
+// Error assertion failed when got `error` doesn't match expr expression.
 func Error(t T, got error, expr string, msg ...string) {
 	t.Helper()
 	if got == nil {
@@ -159,13 +194,7 @@ func matches(t T, got string, expr string, msg ...string) {
 	}
 }
 
-func fail(t T, str string, msg ...string) {
-	t.Helper()
-	args := append([]string{str}, msg...)
-	t.Error(strings.Join(args, "; "))
-}
-
-// TypeOf asserts that got and expect are same type.
+// TypeOf assertion failed when got and expect are not same type.
 func TypeOf(t T, got interface{}, expect interface{}, msg ...string) {
 	t.Helper()
 
@@ -183,7 +212,7 @@ func TypeOf(t T, got interface{}, expect interface{}, msg ...string) {
 	}
 }
 
-// Implements asserts that got implements expect.
+// Implements assertion failed when got doesn't implement expect.
 func Implements(t T, got interface{}, expect interface{}, msg ...string) {
 	t.Helper()
 
@@ -200,23 +229,6 @@ func Implements(t T, got interface{}, expect interface{}, msg ...string) {
 	e1 := reflect.TypeOf(got)
 	if !e1.Implements(e2) {
 		str := fmt.Sprintf("got type (%s) but expect type (%s)", e1, e2)
-		fail(t, str, msg...)
-	}
-}
-
-// JsonEqual asserts that got and expect are equal.
-func JsonEqual(t T, got string, expect string, msg ...string) {
-	t.Helper()
-	var gotJson interface{}
-	if err := json.Unmarshal([]byte(got), &gotJson); err != nil {
-		fail(t, err.Error(), msg...)
-	}
-	var expectJson interface{}
-	if err := json.Unmarshal([]byte(expect), &expectJson); err != nil {
-		fail(t, err.Error(), msg...)
-	}
-	if !reflect.DeepEqual(gotJson, expectJson) {
-		str := fmt.Sprintf("got (%T) %v but expect (%T) %v", got, got, expect, expect)
 		fail(t, str, msg...)
 	}
 }

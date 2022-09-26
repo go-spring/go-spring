@@ -35,14 +35,16 @@ func String(t T, v string) *StringAssertion {
 	}
 }
 
+// IsEqualFold assertion failed when v doesn't equal to `s` under Unicode case-folding.
 func (a *StringAssertion) IsEqualFold(s string, msg ...string) *StringAssertion {
 	a.t.Helper()
 	if !strings.EqualFold(a.v, s) {
-		fail(a.t, fmt.Sprintf("'%s' doesn't equal fold '%s'", a.v, s), msg...)
+		fail(a.t, fmt.Sprintf("'%s' doesn't equal fold to '%s'", a.v, s), msg...)
 	}
 	return a
 }
 
+// HasPrefix assertion failed when v doesn't have prefix `prefix`.
 func (a *StringAssertion) HasPrefix(prefix string, msg ...string) *StringAssertion {
 	a.t.Helper()
 	if !strings.HasPrefix(a.v, prefix) {
@@ -51,6 +53,7 @@ func (a *StringAssertion) HasPrefix(prefix string, msg ...string) *StringAsserti
 	return a
 }
 
+// HasSuffix assertion failed when v doesn't have suffix `suffix`.
 func (a *StringAssertion) HasSuffix(suffix string, msg ...string) *StringAssertion {
 	a.t.Helper()
 	if !strings.HasSuffix(a.v, suffix) {
@@ -59,6 +62,7 @@ func (a *StringAssertion) HasSuffix(suffix string, msg ...string) *StringAsserti
 	return a
 }
 
+// HasSubString assertion failed when v doesn't contain substring `substr`.
 func (a *StringAssertion) HasSubString(substr string, msg ...string) *StringAssertion {
 	a.t.Helper()
 	if !strings.Contains(a.v, substr) {

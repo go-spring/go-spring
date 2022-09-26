@@ -33,23 +33,6 @@ func Case(t *testing.T, f func(g *assert.MockT)) {
 	f(g)
 }
 
-func TestCheck(t *testing.T) {
-
-	var r struct {
-		True  bool
-		False bool
-		Nil   interface{}
-	}
-
-	err := assert.Check(assert.Cases{
-		{r.True, "r.True want true but is false"},
-		{!r.False, "r.False want false but is true"},
-		{r.Nil == nil, "r.Nil want nil but not nil"},
-	})
-
-	assert.Error(t, err, "r.True want true but is false")
-}
-
 func TestTrue(t *testing.T) {
 
 	Case(t, func(g *assert.MockT) {
