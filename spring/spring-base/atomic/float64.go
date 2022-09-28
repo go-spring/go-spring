@@ -22,36 +22,38 @@ import (
 	"sync/atomic"
 )
 
+// A Float64 is an atomic float64 value.
 type Float64 struct {
 	_ nocopy
 	v uint64
 }
 
-// Add wrapper for atomic.AddUint64.
+// Add atomically adds delta to x and returns the new value.
 func (x *Float64) Add(delta float64) (new float64) {
 	return math.Float64frombits(atomic.AddUint64(&x.v, math.Float64bits(delta)))
 }
 
-// Load wrapper for atomic.LoadUint64.
+// Load atomically loads and returns the value stored in x.
 func (x *Float64) Load() (val float64) {
 	return math.Float64frombits(atomic.LoadUint64(&x.v))
 }
 
-// Store wrapper for atomic.StoreUint64.
+// Store atomically stores val into x.
 func (x *Float64) Store(val float64) {
 	atomic.StoreUint64(&x.v, math.Float64bits(val))
 }
 
-// Swap wrapper for atomic.SwapUint64.
+// Swap atomically stores new into x and returns the old value.
 func (x *Float64) Swap(new float64) (old float64) {
 	return math.Float64frombits(atomic.SwapUint64(&x.v, math.Float64bits(new)))
 }
 
-// CompareAndSwap wrapper for atomic.CompareAndSwapUint64.
+// CompareAndSwap executes the compare-and-swap operation for x.
 func (x *Float64) CompareAndSwap(old, new float64) (swapped bool) {
 	return atomic.CompareAndSwapUint64(&x.v, math.Float64bits(old), math.Float64bits(new))
 }
 
+// MarshalJSON returns the JSON encoding of x.
 func (x *Float64) MarshalJSON() ([]byte, error) {
 	return json.Marshal(x.Load())
 }

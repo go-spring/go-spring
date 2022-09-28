@@ -21,9 +21,6 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-
-	"github.com/go-spring/spring-base/net/recorder"
-	"github.com/go-spring/spring-base/net/replayer"
 )
 
 var (
@@ -69,12 +66,12 @@ type Client struct {
 }
 
 func NewClient(conn ConnPool) (*Client, error) {
-	if recorder.RecordMode() {
-		conn = &recordConn{conn: conn}
-	}
-	if replayer.ReplayMode() {
-		conn = &replayConn{conn: conn}
-	}
+	//if recorder.RecordMode() {
+	//	conn = &recordConn{conn: conn}
+	//}
+	//if replayer.ReplayMode() {
+	//	conn = &replayConn{conn: conn}
+	//}
 	c := &Client{conn: conn}
 	c.opsForKey = NewKeyOperations(c)
 	c.opsForBitmap = NewBitmapOperations(c)
@@ -130,11 +127,11 @@ func toInt64(v interface{}, err error) (int64, error) {
 		return int64(r), nil
 	case string:
 		return strconv.ParseInt(r, 10, 64)
-	case *replayResult:
-		if len(r.data) == 0 {
-			return 0, fmt.Errorf("redis: no data")
-		}
-		return toInt64(r.data[0], nil)
+	//case *replayResult:
+	//	if len(r.data) == 0 {
+	//		return 0, fmt.Errorf("redis: no data")
+	//	}
+	//	return toInt64(r.data[0], nil)
 	default:
 		return 0, fmt.Errorf("redis: unexpected type %T for int64", v)
 	}
@@ -155,11 +152,11 @@ func toFloat64(v interface{}, err error) (float64, error) {
 		return float64(r), nil
 	case string:
 		return strconv.ParseFloat(r, 64)
-	case *replayResult:
-		if len(r.data) == 0 {
-			return 0, fmt.Errorf("redis: no data")
-		}
-		return toFloat64(r.data[0], nil)
+	//case *replayResult:
+	//	if len(r.data) == 0 {
+	//		return 0, fmt.Errorf("redis: no data")
+	//	}
+	//	return toFloat64(r.data[0], nil)
 	default:
 		return 0, fmt.Errorf("redis: unexpected type=%T for float64", r)
 	}
@@ -176,11 +173,11 @@ func toString(v interface{}, err error) (string, error) {
 	switch r := v.(type) {
 	case string:
 		return r, nil
-	case *replayResult:
-		if len(r.data) == 0 {
-			return "", fmt.Errorf("redis: no data")
-		}
-		return r.data[0], nil
+	//case *replayResult:
+	//	if len(r.data) == 0 {
+	//		return "", fmt.Errorf("redis: no data")
+	//	}
+	//	return r.data[0], nil
 	default:
 		return "", fmt.Errorf("redis: unexpected type %T for string", v)
 	}
@@ -207,8 +204,8 @@ func toSlice(v interface{}, err error) ([]interface{}, error) {
 			}
 		}
 		return slice, nil
-	case *replayResult:
-		return toSlice(r.data, nil)
+	//case *replayResult:
+	//	return toSlice(r.data, nil)
 	default:
 		return nil, fmt.Errorf("redis: unexpected type %T for []interface{}", v)
 	}

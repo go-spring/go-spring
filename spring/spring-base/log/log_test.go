@@ -121,19 +121,19 @@ func TestGetLogger(t *testing.T) {
 
 	logger := log.GetLogger(util.TypeName(new(Student)))
 	assert.Equal(t, logger.Name(), "github.com/go-spring/spring-base/log/log_test.Student")
-	logger.Info("1")
+	logger.Sugar().Info("1")
 
 	logger = log.GetLogger(util.TypeName(new(student)))
 	assert.Equal(t, logger.Name(), "github.com/go-spring/spring-base/log/log_test.student")
-	logger.Info("2")
+	logger.Sugar().Info("2")
 
 	logger = log.GetLogger(util.TypeName(new(Class)))
 	assert.Equal(t, logger.Name(), "github.com/go-spring/spring-base/log/log_test.Class")
-	logger.Info("3")
+	logger.Sugar().Info("3")
 
 	logger = log.GetLogger(util.TypeName(new(class)))
 	assert.Equal(t, logger.Name(), "github.com/go-spring/spring-base/log/log_test.class")
-	logger.Info("4")
+	logger.Sugar().Info("4")
 
 	logger = nil
 	assert.Equal(t, util.TypeName(logger), "github.com/go-spring/spring-base/log/log.Logger")
@@ -163,54 +163,54 @@ func TestLogger(t *testing.T) {
 	logger := log.GetLogger("xxx", log.TraceLevel)
 
 	msg := func(format string, args ...interface{}) *log.Event {
-		return logger.WithSkip(1).Infof(format, args...)
+		return logger.WithSkip(1).Sugar().Infof(format, args...)
 	}("log skip test")
 	assert.Equal(t, msg.Level(), log.InfoLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
 	//assert.Equal(t, msg.Msg().Text(), "log skip test")
 
-	msg = logger.Trace("a", "=", "1")
+	msg = logger.Sugar().Trace("a", "=", "1")
 	assert.Equal(t, msg.Level(), log.TraceLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
 	//assert.Equal(t, msg.Msg().Text(), "a=1")
 
-	msg = logger.Tracef("a=%d", 1)
+	msg = logger.Sugar().Tracef("a=%d", 1)
 	assert.Equal(t, msg.Level(), log.TraceLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
 	//assert.Equal(t, msg.Msg().Text(), "a=1")
 
-	msg = logger.Trace(func() []interface{} {
+	msg = logger.Sugar().Trace(func() []interface{} {
 		return log.T("a", "=", "1")
-	})
-	assert.Equal(t, msg.Level(), log.TraceLevel)
-	assert.Equal(t, msg.File(), code.File())
-	assert.Equal(t, msg.Line(), code.Line()-5)
-	//assert.Equal(t, msg.Msg().Text(), "a=1")
-
-	msg = logger.Tracef("a=%d", func() []interface{} {
-		return log.T(1)
 	})
 	assert.Equal(t, msg.Level(), log.TraceLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-5)
 	//assert.Equal(t, msg.Msg().Text(), "a=1")
 
-	msg = logger.Debug("a", "=", "1")
+	msg = logger.Sugar().Tracef("a=%d", func() []interface{} {
+		return log.T(1)
+	})
+	assert.Equal(t, msg.Level(), log.TraceLevel)
+	assert.Equal(t, msg.File(), code.File())
+	assert.Equal(t, msg.Line(), code.Line()-5)
+	//assert.Equal(t, msg.Msg().Text(), "a=1")
+
+	msg = logger.Sugar().Debug("a", "=", "1")
 	assert.Equal(t, msg.Level(), log.DebugLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
 	//assert.Equal(t, msg.Msg().Text(), "a=1")
 
-	msg = logger.Debugf("a=%d", 1)
+	msg = logger.Sugar().Debugf("a=%d", 1)
 	assert.Equal(t, msg.Level(), log.DebugLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
 	//assert.Equal(t, msg.Msg().Text(), "a=1")
 
-	msg = logger.Debug(func() []interface{} {
+	msg = logger.Sugar().Debug(func() []interface{} {
 		return log.T("a", "=", "1")
 	})
 	assert.Equal(t, msg.Level(), log.DebugLevel)
@@ -218,7 +218,7 @@ func TestLogger(t *testing.T) {
 	assert.Equal(t, msg.Line(), code.Line()-5)
 	//assert.Equal(t, msg.Msg().Text(), "a=1")
 
-	msg = logger.Debugf("a=%d", func() []interface{} {
+	msg = logger.Sugar().Debugf("a=%d", func() []interface{} {
 		return log.T(1)
 	})
 	assert.Equal(t, msg.Level(), log.DebugLevel)
@@ -226,19 +226,19 @@ func TestLogger(t *testing.T) {
 	assert.Equal(t, msg.Line(), code.Line()-5)
 	//assert.Equal(t, msg.Msg().Text(), "a=1")
 
-	msg = logger.Info("a", "=", "1")
+	msg = logger.Sugar().Info("a", "=", "1")
 	assert.Equal(t, msg.Level(), log.InfoLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
 	//assert.Equal(t, msg.Msg().Text(), "a=1")
 
-	msg = logger.Infof("a=%d", 1)
+	msg = logger.Sugar().Infof("a=%d", 1)
 	assert.Equal(t, msg.Level(), log.InfoLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
 	//assert.Equal(t, msg.Msg().Text(), "a=1")
 
-	msg = logger.Info(func() []interface{} {
+	msg = logger.Sugar().Info(func() []interface{} {
 		return log.T("a", "=", "1")
 	})
 	assert.Equal(t, msg.Level(), log.InfoLevel)
@@ -246,7 +246,7 @@ func TestLogger(t *testing.T) {
 	assert.Equal(t, msg.Line(), code.Line()-5)
 	//assert.Equal(t, msg.Msg().Text(), "a=1")
 
-	msg = logger.Infof("a=%d", func() []interface{} {
+	msg = logger.Sugar().Infof("a=%d", func() []interface{} {
 		return log.T(1)
 	})
 	assert.Equal(t, msg.Level(), log.InfoLevel)
@@ -254,19 +254,19 @@ func TestLogger(t *testing.T) {
 	assert.Equal(t, msg.Line(), code.Line()-5)
 	//assert.Equal(t, msg.Msg().Text(), "a=1")
 
-	msg = logger.Warn("a", "=", "1")
+	msg = logger.Sugar().Warn("a", "=", "1")
 	assert.Equal(t, msg.Level(), log.WarnLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
 	//assert.Equal(t, msg.Msg().Text(), "a=1")
 
-	msg = logger.Warnf("a=%d", 1)
+	msg = logger.Sugar().Warnf("a=%d", 1)
 	assert.Equal(t, msg.Level(), log.WarnLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
 	//assert.Equal(t, msg.Msg().Text(), "a=1")
 
-	msg = logger.Warn(func() []interface{} {
+	msg = logger.Sugar().Warn(func() []interface{} {
 		return log.T("a", "=", "1")
 	})
 	assert.Equal(t, msg.Level(), log.WarnLevel)
@@ -274,7 +274,7 @@ func TestLogger(t *testing.T) {
 	assert.Equal(t, msg.Line(), code.Line()-5)
 	//assert.Equal(t, msg.Msg().Text(), "a=1")
 
-	msg = logger.Warnf("a=%d", func() []interface{} {
+	msg = logger.Sugar().Warnf("a=%d", func() []interface{} {
 		return log.T(1)
 	})
 	assert.Equal(t, msg.Level(), log.WarnLevel)
@@ -282,19 +282,19 @@ func TestLogger(t *testing.T) {
 	assert.Equal(t, msg.Line(), code.Line()-5)
 	//assert.Equal(t, msg.Msg().Text(), "a=1")
 
-	msg = logger.Error("a", "=", "1")
+	msg = logger.Sugar().Error("a", "=", "1")
 	assert.Equal(t, msg.Level(), log.ErrorLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
 	//assert.Equal(t, msg.Msg().Text(), "a=1")
 
-	msg = logger.Errorf("a=%d", 1)
+	msg = logger.Sugar().Errorf("a=%d", 1)
 	assert.Equal(t, msg.Level(), log.ErrorLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
 	//assert.Equal(t, msg.Msg().Text(), "a=1")
 
-	msg = logger.Error(func() []interface{} {
+	msg = logger.Sugar().Error(func() []interface{} {
 		return log.T("a", "=", "1")
 	})
 	assert.Equal(t, msg.Level(), log.ErrorLevel)
@@ -302,7 +302,7 @@ func TestLogger(t *testing.T) {
 	assert.Equal(t, msg.Line(), code.Line()-5)
 	//assert.Equal(t, msg.Msg().Text(), "a=1")
 
-	msg = logger.Errorf("a=%d", func() []interface{} {
+	msg = logger.Sugar().Errorf("a=%d", func() []interface{} {
 		return log.T(1)
 	})
 	assert.Equal(t, msg.Level(), log.ErrorLevel)
@@ -310,25 +310,25 @@ func TestLogger(t *testing.T) {
 	assert.Equal(t, msg.Line(), code.Line()-5)
 	//assert.Equal(t, msg.Msg().Text(), "a=1")
 
-	msg = logger.Panic(errors.New("error"))
+	msg = logger.Sugar().Panic(errors.New("error"))
 	assert.Equal(t, msg.Level(), log.PanicLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
 	//assert.Equal(t, msg.Msg().Text(), "error")
 
-	msg = logger.Panicf("error:%d", 404)
+	msg = logger.Sugar().Panicf("error:%d", 404)
 	assert.Equal(t, msg.Level(), log.PanicLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
 	//assert.Equal(t, msg.Msg().Text(), "error:404")
 
-	msg = logger.Fatal("a", "=", "1")
+	msg = logger.Sugar().Fatal("a", "=", "1")
 	assert.Equal(t, msg.Level(), log.FatalLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
 	//assert.Equal(t, msg.Msg().Text(), "a=1")
 
-	msg = logger.Fatalf("a=%d", 1)
+	msg = logger.Sugar().Fatalf("a=%d", 1)
 	assert.Equal(t, msg.Level(), log.FatalLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
@@ -362,63 +362,63 @@ func TestEntry(t *testing.T) {
 	const tagIn = "__in"
 	ctxLogger := logger.WithContext(ctx)
 
-	msg := ctxLogger.Trace("Level:", "trace")
+	msg := ctxLogger.Sugar().Trace("Level:", "trace")
 	assert.Equal(t, msg.Level(), log.TraceLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
 	assert.Equal(t, msg.Entry().Context(), ctx)
 	//assert.Equal(t, msg.Msg().Text(), "Level:trace")
 
-	msg = ctxLogger.Tracef("Level:%s", "trace")
+	msg = ctxLogger.Sugar().Tracef("Level:%s", "trace")
 	assert.Equal(t, msg.Level(), log.TraceLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
 	assert.Equal(t, msg.Entry().Context(), ctx)
 	//assert.Equal(t, msg.Msg().Text(), "Level:trace")
 
-	msg = ctxLogger.Debug("Level:", "debug")
+	msg = ctxLogger.Sugar().Debug("Level:", "debug")
 	assert.Equal(t, msg.Level(), log.DebugLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
 	assert.Equal(t, msg.Entry().Context(), ctx)
 	//assert.Equal(t, msg.Msg().Text(), "Level:debug")
 
-	msg = ctxLogger.Debugf("Level:%s", "debug")
+	msg = ctxLogger.Sugar().Debugf("Level:%s", "debug")
 	assert.Equal(t, msg.Level(), log.DebugLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
 	assert.Equal(t, msg.Entry().Context(), ctx)
 	//assert.Equal(t, msg.Msg().Text(), "Level:debug")
 
-	msg = ctxLogger.Info("Level:", "info")
+	msg = ctxLogger.Sugar().Info("Level:", "info")
 	assert.Equal(t, msg.Level(), log.InfoLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
 	assert.Equal(t, msg.Entry().Context(), ctx)
 	//assert.Equal(t, msg.Msg().Text(), "Level:info")
 
-	msg = ctxLogger.Infof("Level:%s", "info")
+	msg = ctxLogger.Sugar().Infof("Level:%s", "info")
 	assert.Equal(t, msg.Level(), log.InfoLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
 	assert.Equal(t, msg.Entry().Context(), ctx)
 	//assert.Equal(t, msg.Msg().Text(), "Level:info")
 
-	msg = ctxLogger.Warn("Level:", "warn")
+	msg = ctxLogger.Sugar().Warn("Level:", "warn")
 	assert.Equal(t, msg.Level(), log.WarnLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
 	assert.Equal(t, msg.Entry().Context(), ctx)
 	//assert.Equal(t, msg.Msg().Text(), "Level:warn")
 
-	msg = ctxLogger.Warnf("Level:%s", "warn")
+	msg = ctxLogger.Sugar().Warnf("Level:%s", "warn")
 	assert.Equal(t, msg.Level(), log.WarnLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
 	assert.Equal(t, msg.Entry().Context(), ctx)
 	//assert.Equal(t, msg.Msg().Text(), "Level:warn")
 
-	msg = ctxLogger.Error(log.ERROR, "Level:", "error")
+	msg = ctxLogger.Sugar().Error(log.ERROR, "Level:", "error")
 	assert.Equal(t, msg.Level(), log.ErrorLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
@@ -426,7 +426,7 @@ func TestEntry(t *testing.T) {
 	assert.Equal(t, msg.Entry().Errno(), log.ERROR)
 	//assert.Equal(t, msg.Msg().Text(), "Level:error")
 
-	msg = ctxLogger.Errorf(log.ERROR, "Level:%s", "error")
+	msg = ctxLogger.Sugar().Errorf(log.ERROR, "Level:%s", "error")
 	assert.Equal(t, msg.Level(), log.ErrorLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
@@ -434,35 +434,35 @@ func TestEntry(t *testing.T) {
 	assert.Equal(t, msg.Entry().Errno(), log.ERROR)
 	//assert.Equal(t, msg.Msg().Text(), "Level:error")
 
-	msg = ctxLogger.Panic("Level:", "panic")
+	msg = ctxLogger.Sugar().Panic("Level:", "panic")
 	assert.Equal(t, msg.Level(), log.PanicLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
 	assert.Equal(t, msg.Entry().Context(), ctx)
 	//assert.Equal(t, msg.Msg().Text(), "Level:panic")
 
-	msg = ctxLogger.Panicf("Level:%s", "panic")
+	msg = ctxLogger.Sugar().Panicf("Level:%s", "panic")
 	assert.Equal(t, msg.Level(), log.PanicLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
 	assert.Equal(t, msg.Entry().Context(), ctx)
 	//assert.Equal(t, msg.Msg().Text(), "Level:panic")
 
-	msg = ctxLogger.Fatal("Level:", "fatal")
+	msg = ctxLogger.Sugar().Fatal("Level:", "fatal")
 	assert.Equal(t, msg.Level(), log.FatalLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
 	assert.Equal(t, msg.Entry().Context(), ctx)
 	//assert.Equal(t, msg.Msg().Text(), "Level:fatal")
 
-	msg = ctxLogger.Fatalf("Level:%s", "fatal")
+	msg = ctxLogger.Sugar().Fatalf("Level:%s", "fatal")
 	assert.Equal(t, msg.Level(), log.FatalLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
 	assert.Equal(t, msg.Entry().Context(), ctx)
 	//assert.Equal(t, msg.Msg().Text(), "Level:fatal")
 
-	msg = ctxLogger.Trace(func() []interface{} {
+	msg = ctxLogger.Sugar().Trace(func() []interface{} {
 		return log.T("Level:", "trace")
 	})
 	assert.Equal(t, msg.Level(), log.TraceLevel)
@@ -471,7 +471,7 @@ func TestEntry(t *testing.T) {
 	assert.Equal(t, msg.Entry().Context(), ctx)
 	//assert.Equal(t, msg.Msg().Text(), "Level:trace")
 
-	msg = ctxLogger.Tracef("Level:%s", func() []interface{} {
+	msg = ctxLogger.Sugar().Tracef("Level:%s", func() []interface{} {
 		return log.T("trace")
 	})
 	assert.Equal(t, msg.Level(), log.TraceLevel)
@@ -480,7 +480,7 @@ func TestEntry(t *testing.T) {
 	assert.Equal(t, msg.Entry().Context(), ctx)
 	//assert.Equal(t, msg.Msg().Text(), "Level:trace")
 
-	msg = ctxLogger.Debug(func() []interface{} {
+	msg = ctxLogger.Sugar().Debug(func() []interface{} {
 		return log.T("Level:", "debug")
 	})
 	assert.Equal(t, msg.Level(), log.DebugLevel)
@@ -489,7 +489,7 @@ func TestEntry(t *testing.T) {
 	assert.Equal(t, msg.Entry().Context(), ctx)
 	//assert.Equal(t, msg.Msg().Text(), "Level:debug")
 
-	msg = ctxLogger.Debugf("Level:%s", func() []interface{} {
+	msg = ctxLogger.Sugar().Debugf("Level:%s", func() []interface{} {
 		return log.T("debug")
 	})
 	assert.Equal(t, msg.Level(), log.DebugLevel)
@@ -498,7 +498,7 @@ func TestEntry(t *testing.T) {
 	assert.Equal(t, msg.Entry().Context(), ctx)
 	//assert.Equal(t, msg.Msg().Text(), "Level:debug")
 
-	msg = ctxLogger.Info(func() []interface{} {
+	msg = ctxLogger.Sugar().Info(func() []interface{} {
 		return log.T("Level:", "info")
 	})
 	assert.Equal(t, msg.Level(), log.InfoLevel)
@@ -507,7 +507,7 @@ func TestEntry(t *testing.T) {
 	assert.Equal(t, msg.Entry().Context(), ctx)
 	//assert.Equal(t, msg.Msg().Text(), "Level:info")
 
-	msg = ctxLogger.Infof("Level:%s", func() []interface{} {
+	msg = ctxLogger.Sugar().Infof("Level:%s", func() []interface{} {
 		return log.T("info")
 	})
 	assert.Equal(t, msg.Level(), log.InfoLevel)
@@ -516,7 +516,7 @@ func TestEntry(t *testing.T) {
 	assert.Equal(t, msg.Entry().Context(), ctx)
 	//assert.Equal(t, msg.Msg().Text(), "Level:info")
 
-	msg = ctxLogger.Warn(func() []interface{} {
+	msg = ctxLogger.Sugar().Warn(func() []interface{} {
 		return log.T("Level:", "warn")
 	})
 	assert.Equal(t, msg.Level(), log.WarnLevel)
@@ -525,7 +525,7 @@ func TestEntry(t *testing.T) {
 	assert.Equal(t, msg.Entry().Context(), ctx)
 	//assert.Equal(t, msg.Msg().Text(), "Level:warn")
 
-	msg = ctxLogger.Warnf("Level:%s", func() []interface{} {
+	msg = ctxLogger.Sugar().Warnf("Level:%s", func() []interface{} {
 		return log.T("warn")
 	})
 	assert.Equal(t, msg.Level(), log.WarnLevel)
@@ -534,7 +534,7 @@ func TestEntry(t *testing.T) {
 	assert.Equal(t, msg.Entry().Context(), ctx)
 	//assert.Equal(t, msg.Msg().Text(), "Level:warn")
 
-	msg = ctxLogger.Error(log.ERROR, func() []interface{} {
+	msg = ctxLogger.Sugar().Error(log.ERROR, func() []interface{} {
 		return log.T("Level:", "error")
 	})
 	assert.Equal(t, msg.Level(), log.ErrorLevel)
@@ -544,7 +544,7 @@ func TestEntry(t *testing.T) {
 	assert.Equal(t, msg.Entry().Errno(), log.ERROR)
 	//assert.Equal(t, msg.Msg().Text(), "Level:error")
 
-	msg = ctxLogger.Errorf(log.ERROR, "Level:%s", func() []interface{} {
+	msg = ctxLogger.Sugar().Errorf(log.ERROR, "Level:%s", func() []interface{} {
 		return log.T("error")
 	})
 	assert.Equal(t, msg.Level(), log.ErrorLevel)
@@ -556,7 +556,7 @@ func TestEntry(t *testing.T) {
 
 	ctxLogger = ctxLogger.WithTag(tagIn)
 
-	msg = ctxLogger.Trace("Level:", "trace")
+	msg = ctxLogger.Sugar().Trace("Level:", "trace")
 	assert.Equal(t, msg.Level(), log.TraceLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
@@ -564,7 +564,7 @@ func TestEntry(t *testing.T) {
 	assert.Equal(t, msg.Entry().Context(), ctx)
 	//assert.Equal(t, msg.Msg().Text(), "Level:trace")
 
-	msg = ctxLogger.Tracef("Level:%s", "trace")
+	msg = ctxLogger.Sugar().Tracef("Level:%s", "trace")
 	assert.Equal(t, msg.Level(), log.TraceLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
@@ -572,7 +572,7 @@ func TestEntry(t *testing.T) {
 	assert.Equal(t, msg.Entry().Context(), ctx)
 	//assert.Equal(t, msg.Msg().Text(), "Level:trace")
 
-	msg = ctxLogger.Debug("Level:", "debug")
+	msg = ctxLogger.Sugar().Debug("Level:", "debug")
 	assert.Equal(t, msg.Level(), log.DebugLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
@@ -580,7 +580,7 @@ func TestEntry(t *testing.T) {
 	assert.Equal(t, msg.Entry().Context(), ctx)
 	//assert.Equal(t, msg.Msg().Text(), "Level:debug")
 
-	msg = ctxLogger.Debugf("Level:%s", "debug")
+	msg = ctxLogger.Sugar().Debugf("Level:%s", "debug")
 	assert.Equal(t, msg.Level(), log.DebugLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
@@ -588,7 +588,7 @@ func TestEntry(t *testing.T) {
 	assert.Equal(t, msg.Entry().Context(), ctx)
 	//assert.Equal(t, msg.Msg().Text(), "Level:debug")
 
-	msg = ctxLogger.Info("Level:", "info")
+	msg = ctxLogger.Sugar().Info("Level:", "info")
 	assert.Equal(t, msg.Level(), log.InfoLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
@@ -596,7 +596,7 @@ func TestEntry(t *testing.T) {
 	assert.Equal(t, msg.Entry().Context(), ctx)
 	//assert.Equal(t, msg.Msg().Text(), "Level:info")
 
-	msg = ctxLogger.Infof("Level:%s", "info")
+	msg = ctxLogger.Sugar().Infof("Level:%s", "info")
 	assert.Equal(t, msg.Level(), log.InfoLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
@@ -604,7 +604,7 @@ func TestEntry(t *testing.T) {
 	assert.Equal(t, msg.Entry().Context(), ctx)
 	//assert.Equal(t, msg.Msg().Text(), "Level:info")
 
-	msg = ctxLogger.Warn("Level:", "warn")
+	msg = ctxLogger.Sugar().Warn("Level:", "warn")
 	assert.Equal(t, msg.Level(), log.WarnLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
@@ -612,7 +612,7 @@ func TestEntry(t *testing.T) {
 	assert.Equal(t, msg.Entry().Context(), ctx)
 	//assert.Equal(t, msg.Msg().Text(), "Level:warn")
 
-	msg = ctxLogger.Warnf("Level:%s", "warn")
+	msg = ctxLogger.Sugar().Warnf("Level:%s", "warn")
 	assert.Equal(t, msg.Level(), log.WarnLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
@@ -620,7 +620,7 @@ func TestEntry(t *testing.T) {
 	assert.Equal(t, msg.Entry().Context(), ctx)
 	//assert.Equal(t, msg.Msg().Text(), "Level:warn")
 
-	msg = ctxLogger.Error(log.ERROR, "Level:", "error")
+	msg = ctxLogger.Sugar().Error(log.ERROR, "Level:", "error")
 	assert.Equal(t, msg.Level(), log.ErrorLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
@@ -629,7 +629,7 @@ func TestEntry(t *testing.T) {
 	assert.Equal(t, msg.Entry().Errno(), log.ERROR)
 	//assert.Equal(t, msg.Msg().Text(), "Level:error")
 
-	msg = ctxLogger.Errorf(log.ERROR, "Level:%s", "error")
+	msg = ctxLogger.Sugar().Errorf(log.ERROR, "Level:%s", "error")
 	assert.Equal(t, msg.Level(), log.ErrorLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
@@ -638,7 +638,7 @@ func TestEntry(t *testing.T) {
 	assert.Equal(t, msg.Entry().Errno(), log.ERROR)
 	//assert.Equal(t, msg.Msg().Text(), "Level:error")
 
-	msg = ctxLogger.Panic("Level:", "panic")
+	msg = ctxLogger.Sugar().Panic("Level:", "panic")
 	assert.Equal(t, msg.Level(), log.PanicLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
@@ -646,7 +646,7 @@ func TestEntry(t *testing.T) {
 	assert.Equal(t, msg.Entry().Context(), ctx)
 	//assert.Equal(t, msg.Msg().Text(), "Level:panic")
 
-	msg = ctxLogger.Panicf("Level:%s", "panic")
+	msg = ctxLogger.Sugar().Panicf("Level:%s", "panic")
 	assert.Equal(t, msg.Level(), log.PanicLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
@@ -654,7 +654,7 @@ func TestEntry(t *testing.T) {
 	assert.Equal(t, msg.Entry().Context(), ctx)
 	//assert.Equal(t, msg.Msg().Text(), "Level:panic")
 
-	msg = ctxLogger.Fatal("Level:", "fatal")
+	msg = ctxLogger.Sugar().Fatal("Level:", "fatal")
 	assert.Equal(t, msg.Level(), log.FatalLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
@@ -662,7 +662,7 @@ func TestEntry(t *testing.T) {
 	assert.Equal(t, msg.Entry().Context(), ctx)
 	//assert.Equal(t, msg.Msg().Text(), "Level:fatal")
 
-	msg = ctxLogger.Fatalf("Level:%s", "fatal")
+	msg = ctxLogger.Sugar().Fatalf("Level:%s", "fatal")
 	assert.Equal(t, msg.Level(), log.FatalLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
@@ -672,7 +672,7 @@ func TestEntry(t *testing.T) {
 
 	tagLogger := logger.WithTag(tagIn)
 
-	msg = tagLogger.WithContext(ctx).Trace("Level:", "trace")
+	msg = tagLogger.WithContext(ctx).Sugar().Trace("Level:", "trace")
 	assert.Equal(t, msg.Level(), log.TraceLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
@@ -680,7 +680,7 @@ func TestEntry(t *testing.T) {
 	assert.Equal(t, msg.Entry().Context(), ctx)
 	//assert.Equal(t, msg.Msg().Text(), "Level:trace")
 
-	msg = tagLogger.WithContext(ctx).Tracef("Level:%s", "trace")
+	msg = tagLogger.WithContext(ctx).Sugar().Tracef("Level:%s", "trace")
 	assert.Equal(t, msg.Level(), log.TraceLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
@@ -688,7 +688,7 @@ func TestEntry(t *testing.T) {
 	assert.Equal(t, msg.Entry().Context(), ctx)
 	//assert.Equal(t, msg.Msg().Text(), "Level:trace")
 
-	msg = tagLogger.WithContext(ctx).Debug("Level:", "debug")
+	msg = tagLogger.WithContext(ctx).Sugar().Debug("Level:", "debug")
 	assert.Equal(t, msg.Level(), log.DebugLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
@@ -696,7 +696,7 @@ func TestEntry(t *testing.T) {
 	assert.Equal(t, msg.Entry().Context(), ctx)
 	//assert.Equal(t, msg.Msg().Text(), "Level:debug")
 
-	msg = tagLogger.WithContext(ctx).Debugf("Level:%s", "debug")
+	msg = tagLogger.WithContext(ctx).Sugar().Debugf("Level:%s", "debug")
 	assert.Equal(t, msg.Level(), log.DebugLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
@@ -704,7 +704,7 @@ func TestEntry(t *testing.T) {
 	assert.Equal(t, msg.Entry().Context(), ctx)
 	//assert.Equal(t, msg.Msg().Text(), "Level:debug")
 
-	msg = tagLogger.WithContext(ctx).Info("Level:", "info")
+	msg = tagLogger.WithContext(ctx).Sugar().Info("Level:", "info")
 	assert.Equal(t, msg.Level(), log.InfoLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
@@ -712,7 +712,7 @@ func TestEntry(t *testing.T) {
 	assert.Equal(t, msg.Entry().Context(), ctx)
 	//assert.Equal(t, msg.Msg().Text(), "Level:info")
 
-	msg = tagLogger.WithContext(ctx).Infof("Level:%s", "info")
+	msg = tagLogger.WithContext(ctx).Sugar().Infof("Level:%s", "info")
 	assert.Equal(t, msg.Level(), log.InfoLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
@@ -720,7 +720,7 @@ func TestEntry(t *testing.T) {
 	assert.Equal(t, msg.Entry().Context(), ctx)
 	//assert.Equal(t, msg.Msg().Text(), "Level:info")
 
-	msg = tagLogger.WithContext(ctx).Warn("Level:", "warn")
+	msg = tagLogger.WithContext(ctx).Sugar().Warn("Level:", "warn")
 	assert.Equal(t, msg.Level(), log.WarnLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
@@ -728,7 +728,7 @@ func TestEntry(t *testing.T) {
 	assert.Equal(t, msg.Entry().Context(), ctx)
 	//assert.Equal(t, msg.Msg().Text(), "Level:warn")
 
-	msg = tagLogger.WithContext(ctx).Warnf("Level:%s", "warn")
+	msg = tagLogger.WithContext(ctx).Sugar().Warnf("Level:%s", "warn")
 	assert.Equal(t, msg.Level(), log.WarnLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
@@ -736,7 +736,7 @@ func TestEntry(t *testing.T) {
 	assert.Equal(t, msg.Entry().Context(), ctx)
 	//assert.Equal(t, msg.Msg().Text(), "Level:warn")
 
-	msg = tagLogger.WithContext(ctx).Error(log.ERROR, "Level:", "error")
+	msg = tagLogger.WithContext(ctx).Sugar().Error(log.ERROR, "Level:", "error")
 	assert.Equal(t, msg.Level(), log.ErrorLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
@@ -745,7 +745,7 @@ func TestEntry(t *testing.T) {
 	assert.Equal(t, msg.Entry().Errno(), log.ERROR)
 	//assert.Equal(t, msg.Msg().Text(), "Level:error")
 
-	msg = tagLogger.WithContext(ctx).Errorf(log.ERROR, "Level:%s", "error")
+	msg = tagLogger.WithContext(ctx).Sugar().Errorf(log.ERROR, "Level:%s", "error")
 	assert.Equal(t, msg.Level(), log.ErrorLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
@@ -754,7 +754,7 @@ func TestEntry(t *testing.T) {
 	assert.Equal(t, msg.Entry().Errno(), log.ERROR)
 	//assert.Equal(t, msg.Msg().Text(), "Level:error")
 
-	msg = tagLogger.WithContext(ctx).Panic("Level:", "panic")
+	msg = tagLogger.WithContext(ctx).Sugar().Panic("Level:", "panic")
 	assert.Equal(t, msg.Level(), log.PanicLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
@@ -762,7 +762,7 @@ func TestEntry(t *testing.T) {
 	assert.Equal(t, msg.Entry().Context(), ctx)
 	//assert.Equal(t, msg.Msg().Text(), "Level:panic")
 
-	msg = tagLogger.WithContext(ctx).Panicf("Level:%s", "panic")
+	msg = tagLogger.WithContext(ctx).Sugar().Panicf("Level:%s", "panic")
 	assert.Equal(t, msg.Level(), log.PanicLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
@@ -770,7 +770,7 @@ func TestEntry(t *testing.T) {
 	assert.Equal(t, msg.Entry().Context(), ctx)
 	//assert.Equal(t, msg.Msg().Text(), "Level:panic")
 
-	msg = tagLogger.WithContext(ctx).Fatal("Level:", "fatal")
+	msg = tagLogger.WithContext(ctx).Sugar().Fatal("Level:", "fatal")
 	assert.Equal(t, msg.Level(), log.FatalLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)
@@ -778,7 +778,7 @@ func TestEntry(t *testing.T) {
 	assert.Equal(t, msg.Entry().Context(), ctx)
 	//assert.Equal(t, msg.Msg().Text(), "Level:fatal")
 
-	msg = tagLogger.WithContext(ctx).Fatalf("Level:%s", "fatal")
+	msg = tagLogger.WithContext(ctx).Sugar().Fatalf("Level:%s", "fatal")
 	assert.Equal(t, msg.Level(), log.FatalLevel)
 	assert.Equal(t, msg.File(), code.File())
 	assert.Equal(t, msg.Line(), code.Line()-3)

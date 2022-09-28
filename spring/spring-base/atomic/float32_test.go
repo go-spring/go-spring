@@ -17,6 +17,7 @@
 package atomic_test
 
 import (
+	"encoding/json"
 	"testing"
 	"unsafe"
 
@@ -26,7 +27,7 @@ import (
 
 func TestFloat32(t *testing.T) {
 
-	// atomic.Float32 和 uint32 占用的空间大小一样
+	// atomic.Float32 and uint32 occupy the same space
 	assert.Equal(t, unsafe.Sizeof(atomic.Float32{}), uintptr(4))
 
 	var f atomic.Float32
@@ -34,4 +35,16 @@ func TestFloat32(t *testing.T) {
 
 	f.Store(1)
 	assert.Equal(t, f.Load(), float32(1))
+
+	f.Swap(2)
+	assert.Equal(t, f.Load(), float32(2))
+
+	f.CompareAndSwap(2, 3)
+	assert.Equal(t, f.Load(), float32(3))
+
+	f.CompareAndSwap(2, 3)
+	assert.Equal(t, f.Load(), float32(3))
+
+	bytes, _ := json.Marshal(&f)
+	assert.Equal(t, string(bytes), "3")
 }

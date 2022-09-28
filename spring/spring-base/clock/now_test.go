@@ -27,6 +27,7 @@ import (
 )
 
 func TestNow(t *testing.T) {
+
 	ctx, _ := knife.New(context.Background())
 	trueNow := time.Now()
 
@@ -42,10 +43,10 @@ func TestNow(t *testing.T) {
 		err := clock.SetBaseTime(ctx, time.Unix(100, 0))
 		assert.Nil(t, err)
 		defer clock.ResetTime(ctx)
-		time.Sleep(2 * time.Second)
+		time.Sleep(300 * time.Millisecond)
 		now := clock.Now(ctx)
-		assert.True(t, now.Sub(time.Unix(100, 0)) < 2500*time.Millisecond)
+		assert.True(t, now.Sub(time.Unix(100, 0)) < 500*time.Millisecond)
 	})
 
-	assert.True(t, clock.Now(ctx).Sub(trueNow) < 3*time.Second)
+	assert.True(t, clock.Now(ctx).Sub(trueNow) < 500*time.Millisecond)
 }

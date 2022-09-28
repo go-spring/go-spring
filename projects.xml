@@ -43,6 +43,12 @@
         <branch>main</branch>
     </project>
     <project>
+        <name>spring-replay</name>
+        <dir>spring/spring-replay</dir>
+        <url>https://github.com/go-spring/spring-replay.git</url>
+        <branch>main</branch>
+    </project>
+    <project>
         <name>spring-swag</name>
         <dir>spring/spring-swag</dir>
         <url>https://github.com/go-spring/spring-swag.git</url>
@@ -100,6 +106,12 @@
         <name>starter-redigo</name>
         <dir>starter/starter-redigo</dir>
         <url>https://github.com/go-spring/starter-redigo.git</url>
+        <branch>main</branch>
+    </project>
+    <project>
+        <name>starter-replay</name>
+        <dir>starter/starter-replay</dir>
+        <url>https://github.com/go-spring/starter-replay.git</url>
         <branch>main</branch>
     </project>
     <project>

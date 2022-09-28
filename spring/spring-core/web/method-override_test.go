@@ -30,6 +30,6 @@ func TestMethodOverride(t *testing.T) {
 	w := httptest.NewRecorder()
 	ctx := web.NewBaseContext("", nil, r, &web.SimpleResponse{ResponseWriter: w})
 	f := web.NewMethodOverrideFilter(web.NewMethodOverrideConfig().ByQueryParam("_method"))
-	web.NewFilterChain([]web.Filter{f}).Next(ctx)
+	web.NewFilterChain([]web.Filter{f}).Next(ctx, web.Recursive)
 	assert.Equal(t, ctx.Request().Method, http.MethodGet)
 }

@@ -44,6 +44,6 @@ func NewRequestIDFilter(config RequestIDConfig) Filter {
 			reqID = config.Generator()
 		}
 		ctx.SetHeader(HeaderXRequestID, reqID)
-		chain.Continue(ctx)
+		chain.Next(ctx, Iterative)
 	})
 }

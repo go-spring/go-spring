@@ -89,14 +89,14 @@ func main() {
 	util.Panic(err).When(err != nil)
 
 	logger := log.GetLogger("xxx")
-	logger.Info("a", "=", "1")
-	logger.Infof("a=1")
+	logger.Sugar().Info("a", "=", "1")
+	logger.Sugar().Infof("a=1")
 	logger.Infow(log.Message("a=%d", 1))
 
 	span := &Span{TraceID: "1111", SpanID: "2222"}
 	ctx := ContextWithSpan(context.Background(), span)
-	logger.WithContext(ctx).Info("a", "=", "1")
-	logger.WithContext(ctx).Infof("a=1")
+	logger.WithContext(ctx).Sugar().Info("a", "=", "1")
+	logger.WithContext(ctx).Sugar().Infof("a=1")
 	logger.WithContext(ctx).Infow(log.Message("a=%d", 1))
 }
 

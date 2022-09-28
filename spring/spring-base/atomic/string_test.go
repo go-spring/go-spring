@@ -15,3 +15,27 @@
  */
 
 package atomic_test
+
+import (
+	"encoding/json"
+	"testing"
+	"unsafe"
+
+	"github.com/go-spring/spring-base/assert"
+	"github.com/go-spring/spring-base/atomic"
+)
+
+func TestString(t *testing.T) {
+
+	// atomic.String and interface{} occupy the same space
+	assert.Equal(t, unsafe.Sizeof(atomic.String{}), uintptr(16))
+
+	var s atomic.String
+	assert.Equal(t, s.Load(), "")
+
+	s.Store("1")
+	assert.Equal(t, s.Load(), "1")
+
+	bytes, _ := json.Marshal(&s)
+	assert.Equal(t, string(bytes), `"1"`)
+}

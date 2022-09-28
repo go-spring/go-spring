@@ -21,36 +21,38 @@ import (
 	"sync/atomic"
 )
 
+// An Int32 is an atomic int32 value.
 type Int32 struct {
 	_ nocopy
 	v int32
 }
 
-// Add wrapper for atomic.AddInt32.
+// Add atomically adds delta to x and returns the new value.
 func (x *Int32) Add(delta int32) (new int32) {
 	return atomic.AddInt32(&x.v, delta)
 }
 
-// Store wrapper for atomic.StoreInt32.
-func (x *Int32) Store(val int32) {
-	atomic.StoreInt32(&x.v, val)
-}
-
-// Load wrapper for atomic.LoadInt32.
+// Load atomically loads and returns the value stored in x.
 func (x *Int32) Load() (val int32) {
 	return atomic.LoadInt32(&x.v)
 }
 
-// Swap wrapper for atomic.SwapInt32.
+// Store atomically stores val into x.
+func (x *Int32) Store(val int32) {
+	atomic.StoreInt32(&x.v, val)
+}
+
+// Swap atomically stores new into x and returns the old value.
 func (x *Int32) Swap(new int32) (old int32) {
 	return atomic.SwapInt32(&x.v, new)
 }
 
-// CompareAndSwap wrapper for atomic.CompareAndSwapInt32.
+// CompareAndSwap executes the compare-and-swap operation for x.
 func (x *Int32) CompareAndSwap(old, new int32) (swapped bool) {
 	return atomic.CompareAndSwapInt32(&x.v, old, new)
 }
 
+// MarshalJSON returns the JSON encoding of x.
 func (x *Int32) MarshalJSON() ([]byte, error) {
 	return json.Marshal(x.Load())
 }

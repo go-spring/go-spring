@@ -33,7 +33,7 @@ func TestBasicAuthFilter(t *testing.T) {
 	f := web.NewBasicAuthFilter(web.BasicAuthConfig{
 		Accounts: map[string]string{"Aladdin": "open sesame"},
 	})
-	web.NewFilterChain([]web.Filter{f}).Next(ctx)
+	web.NewFilterChain([]web.Filter{f}).Next(ctx, web.Recursive)
 	user := ctx.Get(web.AuthUserKey)
 	assert.Equal(t, user, "Aladdin")
 }

@@ -17,33 +17,50 @@
 package atomic
 
 import (
+	"encoding/json"
 	"sync/atomic"
 	"unsafe"
-
-	"github.com/go-spring/spring-base/util"
 )
 
+type MarshalPointer func(unsafe.Pointer) ([]byte, error)
+
+// A Pointer is an atomic pointer value.
 type Pointer struct {
-	_ util.NoCopy
+	_ nocopy
 	v unsafe.Pointer
+
+	marshalJSON MarshalPointer
 }
 
-// Load wrapper for atomic.LoadPointer.
+// Load atomically loads and returns the value stored in x.
 func (p *Pointer) Load() (val unsafe.Pointer) {
 	return atomic.LoadPointer(&p.v)
 }
 
-// Store wrapper for atomic.StorePointer.
+// Store atomically stores val into x.
 func (p *Pointer) Store(val unsafe.Pointer) {
 	atomic.StorePointer(&p.v, val)
 }
 
-// Swap wrapper for atomic.SwapPointer.
+// Swap atomically stores new into x and returns the old value.
 func (p *Pointer) Swap(new unsafe.Pointer) (old unsafe.Pointer) {
 	return atomic.SwapPointer(&p.v, new)
 }
 
-// CompareAndSwap wrapper for atomic.CompareAndSwapPointer.
+// CompareAndSwap executes the compare-and-swap operation for x.
 func (p *Pointer) CompareAndSwap(old, new unsafe.Pointer) (swapped bool) {
 	return atomic.CompareAndSwapPointer(&p.v, old, new)
+}
+
+// SetMarshalJSON sets the JSON encoding handler for x.
+func (p *Pointer) SetMarshalJSON(fn MarshalPointer) {
+	p.marshalJSON = fn
+}
+
+// MarshalJSON returns the JSON encoding of x.
+func (p *Pointer) MarshalJSON() ([]byte, error) {
+	if p.marshalJSON != nil {
+		return p.marshalJSON(p.Load())
+	}
+	return json.Marshal(p.Load())
 }

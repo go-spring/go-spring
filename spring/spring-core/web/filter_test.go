@@ -30,14 +30,14 @@ func TestFuncFilter(t *testing.T) {
 
 	funcFilter := web.FuncFilter(func(ctx web.Context, chain web.FilterChain) {
 		fmt.Println("@FuncFilter")
-		chain.Next(ctx)
+		chain.Next(ctx, web.Recursive)
 	}).URLPatterns("/func")
 
 	handlerFilter := web.HandlerFilter(web.FUNC(func(ctx web.Context) {
 		fmt.Println("@HandlerFilter")
 	}))
 
-	web.NewFilterChain([]web.Filter{funcFilter, handlerFilter}).Next(nil)
+	web.NewFilterChain([]web.Filter{funcFilter, handlerFilter}).Next(nil, web.Recursive)
 }
 
 type Counter struct{}
@@ -72,9 +72,9 @@ func TestFilterChain_Continue(t *testing.T) {
 				return
 			}
 			if i%2 == 0 {
-				chain.Next(ctx)
+				chain.Next(ctx, web.Recursive)
 			} else {
-				chain.Continue(ctx)
+				chain.Next(ctx, web.Iterative)
 			}
 		})
 	}
@@ -87,7 +87,7 @@ func TestFilterChain_Continue(t *testing.T) {
 		filterImpl(5),
 		filterImpl(6),
 		filterImpl(7),
-	}).Next(nil)
+	}).Next(nil, web.Recursive)
 
 	assert.Equal(t, result, [][]int{
 		{1},
@@ -121,7 +121,7 @@ func TestFilterChain_Next(t *testing.T) {
 			if i > 5 {
 				return
 			}
-			chain.Next(ctx)
+			chain.Next(ctx, web.Recursive)
 		})
 	}
 
@@ -133,7 +133,7 @@ func TestFilterChain_Next(t *testing.T) {
 		filterImpl(5),
 		filterImpl(6),
 		filterImpl(7),
-	}).Next(nil)
+	}).Next(nil, web.Recursive)
 
 	assert.Equal(t, result, [][]int{
 		{1},

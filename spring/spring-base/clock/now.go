@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/go-spring/spring-base/knife"
+	"github.com/go-spring/spring-base/run"
 )
 
 const nowKey = "::now::"
@@ -46,24 +47,24 @@ func (t *baseTime) Now() time.Time {
 	return t.base.Add(time.Since(t.from))
 }
 
-// ResetTime 恢复正常时间。
+// ResetTime resets the time to normal.
 func ResetTime(ctx context.Context) {
 	knife.Delete(ctx, nowKey)
 }
 
-// SetFixedTime 设置固定时间。
+// SetFixedTime sets a fixed time.
 func SetFixedTime(ctx context.Context, t time.Time) error {
 	return knife.Store(ctx, nowKey, &fixedTime{fixed: t})
 }
 
-// SetBaseTime 设置基准时间。
+// SetBaseTime sets the base time.
 func SetBaseTime(ctx context.Context, t time.Time) error {
 	return knife.Store(ctx, nowKey, &baseTime{base: t, from: time.Now()})
 }
 
-// Now 获取当前时间。
+// Now returns the current local time.
 func Now(ctx context.Context) time.Time {
-	if ctx == nil {
+	if run.NormalMode() || run.RecordMode() {
 		return time.Now()
 	}
 	v, err := knife.Load(ctx, nowKey)
@@ -75,9 +76,4 @@ func Now(ctx context.Context) time.Time {
 		return time.Now()
 	}
 	return t.Now()
-}
-
-// MilliSeconds 返回 time.Time 的毫秒时间。
-func MilliSeconds(t time.Time) int64 {
-	return t.UnixNano() / 1e6
 }

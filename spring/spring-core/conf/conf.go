@@ -278,6 +278,9 @@ func Flatten(key string, val interface{}, result map[string]string) error {
 // when it doesn't exist in the slice or map even they share a same
 // prefix path.
 func (p *Properties) Set(key string, val interface{}) error {
+	if key == "" {
+		return nil
+	}
 	m := make(map[string]string)
 	err := Flatten(key, val, m)
 	if err != nil {

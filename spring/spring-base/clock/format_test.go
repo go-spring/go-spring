@@ -99,7 +99,6 @@ func Test_unitFormat(t *testing.T) {
 	}
 }
 
-// BenchmarkFormat
 // BenchmarkFormat/native
 // BenchmarkFormat/native-8         	 6000045	       198 ns/op
 // BenchmarkFormat/custom

@@ -22,37 +22,39 @@ import (
 	"time"
 )
 
+// A Duration is an atomic time.Duration value.
 type Duration struct {
 	_ nocopy
 	_ align64
 	v int64
 }
 
-// Add wrapper for atomic.AddInt64.
+// Add atomically adds delta to x and returns the new value.
 func (x *Duration) Add(delta time.Duration) time.Duration {
 	return time.Duration(atomic.AddInt64(&x.v, int64(delta)))
 }
 
-// Load wrapper for atomic.LoadInt64.
+// Load atomically loads and returns the value stored in x.
 func (x *Duration) Load() time.Duration {
 	return time.Duration(atomic.LoadInt64(&x.v))
 }
 
-// Store wrapper for atomic.StoreInt64.
+// Store atomically stores val into x.
 func (x *Duration) Store(val time.Duration) {
 	atomic.StoreInt64(&x.v, int64(val))
 }
 
-// Swap wrapper for atomic.SwapInt64.
+// Swap atomically stores new into x and returns the old value.
 func (x *Duration) Swap(new time.Duration) time.Duration {
 	return time.Duration(atomic.SwapInt64(&x.v, int64(new)))
 }
 
-// CompareAndSwap wrapper for atomic.CompareAndSwapInt64.
+// CompareAndSwap executes the compare-and-swap operation for x.
 func (x *Duration) CompareAndSwap(old, new time.Duration) bool {
 	return atomic.CompareAndSwapInt64(&x.v, int64(old), int64(new))
 }
 
+// MarshalJSON returns the JSON encoding of x.
 func (x *Duration) MarshalJSON() ([]byte, error) {
 	return json.Marshal(x.Load())
 }

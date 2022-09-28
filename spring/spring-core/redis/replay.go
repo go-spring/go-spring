@@ -16,74 +16,66 @@
 
 package redis
 
-import (
-	"context"
-	"errors"
-	"strings"
-
-	"github.com/go-spring/spring-base/net/recorder"
-	"github.com/go-spring/spring-base/net/replayer"
-)
-
-func init() {
-	recorder.RegisterProtocol(recorder.REDIS, &protocol{})
-}
-
-type replayResult struct {
-	data []string
-}
-
-type replayConn struct {
-	conn ConnPool
-}
-
-func (c *replayConn) Exec(ctx context.Context, cmd string, args []interface{}) (interface{}, error) {
-
-	req := recorder.EncodeTTY(append([]interface{}{cmd}, args...)...)
-	response, ok, err := replayer.BestQuery(ctx, recorder.REDIS, req)
-	if err != nil {
-		return nil, err
-	}
-	if !ok {
-		return c.conn.Exec(ctx, cmd, args)
-	}
-
-	csv, err := recorder.DecodeCSV(response)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(csv) == 1 {
-		s := csv[0]
-		if s == "NULL" {
-			return nil, ErrNil()
-		}
-		if strings.HasPrefix(s, "(err) ") {
-			return nil, errors.New(strings.TrimPrefix(s, "(err) "))
-		}
-	}
-
-	return &replayResult{csv}, nil
-}
-
-type protocol struct{}
-
-func (p *protocol) GetLabel(data string) string {
-	return strings.SplitN(data, " ", 2)[0]
-}
-
-func (p *protocol) FlatRequest(data string) (map[string]string, error) {
-	csv, err := recorder.DecodeTTY(data)
-	if err != nil {
-		return nil, err
-	}
-	return recorder.FlatJSON(csv), nil
-}
-
-func (p *protocol) FlatResponse(data string) (map[string]string, error) {
-	csv, err := recorder.DecodeCSV(data)
-	if err != nil {
-		return nil, err
-	}
-	return recorder.FlatJSON(csv), nil
-}
+//
+//func init() {
+//	recorder.RegisterProtocol(recorder.REDIS, &protocol{})
+//}
+//
+//type replayResult struct {
+//	data []string
+//}
+//
+//type replayConn struct {
+//	conn ConnPool
+//}
+//
+//func (c *replayConn) Exec(ctx context.Context, cmd string, args []interface{}) (interface{}, error) {
+//
+//	req := recorder.EncodeTTY(append([]interface{}{cmd}, args...)...)
+//	response, ok, err := replayer.BestQuery(ctx, recorder.REDIS, req)
+//	if err != nil {
+//		return nil, err
+//	}
+//	if !ok {
+//		return c.conn.Exec(ctx, cmd, args)
+//	}
+//
+//	csv, err := recorder.DecodeCSV(response)
+//	if err != nil {
+//		return nil, err
+//	}
+//
+//	if len(csv) == 1 {
+//		s := csv[0]
+//		if s == "NULL" {
+//			return nil, ErrNil()
+//		}
+//		if strings.HasPrefix(s, "(err) ") {
+//			return nil, errors.New(strings.TrimPrefix(s, "(err) "))
+//		}
+//	}
+//
+//	return &replayResult{csv}, nil
+//}
+//
+//type protocol struct{}
+//
+//func (p *protocol) GetLabel(data string) string {
+//	return strings.SplitN(data, " ", 2)[0]
+//}
+//
+//func (p *protocol) FlatRequest(data string) (map[string]string, error) {
+//	csv, err := recorder.DecodeTTY(data)
+//	if err != nil {
+//		return nil, err
+//	}
+//	return recorder.FlatJSON(csv), nil
+//}
+//
+//func (p *protocol) FlatResponse(data string) (map[string]string, error) {
+//	csv, err := recorder.DecodeCSV(data)
+//	if err != nil {
+//		return nil, err
+//	}
+//	return recorder.FlatJSON(csv), nil
+//}

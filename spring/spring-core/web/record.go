@@ -16,67 +16,60 @@
 
 package web
 
-import (
-	"bytes"
-
-	"github.com/go-spring/spring-base/net/recorder"
-	"github.com/google/uuid"
-)
-
 // StartRecord 启动流量录制
 func StartRecord(ctx Context) {
-	if !recorder.RecordMode() {
-		return
-	}
-	recorder.StartRecord(ctx.Context(), func() (string, error) {
-		r, err := uuid.NewRandom()
-		if err != nil {
-			return "", err
-		}
-		return r.String(), nil
-	})
+	//if !recorder.RecordMode() {
+	//	return
+	//}
+	//recorder.StartRecord(ctx.Context(), func() (string, error) {
+	//	r, err := uuid.NewRandom()
+	//	if err != nil {
+	//		return "", err
+	//	}
+	//	return r.String(), nil
+	//})
 }
 
 // StopRecord 停止流量录制
 func StopRecord(ctx Context) {
-	if !recorder.RecordMode() {
-		return
-	}
-	req := ctx.Request()
-	//resp := ctx.ResponseWriter()
-	recorder.RecordInbound(req.Context(), recorder.HTTP, &recorder.SimpleAction{
-		Request: func() string {
-			var buf bytes.Buffer
-			err := req.Write(&buf)
-			if err != nil {
-				return err.Error()
-			}
-			return buf.String()
-		},
-		Response: func() string {
-			var buf bytes.Buffer
-			//is11 := req.ProtoAtLeast(1, 1)
-			//if is11 {
-			//	buf.WriteString("HTTP/1.1 ")
-			//} else {
-			//	buf.WriteString("HTTP/1.0 ")
-			//}
-			//buf.Write(strconv.AppendInt([]byte{}, int64(resp.Status()), 10))
-			//buf.WriteByte(' ')
-			//buf.WriteString(http.StatusText(resp.Status()))
-			//buf.WriteString("\r\n")
-			//err := resp.Header().WriteSubset(&buf, nil)
-			//if err != nil {
-			//	return err.Error()
-			//}
-			//if resp.Header().Get("Content-Length") == "" {
-			//	buf.WriteString("Content-Length: ")
-			//	buf.WriteString(cast.ToString(resp.Size()))
-			//	buf.WriteString("\r\n")
-			//}
-			//buf.WriteString("\r\n")
-			//buf.WriteString(resp.Body())
-			return buf.String()
-		},
-	})
+	//if !recorder.RecordMode() {
+	//	return
+	//}
+	//req := ctx.Request()
+	////resp := ctx.ResponseWriter()
+	//recorder.RecordInbound(req.Context(), recorder.HTTP, &recorder.SimpleAction{
+	//	Request: func() string {
+	//		var buf bytes.Buffer
+	//		err := req.Write(&buf)
+	//		if err != nil {
+	//			return err.Error()
+	//		}
+	//		return buf.String()
+	//	},
+	//	Response: func() string {
+	//		var buf bytes.Buffer
+	//		//is11 := req.ProtoAtLeast(1, 1)
+	//		//if is11 {
+	//		//	buf.WriteString("HTTP/1.1 ")
+	//		//} else {
+	//		//	buf.WriteString("HTTP/1.0 ")
+	//		//}
+	//		//buf.Write(strconv.AppendInt([]byte{}, int64(resp.Status()), 10))
+	//		//buf.WriteByte(' ')
+	//		//buf.WriteString(http.StatusText(resp.Status()))
+	//		//buf.WriteString("\r\n")
+	//		//err := resp.Header().WriteSubset(&buf, nil)
+	//		//if err != nil {
+	//		//	return err.Error()
+	//		//}
+	//		//if resp.Header().Get("Content-Length") == "" {
+	//		//	buf.WriteString("Content-Length: ")
+	//		//	buf.WriteString(cast.ToString(resp.Size()))
+	//		//	buf.WriteString("\r\n")
+	//		//}
+	//		//buf.WriteString("\r\n")
+	//		//buf.WriteString(resp.Body())
+	//		return buf.String()
+	//	},
+	//})
 }

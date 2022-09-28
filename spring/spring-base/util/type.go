@@ -24,10 +24,10 @@ import (
 	"strings"
 )
 
-// errorType error 的反射类型。
+// errorType the reflection type of error.
 var errorType = reflect.TypeOf((*error)(nil)).Elem()
 
-// contextType context.Context 的反射类型。
+// contextType the reflection type of context.Context.
 var contextType = reflect.TypeOf((*context.Context)(nil)).Elem()
 
 // BeanSelector bean 选择器，可以是 bean ID 字符串，可
@@ -51,7 +51,7 @@ type BeanDefinition interface {
 // be function type, and its prototype is func(string)(type,error).
 type Converter interface{}
 
-// IsValidConverter 返回是否是合法的转换器类型。
+// IsValidConverter returns whether t is a legal converter type.
 func IsValidConverter(t reflect.Type) bool {
 	return t.Kind() == reflect.Func &&
 		t.NumIn() == 1 &&
@@ -60,17 +60,17 @@ func IsValidConverter(t reflect.Type) bool {
 		(IsValueType(t.Out(0)) || IsFuncType(t.Out(0))) && IsErrorType(t.Out(1))
 }
 
-// IsFuncType t 是否是 func 类型。
+// IsFuncType returns whether t is func type.
 func IsFuncType(t reflect.Type) bool {
 	return t.Kind() == reflect.Func
 }
 
-// IsErrorType t 是否是 error 类型。
+// IsErrorType returns whether t is error type.
 func IsErrorType(t reflect.Type) bool {
 	return t == errorType
 }
 
-// IsContextType t 是否是 context.Context 类型。
+// IsContextType returns whether t is context.Context type.
 func IsContextType(t reflect.Type) bool {
 	return t == contextType
 }
@@ -85,17 +85,17 @@ func IsConstructor(t reflect.Type) bool {
 	return IsFuncType(t) && (t.NumOut() == 1 || returnError)
 }
 
-// ReturnNothing 函数是否无返回值。
+// ReturnNothing returns whether the function has no return value.
 func ReturnNothing(t reflect.Type) bool {
 	return t.NumOut() == 0
 }
 
-// ReturnOnlyError 函数是否只返回错误值。
+// ReturnOnlyError returns whether the function returns only error value.
 func ReturnOnlyError(t reflect.Type) bool {
 	return t.NumOut() == 1 && IsErrorType(t.Out(0))
 }
 
-// HasReceiver 函数是否具有接收者。
+// HasReceiver returns whether the function has a receiver.
 func HasReceiver(t reflect.Type, receiver reflect.Type) bool {
 	if t.NumIn() < 1 {
 		return false
@@ -107,7 +107,7 @@ func HasReceiver(t reflect.Type, receiver reflect.Type) bool {
 	return receiver.Implements(t0)
 }
 
-// IsStructPtr 返回是否是结构体的指针类型。
+// IsStructPtr returns whether it is the pointer type of structure.
 func IsStructPtr(t reflect.Type) bool {
 	return t.Kind() == reflect.Ptr && t.Elem().Kind() == reflect.Struct
 }
@@ -145,7 +145,7 @@ func TypeName(i interface{}) string {
 	return typ.String() // 内置类型的路径为空
 }
 
-// IsPrimitiveValueType returns whether the input type is the primitive value
+// IsPrimitiveValueType returns whether t is the primitive value
 // type which only is int, unit, float, bool, string and complex.
 func IsPrimitiveValueType(t reflect.Type) bool {
 	switch t.Kind() {

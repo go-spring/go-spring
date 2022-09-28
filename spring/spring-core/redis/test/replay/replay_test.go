@@ -17,39 +17,34 @@
 package replay
 
 import (
-	"context"
 	"testing"
 
-	"github.com/go-spring/spring-base/assert"
-	"github.com/go-spring/spring-base/knife"
-	"github.com/go-spring/spring-base/net/replayer"
-	"github.com/go-spring/spring-core/redis"
 	"github.com/go-spring/spring-core/redis/test/cases"
 )
 
 func RunCase(t *testing.T, c cases.Case) {
 
-	replayer.SetReplayMode(true)
-	defer func() {
-		replayer.SetReplayMode(false)
-	}()
-
-	agent := replayer.NewLocalAgent()
-	replayer.SetReplayAgent(agent)
-
-	session, err := agent.Store(c.Data)
-	assert.Nil(t, err)
-
-	ctx, _ := knife.New(context.Background())
-	err = replayer.SetSessionID(ctx, session.Session)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	client, err := redis.NewClient(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	c.Func(t, ctx, client)
+	//replayer.SetReplayMode(true)
+	//defer func() {
+	//	replayer.SetReplayMode(false)
+	//}()
+	//
+	//agent := replayer.NewLocalAgent()
+	//replayer.SetReplayAgent(agent)
+	//
+	//session, err := agent.Store(c.Data)
+	//assert.Nil(t, err)
+	//
+	//ctx, _ := knife.New(context.Background())
+	//err = replayer.SetSessionID(ctx, session.Session)
+	//if err != nil {
+	//	t.Fatal(err)
+	//}
+	//
+	//client, err := redis.NewClient(nil)
+	//if err != nil {
+	//	t.Fatal(err)
+	//}
+	//
+	//c.Func(t, ctx, client)
 }

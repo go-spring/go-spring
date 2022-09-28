@@ -17,6 +17,7 @@
 package atomic_test
 
 import (
+	"encoding/json"
 	"testing"
 	"unsafe"
 
@@ -26,7 +27,7 @@ import (
 
 func TestFloat64(t *testing.T) {
 
-	// atomic.Float64 和 uint64 占用的空间大小一样
+	// atomic.Float64 and uint64 occupy the same space
 	assert.Equal(t, unsafe.Sizeof(atomic.Float64{}), uintptr(8))
 
 	var f atomic.Float64
@@ -34,4 +35,16 @@ func TestFloat64(t *testing.T) {
 
 	f.Store(1)
 	assert.Equal(t, f.Load(), float64(1))
+
+	f.Swap(2)
+	assert.Equal(t, f.Load(), float64(2))
+
+	f.CompareAndSwap(2, 3)
+	assert.Equal(t, f.Load(), float64(3))
+
+	f.CompareAndSwap(2, 3)
+	assert.Equal(t, f.Load(), float64(3))
+
+	bytes, _ := json.Marshal(&f)
+	assert.Equal(t, string(bytes), "3")
 }

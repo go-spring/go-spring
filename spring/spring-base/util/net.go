@@ -24,7 +24,7 @@ import (
 var localIPv4Str = "0.0.0.0"
 var localIPv4Once = new(sync.Once)
 
-// LocalIPv4 获取本机的 IPv4 地址。
+// LocalIPv4 returns the IPv4 address of the local computer.
 func LocalIPv4() string {
 	localIPv4Once.Do(func() {
 		if ias, err := net.InterfaceAddrs(); err == nil {

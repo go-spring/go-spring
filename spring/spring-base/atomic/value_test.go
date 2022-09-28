@@ -15,3 +15,9 @@
  */
 
 package atomic_test
+
+import "testing"
+
+func TestValue(t *testing.T) {
+
+}

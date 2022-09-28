@@ -24,39 +24,44 @@ import (
 	"sync"
 )
 
-type ctxKeyType int
+// errUninitialized returns this error when knife is uninitialized.
+var errUninitialized = errors.New("knife uninitialized")
 
-var ctxKey ctxKeyType
+var ctxKey int
 
 func cache(ctx context.Context) (*sync.Map, bool) {
-	m, ok := ctx.Value(ctxKey).(*sync.Map)
+	m, ok := ctx.Value(&ctxKey).(*sync.Map)
 	return m, ok
 }
 
-// New 返回带有缓存空间的 context.Context 对象，已绑定缓存空间时 cached 返回 true 。
+// New returns a new context.Context with a *sync.Map bound. If a *sync.Map
+// is already bound, then returns the input context.Context.
 func New(ctx context.Context) (_ context.Context, cached bool) {
 	if _, ok := cache(ctx); ok {
 		return ctx, true
 	}
-	ctx = context.WithValue(ctx, ctxKey, new(sync.Map))
+	ctx = context.WithValue(ctx, &ctxKey, new(sync.Map))
 	return ctx, false
 }
 
-// Load 从 context.Context 对象中获取 key 对应的 val。
+// Load returns the value stored for a key, or nil if no value is present.
+// If knife is uninitialized, the error of knife uninitialized will be returned.
 func Load(ctx context.Context, key string) (interface{}, error) {
 	m, ok := cache(ctx)
 	if !ok {
-		return nil, errors.New("knife uninitialized")
+		return nil, errUninitialized
 	}
 	v, _ := m.Load(key)
 	return v, nil
 }
 
-// Store 将 key 及其 val 保存到 context.Context 对象。
+// Store stores the key and value in the context.Context, if the key is already
+// in the context.Context, the error of duplicate key will be returned.
+// If knife is uninitialized, the error of knife uninitialized will be returned.
 func Store(ctx context.Context, key string, val interface{}) error {
 	m, ok := cache(ctx)
 	if !ok {
-		return errors.New("knife uninitialized")
+		return errUninitialized
 	}
 	if _, loaded := m.LoadOrStore(key, val); loaded {
 		return fmt.Errorf("duplicate key %s", key)
@@ -64,50 +69,29 @@ func Store(ctx context.Context, key string, val interface{}) error {
 	return nil
 }
 
-// LoadOrStore 将 key 及其 val 保存到 context.Context 对象。
+// LoadOrStore returns the existing value for the key if present. Otherwise, it
+// stores and returns the given value. The loaded result is true if the value was
+// loaded, false if stored.
+// If knife is uninitialized, the error of knife uninitialized will be returned.
 func LoadOrStore(ctx context.Context, key string, val interface{}) (actual interface{}, loaded bool, err error) {
 	m, ok := cache(ctx)
 	if !ok {
-		return nil, false, errors.New("knife uninitialized")
+		return nil, false, errUninitialized
 	}
 	actual, loaded = m.LoadOrStore(key, val)
 	return
 }
 
-// Delete 从 context.Context 对象中删除 key 及其对应的 val 。
+// Delete deletes the key and value.
 func Delete(ctx context.Context, key string) {
 	if m, ok := cache(ctx); ok {
 		m.Delete(key)
 	}
 }
 
-// Range 遍历 context.Context 对象中所有的 key 和 val 。
+// Range calls f sequentially for each key and value.
 func Range(ctx context.Context, f func(key, value interface{}) bool) {
 	if m, ok := cache(ctx); ok {
 		m.Range(f)
 	}
-}
-
-// Copy 拷贝 context.Context 对象中的内容到另一个 context.Context 对象。
-func Copy(src context.Context, keys ...string) (context.Context, error) {
-	srcMap, ok := cache(src)
-	if !ok {
-		return nil, errors.New("knife uninitialized")
-	}
-	dest, _ := New(context.Background())
-	destMap, _ := cache(dest)
-	if len(keys) == 0 {
-		srcMap.Range(func(key, value interface{}) bool {
-			destMap.Store(key, value)
-			return true
-		})
-	} else {
-		for _, key := range keys {
-			var v interface{}
-			if v, ok = srcMap.Load(key); ok {
-				destMap.Store(key, v)
-			}
-		}
-	}
-	return dest, nil
 }

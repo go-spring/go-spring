@@ -33,16 +33,20 @@ func (m *MockT) EXPECT() *MockTMockRecorder {
 	return m.recorder
 }
 
-// Fail mocks base method.
-func (m *MockT) Fail() {
+// Error mocks base method.
+func (m *MockT) Error(args ...interface{}) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "Fail")
+	varargs := []interface{}{}
+	for _, a := range args {
+		varargs = append(varargs, a)
+	}
+	m.ctrl.Call(m, "Error", varargs...)
 }
 
-// Fail indicates an expected call of Fail.
-func (mr *MockTMockRecorder) Fail() *gomock.Call {
+// Error indicates an expected call of Error.
+func (mr *MockTMockRecorder) Error(args ...interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Fail", reflect.TypeOf((*MockT)(nil).Fail))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Error", reflect.TypeOf((*MockT)(nil).Error), args...)
 }
 
 // Helper mocks base method.
@@ -55,20 +59,4 @@ func (m *MockT) Helper() {
 func (mr *MockTMockRecorder) Helper() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Helper", reflect.TypeOf((*MockT)(nil).Helper))
-}
-
-// Log mocks base method.
-func (m *MockT) Log(args ...interface{}) {
-	m.ctrl.T.Helper()
-	varargs := []interface{}{}
-	for _, a := range args {
-		varargs = append(varargs, a)
-	}
-	m.ctrl.Call(m, "Log", varargs...)
-}
-
-// Log indicates an expected call of Log.
-func (mr *MockTMockRecorder) Log(args ...interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Log", reflect.TypeOf((*MockT)(nil).Log), args...)
 }

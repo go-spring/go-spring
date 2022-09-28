@@ -26,9 +26,6 @@ import (
 	"time"
 
 	"github.com/go-spring/spring-base/knife"
-	"github.com/go-spring/spring-base/net/recorder"
-	"github.com/go-spring/spring-base/net/replayer"
-	"github.com/go-spring/spring-base/util"
 )
 
 type LoadType int
@@ -45,7 +42,6 @@ var cache = &sync.Map{}
 
 // InvalidateAll 删除所有缓存值，只用于单元测试。
 func InvalidateAll() {
-	util.MustTestMode()
 	cache = &sync.Map{}
 }
 
@@ -67,7 +63,11 @@ func newValueResult(v interface{}) Result {
 }
 
 func (r *valueResult) Json() string {
-	return recorder.ToJsonValue(r.v)
+	b, err := json.Marshal(r.v.Interface())
+	if err != nil {
+		return err.Error()
+	}
+	return string(b)
 }
 
 func (r *valueResult) Load(v interface{}) error {
@@ -170,15 +170,15 @@ type Loader func(ctx context.Context, key string) (interface{}, error)
 
 func toResultLoader(loader Loader) ResultLoader {
 	return func(ctx context.Context, key string) (Result, LoadType, error) {
-		if replayer.ReplayMode() {
-			resp, ok, err := replayer.Query(ctx, recorder.CACHE, key)
-			if err != nil {
-				return nil, LoadNone, err
-			}
-			if ok {
-				return &jsonResult{v: resp}, LoadCache, nil
-			}
-		}
+		//if replayer.ReplayMode() {
+		//	resp, ok, err := replayer.Query(ctx, recorder.CACHE, key)
+		//	if err != nil {
+		//		return nil, LoadNone, err
+		//	}
+		//	if ok {
+		//		return &jsonResult{v: resp}, LoadCache, nil
+		//	}
+		//}
 		v, err := loader(ctx, key)
 		if err != nil {
 			return nil, LoadNone, err
@@ -226,28 +226,28 @@ func Load(ctx context.Context, key string, loader Loader, opts ...Option) (loadT
 	}
 
 	m := cache
-	if replayer.ReplayMode() {
-		var v interface{}
-		const ctxKey = "::CacheOnContext::"
-		v, _, err = knife.LoadOrStore(ctx, ctxKey, &sync.Map{})
-		if err != nil {
-			return LoadNone, nil, err
-		}
-		m = v.(*sync.Map)
-	}
-
-	defer func() {
-		if loadType == LoadCache && recorder.RecordMode() {
-			recorder.RecordAction(ctx, recorder.CACHE, &recorder.SimpleAction{
-				Request: func() string {
-					return key
-				},
-				Response: func() string {
-					return result.Json()
-				},
-			})
-		}
-	}()
+	//if replayer.ReplayMode() {
+	//	var v interface{}
+	//	const ctxKey = "::CacheOnContext::"
+	//	v, _, err = knife.LoadOrStore(ctx, ctxKey, &sync.Map{})
+	//	if err != nil {
+	//		return LoadNone, nil, err
+	//	}
+	//	m = v.(*sync.Map)
+	//}
+	//
+	//defer func() {
+	//	if loadType == LoadCache && recorder.RecordMode() {
+	//		recorder.RecordAction(ctx, recorder.CACHE, &recorder.SimpleAction{
+	//			Request: func() string {
+	//				return key
+	//			},
+	//			Response: func() string {
+	//				return result.Json()
+	//			},
+	//		})
+	//	}
+	//}()
 
 	// TODO 检测 loader 是否发生变化，以便确认是否多个位置调用 Load 方法。
 	actual, _ := m.LoadOrStore(key, &cacheItem{

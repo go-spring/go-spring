@@ -16,22 +16,17 @@
 
 package web
 
-import (
-	"github.com/go-spring/spring-base/net/replayer"
-	"github.com/go-spring/spring-base/util"
-)
-
 // ReplaySessionID 流量回放模式下传递会话 ID 使用的 Header 。
 const ReplaySessionID = "REPLAY-SESSION-ID"
 
 // StartReplay 开始流量回放
 func StartReplay(ctx Context) {
-	sessionID := ctx.Header(ReplaySessionID)
-	if sessionID == "" {
-		return
-	}
-	err := replayer.SetSessionID(ctx.Context(), sessionID)
-	util.Panic(err).When(err != nil)
+	//sessionID := ctx.Header(ReplaySessionID)
+	//if sessionID == "" {
+	//	return
+	//}
+	//err := replayer.SetSessionID(ctx.Context(), sessionID)
+	//util.Panic(err).When(err != nil)
 }
 
 // StopReplay 停止流量回放
