@@ -17,6 +17,7 @@
 package atomic_test
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 	"unsafe"
@@ -27,7 +28,7 @@ import (
 
 func TestDuration(t *testing.T) {
 
-	// atomic.Duration 和 int64 占用的空间大小一样
+	// atomic.Duration and int64 occupy the same space
 	assert.Equal(t, unsafe.Sizeof(atomic.Duration{}), uintptr(8))
 
 	var d atomic.Duration
@@ -35,4 +36,16 @@ func TestDuration(t *testing.T) {
 
 	d.Store(time.Minute)
 	assert.Equal(t, d.Load(), time.Minute)
+
+	d.Swap(time.Hour)
+	assert.Equal(t, d.Load(), time.Hour)
+
+	d.CompareAndSwap(time.Hour, time.Second)
+	assert.Equal(t, d.Load(), time.Second)
+
+	d.CompareAndSwap(time.Hour, time.Second)
+	assert.Equal(t, d.Load(), time.Second)
+
+	bytes, _ := json.Marshal(&d)
+	assert.Equal(t, string(bytes), "1000000000")
 }

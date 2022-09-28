@@ -17,6 +17,7 @@
 package atomic_test
 
 import (
+	"encoding/json"
 	"reflect"
 	"sync"
 	"testing"
@@ -28,7 +29,7 @@ import (
 
 func TestInt64(t *testing.T) {
 
-	// atomic.Int64 和 int64 占用的空间大小一样
+	// atomic.Int64 and int64 occupy the same space
 	assert.Equal(t, unsafe.Sizeof(atomic.Int64{}), uintptr(8))
 
 	var i atomic.Int64
@@ -36,6 +37,18 @@ func TestInt64(t *testing.T) {
 
 	i.Store(1)
 	assert.Equal(t, i.Load(), int64(1))
+
+	i.Swap(2)
+	assert.Equal(t, i.Load(), int64(2))
+
+	i.CompareAndSwap(2, 3)
+	assert.Equal(t, i.Load(), int64(3))
+
+	i.CompareAndSwap(2, 3)
+	assert.Equal(t, i.Load(), int64(3))
+
+	bytes, _ := json.Marshal(&i)
+	assert.Equal(t, string(bytes), "3")
 }
 
 func TestReflectInt64(t *testing.T) {

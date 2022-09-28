@@ -17,10 +17,29 @@
 package atomic
 
 import (
+	"encoding/json"
 	"sync/atomic"
 )
 
+type MarshalValue func(interface{}) ([]byte, error)
+
+// A Value provides an atomic load and store of a consistently typed value.
 type Value struct {
 	_ nocopy
 	atomic.Value
+
+	marshalJSON MarshalValue
+}
+
+// SetMarshalJSON sets the JSON encoding handler for x.
+func (x *Value) SetMarshalJSON(fn MarshalValue) {
+	x.marshalJSON = fn
+}
+
+// MarshalJSON returns the JSON encoding of x.
+func (x *Value) MarshalJSON() ([]byte, error) {
+	if x.marshalJSON != nil {
+		return x.marshalJSON(x.Load())
+	}
+	return json.Marshal(x.Load())
 }

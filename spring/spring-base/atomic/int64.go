@@ -21,37 +21,39 @@ import (
 	"sync/atomic"
 )
 
+// An Int64 is an atomic int64 value.
 type Int64 struct {
 	_ nocopy
 	_ align64
 	v int64
 }
 
-// Add wrapper for atomic.AddInt64.
+// Add atomically adds delta to x and returns the new value.
 func (x *Int64) Add(delta int64) int64 {
 	return atomic.AddInt64(&x.v, delta)
 }
 
-// Load wrapper for atomic.LoadInt64.
+// Load atomically loads and returns the value stored in x.
 func (x *Int64) Load() int64 {
 	return atomic.LoadInt64(&x.v)
 }
 
-// Store wrapper for atomic.StoreInt64.
+// Store atomically stores val into x.
 func (x *Int64) Store(val int64) {
 	atomic.StoreInt64(&x.v, val)
 }
 
-// Swap wrapper for atomic.SwapInt64.
+// Swap atomically stores new into x and returns the old value.
 func (x *Int64) Swap(new int64) int64 {
 	return atomic.SwapInt64(&x.v, new)
 }
 
-// CompareAndSwap wrapper for atomic.CompareAndSwapInt64.
+// CompareAndSwap executes the compare-and-swap operation for x.
 func (x *Int64) CompareAndSwap(old, new int64) bool {
 	return atomic.CompareAndSwapInt64(&x.v, old, new)
 }
 
+// MarshalJSON returns the JSON encoding of x.
 func (x *Int64) MarshalJSON() ([]byte, error) {
 	return json.Marshal(x.Load())
 }

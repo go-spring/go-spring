@@ -21,6 +21,7 @@ import (
 	"sync/atomic"
 )
 
+// A Bool is an atomic bool value.
 type Bool struct {
 	_ nocopy
 	v uint32
@@ -37,26 +38,27 @@ func uint2bool(val uint32) bool {
 	return val != 0
 }
 
-// Store wrapper for atomic.StoreUint32.
-func (x *Bool) Store(val bool) {
-	atomic.StoreUint32(&x.v, bool2uint(val))
-}
-
-// Load wrapper for atomic.LoadUint32.
+// Load atomically loads and returns the value stored in x.
 func (x *Bool) Load() (val bool) {
 	return uint2bool(atomic.LoadUint32(&x.v))
 }
 
-// Swap wrapper for atomic.SwapUint32.
+// Store atomically stores val into x.
+func (x *Bool) Store(val bool) {
+	atomic.StoreUint32(&x.v, bool2uint(val))
+}
+
+// Swap atomically stores new into x and returns the old value.
 func (x *Bool) Swap(new bool) (old bool) {
 	return uint2bool(atomic.SwapUint32(&x.v, bool2uint(new)))
 }
 
-// CompareAndSwap wrapper for atomic.CompareAndSwapUint32.
+// CompareAndSwap executes the compare-and-swap operation for x.
 func (x *Bool) CompareAndSwap(old, new bool) (swapped bool) {
 	return atomic.CompareAndSwapUint32(&x.v, bool2uint(old), bool2uint(new))
 }
 
+// MarshalJSON returns the JSON encoding of x.
 func (x *Bool) MarshalJSON() ([]byte, error) {
 	return json.Marshal(x.Load())
 }

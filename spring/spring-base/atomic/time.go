@@ -22,11 +22,17 @@ import (
 	"time"
 )
 
+type MarshalTime func(time.Time) ([]byte, error)
+
+// A Time is an atomic time.Time value.
 type Time struct {
 	_ nocopy
 	v atomic.Value
+
+	marshalJSON MarshalTime
 }
 
+// Load atomically loads and returns the value stored in x.
 func (x *Time) Load() time.Time {
 	if x, ok := x.v.Load().(time.Time); ok {
 		return x
@@ -34,10 +40,20 @@ func (x *Time) Load() time.Time {
 	return time.Time{}
 }
 
+// Store atomically stores val into x.
 func (x *Time) Store(val time.Time) {
 	x.v.Store(val)
 }
 
+// SetMarshalJSON sets the JSON encoding handler for x.
+func (x *Time) SetMarshalJSON(fn MarshalTime) {
+	x.marshalJSON = fn
+}
+
+// MarshalJSON returns the JSON encoding of x.
 func (x *Time) MarshalJSON() ([]byte, error) {
-	return json.Marshal(x.Load())
+	if x.marshalJSON != nil {
+		return x.marshalJSON(x.Load())
+	}
+	return json.Marshal(x.Load().UnixNano())
 }

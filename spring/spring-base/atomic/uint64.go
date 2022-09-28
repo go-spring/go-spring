@@ -21,37 +21,39 @@ import (
 	"sync/atomic"
 )
 
+// An Uint64 is an atomic uint64 value.
 type Uint64 struct {
 	_ nocopy
 	_ align64
 	v uint64
 }
 
-// Add wrapper for atomic.AddUint64.
+// Add atomically adds delta to x and returns the new value.
 func (x *Uint64) Add(delta uint64) (new uint64) {
 	return atomic.AddUint64(&x.v, delta)
 }
 
-// Load wrapper for atomic.LoadUint64.
+// Load atomically loads and returns the value stored in x.
 func (x *Uint64) Load() (val uint64) {
 	return atomic.LoadUint64(&x.v)
 }
 
-// Store wrapper for atomic.StoreUint64.
+// Store atomically stores val into x.
 func (x *Uint64) Store(val uint64) {
 	atomic.StoreUint64(&x.v, val)
 }
 
-// Swap wrapper for atomic.SwapUint64.
+// Swap atomically stores new into x and returns the old value.
 func (x *Uint64) Swap(new uint64) (old uint64) {
 	return atomic.SwapUint64(&x.v, new)
 }
 
-// CompareAndSwap wrapper for atomic.CompareAndSwapUint64.
+// CompareAndSwap executes the compare-and-swap operation for x.
 func (x *Uint64) CompareAndSwap(old, new uint64) (swapped bool) {
 	return atomic.CompareAndSwapUint64(&x.v, old, new)
 }
 
+// MarshalJSON returns the JSON encoding of x.
 func (x *Uint64) MarshalJSON() ([]byte, error) {
 	return json.Marshal(x.Load())
 }

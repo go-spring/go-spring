@@ -21,36 +21,38 @@ import (
 	"sync/atomic"
 )
 
+// An Uint32 is an atomic uint32 value.
 type Uint32 struct {
 	_ nocopy
 	v uint32
 }
 
-// Add wrapper for atomic.AddUint32.
+// Add atomically adds delta to x and returns the new value.
 func (x *Uint32) Add(delta uint32) (new uint32) {
 	return atomic.AddUint32(&x.v, delta)
 }
 
-// Load wrapper for atomic.LoadUint32.
+// Load atomically loads and returns the value stored in x.
 func (x *Uint32) Load() (val uint32) {
 	return atomic.LoadUint32(&x.v)
 }
 
-// Store wrapper for atomic.StoreUint32.
+// Store atomically stores val into x.
 func (x *Uint32) Store(val uint32) {
 	atomic.StoreUint32(&x.v, val)
 }
 
-// Swap wrapper for atomic.SwapUint32.
+// Swap atomically stores new into x and returns the old value.
 func (x *Uint32) Swap(new uint32) (old uint32) {
 	return atomic.SwapUint32(&x.v, new)
 }
 
-// CompareAndSwap wrapper for atomic.CompareAndSwapUint32.
+// CompareAndSwap executes the compare-and-swap operation for x.
 func (x *Uint32) CompareAndSwap(old, new uint32) (swapped bool) {
 	return atomic.CompareAndSwapUint32(&x.v, old, new)
 }
 
+// MarshalJSON returns the JSON encoding of x.
 func (x *Uint32) MarshalJSON() ([]byte, error) {
 	return json.Marshal(x.Load())
 }

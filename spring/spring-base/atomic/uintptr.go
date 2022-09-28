@@ -20,32 +20,33 @@ import (
 	"sync/atomic"
 )
 
+// An Uintptr is an atomic uintptr value.
 type Uintptr struct {
 	_ nocopy
 	v uintptr
 }
 
-// Add wrapper for atomic.AddUintptr.
+// Add atomically adds delta to x and returns the new value.
 func (x *Uintptr) Add(delta uintptr) (new uintptr) {
 	return atomic.AddUintptr(&x.v, delta)
 }
 
-// Load wrapper for atomic.LoadUintptr.
+// Load atomically loads and returns the value stored in x.
 func (x *Uintptr) Load() (val uintptr) {
 	return atomic.LoadUintptr(&x.v)
 }
 
-// Store wrapper for atomic.StoreUintptr.
+// Store atomically stores val into x.
 func (x *Uintptr) Store(val uintptr) {
 	atomic.StoreUintptr(&x.v, val)
 }
 
-// Swap wrapper for atomic.SwapUintptr.
+// Swap atomically stores new into x and returns the old value.
 func (x *Uintptr) Swap(new uintptr) (old uintptr) {
 	return atomic.SwapUintptr(&x.v, new)
 }
 
-// CompareAndSwap wrapper for atomic.CompareAndSwapUintptr.
+// CompareAndSwap executes the compare-and-swap operation for x.
 func (x *Uintptr) CompareAndSwap(old, new uintptr) (swapped bool) {
 	return atomic.CompareAndSwapUintptr(&x.v, old, new)
 }

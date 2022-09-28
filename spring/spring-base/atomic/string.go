@@ -18,14 +18,16 @@ package atomic
 
 import (
 	"encoding/json"
+	"sync/atomic"
 )
 
+// A String is an atomic string value.
 type String struct {
 	_ nocopy
-	v Value
+	v atomic.Value
 }
 
-// Load wrapper for atomic.LoadInt64.
+// Load atomically loads and returns the value stored in x.
 func (x *String) Load() string {
 	if r := x.v.Load(); r != nil {
 		return r.(string)
@@ -33,24 +35,12 @@ func (x *String) Load() string {
 	return ""
 }
 
-// Store wrapper for atomic.StoreInt64.
+// Store atomically stores val into x.
 func (x *String) Store(val string) {
 	x.v.Store(val)
 }
 
-// Only for go 1.14+
-// Swap wrapper for atomic.SwapInt64.
-//func (x *String) Swap(new string) string {
-//	return x.v.Swap(new).(string)
-//}
-//
-
-// Only for go 1.14+
-// CompareAndSwap wrapper for atomic.CompareAndSwapInt64.
-//func (x *String) CompareAndSwap(old, new string) bool {
-//	return x.v.CompareAndSwap(old, new)
-//}
-
+// MarshalJSON returns the JSON encoding of x.
 func (x *String) MarshalJSON() ([]byte, error) {
 	return json.Marshal(x.Load())
 }

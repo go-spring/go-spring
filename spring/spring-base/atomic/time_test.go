@@ -17,6 +17,7 @@
 package atomic_test
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 	"unsafe"
@@ -27,12 +28,19 @@ import (
 
 func TestTime(t *testing.T) {
 
-	// atomic.Time 和 interface{} 占用的空间大小一样
-	assert.Equal(t, unsafe.Sizeof(atomic.Time{}), uintptr(16))
+	// atomic.Time and interface{} occupy the same space
+	assert.Equal(t, unsafe.Sizeof(atomic.Time{}), uintptr(16+8))
 
 	var tm atomic.Time
 	assert.Equal(t, tm.Load(), time.Time{})
 
 	tm.Store(time.Unix(1, 1))
 	assert.Equal(t, tm.Load(), time.Unix(1, 1))
+
+	tm.SetMarshalJSON(func(t time.Time) ([]byte, error) {
+		return []byte(t.Format("20060102")), nil
+	})
+
+	bytes, _ := json.Marshal(&tm)
+	assert.Equal(t, string(bytes), "19700101")
 }
