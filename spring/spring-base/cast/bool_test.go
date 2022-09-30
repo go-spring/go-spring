@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/go-spring/spring-base/assert"
 	"github.com/go-spring/spring-base/cast"
 )
 
@@ -45,4 +46,51 @@ func BenchmarkToBool(b *testing.B) {
 			}
 		})
 	})
+}
+
+func TestToBool(t *testing.T) {
+
+	assert.Equal(t, cast.ToBool(nil), false)
+
+	assert.Equal(t, cast.ToBool(int(3)), true)
+	assert.Equal(t, cast.ToBool(int8(3)), true)
+	assert.Equal(t, cast.ToBool(int16(3)), true)
+	assert.Equal(t, cast.ToBool(int32(3)), true)
+	assert.Equal(t, cast.ToBool(int64(3)), true)
+	assert.Equal(t, cast.ToBool(cast.IntPtr(3)), true)
+	assert.Equal(t, cast.ToBool(cast.Int8Ptr(3)), true)
+	assert.Equal(t, cast.ToBool(cast.Int16Ptr(3)), true)
+	assert.Equal(t, cast.ToBool(cast.Int32Ptr(3)), true)
+	assert.Equal(t, cast.ToBool(cast.Int64Ptr(3)), true)
+
+	assert.Equal(t, cast.ToBool(uint(3)), true)
+	assert.Equal(t, cast.ToBool(uint8(3)), true)
+	assert.Equal(t, cast.ToBool(uint16(3)), true)
+	assert.Equal(t, cast.ToBool(uint32(3)), true)
+	assert.Equal(t, cast.ToBool(uint64(3)), true)
+	assert.Equal(t, cast.ToBool(cast.IntPtr(3)), true)
+	assert.Equal(t, cast.ToBool(cast.Int8Ptr(3)), true)
+	assert.Equal(t, cast.ToBool(cast.Int16Ptr(3)), true)
+	assert.Equal(t, cast.ToBool(cast.Int32Ptr(3)), true)
+	assert.Equal(t, cast.ToBool(cast.Int64Ptr(3)), true)
+
+	assert.Equal(t, cast.ToBool(float32(3)), true)
+	assert.Equal(t, cast.ToBool(float64(3)), true)
+	assert.Equal(t, cast.ToBool(cast.Float32Ptr(3)), true)
+	assert.Equal(t, cast.ToBool(cast.Float64Ptr(3)), true)
+
+	assert.Equal(t, cast.ToBool("3"), false)
+	assert.Equal(t, cast.ToBool(cast.StringPtr("3")), false)
+	assert.Equal(t, cast.ToBool("true"), true)
+	assert.Equal(t, cast.ToBool(cast.StringPtr("true")), true)
+	assert.Equal(t, cast.ToBool("false"), false)
+	assert.Equal(t, cast.ToBool(cast.StringPtr("false")), false)
+
+	assert.Equal(t, cast.ToBool(true), true)
+	assert.Equal(t, cast.ToBool(false), false)
+	assert.Equal(t, cast.ToBool(cast.BoolPtr(true)), true)
+	assert.Equal(t, cast.ToBool(cast.BoolPtr(false)), false)
+
+	_, err := cast.ToBoolE("abc")
+	assert.Error(t, err, "strconv.ParseBool: parsing \"abc\": invalid syntax")
 }

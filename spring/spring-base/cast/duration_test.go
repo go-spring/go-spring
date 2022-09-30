@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-spring/spring-base/assert"
 	"github.com/go-spring/spring-base/cast"
 )
 
@@ -46,4 +47,57 @@ func BenchmarkToDuration(b *testing.B) {
 			}
 		})
 	})
+}
+
+func TestToDuration(t *testing.T) {
+
+	assert.Equal(t, cast.ToDuration(nil), time.Duration(0))
+
+	assert.Equal(t, cast.ToDuration(int(3)), time.Duration(3))
+	assert.Equal(t, cast.ToDuration(int8(3)), time.Duration(3))
+	assert.Equal(t, cast.ToDuration(int16(3)), time.Duration(3))
+	assert.Equal(t, cast.ToDuration(int32(3)), time.Duration(3))
+	assert.Equal(t, cast.ToDuration(int64(3)), time.Duration(3))
+	assert.Equal(t, cast.ToDuration(cast.IntPtr(3)), time.Duration(3))
+	assert.Equal(t, cast.ToDuration(cast.Int8Ptr(3)), time.Duration(3))
+	assert.Equal(t, cast.ToDuration(cast.Int16Ptr(3)), time.Duration(3))
+	assert.Equal(t, cast.ToDuration(cast.Int32Ptr(3)), time.Duration(3))
+	assert.Equal(t, cast.ToDuration(cast.Int64Ptr(3)), time.Duration(3))
+
+	assert.Equal(t, cast.ToDuration(uint(3), time.Millisecond), 3*time.Millisecond)
+	assert.Equal(t, cast.ToDuration(uint8(3), time.Millisecond), 3*time.Millisecond)
+	assert.Equal(t, cast.ToDuration(uint16(3), time.Millisecond), 3*time.Millisecond)
+	assert.Equal(t, cast.ToDuration(uint32(3), time.Millisecond), 3*time.Millisecond)
+	assert.Equal(t, cast.ToDuration(uint64(3), time.Millisecond), 3*time.Millisecond)
+	assert.Equal(t, cast.ToDuration(cast.UintPtr(3), time.Second), 3*time.Second)
+	assert.Equal(t, cast.ToDuration(cast.Uint8Ptr(3), time.Second), 3*time.Second)
+	assert.Equal(t, cast.ToDuration(cast.Uint16Ptr(3), time.Second), 3*time.Second)
+	assert.Equal(t, cast.ToDuration(cast.Uint32Ptr(3), time.Second), 3*time.Second)
+	assert.Equal(t, cast.ToDuration(cast.Uint64Ptr(3), time.Second), 3*time.Second)
+
+	assert.Equal(t, cast.ToDuration(float32(3)), time.Duration(3))
+	assert.Equal(t, cast.ToDuration(float64(3)), time.Duration(3))
+	assert.Equal(t, cast.ToDuration(cast.Float32Ptr(3)), time.Duration(3))
+	assert.Equal(t, cast.ToDuration(cast.Float64Ptr(3)), time.Duration(3))
+
+	assert.Equal(t, cast.ToDuration("3ns"), time.Duration(3))
+	assert.Equal(t, cast.ToDuration(cast.StringPtr("3ns")), time.Duration(3))
+
+	_, err := cast.ToDurationE(true)
+	assert.Error(t, err, "unable to cast type bool to time.Duration")
+
+	_, err = cast.ToDurationE(false)
+	assert.Error(t, err, "unable to cast type bool to time.Duration")
+
+	_, err = cast.ToDurationE(cast.BoolPtr(true))
+	assert.Error(t, err, "unable to cast type \\*bool to time.Duration")
+
+	_, err = cast.ToDurationE(cast.BoolPtr(false))
+	assert.Error(t, err, "unable to cast type \\*bool to time.Duration")
+
+	_, err = cast.ToDurationE("3")
+	assert.Error(t, err, "time: missing unit in duration 3")
+
+	_, err = cast.ToDurationE("abc")
+	assert.Error(t, err, "time: invalid duration abc")
 }

@@ -17,7 +17,6 @@
 package cast_test
 
 import (
-	"fmt"
 	"strconv"
 	"testing"
 
@@ -49,59 +48,45 @@ func BenchmarkToInt(b *testing.B) {
 	})
 }
 
-func ptr(i interface{}) interface{} {
-	switch v := i.(type) {
-	case bool:
-		return &v
-	case int:
-		return &v
-	case int8:
-		return &v
-	case int16:
-		return &v
-	case int32:
-		return &v
-	case int64:
-		return &v
-	case uint:
-		return &v
-	case uint8:
-		return &v
-	case uint16:
-		return &v
-	case uint32:
-		return &v
-	case uint64:
-		return &v
-	case float32:
-		return &v
-	case float64:
-		return &v
-	case string:
-		return &v
-	default:
-		return nil
-	}
-}
-
 func TestToInt(t *testing.T) {
 
-	testcases := []struct {
-		param  interface{}
-		expect int64
-	}{
-		{int64(10), int64(10)},
-		{ptr(int64(10)), int64(10)},
-		{10.0, int64(10)},
-		{ptr(10.0), int64(10)},
-		{"10", int64(10)},
-		{ptr("10"), int64(10)},
-		{true, int64(1)},
-		{ptr(true), int64(1)},
-	}
+	assert.Equal(t, cast.ToInt(nil), int(0))
 
-	for i, testcase := range testcases {
-		v := cast.ToInt64(testcase.param)
-		assert.Equal(t, v, testcase.expect, fmt.Sprintf("index %d", i))
-	}
+	assert.Equal(t, cast.ToInt(int(3)), int(3))
+	assert.Equal(t, cast.ToInt(int8(3)), int(3))
+	assert.Equal(t, cast.ToInt(int16(3)), int(3))
+	assert.Equal(t, cast.ToInt(int32(3)), int(3))
+	assert.Equal(t, cast.ToInt(int64(3)), int(3))
+	assert.Equal(t, cast.ToInt(cast.IntPtr(3)), int(3))
+	assert.Equal(t, cast.ToInt(cast.Int8Ptr(3)), int(3))
+	assert.Equal(t, cast.ToInt(cast.Int16Ptr(3)), int(3))
+	assert.Equal(t, cast.ToInt(cast.Int32Ptr(3)), int(3))
+	assert.Equal(t, cast.ToInt(cast.Int64Ptr(3)), int(3))
+
+	assert.Equal(t, cast.ToInt8(uint(3)), int8(3))
+	assert.Equal(t, cast.ToInt8(uint8(3)), int8(3))
+	assert.Equal(t, cast.ToInt8(uint16(3)), int8(3))
+	assert.Equal(t, cast.ToInt8(uint32(3)), int8(3))
+	assert.Equal(t, cast.ToInt8(uint64(3)), int8(3))
+	assert.Equal(t, cast.ToInt8(cast.IntPtr(3)), int8(3))
+	assert.Equal(t, cast.ToInt8(cast.Int8Ptr(3)), int8(3))
+	assert.Equal(t, cast.ToInt8(cast.Int16Ptr(3)), int8(3))
+	assert.Equal(t, cast.ToInt8(cast.Int32Ptr(3)), int8(3))
+	assert.Equal(t, cast.ToInt8(cast.Int64Ptr(3)), int8(3))
+
+	assert.Equal(t, cast.ToInt16(float32(3)), int16(3))
+	assert.Equal(t, cast.ToInt16(float64(3)), int16(3))
+	assert.Equal(t, cast.ToInt16(cast.Float32Ptr(3)), int16(3))
+	assert.Equal(t, cast.ToInt16(cast.Float64Ptr(3)), int16(3))
+
+	assert.Equal(t, cast.ToInt32("3"), int32(3))
+	assert.Equal(t, cast.ToInt32(cast.StringPtr("3")), int32(3))
+
+	assert.Equal(t, cast.ToInt64(true), int64(1))
+	assert.Equal(t, cast.ToInt64(false), int64(0))
+	assert.Equal(t, cast.ToInt64(cast.BoolPtr(true)), int64(1))
+	assert.Equal(t, cast.ToInt64(cast.BoolPtr(false)), int64(0))
+
+	_, err := cast.ToInt64E("abc")
+	assert.Error(t, err, "strconv.ParseInt: parsing \"abc\": invalid syntax")
 }

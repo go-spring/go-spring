@@ -21,19 +21,25 @@ import (
 	"strconv"
 )
 
-// ToFloat32 casts an interface{} to a float32. 在类型明确的情况下推荐使用标准库函数。
+func Float32Ptr(s float32) *float32 { return &s }
+func Float64Ptr(s float64) *float64 { return &s }
+
+// ToFloat32 casts an interface{} to a float32.
+// When type is clear, it is recommended to use standard library functions.
 func ToFloat32(i interface{}) float32 {
 	v, _ := ToFloat64E(i)
 	return float32(v)
 }
 
-// ToFloat64 casts an interface{} to a float64. 在类型明确的情况下推荐使用标准库函数。
+// ToFloat64 casts an interface{} to a float64.
+// When type is clear, it is recommended to use standard library functions.
 func ToFloat64(i interface{}) float64 {
 	v, _ := ToFloat64E(i)
 	return v
 }
 
-// ToFloat64E casts an interface{} to a float64. 在类型明确的情况下推荐使用标准库函数。
+// ToFloat64E casts an interface{} to a float64.
+// When type is clear, it is recommended to use standard library functions.
 func ToFloat64E(i interface{}) (float64, error) {
 	switch s := i.(type) {
 	case nil:
@@ -101,6 +107,6 @@ func ToFloat64E(i interface{}) (float64, error) {
 		}
 		return 0, nil
 	default:
-		return 0, fmt.Errorf("unable to cast %#v of type %T to float64", i, i)
+		return 0, fmt.Errorf("unable to cast type %T to float64", i)
 	}
 }

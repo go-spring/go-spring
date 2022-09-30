@@ -20,15 +20,20 @@ import (
 	"fmt"
 	"html/template"
 	"strconv"
+	"unsafe"
 )
 
-// ToString casts an interface{} to a string. 在类型明确的情况下推荐使用标准库函数。
+func StringPtr(s string) *string { return &s }
+
+// ToString casts an interface{} to a string.
+// When type is clear, it is recommended to use standard library functions.
 func ToString(i interface{}) string {
 	v, _ := ToStringE(i)
 	return v
 }
 
-// ToStringE casts an interface{} to a string. 在类型明确的情况下推荐使用标准库函数。
+// ToStringE casts an interface{} to a string.
+// When type is clear, it is recommended to use standard library functions.
 func ToStringE(i interface{}) (string, error) {
 	switch s := i.(type) {
 	case nil:
@@ -106,6 +111,21 @@ func ToStringE(i interface{}) (string, error) {
 	case error:
 		return s.Error(), nil
 	default:
-		return "", fmt.Errorf("unable to cast %#v of type %T to string", i, i)
+		return "", fmt.Errorf("unable to cast type %T to string", i)
 	}
+}
+
+// StringToBytes converts string to byte slice without memory allocation.
+func StringToBytes(s string) []byte {
+	return *(*[]byte)(unsafe.Pointer(
+		&struct {
+			string
+			Cap int
+		}{s, len(s)},
+	))
+}
+
+// BytesToString converts byte slice to string without memory allocation.
+func BytesToString(b []byte) string {
+	return *(*string)(unsafe.Pointer(&b))
 }

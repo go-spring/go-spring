@@ -21,37 +21,49 @@ import (
 	"strconv"
 )
 
-// ToUint casts an interface{} to an uint. 在类型明确的情况下推荐使用标准库函数。
+func UintPtr(s uint) *uint       { return &s }
+func Uint8Ptr(s uint8) *uint8    { return &s }
+func Uint16Ptr(s uint16) *uint16 { return &s }
+func Uint32Ptr(s uint32) *uint32 { return &s }
+func Uint64Ptr(s uint64) *uint64 { return &s }
+
+// ToUint casts an interface{} to an uint.
+// When type is clear, it is recommended to use standard library functions.
 func ToUint(i interface{}) uint {
 	v, _ := ToUint64E(i)
 	return uint(v)
 }
 
-// ToUint8 casts an interface{} to an uint8. 在类型明确的情况下推荐使用标准库函数。
+// ToUint8 casts an interface{} to an uint8.
+// When type is clear, it is recommended to use standard library functions.
 func ToUint8(i interface{}) uint8 {
 	v, _ := ToUint64E(i)
 	return uint8(v)
 }
 
-// ToUint16 casts an interface{} to an uint16. 在类型明确的情况下推荐使用标准库函数。
+// ToUint16 casts an interface{} to an uint16.
+// When type is clear, it is recommended to use standard library functions.
 func ToUint16(i interface{}) uint16 {
 	v, _ := ToUint64E(i)
 	return uint16(v)
 }
 
-// ToUint32 casts an interface{} to an uint32. 在类型明确的情况下推荐使用标准库函数。
+// ToUint32 casts an interface{} to an uint32.
+// When type is clear, it is recommended to use standard library functions.
 func ToUint32(i interface{}) uint32 {
 	v, _ := ToUint64E(i)
 	return uint32(v)
 }
 
-// ToUint64 casts an interface{} to an uint64. 在类型明确的情况下推荐使用标准库函数。
+// ToUint64 casts an interface{} to an uint64.
+// When type is clear, it is recommended to use standard library functions.
 func ToUint64(i interface{}) uint64 {
 	v, _ := ToUint64E(i)
 	return v
 }
 
-// ToUint64E casts an interface{} to an uint64. 在类型明确的情况下推荐使用标准库函数。
+// ToUint64E casts an interface{} to an uint64.
+// When type is clear, it is recommended to use standard library functions.
 func ToUint64E(i interface{}) (uint64, error) {
 	switch s := i.(type) {
 	case nil:
@@ -119,5 +131,5 @@ func ToUint64E(i interface{}) (uint64, error) {
 		}
 		return 0, nil
 	}
-	return 0, fmt.Errorf("unable to cast %#v of type %T to uint64", i, i)
+	return 0, fmt.Errorf("unable to cast type %T to uint64", i)
 }

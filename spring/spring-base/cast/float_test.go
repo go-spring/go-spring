@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/go-spring/spring-base/assert"
 	"github.com/go-spring/spring-base/cast"
 )
 
@@ -45,4 +46,47 @@ func BenchmarkToFloat(b *testing.B) {
 			}
 		})
 	})
+}
+
+func TestToFloat(t *testing.T) {
+
+	assert.Equal(t, cast.ToFloat32(nil), float32(0))
+
+	assert.Equal(t, cast.ToFloat32(int(3)), float32(3))
+	assert.Equal(t, cast.ToFloat32(int8(3)), float32(3))
+	assert.Equal(t, cast.ToFloat32(int16(3)), float32(3))
+	assert.Equal(t, cast.ToFloat32(int32(3)), float32(3))
+	assert.Equal(t, cast.ToFloat32(int64(3)), float32(3))
+	assert.Equal(t, cast.ToFloat32(cast.IntPtr(3)), float32(3))
+	assert.Equal(t, cast.ToFloat32(cast.Int8Ptr(3)), float32(3))
+	assert.Equal(t, cast.ToFloat32(cast.Int16Ptr(3)), float32(3))
+	assert.Equal(t, cast.ToFloat32(cast.Int32Ptr(3)), float32(3))
+	assert.Equal(t, cast.ToFloat32(cast.Int64Ptr(3)), float32(3))
+
+	assert.Equal(t, cast.ToFloat32(uint(3)), float32(3))
+	assert.Equal(t, cast.ToFloat32(uint8(3)), float32(3))
+	assert.Equal(t, cast.ToFloat32(uint16(3)), float32(3))
+	assert.Equal(t, cast.ToFloat32(uint32(3)), float32(3))
+	assert.Equal(t, cast.ToFloat32(uint64(3)), float32(3))
+	assert.Equal(t, cast.ToFloat32(cast.IntPtr(3)), float32(3))
+	assert.Equal(t, cast.ToFloat32(cast.Int8Ptr(3)), float32(3))
+	assert.Equal(t, cast.ToFloat32(cast.Int16Ptr(3)), float32(3))
+	assert.Equal(t, cast.ToFloat32(cast.Int32Ptr(3)), float32(3))
+	assert.Equal(t, cast.ToFloat32(cast.Int64Ptr(3)), float32(3))
+
+	assert.Equal(t, cast.ToFloat64(float32(3)), float64(3))
+	assert.Equal(t, cast.ToFloat64(float64(3)), float64(3))
+	assert.Equal(t, cast.ToFloat64(cast.Float32Ptr(3)), float64(3))
+	assert.Equal(t, cast.ToFloat64(cast.Float64Ptr(3)), float64(3))
+
+	assert.Equal(t, cast.ToFloat64("3"), float64(3))
+	assert.Equal(t, cast.ToFloat64(cast.StringPtr("3")), float64(3))
+
+	assert.Equal(t, cast.ToFloat64(true), float64(1))
+	assert.Equal(t, cast.ToFloat64(false), float64(0))
+	assert.Equal(t, cast.ToFloat64(cast.BoolPtr(true)), float64(1))
+	assert.Equal(t, cast.ToFloat64(cast.BoolPtr(false)), float64(0))
+
+	_, err := cast.ToFloat64E("abc")
+	assert.Error(t, err, "strconv.ParseFloat: parsing \"abc\": invalid syntax")
 }

@@ -21,37 +21,49 @@ import (
 	"strconv"
 )
 
-// ToInt casts an interface{} to an int. 在类型明确的情况下推荐使用标准库函数。
+func IntPtr(s int) *int       { return &s }
+func Int8Ptr(s int8) *int8    { return &s }
+func Int16Ptr(s int16) *int16 { return &s }
+func Int32Ptr(s int32) *int32 { return &s }
+func Int64Ptr(s int64) *int64 { return &s }
+
+// ToInt casts an interface{} to an int.
+// When type is clear, it is recommended to use standard library functions.
 func ToInt(i interface{}) int {
 	v, _ := ToInt64E(i)
 	return int(v)
 }
 
-// ToInt8 casts an interface{} to an int8. 在类型明确的情况下推荐使用标准库函数。
+// ToInt8 casts an interface{} to an int8.
+// When type is clear, it is recommended to use standard library functions.
 func ToInt8(i interface{}) int8 {
 	v, _ := ToInt64E(i)
 	return int8(v)
 }
 
-// ToInt16 casts an interface{} to an int16. 在类型明确的情况下推荐使用标准库函数。
+// ToInt16 casts an interface{} to an int16.
+// When type is clear, it is recommended to use standard library functions.
 func ToInt16(i interface{}) int16 {
 	v, _ := ToInt64E(i)
 	return int16(v)
 }
 
-// ToInt32 casts an interface{} to an int32. 在类型明确的情况下推荐使用标准库函数。
+// ToInt32 casts an interface{} to an int32.
+// When type is clear, it is recommended to use standard library functions.
 func ToInt32(i interface{}) int32 {
 	v, _ := ToInt64E(i)
 	return int32(v)
 }
 
-// ToInt64 casts an interface{} to an int64. 在类型明确的情况下推荐使用标准库函数。
+// ToInt64 casts an interface{} to an int64.
+// When type is clear, it is recommended to use standard library functions.
 func ToInt64(i interface{}) int64 {
 	v, _ := ToInt64E(i)
 	return v
 }
 
-// ToInt64E casts an interface{} to an int64. 在类型明确的情况下推荐使用标准库函数。
+// ToInt64E casts an interface{} to an int64.
+// When type is clear, it is recommended to use standard library functions.
 func ToInt64E(i interface{}) (int64, error) {
 	switch s := i.(type) {
 	case nil:
@@ -119,5 +131,5 @@ func ToInt64E(i interface{}) (int64, error) {
 		}
 		return 0, nil
 	}
-	return 0, fmt.Errorf("unable to cast %#v of type %T to int64", i, i)
+	return 0, fmt.Errorf("unable to cast type %T to int64", i)
 }

@@ -21,13 +21,17 @@ import (
 	"strconv"
 )
 
-// ToBool casts an interface{} to a bool. 在类型明确的情况下推荐使用标准库函数。
+func BoolPtr(s bool) *bool { return &s }
+
+// ToBool casts an interface{} to a bool.
+// When type is clear, it is recommended to use standard library functions.
 func ToBool(i interface{}) bool {
 	v, _ := ToBoolE(i)
 	return v
 }
 
-// ToBoolE casts an interface{} to a bool. 在类型明确的情况下推荐使用标准库函数。
+// ToBoolE casts an interface{} to a bool.
+// When type is clear, it is recommended to use standard library functions.
 func ToBoolE(i interface{}) (bool, error) {
 	switch b := i.(type) {
 	case nil:
@@ -89,6 +93,6 @@ func ToBoolE(i interface{}) (bool, error) {
 	case *bool:
 		return *b, nil
 	default:
-		return false, fmt.Errorf("unable to cast %#v of type %T to bool", i, i)
+		return false, fmt.Errorf("unable to cast type %T to bool", i)
 	}
 }

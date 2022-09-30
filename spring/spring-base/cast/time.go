@@ -21,13 +21,24 @@ import (
 	"time"
 )
 
+var unitMap = map[string]int64{
+	"ns": int64(time.Nanosecond),
+	"μs": int64(time.Microsecond),
+	"ms": int64(time.Millisecond),
+	"s":  int64(time.Second),
+	"m":  int64(time.Minute),
+	"h":  int64(time.Hour),
+}
+
 // ToTime casts an interface{} to a time.Time.
+// When type is clear, it is recommended to use standard library functions.
 func ToTime(i interface{}, format ...string) time.Time {
 	v, _ := ToTimeE(i, format...)
 	return v
 }
 
 // ToTimeE casts an interface{} to a time.Time.
+// When type is clear, it is recommended to use standard library functions.
 func ToTimeE(i interface{}, format ...string) (time.Time, error) {
 	switch v := i.(type) {
 	case nil:
@@ -89,7 +100,7 @@ func ToTimeE(i interface{}, format ...string) (time.Time, error) {
 	case *time.Time:
 		return *v, nil
 	default:
-		return time.Time{}, fmt.Errorf("unable to cast %#v of type %T to Time", i, i)
+		return time.Time{}, fmt.Errorf("unable to cast type %T to Time", i)
 	}
 }
 

@@ -21,83 +21,71 @@ import (
 	"time"
 )
 
-const (
-	Nanosecond  = "ns" // 纳秒
-	Microsecond = "μs" // 微秒
-	Millisecond = "ms" // 毫秒
-	Second      = "s"  // 秒
-	Minute      = "m"  // 分
-	Hour        = "h"  // 小时
-)
-
-var unitMap = map[string]int64{
-	"ns": int64(time.Nanosecond),
-	"μs": int64(time.Microsecond),
-	"ms": int64(time.Millisecond),
-	"s":  int64(time.Second),
-	"m":  int64(time.Minute),
-	"h":  int64(time.Hour),
-}
-
 // ToDuration casts an interface{} to a time.Duration.
-func ToDuration(i interface{}, unit ...string) time.Duration {
+// When type is clear, it is recommended to use standard library functions.
+func ToDuration(i interface{}, unit ...time.Duration) time.Duration {
 	v, _ := ToDurationE(i, unit...)
 	return v
 }
 
 // ToDurationE casts an interface{} to a time.Duration.
-func ToDurationE(i interface{}, unit ...string) (time.Duration, error) {
+// When type is clear, it is recommended to use standard library functions.
+func ToDurationE(i interface{}, unit ...time.Duration) (time.Duration, error) {
+	base := int64(time.Nanosecond)
+	if len(unit) > 0 {
+		base = int64(unit[0])
+	}
 	switch s := i.(type) {
 	case nil:
 		return 0, nil
 	case int:
-		return parseIntDuration(int64(s), unit...), nil
+		return time.Duration(int64(s) * base), nil
 	case int8:
-		return parseIntDuration(int64(s), unit...), nil
+		return time.Duration(int64(s) * base), nil
 	case int16:
-		return parseIntDuration(int64(s), unit...), nil
+		return time.Duration(int64(s) * base), nil
 	case int32:
-		return parseIntDuration(int64(s), unit...), nil
+		return time.Duration(int64(s) * base), nil
 	case int64:
-		return parseIntDuration(s, unit...), nil
+		return time.Duration(int64(s) * base), nil
 	case *int:
-		return parseIntDuration(int64(*s), unit...), nil
+		return time.Duration(int64(*s) * base), nil
 	case *int8:
-		return parseIntDuration(int64(*s), unit...), nil
+		return time.Duration(int64(*s) * base), nil
 	case *int16:
-		return parseIntDuration(int64(*s), unit...), nil
+		return time.Duration(int64(*s) * base), nil
 	case *int32:
-		return parseIntDuration(int64(*s), unit...), nil
+		return time.Duration(int64(*s) * base), nil
 	case *int64:
-		return parseIntDuration(*s, unit...), nil
+		return time.Duration(int64(*s) * base), nil
 	case uint:
-		return parseIntDuration(int64(s), unit...), nil
+		return time.Duration(int64(s) * base), nil
 	case uint8:
-		return parseIntDuration(int64(s), unit...), nil
+		return time.Duration(int64(s) * base), nil
 	case uint16:
-		return parseIntDuration(int64(s), unit...), nil
+		return time.Duration(int64(s) * base), nil
 	case uint32:
-		return parseIntDuration(int64(s), unit...), nil
+		return time.Duration(int64(s) * base), nil
 	case uint64:
-		return parseIntDuration(int64(s), unit...), nil
+		return time.Duration(int64(s) * base), nil
 	case *uint:
-		return parseIntDuration(int64(*s), unit...), nil
+		return time.Duration(int64(*s) * base), nil
 	case *uint8:
-		return parseIntDuration(int64(*s), unit...), nil
+		return time.Duration(int64(*s) * base), nil
 	case *uint16:
-		return parseIntDuration(int64(*s), unit...), nil
+		return time.Duration(int64(*s) * base), nil
 	case *uint32:
-		return parseIntDuration(int64(*s), unit...), nil
+		return time.Duration(int64(*s) * base), nil
 	case *uint64:
-		return parseIntDuration(int64(*s), unit...), nil
+		return time.Duration(int64(*s) * base), nil
 	case float32:
-		return parseFloatDuration(float64(s), unit...), nil
+		return time.Duration(float64(s) * float64(base)), nil
 	case float64:
-		return parseFloatDuration(s, unit...), nil
+		return time.Duration(s * float64(base)), nil
 	case *float32:
-		return parseFloatDuration(float64(*s), unit...), nil
+		return time.Duration(float64(*s) * float64(base)), nil
 	case *float64:
-		return parseFloatDuration(*s, unit...), nil
+		return time.Duration((*s) * float64(base)), nil
 	case string:
 		return time.ParseDuration(s)
 	case *string:
@@ -105,22 +93,6 @@ func ToDurationE(i interface{}, unit ...string) (time.Duration, error) {
 	case time.Duration:
 		return s, nil
 	default:
-		return 0, fmt.Errorf("unable to cast %#v of type %T to time.Duration", i, i)
+		return 0, fmt.Errorf("unable to cast type %T to time.Duration", i)
 	}
-}
-
-func parseIntDuration(v int64, unit ...string) time.Duration {
-	unitN := int64(time.Nanosecond)
-	if len(unit) > 0 {
-		unitN, _ = unitMap[unit[0]]
-	}
-	return time.Duration(v * unitN)
-}
-
-func parseFloatDuration(v float64, unit ...string) time.Duration {
-	unitN := int64(time.Nanosecond)
-	if len(unit) > 0 {
-		unitN, _ = unitMap[unit[0]]
-	}
-	return time.Duration(v * float64(unitN))
 }

@@ -17,7 +17,6 @@
 package cast_test
 
 import (
-	"fmt"
 	"testing"
 	"time"
 
@@ -52,52 +51,64 @@ func BenchmarkToTime(b *testing.B) {
 
 func TestToTime(t *testing.T) {
 
-	t.Run("unit", func(t *testing.T) {
+	assert.Equal(t, cast.ToTime(nil), time.Time{})
 
-		testcases := []struct {
-			value  int64
-			unit   string
-			expect time.Time
-		}{
-			{1, cast.Nanosecond, time.Unix(0, 1)},
-			{1, cast.Millisecond, time.Unix(0, 1*1e6)},
-			{1, cast.Second, time.Unix(1, 0)},
-			{1, cast.Hour, time.Unix(0, 0).Add(time.Hour)},
-		}
+	assert.Equal(t, cast.ToTime(int(3)), time.Unix(0, 3))
+	assert.Equal(t, cast.ToTime(int8(3)), time.Unix(0, 3))
+	assert.Equal(t, cast.ToTime(int16(3)), time.Unix(0, 3))
+	assert.Equal(t, cast.ToTime(int32(3)), time.Unix(0, 3))
+	assert.Equal(t, cast.ToTime(int64(3)), time.Unix(0, 3))
+	assert.Equal(t, cast.ToTime(cast.IntPtr(3)), time.Unix(0, 3))
+	assert.Equal(t, cast.ToTime(cast.Int8Ptr(3)), time.Unix(0, 3))
+	assert.Equal(t, cast.ToTime(cast.Int16Ptr(3)), time.Unix(0, 3))
+	assert.Equal(t, cast.ToTime(cast.Int32Ptr(3)), time.Unix(0, 3))
+	assert.Equal(t, cast.ToTime(cast.Int64Ptr(3)), time.Unix(0, 3))
 
-		for i, testcase := range testcases {
-			s := cast.ToTime(testcase.value, testcase.unit)
-			assert.Equal(t, s, testcase.expect, fmt.Sprintf("index %d", i))
-		}
-	})
+	assert.Equal(t, cast.ToTime(uint(3), "ns"), time.Unix(0, 3))
+	assert.Equal(t, cast.ToTime(uint8(3), "ns"), time.Unix(0, 3))
+	assert.Equal(t, cast.ToTime(uint16(3), "ns"), time.Unix(0, 3))
+	assert.Equal(t, cast.ToTime(uint32(3), "ns"), time.Unix(0, 3))
+	assert.Equal(t, cast.ToTime(uint64(3), "ns"), time.Unix(0, 3))
+	assert.Equal(t, cast.ToTime(cast.UintPtr(3), "s"), time.Unix(3, 0))
+	assert.Equal(t, cast.ToTime(cast.Uint8Ptr(3), "s"), time.Unix(3, 0))
+	assert.Equal(t, cast.ToTime(cast.Uint16Ptr(3), "s"), time.Unix(3, 0))
+	assert.Equal(t, cast.ToTime(cast.Uint32Ptr(3), "s"), time.Unix(3, 0))
+	assert.Equal(t, cast.ToTime(cast.Uint64Ptr(3), "s"), time.Unix(3, 0))
 
-	t.Run("format", func(t *testing.T) {
+	assert.Equal(t, cast.ToTime(float32(3), "ns"), time.Unix(0, 3))
+	assert.Equal(t, cast.ToTime(float64(3), "ns"), time.Unix(0, 3))
+	assert.Equal(t, cast.ToTime(cast.Float32Ptr(3)), time.Unix(0, 3))
+	assert.Equal(t, cast.ToTime(cast.Float64Ptr(3)), time.Unix(0, 3))
 
-		testcases := []struct {
-			value  string
-			format string
-			expect time.Time
-		}{
-			{
-				"1970-01-01 08:00:00.000000001 +0800",
-				"2006-01-02 15:04:05.000000000 -0700",
-				time.Unix(0, 1),
-			},
-			{
-				"1s",
-				"",
-				time.Unix(1, 0),
-			},
-			{
-				"1h1m1s",
-				"",
-				time.Unix(3661, 0),
-			},
-		}
+	assert.Equal(t, cast.ToTime("3ns"), time.Unix(0, 3))
+	assert.Equal(t, cast.ToTime(cast.StringPtr("3ns")), time.Unix(0, 3))
+	location, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		t.Fatal(err)
+	}
+	{
+		got := cast.ToTime("2022-09-30 15:30:00 +0800")
+		expect := time.Date(2022, 9, 30, 15, 30, 0, 0, location)
+		assert.True(t, got.Equal(expect))
+	}
+	{
+		got := cast.ToTime(cast.StringPtr("2022-09-30 15:30:00 +0800"))
+		expect := time.Date(2022, 9, 30, 15, 30, 0, 0, location)
+		assert.True(t, got.Equal(expect))
+	}
 
-		for i, testcase := range testcases {
-			s := cast.ToTime(testcase.value, testcase.format)
-			assert.Equal(t, s, testcase.expect, fmt.Sprintf("index %d", i))
-		}
-	})
+	_, err = cast.ToTimeE(true)
+	assert.Error(t, err, "unable to cast type bool to Time")
+
+	_, err = cast.ToTimeE(false)
+	assert.Error(t, err, "unable to cast type bool to Time")
+
+	_, err = cast.ToTimeE(cast.BoolPtr(true))
+	assert.Error(t, err, "unable to cast type \\*bool to Time")
+
+	_, err = cast.ToTimeE(cast.BoolPtr(false))
+	assert.Error(t, err, "unable to cast type \\*bool to Time")
+
+	_, err = cast.ToTimeE("abc")
+	assert.Error(t, err, "cannot parse \"abc\" as \"2006\"")
 }
