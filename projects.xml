@@ -67,6 +67,12 @@
         <branch>master</branch>
     </project>
     <project>
+        <name>starter-go-json</name>
+        <dir>starter/starter-go-json</dir>
+        <url>https://github.com/go-spring/starter-go-json.git</url>
+        <branch>main</branch>
+    </project>
+    <project>
         <name>starter-go-mongo</name>
         <dir>starter/starter-go-mongo</dir>
         <url>https://github.com/go-spring/starter-go-mongo.git</url>
@@ -91,6 +97,12 @@
         <branch>master</branch>
     </project>
     <project>
+        <name>starter-jsoniter</name>
+        <dir>starter/starter-jsoniter</dir>
+        <url>https://github.com/go-spring/starter-jsoniter.git</url>
+        <branch>main</branch>
+    </project>
+    <project>
         <name>starter-k8s</name>
         <dir>starter/starter-k8s</dir>
         <url>https://github.com/go-spring/starter-k8s.git</url>
@@ -112,6 +124,12 @@
         <name>starter-replay</name>
         <dir>starter/starter-replay</dir>
         <url>https://github.com/go-spring/starter-replay.git</url>
+        <branch>main</branch>
+    </project>
+    <project>
+        <name>starter-sonic</name>
+        <dir>starter/starter-sonic</dir>
+        <url>https://github.com/go-spring/starter-sonic.git</url>
         <branch>main</branch>
     </project>
     <project>

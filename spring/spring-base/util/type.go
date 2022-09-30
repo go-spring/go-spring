@@ -35,7 +35,7 @@ var contextType = reflect.TypeOf((*context.Context)(nil)).Elem()
 // 的指针，还可以是 Definition 类型的对象。
 type BeanSelector interface{}
 
-// BeanDefinition bean 元数据。
+// BeanDefinition A bean is an object whose lifecycle is managed by IoC container.
 type BeanDefinition interface {
 	Type() reflect.Type     // 类型
 	Value() reflect.Value   // 值

@@ -71,8 +71,8 @@ var (
 	MarshalFunc       = json.Marshal
 	MarshalIndentFunc = json.MarshalIndent
 	UnmarshalFunc     = json.Unmarshal
-	NewEncoderFunc    = json.NewEncoder
-	NewDecoderFunc    = json.NewDecoder
+	NewEncoderFunc    = func(w io.Writer) Encoder { return json.NewEncoder(w) }
+	NewDecoderFunc    = func(r io.Reader) Decoder { return json.NewDecoder(r) }
 )
 
 // Marshal returns the JSON encoding of v.
