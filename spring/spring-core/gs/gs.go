@@ -249,7 +249,7 @@ func newWiringStack(logger *log.Logger) *wiringStack {
 
 // pushBack 添加一个即将注入的 bean 。
 func (s *wiringStack) pushBack(b *BeanDefinition) {
-	s.logger.Tracef("push %s %s", b, getStatusString(b.status))
+	s.logger.Sugar().Tracef("push %s %s", b, getStatusString(b.status))
 	s.beans = append(s.beans, b)
 }
 
@@ -258,7 +258,7 @@ func (s *wiringStack) popBack() {
 	n := len(s.beans)
 	b := s.beans[n-1]
 	s.beans = s.beans[:n-1]
-	s.logger.Tracef("pop %s %s", b, getStatusString(b.status))
+	s.logger.Sugar().Tracef("pop %s %s", b, getStatusString(b.status))
 }
 
 // path 返回 bean 的注入路径。
@@ -290,7 +290,7 @@ func (s *wiringStack) sortDestroyers() []func() {
 				fnValue := reflect.ValueOf(fn)
 				out := fnValue.Call([]reflect.Value{v})
 				if len(out) > 0 && !out[0].IsNil() {
-					s.logger.Error(out[0].Interface().(error))
+					s.logger.Sugar().Error(out[0].Interface().(error))
 				}
 			}
 		}
@@ -375,7 +375,7 @@ func (c *container) refresh(autoClear bool) (err error) {
 	defer func() {
 		if err != nil || len(stack.beans) > 0 {
 			err = fmt.Errorf("%s ↩\n%s", err, stack.path())
-			c.logger.Error(err)
+			c.logger.Sugar().Error(err)
 		}
 	}()
 
@@ -410,22 +410,22 @@ func (c *container) refresh(autoClear bool) (err error) {
 	c.state = Refreshed
 
 	cost := time.Now().Sub(start)
-	c.logger.Infof("refresh %d beans cost %v", len(beansById), cost)
+	c.logger.Sugar().Infof("refresh %d beans cost %v", len(beansById), cost)
 
 	if autoClear && !c.ContextAware {
 		c.clear()
 	}
 
-	c.logger.Info("container refreshed successfully")
+	c.logger.Sugar().Info("container refreshed successfully")
 	return nil
 }
 
 func (c *container) registerBean(b *BeanDefinition) {
-	c.logger.Debugf("register %s name:%q type:%q %s", b.getClass(), b.BeanName(), b.Type(), b.FileLine())
+	c.logger.Sugar().Debugf("register %s name:%q type:%q %s", b.getClass(), b.BeanName(), b.Type(), b.FileLine())
 	c.beansByName[b.name] = append(c.beansByName[b.name], b)
 	c.beansByType[b.Type()] = append(c.beansByType[b.Type()], b)
 	for _, t := range b.exports {
-		c.logger.Debugf("register %s name:%q type:%q %s", b.getClass(), b.BeanName(), t, b.FileLine())
+		c.logger.Sugar().Debugf("register %s name:%q type:%q %s", b.getClass(), b.BeanName(), t, b.FileLine())
 		c.beansByType[t] = append(c.beansByType[t], b)
 	}
 }
@@ -957,7 +957,7 @@ func (c *container) getBean(v reflect.Value, tag wireTag, stack *wiringStack) er
 				}
 				if !found {
 					foundBeans = append(foundBeans, b)
-					c.logger.Warnf("you should call Export() on %s", b)
+					c.logger.Sugar().Warnf("you should call Export() on %s", b)
 				}
 			}
 		}
@@ -1183,13 +1183,13 @@ func (c *container) Close() {
 	c.cancel()
 	c.wg.Wait()
 
-	c.logger.Info("goroutines exited")
+	c.logger.Sugar().Info("goroutines exited")
 
 	for _, f := range c.destroyers {
 		f()
 	}
 
-	c.logger.Info("container closed")
+	c.logger.Sugar().Info("container closed")
 }
 
 // Go 创建安全可等待的 goroutine，fn 要求的 ctx 对象由 IoC 容器提供，当 IoC 容
@@ -1200,7 +1200,7 @@ func (c *container) Go(fn func(ctx context.Context)) {
 		defer c.wg.Done()
 		defer func() {
 			if r := recover(); r != nil {
-				c.logger.Panic(r)
+				c.logger.Sugar().Panic(r)
 			}
 		}()
 		fn(c.ctx)

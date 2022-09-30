@@ -189,7 +189,7 @@ func TestFileLine(t *testing.T) {
 	}
 	for _, c := range testcases {
 		file, line, fnName := util.FileLine(c.fn)
-		assert.ThatString(t, file).HasSuffix(c.file)
+		assert.String(t, file).HasSuffix(c.file)
 		assert.Equal(t, line, c.line)
 		assert.Equal(t, fnName, c.fnName)
 	}

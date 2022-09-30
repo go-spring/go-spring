@@ -38,11 +38,11 @@ func (f *StringFilter) Invoke(ctx web.Context, chain web.FilterChain) {
 	w := &StatusResponseWriter{ResponseWriter: ctx.Response().Get()}
 	ctx.Response().Set(w)
 
-	defer func() { ctxLogger.Info("after ", f.Text, " code:", w.Status()) }()
-	ctxLogger.Info("before ", f.Text)
-	f.Logger.Info(f.Text)
+	defer func() { ctxLogger.Sugar().Info("after ", f.Text, " code:", w.Status()) }()
+	ctxLogger.Sugar().Info("before ", f.Text)
+	f.Logger.Sugar().Info(f.Text)
 
-	chain.Next(ctx)
+	chain.Next(ctx, web.Recursive)
 }
 
 type StatusResponseWriter struct {

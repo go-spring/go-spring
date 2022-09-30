@@ -31,7 +31,7 @@ type Factory struct {
 }
 
 func (factory *Factory) CreateDB(config database.ClientConfig) (*gorm.DB, error) {
-	factory.Logger.Infof("open gorm mysql %s", config.URL)
+	factory.Logger.Sugar().Infof("open gorm mysql %s", config.URL)
 	db, err := gorm.Open(mysql.Open(config.URL))
 	if err != nil {
 		return nil, err

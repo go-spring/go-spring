@@ -22,7 +22,7 @@ type HelloController struct {
 }
 
 func (c *HelloController) Hello(ctx *gin.Context) {
-	c.Logger.Infof("hello")
+	c.Logger.Sugar().Infof("hello")
 	s := c.Service.Hello(ctx.Query("name"))
 	ctx.String(http.StatusOK, s)
 }
@@ -35,7 +35,7 @@ type HelloService struct {
 
 func (s *HelloService) Hello(name string) string {
 	v := "hello " + name + "!"
-	s.Logger.Infof(v)
+	s.Logger.Sugar().Infof(v)
 	return v
 }
 

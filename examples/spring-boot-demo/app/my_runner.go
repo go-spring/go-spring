@@ -34,7 +34,7 @@ type MyRunner struct {
 
 func (r *MyRunner) Run(ctx gs.Context) {
 	ctx.Go(func(ctx context.Context) {
-		defer func() { r.Logger.Info("exit after waiting in MyRunner::Run") }()
+		defer func() { r.Logger.Sugar().Info("exit after waiting in MyRunner::Run") }()
 
 		ticker := time.NewTicker(10 * time.Millisecond)
 		defer ticker.Stop()
@@ -44,7 +44,7 @@ func (r *MyRunner) Run(ctx gs.Context) {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				r.Logger.Info("MyRunner::Run")
+				r.Logger.Sugar().Info("MyRunner::Run")
 			}
 		}
 	})

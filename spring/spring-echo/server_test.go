@@ -55,7 +55,7 @@ func TestContext_PanicEchoHttpError(t *testing.T) {
 	c := SpringEcho.New(web.ServerConfig{Port: 8080})
 	c.AddPrefilter(web.FuncPrefilter(func(ctx web.Context, chain web.FilterChain) {
 		fmt.Println("<<log>>")
-		chain.Continue(ctx)
+		chain.Next(ctx, web.Iterative)
 	}))
 	c.GetMapping("/", func(ctx web.Context) {
 		panic(echo.ErrTooManyRequests)

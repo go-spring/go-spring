@@ -172,7 +172,7 @@ func (s *server) AccessFilter() Filter {
 		chain.Next(ctx, Recursive)
 		r := ctx.Request()
 		cost := time.Since(start)
-		s.logger.WithContext(ctx.Context()).Infof("%s %s %s %d %d %s", r.Method, r.RequestURI, cost, w.Size(), w.Status(), r.UserAgent())
+		s.logger.WithContext(ctx.Context()).Sugar().Infof("%s %s %s %d %d %s", r.Method, r.RequestURI, cost, w.Size(), w.Status(), r.UserAgent())
 	})
 }
 
@@ -189,7 +189,7 @@ func (s *server) ErrorHandler() ErrorHandler {
 	return FuncErrorHandler(func(ctx Context, err *HttpError) {
 		defer func() {
 			if r := recover(); r != nil {
-				s.logger.WithContext(ctx.Context()).Error(log.ERROR, r)
+				s.logger.WithContext(ctx.Context()).Sugar().Error(log.ERROR, r)
 			}
 		}()
 		if err.Internal == nil {
@@ -248,7 +248,7 @@ func (s *server) prepare() error {
 
 	// 打印所有的路由信息
 	for _, m := range s.Mappers() {
-		s.logger.Infof("%v :%d %s -> %s:%d %s", func() []interface{} {
+		s.logger.Sugar().Infof("%v :%d %s -> %s:%d %s", func() []interface{} {
 			method := GetMethod(m.method)
 			path := s.config.BasePath + m.path
 			file, line, fnName := m.handler.FileLine()
@@ -273,13 +273,13 @@ func (s *server) Start() (err error) {
 		ReadTimeout:  time.Duration(s.config.ReadTimeout) * time.Millisecond,
 		WriteTimeout: time.Duration(s.config.WriteTimeout) * time.Millisecond,
 	}
-	s.logger.Info("⇨ http server started on ", s.Address())
+	s.logger.Sugar().Info("⇨ http server started on ", s.Address())
 	if !s.config.EnableSSL {
 		err = s.server.ListenAndServe()
 	} else {
 		err = s.server.ListenAndServeTLS(s.config.CertFile, s.config.KeyFile)
 	}
-	s.logger.Infof("http server stopped on %s return %s", s.Address(), cast.ToString(err))
+	s.logger.Sugar().Infof("http server stopped on %s return %s", s.Address(), cast.ToString(err))
 	return err
 }
 

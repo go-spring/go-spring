@@ -14,12 +14,12 @@ require (
 	gorm.io/gorm v1.22.4
 )
 
-//replace (
-//	github.com/go-spring/spring-base => ../../spring/spring-base
-//	github.com/go-spring/spring-core => ../../spring/spring-core
-//	github.com/go-spring/spring-echo => ../../spring/spring-echo
-//	github.com/go-spring/starter-echo => ../../starter/starter-echo
-//	github.com/go-spring/starter-gorm => ../../starter/starter-gorm
-//	github.com/go-spring/spring-go-redis => ../../spring/spring-go-redis
-//	github.com/go-spring/starter-go-redis => ../../starter/starter-go-redis
-//)
+replace (
+	github.com/go-spring/spring-base => ../../spring/spring-base
+	github.com/go-spring/spring-core => ../../spring/spring-core
+	github.com/go-spring/spring-echo => ../../spring/spring-echo
+	github.com/go-spring/starter-echo => ../../starter/starter-echo
+	github.com/go-spring/starter-gorm => ../../starter/starter-gorm
+	github.com/go-spring/spring-go-redis => ../../spring/spring-go-redis
+	github.com/go-spring/starter-go-redis => ../../starter/starter-go-redis
+)

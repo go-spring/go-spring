@@ -82,7 +82,7 @@ func TestContext_PanicString(t *testing.T) {
 	c := SpringGin.New(web.ServerConfig{Port: 8080})
 	c.AddFilter(web.FuncPrefilter(func(ctx web.Context, chain web.FilterChain) {
 		fmt.Println("<<log>>")
-		chain.Continue(ctx)
+		chain.Next(ctx, web.Iterative)
 	}))
 	c.GetMapping("/", func(webCtx web.Context) {
 		panic("this is an error")
@@ -163,7 +163,7 @@ func TestFilter_Abort(t *testing.T) {
 			ctx.String("1")
 			return
 		}
-		chain.Next(ctx)
+		chain.Next(ctx, web.Recursive)
 	}))
 	c.AddFilter(SpringGin.Filter(func(ctx *gin.Context) {
 		if ctx.Request.FormValue("filter") == "2" {
@@ -176,14 +176,14 @@ func TestFilter_Abort(t *testing.T) {
 		if ctx.FormValue("filter") == "p1" {
 			panic("p1")
 		}
-		chain.Next(ctx)
+		chain.Next(ctx, web.Recursive)
 	}))
 	c.AddFilter(web.FuncFilter(func(ctx web.Context, chain web.FilterChain) {
 		if ctx.FormValue("filter") == "3" {
 			ctx.String("3")
 			return
 		}
-		chain.Next(ctx)
+		chain.Next(ctx, web.Recursive)
 	}))
 	c.AddFilter(SpringGin.Filter(func(ctx *gin.Context) {
 		if ctx.Request.FormValue("filter") == "p2" {

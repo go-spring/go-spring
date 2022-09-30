@@ -8,8 +8,8 @@ require (
 	github.com/go-spring/spring-go-redis v1.1.2
 )
 
-//replace (
-//	github.com/go-spring/spring-base => ../../spring/spring-base
-//	github.com/go-spring/spring-core => ../../spring/spring-core
-//	github.com/go-spring/spring-go-redis => ../../spring/spring-go-redis
-//)
+replace (
+	github.com/go-spring/spring-base => ../../spring/spring-base
+	github.com/go-spring/spring-core => ../../spring/spring-core
+	github.com/go-spring/spring-go-redis => ../../spring/spring-go-redis
+)

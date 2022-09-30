@@ -59,7 +59,7 @@ type MyController struct {
 
 func (c *MyController) onInit(ctx gs.Context) error {
 	ctx.Go(func(ctx context.Context) {
-		defer func() { c.Logger.Info("exit after waiting in ::Go") }()
+		defer func() { c.Logger.Sugar().Info("exit after waiting in ::Go") }()
 
 		ticker := time.NewTicker(10 * time.Millisecond)
 		defer ticker.Stop()
@@ -69,7 +69,7 @@ func (c *MyController) onInit(ctx gs.Context) error {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				c.Logger.Info("::Go")
+				c.Logger.Sugar().Info("::Go")
 			}
 		}
 	})
@@ -110,7 +110,7 @@ func (c *MyController) OK(ctx web.Context) {
 
 		var engine string
 		_ = rows.Scan(&engine)
-		c.Logger.Info(engine)
+		c.Logger.Sugar().Info(engine)
 
 		if engine != "sql-mock" {
 			panic(errors.New("error"))

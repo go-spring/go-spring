@@ -71,7 +71,7 @@ func (starter *Starter) OnAppStart(ctx gs.Context) {
 				nil,   // args
 			)
 			if err != nil {
-				starter.Logger.Error(err)
+				starter.Logger.Sugar().Error(err)
 				continue
 			}
 			d := <-delivery

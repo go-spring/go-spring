@@ -10,7 +10,7 @@ require (
 	gorm.io/gorm v1.22.4
 )
 
-//replace (
-//	github.com/go-spring/spring-base => ../../spring/spring-base
-//	github.com/go-spring/spring-core => ../../spring/spring-core
-//)
+replace (
+	github.com/go-spring/spring-base => ../../spring/spring-base
+	github.com/go-spring/spring-core => ../../spring/spring-core
+)

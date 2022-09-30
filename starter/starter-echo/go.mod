@@ -7,8 +7,8 @@ require (
 	github.com/go-spring/spring-echo v1.1.2
 )
 
-//replace (
-//	github.com/go-spring/spring-base => ../../spring/spring-base
-//	github.com/go-spring/spring-core => ../../spring/spring-core
-//	github.com/go-spring/spring-echo => ../../spring/spring-echo
-//)
+replace (
+	github.com/go-spring/spring-base => ../../spring/spring-base
+	github.com/go-spring/spring-core => ../../spring/spring-core
+	github.com/go-spring/spring-echo => ../../spring/spring-echo
+)

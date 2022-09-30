@@ -8,7 +8,7 @@ require (
 	github.com/kataras/iris/v12 v12.2.0-alpha8
 )
 
-//replace (
-//	github.com/go-spring/spring-base => ../../spring/spring-base
-//	github.com/go-spring/spring-core => ../../spring/spring-core
-//)
+replace (
+	github.com/go-spring/spring-base => ../../spring/spring-base
+	github.com/go-spring/spring-core => ../../spring/spring-core
+)

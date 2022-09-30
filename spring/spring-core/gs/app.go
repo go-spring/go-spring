@@ -166,7 +166,7 @@ func (app *App) Run() error {
 	}
 
 	app.c.Close()
-	app.logger.Info("application exited")
+	app.logger.Sugar().Info("application exited")
 	return nil
 }
 
@@ -233,7 +233,7 @@ func (app *App) start() error {
 		}
 	})
 
-	app.logger.Info("application started successfully")
+	app.logger.Sugar().Info("application started successfully")
 	return nil
 }
 
@@ -352,7 +352,7 @@ func (app *App) loadResource(e *configuration, filename string) ([]Resource, err
 
 // ShutDown 关闭执行器
 func (app *App) ShutDown(msg ...string) {
-	app.logger.Infof("program will exit %s", strings.Join(msg, " "))
+	app.logger.Sugar().Infof("program will exit %s", strings.Join(msg, " "))
 	select {
 	case <-app.exitChan:
 		// chan 已关闭，无需再次关闭。

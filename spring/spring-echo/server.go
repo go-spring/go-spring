@@ -126,7 +126,7 @@ func (h *serverHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func wrapperHandler(fn web.Handler, filters []web.Filter) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		filters = append(filters, web.HandlerFilter(fn))
-		web.NewFilterChain(filters).Next(WebContext(c))
+		web.NewFilterChain(filters).Next(WebContext(c), web.Recursive)
 		return nil
 	}
 }
@@ -157,7 +157,7 @@ type echoFilter echo.MiddlewareFunc
 
 func (filter echoFilter) Invoke(ctx web.Context, chain web.FilterChain) {
 	next := func(echoCtx echo.Context) error {
-		chain.Next(ctx)
+		chain.Next(ctx, web.Recursive)
 		return nil
 	}
 	err := filter(next)(EchoContext(ctx))
@@ -181,7 +181,7 @@ func (f *recoveryFilter) Invoke(ctx web.Context, chain web.FilterChain) {
 		if err := recover(); err != nil {
 
 			ctxLogger := f.logger.WithContext(ctx.Context())
-			ctxLogger.Error(nil, err, "\n", string(debug.Stack()))
+			ctxLogger.Sugar().Error(nil, err, "\n", string(debug.Stack()))
 
 			httpE := web.HttpError{Code: http.StatusInternalServerError}
 			switch e := err.(type) {
@@ -219,10 +219,10 @@ func (f *recoveryFilter) Invoke(ctx web.Context, chain web.FilterChain) {
 				return
 			}
 			if err = echoCtx.NoContent(httpE.Code); err != nil {
-				ctxLogger.Error(nil, err)
+				ctxLogger.Sugar().Error(nil, err)
 			}
 		}
 	}()
 
-	chain.Next(ctx)
+	chain.Next(ctx, web.Recursive)
 }
