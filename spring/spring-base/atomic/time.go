@@ -17,9 +17,10 @@
 package atomic
 
 import (
-	"encoding/json"
 	"sync/atomic"
 	"time"
+
+	"github.com/go-spring/spring-base/json"
 )
 
 type MarshalTime func(time.Time) ([]byte, error)
@@ -55,5 +56,5 @@ func (x *Time) MarshalJSON() ([]byte, error) {
 	if x.marshalJSON != nil {
 		return x.marshalJSON(x.Load())
 	}
-	return json.Marshal(x.Load().UnixNano())
+	return json.Marshal(x.Load().Format(time.UnixDate))
 }

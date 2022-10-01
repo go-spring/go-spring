@@ -20,13 +20,12 @@
 package assert
 
 import (
-	"encoding/json"
 	"fmt"
 	"reflect"
 	"regexp"
 	"strings"
 
-	"github.com/go-spring/spring-base/cast"
+	"github.com/go-spring/spring-base/json"
 )
 
 // T is the minimum interface of *testing.T.
@@ -158,11 +157,7 @@ func Panic(t T, fn func(), expr string, msg ...string) {
 func recovery(fn func()) (str string) {
 	defer func() {
 		if r := recover(); r != nil {
-			var err error
-			str, err = cast.ToStringE(r)
-			if err != nil {
-				str = fmt.Sprint(r)
-			}
+			str = fmt.Sprint(r)
 		}
 	}()
 	fn()

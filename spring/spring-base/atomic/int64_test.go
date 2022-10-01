@@ -17,7 +17,6 @@
 package atomic_test
 
 import (
-	"encoding/json"
 	"reflect"
 	"sync"
 	"testing"
@@ -25,6 +24,7 @@ import (
 
 	"github.com/go-spring/spring-base/assert"
 	"github.com/go-spring/spring-base/atomic"
+	"github.com/go-spring/spring-base/json"
 )
 
 func TestInt64(t *testing.T) {
@@ -35,16 +35,23 @@ func TestInt64(t *testing.T) {
 	var i atomic.Int64
 	assert.Equal(t, i.Load(), int64(0))
 
+	v := i.Add(5)
+	assert.Equal(t, v, int64(5))
+	assert.Equal(t, i.Load(), int64(5))
+
 	i.Store(1)
 	assert.Equal(t, i.Load(), int64(1))
 
-	i.Swap(2)
+	old := i.Swap(2)
+	assert.Equal(t, old, int64(1))
 	assert.Equal(t, i.Load(), int64(2))
 
-	i.CompareAndSwap(2, 3)
+	swapped := i.CompareAndSwap(2, 3)
+	assert.True(t, swapped)
 	assert.Equal(t, i.Load(), int64(3))
 
-	i.CompareAndSwap(2, 3)
+	swapped = i.CompareAndSwap(2, 3)
+	assert.False(t, swapped)
 	assert.Equal(t, i.Load(), int64(3))
 
 	bytes, _ := json.Marshal(&i)
@@ -53,16 +60,15 @@ func TestInt64(t *testing.T) {
 
 func TestReflectInt64(t *testing.T) {
 
-	// s 必须分配在堆上
-	s := new(struct {
+	var s struct {
 		I atomic.Int64
-	})
+	}
 
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		addr := reflect.ValueOf(s).Elem().Field(0).Addr()
+		addr := reflect.ValueOf(&s).Elem().Field(0).Addr()
 		v, ok := addr.Interface().(*atomic.Int64)
 		assert.True(t, ok)
 		for i := 0; i < 10; i++ {
@@ -71,7 +77,7 @@ func TestReflectInt64(t *testing.T) {
 	}()
 	go func() {
 		defer wg.Done()
-		addr := reflect.ValueOf(s).Elem().Field(0).Addr()
+		addr := reflect.ValueOf(&s).Elem().Field(0).Addr()
 		v, ok := addr.Interface().(*atomic.Int64)
 		assert.True(t, ok)
 		for i := 0; i < 10; i++ {

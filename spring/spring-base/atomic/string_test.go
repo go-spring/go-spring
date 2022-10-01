@@ -17,12 +17,12 @@
 package atomic_test
 
 import (
-	"encoding/json"
 	"testing"
 	"unsafe"
 
 	"github.com/go-spring/spring-base/assert"
 	"github.com/go-spring/spring-base/atomic"
+	"github.com/go-spring/spring-base/json"
 )
 
 func TestString(t *testing.T) {

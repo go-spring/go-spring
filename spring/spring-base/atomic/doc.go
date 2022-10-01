@@ -14,28 +14,5 @@
  * limitations under the License.
  */
 
+// Package atomic provides simple wrappers for sync/atomic to enforce atomic access.
 package atomic
-
-import (
-	"sync/atomic"
-)
-
-type MarshalValue func(interface{}) ([]byte, error)
-
-// A Value provides an atomic load and store of a consistently typed value.
-type Value struct {
-	_ nocopy
-	atomic.Value
-
-	marshalJSON MarshalValue
-}
-
-// SetMarshalJSON sets the JSON encoding handler for x.
-func (x *Value) SetMarshalJSON(fn MarshalValue) {
-	x.marshalJSON = fn
-}
-
-// MarshalJSON returns the JSON encoding of x.
-func (x *Value) MarshalJSON() ([]byte, error) {
-	return x.marshalJSON(x.Load())
-}

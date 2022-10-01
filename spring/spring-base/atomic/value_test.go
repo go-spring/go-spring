@@ -16,8 +16,28 @@
 
 package atomic_test
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/go-spring/spring-base/assert"
+	"github.com/go-spring/spring-base/atomic"
+	"github.com/go-spring/spring-base/json"
+)
 
 func TestValue(t *testing.T) {
 
+	var x atomic.Value
+	assert.Equal(t, x.Load(), nil)
+
+	s1 := &properties{Data: 1}
+	x.Store(s1)
+	assert.Equal(t, x.Load(), s1)
+
+	x.SetMarshalJSON(func(i interface{}) ([]byte, error) {
+		s := i.(*properties)
+		return json.Marshal(s)
+	})
+
+	bytes, _ := json.Marshal(&x)
+	assert.Equal(t, string(bytes), `{"Data":1}`)
 }

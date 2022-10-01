@@ -1,6 +1,6 @@
 # atomic
 
-封装标准库 atomic 包的操作函数。
+Provides simple wrappers for sync/atomic to enforce atomic access.
 
 ## Install
 
@@ -17,8 +17,8 @@ import "github.com/go-spring/spring-base/atomic"
 ## Example
 
 ```
-var i64 atomic.Int64
-i64.Add(1)
-i64.Store(2)
-_ = i64.Load()
+var i atomic.Int64
+i.Add(1)
+i.Store(2)
+_ = i.Load()
 ```

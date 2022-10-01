@@ -21,21 +21,27 @@ import (
 	"testing"
 	"unsafe"
 
+	"github.com/go-spring/spring-base/assert"
 	"github.com/go-spring/spring-base/atomic"
+	"github.com/go-spring/spring-base/json"
 )
 
 type properties struct {
-	data int
+	Data int
 }
 
 func BenchmarkPointer(b *testing.B) {
 
+	// Pointer and Value have almost same access performance.
+	// BenchmarkPointer/value-8	    47710915   25.72 ns/op
+	// BenchmarkPointer/pointer-8   44618223   25.78 ns/op
+
 	b.Run("pointer", func(b *testing.B) {
 		var p atomic.Pointer
 		for i := 0; i < b.N; i++ {
-			p.Store(unsafe.Pointer(&properties{data: 1}))
+			p.Store(unsafe.Pointer(&properties{Data: 1}))
 			prop := (*properties)(p.Load())
-			if prop.data != 1 {
+			if prop.Data != 1 {
 				b.Fatal(errors.New("prop data should be 1"))
 			}
 		}
@@ -44,11 +50,46 @@ func BenchmarkPointer(b *testing.B) {
 	b.Run("value", func(b *testing.B) {
 		var p atomic.Value
 		for i := 0; i < b.N; i++ {
-			p.Store(&properties{data: 2})
+			p.Store(&properties{Data: 2})
 			prop := p.Load().(*properties)
-			if prop.data != 2 {
+			if prop.Data != 2 {
 				b.Fatal(errors.New("prop data should be 2"))
 			}
 		}
 	})
+}
+
+func TestPointer(t *testing.T) {
+
+	// atomic.Pointer and unsafe.Pointer occupy the same space
+	assert.Equal(t, unsafe.Sizeof(atomic.Pointer{}), uintptr(8+8))
+
+	var p atomic.Pointer
+	assert.Equal(t, p.Load(), unsafe.Pointer(nil))
+
+	s1 := &properties{Data: 1}
+	p.Store(unsafe.Pointer(s1))
+	assert.Equal(t, p.Load(), unsafe.Pointer(s1))
+
+	s2 := &properties{Data: 2}
+	old := p.Swap(unsafe.Pointer(s2))
+	assert.Equal(t, old, unsafe.Pointer(s1))
+	assert.Equal(t, p.Load(), unsafe.Pointer(s2))
+
+	s3 := &properties{Data: 3}
+	swapped := p.CompareAndSwap(unsafe.Pointer(s2), unsafe.Pointer(s3))
+	assert.True(t, swapped)
+	assert.Equal(t, p.Load(), unsafe.Pointer(s3))
+
+	swapped = p.CompareAndSwap(unsafe.Pointer(s2), unsafe.Pointer(s3))
+	assert.False(t, swapped)
+	assert.Equal(t, p.Load(), unsafe.Pointer(s3))
+
+	p.SetMarshalJSON(func(pointer unsafe.Pointer) ([]byte, error) {
+		s := (*properties)(pointer)
+		return json.Marshal(s)
+	})
+
+	bytes, _ := json.Marshal(&p)
+	assert.Equal(t, string(bytes), `{"Data":3}`)
 }

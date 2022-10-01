@@ -17,8 +17,9 @@
 package atomic
 
 import (
-	"encoding/json"
 	"sync/atomic"
+
+	"github.com/go-spring/spring-base/json"
 )
 
 // A Bool is an atomic bool value.

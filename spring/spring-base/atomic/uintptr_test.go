@@ -16,8 +16,41 @@
 
 package atomic_test
 
-import "testing"
+import (
+	"testing"
+	"unsafe"
+
+	"github.com/go-spring/spring-base/assert"
+	"github.com/go-spring/spring-base/atomic"
+)
 
 func TestUintptr(t *testing.T) {
 
+	// atomic.Uintptr and uintptr occupy the same space
+	assert.Equal(t, unsafe.Sizeof(atomic.Uintptr{}), uintptr(8))
+
+	var p atomic.Uintptr
+	assert.Equal(t, p.Load(), uintptr(0))
+
+	v := p.Add(0)
+	assert.Equal(t, v, uintptr(0))
+	assert.Equal(t, p.Load(), uintptr(0))
+
+	s1 := &properties{Data: 1}
+	p.Store(uintptr(unsafe.Pointer(s1)))
+	assert.Equal(t, p.Load(), uintptr(unsafe.Pointer(s1)))
+
+	s2 := &properties{Data: 2}
+	old := p.Swap(uintptr(unsafe.Pointer(s2)))
+	assert.Equal(t, old, uintptr(unsafe.Pointer(s1)))
+	assert.Equal(t, p.Load(), uintptr(unsafe.Pointer(s2)))
+
+	s3 := &properties{Data: 3}
+	swapped := p.CompareAndSwap(uintptr(unsafe.Pointer(s2)), uintptr(unsafe.Pointer(s3)))
+	assert.True(t, swapped)
+	assert.Equal(t, p.Load(), uintptr(unsafe.Pointer(s3)))
+
+	swapped = p.CompareAndSwap(uintptr(unsafe.Pointer(s2)), uintptr(unsafe.Pointer(s3)))
+	assert.False(t, swapped)
+	assert.Equal(t, p.Load(), uintptr(unsafe.Pointer(s3)))
 }

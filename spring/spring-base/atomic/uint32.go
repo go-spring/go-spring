@@ -17,8 +17,9 @@
 package atomic
 
 import (
-	"encoding/json"
 	"sync/atomic"
+
+	"github.com/go-spring/spring-base/json"
 )
 
 // An Uint32 is an atomic uint32 value.

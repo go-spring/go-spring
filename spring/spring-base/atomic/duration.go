@@ -17,9 +17,10 @@
 package atomic
 
 import (
-	"encoding/json"
 	"sync/atomic"
 	"time"
+
+	"github.com/go-spring/spring-base/json"
 )
 
 // A Duration is an atomic time.Duration value.

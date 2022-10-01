@@ -17,12 +17,12 @@
 package atomic_test
 
 import (
-	"encoding/json"
 	"testing"
 	"unsafe"
 
 	"github.com/go-spring/spring-base/assert"
 	"github.com/go-spring/spring-base/atomic"
+	"github.com/go-spring/spring-base/json"
 )
 
 func TestFloat64(t *testing.T) {
@@ -33,16 +33,23 @@ func TestFloat64(t *testing.T) {
 	var f atomic.Float64
 	assert.Equal(t, f.Load(), float64(0))
 
+	v := f.Add(0.5)
+	assert.Equal(t, v, 0.5)
+	assert.Equal(t, f.Load(), 0.5)
+
 	f.Store(1)
 	assert.Equal(t, f.Load(), float64(1))
 
-	f.Swap(2)
+	old := f.Swap(2)
+	assert.Equal(t, old, float64(1))
 	assert.Equal(t, f.Load(), float64(2))
 
-	f.CompareAndSwap(2, 3)
+	swapped := f.CompareAndSwap(2, 3)
+	assert.True(t, swapped)
 	assert.Equal(t, f.Load(), float64(3))
 
-	f.CompareAndSwap(2, 3)
+	swapped = f.CompareAndSwap(2, 3)
+	assert.False(t, swapped)
 	assert.Equal(t, f.Load(), float64(3))
 
 	bytes, _ := json.Marshal(&f)

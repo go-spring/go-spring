@@ -17,7 +17,6 @@
 package atomic
 
 import (
-	"encoding/json"
 	"sync/atomic"
 	"unsafe"
 )
@@ -59,8 +58,5 @@ func (p *Pointer) SetMarshalJSON(fn MarshalPointer) {
 
 // MarshalJSON returns the JSON encoding of x.
 func (p *Pointer) MarshalJSON() ([]byte, error) {
-	if p.marshalJSON != nil {
-		return p.marshalJSON(p.Load())
-	}
-	return json.Marshal(p.Load())
+	return p.marshalJSON(p.Load())
 }

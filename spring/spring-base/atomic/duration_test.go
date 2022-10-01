@@ -17,13 +17,13 @@
 package atomic_test
 
 import (
-	"encoding/json"
 	"testing"
 	"time"
 	"unsafe"
 
 	"github.com/go-spring/spring-base/assert"
 	"github.com/go-spring/spring-base/atomic"
+	"github.com/go-spring/spring-base/json"
 )
 
 func TestDuration(t *testing.T) {
@@ -34,16 +34,23 @@ func TestDuration(t *testing.T) {
 	var d atomic.Duration
 	assert.Equal(t, d.Load(), time.Duration(0))
 
+	v := d.Add(time.Second)
+	assert.Equal(t, v, time.Second)
+	assert.Equal(t, d.Load(), time.Second)
+
 	d.Store(time.Minute)
 	assert.Equal(t, d.Load(), time.Minute)
 
-	d.Swap(time.Hour)
+	old := d.Swap(time.Hour)
+	assert.Equal(t, old, time.Minute)
 	assert.Equal(t, d.Load(), time.Hour)
 
-	d.CompareAndSwap(time.Hour, time.Second)
+	swapped := d.CompareAndSwap(time.Hour, time.Second)
+	assert.True(t, swapped)
 	assert.Equal(t, d.Load(), time.Second)
 
-	d.CompareAndSwap(time.Hour, time.Second)
+	swapped = d.CompareAndSwap(time.Hour, time.Second)
+	assert.False(t, swapped)
 	assert.Equal(t, d.Load(), time.Second)
 
 	bytes, _ := json.Marshal(&d)

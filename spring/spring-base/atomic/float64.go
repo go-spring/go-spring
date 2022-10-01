@@ -17,9 +17,10 @@
 package atomic
 
 import (
-	"encoding/json"
 	"math"
 	"sync/atomic"
+
+	"github.com/go-spring/spring-base/json"
 )
 
 // A Float64 is an atomic float64 value.

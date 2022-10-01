@@ -17,8 +17,9 @@
 package atomic
 
 import (
-	"encoding/json"
 	"sync/atomic"
+
+	"github.com/go-spring/spring-base/json"
 )
 
 // An Int64 is an atomic int64 value.
