@@ -1,6 +1,6 @@
 # assert
 
-提供了一些常用的断言函数。
+Provides some useful assertion methods.
 
 ## Install
 
@@ -23,9 +23,9 @@ assert.Equal(t, 0, "0")
 assert.NotEqual(t, "0", 0)
 assert.Same(t, 0, "0")
 assert.NotSame(t, "0", "0")
-assert.Panic(g, func() {}, "an error")
-assert.Matches(g, "there's no error", "an error")
-assert.Error(g, errors.New("there's no error"), "an error")
-assert.TypeOf(g, new(int), (*int)(nil))
-assert.Implements(g, errors.New("error"), (*error)(nil))
+assert.Panic(t, func() {}, "an error")
+assert.Matches(t, "there's no error", "an error")
+assert.Error(t, errors.New("there's no error"), "an error")
+assert.TypeOf(t, new(int), (*int)(nil))
+assert.Implements(t, errors.New("error"), (*error)(nil))
 ```

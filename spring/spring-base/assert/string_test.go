@@ -76,16 +76,16 @@ func TestString_HasSuffix(t *testing.T) {
 func TestString_HasSubString(t *testing.T) {
 
 	Case(t, func(g *assert.MockT) {
-		assert.String(g, "hello, world!").HasSubString("hello")
+		assert.String(g, "hello, world!").HasSubStr("hello")
 	})
 
 	Case(t, func(g *assert.MockT) {
 		g.EXPECT().Error([]interface{}{"'hello, world!' doesn't contain substr 'xxx'"})
-		assert.String(g, "hello, world!").HasSubString("xxx")
+		assert.String(g, "hello, world!").HasSubStr("xxx")
 	})
 
 	Case(t, func(g *assert.MockT) {
 		g.EXPECT().Error([]interface{}{"'hello, world!' doesn't contain substr 'xxx'; param (index=0)"})
-		assert.String(g, "hello, world!").HasSubString("xxx", "param (index=0)")
+		assert.String(g, "hello, world!").HasSubStr("xxx", "param (index=0)")
 	})
 }

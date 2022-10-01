@@ -62,8 +62,8 @@ func (a *StringAssertion) HasSuffix(suffix string, msg ...string) *StringAsserti
 	return a
 }
 
-// HasSubString assertion failed when v doesn't contain substring `substr`.
-func (a *StringAssertion) HasSubString(substr string, msg ...string) *StringAssertion {
+// HasSubStr assertion failed when v doesn't contain substring `substr`.
+func (a *StringAssertion) HasSubStr(substr string, msg ...string) *StringAssertion {
 	a.t.Helper()
 	if !strings.Contains(a.v, substr) {
 		fail(a.t, fmt.Sprintf("'%s' doesn't contain substr '%s'", a.v, substr), msg...)

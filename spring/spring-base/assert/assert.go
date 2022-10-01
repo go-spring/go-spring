@@ -25,9 +25,11 @@ import (
 	"reflect"
 	"regexp"
 	"strings"
+
+	"github.com/go-spring/spring-base/cast"
 )
 
-// T is minimum interface of *testing.T.
+// T is the minimum interface of *testing.T.
 type T interface {
 	Helper()
 	Error(args ...interface{})
@@ -69,10 +71,10 @@ func IsNil(v reflect.Value) bool {
 // Nil assertion failed when got is not nil.
 func Nil(t T, got interface{}, msg ...string) {
 	t.Helper()
-	// 为什么不能使用 got == nil 进行判断呢？因为如果
+	// Why can't we use got==nil to judge？Because if
 	// a := (*int)(nil)        // %T == *int
 	// b := (interface{})(nil) // %T == <nil>
-	// 那么 a==b 的结果是 false，因为二者类型不一致。
+	// then a==b is false, because they are different types.
 	if !IsNil(reflect.ValueOf(got)) {
 		str := fmt.Sprintf("got (%T) %v but expect nil", got, got)
 		fail(t, str, msg...)
@@ -100,7 +102,7 @@ func Equal(t T, got interface{}, expect interface{}, msg ...string) {
 func NotEqual(t T, got interface{}, expect interface{}, msg ...string) {
 	t.Helper()
 	if reflect.DeepEqual(got, expect) {
-		str := fmt.Sprintf("expect not (%T) %v", expect, expect)
+		str := fmt.Sprintf("got (%T) %v but expect not (%T) %v", got, got, expect, expect)
 		fail(t, str, msg...)
 	}
 }
@@ -111,10 +113,12 @@ func JsonEqual(t T, got string, expect string, msg ...string) {
 	var gotJson interface{}
 	if err := json.Unmarshal([]byte(got), &gotJson); err != nil {
 		fail(t, err.Error(), msg...)
+		return
 	}
 	var expectJson interface{}
 	if err := json.Unmarshal([]byte(expect), &expectJson); err != nil {
 		fail(t, err.Error(), msg...)
+		return
 	}
 	if !reflect.DeepEqual(gotJson, expectJson) {
 		str := fmt.Sprintf("got (%T) %v but expect (%T) %v", got, got, expect, expect)
@@ -154,12 +158,9 @@ func Panic(t T, fn func(), expr string, msg ...string) {
 func recovery(fn func()) (str string) {
 	defer func() {
 		if r := recover(); r != nil {
-			switch v := r.(type) {
-			case error:
-				str = v.Error()
-			case string:
-				str = v
-			default:
+			var err error
+			str, err = cast.ToStringE(r)
+			if err != nil {
 				str = fmt.Sprint(r)
 			}
 		}

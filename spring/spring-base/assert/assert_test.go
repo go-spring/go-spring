@@ -17,8 +17,10 @@
 package assert_test
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"testing"
 
 	"github.com/go-spring/spring-base/assert"
@@ -78,6 +80,16 @@ func TestNil(t *testing.T) {
 	})
 
 	Case(t, func(g *assert.MockT) {
+		var a []string
+		assert.Nil(g, a)
+	})
+
+	Case(t, func(g *assert.MockT) {
+		var m map[string]string
+		assert.Nil(g, m)
+	})
+
+	Case(t, func(g *assert.MockT) {
 		g.EXPECT().Error([]interface{}{"got (int) 3 but expect nil"})
 		assert.Nil(g, 3)
 	})
@@ -92,6 +104,16 @@ func TestNotNil(t *testing.T) {
 
 	Case(t, func(g *assert.MockT) {
 		assert.NotNil(g, 3)
+	})
+
+	Case(t, func(g *assert.MockT) {
+		a := make([]string, 0)
+		assert.NotNil(g, a)
+	})
+
+	Case(t, func(g *assert.MockT) {
+		m := make(map[string]string)
+		assert.NotNil(g, m)
 	})
 
 	Case(t, func(g *assert.MockT) {
@@ -112,6 +134,36 @@ func TestEqual(t *testing.T) {
 	})
 
 	Case(t, func(g *assert.MockT) {
+		assert.Equal(g, []string{"a"}, []string{"a"})
+	})
+
+	Case(t, func(g *assert.MockT) {
+		assert.Equal(g, struct {
+			text string
+		}{text: "a"}, struct {
+			text string
+		}{text: "a"})
+	})
+
+	Case(t, func(g *assert.MockT) {
+		g.EXPECT().Error([]interface{}{"got (struct { Text string }) {a} but expect (struct { Text string \"json:\\\"text\\\"\" }) {a}"})
+		assert.Equal(g, struct {
+			Text string
+		}{Text: "a"}, struct {
+			Text string `json:"text"`
+		}{Text: "a"})
+	})
+
+	Case(t, func(g *assert.MockT) {
+		g.EXPECT().Error([]interface{}{"got (struct { text string }) {a} but expect (struct { msg string }) {a}"})
+		assert.Equal(g, struct {
+			text string
+		}{text: "a"}, struct {
+			msg string
+		}{msg: "a"})
+	})
+
+	Case(t, func(g *assert.MockT) {
 		g.EXPECT().Error([]interface{}{"got (int) 0 but expect (string) 0"})
 		assert.Equal(g, 0, "0")
 	})
@@ -129,13 +181,45 @@ func TestNotEqual(t *testing.T) {
 	})
 
 	Case(t, func(g *assert.MockT) {
-		g.EXPECT().Error([]interface{}{"expect not (string) 0"})
+		g.EXPECT().Error([]interface{}{"got ([]string) [a] but expect not ([]string) [a]"})
+		assert.NotEqual(g, []string{"a"}, []string{"a"})
+	})
+
+	Case(t, func(g *assert.MockT) {
+		g.EXPECT().Error([]interface{}{"got (string) 0 but expect not (string) 0"})
 		assert.NotEqual(g, "0", "0")
 	})
 
 	Case(t, func(g *assert.MockT) {
-		g.EXPECT().Error([]interface{}{"expect not (string) 0; param (index=0)"})
+		g.EXPECT().Error([]interface{}{"got (string) 0 but expect not (string) 0; param (index=0)"})
 		assert.NotEqual(g, "0", "0", "param (index=0)")
+	})
+}
+
+func TestJsonEqual(t *testing.T) {
+
+	Case(t, func(g *assert.MockT) {
+		assert.JsonEqual(g, `{"a":0,"b":1}`, `{"b":1,"a":0}`)
+	})
+
+	Case(t, func(g *assert.MockT) {
+		g.EXPECT().Error([]interface{}{"invalid character 'h' in literal true (expecting 'r')"})
+		assert.JsonEqual(g, `this is an error`, `[{"b":1},{"a":0}]`)
+	})
+
+	Case(t, func(g *assert.MockT) {
+		g.EXPECT().Error([]interface{}{"invalid character 'h' in literal true (expecting 'r')"})
+		assert.JsonEqual(g, `{"a":0,"b":1}`, `this is an error`)
+	})
+
+	Case(t, func(g *assert.MockT) {
+		g.EXPECT().Error([]interface{}{"got (string) {\"a\":0,\"b\":1} but expect (string) [{\"b\":1},{\"a\":0}]"})
+		assert.JsonEqual(g, `{"a":0,"b":1}`, `[{"b":1},{"a":0}]`)
+	})
+
+	Case(t, func(g *assert.MockT) {
+		g.EXPECT().Error([]interface{}{"got (string) {\"a\":0} but expect (string) {\"a\":1}; param (index=0)"})
+		assert.JsonEqual(g, `{"a":0}`, `{"a":1}`, "param (index=0)")
 	})
 }
 
@@ -197,6 +281,21 @@ func TestPanic(t *testing.T) {
 	Case(t, func(g *assert.MockT) {
 		g.EXPECT().Error([]interface{}{"got \"there's no error\" which does not match \"an error\"; param (index=0)"})
 		assert.Panic(g, func() { panic("there's no error") }, "an error", "param (index=0)")
+	})
+
+	Case(t, func(g *assert.MockT) {
+		g.EXPECT().Error([]interface{}{"got \"there's no error\" which does not match \"an error\""})
+		assert.Panic(g, func() { panic(errors.New("there's no error")) }, "an error")
+	})
+
+	Case(t, func(g *assert.MockT) {
+		g.EXPECT().Error([]interface{}{"got \"there's no error\" which does not match \"an error\""})
+		assert.Panic(g, func() { panic(bytes.NewBufferString("there's no error")) }, "an error")
+	})
+
+	Case(t, func(g *assert.MockT) {
+		g.EXPECT().Error([]interface{}{"got \"[there's no error]\" which does not match \"an error\""})
+		assert.Panic(g, func() { panic([]string{"there's no error"}) }, "an error")
 	})
 }
 
@@ -275,5 +374,10 @@ func TestImplements(t *testing.T) {
 	Case(t, func(g *assert.MockT) {
 		g.EXPECT().Error([]interface{}{"expect should be interface"})
 		assert.Implements(g, new(int), (*int)(nil))
+	})
+
+	Case(t, func(g *assert.MockT) {
+		g.EXPECT().Error([]interface{}{"got type (*int) but expect type (io.Reader)"})
+		assert.Implements(g, new(int), (*io.Reader)(nil))
 	})
 }
