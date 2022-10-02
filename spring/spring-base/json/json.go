@@ -35,13 +35,12 @@ type Encoder interface {
 }
 
 type WrapEncoder struct {
-	e Encoder
+	E Encoder
 }
 
-// Encode writes the JSON encoding of v to the stream,
-// followed by a newline character.
+// Encode encodes into byte sequence.
 func (w *WrapEncoder) Encode(v interface{}) error {
-	err := w.e.Encode(v)
+	err := w.E.Encode(v)
 	if err != nil {
 		return &WrapError{err: err}
 	}
@@ -54,13 +53,13 @@ type Decoder interface {
 }
 
 type WrapDecoder struct {
-	d Decoder
+	D Decoder
 }
 
 // Decode reads the next JSON-encoded value from its
 // input and stores it in the value pointed to by v.
 func (w *WrapDecoder) Decode(v interface{}) error {
-	err := w.d.Decode(v)
+	err := w.D.Decode(v)
 	if err != nil {
 		return &WrapError{err: err}
 	}

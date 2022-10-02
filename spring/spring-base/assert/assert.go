@@ -43,17 +43,21 @@ func fail(t T, str string, msg ...string) {
 // True assertion failed when got is false.
 func True(t T, got bool, msg ...string) {
 	t.Helper()
-	Bool(t, got).IsTrue(msg...)
+	if !got {
+		fail(t, "got false but expect true", msg...)
+	}
 }
 
 // False assertion failed when got is true.
 func False(t T, got bool, msg ...string) {
 	t.Helper()
-	Bool(t, got).IsFalse(msg...)
+	if got {
+		fail(t, "got true but expect false", msg...)
+	}
 }
 
-// IsNil reports v is nil, but will not panic.
-func IsNil(v reflect.Value) bool {
+// isNil reports v is nil, but will not panic.
+func isNil(v reflect.Value) bool {
 	switch v.Kind() {
 	case reflect.Chan,
 		reflect.Func,
@@ -74,7 +78,7 @@ func Nil(t T, got interface{}, msg ...string) {
 	// a := (*int)(nil)        // %T == *int
 	// b := (interface{})(nil) // %T == <nil>
 	// then a==b is false, because they are different types.
-	if !IsNil(reflect.ValueOf(got)) {
+	if !isNil(reflect.ValueOf(got)) {
 		str := fmt.Sprintf("got (%T) %v but expect nil", got, got)
 		fail(t, str, msg...)
 	}
@@ -83,7 +87,7 @@ func Nil(t T, got interface{}, msg ...string) {
 // NotNil assertion failed when got is nil.
 func NotNil(t T, got interface{}, msg ...string) {
 	t.Helper()
-	if IsNil(reflect.ValueOf(got)) {
+	if isNil(reflect.ValueOf(got)) {
 		fail(t, "got nil but expect not nil", msg...)
 	}
 }

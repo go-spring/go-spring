@@ -35,13 +35,12 @@ func String(t T, v string) *StringAssertion {
 	}
 }
 
-// IsEqualFold assertion failed when v doesn't equal to `s` under Unicode case-folding.
-func (a *StringAssertion) IsEqualFold(s string, msg ...string) *StringAssertion {
+// EqualFold assertion failed when v doesn't equal to `s` under Unicode case-folding.
+func (a *StringAssertion) EqualFold(s string, msg ...string) {
 	a.t.Helper()
 	if !strings.EqualFold(a.v, s) {
 		fail(a.t, fmt.Sprintf("'%s' doesn't equal fold to '%s'", a.v, s), msg...)
 	}
-	return a
 }
 
 // HasPrefix assertion failed when v doesn't have prefix `prefix`.

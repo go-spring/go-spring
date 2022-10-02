@@ -22,20 +22,20 @@ import (
 	"github.com/go-spring/spring-base/assert"
 )
 
-func TestString_IsEqualFold(t *testing.T) {
+func TestString_EqualFold(t *testing.T) {
 
 	Case(t, func(g *assert.MockT) {
-		assert.String(g, "hello, world!").IsEqualFold("Hello, World!")
+		assert.String(g, "hello, world!").EqualFold("Hello, World!")
 	})
 
 	Case(t, func(g *assert.MockT) {
 		g.EXPECT().Error([]interface{}{"'hello, world!' doesn't equal fold to 'xxx'"})
-		assert.String(g, "hello, world!").IsEqualFold("xxx")
+		assert.String(g, "hello, world!").EqualFold("xxx")
 	})
 
 	Case(t, func(g *assert.MockT) {
 		g.EXPECT().Error([]interface{}{"'hello, world!' doesn't equal fold to 'xxx'; param (index=0)"})
-		assert.String(g, "hello, world!").IsEqualFold("xxx", "param (index=0)")
+		assert.String(g, "hello, world!").EqualFold("xxx", "param (index=0)")
 	})
 }
 
