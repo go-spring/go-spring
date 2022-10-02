@@ -17,11 +17,18 @@
 package cache
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
+
+	"github.com/go-spring/spring-base/json"
 )
+
+// Result stores a value.
+type Result interface {
+	JSON() (string, error)
+	Load(v interface{}) error
+}
 
 // ValueResult stores a `reflect.Value`.
 type ValueResult struct {
@@ -29,7 +36,7 @@ type ValueResult struct {
 	t reflect.Type
 }
 
-// NewValueResult returns a Result which storing a `reflect.Value`.
+// NewValueResult returns a Result which stores a `reflect.Value`.
 func NewValueResult(v interface{}) Result {
 	return &ValueResult{
 		v: reflect.ValueOf(v),
@@ -37,13 +44,13 @@ func NewValueResult(v interface{}) Result {
 	}
 }
 
-// Json returns the JSON encoding of the stored value.
-func (r *ValueResult) Json() string {
+// JSON returns the JSON encoding of the stored value.
+func (r *ValueResult) JSON() (string, error) {
 	b, err := json.Marshal(r.v.Interface())
 	if err != nil {
-		return err.Error()
+		return "", err
 	}
-	return string(b)
+	return string(b), nil
 }
 
 // Load injects the saved value to v.
@@ -53,7 +60,7 @@ func (r *ValueResult) Load(v interface{}) error {
 		return errors.New("value should be ptr and not nil")
 	}
 	if outVal.Type().Elem() != r.t {
-		return fmt.Errorf("type not match %s", outVal.Elem().Type())
+		return fmt.Errorf("load type (%s) but expect type (%s)", outVal.Elem().Type(), r.t.String())
 	}
 	outVal.Elem().Set(r.v)
 	return nil
@@ -64,16 +71,16 @@ type JSONResult struct {
 	v string
 }
 
-// NewJSONResult returns a Result which storing a JSON string.
+// NewJSONResult returns a Result which stores a JSON string.
 func NewJSONResult(v string) Result {
 	return &JSONResult{
 		v: v,
 	}
 }
 
-// Json returns the JSON encoding of the stored value.
-func (r *JSONResult) Json() string {
-	return r.v
+// JSON returns the JSON encoding of the stored value.
+func (r *JSONResult) JSON() (string, error) {
+	return r.v, nil
 }
 
 // Load injects the saved value to v.

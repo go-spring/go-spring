@@ -14,55 +14,87 @@
  * limitations under the License.
  */
 
+// Package cache provides object caching in memory.
 package cache
 
 import (
 	"context"
 	"sync"
 	"time"
-
-	"github.com/go-spring/spring-base/run"
 )
 
-var Engine Driver = &engine{}
+var (
+	Cache  Shardable
+	Engine Driver
+)
 
+func init() {
+	Cache = NewStorage(1, SimpleHash)
+	Engine = &engine{}
+}
+
+// A Shardable cache can improve the performance of concurrency.
+type Shardable interface {
+	Sharding(key string) *sync.Map
+}
+
+type LoadType int
+
+const (
+	LoadNone LoadType = iota
+	LoadOnCtx
+	LoadCache
+	LoadSource
+)
+
+// ResultLoader returns a wrapper for the source value of the key.
+type ResultLoader func(ctx context.Context, key string) (Result, error)
+
+// Driver loads value from m, if there is no cached value, call the loader
+// to get value, and then stores it into m.
 type Driver interface {
 	Load(ctx context.Context, m *sync.Map, key string, loader ResultLoader, arg OptionArg) (loadType LoadType, result Result, err error)
 }
 
-// TODO using sharding to improve performance at high concurrency.
-var cache = &sync.Map{}
+// Has returns whether the key exists.
+func Has(key string) bool {
+	v, ok := Cache.Sharding(key).Load(key)
+	if ok && v != nil {
+		return !v.(*cacheItem).expired()
+	}
+	return false
+}
 
-// InvalidateAll delete all cached values, just for unit testing.
-func InvalidateAll() {
-	run.MustTestMode()
-	cache = &sync.Map{}
+type OptionArg struct {
+	ExpireAfterWrite time.Duration
 }
 
 type Option func(*OptionArg)
 
-// ExpireAfterWrite sets the expiration time of the cache value.
+// ExpireAfterWrite sets the expiration time of the cache value after write.
 func ExpireAfterWrite(v time.Duration) Option {
 	return func(arg *OptionArg) {
 		arg.ExpireAfterWrite = v
 	}
 }
 
-// Loader gets value from background, such as Redis, MySQL, etc.
+// Loader gets value from a background, such as Redis, MySQL, etc.
 type Loader func(ctx context.Context, key string) (interface{}, error)
 
-// Load loads value from cache, if there is no cached value, call the loader to get value, and then stores it.
+// Load loads value from cache, if there is no cached value, call the loader
+// to get value, and then stores it.
 func Load(ctx context.Context, key string, loader Loader, opts ...Option) (loadType LoadType, result Result, _ error) {
 	arg := OptionArg{}
 	for _, opt := range opts {
 		opt(&arg)
 	}
-	// TODO detect whether loader has changed, so as to confirm whether loader method is called in multiple locations.
-	return Engine.Load(ctx, cache, key, func(ctx context.Context, key string) (Result, error) {
+	l := func(ctx context.Context, key string) (Result, error) {
 		v, err := loader(ctx, key)
 		if err != nil {
 			return nil, err
 		}
 		return NewValueResult(v), nil
-	}, arg)
+	}
+	m := Cache.Sharding(key)
+	return Engine.Load(ctx, m, key, l, arg)
 }

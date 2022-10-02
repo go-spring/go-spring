@@ -22,21 +22,6 @@ import (
 	"time"
 )
 
-type LoadType int
-
-const (
-	LoadNone LoadType = iota
-	LoadCache
-	LoadSource
-)
-
-type Result interface {
-	Json() string
-	Load(v interface{}) error
-}
-
-type ResultLoader func(ctx context.Context, key string) (Result, error)
-
 type cacheItem struct {
 	value            Result
 	writeTime        time.Time
@@ -46,17 +31,17 @@ type cacheItem struct {
 	loading          *cacheItemLoading
 }
 
-type cacheItemLoading struct {
-	v   Result
-	err error
-	wg  sync.WaitGroup
-}
-
 func (e *cacheItem) expired() bool {
 	if e.expireAfterWrite <= 0 {
 		return false
 	}
 	return time.Since(e.writeTime)-e.expireAfterWrite > 0
+}
+
+type cacheItemLoading struct {
+	v   Result
+	err error
+	wg  sync.WaitGroup
 }
 
 func (e *cacheItem) load(ctx context.Context, key string) (LoadType, Result, error) {
@@ -94,13 +79,11 @@ func (e *cacheItem) load(ctx context.Context, key string) (LoadType, Result, err
 	return LoadSource, c.v, nil
 }
 
-type OptionArg struct {
-	ExpireAfterWrite time.Duration
-}
-
 type engine struct{}
 
-func (d *engine) Load(ctx context.Context, m *sync.Map, key string, loader ResultLoader, arg OptionArg) (loadType LoadType, result Result, _ error) {
+// Load loads value from m, if there is no cached value, call the loader
+// to get value, and then stores it into m.
+func (d *engine) Load(ctx context.Context, m *sync.Map, key string, loader ResultLoader, arg OptionArg) (loadType LoadType, result Result, err error) {
 	actual, _ := m.LoadOrStore(key, &cacheItem{
 		expireAfterWrite: arg.ExpireAfterWrite,
 		loader:           loader,

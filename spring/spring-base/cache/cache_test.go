@@ -16,315 +16,218 @@
 
 package cache_test
 
-//
-//func init() {
-//
-//	config := `
-//		<?xml version="1.0" encoding="UTF-8"?>
-//		<Configuration>
-//			<Appenders>
-//				<Console name="Console"/>
-//			</Appenders>
-//			<Loggers>
-//				<Root level="info">
-//					<AppenderRef ref="Console"/>
-//				</Root>
-//			</Loggers>
-//		</Configuration>
-//	`
-//	err := log.RefreshBuffer(config, ".xml")
-//	util.Panic(err).When(err != nil)
-//
-//	recorder.Init()
-//	recorder.RegisterProtocol(recorder.REDIS, &redisProtocol{})
-//}
-//
-//type redisProtocol struct{}
-//
-//func (p *redisProtocol) ShouldDiff() bool {
-//	return true
-//}
-//
-//func (p *redisProtocol) GetLabel(data string) string {
-//	return data[:4]
-//}
-//
-//func (p *redisProtocol) FlatRequest(data string) (map[string]string, error) {
-//	return nil, nil
-//}
-//
-//func (p *redisProtocol) FlatResponse(data string) (map[string]string, error) {
-//	return nil, nil
-//}
-//
-//type response struct {
-//	Name string `json:"name"`
-//}
-//
-//type redis struct{}
-//
-//func (r *redis) getValue(ctx context.Context, key string) (ret string, err error) {
-//	defer func() {
-//		if recorder.RecordMode() {
-//			recorder.RecordAction(ctx, recorder.REDIS, &recorder.SimpleAction{
-//				Request: func() string {
-//					return key
-//				},
-//				Response: func() string {
-//					return ret
-//				},
-//			})
-//		}
-//	}()
-//	if replayer.ReplayMode() {
-//		var (
-//			ok   bool
-//			resp interface{}
-//		)
-//		resp, ok, err = replayer.Query(ctx, recorder.REDIS, key)
-//		if err != nil {
-//			return "", err
-//		}
-//		if !ok {
-//			return "", errors.New("no replay data")
-//		}
-//		return resp.(string), nil
-//	}
-//	return fmt.Sprintf("{\"name\":\"%s\"}", key), nil
-//}
-//
-//func getResponse(ctx context.Context, r *redis, key string) (*response, cache.LoadType, error) {
-//	loadType, result, err := cache.Load(ctx, key, func(ctx context.Context, key string) (interface{}, error) {
-//		data, err := r.getValue(ctx, key)
-//		if err != nil {
-//			return nil, err
-//		}
-//		var v *response
-//		err = json.Unmarshal([]byte(data), &v)
-//		if err != nil {
-//			return nil, err
-//		}
-//		return v, nil
-//	}, cache.ExpireAfterWrite(0))
-//	if err != nil {
-//		return nil, cache.LoadNone, err
-//	}
-//	var resp *response
-//	err = result.Load(&resp)
-//	if err != nil {
-//		return nil, cache.LoadNone, err
-//	}
-//	return resp, loadType, nil
-//}
-//
-//func testFunc(t *testing.T, ctx context.Context, key string) []cache.LoadType {
-//
-//	var (
-//		ret  []cache.LoadType
-//		lock sync.Mutex
-//	)
-//
-//	r := &redis{}
-//	wg := sync.WaitGroup{}
-//	for i := 0; i < 3; i++ {
-//		wg.Add(1)
-//		go func() {
-//			defer wg.Done()
-//			resp, loadType, err := getResponse(ctx, r, key)
-//			lock.Lock()
-//			ret = append(ret, loadType)
-//			lock.Unlock()
-//			assert.Nil(t, err)
-//			fmt.Printf("%v %#v\n", loadType, resp)
-//		}()
-//	}
-//	wg.Wait()
-//
-//	return ret
-//}
-//
-//type SessionSlice []*recorder.Session
-//
-//func (p SessionSlice) Len() int           { return len(p) }
-//func (p SessionSlice) Less(i, j int) bool { return p[i].Actions[0].Protocol > p[j].Actions[0].Protocol }
-//func (p SessionSlice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
-//
-//type LoadTypeSlice []cache.LoadType
-//
-//func (p LoadTypeSlice) Len() int           { return len(p) }
-//func (p LoadTypeSlice) Less(i, j int) bool { return p[i] > p[j] }
-//func (p LoadTypeSlice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
-//
-//type LoadTypeSliceSlice [][]cache.LoadType
-//
-//func (p LoadTypeSliceSlice) Len() int           { return len(p) }
-//func (p LoadTypeSliceSlice) Less(i, j int) bool { return p[i][0] > p[j][0] }
-//func (p LoadTypeSliceSlice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
-//
-//func TestRecord(t *testing.T) {
-//	defer cache.InvalidateAll()
-//
-//	recorder.SetRecordMode(true)
-//	defer func() {
-//		recorder.SetRecordMode(false)
-//	}()
-//
-//	key := "test"
-//	f := func(sessionID string) (*recorder.Session, []cache.LoadType) {
-//		ctx, _ := knife.New(context.Background())
-//		recorder.StartRecord(ctx, func() (string, error) {
-//			return sessionID, nil
-//		})
-//		loadTypes := testFunc(t, ctx, key)
-//		session := recorder.StopRecord(ctx)
-//		fmt.Println(recorder.ToPrettyJson(session))
-//		return session, loadTypes
-//	}
-//
-//	var (
-//		loadTypes [][]cache.LoadType
-//		sessions  []*recorder.Session
-//		lock      sync.Mutex
-//	)
-//
-//	var wg sync.WaitGroup
-//	for i := 0; i < 3; i++ {
-//		sessionID := strconv.Itoa(i)
-//		wg.Add(1)
-//		go func() {
-//			defer wg.Done()
-//			s1, s2 := f(sessionID)
-//			lock.Lock()
-//			sessions = append(sessions, s1)
-//			loadTypes = append(loadTypes, s2)
-//			lock.Unlock()
-//		}()
-//	}
-//	wg.Wait()
-//
-//	for i := 0; i < 3; i++ {
-//		sort.Sort(LoadTypeSlice(loadTypes[i]))
-//	}
-//	sort.Sort(LoadTypeSliceSlice(loadTypes))
-//
-//	assert.Equal(t, loadTypes, [][]cache.LoadType{
-//		{cache.LoadBack, cache.LoadOnCtx, cache.LoadOnCtx},
-//		{cache.LoadCache, cache.LoadOnCtx, cache.LoadOnCtx},
-//		{cache.LoadCache, cache.LoadOnCtx, cache.LoadOnCtx},
-//	})
-//
-//	sort.Sort(SessionSlice(sessions))
-//
-//	var ss []string
-//	for _, s := range sessions {
-//		s.Session = ""
-//		ss = append(ss, recorder.ToJson(s))
-//	}
-//
-//	//configs := []*jsondiff.Config{
-//	//	jsondiff.Path("$..[Timestamp]").SetComparator(func(a, b interface{}) bool {
-//	//		return true
-//	//	}),
-//	//}
-//	//r := jsondiff.Diff(ss[0], `{"Actions":[{"Protocol":"REDIS","Request":"test","Response":"{\"name\":\"test\"}"}]}`, configs...)
-//	//assert.Equal(t, r.Differs, map[string]jsondiff.DiffItem{})
-//	//jsondiff.Diff(ss[1], `{"Actions":[{"Protocol":"CACHE","Request":"test","Response":"{\"name\":\"test\"}"}]}`, configs...)
-//	//assert.Equal(t, r.Differs, map[string]jsondiff.DiffItem{})
-//	//jsondiff.Diff(ss[2], `{"Actions":[{"Protocol":"CACHE","Request":"test","Response":"{\"name\":\"test\"}"}]}`, configs...)
-//	//assert.Equal(t, r.Differs, map[string]jsondiff.DiffItem{})
-//}
-//
-//func TestReplay(t *testing.T) {
-//	defer cache.InvalidateAll()
-//
-//	replayer.SetReplayMode(true)
-//	defer func() {
-//		replayer.SetReplayMode(false)
-//	}()
-//
-//	agent := replayer.NewLocalAgent()
-//	replayer.SetReplayAgent(agent)
-//
-//	key := "test"
-//	f := func(str string) []cache.LoadType {
-//
-//		session, err := agent.Store(str)
-//		assert.Nil(t, err)
-//		defer agent.Delete(session.Session)
-//
-//		ctx, cached := knife.New(context.Background())
-//		assert.False(t, cached)
-//
-//		timeNow := time.Unix(1643364150, 0)
-//		err = clock.SetBaseTime(ctx, timeNow)
-//		assert.Nil(t, err)
-//
-//		err = replayer.SetSessionID(ctx, session.Session)
-//		assert.Nil(t, err)
-//
-//		return testFunc(t, ctx, key)
-//	}
-//
-//	sessions := []string{
-//		`{
-//		  "Session": "0",
-//		  "Actions": [
-//			{
-//			  "Protocol": "REDIS",
-//			  "Request": "test",
-//			  "Response": "{\"name\":\"test\"}"
-//			}
-//		  ]
-//		}`,
-//		`{
-//		  "Session": "1",
-//		  "Actions": [
-//			{
-//			  "Protocol": "CACHE",
-//			  "Request": "test",
-//			  "Response": "{\"name\":\"test\"}"
-//			}
-//		  ]
-//		}`,
-//		`{
-//		  "Session": "2",
-//		  "Actions": [
-//			{
-//			  "Protocol": "CACHE",
-//			  "Request": "test",
-//			  "Response": "{\"name\":\"test\"}"
-//			}
-//		  ]
-//		}`,
-//	}
-//
-//	var (
-//		loadTypes [][]cache.LoadType
-//		lock      sync.Mutex
-//	)
-//
-//	var wg sync.WaitGroup
-//	for i := 0; i < 3; i++ {
-//		j := i
-//		wg.Add(1)
-//		go func() {
-//			defer wg.Done()
-//			s2 := f(sessions[j])
-//			lock.Lock()
-//			loadTypes = append(loadTypes, s2)
-//			lock.Unlock()
-//		}()
-//	}
-//	wg.Wait()
-//
-//	for i := 0; i < 3; i++ {
-//		sort.Sort(LoadTypeSlice(loadTypes[i]))
-//	}
-//	sort.Sort(LoadTypeSliceSlice(loadTypes))
-//
-//	assert.Equal(t, loadTypes, [][]cache.LoadType{
-//		{cache.LoadBack, cache.LoadOnCtx, cache.LoadOnCtx},
-//		{cache.LoadCache, cache.LoadOnCtx, cache.LoadOnCtx},
-//		{cache.LoadCache, cache.LoadOnCtx, cache.LoadOnCtx},
-//	})
-//}
+import (
+	"context"
+	"errors"
+	"sort"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/go-spring/spring-base/assert"
+	"github.com/go-spring/spring-base/cache"
+)
+
+type response struct {
+	name string
+}
+
+type injection struct {
+	expire time.Duration
+	resp   interface{}
+	data   *response
+	err    error
+}
+
+var ctxInjectionKey int
+
+func getInjection(ctx context.Context) *injection {
+	return ctx.Value(&ctxInjectionKey).(*injection)
+}
+
+func setInjection(ctx context.Context, i *injection) context.Context {
+	return context.WithValue(ctx, &ctxInjectionKey, i)
+}
+
+func loadResponse(ctx context.Context, key string, delay time.Duration) (*response, cache.LoadType, error) {
+
+	i := getInjection(ctx)
+	loader := func(ctx context.Context, key string) (interface{}, error) {
+		if delay > 0 {
+			time.Sleep(delay)
+		}
+		if i.err != nil {
+			return nil, i.err
+		}
+		i.data.name = key
+		return i.data, nil
+	}
+
+	opts := []cache.Option{
+		cache.ExpireAfterWrite(i.expire),
+	}
+	loadType, result, err := cache.Load(ctx, key, loader, opts...)
+	if err != nil {
+		return nil, cache.LoadNone, err
+	}
+
+	if _, ok := i.resp.(*response); ok {
+		var resp *response
+		err = result.Load(&resp)
+		if err != nil {
+			return nil, cache.LoadNone, err
+		}
+		return resp, loadType, nil
+	}
+
+	var resp int
+	err = result.Load(&resp)
+	return nil, cache.LoadNone, err
+}
+
+type LoadTypeSlice []cache.LoadType
+
+func (p LoadTypeSlice) Len() int           { return len(p) }
+func (p LoadTypeSlice) Less(i, j int) bool { return p[i] > p[j] }
+func (p LoadTypeSlice) Swap(i, j int)      { p[i], p[j] = p[j], p[i] }
+
+func testFunc(key string, i *injection) ([]interface{}, []cache.LoadType) {
+	ctx := setInjection(context.Background(), i)
+
+	var (
+		datas []interface{}
+		types []cache.LoadType
+		lock  sync.Mutex
+	)
+
+	wg := sync.WaitGroup{}
+	for j := 0; j < 3; j++ {
+		jj := j
+		delay := 10 * time.Millisecond
+		wg.Add(1)
+		go func() {
+			if jj == 1 {
+				time.Sleep(delay)
+			}
+			defer wg.Done()
+			resp, loadType, err := loadResponse(ctx, key, delay)
+			lock.Lock()
+			if err != nil {
+				datas = append(datas, err)
+
+			} else {
+				datas = append(datas, resp)
+			}
+			types = append(types, loadType)
+			lock.Unlock()
+		}()
+	}
+	wg.Wait()
+
+	sort.Sort(LoadTypeSlice(types))
+	return datas, types
+}
+
+func TestCache(t *testing.T) {
+
+	old := cache.Cache
+	defer func() { cache.Cache = old }()
+
+	for size := 1; size < 3; size++ {
+		cache.Cache = cache.NewStorage(size, cache.SimpleHash)
+
+		t.Run("response error", func(t *testing.T) {
+			testKey := "test"
+			defer func() {
+				(cache.Cache).(*cache.Storage).Reset()
+			}()
+			i := &injection{
+				err: errors.New("this is an error"),
+			}
+			datas, types := testFunc(testKey, i)
+			assert.Equal(t, datas, []interface{}{
+				errors.New("this is an error"),
+				errors.New("this is an error"),
+				errors.New("this is an error"),
+			})
+			assert.Equal(t, types, []cache.LoadType{
+				cache.LoadNone,
+				cache.LoadNone,
+				cache.LoadNone,
+			})
+		})
+
+		t.Run("response success", func(t *testing.T) {
+			testKey := "test1234567890test1234567890"
+			defer func() {
+				(cache.Cache).(*cache.Storage).Reset()
+			}()
+			assert.False(t, cache.Has(testKey))
+			i := &injection{
+				expire: 50 * time.Millisecond,
+				resp:   &response{},
+				data:   &response{},
+			}
+			datas, types := testFunc(testKey, i)
+			assert.Equal(t, datas, []interface{}{
+				&response{name: testKey},
+				&response{name: testKey},
+				&response{name: testKey},
+			})
+			assert.Equal(t, types, []cache.LoadType{
+				cache.LoadSource,
+				cache.LoadCache,
+				cache.LoadCache,
+			})
+			time.Sleep(150 * time.Millisecond)
+			assert.False(t, cache.Has(testKey))
+		})
+
+		t.Run("response success without expired", func(t *testing.T) {
+			testKey := "test1234567890"
+			defer func() {
+				(cache.Cache).(*cache.Storage).Reset()
+			}()
+			assert.False(t, cache.Has(testKey))
+			i := &injection{
+				resp: &response{},
+				data: &response{},
+			}
+			datas, types := testFunc(testKey, i)
+			assert.Equal(t, datas, []interface{}{
+				&response{name: testKey},
+				&response{name: testKey},
+				&response{name: testKey},
+			})
+			assert.Equal(t, types, []cache.LoadType{
+				cache.LoadSource,
+				cache.LoadCache,
+				cache.LoadCache,
+			})
+			time.Sleep(150 * time.Millisecond)
+			assert.True(t, cache.Has(testKey))
+		})
+
+		t.Run("load error", func(t *testing.T) {
+			testKey := "test"
+			defer func() {
+				(cache.Cache).(*cache.Storage).Reset()
+			}()
+			i := &injection{
+				resp: map[string]string{},
+				data: &response{},
+			}
+			datas, types := testFunc(testKey, i)
+			assert.Equal(t, datas, []interface{}{
+				errors.New("load type (int) but expect type (*cache_test.response)"),
+				errors.New("load type (int) but expect type (*cache_test.response)"),
+				errors.New("load type (int) but expect type (*cache_test.response)"),
+			})
+			assert.Equal(t, types, []cache.LoadType{
+				cache.LoadNone,
+				cache.LoadNone,
+				cache.LoadNone,
+			})
+		})
+	}
+}
