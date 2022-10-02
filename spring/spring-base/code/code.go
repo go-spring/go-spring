@@ -26,10 +26,7 @@ var frameMap sync.Map
 
 func fileLine() (string, int) {
 	rpc := make([]uintptr, 1)
-	n := runtime.Callers(3, rpc[:])
-	if n < 1 {
-		return "", 0
-	}
+	runtime.Callers(3, rpc[:])
 	pc := rpc[0]
 	if v, ok := frameMap.Load(pc); ok {
 		e := v.(*runtime.Frame)
@@ -53,7 +50,7 @@ func Line() int {
 }
 
 // FileLine returns the file name and line of the call point.
-// and, in fact code.FileLine costs less time than debug.Stack.
+// In reality code.FileLine costs less time than debug.Stack.
 func FileLine() string {
 	file, line := fileLine()
 	return fmt.Sprintf("%s:%d", file, line)

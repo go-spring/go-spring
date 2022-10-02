@@ -31,14 +31,14 @@ func TestText(t *testing.T) {
 	fmt.Println(color.ReverseVideo.Sprint("ok"))
 	fmt.Println(color.CrossedOut.Sprint("ok"))
 
-	fmt.Println(color.Black.Sprint("ok"))
-	fmt.Println(color.Red.Sprint("ok"))
-	fmt.Println(color.Green.Sprint("ok"))
-	fmt.Println(color.Yellow.Sprint("ok"))
-	fmt.Println(color.Blue.Sprint("ok"))
-	fmt.Println(color.Magenta.Sprint("ok"))
-	fmt.Println(color.Cyan.Sprint("ok"))
-	fmt.Println(color.White.Sprint("ok"))
+	fmt.Println(color.Black.Sprintf("ok"))
+	fmt.Println(color.Red.Sprintf("ok"))
+	fmt.Println(color.Green.Sprintf("ok"))
+	fmt.Println(color.Yellow.Sprintf("ok"))
+	fmt.Println(color.Blue.Sprintf("ok"))
+	fmt.Println(color.Magenta.Sprintf("ok"))
+	fmt.Println(color.Cyan.Sprintf("ok"))
+	fmt.Println(color.White.Sprintf("ok"))
 
 	fmt.Println(color.BgBlack.Sprint("ok"))
 	fmt.Println(color.BgRed.Sprint("ok"))
@@ -59,5 +59,7 @@ func TestText(t *testing.T) {
 		color.BgGreen,
 	}
 
+	fmt.Println(color.NewText().Sprint("ok"))
 	fmt.Println(color.NewText(attributes...).Sprint("ok"))
+	fmt.Println(color.NewText(attributes...).Sprintf("ok"))
 }

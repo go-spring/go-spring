@@ -22,65 +22,78 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-spring/spring-base/assert"
 	"github.com/go-spring/spring-base/code"
 )
 
-func f1() ([]string, time.Duration) {
-	ret, cost := f2()
+func f1(t *testing.T) ([]string, time.Duration) {
+	ret, cost := f2(t)
+	assert.String(t, code.File()).HasSuffix("code/code_test.go")
+	assert.Equal(t, code.Line(), 32)
 	start := time.Now()
 	fileLine := code.FileLine()
 	cost += time.Since(start)
 	return append(ret, fileLine), cost
 }
 
-func f2() ([]string, time.Duration) {
-	ret, cost := f3()
+func f2(t *testing.T) ([]string, time.Duration) {
+	ret, cost := f3(t)
+	assert.String(t, code.File()).HasSuffix("code/code_test.go")
+	assert.Equal(t, code.Line(), 42)
 	start := time.Now()
 	fileLine := code.FileLine()
 	cost += time.Since(start)
 	return append(ret, fileLine), cost
 }
 
-func f3() ([]string, time.Duration) {
-	ret, cost := f4()
+func f3(t *testing.T) ([]string, time.Duration) {
+	ret, cost := f4(t)
+	assert.String(t, code.File()).HasSuffix("code/code_test.go")
+	assert.Equal(t, code.Line(), 52)
 	start := time.Now()
 	fileLine := code.FileLine()
 	cost += time.Since(start)
 	return append(ret, fileLine), cost
 }
 
-func f4() ([]string, time.Duration) {
-	ret, cost := f5()
+func f4(t *testing.T) ([]string, time.Duration) {
+	ret, cost := f5(t)
+	assert.String(t, code.File()).HasSuffix("code/code_test.go")
+	assert.Equal(t, code.Line(), 62)
 	start := time.Now()
 	fileLine := code.FileLine()
 	cost += time.Since(start)
 	return append(ret, fileLine), cost
 }
 
-func f5() ([]string, time.Duration) {
-	ret, cost := f6()
+func f5(t *testing.T) ([]string, time.Duration) {
+	ret, cost := f6(t)
+	assert.String(t, code.File()).HasSuffix("code/code_test.go")
+	assert.Equal(t, code.Line(), 72)
 	start := time.Now()
 	fileLine := code.FileLine()
 	cost += time.Since(start)
 	return append(ret, fileLine), cost
 }
 
-func f6() ([]string, time.Duration) {
-	ret, cost := f7()
+func f6(t *testing.T) ([]string, time.Duration) {
+	ret, cost := f7(t)
+	assert.String(t, code.File()).HasSuffix("code/code_test.go")
+	assert.Equal(t, code.Line(), 82)
 	start := time.Now()
 	fileLine := code.FileLine()
 	cost += time.Since(start)
 	return append(ret, fileLine), cost
 }
 
-func f7() ([]string, time.Duration) {
-
+func f7(t *testing.T) ([]string, time.Duration) {
+	assert.String(t, code.File()).HasSuffix("code/code_test.go")
+	assert.Equal(t, code.Line(), 91)
 	{
 		start := time.Now()
 		_ = debug.Stack()
 		fmt.Println("\t", "debug.Stack cost", time.Since(start))
 	}
-
 	start := time.Now()
 	fileLine := code.FileLine()
 	cost := time.Since(start)
@@ -90,7 +103,7 @@ func f7() ([]string, time.Duration) {
 func TestFileLine(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		fmt.Printf("loop %d\n", i)
-		ret, cost := f1()
+		ret, cost := f1(t)
 		fmt.Println("\t", ret)
 		fmt.Println("\t", "all code.FileLine cost", cost)
 	}

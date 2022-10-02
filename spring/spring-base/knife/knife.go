@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-// Package knife 提供了 context.Context 上的缓存。
+// Package knife provides cache on `context.Context`.
 package knife
 
 import (
@@ -64,7 +64,7 @@ func Store(ctx context.Context, key string, val interface{}) error {
 		return errUninitialized
 	}
 	if _, loaded := m.LoadOrStore(key, val); loaded {
-		return fmt.Errorf("duplicate key %s", key)
+		return fmt.Errorf("duplicate key %q", key)
 	}
 	return nil
 }

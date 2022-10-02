@@ -25,44 +25,62 @@ import (
 var mode int
 
 const (
-	recordMode = 0x0001
-	replayMode = 0x0002
-	testMode   = 0x0004
+	NormalModeFlag = 0x0000
+	RecordModeFlag = 0x0001
+	ReplayModeFlag = 0x0002
+	TestModeFlag   = 0x0004
 )
 
 func init() {
+	initMode()
+}
+
+// initMode for unit test.
+func initMode() {
+	mode = NormalModeFlag
 	if os.Getenv("GS_RECORD_MODE") != "" {
-		mode |= recordMode
+		mode |= RecordModeFlag
 	}
 	if os.Getenv("GS_REPLAY_MODE") != "" {
-		mode |= replayMode
+		mode |= ReplayModeFlag
 	}
 	for _, arg := range os.Args {
 		if strings.HasPrefix(arg, "-test.") {
-			mode |= testMode
+			mode |= TestModeFlag
 			break
 		}
 	}
 }
 
-// NormalMode returns whether it is in normal mode.
+// SetMode sets the running mode, only in unit test mode.
+func SetMode(flag int) (reset func()) {
+	MustTestMode()
+	old := mode
+	reset = func() {
+		mode = old
+	}
+	mode = flag
+	return
+}
+
+// NormalMode returns whether it is running in normal mode.
 func NormalMode() bool {
 	return mode == 0
 }
 
-// RecordMode returns whether it is in record mode.
+// RecordMode returns whether it is running in record mode.
 func RecordMode() bool {
-	return mode&0x00ff == recordMode
+	return mode&RecordModeFlag == RecordModeFlag
 }
 
-// ReplayMode returns whether it is in replay mode.
+// ReplayMode returns whether it is running in replay mode.
 func ReplayMode() bool {
-	return mode&0x00ff == replayMode
+	return mode&ReplayModeFlag == ReplayModeFlag
 }
 
-// TestMode returns whether it is in test mode.
+// TestMode returns whether it is running in test mode.
 func TestMode() bool {
-	return mode&0x00ff == testMode
+	return mode&TestModeFlag == TestModeFlag
 }
 
 // MustTestMode panic occurs when calling not in test mode.

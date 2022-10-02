@@ -1,6 +1,6 @@
 # knife
 
-提供了 context.Context 上的缓存。
+Package knife provides cache on `context.Context`.
 
 ## Install
 

@@ -35,7 +35,8 @@ const (
 	stdZeroSecond  = "05"
 )
 
-// Format time
+// Format returns a textual representation of the time value formatted
+// according to layout.
 func Format(t time.Time, layout string) string {
 	layout = ToStdLayout(layout)
 	if layout == "" {
@@ -44,10 +45,7 @@ func Format(t time.Time, layout string) string {
 	return t.Format(layout)
 }
 
-// ToStdLayout
-// 将 yyyy-MM-dd H:m:s 转换为 2006-01-02 15:04:05
-// yyyy -> 2006 MM -> 01 dd -> 02
-// H -> 15	m -> 04 s -> 05
+// ToStdLayout converts "yyyy-MM-dd H:m:s" to "2006-01-02 15:04:05".
 func ToStdLayout(layout string) string {
 	buf := bytes.NewBuffer(nil)
 	for layout != "" {
@@ -63,7 +61,6 @@ func ToStdLayout(layout string) string {
 	return buf.String()
 }
 
-// nextChunk
 func nextStdChunk(layout string) (prefix string, std string, suffix string) {
 	for i := 0; i < len(layout); i++ {
 		switch b := layout[i]; b {
