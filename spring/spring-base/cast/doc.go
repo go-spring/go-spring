@@ -14,35 +14,5 @@
  * limitations under the License.
  */
 
+// Package cast provides many conversion functions between types.
 package cast
-
-import (
-	"encoding/json"
-)
-
-var (
-	FAST = &fastEncoding{}
-	JSON = &jsonEncoding{}
-)
-
-type fastEncoding struct{}
-
-type ConversionArg struct {
-	DeepCopy bool
-}
-
-// Convert converts src to dest using fast encoding.
-func (e *fastEncoding) Convert(src interface{}, dest interface{}, arg ...ConversionArg) error {
-	return nil
-}
-
-type jsonEncoding struct{}
-
-// Convert converts src to dest using json encoding.
-func (e *jsonEncoding) Convert(src interface{}, dest interface{}) error {
-	b, err := json.Marshal(src)
-	if err != nil {
-		return err
-	}
-	return json.Unmarshal(b, dest)
-}

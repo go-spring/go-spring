@@ -17,6 +17,7 @@
 package cast_test
 
 import (
+	"errors"
 	"strconv"
 	"testing"
 
@@ -68,11 +69,11 @@ func TestToFloat(t *testing.T) {
 	assert.Equal(t, cast.ToFloat32(uint16(3)), float32(3))
 	assert.Equal(t, cast.ToFloat32(uint32(3)), float32(3))
 	assert.Equal(t, cast.ToFloat32(uint64(3)), float32(3))
-	assert.Equal(t, cast.ToFloat32(cast.IntPtr(3)), float32(3))
-	assert.Equal(t, cast.ToFloat32(cast.Int8Ptr(3)), float32(3))
-	assert.Equal(t, cast.ToFloat32(cast.Int16Ptr(3)), float32(3))
-	assert.Equal(t, cast.ToFloat32(cast.Int32Ptr(3)), float32(3))
-	assert.Equal(t, cast.ToFloat32(cast.Int64Ptr(3)), float32(3))
+	assert.Equal(t, cast.ToFloat32(cast.UintPtr(3)), float32(3))
+	assert.Equal(t, cast.ToFloat32(cast.Uint8Ptr(3)), float32(3))
+	assert.Equal(t, cast.ToFloat32(cast.Uint16Ptr(3)), float32(3))
+	assert.Equal(t, cast.ToFloat32(cast.Uint32Ptr(3)), float32(3))
+	assert.Equal(t, cast.ToFloat32(cast.Uint64Ptr(3)), float32(3))
 
 	assert.Equal(t, cast.ToFloat64(float32(3)), float64(3))
 	assert.Equal(t, cast.ToFloat64(float64(3)), float64(3))
@@ -89,4 +90,7 @@ func TestToFloat(t *testing.T) {
 
 	_, err := cast.ToFloat64E("abc")
 	assert.Error(t, err, "strconv.ParseFloat: parsing \"abc\": invalid syntax")
+
+	_, err = cast.ToFloat64E(errors.New("abc"))
+	assert.Error(t, err, "unable to cast type \\(\\*errors\\.errorString\\) to float64")
 }

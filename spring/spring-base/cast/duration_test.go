@@ -83,17 +83,20 @@ func TestToDuration(t *testing.T) {
 	assert.Equal(t, cast.ToDuration("3ns"), time.Duration(3))
 	assert.Equal(t, cast.ToDuration(cast.StringPtr("3ns")), time.Duration(3))
 
+	assert.Equal(t, cast.ToDuration(time.Second), time.Second)
+	assert.Equal(t, cast.ToDuration(time.Minute), time.Minute)
+
 	_, err := cast.ToDurationE(true)
-	assert.Error(t, err, "unable to cast type bool to time.Duration")
+	assert.Error(t, err, "unable to cast type \\(bool\\) to time.Duration")
 
 	_, err = cast.ToDurationE(false)
-	assert.Error(t, err, "unable to cast type bool to time.Duration")
+	assert.Error(t, err, "unable to cast type \\(bool\\) to time.Duration")
 
 	_, err = cast.ToDurationE(cast.BoolPtr(true))
-	assert.Error(t, err, "unable to cast type \\*bool to time.Duration")
+	assert.Error(t, err, "unable to cast type \\(\\*bool\\) to time.Duration")
 
 	_, err = cast.ToDurationE(cast.BoolPtr(false))
-	assert.Error(t, err, "unable to cast type \\*bool to time.Duration")
+	assert.Error(t, err, "unable to cast type \\(\\*bool\\) to time.Duration")
 
 	_, err = cast.ToDurationE("3")
 	assert.Error(t, err, "time: missing unit in duration \"3\"")

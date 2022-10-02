@@ -96,18 +96,28 @@ func TestToTime(t *testing.T) {
 		expect := time.Date(2022, 9, 30, 15, 30, 0, 0, location)
 		assert.True(t, got.Equal(expect))
 	}
+	{
+		got := cast.ToTime("2022-09-30 15:30:00", "2006-01-02 15:04:05")
+		expect := time.Date(2022, 9, 30, 15, 30, 0, 0, time.UTC)
+		assert.True(t, got.Equal(expect))
+	}
+
+	now := time.Now()
+	assert.Equal(t, cast.ToTime(now), now)
+	assert.Equal(t, cast.ToTime(&now), now)
+	assert.Equal(t, cast.ToTime(now.Add(time.Hour)), now.Add(time.Hour))
 
 	_, err = cast.ToTimeE(true)
-	assert.Error(t, err, "unable to cast type bool to Time")
+	assert.Error(t, err, "unable to cast type \\(bool\\) to Time")
 
 	_, err = cast.ToTimeE(false)
-	assert.Error(t, err, "unable to cast type bool to Time")
+	assert.Error(t, err, "unable to cast type \\(bool\\) to Time")
 
 	_, err = cast.ToTimeE(cast.BoolPtr(true))
-	assert.Error(t, err, "unable to cast type \\*bool to Time")
+	assert.Error(t, err, "unable to cast type \\(\\*bool\\) to Time")
 
 	_, err = cast.ToTimeE(cast.BoolPtr(false))
-	assert.Error(t, err, "unable to cast type \\*bool to Time")
+	assert.Error(t, err, "unable to cast type \\(\\*bool\\) to Time")
 
 	_, err = cast.ToTimeE("abc")
 	assert.Error(t, err, "cannot parse \"abc\" as \"2006\"")

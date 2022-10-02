@@ -93,6 +93,6 @@ func ToBoolE(i interface{}) (bool, error) {
 	case *bool:
 		return *b, nil
 	default:
-		return false, fmt.Errorf("unable to cast type %T to bool", i)
+		return false, fmt.Errorf("unable to cast type (%T) to bool", i)
 	}
 }

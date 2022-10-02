@@ -17,6 +17,7 @@
 package cast_test
 
 import (
+	"errors"
 	"strconv"
 	"testing"
 
@@ -68,11 +69,11 @@ func TestToBool(t *testing.T) {
 	assert.Equal(t, cast.ToBool(uint16(3)), true)
 	assert.Equal(t, cast.ToBool(uint32(3)), true)
 	assert.Equal(t, cast.ToBool(uint64(3)), true)
-	assert.Equal(t, cast.ToBool(cast.IntPtr(3)), true)
-	assert.Equal(t, cast.ToBool(cast.Int8Ptr(3)), true)
-	assert.Equal(t, cast.ToBool(cast.Int16Ptr(3)), true)
-	assert.Equal(t, cast.ToBool(cast.Int32Ptr(3)), true)
-	assert.Equal(t, cast.ToBool(cast.Int64Ptr(3)), true)
+	assert.Equal(t, cast.ToBool(cast.UintPtr(3)), true)
+	assert.Equal(t, cast.ToBool(cast.Uint8Ptr(3)), true)
+	assert.Equal(t, cast.ToBool(cast.Uint16Ptr(3)), true)
+	assert.Equal(t, cast.ToBool(cast.Uint32Ptr(3)), true)
+	assert.Equal(t, cast.ToBool(cast.Uint64Ptr(3)), true)
 
 	assert.Equal(t, cast.ToBool(float32(3)), true)
 	assert.Equal(t, cast.ToBool(float64(3)), true)
@@ -93,4 +94,7 @@ func TestToBool(t *testing.T) {
 
 	_, err := cast.ToBoolE("abc")
 	assert.Error(t, err, "strconv.ParseBool: parsing \"abc\": invalid syntax")
+
+	_, err = cast.ToBoolE(errors.New("abc"))
+	assert.Error(t, err, "unable to cast type \\(\\*errors\\.errorString\\) to bool")
 }

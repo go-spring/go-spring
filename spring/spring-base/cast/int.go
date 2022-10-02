@@ -131,5 +131,5 @@ func ToInt64E(i interface{}) (int64, error) {
 		}
 		return 0, nil
 	}
-	return 0, fmt.Errorf("unable to cast type %T to int64", i)
+	return 0, fmt.Errorf("unable to cast type (%T) to int64", i)
 }

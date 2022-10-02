@@ -18,8 +18,33 @@ package cast_test
 
 import (
 	"testing"
+
+	"github.com/go-spring/spring-base/assert"
+	"github.com/go-spring/spring-base/cast"
 )
 
-func TestToBean(t *testing.T) {
+func TestFastEncoding(t *testing.T) {
+	err := cast.FAST.Convert(nil, nil)
+	assert.Nil(t, err)
+}
 
+func TestJsonEncoding(t *testing.T) {
+
+	t.Run("", func(t *testing.T) {
+		err := cast.JSON.Convert(make(chan int), nil)
+		assert.Error(t, err, "json: unsupported type: chan int")
+	})
+
+	t.Run("", func(t *testing.T) {
+		var a struct {
+			Text string `json:"text"`
+		}
+		var b struct {
+			Text *string `json:"text"`
+		}
+		a.Text = "hello, gopher!"
+		err := cast.JSON.Convert(a, &b)
+		assert.Nil(t, err)
+		assert.Equal(t, *b.Text, a.Text)
+	})
 }

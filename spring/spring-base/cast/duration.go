@@ -93,6 +93,6 @@ func ToDurationE(i interface{}, unit ...time.Duration) (time.Duration, error) {
 	case time.Duration:
 		return s, nil
 	default:
-		return 0, fmt.Errorf("unable to cast type %T to time.Duration", i)
+		return 0, fmt.Errorf("unable to cast type (%T) to time.Duration", i)
 	}
 }

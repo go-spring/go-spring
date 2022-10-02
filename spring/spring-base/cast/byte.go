@@ -16,45 +16,27 @@
 
 package cast
 
+var hexDigits = [256]int8{
+	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+	-1, -1, -1, -1, -1, -1, -1, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, -1, -1,
+	-1, -1, -1, -1, -1, 10, 11, 12, 13, 14, 15, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 10, 11, 12,
+	13, 14, 15, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1}
+
+// IsHexDigit returns whether the character is a valid hexadecimal character.
 func IsHexDigit(c byte) bool {
-	return HexDigitToInt(c) >= 0
+	return hexDigits[c] >= 0
 }
 
+// HexDigitToInt converts a hex digit into an int.
 func HexDigitToInt(c byte) int {
-	switch c {
-	case '0':
-		return 0
-	case '1':
-		return 1
-	case '2':
-		return 2
-	case '3':
-		return 3
-	case '4':
-		return 4
-	case '5':
-		return 5
-	case '6':
-		return 6
-	case '7':
-		return 7
-	case '8':
-		return 8
-	case '9':
-		return 9
-	case 'a', 'A':
-		return 10
-	case 'b', 'B':
-		return 11
-	case 'c', 'C':
-		return 12
-	case 'd', 'D':
-		return 13
-	case 'e', 'E':
-		return 14
-	case 'f', 'F':
-		return 15
-	default:
-		return -1
-	}
+	return int(hexDigits[c])
 }

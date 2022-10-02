@@ -17,6 +17,7 @@
 package cast_test
 
 import (
+	"errors"
 	"strconv"
 	"testing"
 
@@ -68,11 +69,11 @@ func TestToInt(t *testing.T) {
 	assert.Equal(t, cast.ToInt8(uint16(3)), int8(3))
 	assert.Equal(t, cast.ToInt8(uint32(3)), int8(3))
 	assert.Equal(t, cast.ToInt8(uint64(3)), int8(3))
-	assert.Equal(t, cast.ToInt8(cast.IntPtr(3)), int8(3))
-	assert.Equal(t, cast.ToInt8(cast.Int8Ptr(3)), int8(3))
-	assert.Equal(t, cast.ToInt8(cast.Int16Ptr(3)), int8(3))
-	assert.Equal(t, cast.ToInt8(cast.Int32Ptr(3)), int8(3))
-	assert.Equal(t, cast.ToInt8(cast.Int64Ptr(3)), int8(3))
+	assert.Equal(t, cast.ToInt8(cast.UintPtr(3)), int8(3))
+	assert.Equal(t, cast.ToInt8(cast.Uint8Ptr(3)), int8(3))
+	assert.Equal(t, cast.ToInt8(cast.Uint16Ptr(3)), int8(3))
+	assert.Equal(t, cast.ToInt8(cast.Uint32Ptr(3)), int8(3))
+	assert.Equal(t, cast.ToInt8(cast.Uint64Ptr(3)), int8(3))
 
 	assert.Equal(t, cast.ToInt16(float32(3)), int16(3))
 	assert.Equal(t, cast.ToInt16(float64(3)), int16(3))
@@ -89,4 +90,7 @@ func TestToInt(t *testing.T) {
 
 	_, err := cast.ToInt64E("abc")
 	assert.Error(t, err, "strconv.ParseInt: parsing \"abc\": invalid syntax")
+
+	_, err = cast.ToInt64E(errors.New("abc"))
+	assert.Error(t, err, "unable to cast type \\(\\*errors\\.errorString\\) to int64")
 }

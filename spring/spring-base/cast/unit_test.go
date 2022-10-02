@@ -17,6 +17,7 @@
 package cast_test
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/go-spring/spring-base/assert"
@@ -64,4 +65,7 @@ func TestToUint(t *testing.T) {
 
 	_, err := cast.ToUint64E("abc")
 	assert.Error(t, err, "strconv.ParseUint: parsing \"abc\": invalid syntax")
+
+	_, err = cast.ToUint64E(errors.New("abc"))
+	assert.Error(t, err, "unable to cast type \\(\\*errors\\.errorString\\) to uint64")
 }

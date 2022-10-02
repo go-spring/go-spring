@@ -100,7 +100,7 @@ func ToTimeE(i interface{}, format ...string) (time.Time, error) {
 	case *time.Time:
 		return *v, nil
 	default:
-		return time.Time{}, fmt.Errorf("unable to cast type %T to Time", i)
+		return time.Time{}, fmt.Errorf("unable to cast type (%T) to Time", i)
 	}
 }
 

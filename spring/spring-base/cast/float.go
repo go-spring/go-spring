@@ -107,6 +107,6 @@ func ToFloat64E(i interface{}) (float64, error) {
 		}
 		return 0, nil
 	default:
-		return 0, fmt.Errorf("unable to cast type %T to float64", i)
+		return 0, fmt.Errorf("unable to cast type (%T) to float64", i)
 	}
 }

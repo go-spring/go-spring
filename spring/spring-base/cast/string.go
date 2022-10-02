@@ -111,7 +111,7 @@ func ToStringE(i interface{}) (string, error) {
 	case error:
 		return s.Error(), nil
 	default:
-		return "", fmt.Errorf("unable to cast type %T to string", i)
+		return "", fmt.Errorf("unable to cast type (%T) to string", i)
 	}
 }
 
