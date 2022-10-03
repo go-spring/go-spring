@@ -29,3 +29,5 @@ func (r Receiver) FnWithArgs(i int) {}
 func (r *Receiver) PtrFnNoArgs() {}
 
 func (r *Receiver) PtrFnWithArgs(i int) {}
+
+func (r *Receiver) String() string { return "" }

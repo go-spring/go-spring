@@ -17,12 +17,22 @@
 package util_test
 
 import (
+	"sort"
 	"testing"
 
 	"github.com/go-spring/spring-base/assert"
 	"github.com/go-spring/spring-base/code"
 	"github.com/go-spring/spring-base/util"
 )
+
+func TestReadDirNames(t *testing.T) {
+	names, err := util.ReadDirNames("testdata")
+	assert.Nil(t, err)
+	sort.Strings(names)
+	assert.Equal(t, names, []string{"pkg", "pkg.go"})
+	_, err = util.ReadDirNames("not_exists")
+	assert.Error(t, err, "open not_exists: no such file or directory")
+}
 
 func TestContract(t *testing.T) {
 	file := code.File()

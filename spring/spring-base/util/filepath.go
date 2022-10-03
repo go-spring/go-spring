@@ -20,8 +20,8 @@ import (
 	"os"
 )
 
-// ReadDirNames reads the directory named by dirname and returns
-// an unsorted list of directory entries.
+// ReadDirNames reads the directory named by dirname and returns an unsorted
+// list of directory entries.
 func ReadDirNames(dirname string) ([]string, error) {
 	f, err := os.Open(dirname)
 	if err != nil {
@@ -29,13 +29,10 @@ func ReadDirNames(dirname string) ([]string, error) {
 	}
 	names, err := f.Readdirnames(-1)
 	f.Close()
-	if err != nil {
-		return nil, err
-	}
-	return names, nil
+	return names, err
 }
 
-// Contract 压缩 filename 的长度，超出的部分使用 ... 代替。
+// Contract contracts `filename` and replace the excessive part using `...`.
 func Contract(filename string, maxLength int) string {
 	if n := len(filename); maxLength > 3 && n > maxLength-3 {
 		return "..." + filename[n-maxLength+3:]
