@@ -30,85 +30,6 @@ var errorType = reflect.TypeOf((*error)(nil)).Elem()
 // contextType the reflection type of context.Context.
 var contextType = reflect.TypeOf((*context.Context)(nil)).Elem()
 
-// A BeanSelector can be the ID of a bean, a `reflect.Type`, a pointer such as
-// `(*error)(nil)`, or a BeanDefinition value.
-type BeanSelector interface{}
-
-// A BeanDefinition describes a bean whose lifecycle is managed by IoC container.
-type BeanDefinition interface {
-	Type() reflect.Type
-	Value() reflect.Value
-	Interface() interface{}
-	ID() string
-	BeanName() string
-	TypeName() string
-	Created() bool
-	Wired() bool
-}
-
-// Converter converts string value into user-defined value. It should be function
-// type, and its prototype is func(string)(type,error).
-type Converter interface{}
-
-// IsValidConverter returns whether t is a legal converter type.
-func IsValidConverter(t reflect.Type) bool {
-	return IsFuncType(t) &&
-		t.NumIn() == 1 &&
-		t.In(0).Kind() == reflect.String &&
-		t.NumOut() == 2 &&
-		(IsValueType(t.Out(0)) || IsFuncType(t.Out(0))) && IsErrorType(t.Out(1))
-}
-
-// IsFuncType returns whether t is func type.
-func IsFuncType(t reflect.Type) bool {
-	return t.Kind() == reflect.Func
-}
-
-// IsErrorType returns whether t is error type.
-func IsErrorType(t reflect.Type) bool {
-	return t == errorType || t.Implements(errorType)
-}
-
-// IsContextType returns whether t is context.Context type.
-func IsContextType(t reflect.Type) bool {
-	return t == contextType || t.Implements(contextType)
-}
-
-// ReturnNothing returns whether the function has no return value.
-func ReturnNothing(t reflect.Type) bool {
-	return t.NumOut() == 0
-}
-
-// ReturnOnlyError returns whether the function returns only error value.
-func ReturnOnlyError(t reflect.Type) bool {
-	return t.NumOut() == 1 && IsErrorType(t.Out(0))
-}
-
-// IsStructPtr returns whether it is the pointer type of structure.
-func IsStructPtr(t reflect.Type) bool {
-	return t.Kind() == reflect.Ptr && t.Elem().Kind() == reflect.Struct
-}
-
-// IsConstructor returns whether t is a constructor type. What is a constructor?
-// It should be a function first, has any number of inputs and supports the option
-// pattern input, has one or two outputs and the second output should be an error.
-func IsConstructor(t reflect.Type) bool {
-	returnError := t.NumOut() == 2 && IsErrorType(t.Out(1))
-	return IsFuncType(t) && (t.NumOut() == 1 || returnError)
-}
-
-// HasReceiver returns whether the function has a receiver.
-func HasReceiver(t reflect.Type, receiver reflect.Value) bool {
-	if t.NumIn() < 1 {
-		return false
-	}
-	t0 := t.In(0)
-	if t0.Kind() != reflect.Interface {
-		return t0 == receiver.Type()
-	}
-	return receiver.Type().Implements(t0)
-}
-
 // TypeName returns a fully qualified name consisting of package path and type name.
 func TypeName(i interface{}) string {
 
@@ -137,7 +58,86 @@ func TypeName(i interface{}) string {
 	return typ.String() // the path of built-in type is empty
 }
 
-// IsPrimitiveValueType returns whether t is the primitive value type which only is
+// A BeanSelector can be the ID of a bean, a `reflect.Type`, a pointer such as
+// `(*error)(nil)`, or a BeanDefinition value.
+type BeanSelector interface{}
+
+// A BeanDefinition describes a bean whose lifecycle is managed by IoC container.
+type BeanDefinition interface {
+	Type() reflect.Type
+	Value() reflect.Value
+	Interface() interface{}
+	ID() string
+	BeanName() string
+	TypeName() string
+	Created() bool
+	Wired() bool
+}
+
+// Converter converts string value into user-defined value. It should be function
+// type, and its prototype is func(string)(type,error).
+type Converter interface{}
+
+// IsConverter returns whether `t` is a converter type.
+func IsConverter(t reflect.Type) bool {
+	return IsFuncType(t) &&
+		t.NumIn() == 1 &&
+		t.In(0).Kind() == reflect.String &&
+		t.NumOut() == 2 &&
+		(IsValueType(t.Out(0)) || IsFuncType(t.Out(0))) && IsErrorType(t.Out(1))
+}
+
+// IsFuncType returns whether `t` is func type.
+func IsFuncType(t reflect.Type) bool {
+	return t.Kind() == reflect.Func
+}
+
+// IsErrorType returns whether `t` is error type.
+func IsErrorType(t reflect.Type) bool {
+	return t == errorType || t.Implements(errorType)
+}
+
+// IsContextType returns whether `t` is context.Context type.
+func IsContextType(t reflect.Type) bool {
+	return t == contextType || t.Implements(contextType)
+}
+
+// ReturnNothing returns whether the function has no return value.
+func ReturnNothing(t reflect.Type) bool {
+	return t.NumOut() == 0
+}
+
+// ReturnOnlyError returns whether the function returns only error value.
+func ReturnOnlyError(t reflect.Type) bool {
+	return t.NumOut() == 1 && IsErrorType(t.Out(0))
+}
+
+// IsStructPtr returns whether it is the pointer type of structure.
+func IsStructPtr(t reflect.Type) bool {
+	return t.Kind() == reflect.Ptr && t.Elem().Kind() == reflect.Struct
+}
+
+// IsConstructor returns whether `t` is a constructor type. What is a constructor?
+// It should be a function first, has any number of inputs and supports the option
+// pattern input, has one or two outputs and the second output should be an error.
+func IsConstructor(t reflect.Type) bool {
+	returnError := t.NumOut() == 2 && IsErrorType(t.Out(1))
+	return IsFuncType(t) && (t.NumOut() == 1 || returnError)
+}
+
+// HasReceiver returns whether the function has a receiver.
+func HasReceiver(t reflect.Type, receiver reflect.Value) bool {
+	if t.NumIn() < 1 {
+		return false
+	}
+	t0 := t.In(0)
+	if t0.Kind() != reflect.Interface {
+		return t0 == receiver.Type()
+	}
+	return receiver.Type().Implements(t0)
+}
+
+// IsPrimitiveValueType returns whether `t` is the primitive value type which only is
 // int, unit, float, bool, string and complex.
 func IsPrimitiveValueType(t reflect.Type) bool {
 	switch t.Kind() {
@@ -157,9 +157,9 @@ func IsPrimitiveValueType(t reflect.Type) bool {
 	return false
 }
 
-// IsValueType returns whether the input type is the value type which is the
-// primitive value type and their one dimensional composite type including array,
-// slice, map and struct, such as [3]string, []string, []int, map[int]int, etc.
+// IsValueType returns whether the input type is the primitive value type and their
+// composite type including array, slice, map and struct, such as []int, [3]string,
+// []string, map[int]int, map[string]string, etc.
 func IsValueType(t reflect.Type) bool {
 	fn := func(t reflect.Type) bool {
 		return IsPrimitiveValueType(t) || t.Kind() == reflect.Struct

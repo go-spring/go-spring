@@ -1,6 +1,6 @@
 # atomic
 
-Provides simple wrappers for sync/atomic to enforce atomic access.
+Provides simple wrappers for `sync/atomic` to enforce atomic access.
 
 ## Install
 

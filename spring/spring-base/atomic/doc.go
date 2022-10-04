@@ -14,5 +14,5 @@
  * limitations under the License.
  */
 
-// Package atomic provides simple wrappers for sync/atomic to enforce atomic access.
+// Package atomic provides simple wrappers for `sync/atomic` to enforce atomic access.
 package atomic

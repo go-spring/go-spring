@@ -16,6 +16,7 @@
 
 package database
 
+// ClientConfig Is the configuration of database client.
 type ClientConfig struct {
 	URL string `value:"${url}"`
 }

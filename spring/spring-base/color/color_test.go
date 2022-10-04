@@ -23,7 +23,7 @@ import (
 	"github.com/go-spring/spring-base/color"
 )
 
-func TestText(t *testing.T) {
+func TestColor(t *testing.T) {
 
 	fmt.Println(color.Bold.Sprint("ok"))
 	fmt.Println(color.Italic.Sprint("ok"))

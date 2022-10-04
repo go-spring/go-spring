@@ -23,69 +23,57 @@ import (
 )
 
 func TestString_EqualFold(t *testing.T) {
-
-	Case(t, func(g *assert.MockT) {
+	runCase(t, func(g *assert.MockT) {
 		assert.String(g, "hello, world!").EqualFold("Hello, World!")
 	})
-
-	Case(t, func(g *assert.MockT) {
+	runCase(t, func(g *assert.MockT) {
 		g.EXPECT().Error([]interface{}{"'hello, world!' doesn't equal fold to 'xxx'"})
 		assert.String(g, "hello, world!").EqualFold("xxx")
 	})
-
-	Case(t, func(g *assert.MockT) {
+	runCase(t, func(g *assert.MockT) {
 		g.EXPECT().Error([]interface{}{"'hello, world!' doesn't equal fold to 'xxx'; param (index=0)"})
 		assert.String(g, "hello, world!").EqualFold("xxx", "param (index=0)")
 	})
 }
 
 func TestString_HasPrefix(t *testing.T) {
-
-	Case(t, func(g *assert.MockT) {
+	runCase(t, func(g *assert.MockT) {
 		assert.String(g, "hello, world!").HasPrefix("hello")
 	})
-
-	Case(t, func(g *assert.MockT) {
+	runCase(t, func(g *assert.MockT) {
 		g.EXPECT().Error([]interface{}{"'hello, world!' doesn't have prefix 'xxx'"})
 		assert.String(g, "hello, world!").HasPrefix("xxx")
 	})
-
-	Case(t, func(g *assert.MockT) {
+	runCase(t, func(g *assert.MockT) {
 		g.EXPECT().Error([]interface{}{"'hello, world!' doesn't have prefix 'xxx'; param (index=0)"})
 		assert.String(g, "hello, world!").HasPrefix("xxx", "param (index=0)")
 	})
 }
 
 func TestString_HasSuffix(t *testing.T) {
-
-	Case(t, func(g *assert.MockT) {
+	runCase(t, func(g *assert.MockT) {
 		assert.String(g, "hello, world!").HasSuffix("world!")
 	})
-
-	Case(t, func(g *assert.MockT) {
+	runCase(t, func(g *assert.MockT) {
 		g.EXPECT().Error([]interface{}{"'hello, world!' doesn't have suffix 'xxx'"})
 		assert.String(g, "hello, world!").HasSuffix("xxx")
 	})
-
-	Case(t, func(g *assert.MockT) {
+	runCase(t, func(g *assert.MockT) {
 		g.EXPECT().Error([]interface{}{"'hello, world!' doesn't have suffix 'xxx'; param (index=0)"})
 		assert.String(g, "hello, world!").HasSuffix("xxx", "param (index=0)")
 	})
 }
 
-func TestString_HasSubString(t *testing.T) {
-
-	Case(t, func(g *assert.MockT) {
-		assert.String(g, "hello, world!").HasSubStr("hello")
+func TestString_Contains(t *testing.T) {
+	runCase(t, func(g *assert.MockT) {
+		assert.String(g, "hello, world!").Contains("hello")
 	})
-
-	Case(t, func(g *assert.MockT) {
+	runCase(t, func(g *assert.MockT) {
 		g.EXPECT().Error([]interface{}{"'hello, world!' doesn't contain substr 'xxx'"})
-		assert.String(g, "hello, world!").HasSubStr("xxx")
+		assert.String(g, "hello, world!").Contains("xxx")
 	})
-
-	Case(t, func(g *assert.MockT) {
+	runCase(t, func(g *assert.MockT) {
 		g.EXPECT().Error([]interface{}{"'hello, world!' doesn't contain substr 'xxx'; param (index=0)"})
-		assert.String(g, "hello, world!").HasSubStr("xxx", "param (index=0)")
+		assert.String(g, "hello, world!").Contains("xxx", "param (index=0)")
 	})
 }

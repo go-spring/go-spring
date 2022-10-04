@@ -198,14 +198,12 @@ func matches(t T, got string, expr string, msg ...string) {
 func TypeOf(t T, got interface{}, expect interface{}, msg ...string) {
 	t.Helper()
 
+	e1 := reflect.TypeOf(got)
 	e2 := reflect.TypeOf(expect)
-	if e2.Kind() == reflect.Ptr {
-		if e2.Elem().Kind() == reflect.Interface {
-			e2 = e2.Elem()
-		}
+	if e2.Kind() == reflect.Ptr && e2.Elem().Kind() == reflect.Interface {
+		e2 = e2.Elem()
 	}
 
-	e1 := reflect.TypeOf(got)
 	if !e1.AssignableTo(e2) {
 		str := fmt.Sprintf("got type (%s) but expect type (%s)", e1, e2)
 		fail(t, str, msg...)
@@ -216,6 +214,7 @@ func TypeOf(t T, got interface{}, expect interface{}, msg ...string) {
 func Implements(t T, got interface{}, expect interface{}, msg ...string) {
 	t.Helper()
 
+	e1 := reflect.TypeOf(got)
 	e2 := reflect.TypeOf(expect)
 	if e2.Kind() == reflect.Ptr {
 		if e2.Elem().Kind() == reflect.Interface {
@@ -226,7 +225,6 @@ func Implements(t T, got interface{}, expect interface{}, msg ...string) {
 		}
 	}
 
-	e1 := reflect.TypeOf(got)
 	if !e1.Implements(e2) {
 		str := fmt.Sprintf("got type (%s) but expect type (%s)", e1, e2)
 		fail(t, str, msg...)

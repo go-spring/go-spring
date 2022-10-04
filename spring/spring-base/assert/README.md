@@ -17,7 +17,8 @@ import "github.com/go-spring/spring-base/assert"
 ## Example
 
 ```
-assert.True(t, true)
+assert.True(t, ok)
+assert.False(t, ok)
 assert.Nil(t, nil)
 assert.Equal(t, 0, "0")
 assert.NotEqual(t, "0", 0)

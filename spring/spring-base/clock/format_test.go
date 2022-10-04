@@ -24,6 +24,23 @@ import (
 	"github.com/go-spring/spring-base/clock"
 )
 
+func BenchmarkFormat(b *testing.B) {
+	// BenchmarkFormat/native-8 4811834 263.5 ns/op
+	// BenchmarkFormat/custom-8 2654034 442.3 ns/op
+	b.Run("time", func(b *testing.B) {
+		now := time.Now()
+		for i := 0; i < b.N; i++ {
+			now.Format("2006-01-02 15:04:05")
+		}
+	})
+	b.Run("go-spring", func(b *testing.B) {
+		now := time.Now()
+		for i := 0; i < b.N; i++ {
+			clock.Format(now, "yyyy-MM-dd H:m:s")
+		}
+	})
+}
+
 func TestToStdLayout(t *testing.T) {
 	layouts := []struct {
 		Custom string
@@ -176,21 +193,4 @@ func TestUnitFormat(t *testing.T) {
 		custom := clock.Format(now, layout.Custom)
 		assert.Equal(t, native, custom)
 	}
-}
-
-func BenchmarkFormat(b *testing.B) {
-	// BenchmarkFormat/native-8 4811834 263.5 ns/op
-	// BenchmarkFormat/custom-8 2654034 442.3 ns/op
-	b.Run("native", func(b *testing.B) {
-		now := time.Now()
-		for i := 0; i < b.N; i++ {
-			now.Format("2006-01-02 15:04:05")
-		}
-	})
-	b.Run("custom", func(b *testing.B) {
-		now := time.Now()
-		for i := 0; i < b.N; i++ {
-			clock.Format(now, "yyyy-MM-dd H:m:s")
-		}
-	})
 }

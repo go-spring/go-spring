@@ -91,7 +91,7 @@ func RegisterSplitter(name string, fn Splitter) {
 // time.Time, time.Duration, or other user-defined value type.
 func RegisterConverter(fn util.Converter) {
 	t := reflect.TypeOf(fn)
-	if !util.IsValidConverter(t) {
+	if !util.IsConverter(t) {
 		panic(errors.New("converter should be func(string)(type,error)"))
 	}
 	converters[t.Out(0)] = fn

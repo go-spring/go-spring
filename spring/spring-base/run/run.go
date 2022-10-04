@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+// Package run provides methods to query the running mode of program.
 package run
 
 import (

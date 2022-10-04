@@ -495,12 +495,12 @@ func TestIsBeanType(t *testing.T) {
 	}
 }
 
-func TestIsValidConverter(t *testing.T) {
-	assert.False(t, util.IsValidConverter(reflect.TypeOf(3)))
-	assert.False(t, util.IsValidConverter(reflect.TypeOf(func() {})))
-	assert.False(t, util.IsValidConverter(reflect.TypeOf(func(key string) {})))
-	assert.False(t, util.IsValidConverter(reflect.TypeOf(func(key string) string { return "" })))
-	assert.True(t, util.IsValidConverter(reflect.TypeOf(func(key string) (string, error) { return "", nil })))
+func TestIsConverter(t *testing.T) {
+	assert.False(t, util.IsConverter(reflect.TypeOf(3)))
+	assert.False(t, util.IsConverter(reflect.TypeOf(func() {})))
+	assert.False(t, util.IsConverter(reflect.TypeOf(func(key string) {})))
+	assert.False(t, util.IsConverter(reflect.TypeOf(func(key string) string { return "" })))
+	assert.True(t, util.IsConverter(reflect.TypeOf(func(key string) (string, error) { return "", nil })))
 }
 
 func TestIsErrorType(t *testing.T) {

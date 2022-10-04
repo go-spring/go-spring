@@ -16,17 +16,18 @@
 
 package grpc
 
-// ServerConfig gRPC 服务器配置。
+// ServerConfig is the configuration of the grpc server.
 type ServerConfig struct {
 	Port int `value:"${port:=9090}"`
 }
 
-// EndpointConfig gRPC 客户端配置。
+// EndpointConfig is the configuration of the grpc client.
 type EndpointConfig struct {
 	Address string `value:"${address:=localhost:9090}"`
 }
 
+// A Server is a service provider and its register function.
 type Server struct {
-	Register interface{} // 服务注册函数
-	Service  interface{} // 服务提供者
+	Register interface{} // register function
+	Service  interface{} // service provider
 }
