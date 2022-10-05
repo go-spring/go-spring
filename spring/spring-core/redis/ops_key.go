@@ -20,32 +20,24 @@ import (
 	"context"
 )
 
-type KeyOperations struct {
-	c *Client
-}
-
-func NewKeyOperations(c *Client) *KeyOperations {
-	return &KeyOperations{c: c}
-}
-
 // Del https://redis.io/commands/del
 // Command: DEL key [key ...]
 // Integer reply: The number of keys that were removed.
-func (c *KeyOperations) Del(ctx context.Context, keys ...string) (int64, error) {
-	var args []interface{}
+func (c *Client) Del(ctx context.Context, keys ...string) (int64, error) {
+	args := []interface{}{"DEL"}
 	for _, key := range keys {
 		args = append(args, key)
 	}
-	return c.c.Int(ctx, "DEL", args...)
+	return c.Int(ctx, args...)
 }
 
 // Dump https://redis.io/commands/dump
 // Command: DUMP key
 // Bulk string reply: the serialized value.
 // If key does not exist a nil bulk reply is returned.
-func (c *KeyOperations) Dump(ctx context.Context, key string) (string, error) {
-	args := []interface{}{key}
-	return c.c.String(ctx, "DUMP", args...)
+func (c *Client) Dump(ctx context.Context, key string) (string, error) {
+	args := []interface{}{"DUMP", key}
+	return c.String(ctx, args...)
 }
 
 // Exists https://redis.io/commands/exists
@@ -53,119 +45,119 @@ func (c *KeyOperations) Dump(ctx context.Context, key string) (string, error) {
 // Integer reply: The number of keys existing among the
 // ones specified as arguments. Keys mentioned multiple
 // times and existing are counted multiple times.
-func (c *KeyOperations) Exists(ctx context.Context, keys ...string) (int64, error) {
-	var args []interface{}
+func (c *Client) Exists(ctx context.Context, keys ...string) (int64, error) {
+	args := []interface{}{"EXISTS"}
 	for _, key := range keys {
 		args = append(args, key)
 	}
-	return c.c.Int(ctx, "EXISTS", args...)
+	return c.Int(ctx, args...)
 }
 
 // Expire https://redis.io/commands/expire
 // Command: EXPIRE key seconds [NX|XX|GT|LT]
 // Integer reply: 1 if the timeout was set, 0 if the timeout was not set.
-func (c *KeyOperations) Expire(ctx context.Context, key string, expire int64, args ...interface{}) (int64, error) {
-	args = append([]interface{}{key, expire}, args...)
-	return c.c.Int(ctx, "EXPIRE", args...)
+func (c *Client) Expire(ctx context.Context, key string, expire int64, args ...interface{}) (int64, error) {
+	args = append([]interface{}{"EXPIRE", key, expire}, args...)
+	return c.Int(ctx, args...)
 }
 
 // ExpireAt https://redis.io/commands/expireat
 // Command: EXPIREAT key timestamp [NX|XX|GT|LT]
 // Integer reply: 1 if the timeout was set, 0 if the timeout was not set.
-func (c *KeyOperations) ExpireAt(ctx context.Context, key string, expireAt int64, args ...interface{}) (int64, error) {
-	args = append([]interface{}{key, expireAt}, args...)
-	return c.c.Int(ctx, "EXPIREAT", args...)
+func (c *Client) ExpireAt(ctx context.Context, key string, expireAt int64, args ...interface{}) (int64, error) {
+	args = append([]interface{}{"EXPIREAT", key, expireAt}, args...)
+	return c.Int(ctx, args...)
 }
 
 // Keys https://redis.io/commands/keys
 // Command: KEYS pattern
 // Array reply: list of keys matching pattern.
-func (c *KeyOperations) Keys(ctx context.Context, pattern string) ([]string, error) {
-	args := []interface{}{pattern}
-	return c.c.StringSlice(ctx, "KEYS", args...)
+func (c *Client) Keys(ctx context.Context, pattern string) ([]string, error) {
+	args := []interface{}{"KEYS", pattern}
+	return c.StringSlice(ctx, args...)
 }
 
 // Persist https://redis.io/commands/persist
 // Command: PERSIST key
 // Integer reply: 1 if the timeout was removed,
 // 0 if key does not exist or does not have an associated timeout.
-func (c *KeyOperations) Persist(ctx context.Context, key string) (int64, error) {
-	args := []interface{}{key}
-	return c.c.Int(ctx, "PERSIST", args...)
+func (c *Client) Persist(ctx context.Context, key string) (int64, error) {
+	args := []interface{}{"PERSIST", key}
+	return c.Int(ctx, args...)
 }
 
 // PExpire https://redis.io/commands/pexpire
 // Command: PEXPIRE key milliseconds [NX|XX|GT|LT]
 // Integer reply: 1 if the timeout was set, 0 if the timeout was not set.
-func (c *KeyOperations) PExpire(ctx context.Context, key string, expire int64, args ...interface{}) (int64, error) {
-	args = append([]interface{}{key, expire}, args...)
-	return c.c.Int(ctx, "PEXPIRE", args...)
+func (c *Client) PExpire(ctx context.Context, key string, expire int64, args ...interface{}) (int64, error) {
+	args = append([]interface{}{"PEXPIRE", key, expire}, args...)
+	return c.Int(ctx, args...)
 }
 
 // PExpireAt https://redis.io/commands/pexpireat
 // Command: PEXPIREAT key milliseconds-timestamp [NX|XX|GT|LT]
 // Integer reply: 1 if the timeout was set, 0 if the timeout was not set.
-func (c *KeyOperations) PExpireAt(ctx context.Context, key string, expireAt int64, args ...interface{}) (int64, error) {
-	args = append([]interface{}{key, expireAt}, args...)
-	return c.c.Int(ctx, "PEXPIREAT", args...)
+func (c *Client) PExpireAt(ctx context.Context, key string, expireAt int64, args ...interface{}) (int64, error) {
+	args = append([]interface{}{"PEXPIREAT", key, expireAt}, args...)
+	return c.Int(ctx, args...)
 }
 
 // PTTL https://redis.io/commands/pttl
 // Command: PTTL key
 // Integer reply: TTL in milliseconds, -1 if the key exists
 // but has no associated expire, -2 if the key does not exist.
-func (c *KeyOperations) PTTL(ctx context.Context, key string) (int64, error) {
-	args := []interface{}{key}
-	return c.c.Int(ctx, "PTTL", args...)
+func (c *Client) PTTL(ctx context.Context, key string) (int64, error) {
+	args := []interface{}{"PTTL", key}
+	return c.Int(ctx, args...)
 }
 
 // RandomKey https://redis.io/commands/randomkey
 // Command: RANDOMKEY
 // Bulk string reply: the random key, or nil when the database is empty.
-func (c *KeyOperations) RandomKey(ctx context.Context) (string, error) {
-	return c.c.String(ctx, "RANDOMKEY")
+func (c *Client) RandomKey(ctx context.Context) (string, error) {
+	return c.String(ctx, "RANDOMKEY")
 }
 
 // Rename https://redis.io/commands/rename
 // Command: RENAME key newkey
 // Simple string reply.
-func (c *KeyOperations) Rename(ctx context.Context, key, newKey string) (string, error) {
-	args := []interface{}{key, newKey}
-	return c.c.String(ctx, "RENAME", args...)
+func (c *Client) Rename(ctx context.Context, key, newKey string) (string, error) {
+	args := []interface{}{"RENAME", key, newKey}
+	return c.String(ctx, args...)
 }
 
 // RenameNX https://redis.io/commands/renamenx
 // Command: RENAMENX key newkey
 // Integer reply: 1 if key was renamed to newKey, 0 if newKey already exists.
-func (c *KeyOperations) RenameNX(ctx context.Context, key, newKey string) (int64, error) {
-	args := []interface{}{key, newKey}
-	return c.c.Int(ctx, "RENAMENX", args...)
+func (c *Client) RenameNX(ctx context.Context, key, newKey string) (int64, error) {
+	args := []interface{}{"RENAMENX", key, newKey}
+	return c.Int(ctx, args...)
 }
 
 // Touch https://redis.io/commands/touch
 // Command: TOUCH key [key ...]
 // Integer reply: The number of keys that were touched.
-func (c *KeyOperations) Touch(ctx context.Context, keys ...string) (int64, error) {
-	var args []interface{}
+func (c *Client) Touch(ctx context.Context, keys ...string) (int64, error) {
+	args := []interface{}{"TOUCH"}
 	for _, key := range keys {
 		args = append(args, key)
 	}
-	return c.c.Int(ctx, "TOUCH", args...)
+	return c.Int(ctx, args...)
 }
 
 // TTL https://redis.io/commands/ttl
 // Command: TTL key
 // Integer reply: TTL in seconds, -1 if the key exists
 // but has no associated expire, -2 if the key does not exist.
-func (c *KeyOperations) TTL(ctx context.Context, key string) (int64, error) {
-	args := []interface{}{key}
-	return c.c.Int(ctx, "TTL", args...)
+func (c *Client) TTL(ctx context.Context, key string) (int64, error) {
+	args := []interface{}{"TTL", key}
+	return c.Int(ctx, args...)
 }
 
 // Type https://redis.io/commands/type
 // Command: TYPE key
 // Simple string reply: type of key, or none when key does not exist.
-func (c *KeyOperations) Type(ctx context.Context, key string) (string, error) {
-	args := []interface{}{key}
-	return c.c.String(ctx, "TYPE", args...)
+func (c *Client) Type(ctx context.Context, key string) (string, error) {
+	args := []interface{}{"TYPE", key}
+	return c.String(ctx, args...)
 }

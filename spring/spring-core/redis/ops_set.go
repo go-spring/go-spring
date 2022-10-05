@@ -20,178 +20,170 @@ import (
 	"context"
 )
 
-type SetOperations struct {
-	c *Client
-}
-
-func NewSetOperations(c *Client) *SetOperations {
-	return &SetOperations{c: c}
-}
-
 // SAdd https://redis.io/commands/sadd
 // Command: SADD key member [member ...]
 // Integer reply: the number of elements that were added to the set,
 // not including all the elements already present in the set.
-func (c *SetOperations) SAdd(ctx context.Context, key string, members ...interface{}) (int64, error) {
-	args := []interface{}{key}
+func (c *Client) SAdd(ctx context.Context, key string, members ...interface{}) (int64, error) {
+	args := []interface{}{"SADD", key}
 	args = append(args, members...)
-	return c.c.Int(ctx, "SADD", args...)
+	return c.Int(ctx, args...)
 }
 
 // SCard https://redis.io/commands/scard
 // Command: SCARD key
 // Integer reply: the cardinality (number of elements) of the set,
 // or 0 if key does not exist.
-func (c *SetOperations) SCard(ctx context.Context, key string) (int64, error) {
-	args := []interface{}{key}
-	return c.c.Int(ctx, "SCARD", args...)
+func (c *Client) SCard(ctx context.Context, key string) (int64, error) {
+	args := []interface{}{"SCARD", key}
+	return c.Int(ctx, args...)
 }
 
 // SDiff https://redis.io/commands/sdiff
 // Command: SDIFF key [key ...]
 // Array reply: list with members of the resulting set.
-func (c *SetOperations) SDiff(ctx context.Context, keys ...string) ([]string, error) {
-	var args []interface{}
+func (c *Client) SDiff(ctx context.Context, keys ...string) ([]string, error) {
+	args := []interface{}{"SDIFF"}
 	for _, key := range keys {
 		args = append(args, key)
 	}
-	return c.c.StringSlice(ctx, "SDIFF", args...)
+	return c.StringSlice(ctx, args...)
 }
 
 // SDiffStore https://redis.io/commands/sdiffstore
 // Command: SDIFFSTORE destination key [key ...]
 // Integer reply: the number of elements in the resulting set.
-func (c *SetOperations) SDiffStore(ctx context.Context, destination string, keys ...string) (int64, error) {
-	args := []interface{}{destination}
+func (c *Client) SDiffStore(ctx context.Context, destination string, keys ...string) (int64, error) {
+	args := []interface{}{"SDIFFSTORE", destination}
 	for _, key := range keys {
 		args = append(args, key)
 	}
-	return c.c.Int(ctx, "SDIFFSTORE", args...)
+	return c.Int(ctx, args...)
 }
 
 // SInter https://redis.io/commands/sinter
 // Command: SINTER key [key ...]
 // Array reply: list with members of the resulting set.
-func (c *SetOperations) SInter(ctx context.Context, keys ...string) ([]string, error) {
-	var args []interface{}
+func (c *Client) SInter(ctx context.Context, keys ...string) ([]string, error) {
+	args := []interface{}{"SINTER"}
 	for _, key := range keys {
 		args = append(args, key)
 	}
-	return c.c.StringSlice(ctx, "SINTER", args...)
+	return c.StringSlice(ctx, args...)
 }
 
 // SInterStore https://redis.io/commands/sinterstore
 // Command: SINTERSTORE destination key [key ...]
 // Integer reply: the number of elements in the resulting set.
-func (c *SetOperations) SInterStore(ctx context.Context, destination string, keys ...string) (int64, error) {
-	args := []interface{}{destination}
+func (c *Client) SInterStore(ctx context.Context, destination string, keys ...string) (int64, error) {
+	args := []interface{}{"SINTERSTORE", destination}
 	for _, key := range keys {
 		args = append(args, key)
 	}
-	return c.c.Int(ctx, "SINTERSTORE", args...)
+	return c.Int(ctx, args...)
 }
 
 // SIsMember https://redis.io/commands/sismember
 // Command: SISMEMBER key member
 // Integer reply: 1 if the element is a member of the set,
 // 0 if the element is not a member of the set, or if key does not exist.
-func (c *SetOperations) SIsMember(ctx context.Context, key string, member interface{}) (int64, error) {
-	args := []interface{}{key, member}
-	return c.c.Int(ctx, "SISMEMBER", args...)
+func (c *Client) SIsMember(ctx context.Context, key string, member interface{}) (int64, error) {
+	args := []interface{}{"SISMEMBER", key, member}
+	return c.Int(ctx, args...)
 }
 
 // SMembers https://redis.io/commands/smembers
 // Command: SMEMBERS key
 // Array reply: all elements of the set.
-func (c *SetOperations) SMembers(ctx context.Context, key string) ([]string, error) {
-	args := []interface{}{key}
-	return c.c.StringSlice(ctx, "SMEMBERS", args...)
+func (c *Client) SMembers(ctx context.Context, key string) ([]string, error) {
+	args := []interface{}{"SMEMBERS", key}
+	return c.StringSlice(ctx, args...)
 }
 
 // SMIsMember https://redis.io/commands/smismember
 // Command: SMISMEMBER key member [member ...]
 // Array reply: list representing the membership of the given elements,
 // in the same order as they are requested.
-func (c *SetOperations) SMIsMember(ctx context.Context, key string, members ...interface{}) ([]int64, error) {
-	args := []interface{}{key}
+func (c *Client) SMIsMember(ctx context.Context, key string, members ...interface{}) ([]int64, error) {
+	args := []interface{}{"SMISMEMBER", key}
 	for _, member := range members {
 		args = append(args, member)
 	}
-	return c.c.IntSlice(ctx, "SMISMEMBER", args...)
+	return c.IntSlice(ctx, args...)
 }
 
 // SMove https://redis.io/commands/smove
 // Command: SMOVE source destination member
 // Integer reply: 1 if the element is moved, 0 if the element
 // is not a member of source and no operation was performed.
-func (c *SetOperations) SMove(ctx context.Context, source, destination string, member interface{}) (int64, error) {
-	args := []interface{}{source, destination, member}
-	return c.c.Int(ctx, "SMOVE", args...)
+func (c *Client) SMove(ctx context.Context, source, destination string, member interface{}) (int64, error) {
+	args := []interface{}{"SMOVE", source, destination, member}
+	return c.Int(ctx, args...)
 }
 
 // SPop https://redis.io/commands/spop
 // Command: SPOP key [count]
 // Bulk string reply: the removed member, or nil when key does not exist.
-func (c *SetOperations) SPop(ctx context.Context, key string) (string, error) {
-	args := []interface{}{key}
-	return c.c.String(ctx, "SPOP", args...)
+func (c *Client) SPop(ctx context.Context, key string) (string, error) {
+	args := []interface{}{"SPOP", key}
+	return c.String(ctx, args...)
 }
 
 // SPopN https://redis.io/commands/spop
 // Command: SPOP key [count]
 // Array reply: the removed members, or an empty array when key does not exist.
-func (c *SetOperations) SPopN(ctx context.Context, key string, count int64) ([]string, error) {
-	args := []interface{}{key, count}
-	return c.c.StringSlice(ctx, "SPOP", args...)
+func (c *Client) SPopN(ctx context.Context, key string, count int64) ([]string, error) {
+	args := []interface{}{"SPOP", key, count}
+	return c.StringSlice(ctx, args...)
 }
 
 // SRandMember https://redis.io/commands/srandmember
 // Command: SRANDMEMBER key [count]
 // Returns a Bulk Reply with the randomly selected element,
 // or nil when key does not exist.
-func (c *SetOperations) SRandMember(ctx context.Context, key string) (string, error) {
-	args := []interface{}{key}
-	return c.c.String(ctx, "SRANDMEMBER", args...)
+func (c *Client) SRandMember(ctx context.Context, key string) (string, error) {
+	args := []interface{}{"SRANDMEMBER", key}
+	return c.String(ctx, args...)
 }
 
 // SRandMemberN https://redis.io/commands/srandmember
 // Command: SRANDMEMBER key [count]
 // Returns an array of elements, or an empty array when key does not exist.
-func (c *SetOperations) SRandMemberN(ctx context.Context, key string, count int64) ([]string, error) {
-	args := []interface{}{key, count}
-	return c.c.StringSlice(ctx, "SRANDMEMBER", args...)
+func (c *Client) SRandMemberN(ctx context.Context, key string, count int64) ([]string, error) {
+	args := []interface{}{"SRANDMEMBER", key, count}
+	return c.StringSlice(ctx, args...)
 }
 
 // SRem https://redis.io/commands/srem
 // Command: SREM key member [member ...]
 // Integer reply: the number of members that were removed from the set,
-// not including non existing members.
-func (c *SetOperations) SRem(ctx context.Context, key string, members ...interface{}) (int64, error) {
-	args := []interface{}{key}
+// not including non-existing members.
+func (c *Client) SRem(ctx context.Context, key string, members ...interface{}) (int64, error) {
+	args := []interface{}{"SREM", key}
 	for _, member := range members {
 		args = append(args, member)
 	}
-	return c.c.Int(ctx, "SREM", args...)
+	return c.Int(ctx, args...)
 }
 
 // SUnion https://redis.io/commands/sunion
 // Command: SUNION key [key ...]
 // Array reply: list with members of the resulting set.
-func (c *SetOperations) SUnion(ctx context.Context, keys ...string) ([]string, error) {
-	var args []interface{}
+func (c *Client) SUnion(ctx context.Context, keys ...string) ([]string, error) {
+	args := []interface{}{"SUNION"}
 	for _, key := range keys {
 		args = append(args, key)
 	}
-	return c.c.StringSlice(ctx, "SUNION", args...)
+	return c.StringSlice(ctx, args...)
 }
 
 // SUnionStore https://redis.io/commands/sunionstore
 // Command: SUNIONSTORE destination key [key ...]
 // Integer reply: the number of elements in the resulting set.
-func (c *SetOperations) SUnionStore(ctx context.Context, destination string, keys ...string) (int64, error) {
-	args := []interface{}{destination}
+func (c *Client) SUnionStore(ctx context.Context, destination string, keys ...string) (int64, error) {
+	args := []interface{}{"SUNIONSTORE", destination}
 	for _, key := range keys {
 		args = append(args, key)
 	}
-	return c.c.Int(ctx, "SUNIONSTORE", args...)
+	return c.Int(ctx, args...)
 }

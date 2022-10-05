@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package mock
+package redis_test
 
 import (
 	"context"
@@ -23,7 +23,6 @@ import (
 	"github.com/go-spring/spring-base/assert"
 	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-core/redis"
-	"github.com/go-spring/spring-core/redis/test/cases"
 	"github.com/golang/mock/gomock"
 )
 
@@ -34,13 +33,9 @@ func TestMock(t *testing.T) {
 
 	ctx := context.Background()
 	conn := redis.NewMockConnPool(ctrl)
-	conn.EXPECT().Exec(ctx, "EXISTS", log.T("mykey")).Return(int64(0), nil)
-	conn.EXPECT().Exec(ctx, "APPEND", log.T("mykey", "Hello")).Return(int64(5), nil)
-	conn.EXPECT().Exec(ctx, "APPEND", log.T("mykey", " World")).Return(int64(11), nil)
-	conn.EXPECT().Exec(ctx, "GET", log.T("mykey")).Return("Hello World", nil)
+	conn.EXPECT().Exec(ctx, log.T("EXISTS", "mykey")).Return(int64(0), nil)
 
-	c, err := redis.NewClient(conn)
-	assert.Nil(t, err)
-
-	cases.Append.Func(t, ctx, c)
+	c := redis.NewClient(conn)
+	r1, _ := c.Exists(ctx, "mykey")
+	assert.Equal(t, r1, int64(0))
 }

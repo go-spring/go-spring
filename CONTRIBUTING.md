@@ -84,6 +84,7 @@ Following information can help us to resolve the issue faster.
 * 为大公司提供框架，为小公司提供实现。
 * 方法的接收者尽量使用指针，避免不必要的指针到值的转换过程。
 * 测试环境打开竞态检测功能。
+* 不入流的功能放在各种 stater 而不是放在 core 里面。
 
 ## 实战
 

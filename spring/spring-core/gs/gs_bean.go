@@ -203,11 +203,11 @@ func (d *BeanDefinition) Primary() *BeanDefinition {
 
 // validLifeCycleFunc 判断是否是合法的用于 bean 生命周期控制的函数，生命周期函数
 // 的要求：只能有一个入参并且必须是 bean 的类型，没有返回值或者只返回 error 类型值。
-func validLifeCycleFunc(fnType reflect.Type, beanType reflect.Type) bool {
+func validLifeCycleFunc(fnType reflect.Type, beanValue reflect.Value) bool {
 	if !util.IsFuncType(fnType) {
 		return false
 	}
-	if fnType.NumIn() != 1 || !util.HasReceiver(fnType, beanType) {
+	if fnType.NumIn() != 1 || !util.HasReceiver(fnType, beanValue) {
 		return false
 	}
 	return util.ReturnNothing(fnType) || util.ReturnOnlyError(fnType)
@@ -215,7 +215,7 @@ func validLifeCycleFunc(fnType reflect.Type, beanType reflect.Type) bool {
 
 // Init 设置 bean 的初始化函数。
 func (d *BeanDefinition) Init(fn interface{}) *BeanDefinition {
-	if validLifeCycleFunc(reflect.TypeOf(fn), d.Type()) {
+	if validLifeCycleFunc(reflect.TypeOf(fn), d.Value()) {
 		d.init = fn
 		return d
 	}
@@ -224,7 +224,7 @@ func (d *BeanDefinition) Init(fn interface{}) *BeanDefinition {
 
 // Destroy 设置 bean 的销毁函数。
 func (d *BeanDefinition) Destroy(fn interface{}) *BeanDefinition {
-	if validLifeCycleFunc(reflect.TypeOf(fn), d.Type()) {
+	if validLifeCycleFunc(reflect.TypeOf(fn), d.Value()) {
 		d.destroy = fn
 		return d
 	}

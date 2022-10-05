@@ -14,14 +14,20 @@
  * limitations under the License.
  */
 
-//go:generate mockgen -build_flags="-mod=mod" -package=redis -source=conn.go -destination=conn_mock.go
-
 package redis
 
-import (
-	"context"
+import "errors"
+
+var (
+	errNil = errors.New("redis: nil")
 )
 
-type ConnPool interface {
-	Exec(ctx context.Context, cmd string, args []interface{}) (interface{}, error)
+// ErrNil returns the `errNil` error.
+func ErrNil() error {
+	return errNil
+}
+
+// IsErrNil returns whether err is the `errNil` error.
+func IsErrNil(err error) bool {
+	return errors.Is(err, errNil)
 }

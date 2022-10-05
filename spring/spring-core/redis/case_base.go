@@ -14,17 +14,17 @@
  * limitations under the License.
  */
 
-package cases
+package redis
 
 import (
 	"context"
 	"testing"
-
-	"github.com/go-spring/spring-core/redis"
 )
 
 type Case struct {
-	Func func(t *testing.T, ctx context.Context, c *redis.Client)
+	Func func(t *testing.T, ctx context.Context, c *Client)
 	Skip bool
 	Data string
 }
+
+type Cases struct{}

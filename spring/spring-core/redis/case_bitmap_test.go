@@ -14,23 +14,30 @@
  * limitations under the License.
  */
 
-package redis
+package redis_test
 
 import (
-	"context"
+	"testing"
+
+	"github.com/go-spring/spring-core/redis"
 )
 
-type ServerOperations struct {
-	c *Client
+func TestBitCount(t *testing.T) {
+	runCase(t, new(redis.Cases).BitCount())
 }
 
-func NewServerOperations(c *Client) *ServerOperations {
-	return &ServerOperations{c: c}
+func TestBitOpAnd(t *testing.T) {
+	runCase(t, new(redis.Cases).BitOpAnd())
 }
 
-// FlushAll https://redis.io/commands/flushall
-// Command: FLUSHALL [ASYNC|SYNC]
-// Simple string reply
-func (c *ServerOperations) FlushAll(ctx context.Context, args ...interface{}) (string, error) {
-	return c.c.String(ctx, "FLUSHALL", args...)
+func TestBitPos(t *testing.T) {
+	runCase(t, new(redis.Cases).BitPos())
+}
+
+func TestGetBit(t *testing.T) {
+	runCase(t, new(redis.Cases).GetBit())
+}
+
+func TestSetBit(t *testing.T) {
+	runCase(t, new(redis.Cases).SetBit())
 }
