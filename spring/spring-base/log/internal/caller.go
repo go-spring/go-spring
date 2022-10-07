@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package log
+package internal
 
 import (
 	"runtime"

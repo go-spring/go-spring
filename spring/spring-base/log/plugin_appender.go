@@ -28,8 +28,8 @@ func init() {
 	RegisterPlugin("RollingFile", PluginTypeAppender, (*RollingFileAppender)(nil))
 }
 
-// Appender represents an output destination. Do not provide an asynchronous
-// appender, because we have asynchronous logger.
+// Appender represents an output destination.
+// Don't provide an asynchronous appender, because we have asynchronous logger.
 type Appender interface {
 	LifeCycle
 	GetName() string

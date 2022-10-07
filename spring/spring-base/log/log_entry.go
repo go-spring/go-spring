@@ -19,6 +19,8 @@ package log
 import (
 	"context"
 	"time"
+
+	"github.com/go-spring/spring-base/log/internal"
 )
 
 // Entry provides context, errno and tag about a log message.
@@ -357,7 +359,7 @@ func publish(p publisher, level Level, skip int, e Entry, fields []Field) *Event
 	if ResultDeny == p.filter(level, e, fn) {
 		return nil
 	}
-	file, line, _ := Caller(skip+2, true)
+	file, line, _ := internal.Caller(skip+2, true)
 	event := &Event{
 		entry:  e,
 		time:   time.Now(),

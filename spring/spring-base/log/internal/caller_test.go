@@ -14,19 +14,19 @@
  * limitations under the License.
  */
 
-package log_test
+package internal_test
 
 import (
 	"fmt"
 	"testing"
 
 	"github.com/go-spring/spring-base/assert"
-	"github.com/go-spring/spring-base/log"
+	"github.com/go-spring/spring-base/log/internal"
 )
 
 func TestCaller(t *testing.T) {
 	for i := 0; i < 2; i++ {
-		file, line, loaded := log.Caller(0, true)
+		file, line, loaded := internal.Caller(0, true)
 		if i == 0 {
 			assert.False(t, loaded)
 		} else {
@@ -37,17 +37,17 @@ func TestCaller(t *testing.T) {
 }
 
 func BenchmarkCaller(b *testing.B) {
-
+	// BenchmarkCaller/fast-8  2393902  463.3 ns/op
+	// BenchmarkCaller/slow-8  1470334  814.4 ns/op
 	b.Run("fast", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			file, line, _ := log.Caller(0, true)
+			file, line, _ := internal.Caller(0, true)
 			_ = fmt.Sprintf("%s:%d\n", file, line)
 		}
 	})
-
 	b.Run("slow", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			file, line, _ := log.Caller(0, false)
+			file, line, _ := internal.Caller(0, false)
 			_ = fmt.Sprintf("%s:%d\n", file, line)
 		}
 	})
