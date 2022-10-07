@@ -101,7 +101,7 @@ func (c *baseLoggerConfig) logEvent(e *Event) {
 }
 
 // filter returns whether the event should be logged.
-func (c *baseLoggerConfig) filter(level Level, e Entry, fields []Field) Result {
+func (c *baseLoggerConfig) filter(level Level, e Entry, fields func() []Field) Result {
 	if c.Filter != nil && ResultDeny == c.Filter.Filter(level, e, fields) {
 		return ResultDeny
 	}

@@ -25,7 +25,7 @@ type Event struct {
 	file   string
 	line   int
 	level  Level
-	fields []Field
+	fields func() []Field
 }
 
 func (e *Event) Entry() Entry {
@@ -49,5 +49,5 @@ func (e *Event) Level() Level {
 }
 
 func (e *Event) Fields() []Field {
-	return e.fields
+	return e.fields()
 }

@@ -27,6 +27,19 @@ type Field struct {
 	Val Value
 }
 
+func W(fn func() []Field) Field {
+	return Field{
+		Key: "",
+		Val: funcValue(fn),
+	}
+}
+
+type funcValue func() []Field
+
+func (v funcValue) Encode(enc Encoder) error {
+	return nil
+}
+
 func Array(key string, val ...Value) Field {
 	return Field{Key: key, Val: ArrayValue(val)}
 }

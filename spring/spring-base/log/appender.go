@@ -71,7 +71,7 @@ type ConsoleAppender struct {
 func (c *ConsoleAppender) Append(e *Event) {
 	data, err := c.Layout.ToBytes(e)
 	if err != nil {
-		Status.Sugar().Errorf("append error %s", err.Error())
+		Status.Errorf("append error %s", err.Error())
 		return
 	}
 	_, _ = os.Stdout.Write(data)
@@ -102,12 +102,12 @@ func (c *FileAppender) Stop(ctx context.Context) {
 func (c *FileAppender) Append(e *Event) {
 	data, err := c.Layout.ToBytes(e)
 	if err != nil {
-		Status.Sugar().Errorf("append error %s", err.Error())
+		Status.Errorf("append error %s", err.Error())
 		return
 	}
 	_, err = c.writer.Write(data)
 	if err != nil {
-		Status.Sugar().Errorf("append error %s", err.Error())
+		Status.Errorf("append error %s", err.Error())
 	}
 }
 

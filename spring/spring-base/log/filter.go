@@ -58,7 +58,7 @@ func ParseResult(s string) (Result, error) {
 // AppenderRef，用于控制消息是否输出到 Appender 上，即控制消息路由。
 type Filter interface {
 	LifeCycle
-	Filter(level Level, e Entry, fields []Field) Result
+	Filter(level Level, e Entry, fields func() []Field) Result
 }
 
 type BaseFilter struct {
@@ -89,7 +89,7 @@ func (f *CompositeFilter) Stop(ctx context.Context) {
 	}
 }
 
-func (f *CompositeFilter) Filter(level Level, e Entry, fields []Field) Result {
+func (f *CompositeFilter) Filter(level Level, e Entry, fields func() []Field) Result {
 	for _, filter := range f.Filters {
 		if ResultDeny == filter.Filter(level, e, fields) {
 			return ResultDeny
@@ -101,9 +101,9 @@ func (f *CompositeFilter) Filter(level Level, e Entry, fields []Field) Result {
 // DenyAllFilter causes all logging events to be dropped.
 type DenyAllFilter struct{}
 
-func (f *DenyAllFilter) Start() error                              { return nil }
-func (f *DenyAllFilter) Stop(ctx context.Context)                  {}
-func (f *DenyAllFilter) Filter(_ Level, _ Entry, _ []Field) Result { return ResultDeny }
+func (f *DenyAllFilter) Start() error                                     { return nil }
+func (f *DenyAllFilter) Stop(ctx context.Context)                         {}
+func (f *DenyAllFilter) Filter(_ Level, _ Entry, _ func() []Field) Result { return ResultDeny }
 
 // LevelFilter logs events if the level in the Event is same or more specific
 // than the configured level.
@@ -112,7 +112,7 @@ type LevelFilter struct {
 	Level Level `PluginAttribute:"level"`
 }
 
-func (f *LevelFilter) Filter(level Level, e Entry, fields []Field) Result {
+func (f *LevelFilter) Filter(level Level, e Entry, fields func() []Field) Result {
 	if level >= f.Level {
 		return f.OnMatch
 	}
@@ -126,7 +126,7 @@ type LevelMatchFilter struct {
 	Level Level `PluginAttribute:"level"`
 }
 
-func (f *LevelMatchFilter) Filter(level Level, e Entry, fields []Field) Result {
+func (f *LevelMatchFilter) Filter(level Level, e Entry, fields func() []Field) Result {
 	if level == f.Level {
 		return f.OnMatch
 	}
@@ -141,7 +141,7 @@ type LevelRangeFilter struct {
 	MaxLevel Level `PluginAttribute:"maxLevel"`
 }
 
-func (f *LevelRangeFilter) Filter(level Level, e Entry, fields []Field) Result {
+func (f *LevelRangeFilter) Filter(level Level, e Entry, fields func() []Field) Result {
 	if level >= f.MinLevel && level <= f.MaxLevel {
 		return f.OnMatch
 	}
@@ -193,7 +193,7 @@ func (f *TimeFilter) Init() error {
 	return nil
 }
 
-func (f *TimeFilter) Filter(level Level, e Entry, fields []Field) Result {
+func (f *TimeFilter) Filter(level Level, e Entry, fields func() []Field) Result {
 	t := int(f.TimeFunc().Sub(f.abs)/time.Second) % 86400
 	if t >= f.start && t <= f.end {
 		return f.OnMatch
@@ -217,7 +217,7 @@ func (f *TagFilter) Init() error {
 	return nil
 }
 
-func (f *TagFilter) Filter(level Level, e Entry, fields []Field) Result {
+func (f *TagFilter) Filter(level Level, e Entry, fields func() []Field) Result {
 	if f.Prefix != "" && strings.HasPrefix(e.Tag(), f.Prefix) {
 		return f.OnMatch
 	}

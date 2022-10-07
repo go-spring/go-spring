@@ -85,12 +85,12 @@ func main() {
 	util.Panic(err).When(err != nil)
 
 	logger := log.GetLogger("xxx")
-	logger.WithTag("rpc_redis").Sugar().Info("a=1")
-	logger.WithTag("rpc_mysql").Sugar().Info("b=1")
-	logger.WithTag("request_in").Sugar().Info("c=1")
-	logger.WithTag("request_out").Sugar().Info("d=1")
-	logger.WithTag("redis_rpc").Sugar().Info("e=1")
-	logger.WithTag("mysql_rpc").Sugar().Info("f=1")
+	logger.WithTag("rpc_redis").Info("a=1")
+	logger.WithTag("rpc_mysql").Info("b=1")
+	logger.WithTag("request_in").Info("c=1")
+	logger.WithTag("request_out").Info("d=1")
+	logger.WithTag("redis_rpc").Info("e=1")
+	logger.WithTag("mysql_rpc").Info("f=1")
 
 	for _, buf := range buffers {
 		fmt.Print(buf.String())

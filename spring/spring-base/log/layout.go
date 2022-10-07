@@ -114,7 +114,7 @@ func (c *DefaultLayout) getMsg(e *Event) string {
 	if err != nil {
 		return err.Error()
 	}
-	for _, f := range e.fields {
+	for _, f := range e.fields() {
 		err = enc.AppendKey(f.Key)
 		if err != nil {
 			return err.Error()
@@ -167,7 +167,7 @@ func (c *JSONLayout) ToBytes(e *Event) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	for _, f := range e.fields {
+	for _, f := range e.fields() {
 		err = enc.AppendKey(f.Key)
 		if err != nil {
 			return nil, err
