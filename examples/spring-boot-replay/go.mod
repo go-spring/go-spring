@@ -3,11 +3,11 @@ module github.com/go-spring/examples/spring-boot-replay
 go 1.14
 
 require (
-	github.com/go-spring/spring-base v1.1.2
-	github.com/go-spring/spring-core v1.1.2
-	github.com/go-spring/starter-echo v1.1.2 // indirect
-	github.com/go-spring/starter-gin v1.1.2
-	github.com/go-spring/starter-go-redis v1.1.2
+	github.com/go-spring/spring-base v1.1.3
+	github.com/go-spring/spring-core v1.1.3
+	github.com/go-spring/starter-echo v1.1.3 // indirect
+	github.com/go-spring/starter-gin v1.1.3
+	github.com/go-spring/starter-go-redis v1.1.3
 )
 
 //replace (

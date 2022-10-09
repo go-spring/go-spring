@@ -4,7 +4,7 @@ go 1.14
 
 require (
 	github.com/antonmedv/expr v1.9.0
-	github.com/go-spring/spring-base v1.1.3-0.20221009074117-5fc71d4a6063
+	github.com/go-spring/spring-base v1.1.3
 	github.com/golang/mock v1.6.0
 	github.com/google/uuid v1.3.0
 	github.com/magiconair/properties v1.8.5

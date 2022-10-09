@@ -3,9 +3,9 @@ module github.com/go-spring/examples/spring-web-echo
 go 1.16
 
 require (
-	github.com/go-spring/spring-base v1.1.3-0.20221009074117-5fc71d4a6063
-	github.com/go-spring/spring-core v1.1.3-0.20221009074341-cea99bf58de3
-	github.com/go-spring/spring-echo v1.1.3-0.20221009074816-0d3c7804e398
+	github.com/go-spring/spring-base v1.1.3
+	github.com/go-spring/spring-core v1.1.3
+	github.com/go-spring/spring-echo v1.1.3
 )
 
 //replace (
