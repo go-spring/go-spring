@@ -1,5 +1,16 @@
 Release History:
 
+v1.1.3 2022-10-09
+
+    [json] support custom json package
+    [dync] update the fields that need to be updated
+    [dync] support user-defined `dync` types
+    [log] simplify and support structured log api
+    [web] remove FilterChain.Continue
+    [web] add HttpGet/HttpPost/* methods
+    [web] support built-in binding and validator
+	[redis] remove *Operations wrapper
+
 v1.1.2 2022-09-13
 
     新增 atomic.String 类型；
