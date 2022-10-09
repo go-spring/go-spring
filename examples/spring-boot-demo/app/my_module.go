@@ -40,19 +40,19 @@ type MyModule struct {
 }
 
 func (m *MyModule) OnAppStart(ctx gs.Context) {
-	m.Logger.Sugar().Info("MyModule start")
+	m.Logger.Info("MyModule start")
 	ctx.Go(m.Process)
 }
 
 func (m *MyModule) OnAppStop(ctx context.Context) {
-	m.Logger.Sugar().Info("MyModule stop")
+	m.Logger.Info("MyModule stop")
 }
 
 func (m *MyModule) Process(ctx context.Context) {
 	defer gs.ShutDown("run end")
 
-	defer func() { m.Logger.Sugar().Info("go stop") }()
-	m.Logger.Sugar().Info("go start")
+	defer func() { m.Logger.Info("go stop") }()
+	m.Logger.Info("go start")
 
 	time.Sleep(200 * time.Millisecond)
 
@@ -63,7 +63,7 @@ func (m *MyModule) Process(ctx context.Context) {
 		if body, e := ioutil.ReadAll(resp.Body); e != nil {
 			panic(e)
 		} else {
-			m.Logger.Sugar().Infof("resp code=%d body=%s", resp.StatusCode, string(body))
+			m.Logger.Infof("resp code=%d body=%s", resp.StatusCode, string(body))
 			if string(body) != "ok" {
 				panic(errors.New("error"))
 			}
@@ -77,7 +77,7 @@ func (m *MyModule) Process(ctx context.Context) {
 		if body, e := ioutil.ReadAll(resp.Body); e != nil {
 			panic(e)
 		} else {
-			m.Logger.Sugar().Infof("resp code=%d body=%s", resp.StatusCode, string(body))
+			m.Logger.Infof("resp code=%d body=%s", resp.StatusCode, string(body))
 		}
 	}
 
@@ -88,7 +88,7 @@ func (m *MyModule) Process(ctx context.Context) {
 		if body, e := ioutil.ReadAll(resp.Body); e != nil {
 			panic(e)
 		} else {
-			m.Logger.Sugar().Infof("resp code=%d body=%s", resp.StatusCode, string(body))
+			m.Logger.Infof("resp code=%d body=%s", resp.StatusCode, string(body))
 			if string(body) != "{\"code\":200,\"msg\":\"SUCCESS\",\"data\":{\"echo\":\"echo echo\"}}" {
 				panic(errors.New("error"))
 			}
@@ -107,7 +107,7 @@ func (m *MyModule) Process(ctx context.Context) {
 			if body, e0 := ioutil.ReadAll(resp.Body); e0 != nil {
 				panic(e0)
 			} else {
-				m.Logger.Sugar().Infof("resp code=%d body=%s", resp.StatusCode, string(body))
+				m.Logger.Infof("resp code=%d body=%s", resp.StatusCode, string(body))
 				if string(body) != "func() return ok" {
 					panic(errors.New("error"))
 				}
@@ -122,7 +122,7 @@ func (m *MyModule) Process(ctx context.Context) {
 		if body, e := ioutil.ReadAll(resp.Body); e != nil {
 			panic(e)
 		} else {
-			m.Logger.Sugar().Infof("resp code=%d body=(banner.txt)\n%s", resp.StatusCode, string(body))
+			m.Logger.Infof("resp code=%d body=(banner.txt)\n%s", resp.StatusCode, string(body))
 		}
 	}
 
@@ -133,7 +133,7 @@ func (m *MyModule) Process(ctx context.Context) {
 		if body, e := ioutil.ReadAll(resp.Body); e != nil {
 			panic(e)
 		} else {
-			m.Logger.Sugar().Infof("resp code=%d body=(hello.html)\n%s", resp.StatusCode, string(body))
+			m.Logger.Infof("resp code=%d body=(hello.html)\n%s", resp.StatusCode, string(body))
 		}
 	}
 }

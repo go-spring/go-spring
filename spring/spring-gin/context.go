@@ -110,8 +110,8 @@ func (ctx *Context) PathParam(name string) string {
 func (ctx *Context) PathParamNames() []string {
 	if ctx.pathNames == nil {
 		ctx.pathNames = make([]string, 0)
-		for _, entry := range ctx.ginContext.Params {
-			name := entry.Key
+		for _, e := range ctx.ginContext.Params {
+			name := e.Key
 			if name == ctx.wildcard {
 				name = "*"
 			}
@@ -125,8 +125,8 @@ func (ctx *Context) PathParamNames() []string {
 func (ctx *Context) PathParamValues() []string {
 	if ctx.pathValues == nil {
 		ctx.pathValues = make([]string, 0)
-		for _, entry := range ctx.ginContext.Params {
-			v := filterPathValue(entry.Value)
+		for _, e := range ctx.ginContext.Params {
+			v := filterPathValue(e.Value)
 			ctx.pathValues = append(ctx.pathValues, v)
 		}
 	}

@@ -16,58 +16,65 @@
 
 package log
 
-import "fmt"
-
+// Value represents a data and encodes it to an Encoder.
 type Value interface {
 	Encode(enc Encoder) error
 }
 
-type funcValue func() []Field
-
-func (v funcValue) Encode(enc Encoder) error {
-	return nil
-}
-
+// BoolValue represents a bool carried by Field.
 type BoolValue bool
 
+// Encode encodes the data represented by v to an Encoder.
 func (v BoolValue) Encode(enc Encoder) error {
 	return enc.AppendBool(bool(v))
 }
 
+// Int64Value represents a int64 carried by Field.
 type Int64Value int64
 
+// Encode encodes the data represented by v to an Encoder.
 func (v Int64Value) Encode(enc Encoder) error {
 	return enc.AppendInt64(int64(v))
 }
 
+// Uint64Value represents a uint64 carried by Field.
 type Uint64Value uint64
 
+// Encode encodes the data represented by v to an Encoder.
 func (v Uint64Value) Encode(enc Encoder) error {
 	return enc.AppendUint64(uint64(v))
 }
 
+// Float64Value represents a float64 carried by Field.
 type Float64Value float64
 
+// Encode encodes the data represented by v to an Encoder.
 func (v Float64Value) Encode(enc Encoder) error {
 	return enc.AppendFloat64(float64(v))
 }
 
+// StringValue represents a string carried by Field.
 type StringValue string
 
+// Encode encodes the data represented by v to an Encoder.
 func (v StringValue) Encode(enc Encoder) error {
 	return enc.AppendString(string(v))
 }
 
+// ReflectValue represents an interface{} carried by Field.
 type ReflectValue struct {
 	Val interface{}
 }
 
+// Encode encodes the data represented by v to an Encoder.
 func (v ReflectValue) Encode(enc Encoder) error {
 	return enc.AppendReflect(v.Val)
 }
 
+// BoolsValue represents a slice of bool carried by Field.
 type BoolsValue []bool
 
+// Encode encodes the data represented by v to an Encoder.
 func (v BoolsValue) Encode(enc Encoder) error {
 	err := enc.AppendArrayBegin()
 	if err != nil {
@@ -82,8 +89,10 @@ func (v BoolsValue) Encode(enc Encoder) error {
 	return enc.AppendArrayEnd()
 }
 
+// IntsValue represents a slice of int carried by Field.
 type IntsValue []int
 
+// Encode encodes the data represented by v to an Encoder.
 func (v IntsValue) Encode(enc Encoder) error {
 	err := enc.AppendArrayBegin()
 	if err != nil {
@@ -98,8 +107,10 @@ func (v IntsValue) Encode(enc Encoder) error {
 	return enc.AppendArrayEnd()
 }
 
+// Int8sValue represents a slice of int8 carried by Field.
 type Int8sValue []int8
 
+// Encode encodes the data represented by v to an Encoder.
 func (v Int8sValue) Encode(enc Encoder) error {
 	err := enc.AppendArrayBegin()
 	if err != nil {
@@ -114,8 +125,10 @@ func (v Int8sValue) Encode(enc Encoder) error {
 	return enc.AppendArrayEnd()
 }
 
+// Int16sValue represents a slice of int16 carried by Field.
 type Int16sValue []int16
 
+// Encode encodes the data represented by v to an Encoder.
 func (v Int16sValue) Encode(enc Encoder) error {
 	err := enc.AppendArrayBegin()
 	if err != nil {
@@ -130,8 +143,10 @@ func (v Int16sValue) Encode(enc Encoder) error {
 	return enc.AppendArrayEnd()
 }
 
+// Int32sValue represents a slice of int32 carried by Field.
 type Int32sValue []int32
 
+// Encode encodes the data represented by v to an Encoder.
 func (v Int32sValue) Encode(enc Encoder) error {
 	err := enc.AppendArrayBegin()
 	if err != nil {
@@ -146,8 +161,10 @@ func (v Int32sValue) Encode(enc Encoder) error {
 	return enc.AppendArrayEnd()
 }
 
+// Int64sValue represents a slice of int64 carried by Field.
 type Int64sValue []int64
 
+// Encode encodes the data represented by v to an Encoder.
 func (v Int64sValue) Encode(enc Encoder) error {
 	err := enc.AppendArrayBegin()
 	if err != nil {
@@ -162,8 +179,10 @@ func (v Int64sValue) Encode(enc Encoder) error {
 	return enc.AppendArrayEnd()
 }
 
+// UintsValue represents a slice of uint carried by Field.
 type UintsValue []uint
 
+// Encode encodes the data represented by v to an Encoder.
 func (v UintsValue) Encode(enc Encoder) error {
 	err := enc.AppendArrayBegin()
 	if err != nil {
@@ -178,8 +197,10 @@ func (v UintsValue) Encode(enc Encoder) error {
 	return enc.AppendArrayEnd()
 }
 
+// Uint8sValue represents a slice of uint8 carried by Field.
 type Uint8sValue []uint8
 
+// Encode encodes the data represented by v to an Encoder.
 func (v Uint8sValue) Encode(enc Encoder) error {
 	err := enc.AppendArrayBegin()
 	if err != nil {
@@ -194,8 +215,10 @@ func (v Uint8sValue) Encode(enc Encoder) error {
 	return enc.AppendArrayEnd()
 }
 
+// Uint16sValue represents a slice of uint16 carried by Field.
 type Uint16sValue []uint16
 
+// Encode encodes the data represented by v to an Encoder.
 func (v Uint16sValue) Encode(enc Encoder) error {
 	err := enc.AppendArrayBegin()
 	if err != nil {
@@ -210,8 +233,10 @@ func (v Uint16sValue) Encode(enc Encoder) error {
 	return enc.AppendArrayEnd()
 }
 
+// Uint32sValue represents a slice of uint32 carried by Field.
 type Uint32sValue []uint32
 
+// Encode encodes the data represented by v to an Encoder.
 func (v Uint32sValue) Encode(enc Encoder) error {
 	err := enc.AppendArrayBegin()
 	if err != nil {
@@ -226,8 +251,10 @@ func (v Uint32sValue) Encode(enc Encoder) error {
 	return enc.AppendArrayEnd()
 }
 
+// Uint64sValue represents a slice of uint64 carried by Field.
 type Uint64sValue []uint64
 
+// Encode encodes the data represented by v to an Encoder.
 func (v Uint64sValue) Encode(enc Encoder) error {
 	err := enc.AppendArrayBegin()
 	if err != nil {
@@ -242,8 +269,10 @@ func (v Uint64sValue) Encode(enc Encoder) error {
 	return enc.AppendArrayEnd()
 }
 
+// Float32sValue represents a slice of float32 carried by Field.
 type Float32sValue []float32
 
+// Encode encodes the data represented by v to an Encoder.
 func (v Float32sValue) Encode(enc Encoder) error {
 	err := enc.AppendArrayBegin()
 	if err != nil {
@@ -258,8 +287,10 @@ func (v Float32sValue) Encode(enc Encoder) error {
 	return enc.AppendArrayEnd()
 }
 
+// Float64sValue represents a slice of float64 carried by Field.
 type Float64sValue []float64
 
+// Encode encodes the data represented by v to an Encoder.
 func (v Float64sValue) Encode(enc Encoder) error {
 	err := enc.AppendArrayBegin()
 	if err != nil {
@@ -274,8 +305,10 @@ func (v Float64sValue) Encode(enc Encoder) error {
 	return enc.AppendArrayEnd()
 }
 
+// StringsValue represents a slice of string carried by Field.
 type StringsValue []string
 
+// Encode encodes the data represented by v to an Encoder.
 func (v StringsValue) Encode(enc Encoder) error {
 	err := enc.AppendArrayBegin()
 	if err != nil {
@@ -290,33 +323,10 @@ func (v StringsValue) Encode(enc Encoder) error {
 	return enc.AppendArrayEnd()
 }
 
-type MessageValue struct {
-	format string
-	args   []interface{}
-}
-
-func (v MessageValue) Encode(enc Encoder) error {
-	if len(v.args) == 1 {
-		fn, ok := v.args[0].(func() []interface{})
-		if ok {
-			v.args = fn()
-		}
-	}
-	var text string
-	if len(v.args) == 0 {
-		text = v.format
-	} else {
-		if v.format == "" {
-			text = fmt.Sprint(v.args...)
-		} else {
-			text = fmt.Sprintf(v.format, v.args...)
-		}
-	}
-	return enc.AppendString(text)
-}
-
+// ObjectValue represents a slice of Field carried by Field.
 type ObjectValue []Field
 
+// Encode encodes the data represented by v to an Encoder.
 func (v ObjectValue) Encode(enc Encoder) error {
 	err := enc.AppendObjectBegin()
 	if err != nil {
@@ -335,8 +345,10 @@ func (v ObjectValue) Encode(enc Encoder) error {
 	return enc.AppendObjectEnd()
 }
 
+// ArrayValue represents a slice of Value carried by Field.
 type ArrayValue []Value
 
+// Encode encodes the data represented by v to an Encoder.
 func (v ArrayValue) Encode(enc Encoder) error {
 	err := enc.AppendArrayBegin()
 	if err != nil {

@@ -26,8 +26,8 @@ import (
 )
 
 func init() {
+	RegisterPlugin("PatternLayout", PluginTypeLayout, (*PatternLayout)(nil))
 	RegisterPlugin("JSONLayout", PluginTypeLayout, (*JSONLayout)(nil))
-	RegisterPlugin("DefaultLayout", PluginTypeLayout, (*DefaultLayout)(nil))
 }
 
 // Layout lays out an Event in []byte format.
@@ -43,6 +43,7 @@ const (
 	ColorStyleBright
 )
 
+// ParseColorStyle parses `s` to a ColorStyle value.
 func ParseColorStyle(s string) (ColorStyle, error) {
 	switch strings.ToLower(s) {
 	case "none":
@@ -52,38 +53,34 @@ func ParseColorStyle(s string) (ColorStyle, error) {
 	case "bright":
 		return ColorStyleBright, nil
 	default:
-		return -1, fmt.Errorf("invalid color style %s", s)
+		return -1, fmt.Errorf("invalid color style '%s'", s)
 	}
 }
 
 type FormatFunc func(e *Event) string
 
-type DefaultLayout struct {
-	LineBreak  bool       `PluginAttribute:"lineBreak,default=true"`
+// A PatternLayout is a flexible layout configurable with pattern string.
+type PatternLayout struct {
 	ColorStyle ColorStyle `PluginAttribute:"colorStyle,default=none"`
-	Formatter  string     `PluginAttribute:"formatter,default="`
+	Pattern    string     `PluginAttribute:"pattern,default=[:level][:time][:fileline][:msg]"`
 	steps      []FormatFunc
 }
 
-func (c *DefaultLayout) Init() error {
-	if c.Formatter == "" {
-		c.Formatter = "[:level][:time][:fileline][:msg]"
-	}
-	return c.parse(c.Formatter)
+func (c *PatternLayout) Init() error {
+	return c.parse(c.Pattern)
 }
 
-func (c *DefaultLayout) ToBytes(e *Event) ([]byte, error) {
+// ToBytes lays out an Event in []byte format.
+func (c *PatternLayout) ToBytes(e *Event) ([]byte, error) {
 	buf := bytes.NewBuffer(nil)
 	for _, step := range c.steps {
 		buf.WriteString(step(e))
 	}
-	if c.LineBreak {
-		buf.WriteByte('\n')
-	}
+	buf.WriteByte('\n')
 	return buf.Bytes(), nil
 }
 
-func (c *DefaultLayout) parse(formatter string) error {
+func (c *PatternLayout) parse(pattern string) error {
 	write := func(s string) FormatFunc {
 		return func(e *Event) string {
 			return s
@@ -103,9 +100,9 @@ func (c *DefaultLayout) parse(formatter string) error {
 	return nil
 }
 
-func (c *DefaultLayout) getMsg(e *Event) string {
+func (c *PatternLayout) getMsg(e *Event) string {
 	buf := bytes.NewBuffer(nil)
-	if tag := e.entry.Tag(); tag != "" {
+	if tag := e.Tag; tag != "" {
 		buf.WriteString(tag)
 		buf.WriteString("||")
 	}
@@ -114,7 +111,7 @@ func (c *DefaultLayout) getMsg(e *Event) string {
 	if err != nil {
 		return err.Error()
 	}
-	for _, f := range e.fields() {
+	for _, f := range e.Fields {
 		err = enc.AppendKey(f.Key)
 		if err != nil {
 			return err.Error()
@@ -128,46 +125,51 @@ func (c *DefaultLayout) getMsg(e *Event) string {
 	if err != nil {
 		return err.Error()
 	}
+	buf.WriteString(e.Message)
 	return buf.String()
 }
 
-func (c *DefaultLayout) getLevel(e *Event) string {
-	level := e.Level()
-	strLevel := strings.ToUpper(level.String())
+func (c *PatternLayout) getLevel(e *Event) string {
+	strLevel := strings.ToUpper(e.Level.String())
 	switch c.ColorStyle {
 	case ColorStyleNormal:
-		if level >= ErrorLevel {
+		if e.Level >= ErrorLevel {
 			strLevel = color.Red.Sprint(strLevel)
-		} else if level == WarnLevel {
+		} else if e.Level == WarnLevel {
 			strLevel = color.Yellow.Sprint(strLevel)
-		} else if level <= DebugLevel {
+		} else if e.Level <= DebugLevel {
 			strLevel = color.Green.Sprint(strLevel)
 		}
 	}
 	return strLevel
 }
 
-func (c *DefaultLayout) getTime(e *Event) string {
-	return e.Time().Format("2006-01-02T15:04:05.000")
+func (c *PatternLayout) getTime(e *Event) string {
+	return e.Time.Format("2006-01-02T15:04:05.000")
 }
 
-func (c *DefaultLayout) getFileLine(e *Event) string {
-	return util.Contract(fmt.Sprintf("%s:%d", e.File(), e.Line()), 48)
+func (c *PatternLayout) getFileLine(e *Event) string {
+	return util.Contract(fmt.Sprintf("%s:%d", e.File, e.Line), 48)
 }
 
-type JSONLayout struct {
-	LineBreak bool `PluginAttribute:"lineBreak,default=true"`
-}
+// A JSONLayout is a layout configurable with JSON encoding.
+type JSONLayout struct{}
 
+// ToBytes lays out an Event in []byte format.
 func (c *JSONLayout) ToBytes(e *Event) ([]byte, error) {
-
 	buf := bytes.NewBuffer(nil)
 	enc := NewJSONEncoder(buf)
 	err := enc.AppendEncoderBegin()
 	if err != nil {
 		return nil, err
 	}
-	for _, f := range e.fields() {
+	fields := []Field{
+		String("level", strings.ToUpper(e.Level.String())),
+		String("time", e.Time.Format("2006-01-02T15:04:05.000")),
+		String("fileLine", fmt.Sprintf("%s:%d", e.File, e.Line)),
+	}
+	fields = append(fields, e.Fields...)
+	for _, f := range fields {
 		err = enc.AppendKey(f.Key)
 		if err != nil {
 			return nil, err
@@ -181,8 +183,6 @@ func (c *JSONLayout) ToBytes(e *Event) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if c.LineBreak {
-		buf.WriteByte('\n')
-	}
+	buf.WriteByte('\n')
 	return buf.Bytes(), nil
 }

@@ -34,8 +34,8 @@ type Factory struct {
 }
 
 // NewClient 创建 MongoDB 客户端
-func (f *Factory) NewClient(config mongo.ClientConfig) (*g.Client, error) {
-	f.Logger.Sugar().Infof("open mongo db %s", config.URL)
+func (f *Factory) NewClient(config mongo.Config) (*g.Client, error) {
+	f.Logger.Infof("open mongo db %s", config.URL)
 	client, err := g.Connect(context.Background(), options.Client().ApplyURI(config.URL))
 	if err != nil {
 		return nil, err
@@ -51,10 +51,10 @@ func (f *Factory) NewClient(config mongo.ClientConfig) (*g.Client, error) {
 
 // CloseClient 关闭 MongoDB 客户端
 func (f *Factory) CloseClient(client *g.Client) {
-	f.Logger.Sugar().Info("close mongo db")
+	f.Logger.Info("close mongo db")
 	err := client.Disconnect(context.Background())
 	if err != nil {
-		f.Logger.Sugar().Error(nil, err)
+		f.Logger.Error(nil, err)
 	}
 }
 

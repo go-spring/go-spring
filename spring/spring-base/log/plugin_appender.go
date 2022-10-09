@@ -46,7 +46,7 @@ var (
 
 type BaseAppender struct {
 	Name   string `PluginAttribute:"name"`
-	Layout Layout `PluginElement:"Layout,default=DefaultLayout"`
+	Layout Layout `PluginElement:"Layout,default=PatternLayout"`
 }
 
 func (c *BaseAppender) Start() error             { return nil }
@@ -71,7 +71,6 @@ type ConsoleAppender struct {
 func (c *ConsoleAppender) Append(e *Event) {
 	data, err := c.Layout.ToBytes(e)
 	if err != nil {
-		Status.Errorf("append error %s", err.Error())
 		return
 	}
 	_, _ = os.Stdout.Write(data)
@@ -102,13 +101,9 @@ func (c *FileAppender) Stop(ctx context.Context) {
 func (c *FileAppender) Append(e *Event) {
 	data, err := c.Layout.ToBytes(e)
 	if err != nil {
-		Status.Errorf("append error %s", err.Error())
 		return
 	}
-	_, err = c.writer.Write(data)
-	if err != nil {
-		Status.Errorf("append error %s", err.Error())
-	}
+	_, _ = c.writer.Write(data)
 }
 
 type RollingFileAppender struct {

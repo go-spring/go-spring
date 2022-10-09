@@ -25,22 +25,16 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 
 	"github.com/go-spring/spring-base/atomic"
 )
 
-var (
-	// configLoggers 配置文件中的 Logger 对象，is safe for map[string]privateConfig.
-	configLoggers atomic.Value
+// configLoggers 配置文件中的 Logger 对象，is safe for map[string]privateConfig.
+var configLoggers atomic.Value
 
-	// usingLoggers 用户代码中的 Logger 对象，is safe for map[string]*Logger.
-	usingLoggers sync.Map
-
-	// Status records events that occur in the logging system.
-	Status = newLogger("", ErrorLevel)
-)
+// usingLoggers 用户代码中的 Logger 对象，is safe for map[string]*Logger.
+var usingLoggers sync.Map
 
 type Initializer interface {
 	Init() error
@@ -51,22 +45,13 @@ type LifeCycle interface {
 	Stop(ctx context.Context)
 }
 
-type T func() []interface{}
-
 type privateConfigMap struct {
 	loggers map[string]privateConfig
 }
 
 func (m *privateConfigMap) Get(name string) privateConfig {
-	for {
-		if v, ok := m.loggers[name]; ok {
-			return v
-		}
-		i := strings.LastIndexByte(name, '/')
-		if i < 0 {
-			break
-		}
-		name = name[:i]
+	if v, ok := m.loggers[name]; ok {
+		return v
 	}
 	return m.loggers["<<ROOT>>"]
 }
@@ -85,31 +70,26 @@ func (h *simLoggerHolder) Get() *Logger {
 
 type initLoggerHolder struct {
 	name   string
-	level  []Level
 	once   sync.Once
 	logger *Logger
 }
 
 func (h *initLoggerHolder) Get() *Logger {
 	h.once.Do(func() {
-		if len(h.level) == 0 {
-			h.level = append(h.level, InfoLevel)
-		}
-		h.logger = newLogger(h.name, h.level[0])
+		h.logger = newLogger(h.name)
 		m := configLoggers.Load().(*privateConfigMap)
 		h.logger.reconfigure(m.Get(h.name))
 	})
 	return h.logger
 }
 
-func GetLogger(name string, level ...Level) *Logger {
+func GetLogger(name string) *Logger {
 
 	if configLoggers.Load() == nil {
-		Status.WithSkip(1).Fatal("should call refresh first")
-		os.Exit(-1)
+		panic(errors.New("should call refresh first"))
 	}
 
-	var h loggerHolder = &initLoggerHolder{name: name, level: level}
+	var h loggerHolder = &initLoggerHolder{name: name}
 	actual, loaded := usingLoggers.LoadOrStore(name, h)
 	if loaded {
 		return actual.(loggerHolder).Get()
@@ -231,7 +211,7 @@ func RefreshReader(input io.Reader, ext string) error {
 		}
 
 		if name != cRoot.getName() {
-			base.parent = cRoot
+			base.root = cRoot
 		}
 
 		for _, r := range base.AppenderRefs {
@@ -240,17 +220,6 @@ func RefreshReader(input io.Reader, ext string) error {
 				return fmt.Errorf("appender %s not found", r.Ref)
 			}
 			r.appender = appender
-		}
-
-		for {
-			n := strings.LastIndex(name, "/")
-			if n < 0 {
-				break
-			}
-			name = name[:n]
-			if parent, ok := cLoggers[name]; ok {
-				base.parent = parent
-			}
 		}
 	}
 

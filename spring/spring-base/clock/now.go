@@ -52,19 +52,24 @@ func ResetTime(ctx context.Context) {
 	knife.Delete(ctx, nowKey)
 }
 
-// SetFixedTime sets a fixed time.
-func SetFixedTime(ctx context.Context, t time.Time) error {
-	return knife.Store(ctx, nowKey, &fixedTime{fixed: t})
-}
-
 // SetBaseTime sets the base time.
 func SetBaseTime(ctx context.Context, t time.Time) error {
-	return knife.Store(ctx, nowKey, &baseTime{base: t, from: time.Now()})
+	return setTime(ctx, &baseTime{base: t, from: time.Now()})
+}
+
+// SetFixedTime sets a fixed time.
+func SetFixedTime(ctx context.Context, t time.Time) error {
+	return setTime(ctx, &fixedTime{fixed: t})
+}
+
+func setTime(ctx context.Context, t FakeTime) error {
+	ResetTime(ctx)
+	return knife.Store(ctx, nowKey, t)
 }
 
 // Now returns the current local time.
 func Now(ctx context.Context) time.Time {
-	if run.NormalMode() || run.RecordMode() {
+	if ctx == nil || run.NormalMode() || run.RecordMode() {
 		return time.Now()
 	}
 	v, err := knife.Load(ctx, nowKey)

@@ -62,7 +62,7 @@ func (starter *Starter) OnAppStart(ctx gs.Context) {
 			fnPtr := m.Func.Pointer()
 			fnInfo := runtime.FuncForPC(fnPtr)
 			file, line := fnInfo.FileLine(fnPtr)
-			starter.logger.Sugar().Infof("/%s/%s %s:%d ", service, method.Name, file, line)
+			starter.logger.Infof("/%s/%s %s:%d ", service, method.Name, file, line)
 		}
 	}
 
@@ -72,7 +72,7 @@ func (starter *Starter) OnAppStart(ctx gs.Context) {
 
 	ctx.Go(func(_ context.Context) {
 		if err = starter.server.Serve(listener); err != nil {
-			starter.logger.Sugar().Error(nil, err)
+			starter.logger.Error(nil, err)
 		}
 	})
 }

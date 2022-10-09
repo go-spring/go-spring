@@ -16,38 +16,19 @@
 
 package log
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 // Event provides contextual information about a log message.
 type Event struct {
-	entry  Entry
-	time   time.Time
-	file   string
-	line   int
-	level  Level
-	fields func() []Field
-}
-
-func (e *Event) Entry() Entry {
-	return e.entry
-}
-
-func (e *Event) Time() time.Time {
-	return e.time
-}
-
-func (e *Event) File() string {
-	return e.file
-}
-
-func (e *Event) Line() int {
-	return e.line
-}
-
-func (e *Event) Level() Level {
-	return e.level
-}
-
-func (e *Event) Fields() []Field {
-	return e.fields()
+	Context context.Context
+	Level   Level
+	Time    time.Time
+	File    string
+	Line    int
+	Tag     string
+	Fields  []Field
+	Message string
 }

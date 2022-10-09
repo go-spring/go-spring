@@ -30,10 +30,10 @@ func NewClient(config redis.Config) (*redis.Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return redis.NewClient(connPool)
+	return redis.NewClient(connPool), nil
 }
 
-func Open(config redis.Config) (redis.ConnPool, error) {
+func Open(config redis.Config) (redis.Driver, error) {
 
 	address := fmt.Sprintf("%s:%d", config.Host, config.Port)
 	client := g.NewClient(&g.Options{
@@ -53,15 +53,15 @@ func Open(config redis.Config) (redis.ConnPool, error) {
 		}
 	}
 
-	return &ConnPool{client: client}, nil
+	return &Driver{client: client}, nil
 }
 
-type ConnPool struct {
+type Driver struct {
 	client *g.Client
 }
 
-func (c *ConnPool) Exec(ctx context.Context, cmd string, args []interface{}) (interface{}, error) {
-	ret := c.client.Do(ctx, append([]interface{}{cmd}, args...)...)
+func (c *Driver) Exec(ctx context.Context, args []interface{}) (interface{}, error) {
+	ret := c.client.Do(ctx, args...)
 	_, err := ret.Result()
 	if err != nil {
 		if err == g.Nil {

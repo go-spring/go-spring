@@ -59,7 +59,7 @@ type MyController struct {
 
 func (c *MyController) onInit(ctx gs.Context) error {
 	ctx.Go(func(ctx context.Context) {
-		defer func() { c.Logger.Sugar().Info("exit after waiting in ::Go") }()
+		defer func() { c.Logger.Info("exit after waiting in ::Go") }()
 
 		ticker := time.NewTicker(10 * time.Millisecond)
 		defer ticker.Stop()
@@ -69,7 +69,7 @@ func (c *MyController) onInit(ctx gs.Context) error {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				c.Logger.Sugar().Info("::Go")
+				c.Logger.Info("::Go")
 			}
 		}
 	})
@@ -93,10 +93,10 @@ func (c *MyController) Echo(ctx context.Context, request *EchoRequest) *web.RpcR
 
 func (c *MyController) OK(ctx web.Context) {
 
-	_, err := c.RedisClient.OpsForString().SetEX(ctx.Context(), "key", "ok", 10)
+	_, err := c.RedisClient.SetEX(ctx.Context(), "key", "ok", 10)
 	util.Panic(err).When(err != nil)
 
-	val, err := c.RedisClient.OpsForString().Get(ctx.Context(), "key")
+	val, err := c.RedisClient.Get(ctx.Context(), "key")
 	util.Panic(err).When(err != nil)
 
 	rows, err := c.DB.Table("ENGINES").Select("ENGINE").Rows()
@@ -110,7 +110,7 @@ func (c *MyController) OK(ctx web.Context) {
 
 		var engine string
 		_ = rows.Scan(&engine)
-		c.Logger.Sugar().Info(engine)
+		c.Logger.Info(engine)
 
 		if engine != "sql-mock" {
 			panic(errors.New("error"))

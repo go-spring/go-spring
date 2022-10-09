@@ -14,62 +14,62 @@
  * limitations under the License.
  */
 
-package record
+package SpringGoRedis_test
 
 import (
 	"testing"
 
-	"github.com/go-spring/spring-core/redis/test/record"
+	"github.com/go-spring/spring-core/redis"
 )
 
 func TestHDel(t *testing.T) {
-	RunCase(t, record.HDel)
+	runCase(t, new(redis.Cases).HDel())
 }
 
 func TestHExists(t *testing.T) {
-	RunCase(t, record.HExists)
+	runCase(t, new(redis.Cases).HExists())
 }
 
 func TestHGet(t *testing.T) {
-	RunCase(t, record.HGet)
+	runCase(t, new(redis.Cases).HGet())
 }
 
 func TestHGetAll(t *testing.T) {
-	RunCase(t, record.HGetAll)
+	runCase(t, new(redis.Cases).HGetAll())
 }
 
 func TestHIncrBy(t *testing.T) {
-	RunCase(t, record.HIncrBy)
+	runCase(t, new(redis.Cases).HIncrBy())
 }
 
 func TestHIncrByFloat(t *testing.T) {
-	RunCase(t, record.HIncrByFloat)
+	runCase(t, new(redis.Cases).HIncrByFloat())
 }
 
 func TestHKeys(t *testing.T) {
-	RunCase(t, record.HKeys)
+	runCase(t, new(redis.Cases).HKeys())
 }
 
 func TestHLen(t *testing.T) {
-	RunCase(t, record.HLen)
+	runCase(t, new(redis.Cases).HLen())
 }
 
 func TestHMGet(t *testing.T) {
-	RunCase(t, record.HMGet)
+	runCase(t, new(redis.Cases).HMGet())
 }
 
 func TestHSet(t *testing.T) {
-	RunCase(t, record.HSet)
+	runCase(t, new(redis.Cases).HSet())
 }
 
 func TestHSetNX(t *testing.T) {
-	RunCase(t, record.HSetNX)
+	runCase(t, new(redis.Cases).HSetNX())
 }
 
 func TestHStrLen(t *testing.T) {
-	RunCase(t, record.HStrLen)
+	runCase(t, new(redis.Cases).HStrLen())
 }
 
 func TestHVals(t *testing.T) {
-	RunCase(t, record.HVals)
+	runCase(t, new(redis.Cases).HVals())
 }

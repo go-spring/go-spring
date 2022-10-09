@@ -14,114 +14,114 @@
  * limitations under the License.
  */
 
-package record
+package SpringRedigo_test
 
 import (
 	"testing"
 
-	"github.com/go-spring/spring-core/redis/test/record"
+	"github.com/go-spring/spring-core/redis"
 )
 
 func TestZAdd(t *testing.T) {
-	RunCase(t, record.ZAdd)
+	runCase(t, new(redis.Cases).ZAdd())
 }
 
 func TestZCard(t *testing.T) {
-	RunCase(t, record.ZCard)
+	runCase(t, new(redis.Cases).ZCard())
 }
 
 func TestZCount(t *testing.T) {
-	RunCase(t, record.ZCount)
+	runCase(t, new(redis.Cases).ZCount())
 }
 
 func TestZDiff(t *testing.T) {
-	RunCase(t, record.ZDiff)
+	runCase(t, new(redis.Cases).ZDiff())
 }
 
 func TestZIncrBy(t *testing.T) {
-	RunCase(t, record.ZIncrBy)
+	runCase(t, new(redis.Cases).ZIncrBy())
 }
 
 func TestZInter(t *testing.T) {
-	RunCase(t, record.ZInter)
+	runCase(t, new(redis.Cases).ZInter())
 }
 
 func TestZLexCount(t *testing.T) {
-	RunCase(t, record.ZLexCount)
+	runCase(t, new(redis.Cases).ZLexCount())
 }
 
 func TestZMScore(t *testing.T) {
-	RunCase(t, record.ZMScore)
+	runCase(t, new(redis.Cases).ZMScore())
 }
 
 func TestZPopMax(t *testing.T) {
-	RunCase(t, record.ZPopMax)
+	runCase(t, new(redis.Cases).ZPopMax())
 }
 
 func TestZPopMin(t *testing.T) {
-	RunCase(t, record.ZPopMin)
+	runCase(t, new(redis.Cases).ZPopMin())
 }
 
 func TestZRandMember(t *testing.T) {
-	RunCase(t, record.ZRandMember)
+	runCase(t, new(redis.Cases).ZRandMember())
 }
 
 func TestZRange(t *testing.T) {
-	RunCase(t, record.ZRange)
+	runCase(t, new(redis.Cases).ZRange())
 }
 
 func TestZRangeByLex(t *testing.T) {
-	RunCase(t, record.ZRangeByLex)
+	runCase(t, new(redis.Cases).ZRangeByLex())
 }
 
 func TestZRangeByScore(t *testing.T) {
-	RunCase(t, record.ZRangeByScore)
+	runCase(t, new(redis.Cases).ZRangeByScore())
 }
 
 func TestZRank(t *testing.T) {
-	RunCase(t, record.ZRank)
+	runCase(t, new(redis.Cases).ZRank())
 }
 
 func TestZRem(t *testing.T) {
-	RunCase(t, record.ZRem)
+	runCase(t, new(redis.Cases).ZRem())
 }
 
 func TestZRemRangeByLex(t *testing.T) {
-	RunCase(t, record.ZRemRangeByLex)
+	runCase(t, new(redis.Cases).ZRemRangeByLex())
 }
 
 func TestZRemRangeByRank(t *testing.T) {
-	RunCase(t, record.ZRemRangeByRank)
+	runCase(t, new(redis.Cases).ZRemRangeByRank())
 }
 
 func TestZRemRangeByScore(t *testing.T) {
-	RunCase(t, record.ZRemRangeByScore)
+	runCase(t, new(redis.Cases).ZRemRangeByScore())
 }
 
 func TestZRevRange(t *testing.T) {
-	RunCase(t, record.ZRevRange)
+	runCase(t, new(redis.Cases).ZRevRange())
 }
 
 func TestZRevRangeByLex(t *testing.T) {
-	RunCase(t, record.ZRevRangeByLex)
+	runCase(t, new(redis.Cases).ZRevRangeByLex())
 }
 
 func TestZRevRangeByScore(t *testing.T) {
-	RunCase(t, record.ZRevRangeByScore)
+	runCase(t, new(redis.Cases).ZRevRangeByScore())
 }
 
 func TestZRevRank(t *testing.T) {
-	RunCase(t, record.ZRevRank)
+	runCase(t, new(redis.Cases).ZRevRank())
 }
 
 func TestZScore(t *testing.T) {
-	RunCase(t, record.ZScore)
+	runCase(t, new(redis.Cases).ZScore())
 }
 
 func TestZUnion(t *testing.T) {
-	RunCase(t, record.ZUnion)
+	runCase(t, new(redis.Cases).ZUnion())
 }
 
 func TestZUnionStore(t *testing.T) {
-	RunCase(t, record.ZUnionStore)
+	runCase(t, new(redis.Cases).ZUnionStore())
 }

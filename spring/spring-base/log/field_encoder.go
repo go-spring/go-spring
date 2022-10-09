@@ -20,8 +20,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"strconv"
+	"unicode/utf8"
 )
 
+// An Encoder is used to serialize strongly-typed Field.
 type Encoder interface {
 	AppendEncoderBegin() error
 	AppendEncoderEnd() error
@@ -30,18 +32,17 @@ type Encoder interface {
 	AppendArrayBegin() error
 	AppendArrayEnd() error
 	AppendKey(key string) error
-	AppendBool(bool) error
-	AppendInt64(int64) error
-	AppendUint64(uint64) error
-	AppendFloat64(float64) error
-	AppendString(string) error
+	AppendBool(v bool) error
+	AppendInt64(v int64) error
+	AppendUint64(v uint64) error
+	AppendFloat64(v float64) error
+	AppendString(v string) error
 	AppendReflect(v interface{}) error
-	AppendBuffer([]byte) error
 }
 
 var (
-	_ Encoder = (*jsonEncoder)(nil)
-	_ Encoder = (*flatEncoder)(nil)
+	_ Encoder = (*JSONEncoder)(nil)
+	_ Encoder = (*FlatEncoder)(nil)
 )
 
 type jsonToken int
@@ -56,198 +57,238 @@ const (
 	jsonTokenValue
 )
 
-type jsonEncoder struct {
+// JSONEncoder encodes Fields in json format.
+type JSONEncoder struct {
 	buf  *bytes.Buffer
 	last jsonToken
 }
 
-func NewJSONEncoder(buf *bytes.Buffer) *jsonEncoder {
-	return &jsonEncoder{
+// NewJSONEncoder returns a new *JSONEncoder.
+func NewJSONEncoder(buf *bytes.Buffer) *JSONEncoder {
+	return &JSONEncoder{
 		buf:  buf,
 		last: jsonTokenUnknown,
 	}
 }
 
-func (enc *jsonEncoder) Reset() {
+// Reset resets the *JSONEncoder.
+func (enc *JSONEncoder) Reset() {
 	enc.last = jsonTokenUnknown
 }
 
-func (enc *jsonEncoder) AppendEncoderBegin() error {
+// AppendEncoderBegin appends an encoder begin character.
+func (enc *JSONEncoder) AppendEncoderBegin() error {
 	enc.last = jsonTokenObjectBegin
-	return enc.buf.WriteByte('{')
-}
-
-func (enc *jsonEncoder) AppendEncoderEnd() error {
-	enc.last = jsonTokenObjectEnd
-	return enc.buf.WriteByte('}')
-}
-
-func (enc *jsonEncoder) AppendObjectBegin() error {
-	enc.last = jsonTokenObjectBegin
-	return enc.buf.WriteByte('{')
-}
-
-func (enc *jsonEncoder) AppendObjectEnd() error {
-	enc.last = jsonTokenObjectEnd
-	return enc.buf.WriteByte('}')
-}
-
-func (enc *jsonEncoder) AppendArrayBegin() error {
-	enc.last = jsonTokenArrayBegin
-	return enc.buf.WriteByte('[')
-}
-
-func (enc *jsonEncoder) AppendArrayEnd() error {
-	enc.last = jsonTokenArrayEnd
-	return enc.buf.WriteByte(']')
-}
-
-func (enc *jsonEncoder) appendSeparator(curr jsonToken) error {
-	switch curr {
-	case jsonTokenKey:
-		if enc.last == jsonTokenObjectEnd || enc.last == jsonTokenArrayEnd || enc.last == jsonTokenValue {
-			return enc.buf.WriteByte(',')
-		}
-	case jsonTokenValue:
-		if enc.last == jsonTokenValue {
-			return enc.buf.WriteByte(',')
-		}
-	}
+	enc.buf.WriteByte('{')
 	return nil
 }
 
-func (enc *jsonEncoder) AppendKey(key string) error {
-	err := enc.appendSeparator(jsonTokenKey)
-	if err != nil {
-		return err
+// AppendEncoderEnd appends an encoder end character.
+func (enc *JSONEncoder) AppendEncoderEnd() error {
+	enc.last = jsonTokenObjectEnd
+	enc.buf.WriteByte('}')
+	return nil
+}
+
+// AppendObjectBegin appends a object begin character.
+func (enc *JSONEncoder) AppendObjectBegin() error {
+	enc.last = jsonTokenObjectBegin
+	enc.buf.WriteByte('{')
+	return nil
+}
+
+// AppendObjectEnd appends an object end character.
+func (enc *JSONEncoder) AppendObjectEnd() error {
+	enc.last = jsonTokenObjectEnd
+	enc.buf.WriteByte('}')
+	return nil
+}
+
+// AppendArrayBegin appends an array begin character.
+func (enc *JSONEncoder) AppendArrayBegin() error {
+	enc.last = jsonTokenArrayBegin
+	enc.buf.WriteByte('[')
+	return nil
+}
+
+// AppendArrayEnd appends an array end character.
+func (enc *JSONEncoder) AppendArrayEnd() error {
+	enc.last = jsonTokenArrayEnd
+	enc.buf.WriteByte(']')
+	return nil
+}
+
+func (enc *JSONEncoder) appendSeparator(curr jsonToken) {
+	switch curr {
+	case jsonTokenKey:
+		if enc.last == jsonTokenObjectEnd || enc.last == jsonTokenArrayEnd || enc.last == jsonTokenValue {
+			enc.buf.WriteByte(',')
+		}
+	case jsonTokenValue:
+		if enc.last == jsonTokenValue {
+			enc.buf.WriteByte(',')
+		}
 	}
+}
+
+// AppendKey appends a key.
+func (enc *JSONEncoder) AppendKey(key string) error {
+	enc.appendSeparator(jsonTokenKey)
 	enc.last = jsonTokenKey
-	err = enc.buf.WriteByte('"')
-	if err != nil {
-		return err
-	}
-	_, err = enc.buf.WriteString(key)
-	if err != nil {
-		return err
-	}
-	err = enc.buf.WriteByte('"')
-	if err != nil {
-		return err
-	}
-	return enc.buf.WriteByte(':')
+	enc.buf.WriteByte('"')
+	enc.safeAddString(key)
+	enc.buf.WriteByte('"')
+	enc.buf.WriteByte(':')
+	return nil
 }
 
-func (enc *jsonEncoder) AppendBool(b bool) error {
-	err := enc.appendSeparator(jsonTokenValue)
-	if err != nil {
-		return err
-	}
+// AppendBool appends a bool.
+func (enc *JSONEncoder) AppendBool(v bool) error {
+	enc.appendSeparator(jsonTokenValue)
 	enc.last = jsonTokenValue
-	_, err = enc.buf.WriteString(strconv.FormatBool(b))
-	return err
+	enc.buf.WriteString(strconv.FormatBool(v))
+	return nil
 }
 
-func (enc *jsonEncoder) AppendInt64(i int64) error {
-	err := enc.appendSeparator(jsonTokenValue)
-	if err != nil {
-		return err
-	}
+// AppendInt64 appends an int64.
+func (enc *JSONEncoder) AppendInt64(v int64) error {
+	enc.appendSeparator(jsonTokenValue)
 	enc.last = jsonTokenValue
-	_, err = enc.buf.WriteString(strconv.FormatInt(i, 10))
-	return err
+	enc.buf.WriteString(strconv.FormatInt(v, 10))
+	return nil
 }
 
-func (enc *jsonEncoder) AppendUint64(u uint64) error {
-	err := enc.appendSeparator(jsonTokenValue)
-	if err != nil {
-		return err
-	}
+// AppendUint64 appends a uint64.
+func (enc *JSONEncoder) AppendUint64(u uint64) error {
+	enc.appendSeparator(jsonTokenValue)
 	enc.last = jsonTokenValue
-	_, err = enc.buf.WriteString(strconv.FormatUint(u, 10))
-	return err
+	enc.buf.WriteString(strconv.FormatUint(u, 10))
+	return nil
 }
 
-func (enc *jsonEncoder) AppendFloat64(f float64) error {
-	err := enc.appendSeparator(jsonTokenValue)
-	if err != nil {
-		return err
-	}
+// AppendFloat64 appends a float64.
+func (enc *JSONEncoder) AppendFloat64(v float64) error {
+	enc.appendSeparator(jsonTokenValue)
 	enc.last = jsonTokenValue
-	_, err = enc.buf.WriteString(strconv.FormatFloat(f, 'f', -1, 64))
-	return err
+	enc.buf.WriteString(strconv.FormatFloat(v, 'f', -1, 64))
+	return nil
 }
 
-func (enc *jsonEncoder) AppendString(s string) error {
-	err := enc.appendSeparator(jsonTokenValue)
-	if err != nil {
-		return err
-	}
+// AppendString appends a string.
+func (enc *JSONEncoder) AppendString(v string) error {
+	enc.appendSeparator(jsonTokenValue)
 	enc.last = jsonTokenValue
-	err = enc.buf.WriteByte('"')
-	if err != nil {
-		return err
-	}
-	_, err = enc.buf.WriteString(s)
-	if err != nil {
-		return err
-	}
-	return enc.buf.WriteByte('"')
+	enc.buf.WriteByte('"')
+	enc.safeAddString(v)
+	enc.buf.WriteByte('"')
+	return nil
 }
 
-func (enc *jsonEncoder) AppendReflect(v interface{}) error {
+// AppendReflect appends an interface{}.
+func (enc *JSONEncoder) AppendReflect(v interface{}) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
 	}
-	err = enc.appendSeparator(jsonTokenValue)
-	if err != nil {
-		return err
-	}
+	enc.appendSeparator(jsonTokenValue)
 	enc.last = jsonTokenValue
-	_, err = enc.buf.Write(b)
-	return err
+	enc.buf.Write(b)
+	return nil
 }
 
-func (enc *jsonEncoder) AppendBuffer(b []byte) error {
-	err := enc.appendSeparator(jsonTokenKey)
-	if err != nil {
-		return err
+// safeAddString JSON-escapes a string and appends it to the buf.
+func (enc *JSONEncoder) safeAddString(s string) {
+	for i := 0; i < len(s); {
+		if enc.tryAddRuneSelf(s[i]) {
+			i++
+			continue
+		}
+		r, size := utf8.DecodeRuneInString(s[i:])
+		if enc.tryAddRuneError(r, size) {
+			i++
+			continue
+		}
+		enc.buf.WriteString(s[i : i+size])
+		i += size
 	}
-	enc.last = jsonTokenValue
-	_, err = enc.buf.Write(b)
-	return err
 }
 
-type flatEncoder struct {
+// tryAddRuneSelf appends b if it's valid UTF-8 character represented in a single byte.
+func (enc *JSONEncoder) tryAddRuneSelf(b byte) bool {
+	const _hex = "0123456789abcdef"
+	if b >= utf8.RuneSelf {
+		return false
+	}
+	if 0x20 <= b && b != '\\' && b != '"' {
+		enc.buf.WriteByte(b)
+		return true
+	}
+	switch b {
+	case '\\', '"':
+		enc.buf.WriteByte('\\')
+		enc.buf.WriteByte(b)
+	case '\n':
+		enc.buf.WriteByte('\\')
+		enc.buf.WriteByte('n')
+	case '\r':
+		enc.buf.WriteByte('\\')
+		enc.buf.WriteByte('r')
+	case '\t':
+		enc.buf.WriteByte('\\')
+		enc.buf.WriteByte('t')
+	default:
+		// Encode bytes < 0x20, except for the escape sequences above.
+		enc.buf.WriteString(`\u00`)
+		enc.buf.WriteByte(_hex[b>>4])
+		enc.buf.WriteByte(_hex[b&0xF])
+	}
+	return true
+}
+
+func (enc *JSONEncoder) tryAddRuneError(r rune, size int) bool {
+	if r == utf8.RuneError && size == 1 {
+		enc.buf.WriteString(`\ufffd`)
+		return true
+	}
+	return false
+}
+
+// FlatEncoder encodes Fields in flat format.
+type FlatEncoder struct {
 	buf         *bytes.Buffer
 	separator   string
-	jsonEncoder *jsonEncoder
-	jsonDepth   int
+	jsonEncoder *JSONEncoder
+	jsonDepth   int8
 	init        bool
 }
 
-func NewFlatEncoder(buf *bytes.Buffer, separator string) *flatEncoder {
-	return &flatEncoder{
+// NewFlatEncoder return a new *FlatEncoder with separator.
+func NewFlatEncoder(buf *bytes.Buffer, separator string) *FlatEncoder {
+	return &FlatEncoder{
 		buf:         buf,
 		separator:   separator,
-		jsonEncoder: &jsonEncoder{buf: buf},
+		jsonEncoder: &JSONEncoder{buf: buf},
 	}
 }
 
-func (enc *flatEncoder) AppendEncoderBegin() error {
+// AppendEncoderBegin appends an encoder begin character.
+func (enc *FlatEncoder) AppendEncoderBegin() error {
 	return nil
 }
 
-func (enc *flatEncoder) AppendEncoderEnd() error {
+// AppendEncoderEnd appends an encoder end character.
+func (enc *FlatEncoder) AppendEncoderEnd() error {
 	return nil
 }
 
-func (enc *flatEncoder) AppendObjectBegin() error {
+// AppendObjectBegin appends a object begin character.
+func (enc *FlatEncoder) AppendObjectBegin() error {
 	enc.jsonDepth++
 	return enc.jsonEncoder.AppendObjectBegin()
 }
 
-func (enc *flatEncoder) AppendObjectEnd() error {
+// AppendObjectEnd appends an object end character.
+func (enc *FlatEncoder) AppendObjectEnd() error {
 	enc.jsonDepth--
 	err := enc.jsonEncoder.AppendObjectEnd()
 	if enc.jsonDepth == 0 {
@@ -256,12 +297,14 @@ func (enc *flatEncoder) AppendObjectEnd() error {
 	return err
 }
 
-func (enc *flatEncoder) AppendArrayBegin() error {
+// AppendArrayBegin appends an array begin character.
+func (enc *FlatEncoder) AppendArrayBegin() error {
 	enc.jsonDepth++
 	return enc.jsonEncoder.AppendArrayBegin()
 }
 
-func (enc *flatEncoder) AppendArrayEnd() error {
+// AppendArrayEnd appends an array end character.
+func (enc *FlatEncoder) AppendArrayEnd() error {
 	enc.jsonDepth--
 	err := enc.jsonEncoder.AppendArrayEnd()
 	if enc.jsonDepth == 0 {
@@ -270,65 +313,67 @@ func (enc *flatEncoder) AppendArrayEnd() error {
 	return err
 }
 
-func (enc *flatEncoder) AppendKey(key string) error {
+// AppendKey appends a key.
+func (enc *FlatEncoder) AppendKey(key string) error {
 	if enc.jsonDepth > 0 {
 		return enc.jsonEncoder.AppendKey(key)
 	}
 	if enc.init {
-		_, err := enc.buf.WriteString(enc.separator)
-		if err != nil {
-			return err
-		}
+		enc.buf.WriteString(enc.separator)
 	}
 	enc.init = true
-	_, err := enc.buf.WriteString(key)
-	if err != nil {
-		return err
-	}
-	return enc.buf.WriteByte('=')
+	enc.buf.WriteString(key)
+	enc.buf.WriteByte('=')
+	return nil
 }
 
-func (enc *flatEncoder) AppendBool(b bool) error {
+// AppendBool appends a bool.
+func (enc *FlatEncoder) AppendBool(v bool) error {
 	if enc.jsonDepth > 0 {
-		return enc.jsonEncoder.AppendBool(b)
+		return enc.jsonEncoder.AppendBool(v)
 	}
-	_, err := enc.buf.WriteString(strconv.FormatBool(b))
-	return err
+	enc.buf.WriteString(strconv.FormatBool(v))
+	return nil
 }
 
-func (enc *flatEncoder) AppendInt64(i int64) error {
+// AppendInt64 appends a int64.
+func (enc *FlatEncoder) AppendInt64(v int64) error {
 	if enc.jsonDepth > 0 {
-		return enc.jsonEncoder.AppendInt64(i)
+		return enc.jsonEncoder.AppendInt64(v)
 	}
-	_, err := enc.buf.WriteString(strconv.FormatInt(i, 10))
-	return err
+	enc.buf.WriteString(strconv.FormatInt(v, 10))
+	return nil
 }
 
-func (enc *flatEncoder) AppendUint64(u uint64) error {
+// AppendUint64 appends a uint64.
+func (enc *FlatEncoder) AppendUint64(v uint64) error {
 	if enc.jsonDepth > 0 {
-		return enc.jsonEncoder.AppendUint64(u)
+		return enc.jsonEncoder.AppendUint64(v)
 	}
-	_, err := enc.buf.WriteString(strconv.FormatUint(u, 10))
-	return err
+	enc.buf.WriteString(strconv.FormatUint(v, 10))
+	return nil
 }
 
-func (enc *flatEncoder) AppendFloat64(f float64) error {
+// AppendFloat64 appends a float64.
+func (enc *FlatEncoder) AppendFloat64(v float64) error {
 	if enc.jsonDepth > 0 {
-		return enc.jsonEncoder.AppendFloat64(f)
+		return enc.jsonEncoder.AppendFloat64(v)
 	}
-	_, err := enc.buf.WriteString(strconv.FormatFloat(f, 'f', -1, 64))
-	return err
+	enc.buf.WriteString(strconv.FormatFloat(v, 'f', -1, 64))
+	return nil
 }
 
-func (enc *flatEncoder) AppendString(s string) error {
+// AppendString appends a string.
+func (enc *FlatEncoder) AppendString(v string) error {
 	if enc.jsonDepth > 0 {
-		return enc.jsonEncoder.AppendString(s)
+		return enc.jsonEncoder.AppendString(v)
 	}
-	_, err := enc.buf.WriteString(s)
-	return err
+	enc.buf.WriteString(v)
+	return nil
 }
 
-func (enc *flatEncoder) AppendReflect(v interface{}) error {
+// AppendReflect appends an interface{}.
+func (enc *FlatEncoder) AppendReflect(v interface{}) error {
 	if enc.jsonDepth > 0 {
 		return enc.jsonEncoder.AppendReflect(v)
 	}
@@ -336,14 +381,6 @@ func (enc *flatEncoder) AppendReflect(v interface{}) error {
 	if err != nil {
 		return err
 	}
-	_, err = enc.buf.Write(b)
-	return err
-}
-
-func (enc *flatEncoder) AppendBuffer(b []byte) error {
-	if enc.jsonDepth > 0 {
-		return enc.jsonEncoder.AppendBuffer(b)
-	}
-	_, err := enc.buf.Write(b)
-	return err
+	enc.buf.Write(b)
+	return nil
 }

@@ -82,14 +82,6 @@ func (h *serverHandler) Start(s web.Server) error {
 				webCtx = newContext(nil, "", "", echoCtx)
 			}
 
-			// 流量录制
-			web.StartRecord(webCtx)
-			defer func() { web.StopRecord(webCtx) }()
-
-			// 流量回放
-			web.StartReplay(webCtx)
-			defer func() { web.StopReplay(webCtx) }()
-
 			return next(EchoContext(webCtx))
 		}
 	})
@@ -181,7 +173,7 @@ func (f *recoveryFilter) Invoke(ctx web.Context, chain web.FilterChain) {
 		if err := recover(); err != nil {
 
 			ctxLogger := f.logger.WithContext(ctx.Context())
-			ctxLogger.Sugar().Error(nil, err, "\n", string(debug.Stack()))
+			ctxLogger.Error(nil, err, "\n", string(debug.Stack()))
 
 			httpE := web.HttpError{Code: http.StatusInternalServerError}
 			switch e := err.(type) {
@@ -219,7 +211,7 @@ func (f *recoveryFilter) Invoke(ctx web.Context, chain web.FilterChain) {
 				return
 			}
 			if err = echoCtx.NoContent(httpE.Code); err != nil {
-				ctxLogger.Sugar().Error(nil, err)
+				ctxLogger.Error(nil, err)
 			}
 		}
 	}()

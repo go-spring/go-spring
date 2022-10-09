@@ -21,7 +21,6 @@ import (
 	"testing"
 
 	"github.com/go-spring/spring-base/assert"
-	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-core/redis"
 	"github.com/golang/mock/gomock"
 )
@@ -32,8 +31,8 @@ func TestMock(t *testing.T) {
 	defer ctrl.Finish()
 
 	ctx := context.Background()
-	conn := redis.NewMockConnPool(ctrl)
-	conn.EXPECT().Exec(ctx, log.T("EXISTS", "mykey")).Return(int64(0), nil)
+	conn := redis.NewMockDriver(ctrl)
+	conn.EXPECT().Exec(ctx, []interface{}{"EXISTS", "mykey"}).Return(int64(0), nil)
 
 	c := redis.NewClient(conn)
 	r1, _ := c.Exists(ctx, "mykey")

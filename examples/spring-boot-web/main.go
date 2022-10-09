@@ -84,7 +84,7 @@ func read(logger *log.Logger, response *http.Response, err error, expected strin
 	b, _ := ioutil.ReadAll(response.Body)
 	fmt.Println("status:", response.Status, "body:", string(b))
 	if string(b) != expected {
-		logger.Sugar().Errorf("get %s but want %s", string(b), expected)
+		logger.Errorf("get %s but want %s", string(b), expected)
 	}
 }
 

@@ -48,18 +48,29 @@ type Result struct {
 	Data []string
 }
 
-type ConnPool interface {
+type Driver interface {
 	Exec(ctx context.Context, args []interface{}) (interface{}, error)
 }
 
+var (
+	Recorder func(Driver) Driver
+	Replayer func(Driver) Driver
+)
+
 // Client provides operations for redis commands.
 type Client struct {
-	conn ConnPool
+	driver Driver
 }
 
 // NewClient returns a new *Client.
-func NewClient(conn ConnPool) *Client {
-	return &Client{conn: conn}
+func NewClient(driver Driver) *Client {
+	if Recorder != nil {
+		driver = Recorder(driver)
+	}
+	if Replayer != nil {
+		driver = Replayer(driver)
+	}
+	return &Client{driver: driver}
 }
 
 func toInt64(v interface{}, err error) (int64, error) {
@@ -85,7 +96,7 @@ func toInt64(v interface{}, err error) (int64, error) {
 
 // Int executes a command whose reply is a `int64`.
 func (c *Client) Int(ctx context.Context, args ...interface{}) (int64, error) {
-	return toInt64(c.conn.Exec(ctx, args))
+	return toInt64(c.driver.Exec(ctx, args))
 }
 
 func toFloat64(v interface{}, err error) (float64, error) {
@@ -111,7 +122,7 @@ func toFloat64(v interface{}, err error) (float64, error) {
 
 // Float executes a command whose reply is a `float64`.
 func (c *Client) Float(ctx context.Context, args ...interface{}) (float64, error) {
-	return toFloat64(c.conn.Exec(ctx, args))
+	return toFloat64(c.driver.Exec(ctx, args))
 }
 
 func toString(v interface{}, err error) (string, error) {
@@ -133,7 +144,7 @@ func toString(v interface{}, err error) (string, error) {
 
 // String executes a command whose reply is a `string`.
 func (c *Client) String(ctx context.Context, args ...interface{}) (string, error) {
-	return toString(c.conn.Exec(ctx, args))
+	return toString(c.driver.Exec(ctx, args))
 }
 
 func toSlice(v interface{}, err error) ([]interface{}, error) {
@@ -162,7 +173,7 @@ func toSlice(v interface{}, err error) ([]interface{}, error) {
 
 // Slice executes a command whose reply is a `[]interface{}`.
 func (c *Client) Slice(ctx context.Context, args ...interface{}) ([]interface{}, error) {
-	return toSlice(c.conn.Exec(ctx, args))
+	return toSlice(c.driver.Exec(ctx, args))
 }
 
 func toInt64Slice(v interface{}, err error) ([]int64, error) {
@@ -184,7 +195,7 @@ func toInt64Slice(v interface{}, err error) ([]int64, error) {
 
 // IntSlice executes a command whose reply is a `[]int64`.
 func (c *Client) IntSlice(ctx context.Context, args ...interface{}) ([]int64, error) {
-	return toInt64Slice(c.conn.Exec(ctx, args))
+	return toInt64Slice(c.driver.Exec(ctx, args))
 }
 
 func toFloat64Slice(v interface{}, err error) ([]float64, error) {
@@ -206,7 +217,7 @@ func toFloat64Slice(v interface{}, err error) ([]float64, error) {
 
 // FloatSlice executes a command whose reply is a `[]float64`.
 func (c *Client) FloatSlice(ctx context.Context, args ...interface{}) ([]float64, error) {
-	return toFloat64Slice(c.conn.Exec(ctx, args))
+	return toFloat64Slice(c.driver.Exec(ctx, args))
 }
 
 func toStringSlice(v interface{}, err error) ([]string, error) {
@@ -228,7 +239,7 @@ func toStringSlice(v interface{}, err error) ([]string, error) {
 
 // StringSlice executes a command whose reply is a `[]string`.
 func (c *Client) StringSlice(ctx context.Context, args ...interface{}) ([]string, error) {
-	return toStringSlice(c.conn.Exec(ctx, args))
+	return toStringSlice(c.driver.Exec(ctx, args))
 }
 
 func toStringMap(v interface{}, err error) (map[string]string, error) {
@@ -248,7 +259,7 @@ func toStringMap(v interface{}, err error) (map[string]string, error) {
 
 // StringMap executes a command whose reply is a `map[string]string`.
 func (c *Client) StringMap(ctx context.Context, args ...interface{}) (map[string]string, error) {
-	return toStringMap(c.conn.Exec(ctx, args))
+	return toStringMap(c.driver.Exec(ctx, args))
 }
 
 func toZItemSlice(v interface{}, err error) ([]ZItem, error) {
@@ -275,5 +286,5 @@ func toZItemSlice(v interface{}, err error) ([]ZItem, error) {
 
 // ZItemSlice executes a command whose reply is a `[]ZItem`.
 func (c *Client) ZItemSlice(ctx context.Context, args ...interface{}) ([]ZItem, error) {
-	return toZItemSlice(c.conn.Exec(ctx, args))
+	return toZItemSlice(c.driver.Exec(ctx, args))
 }

@@ -14,24 +14,25 @@
  * limitations under the License.
  */
 
-package log_test
+package SpringGoRedis_test
 
 import (
-	"fmt"
+	"context"
 	"testing"
 
-	"github.com/go-spring/spring-base/assert"
-	"github.com/go-spring/spring-base/log"
+	"github.com/go-spring/spring-core/redis"
+	SpringGoRedis "github.com/go-spring/spring-go-redis"
 )
 
-func TestNewErrNo(t *testing.T) {
-	assert.Panic(t, func() {
-		log.NewErrno(200, 0, "")
-	}, "project invalid, should be >= 1000")
-	assert.Panic(t, func() {
-		log.NewErrno(1000, 0, "")
-	}, "code invalid, should be 1~999")
-	fmt.Println(log.NewErrno(1000, 1, "").Code())
-	fmt.Println(log.OK.Code(), log.OK.Msg())
-	fmt.Println(log.ERROR.Code(), log.ERROR.Msg())
+func runCase(t *testing.T, c *redis.Case) {
+	d, err := SpringGoRedis.Open(redis.Config{
+		Port: 6379,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	client := redis.NewClient(d)
+	client.FlushAll(ctx)
+	c.Func(t, ctx, client)
 }

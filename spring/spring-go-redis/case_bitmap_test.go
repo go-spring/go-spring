@@ -14,30 +14,30 @@
  * limitations under the License.
  */
 
-package record
+package SpringGoRedis_test
 
 import (
 	"testing"
 
-	"github.com/go-spring/spring-core/redis/test/record"
+	"github.com/go-spring/spring-core/redis"
 )
 
 func TestBitCount(t *testing.T) {
-	RunCase(t, record.BitCount)
+	runCase(t, new(redis.Cases).BitCount())
 }
 
 func TestBitOpAnd(t *testing.T) {
-	RunCase(t, record.BitOpAnd)
+	runCase(t, new(redis.Cases).BitOpAnd())
 }
 
 func TestBitPos(t *testing.T) {
-	RunCase(t, record.BitPos)
+	runCase(t, new(redis.Cases).BitPos())
 }
 
 func TestGetBit(t *testing.T) {
-	RunCase(t, record.GetBit)
+	runCase(t, new(redis.Cases).GetBit())
 }
 
 func TestSetBit(t *testing.T) {
-	RunCase(t, record.SetBit)
+	runCase(t, new(redis.Cases).SetBit())
 }

@@ -14,10 +14,30 @@
  * limitations under the License.
  */
 
-package mongo
+package record
 
-// Config is the configuration of mongodb client.
-type Config struct {
-	URL  string `value:"${url:=mongodb://localhost}"`
-	Ping bool   `value:"${ping:=true}"`
+import (
+	"testing"
+
+	"github.com/go-spring/spring-core/redis"
+)
+
+func TestBitCount(t *testing.T) {
+	runCase(t, new(redis.Cases).BitCount())
 }
+
+//func TestBitOpAnd(t *testing.T) {
+//	RunCase(t, record.BitOpAnd)
+//}
+//
+//func TestBitPos(t *testing.T) {
+//	RunCase(t, record.BitPos)
+//}
+//
+//func TestGetBit(t *testing.T) {
+//	RunCase(t, record.GetBit)
+//}
+//
+//func TestSetBit(t *testing.T) {
+//	RunCase(t, record.SetBit)
+//}

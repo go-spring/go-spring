@@ -25,13 +25,14 @@ import (
 )
 
 func init() {
-	RegisterPlugin("Filters", PluginTypeFilter, (*CompositeFilter)(nil))
-	RegisterPlugin("DenyAllFilter", PluginTypeFilter, (*DenyAllFilter)(nil))
-	RegisterPlugin("LevelFilter", PluginTypeFilter, (*LevelFilter)(nil))
-	RegisterPlugin("LevelMatchFilter", PluginTypeFilter, (*LevelMatchFilter)(nil))
-	RegisterPlugin("LevelRangeFilter", PluginTypeFilter, (*LevelRangeFilter)(nil))
-	RegisterPlugin("TimeFilter", PluginTypeFilter, (*TimeFilter)(nil))
-	RegisterPlugin("TagFilter", PluginTypeFilter, (*TagFilter)(nil))
+	RegisterPlugin("AcceptAllFilter", PluginTypeFilter, (Filter)((*AcceptAllFilter)(nil)))
+	RegisterPlugin("DenyAllFilter", PluginTypeFilter, (Filter)((*DenyAllFilter)(nil)))
+	RegisterPlugin("LevelFilter", PluginTypeFilter, (Filter)((*LevelFilter)(nil)))
+	RegisterPlugin("LevelMatchFilter", PluginTypeFilter, (Filter)((*LevelMatchFilter)(nil)))
+	RegisterPlugin("LevelRangeFilter", PluginTypeFilter, (Filter)((*LevelRangeFilter)(nil)))
+	RegisterPlugin("TimeFilter", PluginTypeFilter, (Filter)((*TimeFilter)(nil)))
+	RegisterPlugin("TagFilter", PluginTypeFilter, (Filter)((*TagFilter)(nil)))
+	RegisterPlugin("Filters", PluginTypeFilter, (Filter)((*CompositeFilter)(nil)))
 }
 
 type Result int
@@ -41,120 +42,73 @@ const (
 	ResultDeny
 )
 
-func ParseResult(s string) (Result, error) {
-	switch strings.ToLower(s) {
-	case "accept":
-		return ResultAccept, nil
-	case "deny":
-		return ResultDeny, nil
-	default:
-		return -1, fmt.Errorf("invalid result %s", s)
-	}
-}
-
 // Filter is an interface that tells the logger a log message should
 // be dropped when the Filter method returns ResultDeny.
 // Filter 只应该出现在两个地方，一个是 Logger 上，用于控制消息是否打印，另一个是
 // AppenderRef，用于控制消息是否输出到 Appender 上，即控制消息路由。
 type Filter interface {
-	LifeCycle
-	Filter(level Level, e Entry, fields func() []Field) Result
+	Filter(e *Event) Result
 }
 
-type BaseFilter struct {
-	OnMatch    Result `PluginAttribute:"onMatch,default=accept"`
-	OnMismatch Result `PluginAttribute:"onMismatch,default=deny"`
-}
+// AcceptAllFilter causes all logging events to be accepted.
+type AcceptAllFilter struct{}
 
-func (c *BaseFilter) Start() error             { return nil }
-func (c *BaseFilter) Stop(ctx context.Context) {}
-
-// CompositeFilter composes and invokes one or more filters.
-type CompositeFilter struct {
-	Filters []Filter `PluginElement:"Filter"`
-}
-
-func (f *CompositeFilter) Start() error {
-	for _, filter := range f.Filters {
-		if err := filter.Start(); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (f *CompositeFilter) Stop(ctx context.Context) {
-	for _, filter := range f.Filters {
-		filter.Stop(ctx)
-	}
-}
-
-func (f *CompositeFilter) Filter(level Level, e Entry, fields func() []Field) Result {
-	for _, filter := range f.Filters {
-		if ResultDeny == filter.Filter(level, e, fields) {
-			return ResultDeny
-		}
-	}
+func (f *AcceptAllFilter) Filter(e *Event) Result {
 	return ResultAccept
 }
 
 // DenyAllFilter causes all logging events to be dropped.
 type DenyAllFilter struct{}
 
-func (f *DenyAllFilter) Start() error                                     { return nil }
-func (f *DenyAllFilter) Stop(ctx context.Context)                         {}
-func (f *DenyAllFilter) Filter(_ Level, _ Entry, _ func() []Field) Result { return ResultDeny }
+func (f *DenyAllFilter) Filter(e *Event) Result {
+	return ResultDeny
+}
 
 // LevelFilter logs events if the level in the Event is same or more specific
 // than the configured level.
 type LevelFilter struct {
-	BaseFilter
 	Level Level `PluginAttribute:"level"`
 }
 
-func (f *LevelFilter) Filter(level Level, e Entry, fields func() []Field) Result {
-	if level >= f.Level {
-		return f.OnMatch
+func (f *LevelFilter) Filter(e *Event) Result {
+	if e.Level >= f.Level {
+		return ResultAccept
 	}
-	return f.OnMismatch
+	return ResultDeny
 }
 
 // LevelMatchFilter logs events if the level in the Event matches the specified
 // logging level exactly.
 type LevelMatchFilter struct {
-	BaseFilter
 	Level Level `PluginAttribute:"level"`
 }
 
-func (f *LevelMatchFilter) Filter(level Level, e Entry, fields func() []Field) Result {
-	if level == f.Level {
-		return f.OnMatch
+func (f *LevelMatchFilter) Filter(e *Event) Result {
+	if e.Level == f.Level {
+		return ResultAccept
 	}
-	return f.OnMismatch
+	return ResultDeny
 }
 
 // LevelRangeFilter logs events if the level in the Event is in the range of the
 // configured min and max levels.
 type LevelRangeFilter struct {
-	BaseFilter
-	MinLevel Level `PluginAttribute:"minLevel"`
-	MaxLevel Level `PluginAttribute:"maxLevel"`
+	Min Level `PluginAttribute:"min"`
+	Max Level `PluginAttribute:"max"`
 }
 
-func (f *LevelRangeFilter) Filter(level Level, e Entry, fields func() []Field) Result {
-	if level >= f.MinLevel && level <= f.MaxLevel {
-		return f.OnMatch
+func (f *LevelRangeFilter) Filter(e *Event) Result {
+	if e.Level >= f.Min && e.Level <= f.Max {
+		return ResultAccept
 	}
-	return f.OnMismatch
+	return ResultDeny
 }
 
 // TimeFilter filters events that fall within a specified time period in each day.
 type TimeFilter struct {
-	BaseFilter
 	Timezone string `PluginAttribute:"timezone,default=Local"`
 	Start    string `PluginAttribute:"start"`
 	End      string `PluginAttribute:"end"`
-	TimeFunc func() time.Time
 	location *time.Location
 	abs      time.Time
 	start    int
@@ -163,9 +117,6 @@ type TimeFilter struct {
 
 func (f *TimeFilter) Init() error {
 	const layout = "15:04:05"
-	if f.TimeFunc == nil {
-		f.TimeFunc = time.Now
-	}
 	location, err := time.LoadLocation(f.Timezone)
 	if err != nil {
 		return err
@@ -193,16 +144,15 @@ func (f *TimeFilter) Init() error {
 	return nil
 }
 
-func (f *TimeFilter) Filter(level Level, e Entry, fields func() []Field) Result {
-	t := int(f.TimeFunc().Sub(f.abs)/time.Second) % 86400
+func (f *TimeFilter) Filter(e *Event) Result {
+	t := int(e.Time.Sub(f.abs)/time.Second) % 86400
 	if t >= f.start && t <= f.end {
-		return f.OnMatch
+		return ResultAccept
 	}
-	return f.OnMismatch
+	return ResultDeny
 }
 
 type TagFilter struct {
-	BaseFilter
 	Prefix string `PluginAttribute:"prefix,default="`
 	Suffix string `PluginAttribute:"suffix,default="`
 	Tag    string `PluginAttribute:"tag,default="`
@@ -210,24 +160,96 @@ type TagFilter struct {
 }
 
 func (f *TagFilter) Init() error {
-	f.tags = strings.Split(f.Tag, ",")
 	if f.Prefix == "" && f.Suffix == "" && f.Tag == "" {
 		return errors.New("TagFilter needs tag/prefix/suffix attribute")
+	}
+	f.tags = strings.Split(f.Tag, ",")
+	return nil
+}
+
+func (f *TagFilter) Filter(e *Event) Result {
+	if f.Prefix != "" && strings.HasPrefix(e.Tag, f.Prefix) {
+		return ResultAccept
+	}
+	if f.Suffix != "" && strings.HasSuffix(e.Tag, f.Suffix) {
+		return ResultAccept
+	}
+	for _, tag := range f.tags {
+		if e.Tag == tag {
+			return ResultAccept
+		}
+	}
+	return ResultDeny
+}
+
+type Operator int
+
+const (
+	OperatorAnd Operator = iota
+	OperatorOr
+	OperatorNone
+)
+
+func ParseOperator(s string) (Operator, error) {
+	switch strings.ToLower(s) {
+	case "and":
+		return OperatorAnd, nil
+	case "or":
+		return OperatorOr, nil
+	case "none":
+		return OperatorNone, nil
+	default:
+		return -1, fmt.Errorf("invalid operator '%s'", s)
+	}
+}
+
+type CompositeFilter struct {
+	Filters  []Filter `PluginElement:"Filter"`
+	Operator Operator //`PluginAttribute:"operator,default=and"`
+}
+
+func (f *CompositeFilter) Start() error {
+	for _, filter := range f.Filters {
+		if v, ok := filter.(LifeCycle); ok {
+			if err := v.Start(); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
 
-func (f *TagFilter) Filter(level Level, e Entry, fields func() []Field) Result {
-	if f.Prefix != "" && strings.HasPrefix(e.Tag(), f.Prefix) {
-		return f.OnMatch
-	}
-	if f.Suffix != "" && strings.HasSuffix(e.Tag(), f.Suffix) {
-		return f.OnMatch
-	}
-	for _, tag := range f.tags {
-		if e.Tag() == tag {
-			return f.OnMatch
+func (f *CompositeFilter) Stop(ctx context.Context) {
+	for _, filter := range f.Filters {
+		if v, ok := filter.(LifeCycle); ok {
+			v.Stop(ctx)
 		}
 	}
-	return f.OnMismatch
+}
+
+func (f *CompositeFilter) Filter(e *Event) Result {
+	switch f.Operator {
+	case OperatorAnd:
+		for _, filter := range f.Filters {
+			if ResultDeny == filter.Filter(e) {
+				return ResultDeny
+			}
+		}
+		return ResultAccept
+	case OperatorOr:
+		for _, filter := range f.Filters {
+			if ResultAccept == filter.Filter(e) {
+				return ResultAccept
+			}
+		}
+		return ResultDeny
+	case OperatorNone:
+		for _, filter := range f.Filters {
+			if ResultAccept == filter.Filter(e) {
+				return ResultDeny
+			}
+		}
+		return ResultAccept
+	}
+	return ResultAccept
 }

@@ -32,11 +32,8 @@ func init() {
 type privateConfig interface {
 	publisher
 	logEvent(e *Event)
-	getParent() privateConfig
-	getEntry() SimpleEntry
 	getName() string
 	getLevel() Level
-	getFilter() Filter
 	getAppenders() []*AppenderRef
 }
 
@@ -49,10 +46,10 @@ type AppenderRef struct {
 }
 
 func (r *AppenderRef) Append(e *Event) {
-	if r.Level != NoneLevel && e.level < r.Level {
+	if r.Level != NoneLevel && e.Level < r.Level {
 		return
 	}
-	if r.Filter != nil && ResultDeny == r.Filter.Filter(e.level, e.entry, e.fields) {
+	if r.Filter != nil && ResultDeny == r.Filter.Filter(e) {
 		return
 	}
 	r.appender.Append(e)
@@ -60,21 +57,11 @@ func (r *AppenderRef) Append(e *Event) {
 
 // baseLoggerConfig is the base of loggerConfig and asyncLoggerConfig.
 type baseLoggerConfig struct {
-	parent       privateConfig
-	entry        SimpleEntry
+	root         privateConfig
 	Name         string         `PluginAttribute:"name"`
-	Filter       Filter         `PluginElement:"Filter"`
 	AppenderRefs []*AppenderRef `PluginElement:"AppenderRef"`
-	Level        Level          `PluginAttribute:"level,default=none"`
+	Level        Level          `PluginAttribute:"level,default=info"`
 	Additivity   bool           `PluginAttribute:"additivity,default=true"`
-}
-
-func (c *baseLoggerConfig) getParent() privateConfig {
-	return c.parent
-}
-
-func (c *baseLoggerConfig) getEntry() SimpleEntry {
-	return c.entry
 }
 
 func (c *baseLoggerConfig) getName() string {
@@ -85,30 +72,13 @@ func (c *baseLoggerConfig) getLevel() Level {
 	return c.Level
 }
 
-func (c *baseLoggerConfig) getFilter() Filter {
-	return c.Filter
-}
-
 func (c *baseLoggerConfig) getAppenders() []*AppenderRef {
 	return c.AppenderRefs
 }
 
-// logEvent is used only for parent logging events.
-func (c *baseLoggerConfig) logEvent(e *Event) {
-	if ResultDeny != c.filter(e.level, e.entry, e.fields) {
-		c.callAppenders(e)
-	}
-}
-
 // filter returns whether the event should be logged.
-func (c *baseLoggerConfig) filter(level Level, e Entry, fields func() []Field) Result {
-	if c.Filter != nil && ResultDeny == c.Filter.Filter(level, e, fields) {
-		return ResultDeny
-	}
-	if c.Level != NoneLevel && level < c.Level {
-		return ResultDeny
-	}
-	return ResultAccept
+func (c *baseLoggerConfig) enableLevel(level Level) bool {
+	return level >= c.Level
 }
 
 // callAppenders calls all the appenders inherited from the hierarchy circumventing.
@@ -116,19 +86,22 @@ func (c *baseLoggerConfig) callAppenders(e *Event) {
 	for _, r := range c.AppenderRefs {
 		r.Append(e)
 	}
-	if c.parent != nil && c.Additivity {
-		c.parent.logEvent(e)
+	if c.root != nil && c.Additivity {
+		c.root.logEvent(e)
 	}
+}
+
+// logEvent is used only for parent logging events.
+func (c *baseLoggerConfig) logEvent(e *Event) {
+	if !c.enableLevel(e.Level) {
+		return
+	}
+	c.callAppenders(e)
 }
 
 // loggerConfig publishes events synchronously.
 type loggerConfig struct {
 	baseLoggerConfig
-}
-
-func (c *loggerConfig) Init() error {
-	c.entry = SimpleEntry{pub: c}
-	return nil
 }
 
 func (c *loggerConfig) publish(e *Event) {
@@ -138,11 +111,6 @@ func (c *loggerConfig) publish(e *Event) {
 // asyncLoggerConfig publishes events synchronously.
 type asyncLoggerConfig struct {
 	baseLoggerConfig
-}
-
-func (c *asyncLoggerConfig) Init() error {
-	c.entry = SimpleEntry{pub: c}
-	return nil
 }
 
 type eventWrapper struct {

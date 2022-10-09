@@ -65,7 +65,7 @@ func (c *BaseContext) NativeContext() interface{} {
 func (c *BaseContext) Get(key string) interface{} {
 	v, err := knife.Load(c.Context(), key)
 	if err != nil {
-		c.Logger.WithContext(c.Context()).Sugar().Error(log.ERROR, err)
+		c.Logger.WithContext(c.Context()).Error(err)
 		return nil
 	}
 	return v

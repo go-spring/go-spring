@@ -14,70 +14,70 @@
  * limitations under the License.
  */
 
-package record
+package SpringRedigo_test
 
 import (
 	"testing"
 
-	"github.com/go-spring/spring-core/redis/test/record"
+	"github.com/go-spring/spring-core/redis"
 )
 
 func TestDel(t *testing.T) {
-	RunCase(t, record.Del)
+	runCase(t, new(redis.Cases).Del())
 }
 
 func TestDump(t *testing.T) {
-	RunCase(t, record.Dump)
+	runCase(t, new(redis.Cases).Dump())
 }
 
 func TestExists(t *testing.T) {
-	RunCase(t, record.Exists)
+	runCase(t, new(redis.Cases).Exists())
 }
 
 func TestExpire(t *testing.T) {
-	RunCase(t, record.Expire)
+	runCase(t, new(redis.Cases).Expire())
 }
 
 func TestExpireAt(t *testing.T) {
-	RunCase(t, record.ExpireAt)
+	runCase(t, new(redis.Cases).ExpireAt())
 }
 
 func TestKeys(t *testing.T) {
-	RunCase(t, record.Keys)
+	runCase(t, new(redis.Cases).Keys())
 }
 
 func TestPersist(t *testing.T) {
-	RunCase(t, record.Persist)
+	runCase(t, new(redis.Cases).Persist())
 }
 
 func TestPExpire(t *testing.T) {
-	RunCase(t, record.PExpire)
+	runCase(t, new(redis.Cases).PExpire())
 }
 
 func TestPExpireAt(t *testing.T) {
-	RunCase(t, record.PExpireAt)
+	runCase(t, new(redis.Cases).PExpireAt())
 }
 
 func TestPTTL(t *testing.T) {
-	RunCase(t, record.PTTL)
+	runCase(t, new(redis.Cases).PTTL())
 }
 
 func TestRename(t *testing.T) {
-	RunCase(t, record.Rename)
+	runCase(t, new(redis.Cases).Rename())
 }
 
 func TestRenameNX(t *testing.T) {
-	RunCase(t, record.RenameNX)
+	runCase(t, new(redis.Cases).RenameNX())
 }
 
 func TestTouch(t *testing.T) {
-	RunCase(t, record.Touch)
+	runCase(t, new(redis.Cases).Touch())
 }
 
 func TestTTL(t *testing.T) {
-	RunCase(t, record.TTL)
+	runCase(t, new(redis.Cases).TTL())
 }
 
 func TestType(t *testing.T) {
-	RunCase(t, record.Type)
+	runCase(t, new(redis.Cases).Type())
 }

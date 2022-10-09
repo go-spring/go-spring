@@ -17,27 +17,20 @@
 package record
 
 import (
+	"context"
 	"testing"
 
-	"github.com/go-spring/spring-core/redis/test/record"
+	"github.com/go-spring/spring-core/redis"
+	SpringGoRedis "github.com/go-spring/spring-go-redis"
 )
 
-func TestBitCount(t *testing.T) {
-	RunCase(t, record.BitCount)
-}
-
-func TestBitOpAnd(t *testing.T) {
-	RunCase(t, record.BitOpAnd)
-}
-
-func TestBitPos(t *testing.T) {
-	RunCase(t, record.BitPos)
-}
-
-func TestGetBit(t *testing.T) {
-	RunCase(t, record.GetBit)
-}
-
-func TestSetBit(t *testing.T) {
-	RunCase(t, record.SetBit)
+func runCase(t *testing.T, c *redis.Case) {
+	d, err := SpringGoRedis.Open(redis.Config{Port: 6379})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	client := redis.NewClient(d)
+	client.FlushAll(ctx)
+	c.Func(t, ctx, client)
 }

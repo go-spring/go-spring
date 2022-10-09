@@ -14,86 +14,86 @@
  * limitations under the License.
  */
 
-package record
+package SpringGoRedis_test
 
 import (
 	"testing"
 
-	"github.com/go-spring/spring-core/redis/test/record"
+	"github.com/go-spring/spring-core/redis"
 )
 
 func TestAppend(t *testing.T) {
-	RunCase(t, record.Append)
+	runCase(t, new(redis.Cases).Append())
 }
 
 func TestDecr(t *testing.T) {
-	RunCase(t, record.Decr)
+	runCase(t, new(redis.Cases).Decr())
 }
 
 func TestDecrBy(t *testing.T) {
-	RunCase(t, record.DecrBy)
+	runCase(t, new(redis.Cases).DecrBy())
 }
 
 func TestGet(t *testing.T) {
-	RunCase(t, record.Get)
+	runCase(t, new(redis.Cases).Get())
 }
 
 func TestGetDel(t *testing.T) {
-	RunCase(t, record.GetDel)
+	runCase(t, new(redis.Cases).GetDel())
 }
 
 func TestGetRange(t *testing.T) {
-	RunCase(t, record.GetRange)
+	runCase(t, new(redis.Cases).GetRange())
 }
 
 func TestGetSet(t *testing.T) {
-	RunCase(t, record.GetSet)
+	runCase(t, new(redis.Cases).GetSet())
 }
 
 func TestIncr(t *testing.T) {
-	RunCase(t, record.Incr)
+	runCase(t, new(redis.Cases).Incr())
 }
 
 func TestIncrBy(t *testing.T) {
-	RunCase(t, record.IncrBy)
+	runCase(t, new(redis.Cases).IncrBy())
 }
 
 func TestIncrByFloat(t *testing.T) {
-	RunCase(t, record.IncrByFloat)
+	runCase(t, new(redis.Cases).IncrByFloat())
 }
 
 func TestMGet(t *testing.T) {
-	RunCase(t, record.MGet)
+	runCase(t, new(redis.Cases).MGet())
 }
 
 func TestMSet(t *testing.T) {
-	RunCase(t, record.MSet)
+	runCase(t, new(redis.Cases).MSet())
 }
 
 func TestMSetNX(t *testing.T) {
-	RunCase(t, record.MSetNX)
+	runCase(t, new(redis.Cases).MSetNX())
 }
 
 func TestPSetEX(t *testing.T) {
-	RunCase(t, record.PSetEX)
+	runCase(t, new(redis.Cases).PSetEX())
 }
 
 func TestSet(t *testing.T) {
-	RunCase(t, record.Set)
+	runCase(t, new(redis.Cases).Set())
 }
 
 func TestSetEX(t *testing.T) {
-	RunCase(t, record.SetEX)
+	runCase(t, new(redis.Cases).SetEX())
 }
 
 func TestSetNX(t *testing.T) {
-	RunCase(t, record.SetNX)
+	runCase(t, new(redis.Cases).SetNX())
 }
 
 func TestSetRange(t *testing.T) {
-	RunCase(t, record.SetRange)
+	runCase(t, new(redis.Cases).SetRange())
 }
 
 func TestStrLen(t *testing.T) {
-	RunCase(t, record.StrLen)
+	runCase(t, new(redis.Cases).StrLen())
 }

@@ -34,7 +34,7 @@ type runner struct {
 func (r *runner) Run(ctx gs.Context) {
 	var engines []string
 	r.DB.Raw("select engine from engines").Scan(&engines)
-	r.Logger.Sugar().Infof("got mysql engines %v", engines)
+	r.Logger.Infof("got mysql engines %v", engines)
 	go gs.ShutDown()
 }
 

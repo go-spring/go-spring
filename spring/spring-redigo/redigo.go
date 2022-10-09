@@ -26,14 +26,14 @@ import (
 )
 
 func NewClient(config redis.Config) (*redis.Client, error) {
-	connPool, err := Open(config)
+	d, err := Open(config)
 	if err != nil {
 		return nil, err
 	}
-	return redis.NewClient(connPool)
+	return redis.NewClient(d), nil
 }
 
-func Open(config redis.Config) (redis.ConnPool, error) {
+func Open(config redis.Config) (redis.Driver, error) {
 
 	address := fmt.Sprintf("%s:%d", config.Host, config.Port)
 	conn, err := g.Dial("tcp", address,
@@ -53,15 +53,15 @@ func Open(config redis.Config) (redis.ConnPool, error) {
 		}
 	}
 
-	return &Conn{conn: conn}, nil
+	return &Driver{conn: conn}, nil
 }
 
-type Conn struct {
+type Driver struct {
 	conn g.Conn
 }
 
-func (c *Conn) Exec(ctx context.Context, cmd string, args []interface{}) (interface{}, error) {
-	result, err := c.conn.Do(cmd, args...)
+func (c *Driver) Exec(ctx context.Context, args []interface{}) (interface{}, error) {
+	result, err := c.conn.Do(args[0].(string), args[1:]...)
 	if err != nil {
 		return nil, err
 	}

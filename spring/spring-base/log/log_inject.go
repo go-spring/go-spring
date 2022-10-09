@@ -31,7 +31,6 @@ var converters = map[reflect.Type]util.Converter{}
 
 func init() {
 	RegisterConverter(ParseLevel)
-	RegisterConverter(ParseResult)
 	RegisterConverter(ParseColorStyle)
 }
 

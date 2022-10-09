@@ -11,31 +11,31 @@ import (
 	gomock "github.com/golang/mock/gomock"
 )
 
-// MockConnPool is a mock of ConnPool interface.
-type MockConnPool struct {
+// MockDriver is a mock of Driver interface.
+type MockDriver struct {
 	ctrl     *gomock.Controller
-	recorder *MockConnPoolMockRecorder
+	recorder *MockDriverMockRecorder
 }
 
-// MockConnPoolMockRecorder is the mock recorder for MockConnPool.
-type MockConnPoolMockRecorder struct {
-	mock *MockConnPool
+// MockDriverMockRecorder is the mock recorder for MockDriver.
+type MockDriverMockRecorder struct {
+	mock *MockDriver
 }
 
-// NewMockConnPool creates a new mock instance.
-func NewMockConnPool(ctrl *gomock.Controller) *MockConnPool {
-	mock := &MockConnPool{ctrl: ctrl}
-	mock.recorder = &MockConnPoolMockRecorder{mock}
+// NewMockDriver creates a new mock instance.
+func NewMockDriver(ctrl *gomock.Controller) *MockDriver {
+	mock := &MockDriver{ctrl: ctrl}
+	mock.recorder = &MockDriverMockRecorder{mock}
 	return mock
 }
 
 // EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockConnPool) EXPECT() *MockConnPoolMockRecorder {
+func (m *MockDriver) EXPECT() *MockDriverMockRecorder {
 	return m.recorder
 }
 
 // Exec mocks base method.
-func (m *MockConnPool) Exec(ctx context.Context, args []interface{}) (interface{}, error) {
+func (m *MockDriver) Exec(ctx context.Context, args []interface{}) (interface{}, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Exec", ctx, args)
 	ret0, _ := ret[0].(interface{})
@@ -44,7 +44,7 @@ func (m *MockConnPool) Exec(ctx context.Context, args []interface{}) (interface{
 }
 
 // Exec indicates an expected call of Exec.
-func (mr *MockConnPoolMockRecorder) Exec(ctx, args interface{}) *gomock.Call {
+func (mr *MockDriverMockRecorder) Exec(ctx, args interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Exec", reflect.TypeOf((*MockConnPool)(nil).Exec), ctx, args)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Exec", reflect.TypeOf((*MockDriver)(nil).Exec), ctx, args)
 }

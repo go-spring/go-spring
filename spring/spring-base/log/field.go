@@ -16,25 +16,15 @@
 
 package log
 
+// Field is used to replace printf operation with lower cost.
 type Field struct {
 	Key string
 	Val Value
 }
 
-func W(fn func() []Field) Field {
-	return Field{Key: "", Val: funcValue(fn)}
-}
-
+// Nil constructs a field that carries a nil.
 func Nil(key string) Field {
 	return Reflect(key, nil)
-}
-
-func Array(key string, val ...Value) Field {
-	return Field{Key: key, Val: ArrayValue(val)}
-}
-
-func Object(key string, fields ...Field) Field {
-	return Field{Key: key, Val: ObjectValue(fields)}
 }
 
 // Bool constructs a field that carries a bool.
@@ -42,8 +32,7 @@ func Bool(key string, val bool) Field {
 	return Field{Key: key, Val: BoolValue(val)}
 }
 
-// BoolPtr constructs a field that carries a *bool. The returned Field will safely
-// and explicitly represent `nil` when appropriate.
+// BoolPtr constructs a field that carries a *bool.
 func BoolPtr(key string, val *bool) Field {
 	if val == nil {
 		return Nil(key)
@@ -51,13 +40,12 @@ func BoolPtr(key string, val *bool) Field {
 	return Bool(key, *val)
 }
 
-// Int constructs a field with the given key and value.
+// Int constructs a field that carries an int.
 func Int(key string, val int) Field {
 	return Field{Key: key, Val: Int64Value(val)}
 }
 
-// IntPtr constructs a field that carries a *int. The returned Field will safely
-// and explicitly represent `nil` when appropriate.
+// IntPtr constructs a field that carries a *int.
 func IntPtr(key string, val *int) Field {
 	if val == nil {
 		return Nil(key)
@@ -65,13 +53,12 @@ func IntPtr(key string, val *int) Field {
 	return Int(key, *val)
 }
 
-// Int8 constructs a field with the given key and value.
+// Int8 constructs a field that carries an int8.
 func Int8(key string, val int8) Field {
 	return Field{Key: key, Val: Int64Value(val)}
 }
 
-// Int8Ptr constructs a field that carries a *int8. The returned Field will safely
-// and explicitly represent `nil` when appropriate.
+// Int8Ptr constructs a field that carries a *int8.
 func Int8Ptr(key string, val *int8) Field {
 	if val == nil {
 		return Nil(key)
@@ -79,13 +66,12 @@ func Int8Ptr(key string, val *int8) Field {
 	return Int8(key, *val)
 }
 
-// Int16 constructs a field with the given key and value.
+// Int16 constructs a field that carries an int16.
 func Int16(key string, val int16) Field {
 	return Field{Key: key, Val: Int64Value(val)}
 }
 
-// Int16Ptr constructs a field that carries a *int16. The returned Field will safely
-// and explicitly represent `nil` when appropriate.
+// Int16Ptr constructs a field that carries a *int16.
 func Int16Ptr(key string, val *int16) Field {
 	if val == nil {
 		return Nil(key)
@@ -93,13 +79,12 @@ func Int16Ptr(key string, val *int16) Field {
 	return Int16(key, *val)
 }
 
-// Int32 constructs a field with the given key and value.
+// Int32 constructs a field that carries an int32.
 func Int32(key string, val int32) Field {
 	return Field{Key: key, Val: Int64Value(val)}
 }
 
-// Int32Ptr constructs a field that carries a *int32. The returned Field will safely
-// and explicitly represent `nil` when appropriate.
+// Int32Ptr constructs a field that carries a *int32.
 func Int32Ptr(key string, val *int32) Field {
 	if val == nil {
 		return Nil(key)
@@ -107,13 +92,12 @@ func Int32Ptr(key string, val *int32) Field {
 	return Int32(key, *val)
 }
 
-// Int64 constructs a field with the given key and value.
+// Int64 constructs a field that carries an int64.
 func Int64(key string, val int64) Field {
 	return Field{Key: key, Val: Int64Value(val)}
 }
 
-// Int64Ptr constructs a field that carries a *int64. The returned Field will safely
-// and explicitly represent `nil` when appropriate.
+// Int64Ptr constructs a field that carries a *int64.
 func Int64Ptr(key string, val *int64) Field {
 	if val == nil {
 		return Nil(key)
@@ -121,13 +105,12 @@ func Int64Ptr(key string, val *int64) Field {
 	return Int64(key, *val)
 }
 
-// Uint constructs a field with the given key and value.
+// Uint constructs a field that carries an uint.
 func Uint(key string, val uint) Field {
 	return Field{Key: key, Val: Uint64Value(val)}
 }
 
-// UintPtr constructs a field that carries a *uint. The returned Field will safely
-// and explicitly represent `nil` when appropriate.
+// UintPtr constructs a field that carries a *uint.
 func UintPtr(key string, val *uint) Field {
 	if val == nil {
 		return Nil(key)
@@ -135,13 +118,12 @@ func UintPtr(key string, val *uint) Field {
 	return Uint(key, *val)
 }
 
-// Uint8 constructs a field with the given key and value.
+// Uint8 constructs a field that carries an uint8.
 func Uint8(key string, val uint8) Field {
 	return Field{Key: key, Val: Uint64Value(val)}
 }
 
-// Uint8Ptr constructs a field that carries a *uint8. The returned Field will safely
-// and explicitly represent `nil` when appropriate.
+// Uint8Ptr constructs a field that carries a *uint8.
 func Uint8Ptr(key string, val *uint8) Field {
 	if val == nil {
 		return Nil(key)
@@ -149,13 +131,12 @@ func Uint8Ptr(key string, val *uint8) Field {
 	return Uint8(key, *val)
 }
 
-// Uint16 constructs a field with the given key and value.
+// Uint16 constructs a field that carries an uint16.
 func Uint16(key string, val uint16) Field {
 	return Field{Key: key, Val: Uint64Value(val)}
 }
 
-// Uint16Ptr constructs a field that carries a *uint16. The returned Field will safely
-// and explicitly represent `nil` when appropriate.
+// Uint16Ptr constructs a field that carries a *uint16.
 func Uint16Ptr(key string, val *uint16) Field {
 	if val == nil {
 		return Nil(key)
@@ -163,13 +144,12 @@ func Uint16Ptr(key string, val *uint16) Field {
 	return Uint16(key, *val)
 }
 
-// Uint32 constructs a field with the given key and value.
+// Uint32 constructs a field that carries an uint32.
 func Uint32(key string, val uint32) Field {
 	return Field{Key: key, Val: Uint64Value(val)}
 }
 
-// Uint32Ptr constructs a field that carries a *uint32. The returned Field will safely
-// and explicitly represent `nil` when appropriate.
+// Uint32Ptr constructs a field that carries a *uint32.
 func Uint32Ptr(key string, val *uint32) Field {
 	if val == nil {
 		return Nil(key)
@@ -177,13 +157,12 @@ func Uint32Ptr(key string, val *uint32) Field {
 	return Uint32(key, *val)
 }
 
-// Uint64 constructs a field with the given key and value.
+// Uint64 constructs a field that carries an uint64.
 func Uint64(key string, val uint64) Field {
 	return Field{Key: key, Val: Uint64Value(val)}
 }
 
-// Uint64Ptr constructs a field that carries a *uint64. The returned Field will safely
-// and explicitly represent `nil` when appropriate.
+// Uint64Ptr constructs a field that carries a *uint64.
 func Uint64Ptr(key string, val *uint64) Field {
 	if val == nil {
 		return Nil(key)
@@ -191,15 +170,12 @@ func Uint64Ptr(key string, val *uint64) Field {
 	return Uint64(key, *val)
 }
 
-// Float32 constructs a field that carries a float32. The way the
-// floating-point value is represented is encoder-dependent, so marshaling is
-// necessarily lazy.
+// Float32 constructs a field that carries a float32.
 func Float32(key string, val float32) Field {
 	return Field{Key: key, Val: Float64Value(val)}
 }
 
-// Float32Ptr constructs a field that carries a *float32. The returned Field will safely
-// and explicitly represent `nil` when appropriate.
+// Float32Ptr constructs a field that carries a *float32.
 func Float32Ptr(key string, val *float32) Field {
 	if val == nil {
 		return Nil(key)
@@ -207,15 +183,12 @@ func Float32Ptr(key string, val *float32) Field {
 	return Float32(key, *val)
 }
 
-// Float64 constructs a field that carries a float64. The way the
-// floating-point value is represented is encoder-dependent, so marshaling is
-// necessarily lazy.
+// Float64 constructs a field that carries a float64.
 func Float64(key string, val float64) Field {
 	return Field{Key: key, Val: Float64Value(val)}
 }
 
-// Float64Ptr constructs a field that carries a *float64. The returned Field will safely
-// and explicitly represent `nil` when appropriate.
+// Float64Ptr constructs a field that carries a *float64.
 func Float64Ptr(key string, val *float64) Field {
 	if val == nil {
 		return Nil(key)
@@ -223,13 +196,12 @@ func Float64Ptr(key string, val *float64) Field {
 	return Float64(key, *val)
 }
 
-// String constructs a field with the given key and value.
+// String constructs a field that carries a string.
 func String(key string, val string) Field {
 	return Field{Key: key, Val: StringValue(val)}
 }
 
-// StringPtr constructs a field that carries a *string. The returned Field will safely
-// and explicitly represent `nil` when appropriate.
+// StringPtr constructs a field that carries a *string.
 func StringPtr(key string, val *string) Field {
 	if val == nil {
 		return Nil(key)
@@ -237,67 +209,95 @@ func StringPtr(key string, val *string) Field {
 	return String(key, *val)
 }
 
-// Reflect constructs a field with the given key and an arbitrary object.
+// Reflect constructs a field that carries an interface{},
+// which should be serialized using reflection.
 func Reflect(key string, val interface{}) Field {
 	return Field{Key: key, Val: ReflectValue{Val: val}}
 }
 
+// Array constructs a field that carries a slice of Value.
+func Array(key string, val ...Value) Field {
+	return Field{Key: key, Val: ArrayValue(val)}
+}
+
+// Object constructs a field that carries a slice of Field.
+func Object(key string, fields ...Field) Field {
+	return Field{Key: key, Val: ObjectValue(fields)}
+}
+
+// Bools constructs a field that carries a slice of bool.
 func Bools(key string, val []bool) Field {
 	return Field{Key: key, Val: BoolsValue(val)}
 }
 
+// Ints constructs a field that carries a slice of int.
 func Ints(key string, val []int) Field {
 	return Field{Key: key, Val: IntsValue(val)}
 }
 
+// Int8s constructs a field that carries a slice of int8.
 func Int8s(key string, val []int8) Field {
 	return Field{Key: key, Val: Int8sValue(val)}
 }
 
+// Int16s constructs a field that carries a slice of int16.
 func Int16s(key string, val []int16) Field {
 	return Field{Key: key, Val: Int16sValue(val)}
 }
 
+// Int32s constructs a field that carries a slice of int32.
 func Int32s(key string, val []int32) Field {
 	return Field{Key: key, Val: Int32sValue(val)}
 }
 
+// Int64s constructs a field that carries a slice of int64.
 func Int64s(key string, val []int64) Field {
 	return Field{Key: key, Val: Int64sValue(val)}
 }
 
+// Uints constructs a field that carries a slice of uint.
 func Uints(key string, val []uint) Field {
 	return Field{Key: key, Val: UintsValue(val)}
 }
 
+// Uint8s constructs a field that carries a slice of uint8.
 func Uint8s(key string, val []uint8) Field {
 	return Field{Key: key, Val: Uint8sValue(val)}
 }
 
+// Uint16s constructs a field that carries a slice of uint16.
 func Uint16s(key string, val []uint16) Field {
 	return Field{Key: key, Val: Uint16sValue(val)}
 }
 
+// Uint32s constructs a field that carries a slice of uint32.
 func Uint32s(key string, val []uint32) Field {
 	return Field{Key: key, Val: Uint32sValue(val)}
 }
 
+// Uint64s constructs a field that carries a slice of uint64.
 func Uint64s(key string, val []uint64) Field {
 	return Field{Key: key, Val: Uint64sValue(val)}
 }
 
+// Float32s constructs a field that carries a slice of float32.
 func Float32s(key string, val []float32) Field {
 	return Field{Key: key, Val: Float32sValue(val)}
 }
 
+// Float64s constructs a field that carries a slice of float64.
 func Float64s(key string, val []float64) Field {
 	return Field{Key: key, Val: Float64sValue(val)}
 }
 
+// Strings constructs a field that carries a slice of string.
 func Strings(key string, val []string) Field {
 	return Field{Key: key, Val: StringsValue(val)}
 }
 
+// Any takes a key and an arbitrary value and chooses the best way
+// to represent them as a field, falling back to a reflection-based
+// approach only if necessary.
 func Any(key string, value interface{}) Field {
 	switch val := value.(type) {
 	case nil:
@@ -388,12 +388,5 @@ func Any(key string, value interface{}) Field {
 		return Strings(key, val)
 	default:
 		return Reflect(key, val)
-	}
-}
-
-func Message(format string, args ...interface{}) Field {
-	return Field{
-		Key: "msg",
-		Val: MessageValue{format: format, args: args},
 	}
 }

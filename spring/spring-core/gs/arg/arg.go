@@ -222,12 +222,12 @@ func (r *argList) getArg(ctx Context, arg Arg, t reflect.Type, fileLine string) 
 	)
 
 	description := fmt.Sprintf("arg:\"%v\" %s", arg, fileLine)
-	r.logger.Sugar().Tracef("get value %s", description)
+	r.logger.Tracef("get value %s", description)
 	defer func() {
 		if err == nil {
-			r.logger.Sugar().Tracef("get value success %s", description)
+			r.logger.Tracef("get value success %s", description)
 		} else {
-			r.logger.Sugar().Tracef("get value error %s %s", err.Error(), description)
+			r.logger.Tracef("get value error %s %s", err.Error(), description)
 		}
 	}()
 
@@ -324,12 +324,12 @@ func (arg *optionArg) call(ctx Context) (reflect.Value, error) {
 		err error
 	)
 
-	arg.logger.Sugar().Tracef("call option func %s", arg.r.fileLine)
+	arg.logger.Tracef("call option func %s", arg.r.fileLine)
 	defer func() {
 		if err == nil {
-			arg.logger.Sugar().Tracef("call option func success %s", arg.r.fileLine)
+			arg.logger.Tracef("call option func success %s", arg.r.fileLine)
 		} else {
-			arg.logger.Sugar().Tracef("call option func error %s %s", err.Error(), arg.r.fileLine)
+			arg.logger.Tracef("call option func error %s %s", err.Error(), arg.r.fileLine)
 		}
 	}()
 

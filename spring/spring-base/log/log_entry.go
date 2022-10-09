@@ -18,355 +18,196 @@ package log
 
 import (
 	"context"
-	"time"
+	"fmt"
 
+	"github.com/go-spring/spring-base/clock"
 	"github.com/go-spring/spring-base/log/internal"
+	"github.com/go-spring/spring-base/util"
 )
 
-// Entry provides context, errno and tag about a log message.
-type Entry interface {
-	Tag() string
-	Errno() Errno
-	Context() context.Context
+type T = func() []interface{}
+
+func W(fn func() []Field) Field {
+	return Field{Key: "", Val: funcValue(fn)}
+}
+
+type funcValue func() []Field
+
+func (v funcValue) Encode(enc Encoder) error {
+	panic(util.ForbiddenMethod)
 }
 
 // publisher will drop a log message when the filter method returns true.
 type publisher interface {
-	filter(level Level, e Entry, fields func() []Field) Result
+	enableLevel(level Level) bool
 	publish(e *Event)
 }
 
-// SimpleEntry is an Entry implementation that has no context.
-type SimpleEntry struct {
+// Entry is an Entry implementation that has context and errno.
+type Entry struct {
+	ctx  context.Context
 	pub  publisher
 	tag  string
 	skip int
 }
 
-func (e *SimpleEntry) Tag() string {
-	return e.tag
-}
-
-func (e *SimpleEntry) Errno() Errno {
-	return nil
-}
-
-func (e *SimpleEntry) Context() context.Context {
-	return nil
-}
-
-func (e SimpleEntry) WithSkip(n int) SimpleEntry {
+func (e *Entry) WithSkip(n int) *Entry {
 	e.skip = n
 	return e
 }
 
-func (e SimpleEntry) WithTag(tag string) SimpleEntry {
+func (e *Entry) WithTag(tag string) *Entry {
 	e.tag = tag
 	return e
 }
 
-func (e SimpleEntry) WithContext(ctx context.Context) ContextEntry {
-	return ContextEntry{
-		pub:  e.pub,
-		skip: e.skip,
-		tag:  e.tag,
-		ctx:  ctx,
+func (e *Entry) WithContext(ctx context.Context) *Entry {
+	e.ctx = ctx
+	return e
+}
+
+// Trace outputs log with level TraceLevel.
+func (e *Entry) Trace(args ...interface{}) *Event {
+	return publish(e.pub, TraceLevel, e.skip, e, "", args, nil)
+}
+
+// Tracef outputs log with level TraceLevel.
+func (e *Entry) Tracef(format string, args ...interface{}) *Event {
+	return publish(e.pub, TraceLevel, e.skip, e, format, args, nil)
+}
+
+// Tracew outputs log with level TraceLevel.
+func (e *Entry) Tracew(fields ...Field) *Event {
+	return publish(e.pub, TraceLevel, e.skip, e, "", nil, fields)
+}
+
+// Debug outputs log with level DebugLevel.
+func (e *Entry) Debug(args ...interface{}) *Event {
+	return publish(e.pub, DebugLevel, e.skip, e, "", args, nil)
+}
+
+// Debugf outputs log with level DebugLevel.
+func (e *Entry) Debugf(format string, args ...interface{}) *Event {
+	return publish(e.pub, DebugLevel, e.skip, e, format, args, nil)
+}
+
+// Debugw outputs log with level DebugLevel.
+func (e *Entry) Debugw(fields ...Field) *Event {
+	return publish(e.pub, DebugLevel, e.skip, e, "", nil, fields)
+}
+
+// Info outputs log with level InfoLevel.
+func (e *Entry) Info(args ...interface{}) *Event {
+	return publish(e.pub, InfoLevel, e.skip, e, "", args, nil)
+}
+
+// Infof outputs log with level InfoLevel.
+func (e *Entry) Infof(format string, args ...interface{}) *Event {
+	return publish(e.pub, InfoLevel, e.skip, e, format, args, nil)
+}
+
+// Infow outputs log with level InfoLevel.
+func (e *Entry) Infow(fields ...Field) *Event {
+	return publish(e.pub, InfoLevel, e.skip, e, "", nil, fields)
+}
+
+// Warn outputs log with level WarnLevel.
+func (e *Entry) Warn(args ...interface{}) *Event {
+	return publish(e.pub, WarnLevel, e.skip, e, "", args, nil)
+}
+
+// Warnf outputs log with level WarnLevel.
+func (e *Entry) Warnf(format string, args ...interface{}) *Event {
+	return publish(e.pub, WarnLevel, e.skip, e, format, args, nil)
+}
+
+// Warnw outputs log with level WarnLevel.
+func (e *Entry) Warnw(fields ...Field) *Event {
+	return publish(e.pub, WarnLevel, e.skip, e, "", nil, fields)
+}
+
+// Error outputs log with level ErrorLevel.
+func (e *Entry) Error(args ...interface{}) *Event {
+	return publish(e.pub, ErrorLevel, e.skip, e, "", args, nil)
+}
+
+// Errorf outputs log with level ErrorLevel.
+func (e *Entry) Errorf(format string, args ...interface{}) *Event {
+	return publish(e.pub, ErrorLevel, e.skip, e, format, args, nil)
+}
+
+// Errorw outputs log with level ErrorLevel.
+func (e *Entry) Errorw(fields ...Field) *Event {
+	return publish(e.pub, ErrorLevel, e.skip, e, "", nil, fields)
+}
+
+// Panic outputs log with level PanicLevel.
+func (e *Entry) Panic(args ...interface{}) *Event {
+	return publish(e.pub, PanicLevel, e.skip, e, "", args, nil)
+}
+
+// Panicf outputs log with level PanicLevel.
+func (e *Entry) Panicf(format string, args ...interface{}) *Event {
+	return publish(e.pub, PanicLevel, e.skip, e, format, args, nil)
+}
+
+// Panicw outputs log with level PanicLevel.
+func (e *Entry) Panicw(fields ...Field) *Event {
+	return publish(e.pub, PanicLevel, e.skip, e, "", nil, fields)
+}
+
+// Fatal outputs log with level FatalLevel.
+func (e *Entry) Fatal(args ...interface{}) *Event {
+	return publish(e.pub, FatalLevel, e.skip, e, "", args, nil)
+}
+
+// Fatalf outputs log with level FatalLevel.
+func (e *Entry) Fatalf(format string, args ...interface{}) *Event {
+	return publish(e.pub, FatalLevel, e.skip, e, format, args, nil)
+}
+
+// Fatalw outputs log with level FatalLevel.
+func (e *Entry) Fatalw(fields ...Field) *Event {
+	return publish(e.pub, FatalLevel, e.skip, e, "", nil, fields)
+}
+
+func getMessage(format string, args []interface{}) string {
+	if len(args) == 0 {
+		return format
 	}
-}
-
-// Trace outputs log with level TraceLevel.
-func (e SimpleEntry) Trace(args ...interface{}) *Event {
-	fields := []Field{Message("", args...)}
-	return publish(e.pub, TraceLevel, e.skip, &e, fields)
-}
-
-// Tracef outputs log with level TraceLevel.
-func (e SimpleEntry) Tracef(format string, args ...interface{}) *Event {
-	fields := []Field{Message(format, args...)}
-	return publish(e.pub, TraceLevel, e.skip, &e, fields)
-}
-
-// Tracew outputs log with level TraceLevel.
-func (e SimpleEntry) Tracew(fields ...Field) *Event {
-	return publish(e.pub, TraceLevel, e.skip, &e, fields)
-}
-
-// Debug outputs log with level DebugLevel.
-func (e SimpleEntry) Debug(args ...interface{}) *Event {
-	fields := []Field{Message("", args...)}
-	return publish(e.pub, DebugLevel, e.skip, &e, fields)
-}
-
-// Debugf outputs log with level DebugLevel.
-func (e SimpleEntry) Debugf(format string, args ...interface{}) *Event {
-	fields := []Field{Message(format, args...)}
-	return publish(e.pub, DebugLevel, e.skip, &e, fields)
-}
-
-// Debugw outputs log with level DebugLevel.
-func (e SimpleEntry) Debugw(fields ...Field) *Event {
-	return publish(e.pub, DebugLevel, e.skip, &e, fields)
-}
-
-// Info outputs log with level InfoLevel.
-func (e SimpleEntry) Info(args ...interface{}) *Event {
-	fields := []Field{Message("", args...)}
-	return publish(e.pub, InfoLevel, e.skip, &e, fields)
-}
-
-// Infof outputs log with level InfoLevel.
-func (e SimpleEntry) Infof(format string, args ...interface{}) *Event {
-	fields := []Field{Message(format, args...)}
-	return publish(e.pub, InfoLevel, e.skip, &e, fields)
-}
-
-// Infow outputs log with level InfoLevel.
-func (e SimpleEntry) Infow(fields ...Field) *Event {
-	return publish(e.pub, InfoLevel, e.skip, &e, fields)
-}
-
-// Warn outputs log with level WarnLevel.
-func (e SimpleEntry) Warn(args ...interface{}) *Event {
-	fields := []Field{Message("", args...)}
-	return publish(e.pub, WarnLevel, e.skip, &e, fields)
-}
-
-// Warnf outputs log with level WarnLevel.
-func (e SimpleEntry) Warnf(format string, args ...interface{}) *Event {
-	fields := []Field{Message(format, args...)}
-	return publish(e.pub, WarnLevel, e.skip, &e, fields)
-}
-
-// Warnw outputs log with level WarnLevel.
-func (e SimpleEntry) Warnw(fields ...Field) *Event {
-	return publish(e.pub, WarnLevel, e.skip, &e, fields)
-}
-
-// Error outputs log with level ErrorLevel.
-func (e SimpleEntry) Error(args ...interface{}) *Event {
-	fields := []Field{Message("", args...)}
-	return publish(e.pub, ErrorLevel, e.skip, &e, fields)
-}
-
-// Errorf outputs log with level ErrorLevel.
-func (e SimpleEntry) Errorf(format string, args ...interface{}) *Event {
-	fields := []Field{Message(format, args...)}
-	return publish(e.pub, ErrorLevel, e.skip, &e, fields)
-}
-
-// Errorw outputs log with level ErrorLevel.
-func (e SimpleEntry) Errorw(fields ...Field) *Event {
-	return publish(e.pub, ErrorLevel, e.skip, &e, fields)
-}
-
-// Panic outputs log with level PanicLevel.
-func (e SimpleEntry) Panic(args ...interface{}) *Event {
-	fields := []Field{Message("", args...)}
-	return publish(e.pub, PanicLevel, e.skip, &e, fields)
-}
-
-// Panicf outputs log with level PanicLevel.
-func (e SimpleEntry) Panicf(format string, args ...interface{}) *Event {
-	fields := []Field{Message(format, args...)}
-	return publish(e.pub, PanicLevel, e.skip, &e, fields)
-}
-
-// Panicw outputs log with level PanicLevel.
-func (e SimpleEntry) Panicw(fields ...Field) *Event {
-	return publish(e.pub, PanicLevel, e.skip, &e, fields)
-}
-
-// Fatal outputs log with level FatalLevel.
-func (e SimpleEntry) Fatal(args ...interface{}) *Event {
-	fields := []Field{Message("", args...)}
-	return publish(e.pub, FatalLevel, e.skip, &e, fields)
-}
-
-// Fatalf outputs log with level FatalLevel.
-func (e SimpleEntry) Fatalf(format string, args ...interface{}) *Event {
-	fields := []Field{Message(format, args...)}
-	return publish(e.pub, FatalLevel, e.skip, &e, fields)
-}
-
-// Fatalw outputs log with level FatalLevel.
-func (e SimpleEntry) Fatalw(fields ...Field) *Event {
-	return publish(e.pub, FatalLevel, e.skip, &e, fields)
-}
-
-// ContextEntry is an Entry implementation that has context and errno.
-type ContextEntry struct {
-	ctx   context.Context
-	errno Errno
-	pub   publisher
-	tag   string
-	skip  int
-}
-
-func (e *ContextEntry) Tag() string {
-	return e.tag
-}
-
-func (e *ContextEntry) Errno() Errno {
-	return e.errno
-}
-
-func (e *ContextEntry) Context() context.Context {
-	return e.ctx
-}
-
-func (e ContextEntry) WithSkip(n int) ContextEntry {
-	e.skip = n
-	return e
-}
-
-func (e ContextEntry) WithTag(tag string) ContextEntry {
-	e.tag = tag
-	return e
-}
-
-// Trace outputs log with level TraceLevel.
-func (e ContextEntry) Trace(args ...interface{}) *Event {
-	fields := []Field{Message("", args...)}
-	return publish(e.pub, TraceLevel, e.skip, &e, fields)
-}
-
-// Tracef outputs log with level TraceLevel.
-func (e ContextEntry) Tracef(format string, args ...interface{}) *Event {
-	fields := []Field{Message(format, args...)}
-	return publish(e.pub, TraceLevel, e.skip, &e, fields)
-}
-
-// Tracew outputs log with level TraceLevel.
-func (e ContextEntry) Tracew(fields ...Field) *Event {
-	return publish(e.pub, TraceLevel, e.skip, &e, fields)
-}
-
-// Debug outputs log with level DebugLevel.
-func (e ContextEntry) Debug(args ...interface{}) *Event {
-	fields := []Field{Message("", args...)}
-	return publish(e.pub, DebugLevel, e.skip, &e, fields)
-}
-
-// Debugf outputs log with level DebugLevel.
-func (e ContextEntry) Debugf(format string, args ...interface{}) *Event {
-	fields := []Field{Message(format, args...)}
-	return publish(e.pub, DebugLevel, e.skip, &e, fields)
-}
-
-// Debugw outputs log with level DebugLevel.
-func (e ContextEntry) Debugw(fields ...Field) *Event {
-	return publish(e.pub, DebugLevel, e.skip, &e, fields)
-}
-
-// Info outputs log with level InfoLevel.
-func (e ContextEntry) Info(args ...interface{}) *Event {
-	fields := []Field{Message("", args...)}
-	return publish(e.pub, InfoLevel, e.skip, &e, fields)
-}
-
-// Infof outputs log with level InfoLevel.
-func (e ContextEntry) Infof(format string, args ...interface{}) *Event {
-	fields := []Field{Message(format, args...)}
-	return publish(e.pub, InfoLevel, e.skip, &e, fields)
-}
-
-// Infow outputs log with level InfoLevel.
-func (e ContextEntry) Infow(fields ...Field) *Event {
-	return publish(e.pub, InfoLevel, e.skip, &e, fields)
-}
-
-// Warn outputs log with level WarnLevel.
-func (e ContextEntry) Warn(args ...interface{}) *Event {
-	fields := []Field{Message("", args...)}
-	return publish(e.pub, WarnLevel, e.skip, &e, fields)
-}
-
-// Warnf outputs log with level WarnLevel.
-func (e ContextEntry) Warnf(format string, args ...interface{}) *Event {
-	fields := []Field{Message(format, args...)}
-	return publish(e.pub, WarnLevel, e.skip, &e, fields)
-}
-
-// Warnw outputs log with level WarnLevel.
-func (e ContextEntry) Warnw(fields ...Field) *Event {
-	return publish(e.pub, WarnLevel, e.skip, &e, fields)
-}
-
-// Error outputs log with level ErrorLevel.
-func (e ContextEntry) Error(errno Errno, args ...interface{}) *Event {
-	e.errno = errno
-	fields := []Field{Message("", args...)}
-	return publish(e.pub, ErrorLevel, e.skip, &e, fields)
-}
-
-// Errorf outputs log with level ErrorLevel.
-func (e ContextEntry) Errorf(errno Errno, format string, args ...interface{}) *Event {
-	e.errno = errno
-	fields := []Field{Message(format, args...)}
-	return publish(e.pub, ErrorLevel, e.skip, &e, fields)
-}
-
-// Errorw outputs log with level ErrorLevel.
-func (e ContextEntry) Errorw(errno Errno, fields ...Field) *Event {
-	e.errno = errno
-	return publish(e.pub, ErrorLevel, e.skip, &e, fields)
-}
-
-// Panic outputs log with level PanicLevel.
-func (e ContextEntry) Panic(args ...interface{}) *Event {
-	fields := []Field{Message("", args...)}
-	return publish(e.pub, PanicLevel, e.skip, &e, fields)
-}
-
-// Panicf outputs log with level PanicLevel.
-func (e ContextEntry) Panicf(format string, args ...interface{}) *Event {
-	fields := []Field{Message(format, args...)}
-	return publish(e.pub, PanicLevel, e.skip, &e, fields)
-}
-
-// Panicw outputs log with level PanicLevel.
-func (e ContextEntry) Panicw(fields ...Field) *Event {
-	return publish(e.pub, PanicLevel, e.skip, &e, fields)
-}
-
-// Fatal outputs log with level FatalLevel.
-func (e ContextEntry) Fatal(args ...interface{}) *Event {
-	fields := []Field{Message("", args...)}
-	return publish(e.pub, FatalLevel, e.skip, &e, fields)
-}
-
-// Fatalf outputs log with level FatalLevel.
-func (e ContextEntry) Fatalf(format string, args ...interface{}) *Event {
-	fields := []Field{Message(format, args...)}
-	return publish(e.pub, FatalLevel, e.skip, &e, fields)
-}
-
-// Fatalw outputs log with level FatalLevel.
-func (e ContextEntry) Fatalw(fields ...Field) *Event {
-	return publish(e.pub, FatalLevel, e.skip, &e, fields)
-}
-
-func publish(p publisher, level Level, skip int, e Entry, fields []Field) *Event {
-	fn := func() []Field {
-		if len(fields) == 1 {
-			v, ok := fields[0].Val.(funcValue)
-			if ok {
-				fields = v()
-			}
+	if len(args) == 1 {
+		fn, ok := args[0].(func() []interface{})
+		if ok {
+			args = fn()
 		}
-		return fields
 	}
-	if ResultDeny == p.filter(level, e, fn) {
+	if format == "" {
+		return fmt.Sprint(args...)
+	}
+	return fmt.Sprintf(format, args...)
+}
+
+func publish(p publisher, level Level, skip int, e *Entry, format string, args []interface{}, fields []Field) *Event {
+	if !p.enableLevel(level) {
 		return nil
 	}
+	if len(fields) == 1 {
+		v, ok := fields[0].Val.(funcValue)
+		if ok {
+			fields = v()
+		}
+	}
+	message := getMessage(format, args)
 	file, line, _ := internal.Caller(skip+2, true)
 	event := &Event{
-		entry:  e,
-		time:   time.Now(),
-		file:   file,
-		line:   line,
-		level:  level,
-		fields: fn,
+		Tag:     e.tag,
+		Time:    clock.Now(e.ctx),
+		Context: e.ctx,
+		File:    file,
+		Line:    line,
+		Level:   level,
+		Fields:  fields,
+		Message: message,
 	}
 	p.publish(event)
 	return event

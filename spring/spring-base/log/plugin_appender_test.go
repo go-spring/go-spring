@@ -17,6 +17,7 @@
 package log_test
 
 import (
+	"context"
 	"sync"
 	"testing"
 
@@ -53,6 +54,22 @@ func TestCountingNoOpAppender(t *testing.T) {
 	assert.Equal(t, appender.Count(), int64(9))
 }
 
-func TestConsoleAppender(t *testing.T) {
+func TestNullAppender(t *testing.T) {
+	appender := new(log.NullAppender)
+	err := appender.Start()
+	assert.Nil(t, err)
+	appender.Stop(context.Background())
+	name := appender.GetName()
+	assert.Equal(t, name, "")
+	layout := appender.GetLayout()
+	assert.Nil(t, layout)
+	appender.Append(nil)
+}
 
+func TestConsoleAppender(t *testing.T) {
+	//appender := &log.ConsoleAppender{
+	//	BaseAppender: log.BaseAppender{
+	//		Layout: nil,
+	//	},
+	//}
 }

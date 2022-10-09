@@ -83,7 +83,7 @@ func (c *container) Get(i interface{}, selectors ...util.BeanSelector) error {
 
 	defer func() {
 		if len(stack.beans) > 0 {
-			c.logger.Sugar().Infof("wiring path %s", stack.path())
+			c.logger.Infof("wiring path %s", stack.path())
 		}
 	}()
 
@@ -103,7 +103,7 @@ func (c *container) Wire(objOrCtor interface{}, ctorArgs ...arg.Arg) (interface{
 
 	defer func() {
 		if len(stack.beans) > 0 {
-			c.logger.Sugar().Infof("wiring path %s", stack.path())
+			c.logger.Infof("wiring path %s", stack.path())
 		}
 	}()
 
@@ -125,7 +125,7 @@ func (c *container) Invoke(fn interface{}, args ...arg.Arg) ([]interface{}, erro
 
 	defer func() {
 		if len(stack.beans) > 0 {
-			c.logger.Sugar().Infof("wiring path %s", stack.path())
+			c.logger.Infof("wiring path %s", stack.path())
 		}
 	}()
 

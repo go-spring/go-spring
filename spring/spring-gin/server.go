@@ -80,14 +80,7 @@ func (h *serverHandler) Start(s web.Server) error {
 			webCtx = newContext(nil, "", "", ginCtx)
 		}
 
-		// 流量录制
-		web.StartRecord(webCtx)
-		defer func() { web.StopRecord(webCtx) }()
-
-		// 流量回放
-		web.StartReplay(webCtx)
-		defer func() { web.StopReplay(webCtx) }()
-
+		_ = webCtx
 		ginCtx.Next()
 	})
 
@@ -188,7 +181,7 @@ func (f *recoveryFilter) Invoke(webCtx web.Context, chain web.FilterChain) {
 		if err := recover(); err != nil {
 
 			ctxLogger := f.logger.WithContext(webCtx.Context())
-			ctxLogger.Sugar().Error(nil, err, "\n", string(debug.Stack()))
+			ctxLogger.Error(nil, err, "\n", string(debug.Stack()))
 
 			// Check for a broken connection, as it is not really a
 			// condition that warrants a panic stack trace.

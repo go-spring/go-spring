@@ -14,19 +14,25 @@
  * limitations under the License.
  */
 
-package record
+package SpringRedigo_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/go-spring/spring-core/redis"
-	"github.com/go-spring/spring-go-redis"
+	SpringRedigo "github.com/go-spring/spring-redigo"
 )
 
-func RunCase(t *testing.T, fn func(t *testing.T, connPool redis.ConnPool)) {
-	connPool, err := SpringGoRedis.Open(redis.Config{Port: 6379})
+func runCase(t *testing.T, c *redis.Case) {
+	d, err := SpringRedigo.Open(redis.Config{
+		Port: 6379,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	fn(t, connPool)
+	ctx := context.Background()
+	client := redis.NewClient(d)
+	client.FlushAll(ctx)
+	c.Func(t, ctx, client)
 }

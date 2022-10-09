@@ -29,30 +29,22 @@ func init() {
 	log.RegisterPlugin("ExampleLayout", log.PluginTypeLayout, (*ExampleLayout)(nil))
 }
 
-type ExampleLayout struct {
-	LineBreak bool `PluginAttribute:"lineBreak,default=true"`
-}
+type ExampleLayout struct{}
 
 func (c *ExampleLayout) ToBytes(e *log.Event) ([]byte, error) {
 	buf := bytes.NewBuffer(nil)
-	enc := log.NewFlatEncoder(buf, "||")
-	prefix := fmt.Sprintf("[%s][%s:%d][%s] ", e.Level(), e.File(), e.Level(), e.Time().Format("2006-01-02 15:04:05.000"))
-	err := enc.AppendBuffer([]byte(prefix))
-	if err != nil {
-		return nil, err
-	}
-	if ctx := e.Entry().Context(); ctx != nil {
+	prefix := fmt.Sprintf("[%s][%s:%d][%s] ", e.Level, e.File, e.Line, e.Time.Format("2006-01-02 15:04:05.000"))
+	buf.WriteString(prefix)
+	if ctx := e.Context; ctx != nil {
 		span := SpanFromContext(ctx)
 		if span != nil {
 			s := fmt.Sprintf("trace_id=%s||span_id=%s||", span.TraceID, span.SpanID)
-			err = enc.AppendBuffer([]byte(s))
-			if err != nil {
-				return nil, err
-			}
+			buf.WriteString(s)
 		}
 	}
-	for _, f := range e.Fields() {
-		err = enc.AppendKey(f.Key)
+	enc := log.NewFlatEncoder(buf, "||")
+	for _, f := range e.Fields {
+		err := enc.AppendKey(f.Key)
 		if err != nil {
 			return nil, err
 		}
@@ -61,9 +53,7 @@ func (c *ExampleLayout) ToBytes(e *log.Event) ([]byte, error) {
 			return nil, err
 		}
 	}
-	if c.LineBreak {
-		buf.WriteByte('\n')
-	}
+	buf.WriteString("\n")
 	return buf.Bytes(), nil
 }
 
@@ -91,13 +81,13 @@ func main() {
 	logger := log.GetLogger("xxx")
 	logger.Info("a", "=", "1")
 	logger.Infof("a=1")
-	logger.Infow(log.Message("a=%d", 1))
+	logger.Infow(log.Int("a", 1))
 
 	span := &Span{TraceID: "1111", SpanID: "2222"}
 	ctx := ContextWithSpan(context.Background(), span)
 	logger.WithContext(ctx).Info("a", "=", "1")
 	logger.WithContext(ctx).Infof("a=1")
-	logger.WithContext(ctx).Infow(log.Message("a=%d", 1))
+	logger.WithContext(ctx).Infow(log.Int("a", 1))
 }
 
 ///////////////////////////// observability /////////////////////////////
