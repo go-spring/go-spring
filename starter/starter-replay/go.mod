@@ -7,5 +7,5 @@ require (
 )
 
 replace (
-	github.com/go-spring/spring-base v1.1.3 ../../spring/spring-base
+	github.com/go-spring/spring-base => ../../spring/spring-base
 )
