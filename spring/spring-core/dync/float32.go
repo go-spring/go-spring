@@ -22,6 +22,7 @@ import (
 	"github.com/go-spring/spring-base/atomic"
 	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-core/conf"
+	"github.com/go-spring/spring-core/validate"
 )
 
 type Float32ValidateFunc func(v float32) error
@@ -65,7 +66,7 @@ func (x *Float32) Validate(prop *conf.Properties, param conf.BindParam) error {
 	if err != nil {
 		return err
 	}
-	err = Validate(v, param)
+	err = validate.Field(v, param.Validate)
 	if err != nil {
 		return err
 	}

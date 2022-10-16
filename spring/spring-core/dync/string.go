@@ -21,6 +21,7 @@ import (
 
 	"github.com/go-spring/spring-base/atomic"
 	"github.com/go-spring/spring-core/conf"
+	"github.com/go-spring/spring-core/validate"
 )
 
 type StringValidateFunc func(v string) error
@@ -56,7 +57,7 @@ func (x *String) Validate(prop *conf.Properties, param conf.BindParam) error {
 	if err != nil {
 		return err
 	}
-	err = Validate(v, param)
+	err = validate.Field(v, param.Validate)
 	if err != nil {
 		return err
 	}

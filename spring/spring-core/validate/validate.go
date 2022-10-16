@@ -22,40 +22,48 @@ import (
 	"github.com/go-spring/spring-core/expr"
 )
 
+var Validator Interface = &exprValidator{}
+
+// Interface is the minimal interface for validating a variable or struct.
 type Interface interface {
 	TagName() string
 	Struct(i interface{}) error
 	Field(i interface{}, tag string) error
 }
 
-var Validator Interface = &Validate{}
-
+// TagName returns the validator's tag.
 func TagName() string {
 	return Validator.TagName()
 }
 
+// Struct validates the exposed fields of struct, and automatically validates
+// the nested structs, unless otherwise specified.
 func Struct(i interface{}) error {
 	return Validator.Struct(i)
 }
 
+// Field validates a single variable.
 func Field(i interface{}, tag string) error {
-	return Validator.Field(i, tag)
-}
-
-type Validate struct{}
-
-func (d Validate) TagName() string {
-	return "expr"
-}
-
-func (d Validate) Struct(i interface{}) error {
-	return nil
-}
-
-func (d Validate) Field(i interface{}, tag string) error {
 	if tag == "" {
 		return nil
 	}
+	return Validator.Field(i, tag)
+}
+
+type exprValidator struct{}
+
+// TagName returns the validator's tag.
+func (d exprValidator) TagName() string {
+	return "expr"
+}
+
+// Struct validates the exposed fields and the nested structs of struct.
+func (d exprValidator) Struct(i interface{}) error {
+	return nil
+}
+
+// Field validates a single variable.
+func (d exprValidator) Field(i interface{}, tag string) error {
 	ok, err := expr.Eval(tag, i)
 	if err != nil {
 		return err

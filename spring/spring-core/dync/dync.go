@@ -24,7 +24,6 @@ import (
 
 	"github.com/go-spring/spring-base/atomic"
 	"github.com/go-spring/spring-core/conf"
-	"github.com/go-spring/spring-core/expr"
 )
 
 // Value 可动态刷新的对象
@@ -246,16 +245,4 @@ func GetProperty(prop *conf.Properties, param conf.BindParam) (string, error) {
 	}
 	s := prop.Get(key, conf.Def(param.Tag.Def))
 	return s, nil
-}
-
-func Validate(val interface{}, param conf.BindParam) error {
-	if param.Validate == "" {
-		return nil
-	}
-	if b, err := expr.Eval(param.Validate, val); err != nil {
-		return err
-	} else if !b {
-		return fmt.Errorf("validate failed on %q for value %v", param.Validate, val)
-	}
-	return nil
 }
