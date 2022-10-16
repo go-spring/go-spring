@@ -607,6 +607,60 @@ func (c *Cases) SPop() *Case {
 	}
 }
 
+func (c *Cases) SPopN() *Case {
+	return &Case{
+		Func: func(t *testing.T, ctx context.Context, c *Client) {
+
+			r1, err := c.SAdd(ctx, "myset", "one")
+			assert.Nil(t, err)
+			assert.Equal(t, r1, int64(1))
+
+			r2, err := c.SAdd(ctx, "myset", "two")
+			assert.Nil(t, err)
+			assert.Equal(t, r2, int64(1))
+
+			r3, err := c.SAdd(ctx, "myset", "three")
+			assert.Nil(t, err)
+			assert.Equal(t, r3, int64(1))
+
+			r4, err := c.SPopN(ctx, "myset", 1)
+			assert.Nil(t, err)
+
+			r5, err := c.SMembers(ctx, "myset")
+			assert.Nil(t, err)
+
+			r6 := append(r4, r5...)
+			sort.Strings(r6)
+			assert.Equal(t, r6, []string{"one", "three", "two"})
+		},
+		Data: `
+		{
+			"Session": "df3b64266ebe4e63a464e135000a07cd",
+			"Actions": [{
+				"Protocol": "REDIS",
+				"Request": "SADD myset one",
+				"Response": "\"1\""
+			}, {
+				"Protocol": "REDIS",
+				"Request": "SADD myset two",
+				"Response": "\"1\""
+			}, {
+				"Protocol": "REDIS",
+				"Request": "SADD myset three",
+				"Response": "\"1\""
+			}, {
+				"Protocol": "REDIS",
+				"Request": "SPOP myset 1",
+				"Response": "\"two\""
+			}, {
+				"Protocol": "REDIS",
+				"Request": "SMEMBERS myset",
+				"Response": "\"three\",\"one\""
+			}]
+		}`,
+	}
+}
+
 func (c *Cases) SRandMember() *Case {
 	return &Case{
 		Func: func(t *testing.T, ctx context.Context, c *Client) {

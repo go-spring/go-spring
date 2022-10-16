@@ -48,6 +48,11 @@ type Result struct {
 	Data []string
 }
 
+// NewResult returns a new *Result.
+func NewResult(data ...string) *Result {
+	return &Result{Data: data}
+}
+
 type Driver interface {
 	Exec(ctx context.Context, args []interface{}) (interface{}, error)
 }
@@ -78,6 +83,8 @@ func toInt64(v interface{}, err error) (int64, error) {
 		return 0, err
 	}
 	switch r := v.(type) {
+	case nil:
+		return 0, nil
 	case int64:
 		return r, nil
 	case float64:
@@ -90,7 +97,7 @@ func toInt64(v interface{}, err error) (int64, error) {
 		}
 		return toInt64(r.Data[0], nil)
 	default:
-		return 0, fmt.Errorf("redis: unexpected type %T for int64", v)
+		return 0, fmt.Errorf("redis: unexpected type (%T) for int64", v)
 	}
 }
 
@@ -106,6 +113,8 @@ func toFloat64(v interface{}, err error) (float64, error) {
 	switch r := v.(type) {
 	case nil:
 		return 0, nil
+	case float64:
+		return r, nil
 	case int64:
 		return float64(r), nil
 	case string:
@@ -116,7 +125,7 @@ func toFloat64(v interface{}, err error) (float64, error) {
 		}
 		return toFloat64(r.Data[0], nil)
 	default:
-		return 0, fmt.Errorf("redis: unexpected type=%T for float64", r)
+		return 0, fmt.Errorf("redis: unexpected type (%T) for float64", r)
 	}
 }
 
@@ -130,6 +139,8 @@ func toString(v interface{}, err error) (string, error) {
 		return "", err
 	}
 	switch r := v.(type) {
+	case nil:
+		return "", nil
 	case string:
 		return r, nil
 	case *Result:
@@ -138,7 +149,7 @@ func toString(v interface{}, err error) (string, error) {
 		}
 		return r.Data[0], nil
 	default:
-		return "", fmt.Errorf("redis: unexpected type %T for string", v)
+		return "", fmt.Errorf("redis: unexpected type (%T) for string", v)
 	}
 }
 
@@ -152,22 +163,27 @@ func toSlice(v interface{}, err error) ([]interface{}, error) {
 		return nil, err
 	}
 	switch r := v.(type) {
+	case nil:
+		return nil, nil
 	case []interface{}:
 		return r, nil
 	case []string:
-		var slice []interface{}
-		for _, str := range r {
+		if len(r) == 0 {
+			return nil, nil
+		}
+		slice := make([]interface{}, len(r))
+		for i, str := range r {
 			if str == "NULL" {
-				slice = append(slice, nil)
+				slice[i] = nil
 			} else {
-				slice = append(slice, str)
+				slice[i] = str
 			}
 		}
 		return slice, nil
 	case *Result:
 		return toSlice(r.Data, nil)
 	default:
-		return nil, fmt.Errorf("redis: unexpected type %T for []interface{}", v)
+		return nil, fmt.Errorf("redis: unexpected type (%T) for []interface{}", v)
 	}
 }
 
@@ -180,6 +196,9 @@ func toInt64Slice(v interface{}, err error) ([]int64, error) {
 	slice, err := toSlice(v, err)
 	if err != nil {
 		return nil, err
+	}
+	if len(slice) == 0 {
+		return nil, nil
 	}
 	val := make([]int64, len(slice))
 	for i, r := range slice {
@@ -203,6 +222,9 @@ func toFloat64Slice(v interface{}, err error) ([]float64, error) {
 	if err != nil {
 		return nil, err
 	}
+	if len(slice) == 0 {
+		return nil, nil
+	}
 	val := make([]float64, len(slice))
 	for i, r := range slice {
 		var f float64
@@ -224,6 +246,9 @@ func toStringSlice(v interface{}, err error) ([]string, error) {
 	slice, err := toSlice(v, err)
 	if err != nil {
 		return nil, err
+	}
+	if len(slice) == 0 {
+		return nil, nil
 	}
 	val := make([]string, len(slice))
 	for i, r := range slice {
@@ -250,6 +275,12 @@ func toStringMap(v interface{}, err error) (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	if len(slice) == 0 {
+		return nil, nil
+	}
+	if len(slice)%2 != 0 {
+		return nil, fmt.Errorf("redis: unexpected slice length %d", len(slice))
+	}
 	val := make(map[string]string, len(slice)/2)
 	for i := 0; i < len(slice); i += 2 {
 		val[slice[i]] = slice[i+1]
@@ -269,6 +300,12 @@ func toZItemSlice(v interface{}, err error) ([]ZItem, error) {
 	slice, err := toStringSlice(v, err)
 	if err != nil {
 		return nil, err
+	}
+	if len(slice) == 0 {
+		return nil, nil
+	}
+	if len(slice)%2 != 0 {
+		return nil, fmt.Errorf("redis: unexpected slice length %d", len(slice))
 	}
 	val := make([]ZItem, len(slice)/2)
 	for i := 0; i < len(val); i++ {

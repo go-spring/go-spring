@@ -459,6 +459,27 @@ func (c *Cases) PTTL() *Case {
 	}
 }
 
+func (c *Cases) RandomKey() *Case {
+	return &Case{
+		Func: func(t *testing.T, ctx context.Context, c *Client) {
+
+			r1, err := c.Set(ctx, "mykey1", "Hello")
+			assert.Nil(t, err)
+			assert.True(t, IsOK(r1))
+
+			r2, err := c.Set(ctx, "mykey2", "world")
+			assert.Nil(t, err)
+			assert.True(t, IsOK(r2))
+
+			r3, err := c.RandomKey(ctx)
+			assert.Nil(t, err)
+			assert.InSlice(t, r3, []string{"mykey1", "mykey2"})
+		},
+		Skip: true,
+		Data: "",
+	}
+}
+
 func (c *Cases) Rename() *Case {
 	return &Case{
 		Func: func(t *testing.T, ctx context.Context, c *Client) {

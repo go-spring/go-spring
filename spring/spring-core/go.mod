@@ -12,4 +12,4 @@ require (
 	gopkg.in/yaml.v2 v2.4.0
 )
 
-//replace github.com/go-spring/spring-base => ../spring-base
+replace github.com/go-spring/spring-base => ../spring-base

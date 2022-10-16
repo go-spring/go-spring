@@ -119,6 +119,141 @@ func (c *Cases) BitOpAnd() *Case {
 	}
 }
 
+func (c *Cases) BitOpOr() *Case {
+	return &Case{
+		Func: func(t *testing.T, ctx context.Context, c *Client) {
+
+			r1, err := c.Set(ctx, "key1", "foobar")
+			assert.Nil(t, err)
+			assert.True(t, IsOK(r1))
+
+			r2, err := c.Set(ctx, "key2", "abcdef")
+			assert.Nil(t, err)
+			assert.True(t, IsOK(r2))
+
+			r3, err := c.BitOpOr(ctx, "dest", "key1", "key2")
+			assert.Nil(t, err)
+			assert.Equal(t, r3, int64(6))
+
+			r4, err := c.Get(ctx, "dest")
+			assert.Nil(t, err)
+			assert.Equal(t, r4, "goofev")
+		},
+		Data: `{
+		  "Session": "df3b64266ebe4e63a464e135000a07cd",
+		  "Actions": [
+			{
+			  "Protocol": "REDIS",
+			  "Request": "SET key1 foobar",
+			  "Response": "\"OK\""
+			},
+			{
+			  "Protocol": "REDIS",
+			  "Request": "SET key2 abcdef",
+			  "Response": "\"OK\""
+			},
+			{
+			  "Protocol": "REDIS",
+			  "Request": "BITOP OR dest key1 key2",
+			  "Response": "\"6\""
+			},
+			{
+			  "Protocol": "REDIS",
+			  "Request": "GET dest",
+			  "Response": "goofev"
+			}
+		  ]
+		}`,
+	}
+}
+
+func (c *Cases) BitOpXor() *Case {
+	return &Case{
+		Func: func(t *testing.T, ctx context.Context, c *Client) {
+
+			r1, err := c.Set(ctx, "key1", "foobar")
+			assert.Nil(t, err)
+			assert.True(t, IsOK(r1))
+
+			r2, err := c.Set(ctx, "key2", "abcdef")
+			assert.Nil(t, err)
+			assert.True(t, IsOK(r2))
+
+			r3, err := c.BitOpXor(ctx, "dest", "key1", "key2")
+			assert.Nil(t, err)
+			assert.Equal(t, r3, int64(6))
+
+			r4, err := c.Get(ctx, "dest")
+			assert.Nil(t, err)
+			assert.Equal(t, r4, "\a\r\f\x06\x04\x14")
+		},
+		Data: `{
+		  "Session": "df3b64266ebe4e63a464e135000a07cd",
+		  "Actions": [
+			{
+			  "Protocol": "REDIS",
+			  "Request": "SET key1 foobar",
+			  "Response": "\"OK\""
+			},
+			{
+			  "Protocol": "REDIS",
+			  "Request": "SET key2 abcdef",
+			  "Response": "\"OK\""
+			},
+			{
+			  "Protocol": "REDIS",
+			  "Request": "BITOP XOR dest key1 key2",
+			  "Response": "\"6\""
+			},
+			{
+			  "Protocol": "REDIS",
+			  "Request": "GET dest",
+			  "Response": "\a\r\f\x06\x04\x14"
+			}
+		  ]
+		}`,
+	}
+}
+
+func (c *Cases) BitOpNot() *Case {
+	return &Case{
+		Func: func(t *testing.T, ctx context.Context, c *Client) {
+
+			r1, err := c.Set(ctx, "key1", "foobar")
+			assert.Nil(t, err)
+			assert.True(t, IsOK(r1))
+
+			r2, err := c.BitOpNot(ctx, "dest", "key1")
+			assert.Nil(t, err)
+			assert.Equal(t, r2, int64(6))
+
+			r3, err := c.Get(ctx, "dest")
+			assert.Nil(t, err)
+			assert.Equal(t, r3, "\x99\x90\x90\x9d\x9e\x8d")
+		},
+		Data: `{
+		  "Session": "df3b64266ebe4e63a464e135000a07cd",
+		  "Actions": [
+			{
+			  "Protocol": "REDIS",
+			  "Request": "SET key1 foobar",
+			  "Response": "\"OK\""
+			},
+			{
+			  "Protocol": "REDIS",
+			  "Request": "BITOP NOT dest key1",
+			  "Response": "\"6\""
+			},
+			{
+			  "Protocol": "REDIS",
+			  "Request": "GET dest",
+			  "Response": "\x99\x90\x90\x9d\x9e\x8d"
+			}
+		  ]
+		}`,
+	}
+}
+
 func (c *Cases) BitPos() *Case {
 	return &Case{
 		Func: func(t *testing.T, ctx context.Context, c *Client) {

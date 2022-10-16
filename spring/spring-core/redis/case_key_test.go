@@ -62,6 +62,10 @@ func TestPTTL(t *testing.T) {
 	runCase(t, new(redis.Cases).PTTL())
 }
 
+func TestRandomKey(t *testing.T) {
+	runCase(t, new(redis.Cases).RandomKey())
+}
+
 func TestRename(t *testing.T) {
 	runCase(t, new(redis.Cases).Rename())
 }

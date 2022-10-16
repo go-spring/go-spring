@@ -42,6 +42,10 @@ func TestGetDel(t *testing.T) {
 	runCase(t, new(redis.Cases).GetDel())
 }
 
+func TestGetEx(t *testing.T) {
+	runCase(t, new(redis.Cases).GetEx())
+}
+
 func TestGetRange(t *testing.T) {
 	runCase(t, new(redis.Cases).GetRange())
 }

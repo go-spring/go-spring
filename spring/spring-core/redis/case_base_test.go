@@ -32,14 +32,14 @@ import (
 
 func runCase(t *testing.T, c *redis.Case) {
 	ctx := context.Background()
-	client := redis.NewClient(&driver{})
+	client := redis.NewClient(&cliDriver{})
 	client.FlushAll(ctx)
 	c.Func(t, ctx, client)
 }
 
-type driver struct{}
+type cliDriver struct{}
 
-func (p *driver) Exec(ctx context.Context, args []interface{}) (interface{}, error) {
+func (p *cliDriver) Exec(ctx context.Context, args []interface{}) (interface{}, error) {
 	str := encodeTTY(args)
 	c := exec.Command("/bin/bash", "-c", fmt.Sprintf("redis-cli --csv --quoted-input %s", str))
 	output, err := c.CombinedOutput()

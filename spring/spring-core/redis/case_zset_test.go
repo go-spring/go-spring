@@ -58,12 +58,24 @@ func TestZPopMax(t *testing.T) {
 	runCase(t, new(redis.Cases).ZPopMax())
 }
 
+func TestZPopMaxN(t *testing.T) {
+	runCase(t, new(redis.Cases).ZPopMaxN())
+}
+
 func TestZPopMin(t *testing.T) {
 	runCase(t, new(redis.Cases).ZPopMin())
 }
 
+func TestZPopMinN(t *testing.T) {
+	runCase(t, new(redis.Cases).ZPopMinN())
+}
+
 func TestZRandMember(t *testing.T) {
 	runCase(t, new(redis.Cases).ZRandMember())
+}
+
+func TestZRandMemberN(t *testing.T) {
+	runCase(t, new(redis.Cases).ZRandMemberN())
 }
 
 func TestZRange(t *testing.T) {
@@ -100,6 +112,10 @@ func TestZRemRangeByScore(t *testing.T) {
 
 func TestZRevRange(t *testing.T) {
 	runCase(t, new(redis.Cases).ZRevRange())
+}
+
+func TestZRevRangeWithScores(t *testing.T) {
+	runCase(t, new(redis.Cases).ZRevRangeWithScores())
 }
 
 func TestZRevRangeByLex(t *testing.T) {

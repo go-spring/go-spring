@@ -74,7 +74,7 @@ func (c *Cases) LIndex() *Case {
 	}
 }
 
-func (c *Cases) LInsert() *Case {
+func (c *Cases) LInsertBefore() *Case {
 	return &Case{
 		Func: func(t *testing.T, ctx context.Context, c *Client) {
 
@@ -113,6 +113,50 @@ func (c *Cases) LInsert() *Case {
 				"Protocol": "REDIS",
 				"Request": "LRANGE mylist 0 -1",
 				"Response": "\"Hello\",\"There\",\"World\""
+			}]
+		}`,
+	}
+}
+
+func (c *Cases) LInsertAfter() *Case {
+	return &Case{
+		Func: func(t *testing.T, ctx context.Context, c *Client) {
+
+			r1, err := c.RPush(ctx, "mylist", "Hello")
+			assert.Nil(t, err)
+			assert.Equal(t, r1, int64(1))
+
+			r2, err := c.RPush(ctx, "mylist", "World")
+			assert.Nil(t, err)
+			assert.Equal(t, r2, int64(2))
+
+			r3, err := c.LInsertAfter(ctx, "mylist", "World", "There")
+			assert.Nil(t, err)
+			assert.Equal(t, r3, int64(3))
+
+			r4, err := c.LRange(ctx, "mylist", 0, -1)
+			assert.Nil(t, err)
+			assert.Equal(t, r4, []string{"Hello", "World", "There"})
+		},
+		Data: `
+		{
+			"Session": "df3b64266ebe4e63a464e135000a07cd",
+			"Actions": [{
+				"Protocol": "REDIS",
+				"Request": "RPUSH mylist Hello",
+				"Response": "\"1\""
+			}, {
+				"Protocol": "REDIS",
+				"Request": "RPUSH mylist World",
+				"Response": "\"2\""
+			}, {
+				"Protocol": "REDIS",
+				"Request": "LINSERT mylist AFTER World There",
+				"Response": "\"3\""
+			}, {
+				"Protocol": "REDIS",
+				"Request": "LRANGE mylist 0 -1",
+				"Response": "\"Hello\",\"World\"",\"There\"
 			}]
 		}`,
 	}
@@ -360,7 +404,7 @@ func (c *Cases) LPushX() *Case {
 
 			r5, err := c.LRange(ctx, "myotherlist", 0, -1)
 			assert.Nil(t, err)
-			assert.Equal(t, r5, []string{})
+			assert.Nil(t, r5)
 		},
 		Data: `
 		{
@@ -420,7 +464,7 @@ func (c *Cases) LRange() *Case {
 
 			r7, err := c.LRange(ctx, "mylist", 5, 10)
 			assert.Nil(t, err)
-			assert.Equal(t, r7, []string{})
+			assert.Nil(t, r7)
 		},
 		Data: `
 		{
@@ -792,7 +836,7 @@ func (c *Cases) RPushX() *Case {
 
 			r5, err := c.LRange(ctx, "myotherlist", 0, -1)
 			assert.Nil(t, err)
-			assert.Equal(t, r5, []string{})
+			assert.Nil(t, r5)
 		},
 		Data: `
 		{

@@ -66,6 +66,10 @@ func TestSPop(t *testing.T) {
 	runCase(t, new(redis.Cases).SPop())
 }
 
+func TestSPopN(t *testing.T) {
+	runCase(t, new(redis.Cases).SPopN())
+}
+
 func TestSRandMember(t *testing.T) {
 	runCase(t, new(redis.Cases).SRandMember())
 }

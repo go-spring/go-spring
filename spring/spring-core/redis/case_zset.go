@@ -434,6 +434,9 @@ func (c *Cases) ZPopMax() *Case {
 			r4, err := c.ZPopMax(ctx, "myzset")
 			assert.Nil(t, err)
 			assert.Equal(t, r4, []ZItem{{"three", 3}})
+
+			r5, err := c.ZPopMax(ctx, "nonexisting")
+			assert.Equal(t, len(r5), 0)
 		},
 		Data: `
 		{
@@ -459,6 +462,54 @@ func (c *Cases) ZPopMax() *Case {
 	}
 }
 
+func (c *Cases) ZPopMaxN() *Case {
+	return &Case{
+		Func: func(t *testing.T, ctx context.Context, c *Client) {
+
+			r1, err := c.ZAdd(ctx, "myzset", 1, "one")
+			assert.Nil(t, err)
+			assert.Equal(t, r1, int64(1))
+
+			r2, err := c.ZAdd(ctx, "myzset", 2, "two")
+			assert.Nil(t, err)
+			assert.Equal(t, r2, int64(1))
+
+			r3, err := c.ZAdd(ctx, "myzset", 3, "three")
+			assert.Nil(t, err)
+			assert.Equal(t, r3, int64(1))
+
+			r4, err := c.ZPopMaxN(ctx, "myzset", 1)
+			assert.Nil(t, err)
+			assert.Equal(t, r4, []ZItem{{"three", 3}})
+
+			r5, err := c.ZPopMaxN(ctx, "nonexisting", 1)
+			assert.Nil(t, err)
+			assert.Nil(t, r5)
+		},
+		Data: `
+		{
+			"Session": "df3b64266ebe4e63a464e135000a07cd",
+			"Actions": [{
+				"Protocol": "REDIS",
+				"Request": "ZADD myzset 1 one",
+				"Response": "\"1\""
+			}, {
+				"Protocol": "REDIS",
+				"Request": "ZADD myzset 2 two",
+				"Response": "\"1\""
+			}, {
+				"Protocol": "REDIS",
+				"Request": "ZADD myzset 3 three",
+				"Response": "\"1\""
+			}, {
+				"Protocol": "REDIS",
+				"Request": "ZPOPMAX myzset 1",
+				"Response": "\"three\",\"3\""
+			}]
+		}`,
+	}
+}
+
 func (c *Cases) ZPopMin() *Case {
 	return &Case{
 		Func: func(t *testing.T, ctx context.Context, c *Client) {
@@ -478,6 +529,9 @@ func (c *Cases) ZPopMin() *Case {
 			r4, err := c.ZPopMin(ctx, "myzset")
 			assert.Nil(t, err)
 			assert.Equal(t, r4, []ZItem{{"one", 1}})
+
+			r5, err := c.ZPopMin(ctx, "nonexisting")
+			assert.Equal(t, len(r5), 0)
 		},
 		Data: `
 		{
@@ -497,6 +551,54 @@ func (c *Cases) ZPopMin() *Case {
 			}, {
 				"Protocol": "REDIS",
 				"Request": "ZPOPMIN myzset",
+				"Response": "\"one\",\"1\""
+			}]
+		}`,
+	}
+}
+
+func (c *Cases) ZPopMinN() *Case {
+	return &Case{
+		Func: func(t *testing.T, ctx context.Context, c *Client) {
+
+			r1, err := c.ZAdd(ctx, "myzset", 1, "one")
+			assert.Nil(t, err)
+			assert.Equal(t, r1, int64(1))
+
+			r2, err := c.ZAdd(ctx, "myzset", 2, "two")
+			assert.Nil(t, err)
+			assert.Equal(t, r2, int64(1))
+
+			r3, err := c.ZAdd(ctx, "myzset", 3, "three")
+			assert.Nil(t, err)
+			assert.Equal(t, r3, int64(1))
+
+			r4, err := c.ZPopMinN(ctx, "myzset", 1)
+			assert.Nil(t, err)
+			assert.Equal(t, r4, []ZItem{{"one", 1}})
+
+			r5, err := c.ZPopMinN(ctx, "nonexisting", 1)
+			assert.Nil(t, err)
+			assert.Nil(t, r5)
+		},
+		Data: `
+		{
+			"Session": "df3b64266ebe4e63a464e135000a07cd",
+			"Actions": [{
+				"Protocol": "REDIS",
+				"Request": "ZADD myzset 1 one",
+				"Response": "\"1\""
+			}, {
+				"Protocol": "REDIS",
+				"Request": "ZADD myzset 2 two",
+				"Response": "\"1\""
+			}, {
+				"Protocol": "REDIS",
+				"Request": "ZADD myzset 3 three",
+				"Response": "\"1\""
+			}, {
+				"Protocol": "REDIS",
+				"Request": "ZPOPMIN myzset 1",
 				"Response": "\"one\",\"1\""
 			}]
 		}`,
@@ -537,6 +639,54 @@ func (c *Cases) ZRandMember() *Case {
 			}, {
 				"Protocol": "REDIS",
 				"Request": "ZRANDMEMBER dadi",
+				"Response": "\"sei\""
+			}, {
+				"Protocol": "REDIS",
+				"Request": "ZRANDMEMBER dadi -5 WITHSCORES",
+				"Response": "\"uno\",\"1\",\"uno\",\"1\",\"cinque\",\"5\",\"sei\",\"6\",\"due\",\"2\""
+			}]
+		}`,
+	}
+}
+
+func (c *Cases) ZRandMemberN() *Case {
+	return &Case{
+		Func: func(t *testing.T, ctx context.Context, c *Client) {
+
+			r1, err := c.ZAdd(ctx, "dadi", 1, "uno", 2, "due", 3, "tre", 4, "quattro", 5, "cinque", 6, "sei")
+			assert.Nil(t, err)
+			assert.Equal(t, r1, int64(6))
+
+			r2, err := c.ZRandMemberN(ctx, "dadi", 1)
+			assert.Nil(t, err)
+			assert.SubInSlice(t, r2, []string{"uno", "due", "tre", "quattro", "cinque", "sei"})
+
+			r3, err := c.ZRandMemberN(ctx, "dadi", 1)
+			assert.Nil(t, err)
+			assert.SubInSlice(t, r3, []string{"uno", "due", "tre", "quattro", "cinque", "sei"})
+
+			r4, err := c.ZRandMemberWithScores(ctx, "dadi", -5)
+			assert.Nil(t, err)
+			assert.Equal(t, len(r4), 5)
+
+			r5, err := c.ZRandMemberWithScores(ctx, "nonexisting", -5)
+			assert.Nil(t, err)
+			assert.Equal(t, len(r5), 0)
+		},
+		Data: `
+		{
+			"Session": "df3b64266ebe4e63a464e135000a07cd",
+			"Actions": [{
+				"Protocol": "REDIS",
+				"Request": "ZADD dadi 1 uno 2 due 3 tre 4 quattro 5 cinque 6 sei",
+				"Response": "\"6\""
+			}, {
+				"Protocol": "REDIS",
+				"Request": "ZRANDMEMBER dadi 1",
+				"Response": "\"sei\""
+			}, {
+				"Protocol": "REDIS",
+				"Request": "ZRANDMEMBER dadi 1",
 				"Response": "\"sei\""
 			}, {
 				"Protocol": "REDIS",
@@ -1015,6 +1165,66 @@ func (c *Cases) ZRevRange() *Case {
 			r6, err := c.ZRevRange(ctx, "myzset", -2, -1)
 			assert.Nil(t, err)
 			assert.Equal(t, r6, []string{"two", "one"})
+		},
+		Data: `
+		{
+			"Session": "df3b64266ebe4e63a464e135000a07cd",
+			"Actions": [{
+				"Protocol": "REDIS",
+				"Request": "ZADD myzset 1 one",
+				"Response": "\"1\""
+			}, {
+				"Protocol": "REDIS",
+				"Request": "ZADD myzset 2 two",
+				"Response": "\"1\""
+			}, {
+				"Protocol": "REDIS",
+				"Request": "ZADD myzset 3 three",
+				"Response": "\"1\""
+			}, {
+				"Protocol": "REDIS",
+				"Request": "ZREVRANGE myzset 0 -1",
+				"Response": "\"three\",\"two\",\"one\""
+			}, {
+				"Protocol": "REDIS",
+				"Request": "ZREVRANGE myzset 2 3",
+				"Response": "\"one\""
+			}, {
+				"Protocol": "REDIS",
+				"Request": "ZREVRANGE myzset -2 -1",
+				"Response": "\"two\",\"one\""
+			}]
+		}`,
+	}
+}
+
+func (c *Cases) ZRevRangeWithScores() *Case {
+	return &Case{
+		Func: func(t *testing.T, ctx context.Context, c *Client) {
+
+			r1, err := c.ZAdd(ctx, "myzset", 1, "one")
+			assert.Nil(t, err)
+			assert.Equal(t, r1, int64(1))
+
+			r2, err := c.ZAdd(ctx, "myzset", 2, "two")
+			assert.Nil(t, err)
+			assert.Equal(t, r2, int64(1))
+
+			r3, err := c.ZAdd(ctx, "myzset", 3, "three")
+			assert.Nil(t, err)
+			assert.Equal(t, r3, int64(1))
+
+			r4, err := c.ZRevRangeWithScores(ctx, "myzset", 0, -1)
+			assert.Nil(t, err)
+			assert.Equal(t, r4, []string{"three", "3", "two", "2", "one", "1"})
+
+			r5, err := c.ZRevRangeWithScores(ctx, "myzset", 2, 3)
+			assert.Nil(t, err)
+			assert.Equal(t, r5, []string{"one", "1"})
+
+			r6, err := c.ZRevRangeWithScores(ctx, "myzset", -2, -1)
+			assert.Nil(t, err)
+			assert.Equal(t, r6, []string{"two", "2", "one", "1"})
 		},
 		Data: `
 		{

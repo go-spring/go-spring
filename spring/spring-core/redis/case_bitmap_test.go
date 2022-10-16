@@ -30,6 +30,18 @@ func TestBitOpAnd(t *testing.T) {
 	runCase(t, new(redis.Cases).BitOpAnd())
 }
 
+func TestBitOpOr(t *testing.T) {
+	runCase(t, new(redis.Cases).BitOpOr())
+}
+
+func TestBitOpXor(t *testing.T) {
+	runCase(t, new(redis.Cases).BitOpXor())
+}
+
+func TestBitOpNot(t *testing.T) {
+	runCase(t, new(redis.Cases).BitOpNot())
+}
+
 func TestBitPos(t *testing.T) {
 	runCase(t, new(redis.Cases).BitPos())
 }

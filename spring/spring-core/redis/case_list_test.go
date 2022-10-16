@@ -26,8 +26,12 @@ func TestLIndex(t *testing.T) {
 	runCase(t, new(redis.Cases).LIndex())
 }
 
-func TestLInsert(t *testing.T) {
-	runCase(t, new(redis.Cases).LInsert())
+func TestLInsertBefore(t *testing.T) {
+	runCase(t, new(redis.Cases).LInsertBefore())
+}
+
+func TestLInsertAfter(t *testing.T) {
+	runCase(t, new(redis.Cases).LInsertAfter())
 }
 
 func TestLLen(t *testing.T) {

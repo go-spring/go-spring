@@ -208,6 +208,41 @@ func (c *Cases) GetDel() *Case {
 	}
 }
 
+func (c *Cases) GetEx() *Case {
+	return &Case{
+		Func: func(t *testing.T, ctx context.Context, c *Client) {
+
+			r1, err := c.Set(ctx, "mykey", "Hello")
+			assert.Nil(t, err)
+			assert.True(t, IsOK(r1))
+
+			r2, err := c.GetEx(ctx, "mykey")
+			assert.Nil(t, err)
+			assert.Equal(t, r2, "Hello")
+
+			_, err = c.GetEx(ctx, "nonexisting")
+			assert.True(t, IsErrNil(err))
+		},
+		Data: `
+		{
+			"Session": "df3b64266ebe4e63a464e135000a07cd",
+			"Actions": [{
+				"Protocol": "REDIS",
+				"Request": "SET mykey Hello",
+				"Response": "\"OK\""
+			}, {
+				"Protocol": "REDIS",
+				"Request": "GETEX mykey",
+				"Response": "\"Hello\""
+			}, {
+				"Protocol": "REDIS",
+				"Request": "GETEX nonexisting",
+				"Response": "null"
+			}]
+		}`,
+	}
+}
+
 func (c *Cases) GetRange() *Case {
 	return &Case{
 		Func: func(t *testing.T, ctx context.Context, c *Client) {
