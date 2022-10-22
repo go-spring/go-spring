@@ -14,16 +14,14 @@
  * limitations under the License.
  */
 
-package web_test
+package binding_test
 
 import (
-	"bytes"
 	"encoding/xml"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/go-spring/spring-base/assert"
-	"github.com/go-spring/spring-core/web"
+	"github.com/go-spring/spring-core/web/binding"
 )
 
 type XMLBindParamCommon struct {
@@ -39,21 +37,19 @@ type XMLBindParam struct {
 
 func TestBindXML(t *testing.T) {
 
-	data, err := xml.Marshal(map[string]interface{}{
-		"a": "1",
-		"b": []string{"2", "3"},
-		"c": 4,
-		"d": []int64{5, 6},
+	data, err := xml.Marshal(&XMLBindParam{
+		XMLBindParamCommon: XMLBindParamCommon{
+			A: "1",
+			B: []string{"2", "3"},
+		},
+		C: 4,
+		D: []int{5, 6},
 	})
-	if err != nil {
-		return
-	}
-	target := "http://localhost:8080/1/2"
-	body := bytes.NewReader(data)
-	req := httptest.NewRequest("POST", target, body)
-	req.Header.Set(web.HeaderContentType, web.MIMEApplicationXML)
-	ctx := &MockContext{
-		BaseContext: web.NewBaseContext("/:a/:b", nil, req, nil),
+	assert.Nil(t, err)
+
+	r := &MockRequest{
+		contentType: binding.MIMEApplicationXML,
+		requestBody: string(data),
 	}
 
 	expect := XMLBindParam{
@@ -66,7 +62,7 @@ func TestBindXML(t *testing.T) {
 	}
 
 	var p XMLBindParam
-	err = web.Bind(&p, ctx)
+	err = binding.Bind(&p, r)
 	assert.Nil(t, err)
 	assert.Equal(t, p, expect)
 }

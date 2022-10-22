@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package web_test
+package middleware_test
 
 import (
 	"net/http"
@@ -22,15 +22,39 @@ import (
 	"testing"
 
 	"github.com/go-spring/spring-base/assert"
+	"github.com/go-spring/spring-base/log"
+	"github.com/go-spring/spring-base/util"
 	"github.com/go-spring/spring-core/web"
+	"github.com/go-spring/spring-core/web/middleware"
 )
 
-func TestRedirectFilter(t *testing.T) {
+func init() {
+	config := `
+		<?xml version="1.0" encoding="UTF-8"?>
+		<Configuration>
+			<Appenders>
+				<Console name="Console"/>
+			</Appenders>
+			<Loggers>
+				<Root level="info">
+					<AppenderRef ref="Console"/>
+				</Root>
+			</Loggers>
+		</Configuration>
+	`
+	err := log.RefreshBuffer(config, ".xml")
+	util.Panic(err).When(err != nil)
+}
+
+func TestBasicAuthFilter(t *testing.T) {
 	r, _ := http.NewRequest(http.MethodPost, "http://127.0.0.1:8080/", nil)
+	r.Header.Set(web.HeaderWWWAuthenticate, "Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==")
 	w := httptest.NewRecorder()
 	ctx := web.NewBaseContext("", nil, r, &web.SimpleResponse{ResponseWriter: w})
-	f := web.HTTPSRedirect(web.NewRedirectConfig())
+	f := middleware.NewBasicAuthFilter(middleware.BasicAuthConfig{
+		Accounts: map[string]string{"Aladdin": "open sesame"},
+	})
 	web.NewFilterChain([]web.Filter{f}).Next(ctx, web.Recursive)
-	assert.Equal(t, w.Result().StatusCode, http.StatusMovedPermanently)
-	assert.Equal(t, w.Result().Header.Get(web.HeaderLocation), "https://127.0.0.1:8080")
+	user := ctx.Get(middleware.AuthUserKey)
+	assert.Equal(t, user, "Aladdin")
 }

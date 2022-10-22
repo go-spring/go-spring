@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package web
+package middleware
 
 import (
 	"compress/gzip"
@@ -25,6 +25,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/go-spring/spring-core/web"
 )
 
 type GzipFilter struct {
@@ -37,7 +39,7 @@ type GzipFilter struct {
 // NewGzipFilter The compression level can be gzip.DefaultCompression,
 // gzip.NoCompression, gzip.HuffmanOnly or any integer value between
 // gip.BestSpeed and gzip.BestCompression inclusive.
-func NewGzipFilter(level int) (Filter, error) {
+func NewGzipFilter(level int) (web.Filter, error) {
 	_, err := gzip.NewWriterLevel(ioutil.Discard, level)
 	if err != nil {
 		return nil, err
@@ -52,10 +54,10 @@ func NewGzipFilter(level int) (Filter, error) {
 	}, nil
 }
 
-func (f *GzipFilter) Invoke(ctx Context, chain FilterChain) {
+func (f *GzipFilter) Invoke(ctx web.Context, chain web.FilterChain) {
 
 	if !f.shouldCompress(ctx.Request()) {
-		chain.Next(ctx, Iterative)
+		chain.Next(ctx, web.Iterative)
 		return
 	}
 
@@ -65,17 +67,17 @@ func (f *GzipFilter) Invoke(ctx Context, chain FilterChain) {
 	defer w.Reset(ioutil.Discard)
 	w.Reset(ctx.Response().Get())
 
-	ctx.SetHeader(HeaderContentEncoding, "gzip")
-	ctx.SetHeader(HeaderVary, HeaderAcceptEncoding)
+	ctx.SetHeader(web.HeaderContentEncoding, "gzip")
+	ctx.SetHeader(web.HeaderVary, web.HeaderAcceptEncoding)
 
 	zw := &gzipWriter{ctx.Response().Get(), w, 0}
 	ctx.Response().Set(zw)
 	defer func() {
 		w.Close()
-		ctx.SetHeader(HeaderContentLength, strconv.Itoa(zw.size))
+		ctx.SetHeader(web.HeaderContentLength, strconv.Itoa(zw.size))
 	}()
 
-	chain.Next(ctx, Recursive)
+	chain.Next(ctx, web.Recursive)
 }
 
 func (f *GzipFilter) shouldCompress(req *http.Request) bool {

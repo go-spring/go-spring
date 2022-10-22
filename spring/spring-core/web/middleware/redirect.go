@@ -14,11 +14,13 @@
  * limitations under the License.
  */
 
-package web
+package middleware
 
 import (
 	"net/http"
 	"strings"
+
+	"github.com/go-spring/spring-core/web"
 )
 
 type RedirectConfig struct {
@@ -37,7 +39,7 @@ type redirectFilter struct {
 	redirect func(scheme, host, uri string) (ok bool, url string)
 }
 
-func HTTPSRedirect(config RedirectConfig) Filter {
+func HTTPSRedirect(config RedirectConfig) web.Filter {
 	return &redirectFilter{
 		code: config.Code,
 		redirect: func(scheme, host, uri string) (ok bool, url string) {
@@ -49,7 +51,7 @@ func HTTPSRedirect(config RedirectConfig) Filter {
 	}
 }
 
-func HTTPSWWWRedirect(config RedirectConfig) Filter {
+func HTTPSWWWRedirect(config RedirectConfig) web.Filter {
 	return &redirectFilter{
 		code: config.Code,
 		redirect: func(scheme, host, uri string) (ok bool, url string) {
@@ -61,7 +63,7 @@ func HTTPSWWWRedirect(config RedirectConfig) Filter {
 	}
 }
 
-func HTTPSNonWWWRedirect(config RedirectConfig) Filter {
+func HTTPSNonWWWRedirect(config RedirectConfig) web.Filter {
 	return &redirectFilter{
 		code: config.Code,
 		redirect: func(scheme, host, uri string) (ok bool, url string) {
@@ -74,7 +76,7 @@ func HTTPSNonWWWRedirect(config RedirectConfig) Filter {
 	}
 }
 
-func WWWRedirect(config RedirectConfig) Filter {
+func WWWRedirect(config RedirectConfig) web.Filter {
 	return &redirectFilter{
 		code: config.Code,
 		redirect: func(scheme, host, uri string) (ok bool, url string) {
@@ -86,7 +88,7 @@ func WWWRedirect(config RedirectConfig) Filter {
 	}
 }
 
-func NonWWWRedirect(config RedirectConfig) Filter {
+func NonWWWRedirect(config RedirectConfig) web.Filter {
 	return &redirectFilter{
 		code: config.Code,
 		redirect: func(scheme, host, uri string) (ok bool, url string) {
@@ -98,7 +100,7 @@ func NonWWWRedirect(config RedirectConfig) Filter {
 	}
 }
 
-func (f *redirectFilter) Invoke(ctx Context, chain FilterChain) {
+func (f *redirectFilter) Invoke(ctx web.Context, chain web.FilterChain) {
 	req := ctx.Request()
 	ok, url := f.redirect(ctx.Scheme(), req.Host, req.RequestURI)
 	if ok {
@@ -109,5 +111,5 @@ func (f *redirectFilter) Invoke(ctx Context, chain FilterChain) {
 		ctx.Redirect(code, url)
 		return
 	}
-	chain.Next(ctx, Iterative)
+	chain.Next(ctx, web.Iterative)
 }

@@ -33,6 +33,7 @@ import (
 	"github.com/go-spring/spring-base/knife"
 	"github.com/go-spring/spring-base/log"
 	"github.com/go-spring/spring-base/util"
+	"github.com/go-spring/spring-core/web/binding"
 )
 
 type BaseContext struct {
@@ -265,7 +266,7 @@ func (c *BaseContext) RequestBody() ([]byte, error) {
 
 // Bind binds the request body into provided type `i`.
 func (c *BaseContext) Bind(i interface{}) error {
-	return Bind(i, c)
+	return binding.Bind(i, c)
 }
 
 // Response returns Response.

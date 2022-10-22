@@ -14,15 +14,36 @@
  * limitations under the License.
  */
 
-package web
+// Package binding ...
+package binding
 
 import (
 	"fmt"
+	"net/url"
 	"reflect"
 	"strconv"
 
 	"github.com/go-spring/spring-core/validate"
 )
+
+const (
+	MIMEApplicationJSON     = "application/json"
+	MIMEApplicationXML      = "application/xml"
+	MIMETextXML             = "text/xml"
+	MIMEApplicationForm     = "application/x-www-form-urlencoded"
+	MIMEApplicationProtobuf = "application/protobuf"
+	MIMEApplicationMsgpack  = "application/msgpack"
+	MIMEMultipartForm       = "multipart/form-data"
+)
+
+type Request interface {
+	ContentType() string
+	Header(key string) string
+	PathParam(name string) string
+	QueryParam(name string) string
+	FormParams() (url.Values, error)
+	RequestBody() ([]byte, error)
+}
 
 type BindScope int
 
@@ -39,13 +60,13 @@ var scopeBinders = map[BindScope][]string{
 	BindScopeHeader: {"header"},
 }
 
-var scopeGetters = map[BindScope]func(ctx Context, name string) string{
-	BindScopeURI:    Context.PathParam,
-	BindScopeQuery:  Context.QueryParam,
-	BindScopeHeader: Context.Header,
+var scopeGetters = map[BindScope]func(r Request, name string) string{
+	BindScopeURI:    Request.PathParam,
+	BindScopeQuery:  Request.QueryParam,
+	BindScopeHeader: Request.Header,
 }
 
-type BodyBinder func(i interface{}, ctx Context) error
+type BodyBinder func(i interface{}, r Request) error
 
 var bodyBinders = map[string]BodyBinder{
 	MIMEApplicationForm: BindForm,
@@ -70,25 +91,25 @@ func RegisterBodyBinder(mime string, binder BodyBinder) {
 	bodyBinders[mime] = binder
 }
 
-func Bind(i interface{}, ctx Context) error {
-	if err := bindScope(i, ctx); err != nil {
+func Bind(i interface{}, r Request) error {
+	if err := bindScope(i, r); err != nil {
 		return err
 	}
-	if err := bindBody(i, ctx); err != nil {
+	if err := bindBody(i, r); err != nil {
 		return err
 	}
 	return validate.Struct(i)
 }
 
-func bindBody(i interface{}, ctx Context) error {
-	binder, ok := bodyBinders[ctx.ContentType()]
+func bindBody(i interface{}, r Request) error {
+	binder, ok := bodyBinders[r.ContentType()]
 	if !ok {
 		binder = bodyBinders[MIMEApplicationForm]
 	}
-	return binder(i, ctx)
+	return binder(i, r)
 }
 
-func bindScope(i interface{}, ctx Context) error {
+func bindScope(i interface{}, r Request) error {
 	t := reflect.TypeOf(i)
 	if t.Kind() != reflect.Ptr {
 		return nil
@@ -102,7 +123,7 @@ func bindScope(i interface{}, ctx Context) error {
 		fv := ev.Field(j)
 		ft := et.Field(j)
 		for scope := BindScopeURI; scope < BindScopeBody; scope++ {
-			err := bindScopeField(scope, fv, ft, ctx)
+			err := bindScopeField(scope, fv, ft, r)
 			if err != nil {
 				return err
 			}
@@ -111,13 +132,13 @@ func bindScope(i interface{}, ctx Context) error {
 	return nil
 }
 
-func bindScopeField(scope BindScope, v reflect.Value, field reflect.StructField, ctx Context) error {
+func bindScopeField(scope BindScope, v reflect.Value, field reflect.StructField, r Request) error {
 	for _, tag := range scopeBinders[scope] {
 		if name, ok := field.Tag.Lookup(tag); ok {
 			if name == "-" {
 				continue
 			}
-			val := scopeGetters[scope](ctx, name)
+			val := scopeGetters[scope](r, name)
 			err := bindData(v, val)
 			if err != nil {
 				return err

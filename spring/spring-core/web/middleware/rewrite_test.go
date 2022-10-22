@@ -14,19 +14,4 @@
  * limitations under the License.
  */
 
-package web
-
-import (
-	"bytes"
-	"encoding/json"
-)
-
-func BindJSON(i interface{}, ctx Context) error {
-	body, err := ctx.RequestBody()
-	if err != nil {
-		return err
-	}
-	r := bytes.NewReader(body)
-	decoder := json.NewDecoder(r)
-	return decoder.Decode(i)
-}
+package middleware_test

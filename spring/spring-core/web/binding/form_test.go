@@ -14,24 +14,49 @@
  * limitations under the License.
  */
 
-package web_test
+package binding_test
 
 import (
-	"net/http"
-	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"github.com/go-spring/spring-base/assert"
-	"github.com/go-spring/spring-core/web"
+	"github.com/go-spring/spring-core/web/binding"
 )
 
-func TestRequestIDFilter(t *testing.T) {
-	r, _ := http.NewRequest(http.MethodPost, "http://127.0.0.1:8080/", nil)
-	w := httptest.NewRecorder()
-	ctx := web.NewBaseContext("", nil, r, &web.SimpleResponse{ResponseWriter: w})
-	f := web.NewRequestIDFilter(web.RequestIDConfig{
-		Generator: func() string { return "0d9ad123-327f-bde5-14b4-8f93c36c3546" },
-	})
-	web.NewFilterChain([]web.Filter{f}).Next(ctx, web.Recursive)
-	assert.Equal(t, w.Result().Header.Get(web.HeaderXRequestID), "0d9ad123-327f-bde5-14b4-8f93c36c3546")
+type FormBindParamCommon struct {
+	A string   `form:"a"`
+	B []string `form:"b"`
+}
+
+type FormBindParam struct {
+	FormBindParamCommon
+	C int   `form:"c"`
+	D []int `form:"d"`
+}
+
+func TestBindForm(t *testing.T) {
+
+	ctx := &MockRequest{
+		formParams: url.Values{
+			"a": {"1"},
+			"b": {"2", "3"},
+			"c": {"4"},
+			"d": {"5", "6"},
+		},
+	}
+
+	expect := FormBindParam{
+		FormBindParamCommon: FormBindParamCommon{
+			A: "1",
+			B: []string{"2", "3"},
+		},
+		C: 4,
+		D: []int{5, 6},
+	}
+
+	var p FormBindParam
+	err := binding.Bind(&p, ctx)
+	assert.Nil(t, err)
+	assert.Equal(t, p, expect)
 }

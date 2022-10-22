@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package web
+package middleware
 
 import (
 	"bytes"
@@ -23,6 +23,7 @@ import (
 	"strings"
 
 	"github.com/go-spring/spring-base/util"
+	"github.com/go-spring/spring-core/web"
 )
 
 const (
@@ -45,16 +46,16 @@ type basicAuthFilter struct {
 }
 
 // NewBasicAuthFilter 创建封装 http 基础认证功能的过滤器。
-func NewBasicAuthFilter(config BasicAuthConfig) Filter {
+func NewBasicAuthFilter(config BasicAuthConfig) web.Filter {
 	if config.Realm == "" {
 		config.Realm = defaultRealm
 	}
 	return &basicAuthFilter{config: config}
 }
 
-func (f *basicAuthFilter) Invoke(ctx Context, chain FilterChain) {
+func (f *basicAuthFilter) Invoke(ctx web.Context, chain web.FilterChain) {
 
-	auth := ctx.Header(HeaderWWWAuthenticate)
+	auth := ctx.Header(web.HeaderWWWAuthenticate)
 	if len(auth) <= len(basicPrefix) {
 		f.unauthorized(ctx)
 		return
@@ -91,9 +92,9 @@ func (f *basicAuthFilter) Invoke(ctx Context, chain FilterChain) {
 	}
 
 	ctx.Set(AuthUserKey, user)
-	chain.Next(ctx, Iterative)
+	chain.Next(ctx, web.Iterative)
 }
 
-func (f *basicAuthFilter) unauthorized(ctx Context) {
-	ctx.SetHeader(HeaderWWWAuthenticate, fmt.Sprintf("Basic realm=%q", f.config.Realm))
+func (f *basicAuthFilter) unauthorized(ctx web.Context) {
+	ctx.SetHeader(web.HeaderWWWAuthenticate, fmt.Sprintf("Basic realm=%q", f.config.Realm))
 }

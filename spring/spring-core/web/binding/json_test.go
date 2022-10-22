@@ -14,16 +14,14 @@
  * limitations under the License.
  */
 
-package web_test
+package binding_test
 
 import (
-	"bytes"
 	"encoding/json"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/go-spring/spring-base/assert"
-	"github.com/go-spring/spring-core/web"
+	"github.com/go-spring/spring-core/web/binding"
 )
 
 type JSONBindParamCommon struct {
@@ -46,14 +44,12 @@ func TestBindJSON(t *testing.T) {
 		"d": []int64{5, 6},
 	})
 	if err != nil {
-		return
+		t.Fatal(err)
 	}
-	target := "http://localhost:8080/1/2"
-	body := bytes.NewReader(data)
-	req := httptest.NewRequest("POST", target, body)
-	req.Header.Set(web.HeaderContentType, web.MIMEApplicationJSON)
-	ctx := &MockContext{
-		BaseContext: web.NewBaseContext("/:a/:b", nil, req, nil),
+
+	ctx := &MockRequest{
+		contentType: binding.MIMEApplicationJSON,
+		requestBody: string(data),
 	}
 
 	expect := JSONBindParam{
@@ -66,7 +62,7 @@ func TestBindJSON(t *testing.T) {
 	}
 
 	var p JSONBindParam
-	err = web.Bind(&p, ctx)
+	err = binding.Bind(&p, ctx)
 	assert.Nil(t, err)
 	assert.Equal(t, p, expect)
 }

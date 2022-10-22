@@ -14,22 +14,21 @@
  * limitations under the License.
  */
 
-package web_test
+package middleware_test
 
 import (
-	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/go-spring/spring-base/assert"
 	"github.com/go-spring/spring-core/web"
+	"github.com/go-spring/spring-core/web/middleware"
 )
 
-func TestMethodOverride(t *testing.T) {
-	r, _ := http.NewRequest(http.MethodPost, "http://127.0.0.1:8080/?_method=GET", nil)
+func TestGzipFilter(t *testing.T) {
+	filter, _ := middleware.NewGzipFilter(5)
+	r := httptest.NewRequest("GET", "http://127.0.0.1/test", nil)
+	r.Header.Set(web.HeaderAcceptEncoding, "gzip")
 	w := httptest.NewRecorder()
 	ctx := web.NewBaseContext("", nil, r, &web.SimpleResponse{ResponseWriter: w})
-	f := web.NewMethodOverrideFilter(web.NewMethodOverrideConfig().ByQueryParam("_method"))
-	web.NewFilterChain([]web.Filter{f}).Next(ctx, web.Recursive)
-	assert.Equal(t, ctx.Request().Method, http.MethodGet)
+	web.NewFilterChain([]web.Filter{filter}).Next(ctx, web.Recursive)
 }

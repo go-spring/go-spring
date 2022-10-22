@@ -14,20 +14,12 @@
  * limitations under the License.
  */
 
-package web_test
+package middleware
 
-import (
-	"net/http/httptest"
-	"testing"
+import "github.com/go-spring/spring-core/web"
 
-	"github.com/go-spring/spring-core/web"
-)
-
-func TestGzipFilter(t *testing.T) {
-	filter, _ := web.NewGzipFilter(5)
-	r := httptest.NewRequest("GET", "http://127.0.0.1/test", nil)
-	r.Header.Set(web.HeaderAcceptEncoding, "gzip")
-	w := httptest.NewRecorder()
-	ctx := web.NewBaseContext("", nil, r, &web.SimpleResponse{ResponseWriter: w})
-	web.NewFilterChain([]web.Filter{filter}).Next(ctx, web.Recursive)
+func NewRewriteFilter() *web.Prefilter {
+	return web.FuncPrefilter(func(ctx web.Context, chain web.FilterChain) {
+		// https://github.com/labstack/echo/blob/master/middleware/rewrite.go
+	})
 }

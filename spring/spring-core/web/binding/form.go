@@ -14,15 +14,15 @@
  * limitations under the License.
  */
 
-package web
+package binding
 
 import (
 	"net/url"
 	"reflect"
 )
 
-func BindForm(i interface{}, ctx Context) error {
-	params, err := ctx.FormParams()
+func BindForm(i interface{}, r Request) error {
+	params, err := r.FormParams()
 	if err != nil {
 		return err
 	}

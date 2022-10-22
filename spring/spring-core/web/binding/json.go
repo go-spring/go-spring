@@ -14,4 +14,18 @@
  * limitations under the License.
  */
 
-package web_test
+package binding
+
+import (
+	"bytes"
+	"encoding/json"
+)
+
+func BindJSON(i interface{}, r Request) error {
+	body, err := r.RequestBody()
+	if err != nil {
+		return err
+	}
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	return decoder.Decode(i)
+}

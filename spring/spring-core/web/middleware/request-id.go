@@ -14,26 +14,37 @@
  * limitations under the License.
  */
 
-package web_test
+package middleware
 
 import (
-	"net/http"
-	"net/http/httptest"
-	"testing"
-
-	"github.com/go-spring/spring-base/assert"
 	"github.com/go-spring/spring-core/web"
+	"github.com/google/uuid"
 )
 
-func TestBasicAuthFilter(t *testing.T) {
-	r, _ := http.NewRequest(http.MethodPost, "http://127.0.0.1:8080/", nil)
-	r.Header.Set(web.HeaderWWWAuthenticate, "Basic QWxhZGRpbjpvcGVuIHNlc2FtZQ==")
-	w := httptest.NewRecorder()
-	ctx := web.NewBaseContext("", nil, r, &web.SimpleResponse{ResponseWriter: w})
-	f := web.NewBasicAuthFilter(web.BasicAuthConfig{
-		Accounts: map[string]string{"Aladdin": "open sesame"},
+type RequestIDConfig struct {
+	Header    string
+	Generator func() string
+}
+
+func NewRequestIDConfig() RequestIDConfig {
+	return RequestIDConfig{}
+}
+
+func NewRequestIDFilter(config RequestIDConfig) web.Filter {
+	if config.Header == "" {
+		config.Header = web.HeaderXRequestID
+	}
+	if config.Generator == nil {
+		config.Generator = func() string {
+			return uuid.New().String()
+		}
+	}
+	return web.FuncFilter(func(ctx web.Context, chain web.FilterChain) {
+		reqID := ctx.Header(config.Header)
+		if reqID == "" {
+			reqID = config.Generator()
+		}
+		ctx.SetHeader(web.HeaderXRequestID, reqID)
+		chain.Next(ctx, web.Iterative)
 	})
-	web.NewFilterChain([]web.Filter{f}).Next(ctx, web.Recursive)
-	user := ctx.Get(web.AuthUserKey)
-	assert.Equal(t, user, "Aladdin")
 }

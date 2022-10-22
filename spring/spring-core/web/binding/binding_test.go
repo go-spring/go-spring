@@ -14,15 +14,50 @@
  * limitations under the License.
  */
 
-package web_test
+package binding_test
 
 import (
-	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"github.com/go-spring/spring-base/assert"
-	"github.com/go-spring/spring-core/web"
+	"github.com/go-spring/spring-core/web/binding"
 )
+
+type MockRequest struct {
+	contentType string
+	headers     map[string]string
+	queryParams map[string]string
+	pathParams  map[string]string
+	formParams  url.Values
+	requestBody string
+}
+
+var _ binding.Request = &MockRequest{}
+
+func (r *MockRequest) ContentType() string {
+	return r.contentType
+}
+
+func (r *MockRequest) Header(key string) string {
+	return r.headers[key]
+}
+
+func (r *MockRequest) QueryParam(name string) string {
+	return r.queryParams[name]
+}
+
+func (r *MockRequest) PathParam(name string) string {
+	return r.pathParams[name]
+}
+
+func (r *MockRequest) FormParams() (url.Values, error) {
+	return r.formParams, nil
+}
+
+func (r *MockRequest) RequestBody() ([]byte, error) {
+	return []byte(r.requestBody), nil
+}
 
 type ScopeBindParam struct {
 	A string `uri:"a"`
@@ -32,24 +67,18 @@ type ScopeBindParam struct {
 	E string `query:"e" header:"e"`
 }
 
-type MockContext struct {
-	*web.BaseContext
-	uriParam map[string]string
-}
-
-func (ctx *MockContext) PathParam(name string) string {
-	return ctx.uriParam[name]
-}
-
 func TestScopeBind(t *testing.T) {
 
-	target := "http://localhost:8080/1/2?c=3&d=4&e=5"
-	req := httptest.NewRequest("GET", target, nil)
-	req.Header.Set("e", "6")
-
-	ctx := &MockContext{
-		BaseContext: web.NewBaseContext("/:a/:b", nil, req, nil),
-		uriParam: map[string]string{
+	ctx := &MockRequest{
+		headers: map[string]string{
+			"e": "6",
+		},
+		queryParams: map[string]string{
+			"c": "3",
+			"d": "4",
+			"e": "5",
+		},
+		pathParams: map[string]string{
 			"a": "1",
 			"b": "2",
 		},
@@ -64,7 +93,7 @@ func TestScopeBind(t *testing.T) {
 	}
 
 	var p ScopeBindParam
-	err := web.Bind(&p, ctx)
+	err := binding.Bind(&p, ctx)
 	assert.Nil(t, err)
 	assert.Equal(t, p, expect)
 }

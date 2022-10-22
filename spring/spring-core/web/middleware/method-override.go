@@ -14,14 +14,16 @@
  * limitations under the License.
  */
 
-package web
+package middleware
 
 import (
 	"net/http"
 	"strings"
+
+	"github.com/go-spring/spring-core/web"
 )
 
-type MethodOverrideGetter func(ctx Context) string
+type MethodOverrideGetter func(ctx web.Context) string
 
 type MethodOverrideConfig struct {
 	getters []MethodOverrideGetter
@@ -32,27 +34,27 @@ func NewMethodOverrideConfig() *MethodOverrideConfig {
 }
 
 func (config *MethodOverrideConfig) ByHeader(key string) *MethodOverrideConfig {
-	config.getters = append(config.getters, func(ctx Context) string {
+	config.getters = append(config.getters, func(ctx web.Context) string {
 		return ctx.Header(key)
 	})
 	return config
 }
 
 func (config *MethodOverrideConfig) ByQueryParam(name string) *MethodOverrideConfig {
-	config.getters = append(config.getters, func(ctx Context) string {
+	config.getters = append(config.getters, func(ctx web.Context) string {
 		return ctx.QueryParam(name)
 	})
 	return config
 }
 
 func (config *MethodOverrideConfig) ByFormValue(name string) *MethodOverrideConfig {
-	config.getters = append(config.getters, func(ctx Context) string {
+	config.getters = append(config.getters, func(ctx web.Context) string {
 		return ctx.FormValue(name)
 	})
 	return config
 }
 
-func (config *MethodOverrideConfig) get(ctx Context) string {
+func (config *MethodOverrideConfig) get(ctx web.Context) string {
 	for _, getter := range config.getters {
 		if method := getter(ctx); method != "" {
 			return method
@@ -61,7 +63,7 @@ func (config *MethodOverrideConfig) get(ctx Context) string {
 	return ""
 }
 
-func NewMethodOverrideFilter(config *MethodOverrideConfig) *Prefilter {
+func NewMethodOverrideFilter(config *MethodOverrideConfig) *web.Prefilter {
 	if len(config.getters) == 0 {
 		config.ByHeader("X-HTTP-Method").
 			ByHeader("X-HTTP-Method-Override").
@@ -69,13 +71,13 @@ func NewMethodOverrideFilter(config *MethodOverrideConfig) *Prefilter {
 			ByQueryParam("_method").
 			ByFormValue("_method")
 	}
-	return FuncPrefilter(func(ctx Context, chain FilterChain) {
+	return web.FuncPrefilter(func(ctx web.Context, chain web.FilterChain) {
 		req := ctx.Request()
 		if strings.ToUpper(req.Method) == http.MethodPost {
 			if method := config.get(ctx); method != "" {
 				req.Method = strings.ToUpper(method)
 			}
 		}
-		chain.Next(ctx, Iterative)
+		chain.Next(ctx, web.Iterative)
 	})
 }

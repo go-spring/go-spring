@@ -14,19 +14,18 @@
  * limitations under the License.
  */
 
-package web
+package binding
 
 import (
 	"bytes"
 	"encoding/xml"
 )
 
-func BindXML(i interface{}, ctx Context) error {
-	body, err := ctx.RequestBody()
+func BindXML(i interface{}, r Request) error {
+	body, err := r.RequestBody()
 	if err != nil {
 		return err
 	}
-	r := bytes.NewReader(body)
-	decoder := xml.NewDecoder(r)
+	decoder := xml.NewDecoder(bytes.NewReader(body))
 	return decoder.Decode(i)
 }
