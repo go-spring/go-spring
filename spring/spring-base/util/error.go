@@ -27,39 +27,33 @@ var ForbiddenMethod = errors.New("forbidden method")
 // UnimplementedMethod throws this error when calling an unimplemented method.
 var UnimplementedMethod = errors.New("unimplemented method")
 
-var WrapFormat = func(err error, fileline string, format string, a ...interface{}) error {
+var WrapFormat = func(err error, fileline string, msg string) error {
 	if err == nil {
-		if format != "" {
-			return fmt.Errorf(fileline+" "+format, a...)
-		}
-		return errors.New(fileline + " " + fmt.Sprint(a...))
+		return fmt.Errorf("%s %s", fileline, msg)
 	}
-	if format == "" {
-		return fmt.Errorf("%s %s; %w", fileline, fmt.Sprint(a...), err)
-	}
-	return fmt.Errorf("%s %s; %w", fileline, fmt.Sprintf(format, a...), err)
+	return fmt.Errorf("%s %s; %w", fileline, msg, err)
 }
 
 // Error returns an error with the file and line.
 // The file and line may be calculated at the compile time in the future.
 func Error(fileline string, text string) error {
-	return WrapFormat(nil, fileline, "", text)
+	return WrapFormat(nil, fileline, text)
 }
 
 // Errorf returns an error with the file and line.
 // The file and line may be calculated at the compile time in the future.
 func Errorf(fileline string, format string, a ...interface{}) error {
-	return WrapFormat(nil, fileline, format, a...)
+	return WrapFormat(nil, fileline, fmt.Sprintf(format, a...))
 }
 
 // Wrap returns an error with the file and line.
 // The file and line may be calculated at the compile time in the future.
 func Wrap(err error, fileline string, text string) error {
-	return WrapFormat(err, fileline, "", text)
+	return WrapFormat(err, fileline, text)
 }
 
 // Wrapf returns an error with the file and line.
 // The file and line may be calculated at the compile time in the future.
 func Wrapf(err error, fileline string, format string, a ...interface{}) error {
-	return WrapFormat(err, fileline, format, a...)
+	return WrapFormat(err, fileline, fmt.Sprintf(format, a...))
 }

@@ -26,6 +26,13 @@ import (
 
 func TestRead(t *testing.T) {
 
+	t.Run("error", func(t *testing.T) {
+		_, err := yaml.Read([]byte(`
+			string=abc
+		`))
+		assert.NotNil(t, err)
+	})
+
 	t.Run("basic type", func(t *testing.T) {
 		str := `
 			bool: false

@@ -26,15 +26,27 @@ import (
 
 func TestError(t *testing.T) {
 
-	e0 := util.Error(code.FileLine(), "error")
-	assert.Error(t, e0, ".*/error_test.go:29 error")
+	e0 := util.Error(code.FileLine(), "error: 0")
+	t.Log(e0)
+	assert.Error(t, e0, ".*/error_test.go:29 error: 0")
 
-	e1 := util.Errorf(code.FileLine(), "error: %d", 0)
-	assert.Error(t, e1, ".*/error_test.go:32 error: 0")
+	e1 := util.Errorf(code.FileLine(), "error: %d", 1)
+	t.Log(e1)
+	assert.Error(t, e1, ".*/error_test.go:33 error: 1")
 
-	e2 := util.Wrap(e0, code.FileLine(), "error")
-	assert.Error(t, e2, ".*/error_test.go:35 error; .*/error_test.go:29 error")
+	e2 := util.Wrap(e0, code.FileLine(), "error: 0")
+	t.Log(e2)
+	assert.Error(t, e2, ".*/error_test.go:37 error: 0; .*/error_test.go:29 error: 0")
 
 	e3 := util.Wrapf(e1, code.FileLine(), "error: %d", 1)
-	assert.Error(t, e3, ".*/error_test.go:38 error: 1; .*/error_test.go:32 error: 0")
+	t.Log(e3)
+	assert.Error(t, e3, ".*/error_test.go:41 error: 1; .*/error_test.go:33 error: 1")
+
+	e4 := util.Wrap(e2, code.FileLine(), "error: 0")
+	t.Log(e4)
+	assert.Error(t, e4, ".*/error_test.go:45 error: 0; .*/error_test.go:37 error: 0; .*/error_test.go:29 error: 0")
+
+	e5 := util.Wrapf(e3, code.FileLine(), "error: %d", 1)
+	t.Log(e5)
+	assert.Error(t, e5, ".*/error_test.go:49 error: 1; .*/error_test.go:41 error: 1; .*/error_test.go:33 error: 1")
 }

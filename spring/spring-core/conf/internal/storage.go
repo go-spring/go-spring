@@ -160,27 +160,30 @@ func (s *Storage) Get(key string) string {
 
 // Set stores the key and its value.
 func (s *Storage) Set(key, val string) error {
-	err := s.merge(key, val)
+	tree, err := s.merge(key, val)
 	if err != nil {
 		return err
 	}
-	s.data[key] = val
+	switch tree.node {
+	case nodeTypeNil, nodeTypeValue:
+		s.data[key] = val
+	}
 	return nil
 }
 
-func (s *Storage) merge(key, val string) error {
+func (s *Storage) merge(key, val string) (*treeNode, error) {
 	path, err := SplitPath(key)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if path[0].Type == PathTypeIndex {
-		return fmt.Errorf("invalid key '%s'", key)
+		return nil, fmt.Errorf("invalid key '%s'", key)
 	}
 	tree := s.tree
 	for i, pathNode := range path {
 		if tree.node == nodeTypeMap {
 			if pathNode.Type != PathTypeKey {
-				return fmt.Errorf("property '%s' is a map but '%s' wants other type", JoinPath(path[:i]), key)
+				return nil, fmt.Errorf("property '%s' is a map but '%s' wants other type", JoinPath(path[:i]), key)
 			}
 		}
 		m := tree.data.(map[string]*treeNode)
@@ -207,11 +210,12 @@ func (s *Storage) merge(key, val string) error {
 				continue
 			}
 			if val == "" {
-				m[pathNode.Elem] = &treeNode{node: nodeTypeNil}
+				tree = &treeNode{node: nodeTypeNil}
 			} else {
-				m[pathNode.Elem] = &treeNode{node: nodeTypeValue}
+				tree = &treeNode{node: nodeTypeValue}
 			}
-			continue
+			m[pathNode.Elem] = tree
+			break // break for 100% test
 		}
 		switch v.node {
 		case nodeTypeMap:
@@ -220,13 +224,13 @@ func (s *Storage) merge(key, val string) error {
 				continue
 			}
 			if val == "" {
-				return nil
+				return v, nil
 			}
-			return fmt.Errorf("property '%s' is a map but '%s' wants other type", JoinPath(path[:i+1]), key)
+			return nil, fmt.Errorf("property '%s' is a map but '%s' wants other type", JoinPath(path[:i+1]), key)
 		case nodeTypeArray:
 			if pathNode.Type != PathTypeIndex {
 				if i < len(path)-1 && path[i+1].Type != PathTypeIndex {
-					return fmt.Errorf("property '%s' is an array but '%s' wants other type", JoinPath(path[:i+1]), key)
+					return nil, fmt.Errorf("property '%s' is an array but '%s' wants other type", JoinPath(path[:i+1]), key)
 				}
 			}
 			if i < len(path)-1 {
@@ -234,15 +238,15 @@ func (s *Storage) merge(key, val string) error {
 				continue
 			}
 			if val == "" {
-				return nil
+				return v, nil
 			}
-			return fmt.Errorf("property '%s' is an array but '%s' wants other type", JoinPath(path[:i+1]), key)
+			return nil, fmt.Errorf("property '%s' is an array but '%s' wants other type", JoinPath(path[:i+1]), key)
 		case nodeTypeValue:
 			if i == len(path)-1 {
-				return nil
+				return v, nil
 			}
-			return fmt.Errorf("property '%s' is a value but '%s' wants other type", JoinPath(path[:i+1]), key)
+			return nil, fmt.Errorf("property '%s' is a value but '%s' wants other type", JoinPath(path[:i+1]), key)
 		}
 	}
-	return nil
+	return tree, nil
 }
