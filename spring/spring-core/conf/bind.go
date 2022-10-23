@@ -42,24 +42,37 @@ type ParsedTag struct {
 	Splitter string // splitter's name
 }
 
+func (tag ParsedTag) String() string {
+	var sb strings.Builder
+	sb.WriteString("${")
+	sb.WriteString(tag.Key)
+	if tag.HasDef {
+		sb.WriteString(":=")
+		sb.WriteString(tag.Def)
+	}
+	sb.WriteString("}")
+	if tag.Splitter != "" {
+		sb.WriteString("||")
+		sb.WriteString(tag.Splitter)
+	}
+	return sb.String()
+}
+
 // ParseTag parses a value tag, returns its key, and default value, and splitter.
 func ParseTag(tag string) (ret ParsedTag, err error) {
 	i := strings.LastIndex(tag, "||")
 	if i == 0 {
-		err = errInvalidSyntax
-		err = util.Wrapf(err, code.FileLine(), "parse tag %q error", tag)
+		err = fmt.Errorf("parse tag '%s' error: %w", tag, errInvalidSyntax)
 		return
 	}
 	j := strings.LastIndex(tag, "}")
 	if j <= 0 {
-		err = errInvalidSyntax
-		err = util.Wrapf(err, code.FileLine(), "parse tag %q error", tag)
+		err = fmt.Errorf("parse tag '%s' error: %w", tag, errInvalidSyntax)
 		return
 	}
 	k := strings.Index(tag, "${")
 	if k < 0 {
-		err = errInvalidSyntax
-		err = util.Wrapf(err, code.FileLine(), "parse tag %q error", tag)
+		err = fmt.Errorf("parse tag '%s' error: %w", tag, errInvalidSyntax)
 		return
 	}
 	if i > j {
@@ -114,11 +127,11 @@ func BindValue(p *Properties, v reflect.Value, t reflect.Type, param BindParam, 
 	switch v.Kind() {
 	case reflect.Map:
 		return bindMap(p, v, t, param, filter)
+	case reflect.Slice:
+		return bindSlice(p, v, t, param, filter)
 	case reflect.Array:
 		err := errors.New("use slice instead of array")
 		return util.Wrapf(err, code.FileLine(), "bind %s error", param.Path)
-	case reflect.Slice:
-		return bindSlice(p, v, t, param, filter)
 	}
 
 	fn := converters[t]
@@ -246,7 +259,7 @@ func getSlice(p *Properties, et reflect.Type, param BindParam) (*Properties, err
 			strVal = p.Get(param.Key)
 		} else {
 			if !param.Tag.HasDef {
-				return nil, util.Errorf(code.FileLine(), "property %q %w", param.Key, errNotExist)
+				return nil, util.Wrapf(errNotExist, code.FileLine(), "property %q", param.Key)
 			}
 			if param.Tag.Def == "" {
 				return nil, nil

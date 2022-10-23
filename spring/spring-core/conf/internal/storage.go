@@ -18,7 +18,8 @@ package internal
 
 import (
 	"fmt"
-	"sort"
+
+	"github.com/go-spring/spring-base/util"
 )
 
 type nodeType int
@@ -92,15 +93,7 @@ func (s *Storage) Data() map[string]string {
 
 // Keys returns keys of the properties.
 func (s *Storage) Keys() []string {
-	if len(s.data) == 0 {
-		return nil
-	}
-	keys := make([]string, 0, len(s.data))
-	for k := range s.data {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
+	return util.SortedKeys(s.data)
 }
 
 // SubKeys returns the sub keys of the key item.
@@ -123,11 +116,8 @@ func (s *Storage) SubKeys(key string) ([]string, error) {
 			tree = v
 		}
 	}
-	var keys []string
-	for k := range tree.data.(map[string]*treeNode) {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
+	m := tree.data.(map[string]*treeNode)
+	keys := util.SortedKeys(m)
 	return keys, nil
 }
 
