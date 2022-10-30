@@ -192,9 +192,6 @@ func BindValue(p *Properties, v reflect.Value, t reflect.Type, param BindParam, 
 	case reflect.Bool:
 		var b bool
 		if b, err = strconv.ParseBool(val); err == nil {
-			if err = validate.Field(b, param.Validate); err != nil {
-				return err
-			}
 			v.SetBool(b)
 			return nil
 		}
@@ -281,18 +278,21 @@ func getSlice(p *Properties, et reflect.Type, param BindParam) (*Properties, err
 
 	if s := param.Tag.Splitter; s == "" {
 		arrVal = strings.Split(strVal, ",")
+		for i := range arrVal {
+			arrVal[i] = strings.TrimSpace(arrVal[i])
+		}
 	} else if fn := splitters[s]; fn != nil {
 		if arrVal, err = fn(strVal); err != nil {
-			return nil, err
+			return nil, util.Wrapf(err, code.FileLine(), "split error")
 		}
+	} else {
+		return nil, util.Errorf(code.FileLine(), "error splitter '%s'", s)
 	}
 
 	p = New()
 	for i, s := range arrVal {
 		k := fmt.Sprintf("%s[%d]", param.Key, i)
-		if err = p.Set(k, s); err != nil {
-			return nil, err
-		}
+		_ = p.store(k, s)
 	}
 	return p, nil
 }
@@ -347,9 +347,6 @@ func bindStruct(p *Properties, v reflect.Value, t reflect.Type, param BindParam,
 
 		if !fv.CanInterface() {
 			fv = util.PatchValue(fv)
-			if !fv.CanInterface() {
-				continue
-			}
 		}
 
 		subParam := BindParam{
@@ -454,10 +451,7 @@ func resolveString(p *Properties, s string) (string, error) {
 	}
 
 	var param BindParam
-	err := param.BindTag(s[start:end+1], "")
-	if err != nil {
-		return "", util.Wrapf(err, code.FileLine(), "resolve string %q error", s)
-	}
+	_ = param.BindTag(s[start:end+1], "")
 
 	s1, err := resolve(p, param)
 	if err != nil {

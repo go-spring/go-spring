@@ -58,13 +58,8 @@ func init() {
 	// time format defined after >> splitter, otherwise it uses a default
 	// time format `2006-01-02 15:04:05 -0700`.
 	RegisterConverter(func(s string) (time.Time, error) {
-		s = strings.TrimSpace(s)
-		format := "2006-01-02 15:04:05 -0700"
-		if ss := strings.Split(s, ">>"); len(ss) == 2 {
-			format = strings.TrimSpace(ss[1])
-			s = strings.TrimSpace(ss[0])
-		}
-		return cast.ToTimeE(s, format)
+		const format = "2006-01-02 15:04:05 UTC"
+		return cast.ToTimeE(strings.TrimSpace(s), format)
 	})
 
 	// converts string into time.Duration. The string should have its own
@@ -84,6 +79,11 @@ func RegisterReader(r Reader, ext ...string) {
 // RegisterSplitter registers a Splitter and named it.
 func RegisterSplitter(name string, fn Splitter) {
 	splitters[name] = fn
+}
+
+// RemoveSplitter removes a Splitter by its name, only for unit testing.
+func RemoveSplitter(name string) {
+	delete(splitters, name)
 }
 
 // RegisterConverter registers its converter for non-primitive type such as
@@ -120,12 +120,10 @@ func New() *Properties {
 }
 
 // Map creates *Properties from map.
-func Map(m map[string]interface{}) (*Properties, error) {
+func Map(m map[string]interface{}) *Properties {
 	p := New()
-	if err := p.Merge(m); err != nil {
-		return nil, err
-	}
-	return p, nil
+	_ = p.Merge(m)
+	return p
 }
 
 // Load creates *Properties from file.
@@ -189,12 +187,20 @@ func (p *Properties) Bytes(b []byte, ext string) error {
 // Merge flattens the map and sets all keys and values.
 func (p *Properties) Merge(m map[string]interface{}) error {
 	s := Flatten(m)
-	for key, val := range s {
-		if err := p.storage.Set(key, val); err != nil {
+	return p.merge(s)
+}
+
+func (p *Properties) merge(m map[string]string) error {
+	for key, val := range m {
+		if err := p.store(key, val); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func (p *Properties) store(key, val string) error {
+	return p.storage.Set(key, val)
 }
 
 func (p *Properties) Copy() *Properties {
@@ -249,7 +255,9 @@ func (p *Properties) Set(key string, val interface{}) error {
 	if key == "" {
 		return nil
 	}
-	return p.Merge(map[string]interface{}{key: val})
+	m := make(map[string]string)
+	flatten(key, val, m)
+	return p.merge(m)
 }
 
 // Resolve resolves string value that contains references to other

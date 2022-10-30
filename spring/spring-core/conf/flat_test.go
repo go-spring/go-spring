@@ -24,7 +24,7 @@ import (
 )
 
 func TestFlatten(t *testing.T) {
-	m := map[string]interface{}{
+	m := conf.Flatten(map[string]interface{}{
 		"int": 123,
 		"str": "abc",
 		"arr": []interface{}{
@@ -34,6 +34,10 @@ func TestFlatten(t *testing.T) {
 				"a": "123",
 				"b": "456",
 			},
+			([]interface{})(nil),
+			(map[string]string)(nil),
+			[]interface{}{},
+			map[string]string{},
 		},
 		"map": map[string]interface{}{
 			"a": "123",
@@ -42,19 +46,39 @@ func TestFlatten(t *testing.T) {
 				"abc",
 				"def",
 			},
+			"nil_arr":   nil,
+			"nil_map":   nil,
+			"empty_arr": []interface{}{},
+			"empty_map": map[string]string{},
 		},
-	}
+		"nil_arr":   nil,
+		"nil_map":   nil,
+		"empty_arr": []interface{}{},
+		"empty_map": map[string]string{},
+	})
 	expect := map[string]string{
-		"int":        "123",
-		"str":        "abc",
-		"map.a":      "123",
-		"map.b":      "456",
-		"map.arr[0]": "abc",
-		"map.arr[1]": "def",
-		"arr[0]":     "abc",
-		"arr[1]":     "def",
-		"arr[2].a":   "123",
-		"arr[2].b":   "456",
+		"int":           "123",
+		"str":           "abc",
+		"nil_arr":       "",
+		"nil_map":       "",
+		"empty_arr":     "",
+		"empty_map":     "",
+		"map.a":         "123",
+		"map.b":         "456",
+		"map.arr[0]":    "abc",
+		"map.arr[1]":    "def",
+		"map.nil_arr":   "",
+		"map.nil_map":   "",
+		"map.empty_arr": "",
+		"map.empty_map": "",
+		"arr[0]":        "abc",
+		"arr[1]":        "def",
+		"arr[2].a":      "123",
+		"arr[2].b":      "456",
+		"arr[3]":        "",
+		"arr[4]":        "",
+		"arr[5]":        "",
+		"arr[6]":        "",
 	}
-	assert.Equal(t, conf.Flatten(m), expect)
+	assert.Equal(t, m, expect)
 }

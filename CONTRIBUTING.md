@@ -64,7 +64,7 @@ Following information can help us to resolve the issue faster.
 * 在录制模式下，通过打印日志的方式避免对主流程产生影响。
 * 所有错误都需要打印错误发生位置的文件名和行号，保证错误排查的底线。
 * boot 模块不提供全局读取和访问函数，推荐使用 ContextAware 注入。
-* 私有方法都必须通过公开函数进行测试。
+* 不单独测试私有方法，所有的私有方法都必须通过公开函数进行测试。
 
 ## 注释
 
