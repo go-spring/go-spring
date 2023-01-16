@@ -196,14 +196,10 @@ func (s *Storage) merge(key, val string) (*treeNode, error) {
 				n := &treeNode{
 					data: make(map[string]*treeNode),
 				}
-				if pathNode.Type == PathTypeKey {
-					if path[i+1].Type == PathTypeIndex {
-						n.node = nodeTypeArray
-					} else {
-						n.node = nodeTypeMap
-					}
-				} else if pathNode.Type == PathTypeIndex {
+				if path[i+1].Type == PathTypeIndex {
 					n.node = nodeTypeArray
+				} else {
+					n.node = nodeTypeMap
 				}
 				m[pathNode.Elem] = n
 				tree = n

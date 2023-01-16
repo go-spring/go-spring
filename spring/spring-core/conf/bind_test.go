@@ -115,7 +115,7 @@ func TestParseTag(t *testing.T) {
 	}
 }
 
-func TestBindParam_BindTag(t *testing.T) {
+func TestBindTag(t *testing.T) {
 
 	param := conf.BindParam{}
 	err := param.BindTag("{}", "")
@@ -231,14 +231,14 @@ func TestBind_InvalidValue(t *testing.T) {
 		c := make(chan int)
 		key := conf.Key("chan")
 		err := conf.Map(nil).Bind(&c, key)
-		assert.Error(t, err, ".*:124 bind chan int error; target should be value type")
+		assert.Error(t, err, ".* bind chan int error; target should be value type")
 	})
 
 	t.Run("array", func(t *testing.T) {
 		var s [3]int
 		key := conf.Key("array")
 		err := conf.Map(nil).Bind(&s, key)
-		assert.Error(t, err, ".*:134 bind \\[3\\]int error; use slice instead of array")
+		assert.Error(t, err, ".* bind \\[3\\]int error; use slice instead of array")
 	})
 
 	t.Run("complex", func(t *testing.T) {
@@ -255,6 +255,22 @@ func TestBind_InvalidValue(t *testing.T) {
 		err := conf.Map(nil).Bind(&s)
 		assert.Error(t, err, "bind .* error; target should be value type")
 	})
+}
+
+func TestBind_BindParam(t *testing.T) {
+	p := conf.Map(map[string]interface{}{
+		"i": 3,
+	})
+	param := conf.BindParam{
+		Key: "i",
+		Tag: conf.ParsedTag{
+			Key: "i",
+		},
+	}
+	var i int
+	err := p.Bind(&i, conf.Param(param))
+	assert.Nil(t, err)
+	assert.Equal(t, i, 3)
 }
 
 func TestBind_SingleValue(t *testing.T) {
@@ -795,7 +811,16 @@ func TestBind_MapValue(t *testing.T) {
 		err := conf.Map(map[string]interface{}{
 			"map": []uint{1, 2, 3},
 		}).Bind(&m, tag)
-		assert.Error(t, err, "bind .* error; .* resolve property \\\"map.0\\\" error; property \\\"map.0\\\" not exist")
+		assert.Error(t, err, "resolve property \\\"map.0\\\" error; property \\\"map.0\\\" not exist")
+	})
+
+	t.Run("error#4", func(t *testing.T) {
+		var v int
+		tag := conf.Tag("${none}")
+		err := conf.Map(map[string]interface{}{
+			"none": []int{1, 2, 3},
+		}).Bind(&v, tag)
+		assert.Error(t, err, "bind .* error; strconv.ParseInt: parsing \\\"\\\": invalid syntax")
 	})
 
 	t.Run("uint", func(t *testing.T) {

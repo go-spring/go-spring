@@ -401,12 +401,14 @@ func bindStruct(p *Properties, v reflect.Value, t reflect.Type, param BindParam,
 
 // resolve returns property references processed property value.
 func resolve(p *Properties, param BindParam) (string, error) {
-	val := p.storage.Get(param.Key)
-	if val != "" {
+	if val := p.storage.Get(param.Key); val != "" {
 		return resolveString(p, val)
 	}
 	if param.Tag.HasDef {
 		return resolveString(p, param.Tag.Def)
+	}
+	if p.storage.Has(param.Key) {
+		return "", nil
 	}
 	err := fmt.Errorf("property %q %w", param.Key, errNotExist)
 	return "", util.Wrapf(err, code.FileLine(), "resolve property %q error", param.Key)

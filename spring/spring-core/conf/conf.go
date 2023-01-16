@@ -266,24 +266,44 @@ func (p *Properties) Resolve(s string) (string, error) {
 	return resolveString(p, s)
 }
 
-type bindArg struct {
+type BindArg interface {
+	GetParam() (BindParam, error)
+}
+
+type paramArg struct {
+	param BindParam
+}
+
+func (tag paramArg) GetParam() (BindParam, error) {
+	return tag.param, nil
+}
+
+type tagArg struct {
 	tag string
 }
 
-type BindOption func(arg *bindArg)
+func (tag tagArg) GetParam() (BindParam, error) {
+	var param BindParam
+	err := param.BindTag(tag.tag, "")
+	if err != nil {
+		return BindParam{}, err
+	}
+	return param, nil
+}
 
 // Key binds properties using one key.
-func Key(key string) BindOption {
-	return func(arg *bindArg) {
-		arg.tag = "${" + key + "}"
-	}
+func Key(key string) BindArg {
+	return tagArg{tag: "${" + key + "}"}
 }
 
 // Tag binds properties using one tag.
-func Tag(tag string) BindOption {
-	return func(arg *bindArg) {
-		arg.tag = tag
-	}
+func Tag(tag string) BindArg {
+	return tagArg{tag: tag}
+}
+
+// Param binds properties using BindParam.
+func Param(param BindParam) BindArg {
+	return paramArg{param: param}
 }
 
 // Bind binds properties to a value, the bind value can be primitive type,
@@ -292,7 +312,7 @@ func Tag(tag string) BindOption {
 // value:"${a:=b|splitter}", 'a' is the key, 'b' is the default value,
 // 'splitter' is the Splitter's name when you want split string value
 // into []string value.
-func (p *Properties) Bind(i interface{}, opts ...BindOption) error {
+func (p *Properties) Bind(i interface{}, args ...BindArg) error {
 
 	var v reflect.Value
 	{
@@ -308,9 +328,8 @@ func (p *Properties) Bind(i interface{}, opts ...BindOption) error {
 		}
 	}
 
-	arg := bindArg{tag: "${ROOT}"}
-	for _, opt := range opts {
-		opt(&arg)
+	if len(args) == 0 {
+		args = []BindArg{tagArg{tag: "${ROOT}"}}
 	}
 
 	t := v.Type()
@@ -319,12 +338,10 @@ func (p *Properties) Bind(i interface{}, opts ...BindOption) error {
 		typeName = t.String()
 	}
 
-	param := BindParam{
-		Path: typeName,
-	}
-	err := param.BindTag(arg.tag, "")
+	param, err := args[0].GetParam()
 	if err != nil {
 		return err
 	}
+	param.Path = typeName
 	return BindValue(p, v, t, param, nil)
 }
