@@ -25,10 +25,8 @@ import (
 
 func TestStorage(t *testing.T) {
 
-	var s *internal.Storage
-
-	{
-		s = internal.NewStorage()
+	t.Run("invalid keys", func(t *testing.T) {
+		s := internal.NewStorage()
 		assert.Nil(t, s.Data())
 		assert.Nil(t, s.Keys())
 
@@ -46,11 +44,30 @@ func TestStorage(t *testing.T) {
 
 		err = s.Set("[0].x", "123")
 		assert.Error(t, err, "invalid key '\\[0].x'")
-	}
+	})
 
-	// 初始值是简单的 KV 值
-	{
-		s = internal.NewStorage()
+	t.Run("storage keys", func(t *testing.T) {
+		s := internal.NewStorage()
+
+		err := s.Set("a.b[0].c", "")
+		assert.Nil(t, err)
+		assert.Equal(t, s.Keys(), []string{"a.b[0].c"})
+
+		err = s.Set("a.b[0].c[0]", "123")
+		assert.Nil(t, err)
+		assert.Equal(t, s.Keys(), []string{"a.b[0].c[0]"})
+
+		err = s.Set("a.b[0].d", "")
+		assert.Nil(t, err)
+		assert.Equal(t, s.Keys(), []string{"a.b[0].c[0]", "a.b[0].d"})
+
+		err = s.Set("a.b[0].d.e", "123")
+		assert.Nil(t, err)
+		assert.Equal(t, s.Keys(), []string{"a.b[0].c[0]", "a.b[0].d.e"})
+	})
+
+	t.Run("simple k-v data", func(t *testing.T) {
+		s := internal.NewStorage()
 		assert.False(t, s.Has("a"))
 
 		err := s.Set("a", "b")
@@ -91,11 +108,10 @@ func TestStorage(t *testing.T) {
 
 		s1 := s.Copy()
 		assert.Equal(t, s1.Keys(), []string{"a"})
-	}
+	})
 
-	// 初始值是嵌套的 KV 值
-	{
-		s = internal.NewStorage()
+	t.Run("nested k-v data", func(t *testing.T) {
+		s := internal.NewStorage()
 		assert.False(t, s.Has("m.x"))
 
 		err := s.Set("m.x", "y")
@@ -118,6 +134,7 @@ func TestStorage(t *testing.T) {
 		assert.Nil(t, err)
 		assert.True(t, s.Has("m"))
 		assert.True(t, s.Has("m.x"))
+		assert.False(t, s.Has("m[0]"))
 		assert.Equal(t, s.Get("m.x"), "z")
 
 		err = s.Set("m", "w")
@@ -155,11 +172,10 @@ func TestStorage(t *testing.T) {
 
 		s1 := s.Copy()
 		assert.Equal(t, s1.Keys(), []string{"m.t", "m.x"})
-	}
+	})
 
-	// 初始值是数组 KV 值
-	{
-		s = internal.NewStorage()
+	t.Run("array k-v data", func(t *testing.T) {
+		s := internal.NewStorage()
 		assert.False(t, s.Has("s[0]"))
 
 		err := s.Set("s[0]", "p")
@@ -182,6 +198,7 @@ func TestStorage(t *testing.T) {
 		assert.Nil(t, err)
 		assert.True(t, s.Has("s"))
 		assert.True(t, s.Has("s[0]"))
+		assert.False(t, s.Has("s.0"))
 		assert.Equal(t, s.Get("s[0]"), "q")
 
 		err = s.Set("s", "w")
@@ -217,25 +234,6 @@ func TestStorage(t *testing.T) {
 
 		s1 := s.Copy()
 		assert.Equal(t, s1.Keys(), []string{"s[0]", "s[1]"})
-	}
+	})
 
-	{
-		s = internal.NewStorage()
-
-		err := s.Set("a.b[0].c", "")
-		assert.Nil(t, err)
-		assert.Equal(t, s.Keys(), []string{"a.b[0].c"})
-
-		err = s.Set("a.b[0].c[0]", "123")
-		assert.Nil(t, err)
-		assert.Equal(t, s.Keys(), []string{"a.b[0].c[0]"})
-
-		err = s.Set("a.b[0].d", "")
-		assert.Nil(t, err)
-		assert.Equal(t, s.Keys(), []string{"a.b[0].c[0]", "a.b[0].d"})
-
-		err = s.Set("a.b[0].d.e", "123")
-		assert.Nil(t, err)
-		assert.Equal(t, s.Keys(), []string{"a.b[0].c[0]", "a.b[0].d.e"})
-	}
 }

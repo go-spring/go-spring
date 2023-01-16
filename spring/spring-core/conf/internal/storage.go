@@ -130,6 +130,16 @@ func (s *Storage) Has(key string) bool {
 	tree := s.tree
 	for i, node := range path {
 		m := tree.data.(map[string]*treeNode)
+		switch tree.node {
+		case nodeTypeArray:
+			if node.Type != PathTypeIndex {
+				return false
+			}
+		case nodeTypeMap:
+			if node.Type != PathTypeKey {
+				return false
+			}
+		}
 		v, ok := m[node.Elem]
 		if !ok {
 			return false
