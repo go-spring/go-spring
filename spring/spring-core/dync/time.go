@@ -21,57 +21,36 @@ import (
 	"time"
 
 	"github.com/go-spring/spring-base/atomic"
-	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-core/conf"
 )
 
-type TimeValidateFunc func(v time.Time) error
-
+// A Time is an atomic time.Time value that can be dynamic refreshed.
 type Time struct {
 	v atomic.Time
-	f TimeValidateFunc
 }
 
+// Value returns the stored time.Time value.
 func (x *Time) Value() time.Time {
 	return x.v.Load()
 }
 
-func (x *Time) OnValidate(f TimeValidateFunc) {
-	x.f = f
+// Validate validates the property value.
+func (x *Time) Validate(p *conf.Properties, param conf.BindParam) error {
+	var t time.Time
+	return p.Bind(&t, conf.Param(param))
 }
 
-func (x *Time) getTime(prop *conf.Properties, param conf.BindParam) (time.Time, error) {
-	s, err := GetProperty(prop, param)
-	if err != nil {
-		return time.Time{}, err
-	}
-	v, err := cast.ToTimeE(s)
-	if err != nil {
-		return time.Time{}, err
-	}
-	return v, nil
-}
-
-func (x *Time) Refresh(prop *conf.Properties, param conf.BindParam) error {
-	v, err := x.getTime(prop, param)
-	if err != nil {
+// Refresh refreshes the stored value.
+func (x *Time) Refresh(p *conf.Properties, param conf.BindParam) error {
+	var t time.Time
+	if err := p.Bind(&t, conf.Param(param)); err != nil {
 		return err
 	}
-	x.v.Store(v)
+	x.v.Store(t)
 	return nil
 }
 
-func (x *Time) Validate(prop *conf.Properties, param conf.BindParam) error {
-	v, err := x.getTime(prop, param)
-	if err != nil {
-		return err
-	}
-	if x.f != nil {
-		return x.f(v)
-	}
-	return nil
-}
-
+// MarshalJSON returns the JSON encoding of x.
 func (x *Time) MarshalJSON() ([]byte, error) {
 	return json.Marshal(x.Value())
 }

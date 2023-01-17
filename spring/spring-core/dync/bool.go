@@ -20,44 +20,36 @@ import (
 	"encoding/json"
 
 	"github.com/go-spring/spring-base/atomic"
-	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-core/conf"
 )
 
+// A Bool is an atomic bool value that can be dynamic refreshed.
 type Bool struct {
 	v atomic.Bool
 }
 
+// Value returns the stored bool value.
 func (x *Bool) Value() bool {
 	return x.v.Load()
 }
 
-func (x *Bool) getBool(prop *conf.Properties, param conf.BindParam) (bool, error) {
-	s, err := GetProperty(prop, param)
-	if err != nil {
-		return false, err
-	}
-	v, err := cast.ToBoolE(s)
-	if err != nil {
-		return false, err
-	}
-	return v, nil
+// Validate validates the property value.
+func (x *Bool) Validate(p *conf.Properties, param conf.BindParam) error {
+	var b bool
+	return p.Bind(&b, conf.Param(param))
 }
 
-func (x *Bool) Refresh(prop *conf.Properties, param conf.BindParam) error {
-	v, err := x.getBool(prop, param)
-	if err != nil {
+// Refresh refreshes the stored value.
+func (x *Bool) Refresh(p *conf.Properties, param conf.BindParam) error {
+	var b bool
+	if err := p.Bind(&b, conf.Param(param)); err != nil {
 		return err
 	}
-	x.v.Store(v)
+	x.v.Store(b)
 	return nil
 }
 
-func (x *Bool) Validate(prop *conf.Properties, param conf.BindParam) error {
-	_, err := x.getBool(prop, param)
-	return err
-}
-
+// MarshalJSON returns the JSON encoding of x.
 func (x *Bool) MarshalJSON() ([]byte, error) {
 	return json.Marshal(x.Value())
 }

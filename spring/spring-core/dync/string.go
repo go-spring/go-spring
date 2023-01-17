@@ -21,52 +21,35 @@ import (
 
 	"github.com/go-spring/spring-base/atomic"
 	"github.com/go-spring/spring-core/conf"
-	"github.com/go-spring/spring-core/validate"
 )
 
-type StringValidateFunc func(v string) error
-
+// A String is an atomic string value that can be dynamic refreshed.
 type String struct {
 	v atomic.String
-	f StringValidateFunc
 }
 
+// Value returns the stored string value.
 func (x *String) Value() string {
 	return x.v.Load()
 }
 
-func (x *String) OnValidate(f StringValidateFunc) {
-	x.f = f
+// Validate validates the property value.
+func (x *String) Validate(p *conf.Properties, param conf.BindParam) error {
+	var s string
+	return p.Bind(&s, conf.Param(param))
 }
 
-func (x *String) getString(prop *conf.Properties, param conf.BindParam) (string, error) {
-	return GetProperty(prop, param)
-}
-
-func (x *String) Refresh(prop *conf.Properties, param conf.BindParam) error {
-	v, err := x.getString(prop, param)
-	if err != nil {
+// Refresh refreshes the stored value.
+func (x *String) Refresh(p *conf.Properties, param conf.BindParam) error {
+	var s string
+	if err := p.Bind(&s, conf.Param(param)); err != nil {
 		return err
 	}
-	x.v.Store(v)
+	x.v.Store(s)
 	return nil
 }
 
-func (x *String) Validate(prop *conf.Properties, param conf.BindParam) error {
-	v, err := x.getString(prop, param)
-	if err != nil {
-		return err
-	}
-	err = validate.Field(v, param.Validate)
-	if err != nil {
-		return err
-	}
-	if x.f != nil {
-		return x.f(v)
-	}
-	return nil
-}
-
+// MarshalJSON returns the JSON encoding of x.
 func (x *String) MarshalJSON() ([]byte, error) {
 	return json.Marshal(x.Value())
 }

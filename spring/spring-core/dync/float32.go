@@ -20,62 +20,36 @@ import (
 	"encoding/json"
 
 	"github.com/go-spring/spring-base/atomic"
-	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-core/conf"
-	"github.com/go-spring/spring-core/validate"
 )
 
-type Float32ValidateFunc func(v float32) error
-
+// A Float32 is an atomic float32 value that can be dynamic refreshed.
 type Float32 struct {
 	v atomic.Float32
-	f Float32ValidateFunc
 }
 
+// Value returns the stored float32 value.
 func (x *Float32) Value() float32 {
 	return x.v.Load()
 }
 
-func (x *Float32) OnValidate(f Float32ValidateFunc) {
-	x.f = f
+// Validate validates the property value.
+func (x *Float32) Validate(p *conf.Properties, param conf.BindParam) error {
+	var f float32
+	return p.Bind(&f, conf.Param(param))
 }
 
-func (x *Float32) getFloat32(prop *conf.Properties, param conf.BindParam) (float32, error) {
-	s, err := GetProperty(prop, param)
-	if err != nil {
-		return 0, err
-	}
-	v, err := cast.ToFloat64E(s)
-	if err != nil {
-		return 0, err
-	}
-	return float32(v), nil
-}
-
-func (x *Float32) Refresh(prop *conf.Properties, param conf.BindParam) error {
-	v, err := x.getFloat32(prop, param)
-	if err != nil {
+// Refresh refreshes the stored value.
+func (x *Float32) Refresh(p *conf.Properties, param conf.BindParam) error {
+	var f float32
+	if err := p.Bind(&f, conf.Param(param)); err != nil {
 		return err
 	}
-	x.v.Store(v)
+	x.v.Store(f)
 	return nil
 }
 
-func (x *Float32) Validate(prop *conf.Properties, param conf.BindParam) error {
-	v, err := x.getFloat32(prop, param)
-	if err != nil {
-		return err
-	}
-	err = validate.Field(v, param.Validate)
-	if err != nil {
-		return err
-	}
-	if x.f != nil {
-		return x.f(v)
-	}
-	return nil
-}
-
+// MarshalJSON returns the JSON encoding of x.
 func (x *Float32) MarshalJSON() ([]byte, error) {
 	return json.Marshal(x.Value())
 }

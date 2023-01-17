@@ -20,62 +20,36 @@ import (
 	"encoding/json"
 
 	"github.com/go-spring/spring-base/atomic"
-	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-core/conf"
-	"github.com/go-spring/spring-core/validate"
 )
 
-type Int64ValidateFunc func(v int64) error
-
+// An Int64 is an atomic int64 value that can be dynamic refreshed.
 type Int64 struct {
 	v atomic.Int64
-	f Int64ValidateFunc
 }
 
+// Value returns the stored int64 value.
 func (x *Int64) Value() int64 {
 	return x.v.Load()
 }
 
-func (x *Int64) OnValidate(f Int64ValidateFunc) {
-	x.f = f
+// Validate validates the property value.
+func (x *Int64) Validate(p *conf.Properties, param conf.BindParam) error {
+	var i int64
+	return p.Bind(&i, conf.Param(param))
 }
 
-func (x *Int64) getInt64(prop *conf.Properties, param conf.BindParam) (int64, error) {
-	s, err := GetProperty(prop, param)
-	if err != nil {
-		return 0, err
-	}
-	v, err := cast.ToInt64E(s)
-	if err != nil {
-		return 0, err
-	}
-	return v, nil
-}
-
-func (x *Int64) Refresh(prop *conf.Properties, param conf.BindParam) error {
-	v, err := x.getInt64(prop, param)
-	if err != nil {
+// Refresh refreshes the stored value.
+func (x *Int64) Refresh(p *conf.Properties, param conf.BindParam) error {
+	var i int64
+	if err := p.Bind(&i, conf.Param(param)); err != nil {
 		return err
 	}
-	x.v.Store(v)
+	x.v.Store(i)
 	return nil
 }
 
-func (x *Int64) Validate(prop *conf.Properties, param conf.BindParam) error {
-	v, err := x.getInt64(prop, param)
-	if err != nil {
-		return err
-	}
-	err = validate.Field(v, param.Validate)
-	if err != nil {
-		return err
-	}
-	if x.f != nil {
-		return x.f(v)
-	}
-	return nil
-}
-
+// MarshalJSON returns the JSON encoding of x.
 func (x *Int64) MarshalJSON() ([]byte, error) {
 	return json.Marshal(x.Value())
 }

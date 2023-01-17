@@ -20,62 +20,36 @@ import (
 	"encoding/json"
 
 	"github.com/go-spring/spring-base/atomic"
-	"github.com/go-spring/spring-base/cast"
 	"github.com/go-spring/spring-core/conf"
-	"github.com/go-spring/spring-core/validate"
 )
 
-type Uint32ValidateFunc func(v uint32) error
-
+// An Uint32 is an atomic uint32 value that can be dynamic refreshed.
 type Uint32 struct {
 	v atomic.Uint32
-	f Uint32ValidateFunc
 }
 
+// Value returns the stored uint32 value.
 func (x *Uint32) Value() uint32 {
 	return x.v.Load()
 }
 
-func (x *Uint32) OnValidate(f Uint32ValidateFunc) {
-	x.f = f
+// Validate validates the property value.
+func (x *Uint32) Validate(p *conf.Properties, param conf.BindParam) error {
+	var u uint32
+	return p.Bind(&u, conf.Param(param))
 }
 
-func (x *Uint32) getUint32(prop *conf.Properties, param conf.BindParam) (uint32, error) {
-	s, err := GetProperty(prop, param)
-	if err != nil {
-		return 0, err
-	}
-	v, err := cast.ToUint64E(s)
-	if err != nil {
-		return 0, err
-	}
-	return uint32(v), nil
-}
-
-func (x *Uint32) Refresh(prop *conf.Properties, param conf.BindParam) error {
-	v, err := x.getUint32(prop, param)
-	if err != nil {
+// Refresh refreshes the stored value.
+func (x *Uint32) Refresh(p *conf.Properties, param conf.BindParam) error {
+	var u uint32
+	if err := p.Bind(&u, conf.Param(param)); err != nil {
 		return err
 	}
-	x.v.Store(v)
+	x.v.Store(u)
 	return nil
 }
 
-func (x *Uint32) Validate(prop *conf.Properties, param conf.BindParam) error {
-	v, err := x.getUint32(prop, param)
-	if err != nil {
-		return err
-	}
-	err = validate.Field(v, param.Validate)
-	if err != nil {
-		return err
-	}
-	if x.f != nil {
-		return x.f(v)
-	}
-	return nil
-}
-
+// MarshalJSON returns the JSON encoding of x.
 func (x *Uint32) MarshalJSON() ([]byte, error) {
 	return json.Marshal(x.Value())
 }
