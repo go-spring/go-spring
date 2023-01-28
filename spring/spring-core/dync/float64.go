@@ -23,6 +23,8 @@ import (
 	"github.com/go-spring/spring-core/conf"
 )
 
+var _ Value = (*Float64)(nil)
+
 // A Float64 is an atomic float64 value that can be dynamic refreshed.
 type Float64 struct {
 	v atomic.Float64
@@ -33,14 +35,8 @@ func (x *Float64) Value() float64 {
 	return x.v.Load()
 }
 
-// Validate validates the property value.
-func (x *Float64) Validate(p *conf.Properties, param conf.BindParam) error {
-	var f float64
-	return p.Bind(&f, conf.Param(param))
-}
-
-// Refresh refreshes the stored value.
-func (x *Float64) Refresh(p *conf.Properties, param conf.BindParam) error {
+// OnRefresh refreshes the stored value.
+func (x *Float64) OnRefresh(p *conf.Properties, param conf.BindParam) error {
 	var f float64
 	if err := p.Bind(&f, conf.Param(param)); err != nil {
 		return err

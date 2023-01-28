@@ -39,24 +39,17 @@ func TestUint64(t *testing.T) {
 	}
 
 	p := conf.Map(nil)
-	err := u.Validate(p, param)
-	assert.Error(t, err, "bind uint64 error; .* resolve property \"uint\" error; property \"uint\" not exist")
-	err = u.Refresh(p, param)
+	err := u.OnRefresh(p, param)
 	assert.Error(t, err, "bind uint64 error; .* resolve property \"uint\" error; property \"uint\" not exist")
 
 	_ = p.Set("uint", uint64(3))
-	err = u.Validate(p, param)
-	assert.Nil(t, err)
-	assert.Equal(t, u.Value(), uint64(0))
 
 	param.Validate = "$>5"
-	err = u.Validate(p, param)
-	assert.Error(t, err, "validate failed on \"\\$\\>5\" for value 3")
-	err = u.Refresh(p, param)
+	err = u.OnRefresh(p, param)
 	assert.Error(t, err, "validate failed on \"\\$\\>5\" for value 3")
 
 	param.Validate = ""
-	err = u.Refresh(p, param)
+	err = u.OnRefresh(p, param)
 	assert.Equal(t, u.Value(), uint64(3))
 
 	b, err := json.Marshal(&u)

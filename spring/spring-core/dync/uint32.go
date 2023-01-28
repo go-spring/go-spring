@@ -23,6 +23,8 @@ import (
 	"github.com/go-spring/spring-core/conf"
 )
 
+var _ Value = (*Uint32)(nil)
+
 // An Uint32 is an atomic uint32 value that can be dynamic refreshed.
 type Uint32 struct {
 	v atomic.Uint32
@@ -33,14 +35,8 @@ func (x *Uint32) Value() uint32 {
 	return x.v.Load()
 }
 
-// Validate validates the property value.
-func (x *Uint32) Validate(p *conf.Properties, param conf.BindParam) error {
-	var u uint32
-	return p.Bind(&u, conf.Param(param))
-}
-
-// Refresh refreshes the stored value.
-func (x *Uint32) Refresh(p *conf.Properties, param conf.BindParam) error {
+// OnRefresh refreshes the stored value.
+func (x *Uint32) OnRefresh(p *conf.Properties, param conf.BindParam) error {
 	var u uint32
 	if err := p.Bind(&u, conf.Param(param)); err != nil {
 		return err

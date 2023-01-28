@@ -23,6 +23,8 @@ import (
 	"github.com/go-spring/spring-core/conf"
 )
 
+var _ Value = (*Int32)(nil)
+
 // An Int32 is an atomic int32 value that can be dynamic refreshed.
 type Int32 struct {
 	v atomic.Int32
@@ -33,14 +35,8 @@ func (x *Int32) Value() int32 {
 	return x.v.Load()
 }
 
-// Validate validates the property value.
-func (x *Int32) Validate(p *conf.Properties, param conf.BindParam) error {
-	var i int32
-	return p.Bind(&i, conf.Param(param))
-}
-
-// Refresh refreshes the stored value.
-func (x *Int32) Refresh(p *conf.Properties, param conf.BindParam) error {
+// OnRefresh refreshes the stored value.
+func (x *Int32) OnRefresh(p *conf.Properties, param conf.BindParam) error {
 	var i int32
 	if err := p.Bind(&i, conf.Param(param)); err != nil {
 		return err

@@ -23,6 +23,8 @@ import (
 	"github.com/go-spring/spring-core/conf"
 )
 
+var _ Value = (*Float32)(nil)
+
 // A Float32 is an atomic float32 value that can be dynamic refreshed.
 type Float32 struct {
 	v atomic.Float32
@@ -33,14 +35,8 @@ func (x *Float32) Value() float32 {
 	return x.v.Load()
 }
 
-// Validate validates the property value.
-func (x *Float32) Validate(p *conf.Properties, param conf.BindParam) error {
-	var f float32
-	return p.Bind(&f, conf.Param(param))
-}
-
-// Refresh refreshes the stored value.
-func (x *Float32) Refresh(p *conf.Properties, param conf.BindParam) error {
+// OnRefresh refreshes the stored value.
+func (x *Float32) OnRefresh(p *conf.Properties, param conf.BindParam) error {
 	var f float32
 	if err := p.Bind(&f, conf.Param(param)); err != nil {
 		return err

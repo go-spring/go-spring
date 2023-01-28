@@ -23,6 +23,8 @@ import (
 	"github.com/go-spring/spring-core/conf"
 )
 
+var _ Value = (*String)(nil)
+
 // A String is an atomic string value that can be dynamic refreshed.
 type String struct {
 	v atomic.String
@@ -33,14 +35,8 @@ func (x *String) Value() string {
 	return x.v.Load()
 }
 
-// Validate validates the property value.
-func (x *String) Validate(p *conf.Properties, param conf.BindParam) error {
-	var s string
-	return p.Bind(&s, conf.Param(param))
-}
-
-// Refresh refreshes the stored value.
-func (x *String) Refresh(p *conf.Properties, param conf.BindParam) error {
+// OnRefresh refreshes the stored value.
+func (x *String) OnRefresh(p *conf.Properties, param conf.BindParam) error {
 	var s string
 	if err := p.Bind(&s, conf.Param(param)); err != nil {
 		return err

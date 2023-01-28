@@ -24,6 +24,8 @@ import (
 	"github.com/go-spring/spring-core/conf"
 )
 
+var _ Value = (*Duration)(nil)
+
 // A Duration is an atomic time.Duration value that can be dynamic refreshed.
 type Duration struct {
 	v atomic.Duration
@@ -34,14 +36,8 @@ func (x *Duration) Value() time.Duration {
 	return x.v.Load()
 }
 
-// Validate validates the property value.
-func (x *Duration) Validate(p *conf.Properties, param conf.BindParam) error {
-	var d time.Duration
-	return p.Bind(&d, conf.Param(param))
-}
-
-// Refresh refreshes the stored value.
-func (x *Duration) Refresh(p *conf.Properties, param conf.BindParam) error {
+// OnRefresh refreshes the stored value.
+func (x *Duration) OnRefresh(p *conf.Properties, param conf.BindParam) error {
 	var d time.Duration
 	if err := p.Bind(&d, conf.Param(param)); err != nil {
 		return err

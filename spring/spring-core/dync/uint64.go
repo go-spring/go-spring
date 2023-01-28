@@ -23,6 +23,8 @@ import (
 	"github.com/go-spring/spring-core/conf"
 )
 
+var _ Value = (*Uint64)(nil)
+
 // An Uint64 is an atomic uint64 value that can be dynamic refreshed.
 type Uint64 struct {
 	v atomic.Uint64
@@ -33,14 +35,8 @@ func (x *Uint64) Value() uint64 {
 	return x.v.Load()
 }
 
-// Validate validates the property value.
-func (x *Uint64) Validate(p *conf.Properties, param conf.BindParam) error {
-	var u uint64
-	return p.Bind(&u, conf.Param(param))
-}
-
-// Refresh refreshes the stored value.
-func (x *Uint64) Refresh(p *conf.Properties, param conf.BindParam) error {
+// OnRefresh refreshes the stored value.
+func (x *Uint64) OnRefresh(p *conf.Properties, param conf.BindParam) error {
 	var u uint64
 	if err := p.Bind(&u, conf.Param(param)); err != nil {
 		return err

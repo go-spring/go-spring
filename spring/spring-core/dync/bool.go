@@ -23,6 +23,8 @@ import (
 	"github.com/go-spring/spring-core/conf"
 )
 
+var _ Value = (*Bool)(nil)
+
 // A Bool is an atomic bool value that can be dynamic refreshed.
 type Bool struct {
 	v atomic.Bool
@@ -33,14 +35,8 @@ func (x *Bool) Value() bool {
 	return x.v.Load()
 }
 
-// Validate validates the property value.
-func (x *Bool) Validate(p *conf.Properties, param conf.BindParam) error {
-	var b bool
-	return p.Bind(&b, conf.Param(param))
-}
-
-// Refresh refreshes the stored value.
-func (x *Bool) Refresh(p *conf.Properties, param conf.BindParam) error {
+// OnRefresh refreshes the stored value.
+func (x *Bool) OnRefresh(p *conf.Properties, param conf.BindParam) error {
 	var b bool
 	if err := p.Bind(&b, conf.Param(param)); err != nil {
 		return err

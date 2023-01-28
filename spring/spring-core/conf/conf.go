@@ -267,14 +267,14 @@ func (p *Properties) Resolve(s string) (string, error) {
 }
 
 type BindArg interface {
-	GetParam() (BindParam, error)
+	getParam() (BindParam, error)
 }
 
 type paramArg struct {
 	param BindParam
 }
 
-func (tag paramArg) GetParam() (BindParam, error) {
+func (tag paramArg) getParam() (BindParam, error) {
 	return tag.param, nil
 }
 
@@ -282,7 +282,7 @@ type tagArg struct {
 	tag string
 }
 
-func (tag tagArg) GetParam() (BindParam, error) {
+func (tag tagArg) getParam() (BindParam, error) {
 	var param BindParam
 	err := param.BindTag(tag.tag, "")
 	if err != nil {
@@ -338,7 +338,7 @@ func (p *Properties) Bind(i interface{}, args ...BindArg) error {
 		typeName = t.String()
 	}
 
-	param, err := args[0].GetParam()
+	param, err := args[0].getParam()
 	if err != nil {
 		return err
 	}

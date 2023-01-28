@@ -24,6 +24,8 @@ import (
 	"github.com/go-spring/spring-core/conf"
 )
 
+var _ Value = (*Time)(nil)
+
 // A Time is an atomic time.Time value that can be dynamic refreshed.
 type Time struct {
 	v atomic.Time
@@ -34,14 +36,8 @@ func (x *Time) Value() time.Time {
 	return x.v.Load()
 }
 
-// Validate validates the property value.
-func (x *Time) Validate(p *conf.Properties, param conf.BindParam) error {
-	var t time.Time
-	return p.Bind(&t, conf.Param(param))
-}
-
-// Refresh refreshes the stored value.
-func (x *Time) Refresh(p *conf.Properties, param conf.BindParam) error {
+// OnRefresh refreshes the stored value.
+func (x *Time) OnRefresh(p *conf.Properties, param conf.BindParam) error {
 	var t time.Time
 	if err := p.Bind(&t, conf.Param(param)); err != nil {
 		return err

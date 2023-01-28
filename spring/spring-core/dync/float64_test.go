@@ -39,24 +39,17 @@ func TestFloat64(t *testing.T) {
 	}
 
 	p := conf.Map(nil)
-	err := u.Validate(p, param)
-	assert.Error(t, err, "bind float64 error; .* resolve property \"float\" error; property \"float\" not exist")
-	err = u.Refresh(p, param)
+	err := u.OnRefresh(p, param)
 	assert.Error(t, err, "bind float64 error; .* resolve property \"float\" error; property \"float\" not exist")
 
 	_ = p.Set("float", float64(3))
-	err = u.Validate(p, param)
-	assert.Nil(t, err)
-	assert.Equal(t, u.Value(), float64(0))
 
 	param.Validate = "$>5"
-	err = u.Validate(p, param)
-	assert.Error(t, err, "validate failed on \"\\$\\>5\" for value 3")
-	err = u.Refresh(p, param)
+	err = u.OnRefresh(p, param)
 	assert.Error(t, err, "validate failed on \"\\$\\>5\" for value 3")
 
 	param.Validate = ""
-	err = u.Refresh(p, param)
+	err = u.OnRefresh(p, param)
 	assert.Equal(t, u.Value(), float64(3))
 
 	b, err := json.Marshal(&u)

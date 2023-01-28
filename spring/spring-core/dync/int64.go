@@ -23,6 +23,8 @@ import (
 	"github.com/go-spring/spring-core/conf"
 )
 
+var _ Value = (*Int64)(nil)
+
 // An Int64 is an atomic int64 value that can be dynamic refreshed.
 type Int64 struct {
 	v atomic.Int64
@@ -33,14 +35,8 @@ func (x *Int64) Value() int64 {
 	return x.v.Load()
 }
 
-// Validate validates the property value.
-func (x *Int64) Validate(p *conf.Properties, param conf.BindParam) error {
-	var i int64
-	return p.Bind(&i, conf.Param(param))
-}
-
-// Refresh refreshes the stored value.
-func (x *Int64) Refresh(p *conf.Properties, param conf.BindParam) error {
+// OnRefresh refreshes the stored value.
+func (x *Int64) OnRefresh(p *conf.Properties, param conf.BindParam) error {
 	var i int64
 	if err := p.Bind(&i, conf.Param(param)); err != nil {
 		return err

@@ -24,69 +24,40 @@ import (
 	"github.com/go-spring/spring-core/conf"
 )
 
-type RefValidateFunc func(v interface{}) error
+var _ Value = (*Ref)(nil)
 
+// A Ref is an atomic reference value that can be dynamic refreshed.
 type Ref struct {
-	v    atomic.Value
-	f    RefValidateFunc
-	init func() (*conf.Properties, conf.BindParam)
+	v       atomic.Value
+	OnEvent func() error
 }
 
-func (r *Ref) Init(i interface{}) error {
+// Init inits the stored reference value.
+func (r *Ref) Init(i interface{}) {
 	r.v.Store(i)
-	if r.init == nil {
-		return nil
-	}
-	prop, param := r.init()
-	r.init = nil
-	return r.Refresh(prop, param)
 }
 
+// Value returns the stored reference value.
 func (r *Ref) Value() interface{} {
 	return r.v.Load()
 }
 
-func (r *Ref) OnValidate(f RefValidateFunc) {
-	r.f = f
-}
-
-func (r *Ref) getRef(prop *conf.Properties, param conf.BindParam) (interface{}, error) {
-	o := r.Value()
-	if o == nil {
-		r.init = func() (*conf.Properties, conf.BindParam) {
-			return prop, param
-		}
-		return nil, nil
-	}
-	t := reflect.TypeOf(o)
+// OnRefresh refreshes the stored value.
+func (r *Ref) OnRefresh(p *conf.Properties, param conf.BindParam) error {
+	t := reflect.TypeOf(r.Value())
 	v := reflect.New(t)
-	err := conf.BindValue(prop, v.Elem(), t, param, nil)
-	if err != nil {
-		return nil, err
-	}
-	return v.Elem().Interface(), nil
-}
-
-func (r *Ref) Refresh(prop *conf.Properties, param conf.BindParam) error {
-	v, err := r.getRef(prop, param)
+	err := conf.BindValue(p, v.Elem(), t, param, nil)
 	if err != nil {
 		return err
 	}
-	if v == nil {
-		return nil
+	r.v.Store(v.Elem().Interface())
+	if r.OnEvent != nil {
+		return r.OnEvent()
 	}
-	r.v.Store(v)
 	return nil
 }
 
-func (r *Ref) Validate(prop *conf.Properties, param conf.BindParam) error {
-	v, err := r.getRef(prop, param)
-	if r.f != nil {
-		return r.f(v)
-	}
-	return err
-}
-
+// MarshalJSON returns the JSON encoding of x.
 func (r *Ref) MarshalJSON() ([]byte, error) {
 	return json.Marshal(r.Value())
 }

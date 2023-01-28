@@ -40,18 +40,13 @@ func TestDuration(t *testing.T) {
 	}
 
 	p := conf.Map(nil)
-	err := d.Validate(p, param)
-	assert.Error(t, err, "bind Duration error; .* resolve property \"d\" error; property \"d\" not exist")
-	err = d.Refresh(p, param)
+	err := d.OnRefresh(p, param)
 	assert.Error(t, err, "bind Duration error; .* resolve property \"d\" error; property \"d\" not exist")
 
 	_ = p.Set("d", "10s")
-	err = d.Validate(p, param)
-	assert.Nil(t, err)
-	assert.Equal(t, d.Value(), time.Duration(0))
 
 	param.Validate = ""
-	err = d.Refresh(p, param)
+	err = d.OnRefresh(p, param)
 	assert.Equal(t, d.Value(), 10*time.Second)
 
 	b, err := json.Marshal(&d)

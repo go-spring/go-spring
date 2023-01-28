@@ -40,24 +40,17 @@ func TestTime(t *testing.T) {
 	}
 
 	p := conf.Map(nil)
-	err := tm.Validate(p, param)
-	assert.Error(t, err, "bind Time error; .* resolve property \"time\" error; property \"time\" not exist")
-	err = tm.Refresh(p, param)
+	err := tm.OnRefresh(p, param)
 	assert.Error(t, err, "bind Time error; .* resolve property \"time\" error; property \"time\" not exist")
 
 	_ = p.Set("time", "2017-06-17 13:20:15 UTC")
-	err = tm.Validate(p, param)
-	assert.Nil(t, err)
-	assert.Equal(t, tm.Value(), time.Time{})
 
 	param.Validate = "" // TODO validate
-	err = tm.Validate(p, param)
-	assert.Nil(t, err)
-	err = tm.Refresh(p, param)
+	err = tm.OnRefresh(p, param)
 	assert.Nil(t, err)
 
 	param.Validate = ""
-	err = tm.Refresh(p, param)
+	err = tm.OnRefresh(p, param)
 	assert.Equal(t, tm.Value(), time.Date(2017, 6, 17, 13, 20, 15, 0, time.UTC))
 
 	b, err := json.Marshal(&tm)

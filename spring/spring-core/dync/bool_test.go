@@ -39,17 +39,11 @@ func TestBool(t *testing.T) {
 	}
 
 	p := conf.Map(nil)
-	err := u.Validate(p, param)
-	assert.Error(t, err, "bind bool error; .* resolve property \"bool\" error; property \"bool\" not exist")
-	err = u.Refresh(p, param)
+	err := u.OnRefresh(p, param)
 	assert.Error(t, err, "bind bool error; .* resolve property \"bool\" error; property \"bool\" not exist")
 
 	_ = p.Set("bool", true)
-	err = u.Validate(p, param)
-	assert.Nil(t, err)
-	assert.Equal(t, u.Value(), false)
-
-	err = u.Refresh(p, param)
+	err = u.OnRefresh(p, param)
 	assert.Equal(t, u.Value(), true)
 
 	b, err := json.Marshal(&u)

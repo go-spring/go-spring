@@ -39,18 +39,13 @@ func TestString(t *testing.T) {
 	}
 
 	p := conf.Map(nil)
-	err := u.Validate(p, param)
-	assert.Error(t, err, "bind string error; .* resolve property \"s\" error; property \"s\" not exist")
-	err = u.Refresh(p, param)
+	err := u.OnRefresh(p, param)
 	assert.Error(t, err, "bind string error; .* resolve property \"s\" error; property \"s\" not exist")
 
 	_ = p.Set("s", "abc")
-	err = u.Validate(p, param)
-	assert.Nil(t, err)
-	assert.Equal(t, u.Value(), "")
 
 	param.Validate = ""
-	err = u.Refresh(p, param)
+	err = u.OnRefresh(p, param)
 	assert.Equal(t, u.Value(), "abc")
 
 	b, err := json.Marshal(&u)
