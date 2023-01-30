@@ -18,52 +18,41 @@ package validate
 
 import (
 	"fmt"
+	"reflect"
 
 	"github.com/go-spring/spring-core/expr"
 )
 
-var Validator Interface = &exprValidator{}
-
-// Interface is the minimal interface for validating a variable or struct.
-type Interface interface {
-	TagName() string
-	Struct(i interface{}) error
-	Field(i interface{}, tag string) error
+var validators = map[string]Validator{
+	"expr": &exprValidator{},
 }
 
-// TagName returns the validator's tag.
-func TagName() string {
-	return Validator.TagName()
+// Validator is interface for validating a field.
+type Validator interface {
+	Field(tag string, i interface{}) error
 }
 
-// Struct validates the exposed fields of struct, and automatically validates
-// the nested structs, unless otherwise specified.
-func Struct(i interface{}) error {
-	return Validator.Struct(i)
+// Register registers a Validator with tag name.
+func Register(name string, v Validator) {
+	validators[name] = v
 }
 
 // Field validates a single variable.
-func Field(i interface{}, tag string) error {
-	if tag == "" {
-		return nil
+func Field(tag reflect.StructTag, i interface{}) error {
+	for name, v := range validators {
+		if s, ok := tag.Lookup(name); ok {
+			if err := v.Field(s, i); err != nil {
+				return err
+			}
+		}
 	}
-	return Validator.Field(i, tag)
+	return nil
 }
 
 type exprValidator struct{}
 
-// TagName returns the validator's tag.
-func (d exprValidator) TagName() string {
-	return "expr"
-}
-
-// Struct validates the exposed fields and the nested structs of struct.
-func (d exprValidator) Struct(i interface{}) error {
-	return nil
-}
-
 // Field validates a single variable.
-func (d exprValidator) Field(i interface{}, tag string) error {
+func (d exprValidator) Field(tag string, i interface{}) error {
 	ok, err := expr.Eval(tag, i)
 	if err != nil {
 		return err

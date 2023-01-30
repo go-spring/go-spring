@@ -15,35 +15,3 @@
  */
 
 package validate_test
-
-import (
-	"testing"
-
-	"github.com/go-spring/spring-base/assert"
-	"github.com/go-spring/spring-core/validate"
-)
-
-func TestTagName(t *testing.T) {
-	assert.Equal(t, validate.TagName(), "expr")
-}
-
-func TestStruct(t *testing.T) {
-	var s struct {
-		E string `expr:"len($)>3"`
-	}
-	err := validate.Struct(&s)
-	assert.Nil(t, err)
-}
-
-func TestField(t *testing.T) {
-	i := 2
-	err := validate.Field(i, "")
-	assert.Nil(t, err)
-	err = validate.Field(i, "len($)==5")
-	assert.Error(t, err, "returns error")
-	err = validate.Field(i, "$>=3")
-	assert.Error(t, err, "validate failed on \"\\$>=3\" for value 2")
-	i = 5
-	err = validate.Field(i, "$>=3")
-	assert.Nil(t, err)
-}

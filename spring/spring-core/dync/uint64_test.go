@@ -44,7 +44,7 @@ func TestUint64(t *testing.T) {
 
 	_ = p.Set("uint", uint64(3))
 
-	param.Validate = "$>5"
+	param.Validate = `expr:"$>5"`
 	err = u.OnRefresh(p, param)
 	assert.Error(t, err, "validate failed on \"\\$\\>5\" for value 3")
 
