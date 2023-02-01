@@ -17,199 +17,120 @@
 package dync_test
 
 import (
-	"encoding/json"
-	"errors"
-	"fmt"
 	"reflect"
 	"testing"
 
 	"github.com/go-spring/spring-base/assert"
-	"github.com/go-spring/spring-base/cast"
+	"github.com/go-spring/spring-base/json"
 	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/dync"
 )
 
-type Integer struct {
-	v int
-}
-
-func (x *Integer) Refresh(prop *conf.Properties, param conf.BindParam) error {
-	s, err := dync.GetProperty(prop, param)
-	if err != nil {
-		return err
+func TestProperties(t *testing.T) {
+	p := dync.New()
+	m := map[string]interface{}{
+		"a": 123,
+		"b": map[string]interface{}{
+			"c": []int{1, 2, 3},
+		},
 	}
-	v, err := cast.ToInt64E(s)
-	if err != nil {
-		return err
+	err := p.Refresh(conf.Map(m))
+	assert.Nil(t, err)
+	assert.Equal(t, p.Keys(), []string{"a", "b.c[0]", "b.c[1]", "b.c[2]"})
+	assert.False(t, p.Has("c"))
+	assert.True(t, p.Has("b.c"))
+	assert.Equal(t, p.Get("a"), "123")
+	assert.Equal(t, p.Get("d", conf.Def("456")), "456")
+	s, err := p.Resolve("a=${a}")
+	assert.Nil(t, err)
+	assert.Equal(t, s, "a=123")
+	var b struct {
+		C []int `value:"${c}"`
 	}
-	x.v = int(v)
-	return nil
-}
-
-func (x *Integer) Validate(prop *conf.Properties, param conf.BindParam) error {
-	return nil
-}
-
-func (x *Integer) MarshalJSON() ([]byte, error) {
-	return json.Marshal(x.v)
+	err = p.Bind(&b, conf.Key("b"))
+	assert.Nil(t, err)
+	assert.Equal(t, b.C, []int{1, 2, 3})
 }
 
 type Config struct {
-	Integer Integer      `value:"${int:=3}" expr:"$<6"`
-	Int     dync.Int64   `value:"${int:=3}" expr:"$<6"`
-	Float   dync.Float64 `value:"${float:=1.2}"`
-	Map     dync.Ref     `value:"${map:=}"`
-	Slice   dync.Ref     `value:"${slice:=}"`
-	Event   dync.Event   `value:"${event}"`
+	Int   dync.Int64   `value:"${int:=3}" expr:"$<6"`
+	Float dync.Float64 `value:"${float:=1.2}"`
+	Map   dync.Ref     `value:"${map:=}"`
+	Slice dync.Ref     `value:"${slice:=}"`
 }
 
 func newTest() (*dync.Properties, *Config, error) {
-	mgr := dync.New()
+	p := dync.New()
 	cfg := new(Config)
-	err := mgr.BindValue(reflect.ValueOf(cfg), conf.BindParam{})
+	cfg.Slice.Init(make([]string, 0))
+	cfg.Map.Init(make(map[string]string))
+	err := p.BindValue(reflect.ValueOf(cfg), conf.BindParam{})
 	if err != nil {
 		return nil, nil, err
 	}
-	return mgr, cfg, nil
+	return p, cfg, nil
 }
 
 func TestDynamic(t *testing.T) {
 
-	t.Run("default", func(t *testing.T) {
-		_, cfg, err := newTest()
-		if err != nil {
-			return
-		}
+	t.Run("default & success", func(t *testing.T) {
+		p, cfg, err := newTest()
+		assert.Nil(t, err)
 		b, _ := json.Marshal(cfg)
-		assert.Equal(t, string(b), `{"Integer":3,"Int":3,"Float":1.2,"Map":null,"Slice":null,"Event":{}}`)
+		assert.Equal(t, string(b), `{"Int":3,"Float":1.2,"Map":{},"Slice":[]}`)
+
+		err = p.Refresh(conf.Map(map[string]interface{}{
+			"int":   1,
+			"float": 5.4,
+		}))
+		assert.Nil(t, err)
+		b, _ = json.Marshal(cfg)
+		assert.Equal(t, string(b), `{"Int":1,"Float":5.4,"Map":{},"Slice":[]}`)
+
+		err = p.Refresh(conf.Map(map[string]interface{}{
+			"int": 2,
+		}))
+		assert.Nil(t, err)
+		b, _ = json.Marshal(cfg)
+		assert.Equal(t, string(b), `{"Int":2,"Float":1.2,"Map":{},"Slice":[]}`)
 	})
 
-	t.Run("init", func(t *testing.T) {
-		_, cfg, err := newTest()
-		if err != nil {
-			return
-		}
+	t.Run("validate error", func(t *testing.T) {
+		p, _, _ := newTest()
+		err := p.Refresh(conf.Map(map[string]interface{}{
+			"int": 9,
+		}))
+		assert.Error(t, err, "validate failed on \"\\$<6\" for value 9")
+		err = p.Refresh(conf.Map(map[string]interface{}{
+			"int": "abc.123",
+		}))
+		assert.Error(t, err, "parsing \\\"abc.123\\\": invalid syntax")
+	})
+
+	t.Run("bind value error", func(t *testing.T) {
+		p := dync.New()
+		err := p.Refresh(conf.Map(map[string]interface{}{
+			"int": "abc.123",
+		}))
+		assert.Nil(t, err)
+
+		cfg := new(Config)
 		cfg.Slice.Init(make([]string, 0))
 		cfg.Map.Init(make(map[string]string))
-		cfg.Event.OnEvent(func(prop *conf.Properties, param conf.BindParam) error {
-			fmt.Println("event fired.")
-			return nil
-		})
-		b, _ := json.Marshal(cfg)
-		assert.Equal(t, string(b), `{"Integer":3,"Int":3,"Float":1.2,"Map":{},"Slice":[],"Event":{}}`)
+		err = p.BindValue(reflect.ValueOf(cfg), conf.BindParam{})
+		assert.Error(t, err, "parsing \\\"abc.123\\\": invalid syntax")
+
+		var param conf.BindParam
+		_ = param.BindTag("${int}", "")
+		err = p.BindValue(reflect.ValueOf(new(dync.Int64)), param)
+		assert.Error(t, err, "parsing \\\"abc.123\\\": invalid syntax")
+
+		err = p.Refresh(conf.Map(map[string]interface{}{
+			"int": 123,
+		}))
+		assert.Nil(t, err)
+		err = p.BindValue(reflect.ValueOf(new(dync.Int64)), param)
+		assert.Nil(t, err)
 	})
 
-	t.Run("default validate error", func(t *testing.T) {
-		mgr := dync.New()
-		cfg := new(Config)
-		cfg.Int.OnValidate(func(v int64) error {
-			if v < 6 {
-				return errors.New("should greeter than 6")
-			}
-			return nil
-		})
-		err := mgr.BindValue(reflect.ValueOf(cfg), conf.BindParam{})
-		assert.Error(t, err, "should greeter than 6")
-	})
-
-	t.Run("init validate error", func(t *testing.T) {
-
-		mgr := dync.New()
-		cfg := new(Config)
-		cfg.Int.OnValidate(func(v int64) error {
-			if v < 3 {
-				return errors.New("should greeter than 3")
-			}
-			return nil
-		})
-		cfg.Slice.Init(make([]string, 0))
-		cfg.Map.Init(make(map[string]string))
-		cfg.Event.OnEvent(func(prop *conf.Properties, param conf.BindParam) error {
-			fmt.Println("event fired.")
-			return nil
-		})
-		err := mgr.BindValue(reflect.ValueOf(cfg), conf.BindParam{})
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		b, _ := json.Marshal(cfg)
-		assert.Equal(t, string(b), `{"Integer":3,"Int":3,"Float":1.2,"Map":{},"Slice":[],"Event":{}}`)
-
-		p := conf.New()
-		p.Set("int", 1)
-		p.Set("float", 5.4)
-		p.Set("map.a", 3)
-		p.Set("map.b", 7)
-		p.Set("slice[0]", 2)
-		p.Set("slice[1]", 9)
-		err = mgr.Refresh(p)
-		assert.Error(t, err, "should greeter than 3")
-
-		b, _ = json.Marshal(cfg)
-		assert.Equal(t, string(b), `{"Integer":3,"Int":3,"Float":1.2,"Map":{},"Slice":[],"Event":{}}`)
-	})
-
-	t.Run("success", func(t *testing.T) {
-
-		mgr := dync.New()
-		cfg := new(Config)
-		cfg.Int.OnValidate(func(v int64) error {
-			if v < 3 {
-				return errors.New("should greeter than 3")
-			}
-			return nil
-		})
-		cfg.Slice.Init(make([]string, 0))
-		cfg.Map.Init(make(map[string]string))
-		cfg.Event.OnEvent(func(prop *conf.Properties, param conf.BindParam) error {
-			fmt.Println("event fired.")
-			return nil
-		})
-		err := mgr.BindValue(reflect.ValueOf(cfg), conf.BindParam{})
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		b, _ := json.Marshal(cfg)
-		assert.Equal(t, string(b), `{"Integer":3,"Int":3,"Float":1.2,"Map":{},"Slice":[],"Event":{}}`)
-
-		p := conf.New()
-		p.Set("int", 1)
-		p.Set("float", 5.4)
-		p.Set("map.a", 3)
-		p.Set("map.b", 7)
-		p.Set("slice[0]", 2)
-		p.Set("slice[1]", 9)
-		err = mgr.Refresh(p)
-		assert.Error(t, err, "should greeter than 3")
-
-		b, _ = json.Marshal(cfg)
-		assert.Equal(t, string(b), `{"Integer":3,"Int":3,"Float":1.2,"Map":{},"Slice":[],"Event":{}}`)
-
-		p = conf.New()
-		p.Set("int", 6)
-		p.Set("float", 2.3)
-		p.Set("map.a", 1)
-		p.Set("map.b", 2)
-		p.Set("slice[0]", 3)
-		p.Set("slice[1]", 4)
-		err = mgr.Refresh(p)
-		assert.Error(t, err, "validate failed on \"\\$<6\" for value 6")
-
-		b, _ = json.Marshal(cfg)
-		assert.Equal(t, string(b), `{"Integer":3,"Int":3,"Float":1.2,"Map":{},"Slice":[],"Event":{}}`)
-
-		p = conf.New()
-		p.Set("int", 4)
-		p.Set("float", 2.3)
-		p.Set("map.a", 1)
-		p.Set("map.b", 2)
-		p.Set("slice[0]", 3)
-		p.Set("slice[1]", 4)
-		mgr.Refresh(p)
-
-		b, _ = json.Marshal(cfg)
-		assert.Equal(t, string(b), `{"Integer":4,"Int":4,"Float":2.3,"Map":{"a":"1","b":"2"},"Slice":["3","4"],"Event":{}}`)
-	})
 }

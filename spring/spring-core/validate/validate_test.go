@@ -15,3 +15,46 @@
  */
 
 package validate_test
+
+import (
+	"testing"
+
+	"github.com/go-spring/spring-base/assert"
+	"github.com/go-spring/spring-core/validate"
+)
+
+var empty = &emptyValidator{}
+
+func init() {
+	validate.Register("empty", empty)
+}
+
+type emptyValidator struct {
+	count int
+}
+
+func (d *emptyValidator) reset() {
+	d.count = 0
+}
+
+func (d *emptyValidator) Field(tag string, i interface{}) error {
+	d.count++
+	return nil
+}
+
+func TestField(t *testing.T) {
+	i := 6
+
+	err := validate.Field("empty:\"\"", i)
+	assert.Nil(t, err)
+	assert.Equal(t, empty.count, 1)
+
+	err = validate.Field("expr:\"$>=3\"", i)
+	assert.Nil(t, err)
+
+	err = validate.Field("expr:\"$<3\"", i)
+	assert.Error(t, err, "validate failed on \"\\$<3\" for value 6")
+
+	err = validate.Field("expr:\"$<3\"", "abc")
+	assert.Error(t, err, "invalid operation\\: string \\< int \\(1:2\\)")
+}

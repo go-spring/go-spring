@@ -26,22 +26,24 @@ import (
 	"github.com/go-spring/spring-core/conf"
 )
 
-// Value 可动态刷新的对象
+// A Value represents a refreshable type.
 type Value interface {
 	OnRefresh(p *conf.Properties, param conf.BindParam) error
 }
 
+// A Field represents a refreshable struct field.
 type Field struct {
 	value Value
 	param conf.BindParam
 }
 
-// Properties 动态属性
+// Properties refreshes registered fields dynamically and concurrently.
 type Properties struct {
 	value  atomic.Value
 	fields []*Field
 }
 
+// New returns a Properties.
 func New() *Properties {
 	p := &Properties{}
 	p.value.Store(conf.New())
@@ -77,21 +79,28 @@ func (p *Properties) Bind(i interface{}, args ...conf.BindArg) error {
 	return p.load().Bind(i, args...)
 }
 
+// Refresh refreshes new Properties atomically.
 func (p *Properties) Refresh(prop *conf.Properties) (err error) {
 
 	old := p.load()
 	p.value.Store(prop)
+
+	if len(p.fields) == 0 {
+		return nil
+	}
 
 	oldKeys := old.Keys()
 	newKeys := prop.Keys()
 
 	changes := make(map[string]struct{})
 	{
+		// property value has changed.
 		for _, k := range newKeys {
 			if !old.Has(k) || old.Get(k) != prop.Get(k) {
 				changes[k] = struct{}{}
 			}
 		}
+		// property key has deleted.
 		for _, k := range oldKeys {
 			if _, ok := changes[k]; !ok {
 				changes[k] = struct{}{}
@@ -145,6 +154,7 @@ func (p *Properties) refreshFields(prop *conf.Properties, fields []*Field) error
 	return nil
 }
 
+// BindValue binds properties to a value.
 func (p *Properties) BindValue(v reflect.Value, param conf.BindParam) error {
 	if v.Kind() == reflect.Ptr {
 		ok, err := p.bindValue(v.Interface(), param)
