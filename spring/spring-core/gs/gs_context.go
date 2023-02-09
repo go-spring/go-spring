@@ -41,8 +41,8 @@ func (c *container) Resolve(s string) (string, error) {
 	return c.p.Resolve(s)
 }
 
-func (c *container) Bind(i interface{}, opts ...conf.BindOption) error {
-	return c.p.Bind(i, opts...)
+func (c *container) Bind(i interface{}, args ...conf.BindArg) error {
+	return c.p.Bind(i, args...)
 }
 
 // Find 查找符合条件的 bean 对象，注意该函数只能保证返回的 bean 是有效的，即未被
