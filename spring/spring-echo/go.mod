@@ -5,7 +5,7 @@ go 1.14
 require (
 	github.com/go-spring/spring-base v1.1.3
 	github.com/go-spring/spring-core v1.1.3
-	github.com/labstack/echo/v4 v4.6.1
+	github.com/labstack/echo/v4 v4.9.0
 )
 
 //replace (
