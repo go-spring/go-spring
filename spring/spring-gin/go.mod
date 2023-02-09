@@ -3,7 +3,7 @@ module github.com/go-spring/spring-gin
 go 1.14
 
 require (
-	github.com/gin-gonic/gin v1.7.4
+	github.com/gin-gonic/gin v1.7.7
 	github.com/go-spring/spring-base v1.1.3
 	github.com/go-spring/spring-core v1.1.3
 )
