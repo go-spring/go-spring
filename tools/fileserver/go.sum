@@ -17,6 +17,7 @@ github.com/go-spring/spring-base v1.1.0 h1:7zNRZ+N+2T49ixR7CxtnGTu9M5sq/Gqyyl/SV
 github.com/go-spring/spring-base v1.1.0/go.mod h1:tdngm+6agA34HQ5YADitIGaQ04e1pmxuR5cd6Eaobmw=
 github.com/go-spring/spring-base v1.1.2-0.20220912232223-ad27a0e73218 h1:AD6dDAqG5F7WS0mAxWIfKOwSSWK8/M2Gr/SnYE90hZ0=
 github.com/go-spring/spring-base v1.1.2-0.20220912232223-ad27a0e73218/go.mod h1:tdngm+6agA34HQ5YADitIGaQ04e1pmxuR5cd6Eaobmw=
+github.com/go-spring/spring-base v1.1.3/go.mod h1:tdngm+6agA34HQ5YADitIGaQ04e1pmxuR5cd6Eaobmw=
 github.com/go-spring/spring-core v1.1.0-rc1.0.20211113013626-adb083a077e7/go.mod h1:5u0hbSmLb2wWNEkW7ROCSBfsk+yNtcFdiFcZQBVfOac=
 github.com/go-spring/spring-core v1.1.0-rc2 h1:MUkeG4lehmNLeRBUhQEZal/Hz7vuQ7XzfCrq/NT25yE=
 github.com/go-spring/spring-core v1.1.0-rc2/go.mod h1:gN4RbS67mC8V0c1O7ZLW0ofNrwODBFjyzymYh2ZLXDY=
@@ -26,6 +27,7 @@ github.com/go-spring/spring-core v1.1.0 h1:bfb4ZexbIacvkuhROi9YBHCMrA9HJCJAKOPEX
 github.com/go-spring/spring-core v1.1.0/go.mod h1:C6qg7jK3ENb0a41J5jZWY46QCKf9a1/28Q0EsSHAHtE=
 github.com/go-spring/spring-core v1.1.2-0.20220912232602-72c7fd83f924 h1:CuH8zU8IFLjBcifRguayRZq+YL72JqzV1u7N0amFkmI=
 github.com/go-spring/spring-core v1.1.2-0.20220912232602-72c7fd83f924/go.mod h1:IH+latJFgTWo/Dl5gQA4wCetxlowXBbpO/ne7coS8Bc=
+github.com/go-spring/spring-core v1.1.3/go.mod h1:THsfcYyvZ7IiI7HoLHVtaM/wkkZOQB1eY9urRQrR0bg=
 github.com/go-spring/spring-echo v1.1.0-rc2 h1:EgR6hPkcDNGLuGs9ctZRxqb73e4rBBUWn7gqR4YMZDg=
 github.com/go-spring/spring-echo v1.1.0-rc2/go.mod h1:tFabF8DdW2fvs+GZsdTqGKV7D4j3IiNcqn42CiSJQsE=
 github.com/go-spring/spring-echo v1.1.0-rc4.0.20220723015046-e618e70fa3dc h1:s+rcUQ0R15u+F5rQk4kd+etH8Dy8/VD313cNNTjhDkU=
@@ -34,6 +36,7 @@ github.com/go-spring/spring-echo v1.1.0 h1:FOP5c8AvnFlGPKIPf8sGCq8UDUoZknGBEg6Kd
 github.com/go-spring/spring-echo v1.1.0/go.mod h1:pyOVf8Ev4tuDnmX2a2w6ACbYCtJyM1bRd/+bvAKuHFQ=
 github.com/go-spring/spring-echo v1.1.2-0.20220912233044-ede424a78aa8 h1:zTKS70eJs9k1XRs2Y6BGoJPunVtj6wtkC8h6Jf10JmM=
 github.com/go-spring/spring-echo v1.1.2-0.20220912233044-ede424a78aa8/go.mod h1:SL0ZgNV4GJpvuaDeD3oeJkFP2GAqPO6r/HJCuDVg4Dk=
+github.com/go-spring/spring-echo v1.1.3/go.mod h1:rtdPUIqKggtf45zoR0TSD8KNru72q/+jIlghjRavImA=
 github.com/go-spring/starter-core v1.1.0-rc2 h1:Pvwc9D8LWsDN2QEje6zH9Vy4uUsIAtx1wSJqH9n1H94=
 github.com/go-spring/starter-core v1.1.0-rc2/go.mod h1:f8r68vQJ/rQe7EtvRrhkElG5LlTuT7RcOmJs73IAL50=
 github.com/go-spring/starter-echo v1.1.0-rc2 h1:zh7Nswo1Qsg9GfeTPNLQio8jGvXF/AsqapGVretD+4M=

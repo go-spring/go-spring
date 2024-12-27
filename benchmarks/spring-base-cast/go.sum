@@ -4,6 +4,7 @@ github.com/go-spring/spring-base v1.1.0-rc4.0.20220723014310-0954983fa7c4 h1:/MH
 github.com/go-spring/spring-base v1.1.0-rc4.0.20220723014310-0954983fa7c4/go.mod h1:tdngm+6agA34HQ5YADitIGaQ04e1pmxuR5cd6Eaobmw=
 github.com/go-spring/spring-base v1.1.0 h1:7zNRZ+N+2T49ixR7CxtnGTu9M5sq/Gqyyl/SVdtTmiM=
 github.com/go-spring/spring-base v1.1.0/go.mod h1:tdngm+6agA34HQ5YADitIGaQ04e1pmxuR5cd6Eaobmw=
+github.com/go-spring/spring-base v1.1.3/go.mod h1:tdngm+6agA34HQ5YADitIGaQ04e1pmxuR5cd6Eaobmw=
 github.com/golang/mock v1.6.0/go.mod h1:p6yTPP+5HYm5mzsMV8JkE6ZKdX+/wYM6Hr+LicevLPs=
 github.com/google/uuid v1.3.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
 github.com/magiconair/properties v1.8.5/go.mod h1:y3VJvCyxH9uVvJTWEGAELF3aiYNyPKd5NZ3oSwXrF60=
