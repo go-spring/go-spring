@@ -19,19 +19,12 @@ package gs
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
-	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"reflect"
-	"strconv"
 	"strings"
 	"syscall"
 
-	"github.com/go-spring/spring-base/log"
-	"github.com/go-spring/spring-base/util"
-	"github.com/go-spring/spring-core/conf"
 	"github.com/go-spring/spring-core/grpc"
 	"github.com/go-spring/spring-core/gs/arg"
 	"github.com/go-spring/spring-core/mq"
@@ -63,10 +56,8 @@ type tempApp struct {
 type App struct {
 	*tempApp
 
-	logger *log.Logger
-
 	c *container
-	b *bootstrap
+	b *Bootstrapper
 
 	exitChan chan struct{}
 
@@ -122,32 +113,34 @@ func (app *App) Banner(banner string) {
 	app.banner = banner
 }
 
-func (app *App) Run() error {
-
-	config := `
-		<?xml version="1.0" encoding="UTF-8"?>
-		<Configuration>
-			<Appenders>
-				<Console name="Console"/>
-			</Appenders>
-			<Loggers>
-				<Root level="info">
-					<AppenderRef ref="Console"/>
-				</Root>
-			</Loggers>
-		</Configuration>
-	`
-	if err := log.RefreshBuffer(config, ".xml"); err != nil {
-		return err
-	}
+func (app *App) Start() (Context, error) {
 
 	app.Object(app)
 	app.Object(app.consumers)
 	app.Object(app.grpcServers)
 	app.Object(app.router).Export((*web.Router)(nil))
-	app.logger = log.GetLogger(util.TypeName(app))
 
-	// 响应控制台的 Ctrl+C 及 kill 命令。
+	if err := app.start(); err != nil {
+		return nil, err
+	}
+	return app.c, nil
+}
+
+func (app *App) Stop() {
+
+	// if app.b != nil {
+	// 	app.b.c.Close()
+	// }
+
+	app.c.Close()
+}
+
+func (app *App) Run() error {
+	_, err := app.Start()
+	if err != nil {
+		return err
+	}
+
 	go func() {
 		ch := make(chan os.Signal, 1)
 		signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
@@ -155,59 +148,31 @@ func (app *App) Run() error {
 		app.ShutDown(fmt.Sprintf("signal %v", sig))
 	}()
 
-	if err := app.start(); err != nil {
-		return err
-	}
-
 	<-app.exitChan
-
-	if app.b != nil {
-		app.b.c.Close()
-	}
-
-	app.c.Close()
-	app.logger.Info("application exited")
 	return nil
-}
-
-func (app *App) clear() {
-	app.c.clear()
-	if app.b != nil {
-		app.b.clear()
-	}
-	app.tempApp = nil
 }
 
 func (app *App) start() error {
 
-	e := &configuration{
-		p:               conf.New(),
-		resourceLocator: new(defaultResourceLocator),
-	}
+	// showBanner, _ := strconv.ParseBool(e.p.Get(SpringBannerVisible))
+	// if showBanner {
+	// 	app.printBanner(app.getBanner(e))
+	// }
 
-	if err := e.prepare(); err != nil {
-		return err
-	}
+	// if app.b != nil {
+	// 	if err := app.b.start(e); err != nil {
+	// 		return err
+	// 	}
+	// }
+	//
+	// if err := app.loadProperties(e); err != nil {
+	// 	return err
+	// }
 
-	showBanner, _ := strconv.ParseBool(e.p.Get(SpringBannerVisible))
-	if showBanner {
-		app.printBanner(app.getBanner(e))
-	}
-
-	if app.b != nil {
-		if err := app.b.start(e); err != nil {
-			return err
-		}
-	}
-
-	if err := app.loadProperties(e); err != nil {
-		return err
-	}
-
-	// 保存从环境变量和命令行解析的属性
-	for _, k := range e.p.Keys() {
-		app.c.initProperties.Set(k, e.p.Get(k))
-	}
+	// // 保存从环境变量和命令行解析的属性
+	// for _, k := range e.p.Keys() {
+	// 	app.c.initProperties.Set(k, e.p.Get(k))
+	// }
 
 	if err := app.c.refresh(false); err != nil {
 		return err
@@ -223,8 +188,6 @@ func (app *App) start() error {
 		event.OnAppStart(app.c)
 	}
 
-	app.clear()
-
 	// 通知应用停止事件
 	app.c.Go(func(ctx context.Context) {
 		<-ctx.Done()
@@ -233,7 +196,6 @@ func (app *App) start() error {
 		}
 	})
 
-	app.logger.Info("application started successfully")
 	return nil
 }
 
@@ -247,20 +209,16 @@ const DefaultBanner = `
  |___/                         |_|                         |___/ 
 `
 
-func (app *App) getBanner(e *configuration) string {
+func (app *App) getBanner() string {
 	if app.banner != "" {
 		return app.banner
 	}
-	resources, err := e.resourceLocator.Locate("banner.txt")
-	if err != nil {
-		return ""
-	}
 	banner := DefaultBanner
-	for _, resource := range resources {
-		if b, _ := ioutil.ReadAll(resource); b != nil {
-			banner = string(b)
-		}
-	}
+	// for _, resource := range resources {
+	// 	if b, _ := ioutil.ReadAll(resource); b != nil {
+	// 		banner = string(b)
+	// 	}
+	// }
 	return banner
 }
 
@@ -293,66 +251,8 @@ func (app *App) printBanner(banner string) {
 	fmt.Println(string(padding) + Version + "\n")
 }
 
-func (app *App) loadProperties(e *configuration) error {
-	var resources []Resource
-
-	for _, ext := range e.ConfigExtensions {
-		sources, err := app.loadResource(e, "application"+ext)
-		if err != nil {
-			return err
-		}
-		resources = append(resources, sources...)
-	}
-
-	for _, profile := range e.ActiveProfiles {
-		for _, ext := range e.ConfigExtensions {
-			sources, err := app.loadResource(e, "application-"+profile+ext)
-			if err != nil {
-				return err
-			}
-			resources = append(resources, sources...)
-		}
-	}
-
-	for _, resource := range resources {
-		b, err := ioutil.ReadAll(resource)
-		if err != nil {
-			return err
-		}
-		p, err := conf.Bytes(b, filepath.Ext(resource.Name()))
-		if err != nil {
-			return err
-		}
-		for _, key := range p.Keys() {
-			app.c.initProperties.Set(key, p.Get(key))
-		}
-	}
-
-	return nil
-}
-
-func (app *App) loadResource(e *configuration, filename string) ([]Resource, error) {
-
-	var locators []ResourceLocator
-	locators = append(locators, e.resourceLocator)
-	if app.b != nil {
-		locators = append(locators, app.b.resourceLocators...)
-	}
-
-	var resources []Resource
-	for _, locator := range locators {
-		sources, err := locator.Locate(filename)
-		if err != nil {
-			return nil, err
-		}
-		resources = append(resources, sources...)
-	}
-	return resources, nil
-}
-
 // ShutDown 关闭执行器
 func (app *App) ShutDown(msg ...string) {
-	app.logger.Infof("program will exit %s", strings.Join(msg, " "))
 	select {
 	case <-app.exitChan:
 		// chan 已关闭，无需再次关闭。
@@ -362,7 +262,7 @@ func (app *App) ShutDown(msg ...string) {
 }
 
 // Bootstrap 返回 *bootstrap 对象。
-func (app *App) Bootstrap() *bootstrap {
+func (app *App) Bootstrap() *Bootstrapper {
 	if app.b == nil {
 		app.b = newBootstrap()
 	}
@@ -392,131 +292,4 @@ func (app *App) Object(i interface{}) *BeanDefinition {
 // Provide 参考 Container.Provide 的解释。
 func (app *App) Provide(ctor interface{}, args ...arg.Arg) *BeanDefinition {
 	return app.c.Accept(NewBean(ctor, args...))
-}
-
-// HttpGet 注册 GET 方法处理函数。
-func (app *App) HttpGet(path string, h http.HandlerFunc) *web.Mapper {
-	return app.router.HttpGet(path, h)
-}
-
-// HandleGet 注册 GET 方法处理函数。
-func (app *App) HandleGet(path string, h web.Handler) *web.Mapper {
-	return app.router.HandleGet(path, h)
-}
-
-// GetMapping 注册 GET 方法处理函数。
-func (app *App) GetMapping(path string, fn web.HandlerFunc) *web.Mapper {
-	return app.router.GetMapping(path, fn)
-}
-
-// GetBinding 注册 GET 方法处理函数。
-func (app *App) GetBinding(path string, fn interface{}) *web.Mapper {
-	return app.router.GetBinding(path, fn)
-}
-
-// HttpPost 注册 POST 方法处理函数。
-func (app *App) HttpPost(path string, h http.HandlerFunc) *web.Mapper {
-	return app.router.HttpPost(path, h)
-}
-
-// HandlePost 注册 POST 方法处理函数。
-func (app *App) HandlePost(path string, h web.Handler) *web.Mapper {
-	return app.router.HandlePost(path, h)
-}
-
-// PostMapping 注册 POST 方法处理函数。
-func (app *App) PostMapping(path string, fn web.HandlerFunc) *web.Mapper {
-	return app.router.PostMapping(path, fn)
-}
-
-// PostBinding 注册 POST 方法处理函数。
-func (app *App) PostBinding(path string, fn interface{}) *web.Mapper {
-	return app.router.PostBinding(path, fn)
-}
-
-// HttpPut 注册 PUT 方法处理函数。
-func (app *App) HttpPut(path string, h http.HandlerFunc) *web.Mapper {
-	return app.router.HttpPut(path, h)
-}
-
-// HandlePut 注册 PUT 方法处理函数。
-func (app *App) HandlePut(path string, h web.Handler) *web.Mapper {
-	return app.router.HandlePut(path, h)
-}
-
-// PutMapping 注册 PUT 方法处理函数。
-func (app *App) PutMapping(path string, fn web.HandlerFunc) *web.Mapper {
-	return app.router.PutMapping(path, fn)
-}
-
-// PutBinding 注册 PUT 方法处理函数。
-func (app *App) PutBinding(path string, fn interface{}) *web.Mapper {
-	return app.router.PutBinding(path, fn)
-}
-
-// HttpDelete 注册 DELETE 方法处理函数。
-func (app *App) HttpDelete(path string, h http.HandlerFunc) *web.Mapper {
-	return app.router.HttpDelete(path, h)
-}
-
-// HandleDelete 注册 DELETE 方法处理函数。
-func (app *App) HandleDelete(path string, h web.Handler) *web.Mapper {
-	return app.router.HandleDelete(path, h)
-}
-
-// DeleteMapping 注册 DELETE 方法处理函数。
-func (app *App) DeleteMapping(path string, fn web.HandlerFunc) *web.Mapper {
-	return app.router.DeleteMapping(path, fn)
-}
-
-// DeleteBinding 注册 DELETE 方法处理函数。
-func (app *App) DeleteBinding(path string, fn interface{}) *web.Mapper {
-	return app.router.DeleteBinding(path, fn)
-}
-
-// HandleRequest 注册任意 HTTP 方法处理函数。
-func (app *App) HandleRequest(method uint32, path string, h web.Handler) *web.Mapper {
-	return app.router.HandleRequest(method, path, h)
-}
-
-// RequestMapping 注册任意 HTTP 方法处理函数。
-func (app *App) RequestMapping(method uint32, path string, fn web.HandlerFunc) *web.Mapper {
-	return app.router.RequestMapping(method, path, fn)
-}
-
-// RequestBinding 注册任意 HTTP 方法处理函数。
-func (app *App) RequestBinding(method uint32, path string, fn interface{}) *web.Mapper {
-	return app.router.RequestBinding(method, path, fn)
-}
-
-// File 定义单个文件资源
-func (app *App) File(path string, file string) *web.Mapper {
-	return app.router.File(path, file)
-}
-
-// Static 定义一组文件资源
-func (app *App) Static(prefix string, dir string) *web.Mapper {
-	return app.router.Static(prefix, dir)
-}
-
-// StaticFS 定义一组文件资源
-func (app *App) StaticFS(prefix string, fs http.FileSystem) *web.Mapper {
-	return app.router.StaticFS(prefix, fs)
-}
-
-// Consume 注册 MQ 消费者。
-func (app *App) Consume(fn interface{}, topics ...string) {
-	app.consumers.Add(mq.Bind(fn, topics...))
-}
-
-// GrpcServer 注册 gRPC 服务提供者，fn 是 gRPC 自动生成的服务注册函数，
-// serviceName 是服务名称，必须对应 *_grpc.pg.go 文件里面 grpc.ServerDesc
-// 的 ServiceName 字段，server 是服务提供者对象。
-func (app *App) GrpcServer(serviceName string, server *grpc.Server) {
-	app.grpcServers.Add(serviceName, server)
-}
-
-// GrpcClient 注册 gRPC 服务客户端，fn 是 gRPC 自动生成的客户端构造函数。
-func (app *App) GrpcClient(fn interface{}, endpoint string) *BeanDefinition {
-	return app.c.Accept(NewBean(fn, endpoint))
 }

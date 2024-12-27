@@ -19,65 +19,24 @@ package gs_test
 import (
 	"os"
 	"testing"
-	"time"
 
 	"github.com/go-spring/spring-base/assert"
+
 	"github.com/go-spring/spring-core/gs"
 )
 
-func startApplication(cfgLocation string, fn func(gs.Context)) *gs.App {
+var Ctx gs.Context
 
-	app := gs.NewApp()
-	gs.Setenv("GS_SPRING_BANNER_VISIBLE", "true")
-	gs.Setenv("GS_SPRING_CONFIG_LOCATIONS", cfgLocation)
-
-	type PandoraAware struct{}
-	app.Provide(func(b gs.Context) PandoraAware {
-		fn(b)
-		return PandoraAware{}
-	})
-
-	go func() {
-		if err := app.Run(); err != nil {
-			panic(err)
-		}
-	}()
-
-	time.Sleep(100 * time.Millisecond)
-	return app
+func TestMain(m *testing.M) {
+	err := gs.TestInit(&Ctx)
+	if err != nil {
+		panic(err)
+	}
+	os.Exit(gs.TestMain(m))
 }
 
 func TestConfig(t *testing.T) {
-
-	t.Run("config via env", func(t *testing.T) {
-		os.Clearenv()
-		gs.Setenv("GS_SPRING_PROFILES_ACTIVE", "dev")
-		app := startApplication("testdata/config/", func(ctx gs.Context) {
-			assert.Equal(t, ctx.Prop("spring.profiles.active"), "dev")
-		})
-		defer app.ShutDown("run test end")
-	})
-
-	t.Run("config via env 2", func(t *testing.T) {
-		os.Clearenv()
-		gs.Setenv("GS_SPRING_PROFILES_ACTIVE", "dev")
-		app := startApplication("testdata/config/", func(ctx gs.Context) {
-			assert.Equal(t, ctx.Prop("spring.profiles.active"), "dev")
-		})
-		defer app.ShutDown("run test end")
-	})
-
-	t.Run("profile via env&config 2", func(t *testing.T) {
-		os.Clearenv()
-		gs.Setenv("GS_SPRING_PROFILES_ACTIVE", "dev")
-		app := startApplication("testdata/config/", func(ctx gs.Context) {
-			assert.Equal(t, ctx.Prop("spring.profiles.active"), "dev")
-			//keys := ctx.Properties().Keys()
-			//sort.Strings(keys)
-			//for _, k := range keys {
-			//	fmt.Println(k, "=", ctx.Prop(k))
-			//}
-		})
-		defer app.ShutDown("run test end")
-	})
+	os.Clearenv()
+	gs.Setenv("GS_SPRING_PROFILES_ACTIVE", "dev")
+	assert.Equal(t, Ctx.Prop("spring.profiles.active"), "dev")
 }
