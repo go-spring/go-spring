@@ -133,6 +133,10 @@ How to become a contributor? Submit meaningful PRs or feature requests, and have
 To drive the continuous growth of Go-Spring, we warmly invite your support. Your donation will help us iterate faster,
 improve the ecosystem, and strengthen the community.
 
+## Star History
+
+<img src="https://api.star-history.com/svg?repos=golang/go&type=Date" width="600" alt=""/>
+
 ## 鸣谢 (Thanks)
 
 Thanks to JetBrains' IntelliJ IDEA product for providing a convenient and efficient code editing and testing
