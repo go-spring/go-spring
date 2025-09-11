@@ -8,7 +8,7 @@ require (
 	github.com/go-spring/starter-echo v1.1.3
 	github.com/go-spring/starter-go-redis v1.1.3
 	github.com/go-spring/starter-gorm v1.1.3
-	github.com/labstack/echo/v4 v4.6.1
+	github.com/labstack/echo/v4 v4.9.0
 	github.com/spf13/viper v1.3.1
 	go.mongodb.org/mongo-driver v1.7.3
 	gorm.io/gorm v1.22.4
