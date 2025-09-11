@@ -86,6 +86,26 @@ reduces project setup complexity but also represents a milestone breakthrough fo
 | [gs-http-gen](https://github.com/go-spring/gs-http-gen)               | 基于 IDL 的 HTTP 代码生成工具<br>HTTP code generation tool based on IDL files     |
 | [skeleton](https://github.com/go-spring/skeleton)                     | 实践 modulith 的项目骨架<br>Modulith practice project skeleton                  |
 
+## 开箱 (Getting Started)
+
+1. 安装 [gs](https://github.com/go-spring/gs) 工具。Install the [gs](https://github.com/go-spring/gs) tool.
+
+```shell
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/go-spring/gs/HEAD/install.sh)"
+```
+
+2. 创建项目。Create a project.
+
+```shell
+gs init --module my-git/my-group/my-module
+```
+
+3. 运行程序。 Run the program.
+
+```shell
+go run main.go
+```
+
 ## 贡献 (Contribution)
 
 如何成为贡献者？提交有意义的 PR 或者需求，并被采纳。  
