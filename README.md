@@ -1,6 +1,12 @@
 <div>
  <img src="https://raw.githubusercontent.com/go-spring/go-spring/master/logo@h.png" width="140" height="*" alt="logo"/>
 </div>
+<br/>
+
+> Go-Spring 是一个由众多子项目组成的大型生态。建议大家为这个总览仓库点亮 ⭐，这样能够更直观地展示 Go-Spring 的整体价值。
+
+> Go-Spring is a large ecosystem with many sub-projects. We recommend starring this overview repository so that the full
+> value of Go-Spring can be more clearly recognized.
 
 Go-Spring 是对传统 Go 项目开发痛点的一次有力回应。它借鉴了 Java 社区 Spring / Spring Boot
 的成功经验，以依赖注入和自动配置为核心基础，把“开箱即用”设为首要目标。同时，它坚持 Go
