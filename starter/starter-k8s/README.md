@@ -1,1 +1,0 @@
-# starter-k8s
