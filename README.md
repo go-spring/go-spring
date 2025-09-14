@@ -135,7 +135,7 @@ improve the ecosystem, and strengthen the community.
 
 ## Star History
 
-<img src="https://api.star-history.com/svg?repos=golang/go&type=Date" width="600" alt=""/>
+<img src="https://api.star-history.com/svg?repos=go-spring/go-spring&type=Date" width="600" alt=""/>
 
 ## 鸣谢 (Thanks)
 
