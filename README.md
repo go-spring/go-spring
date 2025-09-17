@@ -106,6 +106,9 @@ gs init --module my-git/my-group/my-module
 go run main.go
 ```
 
+> 你可以找到更多的[文档](docs)和[示例](docs/4.examples)。  
+> Find more [docs](docs) and [examples](docs/4.examples).
+
 ## 贡献 (Contribution)
 
 如何成为贡献者？提交有意义的 PR 或者需求，并被采纳。  
