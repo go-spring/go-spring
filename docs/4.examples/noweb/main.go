@@ -29,12 +29,12 @@ func main() {
 	// Disable the built-in HTTP service.
 	stopApp, err := gs.Web(false).RunAsync()
 	if err != nil {
-		log.Errorf(context.Background(), log.TagApp, "app run failed: %s", err.Error())
+		log.Errorf(context.Background(), log.TagAppDef, "app run failed: %s", err.Error())
 		os.Exit(1)
 	}
 
-	log.Infof(context.Background(), log.TagApp, "app started")
-	time.Sleep(time.Minute)
+	log.Infof(context.Background(), log.TagAppDef, "app started")
+	time.Sleep(time.Second * 10)
 
 	stopApp()
 }

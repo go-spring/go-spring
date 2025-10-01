@@ -37,7 +37,7 @@ func init() {
 
 // NewServeMux creates a new HTTP request multiplexer and registers
 // routes with access logging middleware.
-func NewServeMux(c *controller.Controller, logger *slog.Logger) *http.ServeMux {
+func NewServeMux(c *controller.Controller, logger *slog.Logger) http.Handler {
 	mux := http.NewServeMux()
 	proto.RegisterRouter(mux, c, Access(logger))
 

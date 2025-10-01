@@ -33,7 +33,7 @@ import (
 func init() {
 	gs.SetActiveProfiles("online")
 	gs.EnableSimplePProfServer(true)
-	gs.FuncJob(runTest).Name("#job")
+	gs.Job(runTest).Name("#job")
 }
 
 func main() {

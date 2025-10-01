@@ -36,8 +36,8 @@ func main() {
 	// - Property Binding: Binds external configs (YAML, ENV) into structs.
 	// - Dependency Injection: Wires beans automatically.
 	// - Dynamic Refresh: Updates configs at runtime without restart.
-	gs.RunWith(func(ctx context.Context) error {
-		log.Infof(ctx, log.TagAppDef, "app started")
+	gs.Run(func() error {
+		log.Infof(context.Background(), log.TagAppDef, "app started")
 		return nil
 	})
 }

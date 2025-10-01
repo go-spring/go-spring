@@ -27,7 +27,7 @@ import (
 
 func init() {
 	// Register a function runner to initialize the remote configuration setup.
-	gs.B.FuncRunner(initRemoteConfig).OnProfiles("online")
+	gs.B.Runner(initRemoteConfig).OnProfiles("online")
 }
 
 // initRemoteConfig initializes the remote configuration setup.
@@ -39,7 +39,7 @@ func initRemoteConfig() error {
 	}
 	// Register a function job to refresh the configuration.
 	// A bean can be registered into the app during the bootstrap phase.
-	gs.FuncJob(refreshRemoteConfig)
+	gs.Job(refreshRemoteConfig)
 	return nil
 }
 
