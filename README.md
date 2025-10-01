@@ -72,18 +72,18 @@ reduces project setup complexity but also represents a milestone breakthrough fo
 
 | 模块名<br>Module Name                                                    | 描述<br>Description                                                        |
 |-----------------------------------------------------------------------|--------------------------------------------------------------------------|
+| [go-spring :: log](https://github.com/go-spring/log)                  | 前后端统一的日志库<br>Unified front-end and back-end log                          |
+| [spring-base :: assert](https://github.com/go-spring/spring-base)     | 用于 Go 单测的断言库<br>An assertion library for Go unit tests                   |
 | [spring-core](https://github.com/go-spring/spring-core)               | 核心项目<br>Core project                                                     |
-| [log](https://github.com/go-spring/log)                               | 前后端统一的日志库<br>Unified front-end and back-end log                          |
 | [gs-mock](https://github.com/go-spring/gs-mock)                       | 现代化的、类型安全的 Go 语言 mocking 库<br>A modern, type-safe mocking library for Go |
-| [gs-assert](https://github.com/go-spring/gs-assert)                   | 用于 Go 单测的断言库<br>An assertion library for Go unit tests                   |
 | [starter-gorm-mysql](https://github.com/go-spring/starter-gorm-mysql) | gorm mysql 启动器<br>Starter for gorm with mysql                            |
 | [starter-redigo](https://github.com/go-spring/starter-redigo)         | redigo 启动器<br>Starter for redigo                                         |
 | [starter-go-redis](https://github.com/go-spring/starter-go-redis)     | go-redis 启动器<br>Starter for go-redis                                     |
+| [gs-http-gen](https://github.com/go-spring/gs-http-gen)               | 基于 IDL 的 HTTP 代码生成工具<br>HTTP code generation tool based on IDL files     |
 | [gs](https://github.com/go-spring/gs)                                 | Go-Spring 工具管理器<br>Go-Spring Tools Manager                               |
 | [gs-init](https://github.com/go-spring/gs-init)                       | 创建新项目的工具<br>Create new projects                                          |
 | [gs-add](https://github.com/go-spring/gs-add)                         | 为项目添加新组件的工具<br>Add new components                                        |
 | [gs-gen](https://github.com/go-spring/gs-gen)                         | 根据 IDL 文件生成 Go 服务端代码<br>Generate go server code based on IDL files       |
-| [gs-http-gen](https://github.com/go-spring/gs-http-gen)               | 基于 IDL 的 HTTP 代码生成工具<br>HTTP code generation tool based on IDL files     |
 | [skeleton](https://github.com/go-spring/skeleton)                     | 实践 modulith 的项目骨架<br>Modulith practice project skeleton                  |
 
 ## 开箱 (Getting Started)
