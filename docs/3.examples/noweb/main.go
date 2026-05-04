@@ -29,7 +29,7 @@ func main() {
 
 	app := gs.Configure(func(app gs.App) {
 		// Disable the built-in HTTP service.
-		app.Property("http.server.enable", "false")
+		app.Property("spring.http.server.enabled", "false")
 	})
 
 	stopApp, err := app.RunAsync()

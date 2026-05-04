@@ -18,15 +18,20 @@ package main
 
 import (
 	"context"
+	"errors"
 	"net"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-spring/spring-core/gs"
+	"github.com/go-spring/stdlib/errutil"
 )
 
 func init() {
-	gs.Provide(NewSimpleGinServer).Export(gs.As[gs.Server]())
+	gs.Provide(
+		NewSimpleGinServer,
+		gs.IndexArg(1, gs.TagArg("${spring.gin.server}")),
+	).Export(gs.As[gs.Server]())
 }
 
 type SimpleGinServer struct {
@@ -50,7 +55,11 @@ func (s *SimpleGinServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 		return err
 	}
 	<-sig.TriggerAndWait()
-	return s.svr.Serve(ln)
+	err = s.svr.Serve(ln)
+	if errors.Is(err, http.ErrServerClosed) {
+		return nil
+	}
+	return errutil.Explain(err, "failed to serve on %s", s.svr.Addr)
 }
 
 func (s *SimpleGinServer) Stop() error {

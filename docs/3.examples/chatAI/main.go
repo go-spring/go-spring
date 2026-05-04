@@ -17,13 +17,11 @@
 package main
 
 import (
-	"context"
 	"embed"
 	"fmt"
 	"net/http"
 	"time"
 
-	"github.com/go-spring/log"
 	"github.com/go-spring/spring-core/gs"
 )
 
@@ -66,13 +64,10 @@ func main() {
 		}
 	})
 
-	app := gs.Configure(func(app gs.App) {
+	gs.Configure(func(app gs.App) {
 		// Disable the write timeout for the HTTP server
 		app.Property("http.server.writeTimeout", "0")
-	})
-	if err := app.Run(); err != nil {
-		log.Errorf(context.Background(), log.TagAppDef, "app run failed: %s", err.Error())
-	}
+	}).Run()
 }
 
 // open http://127.0.0.1:9090/public/chatAI.html in the browser

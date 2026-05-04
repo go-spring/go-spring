@@ -17,7 +17,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -26,7 +25,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/go-spring/log"
 	"github.com/go-spring/spring-core/gs"
 )
 
@@ -57,11 +55,9 @@ func main() {
 		runTest()
 	}()
 
-	if err := gs.Configure(func(app gs.App) {
-		app.Property("http.server.enable", "false")
-	}).Run(); err != nil {
-		log.Errorf(context.Background(), log.TagAppDef, "app run failed: %s", err.Error())
-	}
+	gs.Configure(func(app gs.App) {
+		app.Property("spring.http.server.enabled", "false")
+	}).Run()
 }
 
 func runTest() {
