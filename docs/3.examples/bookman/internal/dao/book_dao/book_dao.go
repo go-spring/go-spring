@@ -17,7 +17,8 @@
 package book_dao
 
 import (
-	"log/slog"
+	"errors"
+	"fmt"
 	"maps"
 	"slices"
 	"sort"
@@ -26,7 +27,7 @@ import (
 )
 
 func init() {
-	gs.Object(&BookDao{Store: map[string]Book{
+	gs.Provide(&BookDao{Store: map[string]Book{
 		"978-0134190440": {
 			Title:     "The Go Programming Language",
 			Author:    "Alan A. A. Donovan, Brian W. Kernighan",
@@ -44,8 +45,7 @@ type Book struct {
 }
 
 type BookDao struct {
-	Store  map[string]Book
-	Logger *slog.Logger `autowire:"dao"`
+	Store map[string]Book
 }
 
 // ListBooks returns a sorted list of all books in the store.
@@ -60,18 +60,26 @@ func (dao *BookDao) ListBooks() ([]Book, error) {
 // GetBook retrieves a book by its ISBN.
 func (dao *BookDao) GetBook(isbn string) (Book, error) {
 	r, ok := dao.Store[isbn]
-	_ = ok
+	if !ok {
+		return Book{}, fmt.Errorf("book %q not found", isbn)
+	}
 	return r, nil
 }
 
 // SaveBook adds or updates a book in the store.
 func (dao *BookDao) SaveBook(book Book) error {
+	if book.ISBN == "" {
+		return errors.New("book isbn is required")
+	}
 	dao.Store[book.ISBN] = book
 	return nil
 }
 
 // DeleteBook removes a book from the store by its ISBN.
 func (dao *BookDao) DeleteBook(isbn string) error {
+	if _, ok := dao.Store[isbn]; !ok {
+		return fmt.Errorf("book %q not found", isbn)
+	}
 	delete(dao.Store, isbn)
 	return nil
 }

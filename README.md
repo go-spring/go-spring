@@ -86,6 +86,17 @@ reduces project setup complexity but also represents a milestone breakthrough fo
 | [gs-gen](https://github.com/go-spring/gs-gen)                         | 根据 IDL 文件生成 Go 服务端代码<br>Generate go server code based on IDL files       |
 | [skeleton](https://github.com/go-spring/skeleton)                     | 实践 modulith 的项目骨架<br>Modulith practice project skeleton                  |
 
+## 文档 (Documentation)
+
+项目文档位于 [docs](docs) 目录，包含总览、快速入门、专题指南、示例、组件集成、FAQ、贡献指南和更新日志等内容。  
+Project documentation is available in the [docs](docs) directory, including overview, getting started, guides, examples,
+integrations, FAQ, contribution guide, and changelog.
+
+如果你希望通过完整示例循序渐进地了解 Go-Spring，可以参考
+[go-spring-first](https://github.com/lvan100/go-spring-first)，其中整理了 10 个入门示例。  
+If you prefer learning Go-Spring through complete, progressive examples, see
+[go-spring-first](https://github.com/lvan100/go-spring-first), which provides 10 getting-started examples.
+
 ## 开箱 (Getting Started)
 
 1. 安装 [gs](https://github.com/go-spring/gs) 工具。Install the [gs](https://github.com/go-spring/gs) tool.
@@ -106,8 +117,8 @@ gs init --module my-git/my-group/my-module
 go run main.go
 ```
 
-> 你可以找到更多的[文档](docs)和[示例](docs/4.examples)。  
-> Find more [docs](docs) and [examples](docs/4.examples).
+> 你可以找到更多的[文档](docs)和[示例](docs/3.examples)。  
+> Find more [docs](docs) and [examples](docs/3.examples).
 
 ## 贡献 (Contribution)
 

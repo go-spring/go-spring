@@ -17,5 +17,5 @@
 package biz
 
 import (
-	_ "bookman/src/biz/job"
+	_ "bookman/internal/biz/job"
 )

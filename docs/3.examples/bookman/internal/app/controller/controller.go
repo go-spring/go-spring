@@ -14,39 +14,20 @@
  * limitations under the License.
  */
 
-package job
+package controller
 
 import (
-	"context"
-	"fmt"
-	"time"
-
 	"github.com/go-spring/spring-core/gs"
 )
 
 func init() {
-	gs.Object(&Job{}).AsJob()
+	gs.Provide(&Controller{})
 }
 
-type Job struct{}
-
-// Run executes the background job until the context is canceled.
-func (x *Job) Run(ctx context.Context) error {
-	for {
-		select {
-		case <-ctx.Done():
-			// Gracefully exit when the context is canceled
-			fmt.Println("job exit")
-			return nil
-		default:
-			// Check if the app is shutting down.
-			// In long-running background tasks, checking for shutdown signals
-			// during idle periods or between stages helps ensure timely resource cleanup.
-			if gs.Exiting() {
-				return nil
-			}
-			time.Sleep(time.Millisecond * 300)
-			fmt.Println(time.Now().UnixMilli(), "job sleep end")
-		}
-	}
+// Controller implements the controller interface defined in the idl package.
+// In practice, controller methods can be grouped into different controllers.
+// Each sub-controller can have its own dependencies and be tested independently,
+// making the codebase more modular and maintainable.
+type Controller struct {
+	BookController
 }

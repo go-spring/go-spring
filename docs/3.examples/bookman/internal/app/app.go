@@ -14,19 +14,9 @@
  * limitations under the License.
  */
 
-package book_sdk
+package app
 
 import (
-	"github.com/go-spring/spring-core/gs"
+	_ "bookman/internal/app/common/httpsvr"
+	_ "bookman/internal/app/controller"
 )
-
-func init() {
-	gs.Object(&BookSDK{})
-}
-
-type BookSDK struct{}
-
-// GetPrice returns a fixed price for any book.
-func (s *BookSDK) GetPrice(isbn string) string {
-	return "￥10"
-}

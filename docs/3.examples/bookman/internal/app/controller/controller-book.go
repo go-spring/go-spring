@@ -20,8 +20,8 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"bookman/src/biz/service/book_service"
-	"bookman/src/dao/book_dao"
+	"bookman/internal/biz/service/book_service"
+	"bookman/internal/dao/book_dao"
 )
 
 type BookController struct {
@@ -30,9 +30,10 @@ type BookController struct {
 
 // ListBooks handles the HTTP request to list all books.
 func (c *BookController) ListBooks(w http.ResponseWriter, r *http.Request) {
-	books, err := c.BookService.ListBooks()
+	w.Header().Set("Content-Type", "application/json")
+	books, err := c.BookService.ListBooks(r.Context())
 	if err != nil {
-		_, _ = w.Write([]byte(err.Error()))
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	_ = json.NewEncoder(w).Encode(books)
@@ -40,10 +41,11 @@ func (c *BookController) ListBooks(w http.ResponseWriter, r *http.Request) {
 
 // GetBook handles the HTTP request to get details of a specific book by ISBN.
 func (c *BookController) GetBook(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 	isbn := r.PathValue("isbn")
-	book, err := c.BookService.GetBook(isbn)
+	book, err := c.BookService.GetBook(r.Context(), isbn)
 	if err != nil {
-		_, _ = w.Write([]byte(err.Error()))
+		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 	_ = json.NewEncoder(w).Encode(book)
@@ -51,13 +53,14 @@ func (c *BookController) GetBook(w http.ResponseWriter, r *http.Request) {
 
 // SaveBook handles the HTTP request to save a new book.
 func (c *BookController) SaveBook(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 	var book book_dao.Book
 	if err := json.NewDecoder(r.Body).Decode(&book); err != nil {
-		_, _ = w.Write([]byte(err.Error()))
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := c.BookService.SaveBook(book); err != nil {
-		_, _ = w.Write([]byte(err.Error()))
+	if err := c.BookService.SaveBook(r.Context(), book); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	_ = json.NewEncoder(w).Encode("OK!")
@@ -65,10 +68,11 @@ func (c *BookController) SaveBook(w http.ResponseWriter, r *http.Request) {
 
 // DeleteBook handles the HTTP request to delete a book by ISBN.
 func (c *BookController) DeleteBook(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 	isbn := r.PathValue("isbn")
-	err := c.BookService.DeleteBook(isbn)
+	err := c.BookService.DeleteBook(r.Context(), isbn)
 	if err != nil {
-		_, _ = w.Write([]byte(err.Error()))
+		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 	_ = json.NewEncoder(w).Encode("OK!")
