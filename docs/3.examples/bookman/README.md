@@ -1,77 +1,63 @@
 # BookMan
 
-[中文](README_CN.md)
+[English](README.md) | [中文](README_CN.md)
+
+BookMan is a small book-management example that shows how Go-Spring fits into a layered application: configuration loading, bean injection, HTTP routing, business services, DAO access, SDK wrapping, dynamic configuration refresh, and graceful shutdown of background jobs.
 
 ## 1. Directory Structure
 
 ```text
-conf/           Configuration files
-log/            Log files
-public/         Static files
-src/            Source code
-  app/          Startup phase files
-    bootstrap/  Bootstrap files
-    common/     Common modules for startup
-      handlers/ Startup component handlers
-        log/    Logging component
-      httpsvr/  HTTP server module
-    controller/ Controller modules
-  biz/          Business logic modules
-    job/        Background job modules
-    service/    Business service modules
-  dao/          Data access layer
-  idl/          Interface definition files
-    http/       HTTP service interfaces
-      proto/    Generated protocol code
-  sdk/          Wrapped SDK modules
+conf/                     Configuration files
+logs/                     Log files
+public/                   Static files
+internal/
+  app/                    Application layer
+    common/httpsvr/       HTTP server and middleware
+    controller/           HTTP controllers
+  biz/                    Business layer
+    job/                  Background jobs
+    service/book_service/ Book business service
+  dao/book_dao/           In-memory data access layer
+  idl/http/proto/         HTTP interface and route registration
+  sdk/book_sdk/           External SDK wrapper example
+main.go                   Application entry and self-check runner
+init.go                   Banner and working directory setup
 ```
 
-**Directory Structure Features**:
+## 2. What This Example Shows
 
-- **Modular design** with clear separation of responsibilities.
-- **Classic structure** for easy development, management, and scalability.
-- **Maintainability** supporting continuous iteration for large-scale applications.
+- `main.go` registers a `gs.Runner` that sends HTTP requests after startup, demonstrates the full CRUD flow, and sends `SIGTERM` when the run is done.
+- `internal/app/common/httpsvr` customizes `http.ServeMux`, registers generated-style routes, and adds access logging middleware.
+- `internal/app/controller` keeps HTTP decoding/encoding in controllers and delegates business behavior to services.
+- `internal/biz/service/book_service` composes the DAO and SDK, then returns books enriched with price and dynamic configuration fields.
+- `internal/dao/book_dao` uses an in-memory map so the data access layer stays easy to read and test.
+- `internal/biz/job` demonstrates how a background task listens to the application context and exits gracefully.
 
-## 2. Functionality Overview
+## 3. HTTP API
 
-### 2.1 Bootstrap Phase Configuration Management
+```text
+GET    /books          List books
+GET    /books/{isbn}   Get one book
+POST   /books          Create or update a book
+DELETE /books/{isbn}   Delete a book
+GET    /               Static home page
+```
 
-- Fetch configuration files remotely and save them locally.
-- Register configuration refresh beans during the startup phase.
-- Related file: `src/app/bootstrap/bootstrap.go`
+Example `POST /books` body:
 
-### 2.2 Logging Component Initialization
+```json
+{
+  "title": "Clean Architecture",
+  "author": "Robert C. Martin",
+  "isbn": "978-0134494166",
+  "publisher": "Prentice Hall"
+}
+```
 
-- Load and parse local configuration files during the startup phase.
-- Create logging components based on the configuration.
-- Related file: `src/app/common/handlers/log/log.go`
+## 4. Run
 
-### 2.3 HTTP Server Initialization
+```bash
+go run .
+```
 
-- Create an HTTP server during the startup phase.
-- Register HTTP service routes.
-- Related file: `src/app/common/httpsvr/httpsvr.go`
-
-### 2.4 Controller Grouping and Management
-
-- Group controller methods based on functionality.
-- Independently inject and manage each sub-controller.
-- Related files:
-    - `src/app/controller/controller.go`
-    - `src/app/controller/controller-book.go`
-
-### 2.5 Dynamic Configuration Refresh
-
-- Support dynamic configuration refresh at runtime.
-- Related file: `src/biz/service/book_service/book_service.go`
-
-### 2.6 Graceful Shutdown of Background Jobs
-
-- Ensure background tasks shut down gracefully, preserving data integrity and releasing resources properly.
-- Related file: `src/biz/job/job.go`
-
-## 3. Summary
-
-This project follows modular, clear, maintainable, and extensible design principles, making it suitable for the
-development needs of medium to large-scale systems. It implements a complete and robust architecture with modules for
-bootstrapping, logging management, HTTP services, dynamic configuration refreshing, and background job handling.
+After startup, the runner prints each HTTP step with the status code and response body. It also refreshes the dynamic `dync.refresh.time` property, lists books again, and finally sends a shutdown signal so the background job can stop gracefully.

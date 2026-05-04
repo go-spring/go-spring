@@ -17,34 +17,35 @@
 package book_service
 
 import (
-	"fmt"
-	"log/slog"
+	"context"
 	"strconv"
 
-	"bookman/src/dao/book_dao"
-	"bookman/src/idl/http/proto"
-	"bookman/src/sdk/book_sdk"
+	"bookman/internal/dao/book_dao"
+	"bookman/internal/idl/http/proto"
+	"bookman/internal/sdk/book_sdk"
 
+	"github.com/go-spring/log"
 	"github.com/go-spring/spring-core/gs"
 )
 
+var TagBookService = log.RegisterBizTag("book", "service")
+
 func init() {
-	gs.Object(&BookService{})
+	gs.Provide(&BookService{})
 }
 
 type BookService struct {
 	BookDao     *book_dao.BookDao `autowire:""`
 	BookSDK     *book_sdk.BookSDK `autowire:""`
-	Logger      *slog.Logger      `autowire:"biz"`
-	RefreshTime gs.Dync[int64]    `value:"${refresh_time:=0}"`
+	RefreshTime gs.Dync[int64]    `value:"${dync.refresh.time:=0}"`
 }
 
 // ListBooks retrieves all books from the database and enriches them with
 // pricing and refresh time.
-func (s *BookService) ListBooks() ([]proto.Book, error) {
+func (s *BookService) ListBooks(ctx context.Context) ([]proto.Book, error) {
 	books, err := s.BookDao.ListBooks()
 	if err != nil {
-		s.Logger.Error(fmt.Sprintf("ListBooks return err: %s", err.Error()))
+		log.Errorf(ctx, TagBookService, "ListBooks return err: %s", err.Error())
 		return nil, err
 	}
 	ret := make([]proto.Book, 0, len(books))
@@ -63,10 +64,10 @@ func (s *BookService) ListBooks() ([]proto.Book, error) {
 
 // GetBook retrieves a single book by its ISBN and enriches it with
 // pricing and refresh time.
-func (s *BookService) GetBook(isbn string) (proto.Book, error) {
+func (s *BookService) GetBook(ctx context.Context, isbn string) (proto.Book, error) {
 	book, err := s.BookDao.GetBook(isbn)
 	if err != nil {
-		s.Logger.Error(fmt.Sprintf("GetBook return err: %s", err.Error()))
+		log.Errorf(ctx, TagBookService, "GetBook return err: %s", err.Error())
 		return proto.Book{}, err
 	}
 	return proto.Book{
@@ -80,11 +81,11 @@ func (s *BookService) GetBook(isbn string) (proto.Book, error) {
 }
 
 // SaveBook stores a new book in the database.
-func (s *BookService) SaveBook(book book_dao.Book) error {
+func (s *BookService) SaveBook(ctx context.Context, book book_dao.Book) error {
 	return s.BookDao.SaveBook(book)
 }
 
 // DeleteBook removes a book from the database by its ISBN.
-func (s *BookService) DeleteBook(isbn string) error {
+func (s *BookService) DeleteBook(ctx context.Context, isbn string) error {
 	return s.BookDao.DeleteBook(isbn)
 }

@@ -14,20 +14,38 @@
  * limitations under the License.
  */
 
-package controller
+package job
 
 import (
+	"context"
+	"fmt"
+	"time"
+
 	"github.com/go-spring/spring-core/gs"
 )
 
 func init() {
-	gs.Object(&Controller{})
+	gs.Provide(&Job{}).Export(gs.As[gs.Runner]())
 }
 
-// Controller implements the controller interface defined in the idl package.
-// In practice, controller methods can be grouped into different controllers.
-// Each sub-controller can have its own dependencies and be tested independently,
-// making the codebase more modular and maintainable.
-type Controller struct {
-	BookController
+type Job struct{}
+
+// Run executes the background job until the context is canceled.
+func (x *Job) Run(ctx context.Context) error {
+	go func() {
+		ticker := time.NewTicker(time.Millisecond * 300)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				// Gracefully exit when the context is canceled.
+				fmt.Println(time.Now().UnixMilli(), "job exit")
+				return
+			case <-ticker.C:
+				fmt.Println(time.Now().UnixMilli(), "job sleep end")
+			}
+		}
+	}()
+	return nil
 }

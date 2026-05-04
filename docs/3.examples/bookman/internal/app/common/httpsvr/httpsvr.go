@@ -17,40 +17,38 @@
 package httpsvr
 
 import (
-	"fmt"
-	"log/slog"
 	"net/http"
 
-	"bookman/src/app/controller"
-	"bookman/src/idl/http/proto"
+	"bookman/internal/app/controller"
+	"bookman/internal/idl/http/proto"
 
+	"github.com/go-spring/log"
 	"github.com/go-spring/spring-core/gs"
 )
 
+var TagHttpAccess = log.RegisterAppTag("http", "access")
+
 func init() {
 	// Registers a custom ServeMux to replace the default implementation.
-	gs.Provide(
-		NewServeMux,
-		gs.IndexArg(1, gs.TagArg("access")),
-	)
+	gs.Provide(NewServeMux)
 }
 
 // NewServeMux creates a new HTTP request multiplexer and registers
 // routes with access logging middleware.
-func NewServeMux(c *controller.Controller, logger *slog.Logger) http.Handler {
+func NewServeMux(c *controller.Controller) *gs.HttpServeMux {
 	mux := http.NewServeMux()
-	proto.RegisterRouter(mux, c, Access(logger))
+	proto.RegisterRouter(mux, c, Access())
 
 	// Users can customize routes by adding handlers to the mux
 	mux.Handle("GET /", http.FileServer(http.Dir("./public")))
-	return mux
+	return &gs.HttpServeMux{Handler: mux}
 }
 
 // Access is a middleware to log incoming HTTP requests.
-func Access(logger *slog.Logger) func(http.Handler) http.Handler {
+func Access() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			logger.Info(fmt.Sprintf("access %s %s", r.Method, r.URL.Path))
+			log.Infof(r.Context(), TagHttpAccess, "access %s %s", r.Method, r.URL.Path)
 			next.ServeHTTP(w, r)
 		})
 	}

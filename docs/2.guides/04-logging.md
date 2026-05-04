@@ -1574,7 +1574,6 @@ rootLogger.Write(log.InfoLevel, []byte("hello world\n"))
 
 ```properties
 logger.root.type = FileLogger
-logger.root.tag = _app_*
 logger.root.level = INFO
 logger.root.dir = ./logs
 logger.root.file = app.log
@@ -1622,7 +1621,6 @@ func main() {
 	// 初始化 Go-Spring 日志配置。
 	err := log.RefreshConfig(map[string]string{
 		"logger.root.type":                     "FileLogger",
-		"logger.root.tag":                      "_app_*",
 		"logger.root.level":                    "INFO",
 		"logger.root.dir":                      "./logs",
 		"logger.root.file":                     "app.log",
@@ -1769,7 +1767,6 @@ func main() {
 	// 初始化 Go-Spring 日志配置。
 	err := log.RefreshConfig(map[string]string{
 		"logger.root.type":                     "FileLogger",
-		"logger.root.tag":                      "_app_*",
 		"logger.root.level":                    "INFO",
 		"logger.root.dir":                      "./logs",
 		"logger.root.file":                     "app.log",
