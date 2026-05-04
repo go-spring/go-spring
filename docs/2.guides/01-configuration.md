@@ -884,5 +884,3 @@ func (a *App) handleRequest(w http.ResponseWriter, r *http.Request) {
 
 另外，我们推荐在业务层面使用**版本号机制**来避免不必要的刷新。
 这样只有当版本发生变化时才会触发真正的资源重载。
-
-具体如何实现动态刷新操作可以参考后文。

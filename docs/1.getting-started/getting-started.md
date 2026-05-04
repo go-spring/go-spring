@@ -142,11 +142,3 @@ curl http://127.0.0.1:9090/hello
 ## 使用 `gs init` 创建项目
 
 <!-- 待补充 -->
-
-## 下一步
-
-现在你已经创建了第一个 Go-Spring 应用，接下来可以学习：
-
-- [配置](../3.guides/01-configuration.md) - 学习如何使用配置系统加载外部配置
-- [IoC 容器](../3.guides/02-ioc-container.md) - 深入学习依赖注入容器的使用
-- [应用启停](../3.guides/03-startup-shutdown.md) - 了解完整的应用生命周期管理
