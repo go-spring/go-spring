@@ -23,6 +23,7 @@
 | `DEP` | 深度控制规则 |
 | `TITLE` | 标题命名规则 |
 | `EXAMPLE` | 示例规则 |
+| `TERM` | 术语与代码格式规则 |
 | `EXP` | 表达规则 |
 | `ECO` | 生态对照规则 |
 | `VIS` | 视觉风格规则 |
@@ -206,8 +207,8 @@ http.HandleFunc("/hello", handler)
 可以这样写：
 
 ```md
-Go-Spring 采用按需创建机制。默认情况下，只有 root Bean 会作为依赖注入的入口被触发。
-因此，如果某个 Bean 没有被 root Bean 间接依赖，也没有显式标记为 root，它不会被自动创建。
+Go-Spring 采用按需创建机制。默认情况下，只有 Root Bean 会作为依赖注入的入口被触发。
+因此，如果某个 Bean 没有被 Root Bean 间接依赖，也没有显式标记为 Root Bean，它不会被自动创建。
 ```
 
 不建议这样写：
@@ -303,6 +304,53 @@ spring.http.server.enabled=false
 
 原因：这个示例的意图已经由前置句说明，且配置项本身没有额外规则需要展开。
 
+## 术语与代码格式规则
+
+| ID | 等级 | 规则 |
+|----|------|------|
+| TERM-01 | 必须 | 核心术语使用统一写法，不混用大小写、直译词和别名。 |
+| TERM-02 | 必须 | API、函数、类型、配置 key、包名、模块名使用代码格式。 |
+| TERM-03 | 应当 | 核心术语首次出现时，可补充一句中文解释；后续使用标准术语。 |
+| TERM-04 | 应当 | 如果需要新增核心术语，应先补充术语表，再在正文中使用。 |
+
+核心术语标准写法如下：
+
+| 含义 | 标准写法 | 不建议写法 | 格式要求 |
+|------|----------|------------|----------|
+| IoC 管理对象 | Bean | bean、Bean 对象、组件对象 | 概念术语不加反引号；具体类型或 API 加反引号 |
+| 容器依赖图入口 | Root Bean | root bean、root Bean、根 Bean | 固定大小写，不加反引号 |
+| 启动后执行的一次性任务 | Runner | runner、运行器 | 概念术语不加反引号；具体接口如 `gs.Runner` 加反引号 |
+| 配置来源提供者 | Provider | provider、提供器 | 概念术语不加反引号；具体实现或接口加反引号 |
+| 单个配置属性 | Property | property、属性项 | 概念术语不加反引号；函数如 `app.Property()` 加反引号 |
+| 扁平化配置集合 | Properties | properties、配置集合对象 | 概念术语不加反引号 |
+| 框架生命周期 | 生命周期 / Lifecycle | 生命周期机制 / lifecycle | 泛指使用“生命周期”；强调框架概念时可写“生命周期（Lifecycle）” |
+| 启动入口 API | `gs.Run()` | gs.Run、Run()、`gs.Run` | 函数名使用反引号，并带括号 |
+| 配置 key | `spring.http.server.addr` | spring.http.server.addr、配置键名 | 字面 key 使用反引号；正文称“配置 key” |
+| Go 包名或导入路径 | `gs`、`github.com/go-spring/spring-core/gs` | gs 包、github.com/... | 包名和导入路径使用反引号 |
+| 模块名、Starter 名 | `spring-core`、`starter-gorm-mysql` | spring core、gorm mysql starter | 模块名和 Starter 名使用反引号 |
+
+可以这样写：
+
+```md
+Root Bean 是容器创建依赖图的入口。没有被 Root Bean 依赖的 Bean，不会因为注册过就自动创建。
+```
+
+```md
+通过 `gs.Run()` 启动应用后，框架会加载配置 key `spring.http.server.addr`。
+```
+
+不建议这样写：
+
+```md
+根 Bean 是容器创建依赖图的入口。没有被 root bean 依赖的 bean，不会因为注册过就自动创建。
+```
+
+```md
+通过 gs.Run 启动应用后，框架会加载配置键名 spring.http.server.addr。
+```
+
+原因：术语混用会让同一概念在不同文档中看起来像不同对象；代码元素不加反引号会降低可扫描性。
+
 ## 表达规则
 
 | ID | 等级 | 规则 |
@@ -314,7 +362,7 @@ spring.http.server.enabled=false
 | EXP-05 | 可以 | 流程、生命周期和执行顺序可以使用列表或文本流程图。 |
 | EXP-06 | 应当 | 语气保持亲和但稳定，避免过度口语化。 |
 | EXP-07 | 应当 | 相关概念、核心术语、相关 API 和相关 Guide 应在首次出现或章节末尾进行交叉引用。 |
-| EXP-08 | 应当 | 交叉引用应指向稳定定义或直接相关文档，避免给普通词和低关联内容堆链接。 |
+| EXP-08 | 应当 | 交叉引用应指向稳定定义或直接相关文档，避免给普通词和低关联内容堆链接；核心术语写法应遵循 `TERM` 规则。 |
 | EXP-09 | 应当 | 生产相关能力应说明如何验证功能正常工作、如何观察内部状态、如何开启相关日志或排查信号。 |
 
 可以这样写：
@@ -335,7 +383,7 @@ spring.http.server.enabled=false
 交叉引用可以这样写：
 
 ```md
-Root Bean 是容器创建依赖图的入口。关于 Bean 注册和 root 语义，见 [IoC 容器](02-ioc-container.md)。
+Root Bean 是容器创建依赖图的入口。关于 Bean 注册和 Root Bean 语义，见 [IoC 容器](02-ioc-container.md)。
 ```
 
 章节末尾也可以这样写：

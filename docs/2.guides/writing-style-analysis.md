@@ -218,6 +218,7 @@
 - **交叉引用规范**：相关概念、相关 API、相关 Guide 应在首次出现或章节末尾建立链接。
 - **渐进式展开约定**：文档应先讲基础路径，再讲高级能力，最后讲生产实践，避免初级读者一开始被高级概念淹没。
 - **可观察性说明**：生产级文档应说明如何验证功能正常工作、如何开启相关日志、如何观察关键状态。
+- **统一术语和代码格式**：核心术语应固定中文称呼、英文大小写和代码格式，例如 Bean、Root Bean、Runner、Provider、Property、Lifecycle、`gs.Run()`、配置 key、包名和模块名，避免“根 Bean / root bean / Root Bean”混用。
 - **统一术语表引用**：核心术语首次出现时，应链接到统一定义或所属概念文档。
 
 这些补充观察已沉淀到 [writing-style-conclusions.md](writing-style-conclusions.md) 的规则中。
