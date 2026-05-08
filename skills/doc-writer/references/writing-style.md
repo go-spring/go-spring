@@ -1,7 +1,14 @@
 # 文档写作规范
 
-本文保存 `go-spring/docs/` 目录下 0.overview、1.getting-started、2.guides、4.integrations 等文档写作风格分析后沉淀出的规则和结论。
-后续新增或修改文档时，应优先遵守本文规则。
+本文保存 `go-spring/docs/` 目录下以下文档写作风格分析后沉淀出的规则和结论：
+
+- `0.overview/`
+- `1.getting-started/`
+- `2.guides/`
+- `4.integrations/`
+
+后续新增或修改上述目录下的文档时，应优先遵守本文规则。
+`docs/` 下其他目录暂不强制套用本文规则，只需保持事实准确、术语清晰和结构可读。
 
 ## 规则等级
 
