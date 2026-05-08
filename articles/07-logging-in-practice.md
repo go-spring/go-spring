@@ -1,126 +1,102 @@
-# fmt.Println 越写越多以后，我开始补日志系统
+# 日志先按语义打标签
 
-BookMan Pro 能保存、查询、删除图书以后，我又遇到一个很朴素的问题：出问题时我怎么看？
+`course/07-logging` 在分层项目的基础上整理日志。
 
-一开始我到处写 `fmt.Println`。请求进来了打印一下，保存图书打印一下，调用 SDK 打印一下。
+前面几篇已经出现了 `log.Printf` 和 `fmt.Println`。这种临时打印适合调试，但不适合作为服务日志长期留下：访问日志、业务错误、后台任务和 SDK 调用混在一起，排查时很难过滤。
 
-这种方式在刚调试时很快，但很快就乱了。我分不清哪些是访问日志，哪些是业务日志；也不知道以后要按 ISBN、状态码、耗时去查时该怎么办。
+这一篇先做两件事：
 
-这一篇我开始把临时打印换成结构化日志。
+- 用 Go-Spring 日志标签区分日志语义。
+- 把根日志配置放到 `conf/app.properties`。
 
-## 我不再只想知道日志来自哪个文件
+## 根日志配置
 
-以前我理解日志，主要看它来自哪个包、哪个文件。
-
-但排查问题时，我更关心这条日志是什么性质：
-
-- 这是一次 HTTP 访问吗？
-- 这是一次保存图书的业务操作吗？
-- 这是价格 SDK 的外部调用吗？
-
-Go-Spring 日志系统里的标签，刚好用来表达这个语义。
-
-## 先注册几个标签
-
-我先注册三类：
-
-```go
-var (
-	TagHTTPAccess = log.RegisterAppTag("http", "access")
-	TagBookBiz    = log.RegisterBizTag("book", "operation")
-	TagBookSDK    = log.RegisterRPCTag("book", "price")
-)
-```
-
-访问日志、业务日志、外部依赖日志就分开了。
-
-我没有一口气设计很多标签，因为我现在还不确定全部排障场景。先围绕当前能用到的地方拆开就好。
-
-## 先让日志输出到控制台
-
-`conf/app.properties` 里先写：
+示例配置是：
 
 ```properties
-logger.root.type=ConsoleLogger
-logger.root.level=INFO
+logging.logger.root.type=FileLogger
+logging.logger.root.level=INFO
+logging.logger.root.dir=./logs
+logging.logger.root.file=app.log
+logging.logger.root.layout.type=JSONLayout
+logging.logger.root.layout.fileLineMaxLength=20
 ```
 
-我现在不急着搞文件、JSON 或异步日志。先让日志能稳定输出，能看懂，再继续增强。
+这表示根日志写到 `./logs/app.log`，级别为 `INFO`，布局用 JSON。
 
-## 访问日志不要再拼字符串
+开发阶段也可以改成控制台输出。关键是不要让日志配置写死在业务代码里，否则不同环境下切换输出位置和格式会很别扭。
 
-第 05 篇里，中间件还是这样：
+## 访问日志是应用层语义
+
+HTTP 访问日志放在 `internal/app/common/httpsvr`：
 
 ```go
-log.Printf("%s %s %d %s", r.Method, r.URL.Path, sw.status, time.Since(start))
+var TagHttpAccess = log.RegisterAppTag("http", "access")
 ```
 
-现在改成结构化字段：
+中间件里使用这个标签：
 
 ```go
-log.Info(r.Context(), TagHTTPAccess,
-	log.String("method", r.Method),
-	log.String("path", r.URL.Path),
-	log.Int("status", sw.status),
-	log.String("duration", time.Since(start).String()),
-	log.Msg("http access"),
-)
+func Access() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			log.Infof(r.Context(), TagHttpAccess, "access %s %s", r.Method, r.URL.Path)
+			next.ServeHTTP(w, r)
+		})
+	}
+}
 ```
 
-我理解结构化日志的方式很简单：重要信息不要塞在一句话里，要变成字段。
+这条日志关心的是协议入口：方法、路径、请求上下文。
 
-以后我要查 `status=500`，或者查某个 `path`，就不用从一整行文本里再抠。
+如果要继续增强，可以把第 05 篇的 `statusWriter` 合进来，补状态码和耗时。那仍然应该留在 HTTP 中间件里，而不是写到 Service。
 
-## 业务日志写在 Service
+## 业务日志放在 Service
 
-保存图书时，我在 Service 层记录：
+业务层注册自己的标签：
 
 ```go
-log.Info(ctx, TagBookBiz,
-	log.String("isbn", book.ISBN),
-	log.String("title", book.Title),
-	log.Msg("save book"),
-)
+var TagBookService = log.RegisterBizTag("book", "service")
 ```
 
-这里不写 HTTP 状态码。Service 不应该知道自己是被 HTTP 调用的。
-
-如果删除一本不存在的书，可以用 `WARN`：
+查询图书失败时记录业务错误：
 
 ```go
-log.Warn(ctx, TagBookBiz,
-	log.String("isbn", isbn),
-	log.Msg("delete missing book"),
-)
+func (s *BookService) GetBook(ctx context.Context, isbn string) (proto.Book, error) {
+	book, err := s.BookDao.GetBook(isbn)
+	if err != nil {
+		log.Errorf(ctx, TagBookService, "GetBook return err: %s", err.Error())
+		return proto.Book{}, err
+	}
+	// ...
+}
 ```
 
-这让我开始明白：日志也应该遵守分层。Controller 记录协议结果，Service 记录业务事实，SDK 记录外部调用。
+这里不记录 HTTP 状态码，因为 Service 不知道自己是不是被 HTTP 调用。它只记录业务事实：哪个业务动作失败了，错误是什么。
 
-## SDK 日志单独打
+这种分层也适用于成功日志。保存图书可以记录 ISBN 和操作名；删除不存在的图书可以用 WARN。协议结果仍然交给 Controller 或中间件。
 
-价格 SDK 调用成功：
+## SDK 日志应该单独留出口
+
+当前 `book_sdk` 只是固定返回价格：
 
 ```go
-log.Info(ctx, TagBookSDK,
-	log.String("isbn", isbn),
-	log.Float("price", price),
-	log.Msg("load book price"),
-)
+func (s *BookSDK) GetPrice(isbn string) string {
+	return "￥10"
+}
 ```
 
-失败：
+所以这一版没有必要给它加复杂日志。
+
+如果下一步接真实价格服务，SDK 包应该注册单独标签，比如：
 
 ```go
-log.Error(ctx, TagBookSDK,
-	log.String("isbn", isbn),
-	log.String("error", err.Error()),
-	log.Msg("load book price failed"),
-)
+var TagBookPrice = log.RegisterRPCTag("book", "price")
 ```
 
-这样如果以后价格服务不稳定，我可以直接盯着 SDK 相关日志看，不用在业务日志里混着找。
+外部调用的超时、状态码、目标地址、错误原因都应该在 SDK 层记录。这样价格服务不稳定时，可以直接过滤 RPC/SDK 类日志，不用在业务日志里猜。
 
-## 试一下
+## 运行后看什么
 
 启动应用：
 
@@ -131,33 +107,37 @@ go run .
 请求列表：
 
 ```bash
-curl http://127.0.0.1:9090/books
+curl http://127.0.0.1:8080/books
 ```
 
-保存一本书：
+默认端口来自第 07 篇的配置：
+
+```properties
+spring.http.server.addr=0.0.0.0:8080
+```
+
+然后查看日志文件：
 
 ```bash
-curl -X POST http://127.0.0.1:9090/books \
-  -H 'Content-Type: application/json' \
-  -d '{"isbn":"978-0134494166","title":"Clean Architecture","author":"Robert C. Martin","publisher":"Prentice Hall"}'
+tail -f logs/app.log
 ```
 
-我主要看两点：日志有没有清晰标签，关键字段是不是单独输出。
+重点看三件事：
 
-## 我这次踩到的坑
+- HTTP 请求是否带 `http/access` 语义标签。
+- 业务错误是否走 `book/service` 标签。
+- 日志输出位置、级别和格式是否由配置控制。
 
-只写 `msg`，不写字段。这样人能看，但机器不好查。
+## 这篇的边界
 
-所有日志共用一个标签。短期省事，长期会让日志路由和检索变粗。
+日志不是“到处打印一下”。每层应该记录自己能解释的信息。
 
-业务层记录 HTTP 信息。这样会让 Service 和 HTTP 绑定在一起。
+HTTP 层记录协议入口和响应结果。
 
-## 给自己留个小练习
+Service 层记录业务动作和业务错误。
 
-给删除图书操作加业务日志：
+SDK 层记录外部依赖调用。
 
-- 删除成功记录 `isbn`。
-- 删除不存在时用 `WARN`。
-- 不要在 Controller 里直接写业务日志。
+后台任务记录任务状态和退出原因。
 
-写到这里，我对日志的理解从“打印一下看看”变成了“为以后排障留下结构化线索”。
+这样设计后，日志量增加时仍然能过滤、路由和排障，而不是只剩下一堆看起来很热闹的文本。

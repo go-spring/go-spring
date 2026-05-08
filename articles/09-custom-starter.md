@@ -1,35 +1,76 @@
-# 复制粘贴通用代码几次以后，我才明白 Starter 是干什么的
+# Starter 封装组件注册，不替业务层做决定
 
-BookMan Pro 写到这里，我开始有一种熟悉的不安。
+`course/09-starter` 单独演示一个价格客户端 starter。
 
-访问日志中间件、价格 SDK、Redis 客户端、数据库初始化，这些代码看起来都不是纯业务。一个项目里写一份还好，如果以后每个服务都要复制一份，很快就会出现多个版本。
+BookMan Pro 现在的价格能力还很简单：图书列表里带一个价格字段。这个能力有两个实现：
 
-配置 key 不一样，默认值不一样，关闭资源的方式也不一样。
+- 应用内置的 `FixedPriceClient`，默认返回 `9.9`。
+- starter 提供的 `bookprice.Client`，配置了 `bookman.price.base-url` 后才启用。
 
-我以前会把这些东西叫“工具包”。但 Go-Spring 里更推荐用 Starter 来封装这类能力。
+这篇的重点是 starter 的边界。它负责把一个可复用组件注册进容器，业务层仍然只依赖自己的接口。
 
-## 我希望应用侧怎么用
+## 业务层只认接口
 
-如果要启用一个价格 SDK，我希望业务项目里只写：
+接口放在 `internal/domain`：
 
 ```go
-import _ "bookman-pro/starter/book-price"
+type PriceClient interface {
+	GetPrice(ctx context.Context, isbn string) (float64, error)
+}
 ```
 
-再加配置：
+Service 依赖这个接口：
 
-```properties
-bookman.price.base-url=http://price.internal
-bookman.price.timeout=500ms
+```go
+type BookService struct {
+	repo  domain.BookRepository
+	price domain.PriceClient
+}
+
+func NewBookService(repo domain.BookRepository, price domain.PriceClient) *BookService {
+	return &BookService{repo: repo, price: price}
+}
 ```
 
-如果没有配置 `bookman.price.base-url`，那就不要创建真实客户端。这样本地学习时不需要价格服务，生产环境再打开。
+业务层不 import starter 包，也不知道最终用的是固定价格客户端还是 HTTP 客户端。
 
-这就是我对 starter 的第一层理解：它把“怎么创建一个通用组件”藏起来，只把“怎么启用和配置”留给应用。
+应用入口通过空白导入启用 starter：
 
-## Starter 也从配置开始
+```go
+import (
+	_ "bookman-pro-09/starter/bookprice"
+)
+```
 
-价格客户端需要两个配置：
+空白导入只注册 Bean 定义。真正创建哪个 Bean，交给容器根据条件决定。
+
+## 应用内置一个 fallback
+
+没有配置价格服务时，示例仍然能启动：
+
+```go
+type FixedPriceClient struct{}
+
+func (c *FixedPriceClient) GetPrice(ctx context.Context, isbn string) (float64, error) {
+	return 9.9, nil
+}
+```
+
+注册时加 `OnMissingBean`：
+
+```go
+gs.Provide(&FixedPriceClient{}).
+	Condition(gs.OnMissingBean[domain.PriceClient]()).
+	Export(gs.As[domain.PriceClient]())
+```
+
+这行代码的意思是：如果容器里还没有 `domain.PriceClient`，就用这个默认实现。
+
+这样本地运行不需要价格服务。生产或集成环境配置真实地址后，starter 会提供另一个 `PriceClient`，fallback 就不会生效。
+
+## Starter 绑定自己的配置前缀
+
+starter 里的配置结构：
 
 ```go
 type Config struct {
@@ -38,136 +79,87 @@ type Config struct {
 }
 ```
 
-这里的 `base-url` 是相对 key。注册时会绑定前缀：
+注册时使用：
 
 ```go
 gs.TagArg("${bookman.price}")
 ```
 
-所以它最终对应 `bookman.price.base-url`。
+所以 `base-url` 实际对应：
 
-我觉得这个写法挺适合 starter，因为组件内部不用反复写完整前缀。
+```properties
+bookman.price.base-url
+```
 
-## 注册 Bean 时要带条件
+`timeout` 对应：
 
-Starter 通常在 `init()` 里注册：
+```properties
+bookman.price.timeout
+```
+
+组件内部写相对 key，注册时绑定前缀。starter 代码会更干净，应用侧也能看到统一的配置命名空间。
+
+## 条件注册和生命周期
+
+starter 的注册代码是这一篇最核心的部分：
 
 ```go
 func init() {
 	gs.Provide(NewClient, gs.TagArg("${bookman.price}")).
 		Condition(gs.OnProperty("bookman.price.base-url")).
-		Export(gs.As[book_service.PriceClient]()).
+		Export(gs.As[domain.PriceClient]()).
 		Destroy(CloseClient)
 }
 ```
 
-这一行刚开始看有点长，我拆开理解：
+拆开看：
 
-`Condition`：只有配置了价格服务地址，才创建客户端。
+`Condition(gs.OnProperty("bookman.price.base-url"))`
+只有配置了价格服务地址，才创建真实客户端。
 
-`Export`：把具体客户端导出成业务层需要的接口。
+`Export(gs.As[domain.PriceClient]())`
+把具体类型导出成业务层需要的接口。
 
-`Destroy`：应用关闭时释放资源。
+`Destroy(CloseClient)`
+应用关闭时释放资源。当前示例的 `CloseClient` 没有实际工作，但真实 HTTP 连接池、数据库、Redis、消息客户端都需要考虑关闭。
 
-我以前写工具包时，经常只管创建，不管关闭。starter 让我把资源生命周期也一起考虑进去。
-
-## 构造函数保持简单
+构造函数可以返回 error：
 
 ```go
 func NewClient(c Config) (*Client, error) {
-	return &Client{
-		baseURL: c.BaseURL,
-		client: &http.Client{Timeout: c.Timeout},
-	}, nil
-}
-
-func CloseClient(c *Client) error {
-	return nil
+	return &Client{baseURL: c.BaseURL, client: &http.Client{Timeout: c.Timeout}}, nil
 }
 ```
 
-如果配置错了，构造函数就应该返回 error，让应用启动失败。
+配置不合法时应该在启动阶段失败，不要等到某次请求才发现客户端不可用。
 
-我现在越来越接受“启动时失败”这件事。比起运行到某个请求时才发现客户端没配好，启动阶段失败要好排查得多。
+## 两条运行路径
 
-## 业务层还是依赖接口
-
-应用导入 starter：
-
-```go
-import (
-	_ "bookman-pro/internal/app"
-	_ "bookman-pro/internal/biz"
-	_ "bookman-pro/starter/book-price"
-)
-```
-
-Service 仍然只认接口：
-
-```go
-type PriceClient interface {
-	GetPrice(ctx context.Context, isbn string) (float64, error)
-}
-```
-
-这样测试时可以给 fake，生产时由 starter 提供真实实现。
-
-这也是我慢慢理解的一点：starter 不应该把业务代码绑到自己的具体类型上。
-
-## Provide、Module、Group 怎么选
-
-我一开始看到 `gs.Provide`、`gs.Module`、`gs.Group` 有点晕。
-
-现在先粗略这样理解：
-
-`Provide` 适合一个默认实例。价格 SDK 这种单实例先用它就够了。
-
-`Module` 适合根据配置动态注册不同 Bean。比如 `mode=mock` 注册 mock，`mode=http` 注册 HTTP 客户端。
-
-`Group` 适合多个同类实例。比如多个 Redis、多个数据库、多个价格源。
-
-不是一开始就要用最复杂的。先用 `Provide`，等复杂度真的出现再升级。
-
-## 验证两条路径
-
-不配置价格服务：
+不配置价格服务，使用 fallback：
 
 ```bash
 go run .
+curl http://127.0.0.1:9090/books
 ```
 
-应用应该能启动。
-
-配置价格服务：
+启用 starter 提供的客户端：
 
 ```bash
 go run . -Dbookman.price.base-url=http://127.0.0.1:18080
+curl http://127.0.0.1:9090/books
 ```
 
-这时 starter 才应该创建真实价格客户端。
+示例里的 `bookprice.Client` 仍然返回固定值 `42`，没有真的访问远端服务。这里故意把网络调用简化掉，重点放在 starter 的注册、条件、导出和销毁流程。
 
-我会用日志确认这一点：没配置时不初始化，配置后才初始化。
+## 什么时候需要 starter
 
-## 我这次踩到的坑
+一个组件满足这些特征时，适合封成 starter：
 
-空白导入后就直接创建资源。导入只应该注册 Bean 定义，真正创建交给容器。
+- 多个项目都会用。
+- 有自己的配置前缀和默认值。
+- 创建过程不应该散落在业务项目里。
+- 需要条件启用。
+- 需要关闭资源。
+- 业务层应该依赖接口，而不是组件具体类型。
 
-没有关键配置也创建客户端。资源型组件应该有条件。
-
-业务层依赖 starter 的具体类型。这样测试和替换都会困难。
-
-忘记关闭资源。数据库、Redis、长连接、后台任务都要考虑释放。
-
-## 给自己留个小练习
-
-把访问日志中间件也封装成 starter。
-
-配置：
-
-```properties
-bookman.access-log.enabled=false
-```
-
-为 `false` 时关闭访问日志，默认开启。
-
-写完这一篇，我对 starter 的理解变成了：它不是简单工具包，而是一套带配置、条件注册和生命周期的组件封装方式。
+访问日志、价格 SDK、数据库、Redis、消息客户端都属于这类候选。小到只有一个纯函数的工具包，不需要强行做成 starter。

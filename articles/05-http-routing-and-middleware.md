@@ -1,16 +1,6 @@
-# 写完一个 GET 接口以后，我才发现 CRUD 不只是加几个路由
+# CRUD 的重点是边界，不只是路由数量
 
-前面我已经能查图书列表了。
-
-刚开始我以为，接下来就是把路由补齐：`GET`、`POST`、`DELETE` 都写一下，CRUD 就完成了。
-
-真正动手后才发现，问题不只是“多写几个 Handler”。如果我在 Handler 里直接操作 Map，保存和删除确实很快就能写出来，但业务规则、HTTP 状态码、数据存储会混在一起。
-
-这一篇我想把 BookMan Pro 做成一个最小 CRUD API，同时尽量守住前面刚建立起来的分层边界。
-
-## 先把 API 想清楚
-
-我先定了几个接口：
+`course/05-http-routing` 把图书服务扩展成一个最小 CRUD API：
 
 ```text
 GET    /books
@@ -20,13 +10,13 @@ DELETE /books/{isbn}
 GET    /
 ```
 
-`/` 只是静态首页，用来浏览器里看一眼。真正的主线还是 `/books`。
+从代码量看，这一步像是“多加几个 Handler”。实际更需要处理的是边界：哪些逻辑属于 HTTP，哪些逻辑属于业务规则，哪些逻辑属于数据访问。
 
-这次我刻意提醒自己：不要先写 Handler。先看业务层需要哪些能力。
+如果保存和删除都直接写在 Handler 里，最开始会很快。等到要加重复 ISBN 策略、换存储、补测试时，混在一起的代码会拖慢每一次修改。
 
-## Repository 先补能力
+## 先补 Repository 能力
 
-原来的 Repository 只能查询：
+第 03 篇里的 Repository 只能查：
 
 ```go
 type BookRepository interface {
@@ -35,7 +25,7 @@ type BookRepository interface {
 }
 ```
 
-现在要支持保存和删除：
+CRUD 需要保存和删除：
 
 ```go
 type BookRepository interface {
@@ -46,11 +36,20 @@ type BookRepository interface {
 }
 ```
 
-这样 Service 不需要知道底层是不是 Map。以后换 MySQL，这个接口也还能继续用。
+内存 DAO 使用 `sync.RWMutex` 保护 Map：
 
-## 校验规则放 Service
+```go
+type MemoryBookDao struct {
+	mu    sync.RWMutex
+	books map[string]Book
+}
+```
 
-保存图书时，我至少要检查 ISBN 和标题：
+这里的目标很具体：只要 HTTP 请求可能并发进来，共享 Map 就不应该裸写。
+
+## 业务规则放在 Service
+
+保存图书时至少要校验 ISBN 和标题：
 
 ```go
 func (s *BookService) SaveBook(book Book) error {
@@ -60,18 +59,32 @@ func (s *BookService) SaveBook(book Book) error {
 	if book.Title == "" {
 		return errors.New("title is required")
 	}
+	if !s.Overwrite {
+		if _, ok := s.repo.Find(book.ISBN); ok {
+			return errors.New("book already exists")
+		}
+	}
 	s.repo.Save(book)
 	return nil
 }
 ```
 
-我以前很容易把这种校验直接写在 Handler 里。现在我更愿意放 Service，因为这属于业务规则，不属于 HTTP。
+这里还加了重复 ISBN 的策略：
 
-以后如果图书保存来自命令行、gRPC 或消息队列，这段规则仍然可以复用。
+```go
+type BookService struct {
+	repo      BookRepository
+	Overwrite bool `value:"${bookman.book.overwrite:=true}"`
+}
+```
 
-## Controller 只处理 HTTP
+`bookman.book.overwrite=false` 时，重复保存返回错误；Controller 再把这个错误翻译成 `409 Conflict`。
 
-保存接口的 Controller：
+这类规则放 Service 更合适。HTTP 入口以后可能变成命令行、消息队列或 gRPC，ISBN 不能为空、重复保存怎么处理这些规则仍然应该复用。
+
+## Controller 只处理协议细节
+
+保存接口的 Controller 代码主要做三件事：解 JSON，调用 Service，写 HTTP 状态码。
 
 ```go
 func (c *BookController) Save(w http.ResponseWriter, r *http.Request) {
@@ -81,6 +94,10 @@ func (c *BookController) Save(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := c.Service.SaveBook(book); err != nil {
+		if err.Error() == "book already exists" {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -88,13 +105,13 @@ func (c *BookController) Save(w http.ResponseWriter, r *http.Request) {
 }
 ```
 
-这段代码里有 HTTP 状态码，这是 Controller 应该关心的事。
+Controller 可以知道 `400`、`404`、`409`、`204`。它不应该知道底层是 Map、MySQL 还是别的存储。
 
-但它没有直接操作 DAO，也没有直接碰 Map。这样我就能分清：HTTP 层负责协议，Service 层负责规则。
+同样，Service 不应该依赖 `http.Request` 或 `http.ResponseWriter`。这一点是后续测试和替换的基础。
 
-## 标准库路由先够用了
+## 标准库路由已经够用
 
-Go 1.22 之后，`http.ServeMux` 能写方法和路径变量：
+Go 1.22 之后，`http.ServeMux` 支持方法和路径变量：
 
 ```go
 mux.HandleFunc("GET /books", c.List)
@@ -109,15 +126,11 @@ mux.HandleFunc("DELETE /books/{isbn}", c.Delete)
 isbn := r.PathValue("isbn")
 ```
 
-我之前以为做 REST API 一定要先选 Gin 或 chi。现在发现，对这个阶段来说，标准库已经够用了。更重要的是把业务层写稳。
-
-以后如果换路由框架，Controller 可能要改，Service 不应该跟着改。
+对这个阶段的 BookMan Pro 来说，标准库路由足够清楚。现在更值得投入的地方是分层和错误处理，而不是过早换路由框架。
 
 ## 访问日志中间件
 
-写 CRUD 时，我很快需要知道请求有没有进来、状态码是多少、耗时多少。
-
-先包一个 `ResponseWriter`：
+CRUD 一多，需要看到请求方法、路径、状态码和耗时。示例先用一个简单中间件：
 
 ```go
 type statusWriter struct {
@@ -131,7 +144,7 @@ func (w *statusWriter) WriteHeader(code int) {
 }
 ```
 
-再写中间件：
+包装 Handler：
 
 ```go
 func accessLog(next http.Handler) http.Handler {
@@ -144,15 +157,11 @@ func accessLog(next http.Handler) http.Handler {
 }
 ```
 
-注册时包到最外层：
+`statusWriter` 的作用是捕获 `WriteHeader`。否则错误响应已经写了 `404`，日志里还可能以为是 `200`。
 
-```go
-return &gs.HttpServeMux{Handler: accessLog(mux)}
-```
+第 07 篇会把这里的临时 `log.Printf` 换成 Go-Spring 日志标签。
 
-这版先用 `log.Printf`，下一篇再改成结构化日志。
-
-## 验证一下 CRUD
+## 验证 CRUD
 
 启动：
 
@@ -186,24 +195,10 @@ curl -X POST http://127.0.0.1:9090/books \
 curl -X DELETE http://127.0.0.1:9090/books/978-0134494166
 ```
 
-如果控制台能看到方法、路径、状态码和耗时，说明中间件也生效了。
+重复保存策略也可以直接试：
 
-## 我这次踩到的坑
-
-中间件一直记录 `200`。原因是没有捕获 `WriteHeader`，错误响应也被当成成功。
-
-Controller 偷偷访问 DAO。写的时候很顺手，但后面换数据库会很痛。
-
-路径变量取不到。要确认路由是 `/books/{isbn}`，读取时用 `r.PathValue("isbn")`。
-
-## 给自己留个小练习
-
-给 `POST /books` 增加重复 ISBN 的处理策略：
-
-```properties
-bookman.book.overwrite=false
+```bash
+go run . -Dbookman.book.overwrite=false
 ```
 
-配置为 `false` 时，重复保存返回 `409 Conflict`；配置为 `true` 时允许覆盖。
-
-写完这一篇，我发现 CRUD 不只是“把路由补齐”，更重要的是把 HTTP、业务和数据访问的边界守住。
+这篇完成后，BookMan Pro 已经有了可用 API。更重要的是，HTTP、业务和数据访问没有重新搅在一起。

@@ -1,49 +1,30 @@
-# 手动 new 对象写烦了以后，我才理解 IoC 容器在解决什么
+# 把 Controller、Service 和 DAO 的依赖交给容器
 
-写到这里，我的 BookMan Pro 已经能启动，也能读配置。
+`course/03-ioc` 开始把 BookMan Pro 从 `/echo` 改成图书查询接口。
 
-但只要我想把它从 `/echo` 变成真正的图书服务，问题马上来了：我需要 Controller、Service、DAO。Controller 调 Service，Service 调 DAO。
-
-如果是刚学 Go 的我，大概率会直接在一个地方手动创建：
-
-```go
-dao := NewBookDao()
-service := NewBookService(dao)
-controller := NewBookController(service)
-```
-
-对象少的时候这样很清楚。但我稍微往后想了一下：以后 DAO 要换 MySQL，SDK 要换 mock，Controller 要越来越多，这些手动组装代码会散到哪里？
-
-这时我才开始理解 IoC 容器的意义：不是为了显得高级，而是为了让对象只声明依赖，不自己到处创建依赖。
-
-## 我先拆出三层
-
-我给 BookMan Pro 画了一条最小链路：
+这一步还不做完整 CRUD，只先建立一条最小链路：
 
 ```text
 BookController -> BookService -> BookRepository
 ```
 
-Controller 只管 HTTP。
-
-Service 只管业务规则。
-
-Repository/DAO 只管数据。
-
-这条线看起来简单，但对我这种刚开始写服务的人很重要。因为我以前很容易在 Handler 里直接操作 Map，写着写着就分不清哪里是业务，哪里是 HTTP。
-
-## DAO 先用内存版
-
-为了不被数据库打断，我先写内存 DAO：
+如果把这些对象都写在 `main` 里手动创建，代码一开始会很直观：
 
 ```go
-type Book struct {
-	ISBN      string `json:"isbn"`
-	Title     string `json:"title"`
-	Author    string `json:"author"`
-	Publisher string `json:"publisher"`
-}
+dao := NewMemoryBookDao()
+service := NewBookService(dao)
+controller := NewBookController(service)
+```
 
+对象数量少时，这样写没什么问题。问题出现在后续演进：DAO 要换实现，Controller 变多，Service 需要更多依赖，路由也要跟着组合。装配代码如果散在入口附近，业务对象会越来越难单独测试和替换。
+
+IoC 容器在这里承担的角色很具体：让对象声明自己需要什么，由启动阶段统一完成装配。
+
+## Repository 先定义替换边界
+
+图书数据先用内存 Map：
+
+```go
 type BookRepository interface {
 	List() []Book
 	Find(isbn string) (Book, bool)
@@ -52,22 +33,11 @@ type BookRepository interface {
 type MemoryBookDao struct {
 	books map[string]Book
 }
-
-func NewMemoryBookDao() *MemoryBookDao {
-	return &MemoryBookDao{books: map[string]Book{
-		"978-0134190440": {
-			ISBN: "978-0134190440", Title: "The Go Programming Language",
-			Author: "Alan A. A. Donovan", Publisher: "Addison-Wesley",
-		},
-	}}
-}
 ```
 
-这里我第一次认真想“接口该放在哪里”。
+这个接口不追求抽象感。它对应一个明确的替换点：现在是内存 DAO，后面可能换成 MySQL，测试里也可能换成 fake。
 
-不是所有东西都要抽接口。但 DAO 以后确实可能被替换成 MySQL，也可能在测试里换成 fake，所以这里抽一个 `BookRepository` 是有价值的。
-
-注册 DAO：
+DAO 注册时要显式导出接口：
 
 ```go
 func init() {
@@ -75,13 +45,11 @@ func init() {
 }
 ```
 
-我一开始以为 Go-Spring 会自动发现 `MemoryBookDao` 实现了 `BookRepository`。后来发现不会，必须显式 `Export`。
+Go-Spring 不会因为 `MemoryBookDao` 刚好实现了 `BookRepository` 就自动把它当接口暴露。`Export(gs.As[BookRepository]())` 是应用作者主动声明的装配边界。
 
-这个设计反而让我觉得安心：接口导出是我主动声明的，不是框架偷偷猜出来的。
+## Service 用构造函数拿依赖
 
-## Service 通过构造函数拿依赖
-
-Service 写成这样：
+Service 只依赖接口：
 
 ```go
 type BookService struct {
@@ -95,97 +63,90 @@ func NewBookService(repo BookRepository) *BookService {
 func (s *BookService) ListBooks() []Book {
 	return s.repo.List()
 }
+
+func (s *BookService) CountBooks() int {
+	return len(s.repo.List())
+}
 ```
 
-注册：
+注册 Service：
 
 ```go
 gs.Provide(NewBookService)
 ```
 
-这里最关键的是 `NewBookService(repo BookRepository)`。它等于告诉容器：我要一个 `BookRepository`，但我不负责创建它。
+`NewBookService(repo BookRepository)` 把依赖关系写在函数签名里。启动时如果没有任何 Bean 导出 `BookRepository`，应用会在装配阶段失败，而不是等第一个请求进来再 panic。
 
-容器启动时会找到刚才导出的 `MemoryBookDao`，再把它传给 Service。
+这种早失败对服务端项目很实用。配置缺失、依赖缺失、类型不匹配，都应该尽量暴露在启动阶段。
 
-## Controller 可以用字段注入
+## Controller 用字段注入也可以
 
-Controller 里我用了字段注入：
+Controller 这一版用字段注入：
 
 ```go
 type BookController struct {
 	Service *BookService `autowire:""`
 }
+```
 
+然后暴露两个接口：
+
+```go
 func (c *BookController) List(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(c.Service.ListBooks())
 }
+
+func (c *BookController) Count(w http.ResponseWriter, r *http.Request) {
+	_ = json.NewEncoder(w).Encode(map[string]int{"count": c.Service.CountBooks()})
+}
 ```
 
-注册：
+Service 这种核心业务对象，用构造函数注入更容易看清必需依赖。Controller 完全由容器创建，字段注入也能接受。关键是不要让 Controller 自己 `new` Service，否则会绕过容器，后面配置注入和测试替换都会变麻烦。
 
-```go
-gs.Provide(&BookController{})
-```
+## 路由组合也声明依赖
 
-一开始我纠结：到底该用构造函数注入，还是字段注入？
-
-现在我的理解是：Service 这种核心对象，构造函数更清楚；Controller 这种完全交给容器管理的对象，字段注入也可以接受。重要的是依赖关系别藏起来，测试时也能替换。
-
-## 路由也交给容器组合
-
-最后注册路由：
+路由注册函数需要 `*BookController`：
 
 ```go
 gs.Provide(func(c *BookController) *gs.HttpServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/books", c.List)
+	mux.HandleFunc("/books/count", c.Count)
 	return &gs.HttpServeMux{Handler: mux}
 })
 ```
 
-这个函数也声明了依赖：它需要 `*BookController`。
+这段代码仍然使用标准库 `http.ServeMux`。Go-Spring 负责的是对象创建和依赖装配，不要求把路由写法换成另一套路由框架。
 
-所以容器大概会按这样的关系创建对象：
+启动时的关系大致是：
 
 ```text
-MemoryBookDao -> BookRepository
-BookRepository -> BookService
+NewMemoryBookDao -> BookRepository
+BookRepository -> NewBookService
 BookService -> BookController
 BookController -> HttpServeMux
 ```
 
-这比我自己在 `main` 里一层层 new，要更容易扩展。
+依赖方向清楚以后，后面的 CRUD、日志、测试和 starter 才有地方落。
 
-## 跑一下看看
+## 运行验证
 
-启动：
+进入目录后启动：
 
 ```bash
 go run .
 ```
 
-请求：
+查询图书列表：
 
 ```bash
 curl http://127.0.0.1:9090/books
 ```
 
-应该能看到一个 JSON 数组。
+查询数量：
 
-我还故意注释掉 DAO 注册试了一下。应用启动时就报依赖缺失，而不是等请求来了才 panic。这一点让我对“启动期装配”有了感觉：能早失败，就不要晚失败。
+```bash
+curl http://127.0.0.1:9090/books/count
+```
 
-## 我这次学到的坑
-
-注册具体类型不等于注册接口。如果 Service 要的是 `BookRepository`，DAO 注册时必须 `Export(gs.As[BookRepository]())`。
-
-Controller 不要自己 `new` Service。这样会绕过容器，后面配置注入和测试替换都会变麻烦。
-
-不要为了“解耦”给所有类型都抽接口。接口应该对应真实替换需求。
-
-## 给自己留个小练习
-
-给 `BookService` 增加 `CountBooks()`，再加一个 `/books/count` 接口。
-
-要求 Controller 只能调用 Service，不能直接访问 DAO。
-
-做到这里，我终于开始理解 IoC 容器不是“魔法 new 对象”，而是让依赖关系在启动阶段变清楚。下一篇我会继续看启动自检和后台任务该放在哪里。
+这篇最需要确认的是对象关系没有写死在 `main` 里。Controller 只调用 Service，Service 只依赖 Repository，DAO 的具体实现由启动阶段注入。

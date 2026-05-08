@@ -1,28 +1,18 @@
-# 应用里不只有 HTTP 时，我才真正理解自定义 Server
+# 自定义 Server 要进入统一生命周期
 
-写到现在，BookMan Pro 的主要入口还是 HTTP。
+`course/11-custom-server` 在 HTTP 接口旁边加了一个 TCP echo server。
 
-但我开始想另一个问题：如果应用里还有 gRPC 服务、TCP 服务、消息消费者，或者一个内部管理端口，它们应该怎么启动？
+HTTP 服务由 Go-Spring 内置 Server 管理。应用里如果还要启动 gRPC、TCP 网关、管理端口或其他长期监听组件，也应该进入同一套生命周期。直接在 `main` 里起 goroutine，启动失败、ready、运行错误和关闭都会变成散落的逻辑。
 
-以前我可能会直接在 `main` 里起 goroutine。可前面已经吃过后台任务的亏了：启动成功怎么算？出错怎么办？退出时谁来停？
+这一篇用一个最小 TCP Server 看清楚 `gs.Server` 的边界。
 
-这一篇我开始看 Go-Spring 的自定义 Server。
+## Job 和 Server 的区别
 
-## 我先区分 Job 和 Server
+第 04 篇里的后台统计任务是 Job。它不对外监听端口，只要跟随应用 Context 退出。
 
-刚开始我把后台任务和 Server 混在一起。
+TCP echo server 不一样。它长期监听端口，对外接收连接，还需要在应用关闭时释放 listener。它更适合实现 `gs.Server`。
 
-后来我这样理解：
-
-Job 是应用内部的后台逻辑。它通常只要监听 Context 退出。
-
-Server 是长期对外提供服务的东西。它需要告诉应用“我 ready 了”，也需要在应用关闭时执行 Stop。
-
-比如 HTTP、gRPC、TCP 网关，都更像 Server。
-
-## 当前 Server 接口
-
-当前 `spring-core` 里的接口是：
+当前接口是：
 
 ```go
 type Server interface {
@@ -31,17 +21,23 @@ type Server interface {
 }
 ```
 
-`Run` 启动并运行服务。
+`Run` 负责启动和运行服务。
 
-`ReadySignal` 用来参与应用整体 ready 判断。
+`ReadySignal` 让这个 Server 参与应用整体 ready 流程。
 
 `Stop` 在应用关闭时释放资源。
 
-我以前自己写服务时，很少认真处理 ready 这件事。现在发现它很关键：端口监听成功，不等于整个应用已经准备好对外服务。
+## 配置和构造函数
 
-## 写一个最小 TCP Echo Server
+Echo Server 的地址来自配置：
 
-先定义结构：
+```go
+type EchoServerConfig struct {
+	Addr string `value:"${bookman.echo-server.addr:=:10090}"`
+}
+```
+
+结构体保存监听地址和 listener：
 
 ```go
 type EchoServer struct {
@@ -50,15 +46,7 @@ type EchoServer struct {
 }
 ```
 
-配置：
-
-```go
-type EchoServerConfig struct {
-	Addr string `value:"${bookman.echo-server.addr:=:10090}"`
-}
-```
-
-构造函数：
+构造函数保持简单：
 
 ```go
 func NewEchoServer(c EchoServerConfig) *EchoServer {
@@ -66,9 +54,11 @@ func NewEchoServer(c EchoServerConfig) *EchoServer {
 }
 ```
 
-Server 也是 Bean，只是它实现了生命周期接口。
+这和前面 Service、DAO、starter 的思路一致：配置绑定发生在启动阶段，对象只拿到已经绑定好的值。
 
-## Run 里先监听，再触发 ready
+## Run 先监听，再进入 ready 流程
+
+核心代码：
 
 ```go
 func (s *EchoServer) Run(ctx context.Context, sig gs.ReadySignal) error {
@@ -95,77 +85,104 @@ func (s *EchoServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 }
 ```
 
-这里我重点看两点。
+监听失败直接返回 error。端口被占用、权限不足、地址不合法，都应该让应用启动失败。
 
-第一，监听失败要返回 error。端口被占用时，应用应该启动失败。
+`sig.TriggerAndWait()` 放在 `net.Listen` 成功之后。这个 Server 只有在端口已经监听成功后，才参与应用 ready。
 
-第二，`sig.TriggerAndWait()` 不是装饰品。它让这个 Server 参与应用整体 ready 流程。
+`Accept` 返回错误时要区分两类情况：应用正在关闭时返回 nil；其他运行期错误返回 error，让框架感知到 Server 异常。
 
-## Stop 要真的能停
+## Stop 要关闭阻塞点
+
+Stop 里关闭 listener：
 
 ```go
 func (s *EchoServer) Stop() error {
-	if s.ln != nil {
-		return s.ln.Close()
+	if s.ln == nil {
+		return nil
 	}
-	return nil
+	err := s.ln.Close()
+	if errors.Is(err, net.ErrClosed) {
+		return nil
+	}
+	return err
 }
 ```
 
-关闭 listener 后，阻塞在 `Accept` 的循环才会退出。
+只设置一个标志位不够。`Accept` 正阻塞在 listener 上，必须关闭 listener 才能让循环醒过来并退出。
 
-我以前写 Stop 很容易只改一个变量，结果 goroutine 还卡在阻塞调用里。这种 Stop 看起来有，实际上没停。
-
-## 注册为 Server
+连接处理本身也保持简单：
 
 ```go
-gs.Provide(NewEchoServer).Export(gs.As[gs.Server]())
+func handleConn(conn net.Conn) {
+	defer conn.Close()
+	scanner := bufio.NewScanner(conn)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "quit" {
+			return
+		}
+		_, _ = conn.Write([]byte("echo: " + line + "\n"))
+	}
+}
 ```
 
-这样应用启动后，Go-Spring 会同时管理内置 HTTP Server 和这个 EchoServer。
+这个示例没有做连接级别的超时和并发限制。真实 Server 需要继续补这些保护。
 
-比起自己在 `main` 里起 goroutine，这种方式把启动失败、ready、运行错误和关闭都放进统一生命周期里。
+## 条件注册
 
-## 验证一下
+自定义 Server 默认启用，也可以通过配置关闭：
+
+```go
+gs.Provide(NewEchoServer).
+	Condition(gs.OnProperty("bookman.echo-server.enabled").HavingValue("true").MatchIfMissing()).
+	Export(gs.As[gs.Server]())
+```
+
+关闭：
+
+```bash
+go run . -Dbookman.echo-server.enabled=false
+```
+
+这时应用只启动 HTTP Server。
+
+## 运行验证
 
 启动：
 
 ```bash
-go run . -Dbookman.echo-server.addr=:10090
+go run .
 ```
 
-连接：
+HTTP 仍然可用：
+
+```bash
+curl http://127.0.0.1:9090/books
+```
+
+连接 TCP echo server：
 
 ```bash
 nc 127.0.0.1 10090
 ```
 
-再试几个故障：
+输入一行文本，应该收到：
 
-端口占用时，应用应该启动失败。
-
-运行期错误时，应用应该能感知。
-
-按 `Ctrl+C` 时，HTTP Server 和 EchoServer 都应该进入关闭流程。
-
-## 我这次踩到的坑
-
-启动后不触发 Ready。应用无法准确知道整体是否启动完成。
-
-Stop 不关闭 listener。阻塞在 `Accept` 的 goroutine 不会退出。
-
-运行期错误被吞掉。Server 静默停止，会让应用进入不完整状态。
-
-把普通 Job 做成 Server。如果不需要 ready 和 stop 语义，监听 Context 的 Job 更简单。
-
-## 给自己留个小练习
-
-让 EchoServer 支持：
-
-```properties
-bookman.echo-server.enabled=false
+```text
+echo: 你的输入
 ```
 
-关闭后只启动 HTTP Server。
+输入 `quit` 关闭当前连接。
 
-写完这一篇，我对 Server 的理解终于不只停留在 HTTP 上了。只要是长期对外服务，都应该认真考虑它的 ready、error 和 stop。
+还应该试两个故障路径：
+
+- 端口被占用时，应用启动失败。
+- 按 `Ctrl+C` 时，HTTP Server 和 EchoServer 都进入关闭流程。
+
+## 适合做成 Server 的组件
+
+判断标准很直接：只要组件长期对外提供服务，并且需要 ready、运行错误和 stop 语义，就应该考虑 `gs.Server`。
+
+HTTP、gRPC、TCP 网关、独立管理端口都符合这个条件。
+
+单纯的周期性任务、队列轮询或内部清理逻辑，如果不需要 ready 和 listener 关闭，使用 Runner 拉起 Job 并监听 Context 会更轻。

@@ -1,170 +1,198 @@
-# 写完功能以后，我才发现交付一个服务还差最后一公里
+# 交付前把默认路径、文档和自测收拢
 
-BookMan Pro 写到这里，功能已经不少了。
+`course/12-final` 是 BookMan Pro 的收尾版本。
 
-它有配置、IoC、生命周期、HTTP CRUD、分层结构、日志、测试、starter、MySQL、Redis、pprof，还有自定义 Server。
+前面已经讲过配置、Bean 注入、HTTP 路由、生命周期、分层、日志、测试、starter、集成开关和自定义 Server。最后一篇不再加新概念，重点放在交付质量上：别人拿到这个示例后，能不能直接运行，能不能看懂目录，能不能知道 API 怎么调用，出错时能不能找到排查入口。
 
-如果只是自己学习，到这里已经很满足了。但如果要把这个项目交给别人，问题就变了：别人能不能启动？能不能看懂配置？能不能跑测试？出错时能不能知道从哪里查？
+## README 要回答运行问题
 
-这一篇我不再加新功能，而是把 BookMan Pro 当成一个要交付的小服务，做最后整理。
-
-## README 不是摆设
-
-我以前写 README，经常只写几句简介。
-
-现在我觉得，一个服务的 README 至少要回答：
+最终目录里同时有 `README.md` 和 `README_CN.md`。中文 README 先给出项目用途，再列目录结构：
 
 ```text
-这个项目做什么？
-目录结构怎么组织？
-本地怎么启动？
-关键配置有哪些？
-API 怎么调用？
-测试怎么跑？
-哪些外部基础设施是可选的？
-常见错误怎么排查？
+conf/                     配置文件目录
+logs/                     日志文件目录
+public/                   静态文件目录
+internal/
+  app/                    应用层模块
+    common/httpsvr/       HTTP Server 与中间件
+    controller/           HTTP Controller
+  biz/                    业务层模块
+    job/                  后台任务
+    service/book_service/ 图书业务服务
+  dao/book_dao/           内存数据访问层
+  idl/http/proto/         HTTP 接口定义与路由注册
+  sdk/book_sdk/           外部服务 SDK 封装示例
+main.go                   启动入口与自测 Runner
+init.go                   Banner 与工作目录初始化
 ```
 
-如果别人不看这 12 篇文章，只看 README，也应该能把服务跑起来。
+这种 README 不需要写成长篇教程，但要覆盖最基本的问题：
 
-## 默认启动必须简单
+- 项目做什么。
+- 目录怎么组织。
+- 本地怎么启动。
+- 有哪些 HTTP 接口。
+- 示例运行后会自动做什么。
+- 配置和日志在哪里。
 
-默认配置应该保持轻量：
+读者不看前面 11 篇文章，只看 README，也应该能把项目跑起来。
+
+## 默认运行不依赖外部基础设施
+
+最终配置仍然保持轻量：
 
 ```properties
-spring.http.server.addr=:9090
-bookman.dao.type=memory
-bookman.cache.enabled=false
-pprof.enable=false
+spring.http.server.addr=0.0.0.0:8080
+
+dync.refresh.time=0
+
+logging.logger.root.type=FileLogger
+logging.logger.root.level=INFO
+logging.logger.root.dir=./logs
+logging.logger.root.file=app.log
+logging.logger.root.layout.type=JSONLayout
+logging.logger.root.layout.fileLineMaxLength=20
 ```
 
-启动：
+没有 MySQL DSN，没有 Redis 地址，也没有必须存在的外部价格服务。
+
+启动命令就是：
 
 ```bash
 go run .
 ```
 
-验证：
+默认路径越简单，越适合作为示例项目。外部依赖可以出现在集成 Profile 或生产配置里，但不应该挡住第一次运行。
 
-```bash
-curl http://127.0.0.1:9090/books
+## API 示例要和代码对齐
+
+README 里列出的接口是：
+
+```text
+GET    /books          查询图书列表
+GET    /books/{isbn}   查询单本图书
+POST   /books          新增或更新图书
+DELETE /books/{isbn}   删除图书
+GET    /               静态首页
 ```
 
-我不希望第一次启动就要求 MySQL、Redis 或价格服务。那些都是可选增强，不应该成为入门门槛。
+`POST /books` 请求体示例：
 
-## 配置要写给未来的自己看
-
-README 里应该列出常用配置：
-
-```properties
-spring.http.server.addr=:9090
-bookman.dao.type=memory
-bookman.cache.enabled=false
-bookman.cache.ttl=30s
-bookman.price.base-url=
-pprof.enable=false
-pprof.addr=:6060
+```json
+{
+  "title": "Clean Architecture",
+  "author": "Robert C. Martin",
+  "isbn": "978-0134494166",
+  "publisher": "Prentice Hall"
+}
 ```
 
-也要写清楚覆盖方式：
+这些示例应该能直接复制执行。文档里的接口如果和代码不一致，读者会先怀疑自己环境有问题，然后才怀疑文档过期。
 
-```bash
-go run . -Dspring.http.server.addr=:9091
-GS_BOOKMAN_CACHE_ENABLED=true go run .
-go run . -Dspring.profiles.active=integration
+## 自测 Runner 覆盖主流程
+
+`main.go` 注册了一个 `TestRunner`：
+
+```go
+func init() {
+	gs.Provide(&TestRunner{}).Export(gs.As[gs.Runner]())
+}
 ```
 
-我现在很怕那种“配置靠口口相传”的项目。今天我记得，三个月后我自己也会忘。
+应用启动后，它会在 goroutine 里请求本机 HTTP 接口：
 
-## API 示例要能复制
-
-README 里的 curl 命令应该直接能跑：
-
-```bash
-curl http://127.0.0.1:9090/books
+```go
+runStep("list initial books", http.MethodGet, "/books", "")
+runStep("get one book", http.MethodGet, "/books/978-0134190440", "")
+runStep("save a new book", http.MethodPost, "/books", `{
+	"title": "Clean Architecture",
+	"author": "Robert C. Martin",
+	"isbn": "978-0134494166",
+	"publisher": "Prentice Hall"
+}`)
+runStep("list after save", http.MethodGet, "/books", "")
 ```
 
-```bash
-curl http://127.0.0.1:9090/books/978-0134190440
+这不是替代单元测试。它更像一个示例级 smoke test：启动后自动跑一遍主要 HTTP 链路，让读者马上看到项目能工作。
+
+自测完成后，它会发送 `SIGTERM` 给当前进程：
+
+```go
+syscall.Kill(os.Getpid(), syscall.SIGTERM)
 ```
 
-```bash
-curl -X POST http://127.0.0.1:9090/books \
-  -H 'Content-Type: application/json' \
-  -d '{"isbn":"978-0134494166","title":"Clean Architecture","author":"Robert C. Martin","publisher":"Prentice Hall"}'
+这样可以顺便验证后台任务和 Server 的优雅退出。
+
+## 动态配置刷新也要演示清楚
+
+最终版本里还有一个动态配置字段：
+
+```go
+RefreshTime gs.Dync[int64] `value:"${dync.refresh.time:=0}"`
 ```
 
-```bash
-curl -X DELETE http://127.0.0.1:9090/books/978-0134494166
+`TestRunner` 通过环境变量更新配置：
+
+```go
+refreshTime := strconv.FormatInt(time.Now().UnixMilli(), 10)
+if err := os.Setenv("GS_DYNC_REFRESH_TIME", refreshTime); err != nil {
+	panic(err)
+}
+if err := r.AppConfig.RefreshProperties(); err != nil {
+	panic(err)
+}
 ```
 
-每条命令最好写明预期状态码或关键输出。
+然后再次请求列表：
 
-文档里的命令如果没人跑，很快就会失效。
+```go
+runStep("list after config refresh", http.MethodGet, "/books", "")
+```
 
-## 测试命令也要简单
+这里演示的是 Go-Spring 动态配置刷新能力。示例代码把它放在自测 Runner 里，读者运行一次就能看到刷新前后的返回差异。
 
-默认测试命令：
+## init.go 处理启动体验
+
+`init.go` 做了两件和业务无关但影响交付体验的事。
+
+第一，设置 Banner：
+
+```go
+gs.Banner(banner)
+```
+
+第二，把工作目录切到源码所在目录：
+
+```go
+_, filename, _, ok := runtime.Caller(0)
+if ok {
+	execDir = filepath.Dir(filename)
+}
+err := os.Chdir(execDir)
+```
+
+这样 `conf/`、`public/`、`logs/` 这类相对路径不会因为从不同目录启动而失效。
+
+这个做法适合教学示例。生产服务通常会由部署系统明确工作目录和配置路径，不一定需要在代码里 `Chdir`。
+
+## 交付前的检查项
+
+这个版本交付前，至少要手动过一遍：
 
 ```bash
 go test ./...
+go run .
 ```
 
-它不应该依赖 MySQL、Redis 或外部价格服务。
+然后确认：
 
-集成测试可以单独说明：
+- README 里的目录和接口与代码一致。
+- `go run .` 不需要外部基础设施。
+- 自动 HTTP 自测能跑完。
+- 动态配置刷新后返回数据有变化。
+- 进程收到 `SIGTERM` 后能退出。
+- 日志文件能按配置写到 `logs/app.log`。
 
-```bash
-go test ./... -tags=integration
-```
+这套检查不复杂，但能挡住很多示例项目最常见的问题：文档过期、默认配置跑不起来、相对路径失效、后台任务无法退出。
 
-默认测试越轻，越容易成为日常习惯。
-
-## 主动演练失败场景
-
-我以前只验证“成功路径”。现在觉得失败路径也要跑一下。
-
-端口占用：把 `spring.http.server.addr` 配到已占用端口，应用应该启动失败。
-
-缺失依赖：临时去掉 DAO 注册，应用应该在启动阶段报告 `BookRepository` 缺失。
-
-错误配置：把 `bookman.cache.ttl=abc`，配置绑定应该失败。
-
-外部资源不可用：启用 integration Profile，但 MySQL DSN 不可达，应用应该明确报错。
-
-这些演练让我确认一件事：错误要在合适的阶段暴露，而不是藏到线上请求里。
-
-## 最后检查一次边界
-
-我给自己列了一个清单：
-
-```text
-Controller 不包含数据存储细节。
-Service 不依赖 http.Request 或 http.ResponseWriter。
-DAO 和 SDK 可以在测试中替换。
-Runner 不执行长期阻塞任务。
-后台 Job 监听根 Context。
-资源型 starter 有 Destroy 逻辑。
-默认配置能本地直接启动。
-go test ./... 通过。
-```
-
-这比目录看起来漂不漂亮更重要。
-
-## 我最后怎么理解 Go-Spring
-
-写完整个 BookMan Pro 后，我对 Go-Spring 的理解也变了。
-
-它不是为了替我写业务，也不是为了替代标准库 HTTP。
-
-它更像是在帮我处理服务端项目里那些绕不开的工程问题：配置、依赖、生命周期、日志、测试替换、组件集成。
-
-如果只是一个很小的一次性脚本，我可能不会用它。但如果我要认真写一个能配置、能测试、能扩展、能交付的服务，它就开始有价值了。
-
-## 最后给自己的作业
-
-把 README 里的启动、配置、API、测试命令全部复制执行一遍。
-
-任何一个命令跑不通，都不要怪读者“应该知道怎么改”，而是回到代码或文档里修。
-
-做到这里，BookMan Pro 才不只是我自己写过的一组练习，而是一个别人也能接手的小型 Go-Spring 服务。
+BookMan Pro 到这里已经不只是几段分散的功能代码。它有一条可运行的默认路径，也有足够清楚的目录、配置、日志和自测入口，后续接真实数据库、缓存或外部服务时可以沿着这些边界继续扩展。
