@@ -6,6 +6,8 @@
 
 - 是否判断了目标文档类型。
 - 如果目标位于 `docs/0.overview/`、`docs/1.getting-started/`、`docs/2.guides/` 或 `docs/4.integrations/`，是否遵守 `references/writing-style.md`。
+- 如果目标位于 `docs/3.examples/`，是否遵守 `references/example-docs.md`。
+- 如果目标是 `docs/5.faq.md`、`docs/6.contributing.md` 或 `docs/7.changelog.md`，是否遵守 `references/maintenance-docs.md`。
 - 如果目标位于其他目录，是否避免强行套用 Guide 结构。
 
 ## 事实检查
