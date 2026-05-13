@@ -19,6 +19,14 @@ Go-Spring 内置四类 Appender：
 | `FileAppender` | 单个本地文件 |
 | `RollingFileAppender` | 按时间滚动的文件序列 |
 
+## DiscardAppender
+
+```properties
+appender.discard.type = DiscardAppender
+```
+
+`DiscardAppender` 会静默丢弃所有日志事件，不产生实际输出。它适合临时关闭某类日志、测试路由规则，或者为某些环境保留配置结构但不落地日志。
+
 ## ConsoleAppender
 
 ```properties
@@ -65,6 +73,15 @@ type SamplingAppender struct {
 	rand       *rand.Rand
 }
 
+func (a *SamplingAppender) Start() error {
+	a.rand = rand.New(rand.NewSource(time.Now().UnixNano()))
+	return a.FileAppender.Start()
+}
+
+func (a *SamplingAppender) Stop() {
+	a.FileAppender.Stop()
+}
+
 func (a *SamplingAppender) Append(e *log.Event) {
 	if e.Level.Code() >= log.ErrorLevel.Code() {
 		a.FileAppender.Append(e)
@@ -74,6 +91,10 @@ func (a *SamplingAppender) Append(e *log.Event) {
 		e.Fields = append(e.Fields, log.Bool("sampled", true))
 		a.FileAppender.Append(e)
 	}
+}
+
+func (a *SamplingAppender) ConcurrentSafe() bool {
+	return a.FileAppender.ConcurrentSafe()
 }
 
 func init() {
@@ -154,4 +175,3 @@ Encoder 是字段编码层。它的目标是：
 ## 边界
 
 Appender、Layout、Encoder 分离后，输出目标、输出格式和编码实现可以独立扩展。下一篇会讨论日志如何从 `context.Context` 提取链路和业务字段。
-
