@@ -1,10 +1,10 @@
 # 日志输出管线
 
-## 本篇要解决的问题
+一条日志真正落地之前，要经过几道工序。
 
-一条日志从业务代码产生后，不是直接写到文件。它会经过 Logger、Appender、Layout、Encoder 这条管线。
+业务代码产生日志事件后，它不是直接写到文件，而是经过 Logger、Appender、Layout、Encoder 这条管线。每一层只处理自己的职责，整个输出过程才容易扩展和替换。
 
-本篇聚焦 Logger 之后的三层：Appender 负责写到哪里，Layout 负责长什么样，Encoder 负责如何高效编码字段。
+这里重点看 Logger 之后的三层：Appender 负责写到哪里，Layout 负责长什么样，Encoder 负责如何高效编码字段。
 
 ## Appender
 
@@ -172,6 +172,8 @@ Encoder 是字段编码层。它的目标是：
 
 业务代码通常不直接操作 Encoder。只有实现自定义 Layout 时，才需要组合 Encoder。
 
-## 边界
+## 输出管线的价值
 
-Appender、Layout、Encoder 分离后，输出目标、输出格式和编码实现可以独立扩展。下一篇会讨论日志如何从 `context.Context` 提取链路和业务字段。
+Appender、Layout、Encoder 分离后，输出目标、输出格式和编码实现可以独立扩展。写到哪里、长什么样、怎么编码，不需要绑死在一个实现里。
+
+日志落地之外，还有一个高频问题：链路 ID、请求 ID、用户信息这些上下文字段从哪里来。下一步看日志如何从 `context.Context` 提取字段。

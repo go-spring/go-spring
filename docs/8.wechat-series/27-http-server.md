@@ -1,10 +1,8 @@
 # 内置 HTTP Server
 
-## 本篇要解决的问题
+很多 Go 项目会从标准库 HTTP Server 起步。Go-Spring 没有绕开这套生态，而是在 `net/http` 之上提供默认接入和生命周期管理。
 
-Go-Spring 内置 HTTP Server，用于在应用中直接暴露 HTTP 接口。它基于标准库 `net/http`，默认随应用启动，并纳入统一生命周期管理。
-
-本篇只讨论内置 HTTP Server：配置、路由接入、第三方路由集成和生命周期。
+内置 HTTP Server 用于在应用中直接暴露 HTTP 接口，默认随应用启动，并纳入统一启动、就绪和关闭流程。下面从配置、路由接入、第三方路由集成和生命周期几块看它的定位。
 
 ## 快速开始
 
@@ -148,7 +146,8 @@ gs.Provide(func() *gs.HttpServeMux {
 
 这让 HTTP Server 的启动、就绪和关闭都和 Go-Spring 应用生命周期一致。
 
-## 边界
+## HTTP Server 的定位
 
-本篇只围绕内置 HTTP Server。组件封装和 Starter 机制会在下一篇讨论，测试体系放到之后单独展开。
+Go-Spring 的内置 HTTP Server 负责把标准库 `http.Handler` 接入统一生命周期。路由、中间件和参数解析可以继续由标准库或第三方框架处理，Go-Spring 关心的是配置、启动、就绪和优雅关闭。
 
+HTTP Server 只是组件接入的一种形态。接下来继续看组件封装和 Starter 机制。

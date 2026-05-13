@@ -1,6 +1,6 @@
 # 组件与 Starter 机制
 
-## 本篇要解决的问题
+当一个组件要被多个项目反复集成时，直接复制注册代码很快就会失控。
 
 Starter 是 Go-Spring 推荐的组件模块化方式。它把一组 Bean 注册、配置绑定、启用条件和生命周期管理封装到独立包中，让应用通过一次导入获得完整组件能力。
 
@@ -127,9 +127,8 @@ Go-Spring 提供常见基础设施 Starter：
 | 内置 HTTP Server | 默认 Web 服务接入 |
 | `starter-pprof` | pprof 性能分析服务 |
 
-## 与普通 Bean 注册的关系
+## Starter 是封装，不是新机制
 
 Starter 本质上仍然使用 Bean 注册 API。它不是另一套机制，而是把 Provide、Module、Group、条件注册、配置绑定和生命周期封装成可复用包。
 
-下一篇进入测试体系，讨论 Go-Spring 项目如何组织纯单测、IoC 测试、断言和 Mock。
-
+组件能封装，也要能验证。接下来进入测试体系，看看 Go-Spring 项目如何组织纯单测、IoC 测试、断言和 Mock。
