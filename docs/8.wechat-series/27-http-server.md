@@ -1,4 +1,4 @@
-# Go-Spring 实战第 27 课：把 HTTP Server 纳入统一生命周期
+# Go-Spring 实战第 27 课：HTTP 服务别单飞，把 Server 纳入启动和优雅关闭
 
 日志系统解决了应用运行中的观测问题。接下来我们回到服务入口：一个 Go-Spring 应用如果要直接暴露 HTTP 接口，HTTP Server 怎样接入这套生命周期。
 
