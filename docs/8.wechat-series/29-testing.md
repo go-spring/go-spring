@@ -4,7 +4,7 @@
 
 框架能力再完整，最后都要落到测试上。Go-Spring 兼容 Go 原生 `go test`，不需要额外测试运行器。它同时提供 IoC 容器测试、断言库和 Mock 支持。
 
-关键是选对测试层次：能纯单测就不要启动容器；需要验证装配、配置和多个 Bean 协作时，再使用 IoC 测试。
+关键是选对测试层次：能纯单测就不要启动容器；如果需要验证装配、配置和多个 Bean 协作，再使用 IoC 测试。
 
 ## 纯单元测试
 
@@ -42,7 +42,7 @@ func TestUserService_GetUserName(t *testing.T) {
 }
 ```
 
-这类测试启动快、定位准，适合验证业务逻辑。我们不应该为了使用框架而启动容器，测试层次越轻，反馈越快。
+这类测试启动快、定位准，适合验证业务逻辑。也就是说，我们不应该为了使用框架而启动容器，测试层次越轻，反馈越快。
 
 ## 基于 IoC 容器的测试
 
@@ -62,7 +62,7 @@ func TestOrderFlow(t *testing.T) {
 }
 ```
 
-`RunTest` 会创建测试对象作为 root Bean，启动测试容器，完成依赖注入后执行回调，最后关闭容器。
+`RunTest` 会创建测试对象作为 root Bean，启动测试容器，完成依赖注入后执行回调，最后关闭容器。这样测试用例只需要关心注入后的对象状态。
 
 ## 自定义配置
 
@@ -82,7 +82,7 @@ func TestApp(t *testing.T) {
 }
 ```
 
-这适合把测试环境的差异直接放进当前测试容器，而不是修改全局配置文件。
+这适合把测试环境的差异直接放进当前测试容器，而不是修改全局配置文件。这样测试之间也更容易隔离。
 
 ## 替换依赖
 
@@ -106,7 +106,7 @@ func TestUserService(t *testing.T) {
 
 每个 `RunTest` 会复制全局注册信息，`gs.Configure()` 中的 Bean 只作用于当前测试。
 
-由于全局 `init` 注册信息共享，基于 IoC 容器的测试目前不支持 `t.Parallel()`。
+但由于全局 `init` 注册信息共享，基于 IoC 容器的测试目前不支持 `t.Parallel()`。
 
 ## assert 与 require
 
@@ -114,7 +114,7 @@ Go-Spring 在 `github.com/go-spring/stdlib/testing` 下提供 `assert` 和 `requ
 
 `assert` 失败后继续执行，适合收集多个断言结果。
 
-`require` 失败后立即终止，适合前置条件。
+`require` 失败后立即终止，适合前置条件。简单说，前置条件用 `require`，后续结果检查用 `assert`。
 
 ```go
 require.That(t, err).Nil()
@@ -157,7 +157,7 @@ Go-Spring 提供 `gs-mock`，支持接口 Mock、函数 Mock 和方法 Mock。
 //go:generate gs mock -o mock.go -i "Service,Repository"
 ```
 
-Handle 模式适合自定义逻辑：
+如果需要自定义逻辑，可以使用 Handle 模式：
 
 ```go
 s.MockDo().Handle(func(n int, s string) (int, error) {
@@ -168,7 +168,7 @@ s.MockDo().Handle(func(n int, s string) (int, error) {
 })
 ```
 
-When/Return 模式适合固定匹配：
+如果只是固定匹配，可以使用 When/Return 模式：
 
 ```go
 s.MockFormat().When(func(format string, args []any) bool {
@@ -195,7 +195,7 @@ user, err := GetUser(ctx, 1)
 go test -gcflags="all=-N -l" ./...
 ```
 
-Mock 规则应在测试逻辑开始前注册完成，并按从具体到宽泛的顺序排列。
+Mock 规则应在测试逻辑开始前注册完成，并按从具体到宽泛的顺序排列。否则宽泛规则可能先匹配，导致具体规则没有机会生效。
 
 ## 测试要按层次选择
 

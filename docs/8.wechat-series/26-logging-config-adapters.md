@@ -2,11 +2,11 @@
 
 日志 API、字段、Logger、输出管线和上下文提取都搭起来之后，问题会进入工程治理层面。
 
-配置如何组织，插件如何注入，错误如何上报，配置如何刷新，已有日志入口如何接入，这些问题决定日志系统能不能在真实项目里长期维护。这里收束 Go-Spring 日志系统的配置和生态适配能力。
+配置如何组织，插件如何注入，错误如何上报，配置如何刷新，已有日志入口如何接入，这些问题决定日志系统能不能在真实项目里长期维护。所以这一篇收束 Go-Spring 日志系统的配置和生态适配能力。
 
 ## 配置分类
 
-日志配置采用扁平化 KV 模型，主要分为三类。
+日志配置采用扁平化 KV 模型，主要分为三类。先从命名空间看起。
 
 `logger.*` 配置 Logger：
 
@@ -40,7 +40,7 @@ appender.file.dir = ${log.dir}
 logger.root.level = ${log.level}
 ```
 
-我们前面讲过的配置模型在这里继续发挥作用：日志配置本质上也是一组 path，最终绑定到 Logger、Appender 和 Layout 插件上。
+我们前面讲过的配置模型在这里继续发挥作用：日志配置本质上也是一组 path，最终绑定到 Logger、Appender 和 Layout 插件上。这样日志系统不需要再发明另一套配置规则。
 
 ## 日志级别配置
 
@@ -56,7 +56,7 @@ logger.debug_info.level = DEBUG~WARN
 
 ## 数组配置
 
-复杂数组使用索引方式：
+如果配置比较复杂，数组可以使用索引方式：
 
 ```properties
 logger.root.appenderRef[0].ref = console
@@ -115,7 +115,7 @@ logger.console.layout.type = JSONLayout
 logger.console.layout.fileLineMaxLength = 60
 ```
 
-插件使用前需要注册：
+插件使用前需要先注册：
 
 ```go
 func init() {
@@ -133,9 +133,9 @@ func init() {
 type Converter[T any] func(string) (T, error)
 ```
 
-日志级别范围这类配置就是典型自定义类型。
+日志级别范围这类配置，就是典型的自定义类型。
 
-日志写入错误不能再通过日志系统记录，否则可能造成递归。Go-Spring 使用全局错误回调：
+日志写入错误不能再通过日志系统记录，否则可能造成递归。因此 Go-Spring 使用全局错误回调：
 
 ```go
 log.ReportError = func(err error) {
@@ -163,7 +163,7 @@ err := log.RefreshConfig(map[string]string{
 
 Go-Spring 应用框架内部使用 `log.Refresh` 从配置系统刷新日志配置。
 
-刷新日志配置时，应关注旧 Logger/Appender 的停止和新配置的启动是否成功。生产环境通常需要先在预发环境验证配置合法性。
+刷新日志配置时，应关注旧 Logger/Appender 的停止和新配置的启动是否成功。如果是生产环境，通常需要先在预发环境验证配置合法性。
 
 ## GetLogger
 
@@ -174,7 +174,7 @@ rootLogger := log.GetLogger("root")
 rootLogger.Write(log.InfoLevel, []byte("hello world\n"))
 ```
 
-配置中必须存在同名 Logger：
+使用它之前，配置中必须存在同名 Logger：
 
 ```properties
 logger.root.type = FileLogger
@@ -186,7 +186,7 @@ logger.root.layout.type = JSONLayout
 
 ## 适配标准库 log
 
-标准库 `log` 通过 `io.Writer` 输出。实现 Writer 即可转发到 Go-Spring：
+标准库 `log` 通过 `io.Writer` 输出。因此，实现 Writer 即可转发到 Go-Spring：
 
 ```go
 type StdLogWriter struct {
@@ -215,7 +215,7 @@ Zap 可以通过实现 `zapcore.Core` 适配。核心思路是：
 - `Write` 将 Zap 事件编码后转发给 Go-Spring Logger。
 - `Sync` 交由 Go-Spring 自身生命周期处理。
 
-适配后，项目可以逐步迁移：新代码使用 Go-Spring 原生日志 API，旧代码和依赖仍可通过 Zap 输出到同一目标。
+适配后，项目可以逐步迁移：新代码使用 Go-Spring 原生日志 API，旧代码和依赖仍可通过 Zap 输出到同一目标。这样迁移不需要一次性改完所有日志调用点。
 
 ## 日志板块至此收住
 

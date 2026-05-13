@@ -2,9 +2,9 @@
 
 Logger 决定一条日志要不要输出、交给哪些目标；但一条日志真正落地之前，还要经过几道工序。
 
-业务代码产生日志事件后，它不是直接写到文件，而是经过 Logger、Appender、Layout、Encoder 这条管线。每一层只处理自己的职责，整个输出过程才容易扩展和替换。
+业务代码产生日志事件后，它不是直接写到文件，而是经过 Logger、Appender、Layout、Encoder 这条管线。每一层只处理自己的职责，这样整个输出过程才容易扩展和替换。
 
-这里重点看 Logger 之后的三层：Appender 负责写到哪里，Layout 负责长什么样，Encoder 负责如何高效编码字段。
+这里重点看 Logger 之后的三层：Appender 负责写到哪里，Layout 负责长什么样，Encoder 负责如何高效编码字段。先看落地目标。
 
 ## Appender
 
@@ -25,7 +25,7 @@ Go-Spring 内置四类 Appender：
 appender.discard.type = DiscardAppender
 ```
 
-`DiscardAppender` 会静默丢弃所有日志事件，不产生实际输出。它适合临时关闭某类日志、测试路由规则，或者为某些环境保留配置结构但不落地日志。
+`DiscardAppender` 会静默丢弃所有日志事件，不产生实际输出。它适合临时关闭某类日志、测试路由规则，或者为某些环境保留配置结构但不落地日志。换句话说，它是一个显式的“不要输出”目标。
 
 ## ConsoleAppender
 
@@ -34,7 +34,7 @@ appender.console.type = ConsoleAppender
 appender.console.layout.type = TextLayout
 ```
 
-适合本地开发和容器日志采集。生产高并发场景下，应谨慎大量写 stdout。
+适合本地开发和容器日志采集。如果是生产高并发场景，应谨慎大量写 stdout。
 
 ## FileAppender
 
@@ -59,7 +59,7 @@ appender.rolling.syncLock = false
 appender.rolling.layout.type = JSONLayout
 ```
 
-它支持按时间滚动、过期清理和并发安全配置。同步 Logger 多 goroutine 写入时可以开启 `syncLock=true`；配合 AsyncLogger 时通常保持 `false`，由异步单 goroutine 保证串行写入。
+它支持按时间滚动、过期清理和并发安全配置。如果同步 Logger 会被多 goroutine 写入，可以开启 `syncLock=true`；如果配合 AsyncLogger，通常保持 `false`，由异步单 goroutine 保证串行写入。
 
 ## 自定义 Appender
 
@@ -106,7 +106,7 @@ func init() {
 
 ## Layout
 
-Layout 决定日志事件如何变成最终字节流。它不关心日志来自哪里，也不关心写到哪里。
+接着是 Layout。Layout 决定日志事件如何变成最终字节流。它不关心日志来自哪里，也不关心写到哪里。
 
 内置 Layout 有两种。
 
@@ -130,7 +130,7 @@ appender.file.layout.type = JSONLayout
 appender.file.layout.fileLineMaxLength = 48
 ```
 
-生产环境通常优先 JSON，方便日志采集、索引和聚合。
+生产环境通常优先 JSON，这样更方便日志采集、索引和聚合。
 
 ## 自定义 Layout
 
@@ -176,6 +176,6 @@ Encoder 是字段编码层。它的目标是：
 
 ## 输出管线的价值
 
-Appender、Layout、Encoder 分离后，输出目标、输出格式和编码实现可以独立扩展。写到哪里、长什么样、怎么编码，不需要绑死在一个实现里。
+Appender、Layout、Encoder 分离后，输出目标、输出格式和编码实现可以独立扩展。也就是说，写到哪里、长什么样、怎么编码，不需要绑死在一个实现里。
 
 日志落地之外，还有一个高频问题：链路 ID、请求 ID、用户信息这些上下文字段从哪里来。下一步看日志如何从 `context.Context` 提取字段。

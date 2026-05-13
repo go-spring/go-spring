@@ -4,12 +4,12 @@
 
 在 Go-Spring 的日志系统里，这个角色就是 Logger。标签路由找到 Logger 后，Logger 负责级别过滤，并把事件分发给一个或多个输出目标。
 
-Go-Spring 的 Logger 分为两类：
+为了覆盖不同写入场景，Go-Spring 的 Logger 分为两类：
 
 - 组合式 Logger：`SyncLogger`、`AsyncLogger`，通过 `appenderRef` 组合输出目标。
 - 集成式 Logger：`ConsoleLogger`、`FileLogger`、`RollingFileLogger`，封装常见输出场景。
 
-我们可以把组合式 Logger 理解成更灵活的管线，把集成式 Logger 理解成常见场景的快捷封装。
+可以简单理解为：组合式 Logger 是更灵活的管线，集成式 Logger 是常见场景的快捷封装。
 
 ## SyncLogger
 
@@ -33,7 +33,7 @@ logger.sync.appenderRef[0].ref = console
 logger.sync.appenderRef[1].ref = file
 ```
 
-同步写入确定性强，适合启动日志、审计日志、开发调试等场景。高并发业务日志如果直接同步写文件，可能阻塞请求路径。
+同步写入确定性强，适合启动日志、审计日志、开发调试等场景。但如果高并发业务日志直接同步写文件，可能阻塞请求路径。
 
 ## AsyncLogger
 
@@ -58,7 +58,7 @@ logger.async.appenderRef[0].ref = file
 | `discard` | 丢弃新日志 |
 | `drop-oldest` | 丢弃最旧日志，保留最新现场 |
 
-生产高并发场景通常优先考虑异步写入，但要接受进程被强杀时缓冲区日志可能丢失的事实。我们需要根据日志价值选择缓冲区策略：审计日志更偏向阻塞，调试日志可以接受丢弃。
+生产高并发场景通常优先考虑异步写入，但要接受进程被强杀时缓冲区日志可能丢失的事实。所以我们需要根据日志价值选择缓冲区策略：审计日志更偏向阻塞，调试日志可以接受丢弃。
 
 ## ConsoleLogger
 
@@ -71,7 +71,7 @@ logger.console.level = INFO
 logger.console.layout.type = TextLayout
 ```
 
-它适合本地开发、调试和容器 stdout 输出。高并发生产环境不建议把大量业务日志打到控制台，标准输出可能成为性能瓶颈。
+它适合本地开发、调试和容器 stdout 输出。如果是高并发生产环境，不建议把大量业务日志打到控制台，标准输出可能成为性能瓶颈。
 
 ## FileLogger
 
@@ -86,7 +86,7 @@ logger.file.file = app.log
 logger.file.layout.type = JSONLayout
 ```
 
-它适合低流量服务、测试环境、短生命周期任务或定向调试。长期运行服务如果日志量较大，应使用滚动文件。
+它适合低流量服务、测试环境、短生命周期任务或定向调试。如果长期运行服务日志量较大，应使用滚动文件。
 
 ## RollingFileLogger
 
@@ -146,10 +146,10 @@ func init() {
 }
 ```
 
-自定义 Logger 应尽量复用已有同步、异步和生命周期能力，只在差异点上扩展。
+自定义 Logger 应尽量复用已有同步、异步和生命周期能力，只在差异点上扩展。这样扩展点更小，也更容易维护。
 
 ## Logger 是调度层
 
 Logger 负责判断级别、调度事件和组合输出目标。同步、异步、控制台、文件、滚动文件这些差异，最终都服务于同一个目标：让日志事件按规则进入正确的输出路径。
 
-真正写出日志，还要经过 Appender、Layout 和 Encoder。后面继续展开完整输出管线。
+不过，真正写出日志，还要经过 Appender、Layout 和 Encoder。后面继续展开完整输出管线。

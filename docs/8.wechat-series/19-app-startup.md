@@ -2,7 +2,7 @@
 
 IoC 容器解释了对象怎样被装配，但一个应用真正启动时，容器只是其中一段流程。`gs.Run()` 看起来只是一个入口函数，实际接管了应用启动的主要链路。
 
-从配置加载、日志初始化，到 IoC 容器启动、Runner 执行和 Server 启动，Go-Spring 都把它们串在同一条启动链路上。
+从配置加载、日志初始化，到 IoC 容器启动、Runner 执行和 Server 启动，Go-Spring 都把它们串在同一条启动链路上。这样我们排查启动问题时，就能沿着链路一步步定位。
 
 理解这条链路有两个直接价值：
 
@@ -21,7 +21,7 @@ func main() {
 }
 ```
 
-它完成应用启动后阻塞当前 goroutine，并监听退出信号。独立服务通常优先使用这种方式。
+它完成应用启动后阻塞当前 goroutine，并监听退出信号。如果是独立服务，通常优先使用这种方式。
 
 `gs.RunAsync()` 是非阻塞启动：
 
@@ -64,7 +64,7 @@ gs.Configure(func(app gs.App) {
 })
 ```
 
-这类配置优先级较低，适合作为代码内置默认值。环境差异仍建议放到配置文件、环境变量或命令行参数中。
+这类配置优先级较低，适合作为代码内置默认值。如果是环境差异，仍建议放到配置文件、环境变量或命令行参数中。
 
 注册当前应用实例专属 Bean：
 
@@ -82,7 +82,7 @@ gs.Configure(func(app gs.App) {
 })
 ```
 
-如果关闭了内置 HTTP Server，且没有 Runner 或 Server，容器可能没有入口触发 Bean 创建。`app.Root()` 可以指定依赖图入口。
+如果关闭了内置 HTTP Server，且没有 Runner 或 Server，容器可能没有入口触发 Bean 创建。这时 `app.Root()` 可以指定依赖图入口。
 
 自定义 Banner：
 
@@ -118,9 +118,7 @@ func init() {
 4. 基础配置文件。
 5. `Property()` 设置的配置项。
 
-日志系统在 IoC 容器之前初始化，因为容器启动过程本身也需要输出日志。
-
-IoC 容器启动时会注册内置 Bean，例如 `ContextProvider` 和 `PropertiesRefresher`，然后从 root beans 出发创建依赖图。
+日志系统在 IoC 容器之前初始化，因为容器启动过程本身也需要输出日志。接着，IoC 容器启动时会注册内置 Bean，例如 `ContextProvider` 和 `PropertiesRefresher`，然后从 root beans 出发创建依赖图。
 
 ## Runner
 
@@ -134,7 +132,7 @@ type Runner interface {
 
 Runner 在容器初始化完成之后、Server 启动之前执行。所有 Runner 顺序执行，任意一个返回错误都会导致应用启动失败。
 
-Runner 应该快速返回。长期运行任务应该实现为 Server。
+因此，Runner 应该快速返回。长期运行任务应该实现为 Server。
 
 ## Server
 
@@ -142,7 +140,7 @@ Runner 应该快速返回。长期运行任务应该实现为 Server。
 
 所有 Server 会在独立 goroutine 中并行启动。每个 Server 应在完成监听绑定或具备服务能力后触发 Ready 信号。框架会等待所有 Server Ready 后才认为应用启动完成。
 
-这个机制避免健康检查已经开放、流量已经进入，但某个关键 Server 随后启动失败的问题。
+这个机制可以避免健康检查已经开放、流量已经进入，但某个关键 Server 随后启动失败的问题。
 
 ## 启动流程要看阶段
 

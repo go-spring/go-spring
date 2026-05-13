@@ -4,7 +4,7 @@
 
 很多 Go 项目会从标准库 HTTP Server 起步。Go-Spring 没有绕开这套生态，而是在 `net/http` 之上提供默认接入和生命周期管理。
 
-内置 HTTP Server 用于在应用中直接暴露 HTTP 接口，默认随应用启动，并纳入统一启动、就绪和关闭流程。下面从配置、路由接入、第三方路由集成和生命周期几块看它的定位。
+也就是说，内置 HTTP Server 用于在应用中直接暴露 HTTP 接口，默认随应用启动，并纳入统一启动、就绪和关闭流程。下面从配置、路由接入、第三方路由集成和生命周期几块看它的定位。
 
 ## 快速开始
 
@@ -22,7 +22,7 @@ func main() {
 
 应用启动后访问 `http://localhost:9090/hello` 即可看到响应。
 
-默认情况下，Go-Spring 会使用 `http.DefaultServeMux` 作为路由入口。这让最简单的 HTTP 服务不需要额外注册路由器。
+默认情况下，Go-Spring 会使用 `http.DefaultServeMux` 作为路由入口。这样最简单的 HTTP 服务不需要额外注册路由器。
 
 ## 配置项
 
@@ -96,11 +96,11 @@ func init() {
 }
 ```
 
-路由定义本身可以使用依赖注入，因此控制器、服务和配置都能进入路由组装过程。
+这样路由定义本身也可以使用依赖注入，控制器、服务和配置都能进入路由组装过程。
 
 ## 第三方路由集成
 
-Gin、gorilla/mux、chi 等框架都实现了 `http.Handler`，因此可以直接作为 `gs.HttpServeMux` 的 Handler。
+Gin、gorilla/mux、chi 等框架都实现了 `http.Handler`，因此可以直接作为 `gs.HttpServeMux` 的 Handler。接入方式其实就是把最终路由器交给 Go-Spring 管。
 
 Gin：
 
@@ -138,7 +138,7 @@ gs.Provide(func() *gs.HttpServeMux {
 })
 ```
 
-第三方框架负责自己的路由、中间件和参数解析；Go-Spring 只负责把最终 `http.Handler` 纳入应用生命周期。
+第三方框架负责自己的路由、中间件和参数解析；Go-Spring 只负责把最终 `http.Handler` 纳入应用生命周期。这样两边职责不会混在一起。
 
 ## 生命周期
 
@@ -148,7 +148,7 @@ gs.Provide(func() *gs.HttpServeMux {
 
 停止时调用标准库 `http.Server.Shutdown`，停止接受新连接，等待进行中的请求完成，关闭空闲连接。
 
-这让 HTTP Server 的启动、就绪和关闭都和 Go-Spring 应用生命周期一致。
+这样 HTTP Server 的启动、就绪和关闭都和 Go-Spring 应用生命周期一致。
 
 ## HTTP Server 的定位
 
