@@ -1,6 +1,6 @@
 # 日志输出管线
 
-一条日志真正落地之前，要经过几道工序。
+Logger 决定一条日志要不要输出、交给哪些目标；但一条日志真正落地之前，还要经过几道工序。
 
 业务代码产生日志事件后，它不是直接写到文件，而是经过 Logger、Appender、Layout、Encoder 这条管线。每一层只处理自己的职责，整个输出过程才容易扩展和替换。
 
@@ -101,6 +101,8 @@ func init() {
 	log.RegisterPlugin[SamplingAppender]("SamplingAppender")
 }
 ```
+
+自定义 Appender 应该尽量把差异限制在输出策略上。生命周期、并发安全和错误处理这些基础能力，能复用内置实现就不要重新发明。
 
 ## Layout
 

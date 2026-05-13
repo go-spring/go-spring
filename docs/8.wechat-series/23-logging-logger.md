@@ -1,6 +1,6 @@
 # Logger 体系
 
-日志事件产生以后，谁决定它要不要输出、输出到哪里、以什么方式输出？
+业务代码产生了结构化字段以后，日志事件还没有真正落地。接下来要回答的是：谁决定它要不要输出、输出到哪里、以什么方式输出？
 
 在 Go-Spring 的日志系统里，这个角色就是 Logger。标签路由找到 Logger 后，Logger 负责级别过滤，并把事件分发给一个或多个输出目标。
 
@@ -8,6 +8,8 @@ Go-Spring 的 Logger 分为两类：
 
 - 组合式 Logger：`SyncLogger`、`AsyncLogger`，通过 `appenderRef` 组合输出目标。
 - 集成式 Logger：`ConsoleLogger`、`FileLogger`、`RollingFileLogger`，封装常见输出场景。
+
+我们可以把组合式 Logger 理解成更灵活的管线，把集成式 Logger 理解成常见场景的快捷封装。
 
 ## SyncLogger
 
@@ -56,7 +58,7 @@ logger.async.appenderRef[0].ref = file
 | `discard` | 丢弃新日志 |
 | `drop-oldest` | 丢弃最旧日志，保留最新现场 |
 
-生产高并发场景通常优先考虑异步写入，但要接受进程被强杀时缓冲区日志可能丢失的事实。
+生产高并发场景通常优先考虑异步写入，但要接受进程被强杀时缓冲区日志可能丢失的事实。我们需要根据日志价值选择缓冲区策略：审计日志更偏向阻塞，调试日志可以接受丢弃。
 
 ## ConsoleLogger
 

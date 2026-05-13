@@ -1,5 +1,7 @@
 # 内置 HTTP Server
 
+日志系统解决了应用运行中的观测问题。接下来我们回到服务入口：一个 Go-Spring 应用如果要直接暴露 HTTP 接口，HTTP Server 怎样接入这套生命周期。
+
 很多 Go 项目会从标准库 HTTP Server 起步。Go-Spring 没有绕开这套生态，而是在 `net/http` 之上提供默认接入和生命周期管理。
 
 内置 HTTP Server 用于在应用中直接暴露 HTTP 接口，默认随应用启动，并纳入统一启动、就绪和关闭流程。下面从配置、路由接入、第三方路由集成和生命周期几块看它的定位。
@@ -20,7 +22,7 @@ func main() {
 
 应用启动后访问 `http://localhost:9090/hello` 即可看到响应。
 
-默认情况下，Go-Spring 会使用 `http.DefaultServeMux` 作为路由入口。
+默认情况下，Go-Spring 会使用 `http.DefaultServeMux` 作为路由入口。这让最简单的 HTTP 服务不需要额外注册路由器。
 
 ## 配置项
 
@@ -54,6 +56,8 @@ func main() {
 	gs.Web(false).Run()
 }
 ```
+
+如果应用已经被其他框架或宿主进程托管，我们可以关闭内置 Server，只保留 Go-Spring 的配置、容器和运行时能力。
 
 ## 路由机制
 
