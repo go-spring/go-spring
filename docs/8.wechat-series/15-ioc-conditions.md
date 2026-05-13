@@ -1,0 +1,149 @@
+# 条件注册机制
+
+## 本篇要解决的问题
+
+大型应用中的组件不应该总是无条件启用。某些 Bean 只在配置存在时启用，某些实现只在缺少默认实现时启用，某些模块只在特定环境中启用。
+
+Go-Spring 通过 Condition 机制表达这些装配规则。
+
+## 基本用法
+
+注册 Bean 时可以追加条件：
+
+```go
+gs.Provide(NewMyService).Condition(gs.OnProperty("my.condition"))
+```
+
+条件在容器解析阶段执行。满足条件的 Bean 保留，不满足条件的 Bean 会被裁剪，不参与后续创建和注入。
+
+## 属性条件
+
+`OnProperty` 是最常用条件。它可以判断配置项是否存在，也可以判断配置值是否匹配。
+
+```go
+gs.OnProperty("enable.redis")
+
+gs.OnProperty("env").HavingValue("prod")
+
+gs.OnProperty("optional.feature").MatchIfMissing()
+```
+
+`HavingValue` 支持表达式，使用 `expr:` 前缀：
+
+```go
+gs.OnProperty("server.port").HavingValue("expr:$ > 8080")
+```
+
+常见表达式：
+
+```go
+gs.OnProperty("server.port").HavingValue("expr:$ > 1024 && $ < 65535")
+gs.OnProperty("app.env").HavingValue("expr:$ != 'prod'")
+gs.OnProperty("app.base-url").HavingValue("expr:startsWith($, 'http://')")
+gs.OnProperty("app.features").HavingValue("expr:contains($, 'debug')")
+```
+
+也可以注册自定义表达式函数：
+
+```go
+func init() {
+	gs.RegisterExpressFunc("isValidPort", func(port int) bool {
+		return port > 1024 && port < 65535
+	})
+
+	gs.Provide(NewServer).Condition(
+		gs.OnProperty("server.port").HavingValue("expr:isValidPort($)"),
+	)
+}
+```
+
+## Bean 存在条件
+
+有些自动配置需要根据容器中是否已有某个 Bean 决定是否启用：
+
+```go
+gs.OnBean[*UserService]()
+gs.OnMissingBean[*UserService]()
+gs.OnSingleBean[*UserService]()
+gs.OnBean[*DataSource]("master")
+```
+
+语义分别是：
+
+- `OnBean[T]()`：至少存在一个匹配 Bean。
+- `OnMissingBean[T]()`：不存在匹配 Bean。
+- `OnSingleBean[T]()`：恰好存在一个匹配 Bean。
+- 可选名称参数用于同时按类型和名称匹配。
+
+这类条件常用于 Starter：如果应用已经提供自定义实现，Starter 就不再注册默认实现。
+
+## 自定义函数条件
+
+简单自定义逻辑可以用 `OnFunc`：
+
+```go
+gs.OnFunc(func(ctx gs.ConditionContext) (bool, error) {
+	return myCustomCheck(ctx)
+})
+```
+
+当条件需要访问配置、Bean 定义或外部上下文时，可以封装成自定义函数条件。但不建议把复杂业务逻辑塞进条件系统，条件应该保持可解释。
+
+## 组合条件
+
+Go-Spring 提供 `And`、`Or`、`Not`、`None`：
+
+```go
+gs.Provide(NewService).Condition(gs.And(
+	gs.OnProperty("enable.service"),
+	gs.OnBean[Config](),
+))
+
+gs.Provide(NewService).Condition(gs.Or(
+	gs.OnProperty("profile.dev"),
+	gs.OnProperty("profile.test"),
+))
+
+gs.Provide(NewFallbackService).Condition(gs.Not(
+	gs.OnBean[RealService](),
+))
+
+gs.Provide(NewService).Condition(gs.None(
+	gs.OnProperty("profile.dev"),
+	gs.OnProperty("profile.test"),
+))
+```
+
+组合条件可以嵌套：
+
+```go
+gs.And(
+	gs.OnProperty("env").HavingValue("prod"),
+	gs.Or(
+		gs.OnProperty("enable.a"),
+		gs.OnProperty("enable.b"),
+	),
+)
+```
+
+表达力足够强，但工程上应避免让条件变成难以推理的布尔表达式。
+
+## OnOnce
+
+如果条件计算复杂且需要复用，可以使用 `OnOnce` 缓存结果：
+
+```go
+gs.Provide(NewService).Condition(gs.OnOnce(
+	gs.OnProperty("enable.service"),
+	gs.OnBean[Config](),
+))
+```
+
+简单条件不需要缓存。只有条件成本较高、且被多处复用时才有必要。
+
+## 使用建议
+
+条件注册应该服务于模块边界，而不是隐藏业务分支。适合条件化的对象通常是基础设施组件、Starter 默认实现、可选插件和环境相关实现。
+
+Profile 条件是一个高频特殊场景，下一篇会把配置 Profile 和 Bean 装配边界放在一起讨论。
+

@@ -1,0 +1,165 @@
+# 应用退出与运行期扩展
+
+## 本篇要解决的问题
+
+应用启动只是生命周期的一半。在线服务还需要处理退出信号、优雅关闭、长期运行任务、根 Context 和动态配置刷新。
+
+Go-Spring 把这些能力纳入应用运行时，而不是让每个业务模块各自处理。
+
+## 退出信号
+
+`gs.Run()` 启动成功后会监听常见退出信号：
+
+- `SIGINT`：通常由 Ctrl+C 触发。
+- `SIGTERM`：Docker、Kubernetes 等环境停止容器时发送。
+
+收到信号后，框架进入 `ShutDown()` 流程。
+
+`gs.RunAsync()` 不会自动接管调用方的进程生命周期。使用它时，调用方应在自己的退出流程中调用 `stop()`。
+
+## 优雅关闭流程
+
+关闭过程可以理解为：
+
+```text
+触发 ShutDown()
+  -> 取消 root context
+  -> 调用所有 Server 的 Stop()
+  -> 等待 Server goroutine 退出
+  -> 关闭 IoC 容器
+  -> 调用 Bean 的 Destroy 回调
+  -> flush 日志并退出
+```
+
+Go-Spring 不设置全局强制关闭超时。这是一个设计取舍：不同业务对关闭等待时间要求不同，框架不替业务决定超时时间。
+
+如果某个 Server 可能长期阻塞，应在自己的 `Stop()` 或业务逻辑中设计超时控制。
+
+## 实现 Runner
+
+Runner 适合一次性初始化任务：
+
+```go
+type DBMigrator struct {
+	DB *sql.DB `autowire:""`
+}
+
+func (m *DBMigrator) Run(ctx context.Context) error {
+	_, err := m.DB.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS users (
+			id SERIAL PRIMARY KEY,
+			name TEXT NOT NULL
+		);
+	`)
+	return err
+}
+
+func init() {
+	gs.Provide(&DBMigrator{}).Export(gs.As[gs.Runner]())
+}
+```
+
+Runner 在 Server 启动前执行，因此适合处理服务可用前必须完成的准备工作。
+
+## 实现 Server
+
+Server 适合长期运行服务：
+
+```go
+type Server interface {
+	Run(ctx context.Context, sig ReadySignal) error
+	Stop() error
+}
+```
+
+一个简化 HTTP Server：
+
+```go
+type MyServer struct {
+	Addr string `value:"${server.addr:=:8080}"`
+	srv  *http.Server
+}
+
+func (s *MyServer) Run(ctx context.Context, sig gs.ReadySignal) error {
+	s.srv = &http.Server{Addr: s.Addr}
+
+	l, err := net.Listen("tcp", s.Addr)
+	if err != nil {
+		return err
+	}
+
+	<-sig.TriggerAndWait()
+
+	err = s.srv.Serve(l)
+	if errors.Is(err, http.ErrServerClosed) {
+		return nil
+	}
+	return err
+}
+
+func (s *MyServer) Stop() error {
+	return s.srv.Shutdown(context.Background())
+}
+```
+
+Ready 信号应在监听成功后触发，而不是在真正具备服务能力前提前触发。
+
+## 注入根 Context
+
+业务代码应优先从应用 root context 派生上下文。应用关闭时，root context 会被取消，所有监听 `ctx.Done()` 的逻辑都能收到通知。
+
+可以注入 `ContextProvider`：
+
+```go
+type MyService struct {
+	CtxProvider *gs.ContextProvider `autowire:""`
+}
+
+func (s *MyService) DoWork() {
+	ctx := s.CtxProvider.Context
+
+	select {
+	case <-ctx.Done():
+		return
+	default:
+		// 正常处理
+	}
+}
+```
+
+这比在业务中直接使用 `context.Background()` 更适合应用生命周期管理。
+
+## 刷新动态配置
+
+动态配置字段使用 `gs.Dync[T]`：
+
+```go
+type MyService struct {
+	Timeout gs.Dync[time.Duration] `value:"${service.timeout:=30s}"`
+}
+
+func (s *MyService) Handle() {
+	timeout := s.Timeout.Value()
+	_ = timeout
+}
+```
+
+运行期可以通过 `PropertiesRefresher` 刷新：
+
+```go
+type ConfigManager struct {
+	Refresher *gs.PropertiesRefresher `autowire:""`
+}
+
+func (m *ConfigManager) ReloadConfig() error {
+	os.Setenv("GS_SERVICE_TIMEOUT", "10s")
+	return m.Refresher.RefreshProperties()
+}
+```
+
+刷新只影响 `gs.Dync[T]` 字段。普通配置字段仍然保持启动时绑定的值。
+
+## 边界
+
+本篇讨论应用运行时管理，不展开 HTTP 路由，也不重复配置绑定细节。下一篇开始进入日志系统，讨论 Go-Spring 如何组织结构化日志、标签路由和输出管线。
+

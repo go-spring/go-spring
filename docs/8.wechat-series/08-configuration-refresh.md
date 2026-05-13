@@ -1,0 +1,117 @@
+# 配置编排与动态刷新
+
+## 本篇要解决的问题
+
+配置系统的高级能力主要集中在两个方向：
+
+- 启动期配置编排：导入其他配置、引用变量、组合配置值。
+- 运行期配置刷新：在不重启应用的情况下读取最新配置。
+
+Go-Spring 用同一套 path 和绑定语法贯穿这两类能力。
+
+## 配置导入
+
+`spring.app.imports` 可以把一个大配置拆成多个文件，也可以接入 Provider 提供的外部配置。
+
+```properties
+spring.app.imports=./dev.properties,http://config-server/app.properties
+```
+
+可选导入使用 `optional:` 前缀：
+
+```properties
+spring.app.imports=optional:./local.overrides
+```
+
+可选配置不存在时不会报错，适合本地覆盖文件、开发者私有配置或非必需的外部配置。
+
+导入遵循后加载优先原则。基础配置中导入的配置优先级高于基础配置本身；Profile 配置中导入的配置优先级高于对应 Profile 配置本身。
+
+## 变量引用
+
+配置值可以引用其他配置项：
+
+```properties
+server.port=${port}
+server.port=${port:=8080}
+app.home=${user.home}/myapp
+app.url=http://${app.host}:${app.port}/api
+redis.password=${REDIS_PASSWORD:=}
+```
+
+常见用途包括：
+
+- 抽取公共前缀。
+- 组合多个配置项。
+- 引用环境变量。
+- 为引用值提供默认值。
+
+变量引用的解析仍然基于同一套配置 path，因此和绑定、优先级合并保持一致。
+
+## 嵌套引用
+
+Go-Spring 支持嵌套引用：
+
+```properties
+env=prod
+config.file=config/${env}.properties
+```
+
+框架会递归解析依赖，最终得到 `config/prod.properties`。
+
+嵌套引用适合少量组合，不建议把复杂环境逻辑写进配置字符串。复杂逻辑应回到 Profile、条件注册或业务代码中表达。
+
+## 动态配置
+
+如果某个配置需要在运行期读取最新值，可以将字段声明为 `gs.Dync[T]`：
+
+```go
+type AppConfig struct {
+	Port int `value:"${server.port}"`
+
+	Timeout       gs.Dync[time.Duration] `value:"${server.timeout:=30s}"`
+	MaxConns      gs.Dync[int]           `value:"${server.max-conns:=100}"`
+	EnableFeature gs.Dync[bool]          `value:"${feature.xxx.enable:=false}"`
+}
+```
+
+读取时调用 `Value()`：
+
+```go
+func (a *App) handleRequest(w http.ResponseWriter, r *http.Request) {
+	timeout := a.Config.Timeout.Value()
+	_ = timeout
+}
+```
+
+`gs.Dync[T]` 是并发安全的，适合在多个 goroutine 中读取。
+
+## 运行期刷新
+
+应用运行后，可以通过 `PropertiesRefresher` 触发刷新：
+
+```go
+type ConfigManager struct {
+	Refresher *gs.PropertiesRefresher `autowire:""`
+}
+
+func (m *ConfigManager) ReloadConfig() error {
+	os.Setenv("GS_SERVICE_TIMEOUT", "10s")
+	return m.Refresher.RefreshProperties()
+}
+```
+
+动态刷新只影响声明为 `gs.Dync[T]` 的字段。普通配置字段在启动绑定后保持不变。
+
+刷新会先预校验所有动态配置，保证原子提交：要么全部更新成功，要么保持旧值不变，不会出现部分字段已经更新、部分字段失败的中间状态。
+
+## 使用边界
+
+动态配置适合开关、阈值、超时时间等轻量值。连接池这类资源的平滑切换通常还需要业务层配合，例如使用版本号触发资源重载，并逐步回收旧资源。
+
+配置系统提供的是动态值的读取与刷新语义，不直接替代资源生命周期管理。
+
+## 下一篇
+
+配置系统到这里收束。下一篇开始进入 IoC 容器，讨论 Go-Spring 为什么需要以 Bean 为中心组织应用对象。
+

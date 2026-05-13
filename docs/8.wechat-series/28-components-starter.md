@@ -1,0 +1,135 @@
+# 组件与 Starter 机制
+
+## 本篇要解决的问题
+
+Starter 是 Go-Spring 推荐的组件模块化方式。它把一组 Bean 注册、配置绑定、启用条件和生命周期管理封装到独立包中，让应用通过一次导入获得完整组件能力。
+
+对于应用来说，Starter 降低集成成本；对于组件作者来说，Starter 提供可复用的封装约定。
+
+## 核心机制
+
+Starter 通常通过 Go 的 `init()` 注册：
+
+```go
+import _ "github.com/go-spring/starter-gorm-mysql"
+```
+
+空白导入触发包内注册逻辑。只要 starter 包被导入，Go-Spring 就能在启动时发现它注册的 Bean、Module 或 Group。
+
+导入 Starter 不等于立即创建实例。容器仍然按需创建：只有满足条件、进入依赖图的 Bean 才会实例化。
+
+## Provide：注册单个 Bean
+
+`gs.Provide` 适合提供单个实例：
+
+```go
+func init() {
+	gs.Provide(NewDB, gs.TagArg("${spring.gorm}")).
+		Condition(gs.OnProperty("spring.gorm.dsn")).
+		Name("__default__").
+		Destroy(CloseDB)
+}
+
+type Config struct {
+	DSN string `value:"${dsn}"`
+}
+
+func NewDB(config Config) (*gorm.DB, error) {
+	return gorm.Open(mysql.Open(config.DSN), &gorm.Config{})
+}
+
+func CloseDB(db *gorm.DB) error {
+	sqlDB, _ := db.DB()
+	return sqlDB.Close()
+}
+```
+
+这里同时体现了配置绑定、条件启用、Bean 命名和生命周期释放。
+
+## Module：按条件动态注册
+
+`gs.Module` 适合注册逻辑需要读取配置后展开的场景：
+
+```go
+func init() {
+	gs.Module(
+		gs.OnProperty("enable-mysql").HavingValue("true"),
+		func(r gs.BeanProvider, p flatten.Storage) error {
+			if s, _ := p.Value("enable-readonly"); s == "true" {
+				r.Provide(NewReadOnlyDB)
+			} else {
+				r.Provide(NewDB)
+			}
+			return nil
+		})
+}
+```
+
+当 Starter 需要按配置切换实现、注册一组相关 Bean 或进行较复杂条件判断时，Module 比 Provide 更合适。
+
+## Group：注册多个同类型实例
+
+`gs.Group` 面向多实例配置，例如多数据库、多 Redis、多客户端：
+
+```go
+func init() {
+	gs.Group("${spring.gorm.instances}", NewDB, CloseDB)
+}
+```
+
+配置通常是字典结构：
+
+```yaml
+spring:
+  gorm:
+    instances:
+      db1:
+        dsn: "root:123456@tcp(localhost:3306)/gorm?charset=utf8mb4&parseTime=True&loc=Local"
+      db2:
+        dsn: "root:123456@tcp(localhost:3306)/gorm?charset=utf8mb4&parseTime=True&loc=Local"
+```
+
+字典 key 作为 Bean 名称，value 作为实例配置。
+
+## 自定义 Starter 约定
+
+官方 Starter 通常采用“默认单实例 + 可选多实例”的模式：
+
+```go
+func init() {
+	gs.Provide(newClient, gs.TagArg("${spring.gorm}")).
+		Condition(gs.OnProperty("spring.gorm.dsn")).
+		Name("__default__")
+
+	gs.Group("${spring.gorm.instances}", newClient, nil)
+}
+```
+
+建议遵循：
+
+- 配置前缀使用 `spring.xxx` 或 `spring.xxx.yyy`。
+- 默认单实例使用 `__default__` 作为 Bean 名称。
+- 默认单实例通过关键配置项触发。
+- 多实例配置放在 `spring.xxx.instances` 下。
+- 资源型组件提供 Destroy 函数。
+
+这些约定能让不同 Starter 在应用侧有一致使用体验。
+
+## 官方 Starter
+
+Go-Spring 提供常见基础设施 Starter：
+
+| Starter | 说明 |
+|---------|------|
+| `starter-gorm-mysql` | MySQL 集成，基于 GORM |
+| `starter-go-redis` | Redis 集成，基于 go-redis |
+| `starter-redigo` | Redis 集成，基于 redigo |
+| 内置 HTTP Server | 默认 Web 服务接入 |
+| `starter-pprof` | pprof 性能分析服务 |
+
+## 与普通 Bean 注册的关系
+
+Starter 本质上仍然使用 Bean 注册 API。它不是另一套机制，而是把 Provide、Module、Group、条件注册、配置绑定和生命周期封装成可复用包。
+
+下一篇进入测试体系，讨论 Go-Spring 项目如何组织纯单测、IoC 测试、断言和 Mock。
+
