@@ -1,4 +1,4 @@
-# Profile 条件与装配边界
+# Go-Spring 实战第 16 课：Profile 不能只切配置，也要管住装配
 
 我们在配置篇已经看过 Profile：它决定本次启动应该加载哪些环境配置。到了 IoC 这里，Profile 还有另一层含义：它也可以决定哪些 Bean 参与装配。
 
