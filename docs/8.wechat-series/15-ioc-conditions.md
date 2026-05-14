@@ -2,13 +2,13 @@
 
 Bean 注册进 Go-Spring 容器之后，并不代表它就一定会在本次启动中生效。真实项目里，组件往往不是永远启用的。
 
-某些 Bean 只在配置存在时启用，某些实现只在缺少默认实现时启用，某些模块只在特定环境中启用。如果这些分支全部写进业务代码，模块边界会很快变得混乱。Go-Spring 把“是否装配”放到了启动期判断。
+某些 Bean 只在配置存在时启用，某些实现只在缺少默认实现时启用，某些模块只在特定环境中启用。如果这些分支全部写进业务代码，模块边界会很快变得混乱。所以 Go-Spring 把“是否装配”放到了启动期判断。
 
-Go-Spring 通过 Condition 机制表达这些装配规则。我们可以把条件注册理解成启动期的“装配裁剪”：注册信息先进入容器，解析阶段再根据条件决定哪些 Bean 留下来。
+Go-Spring 通过 Condition 机制表达这些装配规则。我们可以把条件注册理解成启动期的“装配裁剪”，即注册信息先进入容器，解析阶段再根据条件决定哪些 Bean 留下来。
 
 ## 先看条件如何裁剪 Bean
 
-注册 Bean 时可以追加条件：
+注册 Bean 时可以追加条件。
 
 ```go
 gs.Provide(NewMyService).Condition(gs.OnProperty("my.condition"))
@@ -16,7 +16,7 @@ gs.Provide(NewMyService).Condition(gs.OnProperty("my.condition"))
 
 条件在 Go-Spring 容器解析阶段执行。满足条件的 Bean 保留，不满足条件的 Bean 会被裁剪，不参与后续创建和注入。
 
-这样一来，业务代码不需要在运行期反复判断组件是否存在。装配结果在启动时就已经确定。
+这样一来，业务代码不需要在运行期反复判断组件是否存在。因为装配结果在启动时就已经确定，运行期看到的就是裁剪后的对象图。
 
 ## OnProperty 处理配置开关
 
@@ -30,13 +30,13 @@ gs.OnProperty("env").HavingValue("prod")
 gs.OnProperty("optional.feature").MatchIfMissing()
 ```
 
-`HavingValue` 支持表达式，使用 `expr:` 前缀：
+`HavingValue` 支持表达式，使用 `expr:` 前缀。
 
 ```go
 gs.OnProperty("server.port").HavingValue("expr:$ > 8080")
 ```
 
-常见表达式：
+常见表达式如下。
 
 ```go
 gs.OnProperty("server.port").HavingValue("expr:$ > 1024 && $ < 65535")
@@ -45,7 +45,7 @@ gs.OnProperty("app.base-url").HavingValue("expr:startsWith($, 'http://')")
 gs.OnProperty("app.features").HavingValue("expr:contains($, 'debug')")
 ```
 
-也可以注册自定义表达式函数：
+也可以注册自定义表达式函数。
 
 ```go
 func init() {
@@ -61,7 +61,7 @@ func init() {
 
 ## OnBean 处理默认实现和覆盖
 
-有些自动配置需要根据 Go-Spring 容器中是否已有某个 Bean 决定是否启用：
+有些自动配置需要根据 Go-Spring 容器中是否已有某个 Bean 决定是否启用。
 
 ```go
 gs.OnBean[*UserService]()
@@ -70,18 +70,18 @@ gs.OnSingleBean[*UserService]()
 gs.OnBean[*DataSource]("master")
 ```
 
-语义分别是：
+语义分别是下面几种。
 
-- `OnBean[T]()`：至少存在一个匹配 Bean。
-- `OnMissingBean[T]()`：不存在匹配 Bean。
-- `OnSingleBean[T]()`：恰好存在一个匹配 Bean。
+- `OnBean[T]()` 表示至少存在一个匹配 Bean。
+- `OnMissingBean[T]()` 表示不存在匹配 Bean。
+- `OnSingleBean[T]()` 表示恰好存在一个匹配 Bean。
 - 可选名称参数用来同时按类型和名称匹配。
 
-这类条件常见于 Starter 场景：如果应用已经提供自定义实现，Starter 就不再注册默认实现。这样组件包可以提供默认能力，同时给应用保留覆盖空间。
+这类条件常见于 Starter 场景——如果应用已经提供自定义实现，Starter 就不再注册默认实现。这样组件包可以提供默认能力，同时给应用保留覆盖空间。
 
 ## OnFunc 接入少量自定义判断
 
-简单自定义逻辑可以用 `OnFunc`：
+简单自定义逻辑可以用 `OnFunc`。
 
 ```go
 gs.OnFunc(func(ctx gs.ConditionContext) (bool, error) {
@@ -93,7 +93,7 @@ gs.OnFunc(func(ctx gs.ConditionContext) (bool, error) {
 
 ## 组合条件读起来像装配规则
 
-Go-Spring 提供了 `And`、`Or`、`Not`、`None`：
+Go-Spring 提供了 `And`、`Or`、`Not`、`None`。
 
 ```go
 gs.Provide(NewService).Condition(gs.And(
@@ -116,7 +116,7 @@ gs.Provide(NewService).Condition(gs.None(
 ))
 ```
 
-组合条件可以嵌套：
+组合条件可以嵌套。
 
 ```go
 gs.And(
@@ -128,11 +128,11 @@ gs.And(
 )
 ```
 
-表达力足够强以后，条件也容易写成难以推理的布尔表达式。更理想的状态是：读条件时能看出装配规则，而不是在里面还原一段业务流程。
+表达力足够强以后，条件也容易写成难以推理的布尔表达式。因此更理想的状态是——读条件时能看出装配规则，而不是在里面还原一段业务流程。
 
 ## OnOnce 用来复用高成本条件
 
-如果条件计算复杂且需要复用，可以使用 `OnOnce` 缓存结果：
+如果条件计算复杂且需要复用，可以使用 `OnOnce` 缓存结果。
 
 ```go
 gs.Provide(NewService).Condition(gs.OnOnce(

@@ -1,8 +1,8 @@
 # Go-Spring 实战第 25 课：日志上下文提取：自动补齐 trace_id、request_id 和用户信息
 
-前面几篇已经把 Go-Spring 的日志事件从业务调用一路讲到了输出管线。现在我们补上一个线上排查时非常关键、但也很容易漏掉的细节：上下文字段。
+前面几篇已经把 Go-Spring 的日志事件从业务调用一路讲到了输出管线。现在我们补上一个线上排查时非常关键、但也很容易漏掉的细节，即上下文字段。
 
-单条日志本身往往不够。一个请求会经过多个服务和组件，产生大量日志。如果每条日志都需要业务代码手动传 `trace_id`、`user_id`、`request_id`，不仅重复，还很容易漏。这类字段更适合从上下文统一提取。
+单条日志本身往往不够。一个请求会经过多个服务和组件，产生大量日志。如果每条日志都需要业务代码手动传 `trace_id`、`user_id`、`request_id`，不仅重复，还很容易漏。所以这类字段更适合从上下文统一提取。
 
 Go-Spring 提供了全局上下文提取钩子，可以从 `context.Context` 中自动提取字段，并注入到每条日志事件中。
 
@@ -21,7 +21,7 @@ Go-Spring 提供了全局上下文提取钩子，可以从 `context.Context` 中
 
 ## FieldsFromContext 输出结构化字段
 
-`FieldsFromContext` 返回结构化字段，是更常用的方式：
+`FieldsFromContext` 返回结构化字段，是更常用的方式。
 
 ```go
 log.FieldsFromContext = func(ctx context.Context) []log.Field {
@@ -44,7 +44,7 @@ log.FieldsFromContext = func(ctx context.Context) []log.Field {
 }
 ```
 
-设置后，业务代码只需要正常传入 `ctx`：
+设置后，业务代码只需要正常传入 `ctx`。
 
 ```go
 log.Info(ctx, TagBizOrder,
@@ -57,7 +57,7 @@ log.Info(ctx, TagBizOrder,
 
 ## OpenTelemetry 会提供 trace 和 span 信息
 
-生产环境里，常见做法是从 OpenTelemetry Context 提取链路信息：
+生产环境里，常见做法是从 OpenTelemetry Context 提取链路信息。
 
 ```go
 log.FieldsFromContext = func(ctx context.Context) []log.Field {
@@ -82,11 +82,11 @@ log.FieldsFromContext = func(ctx context.Context) []log.Field {
 }
 ```
 
-这样日志和分布式追踪就可以通过同一组 ID 串联。
+这样日志和分布式追踪就可以通过同一组 ID 串联。也就是说，查一条请求链路时，不需要在日志和 trace 之间手工猜关联关系。
 
 ## StringFromContext 兼容文本格式
 
-`StringFromContext` 提取一个格式化字符串：
+`StringFromContext` 提取一个格式化字符串。
 
 ```go
 type traceCtxType struct{}
@@ -97,20 +97,20 @@ log.StringFromContext = func(ctx context.Context) string {
 }
 ```
 
-它更适合历史系统或文本格式兼容场景。新代码通常优先使用 `FieldsFromContext`，因为结构化字段保留类型信息。
+它更适合历史系统或文本格式兼容场景。不过，新代码通常优先使用 `FieldsFromContext`，因为结构化字段保留类型信息。
 
 ## 上下文提取保持轻量
 
 上下文提取会在每一次日志输出时执行，所以这条路径越轻越好。复杂操作放进来以后，日志路径本身就可能变成性能负担。
 
-常见做法：
+常见做法如下。
 
 - 在请求入口处一次性把需要的值写入 context。
 - 提取时只做简单类型断言和读取。
 - 高频字段放在前面。
 - 避免创建复杂对象。
 
-需要避开的做法：
+需要避开的做法如下。
 
 - 在钩子中做复杂计算。
 - 在钩子中访问网络或磁盘。
@@ -123,4 +123,4 @@ log.StringFromContext = func(ctx context.Context) string {
 
 上下文提取在每次日志输出时执行，它的价值是减少业务代码重复传字段，而不是把复杂计算塞进日志钩子。全局钩子越简单，对所有日志调用的影响就越可控。
 
-上下文字段补齐以后，日志系统还要回到工程治理：如何用配置驱动 Logger、Appender、Layout，如何接入标准库 `log` 和 Zap。
+上下文字段补齐以后，日志系统还要回到工程治理，即如何用配置驱动 Logger、Appender、Layout，如何接入标准库 `log` 和 Zap。

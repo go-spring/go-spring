@@ -1,18 +1,18 @@
 # Go-Spring 实战第 29 课：测试体系：纯单测、容器测试、断言和 Mock 如何选择
 
-Go-Spring 的配置、IoC、运行时、日志、HTTP 和 Starter 都讲完以后，问题就落到了验证上：这些能力怎样被测试覆盖。
+Go-Spring 的配置、IoC、运行时、日志、HTTP 和 Starter 都讲完以后，问题就落到了验证上，即这些能力怎样被测试覆盖。
 
-Go-Spring 的能力再完整，最后都要落到测试上。Go-Spring 兼容 Go 原生 `go test`，不需要额外测试运行器。它还提供了 IoC 容器测试、断言库和 Mock 支持。
+Go-Spring 的能力再完整，最后都要落到测试上。因为只有测试能持续验证这些装配和运行行为没有退化。Go-Spring 兼容 Go 原生 `go test`，不需要额外测试运行器。它还提供了 IoC 容器测试、断言库和 Mock 支持。
 
-测试层次可以先按成本从低到高看：纯业务逻辑留给纯单测；涉及装配、配置和多个 Bean 协作时，再使用 IoC 测试。
+测试层次可以先按成本从低到高看——纯业务逻辑留给纯单测；涉及装配、配置和多个 Bean 协作时，再使用 IoC 测试。
 
 这一篇先不展开断言库和 Mock 框架的所有 API，而是围绕测试层次和常见入口往下看。
 
-判断顺序可以很直接：业务逻辑用纯单测，装配和配置用 `RunTest`，外部系统和不稳定依赖用 Mock 隔离。
+判断顺序可以很直接，即业务逻辑用纯单测，装配和配置用 `RunTest`，外部系统和不稳定依赖用 Mock 隔离。
 
 ## 纯单测优先验证业务逻辑
 
-纯单测手动构造对象和依赖：
+纯单测手动构造对象和依赖。
 
 ```go
 type UserService struct {
@@ -32,7 +32,7 @@ func (s *UserService) GetUserName(id int) (string, error) {
 }
 ```
 
-对应的单测只需要手动传入替身依赖，然后断言业务方法的返回结果：
+对应的单测只需要手动传入替身依赖，然后断言业务方法的返回结果。
 
 ```go
 func TestUserService_GetUserName(t *testing.T) {
@@ -46,11 +46,11 @@ func TestUserService_GetUserName(t *testing.T) {
 }
 ```
 
-这类测试启动快、定位准，适合验证业务逻辑。能在这一层覆盖的逻辑，通常留在纯单测里，反馈会更快。
+这类测试启动快、定位准，适合验证业务逻辑。所以能在这一层覆盖的逻辑，通常留在纯单测里，反馈会更快。
 
 ## 容器测试验证装配和配置
 
-当测试需要覆盖依赖注入、配置绑定、条件装配或多个 Bean 协作时，可以使用 `gs.RunTest`：
+当测试需要覆盖依赖注入、配置绑定、条件装配或多个 Bean 协作时，可以使用 `gs.RunTest`。
 
 ```go
 func TestOrderFlow(t *testing.T) {
@@ -70,7 +70,7 @@ func TestOrderFlow(t *testing.T) {
 
 ## 测试配置只作用于当前容器
 
-测试前可以通过 `gs.Configure()` 添加配置。下面这段代码把数据库地址和环境名限制在当前测试容器里：
+测试前可以通过 `gs.Configure()` 添加配置。下面这段代码把数据库地址和环境名限制在当前测试容器里。
 
 ```go
 func TestApp(t *testing.T) {
@@ -90,7 +90,7 @@ func TestApp(t *testing.T) {
 
 ## 测试 Bean 用来替换依赖
 
-如果要替换外部依赖，可以只给当前测试容器注册替代 Bean，不污染全局注册表：
+如果要替换外部依赖，可以只给当前测试容器注册替代 Bean，不污染全局注册表。
 
 ```go
 func TestUserService(t *testing.T) {
@@ -110,7 +110,7 @@ func TestUserService(t *testing.T) {
 
 每个 `RunTest` 会复制全局注册信息，`gs.Configure()` 中的 Bean 只作用于当前测试。
 
-但由于全局 `init` 注册信息共享，基于 IoC 容器的测试目前不支持 `t.Parallel()`。
+不过，由于全局 `init` 注册信息共享，基于 IoC 容器的测试目前不支持 `t.Parallel()`。
 
 ## assert 和 require 分工不同
 
@@ -128,7 +128,7 @@ assert.That(t, user.ID).Equal(1)
 assert.That(t, user.Name).Equal("Alice")
 ```
 
-常见入口可以按数据类型选择，下面这些调用分别覆盖普通值、错误、数字、字符串、切片和 map：
+常见入口可以按数据类型选择，下面这些调用分别覆盖普通值、错误、数字、字符串、切片和 map。
 
 ```go
 assert.That(t, value).Equal(expected)
@@ -139,7 +139,7 @@ assert.Slice(t, []int{1, 2, 3}).Length(3)
 assert.Map(t, map[string]int{"a": 1}).ContainsKey("a")
 ```
 
-断言失败时也可以补一段业务语境，方便从测试输出里直接定位原因：
+断言失败时也可以补一段业务语境，方便从测试输出里直接定位原因。
 
 ```go
 assert.That(t, result).Equal(expected, "result should match expected")
@@ -149,19 +149,19 @@ assert.That(t, result).Equal(expected, "result should match expected")
 
 Go-Spring 提供了 `gs-mock`，支持接口 Mock、函数 Mock 和方法 Mock。
 
-接口 Mock 通常通过代码生成创建实现类，避免手写大量样板方法：
+接口 Mock 通常通过代码生成创建实现类，避免手写大量样板方法。
 
 ```go
 //go:generate gs mock -o mock.go
 ```
 
-如果当前包里接口很多，也可以只为指定接口生成 Mock：
+如果当前包里接口很多，也可以只为指定接口生成 Mock。
 
 ```go
 //go:generate gs mock -o mock.go -i "Service,Repository"
 ```
 
-如果返回值需要根据入参动态计算，可以使用 Handle 模式：
+如果返回值需要根据入参动态计算，可以使用 Handle 模式。
 
 ```go
 s.MockDo().Handle(func(n int, s string) (int, error) {
@@ -172,7 +172,7 @@ s.MockDo().Handle(func(n int, s string) (int, error) {
 })
 ```
 
-如果只是匹配固定条件并返回固定结果，When/Return 模式会更简洁：
+如果只是匹配固定条件并返回固定结果，When/Return 模式会更简洁。
 
 ```go
 s.MockFormat().When(func(format string, args []any) bool {
@@ -180,7 +180,7 @@ s.MockFormat().When(func(format string, args []any) bool {
 }).ReturnValue("abc")
 ```
 
-函数和方法 Mock 通过 `context.Context` 传递 Mock Manager。下面的例子把 Mock 规则绑到当前调用链，避免影响其他测试：
+函数和方法 Mock 通过 `context.Context` 传递 Mock Manager。下面的例子把 Mock 规则绑到当前调用链，避免影响其他测试。
 
 ```go
 r := gsmock.NewManager()
@@ -193,7 +193,7 @@ gsmock.Func22(GetUser, r).Handle(func(ctx context.Context, id int) (*User, error
 user, err := GetUser(ctx, 1)
 ```
 
-使用函数或方法 Mock 时，有一个细节容易影响结果：编译器内联可能让拦截失效。测试命令可以加上禁用内联参数：
+使用函数或方法 Mock 时，有一个细节容易影响结果，即编译器内联可能让拦截失效。测试命令可以加上禁用内联参数。
 
 ```bash
 go test -gcflags="all=-N -l" ./...
@@ -205,4 +205,4 @@ Mock 规则通常放在测试逻辑开始前注册，并按从具体到宽泛的
 
 纯业务逻辑优先用纯单测。IoC 测试用来验证装配和配置行为。外部依赖不稳定、成本高或难以复现时，再用 Mock 做隔离。
 
-测试体系收束以后，整个系列就可以回到整体：配置、IoC、运行时、日志、HTTP、Starter 和测试共同组成 Go-Spring 的能力地图。
+测试体系收束以后，整个系列就可以回到整体，即配置、IoC、运行时、日志、HTTP、Starter 和测试共同组成 Go-Spring 的能力地图。

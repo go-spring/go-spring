@@ -1,13 +1,13 @@
 # Go-Spring 实战第 8 课：配置导入、变量引用与动态刷新：启动期和运行期配置怎么处理
 
-Go-Spring 的配置系统走到这里，已经不只是“读取几个文件”了。我们有了统一模型、绑定、校验、来源、优先级和 Profile，最后还要处理两个更高级的场景：启动期如何组合配置，运行期又如何读取最新配置。
+Go-Spring 的配置系统走到这里，已经不只是“读取几个文件”了。我们有了统一模型、绑定、校验、来源、优先级和 Profile，最后还要处理两个更高级的场景，即启动期如何组合配置，运行期又如何读取最新配置。
 
-Go-Spring 的高级配置能力主要集中在两个方向：
+Go-Spring 的高级配置能力主要集中在两个方向。
 
-- 启动期配置编排：导入其他配置、引用变量、组合配置值。
-- 运行期配置刷新：在不重启应用的情况下读取最新配置。
+- 启动期配置编排，用来导入其他配置、引用变量、组合配置值。
+- 运行期配置刷新，用来在不重启应用的情况下读取最新配置。
 
-这两类能力仍然复用同一套 path 和绑定语法。启动期配置和运行期配置因此可以继续沿用同一个模型。
+这两类能力仍然复用同一套 path 和绑定语法。因为底层模型没有换，启动期配置和运行期配置因此可以继续沿用同一个模型。
 
 ## 用 imports 拆分和引入配置
 
@@ -17,7 +17,7 @@ Go-Spring 的高级配置能力主要集中在两个方向：
 spring.app.imports=./dev.properties,http://config-server/app.properties
 ```
 
-可选导入使用 `optional:` 前缀：
+可选导入使用 `optional:` 前缀。
 
 ```properties
 spring.app.imports=optional:./local.overrides
@@ -25,11 +25,11 @@ spring.app.imports=optional:./local.overrides
 
 可选配置不存在时不会报错，适合本地覆盖文件、开发者私有配置或非必需的外部配置。
 
-导入遵循后加载优先原则：基础配置中导入的配置优先级高于基础配置本身；Profile 配置中导入的配置优先级高于对应 Profile 配置本身。
+导入遵循后加载优先原则，即基础配置中导入的配置优先级高于基础配置本身；Profile 配置中导入的配置优先级高于对应 Profile 配置本身。
 
 ## 用变量引用组合配置值
 
-配置值可以引用其他配置项：
+配置值可以引用其他配置项。
 
 ```properties
 server.port=${port}
@@ -39,7 +39,7 @@ app.url=http://${app.host}:${app.port}/api
 redis.password=${REDIS_PASSWORD:=}
 ```
 
-这样一来，就能支持几类常见用途：
+这样一来，就能支持几类常见用途。
 
 - 抽取公共前缀。
 - 组合多个配置项。
@@ -50,7 +50,7 @@ redis.password=${REDIS_PASSWORD:=}
 
 ## 嵌套引用只适合少量组合
 
-Go-Spring 支持嵌套引用：
+Go-Spring 支持嵌套引用。
 
 ```properties
 env=prod
@@ -59,11 +59,11 @@ config.file=config/${env}.properties
 
 Go-Spring 会递归解析依赖，最终得到 `config/prod.properties`。
 
-嵌套引用适合少量组合。如果逻辑继续变复杂，Profile、条件注册或业务代码通常会是更清楚的表达位置。
+嵌套引用适合少量组合。不过，如果逻辑继续变复杂，Profile、条件注册或业务代码通常会是更清楚的表达位置。
 
 ## 动态配置用 Dync 表达运行期值
 
-如果某个配置需要在运行期读取最新值，可以将字段声明为 `gs.Dync[T]`：
+如果某个配置需要在运行期读取最新值，可以将字段声明为 `gs.Dync[T]`。
 
 ```go
 type AppConfig struct {
@@ -75,7 +75,7 @@ type AppConfig struct {
 }
 ```
 
-使用时再调用 `Value()` 读取当前值：
+使用时再调用 `Value()` 读取当前值。
 
 ```go
 func (a *App) handleRequest(w http.ResponseWriter, r *http.Request) {
@@ -88,7 +88,7 @@ func (a *App) handleRequest(w http.ResponseWriter, r *http.Request) {
 
 ## 刷新时只更新动态字段
 
-应用运行后，可以通过 `PropertiesRefresher` 触发刷新：
+应用运行后，可以通过 `PropertiesRefresher` 触发刷新。
 
 ```go
 type ConfigManager struct {
@@ -103,7 +103,7 @@ func (m *ConfigManager) ReloadConfig() error {
 
 动态刷新只影响声明为 `gs.Dync[T]` 的字段。普通配置字段在启动绑定后保持不变，所以刷新不会悄悄改变已有对象的普通字段。
 
-刷新会先预校验所有动态配置，保证原子提交：要么全部更新成功，要么保持旧值不变，不会出现部分字段已经更新、部分字段失败的中间状态。
+刷新会先预校验所有动态配置，保证原子提交，即要么全部更新成功，要么保持旧值不变，不会出现部分字段已经更新、部分字段失败的中间状态。这样做是为了避免运行期配置进入一种“半新半旧”的状态。
 
 ## 动态刷新和资源重建分开看
 
