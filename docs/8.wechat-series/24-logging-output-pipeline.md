@@ -23,6 +23,8 @@ Go-Spring 内置四类 Appender：
 
 ## DiscardAppender 显式丢弃日志
 
+如果某类日志在某个环境下只需要保留路由配置、不需要真正落地，可以显式配置一个丢弃目标：
+
 ```properties
 appender.discard.type = DiscardAppender
 ```
@@ -30,6 +32,8 @@ appender.discard.type = DiscardAppender
 `DiscardAppender` 会静默丢弃所有日志事件，不产生实际输出。它适合临时关闭某类日志、测试路由规则，或者为某些环境保留配置结构但不落地日志。换句话说，它是一个显式的“不要输出”目标。
 
 ## ConsoleAppender 写到标准输出
+
+容器环境通常会采集 stdout，这时可以把 Appender 指向标准输出，并选择一个适合人读的 Layout：
 
 ```properties
 appender.console.type = ConsoleAppender
@@ -39,6 +43,8 @@ appender.console.layout.type = TextLayout
 适合本地开发和容器日志采集。如果是生产高并发场景，应谨慎大量写 stdout。
 
 ## FileAppender 写到单个文件
+
+如果日志量不大，也不需要自动滚动，可以把输出固定到一个文件：
 
 ```properties
 appender.file.type = FileAppender
@@ -50,6 +56,8 @@ appender.file.layout.type = JSONLayout
 它会持续追加到单个文件，不自动滚动和清理。适合低流量服务、测试日志、短生命周期任务和审计归档。
 
 ## RollingFileAppender 处理滚动和清理
+
+长期运行服务更常见的是滚动文件。下面的配置同时指定目录、文件名、滚动间隔、保留时间和输出格式：
 
 ```properties
 appender.rolling.type = RollingFileAppender
@@ -118,14 +126,14 @@ func init() {
 [级别][时间][文件:行号] 标签||上下文字符串||key=value||msg=日志消息
 ```
 
-配置：
+如果使用文本格式，可以通过配置控制文件行号展示长度，避免日志头部过长：
 
 ```properties
 appender.console.layout.type = TextLayout
 appender.console.layout.fileLineMaxLength = 48
 ```
 
-`JSONLayout` 面向机器解析：
+`JSONLayout` 面向机器解析，通常用于日志采集系统：
 
 ```properties
 appender.file.layout.type = JSONLayout
@@ -136,7 +144,7 @@ appender.file.layout.fileLineMaxLength = 48
 
 ## 自定义 Layout 处理特殊格式
 
-需要 CSV、Protobuf 或自定义分隔格式时，可以实现 Layout 并注册插件：
+需要 CSV、Protobuf 或自定义分隔格式时，可以实现 Layout 并注册插件。下面的例子只演示核心方法：从事件里取级别、时间和标签，再写入目标 Writer。
 
 ```go
 type CSVLayout struct {
@@ -157,7 +165,7 @@ func init() {
 }
 ```
 
-配置中直接使用：
+注册后，配置里把 Layout 类型改成插件名即可接入：
 
 ```properties
 logger.console.type = ConsoleLogger

@@ -24,7 +24,7 @@
 | `time.Duration` | 时间时长 | `30s`、`5m`、`1h30m` |
 | `time.Time` | 时间点 | `2006-01-02`、`2006-01-02 15:04:05` |
 
-例如：
+下面这个字段展示了转换器生效的位置：标签仍然只声明配置 key，目标类型 `time.Duration` 决定字符串如何被解析。
 
 ```go
 type Config struct {
@@ -64,7 +64,7 @@ func init() {
 }
 ```
 
-注册后可以直接用于配置绑定：
+注册后，业务配置结构体不需要知道转换细节，只要把字段声明为目标类型：
 
 ```go
 type AppConfig struct {
@@ -78,7 +78,7 @@ type AppConfig struct {
 
 接着看集合类型。这里先别急着把它理解成另一套规则，切片支持两种输入方式。
 
-多行展开格式适合复杂元素：
+如果列表元素未来可能变复杂，可以用 YAML 多行结构表达每个元素：
 
 ```yaml
 apps:
@@ -87,7 +87,7 @@ apps:
   - c
 ```
 
-展开后是：
+进入 `Properties` 后，它会被展开为带下标的路径：
 
 ```properties
 apps[0]=a
@@ -95,7 +95,7 @@ apps[1]=b
 apps[2]=c
 ```
 
-简单字符串列表可以使用逗号分隔：
+如果只是短字符串列表，也可以直接使用逗号分隔，写起来更紧凑：
 
 ```properties
 apps=a,b,c
@@ -107,7 +107,7 @@ apps=a,b,c
 
 ## 命名实例如何映射到 Map
 
-Map 绑定会收集指定 path 下的所有子节点。例如：
+Map 绑定会收集指定 path 下的所有子节点。下面这组 key 把 `master` 和 `slave` 放在路径中间，这一层就会成为 map 的 key：
 
 ```properties
 database.connections.master.host=localhost

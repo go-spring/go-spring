@@ -37,19 +37,19 @@ Go-Spring 内置 HTTP Server 支持：
 | `spring.http.server.idleTimeout` | 空闲连接超时 | `60s` |
 | `spring.http.server.enabled` | 是否启用 | `true` |
 
-修改监听端口：
+如果只是调整监听端口，改 `spring.http.server.addr` 就够了：
 
 ```properties
 spring.http.server.addr=:8080
 ```
 
-关闭内置 Server：
+如果应用已经有外部 HTTP 宿主，可以从配置中关闭内置 Server：
 
 ```properties
 spring.http.server.enabled=false
 ```
 
-或在代码中：
+也可以在启动代码里关闭，适合嵌入到已有进程时显式表达启动模式：
 
 ```go
 func main() {
@@ -102,7 +102,7 @@ func init() {
 
 Gin、gorilla/mux、chi 等框架都实现了 `http.Handler`，因此可以直接作为 `gs.HttpServeMux` 的 Handler。接入方式其实就是把最终路由器交给 Go-Spring 管。
 
-Gin：
+Gin 本身已经是 `http.Handler`，因此只要把最终的 engine 放进 `gs.HttpServeMux`：
 
 ```go
 gs.Provide(func() *gs.HttpServeMux {
@@ -114,7 +114,7 @@ gs.Provide(func() *gs.HttpServeMux {
 })
 ```
 
-gorilla/mux：
+gorilla/mux 也是同样思路：路由器负责匹配规则，Go-Spring 负责生命周期：
 
 ```go
 gs.Provide(func() *gs.HttpServeMux {
@@ -126,7 +126,7 @@ gs.Provide(func() *gs.HttpServeMux {
 })
 ```
 
-chi：
+chi 的接入方式也没有额外包装层，最终仍然交回一个 `http.Handler`：
 
 ```go
 gs.Provide(func() *gs.HttpServeMux {

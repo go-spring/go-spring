@@ -10,7 +10,7 @@ Go-Spring 的 Field 系统参考了 zerolog、zap 等库，采用强类型字段
 
 ## 基础字段要携带明确类型
 
-基础使用：
+基础字段的写法很直接：每个字段函数同时声明字段名和值类型，最后用 `Msg` 放一句人类可读摘要。
 
 ```go
 log.Info(ctx, tag,
@@ -68,7 +68,7 @@ log.Msgf("处理了 %d 条记录，成功 %d，失败 %d", total, success, faile
 
 ## 数组和对象保留结构
 
-数组字段：
+当一个字段天然是列表时，直接使用数组字段函数，日志平台会保留数组结构：
 
 ```go
 log.Ints("item_ids", []int{1, 2, 3})
@@ -77,7 +77,7 @@ log.Bools("flags", []bool{true, false})
 log.Floats("prices", []float64{9.99, 19.99})
 ```
 
-嵌套对象：
+当多个字段共同描述一个业务对象时，用 `Object` 把它们收进同一个结构下：
 
 ```go
 log.Object("order",

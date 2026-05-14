@@ -107,21 +107,21 @@ Go-Spring 会自动读取带 `GS_` 前缀的环境变量，并按规则转换成
 2. 将下划线 `_` 替换为点号 `.`。
 3. 转为小写。
 
-例如：
+下面两个环境变量展示了转换规则：`GS_` 之后的部分会先转成小写，再把下划线变成点号。
 
 ```bash
 export GS_SERVER_PORT=8080
 export GS_DATABASE_DEFAULT_HOST=localhost
 ```
 
-对应配置：
+进入 Go-Spring 配置系统后，它们会变成下面两个配置 key：
 
 ```properties
 server.port=8080
 database.default.host=localhost
 ```
 
-也可以直接绑定任意环境变量：
+如果部署平台已经约定了现成变量名，也可以不走 `GS_` 转换，直接按原始环境变量名绑定：
 
 ```go
 type ServerConfig struct {
@@ -133,13 +133,13 @@ type ServerConfig struct {
 
 ## 命令行参数适合临时覆盖
 
-命令行参数适合临时覆盖配置：
+下面这个启动命令同时覆盖端口、环境和布尔开关，适合发布或排查时临时调整：
 
 ```bash
 ./myapp -Dserver.port=9000 -Denv=prod -Ddebug
 ```
 
-解析结果是：
+进入配置系统后，它会被解析成三个明确的 key：
 
 ```properties
 server.port=9000

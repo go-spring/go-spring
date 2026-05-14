@@ -53,7 +53,7 @@ type AppConfig struct {
 }
 ```
 
-对应配置：
+这时外部配置只需要按照前缀后的相对路径组织，最终会落到 `DatabaseConfig` 的两个字段上：
 
 ```yaml
 database:

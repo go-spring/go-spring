@@ -10,7 +10,7 @@ Go-Spring 的 HTTP Server 展示的是一个内置组件怎样接入生命周期
 
 ## Starter 通过空白导入进入注册表
 
-Starter 通常通过 Go 的 `init()` 注册：
+应用侧通常只需要空白导入 starter 包。这个导入不会直接创建资源，只会触发包内 `init()`，把注册信息放进 Go-Spring 注册表：
 
 ```go
 import _ "github.com/go-spring/starter-gorm-mysql"
@@ -22,7 +22,7 @@ import _ "github.com/go-spring/starter-gorm-mysql"
 
 ## Provide 封装默认单实例
 
-`gs.Provide` 适合提供单个实例：
+`gs.Provide` 适合封装默认单实例。下面的 starter 只有在配置了 `spring.gorm.dsn` 时才创建默认数据库 Bean，并在容器关闭时释放连接：
 
 ```go
 func init() {
@@ -50,7 +50,7 @@ func CloseDB(db *gorm.DB) error {
 
 ## Module 封装配置驱动的动态注册
 
-`gs.Module` 适合注册逻辑需要读取配置后展开的场景：
+`gs.Module` 适合注册逻辑需要读取配置后展开的场景。下面的模块先看总开关，再根据配置选择只读实现或默认实现：
 
 ```go
 func init() {
@@ -71,7 +71,7 @@ func init() {
 
 ## Group 封装多实例配置
 
-`gs.Group` 面向多实例配置，例如多数据库、多 Redis、多客户端：
+`gs.Group` 面向多实例配置，例如多数据库、多 Redis、多客户端。下面这行表示从 `spring.gorm.instances` 字典下为每个条目生成一个数据库 Bean：
 
 ```go
 func init() {

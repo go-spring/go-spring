@@ -63,7 +63,7 @@ func init() {
 }
 ```
 
-注册后可以在标签中使用：
+注册后，字段上的 `expr` 标签就可以像调用内置函数一样调用这些校验函数：
 
 ```go
 type ServerConfig struct {

@@ -17,7 +17,7 @@
 
 `SyncLogger` 在业务 goroutine 中同步完成写入。级别过滤、字段编码和 Appender 写入都在同一调用栈内执行。
 
-配置示例：
+下面这组配置让 `_app_*` 标签走同步 Logger，并同时写入控制台和文件。重点看 `appenderRef`，它决定同步 Logger 会把同一条事件分发到哪些目标。
 
 ```properties
 appender.console.type = ConsoleAppender
@@ -41,7 +41,7 @@ logger.sync.appenderRef[1].ref = file
 
 `AsyncLogger` 将日志产生和实际写入解耦。业务 goroutine 把事件放入缓冲区后返回，后台 goroutine 负责编码和写入。
 
-配置示例：
+下面这组配置让 `_biz_*` 标签走异步 Logger。重点看 `bufferSize` 和 `onBufferFull`，它们决定高峰期日志是在业务 goroutine 中等待，还是被丢弃或替换。
 
 ```properties
 logger.async.type = AsyncLogger

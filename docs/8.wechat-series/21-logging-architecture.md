@@ -77,7 +77,7 @@ Encoder 层负责字段编码，尽量减少反射和中间对象。
 | `_rpc_` | 外部依赖调用 | `_rpc_redis_get` |
 | `_infra_` | 框架与中间件内部 | `_infra_pool_exhausted` |
 
-标签注册：
+标签通常在包初始化阶段注册。下面几个辅助函数会生成带规范前缀的标签，最后一个 `RegisterTag` 留给自定义标签：
 
 ```go
 log.RegisterAppTag("startup", "")      // _app_startup
@@ -99,7 +99,7 @@ log.RegisterTag("_cache_hit")         // 自定义标签
 
 Go-Spring 内置级别包括 `TRACE`、`DEBUG`、`INFO`、`WARN`、`ERROR`、`PANIC`、`FATAL`，并提供 `NONE` 和 `MAX` 作为范围边界。
 
-也可以注册自定义级别：
+如果内置级别不够表达业务语义，也可以注册自定义级别。下面的 `AUDIT` 用于审计事件，并通过 `Record` 显式传入级别：
 
 ```go
 var AuditLevel = log.RegisterLevel(350, "AUDIT")
@@ -115,14 +115,14 @@ log.Record(ctx, AuditLevel, TagBizAudit, 2,
 
 ## 业务代码有格式化和结构化两类入口
 
-格式化日志：
+格式化日志适合简短提示，主要价值是给人快速阅读：
 
 ```go
 log.Infof(ctx, TagAppStartup, "应用启动成功，版本: %s", "v1.0.0")
 log.Warnf(ctx, TagBizUser, "用户 %s 密码错误", "bob")
 ```
 
-结构化日志：
+结构化日志适合线上业务事件，字段会被日志平台索引和聚合：
 
 ```go
 log.Info(ctx, TagBizOrder,

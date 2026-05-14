@@ -32,7 +32,7 @@ func (s *UserService) GetUserName(id int) (string, error) {
 }
 ```
 
-测试：
+对应的单测只需要手动传入替身依赖，然后断言业务方法的返回结果：
 
 ```go
 func TestUserService_GetUserName(t *testing.T) {
@@ -70,7 +70,7 @@ func TestOrderFlow(t *testing.T) {
 
 ## 测试配置只作用于当前容器
 
-测试前可以通过 `gs.Configure()` 添加配置：
+测试前可以通过 `gs.Configure()` 添加配置。下面这段代码把数据库地址和环境名限制在当前测试容器里：
 
 ```go
 func TestApp(t *testing.T) {
@@ -90,7 +90,7 @@ func TestApp(t *testing.T) {
 
 ## 测试 Bean 用来替换依赖
 
-测试可以为当前容器注册替代 Bean：
+如果要替换外部依赖，可以只给当前测试容器注册替代 Bean，不污染全局注册表：
 
 ```go
 func TestUserService(t *testing.T) {
@@ -128,7 +128,7 @@ assert.That(t, user.ID).Equal(1)
 assert.That(t, user.Name).Equal("Alice")
 ```
 
-常见入口包括：
+常见入口可以按数据类型选择，下面这些调用分别覆盖普通值、错误、数字、字符串、切片和 map：
 
 ```go
 assert.That(t, value).Equal(expected)
@@ -139,7 +139,7 @@ assert.Slice(t, []int{1, 2, 3}).Length(3)
 assert.Map(t, map[string]int{"a": 1}).ContainsKey("a")
 ```
 
-也支持自定义错误消息：
+断言失败时也可以补一段业务语境，方便从测试输出里直接定位原因：
 
 ```go
 assert.That(t, result).Equal(expected, "result should match expected")
@@ -149,19 +149,19 @@ assert.That(t, result).Equal(expected, "result should match expected")
 
 Go-Spring 提供 `gs-mock`，支持接口 Mock、函数 Mock 和方法 Mock。
 
-接口 Mock 通过生成代码：
+接口 Mock 通常通过代码生成创建实现类，避免手写大量样板方法：
 
 ```go
 //go:generate gs mock -o mock.go
 ```
 
-只生成部分接口：
+如果当前包里接口很多，也可以只为指定接口生成 Mock：
 
 ```go
 //go:generate gs mock -o mock.go -i "Service,Repository"
 ```
 
-如果需要自定义逻辑，可以使用 Handle 模式：
+如果返回值需要根据入参动态计算，可以使用 Handle 模式：
 
 ```go
 s.MockDo().Handle(func(n int, s string) (int, error) {
@@ -172,7 +172,7 @@ s.MockDo().Handle(func(n int, s string) (int, error) {
 })
 ```
 
-如果只是固定匹配，可以使用 When/Return 模式：
+如果只是匹配固定条件并返回固定结果，When/Return 模式会更简洁：
 
 ```go
 s.MockFormat().When(func(format string, args []any) bool {
@@ -180,7 +180,7 @@ s.MockFormat().When(func(format string, args []any) bool {
 }).ReturnValue("abc")
 ```
 
-函数和方法 Mock 通过 `context.Context` 传递 Mock Manager，用于隔离测试：
+函数和方法 Mock 通过 `context.Context` 传递 Mock Manager。下面的例子把 Mock 规则绑到当前调用链，避免影响其他测试：
 
 ```go
 r := gsmock.NewManager()
@@ -193,7 +193,7 @@ gsmock.Func22(GetUser, r).Handle(func(ctx context.Context, id int) (*User, error
 user, err := GetUser(ctx, 1)
 ```
 
-使用函数或方法 Mock 时，建议禁用内联：
+使用函数或方法 Mock 时，还要避免编译器内联导致拦截失效，测试命令可以加上禁用内联参数：
 
 ```bash
 go test -gcflags="all=-N -l" ./...

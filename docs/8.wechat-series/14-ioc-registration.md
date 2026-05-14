@@ -72,7 +72,7 @@ func init() {
 }
 ```
 
-对应配置：
+配置中每个字典项都会生成一个同类型 Bean，字典 key 会成为 Bean 名称：
 
 ```yaml
 http:

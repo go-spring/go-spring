@@ -111,7 +111,7 @@ type ConsoleLogger struct {
 }
 ```
 
-对应配置：
+配置中只需要声明子插件类型和它自己的属性，插件系统会递归创建 Layout：
 
 ```properties
 logger.console.type = ConsoleLogger
