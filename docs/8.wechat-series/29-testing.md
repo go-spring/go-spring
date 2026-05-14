@@ -6,7 +6,7 @@ Go-Spring 的能力再完整，最后都要落到测试上。Go-Spring 兼容 Go
 
 关键其实是选对测试层次：能纯单测就不要启动容器；如果需要验证装配、配置和多个 Bean 协作，再使用 IoC 测试。
 
-## 纯单元测试
+## 纯单测优先验证业务逻辑
 
 纯单测手动构造对象和依赖：
 
@@ -44,7 +44,7 @@ func TestUserService_GetUserName(t *testing.T) {
 
 这类测试启动快、定位准，适合验证业务逻辑。也就是说呢，我们不应该为了使用 Go-Spring 而启动容器，测试层次越轻，反馈越快。
 
-## 基于 IoC 容器的测试
+## 容器测试验证装配和配置
 
 当测试需要覆盖依赖注入、配置绑定、条件装配或多个 Bean 协作时，可以使用 `gs.RunTest`：
 
@@ -64,7 +64,7 @@ func TestOrderFlow(t *testing.T) {
 
 `RunTest` 会创建测试对象作为 root Bean，启动 Go-Spring 测试容器，完成依赖注入后执行回调，最后关闭容器。这样测试用例只需要关心注入后的对象状态。
 
-## 自定义配置
+## 测试配置只作用于当前容器
 
 测试前可以通过 `gs.Configure()` 添加配置：
 
@@ -84,7 +84,7 @@ func TestApp(t *testing.T) {
 
 这适合把测试环境的差异直接放进当前测试容器，而不是修改全局配置文件。这样测试之间也更容易隔离。
 
-## 替换依赖
+## 测试 Bean 用来替换依赖
 
 测试可以为当前容器注册替代 Bean：
 
@@ -108,7 +108,7 @@ func TestUserService(t *testing.T) {
 
 但由于全局 `init` 注册信息共享，基于 IoC 容器的测试目前不支持 `t.Parallel()`。
 
-## assert 与 require
+## assert 和 require 分工不同
 
 Go-Spring 在 `github.com/go-spring/stdlib/testing` 下提供 `assert` 和 `require`。
 
@@ -141,7 +141,7 @@ assert.Map(t, map[string]int{"a": 1}).ContainsKey("a")
 assert.That(t, result).Equal(expected, "result should match expected")
 ```
 
-## Mock 框架
+## Mock 用于隔离外部依赖
 
 Go-Spring 提供 `gs-mock`，支持接口 Mock、函数 Mock 和方法 Mock。
 
@@ -197,8 +197,10 @@ go test -gcflags="all=-N -l" ./...
 
 Mock 规则应在测试逻辑开始前注册完成，并按从具体到宽泛的顺序排列。否则宽泛规则可能先匹配，导致具体规则没有机会生效。
 
-## 测试要按层次选择
+## 按测试层次控制反馈成本
 
 纯业务逻辑优先纯单测。IoC 测试用于验证装配和配置行为。Mock 用于隔离外部依赖，而不是掩盖设计问题。
 
-最后一篇我们回到整体，看看配置、IoC、运行时、日志、HTTP、Starter 和测试如何组成 Go-Spring 的能力地图。
+## 下一篇预告
+
+最后一篇会回到整体，看看配置、IoC、运行时、日志、HTTP、Starter 和测试如何组成 Go-Spring 的能力地图。

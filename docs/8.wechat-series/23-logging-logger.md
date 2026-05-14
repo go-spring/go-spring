@@ -11,7 +11,7 @@
 
 可以先简单理解为：组合式 Logger 是更灵活的管线，集成式 Logger 是常见场景的快捷封装。
 
-## SyncLogger
+## SyncLogger 适合强确定性写入
 
 `SyncLogger` 在业务 goroutine 中同步完成写入。级别过滤、字段编码和 Appender 写入都在同一调用栈内执行。
 
@@ -35,7 +35,7 @@ logger.sync.appenderRef[1].ref = file
 
 同步写入确定性强，适合启动日志、审计日志、开发调试等场景。但如果高并发业务日志直接同步写文件，就可能阻塞请求路径。
 
-## AsyncLogger
+## AsyncLogger 适合高并发日志路径
 
 `AsyncLogger` 将日志产生和实际写入解耦。业务 goroutine 把事件放入缓冲区后返回，后台 goroutine 负责编码和写入。
 
@@ -60,7 +60,7 @@ logger.async.appenderRef[0].ref = file
 
 生产高并发场景通常优先考虑异步写入，但要接受进程被强杀时缓冲区日志可能丢失的事实。所以我们需要根据日志价值选择缓冲区策略：审计日志更偏向阻塞，调试日志可以接受丢弃。
 
-## ConsoleLogger
+## ConsoleLogger 适合 stdout 场景
 
 `ConsoleLogger` 是面向标准输出的集成式 Logger：
 
@@ -73,7 +73,7 @@ logger.console.layout.type = TextLayout
 
 它适合本地开发、调试和容器 stdout 输出。如果是高并发生产环境，不建议把大量业务日志打到控制台，标准输出可能成为性能瓶颈。
 
-## FileLogger
+## FileLogger 适合单文件低流量写入
 
 `FileLogger` 写入单个本地文件：
 
@@ -88,7 +88,7 @@ logger.file.layout.type = JSONLayout
 
 它适合低流量服务、测试环境、短生命周期任务或定向调试。如果长期运行服务日志量较大，应使用滚动文件。
 
-## RollingFileLogger
+## RollingFileLogger 适合生产长期运行
 
 `RollingFileLogger` 面向生产环境，支持按时间滚动、过期清理、级别分离和内置异步：
 
@@ -113,7 +113,7 @@ logger.file.bufferSize = 50000
 - `separate=true` 可以把 `WARN` 及以上日志单独输出，便于排障。
 - `async=true` 时不需要再额外套一层 `AsyncLogger`。
 
-## 自定义 Logger
+## 自定义 Logger 只扩展差异点
 
 可以通过组合内置 Logger 扩展差异逻辑。例如采样 Logger：
 
@@ -148,8 +148,10 @@ func init() {
 
 自定义 Logger 应尽量复用已有同步、异步和生命周期能力，只在差异点上扩展。这样扩展点更小，也更容易维护。
 
-## Logger 是调度层
+## Logger 只负责调度事件
 
 Logger 负责判断级别、调度事件和组合输出目标。同步、异步、控制台、文件、滚动文件这些差异，最终都服务于同一个目标：让日志事件按规则进入正确的输出路径。
 
-不过，真正写出日志，还要经过 Appender、Layout 和 Encoder。后面我们继续展开完整输出管线。
+## 下一篇预告
+
+下一篇会继续展开完整输出管线：真正写出日志之前，Appender、Layout 和 Encoder 分别承担什么职责。

@@ -6,7 +6,7 @@
 
 这里重点看 Logger 之后的三层：Appender 负责写到哪里，Layout 负责长什么样，Encoder 负责如何高效编码字段。我们先看落地目标。
 
-## Appender
+## Appender 决定写到哪里
 
 Appender 是日志落地执行单元。一个 Logger 可以绑定多个 Appender，实现一条日志多路输出。
 
@@ -19,7 +19,7 @@ Go-Spring 内置四类 Appender：
 | `FileAppender` | 单个本地文件 |
 | `RollingFileAppender` | 按时间滚动的文件序列 |
 
-## DiscardAppender
+## DiscardAppender 显式丢弃日志
 
 ```properties
 appender.discard.type = DiscardAppender
@@ -27,7 +27,7 @@ appender.discard.type = DiscardAppender
 
 `DiscardAppender` 会静默丢弃所有日志事件，不产生实际输出。它适合临时关闭某类日志、测试路由规则，或者为某些环境保留配置结构但不落地日志。换句话说，它是一个显式的“不要输出”目标。
 
-## ConsoleAppender
+## ConsoleAppender 写到标准输出
 
 ```properties
 appender.console.type = ConsoleAppender
@@ -36,7 +36,7 @@ appender.console.layout.type = TextLayout
 
 适合本地开发和容器日志采集。如果是生产高并发场景，应谨慎大量写 stdout。
 
-## FileAppender
+## FileAppender 写到单个文件
 
 ```properties
 appender.file.type = FileAppender
@@ -47,7 +47,7 @@ appender.file.layout.type = JSONLayout
 
 它会持续追加到单个文件，不自动滚动和清理。适合低流量服务、测试日志、短生命周期任务和审计归档。
 
-## RollingFileAppender
+## RollingFileAppender 处理滚动和清理
 
 ```properties
 appender.rolling.type = RollingFileAppender
@@ -61,7 +61,7 @@ appender.rolling.layout.type = JSONLayout
 
 它支持按时间滚动、过期清理和并发安全配置。如果同步 Logger 会被多 goroutine 写入，可以开启 `syncLock=true`；如果配合 AsyncLogger，通常保持 `false`，由异步单 goroutine 保证串行写入。
 
-## 自定义 Appender
+## 自定义 Appender 接入远端目标
 
 自定义 Appender 可以把日志写入 Kafka、HTTP 接口、远程日志服务或实现采样、过滤等策略。
 
@@ -104,7 +104,7 @@ func init() {
 
 自定义 Appender 应该尽量把差异限制在输出策略上。生命周期、并发安全和错误处理这些基础能力，能复用内置实现就不要重新发明。
 
-## Layout
+## Layout 决定输出格式
 
 接着看 Layout。Layout 决定日志事件如何变成最终字节流。它不关心日志来自哪里，也不关心写到哪里。
 
@@ -132,7 +132,7 @@ appender.file.layout.fileLineMaxLength = 48
 
 生产环境通常优先 JSON，这样后续日志采集、索引和聚合都会更方便。
 
-## 自定义 Layout
+## 自定义 Layout 处理特殊格式
 
 需要 CSV、Protobuf 或自定义分隔格式时，可以实现 Layout 并注册插件：
 
@@ -164,7 +164,7 @@ logger.console.level = INFO
 logger.console.layout.type = CSVLayout
 ```
 
-## Encoder
+## Encoder 负责高效编码字段
 
 Encoder 是字段编码层。它的目标是：
 
@@ -174,8 +174,10 @@ Encoder 是字段编码层。它的目标是：
 
 业务代码通常不直接操作 Encoder。只有实现自定义 Layout 时，才需要组合 Encoder。
 
-## 输出管线的价值
+## 输出管线让目标、格式和编码解耦
 
 Appender、Layout、Encoder 分离后，输出目标、输出格式和编码实现可以独立扩展。也就是说，写到哪里、长什么样、怎么编码，不需要绑死在一个实现里。
 
-日志落地之外，还有一个高频问题：链路 ID、请求 ID、用户信息这些上下文字段从哪里来。下一步看日志如何从 `context.Context` 提取字段。
+## 下一篇预告
+
+下一篇会处理日志落地之外的高频问题：链路 ID、请求 ID、用户信息这些上下文字段从哪里来，以及日志如何从 `context.Context` 提取字段。

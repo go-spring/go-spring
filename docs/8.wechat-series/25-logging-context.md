@@ -6,7 +6,7 @@
 
 Go-Spring 通过全局上下文提取钩子，从 `context.Context` 中自动提取字段，并注入到每条日志事件中。
 
-## 常见上下文字段
+## 哪些字段应该从上下文自动带出
 
 | 字段 | 含义 |
 |------|------|
@@ -19,7 +19,7 @@ Go-Spring 通过全局上下文提取钩子，从 `context.Context` 中自动提
 
 这些字段通常在请求入口层写入 context，Go-Spring 日志系统在输出时统一读取。这样把写入和提取分开，业务代码就不必在每个日志调用点重复拼字段。
 
-## FieldsFromContext
+## FieldsFromContext 输出结构化字段
 
 `FieldsFromContext` 返回结构化字段，是推荐方式：
 
@@ -55,7 +55,7 @@ log.Info(ctx, TagBizOrder,
 
 这样一来，最终输出就会自动包含上下文字段。
 
-## 与 OpenTelemetry 集成
+## OpenTelemetry 提供 trace 和 span 信息
 
 生产环境常见做法是从 OpenTelemetry Context 提取链路信息：
 
@@ -84,7 +84,7 @@ log.FieldsFromContext = func(ctx context.Context) []log.Field {
 
 这样日志和分布式追踪就可以通过同一组 ID 串联。
 
-## StringFromContext
+## StringFromContext 兼容文本格式
 
 `StringFromContext` 提取一个格式化字符串：
 
@@ -99,7 +99,7 @@ log.StringFromContext = func(ctx context.Context) string {
 
 它适合历史系统或文本格式兼容。如果是新代码的话，优先使用 `FieldsFromContext`，因为结构化字段保留类型信息。
 
-## 性能注意事项
+## 上下文提取必须轻量
 
 上下文提取会在每一次日志输出时执行，所以必须非常轻量。否则日志路径本身就会变成性能负担。
 
@@ -119,8 +119,10 @@ log.StringFromContext = func(ctx context.Context) string {
 
 上下文提取是观测链路的基础设施，越稳定、越轻量，越适合放到全局路径。
 
-## 上下文提取要足够轻
+## 全局上下文钩子不能承担复杂逻辑
 
 上下文提取在每次日志输出时执行，它的价值是减少业务代码重复传字段，而不是把复杂计算塞进日志钩子。这个边界要守住，否则全局钩子会影响所有日志调用。
 
-Go-Spring 日志系统最后还需要收束到工程治理：如何用配置驱动 Logger、Appender、Layout，如何接入标准库 `log` 和 Zap。
+## 下一篇预告
+
+下一篇会把日志系统收束到工程治理：如何用配置驱动 Logger、Appender、Layout，如何接入标准库 `log` 和 Zap。
