@@ -1,8 +1,8 @@
-# Go-Spring 实战第 16 课：只切配置不切实现，Profile 迟早会出问题
+# Go-Spring 实战第 16 课：Profile 装配边界：配置切换和 Bean 切换如何保持一致
 
-我们在配置篇已经看过 Profile：它决定本次启动应该加载哪些环境配置。到了 IoC 这里，Profile 还有另一层含义：它也可以决定哪些 Bean 参与装配。
+我们在 Go-Spring 配置篇已经看过 Profile：它决定本次启动应该加载哪些环境配置。到了 IoC 这里呢，Profile 还有另一层含义：它也可以决定哪些 Bean 参与装配。
 
-可以这样理解：配置 Profile 决定“读哪些配置”，IoC Profile 条件决定“启用哪些 Bean”。两者应该沿着同一条环境语义设计，否则很容易出现配置已经切换、实现却没有切换，或者实现切换了但配置仍然来自旧环境的情况。
+可以先这样理解：Go-Spring 配置 Profile 决定“读哪些配置”，IoC Profile 条件决定“启用哪些 Bean”。两者应该沿着同一条环境语义设计，否则很容易出现配置已经切换、实现却没有切换，或者实现切换了但配置仍然来自旧环境的情况。
 
 ## 配置 Profile 回顾
 
@@ -42,7 +42,7 @@ func init() {
 
 它本质上基于 `spring.profiles.active` 判断。当前激活的 Profiles 中任意一个匹配时，条件成立。
 
-这样比手写 `OnProperty("spring.profiles.active")` 更直接，也更清楚地表达“这是 Profile 维度的装配条件”。
+这样比手写 `OnProperty("spring.profiles.active")` 会更直接，也更清楚地表达“这是 Profile 维度的装配条件”。
 
 ## 配置和 Bean 应该同维度变化
 
@@ -100,6 +100,6 @@ gs.Provide(NewService).Condition(gs.And(
 
 ## Profile 不该变成业务规则
 
-不要把 Profile 当成业务规则系统。Profile 适合描述部署环境、能力开关和基础设施组合，不适合表达订单状态、用户类型、租户策略这类运行期业务分支。
+这里要特别注意：不要把 Profile 当成业务规则系统。Profile 适合描述部署环境、能力开关和基础设施组合，不适合表达订单状态、用户类型、租户策略这类运行期业务分支。
 
 理解了条件和 Profile，接下来就可以从容器运行阶段看这些注册信息如何被合并、裁剪、注入、运行和销毁。

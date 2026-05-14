@@ -1,10 +1,10 @@
-# Go-Spring 实战第 24 课：日志落地前的三道关：Appender、Layout、Encoder
+# Go-Spring 实战第 24 课：日志输出管线：Appender、Layout、Encoder 各负责什么
 
-Logger 决定一条日志要不要输出、交给哪些目标；但一条日志真正落地之前，还要经过几道工序。
+在 Go-Spring 日志系统里，Logger 决定一条日志要不要输出、交给哪些目标；但一条日志真正落地之前，还要经过几道工序才算结束。
 
 业务代码产生日志事件后，它不是直接写到文件，而是经过 Logger、Appender、Layout、Encoder 这条管线。每一层只处理自己的职责，这样整个输出过程才容易扩展和替换。
 
-这里重点看 Logger 之后的三层：Appender 负责写到哪里，Layout 负责长什么样，Encoder 负责如何高效编码字段。先看落地目标。
+这里重点看 Logger 之后的三层：Appender 负责写到哪里，Layout 负责长什么样，Encoder 负责如何高效编码字段。我们先看落地目标。
 
 ## Appender
 
@@ -106,7 +106,7 @@ func init() {
 
 ## Layout
 
-接着是 Layout。Layout 决定日志事件如何变成最终字节流。它不关心日志来自哪里，也不关心写到哪里。
+接着看 Layout。Layout 决定日志事件如何变成最终字节流。它不关心日志来自哪里，也不关心写到哪里。
 
 内置 Layout 有两种。
 
@@ -130,7 +130,7 @@ appender.file.layout.type = JSONLayout
 appender.file.layout.fileLineMaxLength = 48
 ```
 
-生产环境通常优先 JSON，这样更方便日志采集、索引和聚合。
+生产环境通常优先 JSON，这样后续日志采集、索引和聚合都会更方便。
 
 ## 自定义 Layout
 

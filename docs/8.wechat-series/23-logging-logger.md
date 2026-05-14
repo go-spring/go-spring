@@ -1,6 +1,6 @@
-# Go-Spring 实战第 23 课：同步写还是异步写？Logger 选错会拖慢业务
+# Go-Spring 实战第 23 课：Logger 体系：同步、异步、控制台、文件和滚动文件怎么选
 
-业务代码产生了结构化字段以后，日志事件还没有真正落地。接下来要回答的是：谁决定它要不要输出、输出到哪里、以什么方式输出？
+业务代码在 Go-Spring 日志 API 中产生了结构化字段以后，日志事件还没有真正落地。接下来要回答的问题是：谁决定它要不要输出、输出到哪里、以什么方式输出？
 
 在 Go-Spring 的日志系统里，这个角色就是 Logger。标签路由找到 Logger 后，Logger 负责级别过滤，并把事件分发给一个或多个输出目标。
 
@@ -9,7 +9,7 @@
 - 组合式 Logger：`SyncLogger`、`AsyncLogger`，通过 `appenderRef` 组合输出目标。
 - 集成式 Logger：`ConsoleLogger`、`FileLogger`、`RollingFileLogger`，封装常见输出场景。
 
-可以简单理解为：组合式 Logger 是更灵活的管线，集成式 Logger 是常见场景的快捷封装。
+可以先简单理解为：组合式 Logger 是更灵活的管线，集成式 Logger 是常见场景的快捷封装。
 
 ## SyncLogger
 
@@ -33,7 +33,7 @@ logger.sync.appenderRef[0].ref = console
 logger.sync.appenderRef[1].ref = file
 ```
 
-同步写入确定性强，适合启动日志、审计日志、开发调试等场景。但如果高并发业务日志直接同步写文件，可能阻塞请求路径。
+同步写入确定性强，适合启动日志、审计日志、开发调试等场景。但如果高并发业务日志直接同步写文件，就可能阻塞请求路径。
 
 ## AsyncLogger
 
@@ -152,4 +152,4 @@ func init() {
 
 Logger 负责判断级别、调度事件和组合输出目标。同步、异步、控制台、文件、滚动文件这些差异，最终都服务于同一个目标：让日志事件按规则进入正确的输出路径。
 
-不过，真正写出日志，还要经过 Appender、Layout 和 Encoder。后面继续展开完整输出管线。
+不过，真正写出日志，还要经过 Appender、Layout 和 Encoder。后面我们继续展开完整输出管线。

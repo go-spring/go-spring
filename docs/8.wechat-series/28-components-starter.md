@@ -1,10 +1,10 @@
-# Go-Spring 实战第 28 课：别再复制初始化代码，Starter 才是组件复用的关键
+# Go-Spring 实战第 28 课：Starter 机制：把组件注册、配置和生命周期封装成可复用包
 
-HTTP Server 展示的是一个内置组件怎样接入生命周期。把视角再放大一点，很多基础设施组件也会遇到同样的问题：配置怎样绑定，Bean 怎样注册，条件怎样判断，资源怎样释放。
+Go-Spring 的 HTTP Server 展示的是一个内置组件怎样接入生命周期。把视角再放大一点，很多基础设施组件也会遇到同样的问题：配置怎样绑定，Bean 怎样注册，条件怎样判断，资源怎样释放。
 
-如果一个组件要被多个项目反复集成，直接复制注册代码很快就会失控。
+如果一个组件要被多个项目反复集成，那直接复制注册代码很快就会失控。
 
-Starter 是 Go-Spring 推荐的组件模块化方式。它把一组 Bean 注册、配置绑定、启用条件和生命周期管理封装到独立包中，让应用通过一次导入获得完整组件能力。
+这时候，Starter 就是 Go-Spring 推荐的组件模块化方式。它把一组 Bean 注册、配置绑定、启用条件和生命周期管理封装到独立包中，让应用通过一次导入获得完整组件能力。
 
 对于应用来说，Starter 降低集成成本；对于组件作者来说，Starter 提供可复用的封装约定。换句话说，它把“怎么接入”这件事从业务项目里拿出去。
 
@@ -18,7 +18,7 @@ import _ "github.com/go-spring/starter-gorm-mysql"
 
 空白导入触发包内注册逻辑。只要 starter 包被导入，Go-Spring 就能在启动时发现它注册的 Bean、Module 或 Group。
 
-导入 Starter 不等于立即创建实例。容器仍然按需创建：只有满足条件、进入依赖图的 Bean 才会实例化。所以空白导入只是让注册信息进入系统，并不等于资源马上被打开。
+这里要注意，导入 Starter 不等于立即创建实例。容器仍然按需创建：只有满足条件、进入依赖图的 Bean 才会实例化。所以空白导入只是让注册信息进入系统，并不等于资源马上被打开。
 
 ## Provide：注册单个 Bean
 
@@ -46,7 +46,7 @@ func CloseDB(db *gorm.DB) error {
 }
 ```
 
-这里同时体现了配置绑定、条件启用、Bean 命名和生命周期释放。这样我们把组件集成所需的动作放在 Starter 内部，应用侧只需要提供配置。
+这里同时体现了 Go-Spring 的配置绑定、条件启用、Bean 命名和生命周期释放。这样我们把组件集成所需的动作放在 Starter 内部，应用侧只需要提供配置。
 
 ## Module：按条件动态注册
 
@@ -91,7 +91,7 @@ spring:
         dsn: "root:123456@tcp(localhost:3306)/gorm?charset=utf8mb4&parseTime=True&loc=Local"
 ```
 
-接着，字典 key 作为 Bean 名称，value 作为实例配置。
+接着，字典 key 就会作为 Bean 名称，value 作为实例配置。
 
 ## 自定义 Starter 约定
 
@@ -131,6 +131,6 @@ Go-Spring 提供常见基础设施 Starter：
 
 ## Starter 是封装，不是新机制
 
-Starter 本质上仍然使用 Bean 注册 API。它不是另一套机制，而是把 Provide、Module、Group、条件注册、配置绑定和生命周期封装成可复用包。
+Starter 本质上仍然使用 Go-Spring 的 Bean 注册 API。它不是另一套机制，而是把 Provide、Module、Group、条件注册、配置绑定和生命周期封装成可复用包。
 
 组件能封装，也要能验证。接下来进入测试体系，看看 Go-Spring 项目如何组织纯单测、IoC 测试、断言和 Mock。

@@ -1,10 +1,10 @@
-# Go-Spring 实战第 27 课：HTTP 服务别单飞，把 Server 纳入启动和优雅关闭
+# Go-Spring 实战第 27 课：HTTP Server 接入：把 net/http 纳入启动、就绪和优雅关闭
 
-日志系统解决了应用运行中的观测问题。接下来我们回到服务入口：一个 Go-Spring 应用如果要直接暴露 HTTP 接口，HTTP Server 怎样接入这套生命周期。
+Go-Spring 日志系统解决了应用运行中的观测问题。接下来我们回到服务入口：一个 Go-Spring 应用如果要直接暴露 HTTP 接口，HTTP Server 该怎样接入这套生命周期。
 
 很多 Go 项目会从标准库 HTTP Server 起步。Go-Spring 没有绕开这套生态，而是在 `net/http` 之上提供默认接入和生命周期管理。
 
-也就是说，内置 HTTP Server 用于在应用中直接暴露 HTTP 接口，默认随应用启动，并纳入统一启动、就绪和关闭流程。下面从配置、路由接入、第三方路由集成和生命周期几块看它的定位。
+也就是说，内置 HTTP Server 用于在应用中直接暴露 HTTP 接口，默认随应用启动，也会纳入统一启动、就绪和关闭流程。下面从配置、路由接入、第三方路由集成和生命周期几块看它的定位。
 
 ## 快速开始
 
@@ -22,11 +22,11 @@ func main() {
 
 应用启动后访问 `http://localhost:9090/hello` 即可看到响应。
 
-默认情况下，Go-Spring 会使用 `http.DefaultServeMux` 作为路由入口。这样最简单的 HTTP 服务不需要额外注册路由器。
+默认情况下，Go-Spring 会使用 `http.DefaultServeMux` 作为路由入口。这样一来，最简单的 HTTP 服务不需要额外注册路由器。
 
 ## 配置项
 
-内置 HTTP Server 支持：
+Go-Spring 内置 HTTP Server 支持：
 
 | 配置项 | 说明 | 默认值 |
 |--------|------|--------|
@@ -69,7 +69,7 @@ type HttpServeMux struct {
 }
 ```
 
-如果容器中存在自定义 `*gs.HttpServeMux`，内置 HTTP Server 会使用它替换默认路由器。
+如果 Go-Spring 容器中存在自定义 `*gs.HttpServeMux`，内置 HTTP Server 会使用它替换默认路由器。
 
 ```go
 type UserController struct{}
@@ -138,11 +138,11 @@ gs.Provide(func() *gs.HttpServeMux {
 })
 ```
 
-第三方框架负责自己的路由、中间件和参数解析；Go-Spring 只负责把最终 `http.Handler` 纳入应用生命周期。这样两边职责不会混在一起。
+第三方框架负责自己的路由、中间件和参数解析；Go-Spring 只负责把最终 `http.Handler` 纳入应用生命周期。这样两边职责就不会混在一起。
 
 ## 生命周期
 
-内置 HTTP Server 由 `gs.SimpleHttpServer` 实现，并实现 `gs.Server` 接口。
+Go-Spring 内置 HTTP Server 由 `gs.SimpleHttpServer` 实现，并实现 `gs.Server` 接口。
 
 启动时，它先监听端口，尽早发现端口占用等错误；监听成功后触发 Ready 信号，并等待其他 Server 也就绪；最后开始接受请求。
 
@@ -154,4 +154,4 @@ gs.Provide(func() *gs.HttpServeMux {
 
 Go-Spring 的内置 HTTP Server 负责把标准库 `http.Handler` 接入统一生命周期。路由、中间件和参数解析可以继续由标准库或第三方框架处理，Go-Spring 关心的是配置、启动、就绪和优雅关闭。
 
-HTTP Server 只是组件接入的一种形态。接下来继续看组件封装和 Starter 机制。
+Go-Spring HTTP Server 只是组件接入的一种形态。接下来继续看组件封装和 Starter 机制。
