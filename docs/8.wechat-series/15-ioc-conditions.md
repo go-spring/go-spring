@@ -75,9 +75,9 @@ gs.OnBean[*DataSource]("master")
 - `OnBean[T]()`：至少存在一个匹配 Bean。
 - `OnMissingBean[T]()`：不存在匹配 Bean。
 - `OnSingleBean[T]()`：恰好存在一个匹配 Bean。
-- 可选名称参数用于同时按类型和名称匹配。
+- 可选名称参数用来同时按类型和名称匹配。
 
-这类条件常用于 Starter：如果应用已经提供自定义实现，Starter 就不再注册默认实现。这样组件包可以提供默认能力，同时给应用保留覆盖空间。
+这类条件常见于 Starter 场景：如果应用已经提供自定义实现，Starter 就不再注册默认实现。这样组件包可以提供默认能力，同时给应用保留覆盖空间。
 
 ## OnFunc 接入少量自定义判断
 
@@ -93,7 +93,7 @@ gs.OnFunc(func(ctx gs.ConditionContext) (bool, error) {
 
 ## 组合条件要保持可读
 
-Go-Spring 提供 `And`、`Or`、`Not`、`None`：
+Go-Spring 提供了 `And`、`Or`、`Not`、`None`：
 
 ```go
 gs.Provide(NewService).Condition(gs.And(
@@ -130,7 +130,7 @@ gs.And(
 
 表达力足够强，但工程上应避免让条件变成难以推理的布尔表达式。也就是说，我们希望条件读起来像装配规则，而不是一段隐藏的业务流程。
 
-## OnOnce 用于复用高成本条件
+## OnOnce 用来复用高成本条件
 
 如果条件计算复杂且需要复用，可以使用 `OnOnce` 缓存结果：
 

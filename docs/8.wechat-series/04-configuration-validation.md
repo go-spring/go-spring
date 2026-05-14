@@ -8,7 +8,7 @@
 
 ## 用表达式描述字段合法性
 
-Go-Spring 基于 `expr-lang/expr` 提供表达式校验。使用方式是在字段上添加 `expr` 标签，表达式中的 `$` 表示当前字段值。
+Go-Spring 基于 `expr-lang/expr` 提供了表达式校验。用法是在字段上添加 `expr` 标签，表达式中的 `$` 表示当前字段值。
 
 ```go
 type ServerConfig struct {

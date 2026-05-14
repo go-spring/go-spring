@@ -2,7 +2,7 @@
 
 上一篇我们把 Go-Spring 中不同来源、不同格式的配置统一到了 `Properties` 和 path 空间里。模型统一以后，下一个问题就很现实了：这些配置怎样进入 Go 代码。
 
-也就是说，配置只有绑定到结构体、函数参数或模块注册逻辑里，才算真正开始影响应用行为。Go-Spring 提供两种主要绑定方式：
+也就是说，配置只有绑定到结构体、函数参数或模块注册逻辑里，才算真正开始影响应用行为。Go-Spring 提供了两种主要绑定方式：
 
 - 结构体标签绑定，适合绝大多数业务代码。
 - 手动 `Bind` 函数绑定，适合模块化注册、批量创建 Bean 等更底层的场景。
@@ -32,7 +32,7 @@ type App struct {
 - `:=defaultValue` 是可选默认值。
 - 如果没有默认值且配置不存在，该字段就是必填字段，绑定阶段会失败。
 
-上面的 `App.Config` 使用 `${server}` 作为前缀，因此 `ServerConfig.Port` 对应的是 `server.port`，`ServerConfig.Timeout` 对应的是 `server.timeout`。
+上面的 `App.Config` 使用 `${server}` 作为前缀，所以 `ServerConfig.Port` 对应的是 `server.port`，`ServerConfig.Timeout` 对应的是 `server.timeout`。
 
 如果写成 `${:=default}`，表示 key 为空，不从配置中查找值，而是直接使用默认值。这样一来，我们仍然保留了统一的标签写法，只是这一次不依赖外部配置。这种写法适合需要保留标签形式、但当前值固定的场景。
 
@@ -40,7 +40,7 @@ type App struct {
 
 结构体绑定不是把字段名简单拼接到配置 key 上，而是以 `value` 标签作为显式声明。这样做有两个好处：字段名调整不会轻易破坏配置协议，默认值和必填语义也能直接写在字段旁边。
 
-如果目标字段本身还是结构体，并且没有内置转换器，Go-Spring 会继续递归绑定字段。因此，我们可以自然表达嵌套配置：
+如果目标字段本身还是结构体，并且没有内置转换器，Go-Spring 会继续递归绑定字段。所以，我们可以自然表达嵌套配置：
 
 ```go
 type DatabaseConfig struct {
@@ -53,7 +53,7 @@ type AppConfig struct {
 }
 ```
 
-这时外部配置只需要按照前缀后的相对路径组织，最终会落到 `DatabaseConfig` 的两个字段上：
+这时候外部配置只需要按照前缀后的相对路径组织，最终会落到 `DatabaseConfig` 的两个字段上：
 
 ```yaml
 database:
@@ -86,7 +86,7 @@ func init() {
 func Bind(storage flatten.Storage, target any, tag ...string) error
 ```
 
-参数含义：
+这几个参数分别是：
 
 - `storage`：已经加载完成的配置存储。
 - `target`：绑定目标，必须传指针。

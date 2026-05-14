@@ -49,7 +49,7 @@ conf/
 
 这种方式鼓励我们只在 Profile 文件中写差异配置。这样基础配置越稳定，Profile 文件就越容易阅读。
 
-## 配置目录也应在启动前确定
+## 配置目录也要在启动前确定
 
 默认配置目录是 `./conf`。可以通过 `spring.app.config.dir` 修改：
 
@@ -75,7 +75,7 @@ spring.profiles.active=dev,metrics
 
 如果 `dev` 和 `metrics` 都定义了同一个 key，则 `metrics` 覆盖 `dev`。
 
-这个规则适合表达叠加配置：先选择环境，再叠加功能开关。例如 `prod,metrics` 表示生产环境，同时启用指标相关配置。
+这条规则适合表达叠加配置：先选择环境，再叠加功能开关。例如 `prod,metrics` 表示生产环境，同时启用指标相关配置。
 
 比如基础配置里放通用端口：
 

@@ -32,7 +32,7 @@ conf/
 
 ## 用 OnProfiles 表达 Bean 的环境条件
 
-对于按环境启用 Bean 的场景，Go-Spring 提供 `.OnProfiles()`：
+对于按环境启用 Bean 的场景，Go-Spring 提供了 `.OnProfiles()`：
 
 ```go
 func init() {
@@ -92,7 +92,7 @@ func init() {
 spring.profiles.active=prod,metrics
 ```
 
-这里 `prod` 表示环境，`metrics` 表示功能。对应的 Bean 条件也应保持正交：
+这里 `prod` 表示环境，`metrics` 表示功能。对应的 Bean 条件也要保持正交：
 
 ```go
 gs.Provide(NewProdDataSource).OnProfiles("prod")
@@ -112,7 +112,7 @@ gs.Provide(NewService).Condition(gs.And(
 ))
 ```
 
-所以建议把 Profile 用于环境和功能维度，把普通条件用于配置开关、依赖存在性和默认实现选择。
+所以建议把 Profile 用在环境和功能维度上，把普通条件用在配置开关、依赖存在性和默认实现选择上。
 
 ## Profile 不该承载业务规则
 

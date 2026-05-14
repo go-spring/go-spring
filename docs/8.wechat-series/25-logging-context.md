@@ -1,10 +1,10 @@
 # Go-Spring 实战第 25 课：日志上下文提取：自动补齐 trace_id、request_id 和用户信息
 
-前面几篇已经把 Go-Spring 的日志事件从业务调用一路讲到输出管线。现在我们补上一个线上排查时非常关键、但也很容易漏掉的细节：上下文字段。
+前面几篇已经把 Go-Spring 的日志事件从业务调用一路讲到了输出管线。现在我们补上一个线上排查时非常关键、但也很容易漏掉的细节：上下文字段。
 
-单条日志本身往往不够。一个请求会经过多个服务和组件，产生大量日志。如果每条日志都需要业务代码手动传 `trace_id`、`user_id`、`request_id`，不仅重复，也很容易遗漏。所以这类字段更适合从上下文统一提取。
+单条日志本身往往不够。一个请求会经过多个服务和组件，产生大量日志。如果每条日志都需要业务代码手动传 `trace_id`、`user_id`、`request_id`，不仅重复，还很容易漏。所以这类字段最好从上下文统一提取。
 
-Go-Spring 通过全局上下文提取钩子，从 `context.Context` 中自动提取字段，并注入到每条日志事件中。
+Go-Spring 提供了全局上下文提取钩子，可以从 `context.Context` 中自动提取字段，并注入到每条日志事件中。
 
 ## 哪些字段应该从上下文自动带出
 
@@ -55,9 +55,9 @@ log.Info(ctx, TagBizOrder,
 
 这样一来，最终输出就会自动包含上下文字段。
 
-## OpenTelemetry 提供 trace 和 span 信息
+## OpenTelemetry 会提供 trace 和 span 信息
 
-生产环境常见做法是从 OpenTelemetry Context 提取链路信息：
+生产环境里，常见做法是从 OpenTelemetry Context 提取链路信息：
 
 ```go
 log.FieldsFromContext = func(ctx context.Context) []log.Field {
@@ -97,11 +97,11 @@ log.StringFromContext = func(ctx context.Context) string {
 }
 ```
 
-它适合历史系统或文本格式兼容。如果是新代码的话，优先使用 `FieldsFromContext`，因为结构化字段保留类型信息。
+它更适合历史系统或文本格式兼容场景。如果是新代码的话，优先使用 `FieldsFromContext`，因为结构化字段保留类型信息。
 
 ## 上下文提取必须轻量
 
-上下文提取会在每一次日志输出时执行，所以必须非常轻量。否则日志路径本身就会变成性能负担。
+上下文提取会在每一次日志输出时执行，所以一定要很轻。否则日志路径本身就会变成性能负担。
 
 建议：
 

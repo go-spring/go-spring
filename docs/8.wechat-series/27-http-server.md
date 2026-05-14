@@ -2,9 +2,9 @@
 
 Go-Spring 日志系统解决了应用运行中的观测问题。接下来我们回到服务入口：一个 Go-Spring 应用如果要直接暴露 HTTP 接口，HTTP Server 该怎样接入这套生命周期。
 
-很多 Go 项目会从标准库 HTTP Server 起步。Go-Spring 没有绕开这套生态，而是在 `net/http` 之上提供默认接入和生命周期管理。
+很多 Go 项目会从标准库 HTTP Server 起步。Go-Spring 没有绕开这套生态，而是在 `net/http` 之上提供了默认接入和生命周期管理。
 
-也就是说，内置 HTTP Server 用于在应用中直接暴露 HTTP 接口，默认随应用启动，也会纳入统一启动、就绪和关闭流程。下面从配置、路由接入、第三方路由集成和生命周期几块看它的定位。
+也就是说，内置 HTTP Server 用来在应用中直接暴露 HTTP 接口，默认随应用启动，也会纳入统一启动、就绪和关闭流程。下面从配置、路由接入、第三方路由集成和生命周期几块看它的定位。
 
 ## 最小 HTTP 服务直接使用默认路由
 
@@ -100,9 +100,9 @@ func init() {
 
 ## 第三方路由器作为 http.Handler 接入
 
-Gin、gorilla/mux、chi 等框架都实现了 `http.Handler`，因此可以直接作为 `gs.HttpServeMux` 的 Handler。接入方式其实就是把最终路由器交给 Go-Spring 管。
+Gin、gorilla/mux、chi 等框架都实现了 `http.Handler`，所以可以直接作为 `gs.HttpServeMux` 的 Handler。接入方式其实就是把最终路由器交给 Go-Spring 管。
 
-Gin 本身已经是 `http.Handler`，因此只要把最终的 engine 放进 `gs.HttpServeMux`：
+Gin 本身已经是 `http.Handler`，所以只要把最终的 engine 放进 `gs.HttpServeMux`：
 
 ```go
 gs.Provide(func() *gs.HttpServeMux {

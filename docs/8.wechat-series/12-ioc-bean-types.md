@@ -66,7 +66,7 @@ func NewMyService(dep Dep) (*MyService, error) {
 
 ## Arg 用来补充参数绑定信息
 
-Go 不能给函数参数写 tag，因此 Go-Spring 通过注册阶段的 `Arg` 对参数进行绑定。接下来几个 `Arg`，不妨理解成给构造函数参数补充声明信息。
+Go 不能给函数参数写 tag，所以 Go-Spring 会在注册阶段通过 `Arg` 对参数进行绑定。接下来几个 `Arg`，不妨理解成给构造函数参数补充声明信息。
 
 常用 `Arg` 包括：
 
@@ -158,7 +158,7 @@ func init() {
 
 ## BindArg：接入 Functional Options
 
-`BindArg` 用于 Functional Options 模式：
+`BindArg` 用来接入 Functional Options 模式：
 
 ```go
 type Option func(*Server)

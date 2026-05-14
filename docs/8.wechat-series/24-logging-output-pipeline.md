@@ -33,7 +33,7 @@ appender.discard.type = DiscardAppender
 
 ## ConsoleAppender 写到标准输出
 
-容器环境通常会采集 stdout，这时可以把 Appender 指向标准输出，并选择一个适合人读的 Layout：
+容器环境通常会采集 stdout，这时候可以把 Appender 指向标准输出，并选择一个适合人读的 Layout：
 
 ```properties
 appender.console.type = ConsoleAppender
@@ -133,7 +133,7 @@ appender.console.layout.type = TextLayout
 appender.console.layout.fileLineMaxLength = 48
 ```
 
-`JSONLayout` 面向机器解析，通常用于日志采集系统：
+`JSONLayout` 面向机器解析，通常会用在日志采集系统里：
 
 ```properties
 appender.file.layout.type = JSONLayout

@@ -2,7 +2,7 @@
 
 Go-Spring 的配置、IoC、运行时、日志、HTTP 和 Starter 都讲完以后，我们还要回到一个更朴素、也更实际的问题：这些能力怎样被验证。
 
-Go-Spring 的能力再完整，最后都要落到测试上。Go-Spring 兼容 Go 原生 `go test`，不需要额外测试运行器。它同时提供 IoC 容器测试、断言库和 Mock 支持。
+Go-Spring 的能力再完整，最后都要落到测试上。Go-Spring 兼容 Go 原生 `go test`，不需要额外测试运行器。它还提供了 IoC 容器测试、断言库和 Mock 支持。
 
 关键其实是选对测试层次：能纯单测就不要启动容器；如果需要验证装配、配置和多个 Bean 协作，再使用 IoC 测试。
 
@@ -114,7 +114,7 @@ func TestUserService(t *testing.T) {
 
 ## assert 和 require 分工不同
 
-Go-Spring 在 `github.com/go-spring/stdlib/testing` 下提供 `assert` 和 `require`。
+Go-Spring 在 `github.com/go-spring/stdlib/testing` 下提供了 `assert` 和 `require`。
 
 `assert` 失败后继续执行，适合收集多个断言结果。
 
@@ -145,9 +145,9 @@ assert.Map(t, map[string]int{"a": 1}).ContainsKey("a")
 assert.That(t, result).Equal(expected, "result should match expected")
 ```
 
-## Mock 用于隔离外部依赖
+## Mock 用来隔离外部依赖
 
-Go-Spring 提供 `gs-mock`，支持接口 Mock、函数 Mock 和方法 Mock。
+Go-Spring 提供了 `gs-mock`，支持接口 Mock、函数 Mock 和方法 Mock。
 
 接口 Mock 通常通过代码生成创建实现类，避免手写大量样板方法：
 
@@ -199,10 +199,10 @@ user, err := GetUser(ctx, 1)
 go test -gcflags="all=-N -l" ./...
 ```
 
-Mock 规则应在测试逻辑开始前注册完成，并按从具体到宽泛的顺序排列。否则宽泛规则可能先匹配，导致具体规则没有机会生效。
+Mock 规则要在测试逻辑开始前注册完成，并按从具体到宽泛的顺序排列。否则宽泛规则可能先匹配，导致具体规则没有机会生效。
 
 ## 按测试层次控制反馈成本
 
-纯业务逻辑优先纯单测。IoC 测试用于验证装配和配置行为。Mock 用于隔离外部依赖，而不是掩盖设计问题。
+纯业务逻辑优先纯单测。IoC 测试用来验证装配和配置行为。Mock 用来隔离外部依赖，而不是掩盖设计问题。
 
 测试体系收束以后，整个系列就可以回到整体：配置、IoC、运行时、日志、HTTP、Starter 和测试共同组成 Go-Spring 的能力地图。
