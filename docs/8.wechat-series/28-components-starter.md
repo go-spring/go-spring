@@ -8,7 +8,7 @@ Go-Spring 的 HTTP Server 展示的是一个内置组件怎样接入生命周期
 
 对于应用来说，Starter 降低集成成本；对于组件作者来说，Starter 提供了一套可复用的封装约定。组件怎么接入这件事，就从业务项目里移到了组件包里。
 
-## Starter 通过空白导入进入注册表
+## 空白导入只把 Starter 放进注册表
 
 应用侧通常只需要空白导入 starter 包。这个导入不会直接创建资源，只会触发包内 `init()`，把注册信息放进 Go-Spring 注册表。
 
@@ -20,7 +20,7 @@ import _ "github.com/go-spring/starter-gorm-mysql"
 
 导入 Starter 不等于立即创建实例。容器仍然按需创建，即只有满足条件、进入依赖图的 Bean 才会实例化。所以空白导入只是让注册信息进入系统，并不等于资源马上被打开。
 
-## Provide 封装默认单实例
+## Provide 适合封装默认单实例
 
 `gs.Provide` 适合封装默认单实例。下面的 starter 只有在配置了 `spring.gorm.dsn` 时才创建默认数据库 Bean，并在容器关闭时释放连接。
 
@@ -48,7 +48,7 @@ func CloseDB(db *gorm.DB) error {
 
 这里同时体现了 Go-Spring 的配置绑定、条件启用、Bean 命名和生命周期释放。这样我们把组件集成所需的动作放在 Starter 内部，应用侧只需要提供配置。
 
-## Module 封装配置驱动的动态注册
+## Module 适合封装配置驱动的动态注册
 
 `gs.Module` 适合注册逻辑需要读取配置后展开的场景。下面的模块先看总开关，再根据配置选择只读实现或默认实现。
 
@@ -69,7 +69,7 @@ func init() {
 
 如果 Starter 需要按配置切换实现、注册一组相关 Bean 或进行较复杂条件判断，Module 比 Provide 更合适。
 
-## Group 封装多实例配置
+## Group 适合封装多实例配置
 
 `gs.Group` 面向多实例配置，例如多数据库、多 Redis、多客户端。下面这行表示从 `spring.gorm.instances` 字典下为每个条目生成一个数据库 Bean。
 
@@ -93,7 +93,7 @@ spring:
 
 接着，字典 key 就会作为 Bean 名称，value 作为实例配置。
 
-## Starter 统一命名和配置约定
+## Starter 要统一命名和配置约定
 
 官方 Starter 通常用“默认单实例 + 可选多实例”的模式。
 
@@ -117,7 +117,7 @@ func init() {
 
 这些约定能让不同 Starter 在应用侧有一致使用体验。反过来，如果每个 Starter 都有自己的命名和配置习惯，集成成本会重新变高。
 
-## 官方 Starter 提供了基础设施集成
+## 官方 Starter 覆盖常见基础设施
 
 Go-Spring 提供了常见基础设施 Starter。
 
@@ -129,7 +129,7 @@ Go-Spring 提供了常见基础设施 Starter。
 | 内置 HTTP Server | 默认 Web 服务接入 |
 | `starter-pprof` | pprof 性能分析服务 |
 
-## Starter 只是注册能力的封装
+## Starter 本质上还是注册能力的封装
 
 Starter 本质上仍然使用 Go-Spring 的 Bean 注册 API。它不是另一套机制，而是把 Provide、Module、Group、条件注册、配置绑定和生命周期封装成可复用包。
 

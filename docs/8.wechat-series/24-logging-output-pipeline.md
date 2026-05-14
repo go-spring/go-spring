@@ -8,7 +8,7 @@
 
 这一篇围绕三个问题展开，即日志写到哪里，输出给人看还是给机器解析，字段编码能不能少做无效工作。
 
-## Appender 决定写到哪里
+## Appender 决定日志写到哪里
 
 Appender 是日志落地执行单元。一个 Logger 可以绑定多个 Appender，实现一条日志多路输出。
 
@@ -21,7 +21,7 @@ Go-Spring 内置四类 Appender。
 | `FileAppender` | 单个本地文件 |
 | `RollingFileAppender` | 按时间滚动的文件序列 |
 
-## DiscardAppender 显式丢弃日志
+## DiscardAppender 用来显式丢弃日志
 
 如果某类日志在某个环境下只需要保留路由配置、不需要真正落地，可以显式配置一个丢弃目标。
 
@@ -31,7 +31,7 @@ appender.discard.type = DiscardAppender
 
 `DiscardAppender` 会静默丢弃所有日志事件，不产生实际输出。它适合临时关闭某类日志、测试路由规则，或者为某些环境保留配置结构但不落地日志。配置上显式写出这个目标，比让日志路径隐式缺失更清楚。
 
-## ConsoleAppender 写到标准输出
+## ConsoleAppender 写向标准输出
 
 容器环境通常会采集 stdout，这时候可以把 Appender 指向标准输出，并选择一个适合人读的 Layout。
 
@@ -42,7 +42,7 @@ appender.console.layout.type = TextLayout
 
 它适合本地开发和容器日志采集。生产高并发场景下，大量写 stdout 可能成为瓶颈。
 
-## FileAppender 写到单个文件
+## FileAppender 写向单个文件
 
 如果日志量不大，也不需要自动滚动，可以把输出固定到一个文件。
 
@@ -55,7 +55,7 @@ appender.file.layout.type = JSONLayout
 
 它会持续追加到单个文件，不自动滚动和清理。适合低流量服务、测试日志、短生命周期任务和审计归档。
 
-## RollingFileAppender 处理滚动和清理
+## RollingFileAppender 管文件滚动和清理
 
 长期运行服务更常见的是滚动文件。下面的配置同时指定目录、文件名、滚动间隔、保留时间和输出格式。
 
@@ -71,7 +71,7 @@ appender.rolling.layout.type = JSONLayout
 
 它支持按时间滚动、过期清理和并发安全配置。如果同步 Logger 会被多 goroutine 写入，可以开启 `syncLock=true`；如果配合 AsyncLogger，通常保持 `false`，由异步单 goroutine 保证串行写入。也就是说，并发安全策略要跟上游 Logger 的写入方式一起看。
 
-## 自定义 Appender 接入远端目标
+## 自定义 Appender 接入远端输出目标
 
 自定义 Appender 可以把日志写入 Kafka、HTTP 接口、远程日志服务或实现采样、过滤等策略。
 
@@ -114,7 +114,7 @@ func init() {
 
 自定义 Appender 通常只扩展输出策略。生命周期、并发安全和错误处理这些基础能力，复用内置实现会更稳。
 
-## Layout 决定输出格式
+## Layout 决定日志长什么样
 
 接着看 Layout。Layout 决定日志事件如何变成最终字节流。它不关心日志来自哪里，也不关心写到哪里。
 
@@ -142,7 +142,7 @@ appender.file.layout.fileLineMaxLength = 48
 
 生产环境通常优先 JSON，因为这样后续日志采集、索引和聚合都会更方便。
 
-## 自定义 Layout 处理特殊格式
+## 自定义 Layout 处理特殊输出格式
 
 需要 CSV、Protobuf 或自定义分隔格式时，可以实现 Layout 并注册插件。下面的例子只演示核心方法，即从事件里取级别、时间和标签，再写入目标 Writer。
 
@@ -174,7 +174,7 @@ logger.console.level = INFO
 logger.console.layout.type = CSVLayout
 ```
 
-## Encoder 负责高效编码字段
+## Encoder 专注高效编码字段
 
 Encoder 是字段编码层。它的目标如下。
 
@@ -184,7 +184,7 @@ Encoder 是字段编码层。它的目标如下。
 
 业务代码通常不直接操作 Encoder。只有实现自定义 Layout 时，才需要组合 Encoder。
 
-## 输出管线让目标、格式和编码解耦
+## 输出管线把目标、格式和编码解耦
 
 Appender、Layout、Encoder 分离后，输出目标、输出格式和编码实现可以独立扩展。写到哪里、长什么样、怎么编码，不需要绑死在一个实现里。
 
