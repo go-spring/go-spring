@@ -77,6 +77,29 @@ spring.profiles.active=dev,metrics
 
 这个规则适合表达叠加配置：先选择环境，再叠加功能开关。例如 `prod,metrics` 表示生产环境，同时启用指标相关配置。
 
+比如基础配置里放通用端口：
+
+```yaml
+server:
+  port: 8080
+```
+
+`app-prod.yaml` 只覆盖生产超时：
+
+```yaml
+server:
+  timeout: 3s
+```
+
+`app-metrics.yaml` 只补充指标开关：
+
+```yaml
+metrics:
+  enabled: true
+```
+
+激活 `prod,metrics` 后，最终配置同时包含 `server.port`、`server.timeout` 和 `metrics.enabled`。这就是多个 Profile 叠加时最理想的状态：每个文件只负责自己的维度。
+
 ## Profile 维度要保持正交
 
 Profile 设计的关键不是多建几个环境文件，而是保持维度正交。

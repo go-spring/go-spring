@@ -66,6 +66,22 @@ func init() {
 
 同时，`app-dev.yaml` 和 `app-prod.yaml` 只保存对应实现需要的差异配置。
 
+例如生产配置只描述生产日志需要的参数：
+
+```yaml
+log:
+  dir: /var/log/app
+  level: info
+```
+
+对应的生产 Bean 只在 `prod` 下装配：
+
+```go
+func init() {
+	gs.Provide(NewProdLogger).OnProfiles("prod")
+}
+```
+
 这样配置选择和 Bean 选择是对齐的。也就是说，我们看到 `prod`，就能同时理解它影响了配置输入和对象装配。
 
 ## 多个 Profile 也要保持正交
