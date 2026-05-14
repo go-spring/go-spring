@@ -104,6 +104,4 @@ func Bind(storage flatten.Storage, target any, tag ...string) error
 
 结构体标签绑定和 `conf.Bind` 解决的是同一个动作：把 Go-Spring 统一的配置模型落到 Go 类型上。前者更贴近业务 Bean，后者更适合模块注册、批量创建和 Starter 封装。
 
-## 下一篇预告
-
-下一篇会继续看类型系统：基础类型、特殊转换器、自定义转换器，以及 slice、array、map 这些复杂结构如何绑定。
+绑定入口理清以后，再看基础类型、特殊转换器、自定义转换器，以及 slice、array、map 这些复杂结构，就不会觉得它们是另一套规则。

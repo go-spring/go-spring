@@ -123,6 +123,4 @@ log.StringFromContext = func(ctx context.Context) string {
 
 上下文提取在每次日志输出时执行，它的价值是减少业务代码重复传字段，而不是把复杂计算塞进日志钩子。这个边界要守住，否则全局钩子会影响所有日志调用。
 
-## 下一篇预告
-
-下一篇会把日志系统收束到工程治理：如何用配置驱动 Logger、Appender、Layout，如何接入标准库 `log` 和 Zap。
+上下文字段补齐以后，日志系统还要回到工程治理：如何用配置驱动 Logger、Appender、Layout，如何接入标准库 `log` 和 Zap。

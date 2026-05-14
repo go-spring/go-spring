@@ -133,6 +133,4 @@ Go-Spring 提供常见基础设施 Starter：
 
 Starter 本质上仍然使用 Go-Spring 的 Bean 注册 API。它不是另一套机制，而是把 Provide、Module、Group、条件注册、配置绑定和生命周期封装成可复用包。
 
-## 下一篇预告
-
-下一篇会进入测试体系：组件能封装，也要能验证，看看 Go-Spring 项目如何组织纯单测、IoC 测试、断言和 Mock。
+组件能封装，也要能验证。Go-Spring 的测试体系会继续说明纯单测、IoC 测试、断言和 Mock 应该怎样分层使用。

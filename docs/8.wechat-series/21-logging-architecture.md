@@ -159,6 +159,4 @@ func Audit(ctx context.Context, tag *log.Tag, fields ...log.Field) {
 
 标签路由、Logger、Appender、Layout、Encoder 这些层次先分清楚，后面的结构化字段、上下文提取、异步输出和配置刷新才不会挤在同一个抽象里。
 
-## 下一篇预告
-
-下一篇会深入结构化日志字段模型，看看基础类型、指针、消息字段、数组、对象、Map 展开和 `Any` 如何表达。
+骨架立住以后，业务代码最先接触到的就是字段模型：基础类型、指针、消息字段、数组、对象、Map 展开和 `Any` 分别适合不同日志内容。

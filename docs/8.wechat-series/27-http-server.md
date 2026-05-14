@@ -154,6 +154,4 @@ Go-Spring 内置 HTTP Server 由 `gs.SimpleHttpServer` 实现，并实现 `gs.Se
 
 Go-Spring 的内置 HTTP Server 负责把标准库 `http.Handler` 接入统一生命周期。路由、中间件和参数解析可以继续由标准库或第三方框架处理，Go-Spring 关心的是配置、启动、就绪和优雅关闭。
 
-## 下一篇预告
-
-下一篇会继续看组件封装和 Starter 机制：当 HTTP Server 之外的基础设施组件也要复用时，注册、配置和生命周期应该如何打包。
+HTTP Server 是内置组件的例子。更多基础设施组件如果也要复用，就需要把注册、配置和生命周期打包成 Starter。

@@ -6,6 +6,8 @@
 
 Go-Spring 使用链式 API 为 Bean 附加这些元信息。
 
+可以把元信息理解成 Bean 的运行说明书：类型决定它是什么，元信息决定它在容器里怎样被使用。
+
 ## 名称是多实例依赖协议
 
 Go-Spring 使用“类型 + 名称”标识 Bean。未显式指定名称时，默认使用类型的简短名称。
@@ -164,6 +166,4 @@ func main() {
 
 Bean 的元信息决定它在 Go-Spring 容器中如何被命名、如何暴露接口、是否参与装配、何时执行生命周期回调，以及是否作为根对象驱动依赖图。
 
-## 下一篇预告
-
-下一篇会把视角从单个 Bean 扩到注册入口：`gs.Provide()`、`gs.Module()`、`gs.Group()`、`Configuration` 和 `app.Provide()` 分别适合什么场景。
+单个 Bean 的元信息讲清楚以后，视角就可以扩到注册入口：`gs.Provide()`、`gs.Module()`、`gs.Group()`、`Configuration` 和 `app.Provide()` 分别负责不同组织边界。

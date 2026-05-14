@@ -147,6 +147,4 @@ gs.Provide(NewService).Condition(gs.OnOnce(
 
 Go-Spring 的条件注册应该服务于模块边界，而不是隐藏业务分支。适合条件化的对象通常是基础设施组件、Starter 默认实现、可选插件和环境相关实现。
 
-## 下一篇预告
-
-下一篇会专门看 Profile 条件，把配置 Profile 和 Bean 装配边界放在一起，避免配置切换和实现切换各走各的。
+Profile 条件是条件注册里最常见的环境场景，需要和配置 Profile 放在一起看，避免配置切换和实现切换各走各的。
