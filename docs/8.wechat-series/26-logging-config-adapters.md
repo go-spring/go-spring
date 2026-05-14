@@ -2,7 +2,7 @@
 
 Go-Spring 的日志 API、字段、Logger、输出管线和上下文提取都搭起来之后，问题就会进入工程治理层面。
 
-配置如何组织，插件如何注入，错误如何上报，配置如何刷新，已有日志入口如何接入，这些问题决定日志系统能不能在真实项目里长期维护。所以这一篇收束 Go-Spring 日志系统的配置和生态适配能力。
+配置如何组织，插件如何注入，错误如何上报，配置如何刷新，已有日志入口如何接入，这些问题决定日志系统在真实项目里能否长期维护。这一篇收束 Go-Spring 日志系统的配置和生态适配能力。
 
 这一篇不用按 API 列表死记。可以先抓三件事：配置负责描述日志拓扑，插件负责把 Logger、Appender、Layout 实例化，适配层负责让标准库 `log`、Zap 这类既有入口进入同一条管线。
 
@@ -139,7 +139,7 @@ type Converter[T any] func(string) (T, error)
 
 日志级别范围这类配置，就是典型的自定义类型。
 
-日志写入错误不能再通过日志系统记录，否则可能造成递归。所以 Go-Spring 使用全局错误回调：
+日志写入错误如果再通过日志系统记录，可能造成递归。所以 Go-Spring 使用全局错误回调：
 
 ```go
 log.ReportError = func(err error) {
@@ -147,7 +147,7 @@ log.ReportError = func(err error) {
 }
 ```
 
-回调要保持轻量，不能 panic，也不要做耗时操作。
+回调保持轻量即可，避免 panic 和耗时操作。
 
 ## 刷新配置要关注新旧实例切换
 
@@ -178,7 +178,7 @@ rootLogger := log.GetLogger("root")
 rootLogger.Write(log.InfoLevel, []byte("hello world\n"))
 ```
 
-使用它之前，配置中必须存在同名 Logger：
+使用它之前，配置中需要存在同名 Logger：
 
 ```properties
 logger.root.type = FileLogger

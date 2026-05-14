@@ -1,6 +1,6 @@
 # Go-Spring 实战第 7 课：Profile 多环境配置：基础配置与环境差异如何组织
 
-Go-Spring 的优先级和合并规则解决了“多份配置同时出现时怎么合成”。但真实项目里，我们还需要进一步解决“这些配置文件应该怎样组织”。
+Go-Spring 的优先级和合并规则解决了“多份配置同时出现时怎么合成”。到了真实项目里，问题会继续往前走：这些配置文件怎样组织，后续维护才不容易重复。
 
 多环境配置最容易一不小心写成复制粘贴。开发、测试、生产环境往往只在少量配置上不同。如果为每个环境复制一整份配置，后面就要在几份文件里反复同步相同内容。更合理的做法，是让基础配置复用，让环境差异独立覆盖。
 
@@ -26,7 +26,7 @@ export GS_SPRING_PROFILES_ACTIVE=prod
 ./app -Dspring.profiles.active=prod,metrics
 ```
 
-这里的顺序是有意义的，后面会影响多个 Profile 之间的覆盖关系。也就是说呢，Profile 不只是一个集合，它还有先后顺序。
+这里的顺序会影响多个 Profile 之间的覆盖关系。Profile 不只是一个集合，它还有先后顺序。
 
 ## 基础文件和 Profile 文件如何命名
 
@@ -63,7 +63,7 @@ export GS_SPRING_APP_CONFIG_DIR=./config
 ./myapp -Dspring.app.config.dir=./config
 ```
 
-由于配置目录会影响后续文件加载，所以它通常应该通过命令行参数、环境变量或启动前的代码配置设置。
+由于配置目录会影响后续文件加载，它通常会放在命令行参数、环境变量或启动前的代码配置里设置。
 
 ## 多个 Profile 按声明顺序覆盖
 
@@ -98,23 +98,23 @@ metrics:
   enabled: true
 ```
 
-激活 `prod,metrics` 后，最终配置同时包含 `server.port`、`server.timeout` 和 `metrics.enabled`。这就是多个 Profile 叠加时最理想的状态：每个文件只负责自己的维度。
+激活 `prod,metrics` 后，最终配置同时包含 `server.port`、`server.timeout` 和 `metrics.enabled`。多个 Profile 叠加时，最清晰的状态就是每个文件只表达自己的维度。
 
-## Profile 维度要保持正交
+## Profile 维度保持正交时更好组合
 
 Profile 设计的关键不是多建几个环境文件，而是保持维度正交。
 
-建议：
+常见拆法是：
 
 - `dev`、`test`、`prod` 表达环境维度。
 - `metrics`、`trace` 表达功能维度。
-- 不要让多个 Profile 互相依赖。
-- 不要在多个 Profile 中反复覆盖同一批 key。
+- Profile 之间尽量保持独立。
+- 同一批 key 尽量留在一个维度中维护。
 
 正交 Profile 可以自由组合，例如 `dev,metrics`、`prod,metrics`。如果反过来每种组合都要单独建文件，Profile 就退化成了配置复制。
 
-## 正交才是 Profile 的核心价值
+## 正交维度让 Profile 更容易组合
 
-Profile 的关键不是多建几个文件，而是把环境、功能开关和基础设施差异拆成可以组合的维度。这样 `prod,metrics` 这类组合才有清晰含义，不会变成另一种形式的复制粘贴。
+Profile 的关键不是多建几个文件，而是把环境、功能开关和基础设施差异拆成可以组合的维度。这样 `prod,metrics` 这类组合会有清晰含义，也能减少另一种形式的复制粘贴。
 
 Profile 解决的是多环境组织；配置系统还剩最后一块高级能力：启动期如何导入和引用配置，运行期又如何读取可刷新的动态值。

@@ -2,7 +2,7 @@
 
 我们在 Go-Spring 配置篇已经看过 Profile：它决定本次启动应该加载哪些环境配置。到了 IoC 这里呢，Profile 还有另一层含义：它也可以决定哪些 Bean 参与装配。
 
-可以先这样理解：Go-Spring 配置 Profile 决定“读哪些配置”，IoC Profile 条件决定“启用哪些 Bean”。两者应该沿着同一条环境语义设计，否则很容易出现配置已经切换、实现却没有切换，或者实现切换了但配置仍然来自旧环境的情况。
+可以先这样理解：Go-Spring 配置 Profile 决定“读哪些配置”，IoC Profile 条件决定“启用哪些 Bean”。两者沿着同一条环境语义设计时，配置切换和实现切换会更容易对齐。
 
 ## 先回到配置 Profile 的语义
 
@@ -82,9 +82,9 @@ func init() {
 }
 ```
 
-这样配置选择和 Bean 选择是对齐的。也就是说，我们看到 `prod`，就能同时理解它影响了配置输入和对象装配。
+这样配置选择和 Bean 选择是对齐的。看到 `prod` 时，我们就能同时知道它影响了配置输入和对象装配。
 
-## 多个 Profile 也要保持正交
+## 多个 Profile 保持正交更容易组合
 
 多个 Profile 可以表达多个维度：
 
@@ -92,14 +92,14 @@ func init() {
 spring.profiles.active=prod,metrics
 ```
 
-这里 `prod` 表示环境，`metrics` 表示功能。对应的 Bean 条件也要保持正交：
+这里 `prod` 表示环境，`metrics` 表示功能。对应的 Bean 条件也沿着这两个维度拆开：
 
 ```go
 gs.Provide(NewProdDataSource).OnProfiles("prod")
 gs.Provide(NewMetricsExporter).OnProfiles("metrics")
 ```
 
-不要把 `prod-metrics` 这类组合写成新的 Profile，除非它确实代表独立部署形态。否则组合数量会快速膨胀，Profile 也会重新变成复制粘贴。
+如果把 `prod-metrics` 这类组合都写成新的 Profile，组合数量会快速膨胀。只有它确实代表独立部署形态时，单独建 Profile 才更清楚。
 
 ## Profile 是条件注册的特化场景
 
@@ -112,10 +112,10 @@ gs.Provide(NewService).Condition(gs.And(
 ))
 ```
 
-所以建议把 Profile 用在环境和功能维度上，把普通条件用在配置开关、依赖存在性和默认实现选择上。
+Profile 更适合环境和功能维度；普通条件更适合配置开关、依赖存在性和默认实现选择。
 
-## Profile 不该承载业务规则
+## Profile 主要描述部署语义
 
-这里要特别注意：不要把 Profile 当成业务规则系统。Profile 适合描述部署环境、能力开关和基础设施组合，不适合表达订单状态、用户类型、租户策略这类运行期业务分支。
+Profile 适合描述部署环境、能力开关和基础设施组合。订单状态、用户类型、租户策略这类运行期业务分支，通常会留在业务代码里表达。
 
 当注册、条件和 Profile 都确定以后，这些信息还要在容器运行阶段被合并、裁剪、注入、运行和销毁。
