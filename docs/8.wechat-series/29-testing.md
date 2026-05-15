@@ -1,18 +1,16 @@
 # Go-Spring 实战第 29 课：测试体系：纯单测、容器测试、断言和 Mock 如何选择
 
-Go-Spring 的配置、IoC、运行时、日志、HTTP 和 Starter 都讲完以后，问题就落到了验证上，即这些能力怎样被测试覆盖。
+Go-Spring 的配置、IoC、运行时、日志、HTTP 和 Starter 都进入应用以后，问题就落到了验证上，即这些能力怎样被测试覆盖。
 
-Go-Spring 的能力再完整，最后都要落到测试上。因为只有测试能持续验证这些装配和运行行为没有退化。Go-Spring 兼容 Go 原生 `go test`，不需要额外测试运行器。它还提供了 IoC 容器测试、断言库和 Mock 支持。
+Go-Spring 的能力再完整，最终也要落到测试上。因为只有测试能持续验证这些装配和运行行为没有退化。Go-Spring 兼容 Go 原生 `go test`，不需要额外测试运行器。它还提供了 IoC 容器测试、断言库和 Mock 支持。
 
 测试层次可以先按成本从低到高看——纯业务逻辑留给纯单测；涉及装配、配置和多个 Bean 协作时，再使用 IoC 测试。
 
-这一篇先不展开断言库和 Mock 框架的所有 API，而是围绕测试层次和常见入口往下看。
-
-判断顺序可以很直接，即业务逻辑用纯单测，装配和配置用 `RunTest`，外部系统和不稳定依赖用 Mock 隔离。
+判断顺序可以很直接，即业务逻辑用纯单测，装配和配置用 `RunTest`，外部系统和不稳定依赖用 Mock 隔离。这样测试不会因为框架能力变多而全部上升到容器层，反馈成本也能被控制住。
 
 ## 业务逻辑优先留给纯单测
 
-纯单测手动构造对象和依赖。
+纯单测手动构造对象和依赖。只要被测逻辑不依赖 Go-Spring 的装配行为，就没有必要启动容器。下面这个服务只依赖一个仓储接口，所以测试可以直接传入替身依赖。
 
 ```go
 type UserService struct {
@@ -118,7 +116,7 @@ Go-Spring 在 `github.com/go-spring/stdlib/testing` 下提供了 `assert` 和 `r
 
 `assert` 失败后继续执行，适合收集多个断言结果。
 
-`require` 失败后立即终止，适合前置条件。简单说就是，前置条件用 `require`，后续结果检查用 `assert`。
+`require` 失败后立即终止，适合前置条件。换句话说，前置条件用 `require`，后续结果检查用 `assert`。
 
 ```go
 require.That(t, err).Nil()
@@ -149,7 +147,7 @@ assert.That(t, result).Equal(expected, "result should match expected")
 
 Go-Spring 提供了 `gs-mock`，支持接口 Mock、函数 Mock 和方法 Mock。
 
-接口 Mock 通常通过代码生成创建实现类，避免手写大量样板方法。
+接口 Mock 通常通过代码生成创建实现类，避免手写大量样板方法。当接口本身就是业务边界时，生成 Mock 可以让测试集中在调用规则和返回结果上。
 
 ```go
 //go:generate gs mock -o mock.go
@@ -205,4 +203,4 @@ Mock 规则通常放在测试逻辑开始前注册，并按从具体到宽泛的
 
 纯业务逻辑优先用纯单测。IoC 测试用来验证装配和配置行为。外部依赖不稳定、成本高或难以复现时，再用 Mock 做隔离。
 
-测试体系收束以后，整个系列就可以回到整体，即配置、IoC、运行时、日志、HTTP、Starter 和测试共同组成 Go-Spring 的能力地图。
+测试体系在这里补上的是工程验证能力。配置、IoC、运行时、日志、HTTP、Starter 和测试放在一起，才构成 Go-Spring 面向服务端应用的完整能力地图。

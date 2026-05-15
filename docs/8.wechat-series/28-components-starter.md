@@ -22,7 +22,7 @@ import _ "github.com/go-spring/starter-gorm-mysql"
 
 ## Provide 适合封装默认单实例
 
-`gs.Provide` 适合封装默认单实例。下面的 starter 只有在配置了 `spring.gorm.dsn` 时才创建默认数据库 Bean，并在容器关闭时释放连接。
+`gs.Provide` 适合封装默认单实例。数据库客户端就是典型例子，因为应用通常只需要一个默认连接，同时这个连接还要受配置开关和关闭回调控制。下面的 starter 只有在配置了 `spring.gorm.dsn` 时才创建默认数据库 Bean，并在容器关闭时释放连接。
 
 ```go
 func init() {
@@ -50,7 +50,7 @@ func CloseDB(db *gorm.DB) error {
 
 ## Module 适合封装配置驱动的动态注册
 
-`gs.Module` 适合注册逻辑需要读取配置后展开的场景。下面的模块先看总开关，再根据配置选择只读实现或默认实现。
+`gs.Module` 适合注册逻辑需要读取配置后展开的场景。如果 Starter 不能在声明阶段决定注册哪个 Bean，就需要把判断放到模块函数里。下面的模块先看总开关，再根据配置选择只读实现或默认实现。
 
 ```go
 func init() {
@@ -71,7 +71,7 @@ func init() {
 
 ## Group 适合封装多实例配置
 
-`gs.Group` 面向多实例配置，例如多数据库、多 Redis、多客户端。下面这行表示从 `spring.gorm.instances` 字典下为每个条目生成一个数据库 Bean。
+`gs.Group` 面向多实例配置，例如多数据库、多 Redis、多客户端。这里的问题不是创建一个默认实例，而是让配置字典里的每个条目都生成一个同类 Bean。下面这行表示从 `spring.gorm.instances` 字典下为每个条目生成一个数据库 Bean。
 
 ```go
 func init() {
@@ -119,7 +119,7 @@ func init() {
 
 ## 官方 Starter 覆盖常见基础设施
 
-Go-Spring 提供了常见基础设施 Starter。
+Go-Spring 提供了常见基础设施 Starter。这些 Starter 的价值不只是省掉初始化代码，更重要的是把配置前缀、启用条件和生命周期回调统一成应用可以复用的约定。
 
 | Starter | 说明 |
 |---------|------|
@@ -133,4 +133,4 @@ Go-Spring 提供了常见基础设施 Starter。
 
 Starter 本质上仍然使用 Go-Spring 的 Bean 注册 API。它不是另一套机制，而是把 Provide、Module、Group、条件注册、配置绑定和生命周期封装成可复用包。
 
-组件封装之后，还需要配套验证。Go-Spring 的测试体系会继续说明纯单测、IoC 测试、断言和 Mock 怎样分层使用。
+组件封装解决的是复用问题。复用之后还需要验证装配是否稳定，所以 Go-Spring 的测试体系会继续把纯单测、IoC 测试、断言和 Mock 放回同一套工程验证链路里。

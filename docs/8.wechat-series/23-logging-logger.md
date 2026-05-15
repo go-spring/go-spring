@@ -1,23 +1,18 @@
-# Go-Spring 实战第 23 课：Logger 体系：同步、异步、控制台、文件和滚动文件怎么选
+# Go-Spring 实战第 23 课：Logger 体系：同步、异步和滚动文件如何匹配写入场景
 
-业务代码在 Go-Spring 日志 API 中产生了结构化字段以后，日志事件还没有真正落地。接下来要回答的问题是，谁来决定它要不要输出、输出到哪里、用什么方式输出？
+业务代码把日志事件和字段交给 Go-Spring 以后，事件还没有真正落地。接下来必须先决定三个问题，即这条日志能不能被级别过滤掉，写入是否允许阻塞业务 goroutine，最终输出到控制台、普通文件还是滚动文件。
 
-在 Go-Spring 的日志系统里，这个角色就是 Logger。标签路由找到 Logger 后，Logger 会负责级别过滤，再把事件分发给一个或多个输出目标。
+在 Go-Spring 的日志系统里，回答这些问题的对象是 Logger。标签路由找到 Logger 后，Logger 先做级别判断，再把事件分发给一个或多个输出目标。
 
-为了照顾不同写入场景，Go-Spring 的 Logger 分为两类。
+Go-Spring 的 Logger 分成两类。组合式 Logger 包括 `SyncLogger`、`AsyncLogger`，它们通过 `appenderRef` 组合输出目标；集成式 Logger 包括 `ConsoleLogger`、`FileLogger`、`RollingFileLogger`，它们封装常见输出场景。
 
-- 组合式 Logger 包括 `SyncLogger`、`AsyncLogger`，通过 `appenderRef` 组合输出目标。
-- 集成式 Logger 包括 `ConsoleLogger`、`FileLogger`、`RollingFileLogger`，封装常见输出场景。
-
-先简单理解即可——组合式 Logger 是更灵活的管线，集成式 Logger 是常见场景的快捷封装。也就是说，一个偏扩展，一个偏省配置。
-
-选型时可以先看两个问题，即这条日志能不能阻塞业务 goroutine，以及它最终要进 stdout、普通文件还是滚动文件。答案确定以后，再考虑是否需要自定义 Logger。
+也就是说，组合式 Logger 更适合需要自己拼管线的场景，集成式 Logger 更适合用较少配置覆盖常见需求。选型时先看日志是否能阻塞业务路径，再看输出目标和滚动策略。
 
 ## SyncLogger 适合必须确定写入的日志
 
-`SyncLogger` 在业务 goroutine 里同步完成写入。级别过滤、字段编码和 Appender 写入都在同一调用栈内执行。
+`SyncLogger` 在业务 goroutine 里同步完成写入。级别过滤、字段编码和 Appender 写入都在同一调用栈内执行，因此它的确定性更强。
 
-下面这组配置让 `_app_*` 标签走同步 Logger，并同时写入控制台和文件。重点看 `appenderRef`，它决定同步 Logger 会把同一条事件分发到哪些目标。
+启动日志、审计日志、开发调试这类日志通常更关心“写入是否已经完成”。下面这组配置让 `_app_*` 标签走同步 Logger，并同时写入控制台和文件。重点看 `appenderRef`，它决定同一条事件会被分发到哪些目标。
 
 ```properties
 appender.console.type = ConsoleAppender
@@ -35,13 +30,13 @@ logger.sync.appenderRef[0].ref = console
 logger.sync.appenderRef[1].ref = file
 ```
 
-同步写入确定性强，适合启动日志、审计日志、开发调试等场景。不过，如果高并发业务日志直接同步写文件，就可能阻塞请求路径。
+这类配置的代价也很明确。写入发生在业务 goroutine 中，如果高并发业务日志直接同步写文件，请求路径就可能被文件 IO 或锁竞争拖慢。因此 `SyncLogger` 更适合低频但价值高的日志。
 
-## AsyncLogger 服务高并发日志路径
+## AsyncLogger 适合高并发业务日志路径
 
 `AsyncLogger` 将日志产生和实际写入解耦。业务 goroutine 把事件放入缓冲区后返回，后台 goroutine 负责编码和写入。
 
-下面这组配置让 `_biz_*` 标签走异步 Logger。重点看 `bufferSize` 和 `onBufferFull`，它们决定高峰期日志是在业务 goroutine 中等待，还是被丢弃或替换。
+高并发业务日志通常更关注请求路径延迟。下面这组配置让 `_biz_*` 标签走异步 Logger。重点看 `bufferSize` 和 `onBufferFull`，它们决定高峰期日志是在业务 goroutine 中等待，还是被丢弃或替换。
 
 ```properties
 logger.async.type = AsyncLogger
@@ -52,7 +47,7 @@ logger.async.onBufferFull = block
 logger.async.appenderRef[0].ref = file
 ```
 
-缓冲区满策略包括下面几种。
+缓冲区满策略对应不同取舍。
 
 | 策略 | 行为 |
 |------|------|
@@ -60,11 +55,11 @@ logger.async.appenderRef[0].ref = file
 | `discard` | 丢弃新日志 |
 | `drop-oldest` | 丢弃最旧日志，保留最新现场 |
 
-生产高并发场景通常会优先选异步写入，但也要接受进程被强杀时缓冲区日志可能丢失的事实。所以缓冲区策略可以按日志价值来定，即审计日志更偏向阻塞，调试日志可以接受丢弃。
+生产高并发场景通常会优先选异步写入，但异步也有边界。进程被强杀时，缓冲区里的日志可能来不及写出；缓冲区满时，不同策略也会在延迟和完整性之间做选择。因此审计日志更偏向 `block`，调试日志可以接受丢弃。
 
-## ConsoleLogger 面向 stdout 场景
+## ConsoleLogger 面向标准输出和本地排障
 
-`ConsoleLogger` 是面向标准输出的集成式 Logger。
+`ConsoleLogger` 是面向标准输出的集成式 Logger。它把常见的控制台输出场景收在一组配置里，不需要额外声明 Appender。
 
 ```properties
 logger.console.type = ConsoleLogger
@@ -73,11 +68,11 @@ logger.console.level = INFO
 logger.console.layout.type = TextLayout
 ```
 
-它适合本地开发、调试和容器 stdout 输出。高并发生产环境里，大量业务日志打到控制台时，标准输出可能成为性能瓶颈。
+本地开发、启动阶段排障和容器 stdout 采集都适合使用控制台输出。但在高并发生产环境里，大量业务日志写 stdout 可能成为性能瓶颈，也可能把应用日志和运行环境采集策略绑得过紧。
 
 ## FileLogger 适合低流量单文件写入
 
-`FileLogger` 写入单个本地文件。
+`FileLogger` 写入单个本地文件。它适合日志量不大、文件生命周期由外部系统管理，或者只需要一次性定向调试的场景。
 
 ```properties
 logger.file.type = FileLogger
@@ -88,11 +83,11 @@ logger.file.file = app.log
 logger.file.layout.type = JSONLayout
 ```
 
-它适合低流量服务、测试环境、短生命周期任务或定向调试。如果长期运行服务日志量较大，滚动文件会更合适。
+`FileLogger` 会持续追加到单个文件，不负责自动滚动和过期清理。如果长期运行服务日志量较大，文件切割和保留策略就应该交给滚动文件能力。
 
-## RollingFileLogger 更适合生产长期运行
+## RollingFileLogger 更适合长期运行的生产服务
 
-`RollingFileLogger` 面向生产环境，支持按时间滚动、过期清理、级别分离和内置异步。
+`RollingFileLogger` 面向生产长期运行场景，支持按时间滚动、过期清理、级别分离和内置异步。
 
 ```properties
 logger.file.type = RollingFileLogger
@@ -108,16 +103,11 @@ logger.file.async = true
 logger.file.bufferSize = 50000
 ```
 
-常见做法如下。
+这些配置背后的判断可以分开看。高流量服务通常用较短滚动间隔，例如 `1h`；保留时间由磁盘容量和合规要求决定；`separate=true` 可以把 `WARN` 及以上日志单独输出，便于排障；`async=true` 时，`RollingFileLogger` 已经内置异步写入，不需要再额外套一层 `AsyncLogger`。
 
-- 高流量服务用较短滚动间隔，例如 `1h`。
-- 保留时间根据磁盘容量和合规要求设置。
-- `separate=true` 可以把 `WARN` 及以上日志单独输出，便于排障。
-- `async=true` 时不需要再额外套一层 `AsyncLogger`。
+## 自定义 Logger 只扩展内置能力覆盖不了的差异点
 
-## 自定义 Logger 只补差异点
-
-可以通过组合内置 Logger 扩展差异逻辑。例如采样 Logger。
+当内置 Logger 不能覆盖某个策略时，可以通过组合内置 Logger 扩展差异逻辑。下面的采样 Logger 内嵌 `log.AsyncLogger`，只在 `Append` 里补充采样判断。
 
 ```go
 type SamplingLogger struct {
@@ -148,10 +138,10 @@ func init() {
 }
 ```
 
-自定义 Logger 尽量复用已有同步、异步和生命周期能力，只在差异点上扩展。这样扩展点更小，也更容易维护。
+这个例子没有重写缓冲区、生命周期和 Appender 分发逻辑，而是复用 `AsyncLogger` 已经提供的能力。自定义 Logger 的边界越小，后续跟随 Go-Spring 日志体系演进的成本越低。
 
-## Logger 的职责只是调度事件
+## Logger 的职责停在事件调度边界
 
-Logger 只管判断级别、调度事件和组合输出目标。同步、异步、控制台、文件、滚动文件这些差异，最终都服务于同一个目标，即让日志事件按规则进入正确的输出路径。
+Logger 只管级别判断、事件调度和输出目标组合。同步、异步、控制台、文件、滚动文件这些差异，最终都服务于同一个目标，即让日志事件按规则进入正确的输出路径。
 
-Logger 选好以后，真正写出日志前还要经过 Appender、Layout 和 Encoder，这三层分别决定输出目标、输出格式和字段编码方式。
+Logger 选好以后，真正写出日志前还要经过 Appender、Layout 和 Encoder。它们分别决定写到哪里、长什么样、字段如何编码。

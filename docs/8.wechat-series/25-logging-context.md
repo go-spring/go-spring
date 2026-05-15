@@ -1,4 +1,4 @@
-# Go-Spring 实战第 25 课：日志上下文提取：自动补齐 trace_id、request_id 和用户信息
+# Go-Spring 实战第 25 课：日志上下文提取：trace_id、request_id 和用户信息如何自动进入日志
 
 前面几篇已经把 Go-Spring 的日志事件从业务调用一路讲到了输出管线。现在我们补上一个线上排查时非常关键、但也很容易漏掉的细节，即上下文字段。
 
@@ -21,7 +21,7 @@ Go-Spring 提供了全局上下文提取钩子，可以从 `context.Context` 中
 
 ## FieldsFromContext 输出结构化上下文字段
 
-`FieldsFromContext` 返回结构化字段，是更常用的方式。
+`FieldsFromContext` 返回结构化字段，是更常用的方式。它适合把 trace、用户、租户这类稳定字段接进结构化日志模型，因为字段类型会在提取时一起确定。
 
 ```go
 log.FieldsFromContext = func(ctx context.Context) []log.Field {
@@ -44,7 +44,7 @@ log.FieldsFromContext = func(ctx context.Context) []log.Field {
 }
 ```
 
-设置后，业务代码只需要正常传入 `ctx`。
+设置后，业务代码只需要正常传入 `ctx`。下面的日志调用只写业务字段，链路字段会由全局钩子补齐。
 
 ```go
 log.Info(ctx, TagBizOrder,
@@ -57,7 +57,7 @@ log.Info(ctx, TagBizOrder,
 
 ## OpenTelemetry 提供 trace 和 span 信息
 
-生产环境里，常见做法是从 OpenTelemetry Context 提取链路信息。
+生产环境里，常见做法是从 OpenTelemetry Context 提取链路信息。这样 Go-Spring 日志系统不需要自己发明 trace 协议，只要从已有上下文里读出标准链路 ID。
 
 ```go
 log.FieldsFromContext = func(ctx context.Context) []log.Field {
@@ -86,7 +86,7 @@ log.FieldsFromContext = func(ctx context.Context) []log.Field {
 
 ## StringFromContext 兼容旧的文本格式
 
-`StringFromContext` 提取一个格式化字符串。
+`StringFromContext` 提取一个格式化字符串。它适合日志格式暂时不能结构化改造的历史系统，把上下文信息拼进文本前缀即可。
 
 ```go
 type traceCtxType struct{}
@@ -103,14 +103,14 @@ log.StringFromContext = func(ctx context.Context) string {
 
 上下文提取会在每一次日志输出时执行，所以这条路径越轻越好。复杂操作放进来以后，日志路径本身就可能变成性能负担。
 
-常见做法如下。
+为了让这条全局路径保持稳定，常见做法是把工作前移到请求入口。
 
 - 在请求入口处一次性把需要的值写入 context。
 - 提取时只做简单类型断言和读取。
 - 高频字段放在前面。
 - 避免创建复杂对象。
 
-需要避开的做法如下。
+反过来说，下面这些操作不适合放进日志上下文钩子。
 
 - 在钩子中做复杂计算。
 - 在钩子中访问网络或磁盘。
