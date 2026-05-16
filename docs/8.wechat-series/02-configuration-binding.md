@@ -100,3 +100,8 @@ func Bind(storage flatten.Storage, target any, tag ...string) error
 ```
 
 `storage` 是配置存储，`target` 是绑定目标，通常传入非 nil 指针。`tag` 是可选绑定标签，不传时默认从根路径进行绑定。这个标签仍然支持默认值语法。
+
+## 配置绑定
+
+-- 因此，`Properties` 是理解 Go-Spring 整个配置系统的基础。 -- 仿照这句话，总结配置绑定的意义。
+
