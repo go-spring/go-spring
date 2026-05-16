@@ -1,10 +1,10 @@
 # Go-Spring 实战第 3 课 —— 复杂类型的配置绑定：Duration、Time、Slice、Map
 
-上一篇我们讲了配置绑定，让配置从 `Properties` 进入业务结构体，然后应用代码拿到的就不再是一组字符串，而是已经转换过的 Go 值。
+上一篇我们讲了配置绑定。在配置从 `Properties` 进入业务结构体以后，应用代码拿到的就不再是一组字符串，而是已经转换过的 Go 值。
 
-但真实服务的配置不会只停留在 `string`、`int`、`bool` 等基础类型上，比如超时时间通常要绑定成 `time.Duration`，发布时间可能要绑定成 `time.Time`，服务地址可能是一组列表，多数据源、多 Redis、多 HTTP 客户端又经常按名称组织成一组实例。
+但真实服务的配置不会只停留在 `string`、`int`、`bool` 等基础类型上。比如超时时间通常要绑定成 `time.Duration`，发布时间可能要绑定成 `time.Time`，服务地址可能是一组列表，多数据源、多 Redis、多 HTTP 客户端又经常按名称组织成一组实例。
 
-如果这些复杂结构都需要交给业务代码自己解析，那么配置绑定只能算完成了一半。所以，Go-Spring 的配置绑定不是只负责把单个 key 转成基础类型，还要支持时间、枚举、slice、map 等更复杂的类型。
+如果这些复杂结构都需要交给业务代码自己解析，那么配置绑定只能算完成了一半。所以，Go-Spring 的配置绑定不只负责把单个 key 转成基础类型，还要支持时间、枚举、slice、map 等更复杂的类型。
 
 ## 基础类型
 
@@ -34,7 +34,7 @@ type ServerConfig struct {
 | `time.Duration` | 时间时长 | `30s`、`5m`、`1h30m` |
 | `time.Time` | 时间点 | `2006-01-02`、`2006-01-02 15:04:05` |
 
-下面这个配置结构体把超时配置直接声明成 `time.Duration`，使用的时候和基础类型没有什么区别。
+下面这个配置结构体把超时配置直接声明成 `time.Duration`，使用方式和基础类型完全一致。
 
 ```go
 type Config struct {
@@ -44,13 +44,13 @@ type Config struct {
 }
 ```
 
-当我们在配置里写 `timeout=5m` 的时候，绑定后的 `Timeout` 字段就是 `5 * time.Minute`。业务代码不需要自己调用 `time.ParseDuration`，也不需要在每个模块里约定时长的表达格式。
+当我们在配置里写 `timeout=5m` 时，绑定后的 `Timeout` 字段就是 `5 * time.Minute`。业务代码不需要自己调用 `time.ParseDuration`，也不需要在每个模块里约定时长的表达格式。
 
 ## 自定义转换器
 
 内置转换器覆盖不了所有业务类型。像日志级别、运行模式、灰度状态，以及第三方库里的专用类型，往往都有自己的字符串格式。这时候需要通过自定义转换器，把这些类型接入到 Go-Spring 的配置绑定体系里面来。
 
-下面这个示例展示了自定义转换器的使用。我们使用一个类型转换器将字符串转换成了枚举类型 `Status`。首先我们需要注册这个转换器。
+下面这个示例展示了自定义转换器的使用。这里用一个转换器把字符串转换成了枚举类型 `Status`。首先我们需要注册这个转换器。
 
 ```go
 type Status int
@@ -86,13 +86,13 @@ type AppConfig struct {
 }
 ```
 
-此时，如果配置是 `app.status=on`，则绑定后的 `Status` 就是 `StatusEnabled`。如果配置值既不是约定字符串，也不能转成数字，转换器就会返回一个错误，返回的错误会继续向外传播，然后应用就会在启动阶段失败。
+此时，如果配置是 `app.status=on`，那么绑定后的 `Status` 就是 `StatusEnabled`。如果配置值既不是约定字符串，也不能转成数字，转换器会返回错误。这个错误会继续向外传播，应用也会在启动阶段失败。
 
 注意，转换器应该在 `init` 阶段注册完成，这样业务 Bean 开始绑定配置之前，Go-Spring 已经知道该如何处理这个类型。
 
 ## Slice
 
-我们可以把一组相同类型的配置绑定成 slice。比如应用白名单、上游地址（todo 符合 []int 的场景）、启用的模块名称（todo 符合 []EndpointConfig 的场景），它们在业务代码里天然就是 `[]string`、`[]int` 或者 `[]EndpointConfig`。
+我们可以把一组相同类型的配置绑定成 slice。比如应用白名单、端口列表、下游端点列表，它们在业务代码里天然就是 `[]string`、`[]int` 或者 `[]EndpointConfig`。
 
 对于支持列表的配置格式，可以直接写成自然的层级结构。
 
@@ -123,7 +123,7 @@ apps[2]=c
 
 这种写法和 YAML 列表的语义一致，只是需要手动维护下标。
 
-> Go-Spring 要求下标从 `0` 开始并且连续，如果缺失了中间的下标，Go-Spring 只会绑定到最后连续的下标位置。
+> Go-Spring 要求下标从 `0` 开始并且连续。如果缺失了中间的下标，Go-Spring 只会绑定到最后连续的下标位置。
 
 对于短字符串列表，我们还可以使用逗号分隔的写法。Go-Spring 会按逗号拆分，并对每个元素继续执行目标类型转换。
 
@@ -159,15 +159,15 @@ type ClientConfig struct {
 }
 ```
 
-绑定 `Endpoints[0]` 时，Go-Spring 会把父路径 `endpoints[0]` 和元素字段上的 `name`、`url`、`timeout` 组合起来，也就是说，`Endpoints[0].Name` 会读取 `endpoints[0].name`。
+绑定 `Endpoints[0]` 时，Go-Spring 会把父路径 `endpoints[0]` 和元素字段上的 `name`、`url`、`timeout` 组合起来。也就是说，`Endpoints[0].Name` 会读取 `endpoints[0].name`。
 
-也就是说，slice 可以负责表达“有多个”，结构体字段继续表达“每个元素内部有哪些配置”。
+换句话说，slice 负责表达“有多个”，结构体字段负责表达“每个元素内部有哪些配置”。
 
 ## Map
 
 有些配置不是单纯的有序列表，而是按名字区分的一组实例。比如 `master` 和 `slave` 数据源、多个 Redis 客户端、不同业务线的 HTTP 客户端。
 
-这类配置适合绑定成 `map[string]T`。比如下面这组 properties 就把 `master` 和 `slave` 放在路径中间，那么这一层就成为 map 的 key。
+这类配置适合绑定成 `map[string]T`。比如下面这组 properties 把 `master` 和 `slave` 放在路径中间，那么这一层就会成为 map 的 key。
 
 ```properties
 database.connections.master.host=localhost
@@ -198,8 +198,8 @@ cfg.Connections["slave"].Port  // 5433
 
 接着，对 map value 的绑定会沿用结构体规则。比如对 `master` 这个条目来说，`Host` 字段实际读取的是 `database.connections.master.host`，`Port` 字段实际读取的是 `database.connections.master.port`。
 
-`map[string]T` 中的 T 既可以是基础类型，也可以是结构体，也可以是更复杂的类型。
+`map[string]T` 中的 `T` 既可以是基础类型，也可以是结构体，还可以继续组合其他复杂类型。
 
 ## 复杂类型绑定
 
-复杂类型绑定可以让业务结构自然承接配置结构。。。
+复杂类型绑定让业务结构可以自然的承接配置结构，而自定义转换器则大大增加了 Go-Spring 的表达能力。
