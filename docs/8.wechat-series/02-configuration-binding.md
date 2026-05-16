@@ -1,16 +1,12 @@
-# Go-Spring 实战第 2 课：配置绑定：Properties 如何安全落到 Go 代码
+# Go-Spring 实战第 2 课 —— 配置绑定：Properties 映射 Go 代码
 
-上一篇我们把 Go-Spring 中不同来源、不同格式的配置统一到了 `Properties` 和 path 空间里。既然模型已经统一了，下一个问题就很现实了——这些配置怎样进入 Go 代码。
+在上一篇中，Go-Spring 把不同来源、不同格式的配置统一到了 `Properties` 和 Path 语法，那么接下来就是这些配置如何映射到 Go 代码，这样才能真正开始影响应用行为。
 
-配置只有绑定到结构体、函数参数或模块注册逻辑里，才算真正开始影响应用行为。Go-Spring 把最常见的业务场景放到结构体标签上处理；如果绑定发生在模块化注册、批量创建 Bean 或 Starter 封装里，则可以手动调用 `Bind`。
+Go-Spring 把最常见的业务场景放到结构体标签上处理。如果绑定发生在模块化注册、批量创建 Bean 或 Starter 封装里，也可以手动调用 `Bind`。这两种方式共享同一套配置 path 和类型转换机制。
 
-这两种方式共享同一套配置 path 和类型转换机制，只是使用位置不同。因此看绑定时，不要把它们理解成两套规则，而要把它们放回同一条绑定链路里。
+## value 标签
 
-## value 标签把配置协议固定在字段声明上
-
-最常用的方式，是在结构体字段上使用 `value` 标签。
-
-下面这个例子演示业务 Bean 最常见的绑定位置。先看字段类型和 `value` 标签的组合，Go-Spring 会同时根据标签里的 path 和字段本身的 Go 类型完成绑定。
+配置绑定最常用的方式，是在结构体字段上使用 `value` 标签。举个例子：
 
 ```go
 type ServerConfig struct {
@@ -19,27 +15,15 @@ type ServerConfig struct {
 	EnableSSL bool          `value:"${enable-ssl:=true}"`
 	Endpoints []string      `value:"${endpoints}"`
 }
-
-type App struct {
-	Config ServerConfig `value:"${server}"`
-}
 ```
 
-`value:"${key:=defaultValue}"` 可以拆成三部分。
+value 标签的语法是 `value:"${key:=defaultValue}"`，其中 `key` 是配置 key 的 path，`:=defaultValue` 是可选的默认值。如果没有默认值且配置不存在，则该字段就是必填字段，绑定阶段会失败。
 
-- `key` 是配置 path。
-- `:=defaultValue` 是可选默认值。
-- 如果没有默认值且配置不存在，该字段就是必填字段，绑定阶段会失败。
+如果写成 `${:=default}`，表示 key 虽然为空，但不从配置中查找值，而是直接使用默认值。这样，我们可以避免使用 Go 代码进行赋值，同时保留了对 key 的定义权。
 
-上面的 `App.Config` 使用 `${server}` 作为前缀，所以 `ServerConfig.Port` 对应的是 `server.port`，`ServerConfig.Timeout` 对应的是 `server.timeout`。
+## 嵌套结构体
 
-如果写成 `${:=default}`，表示 key 为空，不从配置中查找值，而是直接使用默认值。这样一来，我们仍然保留了统一的标签写法，只是这一次不依赖外部配置。这种写法适合需要保留标签形式、但当前值固定的场景。
-
-## 嵌套结构体沿着前缀继续绑定
-
-结构体绑定不是把字段名简单拼接到配置 key 上，而是以 `value` 标签作为显式声明。这样做有两个好处。一方面，字段名调整不会轻易破坏配置协议；另一方面，默认值和必填语义也能直接写在字段旁边。
-
-如果目标字段本身还是结构体，并且没有内置转换器，Go-Spring 会继续递归绑定字段。所以，我们可以自然表达嵌套配置。下面的关键点是 `AppConfig.DB` 的 `${database}` 只声明前缀，内部字段再声明相对路径。
+如果配置绑定的目标字段本身还是结构体，并且没有注册转换器，那么 Go-Spring 会继续递归绑定字段。这样，我们可以很自然的表达嵌套配置。看下面的例子：
 
 ```go
 type DatabaseConfig struct {
@@ -52,7 +36,7 @@ type AppConfig struct {
 }
 ```
 
-这时候外部配置只需要按照前缀后的相对路径组织，最终会落到 `DatabaseConfig` 的两个字段上。
+对于 `DatabaseConfig` 的 `Host` 和 `Port` 字段，在单独使用时，它们分别使用 host 和 port 作为 key。但在表达 `AppConfig` 的 `DB` 字段时，它们分别对应到 `database.host` 和 `database.port`。对应的配置文件如下：
 
 ```yaml
 database:
@@ -60,13 +44,9 @@ database:
   port: 5432
 ```
 
-这里的关键是前缀传递，即 `AppConfig.DB` 绑定到 `${database}`，内部字段再继续绑定 `${host}` 和 `${port}`，最终就对应到 `database.host` 和 `database.port`。
+## Bind 函数
 
-## 模块注册代码需要手动调用 Bind
-
-在普通业务代码中，结构体标签绑定通常已经足够。那什么时候需要手动 `Bind` 呢？更多是出现在 `Module` 这类注册逻辑里——模块先读取配置，再根据配置注册一个或多个 Bean。
-
-下面的例子把绑定动作放在模块注册函数里。读这段代码时，先看 `flatten.Storage` 和 `${server}`，它们说明 `Bind` 使用的仍然是已经加载完成的同一份配置存储。
+当我们在 `Module` 中注册 Bean 时，需要获取配置，然后根据配置来注册 Bean。举个例子：
 
 ```go
 func init() {
@@ -75,34 +55,16 @@ func init() {
 		if err := conf.Bind(p, &config, "${server}"); err != nil {
 			return err
 		}
-		// 使用 config 注册相关 Bean
+		// 在这里完成使用 config 注册相关 Bean 的动作
 		return nil
 	})
 }
 ```
 
-`Bind` 的函数签名如下。
+`Bind` 的函数签名如下：
 
 ```go
 func Bind(storage flatten.Storage, target any, tag ...string) error
 ```
 
-这几个参数对应绑定动作里的三个位置。
-
-- `storage`，已经加载完成的配置存储。
-- `target`，绑定目标，必须传指针。
-- `tag`，可选绑定 path，支持完整标签语法；不传时绑定整个配置。
-
-手动 `Bind` 没有引入新的配置模型。换句话说，它只是把同一套绑定能力暴露给更底层的注册代码。
-
-## 业务 Bean 和模块注册层承担不同绑定职责
-
-业务 Bean 的配置优先使用结构体标签绑定。依赖关系和配置协议都声明在类型上，阅读、测试和重构都更直接。
-
-如果需要根据配置动态注册 Bean、批量生成实例或封装 Starter，再使用 `conf.Bind`。这类代码通常位于模块注册层，而不是业务处理路径。
-
-## 两种入口最终共享同一套绑定规则
-
-结构体标签绑定和 `conf.Bind` 解决的是同一个动作，即把 Go-Spring 统一的配置模型落到 Go 类型上。前者更贴近业务 Bean，后者更适合模块注册、批量创建和 Starter 封装。
-
-从这里往后，基础类型、特殊转换器、自定义转换器，以及 slice、array、map 这些复杂结构，都会沿着这套绑定规则展开。
+其中 `storage` 是已经加载完成的配置存储，`target` 是绑定目标，必须传指针，`tag` 支持完整的标签语法。
