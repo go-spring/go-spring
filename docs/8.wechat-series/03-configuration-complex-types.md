@@ -72,13 +72,11 @@ type AppConfig struct {
 }
 ```
 
-// 这里需要补充一些内容，比较好。
+// 这里需要补充一些解释性的内容。
 
 ## Slice & Array
 
-接着看集合类型。切片仍然沿用 path 模型，只是输入方式可以有两种。
-
-如果列表元素未来可能变复杂，可以用 YAML 多行结构表达每个元素。这个写法保留了数组元素的位置，后续对象数组也能沿同一套规则扩展。
+对于 slice 和 array 类型，我们可以使用 yaml、toml 等支持列表的配置格式，这样可以避免使用下标。
 
 ```yaml
 apps:
@@ -87,7 +85,7 @@ apps:
   - c
 ```
 
-进入 `Properties` 后，它会被展开为带下标的路径。
+当然也可以使用 properties 格式，但是就需要手动维护下标。两种方式是等价的，选择哪种都可以，方便为主。
 
 ```properties
 apps[0]=a
@@ -95,19 +93,19 @@ apps[1]=b
 apps[2]=c
 ```
 
-如果只是短字符串列表，也可以直接使用逗号分隔，写起来更紧凑。
+对于短字符串列表，Go-Spring 支持使用逗号分隔的写法，这样写起来更加紧凑。
 
 ```properties
 apps=a,b,c
 ```
 
-两种方式最终都可以绑定到 `[]string{"a", "b", "c"}`。
+上面所有方式都可以绑定到 `[]string` 类型，值为 `[]string{"a", "b", "c"}`。
 
-这里仍然回到第一篇的 path 模型，即数组只是通过下标进入同一棵配置树，并没有变成一套额外规则。
+// 这里没有对结构体的展示，我觉得可以加一下。
 
-## Map 更适合承接按名称管理的实例
+## Map
 
-Map 绑定会收集指定 path 下的所有子节点。下面这组 key 把 `master` 和 `slave` 放在路径中间，这一层就会成为 map 的 key。
+字段为 map 类型时，表示收集指定 path 下的所有子节点。例如，下面这组 key 把 `master` 和 `slave` 放在路径中间，这一层就会成为 map 的 key。
 
 ```properties
 database.connections.master.host=localhost
@@ -116,9 +114,11 @@ database.connections.slave.host=replica
 database.connections.slave.port=5433
 ```
 
-如果目标类型是 `map[string]DatabaseConfig`，那么 `connections["master"]` 和 `connections["slave"]` 会分别绑定到对应配置。
+我们可以将上述配置绑定到如下字段，todo 添加类型和字段。
 
-这种方式非常适合多数据源、多 Redis、多 HTTP 客户端这类按名称管理的实例配置，因为实例名称放在配置路径里，实例结构又由 Go 类型系统承接，两边刚好能对上。
+然后解释 `connections["master"]` 和 `connections["slave"]` 会分别绑定到对应配置。
+
+这种方式非常适合多数据源、多 Redis、多 HTTP 客户端这类按名称管理的实例配置。
 
 ## 复杂类型绑定的边界是类型转换而不是业务决策
 
