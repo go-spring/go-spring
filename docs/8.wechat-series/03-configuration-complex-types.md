@@ -1,26 +1,40 @@
 # Go-Spring 实战第 3 课 —— 复杂类型的配置绑定：Duration、Time、Slice、Map
 
-真实的配置中很少只会有字符串和整数，时间、时长、枚举、列表、对象数组、字典等等，都是很常见的。如果 Go-Spring 只支持整数和字符串这些简单类型，那么我们就需要在业务代码中手动处理这些复杂类型。这必然是不行的。因此，Go-Spring 需要支持更复杂的数据类型，这样才能让配置结构自然映射到业务结构体，而不是把解析细节散落到业务代码里。
+上一篇我们讲了配置绑定，让配置从 `Properties` 进入业务结构体，然后应用代码拿到的就不再是一组字符串，而是已经转换过的 Go 值。
+
+但真实服务的配置不会只停留在 `string`、`int`、`bool` 等基础类型上，比如超时时间通常要绑定成 `time.Duration`，发布时间可能要绑定成 `time.Time`，服务地址可能是一组列表，多数据源、多 Redis、多 HTTP 客户端又经常按名称组织成一组实例。
+
+如果这些复杂结构都需要交给业务代码自己解析，那么配置绑定只能算完成了一半。所以，Go-Spring 的配置绑定不是只负责把单个 key 转成基础类型，还要支持时间、枚举、slice、map 等更复杂的类型。
 
 ## 基础类型
 
-复杂数据类型的绑定首先建立在稳定的基础类型转换之上。Go-Spring 开箱支持下列常见基础类型：
+Go-Spring 开箱支持以下常见的基础类型。
 
 - 支持 `bool` 类型，支持 `true`/`false`、`1`/`0`、`t`/`f` 等多种常见写法。
 - 支持整数类型，支持 `int`、`int8`、`int16`、`int32`、`int64` 以及对应的无符号类型。
 - 支持浮点类型，支持 `float32`、`float64`，支持科学计数法。
 - 支持 `string` 类型。
 
+这些基础类型可以直接写在配置结构体字段上。
+
+```go
+type ServerConfig struct {
+	Host      string `value:"${host:=localhost}"`
+	Port      int    `value:"${port:=8080}"`
+	EnableTLS bool   `value:"${enable-tls:=false}"`
+}
+```
+
 ## 时间类型
 
-Go-Spring 内置了对 `time.Duration` 和 `time.Time` 类型的转换器。
+时间和时长是最常见的复杂配置。它们虽然经常以字符串形式写在配置文件里，但业务代码真正需要的是 `time.Duration` 或 `time.Time`。Go-Spring 内置了这两类转换器。
 
 | 类型 | 用途 | 示例 |
 |------|------|------|
 | `time.Duration` | 时间时长 | `30s`、`5m`、`1h30m` |
 | `time.Time` | 时间点 | `2006-01-02`、`2006-01-02 15:04:05` |
 
-下面这个示例展示了 `time.Duration` 类型的使用，看起来和基础类型没有区别。
+下面这个配置结构体把超时配置直接声明成 `time.Duration`，使用的时候和基础类型没有什么区别。
 
 ```go
 type Config struct {
@@ -30,13 +44,13 @@ type Config struct {
 }
 ```
 
-当我们在配置里写 `timeout=5m` 的时候，经过配置绑定后 `Timeout` 字段的值就是 `5 * time.Minute`。也就是说，业务代码拿到的已经是可直接使用的类型，不需要自己手动解析。
+当我们在配置里写 `timeout=5m` 的时候，绑定后的 `Timeout` 字段就是 `5 * time.Minute`。业务代码不需要自己调用 `time.ParseDuration`，也不需要在每个模块里约定时长的表达格式。
 
-## 类型转换器
+## 自定义转换器
 
-当业务配置里有枚举、第三方库类型或特殊的字符串格式时，我们可以使用自定义类型转换器。
+内置转换器覆盖不了所有业务类型。像日志级别、运行模式、灰度状态，以及第三方库里的专用类型，往往都有自己的字符串格式。这时候需要通过自定义转换器，把这些类型接入到 Go-Spring 的配置绑定体系里面来。
 
-下面这个示例展示了自定义类型转换器的使用。我们使用一个类型转换器将字符串转换成了枚举类型 `Status`。首先我们需要注册这个类型转换器。
+下面这个示例展示了自定义转换器的使用。我们使用一个类型转换器将字符串转换成了枚举类型 `Status`。首先我们需要注册这个转换器。
 
 ```go
 type Status int
@@ -64,7 +78,7 @@ func init() {
 }
 ```
 
-注意，我们一般在 init 函数里注册类型转换器，这样在业务代码生效前就可以使用了。然后我们将字段声明为自定义的 `Status` 类型。
+然后字段就可以直接声明成 `Status` 类型。
 
 ```go
 type AppConfig struct {
@@ -72,11 +86,15 @@ type AppConfig struct {
 }
 ```
 
-// 这里需要补充一些解释性的内容。
+此时，如果配置是 `app.status=on`，则绑定后的 `Status` 就是 `StatusEnabled`。如果配置值既不是约定字符串，也不能转成数字，转换器就会返回一个错误，返回的错误会继续向外传播，然后应用就会在启动阶段失败。
 
-## Slice & Array
+注意，转换器应该在 `init` 阶段注册完成，这样业务 Bean 开始绑定配置之前，Go-Spring 已经知道该如何处理这个类型。
 
-对于 slice 和 array 类型，我们可以使用 yaml、toml 等支持列表的配置格式，这样可以避免使用下标。
+## Slice
+
+我们可以把一组相同类型的配置绑定成 slice。比如应用白名单、上游地址（todo 符合 []int 的场景）、启用的模块名称（todo 符合 []EndpointConfig 的场景），它们在业务代码里天然就是 `[]string`、`[]int` 或者 `[]EndpointConfig`。
+
+对于支持列表的配置格式，可以直接写成自然的层级结构。
 
 ```yaml
 apps:
@@ -85,7 +103,17 @@ apps:
   - c
 ```
 
-当然也可以使用 properties 格式，但是就需要手动维护下标。两种方式是等价的，选择哪种都可以，方便为主。
+对应的结构体只需要把字段声明成 slice。
+
+```go
+type AppConfig struct {
+	Apps []string `value:"${apps}"`
+}
+```
+
+绑定之后，`Apps` 的值就是 `[]string{"a", "b", "c"}`。
+
+如果使用 properties 格式，也可以使用下标表达列表。
 
 ```properties
 apps[0]=a
@@ -93,19 +121,53 @@ apps[1]=b
 apps[2]=c
 ```
 
-对于短字符串列表，Go-Spring 支持使用逗号分隔的写法，这样写起来更加紧凑。
+这种写法和 YAML 列表的语义一致，只是需要手动维护下标。
+
+> Go-Spring 要求下标从 `0` 开始并且连续，如果缺失了中间的下标，Go-Spring 只会绑定到最后连续的下标位置。
+
+对于短字符串列表，我们还可以使用逗号分隔的写法。Go-Spring 会按逗号拆分，并对每个元素继续执行目标类型转换。
 
 ```properties
 apps=a,b,c
 ```
 
-上面所有方式都可以绑定到 `[]string` 类型，值为 `[]string{"a", "b", "c"}`。
+这种写法更加紧凑，也适合环境变量或命令行参数这类不方便表达层级列表的来源。
 
-// 这里没有对结构体的展示，我觉得可以加一下。
+如果列表元素本身是结构体，slice 仍然可以承接。比如下面的配置是把多个下游端点写成列表，每个元素都有自己的字段。
+
+```yaml
+endpoints:
+  - name: user
+    url: https://user.example.com
+    timeout: 500ms
+  - name: order
+    url: https://order.example.com
+    timeout: 1s
+```
+
+对应的结构体如下。
+
+```go
+type EndpointConfig struct {
+	Name    string        `value:"${name}"`
+	URL     string        `value:"${url}"`
+	Timeout time.Duration `value:"${timeout:=1s}"`
+}
+
+type ClientConfig struct {
+	Endpoints []EndpointConfig `value:"${endpoints}"`
+}
+```
+
+绑定 `Endpoints[0]` 时，Go-Spring 会把父路径 `endpoints[0]` 和元素字段上的 `name`、`url`、`timeout` 组合起来，也就是说，`Endpoints[0].Name` 会读取 `endpoints[0].name`。
+
+也就是说，slice 可以负责表达“有多个”，结构体字段继续表达“每个元素内部有哪些配置”。
 
 ## Map
 
-字段为 map 类型时，表示收集指定 path 下的所有子节点。例如，下面这组 key 把 `master` 和 `slave` 放在路径中间，这一层就会成为 map 的 key。
+有些配置不是单纯的有序列表，而是按名字区分的一组实例。比如 `master` 和 `slave` 数据源、多个 Redis 客户端、不同业务线的 HTTP 客户端。
+
+这类配置适合绑定成 `map[string]T`。比如下面这组 properties 就把 `master` 和 `slave` 放在路径中间，那么这一层就成为 map 的 key。
 
 ```properties
 database.connections.master.host=localhost
@@ -114,11 +176,29 @@ database.connections.slave.host=replica
 database.connections.slave.port=5433
 ```
 
-我们可以将上述配置绑定到如下字段，(todo 添加类型和字段)。
+对应的 Go 结构可以这样写。
 
-然后解释 `connections["master"]` 和 `connections["slave"]` 会分别绑定到对应配置。
+```go
+type DBConnectionConfig struct {
+	Host string `value:"${host}"`
+	Port int    `value:"${port:=5432}"`
+}
 
-这种方式非常适合多数据源、多 Redis、多 HTTP 客户端这类按名称管理的实例配置。
+type DatabaseConfig struct {
+	Connections map[string]DBConnectionConfig `value:"${database.connections}"`
+}
+```
+
+在实现配置绑定时，Go-Spring 会收集 `database.connections` 下面的第一层子 key。于是 `master` 和 `slave` 会成为 `Connections` 里的两个条目。
+
+```go
+cfg.Connections["master"].Host // localhost
+cfg.Connections["slave"].Port  // 5433
+```
+
+接着，对 map value 的绑定会沿用结构体规则。比如对 `master` 这个条目来说，`Host` 字段实际读取的是 `database.connections.master.host`，`Port` 字段实际读取的是 `database.connections.master.port`。
+
+`map[string]T` 中的 T 既可以是基础类型，也可以是结构体，也可以是更复杂的类型。
 
 ## 复杂类型绑定
 
