@@ -48,9 +48,9 @@ type Config struct {
 
 ## 自定义转换器
 
-内置转换器覆盖不了所有业务类型。像日志级别、运行模式、灰度状态，以及第三方库里的专用类型，往往都有自己的字符串格式。这时候需要通过自定义转换器，把这些类型接入到 Go-Spring 的配置绑定体系里面来。
+内置转换器覆盖不了所有的业务类型。像日志级别、运行模式、灰度状态，以及第三方库里的专用类型，往往都有自己的字符串格式。这时候需要通过自定义转换器，把这些类型接入到 Go-Spring 的配置绑定体系里面来。
 
-下面这个示例展示了自定义转换器的使用。这里用一个转换器把字符串转换成了枚举类型 `Status`。首先我们需要注册这个转换器。
+下面这个示例展示了自定义转换器的使用。这里使用一个转换器把字符串转换成了枚举类型 `Status`。首先我们需要注册这个转换器。
 
 ```go
 type Status int
@@ -86,7 +86,7 @@ type AppConfig struct {
 }
 ```
 
-此时，如果配置是 `app.status=on`，那么绑定后的 `Status` 就是 `StatusEnabled`。如果配置值既不是约定字符串，也不能转成数字，转换器会返回错误。这个错误会继续向外传播，应用也会在启动阶段失败。
+此时，如果配置是 `app.status=on`，那么绑定后的 `Status` 就是 `StatusEnabled`。如果配置值既不是约定字符串，也不能转成数字，转换器会返回错误。然后这个错误会继续向外传播，应用也会在启动阶段失败。
 
 注意，转换器应该在 `init` 阶段注册完成，这样业务 Bean 开始绑定配置之前，Go-Spring 已经知道该如何处理这个类型。
 
@@ -161,13 +161,13 @@ type ClientConfig struct {
 
 绑定 `Endpoints[0]` 时，Go-Spring 会把父路径 `endpoints[0]` 和元素字段上的 `name`、`url`、`timeout` 组合起来。也就是说，`Endpoints[0].Name` 会读取 `endpoints[0].name`。
 
-换句话说，slice 负责表达“有多个”，结构体字段负责表达“每个元素内部有哪些配置”。
+总结一下就是，slice 负责表达“有多个”，结构体字段负责表达“每个元素内部有哪些配置”。
 
 ## Map
 
 有些配置不是单纯的有序列表，而是按名字区分的一组实例。比如 `master` 和 `slave` 数据源、多个 Redis 客户端、不同业务线的 HTTP 客户端。
 
-这类配置适合绑定成 `map[string]T`。比如下面这组 properties 把 `master` 和 `slave` 放在路径中间，那么这一层就会成为 map 的 key。
+这类配置适合绑定成 `map[string]T`。比如下面这组 properties 把 `master` 和 `slave` 放在路径中间，然后这一层就会成为 map 的 key。
 
 ```properties
 database.connections.master.host=localhost
