@@ -17,13 +17,13 @@ type ServerConfig struct {
 }
 ```
 
-value 标签的语法是 `value:"${key:=defaultValue}"`，其中 `key` 是配置 key 的 path，`:=defaultValue` 是可选的默认值。如果没有默认值且配置不存在，则该字段就是必填字段，绑定阶段会失败。
+value 标签的语法是 `value:"${key:=defaultValue}"`，其中 `key` 是配置 key 的 path，`:=defaultValue` 是可选的默认值。如果我们没有默认值并且配置也不存在，那么该字段就认为是必填字段，绑定的时候会失败。
 
-如果写成 `${:=default}`，表示 key 虽然为空，但不从配置中查找值，而是直接使用默认值。这样，我们可以避免使用 Go 代码进行赋值，同时保留了对 key 的定义权。
+我们也可以写成 `${:=default}` 形式，表示 key 虽然为空，但不从配置中查找值，而是直接使用默认值。这样，我们可以避免使用 Go 代码进行赋值，同时保留了对 key 的定义权。
 
 ## 嵌套结构体
 
-如果配置绑定的目标字段本身还是结构体，并且没有注册转换器，那么 Go-Spring 会继续递归绑定字段。这样，我们可以很自然的表达嵌套配置。看下面的例子： // 然后讲嵌套结构体的情况
+如果配置绑定的目标字段本身是结构体，并且没有注册类型转换器，那么 Go-Spring 会递归绑定目标字段。这样，我们可以很自然的表达嵌套配置。举个例子： // 然后讲嵌套结构体的情况
 
 ```go
 type DatabaseConfig struct {
@@ -36,7 +36,7 @@ type AppConfig struct {
 }
 ```
 
-对于 `DatabaseConfig` 的 `Host` 和 `Port` 字段，在单独使用时，它们分别使用 host 和 port 作为 key。但在表达 `AppConfig` 的 `DB` 字段时，它们分别对应到 `database.host` 和 `database.port`。对应的配置文件如下：
+对于 `DatabaseConfig` 的 `Host` 和 `Port` 字段，在单独使用时，它们分别使用 host 和 port 作为 key。但在表达 `AppConfig` 的 `DB` 字段时，它们分别需要对应到 `database.host` 和 `database.port`。此时，对应的配置文件如下：
 
 ```yaml
 database:
@@ -46,7 +46,7 @@ database:
 
 ## Bind 函数
 
-当我们在 `Module` 中注册 Bean 时，需要获取配置，然后根据配置来注册 Bean。举个例子： // 手动调用 Bind 函数的情况
+当我们使用 Go-Spring 的 `Module` 模块化机制注册 Bean 时，通常需要根据获取的配置，来决定如何注册 Bean。举个例子： // 手动调用 Bind 函数的情况
 
 ```go
 func init() {
@@ -56,15 +56,19 @@ func init() {
 			return err
 		}
 		// 在这里完成使用 config 注册相关 Bean 的动作
+		// 这里最好是一个完整的例子
 		return nil
 	})
 }
 ```
 
-`Bind` 的函数签名如下：
+// 在这里需要总结一下上面的例子，说明一下 `Bind` 函数的使用场景。
+
+`Bind` 函数的签名如下：
 
 ```go
 func Bind(storage flatten.Storage, target any, tag ...string) error
 ```
 
-其中 `storage` 是已经加载完成的配置存储，`target` 是绑定目标，必须传指针，`tag` 支持完整的标签语法。
+其中 `storage` 是已经加载完成的配置存储，`target` 是绑定目标，`tag` 是可选的标签。
+target 必须是指针类型，否则不能修改目标值。tag 支持完整的标签语法，可以设置默认值。
