@@ -6,24 +6,13 @@
 
 Go-Spring 把格式解析交给了 Reader，把来源读取交给了 Provider。如果输入内容的格式或者语法变了，就扩展 Reader。如果数据来自新的地方，就扩展 Provider。
 
-## Reader 只负责把文件格式解析成同一棵配置树
+## Reader
 
-Go-Spring 开箱支持常见配置格式。
+Go-Spring 开箱支持几种常见的配置格式，包括 Properties(.properties)、YAML(.yaml、.yml)、TOML(.toml、.tml)、JSON(.json)。Go-Spring 会根据文件名的后缀自动选择 Reader 解析器。并且无论原始格式是什么，最终都会转成统一的 `Properties`。
 
-| 格式 | 文件后缀 | 适用场景 |
-|------|----------|----------|
-| Properties | `.properties` | 简单键值对 |
-| YAML | `.yaml`、`.yml` | 可读性好，适合人工维护 |
-| TOML | `.toml`、`.tml` | 语义明确，适合复杂配置 |
-| JSON | `.json` | 机器友好，适合程序生成 |
+但是内置的 reader 支持的文件格式毕竟有限，如果遇到新的文件格式，我们可以自己实现一个 Reader 解析器，通过 `conf.RegisterReader` 注册。
 
-Go-Spring 会根据文件后缀自动选择解析器。无论原始格式是什么，最终都会转成统一的 `Properties`。这样后续绑定和校验就不用关心文件格式了。格式可以不同，但进入系统后的表达必须保持一致。
-
-## 自定义 Reader 只扩展入口解析层
-
-如果项目需要支持特殊格式，可以实现 `reader.Reader` 函数类型，并通过 `conf.RegisterReader` 注册。
-
-下面的例子把 INI 内容转换成树形 `map`。关键点在返回值，Reader 只负责完成格式解析，后续扁平化和绑定仍然交给 Go-Spring 配置链路。
+下面的例子用于把 INI 内容转换成 `Properties`。
 
 ```go
 func parseINI(b []byte) (map[string]any, error) {
