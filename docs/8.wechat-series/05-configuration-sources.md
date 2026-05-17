@@ -8,6 +8,7 @@ Go-Spring 把格式解析交给了 Reader，把来源读取交给了 Provider。
 
 ## Reader
 
+Reader 用于解析配置文件，把原始文本转换成统一的 `Properties` 格式。
 Go-Spring 开箱支持几种常见的配置格式，包括 Properties(.properties)、YAML(.yaml、.yml)、TOML(.toml、.tml)、JSON(.json)。Go-Spring 会根据文件名的后缀自动选择 Reader 解析器。并且无论原始格式是什么，最终都会转成统一的 `Properties`。
 
 但是内置的 reader 支持的文件格式毕竟有限，如果遇到新的文件格式，我们可以自己实现一个 Reader 解析器，通过 `conf.RegisterReader` 注册。
@@ -34,11 +35,9 @@ func init() {
 Reader 并不要求直接返回 `Properties`，而是返回 `map[string]any` 即可。Go-Spring 会自动把树形 `map` 转换为 `Properties`。
 然后我们需要在 init 函数中注册 reader 解析器，这样在应用启动时就可以使用新的格式解析器了。
 
-## 来源和格式拆开，扩展才不互相牵连
+## Provider
 
-配置来源表示配置数据从哪里读取。当前最常用的是本地文件系统，也可以通过 Provider 接入远程配置中心、数据库或公司内部配置服务。
-
-可以通过 Provider 接入的典型来源包括下面几类。
+Provider 用于从特定来源加载配置。典型的配置来源包括下面几类。
 
 | 来源 | 说明 |
 |------|------|
@@ -48,11 +47,9 @@ Reader 并不要求直接返回 `Properties`，而是返回 `map[string]any` 即
 | Nacos | 配置中心 |
 | ZooKeeper | 分布式协调系统 |
 
-这张表不是内置能力清单，而是在说明 Provider 这一层覆盖的方向。项目如果有自己的基础设施，只要实现 Provider 并最终交回统一的配置数据，后面的绑定、校验和合并流程就不用变化。
+Go-Spring 目前只能支持从本地文件系统加载配置，其他来源需要自己实现 Provider。
 
-## Provider 只负责把外部来源交回配置数据
-
-Provider 负责从特定来源加载配置。下面示例从环境变量读取 JSON 配置。
+下面示例从环境变量读取 JSON 配置。
 
 这段代码演示的是来源扩展，而不是新格式扩展。JSON 解析只是为了把环境变量里的文本还原成树形数据，Provider 的职责是从 `source` 指向的位置取回配置并交给后续流程。
 
