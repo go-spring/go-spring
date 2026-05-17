@@ -85,29 +85,29 @@ spring.app.imports=optional:envjson:LOCAL_OVERRIDES
 
 `optional:` 表示配置不存在时不报错。这样本地覆盖文件、开发者私有配置或非必需的外部配置就可以按需提供，而不会影响正常启动。
 
-## GS_ 环境变量会先转换成配置 key
+## 环境变量
 
-Go-Spring 会自动读取带 `GS_` 前缀的环境变量，并按规则转换成配置 key。
+Go-Spring 会自动读取带 `GS_` 前缀的环境变量，并按照如下规则转换成配置 key。
 
 1. 去掉 `GS_` 前缀。
 2. 将下划线 `_` 替换为点号 `.`。
 3. 转为小写。
 
-下面两个环境变量展示了转换规则，即 `GS_` 之后的部分会先转成小写，再把下划线变成点号。
+下面的两个环境变量展示了这种转换规则。
 
 ```bash
 export GS_SERVER_PORT=8080
 export GS_DATABASE_DEFAULT_HOST=localhost
 ```
 
-进入 Go-Spring 配置系统后，它们会变成下面两个配置 key。
+上面定义的两个环境变量在经过转换后会变成下面两个配置 key。
 
 ```properties
 server.port=8080
 database.default.host=localhost
 ```
 
-如果部署平台已经约定了现成变量名，也可以不走 `GS_` 转换，直接按原始环境变量名绑定。
+Go-Spring 也支持直接通过环境变量名绑定，而不是通过 `GS_` 前缀来绑定。比如下面这个例子，这时候 Go-Spring 会读取系统环境变量 `PORT`。
 
 ```go
 type ServerConfig struct {
@@ -115,7 +115,7 @@ type ServerConfig struct {
 }
 ```
 
-这时候 Go-Spring 会读取系统环境变量 `PORT`。如果部署平台已经约定了环境变量名称，这种写法会更直接。
+直接绑定环境变量的方式有时候更加方便。
 
 ## 命令行参数适合表达本次启动的临时覆盖
 
