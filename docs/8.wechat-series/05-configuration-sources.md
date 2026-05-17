@@ -1,29 +1,68 @@
-# Go-Spring 实战第 5 课 —— 配置来源扩展：Reader、Provider、环境变量与命令行参数
+# Go-Spring 实战第 5 课 —— 配置来源：Reader、Provider、环境变量与命令行参数
 
-前面几章我们看过了 Go-Spring 怎样表达、绑定、校验配置。现在咱们来看看配置是如何加载进系统的。
+前面几篇我们把配置的表达、绑定、复杂类型和校验给串起来了。业务代码已经看到了一个稳定的配置模型，即字段从某个 path 读取值，缺失时可以使用默认值，绑定后还可以进行校验。
 
-在真实应用里配置不会只来自一个本地文件。它还可能来自 YAML、TOML、JSON、环境变量、命令行参数、远程配置中心。Go-Spring 为了统一处理这些来源，把格式解析和来源读取进行了分离处理。
+但真实应用里的配置不会只来自一个 `app.properties`。本地开发可能使用 YAML，线上部署可能使用环境变量，临时排查问题可能使用命令行参数，公司内部也可能有统一的配置中心。如果每一种输入方式都直接影响绑定逻辑，那么配置系统很快就会变成一组彼此独立的入口。
 
-Go-Spring 把格式解析交给了 Reader，把来源读取交给了 Provider。如果输入内容的格式或者语法变了，就扩展 Reader。如果数据来自新的地方，就扩展 Provider。
+Go-Spring 是如何解决这个问题的呢？答案是将格式解析和配置来源分开。格式解析由 Reader 负责，配置来源读取由 Provider 负责。即 Reader 关心的是“这段内容是什么语法”，Provider 关心的是“这段内容从哪里来”。最终，无论输入是来自文件，还是环境变量、命令行，还是后续接入的远程配置中心，最终都可以回到同一套 `Properties` 模型里。
 
 ## Reader
 
-Reader 用于解析配置文件，把原始文本转换成统一的 `Properties` 格式。
-Go-Spring 开箱支持几种常见的配置格式，包括 Properties(.properties)、YAML(.yaml、.yml)、TOML(.toml、.tml)、JSON(.json)。Go-Spring 会根据文件名的后缀自动选择 Reader 解析器。并且无论原始格式是什么，最终都会转成统一的 `Properties`。
+Reader 用于解析配置文件的内容。Go-Spring 开箱支持几种常见的配置格式。
 
-但是内置的 reader 支持的文件格式毕竟有限，如果遇到新的文件格式，我们可以自己实现一个 Reader 解析器，通过 `conf.RegisterReader` 注册。
+| 格式 | 后缀 |
+|------|------|
+| Properties | `.properties` |
+| YAML | `.yaml`、`.yml` |
+| TOML | `.toml`、`.tml` |
+| JSON | `.json` |
 
-下面的例子用于把 INI 内容转换成 `Properties`。
+当 Go-Spring 加载配置文件时，会根据文件名的后缀选择对应的 Reader。
+
+这一层抽象的价值在于，业务代码不用知道配置原本长什么样。比如下面的两段配置虽然文件格式不同，但进入 Go-Spring 以后都会落到 `server.port` 和 `server.timeout` 这两个 path 上。
+
+```yaml
+server:
+  port: 8080
+  timeout: 5s
+```
+
+```properties
+server.port=8080
+server.timeout=5s
+```
+
+也就是说，只要配置的格式能够被 Reader 转换成统一的结构，后面的绑定链路就不需要跟着变化。
+
+### 扩展 Reader
+
+如果配置的变化发生在文件语法上，比如项目里已经有一批 INI、HCL 或其他内部格式的配置文件，那么可以通过扩展 Reader 来支持这些格式。
+Go-Spring 接收树形 `map[string]any`，然后继续把它转换成统一的 `Properties`。
+
+下面的例子演示了一个 INI Reader。
 
 ```go
 func parseINI(b []byte) (map[string]any, error) {
-	parsed, err := ini.Load(b)
+	file, err := ini.Load(b)
 	if err != nil {
 		return nil, err
 	}
 
 	result := make(map[string]any)
-	// 将 INI 内容转换成树形 map
+	for _, section := range file.Sections() {
+		values := make(map[string]any)
+		for _, key := range section.Keys() {
+			values[key.Name()] = key.Value()
+		}
+
+		if section.Name() == ini.DefaultSection {
+			for k, v := range values {
+				result[k] = v
+			}
+			continue
+		}
+		result[section.Name()] = values
+	}
 	return result, nil
 }
 
@@ -32,24 +71,26 @@ func init() {
 }
 ```
 
-Reader 并不要求直接返回 `Properties`，而是返回 `map[string]any` 即可。Go-Spring 会自动把树形 `map` 转换为 `Properties`。
-然后我们需要在 init 函数中注册 reader 解析器，这样在应用启动时就可以使用新的格式解析器了。
+注册完成以后，`.ini` 文件就可以和内置格式一样进入配置加载流程。
+
+Reader 的实现最好保持纯粹。它应该只处理语法解析和结构转换，不要在 Reader 里读取环境变量、访问网络或决定某个配置是否可选。否则格式解析和来源读取会重新耦合在一起，后续排查配置问题时也很难判断错误到底来自语法、来源还是运行环境。
 
 ## Provider
 
-Provider 用于从特定来源加载配置。典型的配置来源包括下面几类。
+如果配置内容的格式没有变，但它不在默认的本地配置文件里，而是在环境变量、数据库、对象存储、Kubernetes ConfigMap、etcd、Nacos 或公司内部配置中心里。这时候就需要扩展 Provider，来把外部来源中的配置读进来。
 
-| 来源 | 说明 |
-|------|------|
-| 本地文件系统 | 从磁盘加载配置文件 |
-| Kubernetes ConfigMap | 适合容器平台配置管理 |
+Go-Spring 默认的配置加载主要围绕本地文件展开。其他来源如果要接入启动期配置流程，可以通过扩展 Provider，并通过 `spring.app.imports` 配置项来引入。
+
+| 来源 | 适用场景 |
+|------|----------|
+| 本地文件系统 | 常规应用配置和本地覆盖 |
+| Kubernetes ConfigMap | 容器平台上的配置分发 |
 | etcd | 分布式 KV 配置 |
 | Nacos | 配置中心 |
-| ZooKeeper | 分布式协调系统 |
+| ZooKeeper | 分布式协调系统中的配置数据 |
+| 内部配置平台 | 公司自研配置服务或数据库配置 |
 
-Go-Spring 目前只能支持从本地文件系统加载配置，其他来源需要自己实现 Provider。
-
-下面的示例展示了一种从环境变量读取 JSON 配置的 Provider 实现。
+下面的例子演示了一个 JSON Provider，从环境变量里读取一段 JSON。
 
 ```go
 func envJSONProvider(optional bool, source string) (map[string]string, error) {
@@ -74,20 +115,42 @@ func init() {
 }
 ```
 
-注册之后可以通过 `spring.app.imports` 来使用。
+大家可能会问，为什么上面的 Provider 没有使用 Reader 来解析 JSON？因为 envjson 已经表明了值的格式是 JSON，所以直接使用 `json.Unmarshal` 解析就可以了，没必要再通过 Reader 进行解析了。
+
+### spring.app.imports
+
+需要说明的是，在 Provider 注册以后，需要通过 `spring.app.imports` 才能使用。`spring.app.imports` 允许在一个配置文件中引用其他的配置。
+
+`spring.app.imports` 支持逗号分隔的多个配置来源，每个配置来源由 Provider 名称、来源地址和可选的可选标记组成，中间用冒号加以分隔。
+
+比如下面这个例子就是上面 envjson Provider 的使用示例。它表示从环境变量 `APP_CONFIG` 中读取 JSON 配置。
 
 ```properties
 spring.app.imports=envjson:APP_CONFIG
+```
+
+下面这个例子展示了 `optional:` 的用法。它表示从环境变量 `LOCAL_OVERRIDES` 中读取 JSON 配置，但如果这个环境变量不存在，也不会报错。
+
+```properties
 spring.app.imports=optional:envjson:LOCAL_OVERRIDES
 ```
 
-上面的示例会读取环境变量 `APP_CONFIG` 和 `LOCAL_OVERRIDES`，它们的值应该是完整的 JSON 字符串，Go-Spring 会自动把它们解析成 `Properties` 格式。
+然后 `APP_CONFIG` 和 `LOCAL_OVERRIDES` 的值应该是一段完整的 JSON 字符串，例如：
 
-`optional:` 表示配置不存在时不报错。这样本地覆盖文件、开发者私有配置或非必需的外部配置就可以按需提供，而不会影响正常启动。
+```bash
+export APP_CONFIG='{"server":{"port":9000},"database":{"host":"localhost"}}'
+```
+
+当这段 JSON 进入 Go-Spring 的配置体系后，会被展开成类似下面的配置。
+
+```properties
+server.port=9000
+database.host=localhost
+```
 
 ## 环境变量
 
-Go-Spring 会自动读取带 `GS_` 前缀的环境变量，并按照如下规则转换成配置 key。
+Go-Spring 支持读取带 `GS_` 前缀的环境变量，并且按照如下规则将其转换成配置 key。
 
 1. 去掉 `GS_` 前缀。
 2. 将下划线 `_` 替换为点号 `.`。
@@ -100,14 +163,20 @@ export GS_SERVER_PORT=8080
 export GS_DATABASE_DEFAULT_HOST=localhost
 ```
 
-上面定义的两个环境变量在经过转换后会变成下面两个配置 key。
+它们在经过转换后会变成下面两个配置 key。
 
 ```properties
 server.port=8080
 database.default.host=localhost
 ```
 
-Go-Spring 也支持直接通过环境变量名绑定，而不是通过 `GS_` 前缀来绑定。比如下面这个例子，这时候 Go-Spring 会读取系统环境变量 `PORT`。
+这个转换规则让环境变量和配置 path 之间有了稳定的映射。如果配置文件里面写 `database.default.host`，那么容器环境里就可以写 `GS_DATABASE_DEFAULT_HOST`，然后最终的业务代码都只绑定了同一个 path。
+
+### 原始绑定
+
+我们也可以直接使用不带 `GS_` 前缀的环境变量。也就是说，Go-Spring 不会把系统里所有环境变量都当成应用配置加载进来。这样可以避免 `PATH`、`HOME`、`USER` 这类系统变量污染应用配置空间。
+
+比如运行平台提供了 `PORT` 环境变量，然后我们可以在字段上直接绑定这个名称。
 
 ```go
 type ServerConfig struct {
@@ -115,20 +184,19 @@ type ServerConfig struct {
 }
 ```
 
-直接绑定环境变量的方式有时候更加方便。
+这种写法适合少量平台约定变量。对于应用自己的配置，更推荐使用 `GS_` 前缀，让配置名称落在 Go-Spring 的 path 命名空间里。
 
 ## 命令行参数
 
-命令行参数非常适合用于临时覆盖配置，因为它们离本次启动最近。
+命令行参数离本次启动最近，非常适合临时覆盖端口、Profile、开关以及其他排查参数。Go-Spring 默认识别 `-D` 前缀的参数。
 
-Go-Spring 支持 -D 参数，它可以把命令行参数转换成配置 key。
-下面这个启动命令同时覆盖了端口、环境和布尔开关。
+看下面这个例子。
 
 ```bash
 ./myapp -Dserver.port=9000 -Denv=prod -Ddebug
 ```
 
-进入配置系统后，它们会被解析成三个明确的 key。
+上面的命令行参数在进入配置系统以后，会变成下面的三个配置项。
 
 ```properties
 server.port=9000
@@ -136,12 +204,24 @@ env=prod
 debug=true
 ```
 
-如果觉得 -D 不合适，也可以修改它，只需要通过环境变量设置 `GS_ARGS_PREFIX` 即可。
+通常我们使用 `-Dkey=value` 这种形式的参数，表示给 key 设置明确的值。如果只有 key 而没有值，会被解析成 `true`。
+
+如果 `-D` 和现有命令行风格冲突，也可以通过环境变量 `GS_ARGS_PREFIX` 来修改命令行的配置前缀。
+
+看下面这个例子，我们将命令行参数的前缀设置成了 `--config.`。
 
 ```bash
 export GS_ARGS_PREFIX="--config."
 ./myapp --config.server.port=9000
 ```
+
+经过转换后，上面的命令行参数会变成下面的配置项。
+
+```properties
+server.port=9000
+```
+
+命令行参数不适合承载很长、很复杂的配置。它更像一次启动的明确指令。如果配置需要长期维护、多人协作或者表达环境差异，那么放回配置文件、Profile 或配置中心会更清楚。
 
 ## 配置来源
 
