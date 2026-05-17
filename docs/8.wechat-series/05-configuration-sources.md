@@ -143,8 +143,6 @@ export GS_ARGS_PREFIX="--config."
 ./myapp --config.server.port=9000
 ```
 
-## 多入口统一后还必须确定覆盖顺序
+## 配置来源
 
-Reader 负责格式，Provider 负责来源。这个拆分让本地文件、环境变量、命令行参数和远程配置中心都能进入同一套 `Properties` 模型。
-
-多个入口统一以后，还会遇到下一个问题，即同一个 key 来自不同来源时谁覆盖谁，以及 Map 和 Slice 这类结构怎样合并。
+Reader 和 Provider 的拆分让本地文件、环境变量、命令行参数和远程配置中心都能进入同一套 `Properties` 模型。。。。
