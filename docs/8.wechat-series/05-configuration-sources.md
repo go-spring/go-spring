@@ -128,7 +128,7 @@ Go-Spring 支持 -D 参数，它可以把命令行参数转换成配置 key。
 ./myapp -Dserver.port=9000 -Denv=prod -Ddebug
 ```
 
-进入配置系统后，它会被解析成三个明确的 key。
+进入配置系统后，它们会被解析成三个明确的 key。
 
 ```properties
 server.port=9000
@@ -136,7 +136,7 @@ env=prod
 debug=true
 ```
 
-如果需要修改参数前缀，可以设置 `GS_ARGS_PREFIX`。
+如果觉得 -D 不合适，也可以修改它，只需要通过环境变量设置 `GS_ARGS_PREFIX` 即可。
 
 ```bash
 export GS_ARGS_PREFIX="--config."
