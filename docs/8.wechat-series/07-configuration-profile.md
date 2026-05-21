@@ -91,6 +91,22 @@ export GS_SPRING_PROFILES_ACTIVE=prod
 
 特别需要说明的是，Profile 的名称最好来自部署语义，而不是来自某段业务逻辑，并且保持正交。比如 `prod`、`test`、`metrics` 这样的名字能让人直接看出配置层的含义；如果名字变成某个临时需求或某个分支条件，那么后续很难判断它到底应该影响哪些配置。
 
+## Profile 维度
+
+Profile 设计的关键不是多建几个环境文件，而是让每个 Profile 表达一个相对独立的维度。
+
+常见的拆法可以这样看。
+
+| Profile | 维度 | 含义 |
+|---------|------|------|
+| `dev`、`test`、`prod` | 运行环境 | 表达部署环境差异 |
+| `metrics`、`trace` | 功能能力 | 表达某类基础设施能力是否启用 |
+| `local` | 本地覆盖 | 表达开发机上的临时差异 |
+
+只有维度相对正交，多个 Profile 才适合组合。环境维度负责数据库地址、外部依赖地址、日志级别这类部署差异；能力维度负责指标、追踪、调试开关这类功能差异。同一批 key 尽量留在同一个维度里维护，否则后加载的 Profile 虽然能覆盖前面的值，但配置意图会变得不清楚。
+
+反过来看，如果把每一种组合都建成独立 Profile，比如 `prod-metrics`、`prod-trace`、`test-metrics`，Profile 很快就会退回到复制配置的老问题。只有某个组合确实代表独立部署形态，并且有稳定的运维含义时，单独建 Profile 才更清楚。
+
 ## spring.app.config.dir
 
 默认配置目录是 `./conf`。如果项目需要把配置文件放到其他目录，可以通过 `spring.app.config.dir` 修改。
@@ -108,61 +124,6 @@ export GS_SPRING_APP_CONFIG_DIR=./config
 `spring.app.config.dir` 和普通业务配置有一个重要区别：它会影响 Go-Spring 到哪里发现 `app.*` 和 `app-{profile}.*` 文件。因此，这个配置项必须在文件发现之前就能解析出来，通常放在命令行参数、环境变量或应用内置默认配置里。
 
 等基础配置和 Profile 配置已经开始加载以后，再修改 `spring.app.config.dir`，就来不及影响这一轮文件发现了。所以它更像启动入口的定位参数，而不是某个环境文件内部的普通配置项。
-
-## Profile 顺序
-
-当同时激活多个 Profile 时，顺序本身就是优先级的一部分。后面的 Profile 更靠近最终意图，因此同名 key 会覆盖前面的 Profile。
-
-下面这个例子把环境维度和功能维度拆开。基础配置只放所有环境都需要的端口。
-
-```yaml
-server:
-  port: 8080
-```
-
-`app-prod.yaml` 表达生产环境差异。
-
-```yaml
-server:
-  timeout: 3s
-logging:
-  level: warn
-```
-
-`app-metrics.yaml` 表达指标能力差异。
-
-```yaml
-metrics:
-  enabled: true
-logging:
-  level: info
-```
-
-如果这样激活 Profile：
-
-```properties
-spring.profiles.active=prod,metrics
-```
-
-最终配置会同时包含 `server.port`、`server.timeout` 和 `metrics.enabled`。但 `logging.level` 会使用 `metrics` 中的 `info`，因为 `metrics` 在 `prod` 后面加载。
-
-这条规则让多个 Profile 可以组合，但也要求组合关系清楚。`prod,metrics` 应该表达“生产环境，并且打开指标能力”；如果读者必须依赖隐含顺序才能理解某个覆盖结果，Profile 就已经承担了过多职责。
-
-## Profile 维度
-
-Profile 设计的关键不是多建几个环境文件，而是让每个 Profile 表达一个相对独立的维度。
-
-常见的拆法可以这样看。
-
-| Profile | 维度 | 含义 |
-|---------|------|------|
-| `dev`、`test`、`prod` | 运行环境 | 表达部署环境差异 |
-| `metrics`、`trace` | 功能能力 | 表达某类基础设施能力是否启用 |
-| `local` | 本地覆盖 | 表达开发机上的临时差异 |
-
-只有维度相对正交，多个 Profile 才适合组合。环境维度负责数据库地址、外部依赖地址、日志级别这类部署差异；能力维度负责指标、追踪、调试开关这类功能差异。同一批 key 尽量留在同一个维度里维护，否则后加载的 Profile 虽然能覆盖前面的值，但配置意图会变得不清楚。
-
-反过来看，如果把每一种组合都建成独立 Profile，比如 `prod-metrics`、`prod-trace`、`test-metrics`，Profile 很快就会退回到复制配置的老问题。只有某个组合确实代表独立部署形态，并且有稳定的运维含义时，单独建 Profile 才更清楚。
 
 ## Profile 多环境配置
 
