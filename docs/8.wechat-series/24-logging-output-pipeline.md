@@ -1,4 +1,4 @@
-# Go-Spring 实战第 24 课：日志输出管线：Appender、Layout、Encoder 如何把事件真正落地
+# Go-Spring 实战第 24 课 —— 输出管线：Appender、Layout 与 Encoder 的职责边界
 
 Logger 选好以后，一条日志仍然没有完成落地。Logger 只是决定事件是否通过级别过滤、交给哪些输出目标；真正写出字节之前，还要继续回答写到哪里、输出成什么格式、字段如何编码。
 
@@ -21,28 +21,28 @@ Go-Spring 内置四类 Appender。
 
 ## DiscardAppender 用显式配置表达丢弃语义
 
-有些环境需要保留路由结构，但不希望某类日志真正落地。与其让日志路径缺失，不如显式配置一个丢弃目标。
+有些环境需要保留路由结构，但不希望某类日志真正落地。下面的配置证明 Go-Spring 可以用显式 Appender 表达丢弃语义。
 
 ```properties
 appender.discard.type = DiscardAppender
 ```
 
-`DiscardAppender` 会静默丢弃所有日志事件，不产生实际输出。它适合临时关闭某类日志、测试路由规则，或者为特定环境保留配置结构。显式丢弃比隐式没有输出目标更容易排查。
+`DiscardAppender` 会静默丢弃所有日志事件，不产生实际输出。它适合临时关闭某类日志、测试路由规则，或者为特定环境保留配置结构。显式丢弃比隐式没有输出目标更容易排查，因为路由仍然是完整的。
 
 ## ConsoleAppender 写向标准输出
 
-容器环境通常会采集 stdout，本地开发也经常直接看控制台。这类场景可以把 Appender 指向标准输出，并选择一个适合人读的 Layout。
+容器环境通常会采集 stdout，本地开发也经常直接看控制台。下面的配置证明 Appender 只决定输出目标，最终格式仍然交给 Layout。
 
 ```properties
 appender.console.type = ConsoleAppender
 appender.console.layout.type = TextLayout
 ```
 
-`ConsoleAppender` 适合本地开发、启动排障和容器日志采集。生产高并发场景下，大量写 stdout 可能成为瓶颈，因此控制台输出通常不承担全部业务日志。
+这段配置的语义是把事件写到标准输出，并使用 `TextLayout` 编码。`ConsoleAppender` 适合本地开发、启动排障和容器日志采集。生产高并发场景下，大量写 stdout 可能成为瓶颈，因此控制台输出通常不承担全部业务日志。
 
 ## FileAppender 写向不滚动的单个文件
 
-如果日志量不大，也不需要 Go-Spring 自动滚动和清理，可以把输出固定到一个文件。
+如果日志量不大，也不需要 Go-Spring 自动滚动和清理，可以把输出固定到一个文件。下面的配置证明 `FileAppender` 只负责单文件写入。
 
 ```properties
 appender.file.type = FileAppender
@@ -51,11 +51,11 @@ appender.file.file = app.log
 appender.file.layout.type = JSONLayout
 ```
 
-`FileAppender` 会持续追加到单个文件。它适合低流量服务、测试日志、短生命周期任务和审计归档；如果服务长期运行且日志持续增长，就要考虑滚动文件。
+它的语义是持续追加到 `./logs/app.log`，文件生命周期不由 `FileAppender` 自动管理。它适合低流量服务、测试日志、短生命周期任务和审计归档；如果服务长期运行且日志持续增长，就要考虑滚动文件。
 
 ## RollingFileAppender 同时管理滚动和清理
 
-长期运行服务更常见的是滚动文件。下面的配置同时指定目录、文件名、滚动间隔、保留时间和输出格式。
+长期运行服务更常见的是滚动文件。下面的配置证明 `RollingFileAppender` 同时管理文件滚动和过期清理，而 Layout 仍然独立配置。
 
 ```properties
 appender.rolling.type = RollingFileAppender
@@ -67,11 +67,11 @@ appender.rolling.syncLock = false
 appender.rolling.layout.type = JSONLayout
 ```
 
-`RollingFileAppender` 支持按时间滚动、过期清理和并发安全配置。`syncLock` 要跟上游 Logger 的写入方式一起看。如果同步 Logger 会被多个 goroutine 并发写入，可以开启 `syncLock=true`；如果配合 AsyncLogger，通常保持 `false`，由异步单 goroutine 保证串行写入。
+这段配置的语义是按 `interval` 切换文件，并按 `maxAge` 清理过期日志。`syncLock` 要跟上游 Logger 的写入方式一起看。如果同步 Logger 会被多个 goroutine 并发写入，可以开启 `syncLock=true`；如果配合 AsyncLogger，通常保持 `false`，由异步单 goroutine 保证串行写入。
 
 ## 自定义 Appender 只接入新的输出策略
 
-当日志要写入 Kafka、HTTP 接口、远程日志服务，或者需要在落地前做采样、过滤时，可以实现自定义 Appender。下面的例子复用 `FileAppender` 的文件能力，只在 `Append` 中增加采样策略。
+当日志要写入 Kafka、HTTP 接口、远程日志服务，或者需要在落地前做采样、过滤时，可以实现自定义 Appender。下面的例子证明自定义 Appender 可以复用 `FileAppender` 的文件能力，只在 `Append` 中增加采样策略。
 
 ```go
 type SamplingAppender struct {
@@ -110,37 +110,37 @@ func init() {
 }
 ```
 
-自定义 Appender 的重点是输出策略。生命周期、并发安全和基础错误处理如果能复用内置实现，就不要在差异逻辑里重新实现一遍。
+这个例子的语义是：输出目标仍然是文件，但进入文件之前多了一层采样。自定义 Appender 的重点是输出策略。生命周期、并发安全和基础错误处理如果能复用内置实现，就不要在差异逻辑里重新实现一遍。
 
 ## Layout 决定日志给人读还是给机器解析
 
 Appender 只关心写到哪里，不关心事件长什么样。日志事件变成最终字节流之前，会先交给 Layout。
 
-`TextLayout` 面向人类阅读，适合控制台、本地开发和临时排障。
+`TextLayout` 面向人类阅读，适合控制台、本地开发和临时排障。下面这行文本说明它会把级别、时间、文件位置、标签、上下文和字段组织成一行。
 
 ```text
 [级别][时间][文件:行号] 标签||上下文字符串||key=value||msg=日志消息
 ```
 
-如果使用文本格式，可以通过配置控制文件行号展示长度，避免日志头部过长。
+如果使用文本格式，可以通过下面的配置控制文件行号展示长度，避免日志头部过长。
 
 ```properties
 appender.console.layout.type = TextLayout
 appender.console.layout.fileLineMaxLength = 48
 ```
 
-`JSONLayout` 面向机器解析，通常用在日志采集系统里。
+`JSONLayout` 面向机器解析，通常用在日志采集系统里。下面的配置证明同一个 Appender 只要替换 Layout，就可以改变输出格式。
 
 ```properties
 appender.file.layout.type = JSONLayout
 appender.file.layout.fileLineMaxLength = 48
 ```
 
-生产环境通常优先 JSON。原因是日志进入采集系统后，字段索引、过滤和聚合都依赖稳定的机器可解析格式。
+这两组配置的语义是：输出目标没有变，事件变成字节的方式发生了变化。生产环境通常优先 JSON，原因是日志进入采集系统后，字段索引、过滤和聚合都依赖稳定的机器可解析格式。
 
 ## 自定义 Layout 处理特殊输出格式
 
-如果系统需要 CSV、Protobuf 或自定义分隔格式，可以实现 Layout 并注册插件。下面的例子只演示核心方法，即从事件里取级别、时间和标签，再写入目标 Writer。
+如果系统需要 CSV、Protobuf 或自定义分隔格式，可以实现 Layout 并注册插件。下面的例子证明自定义 Layout 只需要把 `Event` 编码到目标 Writer。
 
 ```go
 type CSVLayout struct {
@@ -170,7 +170,7 @@ logger.console.level = INFO
 logger.console.layout.type = CSVLayout
 ```
 
-这个扩展点只改变事件的字节表达，不改变 Logger 的路由和 Appender 的输出目标。
+这个扩展点的语义很窄：它只改变事件的字节表达，不改变 Logger 的路由和 Appender 的输出目标。因此特殊格式应该放在 Layout，而不是重新实现 Logger 或 Appender。
 
 ## Encoder 让字段编码少做无效工作
 
@@ -178,8 +178,8 @@ Encoder 是字段编码层。它的目标是让基础类型走专门编码路径
 
 业务代码通常不直接操作 Encoder。只有实现自定义 Layout 时，才需要组合 Encoder。这个边界也说明了 Go-Spring 字段模型的意义，字段在调用点已经带上类型，输出时就不必再把所有内容当成未知对象处理。
 
-## 输出管线把目标、格式和编码解耦
+## 输出管线
 
 Appender、Layout、Encoder 分离后，输出目标、输出格式和编码实现可以独立扩展。写到哪里、长什么样、怎么编码，不需要绑死在一个实现里。
 
-日志落地之外，还有一类高频字段来自请求上下文，例如链路 ID、请求 ID 和用户信息。这类字段如果散落在每个日志调用点里，维护成本会很高，因此下一步要把它们放进统一的上下文提取。
+Go-Spring 的输出管线把运行期差异拆成三个稳定问题：Appender 决定写到哪里，Layout 决定长什么样，Encoder 决定字段如何变成字节。这个边界清楚以后，新增远端输出、切换 JSON、优化字段编码，都可以落在对应层次里，而不会牵动整条日志调用链。

@@ -1,16 +1,14 @@
-# Go-Spring 实战第 29 课：测试体系：纯单测、容器测试、断言和 Mock 如何选择
+# Go-Spring 实战第 29 课 —— 测试体系：在纯单测、容器测试和 Mock 之间划清边界
 
-Go-Spring 的配置、IoC、运行时、日志、HTTP 和 Starter 都进入应用以后，问题就落到了验证上，即这些能力怎样被测试覆盖。
+Starter 把组件接入规则封装起来以后，工程复杂性并没有消失，只是从“怎么重复写初始化代码”转成了“怎么持续确认装配仍然正确”。配置、条件、Bean、生命周期和外部依赖一旦组合起来，测试就不能只看单个函数的返回值。
 
-Go-Spring 的能力再完整，最终也要落到测试上。因为只有测试能持续验证这些装配和运行行为没有退化。Go-Spring 兼容 Go 原生 `go test`，不需要额外测试运行器。它还提供了 IoC 容器测试、断言库和 Mock 支持。
+但这并不意味着所有测试都要启动 Go-Spring 容器。容器测试能验证装配，也会带来更高成本；Mock 能隔离外部依赖，也会引入额外规则；断言库能让失败更清楚，但不能替代测试分层。
 
-测试层次可以先按成本从低到高看——纯业务逻辑留给纯单测；涉及装配、配置和多个 Bean 协作时，再使用 IoC 测试。
+Go-Spring 测试体系的核心不是提供一个新的测试运行器。它仍然运行在 Go 原生 `go test` 之上，只是在需要验证 IoC 装配、配置绑定和外部依赖隔离时，补充 `RunTest`、测试配置、测试 Bean、断言和 `gs-mock`。
 
-判断顺序可以很直接，即业务逻辑用纯单测，装配和配置用 `RunTest`，外部系统和不稳定依赖用 Mock 隔离。这样测试不会因为框架能力变多而全部上升到容器层，反馈成本也能被控制住。
+## 纯单测
 
-## 业务逻辑优先留给纯单测
-
-纯单测手动构造对象和依赖。只要被测逻辑不依赖 Go-Spring 的装配行为，就没有必要启动容器。下面这个服务只依赖一个仓储接口，所以测试可以直接传入替身依赖。
+先把最便宜的测试留住。下面的例子要证明的是：如果被测对象只依赖普通接口，并不依赖 Go-Spring 的装配语义，就应该直接手动构造。
 
 ```go
 type UserService struct {
@@ -30,7 +28,7 @@ func (s *UserService) GetUserName(id int) (string, error) {
 }
 ```
 
-对应的单测只需要手动传入替身依赖，然后断言业务方法的返回结果。
+对应测试只需要传入替身依赖，直接断言业务行为。
 
 ```go
 func TestUserService_GetUserName(t *testing.T) {
@@ -44,11 +42,11 @@ func TestUserService_GetUserName(t *testing.T) {
 }
 ```
 
-这类测试启动快、定位准，适合验证业务逻辑。所以能在这一层覆盖的逻辑，通常留在纯单测里，反馈会更快。
+这类测试不需要 `gs.RunTest`。它验证的是业务逻辑，而不是配置绑定、条件注册或 Bean 解析。把它留在纯单测层，可以让反馈更快，失败定位也更直接。
 
-## 容器测试专门验证装配和配置
+## RunTest
 
-当测试需要覆盖依赖注入、配置绑定、条件装配或多个 Bean 协作时，可以使用 `gs.RunTest`。
+当测试目标变成“这些 Bean 是否能按配置正确装配”时，才需要启动 Go-Spring 测试容器。`gs.RunTest` 要证明的是：测试对象可以作为 root Bean 进入容器，完成注入后再执行断言。
 
 ```go
 func TestOrderFlow(t *testing.T) {
@@ -64,11 +62,13 @@ func TestOrderFlow(t *testing.T) {
 }
 ```
 
-`RunTest` 会创建测试对象作为 root Bean，启动 Go-Spring 测试容器，完成依赖注入后执行回调，最后关闭容器。这样测试用例只需要关心注入后的对象状态。
+`RunTest` 会创建一个测试 App，把回调参数中的测试对象放进容器，完成 `autowire` 和 `value` 注入，然后执行回调。回调结束后，测试容器会关闭，相关生命周期也会收束。
 
-## 测试配置只影响当前容器
+所以，`RunTest` 适合验证装配行为：某个 Bean 是否存在，配置是否能绑定，条件是否生效，多个 Bean 是否能协作。它不适合替代所有单元测试，否则简单业务逻辑也会被放进更重的测试路径。
 
-测试前可以通过 `gs.Configure()` 添加配置。下面这段代码把数据库地址和环境名限制在当前测试容器里。
+## 测试配置
+
+容器测试常常需要临时配置，例如把数据库地址换成内存实现，把环境名设置为 `test`。下面的例子要证明的是：`gs.Configure()` 可以把配置限制在当前测试 App 中。
 
 ```go
 func TestApp(t *testing.T) {
@@ -84,11 +84,13 @@ func TestApp(t *testing.T) {
 }
 ```
 
-这适合把测试环境的差异直接放进当前测试容器，而不是修改全局配置文件。这样测试之间也更容易隔离。
+这里的配置不会要求修改全局配置文件。它只服务于当前测试创建的 App，并参与同一套配置绑定规则。也就是说，测试配置仍然是 Go-Spring 配置系统的一部分，只是来源从外部文件变成了测试代码里的显式输入。
 
-## 测试 Bean 用来替换外部依赖
+这种写法适合表达测试场景差异。比如某个条件 Bean 需要 `feature.enabled=true` 才会出现，测试就应该在当前容器里补上这个配置，而不是依赖开发机上的环境变量。
 
-如果要替换外部依赖，可以只给当前测试容器注册替代 Bean，不污染全局注册表。
+## 测试 Bean
+
+配置可以改变装配条件，但有些依赖需要直接替换，例如外部服务客户端、真实数据库仓储或消息发送器。下面的例子要证明的是：测试可以在当前 App 中注册替代 Bean。
 
 ```go
 func TestUserService(t *testing.T) {
@@ -106,17 +108,15 @@ func TestUserService(t *testing.T) {
 }
 ```
 
-每个 `RunTest` 会复制全局注册信息，`gs.Configure()` 中的 Bean 只作用于当前测试。
+每个 `RunTest` 会基于 `init` 阶段的全局注册信息创建测试容器，`gs.Configure()` 中注册的 Bean 只进入当前 App。这样替代依赖不会污染其他测试。
 
-不过，由于全局 `init` 注册信息共享，基于 IoC 容器的测试目前不支持 `t.Parallel()`。
+这里也有一个边界：全局 `init` 注册信息仍然是共享来源，基于 Go-Spring IoC 容器的测试目前不支持 `t.Parallel()`。如果测试需要并行执行，优先把它保持在纯单测层，避免共享注册信息带来的干扰。
 
-## assert 和 require 负责不同断言节奏
+## assert 与 require
 
-Go-Spring 在 `github.com/go-spring/stdlib/testing` 下提供了 `assert` 和 `require`。
+测试失败时，断言节奏也会影响定位效率。Go-Spring 在 `github.com/go-spring/stdlib/testing` 下提供 `assert` 和 `require`，两者的区别在于失败后是否继续执行。
 
-`assert` 失败后继续执行，适合收集多个断言结果。
-
-`require` 失败后立即终止，适合前置条件。换句话说，前置条件用 `require`，后续结果检查用 `assert`。
+下面的例子要证明的是：前置条件用 `require`，后续结果检查用 `assert`。
 
 ```go
 require.That(t, err).Nil()
@@ -126,7 +126,9 @@ assert.That(t, user.ID).Equal(1)
 assert.That(t, user.Name).Equal("Alice")
 ```
 
-常见入口可以按数据类型选择，下面这些调用分别覆盖普通值、错误、数字、字符串、切片和 map。
+`require` 失败后会立即终止当前测试，适合“后面断言依赖这个条件成立”的场景。`assert` 失败后继续执行，适合一次收集多个字段差异。
+
+断言入口可以按数据类型选择。
 
 ```go
 assert.That(t, value).Equal(expected)
@@ -137,29 +139,31 @@ assert.Slice(t, []int{1, 2, 3}).Length(3)
 assert.Map(t, map[string]int{"a": 1}).ContainsKey("a")
 ```
 
-断言失败时也可以补一段业务语境，方便从测试输出里直接定位原因。
+断言失败时也可以补充业务语境。
 
 ```go
 assert.That(t, result).Equal(expected, "result should match expected")
 ```
 
-## Mock 用来隔离不稳定外部依赖
+这些断言不会改变测试模型，但能让失败输出更接近业务语义。尤其是容器测试失败时，清晰断言能帮助区分是装配失败、配置错误，还是业务结果不符合预期。
 
-Go-Spring 提供了 `gs-mock`，支持接口 Mock、函数 Mock 和方法 Mock。
+## gs-mock
 
-接口 Mock 通常通过代码生成创建实现类，避免手写大量样板方法。当接口本身就是业务边界时，生成 Mock 可以让测试集中在调用规则和返回结果上。
+Mock 的使用场景要收窄到外部依赖或不稳定边界。Go-Spring 提供 `gs-mock`，支持接口 Mock、函数 Mock 和方法 Mock。它要解决的是“被测逻辑需要隔离某个调用边界”，而不是让所有对象都通过 Mock 参与测试。
+
+接口 Mock 通常通过代码生成创建实现类。下面的注释要证明的是：当接口较大时，可以把样板实现交给工具生成。
 
 ```go
 //go:generate gs mock -o mock.go
 ```
 
-如果当前包里接口很多，也可以只为指定接口生成 Mock。
+如果只想为指定接口生成 Mock，可以限制接口列表。
 
 ```go
 //go:generate gs mock -o mock.go -i "Service,Repository"
 ```
 
-如果返回值需要根据入参动态计算，可以使用 Handle 模式。
+生成后的 Mock 可以按调用规则返回结果。Handle 模式适合返回值依赖入参的场景。
 
 ```go
 s.MockDo().Handle(func(n int, s string) (int, error) {
@@ -170,7 +174,7 @@ s.MockDo().Handle(func(n int, s string) (int, error) {
 })
 ```
 
-如果只是匹配固定条件并返回固定结果，When/Return 模式会更简洁。
+When/Return 模式适合固定匹配条件。
 
 ```go
 s.MockFormat().When(func(format string, args []any) bool {
@@ -178,7 +182,7 @@ s.MockFormat().When(func(format string, args []any) bool {
 }).ReturnValue("abc")
 ```
 
-函数和方法 Mock 通过 `context.Context` 传递 Mock Manager。下面的例子把 Mock 规则绑到当前调用链，避免影响其他测试。
+函数和方法 Mock 使用 `context.Context` 传递 Mock Manager。下面的例子要证明的是：Mock 规则可以绑定到当前调用链，而不是全局影响所有调用。
 
 ```go
 r := gsmock.NewManager()
@@ -191,16 +195,16 @@ gsmock.Func22(GetUser, r).Handle(func(ctx context.Context, id int) (*User, error
 user, err := GetUser(ctx, 1)
 ```
 
-使用函数或方法 Mock 时，有一个细节容易影响结果，即编译器内联可能让拦截失效。测试命令可以加上禁用内联参数。
+函数或方法 Mock 有一个编译边界：如果目标调用被编译器内联，拦截可能失效。测试命令可以加上禁用内联参数。
 
 ```bash
 go test -gcflags="all=-N -l" ./...
 ```
 
-Mock 规则通常放在测试逻辑开始前注册，并按从具体到宽泛的顺序排列。这样可以避免宽泛规则先匹配，导致具体规则没有机会生效。
+Mock 规则通常放在测试开始处，并按从具体到宽泛的顺序排列。这样具体规则先匹配，宽泛兜底规则才不会提前吞掉调用。
 
-## 用测试层次控制反馈成本
+## 测试边界
 
-纯业务逻辑优先用纯单测。IoC 测试用来验证装配和配置行为。外部依赖不稳定、成本高或难以复现时，再用 Mock 做隔离。
+Go-Spring 测试体系的边界可以按问题来判断。验证纯业务计算，用纯单测；验证配置绑定、条件注册和依赖注入，用 `RunTest`；隔离外部系统、不稳定调用或难复现错误，用 Mock；表达失败语义，用 `assert` 和 `require`。
 
-测试体系在这里补上的是工程验证能力。配置、IoC、运行时、日志、HTTP、Starter 和测试放在一起，才构成 Go-Spring 面向服务端应用的完整能力地图。
+这样分层以后，Go-Spring 的框架能力不会把所有测试都推向容器层。测试体系在整体模型里的位置，是给配置、IoC、Starter、HTTP 和生命周期提供持续验证，而不是替代 Go 原生测试习惯。

@@ -1,14 +1,14 @@
-# Go-Spring 实战第 12 课：Bean 创建方式：结构体、构造函数和函数值怎样决定容器创建策略
+# Go-Spring 实战第 12 课 —— Bean 创建方式：结构体、构造函数和函数值如何决定容器接手时机
 
-依赖注入解决的是对象之间怎么连接。再往前一步，Go-Spring 容器还要知道 Bean 自己从哪里来。
+注入目标解决的是依赖点拿哪个值。再往前一步，Go-Spring 容器还要知道 Bean 自己从哪里来。
 
-同样是注册到容器里，直接给一个结构体指针、给一个构造函数、给一个函数值，含义并不相同。它们分别决定对象是否已经创建、依赖是否要在创建时注入、失败是否能在启动阶段返回，以及函数本身是不是一个可注入能力。
+同样是传给 `gs.Provide()`，结构体指针、构造函数和函数值的含义并不相同。它们分别决定对象是否已经创建、依赖是否要在创建时注入、创建失败是否能在启动阶段返回，以及函数本身是不是一个可注入能力。
 
-所以看 Bean 注册时，先不要只看 `gs.Provide()`。更关键的是传进去的值是什么形态，因为形态决定了 Go-Spring 容器何时接手对象。
+所以看 Bean 注册时，不能只看 API 名字。更关键的是传进去的值是什么形态，因为形态决定 Go-Spring 从哪个阶段开始接手对象。
 
-## 已有实例进入容器后只交出后续管理
+## 已有实例
 
-最直接的方式是注册一个已经创建好的对象。下面的 `MyService` 在注册前已经完成实例化，Go-Spring 容器接手的是后续注入和生命周期。
+先看一个证明已有实例语义的例子。`new(MyService)` 在注册前已经创建了对象，Go-Spring 接手的是后续管理。
 
 ```go
 type MyService struct {
@@ -22,11 +22,11 @@ func init() {
 
 注册后，Go-Spring 仍然会对这个对象执行依赖注入和生命周期回调。也就是说，对象创建已经发生，但对象管理仍然交给容器。
 
-这种方式适合简单组件，或者需要把既有对象纳入 Go-Spring 管理的集成场景。它的边界也很明确——构造阶段已经结束，后续依赖只能通过字段注入或生命周期回调补齐。
+这种方式适合简单组件，或者把既有对象纳入 Go-Spring 管理的集成场景。它的边界也很清楚：构造阶段已经结束，后续依赖只能通过字段注入或生命周期回调补齐。
 
-## 构造函数把依赖和创建失败放进签名
+## 构造函数
 
-更常见的方式是注册构造函数。下面这个例子把 `Dep` 放进构造函数参数，Go-Spring 容器在创建 `MyService` 前必须先解析出这个依赖。
+更常见的方式是注册构造函数。下面的例子证明 Go-Spring 会在创建 Bean 前先解析构造函数参数。
 
 ```go
 type MyService struct {
@@ -42,6 +42,8 @@ func init() {
 }
 ```
 
+这里 `Dep` 是 `MyService` 创建的前提。Go-Spring 解析到 `NewMyService` 时，会先准备好 `Dep`，再调用构造函数得到 `*MyService`。
+
 如果创建过程可能失败，构造函数可以返回 `error`。
 
 ```go
@@ -50,43 +52,13 @@ func NewMyService(dep Dep) (*MyService, error) {
 }
 ```
 
-配置校验、打开文件、建立连接这类动作都适合通过 `(T, error)` 表达失败。这样错误会停留在启动阶段，容器收到错误后终止启动，而不是让半初始化对象进入运行期。
+配置校验、打开文件、建立连接这类动作都适合通过 `(T, error)` 表达失败。Go-Spring 收到错误后会终止启动，而不是让半初始化对象进入运行期。
 
-构造函数的价值在于让依赖关系、创建结果和创建失败都留在普通 Go 函数签名里。Go-Spring 容器只负责解析参数并调用它。
+构造函数的价值在于让依赖关系、创建结果和创建失败都留在普通 Go 函数签名里。容器只负责解析参数并调用它。
 
-## Arg 的作用是补齐函数参数缺少的标签语义
+## 参数绑定
 
-Go 不能给函数参数写 tag，所以构造函数参数需要额外绑定信息时，Go-Spring 会在注册阶段通过 `Arg` 补充声明。
-
-`Arg` 的选择可以按参数来源来判断。来自容器 Bean 或配置项时用 `TagArg`，注册时已经确定的值用 `ValueArg`，接入 Functional Options 时用 `BindArg`，只需要覆盖某个位置时用 `IndexArg`。
-
-这个设计让构造函数保持普通 Go 写法，同时把容器绑定语义集中在注册语句里。
-
-## TagArg 让构造参数参与 Bean 注入和配置绑定
-
-当构造函数参数来自容器中的 Bean 时，`TagArg` 可以补充字段标签里原本能表达的注入语义。
-
-```go
-func NewUserController(service *UserService) *UserController {
-	return &UserController{service: service}
-}
-
-func init() {
-	gs.Provide(NewUserController, gs.TagArg(""))
-}
-```
-
-`TagArg("")` 表示仅按类型匹配。参数只有一个且可按类型自动推断时，这个 `TagArg` 可以省略。
-
-同类型有多个候选时，把名称写进 `TagArg`，容器就会按这个名称选择目标 Bean。
-
-```go
-func init() {
-	gs.Provide(NewRepository, gs.TagArg("slave"))
-}
-```
-
-`TagArg` 也可以读取配置项并转换成目标类型。下面这个构造函数没有配置结构体，两个基础类型参数直接来自配置。
+构造函数参数需要额外语义时，Go-Spring 使用 `Arg` 在注册阶段补齐。下面这个例子证明 `TagArg` 可以让参数直接从配置读取值。
 
 ```go
 func NewRedisClient(host string, port int) *RedisClient {
@@ -101,7 +73,9 @@ func init() {
 }
 ```
 
-基础类型参数少时，这样写很直接。参数继续增加以后，相关配置聚合成结构体会更清楚。
+`TagArg` 对基础类型参数执行配置绑定，对 Bean 类型参数执行依赖注入。它和字段上的 `value`、`autowire` 标签处在同一类语义里，只是函数参数不能写 tag，所以把声明放到了注册语句中。
+
+基础类型参数很少时，这样写直接。参数继续增加以后，把相关配置聚合成结构体会更清楚。
 
 ```go
 type RedisConfig struct {
@@ -117,15 +91,15 @@ func NewRedisClient(cfg RedisConfig) *RedisClient {
 }
 
 func init() {
-	gs.Provide(NewRedisClient, gs.TagArg("redis"))
+	gs.Provide(NewRedisClient, gs.TagArg("${redis}"))
 }
 ```
 
-这时问题已经不是 Go-Spring 能不能绑定，而是调用方能不能读懂这一组参数的含义。配置结构体把协议集中在一个类型里，后续新增字段也更稳。
+这里 `TagArg("${redis}")` 把 `redis` 子树绑定到 `RedisConfig`。问题已经不是 Go-Spring 能不能绑定，而是调用方能不能读懂这一组参数的含义。配置结构体把协议集中在一个类型里，后续新增字段也更稳。
 
-## ValueArg 只承载注册期固定值
+## 固定值和位置绑定
 
-当参数值在注册时已经确定，可以使用 `ValueArg`。
+并不是所有参数都应该进入配置系统。下面的例子证明 `ValueArg` 表达的是注册期已经确定的固定值。
 
 ```go
 func NewRedisClient(db int) *RedisClient {
@@ -137,11 +111,27 @@ func init() {
 }
 ```
 
-`ValueArg` 适合常量、测试替身或无需进入配置系统的参数。它表达的是注册期固定值，所以不要把需要按环境变化的参数硬塞进这里。
+`ValueArg` 适合常量、测试替身或无需按环境变化的参数。它表达的是“这个值在注册时已经确定”，所以不要把需要由部署环境控制的参数硬塞进这里。
 
-## BindArg 把 Functional Options 转成容器可解析的参数
+如果只想覆盖某个位置，可以使用 `IndexArg`。下面的例子证明未显式绑定的位置仍然由容器自动推断。
 
-有些已有 API 使用 Functional Options。Go-Spring 不需要改变这些 API，而是通过 `BindArg` 生成对应的 Option 参数。
+```go
+func NewBean(a *ServiceA, b *ServiceB, c string) *Bean {
+	return &Bean{a: a, b: b, c: c}
+}
+
+func init() {
+	gs.Provide(NewBean, gs.IndexArg(2, gs.ValueArg("custom-value")))
+}
+```
+
+索引从 0 开始。`IndexArg` 适合少量参数需要覆盖的场景；如果每个位置都要靠索引解释，构造函数签名通常已经不够清楚。
+
+## Functional Options
+
+很多既有库使用 Functional Options。Go-Spring 不需要改造这些 API，而是通过 `BindArg` 生成对应的 Option 参数。
+
+下面的例子证明 `BindArg` 可以先解析参数，再调用 `WithPort` 或 `WithTimeout` 生成构造函数真正需要的 `Option`。
 
 ```go
 type Option func(*Server)
@@ -172,23 +162,7 @@ func init() {
 
 这里 `WithPort` 的参数来自配置，`WithTimeout` 的参数来自注册期固定值。`BindArg` 还可以附加条件，只有条件满足时才生成对应 Option。这样已有的 Functional Options API 可以纳入容器注册，同时保留原来的调用形态。
 
-## IndexArg 只在指定位置需要覆盖时使用
-
-默认参数绑定按顺序匹配。如果只想绑定某个位置，可以使用 `IndexArg`。
-
-```go
-func NewBean(a *ServiceA, b *ServiceB, c string) *Bean {
-	return &Bean{a: a, b: b, c: c}
-}
-
-func init() {
-	gs.Provide(NewBean, gs.IndexArg(2, gs.ValueArg("custom-value")))
-}
-```
-
-索引从 0 开始。未显式绑定的参数仍由容器自动推断。`IndexArg` 适合少量参数需要覆盖的场景，如果每个位置都要靠索引解释，构造函数签名通常已经不够清楚。
-
-## 函数值注册要明确它本身就是能力
+## 函数值
 
 最后一种容易混淆的形态是函数值。Go-Spring 默认会把函数理解为构造函数；如果函数本身就是要注入的能力，需要用 `reflect.ValueOf` 明确表达。
 
@@ -204,10 +178,10 @@ func init() {
 }
 ```
 
-这种能力适合策略函数、校验函数、编码函数等函数式组件。关键判断是，调用方需要注入的是函数返回值，还是函数本身。
+这个例子里，调用方需要注入的是 `BcryptPasswordChecker` 这个函数本身，而不是调用它得到的返回值。策略函数、校验函数、编码函数等函数式组件适合用这种方式进入容器。
 
-## 创建方式决定的是容器何时接手对象
+## Bean 创建方式
 
 结构体指针表示对象已经创建，Go-Spring 负责后续注入和生命周期。构造函数表示对象创建也交给容器，依赖和失败都在启动期处理。函数值表示函数本身就是运行期能力，需要被当作 Bean 注入。
 
-Bean 创建方式确定以后，还需要通过名称、生命周期回调、接口导出、条件和 root 入口这些元信息，继续影响容器行为。
+创建方式确定以后，Bean 还需要名称、接口导出、生命周期、条件和 root 入口这些元信息，才能从一个 Go 值变成完整的装配节点。
