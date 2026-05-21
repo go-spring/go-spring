@@ -62,29 +62,34 @@ logging:
 
 ## spring.profiles.active
 
-Go-Spring 使用 `spring.profiles.active` 决定本次启动要叠加哪些 Profile。这个选择通常来自命令行参数或环境变量，因为它们最接近一次具体启动。
+前面我们提到说 Profile 机制需要激活。那么一个 Profile 如何才能被激活呢？
 
-命令行参数适合临时指定当前启动使用哪个环境。
+Go-Spring 使用 `spring.profiles.active` 配置 key 来决定本次启动要激活的 Profile。它可以是一个逗号分隔的字符串，每个字符串都是一个 Profile 名称，比如 `prod`、`test`、`metrics` 等。
+
+根据 Go-Spring 加载配置的顺序，我们知道设置 `spring.profiles.active` 的最佳方式是命令行参数或者环境变量。因为它们都是在基础配置之前加载的。
+
+比如，我们可以通过命令行参数来指定 `prod` Profile。
 
 ```bash
 ./app -Dspring.profiles.active=prod
 ```
 
-环境变量适合由部署系统注入。按照第 5 篇讲过的环境变量转换规则，`GS_SPRING_PROFILES_ACTIVE` 会进入配置系统，并转换成 `spring.profiles.active`。
+也可以通过环境变量来指定 `prod` Profile。
 
 ```bash
 export GS_SPRING_PROFILES_ACTIVE=prod
+./app
 ```
 
-也可以同时激活多个 Profile，多个名字之间用逗号分隔。
+我们还可以同时激活多个 Profile。
 
 ```bash
 ./app -Dspring.profiles.active=prod,metrics
 ```
 
-这不是一个无序集合。Go-Spring 会按照声明顺序加载 Profile 文件，后加载的 Profile 可以覆盖先加载 Profile 中的同名 key。因此，`prod,metrics` 的含义是：先叠加生产环境差异，再叠加指标能力差异。
+对于多个 Profile，Go-Spring 会按照声明顺序加载 Profile 文件，后加载的 Profile 可以覆盖先加载 Profile 中的同名 key。因此，`prod,metrics` 的含义是：先叠加 `prod` Profile 的差异，再叠加 `metrics` Profile 的差异。
 
-Profile 名称最好来自部署语义，而不是来自某段业务逻辑。`prod`、`test`、`metrics` 这样的名字能让人直接看出配置层的含义；如果名字变成某个临时需求或某个分支条件，后续很难判断它到底应该影响哪些配置。
+特别需要说明的是，Profile 的名称最好来自部署语义，而不是来自某段业务逻辑，并且保持正交。比如 `prod`、`test`、`metrics` 这样的名字能让人直接看出配置层的含义；如果名字变成某个临时需求或某个分支条件，那么后续很难判断它到底应该影响哪些配置。
 
 ## spring.app.config.dir
 
