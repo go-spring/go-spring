@@ -8,23 +8,27 @@ Go-Spring 提供了 Profile 机制来解决这个问题。Go-Spring 会首先加
 
 ## 基础配置和 Profile 配置
 
-Go-Spring 默认从 `./conf` 目录加载应用配置。配置文件分成两类：`app.*` 是基础配置，所有环境都会参与；`app-{profile}.*` 是 Profile 配置，只有对应 Profile 被激活时才会参与。
+Go-Spring 将配置文件分成两类：一种是基础配置，文件名是`app.*`，然后所有的环境都会加载它；一种是 Profile 配置，文件名是`app-{profile}.*`，然后只有对应 Profile 被激活时才会被加载。
 
-以 YAML 为例，项目目录通常可以这样组织。
+> * 表示任意文件类型，比如 YAML、JSON 等。
+> {profile} 表示当前激活的 Profile 名称，比如 `prod`、`dev` 等。
+
+如果我们规定在项目中只能使用 YAML 配置文件，那么项目的配置目录通常可以这样进行组织。
 
 ```text
 conf/
-  app.yaml
-  app-dev.yaml
-  app-test.yaml
-  app-prod.yaml
+  app.yaml        # 基础配置
+  app-dev.yaml    # 开发环境配置
+  app-test.yaml   # 测试环境配置
+  app-prod.yaml   # 生产环境配置  
 ```
 
-这组文件表达的是同一个配置模型的不同层次，而不是几套互不相干的配置。`app.yaml` 负责放公共字段，`app-prod.yaml` 只放生产环境真正不同的部分。
+当我们了解了 Go-Spring 的 Profile 机制以后，再看到上面的配置目录时，就会知道 `app.yaml` 是基础配置，其他的 `app-{profile}.yaml` 都是 Profile 配置。
 
-比如基础配置给出服务端口、默认超时时间和日志级别。
+比如我们有个项目，`app.yaml` 给出服务端口、默认超时时间和日志级别等公共配置。
 
 ```yaml
+# 基础配置
 server:
   port: 8080
   timeout: 5s
@@ -32,18 +36,26 @@ logging:
   level: info
 ```
 
-生产环境只需要覆盖真正不同的值。
+`app-prod.yaml` 给出生产环境的超时时间和日志级别等差异配置。
 
 ```yaml
+# 生产环境配置
 server:
   timeout: 3s
 logging:
   level: warn
 ```
 
-激活 `prod` 后，Go-Spring 会先加载 `app.yaml`，再加载 `app-prod.yaml`。最终结果会保留基础配置里的 `server.port`，同时使用生产 Profile 中的 `server.timeout` 和 `logging.level`。
+当我们激活 `prod` Profile 后，根据 Go-Spring 的合并语义（叶子值按来源优先级覆盖，对象和 Map 按子 key 合并，Slice 按整体替换处理），最终会得到这样的配置。
 
-这里沿用的就是第 6 篇讲过的规则：叶子值按来源优先级覆盖，对象和 Map 按子 key 合并，Slice 仍然按整体替换处理。Profile 文件本身不需要写成完整配置，它只需要表达当前环境相对于基础配置的差异。
+```yaml
+# 生产环境的最终配置
+server:
+  port: 8080
+  timeout: 3s
+logging:
+  level: warn
+```
 
 如果同一个 key 又出现在环境变量或命令行参数中，最终仍然由更高优先级的环境变量或命令行参数覆盖。Profile 配置高于基础配置，但不是最高优先级来源。
 
