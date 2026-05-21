@@ -12,7 +12,7 @@ Go-Spring 的 Logger 分成两类。组合式 Logger 包括 `SyncLogger`、`Asyn
 
 `SyncLogger` 在业务 goroutine 里同步完成写入。级别过滤、字段编码和 Appender 写入都在同一调用栈内执行，因此它的确定性更强。
 
-启动日志、审计日志、开发调试这类日志通常更关心“写入是否已经完成”。下面这组配置证明 `SyncLogger` 可以把同一类标签同步分发到多个 Appender，重点看 `appenderRef`。
+启动日志、审计日志、开发调试这类日志通常更关心“写入是否已经完成”。下面这组配置把同一类标签同步分发到多个 Appender，重点看 `appenderRef`。
 
 ```properties
 appender.console.type = ConsoleAppender
@@ -36,7 +36,7 @@ logger.sync.appenderRef[1].ref = file
 
 `AsyncLogger` 将日志产生和实际写入解耦。业务 goroutine 把事件放入缓冲区后返回，后台 goroutine 负责编码和写入。
 
-高并发业务日志通常更关注请求路径延迟。下面这组配置证明 `AsyncLogger` 会把 `_biz_*` 标签命中的事件先放入缓冲区，再由后台 goroutine 写出。重点看 `bufferSize` 和 `onBufferFull`。
+高并发业务日志通常更关注请求路径延迟。下面这组配置让 `_biz_*` 标签命中的事件先进入缓冲区，再由后台 goroutine 写出。重点看 `bufferSize` 和 `onBufferFull`。
 
 ```properties
 logger.async.type = AsyncLogger
@@ -59,7 +59,7 @@ logger.async.appenderRef[0].ref = file
 
 ## ConsoleLogger 面向标准输出和本地排障
 
-`ConsoleLogger` 是面向标准输出的集成式 Logger。下面的配置证明它可以直接声明输出格式，不需要额外声明 Appender。
+`ConsoleLogger` 是面向标准输出的集成式 Logger。它可以直接声明输出格式，不需要额外声明 Appender。
 
 ```properties
 logger.console.type = ConsoleLogger
@@ -72,7 +72,7 @@ logger.console.layout.type = TextLayout
 
 ## FileLogger 适合低流量单文件写入
 
-`FileLogger` 写入单个本地文件。下面的配置证明它适合把一类标签直接写入固定文件。
+`FileLogger` 写入单个本地文件。下面这组配置把一类标签直接写入固定文件。
 
 ```properties
 logger.file.type = FileLogger
@@ -87,7 +87,7 @@ logger.file.layout.type = JSONLayout
 
 ## RollingFileLogger 更适合长期运行的生产服务
 
-`RollingFileLogger` 面向生产长期运行场景。下面的配置证明它可以同时表达按时间滚动、过期清理、级别分离和内置异步。
+`RollingFileLogger` 面向生产长期运行场景。下面这组配置同时表达按时间滚动、过期清理、级别分离和内置异步。
 
 ```properties
 logger.file.type = RollingFileLogger
@@ -107,7 +107,7 @@ logger.file.bufferSize = 50000
 
 ## 自定义 Logger 只扩展内置能力覆盖不了的差异点
 
-当内置 Logger 不能覆盖某个策略时，可以通过组合内置 Logger 扩展差异逻辑。下面的例子证明自定义 Logger 可以复用 `log.AsyncLogger`，只在 `Append` 里补充采样判断。
+当内置 Logger 不能覆盖某个策略时，可以通过组合内置 Logger 扩展差异逻辑。下面的自定义 Logger 复用 `log.AsyncLogger`，只在 `Append` 里补充采样判断。
 
 ```go
 type SamplingLogger struct {

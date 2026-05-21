@@ -8,6 +8,8 @@ Go-Spring 提供了全局上下文提取钩子，可以从 `context.Context` 中
 
 ## 上下文里适合自动带出哪些字段
 
+上下文字段应该是跨调用点稳定出现、并且对串联请求链路有价值的信息。常见字段如下。
+
 | 字段 | 含义 |
 |------|------|
 | `trace_id` | 全局链路追踪 ID |
@@ -21,7 +23,7 @@ Go-Spring 提供了全局上下文提取钩子，可以从 `context.Context` 中
 
 ## FieldsFromContext 输出结构化上下文字段
 
-`FieldsFromContext` 返回结构化字段，是更常用的方式。下面的例子证明它可以把 trace、用户、请求 ID 这类稳定字段接进结构化日志模型，并在提取时确定字段类型。
+`FieldsFromContext` 返回结构化字段，是更常用的方式。它可以把 trace、用户、请求 ID 这类稳定字段接进结构化日志模型，并在提取时确定字段类型。
 
 ```go
 log.FieldsFromContext = func(ctx context.Context) []log.Field {
@@ -57,7 +59,7 @@ log.Info(ctx, TagBizOrder,
 
 ## OpenTelemetry 提供 trace 和 span 信息
 
-生产环境里，常见做法是从 OpenTelemetry Context 提取链路信息。下面的例子证明 Go-Spring 日志系统不需要自己发明 trace 协议，只要从已有上下文里读出标准链路 ID。
+生产环境里，常见做法是从 OpenTelemetry Context 提取链路信息。Go-Spring 日志系统不需要自己发明 trace 协议，只要从已有上下文里读出标准链路 ID。
 
 ```go
 log.FieldsFromContext = func(ctx context.Context) []log.Field {
@@ -86,7 +88,7 @@ log.FieldsFromContext = func(ctx context.Context) []log.Field {
 
 ## StringFromContext 兼容旧的文本格式
 
-`StringFromContext` 提取一个格式化字符串。下面的例子证明它适合日志格式暂时不能结构化改造的历史系统，把上下文信息拼进文本前缀即可。
+`StringFromContext` 提取一个格式化字符串。它适合日志格式暂时不能结构化改造的历史系统，把上下文信息拼进文本前缀即可。
 
 ```go
 type traceCtxType struct{}

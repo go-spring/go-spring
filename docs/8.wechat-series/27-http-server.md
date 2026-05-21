@@ -1,14 +1,14 @@
-# Go-Spring 实战第 27 课 —— HTTP Server：把 net/http 纳入启动、就绪和优雅关闭
+# Go-Spring 实战第 27 课 —— HTTP Server：把 net/http 接入应用生命周期
 
-日志系统解决的是应用运行时怎样被观察。再往前走一步，一个服务端应用总要把能力暴露出去，最常见的入口就是 HTTP。
+日志系统解决的是应用运行时怎样被观察。再往前走一步，一个服务端应用总要把能力暴露出去，最常见的入口就是 HTTP。这个入口不能只是一行 `ListenAndServe`，它还要和配置、Ready 信号以及退出流程站在同一条启动链路里。
 
 很多 Go 项目一开始会直接使用标准库 `net/http`。这没有问题，`http.Handler`、`http.ServeMux` 和 `http.Server` 已经足够稳定。真正容易变复杂的地方不在路由本身，而在服务入口和应用生命周期的关系：配置什么时候加载，端口什么时候监听，应用什么时候算 Ready，退出时怎样停止接收新请求，又怎样等待正在处理的请求结束。
 
-Go-Spring 内置 HTTP Server 要解决的正是这个问题。它不替代 `net/http` 的路由模型，也不要求业务迁移到某个特定 Web 框架；Go-Spring 只把最终的 `http.Handler` 接入应用的配置、启动、Ready 信号和优雅关闭流程。
+Go-Spring 内置 HTTP Server 要解决的正是这个边界问题。它不替代 `net/http` 的路由模型，也不要求业务迁移到某个特定 Web 框架；Go-Spring 只把最终的 `http.Handler` 接入应用的配置、启动、Ready 信号和优雅关闭流程。
 
 ## 默认 ServeMux
 
-先看最小接入方式。这个例子要证明的是：如果应用已经使用标准库默认路由，Go-Spring 不要求额外创建路由器，只要把进程入口交给 `gs.Run()`。
+先看最小接入方式。如果应用已经把路由注册在标准库默认路由上，Go-Spring 不要求额外创建路由器；这个例子要证明的是，进程入口只需要交给 `gs.Run()`。
 
 ```go
 func init() {
@@ -28,7 +28,7 @@ func main() {
 
 ## spring.http.server
 
-HTTP 入口进入生命周期之后，第一类差异通常来自部署环境：本地、测试和线上可能使用不同端口，也可能需要不同超时。Go-Spring 把内置 HTTP Server 的配置收敛在 `spring.http.server` 前缀下。
+HTTP 入口进入生命周期之后，第一类差异通常来自部署环境：本地、测试和线上可能使用不同端口，也可能需要不同超时。Go-Spring 把内置 HTTP Server 的配置收敛在 `spring.http.server` 前缀下，这些配置仍然走前面讲过的配置绑定和类型转换规则。
 
 | 配置项 | 说明 | 默认值 |
 | --- | --- | --- |
@@ -73,7 +73,7 @@ type HttpServeMux struct {
 }
 ```
 
-下面的例子要证明的是：路由器创建函数本身可以参与依赖注入。控制器先作为 Bean 注册，随后由创建 `*gs.HttpServeMux` 的函数接收并组装路由。
+`HttpServeMux` 只是把一个 `http.Handler` 放进容器语义里。下面的例子要证明的是：路由器创建函数本身可以参与依赖注入。控制器先作为 Bean 注册，随后由创建 `*gs.HttpServeMux` 的函数接收并组装路由。
 
 ```go
 type UserController struct{}
@@ -138,13 +138,13 @@ gs.Provide(func() *gs.HttpServeMux {
 })
 ```
 
-这些代码不会改变 Gin、gorilla/mux 或 chi 自己的语义。第三方框架继续处理路由、中间件、参数解析和响应写出；Go-Spring 只把它们作为 `http.Handler` 纳入统一生命周期。
+对 Go-Spring 来说，这三个例子的结果完全一样：容器里出现了一个 `*gs.HttpServeMux`。这些代码不会改变 Gin、gorilla/mux 或 chi 自己的语义。第三方框架继续处理路由、中间件、参数解析和响应写出；Go-Spring 只把它们作为 `http.Handler` 纳入统一生命周期。
 
 因此，选择路由器时不需要围绕 Go-Spring 重新选型。已经有成熟路由框架的项目，可以保留原有路由层，只把服务启动和关闭交给 Go-Spring。
 
 ## Server 生命周期
 
-前面的示例都在交出 `http.Handler`。真正让 HTTP Server 成为 Go-Spring 能力的一部分，是它实现了 `gs.Server` 生命周期。
+前面的示例都在交出 `http.Handler`。不管 `http.Handler` 来自默认路由、自定义 `ServeMux` 还是第三方框架，真正让 HTTP Server 成为 Go-Spring 能力的一部分，是它实现了 `gs.Server` 生命周期。
 
 ```go
 type Server interface {
@@ -165,4 +165,4 @@ Go-Spring 内置 HTTP Server 的核心价值，是把 `net/http` 入口放进应
 
 如果只是一个简单 HTTP 服务，可以继续使用 `http.DefaultServeMux`。如果路由组装需要依赖注入，可以提供自定义 `*gs.HttpServeMux`。如果项目已经使用 Gin、gorilla/mux 或 chi，只要把最终 `http.Handler` 交给 `gs.HttpServeMux`。在这些路径里，Go-Spring 始终负责同一件事：配置监听参数，协调 Ready，启动 Server，并在退出时优雅关闭。
 
-HTTP Server 是一个内置组件的例子。下一类问题是，当数据库、Redis、pprof 这类组件也需要在多个项目里复用时，注册、配置和生命周期应该怎样封装。
+因此，HTTP Server 在 Go-Spring 整体模型里的位置很清楚：它是运行态入口，不是路由框架。它把标准库或第三方框架产出的 `http.Handler` 放进统一的配置、Ready 和关闭链路里。

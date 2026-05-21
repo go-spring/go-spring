@@ -21,7 +21,7 @@ Go-Spring 内置四类 Appender。
 
 ## DiscardAppender 用显式配置表达丢弃语义
 
-有些环境需要保留路由结构，但不希望某类日志真正落地。下面的配置证明 Go-Spring 可以用显式 Appender 表达丢弃语义。
+有些环境需要保留路由结构，但不希望某类日志真正落地。Go-Spring 可以用显式 Appender 表达丢弃语义。
 
 ```properties
 appender.discard.type = DiscardAppender
@@ -31,7 +31,7 @@ appender.discard.type = DiscardAppender
 
 ## ConsoleAppender 写向标准输出
 
-容器环境通常会采集 stdout，本地开发也经常直接看控制台。下面的配置证明 Appender 只决定输出目标，最终格式仍然交给 Layout。
+容器环境通常会采集 stdout，本地开发也经常直接看控制台。下面的配置只决定输出目标，最终格式仍然交给 Layout。
 
 ```properties
 appender.console.type = ConsoleAppender
@@ -42,7 +42,7 @@ appender.console.layout.type = TextLayout
 
 ## FileAppender 写向不滚动的单个文件
 
-如果日志量不大，也不需要 Go-Spring 自动滚动和清理，可以把输出固定到一个文件。下面的配置证明 `FileAppender` 只负责单文件写入。
+如果日志量不大，也不需要 Go-Spring 自动滚动和清理，可以把输出固定到一个文件。下面的配置只声明单文件写入。
 
 ```properties
 appender.file.type = FileAppender
@@ -55,7 +55,7 @@ appender.file.layout.type = JSONLayout
 
 ## RollingFileAppender 同时管理滚动和清理
 
-长期运行服务更常见的是滚动文件。下面的配置证明 `RollingFileAppender` 同时管理文件滚动和过期清理，而 Layout 仍然独立配置。
+长期运行服务更常见的是滚动文件。下面的配置把文件滚动和过期清理交给 `RollingFileAppender`，而 Layout 仍然独立配置。
 
 ```properties
 appender.rolling.type = RollingFileAppender
@@ -71,7 +71,7 @@ appender.rolling.layout.type = JSONLayout
 
 ## 自定义 Appender 只接入新的输出策略
 
-当日志要写入 Kafka、HTTP 接口、远程日志服务，或者需要在落地前做采样、过滤时，可以实现自定义 Appender。下面的例子证明自定义 Appender 可以复用 `FileAppender` 的文件能力，只在 `Append` 中增加采样策略。
+当日志要写入 Kafka、HTTP 接口、远程日志服务，或者需要在落地前做采样、过滤时，可以实现自定义 Appender。下面的自定义 Appender 复用 `FileAppender` 的文件能力，只在 `Append` 中增加采样策略。
 
 ```go
 type SamplingAppender struct {
@@ -129,7 +129,7 @@ appender.console.layout.type = TextLayout
 appender.console.layout.fileLineMaxLength = 48
 ```
 
-`JSONLayout` 面向机器解析，通常用在日志采集系统里。下面的配置证明同一个 Appender 只要替换 Layout，就可以改变输出格式。
+`JSONLayout` 面向机器解析，通常用在日志采集系统里。同一个 Appender 只要替换 Layout，就可以改变输出格式。
 
 ```properties
 appender.file.layout.type = JSONLayout
@@ -140,7 +140,7 @@ appender.file.layout.fileLineMaxLength = 48
 
 ## 自定义 Layout 处理特殊输出格式
 
-如果系统需要 CSV、Protobuf 或自定义分隔格式，可以实现 Layout 并注册插件。下面的例子证明自定义 Layout 只需要把 `Event` 编码到目标 Writer。
+如果系统需要 CSV、Protobuf 或自定义分隔格式，可以实现 Layout 并注册插件。自定义 Layout 只需要把 `Event` 编码到目标 Writer。
 
 ```go
 type CSVLayout struct {
