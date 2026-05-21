@@ -104,15 +104,16 @@ export GS_SPRING_PROFILES_ACTIVE=prod
 
 ## spring.app.config.dir
 
-默认配置目录是 `./conf`。如果项目需要把配置文件放到其他目录，可以通过 `spring.app.config.dir` 修改。
+Go-Spring 默认的配置目录是 `./conf`。如果项目需要把配置文件放到其他目录，我们可以通过 `spring.app.config.dir` 配置 key 来修改。同样的，我们也是推荐使用环境变量或命令行参数来指定。
 
 ```bash
+# 通过环境变量指定。
 export GS_SPRING_APP_CONFIG_DIR=./config
+./app
 ```
 
-也可以通过命令行参数指定。
-
 ```bash
+# 通过命令行参数指定。
 ./myapp -Dspring.app.config.dir=./config
 ```
 
