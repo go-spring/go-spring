@@ -8,7 +8,7 @@ Go-Spring 内置 HTTP Server 要解决的正是这个边界问题。它不替代
 
 ## 默认 ServeMux
 
-先看最小接入方式。如果应用已经把路由注册在标准库默认路由上，Go-Spring 不要求额外创建路由器；这个例子要证明的是，进程入口只需要交给 `gs.Run()`。
+先看最小接入方式。如果应用已经把路由注册在标准库默认路由上，Go-Spring 不要求额外创建路由器，进程入口只需要交给 `gs.Run()`。
 
 ```go
 func init() {
@@ -73,7 +73,7 @@ type HttpServeMux struct {
 }
 ```
 
-`HttpServeMux` 只是把一个 `http.Handler` 放进容器语义里。下面的例子要证明的是：路由器创建函数本身可以参与依赖注入。控制器先作为 Bean 注册，随后由创建 `*gs.HttpServeMux` 的函数接收并组装路由。
+`HttpServeMux` 只是把一个 `http.Handler` 放进容器语义里。路由器创建函数本身也可以参与依赖注入：控制器先作为 Bean 注册，随后由创建 `*gs.HttpServeMux` 的函数接收并组装路由。
 
 ```go
 type UserController struct{}
@@ -106,7 +106,7 @@ func init() {
 
 ## 第三方路由器
 
-Go-Spring 对第三方 Web 框架的接入边界也很明确：只要最终能给出 `http.Handler`，就可以放进 `gs.HttpServeMux`。下面这些例子证明的是同一件事，路由匹配和中间件仍由第三方框架负责，Go-Spring 只接管最终入口。
+Go-Spring 对第三方 Web 框架的接入边界也很明确：只要最终能给出 `http.Handler`，就可以放进 `gs.HttpServeMux`。下面这些例子说明的是同一件事：路由匹配和中间件仍由第三方框架负责，Go-Spring 只接管最终入口。
 
 ```go
 gs.Provide(func() *gs.HttpServeMux {
@@ -142,7 +142,7 @@ gs.Provide(func() *gs.HttpServeMux {
 
 因此，选择路由器时不需要围绕 Go-Spring 重新选型。已经有成熟路由框架的项目，可以保留原有路由层，只把服务启动和关闭交给 Go-Spring。
 
-## Server 生命周期
+## Ready 与优雅关闭
 
 前面的示例都在交出 `http.Handler`。不管 `http.Handler` 来自默认路由、自定义 `ServeMux` 还是第三方框架，真正让 HTTP Server 成为 Go-Spring 能力的一部分，是它实现了 `gs.Server` 生命周期。
 
@@ -159,7 +159,7 @@ type Server interface {
 
 停止时，`SimpleHttpServer.Stop()` 调用的是标准库 `http.Server.Shutdown(context.Background())`。它会停止接受新连接，并给正在处理的请求留出完成机会。Go-Spring 在应用退出阶段调用 Server 的 `Stop()`，再继续收束容器和资源。
 
-## HTTP Server 生命周期接入
+## HTTP Server
 
 Go-Spring 内置 HTTP Server 的核心价值，是把 `net/http` 入口放进应用生命周期，而不是提供另一套路由体系。
 
