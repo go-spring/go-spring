@@ -91,7 +91,7 @@ export GS_SPRING_PROFILES_ACTIVE=prod
 
 ## Profile 维度
 
-特别需要说明的是，Profile 的名称最好来自部署语义，而不是来自某段业务逻辑，并且保持正交。
+特别需要说明的是，Profile 的名称最好来自部署语义，而不是来自某段业务逻辑，并且保持正交。只有维度相对正交，多个 Profile 才适合进行组合。
 
 常见的拆法可以这样。
 
@@ -100,9 +100,7 @@ export GS_SPRING_PROFILES_ACTIVE=prod
 | `dev`、`test`、`prod` | 运行环境 | 表达运行环境差异 |
 | `metrics`、`trace` | 功能能力 | 表达某类基础设施能力是否启用 todo (这个维度不太好) |
 
-只有维度相对正交，多个 Profile 才适合组合。环境维度负责数据库地址、外部依赖地址、日志级别这类部署差异；能力维度负责指标、追踪、调试开关这类功能差异。同一批 key 尽量留在同一个维度里维护，否则后加载的 Profile 虽然能覆盖前面的值，但配置意图会变得不清楚。
-
-反过来看，如果把每一种组合都建成独立 Profile，比如 `prod-metrics`、`prod-trace`、`test-metrics`，Profile 很快就会退回到复制配置的老问题。只有某个组合确实代表独立部署形态，并且有稳定的运维含义时，单独建 Profile 才更清楚。
+同一批 key 尽量留在同一个维度里维护，否则后加载的 Profile 虽然能覆盖前面的值，但配置意图会变得不清楚。todo (这里需要解释下)
 
 ## spring.app.config.dir
 
