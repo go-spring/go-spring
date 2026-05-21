@@ -117,9 +117,14 @@ export GS_SPRING_APP_CONFIG_DIR=./config
 ./myapp -Dspring.app.config.dir=./config
 ```
 
-`spring.app.config.dir` 和普通业务配置有一个重要区别：它会影响 Go-Spring 到哪里发现 `app.*` 和 `app-{profile}.*` 文件。因此，这个配置项必须在文件发现之前就能解析出来，通常放在命令行参数、环境变量或应用内置默认配置里。
+不过和 `spring.profiles.active` 有些不同，`spring.app.config.dir` 的值一般在所有环境中都是同一个值。只是可能项目跟项目不同，所以我们也可以通过代码来设置它的值。
 
-等基础配置和 Profile 配置已经开始加载以后，再修改 `spring.app.config.dir`，就来不及影响这一轮文件发现了。所以它更像启动入口的定位参数，而不是某个环境文件内部的普通配置项。
+```go
+// 在代码中指定。
+gs.Configure(func(app gs.App) {
+  app.Property("spring.app.config.dir", "./config")
+})
+```
 
 ## Profile 多环境配置
 
