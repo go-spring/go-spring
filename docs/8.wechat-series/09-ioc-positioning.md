@@ -80,7 +80,9 @@ todo 构造非常复杂的但是合理的手动依赖注入过程
 
 ## 注册入口
 
-下面这个例子把服务、控制器和 HTTP 路由放在同一条启动链路里。阅读时先看两个点：`UserController` 通过构造函数声明依赖，`gs.Provide` 把对象来源注册给 Go-Spring 容器。
+从现在开始，咱们逐步介绍 Go-Spring 的 IoC 容器的用法。
+
+大家先来看一个简单的使用 Go-Spring IoC 容器的例子。
 
 ```go
 type UserService struct{}
@@ -109,6 +111,7 @@ func init() {
 	gs.Provide(NewUserService)
 	gs.Provide(NewUserController)
 
+	// 这一步很重要，它把 IoC 容器和 HTTP 路由、控制器关联起来。
 	gs.Provide(func(c *UserController) *gs.HttpServeMux {
 		mux := http.NewServeMux()
 		mux.HandleFunc("/hello", c.Hello)
