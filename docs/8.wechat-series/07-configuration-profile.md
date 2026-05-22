@@ -62,9 +62,9 @@ logging:
 
 ## spring.profiles.active
 
-在 Go-Spring 中， Profile 需要被显式激活。Go-Spring 使用 `spring.profiles.active` 配置 key 决定本次启动要激活哪些 Profile。
+在 Go-Spring 中，Profile 需要被显式激活。Go-Spring 使用 `spring.profiles.active` 配置 key 决定本次启动要激活哪些 Profile。
 
-`spring.profiles.active` 可以是一个逗号分隔的字符串，每一项都是一个 Profile 名称，例如 `prod`、`test`、`metrics` 等。根据 Go-Spring 的配置加载顺序，我们推荐通过命令行参数或环境变量来设置它，因为这两类来源都会在基础配置之前加载。
+`spring.profiles.active` 可以是一个逗号分隔的字符串，每一项都是一个 Profile 名称，例如 `local`、`dev`、`test`、`prod` 等。根据 Go-Spring 的配置加载顺序，我们推荐通过命令行参数或环境变量来设置它，因为这两类来源都会在基础配置之前加载。
 
 比如，我们可以通过命令行参数激活 `prod` Profile：
 
@@ -79,30 +79,31 @@ export GS_SPRING_PROFILES_ACTIVE=prod
 ./app
 ```
 
-还可以同时激活多个 Profile：
+如果项目确实存在多个配置维度，也可以同时激活多个 Profile。例如，`prod` 表示生产环境，`region-cn` 表示中国区域的部署差异：
 
 ```bash
-./app -Dspring.profiles.active=prod,metrics
+./app -Dspring.profiles.active=prod,region-cn
 ```
 
-对于多个 Profile，Go-Spring 会按照声明顺序进行加载，后加载的 Profile 可以覆盖先加载 Profile 中的同名 key。因此，`prod,metrics` 表示先叠加 `prod` Profile 的差异，再叠加 `metrics` Profile 的差异。
+对于多个 Profile，Go-Spring 会按照声明顺序进行加载，后加载的 Profile 可以覆盖先加载 Profile 中的同名 key。因此，`prod,region-cn` 表示先叠加 `prod` Profile 的差异，再叠加 `region-cn` Profile 的差异。
 
 ## Profile 维度
 
-**Profile 的设计很重要**。
+通常，Profile 的名称最好来自部署环境，而不是某段具体业务逻辑。对初学者来说，先用 Profile 区分本地、开发、测试、预发、生产这类运行环境，基本就够用了。
 
-通常，Profile 的名称最好来自部署语义或基础设施能力，而不是某段具体业务逻辑；而且不同的 Profile 之间应尽量保持维度正交。只有维度相对正交，多个 Profile 的组合才最容易理解和维护。
-
-常见的拆法可以如下：
+常见的 Profile 名称如下：
 
 | Profile | 维度 | 含义 |
 |---------|------|------|
-| `dev`、`test`、`prod` | 运行环境 | 表达开发、测试、生产等运行环境差异 |
-| `metrics`、`trace` | 基础设施能力 | 表达监控指标、链路追踪等能力是否启用 |
+| `local` | 部署环境 | 表达本地运行时的配置差异 |
+| `dev` | 部署环境 | 表达开发环境的配置差异 |
+| `test` | 部署环境 | 表达测试环境的配置差异 |
+| `pre` 或 `staging` | 部署环境 | 表达预发环境的配置差异 |
+| `prod` | 部署环境 | 表达生产环境的配置差异 |
 
-同一批 key 应尽量留在同一个维度中维护。例如，数据库地址、日志级别这类与运行环境强相关的配置，适合放在 `dev`、`test`、`prod` 这样的环境 Profile 中；监控和追踪这类能力开关，则更适合放在 `metrics`、`trace` 这样的能力 Profile 中。
+这些 Profile 的含义都很直接：同一个应用部署到不同环境时，数据库地址、日志级别、外部服务地址、超时时间等配置可能不同，于是就把这些差异放到对应的 Profile 配置文件里。
 
-如果同一批 key 分散在多个维度里，后加载的 Profile 依然可以覆盖前面的值，但配置意图会变得不清楚。久而久之，读配置的人很难判断某个值到底是环境差异、能力差异，还是一次临时覆盖。
+虽然 Go-Spring 支持同时激活多个 Profile，但在入门阶段没有必要一开始就设计很多维度。Profile 数量越多，叠加顺序和覆盖关系就越难理解。先把部署环境这一条主线设计清楚，通常已经可以覆盖大多数多环境配置场景。
 
 ## spring.app.config.dir
 
