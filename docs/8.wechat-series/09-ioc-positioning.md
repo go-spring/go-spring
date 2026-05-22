@@ -26,7 +26,7 @@ func NewUserController() *UserController {
 
 我们鼓励在写代码的时候，将创建者和使用者的角色进行分离，这样可以有更好的可维护性和可测试性。当我们使用入参表达依赖关系时，我们可以在使用者之外更合理的创建这个依赖，它可能是一个真实的对象，也可能是一个 mock 对象。
 
-依赖注入把这条边界往外挪。业务对象只声明自己需要什么，创建和选择由外部完成。
+看下面的代码。
 
 ```go
 type UserController struct {
@@ -38,7 +38,20 @@ func NewUserController(service UserService) *UserController {
 }
 ```
 
-这样处理以后，`UserController` 的代码只关心 `UserService` 这项能力，不再关心具体实现从哪里来。Go-Spring 的容器能力也是从这个边界出发的，只是它把“外部完成装配”进一步变成启动期对象图。
+在上面的代码中，我们将 `UserService` 的创建职责从 `UserController` 内部移动到了外部，通过入参表达这种依赖关系。那么我们就可以在测试里更方便的替换 `UserService` 的实现。
+
+看下面的代码。
+
+```go
+func TestUserController_GetUser(t *testing.T) {
+	repo := NewUserRepository(db)
+	service := NewUserService(repo, cache)
+	controller := NewUserController(service)
+	//...
+}
+```
+
+
 
 ## 对象关系图
 
