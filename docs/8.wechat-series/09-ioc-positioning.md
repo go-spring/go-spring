@@ -51,7 +51,7 @@ func TestUserController_GetUser(t *testing.T) {
 }
 ```
 
-
+**这条编程原则是 Go-Spring 得以存在的基础**。如果我们否认这条原则，那么 Go-Spring 确实就没有存在的意义了。
 
 ## 对象关系图
 
