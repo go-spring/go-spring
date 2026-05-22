@@ -8,9 +8,9 @@
 
 ## 变量引用
 
-变量引用解决的是“一个配置值如何复用另一个配置值”。Go-Spring 在解析配置值时会展开 `${...}`，引用目标来自同一套配置空间，所以它不会额外引入一套独立的变量系统。
+变量引用解决的是“一个配置值如何复用另一个配置值”的问题。Go-Spring 在解析配置值时会展开 `${...}` 格式的表达式，展开后会用对应的配置值进行替换。
 
-下面的例子覆盖了几种常见写法。它们证明的不是简单的字符串拼接能力，而是所有引用都会回到统一的 `path` 查找规则里。
+下面的例子覆盖了几种常见的变量引用的写法。
 
 ```properties
 server.port=${port}
@@ -18,14 +18,9 @@ server.port=${port:=8080}
 app.home=${user.home}/myapp
 app.url=http://${app.host}:${app.port}/api
 redis.password=${REDIS_PASSWORD:=}
-
-env=prod
-config.file=${CONFIG_FILE:=config/${env}.properties}
 ```
 
-`${port}` 表示必须能在配置空间中找到 `port`，否则解析会失败。`${port:=8080}` 表示找不到 `port` 时使用默认值。`app.home` 和 `app.url` 展示的是普通文本与引用值混合。`REDIS_PASSWORD` 适合承接运行平台已经提供的原始环境变量。
-
-最后两行展示的是递归引用：如果没有显式提供 `CONFIG_FILE`，`config.file` 会继续引用 `env`，最后得到 `config/prod.properties`。如果平台注入了 `CONFIG_FILE`，则直接使用平台给出的路径。
+在上面的例子中，`${port}` 表示必须能在配置空间中找到 `port` 配置项，否则解析就会失败。`${port:=8080}` 表示找不到 `port` 时可以使用默认值，解析不会失败。`app.home` 和 `app.url` 展示的是普通文本与引用值混合。`REDIS_PASSWORD` 展示的是对环境变量的引用。
 
 变量引用本身不改变来源优先级。假设 `app.host` 同时出现在基础配置、Profile 配置和环境变量里，那么 `${app.host}` 解析到的仍然是优先级合并之后的最终值。也就是说，引用发生在同一棵配置树上，而不是绕过 Go-Spring 已经建立好的配置合并规则。
 
