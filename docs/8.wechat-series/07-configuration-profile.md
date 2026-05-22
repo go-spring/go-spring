@@ -129,7 +129,7 @@ export GS_SPRING_APP_CONFIG_DIR=./config
 ```go
 gs.Configure(func(app gs.App) {
   app.Property("spring.app.config.dir", "./config")
-})
+}).Run()
 ```
 
 ## Profile 多环境配置
