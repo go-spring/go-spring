@@ -1,12 +1,14 @@
 # Go-Spring 实战第 10 课 —— 依赖注入的方式：字段注入和构造函数注入
 
-上一篇咱们把 IoC 容器的定位讲清楚了。这一篇只讲写代码时最常用的两种注入方式：字段注入和构造函数注入。
+上一篇咱们把 Go-Spring 使用 IoC 容器的初衷和背景讲清楚了，偏抽象。本文开始，咱们讲讲 Go-Spring IoC 容器的实际用法。
 
-字段注入就是把依赖写在结构体字段上，通过 `autowire` 标签告诉 Go-Spring 要注入什么。构造函数注入就是把依赖写在构造函数参数里，Go-Spring 创建 Bean 时先准备好参数，再调用构造函数。
+第一篇来介绍如何使用依赖注入，依赖注入发生在哪些地方。当然，其实也很简单：一是字段注入，二是构造函数注入。
 
 ## 字段注入
 
-字段注入的写法最直观。结构体需要什么依赖，就在字段上加 `autowire` 标签。
+字段注入是指把依赖写在结构体的字段上，通过 `autowire`（或 `inject`）标签告诉 Go-Spring 要注入什么。
+
+这种写法最简单也最直观。看个例子：
 
 ```go
 type UserService struct{}
@@ -21,9 +23,9 @@ func init() {
 }
 ```
 
-`autowire:""` 表示按类型注入。这里 `UserController.Service` 的类型是 `*UserService`，容器里也只有一个 `*UserService`，所以标签里不需要写名字。
+在上面的代码中，`autowire:""` 标签没有值，表示只需按照类型注入。因为这里 `UserController.Service` 的类型是 `*UserService`，容器里也只有一个 `*UserService`，所以不需要写名字。
 
-如果同一个类型有多个 Bean，就在标签里写 Bean 名称。
+如果同一个类型有多个 Bean，就需要在标签里写注入的 Bean 的名称。示例如下：
 
 ```go
 type Repository struct {
@@ -37,13 +39,13 @@ func init() {
 }
 ```
 
-这段代码表示 `Repository.DB` 注入名为 `slave` 的 `*DataSource`。
-
-使用字段注入时要注意一点：字段是在对象创建之后才被 Go-Spring 填进去的。所以不要在结构体初始化时就使用这些字段。像 Controller、Runner、简单的业务组件，通常都适合用字段注入，因为写法少，代码也直接。
+在上面的代码中，我们注册了 `master` 和 `slave` 两个 `*DataSource` 的 Bean。如果 `Repository.DataSource` 仍然只按照类型注入，就会发现有两个相同的 `*DataSource`。这种情况下，我们就需要在 `autowire` 标签里写清楚注入的 Bean 的名称。
 
 ## 构造函数注入
 
-构造函数注入是另一种常见写法：把依赖放到构造函数参数里。
+构造函数注入是指把依赖写在构造函数参数里，Go-Spring 创建 Bean 时会首先分析构造函数的参数类型，然后根据参数类型从容器里找到对应的依赖，然后使用反射调用构造函数来创建出 Bean。
+
+示例如下：
 
 ```go
 type UserController struct {
@@ -60,11 +62,11 @@ func init() {
 }
 ```
 
-`NewUserController` 的参数类型是 `*UserService`，Go-Spring 会先找到这个 Bean，再调用 `NewUserController(service)` 创建 `UserController`。
+使用构造函数注入有两个好处。第一，依赖全都在函数签名上，一眼就能看到这个对象需要什么。第二，单元测试可以直接调用 `NewUserController(mockService)`，不一定要启动完整的 IoC 容器来填满所有依赖。
 
-这种写法有两个好处。第一，依赖都在函数签名里，一眼能看到这个对象需要什么。第二，单元测试可以直接调用 `NewUserController(mockService)`，不一定要启动容器来填字段。
+我们也可以在执行构造函数的时候返回 error，这样可以暴露更详细的错误信息。
 
-如果创建过程可能失败，构造函数也可以返回 error。
+示例如下：
 
 ```go
 func NewUserController(service *UserService) (*UserController, error) {
@@ -75,9 +77,13 @@ func NewUserController(service *UserService) (*UserController, error) {
 }
 ```
 
-## 构造函数参数怎么指定名字
+todo （这里缺一段）
 
-字段注入可以写 `autowire:"slave"`，但构造函数参数不能写 tag。这个时候要在 `gs.Provide` 里用 `gs.TagArg` 指定参数。
+## 构造函数参数
+
+我们对比上面示例的时候可以发现，字段注入可以通过名字指定注入的 Bean 名称，那是因为我们使用 Go 提供的 Tag 机制。但是 Go 没有在构造函数参数上提供 Tag 机制，我们还能指定参数的 Bean 名称么？
+
+看个例子。
 
 ```go
 func NewRepository(ds *DataSource) *Repository {
@@ -92,9 +98,11 @@ func init() {
 }
 ```
 
-`gs.TagArg("slave")` 的意思和字段上的 `autowire:"slave"` 一样，都是指定注入名为 `slave` 的 Bean。区别只是位置不同：字段注入写在字段 tag 上，构造函数注入写在注册语句里。
+虽然 Go 没有提供在构造函数参数上写 Tag 的机制，但是 Go-Spring 通过 `gs.Provide` 提供了为构造函数参数指定 Bean 名称的功能。`gs.TagArg("slave")` 的意思和字段上的 `autowire:"slave"` 一样，都是指定注入名为 `slave` 的 Bean。
 
-如果参数按类型就能唯一匹配，`TagArg` 可以省略。
+如果构造函数的参数都是 bean 注入，而且都可以通过类型进行唯一匹配，那么我们可以省略 `TagArg`。
+
+示例如下：
 
 ```go
 func init() {
@@ -103,16 +111,8 @@ func init() {
 }
 ```
 
-只有同类型多个 Bean、需要按名称指定时，才需要在 `gs.Provide` 里写 `TagArg`。
+对于更复杂的构造函数参数注入，我们会在后面的章节专门介绍，这里就不展开了。
 
-## 怎么选
+## 哪种方式更好
 
-实际写代码时不用把这个问题想得太复杂。
-
-如果只是普通 Controller、Runner，或者结构体里有几个依赖字段，用字段注入就可以。
-
-如果你希望创建对象时就把依赖传进去，或者单元测试里直接手写构造函数，那就用构造函数注入。
-
-如果要指定 Bean 名称，字段注入写 `autowire:"name"`，构造函数注入写 `gs.TagArg("name")`。
-
-本章先掌握这几种写法就够了：字段注入看字段 tag，构造函数注入看函数参数，参数需要额外说明时再用 `TagArg`。
+我们推荐在所有情况下都使用构造函数注入，因为它具有更强的规则性和统一性。但是我们也不排斥在简单的情况下使用字段注入。
