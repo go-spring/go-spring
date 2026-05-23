@@ -77,7 +77,7 @@ func NewUserController(service *UserService) (*UserController, error) {
 }
 ```
 
-todo （这里缺一段）
+如果构造函数返回了非 nil 的 error，Go-Spring 就会认为这个 Bean 创建失败了，然后就会终止应用启动。像配置检查、连接初始化、参数校验这类动作，都可以放在构造函数里完成。如果这些动作失败了，就可以返回 error 来终止启动，这样比创建出一个不可用的对象要更清楚。
 
 ## 构造函数参数
 
