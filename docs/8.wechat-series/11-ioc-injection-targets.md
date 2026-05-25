@@ -128,7 +128,12 @@ type Chain struct {
 
 对于 slice，`*` 匹配到的部分仍然是按照 Bean 名称排序的。
 
-如果依赖方关心的是按名称查找，而不是执行顺序，可以把目标声明成 `map[string]T`。在 Map 收集里，Bean 名称会成为 Map 的 key。
+如果依赖方更关心的是按照名称进行查找，而不是关心注入的顺序，则我们可以把目标声明成 `map[string]T`。在 Map 收集里，Bean 名称就是 Map 的 key。我们可以通过 key 来查找获取对应的 Bean。
+
+map 注入使用和 slice 注入相同的
+
+
+同样地，我们可以在 `map[string]T` 注入时不指定 Bean 名称。此时 Go-Spring 会自动根据 Bean 的默认名称进行注入。
 
 ```go
 type Router struct {
@@ -136,11 +141,11 @@ type Router struct {
 }
 ```
 
-需要限制 Map 中的条目时，也可以在标签里列出名称。
+我们也可以显式指定 `map[string]T` 注入时的 Bean 名称。
 
 ```go
 type Router struct {
-	Handlers map[string]Handler `autowire:"auth,user?,order"`
+	Handlers map[string]Handler `autowire:"auth,user?,*"`
 }
 ```
 
