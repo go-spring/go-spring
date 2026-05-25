@@ -78,9 +78,9 @@ func init() {
 
 ## 集合注入
 
-如果字段或构造函数参数声明的是 `[]T` 或 `map[string]T`，Go-Spring 要做的就不是选出一个 Bean，而是收集一组 Bean。这就是集合注入。
+如果字段或者构造函数参数声明的是 `[]T` 或 `map[string]T`，那 Go-Spring 要做的就不是选出一个 Bean，而是收集一组 Bean。这就是集合注入。
 
-先看 slice。`[]T` 表示依赖方需要一组同类型 Bean。
+先来看 slice。`[]T` 表示依赖方需要一组相同类型的 Bean。如果我们可以仅依靠类型来确定注入的 Bean，那代码可以这样写。
 
 ```go
 type Application struct {
@@ -94,7 +94,7 @@ func init() {
 }
 ```
 
-构造函数参数也可以声明为 `[]Plugin`，Go-Spring 会按同样规则收集候选。
+或者我们使用构造函数参数。
 
 ```go
 func NewApplication(plugins []Plugin) *Application {
@@ -106,9 +106,7 @@ func init() {
 }
 ```
 
-未指定标签内容时，Go-Spring 会收集所有匹配 Bean，并按 Bean 名称的字典序放入 slice。这个顺序是稳定的，但它不一定就是业务顺序。
-
-如果执行顺序本身有含义，可以在注入声明中显式列出名称。
+当我们使用 slice 时，我们实际上是期望某种顺序的。当我们未指定 Bean 的收集顺序时，Go-Spring 会按照收集到的 Bean 的默认名称进行排序。但这种排序未必是用户想要的，此时我们可以在注入声明中显式列出被注入的 Bean 名称。示例如下：
 
 ```go
 type Chain struct {
@@ -116,7 +114,9 @@ type Chain struct {
 }
 ```
 
-列表中可以使用 `name?` 表示不存在时跳过，也可以使用一次 `*` 表示收集剩余未显式列出的 Bean。
+对于上述代码，Go-Spring 会按照 `auth`、`tracing`、`recovery` 的顺序收集 Bean。仔细观察上述代码，我们发现 `auth` 后面带了一个 `?`，根据前面的叙述，我们知道 `?` 表示可选，所以在上面的收集结果中，`auth` 是可以不存在的。
+
+有时候我们仅仅希望固定一些特殊 Bean 的位置，其他 Bean 的顺序没有关系。此时我们可以使用下面的写法：
 
 ```go
 type Chain struct {
@@ -124,7 +124,9 @@ type Chain struct {
 }
 ```
 
-这里 `auth` 固定在最前，`recovery` 固定在最后，`*` 补齐其他同类型 Bean。`*` 匹配到的部分仍然按 Bean 名称排序。
+这里 `auth` 固定在最前，`recovery` 固定在最后，`*` 用来补齐其他同类型的 Bean。也就是说，我们可以使用 `*` 来表示“补齐剩余同类型 Bean”这个含义。
+
+对于 slice，`*` 匹配到的部分仍然是按照 Bean 名称排序的。
 
 如果依赖方关心的是按名称查找，而不是执行顺序，可以把目标声明成 `map[string]T`。在 Map 收集里，Bean 名称会成为 Map 的 key。
 
