@@ -184,4 +184,4 @@ func init() {
 }
 ```
 
-配置驱动改变的是选择来源，而不是注入目标本身。如果我们在配置中设置了 `storage.provider=oss`，那么表示选择名为 `oss` 的 Bean；如果我们在配置中设置了 `http.filters=auth,tracing,recovery`，那么表示按这个顺序注入过滤器。
+配置驱动改变的是选择来源，而不是注入目标本身。如果我们在配置中设置了 `storage.provider=oss`，那么表示选择名为 `oss` 的 Bean；如果我们在配置中设置了 `http.filters=auth,tracing,recovery`，那么表示按这个顺序注入过滤器。理解了这一点，我们就能在类型、名称和配置之间做出清晰选择。
