@@ -2,11 +2,11 @@
 
 前面两篇文章，咱们讲了依赖注入的写法和注入目标，本篇咱们来讲一下 Bean 的类型。不过需要澄清的是，这里的类型不是指 Bean 元数据里面的类型，而是指注册的时候 `gs.Provide()` 第一个参数的类型。因为用文字很难表述二者的区别，或者说我没有找到很好的表述方式，所以目前就这么说。这一点提前跟大家讲明白。
 
-`gs.Provide()` 第一个参数的类型，可以是一个已经创建好的结构体指针，可以是一个用来创建 Bean 的构造函数，也可以是一个函数本身。
+换句话说，本篇不是在讨论 Bean 最终以什么 Go 类型被依赖方引用，而是在讨论 `gs.Provide(...)` 里这个参数可以怎么写。为了讲起来方便，后面我会把它们暂时称为三种 Bean 类型：结构体指针、构造函数和函数。
 
 ## 结构体指针
 
-最直接的 Bean 类型，是结构体指针。下面的例子证明对象在注册前已经创建完成，Go-Spring 接手的是后续管理。
+先看结构体指针。它的特点是对象在注册前已经创建完成，`gs.Provide()` 接收到的是这个对象的地址，Go-Spring 接手的是后续管理。
 
 ```go
 type MyService struct {
@@ -20,7 +20,7 @@ func init() {
 
 这条注册语句里，`new(MyService)` 是传给 `gs.Provide()` 的参数，Bean 自身的类型是 `*MyService`。Go-Spring 不会再调用构造函数创建这个对象，因为对象已经存在。容器要做的是接管这个对象，继续完成字段注入、生命周期回调、条件判断、名称和接口导出等容器语义。
 
-因此，结构体指针适合两类场景。
+所以这种写法适合两类场景。
 
 一类是简单组件，对象没有复杂构造过程，只需要让容器补齐字段依赖。
 
@@ -30,7 +30,7 @@ func init() {
 
 ## 构造函数
 
-更常见的 Bean 类型，是构造函数。下面的例子证明注册参数是 `NewMyService`，但 Bean 自身的类型来自构造函数返回值。
+再看构造函数。这也是更常见的写法：`gs.Provide()` 收到的是一个函数，但 Bean 自身的类型来自函数返回值。
 
 ```go
 type MyService struct {
@@ -50,7 +50,7 @@ func init() {
 
 构造函数把对象创建过程留在普通 Go 函数里。依赖关系写在参数列表中，创建结果写在返回值中，容器只负责解析参数并调用它。
 
-如果创建过程可能失败，构造函数可以返回 `error`。
+既然创建过程放在构造函数里，创建失败也应该从这里表达。构造函数可以返回 `error`。
 
 ```go
 func NewMyService(dep Dep) (*MyService, error) {
@@ -62,9 +62,9 @@ func NewMyService(dep Dep) (*MyService, error) {
 
 ### 参数绑定
 
-构造函数参数默认按类型从容器里解析。但函数参数不像结构体字段那样可以直接写 tag，所以当参数需要额外语义时，Go-Spring 使用 `Arg` 在注册阶段补齐。
+构造函数有了参数以后，下一件事就是参数从哪里来。默认情况下，构造函数参数按类型从容器里解析。但函数参数不像结构体字段那样可以直接写 tag，所以当参数需要额外语义时，Go-Spring 使用 `Arg` 在注册阶段补齐。
 
-下面的例子证明 `TagArg` 可以让构造函数参数直接从配置读取值。
+比如，`TagArg` 可以让构造函数参数直接从配置读取值。
 
 ```go
 func NewRedisClient(host string, port int) *RedisClient {
@@ -105,7 +105,7 @@ func init() {
 
 ### 固定值和位置绑定
 
-并不是所有参数都应该进入配置系统。下面的例子证明 `ValueArg` 表达的是注册期已经确定的固定值。
+并不是所有参数都应该进入配置系统。有些值在注册的时候就已经确定了，这时可以使用 `ValueArg`。
 
 ```go
 func NewRedisClient(db int) *RedisClient {
@@ -119,7 +119,7 @@ func init() {
 
 `ValueArg` 适合常量、测试替身或无需按环境变化的参数。它表达的是“这个值在注册时已经确定”，所以不要把需要由部署环境控制的参数硬塞进这里。
 
-如果只想覆盖某个位置，可以使用 `IndexArg`。下面的例子证明未显式绑定的位置仍然由容器自动推断。
+如果只想覆盖某个位置，可以使用 `IndexArg`。没有显式绑定的位置，仍然由容器自动推断。
 
 ```go
 func NewBean(a *ServiceA, b *ServiceB, c string) *Bean {
@@ -135,9 +135,9 @@ func init() {
 
 ### Functional Options
 
-很多既有库使用 Functional Options。Go-Spring 不需要改造这些 API，而是通过 `BindArg` 生成对应的 Option 参数。
+还有一类常见情况是 Functional Options。很多既有库都使用这种 API，Go-Spring 不需要改造它们，而是通过 `BindArg` 生成对应的 Option 参数。
 
-下面的例子证明 `BindArg` 可以先解析参数，再调用 `WithPort` 或 `WithTimeout` 生成构造函数真正需要的 `Option`。
+也就是说，`BindArg` 可以先解析参数，再调用 `WithPort` 或 `WithTimeout` 生成构造函数真正需要的 `Option`。
 
 ```go
 type Option func(*Server)
@@ -172,11 +172,11 @@ func init() {
 
 ## 函数
 
-最后一种 Bean 类型最容易和构造函数混淆：函数本身也可以是 Bean。
+最后再回到一个容易混淆的地方：如果 `gs.Provide()` 里传的是函数，它通常会被理解成构造函数。但函数本身也可以是 Bean。
 
 Go-Spring 默认会把普通函数理解为构造函数，因为大多数 `gs.Provide(fn)` 都是在表达“调用这个函数得到 Bean”。如果调用方需要注入的正是这个函数本身，就要用 `reflect.ValueOf` 明确告诉 Go-Spring：这里注册的是函数，而不是函数调用结果。
 
-下面的例子证明注册目标是 `BcryptPasswordChecker` 这个函数本身。
+比如下面这段代码，注册目标就是 `BcryptPasswordChecker` 这个函数本身。
 
 ```go
 type PasswordChecker func(username, password string) bool
@@ -198,8 +198,8 @@ func init() {
 
 ## Bean 类型
 
-结构体指针、构造函数和函数，是本文为了行文方便使用的三种 Bean 类型说法。严格一点讲，它们描述的是 `gs.Provide()` 第一参数的类型，而不是 Bean 最终被依赖方引用时的 Go 类型。
+回到开头那句话，结构体指针、构造函数和函数，是本文为了行文方便使用的三种 Bean 类型说法。严格一点讲，它们描述的是 `gs.Provide()` 第一参数的类型，而不是 Bean 最终被依赖方引用时的 Go 类型。
 
 结构体指针表示对象已经创建，容器负责后续管理。构造函数表示对象由容器解析参数后创建，返回值才是 Bean 自身类型。函数表示函数本身就是可注入能力，需要用 `reflect.ValueOf` 和构造函数语义区分开。
 
-把这层区别说清楚，是为了避免把 `gs.Provide()` 的参数写法误认为 Bean 的运行类型。Go-Spring 真正装配的是 Bean 定义：`gs.Provide()` 的参数说明容器怎样得到对象，Bean 自身类型说明对象怎样被依赖方引用。两者配合起来，才构成一条完整的注册语义。
+把这层区别说清楚，是为了避免把 `gs.Provide()` 的参数写法误认为 Bean 的运行类型。读本文里的 Bean 类型时，可以先把它理解成一个注册入口的问题：这个参数告诉容器怎样得到对象，Bean 自身类型告诉依赖方怎样声明依赖。把这两件事分开，`gs.Provide()` 的几种写法就容易理解了。
