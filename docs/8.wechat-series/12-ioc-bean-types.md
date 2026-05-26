@@ -6,7 +6,9 @@
 
 ## 结构体指针
 
-它的特点是对象在注册前已经创建完成，`gs.Provide()` 接收到的是这个对象的地址，Go-Spring 接手的是后续的管理。看个例子。
+它的特点是对象在注册前已经创建完成，`gs.Provide()` 接收到的是这个对象的地址，Go-Spring 接手的是后续的管理。
+
+看个例子。
 
 ```go
 type MyService struct {
@@ -26,7 +28,9 @@ func init() {
 
 ## 构造函数
 
-再看构造函数。这也是更常见的写法：`gs.Provide()` 收到的是一个函数，但 Bean 自身的类型来自函数返回值。
+当我们为 `gs.Provide()` 传入一个构造函数时，Go-Spring 会在注入阶段调用它来创建对象。
+
+看个例子。
 
 ```go
 type MyService struct {
@@ -42,7 +46,7 @@ func init() {
 }
 ```
 
-这里 `NewMyService` 不是要被注入的 Bean，而是容器创建 Bean 的入口。Go-Spring 解析到这个构造函数时，会先根据函数参数准备好 `Dep`，再调用构造函数得到 `*MyService`。也就是说，传进去的是构造函数，最终被容器管理的是 `*MyService`。
+这里 `NewMyService` 不是要被注入的 Bean，而是容器创建 Bean 的入口（构造函数）。Go-Spring 在解析到这个 Bean 时，会先根据函数参数准备好 `Dep`，然后调用构造函数得到 `*MyService`。也就是说，传进去的是构造函数，最终被容器管理的是 `*MyService`。
 
 构造函数把对象创建过程留在普通 Go 函数里。依赖关系写在参数列表中，创建结果写在返回值中，容器只负责解析参数并调用它。
 
