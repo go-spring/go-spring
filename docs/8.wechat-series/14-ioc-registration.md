@@ -1,10 +1,6 @@
-# Go-Spring 实战第 14 课 —— Bean 注册入口：按组织边界选择 Provide、Module、Group 和 app.Provide
+# Go-Spring 实战第 14 课 —— Bean 注册函数：Provide、Module、Group 以及 Configuration
 
-前面几篇已经讲清了 Bean 的创建方式、名称、导出、生命周期和 root 入口。到这里，单个 Bean 的语义基本完整了。但真实项目里还有一个更靠外的问题：这些 Bean 定义应该由谁注册，注册逻辑应该放在哪个边界里。
-
-只有几个对象时，注册通常就是几行 `gs.Provide()`。组件变多以后，普通业务对象、Starter 模块、多实例配置、配置类导出的子 Bean、测试里临时替换的对象，都可以进入 Go-Spring 容器，但不应该挤在同一种入口里。入口选错了，后续配置、条件和测试隔离都会变得别扭。
-
-所以，选择注册入口时，先不要问“哪个 API 能注册 Bean”，而要问“这段注册逻辑属于哪个组织边界”。边界清楚以后，`Provide`、`Module`、`Group`、`Configuration` 和 `app.Provide` 的选择就会自然很多。
+前面几篇我们展开的主要是 bean 的使用，本文咱们重点看一下 bean 的注册，除了 `gs.provide()`，是否还有其他的注册函数。如果还有，那么它们的区别是什么？
 
 ## gs.Provide
 
