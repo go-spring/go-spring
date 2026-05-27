@@ -1,6 +1,6 @@
-# Go-Spring 实战第 13 课 —— Bean 元信息：把名称、接口、生命周期和条件写在注册处
+# Go-Spring 实战第 13 课 —— Bean 元信息：名称、生命周期、接口导出、显式依赖和条件
 
-注册 Bean 不只是调用一次 `gs.Provide`。`gs.Provide` 会返回当前 Bean 的定义，我们可以继续在后面追加名称、接口导出、生命周期、条件和顺序约束。
+注册 Bean 不只是调用一次 `gs.Provide`。`gs.Provide` 会返回当前 Bean 的定义，我们可以继续在后面追加名称、接口导出、生命周期、顺序约束和条件。
 
 ```go
 func init() {
@@ -150,6 +150,25 @@ func init() {
 
 这里的判断标准很实用：创建对象必须具备的参数校验，放在构造函数里；依赖注入完成后才能做的探测、启动前检查和退出清理，放在 `Init`、`Destroy` 里。
 
+## 显式依赖
+
+大多数初始化顺序不需要手写。只要 `Service` 注入了 `Repository`，Go-Spring 就会先准备 `Repository`，再创建 `Service`。
+
+但有些对象没有直接注入关系，却仍然需要顺序约束。比如缓存预热任务并不调用迁移器对象，但它必须等数据库迁移完成后再执行。这时可以使用 `DependsOn`。
+
+```go
+func init() {
+	gs.Provide(NewDatabaseMigrator).Name("main")
+
+	gs.Provide(NewCacheWarmer).
+		DependsOn(gs.BeanIDFor[*DatabaseMigrator]("main"))
+}
+```
+
+这表示 `NewCacheWarmer` 对应的 Bean 在初始化顺序上依赖名为 `main` 的 `*DatabaseMigrator`。退出时，Go-Spring 会按相反顺序处理。
+
+`DependsOn` 只应该补充顺序约束，不应该隐藏真正的运行期依赖。如果一个对象在业务逻辑里确实要调用另一个对象，就把它写成字段或构造函数参数。否则注册语句只能说明顺序，业务代码里却看不出真实依赖。
+
 ## 装配条件
 
 注册 Bean 不等于本次启动一定使用它。
@@ -177,25 +196,6 @@ func init() {
 `.OnProfiles("dev")` 表示这个 Bean 属于 `dev` Profile。它和手写 `OnProperty("spring.profiles.active")` 能表达相近结果，但读起来更清楚：这是环境装配规则，不是普通功能开关。
 
 条件的边界也要守住。`Condition` 适合决定一个基础设施组件、默认实现或环境实现是否参与启动；订单状态、用户类型、租户策略这类运行期业务分支，仍然应该写在业务代码里。
-
-## 显式依赖
-
-大多数初始化顺序不需要手写。只要 `Service` 注入了 `Repository`，Go-Spring 就会先准备 `Repository`，再创建 `Service`。
-
-但有些对象没有直接注入关系，却仍然需要顺序约束。比如缓存预热任务并不调用迁移器对象，但它必须等数据库迁移完成后再执行。这时可以使用 `DependsOn`。
-
-```go
-func init() {
-	gs.Provide(NewDatabaseMigrator).Name("main")
-
-	gs.Provide(NewCacheWarmer).
-		DependsOn(gs.BeanIDFor[*DatabaseMigrator]("main"))
-}
-```
-
-这表示 `NewCacheWarmer` 对应的 Bean 在初始化顺序上依赖名为 `main` 的 `*DatabaseMigrator`。退出时，Go-Spring 会按相反顺序处理。
-
-`DependsOn` 只应该补充顺序约束，不应该隐藏真正的运行期依赖。如果一个对象在业务逻辑里确实要调用另一个对象，就把它写成字段或构造函数参数。否则注册语句只能说明顺序，业务代码里却看不出真实依赖。
 
 ## 创建入口
 
@@ -225,6 +225,6 @@ func main() {
 
 `gs.Provide(NewService)` 说明 Bean 怎么来，后面的链式调用说明它在容器里怎么用。
 
-`Name` 解决同类型多实例选择，`Export` 解决接口注入，`Init` 和 `Destroy` 接入启动与退出，`Condition` 和 `OnProfiles` 控制本次启动是否启用，`DependsOn` 补充初始化顺序，`app.Root` 指定从哪个 Bean 开始创建。
+`Name` 解决同类型多实例选择，`Export` 解决接口注入，`Init` 和 `Destroy` 接入启动与退出，`DependsOn` 补充初始化顺序，`Condition` 和 `OnProfiles` 控制本次启动是否启用，`app.Root` 指定从哪个 Bean 开始创建。
 
 把这些信息写在注册处，代码读起来会更直接：看到注册语句，就能知道这个 Bean 的名称、接口身份、生效条件和生命周期动作。业务代码拿到的则是已经完成装配的普通 Go 对象，不需要在运行时再回头理解容器规则。
