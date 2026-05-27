@@ -1,8 +1,8 @@
 # Go-Spring 实战第 13 课 —— Bean 元信息：名称、生命周期、接口导出、条件和显式依赖
 
-我们在注册 Bean 时，除了告诉容器如何创建对象，通常还需要补充一些其他信息。例如：
+我们在注册 Bean 时，除了告诉容器如何创建对象，通常还需要补充一些元信息。例如：
 
-- 当同类型的 Bean 有多个实例时，需要为它们分别命名，以作区分；
+- 当同类型的 Bean 有多个实例时，需要为它们分别命名；
 - 在 Bean 实例创建完成之后，需要执行一些初始化动作；
 - 在 IoC 容器退出时，需要对 Bean 实例执行一些销毁动作；
 - 同一个 Bean 实例需要以不同的接口身份对外暴露；
@@ -12,7 +12,7 @@
 
 ## Bean 名称
 
-在 Go-Spring 中，表示一个 Bean 需要类型和名字两个信息。当容器中只有一个同类型 Bean 时，我们通常不用关心它的名字。但当容器中有多个同类型 Bean 时，就需要为它们分别命名。
+在 Go-Spring 中，一个 Bean 由类型和名字两者共同标识。当容器中只有一个同类型 Bean 时，我们通常不用关心它的名字。但当容器中有多个同类型 Bean 时，就需要为它们分别命名。
 
 看个例子。
 
@@ -27,9 +27,10 @@ func init() {
 }
 ```
 
-上面的代码中，我们在注册 Bean 的时候，注册了 `master` 和 `replica` 两个 `*DataSource` 类型的 Bean。使用的时候，只用到了 `replica` 这一个 Bean。
+上面的代码中，我们在注册 Bean 的时候，注册了 `master` 和 `replica` 两个 `*DataSource` 类型的 Bean。但是在使用的时候，只用到了 `replica` 这
+一个 Bean。
 
-我们可以在结构体字段上指定要注入的 Bean 名字，也可以为构造函数的参数绑定指定要注入的 Bean 名字。代码如下：
+除了在结构体字段上指定要注入的 Bean 名字，我们也可以在构造函数参数绑定时指定。代码如下：
 
 ```go
 func NewUserRepository(ds *DataSource) *UserRepository {
@@ -45,13 +46,14 @@ func init() {
 
 ## 生命周期
 
-Go-Spring 支持在实例创建之后执行初始化动作，支持在容器退出时执行销毁动作。我们可以使用 `Init` 设置初始化动作，使用 `Destroy` 设置销毁动作。
+有些 Bean 被容器创建出来之后，还需要在固定时机执行一些额外动作。比如在启动时检查资源是否可用，在退出时关闭连接、停止后台任务或者刷写缓冲区。
 
-`Init` 注册的回调函数会在 Bean 创建并且完成依赖注入后执行。如果 `Init` 返回错误，Go-Spring 会终止启动。
+在 Go-Spring 中，我们可以使用 `Init` 设置初始化动作，使用 `Destroy` 设置销毁动作。
 
-`Destroy` 注册的回调函数会在容器退出时执行，适合关闭连接、停止后台任务、刷写缓冲区等。销毁失败会被记录，但退出流程会继续。
+- `Init` 注册的回调函数会在 Bean 创建并且完成依赖注入后执行。如果 `Init` 返回错误，Go-Spring 会终止启动。
+- `Destroy` 注册的回调函数会在容器退出时执行。如果销毁失败，会记录下来，但退出流程会继续。
 
-无论是 `Init` 还是 `Destroy`，它们的函数原型都是一样的，都是 `func(*Bean)` 或者 `func(*Bean) error`。
+传给 `Init` 和 `Destroy` 的函数签名是一样的，都是 `func(*Bean)` 或者 `func(*Bean) error`。
 
 看个例子。
 
@@ -73,7 +75,7 @@ func init() {
 
 上面的代码中，我们在注册 `RedisClient` 时，通过独立函数的形式，指定了 `CheckRedisClient` 作为初始化动作，`CloseRedisClient` 作为销毁动作。
 
-如果初始化和销毁动作本来就是对象自己的方法，我们也可以使用 `InitMethod` 和 `DestroyMethod` 直接声明方法名。它们的函数签名都可以是 `func()` 或者 `func() error`。
+如果初始化和销毁动作本来就是对象自己的方法，我们也可以使用 `InitMethod` 和 `DestroyMethod` 直接声明方法名。只要方法的签名是 `func()` 或者 `func() error` 就行。
 
 示例如下：
 
@@ -105,7 +107,7 @@ func init() {
 
 在 Go 里接口是隐式实现的。一个类型只要方法集合匹配，就实现了某个接口。这个特性很方便，但也意味着一个类型可能无意中满足了很多接口。
 
-Go-Spring 没有把这种隐式实现关系自动扩展成装配身份。如果我们需要表达一个 Bean 实例可以按多个接口参与装配，那么需要显式导出这些接口。
+Go-Spring 没有把这种隐式实现关系自动扩展成装配身份。如果我们需要表达一个 Bean 实例可以按某个接口参与装配，那么需要显式导出这个接口。
 
 我们可以使用 `Export` 显式导出 Bean 实现的接口。代码如下：
 
@@ -172,7 +174,7 @@ func init() {
 
 上面的代码中，`ObservabilityAgent` 实现了 `HealthChecker` 和 `MetricsExporter` 两个接口。我们通过 `.Export(...)` 表示这个实现可以按这两个接口参与装配。
 
-但是如果构造函数本身就返回的是接口类型，那么这个返回类型已经是 Bean 的装配类型，就不需要再写同一个接口的 `Export` 了。示例如下：
+如果构造函数返回的就是接口类型，那么这个返回的接口类型就已经是 Bean 的装配类型了，就不需要再写同一个接口的 `Export` 了。示例如下：
 
 ```go
 func NewUserService() UserService {
@@ -186,9 +188,9 @@ func init() {
 
 ## 条件
 
-最好的情况是，需要哪种 Bean 就只注册哪种 Bean；不需要就不注册。但是在模块化和框架化场景下，注册代码通常提前写在模块内部，最终是否启用要由配置、环境或者已有 Bean 决定。这时就需要满足某种条件时再激活当前 Bean。
+理想情况下，需要哪种 Bean 就只注册哪种 Bean；不需要就不注册。但是在模块化和框架化场景下，注册代码通常提前写在模块内部，最终是否启用要由配置、环境或者已有 Bean 决定。这时就需要让当前 Bean 只在条件满足时才能激活。
 
-Go-Spring 提供了 `Condition` 来实现条件化激活。常见的 `Condition` 有 `OnProperty`、`OnBean`、`OnProfiles` 等。本篇咱们不讲 Condition 有哪些，只讲在 Bean 注册的时候怎么使用 `Condition`。
+Go-Spring 提供了 `Condition` 来实现条件化激活。常见的 `Condition` 有 `OnProperty`、`OnBean`、`OnProfiles` 等。本篇咱们不展开各种 Condition 的具体语义，只看在 Bean 注册时怎么使用 `Condition`。
 
 看个例子。
 
@@ -218,9 +220,9 @@ func init() {
 
 ## 显式依赖
 
-大多数情况下我们不需要手动声明 Bean 之间的依赖关系，结构体字段或者构造函数参数已经表达了 Bean 之间的依赖关系，不需要我们额外补充依赖信息。
+大多数情况下，我们不需要手动声明 Bean 之间的依赖关系，结构体字段或者构造函数参数已经表达了这些关系。
 
-但是偶尔会有一些顺序依赖并不体现在字段或者参数上。为了满足这种场景，Go-Spring 提供了 `DependsOn` 来显式表达依赖关系。示例如下：
+但偶尔会有一些顺序依赖并不体现在字段或者参数上。这时我们可以使用 `DependsOn` 来显式表达 Bean 之间的依赖关系。示例如下：
 
 ```go
 func init() {
@@ -231,7 +233,7 @@ func init() {
 }
 ```
 
-上面的代码表示，我们注册了 `NewDatabaseMigrator` 和 `NewCacheWarmer` 两个 Bean，其中后者显式依赖前者。在创建 Bean 的时候，Go-Spring 会先创建 `*DatabaseMigrator`，然后再创建 `*CacheWarmer`。而当 IoC 容器退出的时候，Go-Spring 会先销毁 `*CacheWarmer`，然后再销毁 `*DatabaseMigrator`。
+上面的代码表示，我们注册了 `NewDatabaseMigrator` 和 `NewCacheWarmer` 两个 Bean，其中后者显式依赖前者。在创建 Bean 的时候，Go-Spring 会先创建 `*DatabaseMigrator`，然后再创建 `*CacheWarmer`。在容器退出的时候，Go-Spring 会先销毁 `*CacheWarmer`，然后再销毁 `*DatabaseMigrator`。
 
 `gs.BeanIDFor[T]()` 表示通过类型定位被依赖的 Bean。如果被依赖的是命名 Bean，可以把名字一起写进去，如 `gs.BeanIDFor[*DataSource]("master")`。
 
