@@ -174,9 +174,9 @@ func init() {
 
 ### `IndexArg`
 
-如果构造函数的参数比较少，我们可能会按顺序逐个对参数进行绑定。如果参数比较多，而且有些参数可以使用默认值，那么这时候我们可以使用 `IndexArg` 来绑定参数的下标，从而跳过不需要显式绑定的参数。
+如果构造函数的参数比较少，我们可能会按顺序逐个对参数进行绑定。但如果参数较多，而且有些参数可以使用默认值，那么这时候我们可以使用 `IndexArg` 绑定参数的下标，来跳过不需要显式绑定的参数。
 
-> 参数可以使用默认值通常是指参数是一个 Bean 注入，而且可以完全通过类型完成 Bean 的注入。像配置注入、固定值、Option 绑定，一般都是不能跳过的。
+> 参数可以使用默认值通常是指参数是一个 Bean 注入，而且可以完全通过类型完成 Bean 注入。像配置注入、固定值、Option 绑定，这些通常是不能跳过的。
 
 示例如下：
 
@@ -190,15 +190,17 @@ func init() {
 }
 ```
 
-在上面的代码中，我们只是把下标为 2 的 `c` 参数绑定为固定值 `custom-value`，`a` 和 `b` 都由容器根据类型自动推断。
+在上面的代码中，我们只是把下标为 2 的 `c` 参数绑定为固定值 `custom-value`，`a` 和 `b` 都是由容器根据类型自动推断的。
 
 `IndexArg` 的下标符合 Go 语言的惯例，从 0 开始。
 
 ## 函数
 
-在 Go 里面，函数也是一等公民，我们经常看到将函数作为参数传递和使用。因此，函数本身也可以作为一种 Bean 注册类型。
+在 Go 里面，函数也是一等公民，我们经常看到将函数作为参数传递和使用。因此，函数本身也可以作为一种 Bean。
 
-不过构造函数本质上也是函数。为了区分“调用这个函数创建 Bean”和“这个函数本身就是 Bean”，注册函数 Bean 时需要使用 `reflect.ValueOf` 来包裹函数。考虑到使用函数 Bean 的情况不太多，Go-Spring 就不再单独提供方法来注册函数 Bean 了。
+不过构造函数本质上也是函数。为了区分“调用这个函数创建 Bean”和“这个函数本身就是 Bean”这两种不同的语义，我们在注册函数 Bean 的时候需要使用 `reflect.ValueOf` 来包裹函数。
+
+> 考虑到使用函数 Bean 的情况不多，Go-Spring 就不再提供更简单的注册函数 Bean 的方法了。
 
 看个例子。
 
@@ -222,12 +224,16 @@ func BcryptPasswordChecker(username, password string) bool {
 }
 
 func init() {
-	gs.Provide(reflect.ValueOf(PasswordChecker(BcryptPasswordChecker)))
+	gs.Provide(reflect.ValueOf(BcryptPasswordChecker))
 	gs.Provide(NewAuthenticator)
 }
 ```
 
-这个例子里，`Authenticator` 依赖的是 `PasswordChecker` 这个函数类型。传给 `gs.Provide()` 的是经过 `reflect.ValueOf` 包装的函数，`PasswordChecker(BcryptPasswordChecker)` 表示把这个函数按 `PasswordChecker` 注册。这样 Go-Spring 注入给 `Authenticator` 的就是这段可调用能力，而不是调用 `BcryptPasswordChecker` 以后得到的 `bool`。
+在上面的例子里，`Authenticator` 依赖的是 `PasswordChecker` 这个函数类型。
+
+
+
+传给 `gs.Provide()` 的是经过 `reflect.ValueOf` 包装的函数，`BcryptPasswordChecker` 表示把这个函数按 `PasswordChecker` 注册。这样 Go-Spring 注入给 `Authenticator` 的就是这段可调用能力，而不是调用 `BcryptPasswordChecker` 以后得到的 `bool`。
 
 策略函数、校验函数、编码函数、签名函数这类函数式组件适合用这种方式进入容器。
 
