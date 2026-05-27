@@ -103,16 +103,16 @@ func init() {
 
 ## 接口导出
 
-Go 里接口是隐式实现的。一个结构体只要方法集合匹配，就实现了某个接口。这个特性很方便，但容器不能因此自动把结构体暴露成所有可能的接口。
+在 Go 里接口是隐式实现的，这就导致我们无法预先知道 bean 实例实现了哪些接口。当然我们可以在 bean 匹配的时候对每个 bean 进行类型探测，但是一个是匹配的过程很慢，性能变差，另一个是可能会误判。因此 Go-Spring 要求必须显式导出 bean 实现的接口。
 
-原因很简单：结构体可能实现很多接口，也可能无意中满足某个接口。如果容器自动推断，依赖方按接口注入时，很难知道这个实现是不是作者有意暴露出来的。
-
-Go-Spring 的做法是让注册语句显式说明接口导出关系。
+我们可以使用 `Export` 显式导出 bean 实现的接口。代码如下：
 
 ```go
 type UserService interface {
 	Get(id int) (*User, error)
 }
+
+todo （缺乏使用案例呢）
 
 type UserServiceImpl struct{}
 
@@ -125,11 +125,12 @@ func init() {
 }
 ```
 
-`.Export(gs.As[UserService]())` 的意思是：这个实现除了按 `*UserServiceImpl` 参与装配，也允许按 `UserService` 接口被注入。
+上面的代码中，我们通过 `.Export(gs.As[UserService]())` 表达了 `UserServiceImpl` 实现了 `UserService` 接口这个含义。
 
-如果一个 Bean 需要承担多个角色，可以导出多个接口。
+如果一个 Bean 需要承担多个角色，也可以导出多个接口。
 
 ```go
+todo (下面这个例子不合适)
 func init() {
 	gs.Provide(NewJob).
 		Export(gs.As[Job]()).
@@ -137,15 +138,17 @@ func init() {
 }
 ```
 
-如果构造函数本身就返回接口类型，则不需要再写 `Export`。
+但是如果构造函数本身就返回的是接口类型，那么就不需要再写 `Export` 了，除非它的底层对象还实现了其他接口。
 
 ```go
 func NewUserService() UserService {
 	return &UserServiceImpl{}
 }
-```
 
-这两种写法都可以。关键是接口关系要在代码里明确出现，而不是让容器猜。
+func init() {
+	gs.Provide(NewUserService)
+}
+```
 
 ## 装配条件
 
