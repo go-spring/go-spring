@@ -1,37 +1,29 @@
 # Go-Spring 实战第 13 课 —— Bean 元信息：名称、生命周期、接口导出、条件和显式依赖
 
-在注册 Bean 时，我们可能会遇到各种附加需求。比如：
+我们在注册 Bean 时，除了告诉容器如何创建对象，通常还需要补充一些其他信息。例如：
 
-- 有多个同类型的 Bean 实例，我们希望为每个 Bean 命名；
-- Bean 对象创建之后，我们希望执行一些初始化动作；
-- 容器结束时，我们希望执行一些销毁动作；
-- 同一个 Bean 可能共享底层实现，但对外表现为不同接口身份；
-- 某些 Bean 只应该在特定条件下激活，条件不满足就不创建。
+- 当同类型的 Bean 有多个实例时，需要为它们分别命名，以作区分；
+- 在 Bean 实例创建完成之后，需要执行一些初始化动作；
+- 在 IoC 容器退出时，需要对 Bean 实例执行一些销毁动作；
+- 同一个 Bean 实例需要以不同的接口身份对外暴露；
+- 某些 Bean 实例只应在特定条件满足时激活，否则就不创建。
 
-在 Go-Spring 中，这些需求都可以通过注册 Bean 时附加的元信息来表达。
+在 Go-Spring 中，这些需求都可以通过 Bean 注册时附加的元信息来表达。
 
 ## Bean 名称
 
-名称最常见的用途，是区分同类型的多个 Bean。
+在 Go-Spring 中，表示一个 Bean 需要类型和名字两个信息。在容器中只有一个同类型的 bean 时，我们通常不同关心它的名字。使用默认生成的名字即可。但如果容器中多个同类型的 bean 时，我们需要为它们分别命名。
 
-如果容器里只有一个 `*DataSource`，依赖方只写类型就够了。
+看个例子。
 
 ```go
 type UserRepository struct {
-	DS *DataSource `autowire:""`
+	DS *DataSource `autowire:"replica"`
 }
-```
 
-但一旦同类型有多个实例，类型就只能说明“我要一个 `*DataSource`”，不能说明“我要哪一个”。这时就要在注册处给 Bean 命名，再在依赖处使用这个名字。
-
-```go
 func init() {
 	gs.Provide(NewMasterDataSource).Name("master")
 	gs.Provide(NewReplicaDataSource).Name("replica")
-}
-
-type UserRepository struct {
-	DS *DataSource `autowire:"replica"`
 }
 ```
 
