@@ -182,27 +182,19 @@ func init() {
 
 ## 显式依赖
 
-大多数初始化顺序不需要手写。只要 `Service` 注入了 `Repository`，Go-Spring 就会先准备 `Repository`，再创建 `Service`。
+大多数情况下我们不需要手动执行 bean 之间的依赖关系，结构体字段或者构造函数参数都表达了 bean 之间的依赖关系，不需要我们额外补充依赖信息了。
 
-但有些对象没有直接注入关系，却仍然需要顺序约束。比如缓存预热任务并不调用迁移器对象，但它必须等数据库迁移完成后再执行。这时可以使用 `DependsOn`。
+但是偶尔可能有一些不直接依赖的情况，为了满足这种场景，Go-Spring 提供了 `DependsOn` 来显式表达依赖关系。示例如下：
 
 ```go
 func init() {
-	gs.Provide(NewDatabaseMigrator).Name("main")
+	gs.Provide(NewDatabaseMigrator)
 
 	gs.Provide(NewCacheWarmer).
-		DependsOn(gs.BeanIDFor[*DatabaseMigrator]("main"))
+		DependsOn(gs.BeanIDFor[*DatabaseMigrator]())
 }
 ```
 
-这表示 `NewCacheWarmer` 对应的 Bean 在初始化顺序上依赖名为 `main` 的 `*DatabaseMigrator`。退出时，Go-Spring 会按相反顺序处理。
+上面的代码表示，我们注册了 `NewDatabaseMigrator` 和 `NewCacheWarmer` 两个 Bean，其中后者显式依赖前者。在创建 bean 的时候，Go-Spring 会先创建 `*DatabaseMigrator`，然后再创建 `*CacheWarmer`。而当 IoC 容器退出的时候，Go-Spring 会先销毁 `*CacheWarmer`，然后再销毁 `*DatabaseMigrator`。
 
-`DependsOn` 只应该补充顺序约束，不应该隐藏真正的运行期依赖。如果一个对象在业务逻辑里确实要调用另一个对象，就把它写成字段或构造函数参数。否则注册语句只能说明顺序，业务代码里却看不出真实依赖。
-
-## Bean 元信息
-
-`gs.Provide(NewService)` 说明 Bean 怎么来，后面的链式调用说明它在容器里怎么用。
-
-`Name` 解决同类型多实例选择，`Init` 和 `Destroy` 接入启动与退出，`Export` 解决接口注入，`Condition` 和 `OnProfiles` 控制本次启动是否启用，`DependsOn` 补充初始化顺序。
-
-把这些信息写在注册处，代码读起来会更直接：看到注册语句，就能知道这个 Bean 的名称、生命周期动作、接口身份、生效条件和顺序约束。业务代码拿到的则是已经完成装配的普通 Go 对象，不需要在运行时再回头理解容器规则。
+我们鼓励使用结构体字段或者构造函数参数来表达依赖关系，而不是滥用 `DependsOn`。
