@@ -45,9 +45,11 @@ func init() {
 
 ## 生命周期
 
-Go-Spring 支持在实例创建之后执行初始化动作，支持在容器退出时执行销毁动作。
+Go-Spring 支持在实例创建之后执行初始化动作，支持在容器退出时执行销毁动作。我们可以使用 `Init` 设置初始化动作，使用 `Destroy` 设置销毁动作。
 
-我们可以使用 `Init` 设置初始化动作，使用 `Destroy` 设置销毁动作。`Init` 注册的回调函数会在 Bean 创建并且完成依赖注入后执行。如果 `Init` 返回错误，Go-Spring 会终止启动。`Destroy` 注册的回调函数会在容器退出时执行，适合关闭连接、停止后台任务、刷写缓冲区等。销毁失败会被记录，但退出流程会继续。
+`Init` 注册的回调函数会在 Bean 创建并且完成依赖注入后执行。如果 `Init` 返回错误，Go-Spring 会终止启动。
+
+`Destroy` 注册的回调函数会在容器退出时执行，适合关闭连接、停止后台任务、刷写缓冲区等。销毁失败会被记录，但退出流程会继续。
 
 看个例子。
 
@@ -67,12 +69,16 @@ func init() {
 }
 ```
 
-无论是 Init 还是 Destroy，它们的函数原型都是一样的，都是 `func(*Bean)` 或者 `func(*Bean) error`。
+上面的代码中，我们在注册 `RedisClient` 时，通过独立函数的形式，指定了 `CheckRedisClient` 作为初始化动作，`CloseRedisClient` 作为销毁动作。
 
 如果初始化和销毁动作本来就是对象自己的方法，我们也可以直接声明方法名。示例如下：
 
 ```go
 type Worker struct{}
+
+func NewWorker() *Worker {
+	...
+}
 
 func (w *Worker) Start() error {
 	return nil
@@ -89,7 +95,11 @@ func init() {
 }
 ```
 
-这里的判断标准很实用：只要动作需要纳入 Go-Spring 的启动和退出顺序，就放到 `Init`、`Destroy` 里。这样无论 Bean 来自构造函数还是已有对象，容器都能用同一套生命周期处理它。
+上面的代码中，我们在注册 `Worker` 时，通过方法名的形式，指定了 `Start` 作为初始化动作，`Stop` 作为销毁动作。
+
+无论是 Init 还是 Destroy，它们的函数原型都是一样的，都是 `func(*Bean)` 或者 `func(*Bean) error`。
+
+> 在 Go 中，方法可以和普通函数一样，只是认为接收者是函数的第一个参数即可。
 
 ## 接口导出
 
