@@ -229,12 +229,6 @@ func init() {
 }
 ```
 
-在上面的例子里，`Authenticator` 依赖的是 `PasswordChecker` 这个函数类型。
+在上面的例子里，`Authenticator` 依赖了 `PasswordChecker` 类型的 Bean，然后我们通过 `gs.Provide()` 注册了 `BcryptPasswordChecker` 函数。Go-Spring 在启动时会根据 `PasswordChecker` 类型，自动注入 `BcryptPasswordChecker` 函数。
 
-
-
-传给 `gs.Provide()` 的是经过 `reflect.ValueOf` 包装的函数，`BcryptPasswordChecker` 表示把这个函数按 `PasswordChecker` 注册。这样 Go-Spring 注入给 `Authenticator` 的就是这段可调用能力，而不是调用 `BcryptPasswordChecker` 以后得到的 `bool`。
-
-策略函数、校验函数、编码函数、签名函数这类函数式组件适合用这种方式进入容器。
-
-到这里，三种 Bean 注册类型就讲完了。结构体指针表示对象已经存在，构造函数表示对象由容器调用函数创建，函数表示可调用能力本身就是 Bean。理解这三种注册入口，再看 `gs.Provide(...)` 的各种写法就会清楚很多。
+通常来说，策略函数、校验函数、编码函数、签名函数这类函数式组件都很适合用这种方式进入容器。
