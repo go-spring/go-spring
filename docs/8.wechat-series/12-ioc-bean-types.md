@@ -117,7 +117,9 @@ func init() {
 
 ### `ValueArg`
 
-如果构造函数的参数需要绑定一个固定值，我们可以使用 `ValueArg`。示例如下：
+如果构造函数的参数需要绑定一个固定值，我们可以使用 `ValueArg`。
+
+示例如下：
 
 ```go
 func NewRedisClient(db int) *RedisClient {
@@ -129,13 +131,13 @@ func init() {
 }
 ```
 
-`ValueArg` 表达的是“这个值在注册时已经确定”。它适合常量、测试替身，或者不需要随环境变化的参数。如果一个值需要由配置文件、环境变量或启动参数控制，就不应该硬写在 `ValueArg` 里，而应该交给配置绑定。
+`ValueArg` 适合用于常量、测试替身，或者不需要随环境变化的参数。如果一个值需要由配置文件、环境变量或启动参数控制，就不应该硬写在 `ValueArg` 里，而是交给 `TagArg` 来绑定。
 
 ### `BindArg`
 
-在 Go 里面，使用 Functional Options 模式的构造函数随处可见，Go-Spring 对这种情况也能很好地支持。
+在 Go 里面，使用 Functional Options 模式的构造函数随处可见，Go-Spring 对这种情况也能很好地支持。我们可以使用 `BindArg` 为 Functional Options 模式的构造函数绑定参数。
 
-我们可以使用 `BindArg` 来绑定 Functional Options 模式的构造函数参数。示例如下：
+示例如下：
 
 ```go
 type Option func(*Server)
@@ -164,9 +166,11 @@ func init() {
 }
 ```
 
-在上面的代码中，`NewServer` 就是一个使用了 Functional Options 模式的构造函数。`gs.Provide(...)` 在注册 `NewServer` 的时候，使用 `BindArg` 为它绑定了 `WithPort` 和 `WithTimeout` 两个参数。Go-Spring 在创建 `*Server` Bean 时，如果发现使用了 `BindArg`，它就会根据 `BindArg` 的参数绑定规则，来调用对应的 `Option` 函数，然后将执行的结果作为构造函数的参数。
+在上面的代码中，`NewServer` 就是一个使用了 Functional Options 模式的构造函数。`gs.Provide(...)` 在注册 `NewServer` 的时候，使用 `BindArg` 为它绑定了 `WithPort` 和 `WithTimeout` 两个参数。Go-Spring 在创建 `*Server` Bean 时，发现它的构造函数参数使用了 `BindArg`，就会根据 `BindArg` 的参数，来调用对应的 `Option` 函数，然后将执行的结果作为构造函数的参数。
 
-`BindArg` 还可以附加**条件（Condition）**，表示只有条件满足时才能生成对应的 Option。这种情况不太常见，这里就先不展开了。
+我们发现，`BindArg` 自己的参数也可以是 `Arg` 类型（`TagArg`、`ValueArg`）。这是很容易理解的，因为本质上我们仍然是在为函数添加 tag 机制，无论什么样的函数，都可以使用 tag 机制。这在 Go 里面其实具有普遍性。
+
+另外，`BindArg` 还可以附加**条件（Condition）**，表示只有条件满足时才能生成对应的 Option。这种情况不太常见，就先不展开了。
 
 ### `IndexArg`
 
