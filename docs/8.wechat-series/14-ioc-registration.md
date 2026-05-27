@@ -1,10 +1,6 @@
 # Go-Spring 实战第 14 课 —— Bean 注册函数：Provide、Module、Group 以及 Configuration
 
-前面两篇已经讲过 Bean 可以从结构体指针、构造函数和函数本身注册进来，也讲过注册语句后面还能附加名称、接口导出、生命周期和条件。到这里还有一个问题没有展开：除了最常用的 `gs.Provide()`，Go-Spring 还有哪些 Bean 注册函数，它们分别适合什么场景？
-
-最常见的入口当然是 `gs.Provide()`。但真实项目里不只有单个 Bean 的注册。测试或当前启动实例会需要局部 Bean；Starter 会根据配置批量提供 Bean；有些同类型实例天然来自一组配置；还有一些相关对象更适合收在同一个配置类里统一导出。这些场景对应的就是 `app.Provide()`、`gs.Module()`、`gs.Group()` 和 `Configuration`。
-
-所以，本文重点不是把 API 罗列一遍，而是讲清楚这几种注册方式各自解决什么问题。
+前面的文章中我们都是使用 `gs.provide()` 来注册 Bean 的。实际上 Go-Spring 还提供了其他方法可以注册 Bean。本文咱们就来看一下。
 
 ## gs.Provide
 
