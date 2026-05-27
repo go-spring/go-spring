@@ -184,13 +184,15 @@ func init() {
 
 ## 函数
 
-最后再回到一个容易混淆的地方：如果 `gs.Provide()` 里传的是函数，它通常会被理解成构造函数。但函数本身也可以是 Bean。
+在 Go 里面，函数也是一等公民，我们经常看到将函数作为参数传递和使用。因此 Go-Spring 也支持将函数作为 Bean。
 
-Go-Spring 默认会把普通函数理解为构造函数，因为大多数 `gs.Provide(fn)` 都是在表达“调用这个函数得到 Bean”。如果调用方需要注入的正是这个函数本身，就要用 `reflect.ValueOf` 明确告诉 Go-Spring：这里注册的是函数，而不是函数调用结果。
+不过由于构造函数也是函数，为了将二者分开，我们在注册函数 Bean 的时候，需要使用 `reflect.ValueOf` 来包裹函数。考虑到使用函数 Bean 的情况不太多，Go-Spring 就不再单独提供方法来注册函数 Bean 了。
 
-比如下面这段代码，注册目标就是 `BcryptPasswordChecker` 这个函数本身。
+看个例子。
 
 ```go
+todo （缺少注入，也就是函数作为 Bean 使用）
+
 type PasswordChecker func(username, password string) bool
 
 func BcryptPasswordChecker(username, password string) bool {
@@ -204,14 +206,4 @@ func init() {
 
 这个例子里，传给 `gs.Provide()` 的是经过 `reflect.ValueOf` 包装的函数，`PasswordChecker(BcryptPasswordChecker)` 明确了 Bean 自身的类型。依赖方要拿到的是一段可调用能力，而不是调用 `BcryptPasswordChecker` 以后得到的 `bool`。
 
-策略函数、校验函数、编码函数、签名函数这类函数式组件适合用这种方式进入容器。它们没有对象状态，也不需要生命周期，但它们本身就是业务依赖的一部分。
-
-这个边界很重要：构造函数注册的是“用这个函数创建 Bean”，函数注册的是“这个函数就是 Bean”。两者在 Go 代码里都长得像函数，但在 Go-Spring 的注册语义里不是同一件事。
-
-## Bean 类型
-
-回到开头那句话，结构体指针、构造函数和函数，是本文为了行文方便使用的三种 Bean 类型说法。严格一点讲，它们描述的是 `gs.Provide()` 第一参数的类型，而不是 Bean 最终被依赖方引用时的 Go 类型。
-
-结构体指针表示对象已经创建，容器负责后续管理。构造函数表示对象由容器解析参数后创建，返回值才是 Bean 自身类型。函数表示函数本身就是可注入能力，需要用 `reflect.ValueOf` 和构造函数语义区分开。
-
-把这层区别说清楚，是为了避免把 `gs.Provide()` 的参数写法误认为 Bean 的运行类型。读本文里的 Bean 类型时，可以先把它理解成一个注册入口的问题：这个参数告诉容器怎样得到对象，Bean 自身类型告诉依赖方怎样声明依赖。把这两件事分开，`gs.Provide()` 的几种写法就容易理解了。
+策略函数、校验函数、编码函数、签名函数这类函数式组件适合用这种方式进入容器。
