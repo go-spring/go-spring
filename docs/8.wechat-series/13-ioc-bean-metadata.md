@@ -75,7 +75,7 @@ func init() {
 
 上面的代码中，我们在注册 `RedisClient` 时，通过独立函数的形式，指定了 `CheckRedisClient` 作为初始化动作，`CloseRedisClient` 作为销毁动作。
 
-如果初始化和销毁动作本来就是对象自己的方法，我们也可以使用 `InitMethod` 和 `DestroyMethod` 直接声明方法名。只要方法的签名是 `func()` 或者 `func() error` 就行。
+如果初始化和销毁动作本来就是对象自己的方法，我们也可以使用 `InitMethod` 和 `DestroyMethod` 直接声明方法名。只要方法的签名是 `func()` 或者 `func() error` 。
 
 示例如下：
 
