@@ -62,9 +62,9 @@ func init() {
 
 ## 生命周期动作
 
-构造函数适合创建对象，但不是所有启动动作都应该塞进构造函数。
+有些 Bean 被容器接管以后，还需要在固定时机执行额外动作。启动时要检查资源是否可用，退出时要释放连接、停止后台任务或刷写缓冲区，这些都属于生命周期动作。
 
-比如 Redis Client 创建出来以后，可能还要 `Ping` 一次确认连接可用；应用退出时，还要把连接关闭。这类动作和容器启动、退出顺序有关，适合交给 `Init` 和 `Destroy`。
+这和 Bean 是通过构造函数注册，还是通过结构体指针注册没有必然关系。结构体指针注册时，对象在注册前已经创建好了，但它仍然可能需要容器在注入完成后执行初始化，在退出时执行销毁。
 
 ```go
 func CheckRedisClient(c *RedisClient) error {
@@ -76,7 +76,7 @@ func CloseRedisClient(c *RedisClient) error {
 }
 
 func init() {
-	gs.Provide(NewRedisClient).
+	gs.Provide(&RedisClient{}).
 		Init(CheckRedisClient).
 		Destroy(CloseRedisClient)
 }
@@ -86,7 +86,7 @@ func init() {
 
 `Destroy` 会在容器退出时执行，适合关闭连接、停止后台任务、刷写缓冲区。销毁失败会被记录，但退出流程仍然要继续处理其他资源。
 
-如果初始化和销毁动作本来就是对象自己的方法，可以直接声明方法名。
+如果初始化和销毁动作本来就是对象自己的方法，可以直接声明方法名。这种写法在结构体指针注册时也很常见。
 
 ```go
 type Worker struct{}
@@ -106,7 +106,7 @@ func init() {
 }
 ```
 
-这里的判断标准很实用：创建对象必须具备的参数校验，放在构造函数里；依赖注入完成后才能做的探测、启动前检查和退出清理，放在 `Init`、`Destroy` 里。
+这里的判断标准很实用：只要动作需要纳入 Go-Spring 的启动和退出顺序，就放到 `Init`、`Destroy` 里。这样无论 Bean 来自构造函数还是已有对象，容器都能用同一套生命周期处理它。
 
 ## 接口导出
 
