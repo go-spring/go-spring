@@ -143,11 +143,11 @@ func init() {
 
 `gs.Group()` 在创建多实例 client 场景时非常有用。
 
-## 配置类导出
+## `Configuration`
 
-还有一种情况不是“同类型多实例”，而是“一组相关 Bean 共享同一段配置和创建上下文”。这时可以把它们收进一个配置类，再通过 `Configuration` 导出多个方法 Bean。
+`Configuration` 是一种非常 java 的注册 bean 的方式，它可以将 bean 的方法导出成 bean。这样，我们可以实现另一种封闭式的 bean 注册风格。
 
-比如数据库相关对象通常共享一组数据库配置。
+看个例子。
 
 ```go
 type DatabaseConfiguration struct {
@@ -167,11 +167,15 @@ func init() {
 }
 ```
 
-`DatabaseConfiguration` 本身先作为普通 Bean 注册。它可以接收配置绑定，也可以接收其他注入。随后 `.Configuration()` 告诉 Go-Spring：启动解析时扫描这个配置类的方法，把符合规则的方法返回值也注册成 Bean。
+在上面的示例中，`DatabaseConfiguration` 本身先作为普通 Bean 进行注册。它可以接收配置绑定，也可以接收其他注入。但是我们通过 `.Configuration()` 调用告诉 Go-Spring：这个 bean 是一个特殊的配置 bean，它的方法也可以注册成 Bean。
 
-默认情况下，Go-Spring 会扫描公开方法里匹配正则 `New.*` 的方法。上面的 `NewDataSource` 和 `NewUserRepository` 都会被识别为构造方法。它们和普通构造函数一样，可以只返回一个对象，也可以返回 `(T, error)`。
+默认情况下，Go-Spring 会扫描公开方法里匹配正则 `New.*` 的方法。在上面的例子中，`NewDataSource` 和 `NewUserRepository` 都会被识别为构造方法，他们分别会创建 `*DataSource` 和 `*UserRepository` 类型的 bean。同时，对于 `NewUserRepository` 这个构造函数而言，通过 `NewDataSource` 创建的 `*DataSource` bean 就是它的参数。
 
-如果需要调整扫描范围，可以显式声明包含和排除规则。
+和普通构造函数一样，这些被识别为子 bean 的方法可以只返回一个对象 `T`，也可以返回 `(T, error)`。
+
+另外，配置类方法导出的子 Bean 会得到自动生成的名称，形式是“配置 Bean 名称 + 方法名”，中间用下划线连接，比如 `DatabaseConfiguration_NewDataSource`。
+
+如果需要调整扫描范围，我们可以显式地声明包含和排除规则。示例如下：
 
 ```go
 func init() {
@@ -183,22 +187,12 @@ func init() {
 }
 ```
 
-`Configuration` 的价值在于组织相关创建逻辑。配置类承接共享配置和共同上下文，方法返回值仍然作为独立 Bean 参与后续装配和生命周期处理。
+`Configuration` 非常特殊，我们承认它的独特价值，但是也要警惕它的复杂性和隐蔽性。
 
-不过它不应该被当成“大型注册中心”。如果一组 Bean 没有共同配置，也没有稳定的创建关系，只是因为文件放在一起方便，就不适合塞进同一个配置类。那样会让注册位置变集中，但语义边界反而变弱。
+本质上，`Configuration` 的注册方式和下面这种只使用 `gs.Provide` 的方式等价。代码如下：
 
-还有一个细节：配置类方法导出的 Bean 会得到自动生成的名称，形式是“配置 Bean 名称 + 方法名”，中间用下划线连接，比如 `DatabaseConfiguration_NewDataSource`。大多数情况下我们按类型注入，不需要关心这个名称；如果确实要按名称选择，就要把这个命名规则考虑进去。
+todo (补充代码示例，你能明白的)
 
-## 注册入口选择
+## 如何选择
 
-这些入口的差异，本质上不是“哪个 API 更高级”，而是注册边界不同。
-
-| 场景 | 注册入口 | 语义边界 |
-|------|----------|----------|
-| 单个稳定 Bean，随包导入提供 | `gs.Provide()` | 包级候选 |
-| 当前启动实例专属 Bean | `app.Provide()` | 应用实例 |
-| 按配置展开一组注册动作 | `gs.Module()` | 模块能力 |
-| 配置字典生成同类型多实例 | `gs.Group()` | 同构多实例 |
-| 同一配置类导出多个相关 Bean | `Configuration` | 共享配置和创建上下文 |
-
-普通业务对象优先用 `gs.Provide()` 或 `app.Provide()`，让对象跟着包或当前启动实例走。只有当注册动作本身属于组件能力，或者需要根据配置决定注册集合时，才把它提升到 `gs.Module()`、`gs.Group()` 或 `Configuration`。这样读代码时，看到注册入口就能大致判断它的作用范围，而不是把所有 Bean 都堆到一个看似统一、实际边界模糊的地方。
+我们看到 Go-Spring 提供了多种 api 来满足不同的需求，我们一定要优先使用最简单的方式来实现，当我们觉得其他方式能简化代码、简化表达的时候再使用。
