@@ -1,6 +1,6 @@
 # Go-Spring 实战第 12 课 —— Bean 类型：结构体指针、构造函数和函数
 
-前面两篇文章，咱们讲了依赖注入的写法和注入目标，本篇咱们来讲一下 Bean 的类型。不过需要澄清的是，这里的类型不是指 Bean 元数据里面的类型，而是指注册的时候 `gs.Provide()` 第一个参数的类型。因为用文字很难表述二者的区别，或者说我没有找到很好的表述方式，所以目前就这么说。这一点提前跟大家讲明白。
+前面两篇文章，咱们讲了依赖注入的写法和注入目标，本篇咱们来讲一下 Bean 的类型。不过需要澄清的是，这里的类型不是指 Bean 注入时使用的类型，而是指注册的时候 `gs.Provide()` 第一个参数的类型。因为用文字很难表述二者的区别，或者说我没有找到很好的表述方式，所以目前就这么说。这一点提前跟大家讲清楚。
 
 换句话说，本篇不是在讨论 Bean 最终以什么 Go 类型被依赖方引用，而是在讨论 `gs.Provide(...)` 里第一个参数可以怎么写。为了讲起来方便，后面我会把它们暂时称为三种 Bean 类型，即结构体指针、构造函数和函数。
 
@@ -28,7 +28,7 @@ func init() {
 
 ## 构造函数
 
-当我们为 `gs.Provide()` 传入一个构造函数时，Go-Spring 会在注入阶段调用它来创建对象。todo 不流畅。
+结构体指针是把已经创建好的对象交给容器，构造函数则是把创建对象的方法交给容器。也就是说，`gs.Provide()` 收到的是一个函数，Go-Spring 真正管理的是这个函数的返回值。
 
 看个例子。
 
@@ -46,7 +46,7 @@ func init() {
 }
 ```
 
-这里 `NewMyService` 不是要被注入的 Bean，而是容器创建 Bean 的入口（即构造函数）。Go-Spring 在解析到这个 Bean 时，会先根据函数的参数准备好 `Dep` 依赖，然后调用构造函数得到 `*MyService` 对象。也就是说，我们注册的时候传入的是构造函数，最终被容器管理的是 `*MyService`。
+这里 `NewMyService` 不是要被注入的 Bean，而是容器创建 Bean 的入口。Go-Spring 在解析到这个 Bean 时，会先根据函数的参数准备好 `Dep` 依赖，然后调用构造函数得到 `*MyService` 对象。也就是说，我们注册的时候传入的是构造函数，最终被容器管理的是 `*MyService`。
 
 对于复杂的构造过程，我们通常会返回 `error` 来表达失败。Go-Spring 也支持此类构造函数，即返回值可以是 `(T, error)`。
 
@@ -60,10 +60,9 @@ func NewMyService(dep Dep) (*MyService, error) {
 
 如配置校验、打开文件、建立连接等动作都适合通过 `(T, error)` 来表达失败。同时，Go-Spring 在收到非 nil 错误后会终止启动，而不是让半初始化的对象进入运行期。
 
-构造函数的参数可能多种多样，Go-Spring 不对构造函数的参数做任何约束。只要 Go 支持的构造函数，Go-Spring 都能支持。
+构造函数的参数可能多种多样，可以是需要从容器里查找的 Bean，也可以是需要从配置里读取的基础类型，还可以是注册时就确定的固定值。Go-Spring 不要求我们为了容器改造构造函数签名，而是通过参数绑定把这些来源补齐。
 
-默认情况下，构造函数参数按类型从容器里解析。但函数参数不像结构体字段那样可以直接写 tag，所以当参数需要额外语义时，Go-Spring 使用 `Arg` 在注册阶段补齐。
-为了支持任意类型的参数，Go-Spring 为 `gs.Provide(...)` 提供了 `Arg` 来绑定参数。具体实现有 `TagArg`、`ValueArg`、`IndexArg`、`BindArg` 等。
+默认情况下，构造函数参数按类型从容器里解析。但函数参数不像结构体字段那样可以直接写 tag，所以当参数需要额外语义时，Go-Spring 使用 `Arg` 在注册阶段补齐。常见的参数绑定有 `TagArg`、`ValueArg`、`IndexArg`、`BindArg` 等。
 
 
 ### `TagArg`
@@ -107,6 +106,8 @@ func init() {
 
 这里 `TagArg("${redis}")` 表示把 `redis` 子树绑定到 `RedisConfig`。
 
+如果 `TagArg` 里写的是普通名称，它表达的就是按名称注入 Bean。比如 `gs.TagArg("slave")` 和字段上的 `autowire:"slave"` 是同一类语义，表示这个参数要注入名称为 `slave` 的 Bean。
+
 在上一篇中，我们详细介绍了 `TagArg` 在不同注入目标下的使用方式，这里就不重复展开了。
 
 ### `ValueArg`
@@ -123,9 +124,11 @@ func init() {
 }
 ```
 
+`ValueArg` 表达的是“这个值在注册时已经确定”。它适合常量、测试替身，或者不需要随环境变化的参数。如果一个值需要由配置文件、环境变量或启动参数控制，就不应该硬写在 `ValueArg` 里，而应该交给配置绑定。
+
 ### `BindArg`
 
-在 Go 里面，使用 Functional Options 模式的构造函数随处可见，Go-Spring 对这种情况也能很好的支持。
+在 Go 里面，使用 Functional Options 模式的构造函数随处可见，Go-Spring 对这种情况也能很好地支持。
 
 我们可以使用 `BindArg` 来绑定 Functional Options 模式的构造函数参数。示例如下：
 
@@ -178,7 +181,7 @@ func init() {
 }
 ```
 
-在上面的代码中，我们只是将 `c` 的参数绑定为特殊指定的 `custom-value` Bean，`a` 和 `b` 都是由容器根据类型进行自动推断。
+在上面的代码中，我们只是把下标为 2 的 `c` 参数绑定为固定值 `custom-value`，`a` 和 `b` 都由容器根据类型自动推断。
 
 `IndexArg` 的下标符合 Go 语言的惯例，从 0 开始。
 
@@ -191,9 +194,19 @@ func init() {
 看个例子。
 
 ```go
-todo （缺少注入，也就是函数作为 Bean 使用）
-
 type PasswordChecker func(username, password string) bool
+
+type Authenticator struct {
+	checker PasswordChecker
+}
+
+func NewAuthenticator(checker PasswordChecker) *Authenticator {
+	return &Authenticator{checker: checker}
+}
+
+func (a *Authenticator) Check(username, password string) bool {
+	return a.checker(username, password)
+}
 
 func BcryptPasswordChecker(username, password string) bool {
 	return true
@@ -201,9 +214,10 @@ func BcryptPasswordChecker(username, password string) bool {
 
 func init() {
 	gs.Provide(reflect.ValueOf(PasswordChecker(BcryptPasswordChecker)))
+	gs.Provide(NewAuthenticator)
 }
 ```
 
-这个例子里，传给 `gs.Provide()` 的是经过 `reflect.ValueOf` 包装的函数，`PasswordChecker(BcryptPasswordChecker)` 明确了 Bean 自身的类型。依赖方要拿到的是一段可调用能力，而不是调用 `BcryptPasswordChecker` 以后得到的 `bool`。
+这个例子里，`Authenticator` 依赖的是 `PasswordChecker` 这个函数类型。传给 `gs.Provide()` 的是经过 `reflect.ValueOf` 包装的函数，`PasswordChecker(BcryptPasswordChecker)` 明确了 Bean 自身的类型。这样 Go-Spring 注入给 `Authenticator` 的就是这段可调用能力，而不是调用 `BcryptPasswordChecker` 以后得到的 `bool`。
 
 策略函数、校验函数、编码函数、签名函数这类函数式组件适合用这种方式进入容器。
