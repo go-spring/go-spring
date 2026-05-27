@@ -38,7 +38,7 @@ func main() {
 
 ## 启动前配置
 
-启动链路真正开始前，业务代码还有一次调整当前 App 行为的机会。这个阶段适合设置代码内置默认值、关闭内置 Server、注册当前应用专属 Bean，或者指定依赖图入口。
+启动链路真正开始前，业务代码还有一次调整当前 App 行为的机会。这个阶段适合设置代码内置默认值、关闭内置 Server、注册当前应用专属 Bean，或者指定从哪个 Bean 开始创建。
 
 有些进程只使用 Go-Spring 的配置和 IoC 能力，并不需要内置 HTTP Server。
 
@@ -75,7 +75,7 @@ func main() {
 
 这类注册只影响当前应用实例，不会改变包级 `init()` 中的通用注册。
 
-如果关闭了内置 Server，应用里又没有 Runner 或其他 Server，就可能缺少驱动依赖图展开的入口。这时可以显式标记 root bean。
+如果关闭了内置 Server，应用里又没有 Runner 或其他 Server，就可能缺少创建 Bean 的入口。这时可以显式标记 root bean。
 
 ```go
 func main() {
@@ -85,7 +85,7 @@ func main() {
 }
 ```
 
-`app.Root()` 的语义是指定依赖图入口，而不是把所有 Bean 都强制创建出来。只有从 root bean 可达的依赖，才会沿着依赖关系进入创建过程。
+`app.Root()` 不是“创建所有 Bean”的开关，而是指定从哪个 Bean 开始创建。上面的例子里，Go-Spring 会创建 `AppEntry`，再创建它声明的依赖，以及这些依赖继续需要的 Bean。
 
 ## 启动顺序
 
@@ -105,7 +105,7 @@ func main() {
 
 配置必须先于日志和容器完成加载，因为日志系统、条件判断和 Bean 属性绑定都会读取配置。Go-Spring 的配置来源优先级在前文已经展开过，这里只保留启动链路里的判断：命令行参数和环境变量离本次启动最近，Profile 配置高于基础配置，`app.Property()` 适合作为代码内置默认值。
 
-配置完成后，Go-Spring 日志系统会先于 IoC 容器初始化。原因很直接，容器启动过程本身也需要输出日志。接着，IoC 容器会注册内置 Bean，例如 `ContextProvider` 和 `PropertiesRefresher`，再从 root bean 出发创建依赖图。
+配置完成后，Go-Spring 日志系统会先于 IoC 容器初始化。原因很直接，容器启动过程本身也需要输出日志。接着，IoC 容器会注册内置 Bean，例如 `ContextProvider` 和 `PropertiesRefresher`，再从 root bean 出发创建本次启动需要的 Bean。
 
 这样一来，启动链路里的每一步都依赖前一个阶段准备好的能力。日志初始化失败不会伪装成 Bean 创建失败，容器启动失败也不会拖到 Server 阶段才暴露。
 
