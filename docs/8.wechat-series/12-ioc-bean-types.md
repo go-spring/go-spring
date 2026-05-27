@@ -46,7 +46,7 @@ func init() {
 }
 ```
 
-这里 `NewMyService` 是容器创建 Bean 的入口。Go-Spring 在解析到这个 Bean 时，会先根据函数的参数准备好 `Dep` 依赖，然后调用构造函数得到 `*MyService` 对象。也就是说，我们注册的时候传入的是构造函数，最终被容器管理的是 `*MyService`。
+这里 `NewMyService` 是容器创建 Bean 的入口（也即构造函数或者工厂函数）。Go-Spring 在解析到这个 Bean 时，会先根据函数的参数准备好 `Dep` 依赖，然后调用构造函数得到 `*MyService` 对象。也就是说，我们注册的时候传入的是构造函数，最终被容器管理的是 `*MyService`。
 
 对于复杂的构造过程，我们通常会返回 `error` 来表达失败。Go-Spring 也支持此类构造函数，即返回值可以是 `(T, error)`。
 
