@@ -37,11 +37,15 @@ func main() {
 
 如果 `app.Provide()` 注册的 bean 和其他方式注册的 bean 同类型同名，那么不会自动覆盖旧定义，而是直接报错。如果我们需要使用覆盖语义，可以使用名称或者条件等来激活不同的 bean。
 
-## 模块注册
+## `gs.Module`
 
-`gs.Provide()` 和 `app.Provide()` 都适合注册单个明确的 Bean。再往前走一步，很多组件包并不是提供一个固定对象，而是要先读取配置，再决定这一组能力要不要展开、展开多少个 Bean。
+通常情况下，我们只需要注册单个 bean 就好，但有时候，尤其是我们打算应用模块化理念时，会遇到同时注册多个 bean 的情况。当然，我们不是说使用一个函数同时注册多个 bean，那样每个 bean 的元信息是没法控制的。更合适的说法是，我们希望注册一组 bean。
 
-比如 Redis Starter 可能需要读取一组实例配置，然后为每个实例注册一个客户端。这个注册动作本身就是模块能力的一部分，更适合放进 `gs.Module()`。
+`gs.Module()` 就是为了满足这种需求而设计的。它接受一个回调函数，我们可以在回调函数里面根据配置信息注册多个 bean。这些 bean 可以是相同类型，也可以不是。
+
+`gs.Module()` 是实现 Go-Spring Starter 机制的基石。像 Redis Starter、JPA Starter 等组件包，都可以使用 `gs.Module()` 来实现。
+
+代码如下：
 
 ```go
 func RedisModule(r gs.BeanProvider, p flatten.Storage) error {
@@ -49,7 +53,6 @@ func RedisModule(r gs.BeanProvider, p flatten.Storage) error {
 	if err := conf.Bind(p, &instances, "${redis.instances}"); err != nil {
 		return err
 	}
-
 	for name, cfg := range instances {
 		r.Provide(NewRedisClient, gs.ValueArg(cfg)).Name(name)
 	}
@@ -64,13 +67,17 @@ func init() {
 }
 ```
 
-`gs.Module()` 注册的是一段模块函数。第一个参数是属性条件，通常来自 `gs.OnProperty(...)`。应用启动解析时，如果条件满足，Go-Spring 会执行模块函数，并把 `gs.BeanProvider` 和当前配置传进去。模块函数内部可以像普通注册一样调用 `r.Provide(...)`，也可以根据配置循环注册多个 Bean。
+`gs.Module()` 同样将回调函数注册到全局注册表。然后多个 IoC 容器启动时，各自从全局注册表复制一份回调函数列表到自己内部，这样也是为了实现多 ioc 容器时的数据隔离。
 
-这段代码里，`redis.instances` 是否存在决定 Redis 模块是否展开；`redis.instances` 下面的配置内容决定最终会注册哪些客户端。配置影响的是模块提供的 Bean 集合，而不只是某个字段的普通取值。
+`gs.Module()` 的第一个参数是属性条件，通常使用 `gs.OnProperty(...)`，因为大多数情况下我们是根据配置来控制整个模块是否生效的。
 
-因此，`gs.Module()` 适合 Starter、组件包和需要按配置展开注册的能力。它不适合承载普通业务对象的零散注册，否则注册入口会变得集中但不清楚：读代码时看不出某个 Bean 到底属于哪个业务包，也看不出这个模块真正表达的能力边界。
+`gs.Module()` 的第二个参数是模块函数，它接受 `gs.BeanProvider` 和 `flatten.Storage` 作为参数，并返回一个错误。`gs.BeanProvider` 用于向 ioc 容器直接注册 Bean。`flatten.Storage` 用于读取配置。
 
-## 同构多实例
+ioc 容器启动时，会根据 module 的条件来判断是否执行模块函数。如果条件不满足，那么模块函数就不会被调用，也就是一组 bean 集体不被注册。
+
+在上面的代码里，`redis.instances` 这个配置是否存在决定了 Redis 模块是否激活。这在。。。情况下非常合适。
+
+## `gs.Group`
 
 有些模块虽然也会按配置注册多个 Bean，但模式非常固定：同一个构造函数，对应配置字典里的多组参数，每个 key 生成一个 Bean 名称。这个场景可以从 `gs.Module()` 进一步收敛成 `gs.Group()`。
 
