@@ -1,10 +1,16 @@
-# Go-Spring 实战第 14 课 —— Bean 注册函数：Provide、Module、Group 以及 Configuration
+# Go-Spring 实战第 14 课 —— Bean 注册函数：Provide、Module、Group 与 Configuration
 
-前面几篇我们展开的主要是 bean 的使用，本文咱们重点看一下 bean 的注册，除了 `gs.provide()`，是否还有其他的注册函数。如果还有，那么它们的区别是什么？
+前面两篇已经讲过 Bean 可以从结构体指针、构造函数和函数本身注册进来，也讲过注册语句后面还能附加名称、接口导出、生命周期和条件。到这里还有一个问题没有展开：这些注册语句应该放在哪个入口里？
 
-## gs.Provide
+最常见的入口当然是 `gs.Provide()`。但真实项目里不只有单个 Bean 的注册。测试或当前启动实例会需要局部 Bean；Starter 会根据配置批量提供 Bean；有些同类型实例天然来自一组配置；还有一些相关对象更适合收在同一个配置类里统一导出。这些场景对应的就是 `app.Provide()`、`gs.Module()`、`gs.Group()` 和 `Configuration`。
 
-如果一个 Bean 的来源在启动前已经确定，注册逻辑也不依赖配置或环境，那么它适合放进包级注册。最小写法就是在 `init()` 中调用 `gs.Provide()`。
+所以，注册函数的选择不是 API 偏好，而是一个边界问题：**这个 Bean 定义属于包级能力、当前应用实例、配置驱动的模块、配置字典，还是某个配置类。**
+
+## 包级定义
+
+如果一个 Bean 的来源在启动前已经确定，注册逻辑也不依赖当前应用实例的配置，那么它适合用 `gs.Provide()` 放进包级注册。
+
+最小写法就是在 `init()` 中注册一个构造函数。
 
 ```go
 func init() {
@@ -12,44 +18,73 @@ func init() {
 }
 ```
 
-这条注册语句会把 Bean 定义记录到 Go-Spring 全局注册表。应用启动时，Go-Spring 会把全局注册表里的候选定义合并进当前容器，再统一解析依赖图。
+`gs.Provide()` 会把 Bean 定义记录到 Go-Spring 的全局注册表。应用启动时，当前容器会合并这些全局定义，再统一完成条件判断、参数绑定、实例创建、注入和生命周期处理。
 
-因为 Go-Spring 的依赖图是在启动期一次性解析的，所以 `gs.Provide()` 的语义是“启动前提供候选定义”。它通常放在包的 `init()` 中，适合普通业务 Bean 和启动前已经确定的基础组件。
+这也是为什么 `gs.Provide()` 必须在包初始化阶段调用。进入 `gs.Configure()` 之后，应用已经开始准备当前启动实例，再追加全局定义就会让注册时机变得不可预测。Go-Spring 会直接 `panic`，提示 `gs.Provide can only be called in init function`。
 
-如果应用进入运行阶段以后再追加全局 Bean，就会破坏这套启动期模型。运行期需要变化的应该是业务数据或动态配置，而不是对象图结构。
+因此，普通业务组件、框架基础组件、包级默认实现，都适合放在 `gs.Provide()`。它表达的是“只要这个包被导入，就向 Go-Spring 提供这类候选 Bean”。
 
-## gs.Module
+这里要注意，`gs.Provide()` 解决的是注册入口问题，不是 Bean 类型问题。它既可以接收已经创建好的结构体指针，也可以接收构造函数；这些内容已经在第 12 课讲过，本篇不再重复展开。
 
-有些注册动作本身依赖配置或环境。比如 Redis Starter 需要先读取配置，再按配置内容注册一个或多个客户端。这时，注册逻辑不是某个单独 Bean 的声明，而是模块能力的一部分，更适合放进 `gs.Module()`。
+## 应用实例
+
+有些 Bean 不应该进入全局注册表，只应该影响当前这一次启动。比如测试里临时提供的替身实现，命令行工具里某个专用组件，或者同一进程中不同启动实例需要的局部对象。这类注册应该放进 `app.Provide()`。
+
+`app.Provide()` 出现在 `gs.Configure()` 的回调里。
+
+```go
+func main() {
+	gs.Configure(func(app gs.App) {
+		app.Provide(NewAppSpecificComponent)
+		app.Property("server.port", "8080")
+	}).Run()
+}
+```
+
+这条注册语句不会写入全局注册表，只会加入当前应用实例的容器。也就是说，它和包级 `gs.Provide()` 一样会参与本次启动的统一解析，但作用范围只限于当前 `Run()` 或测试流程。
+
+这个边界在测试里尤其重要。测试可以通过 `app.Provide()` 提供替身 Bean，而不污染其他测试和其他启动流程。不过，如果全局里已经有同类型同名 Bean，单纯再注册一个局部 Bean 并不会自动覆盖旧定义；两个定义都生效时会触发重复 Bean 检查。需要替换默认实现时，通常要配合名称、条件或 `OnMissingBean` 这类元信息，把默认实现和测试替身的关系写清楚。
+
+所以，`app.Provide()` 不是运行期动态注册入口。它仍然发生在启动配置阶段，只是注册边界从“包级全局”缩小到了“当前应用实例”。
+
+## 模块展开
+
+`gs.Provide()` 和 `app.Provide()` 都适合注册单个明确的 Bean。问题是，很多组件包并不是提供一个固定对象，而是要先读取配置，再决定注册哪些 Bean。
+
+比如 Redis Starter 可能需要读取一组实例配置，然后为每个实例注册一个客户端。这个注册动作本身就是模块能力的一部分，更适合放进 `gs.Module()`。
 
 ```go
 func RedisModule(r gs.BeanProvider, p flatten.Storage) error {
-	var m map[string]RedisConfig
-	if err := conf.Bind(p, &m); err != nil {
+	var instances map[string]RedisConfig
+	if err := conf.Bind(p, &instances, "${redis.instances}"); err != nil {
 		return err
 	}
 
-	for name, config := range m {
-		r.Provide(NewRedisClient, gs.ValueArg(config)).Name(name)
+	for name, cfg := range instances {
+		r.Provide(NewRedisClient, gs.ValueArg(cfg)).Name(name)
 	}
 	return nil
 }
 
 func init() {
 	gs.Module(
-		gs.OnProperty("enable.redis").HavingValue("true"),
+		gs.OnProperty("redis.instances"),
 		RedisModule,
 	)
 }
 ```
 
-Module 可以读取配置、判断条件，然后批量注册 Bean。上面的例子里，`RedisModule` 先把配置绑定成 `map[string]RedisConfig`，再按名称注册多个 Redis 客户端。也就是说，配置决定的是模块展开后的 Bean 集合，而不是某个字段的普通取值。
+`gs.Module()` 注册的是一段模块函数。应用启动解析时，如果模块条件满足，Go-Spring 会执行这个函数，并把 `gs.BeanProvider` 和当前配置传进去。模块函数内部可以像普通注册一样调用 `r.Provide(...)`，也可以根据配置循环注册多个 Bean。
 
-这里的关键语义是：Module 不是运行期随时执行的回调，而是启动解析阶段的一段注册逻辑。它把“这个模块在什么条件下提供哪些 Bean”集中在模块边界里，因此更适合 Starter 或组件包，而不是普通业务对象的零散注册。
+这段代码里，`redis.instances` 是否存在决定 Redis 模块是否展开；`redis.instances` 下面的配置内容决定最终会注册哪些客户端。配置影响的是模块提供的 Bean 集合，而不只是某个字段的普通取值。
 
-## gs.Group
+因此，`gs.Module()` 适合 Starter、组件包和需要按配置展开注册的能力。它不适合承载普通业务对象的零散注册，否则注册入口会变得集中但不清楚：读代码时看不出某个 Bean 到底属于哪个业务包，也看不出这个模块真正表达的能力边界。
 
-如果配置天然是一组同类型实例，注册逻辑可以进一步收敛成“同一个构造函数 + 多组配置”。这就是 `gs.Group()` 的边界：配置字典里的每个条目都会展开成一个 Bean。
+## 配置字典
+
+有些模块虽然也会按配置注册多个 Bean，但模式非常固定：同一个构造函数，对应配置字典里的多组参数，每个 key 生成一个 Bean 名称。这个场景可以从 `gs.Module()` 进一步收敛成 `gs.Group()`。
+
+先看一个 HTTP 客户端的例子。
 
 ```go
 type HTTPClientConfig struct {
@@ -57,8 +92,20 @@ type HTTPClientConfig struct {
 	Timeout time.Duration `value:"${timeout:=30s}"`
 }
 
-func NewHTTPClient(c HTTPClientConfig) (*http.Client, error) {
-	return &http.Client{Timeout: c.Timeout}, nil
+type HTTPClient struct {
+	baseURL string
+	client  *http.Client
+}
+
+func NewHTTPClient(c HTTPClientConfig) (*HTTPClient, error) {
+	return &HTTPClient{
+		baseURL: c.BaseURL,
+		client:  &http.Client{Timeout: c.Timeout},
+	}, nil
+}
+
+func (c *HTTPClient) Close() error {
+	return nil
 }
 
 func init() {
@@ -66,7 +113,7 @@ func init() {
 }
 ```
 
-配置里的 key 会成为 Bean 名称。下面的 `serviceA` 和 `serviceB` 分别对应一个 `*http.Client` Bean。
+对应的配置可以写成一个字典。
 
 ```yaml
 http:
@@ -79,13 +126,31 @@ http:
       timeout: 60s
 ```
 
-启动解析后，Go-Spring 容器会得到名为 `serviceA` 和 `serviceB` 的两个 `*http.Client` Bean。如果实例需要释放资源，可以给 `gs.Group()` 提供销毁函数。
+启动解析时，`gs.Group()` 会读取 `${http.clients}`，把它绑定成 `map[string]HTTPClientConfig`。其中 `serviceA` 和 `serviceB` 会成为 Bean 名称，两组配置分别传给 `NewHTTPClient`，最终得到两个独立的 `*HTTPClient` Bean。
 
-`Group` 的边界是“同一个构造函数 + 多组配置”。如果每个实例的创建逻辑差异很大，放回 Module 或显式 Provide 会更清楚。
+依赖方需要区分实例时，可以按名称注入。
 
-## Configuration
+```go
+type ReportService struct {
+	Client *HTTPClient `autowire:"serviceA"`
+}
+```
 
-有些 Bean 不是简单的单点注册，而是一组强相关对象。它们共享一段配置，也有固定的创建关系。`Configuration` 适合把这些创建方法收在一个配置类里，再由 Go-Spring 导出子 Bean。
+如果每个实例都需要释放资源，可以给 `gs.Group()` 传入销毁函数。这个销毁函数会绑定到每一个由配置项展开出来的 Bean 上。
+
+```go
+func init() {
+	gs.Group("${http.clients}", NewHTTPClient, (*HTTPClient).Close)
+}
+```
+
+`gs.Group()` 的边界很窄：配置必须是一个字典，字典 key 是 Bean 名称，字典 value 是构造函数参数，同一个构造函数负责创建所有实例。如果每个实例的创建方式不一致，或者还要注册其他配套 Bean，就应该退回 `gs.Module()`，把完整的注册逻辑写出来。
+
+## 配置类
+
+还有一种情况不是“同类型多实例”，而是“一组相关 Bean 共享同一段配置和创建上下文”。这时可以把它们收进一个配置类，再通过 `Configuration` 导出多个方法 Bean。
+
+比如数据库相关对象通常共享一组数据库配置。
 
 ```go
 type DatabaseConfiguration struct {
@@ -105,9 +170,11 @@ func init() {
 }
 ```
 
-容器会扫描配置类公开方法，把符合规则的方法返回值注册为独立 Bean。默认包含方法名匹配 `New.*` 的方法。这样，`DatabaseConfiguration` 自身可以承接配置绑定，`NewDataSource` 和 `NewUserRepository` 的返回值又可以作为独立 Bean 参与注入和生命周期。
+`DatabaseConfiguration` 本身先作为普通 Bean 注册。它可以接收配置绑定，也可以接收其他注入。随后 `.Configuration()` 告诉 Go-Spring：启动解析时扫描这个配置类的方法，把符合规则的方法返回值也注册成 Bean。
 
-需要调整扫描范围时，可以显式声明规则。
+默认情况下，Go-Spring 会扫描公开方法里匹配 `New.*` 的方法。上面的 `NewDataSource` 和 `NewUserRepository` 都会被识别为构造方法。它们和普通构造函数一样，可以只返回一个对象，也可以返回 `(T, error)`。
+
+如果需要调整扫描范围，可以显式声明包含和排除规则。
 
 ```go
 func init() {
@@ -119,27 +186,28 @@ func init() {
 }
 ```
 
-`Configuration` 的价值在于把相关创建逻辑集中到同一个类型里，同时让返回值仍然作为独立 Bean 参与依赖注入和生命周期管理。它适合表达“这些 Bean 属于同一组配置和创建关系”，而不是把所有注册都塞进一个大型配置类。
+`Configuration` 的价值在于组织相关创建逻辑。配置类承接共享配置和共同上下文，方法返回值仍然作为独立 Bean 参与后续装配和生命周期处理。
 
-## app.Provide
+不过它不应该被当成“大型注册中心”。如果一组 Bean 没有共同配置，也没有稳定的创建关系，只是因为文件放在一起方便，就不适合塞进同一个配置类。那样会让注册位置变集中，但语义边界反而变弱。
 
-全局注册适合稳定定义，但测试和当前启动实例经常需要局部替换。`app.Provide()` 表达的是应用实例边界：这次启动需要这个 Bean，但它不应该进入全局注册表。
+还有一个细节：配置类方法导出的 Bean 会得到自动生成的名称，形式是“配置 Bean 名称 + 方法名”，中间用下划线连接，比如 `DatabaseConfiguration_NewDataSource`。大多数情况下我们按类型注入，不需要关心这个名称；如果确实要按名称选择，就要把这个命名规则考虑进去。
 
-```go
-func main() {
-	gs.Configure(func(app gs.App) {
-		app.Provide(NewAppSpecificComponent)
-		app.Property("server.port", "8080")
-	}).Run()
-}
-```
+## 注册入口怎么选
 
-这类注册不会污染全局注册表。测试里可以给当前容器补一个 mock，或者覆盖某个启动实例的局部依赖，而不影响其他测试和其他启动流程。
+这几种注册入口最终都会产生 Bean 定义，区别在于它们表达的归属边界不同。
 
-因此，`app.Provide()` 适合当前启动专属的补充 Bean、测试替身和局部替换。它表达的是应用实例边界，而不是包级组件边界。
+| 场景 | 注册入口 | 语义边界 |
+|------|----------|----------|
+| 单个稳定 Bean，随包导入提供 | `gs.Provide()` | 包级能力 |
+| 当前启动实例专属 Bean | `app.Provide()` | 应用实例 |
+| 按配置或环境展开一组注册动作 | `gs.Module()` | 模块能力 |
+| 配置字典生成同类型多实例 | `gs.Group()` | 同构多实例 |
+| 同一配置类导出多个相关 Bean | `Configuration` | 共享配置和创建上下文 |
 
-## 注册入口
+选择入口时，可以先问两个问题。
 
-普通业务 Bean 使用 `gs.Provide()`，因为它的定义在启动前已经确定。注册动作依赖配置或环境时，用 `gs.Module()` 把逻辑收进模块边界。同类型多实例来自配置字典时，用 `gs.Group()` 展开。多个相关 Bean 由同一个配置类导出时，用 `Configuration`。测试或当前应用实例专属注册，则放到 `app.Provide()`。
+第一，这个注册动作是不是只声明一个已经确定的 Bean？如果是，再看它属于包级能力还是当前应用实例，分别使用 `gs.Provide()` 和 `app.Provide()`。
 
-这个选择标准不是 API 偏好，而是 Bean 定义属于哪个组织边界。边界选对以后，条件、配置和测试替换都会跟着落在合适的位置，注册入口也就成为维护对象图边界的一部分。
+第二，这个注册动作是否会在启动解析时展开出更多 Bean？如果展开逻辑很自由，用 `gs.Module()`；如果只是配置字典到同类型实例的映射，用 `gs.Group()`；如果是一组方法共享同一个配置类，用 `Configuration`。
+
+边界选对以后，配置、条件、测试替身和生命周期都会落在更自然的位置。注册函数就不只是“把对象交给容器”的入口，也是在代码里说明 Bean 定义归属关系的地方。
