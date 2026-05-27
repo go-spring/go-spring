@@ -150,11 +150,13 @@ func init() {
 }
 ```
 
-## 装配条件
+## 条件
 
-注册 Bean 不等于本次启动一定使用它。
+最好的情况是，我们需要哪种 bean，就只注册哪种 bean。如果不需要，就不注册。但是在模块化和框架化的需求下，我们注册的 bean 不一定被需要。我们需要满足某种条件时再激活当前 bean。
 
-可选组件、默认实现、环境实现和 Starter 扩展，经常需要根据配置或已有 Bean 来决定是否启用。这个判断应该发生在启动阶段，而不是在每次业务调用里写 `if`。
+Go-Spring 提供了 `Condition` 来实现条件化激活。常见的 `Condition` 有 `OnProperty`、`OnBean`、`OnProfiles` 等。本篇咱们不讲 condition 有哪些，只讲在 bean 注册的时候怎么使用 `Condition`。
+
+看个例子。
 
 ```go
 func init() {
@@ -164,9 +166,9 @@ func init() {
 }
 ```
 
-上面这段代码表示：只有 `audit.enabled=true` 时，`NewAuditLogger` 这个候选 Bean 才参与本次装配。条件不满足时，它不会被创建，也不会执行 `Init` 或 `Destroy`。
+上面这段代码表示，只有 `audit.enabled=true` 时，`NewAuditLogger` 这个候选 Bean 才参与本次装配。条件不满足时，它不会被创建。
 
-按环境启用 Bean 时，用 `.OnProfiles()` 更直接。
+如果我们只是想按环境启用 Bean，那么可以使用 `.OnProfiles()`，这样更直接。
 
 ```go
 func init() {
@@ -174,9 +176,9 @@ func init() {
 }
 ```
 
-`.OnProfiles("dev")` 表示这个 Bean 属于 `dev` Profile。它和手写 `OnProperty("spring.profiles.active")` 能表达相近结果，但读起来更清楚：这是环境装配规则，不是普通功能开关。
+上面的代码表示，只有当前`spring.profiles.active=dev` 时，`NewDevLogger` 这个候选 Bean 才参与本次装配。条件不满足时，它不会被创建。
 
-条件的边界也要守住。`Condition` 适合决定一个基础设施组件、默认实现或环境实现是否参与启动；订单状态、用户类型、租户策略这类运行期业务分支，仍然应该写在业务代码里。
+需要注意的是，条件滥用会让装配过程变得复杂，因此，除非是框架类的场景，否则不推荐大家滥用 `Condition`。
 
 ## 显式依赖
 
