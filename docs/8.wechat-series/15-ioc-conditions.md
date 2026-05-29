@@ -34,9 +34,9 @@ type Condition interface {
 
 ## 基于配置的条件
 
-最常见的条件是根据配置项是否存在、值是否等于某个值，或者是否满足某个表达式来判断。像基础设施组件、可选插件、调试能力和灰度功能，通常都会有一个配置开关或者关键配置项。
+最常见的条件是根据配置项是否存在、值是否等于某个值，或者是否满足某个表达式来进行判断。（todo 这里缺少一个更好的过渡）
 
-`OnProperty` 可以判断配置项是否存在、值是否等于某个值，也可以通过表达式完成范围、字符串和组合逻辑判断。
+`OnProperty` 可以判断配置项是否存在、值是否等于某个值，也可以通过表达式完成更复杂的逻辑判断。
 
 ```go
 gs.OnProperty("redis.enabled")
@@ -44,7 +44,7 @@ gs.OnProperty("redis.enabled").HavingValue("true")
 gs.OnProperty("redis.enabled").HavingValue("true").MatchIfMissing()
 ```
 
-在上面的代码中，仅使用 `OnProperty("redis.enabled")` 时，表示配置项存在时条件才成立。使用 `HavingValue("true")` 时，表示配置项存在并且最终值等于 `true` 时条件成立。继续使用 `MatchIfMissing()` 时，表示配置不存在也视为条件成立。
+在上面的代码中，只使用 `OnProperty("redis.enabled")` 时，表示配置项存在时条件才成立。使用 `HavingValue("true")` 时，表示配置项存在并且最终值等于 `true` 时条件成立。使用 `MatchIfMissing()` 时，表示配置不存在也视为条件成立。
 
 配置项可以来自配置文件、环境变量、Profile 配置、基础配置和代码默认值等。`OnProperty` 面向的是合并后的配置体系，而不是某一个单独来源。
 
@@ -84,23 +84,21 @@ func init() {
 
 ## 基于 Bean 的条件
 
-除了根据配置项决定 Bean 是否创建，我们还可能根据 Bean 是否存在进行判断。这在 Starter 和自动装配场景中经常需要。比如一个价格服务 Starter 可以提供 HTTP 默认客户端，但如果应用已经注册了自己的 `domain.PriceClient`，Starter 的默认实现就应该退出；再比如某个增强组件依赖基础客户端，基础客户端不存在时，增强组件也没有必要启用。
+除了根据配置项决定 Bean 是否创建，我们还可能根据 Bean 是否存在进行判断。比如一个价格服务 Starter 可以提供 HTTP 默认客户端，但如果应用已经注册了自己的 `domain.PriceClient`，Starter 的默认实现就应该退出；再比如某个增强组件依赖基础客户端，基础客户端不存在时，增强组件也没有必要启用。
 
-看一个接近 Starter 的示例：
+看个例子。
 
 ```go
 func init() {
 	gs.Provide(NewHTTPPriceClient, gs.TagArg("${bookman.price}")).
-		Condition(gs.And(
-			gs.OnProperty("bookman.price.base-url"),
-			gs.OnMissingBean[domain.PriceClient](),
-		)).
 		Export(gs.As[domain.PriceClient]())
 
 	gs.Provide(NewPriceReporter).
 		Condition(gs.OnBean[domain.PriceClient]())
 }
 ```
+
+在上面的代码中，`NewPriceReporter` 依赖 `domain.PriceClient`。只有 `domain.PriceClient` 存在时，`NewPriceReporter` 才会启用。
 
 Go-Spring 提供了几种围绕 Bean 存在性的条件：
 
@@ -111,9 +109,9 @@ gs.OnSingleBean[*DataSource]()
 gs.OnBean[*DataSource]("master")
 ```
 
-`OnBean` 表示至少存在一个匹配 Bean。`OnMissingBean` 表示不存在匹配 Bean。`OnSingleBean` 表示恰好存在一个匹配 Bean。这几个条件都可以只按类型匹配，也可以传入名称，按类型和名称共同匹配。
+其中，`OnBean` 表示至少存在一个匹配 Bean。`OnMissingBean` 表示不存在匹配 Bean。`OnSingleBean` 表示恰好存在一个匹配 Bean。这几个条件都可以只按类型匹配，也可以传入名称，按类型和名称共同匹配。
 
-需要说明的是，Go-Spring 在判断 Bean 是否存在时，会跳过已经被条件裁剪掉的 Bean。也就是说，一个条件不满足的候选定义不会继续影响后续的 `OnBean`、`OnMissingBean` 和 `OnSingleBean` 判断。
+另外，Go-Spring 在判断 Bean 是否存在时，会跳过已经条件判断失败被删除的 bean。也就是说，一个条件不满足的 bean 不会继续影响后续的 `OnBean`、`OnMissingBean` 和 `OnSingleBean` 判断。
 
 ## 自定义条件
 
