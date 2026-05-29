@@ -1,4 +1,4 @@
-# Go-Spring 实战第 15 课 —— Condition：根据配置或者环境激活 Bean
+# Go-Spring 实战第 15 课 —— Condition：根据配置和上下文激活 Bean
 
 前面讲 Bean 注册时，我们看到 `gs.Provide()`、`gs.Module()` 和配置类方法都会先把 Bean 放进候选集合。但真实项目里，候选不等于本次启动一定要启用。
 
