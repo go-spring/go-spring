@@ -36,8 +36,6 @@ type Condition interface {
 
 最常见的条件是根据配置项是否存在、值是否等于某个值、是否等于某个范围等。像基础设施组件、可选插件、调试能力和灰度功能，通常都会有一个配置开关或者关键配置项。
 
-### `OnProperty`
-
 `OnProperty` 可以判断配置项是否存在、值是否等于某个值、是否等于某个范围等。
 
 ```go
@@ -84,28 +82,15 @@ func init() {
 
 在上面的代码中，我们注册了一个 `isValidPort` 函数，用于判断端口是否在 1024 到 65535 之间。然后，我们在注册 `NewServer` 时，使用 `expr:isValidPort($` 表达式，判断端口是否在有效范围内。
 
-## 基于 Bean 存在性的条件
+## 基于 Bean 的条件
 
-配置只能回答“开关是否打开”“值是否匹配”。Starter 和自动装配还经常需要回答另一个问题：应用是否已经提供了某类 Bean。
+除了根据配置项决定 bean 是否创建，我们还可能根据 bean 是否存在进行判断。这在 starter 和自动装配的场景中经常需要。比如。。。（提供一个更有说服性的实例，尤其是来自真实 starter 的案例）（应用提供了更具体的实现，Starter 默认实现就退出；基础组件不存在，依赖它的增强组件也不必启用。）
 
-最典型的场景是默认实现。组件包希望开箱即用，但又不能挡住应用自己的实现。
+看下示例。
 
 ```go
-type UserService interface {
-	FindUser(id int64) (*User, error)
-}
-
-func NewDefaultUserService() UserService {
-	return &DefaultUserService{}
-}
-
-func init() {
-	gs.Provide(NewDefaultUserService).
-		Condition(gs.OnMissingBean[UserService]())
-}
+todo 换成上面更真实的 starter 示例
 ```
-
-如果应用已经注册了 `UserService`，默认实现的条件就不成立，`NewDefaultUserService` 不会参与本次装配。这个过程发生在解析阶段，不是先创建默认实现，再在运行期替换掉。
 
 Go-Spring 提供了几种围绕 Bean 存在性的条件：
 
@@ -116,11 +101,9 @@ gs.OnSingleBean[*DataSource]()
 gs.OnBean[*DataSource]("master")
 ```
 
-`OnBean` 表示至少存在一个匹配 Bean。`OnMissingBean` 表示不存在匹配 Bean。`OnSingleBean` 表示恰好存在一个匹配 Bean。最后一种写法同时按类型和名称匹配，适合多实例资源，例如多个数据源、多个 Redis 客户端或者多个 HTTP 客户端。
+`OnBean` 表示至少存在一个匹配 Bean。`OnMissingBean` 表示不存在匹配 Bean。`OnSingleBean` 表示恰好存在一个匹配 Bean。`OnBean` 可以仅根据类型匹配，也可以根据类型和名称同时匹配。
 
-这里的“存在”不是简单看注册表里有没有候选。条件查找会跳过已经被删除的 Bean，也会先解析匹配候选自己的条件。也就是说，`OnBean` 系列判断的是本次解析后仍然有效的候选，而不是所有曾经注册过的声明。
-
-这个语义对 Starter 很重要。默认实现、增强组件、适配器组件都可以通过 Bean 存在性条件跟应用代码协作：应用提供了更具体的实现，Starter 默认实现就退出；基础组件不存在，依赖它的增强组件也不必启用。
+需要说明的是，go-spring 在判断 bean 是否存在的时候，会跳过已经被删除的 Bean。。。
 
 ## 自定义条件
 
