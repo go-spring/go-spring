@@ -18,9 +18,9 @@ func init() {
 
 在上面的代码中，我们注册了 `NewMyService`，同时指定它只能在 `my.condition` 存在时启用。
 
-具体来说，Go-Spring 会在容器解析阶段，根据 `my.condition` 是否存在，判断 `NewMyService` 是否应该参与本次装配。如果 `my.condition` 存在，`NewMyService` 会被创建、注入和初始化；如果不存在，`NewMyService` 会被裁剪掉，后续依赖查找和重复 Bean 检查都不会再把它算进去。
+具体来说，Go-Spring 会在容器解析阶段，根据 `my.condition` 是否存在，判断 `NewMyService` 是否应该参与本次装配。如果 `my.condition` 存在，`NewMyService` 会被创建、注入和初始化；如果不存在，`NewMyService` 就会被删除。
 
-条件本质上是 if 判断，但它作用在 Bean 定义层面。条件注册把判断条件写在注册语句里，而不是塞进构造函数或业务代码里，对代码的侵入性更小，启动后的对象图也更干净。
+条件的本质实际上就是 if 判断，但是它作用在 Bean 定义层面。条件注册把判断条件写在注册语句里，而不是塞进构造函数或者业务代码里，这样对代码的侵入性会更小。
 
 从实现上看，`Condition` 的核心就是一个匹配函数：
 
