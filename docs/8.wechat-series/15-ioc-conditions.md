@@ -1,8 +1,8 @@
 # Go-Spring 实战第 15 课 —— Condition：根据配置和上下文激活 Bean
 
-Redis 客户端通常只在配置了连接信息时注册，监控和调试组件通常由开关控制，Starter 会提供默认实现但又要允许应用覆盖，某些增强组件也只有在基础组件存在时才有意义。（这是举例子）
+Redis 客户端通常只在配置了连接信息时注册；监控和调试组件通常由开关控制；Starter 往往会提供默认实现，同时又要允许应用侧覆盖；某些增强组件也只有在基础组件存在时才有意义。
 
-如果这些判断散落在构造函数或者业务代码里，运行期就会出现一堆半启用组件：对象已经创建出来了，但内部还要反复判断配置、检查依赖、处理空值。条件注册把边界提前以后，容器完成解析时只会保留本次启动真正需要的 Bean。（这里引出条件）
+如果这些判断散落在构造函数或者业务代码里，运行期就会出现一堆半启用组件：对象已经创建出来了，但内部还要反复判断配置、检查依赖、处理空值。条件注册把这些边界提前到容器解析阶段，解析完成后只会保留本次启动真正需要的 Bean。
 
 ## Condition
 
@@ -14,11 +14,11 @@ func init() {
 }
 ```
 
-在上面的代码中，我们注册了 `NewMyService`，但是指定了它只能在 `my.condition` 存在时才启用。
+在上面的代码中，我们注册了 `NewMyService`，同时指定它只能在 `my.condition` 存在时启用。
 
 具体来说，Go-Spring 会在容器解析阶段，根据 `my.condition` 是否存在，判断 `NewMyService` 是否应该参与本次装配。如果 `my.condition` 存在，`NewMyService` 会被创建、注入和初始化；如果不存在，`NewMyService` 会被裁剪掉，后续依赖查找和重复 Bean 检查都不会再把它算进去。
 
-条件本质上就是 if 判断，但是它的写法更简洁。条件注册把判断条件写在注册语句里，而不是在构造函数里、业务代码里，对代码的侵入性更小。
+条件本质上是 if 判断，但它作用在 Bean 定义层面。条件注册把判断条件写在注册语句里，而不是塞进构造函数或业务代码里，对代码的侵入性更小，启动后的对象图也更干净。
 
 从实现上看，`Condition` 的核心就是一个匹配函数：
 
@@ -28,13 +28,13 @@ type Condition interface {
 }
 ```
 
-每个具体的条件都实现 `Condition` 接口，并通过 `ConditionContext` 读取配置和查找 bean。
+每个具体的条件都实现 `Condition` 接口，并通过 `ConditionContext` 读取配置和查找 Bean。
 
 ## 基于配置的条件
 
-最常见的条件是根据配置项是否存在、值是否等于某个值、是否等于某个范围等。像基础设施组件、可选插件、调试能力和灰度功能，通常都会有一个配置开关或者关键配置项。
+最常见的条件是根据配置项是否存在、值是否等于某个值，或者是否满足某个表达式来判断。像基础设施组件、可选插件、调试能力和灰度功能，通常都会有一个配置开关或者关键配置项。
 
-`OnProperty` 可以判断配置项是否存在、值是否等于某个值、是否等于某个范围等。
+`OnProperty` 可以判断配置项是否存在、值是否等于某个值，也可以通过表达式完成范围、字符串和组合逻辑判断。
 
 ```go
 gs.OnProperty("redis.enabled")
@@ -42,13 +42,13 @@ gs.OnProperty("redis.enabled").HavingValue("true")
 gs.OnProperty("redis.enabled").HavingValue("true").MatchIfMissing()
 ```
 
-在上面的代码中，仅使用 `OnProperty("redis.enabled")` 时表示配置项存在时条件才成立。如果使用了 `HavingValue("true")` 则表示配置项存在，并且最终值等于 `true` 时条件成立。如果使用了 `MatchIfMissing()` 则表示配置不存在时也成立。
+在上面的代码中，仅使用 `OnProperty("redis.enabled")` 时，表示配置项存在时条件才成立。使用 `HavingValue("true")` 时，表示配置项存在并且最终值等于 `true` 时条件成立。继续使用 `MatchIfMissing()` 时，表示配置不存在也视为条件成立。
 
-配置项可以来自于配置文件、环境变量、Profile 配置、基础配置和代码默认值等。它从视为整体的配置体系中取值。
+配置项可以来自配置文件、环境变量、Profile 配置、基础配置和代码默认值等。`OnProperty` 面向的是合并后的配置体系，而不是某一个单独来源。
 
-需要注意的是，`HavingValue` 只针对叶子值，而不能判断结构值，否则会返回错误并中断启动。如果我们给 `HavingValue` 传入的是一个简单值，比如 `true`, `123` 等，表示等值判断。如果判断规则比较复杂，不是等值判断时，我们可以使用 `expr:` 前缀表达式。
+需要注意的是，`HavingValue` 只针对叶子值，不能直接判断结构值，否则会返回错误并中断启动。如果我们给 `HavingValue` 传入的是普通字面量，比如 `true`、`123` 等，表示等值判断。如果判断规则不是简单等值，比如范围、前缀或包含关系，可以使用 `expr:` 前缀表达式。
 
-我们在表达式里用 `$` 表示当前配置值，基于 expr 库可以实现丰富的判断规则。示例如下：
+表达式里用 `$` 表示当前配置值。Go-Spring 基于 expr 库计算表达式，因此可以写出更丰富的判断规则。示例如下：
 
 ```go
 // 端口必须大于 8080
@@ -61,9 +61,9 @@ gs.OnProperty("app.env").HavingValue(`expr:$ != "prod"`)
 
 expr 表达式必须返回布尔值。如果表达式解析失败，或者类型不匹配，或者返回值不是布尔值，会报错并终止启动。
 
-如果判断逻辑比较复杂，使用 expr 表达式很难写，或者非常复杂，我们可以使用自定义校验函数。
+如果判断逻辑比较复杂，继续堆 expr 表达式会影响可读性，可以把规则沉到自定义校验函数里。
 
-举个例子。
+举个例子：
 
 ```go
 func init() {
@@ -78,16 +78,26 @@ func init() {
 }
 ```
 
-在上面的代码中，我们注册了一个 `isValidPort` 函数，用于判断端口是否在 1024 到 65535 之间。然后，我们在注册 `NewServer` 时，使用 `expr:isValidPort($` 表达式，判断端口是否在有效范围内。
+在上面的代码中，我们注册了一个 `isValidPort` 函数，用于判断端口是否在 1024 到 65535 之间。然后，我们在注册 `NewServer` 时，使用 `expr:isValidPort($)` 表达式，判断端口是否在有效范围内。
 
 ## 基于 Bean 的条件
 
-除了根据配置项决定 bean 是否创建，我们还可能根据 bean 是否存在进行判断。这在 starter 和自动装配的场景中经常需要。比如。。。（提供一个更有说服性的实例，尤其是来自真实 starter 的案例）（应用提供了更具体的实现，Starter 默认实现就退出；基础组件不存在，依赖它的增强组件也不必启用。）
+除了根据配置项决定 Bean 是否创建，我们还可能根据 Bean 是否存在进行判断。这在 Starter 和自动装配场景中经常需要。比如一个价格服务 Starter 可以提供 HTTP 默认客户端，但如果应用已经注册了自己的 `domain.PriceClient`，Starter 的默认实现就应该退出；再比如某个增强组件依赖基础客户端，基础客户端不存在时，增强组件也没有必要启用。
 
-看下示例。
+看一个接近 Starter 的示例：
 
 ```go
-todo 换成上面更真实的 starter 示例
+func init() {
+	gs.Provide(NewHTTPPriceClient, gs.TagArg("${bookman.price}")).
+		Condition(gs.And(
+			gs.OnProperty("bookman.price.base-url"),
+			gs.OnMissingBean[domain.PriceClient](),
+		)).
+		Export(gs.As[domain.PriceClient]())
+
+	gs.Provide(NewPriceReporter).
+		Condition(gs.OnBean[domain.PriceClient]())
+}
 ```
 
 Go-Spring 提供了几种围绕 Bean 存在性的条件：
@@ -99,13 +109,13 @@ gs.OnSingleBean[*DataSource]()
 gs.OnBean[*DataSource]("master")
 ```
 
-`OnBean` 表示至少存在一个匹配 Bean。`OnMissingBean` 表示不存在匹配 Bean。`OnSingleBean` 表示恰好存在一个匹配 Bean。`OnBean` 可以仅根据类型匹配，也可以根据类型和名称同时匹配。
+`OnBean` 表示至少存在一个匹配 Bean。`OnMissingBean` 表示不存在匹配 Bean。`OnSingleBean` 表示恰好存在一个匹配 Bean。这几个条件都可以只按类型匹配，也可以传入名称，按类型和名称共同匹配。
 
-需要说明的是，go-spring 在判断 bean 是否存在的时候，会跳过已经被删除的 Bean。。。
+需要说明的是，Go-Spring 在判断 Bean 是否存在时，会跳过已经被条件裁剪掉的 Bean。也就是说，一个条件不满足的候选定义不会继续影响后续的 `OnBean`、`OnMissingBean` 和 `OnSingleBean` 判断。
 
 ## 自定义条件
 
-go-spring 内置的条件已经覆盖了绝大多数场景。如果规则比较复杂，我们可以使用 `OnFunc`。
+Go-Spring 内置的条件已经覆盖了绝大多数场景。如果规则已经超出配置值和 Bean 存在性，可以使用 `OnFunc`。
 
 代码如下：
 
@@ -120,7 +130,7 @@ func init() {
 }
 ```
 
-在上面的代码中，我们通过 `OnFunc` 创建了一个条件。虽然简单，但是示意很明显。
+在上面的代码中，我们通过 `OnFunc` 创建了一个条件：只有 `audit.mode` 存在并且值不是 `off` 时，`NewAuditSink` 才会启用。
 
 ## 条件组合
 
@@ -181,11 +191,11 @@ gs.And(
 )
 ```
 
-虽然 go-spring 提供了强大的组合条件，但是组合条件的使用还需要谨慎又谨慎。
+组合条件能表达复杂关系，但条件越复杂，注册语句越难读。通常应该把可复用或业务含义明确的部分提取成变量；如果组合已经像业务流程，就要考虑是否应该调整配置边界或模块设计。
 
 ## 条件结果缓存
 
-有时候，多个 bean 的装配条件有相同的部分，而且这部分写法或者执行比较复杂。那么我们可以使用 `ononce` 来共享条件。并且在执行时，会缓存第一次匹配的结果。后续再次判断同一个条件实例时，会直接返回缓存结果。
+有时候，多个 Bean 的装配条件有相同部分，而且这部分写法较长或执行成本较高，可以使用 `OnOnce` 共享同一个条件实例。`OnOnce` 会缓存第一次匹配结果，后续再次判断同一个条件实例时，直接返回缓存结果。
 
 代码如下：
 
@@ -203,4 +213,4 @@ func init() {
 
 在上面的代码中，`NewMetricsExporter` 和 `NewMetricsMiddleware` 共享了 `metricsCondition` 条件。
 
-不过，需要提醒，能不用 ononce 就不要用。只有在增强代码可读性的时候才使用它。
+不过，需要提醒的是，`OnOnce` 不是默认选择。简单条件直接重复写通常更清楚；只有它确实减少重复、提升可读性，或者条件计算本身有明显成本时，才值得使用。
