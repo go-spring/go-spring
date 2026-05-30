@@ -210,6 +210,34 @@ gs.And(
 
 > 上面的代码仅用于展示组合条件的嵌套用法。实际场景中，仍然应该根据具体需求设计条件组合。
 
+## Profile 条件
+
+如果 Bean 的启用取决于当前的部署环境，那么我们可以使用 `.OnProfiles()`。它是专门为 Profile 设计的 API，本质上就是在比较 `spring.profiles.active` 与注册语句声明的 Profiles。但是提供一个单独的函数会在语义上更好。
+
+示例如下：
+
+```go
+func init() {
+	gs.Provide(NewDevLogger).OnProfiles("dev")
+	gs.Provide(NewProdLogger).OnProfiles("prod")
+}
+```
+
+在上面的代码中，我们使用 `OnProfiles("dev")` 指定了 `NewDevLogger` 只有在当前激活的 Profiles 中包含 `dev` 时才启用。使用 `OnProfiles("prod")` 指定了 `NewProdLogger` 只有在当前激活的 Profiles 中包含 `prod` 时才启用。
+
+本质上它们和下面的条件是一致的：
+
+```go
+func init() {
+	gs.Provide(NewDevLogger).Condition(
+		gs.OnProperty("spring.profiles.active").
+			HavingValue("expr:contains($, 'dev')"),
+	)
+}
+```
+
+todo 这里可以加一个过渡语
+
 ## 条件注册
 
 条件很强大，但条件越复杂，注册语句就越难读，对 Bean 启用规则的理解也越困难。因此，我们在遇到复杂的组合条件时，需要特别注意以下两点：
