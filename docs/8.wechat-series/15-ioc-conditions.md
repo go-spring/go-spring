@@ -49,22 +49,29 @@ gs.OnProperty("redis.enabled").HavingValue("true").MatchIfMissing()
 
 > `OnProperty` 使用合并之后的配置体系，而不是某一个单独的配置来源。读者如果对 Go-Spring 的配置体系还不熟悉，可以查看本系列开头的几篇文章。
 
-不过，`HavingValue` 有一个知识点需要记住：它只能判断叶子值，而不能直接判断结构值，否则会返回错误并中断启动。如果我们传入的是普通字面量，比如 `true`、`123` 等，就表示等值判断。如果判断规则比较复杂，不是简单的等值判断，比如判断范围、前缀或者包含关系等，我们可以使用 `expr:` 前缀表达式。
+不过，`HavingValue` 有一个知识点需要记住：它只能判断叶子值，而不能直接判断结构值，否则会返回错误并中断启动。如果我们传入的是普通字面量，比如 `true`、`123` 等，就表示等值判断。如果判断规则比较复杂，不是简单的等值判断，比如判断范围、前缀或者包含关系等，那么我们可以使用 `expr:` 表达式。
 
-表达式里用 `$` 表示当前配置值。Go-Spring 基于 expr 库计算表达式，所以可以写出更丰富的判断规则，比如：
+`expr:` 表达式基于 expr-lang 库实现，支持各种复杂的逻辑判断。我们可以在表达式里使用 `$` 表示当前配置值，并写出更丰富的判断规则。
+
+代码如下：
 
 ```go
 // 端口必须大于 8080
-gs.OnProperty("server.port").HavingValue("expr:int($) > 8080")
+gs.OnProperty("server.port").
+	HavingValue("expr:int($) > 8080")
+
 // 端口必须在 1024 到 65535 之间
-gs.OnProperty("server.port").HavingValue("expr:int($) > 1024 && int($) < 65535")
+gs.OnProperty("server.port").
+	HavingValue("expr:int($) > 1024 && int($) < 65535")
+
 // 环境必须不是生产环境
-gs.OnProperty("app.env").HavingValue(`expr:$ != "prod"`)
+gs.OnProperty("app.env").
+	HavingValue(`expr:$ != "prod"`)	
 ```
 
-`expr` 表达式必须返回布尔值。只要表达式解析失败、类型不匹配，或者返回值不是布尔值，Go-Spring 都会报错并终止启动。
+`expr:` 表达式要求结果必须返回布尔值。如果表达式解析失败、类型不匹配，或者返回值不是布尔值，那么 Go-Spring 会报错并终止启动。
 
-如果判断逻辑继续变复杂，硬往 `expr` 里堆条件会影响可读性。这时可以把规则下沉到自定义校验函数里。
+如果判断逻辑继续变得复杂，那么使用 `expr:` 可能会影响可读性。这时候我们可以把规则提取到自定义校验函数里。
 
 举个例子：
 
@@ -76,12 +83,13 @@ func init() {
 	})
 
 	gs.Provide(NewServer).Condition(
-		gs.OnProperty("server.port").HavingValue("expr:isValidPort($)"),
+		gs.OnProperty("server.port").
+			HavingValue("expr:isValidPort($)"),
 	)
 }
 ```
 
-在上面的代码中，我们注册了一个 `isValidPort` 函数，用于判断端口是否在 1024 到 65535 之间。然后在注册 `NewServer` 时，使用 `expr:isValidPort($)` 表达式来调用它。这样一来，表达式里只保留一次函数调用，真正的判断逻辑放在 Go 函数里，读起来会更清楚。
+在上面的代码中，我们注册了一个 `isValidPort` 函数，它可以判断端口是否在 1024 到 65535 之间。然后我们在注册 `NewServer` 时，使用 `expr:isValidPort($)` 表达式来调用它。这样，表达式里只会保留一次函数调用，真正的判断逻辑在 Go 函数里，读起来就会更加清楚。
 
 ## 基于 Bean 的条件
 
