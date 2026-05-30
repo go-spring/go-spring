@@ -212,7 +212,7 @@ gs.And(
 
 ## Profile 条件
 
-如果 Bean 的启用取决于当前的部署环境，那么我们可以使用 `.OnProfiles()`。它是专门为 Profile 设计的 API，本质上就是在比较 `spring.profiles.active` 与注册语句声明的 Profiles。但是提供一个单独的函数会在语义上更好。
+如果 Bean 的启用取决于当前部署环境，那么可以使用 `.OnProfiles()`。它是专门为 Profile 设计的 API，会根据 `spring.profiles.active` 中当前激活的 Profile，判断这个 Bean 是否参与本次装配。
 
 示例如下：
 
@@ -223,9 +223,9 @@ func init() {
 }
 ```
 
-在上面的代码中，我们使用 `OnProfiles("dev")` 指定了 `NewDevLogger` 只有在当前激活的 Profiles 中包含 `dev` 时才启用。使用 `OnProfiles("prod")` 指定了 `NewProdLogger` 只有在当前激活的 Profiles 中包含 `prod` 时才启用。
+在上面的代码中，`NewDevLogger` 只有在当前激活的 Profile 中包含 `dev` 时才启用，`NewProdLogger` 只有在当前激活的 Profile 中包含 `prod` 时才启用。如果当前没有激活对应的 Profile，这些 Bean 会在条件解析阶段被删除，不会进入后续创建和注入流程。
 
-本质上它们和下面的条件是一致的：
+从使用效果上看，`.OnProfiles("dev")` 可以理解为下面这种基于配置的条件判断：
 
 ```go
 func init() {
@@ -236,7 +236,7 @@ func init() {
 }
 ```
 
-todo 这里可以加一个过渡语
+不过在实际注册 Bean 时，应该优先使用 `.OnProfiles()`。它具有更简单的语法，更直接的语义。
 
 ## 条件注册
 
