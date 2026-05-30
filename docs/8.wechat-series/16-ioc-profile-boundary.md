@@ -1,21 +1,24 @@
-# Go-Spring 实战第 16 课 —— Profile 装配边界：让配置文件和 Bean 实现按同一环境切换
+# Go-Spring 实战第 16 课 —— Profile 装配：让配置文件和 Bean 实现按环境切换
 
-上一课讲条件注册时，我们已经看到 Bean 定义进入容器以后，还会在解析阶段被条件裁剪。真实项目里最常见的一类条件，往往不是单个功能开关，而是环境。
+我们在上一篇文章讲了 bean 的按条件注册，而 bean 按条件注册的很重要一环就是配置可以根据部署环境进行切换。
 
-同一个服务部署到开发、测试和生产环境时，变化通常不只发生在配置值上。开发环境可能使用控制台日志，生产环境可能接入文件或远程日志；测试环境可能替换外部客户端，生产环境则使用真实连接。如果配置文件按一套环境名切换，Bean 条件又按另一套名字切换，排查问题时就很难判断本次启动到底使用了哪组输入和哪组实现。
+比如我们在开发环境中可能使用控制台日志，而在生产环境中可能接入文件或远程日志；比如测试环境可能被 mock 的外部客户端，生产环境则使用真实连接的外部客户端。
 
-Go-Spring 的 Profile 同时连接配置加载和 Bean 装配。配置 Profile 决定叠加哪些 `app-{profile}.*` 文件，IoC Profile 条件决定哪些 Bean 参与本次装配。两者沿同一套环境语义前进时，配置值和对象实现才不会切到不同方向。
+Go-Spring 的 Profile 机制决定如何叠加哪些 `app-{profile}.*` 文件。
 
 ## `spring.profiles.active`
 
-Go-Spring 使用 `spring.profiles.active` 表达当前激活的 Profile。这个值通常来自命令行参数或环境变量，因为它们最接近一次具体启动。下面两种写法都会把本次启动放进 `prod` Profile。
+Go-Spring 使用 `spring.profiles.active` 表达当前激活的 Profile。这个值通常来自命令行参数或环境变量，因为它们在加载的时候优先级比其他方式更高。比如下面两种写法都会把本次启动放进 `prod` Profile。
 
 ```bash
+# 命令行参数
 ./app -Dspring.profiles.active=prod
 ```
 
 ```bash
+# 环境变量
 export GS_SPRING_PROFILES_ACTIVE=prod
+./app
 ```
 
 这两个写法最终都会进入同一个配置 key。配置文件则按照 Profile 名称组织。
