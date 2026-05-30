@@ -1,10 +1,10 @@
-# Go-Spring 实战第 26 课 —— 日志治理：配置拓扑、刷新与生态适配
+# Go-Spring 实战第 25 课 —— 日志治理：配置拓扑、插件注入与刷新
 
 上一篇讲完上下文提取以后，Go-Spring 的日志事件已经可以带着业务字段和链路字段进入输出管线。到这里，单次日志输出已经说清楚了，但一套日志系统真正落到项目里，还会遇到另一类问题：运行期拓扑怎样维护。
 
-Logger、Appender、Layout 不能散落在代码里临时创建，否则不同环境、不同项目和不同迁移阶段很快会出现多套日志路径。配置怎样描述拓扑，插件怎样实例化，写入错误怎样上报，刷新时新旧实例怎样切换，标准库 `log` 和 Zap 这类既有入口怎样接入，这些问题决定日志系统能不能长期维护。
+Logger、Appender、Layout 不能散落在代码里临时创建，否则不同环境、不同项目和不同部署阶段很快会出现多套日志路径。配置怎样描述拓扑，插件怎样实例化，写入错误怎样上报，刷新时新旧实例怎样切换，这些问题决定日志系统能不能长期维护。
 
-Go-Spring 的处理方式是把运行期拓扑交给配置描述，把实例创建交给插件系统，把拓扑替换交给刷新入口，把旧日志入口收进适配层。这样日志治理仍然围绕同一条输出管线展开，而不是在项目里形成多套互不相干的日志路径。
+Go-Spring 的处理方式是把运行期拓扑交给配置描述，把实例创建交给插件系统，把拓扑替换交给刷新入口。这样日志治理仍然围绕同一条输出管线展开，而不是在项目里形成多套互不相干的日志路径。
 
 ## 日志拓扑
 
@@ -171,56 +171,6 @@ err := log.RefreshConfig(map[string]string{
 
 刷新不是修改某个字段那么简单，而是替换一组运行期对象。生产环境刷新日志配置时，应关注旧 Logger/Appender 的停止和新配置的启动是否成功，并先在预发环境验证配置合法性。
 
-## 旧入口适配
-
-已有项目或第三方库不一定会立刻改成 Go-Spring 的标签 API。Go-Spring 提供 `GetLogger`，用于兼容按 name 获取 logger 的代码。
-
-```go
-rootLogger := log.GetLogger("root")
-rootLogger.Write(log.InfoLevel, []byte("hello world\n"))
-```
-
-这段代码的语义是绕过标签路由，直接向名为 `root` 的 Logger 写入原始字节。使用它之前，配置中需要存在同名 Logger。
-
-```properties
-logger.root.type = FileLogger
-logger.root.level = INFO
-logger.root.dir = ./logs
-logger.root.file = app.log
-logger.root.layout.type = JSONLayout
-```
-
-`GetLogger` 的语义是绕过标签路由，直接向名为 `root` 的 Logger 写入原始字节。使用它之前，配置中需要存在同名 Logger。这个入口适合迁移和适配，不适合替代新代码里的标签路由。
-
-标准库 `log` 通过 `io.Writer` 输出。所以，实现 Writer 即可转发到 Go-Spring。第三方依赖里暂时不能替换的 `log.Print` 调用，也可以通过这个入口进入统一管线。
-
-```go
-type StdLogWriter struct {
-	logger *log.LoggerWrapper
-}
-
-func (w *StdLogWriter) Write(p []byte) (int, error) {
-	w.logger.Write(log.InfoLevel, p)
-	return len(p), nil
-}
-
-func main() {
-	stdlog.SetOutput(&StdLogWriter{
-		logger: log.GetLogger("root"),
-	})
-}
-```
-
-这段适配的语义是把标准库日志的字节内容作为 `INFO` 级别写入指定 Logger。这样第三方依赖通过标准库输出的日志也能进入统一日志管线，但字段结构已经在标准库输出阶段丢失，不能再恢复成 Go-Spring 的强类型字段。
-
-Zap 可以通过实现 `zapcore.Core` 适配。这个适配点说明 Go-Spring 不要求项目一次性替换所有日志调用，而是可以让 Zap 继续暴露自己的 API，同时把最终写入动作交给 Go-Spring 日志管线。
-
-- `Enabled` 委托给 Go-Spring Logger 判断级别。
-- `Write` 将 Zap 事件编码后转发给 Go-Spring Logger。
-- `Sync` 交由 Go-Spring 自身生命周期处理。
-
-适配后的语义是：级别判断、事件写入和生命周期逐步转向 Go-Spring，调用点可以分批迁移。新代码使用 Go-Spring 原生日志 API，旧代码和依赖仍可通过 Zap 输出到同一目标。
-
 ## 日志治理
 
-日志治理的核心是让运行期拓扑可以被配置描述、被插件实例化、被刷新替换，并让旧入口逐步进入同一条管线。这样日志系统才能从一组调用函数，变成 Go-Spring 应用运行期可维护的观测基础设施。
+日志治理的核心是让运行期拓扑可以被配置描述、被插件实例化、被刷新替换。这样日志系统才能从一组调用函数，变成 Go-Spring 应用运行期可维护的观测基础设施。

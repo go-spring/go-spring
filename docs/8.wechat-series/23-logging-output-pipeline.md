@@ -1,4 +1,4 @@
-# Go-Spring 实战第 24 课 —— 输出管线：Appender、Layout 与 Encoder 的职责边界
+# Go-Spring 实战第 23 课 —— 输出管线：Appender、Layout 与 Encoder 的职责边界
 
 Logger 选好以后，一条日志仍然没有完成落地。Logger 只是决定事件是否通过级别过滤、交给哪些输出目标；真正写出字节之前，还要继续回答写到哪里、输出成什么格式、字段如何编码。
 
