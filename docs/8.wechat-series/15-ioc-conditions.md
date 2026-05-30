@@ -93,9 +93,9 @@ func init() {
 
 ## 基于 Bean 的条件
 
-除了配置，容器里已经有哪些 Bean 也是很常见的判断依据。比如一个价格服务 Starter 可以提供 HTTP 默认客户端，但如果应用已经注册了自己的 `domain.PriceClient`，Starter 的默认实现就应该退出；再比如某个增强组件依赖基础客户端，基础客户端不存在时，增强组件也没有必要启用。
+除了配置，容器里面某些 Bean 是否存在也是很常见的判断依据。比如 Starter 里的某个增强组件依赖用户提供基础客户端 Bean，如果基础客户端 Bean 不存在，那么增强组件也没有必要启用。
 
-还是看一个例子：
+看个例子：
 
 ```go
 func init() {
@@ -107,9 +107,9 @@ func init() {
 }
 ```
 
-在上面的代码中，`NewPriceReporter` 依赖 `domain.PriceClient`。只有 `domain.PriceClient` 存在时，`NewPriceReporter` 才会启用。换句话说，Reporter 不自己决定客户端从哪里来，它只关心容器里是否已经有可用的 `PriceClient`。
+在上面的代码中，`NewPriceReporter` 依赖于 `domain.PriceClient`。只有 `domain.PriceClient` 存在时，`NewPriceReporter` 才会启用。换句话说，Reporter 自己不决定客户端从哪里来，而只关心容器里是否已经有可用的 `PriceClient`。这种场景在 Starter 里非常常见。
 
-Go-Spring 提供了几种围绕 Bean 存在性的条件：
+Go-Spring 提供了三种围绕 Bean 存在性的条件：
 
 ```go
 gs.OnBean[*HttpServeMux]()
@@ -118,9 +118,9 @@ gs.OnSingleBean[*DataSource]()
 gs.OnBean[*DataSource]("master")
 ```
 
-其中，`OnBean` 表示至少存在一个匹配 Bean。`OnMissingBean` 表示不存在匹配 Bean。`OnSingleBean` 表示恰好存在一个匹配 Bean。这几个条件既可以只按类型匹配，也可以传入名称，按类型和名称一起匹配。
+其中，`OnBean` 表示至少需要存在一个匹配 Bean，否则条件就不成立。`OnMissingBean` 表示必须不存在匹配 Bean，否则条件就不成立。`OnSingleBean` 表示恰好只存在一个匹配 Bean，否则条件就不成立。这几个条件都是既可以只按类型匹配，也可以传入名称，按类型和名称一起匹配。
 
-还有一个细节需要注意：Go-Spring 在判断 Bean 是否存在时，会跳过已经因为条件不成立而退出装配的 Bean。换句话说，一个已经退出本次装配的 Bean，不会再影响后续条件判断。
+有个细节可能需要说明：Go-Spring 在判断 Bean 是否存在时，会跳过已经因为条件不成立而退出本次装配的 Bean。
 
 ## 自定义条件
 
