@@ -2,9 +2,9 @@
 
 在自动装配出现之前，装配逻辑大多直接写在应用代码里。也就是说，一个 Bean 要不要注册，通常在项目初始化代码里就已经写死了。这样做很直观，但代价也明显：同一套 Bean 很难在不同项目之间复用。
 
-在自动装配出现之后，我们把体系化的 Bean 注册逻辑提取到了 Starter 里，复用性确实更强了。但问题也随之出现：应用引入 Starter 后，并不一定需要里面的每个 Bean；有些 Bean 可能缺少必要配置；还有些场景下，用户希望用自己注册的 Bean 替换 Starter 提供的默认实现。
+在自动装配出现之后，我们把体系化的 Bean 注册逻辑提取到了 Starter 里，复用性确实更强了。但新问题也来了：应用引入 Starter 后，并不一定需要里面的每一个 Bean；还有些场景下，用户希望用自己注册的 Bean 替换 Starter 提供的默认实现。
 
-这时候就需要条件来参与决策：在容器解析阶段，根据配置、已有 Bean 或其他上下文，决定某个 Bean 是否启用。
+Go-Spring IoC 容器在 Bean 解析阶段，会根据配置、已有 Bean 或其他上下文，来决定某个 Bean 是否启用。这种机制就是条件（Condition）。它可以很好的解决上面的问题。
 
 ## Condition
 
@@ -12,15 +12,14 @@
 
 ```go
 func init() {
-	gs.Provide(NewMyService).Condition(gs.OnProperty("my.condition"))
+	gs.Provide(NewMyService).
+		Condition(gs.OnProperty("my.condition"))
 }
 ```
 
-在上面的代码中，我们注册了 `NewMyService`，同时指定它只有在 `my.condition` 存在时才启用。
+在上面的代码中，我们使用 `gs.Provide()` 注册了 `NewMyService`，然后使用 `Condition()` 和 `gs.OnProperty()` 指定了它只有在 `my.condition` 存在时才会启用。如果 `my.condition` 存在，那么 `NewMyService` 会被创建、注入和初始化；如果不存在，那么 `NewMyService` 就会被删除，不参与本次装配流程。
 
-具体来说，Go-Spring 会在容器解析阶段，根据 `my.condition` 是否存在，判断 `NewMyService` 是否应该参与本次装配。如果 `my.condition` 存在，`NewMyService` 会被创建、注入和初始化；如果不存在，`NewMyService` 就会被移出本次装配流程。
-
-条件的本质其实就是一次 if 判断，只不过这个判断发生在 Bean 定义层面。把判断条件写在注册语句里，而不是塞进构造函数或者业务代码里，对代码的侵入性就会小很多。
+条件的本质其实就是 if 判断，只不过这个判断发生在 Bean 定义层面。我们把判断条件写在注册语句里，而不是塞进构造函数或者业务代码里，这样装配逻辑对业务代码的侵入性就会小很多。
 
 从实现上看，`Condition` 的核心就是一个匹配函数：
 
@@ -30,13 +29,15 @@ type Condition interface {
 }
 ```
 
-每个具体的条件都实现 `Condition` 接口，并通过 `ConditionContext` 读取配置和查找 Bean。
+每个具体的条件都要实现 `Condition` 接口，并通过 `ConditionContext` 读取配置和查找 Bean。
 
 ## 基于配置的条件
 
-配置通常是最直接的开关，所以最常见的条件，就是围绕配置项来判断：它是否存在、值是否等于某个值，或者是否满足某个表达式。对应到 Go-Spring 里，主要就是使用 `OnProperty`。
+配置通常是最直接的开关，所以最常见的条件，就是围绕配置项来实现的。配置项是否存在，配置项的值是否等于某个值或者是否满足某个表达式，都可以作为激活 Bean 的条件。
 
-`OnProperty` 既可以判断配置项是否存在，也可以判断值是否等于某个值，还可以通过表达式完成更复杂的逻辑判断。
+在 Go-Spring 里，主要就是使用 `OnProperty`。它既可以判断配置项是否存在，也可以判断配置项的值是否等于某个值，还可以通过表达式完成更复杂的逻辑判断。
+
+代码如下：
 
 ```go
 gs.OnProperty("redis.enabled")
@@ -44,11 +45,11 @@ gs.OnProperty("redis.enabled").HavingValue("true")
 gs.OnProperty("redis.enabled").HavingValue("true").MatchIfMissing()
 ```
 
-这三个写法的含义稍有不同。只写 `OnProperty("redis.enabled")` 时，表示只要配置项存在，条件就成立；加上 `HavingValue("true")` 后，表示配置项存在并且最终值等于 `true` 时，条件才成立；再加上 `MatchIfMissing()`，则表示配置不存在也视为条件成立。
+上面三种写法的含义略有不同。只写 `OnProperty("redis.enabled")` 时，表示只要配置项存在，条件就能成立；加上 `HavingValue("true")` 后，表示配置项存在并且最终值等于 `true` 时，条件才能成立；再加上 `MatchIfMissing()` 后，则表示即使配置不存在也可以视为条件成立。我们可以灵活选择使用哪一种，或者组合使用。
 
-这里的配置项不限定某个来源，可以来自配置文件、环境变量、Profile 配置、基础配置和代码默认值等。因此，`OnProperty` 看的是合并后的配置体系，而不是某一个单独来源。
+> `OnProperty` 使用合并之后的配置体系，而不是某一个单独的配置来源。读者如果对 Go-Spring 的配置体系还不熟悉，可以查看本系列开头的几篇文章。
 
-不过，`HavingValue` 有一个边界：它只能判断叶子值，不能直接判断结构值，否则会返回错误并中断启动。如果传入的是普通字面量，比如 `true`、`123` 等，表示等值判断。如果判断规则已经不是简单等值，比如要判断范围、前缀或包含关系，就可以改用 `expr:` 前缀表达式。
+不过，`HavingValue` 有一个知识点需要记住：它只能判断叶子值，而不能直接判断结构值，否则会返回错误并中断启动。如果我们传入的是普通字面量，比如 `true`、`123` 等，就表示等值判断。如果判断规则比较复杂，不是简单的等值判断，比如判断范围、前缀或者包含关系等，我们可以使用 `expr:` 前缀表达式。
 
 表达式里用 `$` 表示当前配置值。Go-Spring 基于 expr 库计算表达式，所以可以写出更丰富的判断规则，比如：
 
