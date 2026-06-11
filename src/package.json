@@ -2,7 +2,7 @@
   "scripts": {
     "dev": "vitepress dev .",
     "build": "vitepress build .",
-    "preview": "vitepress preview ../docs"
+    "preview": "vitepress preview ."
   },
   "devDependencies": {
     "vitepress": "latest"

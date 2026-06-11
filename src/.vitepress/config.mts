@@ -1,64 +1,143 @@
 import { defineConfig } from 'vitepress'
 
+const zhNav = [
+  { text: '概览', link: '/docs/0.overview/overview' },
+  { text: '快速开始', link: '/docs/1.getting-started/getting-started' },
+  { text: '指南', link: '/docs/2.guides/01-configuration' },
+  { text: '示例', link: '/docs/3.examples/examples' }
+]
+
+const enNav = [
+  { text: 'Overview', link: '/en/docs/0.overview/overview' },
+  { text: 'Getting Started', link: '/en/docs/1.getting-started/getting-started' },
+  { text: 'Guides', link: '/en/docs/2.guides/01-configuration' },
+  { text: 'Examples', link: '/en/docs/3.examples/examples' }
+]
+
+const zhSidebar = [
+  {
+    text: '介绍',
+    items: [
+      { text: '项目概览', link: '/docs/0.overview/overview' },
+      { text: '快速开始', link: '/docs/1.getting-started/getting-started' }
+    ]
+  },
+  {
+    text: '指南',
+    items: [
+      { text: '配置管理', link: '/docs/2.guides/01-configuration' },
+      { text: 'IoC 容器', link: '/docs/2.guides/02-ioc-container' },
+      { text: '应用启动与停止', link: '/docs/2.guides/03-app-start-stop' },
+      { text: '日志系统', link: '/docs/2.guides/04-logging' },
+      { text: 'HTTP 服务', link: '/docs/2.guides/05-http-server' },
+      { text: '组件机制', link: '/docs/2.guides/06-components' },
+      { text: '测试支持', link: '/docs/2.guides/07-testing' },
+      { text: 'HTTP 代码生成', link: '/docs/2.guides/08-http-gen' }
+    ]
+  },
+  {
+    text: '示例',
+    items: [
+      { text: '示例总览', link: '/docs/3.examples/examples' }
+    ]
+  },
+  {
+    text: '集成',
+    items: [
+      { text: 'GORM MySQL', link: '/docs/4.integrations/starter-gorm-mysql' },
+      { text: 'Go Redis', link: '/docs/4.integrations/starter-go-redis' },
+      { text: 'Redigo', link: '/docs/4.integrations/starter-redigo' },
+      { text: 'PProf', link: '/docs/4.integrations/starter-pprof' }
+    ]
+  },
+  {
+    text: '更多',
+    items: [
+      { text: 'FAQ', link: '/docs/5.faq' },
+      { text: '参与贡献', link: '/docs/6.contributing' },
+      { text: '更新日志', link: '/docs/7.changelog' }
+    ]
+  }
+]
+
+const enSidebar = [
+  {
+    text: 'Introduction',
+    items: [
+      { text: 'Overview', link: '/en/docs/0.overview/overview' },
+      { text: 'Getting Started', link: '/en/docs/1.getting-started/getting-started' }
+    ]
+  },
+  {
+    text: 'Guides',
+    items: [
+      { text: 'Configuration', link: '/en/docs/2.guides/01-configuration' },
+      { text: 'IoC Container', link: '/en/docs/2.guides/02-ioc-container' },
+      { text: 'App Start/Stop', link: '/en/docs/2.guides/03-app-start-stop' },
+      { text: 'Logging', link: '/en/docs/2.guides/04-logging' },
+      { text: 'HTTP Server', link: '/en/docs/2.guides/05-http-server' },
+      { text: 'Components', link: '/en/docs/2.guides/06-components' },
+      { text: 'Testing', link: '/en/docs/2.guides/07-testing' },
+      { text: 'HTTP Gen', link: '/en/docs/2.guides/08-http-gen' }
+    ]
+  },
+  {
+    text: 'Examples',
+    items: [
+      { text: 'Examples', link: '/en/docs/3.examples/examples' }
+    ]
+  },
+  {
+    text: 'Integrations',
+    items: [
+      { text: 'GORM MySQL', link: '/en/docs/4.integrations/starter-gorm-mysql' },
+      { text: 'Go Redis', link: '/en/docs/4.integrations/starter-go-redis' },
+      { text: 'Redigo', link: '/en/docs/4.integrations/starter-redigo' },
+      { text: 'PProf', link: '/en/docs/4.integrations/starter-pprof' }
+    ]
+  },
+  {
+    text: 'More',
+    items: [
+      { text: 'FAQ', link: '/en/docs/5.faq' },
+      { text: 'Contributing', link: '/en/docs/6.contributing' },
+      { text: 'Changelog', link: '/en/docs/7.changelog' }
+    ]
+  }
+]
+
 export default defineConfig({
   title: 'Go-Spring',
   description: 'Documentation for Go-Spring',
+  head: [['link', { rel: 'icon', href: '/logo.png' }]],
   outDir: '../docs',
   cleanUrls: true,
   themeConfig: {
-    nav: [
-      { text: 'Overview', link: '/docs/0.overview/overview' },
-      { text: 'Getting Started', link: '/docs/1.getting-started/getting-started' },
-      { text: 'Guides', link: '/docs/2.guides/01-configuration' },
-      { text: 'Examples', link: '/docs/3.examples/examples' }
-    ],
-    sidebar: [
-      {
-        text: 'Introduction',
-        items: [
-          { text: 'Overview', link: '/docs/0.overview/overview' },
-          { text: 'Getting Started', link: '/docs/1.getting-started/getting-started' }
-        ]
-      },
-      {
-        text: 'Guides',
-        items: [
-          { text: 'Configuration', link: '/docs/2.guides/01-configuration' },
-          { text: 'IoC Container', link: '/docs/2.guides/02-ioc-container' },
-          { text: 'App Start/Stop', link: '/docs/2.guides/03-app-start-stop' },
-          { text: 'Logging', link: '/docs/2.guides/04-logging' },
-          { text: 'HTTP Server', link: '/docs/2.guides/05-http-server' },
-          { text: 'Components', link: '/docs/2.guides/06-components' },
-          { text: 'Testing', link: '/docs/2.guides/07-testing' },
-          { text: 'HTTP Gen', link: '/docs/2.guides/08-http-gen' }
-        ]
-      },
-      {
-        text: 'Examples',
-        items: [
-          { text: 'Examples', link: '/docs/3.examples/examples' }
-        ]
-      },
-      {
-        text: 'Integrations',
-        items: [
-          { text: 'GORM MySQL', link: '/docs/4.integrations/starter-gorm-mysql' },
-          { text: 'Go Redis', link: '/docs/4.integrations/starter-go-redis' },
-          { text: 'Redigo', link: '/docs/4.integrations/starter-redigo' },
-          { text: 'PProf', link: '/docs/4.integrations/starter-pprof' }
-        ]
-      },
-      {
-        text: 'More',
-        items: [
-          { text: 'FAQ', link: '/docs/5.faq' },
-          { text: 'Contributing', link: '/docs/6.contributing' },
-          { text: 'Changelog', link: '/docs/7.changelog' }
-        ]
-      }
-    ],
+    logo: '/logo.png',
     socialLinks: [
       { icon: 'github', link: 'https://github.com/go-spring/go-spring' }
     ]
+  },
+  locales: {
+    root: {
+      label: '简体中文',
+      lang: 'zh-CN',
+      title: 'Go-Spring',
+      description: 'Go-Spring 中文文档',
+      themeConfig: {
+        nav: zhNav,
+        sidebar: zhSidebar
+      }
+    },
+    en: {
+      label: 'English',
+      lang: 'en-US',
+      title: 'Go-Spring',
+      description: 'Documentation for Go-Spring',
+      themeConfig: {
+        nav: enNav,
+        sidebar: enSidebar
+      }
+    }
   }
 })
