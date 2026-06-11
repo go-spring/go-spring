@@ -1,0 +1,59 @@
+---
+name: doc-writer
+description: 用于编写、改写、审阅或扩展 Go-Spring 文档。写作前应核对源码、测试、示例和已有文档；当目标文档属于已约束范围时，遵守 Go-Spring 文档写作规范。
+---
+
+# Go-Spring 文档编写者
+
+当需要编写、改写、审阅或扩展 Go-Spring 文档时使用本技能，包括新增文档、重写文档、结构调整、术语统一、示例补充、FAQ 和集成文档。
+
+## 工作流程
+
+### 判断文档类型
+
+先确认文档承担的读者任务，避免把所有文档都写成同一种 Guide。
+
+- 判断目标属于项目概览、快速开始、Guide、Integration、Example、FAQ、Changelog 还是贡献文档。
+- 类型或结构不明确时，读取 `references/doc-types.md`。
+
+### 核对事实来源
+
+事实准确性优先于表达完整性。文档可以暂时少写，但不能补不存在或未确认的 API、配置和行为。
+
+- 写入 API、配置 key、默认值、行为、版本或状态前，先从源码、测试、示例或已有文档中确认。
+- 涉及事实性内容时，读取 `references/fact-checking.md`。
+- 无法确认的内容不要编写成确定结论，应保留为待确认点或改写为概念性描述。
+
+### 选择适用规则
+
+写作规范只约束已经分析过的文档范围，不把局部风格强行扩展到整个 `docs/` 目录。
+
+- 当目标文档位于 `docs/0.overview/`、`docs/1.getting-started/`、`docs/2.guides/` 或 `docs/4.integrations/` 时，读取并遵守 `references/writing-style.md`。
+- 其他目录暂不强制套用该规则，只保持事实准确、术语清晰和结构可读。
+
+### 按文档目的组织内容
+
+结构应服务于读者要完成的任务，而不是服务于模板本身。
+
+- 使用型文档优先给出最小可运行或最小可理解路径。
+- 解释型文档先建立心智模型，再展开机制、边界和实践。
+- 默认使用中文写作，除非目标文档已经是英文，或用户明确要求使用其他语言。
+
+### 交付前自检
+
+交付前做一次面向读者和事实准确性的检查，避免留下看似完整但不可验证的内容。
+
+- 按 `checklists/final-review.md` 检查示例上下文、术语、链接、限制和边界行为。
+- 说明修改范围。
+- 说明是否做过校验；如果没有校验，应说明原因。
+
+## 按需读取
+
+| 场景 | 文件 |
+|------|------|
+| 不确定文档类型或结构 | `references/doc-types.md` |
+| 涉及 API、配置、默认值、版本或行为 | `references/fact-checking.md` |
+| 修改受约束目录文档 | `references/writing-style.md` |
+| 修改示例索引或示例 README | `references/example-docs.md` |
+| 修改 FAQ、贡献文档或 Changelog | `references/maintenance-docs.md` |
+| 交付前检查 | `checklists/final-review.md` |

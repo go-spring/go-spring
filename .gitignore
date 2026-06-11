@@ -1,3 +1,5 @@
 .idea/
 vendor/
 app.log
+.gocache/
+.DS_Store
