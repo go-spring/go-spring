@@ -1,5 +1,34 @@
 import { defineConfig } from 'vitepress'
 
+const goImportModules: Record<string, string> = {
+  'spring-core': 'https://github.com/go-spring/spring-core',
+  log: 'https://github.com/go-spring/log',
+  stdlib: 'https://github.com/go-spring/stdlib',
+  'starter-gorm-mysql': 'https://github.com/go-spring/starter-gorm-mysql',
+  'starter-go-redis': 'https://github.com/go-spring/starter-go-redis',
+  'starter-redigo': 'https://github.com/go-spring/starter-redigo',
+  'starter-pprof': 'https://github.com/go-spring/starter-pprof'
+}
+
+const goImportHeadTags = (relativePath: string) => {
+  const moduleName = relativePath.replace(/\.md$/, '')
+  const repoRoot = goImportModules[moduleName]
+
+  if (!repoRoot) {
+    return []
+  }
+
+  const importPrefix = `go-spring.org/${moduleName}`
+
+  return [
+    ['meta', { name: 'go-import', content: `${importPrefix} git ${repoRoot}` }],
+    ['meta', {
+      name: 'go-source',
+      content: `${importPrefix} ${repoRoot} ${repoRoot}/tree/main{/dir} ${repoRoot}/blob/main{/dir}/{file}#L{line}`
+    }]
+  ]
+}
+
 const zhNav = [
   { text: '概览', link: '/docs/0.overview/overview' },
   { text: '快速开始', link: '/docs/1.getting-started/getting-started' },
@@ -110,6 +139,10 @@ export default defineConfig({
   title: 'Go-Spring',
   description: 'Documentation for Go-Spring',
   head: [['link', { rel: 'icon', href: '/logo.png' }]],
+  transformPageData(pageData) {
+    pageData.frontmatter.head ??= []
+    pageData.frontmatter.head.push(...goImportHeadTags(pageData.relativePath))
+  },
   outDir: '../docs',
   cleanUrls: true,
   themeConfig: {
