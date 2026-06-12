@@ -29,3 +29,6 @@ go.work.sum
 
 # IDE files
 .idea/
+
+# Git history audit reports
+scripts/git-history-audit/reports/
