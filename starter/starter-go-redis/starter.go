@@ -19,8 +19,8 @@ package StarterGoRedis
 import (
 	"fmt"
 
-	"go-spring.org/spring/gs"
 	"github.com/redis/go-redis/v9"
+	"go-spring.org/spring/gs"
 )
 
 func init() {

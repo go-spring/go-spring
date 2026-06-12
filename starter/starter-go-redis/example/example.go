@@ -24,10 +24,9 @@ import (
 	"path/filepath"
 	"runtime"
 
+	"github.com/redis/go-redis/v9"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
-	"github.com/redis/go-redis/v9"
-
 	StarterGoRedis "go-spring.org/starter-go-redis"
 )
 
