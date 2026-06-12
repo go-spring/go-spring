@@ -19,8 +19,8 @@ package StarterRedigo
 import (
 	"fmt"
 
-	"go-spring.org/spring/gs"
 	"github.com/gomodule/redigo/redis"
+	"go-spring.org/spring/gs"
 )
 
 func init() {

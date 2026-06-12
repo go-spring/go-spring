@@ -24,10 +24,9 @@ import (
 	"path/filepath"
 	"runtime"
 
+	"github.com/gomodule/redigo/redis"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
-	"github.com/gomodule/redigo/redis"
-
 	StarterRedigo "go-spring.org/starter-redigo"
 )
 
