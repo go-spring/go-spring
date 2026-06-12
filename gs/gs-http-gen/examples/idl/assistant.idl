@@ -1,0 +1,83 @@
+// ==================================================
+// Assistant Service - Streaming (SSE) IDL
+// Real-time AI / Copilot style streaming interface
+// ==================================================
+
+// ----------------------
+// Request types
+// ----------------------
+
+// Chat message unit
+type Message {
+    string role
+    string content
+}
+
+// Streaming assistant request
+type AssistantReq {
+    string sessionId
+    string userId
+    list<Message> messages
+}
+
+// ----------------------
+// Streaming payload types
+// ----------------------
+
+// Incremental message payload
+type MessageDelta {
+    string content
+    bool isFinal
+}
+
+// Tool call payload
+type ToolCall {
+    string name
+    map<string,string> arguments
+}
+
+// Image payload
+type ImageData {
+    string mime
+    bytes data
+}
+
+// Error payload
+type ErrorInfo {
+    ErrCode code
+    string message
+}
+
+// Union payload for SSE events
+oneof Payload {
+    MessageDelta
+    ToolCall
+    ImageData
+    ErrorInfo
+}
+
+// ----------------------
+// SSE event envelope
+// ----------------------
+
+// Single Server-Sent Event
+type AssistantEvent {
+    string eventId
+    Payload payload
+}
+
+// ----------------------
+// SSE RPC definition
+// ----------------------
+
+// Streaming assistant interface
+sse Assistant(AssistantReq) AssistantEvent {
+    method="POST"
+    path="/assistant/stream"
+    contentType="json"
+    summary="Streaming assistant response (SSE)"
+
+    connTimeout=100
+    readTimeout=100
+    writeTimeout=100
+}

@@ -1,0 +1,16 @@
+// ping.idl
+
+// Request for ping endpoint
+type PingReq {
+    // Name parameter
+    string name
+}
+
+// Ping API endpoint
+rpc Ping(PingReq) PingResp {
+    method="GET"
+    path="/ping"
+}
+
+// Response for ping endpoint
+type PingResp Response<string>

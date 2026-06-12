@@ -1,0 +1,33 @@
+/*****************************************************************************/
+
+Install antlr4 version 4.13.2
+
+```bash
+curl -O https://www.antlr.org/download/antlr-4.13.2-complete.jar
+```
+
+Then configure the tool directory according to the official website requirements
+
+```bash
+antlr413 -Dlanguage=Go -package parser *.g4
+```
+
+Execute the above command in the current directory to automatically generate parser code
+
+/*****************************************************************************/
+
+安装 antlr4 4.13.2 版本
+
+```bash
+curl -O https://www.antlr.org/download/antlr-4.13.2-complete.jar
+```
+
+然后按照官网要求配置好工具目录
+
+```bash
+antlr413 -Dlanguage=Go -package parser *.g4
+```
+
+在当前目录下执行上述命令即可自动生成 parser 代码
+
+/*****************************************************************************/

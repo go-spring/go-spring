@@ -1,0 +1,1250 @@
+{
+  "Comments": [
+    {
+      "Text": [
+        "/*",
+        " * Example file",
+        " */"
+      ],
+      "Single": false,
+      "Position": {
+        "StartLine": 1,
+        "EndLine": 3
+      }
+    },
+    {
+      "Text": [
+        "// ----------------------"
+      ],
+      "Single": true,
+      "Position": {
+        "StartLine": 4,
+        "EndLine": 4
+      }
+    },
+    {
+      "Text": [
+        "// Example file"
+      ],
+      "Single": true,
+      "Position": {
+        "StartLine": 5,
+        "EndLine": 5
+      }
+    },
+    {
+      "Text": [
+        "// ----------------------"
+      ],
+      "Single": true,
+      "Position": {
+        "StartLine": 6,
+        "EndLine": 6
+      }
+    }
+  ],
+  "Consts": [
+    {
+      "Type": {
+        "Name": "int"
+      },
+      "Name": "MAX_COUNT",
+      "Value": "100",
+      "Position": {
+        "StartLine": 9,
+        "EndLine": 9
+      },
+      "Comments": {
+        "Above": [
+          {
+            "Text": [
+              "// ---- Const definitions ----"
+            ],
+            "Single": true,
+            "Position": {
+              "StartLine": 8,
+              "EndLine": 8
+            }
+          }
+        ],
+        "Right": {
+          "Text": [
+            "// max count"
+          ],
+          "Single": true,
+          "Position": {
+            "StartLine": 9,
+            "EndLine": 9
+          }
+        }
+      }
+    },
+    {
+      "Type": {
+        "Name": "bool"
+      },
+      "Name": "ENABLE_FEATURE",
+      "Value": "true",
+      "Position": {
+        "StartLine": 10,
+        "EndLine": 10
+      },
+      "Comments": {
+        "Above": null,
+        "Right": {
+          "Text": [
+            "/* enable feature */"
+          ],
+          "Single": false,
+          "Position": {
+            "StartLine": 10,
+            "EndLine": 10
+          }
+        }
+      }
+    },
+    {
+      "Type": {
+        "Name": "string"
+      },
+      "Name": "DEFAULT_NAME",
+      "Value": "\"guest\"",
+      "Position": {
+        "StartLine": 11,
+        "EndLine": 11
+      },
+      "Comments": {
+        "Above": null,
+        "Right": {
+          "Text": [
+            "/*",
+            " * default name",
+            " */"
+          ],
+          "Single": false,
+          "Position": {
+            "StartLine": 11,
+            "EndLine": 13
+          }
+        }
+      }
+    }
+  ],
+  "Enums": [
+    {
+      "Name": "ErrCode",
+      "Kind": 2,
+      "Fields": [
+        {
+          "Name": "ErrOk",
+          "Value": 0,
+          "ExtendsFrom": null,
+          "ErrorMessage": null,
+          "Annotations": null,
+          "Position": {
+            "StartLine": 17,
+            "EndLine": 17
+          },
+          "Comments": {
+            "Above": null,
+            "Right": null
+          }
+        },
+        {
+          "Name": "PARAM_ERROR",
+          "Value": 1003,
+          "ExtendsFrom": null,
+          "ErrorMessage": "param error",
+          "Annotations": [
+            {
+              "Key": "errmsg",
+              "Value": "\"param error\"",
+              "Position": {
+                "StartLine": 18,
+                "EndLine": 18
+              },
+              "Comments": {
+                "Above": null,
+                "Right": null
+              }
+            }
+          ],
+          "Position": {
+            "StartLine": 18,
+            "EndLine": 18
+          },
+          "Comments": {
+            "Above": null,
+            "Right": null
+          }
+        }
+      ],
+      "Position": {
+        "StartLine": 16,
+        "EndLine": 19
+      },
+      "Comments": {
+        "Above": [
+          {
+            "Text": [
+              "// ---- Enum definition ----"
+            ],
+            "Single": true,
+            "Position": {
+              "StartLine": 15,
+              "EndLine": 15
+            }
+          }
+        ],
+        "Right": null
+      }
+    },
+    {
+      "Name": "ErrCode",
+      "Kind": 3,
+      "Fields": [
+        {
+          "Name": "PANIC_ERROR",
+          "Value": 1005,
+          "ExtendsFrom": null,
+          "ErrorMessage": "panic error",
+          "Annotations": [
+            {
+              "Key": "errmsg",
+              "Value": "\"panic error\"",
+              "Position": {
+                "StartLine": 22,
+                "EndLine": 22
+              },
+              "Comments": {
+                "Above": null,
+                "Right": null
+              }
+            }
+          ],
+          "Position": {
+            "StartLine": 22,
+            "EndLine": 22
+          },
+          "Comments": {
+            "Above": null,
+            "Right": null
+          }
+        }
+      ],
+      "Position": {
+        "StartLine": 21,
+        "EndLine": 23
+      },
+      "Comments": {
+        "Above": null,
+        "Right": null
+      }
+    },
+    {
+      "Name": "PayloadType",
+      "Kind": 1,
+      "Fields": [
+        {
+          "Name": "User",
+          "Value": 1,
+          "ExtendsFrom": null,
+          "ErrorMessage": null,
+          "Annotations": null,
+          "Position": {
+            "StartLine": 0,
+            "EndLine": 0
+          },
+          "Comments": {
+            "Above": null,
+            "Right": null
+          }
+        },
+        {
+          "Name": "Address",
+          "Value": 2,
+          "ExtendsFrom": null,
+          "ErrorMessage": null,
+          "Annotations": null,
+          "Position": {
+            "StartLine": 0,
+            "EndLine": 0
+          },
+          "Comments": {
+            "Above": null,
+            "Right": null
+          }
+        }
+      ],
+      "Position": {
+        "StartLine": 0,
+        "EndLine": 0
+      },
+      "Comments": {
+        "Above": null,
+        "Right": null
+      }
+    }
+  ],
+  "Types": [
+    {
+      "Name": "UserReq",
+      "OneOf": false,
+      "InstType": null,
+      "GenericParam": null,
+      "RawFields": [
+        {
+          "Name": "userId",
+          "Type": {
+            "Name": "string"
+          },
+          "Annotations": null,
+          "Position": {
+            "StartLine": 27,
+            "EndLine": 27
+          },
+          "Comments": {
+            "Above": null,
+            "Right": null
+          },
+          "Deprecated": false,
+          "Required": false,
+          "CompatDefault": null,
+          "JSONTag": {
+            "Name": "userId",
+            "HashKey": "0xf7d13faa74e2475f",
+            "OmitEmpty": true
+          },
+          "FormTag": {
+            "Name": "userId",
+            "HashKey": "0xf7d13faa74e2475f"
+          },
+          "Binding": null,
+          "ValidateExpr": null,
+          "ValidateNested": false,
+          "EnumAsString": false
+        }
+      ],
+      "Fields": null,
+      "Position": {
+        "StartLine": 26,
+        "EndLine": 28
+      },
+      "Comments": {
+        "Above": [
+          {
+            "Text": [
+              "// ---- Type definition ----"
+            ],
+            "Single": true,
+            "Position": {
+              "StartLine": 25,
+              "EndLine": 25
+            }
+          }
+        ],
+        "Right": null
+      },
+      "Embedded": false,
+      "Request": false,
+      "Validate": false,
+      "Encoding": 0
+    },
+    {
+      "Name": "User",
+      "OneOf": false,
+      "InstType": null,
+      "GenericParam": null,
+      "RawFields": [
+        {
+          "Name": "name",
+          "Type": {
+            "Name": "string"
+          },
+          "Annotations": [
+            {
+              "Key": "go.type",
+              "Value": "\"*string\"",
+              "Position": {
+                "StartLine": 36,
+                "EndLine": 36
+              },
+              "Comments": {
+                "Above": null,
+                "Right": null
+              }
+            },
+            {
+              "Key": "a",
+              "Value": "\"123\"",
+              "Position": {
+                "StartLine": 36,
+                "EndLine": 36
+              },
+              "Comments": {
+                "Above": null,
+                "Right": null
+              }
+            }
+          ],
+          "Position": {
+            "StartLine": 36,
+            "EndLine": 36
+          },
+          "Comments": {
+            "Above": null,
+            "Right": null
+          },
+          "Deprecated": false,
+          "Required": false,
+          "CompatDefault": null,
+          "JSONTag": {
+            "Name": "name",
+            "HashKey": "0xc4bcadba8e631b86",
+            "OmitEmpty": true
+          },
+          "FormTag": {
+            "Name": "name",
+            "HashKey": "0xc4bcadba8e631b86"
+          },
+          "Binding": null,
+          "ValidateExpr": null,
+          "ValidateNested": false,
+          "EnumAsString": false
+        },
+        {
+          "Name": "age",
+          "Type": {
+            "Name": "int"
+          },
+          "Annotations": [
+            {
+              "Key": "validate",
+              "Value": "\"$<18\"",
+              "Position": {
+                "StartLine": 37,
+                "EndLine": 37
+              },
+              "Comments": {
+                "Above": null,
+                "Right": null
+              }
+            }
+          ],
+          "Position": {
+            "StartLine": 37,
+            "EndLine": 37
+          },
+          "Comments": {
+            "Above": null,
+            "Right": null
+          },
+          "Deprecated": false,
+          "Required": false,
+          "CompatDefault": null,
+          "JSONTag": {
+            "Name": "age",
+            "HashKey": "0xe715b4190539215c",
+            "OmitEmpty": true
+          },
+          "FormTag": {
+            "Name": "age",
+            "HashKey": "0xe715b4190539215c"
+          },
+          "Binding": null,
+          "ValidateExpr": {
+            "Left": {
+              "Value": "$",
+              "Call": null,
+              "Inner": null
+            },
+            "Op": "<",
+            "Right": {
+              "Value": "18",
+              "Call": null,
+              "Inner": null
+            }
+          },
+          "ValidateNested": false,
+          "EnumAsString": false
+        },
+        {
+          "Name": "avatar",
+          "Type": "bytes",
+          "Annotations": [
+            {
+              "Key": "deprecated",
+              "Value": null,
+              "Position": {
+                "StartLine": 38,
+                "EndLine": 38
+              },
+              "Comments": {
+                "Above": null,
+                "Right": null
+              }
+            }
+          ],
+          "Position": {
+            "StartLine": 38,
+            "EndLine": 38
+          },
+          "Comments": {
+            "Above": null,
+            "Right": null
+          },
+          "Deprecated": true,
+          "Required": false,
+          "CompatDefault": null,
+          "JSONTag": {
+            "Name": "avatar",
+            "HashKey": "0xdfe2526362bc3224",
+            "OmitEmpty": true
+          },
+          "FormTag": {
+            "Name": "avatar",
+            "HashKey": "0xdfe2526362bc3224"
+          },
+          "Binding": null,
+          "ValidateExpr": null,
+          "ValidateNested": false,
+          "EnumAsString": false
+        },
+        {
+          "Name": "",
+          "Type": {
+            "Name": "Address"
+          },
+          "Annotations": null,
+          "Position": {
+            "StartLine": 40,
+            "EndLine": 40
+          },
+          "Comments": {
+            "Above": [
+              {
+                "Text": [
+                  "// embedded type"
+                ],
+                "Single": true,
+                "Position": {
+                  "StartLine": 39,
+                  "EndLine": 39
+                }
+              }
+            ],
+            "Right": {
+              "Text": [
+                "/* embedded */"
+              ],
+              "Single": false,
+              "Position": {
+                "StartLine": 40,
+                "EndLine": 40
+              }
+            }
+          },
+          "Deprecated": false,
+          "Required": false,
+          "CompatDefault": null,
+          "JSONTag": {
+            "Name": "",
+            "HashKey": "",
+            "OmitEmpty": false
+          },
+          "FormTag": {
+            "Name": "",
+            "HashKey": ""
+          },
+          "Binding": null,
+          "ValidateExpr": null,
+          "ValidateNested": false,
+          "EnumAsString": false
+        },
+        {
+          "Name": "payload",
+          "Type": {
+            "Name": "Payload"
+          },
+          "Annotations": null,
+          "Position": {
+            "StartLine": 41,
+            "EndLine": 41
+          },
+          "Comments": {
+            "Above": null,
+            "Right": null
+          },
+          "Deprecated": false,
+          "Required": false,
+          "CompatDefault": null,
+          "JSONTag": {
+            "Name": "payload",
+            "HashKey": "0xcfb8a9d063b5e9e5",
+            "OmitEmpty": true
+          },
+          "FormTag": {
+            "Name": "payload",
+            "HashKey": "0xcfb8a9d063b5e9e5"
+          },
+          "Binding": null,
+          "ValidateExpr": null,
+          "ValidateNested": false,
+          "EnumAsString": false
+        }
+      ],
+      "Fields": null,
+      "Position": {
+        "StartLine": 35,
+        "EndLine": 42
+      },
+      "Comments": {
+        "Above": [
+          {
+            "Text": [
+              "// ---- User definition 1 ----"
+            ],
+            "Single": true,
+            "Position": {
+              "StartLine": 30,
+              "EndLine": 30
+            }
+          },
+          {
+            "Text": [
+              "/*",
+              " * User info",
+              " */"
+            ],
+            "Single": false,
+            "Position": {
+              "StartLine": 31,
+              "EndLine": 33
+            }
+          },
+          {
+            "Text": [
+              "// ---- User definition 2 ----"
+            ],
+            "Single": true,
+            "Position": {
+              "StartLine": 34,
+              "EndLine": 34
+            }
+          }
+        ],
+        "Right": null
+      },
+      "Embedded": true,
+      "Request": false,
+      "Validate": false,
+      "Encoding": 0
+    },
+    {
+      "Name": "Address",
+      "OneOf": false,
+      "InstType": null,
+      "GenericParam": null,
+      "RawFields": [
+        {
+          "Name": "street",
+          "Type": {
+            "Name": "string"
+          },
+          "Annotations": null,
+          "Position": {
+            "StartLine": 45,
+            "EndLine": 45
+          },
+          "Comments": {
+            "Above": null,
+            "Right": null
+          },
+          "Deprecated": false,
+          "Required": false,
+          "CompatDefault": null,
+          "JSONTag": {
+            "Name": "street",
+            "HashKey": "0x4f5c4dd8e884633e",
+            "OmitEmpty": true
+          },
+          "FormTag": {
+            "Name": "street",
+            "HashKey": "0x4f5c4dd8e884633e"
+          },
+          "Binding": null,
+          "ValidateExpr": null,
+          "ValidateNested": false,
+          "EnumAsString": false
+        },
+        {
+          "Name": "city",
+          "Type": {
+            "Name": "string"
+          },
+          "Annotations": [
+            {
+              "Key": "compat_default",
+              "Value": "\"\"",
+              "Position": {
+                "StartLine": 46,
+                "EndLine": 46
+              },
+              "Comments": {
+                "Above": null,
+                "Right": null
+              }
+            }
+          ],
+          "Position": {
+            "StartLine": 46,
+            "EndLine": 46
+          },
+          "Comments": {
+            "Above": null,
+            "Right": null
+          },
+          "Deprecated": false,
+          "Required": true,
+          "CompatDefault": "",
+          "JSONTag": {
+            "Name": "city",
+            "HashKey": "0xf9dab5910f08a8a2",
+            "OmitEmpty": false
+          },
+          "FormTag": {
+            "Name": "city",
+            "HashKey": "0xf9dab5910f08a8a2"
+          },
+          "Binding": null,
+          "ValidateExpr": null,
+          "ValidateNested": false,
+          "EnumAsString": false
+        },
+        {
+          "Name": "country",
+          "Type": {
+            "Name": "string"
+          },
+          "Annotations": null,
+          "Position": {
+            "StartLine": 47,
+            "EndLine": 47
+          },
+          "Comments": {
+            "Above": null,
+            "Right": null
+          },
+          "Deprecated": false,
+          "Required": false,
+          "CompatDefault": null,
+          "JSONTag": {
+            "Name": "country",
+            "HashKey": "0x7772757416326f71",
+            "OmitEmpty": true
+          },
+          "FormTag": {
+            "Name": "country",
+            "HashKey": "0x7772757416326f71"
+          },
+          "Binding": null,
+          "ValidateExpr": null,
+          "ValidateNested": false,
+          "EnumAsString": false
+        }
+      ],
+      "Fields": null,
+      "Position": {
+        "StartLine": 44,
+        "EndLine": 48
+      },
+      "Comments": {
+        "Above": null,
+        "Right": null
+      },
+      "Embedded": false,
+      "Request": false,
+      "Validate": false,
+      "Encoding": 0
+    },
+    {
+      "Name": "Payload",
+      "OneOf": true,
+      "InstType": null,
+      "GenericParam": null,
+      "RawFields": [
+        {
+          "Name": "FieldType",
+          "Type": {
+            "Name": "PayloadType"
+          },
+          "Annotations": [
+            {
+              "Key": "enum_as_string",
+              "Value": null,
+              "Position": {
+                "StartLine": 0,
+                "EndLine": 0
+              },
+              "Comments": {
+                "Above": null,
+                "Right": null
+              }
+            }
+          ],
+          "Position": {
+            "StartLine": 0,
+            "EndLine": 0
+          },
+          "Comments": {
+            "Above": null,
+            "Right": null
+          },
+          "Deprecated": false,
+          "Required": true,
+          "CompatDefault": null,
+          "JSONTag": {
+            "Name": "FieldType",
+            "HashKey": "0x924fb655ccf9c75f",
+            "OmitEmpty": false
+          },
+          "FormTag": {
+            "Name": "FieldType",
+            "HashKey": "0x924fb655ccf9c75f"
+          },
+          "Binding": null,
+          "ValidateExpr": null,
+          "ValidateNested": false,
+          "EnumAsString": true
+        },
+        {
+          "Name": "User",
+          "Type": {
+            "Name": "User"
+          },
+          "Annotations": null,
+          "Position": {
+            "StartLine": 51,
+            "EndLine": 51
+          },
+          "Comments": {
+            "Above": null,
+            "Right": null
+          },
+          "Deprecated": false,
+          "Required": false,
+          "CompatDefault": null,
+          "JSONTag": {
+            "Name": "User",
+            "HashKey": "0xa48f81f001b893d2",
+            "OmitEmpty": true
+          },
+          "FormTag": {
+            "Name": "User",
+            "HashKey": "0xa48f81f001b893d2"
+          },
+          "Binding": null,
+          "ValidateExpr": null,
+          "ValidateNested": false,
+          "EnumAsString": false
+        },
+        {
+          "Name": "Address",
+          "Type": {
+            "Name": "Address"
+          },
+          "Annotations": null,
+          "Position": {
+            "StartLine": 52,
+            "EndLine": 52
+          },
+          "Comments": {
+            "Above": null,
+            "Right": null
+          },
+          "Deprecated": false,
+          "Required": false,
+          "CompatDefault": null,
+          "JSONTag": {
+            "Name": "Address",
+            "HashKey": "0xfcdd8e672c75b713",
+            "OmitEmpty": true
+          },
+          "FormTag": {
+            "Name": "Address",
+            "HashKey": "0xfcdd8e672c75b713"
+          },
+          "Binding": null,
+          "ValidateExpr": null,
+          "ValidateNested": false,
+          "EnumAsString": false
+        }
+      ],
+      "Fields": null,
+      "Position": {
+        "StartLine": 50,
+        "EndLine": 53
+      },
+      "Comments": {
+        "Above": null,
+        "Right": null
+      },
+      "Embedded": false,
+      "Request": false,
+      "Validate": false,
+      "Encoding": 0
+    },
+    {
+      "Name": "Response",
+      "OneOf": false,
+      "InstType": null,
+      "GenericParam": "T",
+      "RawFields": [
+        {
+          "Name": "errno",
+          "Type": {
+            "Name": "ErrCode"
+          },
+          "Annotations": [
+            {
+              "Key": "enum_as_string",
+              "Value": null,
+              "Position": {
+                "StartLine": 57,
+                "EndLine": 57
+              },
+              "Comments": {
+                "Above": null,
+                "Right": null
+              }
+            }
+          ],
+          "Position": {
+            "StartLine": 57,
+            "EndLine": 57
+          },
+          "Comments": {
+            "Above": null,
+            "Right": null
+          },
+          "Deprecated": false,
+          "Required": false,
+          "CompatDefault": null,
+          "JSONTag": {
+            "Name": "errno",
+            "HashKey": "0x9f713ddd75d2f3ab",
+            "OmitEmpty": true
+          },
+          "FormTag": {
+            "Name": "errno",
+            "HashKey": "0x9f713ddd75d2f3ab"
+          },
+          "Binding": null,
+          "ValidateExpr": null,
+          "ValidateNested": false,
+          "EnumAsString": true
+        },
+        {
+          "Name": "errmsg",
+          "Type": {
+            "Name": "string"
+          },
+          "Annotations": null,
+          "Position": {
+            "StartLine": 58,
+            "EndLine": 58
+          },
+          "Comments": {
+            "Above": null,
+            "Right": null
+          },
+          "Deprecated": false,
+          "Required": false,
+          "CompatDefault": null,
+          "JSONTag": {
+            "Name": "errmsg",
+            "HashKey": "0xb91eb24f31be5e25",
+            "OmitEmpty": true
+          },
+          "FormTag": {
+            "Name": "errmsg",
+            "HashKey": "0xb91eb24f31be5e25"
+          },
+          "Binding": null,
+          "ValidateExpr": null,
+          "ValidateNested": false,
+          "EnumAsString": false
+        },
+        {
+          "Name": "data",
+          "Type": {
+            "Name": "T"
+          },
+          "Annotations": null,
+          "Position": {
+            "StartLine": 59,
+            "EndLine": 59
+          },
+          "Comments": {
+            "Above": null,
+            "Right": null
+          },
+          "Deprecated": false,
+          "Required": false,
+          "CompatDefault": null,
+          "JSONTag": {
+            "Name": "data",
+            "HashKey": "0x855b556730a34a05",
+            "OmitEmpty": true
+          },
+          "FormTag": {
+            "Name": "data",
+            "HashKey": "0x855b556730a34a05"
+          },
+          "Binding": null,
+          "ValidateExpr": null,
+          "ValidateNested": false,
+          "EnumAsString": false
+        }
+      ],
+      "Fields": null,
+      "Position": {
+        "StartLine": 56,
+        "EndLine": 60
+      },
+      "Comments": {
+        "Above": [
+          {
+            "Text": [
+              "// Generic type definition"
+            ],
+            "Single": true,
+            "Position": {
+              "StartLine": 55,
+              "EndLine": 55
+            }
+          }
+        ],
+        "Right": null
+      },
+      "Embedded": false,
+      "Request": false,
+      "Validate": false,
+      "Encoding": 0
+    },
+    {
+      "Name": "UserResp",
+      "OneOf": false,
+      "InstType": {
+        "BaseName": "Response",
+        "GenericType": {
+          "Item": {
+            "Name": "User"
+          }
+        }
+      },
+      "GenericParam": null,
+      "RawFields": null,
+      "Fields": null,
+      "Position": {
+        "StartLine": 79,
+        "EndLine": 79
+      },
+      "Comments": {
+        "Above": [
+          {
+            "Text": [
+              "// ---- type re-definition ----"
+            ],
+            "Single": true,
+            "Position": {
+              "StartLine": 78,
+              "EndLine": 78
+            }
+          }
+        ],
+        "Right": null
+      },
+      "Embedded": false,
+      "Request": false,
+      "Validate": false,
+      "Encoding": 0
+    }
+  ],
+  "RPCs": [
+    {
+      "SSE": false,
+      "Name": "GetUser",
+      "Request": "UserReq",
+      "Response": {
+        "Name": "UserResp"
+      },
+      "Annotations": [
+        {
+          "Key": "path",
+          "Value": "\"/user\"",
+          "Position": {
+            "StartLine": 65,
+            "EndLine": 65
+          },
+          "Comments": {
+            "Above": [
+              {
+                "Text": [
+                  "// request path"
+                ],
+                "Single": true,
+                "Position": {
+                  "StartLine": 64,
+                  "EndLine": 64
+                }
+              }
+            ],
+            "Right": null
+          }
+        },
+        {
+          "Key": "method",
+          "Value": "\"GET\"",
+          "Position": {
+            "StartLine": 66,
+            "EndLine": 66
+          },
+          "Comments": {
+            "Above": null,
+            "Right": null
+          }
+        },
+        {
+          "Key": "contentType",
+          "Value": "\"form\"",
+          "Position": {
+            "StartLine": 67,
+            "EndLine": 67
+          },
+          "Comments": {
+            "Above": null,
+            "Right": null
+          }
+        },
+        {
+          "Key": "connTimeout",
+          "Value": "100",
+          "Position": {
+            "StartLine": 70,
+            "EndLine": 70
+          },
+          "Comments": {
+            "Above": [
+              {
+                "Text": [
+                  "// timeouts"
+                ],
+                "Single": true,
+                "Position": {
+                  "StartLine": 69,
+                  "EndLine": 69
+                }
+              }
+            ],
+            "Right": null
+          }
+        },
+        {
+          "Key": "readTimeout",
+          "Value": "100",
+          "Position": {
+            "StartLine": 71,
+            "EndLine": 71
+          },
+          "Comments": {
+            "Above": null,
+            "Right": null
+          }
+        },
+        {
+          "Key": "writeTimeout",
+          "Value": "100",
+          "Position": {
+            "StartLine": 72,
+            "EndLine": 72
+          },
+          "Comments": {
+            "Above": null,
+            "Right": null
+          }
+        },
+        {
+          "Key": "resp.go.type",
+          "Value": "\"*string\"",
+          "Position": {
+            "StartLine": 75,
+            "EndLine": 75
+          },
+          "Comments": {
+            "Above": [
+              {
+                "Text": [
+                  "// response type"
+                ],
+                "Single": true,
+                "Position": {
+                  "StartLine": 74,
+                  "EndLine": 74
+                }
+              }
+            ],
+            "Right": null
+          }
+        }
+      ],
+      "Position": {
+        "StartLine": 63,
+        "EndLine": 76
+      },
+      "Comments": {
+        "Above": [
+          {
+            "Text": [
+              "// ---- RPC definitions ----"
+            ],
+            "Single": true,
+            "Position": {
+              "StartLine": 62,
+              "EndLine": 62
+            }
+          }
+        ],
+        "Right": null
+      },
+      "Path": "/user",
+      "Method": "GET",
+      "ContentType": "application/x-www-form-urlencoded",
+      "ConnTimeout": 100,
+      "ReadTimeout": 100,
+      "WriteTimeout": 100,
+      "PathSegments": null,
+      "PathParams": null
+    }
+  ],
+  "EnumTypes": {
+    "ErrCode": 1,
+    "PayloadType": 2
+  },
+  "TypeTypes": {
+    "Address": 2,
+    "Payload": 3,
+    "Response": 4,
+    "User": 1,
+    "UserReq": 0,
+    "UserResp": 5
+  },
+  "UserTypes": {
+    "Address": {},
+    "ErrCode": {},
+    "Payload": {},
+    "User": {},
+    "UserReq": {},
+    "UserResp": {}
+  }
+}

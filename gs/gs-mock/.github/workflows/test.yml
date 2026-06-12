@@ -1,0 +1,36 @@
+name: Run tests and upload coverage
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: Run tests and collect coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+
+      - name: Print All environment variables
+        run: env | sort
+
+      - name: Set up Go
+        uses: actions/setup-go@v6.3.0
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Run tests
+        run: |
+          go test -gcflags="all=-N -l" -count=1 -coverprofile=coverage.tmp ./...
+          grep -Ev "gsmock/mocker.go" coverage.tmp > coverage.txt
+          rm -rf coverage.tmp
+
+      - name: Upload results to Codecov
+        uses: codecov/codecov-action@v6.0.0
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: go-spring/gs-mock

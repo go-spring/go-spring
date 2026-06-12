@@ -1,0 +1,58 @@
+// user.idl
+
+const int MAX_NAME_LEN = 64
+const int MAX_EMAIL_LEN = 128
+
+// User level
+enum UserLevel {
+    Normal = 0
+    VIP = 1
+}
+
+// User
+type User {
+    // User ID
+    string id (validate="len($) > 0 && len($) <= 64")
+    // User name
+    string name (validate="len($) > 0 && len($) <= 64")
+    // User email
+    string email (validate="len($) > 0 && len($) <= 128 && Email($)")
+    // User level
+    UserLevel level
+}
+
+// Request for registering a new user
+type RegisterUserReq {
+    // User ID
+    string id (validate="len($) > 0 && len($) <= 64")
+    // User name
+    string name (validate="len($) > 0 && len($) <= 64")
+    // User email
+    string email (validate="len($) > 0 && len($) <= 128 && Email($)")
+}
+
+// Response for user registration
+type RegisterUserResp Response<User?>
+
+// Request for upgrading a user
+type UpgradeUserReq {
+    // User ID
+    string id (path="id", validate="len($) > 0 && len($) <= 64")
+}
+
+// Response for user upgrade
+type UpgradeUserResp Response<User?>
+
+// Register a new user API endpoint
+rpc RegisterUser(RegisterUserReq) RegisterUserResp {
+    method="POST"
+    path="/users"
+    summary="Register a new user"
+}
+
+// Upgrade a user to VIP level API endpoint
+rpc UpgradeUser(UpgradeUserReq) UpgradeUserResp {
+    method="POST"
+    path="/users/{id}/upgrade"
+    summary="Upgrade a user to VIP level"
+}
