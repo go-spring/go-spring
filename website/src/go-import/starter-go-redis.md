@@ -6,4 +6,4 @@ Go-Spring Go Redis starter module.
 go get go-spring.org/starter-go-redis@latest
 ```
 
-Repository: https://github.com/go-spring/starter-go-redis
+Repository: https://github.com/go-spring/go-spring/tree/master/starter/starter-go-redis

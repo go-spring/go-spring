@@ -6,4 +6,4 @@ Go-Spring core framework module.
 go get go-spring.org/spring-core@latest
 ```
 
-Repository: https://github.com/go-spring/spring-core
+Repository: https://github.com/go-spring/go-spring/tree/master/spring

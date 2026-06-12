@@ -1,30 +1,34 @@
 import { defineConfig } from 'vitepress'
 
+const repoRoot = 'https://github.com/go-spring/go-spring'
+
 const goImportModules: Record<string, string> = {
-  'spring-core': 'https://github.com/go-spring/spring-core',
-  log: 'https://github.com/go-spring/log',
-  stdlib: 'https://github.com/go-spring/stdlib',
-  'starter-gorm-mysql': 'https://github.com/go-spring/starter-gorm-mysql',
-  'starter-go-redis': 'https://github.com/go-spring/starter-go-redis',
-  'starter-redigo': 'https://github.com/go-spring/starter-redigo',
-  'starter-pprof': 'https://github.com/go-spring/starter-pprof'
+  'spring-core': 'spring',
+  log: 'log',
+  stdlib: 'stdlib',
+  'starter-gorm-mysql': 'starter/starter-gorm-mysql',
+  'starter-go-redis': 'starter/starter-go-redis',
+  'starter-redigo': 'starter/starter-redigo',
+  'starter-pprof': 'starter/starter-pprof'
 }
 
 const goImportHeadTags = (relativePath: string) => {
-  const moduleName = relativePath.replace(/\.md$/, '')
-  const repoRoot = goImportModules[moduleName]
+  const moduleName = relativePath.replace(/^go-import\//, '').replace(/\.md$/, '')
+  const moduleSubdir = goImportModules[moduleName]
 
-  if (!repoRoot) {
+  if (!moduleSubdir) {
     return []
   }
 
   const importPrefix = `go-spring.org/${moduleName}`
+  const sourceDir = `${repoRoot}/tree/master/${moduleSubdir}`
+  const sourceFile = `${repoRoot}/blob/master/${moduleSubdir}{/dir}/{file}#L{line}`
 
   return [
-    ['meta', { name: 'go-import', content: `${importPrefix} git ${repoRoot}` }],
+    ['meta', { name: 'go-import', content: `${importPrefix} git ${repoRoot} ${moduleSubdir}` }],
     ['meta', {
       name: 'go-source',
-      content: `${importPrefix} ${repoRoot} ${repoRoot}/tree/main{/dir} ${repoRoot}/blob/main{/dir}/{file}#L{line}`
+      content: `${importPrefix} ${sourceDir} ${sourceDir}{/dir} ${sourceFile}`
     }]
   ]
 }
@@ -143,8 +147,17 @@ export default defineConfig({
     pageData.frontmatter.head ??= []
     pageData.frontmatter.head.push(...goImportHeadTags(pageData.relativePath))
   },
-  outDir: '../docs',
+  outDir: '../../docs',
   cleanUrls: true,
+  rewrites: {
+    'go-import/spring-core.md': 'spring-core.md',
+    'go-import/log.md': 'log.md',
+    'go-import/stdlib.md': 'stdlib.md',
+    'go-import/starter-gorm-mysql.md': 'starter-gorm-mysql.md',
+    'go-import/starter-go-redis.md': 'starter-go-redis.md',
+    'go-import/starter-redigo.md': 'starter-redigo.md',
+    'go-import/starter-pprof.md': 'starter-pprof.md'
+  },
   themeConfig: {
     logo: '/logo.png',
     socialLinks: [

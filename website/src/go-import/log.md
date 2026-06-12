@@ -6,4 +6,4 @@ Go-Spring logging module.
 go get go-spring.org/log@latest
 ```
 
-Repository: https://github.com/go-spring/log
+Repository: https://github.com/go-spring/go-spring/tree/master/log

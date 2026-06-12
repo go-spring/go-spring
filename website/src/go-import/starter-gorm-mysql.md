@@ -6,4 +6,4 @@ Go-Spring GORM MySQL starter module.
 go get go-spring.org/starter-gorm-mysql@latest
 ```
 
-Repository: https://github.com/go-spring/starter-gorm-mysql
+Repository: https://github.com/go-spring/go-spring/tree/master/starter/starter-gorm-mysql

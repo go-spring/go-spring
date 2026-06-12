@@ -6,4 +6,4 @@ Go-Spring Redigo starter module.
 go get go-spring.org/starter-redigo@latest
 ```
 
-Repository: https://github.com/go-spring/starter-redigo
+Repository: https://github.com/go-spring/go-spring/tree/master/starter/starter-redigo
