@@ -4,12 +4,12 @@ go 1.26
 
 require (
 	github.com/expr-lang/expr v1.17.8
-	go-spring.org/gs-mock v0.0.8
-	go-spring.org/log v0.1.1
-	go-spring.org/stdlib v0.1.3
 	github.com/magiconair/properties v1.8.10
 	github.com/pelletier/go-toml v1.9.5
 	github.com/spf13/cast v1.10.0
+	go-spring.org/gs-mock v0.0.9
+	go-spring.org/log v0.1.1
+	go-spring.org/stdlib v0.1.3
 	gopkg.in/yaml.v2 v2.4.0
 )
 
