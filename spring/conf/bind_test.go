@@ -24,11 +24,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/spf13/cast"
 	"go-spring.org/spring/conf"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
 	"go-spring.org/stdlib/testing/assert"
-	"github.com/spf13/cast"
 )
 
 func init() {

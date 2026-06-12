@@ -42,7 +42,7 @@ import (
 var stdOut io.Writer = os.Stdout
 
 // ToolVersion specifies the version of this mock generation tool.
-const ToolVersion = "v0.0.8"
+const ToolVersion = "v0.0.9"
 
 // flags holds the command-line flag values for output file and interface selection.
 var flags struct {

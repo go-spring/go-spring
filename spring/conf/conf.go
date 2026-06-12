@@ -20,11 +20,11 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/spf13/cast"
 	"go-spring.org/spring/conf/provider"
 	"go-spring.org/spring/conf/reader"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
-	"github.com/spf13/cast"
 )
 
 var converters = map[reflect.Type]any{}

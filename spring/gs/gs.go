@@ -96,7 +96,7 @@ import (
 
 const (
 	Version = "go-spring@v1.3.0"
-	Website = "https://github.com/go-spring/"
+	Website = "https://go-spring.org/"
 )
 
 // BeanID represents a selector for a bean.
