@@ -17,4 +17,4 @@
 package version
 
 // ToolVersion defines the current version of gs-http-gen tool.
-const ToolVersion = "v0.0.3"
+const ToolVersion = "v0.0.4"

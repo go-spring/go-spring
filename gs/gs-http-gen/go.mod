@@ -1,11 +1,11 @@
 module go-spring.org/gs-http-gen
 
-go 1.25
+go 1.26
 
 require (
 	github.com/antlr4-go/antlr/v4 v4.13.1
-	go-spring.org/stdlib v0.1.2
 	github.com/spf13/cobra v1.9.1
+	go-spring.org/stdlib v0.1.3
 )
 
 require (
