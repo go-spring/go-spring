@@ -1,0 +1,24 @@
+// ==================================================
+// go-spring standard contract v1
+// ==================================================
+
+
+// ----------------------
+// Error code
+// ----------------------
+
+enum ErrorCode {
+    SUCCESS = 0 ( errmsg="success" )
+}
+
+
+// ----------------------
+// Standard response
+// ----------------------
+
+type Response<T> {
+    required ErrorCode code
+    string message
+    string requestId
+    T data
+}

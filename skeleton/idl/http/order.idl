@@ -1,0 +1,66 @@
+// order.idl
+
+const float MIN_AMOUNT = 0.01
+const float MAX_AMOUNT = 1000000.0
+
+// Order status
+enum OrderStatus {
+    Pending = 0
+    Paid = 1
+    Shipped = 2
+}
+
+// Order
+type Order {
+    string id (validate="len($) > 0 && len($) <= 64")
+    string user_id (validate="len($) > 0 && len($) <= 64")
+    float amount (validate="$ >= MIN_AMOUNT && $ <= MAX_AMOUNT")
+    OrderStatus status
+}
+
+// Request for creating an order
+type CreateOrderReq {
+    string id (validate="len($) > 0 && len($) <= 64")
+    string user_id (validate="len($) > 0 && len($) <= 64")
+    float amount (validate="$ >= MIN_AMOUNT && $ <= MAX_AMOUNT")
+}
+
+// Response for creating an order
+type CreateOrderResp Response<Order?>
+
+// Request for paying an order
+type PayOrderReq {
+    string id (path="id", validate="len($) > 0 && len($) <= 64")
+}
+
+// Response for paying an order
+type PayOrderResp Response<Order?>
+
+// Request for shipping an order
+type ShipOrderReq {
+    string id (path="id", validate="len($) > 0 && len($) <= 64")
+}
+
+// Response for shipping an order
+type ShipOrderResp Response<Order?>
+
+// Create order API endpoint
+rpc CreateOrder(CreateOrderReq) CreateOrderResp {
+    method="POST"
+    path="/orders"
+    summary="Create a new order"
+}
+
+// Pay order API endpoint
+rpc PayOrder(PayOrderReq) PayOrderResp {
+    method="POST"
+    path="/orders/{id}/pay"
+    summary="Pay for an existing order"
+}
+
+// Ship order API endpoint
+rpc ShipOrder(ShipOrderReq) ShipOrderResp {
+    method="POST"
+    path="/orders/{id}/ship"
+    summary="Ship an existing order"
+}

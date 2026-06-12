@@ -1,0 +1,54 @@
+db:
+  - username: root
+    password: 123456
+    url: 1.1.1.1
+    port: 3306
+    db: db1
+  - username: root
+    password: 123456
+    url: 1.1.1.1
+    port: 3306
+    db: db2
+
+tagged:
+  db:
+    - conn:
+        username: root
+        password: 123456
+        url: 1.1.1.1
+        port: 3306
+      db: db1
+    - conn:
+        username: root
+        password: 123456
+        url: 1.1.1.1
+        port: 3306
+      db: db2
+
+prefix:
+  db:
+    - username: root
+      password: 123456
+      url: 1.1.1.1
+      port: 3306
+      db: db1
+    - username: root
+      password: 123456
+      url: 1.1.1.1
+      port: 3306
+      db: db2
+
+  tagged:
+    db:
+      - conn:
+          username: root
+          password: 123456
+          url: 1.1.1.1
+          port: 3306
+        db: db1
+      - conn:
+          username: root
+          password: 123456
+          url: 1.1.1.1
+          port: 3306
+        db: db2

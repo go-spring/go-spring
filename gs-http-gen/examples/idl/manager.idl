@@ -1,0 +1,240 @@
+// ==================================================
+// Manager Service - RPC IDL
+// Standard CRUD-style management service
+// ==================================================
+
+// ----------------------
+// Constant definitions
+// ----------------------
+
+const int    MIN_AGE = 18
+const int    MAX_AGE = 150
+const int    DEFAULT_PAGE = 1
+const int    DEFAULT_PAGE_SIZE = 20
+const int    MAX_PAGE_SIZE = 100
+const float  SALARY_MIN = 0.0
+const float  SALARY_MAX = 1000000.0
+
+// ----------------------
+// Enum definitions
+// ----------------------
+
+// Standard error codes
+enum ErrCode {
+    ERR_OK = 0
+    PARAM_ERROR = 1003 ( errmsg="param error" )
+    NOT_FOUND = 4004
+    PERMISSION_DENIED = 4003
+    INTERNAL_ERROR = 5000
+}
+
+// Manager seniority level
+enum ManagerLevel {
+    JUNIOR = 1
+    MIDDLE = 2
+    SENIOR = 3
+}
+
+// Company departments
+enum Department {
+    ENGINEERING = 1
+    MARKETING = 2
+    SALES = 3
+    HR = 4
+    FINANCE = 5
+}
+
+// ----------------------
+// Common / Core types
+// ----------------------
+
+// Generic response wrapper
+type Response<T> {
+    required ErrCode code
+    required string message
+    string requestId
+    T data
+}
+
+// Pagination request
+type PageReq {
+    required int page (
+        query="page"
+        validate="$ >= 1"
+    )
+    required int size (
+        query="size"
+        validate="$ >= 1 && $ <= MAX_PAGE_SIZE"
+    )
+}
+
+// Pagination response
+type PageResp<T> {
+    int total
+    int page
+    int size
+    list<T> items
+}
+
+// ----------------------
+// Address & contact info
+// ----------------------
+
+type Address {
+    string city
+    string street
+    string postalCode
+}
+
+type ContactInfo {
+    required string email (validate="Email($)")
+    string phone
+    Address address
+}
+
+// ----------------------
+// Manager domain model
+// ----------------------
+
+type Manager {
+    string id
+    string name (validate="len($) > 0 && len($) <= 64")
+    int age (validate="$ >= MIN_AGE && $ <= MAX_AGE")
+    bool vip
+    float salary (validate="$ >= SALARY_MIN && $ <= SALARY_MAX")
+
+    ManagerLevel level (enum_as_string)
+    Department department
+
+    // Primary contact information
+    ContactInfo primaryContact
+
+    // Additional contacts
+    list<ContactInfo> contacts
+
+    // Lightweight extensibility fields
+    map<string,string> tags
+    map<string,list<string>> labels
+}
+
+// ----------------------
+// Request types
+// ----------------------
+
+// Query manager by ID
+type GetManagerReq {
+    required string id (path="id")
+}
+
+// Create manager
+type CreateManagerReq {
+    required string name (validate="len($) > 0 && len($) <= 64")
+    required int age (validate="$ >= MIN_AGE && $ <= MAX_AGE")
+    bool vip
+    float salary (validate="$ >= SALARY_MIN && $ <= SALARY_MAX")
+    ManagerLevel level (enum_as_string)
+    Department department
+    ContactInfo primaryContact
+}
+
+// Update manager
+type UpdateManagerReq {
+    required string id (path="id")
+    string name
+    int age (validate="$ >= MIN_AGE && $ <= MAX_AGE")
+    bool vip (json=",non-omitempty")
+    float salary (validate="$ >= SALARY_MIN && $ <= SALARY_MAX")
+    ManagerLevel level
+    Department department
+    ContactInfo primaryContact
+}
+
+// List managers with filters
+type ListManagersReq {
+    PageReq
+
+    list<string> keyword (
+        query="keyword"
+        validate="len($) <= 5"
+    )
+
+    Department department (query="department")
+    ManagerLevel minLevel (query="minLevel")
+    bool vip (query="vip")
+}
+
+// ----------------------
+// Response aliases
+// ----------------------
+
+type GetManagerResp Response<Manager>
+type CreateManagerResp Response<Manager>
+type UpdateManagerResp Response<Manager>
+type DeleteManagerResp Response<bool>
+
+type ManagersPageData PageResp<Manager>
+type ListManagersResp Response<ManagersPageData>
+
+// ----------------------
+// RPC definitions
+// ----------------------
+
+// Create a new manager
+rpc CreateManager(CreateManagerReq) CreateManagerResp {
+    method="POST"
+    path="/managers"
+    contentType="json"
+    summary="Create a new manager"
+
+    connTimeout=100
+    readTimeout=100
+    writeTimeout=100
+}
+
+// Get manager by ID
+rpc GetManager(GetManagerReq) GetManagerResp {
+    method="GET"
+    path="/managers/{id}"
+    contentType="form"
+    summary="Get manager by ID"
+
+    connTimeout=100
+    readTimeout=100
+    writeTimeout=100
+}
+
+// Update manager
+rpc UpdateManager(UpdateManagerReq) UpdateManagerResp {
+    method="PUT"
+    path="/managers/{id}"
+    contentType="json"
+    summary="Update manager information"
+
+    connTimeout=100
+    readTimeout=100
+    writeTimeout=100
+}
+
+// Delete manager
+rpc DeleteManager(GetManagerReq) DeleteManagerResp {
+    method="DELETE"
+    path="/managers/{id}"
+    contentType="form"
+    summary="Delete manager"
+
+    connTimeout=100
+    readTimeout=100
+    writeTimeout=100
+}
+
+// List managers with pagination
+rpc ListManagers(ListManagersReq) ListManagersResp {
+    method="GET"
+    path="/managers"
+    contentType="form"
+    summary="List managers with pagination and filters"
+
+    connTimeout=100
+    readTimeout=100
+    writeTimeout=100
+}
