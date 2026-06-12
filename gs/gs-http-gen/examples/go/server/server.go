@@ -24,7 +24,6 @@ import (
 	"examples/proto"
 
 	"go-spring.org/stdlib/httpsvr"
-	"go-spring.org/stdlib/ptrutil"
 )
 
 var _ proto.ManagerService = &ManagerServer{}
@@ -51,10 +50,11 @@ func (m *ManagerServer) Assistant(ctx context.Context, req *proto.AssistantReq, 
 }
 
 func (m *ManagerServer) GetManager(ctx context.Context, req *proto.GetManagerReq) *proto.GetManagerResp {
+	level := proto.ManagerLevelAsString(proto.ManagerLevel_JUNIOR)
 	return &proto.GetManagerResp{
 		Data: &proto.Manager{
 			Name:  new("Jim"),
-			Level: ptrutil.New(proto.ManagerLevelAsString(proto.ManagerLevel_JUNIOR)),
+			Level: &level,
 		},
 	}
 }
