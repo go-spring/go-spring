@@ -3,7 +3,7 @@ module github.com/go-spring/starter-gorm-mysql
 go 1.26
 
 require (
-	github.com/go-spring/spring-core v1.3.0
+	go-spring.org/spring v1.3.0
 	gorm.io/driver/mysql v1.6.0
 	gorm.io/gorm v1.31.1
 )

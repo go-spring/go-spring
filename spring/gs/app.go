@@ -26,9 +26,9 @@ import (
 	"testing"
 
 	"github.com/go-spring/log"
-	"github.com/go-spring/spring-core/gs/internal/gs"
-	"github.com/go-spring/spring-core/gs/internal/gs_app"
-	"github.com/go-spring/spring-core/gs/internal/gs_bean"
+	"go-spring.org/spring/gs/internal/gs"
+	"go-spring.org/spring/gs/internal/gs_app"
+	"go-spring.org/spring/gs/internal/gs_bean"
 	"github.com/go-spring/stdlib/errutil"
 	"github.com/go-spring/stdlib/goutil"
 )

@@ -33,7 +33,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/go-spring/spring-core/gs/internal/gs"
+	"go-spring.org/spring/gs/internal/gs"
 	"github.com/go-spring/stdlib/errutil"
 	"github.com/go-spring/stdlib/funcutil"
 )

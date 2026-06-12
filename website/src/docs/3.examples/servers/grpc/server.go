@@ -21,7 +21,7 @@ import (
 	"log"
 	"net"
 
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 	"google.golang.org/grpc"
 )
 

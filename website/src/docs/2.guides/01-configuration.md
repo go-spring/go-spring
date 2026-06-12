@@ -134,7 +134,7 @@ type Config struct {
 ```go
 import (
 	"strconv"
-	"github.com/go-spring/spring-core/conf"
+	"go-spring.org/spring/conf"
 )
 
 // 自定义状态枚举类型
@@ -251,8 +251,8 @@ database.connections.slave.port=5433
 package main
 
 import (
-	"github.com/go-spring/spring-core/conf"
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/conf"
+	"go-spring.org/spring/gs"
 	"github.com/go-spring/stdlib/flatten"
 )
 
@@ -356,7 +356,7 @@ expr 库支持的语法非常丰富，这里只列了最常用的几种。
 **完整示例**：
 
 ```go
-import "github.com/go-spring/spring-core/conf"
+import "go-spring.org/spring/conf"
 
 // 在 init() 中注册自定义函数
 func init() {
@@ -426,7 +426,7 @@ Go-Spring 开箱支持四种最常见的配置格式：
 
 ```go
 import (
-	"github.com/go-spring/spring-core/conf"
+	"go-spring.org/spring/conf"
 )
 
 // 实现 INI 格式解析
@@ -479,7 +479,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/go-spring/spring-core/conf"
+	"go-spring.org/spring/conf"
 	"github.com/go-spring/stdlib/flatten"
 )
 
@@ -848,7 +848,7 @@ config.file=config/${env}.properties
 只需要把你的字段类型声明为 `gs.Dync[T]` 泛型就可以了：
 
 ```go
-import "github.com/go-spring/spring-core/gs"
+import "go-spring.org/spring/gs"
 
 type AppConfig struct {
 	// 静态配置，启动后就不变了

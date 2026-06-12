@@ -20,8 +20,8 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/go-spring/spring-core/conf/provider"
-	"github.com/go-spring/spring-core/conf/reader"
+	"go-spring.org/spring/conf/provider"
+	"go-spring.org/spring/conf/reader"
 	"github.com/go-spring/stdlib/errutil"
 	"github.com/go-spring/stdlib/flatten"
 	"github.com/spf13/cast"

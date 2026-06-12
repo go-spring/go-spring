@@ -25,7 +25,7 @@ import (
 	"bookman/internal/sdk/book_sdk"
 
 	"github.com/go-spring/log"
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 )
 
 var TagBookService = log.RegisterBizTag("book", "service")

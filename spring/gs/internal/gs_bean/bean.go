@@ -24,9 +24,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/go-spring/spring-core/gs/internal/gs"
-	"github.com/go-spring/spring-core/gs/internal/gs_arg"
-	"github.com/go-spring/spring-core/gs/internal/gs_cond"
+	"go-spring.org/spring/gs/internal/gs"
+	"go-spring.org/spring/gs/internal/gs_arg"
+	"go-spring.org/spring/gs/internal/gs_cond"
 	"github.com/go-spring/stdlib/typeutil"
 )
 

@@ -35,8 +35,8 @@ github.com/go-spring/gs-mock v0.0.8 h1:/TyjXXtH8nNYEX/tvPzy8yqm8peJip+upUN2z/7c0
 github.com/go-spring/gs-mock v0.0.8/go.mod h1:9Obso23B84rIQXLVLwC53xc+BxZ78Kf/ypD1GrT8KzM=
 github.com/go-spring/log v0.1.0 h1:df5Ppmcph+1QONlak+HJSEsx8dC4YtWg8YyCJZhPJ48=
 github.com/go-spring/log v0.1.0/go.mod h1:Usyng3RAA5JcykNTu+RetWm8v9CTTOsb4QNRN2I3jn0=
-github.com/go-spring/spring-core v1.3.0 h1:CWzA468PAp/2CqC9q1pm2I92SyCP3kdmexcQ2PJKKiY=
-github.com/go-spring/spring-core v1.3.0/go.mod h1:zwNmSNLr24JcoyujuqYnuY88RmHwNAKRuwupIRXUI/s=
+go-spring.org/spring v1.3.0 h1:CWzA468PAp/2CqC9q1pm2I92SyCP3kdmexcQ2PJKKiY=
+go-spring.org/spring v1.3.0/go.mod h1:zwNmSNLr24JcoyujuqYnuY88RmHwNAKRuwupIRXUI/s=
 github.com/go-spring/stdlib v0.1.2 h1:2Zp2+oW4q8To19JJV/OW6ofCIrjHe3CeWmicXg5/kFo=
 github.com/go-spring/stdlib v0.1.2/go.mod h1:G0tJ1nuGGGb1HdV5VF9eJ4mRjILuZB4A0VucDfxCiC0=
 github.com/goccy/go-json v0.10.6 h1:p8HrPJzOakx/mn/bQtjgNjdTcN+/S6FcG2CTtQOrHVU=

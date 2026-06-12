@@ -21,7 +21,7 @@ Go-Spring 提供了两种常用的启动方式：
 package main
 
 import (
-    "github.com/go-spring/spring-core/gs"
+    "go-spring.org/spring/gs"
 )
 
 func main() {
@@ -66,7 +66,7 @@ import (
     "os/signal"
     "syscall"
 
-    "github.com/go-spring/spring-core/gs"
+    "go-spring.org/spring/gs"
 )
 
 func main() {

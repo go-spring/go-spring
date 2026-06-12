@@ -16,7 +16,7 @@ package main
 import (
 	"net/http"
 
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 )
 
 func init() {
@@ -92,7 +92,7 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 )
 
 type UserController struct{}
@@ -148,7 +148,7 @@ import (
 	"log"
 
 	"github.com/gin-gonic/gin"
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 )
 
 func main() {
@@ -184,7 +184,7 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 	"github.com/gorilla/mux"
 )
 
@@ -227,7 +227,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 )
 
 // logging is standard HTTP middleware used to record request logs.

@@ -17,7 +17,7 @@
 package main
 
 import (
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 	_ "github.com/go-spring/starter-pprof"
 )
 

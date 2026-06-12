@@ -27,7 +27,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 
 	_ "bookman/internal/app"
 	_ "bookman/internal/biz"

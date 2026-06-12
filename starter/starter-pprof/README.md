@@ -34,7 +34,7 @@ Import the starter for its side effects and run your Go-Spring application:
 package main
 
 import (
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 	_ "github.com/go-spring/starter-pprof"
 )
 

@@ -21,7 +21,7 @@ import (
 
 	"bookman/internal/dao/book_dao"
 
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 	"github.com/go-spring/stdlib/testing/assert"
 	"github.com/go-spring/stdlib/testing/require"
 )

@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/go-spring/log"
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 )
 
 func main() {

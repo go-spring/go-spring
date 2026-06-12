@@ -1,16 +1,16 @@
 # Go-Spring
 
 <div>
-   <img src="https://img.shields.io/github/license/go-spring/spring-core" alt="license"/>
-   <img src="https://img.shields.io/github/go-mod/go-version/go-spring/spring-core" alt="go-version"/>
-   <img src="https://img.shields.io/github/v/release/go-spring/spring-core?include_prereleases" alt="release"/>
-   <a href="https://codecov.io/gh/go-spring/spring-core" >
-      <img src="https://codecov.io/gh/go-spring/spring-core/branch/main/graph/badge.svg?token=SX7CV1T0O8" alt="test-coverage"/>
+   <img src="https://img.shields.io/github/license/go-spring/spring" alt="license"/>
+   <img src="https://img.shields.io/github/go-mod/go-version/go-spring/spring" alt="go-version"/>
+   <img src="https://img.shields.io/github/v/release/go-spring/spring?include_prereleases" alt="release"/>
+   <a href="https://codecov.io/gh/go-spring/spring" >
+      <img src="https://codecov.io/gh/go-spring/spring/branch/main/graph/badge.svg?token=SX7CV1T0O8" alt="test-coverage"/>
    </a>
-   <a href="https://goreportcard.com/report/github.com/go-spring/spring-core">
-      <img src="https://goreportcard.com/badge/github.com/go-spring/spring-core" alt="Go Report Card"/>
+   <a href="https://goreportcard.com/report/go-spring.org/spring">
+      <img src="https://goreportcard.com/badge/go-spring.org/spring" alt="Go Report Card"/>
    </a>
-   <a href="https://deepwiki.com/go-spring/spring-core">
+   <a href="https://deepwiki.com/go-spring/spring">
       <img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki">
    </a>
 </div>
@@ -89,7 +89,7 @@ Go-Spring 融合了成熟的依赖注入与自动配置设计思想，秉持 Go 
 Go-Spring 使用 Go Modules 管理依赖，安装非常简单：
 
 ```bash
-go get github.com/go-spring/spring-core
+go get go-spring.org/spring
 ```
 
 ## 3. 🚀 快速开始
@@ -108,7 +108,7 @@ package main
 import (
 	"net/http"
 
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 )
 
 func main() {
@@ -153,7 +153,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 )
 
 const timeLayout = "2006-01-02 15:04:05.999 -0700 MST"
@@ -593,7 +593,7 @@ gs.Module(condition gs.PropertyCondition, fn func(r gs.BeanProvider, p flatten.S
 package redis
 
 import (
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 	"github.com/go-spring/stdlib/flatten"
 )
 
@@ -734,7 +734,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 )
 
 func init() {
@@ -790,7 +790,7 @@ import (
 	"context"
 	"net"
 	"net/http"
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 )
 
 func init() {
@@ -834,7 +834,7 @@ package main
 import (
 	"context"
 	"net"
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 	"google.golang.org/grpc"
 )
 
@@ -899,7 +899,7 @@ package main
 
 import (
 	"testing"
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -983,7 +983,7 @@ Go-Spring 深度尊重 Go 原生生态，框架本身完全兼容标准库和各
 
 ## 15. 💬 问题反馈与交流
 
-- 🐛 **Bug 反馈**：[GitHub Issues](https://github.com/go-spring/spring-core/issues)
+- 🐛 **Bug 反馈**：[GitHub Issues](https://go-spring.org/spring/issues)
 - 💡 **功能建议**：欢迎提 Issue 参与讨论
 - ⭐ **Star 支持**：如果你喜欢这个项目，欢迎给个 star 鼓励我们！
 

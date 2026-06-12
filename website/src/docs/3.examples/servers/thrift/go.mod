@@ -5,7 +5,7 @@ go 1.26
 require (
 	github.com/apache/thrift v0.23.0
 	github.com/go-spring/log v0.1.0
-	github.com/go-spring/spring-core v1.3.0
+	go-spring.org/spring v1.3.0
 )
 
 require (

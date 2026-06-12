@@ -23,7 +23,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 	"github.com/go-spring/stdlib/errutil"
 )
 

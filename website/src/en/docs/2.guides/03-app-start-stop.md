@@ -21,7 +21,7 @@ After it is called, the framework completes application startup and blocks the c
 package main
 
 import (
-    "github.com/go-spring/spring-core/gs"
+    "go-spring.org/spring/gs"
 )
 
 func main() {
@@ -66,7 +66,7 @@ import (
     "os/signal"
     "syscall"
 
-    "github.com/go-spring/spring-core/gs"
+    "go-spring.org/spring/gs"
 )
 
 func main() {

@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 )
 
 type Book struct {

@@ -22,7 +22,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 )
 
 //go:embed chatAI.html

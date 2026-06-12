@@ -19,7 +19,7 @@ package StarterGoRedis
 import (
 	"fmt"
 
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 	"github.com/redis/go-redis/v9"
 )
 

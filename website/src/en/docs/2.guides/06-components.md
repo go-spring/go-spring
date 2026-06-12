@@ -38,7 +38,7 @@ Through chained calls, you can declare configuration injection, enablement condi
 package starter
 
 import (
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
@@ -80,7 +80,7 @@ It can read configuration during the registration phase and decide which Beans t
 package starter
 
 import (
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 	"github.com/go-spring/stdlib/flatten"
 )
 
@@ -113,7 +113,7 @@ It iterates over the configuration dictionary and creates an independent Bean fo
 package starter
 
 import (
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 )
 
 func init() {

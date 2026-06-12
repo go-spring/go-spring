@@ -23,7 +23,7 @@ import (
 	"slices"
 	"sort"
 
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 )
 
 func init() {

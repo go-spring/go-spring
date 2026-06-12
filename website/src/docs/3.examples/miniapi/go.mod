@@ -2,7 +2,7 @@ module miniapi
 
 go 1.26
 
-require github.com/go-spring/spring-core v1.3.0
+require go-spring.org/spring v1.3.0
 
 require (
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect

@@ -24,7 +24,7 @@
 安装 Go-Spring 核心框架：
 
 ```bash
-go get github.com/go-spring/spring-core@latest
+go get go-spring.org/spring@latest
 ```
 
 ### 初始化项目
@@ -47,7 +47,7 @@ package main
 import (
 	"net/http"
 
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 )
 
 func main() {
@@ -93,7 +93,7 @@ package main
 import (
 	"net/http"
 
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 )
 
 func init() {

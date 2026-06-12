@@ -7,7 +7,7 @@ import (
 
 	"bookman-pro-09/internal/domain"
 
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 )
 
 func init() {

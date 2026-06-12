@@ -25,7 +25,7 @@ import (
 	"runtime"
 
 	"github.com/go-spring/log"
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 	"github.com/gomodule/redigo/redis"
 
 	StarterRedigo "github.com/go-spring/starter-redigo"

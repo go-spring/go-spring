@@ -17,7 +17,7 @@
 package StarterGormMySql
 
 import (
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )

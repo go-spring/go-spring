@@ -20,7 +20,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/go-spring/spring-core/conf/reader"
+	"go-spring.org/spring/conf/reader"
 	"github.com/go-spring/stdlib/errutil"
 	"github.com/go-spring/stdlib/flatten"
 )

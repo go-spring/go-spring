@@ -26,7 +26,7 @@ import (
 	"grpcsvr/idl/proto"
 
 	"github.com/go-spring/log"
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )

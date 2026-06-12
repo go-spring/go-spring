@@ -3,7 +3,7 @@ import { defineConfig } from 'vitepress'
 const repoRoot = 'https://github.com/go-spring/go-spring'
 
 const goImportModules: Record<string, string> = {
-  'spring-core': 'spring',
+  spring: 'spring',
   log: 'log',
   stdlib: 'stdlib',
   'starter-gorm-mysql': 'starter/starter-gorm-mysql',
@@ -13,7 +13,10 @@ const goImportModules: Record<string, string> = {
 }
 
 const goImportHeadTags = (relativePath: string) => {
-  const moduleName = relativePath.replace(/^go-import\//, '').replace(/\.md$/, '')
+  const moduleName = relativePath
+    .replace(/^go-import\//, '')
+    .replace(/\/index\.md$/, '')
+    .replace(/\.md$/, '')
   const moduleSubdir = goImportModules[moduleName]
 
   if (!moduleSubdir) {
@@ -150,13 +153,13 @@ export default defineConfig({
   outDir: '../../docs',
   cleanUrls: true,
   rewrites: {
-    'go-import/spring-core.md': 'spring-core.md',
-    'go-import/log.md': 'log.md',
-    'go-import/stdlib.md': 'stdlib.md',
-    'go-import/starter-gorm-mysql.md': 'starter-gorm-mysql.md',
-    'go-import/starter-go-redis.md': 'starter-go-redis.md',
-    'go-import/starter-redigo.md': 'starter-redigo.md',
-    'go-import/starter-pprof.md': 'starter-pprof.md'
+    'go-import/spring.md': 'spring/index.md',
+    'go-import/log.md': 'log/index.md',
+    'go-import/stdlib.md': 'stdlib/index.md',
+    'go-import/starter-gorm-mysql.md': 'starter-gorm-mysql/index.md',
+    'go-import/starter-go-redis.md': 'starter-go-redis/index.md',
+    'go-import/starter-redigo.md': 'starter-redigo/index.md',
+    'go-import/starter-pprof.md': 'starter-pprof/index.md'
   },
   themeConfig: {
     logo: '/logo.png',

@@ -78,7 +78,7 @@ import (
 	"net/http"
 
 	// 引入 Go-Spring 核心包
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 )
 
 // UserService 业务服务，整个应用只需要创建一个实例

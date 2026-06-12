@@ -20,7 +20,7 @@ import (
 	"net/http"
 	"net/http/pprof"
 
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 )
 
 func init() {

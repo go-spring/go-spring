@@ -144,7 +144,7 @@ http.HandleFunc("/hello", handler)
 ```md
 ## 前置条件
 
-阅读本文前，你应已经了解 Go-Spring 的 Bean 注册方式，并完成 `spring-core` 的引入。
+阅读本文前，你应已经了解 Go-Spring 的 Bean 注册方式，并完成 `spring` 的引入。
 如果还不了解 Bean 注册，先阅读 [IoC 容器](02-ioc-container.md)。
 ```
 
@@ -330,8 +330,8 @@ spring.http.server.enabled=false
 | 框架生命周期 | 生命周期 / Lifecycle | 生命周期机制 / lifecycle | 泛指使用“生命周期”；强调框架概念时可写“生命周期（Lifecycle）” |
 | 启动入口 API | `gs.Run()` | gs.Run、Run()、`gs.Run` | 函数名使用反引号，并带括号 |
 | 配置 key | `spring.http.server.addr` | spring.http.server.addr、配置键名 | 字面 key 使用反引号；正文称“配置 key” |
-| Go 包名或导入路径 | `gs`、`github.com/go-spring/spring-core/gs` | gs 包、github.com/... | 包名和导入路径使用反引号 |
-| 模块名、Starter 名 | `spring-core`、`starter-gorm-mysql` | spring core、gorm mysql starter | 模块名和 Starter 名使用反引号 |
+| Go 包名或导入路径 | `gs`、`go-spring.org/spring/gs` | gs 包、github.com/... | 包名和导入路径使用反引号 |
+| 模块名、Starter 名 | `spring`、`starter-gorm-mysql` | spring core、gorm mysql starter | 模块名和 Starter 名使用反引号 |
 
 可以这样写：
 

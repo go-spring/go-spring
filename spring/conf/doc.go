@@ -148,7 +148,7 @@ Register custom readers with RegisterReader for additional formats.
 	    "fmt"
 	    "log"
 
-	    "github.com/go-spring/spring-core/conf"
+	    "go-spring.org/spring/conf"
 	)
 
 	type Config struct {

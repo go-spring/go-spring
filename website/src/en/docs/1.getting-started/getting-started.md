@@ -24,7 +24,7 @@ There are two ways to create a Go-Spring project:
 Install the Go-Spring core framework:
 
 ```bash
-go get github.com/go-spring/spring-core@latest
+go get go-spring.org/spring@latest
 ```
 
 ### Initialize the Project
@@ -47,7 +47,7 @@ package main
 import (
 	"net/http"
 
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 )
 
 func main() {
@@ -93,7 +93,7 @@ package main
 import (
 	"net/http"
 
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 )
 
 func init() {

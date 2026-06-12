@@ -24,8 +24,8 @@ import (
 	"testing"
 
 	"github.com/go-spring/gs-mock/gsmock"
-	"github.com/go-spring/spring-core/gs/internal/gs"
-	"github.com/go-spring/spring-core/gs/internal/gs_arg"
+	"go-spring.org/spring/gs/internal/gs"
+	"go-spring.org/spring/gs/internal/gs_arg"
 	"github.com/go-spring/stdlib/funcutil"
 	"github.com/go-spring/stdlib/testing/assert"
 )

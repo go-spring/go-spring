@@ -7,7 +7,7 @@ import (
 	order "GS_PROJECT_MODULE/src/internal/order/controller"
 	user "GS_PROJECT_MODULE/src/internal/user/controller"
 
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 	redigo "github.com/gomodule/redigo/redis"
 	goredis "github.com/redis/go-redis/v9"
 )

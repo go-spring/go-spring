@@ -20,7 +20,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/go-spring/spring-core/conf"
+	"go-spring.org/spring/conf"
 	"github.com/go-spring/stdlib/testing/assert"
 )
 

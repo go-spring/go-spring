@@ -5,7 +5,7 @@ import (
 
 	"GS_PROJECT_MODULE/idl/http/proto"
 
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 )
 
 func init() {

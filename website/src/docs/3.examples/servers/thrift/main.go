@@ -27,7 +27,7 @@ import (
 
 	"github.com/apache/thrift/lib/go/thrift"
 	"github.com/go-spring/log"
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 )
 
 func init() {

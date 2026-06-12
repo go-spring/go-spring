@@ -1,4 +1,4 @@
-module github.com/go-spring/spring-core
+module go-spring.org/spring
 
 go 1.26
 

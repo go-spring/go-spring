@@ -26,7 +26,7 @@ import (
 
 	"github.com/go-spring/gs-mock/gsmock"
 	"github.com/go-spring/log"
-	"github.com/go-spring/spring-core/gs/internal/gs"
+	"go-spring.org/spring/gs/internal/gs"
 	"github.com/go-spring/stdlib/errutil"
 	"github.com/go-spring/stdlib/goutil"
 	"github.com/go-spring/stdlib/testing/assert"

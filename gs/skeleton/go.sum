@@ -26,8 +26,8 @@ github.com/go-spring/gs-mock v0.0.4 h1:f34YN+ntXflfn13aLa3ZVCB78IG7wWZGK4y5tB+OG
 github.com/go-spring/gs-mock v0.0.4/go.mod h1:QK0PqZ+Vu9F+BU97zl8fip5XKibvDSoN+ofky413Z6Q=
 github.com/go-spring/log v0.0.6 h1:R+0mKWCNzaEIZtqdfCc4e/Ha4FBhr01If5oJXjEwRO0=
 github.com/go-spring/log v0.0.6/go.mod h1:WrLbwbjmU8Vk5ampzBXjG4rTv+BoxmmTXxX82L2hugg=
-github.com/go-spring/spring-core v1.2.3 h1:YTByL6Y2xSNDH+hBTWt3r/lrKuwUCBorTVDcCl1+7FE=
-github.com/go-spring/spring-core v1.2.3/go.mod h1:pf56w81zSGup2JSLLr1WXhZDYczdwvOP8ieaeeUu0dg=
+go-spring.org/spring v1.2.3 h1:YTByL6Y2xSNDH+hBTWt3r/lrKuwUCBorTVDcCl1+7FE=
+go-spring.org/spring v1.2.3/go.mod h1:pf56w81zSGup2JSLLr1WXhZDYczdwvOP8ieaeeUu0dg=
 github.com/go-spring/starter-go-redis v1.2.3 h1:byBKhzQY8erSpnnuKOdwRVMkIxKzl6AjSDqH5vqH5Eg=
 github.com/go-spring/starter-go-redis v1.2.3/go.mod h1:VCYGuyA1RPlwam41FpxVZDECI3wYYTX6kdM+SbZQMtw=
 github.com/go-spring/starter-gorm-mysql v1.2.3 h1:TF9SoFHbMfeCRDaqs7RIBYj24M5i7dXe84kQVpdhgK4=

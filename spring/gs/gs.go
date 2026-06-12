@@ -83,14 +83,14 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/go-spring/spring-core/conf"
-	"github.com/go-spring/spring-core/gs/internal/gs"
-	"github.com/go-spring/spring-core/gs/internal/gs_app"
-	"github.com/go-spring/spring-core/gs/internal/gs_arg"
-	"github.com/go-spring/spring-core/gs/internal/gs_bean"
-	"github.com/go-spring/spring-core/gs/internal/gs_cond"
-	"github.com/go-spring/spring-core/gs/internal/gs_dync"
-	"github.com/go-spring/spring-core/gs/internal/gs_init"
+	"go-spring.org/spring/conf"
+	"go-spring.org/spring/gs/internal/gs"
+	"go-spring.org/spring/gs/internal/gs_app"
+	"go-spring.org/spring/gs/internal/gs_arg"
+	"go-spring.org/spring/gs/internal/gs_bean"
+	"go-spring.org/spring/gs/internal/gs_cond"
+	"go-spring.org/spring/gs/internal/gs_dync"
+	"go-spring.org/spring/gs/internal/gs_init"
 	"github.com/go-spring/stdlib/flatten"
 )
 

@@ -25,7 +25,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 )
 
 func init() {

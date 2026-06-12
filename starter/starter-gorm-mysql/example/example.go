@@ -23,7 +23,7 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 	"gorm.io/gorm"
 
 	_ "github.com/go-spring/starter-gorm-mysql"

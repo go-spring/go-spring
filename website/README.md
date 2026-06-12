@@ -74,7 +74,7 @@ reduces project setup complexity but also represents a milestone breakthrough fo
 |-----------------------------------------------------------------------|--------------------------------------------------------------------------|
 | [go-spring :: log](https://github.com/go-spring/log)                  | 前后端统一的日志库<br>Unified front-end and back-end log                          |
 | [spring-base :: assert](https://github.com/go-spring/spring-base)     | 用于 Go 单测的断言库<br>An assertion library for Go unit tests                   |
-| [spring-core](https://github.com/go-spring/spring-core)               | 核心项目<br>Core project                                                     |
+| [spring](https://go-spring.org/spring)               | 核心项目<br>Core project                                                     |
 | [gs-mock](https://github.com/go-spring/gs-mock)                       | 现代化的、类型安全的 Go 语言 mocking 库<br>A modern, type-safe mocking library for Go |
 | [starter-gorm-mysql](https://github.com/go-spring/starter-gorm-mysql) | gorm mysql 启动器<br>Starter for gorm with mysql                            |
 | [starter-redigo](https://github.com/go-spring/starter-redigo)         | redigo 启动器<br>Starter for redigo                                         |

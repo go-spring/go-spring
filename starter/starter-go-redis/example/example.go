@@ -25,7 +25,7 @@ import (
 	"runtime"
 
 	"github.com/go-spring/log"
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 	"github.com/redis/go-redis/v9"
 
 	StarterGoRedis "github.com/go-spring/starter-go-redis"

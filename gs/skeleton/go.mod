@@ -6,7 +6,7 @@ toolchain go1.24.4
 
 require (
 	github.com/go-playground/form/v4 v4.2.1
-	github.com/go-spring/spring-core v1.2.3
+	go-spring.org/spring v1.2.3
 	github.com/go-spring/starter-go-redis v1.2.3
 	github.com/go-spring/starter-gorm-mysql v1.2.3
 	github.com/go-spring/starter-redigo v1.2.3

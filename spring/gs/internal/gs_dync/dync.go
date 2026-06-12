@@ -34,7 +34,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/go-spring/spring-core/conf"
+	"go-spring.org/spring/conf"
 	"github.com/go-spring/stdlib/errutil"
 	"github.com/go-spring/stdlib/flatten"
 )

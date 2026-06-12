@@ -134,7 +134,7 @@ If you have your own custom type, you can also register a type converter to tell
 ```go
 import (
 	"strconv"
-	"github.com/go-spring/spring-core/conf"
+	"go-spring.org/spring/conf"
 )
 
 // Custom status enum type
@@ -251,8 +251,8 @@ Generally, manual binding is only used when creating multiple beans in a module,
 package main
 
 import (
-	"github.com/go-spring/spring-core/conf"
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/conf"
+	"go-spring.org/spring/gs"
 	"github.com/go-spring/stdlib/flatten"
 )
 
@@ -355,7 +355,7 @@ A function accepts parameters of any type and returns `bool` to indicate whether
 **Complete example**:
 
 ```go
-import "github.com/go-spring/spring-core/conf"
+import "go-spring.org/spring/conf"
 
 // Register custom functions in init()
 func init() {
@@ -425,7 +425,7 @@ and then call `conf.RegisterReader` to register it.
 
 ```go
 import (
-	"github.com/go-spring/spring-core/conf"
+	"go-spring.org/spring/conf"
 )
 
 // Implement INI format parsing
@@ -478,7 +478,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/go-spring/spring-core/conf"
+	"go-spring.org/spring/conf"
 	"github.com/go-spring/stdlib/flatten"
 )
 
@@ -847,7 +847,7 @@ and the syntax is exactly the same as static configuration, so there is no learn
 You only need to declare your field type as the `gs.Dync[T]` generic:
 
 ```go
-import "github.com/go-spring/spring-core/gs"
+import "go-spring.org/spring/gs"
 
 type AppConfig struct {
 	// Static configuration; it does not change after startup

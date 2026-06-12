@@ -38,7 +38,7 @@ Starter 常见的注册形式有三种：`gs.Provide`、`gs.Module` 和 `gs.Grou
 package starter
 
 import (
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
@@ -80,7 +80,7 @@ func CloseDB(db *gorm.DB) error {
 package starter
 
 import (
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 	"github.com/go-spring/stdlib/flatten"
 )
 
@@ -113,7 +113,7 @@ func init() {
 package starter
 
 import (
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 )
 
 func init() {

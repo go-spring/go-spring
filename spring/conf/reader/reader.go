@@ -20,10 +20,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/go-spring/spring-core/conf/reader/json"
-	"github.com/go-spring/spring-core/conf/reader/prop"
-	"github.com/go-spring/spring-core/conf/reader/toml"
-	"github.com/go-spring/spring-core/conf/reader/yaml"
+	"go-spring.org/spring/conf/reader/json"
+	"go-spring.org/spring/conf/reader/prop"
+	"go-spring.org/spring/conf/reader/toml"
+	"go-spring.org/spring/conf/reader/yaml"
 	"github.com/go-spring/stdlib/errutil"
 )
 

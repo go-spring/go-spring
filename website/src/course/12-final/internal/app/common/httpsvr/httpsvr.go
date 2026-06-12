@@ -23,7 +23,7 @@ import (
 	"bookman/internal/idl/http/proto"
 
 	"github.com/go-spring/log"
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 )
 
 var TagHttpAccess = log.RegisterAppTag("http", "access")

@@ -78,7 +78,7 @@ import (
 	"net/http"
 
 	// Import the Go-Spring core package.
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 )
 
 // UserService is a business service. The whole application only needs one instance.

@@ -19,7 +19,7 @@ package StarterRedigo
 import (
 	"fmt"
 
-	"github.com/go-spring/spring-core/gs"
+	"go-spring.org/spring/gs"
 	"github.com/gomodule/redigo/redis"
 )
 
