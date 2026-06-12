@@ -26,6 +26,6 @@ import (
 	"github.com/go-kit/log"
 )
 
-func newKitLog(fields ...interface{}) log.Logger {
+func newKitLog(fields ...any) log.Logger {
 	return log.With(log.NewJSONLogger(io.Discard), fields...)
 }

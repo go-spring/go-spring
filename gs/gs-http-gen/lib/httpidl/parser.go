@@ -106,7 +106,7 @@ func loadProject(dir string) (Project, error) {
 
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return Project{}, errutil.Explain(nil, "read dir %s error: %w", dir, err)
+		return Project{}, errutil.Explain(err, "read dir %s error", dir)
 	}
 
 	for _, e := range entries {
@@ -121,10 +121,10 @@ func loadProject(dir string) (Project, error) {
 			var b []byte
 			fileName = filepath.Join(dir, fileName)
 			if b, err = os.ReadFile(fileName); err != nil {
-				return Project{}, errutil.Explain(nil, "read file %s error: %w", fileName, err)
+				return Project{}, errutil.Explain(err, "read file %s error", fileName)
 			}
 			if err = jsonflow.Unmarshal(b, &p.Meta); err != nil {
-				return Project{}, errutil.Explain(nil, "parse file %s error: %w", fileName, err)
+				return Project{}, errutil.Explain(err, "parse file %s error", fileName)
 			}
 			continue
 		}
@@ -137,12 +137,12 @@ func loadProject(dir string) (Project, error) {
 		var b []byte
 		fileName = filepath.Join(dir, fileName)
 		if b, err = os.ReadFile(fileName); err != nil {
-			return Project{}, errutil.Explain(nil, "read file %s error: %w", fileName, err)
+			return Project{}, errutil.Explain(err, "read file %s error", fileName)
 		}
 
 		doc, validateFuncs, err := ParseIDL(b)
 		if err != nil {
-			return Project{}, errutil.Explain(nil, "parse file %s error: %w", fileName, err)
+			return Project{}, errutil.Explain(err, "parse file %s error", fileName)
 		}
 		p.Files[e.Name()] = doc
 

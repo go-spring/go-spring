@@ -47,7 +47,7 @@ func ParseIDL(data []byte) (doc Document, funcs map[string]ValidateFunc, err err
 			doc = Document{}
 			err = errutil.Explain(nil, "[PANIC]: %v\n%s", r, debug.Stack())
 			if e.Error != nil {
-				err = errutil.Explain(nil, "%w\n%w", e.Error, err)
+				err = errutil.Explain(err, "%v", e.Error)
 			}
 		}
 	}()

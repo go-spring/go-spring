@@ -95,7 +95,7 @@ func Parse(data string) (path []Segment, err error) {
 			path = nil
 			err = errutil.Explain(nil, "[PANIC]: %v\n%s", r, debug.Stack())
 			if e.Error != nil {
-				err = errutil.Explain(nil, "%w\n%w", e.Error, err)
+				err = errutil.Explain(err, "%v", e.Error)
 			}
 		}
 	}()
@@ -148,7 +148,7 @@ func (l *ErrorListener) SyntaxError(_ antlr.Recognizer, _ any, line, column int,
 		l.Error = errutil.Explain(nil, "line %d:%d %s << text: %q", line, column, msg, l.Data)
 		return
 	}
-	l.Error = errutil.Explain(nil, "%w\nline %d:%d %s << text: %q", l.Error, line, column, msg, l.Data)
+	l.Error = errutil.Explain(l.Error, "line %d:%d %s << text: %q", line, column, msg, l.Data)
 }
 
 // ParseTreeListener walks the parse tree and constructs the slice of Segment.

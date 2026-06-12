@@ -25,15 +25,11 @@ import (
 	"go-spring.org/stdlib/jsonflow"
 )
 
-func ptr[T any](v T) *T {
-	return &v
-}
-
 func TestGeneratedEncodeJSON(t *testing.T) {
 	m := &proto.Manager{
-		Name: ptr("Jim"),
-		Age:  ptr[int64](20),
-		Vip:  ptr(false),
+		Name: new("Jim"),
+		Age:  new(int64(20)),
+		Vip:  new(false),
 		Tags: map[string]string{
 			"b": "2",
 			"a": "1",
@@ -58,8 +54,8 @@ func TestGeneratedOneOfEncodeJSON(t *testing.T) {
 	p := &proto.Payload{
 		FieldType: proto.PayloadTypeAsString(proto.PayloadType_MessageDelta),
 		MessageDelta: &proto.MessageDelta{
-			Content: ptr("hello"),
-			IsFinal: ptr(false),
+			Content: new("hello"),
+			IsFinal: new(false),
 		},
 	}
 
@@ -78,7 +74,7 @@ func TestGeneratedOneOfEncodeJSONMismatch(t *testing.T) {
 	p := &proto.Payload{
 		FieldType: proto.PayloadTypeAsString(proto.PayloadType_ToolCall),
 		MessageDelta: &proto.MessageDelta{
-			Content: ptr("hello"),
+			Content: new("hello"),
 		},
 	}
 

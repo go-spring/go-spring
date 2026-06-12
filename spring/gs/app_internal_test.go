@@ -131,7 +131,7 @@ func TestValidateRunTestFunc(t *testing.T) {
 		fn := func(*runTestTarget) {}
 		ft, fv, err := validateRunTestFunc(fn)
 		assert.That(t, err).Nil()
-		assert.That(t, ft).Equal(reflect.TypeOf(fn))
+		assert.That(t, ft).Equal(reflect.TypeFor[func(*runTestTarget)]())
 		assert.That(t, fv.IsValid()).True()
 	})
 }

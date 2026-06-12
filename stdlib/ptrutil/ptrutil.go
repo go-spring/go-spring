@@ -17,6 +17,8 @@
 package ptrutil
 
 // New returns a pointer to the given value.
+//
+//go:fix inline
 func New[T any](v T) *T {
-	return &v
+	return new(v)
 }

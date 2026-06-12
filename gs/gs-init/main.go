@@ -139,8 +139,8 @@ func gitClone(branch string) string {
 // toPascal converts snake_case string to PascalCase
 func toPascal(s string) string {
 	var sb strings.Builder
-	parts := strings.Split(s, "_")
-	for _, part := range parts {
+	parts := strings.SplitSeq(s, "_")
+	for part := range parts {
 		if part == "" {
 			continue
 		}

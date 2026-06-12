@@ -60,7 +60,7 @@ func (g *Generator) genValidate(config *generator.Config, spec GoSpec) error {
 		"Funcs":   funcs,
 	})
 	if err != nil {
-		return errutil.Explain(nil, "execute validate template error: %w", err)
+		return errutil.Explain(err, "execute validate template error")
 	}
 	fileName := filepath.Join(config.OutputDir, "validate.go")
 	return formatFile(fileName, buf.Bytes())

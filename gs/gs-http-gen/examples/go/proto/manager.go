@@ -92,7 +92,7 @@ type ErrCodeAsString ErrCode
 // MarshalJSON encodes the enum value as its string name.
 func (x ErrCodeAsString) MarshalJSON() ([]byte, error) {
 	if s, ok := ErrCode_name[ErrCode(x)]; ok {
-		return []byte(fmt.Sprintf("\"%s\"", s)), nil
+		return fmt.Appendf(nil, "\"%s\"", s), nil
 	}
 	return nil, errutil.Explain(nil, "invalid ErrCodeAsString: %d", x)
 }
@@ -147,7 +147,7 @@ type ManagerLevelAsString ManagerLevel
 // MarshalJSON encodes the enum value as its string name.
 func (x ManagerLevelAsString) MarshalJSON() ([]byte, error) {
 	if s, ok := ManagerLevel_name[ManagerLevel(x)]; ok {
-		return []byte(fmt.Sprintf("\"%s\"", s)), nil
+		return fmt.Appendf(nil, "\"%s\"", s), nil
 	}
 	return nil, errutil.Explain(nil, "invalid ManagerLevelAsString: %d", x)
 }
@@ -208,7 +208,7 @@ type DepartmentAsString Department
 // MarshalJSON encodes the enum value as its string name.
 func (x DepartmentAsString) MarshalJSON() ([]byte, error) {
 	if s, ok := Department_name[Department(x)]; ok {
-		return []byte(fmt.Sprintf("\"%s\"", s)), nil
+		return fmt.Appendf(nil, "\"%s\"", s), nil
 	}
 	return nil, errutil.Explain(nil, "invalid DepartmentAsString: %d", x)
 }

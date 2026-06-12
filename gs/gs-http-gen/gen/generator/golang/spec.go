@@ -235,15 +235,15 @@ func Convert(dir string) (GoSpec, error) {
 	for fileName, doc := range project.Files {
 		consts, err := convertConsts(spec, doc)
 		if err != nil {
-			return GoSpec{}, errutil.Explain(nil, "convert consts error: %w", err)
+			return GoSpec{}, errutil.Explain(err, "convert consts error")
 		}
 		enums, err := convertEnums(spec, doc)
 		if err != nil {
-			return GoSpec{}, errutil.Explain(nil, "convert enums error: %w", err)
+			return GoSpec{}, errutil.Explain(err, "convert enums error")
 		}
 		types, err := convertTypes(spec, doc)
 		if err != nil {
-			return GoSpec{}, errutil.Explain(nil, "convert types error: %w", err)
+			return GoSpec{}, errutil.Explain(err, "convert types error")
 		}
 		spec.Consts[fileName] = consts
 		spec.Enums[fileName] = enums
@@ -336,13 +336,13 @@ func convertType(spec GoSpec, t httpidl.Type) (Type, error) {
 		// Get the type name
 		typeName, err := goType(spec, f)
 		if err != nil {
-			return Type{}, errutil.Explain(nil, "get type name for field %s in type %s error: %w", f.Name, r.Name, err)
+			return Type{}, errutil.Explain(err, "get type name for field %s in type %s error", f.Name, r.Name)
 		}
 
 		// Determine the category of the field (base, enum, struct, list, map)
 		typeKind, err := getTypeKind(spec, typeName)
 		if err != nil {
-			return Type{}, errutil.Explain(nil, "get type kind for field %s in type %s error: %w", f.Name, r.Name, err)
+			return Type{}, errutil.Explain(err, "get type kind for field %s in type %s error", f.Name, r.Name)
 		}
 		if f.Required && IsPointer(typeKind[0]) {
 			return Type{}, errutil.Explain(nil, "field %s in type %s is required but has pointer type", f.Name, r.Name)
@@ -354,12 +354,12 @@ func convertType(spec GoSpec, t httpidl.Type) (Type, error) {
 		var defaultValue any
 		if f.CompatDefault != nil {
 			if defaultValue, err = goDefaultValue(typeKind, *f.CompatDefault); err != nil {
-				return Type{}, errutil.Explain(nil, "convert default value for field %s in type %s error: %w", f.Name, r.Name, err)
+				return Type{}, errutil.Explain(err, "convert default value for field %s in type %s error", f.Name, r.Name)
 			}
 		}
 		if f.ValidateExpr != nil {
 			if err = collectGoValidateFuncs(spec.Funcs, strings.TrimPrefix(typeName, "*"), f.ValidateExpr); err != nil {
-				return Type{}, errutil.Explain(nil, "collect validate functions for field %s in type %s error: %w", f.Name, r.Name, err)
+				return Type{}, errutil.Explain(err, "collect validate functions for field %s in type %s error", f.Name, r.Name)
 			}
 		}
 

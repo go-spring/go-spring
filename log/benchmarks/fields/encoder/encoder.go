@@ -36,7 +36,7 @@ type Encoder interface {
 	AppendInt64(v int64)
 	AppendFloat64(v float64)
 	AppendString(v string)
-	AppendReflect(v interface{})
+	AppendReflect(v any)
 }
 
 // jsonToken represents the last written token type during
@@ -155,7 +155,7 @@ func (enc *JSONEncoder) AppendString(v string) {
 // AppendReflect marshals an arbitrary Go value into JSON
 // and appends it. If marshalling fails, the error message
 // is written as a JSON string instead.
-func (enc *JSONEncoder) AppendReflect(v interface{}) {
+func (enc *JSONEncoder) AppendReflect(v any) {
 	enc.appendSeparator()
 	enc.last = jsonTokenValue
 	b, err := json.Marshal(v)

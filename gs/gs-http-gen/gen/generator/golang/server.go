@@ -37,12 +37,9 @@ var serverTmpl = template.Must(template.New("server").
 				a := retRPCs[i].PathSegments
 				b := retRPCs[j].PathSegments
 
-				minLen := len(a)
-				if len(b) < minLen {
-					minLen = len(b)
-				}
+				minLen := min(len(b), len(a))
 
-				for k := 0; k < minLen; k++ {
+				for k := range minLen {
 					ak, bk := a[k].Type, b[k].Type
 					if ak != bk {
 						return ak < bk // Static(0) < Param(1) < Wildcard(2)
@@ -124,7 +121,7 @@ func (g *Generator) genServer(config *generator.Config, spec GoSpec) error {
 		"RPCs":    spec.RPCs,
 	})
 	if err != nil {
-		return errutil.Explain(nil, "execute server template error: %w", err)
+		return errutil.Explain(err, "execute server template error")
 	}
 	fileName := filepath.Join(config.OutputDir, "server.go")
 	return formatFile(fileName, buf.Bytes())

@@ -59,7 +59,7 @@ func (v StringValue) Encode(enc encoder.Encoder) {
 
 // ReflectValue represents an interface{} carried by Field.
 type ReflectValue struct {
-	Val interface{}
+	Val any
 }
 
 // Encode encodes the data represented by v to an Encoder.

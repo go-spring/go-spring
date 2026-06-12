@@ -3,12 +3,10 @@ set -euo pipefail
 
 export GOEXPERIMENT=jsonv2
 
-# Print separator
 print_separator() {
     echo "=================================================="
 }
 
-# Check if command exists
 command_exists() {
     if ! command -v "$1" &> /dev/null; then
         return 1
@@ -16,11 +14,9 @@ command_exists() {
     return 0
 }
 
-# Install modernize
 install_modernize() {
     echo "modernize not found, installing..."
     go install golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest
-    # Add GOPATH/bin to PATH if needed
     if ! command_exists modernize; then
         export PATH="$PATH:$(go env GOPATH)/bin"
     fi
@@ -32,18 +28,43 @@ install_modernize() {
     echo "modernize installed successfully"
 }
 
-# Show help
 show_help() {
     echo "Usage: ./check.sh [options]"
     echo ""
-    echo "Runs code fixes, modernization, and tests"
+    echo "Runs error-construction checks, code fixes, modernization, and tests for every Go module"
     echo ""
     echo "Options:"
     echo "  -h, --help    Show this help message"
     exit 0
 }
 
-# Parse arguments
+run_in_module() {
+    local module_dir="$1"
+
+    print_separator
+    echo "Module: ${module_dir}"
+    print_separator
+
+    echo "Checking error construction..."
+    find "${module_dir}" -type f -name '*.go' \
+        ! -path '*/vendor/*' \
+        ! -path '*/errutil/*' \
+        -exec grep -Hn 'fmt\.Errorf' {} \;
+    find "${module_dir}" -type f -name '*.go' \
+        ! -path '*/vendor/*' \
+        ! -path '*/errutil/*' \
+        -exec grep -Hn 'errors\.New' {} \;
+
+    echo "Running go fix..."
+    (cd "${module_dir}" && go fix ./...)
+
+    echo "Running modernize..."
+    (cd "${module_dir}" && modernize -test ./...)
+
+    echo "Running tests..."
+    (cd "${module_dir}" && go test -gcflags="all=-N -l" -count=1 ./...)
+}
+
 if [ $# -gt 0 ]; then
     case "$1" in
         -h|--help)
@@ -52,32 +73,33 @@ if [ $# -gt 0 ]; then
     esac
 fi
 
-# Check dependencies
 if ! command_exists go; then
     echo "Error: go is not installed"
     exit 1
 fi
 
-# Check and install modernize if needed
 if ! command_exists modernize; then
     install_modernize
 fi
 
-print_separator
-echo "Step 1/3: Running go fix..."
-print_separator
-go fix ./...
+module_dirs=$(find . -name go.mod \
+    ! -path '*/vendor/*' \
+    ! -path '*/node_modules/*' \
+    ! -path './gs/skeleton/go.mod' \
+    ! -path './website/src/*' \
+    -exec dirname {} \; | sort)
+
+if [ -z "${module_dirs}" ]; then
+    echo "Error: no go.mod found"
+    exit 1
+fi
+
+while IFS= read -r module_dir; do
+    run_in_module "${module_dir}"
+done <<EOF
+${module_dirs}
+EOF
 
 print_separator
-echo "Step 2/3: Running modernize..."
-print_separator
-modernize -test ./...
-
-print_separator
-echo "Step 3/3: Running tests..."
-print_separator
-go test -gcflags="all=-N -l" -count=1 ./...
-
-print_separator
-echo "✅  All checks passed!"
+echo "All checks passed!"
 print_separator

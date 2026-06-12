@@ -67,7 +67,7 @@ type PayloadTypeAsString PayloadType
 // MarshalJSON encodes the enum value as its string name.
 func (x PayloadTypeAsString) MarshalJSON() ([]byte, error) {
 	if s, ok := PayloadType_name[PayloadType(x)]; ok {
-		return []byte(fmt.Sprintf("\"%s\"", s)), nil
+		return fmt.Appendf(nil, "\"%s\"", s), nil
 	}
 	return nil, errutil.Explain(nil, "invalid PayloadTypeAsString: %d", x)
 }

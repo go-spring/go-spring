@@ -37,11 +37,11 @@ import (
 func formatFile(fileName string, b []byte) error {
 	b, err := format.Source(b)
 	if err != nil {
-		return errutil.Explain(nil, "format source for file %s error: %w", fileName, err)
+		return errutil.Explain(err, "format source for file %s error", fileName)
 	}
 	err = os.WriteFile(fileName, b, os.ModePerm)
 	if err != nil {
-		return errutil.Explain(nil, "write file %s error: %w", fileName, err)
+		return errutil.Explain(err, "write file %s error", fileName)
 	}
 	return nil
 }
@@ -408,8 +408,7 @@ func genDecodeJSON(typeName string, typeKind []TypeKind) string {
 		return "jsonflow.DecodeArray(" + e + ")"
 	case TypeKindMap:
 		s := strings.TrimPrefix(typeName, "map[")
-		i := strings.Index(s, "]")
-		k, v := s[:i], s[i+1:]
+		k, v, _ := strings.Cut(s, "]")
 		ks := genDecodeJSONKey(k, typeKind[1:2])
 		vs := genDecodeJSON(v, typeKind[2:])
 		return "jsonflow.DecodeMap(" + ks + ", " + vs + ")"
@@ -487,8 +486,7 @@ func genEncodeJSON(typeName string, typeKind []TypeKind) string {
 		return "jsonflow.EncodeArray(" + e + ")"
 	case TypeKindMap:
 		s := strings.TrimPrefix(typeName, "map[")
-		i := strings.Index(s, "]")
-		k, v := s[:i], s[i+1:]
+		k, v, _ := strings.Cut(s, "]")
 		ks := genEncodeJSONKey(k, typeKind[1:2])
 		vs := genEncodeJSON(v, typeKind[2:])
 		return "jsonflow.EncodeMap(" + ks + ", " + vs + ")"
@@ -639,7 +637,7 @@ var _ = formutil.EncodeInt[int]
 	// MarshalJSON encodes the enum value as its string name.
 	func (x {{$e.Name}}AsString) MarshalJSON() ([]byte, error) {
 		if s, ok := {{$e.Name}}_name[{{$e.Name}}(x)]; ok {
-			return []byte(fmt.Sprintf("\"%s\"", s)), nil
+			return fmt.Appendf(nil, "\"%s\"", s), nil
 		}
 		return nil, errutil.Explain(nil,"invalid {{$e.Name}}AsString: %d", x)
 	}
@@ -1299,7 +1297,7 @@ func (g *Generator) genType(config *generator.Config, fileName string, spec GoSp
 		"Structs": spec.Types[fileName],
 	})
 	if err != nil {
-		return errutil.Explain(nil, "execute type template error: %w", err)
+		return errutil.Explain(err, "execute type template error")
 	}
 	fileName = fileName[:strings.LastIndex(fileName, ".")] + ".go"
 	fileName = filepath.Join(config.OutputDir, fileName)

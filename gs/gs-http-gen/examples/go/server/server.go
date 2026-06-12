@@ -32,16 +32,16 @@ var _ proto.ManagerService = &ManagerServer{}
 type ManagerServer struct{}
 
 func (m *ManagerServer) Assistant(ctx context.Context, req *proto.AssistantReq, resp chan<- *httpsvr.Event[*proto.AssistantEvent]) {
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		event := httpsvr.NewEvent[*proto.AssistantEvent]().
 			ID(strconv.Itoa(i)).
 			Event("message").
 			Data(&proto.AssistantEvent{
-				Payload: ptrutil.New(proto.Payload{
+				Payload: new(proto.Payload{
 					FieldType: proto.PayloadTypeAsString(proto.PayloadType_MessageDelta),
 					MessageDelta: &proto.MessageDelta{
-						Content: ptrutil.New("hello world"),
-						IsFinal: ptrutil.New(false),
+						Content: new("hello world"),
+						IsFinal: new(false),
 					},
 				}),
 			})
@@ -53,7 +53,7 @@ func (m *ManagerServer) Assistant(ctx context.Context, req *proto.AssistantReq, 
 func (m *ManagerServer) GetManager(ctx context.Context, req *proto.GetManagerReq) *proto.GetManagerResp {
 	return &proto.GetManagerResp{
 		Data: &proto.Manager{
-			Name:  ptrutil.New("Jim"),
+			Name:  new("Jim"),
 			Level: ptrutil.New(proto.ManagerLevelAsString(proto.ManagerLevel_JUNIOR)),
 		},
 	}

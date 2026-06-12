@@ -109,7 +109,7 @@ func (g *Generator) genClient(config *generator.Config, spec GoSpec) error {
 		"RPCs":    clientRPCs(spec.RPCs),
 	})
 	if err != nil {
-		return errutil.Explain(nil, "execute client template error: %w", err)
+		return errutil.Explain(err, "execute client template error")
 	}
 	fileName := filepath.Join(config.OutputDir, "client.go")
 	return formatFile(fileName, buf.Bytes())
