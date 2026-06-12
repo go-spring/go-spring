@@ -10,11 +10,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/go-spring/stdlib/errutil"
-	"github.com/go-spring/stdlib/formutil"
-	"github.com/go-spring/stdlib/hashutil"
-	"github.com/go-spring/stdlib/httpsvr"
-	"github.com/go-spring/stdlib/jsonflow"
+	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/formutil"
+	"go-spring.org/stdlib/hashutil"
+	"go-spring.org/stdlib/httpsvr"
+	"go-spring.org/stdlib/jsonflow"
 )
 
 var _ = strings.Index

@@ -7,9 +7,9 @@ toolchain go1.24.4
 require (
 	github.com/go-playground/form/v4 v4.2.1
 	go-spring.org/spring v1.2.3
-	github.com/go-spring/starter-go-redis v1.2.3
-	github.com/go-spring/starter-gorm-mysql v1.2.3
-	github.com/go-spring/starter-redigo v1.2.3
+	go-spring.org/starter-go-redis v1.2.3
+	go-spring.org/starter-gorm-mysql v1.2.3
+	go-spring.org/starter-redigo v1.2.3
 	github.com/gomodule/redigo v1.9.2
 	github.com/redis/go-redis/v9 v9.14.0
 	gorm.io/gorm v1.30.5
@@ -21,8 +21,8 @@ require (
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/expr-lang/expr v1.17.6 // indirect
 	github.com/go-spring/barky v1.0.3 // indirect
-	github.com/go-spring/gs-mock v0.0.4 // indirect
-	github.com/go-spring/log v0.0.6 // indirect
+	go-spring.org/gs-mock v0.0.4 // indirect
+	go-spring.org/log v0.0.6 // indirect
 	github.com/go-sql-driver/mysql v1.9.3 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect

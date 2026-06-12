@@ -91,7 +91,7 @@ import (
 	"go-spring.org/spring/gs/internal/gs_cond"
 	"go-spring.org/spring/gs/internal/gs_dync"
 	"go-spring.org/spring/gs/internal/gs_init"
-	"github.com/go-spring/stdlib/flatten"
+	"go-spring.org/stdlib/flatten"
 )
 
 const (

@@ -25,7 +25,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/go-spring/stdlib/errutil"
+	"go-spring.org/stdlib/errutil"
 )
 
 // A Syncer is a spy for the Sync portion of zapcore.WriteSyncer.

@@ -23,8 +23,8 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/go-spring/gs-http-gen/gen/generator"
-	"github.com/go-spring/stdlib/errutil"
+	"go-spring.org/gs-http-gen/gen/generator"
+	"go-spring.org/stdlib/errutil"
 )
 
 // clientTmpl is the template for the HTTP client code.
@@ -59,7 +59,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/go-spring/stdlib/httpclt"
+	"go-spring.org/stdlib/httpclt"
 )
 {{- end}}
 

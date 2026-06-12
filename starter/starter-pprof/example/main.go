@@ -18,7 +18,7 @@ package main
 
 import (
 	"go-spring.org/spring/gs"
-	_ "github.com/go-spring/starter-pprof"
+	_ "go-spring.org/starter-pprof"
 )
 
 func main() {

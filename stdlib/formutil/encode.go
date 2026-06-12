@@ -21,7 +21,7 @@ import (
 	"net/url"
 	"strconv"
 
-	"github.com/go-spring/stdlib/jsonflow"
+	"go-spring.org/stdlib/jsonflow"
 )
 
 // EncodeBool encodes a boolean value into url.Values.

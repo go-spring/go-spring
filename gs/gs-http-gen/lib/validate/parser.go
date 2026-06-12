@@ -22,7 +22,7 @@ import (
 	"strings"
 
 	"github.com/antlr4-go/antlr/v4"
-	"github.com/go-spring/stdlib/errutil"
+	"go-spring.org/stdlib/errutil"
 )
 
 // Expr represents a generic expression node.

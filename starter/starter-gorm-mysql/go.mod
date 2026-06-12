@@ -1,4 +1,4 @@
-module github.com/go-spring/starter-gorm-mysql
+module go-spring.org/starter-gorm-mysql
 
 go 1.26
 
@@ -13,9 +13,9 @@ require (
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/bytedance/mockey v1.4.6 // indirect
 	github.com/expr-lang/expr v1.17.8 // indirect
-	github.com/go-spring/gs-mock v0.0.8 // indirect
-	github.com/go-spring/log v0.1.0 // indirect
-	github.com/go-spring/stdlib v0.1.2 // indirect
+	go-spring.org/gs-mock v0.0.8 // indirect
+	go-spring.org/log v0.1.0 // indirect
+	go-spring.org/stdlib v0.1.2 // indirect
 	github.com/go-sql-driver/mysql v1.10.0 // indirect
 	github.com/gopherjs/gopherjs v1.20.2 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect

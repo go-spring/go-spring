@@ -18,8 +18,8 @@ github.com/go-kit/log v0.2.1/go.mod h1:NwTd00d/i8cPZ3xOwwiv2PO5MOcx78fFErGNcVmBj
 github.com/go-logfmt/logfmt v0.4.0/go.mod h1:3RMwSq7FuexP4Kalkev3ejPJsZTpXXBr9+V4qmtdjCk=
 github.com/go-logfmt/logfmt v0.6.0 h1:wGYYu3uicYdqXVgoYbvnkrPVXkuLM1p1ifugDMEdRi4=
 github.com/go-logfmt/logfmt v0.6.0/go.mod h1:WYhtIu8zTZfxdn5+rREduYbwxfcBr/Vr6KEVveWlfTs=
-github.com/go-spring/stdlib v0.1.2 h1:2Zp2+oW4q8To19JJV/OW6ofCIrjHe3CeWmicXg5/kFo=
-github.com/go-spring/stdlib v0.1.2/go.mod h1:G0tJ1nuGGGb1HdV5VF9eJ4mRjILuZB4A0VucDfxCiC0=
+go-spring.org/stdlib v0.1.2 h1:2Zp2+oW4q8To19JJV/OW6ofCIrjHe3CeWmicXg5/kFo=
+go-spring.org/stdlib v0.1.2/go.mod h1:G0tJ1nuGGGb1HdV5VF9eJ4mRjILuZB4A0VucDfxCiC0=
 github.com/go-stack/stack v1.8.1 h1:ntEHSVwIt7PNXNpgPmVfMrNhLtgjlmnZha2kOpuRiDw=
 github.com/go-stack/stack v1.8.1/go.mod h1:dcoOX6HbPZSZptuspn9bctJ+N/CnF5gGygcUP3XYfe4=
 github.com/godbus/dbus/v5 v5.0.4/go.mod h1:xhWf0FNVPg57R7Z0UbKHbJfkEywrmjJnf7w5xrFpKfA=

@@ -35,8 +35,8 @@ import (
 	"sync/atomic"
 
 	"go-spring.org/spring/conf"
-	"github.com/go-spring/stdlib/errutil"
-	"github.com/go-spring/stdlib/flatten"
+	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/flatten"
 )
 
 // refreshable represents an object that can be dynamically refreshed.

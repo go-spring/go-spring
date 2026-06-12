@@ -22,8 +22,8 @@ import (
 	"testing"
 
 	"go-spring.org/spring/conf"
-	"github.com/go-spring/stdlib/flatten"
-	"github.com/go-spring/stdlib/testing/assert"
+	"go-spring.org/stdlib/flatten"
+	"go-spring.org/stdlib/testing/assert"
 )
 
 func TestProperties_Load(t *testing.T) {

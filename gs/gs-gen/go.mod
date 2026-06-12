@@ -1,4 +1,4 @@
-module github.com/go-spring/gs-gen
+module go-spring.org/gs-gen
 
 go 1.24
 

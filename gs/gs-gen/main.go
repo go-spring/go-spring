@@ -21,7 +21,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/go-spring/gs-gen/proto"
+	"go-spring.org/gs-gen/proto"
 	"github.com/spf13/cobra"
 )
 

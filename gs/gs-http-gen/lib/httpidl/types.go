@@ -17,8 +17,8 @@
 package httpidl
 
 import (
-	"github.com/go-spring/gs-http-gen/lib/pathidl"
-	"github.com/go-spring/gs-http-gen/lib/validate"
+	"go-spring.org/gs-http-gen/lib/pathidl"
+	"go-spring.org/gs-http-gen/lib/validate"
 )
 
 // MetaInfo represents metadata about the parsed document.

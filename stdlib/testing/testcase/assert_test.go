@@ -23,10 +23,10 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/go-spring/stdlib/errutil"
-	"github.com/go-spring/stdlib/testing/assert"
-	"github.com/go-spring/stdlib/testing/internal"
-	"github.com/go-spring/stdlib/testing/require"
+	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/testing/assert"
+	"go-spring.org/stdlib/testing/internal"
+	"go-spring.org/stdlib/testing/require"
 )
 
 func TestToJSONString(t *testing.T) {

@@ -594,7 +594,7 @@ package redis
 
 import (
 	"go-spring.org/spring/gs"
-	"github.com/go-spring/stdlib/flatten"
+	"go-spring.org/stdlib/flatten"
 )
 
 // Cache 缓存接口

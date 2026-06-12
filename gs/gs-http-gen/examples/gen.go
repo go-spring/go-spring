@@ -22,9 +22,9 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/go-spring/gs-http-gen/gen"
-	"github.com/go-spring/gs-http-gen/gen/generator"
-	"github.com/go-spring/gs-http-gen/lib/version"
+	"go-spring.org/gs-http-gen/gen"
+	"go-spring.org/gs-http-gen/gen/generator"
+	"go-spring.org/gs-http-gen/lib/version"
 )
 
 // init sets the working directory of the program to the directory

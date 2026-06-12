@@ -20,8 +20,8 @@ import (
 	"container/list"
 	"testing"
 
-	"github.com/go-spring/stdlib/listutil"
-	"github.com/go-spring/stdlib/testing/assert"
+	"go-spring.org/stdlib/listutil"
+	"go-spring.org/stdlib/testing/assert"
 )
 
 func TestTopologicalSort(t *testing.T) {

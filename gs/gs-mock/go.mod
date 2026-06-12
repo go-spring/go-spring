@@ -1,4 +1,4 @@
-module github.com/go-spring/gs-mock
+module go-spring.org/gs-mock
 
 go 1.26
 

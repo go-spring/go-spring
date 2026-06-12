@@ -21,7 +21,7 @@ import (
 	"math"
 	"unsafe"
 
-	"github.com/go-spring/stdlib/ordered"
+	"go-spring.org/stdlib/ordered"
 )
 
 const MsgKey = "msg"

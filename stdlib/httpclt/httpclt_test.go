@@ -27,10 +27,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-spring/stdlib/hashutil"
-	"github.com/go-spring/stdlib/httpclt"
-	"github.com/go-spring/stdlib/jsonflow"
-	"github.com/go-spring/stdlib/testing/assert"
+	"go-spring.org/stdlib/hashutil"
+	"go-spring.org/stdlib/httpclt"
+	"go-spring.org/stdlib/jsonflow"
+	"go-spring.org/stdlib/testing/assert"
 )
 
 func init() {

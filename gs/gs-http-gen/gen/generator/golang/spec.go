@@ -22,10 +22,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/go-spring/gs-http-gen/lib/httpidl"
-	"github.com/go-spring/gs-http-gen/lib/pathidl"
-	"github.com/go-spring/gs-http-gen/lib/validate"
-	"github.com/go-spring/stdlib/errutil"
+	"go-spring.org/gs-http-gen/lib/httpidl"
+	"go-spring.org/gs-http-gen/lib/pathidl"
+	"go-spring.org/gs-http-gen/lib/validate"
+	"go-spring.org/stdlib/errutil"
 )
 
 // TypeKind represents kind of a Go field type

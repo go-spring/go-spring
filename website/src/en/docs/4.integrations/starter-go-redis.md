@@ -5,7 +5,7 @@
 ## Installation
 
 ```go
-import _ "github.com/go-spring/starter-go-redis"
+import _ "go-spring.org/starter-go-redis"
 ```
 
 ## Configuration

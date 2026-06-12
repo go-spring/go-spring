@@ -20,7 +20,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/go-spring/stdlib/errutil"
+	"go-spring.org/stdlib/errutil"
 )
 
 func init() {

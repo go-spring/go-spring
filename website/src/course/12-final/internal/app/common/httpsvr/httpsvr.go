@@ -22,7 +22,7 @@ import (
 	"bookman/internal/app/controller"
 	"bookman/internal/idl/http/proto"
 
-	"github.com/go-spring/log"
+	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 )
 

@@ -26,7 +26,7 @@ import (
 	"go-spring.org/spring/gs"
 	"gorm.io/gorm"
 
-	_ "github.com/go-spring/starter-gorm-mysql"
+	_ "go-spring.org/starter-gorm-mysql"
 )
 
 type Service struct {

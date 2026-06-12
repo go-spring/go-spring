@@ -22,9 +22,9 @@ import (
 	"sort"
 	"text/template"
 
-	"github.com/go-spring/gs-http-gen/gen/generator"
-	"github.com/go-spring/gs-http-gen/lib/pathidl"
-	"github.com/go-spring/stdlib/errutil"
+	"go-spring.org/gs-http-gen/gen/generator"
+	"go-spring.org/gs-http-gen/lib/pathidl"
+	"go-spring.org/stdlib/errutil"
 )
 
 // serverTmpl for generating the HTTP server wrapper based on RPC definitions.
@@ -72,7 +72,7 @@ import (
 	"net/http"
 	{{- end}}
 
-	"github.com/go-spring/stdlib/httpsvr"
+	"go-spring.org/stdlib/httpsvr"
 )
 
 // {{.Service}}Service defines the interface that service must implement.

@@ -28,17 +28,17 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/go-spring/log"
+	"go-spring.org/log"
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs/internal/gs"
 	"go-spring.org/spring/gs/internal/gs_bean"
 	"go-spring.org/spring/gs/internal/gs_dync"
 	"go-spring.org/spring/gs/internal/gs_util"
-	"github.com/go-spring/stdlib/errutil"
-	"github.com/go-spring/stdlib/flatten"
-	"github.com/go-spring/stdlib/listutil"
-	"github.com/go-spring/stdlib/patchutil"
-	"github.com/go-spring/stdlib/typeutil"
+	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/flatten"
+	"go-spring.org/stdlib/listutil"
+	"go-spring.org/stdlib/patchutil"
+	"go-spring.org/stdlib/typeutil"
 )
 
 // refreshState represents the state of a refresh operation.

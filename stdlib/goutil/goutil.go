@@ -31,7 +31,7 @@ import (
 	"fmt"
 	"runtime/debug"
 
-	"github.com/go-spring/stdlib/errutil"
+	"go-spring.org/stdlib/errutil"
 )
 
 // PanicInfo contains information captured when a panic is recovered.

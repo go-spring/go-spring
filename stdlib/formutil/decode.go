@@ -20,9 +20,9 @@ import (
 	"encoding/base64"
 	"strconv"
 
-	"github.com/go-spring/stdlib/errutil"
-	"github.com/go-spring/stdlib/jsonflow"
-	"github.com/go-spring/stdlib/mathutil"
+	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/jsonflow"
+	"go-spring.org/stdlib/mathutil"
 )
 
 // DecodeBool decodes a boolean value from form values.

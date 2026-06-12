@@ -10,7 +10,7 @@
 ## 安装
 
 ```bash
-go get github.com/go-spring/starter-redigo
+go get go-spring.org/starter-redigo
 ```
 
 ## 快速开始
@@ -20,7 +20,7 @@ go get github.com/go-spring/starter-redigo
 参见 [example.go](example/example.go) 文件。
 
 ```go
-import _ "github.com/go-spring/starter-redigo"
+import _ "go-spring.org/starter-redigo"
 ```
 
 ### 2. 配置 Redis 实例

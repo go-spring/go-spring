@@ -26,9 +26,9 @@ import (
 	"strings"
 
 	"github.com/antlr4-go/antlr/v4"
-	"github.com/go-spring/gs-http-gen/lib/validate"
-	"github.com/go-spring/stdlib/errutil"
-	"github.com/go-spring/stdlib/hashutil"
+	"go-spring.org/gs-http-gen/lib/validate"
+	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/hashutil"
 )
 
 // ParseIDL runs the parsing pipeline for a single IDL input.

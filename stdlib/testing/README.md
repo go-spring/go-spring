@@ -44,8 +44,8 @@ import (
 	"os"
 	"math"
 
-	"github.com/go-spring/stdlib/testing/assert"
-	"github.com/go-spring/stdlib/testing/require"
+	"go-spring.org/stdlib/testing/assert"
+	"go-spring.org/stdlib/testing/require"
 )
 
 func TestExample(t *testing.T) {

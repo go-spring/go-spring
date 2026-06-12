@@ -24,9 +24,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/go-spring/stdlib/ctxcache"
-	"github.com/go-spring/stdlib/errutil"
-	"github.com/go-spring/stdlib/jsonflow"
+	"go-spring.org/stdlib/ctxcache"
+	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/jsonflow"
 )
 
 // ErrorHandler is the default handler for reporting errors back to the client.

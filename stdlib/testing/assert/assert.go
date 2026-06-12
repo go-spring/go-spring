@@ -21,7 +21,7 @@
 package assert
 
 import (
-	"github.com/go-spring/stdlib/testing/internal"
+	"go-spring.org/stdlib/testing/internal"
 )
 
 // fatalOnFailure indicates whether to stop the test when an assertion fails.

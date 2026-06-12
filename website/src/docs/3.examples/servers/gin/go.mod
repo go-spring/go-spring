@@ -20,9 +20,9 @@ require (
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.30.2 // indirect
-	github.com/go-spring/gs-mock v0.0.8 // indirect
-	github.com/go-spring/log v0.1.0 // indirect
-	github.com/go-spring/stdlib v0.1.2 // indirect
+	go-spring.org/gs-mock v0.0.8 // indirect
+	go-spring.org/log v0.1.0 // indirect
+	go-spring.org/stdlib v0.1.2 // indirect
 	github.com/goccy/go-json v0.10.6 // indirect
 	github.com/goccy/go-yaml v1.19.2 // indirect
 	github.com/gopherjs/gopherjs v1.20.2 // indirect

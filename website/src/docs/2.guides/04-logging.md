@@ -20,7 +20,7 @@ import (
 	"context"
 	"os"
 
-	"github.com/go-spring/log"
+	"go-spring.org/log"
 )
 
 // 注册标签，标签用于实现日志路由，在配置文件中指定输出目标，同时具备业务语义。
@@ -1598,7 +1598,7 @@ import (
 	"context"
 	stdlog "log"
 
-	"github.com/go-spring/log"
+	"go-spring.org/log"
 )
 
 // StdLogWriter 实现 io.Writer 接口，将标准库 log 的输出转发到 Go-Spring 日志系统。
@@ -1670,7 +1670,7 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
-	"github.com/go-spring/log"
+	"go-spring.org/log"
 )
 
 // ZapGoSpringWriter 是一个 zapcore.Core 适配器，

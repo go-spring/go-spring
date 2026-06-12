@@ -23,7 +23,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-spring/gs-http-gen/lib/validate"
+	"go-spring.org/gs-http-gen/lib/validate"
 )
 
 func TestGenDecodeJSONMapKey(t *testing.T) {
@@ -281,7 +281,7 @@ func TestServerTemplateWithoutRPCsOmitsUnusedImports(t *testing.T) {
 			t.Fatalf("empty server should not emit unused import %s:\n%s", name, src)
 		}
 	}
-	if !strings.Contains(src, `"github.com/go-spring/stdlib/httpsvr"`) {
+	if !strings.Contains(src, `"go-spring.org/stdlib/httpsvr"`) {
 		t.Fatalf("server should still import httpsvr for Routers signature:\n%s", src)
 	}
 }

@@ -27,7 +27,7 @@ import (
 	"go-spring.org/spring/gs/internal/gs"
 	"go-spring.org/spring/gs/internal/gs_arg"
 	"go-spring.org/spring/gs/internal/gs_cond"
-	"github.com/go-spring/stdlib/typeutil"
+	"go-spring.org/stdlib/typeutil"
 )
 
 // BeanStatus represents the different lifecycle statuses of a bean.

@@ -20,7 +20,7 @@ import (
 	"maps"
 
 	"github.com/expr-lang/expr"
-	"github.com/go-spring/stdlib/errutil"
+	"go-spring.org/stdlib/errutil"
 )
 
 var funcMap = map[string]any{}

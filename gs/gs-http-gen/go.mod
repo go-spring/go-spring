@@ -1,10 +1,10 @@
-module github.com/go-spring/gs-http-gen
+module go-spring.org/gs-http-gen
 
 go 1.25
 
 require (
 	github.com/antlr4-go/antlr/v4 v4.13.1
-	github.com/go-spring/stdlib v0.0.6
+	go-spring.org/stdlib v0.1.2
 	github.com/spf13/cobra v1.9.1
 )
 

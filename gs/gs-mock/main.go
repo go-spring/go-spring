@@ -33,7 +33,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/go-spring/gs-mock/gsmock"
+	"go-spring.org/gs-mock/gsmock"
 )
 
 // stdOut is the writer used for outputting the generated code.
@@ -100,7 +100,7 @@ func run(param runConfig) {
 
 	// Collect necessary imports for generated mocks
 	imports := make(map[string]string)
-	imports["gsmock"] = "github.com/go-spring/gs-mock/gsmock"
+	imports["gsmock"] = "go-spring.org/gs-mock/gsmock"
 	for _, m := range interfaces {
 		maps.Copy(imports, m.Imports)
 	}

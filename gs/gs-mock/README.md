@@ -75,7 +75,7 @@ It is especially suitable for **unit testing** and **component testing** in micr
 ### Standalone Installation
 
 ```
-go install github.com/go-spring/gs-mock@latest
+go install go-spring.org/gs-mock@latest
 ```
 
 ### Installation via the gs Toolchain

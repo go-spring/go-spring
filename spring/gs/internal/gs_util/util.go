@@ -19,7 +19,7 @@ package gs_util
 import (
 	"container/list"
 
-	"github.com/go-spring/stdlib/errutil"
+	"go-spring.org/stdlib/errutil"
 )
 
 // GetBeforeItems is a function type that returns a list of items

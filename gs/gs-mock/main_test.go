@@ -21,7 +21,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/go-spring/gs-mock/internal/assert"
+	"go-spring.org/gs-mock/internal/assert"
 )
 
 func TestMockgen(t *testing.T) {

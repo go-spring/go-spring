@@ -17,8 +17,8 @@
 package docgen
 
 import (
-	"github.com/go-spring/gs-http-gen/gen/docgen/openapi"
-	"github.com/go-spring/stdlib/errutil"
+	"go-spring.org/gs-http-gen/gen/docgen/openapi"
+	"go-spring.org/stdlib/errutil"
 )
 
 // Config holds the configuration options for document generation.

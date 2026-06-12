@@ -20,8 +20,8 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/go-spring/stdlib/formutil"
-	"github.com/go-spring/stdlib/testing/assert"
+	"go-spring.org/stdlib/formutil"
+	"go-spring.org/stdlib/testing/assert"
 )
 
 type Item struct {

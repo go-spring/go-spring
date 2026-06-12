@@ -21,9 +21,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-spring/stdlib/errutil"
-	"github.com/go-spring/stdlib/goutil"
-	"github.com/go-spring/stdlib/testing/assert"
+	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/goutil"
+	"go-spring.org/stdlib/testing/assert"
 )
 
 func TestGo(t *testing.T) {

@@ -3,7 +3,7 @@
   "description": "IDL definitions for manager CRUD APIs and assistant streaming interfaces",
   "version": "v1.0.0",
   "imports": [
-    "https://github.com/go-spring/gs-http-gen/standard@v1.idl"
+    "https://go-spring.org/gs-http-gen/standard@v1.idl"
   ],
   "config": {
     "sse": {

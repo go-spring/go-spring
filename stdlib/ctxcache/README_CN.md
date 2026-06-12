@@ -90,7 +90,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/go-spring/stdlib/ctxcache"
+	"go-spring.org/stdlib/ctxcache"
 )
 
 type User struct {

@@ -23,7 +23,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-spring/gs-http-gen/lib/httpidl"
+	"go-spring.org/gs-http-gen/lib/httpidl"
 )
 
 func TestBuildFromExamples(t *testing.T) {

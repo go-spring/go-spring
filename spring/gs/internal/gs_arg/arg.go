@@ -32,8 +32,8 @@ import (
 
 	"go-spring.org/spring/gs/internal/gs"
 	"go-spring.org/spring/gs/internal/gs_cond"
-	"github.com/go-spring/stdlib/errutil"
-	"github.com/go-spring/stdlib/typeutil"
+	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/typeutil"
 )
 
 // TagArg represents an argument resolved using a tag for property binding

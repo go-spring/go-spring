@@ -19,9 +19,9 @@ package testcase_test
 import (
 	"testing"
 
-	"github.com/go-spring/stdlib/testing/assert"
-	"github.com/go-spring/stdlib/testing/internal"
-	"github.com/go-spring/stdlib/testing/require"
+	"go-spring.org/stdlib/testing/assert"
+	"go-spring.org/stdlib/testing/internal"
+	"go-spring.org/stdlib/testing/require"
 )
 
 func TestMap_Length(t *testing.T) {

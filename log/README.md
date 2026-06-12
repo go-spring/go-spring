@@ -60,7 +60,7 @@ You can configure functions to extract contextual data from `context.Context` an
 ## Installation
 
 ```bash
-go get github.com/go-spring/log
+go get go-spring.org/log
 ```
 
 ## Quick Start
@@ -73,7 +73,7 @@ package main
 import (
 	"context"
 
-	"github.com/go-spring/log"
+	"go-spring.org/log"
 )
 
 func main() {

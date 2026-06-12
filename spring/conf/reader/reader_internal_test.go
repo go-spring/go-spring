@@ -19,7 +19,7 @@ package reader
 import (
 	"testing"
 
-	"github.com/go-spring/stdlib/testing/assert"
+	"go-spring.org/stdlib/testing/assert"
 )
 
 func TestRegisterNilReader(t *testing.T) {

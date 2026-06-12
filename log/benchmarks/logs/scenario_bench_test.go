@@ -25,7 +25,7 @@ import (
 	"log/slog"
 	"testing"
 
-	"github.com/go-spring/log"
+	"go-spring.org/log"
 	"go.uber.org/zap"
 )
 

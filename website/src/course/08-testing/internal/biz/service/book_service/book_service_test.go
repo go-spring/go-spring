@@ -22,8 +22,8 @@ import (
 	"bookman/internal/dao/book_dao"
 
 	"go-spring.org/spring/gs"
-	"github.com/go-spring/stdlib/testing/assert"
-	"github.com/go-spring/stdlib/testing/require"
+	"go-spring.org/stdlib/testing/assert"
+	"go-spring.org/stdlib/testing/require"
 )
 
 func TestBookService(t *testing.T) {

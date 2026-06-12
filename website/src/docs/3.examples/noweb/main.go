@@ -21,7 +21,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/go-spring/log"
+	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 )
 

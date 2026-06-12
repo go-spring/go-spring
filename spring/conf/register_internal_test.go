@@ -20,7 +20,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/go-spring/stdlib/testing/assert"
+	"go-spring.org/stdlib/testing/assert"
 )
 
 type nilConverterTarget struct{}

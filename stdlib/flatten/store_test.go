@@ -19,7 +19,7 @@ package flatten
 import (
 	"testing"
 
-	"github.com/go-spring/stdlib/testing/assert"
+	"go-spring.org/stdlib/testing/assert"
 )
 
 func TestProperties(t *testing.T) {

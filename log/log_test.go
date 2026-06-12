@@ -26,9 +26,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-spring/log"
-	"github.com/go-spring/stdlib/flatten"
-	"github.com/go-spring/stdlib/testing/assert"
+	"go-spring.org/log"
+	"go-spring.org/stdlib/flatten"
+	"go-spring.org/stdlib/testing/assert"
 )
 
 var (

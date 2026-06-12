@@ -10,7 +10,7 @@
 ## 安装
 
 ```bash
-go get github.com/go-spring/starter-gorm-mysql
+go get go-spring.org/starter-gorm-mysql
 ```
 
 ## 快速开始
@@ -20,7 +20,7 @@ go get github.com/go-spring/starter-gorm-mysql
 参见 [example.go](example/example.go) 文件。
 
 ```go
-import _ "github.com/go-spring/starter-gorm-mysql"
+import _ "go-spring.org/starter-gorm-mysql"
 ```
 
 ### 2. 配置 gorm 实例

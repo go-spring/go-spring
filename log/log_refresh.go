@@ -23,9 +23,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/go-spring/log/expr"
-	"github.com/go-spring/stdlib/errutil"
-	"github.com/go-spring/stdlib/flatten"
+	"go-spring.org/log/expr"
+	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/flatten"
 )
 
 // RootLoggerName defines the reserved name for the root logger.

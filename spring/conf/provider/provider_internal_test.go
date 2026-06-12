@@ -19,7 +19,7 @@ package provider
 import (
 	"testing"
 
-	"github.com/go-spring/stdlib/testing/assert"
+	"go-spring.org/stdlib/testing/assert"
 )
 
 func TestRegisterNilProvider(t *testing.T) {

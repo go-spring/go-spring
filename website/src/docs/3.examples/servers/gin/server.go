@@ -24,7 +24,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go-spring.org/spring/gs"
-	"github.com/go-spring/stdlib/errutil"
+	"go-spring.org/stdlib/errutil"
 )
 
 func init() {

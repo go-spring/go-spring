@@ -53,7 +53,7 @@ _biz_*   → biz Logger  → bizFile Appender → JSONLayout
 
 Go-Spring App 的日志配置统一位于 `logging` 前缀下。应用启动时，框架会取出这个前缀下的配置，再交给日志库。因此，日志库实际看到的是 `logger.*` 和 `appender.*`。
 
-如果单独使用 `github.com/go-spring/log`，配置可以直接从这两个前缀开始，不需要增加 `logging`。
+如果单独使用 `go-spring.org/log`，配置可以直接从这两个前缀开始，不需要增加 `logging`。
 
 ### 实例与类型
 

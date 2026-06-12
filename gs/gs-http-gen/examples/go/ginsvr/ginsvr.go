@@ -22,8 +22,8 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/go-spring/gs-http-gen/lib/pathidl"
-	"github.com/go-spring/stdlib/httpsvr"
+	"go-spring.org/gs-http-gen/lib/pathidl"
+	"go-spring.org/stdlib/httpsvr"
 )
 
 func init() {

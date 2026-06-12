@@ -24,7 +24,7 @@ import (
 	"bookman/internal/idl/http/proto"
 	"bookman/internal/sdk/book_sdk"
 
-	"github.com/go-spring/log"
+	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 )
 

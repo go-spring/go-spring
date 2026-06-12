@@ -46,7 +46,7 @@ import (
 	"strings"
 
 	"go-spring.org/spring/conf"
-	"github.com/go-spring/stdlib/flatten"
+	"go-spring.org/stdlib/flatten"
 )
 
 // AppConfig represents the layered configuration of an application.

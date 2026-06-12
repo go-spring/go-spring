@@ -19,7 +19,7 @@ package log
 import (
 	"testing"
 
-	"github.com/go-spring/stdlib/errutil"
+	"go-spring.org/stdlib/errutil"
 )
 
 func TestParseHumanizeBytes(t *testing.T) {

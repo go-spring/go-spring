@@ -20,10 +20,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/go-spring/gs-http-gen/gen"
-	"github.com/go-spring/gs-http-gen/gen/docgen"
-	"github.com/go-spring/gs-http-gen/gen/generator"
-	"github.com/go-spring/gs-http-gen/lib/version"
+	"go-spring.org/gs-http-gen/gen"
+	"go-spring.org/gs-http-gen/gen/docgen"
+	"go-spring.org/gs-http-gen/gen/generator"
+	"go-spring.org/gs-http-gen/lib/version"
 	"github.com/spf13/cobra"
 )
 

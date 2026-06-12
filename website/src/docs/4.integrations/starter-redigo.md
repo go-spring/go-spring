@@ -5,7 +5,7 @@
 ## 安装
 
 ```go
-import _ "github.com/go-spring/starter-redigo"
+import _ "go-spring.org/starter-redigo"
 ```
 
 ## 配置

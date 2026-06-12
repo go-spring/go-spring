@@ -11,7 +11,7 @@ Starter 要解决的就是组件接入规则的复用问题。它不是另一套
 应用使用 Starter 时，最常见的入口是空白导入。导入 Starter 的动作只让注册逻辑进入 Go-Spring，并不等于马上创建资源。
 
 ```go
-import _ "github.com/go-spring/starter-gorm-mysql"
+import _ "go-spring.org/starter-gorm-mysql"
 ```
 
 空白导入会触发 starter 包的 `init()`。在 `init()` 里，Starter 可以调用 `gs.Provide`、`gs.Module` 或 `gs.Group`，把 Bean 定义和模块函数放入 Go-Spring 的注册表。

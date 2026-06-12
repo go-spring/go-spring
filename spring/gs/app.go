@@ -25,12 +25,12 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/go-spring/log"
+	"go-spring.org/log"
 	"go-spring.org/spring/gs/internal/gs"
 	"go-spring.org/spring/gs/internal/gs_app"
 	"go-spring.org/spring/gs/internal/gs_bean"
-	"github.com/go-spring/stdlib/errutil"
-	"github.com/go-spring/stdlib/goutil"
+	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/goutil"
 )
 
 // inited indicates whether the application has been initialized.

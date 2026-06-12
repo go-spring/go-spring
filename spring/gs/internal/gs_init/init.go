@@ -23,7 +23,7 @@ import (
 	"go-spring.org/spring/gs/internal/gs"
 	"go-spring.org/spring/gs/internal/gs_bean"
 	"go-spring.org/spring/gs/internal/gs_cond"
-	"github.com/go-spring/stdlib/flatten"
+	"go-spring.org/stdlib/flatten"
 )
 
 var (

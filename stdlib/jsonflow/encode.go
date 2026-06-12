@@ -22,7 +22,7 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/go-spring/stdlib/jsonflow/internal/json"
+	"go-spring.org/stdlib/jsonflow/internal/json"
 )
 
 // NotForPublicUse is a private type used to prevent the use of

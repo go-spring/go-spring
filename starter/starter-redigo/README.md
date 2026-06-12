@@ -10,7 +10,7 @@ making it easy to integrate and use Redis in Go-Spring applications.
 ## Installation
 
 ```bash
-go get github.com/go-spring/starter-redigo
+go get go-spring.org/starter-redigo
 ```
 
 ## Quick Start
@@ -20,7 +20,7 @@ go get github.com/go-spring/starter-redigo
 Refer to the [example.go](example/example.go) file.
 
 ```go
-import _ "github.com/go-spring/starter-redigo"
+import _ "go-spring.org/starter-redigo"
 ```
 
 ### 2. Configure the Redis Instance

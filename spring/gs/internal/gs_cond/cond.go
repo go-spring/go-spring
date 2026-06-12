@@ -34,8 +34,8 @@ import (
 	"strings"
 
 	"go-spring.org/spring/gs/internal/gs"
-	"github.com/go-spring/stdlib/errutil"
-	"github.com/go-spring/stdlib/funcutil"
+	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/funcutil"
 )
 
 /********************************* OnFunc ************************************/

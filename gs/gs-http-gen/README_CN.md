@@ -78,12 +78,12 @@
 
 - **推荐方式：**
 
-使用 [gs](https://github.com/go-spring/gs) 集成开发工具。
+使用 [gs](https://go-spring.org/gs) 集成开发工具。
 
 - 单独安装本工具：
 
 ```bash
-go install github.com/go-spring/gs-http-gen@latest
+go install go-spring.org/gs-http-gen@latest
 ```
 
 ## 使用方法

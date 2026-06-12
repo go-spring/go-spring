@@ -23,9 +23,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-spring/stdlib/errutil"
-	"github.com/go-spring/stdlib/hashutil"
-	"github.com/go-spring/stdlib/testing/assert"
+	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/hashutil"
+	"go-spring.org/stdlib/testing/assert"
 )
 
 func TestDecodeBool(t *testing.T) {

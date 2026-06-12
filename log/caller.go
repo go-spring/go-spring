@@ -22,7 +22,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/go-spring/stdlib/errutil"
+	"go-spring.org/stdlib/errutil"
 )
 
 // callerType indicates the type of caller information to use.

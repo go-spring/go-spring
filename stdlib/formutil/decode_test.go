@@ -20,9 +20,9 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/go-spring/stdlib/errutil"
-	"github.com/go-spring/stdlib/formutil"
-	"github.com/go-spring/stdlib/testing/assert"
+	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/formutil"
+	"go-spring.org/stdlib/testing/assert"
 )
 
 const ExpectedStr = "Bool=true&BoolPtr=true&Bytes=MQ%3D%3D&Float32=1&Float32Ptr=1&Int=1&Int64=1&Int64Ptr=1&IntPtr=1&Item=%7B%22Name%22%3A%221%22%7D&ItemList=%7B%22Name%22%3A%221%22%7D&String=1&StringIntMap=%7B%221%22%3A1%7D&StringIntPtrMap=%7B%221%22%3A1%7D&StringItemMap=%7B%221%22%3A%7B%22Name%22%3A%221%22%7D%7D&StringList=1&StringPtr=1&StringPtrList=1&Uint=1&Uint64=1&Uint64Ptr=1&UintPtr=1"

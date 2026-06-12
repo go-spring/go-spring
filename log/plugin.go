@@ -24,8 +24,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-spring/stdlib/errutil"
-	"github.com/go-spring/stdlib/flatten"
+	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/flatten"
 )
 
 var (

@@ -20,7 +20,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/go-spring/stdlib/testing/assert"
+	"go-spring.org/stdlib/testing/assert"
 )
 
 func TestExtractEnvironments(t *testing.T) {

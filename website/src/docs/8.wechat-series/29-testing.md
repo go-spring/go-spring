@@ -114,7 +114,7 @@ func TestUserService(t *testing.T) {
 
 ## assert 与 require
 
-测试失败时，断言节奏也会影响定位效率。Go-Spring 在 `github.com/go-spring/stdlib/testing` 下提供 `assert` 和 `require`，两者的区别在于失败后是否继续执行。
+测试失败时，断言节奏也会影响定位效率。Go-Spring 在 `go-spring.org/stdlib/testing` 下提供 `assert` 和 `require`，两者的区别在于失败后是否继续执行。
 
 前置条件用 `require`，后续结果检查用 `assert`。
 

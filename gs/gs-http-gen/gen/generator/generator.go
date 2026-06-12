@@ -17,7 +17,7 @@
 package generator
 
 import (
-	"github.com/go-spring/stdlib/errutil"
+	"go-spring.org/stdlib/errutil"
 )
 
 // Config holds the configuration options for the code generator.

@@ -62,7 +62,7 @@ Logger 是实际处理日志的组件。不同标签可以匹配到不同 logger
 ## 安装
 
 ```bash
-go get github.com/go-spring/log
+go get go-spring.org/log
 ```
 
 ## 快速开始
@@ -73,7 +73,7 @@ package main
 import (
   "context"
 
-  "github.com/go-spring/log"
+  "go-spring.org/log"
 )
 
 func main() {

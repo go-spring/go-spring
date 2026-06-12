@@ -19,7 +19,7 @@ package validate
 import (
 	"testing"
 
-	"github.com/go-spring/stdlib/errutil"
+	"go-spring.org/stdlib/errutil"
 )
 
 func TestParse(t *testing.T) {

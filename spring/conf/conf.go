@@ -22,8 +22,8 @@ import (
 
 	"go-spring.org/spring/conf/provider"
 	"go-spring.org/spring/conf/reader"
-	"github.com/go-spring/stdlib/errutil"
-	"github.com/go-spring/stdlib/flatten"
+	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/flatten"
 	"github.com/spf13/cast"
 )
 

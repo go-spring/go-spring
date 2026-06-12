@@ -75,7 +75,7 @@
 ### 单独安装
 
 ```
-go install github.com/go-spring/gs-mock@latest
+go install go-spring.org/gs-mock@latest
 ```
 
 ### 通过 gs 工具集安装

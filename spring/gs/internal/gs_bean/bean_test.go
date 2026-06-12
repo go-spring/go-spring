@@ -23,11 +23,11 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/go-spring/gs-mock/gsmock"
+	"go-spring.org/gs-mock/gsmock"
 	"go-spring.org/spring/gs/internal/gs"
 	"go-spring.org/spring/gs/internal/gs_arg"
-	"github.com/go-spring/stdlib/funcutil"
-	"github.com/go-spring/stdlib/testing/assert"
+	"go-spring.org/stdlib/funcutil"
+	"go-spring.org/stdlib/testing/assert"
 )
 
 // makeBean creates a new BeanDefinition.

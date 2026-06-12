@@ -81,12 +81,12 @@ Generate Go server-side code and client code in other languages from IDL files:
 
 * **Recommended:**
 
-Use the [gs](https://github.com/go-spring/gs) integrated development tool.
+Use the [gs](https://go-spring.org/gs) integrated development tool.
 
 * **Standalone installation:**
 
 ```bash
-go install github.com/go-spring/gs-http-gen@latest
+go install go-spring.org/gs-http-gen@latest
 ```
 
 ## Usage

@@ -19,7 +19,7 @@ thread、mutex、block 等 profile 信息的 Go-Spring 应用。
 ## 安装
 
 ```bash
-go get github.com/go-spring/starter-pprof
+go get go-spring.org/starter-pprof
 ```
 
 ## 使用方式
@@ -31,7 +31,7 @@ package main
 
 import (
 	"go-spring.org/spring/gs"
-	_ "github.com/go-spring/starter-pprof"
+	_ "go-spring.org/starter-pprof"
 )
 
 func main() {

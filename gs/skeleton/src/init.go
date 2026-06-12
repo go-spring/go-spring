@@ -5,9 +5,9 @@ import (
 	_ "GS_PROJECT_MODULE/src/app/httpsvr"
 	_ "GS_PROJECT_MODULE/src/app/thriftsvr"
 
-	_ "github.com/go-spring/starter-go-redis"
-	_ "github.com/go-spring/starter-gorm-mysql"
-	_ "github.com/go-spring/starter-redigo"
+	_ "go-spring.org/starter-go-redis"
+	_ "go-spring.org/starter-gorm-mysql"
+	_ "go-spring.org/starter-redigo"
 )
 
 // 本文件通过 _ 空白导入自动配置的模块

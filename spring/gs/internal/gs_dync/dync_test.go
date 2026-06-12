@@ -25,9 +25,9 @@ import (
 	"time"
 
 	"go-spring.org/spring/conf"
-	"github.com/go-spring/stdlib/errutil"
-	"github.com/go-spring/stdlib/flatten"
-	"github.com/go-spring/stdlib/testing/assert"
+	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/flatten"
+	"go-spring.org/stdlib/testing/assert"
 )
 
 type MockPanicRefreshable struct{}

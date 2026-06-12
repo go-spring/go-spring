@@ -22,8 +22,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/go-spring/gs-mock/gsmock"
-	"github.com/go-spring/gs-mock/internal/assert"
+	"go-spring.org/gs-mock/gsmock"
+	"go-spring.org/gs-mock/internal/assert"
 )
 
 type Request struct {

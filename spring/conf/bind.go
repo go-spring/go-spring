@@ -22,9 +22,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/go-spring/stdlib/errutil"
-	"github.com/go-spring/stdlib/flatten"
-	"github.com/go-spring/stdlib/typeutil"
+	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/flatten"
+	"go-spring.org/stdlib/typeutil"
 )
 
 // ParsedTag represents a parsed configuration tag that encodes

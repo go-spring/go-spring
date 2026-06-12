@@ -26,10 +26,10 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/go-spring/gs-http-gen/gen/generator"
-	"github.com/go-spring/gs-http-gen/lib/httpidl"
-	"github.com/go-spring/gs-http-gen/lib/validate"
-	"github.com/go-spring/stdlib/errutil"
+	"go-spring.org/gs-http-gen/gen/generator"
+	"go-spring.org/gs-http-gen/lib/httpidl"
+	"go-spring.org/gs-http-gen/lib/validate"
+	"go-spring.org/stdlib/errutil"
 )
 
 // formatFile formats Go source code using `go format`
@@ -560,11 +560,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/go-spring/stdlib/errutil"
-	"github.com/go-spring/stdlib/hashutil"
-	"github.com/go-spring/stdlib/httpsvr"
-	"github.com/go-spring/stdlib/formutil"
-	"github.com/go-spring/stdlib/jsonflow"
+	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/hashutil"
+	"go-spring.org/stdlib/httpsvr"
+	"go-spring.org/stdlib/formutil"
+	"go-spring.org/stdlib/jsonflow"
 )
 
 var _ = strings.Index

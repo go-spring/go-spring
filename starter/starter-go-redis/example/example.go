@@ -24,11 +24,11 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/go-spring/log"
+	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"github.com/redis/go-redis/v9"
 
-	StarterGoRedis "github.com/go-spring/starter-go-redis"
+	StarterGoRedis "go-spring.org/starter-go-redis"
 )
 
 func init() {

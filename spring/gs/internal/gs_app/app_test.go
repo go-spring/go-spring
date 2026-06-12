@@ -24,12 +24,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-spring/gs-mock/gsmock"
-	"github.com/go-spring/log"
+	"go-spring.org/gs-mock/gsmock"
+	"go-spring.org/log"
 	"go-spring.org/spring/gs/internal/gs"
-	"github.com/go-spring/stdlib/errutil"
-	"github.com/go-spring/stdlib/goutil"
-	"github.com/go-spring/stdlib/testing/assert"
+	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/goutil"
+	"go-spring.org/stdlib/testing/assert"
 )
 
 var logBuf = &safeBuffer{}

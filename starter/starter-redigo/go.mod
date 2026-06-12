@@ -1,9 +1,9 @@
-module github.com/go-spring/starter-redigo
+module go-spring.org/starter-redigo
 
 go 1.26
 
 require (
-	github.com/go-spring/log v0.1.0
+	go-spring.org/log v0.1.0
 	go-spring.org/spring v1.3.0
 	github.com/gomodule/redigo v1.9.3
 )
@@ -12,8 +12,8 @@ require (
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/bytedance/mockey v1.4.6 // indirect
 	github.com/expr-lang/expr v1.17.8 // indirect
-	github.com/go-spring/gs-mock v0.0.8 // indirect
-	github.com/go-spring/stdlib v0.1.2 // indirect
+	go-spring.org/gs-mock v0.0.8 // indirect
+	go-spring.org/stdlib v0.1.2 // indirect
 	github.com/gopherjs/gopherjs v1.20.2 // indirect
 	github.com/jtolds/gls v4.20.0+incompatible // indirect
 	github.com/magiconair/properties v1.8.10 // indirect

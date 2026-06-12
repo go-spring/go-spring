@@ -27,7 +27,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/go-spring/stdlib/errutil"
+	"go-spring.org/stdlib/errutil"
 )
 
 var (

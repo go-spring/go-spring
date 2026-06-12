@@ -22,14 +22,14 @@ import (
 	"context"
 	"sync"
 
-	"github.com/go-spring/log"
+	"go-spring.org/log"
 	"go-spring.org/spring/gs/internal/gs"
 	"go-spring.org/spring/gs/internal/gs_bean"
 	"go-spring.org/spring/gs/internal/gs_conf"
 	"go-spring.org/spring/gs/internal/gs_core"
-	"github.com/go-spring/stdlib/errutil"
-	"github.com/go-spring/stdlib/flatten"
-	"github.com/go-spring/stdlib/goutil"
+	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/flatten"
+	"go-spring.org/stdlib/goutil"
 )
 
 // Runner defines an interface for components that need to be executed

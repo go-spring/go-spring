@@ -14,7 +14,7 @@ A Starter usually completes registration through Go's `init()` function.
 An application only needs to import the starter package, and the registration logic in the package will execute before the program starts:
 
 ```go
-import _ "github.com/go-spring/starter-gorm-mysql"
+import _ "go-spring.org/starter-gorm-mysql"
 ```
 
 Blank imports are suitable for scenarios where only side-effect registration is triggered. As long as the starter package can be seen by the Go linker,
@@ -81,7 +81,7 @@ package starter
 
 import (
 	"go-spring.org/spring/gs"
-	"github.com/go-spring/stdlib/flatten"
+	"go-spring.org/stdlib/flatten"
 )
 
 func init() {

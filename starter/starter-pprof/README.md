@@ -23,7 +23,7 @@ goroutine, heap, thread, mutex, and block profiles.
 ## Installation
 
 ```bash
-go get github.com/go-spring/starter-pprof
+go get go-spring.org/starter-pprof
 ```
 
 ## Usage
@@ -35,7 +35,7 @@ package main
 
 import (
 	"go-spring.org/spring/gs"
-	_ "github.com/go-spring/starter-pprof"
+	_ "go-spring.org/starter-pprof"
 )
 
 func main() {

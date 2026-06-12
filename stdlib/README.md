@@ -7,8 +7,8 @@
    <a href="https://codecov.io/gh/go-spring/stdlib" >
       <img src="https://codecov.io/gh/go-spring/stdlib/branch/main/graph/badge.svg?token=SX7CV1T0O8" alt="test-coverage"/>
    </a>
-   <a href="https://goreportcard.com/report/github.com/go-spring/stdlib">
-      <img src="https://goreportcard.com/badge/github.com/go-spring/stdlib" alt="Go Report Card"/>
+   <a href="https://goreportcard.com/report/go-spring.org/stdlib">
+      <img src="https://goreportcard.com/badge/go-spring.org/stdlib" alt="Go Report Card"/>
    </a>
    <a href="https://deepwiki.com/go-spring/stdlib"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
 </div>

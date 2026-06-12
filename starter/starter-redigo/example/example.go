@@ -24,11 +24,11 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/go-spring/log"
+	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"github.com/gomodule/redigo/redis"
 
-	StarterRedigo "github.com/go-spring/starter-redigo"
+	StarterRedigo "go-spring.org/starter-redigo"
 )
 
 func init() {

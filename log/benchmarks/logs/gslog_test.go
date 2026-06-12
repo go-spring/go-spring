@@ -19,7 +19,7 @@ package benchmarks
 import (
 	"time"
 
-	"github.com/go-spring/log"
+	"go-spring.org/log"
 )
 
 func fakeGSAppenders() {

@@ -124,5 +124,5 @@ rpc CreateUser(CreateUserRequest) returns (CreateUserResponse) @method("POST") @
 
 使用方式：
 ```bash
-go run github.com/go-spring/gs-http-gen/cmd/gs-http-gen --config meta.json
+go run go-spring.org/gs-http-gen/cmd/gs-http-gen --config meta.json
 ```

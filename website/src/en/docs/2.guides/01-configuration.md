@@ -253,7 +253,7 @@ package main
 import (
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
-	"github.com/go-spring/stdlib/flatten"
+	"go-spring.org/stdlib/flatten"
 )
 
 func init() {
@@ -479,7 +479,7 @@ import (
 	"os"
 
 	"go-spring.org/spring/conf"
-	"github.com/go-spring/stdlib/flatten"
+	"go-spring.org/stdlib/flatten"
 )
 
 // Define a Provider that reads JSON from environment variables

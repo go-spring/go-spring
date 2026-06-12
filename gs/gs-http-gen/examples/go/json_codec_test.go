@@ -22,7 +22,7 @@ import (
 
 	"examples/proto"
 
-	"github.com/go-spring/stdlib/jsonflow"
+	"go-spring.org/stdlib/jsonflow"
 )
 
 func ptr[T any](v T) *T {

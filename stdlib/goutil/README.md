@@ -24,7 +24,7 @@ import (
     "fmt"
     "time"
     
-    "github.com/go-spring/stdlib/goutil"
+    "go-spring.org/stdlib/goutil"
 )
 
 func main() {

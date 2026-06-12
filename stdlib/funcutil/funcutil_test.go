@@ -20,8 +20,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/go-spring/stdlib/funcutil"
-	"github.com/go-spring/stdlib/testing/assert"
+	"go-spring.org/stdlib/funcutil"
+	"go-spring.org/stdlib/testing/assert"
 )
 
 func TestFuncName(t *testing.T) {

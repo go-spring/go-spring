@@ -14,7 +14,7 @@ Starter 通常通过 Go 的 `init()` 函数完成注册。
 应用只需要导入 starter 包，包内的注册逻辑就会在程序启动前执行：
 
 ```go
-import _ "github.com/go-spring/starter-gorm-mysql"
+import _ "go-spring.org/starter-gorm-mysql"
 ```
 
 空白导入适合只触发副作用注册的场景。只要 starter 包能够被 Go linker 看到，
@@ -81,7 +81,7 @@ package starter
 
 import (
 	"go-spring.org/spring/gs"
-	"github.com/go-spring/stdlib/flatten"
+	"go-spring.org/stdlib/flatten"
 )
 
 func init() {

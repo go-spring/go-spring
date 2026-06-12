@@ -22,8 +22,8 @@ import (
 	stdjsonv2 "encoding/json/v2"
 	"io"
 
-	"github.com/go-spring/stdlib/jsonflow/internal/json"
-	"github.com/go-spring/stdlib/jsonflow/internal/jsonv2"
+	"go-spring.org/stdlib/jsonflow/internal/json"
+	"go-spring.org/stdlib/jsonflow/internal/jsonv2"
 )
 
 // NewEncoder creates a new jsonv2.Encoder that implements the json.Encoder interface.

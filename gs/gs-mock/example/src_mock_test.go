@@ -23,9 +23,9 @@ import (
 	"fmt"
 	"testing"
 
-	exp "github.com/go-spring/gs-mock/example/inner"
-	"github.com/go-spring/gs-mock/gsmock"
-	"github.com/go-spring/gs-mock/internal/assert"
+	exp "go-spring.org/gs-mock/example/inner"
+	"go-spring.org/gs-mock/gsmock"
+	"go-spring.org/gs-mock/internal/assert"
 )
 
 type ItemType int

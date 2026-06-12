@@ -1,3 +1,3 @@
-module github.com/go-spring/gs
+module go-spring.org/gs
 
 go 1.24

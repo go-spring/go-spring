@@ -21,9 +21,9 @@ import (
 	"io"
 	"strconv"
 
-	"github.com/go-spring/stdlib/errutil"
-	"github.com/go-spring/stdlib/jsonflow/internal/json"
-	"github.com/go-spring/stdlib/mathutil"
+	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/jsonflow/internal/json"
+	"go-spring.org/stdlib/mathutil"
 )
 
 const (

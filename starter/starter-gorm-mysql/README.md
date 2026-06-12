@@ -10,7 +10,7 @@ making it easy to integrate and use mysql in Go-Spring applications.
 ## Installation
 
 ```bash
-go get github.com/go-spring/starter-gorm-mysql
+go get go-spring.org/starter-gorm-mysql
 ```
 
 ## Quick Start
@@ -20,7 +20,7 @@ go get github.com/go-spring/starter-gorm-mysql
 Refer to the [example.go](example/example.go) file.
 
 ```go
-import _ "github.com/go-spring/starter-gorm-mysql"
+import _ "go-spring.org/starter-gorm-mysql"
 ```
 
 ### 2. Configure the gorm Instance

@@ -5,7 +5,7 @@
 ## 安装
 
 ```go
-import _ "github.com/go-spring/starter-pprof"
+import _ "go-spring.org/starter-pprof"
 ```
 
 ## 配置

@@ -20,7 +20,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/go-spring/stdlib/flatten"
+	"go-spring.org/stdlib/flatten"
 )
 
 // extractEnvironments extracts environment variables.

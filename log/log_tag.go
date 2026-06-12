@@ -21,7 +21,7 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/go-spring/stdlib/ordered"
+	"go-spring.org/stdlib/ordered"
 )
 
 // tagRegistry stores Tag instances keyed by their string names.

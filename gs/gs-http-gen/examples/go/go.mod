@@ -4,8 +4,8 @@ go 1.26
 
 require (
 	github.com/gin-gonic/gin v1.11.0
-	github.com/go-spring/gs-http-gen v0.0.0
-	github.com/go-spring/stdlib v0.0.6
+	go-spring.org/gs-http-gen v0.0.0
+	go-spring.org/stdlib v0.1.2
 )
 
 require (
@@ -44,6 +44,6 @@ require (
 	google.golang.org/protobuf v1.36.9 // indirect
 )
 
-replace github.com/go-spring/gs-http-gen => ../../
+replace go-spring.org/gs-http-gen => ../../
 
-replace github.com/go-spring/stdlib => ../../../stdlib
+replace go-spring.org/stdlib => ../../../stdlib

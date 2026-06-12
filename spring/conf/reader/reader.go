@@ -24,7 +24,7 @@ import (
 	"go-spring.org/spring/conf/reader/prop"
 	"go-spring.org/spring/conf/reader/toml"
 	"go-spring.org/spring/conf/reader/yaml"
-	"github.com/go-spring/stdlib/errutil"
+	"go-spring.org/stdlib/errutil"
 )
 
 var readers = map[string]Reader{}

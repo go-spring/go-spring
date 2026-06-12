@@ -17,8 +17,8 @@
 package golang
 
 import (
-	"github.com/go-spring/gs-http-gen/gen/generator"
-	"github.com/go-spring/stdlib/errutil"
+	"go-spring.org/gs-http-gen/gen/generator"
+	"go-spring.org/stdlib/errutil"
 )
 
 // Generator is the main generator.

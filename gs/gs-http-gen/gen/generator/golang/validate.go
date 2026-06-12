@@ -24,9 +24,9 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/go-spring/gs-http-gen/gen/generator"
-	"github.com/go-spring/gs-http-gen/lib/httpidl"
-	"github.com/go-spring/stdlib/errutil"
+	"go-spring.org/gs-http-gen/gen/generator"
+	"go-spring.org/gs-http-gen/lib/httpidl"
+	"go-spring.org/stdlib/errutil"
 )
 
 // validateTmpl is a Go template for generating default validation functions.

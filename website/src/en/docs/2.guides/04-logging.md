@@ -20,7 +20,7 @@ import (
 	"context"
 	"os"
 
-	"github.com/go-spring/log"
+	"go-spring.org/log"
 )
 
 // Register tags. Tags are used for log routing, specify output targets in configuration files, and also carry business semantics.
@@ -1596,7 +1596,7 @@ import (
 	"context"
 	stdlog "log"
 
-	"github.com/go-spring/log"
+	"go-spring.org/log"
 )
 
 // StdLogWriter implements the io.Writer interface and forwards standard library log output to the Go-Spring logging system.
@@ -1668,7 +1668,7 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
-	"github.com/go-spring/log"
+	"go-spring.org/log"
 )
 
 // ZapGoSpringWriter is a zapcore.Core adapter

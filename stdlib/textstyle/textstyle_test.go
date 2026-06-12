@@ -20,7 +20,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-spring/stdlib/textstyle"
+	"go-spring.org/stdlib/textstyle"
 )
 
 func TestAttribute_Sprint(t *testing.T) {

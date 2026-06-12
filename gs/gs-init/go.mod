@@ -1,4 +1,4 @@
-module github.com/go-spring/gs-init
+module go-spring.org/gs-init
 
 go 1.24
 

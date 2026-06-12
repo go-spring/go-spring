@@ -22,7 +22,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-spring/stdlib/jsonflow"
+	"go-spring.org/stdlib/jsonflow"
 )
 
 func TestListener(t *testing.T) {

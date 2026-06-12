@@ -20,8 +20,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/go-spring/stdlib/errutil"
-	"github.com/go-spring/stdlib/flatten"
+	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/flatten"
 )
 
 // CommandArgsPrefix defines the environment variable name used to override

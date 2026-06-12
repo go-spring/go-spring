@@ -15,12 +15,12 @@ well-structured Go project.
 
 * **Recommended way:**
 
-Use the [gs](https://github.com/go-spring/gs) integrated development tool.
+Use the [gs](https://go-spring.org/gs) integrated development tool.
 
 * To install this tool individually:
 
 ```bash
-go install github.com/go-spring/gs-init@latest
+go install go-spring.org/gs-init@latest
 ```
 
 ## Usage

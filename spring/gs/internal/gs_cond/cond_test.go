@@ -20,10 +20,10 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/go-spring/gs-mock/gsmock"
+	"go-spring.org/gs-mock/gsmock"
 	"go-spring.org/spring/gs/internal/gs"
-	"github.com/go-spring/stdlib/errutil"
-	"github.com/go-spring/stdlib/testing/assert"
+	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/testing/assert"
 )
 
 var (

@@ -253,7 +253,7 @@ package main
 import (
 	"go-spring.org/spring/conf"
 	"go-spring.org/spring/gs"
-	"github.com/go-spring/stdlib/flatten"
+	"go-spring.org/stdlib/flatten"
 )
 
 func init() {
@@ -480,7 +480,7 @@ import (
 	"os"
 
 	"go-spring.org/spring/conf"
-	"github.com/go-spring/stdlib/flatten"
+	"go-spring.org/stdlib/flatten"
 )
 
 // 定义一个从环境变量读取 JSON 的 Provider

@@ -5,8 +5,8 @@ go 1.26
 require (
 	github.com/apex/log v1.9.0
 	github.com/go-kit/log v0.2.1
-	github.com/go-spring/log v0.0.12
-	github.com/go-spring/stdlib v0.1.2
+	go-spring.org/log v0.0.12
+	go-spring.org/stdlib v0.1.2
 	github.com/rs/zerolog v1.34.0
 	github.com/sirupsen/logrus v1.9.3
 	go.uber.org/multierr v1.11.0
@@ -26,4 +26,4 @@ require (
 	golang.org/x/term v0.12.0 // indirect
 )
 
-replace github.com/go-spring/log => ../../
+replace go-spring.org/log => ../../

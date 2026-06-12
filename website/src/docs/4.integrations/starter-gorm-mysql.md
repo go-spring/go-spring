@@ -5,7 +5,7 @@
 ## 安装
 
 ```go
-import _ "github.com/go-spring/starter-gorm-mysql"
+import _ "go-spring.org/starter-gorm-mysql"
 ```
 
 ## 配置

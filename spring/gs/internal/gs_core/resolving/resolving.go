@@ -25,9 +25,9 @@ import (
 	"go-spring.org/spring/gs/internal/gs_bean"
 	"go-spring.org/spring/gs/internal/gs_cond"
 	"go-spring.org/spring/gs/internal/gs_init"
-	"github.com/go-spring/stdlib/errutil"
-	"github.com/go-spring/stdlib/flatten"
-	"github.com/go-spring/stdlib/funcutil"
+	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/flatten"
+	"go-spring.org/stdlib/funcutil"
 )
 
 // RefreshState represents the current state of the container.

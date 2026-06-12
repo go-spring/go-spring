@@ -136,7 +136,7 @@ Because global `init` registration information is shared, IoC container-based te
 
 ## Assertion Library
 
-Go-Spring provides a fluent assertion library under `github.com/go-spring/stdlib/testing`,
+Go-Spring provides a fluent assertion library under `go-spring.org/stdlib/testing`,
 including the two subpackages `assert` and `require`.
 
 ### assert and require
@@ -149,8 +149,8 @@ It is suitable for checking preconditions for subsequent logic, such as when an 
 
 ```go
 import (
-    "github.com/go-spring/stdlib/testing/assert"
-    "github.com/go-spring/stdlib/testing/require"
+    "go-spring.org/stdlib/testing/assert"
+    "go-spring.org/stdlib/testing/require"
 )
 
 func TestExample(t *testing.T) {
