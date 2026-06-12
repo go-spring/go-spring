@@ -21,8 +21,8 @@ import (
 	"log"
 	"os"
 
-	"go-spring.org/gs-gen/proto"
 	"github.com/spf13/cobra"
+	"go-spring.org/gs-gen/proto"
 )
 
 // Version of the gs-gen tool

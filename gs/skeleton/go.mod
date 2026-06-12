@@ -20,7 +20,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/expr-lang/expr v1.17.6 // indirect
-	github.com/go-spring/barky v1.0.3 // indirect
+	go-spring.org/barky v1.0.3 // indirect
 	go-spring.org/gs-mock v0.0.4 // indirect
 	go-spring.org/log v0.0.6 // indirect
 	github.com/go-sql-driver/mysql v1.9.3 // indirect

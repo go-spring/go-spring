@@ -18,8 +18,8 @@ github.com/go-playground/assert/v2 v2.0.1 h1:MsBgLAaY856+nPRTKrp3/OZK38U/wa0CcBY
 github.com/go-playground/assert/v2 v2.0.1/go.mod h1:VDjEfimB/XKnb+ZQfWdccd7VUvScMdVu0Titje2rxJ4=
 github.com/go-playground/form/v4 v4.2.1 h1:HjdRDKO0fftVMU5epjPW2SOREcZ6/wLUzEobqUGJuPw=
 github.com/go-playground/form/v4 v4.2.1/go.mod h1:q1a2BY+AQUUzhl6xA/6hBetay6dEIhMHjgvJiGo6K7U=
-github.com/go-spring/barky v1.0.3 h1:24U2IX47es7JfuAx7WkkOqBEV0bOy49/ZW4GCkVvD7Q=
-github.com/go-spring/barky v1.0.3/go.mod h1:IlEMJj9d//EQs2oin0tuGKGACslZe73khbHcDPzF9KE=
+go-spring.org/barky v1.0.3 h1:24U2IX47es7JfuAx7WkkOqBEV0bOy49/ZW4GCkVvD7Q=
+go-spring.org/barky v1.0.3/go.mod h1:IlEMJj9d//EQs2oin0tuGKGACslZe73khbHcDPzF9KE=
 go-spring.org/gs-assert v1.0.2 h1:9vDppl7ZwMvQE4c83ac7GzN0VxZC5BrQue7dND7NclQ=
 go-spring.org/gs-assert v1.0.2/go.mod h1:FfibkqWz4HUBpbig1cKMlzW8Ha7RywTB93f1Q/NuF9I=
 go-spring.org/gs-mock v0.0.4 h1:f34YN+ntXflfn13aLa3ZVCB78IG7wWZGK4y5tB+OGpI=
