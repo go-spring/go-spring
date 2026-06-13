@@ -279,10 +279,7 @@ func (d *BeanDefinition) Export(exports ...reflect.Type) *BeanDefinition {
 		if !d.GetType().Implements(t) {
 			panic(fmt.Sprintf("export failed: %v does not implement interface %v", d.t, t))
 		}
-		if t == d.GetType() {
-			continue
-		}
-		if slices.Contains(d.exports, t) {
+		if t == d.GetType() || slices.Contains(d.exports, t) {
 			continue
 		}
 		d.exports = append(d.exports, t)
