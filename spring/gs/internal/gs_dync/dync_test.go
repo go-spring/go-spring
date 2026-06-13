@@ -25,41 +25,9 @@ import (
 	"time"
 
 	"go-spring.org/spring/conf"
-	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
 	"go-spring.org/stdlib/testing/assert"
 )
-
-type MockPanicRefreshable struct{}
-
-func (m *MockPanicRefreshable) onRefresh(prop flatten.Storage, param conf.BindParam, commit bool) error {
-	panic("mock panic")
-}
-
-type MockErrorRefreshable struct{}
-
-func (m *MockErrorRefreshable) onRefresh(prop flatten.Storage, param conf.BindParam, commit bool) error {
-	return errutil.Explain(nil, "mock error")
-}
-
-type CommitErrorRefreshable struct {
-	Value      int
-	FailCommit bool
-}
-
-func (r *CommitErrorRefreshable) onRefresh(prop flatten.Storage, param conf.BindParam, commit bool) error {
-	v := reflect.New(reflect.TypeFor[int]()).Elem()
-	if err := conf.BindValue(prop, v, v.Type(), param, nil); err != nil {
-		return err
-	}
-	if commit && r.FailCommit {
-		return errutil.Explain(nil, "commit error")
-	}
-	if commit {
-		r.Value = int(v.Int())
-	}
-	return nil
-}
 
 func TestValue(t *testing.T) {
 	var v Value[int]
@@ -217,24 +185,6 @@ func TestDync(t *testing.T) {
 		assert.Error(t, err).Matches("strconv.ParseInt: parsing.*invalid syntax")
 	})
 
-	t.Run("refresh panic", func(t *testing.T) {
-		p := New(flatten.NewPropertiesStorage(flatten.NewProperties(nil)))
-
-		assert.Panic(t, func() {
-			mock := &MockPanicRefreshable{}
-			_ = p.RefreshField(reflect.ValueOf(mock), conf.BindParam{Key: "error"})
-		}, "mock panic")
-
-		assert.Panic(t, func() {
-			prop := flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
-				"error.key": "value",
-			}))
-			_ = p.Refresh(prop)
-		}, "mock panic")
-
-		assert.That(t, p.ObjectsCount()).Equal(1)
-	})
-
 	t.Run("refresh field", func(t *testing.T) {
 		p := New(flatten.NewPropertiesStorage(flatten.NewProperties(nil)))
 		assert.That(t, p.ObjectsCount()).Equal(0)
@@ -342,6 +292,7 @@ func TestDync(t *testing.T) {
 			"config.s1.value": "xyz",
 		})))
 		assert.Error(t, err).Matches("strconv.ParseInt: parsing \"xyz\": invalid syntax")
+		assert.That(t, v.Value().S1.Value).Equal(99)
 
 		err = p.Refresh(flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
 			"config.s1.value": "10",
@@ -376,29 +327,4 @@ func TestDync(t *testing.T) {
 		assert.That(t, cfg.Value.Value()).Equal(100)
 	})
 
-	t.Run("commit error rolls back committed objects", func(t *testing.T) {
-		p := New(flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
-			"first":  "1",
-			"second": "1",
-		})))
-
-		first := &CommitErrorRefreshable{}
-		err := p.RefreshField(reflect.ValueOf(first), conf.BindParam{Key: "first", Path: "first"})
-		assert.That(t, err).Nil()
-		assert.That(t, first.Value).Equal(1)
-
-		second := &CommitErrorRefreshable{}
-		err = p.RefreshField(reflect.ValueOf(second), conf.BindParam{Key: "second", Path: "second"})
-		assert.That(t, err).Nil()
-		assert.That(t, second.Value).Equal(1)
-
-		second.FailCommit = true
-		err = p.Refresh(flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
-			"first":  "2",
-			"second": "2",
-		})))
-		assert.Error(t, err).Matches("commit error")
-		assert.That(t, first.Value).Equal(1)
-		assert.That(t, second.Value).Equal(1)
-	})
 }

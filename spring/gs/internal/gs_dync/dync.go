@@ -22,9 +22,9 @@
 // themselves during IOC container initialization and can be batch-refreshed at runtime.
 //
 // Two-phase refresh:
-//  1. Pre-refresh (commit=false): Validates all objects against new configuration.
+//  1. Pre-refresh (commit=false): Validates all values against new configuration.
 //     On failure, the old configuration is preserved and no changes are applied.
-//  2. Commit (commit=true): Atomically applies validated configuration to all objects.
+//  2. Commit (commit=true): Atomically applies validated configuration to all values.
 package gs_dync
 
 import (
@@ -39,9 +39,9 @@ import (
 	"go-spring.org/stdlib/flatten"
 )
 
-// refreshable represents an object that can be dynamically refreshed.
-// Objects implementing this interface are registered during the IOC container initialization phase
-// via RefreshField and can be batch-refreshed at runtime via the Refresh method.
+// refreshable represents a dynamically refreshed configuration value.
+// Only Value[T] implements this interface; keep it narrow so two-phase refresh can rely on
+// pre-refresh and commit executing the same binding path without supporting generic rollback.
 type refreshable interface {
 	onRefresh(prop flatten.Storage, param conf.BindParam, commit bool) error
 }
@@ -112,7 +112,7 @@ type refreshObject struct {
 //
 // 2. Runtime Phase (Dynamic Configuration Updates):
 //   - Refresh is called with new configuration data
-//   - Executes two-phase refresh: validate all objects first, then commit
+//   - Executes two-phase refresh: validate all values first, then commit
 //   - On validation failure, automatically restores the previous configuration
 //   - Thread-safe: All operations are protected by RWMutex
 type Properties struct {
@@ -125,19 +125,6 @@ type Properties struct {
 func New(p flatten.Storage) *Properties {
 	return &Properties{
 		prop: p,
-	}
-}
-
-func isNilStorage(p flatten.Storage) bool {
-	if p == nil {
-		return true
-	}
-	v := reflect.ValueOf(p)
-	switch v.Kind() {
-	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
-		return v.IsNil()
-	default:
-		return false
 	}
 }
 
@@ -155,13 +142,13 @@ func (p *Properties) ObjectsCount() int {
 	return len(p.objects)
 }
 
-// Refresh updates the properties and refreshes all bound objects using a two-phase commit.
+// Refresh updates the properties and refreshes all bound values using a two-phase commit.
 //
-// This method is designed for runtime dynamic configuration updates. It ensures that
-// either all objects are successfully refreshed with the new configuration, or none
-// are, maintaining system consistency. It is thread-safe.
+// This method is designed for runtime dynamic configuration updates. It validates all
+// values before committing them, so validation failure does not apply partial updates.
+// It is thread-safe.
 func (p *Properties) Refresh(prop flatten.Storage) (err error) {
-	if isNilStorage(prop) {
+	if prop == nil {
 		return errutil.Explain(nil, "properties storage cannot be nil")
 	}
 
@@ -185,17 +172,7 @@ func (p *Properties) Refresh(prop flatten.Storage) (err error) {
 	if err = p.refreshObjects(p.objects, false); err != nil {
 		return err
 	}
-	if err = p.refreshObjects(p.objects, true); err != nil {
-		p.prop = old
-		if rollbackErr := p.refreshObjects(p.objects, true); rollbackErr != nil {
-			ret := &Errors{}
-			ret.Append(err)
-			ret.Append(rollbackErr)
-			return ret
-		}
-		return err
-	}
-	return nil
+	return p.refreshObjects(p.objects, true)
 }
 
 // Errors represents a collection of errors.
