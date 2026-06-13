@@ -29,7 +29,7 @@ install_modernize() {
 }
 
 show_help() {
-    echo "Usage: ./check.sh [options]"
+    echo "Usage: ./scripts/check-go-modules.sh [options]"
     echo ""
     echo "Runs error-construction checks, code fixes, modernization, and tests for every Go module"
     echo ""

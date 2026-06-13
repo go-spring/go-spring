@@ -49,7 +49,7 @@ func main() {
 		}
 
 		// Send an SSE message every second for 10 seconds
-		for i := 0; i < 10; i++ {
+		for i := range 10 {
 			select {
 			case <-r.Context().Done():
 				// Exit the loop if the client disconnects
