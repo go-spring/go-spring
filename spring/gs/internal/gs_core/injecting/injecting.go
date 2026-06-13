@@ -309,9 +309,9 @@ func (c *Injector) getBeans(t reflect.Type, tags []WireTag, nullable bool,
 	// Process bean tags to filter and order beans
 	if len(tags) > 0 {
 		var (
-			anyBeans  []int // indices of beans to be placed in the '*' section
-			afterAny  []int // beans to appear after the '*'
-			beforeAny []int // beans to appear before the '*'
+			anyBeans  []*gs_bean.BeanDefinition // beans to be placed in the '*' section
+			afterAny  []int                     // beans to appear after the '*'
+			beforeAny []int                     // beans to appear before the '*'
 		)
 		foundAny := false
 		for _, item := range tags {
@@ -366,7 +366,7 @@ func (c *Injector) getBeans(t reflect.Type, tags []WireTag, nullable bool,
 				if slices.Contains(temp, i) {
 					continue
 				}
-				anyBeans = append(anyBeans, i)
+				anyBeans = append(anyBeans, beans[i])
 			}
 		}
 
@@ -376,13 +376,25 @@ func (c *Injector) getBeans(t reflect.Type, tags []WireTag, nullable bool,
 		for _, i := range beforeAny {
 			arr = append(arr, beans[i])
 		}
-		for _, i := range anyBeans {
-			arr = append(arr, beans[i])
+		sort.SliceStable(anyBeans, func(i, j int) bool {
+			return anyBeans[i].GetName() < anyBeans[j].GetName()
+		})
+		for _, b := range anyBeans {
+			arr = append(arr, b)
 		}
 		for _, i := range afterAny {
 			arr = append(arr, beans[i])
 		}
+		beans = arr
 
+	} else {
+		arr := make([]*gs_bean.BeanDefinition, 0, len(beans))
+		for _, b := range beans {
+			arr = append(arr, b)
+		}
+		sort.SliceStable(arr, func(i, j int) bool {
+			return arr[i].GetName() < arr[j].GetName()
+		})
 		beans = arr
 	}
 
@@ -454,13 +466,7 @@ func (c *Injector) autowire(v reflect.Value, str string, stack *Stack) error {
 
 			// Populate the collection field with the resolved beans
 			switch v.Kind() {
-			case reflect.Slice:
-				if len(tags) == 0 {
-					// Sort untagged collections by name for deterministic order.
-					sort.Slice(beans, func(i, j int) bool {
-						return beans[i].GetName() < beans[j].GetName()
-					})
-				}
+			case reflect.Slice, reflect.Array:
 				ret := reflect.MakeSlice(v.Type(), 0, 0)
 				for _, b := range beans {
 					ret = reflect.Append(ret, b.GetValue())
