@@ -21,14 +21,12 @@ import (
 	"sync/atomic"
 )
 
-// ReadySignalImpl is a synchronization helper used to indicate
-// when an application is ready to serve requests.
+// ReadySignalImpl coordinates readiness for all servers.
+// Each server gets a single-use ServerReadySignal via Add.
 type ReadySignalImpl struct {
-	wg      sync.WaitGroup
-	mu      sync.Mutex
-	ch      chan struct{}
-	b       atomic.Bool
-	pending int
+	wg sync.WaitGroup
+	ch chan struct{}
+	b  atomic.Bool
 }
 
 // NewReadySignal creates and returns a new ReadySignalImpl instance.
@@ -38,48 +36,42 @@ func NewReadySignal() *ReadySignalImpl {
 	}
 }
 
-// Add increments the WaitGroup counter.
-func (s *ReadySignalImpl) Add() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.pending++
-	s.wg.Add(1)
+// Add registers one server and returns its single-use readiness signal handle.
+func (c *ReadySignalImpl) Add() *ServerReadySignal {
+	c.wg.Add(1)
+	return &ServerReadySignal{c: c}
 }
 
-// TriggerAndWait marks an operation as done by decrementing the WaitGroup
-// counter, and then returns the readiness signal channel for waiting.
-func (s *ReadySignalImpl) TriggerAndWait() <-chan struct{} {
-	s.done()
-	return s.ch
+// Intercepted returns true if any server signal has been intercepted.
+func (c *ReadySignalImpl) Intercepted() bool {
+	return c.b.Load()
 }
 
-// Intercepted returns true if the signal has been intercepted.
-func (s *ReadySignalImpl) Intercepted() bool {
-	return s.b.Load()
-}
-
-// Intercept marks the signal as intercepted.
-func (s *ReadySignalImpl) Intercept() {
-	s.b.Store(true)
-	s.done()
-}
-
-// Wait blocks until all WaitGroup counters reach zero.
-func (s *ReadySignalImpl) Wait() {
-	s.wg.Wait()
+// Wait blocks until all server signals are triggered or intercepted.
+func (c *ReadySignalImpl) Wait() {
+	c.wg.Wait()
 }
 
 // Close closes the signal channel, notifying all goroutines waiting on it.
-func (s *ReadySignalImpl) Close() {
-	close(s.ch)
+func (c *ReadySignalImpl) Close() {
+	close(c.ch)
 }
 
-func (s *ReadySignalImpl) done() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.pending == 0 {
-		return
-	}
-	s.pending--
-	s.wg.Done()
+// ServerReadySignal is a per-server readiness signal handle.
+type ServerReadySignal struct {
+	c *ReadySignalImpl
+	o sync.Once
+}
+
+// TriggerAndWait marks the server as ready, then returns the shared readiness
+// channel for waiting until all servers have reported readiness.
+func (s *ServerReadySignal) TriggerAndWait() <-chan struct{} {
+	s.o.Do(s.c.wg.Done)
+	return s.c.ch
+}
+
+// Intercept marks the signal as intercepted and releases this server's ready wait.
+func (s *ServerReadySignal) Intercept() {
+	s.c.b.Store(true)
+	s.o.Do(s.c.wg.Done)
 }

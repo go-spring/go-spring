@@ -258,21 +258,21 @@ func (app *App) Start() error {
 	if len(app.Servers) > 0 {
 		sig := NewReadySignal() // Coordinate readiness across servers
 		for _, svr := range app.Servers {
-			sig.Add()
 			app.wg.Add(1)
+			svrSig := sig.Add()
 			goutil.Go(app.ctx, func(ctx context.Context) {
 				defer app.wg.Done()
 				defer func() {
 					// Recover from server panics and trigger shutdown
 					if r := recover(); r != nil {
-						sig.Intercept()
+						svrSig.Intercept()
 						app.ShutDown()
 						panic(r) // re-panic so goutil.Go can handle it
 					}
 				}()
-				if err := svr.Run(ctx, sig); err != nil {
+				if err := svr.Run(ctx, svrSig); err != nil {
 					log.Errorf(ctx, log.TagAppDef, "server serve error: %v", err)
-					sig.Intercept()
+					svrSig.Intercept()
 					app.ShutDown()
 				} else {
 					log.Infof(ctx, log.TagAppDef, "server closed")

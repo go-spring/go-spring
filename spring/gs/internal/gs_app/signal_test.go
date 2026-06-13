@@ -19,6 +19,7 @@ package gs_app
 import (
 	"sync"
 	"testing"
+	"time"
 
 	"go-spring.org/stdlib/testing/assert"
 )
@@ -37,12 +38,12 @@ func TestReadySignal(t *testing.T) {
 		signal := NewReadySignal()
 		for i := range workers {
 			num := i
-			signal.Add()
+			workerSignal := signal.Add()
 			go func() {
 				if num == 0 {
-					signal.Intercept()
+					workerSignal.Intercept()
 				} else {
-					<-signal.TriggerAndWait()
+					<-workerSignal.TriggerAndWait()
 				}
 			}()
 		}
@@ -56,12 +57,12 @@ func TestReadySignal(t *testing.T) {
 
 		signal := NewReadySignal()
 		for i := range workers {
-			signal.Add()
+			workerSignal := signal.Add()
 			go func(num int) {
 				if num < 2 {
-					signal.Intercept()
+					workerSignal.Intercept()
 				} else {
-					<-signal.TriggerAndWait()
+					<-workerSignal.TriggerAndWait()
 				}
 			}(i)
 		}
@@ -72,11 +73,34 @@ func TestReadySignal(t *testing.T) {
 
 	t.Run("intercept after ready", func(t *testing.T) {
 		signal := NewReadySignal()
-		signal.Add()
-		_ = signal.TriggerAndWait()
-		signal.Intercept()
+		workerSignal := signal.Add()
+		_ = workerSignal.TriggerAndWait()
+		workerSignal.Intercept()
 		signal.Wait()
 		assert.That(t, signal.Intercepted()).True()
+	})
+
+	t.Run("duplicate trigger only counts once", func(t *testing.T) {
+		signal := NewReadySignal()
+		workerSignal := signal.Add()
+		otherSignal := signal.Add()
+		_ = workerSignal.TriggerAndWait()
+		_ = workerSignal.TriggerAndWait()
+
+		waitDone := make(chan struct{})
+		go func() {
+			signal.Wait()
+			close(waitDone)
+		}()
+
+		select {
+		case <-waitDone:
+			t.Fatal("duplicate trigger released another signal")
+		case <-time.After(10 * time.Millisecond):
+		}
+		assert.That(t, signal.Intercepted()).False()
+		otherSignal.Intercept()
+		<-waitDone
 	})
 
 	t.Run("success", func(t *testing.T) {
@@ -88,10 +112,10 @@ func TestReadySignal(t *testing.T) {
 
 		signal := NewReadySignal()
 		for range workers {
-			signal.Add()
+			workerSignal := signal.Add()
 			go func() {
 				defer wg.Done()
-				<-signal.TriggerAndWait()
+				<-workerSignal.TriggerAndWait()
 			}()
 		}
 

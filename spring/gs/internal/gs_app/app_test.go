@@ -219,7 +219,7 @@ func TestApp(t *testing.T) {
 		app.c.Provide(&funcServer{
 			run: func(ctx context.Context, sig ReadySignal) error {
 				ch := sig.TriggerAndWait()
-				readySignal <- sig.(*ReadySignalImpl)
+				readySignal <- sig.(*ServerReadySignal).c
 				close(readyForFail)
 				<-ch
 				return nil
