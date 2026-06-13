@@ -155,8 +155,9 @@ export default defineConfig({
     pageData.frontmatter.head ??= []
     pageData.frontmatter.head.push(...goImportHeadTags(pageData.relativePath))
   },
-  outDir: '../../docs',
+  outDir: '../docs',
   cleanUrls: true,
+  srcExclude: ['README.md', 'outline.md', 'skills/**'],
   rewrites: {
     'go-import/spring.md': 'spring/index.md',
     'go-import/log.md': 'log/index.md',

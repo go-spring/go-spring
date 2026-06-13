@@ -86,7 +86,7 @@ module_dirs=$(find . -name go.mod \
     ! -path '*/vendor/*' \
     ! -path '*/node_modules/*' \
     ! -path './gs/skeleton/go.mod' \
-    ! -path './website/src/*' \
+    ! -path './website/*' \
     -exec dirname {} \; | sort)
 
 if [ -z "${module_dirs}" ]; then
