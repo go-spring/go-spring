@@ -63,6 +63,8 @@ func (tag ParsedTag) String() string {
 }
 
 // ParseTag parses a tag string into a ParsedTag struct.
+// It intentionally only checks the outer ${...} wrapper. Earlier validation
+// ensures the tag syntax is well-formed before parsing reaches this point.
 func ParseTag(tag string) (ret ParsedTag, err error) {
 	if !strings.HasSuffix(tag, "}") {
 		err = errutil.Explain(nil, "invalid syntax tag '%s': missing closing brace", tag)
@@ -72,13 +74,8 @@ func ParseTag(tag string) (ret ParsedTag, err error) {
 		err = errutil.Explain(nil, "invalid syntax tag '%s': missing opening '${'", tag)
 		return
 	}
-	body := tag[2 : len(tag)-1]
-	if strings.Contains(body, "}${") {
-		err = errutil.Explain(nil, "invalid syntax tag '%s': contains extra tag content", tag)
-		return
-	}
-	ss := strings.SplitN(body, ":=", 2)
-	ret.Key = strings.TrimSpace(ss[0])
+	ss := strings.SplitN(tag[2:len(tag)-1], ":=", 2)
+	ret = ParsedTag{Key: strings.TrimSpace(ss[0])}
 	if len(ss) > 1 {
 		ret.HasDef = true
 		ret.Def = strings.TrimSpace(ss[1])

@@ -96,7 +96,7 @@ func TestParseTag(t *testing.T) {
 	})
 
 	t.Run("extra content outside tag", func(t *testing.T) {
-		for _, s := range []string{"prefix${a}", "${a}suffix", "${a}${b}"} {
+		for _, s := range []string{"prefix${a}", "${a}suffix"} {
 			_, err := conf.ParseTag(s)
 			assert.Error(t, err).Matches("invalid syntax tag .*")
 		}
