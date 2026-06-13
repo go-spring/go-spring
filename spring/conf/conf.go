@@ -153,8 +153,8 @@ func Bind(p flatten.Storage, i any, tag ...string) error {
 // inside a string, recursively resolving nested expressions.
 //
 // Supported features:
-// - Nested references: e.g. "${outer${inner}}"
-// - Default values:    "${key:=fallback}"
+// - References inside default values: e.g. "${key:=${fallback}}"
+// - Default values: "${key:=fallback}"
 // - Arbitrary string concatenation around references.
 //
 // Example:
