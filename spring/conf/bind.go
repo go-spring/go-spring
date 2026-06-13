@@ -326,14 +326,13 @@ func getSlice(p flatten.Storage, param BindParam) (flatten.Storage, error) {
 		}
 		strVal = param.Tag.Def
 	}
-	if strVal = strings.TrimSpace(strVal); strVal == "" {
-		return nil, nil
-	}
 	s, err := resolveString(p, strVal)
 	if err != nil {
 		return nil, err
 	}
-	strVal = s
+	if strVal = strings.TrimSpace(s); strVal == "" {
+		return nil, nil
+	}
 
 	arrVal := strings.Split(strVal, ",")
 	for i := range arrVal {
