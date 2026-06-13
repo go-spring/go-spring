@@ -8,7 +8,7 @@
 
 1. 源码中的导出 API、类型定义、配置默认值和注释。
 2. 测试用例中的行为断言。
-3. `docs/3.examples/`、`course/`、`articles/` 中可运行示例。
+3. `docs/3.examples/`、`misc/course/`、`misc/articles/` 中可运行示例。
 4. 已有文档中的稳定描述。
 5. 用户在当前任务中明确提供的事实。
 

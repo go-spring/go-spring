@@ -42,10 +42,10 @@ const goImportHeadTags = (relativePath: string) => {
 }
 
 const zhNav = [
-  { text: '概览', link: '/docs/0.overview/overview' },
-  { text: '快速开始', link: '/docs/1.getting-started/getting-started' },
-  { text: '指南', link: '/docs/2.guides/01-configuration' },
-  { text: '示例', link: '/docs/3.examples/examples' }
+  { text: '概览', link: '/cn/docs/0.overview/overview' },
+  { text: '快速开始', link: '/cn/docs/1.getting-started/getting-started' },
+  { text: '指南', link: '/cn/docs/2.guides/01-configuration' },
+  { text: '示例', link: '/cn/docs/3.examples/examples' }
 ]
 
 const enNav = [
@@ -59,44 +59,44 @@ const zhSidebar = [
   {
     text: '介绍',
     items: [
-      { text: '项目概览', link: '/docs/0.overview/overview' },
-      { text: '快速开始', link: '/docs/1.getting-started/getting-started' }
+      { text: '项目概览', link: '/cn/docs/0.overview/overview' },
+      { text: '快速开始', link: '/cn/docs/1.getting-started/getting-started' }
     ]
   },
   {
     text: '指南',
     items: [
-      { text: '配置管理', link: '/docs/2.guides/01-configuration' },
-      { text: 'IoC 容器', link: '/docs/2.guides/02-ioc-container' },
-      { text: '应用启动与停止', link: '/docs/2.guides/03-app-start-stop' },
-      { text: '日志系统', link: '/docs/2.guides/04-logging' },
-      { text: 'HTTP 服务', link: '/docs/2.guides/05-http-server' },
-      { text: '组件机制', link: '/docs/2.guides/06-components' },
-      { text: '测试支持', link: '/docs/2.guides/07-testing' },
-      { text: 'HTTP 代码生成', link: '/docs/2.guides/08-http-gen' }
+      { text: '配置管理', link: '/cn/docs/2.guides/01-configuration' },
+      { text: 'IoC 容器', link: '/cn/docs/2.guides/02-ioc-container' },
+      { text: '应用启动与停止', link: '/cn/docs/2.guides/03-app-start-stop' },
+      { text: '日志系统', link: '/cn/docs/2.guides/04-logging' },
+      { text: 'HTTP 服务', link: '/cn/docs/2.guides/05-http-server' },
+      { text: '组件机制', link: '/cn/docs/2.guides/06-components' },
+      { text: '测试支持', link: '/cn/docs/2.guides/07-testing' },
+      { text: 'HTTP 代码生成', link: '/cn/docs/2.guides/08-http-gen' }
     ]
   },
   {
     text: '示例',
     items: [
-      { text: '示例总览', link: '/docs/3.examples/examples' }
+      { text: '示例总览', link: '/cn/docs/3.examples/examples' }
     ]
   },
   {
     text: '集成',
     items: [
-      { text: 'GORM MySQL', link: '/docs/4.integrations/starter-gorm-mysql' },
-      { text: 'Go Redis', link: '/docs/4.integrations/starter-go-redis' },
-      { text: 'Redigo', link: '/docs/4.integrations/starter-redigo' },
-      { text: 'PProf', link: '/docs/4.integrations/starter-pprof' }
+      { text: 'GORM MySQL', link: '/cn/docs/4.integrations/starter-gorm-mysql' },
+      { text: 'Go Redis', link: '/cn/docs/4.integrations/starter-go-redis' },
+      { text: 'Redigo', link: '/cn/docs/4.integrations/starter-redigo' },
+      { text: 'PProf', link: '/cn/docs/4.integrations/starter-pprof' }
     ]
   },
   {
     text: '更多',
     items: [
-      { text: 'FAQ', link: '/docs/5.faq' },
-      { text: '参与贡献', link: '/docs/6.contributing' },
-      { text: '更新日志', link: '/docs/7.changelog' }
+      { text: 'FAQ', link: '/cn/docs/5.faq' },
+      { text: '参与贡献', link: '/cn/docs/6.contributing' },
+      { text: '更新日志', link: '/cn/docs/7.changelog' }
     ]
   }
 ]
@@ -157,8 +157,8 @@ export default defineConfig({
   },
   outDir: '../docs',
   cleanUrls: true,
-  srcExclude: ['README.md', 'outline.md', 'skills/**'],
   rewrites: {
+    'cn/index.md': 'index.md',
     'go-import/spring.md': 'spring/index.md',
     'go-import/log.md': 'log/index.md',
     'go-import/stdlib.md': 'stdlib/index.md',
