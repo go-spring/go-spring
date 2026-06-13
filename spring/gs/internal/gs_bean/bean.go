@@ -27,6 +27,7 @@ import (
 	"go-spring.org/spring/gs/internal/gs"
 	"go-spring.org/spring/gs/internal/gs_arg"
 	"go-spring.org/spring/gs/internal/gs_cond"
+	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/typeutil"
 )
 
@@ -173,7 +174,8 @@ func (d *BeanDefinition) GetExports() []reflect.Type {
 func (d *BeanDefinition) GetArgValue(_ gs.ArgContext, t reflect.Type) (reflect.Value, error) {
 	v := d.GetValue()
 	if !v.Type().AssignableTo(t) {
-		return reflect.Value{}, fmt.Errorf("cannot assign type %s to type %s", v.Type().String(), t.String())
+		err := errutil.Explain(nil, "cannot assign type %s to type %s", v.Type().String(), t.String())
+		return reflect.Value{}, err
 	}
 	return v, nil
 }
