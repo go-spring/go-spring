@@ -483,6 +483,8 @@ func (c *Injector) autowire(v reflect.Value, str string, stack *Stack) error {
 				}
 				v.Set(ret)
 			case reflect.Map:
+				// Non-string map keys are an uncommon invalid injection target; keeping the
+				// check here avoids adding noise to the common collection lookup path.
 				if v.Type().Key().Kind() != reflect.String {
 					return errutil.Explain(nil, "map key should be string")
 				}
