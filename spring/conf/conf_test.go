@@ -17,6 +17,7 @@
 package conf_test
 
 import (
+	"fmt"
 	"math/rand"
 	"strings"
 	"testing"
@@ -112,6 +113,17 @@ func TestProperties_Resolve(t *testing.T) {
 		s, err := conf.Resolve(p, "${a}-${a}")
 		assert.That(t, err).Nil()
 		assert.That(t, s).Equal("1-1")
+	})
+
+	t.Run("reference depth exceeded", func(t *testing.T) {
+		m := make(map[string]any)
+		for i := range 120 {
+			m[fmt.Sprintf("a%d", i)] = fmt.Sprintf("${a%d}", i+1)
+		}
+		m["a120"] = "ok"
+		p := flatten.NewPropertiesStorage(flatten.MapProperties(m))
+		_, err := conf.Resolve(p, "${a0}")
+		assert.Error(t, err).Matches("property reference depth exceeds 100")
 	})
 
 	//t.Run("array property as string", func(t *testing.T) {

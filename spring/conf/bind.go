@@ -526,6 +526,44 @@ func bindStruct(p flatten.Storage, v reflect.Value, t reflect.Type, param BindPa
 	return nil
 }
 
+const maxResolveDepth = 100
+
+// resolveStack tracks the current property reference chain.
+// refs detects cycles, while depth guards against extremely deep acyclic chains.
+type resolveStack struct {
+	refs  map[string]struct{}
+	depth int
+}
+
+func newResolveStack() *resolveStack {
+	return &resolveStack{refs: make(map[string]struct{})}
+}
+
+func (s *resolveStack) push(key string) error {
+	// Empty keys are defaults/ROOT placeholders, not named property references.
+	if key == "" {
+		return nil
+	}
+	if _, ok := s.refs[key]; ok {
+		return errutil.Explain(nil, "circular property reference %q", key)
+	}
+	s.depth++
+	if s.depth > maxResolveDepth {
+		s.depth--
+		return errutil.Explain(nil, "property reference depth exceeds %d", maxResolveDepth)
+	}
+	s.refs[key] = struct{}{}
+	return nil
+}
+
+func (s *resolveStack) pop(key string) {
+	if key == "" {
+		return
+	}
+	delete(s.refs, key)
+	s.depth--
+}
+
 // resolve fetches the final string value of a property key,
 // applying default values and resolving references recursively.
 //
@@ -537,18 +575,15 @@ func bindStruct(p flatten.Storage, v reflect.Value, t reflect.Type, param BindPa
 //
 //	resolve(url) -> "http://localhost:8080"
 func resolve(p flatten.Storage, param BindParam) (string, error) {
-	return resolveWithStack(p, param, make(map[string]struct{}))
+	return resolveWithStack(p, param, newResolveStack())
 }
 
-func resolveWithStack(p flatten.Storage, param BindParam, stack map[string]struct{}) (string, error) {
+func resolveWithStack(p flatten.Storage, param BindParam, stack *resolveStack) (string, error) {
 	if val, ok := p.Value(param.Key); ok {
-		if param.Key != "" {
-			if _, ok := stack[param.Key]; ok {
-				return "", errutil.Explain(nil, "circular property reference %q", param.Key)
-			}
-			stack[param.Key] = struct{}{}
-			defer delete(stack, param.Key)
+		if err := stack.push(param.Key); err != nil {
+			return "", err
 		}
+		defer stack.pop(param.Key)
 		return resolveStringWithStack(p, val, stack)
 	}
 	if p.Exists(param.Key) {
@@ -563,10 +598,10 @@ func resolveWithStack(p flatten.Storage, param BindParam, stack map[string]struc
 // resolveString resolves a single string value,
 // applying default values and resolving references recursively.
 func resolveString(p flatten.Storage, s string) (string, error) {
-	return resolveStringWithStack(p, s, make(map[string]struct{}))
+	return resolveStringWithStack(p, s, newResolveStack())
 }
 
-func resolveStringWithStack(p flatten.Storage, s string, stack map[string]struct{}) (string, error) {
+func resolveStringWithStack(p flatten.Storage, s string, stack *resolveStack) (string, error) {
 
 	// If there is no property reference, return the original string.
 	start := strings.Index(s, "${")
