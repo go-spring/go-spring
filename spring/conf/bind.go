@@ -530,6 +530,7 @@ const maxResolveDepth = 100
 
 // resolveStack tracks the current property reference chain.
 // refs detects cycles, while depth guards against extremely deep acyclic chains.
+// It intentionally keeps only the active set, not the full path, to avoid extra overhead.
 type resolveStack struct {
 	refs  map[string]struct{}
 	depth int
@@ -597,6 +598,8 @@ func resolveWithStack(p flatten.Storage, param BindParam, stack *resolveStack) (
 
 // resolveString resolves a single string value,
 // applying default values and resolving references recursively.
+// Each call intentionally uses a local stack: cycles only need to be detected
+// within the active reference chain, and repeated sibling references are valid.
 func resolveString(p flatten.Storage, s string) (string, error) {
 	return resolveStringWithStack(p, s, newResolveStack())
 }
