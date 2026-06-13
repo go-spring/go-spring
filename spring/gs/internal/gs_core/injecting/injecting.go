@@ -406,6 +406,14 @@ func (c *Injector) getBeans(t reflect.Type, tags []WireTag, nullable bool,
 		return nil, errutil.Explain(nil, "no beans collected for %q", toWireString(tags))
 	}
 
+	seen := make(map[*gs_bean.BeanDefinition]struct{}, len(beans))
+	for _, b := range beans {
+		if _, ok := seen[b]; ok {
+			return nil, errutil.Explain(nil, "duplicate bean %s in collection %q", b.String(), toWireString(tags))
+		}
+		seen[b] = struct{}{}
+	}
+
 	// If the container is in the refreshing state, wire the beans before returning them
 	if c.state == Refreshing {
 		for _, b := range beans {
@@ -430,7 +438,9 @@ func (c *Injector) autowire(v reflect.Value, str string, stack *Stack) error {
 	}
 
 	switch v.Kind() {
-	case reflect.Map, reflect.Slice, reflect.Array:
+	case reflect.Array: // do nothing
+		return nil
+	case reflect.Map, reflect.Slice:
 		{
 			// Handle collection types
 			var nullable bool
@@ -466,7 +476,7 @@ func (c *Injector) autowire(v reflect.Value, str string, stack *Stack) error {
 
 			// Populate the collection field with the resolved beans
 			switch v.Kind() {
-			case reflect.Slice, reflect.Array:
+			case reflect.Slice:
 				ret := reflect.MakeSlice(v.Type(), 0, 0)
 				for _, b := range beans {
 					ret = reflect.Append(ret, b.GetValue())

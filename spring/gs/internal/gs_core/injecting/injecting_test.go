@@ -393,6 +393,18 @@ func TestInjecting(t *testing.T) {
 		assert.Error(t, err).Matches("found 2 beans")
 	})
 
+	t.Run("wire error - duplicate bean for collection", func(t *testing.T) {
+		r := New(flatten.NewPropertiesStorage(flatten.NewProperties(nil)))
+		beans := []*gs_bean.BeanDefinition{
+			objectBean(new(struct {
+				Loggers []Logger `autowire:"biz,biz"`
+			})),
+			objectBean(&ZeroLogger{}).Name("biz").Export(gs.As[Logger]()),
+		}
+		err := r.Refresh(extractBeans(beans))
+		assert.Error(t, err).Matches("duplicate bean")
+	})
+
 	t.Run("wire error - no matching beans", func(t *testing.T) {
 		r := New(flatten.NewPropertiesStorage(flatten.NewProperties(nil)))
 		beans := []*gs_bean.BeanDefinition{
