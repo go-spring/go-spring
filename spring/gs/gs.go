@@ -217,15 +217,12 @@ type (
 // OnOnce wraps the given conditions so they are evaluated only once.
 // Subsequent calls return the cached result without re-evaluation.
 func OnOnce(conditions ...Condition) Condition {
-	cond := gs_cond.And(conditions...)
-	if cond == nil {
-		return nil
-	}
 	var (
 		done      bool
 		result    bool
 		resultErr error
 	)
+	cond := gs_cond.And(conditions...)
 	return OnFunc(func(ctx ConditionContext) (bool, error) {
 		if done {
 			return result, resultErr

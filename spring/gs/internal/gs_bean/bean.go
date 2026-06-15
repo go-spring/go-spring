@@ -193,30 +193,38 @@ func (d *BeanDefinition) Name(name string) *BeanDefinition {
 
 // validLifeCycleFunc checks if the given function is a valid lifecycle function.
 // Valid lifecycle function signature: func(bean) or func(bean) error
-func validLifeCycleFunc(fnType reflect.Type, beanType reflect.Type) bool {
+func validLifeCycleFunc(fn any, beanType reflect.Type) {
+	if fn == nil {
+		panic("lifecycle function cannot be nil")
+	}
+	v := reflect.ValueOf(fn)
+	if v.Kind() != reflect.Func {
+		panic(fmt.Sprintf("invalid lifecycle function: got %T, want func(bean) or func(bean) error", fn))
+	}
+	if v.IsNil() {
+		panic("lifecycle function cannot be nil")
+	}
+	fnType := v.Type()
 	if !typeutil.IsFuncType(fnType) || fnType.NumIn() != 1 {
-		return false
+		panic(fmt.Sprintf("invalid lifecycle function: got %T, want func(bean) or func(bean) error", fn))
 	}
 	if t := fnType.In(0); t.Kind() == reflect.Interface {
 		if !beanType.Implements(t) {
-			return false
+			panic(fmt.Sprintf("invalid lifecycle function: got %T, want func(bean) or func(bean) error", fn))
 		}
 	} else if t != beanType {
-		return false
+		panic(fmt.Sprintf("invalid lifecycle function: got %T, want func(bean) or func(bean) error", fn))
 	}
-	return typeutil.ReturnNothing(fnType) || typeutil.ReturnOnlyError(fnType)
+	if !typeutil.ReturnNothing(fnType) && !typeutil.ReturnOnlyError(fnType) {
+		panic(fmt.Sprintf("invalid lifecycle function: got %T, want func(bean) or func(bean) error", fn))
+	}
 }
 
 // Init sets the bean's initialization function.
 // The init function is called after the bean is created and all dependencies are injected.
 // Valid signatures: func(bean) or func(bean) error.
 func (d *BeanDefinition) Init(fn any) *BeanDefinition {
-	if isNilFunc(fn) {
-		panic("init function cannot be nil")
-	}
-	if !validLifeCycleFunc(reflect.TypeOf(fn), d.GetType()) {
-		panic(fmt.Sprintf("invalid init function: got %T, want func(bean) or func(bean) error", fn))
-	}
+	validLifeCycleFunc(fn, d.GetType())
 	d.init = fn
 	return d
 }
@@ -225,22 +233,9 @@ func (d *BeanDefinition) Init(fn any) *BeanDefinition {
 // The destroy function is called before the bean is destroyed.
 // Valid signatures: func(bean) or func(bean) error.
 func (d *BeanDefinition) Destroy(fn any) *BeanDefinition {
-	if isNilFunc(fn) {
-		panic("destroy function cannot be nil")
-	}
-	if !validLifeCycleFunc(reflect.TypeOf(fn), d.GetType()) {
-		panic(fmt.Sprintf("invalid destroy function: got %T, want func(bean) or func(bean) error", fn))
-	}
+	validLifeCycleFunc(fn, d.GetType())
 	d.destroy = fn
 	return d
-}
-
-func isNilFunc(fn any) bool {
-	if fn == nil {
-		return true
-	}
-	v := reflect.ValueOf(fn)
-	return v.Kind() == reflect.Func && v.IsNil()
 }
 
 // InitMethod sets the bean's initialization method by name.
@@ -289,9 +284,17 @@ func (d *BeanDefinition) Export(exports ...reflect.Type) *BeanDefinition {
 	return d
 }
 
+func checkConditions(conditions []gs.Condition) {
+	for _, c := range conditions {
+		if c == nil {
+			panic("conditions cannot contains nil")
+		}
+	}
+}
+
 // Condition appends conditions for the bean.
 func (d *BeanDefinition) Condition(conditions ...gs.Condition) *BeanDefinition {
-	gs_cond.ValidateConditions(conditions...)
+	checkConditions(conditions)
 	d.conditions = append(d.conditions, conditions...)
 	return d
 }

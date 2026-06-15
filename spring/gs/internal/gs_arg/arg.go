@@ -31,7 +31,6 @@ import (
 	"runtime"
 
 	"go-spring.org/spring/gs/internal/gs"
-	"go-spring.org/spring/gs/internal/gs_cond"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/typeutil"
 )
@@ -249,6 +248,8 @@ type Callable struct {
 	argList *ArgList
 }
 
+// callableFuncType validates the type of a callable function.
+// It returns the reflected type of the function if valid, or an error otherwise.
 func callableFuncType(fn CallableFunc) (reflect.Type, error) {
 	if fn == nil {
 		return nil, errutil.Explain(nil, "invalid function type <nil>")
@@ -333,9 +334,17 @@ func (arg *BindArg) SetFileLine(file string, line int) {
 	arg.fileline = fmt.Sprintf("%s:%d", file, line)
 }
 
+func checkConditions(conditions []gs.Condition) {
+	for _, c := range conditions {
+		if c == nil {
+			panic("conditions cannot contains nil")
+		}
+	}
+}
+
 // Condition appends runtime conditions that must be satisfied before execution.
 func (arg *BindArg) Condition(conditions ...gs.Condition) *BindArg {
-	gs_cond.ValidateConditions(conditions...)
+	checkConditions(conditions)
 	arg.conditions = append(arg.conditions, conditions...)
 	return arg
 }

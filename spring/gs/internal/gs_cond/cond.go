@@ -30,7 +30,6 @@ package gs_cond
 
 import (
 	"fmt"
-	"reflect"
 	"strings"
 
 	"go-spring.org/spring/gs/internal/gs"
@@ -284,7 +283,9 @@ type onNot struct {
 
 // Not creates a condition that returns the negation of another condition.
 func Not(c gs.Condition) gs.Condition {
-	validateCondition(c)
+	if c == nil {
+		panic("c cannot be nil")
+	}
 	return &onNot{c: c}
 }
 
@@ -309,13 +310,17 @@ type onOr struct {
 	conditions []gs.Condition // List of conditions combined with OR
 }
 
+func checkConditions(conditions []gs.Condition) {
+	for _, c := range conditions {
+		if c == nil {
+			panic("conditions cannot contains nil")
+		}
+	}
+}
+
 // Or combines multiple conditions using OR logic.
 func Or(conditions ...gs.Condition) gs.Condition {
-	if n := len(conditions); n == 0 {
-		return nil
-	} else if validateConditions(conditions); n == 1 {
-		return conditions[0]
-	}
+	checkConditions(conditions)
 	return &onOr{conditions: conditions}
 }
 
@@ -345,11 +350,7 @@ type onAnd struct {
 
 // And combines multiple conditions using AND logic.
 func And(conditions ...gs.Condition) gs.Condition {
-	if n := len(conditions); n == 0 {
-		return nil
-	} else if validateConditions(conditions); n == 1 {
-		return conditions[0]
-	}
+	checkConditions(conditions)
 	return &onAnd{conditions: conditions}
 }
 
@@ -381,11 +382,7 @@ type onNone struct {
 // None combines multiple conditions using NONE logic.
 // Returns true only if all conditions are false.
 func None(conditions ...gs.Condition) gs.Condition {
-	if n := len(conditions); n == 0 {
-		return nil
-	} else if validateConditions(conditions); n == 1 {
-		return Not(conditions[0])
-	}
+	checkConditions(conditions)
 	return &onNone{conditions: conditions}
 }
 
@@ -421,39 +418,4 @@ func FormatGroup(op string, conditions []gs.Condition) string {
 	}
 	sb.WriteString(")")
 	return sb.String()
-}
-
-// ValidateConditions panics if any condition is nil.
-func ValidateConditions(conditions ...gs.Condition) {
-	validateConditions(conditions)
-}
-
-// ValidateCondition panics if the condition is nil.
-func ValidateCondition(c gs.Condition) {
-	validateCondition(c)
-}
-
-func validateConditions(conditions []gs.Condition) {
-	for _, c := range conditions {
-		validateCondition(c)
-	}
-}
-
-func validateCondition(c gs.Condition) {
-	if isNilCondition(c) {
-		panic("condition cannot be nil")
-	}
-}
-
-func isNilCondition(c gs.Condition) bool {
-	if c == nil {
-		return true
-	}
-	v := reflect.ValueOf(c)
-	switch v.Kind() {
-	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
-		return v.IsNil()
-	default:
-		return false
-	}
 }

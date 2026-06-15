@@ -67,13 +67,13 @@ func TestConditionString(t *testing.T) {
 	assert.That(t, fmt.Sprint(c)).Equal(`Not(OnBean(selector={Type:any,Name:a}))`)
 
 	c = Or(OnBean[any]("a"))
-	assert.That(t, fmt.Sprint(c)).Equal(`OnBean(selector={Type:any,Name:a})`)
+	assert.That(t, fmt.Sprint(c)).Equal(`Or(OnBean(selector={Type:any,Name:a}))`)
 
 	c = Or(OnBean[any]("a"), OnBean[any]("b"))
 	assert.That(t, fmt.Sprint(c)).Equal(`Or(OnBean(selector={Type:any,Name:a}),OnBean(selector={Type:any,Name:b}))`)
 
 	c = And(OnBean[any]("a"))
-	assert.That(t, fmt.Sprint(c)).Equal(`OnBean(selector={Type:any,Name:a})`)
+	assert.That(t, fmt.Sprint(c)).Equal(`And(OnBean(selector={Type:any,Name:a}))`)
 
 	c = And(
 		OnBeanID(gs.BeanID{Name: "a"}),
@@ -82,7 +82,7 @@ func TestConditionString(t *testing.T) {
 	assert.That(t, fmt.Sprint(c)).Equal(`And(OnBean(selector={Name:a}),OnBean(selector={Name:b}))`)
 
 	c = None(OnBean[any]("a"))
-	assert.That(t, fmt.Sprint(c)).Equal(`Not(OnBean(selector={Type:any,Name:a}))`)
+	assert.That(t, fmt.Sprint(c)).Equal(`None(OnBean(selector={Type:any,Name:a}))`)
 
 	c = None(OnBean[any]("a"), OnBean[any]("b"))
 	assert.That(t, fmt.Sprint(c)).Equal(`None(OnBean(selector={Type:any,Name:a}),OnBean(selector={Type:any,Name:b}))`)
@@ -342,7 +342,7 @@ func TestNot(t *testing.T) {
 	t.Run("nil condition", func(t *testing.T) {
 		assert.Panic(t, func() {
 			Not(nil)
-		}, "condition cannot be nil")
+		}, "c cannot be nil")
 	})
 
 	t.Run("returns true", func(t *testing.T) {
@@ -375,22 +375,22 @@ func TestAnd(t *testing.T) {
 
 	t.Run("nil", func(t *testing.T) {
 		cond := And()
-		assert.That(t, cond)
+		assert.That(t, cond).NotNil()
 	})
 
 	t.Run("nil condition", func(t *testing.T) {
 		assert.Panic(t, func() {
 			And(nil)
-		}, "condition cannot be nil")
+		}, "conditions cannot contains nil")
 
 		assert.Panic(t, func() {
 			And(trueCond, nil)
-		}, "condition cannot be nil")
+		}, "conditions cannot contains nil")
 	})
 
 	t.Run("one condition", func(t *testing.T) {
 		cond := And(trueCond)
-		assert.That(t, trueCond).Equal(cond)
+		assert.That(t, cond).TypeOf(&onAnd{})
 	})
 
 	t.Run("two conditions | true", func(t *testing.T) {
@@ -423,22 +423,22 @@ func TestOr(t *testing.T) {
 
 	t.Run("nil", func(t *testing.T) {
 		cond := Or()
-		assert.That(t, cond).Nil()
+		assert.That(t, cond).NotNil()
 	})
 
 	t.Run("nil condition", func(t *testing.T) {
 		assert.Panic(t, func() {
 			Or(nil)
-		}, "condition cannot be nil")
+		}, "conditions cannot contains nil")
 
 		assert.Panic(t, func() {
 			Or(trueCond, nil)
-		}, "condition cannot be nil")
+		}, "conditions cannot contains nil")
 	})
 
 	t.Run("one condition", func(t *testing.T) {
 		cond := Or(trueCond)
-		assert.That(t, trueCond).Equal(cond)
+		assert.That(t, cond).TypeOf(&onOr{})
 	})
 
 	t.Run("two conditions | true", func(t *testing.T) {
@@ -471,17 +471,17 @@ func TestNone(t *testing.T) {
 
 	t.Run("nil", func(t *testing.T) {
 		cond := None()
-		assert.That(t, cond).Nil()
+		assert.That(t, cond).NotNil()
 	})
 
 	t.Run("nil condition", func(t *testing.T) {
 		assert.Panic(t, func() {
 			None(nil)
-		}, "condition cannot be nil")
+		}, "conditions cannot contains nil")
 
 		assert.Panic(t, func() {
 			None(trueCond, nil)
-		}, "condition cannot be nil")
+		}, "conditions cannot contains nil")
 	})
 
 	t.Run("one condition", func(t *testing.T) {

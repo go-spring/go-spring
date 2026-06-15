@@ -62,7 +62,7 @@ func TestProperties_Resolve(t *testing.T) {
 
 	t.Run("nil storage", func(t *testing.T) {
 		_, err := conf.Resolve(nil, "${a.b.c}")
-		assert.Error(t, err).Matches("properties storage cannot be nil")
+		assert.Error(t, err).Matches("p cannot be nil")
 	})
 
 	t.Run("success", func(t *testing.T) {

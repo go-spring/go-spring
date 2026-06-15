@@ -107,34 +107,34 @@ func TestBeanDefinition(t *testing.T) {
 		bean := makeBean(v.Type(), v, nil, "test")
 		assert.Panic(t, func() {
 			bean.Init(nil)
-		}, "init function cannot be nil")
+		}, "lifecycle function cannot be nil")
 		assert.Panic(t, func() {
 			var fn func(*TestBean)
 			bean.Init(fn)
-		}, "init function cannot be nil")
+		}, "lifecycle function cannot be nil")
 		assert.Panic(t, func() {
 			bean.Init(3)
-		}, "invalid init function: got int, want func\\(bean\\) or func\\(bean\\) error")
+		}, "invalid lifecycle function: got int, want func\\(bean\\) or func\\(bean\\) error")
 		assert.Panic(t, func() {
 			bean.Init(func() {})
-		}, "invalid init function: got func\\(\\), want func\\(bean\\) or func\\(bean\\) error")
+		}, "invalid lifecycle function: got func\\(\\), want func\\(bean\\) or func\\(bean\\) error")
 		assert.Panic(t, func() {
 			bean.Init(func(int, string) {})
-		}, "invalid init function: got func\\(int, string\\), want func\\(bean\\) or func\\(bean\\) error")
+		}, "invalid lifecycle function: got func\\(int, string\\), want func\\(bean\\) or func\\(bean\\) error")
 		assert.Panic(t, func() {
 			bean.Init(func(io.Reader) {})
-		}, "invalid init function: got func\\(io.Reader\\), want func\\(bean\\) or func\\(bean\\) error")
+		}, "invalid lifecycle function: got func\\(io.Reader\\), want func\\(bean\\) or func\\(bean\\) error")
 		assert.Panic(t, func() {
 			bean.Init(func(*bytes.Buffer) {})
-		}, "invalid init function: got func\\(\\*bytes.Buffer\\), want func\\(bean\\) or func\\(bean\\) error")
+		}, "invalid lifecycle function: got func\\(\\*bytes.Buffer\\), want func\\(bean\\) or func\\(bean\\) error")
 		bean.Init(func(TestBeanInterface) {})
 		assert.Panic(t, func() {
 			bean.Init(func(TestBeanInterface) int { return 0 })
-		}, "invalid init function: got func\\(gs_bean.TestBeanInterface\\) int, want func\\(bean\\) or func\\(bean\\) error")
+		}, "invalid lifecycle function: got func\\(gs_bean.TestBeanInterface\\) int, want func\\(bean\\) or func\\(bean\\) error")
 		bean.Init(func(TestBeanInterface) error { return nil })
 		assert.Panic(t, func() {
 			bean.Init(func(TestBeanInterface) (int, error) { return 0, nil })
-		}, "invalid init function: got func\\(gs_bean.TestBeanInterface\\) \\(int, error\\), want func\\(bean\\) or func\\(bean\\) error")
+		}, "invalid lifecycle function: got func\\(gs_bean.TestBeanInterface\\) \\(int, error\\), want func\\(bean\\) or func\\(bean\\) error")
 		bean.Init(InitTestBean)
 		assert.That(t, funcutil.FuncName(bean.GetInit())).Equal("gs_bean.InitTestBean")
 		bean.Init(InitTestBeanV2)
@@ -153,34 +153,34 @@ func TestBeanDefinition(t *testing.T) {
 		bean := makeBean(v.Type(), v, nil, "test")
 		assert.Panic(t, func() {
 			bean.Destroy(nil)
-		}, "destroy function cannot be nil")
+		}, "lifecycle function cannot be nil")
 		assert.Panic(t, func() {
 			var fn func(*TestBean)
 			bean.Destroy(fn)
-		}, "destroy function cannot be nil")
+		}, "lifecycle function cannot be nil")
 		assert.Panic(t, func() {
 			bean.Destroy(3)
-		}, "invalid destroy function: got int, want func\\(bean\\) or func\\(bean\\) error")
+		}, "invalid lifecycle function: got int, want func\\(bean\\) or func\\(bean\\) error")
 		assert.Panic(t, func() {
 			bean.Destroy(func() {})
-		}, "invalid destroy function: got func\\(\\), want func\\(bean\\) or func\\(bean\\) error")
+		}, "invalid lifecycle function: got func\\(\\), want func\\(bean\\) or func\\(bean\\) error")
 		assert.Panic(t, func() {
 			bean.Destroy(func(int, string) {})
-		}, "invalid destroy function: got func\\(int, string\\), want func\\(bean\\) or func\\(bean\\) error")
+		}, "invalid lifecycle function: got func\\(int, string\\), want func\\(bean\\) or func\\(bean\\) error")
 		assert.Panic(t, func() {
 			bean.Destroy(func(io.Reader) {})
-		}, "invalid destroy function: got func\\(io.Reader\\), want func\\(bean\\) or func\\(bean\\) error")
+		}, "invalid lifecycle function: got func\\(io.Reader\\), want func\\(bean\\) or func\\(bean\\) error")
 		assert.Panic(t, func() {
 			bean.Destroy(func(*bytes.Buffer) {})
-		}, "invalid destroy function: got func\\(\\*bytes.Buffer\\), want func\\(bean\\) or func\\(bean\\) error")
+		}, "invalid lifecycle function: got func\\(\\*bytes.Buffer\\), want func\\(bean\\) or func\\(bean\\) error")
 		bean.Destroy(func(TestBeanInterface) {})
 		assert.Panic(t, func() {
 			bean.Destroy(func(TestBeanInterface) int { return 0 })
-		}, "invalid destroy function: got func\\(gs_bean.TestBeanInterface\\) int, want func\\(bean\\) or func\\(bean\\) error")
+		}, "invalid lifecycle function: got func\\(gs_bean.TestBeanInterface\\) int, want func\\(bean\\) or func\\(bean\\) error")
 		bean.Destroy(func(TestBeanInterface) error { return nil })
 		assert.Panic(t, func() {
 			bean.Destroy(func(TestBeanInterface) (int, error) { return 0, nil })
-		}, "invalid destroy function: got func\\(gs_bean.TestBeanInterface\\) \\(int, error\\), want func\\(bean\\) or func\\(bean\\) error")
+		}, "invalid lifecycle function: got func\\(gs_bean.TestBeanInterface\\) \\(int, error\\), want func\\(bean\\) or func\\(bean\\) error")
 		bean.Destroy(DestroyTestBean)
 		assert.That(t, funcutil.FuncName(bean.GetDestroy())).Equal("gs_bean.DestroyTestBean")
 		bean.Destroy(DestroyTestBeanV2)
@@ -217,7 +217,7 @@ func TestBeanDefinition(t *testing.T) {
 		bean := makeBean(v.Type(), v, nil, "test")
 		assert.Panic(t, func() {
 			bean.Condition(nil)
-		}, "condition cannot be nil")
+		}, "conditions cannot contains nil")
 	})
 
 	t.Run("on profiles", func(t *testing.T) {

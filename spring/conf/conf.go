@@ -29,23 +29,6 @@ import (
 
 var converters = map[reflect.Type]any{}
 
-func nilStorageError() error {
-	return errutil.Explain(nil, "properties storage cannot be nil")
-}
-
-func isNilStorage(p flatten.Storage) bool {
-	if p == nil {
-		return true
-	}
-	v := reflect.ValueOf(p)
-	switch v.Kind() {
-	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
-		return v.IsNil()
-	default:
-		return false
-	}
-}
-
 func init() {
 	RegisterConverter(func(s string) (time.Time, error) { return cast.ToTimeE(s) })
 	RegisterConverter(func(s string) (time.Duration, error) { return time.ParseDuration(s) })
@@ -105,8 +88,9 @@ func Bind(p flatten.Storage, i any, tag ...string) error {
 	if len(tag) > 0 {
 		s = tag[0]
 	}
-	if isNilStorage(p) {
-		return errutil.Explain(nilStorageError(), "conf: bind %q error", s)
+	if p == nil {
+		err := errutil.Explain(nil, "p cannot be nil")
+		return errutil.Explain(err, "conf: bind %q error", s)
 	}
 
 	var v reflect.Value
@@ -170,8 +154,9 @@ func Bind(p flatten.Storage, i any, tag ...string) error {
 // Errors:
 // - Returns invalid syntax if braces are unbalanced.
 func Resolve(p flatten.Storage, s string) (string, error) {
-	if isNilStorage(p) {
-		return "", errutil.Explain(nilStorageError(), "conf: resolve %q error", s)
+	if p == nil {
+		err := errutil.Explain(nil, "p cannot be nil")
+		return "", errutil.Explain(err, "conf: resolve %q error", s)
 	}
 	v, err := resolveString(p, s)
 	if err != nil {

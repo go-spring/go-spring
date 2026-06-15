@@ -29,13 +29,13 @@ type runTestTarget struct{}
 func TestOnOnce(t *testing.T) {
 
 	t.Run("no conditions", func(t *testing.T) {
-		assert.That(t, OnOnce()).Nil()
+		assert.That(t, OnOnce()).NotNil()
 	})
 
 	t.Run("nil condition", func(t *testing.T) {
 		assert.Panic(t, func() {
 			OnOnce(nil)
-		}, "condition cannot be nil")
+		}, "conditions cannot contains nil")
 	})
 
 	t.Run("evaluated once", func(t *testing.T) {
@@ -85,17 +85,17 @@ func TestValidateRunTestFunc(t *testing.T) {
 			{
 				name: "nil",
 				fn:   nil,
-				err:  `RunTest requires func\(\*TestStruct\), got <nil>`,
+				err:  `RunTest requires func\(\*Struct\), got <nil>`,
 			},
 			{
 				name: "non function",
 				fn:   1,
-				err:  `RunTest requires func\(\*TestStruct\), got int`,
+				err:  `RunTest requires func\(\*Struct\), got int`,
 			},
 			{
 				name: "nil function",
 				fn:   nilFn,
-				err:  `RunTest requires non-nil func\(\*TestStruct\)`,
+				err:  `RunTest requires non-nil func\(\*Struct\)`,
 			},
 			{
 				name: "no arguments",

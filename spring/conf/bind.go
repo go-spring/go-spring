@@ -152,8 +152,9 @@ type Filter interface {
 //   - Custom converter function errors.
 func BindValue(p flatten.Storage, v reflect.Value, t reflect.Type, param BindParam, filter Filter) (RetErr error) {
 
-	if isNilStorage(p) {
-		return errutil.Explain(nilStorageError(), "failed to bind at path %s", param.Path)
+	if p == nil {
+		err := errutil.Explain(nil, "p cannot be nil")
+		return errutil.Explain(err, "failed to bind at path %s", param.Path)
 	}
 
 	if !typeutil.IsPropBindingTarget(t) {
@@ -347,6 +348,7 @@ func getSlice(p flatten.Storage, param BindParam) (flatten.Storage, error) {
 	return flatten.NewPropertiesStorage(flatten.NewProperties(m)), nil
 }
 
+// validateSliceIndexes validates that all slice entries are valid and cover all indices.
 func validateSliceIndexes(key string, entries map[string]string) error {
 	indexes := make(map[int]struct{})
 	maxIndex := -1
@@ -370,6 +372,7 @@ func validateSliceIndexes(key string, entries map[string]string) error {
 	return nil
 }
 
+// parseSliceEntryIndex parses the index from a slice entry string.
 func parseSliceEntryIndex(key string, entry string) (int, error) {
 	suffix, ok := strings.CutPrefix(entry, key)
 	if !ok || suffix == "" || suffix[0] != '[' {

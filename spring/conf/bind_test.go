@@ -282,7 +282,7 @@ func TestProperties_Bind(t *testing.T) {
 	t.Run("nil storage", func(t *testing.T) {
 		var v int
 		err := conf.Bind(nil, &v, "${v:=1}")
-		assert.Error(t, err).Matches("properties storage cannot be nil")
+		assert.Error(t, err).Matches("p cannot be nil")
 	})
 
 	t.Run("unnamed default", func(t *testing.T) {
@@ -700,7 +700,7 @@ func TestProperties_Bind(t *testing.T) {
 		var v int
 		rv := reflect.ValueOf(&v).Elem()
 		err = conf.BindValue(nil, rv, rv.Type(), param, nil)
-		assert.Error(t, err).Matches("properties storage cannot be nil")
+		assert.Error(t, err).Matches("p cannot be nil")
 	})
 
 	t.Run("property reference resolution", func(t *testing.T) {

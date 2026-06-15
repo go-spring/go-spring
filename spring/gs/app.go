@@ -235,31 +235,6 @@ func RunTest(t *testing.T, f any) {
 	newApp().RunTest(t, f)
 }
 
-func validateRunTestFunc(f any) (reflect.Type, reflect.Value, error) {
-	if f == nil {
-		return nil, reflect.Value{}, fmt.Errorf("RunTest requires func(*TestStruct), got <nil>")
-	}
-
-	fv := reflect.ValueOf(f)
-	ft := fv.Type()
-	if ft.Kind() != reflect.Func {
-		return nil, reflect.Value{}, fmt.Errorf("RunTest requires func(*TestStruct), got %s", ft)
-	}
-	if fv.IsNil() {
-		return nil, reflect.Value{}, fmt.Errorf("RunTest requires non-nil func(*TestStruct)")
-	}
-	if ft.NumIn() != 1 {
-		return nil, reflect.Value{}, fmt.Errorf("RunTest requires exactly one argument, got %d", ft.NumIn())
-	}
-
-	argType := ft.In(0)
-	if argType.Kind() != reflect.Pointer || argType.Elem().Kind() != reflect.Struct {
-		return nil, reflect.Value{}, fmt.Errorf("RunTest argument must be pointer to struct, got %s", argType)
-	}
-
-	return ft, fv, nil
-}
-
 // RunTest runs a user-defined test function with an auto-created test object.
 // It extracts the test object type from the test function parameter, creates
 // the test object, registers it as a root bean, initializes the application,
@@ -285,4 +260,33 @@ func (s *AppStarter) RunTest(t *testing.T, f any) {
 
 	// Execute the test function
 	fv.Call([]reflect.Value{obj})
+}
+
+// validateRunTestFunc validates the signature of the test function.
+// It checks if the function is a pointer-to-struct and if it has exactly one argument.
+// If the function is nil or has an invalid signature, it returns an error.
+// If the function is valid, it returns the function type and value.
+func validateRunTestFunc(f any) (reflect.Type, reflect.Value, error) {
+	if f == nil {
+		return nil, reflect.Value{}, fmt.Errorf("RunTest requires func(*Struct), got <nil>")
+	}
+
+	fv := reflect.ValueOf(f)
+	ft := fv.Type()
+	if ft.Kind() != reflect.Func {
+		return nil, reflect.Value{}, fmt.Errorf("RunTest requires func(*Struct), got %s", ft)
+	}
+	if fv.IsNil() {
+		return nil, reflect.Value{}, fmt.Errorf("RunTest requires non-nil func(*Struct)")
+	}
+	if ft.NumIn() != 1 {
+		return nil, reflect.Value{}, fmt.Errorf("RunTest requires exactly one argument, got %d", ft.NumIn())
+	}
+
+	argType := ft.In(0)
+	if argType.Kind() != reflect.Pointer || argType.Elem().Kind() != reflect.Struct {
+		return nil, reflect.Value{}, fmt.Errorf("RunTest argument must be pointer to struct, got %s", argType)
+	}
+
+	return ft, fv, nil
 }

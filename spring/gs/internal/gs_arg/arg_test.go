@@ -889,7 +889,7 @@ func TestBindArg_Condition(t *testing.T) {
 		})
 		assert.Panic(t, func() {
 			arg.Condition(nil)
-		}, "condition cannot be nil")
+		}, "conditions cannot contains nil")
 	})
 
 	t.Run("multiple conditions - all true", func(t *testing.T) {
