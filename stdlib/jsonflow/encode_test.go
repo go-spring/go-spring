@@ -18,6 +18,7 @@ package jsonflow
 
 import (
 	"bytes"
+	"math"
 	"strings"
 	"testing"
 )
@@ -70,7 +71,79 @@ func TestEncodeScalar(t *testing.T) {
 	}
 }
 
+func TestEncodeFloatSpecialValue(t *testing.T) {
+	if got := encodeToString(t, func(e Encoder) error {
+		return EncodeFloat(e, math.NaN())
+	}); got != `"NaN"` {
+		t.Fatalf("got %s", got)
+	}
+
+	if got := encodeToString(t, func(e Encoder) error {
+		return EncodeFloat(e, math.Inf(1))
+	}); got != `"Infinity"` {
+		t.Fatalf("got %s", got)
+	}
+
+	if got := encodeToString(t, func(e Encoder) error {
+		return EncodeFloat(e, math.Inf(-1))
+	}); got != `"-Infinity"` {
+		t.Fatalf("got %s", got)
+	}
+}
+
 func TestEncodePointer(t *testing.T) {
+	if got := encodeToString(t, func(e Encoder) error {
+		return EncodeBoolPtr[bool](e, nil)
+	}); got != "null" {
+		t.Fatalf("got %s", got)
+	}
+
+	b := true
+	if got := encodeToString(t, func(e Encoder) error {
+		return EncodeBoolPtr(e, &b)
+	}); got != "true" {
+		t.Fatalf("got %s", got)
+	}
+
+	if got := encodeToString(t, func(e Encoder) error {
+		return EncodeIntPtr[int](e, nil)
+	}); got != "null" {
+		t.Fatalf("got %s", got)
+	}
+
+	i := -12
+	if got := encodeToString(t, func(e Encoder) error {
+		return EncodeIntPtr(e, &i)
+	}); got != "-12" {
+		t.Fatalf("got %s", got)
+	}
+
+	if got := encodeToString(t, func(e Encoder) error {
+		return EncodeUintPtr[uint](e, nil)
+	}); got != "null" {
+		t.Fatalf("got %s", got)
+	}
+
+	u := uint(12)
+	if got := encodeToString(t, func(e Encoder) error {
+		return EncodeUintPtr(e, &u)
+	}); got != "12" {
+		t.Fatalf("got %s", got)
+	}
+
+	if got := encodeToString(t, func(e Encoder) error {
+		return EncodeFloatPtr[float64](e, nil)
+	}); got != "null" {
+		t.Fatalf("got %s", got)
+	}
+
+	f := 1.25
+	if got := encodeToString(t, func(e Encoder) error {
+		return EncodeFloatPtr(e, &f)
+	}); got != "1.25" {
+		t.Fatalf("got %s", got)
+	}
+
 	if got := encodeToString(t, func(e Encoder) error {
 		return EncodeStringPtr[string](e, nil)
 	}); got != "null" {
@@ -140,6 +213,26 @@ func TestEncodeMap(t *testing.T) {
 	}); got != `{"1":"a","2":"b"}` {
 		t.Fatalf("got %s", got)
 	}
+
+	if got := encodeToString(t, func(e Encoder) error {
+		return EncodeMap(EncodeStringKey[string], EncodeInt[int])(e, nil)
+	}); got != "null" {
+		t.Fatalf("got %s", got)
+	}
+}
+
+func TestEncodeAny(t *testing.T) {
+	if got := encodeToString(t, func(e Encoder) error {
+		return EncodeAny(e, map[string]any{"name": "alice", "age": 18})
+	}); got != `{"age":18,"name":"alice"}` {
+		t.Fatalf("got %s", got)
+	}
+
+	var buf bytes.Buffer
+	err := EncodeAny(NewEncoder(&buf), make(chan int))
+	if err == nil {
+		t.Fatal("expected marshal error")
+	}
 }
 
 type encodedObject struct {
@@ -185,7 +278,7 @@ func TestMarshalWriteUsesEncodeJSON(t *testing.T) {
 	if err := MarshalWrite(&buf, &encodedObject{Name: "alice"}); err != nil {
 		t.Fatal(err)
 	}
-	if got := buf.String(); got != `{"name":"alice"}` {
+	if got := buf.String(); got != "{\"name\":\"alice\"}\n" {
 		t.Fatalf("got %s", got)
 	}
 }
@@ -195,7 +288,7 @@ func TestMarshalUsesEncodeJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := string(b); got != `{"name":"alice"}` {
+	if got := string(b); got != "{\"name\":\"alice\"}\n" {
 		t.Fatalf("got %s", got)
 	}
 }

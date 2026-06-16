@@ -828,6 +828,22 @@ func TestDecodeAny(t *testing.T) {
 	})
 }
 
+func TestDecodeEOF(t *testing.T) {
+	t.Run("Decode EOF", func(t *testing.T) {
+		d := NewDecoder(strings.NewReader("true"))
+		_, err := DecodeBool(d)
+		assert.That(t, err).Nil()
+		assert.That(t, DecodeEOF(d)).Nil()
+	})
+
+	t.Run("Decode trailing token", func(t *testing.T) {
+		d := NewDecoder(strings.NewReader("true false"))
+		_, err := DecodeBool(d)
+		assert.That(t, err).Nil()
+		assert.Error(t, DecodeEOF(d)).String("invalid JSON: unexpected token after top-level value `false`")
+	})
+}
+
 type TestObject struct {
 
 	// Base
