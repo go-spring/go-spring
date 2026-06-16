@@ -18,6 +18,7 @@ package jsonflow
 
 import (
 	"encoding/base64"
+	"math"
 	"reflect"
 	"sort"
 	"strconv"
@@ -59,12 +60,15 @@ type EncodeJSONer interface {
 
 // EncodeNull encodes a JSON null value.
 func EncodeNull(e Encoder) error {
-	return e.WriteNull()
+	return e.WriteToken("null", 'n')
 }
 
 // EncodeBool encodes a boolean value to JSON.
 func EncodeBool[T ~bool](e Encoder, v T) error {
-	return e.WriteBool(bool(v))
+	if bool(v) {
+		return e.WriteToken("true", 't')
+	}
+	return e.WriteToken("false", 'f')
 }
 
 // EncodeBoolPtr encodes a pointer to boolean value to JSON.
@@ -77,7 +81,7 @@ func EncodeBoolPtr[T ~bool](e Encoder, v *T) error {
 
 // EncodeInt encodes an integer value to JSON.
 func EncodeInt[T ~int | ~int8 | ~int16 | ~int32 | ~int64](e Encoder, i T) error {
-	return e.WriteInt(int64(i))
+	return e.WriteToken(strconv.FormatInt(int64(i), 10), '0')
 }
 
 // EncodeIntPtr encodes a pointer to integer value to JSON.
@@ -90,7 +94,7 @@ func EncodeIntPtr[T ~int | ~int8 | ~int16 | ~int32 | ~int64](e Encoder, i *T) er
 
 // EncodeUint encodes an unsigned integer value to JSON.
 func EncodeUint[T ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64](e Encoder, u T) error {
-	return e.WriteUint(uint64(u))
+	return e.WriteToken(strconv.FormatUint(uint64(u), 10), '0')
 }
 
 // EncodeUintPtr encodes a pointer to unsigned integer value to JSON.
@@ -103,7 +107,17 @@ func EncodeUintPtr[T ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64](e Encoder, u 
 
 // EncodeFloat encodes a floating-point value to JSON.
 func EncodeFloat[T ~float32 | ~float64](e Encoder, f T) error {
-	return e.WriteFloat(float64(f))
+	v := float64(f)
+	switch {
+	case math.IsNaN(v):
+		return EncodeString(e, "NaN")
+	case math.IsInf(v, +1):
+		return EncodeString(e, "Infinity")
+	case math.IsInf(v, -1):
+		return EncodeString(e, "-Infinity")
+	default:
+		return e.WriteToken(strconv.FormatFloat(v, 'g', -1, 64), '0')
+	}
 }
 
 // EncodeFloatPtr encodes a pointer to floating-point value to JSON.
@@ -116,7 +130,7 @@ func EncodeFloatPtr[T ~float32 | ~float64](e Encoder, f *T) error {
 
 // EncodeString encodes a string value to JSON.
 func EncodeString[T ~string](e Encoder, s T) error {
-	return e.WriteString(string(s))
+	return e.WriteToken(string(s), '"')
 }
 
 // EncodeStringPtr encodes a pointer to string value to JSON.
@@ -132,7 +146,7 @@ func EncodeBytes(e Encoder, b []byte) error {
 	if b == nil {
 		return EncodeNull(e)
 	}
-	return e.WriteString(base64.StdEncoding.EncodeToString(b))
+	return EncodeString(e, base64.StdEncoding.EncodeToString(b))
 }
 
 // EncodeAny marshals an arbitrary Go value and writes it as a raw JSON value.
@@ -142,6 +156,26 @@ func EncodeAny[T any](e Encoder, v T) error {
 		return err
 	}
 	return e.WriteValue(b)
+}
+
+// EncodeObjectBegin encodes the opening token of a JSON object.
+func EncodeObjectBegin(e Encoder) error {
+	return e.WriteToken("{", '{')
+}
+
+// EncodeObjectEnd encodes the closing token of a JSON object.
+func EncodeObjectEnd(e Encoder) error {
+	return e.WriteToken("}", '}')
+}
+
+// EncodeArrayBegin encodes the opening token of a JSON array.
+func EncodeArrayBegin(e Encoder) error {
+	return e.WriteToken("[", '[')
+}
+
+// EncodeArrayEnd encodes the closing token of a JSON array.
+func EncodeArrayEnd(e Encoder) error {
+	return e.WriteToken("]", ']')
 }
 
 // EncodeObject encodes an object that implements EncodeJSONer.
@@ -160,7 +194,7 @@ func EncodeArray[T any](
 		if values == nil {
 			return EncodeNull(e)
 		}
-		if err := e.WriteArrayBegin(); err != nil {
+		if err := EncodeArrayBegin(e); err != nil {
 			return err
 		}
 		for _, v := range values {
@@ -168,7 +202,7 @@ func EncodeArray[T any](
 				return err
 			}
 		}
-		return e.WriteArrayEnd()
+		return EncodeArrayEnd(e)
 	}
 }
 
@@ -217,18 +251,18 @@ func EncodeMap[K comparable, V any](
 			return entries[i].key < entries[j].key
 		})
 
-		if err := e.WriteObjectBegin(); err != nil {
+		if err := EncodeObjectBegin(e); err != nil {
 			return err
 		}
 		for _, ent := range entries {
-			if err := e.WriteString(ent.key); err != nil {
+			if err := EncodeString(e, ent.key); err != nil {
 				return err
 			}
 			if err := encodeVal(e, ent.val); err != nil {
 				return err
 			}
 		}
-		return e.WriteObjectEnd()
+		return EncodeObjectEnd(e)
 	}
 }
 

@@ -21,28 +21,10 @@ package json
 // Only the lowest level interface is preserved,
 // higher level requires some shallow encapsulation.
 type Encoder interface {
+	// WriteToken writes the next token and advances the encoder state.
+	WriteToken(token string, kind Kind) error
 	// WriteValue writes a JSON value to the encoder.
 	WriteValue(v []byte) error
-	// WriteNull writes a JSON null token to the encoder.
-	WriteNull() error
-	// WriteBool writes a JSON boolean token to the encoder.
-	WriteBool(v bool) error
-	// WriteInt writes a JSON integer token to the encoder.
-	WriteInt(v int64) error
-	// WriteUint writes a JSON unsigned integer token to the encoder.
-	WriteUint(v uint64) error
-	// WriteFloat writes a JSON floating-point token to the encoder.
-	WriteFloat(v float64) error
-	// WriteString writes a JSON string token to the encoder.
-	WriteString(v string) error
-	// WriteObjectBegin writes a JSON object begin token to the encoder.
-	WriteObjectBegin() error
-	// WriteObjectEnd writes a JSON object end token to the encoder.
-	WriteObjectEnd() error
-	// WriteArrayBegin writes a JSON array begin token to the encoder.
-	WriteArrayBegin() error
-	// WriteArrayEnd writes a JSON array end token to the encoder.
-	WriteArrayEnd() error
 }
 
 // Kind represents each possible JSON token kind with a single byte,

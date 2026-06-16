@@ -18,64 +18,47 @@ package jsonv2
 
 import (
 	"encoding/json/jsontext"
+
+	"go-spring.org/stdlib/jsonflow/internal/json"
 )
 
 // Encoder wraps jsontext.Encoder to implement the json.Encoder interface.
 type Encoder struct {
-	*jsontext.Encoder
+	enc *jsontext.Encoder
+}
+
+// NewEncoder creates an Encoder that writes to enc.
+func NewEncoder(enc *jsontext.Encoder) *Encoder {
+	return &Encoder{enc: enc}
+}
+
+// WriteToken writes the next JSON token to the encoder.
+func (e *Encoder) WriteToken(token string, kind json.Kind) error {
+	switch kind {
+	case 'n':
+		return e.enc.WriteToken(jsontext.Null)
+	case 'f':
+		return e.enc.WriteToken(jsontext.False)
+	case 't':
+		return e.enc.WriteToken(jsontext.True)
+	case '"':
+		return e.enc.WriteToken(jsontext.String(token))
+	case '0':
+		return e.enc.WriteValue([]byte(token))
+	case '{':
+		return e.enc.WriteToken(jsontext.BeginObject)
+	case '}':
+		return e.enc.WriteToken(jsontext.EndObject)
+	case '[':
+		return e.enc.WriteToken(jsontext.BeginArray)
+	case ']':
+		return e.enc.WriteToken(jsontext.EndArray)
+	default:
+		return e.enc.WriteValue([]byte(token))
+	}
 }
 
 // WriteValue writes a JSON value to the encoder.
 func (e *Encoder) WriteValue(v []byte) error {
-	return e.Encoder.WriteValue(v)
-}
-
-// WriteNull writes a JSON null token to the encoder.
-func (e *Encoder) WriteNull() error {
-	return e.Encoder.WriteToken(jsontext.Null)
-}
-
-// WriteBool writes a JSON boolean token to the encoder.
-func (e *Encoder) WriteBool(v bool) error {
-	return e.Encoder.WriteToken(jsontext.Bool(v))
-}
-
-// WriteInt writes a JSON integer token to the encoder.
-func (e *Encoder) WriteInt(v int64) error {
-	return e.Encoder.WriteToken(jsontext.Int(v))
-}
-
-// WriteUint writes a JSON unsigned integer token to the encoder.
-func (e *Encoder) WriteUint(v uint64) error {
-	return e.Encoder.WriteToken(jsontext.Uint(v))
-}
-
-// WriteFloat writes a JSON floating-point token to the encoder.
-func (e *Encoder) WriteFloat(v float64) error {
-	return e.Encoder.WriteToken(jsontext.Float(v))
-}
-
-// WriteString writes a JSON string token to the encoder.
-func (e *Encoder) WriteString(v string) error {
-	return e.Encoder.WriteToken(jsontext.String(v))
-}
-
-// WriteObjectBegin writes a JSON object begin token to the encoder.
-func (e *Encoder) WriteObjectBegin() error {
-	return e.Encoder.WriteToken(jsontext.BeginObject)
-}
-
-// WriteObjectEnd writes a JSON object end token to the encoder.
-func (e *Encoder) WriteObjectEnd() error {
-	return e.Encoder.WriteToken(jsontext.EndObject)
-}
-
-// WriteArrayBegin writes a JSON array begin token to the encoder.
-func (e *Encoder) WriteArrayBegin() error {
-	return e.Encoder.WriteToken(jsontext.BeginArray)
-}
-
-// WriteArrayEnd writes a JSON array end token to the encoder.
-func (e *Encoder) WriteArrayEnd() error {
-	return e.Encoder.WriteToken(jsontext.EndArray)
+	return e.enc.WriteValue(v)
 }

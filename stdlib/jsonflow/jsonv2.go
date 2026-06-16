@@ -28,7 +28,7 @@ import (
 
 // NewEncoder creates a new jsonv2.Encoder that implements the json.Encoder interface.
 func NewEncoder(w io.Writer) json.Encoder {
-	return &jsonv2.Encoder{Encoder: jsontext.NewEncoder(w)}
+	return jsonv2.NewEncoder(jsontext.NewEncoder(w))
 }
 
 // NewDecoder creates a new jsonv2.Decoder that implements the json.Decoder interface.

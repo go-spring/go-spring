@@ -129,7 +129,7 @@ func (o *encodedObject) EncodeJSON(e Encoder) error {
 	if o == nil {
 		return EncodeNull(e)
 	}
-	if err := e.WriteObjectBegin(); err != nil {
+	if err := EncodeObjectBegin(e); err != nil {
 		return err
 	}
 	if err := EncodeString(e, "name"); err != nil {
@@ -138,7 +138,7 @@ func (o *encodedObject) EncodeJSON(e Encoder) error {
 	if err := EncodeString(e, o.Name); err != nil {
 		return err
 	}
-	return e.WriteObjectEnd()
+	return EncodeObjectEnd(e)
 }
 
 func TestEncodeObject(t *testing.T) {
