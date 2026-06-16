@@ -66,7 +66,7 @@ func ParseInt[T ~int | ~int8 | ~int16 | ~int32 | ~int64](token string, k json.Ki
 		return 0, err
 	}
 	if mathutil.OverflowInt[T](v) {
-		return 0, errutil.Explain(nil, "invalid JSON: number out of range, got `%s", token)
+		return 0, errutil.Explain(nil, "invalid JSON: number out of range, got `%s`", token)
 	}
 	return T(v), nil
 }
@@ -82,20 +82,24 @@ func DecodeIntPtr[T ~int | ~int8 | ~int16 | ~int32 | ~int64](d Decoder) (*T, err
 	return DecodeValuePtr(ParseInt[T], errFormatNumber)(d)
 }
 
-// ParseIntKey parses a JSON object key as an integer type T.
+// ParseIntKey parses a jsonflow map key as an integer type T.
+// String and numeric tokens are both accepted.
 // Returns an error if parsing fails or the value overflows.
-func ParseIntKey[T ~int | ~int8 | ~int16 | ~int32 | ~int64](token string, _ json.Kind) (T, error) {
+func ParseIntKey[T ~int | ~int8 | ~int16 | ~int32 | ~int64](token string, k json.Kind) (T, error) {
+	if k != '"' && k != '0' {
+		return 0, errutil.Explain(nil, errFormatNumber, token)
+	}
 	v, err := strconv.ParseInt(token, 10, 64)
 	if err != nil {
 		return 0, err
 	}
 	if mathutil.OverflowInt[T](v) {
-		return 0, errutil.Explain(nil, "invalid JSON: number out of range, got `%s", token)
+		return 0, errutil.Explain(nil, "invalid JSON: number out of range, got `%s`", token)
 	}
 	return T(v), nil
 }
 
-// DecodeIntKey reads a JSON object key and parses it as an integer type T.
+// DecodeIntKey reads the next map key token and parses it as an integer type T.
 func DecodeIntKey[T ~int | ~int8 | ~int16 | ~int32 | ~int64](d Decoder) (T, error) {
 	return DecodeValue(ParseIntKey[T], errFormatNumber)(d)
 }
@@ -125,19 +129,23 @@ func DecodeUintPtr[T ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64](d Decoder) (*
 	return DecodeValuePtr(ParseUint[T], errFormatNumber)(d)
 }
 
-// ParseUintKey parses a JSON object key as an unsigned integer type T.
-func ParseUintKey[T ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64](token string, _ json.Kind) (T, error) {
+// ParseUintKey parses a jsonflow map key as an unsigned integer type T.
+// String and numeric tokens are both accepted.
+func ParseUintKey[T ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64](token string, k json.Kind) (T, error) {
+	if k != '"' && k != '0' {
+		return 0, errutil.Explain(nil, errFormatNumber, token)
+	}
 	v, err := strconv.ParseUint(token, 10, 64)
 	if err != nil {
 		return 0, err
 	}
 	if mathutil.OverflowUint[T](v) {
-		return 0, errutil.Explain(nil, "invalid JSON: number out of range, got `%s", token)
+		return 0, errutil.Explain(nil, "invalid JSON: number out of range, got `%s`", token)
 	}
 	return T(v), nil
 }
 
-// DecodeUintKey reads a JSON object key and parses it as an unsigned integer type T.
+// DecodeUintKey reads the next map key token and parses it as an unsigned integer type T.
 func DecodeUintKey[T ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64](d Decoder) (T, error) {
 	return DecodeValue(ParseUintKey[T], errFormatNumber)(d)
 }
@@ -152,7 +160,7 @@ func ParseFloat[T ~float32 | ~float64](token string, k json.Kind) (T, error) {
 		return 0, err
 	}
 	if mathutil.OverflowFloat[T](f) {
-		return 0, errutil.Explain(nil, "invalid JSON: number out of range, got `%s", token)
+		return 0, errutil.Explain(nil, "invalid JSON: number out of range, got `%s`", token)
 	}
 	return T(f), nil
 }
@@ -193,7 +201,8 @@ func ParseBytes(token string, k json.Kind) ([]byte, error) {
 	return base64.StdEncoding.DecodeString(token)
 }
 
-// DecodeBytes reads the next JSON value and parses it as base64-decoded bytes.
+// DecodeBytes reads the next JSON string as base64-decoded bytes.
+// Returns nil if the JSON token is null.
 func DecodeBytes(d Decoder) ([]byte, error) {
 	if d.PeekKind() == 'n' {
 		_, _, err := d.ReadToken()
@@ -216,6 +225,8 @@ func DecodeEOF(d Decoder) error {
 
 // Object represents a JSON-mappable object that supports streaming decoding.
 type Object interface {
+	// EncodeJSON writes this object as one JSON value to the Encoder.
+	EncodeJSON(e Encoder) error
 	// DecodeJSON reads JSON data from the Decoder and populates the object.
 	DecodeJSON(d Decoder) error
 }
@@ -228,7 +239,7 @@ func DecodeObjectBegin(d Decoder) error {
 		return err
 	}
 	if tokenKind != '{' {
-		return errutil.Explain(nil, "invalid JSON: expected `{` but got %s", token)
+		return errutil.Explain(nil, "invalid JSON: expected `{` but got `%s`", token)
 	}
 	return nil
 }
@@ -241,7 +252,7 @@ func DecodeObjectEnd(d Decoder) error {
 		return err
 	}
 	if tokenKind != '}' {
-		return errutil.Explain(nil, "invalid JSON: expected `}` but got %s", token)
+		return errutil.Explain(nil, "invalid JSON: expected `}` but got `%s`", token)
 	}
 	return nil
 }
@@ -305,7 +316,7 @@ func DecodeValuePtr[T any](
 			}
 			return &v, nil
 		default:
-			return nil, errutil.Explain(err, errFormat, token)
+			return nil, errutil.Explain(nil, errFormat, token)
 		}
 	}
 }
@@ -320,8 +331,8 @@ func DecodeObject[T Object](
 		var v T
 		switch d.PeekKind() {
 		case 'n':
-			_, _, _ = d.ReadToken()
-			return v, nil
+			_, _, err := d.ReadToken()
+			return v, err
 		case '{':
 			v = newFn()
 			if err := v.DecodeJSON(d); err != nil {
@@ -338,8 +349,8 @@ func DecodeObject[T Object](
 	}
 }
 
-// DecodeArray decodes a JSON array of arbitrary type.
-// parseFn is used to parse each element of the array.
+// DecodeArray decodes a JSON array.
+// parseFn must consume the next array element or return an error.
 // Returns nil if the next token is null.
 func DecodeArray[T any](
 	parseFn func(d Decoder) (T, error),
@@ -347,10 +358,12 @@ func DecodeArray[T any](
 	return func(d Decoder) ([]T, error) {
 		switch d.PeekKind() {
 		case 'n':
-			_, _, _ = d.ReadToken()
-			return nil, nil
+			_, _, err := d.ReadToken()
+			return nil, err
 		case '[':
-			_, _, _ = d.ReadToken()
+			if _, _, err := d.ReadToken(); err != nil {
+				return nil, err
+			}
 			v := make([]T, 0)
 			for d.PeekKind() != ']' {
 				i, err := parseFn(d)
@@ -359,7 +372,9 @@ func DecodeArray[T any](
 				}
 				v = append(v, i)
 			}
-			_, _, _ = d.ReadToken()
+			if _, _, err := d.ReadToken(); err != nil {
+				return nil, err
+			}
 			return v, nil
 		default:
 			token, _, err := d.ReadToken()
@@ -372,7 +387,7 @@ func DecodeArray[T any](
 }
 
 // DecodeMap decodes a JSON object into a Go map.
-// parseKeyFn and parseValFn are used to parse each key and value.
+// parseKeyFn and parseValFn must consume the next key and value tokens or return an error.
 // Returns nil if the next token is null.
 func DecodeMap[K comparable, V any](
 	parseKeyFn func(d Decoder) (K, error),
@@ -381,10 +396,12 @@ func DecodeMap[K comparable, V any](
 	return func(d Decoder) (map[K]V, error) {
 		switch d.PeekKind() {
 		case 'n':
-			_, _, _ = d.ReadToken()
-			return nil, nil
+			_, _, err := d.ReadToken()
+			return nil, err
 		case '{':
-			_, _, _ = d.ReadToken()
+			if _, _, err := d.ReadToken(); err != nil {
+				return nil, err
+			}
 			m := make(map[K]V)
 			for d.PeekKind() != '}' {
 				key, err := parseKeyFn(d)
@@ -397,7 +414,9 @@ func DecodeMap[K comparable, V any](
 				}
 				m[key] = val
 			}
-			_, _, _ = d.ReadToken()
+			if _, _, err := d.ReadToken(); err != nil {
+				return nil, err
+			}
 			return m, nil
 		default:
 			token, _, err := d.ReadToken()

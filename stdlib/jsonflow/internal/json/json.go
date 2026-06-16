@@ -16,17 +16,6 @@
 
 package json
 
-// Encoder defines a streaming JSON encoder interface.
-//
-// Only the lowest level interface is preserved,
-// higher level requires some shallow encapsulation.
-type Encoder interface {
-	// WriteToken writes the next token and advances the encoder state.
-	WriteToken(token string, kind Kind) error
-	// WriteValue writes a JSON value to the encoder.
-	WriteValue(v []byte) error
-}
-
 // Kind represents each possible JSON token kind with a single byte,
 // which is conveniently the first byte of that kind's grammar
 // with the restriction that numbers always be represented with '0':
@@ -47,18 +36,26 @@ type Kind byte
 
 const InvalidKind Kind = 0
 
-// Decoder defines a streaming JSON decoder interface.
-//
-// Only the lowest level interface is preserved,
-// higher level requires some shallow encapsulation.
+// Encoder defines the lowest-level streaming JSON encoder interface.
+type Encoder interface {
+	// WriteToken writes the next token and advances the encoder state.
+	// For strings, token is the unescaped string content.
+	// For other kinds, token is the raw JSON token representation.
+	WriteToken(token string, kind Kind) error
+	// WriteValue writes a complete JSON value to the encoder.
+	WriteValue(value []byte) error
+}
+
+// Decoder defines the lowest-level streaming JSON decoder interface.
 type Decoder interface {
 	// PeekKind returns the Kind of the next token without consuming it.
 	PeekKind() Kind
-	// ReadToken reads the next token and returns its string value, kind, and error.
-	ReadToken() (token string, _ Kind, _ error)
-	// ReadValue reads the next value, which may be a complete JSON
-	// node (object, array, or scalar), as bytes.
-	ReadValue() (value []byte, _ error)
-	// SkipValue skips the next value (maybe a complete JSON node).
+	// ReadToken reads the next token and returns its string value and kind.
+	// For strings, token is the unescaped string content.
+	// For other kinds, token is the raw JSON token representation.
+	ReadToken() (token string, kind Kind, err error)
+	// ReadValue reads the next complete JSON value as bytes.
+	ReadValue() (value []byte, err error)
+	// SkipValue skips the next complete JSON value.
 	SkipValue() error
 }

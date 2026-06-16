@@ -22,8 +22,7 @@ import (
 	"go-spring.org/stdlib/jsonflow/internal/json"
 )
 
-// Decoder wraps jsontext.Decoder to implement the json.Decoder interface.
-// It provides streaming JSON decoding with convenience methods for reading tokens and values.
+// Decoder adapts jsontext.Decoder to the json.Decoder interface.
 type Decoder struct {
 	*jsontext.Decoder
 }
@@ -60,9 +59,10 @@ func (d *Decoder) PeekKind() json.Kind {
 	return toKind(d.Decoder.PeekKind())
 }
 
-// ReadToken reads the next JSON token and returns its string representation,
-// kind, and any error encountered. The decoder state advances past the returned token.
-func (d *Decoder) ReadToken() (string, json.Kind, error) {
+// ReadToken reads the next JSON token and returns its string value and kind.
+// For strings, token is the unescaped string content.
+// For other kinds, token is the raw JSON token representation.
+func (d *Decoder) ReadToken() ( /* token */ string /* kind */, json.Kind /* err */, error) {
 	token, err := d.Decoder.ReadToken()
 	if err != nil {
 		return "", 0, err
@@ -70,14 +70,12 @@ func (d *Decoder) ReadToken() (string, json.Kind, error) {
 	return token.String(), toKind(token.Kind()), nil
 }
 
-// ReadValue reads the next JSON value (scalar, object, or array) as raw bytes.
-// The decoder state advances past the returned value.
-func (d *Decoder) ReadValue() ([]byte, error) {
+// ReadValue reads the next complete JSON value as bytes.
+func (d *Decoder) ReadValue() ( /* value */ []byte /* err */, error) {
 	return d.Decoder.ReadValue()
 }
 
-// SkipValue skips over the next JSON value (scalar, object, or array).
-// The decoder state advances past the skipped value.
+// SkipValue skips the next complete JSON value.
 func (d *Decoder) SkipValue() error {
 	return d.Decoder.SkipValue()
 }

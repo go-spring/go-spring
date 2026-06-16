@@ -26,6 +26,29 @@ import (
 	"go-spring.org/stdlib/jsonflow/internal/jsonv2"
 )
 
+// NotForPublicUse is a private type used to prevent the use of
+// the package outside of this module.
+type NotForPublicUse struct{}
+
+// MarshalOptions is an interface that defines options for encoding JSON.
+type MarshalOptions interface {
+	JSONOptions(NotForPublicUse)
+}
+
+type (
+	Indent         string
+	IndentPrefix   string
+	NilSliceAsNull bool
+	NilMapAsNull   bool
+	Deterministic  bool
+)
+
+func (Indent) JSONOptions(NotForPublicUse)         {}
+func (IndentPrefix) JSONOptions(NotForPublicUse)   {}
+func (NilSliceAsNull) JSONOptions(NotForPublicUse) {}
+func (NilMapAsNull) JSONOptions(NotForPublicUse)   {}
+func (Deterministic) JSONOptions(NotForPublicUse)  {}
+
 // NewEncoder creates a new jsonv2.Encoder that implements the json.Encoder interface.
 func NewEncoder(w io.Writer) json.Encoder {
 	return jsonv2.NewEncoder(jsontext.NewEncoder(w))
@@ -68,7 +91,7 @@ func toJSONv2Options(opts []MarshalOptions) []jsontext.Options {
 // Marshal marshals a Go value into JSON bytes.
 func Marshal(i any, opts ...MarshalOptions) ([]byte, error) {
 	if len(opts) == 0 {
-		if _, ok := i.(EncodeJSONer); ok {
+		if _, ok := i.(Object); ok {
 			buf := bytes.NewBuffer(nil)
 			if err := MarshalWrite(buf, i); err != nil {
 				return nil, err
@@ -87,7 +110,7 @@ func MarshalIndent(i any, prefix, indent string) ([]byte, error) {
 // MarshalWrite marshals a Go value into JSON bytes and writes them to a writer.
 func MarshalWrite(w io.Writer, i any, opts ...MarshalOptions) error {
 	if len(opts) == 0 {
-		if v, ok := i.(EncodeJSONer); ok {
+		if v, ok := i.(Object); ok {
 			tw := &trimFinalNewlineWriter{w: w}
 			if err := v.EncodeJSON(NewEncoder(tw)); err != nil {
 				return err

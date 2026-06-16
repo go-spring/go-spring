@@ -17,46 +17,18 @@
 package jsonflow
 
 import (
+	"cmp"
 	"encoding/base64"
+	"maps"
 	"math"
-	"reflect"
-	"sort"
+	"slices"
 	"strconv"
 
 	"go-spring.org/stdlib/jsonflow/internal/json"
 )
 
-// NotForPublicUse is a private type used to prevent the use of
-// the package outside of this module.
-type NotForPublicUse struct{}
-
-// MarshalOptions is an interface that defines options for encoding JSON.
-type MarshalOptions interface {
-	JSONOptions(NotForPublicUse)
-}
-
-type (
-	Indent         string
-	IndentPrefix   string
-	NilSliceAsNull bool
-	NilMapAsNull   bool
-	Deterministic  bool
-)
-
-func (Indent) JSONOptions(NotForPublicUse)         {}
-func (IndentPrefix) JSONOptions(NotForPublicUse)   {}
-func (NilSliceAsNull) JSONOptions(NotForPublicUse) {}
-func (NilMapAsNull) JSONOptions(NotForPublicUse)   {}
-func (Deterministic) JSONOptions(NotForPublicUse)  {}
-
 // Encoder is a streaming JSON encoder.
 type Encoder = json.Encoder
-
-// EncodeJSONer represents a JSON-mappable object that supports streaming encoding.
-type EncodeJSONer interface {
-	// EncodeJSON writes this object as one JSON value to the Encoder.
-	EncodeJSON(e Encoder) error
-}
 
 // EncodeNull encodes a JSON null value.
 func EncodeNull(e Encoder) error {
@@ -92,6 +64,11 @@ func EncodeIntPtr[T ~int | ~int8 | ~int16 | ~int32 | ~int64](e Encoder, i *T) er
 	return EncodeInt(e, *i)
 }
 
+// EncodeIntKey encodes an integer-like map key as a JSON object member name.
+func EncodeIntKey[T ~int | ~int8 | ~int16 | ~int32 | ~int64](e Encoder, v T) error {
+	return e.WriteToken(strconv.FormatInt(int64(v), 10), '"')
+}
+
 // EncodeUint encodes an unsigned integer value to JSON.
 func EncodeUint[T ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64](e Encoder, u T) error {
 	return e.WriteToken(strconv.FormatUint(uint64(u), 10), '0')
@@ -105,18 +82,27 @@ func EncodeUintPtr[T ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64](e Encoder, u 
 	return EncodeUint(e, *u)
 }
 
+// EncodeUintKey encodes an unsigned integer-like map key as a JSON object member name.
+func EncodeUintKey[T ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64](e Encoder, v T) error {
+	return e.WriteToken(strconv.FormatUint(uint64(v), 10), '"')
+}
+
 // EncodeFloat encodes a floating-point value to JSON.
 func EncodeFloat[T ~float32 | ~float64](e Encoder, f T) error {
-	v := float64(f)
 	switch {
-	case math.IsNaN(v):
+	case math.IsNaN(float64(f)):
 		return EncodeString(e, "NaN")
-	case math.IsInf(v, +1):
+	case math.IsInf(float64(f), +1):
 		return EncodeString(e, "Infinity")
-	case math.IsInf(v, -1):
+	case math.IsInf(float64(f), -1):
 		return EncodeString(e, "-Infinity")
 	default:
-		return e.WriteToken(strconv.FormatFloat(v, 'g', -1, 64), '0')
+		bitSize := 64
+		switch any(f).(type) {
+		case float32:
+			bitSize = 32
+		}
+		return e.WriteToken(strconv.FormatFloat(float64(f), 'g', -1, bitSize), '0')
 	}
 }
 
@@ -141,6 +127,11 @@ func EncodeStringPtr[T ~string](e Encoder, s *T) error {
 	return EncodeString(e, *s)
 }
 
+// EncodeStringKey encodes a string-like map key as a JSON object member name.
+func EncodeStringKey[T ~string](e Encoder, v T) error {
+	return e.WriteToken(string(v), '"')
+}
+
 // EncodeBytes encodes bytes as a base64 JSON string.
 func EncodeBytes(e Encoder, b []byte) error {
 	if b == nil {
@@ -158,14 +149,12 @@ func EncodeAny[T any](e Encoder, v T) error {
 	return e.WriteValue(b)
 }
 
-// EncodeObjectBegin encodes the opening token of a JSON object.
-func EncodeObjectBegin(e Encoder) error {
-	return e.WriteToken("{", '{')
-}
-
-// EncodeObjectEnd encodes the closing token of a JSON object.
-func EncodeObjectEnd(e Encoder) error {
-	return e.WriteToken("}", '}')
+// EncodeObject encodes an object that implements Object.
+func EncodeObject[T Object](e Encoder, v T) error {
+	if Object(v) == nil {
+		return EncodeNull(e)
+	}
+	return v.EncodeJSON(e)
 }
 
 // EncodeArrayBegin encodes the opening token of a JSON array.
@@ -178,26 +167,18 @@ func EncodeArrayEnd(e Encoder) error {
 	return e.WriteToken("]", ']')
 }
 
-// EncodeObject encodes an object that implements EncodeJSONer.
-func EncodeObject[T EncodeJSONer](e Encoder, v T) error {
-	if isNil(v) {
-		return EncodeNull(e)
-	}
-	return v.EncodeJSON(e)
-}
-
 // EncodeArray encodes a slice using the provided item encoder.
 func EncodeArray[T any](
 	encodeItem func(Encoder, T) error,
 ) func(Encoder, []T) error {
-	return func(e Encoder, values []T) error {
-		if values == nil {
+	return func(e Encoder, arr []T) error {
+		if arr == nil {
 			return EncodeNull(e)
 		}
 		if err := EncodeArrayBegin(e); err != nil {
 			return err
 		}
-		for _, v := range values {
+		for _, v := range arr {
 			if err := encodeItem(e, v); err != nil {
 				return err
 			}
@@ -206,75 +187,38 @@ func EncodeArray[T any](
 	}
 }
 
-// MapKeyEncoder encodes a Go map key as a JSON object member name.
-type MapKeyEncoder[K comparable] func(K) (string, error)
-
-// EncodeStringKey encodes a string-like map key as a JSON object member name.
-func EncodeStringKey[T ~string](v T) (string, error) {
-	return string(v), nil
+// EncodeObjectBegin encodes the opening token of a JSON object.
+func EncodeObjectBegin(e Encoder) error {
+	return e.WriteToken("{", '{')
 }
 
-// EncodeIntKey encodes an integer-like map key as a JSON object member name.
-func EncodeIntKey[T ~int | ~int8 | ~int16 | ~int32 | ~int64](v T) (string, error) {
-	return strconv.FormatInt(int64(v), 10), nil
-}
-
-// EncodeUintKey encodes an unsigned integer-like map key as a JSON object member name.
-func EncodeUintKey[T ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64](v T) (string, error) {
-	return strconv.FormatUint(uint64(v), 10), nil
+// EncodeObjectEnd encodes the closing token of a JSON object.
+func EncodeObjectEnd(e Encoder) error {
+	return e.WriteToken("}", '}')
 }
 
 // EncodeMap encodes a map as a JSON object using the provided key and value encoders.
-func EncodeMap[K comparable, V any](
-	encodeKey MapKeyEncoder[K],
+func EncodeMap[K cmp.Ordered, V any](
+	encodeKey func(Encoder, K) error,
 	encodeVal func(Encoder, V) error,
 ) func(Encoder, map[K]V) error {
-	return func(e Encoder, values map[K]V) error {
-		if values == nil {
+	return func(e Encoder, m map[K]V) error {
+		if m == nil {
 			return EncodeNull(e)
 		}
-
-		type entry struct {
-			key string
-			val V
-		}
-
-		entries := make([]entry, 0, len(values))
-		for k, v := range values {
-			key, err := encodeKey(k)
-			if err != nil {
-				return err
-			}
-			entries = append(entries, entry{key: key, val: v})
-		}
-		sort.Slice(entries, func(i, j int) bool {
-			return entries[i].key < entries[j].key
-		})
-
 		if err := EncodeObjectBegin(e); err != nil {
 			return err
 		}
-		for _, ent := range entries {
-			if err := EncodeString(e, ent.key); err != nil {
+		keys := slices.Collect(maps.Keys(m))
+		slices.Sort(keys)
+		for _, k := range keys {
+			if err := encodeKey(e, k); err != nil {
 				return err
 			}
-			if err := encodeVal(e, ent.val); err != nil {
+			if err := encodeVal(e, m[k]); err != nil {
 				return err
 			}
 		}
 		return EncodeObjectEnd(e)
-	}
-}
-
-func isNil(v any) bool {
-	if v == nil {
-		return true
-	}
-	rv := reflect.ValueOf(v)
-	switch rv.Kind() {
-	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
-		return rv.IsNil()
-	default:
-		return false
 	}
 }

@@ -173,7 +173,7 @@ func TestDecodeInt(t *testing.T) {
 	t.Run("Decode overflow", func(t *testing.T) {
 		d := NewDecoder(strings.NewReader("32767"))
 		_, err := DecodeInt[int8](d)
-		assert.Error(t, err).String("invalid JSON: number out of range, got `32767")
+		assert.Error(t, err).String("invalid JSON: number out of range, got `32767`")
 	})
 }
 
@@ -236,7 +236,20 @@ func TestDecodeIntKey(t *testing.T) {
 	t.Run("Decode overflow int key", func(t *testing.T) {
 		d := NewDecoder(strings.NewReader("\"32767\""))
 		_, err := DecodeIntKey[int8](d)
-		assert.Error(t, err).String("invalid JSON: number out of range, got `32767")
+		assert.Error(t, err).String("invalid JSON: number out of range, got `32767`")
+	})
+
+	t.Run("Decode numeric int key", func(t *testing.T) {
+		d := NewDecoder(strings.NewReader("123"))
+		result, err := DecodeIntKey[int](d)
+		assert.That(t, err).Nil()
+		assert.Number(t, result).Equal(123)
+	})
+
+	t.Run("Decode boolean int key", func(t *testing.T) {
+		d := NewDecoder(strings.NewReader("true"))
+		_, err := DecodeIntKey[int](d)
+		assert.Error(t, err).String("invalid JSON: expected number but got `true`")
 	})
 }
 
@@ -356,7 +369,20 @@ func TestDecodeUintKey(t *testing.T) {
 	t.Run("Decode overflow uint key", func(t *testing.T) {
 		d := NewDecoder(strings.NewReader("\"65535\""))
 		_, err := DecodeUintKey[uint8](d)
-		assert.Error(t, err).String("invalid JSON: number out of range, got `65535")
+		assert.Error(t, err).String("invalid JSON: number out of range, got `65535`")
+	})
+
+	t.Run("Decode numeric uint key", func(t *testing.T) {
+		d := NewDecoder(strings.NewReader("123"))
+		result, err := DecodeUintKey[uint](d)
+		assert.That(t, err).Nil()
+		assert.Number(t, result).Equal(uint(123))
+	})
+
+	t.Run("Decode boolean uint key", func(t *testing.T) {
+		d := NewDecoder(strings.NewReader("true"))
+		_, err := DecodeUintKey[uint](d)
+		assert.Error(t, err).String("invalid JSON: expected number but got `true`")
 	})
 }
 
@@ -412,7 +438,7 @@ func TestDecodeFloat(t *testing.T) {
 		overflowValue := math.MaxFloat32 * 2
 		d := NewDecoder(strings.NewReader(strconv.FormatFloat(overflowValue, 'f', -1, 64)))
 		_, err := DecodeFloat[float32](d)
-		assert.Error(t, err).String("invalid JSON: number out of range, got `680564693277057700000000000000000000000")
+		assert.Error(t, err).String("invalid JSON: number out of range, got `680564693277057700000000000000000000000`")
 	})
 }
 
@@ -764,7 +790,7 @@ func TestDecodeObjectBegin(t *testing.T) {
 	t.Run("Decode object begin with invalid token", func(t *testing.T) {
 		d := NewDecoder(strings.NewReader("123"))
 		err := DecodeObjectBegin(d)
-		assert.Error(t, err).String("invalid JSON: expected `{` but got 123")
+		assert.Error(t, err).String("invalid JSON: expected `{` but got `123`")
 	})
 }
 
@@ -784,7 +810,7 @@ func TestDecodeObjectEnd(t *testing.T) {
 		_, _, _ = d.ReadToken()
 		_, _, _ = d.ReadToken()
 		err := DecodeObjectEnd(d)
-		assert.Error(t, err).String("invalid JSON: expected `}` but got ]")
+		assert.Error(t, err).String("invalid JSON: expected `}` but got `]`")
 	})
 }
 
@@ -831,6 +857,10 @@ type TestObject struct {
 
 func NewTestObject() *TestObject {
 	return &TestObject{}
+}
+
+func (b *TestObject) EncodeJSON(e Encoder) error {
+	return nil
 }
 
 func (b *TestObject) DecodeJSON(d Decoder) error {

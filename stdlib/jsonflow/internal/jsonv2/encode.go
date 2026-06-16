@@ -18,11 +18,12 @@ package jsonv2
 
 import (
 	"encoding/json/jsontext"
+	"fmt"
 
 	"go-spring.org/stdlib/jsonflow/internal/json"
 )
 
-// Encoder wraps jsontext.Encoder to implement the json.Encoder interface.
+// Encoder adapts jsontext.Encoder to the json.Encoder interface.
 type Encoder struct {
 	enc *jsontext.Encoder
 }
@@ -33,6 +34,8 @@ func NewEncoder(enc *jsontext.Encoder) *Encoder {
 }
 
 // WriteToken writes the next JSON token to the encoder.
+// For strings, token is the unescaped string content.
+// For other kinds, token is the raw JSON token representation.
 func (e *Encoder) WriteToken(token string, kind json.Kind) error {
 	switch kind {
 	case 'n':
@@ -54,11 +57,11 @@ func (e *Encoder) WriteToken(token string, kind json.Kind) error {
 	case ']':
 		return e.enc.WriteToken(jsontext.EndArray)
 	default:
-		return e.enc.WriteValue([]byte(token))
+		return fmt.Errorf("jsonv2: invalid JSON token kind %q", kind)
 	}
 }
 
-// WriteValue writes a JSON value to the encoder.
-func (e *Encoder) WriteValue(v []byte) error {
-	return e.enc.WriteValue(v)
+// WriteValue writes a complete JSON value to the encoder.
+func (e *Encoder) WriteValue(value []byte) error {
+	return e.enc.WriteValue(value)
 }

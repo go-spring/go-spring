@@ -84,7 +84,6 @@ func decodeBody(r *http.Request, i RequestObject) error {
 	contentType := r.Header.Get("Content-Type")
 	mediaType, _, _ := mime.ParseMediaType(contentType)
 
-	b = bytes.TrimSpace(b)
 	var asJSON bool
 	switch mediaType {
 	case "application/json":
@@ -92,7 +91,7 @@ func decodeBody(r *http.Request, i RequestObject) error {
 	case "application/x-www-form-urlencoded":
 		asJSON = false
 	default:
-		if len(b) == 0 {
+		if b = bytes.TrimSpace(b); len(b) == 0 {
 			return nil
 		}
 		if b[0] == '{' || b[0] == '[' { // Looks like JSON

@@ -56,6 +56,18 @@ func TestEncodeScalar(t *testing.T) {
 	}); got != `"hello"` {
 		t.Fatalf("got %s", got)
 	}
+
+	if got := encodeToString(t, func(e Encoder) error {
+		return EncodeFloat(e, float32(0.1))
+	}); got != `0.1` {
+		t.Fatalf("got %s", got)
+	}
+
+	if got := encodeToString(t, func(e Encoder) error {
+		return EncodeFloat(e, float64(1.23456789012345))
+	}); got != `1.23456789012345` {
+		t.Fatalf("got %s", got)
+	}
 }
 
 func TestEncodePointer(t *testing.T) {
@@ -119,6 +131,15 @@ func TestEncodeMap(t *testing.T) {
 	}); got != `{"1":"a","2":"b"}` {
 		t.Fatalf("got %s", got)
 	}
+
+	if got := encodeToString(t, func(e Encoder) error {
+		return EncodeMap(EncodeUintKey[uint], EncodeString[string])(e, map[uint]string{
+			2: "b",
+			1: "a",
+		})
+	}); got != `{"1":"a","2":"b"}` {
+		t.Fatalf("got %s", got)
+	}
 }
 
 type encodedObject struct {
@@ -139,6 +160,10 @@ func (o *encodedObject) EncodeJSON(e Encoder) error {
 		return err
 	}
 	return EncodeObjectEnd(e)
+}
+
+func (o *encodedObject) DecodeJSON(d Decoder) error {
+	return nil
 }
 
 func TestEncodeObject(t *testing.T) {
@@ -177,6 +202,10 @@ func TestMarshalUsesEncodeJSON(t *testing.T) {
 
 type streamingDecodedObject struct {
 	called bool
+}
+
+func (o *streamingDecodedObject) EncodeJSON(e Encoder) error {
+	return nil
 }
 
 func (o *streamingDecodedObject) DecodeJSON(d Decoder) error {
