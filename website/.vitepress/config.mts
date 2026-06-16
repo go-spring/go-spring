@@ -45,14 +45,16 @@ const zhNav = [
   { text: '概览', link: '/cn/docs/0.overview/overview' },
   { text: '快速开始', link: '/cn/docs/1.getting-started/getting-started' },
   { text: '指南', link: '/cn/docs/2.guides/01-configuration' },
-  { text: '示例', link: '/cn/docs/3.examples/examples' }
+  { text: '示例', link: '/cn/docs/3.examples/examples' },
+  { text: '参与贡献', link: '/cn/docs/6.contributing' }
 ]
 
 const enNav = [
   { text: 'Overview', link: '/en/docs/0.overview/overview' },
   { text: 'Getting Started', link: '/en/docs/1.getting-started/getting-started' },
   { text: 'Guides', link: '/en/docs/2.guides/01-configuration' },
-  { text: 'Examples', link: '/en/docs/3.examples/examples' }
+  { text: 'Examples', link: '/en/docs/3.examples/examples' },
+  { text: 'Contributing', link: '/en/docs/6.contributing' }
 ]
 
 const zhSidebar = [

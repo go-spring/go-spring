@@ -170,6 +170,7 @@ hero:
     <div>
       <a class="gs-final-primary" href="/en/docs/1.getting-started/getting-started">Start building <span>→</span></a>
       <a href="/en/docs/3.examples/examples">Browse examples</a>
+      <a href="/en/docs/6.contributing#contributors">View contributors</a>
     </div>
   </div>
 </section>

@@ -170,6 +170,7 @@ hero:
     <div>
       <a class="gs-final-primary" href="/cn/docs/1.getting-started/getting-started">开始构建 <span>→</span></a>
       <a href="/cn/docs/3.examples/examples">浏览示例</a>
+      <a href="/cn/docs/6.contributing#贡献者">查看贡献者</a>
     </div>
   </div>
 </section>
