@@ -24,6 +24,7 @@ import (
 )
 
 var (
+	// defaultLayout is the default layout for log messages.
 	defaultLayout = &TextLayout{
 		BaseLayout: BaseLayout{
 			FileLineMaxLength: 48,

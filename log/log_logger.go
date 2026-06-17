@@ -57,8 +57,8 @@ func GetLogger(name string) *LoggerWrapper {
 	m, ok := loggerMap[name]
 	if !ok {
 		m = &LoggerWrapper{name: name}
-		m.reset()
 		loggerMap[name] = m
+		m.reset()
 	}
 	return m
 }

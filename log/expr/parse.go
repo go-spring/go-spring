@@ -111,58 +111,59 @@ type ParseTreeListener struct {
 // ExitRoot is called when exiting the root node of the parse tree.
 // It starts recursive parsing of the main expression.
 func (l *ParseTreeListener) ExitRoot(ctx *RootContext) {
-	l.parseExpr("", ctx.Expr())
+	l.Error = l.parseExpr("", ctx.Expr())
 }
 
 // parseExpr processes a type expression block and traverses its inner expressions.
-func (l *ParseTreeListener) parseExpr(key string, ctx IExprContext) {
-	if l.Error != nil {
-		return
-	}
+func (l *ParseTreeListener) parseExpr(key string, ctx IExprContext) error {
 	typeKey := "type"
 	if key != "" {
 		typeKey = key + ".type"
 	}
-	l.setValue(typeKey, ctx.IDENT().GetText())
+	if err := l.setValue(typeKey, ctx.IDENT().GetText()); err != nil {
+		return err
+	}
 	if x := ctx.InnerExprList(); x != nil {
 		for _, innerExpr := range x.AllInnerExpr() {
-			l.parseInnerExpr(key, innerExpr)
+			if err := l.parseInnerExpr(key, innerExpr); err != nil {
+				return err
+			}
 		}
 	}
+	return nil
 }
 
 // parseInnerExpr processes a single key-value assignment inside an expression block.
-func (l *ParseTreeListener) parseInnerExpr(key string, ctx IInnerExprContext) {
-	if l.Error != nil {
-		return
-	}
+func (l *ParseTreeListener) parseInnerExpr(key string, ctx IInnerExprContext) error {
 	fieldKey := ctx.FieldAccess().GetText()
 	if key != "" {
 		fieldKey = key + "." + fieldKey
 	}
 	switch {
 	case ctx.Value().STRING() != nil:
-		s, err := strconv.Unquote(ctx.Value().STRING().GetText())
+		s := ctx.Value().STRING().GetText()
+		strVal, err := strconv.Unquote(s)
 		if err != nil {
-			panic(err)
+			return errutil.Explain(err, "unquote string %q failed", s)
 		}
-		l.setValue(fieldKey, s)
+		return l.setValue(fieldKey, strVal)
 	case ctx.Value().IDENT() != nil:
-		l.setValue(fieldKey, ctx.Value().IDENT().GetText())
+		return l.setValue(fieldKey, ctx.Value().IDENT().GetText())
 	case ctx.Value().INTEGER() != nil:
-		l.setValue(fieldKey, ctx.Value().INTEGER().GetText())
+		return l.setValue(fieldKey, ctx.Value().INTEGER().GetText())
 	case ctx.Value().FLOAT() != nil:
-		l.setValue(fieldKey, ctx.Value().FLOAT().GetText())
+		return l.setValue(fieldKey, ctx.Value().FLOAT().GetText())
 	case ctx.Value().Expr() != nil:
-		l.parseExpr(fieldKey, ctx.Value().Expr())
+		return l.parseExpr(fieldKey, ctx.Value().Expr())
 	default: // for linter
+		return nil
 	}
 }
 
-func (l *ParseTreeListener) setValue(key string, value string) {
+func (l *ParseTreeListener) setValue(key string, value string) error {
 	if _, ok := l.Result[key]; ok {
-		l.Error = errutil.Explain(nil, "duplicate key %q", key)
-		return
+		return errutil.Explain(nil, "duplicate key %q", key)
 	}
 	l.Result[key] = value
+	return nil
 }

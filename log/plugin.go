@@ -227,30 +227,23 @@ func getArrayValues(s flatten.Storage, prefix string, tag PluginTag) ([]string, 
 
 	m := make(map[string]string)
 	if s.SliceEntries(prefix, m) {
-		if err := validateArrayValueIndexes(prefix, m); err != nil {
+		if err := validateSliceIndexes(prefix, m, "array value"); err != nil {
 			return nil, err
 		}
-	}
-
-	var values []string
-	for i := 0; ; i++ {
-		// 简单数组一定是叶子结点，不支持结构体嵌套
-		subKey := fmt.Sprintf("%s[%d]", prefix, i)
-		strVal, ok := s.Value(subKey)
-		if !ok {
-			break
+		values := make([]string, 0, len(m))
+		for i := range len(m) {
+			subKey := fmt.Sprintf("%s[%d]", prefix, i)
+			strVal := m[subKey]
+			strVal, err := resolveProperty(s, strVal)
+			if err != nil {
+				return nil, errutil.Stack(err, "resolve property reference error for field at %s", subKey)
+			}
+			values = append(values, strVal)
 		}
-		strVal, err := resolveProperty(s, strVal)
-		if err != nil {
-			return nil, errutil.Stack(err, "resolve property reference error for field at %s", subKey)
-		}
-		values = append(values, strVal)
-	}
-	if len(values) > 0 {
 		return values, nil
 	}
 
-	// Fallback to single string value
+	// Fallback to comma-separated single string value
 	strVal, ok := s.Value(prefix)
 	if !ok {
 		strVal, ok = tag.Lookup("default")
@@ -262,14 +255,11 @@ func getArrayValues(s flatten.Storage, prefix string, tag PluginTag) ([]string, 
 	if err != nil {
 		return nil, errutil.Stack(err, "resolve property reference error for field at %s", prefix)
 	}
+	var values []string
 	for str := range strings.SplitSeq(strVal, ",") {
 		values = append(values, strings.TrimSpace(str))
 	}
 	return values, nil
-}
-
-func validateArrayValueIndexes(prefix string, values map[string]string) error {
-	return validateSliceIndexes(prefix, values, "array value")
 }
 
 // convertAttributeValue converts a string value to the specified type.
@@ -426,7 +416,7 @@ func injectArrayElement(fv reflect.Value, ft reflect.StructField, prefix string,
 	// Case 1: Multiple indexed elements
 	m := make(map[string]string)
 	if s.SliceEntries(prefix, m) {
-		if err := validateSliceElementIndexes(prefix, m); err != nil {
+		if err := validateSliceIndexes(prefix, m, "plugin element"); err != nil {
 			return err
 		}
 		for k, v := range m {
@@ -488,10 +478,6 @@ func injectArrayElement(fv reflect.Value, ft reflect.StructField, prefix string,
 	return nil
 }
 
-func validateSliceElementIndexes(prefix string, values map[string]string) error {
-	return validateSliceIndexes(prefix, values, "plugin element")
-}
-
 func validateSliceIndexes(prefix string, values map[string]string, name string) error {
 	indexes := make(map[int]struct{})
 	for key := range values {
@@ -525,7 +511,7 @@ func createPlugin(t reflect.Type, prefix string, plugin string, s flatten.Storag
 		if !ok {
 			return reflect.Value{}, errutil.Explain(nil, "plugin %s not found", plugin)
 		}
-		if pluginType := reflect.PointerTo(p.Class); !pluginType.AssignableTo(t) {
+		if !reflect.PointerTo(p.Class).AssignableTo(t) {
 			return reflect.Value{}, errutil.Explain(nil, "plugin %s does not implement %s", plugin, t.String())
 		}
 		return newPlugin(p.Class, prefix, s)
