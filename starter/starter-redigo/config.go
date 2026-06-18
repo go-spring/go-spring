@@ -17,6 +17,8 @@
 package StarterRedigo
 
 import (
+	"time"
+
 	"github.com/gomodule/redigo/redis"
 )
 
@@ -28,11 +30,41 @@ func init() {
 
 // Config defines Redis connection configuration.
 type Config struct {
-	// Addr is the Redis server address, e.g., "127.0.0.1:6379"
+	// Addr is the Redis server address, e.g., "127.0.0.1:6379".
 	Addr string `value:"${addr}"`
 
 	// Password is the Redis server password, default is empty.
 	Password string `value:"${password:=}"`
+
+	// DB is the Redis database number, default is 0.
+	DB int `value:"${db:=0}"`
+
+	// Username is the Redis ACL username, default is empty.
+	Username string `value:"${username:=}"`
+
+	// PoolSize is the maximum number of connections allocated by the pool at a given time.
+	// When zero, there is no limit on the number of connections in the pool.
+	PoolSize int `value:"${pool-size:=10}"`
+
+	// MaxIdle is the maximum number of idle connections in the pool.
+	MaxIdle int `value:"${max-idle:=5}"`
+
+	// DialTimeout is the timeout for dialing the Redis server, e.g., "5s".
+	DialTimeout time.Duration `value:"${dial-timeout:=5s}"`
+
+	// ReadTimeout is the timeout for reading from Redis, e.g., "3s".
+	ReadTimeout time.Duration `value:"${read-timeout:=3s}"`
+
+	// WriteTimeout is the timeout for writing to Redis, e.g., "3s".
+	WriteTimeout time.Duration `value:"${write-timeout:=3s}"`
+
+	// ConnMaxLifetime is the maximum amount of time a connection can be reused, e.g., "2m".
+	// Shorter values facilitate smoother traffic switching during service discovery updates.
+	ConnMaxLifetime time.Duration `value:"${conn-max-lifetime:=2m}"`
+
+	// ServiceName is the service discovery name for Redis cluster.
+	// When set, Addr is ignored and the actual address is resolved via service discovery.
+	ServiceName string `value:"${service-name:=}"`
 
 	// Driver specifies which Redis driver to use, defaults to DefaultDriver.
 	Driver string `value:"${driver:=DefaultDriver}"`
@@ -58,8 +90,32 @@ type DefaultDriver struct{}
 // CreateClient creates a new Redis client based on the provided configuration.
 func (DefaultDriver) CreateClient(c Config) (*redis.Pool, error) {
 	return &redis.Pool{
+		MaxActive:       c.PoolSize,
+		MaxIdle:         c.MaxIdle,
+		MaxConnLifetime: c.ConnMaxLifetime,
+		Wait:            true,
 		Dial: func() (redis.Conn, error) {
-			return redis.Dial("tcp", c.Addr, redis.DialPassword(c.Password))
+			opts := []redis.DialOption{
+				redis.DialPassword(c.Password),
+				redis.DialConnectTimeout(c.DialTimeout),
+				redis.DialReadTimeout(c.ReadTimeout),
+				redis.DialWriteTimeout(c.WriteTimeout),
+			}
+			if c.Username != "" {
+				opts = append(opts, redis.DialUsername(c.Username))
+			}
+			conn, err := redis.Dial("tcp", c.Addr, opts...)
+			if err != nil {
+				return nil, err
+			}
+			if c.DB != 0 {
+				_, err = conn.Do("SELECT", c.DB)
+				if err != nil {
+					conn.Close()
+					return nil, err
+				}
+			}
+			return conn, nil
 		},
 	}, nil
 }
