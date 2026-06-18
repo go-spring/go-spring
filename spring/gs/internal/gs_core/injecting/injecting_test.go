@@ -941,8 +941,8 @@ func TestDestroy(t *testing.T) {
 		err := r.Refresh(extractBeans(beans))
 		assert.That(t, err).Nil()
 		r.Close()
-		assert.That(t, s.DestroyC.value).Equal(2)
-		assert.That(t, s.DestroyE.value).Equal(1)
+		assert.That(t, s.DestroyC.value).Equal(1)
+		assert.That(t, s.DestroyE.value).Equal(2)
 	})
 }
 

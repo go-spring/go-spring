@@ -36,7 +36,6 @@ import (
 	"go-spring.org/spring/gs/internal/gs_util"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
-	"go-spring.org/stdlib/listutil"
 	"go-spring.org/stdlib/patchutil"
 	"go-spring.org/stdlib/typeutil"
 )
@@ -524,7 +523,9 @@ func (c *Injector) autowire(v reflect.Value, str string, stack *Stack) error {
 // 6. Calls the bean's Init callback if defined.
 // After completion, bean status is set to StatusWired and popped from the stack.
 func (c *Injector) wireBean(b *gs_bean.BeanDefinition, stack *Stack) error {
-	//fmt.Println(b.String())
+
+	stack.pushBean(b)
+	defer stack.popBean()
 
 	// Wire all dependent beans before creating the current bean
 	for _, s := range b.GetDependsOn() {
@@ -535,20 +536,16 @@ func (c *Injector) wireBean(b *gs_bean.BeanDefinition, stack *Stack) error {
 		}
 	}
 
-	stack.pushBean(b)
-
 	// If the bean is already being created (StatusCreating), we have a circular dependency
 	// because it's already in the current call stack and being re-entered recursively.
 	// Circular dependencies cannot be resolved without lazy injection.
 	if b.GetStatus() == gs_bean.StatusCreating {
-		stack.popBean()
 		return errutil.Explain(nil, "circular autowire dependency detected")
 	}
 
 	// If the bean is already created or wired (StatusCreated or StatusWired), return early
 	// pop to keep the stack balanced since we just pushed it.
 	if b.GetStatus() >= gs_bean.StatusCreating {
-		stack.popBean()
 		return nil
 	}
 
@@ -583,7 +580,6 @@ func (c *Injector) wireBean(b *gs_bean.BeanDefinition, stack *Stack) error {
 
 	// Mark the bean as fully wired and remove it from the stack
 	b.SetStatus(gs_bean.StatusWired)
-	stack.popBean()
 	return nil
 }
 
@@ -760,21 +756,21 @@ func (c *Injector) wireStruct(v reflect.Value, t reflect.Type, opt conf.BindPara
 	return nil
 }
 
-// destroyer represents a bean's cleanup (destroy) function
-// and the dependencies that must be destroyed before it.
-type destroyer struct {
-	current *gs_bean.BeanDefinition   // Bean that provides this destroyer
-	depends []*gs_bean.BeanDefinition // Beans that must be destroyed before current
+// beanDep tracks a bean's dependencies for topological sorting during shutdown.
+// It is used to ensure beans are destroyed in the reverse order of their creation.
+type beanDep struct {
+	current *gs_bean.BeanDefinition   // The bean being tracked
+	depends []*gs_bean.BeanDefinition // Beans that current bean depends on
 }
 
-// isDependOn reports whether this destroyer depends on the given bean.
-func (d *destroyer) isDependOn(b *gs_bean.BeanDefinition) bool {
+// isDependOn reports whether this bean depends on the given bean.
+func (d *beanDep) isDependOn(b *gs_bean.BeanDefinition) bool {
 	return slices.Contains(d.depends, b)
 }
 
-// dependOn adds the given bean to this destroyer's dependency list
+// dependOn adds the given bean to this dependency's dependency list
 // if it is not already present.
-func (d *destroyer) dependOn(b *gs_bean.BeanDefinition) {
+func (d *beanDep) dependOn(b *gs_bean.BeanDefinition) {
 	if d.isDependOn(b) {
 		return
 	}
@@ -788,23 +784,19 @@ type LazyField struct {
 	tag  string        // Original tag (e.g. "autowire") for this field
 }
 
-type destroyerList = listutil.List[*gs_bean.BeanDefinition]
-
 // Stack represents the runtime context during bean wiring.
 // It keeps track of the current wiring call stack, lazily injected fields,
 // and the ordering of destroyers for proper shutdown.
 type Stack struct {
-	beans        []*gs_bean.BeanDefinition // The stack of beans currently being wired
-	lazyFields   []LazyField               // Fields deferred due to lazy injection
-	destroyers   *destroyerList            // Ordered list of destroyers
-	destroyerMap map[gs.BeanID]*destroyer  // Fast lookup map for destroyers by bean ID
+	beans      []*gs_bean.BeanDefinition // The stack of beans currently being wired
+	beanMap    map[gs.BeanID]*beanDep    // Fast lookup map for dependencies by bean ID
+	lazyFields []LazyField               // Fields deferred due to lazy injection
 }
 
 // NewStack creates and initializes a new Stack for a fresh Refresh or Wire operation.
 func NewStack() *Stack {
 	return &Stack{
-		destroyers:   listutil.New[*gs_bean.BeanDefinition](),
-		destroyerMap: make(map[gs.BeanID]*destroyer),
+		beanMap: make(map[gs.BeanID]*beanDep),
 	}
 }
 
@@ -812,9 +804,12 @@ func NewStack() *Stack {
 // Used to keep track of current wiring path for cycle detection.
 func (s *Stack) pushBean(b *gs_bean.BeanDefinition) {
 	log.Debugf(context.Background(), log.TagAppDef, "push %s %s", b, b.GetStatus())
+	if len(s.beans) > 0 {
+		s.beanMap[s.beans[len(s.beans)-1].BeanID()].dependOn(b)
+	}
 	s.beans = append(s.beans, b)
-	if b.GetDestroy() != nil {
-		s.pushDestroyer(b)
+	if _, ok := s.beanMap[b.BeanID()]; !ok {
+		s.beanMap[b.BeanID()] = &beanDep{current: b}
 	}
 }
 
@@ -822,54 +817,19 @@ func (s *Stack) pushBean(b *gs_bean.BeanDefinition) {
 func (s *Stack) popBean() {
 	n := len(s.beans)
 	b := s.beans[n-1]
-	if b.GetDestroy() != nil {
-		s.popDestroyer()
-	}
 	s.beans[n-1] = nil // avoid memory leak
 	s.beans = s.beans[:n-1]
 	log.Debugf(context.Background(), log.TagAppDef, "pop %s %s", b, b.GetStatus())
 }
 
-// pushDestroyer registers a destroyer for the given bean.
-// It also records dependencies so that beans are destroyed in the correct order.
-func (s *Stack) pushDestroyer(b *gs_bean.BeanDefinition) {
-	beanID := gs.BeanID{Name: b.GetName(), Type: b.GetType()}
-
-	// Get or create the destroyer entry for this bean
-	d, ok := s.destroyerMap[beanID]
-	if !ok {
-		d = &destroyer{current: b}
-		s.destroyerMap[beanID] = d
-	}
-
-	// Record dependencies
-	for _, depBeanID := range b.GetDependsOn() {
-		if depDestroyer, ok := s.destroyerMap[depBeanID]; ok {
-			d.dependOn(depDestroyer.current)
-		}
-	}
-
-	// If there is a previously registered destroyer, current depends on it
-	if x := s.destroyers.Back(); x.Valid() {
-		s.destroyerMap[x.Value().BeanID()].dependOn(b)
-	}
-
-	// Add the current bean to the end of the destroyer list
-	s.destroyers.PushBack(b)
-}
-
-// popDestroyer removes the last registered destroyer from the ordering list.
-func (s *Stack) popDestroyer() {
-	s.destroyers.Remove(s.destroyers.Back())
-}
-
-// getBeforeDestroyers returns a list of destroyers that the given destroyer depends on.
-// This helper is used during topological sorting of destroyers.
-func getBeforeDestroyers(destroyers *list.List, i any) *list.List {
-	d := i.(*destroyer)
+// getBeforeDeps returns beanDeps that the given beanDep depends on.
+// These must appear BEFORE it in topological sort order (creation order).
+// Inversion happens later when we iterate from Back() for destruction.
+func getBeforeDeps(beanDeps *list.List, i any) *list.List {
+	d := i.(*beanDep)
 	result := list.New()
-	for e := destroyers.Front(); e != nil; e = e.Next() {
-		c := e.Value.(*destroyer)
+	for e := beanDeps.Front(); e != nil; e = e.Next() {
+		c := e.Value.(*beanDep)
 		if d.isDependOn(c.current) {
 			result.PushBack(c)
 		}
@@ -877,9 +837,13 @@ func getBeforeDestroyers(destroyers *list.List, i any) *list.List {
 	return result
 }
 
-// getSortedDestroyers returns destroyer functions in execution order.
-// Topological sort ensures each bean is destroyed after all beans it depends on.
-// The returned slice can be safely iterated to close the container.
+// getSortedDestroyers returns destroyer functions in safe execution order.
+//
+// Dependency: A depends on B (A → B)
+// Topo sort result (creation order): B A  (B must be created before A)
+// Destroy order (reverse iteration): A B  (A must be destroyed before B)
+//
+// We iterate from Back() because destruction is the inverse of creation.
 func (s *Stack) getSortedDestroyers() []func() {
 
 	// Helper to wrap a bean's destroy method as a no-argument function
@@ -893,21 +857,19 @@ func (s *Stack) getSortedDestroyers() []func() {
 		}
 	}
 
-	// Copy all destroyers into a new list for sorting
-	destroyers := list.New()
-	for _, d := range s.destroyerMap {
-		destroyers.PushBack(d)
+	beanDeps := list.New()
+	for _, d := range s.beanMap {
+		beanDeps.PushBack(d)
 	}
 
-	// Perform a topological sort to respect dependencies
-	// (e.g. a bean must be destroyed after the beans it depends on)
-	destroyers, _ = gs_util.TopologicalSort(destroyers, getBeforeDestroyers)
+	// Topological sort produces creation order (dependencies first)
+	beanDeps, _ = gs_util.TopologicalSort(beanDeps, getBeforeDeps)
 
-	// Convert the sorted destroyers into a slice of executable cleanup functions
 	var ret []func()
-	for e := destroyers.Front(); e != nil; e = e.Next() {
-		d := e.Value.(*destroyer).current
-		ret = append(ret, destroy(d.GetValue(), d.GetDestroy()))
+	for e := beanDeps.Back(); e != nil; e = e.Prev() {
+		if d := e.Value.(*beanDep).current; d.GetDestroy() != nil {
+			ret = append(ret, destroy(d.GetValue(), d.GetDestroy()))
+		}
 	}
 	return ret
 }
