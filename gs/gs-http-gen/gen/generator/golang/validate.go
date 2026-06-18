@@ -38,7 +38,7 @@ package {{.Package}}
 {{- range $f := .Funcs }}
 	// {{$f.FuncName}} is a default validation function for fields of type {{$f.ParamType}}.
 	// This serves as a placeholder that can be overridden or extended.
-	var {{$f.FuncName}} = func ({{$f.ParamType}}) bool { return true }
+	var {{$f.FuncName}} = func ({{$f.ParamType}}) (bool, error) { return true, nil }
 {{- end}}
 `))
 

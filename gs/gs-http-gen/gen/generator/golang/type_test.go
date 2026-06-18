@@ -69,6 +69,32 @@ func TestGenDecodeJSONRequiredCheckBytes(t *testing.T) {
 	}
 }
 
+func TestGenValidateExprWithCustomFunc(t *testing.T) {
+	// Test that $ is correctly replaced with field value (x.Age)
+	expr, err := validate.Parse("Positive($) && $ > 0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := genValidateExpr("User", "Age", "int64", expr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Check that $ was replaced with x.Age (not just "Age")
+	if !strings.Contains(got, "Positive(x.Age)") {
+		t.Fatalf("expected $ to be replaced with x.Age, got:\n%s", got)
+	}
+	if !strings.Contains(got, "x.Age > 0") {
+		t.Fatalf("expected $ to be replaced with x.Age in bool expr, got:\n%s", got)
+	}
+
+	// Check that error propagation is correct
+	if !strings.Contains(got, "ok, err := Positive(x.Age)") {
+		t.Fatalf("expected custom function call with ok/err return, got:\n%s", got)
+	}
+}
+
 func TestCompileValidateExprQuotesSingleQuotedString(t *testing.T) {
 	tests := []struct {
 		name string
@@ -93,7 +119,7 @@ func TestCompileValidateExprQuotesSingleQuotedString(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			got, err := compileValidateExpr("x.Name", "string", expr)
+			got, err := compileBoolExpr("x.Name", expr)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -404,7 +430,7 @@ type Req {
 	}
 	src := buf.String()
 	for name, typ := range tests {
-		want := "var " + name + " = func (" + typ + ") bool"
+		want := "var " + name + " = func (" + typ + ") (bool, error)"
 		if !strings.Contains(src, want) {
 			t.Fatalf("validate template missing %q in\n%s", want, src)
 		}

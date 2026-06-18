@@ -216,15 +216,27 @@ func genValidateExpr(receiverType, fieldName, fieldType string, expr validate.Ex
 	}
 
 	// Generate the Go expression for validation
-	str, err := compileValidateExpr(dollar, fieldType, expr)
+	hasFunc := hasCustomFunc(dollar, expr)
+	var str string
+	var err error
+
+	if hasFunc {
+		// Generate inline code for expressions with custom validate functions
+		str, err = genValidateWithCustomFunc(dollar, receiverType, fieldName, expr)
+	} else {
+		// Pure boolean expression
+		var boolExpr string
+		boolExpr, err = compileBoolExpr(dollar, expr)
+		if err == nil {
+			str = fmt.Sprintf(`if !(%s) {
+				return errutil.Explain(nil, "validate failed on \"%s.%s\"")
+			}`, boolExpr, receiverType, fieldName)
+		}
+	}
+
 	if err != nil {
 		return "", errutil.Explain(err, `failed to generate validate expression for %s.%s`, receiverType, fieldName)
 	}
-
-	// Wrap in an if statement returning an error on failure
-	str = fmt.Sprintf(`if !(%s) {
-		return errutil.Explain(nil, "validate failed on \"%s.%s\"")
-	}`, str, receiverType, fieldName)
 
 	if pointer {
 		str = fmt.Sprintf(`if x.%s != nil { %s }`, fieldName, str)
@@ -232,54 +244,80 @@ func genValidateExpr(receiverType, fieldName, fieldType string, expr validate.Ex
 	return str, nil
 }
 
-// compileValidateExpr recursively generates Go code for a validation expression
-func compileValidateExpr(fieldName, fieldType string, expr validate.Expr) (string, error) {
+// hasCustomFunc checks if an expression contains custom validate functions
+func hasCustomFunc(fieldValue string, expr validate.Expr) bool {
 	switch x := expr.(type) {
 	case validate.BinaryExpr:
-		left, err := compileValidateExpr(fieldName, fieldType, x.Left)
+		return hasCustomFunc(fieldValue, x.Left) || hasCustomFunc(fieldValue, x.Right)
+	case validate.UnaryExpr:
+		return hasCustomFunc(fieldValue, x.Expr)
+	case *validate.FuncCall:
+		_, isBuiltin := httpidl.BuiltinFuncs[x.Name]
+		if !isBuiltin {
+			return true
+		}
+		for _, arg := range x.Args {
+			if hasCustomFunc(fieldValue, arg) {
+				return true
+			}
+		}
+		return false
+	case *validate.InnerExpr:
+		return hasCustomFunc(fieldValue, x.Expr)
+	case validate.PrimaryExpr:
+		if x.Inner != nil {
+			return hasCustomFunc(fieldValue, x.Inner)
+		}
+		if x.Call != nil {
+			return hasCustomFunc(fieldValue, x.Call)
+		}
+		return false
+	default:
+		return false
+	}
+}
+
+// compileBoolExpr compiles a pure boolean expression (no custom functions)
+func compileBoolExpr(fieldName string, expr validate.Expr) (string, error) {
+	switch x := expr.(type) {
+	case validate.BinaryExpr:
+		left, err := compileBoolExpr(fieldName, x.Left)
 		if err != nil {
 			return "", err
 		}
-		right, err := compileValidateExpr(fieldName, fieldType, x.Right)
+		right, err := compileBoolExpr(fieldName, x.Right)
 		if err != nil {
 			return "", err
 		}
 		return fmt.Sprintf("%s %s %s", left, x.Op, right), nil
-
 	case validate.UnaryExpr:
-		str, err := compileValidateExpr(fieldName, fieldType, x.Expr)
+		str, err := compileBoolExpr(fieldName, x.Expr)
 		if err != nil {
 			return "", err
 		}
 		return fmt.Sprintf("%s%s", x.Op, str), nil
-
 	case *validate.FuncCall:
-		if len(x.Args) == 0 {
-			return x.Name + "()", nil
-		}
 		var args []string
 		for _, arg := range x.Args {
-			str, err := compileValidateExpr(fieldName, fieldType, arg)
+			str, err := compileBoolExpr(fieldName, arg)
 			if err != nil {
 				return "", err
 			}
 			args = append(args, str)
 		}
 		return fmt.Sprintf("%s(%s)", x.Name, strings.Join(args, ", ")), nil
-
 	case *validate.InnerExpr:
-		str, err := compileValidateExpr(fieldName, fieldType, x.Expr)
+		str, err := compileBoolExpr(fieldName, x.Expr)
 		if err != nil {
 			return "", err
 		}
 		return fmt.Sprintf("(%s)", str), nil
-
 	case validate.PrimaryExpr:
 		if x.Inner != nil {
-			return compileValidateExpr(fieldName, fieldType, x.Inner)
+			return compileBoolExpr(fieldName, x.Inner)
 		}
 		if x.Call != nil {
-			return compileValidateExpr(fieldName, fieldType, x.Call)
+			return compileBoolExpr(fieldName, x.Call)
 		}
 		if x.Value == "$" {
 			return fieldName, nil
@@ -288,10 +326,158 @@ func compileValidateExpr(fieldName, fieldType string, expr validate.Expr) (strin
 			return quoteValidateString(x.Value)
 		}
 		return x.Value, nil
-
 	default:
 		return "", errutil.Explain(nil, "unknown expression type: %s", x.Text())
 	}
+}
+
+// genValidateWithCustomFunc generates inline validation code without closures
+func genValidateWithCustomFunc(fieldValue, receiverType, fieldName string, expr validate.Expr) (string, error) {
+	switch x := expr.(type) {
+	case validate.BinaryExpr:
+		leftHasFunc := hasCustomFunc(fieldValue, x.Left)
+		rightHasFunc := hasCustomFunc(fieldValue, x.Right)
+
+		if x.Op == "&&" {
+			if leftHasFunc && rightHasFunc {
+				// Both sides have custom functions
+				leftCall, err := genFuncAsSingleStmt(fieldValue, x.Left)
+				if err != nil {
+					return "", err
+				}
+				rightCall, err := genFuncAsSingleStmt(fieldValue, x.Right)
+				if err != nil {
+					return "", err
+				}
+				return leftCall + "\n" + rightCall, nil
+			} else if leftHasFunc {
+				// Left has function, right is pure bool
+				leftCall, err := genFuncAsSingleStmt(fieldValue, x.Left)
+				if err != nil {
+					return "", err
+				}
+				rightBool, err := compileBoolExpr(fieldValue, x.Right)
+				if err != nil {
+					return "", err
+				}
+				rightCheck := fmt.Sprintf(`if !(%s) {
+					return errutil.Explain(nil, "validate failed on \"%s.%s\"")
+				}`, rightBool, receiverType, fieldName)
+				return leftCall + "\n" + rightCheck, nil
+			} else {
+				// Left is pure bool, right has function
+				leftBool, err := compileBoolExpr(fieldValue, x.Left)
+				if err != nil {
+					return "", err
+				}
+				leftCheck := fmt.Sprintf(`if !(%s) {
+					return errutil.Explain(nil, "validate failed on \"%s.%s\"")
+				}`, leftBool, receiverType, fieldName)
+				rightCall, err := genFuncAsSingleStmt(fieldValue, x.Right)
+				if err != nil {
+					return "", err
+				}
+				return leftCheck + "\n" + rightCall, nil
+			}
+		} else if x.Op == "||" {
+			// For OR: evaluate left first, if it passes we're done, else check right
+			leftBool, err := compileBoolExpr(fieldValue, x.Left)
+			if err != nil {
+				return "", err
+			}
+			rightBool, err := compileBoolExpr(fieldValue, x.Right)
+			if err != nil {
+				return "", err
+			}
+
+			if leftHasFunc && rightHasFunc {
+				// Both have functions
+				return fmt.Sprintf(`ok, err := %s;
+					if err != nil {
+						return errutil.Explain(err, "validate failed on \"%s.%s\"")
+					}
+					if !ok {
+						ok, err = %s;
+						if err != nil {
+							return errutil.Explain(err, "validate failed on \"%s.%s\"")
+						}
+						if !ok {
+							return errutil.Explain(nil, "validate failed on \"%s.%s\"")
+						}
+					}`, leftBool, receiverType, fieldName, rightBool, receiverType, fieldName, receiverType, fieldName), nil
+			} else if leftHasFunc {
+				// Left has function, right is bool
+				return fmt.Sprintf(`ok, err := %s;
+					if err != nil {
+						return errutil.Explain(err, "validate failed on \"%s.%s\"")
+					}
+					if !ok && !(%s) {
+						return errutil.Explain(nil, "validate failed on \"%s.%s\"")
+					}`, leftBool, receiverType, fieldName, rightBool, receiverType, fieldName), nil
+			} else {
+				// Left is bool, right has function
+				return fmt.Sprintf(`var ok bool
+					if !(%s) {
+						var err error
+						ok, err = %s;
+						if err != nil {
+							return errutil.Explain(err, "validate failed on \"%s.%s\"")
+						}
+					} else {
+						ok = true
+					}
+					if !ok {
+						return errutil.Explain(nil, "validate failed on \"%s.%s\"")
+					}`, leftBool, rightBool, receiverType, fieldName, receiverType, fieldName), nil
+			}
+		}
+
+	case validate.UnaryExpr:
+		// Negation of a custom function
+		funcCall, err := compileBoolExpr(fieldName, x.Expr)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf(`ok, err := %s;
+			if err != nil {
+				return errutil.Explain(err, "validate failed on \"%s.%s\"")
+			}
+			if ok {
+				return errutil.Explain(nil, "validate failed on \"%s.%s\"")
+			}`, funcCall, receiverType, fieldName, receiverType, fieldName), nil
+
+	case *validate.FuncCall:
+		// Single custom function call
+		return genFuncAsSingleStmt(fieldName, x)
+
+	case *validate.InnerExpr:
+		return genValidateWithCustomFunc(fieldName, receiverType, fieldName, x.Expr)
+
+	case validate.PrimaryExpr:
+		if x.Inner != nil {
+			return genValidateWithCustomFunc(fieldName, receiverType, fieldName, x.Inner)
+		}
+		if x.Call != nil {
+			return genValidateWithCustomFunc(fieldName, receiverType, fieldName, x.Call)
+		}
+	}
+
+	return "", errutil.Explain(nil, "unsupported expression type")
+}
+
+// genFuncAsSingleStmt generates a single custom function call as a statement
+func genFuncAsSingleStmt(fieldName string, expr validate.Expr) (string, error) {
+	funcCall, err := compileBoolExpr(fieldName, expr)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf(`ok, err := %s;
+		if err != nil {
+			return errutil.Explain(err, "validate failed")
+		}
+		if !ok {
+			return errutil.Explain(nil, "validate failed")
+		}`, funcCall), nil
 }
 
 func quoteValidateString(s string) (string, error) {
