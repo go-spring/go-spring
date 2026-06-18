@@ -32,7 +32,7 @@ func main() {
 		app.Property("spring.http.server.enabled", "false")
 	})
 
-	stopApp, err := app.RunAsync()
+	stopApp, err := app.Start()
 	if err != nil {
 		log.Errorf(context.Background(), log.TagAppDef, "app run failed: %s", err.Error())
 		os.Exit(1)

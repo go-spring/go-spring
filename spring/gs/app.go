@@ -160,8 +160,7 @@ func (s *AppStarter) Run() {
 	s.app.WaitForShutdown()
 }
 
-// RunAsync runs the application asynchronously and
-// returns a function to stop the application.
+// Start runs the application and returns a function to stop it.
 // Convenience wrapper that creates a new AppStarter.
 //
 // Returns:
@@ -170,18 +169,17 @@ func (s *AppStarter) Run() {
 //
 // Usage:
 //
-//	stop, err := gs.RunAsync()
+//	stop, err := gs.Start()
 //	if err != nil {
 //	    log.Fatal(err)
 //	}
 //	defer stop() // Ensure cleanup
 //	// ... do work ...
-func RunAsync() (stop func(), err error) {
-	return newApp().RunAsync()
+func Start() (stop func(), err error) {
+	return newApp().Start()
 }
 
-// RunAsync runs the application asynchronously and
-// returns a function to stop the application.
+// Start runs the application and returns a function to stop it.
 //
 // Returns:
 //   - stop: Closure that calls ShutDown() and WaitForShutdown()
@@ -196,7 +194,7 @@ func RunAsync() (stop func(), err error) {
 //   - Must call stop() to ensure graceful shutdown
 //   - Should handle startup errors appropriately
 //   - Can use defer for guaranteed cleanup
-func (s *AppStarter) RunAsync() (stop func(), err error) {
+func (s *AppStarter) Start() (stop func(), err error) {
 
 	if err = s.startApp(); err != nil {
 		return func() {}, err
@@ -252,7 +250,7 @@ func (s *AppStarter) RunTest(t *testing.T, f any) {
 	// Force autowire to be nullable
 	s.app.Property("spring.force-autowire-is-nullable", "true")
 
-	stop, err := s.RunAsync()
+	stop, err := s.Start()
 	if err != nil {
 		t.Fatal(err)
 	}

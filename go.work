@@ -1,6 +1,14 @@
 go 1.26
 
 use (
+	./examples/bookman
+	./examples/chatAI
+	./examples/miniapi
+	./examples/noweb
+	./examples/servers/gin
+	./examples/servers/grpc
+	./examples/servers/thrift
+	./examples/startup
 	./log
 	./spring
 	./starter/starter-go-redis
