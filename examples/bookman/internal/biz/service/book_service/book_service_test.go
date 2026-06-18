@@ -30,15 +30,6 @@ func TestBookService(t *testing.T) {
 	gs.RunTest(t, func(s *struct {
 		Service *BookService `autowire:""`
 	}) {
-		// BookDao 不应包含状态，因为它是全局共享对象
-		s.Service.BookDao = &book_dao.BookDao{Store: map[string]book_dao.Book{
-			"978-0134190440": {
-				Title:     "The Go Programming Language",
-				Author:    "Alan A. A. Donovan, Brian W. Kernighan",
-				ISBN:      "978-0134190440",
-				Publisher: "Addison-Wesley",
-			},
-		}}
 
 		ctx := t.Context()
 

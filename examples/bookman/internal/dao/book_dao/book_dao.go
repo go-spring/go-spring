@@ -27,14 +27,16 @@ import (
 )
 
 func init() {
-	gs.Provide(&BookDao{Store: map[string]Book{
-		"978-0134190440": {
-			Title:     "The Go Programming Language",
-			Author:    "Alan A. A. Donovan, Brian W. Kernighan",
-			ISBN:      "978-0134190440",
-			Publisher: "Addison-Wesley",
-		},
-	}})
+	gs.Provide(func() *BookDao {
+		return &BookDao{Store: map[string]Book{
+			"978-0134190440": {
+				Title:     "The Go Programming Language",
+				Author:    "Alan A. A. Donovan, Brian W. Kernighan",
+				ISBN:      "978-0134190440",
+				Publisher: "Addison-Wesley",
+			},
+		}}
+	})
 }
 
 type Book struct {

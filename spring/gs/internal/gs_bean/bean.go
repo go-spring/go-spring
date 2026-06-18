@@ -302,23 +302,41 @@ func (d *BeanDefinition) Condition(conditions ...gs.Condition) *BeanDefinition {
 // OnProfiles adds a creation condition based on active profiles.
 // The bean will only be created if the application's "spring.profiles.active"
 // property contains at least one of the specified profiles.
-// Multiple profiles can be provided as a comma-separated string.
+// Prefix with "!" to negate (e.g., "!prod" means "not production").
 //
 // Example:
 //
-//	d.OnProfiles("dev,test")  // bean created if active profile is "dev" or "test"
-func (d *BeanDefinition) OnProfiles(profiles string) *BeanDefinition {
+//	d.OnProfiles("dev", "test")   // bean created if active profile is "dev" or "test"
+//	d.OnProfiles("!prod")         // bean created if active profile is NOT "prod"
+//	d.OnProfiles("dev", "!cloud") // bean created if "dev" active OR "cloud" NOT active
+func (d *BeanDefinition) OnProfiles(profiles ...string) *BeanDefinition {
+	if len(profiles) == 0 {
+		panic("OnProfiles requires at least one profile")
+	}
+	for i, p := range profiles {
+		p = strings.TrimSpace(p)
+		if p == "" || p == "!" {
+			panic(fmt.Sprintf("invalid profile at index %d: %q", i, profiles[i]))
+		}
+		profiles[i] = p
+	}
 	d.Condition(gs_cond.OnFunc(func(ctx gs.ConditionContext) (bool, error) {
 		val, ok := ctx.Prop("spring.profiles.active")
 		if val = strings.TrimSpace(val); !ok || val == "" {
 			return false, nil
 		}
-		ss := strings.Split(profiles, ",")
-		for i := range ss {
-			ss[i] = strings.TrimSpace(ss[i])
-		}
+
+		active := make(map[string]bool)
 		for s := range strings.SplitSeq(val, ",") {
-			if slices.Contains(ss, strings.TrimSpace(s)) {
+			active[strings.TrimSpace(s)] = true
+		}
+
+		for _, p := range profiles {
+			if strings.HasPrefix(p, "!") {
+				if !active[p[1:]] {
+					return true, nil
+				}
+			} else if active[p] {
 				return true, nil
 			}
 		}
