@@ -117,6 +117,14 @@ func RegisterRPCTag(subType, action string) *Tag {
 	return RegisterTag(BuildTag("rpc", subType, action))
 }
 
+// RegisterInfraTag registers or retrieves a Tag intended for infrastructure logs,
+// covering system components like databases, caches, message queues, etc.
+//   - subType: component or module name
+//   - action: operation being logged (optional)
+func RegisterInfraTag(subType, action string) *Tag {
+	return RegisterTag(BuildTag("infra", subType, action))
+}
+
 // getLogger returns the logger associated with the given tag.
 // If no logger is bound, the default logger is returned.
 func getLogger(tag *Tag) Logger {

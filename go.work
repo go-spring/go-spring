@@ -1,0 +1,11 @@
+go 1.26
+
+use (
+	./log
+	./spring
+	./starter/starter-go-redis
+	./starter/starter-gorm-mysql
+	./starter/starter-pprof
+	./starter/starter-redigo
+	./stdlib
+)
