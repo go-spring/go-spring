@@ -26,7 +26,7 @@ import (
 var validateFuncs = map[string]any{}
 
 // ValidateFunc defines a type for validation functions.
-type ValidateFunc[T any] func(T) bool
+type ValidateFunc[T any] func(T) (bool, error)
 
 // RegisterValidateFunc registers a validation function with a specific name.
 // Must be called in init functions only.

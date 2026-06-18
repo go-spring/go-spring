@@ -26,7 +26,8 @@ import (
 var funcMap = map[string]any{}
 
 // RegisterExpressFunc registers a function under the given name, making it available
-// for use in expressions evaluated by EvalExpr.
+// for use in expressions evaluated by EvalExpr. The function may return any type,
+// or (any type, error); if the error is non-nil, it will be propagated by EvalExpr.
 // Must be called in init functions only.
 func RegisterExpressFunc(name string, fn any) {
 	funcMap[name] = fn

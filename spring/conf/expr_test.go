@@ -17,6 +17,7 @@
 package conf_test
 
 import (
+	"errors"
 	"testing"
 
 	"go-spring.org/spring/conf"
@@ -25,8 +26,14 @@ import (
 )
 
 func TestExpr(t *testing.T) {
-	conf.RegisterValidateFunc("checkInt", func(i int) bool {
-		return i < 5
+	conf.RegisterValidateFunc("checkInt", func(i int) (bool, error) {
+		return i < 5, nil
+	})
+	conf.RegisterValidateFunc("checkIntWithErr", func(i int) (bool, error) {
+		if i < 0 {
+			return false, errors.New("negative number not allowed")
+		}
+		return i < 5, nil
 	})
 
 	t.Run("basic function validation", func(t *testing.T) {
@@ -120,4 +127,15 @@ func TestExpr(t *testing.T) {
 		assert.That(t, err).Nil()
 		assert.That(t, 5).Equal(v.A)
 	})
-}
+
+		t.Run("validate function returns error", func(t *testing.T) {
+			var v struct {
+				A int `value:"${a}" expr:"checkIntWithErr($)"`
+			}
+			p := flatten.NewPropertiesStorage(flatten.MapProperties(map[string]any{
+				"a": -1,
+			}))
+			err := conf.Bind(p, &v)
+			assert.Error(t, err).Matches("negative number not allowed")
+		})
+	}

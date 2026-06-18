@@ -17,6 +17,7 @@
 package gs_cond
 
 import (
+	"errors"
 	"strconv"
 	"strings"
 	"testing"
@@ -76,4 +77,19 @@ func TestEvalExpr(t *testing.T) {
 		assert.That(t, err).Nil()
 		assert.That(t, ok).True()
 	})
+
+		t.Run("custom function returns error", func(t *testing.T) {
+			RegisterExpressFunc("checkPositive", func(s string) (bool, error) {
+				i, err := strconv.Atoi(s)
+				if err != nil {
+					return false, err
+				}
+				if i < 0 {
+					return false, errors.New("negative number")
+				}
+				return i > 0, nil
+			})
+			_, err := EvalExpr("checkPositive($)", "-1")
+			assert.Error(t, err).Matches("negative number")
+		})
 }
