@@ -2,7 +2,7 @@
 layout: home
 
 hero:
-  name: Go-Spring
+  name: Go-Spring / 开源 Go 应用框架
   text: 把工程能力装进 Go
   tagline: 配置、依赖、生命周期与基础设施统一装配，让业务代码继续保持 Go 应有的简单、清晰和直接。
   image:
@@ -35,7 +35,7 @@ hero:
 
 <section class="gs-story">
   <div class="gs-story-copy">
-    <p class="gs-kicker">Less plumbing, more product</p>
+    <p class="gs-kicker">为什么需要 Go-Spring</p>
     <h2><span>服务变复杂，</span><strong>业务代码不必跟着变乱</strong></h2>
     <p class="gs-lead">真实的 Go 服务不只有 Handler。配置加载、组件初始化、依赖装配、启动顺序和优雅退出，会一点点挤进每个项目。</p>
     <p>Go-Spring 把这些重复问题收拢到一致的应用模型中。你仍然编写普通 Go 代码，只是不再手工编排每一块基础设施。</p>
@@ -66,20 +66,12 @@ hero:
         <span>:9090</span>
       </div>
     </div>
-    <div class="gs-float-note gs-float-note-top">
-      <span>01</span>
-      <p><strong>启动时装配</strong>运行时保持直接</p>
-    </div>
-    <div class="gs-float-note gs-float-note-bottom">
-      <span>02</span>
-      <p><strong>统一生命周期</strong>启动与退出有序可控</p>
-    </div>
   </div>
 </section>
 
 <section class="gs-home-section gs-system-section">
   <div class="gs-section-intro">
-    <p class="gs-kicker">One application model</p>
+    <p class="gs-kicker">统一应用模型</p>
     <h2>一套模型，覆盖服务的工程骨架</h2>
     <p>能力彼此协作，而不是一组互不相关的工具。配置决定装配，容器管理依赖，应用上下文协调完整生命周期。</p>
   </div>
@@ -119,8 +111,8 @@ hero:
 
 <section class="gs-home-section gs-principle-section">
   <div class="gs-principle-heading">
-    <p class="gs-kicker">Spring inspired, Go designed</p>
-    <h2><span>借鉴 Spring 的工程经验，</span><span>但不把 Java 搬进 Go</span></h2>
+    <p class="gs-kicker">设计取舍</p>
+    <h2><span>借鉴 Spring 的工程经验，但不把 Java 搬进 Go</span></h2>
   </div>
   <div class="gs-principle-grid">
     <div class="gs-principle-card gs-principle-keep">
@@ -148,7 +140,7 @@ hero:
 
 <section class="gs-home-section gs-ecosystem-section">
   <div class="gs-section-intro gs-section-intro-left">
-    <p class="gs-kicker">Ecosystem</p>
+    <p class="gs-kicker">模块与生态</p>
     <h2><span>从核心框架开始，</span><br><span>按需扩展</span></h2>
     <p>核心保持克制，日志、工具链和基础设施集成独立演进。只引入当前服务真正需要的部分。</p>
   </div>
@@ -162,8 +154,8 @@ hero:
 
 <section class="gs-home-section gs-final-cta">
   <div>
-    <p class="gs-kicker">Ready to build</p>
-    <h2>让下一个 Go 服务，<br>从清晰的工程骨架开始</h2>
+    <p class="gs-kicker">从这里开始</p>
+    <h2>从一个可运行的<br>最小应用开始</h2>
   </div>
   <div class="gs-final-actions">
     <p>从一个可运行的最小应用开始，再逐步接入配置、IoC、HTTP 与常用组件。</p>
