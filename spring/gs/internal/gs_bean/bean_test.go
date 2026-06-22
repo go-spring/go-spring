@@ -223,7 +223,7 @@ func TestBeanDefinition(t *testing.T) {
 	t.Run("on profiles", func(t *testing.T) {
 		v := reflect.ValueOf(&TestBean{})
 		bean := makeBean(v.Type(), v, nil, "test")
-		bean.OnProfiles("dev,test")
+		bean.OnProfiles("dev", "test")
 		assert.That(t, len(bean.Conditions())).Equal(1)
 
 		t.Run("no profile property", func(t *testing.T) {
@@ -288,7 +288,7 @@ func TestBeanDefinition(t *testing.T) {
 
 		t.Run("profile with spaces", func(t *testing.T) {
 			beanWithSpaces := makeBean(v.Type(), v, nil, "test")
-			beanWithSpaces.OnProfiles("dev, test , prod")
+			beanWithSpaces.OnProfiles("dev", "test", "prod")
 
 			m := gsmock.NewManager()
 			ctx := gs.NewConditionContextMockImpl(m)

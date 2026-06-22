@@ -115,7 +115,7 @@ func (c *Injecting) Refresh(roots, beans []*gs_bean.BeanDefinition) (err error) 
 	defer func() {
 		// If an error occurred, or there are unresolved beans in the stack,
 		// enrich the error message with the dependency path for easier debugging.
-		if err != nil || len(stack.beans) > 0 {
+		if err != nil || len(stack.beanStack) > 0 {
 			log.Errorf(context.Background(), log.TagAppDef, "%s", err)
 		}
 	}()
@@ -146,7 +146,10 @@ func (c *Injecting) Refresh(roots, beans []*gs_bean.BeanDefinition) (err error) 
 	}
 
 	// Step 3: Collect destroyer callbacks in dependency-safe order.
-	c.destroyers = stack.getSortedDestroyers()
+	c.destroyers, err = stack.getSortedDestroyers()
+	if err != nil {
+		return err
+	}
 
 	// Step 4: Clean up metadata.
 	if c.p.ObjectsCount() == 0 {
@@ -524,8 +527,33 @@ func (c *Injector) autowire(v reflect.Value, str string, stack *Stack) error {
 // After completion, bean status is set to StatusWired and popped from the stack.
 func (c *Injector) wireBean(b *gs_bean.BeanDefinition, stack *Stack) error {
 
+	log.Debugf(context.Background(), log.TagAppDef, "push %s %s", b, b.GetStatus())
+	defer log.Debugf(context.Background(), log.TagAppDef, "pop %s %s", b, b.GetStatus())
+
+	// If the bean is already being created (StatusCreating), we have a circular dependency
+	// because it's already in the current call stack and being re-entered recursively.
+	// Circular dependencies cannot be resolved without lazy injection.
+	if b.GetStatus() == gs_bean.StatusCreating {
+		return errutil.Explain(nil, "circular autowire dependency detected")
+	}
+
+	// If the bean is already wired (StatusWired), we can skip it
+	// because it's already been wired and initialized.
+	if _, ok := stack.beanCycle[b]; ok {
+		return nil
+	}
+
 	stack.pushBean(b)
 	defer stack.popBean()
+
+	// If the bean is already created (StatusCreated), we can skip it
+	// because it's already been wired and initialized.
+	if b.GetStatus() >= gs_bean.StatusCreated {
+		return nil
+	}
+
+	// Mark the bean as currently being created
+	b.SetStatus(gs_bean.StatusCreating)
 
 	// Wire all dependent beans before creating the current bean
 	for _, s := range b.GetDependsOn() {
@@ -535,22 +563,6 @@ func (c *Injector) wireBean(b *gs_bean.BeanDefinition, stack *Stack) error {
 			}
 		}
 	}
-
-	// If the bean is already being created (StatusCreating), we have a circular dependency
-	// because it's already in the current call stack and being re-entered recursively.
-	// Circular dependencies cannot be resolved without lazy injection.
-	if b.GetStatus() == gs_bean.StatusCreating {
-		return errutil.Explain(nil, "circular autowire dependency detected")
-	}
-
-	// If the bean is already created or wired (StatusCreated or StatusWired), return early
-	// pop to keep the stack balanced since we just pushed it.
-	if b.GetStatus() >= gs_bean.StatusCreating {
-		return nil
-	}
-
-	// Mark the bean as currently being created
-	b.SetStatus(gs_bean.StatusCreating)
 
 	// Retrieve the actual value for the bean (e.g., via its factory method)
 	v, err := c.getBeanValue(b, stack)
@@ -784,42 +796,53 @@ type LazyField struct {
 	tag  string        // Original tag (e.g. "autowire") for this field
 }
 
-// Stack represents the runtime context during bean wiring.
-// It keeps track of the current wiring call stack, lazily injected fields,
-// and the ordering of destroyers for proper shutdown.
+// Stack holds per-refresh state used while wiring beans.
+//
+// beanStack records the current recursive wiring path. When a bean is pushed
+// while another bean is already on the stack, the previous top bean is recorded
+// as depending on the new bean. This captures both creation order and the
+// reverse destroy order.
+//
+// beanCycle mirrors beanStack as a set for fast membership checks. It prevents
+// re-entering a bean that is already on the current path and avoids adding
+// self-dependencies to the destroy graph.
+//
+// beanDepMap stores the dependency graph used to sort destroy callbacks after
+// all beans have been wired.
 type Stack struct {
-	beans      []*gs_bean.BeanDefinition // The stack of beans currently being wired
-	beanMap    map[gs.BeanID]*beanDep    // Fast lookup map for dependencies by bean ID
-	lazyFields []LazyField               // Fields deferred due to lazy injection
+	beanStack  []*gs_bean.BeanDefinition
+	beanCycle  map[*gs_bean.BeanDefinition]struct{}
+	beanDepMap map[*gs_bean.BeanDefinition]*beanDep
+	lazyFields []LazyField // Fields deferred due to lazy injection
 }
 
-// NewStack creates and initializes a new Stack for a fresh Refresh or Wire operation.
+// NewStack creates the per-refresh wiring state.
 func NewStack() *Stack {
 	return &Stack{
-		beanMap: make(map[gs.BeanID]*beanDep),
+		beanCycle:  make(map[*gs_bean.BeanDefinition]struct{}),
+		beanDepMap: make(map[*gs_bean.BeanDefinition]*beanDep),
 	}
 }
 
-// pushBean pushes a bean onto the wiring stack.
-// Used to keep track of current wiring path for cycle detection.
+// pushBean enters a bean on the current wiring path.
+// If another bean is already on top of the stack, that bean depends on b.
 func (s *Stack) pushBean(b *gs_bean.BeanDefinition) {
-	log.Debugf(context.Background(), log.TagAppDef, "push %s %s", b, b.GetStatus())
-	if len(s.beans) > 0 {
-		s.beanMap[s.beans[len(s.beans)-1].BeanID()].dependOn(b)
+	if len(s.beanStack) > 0 {
+		s.beanDepMap[s.beanStack[len(s.beanStack)-1]].dependOn(b)
 	}
-	s.beans = append(s.beans, b)
-	if _, ok := s.beanMap[b.BeanID()]; !ok {
-		s.beanMap[b.BeanID()] = &beanDep{current: b}
+	s.beanCycle[b] = struct{}{}
+	s.beanStack = append(s.beanStack, b)
+	if _, ok := s.beanDepMap[b]; !ok {
+		s.beanDepMap[b] = &beanDep{current: b}
 	}
 }
 
-// popBean pops the most recently added bean from the wiring stack.
+// popBean leaves the current bean wiring path.
 func (s *Stack) popBean() {
-	n := len(s.beans)
-	b := s.beans[n-1]
-	s.beans[n-1] = nil // avoid memory leak
-	s.beans = s.beans[:n-1]
-	log.Debugf(context.Background(), log.TagAppDef, "pop %s %s", b, b.GetStatus())
+	b := s.beanStack[len(s.beanStack)-1]
+	delete(s.beanCycle, b)
+	s.beanStack[len(s.beanStack)-1] = nil // avoid memory leak
+	s.beanStack = s.beanStack[:len(s.beanStack)-1]
 }
 
 // getBeforeDeps returns beanDeps that the given beanDep depends on.
@@ -844,7 +867,7 @@ func getBeforeDeps(beanDeps *list.List, i any) *list.List {
 // Destroy order (reverse iteration): A B  (A must be destroyed before B)
 //
 // We iterate from Back() because destruction is the inverse of creation.
-func (s *Stack) getSortedDestroyers() []func() {
+func (s *Stack) getSortedDestroyers() ([]func(), error) {
 
 	// Helper to wrap a bean's destroy method as a no-argument function
 	destroy := func(v reflect.Value, fn any) func() {
@@ -858,12 +881,15 @@ func (s *Stack) getSortedDestroyers() []func() {
 	}
 
 	beanDeps := list.New()
-	for _, d := range s.beanMap {
+	for _, d := range s.beanDepMap {
 		beanDeps.PushBack(d)
 	}
 
 	// Topological sort produces creation order (dependencies first)
-	beanDeps, _ = gs_util.TopologicalSort(beanDeps, getBeforeDeps)
+	beanDeps, err := gs_util.TopologicalSort(beanDeps, getBeforeDeps)
+	if err != nil {
+		return nil, errutil.Explain(err, "topological sort failed")
+	}
 
 	var ret []func()
 	for e := beanDeps.Back(); e != nil; e = e.Prev() {
@@ -871,7 +897,7 @@ func (s *Stack) getSortedDestroyers() []func() {
 			ret = append(ret, destroy(d.GetValue(), d.GetDestroy()))
 		}
 	}
-	return ret
+	return ret, nil
 }
 
 // ArgContext provides runtime context when calling bean factory functions.
