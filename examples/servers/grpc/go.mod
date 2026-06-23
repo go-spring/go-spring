@@ -3,8 +3,8 @@ module grpcsvr
 go 1.26
 
 require (
-	go-spring.org/log v0.1.1
-	go-spring.org/spring v1.3.1
+	go-spring.org/log v0.1.2
+	go-spring.org/spring v1.3.2
 	google.golang.org/grpc v1.80.0
 	google.golang.org/protobuf v1.36.11
 )
@@ -21,7 +21,7 @@ require (
 	github.com/smartystreets/goconvey v1.8.1 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
 	go-spring.org/gs-mock v0.0.9 // indirect
-	go-spring.org/stdlib v0.1.3 // indirect
+	go-spring.org/stdlib v0.1.4 // indirect
 	golang.org/x/arch v0.26.0 // indirect
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
 	golang.org/x/net v0.53.0 // indirect
