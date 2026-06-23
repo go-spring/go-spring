@@ -19,11 +19,12 @@ require (
 	github.com/go-logfmt/logfmt v0.6.0 // indirect
 	github.com/go-stack/stack v1.8.1 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
-	github.com/mattn/go-isatty v0.0.19 // indirect
+	github.com/mattn/go-isatty v0.0.22 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
-	golang.org/x/exp v0.0.0-20240506185415-9bf2ced13842 // indirect
-	golang.org/x/sys v0.12.0 // indirect
-	golang.org/x/term v0.12.0 // indirect
+	github.com/stretchr/testify v1.11.1 // indirect
+	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
+	golang.org/x/sys v0.43.0 // indirect
+	golang.org/x/term v0.42.0 // indirect
 )
 
 replace go-spring.org/log => ../../
