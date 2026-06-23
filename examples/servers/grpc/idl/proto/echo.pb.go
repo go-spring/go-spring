@@ -156,7 +156,7 @@ func file_echo_proto_rawDescGZIP() []byte {
 }
 
 var file_echo_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
-var file_echo_proto_goTypes = []interface{}{
+var file_echo_proto_goTypes = []any{
 	(*EchoRequest)(nil),  // 0: EchoRequest
 	(*EchoResponse)(nil), // 1: EchoResponse
 }
@@ -176,7 +176,7 @@ func file_echo_proto_init() {
 		return
 	}
 	if !protoimpl.UnsafeEnabled {
-		file_echo_proto_msgTypes[0].Exporter = func(v interface{}, i int) interface{} {
+		file_echo_proto_msgTypes[0].Exporter = func(v any, i int) any {
 			switch v := v.(*EchoRequest); i {
 			case 0:
 				return &v.state
@@ -188,7 +188,7 @@ func file_echo_proto_init() {
 				return nil
 			}
 		}
-		file_echo_proto_msgTypes[1].Exporter = func(v interface{}, i int) interface{} {
+		file_echo_proto_msgTypes[1].Exporter = func(v any, i int) any {
 			switch v := v.(*EchoResponse); i {
 			case 0:
 				return &v.state
@@ -204,7 +204,7 @@ func file_echo_proto_init() {
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
-			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
+			GoPackagePath: reflect.TypeFor[x]().PkgPath(),
 			RawDescriptor: file_echo_proto_rawDesc,
 			NumEnums:      0,
 			NumMessages:   2,

@@ -66,7 +66,7 @@ func RegisterEchoServiceServer(s grpc.ServiceRegistrar, srv EchoServiceServer) {
 	s.RegisterService(&_EchoService_serviceDesc, srv)
 }
 
-func _EchoService_Echo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _EchoService_Echo_Handler(srv any, ctx context.Context, dec func(any) error, interceptor grpc.UnaryServerInterceptor) (any, error) {
 	in := new(EchoRequest)
 	if err := dec(in); err != nil {
 		return nil, err
@@ -78,7 +78,7 @@ func _EchoService_Echo_Handler(srv interface{}, ctx context.Context, dec func(in
 		Server:     srv,
 		FullMethod: "/EchoService/Echo",
 	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+	handler := func(ctx context.Context, req any) (any, error) {
 		return srv.(EchoServiceServer).Echo(ctx, req.(*EchoRequest))
 	}
 	return interceptor(ctx, in, info, handler)

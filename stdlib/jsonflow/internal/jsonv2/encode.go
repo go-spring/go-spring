@@ -18,8 +18,8 @@ package jsonv2
 
 import (
 	"encoding/json/jsontext"
-	"fmt"
 
+	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/jsonflow/internal/json"
 )
 
@@ -57,7 +57,7 @@ func (e *Encoder) WriteToken(token string, kind json.Kind) error {
 	case ']':
 		return e.enc.WriteToken(jsontext.EndArray)
 	default:
-		return fmt.Errorf("jsonv2: invalid JSON token kind %q", kind)
+		return errutil.Explain(nil, "jsonv2: invalid JSON token kind %q", kind)
 	}
 }
 

@@ -17,13 +17,12 @@
 package book_dao
 
 import (
-	"errors"
-	"fmt"
 	"maps"
 	"slices"
 	"sort"
 
 	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/errutil"
 )
 
 func init() {
@@ -63,7 +62,7 @@ func (dao *BookDao) ListBooks() ([]Book, error) {
 func (dao *BookDao) GetBook(isbn string) (Book, error) {
 	r, ok := dao.Store[isbn]
 	if !ok {
-		return Book{}, fmt.Errorf("book %q not found", isbn)
+		return Book{}, errutil.Explain(nil, "book %q not found", isbn)
 	}
 	return r, nil
 }
@@ -71,7 +70,7 @@ func (dao *BookDao) GetBook(isbn string) (Book, error) {
 // SaveBook adds or updates a book in the store.
 func (dao *BookDao) SaveBook(book Book) error {
 	if book.ISBN == "" {
-		return errors.New("book isbn is required")
+		return errutil.Explain(nil, "book isbn is required")
 	}
 	dao.Store[book.ISBN] = book
 	return nil
@@ -80,7 +79,7 @@ func (dao *BookDao) SaveBook(book Book) error {
 // DeleteBook removes a book from the store by its ISBN.
 func (dao *BookDao) DeleteBook(isbn string) error {
 	if _, ok := dao.Store[isbn]; !ok {
-		return fmt.Errorf("book %q not found", isbn)
+		return errutil.Explain(nil, "book %q not found", isbn)
 	}
 	delete(dao.Store, isbn)
 	return nil

@@ -9,7 +9,10 @@ use (
 	./examples/servers/grpc
 	./examples/servers/thrift
 	./examples/startup
+	./gs/gs
 	./log
+	./log/benchmarks/fields
+	./log/benchmarks/logs
 	./spring
 	./starter/starter-go-redis
 	./starter/starter-gorm-mysql

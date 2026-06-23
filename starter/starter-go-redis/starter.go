@@ -17,10 +17,9 @@
 package StarterGoRedis
 
 import (
-	"fmt"
-
 	"github.com/redis/go-redis/v9"
 	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/errutil"
 )
 
 func init() {
@@ -43,7 +42,7 @@ func init() {
 func newClient(c Config) (*redis.Client, error) {
 	d, ok := driverRegistry[c.Driver]
 	if !ok {
-		return nil, fmt.Errorf("redis driver not found: %s", c.Driver)
+		return nil, errutil.Explain(nil, "redis driver not found: %s", c.Driver)
 	}
 	return d.CreateClient(c)
 }

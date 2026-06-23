@@ -18,7 +18,6 @@ package gs
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"os/signal"
 	"reflect"
@@ -264,24 +263,24 @@ func (s *AppStarter) RunTest(t *testing.T, f any) {
 // If the function is valid, it returns the function type and value.
 func validateRunTestFunc(f any) (reflect.Type, reflect.Value, error) {
 	if f == nil {
-		return nil, reflect.Value{}, fmt.Errorf("RunTest requires func(*Struct), got <nil>")
+		return nil, reflect.Value{}, errutil.Explain(nil, "RunTest requires func(*Struct), got <nil>")
 	}
 
 	fv := reflect.ValueOf(f)
 	ft := fv.Type()
 	if ft.Kind() != reflect.Func {
-		return nil, reflect.Value{}, fmt.Errorf("RunTest requires func(*Struct), got %s", ft)
+		return nil, reflect.Value{}, errutil.Explain(nil, "RunTest requires func(*Struct), got %s", ft)
 	}
 	if fv.IsNil() {
-		return nil, reflect.Value{}, fmt.Errorf("RunTest requires non-nil func(*Struct)")
+		return nil, reflect.Value{}, errutil.Explain(nil, "RunTest requires non-nil func(*Struct)")
 	}
 	if ft.NumIn() != 1 {
-		return nil, reflect.Value{}, fmt.Errorf("RunTest requires exactly one argument, got %d", ft.NumIn())
+		return nil, reflect.Value{}, errutil.Explain(nil, "RunTest requires exactly one argument, got %d", ft.NumIn())
 	}
 
 	argType := ft.In(0)
 	if argType.Kind() != reflect.Pointer || argType.Elem().Kind() != reflect.Struct {
-		return nil, reflect.Value{}, fmt.Errorf("RunTest argument must be pointer to struct, got %s", argType)
+		return nil, reflect.Value{}, errutil.Explain(nil, "RunTest argument must be pointer to struct, got %s", argType)
 	}
 
 	return ft, fv, nil

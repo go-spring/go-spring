@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/apache/thrift/lib/go/thrift"
+	"go-spring.org/stdlib/errutil"
 )
 
 // (needed to ensure safety because of naive import list construction.)
@@ -71,7 +72,8 @@ func (p *EchoRequest) Read(ctx context.Context, iprot thrift.TProtocol) error {
 		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
 	}
 	if !issetMessage {
-		return thrift.NewTProtocolExceptionWithType(thrift.INVALID_DATA, fmt.Errorf("Required field Message is not set"))
+		err := errutil.Explain(nil, "Required field Message is not set")
+		return thrift.NewTProtocolExceptionWithType(thrift.INVALID_DATA, err)
 	}
 	return nil
 }
@@ -188,7 +190,8 @@ func (p *EchoResponse) Read(ctx context.Context, iprot thrift.TProtocol) error {
 		return thrift.PrependError(fmt.Sprintf("%T read struct end error: ", p), err)
 	}
 	if !issetMessage {
-		return thrift.NewTProtocolExceptionWithType(thrift.INVALID_DATA, fmt.Errorf("Required field Message is not set"))
+		err := errutil.Explain(nil, "Required field Message is not set")
+		return thrift.NewTProtocolExceptionWithType(thrift.INVALID_DATA, err)
 	}
 	return nil
 }

@@ -23,6 +23,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"github.com/go-spring/stdlib/errutil"
 )
 
 const Version = "v0.2.4"
@@ -156,11 +158,11 @@ func getToolInfo(tool string) (version string, desc string, err error) {
 	cmd := exec.Command(toolPath, "--version")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", "", fmt.Errorf("%w: [output] %s", err, string(output))
+		return "", "", errutil.Explain(err, "[output] %s", string(output))
 	}
 	lines := strings.Split(string(output), "\n")
 	if len(lines) < 2 {
-		return "", "", fmt.Errorf("invalid output: %s", string(output))
+		return "", "", errutil.Explain(nil, "invalid output: %s", string(output))
 	}
 	return lines[1], lines[0], nil
 }

@@ -35,7 +35,6 @@ show_help() {
     echo ""
     echo "Options:"
     echo "  -h, --help    Show this help message"
-    exit 0
 }
 
 run_in_module() {
@@ -69,6 +68,12 @@ if [ $# -gt 0 ]; then
     case "$1" in
         -h|--help)
             show_help
+            exit 0
+            ;;
+        *)
+            echo "Error: unexpected argument $1"
+            show_help
+            exit 1
             ;;
     esac
 fi
@@ -85,7 +90,8 @@ fi
 module_dirs=$(find . -name go.mod \
     ! -path '*/vendor/*' \
     ! -path '*/node_modules/*' \
-    ! -path './gs/skeleton/go.mod' \
+    ! -path './gs/*' \
+    ! -path './misc/*' \
     ! -path './website/*' \
     -exec dirname {} \; | sort)
 

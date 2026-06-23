@@ -17,10 +17,10 @@
 package gs
 
 import (
-	"errors"
 	"reflect"
 	"testing"
 
+	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/testing/assert"
 )
 
@@ -59,7 +59,7 @@ func TestOnOnce(t *testing.T) {
 		count := 0
 		cond := OnOnce(OnFunc(func(ctx ConditionContext) (bool, error) {
 			count++
-			return false, errors.New("condition error")
+			return false, errutil.Explain(nil, "condition error")
 		}))
 
 		ok, err := cond.Matches(nil)

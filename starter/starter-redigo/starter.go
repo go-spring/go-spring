@@ -17,10 +17,9 @@
 package StarterRedigo
 
 import (
-	"fmt"
-
 	"github.com/gomodule/redigo/redis"
 	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/errutil"
 )
 
 func init() {
@@ -43,11 +42,11 @@ func init() {
 func newClient(c Config) (*redis.Pool, error) {
 	d, ok := driverRegistry[c.Driver]
 	if !ok {
-		return nil, fmt.Errorf("redis driver not found: %s", c.Driver)
+		return nil, errutil.Explain(nil, "redis driver not found: %s", c.Driver)
 	}
 	pool, err := d.CreateClient(c)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create redis client: %w", err)
+		return nil, errutil.Explain(err, "failed to create redis client")
 	}
 	return pool, nil
 }
