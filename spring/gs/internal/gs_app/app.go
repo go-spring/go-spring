@@ -32,6 +32,12 @@ import (
 	"go-spring.org/stdlib/goutil"
 )
 
+// Rooter marks a bean as an application graph root.
+//
+// App collects Rooter values to make those beans reachable for dependency
+// injection. It does not invoke them or attach any lifecycle behavior to them.
+type Rooter any
+
 // Runner defines an interface for components that need to be executed
 // after all beans have been injected but before servers start.
 //
@@ -111,6 +117,7 @@ func (c *PropertiesRefresher) RefreshProperties() error {
 // coordinator for:
 //   - Bean registration and wiring via the IoC container
 //   - Configuration loading and hot-refreshing
+//   - Root component collection through Rooter, Runner, and Server
 //   - Runner and Server lifecycle management
 //   - Graceful shutdown orchestration
 type App struct {
@@ -121,10 +128,9 @@ type App struct {
 	cancel context.CancelFunc // Function to cancel the root context
 	wg     sync.WaitGroup     // WaitGroup to track running servers
 
+	Rooters []Rooter `autowire:"?"`
 	Runners []Runner `autowire:"${spring.app.runners:=?}"`
 	Servers []Server `autowire:"${spring.app.servers:=?}"`
-
-	roots []*gs_bean.BeanDefinition // Root beans for container refresh
 }
 
 // NewApp creates a new App instance with an initialized root context.
@@ -156,17 +162,6 @@ func (app *App) Property(key string, val string) {
 // Additional arguments can be passed for dependency injection.
 func (app *App) Provide(objOrCtor any, args ...gs.Arg) *gs_bean.BeanDefinition {
 	return app.c.Provide(objOrCtor, args...).Caller(2)
-}
-
-// Root beans serve as entry points for the dependency injection graph.
-//
-// Unlike regular Provide(), which only registers a bean definition,
-// Root() also marks the bean as a "root" that triggers recursive wiring
-// of all its dependencies during container initialization.
-func (app *App) Root(obj any) *gs_bean.BeanDefinition {
-	b := app.c.Provide(obj).Caller(2)
-	app.roots = append(app.roots, b)
-	return b
 }
 
 // RefreshProperties reloads application properties from all sources
@@ -208,11 +203,12 @@ func (app *App) initLog(p flatten.Storage) error {
 
 // Start initializes and launches the application.
 // The startup sequence is:
-//  1. Register the App, ContextProvider, and PropertiesRefresher beans
+//  1. Register the ContextProvider and PropertiesRefresher beans
 //  2. Refresh application properties from all sources
 //  3. Initialize logging system
-//  4. Refresh the IoC container to wire all beans
-//  5. Clear the temporary root bean list after container refresh
+//  4. Refresh the IoC container with App as the graph root, wiring Rooter,
+//     Runner, Server, and other dependencies reachable from App
+//  5. Drop application configuration if no dynamic fields need refresh support
 //  6. Execute all Runner beans sequentially
 //  7. Start all configured servers in separate goroutines
 //     - Each server signals readiness via ReadySignal
@@ -221,9 +217,8 @@ func (app *App) initLog(p flatten.Storage) error {
 //  8. Wait until all servers signal readiness or intercept occurs
 func (app *App) Start() error {
 
-	app.Root(app)
-	app.c.Provide(&ContextProvider{app.ctx})
 	app.c.Provide(&PropertiesRefresher{app})
+	app.c.Provide(&ContextProvider{app.ctx})
 
 	// Load and refresh application properties
 	p, err := app.p.Refresh()
@@ -237,11 +232,12 @@ func (app *App) Start() error {
 	}
 
 	// Refresh IoC container to wire all beans
-	if err = app.c.Refresh(p, app.roots); err != nil {
+	var roots []*gs_bean.BeanDefinition
+	roots = append(roots, gs_bean.NewBean(app))
+	if err = app.c.Refresh(p, roots); err != nil {
 		return err
 	}
 
-	app.roots = nil
 	// If there are no dynamic fields, clear the configuration
 	if app.c.DynamicObjectsCount() == 0 {
 		app.p = nil

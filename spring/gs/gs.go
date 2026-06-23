@@ -368,6 +368,7 @@ func None(conditions ...Condition) Condition {
 type (
 	Configuration       = gs_bean.Configuration
 	BeanProvider        = gs_init.BeanProvider
+	Rooter              = gs_app.Rooter
 	Runner              = gs_app.Runner
 	Server              = gs_app.Server
 	ReadySignal         = gs_app.ReadySignal

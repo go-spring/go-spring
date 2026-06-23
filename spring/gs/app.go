@@ -44,8 +44,6 @@ var inited bool
 type App interface {
 	// Property sets a key-value property in the application configuration.
 	Property(key string, val string)
-	// Root marks a bean as the root bean.
-	Root(obj any) *gs_bean.BeanDefinition
 	// Provide registers an object or constructor as a bean in the application.
 	Provide(objOrCtor any, args ...gs.Arg) *gs_bean.BeanDefinition
 }
@@ -245,7 +243,7 @@ func (s *AppStarter) RunTest(t *testing.T, f any) {
 	obj := reflect.New(ft.In(0).Elem())
 
 	// Register the root bean
-	s.app.Root(obj.Interface())
+	s.app.Provide(obj.Interface()).Export(As[Rooter]())
 
 	// Force autowire to be nullable
 	s.app.Property("spring.force-autowire-is-nullable", "true")

@@ -30,5 +30,8 @@ vendor/
 # IDE files
 .idea/
 
+# VitePress development cache
+website/.vitepress/cache/
+
 # Git history audit reports
 scripts/git-history-audit/reports/
