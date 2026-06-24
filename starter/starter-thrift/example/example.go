@@ -23,11 +23,13 @@ import (
 	"syscall"
 	"time"
 
-	"thriftsvr/idl/proto"
+	"go-spring.org/starter-thrift/example/idl/proto"
 
 	"github.com/apache/thrift/lib/go/thrift"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
+
+	_ "go-spring.org/starter-thrift"
 )
 
 func init() {

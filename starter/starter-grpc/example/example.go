@@ -23,17 +23,18 @@ import (
 	"syscall"
 	"time"
 
-	"grpcsvr/idl/proto"
+	"go-spring.org/starter-grpc/example/idl/proto"
 
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
+	StarterGrpc "go-spring.org/starter-grpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
 func init() {
 	gs.Provide(&Controller{})
-	gs.Provide(func(c *Controller) GrpcServerConfiger {
+	gs.Provide(func(c *Controller) StarterGrpc.ServiceRegister {
 		return func(svr *grpc.Server) {
 			proto.RegisterEchoServiceServer(svr, c)
 		}

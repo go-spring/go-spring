@@ -1,4 +1,4 @@
-module ginsvr
+module go-spring.org/starter-gin
 
 go 1.26
 

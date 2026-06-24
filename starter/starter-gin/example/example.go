@@ -26,6 +26,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"go-spring.org/spring/gs"
+
+	_ "go-spring.org/starter-gin"
 )
 
 func init() {

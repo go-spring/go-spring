@@ -5,18 +5,18 @@ use (
 	./examples/chatAI
 	./examples/miniapi
 	./examples/noweb
-	./examples/servers/gin
-	./examples/servers/grpc
-	./examples/servers/thrift
 	./examples/startup
 	./gs/gs
 	./log
 	./log/benchmarks/fields
 	./log/benchmarks/logs
 	./spring
+	./starter/starter-gin
 	./starter/starter-go-redis
 	./starter/starter-gorm-mysql
+	./starter/starter-grpc
 	./starter/starter-pprof
 	./starter/starter-redigo
+	./starter/starter-thrift
 	./stdlib
 )
