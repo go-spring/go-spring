@@ -19,8 +19,12 @@
 package gs
 
 import (
+	"errors"
+	"fmt"
 	"reflect"
 	"strings"
+
+	"go-spring.org/stdlib/errutil"
 )
 
 // anyType is the [reflect.Type] of the [any] type.
@@ -89,9 +93,16 @@ type ConditionBean interface {
 type ConditionContext interface {
 	// Has checks if a property with the given key exists in the IoC container.
 	Has(key string) bool
+
 	// Prop retrieves a property value from the IoC container with an optional default.
 	Prop(key string) (string, bool)
+
 	// Find searches for beans that match the given BeanSelector.
+	// Returns an error if the search itself fails (e.g., container not ready).
+	//
+	// Error Constraint: the returned error must include detailed location
+	// information (e.g., the BeanID being searched) so the caller can identify
+	// which bean lookup caused the failure.
 	Find(beanID BeanID) ([]ConditionBean, error)
 }
 
@@ -99,7 +110,13 @@ type ConditionContext interface {
 // A Condition can decide at runtime whether a particular bean should be registered.
 type Condition interface {
 	// Matches evaluates the condition against the given ConditionContext.
-	// It returns true if the condition is satisfied.
+	// Returns true if the condition is satisfied.
+	// Returns an error if the condition evaluation itself fails
+	// (e.g., property not found, bean lookup error, expression parse failure).
+	//
+	// Error Constraint: the returned error must include the condition's identity
+	// (e.g., condition type, property name, bean selector) and the underlying
+	// cause so the caller can pinpoint which condition failed and why.
 	Matches(ctx ConditionContext) (bool, error)
 }
 
@@ -109,12 +126,31 @@ type Condition interface {
 // It allows checking conditions, binding properties, and wiring dependencies.
 type ArgContext interface {
 	// Check evaluates whether a given condition is satisfied.
+	// Returns an error if the condition evaluation itself fails
+	// (e.g., property not found, bean lookup error, expression parse failure).
+	//
+	// Error Constraint: the returned error must include the condition's identity
+	// and the underlying cause so the caller can pinpoint which check failed.
 	Check(c Condition) (bool, error)
+
 	// Bind binds configuration or property values into the provided [reflect.Value].
 	// Used for primitive types and structs with value tags.
+	// Returns an error if binding fails (e.g., property missing, type mismatch,
+	// value parse failure, struct tag syntax error).
+	//
+	// Error Constraint: the returned error must include the property key,
+	// target type, and tag expression so the caller can locate the exact
+	// binding that failed.
 	Bind(v reflect.Value, tag string) error
+
 	// Wire injects dependencies (beans) into the provided [reflect.Value].
 	// Used for struct and interface type bean references.
+	// Returns an error if wiring fails (e.g., bean not found, type not assignable,
+	// circular dependency, multiple candidates without qualifier).
+	//
+	// Error Constraint: the returned error must include the target type, tag
+	// expression, and candidate bean details so the caller can identify which
+	// dependency injection failed.
 	Wire(v reflect.Value, tag string) error
 }
 
@@ -123,5 +159,53 @@ type ArgContext interface {
 type Arg interface {
 	// GetArgValue retrieves the argument value for the given type
 	// using the provided ArgContext.
+	// Returns an error if argument resolution fails (e.g., property missing,
+	// bean not found, type not assignable, bind error, wire error).
+	//
+	// Error Constraint: the returned error must include the argument identity
+	// (e.g., arg type, tag, index, or value) and the target type so the caller
+	// can pinpoint which argument resolution failed and why.
 	GetArgValue(ctx ArgContext, t reflect.Type) (reflect.Value, error)
+}
+
+/********************************* error ************************************/
+
+// InjectionError wraps an injection failure with its bean context.
+// It serves as a boundary marker: once an error is wrapped as InjectionError,
+// recursive modules (arg, cond, etc.) should not add further context layers.
+type InjectionError struct {
+	Bean string // Bean identifier, e.g. "myBean(/path/file.go:42)"
+	Err  error  // The underlying error
+}
+
+// Error returns the formatted error message.
+func (e *InjectionError) Error() string {
+	return fmt.Sprintf("wire bean %s, err %v", e.Bean, e.Err)
+}
+
+// Unwrap returns the underlying error.
+func (e *InjectionError) Unwrap() error {
+	return e.Err
+}
+
+// WrapInjectErr wraps err with context.
+// If err is already an InjectionError, it returns err unchanged
+// to prevent duplicate wrapping.
+//
+// If bean is non-empty, it wraps as InjectionError with bean context.
+// Otherwise, args[0] is used as format string for errutil.Explain
+// with args[1:] as format arguments.
+func WrapInjectErr(bean string, err error, args ...any) error {
+	var e *InjectionError
+	if !errors.As(err, &e) {
+		if len(args) > 0 {
+			format := args[0].(string)
+			err = errutil.Explain(err, format, args[1:]...)
+		}
+		if bean == "" {
+			return err
+		}
+		return &InjectionError{Bean: bean, Err: err}
+	}
+	return err
 }

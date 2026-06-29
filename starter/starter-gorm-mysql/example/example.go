@@ -37,10 +37,10 @@ func main() {
 
 	// Here `s` is not referenced by any other object,
 	// so we need to register it as a root object.
-	s := &Service{}
-	gs.Provide(s).Export(gs.As[gs.Rooter]())
+	svrBean := gs.Provide(&Service{}).Export(gs.As[gs.Rooter]())
 
 	http.HandleFunc("/mysql_version", func(w http.ResponseWriter, r *http.Request) {
+		s := svrBean.Interface().(*Service)
 		var version string
 		err := s.DB.Raw("SELECT VERSION()").Scan(&version).Error
 		if err != nil {

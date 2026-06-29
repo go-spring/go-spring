@@ -35,6 +35,12 @@ import (
 	"go-spring.org/stdlib/typeutil"
 )
 
+// ArgErr wraps an argument resolution error with context identifying
+// which argument failed and what the underlying error was.
+func ArgErr(err error, arg gs.Arg) error {
+	return gs.WrapInjectErr("", err, "arg %s get value error", arg)
+}
+
 // TagArg represents an argument resolved using a tag for property binding
 // or dependency injection.
 type TagArg struct {
@@ -55,11 +61,13 @@ func (arg TagArg) GetArgValue(ctx gs.ArgContext, t reflect.Type) (reflect.Value,
 	// Bind property values based on the argument type.
 	if typeutil.IsPropBindingTarget(t) {
 		if arg.Tag == "" {
-			return reflect.Value{}, errutil.Explain(nil, "missing tag for property binding")
+			if arg.Tag == "" {
+				arg.Tag = "${ROOT}"
+			}
 		}
 		v := reflect.New(t).Elem()
 		if err := ctx.Bind(v, arg.Tag); err != nil {
-			return reflect.Value{}, err
+			return reflect.Value{}, ArgErr(err, arg)
 		}
 		return v, nil
 	}
@@ -68,13 +76,17 @@ func (arg TagArg) GetArgValue(ctx gs.ArgContext, t reflect.Type) (reflect.Value,
 	if typeutil.IsBeanInjectionTarget(t) {
 		v := reflect.New(t).Elem()
 		if err := ctx.Wire(v, arg.Tag); err != nil {
-			return reflect.Value{}, err
+			return reflect.Value{}, ArgErr(err, arg)
 		}
 		return v, nil
 	}
 
 	err := errutil.Explain(nil, "unsupported argument type %s", t.String())
-	return reflect.Value{}, err
+	return reflect.Value{}, ArgErr(err, arg)
+}
+
+func (arg TagArg) String() string {
+	return fmt.Sprintf("TagArg(tag=%s)", arg.Tag)
 }
 
 // IndexArg represents an argument that is bound by its explicit position
@@ -96,6 +108,10 @@ func (arg IndexArg) GetArgValue(ctx gs.ArgContext, t reflect.Type) (reflect.Valu
 	panic(errutil.ErrUnimplementedMethod)
 }
 
+func (arg IndexArg) String() string {
+	return fmt.Sprintf("IndexArg(idx=%d)", arg.Idx)
+}
+
 // ValueArg represents a constant (fixed) value argument that does not need
 // any resolution or injection.
 type ValueArg struct {
@@ -107,6 +123,16 @@ func Value(v any) gs.Arg {
 	return ValueArg{v: v}
 }
 
+// checkAssignable checks whether v's type can be assigned to t.
+// Returns v if assignable, otherwise returns an error.
+func checkAssignable(v reflect.Value, t reflect.Type) (reflect.Value, error) {
+	if !v.Type().AssignableTo(t) {
+		err := errutil.Explain(nil, "cannot assign type %s to type %s", v.Type().String(), t.String())
+		return reflect.Value{}, err
+	}
+	return v, nil
+}
+
 // GetArgValue returns the fixed value wrapped by ValueArg.
 // If the value is nil, it returns the zero value of the target type.
 // If the value’s type is not assignable to the target type, it returns an error.
@@ -115,15 +141,15 @@ func (arg ValueArg) GetArgValue(ctx gs.ArgContext, t reflect.Type) (reflect.Valu
 		return reflect.Zero(t), nil
 	}
 	v := reflect.ValueOf(arg.v)
-	return checkAssignable(v, t)
+	val, err := checkAssignable(v, t)
+	if err != nil {
+		return reflect.Value{}, ArgErr(err, arg)
+	}
+	return val, nil
 }
 
-func checkAssignable(v reflect.Value, t reflect.Type) (reflect.Value, error) {
-	if !v.Type().AssignableTo(t) {
-		err := errutil.Explain(nil, "cannot assign type %s to type %s", v.Type().String(), t.String())
-		return reflect.Value{}, err
-	}
-	return v, nil
+func (arg ValueArg) String() string {
+	return fmt.Sprintf("ValueArg(val=%#v)", arg.v)
 }
 
 // ArgList manages a collection of arguments for a target function,
@@ -145,10 +171,10 @@ type ArgList struct {
 //   - Index values must be within valid parameter bounds.
 func NewArgList(fnType reflect.Type, args []gs.Arg) (*ArgList, error) {
 	if fnType == nil {
-		return nil, errutil.Explain(nil, "invalid function type <nil>")
+		return nil, errutil.Explain(nil, "function type cannot be nil")
 	}
 	if fnType.Kind() != reflect.Func {
-		return nil, errutil.Explain(nil, "invalid function type %s", fnType.String())
+		return nil, errutil.Explain(nil, "expected function type, got %s", fnType.String())
 	}
 
 	// Determine number of fixed arguments.
@@ -156,7 +182,7 @@ func NewArgList(fnType reflect.Type, args []gs.Arg) (*ArgList, error) {
 	if fnType.IsVariadic() {
 		fixedArgCount--
 	} else if len(args) > fixedArgCount {
-		return nil, errutil.Explain(nil, "too many arguments for function %s", fnType.String())
+		return nil, errutil.Explain(nil, "too many arguments: got %d, want at most %d for function %s", len(args), fixedArgCount, fnType.String())
 	}
 
 	// Initialize argument list with empty Tag() placeholders.
@@ -177,14 +203,14 @@ func NewArgList(fnType reflect.Type, args []gs.Arg) (*ArgList, error) {
 		case IndexArg:
 			useIdx = true
 			if notIdx {
-				return nil, errutil.Explain(nil, "arguments must be all indexed or non-indexed")
+				return nil, errutil.Explain(nil, "arguments must be all indexed or non-indexed, found IndexArg at position %d after non-indexed arg", i)
 			}
 			if arg.Idx < 0 || arg.Idx >= fnType.NumIn() {
-				return nil, errutil.Explain(nil, "invalid argument index %d", arg.Idx)
+				return nil, errutil.Explain(nil, "invalid argument index %d, valid range [0, %d] for function %s", arg.Idx, fnType.NumIn()-1, fnType.String())
 			}
 			if arg.Idx < fixedArgCount {
 				if indexedFixedArg[arg.Idx] {
-					return nil, errutil.Explain(nil, "duplicate argument index %d", arg.Idx)
+					return nil, errutil.Explain(nil, "duplicate argument index %d in function %s", arg.Idx, fnType.String())
 				}
 				indexedFixedArg[arg.Idx] = true
 				fnArgs[arg.Idx] = arg.Arg
@@ -194,7 +220,7 @@ func NewArgList(fnType reflect.Type, args []gs.Arg) (*ArgList, error) {
 		default:
 			notIdx = true
 			if useIdx {
-				return nil, errutil.Explain(nil, "arguments must be all indexed or non-indexed")
+				return nil, errutil.Explain(nil, "arguments must be all indexed or non-indexed, found non-indexed arg at position %d after IndexArg", i)
 			}
 			if i < fixedArgCount {
 				fnArgs[i] = arg
@@ -229,7 +255,7 @@ func (r *ArgList) get(ctx gs.ArgContext) ([]reflect.Value, error) {
 
 		v, err := arg.GetArgValue(ctx, t)
 		if err != nil {
-			return nil, err
+			return nil, gs.WrapInjectErr("", err, "argument at index %d failed", idx)
 		}
 		if v.IsValid() {
 			result = append(result, v)
@@ -252,15 +278,15 @@ type Callable struct {
 // It returns the reflected type of the function if valid, or an error otherwise.
 func callableFuncType(fn CallableFunc) (reflect.Type, error) {
 	if fn == nil {
-		return nil, errutil.Explain(nil, "invalid function type <nil>")
+		return nil, errutil.Explain(nil, "callable function cannot be nil")
 	}
 	fnValue := reflect.ValueOf(fn)
 	fnType := fnValue.Type()
 	if fnType.Kind() != reflect.Func {
-		return nil, errutil.Explain(nil, "invalid function type %s", fnType.String())
+		return nil, errutil.Explain(nil, "callable function must be a function type, got %s", fnType.String())
 	}
 	if fnValue.IsNil() {
-		return nil, errutil.Explain(nil, "function cannot be nil")
+		return nil, errutil.Explain(nil, "callable function value is nil")
 	}
 	return fnType, nil
 }
@@ -309,7 +335,7 @@ func validBindFunc(fn CallableFunc) error {
 			return nil
 		}
 	}
-	err = errutil.Explain(nil, "expected func(...) error or func(...) (T, error)")
+	err = errutil.Explain(nil, "expected func(...) error or func(...) (T, error), got %s", t.String())
 	return errutil.Explain(err, "invalid bind function signature")
 }
 
@@ -334,17 +360,13 @@ func (arg *BindArg) SetFileLine(file string, line int) {
 	arg.fileline = fmt.Sprintf("%s:%d", file, line)
 }
 
-func checkConditions(conditions []gs.Condition) {
+// Condition appends runtime conditions that must be satisfied before execution.
+func (arg *BindArg) Condition(conditions ...gs.Condition) *BindArg {
 	for _, c := range conditions {
 		if c == nil {
 			panic("conditions cannot contains nil")
 		}
 	}
-}
-
-// Condition appends runtime conditions that must be satisfied before execution.
-func (arg *BindArg) Condition(conditions ...gs.Condition) *BindArg {
-	checkConditions(conditions)
 	arg.conditions = append(arg.conditions, conditions...)
 	return arg
 }
@@ -358,7 +380,7 @@ func (arg *BindArg) GetArgValue(ctx gs.ArgContext, t reflect.Type) (reflect.Valu
 	for _, c := range arg.conditions {
 		ok, err := ctx.Check(c)
 		if err != nil {
-			return reflect.Value{}, err
+			return reflect.Value{}, ArgErr(err, arg)
 		} else if !ok {
 			return reflect.Value{}, nil
 		}
@@ -367,14 +389,26 @@ func (arg *BindArg) GetArgValue(ctx gs.ArgContext, t reflect.Type) (reflect.Valu
 	// Execute the function.
 	out, err := arg.r.Call(ctx)
 	if err != nil {
-		return reflect.Value{}, err
+		return reflect.Value{}, ArgErr(err, arg)
 	}
 	if len(out) == 1 { // func(...) T
-		return checkAssignable(out[0], t)
+		v, err := checkAssignable(out[0], t)
+		if err != nil {
+			return reflect.Value{}, ArgErr(err, arg)
+		}
+		return v, nil
 	}
 	err, _ = out[1].Interface().(error)
 	if err != nil {
-		return reflect.Value{}, err
+		return reflect.Value{}, ArgErr(err, arg)
 	}
-	return checkAssignable(out[0], t) // func(...) (T, error)
+	v, err := checkAssignable(out[0], t) // func(...) (T, error)
+	if err != nil {
+		return reflect.Value{}, ArgErr(err, arg)
+	}
+	return v, nil
+}
+
+func (arg *BindArg) String() string {
+	return fmt.Sprintf("BindArg(fileline=%s)", arg.fileline)
 }
