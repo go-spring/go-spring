@@ -46,6 +46,7 @@ import (
 	"strings"
 
 	"go-spring.org/spring/conf"
+	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
 )
 
@@ -63,12 +64,8 @@ func NewAppConfig() *AppConfig {
 
 // Refresh refreshes the configuration by merging multiple sources.
 func (c *AppConfig) Refresh() (flatten.Storage, error) {
+	env := extractEnvironments()
 	cmd, err := extractCmdArgs()
-	if err != nil {
-		return nil, err
-	}
-
-	env, err := extractEnvironments()
 	if err != nil {
 		return nil, err
 	}
@@ -80,22 +77,22 @@ func (c *AppConfig) Refresh() (flatten.Storage, error) {
 
 	confDir, err := conf.Resolve(l, "${spring.app.config.dir:=./conf}")
 	if err != nil {
-		return nil, err
+		return nil, errutil.Explain(err, "resolve spring.app.config.dir failed")
 	}
 
 	if err = loadFiles(l, confDir, nil); err != nil {
-		return nil, err
+		return nil, errutil.Explain(err, "load base config files failed")
 	}
 
 	// Profiles are designed to be orthogonal and independent.
 	strActiveProfiles, err := conf.Resolve(l, "${spring.profiles.active:=}")
 	if err != nil {
-		return nil, err
+		return nil, errutil.Explain(err, "resolve spring.profiles.active failed")
 	}
 	activeProfiles := checkDuplicates(strings.Split(strActiveProfiles, ","))
 	if len(activeProfiles) > 0 {
 		if err = loadFiles(l, confDir, activeProfiles); err != nil {
-			return nil, err
+			return nil, errutil.Explain(err, "load profile config files %v failed", activeProfiles)
 		}
 	}
 	return l, nil
@@ -145,7 +142,7 @@ func loadFiles(l *flatten.LayeredStorage, dir string, activeProfiles []string) e
 		// Resolve property placeholders in the file name
 		filename, err := conf.Resolve(l, s)
 		if err != nil {
-			return err
+			return errutil.Explain(err, "resolve config file path %s failed", s)
 		}
 
 		// Load the file
@@ -155,7 +152,7 @@ func loadFiles(l *flatten.LayeredStorage, dir string, activeProfiles []string) e
 			if errors.Is(err, os.ErrNotExist) {
 				continue
 			}
-			return err
+			return errutil.Explain(err, "load config file %s failed", filename)
 		}
 
 		// Add the file to the layered storage
@@ -167,7 +164,7 @@ func loadFiles(l *flatten.LayeredStorage, dir string, activeProfiles []string) e
 
 		// Load file imports; later-loaded sources override earlier ones
 		if err = loadFileImports(l, p, activeProfiles); err != nil {
-			return err
+			return errutil.Explain(err, "load imports for config file %s failed", filename)
 		}
 	}
 	return nil
@@ -183,16 +180,16 @@ func loadFileImports(l *flatten.LayeredStorage, p *flatten.Properties, activePro
 		Imports []string `value:"${spring.app.imports:=}"`
 	}
 	if err := conf.Bind(flatten.NewPropertiesStorage(p), &i); err != nil {
-		return err
+		return errutil.Explain(err, "bind imports config failed")
 	}
 	for _, source := range checkDuplicates(i.Imports) {
 		str, err := conf.Resolve(l, source)
 		if err != nil {
-			return err
+			return errutil.Explain(err, "resolve import path %s failed", source)
 		}
 		c, err := conf.Load(str)
 		if err != nil {
-			return err
+			return errutil.Explain(err, "load import file %s failed", str)
 		}
 		if activeProfiles == nil {
 			l.AddStorage(flatten.StorageAppFile, flatten.NewPropertiesStorage(c), str)

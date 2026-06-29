@@ -41,11 +41,11 @@ func EvalExpr(input string, val string) (bool, error) {
 	maps.Copy(env, funcMap)
 	r, err := expr.Eval(input, env)
 	if err != nil {
-		return false, err
+		return false, errutil.Explain(err, "expression %q evaluation failed, $=%q", input, val)
 	}
 	ret, ok := r.(bool)
 	if !ok {
-		return false, errutil.Explain(nil, "expression must return a boolean value")
+		return false, errutil.Explain(nil, "expression %q must return a boolean value, got %T", input, r)
 	}
 	return ret, nil
 }

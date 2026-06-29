@@ -43,7 +43,7 @@ func TestTagArg(t *testing.T) {
 
 		tag := Tag("")
 		_, err := tag.GetArgValue(c, reflect.TypeFor[string]())
-		assert.Error(t, err).String("missing tag for property binding")
+		assert.Error(t, err).Matches("missing tag for property binding")
 	})
 
 	t.Run("bind success", func(t *testing.T) {
@@ -167,7 +167,7 @@ func TestArgList_New(t *testing.T) {
 	t.Run("invalid function type", func(t *testing.T) {
 		fnType := reflect.TypeFor[int]()
 		_, err := NewArgList(fnType, nil)
-		assert.Error(t, err).Matches("invalid function type int")
+		assert.Error(t, err).Matches("expected function type, got int")
 	})
 
 	t.Run("mixed index and non-index args", func(t *testing.T) {
@@ -407,11 +407,11 @@ func TestCallable_New(t *testing.T) {
 
 	t.Run("nil function", func(t *testing.T) {
 		_, err := NewCallable(nil, nil)
-		assert.Error(t, err).Matches("invalid function type <nil>")
+		assert.Error(t, err).Matches("callable function cannot be nil")
 
 		var fn func() string
 		_, err = NewCallable(fn, nil)
-		assert.Error(t, err).Matches("function cannot be nil")
+		assert.Error(t, err).Matches("callable function value is nil")
 	})
 
 	t.Run("invalid function type", func(t *testing.T) {
@@ -421,7 +421,7 @@ func TestCallable_New(t *testing.T) {
 			Value("test"),
 		}
 		_, err := NewCallable(fn, args)
-		assert.Error(t, err).Matches("invalid function type string")
+		assert.Error(t, err).Matches("callable function must be a function type, got string")
 	})
 
 	t.Run("error in argument processing", func(t *testing.T) {
@@ -599,12 +599,12 @@ func TestBindArg_Bind(t *testing.T) {
 	t.Run("nil function", func(t *testing.T) {
 		assert.Panic(t, func() {
 			Bind(nil)
-		}, "invalid function type <nil>")
+		}, "callable function cannot be nil")
 
 		var fn func() string
 		assert.Panic(t, func() {
 			Bind(fn)
-		}, "function cannot be nil")
+		}, "callable function value is nil")
 	})
 
 	t.Run("function returning only error", func(t *testing.T) {
@@ -624,7 +624,7 @@ func TestBindArg_Bind(t *testing.T) {
 		fn := "not a function"
 		assert.Panic(t, func() {
 			Bind(fn)
-		}, "invalid function type string")
+		}, "callable function must be a function type, got string")
 	})
 
 	t.Run("function returning only error", func(t *testing.T) {

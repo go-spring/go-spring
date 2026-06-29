@@ -55,11 +55,11 @@ func main() {
 
 	// Here `s` is not referenced by any other object,
 	// so we need to register it as a root object.
-	s := &Service{}
-	gs.Provide(s).Export(gs.As[gs.Rooter]())
+	svrBean := gs.Provide(&Service{}).Export(gs.As[gs.Rooter]())
 
 	// Define a handler to GET a Redis key value.
 	http.HandleFunc("/get", func(w http.ResponseWriter, r *http.Request) {
+		s := svrBean.Interface().(*Service)
 		str, err := s.Redis.Get(r.Context(), "key").Result()
 		if err != nil {
 			_, _ = w.Write([]byte(err.Error()))
@@ -70,6 +70,7 @@ func main() {
 
 	// Define a handler to SET a Redis key value.
 	http.HandleFunc("/set", func(w http.ResponseWriter, r *http.Request) {
+		s := svrBean.Interface().(*Service)
 		str, err := s.Redis.Set(r.Context(), "key", "value", 0).Result()
 		if err != nil {
 			_, _ = w.Write([]byte(err.Error()))

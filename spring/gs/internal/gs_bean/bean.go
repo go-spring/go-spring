@@ -175,7 +175,7 @@ func (d *BeanDefinition) GetArgValue(_ gs.ArgContext, t reflect.Type) (reflect.V
 	v := d.GetValue()
 	if !v.Type().AssignableTo(t) {
 		err := errutil.Explain(nil, "cannot assign type %s to type %s", v.Type().String(), t.String())
-		return reflect.Value{}, err
+		return reflect.Value{}, gs_arg.ArgErr(err, d)
 	}
 	return v, nil
 }
@@ -199,24 +199,24 @@ func validLifeCycleFunc(fn any, beanType reflect.Type) {
 	}
 	v := reflect.ValueOf(fn)
 	if v.Kind() != reflect.Func {
-		panic(fmt.Sprintf("invalid lifecycle function: got %T, want func(bean) or func(bean) error", fn))
+		panic(fmt.Sprintf("lifecycle function must be a function type, got %T", fn))
 	}
 	if v.IsNil() {
-		panic("lifecycle function cannot be nil")
+		panic("lifecycle function value is nil")
 	}
 	fnType := v.Type()
-	if !typeutil.IsFuncType(fnType) || fnType.NumIn() != 1 {
-		panic(fmt.Sprintf("invalid lifecycle function: got %T, want func(bean) or func(bean) error", fn))
+	if fnType.NumIn() != 1 {
+		panic(fmt.Sprintf("lifecycle function must accept exactly one argument, got %d", fnType.NumIn()))
 	}
 	if t := fnType.In(0); t.Kind() == reflect.Interface {
 		if !beanType.Implements(t) {
-			panic(fmt.Sprintf("invalid lifecycle function: got %T, want func(bean) or func(bean) error", fn))
+			panic(fmt.Sprintf("bean type %v does not implement interface %v", beanType, t))
 		}
 	} else if t != beanType {
-		panic(fmt.Sprintf("invalid lifecycle function: got %T, want func(bean) or func(bean) error", fn))
+		panic(fmt.Sprintf("lifecycle function argument type %v does not match bean type %v", t, beanType))
 	}
 	if !typeutil.ReturnNothing(fnType) && !typeutil.ReturnOnlyError(fnType) {
-		panic(fmt.Sprintf("invalid lifecycle function: got %T, want func(bean) or func(bean) error", fn))
+		panic(fmt.Sprintf("lifecycle function must return nothing or only error, got %v", fnType))
 	}
 }
 
@@ -284,17 +284,13 @@ func (d *BeanDefinition) Export(exports ...reflect.Type) *BeanDefinition {
 	return d
 }
 
-func checkConditions(conditions []gs.Condition) {
+// Condition appends conditions for the bean.
+func (d *BeanDefinition) Condition(conditions ...gs.Condition) *BeanDefinition {
 	for _, c := range conditions {
 		if c == nil {
 			panic("conditions cannot contains nil")
 		}
 	}
-}
-
-// Condition appends conditions for the bean.
-func (d *BeanDefinition) Condition(conditions ...gs.Condition) *BeanDefinition {
-	checkConditions(conditions)
 	d.conditions = append(d.conditions, conditions...)
 	return d
 }
@@ -377,7 +373,7 @@ func (d *BeanDefinition) Caller(skip int) *BeanDefinition {
 
 // String returns a human-readable description of the bean.
 func (d *BeanDefinition) String() string {
-	return fmt.Sprintf("name=%s %s", d.name, d.fileLine)
+	return fmt.Sprintf("%s(%s)", d.name, d.fileLine)
 }
 
 // NewBean creates a new BeanDefinition.
@@ -450,7 +446,7 @@ func NewBean(objOrCtor any, ctorArgs ...gs.Arg) *BeanDefinition {
 		var err error
 		f, err = gs_arg.NewCallable(objOrCtor, ctorArgs)
 		if err != nil {
-			panic(err)
+			panic(errutil.Explain(err, "constructor binding failed"))
 		}
 
 		var in0 reflect.Type

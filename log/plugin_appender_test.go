@@ -18,6 +18,7 @@ package log
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -191,5 +192,21 @@ func TestRollingFileAppender(t *testing.T) {
 		}
 		err := a.Start()
 		assert.Error(t, err).Matches("open /not-exist-dir/file.log.*: no such file or directory")
+	})
+
+	t.Run("File name uses truncated interval time", func(t *testing.T) {
+		dir := t.TempDir()
+		w := &RollingFileWriter{
+			fileDir:  dir,
+			fileName: "app.log",
+			interval: time.Hour,
+			maxAge:   time.Hour,
+		}
+		file, err := w.Rotate()
+		assert.Error(t, err).Nil()
+		defer w.Close()
+
+		want := "app.log." + time.Now().Truncate(time.Hour).Format("20060102150405")
+		assert.That(t, filepath.Base(file.Name())).Equal(want)
 	})
 }

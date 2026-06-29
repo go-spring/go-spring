@@ -83,7 +83,7 @@ func (r *Value[T]) onRefresh(prop flatten.Storage, param conf.BindParam, commit 
 	t := reflect.TypeFor[T]()
 	v := reflect.New(t).Elem()
 	if err := conf.BindValue(prop, v, t, param, nil); err != nil {
-		return err
+		return errutil.Explain(err, "bind dynamic value failed")
 	}
 	if commit {
 		r.v.Store(v.Interface())
@@ -170,9 +170,12 @@ func (p *Properties) Refresh(prop flatten.Storage) (err error) {
 	// First pre-refresh all dynamic values;
 	// if validation passes, commit the updates.
 	if err = p.refreshObjects(p.objects, false); err != nil {
-		return err
+		return errutil.Explain(err, "validate dynamic configuration (pre-refresh) failed")
 	}
-	return p.refreshObjects(p.objects, true)
+	if err = p.refreshObjects(p.objects, true); err != nil {
+		return errutil.Explain(err, "apply dynamic configuration (commit) failed")
+	}
+	return nil
 }
 
 // Errors represents a collection of errors.
@@ -209,7 +212,9 @@ func (p *Properties) refreshObjects(objects []*refreshObject, commit bool) error
 	ret := &Errors{}
 	for _, obj := range objects {
 		err := obj.target.onRefresh(p.prop, obj.param, commit)
-		ret.Append(err)
+		if err != nil {
+			ret.Append(errutil.Explain(err, "refresh dynamic object %s (key=%s) failed", obj.param.Path, obj.param.Key))
+		}
 	}
 	if ret.Len() == 0 {
 		return nil
@@ -259,11 +264,14 @@ func (p *Properties) RefreshField(v reflect.Value, param conf.BindParam) error {
 	if v.Kind() == reflect.Pointer {
 		ok, err := f.Do(v.Interface(), param)
 		if err != nil {
-			return err
+			return errutil.Explain(err, "refresh dynamic field %s (key=%s) failed", param.Path, param.Key)
 		}
 		if ok {
 			return nil
 		}
 	}
-	return conf.BindValue(p.prop, v.Elem(), v.Elem().Type(), param, f)
+	if err := conf.BindValue(p.prop, v.Elem(), v.Elem().Type(), param, f); err != nil {
+		return errutil.Explain(err, "refresh dynamic field %s (key=%s) failed", param.Path, param.Key)
+	}
+	return nil
 }

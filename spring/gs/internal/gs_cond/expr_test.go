@@ -28,7 +28,7 @@ import (
 func TestEvalExpr(t *testing.T) {
 	t.Run("doesn't return bool", func(t *testing.T) {
 		_, err := EvalExpr("$", "3")
-		assert.Error(t, err).Matches("expression must return a boolean value")
+		assert.Error(t, err).Matches("expression \"\\$\" must return a boolean value, got string")
 	})
 
 	t.Run("simple integer comparison", func(t *testing.T) {

@@ -134,6 +134,7 @@ func Run() {
 // Run starts the application, applies configuration, and waits for
 // termination signals (e.g., SIGTERM, Ctrl+C) to trigger a graceful shutdown.
 func (s *AppStarter) Run() {
+	defer log.Destroy()
 
 	// Error has already been logged
 	if err := s.startApp(); err != nil {
@@ -155,52 +156,6 @@ func (s *AppStarter) Run() {
 	// Wait for shutdown to complete
 	// Blocks until all servers have stopped and cleanup is done
 	s.app.WaitForShutdown()
-}
-
-// Start runs the application and returns a function to stop it.
-// Convenience wrapper that creates a new AppStarter.
-//
-// Returns:
-//   - stop: Function to gracefully shutdown the application
-//   - err: Error if application failed to start (nil on success)
-//
-// Usage:
-//
-//	stop, err := gs.Start()
-//	if err != nil {
-//	    log.Fatal(err)
-//	}
-//	defer stop() // Ensure cleanup
-//	// ... do work ...
-func Start() (stop func(), err error) {
-	return newApp().Start()
-}
-
-// Start runs the application and returns a function to stop it.
-//
-// Returns:
-//   - stop: Closure that calls ShutDown() and WaitForShutdown()
-//   - err: Startup error if startApp() fails
-//
-// Behavior:
-//   - Calls startApp() synchronously to initialize application
-//   - On success: Returns stop function for manual shutdown control
-//   - On error: Returns no-op function and error
-//
-// Caller Responsibility:
-//   - Must call stop() to ensure graceful shutdown
-//   - Should handle startup errors appropriately
-//   - Can use defer for guaranteed cleanup
-func (s *AppStarter) Start() (stop func(), err error) {
-
-	if err = s.startApp(); err != nil {
-		return func() {}, err
-	}
-
-	return func() {
-		s.app.ShutDown()
-		s.app.WaitForShutdown()
-	}, nil
 }
 
 // RunTest runs a test function using a new application instance.
@@ -235,9 +190,12 @@ func RunTest(t *testing.T, f any) {
 // the test object, registers it as a root bean, initializes the application,
 // starts the application, executes the test, and ensures graceful shutdown.
 func (s *AppStarter) RunTest(t *testing.T, f any) {
+	defer log.Destroy()
+
 	ft, fv, err := validateRunTestFunc(f)
 	if err != nil {
-		t.Fatal(err)
+		t.Error(err)
+		return
 	}
 	obj := reflect.New(ft.In(0).Elem())
 
@@ -247,11 +205,15 @@ func (s *AppStarter) RunTest(t *testing.T, f any) {
 	// Force autowire to be nullable
 	s.app.Property("spring.force-autowire-is-nullable", "true")
 
-	stop, err := s.Start()
-	if err != nil {
-		t.Fatal(err)
+	if err := s.startApp(); err != nil {
+		t.Error(err)
+		return
 	}
-	defer func() { stop() }()
+
+	defer func() {
+		s.app.ShutDown()
+		s.app.WaitForShutdown()
+	}()
 
 	// Execute the test function
 	fv.Call([]reflect.Value{obj})

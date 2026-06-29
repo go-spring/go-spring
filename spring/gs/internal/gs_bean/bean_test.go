@@ -111,30 +111,30 @@ func TestBeanDefinition(t *testing.T) {
 		assert.Panic(t, func() {
 			var fn func(*TestBean)
 			bean.Init(fn)
-		}, "lifecycle function cannot be nil")
+		}, "lifecycle function value is nil")
 		assert.Panic(t, func() {
 			bean.Init(3)
-		}, "invalid lifecycle function: got int, want func\\(bean\\) or func\\(bean\\) error")
+		}, "lifecycle function must be a function type, got int")
 		assert.Panic(t, func() {
 			bean.Init(func() {})
-		}, "invalid lifecycle function: got func\\(\\), want func\\(bean\\) or func\\(bean\\) error")
+		}, "lifecycle function must accept exactly one argument, got 0")
 		assert.Panic(t, func() {
 			bean.Init(func(int, string) {})
-		}, "invalid lifecycle function: got func\\(int, string\\), want func\\(bean\\) or func\\(bean\\) error")
+		}, "lifecycle function must accept exactly one argument, got 2")
 		assert.Panic(t, func() {
 			bean.Init(func(io.Reader) {})
-		}, "invalid lifecycle function: got func\\(io.Reader\\), want func\\(bean\\) or func\\(bean\\) error")
+		}, "bean type \\*gs_bean.TestBean does not implement interface io.Reader")
 		assert.Panic(t, func() {
 			bean.Init(func(*bytes.Buffer) {})
-		}, "invalid lifecycle function: got func\\(\\*bytes.Buffer\\), want func\\(bean\\) or func\\(bean\\) error")
+		}, "lifecycle function argument type \\*bytes.Buffer does not match bean type \\*gs_bean.TestBean")
 		bean.Init(func(TestBeanInterface) {})
 		assert.Panic(t, func() {
 			bean.Init(func(TestBeanInterface) int { return 0 })
-		}, "invalid lifecycle function: got func\\(gs_bean.TestBeanInterface\\) int, want func\\(bean\\) or func\\(bean\\) error")
+		}, "lifecycle function must return nothing or only error, got func\\(gs_bean.TestBeanInterface\\) int")
 		bean.Init(func(TestBeanInterface) error { return nil })
 		assert.Panic(t, func() {
 			bean.Init(func(TestBeanInterface) (int, error) { return 0, nil })
-		}, "invalid lifecycle function: got func\\(gs_bean.TestBeanInterface\\) \\(int, error\\), want func\\(bean\\) or func\\(bean\\) error")
+		}, "lifecycle function must return nothing or only error, got func\\(gs_bean.TestBeanInterface\\) \\(int, error\\)")
 		bean.Init(InitTestBean)
 		assert.That(t, funcutil.FuncName(bean.GetInit())).Equal("gs_bean.InitTestBean")
 		bean.Init(InitTestBeanV2)
@@ -157,30 +157,30 @@ func TestBeanDefinition(t *testing.T) {
 		assert.Panic(t, func() {
 			var fn func(*TestBean)
 			bean.Destroy(fn)
-		}, "lifecycle function cannot be nil")
+		}, "lifecycle function value is nil")
 		assert.Panic(t, func() {
 			bean.Destroy(3)
-		}, "invalid lifecycle function: got int, want func\\(bean\\) or func\\(bean\\) error")
+		}, "lifecycle function must be a function type, got int")
 		assert.Panic(t, func() {
 			bean.Destroy(func() {})
-		}, "invalid lifecycle function: got func\\(\\), want func\\(bean\\) or func\\(bean\\) error")
+		}, "lifecycle function must accept exactly one argument, got 0")
 		assert.Panic(t, func() {
 			bean.Destroy(func(int, string) {})
-		}, "invalid lifecycle function: got func\\(int, string\\), want func\\(bean\\) or func\\(bean\\) error")
+		}, "lifecycle function must accept exactly one argument, got 2")
 		assert.Panic(t, func() {
 			bean.Destroy(func(io.Reader) {})
-		}, "invalid lifecycle function: got func\\(io.Reader\\), want func\\(bean\\) or func\\(bean\\) error")
+		}, "bean type \\*gs_bean.TestBean does not implement interface io.Reader")
 		assert.Panic(t, func() {
 			bean.Destroy(func(*bytes.Buffer) {})
-		}, "invalid lifecycle function: got func\\(\\*bytes.Buffer\\), want func\\(bean\\) or func\\(bean\\) error")
+		}, "lifecycle function argument type \\*bytes.Buffer does not match bean type \\*gs_bean.TestBean")
 		bean.Destroy(func(TestBeanInterface) {})
 		assert.Panic(t, func() {
 			bean.Destroy(func(TestBeanInterface) int { return 0 })
-		}, "invalid lifecycle function: got func\\(gs_bean.TestBeanInterface\\) int, want func\\(bean\\) or func\\(bean\\) error")
+		}, "lifecycle function must return nothing or only error, got func\\(gs_bean.TestBeanInterface\\) int")
 		bean.Destroy(func(TestBeanInterface) error { return nil })
 		assert.Panic(t, func() {
 			bean.Destroy(func(TestBeanInterface) (int, error) { return 0, nil })
-		}, "invalid lifecycle function: got func\\(gs_bean.TestBeanInterface\\) \\(int, error\\), want func\\(bean\\) or func\\(bean\\) error")
+		}, "lifecycle function must return nothing or only error, got func\\(gs_bean.TestBeanInterface\\) \\(int, error\\)")
 		bean.Destroy(DestroyTestBean)
 		assert.That(t, funcutil.FuncName(bean.GetDestroy())).Equal("gs_bean.DestroyTestBean")
 		bean.Destroy(DestroyTestBeanV2)

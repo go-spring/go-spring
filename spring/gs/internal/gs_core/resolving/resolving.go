@@ -79,14 +79,9 @@ func (c *Resolving) Provide(objOrCtor any, args ...gs.Arg) *gs_bean.BeanDefiniti
 }
 
 // Refresh performs the full container initialization lifecycle.
-// Steps:
-// 1. Merge globally registered beans and container beans.
-// 2. Apply registered modules that satisfy their conditions.
-// 3. Set the container state to Refreshing.
-// 4. Scan configuration beans and register eligible methods as beans.
-// 5. Resolve all beans against their conditions, marking inactive ones as deleted.
-// 6. Check for duplicate beans by type and name.
-// 7. Set the container state to Refreshed.
+// It merges beans, applies modules, scans configurations, resolves conditions,
+// and checks for duplicates. Returns an error if the container is not in the
+// default state or if any step fails.
 func (c *Resolving) Refresh(p flatten.Storage) error {
 	if c.state != RefreshDefault {
 		return errutil.Explain(nil, "container is already refreshing or refreshed")
@@ -95,21 +90,21 @@ func (c *Resolving) Refresh(p flatten.Storage) error {
 
 	c.beans = append(gs_init.Beans(), c.beans...)
 	if err := c.applyModules(p); err != nil {
-		return err
+		return errutil.Explain(err, "apply modules failed")
 	}
 
 	c.state = Refreshing
 
 	if err := c.scanConfigurations(); err != nil {
-		return err
+		return errutil.Explain(err, "scan configurations failed")
 	}
 
 	if err := c.resolveBeans(p); err != nil {
-		return err
+		return errutil.Explain(err, "resolve beans failed")
 	}
 
 	if err := c.checkDuplicateBeans(); err != nil {
-		return err
+		return errutil.Explain(err, "check duplicate beans failed")
 	}
 
 	c.state = Refreshed
@@ -117,7 +112,7 @@ func (c *Resolving) Refresh(p flatten.Storage) error {
 }
 
 // applyModules iterates over all globally registered modules and executes
-// those whose conditions match the given context.
+// those without a condition or whose conditions match the given context.
 func (c *Resolving) applyModules(p flatten.Storage) error {
 	ctx := &ConditionContext{p: p, c: c}
 	for _, m := range gs_init.Modules() {
@@ -146,7 +141,7 @@ func (c *Resolving) scanConfigurations() error {
 		}
 		beans, err := c.scanConfiguration(b)
 		if err != nil {
-			return errutil.Explain(err, "failed to scan configuration bean [%s]", b)
+			return errutil.Explain(err, "failed to scan configuration bean %s", b)
 		}
 		c.beans = append(c.beans, beans...)
 	}
@@ -155,7 +150,7 @@ func (c *Resolving) scanConfigurations() error {
 
 // scanConfiguration scans the methods of a configuration bean (bd) and
 // registers methods as new beans according to include/exclude regex patterns.
-//   - If Includes is empty, defaults to methods matching "New*".
+//   - If Includes is empty, defaults to methods matching "New.*".
 //   - Methods matching any Exclude pattern are skipped.
 //   - Each registered bean gets a name "<ConfigBeanName>_<MethodName>"
 //     and a condition OnBeanID of the configuration bean.
@@ -241,7 +236,7 @@ func (c *Resolving) resolveBeans(p flatten.Storage) error {
 	ctx := &ConditionContext{p: p, c: c}
 	for _, b := range c.beans {
 		if err := ctx.resolveBean(b); err != nil {
-			return errutil.Explain(err, "failed to resolve bean [%s]", b)
+			return errutil.Explain(err, "failed to resolve bean %s", b)
 		}
 	}
 	return nil
@@ -264,7 +259,7 @@ func (c *ConditionContext) resolveBean(b *gs_bean.BeanDefinition) error {
 	b.SetStatus(gs_bean.StatusResolving)
 	for _, cond := range b.Conditions() {
 		if ok, err := cond.Matches(c); err != nil {
-			return err
+			return errutil.Explain(err, "condition matches failed for bean %s", b)
 		} else if !ok {
 			b.SetStatus(gs_bean.StatusDeleted)
 			return nil
@@ -299,7 +294,7 @@ func (c *ConditionContext) Find(beanID gs.BeanID) ([]gs.ConditionBean, error) {
 			continue
 		}
 		if err := c.resolveBean(b); err != nil {
-			return nil, err
+			return nil, errutil.Explain(err, "find bean by BeanID=%s failed", beanID)
 		}
 		if b.GetStatus() == gs_bean.StatusDeleted {
 			continue
@@ -319,7 +314,7 @@ func (c *Resolving) checkDuplicateBeans() error {
 		for _, t := range append(b.GetExports(), b.GetType()) {
 			beanID := gs.BeanID{Name: b.GetName(), Type: t}
 			if d, ok := beansByID[beanID]; ok {
-				return errutil.Explain(nil, "found duplicate beans [%s] [%s]", b, d)
+				return errutil.Explain(nil, "found duplicate beans %s and %s", b, d)
 			}
 			beansByID[beanID] = b
 		}

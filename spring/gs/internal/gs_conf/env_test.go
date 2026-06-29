@@ -31,8 +31,7 @@ func TestExtractEnvironments(t *testing.T) {
 		if len(environ) > 0 {
 			t.Skipf("Skipping test as environment is not empty")
 		}
-		p, err := extractEnvironments()
-		assert.That(t, err).Nil()
+		p := extractEnvironments()
 		assert.That(t, p).NotNil()
 	})
 
@@ -46,8 +45,7 @@ func TestExtractEnvironments(t *testing.T) {
 			_ = os.Unsetenv("GS_APP_NAME")
 		}()
 
-		p, err := extractEnvironments()
-		assert.That(t, err).Nil()
+		p := extractEnvironments()
 		v, ok := p.Get("db.host")
 		assert.That(t, ok).True()
 		assert.That(t, v).Equal("localhost")
@@ -67,8 +65,7 @@ func TestExtractEnvironments(t *testing.T) {
 			_ = os.Unsetenv("PATH")
 		}()
 
-		p, err := extractEnvironments()
-		assert.That(t, err).Nil()
+		p := extractEnvironments()
 		v, ok := p.Get("API_KEY")
 		assert.That(t, ok).True()
 		assert.That(t, v).Equal("secret123")
@@ -87,8 +84,7 @@ func TestExtractEnvironments(t *testing.T) {
 			_ = os.Unsetenv("GS_LOG_LEVEL")
 		}()
 
-		p, err := extractEnvironments()
-		assert.That(t, err).Nil()
+		p := extractEnvironments()
 		v, ok := p.Get("server.url")
 		assert.That(t, ok).True()
 		assert.That(t, v).Equal("https://api.example.com")
@@ -106,8 +102,7 @@ func TestExtractEnvironments(t *testing.T) {
 			_ = os.Unsetenv("GS_EMPTY_VAR")
 		}()
 
-		p, err := extractEnvironments()
-		assert.That(t, err).Nil()
+		p := extractEnvironments()
 		v, ok := p.Get("empty.var")
 		assert.That(t, ok).True()
 		assert.That(t, v).Equal("")
@@ -119,8 +114,7 @@ func TestExtractEnvironments(t *testing.T) {
 			_ = os.Unsetenv("GS_FORMULA")
 		}()
 
-		p, err := extractEnvironments()
-		assert.That(t, err).Nil()
+		p := extractEnvironments()
 		v, ok := p.Get("formula")
 		assert.That(t, ok).True()
 		assert.That(t, v).Equal("x=y+z")
@@ -136,8 +130,7 @@ func TestExtractEnvironments(t *testing.T) {
 			_ = os.Unsetenv("DATABASE_REPLICA_HOST")
 		}()
 
-		p, err := extractEnvironments()
-		assert.That(t, err).Nil()
+		p := extractEnvironments()
 		v, ok := p.Get("database.primary.host")
 		assert.That(t, ok).True()
 		assert.That(t, v).Equal("db1.example.com")

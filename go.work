@@ -4,9 +4,9 @@ use (
 	./examples/bookman
 	./examples/chatAI
 	./examples/miniapi
-	./examples/noweb
 	./examples/startup
 	./gs/gs
+	./layout
 	./log
 	./log/benchmarks/fields
 	./log/benchmarks/logs

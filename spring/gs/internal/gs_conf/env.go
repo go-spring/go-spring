@@ -32,12 +32,12 @@ import (
 //
 // All other variables are stored using their original key and value.
 // Malformed environment variables (e.g., "=value") are ignored.
-func extractEnvironments() (*flatten.Properties, error) {
+func extractEnvironments() *flatten.Properties {
 
 	p := flatten.NewProperties(nil)
 	environs := os.Environ()
 	if len(environs) == 0 {
-		return p, nil
+		return p
 	}
 
 	const prefix = "GS_"
@@ -59,5 +59,5 @@ func extractEnvironments() (*flatten.Properties, error) {
 		}
 		p.Set(propKey, v)
 	}
-	return p, nil
+	return p
 }

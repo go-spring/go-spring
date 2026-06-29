@@ -287,12 +287,13 @@ type RollingFileWriter struct {
 // This method is not concurrency-safe.
 func (w *RollingFileWriter) Rotate() (*File, error) {
 	now := time.Now()
-	newTime := now.Truncate(w.interval).Unix()
+	truncated := now.Truncate(w.interval)
+	newTime := truncated.Unix()
 	if newTime <= w.currTime {
 		return w.currFile, nil
 	}
 
-	formatTime := now.Format("20060102150405")
+	formatTime := truncated.Format("20060102150405")
 	fileName := w.fileName + "." + formatTime
 	filePath := filepath.Join(w.fileDir, fileName)
 	file, err := OpenFile(filePath)

@@ -550,7 +550,7 @@ func TestInjecting(t *testing.T) {
 			}),
 		}
 		err := r.Refresh(extractBeans(beans))
-		assert.Error(t, err).Matches("name=.*  returned nil")
+		assert.Error(t, err).Matches("wire .* returned nil")
 	})
 
 	t.Run("wire error - primitive type", func(t *testing.T) {
