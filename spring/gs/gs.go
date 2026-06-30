@@ -95,7 +95,7 @@ import (
 )
 
 const (
-	Version = "go-spring@v1.3.2"
+	Version = "go-spring@v1.3.3"
 	Website = "https://go-spring.org/"
 )
 

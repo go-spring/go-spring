@@ -3,12 +3,12 @@
 package order
 
 import (
-	"fmt"
 	"strconv"
 
 	"GS_PROJECT_MODULE/internal-domain/domain/order"
 
 	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/errutil"
 )
 
 func init() {
@@ -53,7 +53,7 @@ func (r *Repo) Save(o *order.Order) error {
 func (r *Repo) FindByID(id string) (*order.Order, error) {
 	o, ok := r.orders[id]
 	if !ok {
-		return nil, fmt.Errorf("order %s not found", id)
+		return nil, errutil.Explain(nil, "order %s not found", id)
 	}
 	return o, nil
 }
@@ -61,7 +61,7 @@ func (r *Repo) FindByID(id string) (*order.Order, error) {
 // Update persists changes to an existing order.
 func (r *Repo) Update(o *order.Order) error {
 	if _, ok := r.orders[o.ID]; !ok {
-		return fmt.Errorf("order %s not found", o.ID)
+		return errutil.Explain(nil, "order %s not found", o.ID)
 	}
 	r.orders[o.ID] = o
 	return nil

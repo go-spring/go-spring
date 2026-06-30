@@ -1,8 +1,9 @@
 package order
 
 import (
-	"fmt"
 	"time"
+
+	"go-spring.org/stdlib/errutil"
 )
 
 // Status represents the lifecycle state of an order.
@@ -45,7 +46,7 @@ func NewOrder(userID int64, title string, amount float64) *Order {
 // Pay transitions the order from Pending to Paid and records a domain event.
 func (o *Order) Pay() error {
 	if o.Status != StatusPending {
-		return fmt.Errorf("order %s cannot be paid: current status %v", o.ID, o.Status)
+		return errutil.Explain(nil, "order %s cannot be paid: current status %v", o.ID, o.Status)
 	}
 	o.Status = StatusPaid
 	o.events = append(o.events, OrderPaidEvent{OrderID: o.ID, PaidAt: time.Now()})
@@ -55,7 +56,7 @@ func (o *Order) Pay() error {
 // Ship transitions the order from Paid to Shipped.
 func (o *Order) Ship() error {
 	if o.Status != StatusPaid {
-		return fmt.Errorf("order %s cannot be shipped: current status %v", o.ID, o.Status)
+		return errutil.Explain(nil, "order %s cannot be shipped: current status %v", o.ID, o.Status)
 	}
 	o.Status = StatusShipped
 	return nil

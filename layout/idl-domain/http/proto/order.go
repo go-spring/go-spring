@@ -3,13 +3,13 @@
 package proto
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
+
+	"go-spring.org/stdlib/errutil"
 )
 
-var _ = errors.New
 var _ = strings.Count
 var _ = http.NewServeMux
 
@@ -45,9 +45,9 @@ type OrderStatusAsString OrderStatus
 // MarshalJSON implements custom JSON encoding for the enum as a string
 func (x OrderStatusAsString) MarshalJSON() ([]byte, error) {
 	if s, ok := OrderStatus_name[OrderStatus(x)]; ok {
-		return []byte(fmt.Sprintf("\"%s\"", s)), nil
+		return fmt.Appendf(nil, "\"%s\"", s), nil
 	}
-	return nil, fmt.Errorf("invalid OrderStatus: %d", x)
+	return nil, errutil.Explain(nil, "invalid OrderStatus: %d", x)
 }
 
 // UnmarshalJSON implements custom JSON decoding for the enum from a string
@@ -57,7 +57,7 @@ func (x *OrderStatusAsString) UnmarshalJSON(data []byte) error {
 		*x = OrderStatusAsString(v)
 		return nil
 	}
-	return fmt.Errorf("invalid OrderStatus value: %q", str)
+	return errutil.Explain(nil, "invalid OrderStatus value: %q", str)
 }
 
 // OneOfOrderStatus is usually used for validation.
@@ -151,13 +151,13 @@ func (x *Order) Binding(r *http.Request) error {
 // Validate checks field values using generated validation expressions
 func (x *Order) Validate() error {
 	if !(len(x.Id) > 0 && len(x.Id) <= 64) {
-		return errors.New("validate failed on Order.Id")
+		return errutil.Explain(nil, "validate failed on Order.Id")
 	}
 	if !(len(x.UserId) > 0 && len(x.UserId) <= 64) {
-		return errors.New("validate failed on Order.UserId")
+		return errutil.Explain(nil, "validate failed on Order.UserId")
 	}
 	if !(x.Amount >= MIN_AMOUNT && x.Amount <= MAX_AMOUNT) {
-		return errors.New("validate failed on Order.Amount")
+		return errutil.Explain(nil, "validate failed on Order.Amount")
 	}
 	return nil
 }
@@ -238,13 +238,13 @@ func (x *CreateOrderReq) Binding(r *http.Request) error {
 // Validate checks field values using generated validation expressions
 func (x *CreateOrderReq) Validate() error {
 	if !(len(x.Id) > 0 && len(x.Id) <= 64) {
-		return errors.New("validate failed on CreateOrderReq.Id")
+		return errutil.Explain(nil, "validate failed on CreateOrderReq.Id")
 	}
 	if !(len(x.UserId) > 0 && len(x.UserId) <= 64) {
-		return errors.New("validate failed on CreateOrderReq.UserId")
+		return errutil.Explain(nil, "validate failed on CreateOrderReq.UserId")
 	}
 	if !(x.Amount >= MIN_AMOUNT && x.Amount <= MAX_AMOUNT) {
-		return errors.New("validate failed on CreateOrderReq.Amount")
+		return errutil.Explain(nil, "validate failed on CreateOrderReq.Amount")
 	}
 	return nil
 }
@@ -373,7 +373,7 @@ func (x *PayOrderReq) Binding(r *http.Request) error {
 // Validate checks field values using generated validation expressions
 func (x *PayOrderReq) Validate() error {
 	if !(len(x.Id) > 0 && len(x.Id) <= 64) {
-		return errors.New("validate failed on PayOrderReq.Id")
+		return errutil.Explain(nil, "validate failed on PayOrderReq.Id")
 	}
 	return nil
 }
@@ -502,7 +502,7 @@ func (x *ShipOrderReq) Binding(r *http.Request) error {
 // Validate checks field values using generated validation expressions
 func (x *ShipOrderReq) Validate() error {
 	if !(len(x.Id) > 0 && len(x.Id) <= 64) {
-		return errors.New("validate failed on ShipOrderReq.Id")
+		return errutil.Explain(nil, "validate failed on ShipOrderReq.Id")
 	}
 	return nil
 }

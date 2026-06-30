@@ -3,13 +3,11 @@
 package proto
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 )
 
-var _ = errors.New
 var _ = strings.Count
 var _ = http.NewServeMux
 

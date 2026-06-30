@@ -3,9 +3,9 @@ module go-spring.org/starter-grpc
 go 1.26
 
 require (
-	go-spring.org/log v0.1.2
-	go-spring.org/spring v1.3.2
-	go-spring.org/stdlib v0.1.4
+	go-spring.org/log v0.1.3
+	go-spring.org/spring v1.3.3
+	go-spring.org/stdlib v0.1.5
 	google.golang.org/grpc v1.80.0
 	google.golang.org/protobuf v1.36.11
 )

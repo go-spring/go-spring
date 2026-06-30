@@ -7,8 +7,8 @@ require (
 	github.com/go-kit/log v0.2.1
 	github.com/rs/zerolog v1.34.0
 	github.com/sirupsen/logrus v1.9.3
-	go-spring.org/log v0.0.13
-	go-spring.org/stdlib v0.1.4
+	go-spring.org/log v0.1.3
+	go-spring.org/stdlib v0.1.5
 	go.uber.org/multierr v1.11.0
 	go.uber.org/zap v1.27.0
 	gopkg.in/inconshreveable/log15.v2 v2.16.0

@@ -4,8 +4,8 @@ go 1.26
 
 require (
 	github.com/gin-gonic/gin v1.12.0
-	go-spring.org/spring v1.3.2
-	go-spring.org/stdlib v0.1.4
+	go-spring.org/spring v1.3.3
+	go-spring.org/stdlib v0.1.5
 )
 
 require (
@@ -42,7 +42,7 @@ require (
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.3.1 // indirect
 	go-spring.org/gs-mock v0.0.9 // indirect
-	go-spring.org/log v0.1.2 // indirect
+	go-spring.org/log v0.1.3 // indirect
 	go.mongodb.org/mongo-driver/v2 v2.6.0 // indirect
 	golang.org/x/arch v0.26.0 // indirect
 	golang.org/x/crypto v0.50.0 // indirect

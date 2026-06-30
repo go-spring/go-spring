@@ -7,6 +7,7 @@ import (
 	userrepo "GS_PROJECT_MODULE/internal-domain/infra/repo/user"
 
 	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/errutil"
 )
 
 func init() {
@@ -22,7 +23,7 @@ type UserService struct {
 func (s *UserService) GetUser(userID int64) (*dto.UserDTO, error) {
 	user, err := s.UserRepo.FindByID(userID)
 	if err != nil {
-		return nil, err
+		return nil, errutil.Stack(err, "GetUser(%d)", userID)
 	}
 	return assembler.ToDTO(user), nil
 }
@@ -31,7 +32,7 @@ func (s *UserService) GetUser(userID int64) (*dto.UserDTO, error) {
 func (s *UserService) RegisterUser(req *dto.CreateUserReq) (*dto.UserDTO, error) {
 	user := assembler.ToEntity(req)
 	if err := s.UserRepo.Save(user); err != nil {
-		return nil, err
+		return nil, errutil.Stack(err, "RegisterUser save")
 	}
 	return assembler.ToDTO(user), nil
 }

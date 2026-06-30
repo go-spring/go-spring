@@ -6,10 +6,10 @@ require (
 	github.com/go-playground/form/v4 v4.2.1
 	github.com/gomodule/redigo v1.9.3
 	github.com/redis/go-redis/v9 v9.19.0
-	go-spring.org/spring v1.3.2
-	go-spring.org/starter-go-redis v1.3.2
-	go-spring.org/starter-gorm-mysql v1.3.2
-	go-spring.org/starter-redigo v1.3.2
+	go-spring.org/spring v1.3.3
+	go-spring.org/starter-go-redis v1.3.3
+	go-spring.org/starter-gorm-mysql v1.3.3
+	go-spring.org/starter-redigo v1.3.3
 	gorm.io/gorm v1.31.1
 )
 
@@ -31,8 +31,8 @@ require (
 	github.com/smartystreets/goconvey v1.8.1 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
 	go-spring.org/gs-mock v0.0.9 // indirect
-	go-spring.org/log v0.1.2 // indirect
-	go-spring.org/stdlib v0.1.4 // indirect
+	go-spring.org/log v0.1.3 // indirect
+	go-spring.org/stdlib v0.1.5 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	golang.org/x/arch v0.26.0 // indirect
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect

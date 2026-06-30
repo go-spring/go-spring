@@ -486,7 +486,7 @@ func TestInjecting(t *testing.T) {
 			provideBean(NewZeroLogger),
 		}
 		err := r.Refresh(extractBeans(beans))
-		assert.Error(t, err).Matches("missing tag for property binding")
+		assert.Error(t, err).Matches(`property "" does not exist`)
 	})
 
 	t.Run("wire error - missing required dependencies", func(t *testing.T) {

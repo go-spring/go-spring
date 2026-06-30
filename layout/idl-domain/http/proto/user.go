@@ -3,13 +3,13 @@
 package proto
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
+
+	"go-spring.org/stdlib/errutil"
 )
 
-var _ = errors.New
 var _ = strings.Count
 var _ = http.NewServeMux
 
@@ -42,9 +42,9 @@ type UserLevelAsString UserLevel
 // MarshalJSON implements custom JSON encoding for the enum as a string
 func (x UserLevelAsString) MarshalJSON() ([]byte, error) {
 	if s, ok := UserLevel_name[UserLevel(x)]; ok {
-		return []byte(fmt.Sprintf("\"%s\"", s)), nil
+		return fmt.Appendf(nil, "\"%s\"", s), nil
 	}
-	return nil, fmt.Errorf("invalid UserLevel: %d", x)
+	return nil, errutil.Explain(nil, "invalid UserLevel: %d", x)
 }
 
 // UnmarshalJSON implements custom JSON decoding for the enum from a string
@@ -54,7 +54,7 @@ func (x *UserLevelAsString) UnmarshalJSON(data []byte) error {
 		*x = UserLevelAsString(v)
 		return nil
 	}
-	return fmt.Errorf("invalid UserLevel value: %q", str)
+	return errutil.Explain(nil, "invalid UserLevel value: %q", str)
 }
 
 // OneOfUserLevel is usually used for validation.
@@ -152,13 +152,13 @@ func (x *User) Binding(r *http.Request) error {
 // Validate checks field values using generated validation expressions
 func (x *User) Validate() error {
 	if !(len(x.Id) > 0 && len(x.Id) <= 64) {
-		return errors.New("validate failed on User.Id")
+		return errutil.Explain(nil, "validate failed on User.Id")
 	}
 	if !(len(x.Name) > 0 && len(x.Name) <= 64) {
-		return errors.New("validate failed on User.Name")
+		return errutil.Explain(nil, "validate failed on User.Name")
 	}
 	if !(len(x.Email) > 0 && len(x.Email) <= 128) {
-		return errors.New("validate failed on User.Email")
+		return errutil.Explain(nil, "validate failed on User.Email")
 	}
 	return nil
 }
@@ -242,13 +242,13 @@ func (x *RegisterUserReq) Binding(r *http.Request) error {
 // Validate checks field values using generated validation expressions
 func (x *RegisterUserReq) Validate() error {
 	if !(len(x.Id) > 0 && len(x.Id) <= 64) {
-		return errors.New("validate failed on RegisterUserReq.Id")
+		return errutil.Explain(nil, "validate failed on RegisterUserReq.Id")
 	}
 	if !(len(x.Name) > 0 && len(x.Name) <= 64) {
-		return errors.New("validate failed on RegisterUserReq.Name")
+		return errutil.Explain(nil, "validate failed on RegisterUserReq.Name")
 	}
 	if !(len(x.Email) > 0 && len(x.Email) <= 128) {
-		return errors.New("validate failed on RegisterUserReq.Email")
+		return errutil.Explain(nil, "validate failed on RegisterUserReq.Email")
 	}
 	return nil
 }
@@ -378,7 +378,7 @@ func (x *UpgradeUserReq) Binding(r *http.Request) error {
 // Validate checks field values using generated validation expressions
 func (x *UpgradeUserReq) Validate() error {
 	if !(len(x.Id) > 0 && len(x.Id) <= 64) {
-		return errors.New("validate failed on UpgradeUserReq.Id")
+		return errutil.Explain(nil, "validate failed on UpgradeUserReq.Id")
 	}
 	return nil
 }

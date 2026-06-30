@@ -140,13 +140,13 @@ func (s *OrderService) BatchPayOrders(req *dto.BatchPayReq) *dto.BatchPayResp {
 func (s *OrderService) PayOrder(orderID string) (*dto.OrderDTO, error) {
 	order, err := s.OrderRepo.FindByID(orderID)
 	if err != nil {
-		return nil, err
+		return nil, errutil.Stack(err, "PayOrder(%s)", orderID)
 	}
 	if err := order.Pay(); err != nil {
-		return nil, err
+		return nil, errutil.Stack(err, "PayOrder(%s)", orderID)
 	}
 	if err := s.OrderRepo.Update(order); err != nil {
-		return nil, err
+		return nil, errutil.Stack(err, "PayOrder(%s)", orderID)
 	}
 
 	// Publish domain events (integrate with message bus or event store)
@@ -164,13 +164,13 @@ func (s *OrderService) PayOrder(orderID string) (*dto.OrderDTO, error) {
 func (s *OrderService) ShipOrder(orderID string) (*dto.OrderDTO, error) {
 	order, err := s.OrderRepo.FindByID(orderID)
 	if err != nil {
-		return nil, err
+		return nil, errutil.Stack(err, "ShipOrder(%s)", orderID)
 	}
 	if err := order.Ship(); err != nil {
-		return nil, err
+		return nil, errutil.Stack(err, "ShipOrder(%s)", orderID)
 	}
 	if err := s.OrderRepo.Update(order); err != nil {
-		return nil, err
+		return nil, errutil.Stack(err, "ShipOrder(%s)", orderID)
 	}
 	return assembler.ToDTO(order), nil
 }

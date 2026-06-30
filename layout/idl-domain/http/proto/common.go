@@ -3,13 +3,13 @@
 package proto
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
+
+	"go-spring.org/stdlib/errutil"
 )
 
-var _ = errors.New
 var _ = strings.Count
 var _ = http.NewServeMux
 
@@ -38,9 +38,9 @@ type ErrCodeAsString ErrCode
 // MarshalJSON implements custom JSON encoding for the enum as a string
 func (x ErrCodeAsString) MarshalJSON() ([]byte, error) {
 	if s, ok := ErrCode_name[ErrCode(x)]; ok {
-		return []byte(fmt.Sprintf("\"%s\"", s)), nil
+		return fmt.Appendf(nil, "\"%s\"", s), nil
 	}
-	return nil, fmt.Errorf("invalid ErrCode: %d", x)
+	return nil, errutil.Explain(nil, "invalid ErrCode: %d", x)
 }
 
 // UnmarshalJSON implements custom JSON decoding for the enum from a string
@@ -50,7 +50,7 @@ func (x *ErrCodeAsString) UnmarshalJSON(data []byte) error {
 		*x = ErrCodeAsString(v)
 		return nil
 	}
-	return fmt.Errorf("invalid ErrCode value: %q", str)
+	return errutil.Explain(nil, "invalid ErrCode value: %q", str)
 }
 
 // OneOfErrCode is usually used for validation.

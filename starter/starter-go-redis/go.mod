@@ -4,9 +4,9 @@ go 1.26
 
 require (
 	github.com/redis/go-redis/v9 v9.19.0
-	go-spring.org/log v0.1.2
-	go-spring.org/spring v1.3.2
-	go-spring.org/stdlib v0.1.4
+	go-spring.org/log v0.1.3
+	go-spring.org/spring v1.3.3
+	go-spring.org/stdlib v0.1.5
 )
 
 require (

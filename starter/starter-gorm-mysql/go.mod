@@ -3,7 +3,7 @@ module go-spring.org/starter-gorm-mysql
 go 1.26
 
 require (
-	go-spring.org/spring v1.3.2
+	go-spring.org/spring v1.3.3
 	gorm.io/driver/mysql v1.6.0
 	gorm.io/gorm v1.31.1
 )
@@ -24,8 +24,8 @@ require (
 	github.com/smartystreets/goconvey v1.8.1 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
 	go-spring.org/gs-mock v0.0.9 // indirect
-	go-spring.org/log v0.1.2 // indirect
-	go-spring.org/stdlib v0.1.4 // indirect
+	go-spring.org/log v0.1.3 // indirect
+	go-spring.org/stdlib v0.1.5 // indirect
 	golang.org/x/arch v0.26.0 // indirect
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
 	golang.org/x/sys v0.43.0 // indirect

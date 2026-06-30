@@ -2,15 +2,15 @@ module bookman-pro-09
 
 go 1.26
 
-require go-spring.org/spring v1.3.0
+require go-spring.org/spring v1.3.3
 
 require (
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/bytedance/mockey v1.4.6 // indirect
 	github.com/expr-lang/expr v1.17.8 // indirect
 	go-spring.org/gs-mock v0.0.8 // indirect
-	go-spring.org/log v0.1.0 // indirect
-	go-spring.org/stdlib v0.1.2 // indirect
+	go-spring.org/log v0.1.3 // indirect
+	go-spring.org/stdlib v0.1.5 // indirect
 	github.com/gopherjs/gopherjs v1.20.2 // indirect
 	github.com/jtolds/gls v4.20.0+incompatible // indirect
 	github.com/magiconair/properties v1.8.10 // indirect
