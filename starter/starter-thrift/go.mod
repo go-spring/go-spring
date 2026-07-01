@@ -4,9 +4,9 @@ go 1.26
 
 require (
 	github.com/apache/thrift v0.23.0
-	go-spring.org/log v0.1.3
-	go-spring.org/spring v1.3.3
-	go-spring.org/stdlib v0.1.5
+	go-spring.org/log v0.1.4
+	go-spring.org/spring v1.3.4
+	go-spring.org/stdlib v0.1.7
 )
 
 require (
