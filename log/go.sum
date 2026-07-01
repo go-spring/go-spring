@@ -1,6 +1,6 @@
 github.com/antlr4-go/antlr/v4 v4.13.1 h1:SqQKkuVZ+zWkMMNkjy5FZe5mr5WURWnlpmOuzYWrPrQ=
 github.com/antlr4-go/antlr/v4 v4.13.1/go.mod h1:GKmUxMtwp6ZgGwZSva4eWPC5mS6vUAmOABFgjdkM7Nw=
-go-spring.org/stdlib v0.1.5 h1:XtYVYK11Mvfp45Y3AR98oMNaSdHK7Oj2u3IxJpTWQEs=
-go-spring.org/stdlib v0.1.5/go.mod h1:jDIah6YCXdE0QcKsR2GK6sCSYm2ybSa5dX08KF/OGoc=
+go-spring.org/stdlib v0.1.7 h1:sxB0/vXY2yyWx84THcBNfaiknBmsYqYh+UGT4xH3sAA=
+go-spring.org/stdlib v0.1.7/go.mod h1:jDIah6YCXdE0QcKsR2GK6sCSYm2ybSa5dX08KF/OGoc=
 golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f h1:W3F4c+6OLc6H2lb//N1q4WpJkhzJCK5J6kUi1NTVXfM=
 golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f/go.mod h1:J1xhfL/vlindoeF/aINzNzt2Bket5bjo9sdOYzOsU80=
