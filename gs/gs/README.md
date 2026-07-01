@@ -7,19 +7,21 @@ Go-Spring Tools Manager (gs) is a command-line program for managing and using va
 ## Installation
 
 ```shell
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/go-spring/gs/HEAD/install.sh)"
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/go-spring/go-spring/HEAD/gs/gs/install.sh)"
 ```
 
-This script will automatically install the following tools:
+The script installs `gs` itself (with built-in `init`, `gen` and `add` subcommands).
 
-- `gs`: the tool manager itself
-- `gs-init`: creates new Go-Spring projects
-- `gs-gen`: generates code from idl files
+### Optional External Tools
+
+The following tools are dispatched via `gs <tool>` and installed on demand:
+
+- `gs-http-gen`: HTTP IDL code generator (invoked by `gs gen`)
 - `gs-mock`: generates mock code based on configuration
 
 ### Requirements
 
-- Go language environment (1.24+)
+- Go language environment (1.26+)
 - GOPATH and GOBIN properly configured
 - GOBIN path needs to be added to the system PATH
 
@@ -41,9 +43,9 @@ gs <tool> [args]
 
 For example:
 
-- Create a new project: `gs init ...`
-- Generate idl code: `gs gen ...`
-- Generate mock code: `gs mock ...`
+- Create a new project: `gs init -m github.com/you/hello`
+- Generate idl code: `gs gen` (run from a project root containing `gs.json` and `idl/`)
+- Generate mock code: `gs mock ...` (requires `gs-mock` installed)
 
 ### View Tool Help
 
@@ -53,9 +55,8 @@ gs <tool> --help
 
 ## How It Works
 
-The tool manager looks for executable files prefixed with `gs-` in its directory (usually `$GOPATH/bin`) and manages
-them as available tools.
-When a user invokes a tool, the manager executes the corresponding executable and passes the arguments.
+The tool manager ships built-in subcommands (`init`, `gen`, `add`) directly.
+For any other command, it looks for an executable prefixed with `gs-` in its directory (usually `$GOPATH/bin`) and dispatches to it.
 
 ## License
 

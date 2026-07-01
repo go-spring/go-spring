@@ -18,151 +18,92 @@ package main
 
 import (
 	"fmt"
+	"log"
+	"maps"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"slices"
-	"strings"
+	"text/tabwriter"
 
-	"github.com/go-spring/stdlib/errutil"
+	"github.com/spf13/cobra"
+
+	"go-spring.org/gs/cmd"
+	"go-spring.org/gs/tool"
 )
 
-const Version = "v0.2.4"
+const Version = "v0.3.0"
 
-// execDir is the directory where the executable is located.
-var execDir string
-
-func init() {
-	filename, err := os.Executable()
-	if err != nil {
-		fmt.Printf("Failed to determine executable path: %s\n", err.Error())
-		os.Exit(1)
-	}
-	execDir = filepath.Dir(filename)
+// builtins are subcommands compiled directly into the gs binary.
+var builtins = map[string]*cobra.Command{
+	"init": cmd.NewInitCmd(),
+	"gen":  cmd.NewGenCmd(),
+	"add":  cmd.NewAddCmd(),
 }
+
+// helpFlags trigger showHelp when passed as the first argument.
+// `-h` mirrors what cobra auto-adds to every built-in subcommand,
+// so `gs --help` and `gs <tool> --help` share the same shape.
+var helpFlags = []string{"--help", "-h"}
 
 func main() {
-	if len(os.Args) <= 1 ||
-		os.Args[1] == "help" || os.Args[1] == "--help" || os.Args[1] == "-h" ||
-		os.Args[1] == "-v" || os.Args[1] == "--version" {
+	// Subcommands emit progress lines via the standard log package; keep the
+	// prefix compact and let the default stderr sink stay.
+	log.SetFlags(log.Ltime)
+
+	if len(os.Args) <= 1 || slices.Contains(helpFlags, os.Args[1]) {
 		showHelp()
-		os.Exit(0)
+		return
 	}
 
-	// Call the requested tool with provided arguments
-	callTool("gs-"+os.Args[1], os.Args[2:]...)
+	sub := os.Args[1]
+
+	// Built-in subcommand: hand off to cobra with argv[0] shifted so its
+	// own name shows up in usage strings.
+	if c, ok := builtins[sub]; ok {
+		os.Args = os.Args[1:]
+		if err := c.Execute(); err != nil {
+			os.Exit(1)
+		}
+		return
+	}
+
+	// External tool: dispatch to gs-<sub> next to the gs binary.
+	tool.Call(sub, os.Args[2:]...)
 }
 
-// showHelp displays the help information,
-// including available tools and usage instructions.
 func showHelp() {
-	tools := scanTools()
-	fmt.Printf("Go-Spring Toolkit Manager %s.\n", Version)
-	fmt.Println()
-	fmt.Println("The toolkit manager looks for executable files prefixed with `gs-` in its directory\n" +
-		"(usually `$GOPATH/bin`) and manages them as available tools.")
-	fmt.Println()
-	fmt.Println("When a user invokes a tool, the toolkit manager executes the corresponding executable\n" +
-		"and passing the arguments.")
-	fmt.Println()
-	fmt.Println("Available tools:")
+	// tabwriter aligns tab-separated cells row-to-row. Lines without tabs
+	// pass through unchanged and break the alignment run.
+	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	defer func() { _ = tw.Flush() }()
 
-	if len(tools) == 0 {
-		fmt.Println("  No tools found. Please make sure tools with 'gs-' prefix are in the same directory.")
-	} else {
-		var maxLen int
-		for _, tool := range tools {
-			if len(tool) > maxLen {
-				maxLen = len(tool)
-			}
-		}
+	fmt.Fprintf(tw, "Go-Spring Toolkit Manager %s.\n\n", Version)
+	fmt.Fprintln(tw, "gs runs built-in subcommands directly. Any other command <name> is dispatched")
+	fmt.Fprintln(tw, "to a `gs-<name>` executable next to gs (typically in `$GOPATH/bin`).")
+	fmt.Fprintln(tw)
 
-		for _, tool := range tools {
-			var sb strings.Builder
-			sb.WriteString("  ")
-			toolName := strings.TrimPrefix(tool, "gs-")
-			sb.WriteString(toolName)
-			sb.WriteString(strings.Repeat(" ", maxLen-len(toolName)-1))
-
-			if version, desc, err := getToolInfo(tool); err != nil {
-				sb.WriteString("Failed to get info: ")
-				sb.WriteString(err.Error())
-			} else {
-				sb.WriteString("(")
-				sb.WriteString(version)
-				sb.WriteString(") ")
-				sb.WriteString(desc)
-			}
-			fmt.Println(sb.String())
-		}
+	fmt.Fprintln(tw, "Built-in subcommands:")
+	for _, n := range slices.Sorted(maps.Keys(builtins)) {
+		fmt.Fprintf(tw, "  %s\t%s\n", n, builtins[n].Short)
 	}
 
-	fmt.Println()
-	fmt.Println("Usage:")
-	fmt.Println("  gs <tool> --help  Show tool's help information")
-	fmt.Println("  gs <tool> [args]  Call the tool with the arguments")
-	fmt.Println()
-	fmt.Println("Additional help topics:")
-	fmt.Println("  gs --help     Show this help information")
-	fmt.Println("  gs --version  Show this help information")
-}
-
-// scanTools scans the executable directory for tools with the 'gs-' prefix.
-func scanTools() []string {
-	entries, err := os.ReadDir(execDir)
-	if err != nil {
-		fmt.Printf("Error reading directory %s: %s\n", execDir, err.Error())
-		os.Exit(1)
+	fmt.Fprintln(tw)
+	fmt.Fprintln(tw, "External tools:")
+	externals := tool.Scan()
+	if len(externals) == 0 {
+		fmt.Fprintln(tw, "  No external tools found.")
 	}
-
-	var tools []string
-	for _, entry := range entries {
-		if entry.IsDir() {
+	for _, n := range externals {
+		v, desc, err := tool.Info(n)
+		if err != nil {
+			fmt.Fprintf(tw, "  %s\t\tFailed to get info: %s\n", n, err.Error())
 			continue
 		}
-		if strings.HasPrefix(entry.Name(), "gs-") {
-			tools = append(tools, entry.Name())
-		}
-	}
-	slices.Sort(tools)
-	return tools
-}
-
-// callTool executes the specified tool with the given arguments.
-func callTool(tool string, args ...string) {
-	if !slices.Contains(scanTools(), tool) {
-		fmt.Printf("Error: tool '%s' not found\n", strings.TrimPrefix(tool, "gs-"))
-		fmt.Println("Run 'gs --help' to see a list of available tools.")
-		os.Exit(1)
+		fmt.Fprintf(tw, "  %s\t(%s)\t%s\n", n, v, desc)
 	}
 
-	// Execute the tool with the provided arguments
-	toolPath := filepath.Join(execDir, tool)
-	cmd := exec.Command(toolPath, args...)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		fmt.Printf("Error running tool '%s': %s\n", tool, err.Error())
-		if len(output) > 0 {
-			fmt.Printf("Output: %s\n", string(output))
-		}
-		os.Exit(1)
-	}
-	fmt.Println(string(output))
-}
-
-// getToolInfo gets tool information,
-// requiring the tool to print usage description on the first line
-// and version on the second line when --version is used.
-func getToolInfo(tool string) (version string, desc string, err error) {
-	toolPath := filepath.Join(execDir, tool)
-	cmd := exec.Command(toolPath, "--version")
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return "", "", errutil.Explain(err, "[output] %s", string(output))
-	}
-	lines := strings.Split(string(output), "\n")
-	if len(lines) < 2 {
-		return "", "", errutil.Explain(nil, "invalid output: %s", string(output))
-	}
-	return lines[1], lines[0], nil
+	fmt.Fprintln(tw)
+	fmt.Fprintln(tw, "Usage:")
+	fmt.Fprintln(tw, "  gs --help         Show this help")
+	fmt.Fprintln(tw, "  gs <tool> --help  Show help for <tool>")
+	fmt.Fprintln(tw, "  gs <tool> [args]  Run <tool> with the given arguments")
 }

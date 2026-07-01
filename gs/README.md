@@ -2,4 +2,5 @@
 
 `gs` 目录存放 Go-Spring 生态的命令行工具和项目脚手架。
 
-这里的子目录按工具独立维护，各自包含自己的 Go module、命令入口和说明文档。它们主要用于项目初始化、代码生成、HTTP IDL 处理和测试 mock 代码生成等开发辅助场景。
+- `gs` 是主入口，内置 `init`、`gen`、`add` 子命令，并会自动分发同目录下前缀为 `gs-` 的外部工具（如 `gs-http-gen`、`gs-mock`）。
+- `gs-http-gen`、`gs-mock` 保持独立模块，各自维护，用于 HTTP IDL 处理和测试 mock 代码生成等场景。

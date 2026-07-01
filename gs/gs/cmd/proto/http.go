@@ -17,56 +17,36 @@
 package proto
 
 import (
-	"bufio"
-	"fmt"
-	"io"
-	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	"go-spring.org/stdlib/errutil"
 )
 
-// GenHttp generates HTTP code by invoking an external generator ("gs-http-gen").
-func GenHttp(currDir string) {
-
+// GenHttp regenerates the HTTP server code under `<currDir>/idl/http/proto`
+// by invoking the external `gs-http-gen` binary.
+//
+// The output directory is wiped and recreated so stale artifacts from a
+// previous run never leak into the new generation.
+func GenHttp(currDir string) error {
 	dir := filepath.Join(currDir, "idl/http/proto")
 	if err := os.RemoveAll(dir); err != nil {
-		log.Fatalln(err)
+		return errutil.Explain(err, "clear output dir %s", dir)
 	}
 	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
-		log.Fatalln(err)
+		return errutil.Explain(err, "create output dir %s", dir)
 	}
 
-	r, w, err := os.Pipe()
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	go func() {
-		f := bufio.NewReader(r)
-		for {
-			line, _, err := f.ReadLine()
-			if err != nil {
-				if err == io.EOF {
-					break
-				}
-				log.Fatalln(err)
-			}
-			fmt.Print(string(line))
-		}
-
-		// Close read-end of pipe after reading is done
-		_ = r.Close()
-	}()
-
+	// Wire child stdio straight to our own — the runtime already streams
+	// writes as the child produces them, so an intermediate pipe + reader
+	// goroutine would just be ceremony.
 	cmd := exec.Command("gs-http-gen", "--server", "--output", dir)
 	cmd.Dir = filepath.Dir(dir)
-	cmd.Stdout = w
-	cmd.Stderr = w
-	if err = cmd.Run(); err != nil {
-		log.Fatalln(err)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return errutil.Explain(err, "run gs-http-gen")
 	}
-
-	// Close the write-end of the pipe after the command finishes
-	_ = w.Close()
+	return nil
 }

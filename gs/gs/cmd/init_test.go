@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"testing"
@@ -63,6 +63,16 @@ func TestToPascal(t *testing.T) {
 		{
 			name:     "mixed case input",
 			input:    "Hello_world_Test",
+			expected: "HelloWorldTest",
+		},
+		{
+			name:     "kebab case",
+			input:    "hello-world",
+			expected: "HelloWorld",
+		},
+		{
+			name:     "mixed kebab and snake",
+			input:    "hello-world_test",
 			expected: "HelloWorldTest",
 		},
 	}
