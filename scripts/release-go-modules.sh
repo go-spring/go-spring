@@ -38,8 +38,8 @@ cd "${REPO_ROOT}"
 # `go mod tidy` must reach origin to resolve freshly-pushed tags. Set
 # GOPROXY=direct so tidy talks to git directly (avoids proxy.golang.org cache
 # lag), then route git HTTPS through the local proxy.
-export GOPROXY="${GOPROXY:-direct}"
-export GOSUMDB="${GOSUMDB:-off}"
+export GOPROXY=direct
+export GOSUMDB=off
 export https_proxy="${https_proxy:-http://127.0.0.1:7897}"
 export http_proxy="${http_proxy:-http://127.0.0.1:7897}"
 export all_proxy="${all_proxy:-socks5://127.0.0.1:7897}"
