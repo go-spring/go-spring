@@ -22,18 +22,21 @@ import (
 
 	"github.com/spf13/cobra"
 	"go-spring.org/gs/cmd/proto"
+	"go-spring.org/gs/internal/runcmd"
 	"go-spring.org/stdlib/errutil"
 )
 
 // NewGenCmd builds the `gs gen` subcommand, which generates Go server code
 // from IDL files under the project's `idl/` directory.
 func NewGenCmd() *cobra.Command {
-	return &cobra.Command{
+	c := &cobra.Command{
 		Use:          "gen",
 		Short:        "gen go server code from idl files",
 		SilenceUsage: true,
 		RunE:         runGen,
 	}
+	runcmd.BindFlag(c)
+	return c
 }
 
 // runGen is the RunE handler for `gs gen`. It must be invoked from a project

@@ -18,6 +18,7 @@ package cmd
 
 import (
 	"bytes"
+	"fmt"
 	"go/token"
 	"log"
 	"os"
@@ -26,16 +27,27 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"go-spring.org/gs/internal/runcmd"
 	"go-spring.org/stdlib/errutil"
 	gomodule "golang.org/x/mod/module"
 	"golang.org/x/mod/semver"
 )
 
-const layoutRepoURL = "https://go-spring.org/stdlib/go-spring.git"
+const layoutRepoURL = "https://github.com/go-spring/go-spring.git"
+
+// supportedLayouts enumerates the layout styles `gs init` can scaffold. The
+// map value is reserved for future per-layout metadata; today the set is used
+// to validate the `--layout` flag and to drive stripLayoutSuffix when picking
+// variant-suffixed directories from the fetched layout.
+var supportedLayouts = map[string]struct{}{
+	"mvc":    {},
+	"domain": {},
+}
 
 // NewInitCmd builds the `gs init` subcommand.
 func NewInitCmd() *cobra.Command {
 	var module string
+	var layout string
 
 	c := &cobra.Command{
 		Use:          "init",
@@ -45,6 +57,8 @@ func NewInitCmd() *cobra.Command {
 	}
 
 	c.Flags().StringVarP(&module, "module", "m", "", `Go module path (required), e.g. "github.com/you/hello"`)
+	c.Flags().StringVar(&layout, "layout", "mvc", `Project layout style: "mvc" (default) or "domain"`)
+	runcmd.BindFlag(c)
 
 	c.RunE = func(cmd *cobra.Command, args []string) error {
 		if module == "" {
@@ -56,15 +70,18 @@ func NewInitCmd() *cobra.Command {
 		if _, major, _ := gomodule.SplitPathVersion(module); major != "" {
 			return errutil.Explain(nil, "module path %q has major version suffix %q; drop it when initializing a new project", module, major)
 		}
-		return runInit(module)
+		if _, ok := supportedLayouts[layout]; !ok {
+			return errutil.Explain(nil, "unknown layout %q; supported: mvc, domain", layout)
+		}
+		return runInit(module, layout)
 	}
 
 	return c
 }
 
 // runInit is the RunE handler for `gs init`. The caller must have already
-// validated module via gomodule.CheckPath.
-func runInit(module string) error {
+// validated module via gomodule.CheckPath and layout against supportedLayouts.
+func runInit(module, layout string) error {
 	ss := strings.Split(module, "/")
 	projectName := ss[len(ss)-1]
 
@@ -87,16 +104,32 @@ func runInit(module string) error {
 	}
 	defer cleanup()
 
+	log.Println("[INFO] Selecting layout variant directories")
+	if err := stripLayoutSuffix(srcDir, layout); err != nil {
+		return err
+	}
+
+	log.Println("[INFO] Rewriting module path and package names")
 	if err := replaceFiles(srcDir, module, pkgName); err != nil {
 		return err
 	}
 
+	log.Printf("[INFO] Placing project at ./%s", projectName)
 	if err := os.Rename(srcDir, projectName); err != nil {
 		return errutil.Explain(err, "rename directory %q to %q", srcDir, projectName)
 	}
 
+	// genProject invokes external generators that receive the project path as
+	// a CLI arg; the child's cwd is a subdirectory of the project, so relative
+	// paths would resolve incorrectly. Pin to an absolute path here — runGen
+	// already does the same via os.Getwd().
+	projectDir, err := filepath.Abs(projectName)
+	if err != nil {
+		return errutil.Explain(err, "resolve project dir %q", projectName)
+	}
+
 	log.Println("[INFO] Generating project code")
-	if err := genProject(projectName); err != nil {
+	if err := genProject(projectDir); err != nil {
 		return errutil.Explain(err, "run gs gen")
 	}
 	return nil
@@ -110,7 +143,6 @@ func runInit(module string) error {
 func fetchLayout() (srcDir string, cleanup func(), err error) {
 	cleanup = func() {}
 
-	log.Println("[INFO] Resolving latest layout tag")
 	tag, err := latestLayoutTag()
 	if err != nil {
 		return "", cleanup, err
@@ -128,36 +160,38 @@ func fetchLayout() (srcDir string, cleanup func(), err error) {
 		}
 	}()
 
-	log.Printf("[INFO] Fetching layout %s", tag)
-
 	// Clone with blob filter and sparse mode — only root tree is checked out.
-	cmd := exec.Command(
-		"git", "clone",
+	// --quiet is dropped at -vv+ so users watching progress actually see it.
+	args := []string{
+		"git",
+		"-c", "advice.detachedHead=false",
+		"clone",
 		"--filter=blob:none",
 		"--sparse",
 		"--depth", "1",
 		"--branch", tag,
 		"--single-branch",
-		layoutRepoURL,
-	)
+	}
+	if !runcmd.Streaming() {
+		args = append(args, "--quiet")
+	}
+	args = append(args, layoutRepoURL)
+	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Dir = tempDir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err = cmd.Run(); err != nil {
-		return "", cleanup, errutil.Explain(err, "git clone")
+	if err = runcmd.Run(cmd, fmt.Sprintf("Cloning go-spring at %s", tag)); err != nil {
+		return "", cleanup, err
 	}
 
 	// Pull only the layout/ directory into the working tree.
 	repoDir := filepath.Join(tempDir, "go-spring")
 	cmd = exec.Command("git", "sparse-checkout", "set", "layout")
 	cmd.Dir = repoDir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err = cmd.Run(); err != nil {
-		return "", cleanup, errutil.Explain(err, "git sparse-checkout")
+	if err = runcmd.Run(cmd, "Extracting layout directory"); err != nil {
+		return "", cleanup, err
 	}
 
 	// Move layout/ out of the repo and discard the rest.
+	log.Println("[INFO] Cleaning up temporary git metadata")
 	projectDir := filepath.Join(tempDir, "layout")
 	if err = os.Rename(filepath.Join(repoDir, "layout"), projectDir); err != nil {
 		return "", cleanup, errutil.Explain(err, "move layout directory")
@@ -173,15 +207,17 @@ func fetchLayout() (srcDir string, cleanup func(), err error) {
 // go-spring remote. Pre-release tags are skipped so `gs init` sticks to
 // stable releases by default.
 func latestLayoutTag() (string, error) {
-	out, err := exec.Command(
+	cmd := exec.Command(
 		"git", "ls-remote", "--tags", "--refs", layoutRepoURL, "layout/v*",
-	).Output()
-	if err != nil {
-		return "", errutil.Explain(err, "list remote tags")
+	)
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	if err := runcmd.Run(cmd, "Resolving latest layout tag"); err != nil {
+		return "", err
 	}
 
 	var bestTag, bestVer string
-	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(out.String()), "\n") {
 		_, tag, ok := strings.Cut(line, "refs/tags/")
 		if !ok {
 			continue
@@ -198,6 +234,48 @@ func latestLayoutTag() (string, error) {
 		return "", errutil.Explain(nil, "no layout/v* release tags found on remote")
 	}
 	return bestTag, nil
+}
+
+// stripLayoutSuffix walks dir and, for each directory named "<base>-<variant>"
+// where <variant> is any supported layout, keeps only the entry whose variant
+// matches the selected layout — renaming it to "<base>" — and removes the
+// others. Directories without a recognized layout suffix are recursed into
+// unchanged. Runs before replaceFiles so downstream steps see the final tree.
+func stripLayoutSuffix(dir, layout string) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return errutil.Explain(err, "read directory %q", dir)
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		child := filepath.Join(dir, e.Name())
+		matched := false
+		for variant := range supportedLayouts {
+			base, ok := strings.CutSuffix(e.Name(), "-"+variant)
+			if !ok {
+				continue
+			}
+			matched = true
+			if variant == layout {
+				newPath := filepath.Join(dir, base)
+				if err := os.Rename(child, newPath); err != nil {
+					return errutil.Explain(err, "rename %q to %q", child, newPath)
+				}
+			} else if err := os.RemoveAll(child); err != nil {
+				return errutil.Explain(err, "remove %q", child)
+			}
+			break
+		}
+		if matched {
+			continue
+		}
+		if err := stripLayoutSuffix(child, layout); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // replaceFiles recursively replaces placeholders in file contents and file

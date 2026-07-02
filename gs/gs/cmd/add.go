@@ -18,16 +18,19 @@ package cmd
 
 import (
 	"github.com/spf13/cobra"
+	"go-spring.org/gs/internal/runcmd"
 )
 
 // NewAddCmd builds the `gs add` subcommand.
 func NewAddCmd() *cobra.Command {
-	return &cobra.Command{
+	c := &cobra.Command{
 		Use:          "add",
 		Short:        "add modular support to a project",
 		SilenceUsage: true,
 		RunE:         runAdd,
 	}
+	runcmd.BindFlag(c)
+	return c
 }
 
 // runAdd is the RunE handler for `gs add`.

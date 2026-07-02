@@ -21,6 +21,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"go-spring.org/gs/internal/runcmd"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -38,15 +39,7 @@ func GenHttp(currDir string) error {
 		return errutil.Explain(err, "create output dir %s", dir)
 	}
 
-	// Wire child stdio straight to our own — the runtime already streams
-	// writes as the child produces them, so an intermediate pipe + reader
-	// goroutine would just be ceremony.
 	cmd := exec.Command("gs-http-gen", "--server", "--output", dir)
 	cmd.Dir = filepath.Dir(dir)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		return errutil.Explain(err, "run gs-http-gen")
-	}
-	return nil
+	return runcmd.Run(cmd, "Generating HTTP server code")
 }

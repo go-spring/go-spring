@@ -27,6 +27,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"go-spring.org/gs/cmd"
+	"go-spring.org/gs/internal/logfmt"
 	"go-spring.org/gs/tool"
 )
 
@@ -48,6 +49,7 @@ func main() {
 	// Subcommands emit progress lines via the standard log package; keep the
 	// prefix compact and let the default stderr sink stay.
 	log.SetFlags(log.Ltime)
+	logfmt.Setup()
 
 	if len(os.Args) <= 1 || slices.Contains(helpFlags, os.Args[1]) {
 		showHelp()
