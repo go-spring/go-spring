@@ -36,9 +36,7 @@ import (
 const layoutRepoURL = "https://github.com/go-spring/go-spring.git"
 
 // supportedLayouts enumerates the layout styles `gs init` can scaffold. The
-// map value is reserved for future per-layout metadata; today the set is used
-// to validate the `--layout` flag and to drive stripLayoutSuffix when picking
-// variant-suffixed directories from the fetched layout.
+// map value is reserved for future per-layout metadata.
 var supportedLayouts = map[string]struct{}{
 	"mvc":    {},
 	"domain": {},
@@ -85,8 +83,8 @@ func runInit(module, layout string) error {
 	ss := strings.Split(module, "/")
 	projectName := ss[len(ss)-1]
 
-	// Convert project name to PascalCase for Go package naming, then verify
-	// it is a legal Go identifier — otherwise the generated project won't build.
+	// Convert project name to PascalCase for Go package naming and verify
+	// it is a legal Go identifier.
 	pkgName := toPascal(projectName)
 	if !token.IsIdentifier(pkgName) || token.Lookup(pkgName).IsKeyword() {
 		return errutil.Explain(nil, "cannot derive a Go package name from %q", projectName)
@@ -105,12 +103,23 @@ func runInit(module, layout string) error {
 	defer cleanup()
 
 	log.Println("[INFO] Selecting layout variant directories")
-	if err := stripLayoutSuffix(srcDir, layout); err != nil {
+	renamed, err := stripLayoutSuffix(srcDir, layout)
+	if err != nil {
 		return err
 	}
 
+	// Placeholder substitutions plus the "<base>-<layout>" → "<base>" rewrites
+	// mirroring the directory renames done above.
+	replaces := map[string]string{
+		"GS_PROJECT_MODULE": module,
+		"GS_PROJECT_NAME":   pkgName,
+	}
+	for _, base := range renamed {
+		replaces[base+"-"+layout] = base
+	}
+
 	log.Println("[INFO] Rewriting module path and package names")
-	if err := replaceFiles(srcDir, module, pkgName); err != nil {
+	if err := replaceFiles(srcDir, replaces); err != nil {
 		return err
 	}
 
@@ -119,10 +128,8 @@ func runInit(module, layout string) error {
 		return errutil.Explain(err, "rename directory %q to %q", srcDir, projectName)
 	}
 
-	// genProject invokes external generators that receive the project path as
-	// a CLI arg; the child's cwd is a subdirectory of the project, so relative
-	// paths would resolve incorrectly. Pin to an absolute path here — runGen
-	// already does the same via os.Getwd().
+	// genProject's child processes cd into subdirs of the project, so pass an
+	// absolute path.
 	projectDir, err := filepath.Abs(projectName)
 	if err != nil {
 		return errutil.Explain(err, "resolve project dir %q", projectName)
@@ -138,8 +145,7 @@ func runInit(module, layout string) error {
 // fetchLayout sparse-checks-out only the layout/ subdirectory of the go-spring
 // repo at the latest layout/vX.Y.Z tag, and returns the local path along with
 // a cleanup func that removes the surrounding temp directory. On error the
-// cleanup func is a no-op — any temp scaffolding created has already been
-// removed before returning.
+// cleanup func is a no-op.
 func fetchLayout() (srcDir string, cleanup func(), err error) {
 	cleanup = func() {}
 
@@ -161,7 +167,6 @@ func fetchLayout() (srcDir string, cleanup func(), err error) {
 	}()
 
 	// Clone with blob filter and sparse mode — only root tree is checked out.
-	// --quiet is dropped at -vv+ so users watching progress actually see it.
 	args := []string{
 		"git",
 		"-c", "advice.detachedHead=false",
@@ -203,9 +208,8 @@ func fetchLayout() (srcDir string, cleanup func(), err error) {
 }
 
 // latestLayoutTag returns the highest-semver release tag of the form
-// layout/vX.Y.Z (or richer semver like layout/vX.Y.Z-rc.1) published on the
-// go-spring remote. Pre-release tags are skipped so `gs init` sticks to
-// stable releases by default.
+// layout/vX.Y.Z published on the go-spring remote. Pre-release tags are
+// skipped.
 func latestLayoutTag() (string, error) {
 	cmd := exec.Command(
 		"git", "ls-remote", "--tags", "--refs", layoutRepoURL, "layout/v*",
@@ -236,58 +240,71 @@ func latestLayoutTag() (string, error) {
 	return bestTag, nil
 }
 
+// matchLayoutVariant reports whether name ends with a "-<variant>" suffix for
+// any supported layout, returning the stripped base and the matched variant.
+func matchLayoutVariant(name string) (base, variant string, ok bool) {
+	for v := range supportedLayouts {
+		if b, matched := strings.CutSuffix(name, "-"+v); matched {
+			return b, v, true
+		}
+	}
+	return "", "", false
+}
+
 // stripLayoutSuffix walks dir and, for each directory named "<base>-<variant>"
 // where <variant> is any supported layout, keeps only the entry whose variant
 // matches the selected layout — renaming it to "<base>" — and removes the
-// others. Directories without a recognized layout suffix are recursed into
-// unchanged. Runs before replaceFiles so downstream steps see the final tree.
-func stripLayoutSuffix(dir, layout string) error {
+// others. Non-variant directories are recursed into; variant directories are
+// not (the layout convention doesn't nest variants). Returns the base names
+// whose "<base>-<layout>" suffix was stripped so replaceFiles can rewrite
+// matching path references in file contents.
+func stripLayoutSuffix(dir, layout string) ([]string, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return errutil.Explain(err, "read directory %q", dir)
+		return nil, errutil.Explain(err, "read directory %q", dir)
 	}
+	var renamed []string
 	for _, e := range entries {
 		if !e.IsDir() {
 			continue
 		}
 		child := filepath.Join(dir, e.Name())
-		matched := false
-		for variant := range supportedLayouts {
-			base, ok := strings.CutSuffix(e.Name(), "-"+variant)
-			if !ok {
-				continue
+
+		base, variant, ok := matchLayoutVariant(e.Name())
+		if !ok {
+			sub, err := stripLayoutSuffix(child, layout)
+			if err != nil {
+				return nil, err
 			}
-			matched = true
-			if variant == layout {
-				newPath := filepath.Join(dir, base)
-				if err := os.Rename(child, newPath); err != nil {
-					return errutil.Explain(err, "rename %q to %q", child, newPath)
-				}
-			} else if err := os.RemoveAll(child); err != nil {
-				return errutil.Explain(err, "remove %q", child)
-			}
-			break
-		}
-		if matched {
+			renamed = append(renamed, sub...)
 			continue
 		}
-		if err := stripLayoutSuffix(child, layout); err != nil {
-			return err
+		if variant != layout {
+			if err := os.RemoveAll(child); err != nil {
+				return nil, errutil.Explain(err, "remove %q", child)
+			}
+			continue
 		}
+		newPath := filepath.Join(dir, base)
+		if err := os.Rename(child, newPath); err != nil {
+			return nil, errutil.Explain(err, "rename %q to %q", child, newPath)
+		}
+		renamed = append(renamed, base)
 	}
-	return nil
+	return renamed, nil
 }
 
-// replaceFiles recursively replaces placeholders in file contents and file
-// names under dir. Directory names are assumed not to carry placeholders.
-func replaceFiles(dir string, module, pkgName string) error {
+// replaceFiles recursively rewrites file contents under dir by applying every
+// entry in replaces. File names are only rewritten for the GS_PROJECT_NAME
+// placeholder; module paths contain "/" and would corrupt file names.
+func replaceFiles(dir string, replaces map[string]string) error {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return errutil.Explain(err, "read directory %q", dir)
 	}
 	for _, e := range entries {
 		if e.IsDir() {
-			if err := replaceFiles(filepath.Join(dir, e.Name()), module, pkgName); err != nil {
+			if err := replaceFiles(filepath.Join(dir, e.Name()), replaces); err != nil {
 				return err
 			}
 			continue
@@ -303,20 +320,22 @@ func replaceFiles(dir string, module, pkgName string) error {
 			return errutil.Explain(err, "read file %q", fileName)
 		}
 
-		b = bytes.ReplaceAll(b, []byte("GS_PROJECT_MODULE"), []byte(module))
-		b = bytes.ReplaceAll(b, []byte("GS_PROJECT_NAME"), []byte(pkgName))
-
-		newName := strings.ReplaceAll(fileName, "GS_PROJECT_NAME", pkgName)
-		if newName != fileName {
+		newFileName := fileName
+		for old, new := range replaces {
+			b = bytes.ReplaceAll(b, []byte(old), []byte(new))
+			if old == "GS_PROJECT_NAME" {
+				newFileName = strings.ReplaceAll(newFileName, old, new)
+			}
+		}
+		if newFileName != fileName {
 			if err = os.Remove(fileName); err != nil {
 				return errutil.Explain(err, "remove file %q", fileName)
 			}
 		}
 
-		// Preserve the layout file's original mode so executable scripts
-		// stay executable and read-only files stay 0644.
-		if err = os.WriteFile(newName, b, info.Mode().Perm()); err != nil {
-			return errutil.Explain(err, "write file %q", newName)
+		// Preserve the layout file's original mode.
+		if err = os.WriteFile(newFileName, b, info.Mode().Perm()); err != nil {
+			return errutil.Explain(err, "write file %q", newFileName)
 		}
 	}
 	return nil
