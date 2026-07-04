@@ -6,6 +6,7 @@ use (
 	./examples/miniapi
 	./examples/startup
 	./gs/gs
+	./gs/gs-mock
 	./layout
 	./log
 	./log/benchmarks/fields

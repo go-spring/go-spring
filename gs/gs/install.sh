@@ -44,8 +44,8 @@ go install go-spring.org/gs@main && echo "gs installed successfully" || { echo "
 # echo "Installing gs-http-gen ..."
 # go install go-spring.org/gs-http-gen@main && echo "gs-http-gen installed successfully" || { echo "Failed to install gs-http-gen"; exit 1; }
 
-# # install gs-mock
-# echo "Installing gs-mock ..."
-# go install go-spring.org/gs-mock@main && echo "gs-mock installed successfully" || { echo "Failed to install gs-mock"; exit 1; }
+# install gs-mock
+echo "Installing gs-mock ..."
+go install go-spring.org/gs-mock@main && echo "gs-mock installed successfully" || { echo "Failed to install gs-mock"; exit 1; }
 
 echo "All gs tools installed successfully!"

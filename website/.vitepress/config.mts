@@ -167,6 +167,7 @@ export default defineConfig({
     'go-import/log.md': 'log/index.md',
     'go-import/stdlib.md': 'stdlib/index.md',
     'go-import/gs.md': 'gs/index.md',
+    'go-import/gs-mock.md': 'gs-mock/index.md',
     'go-import/starter-gorm-mysql.md': 'starter-gorm-mysql/index.md',
     'go-import/starter-go-redis.md': 'starter-go-redis/index.md',
     'go-import/starter-redigo.md': 'starter-redigo/index.md',
