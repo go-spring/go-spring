@@ -31,7 +31,7 @@ import (
 	"go-spring.org/gs/tool"
 )
 
-const Version = "v0.3.0"
+const Version = "v0.3.1"
 
 // builtins are subcommands compiled directly into the gs binary.
 var builtins = map[string]*cobra.Command{

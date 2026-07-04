@@ -56,6 +56,14 @@ import (
 // the binary is looked up as "gs-<name>" in the same directory as gs.
 const Prefix = "gs-"
 
+// childEnv is the environment passed to every external tool. It inherits
+// the parent env and silences mockey's gcflags self-check, which prints
+// a two-line warning on startup for any binary that links mockey (e.g.
+// gs-mock) and breaks the two-line --version contract.
+func childEnv() []string {
+	return append(os.Environ(), "MOCKEY_CHECK_GCFLAGS=false")
+}
+
 // execDir is the directory that hosts the gs binary; external tools
 // are discovered next to it.
 var execDir string
@@ -97,6 +105,7 @@ func Scan() []string {
 func Call(name string, args ...string) {
 	toolPath := filepath.Join(execDir, Prefix+name)
 	cmd := exec.Command(toolPath, args...)
+	cmd.Env = childEnv()
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -115,6 +124,7 @@ func Call(name string, args ...string) {
 func Info(name string) (version string, desc string, err error) {
 	toolPath := filepath.Join(execDir, Prefix+name)
 	cmd := exec.Command(toolPath, "--version")
+	cmd.Env = childEnv()
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", "", errutil.Explain(err, "[output] %s", string(output))
