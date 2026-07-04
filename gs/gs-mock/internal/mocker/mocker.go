@@ -24,6 +24,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"go-spring.org/stdlib/errutil"
 )
 
 // init sets the working directory of the program to the directory
@@ -169,7 +171,7 @@ func main() {
 
 			// Execute the appropriate template for this (i, j).
 			if err := tmplMock.Execute(s, data); err != nil {
-				panic(fmt.Errorf("error executing template(%s): %w", mockerName, err))
+				panic(errutil.Explain(err, "error executing template(%s)", mockerName))
 			}
 
 			// Prepare template data.
@@ -190,7 +192,7 @@ func main() {
 
 			// Execute the appropriate template for this (i, j).
 			if err := tmplMock.Execute(s, data); err != nil {
-				panic(fmt.Errorf("error executing template(%s): %w", varMockerName, err))
+				panic(errutil.Explain(err, "error executing template(%s)", varMockerName))
 			}
 		}
 	}
@@ -198,13 +200,13 @@ func main() {
 	// Format the generated code using go/format.
 	b, err := format.Source(s.Bytes())
 	if err != nil {
-		panic(fmt.Errorf("error formatting source code: %w", err))
+		panic(errutil.Explain(err, "error formatting source code"))
 	}
 
 	// Write the formatted code to the output file.
 	const fileName = "../../gsmock/mocker.go"
 	err = os.WriteFile(fileName, b, os.ModePerm)
 	if err != nil {
-		panic(fmt.Errorf("error writing file(%s): %w", fileName, err))
+		panic(errutil.Explain(err, "error writing file(%s)", fileName))
 	}
 }

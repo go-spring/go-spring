@@ -2,7 +2,10 @@ module go-spring.org/gs-mock
 
 go 1.26
 
-require github.com/bytedance/mockey v1.4.6
+require (
+	github.com/bytedance/mockey v1.4.6
+	go-spring.org/stdlib v0.1.7
+)
 
 require (
 	github.com/gopherjs/gopherjs v1.20.2 // indirect

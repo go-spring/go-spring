@@ -19,13 +19,13 @@ package example
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"testing"
 
 	exp "go-spring.org/gs-mock/example/inner"
 	"go-spring.org/gs-mock/gsmock"
 	"go-spring.org/gs-mock/internal/assert"
+	"go-spring.org/stdlib/errutil"
 )
 
 type ItemType int
@@ -78,7 +78,7 @@ func TestRepositoryMockImpl_Save(t *testing.T) {
 	}, "no mock code matched for RepositoryMockImpl.Save")
 
 	s1.MockSave().Handle(func(v ItemType) error {
-		return errors.New("error")
+		return errutil.Explain(nil, "error")
 	})
 
 	err := s1.Save(ItemType(666))

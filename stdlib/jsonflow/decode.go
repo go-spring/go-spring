@@ -35,6 +35,12 @@ const (
 // Decoder defines a streaming JSON decoder interface.
 type Decoder = json.Decoder
 
+// JSONDecoder represents a value that can populate itself from a JSON stream.
+type JSONDecoder interface {
+	// DecodeJSON reads JSON data from the Decoder and populates the object.
+	DecodeJSON(d Decoder) error
+}
+
 // ParseBool parses a JSON boolean token into a Go bool.
 // The input Kind must be 't' or 'f', otherwise an error is returned.
 func ParseBool(token string, k json.Kind) (bool, error) {
@@ -223,14 +229,6 @@ func DecodeEOF(d Decoder) error {
 	return errutil.Explain(nil, "invalid JSON: unexpected token after top-level value `%s`", token)
 }
 
-// Object represents a JSON-mappable object that supports streaming decoding.
-type Object interface {
-	// EncodeJSON writes this object as one JSON value to the Encoder.
-	EncodeJSON(e Encoder) error
-	// DecodeJSON reads JSON data from the Decoder and populates the object.
-	DecodeJSON(d Decoder) error
-}
-
 // DecodeObjectBegin consumes the opening '{' token of a JSON object.
 // Returns an error if the next token is not '{'.
 func DecodeObjectBegin(d Decoder) error {
@@ -321,10 +319,10 @@ func DecodeValuePtr[T any](
 	}
 }
 
-// DecodeObject decodes a JSON object into a struct that implements the Object interface.
+// DecodeObject decodes a JSON object into a struct that implements the JSONDecoder interface.
 // Returns the zero value if the next token is null.
 // Internally calls DecodeJSON on the object to populate its fields.
-func DecodeObject[T Object](
+func DecodeObject[T JSONDecoder](
 	newFn func() T,
 ) func(d Decoder) (T, error) {
 	return func(d Decoder) (T, error) {

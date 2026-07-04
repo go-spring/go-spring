@@ -30,6 +30,12 @@ import (
 // Encoder is a streaming JSON encoder.
 type Encoder = json.Encoder
 
+// JSONEncoder represents a value that can write itself as one JSON value.
+type JSONEncoder interface {
+	// EncodeJSON writes this object as one JSON value to the Encoder.
+	EncodeJSON(e Encoder) error
+}
+
 // EncodeNull encodes a JSON null value.
 func EncodeNull(e Encoder) error {
 	return e.WriteToken("null", 'n')
@@ -149,9 +155,9 @@ func EncodeAny[T any](e Encoder, v T) error {
 	return e.WriteValue(b)
 }
 
-// EncodeObject encodes an object that implements Object.
-func EncodeObject[T Object](e Encoder, v T) error {
-	if Object(v) == nil {
+// EncodeObject encodes an object that implements JSONEncoder.
+func EncodeObject[T JSONEncoder](e Encoder, v T) error {
+	if JSONEncoder(v) == nil {
 		return EncodeNull(e)
 	}
 	return v.EncodeJSON(e)

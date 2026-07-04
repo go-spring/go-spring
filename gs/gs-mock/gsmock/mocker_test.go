@@ -18,12 +18,12 @@ package gsmock_test
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"testing"
 
 	"go-spring.org/gs-mock/gsmock"
 	"go-spring.org/gs-mock/internal/assert"
+	"go-spring.org/stdlib/errutil"
 )
 
 type Request struct {
@@ -345,7 +345,7 @@ func TestConcurrentMock(t *testing.T) {
 				expected = "odd"
 			}
 			if resp.Message != expected {
-				errs <- fmt.Errorf("expected %s, got %s", expected, resp.Message)
+				errs <- errutil.Explain(nil, "expected %s, got %s", expected, resp.Message)
 			}
 		}(i)
 	}

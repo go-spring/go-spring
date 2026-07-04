@@ -34,6 +34,7 @@ import (
 	"strings"
 
 	"go-spring.org/gs-mock/gsmock"
+	"go-spring.org/stdlib/errutil"
 )
 
 // stdOut is the writer used for outputting the generated code.
@@ -136,20 +137,20 @@ func run(param runConfig) {
 		"Package":     packageName,
 		"Imports":     h.String(),
 	}); err != nil {
-		panic(fmt.Errorf("error executing template(header): %w", err))
+		panic(errutil.Explain(err, "error executing template(header)"))
 	}
 
 	// Generate code for each interface and its methods
 	for _, i := range interfaces {
 		if err := tmplInterface.Execute(s, i); err != nil {
-			panic(fmt.Errorf("error executing template(interface#%s): %w", i.Name, err))
+			panic(errutil.Explain(err, "error executing template(interface#%s)", i.Name))
 		}
 		for _, m := range i.Methods {
 			if err := tmplMethod.Execute(s, map[string]any{
 				"i": i,
 				"m": m,
 			}); err != nil {
-				panic(fmt.Errorf("error executing template(method#%s): %w", m.Name, err))
+				panic(errutil.Explain(err, "error executing template(method#%s)", m.Name))
 			}
 		}
 	}
@@ -157,19 +158,19 @@ func run(param runConfig) {
 	// Format the generated source code
 	b, err := format.Source(s.Bytes())
 	if err != nil {
-		panic(fmt.Errorf("error formatting source code: %w", err))
+		panic(errutil.Explain(err, "error formatting source code"))
 	}
 
 	// Output generated code to file or stdout
 	switch param.OutputFile {
 	case "":
 		if _, err = stdOut.Write(b); err != nil {
-			panic(fmt.Errorf("error writing to stdout: %w", err))
+			panic(errutil.Explain(err, "error writing to stdout"))
 		}
 	default:
 		outputFile := filepath.Join(param.SourceDir, param.OutputFile)
 		if err = os.WriteFile(outputFile, b, os.ModePerm); err != nil {
-			panic(fmt.Errorf("error writing to file(%s): %w", outputFile, err))
+			panic(errutil.Explain(err, "error writing to file(%s)", outputFile))
 		}
 	}
 }
@@ -237,7 +238,7 @@ type Method struct {
 func scanDir(dir string, ctx scanContext, pkgs map[string]string) []Interface {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		panic(fmt.Errorf("error reading directory: %w", err))
+		panic(errutil.Explain(err, "error reading directory"))
 	}
 	var ret []Interface
 	for _, entry := range entries {
@@ -261,7 +262,7 @@ func scanFile(ctx scanContext, file string, pkgs map[string]string) []Interface 
 	mode := parser.AllErrors
 	node, err := parser.ParseFile(token.NewFileSet(), file, nil, mode)
 	if err != nil {
-		panic(fmt.Errorf("error parsing file(%s): %w", file, err))
+		panic(errutil.Explain(err, "error parsing file(%s)", file))
 	}
 
 	needImports := make(map[string]string) // Imports needed for this file

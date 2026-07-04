@@ -85,7 +85,7 @@ func NewDecoder(r io.Reader) json.Decoder {
 
 // Marshal marshals a Go value into JSON bytes.
 func Marshal(i any, opts ...MarshalOptions) ([]byte, error) {
-	if v, ok := i.(Object); ok {
+	if v, ok := i.(JSONEncoder); ok {
 		buf := bytes.NewBuffer(nil)
 		if err := v.EncodeJSON(NewEncoder(buf)); err != nil {
 			return nil, err
@@ -102,7 +102,7 @@ func MarshalIndent(i any, prefix, indent string) ([]byte, error) {
 
 // MarshalWrite marshals a Go value into JSON bytes and writes them to a writer.
 func MarshalWrite(w io.Writer, i any, opts ...MarshalOptions) error {
-	if v, ok := i.(Object); ok {
+	if v, ok := i.(JSONEncoder); ok {
 		return v.EncodeJSON(NewEncoder(w))
 	}
 	return stdjsonv2.MarshalWrite(w, i, toJSONv2Options(opts)...)
@@ -115,7 +115,7 @@ func Unmarshal(b []byte, i any) error {
 
 // UnmarshalRead unmarshals JSON bytes from a reader into a Go value.
 func UnmarshalRead(r io.Reader, i any) error {
-	if v, ok := i.(Object); ok {
+	if v, ok := i.(JSONDecoder); ok {
 		d := NewDecoder(r)
 		if err := v.DecodeJSON(d); err != nil {
 			return err

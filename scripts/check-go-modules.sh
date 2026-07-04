@@ -37,6 +37,8 @@ show_help() {
     echo "  -h, --help    Show this help message"
 }
 
+has_findings=0
+
 run_in_module() {
     local module_dir="$1"
 
@@ -45,14 +47,19 @@ run_in_module() {
     print_separator
 
     echo "Checking error construction..."
-    find "${module_dir}" -type f -name '*.go' \
+    local findings
+    findings=$(find "${module_dir}" -type f -name '*.go' \
         ! -path '*/vendor/*' \
         ! -path '*/errutil/*' \
         -exec grep -Hn 'fmt\.Errorf' {} \;
     find "${module_dir}" -type f -name '*.go' \
         ! -path '*/vendor/*' \
         ! -path '*/errutil/*' \
-        -exec grep -Hn 'errors\.New' {} \;
+        -exec grep -Hn 'errors\.New' {} \;)
+    if [ -n "${findings}" ]; then
+        echo "${findings}"
+        has_findings=1
+    fi
 
     echo "Running go fix..."
     (cd "${module_dir}" && go fix ./...)
@@ -90,8 +97,8 @@ fi
 module_dirs=$(find . -name go.mod \
     ! -path '*/vendor/*' \
     ! -path '*/node_modules/*' \
-    ! -path './gs/*' \
-    ! -path './misc/*' \
+    ! -path './gs/gs-http-gen/*' \
+    ! -path './temp/*' \
     ! -path './website/*' \
     -exec dirname {} \; | sort)
 
@@ -107,5 +114,10 @@ ${module_dirs}
 EOF
 
 print_separator
+if [ "${has_findings}" -ne 0 ]; then
+    echo "Findings detected in error construction checks. Please fix them."
+    print_separator
+    exit 1
+fi
 echo "All checks passed!"
 print_separator
