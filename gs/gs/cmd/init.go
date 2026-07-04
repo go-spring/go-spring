@@ -24,6 +24,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -42,10 +43,19 @@ var supportedLayouts = map[string]struct{}{
 	"domain": {},
 }
 
+// supportedLangs enumerates the documentation languages `gs init` can pick
+// when a layout ships files in "<stem>.<lang><ext>" variants. The map value
+// is reserved for future per-lang metadata.
+var supportedLangs = map[string]struct{}{
+	"zh": {},
+	"en": {},
+}
+
 // NewInitCmd builds the `gs init` subcommand.
 func NewInitCmd() *cobra.Command {
 	var module string
 	var layout string
+	var lang string
 
 	c := &cobra.Command{
 		Use:          "init",
@@ -56,6 +66,7 @@ func NewInitCmd() *cobra.Command {
 
 	c.Flags().StringVarP(&module, "module", "m", "", `Go module path (required), e.g. "github.com/you/hello"`)
 	c.Flags().StringVar(&layout, "layout", "mvc", `Project layout style: "mvc" (default) or "domain"`)
+	c.Flags().StringVar(&lang, "lang", "zh", `Documentation language: "zh" (default) or "en"`)
 	runcmd.BindFlag(c)
 
 	c.RunE = func(cmd *cobra.Command, args []string) error {
@@ -71,15 +82,19 @@ func NewInitCmd() *cobra.Command {
 		if _, ok := supportedLayouts[layout]; !ok {
 			return errutil.Explain(nil, "unknown layout %q; supported: mvc, domain", layout)
 		}
-		return runInit(module, layout)
+		if _, ok := supportedLangs[lang]; !ok {
+			return errutil.Explain(nil, "unknown lang %q; supported: zh, en", lang)
+		}
+		return runInit(module, layout, lang)
 	}
 
 	return c
 }
 
 // runInit is the RunE handler for `gs init`. The caller must have already
-// validated module via gomodule.CheckPath and layout against supportedLayouts.
-func runInit(module, layout string) error {
+// validated module via gomodule.CheckPath, layout against supportedLayouts,
+// and lang against supportedLangs.
+func runInit(module, layout, lang string) error {
 	ss := strings.Split(module, "/")
 	projectName := ss[len(ss)-1]
 
@@ -96,7 +111,7 @@ func runInit(module, layout string) error {
 		return errutil.Explain(err, "stat directory %q", projectName)
 	}
 
-	srcDir, cleanup, err := fetchLayout()
+	srcDir, layoutVersion, cleanup, err := fetchLayout()
 	if err != nil {
 		return err
 	}
@@ -108,11 +123,19 @@ func runInit(module, layout string) error {
 		return err
 	}
 
+	log.Println("[INFO] Selecting documentation language")
+	if err := stripLangSuffix(srcDir, lang); err != nil {
+		return err
+	}
+
 	// Placeholder substitutions plus the "<base>-<layout>" → "<base>" rewrites
 	// mirroring the directory renames done above.
 	replaces := map[string]string{
 		"GS_PROJECT_MODULE": module,
 		"GS_PROJECT_NAME":   pkgName,
+		"GS_PROJECT_LAYOUT": layout,
+		"GS_PROJECT_LANG":   lang,
+		"GS_LAYOUT_VERSION": layoutVersion,
 	}
 	for _, base := range renamed {
 		replaces[base+"-"+layout] = base
@@ -143,20 +166,20 @@ func runInit(module, layout string) error {
 }
 
 // fetchLayout sparse-checks-out only the layout/ subdirectory of the go-spring
-// repo at the latest layout/vX.Y.Z tag, and returns the local path along with
-// a cleanup func that removes the surrounding temp directory. On error the
-// cleanup func is a no-op.
-func fetchLayout() (srcDir string, cleanup func(), err error) {
+// repo at the latest layout/vX.Y.Z tag, and returns the local path, the
+// resolved version (e.g. "v1.2.3"), and a cleanup func that removes the
+// surrounding temp directory. On error the cleanup func is a no-op.
+func fetchLayout() (srcDir, version string, cleanup func(), err error) {
 	cleanup = func() {}
 
-	tag, err := latestLayoutTag()
+	tag, version, err := latestLayoutTag()
 	if err != nil {
-		return "", cleanup, err
+		return "", "", cleanup, err
 	}
 
 	tempDir, err := os.MkdirTemp("", "gs-layout-")
 	if err != nil {
-		return "", cleanup, errutil.Explain(err, "create temp directory")
+		return "", "", cleanup, errutil.Explain(err, "create temp directory")
 	}
 	cleanup = func() { _ = os.RemoveAll(tempDir) }
 	defer func() {
@@ -184,7 +207,7 @@ func fetchLayout() (srcDir string, cleanup func(), err error) {
 	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Dir = tempDir
 	if err = runcmd.Run(cmd, fmt.Sprintf("Cloning go-spring at %s", tag)); err != nil {
-		return "", cleanup, err
+		return "", "", cleanup, err
 	}
 
 	// Pull only the layout/ directory into the working tree.
@@ -192,52 +215,52 @@ func fetchLayout() (srcDir string, cleanup func(), err error) {
 	cmd = exec.Command("git", "sparse-checkout", "set", "layout")
 	cmd.Dir = repoDir
 	if err = runcmd.Run(cmd, "Extracting layout directory"); err != nil {
-		return "", cleanup, err
+		return "", "", cleanup, err
 	}
 
 	// Move layout/ out of the repo and discard the rest.
 	log.Println("[INFO] Cleaning up temporary git metadata")
 	projectDir := filepath.Join(tempDir, "layout")
 	if err = os.Rename(filepath.Join(repoDir, "layout"), projectDir); err != nil {
-		return "", cleanup, errutil.Explain(err, "move layout directory")
+		return "", "", cleanup, errutil.Explain(err, "move layout directory")
 	}
 	if err = os.RemoveAll(repoDir); err != nil {
-		return "", cleanup, errutil.Explain(err, "remove repo directory")
+		return "", "", cleanup, errutil.Explain(err, "remove repo directory")
 	}
-	return projectDir, cleanup, nil
+	return projectDir, version, cleanup, nil
 }
 
 // latestLayoutTag returns the highest-semver release tag of the form
-// layout/vX.Y.Z published on the go-spring remote. Pre-release tags are
-// skipped.
-func latestLayoutTag() (string, error) {
+// layout/vX.Y.Z published on the go-spring remote, along with the stripped
+// semver ("vX.Y.Z"). Pre-release tags are skipped.
+func latestLayoutTag() (tag, version string, err error) {
 	cmd := exec.Command(
 		"git", "ls-remote", "--tags", "--refs", layoutRepoURL, "layout/v*",
 	)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	if err := runcmd.Run(cmd, "Resolving latest layout tag"); err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	var bestTag, bestVer string
 	for line := range strings.SplitSeq(strings.TrimSpace(out.String()), "\n") {
-		_, tag, ok := strings.Cut(line, "refs/tags/")
+		_, t, ok := strings.Cut(line, "refs/tags/")
 		if !ok {
 			continue
 		}
-		ver, ok := strings.CutPrefix(tag, "layout/")
+		ver, ok := strings.CutPrefix(t, "layout/")
 		if !ok || !semver.IsValid(ver) || semver.Prerelease(ver) != "" {
 			continue
 		}
 		if bestVer == "" || semver.Compare(ver, bestVer) > 0 {
-			bestTag, bestVer = tag, ver
+			bestTag, bestVer = t, ver
 		}
 	}
 	if bestTag == "" {
-		return "", errutil.Explain(nil, "no layout/v* release tags found on remote")
+		return "", "", errutil.Explain(nil, "no layout/v* release tags found on remote")
 	}
-	return bestTag, nil
+	return bestTag, bestVer, nil
 }
 
 // matchLayoutVariant reports whether name ends with a "-<variant>" suffix for
@@ -249,6 +272,27 @@ func matchLayoutVariant(name string) (base, variant string, ok bool) {
 		}
 	}
 	return "", "", false
+}
+
+// matchLangVariant reports whether name has a "<stem>.<lang><ext>" pattern for
+// any supported lang, returning the "<stem><ext>" base and the matched lang.
+// Files without an outer extension (e.g. "AGENTS.zh") are not treated as lang
+// variants — the pattern requires a trailing extension after the lang tag.
+func matchLangVariant(name string) (base, variant string, ok bool) {
+	ext := filepath.Ext(name)
+	if ext == "" {
+		return "", "", false
+	}
+	stem := strings.TrimSuffix(name, ext)
+	inner := filepath.Ext(stem)
+	if inner == "" {
+		return "", "", false
+	}
+	v := strings.TrimPrefix(inner, ".")
+	if _, supported := supportedLangs[v]; !supported {
+		return "", "", false
+	}
+	return strings.TrimSuffix(stem, inner) + ext, v, true
 }
 
 // stripLayoutSuffix walks dir and, for each directory named "<base>-<variant>"
@@ -294,17 +338,69 @@ func stripLayoutSuffix(dir, layout string) ([]string, error) {
 	return renamed, nil
 }
 
+// stripLangSuffix walks dir and, for each regular file (or symlink) named
+// "<stem>.<variant><ext>" where <variant> is any supported lang, keeps only
+// the entry whose variant matches the selected lang — renaming it to
+// "<stem><ext>" — and removes the others. Directories are recursed into.
+// Symlinks are renamed via os.Rename (which does not follow), so the link
+// itself is renamed; the target text is left untouched. Layout scaffolds
+// should point cross-language symlinks at the post-strip name to avoid
+// dangling references.
+func stripLangSuffix(dir, lang string) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return errutil.Explain(err, "read directory %q", dir)
+	}
+	for _, e := range entries {
+		child := filepath.Join(dir, e.Name())
+		if e.IsDir() {
+			if err := stripLangSuffix(child, lang); err != nil {
+				return err
+			}
+			continue
+		}
+		base, variant, ok := matchLangVariant(e.Name())
+		if !ok {
+			continue
+		}
+		if variant != lang {
+			if err := os.Remove(child); err != nil {
+				return errutil.Explain(err, "remove %q", child)
+			}
+			continue
+		}
+		newPath := filepath.Join(dir, base)
+		if err := os.Rename(child, newPath); err != nil {
+			return errutil.Explain(err, "rename %q to %q", child, newPath)
+		}
+	}
+	return nil
+}
+
 // replaceFiles recursively rewrites file contents under dir by applying every
-// entry in replaces. File names are only rewritten for the GS_PROJECT_NAME
-// placeholder; module paths contain "/" and would corrupt file names.
+// entry in replaces. Placeholders are applied longest-first so a shorter key
+// never partially overwrites a longer key that contains it as a prefix. File
+// names are not rewritten: layout files whose names carry a placeholder live
+// under paths that `gs gen` wipes and regenerates.
 func replaceFiles(dir string, replaces map[string]string) error {
+	keys := make([]string, 0, len(replaces))
+	for k := range replaces {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		return len(keys[i]) > len(keys[j])
+	})
+	return replaceFilesWithOrder(dir, replaces, keys)
+}
+
+func replaceFilesWithOrder(dir string, replaces map[string]string, keys []string) error {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return errutil.Explain(err, "read directory %q", dir)
 	}
 	for _, e := range entries {
 		if e.IsDir() {
-			if err := replaceFiles(filepath.Join(dir, e.Name()), replaces); err != nil {
+			if err := replaceFilesWithOrder(filepath.Join(dir, e.Name()), replaces, keys); err != nil {
 				return err
 			}
 			continue
@@ -320,22 +416,13 @@ func replaceFiles(dir string, replaces map[string]string) error {
 			return errutil.Explain(err, "read file %q", fileName)
 		}
 
-		newFileName := fileName
-		for old, new := range replaces {
-			b = bytes.ReplaceAll(b, []byte(old), []byte(new))
-			if old == "GS_PROJECT_NAME" {
-				newFileName = strings.ReplaceAll(newFileName, old, new)
-			}
-		}
-		if newFileName != fileName {
-			if err = os.Remove(fileName); err != nil {
-				return errutil.Explain(err, "remove file %q", fileName)
-			}
+		for _, old := range keys {
+			b = bytes.ReplaceAll(b, []byte(old), []byte(replaces[old]))
 		}
 
 		// Preserve the layout file's original mode.
-		if err = os.WriteFile(newFileName, b, info.Mode().Perm()); err != nil {
-			return errutil.Explain(err, "write file %q", newFileName)
+		if err = os.WriteFile(fileName, b, info.Mode().Perm()); err != nil {
+			return errutil.Explain(err, "write file %q", fileName)
 		}
 	}
 	return nil
