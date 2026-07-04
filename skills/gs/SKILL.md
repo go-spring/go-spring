@@ -15,9 +15,16 @@ description: 使用 gs CLI 创建或改造 Go-Spring 项目骨架。当用户提
 
 ## 常用命令
 
-- `gs init <name>`:创建新项目骨架。
-- `gs init <name> --layout domain`:使用 domain 变体 layout。
+- `gs init -m <module>`:创建新项目骨架(默认 mvc layout)。
+- `gs init -m <module> --layout domain`:使用 domain 变体 layout。
 - `gs -h`:查看子命令列表。
+
+## 子流程
+
+根据用户意图分发,**必须先读取对应子流程文档再执行**,不要凭记忆执行:
+
+- **初始化新项目** → 读取 [`init.md`](init.md)
+  - 关键词:新建、创建、初始化、`gs init`、生成 Go-Spring 项目
 
 ## 执行前须知
 

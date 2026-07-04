@@ -2,7 +2,7 @@
 layout: home
 
 hero:
-  name: Go-Spring / Open-source Go framework
+  name: Go-Spring
   text: Put engineering capabilities into Go
   tagline: Configuration, dependencies, lifecycle, and infrastructure are assembled through one model, while your business code stays simple, clear, and direct.
   image:
@@ -35,7 +35,7 @@ hero:
 
 <section class="gs-story">
   <div class="gs-story-copy">
-    <p class="gs-kicker">The recurring problem</p>
+    <p class="gs-kicker">Less plumbing, more product</p>
     <h2><span>Services get complex, </span><strong>business code does not have to</strong></h2>
     <p class="gs-lead">Real Go services are more than handlers. Configuration loading, component initialization, dependency wiring, startup order, and graceful shutdown gradually leak into every project.</p>
     <p>Go-Spring gathers those repeated concerns into one consistent application model. You still write plain Go code, but you no longer hand-wire every piece of infrastructure.</p>
@@ -66,12 +66,20 @@ hero:
         <span>:9090</span>
       </div>
     </div>
+    <div class="gs-float-note gs-float-note-top">
+      <span>01</span>
+      <p><strong>Startup wiring</strong>runtime stays direct</p>
+    </div>
+    <div class="gs-float-note gs-float-note-bottom">
+      <span>02</span>
+      <p><strong>Unified lifecycle</strong>startup and shutdown stay ordered</p>
+    </div>
   </div>
 </section>
 
 <section class="gs-home-section gs-system-section">
   <div class="gs-section-intro">
-    <p class="gs-kicker">Application model</p>
+    <p class="gs-kicker">One application model</p>
     <h2>One model for the engineering skeleton of a service</h2>
     <p>The capabilities work together, instead of living as unrelated tools. Configuration drives assembly, the container manages dependencies, and the application context coordinates the full lifecycle.</p>
   </div>
@@ -111,7 +119,7 @@ hero:
 
 <section class="gs-home-section gs-principle-section">
   <div class="gs-principle-heading">
-    <p class="gs-kicker">Design trade-offs</p>
+    <p class="gs-kicker">Spring inspired, Go designed</p>
     <h2><span>Borrow Spring's engineering experience, </span><span>but do not bring Java into Go</span></h2>
   </div>
   <div class="gs-principle-grid">
@@ -140,7 +148,7 @@ hero:
 
 <section class="gs-home-section gs-ecosystem-section">
   <div class="gs-section-intro gs-section-intro-left">
-    <p class="gs-kicker">Modules and ecosystem</p>
+    <p class="gs-kicker">Ecosystem</p>
     <h2><span>Start with the core framework, </span><br><span>extend only when needed</span></h2>
     <p>The core stays restrained, while logging, tooling, and infrastructure integrations evolve independently. Bring in only what the current service actually needs.</p>
   </div>
@@ -154,8 +162,8 @@ hero:
 
 <section class="gs-home-section gs-final-cta">
   <div>
-    <p class="gs-kicker">Get started</p>
-    <h2>Begin with a small<br>working application</h2>
+    <p class="gs-kicker">Ready to build</p>
+    <h2>Let your next Go service<br>start from a clear engineering skeleton</h2>
   </div>
   <div class="gs-final-actions">
     <p>Start with a minimal runnable application, then gradually add configuration, IoC, HTTP, and common components.</p>

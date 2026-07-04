@@ -1,4 +1,4 @@
-# Codex Instructions
+# Project Conventions
 
 ## Output Format
 
