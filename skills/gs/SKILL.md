@@ -1,6 +1,7 @@
 ---
 name: gs
 description: 使用 gs CLI 创建或改造 Go-Spring 项目骨架。当用户提到用 gs 初始化项目、生成 layout、添加模块时触发。
+version: v0.0.1
 ---
 
 # /gs Skill
