@@ -19,5 +19,6 @@ use (
 	./starter/starter-pprof
 	./starter/starter-redigo
 	./starter/starter-thrift
+	./starter/starter-websocket
 	./stdlib
 )

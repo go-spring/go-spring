@@ -68,6 +68,7 @@ func runTest() {
 	conn, err := grpc.NewClient(":9494", grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		log.Errorf(context.Background(), log.TagAppDef, "Failed to connect: %v", err)
+		os.Exit(1)
 	}
 	defer conn.Close()
 
@@ -75,8 +76,12 @@ func runTest() {
 	response, err := client.Echo(context.Background(), &proto.EchoRequest{Message: "Hello, gRPC!"})
 	if err != nil {
 		log.Errorf(context.Background(), log.TagAppDef, "Error calling Echo: %v", err)
+		os.Exit(1)
 	}
 	fmt.Println("Response from server:", response.Message)
+	if response.Message != "Hello, gRPC!" {
+		os.Exit(1)
+	}
 
 	syscall.Kill(os.Getpid(), syscall.SIGTERM)
 }

@@ -8,6 +8,7 @@ import (
 	_ "GS_PROJECT_MODULE/internal-domain/api/server/httpsvr"
 	_ "GS_PROJECT_MODULE/internal-domain/api/server/mqsvr"
 	_ "GS_PROJECT_MODULE/internal-domain/api/server/thriftsvr"
+	_ "GS_PROJECT_MODULE/internal-domain/api/server/wssvr"
 	_ "GS_PROJECT_MODULE/internal-domain/infra/repo/order"
 	_ "GS_PROJECT_MODULE/internal-domain/infra/repo/user"
 )

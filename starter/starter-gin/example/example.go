@@ -63,9 +63,17 @@ func main() {
 }
 
 func runTest() {
-	resp, _ := http.Get("http://localhost:9090/echo")
-	b, _ := io.ReadAll(resp.Body)
+	resp, err := http.Get("http://localhost:9090/echo")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "request failed:", err)
+		os.Exit(1)
+	}
 	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
 	fmt.Println("Response from server:", string(b))
+	if string(b) != "Hello, gin!" {
+		fmt.Fprintln(os.Stderr, "unexpected response:", string(b))
+		os.Exit(1)
+	}
 	syscall.Kill(os.Getpid(), syscall.SIGTERM)
 }

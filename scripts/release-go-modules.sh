@@ -59,13 +59,13 @@ SPRING_DIR="spring"
 
 STARTER_DIRS=(
     "starter/starter-gin"
-    "starter/starter-echo"      # remove this line if the dir doesn't exist
     "starter/starter-grpc"
     "starter/starter-go-redis"
     "starter/starter-redigo"
     "starter/starter-gorm-mysql"
     "starter/starter-pprof"
     "starter/starter-thrift"
+    "starter/starter-websocket"
 )
 # Filter out non-existent starter directories so the script stays valid
 # when the starter list changes.

@@ -23,6 +23,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"syscall"
+	"time"
 
 	"github.com/gomodule/redigo/redis"
 	"go-spring.org/log"
@@ -84,6 +86,11 @@ func main() {
 		_, _ = w.Write([]byte(str))
 	})
 
+	go func() {
+		time.Sleep(time.Millisecond * 500)
+		runTest(svrBean.Interface().(*Service))
+	}()
+
 	// Run the Go-Spring application.
 	gs.Run()
 
@@ -95,6 +102,23 @@ func main() {
 	// OK%
 	// ~ curl http://127.0.0.1:9090/get
 	// value%
+}
+
+func runTest(s *Service) {
+	ctx := context.Background()
+	c := s.Redis.Get()
+	defer func() { _ = c.Close() }()
+	if _, err := redis.String(c.Do("SET", "key", "value")); err != nil {
+		log.Errorf(ctx, log.TagAppDef, "SET failed: %v", err)
+		os.Exit(1)
+	}
+	v, err := redis.String(c.Do("GET", "key"))
+	if err != nil || v != "value" {
+		log.Errorf(ctx, log.TagAppDef, "GET failed: v=%q err=%v", v, err)
+		os.Exit(1)
+	}
+	fmt.Println("Response from server:", v)
+	syscall.Kill(os.Getpid(), syscall.SIGTERM)
 }
 
 // ----------------------------------------------------------------------------

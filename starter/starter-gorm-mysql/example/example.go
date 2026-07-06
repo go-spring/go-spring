@@ -22,6 +22,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"syscall"
+	"time"
 
 	"go-spring.org/spring/gs"
 	"gorm.io/gorm"
@@ -50,6 +52,11 @@ func main() {
 		_, _ = w.Write([]byte(version))
 	})
 
+	go func() {
+		time.Sleep(time.Millisecond * 500)
+		runTest(svrBean.Interface().(*Service))
+	}()
+
 	// Run the Go-Spring application.
 	gs.Run()
 
@@ -57,6 +64,20 @@ func main() {
 	//
 	// ~ curl http://127.0.0.1:9090/mysql_version
 	// 9.3.0%
+}
+
+func runTest(s *Service) {
+	var version string
+	if err := s.DB.Raw("SELECT VERSION()").Scan(&version).Error; err != nil {
+		fmt.Fprintln(os.Stderr, "query failed:", err)
+		os.Exit(1)
+	}
+	if version == "" {
+		fmt.Fprintln(os.Stderr, "empty version")
+		os.Exit(1)
+	}
+	fmt.Println("Response from server:", version)
+	syscall.Kill(os.Getpid(), syscall.SIGTERM)
 }
 
 // ----------------------------------------------------------------------------
