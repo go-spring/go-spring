@@ -14,7 +14,11 @@ const goImportModules: Record<string, string> = {
   'starter-gorm-mysql': 'starter/starter-gorm-mysql',
   'starter-go-redis': 'starter/starter-go-redis',
   'starter-redigo': 'starter/starter-redigo',
-  'starter-pprof': 'starter/starter-pprof'
+  'starter-pprof': 'starter/starter-pprof',
+  'starter-gin': 'starter/starter-gin',
+  'starter-grpc': 'starter/starter-grpc',
+  'starter-thrift': 'starter/starter-thrift',
+  'starter-websocket': 'starter/starter-websocket'
 }
 
 const goImportHeadTags = (relativePath: string) => {
@@ -171,7 +175,11 @@ export default defineConfig({
     'go-import/starter-gorm-mysql.md': 'starter-gorm-mysql/index.md',
     'go-import/starter-go-redis.md': 'starter-go-redis/index.md',
     'go-import/starter-redigo.md': 'starter-redigo/index.md',
-    'go-import/starter-pprof.md': 'starter-pprof/index.md'
+    'go-import/starter-pprof.md': 'starter-pprof/index.md',
+    'go-import/starter-gin.md': 'starter-gin/index.md',
+    'go-import/starter-grpc.md': 'starter-grpc/index.md',
+    'go-import/starter-thrift.md': 'starter-thrift/index.md',
+    'go-import/starter-websocket.md': 'starter-websocket/index.md'
   },
   themeConfig: {
     logo: '/logo.png',
