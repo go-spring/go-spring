@@ -1,0 +1,14 @@
+services:
+  mysql:
+    image: mysql:8
+    container_name: starter-gorm-mysql
+    ports:
+      - "127.0.0.1:3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: "123456"
+      MYSQL_DATABASE: "test"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p123456"]
+      interval: 3s
+      timeout: 3s
+      retries: 30

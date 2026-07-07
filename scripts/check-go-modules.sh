@@ -44,49 +44,19 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # ---------------------------------------------------------------------------
 # Starter example smoke tests
 #
-# Each entry: <module-dir>|<infra host:port>
-# Each example self-asserts and exits non-zero on failure, so we only check the
-# exit code. An empty infra field means the example needs no external service;
-# otherwise the port is probed first and the test is skipped (with a warning)
-# when the service is unreachable.
+# Every starter/*/example is smoke-tested. A starter with a unique setup (e.g.
+# one that needs a backing service) ships its own executable check.sh, which
+# owns its whole procedure and is trusted by its exit code. Starters without a
+# check.sh use the default runner below, which builds the example and runs it
+# under a watchdog; each example self-asserts and exits non-zero on failure.
 # ---------------------------------------------------------------------------
-STARTER_SMOKE=(
-    "starter/starter-gin|"
-    "starter/starter-grpc|"
-    "starter/starter-thrift|"
-    "starter/starter-websocket|"
-    "starter/starter-pprof|"
-    "starter/starter-go-redis|127.0.0.1:6379"
-    "starter/starter-redigo|127.0.0.1:6379"
-    "starter/starter-gorm-mysql|127.0.0.1:3306"
-)
-
 SMOKE_TIMEOUT=30
 
-# probe_tcp <host:port> — return 0 if a TCP connection can be opened.
-probe_tcp() {
-    local host="${1%%:*}"
-    local port="${1##*:}"
-    (exec 3<>"/dev/tcp/${host}/${port}") 2>/dev/null || return 1
-    exec 3>&- 3<&- 2>/dev/null || true
-    return 0
-}
-
-# run_smoke_test <module-dir> <infra host:port>
-# Builds the example, runs it under a watchdog, and asserts a clean exit. Each
-# example self-asserts internally and exits non-zero on failure.
+# run_smoke_test <starter-name>
+# Builds the example, runs it under a watchdog, and asserts a clean exit.
 run_smoke_test() {
-    local dir="$1" infra="$2"
+    local dir="$1"
     local example_dir="${REPO_ROOT}/${dir}/example"
-
-    if [ ! -d "${example_dir}" ]; then
-        echo "SKIP ${dir}: no example directory"
-        return
-    fi
-    if [ -n "${infra}" ] && ! probe_tcp "${infra}"; then
-        echo "WARNING: ${dir}: ${infra} not reachable — skipping smoke test"
-        return
-    fi
 
     local bin log rc=0
     bin="$(mktemp)"
@@ -121,13 +91,21 @@ run_smoke_tests() {
     print_separator
     echo "Starter example smoke tests"
     print_separator
-    for entry in "${STARTER_SMOKE[@]}"; do
-        local dir infra
-        IFS='|' read -r dir infra <<<"${entry}"
-        if [ -d "${REPO_ROOT}/${dir}" ]; then
-            run_smoke_test "${dir}" "${infra}"
+    local example_dir dir
+    for example_dir in "${REPO_ROOT}"/starter/*/example; do
+        [ -d "${example_dir}" ] || continue
+        dir="$(dirname "${example_dir}")"
+        dir="${dir#"${REPO_ROOT}"/}"
+        if [ -x "${example_dir}/check.sh" ]; then
+            echo "Running ${dir} (custom check.sh)..."
+            if "${example_dir}/check.sh"; then
+                echo "OK ${dir}"
+            else
+                echo "FAIL ${dir}: check.sh exited non-zero"
+                has_findings=1
+            fi
         else
-            echo "SKIP ${dir}: not present"
+            run_smoke_test "${dir}"
         fi
     done
 }
