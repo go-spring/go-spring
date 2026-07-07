@@ -14,7 +14,7 @@ hero:
       link: /en/docs/1.getting-started/getting-started
     - theme: alt
       text: Explore the design
-      link: /en/docs/0.overview/overview
+      link: /en/docs/0.overview/01-overview
 ---
 
 <div class="gs-home-cn">
@@ -39,7 +39,7 @@ hero:
     <h2><span>Services get complex, </span><strong>business code does not have to</strong></h2>
     <p class="gs-lead">Real Go services are more than handlers. Configuration loading, component initialization, dependency wiring, startup order, and graceful shutdown gradually leak into every project.</p>
     <p>Go-Spring gathers those repeated concerns into one consistent application model. You still write plain Go code, but you no longer hand-wire every piece of infrastructure.</p>
-    <a class="gs-text-link" href="/en/docs/0.overview/overview">Why Go-Spring exists <span>→</span></a>
+    <a class="gs-text-link" href="/en/docs/0.overview/01-overview">Why Go-Spring exists <span>→</span></a>
   </div>
 
   <div class="gs-code-stage">

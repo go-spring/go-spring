@@ -14,7 +14,7 @@ hero:
       link: /cn/docs/1.getting-started/getting-started
     - theme: alt
       text: 了解设计理念
-      link: /cn/docs/0.overview/overview
+      link: /cn/docs/0.overview/01-overview
 ---
 
 <div class="gs-home-cn">
@@ -39,7 +39,7 @@ hero:
     <h2><span>服务变复杂，</span><strong>业务代码不必跟着变乱</strong></h2>
     <p class="gs-lead">真实的 Go 服务不只有 Handler。配置加载、组件初始化、依赖装配、启动顺序和优雅退出，会一点点挤进每个项目。</p>
     <p>Go-Spring 把这些重复问题收拢到一致的应用模型中。你仍然编写普通 Go 代码，只是不再手工编排每一块基础设施。</p>
-    <a class="gs-text-link" href="/cn/docs/0.overview/overview">为什么需要 Go-Spring <span>→</span></a>
+    <a class="gs-text-link" href="/cn/docs/0.overview/01-overview">为什么需要 Go-Spring <span>→</span></a>
   </div>
 
   <div class="gs-code-stage">

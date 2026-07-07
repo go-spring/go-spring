@@ -46,7 +46,7 @@ const goImportHeadTags = (relativePath: string) => {
 }
 
 const zhNav = [
-  { text: '概览', link: '/docs/0.overview/overview' },
+  { text: '概览', link: '/docs/0.overview/01-overview' },
   { text: '快速开始', link: '/docs/1.getting-started/getting-started' },
   { text: '指南', link: '/docs/2.guides/01-configuration' },
   { text: '示例', link: '/docs/3.examples/examples' },
@@ -54,7 +54,7 @@ const zhNav = [
 ]
 
 const enNav = [
-  { text: 'Overview', link: '/en/docs/0.overview/overview' },
+  { text: 'Overview', link: '/en/docs/0.overview/01-overview' },
   { text: 'Getting Started', link: '/en/docs/1.getting-started/getting-started' },
   { text: 'Guides', link: '/en/docs/2.guides/01-configuration' },
   { text: 'Examples', link: '/en/docs/3.examples/examples' },
@@ -65,8 +65,9 @@ const zhSidebar = [
   {
     text: '介绍',
     items: [
-      { text: '项目概览', link: '/docs/0.overview/overview' },
-      { text: 'AI 研发工程化', link: '/docs/0.overview/ai-engineering' },
+      { text: '项目概览', link: '/docs/0.overview/01-overview' },
+      { text: 'AI 研发工程化', link: '/docs/0.overview/02-ai-engineering' },
+      { text: 'Claude 最佳实践', link: '/docs/0.overview/03-claude-best-practices' },
       { text: '快速开始', link: '/docs/1.getting-started/getting-started' }
     ]
   },
@@ -112,8 +113,9 @@ const enSidebar = [
   {
     text: 'Introduction',
     items: [
-      { text: 'Overview', link: '/en/docs/0.overview/overview' },
-      { text: 'AI Engineering', link: '/en/docs/0.overview/ai-engineering' },
+      { text: 'Overview', link: '/en/docs/0.overview/01-overview' },
+      { text: 'AI Engineering', link: '/en/docs/0.overview/02-ai-engineering' },
+      { text: 'Claude Best Practices', link: '/en/docs/0.overview/03-claude-best-practices' },
       { text: 'Getting Started', link: '/en/docs/1.getting-started/getting-started' }
     ]
   },
