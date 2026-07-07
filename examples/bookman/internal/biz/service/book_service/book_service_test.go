@@ -46,26 +46,26 @@ func TestBookService(t *testing.T) {
 			ISBN:      "978-0262033848",
 			Publisher: "MIT Press",
 		})
-		require.That(t, err).Nil()
+		assert.That(t, err).Nil()
 
 		// Verify book was added successfully
 		books, err = s.Service.ListBooks(ctx)
-		require.That(t, err).Nil()
+		assert.That(t, err).Nil()
 		assert.Slice(t, books).Length(2)
 
 		// Test retrieving a book by ISBN
 		book, err := s.Service.GetBook(ctx, "978-0134190440")
-		require.That(t, err).Nil()
+		assert.That(t, err).Nil()
 		assert.That(t, book.ISBN).Equal("978-0134190440")
 		assert.That(t, book.Title).Equal("The Go Programming Language")
 
 		// Test deleting a book
 		err = s.Service.DeleteBook(ctx, "978-0134190440")
-		require.That(t, err).Nil()
+		assert.That(t, err).Nil()
 
 		// Verify book deletion
 		books, err = s.Service.ListBooks(ctx)
-		require.That(t, err).Nil()
+		assert.That(t, err).Nil()
 		assert.Slice(t, books).Length(1)
 	})
 }

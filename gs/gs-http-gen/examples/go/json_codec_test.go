@@ -23,6 +23,7 @@ import (
 	"examples/proto"
 
 	"go-spring.org/stdlib/jsonflow"
+	"go-spring.org/stdlib/testing/assert"
 )
 
 func TestGeneratedEncodeJSON(t *testing.T) {
@@ -40,14 +41,10 @@ func TestGeneratedEncodeJSON(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := jsonflow.MarshalWrite(&buf, m); err != nil {
-		t.Fatal(err)
-	}
+	assert.Error(t, jsonflow.MarshalWrite(&buf, m)).Nil()
 
 	want := `{"name":"Jim","age":20,"vip":false,"tags":{"a":"1","b":"2"},"labels":{"x":["a","b"]}}`
-	if got := buf.String(); got != want {
-		t.Fatalf("got %s, want %s", got, want)
-	}
+	assert.String(t, buf.String()).Equal(want)
 }
 
 func TestGeneratedOneOfEncodeJSON(t *testing.T) {
@@ -60,14 +57,10 @@ func TestGeneratedOneOfEncodeJSON(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := jsonflow.MarshalWrite(&buf, p); err != nil {
-		t.Fatal(err)
-	}
+	assert.Error(t, jsonflow.MarshalWrite(&buf, p)).Nil()
 
 	want := `{"FieldType":"MessageDelta","MessageDelta":{"content":"hello","isFinal":false}}`
-	if got := buf.String(); got != want {
-		t.Fatalf("got %s, want %s", got, want)
-	}
+	assert.String(t, buf.String()).Equal(want)
 }
 
 func TestGeneratedOneOfEncodeJSONMismatch(t *testing.T) {
@@ -79,24 +72,16 @@ func TestGeneratedOneOfEncodeJSONMismatch(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := jsonflow.MarshalWrite(&buf, p); err == nil {
-		t.Fatal("expected oneof mismatch error")
-	}
+	assert.Error(t, jsonflow.MarshalWrite(&buf, p)).NotNil()
 }
 
 func TestGeneratedDecodeBytesNull(t *testing.T) {
 	var image proto.ImageData
-	if err := jsonflow.Unmarshal([]byte(`{"data":null}`), &image); err != nil {
-		t.Fatal(err)
-	}
-	if image.Data != nil {
-		t.Fatalf("got %v, want nil", image.Data)
-	}
+	assert.Error(t, jsonflow.Unmarshal([]byte(`{"data":null}`), &image)).Nil()
+	assert.That(t, image.Data).Nil()
 }
 
 func TestGeneratedDecodeRejectsTrailingTokens(t *testing.T) {
 	var m proto.Manager
-	if err := jsonflow.Unmarshal([]byte(`{"name":"Jim"} true`), &m); err == nil {
-		t.Fatal("expected trailing token error")
-	}
+	assert.Error(t, jsonflow.Unmarshal([]byte(`{"name":"Jim"} true`), &m)).NotNil()
 }

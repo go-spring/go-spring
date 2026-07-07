@@ -17,8 +17,9 @@
 package pathidl
 
 import (
-	"reflect"
 	"testing"
+
+	"go-spring.org/stdlib/testing/assert"
 )
 
 func TestParse(t *testing.T) {
@@ -170,20 +171,12 @@ func TestParse(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result, err := Parse(tt.input)
 			if tt.hasErr {
-				if err == nil {
-					t.Errorf("expected error but got none")
-				}
+				assert.Error(t, err).NotNil()
 				return
 			}
 
-			if err != nil {
-				t.Errorf("unexpected error: %v", err)
-				return
-			}
-
-			if !reflect.DeepEqual(result, tt.expected) {
-				t.Errorf("expected %v, got %v", tt.expected, result)
-			}
+			assert.Error(t, err).Nil()
+			assert.Slice(t, result).Equal(tt.expected)
 		})
 	}
 }
@@ -274,9 +267,7 @@ func TestFormat(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := Format(tt.input, tt.style)
-			if result != tt.expected {
-				t.Errorf("expected %q, got %q", tt.expected, result)
-			}
+			assert.String(t, result).Equal(tt.expected)
 		})
 	}
 }

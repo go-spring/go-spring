@@ -19,104 +19,66 @@ package errutil
 import (
 	"errors"
 	"testing"
+
+	"go-spring.org/stdlib/testing/assert"
 )
 
 func TestExplain(t *testing.T) {
 	t.Run("nil error", func(t *testing.T) {
 		err := Explain(nil, "%s", "test error")
-		expected := "test error"
-		if err.Error() != expected {
-			t.Errorf("expected error %q, but got %q", expected, err.Error())
-		}
+		assert.Error(t, err).String("test error")
 	})
 
 	t.Run("no format args", func(t *testing.T) {
 		originalErr := errors.New("original error")
 		err := Explain(originalErr, "static message")
-		expected := "static message: original error"
-		if err.Error() != expected {
-			t.Errorf("expected error %q, but got %q", expected, err.Error())
-		}
-		if !errors.Is(err, originalErr) {
-			t.Errorf("expected error to wrap %q, but it did not", originalErr)
-		}
+		assert.Error(t, err).String("static message: original error")
+		assert.Error(t, err).Is(originalErr)
 	})
 
 	t.Run("with formatted message and args", func(t *testing.T) {
 		originalErr := errors.New("original error")
 		err := Explain(originalErr, "error %s %d", "message", 42)
-		expected := "error message 42: original error"
-		if err.Error() != expected {
-			t.Errorf("expected error %q, but got %q", expected, err.Error())
-		}
-		if !errors.Is(err, originalErr) {
-			t.Errorf("expected error to wrap %q, but it did not", originalErr)
-		}
+		assert.Error(t, err).String("error message 42: original error")
+		assert.Error(t, err).Is(originalErr)
 	})
 
 	t.Run("multiple nested errors", func(t *testing.T) {
 		baseErr := errors.New("base error")
 		wrappedErr := Explain(baseErr, "level 1")
 		finalErr := Explain(wrappedErr, "level 2")
-		expected := "level 2: level 1: base error"
-		if finalErr.Error() != expected {
-			t.Errorf("expected error %q, but got %q", expected, finalErr.Error())
-		}
-		if !errors.Is(finalErr, baseErr) {
-			t.Errorf("expected error to wrap %q, but it did not", baseErr)
-		}
-		if !errors.Is(wrappedErr, errors.Unwrap(finalErr)) {
-			t.Errorf("expected unwrapped error to be %q, but got %q", wrappedErr, errors.Unwrap(finalErr))
-		}
+		assert.Error(t, finalErr).String("level 2: level 1: base error")
+		assert.Error(t, finalErr).Is(baseErr)
+		assert.Error(t, wrappedErr).Is(errors.Unwrap(finalErr))
 	})
 }
 
 func TestStack(t *testing.T) {
 	t.Run("nil error", func(t *testing.T) {
 		err := Stack(nil, "%s", "wrapped error")
-		expected := "wrapped error"
-		if err.Error() != expected {
-			t.Errorf("expected error %q, but got %q", expected, err.Error())
-		}
+		assert.Error(t, err).String("wrapped error")
 	})
 
 	t.Run("no format args", func(t *testing.T) {
 		originalErr := errors.New("original error")
 		err := Stack(originalErr, "static wrapper")
-		expected := "static wrapper >> original error"
-		if err.Error() != expected {
-			t.Errorf("expected error %q, but got %q", expected, err.Error())
-		}
-		if !errors.Is(err, originalErr) {
-			t.Errorf("expected error to wrap %q, but it did not", originalErr)
-		}
+		assert.Error(t, err).String("static wrapper >> original error")
+		assert.Error(t, err).Is(originalErr)
 	})
 
 	t.Run("with formatted message and args", func(t *testing.T) {
 		originalErr := errors.New("original error")
 		err := Stack(originalErr, "wrapper %s %d", "text", 123)
-		expected := "wrapper text 123 >> original error"
-		if err.Error() != expected {
-			t.Errorf("expected error %q, but got %q", expected, err.Error())
-		}
-		if !errors.Is(err, originalErr) {
-			t.Errorf("expected error to wrap %q, but it did not", originalErr)
-		}
+		assert.Error(t, err).String("wrapper text 123 >> original error")
+		assert.Error(t, err).Is(originalErr)
 	})
 
 	t.Run("multiple nested errors", func(t *testing.T) {
 		baseErr := errors.New("base error")
 		wrappedErr := Stack(baseErr, "layer 1")
 		finalErr := Stack(wrappedErr, "layer 2")
-		expected := "layer 2 >> layer 1 >> base error"
-		if finalErr.Error() != expected {
-			t.Errorf("expected error %q, but got %q", expected, finalErr.Error())
-		}
-		if !errors.Is(finalErr, baseErr) {
-			t.Errorf("expected error to wrap %q, but it did not", baseErr)
-		}
-		if !errors.Is(wrappedErr, errors.Unwrap(finalErr)) {
-			t.Errorf("expected unwrapped error to be %q, but got %q", wrappedErr, errors.Unwrap(finalErr))
-		}
+		assert.Error(t, finalErr).String("layer 2 >> layer 1 >> base error")
+		assert.Error(t, finalErr).Is(baseErr)
+		assert.Error(t, wrappedErr).Is(errors.Unwrap(finalErr))
 	})
 }

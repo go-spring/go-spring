@@ -18,6 +18,9 @@ package book_dao
 
 import (
 	"testing"
+
+	"go-spring.org/stdlib/testing/assert"
+	"go-spring.org/stdlib/testing/require"
 )
 
 func TestBookDao(t *testing.T) {
@@ -32,18 +35,10 @@ func TestBookDao(t *testing.T) {
 
 	// Test listing books
 	books, err := dao.ListBooks()
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-	if len(books) != 1 {
-		t.Fatalf("expected 1 book, got %d", len(books))
-	}
-	if books[0].ISBN != "978-0134190440" {
-		t.Fatalf("expected ISBN 978-0134190440, got %s", books[0].ISBN)
-	}
-	if books[0].Title != "The Go Programming Language" {
-		t.Fatalf("expected title 'The Go Programming Language', got %s", books[0].Title)
-	}
+	assert.Error(t, err).Nil()
+	require.That(t, len(books)).Equal(1)
+	assert.String(t, books[0].ISBN).Equal("978-0134190440")
+	assert.String(t, books[0].Title).Equal("The Go Programming Language")
 
 	// Test saving a new book
 	err = dao.SaveBook(Book{
@@ -52,58 +47,34 @@ func TestBookDao(t *testing.T) {
 		ISBN:      "978-0132350884",
 		Publisher: "Prentice Hall",
 	})
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
+	assert.Error(t, err).Nil()
 
 	// Verify book was added
 	books, err = dao.ListBooks()
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-	if len(books) != 2 {
-		t.Fatalf("expected 2 books, got %d", len(books))
-	}
+	assert.Error(t, err).Nil()
+	assert.That(t, len(books)).Equal(2)
 
 	// Test retrieving a book by ISBN
 	book, err := dao.GetBook("978-0132350884")
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-	if book.Title != "Clean Code" {
-		t.Fatalf("expected title 'Clean Code', got %s", book.Title)
-	}
-	if book.Publisher != "Prentice Hall" {
-		t.Fatalf("expected publisher 'Prentice Hall', got %s", book.Publisher)
-	}
+	assert.Error(t, err).Nil()
+	assert.String(t, book.Title).Equal("Clean Code")
+	assert.String(t, book.Publisher).Equal("Prentice Hall")
 
 	// Test retrieving a missing book
 	_, err = dao.GetBook("missing")
-	if err == nil {
-		t.Fatal("expected missing book error")
-	}
+	assert.Error(t, err).NotNil()
 
 	// Test deleting a book
 	err = dao.DeleteBook("978-0132350884")
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
+	assert.Error(t, err).Nil()
 
 	// Verify book was deleted
 	books, err = dao.ListBooks()
-	if err != nil {
-		t.Fatalf("expected no error, got %v", err)
-	}
-	if len(books) != 1 {
-		t.Fatalf("expected 1 book after deletion, got %d", len(books))
-	}
-	if books[0].ISBN != "978-0134190440" {
-		t.Fatalf("expected ISBN 978-0134190440 after deletion, got %s", books[0].ISBN)
-	}
+	assert.Error(t, err).Nil()
+	require.That(t, len(books)).Equal(1)
+	assert.String(t, books[0].ISBN).Equal("978-0134190440")
 
 	// Test saving a book without ISBN
 	err = dao.SaveBook(Book{Title: "No ISBN"})
-	if err == nil {
-		t.Fatal("expected missing isbn error")
-	}
+	assert.Error(t, err).NotNil()
 }

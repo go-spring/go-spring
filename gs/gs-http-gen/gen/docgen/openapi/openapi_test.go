@@ -19,107 +19,59 @@ package openapi
 import (
 	"os"
 	"path/filepath"
-	"slices"
-	"strings"
 	"testing"
 
 	"go-spring.org/gs-http-gen/lib/httpidl"
+	"go-spring.org/stdlib/testing/require"
 )
 
 func TestBuildFromExamples(t *testing.T) {
 	project, err := httpidl.ParseDir("../../../examples/idl")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.Error(t, err).Nil()
 	doc, err := build(project)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.Error(t, err).Nil()
 
-	if doc.OpenAPI != "3.0.3" {
-		t.Fatalf("expected OpenAPI 3.0.3, got %s", doc.OpenAPI)
-	}
-	if doc.Info.Title != "Manager" {
-		t.Fatalf("expected title Manager, got %s", doc.Info.Title)
-	}
+	require.String(t, doc.OpenAPI).Equal("3.0.3")
+	require.String(t, doc.Info.Title).Equal("Manager")
 
 	listManagers := doc.Paths["/managers"]["get"]
-	if listManagers.OperationID != "ListManagers" {
-		t.Fatalf("expected ListManagers operation, got %s", listManagers.OperationID)
-	}
-	if listManagers.RequestBody != nil {
-		t.Fatal("GET /managers should not have requestBody")
-	}
-	if !hasParameter(listManagers.Parameters, "page", "query", true, "integer") {
-		t.Fatalf("GET /managers should have required integer query parameter page: %#v", listManagers.Parameters)
-	}
-	if !hasParameter(listManagers.Parameters, "department", "query", false, "integer") {
-		t.Fatalf("GET /managers should have optional integer query parameter department: %#v", listManagers.Parameters)
-	}
+	require.String(t, listManagers.OperationID).Equal("ListManagers")
+	require.That(t, listManagers.RequestBody).Nil()
+	require.That(t, hasParameter(listManagers.Parameters, "page", "query", true, "integer")).True()
+	require.That(t, hasParameter(listManagers.Parameters, "department", "query", false, "integer")).True()
 
 	createManager := doc.Paths["/managers"]["post"]
-	if createManager.RequestBody == nil {
-		t.Fatal("POST /managers should have requestBody")
-	}
+	require.That(t, createManager.RequestBody).NotNil()
 	createBody := createManager.RequestBody.Content["application/json"].Schema
-	if !slices.Contains(createBody.Required, "name") {
-		t.Fatalf("POST /managers body should require name: %#v", createBody.Required)
-	}
-	if got := createBody.Properties["primaryContact"].Ref; got != "#/components/schemas/ContactInfo" {
-		t.Fatalf("expected primaryContact ref ContactInfo, got %s", got)
-	}
+	require.Slice(t, createBody.Required).Contains("name")
+	require.String(t, createBody.Properties["primaryContact"].Ref).Equal("#/components/schemas/ContactInfo")
 
 	stream := doc.Paths["/assistant/stream"]["post"]
-	if !stream.XSSE {
-		t.Fatal("SSE operation should have x-sse=true")
-	}
-	if _, ok := stream.Responses["200"].Content["text/event-stream"]; !ok {
-		t.Fatalf("SSE response should use text/event-stream: %#v", stream.Responses["200"].Content)
-	}
+	require.That(t, stream.XSSE).True()
+	_, ok := stream.Responses["200"].Content["text/event-stream"]
+	require.That(t, ok).True()
 
 	manager := doc.Components.Schemas["Manager"]
-	if got := manager.Properties["level"].Type; got != "string" {
-		t.Fatalf("enum_as_string field should be string enum, got %s", got)
-	}
-	if !slices.Contains(manager.Properties["level"].Enum, any("JUNIOR")) {
-		t.Fatalf("enum_as_string field should contain enum names: %#v", manager.Properties["level"].Enum)
-	}
+	require.String(t, manager.Properties["level"].Type).Equal("string")
+	require.Slice(t, manager.Properties["level"].Enum).Contains(any("JUNIOR"))
 	primaryContact := manager.Properties["primaryContact"]
-	if primaryContact.Ref != "" {
-		t.Fatalf("ref field with metadata should not emit direct $ref sibling fields: %#v", primaryContact)
-	}
-	if got := primaryContact.Description; got != "Primary contact information" {
-		t.Fatalf("expected primaryContact description, got %q", got)
-	}
-	if len(primaryContact.AllOf) != 1 || primaryContact.AllOf[0].Ref != "#/components/schemas/ContactInfo" {
-		t.Fatalf("expected primaryContact allOf ref ContactInfo, got %#v", primaryContact.AllOf)
-	}
+	require.String(t, primaryContact.Ref).Equal("")
+	require.String(t, primaryContact.Description).Equal("Primary contact information")
+	require.That(t, len(primaryContact.AllOf)).Equal(1)
+	require.String(t, primaryContact.AllOf[0].Ref).Equal("#/components/schemas/ContactInfo")
 
 	managerLevel := doc.Components.Schemas["ManagerLevel"]
-	if got := managerLevel.Type; got != "integer" {
-		t.Fatalf("enum component should be integer, got %s", got)
-	}
-	if !slices.Contains(managerLevel.XEnumNames, "SENIOR") {
-		t.Fatalf("enum component should include x-enumNames: %#v", managerLevel.XEnumNames)
-	}
+	require.String(t, managerLevel.Type).Equal("integer")
+	require.Slice(t, managerLevel.XEnumNames).Contains("SENIOR")
 
 	payload := doc.Components.Schemas["Payload"]
-	if payload.Type != "object" {
-		t.Fatalf("Payload should be emitted as object wrapper, got %s", payload.Type)
-	}
-	if len(payload.OneOf) != 0 {
-		t.Fatalf("Payload should not be emitted as bare oneOf variants: %#v", payload.OneOf)
-	}
-	if !slices.Contains(payload.Required, "FieldType") {
-		t.Fatalf("Payload should require FieldType: %#v", payload.Required)
-	}
+	require.String(t, payload.Type).Equal("object")
+	require.That(t, len(payload.OneOf)).Equal(0)
+	require.Slice(t, payload.Required).Contains("FieldType")
 	fieldType := payload.Properties["FieldType"]
-	if fieldType.Type != "string" || !slices.Contains(fieldType.Enum, any("MessageDelta")) {
-		t.Fatalf("Payload FieldType should be string enum: %#v", fieldType)
-	}
-	if got := payload.Properties["MessageDelta"].Ref; got != "#/components/schemas/MessageDelta" {
-		t.Fatalf("Payload should include MessageDelta wrapper field ref, got %s", got)
-	}
+	require.String(t, fieldType.Type).Equal("string")
+	require.Slice(t, fieldType.Enum).Contains(any("MessageDelta"))
+	require.String(t, payload.Properties["MessageDelta"].Ref).Equal("#/components/schemas/MessageDelta")
 }
 
 func TestBuildWithOpenAPIConfigServers(t *testing.T) {
@@ -158,21 +110,15 @@ rpc Ping(PingReq) PingResp {
 `)
 
 	project, err := httpidl.ParseDir(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.Error(t, err).Nil()
 	doc, err := build(project)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.Error(t, err).Nil()
 	servers, ok := doc.Servers.([]any)
-	if !ok || len(servers) != 1 {
-		t.Fatalf("expected one server, got %#v", doc.Servers)
-	}
+	require.That(t, ok).True()
+	require.That(t, len(servers)).Equal(1)
 	server, ok := servers[0].(map[string]any)
-	if !ok || server["url"] != "https://api.example.com" {
-		t.Fatalf("unexpected server config: %#v", servers[0])
-	}
+	require.That(t, ok).True()
+	require.That(t, server["url"]).Equal("https://api.example.com")
 }
 
 func TestBuildNormalizesColonPathParams(t *testing.T) {
@@ -199,19 +145,13 @@ rpc Ping(PingReq) PingResp {
 `)
 
 	project, err := httpidl.ParseDir(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.Error(t, err).Nil()
 	doc, err := build(project)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, ok := doc.Paths["/ping/{id}"]["get"]; !ok {
-		t.Fatalf("expected normalized OpenAPI path /ping/{id}, got %#v", doc.Paths)
-	}
-	if _, ok := doc.Paths["/ping/:id"]; ok {
-		t.Fatalf("colon path should not be emitted in OpenAPI paths: %#v", doc.Paths)
-	}
+	require.Error(t, err).Nil()
+	_, ok := doc.Paths["/ping/{id}"]["get"]
+	require.That(t, ok).True()
+	_, ok = doc.Paths["/ping/:id"]
+	require.That(t, ok).False()
 }
 
 func TestBuildRejectsDuplicateMethodPath(t *testing.T) {
@@ -249,16 +189,10 @@ rpc GetPing(PingReq) PingResp {
 `)
 
 	project, err := httpidl.ParseDir(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.Error(t, err).Nil()
 	_, err = build(project)
-	if err == nil {
-		t.Fatal("expected duplicate method/path error")
-	}
-	if !strings.Contains(err.Error(), "duplicate OpenAPI operation for GET /ping/{id}") {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.Error(t, err).NotNil()
+	require.String(t, err.Error()).Contains("duplicate OpenAPI operation for GET /ping/{id}")
 }
 
 func hasParameter(parameters []parameter, name, in string, required bool, typ string) bool {
@@ -282,7 +216,5 @@ func writeTestProject(t *testing.T, dir, idl string) {
 
 func writeTestFile(t *testing.T, dir, name, content string) {
 	t.Helper()
-	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), os.ModePerm); err != nil {
-		t.Fatal(err)
-	}
+	require.Error(t, os.WriteFile(filepath.Join(dir, name), []byte(content), os.ModePerm)).Nil()
 }

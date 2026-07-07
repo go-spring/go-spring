@@ -17,9 +17,9 @@
 package textstyle_test
 
 import (
-	"strings"
 	"testing"
 
+	"go-spring.org/stdlib/testing/assert"
 	"go-spring.org/stdlib/textstyle"
 )
 
@@ -77,28 +77,21 @@ func TestAttribute_Sprint(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := tt.attr.Sprint(tt.input)
-			if result != tt.expected {
-				t.Errorf("Expected %q, got %q", tt.expected, result)
-			}
+			assert.String(t, result).Equal(tt.expected)
 		})
 	}
 }
 
 func TestAttribute_Sprintf(t *testing.T) {
 	result := textstyle.Red.Sprintf("hello %s", "world")
-	expected := "\x1b[31mhello world\x1b[0m"
-	if result != expected {
-		t.Errorf("Expected %q, got %q", expected, result)
-	}
+	assert.String(t, result).Equal("\x1b[31mhello world\x1b[0m")
 }
 
 func TestText_Sprint(t *testing.T) {
 	// Test empty attributes
 	text := textstyle.NewText()
 	result := text.Sprint("test")
-	if result != "test" {
-		t.Errorf("Expected unformatted string when no attributes, got %q", result)
-	}
+	assert.String(t, result).Equal("test")
 
 	// Test multiple attributes
 	attributes := []textstyle.Attribute{
@@ -108,10 +101,7 @@ func TestText_Sprint(t *testing.T) {
 	}
 	textWithAttrs := textstyle.NewText(attributes...)
 	result = textWithAttrs.Sprint("test")
-	expected := "\x1b[1;31;42mtest\x1b[0m"
-	if result != expected {
-		t.Errorf("Expected %q, got %q", expected, result)
-	}
+	assert.String(t, result).Equal("\x1b[1;31;42mtest\x1b[0m")
 }
 
 func TestText_Sprintf(t *testing.T) {
@@ -121,37 +111,23 @@ func TestText_Sprintf(t *testing.T) {
 	}
 	text := textstyle.NewText(attributes...)
 	result := text.Sprintf("hello %s", "world")
-	expected := "\x1b[1;34mhello world\x1b[0m"
-	if result != expected {
-		t.Errorf("Expected %q, got %q", expected, result)
-	}
+	assert.String(t, result).Equal("\x1b[1;34mhello world\x1b[0m")
 }
 
 func TestWrapFunction(t *testing.T) {
 	// Test that wrap function properly handles multiple attributes
 	attributes := []textstyle.Attribute{textstyle.Bold, textstyle.Italic}
 	result := textstyle.NewText(attributes...).Sprint("test")
-	expected := "\x1b[1;3mtest\x1b[0m"
-	if result != expected {
-		t.Errorf("Expected %q, got %q", expected, result)
-	}
+	assert.String(t, result).Equal("\x1b[1;3mtest\x1b[0m")
 
 	// Test empty attributes case
 	emptyResult := textstyle.NewText().Sprint("test")
-	if emptyResult != "test" {
-		t.Errorf("Expected unformatted string for empty attributes, got %q", emptyResult)
-	}
+	assert.String(t, emptyResult).Equal("test")
 }
 
 func TestANSIFormatCorrectness(t *testing.T) {
 	result := textstyle.Bold.Sprint("test")
-	if !strings.HasPrefix(result, "\x1b[") {
-		t.Error("Result should start with escape sequence")
-	}
-	if !strings.HasSuffix(result, "\x1b[0m") {
-		t.Error("Result should end with reset sequence")
-	}
-	if !strings.Contains(result, "test") {
-		t.Error("Result should contain the original text")
-	}
+	assert.String(t, result).HasPrefix("\x1b[")
+	assert.String(t, result).HasSuffix("\x1b[0m")
+	assert.String(t, result).Contains("test")
 }

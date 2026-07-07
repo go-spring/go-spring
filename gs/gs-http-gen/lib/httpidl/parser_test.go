@@ -19,8 +19,10 @@ package httpidl
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
+
+	"go-spring.org/stdlib/testing/assert"
+	"go-spring.org/stdlib/testing/require"
 )
 
 func TestParseDirRejectsNonGenericInstantiation(t *testing.T) {
@@ -34,12 +36,8 @@ type StringPage Page<string>
 `)
 
 	_, err := ParseDir(dir)
-	if err == nil {
-		t.Fatal("expected non-generic instantiation error")
-	}
-	if !strings.Contains(err.Error(), "type Page is not generic") {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.Error(t, err).NotNil()
+	assert.String(t, err.Error()).Contains("type Page is not generic")
 }
 
 func TestParseDirValidationHandlesTypeCycles(t *testing.T) {
@@ -70,23 +68,15 @@ rpc GetNode(NodeReq) NodeResp {
 `)
 
 	project, err := ParseDir(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.Error(t, err).Nil()
 	req, ok := FindType(project.Files, "NodeReq")
-	if !ok {
-		t.Fatal("NodeReq not found")
-	}
-	if !req.Type.Validate || !req.Type.Fields[0].ValidateNested {
-		t.Fatalf("expected NodeReq.child to require nested validation: %#v", req.Type)
-	}
+	require.That(t, ok).True()
+	assert.That(t, req.Type.Validate).True()
+	assert.That(t, req.Type.Fields[0].ValidateNested).True()
 	node, ok := FindType(project.Files, "Node")
-	if !ok {
-		t.Fatal("Node not found")
-	}
-	if !node.Type.Validate || !node.Type.Fields[0].ValidateNested {
-		t.Fatalf("expected Node.parent to require nested validation: %#v", node.Type)
-	}
+	require.That(t, ok).True()
+	assert.That(t, node.Type.Validate).True()
+	assert.That(t, node.Type.Fields[0].ValidateNested).True()
 }
 
 func TestParseDirRejectsDuplicatePathParameter(t *testing.T) {
@@ -112,12 +102,8 @@ rpc GetThing(Req) Resp {
 `)
 
 	_, err := ParseDir(dir)
-	if err == nil {
-		t.Fatal("expected duplicate path parameter error")
-	}
-	if !strings.Contains(err.Error(), "duplicate path parameter id in rpc GetThing") {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.Error(t, err).NotNil()
+	assert.String(t, err.Error()).Contains("duplicate path parameter id in rpc GetThing")
 }
 
 func TestParseDirRejectsDuplicateFieldBindings(t *testing.T) {
@@ -205,12 +191,8 @@ rpc Create(Req) Resp {
 			dir := t.TempDir()
 			writeParserTestProject(t, dir, tt.idl)
 			_, err := ParseDir(dir)
-			if err == nil {
-				t.Fatal("expected duplicate binding error")
-			}
-			if !strings.Contains(err.Error(), tt.want) {
-				t.Fatalf("unexpected error: %v", err)
-			}
+			require.Error(t, err).NotNil()
+			assert.String(t, err.Error()).Contains(tt.want)
 		})
 	}
 }
@@ -227,7 +209,5 @@ func writeParserTestProject(t *testing.T, dir, idl string) {
 
 func writeParserTestFile(t *testing.T, dir, name, content string) {
 	t.Helper()
-	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), os.ModePerm); err != nil {
-		t.Fatal(err)
-	}
+	require.Error(t, os.WriteFile(filepath.Join(dir, name), []byte(content), os.ModePerm)).Nil()
 }

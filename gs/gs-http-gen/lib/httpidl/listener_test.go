@@ -19,42 +19,29 @@ package httpidl
 import (
 	"bytes"
 	"os"
-	"strings"
 	"testing"
 
 	"go-spring.org/stdlib/jsonflow"
+	"go-spring.org/stdlib/testing/assert"
+	"go-spring.org/stdlib/testing/require"
 )
 
 func TestListener(t *testing.T) {
 	fileName := "testdata/success/http.idl"
 	b, err := os.ReadFile(fileName)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.Error(t, err).Nil()
 	doc, _, err := ParseIDL(b)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.Error(t, err).Nil()
 	b, err = os.ReadFile("testdata/success/http.formated.idl")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.Error(t, err).Nil()
 	s := Format(doc)
-	if s != string(b) {
-		t.Fatalf("expected:\n%s\nbut got:\n%s", string(b), s)
-	}
+	assert.String(t, s).Equal(string(b))
 	b, err = os.ReadFile("testdata/success/http.idl.json")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.Error(t, err).Nil()
 	v, err := jsonflow.MarshalIndent(doc, "", "  ")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.Error(t, err).Nil()
 	b = bytes.TrimSpace(b)
-	if !bytes.Equal(v, b) {
-		t.Fatalf("expected:\n%s\nbut got:\n%s", string(b), string(v))
-	}
+	assert.String(t, string(v)).Equal(string(b))
 }
 
 func TestParseIDLRejectsDuplicateTopLevelName(t *testing.T) {
@@ -67,12 +54,8 @@ type User {
     required string id
 }
 `))
-	if err == nil {
-		t.Fatal("expected duplicate top-level name error")
-	}
-	if !strings.Contains(err.Error(), "duplicate type name User") {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.Error(t, err).NotNil()
+	assert.String(t, err.Error()).Contains("duplicate type name User")
 }
 
 func TestParseIDLRejectsDuplicateRPCName(t *testing.T) {
@@ -105,10 +88,6 @@ rpc Save(Req) Resp {
     writeTimeout=100
 }
 `))
-	if err == nil {
-		t.Fatal("expected duplicate rpc name error")
-	}
-	if !strings.Contains(err.Error(), "duplicate rpc name Save") {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.Error(t, err).NotNil()
+	assert.String(t, err.Error()).Contains("duplicate rpc name Save")
 }

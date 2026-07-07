@@ -20,6 +20,8 @@ import (
 	"testing"
 
 	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/testing/assert"
+	"go-spring.org/stdlib/testing/require"
 )
 
 func TestParse(t *testing.T) {
@@ -305,30 +307,20 @@ func TestParse(t *testing.T) {
 			expr, err := Parse(tt.input)
 
 			if tt.expectError != nil {
-				if err == nil {
-					t.Errorf("Parse(%q) expected error, but got none", tt.input)
-				} else if tt.expectError.Error() != err.Error() {
-					t.Errorf("Parse(%q) returned unexpected error: %v", tt.input, err)
-				}
+				require.Error(t, err).NotNil()
+				assert.String(t, err.Error()).Equal(tt.expectError.Error())
 				return
 			}
 
-			if err != nil {
-				t.Errorf("Parse(%q) returned unexpected error: %v", tt.input, err)
-				return
-			}
+			assert.Error(t, err).Nil()
 
 			if expr == nil {
-				if tt.expected != "" {
-					t.Errorf("Parse(%q) = nil, want %q", tt.input, tt.expected)
-				}
+				assert.String(t, tt.expected).Equal("")
 				return
 			}
 
 			actual := expr.Text()
-			if actual != tt.expected {
-				t.Errorf("Parse(%q).Text() = %q, want %q", tt.input, actual, tt.expected)
-			}
+			assert.String(t, actual).Equal(tt.expected)
 		})
 	}
 }

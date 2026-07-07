@@ -18,6 +18,8 @@ package listutil
 
 import (
 	"testing"
+
+	"go-spring.org/stdlib/testing/assert"
 )
 
 func TestList_BasicOperations(t *testing.T) {
@@ -28,26 +30,16 @@ func TestList_BasicOperations(t *testing.T) {
 	e2 := l.PushBack(2)
 	l.PushBack(3)
 
-	if l.Len() != 3 {
-		t.Errorf("expected length 3, got %d", l.Len())
-	}
+	assert.That(t, l.Len()).Equal(3)
 
 	// Test Front and Back
-	if l.Front().Value() != 1 {
-		t.Errorf("expected front value 1, got %d", l.Front().Value())
-	}
-	if l.Back().Value() != 3 {
-		t.Errorf("expected back value 3, got %d", l.Back().Value())
-	}
+	assert.That(t, l.Front().Value()).Equal(1)
+	assert.That(t, l.Back().Value()).Equal(3)
 
 	// Test Remove
 	val := l.Remove(e2)
-	if val != 2 {
-		t.Errorf("expected removed value 2, got %d", val)
-	}
-	if l.Len() != 2 {
-		t.Errorf("expected length 2 after remove, got %d", l.Len())
-	}
+	assert.That(t, val).Equal(2)
+	assert.That(t, l.Len()).Equal(2)
 }
 
 func TestList_InsertOperations(t *testing.T) {
@@ -65,9 +57,7 @@ func TestList_InsertOperations(t *testing.T) {
 	expected := []string{"first", "second", "third", "fourth"}
 	i := 0
 	for e := l.Front(); e.Valid(); e = e.Next() {
-		if e.Value() != expected[i] {
-			t.Errorf("expected %s, got %s", expected[i], e.Value())
-		}
+		assert.That(t, e.Value()).Equal(expected[i])
 		i++
 	}
 	_ = e1
@@ -82,15 +72,11 @@ func TestList_MoveOperations(t *testing.T) {
 
 	// Test MoveToFront
 	l.MoveToFront(e3)
-	if l.Front().Value() != 3 {
-		t.Errorf("expected front value 3 after MoveToFront, got %d", l.Front().Value())
-	}
+	assert.That(t, l.Front().Value()).Equal(3)
 
 	// Test MoveToBack
 	l.MoveToBack(e1)
-	if l.Back().Value() != 1 {
-		t.Errorf("expected back value 1 after MoveToBack, got %d", l.Back().Value())
-	}
+	assert.That(t, l.Back().Value()).Equal(1)
 
 	// Test MoveBefore
 	l.MoveBefore(e2, e1)
@@ -114,9 +100,7 @@ func TestList_ListOperations(t *testing.T) {
 	expected := []int{1, 2, 3, 4}
 	i := 0
 	for e := l1.Front(); e.Valid(); e = e.Next() {
-		if e.Value() != expected[i] {
-			t.Errorf("expected %d, got %d", expected[i], e.Value())
-		}
+		assert.That(t, e.Value()).Equal(expected[i])
 		i++
 	}
 
@@ -126,23 +110,17 @@ func TestList_ListOperations(t *testing.T) {
 	l3.PushBack(6)
 	l3.PushFrontList(l1)
 
-	if l3.Front().Value() != 1 {
-		t.Errorf("expected front value 1 after PushFrontList, got %d", l3.Front().Value())
-	}
+	assert.That(t, l3.Front().Value()).Equal(1)
 }
 
 func TestElement_Valid(t *testing.T) {
 	l := New[int]()
 	e := l.PushBack(1)
 
-	if !e.Valid() {
-		t.Error("expected element from list to be valid")
-	}
+	assert.That(t, e.Valid()).True()
 
 	var empty Element[int]
-	if empty.Valid() {
-		t.Error("expected zero element to be invalid")
-	}
+	assert.That(t, empty.Valid()).False()
 }
 
 func ExampleNew() {

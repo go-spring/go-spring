@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	"go-spring.org/gs-http-gen/lib/validate"
+	"go-spring.org/stdlib/testing/require"
 )
 
 func TestGenDecodeJSONMapKey(t *testing.T) {
@@ -32,18 +33,12 @@ func TestGenDecodeJSONMapKey(t *testing.T) {
 		TypeKindInt,
 		TypeKindString,
 	})
-	want := "jsonflow.DecodeMap(jsonflow.DecodeIntKey[int64], jsonflow.DecodeString)"
-	if got != want {
-		t.Fatalf("got %q, want %q", got, want)
-	}
+	require.String(t, got).Equal("jsonflow.DecodeMap(jsonflow.DecodeIntKey[int64], jsonflow.DecodeString)")
 }
 
 func TestGenDecodeJSONAny(t *testing.T) {
 	got := genDecodeJSON("any", []TypeKind{TypeKindAny})
-	want := "jsonflow.DecodeAny[any]"
-	if got != want {
-		t.Fatalf("got %q, want %q", got, want)
-	}
+	require.String(t, got).Equal("jsonflow.DecodeAny[any]")
 }
 
 func TestGenEncodeJSONMap(t *testing.T) {
@@ -53,10 +48,7 @@ func TestGenEncodeJSONMap(t *testing.T) {
 		TypeKindList,
 		TypeKindInt,
 	})
-	want := "jsonflow.EncodeMap(jsonflow.EncodeStringKey[string], jsonflow.EncodeArray(jsonflow.EncodeInt[int64]))"
-	if got != want {
-		t.Fatalf("got %q, want %q", got, want)
-	}
+	require.String(t, got).Equal("jsonflow.EncodeMap(jsonflow.EncodeStringKey[string], jsonflow.EncodeArray(jsonflow.EncodeInt[int64]))")
 }
 
 func TestGenDecodeJSONRequiredCheckBytes(t *testing.T) {
@@ -64,35 +56,23 @@ func TestGenDecodeJSONRequiredCheckBytes(t *testing.T) {
 	want := `if r.Avatar == nil {
 			return errutil.Explain(nil, "field \"avatar\" must not be null")
 		}`
-	if got != want {
-		t.Fatalf("got %q, want %q", got, want)
-	}
+	require.String(t, got).Equal(want)
 }
 
 func TestGenValidateExprWithCustomFunc(t *testing.T) {
 	// Test that $ is correctly replaced with field value (x.Age)
 	expr, err := validate.Parse("Positive($) && $ > 0")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.Error(t, err).Nil()
 
 	got, err := genValidateExpr("User", "Age", "int64", expr)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.Error(t, err).Nil()
 
 	// Check that $ was replaced with x.Age (not just "Age")
-	if !strings.Contains(got, "Positive(x.Age)") {
-		t.Fatalf("expected $ to be replaced with x.Age, got:\n%s", got)
-	}
-	if !strings.Contains(got, "x.Age > 0") {
-		t.Fatalf("expected $ to be replaced with x.Age in bool expr, got:\n%s", got)
-	}
+	require.String(t, got).Contains("Positive(x.Age)")
+	require.String(t, got).Contains("x.Age > 0")
 
 	// Check that error propagation is correct
-	if !strings.Contains(got, "ok, err := Positive(x.Age)") {
-		t.Fatalf("expected custom function call with ok/err return, got:\n%s", got)
-	}
+	require.String(t, got).Contains("ok, err := Positive(x.Age)")
 }
 
 func TestCompileValidateExprQuotesSingleQuotedString(t *testing.T) {
@@ -116,16 +96,10 @@ func TestCompileValidateExprQuotesSingleQuotedString(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			expr, err := validate.Parse(tt.expr)
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.Error(t, err).Nil()
 			got, err := compileBoolExpr("x.Name", expr)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if got != tt.want {
-				t.Fatalf("got %q, want %q", got, tt.want)
-			}
+			require.Error(t, err).Nil()
+			require.String(t, got).Equal(tt.want)
 		})
 	}
 }
@@ -136,12 +110,8 @@ func TestGenValidateNestedMapValue(t *testing.T) {
 		TypeKindString,
 		TypeKindStructPtr,
 	}, 0)
-	if !strings.Contains(got, "for _, v0 := range x.Contacts") {
-		t.Fatalf("missing map value loop: %q", got)
-	}
-	if !strings.Contains(got, "v0.Validate()") {
-		t.Fatalf("missing map value validation: %q", got)
-	}
+	require.String(t, got).Contains("for _, v0 := range x.Contacts")
+	require.String(t, got).Contains("v0.Validate()")
 }
 
 func TestTypeTemplateEmitsValidateForRequiredOnlyNestedType(t *testing.T) {
@@ -171,9 +141,7 @@ rpc CreateParent(ParentReq) Resp {
 `)
 
 	spec, err := Convert(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.Error(t, err).Nil()
 
 	var buf bytes.Buffer
 	err = typeTmpl.Execute(&buf, map[string]any{
@@ -182,16 +150,10 @@ rpc CreateParent(ParentReq) Resp {
 		"Enums":   spec.Enums["test.idl"],
 		"Structs": spec.Types["test.idl"],
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.Error(t, err).Nil()
 	src := buf.String()
-	if !strings.Contains(src, "func (x *Child) Validate() error") {
-		t.Fatalf("required-only nested type should have Validate method:\n%s", src)
-	}
-	if !strings.Contains(src, "x.Child.Validate()") {
-		t.Fatalf("parent request body should validate nested child:\n%s", src)
-	}
+	require.String(t, src).Contains("func (x *Child) Validate() error")
+	require.String(t, src).Contains("x.Child.Validate()")
 }
 
 func TestClientTemplateOrdersPathParamsByPathSegment(t *testing.T) {
@@ -218,29 +180,18 @@ rpc GetRepo(RepoReq) Resp {
 `)
 
 	spec, err := Convert(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(spec.RPCs) != 1 {
-		t.Fatalf("expected one RPC, got %d", len(spec.RPCs))
-	}
+	require.Error(t, err).Nil()
+	require.That(t, len(spec.RPCs)).Equal(1)
 	gotFields := strings.Join(spec.RPCs[0].PathParamFields, ",")
-	if gotFields != "OrgId,RepoId" {
-		t.Fatalf("unexpected path param field order: %s", gotFields)
-	}
+	require.String(t, gotFields).Equal("OrgId,RepoId")
 
 	var buf bytes.Buffer
 	err = clientTmpl.Execute(&buf, map[string]any{
 		"Package": "proto",
 		"RPCs":    spec.RPCs,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := `RawPath: fmt.Sprintf("/org/%v/repos/%v", req.OrgId, req.RepoId)`
-	if !strings.Contains(buf.String(), want) {
-		t.Fatalf("client RawPath arguments are not ordered by path: want %q in\n%s", want, buf.String())
-	}
+	require.Error(t, err).Nil()
+	require.String(t, buf.String()).Contains(`RawPath: fmt.Sprintf("/org/%v/repos/%v", req.OrgId, req.RepoId)`)
 }
 
 func TestClientTemplateWithOnlySSERPCsOmitsImports(t *testing.T) {
@@ -266,29 +217,19 @@ sse Stream(StreamReq) StreamResp {
 `)
 
 	spec, err := Convert(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.Error(t, err).Nil()
 	rpcs := clientRPCs(spec.RPCs)
-	if len(rpcs) != 0 {
-		t.Fatalf("expected no client RPCs for SSE-only project, got %d", len(rpcs))
-	}
+	require.That(t, len(rpcs)).Equal(0)
 
 	var buf bytes.Buffer
 	err = clientTmpl.Execute(&buf, map[string]any{
 		"Package": "proto",
 		"RPCs":    rpcs,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.Error(t, err).Nil()
 	src := buf.String()
-	if strings.Contains(src, "import (") {
-		t.Fatalf("SSE-only client should not emit unused imports:\n%s", src)
-	}
-	if !strings.Contains(src, "type Client struct") {
-		t.Fatalf("SSE-only client should still emit Client type:\n%s", src)
-	}
+	require.That(t, strings.Contains(src, "import (")).False()
+	require.String(t, src).Contains("type Client struct")
 }
 
 func TestServerTemplateWithoutRPCsOmitsUnusedImports(t *testing.T) {
@@ -298,18 +239,12 @@ func TestServerTemplateWithoutRPCsOmitsUnusedImports(t *testing.T) {
 		"Service": "Empty",
 		"RPCs":    []RPC{},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.Error(t, err).Nil()
 	src := buf.String()
 	for _, name := range []string{`"context"`, `"net/http"`} {
-		if strings.Contains(src, name) {
-			t.Fatalf("empty server should not emit unused import %s:\n%s", name, src)
-		}
+		require.That(t, strings.Contains(src, name)).False()
 	}
-	if !strings.Contains(src, `"go-spring.org/stdlib/httpsvr"`) {
-		t.Fatalf("server should still import httpsvr for Routers signature:\n%s", src)
-	}
+	require.String(t, src).Contains(`"go-spring.org/stdlib/httpsvr"`)
 }
 
 func TestTypeTemplateEnumAsStringUnquotesJSONString(t *testing.T) {
@@ -322,9 +257,7 @@ enum Level {
 `)
 
 	spec, err := Convert(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.Error(t, err).Nil()
 
 	var buf bytes.Buffer
 	err = typeTmpl.Execute(&buf, map[string]any{
@@ -333,16 +266,10 @@ enum Level {
 		"Enums":   spec.Enums["test.idl"],
 		"Structs": spec.Types["test.idl"],
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.Error(t, err).Nil()
 	src := buf.String()
-	if !strings.Contains(src, "str, err := strconv.Unquote(string(data))") {
-		t.Fatalf("enum string decoder should unquote JSON strings:\n%s", src)
-	}
-	if strings.Contains(src, "strings.Trim(string(data), \"\\\"\")") {
-		t.Fatalf("enum string decoder should not trim quotes manually:\n%s", src)
-	}
+	require.String(t, src).Contains("str, err := strconv.Unquote(string(data))")
+	require.That(t, strings.Contains(src, "strings.Trim(string(data), \"\\\"\")")).False()
 }
 
 func TestConvertRejectsDuplicateMethodPath(t *testing.T) {
@@ -378,12 +305,8 @@ rpc GetByBrace(Req) Resp {
 `)
 
 	_, err := Convert(dir)
-	if err == nil {
-		t.Fatal("expected duplicate method/path error")
-	}
-	if !strings.Contains(err.Error(), "duplicate RPC route GET /things/{id}") {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.Error(t, err).NotNil()
+	require.String(t, err.Error()).Contains("duplicate RPC route GET /things/{id}")
 }
 
 func TestValidateTemplateUsesGoParamTypes(t *testing.T) {
@@ -402,9 +325,7 @@ type Req {
 `)
 
 	spec, err := Convert(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.Error(t, err).Nil()
 	tests := map[string]string{
 		"Positive":   "int64",
 		"Score":      "int64",
@@ -412,12 +333,8 @@ type Req {
 	}
 	for name, want := range tests {
 		got, ok := spec.Funcs[name]
-		if !ok {
-			t.Fatalf("missing validate func %s", name)
-		}
-		if got.ParamType != want {
-			t.Fatalf("validate func %s param type = %s, want %s", name, got.ParamType, want)
-		}
+		require.That(t, ok).True()
+		require.String(t, got.ParamType).Equal(want)
 	}
 
 	var buf bytes.Buffer
@@ -425,15 +342,11 @@ type Req {
 		"Package": "proto",
 		"Funcs":   spec.Funcs,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.Error(t, err).Nil()
 	src := buf.String()
 	for name, typ := range tests {
 		want := "var " + name + " = func (" + typ + ") (bool, error)"
-		if !strings.Contains(src, want) {
-			t.Fatalf("validate template missing %q in\n%s", want, src)
-		}
+		require.String(t, src).Contains(want)
 	}
 }
 
@@ -452,12 +365,8 @@ type Req {
 `)
 
 	_, err := Convert(dir)
-	if err == nil {
-		t.Fatal("expected validate function type conflict")
-	}
-	if !strings.Contains(err.Error(), "validate function Check is used with different Go types") {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	require.Error(t, err).NotNil()
+	require.String(t, err.Error()).Contains("validate function Check is used with different Go types")
 }
 
 func writeGeneratorTestProject(t *testing.T, dir, idl string) {
@@ -472,7 +381,5 @@ func writeGeneratorTestProject(t *testing.T, dir, idl string) {
 
 func writeGeneratorTestFile(t *testing.T, dir, name, content string) {
 	t.Helper()
-	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), os.ModePerm); err != nil {
-		t.Fatal(err)
-	}
+	require.Error(t, os.WriteFile(filepath.Join(dir, name), []byte(content), os.ModePerm)).Nil()
 }

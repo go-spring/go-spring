@@ -18,6 +18,8 @@ package httpidl
 
 import (
 	"testing"
+
+	"go-spring.org/stdlib/testing/assert"
 )
 
 func TestToPascal(t *testing.T) {
@@ -116,9 +118,7 @@ func TestToPascal(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			actual := ToPascal(tt.input)
-			if actual != tt.expected {
-				t.Errorf("ToPascal(%q) = %q, expected %q", tt.input, actual, tt.expected)
-			}
+			assert.String(t, actual).Equal(tt.expected)
 		})
 	}
 }
