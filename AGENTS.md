@@ -1,8 +1,20 @@
 # Project Conventions
 
+## When to Record a Convention
+
+To decide whether a convention is worth writing down, ask yourself three things:
+
+1. Would a skilled engineer, new to this project, naturally do it this way? If so, don't bother recording it.
+2. Does breaking it cause real consequences — build failures, review rejections, even production incidents? If so, record it first.
+3. Is it already explained elsewhere (code comments, CLAUDE.md, CODING_STYLE.md)? If so, link to it rather than repeat it.
+
 ## Output Format
 
 - Start every reply with "Hi,Go-Spring.".
+
+## Shared Conventions
+
+Shared conventions for projects using Go-Spring live in [layout/docs/agent-rules/common-rules.en.md](layout/docs/agent-rules/common-rules.en.md), covering design principles, coding style, error handling, testing, and more.
 
 ## Project Structure
 
@@ -11,30 +23,4 @@
 
 ## Coding Style
 
-See [CODING_STYLE.md](CODING_STYLE.md).
-
-## Error Handling
-
-- Wrap errors with `errutil.Explain` or `errutil.Stack`.
-- Include enough context to pinpoint where the error came from.
-
-## Global State
-
-- No global variables. Go-Spring provides dependencies via IoC/DI; get config, singletons, and clients through injection.
-
-## Testing
-
-- Use the `assert`/`require` helpers from `stdlib/testing` for value and error assertions; do not hand-write comparisons with raw `t.Errorf`/`t.Fatalf`.
-- Prefer `assert` by default; use `require` only when a failed assertion would make the following code panic or meaningless (e.g. a nil check before dereferencing).
-- Do not pull in third-party assertion libraries (testify, etc.).
-- Raw `t.Fatal`/`t.Error` is acceptable only where no assertion equivalent exists — e.g. timeout guards, `select` branches, or unrecoverable setup failures.
-
-## Scripts
-
-- When a script is needed, prefer bash, then python.
-
-## Design Principles
-
-Keep it simple. Don't add defensive code for edge cases unless driven by external input, a real bug, or a clear requirement.
-
-Follow existing code patterns and project style unless the user explicitly asks otherwise.
+- Every source file must carry the Apache License header; see `LICENSE_HEADER` for the template.

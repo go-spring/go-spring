@@ -14,11 +14,13 @@
 
 ## 通用规约
 
-使用 Go-Spring 项目的通用规约见 [common-rules.md](docs/agent-rules/common-rules.md)，涵盖设计原则、编码风格、错误处理、测试等。
+使用 Go-Spring 项目的通用规约见 [layout/docs/agent-rules/common-rules.zh.md](layout/docs/agent-rules/common-rules.zh.md)，涵盖设计原则、编码风格、错误处理、测试等。
 
-## domain 目录规约
+## 项目结构
 
-`domain` 形态的规约见 [domain-rules.md](docs/agent-rules/domain-rules.md),其中包含分层、边界、事务、测试等硬规则及协作细则,AI 遵循该文件即可。
+- 仓库根目录不放 `go.mod`。
+- 每个子项目各自拥有独立的 Go module。
 
-修改代码或写方案前,**必须**先按该文档确认所在层与依赖方向,不要凭直觉推断目录用途。
+## 编码风格
 
+- 每个源文件都必须带有 Apache License 头；模板见 `LICENSE_HEADER`。
