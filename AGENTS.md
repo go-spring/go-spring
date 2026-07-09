@@ -18,9 +18,13 @@ Shared conventions for projects using Go-Spring live in [layout/docs/agent-rules
 
 ## Project Structure
 
-- No `go.mod` at the repo root.
-- Each subproject owns its own Go module.
+- No `go.mod` at the repo root; each subproject owns its own Go module.
+- Four-layer dependency structure, flowing one way and never in reverse:
+  - **`stdlib/`** — foundation layer, **zero dependencies**, common utilities shared across modules.
+  - **`spring/`** — core container layer, implements IoC container and dependency injection; depends on no third-party business package (Redis, GORM, ...).
+  - **`starter-*/`** — integration layer, integrates third-party services (Redis, GORM, ...) on top of core abstractions.
+  - **`gs-*/`** — tooling layer, project scaffolding, code generation, and other dev tools.
 
 ## Coding Style
 
-- Every source file must carry the Apache License header; see `LICENSE_HEADER` for the template.
+- Every source file must carry the Apache License header; see [LICENSE_HEADER](LICENSE_HEADER) for the template.

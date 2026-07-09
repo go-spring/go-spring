@@ -18,9 +18,13 @@
 
 ## 项目结构
 
-- 仓库根目录不放 `go.mod`。
-- 每个子项目各自拥有独立的 Go module。
+- 仓库根目录不放 `go.mod`，每个子项目各自拥有独立的 Go module。
+- 四层依赖结构，依赖单向向下、不可反向：
+  - **`stdlib/`** —— 基础工具层，**零依赖**，通用工具函数，供跨模块共享。
+  - **`spring/`** —— 核心容器层，实现 IoC 容器、依赖注入；不依赖任何第三方业务包（Redis、GORM 等）。
+  - **`starter-*/`** —— 扩展集成层，在核心抽象上集成第三方服务（Redis、GORM 等）。
+  - **`gs-*/`** —— 工程工具层，提供项目初始化、代码生成等工具。
 
 ## 编码风格
 
-- 每个源文件都必须带有 Apache License 头；模板见 `LICENSE_HEADER`。
+- 每个源文件都必须带有 Apache License 头；模板见 [LICENSE_HEADER](LICENSE_HEADER)。
