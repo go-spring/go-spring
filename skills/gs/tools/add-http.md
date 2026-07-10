@@ -12,7 +12,7 @@
 - 当前 cwd 位于目标子 module 内(有 `go.mod`);不在则先定位。
 - `gs-http-gen` 在 PATH;缺失时提示 `go install go-spring.org/gs-http-gen@latest`。
 - `idl/http/` 目录存在(否则该项目不是 HTTP 服务,终止并说明)。
-- 分层符合 layout 约定:`api/controller` 承载协议无关业务,`api/server/http/handler` 承载协议适配。
+- 分层符合 layout 约定:`api/controller` 承载协议无关业务,`api/server/http/handler` 承载协议适配(分层边界见 `docs/agent-rules/domain-rules.md`)。
 
 ## 收集信息
 
@@ -40,7 +40,7 @@ rm -rf proto && mkdir -p proto
 gs-http-gen --server --output proto
 ```
 
-生成失败(`errutil.Explain(err, "run gs-http-gen")`)保留现场,不清理。
+生成失败保留现场,不清理(错误包装遵循项目 `errutil` 约定)。
 
 ### 3. 实现 controller(协议无关)
 
@@ -48,7 +48,7 @@ gs-http-gen --server --output proto
 
 - 入参出参使用生成的 DTO 或领域类型。
 - 业务逻辑走已有的 service / repository;缺失能力时先在下层补。
-- 错误用 `errutil.Explain` / `errutil.Stack` 包装,业务错用 `consts/errno` 的错误码。
+- 错误包装与错误码遵循项目约定(`errutil` + `consts/errno`)。
 
 ### 4. 组装 handler(协议适配)
 
@@ -60,7 +60,7 @@ gs-http-gen --server --output proto
 
 ### 6. 补测试
 
-- controller 层:单测走真实依赖或轻量 fake,不要 mock 数据库(见项目约定)。
+- controller 层:单测走真实依赖或轻量 fake,不 mock 数据库(测试策略见 `docs/agent-rules/domain-rules.md`)。
 - handler 层:必要时补 HTTP 集成测试,覆盖正常路径 + 至少一条失败路径(参数校验 / 业务错)。
 
 ### 7. 验证

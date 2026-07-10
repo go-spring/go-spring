@@ -60,9 +60,7 @@ Starter 会在启动期自动注册 Bean + 绑定配置。
 
 ### 4. 注入使用
 
-在需要该组件的 controller / service 里,用启动期注入(struct 字段 + 依赖注入 tag),**不**在运行期动态取。
-
-同名同类型 Bean 需要区分时,用条件互斥显式选一个,不靠隐式覆盖。
+在需要该组件的 controller / service 里,通过 struct 字段 + 注入 tag 获取;同名同类型 Bean 用条件(Condition)显式选一个。IoC 装配取向(启动期注入、Bean 冲突显式化)见 coding-style。
 
 ### 5. 生命周期
 

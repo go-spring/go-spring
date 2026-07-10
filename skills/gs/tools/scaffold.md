@@ -57,7 +57,7 @@ git ls-remote --tags --refs https://github.com/go-spring/go-spring.git 'layout/v
 
 ### 4. 稀疏 clone layout 目录
 
-在临时目录里(stdout/stderr 直接流式接 `os.Stdout/Stderr`):
+在临时目录里:
 
 ```bash
 git -c advice.detachedHead=false clone \
@@ -108,7 +108,7 @@ rm -rf <projectDir>/idl/http/proto && mkdir -p <projectDir>/idl/http/proto
 cd <projectDir>/idl/http && gs-http-gen --server --output <projectDir>/idl/http/proto
 ```
 
-stdout/stderr 流式输出。失败用 `errutil.Explain(err, "run gs-http-gen")` 包装,**保留** `<projectDir>` 供用户排查,不要清理。
+失败时**保留** `<projectDir>` 供用户排查,不要清理(错误包装遵循项目 `errutil` 约定)。
 
 ### 8. 清理
 
@@ -138,7 +138,7 @@ stdout/stderr 流式输出。失败用 `errutil.Explain(err, "run gs-http-gen")`
 
 ## 关键约束
 
-- 所有子进程调用一律**流式输出**;仅解析输出(如 `git ls-remote --tags`)时才 buffer。
+- 仅解析型子进程(如 `git ls-remote --tags`)才 buffer,其余保持流式(子进程 IO 见 coding-style)。
 - **禁止**依赖 `gs` 命令;代码生成一律走 `gs-http-gen`。
 - **禁止**自动设置代理或改写用户 git 配置。
 - layout 目录划分(job / mqsvr 等)是项目约定,不要反向质疑。

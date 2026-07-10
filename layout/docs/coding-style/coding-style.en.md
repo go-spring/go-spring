@@ -17,6 +17,9 @@ This document defines the coding principles, idioms, and style conventions for t
 - **Visibility control**: Strictly separate public APIs (`PascalCase`) from internal implementation (`camelCase`); expose what is necessary, hide the internals.
 - **Usable zero value**: Guarantee zero-value safety via defaults, lazy initialization, or internal fallbacks; avoid "panic when uninitialized".
 - **Avoid global state**: Don't use global variables; obtain configuration, singletons, and clients through Go-Spring's IoC/DI injection.
+- **Startup-time injection**: IoC/DI wiring completes at startup; don't introduce runtime dynamic injection.
+- **Explicit bean conflict resolution**: Beans of the same name and type must not rely on implicit override; select explicitly via mutually exclusive conditions (`Condition`).
+- **Starter first**: Before wiring an external component (Redis / MySQL / Kafka, etc.), check whether `starter/` already provides one; reuse it instead of writing initialization from scratch.
 
 ## 2. Naming Conventions
 
@@ -99,6 +102,7 @@ The project uniformly uses the **dual-semantic error-wrapping pattern** of `stdl
 - **Boundary checks**: Validate input at API boundaries to catch errors early.
 - **Avoid over-abstraction**: Abstract only when truly needed; follow YAGNI and don't pre-plan for an uncertain future.
 - **Minimal dependencies**: Add only necessary external dependencies.
+- **Subprocess IO**: When invoking external commands, wire stdout/stderr straight to `os.Stdout/Stderr` to keep output streaming; buffer only when you need to parse the output.
 
 ## 8. Concurrency-Safe Design
 
