@@ -66,6 +66,13 @@ STARTER_DIRS=(
     "starter/starter-pprof"
     "starter/starter-thrift"
     "starter/starter-websocket"
+    "starter/starter-echo"
+    "starter/starter-hertz"
+    "starter/starter-etcd"
+    "starter/starter-consul"
+    "starter/starter-nacos"
+    "starter/starter-mongodb"
+    "starter/starter-rabbitmq"
 )
 # Filter out non-existent starter directories so the script stays valid
 # when the starter list changes.

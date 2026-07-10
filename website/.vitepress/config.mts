@@ -18,7 +18,14 @@ const goImportModules: Record<string, string> = {
   'starter-gin': 'starter/starter-gin',
   'starter-grpc': 'starter/starter-grpc',
   'starter-thrift': 'starter/starter-thrift',
-  'starter-websocket': 'starter/starter-websocket'
+  'starter-websocket': 'starter/starter-websocket',
+  'starter-echo': 'starter/starter-echo',
+  'starter-hertz': 'starter/starter-hertz',
+  'starter-etcd': 'starter/starter-etcd',
+  'starter-consul': 'starter/starter-consul',
+  'starter-nacos': 'starter/starter-nacos',
+  'starter-mongodb': 'starter/starter-mongodb',
+  'starter-rabbitmq': 'starter/starter-rabbitmq'
 }
 
 const goImportHeadTags = (relativePath: string) => {
