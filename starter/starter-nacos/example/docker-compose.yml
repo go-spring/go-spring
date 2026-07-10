@@ -1,6 +1,6 @@
 services:
   nacos:
-    image: nacos/nacos-server:v2.3.2
+    image: nacos/nacos-server:v2.4.3
     container_name: starter-nacos
     environment:
       MODE: "standalone"
