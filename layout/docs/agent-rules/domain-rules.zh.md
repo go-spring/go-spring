@@ -18,6 +18,7 @@
 - `api/controller/<biz>/` 承载协议无关的业务入口;`api/server/<proto>/handler.go` 通过嵌入 controller 聚合方法,**不要**在 handler 里写方法体。
 - MQ 消费入口属于 `api/server/mqsvr`;MQ producer 属于 `infra/mq`。
 - `infra/client/<system>/` 本身即防腐层,**不要**建议再抽一层独立的 `acl/`。
+- 仅为触发 `init()` 注册的匿名(blank)import **必须**集中到组合根 `init.go`,**禁止**散落到 `infra/repo` 等业务包;业务包只直接 import 自己使用的符号(如 `gorm.io/gorm`),注册 Bean 的 starter 归 `init.go`。
 - 同 BC 内子域协作走 `application` service 单向调用;跨 BC 或外部系统**必须**走 `infra/client/`。
 - 默认**不**为单实现依赖预设接口;只有出现多实现、读写分离、缓存装饰等真实触发条件时,才提取接口。
 

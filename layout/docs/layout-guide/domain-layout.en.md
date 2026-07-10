@@ -342,7 +342,8 @@ Whether a filename carries a domain prefix depends on whether the file's types a
 
 - **Inbound entries**: `api/server/*`, `api/job`, etc. **must** be written in `init.go` to trigger route / job / consumer registration.
 - **Outbound dependencies that are imported directly**: **do not** write them in `init.go` — the upstream import triggers initialization naturally.
-- **Outbound capabilities with no direct import but with registration logic in `init()`**: **must** be written in `init.go` — e.g. MQ producers or plugins requiring auto-registration.
+- **Outbound capabilities with no direct import but with registration logic in `init()`**: **must** be written in `init.go` — e.g. MQ producers or plugins requiring auto-registration, or a starter pulled in solely to register beans.
+- **Collect blank imports in one place**: every side-effect (blank) import that exists only to trigger `init()` registration **must** be consolidated in the composition root `init.go`, and **must not** be scattered across business packages such as `infra/repo`. A business package only directly imports the symbols (types, functions) it actually uses — e.g. a repo using GORM imports `gorm.io/gorm`, but `starter-gorm-mysql`, which registers `*gorm.DB`, belongs in `init.go`. This makes enabled components visible at a glance and keeps component removal a one-file edit.
 
 ### Assembly and lifecycle
 

@@ -342,7 +342,8 @@ HTTP 请求
 
 - **入向入口**：`api/server/*`、`api/job` 等**需要**写入 `init.go`，触发路由、任务或消费者注册。
 - **出向依赖且会被直接 import**：**不写入** `init.go`，上层显式 import 时会自然完成初始化。
-- **出向能力没有显式 import，但 `init()` 有注册逻辑**：**需要**写入 `init.go`，例如需要自动注册的 MQ producer 或插件。
+- **出向能力没有显式 import，但 `init()` 有注册逻辑**：**需要**写入 `init.go`，例如需要自动注册的 MQ producer 或插件，或仅为注册 Bean 而引入的 starter。
+- **匿名 import 集中到一处**：所有仅为触发 `init()` 注册的 side-effect（匿名）import **必须**收敛到组合根 `init.go`，**禁止**散落到 `infra/repo` 等业务包内。业务包只直接 import 自己真正使用的符号（类型、函数）；例如 repo 用到 GORM 就 import `gorm.io/gorm`，但注册 `*gorm.DB` 的 `starter-gorm-mysql` 归到 `init.go`。这样一眼可见项目启用了哪些组件，删除组件时也只需改一处。
 
 ### 装配与生命周期
 

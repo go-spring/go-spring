@@ -27,6 +27,9 @@ go.work.sum
 # env file
 .env
 
+# Build output (produced by `make` / build.sh)
+output/
+
 # Editor/IDE
 .idea/
 .vscode/

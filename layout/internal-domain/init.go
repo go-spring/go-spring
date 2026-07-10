@@ -9,6 +9,7 @@ import (
 	_ "GS_PROJECT_MODULE/internal-domain/api/server/mqsvr"
 	_ "GS_PROJECT_MODULE/internal-domain/api/server/thriftsvr"
 	_ "GS_PROJECT_MODULE/internal-domain/api/server/wssvr"
-	_ "GS_PROJECT_MODULE/internal-domain/infra/repo/order"
-	_ "GS_PROJECT_MODULE/internal-domain/infra/repo/user"
+
+	_ "go-spring.org/starter-go-redis"
+	_ "go-spring.org/starter-gorm-mysql"
 )

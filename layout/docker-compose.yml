@@ -1,0 +1,29 @@
+# Local development dependencies for GS_PROJECT_NAME.
+# Spin up with:  docker compose up -d
+# Matches the connection settings in ./conf/app.properties.
+# Delete the services you don't need.
+services:
+  mysql:
+    image: mysql:8
+    container_name: GS_PROJECT_NAME-mysql
+    ports:
+      - "127.0.0.1:3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: "123456"
+      MYSQL_DATABASE: "test"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p123456"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:7
+    container_name: GS_PROJECT_NAME-redis
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 30

@@ -18,6 +18,7 @@ Additional points:
 - `api/controller/<biz>/` holds protocol-agnostic business entry points; `api/server/<proto>/handler.go` aggregates controllers via embedding. **Do not** put method bodies in `handler.go`.
 - MQ consumer entry lives in `api/server/mqsvr`; MQ producer lives in `infra/mq`.
 - `infra/client/<system>/` is itself the anti-corruption layer. **Do not** propose extracting a separate `acl/`.
+- Blank imports that exist only to trigger `init()` registration **must** be consolidated in the composition root `init.go`, and **must not** be scattered across business packages such as `infra/repo`. A business package only directly imports the symbols it uses (e.g. `gorm.io/gorm`); the bean-registering starter belongs in `init.go`.
 - Sibling subdomain collaboration within a BC goes through `application` services in a single direction; cross-BC or external system calls **must** go through `infra/client/`.
 - **Do not** predefine interfaces for single-implementation dependencies. Only extract interfaces when there is a real trigger — multi-implementation, read/write separation, caching decorator, etc.
 

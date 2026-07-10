@@ -1,22 +1,71 @@
-// Package order provides an in-memory implementation of repository.OrderRepository.
-// Replace with a real database / Redis / RPC client as needed.
+// Package order provides a GORM-backed implementation of the order repository.
+// Delete this package (and its starter import) if you don't need a database.
 package order
 
 import (
-	"strconv"
+	"errors"
 
 	"GS_PROJECT_MODULE/internal-domain/domain/order"
 
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
+	"gorm.io/gorm"
 )
 
 func init() {
-	gs.Provide(&Repo{orders: make(map[string]*order.Order)})
+	gs.Provide(&Repo{}).Init((*Repo).migrate)
+}
+
+// orderPO is the persistence object mapped to the "orders" table.
+// The aggregate's single line item is flattened into columns to keep
+// the example schema simple; a real system would use a child table.
+type orderPO struct {
+	ID       string `gorm:"primaryKey;size:64"`
+	UserID   int64  `gorm:"index"`
+	Title    string `gorm:"size:255"`
+	Amount   float64
+	Currency string `gorm:"size:8"`
+	Status   int32
+}
+
+// TableName sets the mapped table name for orderPO.
+func (orderPO) TableName() string { return "orders" }
+
+func toPO(o *order.Order) *orderPO {
+	title, amount, currency := "", 0.0, ""
+	if len(o.Items) > 0 {
+		item := o.Items[0]
+		title = item.Title
+		amount = item.Price.Amount
+		currency = item.Price.Currency
+	}
+	return &orderPO{
+		ID:       o.ID,
+		UserID:   o.UserID,
+		Title:    title,
+		Amount:   amount,
+		Currency: currency,
+		Status:   int32(o.Status),
+	}
+}
+
+func (po *orderPO) toDomain() *order.Order {
+	item := order.OrderItem{
+		Title:    po.Title,
+		Price:    order.NewMoney(po.Amount, po.Currency),
+		Quantity: 1,
+	}
+	return &order.Order{
+		ID:     po.ID,
+		UserID: po.UserID,
+		Items:  []order.OrderItem{item},
+		Total:  item.Subtotal(),
+		Status: order.Status(po.Status),
+	}
 }
 
 // Query packages filtering criteria for order queries.
-// Zero-value fields mean "no restriction" (all zero values match).
+// Nil pointer fields mean "no restriction".
 type Query struct {
 	UserID *int64
 	Status *order.Status
@@ -24,67 +73,72 @@ type Query struct {
 	Offset int
 }
 
-// Match returns true if the order satisfies all specified criteria.
-func (q *Query) Match(o *order.Order) bool {
-	if q.UserID != nil && o.UserID != *q.UserID {
-		return false
-	}
-	if q.Status != nil && o.Status != *q.Status {
-		return false
-	}
-	return true
-}
-
-// Repo is an in-memory implementation of repository.OrderRepository.
+// Repo is a GORM-backed implementation of the order repository.
 type Repo struct {
-	orders map[string]*order.Order
-	nextID int64
+	DB *gorm.DB `autowire:""`
 }
 
-// Save stores an order and assigns an auto-increment ID.
+// migrate ensures the underlying table exists. It runs after dependency injection.
+func (r *Repo) migrate() error {
+	return r.DB.AutoMigrate(&orderPO{})
+}
+
+// Save stores a new order.
 func (r *Repo) Save(o *order.Order) error {
-	r.nextID++
-	o.ID = strconv.FormatInt(r.nextID, 10)
-	r.orders[o.ID] = o
+	if err := r.DB.Create(toPO(o)).Error; err != nil {
+		return errutil.Stack(err, "save order")
+	}
 	return nil
 }
 
 // FindByID retrieves an order by its business ID.
 func (r *Repo) FindByID(id string) (*order.Order, error) {
-	o, ok := r.orders[id]
-	if !ok {
-		return nil, errutil.Explain(nil, "order %s not found", id)
+	var po orderPO
+	if err := r.DB.First(&po, "id = ?", id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errutil.Explain(nil, "order %s not found", id)
+		}
+		return nil, errutil.Stack(err, "find order %s", id)
 	}
-	return o, nil
+	return po.toDomain(), nil
 }
 
 // Update persists changes to an existing order.
 func (r *Repo) Update(o *order.Order) error {
-	if _, ok := r.orders[o.ID]; !ok {
+	res := r.DB.Model(&orderPO{}).Where("id = ?", o.ID).Updates(toPO(o))
+	if res.Error != nil {
+		return errutil.Stack(res.Error, "update order %s", o.ID)
+	}
+	if res.RowsAffected == 0 {
 		return errutil.Explain(nil, "order %s not found", o.ID)
 	}
-	r.orders[o.ID] = o
 	return nil
 }
 
 // Find returns orders matching the given query, with pagination.
-// Zero-value fields in the query are treated as "match all".
 func (r *Repo) Find(q Query) ([]*order.Order, error) {
-	var result []*order.Order
-	for _, o := range r.orders {
-		if !q.Match(o) {
-			continue
-		}
-		result = append(result, o)
+	db := r.DB.Model(&orderPO{})
+	if q.UserID != nil {
+		db = db.Where("user_id = ?", *q.UserID)
 	}
-	// Simple pagination
-	offset := q.Offset
-	if offset >= len(result) {
-		return []*order.Order{}, nil
+	if q.Status != nil {
+		db = db.Where("status = ?", int32(*q.Status))
 	}
-	end := offset + q.Limit
-	if end > len(result) || q.Limit <= 0 {
-		end = len(result)
+	if q.Offset > 0 {
+		db = db.Offset(q.Offset)
 	}
-	return result[offset:end], nil
+	if q.Limit > 0 {
+		db = db.Limit(q.Limit)
+	}
+
+	var pos []orderPO
+	if err := db.Find(&pos).Error; err != nil {
+		return nil, errutil.Stack(err, "find orders")
+	}
+
+	result := make([]*order.Order, len(pos))
+	for i := range pos {
+		result[i] = pos[i].toDomain()
+	}
+	return result, nil
 }

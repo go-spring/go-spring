@@ -74,4 +74,17 @@ Plan ──确认──▶ Execute ──全绿──▶ Settle
 - **冲突检测**:目标目录/文件已存在等冲突直接终止,不覆盖不删除。
 - **改动收敛**:每次代码改动后跑 gofmt + `go test`(必要时 `go build`),给出验证结论。
 - **变更摘要**:代码/配置/接口/文档改动完成后,输出变更清单 + 验证命令 + 遗留风险。
-- **文档同步**:接口、配置、示例的改动必须同步到对应文档,不留事后补。
+- **文档同步(动作,非态度)**:同步不靠记忆,靠可检测的触发条件——改了 X 必须动 Y,当轮完成不留事后补。由 Execute 的同步检测内建执行(见 [`execute/execute.md`](execute/execute.md) 第 3 步):
+  - 改 `.idl`/`.proto`/schema 源 → 回 `gen` 重生成,禁手改生成物;
+  - 改接口签名(method/path/字段)→ 同步接口文档;
+  - 改配置键 → 同步配置文档/示例。
+  - 理念见 [`references/doc-code-sync.zh.md`](references/doc-code-sync.zh.md)。
+
+## 参考文档(理念背书,非执行流程)
+
+`references/` 存放跨环节的方法论结论,供判断时查阅,不排进 PES 序列:
+
+| 文档 | 用途 |
+| --- | --- |
+| [`references/dev-doc-chain.zh.md`](references/dev-doc-chain.zh.md) | 从需求到交付的四层文档链,与 PES 环的对应 |
+| [`references/doc-code-sync.zh.md`](references/doc-code-sync.zh.md) | 文档与代码同步的三层机制,支撑 Execute 的同步检测 |
