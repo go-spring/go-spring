@@ -51,6 +51,14 @@ _, err := coll.InsertOne(ctx, bson.M{"key": "key", "value": "value"})
 err = coll.FindOne(ctx, bson.M{"key": "key"}).Decode(&res)
 ```
 
+## 核心功能
+
+[example.go](example/example.go) 端到端演示了三个核心 MongoDB 操作：
+
+* **InsertOne** —— 插入文档并校验返回的 `InsertedID`。
+* **FindOne** —— 读取文档并断言字段值。
+* **UpdateOne** —— 通过 `$set` 更新字段，断言 `ModifiedCount == 1`，再次读取确认新值。
+
 ## 高级功能
 
 * **支持多 MongoDB 实例**：可以在配置文件的 `spring.mongodb.instances` 下定义多个 MongoDB 实例，并在项目中使用 name 进行引用。

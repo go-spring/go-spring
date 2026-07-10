@@ -53,6 +53,17 @@ _, _ = ch.QueueDeclare("hello", false, false, false, false, nil)
 _ = ch.PublishWithContext(ctx, "", "hello", false, false, amqp.Publishing{Body: []byte("value")})
 ```
 
+## 核心功能
+
+[example](example/example.go) 演示了 RabbitMQ 的三个核心用法：
+
+1. **默认交换机的发布/消费**：使用队列名作为 routing key 通过默认交换机发布消息，
+   再通过 `ch.Get` 将其取回。
+2. **Direct 交换机 + 路由键绑定**：声明一个 `direct` 交换机，将队列以路由键（如 `info`）
+   绑定，向交换机按该路由键投递消息，然后从绑定的队列中消费。
+3. **QoS + 手动 ack**：调用 `ch.Qos(1, 0, false)` 将 prefetch 限制为 1，使用
+   `autoAck=false` 消费消息，处理后显式调用 `msg.Ack(false)`。
+
 ## 高级功能
 
 * **支持多 RabbitMQ 实例**：可以在配置文件的 `spring.rabbitmq.instances` 下定义多个 RabbitMQ 实例，并在项目中使用 name 进行引用。

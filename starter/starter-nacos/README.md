@@ -57,6 +57,17 @@ _, err := s.Config.PublishConfig(vo.ConfigParam{DataId: "key", Group: "DEFAULT_G
 content, err := s.Config.GetConfig(vo.ConfigParam{DataId: "key", Group: "DEFAULT_GROUP"})
 ```
 
+## Core Features
+
+The [example](example/example.go) demonstrates three core Nacos capabilities end-to-end:
+
+1. **Config publish + get**: `PublishConfig` writes a value, then `GetConfig` reads it back
+   (polled to tolerate Nacos's asynchronous propagation).
+2. **Config listen**: `ListenConfig` registers an `OnChange` callback; a subsequent
+   `PublishConfig` triggers the callback and delivers the new value.
+3. **Service register + discovery**: `RegisterInstance` publishes a service instance and
+   `GetService` discovers it via the naming client.
+
 ## Advanced Features
 
 * **Naming + config clients**: Both `INamingClient` and `IConfigClient` are registered as

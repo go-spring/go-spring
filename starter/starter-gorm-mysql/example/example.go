@@ -31,6 +31,14 @@ import (
 	_ "go-spring.org/starter-gorm-mysql"
 )
 
+// KV is a small demo model. `key` and `value` are reserved words in MySQL,
+// so we map the columns to `kkey` / `vvalue` via GORM tags.
+type KV struct {
+	ID    uint   `gorm:"primaryKey"`
+	Key   string `gorm:"column:kkey;size:64;uniqueIndex"`
+	Value string `gorm:"column:vvalue;size:255"`
+}
+
 type Service struct {
 	DB *gorm.DB `autowire:"__default__"`
 }
@@ -76,7 +84,58 @@ func runTest(s *Service) {
 		fmt.Fprintln(os.Stderr, "empty version")
 		os.Exit(1)
 	}
-	fmt.Println("Response from server:", version)
+
+	// Ensure the test is deterministic/idempotent across repeated smoke runs.
+	if err := s.DB.Migrator().DropTable(&KV{}); err != nil {
+		fmt.Fprintln(os.Stderr, "drop table failed:", err)
+		os.Exit(1)
+	}
+
+	// Feature 1: AutoMigrate — create the table from the model.
+	if err := s.DB.AutoMigrate(&KV{}); err != nil {
+		fmt.Fprintln(os.Stderr, "auto migrate failed:", err)
+		os.Exit(1)
+	}
+	if !s.DB.Migrator().HasTable(&KV{}) {
+		fmt.Fprintln(os.Stderr, "table not created")
+		os.Exit(1)
+	}
+
+	// Feature 2: Create + First (basic CRUD).
+	if err := s.DB.Create(&KV{Key: "key", Value: "value"}).Error; err != nil {
+		fmt.Fprintln(os.Stderr, "create failed:", err)
+		os.Exit(1)
+	}
+	var got KV
+	if err := s.DB.First(&got, "kkey = ?", "key").Error; err != nil {
+		fmt.Fprintln(os.Stderr, "first failed:", err)
+		os.Exit(1)
+	}
+	if got.Value != "value" {
+		fmt.Fprintln(os.Stderr, "unexpected value after create:", got.Value)
+		os.Exit(1)
+	}
+
+	// Feature 3: Transaction — update the row inside a transaction.
+	err := s.DB.Transaction(func(tx *gorm.DB) error {
+		return tx.Model(&KV{}).Where("kkey = ?", "key").
+			Update("vvalue", "value2").Error
+	})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "transaction failed:", err)
+		os.Exit(1)
+	}
+	var updated KV
+	if err := s.DB.First(&updated, "kkey = ?", "key").Error; err != nil {
+		fmt.Fprintln(os.Stderr, "first (post-tx) failed:", err)
+		os.Exit(1)
+	}
+	if updated.Value != "value2" {
+		fmt.Fprintln(os.Stderr, "unexpected value after tx:", updated.Value)
+		os.Exit(1)
+	}
+
+	fmt.Println("Response from server:", version, "kv:", updated.Value)
 	syscall.Kill(os.Getpid(), syscall.SIGTERM)
 }
 

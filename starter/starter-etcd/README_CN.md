@@ -55,3 +55,11 @@ resp, err := s.Etcd.Get(ctx, "key")
 ## 高级功能
 
 * **支持多 etcd 实例**：可以在配置文件的 `spring.etcd.instances` 下定义多个 etcd 实例，并在项目中使用 name 进行引用。
+
+## 核心功能
+
+[example.go](example/example.go) 演示了 etcd v3 的三个核心功能：
+
+* **Put/Get**：使用 `cli.Put` 写入键值，再通过 `cli.Get` 读取并校验 `Kvs[0].Value`。
+* **Watch**：通过 `cli.Watch` 订阅键变化，触发一次 `Put` 后在限定超时内接收到事件。
+* **Lease + TTL**：使用 `cli.Grant` 申请租约，通过 `clientv3.WithLease` 绑定到键，再用 `cli.TimeToLive` 查询剩余 TTL。

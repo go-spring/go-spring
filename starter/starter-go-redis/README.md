@@ -52,6 +52,14 @@ str, err := s.Redis.Get(r.Context(), "key").Result()
 str, err := s.Redis.Set(r.Context(), "key", "value", 0).Result()
 ```
 
+## Core Features
+
+The [example.go](example/example.go) program demonstrates and asserts three core Redis operations:
+
+* **String SET/GET** — write a value with `Set(...)` and read it back with `Get(...)`.
+* **INCR counter** — reset a key with `Del(...)` and then atomically increment it via `Incr(...)`.
+* **EXPIRE + TTL** — attach an expiration with `Expire(...)` and inspect the remaining lifetime via `TTL(...)`.
+
 ## Advanced Features
 
 * **Supports multiple Redis instances**: You can define multiple Redis instances in the configuration file and reference

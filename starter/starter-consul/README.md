@@ -50,6 +50,16 @@ _, err := s.Consul.KV().Put(&api.KVPair{Key: "key", Value: []byte("value")}, nil
 pair, _, err := s.Consul.KV().Get("key", nil)
 ```
 
+## Core Features
+
+The [example.go](example/example.go) runTest demonstrates three core Consul features:
+
+1. **KV put/get** — write and read a key through `s.Consul.KV().Put(...)` / `s.Consul.KV().Get(...)`.
+2. **Service registration + discovery** — register a service via `s.Consul.Agent().ServiceRegister(...)`
+   and locate it through `s.Consul.Agent().Services()`.
+3. **Deregister** — remove the service via `s.Consul.Agent().ServiceDeregister(...)` and confirm
+   it no longer appears in `s.Consul.Agent().Services()`.
+
 ## Advanced Features
 
 * **Supports multiple Consul instances**: You can define multiple Consul instances under

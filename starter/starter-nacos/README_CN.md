@@ -56,6 +56,14 @@ _, err := s.Config.PublishConfig(vo.ConfigParam{DataId: "key", Group: "DEFAULT_G
 content, err := s.Config.GetConfig(vo.ConfigParam{DataId: "key", Group: "DEFAULT_GROUP"})
 ```
 
+## 核心功能
+
+[示例](example/example.go) 端到端演示了 Nacos 的三大核心能力：
+
+1. **配置发布 + 获取**：`PublishConfig` 写入配置，`GetConfig` 读取（轮询以容忍 Nacos 的异步传播）。
+2. **配置监听**：`ListenConfig` 注册 `OnChange` 回调，随后的 `PublishConfig` 触发回调并推送新值。
+3. **服务注册 + 发现**：`RegisterInstance` 注册服务实例，`GetService` 通过命名客户端完成发现。
+
 ## 高级功能
 
 * **命名 + 配置客户端**：`INamingClient` 与 `IConfigClient` 都会注册为 `__default__` Bean（接口类型不同）。

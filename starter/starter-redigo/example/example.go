@@ -23,6 +23,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -86,6 +87,32 @@ func main() {
 		_, _ = w.Write([]byte(str))
 	})
 
+	// Define a handler to INCR a Redis counter key.
+	http.HandleFunc("/incr", func(w http.ResponseWriter, r *http.Request) {
+		s := svrBean.Interface().(*Service)
+		c := s.Redis.Get()
+		defer func() { _ = c.Close() }()
+		n, err := redis.Int(c.Do("INCR", "counter"))
+		if err != nil {
+			_, _ = w.Write([]byte(err.Error()))
+			return
+		}
+		_, _ = w.Write([]byte(strconv.Itoa(n)))
+	})
+
+	// Define a handler to inspect a key's TTL.
+	http.HandleFunc("/ttl", func(w http.ResponseWriter, r *http.Request) {
+		s := svrBean.Interface().(*Service)
+		c := s.Redis.Get()
+		defer func() { _ = c.Close() }()
+		ttl, err := redis.Int(c.Do("TTL", "key"))
+		if err != nil {
+			_, _ = w.Write([]byte(err.Error()))
+			return
+		}
+		_, _ = w.Write([]byte(strconv.Itoa(ttl)))
+	})
+
 	go func() {
 		time.Sleep(time.Millisecond * 500)
 		runTest(svrBean.Interface().(*Service))
@@ -108,6 +135,8 @@ func runTest(s *Service) {
 	ctx := context.Background()
 	c := s.Redis.Get()
 	defer func() { _ = c.Close() }()
+
+	// Feature 1: String SET/GET.
 	if _, err := redis.String(c.Do("SET", "key", "value")); err != nil {
 		log.Errorf(ctx, log.TagAppDef, "SET failed: %v", err)
 		os.Exit(1)
@@ -117,7 +146,41 @@ func runTest(s *Service) {
 		log.Errorf(ctx, log.TagAppDef, "GET failed: v=%q err=%v", v, err)
 		os.Exit(1)
 	}
-	fmt.Println("Response from server:", v)
+
+	// Feature 2: INCR counter — reset then increment three times.
+	if _, err := c.Do("DEL", "counter"); err != nil {
+		log.Errorf(ctx, log.TagAppDef, "DEL counter failed: %v", err)
+		os.Exit(1)
+	}
+	var n int
+	for i := 0; i < 3; i++ {
+		n, err = redis.Int(c.Do("INCR", "counter"))
+		if err != nil {
+			log.Errorf(ctx, log.TagAppDef, "INCR failed: %v", err)
+			os.Exit(1)
+		}
+	}
+	if n != 3 {
+		log.Errorf(ctx, log.TagAppDef, "INCR final value expected 3, got %d", n)
+		os.Exit(1)
+	}
+
+	// Feature 3: EXPIRE + TTL.
+	if _, err := redis.String(c.Do("SET", "ttl-key", "ttl-value")); err != nil {
+		log.Errorf(ctx, log.TagAppDef, "SET ttl-key failed: %v", err)
+		os.Exit(1)
+	}
+	if _, err := c.Do("EXPIRE", "ttl-key", 30); err != nil {
+		log.Errorf(ctx, log.TagAppDef, "EXPIRE failed: %v", err)
+		os.Exit(1)
+	}
+	ttl, err := redis.Int(c.Do("TTL", "ttl-key"))
+	if err != nil || ttl <= 0 || ttl > 30 {
+		log.Errorf(ctx, log.TagAppDef, "TTL out of range: ttl=%v err=%v", ttl, err)
+		os.Exit(1)
+	}
+
+	fmt.Println("Response from server:", v, "counter:", n, "ttl:", ttl)
 	syscall.Kill(os.Getpid(), syscall.SIGTERM)
 }
 

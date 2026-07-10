@@ -51,6 +51,14 @@ _, err := coll.InsertOne(ctx, bson.M{"key": "key", "value": "value"})
 err = coll.FindOne(ctx, bson.M{"key": "key"}).Decode(&res)
 ```
 
+## Core Features
+
+The [example.go](example/example.go) exercises three core MongoDB operations end-to-end:
+
+* **InsertOne** — insert a document and verify `InsertedID` is returned.
+* **FindOne** — read the document back and assert the field value.
+* **UpdateOne** — `$set` a field, assert `ModifiedCount == 1`, then re-read to confirm the new value.
+
 ## Advanced Features
 
 * **Supports multiple MongoDB instances**: You can define multiple MongoDB instances under

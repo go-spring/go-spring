@@ -2,19 +2,11 @@
 
 [English](README.md) | [中文](README_CN.md)
 
-`starter-pprof` 是一个 Go-Spring starter，用于通过 Go-Spring IoC 容器管理的轻量级 HTTP
-服务器暴露标准 Go `net/http/pprof` 调试端点。
+> 该项目已经正式发布，欢迎使用！
 
-它适用于需要快速查看运行时状态、采集 CPU profile、捕获 trace，以及调试 goroutine、heap、
-thread、mutex、block 等 profile 信息的 Go-Spring 应用。
-
-## 功能特性
-
-- 通过导入 starter 自动注册 `gs.Server` bean。
-- 暴露 Go 标准库 `net/http/pprof` 提供的 `/debug/pprof/` 相关端点。
-- 使用独立 HTTP 地址启动 pprof 服务，与主应用服务隔离。
-- 支持通过配置项控制是否启用以及监听地址。
-- 使用空白导入即可接入，无需手动注册路由。
+`starter-pprof` 通过 Go-Spring IoC 容器管理的独立轻量级 HTTP 服务器暴露标准
+`net/http/pprof` 调试端点。适用于需要快速查看运行时状态、采集 CPU profile、捕获 trace，
+以及调试 goroutine、heap、thread、mutex、block 等 profile 信息的 Go-Spring 应用。
 
 ## 安装
 
@@ -22,28 +14,42 @@ thread、mutex、block 等 profile 信息的 Go-Spring 应用。
 go get go-spring.org/starter-pprof
 ```
 
-## 使用方式
+## 快速开始
 
-在 Go-Spring 应用中通过空白导入启用 starter：
+### 1. 引入 `starter-pprof` 包
+
+参见 [example.go](example/example.go) 文件。
 
 ```go
-package main
-
-import (
-	"go-spring.org/spring/gs"
-	_ "go-spring.org/starter-pprof"
-)
-
-func main() {
-	gs.Run()
-}
+import _ "go-spring.org/starter-pprof"
 ```
+
+### 2. 配置 pprof 服务
+
+在项目的[配置文件](example/conf/app.properties)中添加 pprof 配置：
+
+```properties
+spring.pprof.enabled=true
+spring.pprof.addr=:9981
+```
+
+### 3. 访问 pprof 端点
 
 默认配置下，pprof 服务监听 `:9981`：
 
 ```text
 http://127.0.0.1:9981/debug/pprof/
 ```
+
+## 核心功能
+
+示例会访问 pprof 独立 HTTP 服务器（默认 `:9981`）上的三个代表性端点：
+
+- **`GET /debug/pprof/`** —— 索引页，列出全部可用 profile。
+- **`GET /debug/pprof/heap`** —— 堆分配快照。
+- **`GET /debug/pprof/cmdline`** —— 当前进程的命令行参数，便于将 profile 与运行参数对齐。
+
+三个端点必须全部返回 HTTP 200，示例才会自我关闭。
 
 ## 配置项
 
@@ -54,31 +60,16 @@ http://127.0.0.1:9981/debug/pprof/
 | `spring.pprof.enabled` | `true` | 是否启用 pprof 服务。 |
 | `spring.pprof.addr` | `:9981` | pprof 独立 HTTP 服务监听地址。 |
 
-示例：
-
-```properties
-spring.pprof.enabled=true
-spring.pprof.addr=:9090
-```
-
-配置后访问：
-
-```text
-http://127.0.0.1:9090/debug/pprof/
-```
-
 ## 可用端点
 
 该 starter 注册了标准 pprof handler：
 
-- `/debug/pprof/`
+- `/debug/pprof/`（`pprof.Index` 也会处理 `/heap`、`/goroutine`、`/allocs`、
+  `/block`、`/mutex`、`/threadcreate` 等子路径）
 - `/debug/pprof/cmdline`
 - `/debug/pprof/profile`
 - `/debug/pprof/symbol`
 - `/debug/pprof/trace`
-
-goroutine、heap、allocs、mutex、block、threadcreate 等 profile 视图由 pprof index
-handler 提供，具体可用项取决于 Go 运行时。
 
 ## 许可证
 

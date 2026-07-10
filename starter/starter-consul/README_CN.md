@@ -50,6 +50,16 @@ _, err := s.Consul.KV().Put(&api.KVPair{Key: "key", Value: []byte("value")}, nil
 pair, _, err := s.Consul.KV().Get("key", nil)
 ```
 
+## 核心功能
+
+[example.go](example/example.go) 中的 runTest 演示了三项核心 Consul 能力：
+
+1. **KV put/get**：通过 `s.Consul.KV().Put(...)` / `s.Consul.KV().Get(...)` 写入并读取键值。
+2. **服务注册与发现**：通过 `s.Consul.Agent().ServiceRegister(...)` 注册服务，
+   并使用 `s.Consul.Agent().Services()` 进行查询。
+3. **服务下线**：通过 `s.Consul.Agent().ServiceDeregister(...)` 注销服务，
+   随后再次调用 `s.Consul.Agent().Services()` 确认服务已不在列表中。
+
 ## 高级功能
 
 * **支持多 Consul 实例**：可以在配置文件的 `spring.consul.instances` 下定义多个 Consul 实例，并在项目中使用 name 进行引用。

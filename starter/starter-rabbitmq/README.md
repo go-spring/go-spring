@@ -53,6 +53,18 @@ _, _ = ch.QueueDeclare("hello", false, false, false, false, nil)
 _ = ch.PublishWithContext(ctx, "", "hello", false, false, amqp.Publishing{Body: []byte("value")})
 ```
 
+## Core Features
+
+The [example](example/example.go) demonstrates three core RabbitMQ patterns:
+
+1. **Default-exchange publish/consume** — publish a message to the default exchange using the
+   queue name as the routing key, then pull it back with `ch.Get`.
+2. **Direct exchange + routing key binding** — declare a `direct` exchange, bind a queue with a
+   routing key (e.g. `info`), publish to the exchange with that key, and consume from the bound
+   queue.
+3. **QoS + manual ack** — call `ch.Qos(1, 0, false)` to enforce a prefetch of one, consume with
+   `autoAck=false`, and explicitly call `msg.Ack(false)` after processing.
+
 ## Advanced Features
 
 * **Supports multiple RabbitMQ instances**: You can define multiple RabbitMQ instances under

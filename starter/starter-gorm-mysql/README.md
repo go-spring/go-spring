@@ -52,6 +52,17 @@ var version string
 err := s.DB.Raw("SELECT VERSION()").Scan(&version).Error
 ```
 
+## Core Features
+
+The [example.go](example/example.go) file demonstrates three core GORM features against MySQL:
+
+* **AutoMigrate**: create the table from a Go struct via `s.DB.AutoMigrate(&KV{})` and verify with
+  `s.DB.Migrator().HasTable(&KV{})`.
+* **CRUD (Create + First)**: insert a row with `s.DB.Create(...)` and query it back with
+  `s.DB.First(&got, "kkey = ?", "key")`.
+* **Transaction**: update the row inside `s.DB.Transaction(func(tx *gorm.DB) error { ... })` and confirm the change
+  after commit.
+
 ## Advanced Features
 
 * **Supports multiple gorm instances**: You can define multiple gorm instances in the configuration file and reference

@@ -85,6 +85,8 @@ func main() {
 
 func runTest(s *Service) {
 	ctx := context.Background()
+
+	// Feature 1: KV put/get.
 	if _, err := s.Consul.KV().Put(&api.KVPair{Key: "key", Value: []byte("value")}, nil); err != nil {
 		log.Errorf(ctx, log.TagAppDef, "PUT failed: %v", err)
 		os.Exit(1)
@@ -94,7 +96,47 @@ func runTest(s *Service) {
 		log.Errorf(ctx, log.TagAppDef, "GET failed: err=%v", err)
 		os.Exit(1)
 	}
-	fmt.Println("Response from server:", string(pair.Value))
+
+	// Feature 2: Service registration + discovery.
+	// Deregister a possible leftover from a previous run to keep this idempotent,
+	// then register without a health check so the service appears immediately.
+	const svcID, svcName = "echo-1", "echo"
+	_ = s.Consul.Agent().ServiceDeregister(svcID)
+	if err = s.Consul.Agent().ServiceRegister(&api.AgentServiceRegistration{
+		ID:   svcID,
+		Name: svcName,
+		Port: 9090,
+	}); err != nil {
+		log.Errorf(ctx, log.TagAppDef, "ServiceRegister failed: %v", err)
+		os.Exit(1)
+	}
+	services, err := s.Consul.Agent().Services()
+	if err != nil {
+		log.Errorf(ctx, log.TagAppDef, "Agent().Services() failed: %v", err)
+		os.Exit(1)
+	}
+	registered, ok := services[svcID]
+	if !ok || registered.Service != svcName {
+		log.Errorf(ctx, log.TagAppDef, "expected service %q with id %q to be registered", svcName, svcID)
+		os.Exit(1)
+	}
+
+	// Feature 3: Deregister.
+	if err = s.Consul.Agent().ServiceDeregister(svcID); err != nil {
+		log.Errorf(ctx, log.TagAppDef, "ServiceDeregister failed: %v", err)
+		os.Exit(1)
+	}
+	services, err = s.Consul.Agent().Services()
+	if err != nil {
+		log.Errorf(ctx, log.TagAppDef, "Agent().Services() after deregister failed: %v", err)
+		os.Exit(1)
+	}
+	if _, still := services[svcID]; still {
+		log.Errorf(ctx, log.TagAppDef, "service %q should be gone after deregister", svcID)
+		os.Exit(1)
+	}
+
+	fmt.Println("Response from server:", string(pair.Value), "registered:", registered.Service, "deregistered:", svcID)
 	syscall.Kill(os.Getpid(), syscall.SIGTERM)
 }
 

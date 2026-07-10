@@ -18,10 +18,13 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -37,15 +40,36 @@ func init() {
 	gs.Provide(&Controller{})
 	gs.Provide(func(c *Controller) *server.Hertz {
 		h := server.Default(server.WithHostPorts("127.0.0.1:9090"))
-		h.GET("/echo", c.Echo)
+
+		// Feature 1: middleware — inject a response header on every request.
+		h.Use(func(ctx context.Context, r *app.RequestContext) {
+			r.Response.Header.Set("X-App", "go-spring")
+			r.Next(ctx)
+		})
+
+		// Feature 2: path parameter + JSON response.
+		h.GET("/echo/:name", c.Echo)
+
+		// Feature 3: query parameter + JSON response.
+		h.GET("/greet", c.Greet)
+
 		return h
 	})
 }
 
+// Controller groups all HTTP handlers used by this example.
 type Controller struct{}
 
+// Echo answers with a JSON greeting built from the path parameter "name".
 func (c *Controller) Echo(ctx context.Context, r *app.RequestContext) {
-	r.String(consts.StatusOK, "Hello, hertz!")
+	name := r.Param("name")
+	r.JSON(consts.StatusOK, map[string]string{"message": "Hello, " + name})
+}
+
+// Greet answers with a JSON greeting built from the query parameter "name".
+func (c *Controller) Greet(ctx context.Context, r *app.RequestContext) {
+	name := r.Query("name")
+	r.JSON(consts.StatusOK, map[string]string{"message": "Hi, " + name})
 }
 
 func main() {
@@ -58,23 +82,82 @@ func main() {
 		runTest()
 	}()
 
-	gs.Configure(func(app gs.App) {
-		app.Property("spring.http.server.enabled", "false")
-	}).Run()
+	// Configuration lives under ./conf/app.properties; the built-in HTTP
+	// server is disabled there because Hertz drives its own on :9090.
+	gs.Run()
 }
 
 func runTest() {
-	resp, err := http.Get("http://127.0.0.1:9090/echo")
+	// Feature 2: path parameter + JSON response.
+	resp, err := http.Get("http://127.0.0.1:9090/echo/hertz")
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "request failed:", err)
+		fmt.Fprintln(os.Stderr, "request /echo/hertz failed:", err)
 		os.Exit(1)
 	}
-	defer resp.Body.Close()
-	b, _ := io.ReadAll(resp.Body)
-	fmt.Println("Response from server:", string(b))
-	if string(b) != "Hello, hertz!" {
-		fmt.Fprintln(os.Stderr, "unexpected response:", string(b))
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	fmt.Println("Response from server:", string(body))
+
+	// Feature 1: middleware injected header.
+	if got := resp.Header.Get("X-App"); got != "go-spring" {
+		fmt.Fprintln(os.Stderr, "unexpected X-App header:", got)
 		os.Exit(1)
 	}
+
+	var echoMsg map[string]string
+	if err := json.Unmarshal(body, &echoMsg); err != nil {
+		fmt.Fprintln(os.Stderr, "decode /echo/hertz failed:", err)
+		os.Exit(1)
+	}
+	if echoMsg["message"] != "Hello, hertz" {
+		fmt.Fprintln(os.Stderr, "unexpected /echo/hertz message:", echoMsg["message"])
+		os.Exit(1)
+	}
+
+	// Feature 3: query parameter + JSON response.
+	resp2, err := http.Get("http://127.0.0.1:9090/greet?name=world")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "request /greet failed:", err)
+		os.Exit(1)
+	}
+	body2, _ := io.ReadAll(resp2.Body)
+	_ = resp2.Body.Close()
+	fmt.Println("Response from server:", string(body2))
+
+	var greetMsg map[string]string
+	if err := json.Unmarshal(body2, &greetMsg); err != nil {
+		fmt.Fprintln(os.Stderr, "decode /greet failed:", err)
+		os.Exit(1)
+	}
+	if greetMsg["message"] != "Hi, world" {
+		fmt.Fprintln(os.Stderr, "unexpected /greet message:", greetMsg["message"])
+		os.Exit(1)
+	}
+
 	syscall.Kill(os.Getpid(), syscall.SIGTERM)
+}
+
+// ----------------------------------------------------------------------------
+// Change working directory
+// ----------------------------------------------------------------------------
+
+// init sets the working directory of the application to the directory
+// where this source file resides.
+// This ensures that any relative file operations are based on the source file location,
+// not the process launch path.
+func init() {
+	var execDir string
+	_, filename, _, ok := runtime.Caller(0)
+	if ok {
+		execDir = filepath.Dir(filename)
+	}
+	err := os.Chdir(execDir)
+	if err != nil {
+		panic(err)
+	}
+	workDir, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(workDir)
 }

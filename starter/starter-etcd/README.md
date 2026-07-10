@@ -56,3 +56,11 @@ resp, err := s.Etcd.Get(ctx, "key")
 
 * **Supports multiple etcd instances**: You can define multiple etcd instances under
   `spring.etcd.instances` in the configuration file and reference them by name.
+
+## Core Features
+
+The [example.go](example/example.go) demonstrates three core etcd v3 features:
+
+* **Put/Get** — write a key with `cli.Put` and read it back via `cli.Get`, verifying `Kvs[0].Value`.
+* **Watch** — subscribe to key changes via `cli.Watch`, then trigger a `Put` and receive the event within a bounded timeout.
+* **Lease + TTL** — `cli.Grant` a lease, attach it to a key with `clientv3.WithLease`, and check the remaining TTL via `cli.TimeToLive`.

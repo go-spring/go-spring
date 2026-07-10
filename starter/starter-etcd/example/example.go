@@ -66,6 +66,26 @@ func main() {
 		_, _ = w.Write([]byte("OK"))
 	})
 
+	// Inspect TTL for the leased key.
+	http.HandleFunc("/ttl", func(w http.ResponseWriter, r *http.Request) {
+		s := svrBean.Interface().(*Service)
+		resp, err := s.Etcd.Get(r.Context(), "lease-key")
+		if err != nil {
+			_, _ = w.Write([]byte(err.Error()))
+			return
+		}
+		if len(resp.Kvs) == 0 {
+			_, _ = w.Write([]byte("no lease-key"))
+			return
+		}
+		ttlResp, err := s.Etcd.TimeToLive(r.Context(), clientv3.LeaseID(resp.Kvs[0].Lease))
+		if err != nil {
+			_, _ = w.Write([]byte(err.Error()))
+			return
+		}
+		_, _ = w.Write([]byte(fmt.Sprintf("%ds", ttlResp.TTL)))
+	})
+
 	go func() {
 		time.Sleep(time.Millisecond * 500)
 		runTest(svrBean.Interface().(*Service))
@@ -84,6 +104,8 @@ func main() {
 
 func runTest(s *Service) {
 	ctx := context.Background()
+
+	// Feature 1: Put/Get.
 	if _, err := s.Etcd.Put(ctx, "key", "value"); err != nil {
 		log.Errorf(ctx, log.TagAppDef, "PUT failed: %v", err)
 		os.Exit(1)
@@ -93,7 +115,61 @@ func runTest(s *Service) {
 		log.Errorf(ctx, log.TagAppDef, "GET failed: err=%v", err)
 		os.Exit(1)
 	}
-	fmt.Println("Response from server:", string(resp.Kvs[0].Value))
+
+	// Feature 2: Watch — start the watcher before the mutation, then wait bounded.
+	watchCtx, watchCancel := context.WithCancel(ctx)
+	defer watchCancel()
+	wch := s.Etcd.Watch(watchCtx, "watch-key")
+	if _, err := s.Etcd.Put(ctx, "watch-key", "changed"); err != nil {
+		log.Errorf(ctx, log.TagAppDef, "PUT watch-key failed: %v", err)
+		os.Exit(1)
+	}
+	var gotWatchValue string
+	select {
+	case wresp, ok := <-wch:
+		if !ok {
+			log.Errorf(ctx, log.TagAppDef, "watch channel closed unexpectedly")
+			os.Exit(1)
+		}
+		if err := wresp.Err(); err != nil {
+			log.Errorf(ctx, log.TagAppDef, "watch error: %v", err)
+			os.Exit(1)
+		}
+		if len(wresp.Events) == 0 {
+			log.Errorf(ctx, log.TagAppDef, "watch returned no events")
+			os.Exit(1)
+		}
+		gotWatchValue = string(wresp.Events[0].Kv.Value)
+	case <-time.After(3 * time.Second):
+		log.Errorf(ctx, log.TagAppDef, "watch timed out waiting for event")
+		os.Exit(1)
+	}
+	if gotWatchValue != "changed" {
+		log.Errorf(ctx, log.TagAppDef, "watch got value %q, want %q", gotWatchValue, "changed")
+		os.Exit(1)
+	}
+
+	// Feature 3: Lease + TTL — grant, attach to a key, then verify remaining TTL.
+	lease, err := s.Etcd.Grant(ctx, 30)
+	if err != nil {
+		log.Errorf(ctx, log.TagAppDef, "Grant failed: %v", err)
+		os.Exit(1)
+	}
+	if _, err := s.Etcd.Put(ctx, "lease-key", "x", clientv3.WithLease(lease.ID)); err != nil {
+		log.Errorf(ctx, log.TagAppDef, "PUT lease-key failed: %v", err)
+		os.Exit(1)
+	}
+	ttlResp, err := s.Etcd.TimeToLive(ctx, lease.ID)
+	if err != nil {
+		log.Errorf(ctx, log.TagAppDef, "TimeToLive failed: err=%v", err)
+		os.Exit(1)
+	}
+	if ttlResp.TTL <= 0 {
+		log.Errorf(ctx, log.TagAppDef, "TimeToLive TTL non-positive: ttl=%d", ttlResp.TTL)
+		os.Exit(1)
+	}
+
+	fmt.Println("Response from server:", string(resp.Kvs[0].Value), "watch:", gotWatchValue, "ttl:", ttlResp.TTL)
 	syscall.Kill(os.Getpid(), syscall.SIGTERM)
 }
 

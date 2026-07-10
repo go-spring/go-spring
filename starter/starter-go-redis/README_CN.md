@@ -52,6 +52,14 @@ str, err := s.Redis.Get(r.Context(), "key").Result()
 str, err := s.Redis.Set(r.Context(), "key", "value", 0).Result()
 ```
 
+## 核心功能
+
+[example.go](example/example.go) 示例程序演示并断言了三项 Redis 核心操作：
+
+* **字符串 SET/GET**：通过 `Set(...)` 写入值，再通过 `Get(...)` 读回。
+* **INCR 计数器**：先通过 `Del(...)` 复位，再使用 `Incr(...)` 原子自增。
+* **EXPIRE + TTL**：使用 `Expire(...)` 为 key 设置过期时间，并通过 `TTL(...)` 查询剩余存活时间。
+
 ## 高级功能
 
 * **支持多 Redis 实例**：可以在配置文件中定义多个 Redis 实例，并在项目中使用 name 进行引用。

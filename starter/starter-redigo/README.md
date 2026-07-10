@@ -52,6 +52,14 @@ str, err := s.Redis.Get(r.Context(), "key").Result()
 str, err := s.Redis.Set(r.Context(), "key", "value", 0).Result()
 ```
 
+## Core Features
+
+The [example.go](example/example.go) file demonstrates the following core Redis features:
+
+* **String SET/GET**: store a string value with `SET` and retrieve it with `GET`.
+* **INCR counter**: atomically increment an integer counter with `INCR`.
+* **EXPIRE + TTL**: attach a time-to-live to a key with `EXPIRE` and inspect it with `TTL`.
+
 ## Advanced Features
 
 * **Supports multiple Redis instances**: You can define multiple Redis instances in the configuration file and reference

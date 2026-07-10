@@ -17,14 +17,18 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
+	"runtime"
 	"syscall"
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 	"go-spring.org/spring/gs"
 
 	_ "go-spring.org/starter-echo"
@@ -35,15 +39,46 @@ func init() {
 	gs.Provide(func(c *Controller) *echo.Echo {
 		e := echo.New()
 		e.HideBanner = true
-		e.GET("/echo", c.Echo)
+
+		// Feature 1: middleware.
+		// Built-in Recover protects against handler panics; the
+		// custom middleware stamps an application-level header on
+		// every response so callers can identify the service.
+		e.Use(middleware.Recover())
+		e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+			return func(ctx echo.Context) error {
+				ctx.Response().Header().Set("X-App", "go-spring")
+				return next(ctx)
+			}
+		})
+
+		// Feature 2: path parameter + JSON response.
+		e.GET("/echo/:name", c.Echo)
+
+		// Feature 3: route group with a query-parameter handler.
+		g := e.Group("/api")
+		g.GET("/greet", c.Greet)
+
 		return e
 	})
 }
 
 type Controller struct{}
 
+// Echo returns a JSON greeting using the `:name` path parameter.
 func (c *Controller) Echo(ctx echo.Context) error {
-	return ctx.String(http.StatusOK, "Hello, echo!")
+	name := ctx.Param("name")
+	return ctx.JSON(http.StatusOK, map[string]string{
+		"message": "Hello, " + name,
+	})
+}
+
+// Greet returns a JSON greeting using the `name` query parameter.
+func (c *Controller) Greet(ctx echo.Context) error {
+	name := ctx.QueryParam("name")
+	return ctx.JSON(http.StatusOK, map[string]string{
+		"message": "Hi, " + name,
+	})
 }
 
 func main() {
@@ -56,23 +91,78 @@ func main() {
 		runTest()
 	}()
 
-	gs.Configure(func(app gs.App) {
-		app.Property("spring.http.server.enabled", "false")
-	}).Run()
+	gs.Run()
 }
 
 func runTest() {
-	resp, err := http.Get("http://localhost:9090/echo")
+	// Feature 1: custom middleware sets the X-App header.
+	resp, err := http.Get("http://localhost:9090/echo/echo")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "request failed:", err)
 		os.Exit(1)
 	}
-	defer resp.Body.Close()
-	b, _ := io.ReadAll(resp.Body)
-	fmt.Println("Response from server:", string(b))
-	if string(b) != "Hello, echo!" {
-		fmt.Fprintln(os.Stderr, "unexpected response:", string(b))
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	fmt.Println("Response from server:", string(body))
+	if got := resp.Header.Get("X-App"); got != "go-spring" {
+		fmt.Fprintln(os.Stderr, "unexpected X-App header:", got)
 		os.Exit(1)
 	}
+
+	// Feature 2: path parameter -> JSON body.
+	var echoResp map[string]string
+	if err := json.Unmarshal(body, &echoResp); err != nil {
+		fmt.Fprintln(os.Stderr, "invalid JSON from /echo/:name:", err)
+		os.Exit(1)
+	}
+	if echoResp["message"] != "Hello, echo" {
+		fmt.Fprintln(os.Stderr, "unexpected /echo/:name message:", echoResp["message"])
+		os.Exit(1)
+	}
+
+	// Feature 3: route group + query parameter.
+	resp, err = http.Get("http://localhost:9090/api/greet?name=world")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "request failed:", err)
+		os.Exit(1)
+	}
+	body, _ = io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	fmt.Println("Response from server:", string(body))
+	var greetResp map[string]string
+	if err := json.Unmarshal(body, &greetResp); err != nil {
+		fmt.Fprintln(os.Stderr, "invalid JSON from /api/greet:", err)
+		os.Exit(1)
+	}
+	if greetResp["message"] != "Hi, world" {
+		fmt.Fprintln(os.Stderr, "unexpected /api/greet message:", greetResp["message"])
+		os.Exit(1)
+	}
+
 	syscall.Kill(os.Getpid(), syscall.SIGTERM)
+}
+
+// ----------------------------------------------------------------------------
+// Change working directory
+// ----------------------------------------------------------------------------
+
+// init sets the working directory of the application to the directory
+// where this source file resides.
+// This ensures that any relative file operations are based on the source file location,
+// not the process launch path.
+func init() {
+	var execDir string
+	_, filename, _, ok := runtime.Caller(0)
+	if ok {
+		execDir = filepath.Dir(filename)
+	}
+	err := os.Chdir(execDir)
+	if err != nil {
+		panic(err)
+	}
+	workDir, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(workDir)
 }

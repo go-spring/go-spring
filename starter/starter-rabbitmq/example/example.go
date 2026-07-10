@@ -116,8 +116,34 @@ func (s *Service) consume() (string, error) {
 	return string(msg.Body), nil
 }
 
+// getWithTimeout polls ch.Get in a bounded loop so runTest can never hang.
+func getWithTimeout(ch *amqp.Channel, queue string, autoAck bool, timeout time.Duration) (amqp.Delivery, bool, error) {
+	deadline := time.Now().Add(timeout)
+	for {
+		msg, ok, err := ch.Get(queue, autoAck)
+		if err != nil {
+			return amqp.Delivery{}, false, err
+		}
+		if ok {
+			return msg, true, nil
+		}
+		if time.Now().After(deadline) {
+			return amqp.Delivery{}, false, nil
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
 func runTest(s *Service) {
 	ctx := context.Background()
+
+	// Feature 1: Default-exchange publish/consume on queue "hello".
+	// Purge first so a leftover message from a previous run cannot poison this test.
+	if ch, err := s.Conn.Channel(); err == nil {
+		_, _ = ch.QueueDeclare(queueName, false, false, false, false, nil)
+		_, _ = ch.QueuePurge(queueName, false)
+		_ = ch.Close()
+	}
 	if err := s.publish(ctx, "value"); err != nil {
 		log.Errorf(ctx, log.TagAppDef, "PUBLISH failed: %v", err)
 		os.Exit(1)
@@ -127,8 +153,105 @@ func runTest(s *Service) {
 		log.Errorf(ctx, log.TagAppDef, "CONSUME failed: body=%q err=%v", body, err)
 		os.Exit(1)
 	}
-	fmt.Println("Response from server:", body)
+
+	// Feature 2: Direct exchange + routing key binding.
+	// Declare an auto-delete direct exchange, bind an auto-delete queue with
+	// routing key "info", publish "routed", and read it back.
+	routedBody, err := runDirectExchange(ctx, s)
+	if err != nil || routedBody != "routed" {
+		log.Errorf(ctx, log.TagAppDef, "DIRECT EXCHANGE failed: body=%q err=%v", routedBody, err)
+		os.Exit(1)
+	}
+
+	// Feature 3: QoS + manual ack.
+	// Set channel prefetch to 1, consume with autoAck=false, then explicitly ack.
+	ackedBody, err := runQosManualAck(ctx, s)
+	if err != nil || ackedBody != "ack-me" {
+		log.Errorf(ctx, log.TagAppDef, "QOS/ACK failed: body=%q err=%v", ackedBody, err)
+		os.Exit(1)
+	}
+
+	fmt.Println("Response from server:", body, "routed:", routedBody, "acked:", ackedBody)
 	syscall.Kill(os.Getpid(), syscall.SIGTERM)
+}
+
+// runDirectExchange demonstrates a direct exchange bound to a queue with a
+// routing key. Both the exchange and the queue are auto-deleted so the
+// example stays self-contained.
+func runDirectExchange(ctx context.Context, s *Service) (string, error) {
+	ch, err := s.Conn.Channel()
+	if err != nil {
+		return "", err
+	}
+	defer ch.Close()
+
+	const exchange = "logs_direct"
+	const routingKey = "info"
+
+	if err := ch.ExchangeDeclare(exchange, "direct", false, true, false, false, nil); err != nil {
+		return "", err
+	}
+	q, err := ch.QueueDeclare("", false, true, true, false, nil)
+	if err != nil {
+		return "", err
+	}
+	if err := ch.QueueBind(q.Name, routingKey, exchange, false, nil); err != nil {
+		return "", err
+	}
+	if err := ch.PublishWithContext(ctx, exchange, routingKey, false, false, amqp.Publishing{
+		ContentType: "text/plain",
+		Body:        []byte("routed"),
+	}); err != nil {
+		return "", err
+	}
+	msg, ok, err := getWithTimeout(ch, q.Name, true, 2*time.Second)
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "", fmt.Errorf("no message on queue %q", q.Name)
+	}
+	return string(msg.Body), nil
+}
+
+// runQosManualAck demonstrates channel prefetch (Qos) combined with manual
+// ack: the consumer must explicitly acknowledge each delivery.
+func runQosManualAck(ctx context.Context, s *Service) (string, error) {
+	ch, err := s.Conn.Channel()
+	if err != nil {
+		return "", err
+	}
+	defer ch.Close()
+
+	const queue = "hello_ack"
+	if _, err := ch.QueueDeclare(queue, false, true, false, false, nil); err != nil {
+		return "", err
+	}
+	// Drain any leftover messages from previous runs.
+	if _, err := ch.QueuePurge(queue, false); err != nil {
+		return "", err
+	}
+	// Only one unacknowledged message at a time.
+	if err := ch.Qos(1, 0, false); err != nil {
+		return "", err
+	}
+	if err := ch.PublishWithContext(ctx, "", queue, false, false, amqp.Publishing{
+		ContentType: "text/plain",
+		Body:        []byte("ack-me"),
+	}); err != nil {
+		return "", err
+	}
+	msg, ok, err := getWithTimeout(ch, queue, false, 2*time.Second)
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "", fmt.Errorf("no message on queue %q", queue)
+	}
+	if err := msg.Ack(false); err != nil {
+		return "", fmt.Errorf("ack failed: %w", err)
+	}
+	return string(msg.Body), nil
 }
 
 // ----------------------------------------------------------------------------

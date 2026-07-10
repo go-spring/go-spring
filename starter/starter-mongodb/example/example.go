@@ -91,17 +91,60 @@ func runTest(s *Service) {
 		log.Errorf(ctx, log.TagAppDef, "PING failed: %v", err)
 		os.Exit(1)
 	}
-	if _, err := s.coll().InsertOne(ctx, bson.M{"key": "key", "value": "value"}); err != nil {
+
+	// Drop the collection first so this smoke test is deterministic
+	// and idempotent across repeated runs.
+	if err := s.coll().Drop(ctx); err != nil {
+		log.Errorf(ctx, log.TagAppDef, "DROP failed: %v", err)
+		os.Exit(1)
+	}
+
+	// Feature 1: InsertOne.
+	insertRes, err := s.coll().InsertOne(ctx, bson.M{"key": "key", "value": "value"})
+	if err != nil {
 		log.Errorf(ctx, log.TagAppDef, "INSERT failed: %v", err)
 		os.Exit(1)
 	}
-	var res bson.M
-	err := s.coll().FindOne(ctx, bson.M{"key": "key"}).Decode(&res)
-	if err != nil || fmt.Sprint(res["value"]) != "value" {
-		log.Errorf(ctx, log.TagAppDef, "FIND failed: err=%v", err)
+	if insertRes == nil || insertRes.InsertedID == nil {
+		log.Errorf(ctx, log.TagAppDef, "INSERT returned no InsertedID")
 		os.Exit(1)
 	}
-	fmt.Println("Response from server:", res["value"])
+
+	// Feature 2: FindOne — value should equal "value".
+	var res bson.M
+	if err = s.coll().FindOne(ctx, bson.M{"key": "key"}).Decode(&res); err != nil {
+		log.Errorf(ctx, log.TagAppDef, "FIND failed: %v", err)
+		os.Exit(1)
+	}
+	if fmt.Sprint(res["value"]) != "value" {
+		log.Errorf(ctx, log.TagAppDef, "FIND value mismatch: got %v", res["value"])
+		os.Exit(1)
+	}
+
+	// Feature 3: UpdateOne — $set value to "value2", then re-read.
+	updateRes, err := s.coll().UpdateOne(ctx,
+		bson.M{"key": "key"},
+		bson.M{"$set": bson.M{"value": "value2"}},
+	)
+	if err != nil {
+		log.Errorf(ctx, log.TagAppDef, "UPDATE failed: %v", err)
+		os.Exit(1)
+	}
+	if updateRes.ModifiedCount != 1 {
+		log.Errorf(ctx, log.TagAppDef, "UPDATE ModifiedCount expected 1, got %d", updateRes.ModifiedCount)
+		os.Exit(1)
+	}
+	var res2 bson.M
+	if err = s.coll().FindOne(ctx, bson.M{"key": "key"}).Decode(&res2); err != nil {
+		log.Errorf(ctx, log.TagAppDef, "FIND after UPDATE failed: %v", err)
+		os.Exit(1)
+	}
+	if fmt.Sprint(res2["value"]) != "value2" {
+		log.Errorf(ctx, log.TagAppDef, "FIND after UPDATE value mismatch: got %v", res2["value"])
+		os.Exit(1)
+	}
+
+	fmt.Println("Response from server:", res["value"], "->", res2["value"])
 	syscall.Kill(os.Getpid(), syscall.SIGTERM)
 }
 
