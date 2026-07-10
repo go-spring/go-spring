@@ -1,0 +1,7 @@
+services:
+  consul:
+    image: hashicorp/consul:1.18
+    container_name: starter-consul
+    command: "agent -dev -client=0.0.0.0"
+    ports:
+      - "127.0.0.1:8500:8500"

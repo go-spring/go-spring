@@ -1,0 +1,58 @@
+# starter-etcd
+
+[English](README.md) | [中文](README_CN.md)
+
+`starter-etcd` provides an etcd v3 client wrapper based on go.etcd.io/etcd/client/v3,
+making it easy to integrate and use etcd in Go-Spring applications.
+
+## Installation
+
+```bash
+go get go-spring.org/starter-etcd
+```
+
+## Quick Start
+
+### 1. Import the `starter-etcd` Package
+
+Refer to the [example.go](example/example.go) file.
+
+```go
+import _ "go-spring.org/starter-etcd"
+```
+
+### 2. Configure the etcd Instance
+
+Add etcd configuration in your project's [configuration file](example/conf/app.properties), for example:
+
+```properties
+spring.etcd.endpoints=127.0.0.1:2379
+```
+
+Multiple endpoints are comma-separated: `spring.etcd.endpoints=127.0.0.1:2379,127.0.0.1:2380`.
+
+### 3. Inject the etcd Instance
+
+Refer to the [example.go](example/example.go) file.
+
+```go
+import clientv3 "go.etcd.io/etcd/client/v3"
+
+type Service struct {
+    Etcd *clientv3.Client `autowire:"__default__"`
+}
+```
+
+### 4. Use the etcd Instance
+
+Refer to the [example.go](example/example.go) file.
+
+```go
+_, err := s.Etcd.Put(ctx, "key", "value")
+resp, err := s.Etcd.Get(ctx, "key")
+```
+
+## Advanced Features
+
+* **Supports multiple etcd instances**: You can define multiple etcd instances under
+  `spring.etcd.instances` in the configuration file and reference them by name.

@@ -1,0 +1,6 @@
+services:
+  mongodb:
+    image: mongo:7
+    container_name: starter-mongodb
+    ports:
+      - "127.0.0.1:27017:27017"

@@ -12,11 +12,18 @@ use (
 	./log/benchmarks/fields
 	./log/benchmarks/logs
 	./spring
+	./starter/starter-consul
+	./starter/starter-echo
+	./starter/starter-etcd
 	./starter/starter-gin
 	./starter/starter-go-redis
 	./starter/starter-gorm-mysql
 	./starter/starter-grpc
+	./starter/starter-hertz
+	./starter/starter-mongodb
+	./starter/starter-nacos
 	./starter/starter-pprof
+	./starter/starter-rabbitmq
 	./starter/starter-redigo
 	./starter/starter-thrift
 	./starter/starter-websocket

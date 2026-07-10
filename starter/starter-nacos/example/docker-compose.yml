@@ -1,0 +1,9 @@
+services:
+  nacos:
+    image: nacos/nacos-server:v2.3.2
+    container_name: starter-nacos
+    environment:
+      MODE: "standalone"
+    ports:
+      - "127.0.0.1:8848:8848"
+      - "127.0.0.1:9848:9848"
