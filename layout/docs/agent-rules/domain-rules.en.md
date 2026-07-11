@@ -1,6 +1,6 @@
-# Domain-Form Rules (Itemized)
+# Domain Layering Rules (Itemized)
 
-Hard rules for layering, boundaries, errors, transactions, and testing under the `domain` form, distilled from `docs/layout-guide/domain-layout.md`, for AI collaborators to follow directly. See `docs/layout-guide/domain-layout.md` for explanations, rationale, and counter-examples.
+Hard rules for layering, boundaries, errors, transactions, and testing under domain layering, distilled from `docs/layout-guide/domain-layout.md`, for AI collaborators to follow directly. See `docs/layout-guide/domain-layout.md` for explanations, rationale, and counter-examples.
 
 ## Four-Layer Boundaries
 

@@ -1,7 +1,7 @@
 package main
 
 import (
-	_ "GS_PROJECT_MODULE/internal-domain"
+	_ "GS_PROJECT_MODULE/internal"
 
 	"go-spring.org/spring/gs"
 )

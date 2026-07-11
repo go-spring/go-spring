@@ -1,6 +1,5 @@
 {
   "module": "GS_PROJECT_MODULE",
-  "layout": "GS_PROJECT_LAYOUT",
   "lang": "GS_PROJECT_LANG",
   "layout_version": "GS_LAYOUT_VERSION"
 }

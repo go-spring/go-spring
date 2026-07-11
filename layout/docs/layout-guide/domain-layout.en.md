@@ -1,6 +1,6 @@
 # Domain Layered Architecture
 
-This doc covers the internal domain-layered architecture of a Go-Spring single-service project under the `domain` form. The top-level directories are described in a separate doc; this one focuses on the domain model, four-layer boundaries, code ownership, evolution constraints, and rules for collaborating with AI inside `internal/`.
+This doc covers the internal domain-layered architecture of a Go-Spring single-service project. The top-level directories are described in a separate doc; this one focuses on the domain model, four-layer boundaries, code ownership, evolution constraints, and rules for collaborating with AI inside `internal/`.
 
 It answers four questions:
 
@@ -52,7 +52,7 @@ This architecture adopts DDD's key constraints without pursuing full ceremony. W
 
 ## Domain layered directory structure
 
-The baseline structure below shows the recommended layout inside `internal/` under the `domain` form. `order` and `user` are just illustrative business domains — replace with your project's actual BCs, subdomains, or core business objects.
+The baseline structure below shows the recommended layout inside `internal/`. `order` and `user` are just illustrative business domains — replace with your project's actual BCs, subdomains, or core business objects.
 
 ```
 internal/

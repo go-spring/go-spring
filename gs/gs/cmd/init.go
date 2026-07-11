@@ -36,13 +36,6 @@ import (
 
 const layoutRepoURL = "https://github.com/go-spring/go-spring.git"
 
-// supportedLayouts enumerates the layout styles `gs init` can scaffold. The
-// map value is reserved for future per-layout metadata.
-var supportedLayouts = map[string]struct{}{
-	"mvc":    {},
-	"domain": {},
-}
-
 // supportedLangs enumerates the documentation languages `gs init` can pick
 // when a layout ships files in "<stem>.<lang><ext>" variants. The map value
 // is reserved for future per-lang metadata.
@@ -54,7 +47,6 @@ var supportedLangs = map[string]struct{}{
 // NewInitCmd builds the `gs init` subcommand.
 func NewInitCmd() *cobra.Command {
 	var module string
-	var layout string
 	var lang string
 
 	c := &cobra.Command{
@@ -65,7 +57,6 @@ func NewInitCmd() *cobra.Command {
 	}
 
 	c.Flags().StringVarP(&module, "module", "m", "", `Go module path (required), e.g. "github.com/you/hello"`)
-	c.Flags().StringVar(&layout, "layout", "mvc", `Project layout style: "mvc" (default) or "domain"`)
 	c.Flags().StringVar(&lang, "lang", "zh", `Documentation language: "zh" (default) or "en"`)
 	runcmd.BindFlag(c)
 
@@ -79,22 +70,18 @@ func NewInitCmd() *cobra.Command {
 		if _, major, _ := gomodule.SplitPathVersion(module); major != "" {
 			return errutil.Explain(nil, "module path %q has major version suffix %q; drop it when initializing a new project", module, major)
 		}
-		if _, ok := supportedLayouts[layout]; !ok {
-			return errutil.Explain(nil, "unknown layout %q; supported: mvc, domain", layout)
-		}
 		if _, ok := supportedLangs[lang]; !ok {
 			return errutil.Explain(nil, "unknown lang %q; supported: zh, en", lang)
 		}
-		return runInit(module, layout, lang)
+		return runInit(module, lang)
 	}
 
 	return c
 }
 
 // runInit is the RunE handler for `gs init`. The caller must have already
-// validated module via gomodule.CheckPath, layout against supportedLayouts,
-// and lang against supportedLangs.
-func runInit(module, layout, lang string) error {
+// validated module via gomodule.CheckPath and lang against supportedLangs.
+func runInit(module, lang string) error {
 	ss := strings.Split(module, "/")
 	projectName := ss[len(ss)-1]
 
@@ -117,28 +104,16 @@ func runInit(module, layout, lang string) error {
 	}
 	defer cleanup()
 
-	log.Println("[INFO] Selecting layout variant directories")
-	renamed, err := stripLayoutSuffix(srcDir, layout)
-	if err != nil {
-		return err
-	}
-
 	log.Println("[INFO] Selecting documentation language")
 	if err := stripLangSuffix(srcDir, lang); err != nil {
 		return err
 	}
 
-	// Placeholder substitutions plus the "<base>-<layout>" → "<base>" rewrites
-	// mirroring the directory renames done above.
 	replaces := map[string]string{
 		"GS_PROJECT_MODULE": module,
 		"GS_PROJECT_NAME":   pkgName,
-		"GS_PROJECT_LAYOUT": layout,
 		"GS_PROJECT_LANG":   lang,
 		"GS_LAYOUT_VERSION": layoutVersion,
-	}
-	for _, base := range renamed {
-		replaces[base+"-"+layout] = base
 	}
 
 	log.Println("[INFO] Rewriting module path and package names")
@@ -263,17 +238,6 @@ func latestLayoutTag() (tag, version string, err error) {
 	return bestTag, bestVer, nil
 }
 
-// matchLayoutVariant reports whether name ends with a "-<variant>" suffix for
-// any supported layout, returning the stripped base and the matched variant.
-func matchLayoutVariant(name string) (base, variant string, ok bool) {
-	for v := range supportedLayouts {
-		if b, matched := strings.CutSuffix(name, "-"+v); matched {
-			return b, v, true
-		}
-	}
-	return "", "", false
-}
-
 // matchLangVariant reports whether name has a "<stem>.<lang><ext>" pattern for
 // any supported lang, returning the "<stem><ext>" base and the matched lang.
 // Files without an outer extension (e.g. "AGENTS.zh") are not treated as lang
@@ -293,49 +257,6 @@ func matchLangVariant(name string) (base, variant string, ok bool) {
 		return "", "", false
 	}
 	return strings.TrimSuffix(stem, inner) + ext, v, true
-}
-
-// stripLayoutSuffix walks dir and, for each directory named "<base>-<variant>"
-// where <variant> is any supported layout, keeps only the entry whose variant
-// matches the selected layout — renaming it to "<base>" — and removes the
-// others. Non-variant directories are recursed into; variant directories are
-// not (the layout convention doesn't nest variants). Returns the base names
-// whose "<base>-<layout>" suffix was stripped so replaceFiles can rewrite
-// matching path references in file contents.
-func stripLayoutSuffix(dir, layout string) ([]string, error) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil, errutil.Explain(err, "read directory %q", dir)
-	}
-	var renamed []string
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		child := filepath.Join(dir, e.Name())
-
-		base, variant, ok := matchLayoutVariant(e.Name())
-		if !ok {
-			sub, err := stripLayoutSuffix(child, layout)
-			if err != nil {
-				return nil, err
-			}
-			renamed = append(renamed, sub...)
-			continue
-		}
-		if variant != layout {
-			if err := os.RemoveAll(child); err != nil {
-				return nil, errutil.Explain(err, "remove %q", child)
-			}
-			continue
-		}
-		newPath := filepath.Join(dir, base)
-		if err := os.Rename(child, newPath); err != nil {
-			return nil, errutil.Explain(err, "rename %q to %q", child, newPath)
-		}
-		renamed = append(renamed, base)
-	}
-	return renamed, nil
 }
 
 // stripLangSuffix walks dir and, for each regular file (or symlink) named

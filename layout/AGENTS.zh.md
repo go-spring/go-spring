@@ -18,7 +18,7 @@
 
 ## domain 目录规约
 
-`domain` 形态的规约见 [domain-rules.md](docs/agent-rules/domain-rules.md),其中包含分层、边界、事务、测试等硬规则及协作细则,AI 遵循该文件即可。
+domain 分层规约见 [domain-rules.md](docs/agent-rules/domain-rules.md),其中包含分层、边界、事务、测试等硬规则及协作细则,AI 遵循该文件即可。
 
 修改代码或写方案前,**必须**先按该文档确认所在层与依赖方向,不要凭直觉推断目录用途。
 

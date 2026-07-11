@@ -1,6 +1,6 @@
-# Domain 形态规则(条目化)
+# Domain 分层规则(条目化)
 
-`domain` 形态下的分层、边界、错误、事务与测试硬规则,从 `docs/layout-guide/domain-layout.md` 提炼,供 AI 直接遵循。解释、动机与反例见 `docs/layout-guide/domain-layout.md`。
+domain 分层下的分层、边界、错误、事务与测试硬规则,从 `docs/layout-guide/domain-layout.md` 提炼,供 AI 直接遵循。解释、动机与反例见 `docs/layout-guide/domain-layout.md`。
 
 ## 四层边界
 
