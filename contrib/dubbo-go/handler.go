@@ -19,16 +19,21 @@ package main
 import (
 	"context"
 
+	"dubbo.apache.org/dubbo-go/v3/server"
 	greet "go-spring.org/dubbo-go/proto"
 	"go-spring.org/spring/gs"
 )
 
 func init() {
-	// Register the provider as a greet.GreetServiceHandler bean. The Dubbo
-	// server adapter (see server.go) declares a dependency on this interface,
-	// so exporting it here is what wires the generated service into Go-Spring's
-	// IoC container instead of the scaffold's hand-built main().
-	gs.Provide(&GreetProvider{}).Export(gs.As[greet.GreetServiceHandler]())
+	// Provide a ServiceRegister bean that binds the GreetProvider to the Dubbo
+	// server. The DubboServer adapter (see server.go) depends only on this
+	// function type, so the concrete service is wired here without the server
+	// ever knowing about greet.GreetServiceHandler.
+	gs.Provide(func() ServiceRegister {
+		return func(svr *server.Server) error {
+			return greet.RegisterGreetServiceHandler(svr, &GreetProvider{})
+		}
+	})
 }
 
 // GreetProvider implements the GreetServiceHandler interface generated from

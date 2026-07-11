@@ -21,7 +21,6 @@ import (
 
 	"dubbo.apache.org/dubbo-go/v3/protocol"
 	"dubbo.apache.org/dubbo-go/v3/server"
-	greet "go-spring.org/dubbo-go/proto"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 )
@@ -29,12 +28,17 @@ import (
 func init() {
 	// Register the Dubbo server and bind it to the Go-Spring server lifecycle.
 	// Config is filled from the ${spring.dubbo.server} prefix. The server only
-	// materializes when a greet.GreetServiceHandler bean exists, mirroring how
-	// the thrift/grpc starters gate on their processor bean.
+	// materializes when a ServiceRegister bean exists, mirroring how the
+	// grpc starter gates on ServiceRegister rather than any concrete service.
 	gs.Provide(NewDubboServer, gs.IndexArg(0, gs.TagArg("${spring.dubbo.server}"))).
 		Export(gs.As[gs.Server]()).
-		Condition(gs.OnBean[greet.GreetServiceHandler]())
+		Condition(gs.OnBean[ServiceRegister]())
 }
+
+// ServiceRegister registers services on a Dubbo server.Server. Extracting the
+// registration behind this function type keeps DubboServer service-agnostic:
+// it drives the lifecycle while each service supplies its own register bean.
+type ServiceRegister func(svr *server.Server) error
 
 // Config defines Dubbo server configuration, bound from ${spring.dubbo.server}.
 type Config struct {
@@ -47,16 +51,16 @@ type Config struct {
 // instead implements gs.Server so Go-Spring drives startup and graceful
 // shutdown alongside every other managed server.
 type DubboServer struct {
-	cfg     Config
-	handler greet.GreetServiceHandler
-	svr     *server.Server
-	done    chan struct{}
+	cfg  Config
+	reg  ServiceRegister
+	svr  *server.Server
+	done chan struct{}
 }
 
 // NewDubboServer creates a DubboServer from ${spring.dubbo.server} config and
-// the registered GreetServiceHandler bean.
-func NewDubboServer(cfg Config, handler greet.GreetServiceHandler) *DubboServer {
-	return &DubboServer{cfg: cfg, handler: handler, done: make(chan struct{})}
+// the registered ServiceRegister bean.
+func NewDubboServer(cfg Config, reg ServiceRegister) *DubboServer {
+	return &DubboServer{cfg: cfg, reg: reg, done: make(chan struct{})}
 }
 
 // Run builds the Dubbo triple server on the configured port and starts serving
@@ -73,8 +77,8 @@ func (s *DubboServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	if err != nil {
 		return errutil.Explain(err, "failed to create dubbo server")
 	}
-	if err = greet.RegisterGreetServiceHandler(svr, s.handler); err != nil {
-		return errutil.Explain(err, "failed to register greet service handler")
+	if err = s.reg(svr); err != nil {
+		return errutil.Explain(err, "failed to register dubbo service")
 	}
 	s.svr = svr
 
