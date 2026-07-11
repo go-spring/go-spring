@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package greet;
+
+option go_package = "go-spring.org/dubbo-go/proto;greet";
+
+message GreetRequest {
+  string name = 1;
+}
+
+message GreetResponse {
+  string greeting = 1;
+}
+
+service GreetService {
+  rpc Greet(GreetRequest) returns (GreetResponse);
+}

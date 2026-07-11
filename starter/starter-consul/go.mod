@@ -13,7 +13,7 @@ require (
 	github.com/armon/go-metrics v0.4.1 // indirect
 	github.com/bytedance/mockey v1.4.6 // indirect
 	github.com/expr-lang/expr v1.17.8 // indirect
-	github.com/fatih/color v1.16.0 // indirect
+	github.com/fatih/color v1.18.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/gopherjs/gopherjs v1.20.2 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect

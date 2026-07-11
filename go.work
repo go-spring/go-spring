@@ -1,6 +1,11 @@
-go 1.26
+go 1.26.1
 
 use (
+	./contrib/dubbo-go
+	./contrib/go-kratos
+	./contrib/go-zero/greet
+	./contrib/goframe
+	./contrib/kitex
 	./examples/bookman
 	./examples/chatAI
 	./examples/miniapi
