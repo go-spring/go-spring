@@ -1,117 +1,158 @@
-# greet —— 从 go-zero 改造为 Go-Spring
+# go-zero(Go-Spring 风格)
 
 [English](README.md) | [中文](README_CN.md)
 
-一个用 `goctl api new greet` 生成的原生 [go-zero](https://github.com/zeromicro/go-zero) API 项目，
-随后把 go-zero 原生的**配置加载与启动方式**改造为 **Go-Spring** 的配置绑定与生命周期管理。
+一个 [go-zero](https://go-zero.dev) `Greet` 示例:先用 go-zero 工具链生成代码,
+再改造成 Go-Spring 的启动与配置方式 —— 由 `gs.Run()` 驱动生命周期,provider
+作为 IoC bean 注入,监听地址取自 `conf/app.properties`,而不是写死在 `main()`
+里。
 
-生成的业务代码（`internal/handler`、`internal/logic`、`internal/svc`、`internal/types`）保持不动，
-只改变**服务如何被配置和启动**。
+采用 **zrpc(gRPC)** 服务,并接入 **etcd 注册中心** 做真实的**服务注册与发现**:
+provider 启动时把 `greet.rpc` 这个 key 注册进 etcd;consumer 不知道 provider
+的 host:port,而是从同一 etcd 解析出可用地址再发起调用。
 
-## 改造了什么
+这是一个**可运行示例**,并非可复用的 starter 模块。
 
-| 关注点 | 原生 go-zero | 改造为 Go-Spring |
-| --- | --- | --- |
-| 配置来源 | `etc/greet-api.yaml`，`conf.MustLoad` 加载 | `conf/app.properties`，`value:"${...}"` 标签绑定 |
-| 配置结构 | `config.Config` 内嵌 `rest.RestConf` | `config.Config` 用 `value` 标签 + `RestConf()` 构造器 |
-| Server 创建 | `main()` 内 `rest.MustNewServer` | `internal/server.NewGreetServer`，注册为 `gs.Server` bean |
-| 路由注册 | `main()` 内 `handler.RegisterHandlers` | 在 server bean 构造器内完成 |
-| ServiceContext | `main()` 内 `svc.NewServiceContext` | 注册为 Go-Spring bean，配置自动注入 |
-| 启动 | `flag.Parse()` → `conf.MustLoad` → `server.Start()` | `gs.Run()` 驱动容器生命周期 |
-| 关闭 | go-zero 内部信号处理 | `GreetServer.Stop()` 优雅关闭 `*http.Server` |
+## 为什么用 zrpc 而不是 REST —— 与其他示例的关键差异
+
+与其他四个 contrib 示例(dubbo-go、kitex、kratos、goframe)不同,**go-zero 的
+REST 服务(`rest.Server`)不内建任何服务发现能力**,注册中心相关能力全部只在
+**zrpc**(go-zero 的 gRPC 层)中提供。为了展示 go-zero 真实的服务治理能力,
+这个示例必须走 zrpc —— 用 REST 只能是硬编码直连,无法称为「注册发现」。
+
+因此本示例与常见的 go-zero REST 教程结构不同:IDL 使用 protobuf,provider 是
+zrpc server,consumer 是 zrpc client。`spring.http.server.enabled=false`。
+
+## 拓扑
+
+```
+                ┌──────────────┐
+   register     │     etcd     │   discover
+  ┌────────────▶│  :2379       │◀────────────┐
+  │  greet.rpc  └──────────────┘  greet.rpc  │
+  │             (key)              (key)     │ 解析 provider 地址
+  │ → grpc://<host>:8081                     │
+┌─┴──────────┐                        ┌──────┴─────┐
+│  provider  │◀───────── RPC ─────────│  consumer  │
+│ gs.Run()   │      Greet(name)       │  一次性调用 │
+│ :8081      │──────────────────────▶│  断言后退出 │
+└────────────┘       echo name        └────────────┘
+```
 
 ## 目录结构
 
 ```
-greet/
-├── conf/app.properties          # Go-Spring 配置（替代 etc/greet-api.yaml）
-├── greet.go                     # main()：bean 注册 + gs.Run()
-├── greet.api                    # 原始 goctl API 定义（保留供参考）
-└── internal/
-    ├── config/config.go         # value 标签绑定 + RestConf() 构造器
-    ├── server/server.go         # 包裹 rest.Server 的 gs.Server 适配器
-    ├── handler/                 # 生成代码，未改动
-    ├── logic/greetlogic.go      # 生成代码（补全为返回问候语）
-    ├── svc/servicecontext.go    # 生成代码，未改动
-    └── types/types.go           # 生成代码，未改动
+contrib/go-zero/greet/
+├── greet.proto             # Protobuf IDL
+├── pb/greet.pb.go          # protoc 生成的消息(请勿手改)
+├── pb/greet_grpc.pb.go     # protoc 生成的 gRPC 桩代码(请勿手改)
+├── provider/handler.go     # GreetProvider,导出为 ServiceRegister bean
+├── provider/server.go      # ZrpcServer 适配器(gs.Server)+ Config,配置 etcd registry
+├── provider/main.go        # gs.Run(),长驻并注册到 etcd
+├── consumer/main.go        # 通过 etcd 发现 provider,调用并断言后退出
+├── conf/app.properties     # provider 配置
+├── docker-compose.yml      # 本地 etcd
+└── check.sh                # 冒烟脚本:起 etcd+provider,跑 consumer,自动清理
 ```
 
-## 工作原理
+## 如何生成
 
-### 1. 从 properties 绑定配置
+两条路都可以,产物都是标准的 `pb.RegisterGreetServer` / `pb.NewGreetClient`
+桩代码,provider 和 consumer 直接引用。
 
-`config.Config` 以 `${greet}` 前缀从 `conf/app.properties` 绑定，并适配为 go-zero 需要的
-`rest.RestConf`：
+### 方案 A:`protoc`(本示例采用)
 
-```go
-type Config struct {
-    Name string `value:"${name:=greet-api}"`
-    Host string `value:"${host:=0.0.0.0}"`
-    Port int    `value:"${port:=8888}"`
-}
+```bash
+# 工具(一次性)
+go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 
-func (c Config) RestConf() rest.RestConf {
-    var rc rest.RestConf
-    rc.Name, rc.Host, rc.Port = c.Name, c.Host, c.Port
-    return rc
-}
+# 从 IDL 生成消息 + gRPC 桩代码
+protoc --proto_path=. \
+  --go_out=. --go_opt=paths=source_relative \
+  --go-grpc_out=. --go-grpc_opt=paths=source_relative \
+  greet.proto
+mv greet.pb.go greet_grpc.pb.go pb/
 ```
+
+### 方案 B:`goctl rpc protoc`
+
+```bash
+# 工具(一次性)
+go install github.com/zeromicro/go-zero/tools/goctl@latest
+
+goctl rpc protoc greet.proto \
+  --go_out=./pb --go-grpc_out=./pb --zrpc_out=.
+```
+
+`goctl` 会额外生成 `etc/*.yaml` 与 `internal/{config,logic,server,svc}` 目录。
+本示例有意不使用那套目录 —— 生命周期与配置都交由 Go-Spring 管理,只保留 `pb/`
+产物即可。
+
+## 改造:原生 go-zero → Go-Spring + 注册发现
+
+| 关注点   | 原生 go-zero(REST 脚手架)                | Go-Spring 版本(zrpc + etcd)                                                       |
+| -------- | ------------------------------------------ | ----------------------------------------------------------------------------------- |
+| 传输层   | `rest.Server`(HTTP)                      | `zrpc.RpcServer`(gRPC)—— 服务发现的前提                                            |
+| IDL      | `greet.api`                                | `greet.proto` + `pb/*.pb.go` / `pb/*_grpc.pb.go`                                    |
+| 启动     | `main()` 中 `server.Start()` 阻塞          | `ZrpcServer` 实现 `gs.Server`,由 `gs.Run()` 驱动 Run/Stop                          |
+| handler  | `handler.RegisterHandlers(server, svcCtx)` | `gs.Provide(func() ServiceRegister { return pb.RegisterGreetServer(...) })`         |
+| 是否启用 | 总是开启                                   | 通过 `gs.OnBean` 条件依赖 `ServiceRegister` bean                                    |
+| 监听地址 | 写死在 YAML                                | 取自 `conf/app.properties` 的 `${spring.zrpc.server.listen-on}`                     |
+| 服务注册 | 无(REST 无发现能力)                      | provider `zrpc.RpcServerConf{Etcd: discov.EtcdConf{Hosts, Key}}` 注册进 etcd        |
+| 服务发现 | 无                                         | consumer `zrpc.RpcClientConf{Etcd: discov.EtcdConf{Hosts, Key}}`,按 key 从 etcd 解析 |
+| 关停     | 进程自持                                   | 由 Go-Spring 协调优雅关停(SIGTERM → `Stop()`,注销 etcd 注册)                     |
+
+`provider/server.go` 里的适配器是关键:`zrpc.RpcServer.Start()` 会绑定监听端口、
+把 provider 注册进 etcd 后永久阻塞,因此将其放到一个仅在 `sig.TriggerAndWait()`
+之后启动的 goroutine 中运行,`Run` 则阻塞在一个 done channel 上,由 `Stop()`
+关闭它,再由 Go-Spring 调用 `zrpc.RpcServer.Stop()` 完成关停。
+
+consumer 侧只提供 etcd 地址与 key,不提供 provider 地址:zrpc 会用同一 key
+在 etcd 中查到一个存活的 provider 并调用。
+
+## 配置
 
 ```properties
-spring.http.server.enabled=false   # 让 go-zero 独占端口
-greet.name=greet-api
-greet.host=0.0.0.0
-greet.port=8888
-```
+# 关闭内置 HTTP server,provider 只暴露 zrpc 端点。
+spring.http.server.enabled=false
 
-### 2. 把 go-zero rest.Server 适配为 gs.Server
+# zrpc 监听地址,经 ${spring.zrpc.server} 前缀读取。
+spring.zrpc.server.listen-on=0.0.0.0:8081
 
-`GreetServer` 包裹 `rest.Server`。`StartWithOpts` 会回传底层 `*http.Server`，从而让 `Stop()`
-能通过 Go-Spring 生命周期优雅关闭：
-
-```go
-func (s *GreetServer) Run(ctx context.Context, sig gs.ReadySignal) error {
-    <-sig.TriggerAndWait()
-    s.svr.StartWithOpts(func(svr *http.Server) { s.httpSvr = svr })
-    return nil
-}
-
-func (s *GreetServer) Stop() error {
-    if s.httpSvr != nil {
-        _ = s.httpSvr.Shutdown(context.Background())
-    }
-    s.svr.Stop()
-    return nil
-}
-```
-
-### 3. 装配与启动
-
-```go
-func init() {
-    gs.Provide(svc.NewServiceContext, gs.IndexArg(0, gs.TagArg("${greet}")))
-    gs.Provide(server.NewGreetServer, gs.IndexArg(0, gs.TagArg("${greet}"))).
-        Export(gs.As[gs.Server]())
-}
-
-func main() { gs.Run() }
+# etcd 注册中心地址与 key,与 docker-compose.yml 一致。
+spring.zrpc.server.etcd.addr=127.0.0.1:2379
+spring.zrpc.server.etcd.key=greet.rpc
 ```
 
 ## 运行
 
-```bash
-go run .
-```
-
-示例会启动服务，自测 `GET /from/you`，打印响应，然后触发优雅关闭：
-
-```
-Response from server: {"message":"Hello, you"}
-```
-
-也可在服务运行时自行调用：
+先起注册中心:
 
 ```bash
-curl http://localhost:8888/from/you
-# {"message":"Hello, you"}
+docker compose up -d      # 或 docker-compose up -d
+```
+
+终端 A —— 启动 provider(长驻,注册进 etcd):
+
+```bash
+go run ./provider
+```
+
+终端 B —— 启动 consumer(从 etcd 发现并调用):
+
+```bash
+go run ./consumer
+```
+
+consumer 预期输出:
+
+```
+Response from discovered provider: Hello, go-zero!
+```
+
+或一键冒烟(自动起 etcd + provider、跑 consumer、清理):
+
+```bash
+bash check.sh
 ```

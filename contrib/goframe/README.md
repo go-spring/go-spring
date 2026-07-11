@@ -1,41 +1,51 @@
-# goframe — GoFrame converted to Go-Spring
+# goframe (Go-Spring style)
 
 [English](README.md) | [中文](README_CN.md)
 
-A stock [GoFrame](https://goframe.org) project, generated with `gf init`, then converted from
-GoFrame's native config loading and startup to **Go-Spring**'s configuration binding and lifecycle.
+A [GoFrame](https://goframe.org) `Hello` service, generated with `gf init` and
+then refactored to boot and be configured the Go-Spring way: `gs.Run()` drives
+the lifecycle, the goframe `*ghttp.Server` is an IoC bean, and the bind address
+comes from `conf/app.properties` instead of `manifest/config/config.yaml`.
 
-The generated business code (`api/`, `internal/controller`, `internal/consts`, …) is left
-untouched — only *how the service is configured and started* changes.
+On top of that lift it wires in an **etcd registry** for real **service
+registration & discovery**: on startup the provider registers `goframe.hello`
+into etcd; the consumer never learns the provider's host:port and instead
+resolves a live address from the same etcd through goframe's `gclient`
+discovery middleware. This is the microservice governance goframe advertises
+via its `gsvc` layer — not the earlier direct-connection example.
 
 This is a runnable example, **not** a reusable starter module.
 
-## What changed
+## Topology
 
-| Concern | Stock GoFrame | Converted to Go-Spring |
-| --- | --- | --- |
-| Config source | `manifest/config/config.yaml` loaded implicitly by `g.Cfg()` | `conf/app.properties` bound via `value:"${...}"` tags |
-| Config struct | none (server reads YAML directly) | `internal/config.Config` with `value` tags |
-| Server creation | `g.Server()` inline in `internal/cmd` | `internal/server.NewGoFrameServer`, a `gs.Server` bean |
-| Route registration | `s.Group(...)` inline in `internal/cmd` | done inside the server bean constructor |
-| Startup | `cmd.Main.Run()` → `s.Run()` blocks in `main()` | `gs.Run()` drives the container lifecycle |
-| Shutdown | `s.Run()`'s own signal handling | `GoFrameServer.Stop()` calls `s.Shutdown()` via Go-Spring |
+```
+                ┌──────────────┐
+   register     │     etcd     │   discover
+  ┌────────────▶│  :2379       │◀────────────┐
+  │             └──────────────┘             │
+  │ goframe.hello                            │ resolve provider addr
+  │ → http://<host>:8000                     │
+┌─┴──────────┐                        ┌──────┴─────┐
+│  provider  │◀───────── HTTP ────────│  consumer  │
+│ gs.Run()   │      GET /hello        │ one-shot   │
+│ :8000      │──────────────────────▶│ assert+exit│
+└────────────┘     "Hello World!"     └────────────┘
+```
 
 ## Layout
 
 ```
 contrib/goframe/
-├── conf/app.properties          # Go-Spring config (replaces the server: section of config.yaml)
-├── main.go                      # main(): bean registration + gs.Run()
-├── api/hello/                   # generated API definition, unchanged
-└── internal/
-    ├── config/config.go         # value-tag binding (new)
-    ├── server/server.go         # gs.Server adapter around *ghttp.Server (new)
-    └── controller/hello/        # generated, unchanged
+├── api/hello/                    # generated API types (shared)
+├── internal/config/config.go     # ${goframe} bindings: address, name, registry.etcd
+├── internal/controller/hello/    # generated controller (shared)
+├── internal/server/server.go     # GoFrameServer adapter (gs.Server) + etcd registry wiring
+├── provider/main.go              # gs.Run(); long-lived, registers into etcd
+├── consumer/main.go              # discovers the provider via etcd, calls it and asserts, then exits
+├── conf/app.properties           # provider configuration
+├── docker-compose.yml            # local etcd
+└── check.sh                      # smoke test: bring up etcd+provider, run consumer, tear down
 ```
-
-`internal/cmd` — GoFrame's scaffold startup — is removed: its `g.Server()` + route binding +
-`s.Run()` responsibilities move into the server bean.
 
 ## How it was generated
 
@@ -47,74 +57,91 @@ go install github.com/gogf/gf/cmd/gf/v2@latest
 gf init goframe -g go-spring.org/goframe
 ```
 
-## How it works
+The generated `api/`, `internal/controller/`, `internal/consts/` code is
+untouched by the Go-Spring refactor — only *how the service is configured,
+started and discovered* changes.
 
-### 1. Config bound from properties
+## The refactor: native goframe → Go-Spring + registry
 
-`config.Config` is bound from `conf/app.properties` under the `${goframe}` prefix instead of
-GoFrame's `manifest/config/config.yaml`:
+| Concern         | goframe scaffold                                    | Go-Spring version                                                              |
+| --------------- | --------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Startup         | `cmd.Main.Run()` → `s.Run()` blocks in `main()`     | `GoFrameServer` implements `gs.Server`; `gs.Run()` drives Run/Stop             |
+| Server creation | `g.Server()` inline in `internal/cmd`               | `internal/server.NewGoFrameServer`, a `gs.Server` bean                         |
+| Route wiring    | `s.Group(...)` inline in `internal/cmd`             | done inside the server bean constructor                                        |
+| Config source   | `manifest/config/config.yaml` via `g.Cfg()`         | `conf/app.properties` bound via `value:"${...}"` tags under `${goframe}`       |
+| Registration    | none (direct)                                       | provider calls `gsvc.SetRegistry(etcd.New(addr))` before `g.Server(name)`      |
+| Discovery       | consumer hard-coded `http://localhost:8000/hello`   | consumer `g.Client().Discovery(etcd.New(addr)).Get(ctx, "http://<name>/hello")` |
+| Shutdown        | `s.Run()`'s own signal handling                     | graceful shutdown by Go-Spring (SIGTERM → `Stop()`, deregisters from etcd)     |
 
-```go
-type Config struct {
-    Address string `value:"${address:=:8000}"`
-}
-```
+The adapter in `internal/server/server.go` is the crux. `ghttp.Server`
+snapshots `gsvc.GetRegistry()` at construction time (see `ghttp_server.go`
+`registrar: gsvc.GetRegistry()`), so the constructor sets the etcd registry
+*before* calling `g.Server(name)`. `s.Start()` is non-blocking, so `Run` parks
+on a done channel that `Stop()` closes to hand control back to Go-Spring's
+shutdown, which in turn triggers `s.Shutdown()` and the etcd deregister.
+
+The consumer never learns the provider's host:port: it passes the same etcd
+address plus the service name (`goframe.hello`, matching `goframe.name` in
+`conf/app.properties`) to `gclient`, whose internal `Discovery` middleware
+treats `r.URL.Host` as a service name and resolves it against etcd.
+
+## Choosing a registry
+
+This example standardises on **etcd** for easy cross-comparison with the other
+contrib examples. `github.com/gogf/gf/contrib/registry/*` also ships
+**Nacos**, **ZooKeeper** and **Polaris** adapters that satisfy the same
+`gsvc.Registry` interface: swap
+`github.com/gogf/gf/contrib/registry/etcd/v2` for
+`.../registry/nacos/v2` / `.../registry/zookeeper/v2` / `.../registry/polaris/v2`
+and update `goframe.registry.etcd` accordingly. With Nacos you can also inspect
+the registered services directly in its built-in `:8848/nacos` console.
+
+## Configuration
 
 ```properties
-spring.http.server.enabled=false   # let goframe own the port
+# Disable Go-Spring's built-in HTTP server; the goframe *ghttp.Server owns the port.
+spring.http.server.enabled=false
+
+# HTTP bind address for the goframe *ghttp.Server.
 goframe.address=:8000
-```
 
-### 2. GoFrame *ghttp.Server as a gs.Server
+# Service name the provider registers under; the consumer resolves this same
+# name from etcd.
+goframe.name=goframe.hello
 
-`GoFrameServer` wraps `g.Server()`, sets the address from the bound config, and binds the same
-routes the scaffold registered in `internal/cmd`. GoFrame's `Start()` is non-blocking, so `Run`
-blocks until `Stop` calls `Shutdown()`:
-
-```go
-func (s *GoFrameServer) Run(ctx context.Context, sig gs.ReadySignal) error {
-    <-sig.TriggerAndWait()
-    if err := s.svr.Start(); err != nil {
-        return err
-    }
-    <-s.done
-    return nil
-}
-
-func (s *GoFrameServer) Stop() error {
-    err := s.svr.Shutdown()
-    close(s.done)
-    return err
-}
-```
-
-### 3. Wiring + startup
-
-```go
-func init() {
-    gs.Provide(server.NewGoFrameServer, gs.IndexArg(0, gs.TagArg("${goframe}"))).
-        Export(gs.As[gs.Server]())
-}
-
-func main() { gs.Run() }
+# etcd registry address; matches docker-compose.yml.
+goframe.registry.etcd=127.0.0.1:2379
 ```
 
 ## Run
 
-```bash
-go run .
-```
-
-The example starts the server, self-tests `GET /hello`, prints the response, then triggers a
-graceful shutdown:
-
-```
-Response from server: Hello World!
-```
-
-Or call it yourself while the server is up:
+Bring up the registry first:
 
 ```bash
-curl http://localhost:8000/hello
-# Hello World!
+docker compose up -d      # or docker-compose up -d
+```
+
+Terminal A — start the provider (long-lived, registers into etcd):
+
+```bash
+go run ./provider
+```
+
+Terminal B — start the consumer (discovers via etcd and calls):
+
+```bash
+go run ./consumer
+```
+
+Expected consumer output:
+
+```
+Response from discovered provider: Hello World!
+```
+
+Or run the one-shot smoke test (brings up etcd + provider, runs the consumer,
+tears everything down):
+
+```bash
+bash check.sh
 ```

@@ -1,119 +1,164 @@
-# greet — go-zero converted to Go-Spring
+# go-zero (Go-Spring style)
 
 [English](README.md) | [中文](README_CN.md)
 
-A stock [go-zero](https://github.com/zeromicro/go-zero) API project, generated with
-`goctl api new greet`, then converted from go-zero's native config loading and startup to
-**Go-Spring**'s configuration binding and lifecycle.
+A [go-zero](https://go-zero.dev) `Greet` example that starts from code the
+go-zero toolchain generates and is then refactored to boot and be configured
+the Go-Spring way: `gs.Run()` drives the lifecycle, the provider is an IoC
+bean, and the bind address comes from `conf/app.properties` instead of
+hard-coded `main()` wiring.
 
-The generated business code (`internal/handler`, `internal/logic`, `internal/svc`,
-`internal/types`) is left untouched — only *how the service is configured and started* changes.
+It runs a **zrpc (gRPC) service** and wires in an **etcd registry** for real
+**service registration & discovery**: on startup the provider registers the
+`greet.rpc` key into etcd; the consumer never learns the provider's host:port
+and instead resolves a live address from the same etcd.
 
-## What changed
+This is a runnable example, **not** a reusable starter module.
 
-| Concern | Stock go-zero | Converted to Go-Spring |
-| --- | --- | --- |
-| Config source | `etc/greet-api.yaml` loaded via `conf.MustLoad` | `conf/app.properties` bound via `value:"${...}"` tags |
-| Config struct | `config.Config` embeds `rest.RestConf` | `config.Config` uses `value` tags + a `RestConf()` builder |
-| Server creation | `rest.MustNewServer` inline in `main()` | `internal/server.NewGreetServer`, a `gs.Server` bean |
-| Route registration | `handler.RegisterHandlers` inline in `main()` | done inside the server bean constructor |
-| ServiceContext | `svc.NewServiceContext` inline in `main()` | registered as a Go-Spring bean, config injected |
-| Startup | `flag.Parse()` → `conf.MustLoad` → `server.Start()` | `gs.Run()` drives the container lifecycle |
-| Shutdown | go-zero's internal signal handling | `GreetServer.Stop()` gracefully shuts down the `*http.Server` |
+## Why zrpc instead of REST — the important difference
+
+Unlike the other four contrib examples (dubbo-go, kitex, kratos, goframe),
+go-zero has **no service discovery in its REST server** (`rest.Server`). The
+whole registry story only exists in **zrpc** (go-zero's gRPC layer). So to
+demonstrate go-zero's real service governance we must ship a zrpc-based
+example — a REST version would be a fake, hard-coded direct call.
+
+That is why this example diverges from a stock go-zero REST tutorial: the IDL
+is a protobuf, the provider is a zrpc server, and the consumer is a zrpc
+client. `spring.http.server.enabled=false`.
+
+## Topology
+
+```
+                ┌──────────────┐
+   register     │     etcd     │   discover
+  ┌────────────▶│  :2379       │◀────────────┐
+  │  greet.rpc  └──────────────┘  greet.rpc  │
+  │             (key)              (key)     │ resolve provider addr
+  │ → grpc://<host>:8081                     │
+┌─┴──────────┐                        ┌──────┴─────┐
+│  provider  │◀───────── RPC ─────────│  consumer  │
+│ gs.Run()   │      Greet(name)       │ one-shot   │
+│ :8081      │──────────────────────▶│ assert+exit│
+└────────────┘       echo name        └────────────┘
+```
 
 ## Layout
 
 ```
-greet/
-├── conf/app.properties          # Go-Spring config (replaces etc/greet-api.yaml)
-├── greet.go                     # main(): bean registration + gs.Run()
-├── greet.api                    # original goctl API definition (kept for reference)
-└── internal/
-    ├── config/config.go         # value-tag binding + RestConf() builder
-    ├── server/server.go         # gs.Server adapter around rest.Server
-    ├── handler/                 # generated, unchanged
-    ├── logic/greetlogic.go      # generated (fleshed out to return a greeting)
-    ├── svc/servicecontext.go    # generated, unchanged
-    └── types/types.go           # generated, unchanged
+contrib/go-zero/greet/
+├── greet.proto             # Protobuf IDL
+├── pb/greet.pb.go          # protoc-generated messages (DO NOT EDIT)
+├── pb/greet_grpc.pb.go     # protoc-generated gRPC stubs (DO NOT EDIT)
+├── provider/handler.go     # GreetProvider, exported as a ServiceRegister bean
+├── provider/server.go      # ZrpcServer adapter (gs.Server) + Config, configures the etcd registry
+├── provider/main.go        # gs.Run(); long-lived, registers into etcd
+├── consumer/main.go        # discovers the provider via etcd, calls it and asserts, then exits
+├── conf/app.properties     # provider configuration
+├── docker-compose.yml      # local etcd
+└── check.sh                # smoke test: bring up etcd+provider, run consumer, tear down
 ```
 
-## How it works
+## How it was generated
 
-### 1. Config bound from properties
+Two paths work. Both produce standard `pb.RegisterGreetServer` /
+`pb.NewGreetClient` stubs that the provider and consumer consume directly.
 
-`config.Config` is bound from `conf/app.properties` under the `${greet}` prefix, and adapted to the
-`rest.RestConf` that go-zero expects:
+### Path A: `protoc` (used here)
 
-```go
-type Config struct {
-    Name string `value:"${name:=greet-api}"`
-    Host string `value:"${host:=0.0.0.0}"`
-    Port int    `value:"${port:=8888}"`
-}
+```bash
+# tools (once)
+go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 
-func (c Config) RestConf() rest.RestConf {
-    var rc rest.RestConf
-    rc.Name, rc.Host, rc.Port = c.Name, c.Host, c.Port
-    return rc
-}
+# generate messages + gRPC stubs from the IDL
+protoc --proto_path=. \
+  --go_out=. --go_opt=paths=source_relative \
+  --go-grpc_out=. --go-grpc_opt=paths=source_relative \
+  greet.proto
+mv greet.pb.go greet_grpc.pb.go pb/
 ```
+
+### Path B: `goctl rpc protoc`
+
+```bash
+# tools (once)
+go install github.com/zeromicro/go-zero/tools/goctl@latest
+
+goctl rpc protoc greet.proto \
+  --go_out=./pb --go-grpc_out=./pb --zrpc_out=.
+```
+
+`goctl` additionally scaffolds an `etc/*.yaml` + `internal/{config,logic,server,svc}`
+tree. This example intentionally does not use that tree — Go-Spring owns the
+lifecycle and configuration, so we keep only the `pb/` output.
+
+## The refactor: native go-zero → Go-Spring + registry
+
+| Concern         | Stock go-zero (REST scaffold)              | Go-Spring version (zrpc + etcd)                                                     |
+| --------------- | ------------------------------------------ | ----------------------------------------------------------------------------------- |
+| Transport       | `rest.Server` (HTTP)                       | `zrpc.RpcServer` (gRPC) — required for discovery                                    |
+| IDL             | `greet.api`                                | `greet.proto` + `pb/*.pb.go` / `pb/*_grpc.pb.go`                                    |
+| Startup         | `server.Start()` blocks in `main()`        | `ZrpcServer` implements `gs.Server`; `gs.Run()` drives Run/Stop                     |
+| Handler wiring  | `handler.RegisterHandlers(server, svcCtx)` | `gs.Provide(func() ServiceRegister { return pb.RegisterGreetServer(...) })`         |
+| Server enable   | always on                                  | conditional on a `ServiceRegister` bean via `gs.OnBean`                             |
+| Listen addr     | hard-coded YAML                            | `${spring.zrpc.server.listen-on}` from `conf/app.properties`                        |
+| Registration    | none (REST has no discovery)               | provider `zrpc.RpcServerConf{Etcd: discov.EtcdConf{Hosts, Key}}` registers to etcd  |
+| Discovery       | none                                       | consumer `zrpc.RpcClientConf{Etcd: discov.EtcdConf{Hosts, Key}}` resolves from etcd |
+| Shutdown        | process-owned                              | graceful shutdown by Go-Spring (SIGTERM → `Stop()`, deregisters from etcd)          |
+
+The adapter in `provider/server.go` is the crux: `zrpc.RpcServer.Start()` binds
+the listener, registers the provider into etcd, and then blocks forever, so it
+runs in a goroutine started only after `sig.TriggerAndWait()`, while `Run`
+parks on a done channel that `Stop()` closes to hand control back to
+Go-Spring's shutdown (which then calls `zrpc.RpcServer.Stop()`).
+
+The consumer only supplies the etcd address + key, never the provider's: zrpc
+resolves that key to a live provider address in etcd and calls it.
+
+## Configuration
 
 ```properties
-spring.http.server.enabled=false   # let go-zero own the port
-greet.name=greet-api
-greet.host=0.0.0.0
-greet.port=8888
-```
+# Disable the built-in HTTP server; the provider exposes only zrpc.
+spring.http.server.enabled=false
 
-### 2. go-zero rest.Server as a gs.Server
+# zrpc bind address; read via the ${spring.zrpc.server} prefix.
+spring.zrpc.server.listen-on=0.0.0.0:8081
 
-`GreetServer` wraps `rest.Server`. `StartWithOpts` hands back the underlying `*http.Server` so
-`Stop()` can shut it down gracefully through the Go-Spring lifecycle:
-
-```go
-func (s *GreetServer) Run(ctx context.Context, sig gs.ReadySignal) error {
-    <-sig.TriggerAndWait()
-    s.svr.StartWithOpts(func(svr *http.Server) { s.httpSvr = svr })
-    return nil
-}
-
-func (s *GreetServer) Stop() error {
-    if s.httpSvr != nil {
-        _ = s.httpSvr.Shutdown(context.Background())
-    }
-    s.svr.Stop()
-    return nil
-}
-```
-
-### 3. Wiring + startup
-
-```go
-func init() {
-    gs.Provide(svc.NewServiceContext, gs.IndexArg(0, gs.TagArg("${greet}")))
-    gs.Provide(server.NewGreetServer, gs.IndexArg(0, gs.TagArg("${greet}"))).
-        Export(gs.As[gs.Server]())
-}
-
-func main() { gs.Run() }
+# etcd registry address + key; matches docker-compose.yml.
+spring.zrpc.server.etcd.addr=127.0.0.1:2379
+spring.zrpc.server.etcd.key=greet.rpc
 ```
 
 ## Run
 
-```bash
-go run .
-```
-
-The example starts the server, self-tests `GET /from/you`, prints the response, then triggers a
-graceful shutdown:
-
-```
-Response from server: {"message":"Hello, you"}
-```
-
-Or call it yourself while the server is up:
+Bring up the registry first:
 
 ```bash
-curl http://localhost:8888/from/you
-# {"message":"Hello, you"}
+docker compose up -d      # or docker-compose up -d
+```
+
+Terminal A — start the provider (long-lived, registers into etcd):
+
+```bash
+go run ./provider
+```
+
+Terminal B — start the consumer (discovers via etcd and calls):
+
+```bash
+go run ./consumer
+```
+
+Expected consumer output:
+
+```
+Response from discovered provider: Hello, go-zero!
+```
+
+Or run the one-shot smoke test (brings up etcd + provider, runs the consumer,
+tears everything down):
+
+```bash
+bash check.sh
 ```

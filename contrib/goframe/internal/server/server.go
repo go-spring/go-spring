@@ -17,14 +17,18 @@
 // Package server adapts goframe's *ghttp.Server to the Go-Spring server
 // lifecycle. In a stock goframe project this wiring lives in internal/cmd:
 // g.Server() -> s.Group(...) route binding -> s.Run(). Here it is expressed as
-// a gs.Server bean so the container drives startup and graceful shutdown.
+// a gs.Server bean so the container drives startup and graceful shutdown, and
+// it wires goframe's built-in etcd registry so the provider publishes itself
+// into etcd instead of being reached via a hard-coded host:port.
 package server
 
 import (
 	"context"
 
+	etcdreg "github.com/gogf/gf/contrib/registry/etcd/v2"
 	"github.com/gogf/gf/v2/frame/g"
 	"github.com/gogf/gf/v2/net/ghttp"
+	"github.com/gogf/gf/v2/net/gsvc"
 	"go-spring.org/spring/gs"
 
 	"go-spring.org/goframe/internal/config"
@@ -38,11 +42,18 @@ type GoFrameServer struct {
 }
 
 // NewGoFrameServer builds the goframe server from the Go-Spring-bound config,
-// sets its listen address explicitly (instead of letting g.Cfg() read
-// manifest/config/config.yaml), and binds the same routes the scaffold
-// registered in internal/cmd.
+// registers an etcd-backed gsvc.Registry globally *before* g.Server(name) is
+// called (ghttp.Server snapshots gsvc.GetRegistry() at construction time), and
+// binds the same routes the scaffold registered in internal/cmd. When Start is
+// invoked later, ghttp will publish the service under cfg.Name into etcd; on
+// Shutdown it deregisters itself.
 func NewGoFrameServer(cfg config.Config) *GoFrameServer {
-	s := g.Server()
+	// Set the global registry first so g.Server(name) picks it up as its
+	// registrar. See ghttp/ghttp_server.go: `registrar: gsvc.GetRegistry()`
+	// is read at server construction, so ordering matters.
+	gsvc.SetRegistry(etcdreg.New(cfg.RegistryAddr))
+
+	s := g.Server(cfg.Name)
 	s.SetAddr(cfg.Address)
 	s.Group("/", func(group *ghttp.RouterGroup) {
 		group.Middleware(ghttp.MiddlewareHandlerResponse)
@@ -54,8 +65,9 @@ func NewGoFrameServer(cfg config.Config) *GoFrameServer {
 }
 
 // Run starts serving once Go-Spring signals readiness. goframe's Start() is
-// non-blocking (it listens in a background goroutine), so Run blocks on `done`
-// until Stop is called, keeping the server bean alive for the container.
+// non-blocking (it listens in a background goroutine and registers the service
+// into etcd), so Run blocks on `done` until Stop is called, keeping the server
+// bean alive for the container.
 func (s *GoFrameServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	<-sig.TriggerAndWait()
 	if err := s.svr.Start(); err != nil {
@@ -65,8 +77,9 @@ func (s *GoFrameServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	return nil
 }
 
-// Stop gracefully shuts down the goframe server and unblocks Run. This replaces
-// the process-owned signal handling that s.Run() would otherwise install.
+// Stop gracefully shuts down the goframe server (which also deregisters from
+// etcd) and unblocks Run. This replaces the process-owned signal handling that
+// s.Run() would otherwise install.
 func (s *GoFrameServer) Stop() error {
 	err := s.svr.Shutdown()
 	close(s.done)

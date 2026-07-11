@@ -22,6 +22,13 @@ package config
 // are loaded implicitly by g.Server() via g.Cfg(). Here they are bound from
 // Go-Spring properties (see conf/app.properties) under the "${goframe}" prefix
 // using `value` tags, so the config source moves out of goframe's own loader.
+//
+// Name and RegistryAddr are what turn the earlier single-process example into a
+// real provider/consumer split: the provider registers itself into etcd under
+// Name, and the consumer resolves that same name from etcd instead of dialing
+// a hard-coded host:port.
 type Config struct {
-	Address string `value:"${address:=:8000}"`
+	Address      string `value:"${address:=:8000}"`
+	Name         string `value:"${name:=goframe.hello}"`
+	RegistryAddr string `value:"${registry.etcd:=127.0.0.1:2379}"`
 }
