@@ -18,6 +18,7 @@ use (
 	./log/benchmarks/logs
 	./spring
 	./starter/starter-consul
+	./starter/starter-dubbo
 	./starter/starter-echo
 	./starter/starter-etcd
 	./starter/starter-gin
