@@ -1,0 +1,72 @@
+syntax = "proto3";
+
+package gs_project_name;
+
+option go_package = "GS_PROJECT_MODULE/idl-domain/dubbo/triple;triple";
+
+message PingReq {
+  string name = 1;
+}
+
+message PingResp {
+  string message = 1;
+}
+
+message Order {
+  string id = 1;
+  int64 user_id = 2;
+  double amount = 3;
+  int32 status = 4;
+}
+
+message CreateOrderReq {
+  string id = 1;
+  int64 user_id = 2;
+  double amount = 3;
+}
+
+message OrderResp {
+  int32 code = 1;
+  string message = 2;
+  Order data = 3;
+}
+
+message PayOrderReq {
+  string id = 1;
+}
+
+message ShipOrderReq {
+  string id = 1;
+}
+
+message User {
+  int64 id = 1;
+  string name = 2;
+  string email = 3;
+  int32 level = 4;
+}
+
+message RegisterUserReq {
+  string id = 1;
+  string name = 2;
+  string email = 3;
+}
+
+message UserResp {
+  int32 code = 1;
+  string message = 2;
+  User data = 3;
+}
+
+message UpgradeUserReq {
+  int64 id = 1;
+}
+
+service GS_PROJECT_NAMEService {
+  rpc Ping(PingReq) returns (PingResp);
+  rpc CreateOrder(CreateOrderReq) returns (OrderResp);
+  rpc PayOrder(PayOrderReq) returns (OrderResp);
+  rpc ShipOrder(ShipOrderReq) returns (OrderResp);
+  rpc RegisterUser(RegisterUserReq) returns (UserResp);
+  rpc UpgradeUser(UpgradeUserReq) returns (UserResp);
+}

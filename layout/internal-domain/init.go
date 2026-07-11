@@ -4,8 +4,11 @@ package domain
 
 import (
 	_ "GS_PROJECT_MODULE/internal-domain/api/job"
+	_ "GS_PROJECT_MODULE/internal-domain/api/server/dubbosvr"
+	_ "GS_PROJECT_MODULE/internal-domain/api/server/gozerosvr"
 	_ "GS_PROJECT_MODULE/internal-domain/api/server/grpcsvr"
 	_ "GS_PROJECT_MODULE/internal-domain/api/server/httpsvr"
+	_ "GS_PROJECT_MODULE/internal-domain/api/server/kitexsvr"
 	_ "GS_PROJECT_MODULE/internal-domain/api/server/mqsvr"
 	_ "GS_PROJECT_MODULE/internal-domain/api/server/thriftsvr"
 	_ "GS_PROJECT_MODULE/internal-domain/api/server/wssvr"

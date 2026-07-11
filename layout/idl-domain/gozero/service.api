@@ -1,0 +1,79 @@
+syntax = "v1"
+
+type PingReq {
+	Name string `form:"name,optional"`
+}
+
+type PingResp {
+	Message string `json:"message"`
+}
+
+type Order {
+	Id     string  `json:"id"`
+	UserId string  `json:"user_id"`
+	Amount float64 `json:"amount"`
+	Status int32   `json:"status"`
+}
+
+type CreateOrderReq {
+	Id     string  `json:"id"`
+	UserId string  `json:"user_id"`
+	Amount float64 `json:"amount"`
+}
+
+type OrderResp {
+	Code    int32  `json:"code"`
+	Message string `json:"message"`
+	Data    *Order `json:"data,omitempty"`
+}
+
+type PayOrderReq {
+	Id string `path:"id"`
+}
+
+type ShipOrderReq {
+	Id string `path:"id"`
+}
+
+type User {
+	Id    string `json:"id"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
+	Level int32  `json:"level"`
+}
+
+type RegisterUserReq {
+	Id    string `json:"id"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
+}
+
+type UserResp {
+	Code    int32  `json:"code"`
+	Message string `json:"message"`
+	Data    *User  `json:"data,omitempty"`
+}
+
+type UpgradeUserReq {
+	Id string `path:"id"`
+}
+
+service GS_PROJECT_NAME-api {
+	@handler PingHandler
+	get /ping (PingReq) returns (PingResp)
+
+	@handler CreateOrderHandler
+	post /orders (CreateOrderReq) returns (OrderResp)
+
+	@handler PayOrderHandler
+	post /orders/:id/pay (PayOrderReq) returns (OrderResp)
+
+	@handler ShipOrderHandler
+	post /orders/:id/ship (ShipOrderReq) returns (OrderResp)
+
+	@handler RegisterUserHandler
+	post /users (RegisterUserReq) returns (UserResp)
+
+	@handler UpgradeUserHandler
+	post /users/:id/upgrade (UpgradeUserReq) returns (UserResp)
+}

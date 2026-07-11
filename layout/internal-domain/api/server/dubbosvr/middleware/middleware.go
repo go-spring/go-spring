@@ -1,9 +1,9 @@
-// Package middleware provides gRPC interceptors (unary / stream) for the gRPC server.
+// Package middleware provides Dubbo filter middleware (unary) for the Dubbo server.
 package middleware
 
 import "context"
 
-// UnaryInterceptor is the prototype for gRPC unary interceptors.
+// UnaryInterceptor is the prototype for Dubbo unary filter middleware.
 type UnaryInterceptor func(next UnaryHandler) UnaryHandler
 
 // UnaryHandler processes a unary request and returns a response.
@@ -25,7 +25,7 @@ type RecoveryConfig struct {
 func Recovery(config RecoveryConfig) UnaryInterceptor {
 	return func(next UnaryHandler) UnaryHandler {
 		return func(ctx context.Context, req any) (resp any, err error) {
-			// TODO: defer/recover and map the panic to a gRPC status error.
+			// TODO: defer/recover and map the panic to a Dubbo error.
 			return next(ctx, req)
 		}
 	}
