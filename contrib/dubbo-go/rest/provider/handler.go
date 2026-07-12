@@ -23,6 +23,7 @@ import (
 	"dubbo.apache.org/dubbo-go/v3/server"
 	greet "go-spring.org/dubbo-go/rest/proto"
 	"go-spring.org/spring/gs"
+	StarterDubbo "go-spring.org/starter-dubbo"
 )
 
 // init installs the RestServiceConfig map that maps every exported Go method
@@ -80,8 +81,8 @@ func init() {
 }
 
 func init() {
-	// Provide a ServiceRegister bean that binds the GreetProvider to the Dubbo
-	// server. The DubboServer adapter (see server.go) depends only on this
+	// Provide a StarterDubbo.ServiceRegister bean that binds the GreetProvider
+	// to the Dubbo server. starter-dubbo's DubboServer depends only on this
 	// function type, so the concrete service is wired here without the server
 	// ever knowing about the greet interface.
 	//
@@ -89,7 +90,7 @@ func init() {
 	// Java-style dotted interface name; the REST server exposes it at the
 	// URL layout registered above (`GET /greet?name=...`). Cross-language
 	// consumers do not need a Dubbo SDK — any HTTP client works.
-	gs.Provide(func() ServiceRegister {
+	gs.Provide(func() StarterDubbo.ServiceRegister {
 		return func(svr *server.Server) error {
 			return svr.Register(&GreetProvider{}, nil,
 				server.WithInterface(greet.GreetServiceInterface))

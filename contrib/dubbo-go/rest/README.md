@@ -5,9 +5,11 @@
 A [Dubbo-go](https://dubbo.apache.org/en/overview/mannual/golang-sdk/)
 `GreetService` example that speaks the **REST** protocol — HTTP/1.1
 transport with per-method (verb, path, param-source) routing served by
-go-restful — refactored to boot and be configured the Go-Spring way:
-`gs.Run()` drives the lifecycle, the provider is an IoC bean, and the bind
-port comes from `conf/app.properties` instead of hard-coded `main()` wiring.
+go-restful — wired the Go-Spring way via the reusable **starter-dubbo**
+module: it supplies the `gs.Server` adapter, `gs.Run()` drives the
+lifecycle, the provider is just a `ServiceRegister` bean, and the protocol
+and registry come from `conf/app.properties` instead of hard-coded `main()`
+wiring.
 
 Unlike the Triple sibling in [`../triple`](../triple), REST has no
 protobuf IDL and no code generator; unlike the classic-Dubbo
@@ -49,8 +51,7 @@ This is a runnable example, **not** a reusable starter module.
 contrib/dubbo-go/rest/
 ├── proto/greet.go           # the "IDL": interface name, method name, HTTP verb+path+query constants
 ├── gen.sh                   # no-op — REST has no IDL codegen
-├── provider/handler.go      # GreetProvider (Go struct) + RestServiceConfig registration
-├── provider/server.go       # DubboServer adapter (gs.Server) + Config, configures the etcd registry
+├── provider/handler.go      # GreetProvider (Go struct) + RestServiceConfig + StarterDubbo.ServiceRegister bean (server comes from starter-dubbo)
 ├── provider/main.go         # gs.Run(); long-lived, registers into etcd
 ├── consumer/main.go         # RestServiceConfig registration + discovers, calls, asserts, exits
 ├── conf/app.properties      # provider configuration
@@ -86,13 +87,14 @@ struct with the matching method signature and hand-written
 # Disable the built-in HTTP server; the provider exposes only the REST endpoint.
 spring.http.server.enabled=false
 
-# REST bind port; read via the ${spring.dubbo.server} prefix, default 20003
-# (20000/20001/20002 are reserved for the Triple/Dubbo/JSON-RPC siblings so
-# all four can coexist on one host).
-spring.dubbo.server.port=20003
+# REST bind port; the key under ${spring.dubbo.server.protocols} is the
+# dubbo-go protocol name. REST on 20003 (20000/20001/20002 are reserved for
+# the Triple/Dubbo/JSON-RPC siblings so all four can coexist on one host).
+spring.dubbo.server.protocols.rest.port=20003
 
-# etcd registry address; matches docker-compose.yml.
-spring.dubbo.server.registry.etcd=127.0.0.1:2379
+# etcd registry, map-driven: the key under ${spring.dubbo.server.registries}
+# is the dubbo-go registry name. Matches docker-compose.yml.
+spring.dubbo.server.registries.etcdv3.address=127.0.0.1:2379
 ```
 
 ## Run

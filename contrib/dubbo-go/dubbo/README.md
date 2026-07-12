@@ -4,10 +4,11 @@
 
 A [Dubbo-go](https://dubbo.apache.org/en/overview/mannual/golang-sdk/)
 `GreetService` example that speaks the **classic Dubbo protocol** — TCP
-transport with **Hessian2** serialization — refactored to boot and be
-configured the Go-Spring way: `gs.Run()` drives the lifecycle, the provider
-is an IoC bean, and the bind port comes from `conf/app.properties` instead of
-hard-coded `main()` wiring.
+transport with **Hessian2** serialization — wired the Go-Spring way via the
+reusable **starter-dubbo** module: it supplies the `gs.Server` adapter,
+`gs.Run()` drives the lifecycle, the provider is just a `ServiceRegister`
+bean, and the protocol and registry come from `conf/app.properties` instead
+of hard-coded `main()` wiring.
 
 Unlike the Triple sibling in [`../triple`](../triple), this protocol has no
 protobuf IDL and no code generator in dubbo-go v3: services are plain Go
@@ -47,8 +48,7 @@ This is a runnable example, **not** a reusable starter module.
 contrib/dubbo-go/dubbo/
 ├── proto/greet.go           # the "IDL": interface name + method-name constants
 ├── gen.sh                   # no-op — classic Dubbo has no IDL codegen
-├── provider/handler.go      # GreetProvider (Go struct, reflected at registration)
-├── provider/server.go       # DubboServer adapter (gs.Server) + Config, configures the etcd registry
+├── provider/handler.go      # GreetProvider + StarterDubbo.ServiceRegister bean (server comes from starter-dubbo)
 ├── provider/main.go         # gs.Run(); long-lived, registers into etcd
 ├── consumer/main.go         # discovers the provider via etcd, calls it and asserts, then exits
 ├── conf/app.properties      # provider configuration
@@ -87,12 +87,14 @@ registration is needed.
 # Disable the built-in HTTP server; the provider exposes only Dubbo.
 spring.http.server.enabled=false
 
-# Dubbo bind port; read via the ${spring.dubbo.server} prefix, default 20001
-# (20000 is reserved for the Triple sibling so both can coexist on one host).
-spring.dubbo.server.port=20001
+# Dubbo bind port; the key under ${spring.dubbo.server.protocols} is the
+# dubbo-go protocol name. Classic Dubbo on 20001 (20000 is reserved for the
+# Triple sibling so both can coexist on one host).
+spring.dubbo.server.protocols.dubbo.port=20001
 
-# etcd registry address; matches docker-compose.yml.
-spring.dubbo.server.registry.etcd=127.0.0.1:2379
+# etcd registry, map-driven: the key under ${spring.dubbo.server.registries}
+# is the dubbo-go registry name. Matches docker-compose.yml.
+spring.dubbo.server.registries.etcdv3.address=127.0.0.1:2379
 ```
 
 ## Run

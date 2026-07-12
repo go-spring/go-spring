@@ -22,11 +22,12 @@ import (
 	"dubbo.apache.org/dubbo-go/v3/server"
 	greet "go-spring.org/dubbo-go/dubbo/proto"
 	"go-spring.org/spring/gs"
+	StarterDubbo "go-spring.org/starter-dubbo"
 )
 
 func init() {
-	// Provide a ServiceRegister bean that binds the GreetProvider to the Dubbo
-	// server. The DubboServer adapter (see server.go) depends only on this
+	// Provide a StarterDubbo.ServiceRegister bean that binds the GreetProvider
+	// to the Dubbo server. starter-dubbo's DubboServer depends only on this
 	// function type, so the concrete service is wired here without the server
 	// ever knowing about the greet interface.
 	//
@@ -34,7 +35,7 @@ func init() {
 	// rather than a bare RPC exposure: the provider registers into etcd under
 	// the Java-style dotted interface name so cross-language consumers (Java
 	// Dubbo included) can dial it by the same name.
-	gs.Provide(func() ServiceRegister {
+	gs.Provide(func() StarterDubbo.ServiceRegister {
 		return func(svr *server.Server) error {
 			return svr.Register(&GreetProvider{}, nil,
 				server.WithInterface(greet.GreetServiceInterface))

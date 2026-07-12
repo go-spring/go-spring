@@ -4,8 +4,9 @@
 
 A [Dubbo-go](https://dubbo.apache.org/en/overview/mannual/golang-sdk/) `GreetService`
 example generated from a **protobuf** IDL via `protoc-gen-go-triple`, then
-refactored to boot and be configured the Go-Spring way: `gs.Run()` drives the
-lifecycle, the provider is an IoC bean, and the bind port comes from
+wired the Go-Spring way via the reusable **starter-dubbo** module: it supplies
+the `gs.Server` adapter, `gs.Run()` drives the lifecycle, the provider is just a
+`ServiceRegister` bean, and the protocol and registry come from
 `conf/app.properties` instead of hard-coded `main()` wiring.
 
 It uses the **Triple** protocol — Dubbo's flagship protobuf-over-HTTP/2
@@ -46,8 +47,7 @@ contrib/dubbo-go/triple/
 ├── proto/greet.pb.go        # protoc-generated messages (DO NOT EDIT)
 ├── proto/greet.triple.go    # Triple-generated stubs (DO NOT EDIT)
 ├── gen.sh                   # regenerates proto/*.go from the IDL
-├── provider/handler.go      # GreetProvider, wired via a ServiceRegister bean
-├── provider/server.go       # DubboServer adapter (gs.Server) + Config, configures the etcd registry
+├── provider/handler.go      # GreetProvider + StarterDubbo.ServiceRegister bean (server comes from starter-dubbo)
 ├── provider/main.go         # gs.Run(); long-lived, registers into etcd
 ├── consumer/main.go         # discovers the provider via etcd, calls it and asserts, then exits
 ├── conf/app.properties      # provider configuration
@@ -82,19 +82,19 @@ regenerates only those files without touching the refactored business code.
 
 | Concern         | Dubbo-go scaffold                          | Go-Spring version                                                              |
 | --------------- | ------------------------------------------ | ------------------------------------------------------------------------------ |
-| Startup         | `srv.Serve()` blocks in `main()`           | `DubboServer` implements `gs.Server`; `gs.Run()` drives Run/Stop               |
-| Handler wiring  | `RegisterGreetServiceHandler(srv, &impl)`  | `gs.Provide(func() ServiceRegister { ... })` binds a service-agnostic register |
+| Startup         | `srv.Serve()` blocks in `main()`           | starter-dubbo's `DubboServer` implements `gs.Server`; `gs.Run()` drives Run/Stop |
+| Handler wiring  | `RegisterGreetServiceHandler(srv, &impl)`  | `gs.Provide(func() StarterDubbo.ServiceRegister { ... })` binds a service-agnostic register |
 | Server enable   | always on                                  | conditional on a `ServiceRegister` bean via `gs.OnBean`                        |
-| Port            | hard-coded default                         | `${spring.dubbo.server.port}` from `conf/app.properties`                       |
-| Registration    | none (direct)                              | provider `server.WithServerRegistry(registry.WithEtcdV3(), ...)` into etcd     |
+| Port            | hard-coded default                         | `${spring.dubbo.server.protocols.tri.port}` from `conf/app.properties`         |
+| Registration    | none (direct)                              | map-driven `${spring.dubbo.server.registries.etcdv3}` config → etcd            |
 | Discovery       | consumer `WithClientURL("host:port")`      | consumer `client.WithClientRegistry(...)`, resolves by interface name from etcd |
 | Shutdown        | process-owned                              | graceful shutdown by Go-Spring (SIGTERM → `Stop()`, deregisters from etcd)     |
 
-The adapter in `provider/server.go` is the crux: Dubbo-go's `Serve()` binds the
-listener, registers the provider into etcd, and then blocks forever, so it
-runs in a goroutine started only after `sig.TriggerAndWait()`, while `Run`
-parks on a done channel that `Stop()` closes to hand control back to
-Go-Spring's shutdown.
+The `gs.Server` adapter lives in the reusable **starter-dubbo** module, which is
+the crux: Dubbo-go's `Serve()` binds the listener, registers the provider into
+etcd, and then blocks forever, so the starter runs it in a goroutine started
+only after `sig.TriggerAndWait()`, while `Run` parks on a done channel that
+`Stop()` closes to hand control back to Go-Spring's shutdown.
 
 The consumer only supplies the etcd address, never the provider's: the
 interface name `greet.GreetService` is baked into the generated stub, and
@@ -104,10 +104,10 @@ Dubbo uses it to find a live provider in etcd and call it.
 
 This example standardizes on **etcd** for easy cross-comparison with the other
 contrib examples. Dubbo-go natively supports **Nacos**, **ZooKeeper**, and
-**Polaris** as well: swap the provider's `registry.WithEtcdV3()` and the
-consumer's matching option for `registry.WithNacos()` / `registry.WithZookeeper()`
-and adjust `registry.WithAddress(...)`. With Nacos you can also inspect the
-registered services directly in its built-in `:8848/nacos` console.
+**Polaris** as well: add another entry under `${spring.dubbo.server.registries}`
+keyed by the dubbo-go registry name (`nacos` / `zookeeper` / `polaris`) with its
+`address`, and switch the consumer's matching option. With Nacos you can also
+inspect the registered services directly in its built-in `:8848/nacos` console.
 
 ## Configuration
 
@@ -115,11 +115,13 @@ registered services directly in its built-in `:8848/nacos` console.
 # Disable the built-in HTTP server; the provider exposes only Dubbo.
 spring.http.server.enabled=false
 
-# Dubbo Triple bind port; read via the ${spring.dubbo.server} prefix, default 20000.
-spring.dubbo.server.port=20000
+# Dubbo server wired by starter-dubbo. Protocols are map-driven: the key under
+# ${spring.dubbo.server.protocols} is the dubbo-go protocol name. Here Triple on 20000.
+spring.dubbo.server.protocols.tri.port=20000
 
-# etcd registry address; matches docker-compose.yml.
-spring.dubbo.server.registry.etcd=127.0.0.1:2379
+# etcd registry, map-driven: the key under ${spring.dubbo.server.registries} is
+# the dubbo-go registry name. Matches docker-compose.yml.
+spring.dubbo.server.registries.etcdv3.address=127.0.0.1:2379
 ```
 
 ## Run

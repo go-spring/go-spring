@@ -4,9 +4,10 @@
 
 一个使用 **JSON-RPC 2.0 协议** —— HTTP/1.1 传输 + **JSON** 负载 —— 的
 [Dubbo-go](https://dubbo.apache.org/zh-cn/overview/mannual/golang-sdk/)
-`GreetService` 示例,并改造成 Go-Spring 的启动与配置方式:由 `gs.Run()`
-驱动生命周期,provider 作为 IoC bean 注入,监听端口取自 `conf/app.properties`,
-而不是写死在 `main()` 里。
+`GreetService` 示例,并通过可复用的 **starter-dubbo** 模块以 Go-Spring 的方式装配:
+由它提供 `gs.Server` 适配器,`gs.Run()` 驱动生命周期,provider 只是一个
+`ServiceRegister` bean,协议与注册中心都取自 `conf/app.properties`,而不是
+写死在 `main()` 里。
 
 与 [`../triple`](../triple) 中的 Triple 版本不同:JSON-RPC 协议在 dubbo-go v3
 里**没有 protobuf IDL,也没有代码生成器** —— 服务就是纯 Go 结构体,注册时通过
@@ -42,8 +43,7 @@ provider 的 host:port,而是从同一 etcd 解析出可用地址再发起调用
 contrib/dubbo-go/jsonrpc/
 ├── proto/greet.go           # 「IDL」:接口名与方法名常量
 ├── gen.sh                   # no-op —— JSON-RPC 无 IDL codegen
-├── provider/handler.go      # GreetProvider(Go 结构体,注册时反射解析方法)
-├── provider/server.go       # DubboServer 适配器(gs.Server)+ Config,配置 etcd registry
+├── provider/handler.go      # GreetProvider + StarterDubbo.ServiceRegister bean(server 由 starter-dubbo 提供)
 ├── provider/main.go         # gs.Run(),长驻并注册到 etcd
 ├── consumer/main.go         # 通过 etcd 发现 provider,调用并断言后退出
 ├── conf/app.properties      # provider 配置
@@ -78,12 +78,13 @@ contrib/dubbo-go/jsonrpc/
 # 关闭内置 HTTP server,provider 只暴露 JSON-RPC 端点。
 spring.http.server.enabled=false
 
-# JSON-RPC 监听端口,经 ${spring.dubbo.server} 前缀读取,默认 20002
-# (20000/20001 留给 Triple / Dubbo 兄弟,便于三者同机共存)。
-spring.dubbo.server.port=20002
+# JSON-RPC 监听端口;${spring.dubbo.server.protocols} 下的 key 即 dubbo-go 协议名。
+# JSON-RPC 在 20002(20000/20001 留给 Triple / Dubbo 兄弟,便于三者同机共存)。
+spring.dubbo.server.protocols.jsonrpc.port=20002
 
-# etcd 注册中心地址,与 docker-compose.yml 一致。
-spring.dubbo.server.registry.etcd=127.0.0.1:2379
+# etcd 注册中心,map 驱动:${spring.dubbo.server.registries} 下的 key 即
+# dubbo-go 注册中心名。与 docker-compose.yml 一致。
+spring.dubbo.server.registries.etcdv3.address=127.0.0.1:2379
 ```
 
 ## 运行
