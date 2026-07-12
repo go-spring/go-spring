@@ -1,11 +1,15 @@
 go 1.26.1
 
 use (
-	./contrib/dubbo-go
+	./contrib/dubbo-go/dubbo
+	./contrib/dubbo-go/triple
 	./contrib/go-kratos
-	./contrib/go-zero/greet
-	./contrib/goframe
-	./contrib/kitex
+	./contrib/go-zero/greet-api
+	./contrib/go-zero/greet-rpc
+	./contrib/goframe/grpc
+	./contrib/goframe/http
+	./contrib/kitex/protobuf
+	./contrib/kitex/thrift
 	./examples/bookman
 	./examples/chatAI
 	./examples/miniapi

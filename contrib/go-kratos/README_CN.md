@@ -65,6 +65,11 @@ kratos new go-kratos
 改造删除了 `cmd/`、`configs/`、`internal/conf/` 及 `wire` 文件,保留生成的
 `api/` stub 原样不动,并按 provider + consumer 双进程模式重连其余部分。
 
+`api/helloworld/v1/*.pb.go`、`*_grpc.pb.go`、`*_http.pb.go` 这些 stub 可以通过
+运行 `./gen.sh` 从 `.proto` 重新生成(内部是对 `kratos proto client` 的薄封装)。
+同一份 `.proto` 会同时产出 HTTP 与 gRPC stub,一个 Kratos `App` 也会同时承载两种
+transport —— 这就是为什么与 kitex 示例不同,本项目**不**按协议拆成子目录。
+
 ## 改造对照:原生 Kratos → Go-Spring + 注册发现
 
 | 关注点         | Kratos 脚手架                                            | Go-Spring 版本                                                                            |

@@ -70,6 +70,12 @@ code. The refactor drops `cmd/`, `configs/`, `internal/conf/`, and the `wire`
 files, keeps the generated `api/` stubs untouched, and rewires the rest as a
 provider + consumer pair.
 
+The `api/helloworld/v1/*.pb.go`, `*_grpc.pb.go`, and `*_http.pb.go` stubs can be
+regenerated from the `.proto` files by running `./gen.sh` (a thin wrapper around
+`kratos proto client`). A single `.proto` yields both HTTP and gRPC stubs, and
+one Kratos `App` serves both transports — that is why, unlike the kitex example,
+this project is **not** split into per-protocol subdirectories.
+
 ## The refactor: native Kratos → Go-Spring + registry
 
 | Concern             | Kratos scaffold                                             | Go-Spring version                                                                        |

@@ -15,6 +15,7 @@ require (
 	github.com/expr-lang/expr v1.17.8 // indirect
 	github.com/fatih/color v1.18.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
+	github.com/google/btree v1.1.3 // indirect
 	github.com/gopherjs/gopherjs v1.20.2 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
