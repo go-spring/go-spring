@@ -31,6 +31,9 @@ import (
 	"go-spring.org/stdlib/typeutil"
 )
 
+// DefaultName is the default name assigned to a bean, regardless of its type.
+const DefaultName = "__default__"
+
 // BeanStatus represents the different lifecycle statuses of a bean.
 type BeanStatus int8
 
@@ -407,7 +410,6 @@ func NewBean(objOrCtor any, ctorArgs ...gs.Arg) *BeanDefinition {
 	var f *gs_arg.Callable
 	var v reflect.Value
 	var fromValue bool
-	var name string
 	var cond gs.Condition
 
 	switch i := objOrCtor.(type) {
@@ -466,17 +468,9 @@ func NewBean(objOrCtor any, ctorArgs ...gs.Arg) *BeanDefinition {
 			panic(fmt.Sprintf("constructor return type must be reference type, got %v", t))
 		}
 
-		// Derive bean name from constructor function name
+		// If the constructor is a method, set a condition for its owner bean
 		fnPtr := reflect.ValueOf(objOrCtor).Pointer()
 		fnInfo := runtime.FuncForPC(fnPtr)
-		funcName := fnInfo.Name()
-		name = funcName[strings.LastIndex(funcName, "/")+1:]
-		name = name[strings.Index(name, ".")+1:]
-		if name[0] == '(' {
-			name = name[strings.Index(name, ".")+1:]
-		}
-
-		// If the constructor is a method, set a condition for its owner bean
 		method := strings.LastIndexByte(fnInfo.Name(), ')') > 0
 		if method {
 			var s = gs.BeanID{Type: in0}
@@ -501,13 +495,7 @@ func NewBean(objOrCtor any, ctorArgs ...gs.Arg) *BeanDefinition {
 		}
 	}
 
-	// Fallback: derive name from the type
-	if name == "" {
-		s := strings.Split(t.String(), ".")
-		name = strings.TrimPrefix(s[len(s)-1], "*")
-	}
-
-	d := &BeanDefinition{f: f, t: t, v: v, name: name, status: StatusDefault}
+	d := &BeanDefinition{f: f, t: t, v: v, name: DefaultName, status: StatusDefault}
 	if cond != nil {
 		d.Condition(cond)
 	}

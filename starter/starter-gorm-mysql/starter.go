@@ -25,10 +25,9 @@ import (
 func init() {
 	// Register a single default GORM client.
 	// This client will only be created if the property "spring.gorm.addr" is set.
-	// It uses the configuration tagged with "${spring.gorm}" and is named "__default__".
+	// It uses the configuration tagged with "${spring.gorm}".
 	gs.Provide(newClient, gs.TagArg("${spring.gorm}")).
-		Condition(gs.OnProperty("spring.gorm.addr")).
-		Name("__default__")
+		Condition(gs.OnProperty("spring.gorm.addr"))
 
 	// Register multiple GORM clients as a group.
 	// Each instance is created according to the configuration in "${spring.gorm.instances}".

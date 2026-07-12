@@ -25,11 +25,10 @@ func init() {
 
 	// Register a single default RabbitMQ connection.
 	// This connection will only be created if the property "spring.rabbitmq.url" is set.
-	// It uses the configuration tagged with "${spring.rabbitmq}" and is named "__default__".
+	// It uses the configuration tagged with "${spring.rabbitmq}".
 	gs.Provide(newClient, gs.TagArg("${spring.rabbitmq}")).
 		Condition(gs.OnProperty("spring.rabbitmq.url")).
-		Destroy(destroyClient).
-		Name("__default__")
+		Destroy(destroyClient)
 
 	// Register multiple RabbitMQ connections as a group.
 	// Each instance is created according to the configuration in "${spring.rabbitmq.instances}".

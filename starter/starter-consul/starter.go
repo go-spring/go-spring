@@ -25,10 +25,9 @@ func init() {
 
 	// Register a single default Consul client.
 	// This client will only be created if the property "spring.consul.address" is set.
-	// It uses the configuration tagged with "${spring.consul}" and is named "__default__".
+	// It uses the configuration tagged with "${spring.consul}".
 	gs.Provide(newClient, gs.TagArg("${spring.consul}")).
-		Condition(gs.OnProperty("spring.consul.address")).
-		Name("__default__")
+		Condition(gs.OnProperty("spring.consul.address"))
 
 	// Register multiple Consul clients as a group.
 	// Each instance is created according to the configuration in "${spring.consul.instances}".

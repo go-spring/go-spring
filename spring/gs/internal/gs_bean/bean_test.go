@@ -350,13 +350,13 @@ func TestNewBean(t *testing.T) {
 
 	t.Run("object", func(t *testing.T) {
 		bean := NewBean(&TestBean{})
-		assert.That(t, bean.GetName()).Equal("TestBean")
+		assert.That(t, bean.GetName()).Equal(DefaultName)
 		assert.That(t, bean.GetType()).Equal(reflect.TypeFor[*TestBean]())
 	})
 
 	t.Run("object by reflect.Value", func(t *testing.T) {
 		bean := NewBean(reflect.ValueOf(&TestBean{}))
-		assert.That(t, bean.GetName()).Equal("TestBean")
+		assert.That(t, bean.GetName()).Equal(DefaultName)
 		assert.That(t, bean.GetType()).Equal(reflect.TypeFor[*TestBean]())
 	})
 
@@ -399,35 +399,35 @@ func TestNewBean(t *testing.T) {
 
 	t.Run("method - 1", func(t *testing.T) {
 		bean := NewBean((*TestBean).Clone)
-		assert.That(t, bean.GetName()).Equal("Clone")
+		assert.That(t, bean.GetName()).Equal(DefaultName)
 		assert.That(t, len(bean.Conditions())).Equal(1)
 	})
 
 	t.Run("method - 2", func(t *testing.T) {
 		parent := NewBean(&TestBean{})
 		bean := NewBean((*TestBean).Clone, parent)
-		assert.That(t, bean.GetName()).Equal("Clone")
+		assert.That(t, bean.GetName()).Equal(DefaultName)
 		assert.That(t, len(bean.Conditions())).Equal(1)
 	})
 
 	t.Run("method - 3", func(t *testing.T) {
 		parent := NewBean(&TestBean{})
 		bean := NewBean((*TestBean).Clone, gs_arg.Index(0, parent))
-		assert.That(t, bean.GetName()).Equal("Clone")
+		assert.That(t, bean.GetName()).Equal(DefaultName)
 		assert.That(t, len(bean.Conditions())).Equal(1)
 	})
 
 	t.Run("method - 4", func(t *testing.T) {
 		parent := NewBean(&TestBean{})
 		bean := NewBean((*TestBean).Clone, parent)
-		assert.That(t, bean.GetName()).Equal("Clone")
+		assert.That(t, bean.GetName()).Equal(DefaultName)
 		assert.That(t, len(bean.Conditions())).Equal(1)
 	})
 
 	t.Run("method - 5", func(t *testing.T) {
 		parent := NewBean(&TestBean{})
 		bean := NewBean((*TestBean).Clone, gs_arg.Index(0, parent))
-		assert.That(t, bean.GetName()).Equal("Clone")
+		assert.That(t, bean.GetName()).Equal(DefaultName)
 		assert.That(t, len(bean.Conditions())).Equal(1)
 	})
 

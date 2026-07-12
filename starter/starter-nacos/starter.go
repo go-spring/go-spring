@@ -30,16 +30,14 @@ func init() {
 	// Register a naming client (service discovery) and a config client
 	// (configuration management). Both are created only when the property
 	// "spring.nacos.ip-addr" is set, using the "${spring.nacos}" configuration.
-	// They are distinct interface types, so both share the "__default__" name.
+	// They are distinct interface types, so both keep the default name.
 	gs.Provide(newNamingClient, gs.TagArg("${spring.nacos}")).
 		Condition(gs.OnProperty("spring.nacos.ip-addr")).
-		Destroy(destroyNamingClient).
-		Name("__default__")
+		Destroy(destroyNamingClient)
 
 	gs.Provide(newConfigClient, gs.TagArg("${spring.nacos}")).
 		Condition(gs.OnProperty("spring.nacos.ip-addr")).
-		Destroy(destroyConfigClient).
-		Name("__default__")
+		Destroy(destroyConfigClient)
 
 	// Register multiple naming clients as a group.
 	// Each instance is created according to the configuration in "${spring.nacos.instances}".

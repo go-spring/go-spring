@@ -25,11 +25,10 @@ func init() {
 
 	// Register a single default etcd client.
 	// This client will only be created if the property "spring.etcd.endpoints" is set.
-	// It uses the configuration tagged with "${spring.etcd}" and is named "__default__".
+	// It uses the configuration tagged with "${spring.etcd}".
 	gs.Provide(newClient, gs.TagArg("${spring.etcd}")).
 		Condition(gs.OnProperty("spring.etcd.endpoints")).
-		Destroy(destroyClient).
-		Name("__default__")
+		Destroy(destroyClient)
 
 	// Register multiple etcd clients as a group.
 	// Each instance is created according to the configuration in "${spring.etcd.instances}".
