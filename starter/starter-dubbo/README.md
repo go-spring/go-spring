@@ -31,8 +31,47 @@ Add Dubbo configuration in your project's [configuration file](example/conf/app.
 
 ```properties
 spring.http.server.enabled=false
-spring.dubbo.server.port=20000
+spring.dubbo.server.protocols.tri.port=20000
 ```
+
+Protocols and registries are map-driven — the map key is the dubbo-go name and
+only configured entries are enabled, so one server can expose several protocols
+and publish to several registries at once:
+
+```properties
+# multiple protocols on one server
+spring.dubbo.server.protocols.tri.port=20000
+spring.dubbo.server.protocols.dubbo.port=20001
+# publish to a registry (etcdv3/nacos/zookeeper/polaris)
+spring.dubbo.server.registries.etcdv3.address=127.0.0.1:2379
+```
+
+All settings under `${spring.dubbo.server}` are optional; empty/zero values are
+skipped so dubbo-go keeps its own defaults.
+
+Provider-wide knobs:
+
+```properties
+spring.dubbo.server.group=g1
+spring.dubbo.server.version=1.0.0
+spring.dubbo.server.cluster=failover        # failover|failfast|failsafe|failback|forking|available|broadcast|zoneAware
+spring.dubbo.server.load-balance=random     # random|roundrobin|leastactive|consistenthashing|p2c
+spring.dubbo.server.serialization=hessian2  # hessian2|protobuf|msgpack|json
+spring.dubbo.server.retries=2
+spring.dubbo.server.filter=echo,tps
+spring.dubbo.server.token=xxx
+spring.dubbo.server.auth=true
+spring.dubbo.server.tag=gray
+spring.dubbo.server.access-log=true
+spring.dubbo.server.warmup=10m
+spring.dubbo.server.not-register=false
+spring.dubbo.server.adaptive-service=false
+```
+
+Per-protocol (`protocols.<name>`): `port`, `ip`, `params.<k>`.
+Per-registry (`registries.<name>`): `address`, `namespace`, `group`,
+`username`, `password`, `timeout` (e.g. `5s`), `ttl` (e.g. `15m`), `weight`,
+`zone`, `simplified`, `preferred`, `params.<k>`.
 
 ### 3. Register your service
 
@@ -64,7 +103,11 @@ asserted end-to-end by `runTest`:
 
 ## Notes
 
-- The starter builds a Triple server on `${spring.dubbo.server.port}` (default `20000`).
+- Protocols and registries are map-driven under
+  `${spring.dubbo.server.protocols}` / `${spring.dubbo.server.registries}`; the
+  map key is the dubbo-go name and only configured entries are enabled. Empty
+  option fields are skipped. With no protocol configured, a Triple listener on
+  port `20000` is used as the default.
 - The Dubbo server is enabled by default; disable it with
   `spring.dubbo.server.enabled=false`.
 - Only a `ServiceRegister` bean is required to activate the server.

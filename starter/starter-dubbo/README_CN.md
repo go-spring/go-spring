@@ -30,8 +30,46 @@ import StarterDubbo "go-spring.org/starter-dubbo"
 
 ```properties
 spring.http.server.enabled=false
-spring.dubbo.server.port=20000
+spring.dubbo.server.protocols.tri.port=20000
 ```
+
+协议与注册中心均为 map 驱动——map 的 key 即 dubbo-go 名称，只有配置了的条目才会生效，
+因此一个 server 可同时暴露多种协议并注册到多个后端：
+
+```properties
+# 一个 server 上开启多种协议
+spring.dubbo.server.protocols.tri.port=20000
+spring.dubbo.server.protocols.dubbo.port=20001
+# 注册到注册中心（etcdv3/nacos/zookeeper/polaris）
+spring.dubbo.server.registries.etcdv3.address=127.0.0.1:2379
+```
+
+`${spring.dubbo.server}` 下的所有配置项都是可选的，空值/零值会被跳过，dubbo-go
+沿用自身默认值。
+
+Provider 级通用配置：
+
+```properties
+spring.dubbo.server.group=g1
+spring.dubbo.server.version=1.0.0
+spring.dubbo.server.cluster=failover        # failover|failfast|failsafe|failback|forking|available|broadcast|zoneAware
+spring.dubbo.server.load-balance=random     # random|roundrobin|leastactive|consistenthashing|p2c
+spring.dubbo.server.serialization=hessian2  # hessian2|protobuf|msgpack|json
+spring.dubbo.server.retries=2
+spring.dubbo.server.filter=echo,tps
+spring.dubbo.server.token=xxx
+spring.dubbo.server.auth=true
+spring.dubbo.server.tag=gray
+spring.dubbo.server.access-log=true
+spring.dubbo.server.warmup=10m
+spring.dubbo.server.not-register=false
+spring.dubbo.server.adaptive-service=false
+```
+
+单协议（`protocols.<name>`）：`port`、`ip`、`params.<k>`。
+单注册中心（`registries.<name>`）：`address`、`namespace`、`group`、`username`、
+`password`、`timeout`（如 `5s`）、`ttl`（如 `15m`）、`weight`、`zone`、
+`simplified`、`preferred`、`params.<k>`。
 
 ### 3. 注册 Dubbo 服务
 
@@ -60,6 +98,8 @@ gs.Provide(func() StarterDubbo.ServiceRegister {
 
 ## 说明
 
-- Starter 通过 `${spring.dubbo.server.port}` 构建 Triple 服务器，默认端口 `20000`。
+- 协议与注册中心通过 `${spring.dubbo.server.protocols}` / `${spring.dubbo.server.registries}`
+  以 map 驱动，map 的 key 即 dubbo-go 名称，只有配置了的条目才会生效，空字段会被跳过。
+  未配置任何协议时，默认使用 20000 端口的 Triple 监听。
 - Dubbo 服务器默认开启，可通过 `spring.dubbo.server.enabled=false` 关闭。
 - 只需要注册一个 `ServiceRegister` Bean 即可激活整个服务器。
