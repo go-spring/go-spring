@@ -2,12 +2,18 @@ go 1.26.1
 
 use (
 	./contrib/dubbo-go/dubbo
+	./contrib/dubbo-go/jsonrpc
+	./contrib/dubbo-go/rest
 	./contrib/dubbo-go/triple
 	./contrib/go-kratos
 	./contrib/go-zero/greet-api
 	./contrib/go-zero/greet-rpc
+	./contrib/go-zero/greet-ws
 	./contrib/goframe/grpc
 	./contrib/goframe/http
+	./contrib/goframe/tcp
+	./contrib/goframe/websocket
+	./contrib/kitex/generic
 	./contrib/kitex/protobuf
 	./contrib/kitex/thrift
 	./examples/bookman

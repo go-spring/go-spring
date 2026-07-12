@@ -3,8 +3,9 @@
 # Smoke test for the go-kratos registry example. Brings up a local etcd via
 # docker compose, starts the provider (which registers the kratos.App
 # "kratos-greeter" into etcd), runs the consumer (which discovers the provider
-# through etcd, calls it and self-asserts, exiting non-zero on failure), then
-# tears everything down. Skipped gracefully when docker is unavailable.
+# through etcd, calls it over gRPC, then dials the WebSocket transport on the
+# same App and asserts an echo, exiting non-zero on failure), then tears
+# everything down. Skipped gracefully when docker is unavailable.
 #
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
@@ -44,10 +45,11 @@ for _ in $(seq 1 30); do
     sleep 1
 done
 
-# Start the provider; it registers into etcd and serves gRPC on :9000 and
-# HTTP on :8000. Build to a temp binary and run it directly — "go run" would
-# leave the compiled child orphaned when killed (the signal hits the go-run
-# wrapper, not its child), so the provider would keep holding the port.
+# Start the provider; it registers into etcd and serves gRPC on :9000, HTTP
+# on :8000, and the kratos-transport WebSocket transport on :9002. Build to a
+# temp binary and run it directly — "go run" would leave the compiled child
+# orphaned when killed (the signal hits the go-run wrapper, not its child),
+# so the provider would keep holding the port.
 provider_bin="$(mktemp -d)/provider"
 go build -o "${provider_bin}" ./provider
 "${provider_bin}" &
@@ -56,6 +58,16 @@ provider_pid=$!
 # Wait for the provider's gRPC port to accept connections (up to 30s).
 for _ in $(seq 1 30); do
     if (exec 3<>/dev/tcp/127.0.0.1/9000) 2>/dev/null; then
+        exec 3>&- 3<&- 2>/dev/null || true
+        break
+    fi
+    sleep 1
+done
+
+# Wait for the WebSocket port too — the two transports come up in parallel
+# under kratos.App.Run and either can win the race on a slow machine.
+for _ in $(seq 1 30); do
+    if (exec 3<>/dev/tcp/127.0.0.1/9002) 2>/dev/null; then
         exec 3>&- 3<&- 2>/dev/null || true
         break
     fi

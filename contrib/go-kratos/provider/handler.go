@@ -17,22 +17,70 @@
 package main
 
 import (
+	"context"
+
 	kgrpc "github.com/go-kratos/kratos/v2/transport/grpc"
 	khttp "github.com/go-kratos/kratos/v2/transport/http"
+	kws "github.com/tx7do/kratos-transport/transport/websocket"
 	v1 "go-spring.org/go-kratos/api/helloworld/v1"
 	"go-spring.org/go-kratos/internal/service"
 	"go-spring.org/spring/gs"
 )
 
+// WSHelloMessageType is the application-defined message-type discriminator
+// carried in every WebSocket frame's envelope (`{"type":<N>,...}`). Unlike
+// HTTP+gRPC, whose routing is derived from the proto RPC name, kratos-transport
+// WebSocket is a raw framed pipe: server and client MUST agree on this integer
+// out of band. Keeping the constant here (shared with the consumer) is the
+// simplest form of that contract.
+const WSHelloMessageType kws.NetMessageType = 1
+
+// WSHelloRequest and WSHelloReply are the WS-side payload shapes. They are
+// intentionally NOT the protoc-generated v1.HelloRequest/HelloReply: those
+// types carry proto-internal fields (`state`, `sizeCache`, `unknownFields`)
+// that leak into JSON output and would force the consumer to depend on the
+// proto package just to hand-craft a text frame. Duplicating a two-field
+// struct keeps the WS contract self-contained and debuggable via wscat.
+type WSHelloRequest struct {
+	Name string `json:"name"`
+}
+
+type WSHelloReply struct {
+	Message string `json:"message"`
+}
+
 func init() {
-	// Provide a ServiceRegister bean that binds the GreeterService to both the
-	// kratos HTTP and gRPC transport servers. The KratosServer adapter (see
-	// server.go) depends only on this function type, so the concrete service is
-	// wired here without the adapter ever knowing about v1.GreeterServer.
+	// Provide a ServiceRegister bean that binds the GreeterService to all three
+	// kratos transport servers. KratosServer (see server.go) depends only on
+	// this function type, so the concrete service is wired here without the
+	// adapter ever knowing about v1.GreeterServer or WS message types.
 	gs.Provide(func(greeter *service.GreeterService) ServiceRegister {
-		return func(hs *khttp.Server, gs *kgrpc.Server) error {
+		return func(hs *khttp.Server, gs *kgrpc.Server, ws *kws.Server) error {
+			// HTTP + gRPC share the proto contract: one Register call per
+			// transport, both dispatch to the same GreeterService.
 			v1.RegisterGreeterHTTPServer(hs, greeter)
 			v1.RegisterGreeterServer(gs, greeter)
+
+			// WebSocket is message-typed, not RPC-typed. Bind
+			// WSHelloMessageType -> a handler that:
+			//   1. reuses the same domain path (GreeterService.SayHello ->
+			//      biz.GreeterUsecase.CreateGreeter -> data.greeterRepo) as
+			//      the HTTP+gRPC transports, so the three transports are
+			//      genuinely serving the same business logic;
+			//   2. echoes the reply asynchronously via ws.SendMessage — WS is
+			//      full-duplex, so unlike request/response transports we don't
+			//      "return" a value from the handler.
+			kws.RegisterServerMessageHandler(ws, WSHelloMessageType,
+				func(sessionID kws.SessionID, req *WSHelloRequest) error {
+					reply, err := greeter.SayHello(context.Background(),
+						&v1.HelloRequest{Name: req.Name})
+					if err != nil {
+						return err
+					}
+					return ws.SendMessage(sessionID, WSHelloMessageType,
+						&WSHelloReply{Message: reply.Message})
+				})
+
 			return nil
 		}
 	})
