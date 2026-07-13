@@ -31,8 +31,14 @@ Add Dubbo configuration in your project's [configuration file](example/conf/app.
 
 ```properties
 spring.http.server.enabled=false
+spring.dubbo.application.name=greet-example
 spring.dubbo.server.protocols.tri.port=20000
 ```
+
+`spring.dubbo.application.name` is **required**: server and client share a single
+dubbo `Instance` that uses the name as the metrics/registry identity, so the
+starter fails fast if it is missing. Other application fields are optional:
+`organization`, `module`, `version`, `owner`, `environment`.
 
 Protocols and registries are map-driven — the map key is the dubbo-go name and
 only configured entries are enabled, so one server can expose several protocols
@@ -87,6 +93,56 @@ gs.Provide(func() StarterDubbo.ServiceRegister {
 })
 ```
 
+## Observability (built in)
+
+Metrics and tracing are on by default, so every server and client gets
+observability with zero configuration:
+
+```properties
+# Metrics — Prometheus, on by default, exposed on http://127.0.0.1:9090/metrics
+spring.dubbo.metrics.enable=true
+spring.dubbo.metrics.port=9090
+spring.dubbo.metrics.path=/metrics
+
+# Tracing — OTel, on by default with the stdout exporter
+spring.dubbo.tracing.enable=true
+spring.dubbo.tracing.exporter=stdout        # stdout|jaeger|zipkin|otlp-http|otlp-grpc
+spring.dubbo.tracing.endpoint=              # required when exporter != stdout
+spring.dubbo.tracing.propagator=w3c         # w3c|b3
+spring.dubbo.tracing.mode=                  # always|never|ratio (empty keeps dubbo-go default)
+spring.dubbo.tracing.ratio=1.0
+```
+
+Disable either with `enable=false`. When `exporter` is not `stdout`, an
+`endpoint` is required (otherwise the starter fails fast). Example, ship traces
+to an OTLP collector:
+
+```properties
+spring.dubbo.tracing.exporter=otlp-grpc
+spring.dubbo.tracing.endpoint=127.0.0.1:4317
+```
+
+## Customization (escape hatches)
+
+Anything the typed config does not expose can be supplied via IoC: provide a
+bean of the matching optioner type and its options are appended last (highest
+priority).
+
+```go
+// instance-level: e.g. a config center or metadata report
+gs.Provide(func() StarterDubbo.InstanceOptioner {
+    return func() []dubbo.InstanceOption { return []dubbo.InstanceOption{ /* ... */ } }
+})
+// server-level
+gs.Provide(func() StarterDubbo.ServerOptioner {
+    return func() []server.ServerOption { return []server.ServerOption{ /* ... */ } }
+})
+// client-level
+gs.Provide(func() StarterDubbo.ClientOptioner {
+    return func() []client.ClientOption { return []client.ClientOption{ /* ... */ } }
+})
+```
+
 ## Core Features
 
 The [example](example/example.go) demonstrates a Dubbo Triple round-trip,
@@ -111,3 +167,5 @@ asserted end-to-end by `runTest`:
 - The Dubbo server is enabled by default; disable it with
   `spring.dubbo.server.enabled=false`.
 - Only a `ServiceRegister` bean is required to activate the server.
+- `spring.dubbo.application.name` is required; metrics (Prometheus) and tracing
+  (OTel/stdout) are built in and on by default — see [Observability](#observability-built-in).

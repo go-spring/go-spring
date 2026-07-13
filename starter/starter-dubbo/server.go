@@ -30,7 +30,8 @@ import (
 func init() {
 	// Server side: register the Dubbo server when a ServiceRegister bean is
 	// available. It reads its own ${spring.dubbo.server} config plus the shared
-	// global registries ${spring.dubbo.registries}.
+	// global registries ${spring.dubbo.registries}, and derives from the shared
+	// Observability so it inherits the built-in metrics and tracing.
 	enableSimpleDubboServer := gs.OnProperty("spring.dubbo.server.enabled").
 		HavingValue("true").MatchIfMissing()
 	gs.Module(enableSimpleDubboServer, func(r gs.BeanProvider, p flatten.Storage) error {
@@ -38,6 +39,7 @@ func init() {
 			NewDubboServer,
 			gs.IndexArg(0, gs.TagArg("${spring.dubbo.server}")),
 			gs.IndexArg(1, gs.TagArg("${spring.dubbo.registries:=}")),
+			gs.IndexArg(4, gs.TagArg("?")), // optional: collect all ServerOptioner beans
 		).Export(gs.As[gs.Server]()).
 			Condition(gs.OnBean[ServiceRegister]())
 		return nil
@@ -48,6 +50,11 @@ func init() {
 // registration behind this function type keeps DubboServer service-agnostic:
 // it drives the lifecycle while each service supplies its own register bean.
 type ServiceRegister func(svr *server.Server) error
+
+// ServerOptioner is the escape hatch for server-level customization: provide one
+// or more beans of this type and their options are appended last (highest
+// priority) when building the server, covering anything Config does not expose.
+type ServerOptioner func() []server.ServerOption
 
 // ProtocolCfg configures a single Dubbo protocol listener. The map key under
 // ${spring.dubbo.server.protocols} is the dubbo-go protocol name (e.g. "tri",
@@ -100,15 +107,18 @@ type Config struct {
 type DubboServer struct {
 	cfg    Config
 	global map[string]RegistryCfg
+	obs    *Observability
 	reg    ServiceRegister
+	custom []ServerOptioner
 	svr    *server.Server
 	done   chan struct{}
 }
 
-// NewDubboServer creates a DubboServer from ${spring.dubbo.server} configuration
-// and the shared global registries.
-func NewDubboServer(cfg Config, global map[string]RegistryCfg, reg ServiceRegister) *DubboServer {
-	return &DubboServer{cfg: cfg, global: global, reg: reg, done: make(chan struct{})}
+// NewDubboServer creates a DubboServer from ${spring.dubbo.server} configuration,
+// the shared global registries and the shared Observability. Optional
+// ServerOptioner beans supply extra server options.
+func NewDubboServer(cfg Config, global map[string]RegistryCfg, obs *Observability, reg ServiceRegister, custom []ServerOptioner) *DubboServer {
+	return &DubboServer{cfg: cfg, global: global, obs: obs, reg: reg, custom: custom, done: make(chan struct{})}
 }
 
 // buildOptions translates Config into dubbo-go server options. Every field is
@@ -204,7 +214,14 @@ func (c *Config) buildOptions(global map[string]RegistryCfg) []server.ServerOpti
 // goroutine while Run parks on the done channel; Stop closes done to hand
 // control back to Go-Spring's shutdown sequence.
 func (s *DubboServer) Run(ctx context.Context, sig gs.ReadySignal) error {
-	svr, err := server.NewServer(s.cfg.buildOptions(s.global)...)
+	opts := s.cfg.buildOptions(s.global)
+	for _, c := range s.custom {
+		opts = append(opts, c()...)
+	}
+	// obs.NewServer layers the shared instance config (application metadata,
+	// metrics, tracing, graceful shutdown) under these options, which take
+	// priority; the returned *server.Server behaves like a plain one.
+	svr, err := s.obs.NewServer(opts...)
 	if err != nil {
 		return errutil.Explain(err, "failed to create dubbo server")
 	}

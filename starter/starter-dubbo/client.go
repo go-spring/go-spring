@@ -27,11 +27,13 @@ import (
 
 func init() {
 	// Default client (bean "__default__"), created when any registry is
-	// resolvable. Role-first with fallback to the global registries.
+	// resolvable. Role-first with fallback to the global registries. It derives
+	// from the shared Observability so it inherits metrics and tracing.
 	gs.Provide(
 		NewClient,
 		gs.IndexArg(0, gs.TagArg("${spring.dubbo.client}")),
 		gs.IndexArg(1, gs.TagArg("${spring.dubbo.registries:=}")),
+		gs.IndexArg(3, gs.TagArg("?")), // optional: collect all ClientOptioner beans
 	).Condition(gs.Or(
 		gs.OnProperty("spring.dubbo.registries"),
 		gs.OnProperty("spring.dubbo.client.registries"),
@@ -53,11 +55,18 @@ func init() {
 					NewClient,
 					gs.IndexArg(0, gs.ValueArg(cfg)),
 					gs.IndexArg(1, gs.TagArg("${spring.dubbo.registries:=}")),
+					gs.IndexArg(3, gs.TagArg("?")), // optional: collect all ClientOptioner beans
 				).Name(name)
 			}
 			return nil
 		})
 }
+
+// ClientOptioner is the escape hatch for client-level customization: provide one
+// or more beans of this type and their options are appended last (highest
+// priority) when building a client, covering anything ClientConfig does not
+// expose.
+type ClientOptioner func() []client.ClientOption
 
 // ClientConfig defines the client-role configuration under ${spring.dubbo.client}
 // (for the default client) or ${spring.dubbo.client.instances.<name>} (for a
@@ -69,16 +78,19 @@ type ClientConfig struct {
 	Registries  map[string]RegistryCfg `value:"${registries:=}"`
 }
 
-// NewClient builds a *client.Client from a ClientConfig and the global
-// registries, applying role-first/global-fallback. Serves both the default
-// client and every named instance.
-func NewClient(cfg ClientConfig, global map[string]RegistryCfg) (*client.Client, error) {
-	return buildClient(cfg, resolveRegistries(global, cfg.Registries))
+// NewClient builds a *client.Client from a ClientConfig, the global registries
+// and the shared Observability, applying role-first/global-fallback. Optional
+// ClientOptioner beans supply extra options. Serves both the default client and
+// every named instance.
+func NewClient(cfg ClientConfig, global map[string]RegistryCfg, obs *Observability, custom []ClientOptioner) (*client.Client, error) {
+	return buildClient(cfg, resolveRegistries(global, cfg.Registries), obs, custom)
 }
 
 // buildClient translates a ClientConfig plus resolved registries into a
-// dubbo-go *client.Client. Registry resolution happens lazily at Dial time.
-func buildClient(cfg ClientConfig, registries map[string]RegistryCfg) (*client.Client, error) {
+// dubbo-go *client.Client via the shared Observability, so the client inherits
+// the instance-level metrics and tracing. Registry resolution happens lazily at
+// Dial time.
+func buildClient(cfg ClientConfig, registries map[string]RegistryCfg, obs *Observability, custom []ClientOptioner) (*client.Client, error) {
 	var opts []client.ClientOption
 
 	switch cfg.Protocol {
@@ -99,6 +111,9 @@ func buildClient(cfg ClientConfig, registries map[string]RegistryCfg) (*client.C
 	for name, rc := range registries {
 		opts = append(opts, client.WithClientRegistry(rc.options(name)...))
 	}
+	for _, c := range custom {
+		opts = append(opts, c()...)
+	}
 
-	return client.NewClient(opts...)
+	return obs.NewClient(opts...)
 }
