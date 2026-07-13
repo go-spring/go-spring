@@ -45,8 +45,8 @@ contrib/dubbo-go/dubbo/
 ├── gen.sh                   # no-op —— 经典 Dubbo 无 IDL codegen
 ├── provider/handler.go      # GreetProvider + StarterDubbo.ServiceRegister bean(server 由 starter-dubbo 提供)
 ├── provider/main.go         # gs.Run(),长驻并注册到 etcd
-├── consumer/main.go         # 通过 etcd 发现 provider,调用并断言后退出
-├── conf/app.properties      # provider 配置
+├── consumer/main.go         # 通过 etcd 发现 provider,调用并断言后退出(Go-Spring 风格:client bean + gs.Run())
+├── conf/app.properties      # 共享配置(provider server + consumer 注册中心)
 ├── docker-compose.yml       # 本地 etcd
 └── check.sh                 # 冒烟脚本:起 etcd+provider,跑 consumer,自动清理
 ```
@@ -77,17 +77,26 @@ IDL,也没有代码生成器 —— 服务表面就是一份手写的 Go 文件(
 ## 配置
 
 ```properties
-# 关闭内置 HTTP server,provider 只暴露 Dubbo 端点。
+# 关闭内置 HTTP server:provider 只暴露 Dubbo 端点,consumer 无 server 运行。
 spring.http.server.enabled=false
 
-# Dubbo 监听端口;${spring.dubbo.server.protocols} 下的 key 即 dubbo-go 协议名。
+# 全局注册中心(跨角色共享)。map 驱动:key 是逻辑注册中心 ID;未给 `protocol`
+# 时注册中心类型默认取 key。provider(server)与 consumer(client)都通过
+# 「角色优先、全局兜底」从这里解析注册中心——两者都不设角色专属 registries map。
+# 与 docker-compose.yml 一致。
+spring.dubbo.registries.etcdv3.address=127.0.0.1:2379
+
+# Provider 协议监听;${spring.dubbo.server.protocols} 下的 key 即 dubbo-go 协议名。
 # 经典 Dubbo 在 20001(20000 留给 Triple 兄弟,便于两者同机共存)。
 spring.dubbo.server.protocols.dubbo.port=20001
-
-# etcd 注册中心,map 驱动:${spring.dubbo.server.registries} 下的 key 即
-# dubbo-go 注册中心名。与 docker-compose.yml 一致。
-spring.dubbo.server.registries.etcdv3.address=127.0.0.1:2379
 ```
+
+Dubbo **client** 由 starter-dubbo 作为默认 bean(`__default__`)提供,由
+`${spring.dubbo.client}` 加全局 `${spring.dubbo.registries}` 构建;consumer 直接
+autowire 它并 dial 服务。可在 `${spring.dubbo.client.instances}` 下声明多个命名
+client(bean 名 = map key)。若要运行两个同类型注册中心,给各自一个不同的 map-key
+ID 并显式设置 `protocol`,例如 `spring.dubbo.registries.bj.protocol=etcdv3` /
+`...sh.protocol=etcdv3`。
 
 ## 运行
 

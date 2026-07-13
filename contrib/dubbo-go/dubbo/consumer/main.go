@@ -18,61 +18,99 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
+	"runtime"
+	"syscall"
+	"time"
 
 	"dubbo.apache.org/dubbo-go/v3/client"
 	_ "dubbo.apache.org/dubbo-go/v3/imports"
-	"dubbo.apache.org/dubbo-go/v3/registry"
 	greet "go-spring.org/dubbo-go/dubbo/proto"
+	"go-spring.org/log"
+	"go-spring.org/spring/gs"
+	_ "go-spring.org/starter-dubbo"
 )
 
-// The consumer never learns the provider's host:port. It builds a client
-// bound to the same etcd registry, asks for the GreetService by its Java-style
-// interface name (com.example.GreetService, defined in proto/greet.go), and
-// Dubbo resolves a live provider address from etcd, calls it, and we assert
-// on the echo.
-//
-// Because this is the classic Dubbo protocol (TCP + Hessian2), the client is
-// built with client.WithClientProtocolDubbo() and the call goes through a
-// low-level Connection.CallUnary — there is no generated stub here, unlike
-// the Triple sibling. The method name and argument list are passed as
-// runtime values rather than compile-time-typed function calls.
-func main() {
-	registryAddr := flag.String("registry", "127.0.0.1:2379", "etcd registry address")
-	flag.Parse()
+// Consumer discovers the GreetService through the registry and calls it. The
+// Dubbo client is the default client bean provided by starter-dubbo (built from
+// ${spring.dubbo.client} + the global ${spring.dubbo.registries}), injected here
+// the same way the redis example autowires *redis.Client into its Service bean.
+type Consumer struct {
+	Client *client.Client `autowire:"__default__"`
+}
 
+// Greet dials the GreetService by its Java-style interface name and invokes the
+// Greet method. Because classic Dubbo has no generated stub (unlike the Triple
+// sibling), the method name and argument list are passed as runtime values via
+// the low-level Connection.CallUnary.
+func (c *Consumer) Greet(ctx context.Context, name string) (string, error) {
+	conn, err := c.Client.Dial(greet.GreetServiceInterface)
+	if err != nil {
+		return "", err
+	}
+	var resp string
+	if err = conn.CallUnary(ctx, []any{name}, &resp, greet.MethodGreet); err != nil {
+		return "", err
+	}
+	return resp, nil
+}
+
+func main() {
+	// Consumer is not referenced by any other bean, so register it as a root
+	// object and grab the handle to drive the one-shot call from runTest.
+	svrBean := gs.Provide(&Consumer{}).Export(gs.As[gs.Rooter]())
+
+	go func() {
+		time.Sleep(time.Millisecond * 500)
+		runTest(svrBean.Interface().(*Consumer))
+	}()
+
+	// The consumer runs server-less: no HTTP server (disabled in the shared
+	// conf/app.properties) and no Dubbo server (no ServiceRegister bean, so
+	// starter-dubbo's server condition never fires), so gs.Run() simply blocks
+	// until runTest sends SIGTERM.
+	gs.Run()
+}
+
+// runTest exercises the Greet RPC end-to-end and asserts on the echoed value.
+// On failure it exits(1); on success it sends SIGTERM so gs.Run() shuts down
+// cleanly, making the process exit code the smoke-test result for check.sh.
+func runTest(c *Consumer) {
 	ctx := context.Background()
 
-	cli, err := client.NewClient(
-		client.WithClientProtocolDubbo(),
-		client.WithClientRegistry(
-			registry.WithEtcdV3(),
-			registry.WithAddress(*registryAddr),
-		),
-	)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to create client: %v\n", err)
-		os.Exit(1)
-	}
-
-	conn, err := cli.Dial(greet.GreetServiceInterface)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to dial %s: %v\n", greet.GreetServiceInterface, err)
-		os.Exit(1)
-	}
-
 	want := "Hello, Dubbo-Go!"
-	var resp string
-	if err := conn.CallUnary(ctx, []any{want}, &resp, greet.MethodGreet); err != nil {
-		fmt.Fprintf(os.Stderr, "error calling %s: %v\n", greet.MethodGreet, err)
+	resp, err := c.Greet(ctx, want)
+	if err != nil {
+		log.Errorf(ctx, log.TagAppDef, "error calling %s: %v", greet.MethodGreet, err)
 		os.Exit(1)
 	}
 
 	fmt.Println("Response from discovered provider:", resp)
 	if resp != want {
-		fmt.Fprintf(os.Stderr, "unexpected greet body: %q\n", resp)
+		log.Errorf(ctx, log.TagAppDef, "unexpected greet body: %q", resp)
 		os.Exit(1)
 	}
+
+	syscall.Kill(os.Getpid(), syscall.SIGTERM)
+}
+
+// init sets the working directory to the module root (the parent of this
+// consumer/ directory) so it loads the same conf/app.properties as the
+// provider, regardless of the process launch path.
+func init() {
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		panic("cannot resolve caller")
+	}
+	moduleRoot := filepath.Dir(filepath.Dir(filename))
+	if err := os.Chdir(moduleRoot); err != nil {
+		panic(err)
+	}
+	workDir, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(workDir)
 }

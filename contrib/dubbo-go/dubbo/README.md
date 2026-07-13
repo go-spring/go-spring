@@ -50,8 +50,8 @@ contrib/dubbo-go/dubbo/
 ├── gen.sh                   # no-op — classic Dubbo has no IDL codegen
 ├── provider/handler.go      # GreetProvider + StarterDubbo.ServiceRegister bean (server comes from starter-dubbo)
 ├── provider/main.go         # gs.Run(); long-lived, registers into etcd
-├── consumer/main.go         # discovers the provider via etcd, calls it and asserts, then exits
-├── conf/app.properties      # provider configuration
+├── consumer/main.go         # discovers the provider via etcd, calls it and asserts, then exits (Go-Spring style: client bean + gs.Run())
+├── conf/app.properties      # shared configuration (provider server + consumer registry)
 ├── docker-compose.yml       # local etcd
 └── check.sh                 # smoke test: bring up etcd+provider, run consumer, tear down
 ```
@@ -84,18 +84,30 @@ registration is needed.
 ## Configuration
 
 ```properties
-# Disable the built-in HTTP server; the provider exposes only Dubbo.
+# Disable the built-in HTTP server; the provider exposes only Dubbo and the
+# consumer runs server-less.
 spring.http.server.enabled=false
 
-# Dubbo bind port; the key under ${spring.dubbo.server.protocols} is the
-# dubbo-go protocol name. Classic Dubbo on 20001 (20000 is reserved for the
+# Global registries, shared across roles. The map key is a logical registry ID;
+# the registry type defaults to the key when no `protocol` is given. Both the
+# provider (server) and the consumer (client) resolve their registry from this
+# block via role-first/global-fallback — neither sets a role-specific
+# registries map. Matches docker-compose.yml.
+spring.dubbo.registries.etcdv3.address=127.0.0.1:2379
+
+# Provider protocol listener; the key under ${spring.dubbo.server.protocols} is
+# the dubbo-go protocol name. Classic Dubbo on 20001 (20000 is reserved for the
 # Triple sibling so both can coexist on one host).
 spring.dubbo.server.protocols.dubbo.port=20001
-
-# etcd registry, map-driven: the key under ${spring.dubbo.server.registries}
-# is the dubbo-go registry name. Matches docker-compose.yml.
-spring.dubbo.server.registries.etcdv3.address=127.0.0.1:2379
 ```
+
+The Dubbo **client** is provided by starter-dubbo as a default bean
+(`__default__`) built from `${spring.dubbo.client}` plus the global
+`${spring.dubbo.registries}`; the consumer autowires it and dials the service.
+Multiple named clients can be declared under `${spring.dubbo.client.instances}`
+(bean name = the map key). To run two registries of the same type, give each a
+distinct map-key ID and set `protocol` explicitly, e.g.
+`spring.dubbo.registries.bj.protocol=etcdv3` / `...sh.protocol=etcdv3`.
 
 ## Run
 
