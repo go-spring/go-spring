@@ -88,11 +88,12 @@ registration is needed.
 # consumer runs server-less.
 spring.http.server.enabled=false
 
-# Global registries, shared across roles. The map key is a logical registry ID;
-# the registry type defaults to the key when no `protocol` is given. Both the
-# provider (server) and the consumer (client) resolve their registry from this
-# block via role-first/global-fallback — neither sets a role-specific
-# registries map. Matches docker-compose.yml.
+# Registries are defined once, only here under ${spring.dubbo.registries}. The
+# map key is a logical registry ID; the type defaults to the key when no
+# `protocol` is given. Roles never define registries inline — they reference
+# these by ID via ${...registry-ids}. With one registry defined, neither role
+# sets registry-ids, so both the provider (server) and consumer (client) use it
+# by default. Matches docker-compose.yml.
 spring.dubbo.registries.etcdv3.address=127.0.0.1:2379
 
 # Provider protocol listener; the key under ${spring.dubbo.server.protocols} is
@@ -102,12 +103,13 @@ spring.dubbo.server.protocols.dubbo.port=20001
 ```
 
 The Dubbo **client** is provided by starter-dubbo as a default bean
-(`__default__`) built from `${spring.dubbo.client}` plus the global
+(`__default__`) built from `${spring.dubbo.client}` plus the top-level
 `${spring.dubbo.registries}`; the consumer autowires it and dials the service.
 Multiple named clients can be declared under `${spring.dubbo.client.instances}`
 (bean name = the map key). To run two registries of the same type, give each a
 distinct map-key ID and set `protocol` explicitly, e.g.
-`spring.dubbo.registries.bj.protocol=etcdv3` / `...sh.protocol=etcdv3`.
+`spring.dubbo.registries.bj.protocol=etcdv3` / `...sh.protocol=etcdv3`, then let
+each role pick with `registry-ids` (e.g. `spring.dubbo.client.registry-ids=bj`).
 
 ## Run
 

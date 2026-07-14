@@ -80,9 +80,10 @@ IDL,也没有代码生成器 —— 服务表面就是一份手写的 Go 文件(
 # 关闭内置 HTTP server:provider 只暴露 Dubbo 端点,consumer 无 server 运行。
 spring.http.server.enabled=false
 
-# 全局注册中心(跨角色共享)。map 驱动:key 是逻辑注册中心 ID;未给 `protocol`
-# 时注册中心类型默认取 key。provider(server)与 consumer(client)都通过
-# 「角色优先、全局兜底」从这里解析注册中心——两者都不设角色专属 registries map。
+# 注册中心只在这一处定义(${spring.dubbo.registries})。map 驱动:key 是逻辑
+# 注册中心 ID;未给 `protocol` 时类型默认取 key。角色不再内联定义注册中心,而是
+# 通过 ${...registry-ids} 按 ID 引用。此处只定义一个注册中心,两个角色都不设
+# registry-ids,于是 provider(server)与 consumer(client)默认都用它。
 # 与 docker-compose.yml 一致。
 spring.dubbo.registries.etcdv3.address=127.0.0.1:2379
 
@@ -92,11 +93,12 @@ spring.dubbo.server.protocols.dubbo.port=20001
 ```
 
 Dubbo **client** 由 starter-dubbo 作为默认 bean(`__default__`)提供,由
-`${spring.dubbo.client}` 加全局 `${spring.dubbo.registries}` 构建;consumer 直接
+`${spring.dubbo.client}` 加顶层 `${spring.dubbo.registries}` 构建;consumer 直接
 autowire 它并 dial 服务。可在 `${spring.dubbo.client.instances}` 下声明多个命名
 client(bean 名 = map key)。若要运行两个同类型注册中心,给各自一个不同的 map-key
 ID 并显式设置 `protocol`,例如 `spring.dubbo.registries.bj.protocol=etcdv3` /
-`...sh.protocol=etcdv3`。
+`...sh.protocol=etcdv3`,再让各角色用 registry-ids 挑选(如
+`spring.dubbo.client.registry-ids=bj`)。
 
 ## 运行
 

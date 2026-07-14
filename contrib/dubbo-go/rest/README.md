@@ -92,9 +92,10 @@ spring.http.server.enabled=false
 # the Triple/Dubbo/JSON-RPC siblings so all four can coexist on one host).
 spring.dubbo.server.protocols.rest.port=20003
 
-# etcd registry, map-driven: the key under ${spring.dubbo.server.registries}
-# is the dubbo-go registry name. Matches docker-compose.yml.
-spring.dubbo.server.registries.etcdv3.address=127.0.0.1:2379
+# etcd registry, defined once under ${spring.dubbo.registries}: the map key is
+# a logical registry ID (type defaults to the key). Roles reference it by ID via
+# ${...registry-ids}; with one registry, neither sets it. Matches docker-compose.yml.
+spring.dubbo.registries.etcdv3.address=127.0.0.1:2379
 ```
 
 ## Run

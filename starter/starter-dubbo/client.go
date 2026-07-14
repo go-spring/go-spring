@@ -26,22 +26,19 @@ import (
 )
 
 func init() {
-	// Default client (bean "__default__"), created when any registry is
-	// resolvable. Role-first with fallback to the global registries. It derives
-	// from the shared Observability so it inherits metrics and tracing.
+	// Default client (bean "__default__"), gated on the *Instance bean: without a
+	// registry there is nothing to discover, so no Instance means no client. The
+	// optional ${spring.dubbo.client} block carries only protocol/timeout/
+	// registry-ids; registries and observability come from the injected *Instance.
 	gs.Provide(
 		NewClient,
 		gs.IndexArg(0, gs.TagArg("${spring.dubbo.client}")),
-		gs.IndexArg(1, gs.TagArg("${spring.dubbo.registries:=}")),
-		gs.IndexArg(3, gs.TagArg("?")), // optional: collect all ClientOptioner beans
-	).Condition(gs.Or(
-		gs.OnProperty("spring.dubbo.registries"),
-		gs.OnProperty("spring.dubbo.client.registries"),
-	))
+	).Condition(gs.OnBean[*Instance]())
 
 	// Named instances (bean name = map key). Hand-rolled instead of gs.Group so
-	// the global registries can be injected as a second arg, giving instances
-	// the same fallback as the default client.
+	// each binds its own ClientConfig while sharing the injected *Instance. Gated
+	// only on the instances property; an instance declared without registries
+	// fails fast on the missing *Instance dependency rather than being skipped.
 	gs.Module(gs.OnProperty("spring.dubbo.client.instances"),
 		func(r gs.BeanProvider, p flatten.Storage) error {
 			var params struct {
@@ -54,43 +51,26 @@ func init() {
 				r.Provide(
 					NewClient,
 					gs.IndexArg(0, gs.ValueArg(cfg)),
-					gs.IndexArg(1, gs.TagArg("${spring.dubbo.registries:=}")),
-					gs.IndexArg(3, gs.TagArg("?")), // optional: collect all ClientOptioner beans
-				).Name(name)
+				).Name(name) // configured explicitly; the module gate is the only condition
 			}
 			return nil
 		})
 }
 
-// ClientOptioner is the escape hatch for client-level customization: provide one
-// or more beans of this type and their options are appended last (highest
-// priority) when building a client, covering anything ClientConfig does not
-// expose.
-type ClientOptioner func() []client.ClientOption
-
 // ClientConfig defines the client-role configuration under ${spring.dubbo.client}
 // (for the default client) or ${spring.dubbo.client.instances.<name>} (for a
 // named instance). Every field is optional.
 type ClientConfig struct {
-	Protocol    string                 `value:"${protocol:=}"`     // dubbo(default)|tri|triple|jsonrpc
-	Timeout     time.Duration          `value:"${timeout:=}"`      // per-request timeout, e.g. "3s"
-	RegistryIDs []string               `value:"${registry-ids:=}"` // select which registries (by ID) to use; empty means all
-	Registries  map[string]RegistryCfg `value:"${registries:=}"`
+	Protocol    string        `value:"${protocol:=}"`     // dubbo(default)|tri|triple|jsonrpc
+	Timeout     time.Duration `value:"${timeout:=}"`      // per-request timeout, e.g. "3s"
+	RegistryIDs []string      `value:"${registry-ids:=}"` // select global registries by ID; empty means all
 }
 
-// NewClient builds a *client.Client from a ClientConfig, the global registries
-// and the shared Observability, applying role-first/global-fallback. Optional
-// ClientOptioner beans supply extra options. Serves both the default client and
-// every named instance.
-func NewClient(cfg ClientConfig, global map[string]RegistryCfg, obs *Observability, custom []ClientOptioner) (*client.Client, error) {
-	return buildClient(cfg, resolveRegistries(global, cfg.Registries), obs, custom)
-}
-
-// buildClient translates a ClientConfig plus resolved registries into a
-// dubbo-go *client.Client via the shared Observability, so the client inherits
-// the instance-level metrics and tracing. Registry resolution happens lazily at
-// Dial time.
-func buildClient(cfg ClientConfig, registries map[string]RegistryCfg, obs *Observability, custom []ClientOptioner) (*client.Client, error) {
+// NewClient builds a *client.Client from a ClientConfig and the shared *Instance,
+// serving both the default client and every named instance. Registries are
+// selected by RegistryIDs (empty means all); the client inherits the Instance's
+// metrics and tracing.
+func NewClient(cfg ClientConfig, d *Instance) (*client.Client, error) {
 	var opts []client.ClientOption
 
 	switch cfg.Protocol {
@@ -105,15 +85,13 @@ func buildClient(cfg ClientConfig, registries map[string]RegistryCfg, obs *Obser
 	if cfg.Timeout > 0 {
 		opts = append(opts, client.WithClientRequestTimeout(cfg.Timeout))
 	}
-	if len(cfg.RegistryIDs) > 0 {
-		opts = append(opts, client.WithClientRegistryIDs(cfg.RegistryIDs...))
+	registries, err := selectRegistries(d.Registries(), cfg.RegistryIDs)
+	if err != nil {
+		return nil, err
 	}
-	for name, rc := range registries {
-		opts = append(opts, client.WithClientRegistry(rc.options(name)...))
-	}
-	for _, c := range custom {
-		opts = append(opts, c()...)
+	for name, r := range registries {
+		opts = append(opts, client.WithClientRegistry(r.options(name)...))
 	}
 
-	return obs.NewClient(opts...)
+	return d.NewClient(opts...)
 }

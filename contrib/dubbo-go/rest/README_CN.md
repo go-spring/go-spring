@@ -82,9 +82,10 @@ spring.http.server.enabled=false
 # REST 在 20003(20000/20001/20002 留给 Triple / Dubbo / JSON-RPC 兄弟,便于四者同机共存)。
 spring.dubbo.server.protocols.rest.port=20003
 
-# etcd 注册中心,map 驱动:${spring.dubbo.server.registries} 下的 key 即
-# dubbo-go 注册中心名。与 docker-compose.yml 一致。
-spring.dubbo.server.registries.etcdv3.address=127.0.0.1:2379
+# etcd 注册中心,只在 ${spring.dubbo.registries} 定义一次:key 是逻辑注册中心 ID
+# (类型默认取 key)。角色通过 ${...registry-ids} 按 ID 引用;只有一个注册中心时
+# 两个角色都不设。与 docker-compose.yml 一致。
+spring.dubbo.registries.etcdv3.address=127.0.0.1:2379
 ```
 
 ## 运行

@@ -82,11 +82,11 @@ regenerates only those files without touching the refactored business code.
 
 | Concern         | Dubbo-go scaffold                          | Go-Spring version                                                              |
 | --------------- | ------------------------------------------ | ------------------------------------------------------------------------------ |
-| Startup         | `srv.Serve()` blocks in `main()`           | starter-dubbo's `DubboServer` implements `gs.Server`; `gs.Run()` drives Run/Stop |
+| Startup         | `srv.Serve()` blocks in `main()`           | starter-dubbo's `SimpleDubboServer` implements `gs.Server`; `gs.Run()` drives Run/Stop |
 | Handler wiring  | `RegisterGreetServiceHandler(srv, &impl)`  | `gs.Provide(func() StarterDubbo.ServiceRegister { ... })` binds a service-agnostic register |
 | Server enable   | always on                                  | conditional on a `ServiceRegister` bean via `gs.OnBean`                        |
 | Port            | hard-coded default                         | `${spring.dubbo.server.protocols.tri.port}` from `conf/app.properties`         |
-| Registration    | none (direct)                              | map-driven `${spring.dubbo.server.registries.etcdv3}` config → etcd            |
+| Registration    | none (direct)                              | top-level `${spring.dubbo.registries.etcdv3}` config → etcd                    |
 | Discovery       | consumer `WithClientURL("host:port")`      | consumer `client.WithClientRegistry(...)`, resolves by interface name from etcd |
 | Shutdown        | process-owned                              | graceful shutdown by Go-Spring (SIGTERM → `Stop()`, deregisters from etcd)     |
 
@@ -104,7 +104,7 @@ Dubbo uses it to find a live provider in etcd and call it.
 
 This example standardizes on **etcd** for easy cross-comparison with the other
 contrib examples. Dubbo-go natively supports **Nacos**, **ZooKeeper**, and
-**Polaris** as well: add another entry under `${spring.dubbo.server.registries}`
+**Polaris** as well: add another entry under `${spring.dubbo.registries}`
 keyed by the dubbo-go registry name (`nacos` / `zookeeper` / `polaris`) with its
 `address`, and switch the consumer's matching option. With Nacos you can also
 inspect the registered services directly in its built-in `:8848/nacos` console.
@@ -119,9 +119,10 @@ spring.http.server.enabled=false
 # ${spring.dubbo.server.protocols} is the dubbo-go protocol name. Here Triple on 20000.
 spring.dubbo.server.protocols.tri.port=20000
 
-# etcd registry, map-driven: the key under ${spring.dubbo.server.registries} is
-# the dubbo-go registry name. Matches docker-compose.yml.
-spring.dubbo.server.registries.etcdv3.address=127.0.0.1:2379
+# etcd registry, defined once under ${spring.dubbo.registries}: the map key is
+# a logical registry ID (type defaults to the key). Roles reference it by ID via
+# ${...registry-ids}; with one registry, neither sets it. Matches docker-compose.yml.
+spring.dubbo.registries.etcdv3.address=127.0.0.1:2379
 ```
 
 ## Run

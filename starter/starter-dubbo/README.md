@@ -4,10 +4,13 @@
 
 > The project has been officially released, welcome to use!
 
-`starter-dubbo` provides a lightweight [dubbo.apache.org/dubbo-go/v3](https://pkg.go.dev/dubbo.apache.org/dubbo-go/v3)
-server wrapper for Go-Spring applications: register your service, and the
-starter takes care of building the Triple server, lifecycle, and graceful
-shutdown.
+`starter-dubbo` wraps [dubbo.apache.org/dubbo-go/v3](https://pkg.go.dev/dubbo.apache.org/dubbo-go/v3)
+for Go-Spring applications. On the **server** side, register your service and the
+starter builds the Dubbo server, drives its lifecycle, and handles graceful
+shutdown. On the **client** side, it hands you ready-to-use `*client.Client`
+beans (a default client plus any named instances) for registry-based service
+discovery. Both roles share one dubbo `Instance` and the global registries
+defined under `${spring.dubbo.registries}`.
 
 ## Installation
 
@@ -32,6 +35,8 @@ Add Dubbo configuration in your project's [configuration file](example/conf/app.
 ```properties
 spring.http.server.enabled=false
 spring.dubbo.application.name=greet-example
+spring.dubbo.registries.etcd.protocol=etcdv3
+spring.dubbo.registries.etcd.address=127.0.0.1:2379
 spring.dubbo.server.protocols.tri.port=20000
 ```
 
@@ -40,16 +45,26 @@ dubbo `Instance` that uses the name as the metrics/registry identity, so the
 starter fails fast if it is missing. Other application fields are optional:
 `organization`, `module`, `version`, `owner`, `environment`.
 
-Protocols and registries are map-driven — the map key is the dubbo-go name and
-only configured entries are enabled, so one server can expose several protocols
-and publish to several registries at once:
+`spring.dubbo.registries` is also **required** and is the single source of truth
+for registries — defined once at the top level, never inline under server/client.
+The starter only creates Dubbo components when at least one registry is defined,
+and every entry must carry an `address` (both are validated up front). Roles pick
+which registries to use by ID via `registry-ids` (empty means all). Registries are
+map-driven — the map key is the logical registry ID — so several can coexist:
 
 ```properties
+# define registries once, at the top level (etcdv3/nacos/zookeeper/polaris/...)
+spring.dubbo.registries.etcd.protocol=etcdv3
+spring.dubbo.registries.etcd.address=127.0.0.1:2379
+spring.dubbo.registries.nacos.protocol=nacos
+spring.dubbo.registries.nacos.address=127.0.0.1:8848
+
+# a server (or client) selects registries by ID; empty means all
+spring.dubbo.server.registry-ids=etcd
+
 # multiple protocols on one server
 spring.dubbo.server.protocols.tri.port=20000
 spring.dubbo.server.protocols.dubbo.port=20001
-# publish to a registry (etcdv3/nacos/zookeeper/polaris)
-spring.dubbo.server.registries.etcdv3.address=127.0.0.1:2379
 ```
 
 All settings under `${spring.dubbo.server}` are optional; empty/zero values are
@@ -93,6 +108,48 @@ gs.Provide(func() StarterDubbo.ServiceRegister {
 })
 ```
 
+## Client
+
+The starter also exposes Dubbo clients as beans, gated on the same `*Instance`
+(a project without registries gets none). Client config lives under
+`${spring.dubbo.client}`; registries and observability are inherited from the
+shared `Instance`, so a client only carries protocol/timeout/registry-ids.
+
+A **default client** bean (name `__default__`) is always available once an
+`Instance` exists:
+
+```properties
+spring.dubbo.client.protocol=tri        # dubbo(default)|tri|triple|jsonrpc
+spring.dubbo.client.timeout=3s          # per-request timeout, e.g. "3s"
+spring.dubbo.client.registry-ids=etcd   # select global registries by ID; empty means all
+```
+
+Inject it with the `__default__` bean name, then build your generated stub:
+
+```go
+type Consumer struct {
+    Client *client.Client `autowire:"__default__"`
+}
+// svc, _ := greet.NewGreetService(c.Client)
+```
+
+For **multiple clients** (different protocols or registry targets), declare
+named instances under `${spring.dubbo.client.instances.<name>}`; each becomes a
+bean named after its map key:
+
+```properties
+spring.dubbo.client.instances.orders.protocol=tri
+spring.dubbo.client.instances.orders.registry-ids=etcd
+spring.dubbo.client.instances.legacy.protocol=dubbo
+```
+
+```go
+type Caller struct {
+    Orders *client.Client `autowire:"orders"`
+    Legacy *client.Client `autowire:"legacy"`
+}
+```
+
 ## Observability (built in)
 
 Metrics and tracing are on by default, so every server and client gets
@@ -124,24 +181,9 @@ spring.dubbo.tracing.endpoint=127.0.0.1:4317
 
 ## Customization (escape hatches)
 
-Anything the typed config does not expose can be supplied via IoC: provide a
-bean of the matching optioner type and its options are appended last (highest
-priority).
-
-```go
-// instance-level: e.g. a config center or metadata report
-gs.Provide(func() StarterDubbo.InstanceOptioner {
-    return func() []dubbo.InstanceOption { return []dubbo.InstanceOption{ /* ... */ } }
-})
-// server-level
-gs.Provide(func() StarterDubbo.ServerOptioner {
-    return func() []server.ServerOption { return []server.ServerOption{ /* ... */ } }
-})
-// client-level
-gs.Provide(func() StarterDubbo.ClientOptioner {
-    return func() []client.ClientOption { return []client.ClientOption{ /* ... */ } }
-})
-```
+Anything the typed config does not expose can be supplied via the map-driven
+`params` fields (e.g. per-protocol `params`), which are passed straight through
+to dubbo-go.
 
 ## Core Features
 
@@ -152,18 +194,19 @@ asserted end-to-end by `runTest`:
    Triple protocol on the configured port. The client dials it directly via
    `client.WithClientURL`, invokes `Greet`, and receives the request name back
    as the greeting, verifying the standard request/response path.
-2. **Service-agnostic server** — `DubboServer` knows nothing about
+2. **Service-agnostic server** — `SimpleDubboServer` knows nothing about
    `GreetService`. It depends only on a `ServiceRegister` bean, so the same
    server drives any Dubbo service; the concrete registration lives in the
    application layer.
 
 ## Notes
 
-- Protocols and registries are map-driven under
-  `${spring.dubbo.server.protocols}` / `${spring.dubbo.server.registries}`; the
-  map key is the dubbo-go name and only configured entries are enabled. Empty
-  option fields are skipped. With no protocol configured, a Triple listener on
-  port `20000` is used as the default.
+- Protocols are map-driven under `${spring.dubbo.server.protocols}` (map key =
+  dubbo-go protocol name; only configured entries are enabled). Registries are
+  defined once at the top level under `${spring.dubbo.registries}` and each role
+  selects them by ID via `registry-ids` (empty means all). Empty option fields
+  are skipped. With no protocol configured, a Triple listener on port `20000` is
+  used as the default.
 - The Dubbo server is enabled by default; disable it with
   `spring.dubbo.server.enabled=false`.
 - Only a `ServiceRegister` bean is required to activate the server.

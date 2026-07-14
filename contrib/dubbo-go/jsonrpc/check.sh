@@ -10,6 +10,14 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
+# Disable the json/v2 experiment for the provider build/run below. On a go1.26
+# toolchain with jsonv2 on (the default here), dubbo-go's JSON-RPC codec hits an
+# upstream bug: protocol/jsonrpc/json.go's serverRequest.UnmarshalJSON recurses
+# infinitely and the provider crashes on the first request, so the consumer sees
+# "connection refused". nojsonv2 reverts to encoding/json v1 and the round-trip
+# works. Scoped to this script; it does not touch the global go env.
+export GOEXPERIMENT=nojsonv2
+
 if ! command -v docker >/dev/null 2>&1; then
     echo "WARNING: docker not found — skipping"
     exit 0

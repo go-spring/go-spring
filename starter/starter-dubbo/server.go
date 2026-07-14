@@ -28,55 +28,49 @@ import (
 )
 
 func init() {
-	// Server side: register the Dubbo server when a ServiceRegister bean is
-	// available. It reads its own ${spring.dubbo.server} config plus the shared
-	// global registries ${spring.dubbo.registries}, and derives from the shared
-	// Observability so it inherits the built-in metrics and tracing.
+	// Server side: gated on both a ServiceRegister and the *Instance bean — no
+	// service to expose (or no registries) means no server, so client-only apps
+	// are never forced to stand one up. It reads ${spring.dubbo.server} and derives
+	// from the shared *Instance (global registries + observability).
 	enableSimpleDubboServer := gs.OnProperty("spring.dubbo.server.enabled").
 		HavingValue("true").MatchIfMissing()
 	gs.Module(enableSimpleDubboServer, func(r gs.BeanProvider, p flatten.Storage) error {
 		r.Provide(
-			NewDubboServer,
+			NewSimpleDubboServer,
 			gs.IndexArg(0, gs.TagArg("${spring.dubbo.server}")),
-			gs.IndexArg(1, gs.TagArg("${spring.dubbo.registries:=}")),
-			gs.IndexArg(4, gs.TagArg("?")), // optional: collect all ServerOptioner beans
-		).Export(gs.As[gs.Server]()).
-			Condition(gs.OnBean[ServiceRegister]())
+		).Export(gs.As[gs.Server]()).Condition(
+			gs.OnBean[ServiceRegister](),
+			gs.OnBean[*Instance](),
+		)
 		return nil
 	})
 }
 
-// ServiceRegister registers services on a Dubbo server.Server. Extracting the
-// registration behind this function type keeps DubboServer service-agnostic:
-// it drives the lifecycle while each service supplies its own register bean.
+// ServiceRegister registers services on a Dubbo server.Server. This function
+// type keeps SimpleDubboServer service-agnostic: it drives the lifecycle while
+// each service supplies its own register bean.
 type ServiceRegister func(svr *server.Server) error
-
-// ServerOptioner is the escape hatch for server-level customization: provide one
-// or more beans of this type and their options are appended last (highest
-// priority) when building the server, covering anything Config does not expose.
-type ServerOptioner func() []server.ServerOption
 
 // ProtocolCfg configures a single Dubbo protocol listener. The map key under
 // ${spring.dubbo.server.protocols} is the dubbo-go protocol name (e.g. "tri",
-// "dubbo", "jsonrpc", "rest") and is passed straight through, so any protocol
-// dubbo-go supports works without changing this starter. Empty/zero fields are
-// treated as unset and their options are skipped.
+// "dubbo", "jsonrpc", "rest") and is passed straight through, so any dubbo-go
+// protocol works without changing this starter.
 type ProtocolCfg struct {
-	Port   int               `value:"${port:=0}"`
-	Ip     string            `value:"${ip:=}"`
+	Ip     string            `value:"${ip:=}"`     // listen address; empty means dubbo-go's default (bind-all)
+	Port   int               `value:"${port}"`     // required: a registered service needs a known port
 	Params map[string]string `value:"${params:=}"` // extra protocol params, escape hatch
 }
 
-// Config defines Dubbo server configuration. Besides the map-driven protocols
-// and (role-specific) registries, it exposes the common provider-level knobs;
-// every field is optional and empty/zero values are skipped so dubbo-go keeps
-// its own default.
+// ServerConfig defines Dubbo server configuration: the map-driven protocols, the
+// role-specific registry selection, and the common provider-level knobs. Every
+// field is optional and empty/zero values are skipped so dubbo-go keeps its own
+// default.
 //
 // Enum-like fields accept the dubbo-go names:
 //   - Cluster:       failover(default)|failfast|failsafe|failback|forking|available|broadcast|zoneAware
 //   - LoadBalance:   random(default)|roundrobin|leastactive|consistenthashing|p2c
 //   - Serialization: hessian2|protobuf|msgpack|json
-type Config struct {
+type ServerConfig struct {
 	// Provider-wide defaults applied to every exported service.
 	Group           string        `value:"${group:=}"`
 	Version         string        `value:"${version:=}"`
@@ -97,35 +91,30 @@ type Config struct {
 	// server can expose several protocols at once.
 	Protocols map[string]ProtocolCfg `value:"${protocols:=}"`
 
-	// Registries is the server-role registry map. When non-empty it overrides
-	// the shared global registries wholesale; when empty the server falls back
-	// to the global block.
-	Registries map[string]RegistryCfg `value:"${registries:=}"`
+	// RegistryIDs selects which of the global ${spring.dubbo.registries} this
+	// server publishes to. Empty means every global registry.
+	RegistryIDs []string `value:"${registry-ids:=}"`
 }
 
-// DubboServer adapts a Dubbo-go server.Server to the Go-Spring server lifecycle.
-type DubboServer struct {
-	cfg    Config
-	global map[string]RegistryCfg
-	obs    *Observability
-	reg    ServiceRegister
-	custom []ServerOptioner
-	svr    *server.Server
-	done   chan struct{}
+// SimpleDubboServer adapts a Dubbo-go server.Server to the Go-Spring server lifecycle.
+type SimpleDubboServer struct {
+	cfg  ServerConfig
+	d    *Instance
+	reg  ServiceRegister
+	svr  *server.Server
+	done chan struct{}
 }
 
-// NewDubboServer creates a DubboServer from ${spring.dubbo.server} configuration,
-// the shared global registries and the shared Observability. Optional
-// ServerOptioner beans supply extra server options.
-func NewDubboServer(cfg Config, global map[string]RegistryCfg, obs *Observability, reg ServiceRegister, custom []ServerOptioner) *DubboServer {
-	return &DubboServer{cfg: cfg, global: global, obs: obs, reg: reg, custom: custom, done: make(chan struct{})}
+// NewSimpleDubboServer creates a SimpleDubboServer from ${spring.dubbo.server} configuration
+// and the shared *Instance (global registries and observability).
+func NewSimpleDubboServer(cfg ServerConfig, d *Instance, reg ServiceRegister) *SimpleDubboServer {
+	return &SimpleDubboServer{cfg: cfg, d: d, reg: reg, done: make(chan struct{})}
 }
 
-// buildOptions translates Config into dubbo-go server options. Every field is
-// optional: empty/zero values are skipped so dubbo-go keeps its own defaults.
-// When no protocol is configured, a Triple listener on port 20000 is used.
-// Registries are resolved role-first with fallback to the global block.
-func (c *Config) buildOptions(global map[string]RegistryCfg) []server.ServerOption {
+// buildOptions translates ServerConfig into dubbo-go server options. With no
+// protocol configured, a Triple listener on port 20000 is used. Registries are
+// selected by RegistryIDs (empty means all).
+func (c *ServerConfig) buildOptions(global map[string]RegistryCfg) ([]server.ServerOption, error) {
 	var opts []server.ServerOption
 
 	// Provider-wide defaults.
@@ -187,9 +176,7 @@ func (c *Config) buildOptions(global map[string]RegistryCfg) []server.ServerOpti
 			pOpts := []protocol.ServerOption{
 				protocol.WithID(name),
 				protocol.WithProtocol(name),
-			}
-			if pc.Port > 0 {
-				pOpts = append(pOpts, protocol.WithPort(pc.Port))
+				protocol.WithPort(pc.Port),
 			}
 			if pc.Ip != "" {
 				pOpts = append(pOpts, protocol.WithIp(pc.Ip))
@@ -201,27 +188,30 @@ func (c *Config) buildOptions(global map[string]RegistryCfg) []server.ServerOpti
 		}
 	}
 
-	// Registry publish targets (role-first, global fallback).
-	for name, rc := range resolveRegistries(global, c.Registries) {
-		opts = append(opts, server.WithServerRegistry(rc.options(name)...))
+	// Registry publish targets, selected from the global block by RegistryIDs.
+	registries, err := selectRegistries(global, c.RegistryIDs)
+	if err != nil {
+		return nil, err
+	}
+	for name, r := range registries {
+		opts = append(opts, server.WithServerRegistry(r.options(name)...))
 	}
 
-	return opts
+	return opts, nil
 }
 
-// Run assembles the Dubbo server from Config and starts serving once Go-Spring
-// signals readiness. Dubbo's Serve blocks forever internally, so it runs in a
+// Run assembles the Dubbo server from ServerConfig and starts serving once
+// Go-Spring signals readiness. Dubbo's Serve blocks forever, so it runs in a
 // goroutine while Run parks on the done channel; Stop closes done to hand
 // control back to Go-Spring's shutdown sequence.
-func (s *DubboServer) Run(ctx context.Context, sig gs.ReadySignal) error {
-	opts := s.cfg.buildOptions(s.global)
-	for _, c := range s.custom {
-		opts = append(opts, c()...)
+func (s *SimpleDubboServer) Run(ctx context.Context, sig gs.ReadySignal) error {
+	opts, err := s.cfg.buildOptions(s.d.Registries())
+	if err != nil {
+		return err
 	}
-	// obs.NewServer layers the shared instance config (application metadata,
-	// metrics, tracing, graceful shutdown) under these options, which take
-	// priority; the returned *server.Server behaves like a plain one.
-	svr, err := s.obs.NewServer(opts...)
+	// NewServer layers the shared instance config (metadata, metrics, tracing,
+	// graceful shutdown) under these options, which take priority.
+	svr, err := s.d.NewServer(opts...)
 	if err != nil {
 		return errutil.Explain(err, "failed to create dubbo server")
 	}
@@ -247,7 +237,7 @@ func (s *DubboServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 }
 
 // Stop signals Run to return so Go-Spring can complete its shutdown sequence.
-func (s *DubboServer) Stop() error {
+func (s *SimpleDubboServer) Stop() error {
 	close(s.done)
 	return nil
 }

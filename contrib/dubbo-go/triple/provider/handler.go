@@ -27,7 +27,7 @@ import (
 
 func init() {
 	// Provide a StarterDubbo.ServiceRegister bean that binds the GreetProvider
-	// to the Dubbo server. starter-dubbo's DubboServer depends only on this
+	// to the Dubbo server. starter-dubbo's SimpleDubboServer depends only on this
 	// function type, so the concrete service is wired here without the server
 	// ever knowing about greet.GreetServiceHandler.
 	gs.Provide(func() StarterDubbo.ServiceRegister {
