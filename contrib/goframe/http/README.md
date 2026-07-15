@@ -48,9 +48,9 @@ contrib/goframe/http/
 ├── provider/main.go              # gs.Run(); long-lived, registers into etcd
 ├── consumer/main.go              # discovers the provider via etcd, calls it and asserts, then exits
 ├── conf/app.properties           # provider configuration
-├── gen.sh                        # regenerates internal/controller/ from api/ via `gf gen ctrl`
+├── scripts/gen-code.sh           # regenerates internal/controller/ from api/ via `gf gen ctrl`
 ├── docker-compose.yml            # local etcd
-└── check.sh                      # smoke test: bring up etcd+provider, run consumer, tear down
+└── scripts/smoke-test.sh         # smoke test: bring up etcd+provider, run consumer, tear down
 ```
 
 ## How it was generated
@@ -64,7 +64,7 @@ go install github.com/gogf/gf/cmd/gf/v2@latest
 # it was split from its gRPC sibling under ../grpc).
 gf init goframe -g go-spring.org/goframe/http
 
-# regenerate controller stubs from api/ (or just run ./gen.sh; the hack/*.mk
+# regenerate controller stubs from api/ (or just run ./scripts/gen-code.sh; the hack/*.mk
 # files carry the same command as `make ctrl`).
 gf gen ctrl
 ```
@@ -155,5 +155,5 @@ Or run the one-shot smoke test (brings up etcd + provider, runs the consumer,
 tears everything down):
 
 ```bash
-bash check.sh
+bash scripts/smoke-test.sh
 ```

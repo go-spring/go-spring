@@ -19,7 +19,7 @@
   `host:port`。
 - **没有 goctl 生成的文件。** goctl 的 `.api` DSL 只理解请求/响应式 HTTP 接口，
   无法描述 WS 路由或帧类型。本目录 `internal/` 下所有文件都是手写的。
-  `gen.sh` 是一个明确的 no-op，仅用于与两个兄弟子项目保持相同的入口约定。
+  `scripts/gen-code.sh` 是一个明确的 no-op，仅用于与两个兄弟子项目保持相同的入口约定。
 
 这是一个可运行的示例，**不是**可复用的 starter 模块。
 
@@ -38,7 +38,7 @@
 
 ```
 contrib/go-zero/greet-ws/
-├── gen.sh                              # 说明性 no-op（go-zero WS 无 IDL 生成）
+├── scripts/gen-code.sh                 # 说明性 no-op（go-zero WS 无 IDL 生成）
 ├── internal/types/types.go             # 手写：WS 帧载荷（JSON）
 ├── internal/handler/wshandler.go       # 手写：升级 + 读写循环
 ├── internal/svc/servicecontext.go      # 手写：注入 Logic 的载体
@@ -48,7 +48,7 @@ contrib/go-zero/greet-ws/
 ├── provider/main.go                    # gs.Run()；常驻进程
 ├── consumer/main.go                    # WS 拨号，断言 echo，退出
 ├── conf/app.properties                 # provider 配置
-└── check.sh                            # 冒烟测试：起 provider → 跑 consumer → 收尾
+└── scripts/smoke-test.sh               # 冒烟测试：起 provider → 跑 consumer → 收尾
 ```
 
 ## WebSocket 与 `greet-api` / `greet-rpc` 的差异
@@ -103,12 +103,12 @@ Response from provider: Hello, go-zero!
 或直接跑一次冒烟测试（起 provider、跑 consumer、然后收尾）：
 
 ```bash
-bash check.sh
+bash scripts/smoke-test.sh
 ```
 
-## 关于 `gen.sh`
+## 关于 `scripts/gen-code.sh`
 
-`gen.sh` 是一个明确的 no-op —— 只是打印一条说明后退出。WebSocket 无法用
+`scripts/gen-code.sh` 是一个明确的 no-op —— 只是打印一条说明后退出。WebSocket 无法用
 go-zero 的 `.api` DSL 表达，`goctl api go` 对路由和帧类型都无话可说。
-可对比 `../greet-api/gen.sh`（驱动 `goctl api go`）与 `../greet-rpc/gen.sh`
+可对比 `../greet-api/scripts/gen-code.sh`（驱动 `goctl api go`）与 `../greet-rpc/scripts/gen-code.sh`
 （驱动 `goctl rpc protoc`）。要改 WS 字段或加路由，请直接编辑 `internal/` 下的文件。

@@ -61,9 +61,9 @@ contrib/goframe/websocket/
 ├── provider/main.go              # gs.Run()；常驻，注册进 etcd
 ├── consumer/main.go              # gsvc.Search → gorilla-websocket 拨号，断言回显后退出
 ├── conf/app.properties           # Provider 配置
-├── gen.sh                        # 有注释的空操作（WS/HTTP handler 手写，无代码生成）
+├── scripts/gen-code.sh           # 有注释的空操作（WS/HTTP handler 手写，无代码生成）
 ├── docker-compose.yml            # 本地 etcd
-└── check.sh                      # 冒烟测试：起 etcd+Provider，跑 Consumer，再拆掉
+└── scripts/smoke-test.sh         # 冒烟测试：起 etcd+Provider，跑 Consumer，再拆掉
 ```
 
 ## 与两个兄弟协议的差异
@@ -71,7 +71,7 @@ contrib/goframe/websocket/
 | 关注点     | `../http`                                                                        | `../grpc`                                                       | 本模块（WebSocket）                                             |
 | ---------- | -------------------------------------------------------------------------------- | --------------------------------------------------------------- | --------------------------------------------------------------- |
 | 服务器     | `*ghttp.Server`（`g.Server(name)`）                                              | `grpcx.GrpcServer`（`grpcx.Server.New(cfg)`）                   | `*ghttp.Server`，同 http（升级发生在 handler 内）               |
-| IDL/代码生成 | `api/*/v*/` + `gf gen ctrl`                                                    | `idl/echo.proto` + `protoc`                                     | 无——handler 手写，`gen.sh` 是空操作                             |
+| IDL/代码生成 | `api/*/v*/` + `gf gen ctrl`                                                    | `idl/echo.proto` + `protoc`                                     | 无——handler 手写，`scripts/gen-code.sh` 是空操作                             |
 | 客户端 API | `g.Client().Discovery(reg).Get(ctx, "http://<name>/hello")`                      | `grpcx.Client.MustNewGrpcClientConn(<name>)`                    | `registry.Search(...)` → `gorilla/websocket.Dial(ws://host:port/echo)` |
 | 为什么客户端差 | goframe gclient 的 discovery 中间件在底层改写 HTTP `URL.Host`             | grpcx 为 gRPC 注册了一个 `gsvc://` resolver builder             | goframe 没有 ws 感知的客户端，只能先解出 endpoint 再交给 gorilla|
 
@@ -127,5 +127,5 @@ Response from discovered provider: Hello, GoFrame WebSocket!
 或者跑一次性冒烟脚本（起 etcd+Provider，跑 Consumer，然后全部拆掉）：
 
 ```bash
-bash check.sh
+bash scripts/smoke-test.sh
 ```

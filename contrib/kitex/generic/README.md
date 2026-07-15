@@ -63,18 +63,18 @@ contrib/kitex/generic/
 ├── idl/echo.thrift          # Thrift IDL — parsed at runtime by the CONSUMER
 ├── kitex_gen/echo/...       # Kitex-generated code (used by the PROVIDER only)
 ├── kitex_info.yaml          # metadata for re-generation
-├── gen.sh                   # regenerates kitex_gen/ from the IDL
+├── scripts/gen-code.sh      # regenerates kitex_gen/ from the IDL
 ├── provider/handler.go      # EchoServiceImpl (identical to ../thrift)
 ├── provider/server.go       # KitexServer adapter (gs.Server) + Config
 ├── provider/main.go         # gs.Run(); long-lived, registers into etcd
 ├── consumer/main.go         # NO kitex_gen import; JSON generic invocation
 ├── conf/app.properties      # provider config (port :8890, service `echo-generic`)
 ├── docker-compose.yml       # local etcd (unique container name)
-└── check.sh                 # smoke test: bring up etcd+provider, run consumer, tear down
+└── scripts/smoke-test.sh    # smoke test: bring up etcd+provider, run consumer, tear down
 ```
 
 The IDL file is loaded by the consumer via a **relative** path
-(`idl/echo.thrift`), so `go run ./consumer` and the check.sh binary invocation
+(`idl/echo.thrift`), so `go run ./consumer` and the scripts/smoke-test.sh binary invocation
 both run from the module root where that path resolves.
 
 ## Configuration
@@ -127,5 +127,5 @@ Or run the one-shot smoke test (brings up etcd + provider, runs the consumer,
 tears everything down):
 
 ```bash
-bash check.sh
+bash scripts/smoke-test.sh
 ```

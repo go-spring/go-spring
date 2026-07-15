@@ -50,13 +50,13 @@ This is a runnable example, **not** a reusable starter module.
 ```
 contrib/dubbo-go/rest/
 ├── proto/greet.go           # the "IDL": interface name, method name, HTTP verb+path+query constants
-├── gen.sh                   # no-op — REST has no IDL codegen
+├── scripts/gen-code.sh      # no-op — REST has no IDL codegen
 ├── provider/handler.go      # GreetProvider (Go struct) + RestServiceConfig + StarterDubbo.ServiceRegister bean (server comes from starter-dubbo)
 ├── provider/main.go         # gs.Run(); long-lived, registers into etcd
 ├── consumer/main.go         # RestServiceConfig registration + discovers, calls, asserts, exits
 ├── conf/app.properties      # provider configuration
 ├── docker-compose.yml       # local etcd
-└── check.sh                 # smoke test: bring up etcd+provider, run consumer, tear down
+└── scripts/smoke-test.sh    # smoke test: bring up etcd+provider, run consumer, tear down
 ```
 
 ## How it was generated
@@ -66,7 +66,7 @@ in dubbo-go v3 — the service surface is a hand-written Go file
 (`proto/greet.go`) that pins the Java-style interface name, method name, and
 the HTTP verb / path / query-key constants, plus a hand-written provider
 struct with the matching method signature and hand-written
-`RestServiceConfig` maps on both sides. Running `./gen.sh` prints a one-line
+`RestServiceConfig` maps on both sides. Running `./scripts/gen-code.sh` prints a one-line
 "nothing to do" for symmetry with the Triple sibling.
 
 ## Choosing this protocol vs. the siblings
@@ -128,5 +128,5 @@ Or run the one-shot smoke test (brings up etcd + provider, runs the consumer,
 tears everything down):
 
 ```bash
-bash check.sh
+bash scripts/smoke-test.sh
 ```

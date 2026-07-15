@@ -65,7 +65,7 @@ contrib/go-kratos/
 │                               #   gRPC AND dials the WebSocket endpoint, asserts both
 ├── conf/app.properties         # provider configuration
 ├── docker-compose.yml          # local etcd
-└── check.sh                    # smoke test: bring up etcd+provider, run consumer, tear down
+└── scripts/smoke-test.sh       # smoke test: bring up etcd+provider, run consumer, tear down
 ```
 
 ## How it was generated
@@ -85,7 +85,7 @@ files, keeps the generated `api/` stubs untouched, and rewires the rest as a
 provider + consumer pair.
 
 The `api/helloworld/v1/*.pb.go`, `*_grpc.pb.go`, and `*_http.pb.go` stubs can be
-regenerated from the `.proto` files by running `./gen.sh` (a thin wrapper around
+regenerated from the `.proto` files by running `./scripts/gen-code.sh` (a thin wrapper around
 `kratos proto client`). A single `.proto` yields both HTTP and gRPC stubs, and
 one Kratos `App` serves those two transports plus the WebSocket transport —
 that is why, unlike the kitex example, this project is **not** split into
@@ -238,5 +238,5 @@ Or run the one-shot smoke test (brings up etcd + provider, runs the consumer,
 tears everything down):
 
 ```bash
-bash check.sh
+bash scripts/smoke-test.sh
 ```

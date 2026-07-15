@@ -46,14 +46,14 @@ contrib/kitex/protobuf/
 ├── idl/echo.proto           # protobuf IDL
 ├── kitex_gen/echo/...       # Kitex 生成代码(请勿手改)
 ├── kitex_info.yaml          # 重新生成用的元数据
-├── gen.sh                   # 从 IDL 重新生成 kitex_gen/
+├── scripts/gen-code.sh      # 从 IDL 重新生成 kitex_gen/
 ├── provider/handler.go      # EchoServiceImpl,导出为 echo.EchoService bean
 ├── provider/server.go       # KitexServer 适配器(gs.Server)+ Config,配置 etcd registry
 ├── provider/main.go         # gs.Run(),长驻并注册到 etcd
 ├── consumer/main.go         # 通过 etcd 发现,分别用两种传输各调一次,断言后退出
 ├── conf/app.properties      # provider 配置
 ├── docker-compose.yml       # 本地 etcd
-└── check.sh                 # 冒烟脚本:起 etcd+provider,跑 consumer,自动清理
+└── scripts/smoke-test.sh    # 冒烟脚本:起 etcd+provider,跑 consumer,自动清理
 ```
 
 ## 如何生成
@@ -62,14 +62,14 @@ contrib/kitex/protobuf/
 # 工具(一次性)
 go install github.com/cloudwego/kitex/tool/cmd/kitex@latest
 
-# 从 IDL 生成脚手架(或直接执行 ./gen.sh)
+# 从 IDL 生成脚手架(或直接执行 ./scripts/gen-code.sh)
 kitex -module go-spring.org/kitex/protobuf -service echo idl/echo.proto
 ```
 
 脚手架会产出 `kitex_gen/`、一个空的 `handler.go`,以及直接调用 `svr.Run()`
 的 `main.go`。`kitex_gen/` 由 provider 与 consumer 共享,且天生同时支持
 KitexProtobuf 与 gRPC —— 传输是运行时选择,而非生成期选择。重新执行
-`./gen.sh` 只会再生成 `kitex_gen/`,不会覆盖改造后的 provider/consumer 代码。
+`./scripts/gen-code.sh` 只会再生成 `kitex_gen/`,不会覆盖改造后的 provider/consumer 代码。
 
 ## 选择传输协议
 
@@ -135,5 +135,5 @@ go run ./consumer
 或运行一次性冒烟脚本(起 etcd + provider,跑 consumer,然后全部清理):
 
 ```bash
-bash check.sh
+bash scripts/smoke-test.sh
 ```

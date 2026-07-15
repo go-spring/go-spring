@@ -65,9 +65,9 @@ contrib/goframe/websocket/
 ├── provider/main.go              # gs.Run(); long-lived, registers into etcd
 ├── consumer/main.go              # gsvc.Search → gorilla-websocket dial, asserts on echo, then exits
 ├── conf/app.properties           # provider configuration
-├── gen.sh                        # documented no-op (WS/HTTP handlers are hand-written)
+├── scripts/gen-code.sh           # documented no-op (WS/HTTP handlers are hand-written)
 ├── docker-compose.yml            # local etcd
-└── check.sh                      # smoke test: bring up etcd+provider, run consumer, tear down
+└── scripts/smoke-test.sh         # smoke test: bring up etcd+provider, run consumer, tear down
 ```
 
 ## Differences from the sibling protocols
@@ -75,7 +75,7 @@ contrib/goframe/websocket/
 | Concern    | `../http`                                                                           | `../grpc`                                                          | this module (WebSocket)                                         |
 | ---------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------ | --------------------------------------------------------------- |
 | Server     | `*ghttp.Server` from `g.Server(name)`                                               | `grpcx.GrpcServer` from `grpcx.Server.New(cfg)`                    | `*ghttp.Server`, same as http (upgrade lives in the handler)    |
-| IDL/gen    | `api/*/v*/` + `gf gen ctrl`                                                         | `idl/echo.proto` + `protoc`                                        | none — hand-written handler, `gen.sh` is a no-op                |
+| IDL/gen    | `api/*/v*/` + `gf gen ctrl`                                                         | `idl/echo.proto` + `protoc`                                        | none — hand-written handler, `scripts/gen-code.sh` is a no-op                |
 | Client API | `g.Client().Discovery(reg).Get(ctx, "http://<name>/hello")`                         | `grpcx.Client.MustNewGrpcClientConn(<name>)`                       | `registry.Search(...)` → `gorilla/websocket.Dial(ws://host:port/echo)` |
 | Why the client differs | goframe's gclient discovery middleware rewrites HTTP `URL.Host` under the hood | grpcx registers a `gsvc://` resolver builder for gRPC | no ws-aware client in goframe; resolve then dial with gorilla directly |
 
@@ -135,5 +135,5 @@ Or run the one-shot smoke test (brings up etcd + provider, runs the consumer,
 tears everything down):
 
 ```bash
-bash check.sh
+bash scripts/smoke-test.sh
 ```

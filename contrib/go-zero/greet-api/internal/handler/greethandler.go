@@ -15,7 +15,7 @@
  */
 
 // Package handler holds the HTTP entry-point functions that routes.go
-// references. routes.go is regenerated from greet.api on every gen.sh run
+// references. routes.go is regenerated from greet.api on every scripts/gen-code.sh run
 // and expects a symbol per @handler declared in the IDL; the entry-point
 // functions here parse the request, delegate to the Go-Spring-owned logic
 // bean exposed via ServiceContext, and render the response.

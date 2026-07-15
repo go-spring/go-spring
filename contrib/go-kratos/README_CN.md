@@ -59,7 +59,7 @@ contrib/go-kratos/
 │                               #   再拨 WebSocket 做一次断言,失败即非零退出
 ├── conf/app.properties         # provider 配置
 ├── docker-compose.yml          # 本地 etcd
-└── check.sh                    # 冒烟脚本:起 etcd+provider,跑 consumer,自动清理
+└── scripts/smoke-test.sh       # 冒烟脚本:起 etcd+provider,跑 consumer,自动清理
 ```
 
 ## 如何生成
@@ -78,7 +78,7 @@ kratos new go-kratos
 `api/` stub 原样不动,并按 provider + consumer 双进程模式重连其余部分。
 
 `api/helloworld/v1/*.pb.go`、`*_grpc.pb.go`、`*_http.pb.go` 这些 stub 可以通过
-运行 `./gen.sh` 从 `.proto` 重新生成(内部是对 `kratos proto client` 的薄封装)。
+运行 `./scripts/gen-code.sh` 从 `.proto` 重新生成(内部是对 `kratos proto client` 的薄封装)。
 同一份 `.proto` 会同时产出 HTTP 与 gRPC stub,一个 Kratos `App` 还会同时承载
 WebSocket transport —— 这就是为什么与 kitex 示例不同,本项目**不**按协议拆成
 子目录。WebSocket 承载的是应用自定义的消息帧而非 proto RPC,所以它的
@@ -214,5 +214,5 @@ Response from discovered provider (WebSocket): Hello Kratos-WS
 或一键冒烟(自动起 etcd + provider、跑 consumer、清理):
 
 ```bash
-bash check.sh
+bash scripts/smoke-test.sh
 ```

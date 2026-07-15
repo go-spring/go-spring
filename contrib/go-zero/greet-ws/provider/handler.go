@@ -32,7 +32,7 @@ func init() {
 	// into a ServiceContext and attaches the WebSocket route. The route table
 	// is hand-written here because there is no goctl-generated routes.go for
 	// WS — the .api DSL cannot express a WS endpoint, so nothing is generated
-	// (see gen.sh, which is a documented no-op for this reason).
+	// (see scripts/gen-code.sh, which is a documented no-op for this reason).
 	//
 	// The route is a normal GET route; the handler upgrades to WS on demand.
 	// go-zero's rest.Server response wrapper implements http.Hijacker, which

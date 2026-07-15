@@ -15,7 +15,7 @@
   注册中心相关能力只存在于 go-zero 的 zRPC 层 —— 所以 consumer 直接连
   固定的 `host:port`。
 - **goctl 生成的 internal/ 层保持很薄。** 只有 `internal/types/*.go` 与
-  `internal/handler/routes.go` 由 goctl 生成、通过 `gen.sh` 重新生成;
+  `internal/handler/routes.go` 由 goctl 生成、通过 `scripts/gen-code.sh` 重新生成;
   `internal/{handler,svc,logic}` 的其余部分是手写,让 Greet 业务逻辑得以
   参与 Go-Spring 的依赖注入。
 
@@ -39,7 +39,7 @@
 ```
 contrib/go-zero/greet-api/
 ├── greet.api                          # go-zero API IDL
-├── gen.sh                             # 重新生成 goctl 所有的两份文件
+├── scripts/gen-code.sh                # 重新生成 goctl 所有的两份文件
 ├── internal/types/types.go            # goctl 生成的请求/响应结构(请勿手改)
 ├── internal/handler/routes.go         # goctl 生成的路由表(请勿手改)
 ├── internal/handler/greethandler.go   # 手写,解析请求并调用 Logic bean
@@ -50,7 +50,7 @@ contrib/go-zero/greet-api/
 ├── provider/main.go                   # gs.Run(),长驻 HTTP server
 ├── consumer/main.go                   # HTTP POST,断言响应后退出
 ├── conf/app.properties                # provider 配置
-└── check.sh                           # 冒烟脚本:构建并启动 provider,跑 consumer,自动清理
+└── scripts/smoke-test.sh              # 冒烟脚本:构建并启动 provider,跑 consumer,自动清理
 ```
 
 ## 如何生成
@@ -63,7 +63,7 @@ go install github.com/zeromicro/go-zero/tools/goctl@latest
 goctl api go -api greet.api -dir <tmp>/gen --style gozero
 ```
 
-`gen.sh` 会在一个父模块名为 `greetapi` 的临时工作区里执行同样的命令,并且**只**
+`scripts/gen-code.sh` 会在一个父模块名为 `greetapi` 的临时工作区里执行同样的命令,并且**只**
 把 `internal/types/types.go` 与 `internal/handler/routes.go` 挑出来放到项目里。
 goctl 生成的其余部分 —— `greet.go`(main)、`etc/greet.yaml`、`internal/config`、
 `internal/svc/servicecontext.go`、`internal/logic/greetlogic.go`、
@@ -117,5 +117,5 @@ Response from provider: Hello, go-zero!
 或一键冒烟(启动 provider、跑 consumer、自动清理):
 
 ```bash
-bash check.sh
+bash scripts/smoke-test.sh
 ```

@@ -46,13 +46,13 @@ contrib/dubbo-go/triple/
 ├── proto/greet.proto        # Protobuf IDL
 ├── proto/greet.pb.go        # protoc-generated messages (DO NOT EDIT)
 ├── proto/greet.triple.go    # Triple-generated stubs (DO NOT EDIT)
-├── gen.sh                   # regenerates proto/*.go from the IDL
+├── scripts/gen-code.sh      # regenerates proto/*.go from the IDL
 ├── provider/handler.go      # GreetProvider + StarterDubbo.ServiceRegister bean (server comes from starter-dubbo)
 ├── provider/main.go         # gs.Run(); long-lived, registers into etcd
 ├── consumer/main.go         # discovers the provider via etcd, calls it and asserts, then exits
 ├── conf/app.properties      # provider configuration
 ├── docker-compose.yml       # local etcd
-└── check.sh                 # smoke test: bring up etcd+provider, run consumer, tear down
+└── scripts/smoke-test.sh    # smoke test: bring up etcd+provider, run consumer, tear down
 ```
 
 ## How it was generated
@@ -62,7 +62,7 @@ contrib/dubbo-go/triple/
 go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
 go install github.com/dubbogo/protoc-gen-go-triple/v3@latest
 
-# generate messages + Triple stubs from the IDL (or just run ./gen.sh)
+# generate messages + Triple stubs from the IDL (or just run ./scripts/gen-code.sh)
 protoc --proto_path=proto \
   --go_out=paths=source_relative:./proto \
   --go-triple_out=paths=source_relative:./proto \
@@ -70,7 +70,7 @@ protoc --proto_path=proto \
 ```
 
 The generator produces `greet.pb.go` and `greet.triple.go` in `proto/`, which
-is shared by both the provider and the consumer. Re-running `./gen.sh`
+is shared by both the provider and the consumer. Re-running `./scripts/gen-code.sh`
 regenerates only those files without touching the refactored business code.
 
 > Note: on a go1.26 toolchain whose `runtime.Version()` carries an experiment
@@ -155,5 +155,5 @@ Or run the one-shot smoke test (brings up etcd + provider, runs the consumer,
 tears everything down):
 
 ```bash
-bash check.sh
+bash scripts/smoke-test.sh
 ```

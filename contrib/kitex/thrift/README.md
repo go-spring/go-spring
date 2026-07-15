@@ -40,14 +40,14 @@ contrib/kitex/thrift/
 ├── idl/echo.thrift          # Thrift IDL
 ├── kitex_gen/echo/...       # Kitex-generated code (DO NOT EDIT)
 ├── kitex_info.yaml          # metadata for re-generation
-├── gen.sh                   # regenerates kitex_gen/ from the IDL
+├── scripts/gen-code.sh      # regenerates kitex_gen/ from the IDL
 ├── provider/handler.go      # EchoServiceImpl, exported as an echo.EchoService bean
 ├── provider/server.go       # KitexServer adapter (gs.Server) + Config, configures the etcd registry
 ├── provider/main.go         # gs.Run(); long-lived, registers into etcd
 ├── consumer/main.go         # discovers the provider via etcd, calls it and asserts, then exits
 ├── conf/app.properties      # provider configuration
 ├── docker-compose.yml       # local etcd
-└── check.sh                 # smoke test: bring up etcd+provider, run consumer, tear down
+└── scripts/smoke-test.sh    # smoke test: bring up etcd+provider, run consumer, tear down
 ```
 
 ## How it was generated
@@ -57,13 +57,13 @@ contrib/kitex/thrift/
 go install github.com/cloudwego/thriftgo@latest
 go install github.com/cloudwego/kitex/tool/cmd/kitex@latest
 
-# scaffold from the IDL (or just run ./gen.sh)
+# scaffold from the IDL (or just run ./scripts/gen-code.sh)
 kitex -module go-spring.org/kitex/thrift -service echo idl/echo.thrift
 ```
 
 The scaffold produces `kitex_gen/`, a bare `handler.go`, and a `main.go` that
 calls `svr.Run()` directly. `kitex_gen/` is shared by both the provider and
-the consumer. Re-running `./gen.sh` regenerates `kitex_gen/` without touching
+the consumer. Re-running `./scripts/gen-code.sh` regenerates `kitex_gen/` without touching
 the refactored provider/consumer code.
 
 > This is the **Thrift** protocol variant. For the protobuf-based transports
@@ -148,5 +148,5 @@ Or run the one-shot smoke test (brings up etcd + provider, runs the consumer,
 tears everything down):
 
 ```bash
-bash check.sh
+bash scripts/smoke-test.sh
 ```

@@ -45,14 +45,14 @@ This is a runnable example, **not** a reusable starter module.
 contrib/goframe/grpc/
 ├── idl/echo.proto              # protobuf IDL
 ├── pbgen/echo/                 # protoc-generated Go stubs (DO NOT EDIT)
-├── gen.sh                      # regenerates pbgen/echo/ from the IDL
+├── scripts/gen-code.sh         # regenerates pbgen/echo/ from the IDL
 ├── provider/handler.go         # EchoServiceImpl, exported as an echo.EchoServiceServer bean
 ├── provider/server.go          # GoFrameGrpcServer adapter (gs.Server) + Config, configures the etcd registry
 ├── provider/main.go            # gs.Run(); long-lived, registers into etcd
 ├── consumer/main.go            # discovers via etcd, calls Echo and asserts, then exits
 ├── conf/app.properties         # provider configuration
 ├── docker-compose.yml          # local etcd
-└── check.sh                    # smoke test: bring up etcd+provider, run consumer, tear down
+└── scripts/smoke-test.sh       # smoke test: bring up etcd+provider, run consumer, tear down
 ```
 
 ## How it was generated
@@ -62,7 +62,7 @@ contrib/goframe/grpc/
 go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
 go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 
-# regenerate the gRPC stubs from the IDL (or just run ./gen.sh)
+# regenerate the gRPC stubs from the IDL (or just run ./scripts/gen-code.sh)
 protoc \
     --proto_path=idl \
     --go_out=. \
@@ -74,7 +74,7 @@ protoc \
 
 The `option go_package = "go-spring.org/goframe/grpc/pbgen/echo;echo";` line
 in `echo.proto` pins the output package to `pbgen/echo/` under the module root.
-Re-running `./gen.sh` regenerates `pbgen/echo/` without touching the
+Re-running `./scripts/gen-code.sh` regenerates `pbgen/echo/` without touching the
 refactored provider/consumer code.
 
 Unlike goframe's HTTP `gf gen ctrl` chain (which parses `api/*/v*/` types and
@@ -165,5 +165,5 @@ Or run the one-shot smoke test (brings up etcd + provider, runs the consumer,
 tears everything down):
 
 ```bash
-bash check.sh
+bash scripts/smoke-test.sh
 ```

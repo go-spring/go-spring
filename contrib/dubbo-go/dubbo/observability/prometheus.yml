@@ -1,0 +1,20 @@
+# Prometheus scrape config for the dubbo-go classic (Hessian2) example.
+#
+# The provider is NOT a container: scripts/smoke-test.sh builds and runs it on the host, where
+# starter-dubbo exposes the Prometheus endpoint on :9090. From inside this
+# container the host is reachable as host.docker.internal (mapped via
+# docker-compose.yml's extra_hosts on Linux; native on macOS/Windows).
+#
+# A short scrape_interval keeps the smoke test / manual verification snappy: a
+# single RPC's metrics become queryable within a few seconds.
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: dubbo-provider
+    static_configs:
+      - targets: ["host.docker.internal:9090"]
+        labels:
+          service: dubbo-demo
+          role: provider

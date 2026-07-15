@@ -52,9 +52,9 @@ contrib/goframe/tcp/
 ├── provider/main.go              # gs.Run()；常驻，注册进 etcd
 ├── consumer/main.go              # gsvc.Search → gtcp.NewNetConn 拨号，断言回显后退出
 ├── conf/app.properties           # Provider 配置
-├── gen.sh                        # 有注释的空操作（原生 TCP 无 IDL）
+├── scripts/gen-code.sh           # 有注释的空操作（原生 TCP 无 IDL）
 ├── docker-compose.yml            # 本地 etcd
-└── check.sh                      # 冒烟测试：起 etcd+Provider，跑 Consumer，再拆掉
+└── scripts/smoke-test.sh         # 冒烟测试：起 etcd+Provider，跑 Consumer，再拆掉
 ```
 
 ## 适配器要保证的顺序
@@ -128,5 +128,5 @@ Response from discovered provider: Hello, GoFrame TCP!
 或者跑一次性冒烟脚本：
 
 ```bash
-bash check.sh
+bash scripts/smoke-test.sh
 ```

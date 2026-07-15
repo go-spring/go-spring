@@ -43,13 +43,13 @@ contrib/dubbo-go/triple/
 ├── proto/greet.proto        # Protobuf IDL
 ├── proto/greet.pb.go        # protoc 生成的消息(请勿手改)
 ├── proto/greet.triple.go    # Triple 生成的桩代码(请勿手改)
-├── gen.sh                   # 从 IDL 重新生成 proto/*.go
+├── scripts/gen-code.sh      # 从 IDL 重新生成 proto/*.go
 ├── provider/handler.go      # GreetProvider + StarterDubbo.ServiceRegister bean(server 由 starter-dubbo 提供)
 ├── provider/main.go         # gs.Run(),长驻并注册到 etcd
 ├── consumer/main.go         # 通过 etcd 发现 provider,调用并断言后退出
 ├── conf/app.properties      # provider 配置
 ├── docker-compose.yml       # 本地 etcd
-└── check.sh                 # 冒烟脚本:起 etcd+provider,跑 consumer,自动清理
+└── scripts/smoke-test.sh    # 冒烟脚本:起 etcd+provider,跑 consumer,自动清理
 ```
 
 ## 如何生成
@@ -59,7 +59,7 @@ contrib/dubbo-go/triple/
 go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
 go install github.com/dubbogo/protoc-gen-go-triple/v3@latest
 
-# 从 IDL 生成消息 + Triple 桩代码(或直接执行 ./gen.sh)
+# 从 IDL 生成消息 + Triple 桩代码(或直接执行 ./scripts/gen-code.sh)
 protoc --proto_path=proto \
   --go_out=paths=source_relative:./proto \
   --go-triple_out=paths=source_relative:./proto \
@@ -67,7 +67,7 @@ protoc --proto_path=proto \
 ```
 
 生成器会在 `proto/` 下产出 `greet.pb.go` 和 `greet.triple.go`;`proto/` 由
-provider 与 consumer 共享。重新执行 `./gen.sh` 只会再生成这两个文件,不会覆盖
+provider 与 consumer 共享。重新执行 `./scripts/gen-code.sh` 只会再生成这两个文件,不会覆盖
 改造后的业务代码。
 
 > 注意:在 `runtime.Version()` 带实验后缀(如 `go1.26.1-X:jsonv2`)的 go1.26
@@ -147,5 +147,5 @@ Response from discovered provider: Hello, Dubbo-Go!
 或一键冒烟(自动起 etcd + provider、跑 consumer、清理):
 
 ```bash
-bash check.sh
+bash scripts/smoke-test.sh
 ```

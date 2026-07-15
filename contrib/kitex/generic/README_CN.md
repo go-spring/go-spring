@@ -60,18 +60,18 @@ contrib/kitex/generic/
 ├── idl/echo.thrift          # Thrift IDL,由 CONSUMER 运行时解析
 ├── kitex_gen/echo/...       # Kitex 生成代码(仅 PROVIDER 使用)
 ├── kitex_info.yaml          # 重新生成用的元数据
-├── gen.sh                   # 从 IDL 重新生成 kitex_gen/
+├── scripts/gen-code.sh      # 从 IDL 重新生成 kitex_gen/
 ├── provider/handler.go      # EchoServiceImpl(与 ../thrift 一致)
 ├── provider/server.go       # KitexServer 适配器(gs.Server)+ Config
 ├── provider/main.go         # gs.Run(),长驻并注册到 etcd
 ├── consumer/main.go         # 不 import kitex_gen;JSON 泛化调用
 ├── conf/app.properties      # provider 配置(端口 :8890,服务名 `echo-generic`)
 ├── docker-compose.yml       # 本地 etcd(容器名独立)
-└── check.sh                 # 冒烟脚本:起 etcd+provider,跑 consumer,自动清理
+└── scripts/smoke-test.sh    # 冒烟脚本:起 etcd+provider,跑 consumer,自动清理
 ```
 
 IDL 文件由 consumer 以**相对路径**(`idl/echo.thrift`)加载,因此
-`go run ./consumer` 与 check.sh 中启动的二进制都从模块根目录运行,以便
+`go run ./consumer` 与 scripts/smoke-test.sh 中启动的二进制都从模块根目录运行,以便
 该路径能正确解析。
 
 ## 配置
@@ -121,5 +121,5 @@ Generic call round-trip OK: Hello, Kitex!
 或一键冒烟(自动起 etcd + provider、跑 consumer、清理):
 
 ```bash
-bash check.sh
+bash scripts/smoke-test.sh
 ```

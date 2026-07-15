@@ -42,14 +42,14 @@ server 与两条不同的 codegen 流水线,没必要硬塞进一个 provider。
 contrib/goframe/grpc/
 ├── idl/echo.proto              # protobuf IDL
 ├── pbgen/echo/                 # protoc 生成的 Go 代码(请勿手改)
-├── gen.sh                      # 从 IDL 重新生成 pbgen/echo/
+├── scripts/gen-code.sh         # 从 IDL 重新生成 pbgen/echo/
 ├── provider/handler.go         # EchoServiceImpl,导出为 echo.EchoServiceServer bean
 ├── provider/server.go          # GoFrameGrpcServer 适配器(gs.Server)+ Config,配置 etcd registry
 ├── provider/main.go            # gs.Run(),长驻并注册到 etcd
 ├── consumer/main.go            # 通过 etcd 发现,调用 Echo 并断言后退出
 ├── conf/app.properties         # provider 配置
 ├── docker-compose.yml          # 本地 etcd
-└── check.sh                    # 冒烟脚本:起 etcd+provider,跑 consumer,自动清理
+└── scripts/smoke-test.sh       # 冒烟脚本:起 etcd+provider,跑 consumer,自动清理
 ```
 
 ## 如何生成
@@ -59,7 +59,7 @@ contrib/goframe/grpc/
 go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
 go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 
-# 从 IDL 重新生成 gRPC 代码(或直接执行 ./gen.sh)
+# 从 IDL 重新生成 gRPC 代码(或直接执行 ./scripts/gen-code.sh)
 protoc \
     --proto_path=idl \
     --go_out=. \
@@ -70,7 +70,7 @@ protoc \
 ```
 
 `echo.proto` 中的 `option go_package = "go-spring.org/goframe/grpc/pbgen/echo;echo";`
-把生成路径固定到 module 根目录下的 `pbgen/echo/`。重新执行 `./gen.sh`
+把生成路径固定到 module 根目录下的 `pbgen/echo/`。重新执行 `./scripts/gen-code.sh`
 只会覆盖 `pbgen/echo/`,不会碰改造后的 provider/consumer 代码。
 
 与 goframe 的 HTTP `gf gen ctrl`(解析 `api/*/v*/` 类型再生成 controller)不同,
@@ -156,5 +156,5 @@ Response from discovered provider: Hello, GoFrame gRPC!
 或一键冒烟(自动起 etcd + provider、跑 consumer、清理):
 
 ```bash
-bash check.sh
+bash scripts/smoke-test.sh
 ```

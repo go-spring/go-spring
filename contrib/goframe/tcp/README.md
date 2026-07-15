@@ -55,9 +55,9 @@ contrib/goframe/tcp/
 ├── provider/main.go              # gs.Run(); long-lived, registers into etcd
 ├── consumer/main.go              # gsvc.Search → gtcp.NewNetConn dial, asserts on echo, then exits
 ├── conf/app.properties           # provider configuration
-├── gen.sh                        # documented no-op (raw TCP has no IDL)
+├── scripts/gen-code.sh           # documented no-op (raw TCP has no IDL)
 ├── docker-compose.yml            # local etcd
-└── check.sh                      # smoke test: bring up etcd+provider, run consumer, tear down
+└── scripts/smoke-test.sh         # smoke test: bring up etcd+provider, run consumer, tear down
 ```
 
 ## Ordering rules the adapter has to enforce
@@ -136,5 +136,5 @@ Response from discovered provider: Hello, GoFrame TCP!
 Or run the one-shot smoke test:
 
 ```bash
-bash check.sh
+bash scripts/smoke-test.sh
 ```

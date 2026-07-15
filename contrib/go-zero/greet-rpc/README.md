@@ -51,7 +51,7 @@ directly over HTTP.
 ```
 contrib/go-zero/greet-rpc/
 ├── greet.proto             # Protobuf IDL
-├── gen.sh                  # regenerates pb/ from greet.proto via goctl
+├── scripts/gen-code.sh     # regenerates pb/ from greet.proto via goctl
 ├── pb/greet.pb.go          # protoc-generated messages (DO NOT EDIT)
 ├── pb/greet_grpc.pb.go     # protoc-generated gRPC stubs (DO NOT EDIT)
 ├── provider/handler.go     # GreetProvider, exported as a ServiceRegister bean
@@ -60,7 +60,7 @@ contrib/go-zero/greet-rpc/
 ├── consumer/main.go        # discovers the provider via etcd, calls it and asserts, then exits
 ├── conf/app.properties     # provider configuration
 ├── docker-compose.yml      # local etcd
-└── check.sh                # smoke test: bring up etcd+provider, run consumer, tear down
+└── scripts/smoke-test.sh   # smoke test: bring up etcd+provider, run consumer, tear down
 ```
 
 ## How it was generated
@@ -71,7 +71,7 @@ go install github.com/zeromicro/go-zero/tools/goctl@latest
 go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
 go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 
-# scaffold pb/ from the IDL (or just run ./gen.sh)
+# scaffold pb/ from the IDL (or just run ./scripts/gen-code.sh)
 goctl rpc protoc greet.proto --go_out=./pb --go-grpc_out=./pb --zrpc_out=<tmp>
 ```
 
@@ -79,7 +79,7 @@ goctl rpc protoc greet.proto --go_out=./pb --go-grpc_out=./pb --zrpc_out=<tmp>
 `internal/{config,logic,server,svc}` tree under `--zrpc_out`. That tree is
 what a stock go-zero project would use for lifecycle and config; here we
 throw it away and keep only the `pb/` stubs — Go-Spring owns the lifecycle
-and configuration. `gen.sh` points `--zrpc_out` at a `mktemp -d` directory
+and configuration. `scripts/gen-code.sh` points `--zrpc_out` at a `mktemp -d` directory
 and deletes it, so re-running never touches the hand-written
 provider/consumer.
 
@@ -144,5 +144,5 @@ Or run the one-shot smoke test (brings up etcd + provider, runs the consumer,
 tears everything down):
 
 ```bash
-bash check.sh
+bash scripts/smoke-test.sh
 ```

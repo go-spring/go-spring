@@ -45,9 +45,9 @@ contrib/goframe/http/
 ├── provider/main.go              # gs.Run(),长驻并注册到 etcd
 ├── consumer/main.go              # 通过 etcd 发现 provider,调用并断言后退出
 ├── conf/app.properties           # provider 配置
-├── gen.sh                        # 通过 `gf gen ctrl` 从 api/ 重新生成 internal/controller/
+├── scripts/gen-code.sh           # 通过 `gf gen ctrl` 从 api/ 重新生成 internal/controller/
 ├── docker-compose.yml            # 本地 etcd
-└── check.sh                      # 冒烟脚本:起 etcd+provider,跑 consumer,自动清理
+└── scripts/smoke-test.sh         # 冒烟脚本:起 etcd+provider,跑 consumer,自动清理
 ```
 
 ## 如何生成
@@ -60,7 +60,7 @@ go install github.com/gogf/gf/cmd/gf/v2@latest
 # 两个子模块时,module 名改为 go-spring.org/goframe/http)。
 gf init goframe -g go-spring.org/goframe/http
 
-# 从 api/ 重新生成 controller(或直接执行 ./gen.sh;hack/*.mk 中的 `make ctrl`
+# 从 api/ 重新生成 controller(或直接执行 ./scripts/gen-code.sh;hack/*.mk 中的 `make ctrl`
 # 命令与其完全一致)。
 gf gen ctrl
 ```
@@ -146,5 +146,5 @@ Response from discovered provider: Hello World!
 或一键冒烟(自动起 etcd + provider、跑 consumer、清理):
 
 ```bash
-bash check.sh
+bash scripts/smoke-test.sh
 ```

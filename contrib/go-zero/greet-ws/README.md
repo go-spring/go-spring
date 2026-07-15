@@ -22,7 +22,7 @@ Two consequences follow, both intentional:
 - **No goctl-generated files.** goctl's `.api` DSL only understands
   request/response HTTP endpoints; there is no way to declare a WS route or
   a WS frame type in it. Everything under `internal/` here is hand-written.
-  `gen.sh` is a documented no-op that exists only to keep the entry point
+  `scripts/gen-code.sh` is a documented no-op that exists only to keep the entry point
   shape consistent with the two sibling projects.
 
 This is a runnable example, **not** a reusable starter module.
@@ -42,7 +42,7 @@ This is a runnable example, **not** a reusable starter module.
 
 ```
 contrib/go-zero/greet-ws/
-├── gen.sh                              # documented no-op (WS has no IDL in go-zero)
+├── scripts/gen-code.sh                 # documented no-op (WS has no IDL in go-zero)
 ├── internal/types/types.go             # hand-written; WS frame payloads (JSON)
 ├── internal/handler/wshandler.go       # hand-written; upgrade + read/write loop
 ├── internal/svc/servicecontext.go      # hand-written; injected Logic surface
@@ -52,7 +52,7 @@ contrib/go-zero/greet-ws/
 ├── provider/main.go                    # gs.Run(); long-lived process
 ├── consumer/main.go                    # WS dialer, asserts on echo, exits
 ├── conf/app.properties                 # provider configuration
-└── check.sh                            # smoke test: build+run provider, run consumer, tear down
+└── scripts/smoke-test.sh               # smoke test: build+run provider, run consumer, tear down
 ```
 
 ## Why WebSocket differs from `greet-api` / `greet-rpc`
@@ -111,13 +111,13 @@ Or run the one-shot smoke test (starts the provider, runs the consumer, tears
 it down):
 
 ```bash
-bash check.sh
+bash scripts/smoke-test.sh
 ```
 
-## About `gen.sh`
+## About `scripts/gen-code.sh`
 
-`gen.sh` is intentionally a no-op — it prints a note and exits. WebSocket
+`scripts/gen-code.sh` is intentionally a no-op — it prints a note and exits. WebSocket
 cannot be described in go-zero's `.api` DSL, so `goctl api go` has nothing to
-say about the route or the frame types. Compare `../greet-api/gen.sh` (drives
-`goctl api go`) and `../greet-rpc/gen.sh` (drives `goctl rpc protoc`). To
+say about the route or the frame types. Compare `../greet-api/scripts/gen-code.sh` (drives
+`goctl api go`) and `../greet-rpc/scripts/gen-code.sh` (drives `goctl rpc protoc`). To
 change a WS field or add a route, edit the files under `internal/` directly.

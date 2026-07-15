@@ -42,13 +42,13 @@ provider 的 host:port,而是从同一 etcd 解析出可用地址再发起调用
 ```
 contrib/dubbo-go/jsonrpc/
 ├── proto/greet.go           # 「IDL」:接口名与方法名常量
-├── gen.sh                   # no-op —— JSON-RPC 无 IDL codegen
+├── scripts/gen-code.sh      # no-op —— JSON-RPC 无 IDL codegen
 ├── provider/handler.go      # GreetProvider + StarterDubbo.ServiceRegister bean(server 由 starter-dubbo 提供)
 ├── provider/main.go         # gs.Run(),长驻并注册到 etcd
 ├── consumer/main.go         # 通过 etcd 发现 provider,调用并断言后退出
 ├── conf/app.properties      # provider 配置
 ├── docker-compose.yml       # 本地 etcd
-└── check.sh                 # 冒烟脚本:起 etcd+provider,跑 consumer,自动清理
+└── scripts/smoke-test.sh    # 冒烟脚本:起 etcd+provider,跑 consumer,自动清理
 ```
 
 ## 如何生成
@@ -56,7 +56,7 @@ contrib/dubbo-go/jsonrpc/
 **什么都不用生成**。JSON-RPC 在 dubbo-go v3 里没有 protobuf/thrift IDL,也没有
 代码生成器 —— 服务表面就是一份手写的 Go 文件(`proto/greet.go`),固定 Java 风格
 接口名与方法名,再加一份匹配签名的手写 provider 结构体。
-执行 `./gen.sh` 只会打印一行 "nothing to do",只是为了与 Triple 兄弟目录保持一致
+执行 `./scripts/gen-code.sh` 只会打印一行 "nothing to do",只是为了与 Triple 兄弟目录保持一致
 的入口。
 
 参数和返回值可以是任意 JSON 可序列化的 Go 类型,不像 Hessian2 需要注册 POJO 表。
@@ -117,7 +117,7 @@ Response from discovered provider: Hello, Dubbo-Go!
 或一键冒烟(自动起 etcd + provider、跑 consumer、清理):
 
 ```bash
-bash check.sh
+bash scripts/smoke-test.sh
 ```
 
 ## 已知上游问题:Go 1.26(`jsonv2` 实验)与 dubbo-go v3.3.1 不兼容
@@ -137,5 +137,5 @@ provider 进程在第一个请求上崩溃,后续 consumer 拨号同一端口就
   或直接 Go 1.25)。
 - 等 dubbo-go 出一版不再从自身 `UnmarshalJSON` 里调 `json.Unmarshal` 的实现。
 
-任意工具链下 `go build ./...` / `go vet ./...` 都能通过;`check.sh` 会持续
+任意工具链下 `go build ./...` / `go vet ./...` 都能通过;`scripts/smoke-test.sh` 会持续
 失败,直到上游修复到位。
