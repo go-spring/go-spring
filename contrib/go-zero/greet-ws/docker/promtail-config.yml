@@ -1,0 +1,27 @@
+# Promtail config for the go-zero WebSocket example.
+#
+# The provider runs on the host and writes go-zero logx JSON logs into ./logs
+# (bind-mounted here at /var/log/app by docker-compose.yml). logx file mode
+# emits several files (access.log, error.log, stat.log, severe.log, slow.log);
+# Promtail tails them all and pushes to Loki, so provider logs become queryable
+# through Loki's HTTP API (see README).
+#
+# Only the provider writes logs: the raw gorilla/websocket consumer is not
+# instrumented.
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: greet-ws
+    static_configs:
+      - targets: ["localhost"]
+        labels:
+          job: greet-ws
+          __path__: /var/log/app/*.log

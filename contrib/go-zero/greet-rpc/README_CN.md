@@ -54,9 +54,10 @@ contrib/go-zero/greet-rpc/
 ├── provider/server.go      # ZrpcServer 适配器(gs.Server)+ Config,配置 etcd registry
 ├── provider/main.go        # gs.Run(),长驻并注册到 etcd
 ├── consumer/main.go        # 通过 etcd 发现 provider,调用并断言后退出
-├── conf/app.properties     # provider 配置
-├── docker-compose.yml      # 本地 etcd
-└── scripts/smoke-test.sh   # 冒烟脚本:起 etcd+provider,跑 consumer,自动清理
+├── conf/app.properties     # provider 配置(含可观测)
+├── docker-compose.yml      # etcd + 可观测后端(prometheus/jaeger/loki/promtail)
+├── docker/                 # prometheus.yml + promtail-config.yml
+└── scripts/smoke-test.sh   # 冒烟脚本:起 etcd+后端+provider,跑 consumer,断言后清理
 ```
 
 ## 如何生成
@@ -106,7 +107,47 @@ spring.zrpc.server.listen-on=0.0.0.0:8081
 # etcd 注册中心地址与 key,与 docker-compose.yml 一致。
 spring.zrpc.server.etcd.addr=127.0.0.1:2379
 spring.zrpc.server.etcd.key=greet.rpc
+
+# 可观测(provider-only),详见下方「可观测」章节。
+spring.zrpc.server.tracing.endpoint=127.0.0.1:4317
+spring.zrpc.server.metrics.port=6060
+spring.zrpc.server.log.mode=file
+spring.zrpc.server.log.path=../logs
 ```
+
+## 可观测
+
+与 dubbo-go 示例(由 `starter-dubbo` 手工接入 OTel 与 Prometheus)不同,
+go-zero 原生自带日志/trace/metric 三支柱。`zrpc.MustNewServer` 内部会调用
+`service.ServiceConf.SetUp()`(与相邻 `greet-api` 用的 `rest.MustNewServer`
+是同一条代码路径),负责启动 tracing agent、metrics DevServer 与 logx;
+zrpc server 默认开启的拦截器(trace / prometheus / stat / log)随后为每一次
+RPC 自动埋点。**我们没有写任何 OpenTelemetry / Prometheus 代码** ——
+`provider/server.go` 只把 `conf/app.properties` 里的字段填进 `ServiceConf`。
+
+| 支柱   | go-zero 字段            | 后端(docker-compose.yml)                |
+| ------ | ----------------------- | --------------------------------------- |
+| Trace  | `ServiceConf.Telemetry` | Jaeger 走 OTLP/gRPC(:4317,UI 16686)   |
+| Metric | `ServiceConf.DevServer` | Prometheus 抓 :6060/metrics(UI 9099)   |
+| Log    | `ServiceConf.Log`(logx)| JSON 文件 → Promtail → Loki(:3100)     |
+
+只有 **provider** 被埋点;consumer 是裸 zrpc 客户端。zrpc 的 prometheus
+拦截器使用的是 **`rpc_server_requests_*`** 这族指标(不是相邻 `greet-api`
+里 `rest.Server` 暴露的 `http_server_requests_*`)。go-zero 的 logx 会把
+当前 trace/span 打进每条日志,让 Loki 里的日志与 Jaeger 里的 span 天然关联。
+
+先起 etcd + 后端,再跑一遍带可观测的冒烟脚本:
+
+```bash
+docker compose up -d
+bash scripts/smoke-test.sh   # 断言 /metrics 暴露了 rpc_server_requests_*
+```
+
+provider 运行中且发出请求后可以手动验证:
+
+- **Metric**:Prometheus UI http://127.0.0.1:9099,查询 `rpc_server_requests_duration_ms_count`。
+- **Trace**:Jaeger UI http://127.0.0.1:16686,service 选 `greet-rpc`。
+- **Log**:`curl -s 'http://127.0.0.1:3100/loki/api/v1/query_range?query=%7Bjob%3D%22greet-rpc%22%7D'`。
 
 ## 运行
 

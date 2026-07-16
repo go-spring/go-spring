@@ -45,8 +45,10 @@ contrib/go-zero/greet-ws/
 ├── provider/server.go                  # RestServer 适配器（gs.Server）+ Config
 ├── provider/main.go                    # gs.Run()；常驻进程
 ├── consumer/main.go                    # WS 拨号，断言 echo，退出
-├── conf/app.properties                 # provider 配置
-└── scripts/smoke-test.sh               # 冒烟测试：起 provider → 跑 consumer → 收尾
+├── conf/app.properties                 # provider 配置（含可观测）
+├── docker-compose.yml                  # 可观测后端（prometheus/jaeger/loki/promtail）
+├── docker/                             # prometheus.yml + promtail-config.yml
+└── scripts/smoke-test.sh               # 冒烟测试：起后端 → 起 provider → 跑 consumer → 断言 → 收尾
 ```
 
 ## WebSocket 与 `greet-api` / `greet-rpc` 的差异
@@ -76,7 +78,52 @@ spring.http.server.enabled=false
 spring.rest.server.name=greet-ws
 spring.rest.server.host=0.0.0.0
 spring.rest.server.port=8890
+
+# 可观测（仅 provider），详见下文可观测章节。
+spring.rest.server.tracing.endpoint=127.0.0.1:4317
+spring.rest.server.metrics.port=6060
+spring.rest.server.log.mode=file
+spring.rest.server.log.path=../logs
 ```
+
+## 可观测
+
+WS 与 `greet-api` 共用同一个 `rest.Server`，因此可观测接法完全一致：
+`rest.MustNewServer` 内部会调用 `service.ServiceConf.SetUp()`，自动启动
+tracing agent、metrics DevServer 与 logx；`rest.Server` 的中间件
+（Trace/Prometheus/Metrics/Log，默认全开）随后为每次请求埋点 —— 包括
+开启 WS 连接的 HTTP upgrade 请求。**我们没有手写任何 OpenTelemetry / Prometheus
+代码** —— `provider/server.go` 只是从 `conf/app.properties` 里读取字段填进
+`ServiceConf`。
+
+| 支柱   | go-zero 字段            | 后端（docker-compose.yml）              |
+| ------ | ----------------------- | ---------------------------------------- |
+| Tracing | `ServiceConf.Telemetry` | Jaeger via OTLP/gRPC（:4317，UI 16686）  |
+| Metrics | `ServiceConf.DevServer` | Prometheus 抓 :6060/metrics（UI 9099）   |
+| Logging | `ServiceConf.Log`（logx）| JSON 文件 → Promtail → Loki（:3100）    |
+
+只有 **provider** 被埋点；consumer 是裸的 `gorilla/websocket` 客户端。
+logx 会把当前 trace/span 打进每条日志，因此 Loki 里的日志能与 Jaeger
+里的 span 关联。
+
+起后端并跑一次带断言的冒烟测试：
+
+```bash
+docker compose up -d
+bash scripts/smoke-test.sh   # 断言 /metrics 暴露 go_* 进程指标
+```
+
+冒烟断言故意用 `go_*`（始终在线）而不是 `http_server_requests_*`：因为 WS 是
+长连接，`rest.Server` 的 Prometheus 中间件只在连接关闭时才落这条 HTTP 请求样本，
+断言时机不稳定。consumer 断开后，`http_server_requests_*` 也会针对 WS
+upgrade 请求出现。
+
+provider 运行且发生过一次请求后的手动验证：
+
+- **Metrics**：Prometheus UI http://127.0.0.1:9099，查询 `go_goroutines`
+  作为在线信号；WS 请求指标 `http_server_requests_*` 会在连接关闭后出现。
+- **Traces**：Jaeger UI http://127.0.0.1:16686，服务选 `greet-ws`。
+- **Logs**：`curl -s 'http://127.0.0.1:3100/loki/api/v1/query_range?query=%7Bjob%3D%22greet-ws%22%7D'`。
 
 ## 运行
 

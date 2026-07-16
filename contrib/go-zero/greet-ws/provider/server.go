@@ -19,7 +19,9 @@ package main
 import (
 	"context"
 
+	"github.com/zeromicro/go-zero/core/logx"
 	"github.com/zeromicro/go-zero/core/service"
+	"github.com/zeromicro/go-zero/core/trace"
 	"github.com/zeromicro/go-zero/rest"
 	"go-spring.org/spring/gs"
 )
@@ -46,12 +48,52 @@ func init() {
 type HandlerRegister func(server *rest.Server)
 
 // Config defines go-zero REST server configuration, bound from
-// ${spring.rest.server}. Same fields as greet-api's Config — WebSocket rides
-// on the same rest.RestConf, there are no extra WS-specific knobs.
+// ${spring.rest.server}.
+//
+// WebSocket rides on the same rest.RestConf as greet-api — there are no
+// extra WS-specific knobs — so the observability shape is identical: Name /
+// Host / Port plus the three pillars go-zero wires up natively inside
+// rest.MustNewServer → ServiceConf.SetUp(): tracing (Telemetry), metrics
+// (DevServer /metrics) and logging (logx). We do NOT hand-wire any
+// OpenTelemetry/Prometheus code — the rest.Server middlewares
+// (Trace/Prometheus/Metrics/Log, all on by default) do the instrumentation
+// once these config fields are populated.
+//
+// Because we build the RestConf struct in Go rather than loading it through
+// go-zero's conf loader, go-zero's `json:",default="` tags do NOT apply; every
+// field must carry an explicit value, so each maps to a value-tag default that
+// keeps the plain smoke test working even without the observability backends.
 type Config struct {
 	Name string `value:"${name:=greet-ws}"`
 	Host string `value:"${host:=0.0.0.0}"`
 	Port int    `value:"${port:=8890}"`
+
+	// Tracing → OTel → Jaeger over OTLP/gRPC (docker-compose.yml). Disabled
+	// defaults to false so a locally-running backend is used when present; the
+	// smoke test still starts fine when nothing listens on the endpoint (the
+	// exporter just fails to connect in the background).
+	TracingEndpoint string  `value:"${tracing.endpoint:=127.0.0.1:4317}"`
+	TracingSampler  float64 `value:"${tracing.sampler:=1.0}"`
+	TracingBatcher  string  `value:"${tracing.batcher:=otlpgrpc}"`
+	TracingDisabled bool    `value:"${tracing.disabled:=false}"`
+
+	// Metrics: go-zero's DevServer exposes a Prometheus scrape endpoint
+	// (/metrics) plus health on its own port, independent of the REST port.
+	// The Prometheus middleware records http_server_requests_* into the default
+	// registry that this endpoint serves. Note: because WS is a long-lived
+	// connection, http_server_requests_* is only recorded when the connection
+	// closes; go_* process metrics from the same registry are always live.
+	MetricsEnabled bool   `value:"${metrics.enabled:=true}"`
+	MetricsPort    int    `value:"${metrics.port:=6060}"`
+	MetricsPath    string `value:"${metrics.path:=/metrics}"`
+
+	// Logging: go-zero's logx writes structured JSON. In file mode it emits
+	// access/error/stat/severe/slow .log files under LogPath, each line carrying
+	// trace/span keys so logs correlate with Jaeger spans out of the box.
+	LogMode     string `value:"${log.mode:=file}"`
+	LogEncoding string `value:"${log.encoding:=json}"`
+	LogPath     string `value:"${log.path:=../logs}"`
+	LogLevel    string `value:"${log.level:=info}"`
 }
 
 // RestServer adapts a go-zero rest.Server to the Go-Spring server lifecycle.
@@ -76,9 +118,41 @@ func NewRestServer(cfg Config, reg HandlerRegister) *RestServer {
 // and then serves once Go-Spring signals readiness.
 func (s *RestServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	rc := rest.RestConf{
-		ServiceConf: service.ServiceConf{Name: s.cfg.Name},
-		Host:        s.cfg.Host,
-		Port:        s.cfg.Port,
+		ServiceConf: service.ServiceConf{
+			Name: s.cfg.Name,
+			// logx: file-mode JSON logs under LogPath, auto-tagged with
+			// trace/span so they correlate with the spans exported below.
+			Log: logx.LogConf{
+				ServiceName: s.cfg.Name,
+				Mode:        s.cfg.LogMode,
+				Encoding:    s.cfg.LogEncoding,
+				Path:        s.cfg.LogPath,
+				Level:       s.cfg.LogLevel,
+			},
+			// Telemetry: OTel tracing exported to Jaeger over OTLP/gRPC. The
+			// rest.Server trace middleware starts a span per request (including
+			// the WS upgrade request).
+			Telemetry: trace.Config{
+				Name:     s.cfg.Name,
+				Endpoint: s.cfg.TracingEndpoint,
+				Sampler:  s.cfg.TracingSampler,
+				Batcher:  s.cfg.TracingBatcher,
+				Disabled: s.cfg.TracingDisabled,
+			},
+			// DevServer: serves the Prometheus /metrics endpoint (pprof off to
+			// keep it lean). The Prometheus middleware feeds the default
+			// registry this endpoint exposes.
+			DevServer: service.DevServerConfig{
+				Enabled:        s.cfg.MetricsEnabled,
+				Port:           s.cfg.MetricsPort,
+				MetricsPath:    s.cfg.MetricsPath,
+				EnableMetrics:  true,
+				EnablePprof:    false,
+				HealthResponse: "OK",
+			},
+		},
+		Host: s.cfg.Host,
+		Port: s.cfg.Port,
 	}
 	s.svr = rest.MustNewServer(rc)
 	s.reg(s.svr)

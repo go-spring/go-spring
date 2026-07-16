@@ -18,19 +18,23 @@ package main
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"time"
 
 	"github.com/go-kratos/kratos/contrib/registry/etcd/v2"
 	"github.com/go-kratos/kratos/v2"
 	"github.com/go-kratos/kratos/v2/log"
+	kmetrics "github.com/go-kratos/kratos/v2/middleware/metrics"
 	"github.com/go-kratos/kratos/v2/middleware/recovery"
+	"github.com/go-kratos/kratos/v2/middleware/tracing"
 	kgrpc "github.com/go-kratos/kratos/v2/transport/grpc"
 	khttp "github.com/go-kratos/kratos/v2/transport/http"
 	kws "github.com/tx7do/kratos-transport/transport/websocket"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
 func init() {
@@ -80,6 +84,14 @@ type Config struct {
 	WSAddr       string        `value:"${ws.addr:=0.0.0.0:9002}"`
 	WSPath       string        `value:"${ws.path:=/}"`
 	RegistryAddr string        `value:"${registry.etcd:=127.0.0.1:2379}"`
+
+	// Observability. Unlike starter-dubbo (config-driven), these feed the
+	// hand-wired OTel/kratos-middleware setup in observability.go. MetricsAddr is
+	// a standalone Prometheus scrape endpoint (the built-in HTTP server is off);
+	// TracingEndpoint is the OTLP/gRPC collector (Jaeger) spans are pushed to.
+	MetricsAddr     string `value:"${metrics.addr:=0.0.0.0:9090}"`
+	TracingEndpoint string `value:"${tracing.endpoint:=127.0.0.1:4317}"`
+	TracingInsecure bool   `value:"${tracing.insecure:=true}"`
 }
 
 // KratosServer adapts a *kratos.App to the Go-Spring server lifecycle. This is
@@ -93,11 +105,13 @@ type Config struct {
 // published into etcd under that name, tagged by kratos "kind" ("http",
 // "grpc", "websocket").
 type KratosServer struct {
-	cfg  Config
-	reg  ServiceRegister
-	log  log.Logger
-	app  *kratos.App
-	done chan struct{}
+	cfg        Config
+	reg        ServiceRegister
+	log        log.Logger
+	app        *kratos.App
+	tp         *sdktrace.TracerProvider
+	metricsSrv *http.Server
+	done       chan struct{}
 }
 
 // NewKratosServer creates a KratosServer from ${spring.kratos} config, the
@@ -113,8 +127,33 @@ func NewKratosServer(cfg Config, reg ServiceRegister, logger log.Logger) *Kratos
 // called, so it runs in a goroutine while Run parks on the done channel; Stop
 // closes done to hand control back to Go-Spring after tearing the App down.
 func (s *KratosServer) Run(ctx context.Context, sig gs.ReadySignal) error {
+	// Observability is wired in code (no starter): build the OTel TracerProvider
+	// and the Prometheus-backed metric instruments first, then feed kratos'
+	// tracing.Server() and metrics.Server() middleware into every transport that
+	// has a middleware chain (HTTP + gRPC). See observability.go for the crux.
+	tp, err := setupTracing(ctx, s.cfg.Name, s.cfg.TracingEndpoint, s.cfg.TracingInsecure)
+	if err != nil {
+		return err
+	}
+	s.tp = tp
+
+	reqCounter, secHistogram, metricsReg, err := setupMetrics(s.cfg.Name)
+	if err != nil {
+		return err
+	}
+
+	// Middleware order: recovery outermost, then tracing (starts the span), then
+	// metrics (records under the active span/context). WebSocket has no such
+	// chain, so it is intentionally NOT instrumented — see the README's WS note.
 	httpOpts := []khttp.ServerOption{
-		khttp.Middleware(recovery.Recovery()),
+		khttp.Middleware(
+			recovery.Recovery(),
+			tracing.Server(),
+			kmetrics.Server(
+				kmetrics.WithRequests(reqCounter),
+				kmetrics.WithSeconds(secHistogram),
+			),
+		),
 	}
 	if s.cfg.HTTPNetwork != "" {
 		httpOpts = append(httpOpts, khttp.Network(s.cfg.HTTPNetwork))
@@ -128,7 +167,14 @@ func (s *KratosServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	httpSrv := khttp.NewServer(httpOpts...)
 
 	grpcOpts := []kgrpc.ServerOption{
-		kgrpc.Middleware(recovery.Recovery()),
+		kgrpc.Middleware(
+			recovery.Recovery(),
+			tracing.Server(),
+			kmetrics.Server(
+				kmetrics.WithRequests(reqCounter),
+				kmetrics.WithSeconds(secHistogram),
+			),
+		),
 	}
 	if s.cfg.GRPCNetwork != "" {
 		grpcOpts = append(grpcOpts, kgrpc.Network(s.cfg.GRPCNetwork))
@@ -196,6 +242,11 @@ func (s *KratosServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 
 	<-sig.TriggerAndWait()
 
+	// Expose the Prometheus scrape endpoint once the app is ready. It runs in a
+	// standalone listener (independent of the disabled built-in HTTP server and
+	// of the kratos transports) so Prometheus can pull metrics at cfg.MetricsAddr.
+	s.metricsSrv = serveMetrics(s.cfg.MetricsAddr, metricsReg)
+
 	errCh := make(chan error, 1)
 	go func() {
 		// App.Run starts every transport server and blocks; on Stop it
@@ -207,7 +258,22 @@ func (s *KratosServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	case err = <-errCh:
 		return errutil.Explain(err, "kratos app exited with error")
 	case <-s.done:
-		return s.app.Stop()
+		appErr := s.app.Stop()
+		s.shutdownObservability()
+		return appErr
+	}
+}
+
+// shutdownObservability tears down the standalone metrics server and flushes any
+// buffered spans. Called on graceful shutdown after the kratos.App has stopped.
+func (s *KratosServer) shutdownObservability() {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if s.metricsSrv != nil {
+		_ = s.metricsSrv.Shutdown(ctx)
+	}
+	if s.tp != nil {
+		_ = s.tp.Shutdown(ctx)
 	}
 }
 

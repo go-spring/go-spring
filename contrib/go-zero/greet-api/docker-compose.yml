@@ -1,0 +1,56 @@
+services:
+  # ── Observability backends ──────────────────────────────────────────────────
+  # The provider runs on the HOST (scripts/smoke-test.sh builds & runs it), not
+  # in a container; the consumer is a raw net/http client and is not
+  # instrumented. So Prometheus scrapes ONLY the provider's DevServer on the
+  # host via host.docker.internal, Promtail bind-mounts the host ./logs, and the
+  # host sends traces to Jaeger's mapped 127.0.0.1:4317. See docker/*.yml.
+  #
+  # Unlike the sibling greet-rpc, there is no etcd here: rest.Server has no
+  # built-in service discovery.
+
+  # Prometheus scrapes the provider's :6060/metrics (go-zero DevServer). Its own
+  # UI is mapped to 9099 on the host to avoid colliding with common defaults.
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: contrib-go-zero-api-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+    volumes:
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:9099:9090"
+
+  # Jaeger all-in-one: receives OTel spans over OTLP/gRPC (4317) and serves the
+  # trace UI (16686).
+  jaeger:
+    image: jaegertracing/all-in-one:1.60
+    container_name: contrib-go-zero-api-jaeger
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "127.0.0.1:16686:16686"
+      - "127.0.0.1:4317:4317"
+
+  # Loki stores the logs Promtail ships; queryable over its HTTP API (3100).
+  loki:
+    image: grafana/loki:3.1.1
+    container_name: contrib-go-zero-api-loki
+    command:
+      - -config.file=/etc/loki/local-config.yaml
+    ports:
+      - "127.0.0.1:3100:3100"
+
+  # Promtail tails the host ./logs (mounted at /var/log/app) and pushes to Loki.
+  promtail:
+    image: grafana/promtail:3.1.1
+    container_name: contrib-go-zero-api-promtail
+    command:
+      - -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./docker/promtail-config.yml:/etc/promtail/config.yml:ro
+      - ./logs:/var/log/app:ro
+    depends_on:
+      - loki

@@ -95,9 +95,36 @@ spring.kitex.server.service.name=echo-generic
 spring.kitex.server.registry.etcd=127.0.0.1:2379
 ```
 
+## Observability (log / trace / metric)
+
+The provider is instrumented for the three pillars, all wired inside
+`starter-kitex` and driven purely from `provider/conf/app.properties` — the
+handler only adds a context-aware `klog.CtxInfof` line. Kitex has no single
+"SetUp" like dubbo-go/go-zero, so `starter-kitex` composes its native
+[kitex-contrib](https://github.com/kitex-contrib) pieces:
+
+| Pillar | Mechanism | Backend |
+| ------ | --------- | ------- |
+| Trace  | `obs-opentelemetry` `tracing.NewServerSuite()` → OTLP/gRPC | Jaeger (`:16686`, collector `:4317`) |
+| Metric | `monitor-prometheus` server tracer, self-hosted scrape endpoint | Prometheus (`:9099`, scrapes provider `:9090`) |
+| Log    | `klog` backed by the `obs-opentelemetry` logrus adapter (JSON + `trace_id`/`span_id`) | file → Promtail → Loki (`:3100`) |
+
+Only the **provider** is instrumented; the generic JSON consumer stays a bare
+client. Because instrumentation lives on the standard server side, the provider
+is observed identically no matter that the client calls it generically. The
+OTel meter is disabled so metrics flow solely through Prometheus (no duplicate
+pipeline).
+
+`docker-compose.yml` brings up etcd plus Jaeger, Prometheus, Loki and Promtail.
+After running the provider + consumer (or the smoke test), verify each pillar:
+
+- **Trace** — Jaeger UI <http://127.0.0.1:16686>, service `echo-generic`, look for the `Echo` span.
+- **Metric** — Prometheus UI <http://127.0.0.1:9099> (query e.g. `kitex_server_throughput`), or `curl 127.0.0.1:9090/metrics`.
+- **Log** — `logs/provider.log` holds JSON lines carrying `trace_id`/`span_id`; query them via Loki at `127.0.0.1:3100`.
+
 ## Run
 
-Bring up the registry first:
+Bring up the registry and observability backends first:
 
 ```bash
 docker compose up -d      # or docker-compose up -d

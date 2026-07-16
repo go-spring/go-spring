@@ -1,0 +1,23 @@
+# Prometheus scrape config for the go-zero zRPC example.
+#
+# The provider is NOT a container: scripts/smoke-test.sh builds and runs it on
+# the host, where go-zero's DevServer exposes /metrics on :6060. From inside
+# this container the host is reachable as host.docker.internal (mapped via
+# docker-compose.yml's extra_hosts on Linux; native on macOS/Windows).
+#
+# Only the provider is scraped: the consumer is a raw zrpc client with no
+# metrics endpoint.
+#
+# A short scrape_interval keeps the smoke test / manual verification snappy: a
+# single request's metrics become queryable within a few seconds.
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: rpc-provider
+    static_configs:
+      - targets: ["host.docker.internal:6060"]
+        labels:
+          service: greet-rpc
+          role: provider

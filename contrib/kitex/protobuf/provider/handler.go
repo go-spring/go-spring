@@ -19,6 +19,7 @@ package main
 import (
 	"context"
 
+	"github.com/cloudwego/kitex/pkg/klog"
 	"github.com/cloudwego/kitex/server"
 	echo "go-spring.org/kitex/protobuf/kitex_gen/echo"
 	"go-spring.org/kitex/protobuf/kitex_gen/echo/echoservice"
@@ -43,7 +44,10 @@ func init() {
 type EchoServiceImpl struct{}
 
 // Echo returns the request message unchanged, giving the client a
-// deterministic value to assert on.
+// deterministic value to assert on. The klog.CtxInfof call is context-aware, so
+// the obs-opentelemetry logrus adapter (installed by starter-kitex) tags each
+// line with the request's trace_id/span_id, correlating logs with traces.
 func (s *EchoServiceImpl) Echo(ctx context.Context, req *echo.EchoRequest) (*echo.EchoResponse, error) {
+	klog.CtxInfof(ctx, "echo request: %s", req.Message)
 	return &echo.EchoResponse{Message: req.Message}, nil
 }

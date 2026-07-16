@@ -45,8 +45,11 @@ type HelloRes struct {
 type HelloController struct{}
 
 // Hello writes a fixed body the consumer asserts on. Returning nil res is fine
-// because the body is written directly onto the response.
+// because the body is written directly onto the response. Logging through the
+// request ctx makes glog stamp each line with the active span's trace-id, so
+// the log entry correlates with the trace exported to Jaeger.
 func (c *HelloController) Hello(ctx context.Context, req *HelloReq) (res *HelloRes, err error) {
+	g.Log().Info(ctx, "handling hello request")
 	g.RequestFromCtx(ctx).Response.Writeln("Hello World!")
 	return
 }

@@ -39,13 +39,15 @@ goframe `gclient` 的 discovery 中间件从同一 etcd 解析出可用地址再
 ```
 contrib/goframe/http/
 ├── provider/main.go              # gs.Run(),长驻并注册到 etcd
-├── provider/server.go            # GoFrameServer 适配器(gs.Server)+ Config + etcd registry 接入
-├── provider/handler.go           # 手写 HelloController(g.Meta 路由 + 响应)
+├── provider/server.go            # GoFrameServer 适配器(gs.Server)+ Config + etcd registry + 可观测接线
+├── provider/handler.go           # 手写 HelloController(g.Meta 路由 + 响应),通过请求 ctx 打日志
 ├── consumer/main.go              # 通过 etcd 发现 provider,调用并断言后退出
 ├── conf/app.properties           # provider 配置
 ├── scripts/gen-code.sh           # 空操作:handler 手写,无 IDL 代码生成
-├── docker-compose.yml            # 本地 etcd
-└── scripts/smoke-test.sh         # 冒烟脚本:起 etcd+provider,跑 consumer,自动清理
+├── docker-compose.yml            # 本地 etcd + 可观测后端(Prometheus/Jaeger/Loki/Promtail)
+├── docker/prometheus.yml         # Prometheus 抓取配置(目标为宿主机 :8000/metrics)
+├── docker/promtail-config.yml    # Promtail 配置(tail ./logs 推送到 Loki)
+└── scripts/smoke-test.sh         # 冒烟脚本:起后端+provider,跑 consumer,断言三支柱,自动清理
 ```
 
 ## 如何生成
@@ -111,6 +113,14 @@ goframe.name=goframe.hello
 
 # etcd 注册中心地址,与 docker-compose.yml 一致。
 goframe.registry.etcd=127.0.0.1:2379
+
+# 可观测(详见下文):tracing → Jaeger(OTLP/HTTP),metrics → HTTP 端口上的
+# Prometheus 抓取端点,logging → glog JSON 写入 logs/。
+goframe.tracing.endpoint=127.0.0.1:4318
+goframe.tracing.path=/v1/traces
+goframe.metrics.path=/metrics
+goframe.log.dir=../logs
+goframe.log.file=provider.log
 ```
 
 ## 运行
@@ -144,3 +154,59 @@ Response from discovered provider: Hello World!
 ```bash
 bash scripts/smoke-test.sh
 ```
+
+## 可观测
+
+与 dubbo-go 示例(可观测内建于 `starter-dubbo`、由 `spring.dubbo.*` 驱动)不同,
+goframe **自带一套 OpenTelemetry 集成**,因此三大支柱全部使用 goframe 原生包 ——
+在 `provider/server.go` 中接线,而非套用 go-spring 的 `log`/`metric`。只对
+**provider** 埋点,consumer 保持裸客户端,与 dubbo-go / go-zero 示例一致。后端栈
+(Prometheus/Jaeger/Loki/Promtail)沿用其它 contrib 示例共用的那一套,定义在
+`docker-compose.yml`。
+
+| 信号   | 产生方                                                 | 后端            | 查看位置                                              |
+| ------ | ------------------------------------------------------ | --------------- | ----------------------------------------------------- |
+| 指标   | `contrib/metric/otelmetric` → Prometheus exporter      | Prometheus      | UI http://127.0.0.1:9099(查询 `target_info`)         |
+| 链路   | `contrib/trace/otlphttp` → OTLP/HTTP `127.0.0.1:4318` | Jaeger          | UI http://127.0.0.1:16686(服务 `goframe.hello`)      |
+| 日志   | `glog` JSON handler → `logs/` 下文件                   | Loki(Promtail) | Loki HTTP API,端口 `:3100`                           |
+
+### 工作原理
+
+provider 跑在**宿主机**上(`scripts/smoke-test.sh` 编译并运行),后端都跑在
+**容器**里(`docker-compose.yml`)。三支柱在 `NewGoFrameServer` →
+`initObservability` 里一次性接好:
+
+- **链路 —— push。** `otlphttp.Init(name, endpoint, "/v1/traces")` 设置全局
+  tracer provider 与 OTLP/HTTP exporter,并返回 shutdown 函数(在 `Stop()` 中
+  flush)。provider 设好后,**ghttp 自动对每个请求埋点**,无需中间件。用 OTLP/HTTP
+  (`:4318`)是因为 `otlphttp` 写死了 `WithInsecure()`,能干净地对接明文的 Jaeger
+  all-in-one collector(与 dubbo-go 示例回避 OTLP/gRPC 是同一原因)。
+- **指标 —— pull。** Prometheus(pull)exporter 喂给 `otelmetric` 的
+  `MeterProvider`(`WithBuiltInMetrics()` 附带 Go runtime 指标)。端点由
+  `otelmetric.PrometheusHandler` 提供,绑在 server **根部**
+  (`s.BindHandler("/metrics", ...)`)而非 `Group("/")` 内 —— 组上的
+  `MiddlewareHandlerResponse` 会把响应包成 goframe JSON 信封,破坏 Prometheus
+  文本格式。goframe 在**同一 HTTP 端口**(`:8000`)上提供 `/metrics`;Prometheus
+  抓取 `host.docker.internal:8000`(`docker/prometheus.yml`)。
+- **日志 —— tail 后 push。** `glog` 内建 JSON handler(`glog.HandlerJson`)把每条
+  事件写成一行结构化 JSON 到 `../logs/provider.log`。用请求 ctx 打的日志会被 glog
+  **自动打上 trace-id**(见 `provider/handler.go`),从而与上面的 span 关联。该
+  `logs/` 目录被 bind-mount 进 Promtail,由其 tail 后推送到 Loki `:3100`。
+
+到后端为止都是 provider 本地、确定性的;数据是否最终可在
+Prometheus/Jaeger/Loki 查到属于手动步骤。栈起好且至少调用一次后:
+
+```bash
+# 指标 —— exporter 接好后必定输出 target_info
+curl -s http://127.0.0.1:8000/metrics | grep target_info
+
+# 链路 —— 首次请求后服务出现在 Jaeger
+open http://127.0.0.1:16686        # 服务:goframe.hello
+
+# 日志 —— 每条 ctx 日志带非空 "TraceId"
+grep '"TraceId"' logs/provider.log
+```
+
+> 若你的 shell 导出了 HTTP 代理,请先把 `127.0.0.1,localhost` 加进
+> `no_proxy`/`NO_PROXY`,否则本地 `curl` 会走代理返回空。
+

@@ -50,8 +50,10 @@ contrib/go-zero/greet-ws/
 ├── provider/server.go                  # RestServer adapter (gs.Server) + Config
 ├── provider/main.go                    # gs.Run(); long-lived process
 ├── consumer/main.go                    # WS dialer, asserts on echo, exits
-├── conf/app.properties                 # provider configuration
-└── scripts/smoke-test.sh               # smoke test: build+run provider, run consumer, tear down
+├── conf/app.properties                 # provider configuration (incl. observability)
+├── docker-compose.yml                  # observability backends (prometheus/jaeger/loki/promtail)
+├── docker/                             # prometheus.yml + promtail-config.yml
+└── scripts/smoke-test.sh               # smoke test: backends up, build+run provider, run consumer, assert, tear down
 ```
 
 ## Why WebSocket differs from `greet-api` / `greet-rpc`
@@ -84,7 +86,55 @@ spring.http.server.enabled=false
 spring.rest.server.name=greet-ws
 spring.rest.server.host=0.0.0.0
 spring.rest.server.port=8890
+
+# Observability (provider-only). See the Observability section below.
+spring.rest.server.tracing.endpoint=127.0.0.1:4317
+spring.rest.server.metrics.port=6060
+spring.rest.server.log.mode=file
+spring.rest.server.log.path=../logs
 ```
+
+## Observability
+
+WS is served by the same `rest.Server` as `greet-api`, so the observability
+wiring is identical: `rest.MustNewServer` calls `service.ServiceConf.SetUp()`
+internally, which starts the tracing agent, the metrics DevServer and logx;
+the `rest.Server` middlewares (Trace/Prometheus/Metrics/Log, on by default)
+then instrument every request — including the HTTP upgrade that opens the WS
+connection. **We write no OpenTelemetry/Prometheus code** — `provider/server.go`
+only populates the `ServiceConf` fields from `conf/app.properties`.
+
+| Pillar  | go-zero field           | Backend (docker-compose.yml)          |
+| ------- | ----------------------- | ------------------------------------- |
+| Tracing | `ServiceConf.Telemetry` | Jaeger via OTLP/gRPC (:4317, UI 16686) |
+| Metrics | `ServiceConf.DevServer` | Prometheus scrapes :6060/metrics (UI 9099) |
+| Logging | `ServiceConf.Log` (logx)| JSON files → Promtail → Loki (:3100)  |
+
+Only the **provider** is instrumented; the consumer is a raw
+`gorilla/websocket` client. go-zero's logx tags each log line with the active
+trace/span, so logs in Loki correlate with spans in Jaeger.
+
+Bring up the backends and run the instrumented smoke test:
+
+```bash
+docker compose up -d
+bash scripts/smoke-test.sh   # asserts /metrics serves go_* process metrics
+```
+
+The smoke assertion targets `go_*` (always live) rather than
+`http_server_requests_*` because WS is a long-lived connection: the
+`rest.Server` Prometheus middleware only records the HTTP request sample when
+the connection closes, so its timing is racy relative to the assertion. Once
+the consumer disconnects, `http_server_requests_*` does show up for the WS
+upgrade request.
+
+Manual verification while the provider is running and after a request:
+
+- **Metrics**: Prometheus UI at http://127.0.0.1:9099 — query `go_goroutines`
+  for a live signal; WS request metrics appear as `http_server_requests_*`
+  after the connection closes.
+- **Traces**: Jaeger UI at http://127.0.0.1:16686 — pick service `greet-ws`.
+- **Logs**: `curl -s 'http://127.0.0.1:3100/loki/api/v1/query_range?query=%7Bjob%3D%22greet-ws%22%7D'`.
 
 ## Run
 

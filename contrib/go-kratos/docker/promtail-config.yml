@@ -1,0 +1,24 @@
+# Promtail config for the go-kratos observability example.
+#
+# The provider runs on the host and writes structured JSON business logs into
+# ./logs/provider.log (bind-mounted here at /var/log/app by docker-compose.yml).
+# Promtail tails those files and pushes them to Loki, so the provider's logs
+# become queryable through Loki's HTTP API (see README). The consumer is a bare
+# client and writes no log file, so provider.log is the only source here.
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: kratos-greeter
+    static_configs:
+      - targets: ["localhost"]
+        labels:
+          job: kratos-greeter
+          __path__: /var/log/app/*.log

@@ -40,6 +40,12 @@ import (
 // integer is the contract by which the server routes a frame to a handler.
 const wsHelloMessageType uint32 = 1
 
+// greetCalls is how many extra gRPC calls runTest issues after the canonical
+// one. A single call proves wiring but leaves the provider's observability
+// backends nearly empty; a batch gives Prometheus a counter worth graphing,
+// Jaeger a handful of spans, and Loki several log lines.
+const greetCalls = 20
+
 // The kratos-transport WebSocket server is configured with PayloadTypeBinary,
 // so every frame on the wire is
 //
@@ -127,6 +133,27 @@ func runTest(c *Consumer) {
 		fmt.Fprintf(os.Stderr, "unexpected gRPC reply: %q\n", resp.Message)
 		os.Exit(1)
 	}
+
+	// Batch of additional gRPC calls to give the provider's observability
+	// backends real volume: each call bumps the provider's request counter
+	// (Prometheus), starts a fresh server span (Jaeger — the consumer stays a
+	// bare client with no tracing.Client(), so there is no client parent span),
+	// and emits one business log line the provider ships to Loki. Without this
+	// the backends would hold a single lonely sample.
+	client := v1.NewGreeterClient(conn)
+	for i := 1; i <= greetCalls; i++ {
+		name := fmt.Sprintf("Kratos caller #%d", i)
+		got, err := client.SayHello(ctx, &v1.HelloRequest{Name: name})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error on gRPC call #%d: %v\n", i, err)
+			os.Exit(1)
+		}
+		if got.Message != "Hello "+name {
+			fmt.Fprintf(os.Stderr, "gRPC call #%d echoed %q\n", i, got.Message)
+			os.Exit(1)
+		}
+	}
+	fmt.Printf("Sent %d gRPC greetings (1 canonical + %d batch)\n", greetCalls+1, greetCalls)
 
 	// WebSocket leg — same provider, different transport, different wire.
 	if err := roundTripWebSocket(c.WSURL, "Kratos-WS"); err != nil {

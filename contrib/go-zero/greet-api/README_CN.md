@@ -11,9 +11,10 @@
 有意为之:
 
 - **不接 etcd,没有服务发现。** 与相邻的 `../greet-rpc` 不同,本示例没有
-  docker-compose,也没有注册环节。`rest.Server` 不内建服务发现能力 ——
-  注册中心相关能力只存在于 go-zero 的 zRPC 层 —— 所以 consumer 直接连
-  固定的 `host:port`。
+  注册环节。`rest.Server` 不内建服务发现能力 —— 注册中心相关能力只存在于
+  go-zero 的 zRPC 层 —— 所以 consumer 直接连固定的 `host:port`。(这里的
+  `docker-compose.yml` 只用于拉起可观测后端,并非注册中心;见
+  [可观测](#可观测)。)
 - **goctl 产物已展平且保持很薄。** 只有 `types/types.go` 与
   `handler/routes.go` 由 goctl 生成、通过 `scripts/gen-code.sh` 重新生成;
   其余部分(`handler/greethandler.go`,以及 `svc/` 下的 `ServiceContext`
@@ -50,8 +51,10 @@ contrib/go-zero/greet-api/
 ├── provider/server.go                 # RestServer 适配器(gs.Server)+ Config
 ├── provider/main.go                   # gs.Run(),长驻 HTTP server
 ├── consumer/main.go                   # HTTP POST,断言响应后退出
-├── conf/app.properties                # provider 配置
-└── scripts/smoke-test.sh              # 冒烟脚本:构建并启动 provider,跑 consumer,自动清理
+├── conf/app.properties                # provider 配置(含可观测)
+├── docker-compose.yml                 # 可观测后端(prometheus/jaeger/loki/promtail)
+├── docker/                            # prometheus.yml + promtail-config.yml
+└── scripts/smoke-test.sh              # 冒烟脚本:起后端、构建并启动 provider、跑 consumer、断言、自动清理
 ```
 
 ## 如何生成
@@ -94,7 +97,44 @@ spring.http.server.enabled=false
 spring.rest.server.name=greet
 spring.rest.server.host=0.0.0.0
 spring.rest.server.port=8888
+
+# 可观测(仅 provider),详见下方「可观测」一节。
+spring.rest.server.tracing.endpoint=127.0.0.1:4317
+spring.rest.server.metrics.port=6060
+spring.rest.server.log.mode=file
+spring.rest.server.log.path=../logs
 ```
+
+## 可观测
+
+与 dubbo-go 示例(靠 `starter-dubbo` 手工接线 OTel 和 Prometheus)不同,
+go-zero 原生自带三支柱。`rest.MustNewServer` 内部会调用
+`service.ServiceConf.SetUp()`,启动 tracing agent、metrics DevServer 和 logx;
+`rest.Server` 的中间件(Trace/Prometheus/Metrics/Log,默认全开)随后对每个
+请求自动埋点。**我们不写任何 OpenTelemetry/Prometheus 代码** ——
+`provider/server.go` 只是把 `conf/app.properties` 里的值填进 `ServiceConf`。
+
+| 支柱   | go-zero 字段            | 后端(docker-compose.yml)              |
+| ------ | ----------------------- | --------------------------------------- |
+| Trace  | `ServiceConf.Telemetry` | Jaeger,OTLP/gRPC(:4317,UI 16686)      |
+| Metric | `ServiceConf.DevServer` | Prometheus 抓 :6060/metrics(UI 9099)   |
+| 日志   | `ServiceConf.Log`(logx)| JSON 文件 → Promtail → Loki(:3100)     |
+
+只有 **provider** 埋点;consumer 是裸 `net/http` 客户端。go-zero 的 logx 会给
+每行日志打上当前 trace/span,所以 Loki 里的日志能和 Jaeger 里的 span 关联。
+
+拉起后端并跑带可观测的冒烟脚本:
+
+```bash
+docker compose up -d
+bash scripts/smoke-test.sh   # 断言 /metrics 暴露了 http_server_requests_*
+```
+
+provider 运行且发生过一次请求后,手动验证:
+
+- **Metric**:Prometheus UI http://127.0.0.1:9099 —— 查询 `http_server_requests_duration_ms_count`。
+- **Trace**:Jaeger UI http://127.0.0.1:16686 —— 选择 service `greet`。
+- **日志**:`curl -s 'http://127.0.0.1:3100/loki/api/v1/query_range?query=%7Bjob%3D%22greet-api%22%7D'`。
 
 ## 运行
 

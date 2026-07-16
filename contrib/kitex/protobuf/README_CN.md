@@ -105,9 +105,33 @@ spring.kitex.server.service.name=echo
 spring.kitex.server.registry.etcd=127.0.0.1:2379
 ```
 
+## 可观测(日志 / trace / metric)
+
+provider 已接入三支柱,全部在 `starter-kitex` 内部接线,仅由
+`provider/conf/app.properties` 驱动——handler 只加了一行携带 ctx 的
+`klog.CtxInfof`。kitex 不像 dubbo-go/go-zero 有一键 "SetUp",所以
+`starter-kitex` 组合了它的原生 [kitex-contrib](https://github.com/kitex-contrib) 组件:
+
+| 支柱   | 机制 | 后端 |
+| ------ | ---- | ---- |
+| Trace  | `obs-opentelemetry` 的 `tracing.NewServerSuite()` → OTLP/gRPC | Jaeger(`:16686`,collector `:4317`) |
+| Metric | `monitor-prometheus` server tracer,进程自曝抓取端点 | Prometheus(`:9099`,抓取 provider `:9090`) |
+| Log    | `klog` 由 `obs-opentelemetry` logrus 适配器承接(JSON + `trace_id`/`span_id`) | 文件 → Promtail → Loki(`:3100`) |
+
+仅 **provider** 埋点,consumer 保持裸客户端。OTel meter 已关闭,指标只走
+Prometheus(不重复采集)。同一个 provider 同时服务 KitexProtobuf 与 gRPC,
+两种传输共用这套埋点。
+
+`docker-compose.yml` 会同时起 etcd 与 Jaeger、Prometheus、Loki、Promtail。
+跑完 provider + consumer(或冒烟脚本)后逐一核对:
+
+- **Trace** —— Jaeger UI <http://127.0.0.1:16686>,服务 `echo`,查看 `Echo` span。
+- **Metric** —— Prometheus UI <http://127.0.0.1:9099>(如查询 `kitex_server_throughput`),或 `curl 127.0.0.1:9090/metrics`。
+- **Log** —— `logs/provider.log` 为 JSON 且带 `trace_id`/`span_id`;经 Loki `127.0.0.1:3100` 查询。
+
 ## 运行
 
-先起注册中心:
+先起注册中心与可观测后端:
 
 ```bash
 docker compose up -d      # 或 docker-compose up -d

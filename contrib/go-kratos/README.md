@@ -60,12 +60,15 @@ contrib/go-kratos/
 │                               #   binds it to the HTTP, gRPC and WebSocket transports
 ├── provider/server.go          # KratosServer adapter (gs.Server) + Config + logger bean,
 │                               #   composes kratos.App with all three transports + etcd Registrar
+│                               #   and injects tracing/metrics middleware on HTTP+gRPC
+├── provider/observability.go   # OTel TracerProvider + Prometheus meter + standalone /metrics :9090
 ├── provider/main.go            # gs.Run(); long-lived, publishes into etcd
 ├── provider/conf/app.properties # provider configuration
 ├── consumer/main.go            # discovers the provider via etcd, calls SayHello over
 │                               #   gRPC AND dials the WebSocket endpoint, asserts both
-├── docker-compose.yml          # local etcd
-└── scripts/smoke-test.sh       # smoke test: bring up etcd+provider, run consumer, tear down
+├── docker/                     # Prometheus & Promtail config for the backend stack
+├── docker-compose.yml          # local etcd + Prometheus + Jaeger + Loki + Promtail
+└── scripts/smoke-test.sh       # smoke test: bring up etcd+backends, run provider+consumer, tear down
 ```
 
 ## How it was generated
@@ -184,6 +187,78 @@ contrib examples. Kratos contrib also ships adapters for **Consul**, **Nacos**,
 `polaris.New(...)`, and adjust the client config. With Nacos you can also
 inspect the registered services directly in its built-in `:8848/nacos` console.
 
+## Observability
+
+The three pillars (metrics, traces, logs) follow the same backend stack and
+verification model as the `dubbo-go/triple` example — Prometheus + Jaeger + Loki
++ Promtail, with the provider/consumer on the host and the backends in
+containers. **But the way they are wired is fundamentally different, and that
+difference is the point of this section.**
+
+**No starter → observability is code, not config.** starter-dubbo turns metrics
+and tracing on by config (`spring.dubbo.metrics/tracing.*`); go-zero's native
+`ServiceConf` wires all three pillars for you. This kratos example has **no
+starter**: the `kratos.App` is assembled by hand in `provider/server.go`, so
+observability is wired in code using kratos' own middleware plus the OTel SDK.
+The crux lives in `provider/observability.go`:
+
+- `setupTracing` builds an OTel `TracerProvider` (OTLP/gRPC exporter → Jaeger
+  `:4317`, `AlwaysSample`), installs it as the global provider + W3C propagator.
+- `setupMetrics` builds an OTel Prometheus exporter + meter and constructs the
+  kratos request counter / latency histogram.
+- `serveMetrics` starts a **standalone** `/metrics` listener on `:9090`
+  (the built-in go-spring HTTP server is disabled, so this is a dedicated
+  `http.Server`, mirroring the `:9090` the dubbo-go examples expose).
+
+`server.go` then injects `tracing.Server()` and `metrics.Server(...)` into the
+**HTTP and gRPC middleware chains** (after `recovery.Recovery()`).
+
+| Signal  | Produced by                                          | Backend         | Where to look                                        |
+| ------- | ---------------------------------------------------- | --------------- | ---------------------------------------------------- |
+| Metrics | kratos `metrics.Server` → OTel Prometheus, `:9090`   | Prometheus      | UI http://127.0.0.1:9099 (query `server_requests_code_total`) |
+| Traces  | kratos `tracing.Server` → OTLP/gRPC `127.0.0.1:4317` | Jaeger          | UI http://127.0.0.1:16686 (service `kratos-greeter`) |
+| Logs    | go-spring `log` → JSON `logs/provider.log`           | Loki (Promtail) | Loki HTTP API, port `:3100`                          |
+
+Two honest caveats specific to this example:
+
+- **WebSocket is a blind spot.** kratos-transport's WebSocket has no
+  http/grpc-style middleware chain, so `tracing.Server()` / `metrics.Server()`
+  cannot cover it — WS requests produce **no span and no metric**. This matches
+  the example's existing framing: gRPC proves discovery, WS proves coexistence.
+- **provider-only (traces have no client span).** Following the go-zero
+  precedent, the consumer stays a bare client: it has no `tracing.Client()`, so
+  each provider-side request begins a fresh trace rather than continuing a
+  consumer parent. Metrics and logs exist only on the provider side.
+
+**Logs: business only, not bridged.** The single log signal that reaches Loki is
+the business line emitted by `GreeterService.SayHello` via go-spring's `log`
+module (a `FileLogger` with `JSONLayout` → `logs/provider.log`). kratos' *own*
+framework logger still writes to stdout and is intentionally **not** bridged
+into the file/Loki path.
+
+```properties
+# metrics — a standalone Prometheus endpoint, independent of the disabled HTTP server
+spring.kratos.metrics.addr=0.0.0.0:9090
+
+# tracing (OTel → Jaeger over OTLP/gRPC); AlwaysSample so even one call is captured
+spring.kratos.tracing.endpoint=127.0.0.1:4317
+spring.kratos.tracing.insecure=true
+
+# logging — business logs as structured JSON, collected by Promtail into Loki
+logging.logger.root.type=FileLogger
+logging.logger.root.layout.type=JSONLayout
+logging.logger.root.dir=../logs
+logging.logger.root.file=provider.log
+```
+
+The smoke test asserts only **endpoint liveness** (the `/metrics` endpoint
+responds, both RPCs round-trip, the request counter climbs past the batch, no
+backend container crashed). Confirming data actually landed in
+Prometheus/Jaeger/Loki is a manual step: bring the stack up, run at least one
+call, then query `server_requests_code_total` in Prometheus (`:9099`), browse
+service `kratos-greeter` in Jaeger (`:16686`), and query `{job="kratos-greeter"}`
+against Loki (`:3100`).
+
 ## Configuration
 
 ```properties
@@ -208,6 +283,17 @@ spring.kratos.ws.path=/
 
 # etcd registry address; matches docker-compose.yml.
 spring.kratos.registry.etcd=127.0.0.1:2379
+
+# Observability (wired in code via provider/observability.go — see the section
+# above). Standalone Prometheus endpoint, OTLP/gRPC trace target, JSON log file.
+spring.kratos.metrics.addr=0.0.0.0:9090
+spring.kratos.tracing.endpoint=127.0.0.1:4317
+spring.kratos.tracing.insecure=true
+logging.logger.root.type=FileLogger
+logging.logger.root.level=INFO
+logging.logger.root.dir=../logs
+logging.logger.root.file=provider.log
+logging.logger.root.layout.type=JSONLayout
 ```
 
 ## Run
@@ -234,6 +320,7 @@ Expected consumer output:
 
 ```
 Response from discovered provider (gRPC): Hello Kratos
+Sent 21 gRPC greetings (1 canonical + 20 batch)
 Response from discovered provider (WebSocket): Hello Kratos-WS
 ```
 

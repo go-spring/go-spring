@@ -53,13 +53,16 @@ contrib/go-kratos/
 ├── provider/handler.go         # GreeterService(SayHello)+ ServiceRegister bean,
 │                               #   把它同时绑定到 HTTP、gRPC、WebSocket 三个 transport
 ├── provider/server.go          # KratosServer 适配器(gs.Server)+ Config + logger bean,
-│                               #   组合 kratos.App 与三个 transport,并注入 etcd Registrar
+│                               #   组合 kratos.App 与三个 transport,注入 etcd Registrar,
+│                               #   并在 HTTP+gRPC 上挂载 tracing/metrics 中间件
+├── provider/observability.go   # OTel TracerProvider + Prometheus meter + 独立 /metrics :9090
 ├── provider/main.go            # gs.Run(),长驻并注册到 etcd
 ├── provider/conf/app.properties # provider 配置
 ├── consumer/main.go            # 从 etcd 发现 provider,先走 gRPC 调 SayHello,
 │                               #   再拨 WebSocket 做一次断言,失败即非零退出
-├── docker-compose.yml          # 本地 etcd
-└── scripts/smoke-test.sh       # 冒烟脚本:起 etcd+provider,跑 consumer,自动清理
+├── docker/                     # 后端栈的 Prometheus 与 Promtail 配置
+├── docker-compose.yml          # 本地 etcd + Prometheus + Jaeger + Loki + Promtail
+└── scripts/smoke-test.sh       # 冒烟脚本:起 etcd+后端,跑 provider+consumer,自动清理
 ```
 
 ## 如何生成
@@ -161,6 +164,70 @@ marshal/unmarshal 就够。库版本 pin 在 `v1.3.1` 的原因见 `provider/ser
 `nacos.New(...)` / `zookeeper.New(...)` / `polaris.New(...)`,并调整 client 配置
 即可。选用 Nacos 时还能通过其自带的 `:8848/nacos` 控制台直接查看已注册的服务列表。
 
+## 可观测(Observability)
+
+三支柱(metrics、traces、logs)的后端栈与验证方式与 `dubbo-go/triple` 一致——
+Prometheus + Jaeger + Loki + Promtail,provider/consumer 跑在宿主机、后端跑在
+容器里。**但接线方式根本不同,而这个不同正是本节的重点。**
+
+**没有 starter → 可观测是代码,不是配置。** starter-dubbo 靠配置开启 metrics 与
+tracing(`spring.dubbo.metrics/tracing.*`);go-zero 靠原生 `ServiceConf` 自动接好
+三支柱。而这个 kratos 示例**没有 starter**:`kratos.App` 是在 `provider/server.go`
+里手工组起来的,所以可观测得用 kratos 自带的 middleware + OTel SDK 在代码里接。
+crux 落在 `provider/observability.go`:
+
+- `setupTracing` 构建 OTel `TracerProvider`(OTLP/gRPC exporter → Jaeger
+  `:4317`,`AlwaysSample`),设为全局 provider + W3C propagator。
+- `setupMetrics` 构建 OTel Prometheus exporter + meter,并构造 kratos 的请求
+  计数器 / 时延直方图。
+- `serveMetrics` 起一个**独立**的 `/metrics` 监听(`:9090`)——内置 go-spring
+  HTTP server 已关,所以这是一个专用 `http.Server`,对齐 dubbo-go 示例暴露的 `:9090`。
+
+`server.go` 随后把 `tracing.Server()` 与 `metrics.Server(...)` 注入 **HTTP 与
+gRPC 的 middleware 链**(接在 `recovery.Recovery()` 之后)。
+
+| 信号    | 产生方                                               | 后端            | 查看位置                                             |
+| ------- | ---------------------------------------------------- | --------------- | ---------------------------------------------------- |
+| Metrics | kratos `metrics.Server` → OTel Prometheus,`:9090`    | Prometheus      | UI http://127.0.0.1:9099(查 `server_requests_code_total`) |
+| Traces  | kratos `tracing.Server` → OTLP/gRPC `127.0.0.1:4317` | Jaeger          | UI http://127.0.0.1:16686(service `kratos-greeter`)  |
+| Logs    | go-spring `log` → JSON `logs/provider.log`           | Loki (Promtail) | Loki HTTP API,端口 `:3100`                           |
+
+两点本示例特有、需如实说明的取舍:
+
+- **WebSocket 是盲区。** kratos-transport 的 WebSocket 没有 http/grpc 那种
+  middleware 链,`tracing.Server()` / `metrics.Server()` 覆盖不到它——WS 请求
+  **不产生 span、也不产生 metric**。这与示例既有的叙事一致:gRPC 证明发现,
+  WS 证明共存。
+- **provider-only(traces 没有 client span)。** 沿用 go-zero 先例,consumer
+  保持裸客户端:没有 `tracing.Client()`,所以每个 provider 侧请求各自开一条新
+  trace,而不是接续 consumer 的父 span。metrics 与 logs 也只在 provider 侧。
+
+**日志:只落业务日志,不桥接。** 唯一进 Loki 的日志信号,是
+`GreeterService.SayHello` 经 go-spring `log` 模块(`FileLogger` + `JSONLayout`
+→ `logs/provider.log`)打的业务行。kratos **自身**的框架日志仍写 stdout,
+**有意不**桥接进文件/Loki。
+
+```properties
+# metrics —— 独立的 Prometheus 端点,与已关闭的内置 HTTP server 无关
+spring.kratos.metrics.addr=0.0.0.0:9090
+
+# tracing(OTel → Jaeger,OTLP/gRPC);AlwaysSample,单次调用也能采到
+spring.kratos.tracing.endpoint=127.0.0.1:4317
+spring.kratos.tracing.insecure=true
+
+# logging —— 业务日志以结构化 JSON 输出,由 Promtail 收进 Loki
+logging.logger.root.type=FileLogger
+logging.logger.root.layout.type=JSONLayout
+logging.logger.root.dir=../logs
+logging.logger.root.file=provider.log
+```
+
+冒烟脚本只断言**端点存活**(`/metrics` 有响应、两路 RPC 都跑通、请求计数器涨过
+批量、后端容器没崩)。确认数据真的进了 Prometheus/Jaeger/Loki 是手工步骤:把
+栈起起来、至少调一次,再在 Prometheus(`:9099`)查 `server_requests_code_total`、
+在 Jaeger(`:16686`)浏览 service `kratos-greeter`、对 Loki(`:3100`)查
+`{job="kratos-greeter"}`。
+
 ## 配置
 
 ```properties
@@ -185,11 +252,22 @@ spring.kratos.ws.path=/
 
 # etcd 注册中心地址,与 docker-compose.yml 一致。
 spring.kratos.registry.etcd=127.0.0.1:2379
+
+# 可观测(在代码里经 provider/observability.go 接线,见上文)。独立 Prometheus
+# 端点、OTLP/gRPC trace 目标、JSON 日志文件。
+spring.kratos.metrics.addr=0.0.0.0:9090
+spring.kratos.tracing.endpoint=127.0.0.1:4317
+spring.kratos.tracing.insecure=true
+logging.logger.root.type=FileLogger
+logging.logger.root.level=INFO
+logging.logger.root.dir=../logs
+logging.logger.root.file=provider.log
+logging.logger.root.layout.type=JSONLayout
 ```
 
 ## 运行
 
-先起注册中心:
+先起注册中心与后端栈:
 
 ```bash
 docker compose up -d      # 或 docker-compose up -d
@@ -211,10 +289,11 @@ consumer 预期输出:
 
 ```
 Response from discovered provider (gRPC): Hello Kratos
+Sent 21 gRPC greetings (1 canonical + 20 batch)
 Response from discovered provider (WebSocket): Hello Kratos-WS
 ```
 
-或一键冒烟(自动起 etcd + provider、跑 consumer、清理):
+或一键冒烟(自动起 etcd + 后端、跑 provider + consumer、清理):
 
 ```bash
 bash scripts/smoke-test.sh

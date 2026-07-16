@@ -58,9 +58,10 @@ contrib/go-zero/greet-rpc/
 ├── provider/server.go      # ZrpcServer adapter (gs.Server) + Config, configures the etcd registry
 ├── provider/main.go        # gs.Run(); long-lived, registers into etcd
 ├── consumer/main.go        # discovers the provider via etcd, calls it and asserts, then exits
-├── conf/app.properties     # provider configuration
-├── docker-compose.yml      # local etcd
-└── scripts/smoke-test.sh   # smoke test: bring up etcd+provider, run consumer, tear down
+├── conf/app.properties     # provider configuration (incl. observability)
+├── docker-compose.yml      # etcd + observability backends (prometheus/jaeger/loki/promtail)
+├── docker/                 # prometheus.yml + promtail-config.yml
+└── scripts/smoke-test.sh   # smoke test: bring up etcd+backends+provider, run consumer, assert, tear down
 ```
 
 ## How it was generated
@@ -112,7 +113,49 @@ spring.zrpc.server.listen-on=0.0.0.0:8081
 # etcd registry address + key; matches docker-compose.yml.
 spring.zrpc.server.etcd.addr=127.0.0.1:2379
 spring.zrpc.server.etcd.key=greet.rpc
+
+# Observability (provider-only). See the Observability section below.
+spring.zrpc.server.tracing.endpoint=127.0.0.1:4317
+spring.zrpc.server.metrics.port=6060
+spring.zrpc.server.log.mode=file
+spring.zrpc.server.log.path=../logs
 ```
+
+## Observability
+
+Unlike the dubbo-go examples — where `starter-dubbo` hand-wires OTel and
+Prometheus — go-zero ships all three pillars natively. `zrpc.MustNewServer`
+calls `service.ServiceConf.SetUp()` internally (the same code path
+`rest.MustNewServer` uses next door in `greet-api`), which starts the tracing
+agent, the metrics DevServer and logx; the zrpc server's default interceptors
+(trace / prometheus / stat / log) then instrument every RPC. **We write no
+OpenTelemetry/Prometheus code** — `provider/server.go` only populates the
+`ServiceConf` fields from `conf/app.properties`.
+
+| Pillar  | go-zero field           | Backend (docker-compose.yml)               |
+| ------- | ----------------------- | ------------------------------------------ |
+| Tracing | `ServiceConf.Telemetry` | Jaeger via OTLP/gRPC (:4317, UI 16686)     |
+| Metrics | `ServiceConf.DevServer` | Prometheus scrapes :6060/metrics (UI 9099) |
+| Logging | `ServiceConf.Log` (logx)| JSON files → Promtail → Loki (:3100)       |
+
+Only the **provider** is instrumented; the consumer is a raw zrpc client.
+zrpc's prometheus interceptor uses the **`rpc_server_requests_*`** metric
+family (not the `http_server_requests_*` family that `rest.Server` exposes in
+the sibling `greet-api`). go-zero's logx tags each log line with the active
+trace/span, so logs in Loki correlate with spans in Jaeger.
+
+Bring up etcd + the backends and run the instrumented smoke test:
+
+```bash
+docker compose up -d
+bash scripts/smoke-test.sh   # asserts /metrics serves rpc_server_requests_*
+```
+
+Manual verification while the provider is running and after a request:
+
+- **Metrics**: Prometheus UI at http://127.0.0.1:9099 — query `rpc_server_requests_duration_ms_count`.
+- **Traces**: Jaeger UI at http://127.0.0.1:16686 — pick service `greet-rpc`.
+- **Logs**: `curl -s 'http://127.0.0.1:3100/loki/api/v1/query_range?query=%7Bjob%3D%22greet-rpc%22%7D'`.
 
 ## Run
 
