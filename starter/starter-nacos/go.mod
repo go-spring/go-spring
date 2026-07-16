@@ -64,7 +64,7 @@ require (
 	github.com/tjfoc/gmsm v1.4.1 // indirect
 	go-spring.org/gs-mock v0.0.9 // indirect
 	go-spring.org/stdlib v0.1.7 // indirect
-	go.opentelemetry.io/otel v1.40.0 // indirect
+	go.opentelemetry.io/otel v1.41.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.40.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
