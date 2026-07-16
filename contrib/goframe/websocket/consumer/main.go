@@ -18,21 +18,49 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
+	"runtime"
+	"syscall"
 	"time"
 
 	etcdreg "github.com/gogf/gf/contrib/registry/etcd/v2"
 	"github.com/gogf/gf/v2/net/gsvc"
 	"github.com/gorilla/websocket"
+	"go-spring.org/spring/gs"
 )
 
-// The consumer never learns the provider's host:port. It builds an etcd-backed
-// gsvc.Registry pointing at the same endpoint the provider registered with,
-// searches by service name to obtain a live Endpoint, and only then dials the
-// upgrade URL with gorilla/websocket.
+// Consumer holds the client-side settings injected from
+// consumer/conf/app.properties. It never learns the provider's host:port: it
+// resolves a live provider from the same etcd registry the provider published
+// into, by the service name the provider registered under.
+type Consumer struct {
+	RegistryAddr string `value:"${goframe.consumer.registry.etcd:=127.0.0.1:2379}"`
+	ServiceName  string `value:"${goframe.consumer.service.name:=goframe.websocket.echo}"`
+	Path         string `value:"${goframe.consumer.websocket.path:=/echo}"`
+}
+
+func main() {
+	// Consumer is not referenced by any other bean, so register it as a root
+	// object and grab the handle to drive the one-shot call from runTest.
+	bean := gs.Provide(&Consumer{}).Export(gs.As[gs.Rooter]())
+
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		runTest(bean.Interface().(*Consumer))
+	}()
+
+	// The consumer runs server-less: no HTTP server (disabled in
+	// consumer/conf/app.properties) and no goframe server, so gs.Run() simply
+	// blocks until runTest sends SIGTERM.
+	gs.Run()
+}
+
+// runTest builds an etcd-backed gsvc.Registry pointing at the same endpoint
+// the provider registered with, searches by service name to obtain a live
+// Endpoint, and only then dials the upgrade URL with gorilla/websocket.
 //
 // Why the two-step discover+dial (vs. the http sibling's one-liner
 // `g.Client().Discovery(reg).Get(ctx, "http://<svc>/hello")`): goframe's
@@ -44,17 +72,12 @@ import (
 // The upshot: registration still flows through goframe's gsvc (via the
 // provider's ghttp.Server), and discovery still comes from the same etcd
 // prefix; only the dial changes.
-func main() {
-	registryAddr := flag.String("registry", "127.0.0.1:2379", "etcd registry address")
-	svcName := flag.String("service", "goframe.websocket.echo", "service name registered by the provider")
-	path := flag.String("path", "/echo", "WebSocket path on the provider")
-	flag.Parse()
-
+func runTest(c *Consumer) {
 	// etcdreg.Registry implements both gsvc.Registrar (used by the provider)
 	// and gsvc.Discovery (used here). Setting the default registry is not
 	// strictly required for Search, but keeps the wiring symmetric with the
 	// http sibling and with any future middleware that reads gsvc.GetRegistry().
-	registry := etcdreg.New(*registryAddr)
+	registry := etcdreg.New(c.RegistryAddr)
 	gsvc.SetRegistry(registry)
 
 	// Cap the whole handshake window so a lost provider doesn't hang the
@@ -64,18 +87,18 @@ func main() {
 
 	// Ask etcd for services registered under svcName. The registry watches
 	// this prefix and returns whatever is currently alive.
-	services, err := registry.Search(ctx, gsvc.SearchInput{Name: *svcName})
+	services, err := registry.Search(ctx, gsvc.SearchInput{Name: c.ServiceName})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "service search failed: %v\n", err)
 		os.Exit(1)
 	}
 	if len(services) == 0 {
-		fmt.Fprintf(os.Stderr, "no service instances found for %q\n", *svcName)
+		fmt.Fprintf(os.Stderr, "no service instances found for %q\n", c.ServiceName)
 		os.Exit(1)
 	}
 	endpoints := services[0].GetEndpoints()
 	if len(endpoints) == 0 {
-		fmt.Fprintf(os.Stderr, "service %q has no endpoints\n", *svcName)
+		fmt.Fprintf(os.Stderr, "service %q has no endpoints\n", c.ServiceName)
 		os.Exit(1)
 	}
 	ep := endpoints[0]
@@ -89,7 +112,7 @@ func main() {
 	if host == "" {
 		host = "127.0.0.1"
 	}
-	u := url.URL{Scheme: "ws", Host: fmt.Sprintf("%s:%d", host, ep.Port()), Path: *path}
+	u := url.URL{Scheme: "ws", Host: fmt.Sprintf("%s:%d", host, ep.Port()), Path: c.Path}
 	fmt.Println("Dialing discovered provider:", u.String())
 
 	dialer := *websocket.DefaultDialer
@@ -122,4 +145,26 @@ func main() {
 		fmt.Fprintf(os.Stderr, "unexpected echo body: %q\n", got)
 		os.Exit(1)
 	}
+
+	syscall.Kill(os.Getpid(), syscall.SIGTERM)
+}
+
+// init sets the working directory to this consumer/ directory so it loads its
+// own conf/app.properties (consumer/conf/app.properties) regardless of the
+// process launch path. The provider does the same with its own conf, so the two
+// no longer share a file.
+func init() {
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		panic("cannot resolve caller")
+	}
+	dir := filepath.Dir(filename)
+	if err := os.Chdir(dir); err != nil {
+		panic(err)
+	}
+	workDir, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(workDir)
 }

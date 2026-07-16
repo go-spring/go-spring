@@ -19,14 +19,18 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
+	"runtime"
+	"syscall"
+	"time"
 
 	"github.com/cloudwego/kitex/client"
 	"github.com/cloudwego/kitex/client/genericclient"
 	"github.com/cloudwego/kitex/pkg/generic"
 	etcd "github.com/kitex-contrib/registry-etcd"
+	"go-spring.org/spring/gs"
 )
 
 // The consumer here is intentionally different from the ../thrift and
@@ -35,7 +39,7 @@ import (
 //
 // Instead it uses Kitex's JSON generic invocation:
 //
-//   - generic.NewThriftFileProvider parses idl/echo.thrift AT RUNTIME.
+//   - generic.NewThriftFileProvider parses the IDL AT RUNTIME.
 //   - generic.JSONThriftGeneric builds a codec that marshals a JSON string
 //     argument into the standard Thrift wire format defined by that IDL, and
 //     the response back into a JSON string.
@@ -45,26 +49,39 @@ import (
 // The wire format on the network is exactly the same TTHeader/Thrift a
 // code-generated client would send, so this dials the same unmodified server
 // that the ../thrift subproject uses — the difference is entirely on the
-// client side. This is the capability that neither the Thrift subproject
-// (typed stubs on both sides) nor the Protobuf subproject (typed stubs; two
-// wire protocols selected per client at call time) demonstrates: talking to a
-// Kitex service with only the IDL, no generated code.
-//
-// Real-world use cases: API gateways that proxy REST/JSON to internal Thrift
-// services, admin tools that must call arbitrary services without rebuilding,
-// test harnesses, and cross-language bridges.
-func main() {
-	registryAddr := flag.String("registry", "127.0.0.1:2379", "etcd registry address")
-	serviceName := flag.String("service", "echo-generic", "target Kitex service name")
-	idlPath := flag.String("idl", "idl/echo.thrift", "path to the Thrift IDL file to parse at runtime")
-	flag.Parse()
+// client side.
 
+// Consumer holds the client-side settings injected from
+// consumer/conf/app.properties.
+type Consumer struct {
+	RegistryAddr string `value:"${spring.kitex.consumer.registry.etcd:=127.0.0.1:2379}"`
+	ServiceName  string `value:"${spring.kitex.consumer.service.name:=echo-generic}"`
+	IDLPath      string `value:"${spring.kitex.consumer.idl:=../idl/echo.thrift}"`
+}
+
+func main() {
+	bean := gs.Provide(&Consumer{}).Export(gs.As[gs.Rooter]())
+
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		runTest(bean.Interface().(*Consumer))
+	}()
+
+	// The consumer runs server-less: HTTP disabled in consumer/conf and no
+	// Kitex server bean, so gs.Run() blocks until runTest sends SIGTERM.
+	gs.Run()
+}
+
+// runTest exercises the JSON generic call end-to-end. On success it sends
+// SIGTERM so gs.Run() shuts down cleanly, making the process exit code the
+// smoke-test result for scripts/smoke-test.sh.
+func runTest(c *Consumer) {
 	// 1. Parse the IDL from disk. This replaces the code-generation step: no
 	//    Go structs are produced, but the codec learns the shape of every
 	//    method and struct in the file.
-	p, err := generic.NewThriftFileProvider(*idlPath)
+	p, err := generic.NewThriftFileProvider(c.IDLPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to load thrift IDL %s: %v\n", *idlPath, err)
+		fmt.Fprintf(os.Stderr, "failed to load thrift IDL %s: %v\n", c.IDLPath, err)
 		os.Exit(1)
 	}
 
@@ -78,22 +95,19 @@ func main() {
 	// 3. Build a generic client bound to the same etcd registry the provider
 	//    published into. Discovery works exactly as in the sibling examples;
 	//    the only difference is that this client has no method-typed handles.
-	r, err := etcd.NewEtcdResolver([]string{*registryAddr})
+	r, err := etcd.NewEtcdResolver([]string{c.RegistryAddr})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to create etcd resolver: %v\n", err)
 		os.Exit(1)
 	}
-	cli, err := genericclient.NewClient(*serviceName, g, client.WithResolver(r))
+	cli, err := genericclient.NewClient(c.ServiceName, g, client.WithResolver(r))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to create generic client: %v\n", err)
 		os.Exit(1)
 	}
 
-	// 4. Invoke by method name with a JSON body. No generated argument type
-	//    is used anywhere; the codec builds the Thrift request from the JSON
-	//    according to the IDL, and returns the response as a JSON string.
-	//    For JSON generic, the payload is the *flat* request struct JSON
-	//    (e.g. `{"message":"hi"}`) — NOT wrapped by the Thrift argument name.
+	// 4. Invoke by method name with a JSON body. For JSON generic, the payload
+	//    is the *flat* request struct JSON (e.g. `{"message":"hi"}`).
 	want := "Hello, Kitex!"
 	reqJSON := fmt.Sprintf(`{"message":%q}`, want)
 	respAny, err := cli.GenericCall(context.Background(), "Echo", reqJSON)
@@ -123,4 +137,26 @@ func main() {
 		os.Exit(1)
 	}
 	fmt.Println("Generic call round-trip OK:", parsed.Message)
+
+	syscall.Kill(os.Getpid(), syscall.SIGTERM)
+}
+
+// init sets the working directory to this consumer/ directory so it loads its
+// own conf/app.properties (consumer/conf/app.properties) regardless of the
+// process launch path. The provider does the same with its own conf, so the two
+// no longer share a file.
+func init() {
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		panic("cannot resolve caller")
+	}
+	dir := filepath.Dir(filename)
+	if err := os.Chdir(dir); err != nil {
+		panic(err)
+	}
+	workDir, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(workDir)
 }

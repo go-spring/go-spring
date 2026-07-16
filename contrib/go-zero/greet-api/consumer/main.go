@@ -19,30 +19,56 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
+	"runtime"
+	"syscall"
+	"time"
+
+	"go-spring.org/spring/gs"
 
 	"greetapi/types"
 )
 
-// The consumer talks to the provider directly over HTTP. Unlike the sibling
-// greet-rpc, there is no etcd hop: go-zero's rest.Server does not participate
-// in a registry, so the consumer takes the provider's host:port on the
-// command line and self-asserts on the JSON body.
-func main() {
-	endpoint := flag.String("endpoint", "http://127.0.0.1:8888", "provider base URL")
-	flag.Parse()
+// Consumer holds the client-side settings injected from
+// consumer/conf/app.properties. Unlike the sibling greet-rpc, there is no etcd
+// hop here: go-zero's rest.Server does not participate in a registry, so the
+// consumer takes the provider's host:port from config and self-asserts on the
+// JSON body.
+type Consumer struct {
+	Endpoint string `value:"${gozero.consumer.endpoint:=http://127.0.0.1:8888}"`
+}
 
+func main() {
+	// Consumer is not referenced by any other bean, so register it as a root
+	// object and grab the handle to drive the one-shot call from runTest.
+	bean := gs.Provide(&Consumer{}).Export(gs.As[gs.Rooter]())
+
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		runTest(bean.Interface().(*Consumer))
+	}()
+
+	// The consumer runs server-less: no HTTP server (disabled in
+	// consumer/conf/app.properties) and no rest.Server, so gs.Run() simply
+	// blocks until runTest sends SIGTERM.
+	gs.Run()
+}
+
+// runTest POSTs a JSON greet request to the provider and asserts on the echo.
+// On success it sends SIGTERM so gs.Run() shuts down cleanly, making the
+// process exit code the smoke-test result for scripts/smoke-test.sh.
+func runTest(c *Consumer) {
 	body, err := json.Marshal(types.GreetReq{Name: "Hello, go-zero!"})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error marshalling request: %v\n", err)
 		os.Exit(1)
 	}
 
-	url := *endpoint + "/greet"
+	url := c.Endpoint + "/greet"
 	resp, err := http.Post(url, "application/json", bytes.NewReader(body))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error calling %s: %v\n", url, err)
@@ -67,4 +93,26 @@ func main() {
 		fmt.Fprintf(os.Stderr, "unexpected greet body: %q\n", greet.Greeting)
 		os.Exit(1)
 	}
+
+	syscall.Kill(os.Getpid(), syscall.SIGTERM)
+}
+
+// init sets the working directory to this consumer/ directory so it loads its
+// own conf/app.properties (consumer/conf/app.properties) regardless of the
+// process launch path. The provider does the same with its own conf, so the two
+// no longer share a file.
+func init() {
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		panic("cannot resolve caller")
+	}
+	dir := filepath.Dir(filename)
+	if err := os.Chdir(dir); err != nil {
+		panic(err)
+	}
+	workDir, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(workDir)
 }

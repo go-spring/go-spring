@@ -18,9 +18,12 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
+	"runtime"
+	"syscall"
+	"time"
 
 	"dubbo.apache.org/dubbo-go/v3/client"
 	"dubbo.apache.org/dubbo-go/v3/common/constant"
@@ -28,6 +31,7 @@ import (
 	"dubbo.apache.org/dubbo-go/v3/protocol/rest/config"
 	"dubbo.apache.org/dubbo-go/v3/registry"
 	greet "go-spring.org/dubbo-go/rest/proto"
+	"go-spring.org/spring/gs"
 )
 
 // init installs the RestServiceConfig map on the consumer side. The
@@ -65,11 +69,34 @@ func init() {
 	})
 }
 
-// The consumer never learns the provider's host:port. It builds a client
-// bound to the same etcd registry, asks for the GreetService by its Java-style
-// interface name (com.example.GreetService, defined in proto/greet.go), and
-// Dubbo resolves a live provider address from etcd, calls it, and we assert
-// on the echo.
+// Consumer holds the client-side settings injected from
+// consumer/conf/app.properties. It never learns the provider's host:port: it
+// resolves a live provider from the same etcd registry the provider published
+// into, by the Java-style interface name in proto/greet.go.
+type Consumer struct {
+	RegistryAddr string `value:"${dubbo.consumer.registry.etcd:=127.0.0.1:2379}"`
+}
+
+func main() {
+	// Consumer is not referenced by any other bean, so register it as a root
+	// object and grab the handle to drive the one-shot call from runTest.
+	bean := gs.Provide(&Consumer{}).Export(gs.As[gs.Rooter]())
+
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		runTest(bean.Interface().(*Consumer))
+	}()
+
+	// The consumer runs server-less: no HTTP server (disabled in
+	// consumer/conf/app.properties) and no Dubbo server (this file registers
+	// only a client), so gs.Run() simply blocks until runTest sends SIGTERM.
+	gs.Run()
+}
+
+// runTest builds a raw dubbo-go client bound to the etcd registry, asks for the
+// GreetService by its Java-style interface name (com.example.GreetService,
+// defined in proto/greet.go), and Dubbo resolves a live provider address from
+// etcd, calls it, and we assert on the echo.
 //
 // Because this is the REST protocol, dubbo-go has no dedicated
 // client.WithClientProtocolREST() shortcut; we instead pass the generic
@@ -81,16 +108,13 @@ func init() {
 // hides the fact that the wire is `GET /greet?name=...` behind the same
 // reflective invocation shape used by the classic-Dubbo and JSON-RPC
 // siblings.
-func main() {
-	registryAddr := flag.String("registry", "127.0.0.1:2379", "etcd registry address")
-	flag.Parse()
-
+func runTest(c *Consumer) {
 	ctx := context.Background()
 
 	cli, err := client.NewClient(
 		client.WithClientRegistry(
 			registry.WithEtcdV3(),
-			registry.WithAddress(*registryAddr),
+			registry.WithAddress(c.RegistryAddr),
 		),
 	)
 	if err != nil {
@@ -120,4 +144,26 @@ func main() {
 		fmt.Fprintf(os.Stderr, "unexpected greet body: %q\n", resp)
 		os.Exit(1)
 	}
+
+	syscall.Kill(os.Getpid(), syscall.SIGTERM)
+}
+
+// init sets the working directory to this consumer/ directory so it loads its
+// own conf/app.properties (consumer/conf/app.properties) regardless of the
+// process launch path. The provider does the same with its own conf, so the two
+// no longer share a file.
+func init() {
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		panic("cannot resolve caller")
+	}
+	dir := filepath.Dir(filename)
+	if err := os.Chdir(dir); err != nil {
+		panic(err)
+	}
+	workDir, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(workDir)
 }

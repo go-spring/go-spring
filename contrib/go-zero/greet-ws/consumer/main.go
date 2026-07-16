@@ -18,35 +18,57 @@ package main
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
+	"runtime"
+	"syscall"
 	"time"
 
 	"github.com/gorilla/websocket"
 
+	"go-spring.org/spring/gs"
+
 	greet "greetws/proto"
 )
 
-// The consumer dials the provider's WebSocket endpoint directly. Unlike the
-// sibling greet-rpc there is no etcd hop: WS rides on go-zero's rest.Server,
-// which has no built-in service discovery, so we take the provider's
-// host:port on the command line and self-assert on the echo frame.
-//
-// This is the piece that differs from greet-api's consumer: instead of one
-// http.Post + JSON decode, we open a persistent WS connection, exchange a
-// single frame, and close cleanly. Everything else — flag, exit-code
-// contract, assertion — matches the sibling.
-func main() {
-	endpoint := flag.String("endpoint", "ws://127.0.0.1:8890/greet", "provider WS endpoint")
-	flag.Parse()
+// Consumer holds the client-side settings injected from
+// consumer/conf/app.properties. Unlike the sibling greet-rpc there is no etcd
+// hop: WS rides on go-zero's rest.Server, which has no built-in service
+// discovery, so the consumer takes the provider's WS endpoint from config and
+// self-asserts on the echo frame.
+type Consumer struct {
+	Endpoint string `value:"${gozero.consumer.endpoint:=ws://127.0.0.1:8890/greet}"`
+}
 
+func main() {
+	// Consumer is not referenced by any other bean, so register it as a root
+	// object and grab the handle to drive the one-shot call from runTest.
+	bean := gs.Provide(&Consumer{}).Export(gs.As[gs.Rooter]())
+
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		runTest(bean.Interface().(*Consumer))
+	}()
+
+	// The consumer runs server-less: no HTTP server (disabled in
+	// consumer/conf/app.properties) and no rest.Server, so gs.Run() simply
+	// blocks until runTest sends SIGTERM.
+	gs.Run()
+}
+
+// runTest opens a persistent WS connection, exchanges a single frame, and
+// closes cleanly. This is the piece that differs from greet-api's consumer:
+// instead of one http.Post + JSON decode, we speak WebSocket. On success it
+// sends SIGTERM so gs.Run() shuts down cleanly, making the process exit code
+// the smoke-test result for scripts/smoke-test.sh.
+func runTest(c *Consumer) {
 	dialer := *websocket.DefaultDialer
 	dialer.HandshakeTimeout = 5 * time.Second
 
-	conn, resp, err := dialer.Dial(*endpoint, nil)
+	conn, resp, err := dialer.Dial(c.Endpoint, nil)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error dialing %s: %v\n", *endpoint, err)
+		fmt.Fprintf(os.Stderr, "error dialing %s: %v\n", c.Endpoint, err)
 		if resp != nil {
 			fmt.Fprintf(os.Stderr, "handshake status: %s\n", resp.Status)
 		}
@@ -87,4 +109,26 @@ func main() {
 		fmt.Fprintf(os.Stderr, "unexpected greet body: %q\n", out.Greeting)
 		os.Exit(1)
 	}
+
+	syscall.Kill(os.Getpid(), syscall.SIGTERM)
+}
+
+// init sets the working directory to this consumer/ directory so it loads its
+// own conf/app.properties (consumer/conf/app.properties) regardless of the
+// process launch path. The provider does the same with its own conf, so the two
+// no longer share a file.
+func init() {
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		panic("cannot resolve caller")
+	}
+	dir := filepath.Dir(filename)
+	if err := os.Chdir(dir); err != nil {
+		panic(err)
+	}
+	workDir, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(workDir)
 }

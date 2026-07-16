@@ -20,9 +20,11 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
+	"runtime"
+	"syscall"
 	"time"
 
 	"github.com/go-kratos/kratos/contrib/registry/etcd/v2"
@@ -30,6 +32,7 @@ import (
 	"github.com/gorilla/websocket"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	v1 "go-spring.org/go-kratos/api/helloworld/v1"
+	"go-spring.org/spring/gs"
 )
 
 // wsHelloMessageType MUST match provider/handler.go's WSHelloMessageType.
@@ -46,6 +49,17 @@ const wsHelloMessageType uint32 = 1
 // This format is symmetric — the server sends replies in the same shape — so
 // we can hand-craft one small marshal/unmarshal pair for the smoke test.
 
+// Consumer holds the client-side settings injected from
+// consumer/conf/app.properties. It never learns the provider's gRPC host:port:
+// it resolves a live provider from the same etcd registry the provider
+// registered into, by the service name below. The WebSocket URL is dialed
+// directly because kratos-transport's WS client has no discovery hook.
+type Consumer struct {
+	RegistryAddr string `value:"${kratos.consumer.registry.etcd:=127.0.0.1:2379}"`
+	ServiceName  string `value:"${kratos.consumer.service.name:=kratos-greeter}"`
+	WSURL        string `value:"${kratos.consumer.ws.url:=ws://127.0.0.1:9002/}"`
+}
+
 // The consumer never learns the provider's gRPC host:port. It builds an
 // etcd-backed registry.Discovery and asks kratos to dial
 // "discovery:///<name>" — the same service name the provider registered
@@ -59,15 +73,29 @@ const wsHelloMessageType uint32 = 1
 // one just to demo an extra transport would obscure what the transport does.
 // The gRPC path already proves discovery works; WS proves coexistence.
 func main() {
-	registryAddr := flag.String("registry", "127.0.0.1:2379", "etcd registry address")
-	svcName := flag.String("service", "kratos-greeter", "kratos service name to resolve")
-	wsURL := flag.String("ws", "ws://127.0.0.1:9002/", "kratos WebSocket transport endpoint")
-	flag.Parse()
+	// Consumer is not referenced by any other bean, so register it as a root
+	// object and grab the handle to drive the one-shot call from runTest.
+	bean := gs.Provide(&Consumer{}).Export(gs.As[gs.Rooter]())
 
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		runTest(bean.Interface().(*Consumer))
+	}()
+
+	// The consumer runs server-less: no HTTP server (disabled in
+	// consumer/conf/app.properties) and no kratos server (no ServiceRegister
+	// bean), so gs.Run() simply blocks until runTest sends SIGTERM.
+	gs.Run()
+}
+
+// runTest performs the gRPC discovery call and the WebSocket round-trip. On
+// success it sends SIGTERM so gs.Run() shuts down cleanly, making the process
+// exit code the smoke-test result for scripts/smoke-test.sh.
+func runTest(c *Consumer) {
 	ctx := context.Background()
 
 	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   []string{*registryAddr},
+		Endpoints:   []string{c.RegistryAddr},
 		DialTimeout: 5 * time.Second,
 	})
 	if err != nil {
@@ -79,7 +107,7 @@ func main() {
 	r := etcd.New(cli)
 
 	conn, err := transgrpc.DialInsecure(ctx,
-		transgrpc.WithEndpoint("discovery:///"+*svcName),
+		transgrpc.WithEndpoint("discovery:///"+c.ServiceName),
 		transgrpc.WithDiscovery(r),
 	)
 	if err != nil {
@@ -101,10 +129,12 @@ func main() {
 	}
 
 	// WebSocket leg — same provider, different transport, different wire.
-	if err := roundTripWebSocket(*wsURL, "Kratos-WS"); err != nil {
+	if err := roundTripWebSocket(c.WSURL, "Kratos-WS"); err != nil {
 		fmt.Fprintf(os.Stderr, "websocket check failed: %v\n", err)
 		os.Exit(1)
 	}
+
+	syscall.Kill(os.Getpid(), syscall.SIGTERM)
 }
 
 // roundTripWebSocket dials the kratos-transport WS server and performs a
@@ -162,4 +192,24 @@ func roundTripWebSocket(endpoint, name string) error {
 		return fmt.Errorf("unexpected ws reply: got %q, want %q", reply.Message, want)
 	}
 	return nil
+}
+
+// init sets the working directory to this consumer/ directory so it loads its
+// own conf/app.properties (consumer/conf/app.properties) regardless of the
+// process launch path. The provider does the same with its own conf, so the two
+// no longer share a file.
+func init() {
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		panic("cannot resolve caller")
+	}
+	dir := filepath.Dir(filename)
+	if err := os.Chdir(dir); err != nil {
+		panic(err)
+	}
+	workDir, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(workDir)
 }

@@ -18,15 +18,19 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
+	"runtime"
+	"syscall"
+	"time"
 
 	"github.com/cloudwego/kitex/client"
 	"github.com/cloudwego/kitex/transport"
 	etcd "github.com/kitex-contrib/registry-etcd"
 	echo "go-spring.org/kitex/protobuf/kitex_gen/echo"
 	"go-spring.org/kitex/protobuf/kitex_gen/echo/echoservice"
+	"go-spring.org/spring/gs"
 )
 
 // The provider was generated from a protobuf IDL, so a single provider serves
@@ -38,15 +42,37 @@ import (
 // This consumer resolves the provider from etcd by service name and calls it
 // once over each transport, asserting both, to prove the one provider speaks
 // both protocols.
-func main() {
-	registryAddr := flag.String("registry", "127.0.0.1:2379", "etcd registry address")
-	serviceName := flag.String("service", "echo", "target Kitex service name")
-	flag.Parse()
 
+// Consumer holds the client-side settings injected from
+// consumer/conf/app.properties.
+type Consumer struct {
+	RegistryAddr string `value:"${spring.kitex.consumer.registry.etcd:=127.0.0.1:2379}"`
+	ServiceName  string `value:"${spring.kitex.consumer.service.name:=echo}"`
+}
+
+func main() {
+	bean := gs.Provide(&Consumer{}).Export(gs.As[gs.Rooter]())
+
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		runTest(bean.Interface().(*Consumer))
+	}()
+
+	// The consumer runs server-less: HTTP disabled in consumer/conf and no
+	// Kitex server bean, so gs.Run() blocks until runTest sends SIGTERM.
+	gs.Run()
+}
+
+// runTest calls the provider once over each transport and self-asserts. On
+// success it sends SIGTERM so gs.Run() shuts down cleanly, making the process
+// exit code the smoke-test result for scripts/smoke-test.sh.
+func runTest(c *Consumer) {
 	// KitexProtobuf is the default when no transport protocol is specified.
-	call(*registryAddr, *serviceName, "KitexProtobuf")
+	call(c.RegistryAddr, c.ServiceName, "KitexProtobuf")
 	// gRPC is selected via WithTransportProtocol(transport.GRPC).
-	call(*registryAddr, *serviceName, "gRPC", client.WithTransportProtocol(transport.GRPC))
+	call(c.RegistryAddr, c.ServiceName, "gRPC", client.WithTransportProtocol(transport.GRPC))
+
+	syscall.Kill(os.Getpid(), syscall.SIGTERM)
 }
 
 // call builds a client over the given transport, resolves a live provider from
@@ -77,4 +103,24 @@ func call(registryAddr, serviceName, label string, extra ...client.Option) {
 		fmt.Fprintf(os.Stderr, "[%s] unexpected echo body: %q\n", label, resp.Message)
 		os.Exit(1)
 	}
+}
+
+// init sets the working directory to this consumer/ directory so it loads its
+// own conf/app.properties (consumer/conf/app.properties) regardless of the
+// process launch path. The provider does the same with its own conf, so the two
+// no longer share a file.
+func init() {
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		panic("cannot resolve caller")
+	}
+	dir := filepath.Dir(filename)
+	if err := os.Chdir(dir); err != nil {
+		panic(err)
+	}
+	workDir, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(workDir)
 }

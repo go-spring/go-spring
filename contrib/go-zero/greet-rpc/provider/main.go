@@ -34,21 +34,22 @@ func main() {
 	_ = os.Unsetenv("TERM")
 	_ = os.Unsetenv("TERM_SESSION_ID")
 
-	// The built-in HTTP server is disabled via conf/app.properties; gs.Run()
-	// starts only the zrpc server registered in server.go.
+	// The built-in HTTP server is disabled via provider/conf/app.properties;
+	// gs.Run() starts only the zrpc server registered in server.go.
 	gs.Run()
 }
 
-// init sets the working directory to the module root (the parent of this
-// provider/ directory) so relative config loading (conf/app.properties) works
-// regardless of the process launch path.
+// init sets the working directory to this provider/ directory so it loads its
+// own conf/app.properties (provider/conf/app.properties) regardless of the
+// process launch path. The consumer does the same with its own conf, so the two
+// no longer share a file.
 func init() {
 	_, filename, _, ok := runtime.Caller(0)
 	if !ok {
 		panic("cannot resolve caller")
 	}
-	moduleRoot := filepath.Dir(filepath.Dir(filename))
-	if err := os.Chdir(moduleRoot); err != nil {
+	dir := filepath.Dir(filename)
+	if err := os.Chdir(dir); err != nil {
 		panic(err)
 	}
 	workDir, err := os.Getwd()
