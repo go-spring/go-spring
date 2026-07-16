@@ -53,7 +53,7 @@ contrib/dubbo-go/dubbo/
 ├── provider/conf/app.properties  # provider config (server role + registry + observability, metrics :9090)
 ├── consumer/main.go         # discovers the provider via etcd, calls it and asserts, then exits (Go-Spring style: client bean + gs.Run())
 ├── consumer/conf/app.properties  # consumer config (client role + registry + observability, metrics :9091)
-├── observability/           # Prometheus & Promtail config for the backend stack
+├── docker/                  # Prometheus & Promtail config for the backend stack
 ├── docker-compose.yml       # local etcd + Prometheus + Jaeger + Loki + Promtail
 └── scripts/smoke-test.sh    # smoke test: bring up backends+provider, run consumer, tear down
 ```
@@ -164,7 +164,7 @@ is all configuration layered on the shared `Instance` bean.
 | Signal  | Produced by                                    | Backend         | Where to look                                        |
 | ------- | ---------------------------------------------- | --------------- | ---------------------------------------------------- |
 | Metrics | dubbo-go Prometheus exporter, port `:9090`     | Prometheus      | UI http://127.0.0.1:9099 (query `up`, `dubbo_*`)     |
-| Traces  | dubbo-go OTel → OTLP/gRPC `127.0.0.1:4317`     | Jaeger          | UI http://127.0.0.1:16686 (service `dubbo-demo`)     |
+| Traces  | dubbo-go OTel → OTLP/HTTP `127.0.0.1:4318`     | Jaeger          | UI http://127.0.0.1:16686 (service `dubbo-demo`)     |
 | Logs    | go-spring `log` → JSON files under `logs/`     | Loki (Promtail) | Loki HTTP API, port `:3100` (query below)            |
 
 ### Architecture & how it works
@@ -180,7 +180,7 @@ boundary is why each signal takes a slightly different path:
   │   dubbo/Hessian2   :20001      │◀─disc─▶│   service registry            │
   │   /metrics (HTTP)  :9090       │        │                               │
   │   OTel SDK ─┐                  │        │ Prometheus      :9099 (UI)    │
-  │   log file  │ ─┐               │        │ Jaeger    :4317 / :16686 (UI) │
+  │   log file  │ ─┐               │        │ Jaeger    :4318 / :16686 (UI) │
   │ consumer    │  │               │        │ Loki            :3100         │
   │   /metrics  │  │    :9091      │        │ Promtail (tails /var/log/app) │
   │   OTel SDK ─┤  │               │        └──────────────────────────────┘
@@ -189,7 +189,7 @@ boundary is why each signal takes a slightly different path:
                 │  │
    (1) METRICS — pull:   Prometheus ──GET /metrics every 5s──▶ provider :9090
                          (reaches the host via host.docker.internal)
-   (2) TRACES  — push:   OTel SDK ──OTLP/gRPC spans──▶ Jaeger :4317 ─▶ :16686 UI
+   (2) TRACES  — push:   OTel SDK ──OTLP/HTTP spans──▶ Jaeger :4318 ─▶ :16686 UI
    (3) LOGS    — tail+push: process ─write▶ ../logs/*.log ◀─bind-mount─ Promtail
                          Promtail ──HTTP push──▶ Loki :3100 ─▶ query API
 ```
@@ -200,24 +200,32 @@ renders the current counter/gauge values on demand — it pushes nothing. The
 provider serves it on `:9090`, the consumer on `:9091`. Prometheus is the active
 party: on its `scrape_interval` (5s here) it issues `GET /metrics`, parses the
 text-format response, and stores each sample with a timestamp. Because Prometheus
-is in a container and the target is on the host, `observability/prometheus.yml`
+is in a container and the target is on the host, `docker/prometheus.yml`
 targets `host.docker.internal:9090` (mapped via `extra_hosts` on Linux, native on
 macOS/Windows). Metrics are registered lazily, so `dubbo_*` rows only appear
 *after* the first RPC — that is why the smoke test calls before asserting.
 
 **(2) Traces — a push model.** The dubbo-go OTel integration (enabled by
 `spring.dubbo.tracing.*`) wraps each RPC in a span. An in-process batch span
-processor buffers spans and exports them over **OTLP/gRPC** to the endpoint in
-config (`127.0.0.1:4317`), which is Jaeger's mapped collector port. Here the
+processor buffers spans and exports them over **OTLP/HTTP** to the endpoint in
+config (`127.0.0.1:4318`), which is Jaeger's mapped OTLP/HTTP collector port. Here the
 *application* is the active party — it pushes to the collector; Jaeger stores the
 spans and serves them at the `:16686` UI under service `dubbo-demo`.
 `mode=always`/`ratio=1.0` samples every span, so even a single call shows up.
+
+> **Why OTLP/HTTP instead of OTLP/gRPC?** dubbo-go v3.3.1's otlp-grpc exporter
+> (`newGrpcExporter` in `otel/trace/otlp/exporter.go`) **ignores the `insecure`
+> flag** and always dials TLS, which the plaintext Jaeger all-in-one collector
+> rejects ("bogus greeting"), so spans never arrive. The otlp-http exporter
+> honors `insecure`, so this example uses OTLP/HTTP (`:4318`). Also note that if
+> your shell exports `OTEL_EXPORTER_OTLP_ENDPOINT`, the OTel SDK folds it into the
+> export URL (you may see a 404); `unset` it before running.
 
 **(3) Logs — tail then push.** No log ever travels over the network from the
 application. go-spring's `log` module (a `FileLogger` with a `JSONLayout`) writes
 structured JSON lines to `../logs/<role>.log` on the host. That `logs/` directory
 is **bind-mounted read-only** into the Promtail container at `/var/log/app`
-(docker-compose.yml). Promtail (`observability/promtail-config.yml`) tails
+(docker-compose.yml). Promtail (`docker/promtail-config.yml`) tails
 `*.log`, tracks its read offset in a positions file, tags each line with
 `job="dubbo-demo"` plus the source `filename`, and **pushes** batches to Loki's
 `:3100` HTTP API. Loki indexes only the labels; the JSON body stays queryable via
@@ -233,10 +241,10 @@ spring.dubbo.metrics.enable=true
 spring.dubbo.metrics.port=9090
 spring.dubbo.metrics.path=/metrics
 
-# tracing (OTel → Jaeger over OTLP/gRPC); mode=always so even a single call is sampled
+# tracing (OTel → Jaeger over OTLP/HTTP); mode=always so even a single call is sampled
 spring.dubbo.tracing.enable=true
-spring.dubbo.tracing.exporter=otlp-grpc
-spring.dubbo.tracing.endpoint=127.0.0.1:4317
+spring.dubbo.tracing.exporter=otlp-http
+spring.dubbo.tracing.endpoint=127.0.0.1:4318
 spring.dubbo.tracing.insecure=true
 
 # logging — structured JSON to logs/provider.log, collected by Promtail into Loki

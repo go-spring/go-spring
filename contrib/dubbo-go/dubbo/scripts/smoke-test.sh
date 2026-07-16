@@ -63,7 +63,7 @@ wait_tcp() {
 # Wait for etcd (registry) and Jaeger's OTLP endpoint (trace export target).
 # Loki is best-effort: Promtail buffers, and log delivery is not asserted here.
 wait_tcp 127.0.0.1 2379 || { echo "etcd not ready"; exit 1; }
-wait_tcp 127.0.0.1 4317 || { echo "jaeger OTLP not ready"; exit 1; }
+wait_tcp 127.0.0.1 4318 || { echo "jaeger OTLP not ready"; exit 1; }
 
 # Start the provider; it registers into etcd, serves Dubbo on :20001 and exposes
 # Prometheus metrics on :9090. Build to a temp binary and run it directly —

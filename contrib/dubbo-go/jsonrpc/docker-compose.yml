@@ -9,3 +9,55 @@ services:
       - --listen-client-urls=http://0.0.0.0:2379
     ports:
       - "127.0.0.1:2379:2379"
+
+  # ── Observability backends ──────────────────────────────────────────────────
+  # The provider/consumer run on the HOST (scripts/smoke-test.sh builds & runs them), not in
+  # containers. So Prometheus scrapes the host via host.docker.internal, Promtail
+  # bind-mounts the host ./logs, and the host sends traces to Jaeger's mapped
+  # 127.0.0.1:4317. See docker/*.yml.
+
+  # Prometheus scrapes the provider's :9090/metrics. Its own UI is mapped to 9099
+  # on the host to avoid colliding with the provider's 9090.
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: contrib-dubbo-go-jsonrpc-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+    volumes:
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:9099:9090"
+
+  # Jaeger all-in-one: receives OTel spans over OTLP/gRPC (4317) and serves the
+  # trace UI (16686).
+  jaeger:
+    image: jaegertracing/all-in-one:1.60
+    container_name: contrib-dubbo-go-jsonrpc-jaeger
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "127.0.0.1:16686:16686"
+      - "127.0.0.1:4317:4317"
+
+  # Loki stores the logs Promtail ships; queryable over its HTTP API (3100).
+  loki:
+    image: grafana/loki:3.1.1
+    container_name: contrib-dubbo-go-jsonrpc-loki
+    command:
+      - -config.file=/etc/loki/local-config.yaml
+    ports:
+      - "127.0.0.1:3100:3100"
+
+  # Promtail tails the host ./logs (mounted at /var/log/app) and pushes to Loki.
+  promtail:
+    image: grafana/promtail:3.1.1
+    container_name: contrib-dubbo-go-jsonrpc-promtail
+    command:
+      - -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./docker/promtail-config.yml:/etc/promtail/config.yml:ro
+      - ./logs:/var/log/app:ro
+    depends_on:
+      - loki

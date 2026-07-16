@@ -18,52 +18,133 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
+	"runtime"
+	"syscall"
+	"time"
 
 	"dubbo.apache.org/dubbo-go/v3/client"
 	_ "dubbo.apache.org/dubbo-go/v3/imports"
-	"dubbo.apache.org/dubbo-go/v3/registry"
 	greet "go-spring.org/dubbo-go/triple/proto"
+	"go-spring.org/log"
+	"go-spring.org/spring/gs"
+	_ "go-spring.org/starter-dubbo"
 )
 
-// The consumer never learns the provider's host:port. It builds a client bound
-// to the same etcd registry and asks for the GreetService by its interface
-// name (greet.GreetService, baked into the generated stub); Dubbo resolves a
-// live provider address from etcd, calls it, and we assert on the echo.
-func main() {
-	registryAddr := flag.String("registry", "127.0.0.1:2379", "etcd registry address")
-	flag.Parse()
+// Consumer discovers the GreetService through the registry and calls it. The
+// Dubbo client is the default client bean provided by starter-dubbo (built from
+// ${spring.dubbo.client} + the top-level ${spring.dubbo.registries}), injected
+// here the same way the redis example autowires *redis.Client into its Service
+// bean.
+type Consumer struct {
+	Client *client.Client `autowire:""`
+}
 
+// Greet dials the GreetService by its protobuf-declared interface name
+// (greet.GreetService, baked into the Triple-generated stub) and invokes the
+// Greet method through the typed stub. Unlike the classic Dubbo/Hessian2
+// sibling, Triple has a code-generated stub, so we build it from the injected
+// client and call svc.Greet directly — no reflective conn.CallUnary.
+func (c *Consumer) Greet(ctx context.Context, name string) (string, error) {
+	svc, err := greet.NewGreetService(c.Client)
+	if err != nil {
+		return "", err
+	}
+	resp, err := svc.Greet(ctx, &greet.GreetRequest{Name: name})
+	if err != nil {
+		return "", err
+	}
+	return resp.Greeting, nil
+}
+
+func main() {
+	// Consumer is not referenced by any other bean, so register it as a root
+	// object and grab the handle to drive the one-shot call from runTest.
+	svrBean := gs.Provide(&Consumer{}).Export(gs.As[gs.Rooter]())
+
+	go func() {
+		time.Sleep(time.Millisecond * 500)
+		runTest(svrBean.Interface().(*Consumer))
+	}()
+
+	// The consumer runs server-less: no HTTP server (disabled in
+	// consumer/conf/app.properties) and no Dubbo server (no ServiceRegister
+	// bean, so starter-dubbo's server condition never fires), so gs.Run() simply
+	// blocks until runTest sends SIGTERM.
+	gs.Run()
+}
+
+// greetCalls is how many RPCs runTest issues. A single call is enough to prove
+// wiring, but it leaves the observability backends nearly empty (one span, one
+// log line, a counter of 1). Issuing a batch gives Prometheus a counter worth
+// graphing, Jaeger a handful of traces to browse, and Loki several structured
+// log lines to query — so the manual verification steps in the README show real
+// data, not a lone sample.
+const greetCalls = 20
+
+// runTest exercises the Greet RPC end-to-end and asserts on the echoed value.
+// It first makes the canonical call (whose printed line scripts/smoke-test.sh
+// greps for), then a batch of further calls to populate the observability
+// stack. On any failure it exits(1); on success it sends SIGTERM so gs.Run()
+// shuts down cleanly, making the process exit code the smoke-test result for
+// scripts/smoke-test.sh.
+func runTest(c *Consumer) {
 	ctx := context.Background()
 
-	cli, err := client.NewClient(
-		client.WithClientRegistry(
-			registry.WithEtcdV3(),
-			registry.WithAddress(*registryAddr),
-		),
-	)
+	// Canonical call: deterministic payload the provider echoes back.
+	// scripts/smoke-test.sh asserts on the printed line below, so keep its
+	// wording stable.
+	want := "Hello, Dubbo-Go!"
+	resp, err := c.Greet(ctx, want)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to create client: %v\n", err)
+		log.Errorf(ctx, log.TagAppDef, "error calling Greet: %v", err)
+		os.Exit(1)
+	}
+	fmt.Println("Response from discovered provider:", resp)
+	if resp != want {
+		log.Errorf(ctx, log.TagAppDef, "unexpected greet body: %q", resp)
 		os.Exit(1)
 	}
 
-	svc, err := greet.NewGreetService(cli)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to create greet service: %v\n", err)
-		os.Exit(1)
+	// Batch of additional calls to give the observability backends real volume.
+	// Each call is a fresh trace (span "Greet"), bumps the provider's request
+	// counters, and emits a structured INFO log line that Promtail ships to Loki.
+	for i := 1; i <= greetCalls; i++ {
+		name := fmt.Sprintf("Dubbo-Go caller #%d", i)
+		got, err := c.Greet(ctx, name)
+		if err != nil {
+			log.Errorf(ctx, log.TagAppDef, "error on greet #%d: %v", i, err)
+			os.Exit(1)
+		}
+		if got != name {
+			log.Errorf(ctx, log.TagAppDef, "greet #%d echoed %q, want %q", i, got, name)
+			os.Exit(1)
+		}
+		log.Infof(ctx, log.TagAppDef, "greet #%d ok: %q", i, got)
 	}
+	fmt.Printf("Sent %d greetings (1 canonical + %d batch)\n", greetCalls+1, greetCalls)
 
-	resp, err := svc.Greet(ctx, &greet.GreetRequest{Name: "Hello, Dubbo-Go!"})
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error calling Greet: %v\n", err)
-		os.Exit(1)
-	}
+	syscall.Kill(os.Getpid(), syscall.SIGTERM)
+}
 
-	fmt.Println("Response from discovered provider:", resp.Greeting)
-	if resp.Greeting != "Hello, Dubbo-Go!" {
-		fmt.Fprintf(os.Stderr, "unexpected greet body: %q\n", resp.Greeting)
-		os.Exit(1)
+// init sets the working directory to this consumer/ directory so it loads its
+// own conf/app.properties (consumer/conf/app.properties) regardless of the
+// process launch path. The provider does the same with its own conf, so the two
+// no longer share a file or need env-var overrides to avoid colliding.
+func init() {
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		panic("cannot resolve caller")
 	}
+	dir := filepath.Dir(filename)
+	if err := os.Chdir(dir); err != nil {
+		panic(err)
+	}
+	workDir, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(workDir)
 }

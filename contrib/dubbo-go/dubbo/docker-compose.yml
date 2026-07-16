@@ -14,7 +14,7 @@ services:
   # The provider/consumer run on the HOST (scripts/smoke-test.sh builds & runs them), not in
   # containers. So Prometheus scrapes the host via host.docker.internal, Promtail
   # bind-mounts the host ./logs, and the host sends traces to Jaeger's mapped
-  # 127.0.0.1:4317. See observability/*.yml.
+  # 127.0.0.1:4317. See docker/*.yml.
 
   # Prometheus scrapes the provider's :9090/metrics. Its own UI is mapped to 9099
   # on the host to avoid colliding with the provider's 9090.
@@ -24,14 +24,16 @@ services:
     command:
       - --config.file=/etc/prometheus/prometheus.yml
     volumes:
-      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
       - "127.0.0.1:9099:9090"
 
-  # Jaeger all-in-one: receives OTel spans over OTLP/gRPC (4317) and serves the
-  # trace UI (16686).
+  # Jaeger all-in-one: receives OTel spans over OTLP/HTTP (4318) and serves the
+  # trace UI (16686). OTLP/gRPC (4317) is also exposed, but dubbo-go v3.3.1's
+  # otlp-grpc exporter ignores insecure and dials TLS against this plaintext
+  # collector, so the examples export over OTLP/HTTP (4318) instead.
   jaeger:
     image: jaegertracing/all-in-one:1.60
     container_name: contrib-dubbo-go-dubbo-jaeger
@@ -40,6 +42,7 @@ services:
     ports:
       - "127.0.0.1:16686:16686"
       - "127.0.0.1:4317:4317"
+      - "127.0.0.1:4318:4318"
 
   # Loki stores the logs Promtail ships; queryable over its HTTP API (3100).
   loki:
@@ -57,7 +60,7 @@ services:
     command:
       - -config.file=/etc/promtail/config.yml
     volumes:
-      - ./observability/promtail-config.yml:/etc/promtail/config.yml:ro
+      - ./docker/promtail-config.yml:/etc/promtail/config.yml:ro
       - ./logs:/var/log/app:ro
     depends_on:
       - loki
