@@ -22,29 +22,29 @@ import (
 	"go-spring.org/spring/gs"
 	"google.golang.org/grpc"
 
-	"greetrpc/pb"
+	greet "greetrpc/proto"
 )
 
 func init() {
 	// Provide a ServiceRegister bean that binds the GreetProvider to the
 	// underlying grpc.Server. The ZrpcServer adapter (see server.go) depends
-	// only on this function type, so the concrete pb.GreetServer is wired
+	// only on this function type, so the concrete greet.GreetServer is wired
 	// here without the server ever knowing about it.
 	gs.Provide(func() ServiceRegister {
 		return func(grpcServer *grpc.Server) {
-			pb.RegisterGreetServer(grpcServer, &GreetProvider{})
+			greet.RegisterGreetServer(grpcServer, &GreetProvider{})
 		}
 	})
 }
 
-// GreetProvider implements the pb.GreetServer interface generated from
+// GreetProvider implements the greet.GreetServer interface generated from
 // greet.proto.
 type GreetProvider struct {
-	pb.UnimplementedGreetServer
+	greet.UnimplementedGreetServer
 }
 
 // Greet echoes the request name back as the greeting, giving the consumer a
 // deterministic value to assert on.
-func (s *GreetProvider) Greet(ctx context.Context, req *pb.GreetReq) (*pb.GreetResp, error) {
-	return &pb.GreetResp{Greeting: req.Name}, nil
+func (s *GreetProvider) Greet(ctx context.Context, req *greet.GreetReq) (*greet.GreetResp, error) {
+	return &greet.GreetResp{Greeting: req.Name}, nil
 }

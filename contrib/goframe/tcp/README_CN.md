@@ -9,7 +9,7 @@ IoC bean，监听地址来自 `conf/app.properties` 而不是
 
 与兄弟模块 [`../http`](../http)、[`../websocket`](../websocket) 一样，也接入了
 **etcd 注册中心**，做真正的**服务注册与发现**。不同的是，gtcp **没有**内建
-gsvc 集成：`internal/server/server.go` 里的适配器围绕 gtcp 生命周期**手写**了
+gsvc 集成：`provider/server.go` 里的适配器围绕 gtcp 生命周期**手写**了
 `gsvc.Registrar.Register` / `Deregister` 调用。这就是本模块存在的意义——它是
 一个"如何把 goframe 里非 HTTP 的传输接入同一个 etcd 注册中心"的完整样例。
 
@@ -47,9 +47,9 @@ endpoint，然后把 host:port 交给 `gtcp.NewNetConn`。
 
 ```
 contrib/goframe/tcp/
-├── internal/config/config.go     # ${goframe.tcp} 绑定：address / advertise.* / name / registry.etcd
-├── internal/server/server.go     # GoFrameTCPServer 适配器（gs.Server）+ 手动 gsvc Register/Deregister
 ├── provider/main.go              # gs.Run()；常驻，注册进 etcd
+├── provider/server.go            # GoFrameTCPServer 适配器（gs.Server）+ Config + 手动 gsvc Register/Deregister
+├── provider/handler.go           # bufio 按行回显的连接处理器
 ├── consumer/main.go              # gsvc.Search → gtcp.NewNetConn 拨号，断言回显后退出
 ├── conf/app.properties           # Provider 配置
 ├── scripts/gen-code.sh           # 有注释的空操作（原生 TCP 无 IDL）

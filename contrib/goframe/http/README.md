@@ -41,14 +41,12 @@ This is a runnable example, **not** a reusable starter module.
 
 ```
 contrib/goframe/http/
-├── api/hello/                    # generated API types (shared)
-├── internal/config/config.go     # ${goframe} bindings: address, name, registry.etcd
-├── internal/controller/hello/    # generated controller (shared)
-├── internal/server/server.go     # GoFrameServer adapter (gs.Server) + etcd registry wiring
 ├── provider/main.go              # gs.Run(); long-lived, registers into etcd
+├── provider/server.go            # GoFrameServer adapter (gs.Server) + Config + etcd registry wiring
+├── provider/handler.go           # hand-written HelloController (g.Meta route + response)
 ├── consumer/main.go              # discovers the provider via etcd, calls it and asserts, then exits
 ├── conf/app.properties           # provider configuration
-├── scripts/gen-code.sh           # regenerates internal/controller/ from api/ via `gf gen ctrl`
+├── scripts/gen-code.sh           # no-op: the handler is hand-written, no IDL codegen
 ├── docker-compose.yml            # local etcd
 └── scripts/smoke-test.sh         # smoke test: bring up etcd+provider, run consumer, tear down
 ```
@@ -59,33 +57,31 @@ contrib/goframe/http/
 # tool (once)
 go install github.com/gogf/gf/cmd/gf/v2@latest
 
-# scaffold the single-repo template (produced the api/, internal/, manifest/,
-# resource/ trees; the module was renamed to go-spring.org/goframe/http when
-# it was split from its gRPC sibling under ../grpc).
+# scaffold the single-repo template (module renamed to go-spring.org/goframe/http
+# when it was split from its gRPC sibling under ../grpc).
 gf init goframe -g go-spring.org/goframe/http
-
-# regenerate controller stubs from api/ (or just run ./scripts/gen-code.sh; the hack/*.mk
-# files carry the same command as `make ctrl`).
-gf gen ctrl
 ```
 
-The generated `api/`, `internal/controller/`, `internal/consts/` code is
-untouched by the Go-Spring refactor — only *how the service is configured,
-started and discovered* changes.
+The original `gf init` scaffold (the `api/`, `internal/`, `manifest/`,
+`resource/` trees plus `gf gen ctrl` controllers) has been **dropped** in favour
+of the flat `provider/{main,server,handler}.go` layout the sibling protocol
+examples use. The Hello handler is now hand-written in `provider/handler.go`;
+only *how the service is configured, started and discovered* is the Go-Spring
+part.
 
 ## The refactor: native goframe → Go-Spring + registry
 
 | Concern         | goframe scaffold                                    | Go-Spring version                                                              |
 | --------------- | --------------------------------------------------- | ------------------------------------------------------------------------------ |
 | Startup         | `cmd.Main.Run()` → `s.Run()` blocks in `main()`     | `GoFrameServer` implements `gs.Server`; `gs.Run()` drives Run/Stop             |
-| Server creation | `g.Server()` inline in `internal/cmd`               | `internal/server.NewGoFrameServer`, a `gs.Server` bean                         |
+| Server creation | `g.Server()` inline in `internal/cmd`               | `provider.NewGoFrameServer`, a `gs.Server` bean                                |
 | Route wiring    | `s.Group(...)` inline in `internal/cmd`             | done inside the server bean constructor                                        |
 | Config source   | `manifest/config/config.yaml` via `g.Cfg()`         | `conf/app.properties` bound via `value:"${...}"` tags under `${goframe}`       |
 | Registration    | none (direct)                                       | provider calls `gsvc.SetRegistry(etcd.New(addr))` before `g.Server(name)`      |
 | Discovery       | consumer hard-coded `http://localhost:8000/hello`   | consumer `g.Client().Discovery(etcd.New(addr)).Get(ctx, "http://<name>/hello")` |
 | Shutdown        | `s.Run()`'s own signal handling                     | graceful shutdown by Go-Spring (SIGTERM → `Stop()`, deregisters from etcd)     |
 
-The adapter in `internal/server/server.go` is the crux. `ghttp.Server`
+The adapter in `provider/server.go` is the crux. `ghttp.Server`
 snapshots `gsvc.GetRegistry()` at construction time (see `ghttp_server.go`
 `registrar: gsvc.GetRegistry()`), so the constructor sets the etcd registry
 *before* calling `g.Server(name)`. `s.Start()` is non-blocking, so `Run` parks

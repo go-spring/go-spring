@@ -21,9 +21,11 @@ Two consequences follow, both intentional:
   consumer dials a fixed `host:port`.
 - **No goctl-generated files.** goctl's `.api` DSL only understands
   request/response HTTP endpoints; there is no way to declare a WS route or
-  a WS frame type in it. Everything under `internal/` here is hand-written.
-  `scripts/gen-code.sh` is a documented no-op that exists only to keep the entry point
-  shape consistent with the two sibling projects.
+  a WS frame type in it. Everything here is hand-written: the frame types
+  live in `proto/greet.go` and the upgrade loop + `GreetLogic` bean live in
+  `provider/handler.go`. `scripts/gen-code.sh` is a documented no-op that
+  exists only to keep the entry point shape consistent with the two sibling
+  projects.
 
 This is a runnable example, **not** a reusable starter module.
 
@@ -43,11 +45,8 @@ This is a runnable example, **not** a reusable starter module.
 ```
 contrib/go-zero/greet-ws/
 ├── scripts/gen-code.sh                 # documented no-op (WS has no IDL in go-zero)
-├── internal/types/types.go             # hand-written; WS frame payloads (JSON)
-├── internal/handler/wshandler.go       # hand-written; upgrade + read/write loop
-├── internal/svc/servicecontext.go      # hand-written; injected Logic surface
-├── internal/logic/greetlogic.go        # hand-written; GreetLogic IoC bean
-├── provider/handler.go                 # HandlerRegister bean; attaches WS route
+├── proto/greet.go                      # hand-written; WS frame payloads (JSON), the "IDL"
+├── provider/handler.go                 # hand-written; HandlerRegister bean, WS upgrade loop, GreetLogic bean
 ├── provider/server.go                  # RestServer adapter (gs.Server) + Config
 ├── provider/main.go                    # gs.Run(); long-lived process
 ├── consumer/main.go                    # WS dialer, asserts on echo, exits
@@ -120,4 +119,5 @@ bash scripts/smoke-test.sh
 cannot be described in go-zero's `.api` DSL, so `goctl api go` has nothing to
 say about the route or the frame types. Compare `../greet-api/scripts/gen-code.sh` (drives
 `goctl api go`) and `../greet-rpc/scripts/gen-code.sh` (drives `goctl rpc protoc`). To
-change a WS field or add a route, edit the files under `internal/` directly.
+change a WS field or add a route, edit `proto/greet.go` and
+`provider/handler.go` directly.

@@ -14,10 +14,11 @@
   docker-compose,也没有注册环节。`rest.Server` 不内建服务发现能力 ——
   注册中心相关能力只存在于 go-zero 的 zRPC 层 —— 所以 consumer 直接连
   固定的 `host:port`。
-- **goctl 生成的 internal/ 层保持很薄。** 只有 `internal/types/*.go` 与
-  `internal/handler/routes.go` 由 goctl 生成、通过 `scripts/gen-code.sh` 重新生成;
-  `internal/{handler,svc,logic}` 的其余部分是手写,让 Greet 业务逻辑得以
-  参与 Go-Spring 的依赖注入。
+- **goctl 产物已展平且保持很薄。** 只有 `types/types.go` 与
+  `handler/routes.go` 由 goctl 生成、通过 `scripts/gen-code.sh` 重新生成;
+  其余部分(`handler/greethandler.go`,以及 `svc/` 下的 `ServiceContext`
+  与 `GreetLogic` bean)是手写,让 Greet 业务逻辑得以参与 Go-Spring 的依赖注入。
+  goctl 的 `internal/` 脚手架外壳被丢弃 —— 各包直接放在模块根目录下。
 
 这是 go-zero 示例的 HTTP 半边;zRPC/gRPC 那一半 —— 同一个 `Greet` 服务,
 但由 `greet.proto` 生成 —— 在旁边的 [`../greet-rpc`](../greet-rpc)。
@@ -40,11 +41,11 @@
 contrib/go-zero/greet-api/
 ├── greet.api                          # go-zero API IDL
 ├── scripts/gen-code.sh                # 重新生成 goctl 所有的两份文件
-├── internal/types/types.go            # goctl 生成的请求/响应结构(请勿手改)
-├── internal/handler/routes.go         # goctl 生成的路由表(请勿手改)
-├── internal/handler/greethandler.go   # 手写,解析请求并调用 Logic bean
-├── internal/svc/servicecontext.go     # 手写,承载被注入的 Logic bean
-├── internal/logic/greetlogic.go       # 手写,GreetLogic IoC bean
+├── types/types.go                     # goctl 生成的请求/响应结构(请勿手改)
+├── handler/routes.go                  # goctl 生成的路由表(请勿手改)
+├── handler/greethandler.go            # 手写,解析请求并调用 Logic bean
+├── svc/servicecontext.go              # 手写,承载被注入的 Logic bean
+├── svc/logic.go                       # 手写,GreetLogic IoC bean
 ├── provider/handler.go                # HandlerRegister bean,把路由与 Logic 绑起来
 ├── provider/server.go                 # RestServer 适配器(gs.Server)+ Config
 ├── provider/main.go                   # gs.Run(),长驻 HTTP server
@@ -64,10 +65,11 @@ goctl api go -api greet.api -dir <tmp>/gen --style gozero
 ```
 
 `scripts/gen-code.sh` 会在一个父模块名为 `greetapi` 的临时工作区里执行同样的命令,并且**只**
-把 `internal/types/types.go` 与 `internal/handler/routes.go` 挑出来放到项目里。
+把 `types/types.go` 与 `handler/routes.go` 挑出来放到项目里(并把 goctl 的
+`internal/` 导入路径改写为模块根路径)。
 goctl 生成的其余部分 —— `greet.go`(main)、`etc/greet.yaml`、`internal/config`、
-`internal/svc/servicecontext.go`、`internal/logic/greetlogic.go`、
-`internal/handler/greethandler.go` —— 有意不采纳:生命周期与配置交由 Go-Spring
+`svc/servicecontext.go`、`svc/logic.go` 对应文件、
+`handler/greethandler.go` —— 有意不采纳:生命周期与配置交由 Go-Spring
 管理,业务逻辑住在一个 Go-Spring bean 里,而不是每次请求都 `NewGreetLogic()`。
 
 ## 改造:原生 go-zero → Go-Spring

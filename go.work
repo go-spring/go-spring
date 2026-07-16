@@ -36,6 +36,8 @@ use (
 	./starter/starter-gorm-mysql
 	./starter/starter-grpc
 	./starter/starter-hertz
+	./starter/starter-kitex
+	./starter/starter-kitex/example
 	./starter/starter-mongodb
 	./starter/starter-nacos
 	./starter/starter-pprof

@@ -25,7 +25,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	"greetws/internal/types"
+	greet "greetws/proto"
 )
 
 // The consumer dials the provider's WebSocket endpoint directly. Unlike the
@@ -54,7 +54,7 @@ func main() {
 	}
 	defer conn.Close()
 
-	req, err := json.Marshal(types.GreetReq{Name: "Hello, go-zero!"})
+	req, err := json.Marshal(greet.GreetReq{Name: "Hello, go-zero!"})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error marshalling request: %v\n", err)
 		os.Exit(1)
@@ -71,8 +71,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	var greet types.GreetResp
-	if err := json.Unmarshal(data, &greet); err != nil {
+	var out greet.GreetResp
+	if err := json.Unmarshal(data, &out); err != nil {
 		fmt.Fprintf(os.Stderr, "error decoding response: %v\n", err)
 		os.Exit(1)
 	}
@@ -82,9 +82,9 @@ func main() {
 	_ = conn.WriteMessage(websocket.CloseMessage,
 		websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 
-	fmt.Println("Response from provider:", greet.Greeting)
-	if greet.Greeting != "Hello, go-zero!" {
-		fmt.Fprintf(os.Stderr, "unexpected greet body: %q\n", greet.Greeting)
+	fmt.Println("Response from provider:", out.Greeting)
+	if out.Greeting != "Hello, go-zero!" {
+		fmt.Fprintf(os.Stderr, "unexpected greet body: %q\n", out.Greeting)
 		os.Exit(1)
 	}
 }

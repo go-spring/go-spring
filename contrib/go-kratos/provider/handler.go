@@ -23,7 +23,6 @@ import (
 	khttp "github.com/go-kratos/kratos/v2/transport/http"
 	kws "github.com/tx7do/kratos-transport/transport/websocket"
 	v1 "go-spring.org/go-kratos/api/helloworld/v1"
-	"go-spring.org/go-kratos/internal/service"
 	"go-spring.org/spring/gs"
 )
 
@@ -54,7 +53,8 @@ func init() {
 	// kratos transport servers. KratosServer (see server.go) depends only on
 	// this function type, so the concrete service is wired here without the
 	// adapter ever knowing about v1.GreeterServer or WS message types.
-	gs.Provide(func(greeter *service.GreeterService) ServiceRegister {
+	gs.Provide(func() ServiceRegister {
+		greeter := &GreeterService{}
 		return func(hs *khttp.Server, gs *kgrpc.Server, ws *kws.Server) error {
 			// HTTP + gRPC share the proto contract: one Register call per
 			// transport, both dispatch to the same GreeterService.
@@ -62,14 +62,11 @@ func init() {
 			v1.RegisterGreeterServer(gs, greeter)
 
 			// WebSocket is message-typed, not RPC-typed. Bind
-			// WSHelloMessageType -> a handler that:
-			//   1. reuses the same domain path (GreeterService.SayHello ->
-			//      biz.GreeterUsecase.CreateGreeter -> data.greeterRepo) as
-			//      the HTTP+gRPC transports, so the three transports are
-			//      genuinely serving the same business logic;
-			//   2. echoes the reply asynchronously via ws.SendMessage — WS is
-			//      full-duplex, so unlike request/response transports we don't
-			//      "return" a value from the handler.
+			// WSHelloMessageType -> a handler that reuses the same
+			// GreeterService.SayHello as the HTTP+gRPC transports (so all three
+			// serve the same business logic) and echoes the reply asynchronously
+			// via ws.SendMessage — WS is full-duplex, so unlike request/response
+			// transports we don't "return" a value from the handler.
 			kws.RegisterServerMessageHandler(ws, WSHelloMessageType,
 				func(sessionID kws.SessionID, req *WSHelloRequest) error {
 					reply, err := greeter.SayHello(context.Background(),
@@ -84,4 +81,20 @@ func init() {
 			return nil
 		}
 	})
+}
+
+// GreeterService implements the GreeterServer interface generated from
+// helloworld.proto. It replaces the kratos scaffold's internal/{biz,service,data}
+// layering, which for this example was three empty passthroughs (the data repo
+// returned the greeter unchanged and the biz usecase only logged). Folding the
+// greeting directly into the handler matches the flat provider/handler.go shape
+// the dubbo-go examples use.
+type GreeterService struct {
+	v1.UnimplementedGreeterServer
+}
+
+// SayHello echoes the request name back as "Hello <name>", giving the consumer
+// a deterministic value to assert on over HTTP, gRPC and WebSocket.
+func (s *GreeterService) SayHello(ctx context.Context, in *v1.HelloRequest) (*v1.HelloReply, error) {
+	return &v1.HelloReply{Message: "Hello " + in.Name}, nil
 }

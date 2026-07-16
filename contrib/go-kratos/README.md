@@ -4,10 +4,13 @@
 
 A [Kratos](https://go-kratos.dev/en/) `Greeter` example that starts from code
 the `kratos` toolchain scaffolds and is then refactored to boot and be
-configured the Go-Spring way: `gs.Run()` drives the lifecycle, every layer is
+configured the Go-Spring way: `gs.Run()` drives the lifecycle, beans are
 wired through the Go-Spring IoC container instead of `google/wire`, and the
-server bind addresses come from `conf/app.properties` instead of Kratos' YAML
-config.
+server bind addresses come from `provider/conf/app.properties` instead of
+Kratos' YAML config. The scaffold's layered `internal/{biz,service,data}` is
+collapsed — for this Greeter those layers were empty passthroughs — so the
+greeting logic lives directly in `provider/handler.go`, matching the flat
+provider/consumer shape the dubbo-go examples use.
 
 It exposes three kratos transports for the Greeter — the **HTTP** (`:8000`)
 and **gRPC** (`:9000`) endpoints the scaffold generates, plus a
@@ -21,7 +24,7 @@ the microservice governance Kratos advertises — not the earlier registry-less
 direct connection.
 
 All three transports live in one kratos.App because they can coexist as
-`transport.Server` implementations — see the `internal/server` refactor notes
+`transport.Server` implementations — see the `provider/server.go` refactor notes
 below. Transports that CANNOT coexist (e.g. an MQTT broker-backed transport
 that needs an external mosquitto) would warrant a separate subdirectory; the
 kitex example follows that pattern for its incompatible protocol modes.
@@ -53,17 +56,14 @@ This is a runnable example, **not** a reusable starter module.
 ```
 contrib/go-kratos/
 ├── api/helloworld/v1/          # protoc-generated gRPC + HTTP stubs (DO NOT EDIT)
-├── internal/biz/               # domain usecase (GreeterUsecase + GreeterRepo interface)
-├── internal/data/              # data layer (Data, greeterRepo) + shared kratos logger bean
-├── internal/service/           # service layer (GreeterService)
-├── provider/handler.go         # ServiceRegister bean, binds GreeterService to
-│                               #   HTTP, gRPC and WebSocket transports
-├── provider/server.go          # KratosServer adapter (gs.Server) + Config, composes
-│                               #   kratos.App with all three transports + etcd Registrar
+├── provider/handler.go         # GreeterService (SayHello) + ServiceRegister bean,
+│                               #   binds it to the HTTP, gRPC and WebSocket transports
+├── provider/server.go          # KratosServer adapter (gs.Server) + Config + logger bean,
+│                               #   composes kratos.App with all three transports + etcd Registrar
 ├── provider/main.go            # gs.Run(); long-lived, publishes into etcd
+├── provider/conf/app.properties # provider configuration
 ├── consumer/main.go            # discovers the provider via etcd, calls SayHello over
 │                               #   gRPC AND dials the WebSocket endpoint, asserts both
-├── conf/app.properties         # provider configuration
 ├── docker-compose.yml          # local etcd
 └── scripts/smoke-test.sh       # smoke test: bring up etcd+provider, run consumer, tear down
 ```
@@ -81,8 +81,10 @@ kratos new go-kratos
 The scaffold produces `cmd/` (a `wire` + `kratos.App` bootstrap), `configs/config.yaml`,
 `internal/conf/` (a `conf.proto` Bootstrap message), and the layered `internal/`
 code. The refactor drops `cmd/`, `configs/`, `internal/conf/`, and the `wire`
-files, keeps the generated `api/` stubs untouched, and rewires the rest as a
-provider + consumer pair.
+files, keeps the generated `api/` stubs untouched, and collapses the
+`internal/{biz,service,data}` layers (empty passthroughs for this Greeter) into
+the greeting logic in `provider/handler.go`, rewiring the rest as a provider +
+consumer pair.
 
 The `api/helloworld/v1/*.pb.go`, `*_grpc.pb.go`, and `*_http.pb.go` stubs can be
 regenerated from the `.proto` files by running `./scripts/gen-code.sh` (a thin wrapper around
@@ -119,10 +121,11 @@ coexist get split into their own subdirectory.
 | Concern             | Kratos scaffold                                             | Go-Spring version                                                                        |
 | ------------------- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
 | Startup             | `kratos.New(...).Run()` owns the process                    | `KratosServer` implements `gs.Server`; `gs.Run()` drives Run/Stop                        |
-| Dependency wiring   | `google/wire` `ProviderSet` + generated `wire_gen.go`       | `init()` + `gs.Provide` per layer; blank imports in `provider/main.go` trigger registration |
+| Dependency wiring   | `google/wire` `ProviderSet` + generated `wire_gen.go`       | `init()` + `gs.Provide` in `provider/*.go`; all provider files are `package main` |
 | Handler wiring      | `v1.RegisterGreeterHTTPServer(hs, impl)` in `internal/server` | `ServiceRegister` bean binds `GreeterService` to all three transports (HTTP, gRPC, WS) |
+| Business logic      | layered `internal/{biz,service,data}` (usecase → repo)      | folded into `GreeterService.SayHello` in `provider/handler.go` (layers were empty passthroughs) |
 | Server enable       | always on                                                   | `KratosServer` conditional on a `ServiceRegister` bean via `gs.OnBean`                   |
-| Config source       | `configs/config.yaml` scanned into `conf.proto` `Bootstrap` | `conf/app.properties` bound via `value:"${spring.kratos.http}"` / `${spring.kratos.grpc}` |
+| Config source       | `configs/config.yaml` scanned into `conf.proto` `Bootstrap` | `provider/conf/app.properties` bound via `value:"${spring.kratos.http}"` / `${spring.kratos.grpc}` |
 | Registration        | none (direct)                                               | provider `kratos.Registrar(etcd.New(clientv3.New(...)))` into etcd                       |
 | Discovery           | consumer `transgrpc.WithEndpoint("host:port")`              | consumer `transgrpc.WithEndpoint("discovery:///<name>") + WithDiscovery(etcd.New(...))`  |
 | Shutdown            | `kratos.App` traps SIGTERM itself                           | graceful shutdown by Go-Spring (SIGTERM → `Stop()` → `App.Stop()`, deregisters from etcd) |

@@ -56,9 +56,9 @@ s.BindHandler("/echo", func(r *ghttp.Request) {
 
 ```
 contrib/goframe/websocket/
-├── internal/config/config.go     # ${goframe.websocket} 绑定：address / name / registry.etcd
-├── internal/server/server.go     # GoFrameServer 适配器（gs.Server）+ /echo 升级路由
 ├── provider/main.go              # gs.Run()；常驻，注册进 etcd
+├── provider/server.go            # GoFrameServer 适配器（gs.Server）+ Config + etcd registry 接入
+├── provider/handler.go           # /echo 升级 + 帧回显处理器
 ├── consumer/main.go              # gsvc.Search → gorilla-websocket 拨号，断言回显后退出
 ├── conf/app.properties           # Provider 配置
 ├── scripts/gen-code.sh           # 有注释的空操作（WS/HTTP handler 手写，无代码生成）

@@ -23,27 +23,11 @@ import (
 	"runtime"
 
 	"go-spring.org/spring/gs"
-
-	"go-spring.org/goframe/websocket/internal/server"
 )
 
-func init() {
-	// The goframe *ghttp.Server, exported as a gs.Server so the Go-Spring
-	// lifecycle starts and stops it. Config is bound from the
-	// "${goframe.websocket}" prefix.
-	//
-	// WebSocket in goframe is not a separate server: the same *ghttp.Server
-	// that would answer HTTP requests upgrades to WebSocket on the /echo
-	// route (see internal/server/server.go). Registration into etcd via
-	// gsvc happens at HTTP-server granularity, which is why the WS variant
-	// still ends up using the exact same lifecycle bean as the http sibling.
-	gs.Provide(server.NewGoFrameServer, gs.IndexArg(0, gs.TagArg("${goframe.websocket}"))).
-		Export(gs.As[gs.Server]())
-}
-
 // The provider is a long-lived process: gs.Run() starts the GoFrameServer
-// registered above, which publishes itself into etcd, then blocks until it
-// receives SIGTERM/SIGINT. Discovery and the WebSocket dial live in the
+// registered in server.go, which publishes itself into etcd, then blocks until
+// it receives SIGTERM/SIGINT. Discovery and the WebSocket dial live in the
 // consumer.
 func main() {
 	_ = os.Unsetenv("_")

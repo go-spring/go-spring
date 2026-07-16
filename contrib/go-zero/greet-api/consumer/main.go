@@ -25,7 +25,7 @@ import (
 	"net/http"
 	"os"
 
-	"greetapi/internal/types"
+	"greetapi/types"
 )
 
 // The consumer talks to the provider directly over HTTP. Unlike the sibling

@@ -60,9 +60,9 @@ This is a runnable example, **not** a reusable starter module.
 
 ```
 contrib/goframe/websocket/
-├── internal/config/config.go     # ${goframe.websocket} bindings: address, name, registry.etcd
-├── internal/server/server.go     # GoFrameServer adapter (gs.Server) + /echo upgrade route
 ├── provider/main.go              # gs.Run(); long-lived, registers into etcd
+├── provider/server.go            # GoFrameServer adapter (gs.Server) + Config + etcd registry wiring
+├── provider/handler.go           # /echo upgrade + frame-echo handler
 ├── consumer/main.go              # gsvc.Search → gorilla-websocket dial, asserts on echo, then exits
 ├── conf/app.properties           # provider configuration
 ├── scripts/gen-code.sh           # documented no-op (WS/HTTP handlers are hand-written)

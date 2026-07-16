@@ -18,7 +18,8 @@
   go-zero 的注册中心逻辑只存在于 zRPC 层，因此 consumer 直接连接固定的
   `host:port`。
 - **没有 goctl 生成的文件。** goctl 的 `.api` DSL 只理解请求/响应式 HTTP 接口，
-  无法描述 WS 路由或帧类型。本目录 `internal/` 下所有文件都是手写的。
+  无法描述 WS 路由或帧类型。这里所有文件都是手写的：帧类型放在 `proto/greet.go`，
+  升级循环与 `GreetLogic` bean 放在 `provider/handler.go`。
   `scripts/gen-code.sh` 是一个明确的 no-op，仅用于与两个兄弟子项目保持相同的入口约定。
 
 这是一个可运行的示例，**不是**可复用的 starter 模块。
@@ -39,11 +40,8 @@
 ```
 contrib/go-zero/greet-ws/
 ├── scripts/gen-code.sh                 # 说明性 no-op（go-zero WS 无 IDL 生成）
-├── internal/types/types.go             # 手写：WS 帧载荷（JSON）
-├── internal/handler/wshandler.go       # 手写：升级 + 读写循环
-├── internal/svc/servicecontext.go      # 手写：注入 Logic 的载体
-├── internal/logic/greetlogic.go        # 手写：GreetLogic IoC bean
-├── provider/handler.go                 # HandlerRegister bean；挂载 WS 路由
+├── proto/greet.go                      # 手写：WS 帧载荷（JSON），即“IDL”
+├── provider/handler.go                 # 手写：HandlerRegister bean、WS 升级循环、GreetLogic bean
 ├── provider/server.go                  # RestServer 适配器（gs.Server）+ Config
 ├── provider/main.go                    # gs.Run()；常驻进程
 ├── consumer/main.go                    # WS 拨号，断言 echo，退出
@@ -111,4 +109,5 @@ bash scripts/smoke-test.sh
 `scripts/gen-code.sh` 是一个明确的 no-op —— 只是打印一条说明后退出。WebSocket 无法用
 go-zero 的 `.api` DSL 表达，`goctl api go` 对路由和帧类型都无话可说。
 可对比 `../greet-api/scripts/gen-code.sh`（驱动 `goctl api go`）与 `../greet-rpc/scripts/gen-code.sh`
-（驱动 `goctl rpc protoc`）。要改 WS 字段或加路由，请直接编辑 `internal/` 下的文件。
+（驱动 `goctl rpc protoc`）。要改 WS 字段或加路由，请直接编辑 `proto/greet.go`
+与 `provider/handler.go`。

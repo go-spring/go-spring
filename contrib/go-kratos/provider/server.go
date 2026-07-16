@@ -18,6 +18,7 @@ package main
 
 import (
 	"context"
+	"os"
 	"time"
 
 	"github.com/go-kratos/kratos/contrib/registry/etcd/v2"
@@ -33,6 +34,11 @@ import (
 )
 
 func init() {
+	// The kratos logger is shared by the server adapter (and would be shared by
+	// any service that needs it). The scaffold built it inline in main() and
+	// passed it down every layer; here it is a plain Go-Spring bean.
+	gs.Provide(NewLogger)
+
 	// Register the kratos server adapter and bind it to the Go-Spring server
 	// lifecycle. Config is filled from the ${spring.kratos} prefix. The server
 	// only materializes when a ServiceRegister bean exists, mirroring how the
@@ -40,6 +46,11 @@ func init() {
 	gs.Provide(NewKratosServer, gs.IndexArg(0, gs.TagArg("${spring.kratos}"))).
 		Export(gs.As[gs.Server]()).
 		Condition(gs.OnBean[ServiceRegister]())
+}
+
+// NewLogger provides the kratos logger used by the server adapter.
+func NewLogger() log.Logger {
+	return log.NewStdLogger(os.Stdout)
 }
 
 // ServiceRegister binds services onto the kratos HTTP, gRPC and WebSocket

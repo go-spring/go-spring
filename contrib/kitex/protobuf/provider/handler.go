@@ -19,16 +19,24 @@ package main
 import (
 	"context"
 
+	"github.com/cloudwego/kitex/server"
 	echo "go-spring.org/kitex/protobuf/kitex_gen/echo"
+	"go-spring.org/kitex/protobuf/kitex_gen/echo/echoservice"
 	"go-spring.org/spring/gs"
+	StarterKitex "go-spring.org/starter-kitex"
 )
 
 func init() {
-	// Register the handler as an echo.EchoService bean. The Kitex server
-	// adapter (see server.go) declares a dependency on this interface, so
-	// exporting it here is what wires the generated service into Go-Spring's
-	// IoC container instead of the scaffold's hand-built main().
-	gs.Provide(&EchoServiceImpl{}).Export(gs.As[echo.EchoService]())
+	// Provide a StarterKitex.ServiceRegister bean that binds the EchoServiceImpl
+	// to a raw Kitex server via the generated echoservice.RegisterService.
+	// starter-kitex's SimpleKitexServer depends only on this function type, so
+	// the concrete service is wired here without the server ever knowing about
+	// the generated echo service.
+	gs.Provide(func() StarterKitex.ServiceRegister {
+		return func(svr server.Server) error {
+			return echoservice.RegisterService(svr, &EchoServiceImpl{})
+		}
+	})
 }
 
 // EchoServiceImpl implements the EchoService interface defined in echo.proto.

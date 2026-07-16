@@ -6,9 +6,9 @@
 #
 # This script is intentionally a no-op so that every protocol subproject
 # under contrib/goframe exposes the same regeneration entry point (compare
-# ../../grpc/scripts/gen-code.sh, which does drive protoc, and ../../http/scripts/gen-code.sh, which runs
-# `gf gen ctrl`). If you add a new upgrade route to internal/server/server.go
-# you edit that file directly; nothing here needs to change.
+# ../../grpc/scripts/gen-code.sh, which does drive protoc). If you add a new
+# upgrade route you edit provider/{server,handler}.go directly; nothing here
+# needs to change.
 #
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."

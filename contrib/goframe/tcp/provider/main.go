@@ -23,27 +23,11 @@ import (
 	"runtime"
 
 	"go-spring.org/spring/gs"
-
-	"go-spring.org/goframe/tcp/internal/server"
 )
 
-func init() {
-	// The goframe *gtcp.Server, exported as a gs.Server so the Go-Spring
-	// lifecycle starts and stops it. Config is bound from the
-	// "${goframe.tcp}" prefix.
-	//
-	// Unlike ../http and ../grpc, gtcp has no built-in gsvc integration —
-	// the adapter in internal/server/server.go performs Register /
-	// Deregister by hand around the listener lifetime. This is the point
-	// of this subproject: it shows how a non-HTTP goframe transport plugs
-	// into the same etcd registry the sibling protocols use.
-	gs.Provide(server.NewGoFrameTCPServer, gs.IndexArg(0, gs.TagArg("${goframe.tcp}"))).
-		Export(gs.As[gs.Server]())
-}
-
 // The provider is a long-lived process: gs.Run() starts the GoFrameTCPServer
-// registered above, which publishes itself into etcd, then blocks until it
-// receives SIGTERM/SIGINT. Discovery and the TCP dial live in the consumer.
+// registered in server.go, which publishes itself into etcd, then blocks until
+// it receives SIGTERM/SIGINT. Discovery and the TCP dial live in the consumer.
 func main() {
 	_ = os.Unsetenv("_")
 	_ = os.Unsetenv("TERM")

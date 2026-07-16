@@ -6,16 +6,16 @@
 #   go install github.com/zeromicro/go-zero/tools/goctl@latest
 #
 # Only the two "DO NOT EDIT" files come from goctl:
-#   internal/types/types.go       (request/response structs)
-#   internal/handler/routes.go    (route table)
+#   types/types.go       (request/response structs)
+#   handler/routes.go    (route table)
 #
-# All other internal/* files (handler entry, svc, logic) are hand-written and
-# Go-Spring-owned, so they survive re-generation.
+# All other files (handler entry in handler/, and the svc + logic bean in
+# svc/) are hand-written and Go-Spring-owned, so they survive re-generation.
 #
 # We run goctl inside a scratch workspace whose parent module is "greetapi"
 # (goctl generates imports rooted at the parent module + --dir subpath), then
-# rewrite "greetapi/gen/internal/..." → "greetapi/internal/..." so the
-# generated files sit at project root.
+# rewrite "greetapi/gen/internal/..." → "greetapi/..." so the generated files
+# sit at project root, flattened out of goctl's internal/ scaffold.
 #
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
@@ -28,18 +28,19 @@ cp greet.api "$tmp/"
 (cd "$tmp" && goctl api go -api greet.api -dir gen --style gozero)
 
 # Only take types.go and routes.go from the goctl output; everything else is
-# hand-written and lives under internal/{handler,svc,logic} already.
-cp "$tmp/gen/internal/types/types.go"   internal/types/types.go
-cp "$tmp/gen/internal/handler/routes.go" internal/handler/routes.go
+# hand-written and lives under handler/ and svc/ already.
+cp "$tmp/gen/internal/types/types.go"    types/types.go
+cp "$tmp/gen/internal/handler/routes.go" handler/routes.go
 
-# Rewrite the goctl-embedded module path back to our project layout.
-for f in internal/types/types.go internal/handler/routes.go; do
-    sed -i.bak 's|greetapi/gen/internal|greetapi/internal|g' "$f"
+# Rewrite the goctl-embedded module path back to our flattened project layout
+# (goctl's internal/svc becomes our top-level svc, etc.).
+for f in types/types.go handler/routes.go; do
+    sed -i.bak 's|greetapi/gen/internal|greetapi|g' "$f"
     rm -f "${f}.bak"
 done
 
 # Re-apply the Apache License header — goctl strips it.
-for f in internal/types/types.go internal/handler/routes.go; do
+for f in types/types.go handler/routes.go; do
     if ! head -1 "$f" | grep -q "Copyright"; then
         cat > "${f}.new" << 'EOF'
 // Copyright 2025 The Go-Spring Authors.
@@ -62,4 +63,4 @@ EOF
     fi
 done
 
-echo "Regenerated: internal/types/types.go, internal/handler/routes.go"
+echo "Regenerated: types/types.go, handler/routes.go"

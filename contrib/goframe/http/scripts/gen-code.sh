@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 #
-# Regenerates the goframe controller stubs under internal/controller/ from the
-# api/*/v*/ request/response types. Run this after editing anything under api/.
-# Requires the gf CLI:
+# The goframe HTTP provider's Hello handler is hand-written in
+# provider/handler.go (the g.Meta request type drives route registration) —
+# there is no IDL and no code generator involved. Nothing to regenerate.
 #
-#   go install github.com/gogf/gf/cmd/gf/v2@latest
-#
-# This is what `make ctrl` invokes; the hack/*.mk files carry the same command.
+# This script is intentionally a no-op so that every protocol subproject under
+# contrib/goframe exposes the same regeneration entry point (compare
+# ../../grpc/scripts/gen-code.sh, which does drive protoc). If you add a new
+# route you edit provider/{server,handler}.go directly; nothing here changes.
 #
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-gf gen ctrl
+echo "goframe HTTP has no IDL codegen — nothing to do."

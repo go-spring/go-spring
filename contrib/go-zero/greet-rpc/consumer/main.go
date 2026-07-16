@@ -25,7 +25,7 @@ import (
 	"github.com/zeromicro/go-zero/core/discov"
 	"github.com/zeromicro/go-zero/zrpc"
 
-	"greetrpc/pb"
+	greet "greetrpc/proto"
 )
 
 // The consumer never learns the provider's host:port. It builds a zrpc client
@@ -46,9 +46,9 @@ func main() {
 		},
 	})
 
-	client := pb.NewGreetClient(cli.Conn())
+	client := greet.NewGreetClient(cli.Conn())
 
-	resp, err := client.Greet(ctx, &pb.GreetReq{Name: "Hello, go-zero!"})
+	resp, err := client.Greet(ctx, &greet.GreetReq{Name: "Hello, go-zero!"})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error calling Greet: %v\n", err)
 		os.Exit(1)

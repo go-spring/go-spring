@@ -38,14 +38,12 @@ goframe `gclient` 的 discovery 中间件从同一 etcd 解析出可用地址再
 
 ```
 contrib/goframe/http/
-├── api/hello/                    # 生成的 API 定义(共享)
-├── internal/config/config.go     # ${goframe} 绑定:address、name、registry.etcd
-├── internal/controller/hello/    # 生成的 controller(共享)
-├── internal/server/server.go     # GoFrameServer 适配器(gs.Server)+ etcd registry 接入
 ├── provider/main.go              # gs.Run(),长驻并注册到 etcd
+├── provider/server.go            # GoFrameServer 适配器(gs.Server)+ Config + etcd registry 接入
+├── provider/handler.go           # 手写 HelloController(g.Meta 路由 + 响应)
 ├── consumer/main.go              # 通过 etcd 发现 provider,调用并断言后退出
 ├── conf/app.properties           # provider 配置
-├── scripts/gen-code.sh           # 通过 `gf gen ctrl` 从 api/ 重新生成 internal/controller/
+├── scripts/gen-code.sh           # 空操作:handler 手写,无 IDL 代码生成
 ├── docker-compose.yml            # 本地 etcd
 └── scripts/smoke-test.sh         # 冒烟脚本:起 etcd+provider,跑 consumer,自动清理
 ```
@@ -56,31 +54,29 @@ contrib/goframe/http/
 # 工具(一次性)
 go install github.com/gogf/gf/cmd/gf/v2@latest
 
-# 生成单仓库脚手架(产出 api/、internal/、manifest/、resource/;拆分成 HTTP/gRPC
-# 两个子模块时,module 名改为 go-spring.org/goframe/http)。
+# 生成单仓库脚手架(拆分成 HTTP/gRPC 两个子模块时,module 名改为
+# go-spring.org/goframe/http)。
 gf init goframe -g go-spring.org/goframe/http
-
-# 从 api/ 重新生成 controller(或直接执行 ./scripts/gen-code.sh;hack/*.mk 中的 `make ctrl`
-# 命令与其完全一致)。
-gf gen ctrl
 ```
 
-生成的 `api/`、`internal/controller/`、`internal/consts/` 均未被 Go-Spring
-改造影响,只有*配置、启动和服务发现方式*发生了变化。
+原始 `gf init` 脚手架(`api/`、`internal/`、`manifest/`、`resource/` 目录及
+`gf gen ctrl` 生成的 controller)已被**移除**,改用与其它协议示例一致的扁平
+`provider/{main,server,handler}.go` 布局。Hello handler 现在手写在
+`provider/handler.go` 中;Go-Spring 改造的部分只有*配置、启动和服务发现方式*。
 
 ## 改造:原生 goframe → Go-Spring + 注册发现
 
 | 关注点   | goframe 脚手架                                       | Go-Spring 版本                                                           |
 | -------- | ---------------------------------------------------- | ------------------------------------------------------------------------ |
 | 启动     | `cmd.Main.Run()` → `main()` 中 `s.Run()` 阻塞        | `GoFrameServer` 实现 `gs.Server`,由 `gs.Run()` 驱动 Run/Stop            |
-| 建 server| `internal/cmd` 中直接调用 `g.Server()`               | `internal/server.NewGoFrameServer`,作为 `gs.Server` bean                |
+| 建 server| `internal/cmd` 中直接调用 `g.Server()`               | `provider.NewGoFrameServer`,作为 `gs.Server` bean                       |
 | 路由     | `internal/cmd` 中直接 `s.Group(...)`                 | 放到 server bean 构造函数中完成                                          |
 | 配置来源 | `manifest/config/config.yaml`,由 `g.Cfg()` 隐式加载 | `conf/app.properties`,通过 `value:"${...}"` 标签在 `${goframe}` 下绑定  |
 | 服务注册 | 无(直连)                                          | provider 在 `g.Server(name)` 前调用 `gsvc.SetRegistry(etcd.New(addr))`  |
 | 服务发现 | consumer 硬编码 `http://localhost:8000/hello`        | consumer `g.Client().Discovery(etcd.New(addr)).Get(ctx, "http://<name>/hello")` |
 | 关停     | `s.Run()` 自持信号处理                               | 由 Go-Spring 协调优雅关停(SIGTERM → `Stop()`,注销 etcd 注册)          |
 
-`internal/server/server.go` 中的适配器是关键。`ghttp.Server` 在构造时会读取
+`provider/server.go` 中的适配器是关键。`ghttp.Server` 在构造时会读取
 一次 `gsvc.GetRegistry()`(见 `ghttp_server.go` 中的 `registrar: gsvc.GetRegistry()`),
 因此构造函数在调用 `g.Server(name)` 之前先设置好 etcd registry。`s.Start()`
 非阻塞,所以 `Run` 阻塞在一个 done channel 上,由 `Stop()` 关闭以把控制权交回

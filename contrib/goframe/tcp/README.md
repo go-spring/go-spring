@@ -10,7 +10,7 @@ instead of `manifest/config/config.yaml`.
 Like the sibling [`../http`](../http) and [`../websocket`](../websocket)
 modules this example wires in an **etcd registry** for real **service
 registration & discovery**. Unlike those two, though, gtcp has *no built-in
-gsvc integration*: the adapter in `internal/server/server.go` calls
+gsvc integration*: the adapter in `provider/server.go` calls
 `gsvc.Registrar.Register` / `Deregister` by hand around the gtcp lifecycle.
 This is the point of the module — it is a worked example of how a non-HTTP
 goframe transport plugs into the same etcd registry as its siblings.
@@ -50,9 +50,9 @@ This is a runnable example, **not** a reusable starter module.
 
 ```
 contrib/goframe/tcp/
-├── internal/config/config.go     # ${goframe.tcp} bindings: address, advertise.*, name, registry.etcd
-├── internal/server/server.go     # GoFrameTCPServer adapter (gs.Server) + manual gsvc Register/Deregister
 ├── provider/main.go              # gs.Run(); long-lived, registers into etcd
+├── provider/server.go            # GoFrameTCPServer adapter (gs.Server) + Config + manual gsvc Register/Deregister
+├── provider/handler.go           # bufio line-echo connection handler
 ├── consumer/main.go              # gsvc.Search → gtcp.NewNetConn dial, asserts on echo, then exits
 ├── conf/app.properties           # provider configuration
 ├── scripts/gen-code.sh           # documented no-op (raw TCP has no IDL)

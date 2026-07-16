@@ -50,10 +50,10 @@ directly over HTTP.
 
 ```
 contrib/go-zero/greet-rpc/
-├── greet.proto             # Protobuf IDL
-├── scripts/gen-code.sh     # regenerates pb/ from greet.proto via goctl
-├── pb/greet.pb.go          # protoc-generated messages (DO NOT EDIT)
-├── pb/greet_grpc.pb.go     # protoc-generated gRPC stubs (DO NOT EDIT)
+├── proto/greet.proto       # Protobuf IDL
+├── scripts/gen-code.sh     # regenerates proto/ stubs from proto/greet.proto via goctl
+├── proto/greet.pb.go       # protoc-generated messages (DO NOT EDIT)
+├── proto/greet_grpc.pb.go  # protoc-generated gRPC stubs (DO NOT EDIT)
 ├── provider/handler.go     # GreetProvider, exported as a ServiceRegister bean
 ├── provider/server.go      # ZrpcServer adapter (gs.Server) + Config, configures the etcd registry
 ├── provider/main.go        # gs.Run(); long-lived, registers into etcd
@@ -71,14 +71,14 @@ go install github.com/zeromicro/go-zero/tools/goctl@latest
 go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
 go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 
-# scaffold pb/ from the IDL (or just run ./scripts/gen-code.sh)
-goctl rpc protoc greet.proto --go_out=./pb --go-grpc_out=./pb --zrpc_out=<tmp>
+# scaffold proto/ stubs from the IDL (or just run ./scripts/gen-code.sh)
+goctl rpc protoc proto/greet.proto --go_out=./proto --go-grpc_out=./proto --zrpc_out=<tmp>
 ```
 
 `goctl rpc protoc` normally wants to scaffold an `etc/*.yaml` +
 `internal/{config,logic,server,svc}` tree under `--zrpc_out`. That tree is
 what a stock go-zero project would use for lifecycle and config; here we
-throw it away and keep only the `pb/` stubs — Go-Spring owns the lifecycle
+throw it away and keep only the `proto/` stubs — Go-Spring owns the lifecycle
 and configuration. `scripts/gen-code.sh` points `--zrpc_out` at a `mktemp -d` directory
 and deletes it, so re-running never touches the hand-written
 provider/consumer.
@@ -88,7 +88,7 @@ provider/consumer.
 | Concern         | Stock go-zero zRPC scaffold                | Go-Spring version (zRPC + etcd)                                                     |
 | --------------- | ------------------------------------------ | ----------------------------------------------------------------------------------- |
 | Startup         | `server.Start()` blocks in `main()`        | `ZrpcServer` implements `gs.Server`; `gs.Run()` drives Run/Stop                     |
-| Handler wiring  | `server.RegisterGreetServer(srv, logic)`   | `gs.Provide(func() ServiceRegister { return pb.RegisterGreetServer(...) })`         |
+| Handler wiring  | `server.RegisterGreetServer(srv, logic)`   | `gs.Provide(func() ServiceRegister { return greet.RegisterGreetServer(...) })`      |
 | Server enable   | always on                                  | conditional on a `ServiceRegister` bean via `gs.OnBean`                             |
 | Listen addr     | hard-coded YAML                            | `${spring.zrpc.server.listen-on}` from `conf/app.properties`                        |
 | Registration    | zrpc.RpcServerConf inline in main          | Config struct bound from `${spring.zrpc.server}` prefix                             |
