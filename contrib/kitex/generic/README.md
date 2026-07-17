@@ -62,8 +62,8 @@ This is a runnable example, **not** a reusable starter module.
 contrib/kitex/generic/
 ├── idl/echo.thrift          # Thrift IDL — parsed at runtime by the CONSUMER
 ├── idl/echo/...          # Kitex-generated code (used by the PROVIDER only)
-├── kitex_info.yaml          # metadata for re-generation
-├── scripts/gen-code.sh      # regenerates idl/echo/ from the IDL
+├── idl/kitex_info.yaml      # metadata for re-generation
+├── idl/gen-code.sh          # regenerates idl/echo/ from the IDL
 ├── provider/handler.go      # EchoServiceImpl (identical to ../thrift)
 ├── provider/server.go       # KitexServer adapter (gs.Server) + Config
 ├── provider/main.go         # gs.Run(); long-lived, registers into etcd

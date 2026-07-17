@@ -20,7 +20,7 @@ import (
 	"context"
 
 	"dubbo.apache.org/dubbo-go/v3/server"
-	greet "go-spring.org/dubbo-go/jsonrpc/proto"
+	greet "go-spring.org/dubbo-go/jsonrpc/idl"
 	"go-spring.org/spring/gs"
 	StarterDubbo "go-spring.org/starter-dubbo"
 )

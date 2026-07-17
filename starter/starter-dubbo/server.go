@@ -78,7 +78,7 @@ type ServerConfig struct {
 	LoadBalance     string        `value:"${load-balance:=}"`
 	Serialization   string        `value:"${serialization:=}"`
 	Retries         int           `value:"${retries:=-1}"` // negative means unset; 0 explicitly disables retries
-	Filter          string        `value:"${filter:=}"`    // comma-separated filter names
+	Filter          string        `value:"${filter:=}"`    // comma-separated filter chain; use "-name" to drop one from dubbo-go's default chain
 	Token           string        `value:"${token:=}"`
 	AccessLog       string        `value:"${access-log:=}"`
 	Auth            string        `value:"${auth:=}"`
@@ -86,6 +86,22 @@ type ServerConfig struct {
 	Warmup          time.Duration `value:"${warmup:=}"` // e.g. "10m"
 	NotRegister     bool          `value:"${not-register:=false}"`
 	AdaptiveService bool          `value:"${adaptive-service:=false}"`
+
+	// Filter tuning params, all service-level (apply to every service this
+	// server exposes). The relevant filter must be in the chain (all but
+	// param-sign are in dubbo-go's default chain). Empty/negative means unset,
+	// so dubbo-go keeps its own default (tps/execute default to -1, unlimited).
+	TpsLimiter                  string `value:"${tps-limiter:=}"`                    // tps limiter impl; empty uses dubbo-go default
+	TpsLimitRate                int    `value:"${tps-limit-rate:=-1}"`               // allowed requests per interval; negative means unset (unlimited)
+	TpsLimitStrategy            string `value:"${tps-limit-strategy:=}"`             // e.g. fixedWindow|slidingWindow|threadSafeFixedWindow
+	TpsLimitRejectedHandler     string `value:"${tps-limit-rejected-handler:=}"`     // handler invoked when tps limit is exceeded
+	ExecuteLimit                string `value:"${execute-limit:=}"`                  // max concurrent executions; empty/"-1" means unset (unlimited)
+	ExecuteLimitRejectedHandler string `value:"${execute-limit-rejected-handler:=}"` // handler invoked when execute limit is exceeded
+	ParamSign                   string `value:"${param-sign:=}"`                     // enable request param signing; pair with the "auth" filter
+
+	// Params is an escape hatch for any other provider-level filter parameter
+	// (e.g. long-tail filters) passed straight through to dubbo-go.
+	Params map[string]string `value:"${params:=}"`
 
 	// Protocols are map-driven: only configured entries are enabled, so one
 	// server can expose several protocols at once.
@@ -147,6 +163,30 @@ func (c *ServerConfig) buildOptions(global map[string]RegistryCfg) ([]server.Ser
 	}
 	if c.Auth != "" {
 		opts = append(opts, server.WithServerAuth(c.Auth))
+	}
+	if c.TpsLimiter != "" {
+		opts = append(opts, server.WithServerTpsLimiter(c.TpsLimiter))
+	}
+	if c.TpsLimitRate >= 0 {
+		opts = append(opts, server.WithServerTpsLimitRate(c.TpsLimitRate))
+	}
+	if c.TpsLimitStrategy != "" {
+		opts = append(opts, server.WithServerTpsLimitStrategy(c.TpsLimitStrategy))
+	}
+	if c.TpsLimitRejectedHandler != "" {
+		opts = append(opts, server.WithServerTpsLimitRejectedHandler(c.TpsLimitRejectedHandler))
+	}
+	if c.ExecuteLimit != "" {
+		opts = append(opts, server.WithServerExecuteLimit(c.ExecuteLimit))
+	}
+	if c.ExecuteLimitRejectedHandler != "" {
+		opts = append(opts, server.WithServerExecuteLimitRejectedHandler(c.ExecuteLimitRejectedHandler))
+	}
+	if c.ParamSign != "" {
+		opts = append(opts, server.WithServerParamSign(c.ParamSign))
+	}
+	for k, v := range c.Params {
+		opts = append(opts, server.WithServerParam(k, v))
 	}
 	if c.Tag != "" {
 		opts = append(opts, server.WithServerTag(c.Tag))

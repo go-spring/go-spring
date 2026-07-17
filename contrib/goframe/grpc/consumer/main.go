@@ -28,7 +28,7 @@ import (
 	etcdreg "github.com/gogf/gf/contrib/registry/etcd/v2"
 	"github.com/gogf/gf/contrib/rpc/grpcx/v2"
 
-	"go-spring.org/goframe/grpc/pbgen/echo"
+	"go-spring.org/goframe/grpc/idl/echo"
 	"go-spring.org/spring/gs"
 )
 

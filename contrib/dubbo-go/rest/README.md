@@ -49,8 +49,8 @@ This is a runnable example, **not** a reusable starter module.
 
 ```
 contrib/dubbo-go/rest/
-├── proto/greet.go           # the "IDL": interface name, method name, HTTP verb+path+query constants
-├── scripts/gen-code.sh      # no-op — REST has no IDL codegen
+├── idl/greet.go             # the "IDL": interface name, method name, HTTP verb+path+query constants
+├── idl/gen-code.sh          # no-op — REST has no IDL codegen
 ├── provider/handler.go      # GreetProvider (Go struct) + RestServiceConfig + StarterDubbo.ServiceRegister bean (server comes from starter-dubbo)
 ├── provider/main.go         # gs.Run(); long-lived, registers into etcd
 ├── consumer/main.go         # RestServiceConfig registration + discovers, calls, asserts, exits (raw dubbo-go client, not gs.Run)
@@ -64,10 +64,10 @@ contrib/dubbo-go/rest/
 
 Nothing was generated. REST has no protobuf/thrift IDL and no code generator
 in dubbo-go v3 — the service surface is a hand-written Go file
-(`proto/greet.go`) that pins the Java-style interface name, method name, and
+(`idl/greet.go`) that pins the Java-style interface name, method name, and
 the HTTP verb / path / query-key constants, plus a hand-written provider
 struct with the matching method signature and hand-written
-`RestServiceConfig` maps on both sides. Running `./scripts/gen-code.sh` prints a one-line
+`RestServiceConfig` maps on both sides. Running `./idl/gen-code.sh` prints a one-line
 "nothing to do" for symmetry with the Triple sibling.
 
 ## Choosing this protocol vs. the siblings

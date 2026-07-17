@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package echo;
 
-option go_package = "go-spring.org/goframe/grpc/pbgen/echo;echo";
+option go_package = "go-spring.org/goframe/grpc/idl/echo;echo";
 
 message EchoRequest {
     string message = 1;

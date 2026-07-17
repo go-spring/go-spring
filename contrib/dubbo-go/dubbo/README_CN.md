@@ -41,8 +41,8 @@ provider 的 host:port,而是从同一 etcd 解析出可用地址再发起调用
 
 ```
 contrib/dubbo-go/dubbo/
-├── proto/greet.go           # 「IDL」:接口名与方法名常量
-├── scripts/gen-code.sh      # no-op —— 经典 Dubbo 无 IDL codegen
+├── idl/greet.go             # 「IDL」:接口名与方法名常量
+├── idl/gen-code.sh          # no-op —— 经典 Dubbo 无 IDL codegen
 ├── provider/handler.go      # GreetProvider + StarterDubbo.ServiceRegister bean(server 由 starter-dubbo 提供)
 ├── provider/main.go         # gs.Run(),长驻并注册到 etcd
 ├── provider/conf/app.properties  # provider 配置(server 角色 + 注册中心 + 可观测,metrics :9090)
@@ -56,9 +56,9 @@ contrib/dubbo-go/dubbo/
 ## 如何生成
 
 **什么都不用生成**。经典 Dubbo/Hessian2 在 dubbo-go v3 里没有 protobuf/thrift
-IDL,也没有代码生成器 —— 服务表面就是一份手写的 Go 文件(`proto/greet.go`),
+IDL,也没有代码生成器 —— 服务表面就是一份手写的 Go 文件(`idl/greet.go`),
 固定 Java 风格接口名与方法名,再加一份匹配签名的手写 provider 结构体。
-执行 `./scripts/gen-code.sh` 只会打印一行 “nothing to do”,只是为了与 Triple 兄弟目录
+执行 `./idl/gen-code.sh` 只会打印一行 “nothing to do”,只是为了与 Triple 兄弟目录
 保持一致的入口。
 
 如果你的服务用到非基本类型,需要通过 `hessian.RegisterPOJO(&MyStruct{})`

@@ -41,8 +41,8 @@ provider 的 host:port,而是从同一 etcd 解析出可用地址再发起调用
 
 ```
 contrib/dubbo-go/jsonrpc/
-├── proto/greet.go           # 「IDL」:接口名与方法名常量
-├── scripts/gen-code.sh      # no-op —— JSON-RPC 无 IDL codegen
+├── idl/greet.go             # 「IDL」:接口名与方法名常量
+├── idl/gen-code.sh          # no-op —— JSON-RPC 无 IDL codegen
 ├── provider/handler.go      # GreetProvider + StarterDubbo.ServiceRegister bean(server 由 starter-dubbo 提供)
 ├── provider/main.go         # gs.Run(),长驻并注册到 etcd
 ├── provider/conf/app.properties  # provider 配置(server 角色 + 注册中心 + 可观测,metrics :9090)
@@ -56,9 +56,9 @@ contrib/dubbo-go/jsonrpc/
 ## 如何生成
 
 **什么都不用生成**。JSON-RPC 在 dubbo-go v3 里没有 protobuf/thrift IDL,也没有
-代码生成器 —— 服务表面就是一份手写的 Go 文件(`proto/greet.go`),固定 Java 风格
+代码生成器 —— 服务表面就是一份手写的 Go 文件(`idl/greet.go`),固定 Java 风格
 接口名与方法名,再加一份匹配签名的手写 provider 结构体。
-执行 `./scripts/gen-code.sh` 只会打印一行 "nothing to do",只是为了与 Triple 兄弟目录保持一致
+执行 `./idl/gen-code.sh` 只会打印一行 "nothing to do",只是为了与 Triple 兄弟目录保持一致
 的入口。
 
 参数和返回值可以是任意 JSON 可序列化的 Go 类型,不像 Hessian2 需要注册 POJO 表。

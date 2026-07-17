@@ -42,8 +42,8 @@ provider 的 host:port,而是从同一 etcd 解析出可用地址再发起调用
 
 ```
 contrib/dubbo-go/rest/
-├── proto/greet.go           # 「IDL」:接口名、方法名、HTTP 动词/路径/查询键常量
-├── scripts/gen-code.sh      # no-op —— REST 无 IDL codegen
+├── idl/greet.go             # 「IDL」:接口名、方法名、HTTP 动词/路径/查询键常量
+├── idl/gen-code.sh          # no-op —— REST 无 IDL codegen
 ├── provider/handler.go      # GreetProvider(Go 结构体)+ RestServiceConfig + StarterDubbo.ServiceRegister bean(server 由 starter-dubbo 提供)
 ├── provider/main.go         # gs.Run(),长驻并注册到 etcd
 ├── consumer/main.go         # 注册 RestServiceConfig,通过 etcd 发现 provider,调用并断言后退出(裸 dubbo-go 客户端,不走 gs.Run)
@@ -56,9 +56,9 @@ contrib/dubbo-go/rest/
 ## 如何生成
 
 **什么都不用生成**。REST 在 dubbo-go v3 里没有 protobuf/thrift IDL,也没有代码
-生成器 —— 服务表面就是手写的 Go 文件(`proto/greet.go`)——固定 Java 风格接口名、
+生成器 —— 服务表面就是手写的 Go 文件(`idl/greet.go`)——固定 Java 风格接口名、
 方法名、HTTP 动词/路径/查询键常量——再加一份匹配签名的手写 provider 结构体,以及
-provider/consumer 各自手写的 `RestServiceConfig` 映射。执行 `./scripts/gen-code.sh` 只会打印
+provider/consumer 各自手写的 `RestServiceConfig` 映射。执行 `./idl/gen-code.sh` 只会打印
 一行 "nothing to do",只是为了与 Triple 兄弟目录保持一致的入口。
 
 ## 与其他协议的对比

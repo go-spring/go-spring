@@ -50,10 +50,10 @@ directly over HTTP.
 
 ```
 contrib/go-zero/greet-rpc/
-├── proto/greet.proto       # Protobuf IDL
-├── scripts/gen-code.sh     # regenerates proto/ stubs from proto/greet.proto via goctl
-├── proto/greet.pb.go       # protoc-generated messages (DO NOT EDIT)
-├── proto/greet_grpc.pb.go  # protoc-generated gRPC stubs (DO NOT EDIT)
+├── idl/greet.proto         # Protobuf IDL
+├── idl/gen-code.sh         # regenerates idl/ stubs from idl/greet.proto via goctl
+├── idl/greet.pb.go         # protoc-generated messages (DO NOT EDIT)
+├── idl/greet_grpc.pb.go    # protoc-generated gRPC stubs (DO NOT EDIT)
 ├── provider/handler.go     # GreetProvider, exported as a ServiceRegister bean
 ├── provider/server.go      # ZrpcServer adapter (gs.Server) + Config, configures the etcd registry
 ├── provider/main.go        # gs.Run(); long-lived, registers into etcd
@@ -72,15 +72,15 @@ go install github.com/zeromicro/go-zero/tools/goctl@latest
 go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
 go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 
-# scaffold proto/ stubs from the IDL (or just run ./scripts/gen-code.sh)
-goctl rpc protoc proto/greet.proto --go_out=./proto --go-grpc_out=./proto --zrpc_out=<tmp>
+# scaffold idl/ stubs from the IDL (or just run ./idl/gen-code.sh)
+goctl rpc protoc idl/greet.proto --go_out=./idl --go-grpc_out=./idl --zrpc_out=<tmp>
 ```
 
 `goctl rpc protoc` normally wants to scaffold an `etc/*.yaml` +
 `internal/{config,logic,server,svc}` tree under `--zrpc_out`. That tree is
 what a stock go-zero project would use for lifecycle and config; here we
-throw it away and keep only the `proto/` stubs — Go-Spring owns the lifecycle
-and configuration. `scripts/gen-code.sh` points `--zrpc_out` at a `mktemp -d` directory
+throw it away and keep only the `idl/` stubs — Go-Spring owns the lifecycle
+and configuration. `idl/gen-code.sh` points `--zrpc_out` at a `mktemp -d` directory
 and deletes it, so re-running never touches the hand-written
 provider/consumer.
 

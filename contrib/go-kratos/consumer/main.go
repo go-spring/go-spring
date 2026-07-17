@@ -31,7 +31,7 @@ import (
 	transgrpc "github.com/go-kratos/kratos/v2/transport/grpc"
 	"github.com/gorilla/websocket"
 	clientv3 "go.etcd.io/etcd/client/v3"
-	v1 "go-spring.org/go-kratos/api/helloworld/v1"
+	v1 "go-spring.org/go-kratos/idl/helloworld/v1"
 	"go-spring.org/spring/gs"
 )
 

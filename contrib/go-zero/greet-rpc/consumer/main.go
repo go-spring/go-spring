@@ -30,7 +30,7 @@ import (
 
 	"go-spring.org/spring/gs"
 
-	greet "greetrpc/proto"
+	greet "greetrpc/idl"
 )
 
 // Consumer holds the client-side settings injected from

@@ -1,0 +1,6 @@
+services:
+  zookeeper:
+    image: zookeeper:3.9
+    container_name: contrib-registry-zookeeper
+    ports:
+      - "127.0.0.1:2181:2181"

@@ -150,6 +150,84 @@ type Caller struct {
 }
 ```
 
+## Filters
+
+dubbo-go ships a set of built-in filters and enables a default chain on each
+side, so you get sane behavior with no configuration. The default **provider**
+chain is `echo,token,accesslog,tps,generic_service,execute,pshutdown`; the
+default **consumer** chain is `cshutdown`. Common filters:
+
+| filter | side | purpose | in default chain |
+|---|---|---|---|
+| `echo` | provider | echo/health probe | yes |
+| `token` | provider | token authentication | yes |
+| `accesslog` | provider | access logging | yes |
+| `tps` | provider | TPS rate limiting | yes |
+| `execute` | provider | concurrency limiting | yes |
+| `generic_service` | provider | generic invocation | yes |
+| `pshutdown` / `cshutdown` | provider / consumer | graceful shutdown | yes |
+| `auth` / `sign` | provider / consumer | request signing | no |
+| `active` | consumer | client-side active/concurrency count | no |
+| `metrics` / `tracing` | both | metrics / tracing | no (built in via observability) |
+| `hystrix_provider` / `hystrix_consumer` | both | Hystrix circuit breaking | no |
+| `sentinel-provider` / `sentinel-consumer` | both | Sentinel flow control | no |
+| `seata` | both | distributed transaction | no |
+| `padasvc` | provider | adaptive concurrency | no |
+
+`filter` is a **whole-chain override** (comma-separated). To tweak the default
+chain instead of replacing it, use dubbo-go's `-name` prefix to drop one entry,
+e.g. `spring.dubbo.server.filter=-tps` disables the default TPS limiter.
+
+Filters that need tuning read **service-level** params (they apply to every
+service this server exposes). All are optional; empty/negative values keep
+dubbo-go's default (tps/execute default to `-1`, i.e. unlimited):
+
+```properties
+# TPS rate limiting (the "tps" filter is in the default chain)
+spring.dubbo.server.tps-limit-rate=100                 # requests per interval
+spring.dubbo.server.tps-limit-strategy=slidingWindow   # fixedWindow|slidingWindow|threadSafeFixedWindow
+spring.dubbo.server.tps-limiter=                        # custom limiter impl; empty uses default
+spring.dubbo.server.tps-limit-rejected-handler=        # handler when limit exceeded
+
+# Concurrency limiting (the "execute" filter is in the default chain)
+spring.dubbo.server.execute-limit=200                  # max concurrent executions
+spring.dubbo.server.execute-limit-rejected-handler=
+
+# Request signing — pair with the "auth" filter
+spring.dubbo.server.filter=echo,token,accesslog,tps,generic_service,execute,pshutdown,auth
+spring.dubbo.server.param-sign=true
+
+# Escape hatch: any other provider-level filter param, passed straight through
+spring.dubbo.server.params.some-filter-key=some-value
+```
+
+On the **client** side, `filter` and `params` mirror the server:
+
+```properties
+spring.dubbo.client.filter=cshutdown,active
+spring.dubbo.client.params.some-filter-key=some-value
+# also available per named instance, e.g. instances.orders.filter=...
+```
+
+### Filters that cannot be configured here
+
+Some filters exist but are **not** driven by this starter's config, because in
+dubbo-go's current (Instance-based) API they read their settings elsewhere. Add
+them to the chain if you want them, but configure them through their own means:
+
+- **`seata`** — zero-config; it only propagates the `SEATA_XID` attachment.
+  Just add `seata` to the chain, there is nothing to tune.
+- **`sentinel-provider` / `sentinel-consumer`** — adding the filter calls
+  Sentinel's `InitDefault()`, but flow/circuit-breaking **rules** come from
+  Sentinel-go itself (its config file via env var, or `flow.LoadRules` in your
+  code), not from dubbo config. This starter cannot feed them.
+- **`hystrix_provider` / `hystrix_consumer`** — ⚠️ these read their command
+  config from dubbo-go's **legacy global config singleton**, which the
+  Instance-based API (used by this starter) never populates. So Hystrix config
+  is silently ignored here and the filter is effectively a no-op — don't rely on
+  it. (Upstream `github.com/afex/hystrix-go` is also archived.) Use `tps` /
+  `execute`, or Sentinel, for limiting/breaking instead.
+
 ## Observability (built in)
 
 Metrics and tracing are on by default, so every server and client gets

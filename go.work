@@ -17,6 +17,11 @@ use (
 	./contrib/kitex/protobuf
 	./contrib/kitex/thrift
 	./contrib/observability
+	./contrib/registry/consul
+	./contrib/registry/etcd
+	./contrib/registry/nacos
+	./contrib/registry/polaris
+	./contrib/registry/zookeeper
 	./examples/bookman
 	./examples/chatAI
 	./examples/miniapi
@@ -47,5 +52,6 @@ use (
 	./starter/starter-redigo
 	./starter/starter-thrift
 	./starter/starter-websocket
+	./starter/starter-websocket-coder
 	./stdlib
 )

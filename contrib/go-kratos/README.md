@@ -55,7 +55,7 @@ This is a runnable example, **not** a reusable starter module.
 
 ```
 contrib/go-kratos/
-├── api/helloworld/v1/          # protoc-generated gRPC + HTTP stubs (DO NOT EDIT)
+├── idl/helloworld/v1/          # protoc-generated gRPC + HTTP stubs (DO NOT EDIT)
 ├── provider/handler.go         # GreeterService (SayHello) + ServiceRegister bean,
 │                               #   binds it to the HTTP, gRPC and WebSocket transports
 ├── provider/server.go          # KratosServer adapter (gs.Server) + Config + logger bean,
@@ -84,13 +84,13 @@ kratos new go-kratos
 The scaffold produces `cmd/` (a `wire` + `kratos.App` bootstrap), `configs/config.yaml`,
 `internal/conf/` (a `conf.proto` Bootstrap message), and the layered `internal/`
 code. The refactor drops `cmd/`, `configs/`, `internal/conf/`, and the `wire`
-files, keeps the generated `api/` stubs untouched, and collapses the
+files, keeps the generated `idl/` stubs untouched, and collapses the
 `internal/{biz,service,data}` layers (empty passthroughs for this Greeter) into
 the greeting logic in `provider/handler.go`, rewiring the rest as a provider +
 consumer pair.
 
-The `api/helloworld/v1/*.pb.go`, `*_grpc.pb.go`, and `*_http.pb.go` stubs can be
-regenerated from the `.proto` files by running `./scripts/gen-code.sh` (a thin wrapper around
+The `idl/helloworld/v1/*.pb.go`, `*_grpc.pb.go`, and `*_http.pb.go` stubs can be
+regenerated from the `.proto` files by running `./idl/gen-code.sh` (a thin wrapper around
 `kratos proto client`). A single `.proto` yields both HTTP and gRPC stubs, and
 one Kratos `App` serves those two transports plus the WebSocket transport —
 that is why, unlike the kitex example, this project is **not** split into

@@ -32,7 +32,7 @@ import (
 	"github.com/gogf/gf/v2/net/gsvc"
 	"go-spring.org/spring/gs"
 
-	"go-spring.org/goframe/grpc/pbgen/echo"
+	"go-spring.org/goframe/grpc/idl/echo"
 )
 
 func init() {

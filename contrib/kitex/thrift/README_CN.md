@@ -37,8 +37,8 @@
 contrib/kitex/thrift/
 ├── idl/echo.thrift          # Thrift IDL
 ├── idl/echo/...          # Kitex 生成代码(请勿手改)
-├── kitex_info.yaml          # 重新生成用的元数据
-├── scripts/gen-code.sh      # 从 IDL 重新生成 idl/echo/
+├── idl/kitex_info.yaml      # 重新生成用的元数据
+├── idl/gen-code.sh          # 从 IDL 重新生成 idl/echo/
 ├── provider/handler.go      # EchoServiceImpl,导出为 echo.EchoService bean
 ├── provider/server.go       # KitexServer 适配器(gs.Server)+ Config,配置 etcd registry
 ├── provider/main.go         # gs.Run(),长驻并注册到 etcd
@@ -55,12 +55,12 @@ contrib/kitex/thrift/
 go install github.com/cloudwego/thriftgo@latest
 go install github.com/cloudwego/kitex/tool/cmd/kitex@latest
 
-# 从 IDL 生成脚手架(或直接执行 ./scripts/gen-code.sh)
+# 从 IDL 生成脚手架(或直接执行 ./idl/gen-code.sh)
 kitex -module go-spring.org/kitex/thrift -service echo idl/echo.thrift
 ```
 
 脚手架会产出 `idl/echo/`、一个空的 `handler.go`,以及直接调用 `svr.Run()`
-的 `main.go`。`idl/echo/` 由 provider 与 consumer 共享。重新执行 `./scripts/gen-code.sh`
+的 `main.go`。`idl/echo/` 由 provider 与 consumer 共享。重新执行 `./idl/gen-code.sh`
 只会再生成 `idl/echo/`,不会覆盖改造后的 provider/consumer 代码。
 
 > 这是 **Thrift** 协议版本。基于 protobuf 的传输(KitexProtobuf 与 gRPC)

@@ -22,7 +22,7 @@ import (
 	"go-spring.org/spring/gs"
 	"google.golang.org/grpc"
 
-	greet "greetrpc/proto"
+	greet "greetrpc/idl"
 )
 
 func init() {

@@ -21,7 +21,7 @@ import (
 
 	"dubbo.apache.org/dubbo-go/v3/protocol/rest/config"
 	"dubbo.apache.org/dubbo-go/v3/server"
-	greet "go-spring.org/dubbo-go/rest/proto"
+	greet "go-spring.org/dubbo-go/rest/idl"
 	"go-spring.org/spring/gs"
 	StarterDubbo "go-spring.org/starter-dubbo"
 )

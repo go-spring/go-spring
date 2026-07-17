@@ -22,7 +22,7 @@ import (
 	kgrpc "github.com/go-kratos/kratos/v2/transport/grpc"
 	khttp "github.com/go-kratos/kratos/v2/transport/http"
 	kws "github.com/tx7do/kratos-transport/transport/websocket"
-	v1 "go-spring.org/go-kratos/api/helloworld/v1"
+	v1 "go-spring.org/go-kratos/idl/helloworld/v1"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 )

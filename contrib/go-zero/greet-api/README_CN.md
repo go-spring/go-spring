@@ -16,7 +16,7 @@
   `docker-compose.yml` 只用于拉起可观测后端,并非注册中心;见
   [可观测](#可观测)。)
 - **goctl 产物已展平且保持很薄。** 只有 `types/types.go` 与
-  `handler/routes.go` 由 goctl 生成、通过 `scripts/gen-code.sh` 重新生成;
+  `handler/routes.go` 由 goctl 生成、通过 `idl/gen-code.sh` 重新生成;
   其余部分(`handler/greethandler.go`,以及 `svc/` 下的 `ServiceContext`
   与 `GreetLogic` bean)是手写,让 Greet 业务逻辑得以参与 Go-Spring 的依赖注入。
   goctl 的 `internal/` 脚手架外壳被丢弃 —— 各包直接放在模块根目录下。
@@ -40,8 +40,8 @@
 
 ```
 contrib/go-zero/greet-api/
-├── greet.api                          # go-zero API IDL
-├── scripts/gen-code.sh                # 重新生成 goctl 所有的两份文件
+├── idl/greet.api                       # go-zero API IDL
+├── idl/gen-code.sh                     # 重新生成 goctl 所有的两份文件
 ├── types/types.go                     # goctl 生成的请求/响应结构(请勿手改)
 ├── handler/routes.go                  # goctl 生成的路由表(请勿手改)
 ├── handler/greethandler.go            # 手写,解析请求并调用 Logic bean
@@ -64,10 +64,10 @@ contrib/go-zero/greet-api/
 go install github.com/zeromicro/go-zero/tools/goctl@latest
 
 # 从 IDL 生成整棵脚手架
-goctl api go -api greet.api -dir <tmp>/gen --style gozero
+goctl api go -api idl/greet.api -dir <tmp>/gen --style gozero
 ```
 
-`scripts/gen-code.sh` 会在一个父模块名为 `greetapi` 的临时工作区里执行同样的命令,并且**只**
+`idl/gen-code.sh` 会在一个父模块名为 `greetapi` 的临时工作区里执行同样的命令,并且**只**
 把 `types/types.go` 与 `handler/routes.go` 挑出来放到项目里(并把 goctl 的
 `internal/` 导入路径改写为模块根路径)。
 goctl 生成的其余部分 —— `greet.go`(main)、`etc/greet.yaml`、`internal/config`、

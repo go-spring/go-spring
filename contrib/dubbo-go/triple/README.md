@@ -43,10 +43,10 @@ This is a runnable example, **not** a reusable starter module.
 
 ```
 contrib/dubbo-go/triple/
-├── proto/greet.proto        # Protobuf IDL
-├── proto/greet.pb.go        # protoc-generated messages (DO NOT EDIT)
-├── proto/greet.triple.go    # Triple-generated stubs (DO NOT EDIT)
-├── scripts/gen-code.sh      # regenerates proto/*.go from the IDL
+├── idl/greet.proto          # Protobuf IDL
+├── idl/greet.pb.go          # protoc-generated messages (DO NOT EDIT)
+├── idl/greet.triple.go      # Triple-generated stubs (DO NOT EDIT)
+├── idl/gen-code.sh          # regenerates idl/*.go from the IDL
 ├── provider/handler.go      # GreetProvider + StarterDubbo.ServiceRegister bean (server comes from starter-dubbo)
 ├── provider/main.go         # gs.Run(); long-lived, registers into etcd
 ├── provider/conf/app.properties  # provider config (server role + registry + observability, metrics :9090)
@@ -64,15 +64,15 @@ contrib/dubbo-go/triple/
 go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
 go install github.com/dubbogo/protoc-gen-go-triple/v3@latest
 
-# generate messages + Triple stubs from the IDL (or just run ./scripts/gen-code.sh)
-protoc --proto_path=proto \
-  --go_out=paths=source_relative:./proto \
-  --go-triple_out=paths=source_relative:./proto \
-  proto/greet.proto
+# generate messages + Triple stubs from the IDL (or just run ./idl/gen-code.sh)
+protoc --proto_path=idl \
+  --go_out=paths=source_relative:./idl \
+  --go-triple_out=paths=source_relative:./idl \
+  idl/greet.proto
 ```
 
-The generator produces `greet.pb.go` and `greet.triple.go` in `proto/`, which
-is shared by both the provider and the consumer. Re-running `./scripts/gen-code.sh`
+The generator produces `greet.pb.go` and `greet.triple.go` in `idl/`, which
+is shared by both the provider and the consumer. Re-running `./idl/gen-code.sh`
 regenerates only those files without touching the refactored business code.
 
 > Note: on a go1.26 toolchain whose `runtime.Version()` carries an experiment

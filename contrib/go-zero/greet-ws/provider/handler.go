@@ -26,7 +26,7 @@ import (
 	"github.com/zeromicro/go-zero/rest"
 	"go-spring.org/spring/gs"
 
-	greet "greetws/proto"
+	greet "greetws/idl"
 )
 
 func init() {
@@ -34,7 +34,7 @@ func init() {
 	// attaches the WebSocket route, invoking the injected logic per frame.
 	//
 	// There is no goctl-generated routes.go for WS — the .api DSL cannot
-	// express a WS endpoint, so nothing is generated (see scripts/gen-code.sh,
+	// express a WS endpoint, so nothing is generated (see idl/gen-code.sh,
 	// a documented no-op) and, unlike the sibling greet-api, there is no
 	// separate handler/ package. Everything the WS endpoint needs lives here
 	// in the provider, mirroring how the dubbo-go examples keep handler +

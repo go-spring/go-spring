@@ -44,8 +44,8 @@ This is a runnable example, **not** a reusable starter module.
 ```
 contrib/goframe/grpc/
 ├── idl/echo.proto              # protobuf IDL
-├── pbgen/echo/                 # protoc-generated Go stubs (DO NOT EDIT)
-├── scripts/gen-code.sh         # regenerates pbgen/echo/ from the IDL
+├── idl/echo/                   # protoc-generated Go stubs (DO NOT EDIT)
+├── idl/gen-code.sh             # regenerates idl/echo/ from the IDL
 ├── provider/handler.go         # EchoServiceImpl, exported as an echo.EchoServiceServer bean
 ├── provider/server.go          # GoFrameGrpcServer adapter (gs.Server) + Config, configures the etcd registry
 ├── provider/main.go            # gs.Run(); long-lived, registers into etcd
@@ -62,7 +62,7 @@ contrib/goframe/grpc/
 go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
 go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 
-# regenerate the gRPC stubs from the IDL (or just run ./scripts/gen-code.sh)
+# regenerate the gRPC stubs from the IDL (or just run ./idl/gen-code.sh)
 protoc \
     --proto_path=idl \
     --go_out=. \
@@ -72,9 +72,9 @@ protoc \
     idl/echo.proto
 ```
 
-The `option go_package = "go-spring.org/goframe/grpc/pbgen/echo;echo";` line
-in `echo.proto` pins the output package to `pbgen/echo/` under the module root.
-Re-running `./scripts/gen-code.sh` regenerates `pbgen/echo/` without touching the
+The `option go_package = "go-spring.org/goframe/grpc/idl/echo;echo";` line
+in `echo.proto` pins the output package to `idl/echo/` under the module root.
+Re-running `./idl/gen-code.sh` regenerates `idl/echo/` without touching the
 refactored provider/consumer code.
 
 Unlike goframe's HTTP `gf gen ctrl` chain (which parses `api/*/v*/` types and

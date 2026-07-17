@@ -64,6 +64,9 @@ type ClientConfig struct {
 	Protocol    string        `value:"${protocol:=}"`     // dubbo(default)|tri|triple|jsonrpc
 	Timeout     time.Duration `value:"${timeout:=}"`      // per-request timeout, e.g. "3s"
 	RegistryIDs []string      `value:"${registry-ids:=}"` // select global registries by ID; empty means all
+
+	Filter string            `value:"${filter:=}"` // comma-separated filter chain; use "-name" to drop one from dubbo-go's default chain
+	Params map[string]string `value:"${params:=}"` // escape hatch for consumer-level filter parameters
 }
 
 // NewClient builds a *client.Client from a ClientConfig and the shared *Instance,
@@ -84,6 +87,12 @@ func NewClient(cfg ClientConfig, d *Instance) (*client.Client, error) {
 
 	if cfg.Timeout > 0 {
 		opts = append(opts, client.WithClientRequestTimeout(cfg.Timeout))
+	}
+	if cfg.Filter != "" {
+		opts = append(opts, client.WithClientFilter(cfg.Filter))
+	}
+	if len(cfg.Params) > 0 {
+		opts = append(opts, client.WithClientParams(cfg.Params))
 	}
 	registries, err := selectRegistries(d.Registries(), cfg.RegistryIDs)
 	if err != nil {

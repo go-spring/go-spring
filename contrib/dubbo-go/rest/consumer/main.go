@@ -30,7 +30,7 @@ import (
 	_ "dubbo.apache.org/dubbo-go/v3/imports"
 	"dubbo.apache.org/dubbo-go/v3/protocol/rest/config"
 	"dubbo.apache.org/dubbo-go/v3/registry"
-	greet "go-spring.org/dubbo-go/rest/proto"
+	greet "go-spring.org/dubbo-go/rest/idl"
 	"go-spring.org/spring/gs"
 )
 
@@ -72,7 +72,7 @@ func init() {
 // Consumer holds the client-side settings injected from
 // consumer/conf/app.properties. It never learns the provider's host:port: it
 // resolves a live provider from the same etcd registry the provider published
-// into, by the Java-style interface name in proto/greet.go.
+// into, by the Java-style interface name in idl/greet.go.
 type Consumer struct {
 	RegistryAddr string `value:"${dubbo.consumer.registry.etcd:=127.0.0.1:2379}"`
 }
@@ -95,7 +95,7 @@ func main() {
 
 // runTest builds a raw dubbo-go client bound to the etcd registry, asks for the
 // GreetService by its Java-style interface name (com.example.GreetService,
-// defined in proto/greet.go), and Dubbo resolves a live provider address from
+// defined in idl/greet.go), and Dubbo resolves a live provider address from
 // etcd, calls it, and we assert on the echo.
 //
 // Because this is the REST protocol, dubbo-go has no dedicated

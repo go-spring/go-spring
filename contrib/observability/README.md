@@ -47,8 +47,13 @@ wired together.
 
 The four stacks above span the whole design space along three axes —
 **instrumentation** (framework-native vs manual OTel SDK vs eBPF auto), **pipeline**
-(direct vs collector), and **storage** (per-signal vs all-in-one). Combinations
-we considered but skipped:
+(direct vs collector), and **storage** (per-signal vs all-in-one). Because the app
+only ever speaks OTLP to `:4317`, reaching a different back-end is almost always a
+matter of **swapping one exporter** (in the app or, more commonly, in the OTel
+Collector) — no code change. That is why the list below is short: most "other
+solutions" are just another exporter target, not another architecture.
+
+Combinations we considered but skipped:
 
 - **ClickHouse all-in-one** (SigNoz / Uptrace) — one store, one UI; overlaps
   conceptually with the Elastic stack.
@@ -57,6 +62,26 @@ we considered but skipped:
   *instrumentation* axis rather than a different back-end.
 - **SaaS single-pane** (Datadog / New Relic / Honeycomb / Grafana Cloud) —
   usually also OTLP under the hood; needs an account.
+
+#### Tracing back-ends specifically
+
+The traces axis has more mature options than the four stacks show. For a
+self-hosted, open-source trace store the practical Go choices today are:
+
+- **Jaeger** (used here, stacks 1 & 2) — CNCF, OTLP-native, the common default
+  for self-hosted tracing.
+- **Grafana Tempo** (used here, stack 3) — object-storage-backed, cheap at
+  scale, tightly correlated with Loki/Prometheus in Grafana.
+- **Zipkin** — the original Dapper-style tracer (Twitter, pre-OTel era). Still
+  perfectly usable and stable, but in the Go world it is now mostly a
+  *compatibility* target: new projects default to Jaeger/Tempo, and Zipkin is
+  chosen mainly to feed an **existing** Zipkin cluster (often inherited from the
+  Spring Cloud Sleuth era). It needs **no new stack** here — point the app's
+  exporter at `zipkin` (`go.opentelemetry.io/otel/exporters/zipkin`) or, better,
+  add a `zipkin` exporter in the OTel Collector. The instrumentation code is
+  unchanged; only the export target moves. That is exactly why you'll see
+  `openzipkin/zipkin-go` and `otel/exporters/zipkin` as *indirect* deps in
+  `go.mod` — pulled in transitively by the OTel SDK, not wired into any stack.
 
 ## Layout
 

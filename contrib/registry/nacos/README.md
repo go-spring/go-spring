@@ -1,0 +1,71 @@
+# Nacos registry (Go-Spring style)
+
+[English](README.md) | [中文](README_CN.md)
+
+Service registration & discovery through **Nacos**, using a
+[dubbo-go](https://dubbo.apache.org/en/overview/mannual/golang-sdk/)
+`GreetService` over the **Triple** protocol (protobuf-over-HTTP/2, gRPC
+wire-compatible). On startup the provider registers `greet.GreetService` into
+Nacos; the consumer resolves a live provider address from that same Nacos
+instead of dialing a hard-coded `host:port`.
+
+Nacos is both a registry **and** a config center; after running the example you
+can browse the registered instance in its built-in console at
+<http://127.0.0.1:8848/nacos> (default login `nacos`/`nacos`).
+
+This is one of five sibling examples under [`..`](..) — see the top-level
+[README](../README.md) for the registry overview. The four dubbo-go examples
+(etcd / nacos / zookeeper / polaris) share **identical application code**; only
+the registry block in `conf/app.properties` differs.
+
+## Layout
+
+```
+nacos/
+├── idl/greet.proto          # protobuf IDL
+├── idl/greet.pb.go          # protoc-generated messages (DO NOT EDIT)
+├── idl/greet.triple.go      # Triple-generated stubs (DO NOT EDIT)
+├── idl/gen-code.sh          # regenerates idl/*.go from the IDL
+├── provider/handler.go      # GreetProvider + StarterDubbo.ServiceRegister bean
+├── provider/main.go         # gs.Run(); long-lived, registers into Nacos
+├── provider/conf/app.properties  # provider config (registry + Triple port)
+├── consumer/main.go         # discovers via Nacos, calls, asserts, exits
+├── consumer/conf/app.properties  # consumer config (registry + client protocol)
+├── docker-compose.yml       # local Nacos (standalone)
+└── scripts/smoke-test.sh    # smoke test: up nacos+provider, run consumer, tear down
+```
+
+## The registry configuration
+
+Registries are declared once under `${spring.dubbo.registries}`; the map key is
+a logical ID and `protocol` selects the driver. Switching to another registry is
+just these two lines.
+
+```properties
+spring.dubbo.registries.nacos.protocol=nacos
+spring.dubbo.registries.nacos.address=127.0.0.1:8848
+```
+
+The server publishes into every declared registry by default (no `registry-ids`
+set); the consumer resolves `greet.GreetService` — the interface name baked into
+the Triple stub — from the same registry.
+
+## Run
+
+```bash
+docker compose up -d          # or docker-compose up -d
+go run ./provider &           # long-lived, registers into Nacos
+go run ./consumer             # discovers via Nacos and calls
+```
+
+Expected consumer output:
+
+```
+Response from discovered provider: Hello, Dubbo-Go!
+```
+
+Or the one-shot smoke test:
+
+```bash
+bash scripts/smoke-test.sh
+```

@@ -6,7 +6,7 @@
 #
 # This script is intentionally a no-op so that every protocol subproject
 # under contrib/goframe exposes the same regeneration entry point (compare
-# ../../grpc/scripts/gen-code.sh, which does drive protoc). If you add a new
+# ../../grpc/idl/gen-code.sh, which does drive protoc). If you add a new
 # upgrade route you edit provider/{server,handler}.go directly; nothing here
 # needs to change.
 #

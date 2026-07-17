@@ -1,0 +1,8 @@
+services:
+  polaris:
+    image: polarismesh/polaris-standalone:v1.17.2
+    container_name: contrib-registry-polaris
+    ports:
+      - "127.0.0.1:8090:8090"
+      - "127.0.0.1:8091:8091"
+      - "127.0.0.1:8093:8093"

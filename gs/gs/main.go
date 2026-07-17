@@ -43,6 +43,7 @@ var builtins = map[string]*cobra.Command{
 	"init": cmd.NewInitCmd(),
 	"gen":  cmd.NewGenCmd(),
 	"add":  cmd.NewAddCmd(),
+	"go":   cmd.NewGoCmd(),
 }
 
 // helpFlags trigger showHelp when passed as the first argument.

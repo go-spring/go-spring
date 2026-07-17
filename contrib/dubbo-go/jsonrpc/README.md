@@ -46,8 +46,8 @@ This is a runnable example, **not** a reusable starter module.
 
 ```
 contrib/dubbo-go/jsonrpc/
-├── proto/greet.go           # the "IDL": interface name + method-name constants
-├── scripts/gen-code.sh      # no-op — JSON-RPC has no IDL codegen
+├── idl/greet.go             # the "IDL": interface name + method-name constants
+├── idl/gen-code.sh          # no-op — JSON-RPC has no IDL codegen
 ├── provider/handler.go      # GreetProvider + StarterDubbo.ServiceRegister bean (server comes from starter-dubbo)
 ├── provider/main.go         # gs.Run(); long-lived, registers into etcd
 ├── provider/conf/app.properties  # provider config (server role + registry + observability, metrics :9090)
@@ -62,9 +62,9 @@ contrib/dubbo-go/jsonrpc/
 
 Nothing was generated. JSON-RPC has no protobuf/thrift IDL and no code
 generator in dubbo-go v3 — the service surface is a hand-written Go file
-(`proto/greet.go`) that pins the Java-style interface name and method
+(`idl/greet.go`) that pins the Java-style interface name and method
 names, plus a hand-written provider struct with the matching method
-signature. Running `./scripts/gen-code.sh` prints a one-line "nothing to do" for
+signature. Running `./idl/gen-code.sh` prints a one-line "nothing to do" for
 symmetry with the Triple sibling.
 
 Any JSON-serializable Go type can be used as a parameter or return; there

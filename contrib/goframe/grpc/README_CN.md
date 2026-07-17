@@ -41,8 +41,8 @@ server 与两条不同的 codegen 流水线,没必要硬塞进一个 provider。
 ```
 contrib/goframe/grpc/
 ├── idl/echo.proto              # protobuf IDL
-├── pbgen/echo/                 # protoc 生成的 Go 代码(请勿手改)
-├── scripts/gen-code.sh         # 从 IDL 重新生成 pbgen/echo/
+├── idl/echo/                   # protoc 生成的 Go 代码(请勿手改)
+├── idl/gen-code.sh             # 从 IDL 重新生成 idl/echo/
 ├── provider/handler.go         # EchoServiceImpl,导出为 echo.EchoServiceServer bean
 ├── provider/server.go          # GoFrameGrpcServer 适配器(gs.Server)+ Config,配置 etcd registry
 ├── provider/main.go            # gs.Run(),长驻并注册到 etcd
@@ -59,7 +59,7 @@ contrib/goframe/grpc/
 go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
 go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 
-# 从 IDL 重新生成 gRPC 代码(或直接执行 ./scripts/gen-code.sh)
+# 从 IDL 重新生成 gRPC 代码(或直接执行 ./idl/gen-code.sh)
 protoc \
     --proto_path=idl \
     --go_out=. \
@@ -69,9 +69,9 @@ protoc \
     idl/echo.proto
 ```
 
-`echo.proto` 中的 `option go_package = "go-spring.org/goframe/grpc/pbgen/echo;echo";`
-把生成路径固定到 module 根目录下的 `pbgen/echo/`。重新执行 `./scripts/gen-code.sh`
-只会覆盖 `pbgen/echo/`,不会碰改造后的 provider/consumer 代码。
+`echo.proto` 中的 `option go_package = "go-spring.org/goframe/grpc/idl/echo;echo";`
+把生成路径固定到 module 根目录下的 `idl/echo/`。重新执行 `./idl/gen-code.sh`
+只会覆盖 `idl/echo/`,不会碰改造后的 provider/consumer 代码。
 
 与 goframe 的 HTTP `gf gen ctrl`(解析 `api/*/v*/` 类型再生成 controller)不同,
 gRPC 的代码生成走的是原生 `protoc` + `protoc-gen-go` + `protoc-gen-go-grpc`。

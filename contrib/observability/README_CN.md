@@ -42,6 +42,10 @@ trace 跳到它的日志(日志行里的 `trace_id`),或从延迟直方图跳到
 
 上面四种沿三个轴覆盖了整个设计空间——**埋点方式**(框架原生 / 手工 OTel SDK /
 eBPF 自动)、**管道**(直连 / collector)、**存储**(每信号一套 / 全合一)。
+由于应用始终只对 `:4317` 说 OTLP,换一个后端几乎总是**换一个 exporter**(改在
+应用里,或更常见地改在 OTel Collector 里)的事——不动业务代码。所以下面这份清单
+很短:多数"其他方案"只是换个 exporter 目标,而不是换个架构。
+
 考虑过但略过的:
 
 - **ClickHouse 全合一**(SigNoz / Uptrace)—— 单库单 UI,和 Elastic 概念重叠。
@@ -49,6 +53,24 @@ eBPF 自动)、**管道**(直连 / collector)、**存储**(每信号一套 / 全
 - **eBPF 无侵入埋点**(Grafana Beyla)—— 零代码,属于*埋点*轴而非后端轴。
 - **SaaS 单面板**(Datadog / New Relic / Honeycomb / Grafana Cloud)——
   底层通常也是 OTLP,需要账号。
+
+#### 单说链路追踪(traces)后端
+
+traces 这条轴的成熟选项比四套栈展示的更多。若要自建、开源的链路存储,Go 生态
+当下的现实选择是:
+
+- **Jaeger**(本项目 stack 1、2 使用)—— CNCF 项目,原生 OTLP,自建追踪的常见
+  默认项。
+- **Grafana Tempo**(本项目 stack 3 使用)—— 以对象存储为底,规模化成本低,在
+  Grafana 里与 Loki/Prometheus 深度关联。
+- **Zipkin** —— 最早的 Dapper 式追踪器(Twitter,OTel 之前的时代)。至今依旧
+  稳定可用,但在 Go 世界里它现在主要是**兼容**目标:新项目默认走 Jaeger/Tempo,
+  选 Zipkin 多半是为了对接**已有的** Zipkin 集群(常是 Spring Cloud Sleuth 时代
+  遗留下来的)。它在这里**不需要新增一套栈**——把应用的 exporter 指向 `zipkin`
+  (`go.opentelemetry.io/otel/exporters/zipkin`),或更推荐地在 OTel Collector 里
+  加一个 `zipkin` exporter 即可。埋点代码不变,只是导出目标换了个地方。这也正是
+  你会在 `go.mod` 里看到 `openzipkin/zipkin-go` 与 `otel/exporters/zipkin` 以
+  *indirect* 出现的原因——它们是 OTel SDK 传递引入的,并没有接进任何一套栈。
 
 ## 目录结构
 

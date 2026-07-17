@@ -6,7 +6,7 @@
 #
 # This script is intentionally a no-op so that every protocol subproject
 # under contrib/goframe exposes the same regeneration entry point (compare
-# ../../grpc/scripts/gen-code.sh, which does drive protoc, and ../../http/scripts/gen-code.sh, which runs
+# ../../grpc/idl/gen-code.sh, which does drive protoc, and ../../http/scripts/gen-code.sh, which runs
 # `gf gen ctrl`). If you change the wire format, edit the handler directly;
 # nothing here needs to change.
 #

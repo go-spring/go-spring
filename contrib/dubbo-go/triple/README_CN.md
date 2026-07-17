@@ -40,10 +40,10 @@ provider 启动时把 `greet.GreetService` 注册进 etcd;consumer 不知道 pro
 
 ```
 contrib/dubbo-go/triple/
-├── proto/greet.proto        # Protobuf IDL
-├── proto/greet.pb.go        # protoc 生成的消息(请勿手改)
-├── proto/greet.triple.go    # Triple 生成的桩代码(请勿手改)
-├── scripts/gen-code.sh      # 从 IDL 重新生成 proto/*.go
+├── idl/greet.proto          # Protobuf IDL
+├── idl/greet.pb.go          # protoc 生成的消息(请勿手改)
+├── idl/greet.triple.go      # Triple 生成的桩代码(请勿手改)
+├── idl/gen-code.sh          # 从 IDL 重新生成 idl/*.go
 ├── provider/handler.go      # GreetProvider + StarterDubbo.ServiceRegister bean(server 由 starter-dubbo 提供)
 ├── provider/main.go         # gs.Run(),长驻并注册到 etcd
 ├── provider/conf/app.properties  # provider 配置(server 角色 + 注册中心 + 可观测,metrics :9090)
@@ -61,15 +61,15 @@ contrib/dubbo-go/triple/
 go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
 go install github.com/dubbogo/protoc-gen-go-triple/v3@latest
 
-# 从 IDL 生成消息 + Triple 桩代码(或直接执行 ./scripts/gen-code.sh)
-protoc --proto_path=proto \
-  --go_out=paths=source_relative:./proto \
-  --go-triple_out=paths=source_relative:./proto \
-  proto/greet.proto
+# 从 IDL 生成消息 + Triple 桩代码(或直接执行 ./idl/gen-code.sh)
+protoc --proto_path=idl \
+  --go_out=paths=source_relative:./idl \
+  --go-triple_out=paths=source_relative:./idl \
+  idl/greet.proto
 ```
 
-生成器会在 `proto/` 下产出 `greet.pb.go` 和 `greet.triple.go`;`proto/` 由
-provider 与 consumer 共享。重新执行 `./scripts/gen-code.sh` 只会再生成这两个文件,不会覆盖
+生成器会在 `idl/` 下产出 `greet.pb.go` 和 `greet.triple.go`;`idl/` 由
+provider 与 consumer 共享。重新执行 `./idl/gen-code.sh` 只会再生成这两个文件,不会覆盖
 改造后的业务代码。
 
 > 注意:在 `runtime.Version()` 带实验后缀(如 `go1.26.1-X:jsonv2`)的 go1.26

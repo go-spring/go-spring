@@ -145,6 +145,78 @@ type Caller struct {
 }
 ```
 
+## Filter（过滤器）
+
+dubbo-go 内置了一组 filter，并在两端各启用一条默认链,因此无需配置即有合理行为。
+**provider** 默认链为 `echo,token,accesslog,tps,generic_service,execute,pshutdown`；
+**consumer** 默认链为 `cshutdown`。常用 filter：
+
+| filter | 端 | 作用 | 是否默认启用 |
+|---|---|---|---|
+| `echo` | provider | 回声/健康探测 | 是 |
+| `token` | provider | token 鉴权 | 是 |
+| `accesslog` | provider | 访问日志 | 是 |
+| `tps` | provider | TPS 限流 | 是 |
+| `execute` | provider | 并发数限流 | 是 |
+| `generic_service` | provider | 泛化调用 | 是 |
+| `pshutdown` / `cshutdown` | provider / consumer | 优雅停机 | 是 |
+| `auth` / `sign` | provider / consumer | 请求签名 | 否 |
+| `active` | consumer | 客户端活跃/并发数控制 | 否 |
+| `metrics` / `tracing` | 双端 | 指标 / 链路 | 否（已由可观测性内置） |
+| `hystrix_provider` / `hystrix_consumer` | 双端 | Hystrix 熔断 | 否 |
+| `sentinel-provider` / `sentinel-consumer` | 双端 | Sentinel 流控 | 否 |
+| `seata` | 双端 | 分布式事务 | 否 |
+| `padasvc` | provider | 自适应并发限流 | 否 |
+
+`filter`（逗号分隔）是**整链覆盖**语义。若只想在默认链上增删，用 dubbo-go 原生的
+`-name` 前缀去掉某一项，例如 `spring.dubbo.server.filter=-tps` 关闭默认的 TPS 限流。
+
+需要调参的 filter 读取**服务级**参数（对该 server 导出的所有服务生效）。全部可选，
+留空/负值沿用 dubbo-go 默认（tps/execute 默认 `-1`，即不限流）：
+
+```properties
+# TPS 限流（"tps" filter 在默认链中）
+spring.dubbo.server.tps-limit-rate=100                 # 每个周期允许的请求数
+spring.dubbo.server.tps-limit-strategy=slidingWindow   # fixedWindow|slidingWindow|threadSafeFixedWindow
+spring.dubbo.server.tps-limiter=                        # 自定义限流器实现；留空用默认
+spring.dubbo.server.tps-limit-rejected-handler=        # 超限时的处理器
+
+# 并发限流（"execute" filter 在默认链中）
+spring.dubbo.server.execute-limit=200                  # 最大并发执行数
+spring.dubbo.server.execute-limit-rejected-handler=
+
+# 请求签名 —— 与 "auth" filter 搭配
+spring.dubbo.server.filter=echo,token,accesslog,tps,generic_service,execute,pshutdown,auth
+spring.dubbo.server.param-sign=true
+
+# 逃生舱：任意其他 provider 级 filter 参数，原样透传
+spring.dubbo.server.params.some-filter-key=some-value
+```
+
+**客户端**侧的 `filter` 与 `params` 与服务端对称：
+
+```properties
+spring.dubbo.client.filter=cshutdown,active
+spring.dubbo.client.params.some-filter-key=some-value
+# 具名实例同样可用，如 instances.orders.filter=...
+```
+
+### 无法在此处配置的 filter
+
+有些 filter 存在,但**不由本 starter 的配置驱动**——在 dubbo-go 当前(基于
+Instance)的 API 下,它们从别处读取设置。需要就把它们加进链里,但要用各自的方式配置:
+
+- **`seata`** —— 零配置;仅透传 `SEATA_XID` attachment。把 `seata` 加进链即可,
+  没有可调参数。
+- **`sentinel-provider` / `sentinel-consumer`** —— 加入该 filter 会调用 Sentinel 的
+  `InitDefault()`,但流控/熔断**规则**来自 Sentinel-go 自身(通过环境变量指定的配置
+  文件,或代码里的 `flow.LoadRules`),而非 dubbo 配置,本 starter 喂不进去。
+- **`hystrix_provider` / `hystrix_consumer`** —— ⚠️ 它们从 dubbo-go 的**旧版全局
+  config 单例**读取 command 配置,而本 starter 使用的 Instance API 从不填充这个单例。
+  因此 Hystrix 配置在这里会被静默忽略,filter 实际上是空操作——不要依赖它。(上游
+  `github.com/afex/hystrix-go` 也已归档停维。)限流/熔断请改用 `tps` / `execute`
+  或 Sentinel。
+
 ## 可观测性（内置）
 
 metrics 与 tracing 默认开启，每个 server 和 client 零配置即具备可观测能力：

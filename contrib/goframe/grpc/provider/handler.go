@@ -19,7 +19,7 @@ package main
 import (
 	"context"
 
-	"go-spring.org/goframe/grpc/pbgen/echo"
+	"go-spring.org/goframe/grpc/idl/echo"
 	"go-spring.org/spring/gs"
 )
 
