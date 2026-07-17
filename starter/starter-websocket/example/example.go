@@ -29,44 +29,51 @@ import (
 	"github.com/gorilla/websocket"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
-	StarterWebsocket "go-spring.org/starter-websocket"
+	_ "go-spring.org/starter-websocket"
 )
 
 func init() {
 	gs.Provide(&Controller{})
-	gs.Provide(func(c *Controller) StarterWebsocket.ServerRegister {
-		return func(mux *http.ServeMux, upgrader *websocket.Upgrader) {
-			// Route 1: plain text echo, guarded by the X-App middleware.
-			mux.Handle("/echo", requireApp(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				conn, err := upgrader.Upgrade(w, r, nil)
-				if err != nil {
-					log.Errorf(r.Context(), log.TagAppDef, "Failed to upgrade /echo: %v", err)
-					return
-				}
-				c.Echo(conn)
-			})))
 
-			// Route 2: JSON message echo, also guarded by the X-App middleware.
-			mux.Handle("/json", requireApp(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				conn, err := upgrader.Upgrade(w, r, nil)
-				if err != nil {
-					log.Errorf(r.Context(), log.TagAppDef, "Failed to upgrade /json: %v", err)
-					return
-				}
-				c.EchoJSON(conn)
-			})))
+	// The websocket starter no longer owns an HTTP server: it only contributes
+	// a configured *websocket.Upgrader. We mount the WebSocket routes onto the
+	// HTTP server that Go-Spring already runs by providing a custom
+	// *gs.HttpServeMux (which overrides the default http.DefaultServeMux).
+	gs.Provide(func(c *Controller, upgrader *websocket.Upgrader) *gs.HttpServeMux {
+		mux := http.NewServeMux()
 
-			// Route 3: guarded route used to demonstrate that the middleware
-			// rejects requests missing the X-App header before any upgrade.
-			mux.Handle("/guard", requireApp(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				conn, err := upgrader.Upgrade(w, r, nil)
-				if err != nil {
-					log.Errorf(r.Context(), log.TagAppDef, "Failed to upgrade /guard: %v", err)
-					return
-				}
-				c.Echo(conn)
-			})))
-		}
+		// Route 1: plain text echo, guarded by the X-App middleware.
+		mux.Handle("/echo", requireApp(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			conn, err := upgrader.Upgrade(w, r, nil)
+			if err != nil {
+				log.Errorf(r.Context(), log.TagAppDef, "Failed to upgrade /echo: %v", err)
+				return
+			}
+			c.Echo(conn)
+		})))
+
+		// Route 2: JSON message echo, also guarded by the X-App middleware.
+		mux.Handle("/json", requireApp(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			conn, err := upgrader.Upgrade(w, r, nil)
+			if err != nil {
+				log.Errorf(r.Context(), log.TagAppDef, "Failed to upgrade /json: %v", err)
+				return
+			}
+			c.EchoJSON(conn)
+		})))
+
+		// Route 3: guarded route used to demonstrate that the middleware
+		// rejects requests missing the X-App header before any upgrade.
+		mux.Handle("/guard", requireApp(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			conn, err := upgrader.Upgrade(w, r, nil)
+			if err != nil {
+				log.Errorf(r.Context(), log.TagAppDef, "Failed to upgrade /guard: %v", err)
+				return
+			}
+			c.Echo(conn)
+		})))
+
+		return &gs.HttpServeMux{Handler: mux}
 	})
 }
 

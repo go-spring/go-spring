@@ -16,6 +16,7 @@ use (
 	./contrib/kitex/generic
 	./contrib/kitex/protobuf
 	./contrib/kitex/thrift
+	./contrib/observability
 	./examples/bookman
 	./examples/chatAI
 	./examples/miniapi
@@ -29,15 +30,19 @@ use (
 	./spring
 	./starter/starter-dubbo
 	./starter/starter-echo
+	./starter/starter-elasticsearch
 	./starter/starter-gin
 	./starter/starter-go-redis
 	./starter/starter-gorm-mysql
 	./starter/starter-grpc
 	./starter/starter-hertz
+	./starter/starter-kafka
 	./starter/starter-kitex
 	./starter/starter-kitex/example
 	./starter/starter-mongodb
+	./starter/starter-neo4j
 	./starter/starter-pprof
+	./starter/starter-pulsar
 	./starter/starter-rabbitmq
 	./starter/starter-redigo
 	./starter/starter-thrift

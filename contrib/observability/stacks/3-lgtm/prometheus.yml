@@ -1,0 +1,16 @@
+# Prometheus scrapes the OTel Collector's prometheus exporter, NOT the app
+# directly (the collector receives the app's OTLP metrics and re-exposes
+# them here). Exemplars flow through because the exporter has
+# enable_open_metrics: true and Prometheus is started with
+# --enable-feature=exemplar-storage.
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: otel-collector
+    static_configs:
+      - targets: ["otel-collector:8889"]
+        labels:
+          service: obs-demo
+          role: provider

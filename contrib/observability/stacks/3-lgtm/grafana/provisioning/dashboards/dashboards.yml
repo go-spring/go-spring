@@ -1,0 +1,14 @@
+# Load any dashboard JSON dropped into /var/lib/grafana/dashboards.
+apiVersion: 1
+
+providers:
+  - name: obs-demo
+    orgId: 1
+    folder: ''
+    type: file
+    disableDeletion: false
+    editable: true
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

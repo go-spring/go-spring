@@ -28,8 +28,8 @@ import (
 	"github.com/cloudwego/kitex/client"
 	"github.com/cloudwego/kitex/transport"
 	etcd "github.com/kitex-contrib/registry-etcd"
-	echo "go-spring.org/kitex/protobuf/kitex_gen/echo"
-	"go-spring.org/kitex/protobuf/kitex_gen/echo/echoservice"
+	echo "go-spring.org/kitex/protobuf/idl/echo"
+	"go-spring.org/kitex/protobuf/idl/echo/echoservice"
 	"go-spring.org/spring/gs"
 )
 

@@ -1,0 +1,88 @@
+services:
+  # etcd is the dubbo-go registry; the host provider/consumer both talk to it
+  # via 127.0.0.1:2379. Same command flags as the rest of the contrib/ examples.
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.12
+    container_name: contrib-obs-classic-etcd
+    command:
+      - /usr/local/bin/etcd
+      - --name=node1
+      - --advertise-client-urls=http://0.0.0.0:2379
+      - --listen-client-urls=http://0.0.0.0:2379
+    ports:
+      - "127.0.0.1:2379:2379"
+
+  # ── Observability backends ──────────────────────────────────────────────────
+  # This is the "classic, direct-connect" stack: no OTel collector in the path.
+  # The provider/consumer run on the HOST (scripts/smoke-test.sh builds & runs
+  # them). Traces go straight into Jaeger's OTLP receiver, Prometheus scrapes
+  # the host directly, Promtail tails the host logs into Loki, and Grafana
+  # points at all three as datasources.
+
+  # Jaeger all-in-one owns :4317 in this stack (there is no collector). The app
+  # exports OTLP/gRPC spans to 127.0.0.1:4317 → this container. UI on 16686.
+  jaeger:
+    image: jaegertracing/all-in-one:1.60
+    container_name: contrib-obs-classic-jaeger
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "127.0.0.1:16686:16686"
+      - "127.0.0.1:4317:4317"
+
+  # Prometheus scrapes the host provider's :9090/metrics (and consumer :9091)
+  # via host.docker.internal — the provider is NOT a container. Its own UI is
+  # remapped to 9099 on the host to avoid clashing with the provider's :9090.
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: contrib-obs-classic-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:9099:9090"
+
+  # Loki stores whatever Promtail ships; queryable over its HTTP API (3100).
+  loki:
+    image: grafana/loki:3.1.1
+    container_name: contrib-obs-classic-loki
+    command:
+      - -config.file=/etc/loki/local-config.yaml
+    ports:
+      - "127.0.0.1:3100:3100"
+
+  # Promtail tails the host logs dir (../../logs relative to this compose file:
+  # stacks/1-classic/ → contrib/observability/logs) mounted at /var/log/app and
+  # pushes to Loki. Read-only mount — Promtail only reads.
+  promtail:
+    image: grafana/promtail:3.1.1
+    container_name: contrib-obs-classic-promtail
+    command:
+      - -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./promtail-config.yml:/etc/promtail/config.yml:ro
+      - ../../logs:/var/log/app:ro
+    depends_on:
+      - loki
+
+  # Grafana ties Prometheus + Jaeger + Loki together. Anonymous admin so the
+  # smoke test / manual verification can open dashboards without a login flow.
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: contrib-obs-classic-grafana
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - prometheus
+      - loki
+      - jaeger

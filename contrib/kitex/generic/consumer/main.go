@@ -34,7 +34,7 @@ import (
 )
 
 // The consumer here is intentionally different from the ../thrift and
-// ../protobuf siblings: it never imports kitex_gen and never sees a typed
+// ../protobuf siblings: it never imports the generated stubs and never sees a typed
 // EchoRequest / EchoResponse struct.
 //
 // Instead it uses Kitex's JSON generic invocation:

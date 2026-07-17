@@ -3,7 +3,7 @@ module GS_PROJECT_MODULE
 go 1.26
 
 require (
-	github.com/go-playground/form/v4 v4.2.1
+	github.com/go-playground/form/v4 v4.3.0
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
 	github.com/redis/go-redis/v9 v9.19.0
 	go-spring.org/log v0.1.4
@@ -23,7 +23,6 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/expr-lang/expr v1.17.8 // indirect
-	github.com/go-playground/assert/v2 v2.2.0 // indirect
 	github.com/go-sql-driver/mysql v1.9.3 // indirect
 	github.com/gopherjs/gopherjs v1.20.2 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect

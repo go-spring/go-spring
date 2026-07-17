@@ -1,0 +1,99 @@
+# OpenTelemetry Collector config for stack 2 ("collector fan-out").
+#
+# The collector sits IN THE MIDDLE:
+#   * Receives OTLP traces from the host app on :4317 (this container owns
+#     host 127.0.0.1:4317 in this stack; contrast with stack 1 where Jaeger
+#     owned it directly).
+#   * Pulls metrics from the host app's Prometheus endpoint via the
+#     `prometheus` receiver (host.docker.internal:9090).
+#   * Tails the host log files bind-mounted at /var/log/app via the
+#     `filelog` receiver and parses each line as JSON.
+#
+# It then fans the three signals out to Jaeger / Prometheus / Loki.
+
+receivers:
+  # OTLP gRPC ingress for traces coming from the host app.
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+  # Scrape the host app's /metrics (dubbo_* series, e.g.
+  # dubbo_provider_requests_total). host.docker.internal is wired via
+  # `extra_hosts` in docker-compose.yml.
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: obs-demo-provider
+          scrape_interval: 5s
+          static_configs:
+            - targets: ['host.docker.internal:9090']
+              labels:
+                service: obs-demo
+                role: provider
+
+  # Tail JSON log lines produced by the host app. The provider/consumer write
+  # one JSON object per line; the json_parser operator lifts fields into the
+  # log record body/attributes.
+  filelog:
+    include:
+      - /var/log/app/*.log
+    start_at: beginning
+    include_file_name: true
+    include_file_path: true
+    operators:
+      - type: json_parser
+        # If your app emits a "time" or "ts" field, uncomment to promote it.
+        # timestamp:
+        #   parse_from: attributes.time
+        #   layout_type: gotime
+        #   layout: '2006-01-02T15:04:05.000Z07:00'
+
+processors:
+  batch:
+    timeout: 5s
+    send_batch_size: 512
+
+exporters:
+  # Traces -> Jaeger. The standalone `jaeger` exporter was removed from the
+  # collector distribution, so we push OTLP gRPC to Jaeger all-in-one
+  # (COLLECTOR_OTLP_ENABLED=true opens 4317 inside that container).
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+
+  # Metrics -> re-expose on :8889 so Prometheus can scrape THE COLLECTOR
+  # (Prometheus does not scrape the host in this stack).
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    send_timestamps: true
+    metric_expiration: 5m
+    resource_to_telemetry_conversion:
+      enabled: true
+
+  # Logs -> Loki native OTLP endpoint. The `loki` exporter was removed;
+  # Loki 3.x accepts OTLP at /otlp/v1/logs. The otlphttp exporter appends
+  # /v1/logs automatically when the endpoint ends with /otlp.
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
+    tls:
+      insecure: true
+
+service:
+  telemetry:
+    logs:
+      level: info
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/jaeger]
+    metrics:
+      receivers: [prometheus]
+      processors: [batch]
+      exporters: [prometheus]
+    logs:
+      receivers: [filelog]
+      processors: [batch]
+      exporters: [otlphttp/loki]

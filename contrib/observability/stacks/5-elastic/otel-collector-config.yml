@@ -1,0 +1,87 @@
+# Stack 5 (Elastic): OTel Collector is the single ingest point.
+# It receives OTLP traces from the app, scrapes /metrics off the host,
+# tails host logs, then ships all three signals to Elasticsearch via
+# the collector's built-in `elasticsearch` exporter (no Beats, no APM agent).
+# View everything in Kibana at http://127.0.0.1:5601.
+
+receivers:
+  # App exports traces via OTLP/gRPC to 4317 (published on host).
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+  # Scrape provider's Prometheus endpoint on the host.
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: obs-demo-provider
+          scrape_interval: 5s
+          static_configs:
+            - targets: ["host.docker.internal:9090"]
+              labels:
+                service: obs-demo
+                role: provider
+
+  # Tail JSON log lines produced by the app on the host.
+  # Compose bind-mounts contrib/observability/logs -> /var/log/app.
+  filelog:
+    include: [/var/log/app/*.log]
+    start_at: beginning
+    include_file_name: true
+    include_file_path: true
+    operators:
+      - type: json_parser
+        parse_from: body
+        parse_to: attributes
+        timestamp:
+          parse_from: attributes.time
+          layout_type: gotime
+          layout: "2006-01-02T15:04:05.000"
+        severity:
+          parse_from: attributes.level
+
+processors:
+  batch:
+    timeout: 5s
+    send_batch_size: 1024
+
+exporters:
+  # Elasticsearch exporter (collector-contrib ~v0.109).
+  # `mapping.mode: otel` keeps OTel semantics 1:1 in ES documents and
+  # writes into OTel-native data streams (logs/metrics/traces -generic.otel-default).
+  # Metrics signal is supported by this exporter as of v0.109 (alpha/development
+  # stability); if your build refuses the metrics pipeline, drop it — logs and
+  # traces alone still exercise the OTel-native path.
+  elasticsearch:
+    endpoints: ["http://elasticsearch:9200"]
+    logs_index: logs-obs-demo
+    traces_index: traces-obs-demo
+    metrics_index: metrics-obs-demo
+    mapping:
+      mode: otel
+    # Be forgiving during ES warmup.
+    retry:
+      enabled: true
+      max_requests: 5
+    sending_queue:
+      enabled: true
+    timeout: 30s
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [elasticsearch]
+    logs:
+      receivers: [filelog]
+      processors: [batch]
+      exporters: [elasticsearch]
+    metrics:
+      receivers: [prometheus]
+      processors: [batch]
+      exporters: [elasticsearch]
+  telemetry:
+    logs:
+      level: info

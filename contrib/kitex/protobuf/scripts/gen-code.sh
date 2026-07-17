@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Regenerates the Kitex stubs under kitex_gen/ from the protobuf IDL. Run this
+# Regenerates the Kitex stubs under idl/echo/ from the protobuf IDL. Run this
 # after editing idl/echo.proto. Requires the kitex generator:
 #
 #   go install github.com/cloudwego/kitex/tool/cmd/kitex@latest
@@ -11,4 +11,4 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-kitex -module go-spring.org/kitex/protobuf -service echo idl/echo.proto
+kitex -module go-spring.org/kitex/protobuf -gen-path idl -service echo idl/echo.proto

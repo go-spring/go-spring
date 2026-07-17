@@ -1,0 +1,17 @@
+# Dashboard provisioning: load any JSON dashboards from /var/lib/grafana/dashboards
+# (bind-mounted by docker-compose.yml from ./grafana/dashboards). Dashboards
+# are treated as read-only file-backed definitions rather than API-managed.
+apiVersion: 1
+
+providers:
+  - name: obs-demo
+    orgId: 1
+    folder: ''
+    type: file
+    disableDeletion: true
+    editable: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

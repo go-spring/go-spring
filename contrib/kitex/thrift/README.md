@@ -38,9 +38,9 @@ This is a runnable example, **not** a reusable starter module.
 ```
 contrib/kitex/thrift/
 ├── idl/echo.thrift          # Thrift IDL
-├── kitex_gen/echo/...       # Kitex-generated code (DO NOT EDIT)
+├── idl/echo/...          # Kitex-generated code (DO NOT EDIT)
 ├── kitex_info.yaml          # metadata for re-generation
-├── scripts/gen-code.sh      # regenerates kitex_gen/ from the IDL
+├── scripts/gen-code.sh      # regenerates idl/echo/ from the IDL
 ├── provider/handler.go      # EchoServiceImpl, exported as an echo.EchoService bean
 ├── provider/server.go       # KitexServer adapter (gs.Server) + Config, configures the etcd registry
 ├── provider/main.go         # gs.Run(); long-lived, registers into etcd
@@ -61,9 +61,9 @@ go install github.com/cloudwego/kitex/tool/cmd/kitex@latest
 kitex -module go-spring.org/kitex/thrift -service echo idl/echo.thrift
 ```
 
-The scaffold produces `kitex_gen/`, a bare `handler.go`, and a `main.go` that
-calls `svr.Run()` directly. `kitex_gen/` is shared by both the provider and
-the consumer. Re-running `./scripts/gen-code.sh` regenerates `kitex_gen/` without touching
+The scaffold produces `idl/echo/`, a bare `handler.go`, and a `main.go` that
+calls `svr.Run()` directly. `idl/echo/` is shared by both the provider and
+the consumer. Re-running `./scripts/gen-code.sh` regenerates `idl/echo/` without touching
 the refactored provider/consumer code.
 
 > This is the **Thrift** protocol variant. For the protobuf-based transports

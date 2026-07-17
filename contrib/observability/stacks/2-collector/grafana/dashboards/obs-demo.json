@@ -1,0 +1,83 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "uid": "obs-demo-collector",
+  "title": "obs-demo (collector fan-out)",
+  "tags": ["obs-demo", "stack-2", "collector"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "refresh": "10s",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "provider request rate (dubbo_provider_requests_total, by method)",
+      "id": 1,
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 0 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["last", "mean"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (method) (rate(dubbo_provider_requests_total[1m]))",
+          "legendFormat": "{{method}}"
+        }
+      ]
+    },
+    {
+      "type": "logs",
+      "title": "obs-demo logs (Loki, service_name=\"obs-demo\")",
+      "id": 2,
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 9 },
+      "datasource": {
+        "type": "loki",
+        "uid": "Loki"
+      },
+      "options": {
+        "showLabels": false,
+        "showCommonLabels": false,
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "none",
+        "enableLogDetails": true
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{service_name=\"obs-demo\"}",
+          "datasource": {
+            "type": "loki",
+            "uid": "Loki"
+          }
+        }
+      ]
+    }
+  ]
+}

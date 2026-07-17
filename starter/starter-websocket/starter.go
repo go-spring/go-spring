@@ -17,84 +17,40 @@
 package StarterWebsocket
 
 import (
-	"context"
-	"errors"
-	"net"
-	"net/http"
 	"time"
 
 	"github.com/gorilla/websocket"
 	"go-spring.org/spring/gs"
-	"go-spring.org/stdlib/errutil"
-	"go-spring.org/stdlib/flatten"
 )
 
 func init() {
-	enableSimpleWebsocketServer := gs.OnProperty("spring.websocket.server.enabled").
-		HavingValue("true").MatchIfMissing()
-	gs.Module(enableSimpleWebsocketServer, func(r gs.BeanProvider, p flatten.Storage) error {
-
-		// Register the WebSocket server
-		// when a route register is available.
-		r.Provide(
-			NewSimpleWebsocketServer,
-			gs.IndexArg(0, gs.TagArg("${spring.websocket.server}")),
-		).Export(gs.As[gs.Server]()).
-			Condition(gs.OnBean[ServerRegister]())
-		return nil
-	})
+	// Contribute a configured *websocket.Upgrader so any HTTP handler
+	// (net/http, gin, echo, hertz, ...) can promote a request into a
+	// WebSocket connection. This starter provides the upgrade capability
+	// only; it does not own an HTTP server or a listening port. Mount your
+	// WebSocket routes on whatever HTTP server the application already runs.
+	//
+	// OnMissingBean lets an application override the default by providing
+	// its own *websocket.Upgrader (e.g. with a custom CheckOrigin or
+	// compression settings).
+	gs.Provide(NewUpgrader, gs.TagArg("${spring.websocket}")).
+		Condition(gs.OnMissingBean[*websocket.Upgrader]())
 }
 
-// ServerRegister registers WebSocket routes onto the mux. Use the provided
-// upgrader to promote an HTTP request into a WebSocket connection.
-type ServerRegister func(mux *http.ServeMux, upgrader *websocket.Upgrader)
-
-// Config defines WebSocket server configuration. The read/write buffer sizes
-// and handshake timeout tune the upgrader; the HTTP server itself uses no
-// read/write timeout so long-lived connections are not cut off.
+// Config tunes the *websocket.Upgrader. It carries no server address on
+// purpose: the upgrader is mounted onto an existing HTTP server, which owns
+// the listening address and timeouts.
 type Config struct {
-	Addr             string        `value:"${addr:=:9696}"`
 	HandshakeTimeout time.Duration `value:"${handshakeTimeout:=10s}"`
 	ReadBufferSize   int           `value:"${readBufferSize:=1024}"`
 	WriteBufferSize  int           `value:"${writeBufferSize:=1024}"`
 }
 
-// SimpleWebsocketServer adapts a WebSocket-upgrading HTTP server to the
-// Go-Spring server lifecycle.
-type SimpleWebsocketServer struct {
-	cfg Config
-	reg ServerRegister
-	svr *http.Server
-}
-
-// NewSimpleWebsocketServer creates a SimpleWebsocketServer from ${spring.websocket.server} configuration.
-func NewSimpleWebsocketServer(cfg Config, reg ServerRegister) *SimpleWebsocketServer {
-	return &SimpleWebsocketServer{cfg: cfg, reg: reg}
-}
-
-// Run starts the WebSocket server after Go-Spring signals readiness.
-func (s *SimpleWebsocketServer) Run(ctx context.Context, sig gs.ReadySignal) error {
-	upgrader := &websocket.Upgrader{
-		HandshakeTimeout: s.cfg.HandshakeTimeout,
-		ReadBufferSize:   s.cfg.ReadBufferSize,
-		WriteBufferSize:  s.cfg.WriteBufferSize,
+// NewUpgrader builds a *websocket.Upgrader from ${spring.websocket} configuration.
+func NewUpgrader(cfg Config) *websocket.Upgrader {
+	return &websocket.Upgrader{
+		HandshakeTimeout: cfg.HandshakeTimeout,
+		ReadBufferSize:   cfg.ReadBufferSize,
+		WriteBufferSize:  cfg.WriteBufferSize,
 	}
-	mux := http.NewServeMux()
-	s.reg(mux, upgrader)
-	s.svr = &http.Server{Addr: s.cfg.Addr, Handler: mux}
-
-	ln, err := net.Listen("tcp", s.cfg.Addr)
-	if err != nil {
-		return errutil.Explain(err, "failed to listen on %s", s.cfg.Addr)
-	}
-	<-sig.TriggerAndWait()
-	if err = s.svr.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return errutil.Explain(err, "failed to serve on %s", s.cfg.Addr)
-	}
-	return nil
-}
-
-// Stop gracefully stops the underlying HTTP server.
-func (s *SimpleWebsocketServer) Stop() error {
-	return s.svr.Shutdown(context.Background())
 }

@@ -1,0 +1,91 @@
+# OTel Collector config for stack 3 (Grafana LGTM + correlation).
+#
+# Same collector-in-the-middle shape as stack 2 (host apps push OTLP here,
+# collector scrapes host Prometheus endpoint and tails host log files), but
+# fans OUT to the Grafana LGTM backends:
+#   traces  -> Tempo    (OTLP/gRPC)
+#   metrics -> Prometheus (via the prometheus exporter, scraped by prom)
+#   logs    -> Loki     (OTLP/HTTP, Loki 3.x native OTLP ingest)
+#
+# The whole point of this stack is CORRELATION:
+#   * metric exemplars carry trace_id -> click through to Tempo
+#   * Tempo trace view links to Loki via tracesToLogsV2 by trace_id
+# So `enable_open_metrics: true` on the prometheus exporter is load-bearing:
+# it's what lets exemplars survive the metric -> scrape hop.
+
+receivers:
+  # Host apps (dubbo-go provider) push spans here on 4317. The collector's
+  # 4317 is mapped to host 127.0.0.1:4317 in docker-compose, so Tempo does
+  # NOT publish its own 4317 to the host.
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+  # Scrape the host's provider Prometheus endpoint at :9090 (dubbo_* metrics
+  # with exemplars). host.docker.internal is set via extra_hosts.
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: obs-demo-provider
+          scrape_interval: 5s
+          static_configs:
+            - targets: ["host.docker.internal:9090"]
+              labels:
+                service: obs-demo
+                role: provider
+
+  # Tail the host log files bind-mounted read-only under /var/log/app.
+  # Provider writes JSON lines; parse them so trace_id/span_id become
+  # attributes (Loki keeps them as OTLP attributes -> queryable).
+  filelog:
+    include: [/var/log/app/*.log]
+    start_at: beginning
+    operators:
+      - type: json_parser
+        parse_from: body
+        # Best-effort: leave timestamp untouched if the field is missing.
+        # Individual apps may or may not emit `time`.
+
+processors:
+  batch: {}
+
+exporters:
+  # Traces -> Tempo (internal service name, plaintext gRPC).
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+
+  # Metrics -> Prometheus exporter (scraped by prom on :8889).
+  # enable_open_metrics + exemplars flag keeps exemplar trace_ids intact so
+  # Grafana can jump metric -> trace.
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    enable_open_metrics: true
+    send_timestamps: true
+    metric_expiration: 5m
+    resource_to_telemetry_conversion:
+      enabled: true
+
+  # Logs -> Loki via native OTLP/HTTP ingest (Loki >= 3.0).
+  # Base path is /otlp; the exporter appends /v1/logs.
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/tempo]
+    metrics:
+      receivers: [prometheus]
+      processors: [batch]
+      exporters: [prometheus]
+    logs:
+      receivers: [filelog]
+      processors: [batch]
+      exporters: [otlphttp/loki]

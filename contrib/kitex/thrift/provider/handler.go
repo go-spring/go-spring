@@ -21,8 +21,8 @@ import (
 
 	"github.com/cloudwego/kitex/pkg/klog"
 	"github.com/cloudwego/kitex/server"
-	echo "go-spring.org/kitex/thrift/kitex_gen/echo"
-	"go-spring.org/kitex/thrift/kitex_gen/echo/echoservice"
+	echo "go-spring.org/kitex/thrift/idl/echo"
+	"go-spring.org/kitex/thrift/idl/echo/echoservice"
 	"go-spring.org/spring/gs"
 	StarterKitex "go-spring.org/starter-kitex"
 )

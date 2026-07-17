@@ -1,0 +1,94 @@
+# Stack 2: "OTel Collector fan-out".
+#
+# Wiring (contrast with stack 1 where Jaeger owned host :4317):
+#   host app --OTLP/gRPC-->  otel-collector (owns host 127.0.0.1:4317)
+#                                 |-- traces  --> jaeger  (internal :4317)
+#                                 |-- metrics --> re-exposed on :8889, then
+#                                                 prometheus scrapes collector
+#                                 `-- logs    --> loki    (native OTLP /otlp)
+#   grafana ties Prometheus + Jaeger + Loki datasources together.
+#
+# All host ports are bound to 127.0.0.1 to avoid leaking on shared boxes.
+
+services:
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.12
+    container_name: contrib-obs-collector-etcd
+    command: >-
+      /usr/local/bin/etcd
+      --name=node1
+      --advertise-client-urls=http://0.0.0.0:2379
+      --listen-client-urls=http://0.0.0.0:2379
+    ports:
+      - "127.0.0.1:2379:2379"
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.109.0
+    container_name: contrib-obs-collector-otelcol
+    command: ["--config=/etc/otelcol/config.yml"]
+    volumes:
+      - ./otel-collector-config.yml:/etc/otelcol/config.yml:ro
+      # Bind-mount host log dir so the filelog receiver can tail
+      # provider.log / consumer.log written by the smoke script.
+      - ../../logs:/var/log/app:ro
+    # host.docker.internal is not resolvable on Linux by default; this makes
+    # the prometheus receiver reach the host app at host.docker.internal:9090.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      # OTLP gRPC — the collector owns host :4317 in this stack.
+      - "127.0.0.1:4317:4317"
+      # Prometheus-format metrics re-exposed to the in-compose prometheus.
+      # Not strictly required on the host, but handy for eyeballing.
+      - "127.0.0.1:8889:8889"
+    depends_on:
+      - jaeger
+      - loki
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.60
+    container_name: contrib-obs-collector-jaeger
+    environment:
+      # Enables Jaeger's built-in OTLP receivers on 4317/4318.
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      # Only the UI is exposed on the host. Jaeger's OTLP :4317 stays
+      # internal because the collector owns host :4317 in this stack.
+      - "127.0.0.1:16686:16686"
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: contrib-obs-collector-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      # UI on a non-standard port to avoid clashing with the host app's :9090.
+      - "127.0.0.1:9099:9090"
+    depends_on:
+      - otel-collector
+
+  loki:
+    image: grafana/loki:3.1.1
+    container_name: contrib-obs-collector-loki
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    ports:
+      - "127.0.0.1:3100:3100"
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: contrib-obs-collector-grafana
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin"
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - prometheus
+      - jaeger
+      - loki

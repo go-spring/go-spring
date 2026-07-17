@@ -4,9 +4,12 @@
 
 > The project has been officially released, welcome to use!
 
-`starter-websocket` provides a lightweight WebSocket server built on
-[gorilla/websocket](https://github.com/gorilla/websocket), making it easy to
-expose WebSocket routes from a Go-Spring application.
+`starter-websocket` contributes a configured `*websocket.Upgrader` built on
+[gorilla/websocket](https://github.com/gorilla/websocket) to a Go-Spring
+application. It does **not** own an HTTP server or a listening port: a WebSocket
+connection is just an HTTP `Upgrade`, so you mount your WebSocket routes onto
+whatever HTTP server the application already runs (net/http, gin, echo,
+hertz, ...).
 
 ## Installation
 
@@ -18,36 +21,52 @@ go get go-spring.org/starter-websocket
 
 ### 1. Import the `starter-websocket` Package
 
-Refer to the [example.go](example/example.go) file.
+Refer to the [example.go](example/example.go) file. A blank import is enough —
+you only need its `init()` to register the `*websocket.Upgrader` provider:
 
 ```go
-import StarterWebsocket "go-spring.org/starter-websocket"
+import _ "go-spring.org/starter-websocket"
 ```
 
-### 2. Configure the WebSocket Server
+### 2. Tune the Upgrader (optional)
 
 Add configuration in your project's [configuration file](example/conf/app.properties).
-The starter listens on `:9696` by default; disable the built-in HTTP server so
-the two do not race for a port:
+There is no server address here — the upgrader is mounted on an existing HTTP
+server, which owns the port and timeouts:
 
 ```properties
-spring.http.server.enabled=false
+spring.websocket.handshakeTimeout=10s
+spring.websocket.readBufferSize=1024
+spring.websocket.writeBufferSize=1024
 ```
 
-### 3. Register WebSocket Routes
+To customize beyond these fields (e.g. `CheckOrigin` or compression), provide
+your own `*websocket.Upgrader` bean — `OnMissingBean` lets it take precedence.
 
-Provide a `StarterWebsocket.ServerRegister` bean; the starter passes the shared
-`*http.ServeMux` and `*websocket.Upgrader` into it so you can wire routes:
+### 3. Mount WebSocket Routes on an HTTP Server
+
+Inject the `*websocket.Upgrader` wherever you register HTTP routes and call
+`Upgrade`. The example mounts routes on the built-in gs HTTP server by providing
+a custom `*gs.HttpServeMux`:
 
 ```go
-gs.Provide(func(c *Controller) StarterWebsocket.ServerRegister {
-    return func(mux *http.ServeMux, upgrader *websocket.Upgrader) {
-        mux.HandleFunc("/echo", func(w http.ResponseWriter, r *http.Request) {
-            conn, _ := upgrader.Upgrade(w, r, nil)
-            c.Echo(conn)
-        })
-    }
+gs.Provide(func(c *Controller, upgrader *websocket.Upgrader) *gs.HttpServeMux {
+    mux := http.NewServeMux()
+    mux.HandleFunc("/echo", func(w http.ResponseWriter, r *http.Request) {
+        conn, _ := upgrader.Upgrade(w, r, nil)
+        c.Echo(conn)
+    })
+    return &gs.HttpServeMux{Handler: mux}
 })
+```
+
+Because WebSocket connections are long-lived, disable the HTTP server's
+read/write timeouts so they are not cut mid-stream:
+
+```properties
+spring.http.server.readTimeout=0
+spring.http.server.writeTimeout=0
+spring.http.server.idleTimeout=0
 ```
 
 ## Core Features

@@ -1,0 +1,61 @@
+# Stack 5 (Elastic): all three signals land in Elasticsearch through the
+# OTel Collector's `elasticsearch` exporter and are explored in Kibana.
+# Elasticsearch takes ~30-60s to warm up; collector/kibana depend on its
+# healthcheck so they don't spam connection errors before it's ready.
+
+services:
+
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.12
+    container_name: contrib-obs-elastic-etcd
+    command:
+      - /usr/local/bin/etcd
+      - --name=node1
+      - --advertise-client-urls=http://0.0.0.0:2379
+      - --listen-client-urls=http://0.0.0.0:2379
+    ports:
+      - "127.0.0.1:2379:2379"
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
+    container_name: contrib-obs-elastic-es
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "127.0.0.1:9200:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:9200/_cluster/health | grep -E '\"status\":\"(green|yellow)\"' >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.15.0
+    container_name: contrib-obs-elastic-kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - "127.0.0.1:5601:5601"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.109.0
+    container_name: contrib-obs-elastic-otelcol
+    command: ["--config=/etc/otelcol/config.yml"]
+    volumes:
+      - ./otel-collector-config.yml:/etc/otelcol/config.yml:ro
+      # Host log dir (contrib/observability/logs) mounted read-only for filelog.
+      - ../../logs:/var/log/app:ro
+    ports:
+      - "127.0.0.1:4317:4317"
+    extra_hosts:
+      # Lets the prometheus receiver reach the host's :9090 provider endpoint.
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy

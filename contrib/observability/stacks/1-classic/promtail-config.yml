@@ -1,0 +1,24 @@
+# Promtail config for the classic observability stack.
+#
+# Provider/consumer run on the host and write structured JSON lines into
+# contrib/observability/logs/{provider,consumer}.log. docker-compose.yml
+# bind-mounts that directory at /var/log/app; Promtail tails *.log there and
+# pushes to Loki. Both files carry the same job label so a single Loki query
+# ({job="obs-demo"}) sees both sides of the RPC.
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: obs-demo
+    static_configs:
+      - targets: ["localhost"]
+        labels:
+          job: obs-demo
+          __path__: /var/log/app/*.log

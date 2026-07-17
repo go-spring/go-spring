@@ -1,0 +1,8 @@
+services:
+  pulsar:
+    image: apachepulsar/pulsar:3.2.0
+    container_name: starter-pulsar
+    command: bin/pulsar standalone
+    ports:
+      - "127.0.0.1:6650:6650"
+      - "127.0.0.1:8080:8080"

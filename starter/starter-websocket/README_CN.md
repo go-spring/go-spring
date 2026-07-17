@@ -5,7 +5,9 @@
 > 该项目已经正式发布，欢迎使用！
 
 `starter-websocket` 基于 [gorilla/websocket](https://github.com/gorilla/websocket)
-提供了一个轻量的 WebSocket 服务实现，方便在 Go-Spring 服务中快速暴露 WebSocket 路由。
+向 Go-Spring 服务提供一个配置好的 `*websocket.Upgrader`。它**不拥有** HTTP 服务，
+也不占用端口：WebSocket 连接本质上只是一次 HTTP `Upgrade`，因此你应把 WebSocket
+路由挂载到应用已经运行的任意 HTTP 服务上（net/http、gin、echo、hertz …）。
 
 ## 安装
 
@@ -17,35 +19,49 @@ go get go-spring.org/starter-websocket
 
 ### 1. 引入 `starter-websocket` 包
 
-参见 [example.go](example/example.go) 文件。
+参见 [example.go](example/example.go) 文件。使用空导入即可——只需其 `init()` 注册
+`*websocket.Upgrader` 提供者：
 
 ```go
-import StarterWebsocket "go-spring.org/starter-websocket"
+import _ "go-spring.org/starter-websocket"
 ```
 
-### 2. 配置 WebSocket 服务
+### 2. 调整 Upgrader（可选）
 
-在项目的[配置文件](example/conf/app.properties)中添加配置。starter 默认监听
-`:9696`；同时关闭内置的 HTTP 服务，避免端口竞争：
+在项目的[配置文件](example/conf/app.properties)中添加配置。这里没有服务地址——
+upgrader 挂载在既有 HTTP 服务上，端口与超时由该服务负责：
 
 ```properties
-spring.http.server.enabled=false
+spring.websocket.handshakeTimeout=10s
+spring.websocket.readBufferSize=1024
+spring.websocket.writeBufferSize=1024
 ```
 
-### 3. 注册 WebSocket 路由
+若需更多定制（如 `CheckOrigin`、压缩等），可自行提供 `*websocket.Upgrader` Bean，
+`OnMissingBean` 会让你的实现优先生效。
 
-通过提供 `StarterWebsocket.ServerRegister` Bean，starter 会把共享的
-`*http.ServeMux` 与 `*websocket.Upgrader` 传入，供业务注册路由：
+### 3. 将 WebSocket 路由挂到 HTTP 服务
+
+在注册 HTTP 路由处注入 `*websocket.Upgrader` 并调用 `Upgrade`。示例通过提供自定义的
+`*gs.HttpServeMux`，把路由挂到 gs 内置 HTTP 服务上：
 
 ```go
-gs.Provide(func(c *Controller) StarterWebsocket.ServerRegister {
-    return func(mux *http.ServeMux, upgrader *websocket.Upgrader) {
-        mux.HandleFunc("/echo", func(w http.ResponseWriter, r *http.Request) {
-            conn, _ := upgrader.Upgrade(w, r, nil)
-            c.Echo(conn)
-        })
-    }
+gs.Provide(func(c *Controller, upgrader *websocket.Upgrader) *gs.HttpServeMux {
+    mux := http.NewServeMux()
+    mux.HandleFunc("/echo", func(w http.ResponseWriter, r *http.Request) {
+        conn, _ := upgrader.Upgrade(w, r, nil)
+        c.Echo(conn)
+    })
+    return &gs.HttpServeMux{Handler: mux}
 })
+```
+
+由于 WebSocket 是长连接，请关闭 HTTP 服务的读写超时，避免连接被中途掐断：
+
+```properties
+spring.http.server.readTimeout=0
+spring.http.server.writeTimeout=0
+spring.http.server.idleTimeout=0
 ```
 
 ## 核心功能

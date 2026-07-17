@@ -1,0 +1,28 @@
+# Prometheus scrape config for the classic (direct-connect) observability stack.
+#
+# The provider/consumer are NOT containers: scripts/smoke-test.sh builds and
+# runs them on the host, where starter-dubbo exposes Prometheus endpoints on
+# :9090 (provider) and :9091 (consumer). From inside this container the host
+# is reachable as host.docker.internal (mapped via docker-compose.yml's
+# extra_hosts on Linux; native on macOS/Windows).
+#
+# A short scrape_interval keeps the smoke test snappy: a single RPC's metrics
+# become queryable within a few seconds.
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: obs-provider
+    static_configs:
+      - targets: ["host.docker.internal:9090"]
+        labels:
+          service: obs-demo
+          role: provider
+
+  - job_name: obs-consumer
+    static_configs:
+      - targets: ["host.docker.internal:9091"]
+        labels:
+          service: obs-demo
+          role: consumer

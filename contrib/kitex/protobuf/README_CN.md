@@ -44,9 +44,9 @@ consumer 通过 `client.WithTransportProtocol` 在每次调用时选择线上协
 ```
 contrib/kitex/protobuf/
 ├── idl/echo.proto           # protobuf IDL
-├── kitex_gen/echo/...       # Kitex 生成代码(请勿手改)
+├── idl/echo/...          # Kitex 生成代码(请勿手改)
 ├── kitex_info.yaml          # 重新生成用的元数据
-├── scripts/gen-code.sh      # 从 IDL 重新生成 kitex_gen/
+├── scripts/gen-code.sh      # 从 IDL 重新生成 idl/echo/
 ├── provider/handler.go      # EchoServiceImpl,导出为 echo.EchoService bean
 ├── provider/server.go       # KitexServer 适配器(gs.Server)+ Config,配置 etcd registry
 ├── provider/main.go         # gs.Run(),长驻并注册到 etcd
@@ -66,10 +66,10 @@ go install github.com/cloudwego/kitex/tool/cmd/kitex@latest
 kitex -module go-spring.org/kitex/protobuf -service echo idl/echo.proto
 ```
 
-脚手架会产出 `kitex_gen/`、一个空的 `handler.go`,以及直接调用 `svr.Run()`
-的 `main.go`。`kitex_gen/` 由 provider 与 consumer 共享,且天生同时支持
+脚手架会产出 `idl/echo/`、一个空的 `handler.go`,以及直接调用 `svr.Run()`
+的 `main.go`。`idl/echo/` 由 provider 与 consumer 共享,且天生同时支持
 KitexProtobuf 与 gRPC —— 传输是运行时选择,而非生成期选择。重新执行
-`./scripts/gen-code.sh` 只会再生成 `kitex_gen/`,不会覆盖改造后的 provider/consumer 代码。
+`./scripts/gen-code.sh` 只会再生成 `idl/echo/`,不会覆盖改造后的 provider/consumer 代码。
 
 ## 选择传输协议
 

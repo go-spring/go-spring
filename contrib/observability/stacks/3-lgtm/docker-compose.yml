@@ -1,0 +1,89 @@
+# Stack 3 = Grafana LGTM (Loki / Grafana / Tempo / Prom-Mimir-lite) with the
+# SAME OTel-Collector-in-the-middle as stack 2 — the change is the backends
+# and the CORRELATION wiring in Grafana.
+#
+# Host apps run OUTSIDE containers (scripts/smoke-test.sh builds & runs the
+# dubbo-go provider on the host). So:
+#   * collector owns host 127.0.0.1:4317 (receives OTLP from the host app)
+#   * collector scrapes host.docker.internal:9090 (host provider metrics)
+#   * collector bind-mounts host ../../logs read-only for filelog
+# Tempo's own :4317 stays inside the compose network — do NOT map to host.
+
+services:
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.12
+    container_name: contrib-obs-lgtm-etcd
+    command:
+      - /usr/local/bin/etcd
+      - --name=node1
+      - --advertise-client-urls=http://0.0.0.0:2379
+      - --listen-client-urls=http://0.0.0.0:2379
+    ports:
+      - "127.0.0.1:2379:2379"
+
+  # OTel Collector: OTLP in, fan out to Tempo/Prom-exporter/Loki.
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.109.0
+    container_name: contrib-obs-lgtm-otel-collector
+    command: ["--config=/etc/otel/config.yml"]
+    volumes:
+      - ./otel-collector-config.yml:/etc/otel/config.yml:ro
+      - ../../logs:/var/log/app:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:4317:4317"   # host app -> collector OTLP/gRPC
+      - "127.0.0.1:8889:8889"   # prometheus exporter (also scraped internally)
+    depends_on:
+      - tempo
+      - loki
+
+  # Tempo single-binary. 4317 is internal only; Grafana talks to 3200.
+  tempo:
+    image: grafana/tempo:2.6.0
+    container_name: contrib-obs-lgtm-tempo
+    command: ["-config.file=/etc/tempo.yml"]
+    volumes:
+      - ./tempo.yml:/etc/tempo.yml:ro
+    ports:
+      - "127.0.0.1:3200:3200"   # Tempo query API (used by Grafana datasource)
+
+  # Prometheus scrapes the collector's :8889. Exemplar storage is enabled so
+  # trace_id exemplars survive into the TSDB and Grafana can link out.
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: contrib-obs-lgtm-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --enable-feature=exemplar-storage
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "127.0.0.1:9099:9090"   # UI on 9099 to avoid clashing with host :9090
+
+  # Loki 3.x with native OTLP ingest at /otlp/v1/logs.
+  loki:
+    image: grafana/loki:3.1.1
+    container_name: contrib-obs-lgtm-loki
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    ports:
+      - "127.0.0.1:3100:3100"
+
+  # Grafana pre-provisioned with all three datasources + correlation links.
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: contrib-obs-lgtm-grafana
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+      - GF_FEATURE_TOGGLES_ENABLE=traceToMetrics,traceQLStreaming
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - tempo
+      - loki
+      - prometheus

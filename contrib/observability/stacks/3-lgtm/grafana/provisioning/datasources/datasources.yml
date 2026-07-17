@@ -1,0 +1,77 @@
+# Grafana datasource provisioning for stack 3.
+#
+# This file is the WHOLE POINT of the stack: three datasources wired for
+# cross-signal correlation.
+#   Tempo (uid=tempo)       -- tracesToLogsV2 -> Loki, tracesToMetrics -> Prom
+#   Prometheus (uid=prom)   -- exemplarTraceIdDestinations -> Tempo
+#   Loki  (uid=loki)        -- derivedFields extracting trace_id -> Tempo
+# Fixed uids let the cross-links resolve deterministically.
+
+apiVersion: 1
+
+datasources:
+  - name: Tempo
+    uid: tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    isDefault: false
+    jsonData:
+      httpMethod: GET
+      # Click a span -> jump into Loki filtered by trace_id.
+      tracesToLogsV2:
+        datasourceUid: loki
+        spanStartTimeShift: '-5m'
+        spanEndTimeShift: '5m'
+        tags:
+          - key: service.name
+            value: service
+        filterByTraceID: true
+        filterBySpanID: false
+        customQuery: true
+        query: '{service_name="$${__span.tags["service.name"]}"} |= "$${__span.traceId}"'
+      # Click a span -> jump into Prometheus with related metrics.
+      tracesToMetrics:
+        datasourceUid: prom
+        spanStartTimeShift: '-2m'
+        spanEndTimeShift: '2m'
+        tags:
+          - key: service.name
+            value: service
+        queries:
+          - name: 'Request rate'
+            query: 'sum(rate(dubbo_provider_requests_total{service="$$service"}[1m]))'
+      serviceMap:
+        datasourceUid: prom
+      nodeGraph:
+        enabled: true
+      lokiSearch:
+        datasourceUid: loki
+
+  - name: Prometheus
+    uid: prom
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    jsonData:
+      httpMethod: POST
+      # Exemplars carry trace_id; clicking one opens Tempo at that trace.
+      exemplarTraceIdDestinations:
+        - name: trace_id
+          datasourceUid: tempo
+          urlDisplayLabel: 'View trace'
+
+  - name: Loki
+    uid: loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    isDefault: false
+    jsonData:
+      # Log line contains trace_id -> click to open the trace in Tempo.
+      derivedFields:
+        - name: TraceID
+          matcherRegex: '"trace_id"\s*:\s*"([a-f0-9]+)"'
+          url: '$${__value.raw}'
+          datasourceUid: tempo

@@ -1,0 +1,31 @@
+# Minimal single-binary Tempo config for the LGTM stack.
+#
+# Only accepts traces the collector forwards on 4317; UI/query on 3200 is
+# what Grafana's Tempo datasource talks to. Storage is local disk under
+# /var/tempo — fine for a smoke-test demo, not for anything real.
+
+server:
+  http_listen_port: 3200
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+
+ingester:
+  max_block_duration: 5m
+  trace_idle_period: 10s
+
+compactor:
+  compaction:
+    block_retention: 1h
+
+storage:
+  trace:
+    backend: local
+    local:
+      path: /var/tempo/blocks
+    wal:
+      path: /var/tempo/wal
