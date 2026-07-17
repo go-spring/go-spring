@@ -100,11 +100,15 @@ tracing agent、metrics DevServer 与 logx；`rest.Server` 的中间件
 | ------ | ----------------------- | ---------------------------------------- |
 | Tracing | `ServiceConf.Telemetry` | Jaeger via OTLP/gRPC（:4317，UI 16686）  |
 | Metrics | `ServiceConf.DevServer` | Prometheus 抓 :6060/metrics（UI 9099）   |
-| Logging | `ServiceConf.Log`（logx）| JSON 文件 → Promtail → Loki（:3100）    |
+| Logging | `ServiceConf.Log`（logx） → `logx.SetWriter` → go-spring `log` | JSON 文件 → Promtail → Loki（:3100） |
 
 只有 **provider** 被埋点；consumer 是裸的 `gorilla/websocket` 客户端。
-logx 会把当前 trace/span 打进每条日志，因此 Loki 里的日志能与 Jaeger
-里的 span 关联。
+日志已经不再落到 go-zero 自己的 `.log` 文件里：`provider/logbridge.go`
+通过 `logx.SetWriter` 注入 `logx.Writer`，把每条框架日志（包括 WS handler
+里的 `logx.WithContext(...).Errorf(...)`）转发进 go-spring 的 `log` 模块，
+由根部的 `FileLogger`（Promtail → Loki）与业务日志一同写出。trace 关联仍然
+可用：`logx.WithContext(ctx)` 会以 `LogField` 形式注入 trace/span，桥接层
+会把它们作为结构化字段一并转发。
 
 起后端并跑一次带断言的冒烟测试：
 

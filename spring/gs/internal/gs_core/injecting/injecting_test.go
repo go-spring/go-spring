@@ -358,6 +358,30 @@ func TestInjecting(t *testing.T) {
 		assert.Error(t, err).Matches("found 2 beans")
 	})
 
+	t.Run("wire error - wildcard for single value", func(t *testing.T) {
+		r := New(flatten.NewPropertiesStorage(flatten.NewProperties(nil)))
+		beans := []*gs_bean.BeanDefinition{
+			objectBean(new(struct {
+				Logger Logger `autowire:"*"`
+			})),
+			objectBean(&SimpleLogger{}).Export(gs.As[Logger]()),
+		}
+		err := r.Refresh(extractBeans(beans))
+		assert.Error(t, err).Matches("the \\* wildcard is not allowed for single bean injection")
+	})
+
+	t.Run("wire error - nullable wildcard for single value", func(t *testing.T) {
+		r := New(flatten.NewPropertiesStorage(flatten.NewProperties(nil)))
+		beans := []*gs_bean.BeanDefinition{
+			objectBean(new(struct {
+				Logger Logger `autowire:"*?"`
+			})),
+			objectBean(&SimpleLogger{}).Export(gs.As[Logger]()),
+		}
+		err := r.Refresh(extractBeans(beans))
+		assert.Error(t, err).Matches("the \\* wildcard is not allowed for single bean injection")
+	})
+
 	t.Run("wire error - slice", func(t *testing.T) {
 		r := New(flatten.NewPropertiesStorage(flatten.NewProperties(nil)))
 		beans := []*gs_bean.BeanDefinition{

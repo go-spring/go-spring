@@ -28,7 +28,10 @@ import _ "go-spring.org/starter-gorm-mysql"
 Add gorm configuration in your project’s [configuration file](example/conf/app.properties), for example:
 
 ```properties
-spring.gorm.main.url=xxx
+spring.gorm.mysql.primary.user=root
+spring.gorm.mysql.primary.password=123456
+spring.gorm.mysql.primary.addr=127.0.0.1:3306
+spring.gorm.mysql.primary.db=test
 ```
 
 ### 3. Inject the gorm Instance

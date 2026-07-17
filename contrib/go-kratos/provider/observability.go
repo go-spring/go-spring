@@ -42,9 +42,10 @@ import (
 // natively), the kratos example has NO starter — the kratos.App is assembled by
 // hand in server.go. So metrics and tracing must be wired in code here, using
 // kratos' own middleware plus the OTel SDK, and exposed through a standalone
-// Prometheus endpoint (the built-in HTTP server is disabled). Logs are the
-// exception: business logs are emitted via go-spring's log module straight to a
-// JSON file (see handler.go / provider conf), not bridged from kratos' logger.
+// Prometheus endpoint (the built-in HTTP server is disabled). Logs all go
+// through go-spring's log module: business logs are emitted directly (see
+// handler.go), and kratos' own framework logs are bridged into the same JSON
+// file pipeline via the logger installed in server.go (see logbridge.go).
 
 // metricRequestsName is the kratos request counter instrument name. The OTel
 // Prometheus exporter is configured with WithoutCounterSuffixes/WithoutUnits so

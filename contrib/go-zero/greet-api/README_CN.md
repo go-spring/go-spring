@@ -118,10 +118,14 @@ go-zero 原生自带三支柱。`rest.MustNewServer` 内部会调用
 | ------ | ----------------------- | --------------------------------------- |
 | Trace  | `ServiceConf.Telemetry` | Jaeger,OTLP/gRPC(:4317,UI 16686)      |
 | Metric | `ServiceConf.DevServer` | Prometheus 抓 :6060/metrics(UI 9099)   |
-| 日志   | `ServiceConf.Log`(logx)| JSON 文件 → Promtail → Loki(:3100)     |
+| 日志   | `ServiceConf.Log`(logx) → `logx.SetWriter` → go-spring `log` | JSON 文件 → Promtail → Loki(:3100) |
 
-只有 **provider** 埋点;consumer 是裸 `net/http` 客户端。go-zero 的 logx 会给
-每行日志打上当前 trace/span,所以 Loki 里的日志能和 Jaeger 里的 span 关联。
+只有 **provider** 埋点;consumer 是裸 `net/http` 客户端。日志已经不再落到
+go-zero 自己的 `.log` 文件里:`provider/logbridge.go` 通过 `logx.SetWriter`
+注入 `logx.Writer`,把每条框架日志转发进 go-spring 的 `log` 模块,由根部的
+`FileLogger`(Promtail → Loki)与业务日志一同写出。trace 关联仍然可用:
+`logx.WithContext(ctx)` 会以 `LogField` 的形式注入 trace/span,桥接层会把
+它们作为结构化字段一并转发。
 
 拉起后端并跑带可观测的冒烟脚本:
 

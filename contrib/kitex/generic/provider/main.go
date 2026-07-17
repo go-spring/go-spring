@@ -22,6 +22,7 @@ import (
 	"path/filepath"
 	"runtime"
 
+	"github.com/cloudwego/kitex/pkg/klog"
 	"go-spring.org/spring/gs"
 )
 
@@ -33,6 +34,14 @@ func main() {
 	_ = os.Unsetenv("_")
 	_ = os.Unsetenv("TERM")
 	_ = os.Unsetenv("TERM_SESSION_ID")
+
+	// Install the go-spring log bridge (see logbridge.go) before gs.Run() so
+	// klog messages emitted during starter-kitex bean init (etcd resolver setup,
+	// server construction, transport wiring) already flow through go-spring's
+	// log pipeline instead of kitex' default stderr logger. starter-kitex's
+	// own logrus/file adapter is disabled in provider/conf/app.properties so it
+	// does not overwrite this bridge inside SimpleKitexServer.Run.
+	klog.SetLogger(newGSBridgeLogger())
 
 	// The built-in HTTP server is disabled via provider/conf/app.properties;
 	// gs.Run() starts only the Kitex server registered in server.go.

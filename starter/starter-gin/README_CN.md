@@ -30,10 +30,15 @@ import _ "go-spring.org/starter-gin"
 ```properties
 # 让 gin 独占 HTTP 端口，关闭 Go-Spring 内置服务器。
 spring.http.server.enabled=false
+# 本示例中 starter-gin 默认监听 :8001。
+spring.gin.server.addr=:8001
 ```
 
 当 `spring.gin.server.enabled` 为 `true`（默认）且应用提供了 `*gin.Engine` Bean 时，
 starter 会自动注册服务器 Bean。
+
+> **端口约定** —— 三个 HTTP starter 使用互不相同的端口，可同时启动：
+> `starter-gin` → `:8001`，`starter-echo` → `:8002`，`starter-hertz` → `:8003`。
 
 ### 3. 提供 `*gin.Engine` Bean
 

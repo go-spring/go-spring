@@ -39,7 +39,7 @@ import (
 func init() {
 	gs.Provide(&Controller{})
 	gs.Provide(func(c *Controller) *server.Hertz {
-		h := server.Default(server.WithHostPorts("127.0.0.1:9090"))
+		h := server.Default(server.WithHostPorts("127.0.0.1:8003"))
 
 		// Feature 1: middleware — inject a response header on every request.
 		h.Use(func(ctx context.Context, r *app.RequestContext) {
@@ -83,13 +83,13 @@ func main() {
 	}()
 
 	// Configuration lives under ./conf/app.properties; the built-in HTTP
-	// server is disabled there because Hertz drives its own on :9090.
+	// server is disabled there because Hertz drives its own on :8003.
 	gs.Run()
 }
 
 func runTest() {
 	// Feature 2: path parameter + JSON response.
-	resp, err := http.Get("http://127.0.0.1:9090/echo/hertz")
+	resp, err := http.Get("http://127.0.0.1:8003/echo/hertz")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "request /echo/hertz failed:", err)
 		os.Exit(1)
@@ -115,7 +115,7 @@ func runTest() {
 	}
 
 	// Feature 3: query parameter + JSON response.
-	resp2, err := http.Get("http://127.0.0.1:9090/greet?name=world")
+	resp2, err := http.Get("http://127.0.0.1:8003/greet?name=world")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "request /greet failed:", err)
 		os.Exit(1)

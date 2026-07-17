@@ -133,6 +133,11 @@ type GoFrameTCPServer struct {
 // race consumers into a "connection refused" window. The connection handler
 // is echoHandler (see handler.go).
 func NewGoFrameTCPServer(cfg Config) *GoFrameTCPServer {
+	// Route goframe's own glog logs into go-spring's log module (see
+	// logbridge.go). Installed before the listener is built so registration
+	// errors and other startup lines flow through the shared pipeline.
+	installGoFrameLogBridge()
+
 	s := gtcp.NewServer(cfg.Address, echoHandler)
 
 	return &GoFrameTCPServer{

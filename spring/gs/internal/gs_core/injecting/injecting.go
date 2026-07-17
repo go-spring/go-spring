@@ -260,6 +260,12 @@ func (c *Injector) getBean(t reflect.Type, tag WireTag, stack *Stack) (*gs_bean.
 		return nil, errutil.Explain(nil, "%s is not a valid injection target type", t.String())
 	}
 
+	// The "*" wildcard only has meaning for collection injection. Reject it here so a
+	// single-bean field never silently resolves to nothing (e.g. the nullable tag "*?").
+	if tag.beanName == "*" {
+		return nil, errutil.Explain(nil, "the * wildcard is not allowed for single bean injection, tag %q", tag)
+	}
+
 	var foundBeans []*gs_bean.BeanDefinition
 	for _, b := range c.beansByType[t] {
 		if tag.beanName == "" || tag.beanName == b.GetName() {

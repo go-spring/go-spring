@@ -19,7 +19,6 @@ package main
 import (
 	"context"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/go-kratos/kratos/contrib/registry/etcd/v2"
@@ -52,9 +51,12 @@ func init() {
 		Condition(gs.OnBean[ServiceRegister]())
 }
 
-// NewLogger provides the kratos logger used by the server adapter.
+// NewLogger provides the kratos logger used by the server adapter. It bridges
+// kratos' framework logs into go-spring's log module (see logbridge.go) so they
+// land in the same JSON FileLogger pipeline as the business logs, instead of
+// going to stdout.
 func NewLogger() log.Logger {
-	return log.NewStdLogger(os.Stdout)
+	return newGSBridgeLogger()
 }
 
 // ServiceRegister binds services onto the kratos HTTP, gRPC and WebSocket

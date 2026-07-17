@@ -24,9 +24,9 @@ import (
 
 func init() {
 	// Register multiple GORM clients as a group.
-	// Each instance is created according to the configuration in "${spring.gorm}".
+	// Each instance is created according to the configuration in "${spring.gorm.mysql}".
 	// This allows defining multiple database connections dynamically.
-	gs.Group("${spring.gorm}", newClient, nil)
+	gs.Group("${spring.gorm.mysql}", newClient, nil)
 }
 
 // newClient creates a GORM database client using the MySQL driver.

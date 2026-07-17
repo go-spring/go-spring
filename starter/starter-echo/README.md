@@ -30,10 +30,15 @@ Add configuration in your project's [configuration file](example/conf/app.proper
 ```properties
 # Let echo own the HTTP port; disable Go-Spring's built-in server.
 spring.http.server.enabled=false
+# starter-echo listens on :8002 by default in this example.
+spring.echo.server.addr=:8002
 ```
 
 The starter registers its server bean when `spring.echo.server.enabled` is `true` (default) and an
 `*echo.Echo` bean is provided by the application.
+
+> **Port convention** — the three HTTP starters use distinct ports so they can run side by side:
+> `starter-gin` → `:8001`, `starter-echo` → `:8002`, `starter-hertz` → `:8003`.
 
 ### 3. Provide an `*echo.Echo` Bean
 

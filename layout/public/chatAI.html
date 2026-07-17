@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8"/>
+    <title>AI 助手</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <style>
+        body {
+            font-family: "Segoe UI", sans-serif;
+            background-color: #f3f4f6;
+            padding: 2em;
+            display: flex;
+            justify-content: center;
+        }
+
+        .container {
+            background: #fff;
+            padding: 2em;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 1200px;
+        }
+
+        h1 {
+            margin-bottom: 1em;
+            font-size: 1.5em;
+            color: #333;
+        }
+
+        .input-row {
+            display: flex;
+            gap: 1em;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            padding: 0.75em;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            font-size: 1em;
+            outline: none;
+            transition: border 0.2s;
+        }
+
+        input[type="text"]:focus {
+            border-color: #4f46e5;
+        }
+
+        button {
+            padding: 0.75em 1.5em;
+            background-color: #4f46e5;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        button:hover {
+            background-color: #4338ca;
+        }
+
+        button:disabled {
+            background-color: #a5b4fc;
+            cursor: not-allowed;
+        }
+
+        .response {
+            margin-top: 1.5em;
+            padding: 1em;
+            background-color: #f9fafb;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            min-height: 240px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            line-height: 1.4;
+            position: relative;
+        }
+
+        .loading-dots::after {
+            content: '';
+            display: inline-block;
+            width: 1em;
+            text-align: left;
+            animation: dots 1s steps(3, end) infinite;
+        }
+
+        @keyframes dots {
+            0% {
+                content: '';
+            }
+            33% {
+                content: '.';
+            }
+            66% {
+                content: '..';
+            }
+            100% {
+                content: '...';
+            }
+        }
+    </style>
+</head>
+<body>
+<div id="app">
+    <div class="container">
+        <h1>🧠 AI 助手</h1>
+        <div class="input-row">
+            <input type="text" v-model="input" placeholder="请输入你的问题..." @keyup.enter="send"/>
+            <button @click="send">{{ loading ? "Stop" : "Send" }}</button>
+        </div>
+        <div class="response" :class="{ 'loading-dots': loading }">{{ response }}</div>
+    </div>
+</div>
+
+<script>
+    const {createApp, ref} = Vue;
+
+    createApp({
+        setup() {
+            const input = ref("");
+            const response = ref("");
+            const loading = ref(false);
+            let controller = null;
+
+            const send = async () => {
+                if (loading.value) {
+                    if (controller) controller.abort();
+                    return;
+                }
+
+                const text = input.value.trim();
+                if (!text) return;
+
+                response.value = "";
+                loading.value = true;
+                controller = new AbortController();
+
+                try {
+                    const res = await fetch("/chatAI", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "Dirpc-Header-Caller-Func": "chat.ai"
+                        },
+                        body: JSON.stringify({name: text}),
+                        signal: controller.signal
+                    });
+
+                    if (!res.ok) throw new Error(`HTTP error: ${res.status}`);
+
+                    const reader = res.body.getReader();
+                    const decoder = new TextDecoder("utf-8");
+
+                    while (true) {
+                        const {done, value} = await reader.read();
+                        if (done) break;
+                        const chunk = decoder.decode(value, {stream: true});
+
+                        // 去掉 SSE 协议规定的两个换行符，并在结尾添加一个换行符
+                        const processedChunk = chunk.endsWith('\n\n')
+                            ? chunk.slice(0, -1)
+                            : chunk;
+
+                        response.value += processedChunk;
+                    }
+
+                } catch (err) {
+                    if (err.name === 'AbortError') {
+                        response.value += "\n⛔️ 用户已中止连接。";
+                    } else {
+                        response.value = `❌ 错误: ${err.message}`;
+                    }
+                } finally {
+                    loading.value = false;
+                    controller = null;
+                }
+            };
+
+            return {input, response, loading, send};
+        }
+    }).mount("#app");
+</script>
+</body>
+</html>

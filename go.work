@@ -27,6 +27,7 @@ use (
 	./examples/miniapi
 	./examples/startup
 	./gs/gs
+	./gs/gs-gui
 	./gs/gs-mock
 	./layout
 	./log
@@ -38,7 +39,11 @@ use (
 	./starter/starter-elasticsearch
 	./starter/starter-gin
 	./starter/starter-go-redis
+	./starter/starter-gorm-clickhouse
 	./starter/starter-gorm-mysql
+	./starter/starter-gorm-postgres
+	./starter/starter-gorm-sqlite
+	./starter/starter-gorm-sqlserver
 	./starter/starter-grpc
 	./starter/starter-hertz
 	./starter/starter-kafka

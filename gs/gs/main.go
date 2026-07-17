@@ -40,10 +40,11 @@ const Version = "v0.3.1"
 
 // builtins are subcommands compiled directly into the gs binary.
 var builtins = map[string]*cobra.Command{
-	"init": cmd.NewInitCmd(),
-	"gen":  cmd.NewGenCmd(),
-	"add":  cmd.NewAddCmd(),
-	"go":   cmd.NewGoCmd(),
+	"init":  cmd.NewInitCmd(),
+	"gen":   cmd.NewGenCmd(),
+	"add":   cmd.NewAddCmd(),
+	"go":    cmd.NewGoCmd(),
+	"serve": cmd.NewServeCmd(),
 }
 
 // helpFlags trigger showHelp when passed as the first argument.

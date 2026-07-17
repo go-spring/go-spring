@@ -97,10 +97,11 @@ type GreeterService struct {
 // SayHello echoes the request name back as "Hello <name>", giving the consumer
 // a deterministic value to assert on over HTTP, gRPC and WebSocket.
 func (s *GreeterService) SayHello(ctx context.Context, in *v1.HelloRequest) (*v1.HelloReply, error) {
-	// Business log line. This is the ONLY signal that reaches Loki: it is emitted
-	// through go-spring's log module (configured as a JSON FileLogger in
-	// provider/conf/app.properties), NOT bridged from kratos' own logger. Every
-	// HTTP/gRPC call routes through here, so Promtail ships one line per request.
+	// Business log line. Emitted through go-spring's log module (configured as a
+	// JSON FileLogger in provider/conf/app.properties). kratos' own framework
+	// logs are bridged into the same file (see logbridge.go), so both business
+	// and framework lines reach Loki. Every HTTP/gRPC call routes through here,
+	// so Promtail ships one business line per request.
 	log.Infof(ctx, log.TagBizDef, "SayHello name=%s", in.Name)
 	return &v1.HelloReply{Message: "Hello " + in.Name}, nil
 }

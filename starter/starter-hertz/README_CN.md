@@ -30,7 +30,7 @@ Hertz 实例（监听地址、中间件、路由）由应用自己创建；start
 
 ```go
 gs.Provide(func(c *Controller) *server.Hertz {
-    h := server.Default(server.WithHostPorts("127.0.0.1:9090"))
+    h := server.Default(server.WithHostPorts("127.0.0.1:8003"))
     h.Use(func(ctx context.Context, r *app.RequestContext) {
         r.Response.Header.Set("X-App", "go-spring")
         r.Next(ctx)
@@ -40,6 +40,11 @@ gs.Provide(func(c *Controller) *server.Hertz {
     return h
 })
 ```
+
+> **端口约定** —— 三个 HTTP starter 使用互不相同的端口，可同时启动：
+> `starter-gin` → `:8001`，`starter-echo` → `:8002`，`starter-hertz` → `:8003`。
+> 与 gin/echo 不同，Hertz 自己管理监听器，端口通过 engine 的 `WithHostPorts` 设置
+> （没有 `spring.hertz.server.addr` 配置项可供注入）。
 
 ### 3. 关闭内置 HTTP 服务
 

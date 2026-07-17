@@ -93,7 +93,7 @@ func main() {
 func runTest() {
 	// Feature 1 + Feature 2: custom middleware sets the X-App header
 	// and the path parameter is echoed back as JSON.
-	resp, err := http.Get("http://127.0.0.1:9090/echo/gin")
+	resp, err := http.Get("http://127.0.0.1:8001/echo/gin")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "request failed:", err)
 		os.Exit(1)
@@ -116,7 +116,7 @@ func runTest() {
 	}
 
 	// Feature 3: query parameter handler.
-	resp, err = http.Get("http://127.0.0.1:9090/greet?name=world")
+	resp, err = http.Get("http://127.0.0.1:8001/greet?name=world")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "request failed:", err)
 		os.Exit(1)

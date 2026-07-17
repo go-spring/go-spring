@@ -93,6 +93,12 @@ type GoFrameServer struct {
 // WebSocket and echoes frames. When Start is invoked later, ghttp will publish
 // the service under cfg.Name into etcd; on Shutdown it deregisters itself.
 func NewGoFrameServer(cfg Config) *GoFrameServer {
+	// Route goframe's own glog logs into go-spring's log module (see
+	// logbridge.go). Installed before g.Server(name) so ghttp lifecycle and
+	// WebSocket upgrade errors flow through the same pipeline as the business
+	// logs.
+	installGoFrameLogBridge()
+
 	// Set the global registry first so g.Server(name) picks it up as its
 	// registrar. See ghttp/ghttp_server.go: `registrar: gsvc.GetRegistry()`
 	// is read at server construction, so ordering matters. This mirrors the

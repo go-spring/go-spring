@@ -45,8 +45,9 @@ type EchoServiceImpl struct{}
 
 // Echo returns the request message unchanged, giving the client a
 // deterministic value to assert on. The klog.CtxInfof call is context-aware, so
-// the obs-opentelemetry logrus adapter (installed by starter-kitex) tags each
-// line with the request's trace_id/span_id, correlating logs with traces.
+// the go-spring log bridge (see logbridge.go) receives the request ctx and
+// go-spring's FieldsFromContext hook tags each line with the incoming
+// trace_id/span_id, correlating logs with traces.
 func (s *EchoServiceImpl) Echo(ctx context.Context, req *echo.EchoRequest) (*echo.EchoResponse, error) {
 	klog.CtxInfof(ctx, "echo request: %s", req.Message)
 	return &echo.EchoResponse{Message: req.Message}, nil

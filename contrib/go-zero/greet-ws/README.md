@@ -108,11 +108,16 @@ only populates the `ServiceConf` fields from `conf/app.properties`.
 | ------- | ----------------------- | ------------------------------------- |
 | Tracing | `ServiceConf.Telemetry` | Jaeger via OTLP/gRPC (:4317, UI 16686) |
 | Metrics | `ServiceConf.DevServer` | Prometheus scrapes :6060/metrics (UI 9099) |
-| Logging | `ServiceConf.Log` (logx)| JSON files → Promtail → Loki (:3100)  |
+| Logging | `ServiceConf.Log` (logx) → `logx.SetWriter` → go-spring `log` | JSON files → Promtail → Loki (:3100) |
 
 Only the **provider** is instrumented; the consumer is a raw
-`gorilla/websocket` client. go-zero's logx tags each log line with the active
-trace/span, so logs in Loki correlate with spans in Jaeger.
+`gorilla/websocket` client. Logs no longer land in go-zero's own `.log` files:
+`provider/logbridge.go` installs a `logx.Writer` via `logx.SetWriter`, so every
+framework log line (including `logx.WithContext(...).Errorf(...)` from the WS
+handler) is forwarded into go-spring's `log` module and written by the root
+`FileLogger` (Promtail → Loki) alongside the business logs. Trace correlation
+still travels: `logx.WithContext(ctx)` injects trace/span as `LogField`s and
+the bridge forwards them as structured fields.
 
 Bring up the backends and run the instrumented smoke test:
 

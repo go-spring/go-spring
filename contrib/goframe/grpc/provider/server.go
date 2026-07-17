@@ -72,6 +72,11 @@ type GoFrameGrpcServer struct {
 // *grpc.Server. When Start is invoked later, grpcx will publish the service
 // under cfg.Name into etcd; on Stop it deregisters itself.
 func NewGoFrameGrpcServer(cfg Config, handler echo.EchoServiceServer) *GoFrameGrpcServer {
+	// Route goframe's own glog logs into go-spring's log module (see
+	// logbridge.go). Installed before any grpcx / gsvc call so even the very
+	// first framework log lands in the same pipeline as the business logs.
+	installGoFrameLogBridge()
+
 	// Set the global registry first so grpcx.Server.New picks it up as its
 	// registrar. Ordering matters: see grpcx_grpc_server.go, where the
 	// registrar field is read at server construction.

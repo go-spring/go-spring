@@ -136,13 +136,17 @@ OpenTelemetry/Prometheus code** — `provider/server.go` only populates the
 | ------- | ----------------------- | ------------------------------------------ |
 | Tracing | `ServiceConf.Telemetry` | Jaeger via OTLP/gRPC (:4317, UI 16686)     |
 | Metrics | `ServiceConf.DevServer` | Prometheus scrapes :6060/metrics (UI 9099) |
-| Logging | `ServiceConf.Log` (logx)| JSON files → Promtail → Loki (:3100)       |
+| Logging | `ServiceConf.Log` (logx) → `logx.SetWriter` → go-spring `log` | JSON files → Promtail → Loki (:3100) |
 
 Only the **provider** is instrumented; the consumer is a raw zrpc client.
 zrpc's prometheus interceptor uses the **`rpc_server_requests_*`** metric
 family (not the `http_server_requests_*` family that `rest.Server` exposes in
-the sibling `greet-api`). go-zero's logx tags each log line with the active
-trace/span, so logs in Loki correlate with spans in Jaeger.
+the sibling `greet-api`). Logs no longer land in go-zero's own `.log` files:
+`provider/logbridge.go` installs a `logx.Writer` via `logx.SetWriter`, so every
+framework log line is forwarded into go-spring's `log` module and written by
+the root `FileLogger` (Promtail → Loki) alongside the business logs. Trace
+correlation still travels: `logx.WithContext(ctx)` injects trace/span as
+`LogField`s and the bridge forwards them as structured fields.
 
 Bring up etcd + the backends and run the instrumented smoke test:
 

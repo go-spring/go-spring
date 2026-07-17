@@ -32,7 +32,7 @@ drives its `Run` / `Shutdown` from the Go-Spring readiness signal. Refer to the
 
 ```go
 gs.Provide(func(c *Controller) *server.Hertz {
-    h := server.Default(server.WithHostPorts("127.0.0.1:9090"))
+    h := server.Default(server.WithHostPorts("127.0.0.1:8003"))
     h.Use(func(ctx context.Context, r *app.RequestContext) {
         r.Response.Header.Set("X-App", "go-spring")
         r.Next(ctx)
@@ -42,6 +42,11 @@ gs.Provide(func(c *Controller) *server.Hertz {
     return h
 })
 ```
+
+> **Port convention** — the three HTTP starters use distinct ports so they can run side by side:
+> `starter-gin` → `:8001`, `starter-echo` → `:8002`, `starter-hertz` → `:8003`.
+> Unlike gin/echo, Hertz owns its own listener, so the port is set on the engine via
+> `WithHostPorts` (there is no `spring.hertz.server.addr` config to inject it).
 
 ### 3. Disable the Built-in HTTP Server
 

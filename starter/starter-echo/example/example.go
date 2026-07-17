@@ -96,7 +96,7 @@ func main() {
 
 func runTest() {
 	// Feature 1: custom middleware sets the X-App header.
-	resp, err := http.Get("http://localhost:9090/echo/echo")
+	resp, err := http.Get("http://localhost:8002/echo/echo")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "request failed:", err)
 		os.Exit(1)
@@ -121,7 +121,7 @@ func runTest() {
 	}
 
 	// Feature 3: route group + query parameter.
-	resp, err = http.Get("http://localhost:9090/api/greet?name=world")
+	resp, err = http.Get("http://localhost:8002/api/greet?name=world")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "request failed:", err)
 		os.Exit(1)

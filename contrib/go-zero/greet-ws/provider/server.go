@@ -120,8 +120,11 @@ func (s *RestServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	rc := rest.RestConf{
 		ServiceConf: service.ServiceConf{
 			Name: s.cfg.Name,
-			// logx: file-mode JSON logs under LogPath, auto-tagged with
-			// trace/span so they correlate with the spans exported below.
+			// logx: level is still applied by logx before it delegates to the
+			// Writer we install after MustNewServer (see logbridge.go), so
+			// LogConf.Level is the only field that still matters at runtime;
+			// Mode / Encoding / Path become no-ops once SetWriter replaces
+			// logx's own file writer.
 			Log: logx.LogConf{
 				ServiceName: s.cfg.Name,
 				Mode:        s.cfg.LogMode,
@@ -156,6 +159,16 @@ func (s *RestServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	}
 	s.svr = rest.MustNewServer(rc)
 	s.reg(s.svr)
+
+	// Redirect logx into go-spring's log module. MustNewServer just ran
+	// ServiceConf.SetUp(), which called logx.SetUp() with the LogConf above and
+	// installed logx's own file writer; SetWriter now replaces that writer so
+	// every subsequent framework log line (access log, ws upgrade errors,
+	// stat lines, ...) flows through logbridge.go into the root FileLogger
+	// alongside the business logs. LogConf.Level is still honoured because
+	// logx filters by level before delegating to the Writer; Mode / Encoding /
+	// Path become moot for this process. See provider/logbridge.go.
+	logx.SetWriter(newGSBridgeWriter())
 
 	<-sig.TriggerAndWait()
 

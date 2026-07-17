@@ -30,10 +30,15 @@ Add configuration in your project's [configuration file](example/conf/app.proper
 ```properties
 # Let gin own the HTTP port; disable Go-Spring's built-in server.
 spring.http.server.enabled=false
+# starter-gin listens on :8001 by default in this example.
+spring.gin.server.addr=:8001
 ```
 
 The starter registers its server bean when `spring.gin.server.enabled` is `true` (default) and a
 `*gin.Engine` bean is provided by the application.
+
+> **Port convention** — the three HTTP starters use distinct ports so they can run side by side:
+> `starter-gin` → `:8001`, `starter-echo` → `:8002`, `starter-hertz` → `:8003`.
 
 ### 3. Provide a `*gin.Engine` Bean
 
