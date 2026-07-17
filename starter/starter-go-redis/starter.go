@@ -18,6 +18,7 @@ package StarterGoRedis
 
 import (
 	"github.com/redis/go-redis/v9"
+	"github.com/redis/go-redis/extra/redisotel/v9"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 )
@@ -29,13 +30,27 @@ func init() {
 	gs.Group("${spring.go-redis}", newClient, destroyClient)
 }
 
-// newClient creates a new Redis client based on the provided configuration.
+// newClient creates a new Redis client, bridged into go-spring's unified
+// observability. The redisotel hooks emit client spans and connection-pool
+// metrics through the OTel globals that starter-otel installs; when starter-otel
+// is absent those globals are no-ops, so this stays a zero-config opt-in that
+// needs no per-component adaptation.
 func newClient(c Config) (*redis.Client, error) {
 	d, ok := driverRegistry[c.Driver]
 	if !ok {
 		return nil, errutil.Explain(nil, "redis driver not found: %s", c.Driver)
 	}
-	return d.CreateClient(c)
+	client, err := d.CreateClient(c)
+	if err != nil {
+		return nil, err
+	}
+	if err := redisotel.InstrumentTracing(client); err != nil {
+		return nil, err
+	}
+	if err := redisotel.InstrumentMetrics(client); err != nil {
+		return nil, err
+	}
+	return client, nil
 }
 
 // destroyClient closes the Redis client.

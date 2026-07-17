@@ -66,6 +66,28 @@ one binary and asserts a unary Echo round-trip end-to-end via `runTest`:
    does) runs a registry-free server dialed directly by host:port; setting it
    publishes the service into etcd for discovery under its service name.
 
+## Logging (built in)
+
+Importing this starter puts kitex under go-spring's management: its `klog`
+output (server wiring, etcd resolver events, transport errors, and handler
+`klog.CtxInfof` calls) is bridged into go-spring's `log` module automatically
+(installed in an `init()`, no configuration needed) instead of kitex' default
+stderr sink. The context-aware `klog.CtxXxx` path passes the request `ctx`
+through, so go-spring's `FieldsFromContext` hook can tag each line with the
+incoming `trace_id`/`span_id` and correlate logs with traces.
+
+The bridge only redirects *who writes the log*; you must still configure a
+go-spring log sink, otherwise the forwarded lines land on go-spring's default
+console rather than your app's output. Configure a root logger as usual, e.g.:
+
+```properties
+logging.logger.root.type=FileLogger
+logging.logger.root.level=INFO
+logging.logger.root.dir=../logs
+logging.logger.root.file=app.log
+logging.logger.root.layout.type=JSONLayout
+```
+
 ## Notes
 
 - The starter listens on `${spring.kitex.server.addr}` (default `:8888`).

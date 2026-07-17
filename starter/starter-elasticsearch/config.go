@@ -17,6 +17,7 @@
 package StarterElasticsearch
 
 import (
+	"github.com/elastic/elastic-transport-go/v8/elastictransport"
 	"github.com/elastic/go-elasticsearch/v8"
 )
 
@@ -89,7 +90,11 @@ func RegisterDriver(name string, driver Driver) {
 // DefaultDriver is the default implementation of the Driver interface.
 type DefaultDriver struct{}
 
-// CreateClient creates a new Elasticsearch client based on the provided configuration.
+// CreateClient creates a new Elasticsearch client, bridged into go-spring's
+// unified observability. Passing a nil provider to NewOtelInstrumentation makes
+// the transport emit client spans through the OTel global TracerProvider that
+// starter-otel installs; when starter-otel is absent that global is a no-op, so
+// this stays a zero-config opt-in that needs no per-component adaptation.
 func (DefaultDriver) CreateClient(c Config) (*elasticsearch.Client, error) {
 	return elasticsearch.NewClient(elasticsearch.Config{
 		Addresses:              c.Addresses,
@@ -104,5 +109,6 @@ func (DefaultDriver) CreateClient(c Config) (*elasticsearch.Client, error) {
 		CompressRequestBody:    c.CompressRequestBody,
 		EnableMetrics:          c.EnableMetrics,
 		EnableDebugLogger:      c.EnableDebugLogger,
+		Instrumentation:        elastictransport.NewOtelInstrumentation(nil, false, ""),
 	})
 }

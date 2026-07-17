@@ -5,7 +5,9 @@ use (
 	./contrib/dubbo-go/jsonrpc
 	./contrib/dubbo-go/rest
 	./contrib/dubbo-go/triple
-	./contrib/go-kratos
+	./contrib/go-kratos/grpc
+	./contrib/go-kratos/http
+	./contrib/go-kratos/ws
 	./contrib/go-zero/greet-api
 	./contrib/go-zero/greet-rpc
 	./contrib/go-zero/greet-ws
@@ -40,6 +42,7 @@ use (
 	./starter/starter-elasticsearch
 	./starter/starter-gin
 	./starter/starter-go-redis
+	./starter/starter-go-zero
 	./starter/starter-gorm-clickhouse
 	./starter/starter-gorm-mysql
 	./starter/starter-gorm-postgres
@@ -50,6 +53,7 @@ use (
 	./starter/starter-kafka
 	./starter/starter-kitex
 	./starter/starter-kitex/example
+	./starter/starter-kratos
 	./starter/starter-mongodb
 	./starter/starter-neo4j
 	./starter/starter-otel

@@ -20,10 +20,23 @@ import (
 	"bufio"
 
 	"github.com/gogf/gf/v2/net/gtcp"
+	"go-spring.org/spring/gs"
 )
 
-// echoHandler is the gtcp connection handler bound in NewGoFrameTCPServer
-// (see server.go). It is a bufio.Reader-backed line echo: for every newline-
+func init() {
+	// Provide a ServiceRegister bean that attaches echoHandler onto the raw
+	// *gtcp.Server via SetHandler. The TCP server adapter (see server.go)
+	// depends only on this function type, so the concrete handler is wired here
+	// without the adapter ever naming it.
+	gs.Provide(func() ServiceRegister {
+		return func(s *gtcp.Server) {
+			s.SetHandler(echoHandler)
+		}
+	})
+}
+
+// echoHandler is the gtcp connection handler attached via the ServiceRegister
+// bean above. It is a bufio.Reader-backed line echo: for every newline-
 // terminated frame received, it writes the same bytes back. That gives the
 // consumer a deterministic value to assert on.
 func echoHandler(conn *gtcp.Conn) {

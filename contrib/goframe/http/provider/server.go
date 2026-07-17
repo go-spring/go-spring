@@ -42,8 +42,19 @@ func init() {
 	// prefix. This replaces the g.Server() + s.Run() block goframe emits in
 	// internal/cmd, which blocked in main() and owned the process.
 	gs.Provide(NewGoFrameServer, gs.IndexArg(0, gs.TagArg("${goframe}"))).
-		Export(gs.As[gs.Server]())
+		Export(gs.As[gs.Server]()).
+		Condition(gs.OnBean[ServiceRegister]())
 }
+
+// ServiceRegister binds business routes onto the response-wrapping router group
+// that GoFrameServer sets up. This function type keeps the adapter
+// service-agnostic: the adapter owns the server, the /metrics endpoint, the
+// response-envelope middleware and observability, while each service supplies
+// its own controllers via this bean. Unlike the grpc/tcp/websocket siblings the
+// param is the *ghttp.RouterGroup (not the raw server) on purpose: business
+// controllers must be bound inside the MiddlewareHandlerResponse group, whereas
+// /metrics must stay at the server root (see below).
+type ServiceRegister func(group *ghttp.RouterGroup)
 
 // Config holds the goframe HTTP server settings.
 //
@@ -105,10 +116,11 @@ type GoFrameServer struct {
 // NewGoFrameServer builds the goframe server from the Go-Spring-bound config,
 // registers an etcd-backed gsvc.Registry globally *before* g.Server(name) is
 // called (ghttp.Server snapshots gsvc.GetRegistry() at construction time),
-// wires the three observability pillars, and binds the HelloController (see
-// handler.go). When Start is invoked later, ghttp will publish the service
-// under cfg.Name into etcd; on Shutdown it deregisters itself.
-func NewGoFrameServer(cfg Config) *GoFrameServer {
+// wires the three observability pillars, and binds business routes via the
+// injected ServiceRegister (see handler.go). When Start is invoked later, ghttp
+// will publish the service under cfg.Name into etcd; on Shutdown it deregisters
+// itself.
+func NewGoFrameServer(cfg Config, reg ServiceRegister) *GoFrameServer {
 	// Route goframe's own glog logs into go-spring's log module (see
 	// logbridge.go). Installed before g.Server(name) so ghttp lifecycle and
 	// gsvc registration lines flow through the same pipeline as the business
@@ -133,9 +145,7 @@ func NewGoFrameServer(cfg Config) *GoFrameServer {
 	s.BindHandler(cfg.MetricsPath, otelmetric.PrometheusHandler)
 	s.Group("/", func(group *ghttp.RouterGroup) {
 		group.Middleware(ghttp.MiddlewareHandlerResponse)
-		group.Bind(
-			&HelloController{},
-		)
+		reg(group)
 	})
 	gsrv.svr = s
 	return gsrv

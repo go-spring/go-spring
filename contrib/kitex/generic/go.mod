@@ -6,7 +6,6 @@ require (
 	github.com/cloudwego/gopkg v0.2.0
 	github.com/cloudwego/kitex v0.16.3
 	github.com/kitex-contrib/registry-etcd v0.3.0
-	go-spring.org/log v0.1.4
 	go-spring.org/spring v1.3.4
 )
 
@@ -62,6 +61,7 @@ require (
 	github.com/tidwall/pretty v1.2.0 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	go-spring.org/gs-mock v0.0.9 // indirect
+	go-spring.org/log v0.1.4 // indirect
 	go-spring.org/stdlib v0.1.7 // indirect
 	go.etcd.io/etcd/api/v3 v3.6.2 // indirect
 	go.etcd.io/etcd/client/pkg/v3 v3.6.2 // indirect

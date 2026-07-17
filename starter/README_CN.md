@@ -15,6 +15,7 @@
 | `starter-gin` | [gin-gonic/gin](https://github.com/gin-gonic/gin) | 托管 `*gin.Engine` bean |
 | `starter-echo` | [labstack/echo](https://github.com/labstack/echo) | 托管 `*echo.Echo` bean |
 | `starter-hertz` | [CloudWeGo Hertz](https://github.com/cloudwego/hertz) | 托管 Hertz HTTP 服务 |
+| `starter-go-zero/rest` | [zeromicro/go-zero](https://github.com/zeromicro/go-zero) | 通过 `HandlerRegister` bean 托管 go-zero `rest.Server` |
 
 ## RPC 框架
 
@@ -26,6 +27,7 @@
 | `starter-kitex` | [cloudwego/kitex](https://github.com/cloudwego/kitex) | 服务封装，可选 etcd 注册 |
 | `starter-thrift` | [Apache Thrift](https://thrift.apache.org/) | 基于 `TSimpleServer` 封装 `TProcessor` bean |
 | `starter-dubbo` | [dubbo-go/v3](https://pkg.go.dev/dubbo.apache.org/dubbo-go/v3) | 完整服务端 + 客户端，支持注册中心服务发现 |
+| `starter-go-zero/zrpc` | [zeromicro/go-zero](https://github.com/zeromicro/go-zero) | 通过 `ServiceRegister` bean 托管 zrpc gRPC 服务，可选 etcd 注册 |
 
 ## WebSocket
 

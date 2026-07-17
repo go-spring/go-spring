@@ -20,7 +20,23 @@ import (
 	"context"
 
 	"github.com/gogf/gf/v2/frame/g"
+	"github.com/gogf/gf/v2/net/ghttp"
+	"go-spring.org/spring/gs"
 )
+
+func init() {
+	// Provide a ServiceRegister bean that binds the HelloController onto the
+	// response-wrapping router group. The server adapter (see server.go) depends
+	// only on this function type, so the concrete controller is wired here
+	// without the adapter ever naming it.
+	gs.Provide(func() ServiceRegister {
+		return func(group *ghttp.RouterGroup) {
+			group.Bind(
+				&HelloController{},
+			)
+		}
+	})
+}
 
 // HelloReq / HelloRes are the request and response types for the hello route.
 //

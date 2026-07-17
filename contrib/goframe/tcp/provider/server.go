@@ -64,8 +64,16 @@ func init() {
 	// a non-HTTP goframe transport plugs into the same etcd registry the
 	// sibling protocols use.
 	gs.Provide(NewGoFrameTCPServer, gs.IndexArg(0, gs.TagArg("${goframe.tcp}"))).
-		Export(gs.As[gs.Server]())
+		Export(gs.As[gs.Server]()).
+		Condition(gs.OnBean[ServiceRegister]())
 }
+
+// ServiceRegister binds a connection handler onto the raw *gtcp.Server that
+// GoFrameTCPServer wraps (via s.SetHandler). This function type keeps the
+// adapter service-agnostic: it drives the listen/register lifecycle while each
+// service supplies its own handler bean. Mirrors the grpc/http/websocket
+// siblings — same name, same "bind onto the native server I hand you" shape.
+type ServiceRegister func(s *gtcp.Server)
 
 // Config holds the goframe raw-TCP server settings.
 //
@@ -130,15 +138,20 @@ type GoFrameTCPServer struct {
 // and pre-creates (but does not yet call) the etcd registry. Actual
 // registration happens in Run once the listener is up, so the endpoint we
 // publish is guaranteed to be reachable — publishing before Listen would
-// race consumers into a "connection refused" window. The connection handler
-// is echoHandler (see handler.go).
-func NewGoFrameTCPServer(cfg Config) *GoFrameTCPServer {
+// race consumers into a "connection refused" window. The connection handler is
+// bound by the injected ServiceRegister (see handler.go), so this adapter never
+// names a concrete service.
+func NewGoFrameTCPServer(cfg Config, reg ServiceRegister) *GoFrameTCPServer {
 	// Route goframe's own glog logs into go-spring's log module (see
 	// logbridge.go). Installed before the listener is built so registration
 	// errors and other startup lines flow through the shared pipeline.
 	installGoFrameLogBridge()
 
-	s := gtcp.NewServer(cfg.Address, echoHandler)
+	// Build the server with a nil handler, then let the injected register bean
+	// attach the service handler via SetHandler — keeping the concrete service
+	// out of this adapter.
+	s := gtcp.NewServer(cfg.Address, nil)
+	reg(s)
 
 	return &GoFrameTCPServer{
 		cfg:      cfg,

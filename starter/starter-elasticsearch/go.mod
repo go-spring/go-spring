@@ -3,6 +3,7 @@ module go-spring.org/starter-elasticsearch
 go 1.26
 
 require (
+	github.com/elastic/elastic-transport-go/v8 v8.9.0
 	github.com/elastic/go-elasticsearch/v8 v8.19.6
 	go-spring.org/log v0.1.4
 	go-spring.org/spring v1.3.4
@@ -14,7 +15,6 @@ require (
 	github.com/bytedance/mockey v1.4.6 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
-	github.com/elastic/elastic-transport-go/v8 v8.9.0 // indirect
 	github.com/expr-lang/expr v1.17.8 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect

@@ -244,6 +244,28 @@ spring.dubbo.tracing.exporter=otlp-grpc
 spring.dubbo.tracing.endpoint=127.0.0.1:4317
 ```
 
+## 日志（内置）
+
+引入本 starter 即把 dubbo-go 纳入 go-spring 的托管:其内部日志会被自动桥接进
+go-spring 的 `log` 模块(在 `init()` 中安装,无需配置)。dubbo-go 有两层 logger
+门面 —— `dubbo-go/v3/logger`(上层栈)和 `dubbogo/gost/log/logger`(getty 及底层
+模块)—— 桥接会同时接管两者,使每一条框架日志都走 go-spring 的日志管道,而不是
+dubbo-go 默认的 stdout sink。
+
+桥接只改变"由谁写日志",你仍需自行配置 go-spring 的日志 sink,否则转发过来的日志
+会落到 go-spring 的默认 console,而不是你的应用输出。照常配置一个 root logger 即可:
+
+```properties
+logging.logger.root.type=FileLogger
+logging.logger.root.level=INFO
+logging.logger.root.dir=../logs
+logging.logger.root.file=app.log
+logging.logger.root.layout.type=JSONLayout
+```
+
+注意:dubbo-go 的 Logger 方法不带 `context.Context`,因此这条链路上无法透传
+trace-id,记录的调用位置(file:line)也会指向桥接层而非真实打点处。
+
 ## 定制化（逃生舱）
 
 类型化配置未覆盖的能力可以通过 map 形式的 `params` 字段（如每个协议的 `params`）补充，

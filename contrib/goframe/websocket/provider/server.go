@@ -58,8 +58,16 @@ func init() {
 	// happens at HTTP-server granularity, which is why the WS variant still
 	// ends up using the exact same lifecycle bean as the http sibling.
 	gs.Provide(NewGoFrameServer, gs.IndexArg(0, gs.TagArg("${goframe.websocket}"))).
-		Export(gs.As[gs.Server]())
+		Export(gs.As[gs.Server]()).
+		Condition(gs.OnBean[ServiceRegister]())
 }
+
+// ServiceRegister binds routes onto the raw *ghttp.Server that GoFrameServer
+// wraps. This function type keeps the adapter service-agnostic: it drives the
+// listen/register lifecycle while each service supplies its own route bean
+// (here the /echo WebSocket upgrade). Mirrors the grpc/http/tcp siblings —
+// same name, same "bind onto the native server I hand you" shape.
+type ServiceRegister func(s *ghttp.Server)
 
 // Config holds the goframe WebSocket server settings.
 //
@@ -89,10 +97,11 @@ type GoFrameServer struct {
 // NewGoFrameServer builds the goframe server from the Go-Spring-bound config,
 // registers an etcd-backed gsvc.Registry globally *before* g.Server(name) is
 // called (ghttp.Server snapshots gsvc.GetRegistry() at construction time), and
-// binds a single /echo route (echoHandler, see handler.go) that upgrades to
-// WebSocket and echoes frames. When Start is invoked later, ghttp will publish
-// the service under cfg.Name into etcd; on Shutdown it deregisters itself.
-func NewGoFrameServer(cfg Config) *GoFrameServer {
+// binds routes via the injected ServiceRegister (see handler.go — the /echo
+// route that upgrades to WebSocket and echoes frames). When Start is invoked
+// later, ghttp will publish the service under cfg.Name into etcd; on Shutdown
+// it deregisters itself.
+func NewGoFrameServer(cfg Config, reg ServiceRegister) *GoFrameServer {
 	// Route goframe's own glog logs into go-spring's log module (see
 	// logbridge.go). Installed before g.Server(name) so ghttp lifecycle and
 	// WebSocket upgrade errors flow through the same pipeline as the business
@@ -108,7 +117,7 @@ func NewGoFrameServer(cfg Config) *GoFrameServer {
 
 	s := g.Server(cfg.Name)
 	s.SetAddr(cfg.Address)
-	s.BindHandler("/echo", echoHandler)
+	reg(s)
 
 	return &GoFrameServer{svr: s, done: make(chan struct{})}
 }

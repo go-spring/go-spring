@@ -16,6 +16,7 @@ Serve an application-provided web engine through the Go-Spring server lifecycle.
 | `starter-gin` | [gin-gonic/gin](https://github.com/gin-gonic/gin) | Serves a `*gin.Engine` bean |
 | `starter-echo` | [labstack/echo](https://github.com/labstack/echo) | Serves a `*echo.Echo` bean |
 | `starter-hertz` | [CloudWeGo Hertz](https://github.com/cloudwego/hertz) | Serves a Hertz HTTP server |
+| `starter-go-zero/rest` | [zeromicro/go-zero](https://github.com/zeromicro/go-zero) | Serves a go-zero `rest.Server` via a `HandlerRegister` bean |
 
 ## RPC Frameworks
 
@@ -28,6 +29,7 @@ and graceful shutdown.
 | `starter-kitex` | [cloudwego/kitex](https://github.com/cloudwego/kitex) | Server wrapper with optional etcd registration |
 | `starter-thrift` | [Apache Thrift](https://thrift.apache.org/) | `TSimpleServer` wrapper for a `TProcessor` bean |
 | `starter-dubbo` | [dubbo-go/v3](https://pkg.go.dev/dubbo.apache.org/dubbo-go/v3) | Full server + client with registry-based discovery |
+| `starter-go-zero/zrpc` | [zeromicro/go-zero](https://github.com/zeromicro/go-zero) | zrpc gRPC server via a `ServiceRegister` bean, with optional etcd registration |
 
 ## WebSocket
 

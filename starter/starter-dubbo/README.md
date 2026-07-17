@@ -257,6 +257,31 @@ spring.dubbo.tracing.exporter=otlp-grpc
 spring.dubbo.tracing.endpoint=127.0.0.1:4317
 ```
 
+## Logging (built in)
+
+Importing this starter puts dubbo-go under go-spring's management: its internal
+logs are bridged into go-spring's `log` module automatically (installed in an
+`init()`, no configuration needed). Dubbo-go has two layered logger facades —
+`dubbo-go/v3/logger` (the high-level stack) and `dubbogo/gost/log/logger` (getty
+and low-level modules) — and the bridge installs under both, so every framework
+log line flows through the same pipeline as your own go-spring logs instead of
+dubbo-go's default stdout sink.
+
+The bridge only redirects *who writes the log*; you must still configure a
+go-spring log sink, otherwise the forwarded lines land on go-spring's default
+console rather than your app's output. Configure a root logger as usual, e.g.:
+
+```properties
+logging.logger.root.type=FileLogger
+logging.logger.root.level=INFO
+logging.logger.root.dir=../logs
+logging.logger.root.file=app.log
+logging.logger.root.layout.type=JSONLayout
+```
+
+Note: dubbo-go's Logger methods carry no `context.Context`, so trace-id
+propagation and precise caller (file:line) are not available on this path.
+
 ## Customization (escape hatches)
 
 Anything the typed config does not expose can be supplied via the map-driven

@@ -18,9 +18,22 @@ package main
 
 import (
 	"github.com/gogf/gf/v2/net/ghttp"
+	"go-spring.org/spring/gs"
 )
 
-// echoHandler is the /echo route bound in NewGoFrameServer (see server.go). It
+func init() {
+	// Provide a ServiceRegister bean that binds the /echo route onto the raw
+	// *ghttp.Server. The server adapter (see server.go) depends only on this
+	// function type, so the concrete route + handler are wired here without the
+	// adapter ever naming them.
+	gs.Provide(func() ServiceRegister {
+		return func(s *ghttp.Server) {
+			s.BindHandler("/echo", echoHandler)
+		}
+	})
+}
+
+// echoHandler is the /echo route bound via the ServiceRegister bean above. It
 // is a plain ghttp handler that promotes the connection to WebSocket. This is
 // the *entire* transport difference vs the http sibling: instead of writing a
 // response body, it calls r.WebSocket() to swap the HTTP connection for a

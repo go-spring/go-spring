@@ -62,6 +62,25 @@ gs.Provide(func() StarterKitex.ServiceRegister {
 3. **可选的 etcd 服务发现**：不配置 `registry.etcd`（如示例所示）即以免注册中心模式运行，
    客户端通过 host:port 直连；配置后则会将服务以其服务名注册进 etcd 供发现。
 
+## 日志（内置）
+
+引入本 starter 即把 kitex 纳入 go-spring 的托管:其 `klog` 输出(服务装配、etcd
+解析事件、传输错误,以及 handler 里的 `klog.CtxInfof` 调用)会被自动桥接进 go-spring
+的 `log` 模块(在 `init()` 中安装,无需配置),而不是 kitex 默认的 stderr sink。带
+上下文的 `klog.CtxXxx` 路径会透传请求的 `ctx`,因此 go-spring 的 `FieldsFromContext`
+钩子能为每条日志打上入站的 `trace_id`/`span_id`,实现日志与链路的关联。
+
+桥接只改变"由谁写日志",你仍需自行配置 go-spring 的日志 sink,否则转发过来的日志
+会落到 go-spring 的默认 console,而不是你的应用输出。照常配置一个 root logger 即可:
+
+```properties
+logging.logger.root.type=FileLogger
+logging.logger.root.level=INFO
+logging.logger.root.dir=../logs
+logging.logger.root.file=app.log
+logging.logger.root.layout.type=JSONLayout
+```
+
 ## 说明
 
 - Starter 监听地址由 `${spring.kitex.server.addr}` 决定，默认 `:8888`。

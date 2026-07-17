@@ -1,3 +1,0 @@
-# Runtime observability artifacts written by the provider/consumer at runtime
-# (JSON logs tailed by Promtail). Not source; regenerated on every scripts/smoke-test.sh run.
-logs/

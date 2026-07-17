@@ -31,19 +31,25 @@ import (
 	"github.com/gogf/gf/contrib/rpc/grpcx/v2"
 	"github.com/gogf/gf/v2/net/gsvc"
 	"go-spring.org/spring/gs"
-
-	"go-spring.org/goframe/grpc/idl/echo"
+	"google.golang.org/grpc"
 )
 
 func init() {
 	// Register the grpcx server and bind it to the Go-Spring server lifecycle.
 	// Config is filled from the ${goframe.grpc} prefix. The server only
-	// materialises when an echo.EchoServiceServer bean exists, mirroring how
-	// the kitex example gates its server on the generated service bean.
+	// materialises when a ServiceRegister bean exists, mirroring how the kitex
+	// example gates its server on the injected register bean rather than any
+	// concrete generated service.
 	gs.Provide(NewGoFrameGrpcServer, gs.IndexArg(0, gs.TagArg("${goframe.grpc}"))).
 		Export(gs.As[gs.Server]()).
-		Condition(gs.OnBean[echo.EchoServiceServer]())
+		Condition(gs.OnBean[ServiceRegister]())
 }
+
+// ServiceRegister binds a service handler onto the raw *grpc.Server that
+// grpcx.GrpcServer wraps. This function type keeps GoFrameGrpcServer
+// service-agnostic: it drives the lifecycle while each service supplies its own
+// register bean, typically wrapping the generated xxx.RegisterXxxServiceServer.
+type ServiceRegister func(s grpc.ServiceRegistrar)
 
 // Config holds the goframe gRPC server settings. In a stock goframe project
 // grpcx.Server.NewConfig() reads these from manifest/config/config.yaml under
@@ -58,20 +64,20 @@ type Config struct {
 
 // GoFrameGrpcServer wraps a grpcx.GrpcServer so it satisfies gs.Server.
 type GoFrameGrpcServer struct {
-	cfg     Config
-	handler echo.EchoServiceServer
-	svr     *grpcx.GrpcServer
-	done    chan struct{}
+	cfg  Config
+	reg  ServiceRegister
+	svr  *grpcx.GrpcServer
+	done chan struct{}
 }
 
 // NewGoFrameGrpcServer builds the grpcx server from the Go-Spring-bound
 // config, registers an etcd-backed gsvc.Registry globally *before*
 // grpcx.Server.New is called (grpcx.GrpcServer snapshots gsvc.GetRegistry() at
 // construction time — see grpcx_grpc_server.go: `registrar: gsvc.GetRegistry()`),
-// and attaches the generated EchoService handler to the underlying
-// *grpc.Server. When Start is invoked later, grpcx will publish the service
-// under cfg.Name into etcd; on Stop it deregisters itself.
-func NewGoFrameGrpcServer(cfg Config, handler echo.EchoServiceServer) *GoFrameGrpcServer {
+// and binds the service handler onto the underlying *grpc.Server via the
+// injected ServiceRegister. When Start is invoked later, grpcx will publish the
+// service under cfg.Name into etcd; on Stop it deregisters itself.
+func NewGoFrameGrpcServer(cfg Config, reg ServiceRegister) *GoFrameGrpcServer {
 	// Route goframe's own glog logs into go-spring's log module (see
 	// logbridge.go). Installed before any grpcx / gsvc call so even the very
 	// first framework log lands in the same pipeline as the business logs.
@@ -87,13 +93,13 @@ func NewGoFrameGrpcServer(cfg Config, handler echo.EchoServiceServer) *GoFrameGr
 	grpcCfg.Address = cfg.Address
 
 	s := grpcx.Server.New(grpcCfg)
-	echo.RegisterEchoServiceServer(s.Server, handler)
+	reg(s.Server)
 
 	return &GoFrameGrpcServer{
-		cfg:     cfg,
-		handler: handler,
-		svr:     s,
-		done:    make(chan struct{}),
+		cfg:  cfg,
+		reg:  reg,
+		svr:  s,
+		done: make(chan struct{}),
 	}
 }
 

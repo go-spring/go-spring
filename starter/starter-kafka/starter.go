@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	"github.com/twmb/franz-go/pkg/kgo"
+	"github.com/twmb/franz-go/plugin/kotel"
 	"go-spring.org/spring/gs"
 )
 
@@ -38,10 +39,19 @@ func init() {
 	gs.Group("${spring.kafka.instances}", newClient, destroyClient)
 }
 
-// newClient creates a new Kafka client based on the provided configuration.
+// newClient creates a new Kafka client, bridged into go-spring's unified
+// observability. The kotel hooks emit producer/consumer spans and client
+// metrics through the OTel globals that starter-otel installs; when starter-otel
+// is absent those globals are no-ops, so this stays a zero-config opt-in that
+// needs no per-component adaptation.
 func newClient(c Config) (*kgo.Client, error) {
+	kt := kotel.NewKotel(
+		kotel.WithTracer(kotel.NewTracer()),
+		kotel.WithMeter(kotel.NewMeter()),
+	)
 	opts := []kgo.Opt{
 		kgo.SeedBrokers(strings.Split(c.Brokers, ",")...),
+		kgo.WithHooks(kt.Hooks()...),
 	}
 	if c.Group != "" {
 		opts = append(opts, kgo.ConsumerGroup(c.Group))
