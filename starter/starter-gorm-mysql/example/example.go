@@ -40,7 +40,7 @@ type KV struct {
 }
 
 type Service struct {
-	DB *gorm.DB `autowire:"__default__"`
+	DB *gorm.DB `autowire:"primary"`
 }
 
 func main() {

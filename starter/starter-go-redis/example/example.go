@@ -49,7 +49,7 @@ func (AnotherRedisDriver) CreateClient(c StarterGoRedis.Config) (*redis.Client, 
 }
 
 type Service struct {
-	Redis *redis.Client `autowire:"__default__"`
+	Redis *redis.Client `autowire:"cache"`
 }
 
 func main() {

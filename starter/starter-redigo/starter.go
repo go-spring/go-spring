@@ -23,18 +23,10 @@ import (
 )
 
 func init() {
-
-	// Register a single default Redis client.
-	// This client will only be created if the property "spring.redigo.addr" is set.
-	// It uses the configuration tagged with "${spring.redigo}".
-	gs.Provide(newClient, gs.TagArg("${spring.redigo}")).
-		Condition(gs.OnProperty("spring.redigo.addr")).
-		Destroy(destroyClient)
-
 	// Register multiple Redis clients as a group.
-	// Each instance is created according to the configuration in "${spring.redigo.instances}".
+	// Each instance is created according to the configuration in "${spring.redigo}".
 	// This allows defining multiple redis instances dynamically.
-	gs.Group("${spring.redigo.instances}", newClient, destroyClient)
+	gs.Group("${spring.redigo}", newClient, destroyClient)
 }
 
 // newClient creates a new Redis client based on the provided configuration.

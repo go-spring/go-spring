@@ -27,10 +27,8 @@ use (
 	./log/benchmarks/fields
 	./log/benchmarks/logs
 	./spring
-	./starter/starter-consul
 	./starter/starter-dubbo
 	./starter/starter-echo
-	./starter/starter-etcd
 	./starter/starter-gin
 	./starter/starter-go-redis
 	./starter/starter-gorm-mysql
@@ -39,7 +37,6 @@ use (
 	./starter/starter-kitex
 	./starter/starter-kitex/example
 	./starter/starter-mongodb
-	./starter/starter-nacos
 	./starter/starter-pprof
 	./starter/starter-rabbitmq
 	./starter/starter-redigo

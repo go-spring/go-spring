@@ -50,7 +50,7 @@ func (AnotherRedisDriver) CreateClient(c StarterRedigo.Config) (*redis.Pool, err
 }
 
 type Service struct {
-	Redis *redis.Pool `autowire:"__default__"`
+	Redis *redis.Pool `autowire:"cache"`
 }
 
 func main() {
