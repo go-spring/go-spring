@@ -17,6 +17,7 @@ use (
 	./contrib/kitex/protobuf
 	./contrib/kitex/thrift
 	./contrib/observability
+	./contrib/observability-gorm
 	./contrib/registry/consul
 	./contrib/registry/etcd
 	./contrib/registry/nacos
@@ -51,6 +52,7 @@ use (
 	./starter/starter-kitex/example
 	./starter/starter-mongodb
 	./starter/starter-neo4j
+	./starter/starter-otel
 	./starter/starter-pprof
 	./starter/starter-pulsar
 	./starter/starter-rabbitmq

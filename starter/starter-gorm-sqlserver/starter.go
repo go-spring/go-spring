@@ -20,6 +20,7 @@ import (
 	"go-spring.org/spring/gs"
 	"gorm.io/driver/sqlserver"
 	"gorm.io/gorm"
+	"gorm.io/plugin/opentelemetry/tracing"
 )
 
 func init() {
@@ -29,7 +30,18 @@ func init() {
 	gs.Group("${spring.gorm.sqlserver}", newClient, nil)
 }
 
-// newClient creates a GORM database client using the SQL Server driver.
+// newClient creates a GORM database client using the SQL Server driver, bridged
+// into go-spring's unified observability. The otel plugin emits client spans and
+// connection-pool metrics through the OTel globals that starter-otel installs;
+// when starter-otel is absent those globals are no-ops, so this stays a
+// zero-config, zero-overhead opt-in that needs no per-component adaptation.
 func newClient(c Config) (*gorm.DB, error) {
-	return gorm.Open(sqlserver.Open(c.DSN()))
+	db, err := gorm.Open(sqlserver.Open(c.DSN()))
+	if err != nil {
+		return nil, err
+	}
+	if err := db.Use(tracing.NewPlugin(tracing.WithDBSystem("microsoft.sql_server"))); err != nil {
+		return nil, err
+	}
+	return db, nil
 }

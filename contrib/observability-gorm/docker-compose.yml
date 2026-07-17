@@ -1,0 +1,26 @@
+# Minimal backend for the observability-gorm smoke test:
+#   - mysql: the database the demo Runner exercises (schema init + writes + read).
+#   - otel-collector: the OTLP/gRPC sink (:4317) the app exports traces & metrics to.
+#     Its debug exporter prints every span/metric to stdout, which check.sh greps to
+#     assert the GORM otel plugin actually emitted db spans and pool metrics.
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: obs
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.109.0
+    command: ["--config=/etc/otel-collector-config.yml"]
+    volumes:
+      - ./otel-collector-config.yml:/etc/otel-collector-config.yml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC

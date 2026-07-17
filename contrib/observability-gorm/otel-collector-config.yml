@@ -1,0 +1,22 @@
+# Collector config for the smoke test: accept OTLP over gRPC and dump everything
+# to stdout via the debug exporter (verbosity: detailed so span attributes like
+# db.system.name / db.query.text and metric names like go.sql.connections_* are
+# printed in full). check.sh asserts against these container logs.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+exporters:
+  debug:
+    verbosity: detailed
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug]
+    metrics:
+      receivers: [otlp]
+      exporters: [debug]

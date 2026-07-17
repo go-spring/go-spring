@@ -1,0 +1,40 @@
+{
+  "features": [
+    {
+      "key": "grpc",
+      "category": "server",
+      "desc": "gRPC + protobuf service",
+      "owns": {
+        "dirs": ["idl/grpc", "internal/api/server/grpcsvr"],
+        "files": [
+          "internal/api/controller/order/order_controller_grpc.go",
+          "internal/api/controller/order/converter/converter_grpc.go",
+          "internal/api/controller/user/user_controller_grpc.go",
+          "internal/api/controller/user/converter/converter_grpc.go"
+        ],
+        "init_imports": ["GS_PROJECT_MODULE/internal/api/server/grpcsvr"]
+      }
+    },
+    {
+      "key": "gorm-mysql",
+      "category": "store",
+      "desc": "GORM + MySQL storage scaffolding",
+      "owns": {
+        "dirs": ["internal/infra/repo/mysql"],
+        "init_imports": ["go-spring.org/starter-gorm-mysql"]
+      },
+      "params": {
+        "instances": {
+          "type": "list",
+          "default": ["default"],
+          "desc": "which DB instances to scaffold a repo for"
+        },
+        "charset": {
+          "type": "string",
+          "default": "utf8mb4",
+          "desc": "default charset baked into the generated sample"
+        }
+      }
+    }
+  ]
+}

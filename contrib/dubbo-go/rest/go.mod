@@ -4,6 +4,8 @@ go 1.26.1
 
 require (
 	dubbo.apache.org/dubbo-go/v3 v3.3.1
+	github.com/dubbogo/gost v1.14.3
+	go-spring.org/log v0.1.4
 	go-spring.org/spring v1.3.4
 )
 
@@ -53,7 +55,6 @@ require (
 	github.com/dlclark/regexp2 v1.11.0 // indirect
 	github.com/dop251/goja v0.0.0-20240220182346-e401ed450204 // indirect
 	github.com/dubbogo/go-zookeeper v1.0.4-0.20211212162352-f9d2183d89d5 // indirect
-	github.com/dubbogo/gost v1.14.3 // indirect
 	github.com/dubbogo/grpc-go v1.42.10 // indirect
 	github.com/dubbogo/triple v1.2.2-rc4 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
@@ -141,7 +142,6 @@ require (
 	github.com/ugorji/go/codec v1.3.1 // indirect
 	github.com/yusufpapurcu/wmi v1.2.3 // indirect
 	go-spring.org/gs-mock v0.0.9 // indirect
-	go-spring.org/log v0.1.4 // indirect
 	go-spring.org/stdlib v0.1.7 // indirect
 	go.etcd.io/etcd/api/v3 v3.6.2 // indirect
 	go.etcd.io/etcd/client/pkg/v3 v3.6.2 // indirect

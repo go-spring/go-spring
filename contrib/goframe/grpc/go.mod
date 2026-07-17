@@ -6,6 +6,7 @@ require (
 	github.com/gogf/gf/contrib/registry/etcd/v2 v2.10.2
 	github.com/gogf/gf/contrib/rpc/grpcx/v2 v2.10.2
 	github.com/gogf/gf/v2 v2.10.2
+	go-spring.org/log v0.1.4
 	go-spring.org/spring v1.3.4
 	google.golang.org/grpc v1.80.0
 	google.golang.org/protobuf v1.36.11
@@ -49,7 +50,6 @@ require (
 	github.com/smartystreets/goconvey v1.8.1 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
 	go-spring.org/gs-mock v0.0.9 // indirect
-	go-spring.org/log v0.1.4 // indirect
 	go-spring.org/stdlib v0.1.7 // indirect
 	go.etcd.io/etcd/api/v3 v3.6.2 // indirect
 	go.etcd.io/etcd/client/pkg/v3 v3.6.2 // indirect

@@ -4,6 +4,7 @@ go 1.26.1
 
 require (
 	github.com/zeromicro/go-zero v1.10.1
+	go-spring.org/log v0.1.4
 	go-spring.org/spring v1.3.4
 )
 
@@ -44,7 +45,6 @@ require (
 	github.com/spf13/cast v1.10.0 // indirect
 	github.com/titanous/json5 v1.0.0 // indirect
 	go-spring.org/gs-mock v0.0.9 // indirect
-	go-spring.org/log v0.1.4 // indirect
 	go-spring.org/stdlib v0.1.7 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel v1.43.0 // indirect
