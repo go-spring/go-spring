@@ -19,7 +19,11 @@ different server type (`grpcx.GrpcServer` vs `*ghttp.Server`) with a different
 codegen chain (`protoc` vs `gf gen ctrl`), so the two protocols are split into
 sibling modules. For the gRPC variant, see [`../grpc`](../grpc).
 
-This is a runnable example, **not** a reusable starter module.
+The server lifecycle, log bridge and optional metrics are **not** hand-rolled
+here anymore: they live in the reusable
+[`starter-goframe/http`](../../../starter/starter-goframe) module. This example
+just imports that starter and supplies a `ServiceRegister` bean; tracing is
+deferred to [`starter-otel`](../../../starter/starter-otel).
 
 ## Topology
 
@@ -41,17 +45,21 @@ This is a runnable example, **not** a reusable starter module.
 
 ```
 contrib/goframe/http/
-├── provider/main.go              # gs.Run(); long-lived, registers into etcd
-├── provider/server.go            # GoFrameServer adapter (gs.Server) + Config + etcd registry + observability wiring
-├── provider/handler.go           # hand-written HelloController (g.Meta route + response), logs through the request ctx
+├── provider/main.go              # gs.Run() + blank-import starter-otel; long-lived, registers into etcd
+├── provider/handler.go           # imports starter-goframe/http, provides its ServiceRegister; hand-written HelloController
 ├── consumer/main.go              # discovers the provider via etcd, calls it and asserts, then exits
-├── conf/app.properties           # provider configuration
+├── conf/app.properties           # provider configuration (${spring.goframe.http.server} + ${spring.observability})
 ├── scripts/gen-code.sh           # no-op: the handler is hand-written, no IDL codegen
 ├── docker-compose.yml            # local etcd + observability backends (Prometheus/Jaeger/Loki/Promtail)
 ├── docker/prometheus.yml         # Prometheus scrape config (targets the host's :8000/metrics)
 ├── docker/promtail-config.yml    # Promtail config (tails ./logs, pushes to Loki)
 └── scripts/smoke-test.sh         # smoke test: bring up backends+provider, run consumer, assert three pillars, tear down
 ```
+
+The `GoFrameServer` adapter (`gs.Server` + `Config` + etcd registry + metrics)
+and the glog bridge that used to sit in `provider/server.go` and
+`provider/logbridge.go` now live in `starter-goframe/http`, so those two files
+are gone from this example.
 
 ## How it was generated
 
@@ -75,25 +83,26 @@ part.
 
 | Concern         | goframe scaffold                                    | Go-Spring version                                                              |
 | --------------- | --------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Startup         | `cmd.Main.Run()` → `s.Run()` blocks in `main()`     | `GoFrameServer` implements `gs.Server`; `gs.Run()` drives Run/Stop             |
-| Server creation | `g.Server()` inline in `internal/cmd`               | `provider.NewGoFrameServer`, a `gs.Server` bean                                |
-| Route wiring    | `s.Group(...)` inline in `internal/cmd`             | done inside the server bean constructor                                        |
-| Config source   | `manifest/config/config.yaml` via `g.Cfg()`         | `conf/app.properties` bound via `value:"${...}"` tags under `${goframe}`       |
-| Registration    | none (direct)                                       | provider calls `gsvc.SetRegistry(etcd.New(addr))` before `g.Server(name)`      |
+| Startup         | `cmd.Main.Run()` → `s.Run()` blocks in `main()`     | starter-goframe/http's server implements `gs.Server`; `gs.Run()` drives Run/Stop |
+| Server creation | `g.Server()` inline in `internal/cmd`               | `starter-goframe/http`'s `NewHTTPServer`, a `gs.Server` bean                    |
+| Route wiring    | `s.Group(...)` inline in `internal/cmd`             | the app's `ServiceRegister` bean, bound inside the starter's server constructor |
+| Config source   | `manifest/config/config.yaml` via `g.Cfg()`         | `conf/app.properties` bound via `value:"${...}"` tags under `${spring.goframe.http.server}` |
+| Registration    | none (direct)                                       | starter calls `gsvc.SetRegistry(etcd.New(addr))` before `g.Server(name)` when `registry.etcd` is set |
 | Discovery       | consumer hard-coded `http://localhost:8000/hello`   | consumer `g.Client().Discovery(etcd.New(addr)).Get(ctx, "http://<name>/hello")` |
 | Shutdown        | `s.Run()`'s own signal handling                     | graceful shutdown by Go-Spring (SIGTERM → `Stop()`, deregisters from etcd)     |
 
-The adapter in `provider/server.go` is the crux. `ghttp.Server`
-snapshots `gsvc.GetRegistry()` at construction time (see `ghttp_server.go`
-`registrar: gsvc.GetRegistry()`), so the constructor sets the etcd registry
-*before* calling `g.Server(name)`. `s.Start()` is non-blocking, so `Run` parks
-on a done channel that `Stop()` closes to hand control back to Go-Spring's
+The adapter now lives in `starter-goframe/http`, not this example.
+`ghttp.Server` snapshots `gsvc.GetRegistry()` at construction time (see
+`ghttp_server.go` `registrar: gsvc.GetRegistry()`), so the starter sets the etcd
+registry *before* calling `g.Server(name)`. `s.Start()` is non-blocking, so `Run`
+parks on a done channel that `Stop()` closes to hand control back to Go-Spring's
 shutdown, which in turn triggers `s.Shutdown()` and the etcd deregister.
 
 The consumer never learns the provider's host:port: it passes the same etcd
-address plus the service name (`goframe.hello`, matching `goframe.name` in
-`conf/app.properties`) to `gclient`, whose internal `Discovery` middleware
-treats `r.URL.Host` as a service name and resolves it against etcd.
+address plus the service name (`goframe.hello`, matching
+`spring.goframe.http.server.name` in `conf/app.properties`) to `gclient`, whose
+internal `Discovery` middleware treats `r.URL.Host` as a service name and
+resolves it against etcd.
 
 ## Choosing a registry
 
@@ -113,22 +122,27 @@ the registered services directly in its built-in `:8848/nacos` console.
 spring.http.server.enabled=false
 
 # HTTP bind address for the goframe *ghttp.Server.
-goframe.address=:8000
+spring.goframe.http.server.address=:8000
 
 # Service name the provider registers under; the consumer resolves this same
 # name from etcd.
-goframe.name=goframe.hello
+spring.goframe.http.server.name=goframe.hello
 
-# etcd registry address; matches docker-compose.yml.
-goframe.registry.etcd=127.0.0.1:2379
+# etcd registry address; matches docker-compose.yml. Leave empty for a plain
+# server clients dial directly.
+spring.goframe.http.server.registry.etcd=127.0.0.1:2379
 
-# Observability (see the section below). Tracing → Jaeger over OTLP/HTTP,
-# metrics → Prometheus scrape on the HTTP port, logging → glog JSON to logs/.
-goframe.tracing.endpoint=127.0.0.1:4318
-goframe.tracing.path=/v1/traces
-goframe.metrics.path=/metrics
-goframe.log.dir=../logs
-goframe.log.file=provider.log
+# Metrics: the starter serves goframe's native Prometheus (pull) endpoint on the
+# HTTP port. Tracing is deferred to starter-otel (see the section below).
+spring.goframe.http.server.metrics.enabled=true
+spring.goframe.http.server.metrics.path=/metrics
+
+# starter-otel: install the global OTel TracerProvider; ghttp auto-instruments
+# off it. Metrics are goframe-native above, so starter-otel's metrics stay off.
+spring.observability.service-name=goframe.hello
+spring.observability.trace.exporter=otlp-http
+spring.observability.trace.endpoint=127.0.0.1:4318
+spring.observability.metrics.exporter=none
 ```
 
 ## Run
@@ -166,47 +180,46 @@ bash scripts/smoke-test.sh
 
 ## Observability
 
-Unlike the dubbo-go example (where observability is built into `starter-dubbo`
-and driven by `spring.dubbo.*`), goframe ships **its own OpenTelemetry
-integration**, so all three pillars use goframe's native packages — wired in
-`provider/server.go`, not go-spring's `log`/`metric`. Only the **provider** is
-instrumented; the consumer stays a bare client, matching the dubbo-go / go-zero
-examples. The backend stack (Prometheus/Jaeger/Loki/Promtail) is the same shared
-one the other contrib examples use, defined in `docker-compose.yml`.
+Observability is split between two starters: **tracing** rides
+[`starter-otel`](../../../starter/starter-otel) (which installs the global OTel
+`TracerProvider` that goframe's `ghttp` auto-instruments off), while **metrics**
+stay goframe-native, served by `starter-goframe/http` when
+`spring.goframe.http.server.metrics.enabled=true`. **Logging** flows through the
+starter's glog→go-spring bridge into the single `log` pipeline. Only the
+**provider** is instrumented; the consumer stays a bare client, matching the
+dubbo-go / go-zero examples. The backend stack (Prometheus/Jaeger/Loki/Promtail)
+is the same shared one the other contrib examples use, defined in
+`docker-compose.yml`.
 
 | Signal  | Produced by                                            | Backend         | Where to look                                        |
 | ------- | ------------------------------------------------------ | --------------- | ---------------------------------------------------- |
-| Metrics | `contrib/metric/otelmetric` → Prometheus exporter      | Prometheus      | UI http://127.0.0.1:9099 (query `target_info`, `otel_scope_info`) |
-| Traces  | `contrib/trace/otlphttp` → OTLP/HTTP `127.0.0.1:4318` | Jaeger          | UI http://127.0.0.1:16686 (service `goframe.hello`)  |
-| Logs    | `glog` JSON handler → files under `logs/`              | Loki (Promtail) | Loki HTTP API, port `:3100`                          |
+| Metrics | `starter-goframe/http` → goframe-native Prometheus exporter | Prometheus | UI http://127.0.0.1:9099 (query `target_info`, `otel_scope_info`) |
+| Traces  | `starter-otel` global `TracerProvider` → OTLP/HTTP `127.0.0.1:4318` | Jaeger | UI http://127.0.0.1:16686 (service `goframe.hello`)  |
+| Logs    | glog → `starter-goframe` bridge → go-spring `log` FileLogger under `logs/` | Loki (Promtail) | Loki HTTP API, port `:3100`             |
 
 ### How it works
 
 The provider runs **on the host** (`scripts/smoke-test.sh` builds and runs it);
-every backend runs **in a container** (`docker-compose.yml`). Each pillar is set
-up once, at server construction, in `NewGoFrameServer` → `initObservability`:
+every backend runs **in a container** (`docker-compose.yml`).
 
-- **Tracing — push.** `otlphttp.Init(name, endpoint, "/v1/traces")` sets the
-  global tracer provider and OTLP/HTTP exporter, then returns a shutdown func
-  (flushed in `Stop()`). Once the provider is set, **ghttp auto-instruments every
-  request** — no middleware needed. OTLP/HTTP (`:4318`) is used because
-  `otlphttp` hardcodes `WithInsecure()`, so it talks to the plaintext Jaeger
-  all-in-one collector cleanly (the same reason the dubbo-go example avoids
-  OTLP/gRPC).
-- **Metrics — pull.** A Prometheus (pull) exporter feeds an `otelmetric`
-  `MeterProvider` (`WithBuiltInMetrics()` adds Go runtime metrics). The endpoint
-  is served by `otelmetric.PrometheusHandler`, bound at the server **root**
-  (`s.BindHandler("/metrics", ...)`) rather than inside the `Group("/")` — the
-  group's `MiddlewareHandlerResponse` wraps responses in goframe's JSON envelope,
-  which would corrupt the Prometheus exposition format. goframe serves `/metrics`
-  on the **same HTTP port** (`:8000`); Prometheus scrapes
-  `host.docker.internal:8000` (`docker/prometheus.yml`).
-- **Logging — tail then push.** `glog`'s built-in JSON handler
-  (`glog.HandlerJson`) writes one structured line per event to
-  `../logs/provider.log`. glog **auto-injects the request's trace-id** into each
-  line logged with the request ctx (see `provider/handler.go`), so logs correlate
-  with the spans above. That `logs/` dir is bind-mounted into Promtail, which
-  tails it and pushes to Loki `:3100`.
+- **Tracing — push, via starter-otel.** Importing `starter-otel` (blank import in
+  `provider/main.go`) installs the global OTel `TracerProvider` from
+  `${spring.observability.trace}` — here `otlp-http` to Jaeger `:4318`. Once that
+  global is set, **ghttp auto-instruments every request** off it — no per-server
+  wiring, replacing the inline `contrib/trace/otlphttp` block the old
+  `provider/server.go` carried.
+- **Metrics — pull, goframe-native.** `starter-goframe/http` feeds a Prometheus
+  (pull) exporter into a goframe `otelmetric` `MeterProvider` and binds
+  `otelmetric.PrometheusHandler` at the server **root** (outside the
+  response-wrapping group, so the exposition stays valid Prometheus text). goframe
+  serves `/metrics` on the **same HTTP port** (`:8000`); Prometheus scrapes
+  `host.docker.internal:8000` (`docker/prometheus.yml`). This is a separate
+  pipeline from starter-otel's metrics, so `spring.observability.metrics.exporter`
+  is left `none` to avoid a second `MeterProvider`.
+- **Logging — bridged, then tailed.** The starter routes goframe's `glog` into
+  go-spring's `log` module; the root `FileLogger` (JSONLayout, `conf/app.properties`)
+  writes one structured line per event to `../logs/provider.log`. That `logs/` dir
+  is bind-mounted into Promtail, which tails it and pushes to Loki `:3100`.
 
 Everything is provider-local and deterministic up to the backends; whether the
 data is then queryable in Prometheus/Jaeger/Loki is a manual step. With the stack

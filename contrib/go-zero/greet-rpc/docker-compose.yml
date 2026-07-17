@@ -1,7 +1,7 @@
 services:
   # ── Registry ────────────────────────────────────────────────────────────────
   # etcd is the whole reason this example exists: the provider registers under
-  # spring.zrpc.server.etcd.key on Start, and the consumer resolves that key
+  # spring.go-zero.zrpc.server.etcd.key on Start, and the consumer resolves that key
   # to a live grpc address. Unlike the sibling greet-api (rest.Server, no
   # discovery), zrpc has service discovery built in.
   etcd:

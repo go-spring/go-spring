@@ -25,17 +25,18 @@ import (
 	"go-spring.org/spring/gs"
 )
 
-// The provider is a long-lived process: gs.Run() starts the GoFrameServer
-// registered in server.go, which publishes itself into etcd, then blocks until
-// it receives SIGTERM/SIGINT. Discovery and the WebSocket dial live in the
-// consumer.
+// The provider is a long-lived process: gs.Run() starts the *ghttp.Server
+// contributed by starter-goframe/ws (registered as a gs.Server when the
+// application provides a ServiceRegister bean — see provider/handler.go), which
+// publishes itself into etcd, then blocks until it receives SIGTERM/SIGINT.
+// Discovery and the WebSocket dial live in the consumer.
 func main() {
 	_ = os.Unsetenv("_")
 	_ = os.Unsetenv("TERM")
 	_ = os.Unsetenv("TERM_SESSION_ID")
 
 	// The built-in HTTP server is disabled via provider/conf/app.properties;
-	// gs.Run() starts only the GoFrameServer registered above.
+	// gs.Run() starts only the goframe WebSocket server contributed by the starter.
 	gs.Run()
 }
 

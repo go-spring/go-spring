@@ -18,15 +18,18 @@ package main
 
 import (
 	"github.com/gogf/gf/v2/net/ghttp"
+	goframews "go-spring.org/starter-goframe/ws"
 	"go-spring.org/spring/gs"
 )
 
 func init() {
-	// Provide a ServiceRegister bean that binds the /echo route onto the raw
-	// *ghttp.Server. The server adapter (see server.go) depends only on this
-	// function type, so the concrete route + handler are wired here without the
-	// adapter ever naming them.
-	gs.Provide(func() ServiceRegister {
+	// Provide the starter's ServiceRegister bean that binds the /echo route onto
+	// the raw *ghttp.Server. Importing the starter package (goframews) triggers
+	// its module init, which registers the *ghttp.Server as a gs.Server; this
+	// bean is the only wiring the application supplies — the server lifecycle and
+	// log bridge live in the starter now (they used to be the deleted
+	// provider/server.go).
+	gs.Provide(func() goframews.ServiceRegister {
 		return func(s *ghttp.Server) {
 			s.BindHandler("/echo", echoHandler)
 		}

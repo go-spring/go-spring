@@ -18,7 +18,11 @@ This is the RPC half of the go-zero examples. The HTTP/REST half — same
 `Greet` service, but generated from a `.api` file with `goctl api go` — lives
 next door in [`../greet-api`](../greet-api).
 
-This is a runnable example, **not** a reusable starter module.
+This is a runnable example, **not** a reusable starter module. The
+`zrpc.RpcServer` → `gs.Server` adapter (including the etcd registration and the
+logx→go-spring log bridge) is not inlined here; it lives in the reusable
+[`starter-go-zero/zrpc`](../../../starter/starter-go-zero) module, which this
+example imports. The example only supplies a `ServiceRegister` bean.
 
 ## Why zRPC, and why is there no etcd here for the REST sibling?
 
@@ -55,7 +59,6 @@ contrib/go-zero/greet-rpc/
 ├── idl/greet.pb.go         # protoc-generated messages (DO NOT EDIT)
 ├── idl/greet_grpc.pb.go    # protoc-generated gRPC stubs (DO NOT EDIT)
 ├── provider/handler.go     # GreetProvider, exported as a ServiceRegister bean
-├── provider/server.go      # ZrpcServer adapter (gs.Server) + Config, configures the etcd registry
 ├── provider/main.go        # gs.Run(); long-lived, registers into etcd
 ├── consumer/main.go        # discovers the provider via etcd, calls it and asserts, then exits
 ├── conf/app.properties     # provider configuration (incl. observability)
@@ -88,14 +91,14 @@ provider/consumer.
 
 | Concern         | Stock go-zero zRPC scaffold                | Go-Spring version (zRPC + etcd)                                                     |
 | --------------- | ------------------------------------------ | ----------------------------------------------------------------------------------- |
-| Startup         | `server.Start()` blocks in `main()`        | `ZrpcServer` implements `gs.Server`; `gs.Run()` drives Run/Stop                     |
-| Handler wiring  | `server.RegisterGreetServer(srv, logic)`   | `gs.Provide(func() ServiceRegister { return greet.RegisterGreetServer(...) })`      |
+| Startup         | `server.Start()` blocks in `main()`        | starter's `ZrpcServer` implements `gs.Server`; `gs.Run()` drives Run/Stop           |
+| Handler wiring  | `server.RegisterGreetServer(srv, logic)`   | `gs.Provide(func() gozerozrpc.ServiceRegister { return greet.RegisterGreetServer(...) })` |
 | Server enable   | always on                                  | conditional on a `ServiceRegister` bean via `gs.OnBean`                             |
-| Listen addr     | hard-coded YAML                            | `${spring.zrpc.server.listen-on}` from `conf/app.properties`                        |
-| Registration    | zrpc.RpcServerConf inline in main          | Config struct bound from `${spring.zrpc.server}` prefix                             |
+| Listen addr     | hard-coded YAML                            | `${spring.go-zero.zrpc.server.listen-on}` from `conf/app.properties`                |
+| Registration    | zrpc.RpcServerConf inline in main          | Config struct bound from `${spring.go-zero.zrpc.server}` prefix                     |
 | Shutdown        | process-owned                              | graceful shutdown by Go-Spring (SIGTERM → `Stop()`, deregisters from etcd)          |
 
-The adapter in `provider/server.go` is the crux: `zrpc.RpcServer.Start()`
+The adapter in `starter-go-zero/zrpc` is the crux: `zrpc.RpcServer.Start()`
 binds the listener, registers the provider into etcd, and then blocks
 forever, so it runs in a goroutine started only after `sig.TriggerAndWait()`,
 while `Run` parks on a done channel that `Stop()` closes to hand control back
@@ -107,18 +110,17 @@ to Go-Spring's shutdown.
 # Disable the built-in HTTP server; the provider exposes only zRPC.
 spring.http.server.enabled=false
 
-# zRPC bind address; read via the ${spring.zrpc.server} prefix.
-spring.zrpc.server.listen-on=0.0.0.0:8081
+# zRPC bind address; read by starter-go-zero/zrpc via the ${spring.go-zero.zrpc.server} prefix.
+spring.go-zero.zrpc.server.listen-on=0.0.0.0:8081
 
 # etcd registry address + key; matches docker-compose.yml.
-spring.zrpc.server.etcd.addr=127.0.0.1:2379
-spring.zrpc.server.etcd.key=greet.rpc
+spring.go-zero.zrpc.server.etcd.addr=127.0.0.1:2379
+spring.go-zero.zrpc.server.etcd.key=greet.rpc
 
 # Observability (provider-only). See the Observability section below.
-spring.zrpc.server.tracing.endpoint=127.0.0.1:4317
-spring.zrpc.server.metrics.port=6060
-spring.zrpc.server.log.mode=file
-spring.zrpc.server.log.path=../logs
+spring.go-zero.zrpc.server.tracing.endpoint=127.0.0.1:4317
+spring.go-zero.zrpc.server.metrics.port=6060
+spring.go-zero.zrpc.server.log.level=info
 ```
 
 ## Observability
@@ -129,7 +131,7 @@ calls `service.ServiceConf.SetUp()` internally (the same code path
 `rest.MustNewServer` uses next door in `greet-api`), which starts the tracing
 agent, the metrics DevServer and logx; the zrpc server's default interceptors
 (trace / prometheus / stat / log) then instrument every RPC. **We write no
-OpenTelemetry/Prometheus code** — `provider/server.go` only populates the
+OpenTelemetry/Prometheus code** — the starter's `ZrpcServer` only populates the
 `ServiceConf` fields from `conf/app.properties`.
 
 | Pillar  | go-zero field           | Backend (docker-compose.yml)               |
@@ -142,7 +144,7 @@ Only the **provider** is instrumented; the consumer is a raw zrpc client.
 zrpc's prometheus interceptor uses the **`rpc_server_requests_*`** metric
 family (not the `http_server_requests_*` family that `rest.Server` exposes in
 the sibling `greet-api`). Logs no longer land in go-zero's own `.log` files:
-`provider/logbridge.go` installs a `logx.Writer` via `logx.SetWriter`, so every
+the starter (`starter-go-zero/zrpc`) installs a `logx.Writer` via `logx.SetWriter`, so every
 framework log line is forwarded into go-spring's `log` module and written by
 the root `FileLogger` (Promtail → Loki) alongside the business logs. Trace
 correlation still travels: `logx.WithContext(ctx)` injects trace/span as

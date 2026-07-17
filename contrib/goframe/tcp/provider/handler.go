@@ -20,15 +20,18 @@ import (
 	"bufio"
 
 	"github.com/gogf/gf/v2/net/gtcp"
+	goframetcp "go-spring.org/starter-goframe/tcp"
 	"go-spring.org/spring/gs"
 )
 
 func init() {
-	// Provide a ServiceRegister bean that attaches echoHandler onto the raw
-	// *gtcp.Server via SetHandler. The TCP server adapter (see server.go)
-	// depends only on this function type, so the concrete handler is wired here
-	// without the adapter ever naming it.
-	gs.Provide(func() ServiceRegister {
+	// Provide the starter's ServiceRegister bean that attaches echoHandler onto
+	// the raw *gtcp.Server via SetHandler. Importing the starter package
+	// (goframetcp) triggers its module init, which registers the *gtcp.Server as
+	// a gs.Server; this bean is the only wiring the application supplies — the
+	// listen/register lifecycle and log bridge live in the starter now (they used
+	// to be the deleted provider/server.go).
+	gs.Provide(func() goframetcp.ServiceRegister {
 		return func(s *gtcp.Server) {
 			s.SetHandler(echoHandler)
 		}

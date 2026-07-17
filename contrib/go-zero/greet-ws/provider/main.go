@@ -26,11 +26,12 @@ import (
 )
 
 // The provider is a long-lived process: gs.Run() starts the go-zero REST
-// server registered in server.go — the very same rest.Server the sibling
-// greet-api uses — and blocks until it receives SIGTERM/SIGINT. The lone
-// route it exposes upgrades to WebSocket (see provider/handler.go). No etcd
-// is involved, mirroring greet-api: rest.Server has no built-in service
-// discovery, and WS inherits that limitation.
+// server provided by starter-go-zero/rest (imported in provider/handler.go) —
+// the very same rest.Server the sibling greet-api uses — and blocks until it
+// receives SIGTERM/SIGINT. The lone route it exposes upgrades to WebSocket
+// (see provider/handler.go). No etcd is involved, mirroring greet-api:
+// rest.Server has no built-in service discovery, and WS inherits that
+// limitation.
 func main() {
 	_ = os.Unsetenv("_")
 	_ = os.Unsetenv("TERM")
@@ -38,7 +39,7 @@ func main() {
 
 	// The Go-Spring built-in HTTP server is disabled via
 	// provider/conf/app.properties; gs.Run() starts only the go-zero
-	// rest.Server registered in server.go.
+	// rest.Server that starter-go-zero/rest registers.
 	gs.Run()
 }
 

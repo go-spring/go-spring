@@ -14,7 +14,11 @@
  * limitations under the License.
  */
 
-package main
+// Package logbridge forwards goframe's framework logs (glog) into go-spring's
+// log module, so an application only configures one logging pipeline. It is the
+// single shared implementation used by the http, grpc, tcp and ws starters —
+// each calls Install once at server construction.
+package logbridge
 
 import (
 	"context"
@@ -27,14 +31,13 @@ import (
 
 // gsGoFrameTag tags every forwarded line as an RPC log under "rpc.goframe" so
 // the go-spring sink can route or filter goframe internals separately from
-// business logs, matching the go-kratos bridge pattern.
+// business logs, matching the go-kratos / go-zero bridge pattern.
 var gsGoFrameTag = log.RegisterRPCTag("goframe", "")
 
-// gsGoFrameLogHandler is a glog.Handler that forwards every framework log line
-// into go-spring's log module. It is the goframe counterpart of the kratos log
-// bridge: with it installed, ghttp lifecycle events, WebSocket-upgrade errors
-// and any g.Log().* call all land in the same JSON FileLogger pipeline as the
-// business logs (which ships to Loki), so users only configure one pipeline.
+// handler is a glog.Handler that forwards every framework log line into
+// go-spring's log module. With it installed, ghttp/grpcx/gtcp lifecycle events,
+// gsvc registration errors and any g.Log().* call all land in the same JSON
+// FileLogger pipeline as the business logs, so users configure one pipeline.
 //
 // The handler intentionally does NOT call in.Next(ctx). glog appends its
 // doFinalPrint handler after any user-installed default handler (see
@@ -44,7 +47,7 @@ var gsGoFrameTag = log.RegisterRPCTag("goframe", "")
 // fallback: Handler gives us ctx (so go-spring's FieldsFromContext / trace-id
 // propagation works) AND structured access to Level / Content / Values, while
 // still letting us cut off the default sink.
-func gsGoFrameLogHandler(ctx context.Context, in *glog.HandlerInput) {
+func handler(ctx context.Context, in *glog.HandlerInput) {
 	// in.Content is glog's already-formatted message body (Sprintf'd by the
 	// caller); trim the trailing newline glog adds so go-spring's own
 	// formatter is not double-spaced.
@@ -66,17 +69,17 @@ func gsGoFrameLogHandler(ctx context.Context, in *glog.HandlerInput) {
 	// skip=2 walks past this handler and go-spring's own record() frame, but
 	// the caller printed by the sink is still inherently unreliable across
 	// glog's internal doPrint layers — same trade-off the kratos bridge notes.
-	log.Record(ctx, toGSGoFrameLevel(in.Level), gsGoFrameTag, 2, fields...)
+	log.Record(ctx, toGSLevel(in.Level), gsGoFrameTag, 2, fields...)
 }
 
-// toGSGoFrameLevel maps glog's bitmask level constants onto go-spring's levels.
-// glog has two extra "notice" and "critical" rungs that go-spring lacks: NOTI
-// folds into Info (it is just an emphasised Info in glog) and CRIT folds into
-// Fatal (glog's own CRIT is its highest emitted level below the never-emitted
-// PANI/FATA prefix markers — see glog_logger_level.go). PANI/FATA are only
-// used by glog for prefix formatting on Panic/Fatal calls, but we map them
-// too so a stray forwarded event still gets the right severity.
-func toGSGoFrameLevel(level int) log.Level {
+// toGSLevel maps glog's bitmask level constants onto go-spring's levels. glog
+// has two extra "notice" and "critical" rungs that go-spring lacks: NOTI folds
+// into Info (it is just an emphasised Info in glog) and CRIT folds into Fatal
+// (glog's own CRIT is its highest emitted level below the never-emitted
+// PANI/FATA prefix markers — see glog_logger_level.go). PANI/FATA are only used
+// by glog for prefix formatting on Panic/Fatal calls, but we map them too so a
+// stray forwarded event still gets the right severity.
+func toGSLevel(level int) log.Level {
 	switch level {
 	case glog.LEVEL_DEBU:
 		return log.DebugLevel
@@ -95,10 +98,10 @@ func toGSGoFrameLevel(level int) log.Level {
 	}
 }
 
-// installGoFrameLogBridge routes every glog log line through go-spring's log
-// module. It is called once at server construction (see server.go), before any
-// ghttp handler runs, so the very first framework log — including gsvc
-// registration and any startup error — flows through the bridge.
+// Install routes every glog log line through go-spring's log module. Each
+// starter calls it once at server construction, before any handler runs, so the
+// very first framework log — including gsvc registration and any startup error
+// — flows through the bridge.
 //
 // We install on both surfaces:
 //
@@ -107,9 +110,9 @@ func toGSGoFrameLevel(level int) log.Level {
 //   - g.Log().SetHandlers overrides the default for goframe's process-wide
 //     singleton logger, because per-logger Handlers take precedence over the
 //     package default (see glog_logger.go: `if len(l.config.Handlers) > 0`).
-//     Without this second call, anything that goes through g.Log() would
-//     still hit glog's own writer.
-func installGoFrameLogBridge() {
-	glog.SetDefaultHandler(gsGoFrameLogHandler)
-	g.Log().SetHandlers(gsGoFrameLogHandler)
+//     Without this second call, anything that goes through g.Log() would still
+//     hit glog's own writer.
+func Install() {
+	glog.SetDefaultHandler(handler)
+	g.Log().SetHandlers(handler)
 }

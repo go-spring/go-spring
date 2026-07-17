@@ -25,6 +25,7 @@ import (
 	"github.com/zeromicro/go-zero/core/logx"
 	"github.com/zeromicro/go-zero/rest"
 	"go-spring.org/spring/gs"
+	gozerorest "go-spring.org/starter-go-zero/rest"
 
 	greet "greetws/idl"
 )
@@ -43,9 +44,11 @@ func init() {
 	// The route is a normal GET route; the handler upgrades to WS on demand.
 	// go-zero's rest.Server response wrapper implements http.Hijacker, which
 	// is what gorilla/websocket needs to steal the underlying TCP connection
-	// away from the HTTP stack.
+	// away from the HTTP stack. The HandlerRegister bean is the starter's
+	// gozerorest.HandlerRegister type; importing starter-go-zero/rest here also
+	// triggers the starter's init that registers the RestServer adapter.
 	gs.Provide(&GreetLogic{})
-	gs.Provide(func(l *GreetLogic) HandlerRegister {
+	gs.Provide(func(l *GreetLogic) gozerorest.HandlerRegister {
 		return func(server *rest.Server) {
 			server.AddRoutes([]rest.Route{
 				{

@@ -10,7 +10,7 @@ instead of `manifest/config/config.yaml`.
 Like the sibling [`../http`](../http) and [`../websocket`](../websocket)
 modules this example wires in an **etcd registry** for real **service
 registration & discovery**. Unlike those two, though, gtcp has *no built-in
-gsvc integration*: the adapter in `provider/server.go` calls
+gsvc integration*: the starter's adapter calls
 `gsvc.Registrar.Register` / `Deregister` by hand around the gtcp lifecycle.
 This is the point of the module — it is a worked example of how a non-HTTP
 goframe transport plugs into the same etcd registry as its siblings.
@@ -28,7 +28,10 @@ that understands `gsvc://<name>`, so it goes through the same primitive path
 the WebSocket sibling uses — `gsvc.Discovery.Search()` to resolve an
 endpoint, then hand its host:port to `gtcp.NewNetConn`.
 
-This is a runnable example, **not** a reusable starter module.
+The server lifecycle (including the manual gsvc register/deregister) and glog
+log bridge are **not** hand-rolled here anymore: they live in the reusable
+[`starter-goframe/tcp`](../../../starter/starter-goframe) module. This example
+just imports that starter and supplies a `ServiceRegister` bean.
 
 ## Topology
 
@@ -51,10 +54,9 @@ This is a runnable example, **not** a reusable starter module.
 ```
 contrib/goframe/tcp/
 ├── provider/main.go              # gs.Run(); long-lived, registers into etcd
-├── provider/server.go            # GoFrameTCPServer adapter (gs.Server) + Config + manual gsvc Register/Deregister
-├── provider/handler.go           # bufio line-echo connection handler
+├── provider/handler.go           # provides starter-goframe/tcp's ServiceRegister; bufio line-echo handler
 ├── consumer/main.go              # gsvc.Search → gtcp.NewNetConn dial, asserts on echo, then exits
-├── conf/app.properties           # provider configuration
+├── conf/app.properties           # provider configuration (${spring.goframe.tcp.server})
 ├── scripts/gen-code.sh           # documented no-op (raw TCP has no IDL)
 ├── docker-compose.yml            # local etcd
 └── scripts/smoke-test.sh         # smoke test: bring up etcd+provider, run consumer, tear down
@@ -63,11 +65,11 @@ contrib/goframe/tcp/
 ## Ordering rules the adapter has to enforce
 
 Two ordering constraints come out of doing gsvc by hand instead of leaning on
-ghttp/grpcx's built-ins:
+ghttp/grpcx's built-ins (all handled inside `starter-goframe/tcp`):
 
 1. **Bind before register.** Registering into etcd before `gtcp.Server.Run()`
    is listening would let consumers dial into a not-yet-open port and see
-   "connection refused". The adapter polls `Server.GetListenedPort()` briefly
+   "connection refused". The starter polls `Server.GetListenedPort()` briefly
    after spawning `Run()` in a goroutine before it calls `Register`.
 2. **Deregister before close.** On shutdown, deregistering first avoids a
    window where a fresh consumer resolves this instance from etcd just as
@@ -75,7 +77,7 @@ ghttp/grpcx's built-ins:
    in that order.
 
 `ghttp.Server` and `grpcx.GrpcServer` hide both of these inside
-`Start()`/`Shutdown()`; here they are visible in the adapter because the
+`Start()`/`Shutdown()`; in the starter they are explicit because the
 transport does not.
 
 ## Advertised endpoint
@@ -92,18 +94,19 @@ to `127.0.0.1` and the same port as the bind address.
 spring.http.server.enabled=false
 
 # gtcp bind address.
-goframe.tcp.address=:8003
+spring.goframe.tcp.server.address=:8003
 
 # Host:port the provider advertises into etcd.
-goframe.tcp.advertise.host=127.0.0.1
-goframe.tcp.advertise.port=8003
+spring.goframe.tcp.server.advertise.host=127.0.0.1
+spring.goframe.tcp.server.advertise.port=8003
 
 # Service name the provider registers under; the consumer resolves this same
 # name from etcd.
-goframe.tcp.name=goframe.tcp.echo
+spring.goframe.tcp.server.name=goframe.tcp.echo
 
-# etcd registry address; matches docker-compose.yml.
-goframe.tcp.registry.etcd=127.0.0.1:2379
+# etcd registry address; matches docker-compose.yml. Leave empty for a plain
+# TCP server with no registration.
+spring.goframe.tcp.server.registry.etcd=127.0.0.1:2379
 ```
 
 ## Run

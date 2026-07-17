@@ -24,7 +24,10 @@
 这是 go-zero 示例的 HTTP 半边;zRPC/gRPC 那一半 —— 同一个 `Greet` 服务,
 但由 `greet.proto` 生成 —— 在旁边的 [`../greet-rpc`](../greet-rpc)。
 
-这是一个**可运行示例**,并非可复用的 starter 模块。
+这是一个**可运行示例**,并非可复用的 starter 模块。`rest.Server` →
+`gs.Server` 适配器与 logx→go-spring log 桥接不再内联在此,而是放在可复用的
+[`starter-go-zero/rest`](../../../starter/starter-go-zero) 模块里,由本示例导入;
+示例本身只提供一个 `HandlerRegister` bean。
 
 ## 拓扑
 
@@ -48,7 +51,6 @@ contrib/go-zero/greet-api/
 ├── svc/servicecontext.go              # 手写,承载被注入的 Logic bean
 ├── svc/logic.go                       # 手写,GreetLogic IoC bean
 ├── provider/handler.go                # HandlerRegister bean,把路由与 Logic 绑起来
-├── provider/server.go                 # RestServer 适配器(gs.Server)+ Config
 ├── provider/main.go                   # gs.Run(),长驻 HTTP server
 ├── consumer/main.go                   # HTTP POST,断言响应后退出
 ├── conf/app.properties                # provider 配置(含可观测)
@@ -79,11 +81,11 @@ goctl 生成的其余部分 —— `greet.go`(main)、`etc/greet.yaml`、`intern
 
 | 关注点   | 原生 go-zero REST 脚手架                       | Go-Spring 版本                                                            |
 | -------- | ---------------------------------------------- | -------------------------------------------------------------------------- |
-| 启动     | `main()` 中 `server.Start()` 阻塞              | `RestServer` 实现 `gs.Server`,由 `gs.Run()` 驱动 Run/Stop                 |
-| handler  | `handler.RegisterHandlers(server, svcCtx)`     | `gs.Provide(func(*GreetLogic) HandlerRegister { ... })`                    |
+| 启动     | `main()` 中 `server.Start()` 阻塞              | starter 的 `RestServer` 实现 `gs.Server`,由 `gs.Run()` 驱动 Run/Stop      |
+| handler  | `handler.RegisterHandlers(server, svcCtx)`     | `gs.Provide(func(*GreetLogic) gozerorest.HandlerRegister { ... })`        |
 | 业务逻辑 | `logic.NewGreetLogic(ctx, svcCtx).Greet(req)`  | `GreetLogic` 是单例 IoC bean,ServiceContext 只是把它带进 handler         |
 | 是否启用 | 总是开启                                       | 通过 `gs.OnBean` 条件依赖 `HandlerRegister` bean                          |
-| 配置来源 | 写死在 `etc/greet.yaml`                        | 取自 `conf/app.properties` 的 `${spring.rest.server}`                     |
+| 配置来源 | 写死在 `etc/greet.yaml`                        | 取自 `conf/app.properties` 的 `${spring.go-zero.rest.server}`             |
 | 服务注册 | 无(REST 无发现能力)                          | 无 —— 需要注册中心请看相邻的 `greet-rpc`                                  |
 | 关停     | 进程自持                                       | 由 Go-Spring 协调优雅关停(SIGTERM → `Stop()` → `rest.Server.Stop()`)     |
 
@@ -93,16 +95,15 @@ goctl 生成的其余部分 —— `greet.go`(main)、`etc/greet.yaml`、`intern
 # 关闭 Go-Spring 内置 HTTP server,provider 只暴露下面绑定的 go-zero rest.Server。
 spring.http.server.enabled=false
 
-# go-zero rest.Server 配置,经 ${spring.rest.server} 前缀读取。
-spring.rest.server.name=greet
-spring.rest.server.host=0.0.0.0
-spring.rest.server.port=8888
+# go-zero rest.Server 配置,由 starter-go-zero/rest 经 ${spring.go-zero.rest.server} 前缀读取。
+spring.go-zero.rest.server.name=greet
+spring.go-zero.rest.server.host=0.0.0.0
+spring.go-zero.rest.server.port=8888
 
 # 可观测(仅 provider),详见下方「可观测」一节。
-spring.rest.server.tracing.endpoint=127.0.0.1:4317
-spring.rest.server.metrics.port=6060
-spring.rest.server.log.mode=file
-spring.rest.server.log.path=../logs
+spring.go-zero.rest.server.tracing.endpoint=127.0.0.1:4317
+spring.go-zero.rest.server.metrics.port=6060
+spring.go-zero.rest.server.log.level=info
 ```
 
 ## 可观测
@@ -112,7 +113,7 @@ go-zero 原生自带三支柱。`rest.MustNewServer` 内部会调用
 `service.ServiceConf.SetUp()`,启动 tracing agent、metrics DevServer 和 logx;
 `rest.Server` 的中间件(Trace/Prometheus/Metrics/Log,默认全开)随后对每个
 请求自动埋点。**我们不写任何 OpenTelemetry/Prometheus 代码** ——
-`provider/server.go` 只是把 `conf/app.properties` 里的值填进 `ServiceConf`。
+starter 的 `RestServer` 只是把 `conf/app.properties` 里的值填进 `ServiceConf`。
 
 | 支柱   | go-zero 字段            | 后端(docker-compose.yml)              |
 | ------ | ----------------------- | --------------------------------------- |
@@ -121,7 +122,7 @@ go-zero 原生自带三支柱。`rest.MustNewServer` 内部会调用
 | 日志   | `ServiceConf.Log`(logx) → `logx.SetWriter` → go-spring `log` | JSON 文件 → Promtail → Loki(:3100) |
 
 只有 **provider** 埋点;consumer 是裸 `net/http` 客户端。日志已经不再落到
-go-zero 自己的 `.log` 文件里:`provider/logbridge.go` 通过 `logx.SetWriter`
+go-zero 自己的 `.log` 文件里:starter(`starter-go-zero/rest`)通过 `logx.SetWriter`
 注入 `logx.Writer`,把每条框架日志转发进 go-spring 的 `log` 模块,由根部的
 `FileLogger`(Promtail → Loki)与业务日志一同写出。trace 关联仍然可用:
 `logx.WithContext(ctx)` 会以 `LogField` 的形式注入 trace/span,桥接层会把

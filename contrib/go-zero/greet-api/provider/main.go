@@ -26,10 +26,10 @@ import (
 )
 
 // The provider is a long-lived process: gs.Run() starts the go-zero REST
-// server registered in server.go and blocks until it receives SIGTERM/SIGINT.
-// Unlike the sibling greet-rpc, no etcd is involved — go-zero's rest.Server
-// has no built-in service discovery, so the consumer talks to a fixed
-// host:port.
+// server provided by starter-go-zero/rest (imported in provider/handler.go)
+// and blocks until it receives SIGTERM/SIGINT. Unlike the sibling greet-rpc,
+// no etcd is involved — go-zero's rest.Server has no built-in service
+// discovery, so the consumer talks to a fixed host:port.
 func main() {
 	_ = os.Unsetenv("_")
 	_ = os.Unsetenv("TERM")
@@ -37,7 +37,7 @@ func main() {
 
 	// The Go-Spring built-in HTTP server is disabled via
 	// provider/conf/app.properties; gs.Run() starts only the go-zero
-	// rest.Server registered in server.go.
+	// rest.Server that starter-go-zero/rest registers.
 	gs.Run()
 }
 

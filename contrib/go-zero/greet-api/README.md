@@ -27,7 +27,11 @@ This is the HTTP half of the go-zero examples; the zRPC/gRPC half — same
 `Greet` service, but generated from `greet.proto` — lives next door in
 [`../greet-rpc`](../greet-rpc).
 
-This is a runnable example, **not** a reusable starter module.
+This is a runnable example, **not** a reusable starter module. The
+`rest.Server` → `gs.Server` adapter and the logx→go-spring log bridge are not
+inlined here; they live in the reusable
+[`starter-go-zero/rest`](../../../starter/starter-go-zero) module, which this
+example imports. The example only supplies a `HandlerRegister` bean.
 
 ## Topology
 
@@ -51,7 +55,6 @@ contrib/go-zero/greet-api/
 ├── svc/servicecontext.go              # hand-written; injected Logic bean surface
 ├── svc/logic.go                       # hand-written; GreetLogic IoC bean
 ├── provider/handler.go                # HandlerRegister bean wiring routes + Logic
-├── provider/server.go                 # RestServer adapter (gs.Server) + Config
 ├── provider/main.go                   # gs.Run(); long-lived HTTP server
 ├── consumer/main.go                   # HTTP POST, asserts on response, exits
 ├── conf/app.properties                # provider configuration (incl. observability)
@@ -84,11 +87,11 @@ Go-Spring bean rather than a per-request `NewGreetLogic()`.
 
 | Concern         | Stock go-zero REST scaffold                    | Go-Spring version                                                          |
 | --------------- | ---------------------------------------------- | -------------------------------------------------------------------------- |
-| Startup         | `server.Start()` blocks in `main()`            | `RestServer` implements `gs.Server`; `gs.Run()` drives Run/Stop            |
-| Handler wiring  | `handler.RegisterHandlers(server, svcCtx)`     | `gs.Provide(func(*GreetLogic) HandlerRegister { ... })`                    |
+| Startup         | `server.Start()` blocks in `main()`            | starter's `RestServer` implements `gs.Server`; `gs.Run()` drives Run/Stop  |
+| Handler wiring  | `handler.RegisterHandlers(server, svcCtx)`     | `gs.Provide(func(*GreetLogic) gozerorest.HandlerRegister { ... })`         |
 | Business logic  | `logic.NewGreetLogic(ctx, svcCtx).Greet(req)`  | `GreetLogic` is a singleton IoC bean; ServiceContext just carries it in    |
 | Server enable   | always on                                      | conditional on a `HandlerRegister` bean via `gs.OnBean`                    |
-| Config source   | hard-coded `etc/greet.yaml`                    | `${spring.rest.server}` from `conf/app.properties`                         |
+| Config source   | hard-coded `etc/greet.yaml`                    | `${spring.go-zero.rest.server}` from `conf/app.properties`                 |
 | Registration    | none (REST has no discovery)                   | none — see the sibling `greet-rpc` for the etcd story                      |
 | Shutdown        | process-owned                                  | graceful shutdown by Go-Spring (SIGTERM → `Stop()` → `rest.Server.Stop()`) |
 
@@ -99,16 +102,16 @@ Go-Spring bean rather than a per-request `NewGreetLogic()`.
 # go-zero rest.Server bound below.
 spring.http.server.enabled=false
 
-# go-zero rest.Server settings; read via the ${spring.rest.server} prefix.
-spring.rest.server.name=greet
-spring.rest.server.host=0.0.0.0
-spring.rest.server.port=8888
+# go-zero rest.Server settings; read by starter-go-zero/rest via the
+# ${spring.go-zero.rest.server} prefix.
+spring.go-zero.rest.server.name=greet
+spring.go-zero.rest.server.host=0.0.0.0
+spring.go-zero.rest.server.port=8888
 
 # Observability (provider-only). See the Observability section below.
-spring.rest.server.tracing.endpoint=127.0.0.1:4317
-spring.rest.server.metrics.port=6060
-spring.rest.server.log.mode=file
-spring.rest.server.log.path=../logs
+spring.go-zero.rest.server.tracing.endpoint=127.0.0.1:4317
+spring.go-zero.rest.server.metrics.port=6060
+spring.go-zero.rest.server.log.level=info
 ```
 
 ## Observability
@@ -118,7 +121,7 @@ Prometheus — go-zero ships all three pillars natively. `rest.MustNewServer`
 calls `service.ServiceConf.SetUp()` internally, which starts the tracing agent,
 the metrics DevServer and logx; the `rest.Server` middlewares
 (Trace/Prometheus/Metrics/Log, on by default) then instrument every request.
-**We write no OpenTelemetry/Prometheus code** — `provider/server.go` only
+**We write no OpenTelemetry/Prometheus code** — the starter's `RestServer` only
 populates the `ServiceConf` fields from `conf/app.properties`.
 
 | Pillar  | go-zero field           | Backend (docker-compose.yml)          |
@@ -128,7 +131,7 @@ populates the `ServiceConf` fields from `conf/app.properties`.
 | Logging | `ServiceConf.Log` (logx) → `logx.SetWriter` → go-spring `log` | JSON files → Promtail → Loki (:3100) |
 
 Only the **provider** is instrumented; the consumer is a raw `net/http` client.
-Logs no longer land in go-zero's own `.log` files: `provider/logbridge.go`
+Logs no longer land in go-zero's own `.log` files: the starter (`starter-go-zero/rest`)
 installs a `logx.Writer` via `logx.SetWriter`, so every framework log line is
 forwarded into go-spring's `log` module and written by the root `FileLogger`
 (Promtail → Loki) alongside the business logs. Trace correlation still

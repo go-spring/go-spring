@@ -43,6 +43,7 @@ use (
 	./starter/starter-gin
 	./starter/starter-go-redis
 	./starter/starter-go-zero
+	./starter/starter-goframe
 	./starter/starter-gorm-clickhouse
 	./starter/starter-gorm-mysql
 	./starter/starter-gorm-postgres

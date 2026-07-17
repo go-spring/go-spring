@@ -27,7 +27,12 @@ Two consequences follow, both intentional:
   exists only to keep the entry point shape consistent with the two sibling
   projects.
 
-This is a runnable example, **not** a reusable starter module.
+This is a runnable example, **not** a reusable starter module. The
+`rest.Server` → `gs.Server` adapter and the logx→go-spring log bridge are not
+inlined here; they live in the reusable
+[`starter-go-zero/rest`](../../../starter/starter-go-zero) module (the very same
+one `greet-api` uses), which this example imports. The example only supplies a
+`HandlerRegister` bean whose route upgrades to WebSocket.
 
 ## Topology
 
@@ -47,7 +52,6 @@ contrib/go-zero/greet-ws/
 ├── idl/gen-code.sh                     # documented no-op (WS has no IDL in go-zero)
 ├── idl/greet.go                        # hand-written; WS frame payloads (JSON), the "IDL"
 ├── provider/handler.go                 # hand-written; HandlerRegister bean, WS upgrade loop, GreetLogic bean
-├── provider/server.go                  # RestServer adapter (gs.Server) + Config
 ├── provider/main.go                    # gs.Run(); long-lived process
 ├── consumer/main.go                    # WS dialer, asserts on echo, exits
 ├── conf/app.properties                 # provider configuration (incl. observability)
@@ -66,12 +70,12 @@ contrib/go-zero/greet-ws/
 | Handler shape   | parse → call logic → render JSON               | proto-generated method                      | upgrade → for-loop over `conn.ReadMessage`, dispatch each frame            |
 | Discovery       | none (rest.Server has no registry)             | etcd via zRPC's `EtcdConf`                  | none (WS inherits rest.Server's lack of registry)                          |
 | Consumer        | `http.Post` + JSON decode                      | zRPC client, resolver `etcd://…`            | `websocket.Dialer.Dial` + one frame exchange                               |
-| Startup         | `RestServer` implements `gs.Server`; `gs.Run()` drives Run/Stop | `RpcServer` implements `gs.Server`; `gs.Run()` drives Run/Stop | identical to greet-api — same adapter code |
+| Startup         | `RestServer` implements `gs.Server`; `gs.Run()` drives Run/Stop | `RpcServer` implements `gs.Server`; `gs.Run()` drives Run/Stop | identical to greet-api — same starter adapter |
 
-The adapter code in `provider/server.go` is therefore deliberately identical
-to `greet-api`'s: WebSocket is *served* by the same `rest.Server` binary; the
-only thing that changes is what the registered `HandlerRegister` bean does
-inside the request — call `httpx.OkJsonCtx` (HTTP) or upgrade to WS.
+The adapter code lives in `starter-go-zero/rest` and is therefore shared
+verbatim with `greet-api`: WebSocket is *served* by the same `rest.Server`
+binary; the only thing that changes is what the registered `HandlerRegister`
+bean does inside the request — call `httpx.OkJsonCtx` (HTTP) or upgrade to WS.
 
 ## Configuration
 
@@ -80,18 +84,17 @@ inside the request — call `httpx.OkJsonCtx` (HTTP) or upgrade to WS.
 # go-zero rest.Server bound below.
 spring.http.server.enabled=false
 
-# go-zero rest.Server settings; read via the ${spring.rest.server} prefix.
-# Port 8890 (rather than greet-api's 8888) so the two examples can run side
-# by side without colliding.
-spring.rest.server.name=greet-ws
-spring.rest.server.host=0.0.0.0
-spring.rest.server.port=8890
+# go-zero rest.Server settings; read by starter-go-zero/rest via the
+# ${spring.go-zero.rest.server} prefix. Port 8890 (rather than greet-api's
+# 8888) so the two examples can run side by side without colliding.
+spring.go-zero.rest.server.name=greet-ws
+spring.go-zero.rest.server.host=0.0.0.0
+spring.go-zero.rest.server.port=8890
 
 # Observability (provider-only). See the Observability section below.
-spring.rest.server.tracing.endpoint=127.0.0.1:4317
-spring.rest.server.metrics.port=6060
-spring.rest.server.log.mode=file
-spring.rest.server.log.path=../logs
+spring.go-zero.rest.server.tracing.endpoint=127.0.0.1:4317
+spring.go-zero.rest.server.metrics.port=6060
+spring.go-zero.rest.server.log.level=info
 ```
 
 ## Observability
@@ -101,8 +104,8 @@ wiring is identical: `rest.MustNewServer` calls `service.ServiceConf.SetUp()`
 internally, which starts the tracing agent, the metrics DevServer and logx;
 the `rest.Server` middlewares (Trace/Prometheus/Metrics/Log, on by default)
 then instrument every request — including the HTTP upgrade that opens the WS
-connection. **We write no OpenTelemetry/Prometheus code** — `provider/server.go`
-only populates the `ServiceConf` fields from `conf/app.properties`.
+connection. **We write no OpenTelemetry/Prometheus code** — the starter's
+`RestServer` only populates the `ServiceConf` fields from `conf/app.properties`.
 
 | Pillar  | go-zero field           | Backend (docker-compose.yml)          |
 | ------- | ----------------------- | ------------------------------------- |
@@ -112,7 +115,7 @@ only populates the `ServiceConf` fields from `conf/app.properties`.
 
 Only the **provider** is instrumented; the consumer is a raw
 `gorilla/websocket` client. Logs no longer land in go-zero's own `.log` files:
-`provider/logbridge.go` installs a `logx.Writer` via `logx.SetWriter`, so every
+the starter (`starter-go-zero/rest`) installs a `logx.Writer` via `logx.SetWriter`, so every
 framework log line (including `logx.WithContext(...).Errorf(...)` from the WS
 handler) is forwarded into go-spring's `log` module and written by the root
 `FileLogger` (Promtail → Loki) alongside the business logs. Trace correlation

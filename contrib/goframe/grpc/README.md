@@ -21,7 +21,10 @@ This is the **gRPC** protocol variant. For the HTTP variant (goframe
 two are split because goframe uses two different server types with two
 different codegen pipelines; nothing forces them into a single provider.
 
-This is a runnable example, **not** a reusable starter module.
+The server lifecycle and glog log bridge are **not** hand-rolled here anymore:
+they live in the reusable
+[`starter-goframe/grpc`](../../../starter/starter-goframe) module. This example
+just imports that starter and supplies a `ServiceRegister` bean.
 
 ## Topology
 
@@ -46,11 +49,10 @@ contrib/goframe/grpc/
 ├── idl/echo.proto              # protobuf IDL
 ├── idl/echo/                   # protoc-generated Go stubs (DO NOT EDIT)
 ├── idl/gen-code.sh             # regenerates idl/echo/ from the IDL
-├── provider/handler.go         # EchoServiceImpl, exported as an echo.EchoServiceServer bean
-├── provider/server.go          # GoFrameGrpcServer adapter (gs.Server) + Config, configures the etcd registry
+├── provider/handler.go         # EchoServiceImpl + provides starter-goframe/grpc's ServiceRegister bean
 ├── provider/main.go            # gs.Run(); long-lived, registers into etcd
 ├── consumer/main.go            # discovers via etcd, calls Echo and asserts, then exits
-├── conf/app.properties         # provider configuration
+├── conf/app.properties         # provider configuration (${spring.goframe.grpc.server})
 ├── docker-compose.yml          # local etcd
 └── scripts/smoke-test.sh       # smoke test: bring up etcd+provider, run consumer, tear down
 ```
@@ -86,17 +88,18 @@ and is not required to keep this example runnable.
 
 | Concern         | grpcx scaffold                                                             | Go-Spring version                                                                                             |
 | --------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| Startup         | `s.Run()` blocks in `main()`, installs its own `gproc` signal handler      | `GoFrameGrpcServer` implements `gs.Server`; `gs.Run()` drives Run/Stop; `s.Start()` + park-on-done            |
-| Handler wiring  | `echo.RegisterEchoServiceServer(s.Server, &EchoServiceImpl{})` in `main()` | `gs.Provide(&EchoServiceImpl{}).Export(gs.As[echo.EchoServiceServer]())` + `Register…` inside the constructor |
-| Server enable   | always on                                                                  | conditional on an `echo.EchoServiceServer` bean via `gs.OnBean`                                               |
-| Address         | `grpcx.Server.NewConfig()` reads `grpc.address` from `config.yaml`         | `${goframe.grpc.address}` from `conf/app.properties`                                                          |
-| Registration    | none (direct)                                                              | provider `gsvc.SetRegistry(etcd.New(addr))` before `grpcx.Server.New`                                         |
+| Startup         | `s.Run()` blocks in `main()`, installs its own `gproc` signal handler      | starter-goframe/grpc's server implements `gs.Server`; `gs.Run()` drives Run/Stop; `s.Start()` + park-on-done  |
+| Handler wiring  | `echo.RegisterEchoServiceServer(s.Server, &EchoServiceImpl{})` in `main()` | the app's `ServiceRegister` bean, invoked inside the starter's server constructor                             |
+| Server enable   | always on                                                                  | the starter's server is a `gs.Server` bean; the app supplies the `ServiceRegister`                            |
+| Address         | `grpcx.Server.NewConfig()` reads `grpc.address` from `config.yaml`         | `${spring.goframe.grpc.server.address}` from `conf/app.properties`                                            |
+| Registration    | none (direct)                                                              | starter calls `gsvc.SetRegistry(etcd.New(addr))` before `grpcx.Server.New` when `registry.etcd` is set        |
 | Discovery       | consumer `grpc.NewClient("host:port")`                                     | consumer `grpcx.Client.MustNewGrpcClientConn(serviceName)` (gsvc scheme resolves via etcd)                    |
 | Shutdown        | process-owned via `gproc`                                                  | graceful shutdown by Go-Spring (SIGTERM → `Stop()`, `GracefulStop` + etcd deregister)                         |
 
-The adapter in `provider/server.go` is the crux. `grpcx.GrpcServer` snapshots
+The adapter now lives in `starter-goframe/grpc`, not this example.
+`grpcx.GrpcServer` snapshots
 `gsvc.GetRegistry()` at construction time (see the grpcx source:
-`registrar: gsvc.GetRegistry()`), so the constructor sets the etcd registry
+`registrar: gsvc.GetRegistry()`), so the starter sets the etcd registry
 *before* calling `grpcx.Server.New`. `s.Start()` is non-blocking, so `Run`
 parks on a done channel that `Stop()` closes to hand control back to
 Go-Spring's shutdown, which in turn triggers `s.Stop()` (GracefulStop + etcd
@@ -105,9 +108,10 @@ installs its own `gproc` signal handler that would fight the Go-Spring
 lifecycle.
 
 The consumer only supplies the etcd address, never the provider's: it passes
-the service name (`goframe.grpc.echo`, matching `goframe.grpc.name` in
-`conf/app.properties`) to `grpcx.Client.MustNewGrpcClientConn`, which builds
-a `gsvc://<name>` target and lets grpcx's resolver look it up in etcd.
+the service name (`goframe.grpc.echo`, matching
+`spring.goframe.grpc.server.name` in `conf/app.properties`) to
+`grpcx.Client.MustNewGrpcClientConn`, which builds a `gsvc://<name>` target and
+lets grpcx's resolver look it up in etcd.
 
 ## Choosing a registry
 
@@ -126,13 +130,14 @@ and update `goframe.grpc.registry.etcd` accordingly.
 spring.http.server.enabled=false
 
 # gRPC bind address for grpcx.GrpcServer.
-goframe.grpc.address=:8001
+spring.goframe.grpc.server.address=:8001
 
 # Service name registered into etcd; consumer resolves by the same name.
-goframe.grpc.name=goframe.grpc.echo
+spring.goframe.grpc.server.name=goframe.grpc.echo
 
-# etcd registry address; matches docker-compose.yml.
-goframe.grpc.registry.etcd=127.0.0.1:2379
+# etcd registry address; matches docker-compose.yml. Leave empty for a plain
+# server clients dial directly.
+spring.goframe.grpc.server.registry.etcd=127.0.0.1:2379
 ```
 
 ## Run

@@ -26,16 +26,17 @@ import (
 )
 
 // The provider is a long-lived process: gs.Run() starts the zrpc server
-// registered in server.go, which publishes itself into etcd, then blocks until
-// it receives SIGTERM/SIGINT. Unlike a stock go-zero REST example, the RPC and
-// the discovery live in the consumer, not inline in main().
+// provided by starter-go-zero/zrpc (imported in provider/handler.go), which
+// publishes itself into etcd, then blocks until it receives SIGTERM/SIGINT.
+// Unlike a stock go-zero REST example, the RPC and the discovery live in the
+// consumer, not inline in main().
 func main() {
 	_ = os.Unsetenv("_")
 	_ = os.Unsetenv("TERM")
 	_ = os.Unsetenv("TERM_SESSION_ID")
 
 	// The built-in HTTP server is disabled via provider/conf/app.properties;
-	// gs.Run() starts only the zrpc server registered in server.go.
+	// gs.Run() starts only the zrpc server that starter-go-zero/zrpc registers.
 	gs.Run()
 }
 

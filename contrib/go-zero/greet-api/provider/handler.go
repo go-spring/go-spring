@@ -19,6 +19,7 @@ package main
 import (
 	"github.com/zeromicro/go-zero/rest"
 	"go-spring.org/spring/gs"
+	gozerorest "go-spring.org/starter-go-zero/rest"
 
 	"greetapi/handler"
 	"greetapi/svc"
@@ -27,11 +28,12 @@ import (
 func init() {
 	// Provide a HandlerRegister bean that wires the injected GreetLogic bean
 	// into a ServiceContext and hands it to the goctl-generated route table.
-	// The RestServer adapter (see server.go) depends only on this function
-	// type, so the concrete route registration stays here without the server
-	// ever knowing about it — mirroring the ServiceRegister pattern in the
-	// sibling greet-rpc.
-	gs.Provide(func(l *svc.GreetLogic) HandlerRegister {
+	// starter-go-zero/rest owns the RestServer adapter (imported here for its
+	// gozerorest.HandlerRegister type, which also triggers the starter's init);
+	// its server depends only on this function type, so the concrete route
+	// registration stays here without the server ever knowing about it —
+	// mirroring the ServiceRegister pattern in the sibling greet-rpc.
+	gs.Provide(func(l *svc.GreetLogic) gozerorest.HandlerRegister {
 		return func(server *rest.Server) {
 			handler.RegisterHandlers(server, &svc.ServiceContext{Logic: l})
 		}

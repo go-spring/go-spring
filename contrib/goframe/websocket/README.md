@@ -38,7 +38,10 @@ applies here — the same server bean, the same `gsvc.SetRegistry` call, the
 same graceful shutdown path — with **only the `/echo` handler swapped** from
 "write a response body" to "upgrade and echo frames".
 
-This is a runnable example, **not** a reusable starter module.
+The server lifecycle and glog log bridge are **not** hand-rolled here anymore:
+they live in the reusable
+[`starter-goframe/ws`](../../../starter/starter-goframe) module. This example
+just imports that starter and supplies a `ServiceRegister` bean.
 
 ## Topology
 
@@ -61,10 +64,9 @@ This is a runnable example, **not** a reusable starter module.
 ```
 contrib/goframe/websocket/
 ├── provider/main.go              # gs.Run(); long-lived, registers into etcd
-├── provider/server.go            # GoFrameServer adapter (gs.Server) + Config + etcd registry wiring
-├── provider/handler.go           # /echo upgrade + frame-echo handler
+├── provider/handler.go           # provides starter-goframe/ws's ServiceRegister; /echo upgrade + frame-echo handler
 ├── consumer/main.go              # gsvc.Search → gorilla-websocket dial, asserts on echo, then exits
-├── conf/app.properties           # provider configuration
+├── conf/app.properties           # provider configuration (${spring.goframe.ws.server})
 ├── scripts/gen-code.sh           # documented no-op (WS/HTTP handlers are hand-written)
 ├── docker-compose.yml            # local etcd
 └── scripts/smoke-test.sh         # smoke test: bring up etcd+provider, run consumer, tear down
@@ -94,14 +96,15 @@ ship a wired-up client for).
 spring.http.server.enabled=false
 
 # HTTP bind address for the goframe *ghttp.Server (the /echo route upgrades to WS here).
-goframe.websocket.address=:8002
+spring.goframe.ws.server.address=:8002
 
 # Service name the provider registers under; the consumer resolves this same
 # name from etcd.
-goframe.websocket.name=goframe.websocket.echo
+spring.goframe.ws.server.name=goframe.websocket.echo
 
-# etcd registry address; matches docker-compose.yml.
-goframe.websocket.registry.etcd=127.0.0.1:2379
+# etcd registry address; matches docker-compose.yml. Leave empty for a plain
+# server clients dial directly.
+spring.goframe.ws.server.registry.etcd=127.0.0.1:2379
 ```
 
 ## Run

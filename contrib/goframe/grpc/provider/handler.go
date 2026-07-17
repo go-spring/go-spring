@@ -20,18 +20,19 @@ import (
 	"context"
 
 	"go-spring.org/goframe/grpc/idl/echo"
+	goframegrpc "go-spring.org/starter-goframe/grpc"
 	"go-spring.org/spring/gs"
 	"google.golang.org/grpc"
 )
 
 func init() {
-	// Provide a ServiceRegister bean that binds the EchoServiceImpl onto the raw
-	// *grpc.Server via the generated echo.RegisterEchoServiceServer. The gRPC
-	// server adapter (see server.go) depends only on this function type, so the
-	// concrete service is wired here without the server ever knowing about the
-	// generated echo service — replacing the grpcx scaffold's inline
-	// echo.RegisterEchoServiceServer(s.Server, &EchoServiceImpl{}) block.
-	gs.Provide(func() ServiceRegister {
+	// Provide the starter's ServiceRegister bean that binds the EchoServiceImpl
+	// onto the raw *grpc.Server via the generated echo.RegisterEchoServiceServer.
+	// Importing the starter package (goframegrpc) triggers its module init, which
+	// registers the grpcx server as a gs.Server; this bean is the only wiring the
+	// application supplies — the server lifecycle and log bridge live in the
+	// starter now (they used to be the deleted provider/server.go).
+	gs.Provide(func() goframegrpc.ServiceRegister {
 		return func(s grpc.ServiceRegistrar) {
 			echo.RegisterEchoServiceServer(s, &EchoServiceImpl{})
 		}

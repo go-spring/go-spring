@@ -25,16 +25,18 @@ import (
 	"go-spring.org/spring/gs"
 )
 
-// The provider is a long-lived process: gs.Run() starts the GoFrameTCPServer
-// registered in server.go, which publishes itself into etcd, then blocks until
-// it receives SIGTERM/SIGINT. Discovery and the TCP dial live in the consumer.
+// The provider is a long-lived process: gs.Run() starts the *gtcp.Server
+// contributed by starter-goframe/tcp (registered as a gs.Server when the
+// application provides a ServiceRegister bean — see provider/handler.go), which
+// publishes itself into etcd, then blocks until it receives SIGTERM/SIGINT.
+// Discovery and the TCP dial live in the consumer.
 func main() {
 	_ = os.Unsetenv("_")
 	_ = os.Unsetenv("TERM")
 	_ = os.Unsetenv("TERM_SESSION_ID")
 
 	// The built-in HTTP server is disabled via provider/conf/app.properties;
-	// gs.Run() starts only the GoFrameTCPServer registered above.
+	// gs.Run() starts only the TCP server contributed by the starter.
 	gs.Run()
 }
 

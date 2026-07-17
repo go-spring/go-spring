@@ -26,16 +26,18 @@ import (
 )
 
 // The provider is a long-lived process: gs.Run() starts the grpcx server
-// registered in server.go, which publishes itself into etcd, then blocks until
-// it receives SIGTERM/SIGINT. Unlike the grpcx scaffold there is no inline
-// client here — discovery and the RPC call live in the consumer.
+// contributed by starter-goframe/grpc (registered as a gs.Server when the
+// application provides a ServiceRegister bean — see provider/handler.go), which
+// publishes itself into etcd, then blocks until it receives SIGTERM/SIGINT.
+// Unlike the grpcx scaffold there is no inline client here — discovery and the
+// RPC call live in the consumer.
 func main() {
 	_ = os.Unsetenv("_")
 	_ = os.Unsetenv("TERM")
 	_ = os.Unsetenv("TERM_SESSION_ID")
 
 	// The built-in HTTP server is disabled via provider/conf/app.properties;
-	// gs.Run() starts only the GoFrameGrpcServer registered in server.go.
+	// gs.Run() starts only the grpcx server contributed by the starter.
 	gs.Run()
 }
 

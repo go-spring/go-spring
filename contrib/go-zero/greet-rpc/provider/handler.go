@@ -20,6 +20,7 @@ import (
 	"context"
 
 	"go-spring.org/spring/gs"
+	gozerozrpc "go-spring.org/starter-go-zero/zrpc"
 	"google.golang.org/grpc"
 
 	greet "greetrpc/idl"
@@ -27,10 +28,12 @@ import (
 
 func init() {
 	// Provide a ServiceRegister bean that binds the GreetProvider to the
-	// underlying grpc.Server. The ZrpcServer adapter (see server.go) depends
-	// only on this function type, so the concrete greet.GreetServer is wired
-	// here without the server ever knowing about it.
-	gs.Provide(func() ServiceRegister {
+	// underlying grpc.Server. starter-go-zero/zrpc owns the ZrpcServer adapter
+	// (imported here for its gozerozrpc.ServiceRegister type, which also
+	// triggers the starter's init); its server depends only on this function
+	// type, so the concrete greet.GreetServer is wired here without the server
+	// ever knowing about it.
+	gs.Provide(func() gozerozrpc.ServiceRegister {
 		return func(grpcServer *grpc.Server) {
 			greet.RegisterGreetServer(grpcServer, &GreetProvider{})
 		}
