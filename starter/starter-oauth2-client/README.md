@@ -74,21 +74,32 @@ endpoint and a protected resource server, then demonstrates and asserts:
 * **Configurable auth style**: `auth-style` selects how credentials are sent to
   the token endpoint — `auto` (default), `header` (HTTP Basic), or `params`
   (request body).
-* **`oauth2.TokenSource` bean**: alongside the `*http.Client`, the starter also
-  registers an `oauth2.TokenSource` for every `spring.oauth2.client.<name>`
-  entry under the SAME name. Inject it when you need the raw bearer token
-  (for example, to attach it to gRPC metadata):
+* **`*TokenSource` bean**: alongside the `*http.Client`, the starter also
+  registers a `*StarterOAuth2Client.TokenSource` for every
+  `spring.oauth2.client.<name>` entry under the SAME name. It satisfies
+  `oauth2.TokenSource`, so it drops into anything expecting one. Inject it when you
+  need the raw bearer token (for example, to attach it to gRPC metadata):
 
   ```go
-  import "golang.org/x/oauth2"
+  import StarterOAuth2Client "go-spring.org/starter-oauth2-client"
 
   type Service struct {
-      TokenSrc oauth2.TokenSource `autowire:"downstream"`
+      TokenSrc *StarterOAuth2Client.TokenSource `autowire:"downstream"`
   }
 
   // tok, err := s.TokenSrc.Token()
   // use tok.AccessToken
   ```
+
+  Beyond `Token()`, it exposes the cached token's status for observability without
+  forcing a fetch:
+
+  | Method | Description |
+  | --- | --- |
+  | `Token()` | Returns a valid token, fetching/refreshing as needed, and caches it. |
+  | `Peek()` | Returns the most recently observed token, or `nil` if none fetched yet. |
+  | `Valid()` | Reports whether a token has been fetched and is not expired. |
+  | `Expiry()` | Returns the expiry of the last observed token, or the zero time. |
 
 * **Extra token-endpoint parameters (`endpoint-params`)**: some providers
   require additional parameters at the token endpoint, such as Auth0's

@@ -34,6 +34,24 @@ Add configuration in your project's [configuration file](example/conf/app.proper
 spring.http.server.enabled=false
 # starter-gin listens on :8001 by default in this example.
 spring.gin.server.addr=:8001
+
+# Timeouts (inherited from SimpleHttpServerConfig).
+spring.gin.server.readTimeout=5s
+spring.gin.server.headerTimeout=1s
+spring.gin.server.writeTimeout=5s
+spring.gin.server.idleTimeout=60s
+
+# Request-body size cap in bytes (0 = unlimited).
+spring.gin.server.maxBodySize=1048576
+
+# Optional starter-served liveness endpoint.
+spring.gin.server.health.enabled=true
+spring.gin.server.health.path=/healthz
+
+# HTTPS: enable and point at a PEM cert/key pair.
+spring.gin.server.tls.enabled=false
+spring.gin.server.tls.certFile=
+spring.gin.server.tls.keyFile=
 ```
 
 The starter registers its server bean when `spring.gin.server.enabled` is `true` (default) and a

@@ -42,5 +42,11 @@ func newClient(c Config) (*memcache.Client, error) {
 	if err != nil {
 		return nil, errutil.Explain(err, "failed to create memcached client")
 	}
+	// Fail fast: probe every configured server with a PING at startup so a
+	// misconfigured or unreachable server surfaces during boot rather than on
+	// the first request.
+	if err := client.Ping(); err != nil {
+		return nil, errutil.Explain(err, "memcached: startup ping failed")
+	}
 	return client, nil
 }

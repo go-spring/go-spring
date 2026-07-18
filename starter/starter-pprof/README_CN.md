@@ -30,20 +30,30 @@ import _ "go-spring.org/starter-pprof"
 
 ```properties
 spring.pprof.enabled=true
-spring.pprof.addr=:9981
+spring.pprof.addr=127.0.0.1:9981
+# 对外暴露时可选的鉴权：
+spring.pprof.token=s3cr3t
 ```
 
 ### 3. 访问 pprof 端点
 
-默认配置下，pprof 服务监听 `:9981`：
+默认配置下，pprof 服务仅绑定 loopback（`127.0.0.1:9981`）：
 
 ```text
 http://127.0.0.1:9981/debug/pprof/
 ```
 
+配置 token 后，每个请求都必须携带它，可通过 `Authorization: Bearer <token>`
+请求头，或 `?token=<token>` 查询参数传入：
+
+```bash
+curl -H 'Authorization: Bearer s3cr3t' http://127.0.0.1:9981/debug/pprof/
+curl 'http://127.0.0.1:9981/debug/pprof/heap?token=s3cr3t'
+```
+
 ## 核心功能
 
-示例会访问 pprof 独立 HTTP 服务器（默认 `:9981`）上的三个代表性端点：
+示例会访问 pprof 独立 HTTP 服务器（默认 `127.0.0.1:9981`）上的三个代表性端点：
 
 - **`GET /debug/pprof/`** —— 索引页，列出全部可用 profile。
 - **`GET /debug/pprof/heap`** —— 堆分配快照。
@@ -58,7 +68,14 @@ http://127.0.0.1:9981/debug/pprof/
 | 配置项 | 默认值 | 说明 |
 | --- | --- | --- |
 | `spring.pprof.enabled` | `true` | 是否启用 pprof 服务。 |
-| `spring.pprof.addr` | `:9981` | pprof 独立 HTTP 服务监听地址。 |
+| `spring.pprof.addr` | `127.0.0.1:9981` | 监听地址。默认仅绑定 loopback，未显式放开前不会被外部访问。 |
+| `spring.pprof.token` | `` | 设置后，每个请求都须通过 `Authorization: Bearer <token>` 或 `?token=<token>` 携带该 token；优先级高于 Basic 鉴权。 |
+| `spring.pprof.username` | `` | HTTP Basic 鉴权用户名（须与 `password` 同时设置）。 |
+| `spring.pprof.password` | `` | HTTP Basic 鉴权密码（须与 `username` 同时设置）。 |
+
+pprof 端点会暴露敏感的运行时内部信息（goroutine 栈、堆、CPU profile），因此默认值
+刻意保守：服务仅绑定 loopback，需显式放开才对外暴露。当使用非 loopback 地址却未配置
+任何鉴权时，starter 会在启动时打印告警——请设置 token 或用户名/密码，或保持 loopback 绑定。
 
 ## 可用端点
 

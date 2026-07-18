@@ -34,9 +34,16 @@ import (
 // name behind each client, so destroyClient can stop the watch and deregister.
 var liveDialers sync.Map // *gorm.DB -> *discoveryConn
 
+// tlsConfigs tracks the custom TLS config name registered with the mysql driver
+// for a client, so destroyClient can deregister it on teardown.
+var tlsConfigs sync.Map // *gorm.DB -> string (tls config name)
+
 // netSeq makes each registered mysql dial network name unique, so multiple
 // instances discovering the same service never collide.
 var netSeq atomic.Uint64
+
+// tlsSeq makes each registered custom TLS config name unique.
+var tlsSeq atomic.Uint64
 
 type discoveryConn struct {
 	ld      *discovery.LiveDialer
@@ -65,16 +72,40 @@ func newClient(c Config) (*gorm.DB, error) {
 	if c.Addr == "" && c.ServiceName == "" {
 		return nil, fmt.Errorf("gorm mysql: one of addr or service-name must be set")
 	}
+
+	// Resolve the TLS DSN parameter: a registered custom config name when
+	// CA/cert/key are supplied, otherwise a driver built-in mode.
+	var tlsName string
+	if c.TLSEnabled {
+		tlsCfg, err := buildTLSConfig(c)
+		if err != nil {
+			return nil, err
+		}
+		if tlsCfg != nil {
+			tlsName = fmt.Sprintf("gstls_%d", tlsSeq.Add(1))
+			if err := mysql.RegisterTLSConfig(tlsName, tlsCfg); err != nil {
+				return nil, err
+			}
+			c.tlsParam = tlsName
+		} else if c.TLSSkipVerify {
+			c.tlsParam = "skip-verify"
+		} else {
+			c.tlsParam = "true"
+		}
+	}
+
 	dsn := c.DSN()
 
 	var conn *discoveryConn
 	if c.ServiceName != "" {
 		d, err := discovery.MustGet(c.Discovery)
 		if err != nil {
+			deregisterTLS(tlsName)
 			return nil, err
 		}
 		ld, err := discovery.NewLiveDialer(context.Background(), d, c.ServiceName)
 		if err != nil {
+			deregisterTLS(tlsName)
 			return nil, err
 		}
 		netName := fmt.Sprintf("gsdisco_%s_%d", c.ServiceName, netSeq.Add(1))
@@ -89,30 +120,60 @@ func newClient(c Config) (*gorm.DB, error) {
 		conn = &discoveryConn{ld: ld, netName: netName}
 	}
 
-	db, err := gorm.Open(gormmysql.Open(dsn))
+	db, err := gorm.Open(gormmysql.Open(dsn), gormConfig(c))
 	if err != nil {
-		if conn != nil {
-			_ = conn.ld.Stop()
-			mysql.DeregisterDialContext(conn.netName)
-		}
+		cleanup(conn, tlsName)
 		return nil, err
 	}
 	if err := db.Use(tracing.NewPlugin(tracing.WithDBSystem("mysql"))); err != nil {
+		cleanup(conn, tlsName)
+		return nil, err
+	}
+	// Fail fast: verify connectivity and apply pool settings at creation time.
+	if err := applyPool(db, c); err != nil {
+		cleanup(conn, tlsName)
+		if sqlDB, derr := db.DB(); derr == nil {
+			_ = sqlDB.Close()
+		}
 		return nil, err
 	}
 	if conn != nil {
 		liveDialers.Store(db, conn)
 	}
+	if tlsName != "" {
+		tlsConfigs.Store(db, tlsName)
+	}
 	return db, nil
 }
 
+// cleanup stops a discovery dialer and deregisters driver-scoped names created
+// during a failed newClient attempt.
+func cleanup(conn *discoveryConn, tlsName string) {
+	if conn != nil {
+		_ = conn.ld.Stop()
+		mysql.DeregisterDialContext(conn.netName)
+	}
+	deregisterTLS(tlsName)
+}
+
+// deregisterTLS removes a custom TLS config previously registered with the
+// mysql driver. It is a no-op for the empty name (built-in modes).
+func deregisterTLS(name string) {
+	if name != "" {
+		mysql.DeregisterTLSConfig(name)
+	}
+}
+
 // destroyClient stops any discovery watch behind the client, deregisters its
-// dial network name, and closes the underlying connection pool.
+// dial network and TLS config names, and closes the underlying connection pool.
 func destroyClient(db *gorm.DB) error {
 	if v, ok := liveDialers.LoadAndDelete(db); ok {
 		conn := v.(*discoveryConn)
 		_ = conn.ld.Stop()
 		mysql.DeregisterDialContext(conn.netName)
+	}
+	if v, ok := tlsConfigs.LoadAndDelete(db); ok {
+		mysql.DeregisterTLSConfig(v.(string))
 	}
 	if sqlDB, err := db.DB(); err == nil {
 		return sqlDB.Close()

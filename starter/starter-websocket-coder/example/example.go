@@ -151,13 +151,22 @@ func runTest() {
 	ctx := context.Background()
 	authHeader := http.Header{"X-App": []string{"go-spring"}}
 
-	// Feature 1: text echo on /echo (middleware allowed).
-	echoConn, _, err := websocket.Dial(ctx, "ws://127.0.0.1:9797/echo", &websocket.DialOptions{HTTPHeader: authHeader})
+	// Feature 1: text echo on /echo (middleware allowed). Request the
+	// server-advertised subprotocol so negotiation is exercised.
+	echoConn, _, err := websocket.Dial(ctx, "ws://127.0.0.1:9797/echo", &websocket.DialOptions{
+		HTTPHeader:   authHeader,
+		Subprotocols: []string{"echo.v1"},
+	})
 	if err != nil {
 		log.Errorf(ctx, log.TagAppDef, "Failed to connect /echo: %v", err)
 		os.Exit(1)
 	}
 	defer echoConn.CloseNow()
+
+	if sp := echoConn.Subprotocol(); sp != "echo.v1" {
+		log.Errorf(ctx, log.TagAppDef, "unexpected negotiated subprotocol: %q", sp)
+		os.Exit(1)
+	}
 
 	if err = echoConn.Write(ctx, websocket.MessageText, []byte("Hello, WebSocket!")); err != nil {
 		log.Errorf(ctx, log.TagAppDef, "Error sending text message: %v", err)

@@ -186,6 +186,18 @@ func runTest(s *Service) {
 	}
 	fmt.Println("Response from discovered server:", dv)
 
+	// Feature 5: health check + pool monitoring. The go-redis client exposes
+	// Ping for readiness probes and PoolStats() for runtime connection-pool
+	// monitoring — no starter wrapper needed, they are read straight off the
+	// autowired client.
+	if err := s.Redis.Ping(ctx).Err(); err != nil {
+		log.Errorf(ctx, log.TagAppDef, "health ping failed: %v", err)
+		os.Exit(1)
+	}
+	stats := s.Redis.PoolStats()
+	fmt.Println("Pool stats:", "hits:", stats.Hits, "misses:", stats.Misses,
+		"total-conns:", stats.TotalConns, "idle-conns:", stats.IdleConns)
+
 	syscall.Kill(os.Getpid(), syscall.SIGTERM)
 }
 

@@ -59,10 +59,41 @@ _ = token.Error()
 
 The [example](example/example.go) demonstrates a pub/sub round-trip: subscribe to a
 topic at QoS 1, publish a message to it, and assert the payload is delivered back to
-the subscription handler.
+the subscription handler. It also checks `Client.IsConnected()` before publishing.
+
+Connection-layer events (connect, connection lost, reconnecting) are bridged into
+go-spring's log.
 
 ## Advanced Features
 
 * **Multiple MQTT clients**: Every entry under `spring.mqtt.instances` becomes an
   independently configured `mqtt.Client` bean; inject them by name to talk to
   different brokers.
+* **TLS (MQTTS)**: Set `spring.mqtt.instances.<name>.tls.enabled=true` with a
+  `ssl://`/`tls://` broker URL to negotiate TLS. Optionally pin a CA bundle
+  (`tls.ca-file`) and supply a client certificate (`tls.cert-file`/`tls.key-file`)
+  for mutual TLS.
+* **Last Will and Testament (LWT)**: Set `spring.mqtt.instances.<name>.will.topic`
+  to have the broker publish a will message on your behalf when the client
+  disconnects ungracefully.
+
+## Configuration
+
+Each client under `spring.mqtt.instances.<name>` reads the following properties:
+
+| Property | Default | Description |
+| --- | --- | --- |
+| `broker` | (required) | MQTT broker address, e.g. `tcp://127.0.0.1:1883` (`ssl://` for MQTTS). |
+| `client-id` | `` | Client identifier; the library generates one when empty. |
+| `username` / `password` | `` | Authentication credentials. |
+| `clean-session` | `true` | Whether the broker discards session state on disconnect. |
+| `keep-alive` | `30s` | Interval between PING packets. |
+| `connect-timeout` | `10s` | Bound on `Connect`; `0` disables the timeout. |
+| `tls.enabled` | `false` | Attach a `*tls.Config` for MQTTS. |
+| `tls.ca-file` | `` | PEM CA bundle to verify the broker certificate; system roots when empty. |
+| `tls.cert-file` / `tls.key-file` | `` | Client certificate and key for mutual TLS (set together). |
+| `tls.insecure-skip-verify` | `false` | Disable broker certificate verification (testing only). |
+| `will.topic` | `` | Will topic; empty disables the will. |
+| `will.payload` | `` | Will message body. |
+| `will.qos` | `0` | Will delivery QoS (0, 1, or 2). |
+| `will.retained` | `false` | Whether the broker retains the will message. |

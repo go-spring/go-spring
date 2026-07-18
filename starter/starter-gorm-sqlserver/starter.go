@@ -58,11 +58,17 @@ func newClient(c Config) (*gorm.DB, error) {
 		return nil, errutil.Explain(nil, "gorm sqlserver: one of host or service-name must be set")
 	}
 	if c.ServiceName == "" {
-		db, err := gorm.Open(sqlserver.Open(c.DSN()))
+		db, err := gorm.Open(sqlserver.Open(c.DSN()), gormConfig(c))
 		if err != nil {
 			return nil, err
 		}
 		if err := db.Use(tracing.NewPlugin(tracing.WithDBSystem("microsoft.sql_server"))); err != nil {
+			return nil, err
+		}
+		if err := applyPool(db, c); err != nil {
+			if sqlDB, derr := db.DB(); derr == nil {
+				_ = sqlDB.Close()
+			}
 			return nil, err
 		}
 		return db, nil
@@ -85,13 +91,18 @@ func newClient(c Config) (*gorm.DB, error) {
 	connector.Dialer = ld
 	sqlDB := sql.OpenDB(connector)
 
-	db, err := gorm.Open(sqlserver.New(sqlserver.Config{Conn: sqlDB}))
+	db, err := gorm.Open(sqlserver.New(sqlserver.Config{Conn: sqlDB}), gormConfig(c))
 	if err != nil {
 		_ = ld.Stop()
 		_ = sqlDB.Close()
 		return nil, err
 	}
 	if err := db.Use(tracing.NewPlugin(tracing.WithDBSystem("microsoft.sql_server"))); err != nil {
+		_ = ld.Stop()
+		_ = sqlDB.Close()
+		return nil, err
+	}
+	if err := applyPool(db, c); err != nil {
 		_ = ld.Stop()
 		_ = sqlDB.Close()
 		return nil, err

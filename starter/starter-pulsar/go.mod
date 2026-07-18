@@ -6,6 +6,7 @@ require (
 	github.com/apache/pulsar-client-go v0.14.0
 	go-spring.org/log v0.1.4
 	go-spring.org/spring v1.3.4
+	go-spring.org/stdlib v0.1.7
 )
 
 require (
@@ -63,7 +64,6 @@ require (
 	github.com/spf13/cast v1.10.0 // indirect
 	github.com/testcontainers/testcontainers-go v0.33.0 // indirect
 	go-spring.org/gs-mock v0.0.9 // indirect
-	go-spring.org/stdlib v0.1.7 // indirect
 	go.opentelemetry.io/otel/metric v1.43.0 // indirect
 	go.opentelemetry.io/otel/trace v1.43.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect

@@ -18,9 +18,14 @@ package StarterHertz
 
 import (
 	"context"
+	"crypto/tls"
+	"time"
 
+	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/app/server"
+	"github.com/cloudwego/hertz/pkg/common/config"
 	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
 )
 
@@ -48,27 +53,78 @@ func init() {
 // own register bean to wire handlers.
 type RouterRegister func(h *server.Hertz)
 
+// TLSConfig enables HTTPS by pointing at a PEM certificate/key pair. When
+// Enabled is false the server listens in plaintext HTTP.
+type TLSConfig struct {
+	Enabled  bool   `value:"${enabled:=false}"`
+	CertFile string `value:"${certFile:=}"`
+	KeyFile  string `value:"${keyFile:=}"`
+}
+
+// HealthConfig exposes an optional liveness/readiness endpoint served by the
+// starter. It is disabled by default so applications opt in explicitly.
+type HealthConfig struct {
+	Enabled bool   `value:"${enabled:=false}"`
+	Path    string `value:"${path:=/healthz}"`
+}
+
 // Config defines Hertz server configuration, bound from ${spring.hertz.server}.
-// Unlike gin/echo, Hertz owns its own listener, so the address is passed to the
-// engine via WithHostPorts rather than a standard http.Server.
+// Unlike gin/echo, Hertz owns its own listener, so the address and the
+// read/write/idle timeouts are passed to the engine via server options rather
+// than a standard http.Server. Field naming mirrors gs.SimpleHttpServerConfig.
 type Config struct {
-	Addr string `value:"${addr:=:8003}"`
+	Addr         string        `value:"${addr:=:8003}"`
+	ReadTimeout  time.Duration `value:"${readTimeout:=5s}"`
+	WriteTimeout time.Duration `value:"${writeTimeout:=5s}"`
+	IdleTimeout  time.Duration `value:"${idleTimeout:=60s}"`
+	MaxBodySize  int           `value:"${maxBodySize:=0}"`
+	TLS          TLSConfig     `value:"${tls}"`
+	Health       HealthConfig  `value:"${health}"`
 }
 
 // SimpleHertzServer adapts a *server.Hertz to the Go-Spring server lifecycle.
-// The starter builds and configures the engine (address from config, routes via
-// the RouterRegister); this adapter only drives its start/stop according to the
-// Go-Spring readiness signal.
+// The starter builds and configures the engine (address, timeouts, TLS, routes
+// via the RouterRegister); this adapter only drives its start/stop according to
+// the Go-Spring readiness signal.
 type SimpleHertzServer struct {
 	h *server.Hertz
 }
 
 // NewSimpleHertzServer builds a *server.Hertz listening on the configured
-// address and applies the registered RouterRegister.
-func NewSimpleHertzServer(register RouterRegister, cfg Config) *SimpleHertzServer {
-	h := server.Default(server.WithHostPorts(cfg.Addr))
+// address, applies timeout/body/TLS options, and applies the registered
+// RouterRegister.
+func NewSimpleHertzServer(register RouterRegister, cfg Config) (*SimpleHertzServer, error) {
+	opts := []config.Option{
+		server.WithHostPorts(cfg.Addr),
+		server.WithReadTimeout(cfg.ReadTimeout),
+		server.WithWriteTimeout(cfg.WriteTimeout),
+		server.WithIdleTimeout(cfg.IdleTimeout),
+	}
+	if cfg.MaxBodySize > 0 {
+		opts = append(opts, server.WithMaxRequestBodySize(cfg.MaxBodySize))
+	}
+	if cfg.TLS.Enabled {
+		cert, err := tls.LoadX509KeyPair(cfg.TLS.CertFile, cfg.TLS.KeyFile)
+		if err != nil {
+			return nil, errutil.Explain(err, "failed to load TLS key pair")
+		}
+		opts = append(opts, server.WithTLS(&tls.Config{
+			Certificates: []tls.Certificate{cert},
+		}))
+	}
+
+	h := server.Default(opts...)
+
+	// Register the optional health endpoint before application routes so it is
+	// always available and cannot be shadowed by a wildcard route.
+	if cfg.Health.Enabled {
+		h.GET(cfg.Health.Path, func(ctx context.Context, c *app.RequestContext) {
+			c.String(200, "ok")
+		})
+	}
+
 	register(h)
-	return &SimpleHertzServer{h: h}
+	return &SimpleHertzServer{h: h}, nil
 }
 
 // Run starts the Hertz engine after Go-Spring signals readiness.

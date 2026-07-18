@@ -26,6 +26,13 @@ func init() {
 	// (e.g. spring.lua.filter.guard -> bean "guard"), so callers select a
 	// filter with gs.TagArg("guard") when wiring their *gs.HttpServeMux.
 	//
-	// The Lua VM has no background goroutine, so no destroy callback is needed.
-	gs.Group("${spring.lua.filter}", newFilter, nil)
+	// The destroy callback closes the pooled Lua VMs at shutdown so their
+	// runtime resources are released.
+	gs.Group("${spring.lua.filter}", newFilter, destroyFilter)
+}
+
+// destroyFilter releases the VM pool held by a filter.
+func destroyFilter(f *Filter) error {
+	f.destroy()
+	return nil
 }

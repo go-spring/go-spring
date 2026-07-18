@@ -32,6 +32,14 @@ Add Thrift configuration in your project's [configuration file](example/conf/app
 ```properties
 spring.http.server.enabled=false
 spring.thrift.server.addr=:9292
+
+# Per-connection client timeout on the server socket (0 = no timeout).
+spring.thrift.server.clientTimeout=30s
+
+# TLS server transport: enable and point at a PEM cert/key pair.
+spring.thrift.server.tls.enabled=false
+spring.thrift.server.tls.certFile=
+spring.thrift.server.tls.keyFile=
 ```
 
 ### 3. Register your processor

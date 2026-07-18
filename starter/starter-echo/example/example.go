@@ -135,6 +135,21 @@ func runTest() {
 		os.Exit(1)
 	}
 
+	// Server hardening: the starter-owned health endpoint responds independently
+	// of any application route.
+	hresp, err := http.Get("http://localhost:8002/healthz")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "health request failed:", err)
+		os.Exit(1)
+	}
+	hbody, _ := io.ReadAll(hresp.Body)
+	_ = hresp.Body.Close()
+	fmt.Println("Health from server:", string(hbody))
+	if hresp.StatusCode != http.StatusOK || string(hbody) != "ok" {
+		fmt.Fprintln(os.Stderr, "unexpected /healthz response:", hresp.StatusCode, string(hbody))
+		os.Exit(1)
+	}
+
 	syscall.Kill(os.Getpid(), syscall.SIGTERM)
 }
 

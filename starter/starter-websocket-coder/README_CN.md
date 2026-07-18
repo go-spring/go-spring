@@ -37,6 +37,8 @@ import _ "go-spring.org/starter-websocket-coder"
 选项在既有 HTTP 服务上升级连接时生效，端口与超时由该服务负责：
 
 ```properties
+# 服务端愿意协商的子协议。
+spring.websocket.subprotocols=echo.v1
 spring.websocket.insecureSkipVerify=false
 spring.websocket.originPatterns=chat.example.com
 spring.websocket.compressionMode=0

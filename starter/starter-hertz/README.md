@@ -59,6 +59,23 @@ Set the Hertz listen address and disable the default Go-Spring HTTP server
 ```properties
 spring.http.server.enabled=false
 spring.hertz.server.addr=127.0.0.1:8003
+
+# Timeouts (naming mirrors SimpleHttpServerConfig; applied via Hertz options).
+spring.hertz.server.readTimeout=5s
+spring.hertz.server.writeTimeout=5s
+spring.hertz.server.idleTimeout=60s
+
+# Request-body size cap in bytes (0 = Hertz default).
+spring.hertz.server.maxBodySize=1048576
+
+# Optional starter-served liveness endpoint.
+spring.hertz.server.health.enabled=true
+spring.hertz.server.health.path=/healthz
+
+# HTTPS: enable and point at a PEM cert/key pair.
+spring.hertz.server.tls.enabled=false
+spring.hertz.server.tls.certFile=
+spring.hertz.server.tls.keyFile=
 ```
 
 ### 4. Run the Application

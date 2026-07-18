@@ -30,8 +30,21 @@ import (
 	"github.com/panjf2000/ants/v2"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
-	_ "go-spring.org/starter-ants"
+	StarterAnts "go-spring.org/starter-ants"
 )
+
+// panics counts task panics caught by the handler registered via
+// SetPanicHandler, proving the injection point is wired through the starter.
+var panics int64
+
+func init() {
+	// Register a global panic handler before the container starts. Without it,
+	// a panicking task would crash the worker goroutine.
+	StarterAnts.SetPanicHandler(func(p any) {
+		atomic.AddInt64(&panics, 1)
+		log.Warnf(context.Background(), log.TagAppDef, "recovered task panic: %v", p)
+	})
+}
 
 type Service struct {
 	IO  *ants.Pool `autowire:"io"`
@@ -102,8 +115,31 @@ func runTest(s *Service) {
 	}
 	close(block)
 
-	fmt.Println("Response from server:", "tasks:", counter,
-		"io.cap:", s.IO.Cap(), "cpu.cap:", s.CPU.Cap())
+	// Feature 4: pool metrics. Running/Free/Cap are read straight off the pool
+	// (no OTel) — the mechanism for monitoring pool utilization at runtime.
+	fmt.Println("CPU pool:", "running:", s.CPU.Running(),
+		"free:", s.CPU.Free(), "cap:", s.CPU.Cap())
+
+	// Feature 5: panic handler. A task that panics is caught by the handler
+	// registered via SetPanicHandler instead of crashing the worker.
+	var pwg sync.WaitGroup
+	pwg.Add(1)
+	if err := s.CPU.Submit(func() {
+		defer pwg.Done()
+		panic("boom")
+	}); err != nil {
+		log.Errorf(ctx, log.TagAppDef, "submit panicking task failed: %v", err)
+		os.Exit(1)
+	}
+	pwg.Wait()
+	// Give the deferred panic handler a moment to run after Done returns.
+	time.Sleep(time.Millisecond * 50)
+	if atomic.LoadInt64(&panics) == 0 {
+		log.Errorf(ctx, log.TagAppDef, "expected panic handler to fire, got 0")
+		os.Exit(1)
+	}
+	fmt.Println("Panic handler fired:", atomic.LoadInt64(&panics), "times")
+
 	syscall.Kill(os.Getpid(), syscall.SIGTERM)
 }
 

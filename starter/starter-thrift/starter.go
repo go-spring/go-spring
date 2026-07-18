@@ -18,6 +18,8 @@ package StarterThrift
 
 import (
 	"context"
+	"crypto/tls"
+	"time"
 
 	"github.com/apache/thrift/lib/go/thrift"
 	"go-spring.org/spring/gs"
@@ -41,9 +43,19 @@ func init() {
 	})
 }
 
+// TLSConfig enables a TLS server transport by pointing at a PEM certificate/key
+// pair. When Enabled is false the server uses a plaintext socket transport.
+type TLSConfig struct {
+	Enabled  bool   `value:"${enabled:=false}"`
+	CertFile string `value:"${certFile:=}"`
+	KeyFile  string `value:"${keyFile:=}"`
+}
+
 // Config defines Thrift server configuration.
 type Config struct {
-	Addr string `value:"${addr:=:9292}"`
+	Addr          string        `value:"${addr:=:9292}"`
+	ClientTimeout time.Duration `value:"${clientTimeout:=0}"`
+	TLS           TLSConfig     `value:"${tls}"`
 }
 
 // SimpleThriftServer adapts a thrift.TSimpleServer to the Go-Spring server lifecycle.
@@ -58,9 +70,23 @@ func NewSimpleThriftServer(cfg Config, proc thrift.TProcessor) *SimpleThriftServ
 	return &SimpleThriftServer{cfg: cfg, proc: proc}
 }
 
+// newTransport builds a server transport honoring the client timeout and,
+// when enabled, TLS.
+func (s *SimpleThriftServer) newTransport() (thrift.TServerTransport, error) {
+	if s.cfg.TLS.Enabled {
+		cert, err := tls.LoadX509KeyPair(s.cfg.TLS.CertFile, s.cfg.TLS.KeyFile)
+		if err != nil {
+			return nil, errutil.Explain(err, "failed to load TLS key pair")
+		}
+		cfg := &tls.Config{Certificates: []tls.Certificate{cert}}
+		return thrift.NewTSSLServerSocketTimeout(s.cfg.Addr, cfg, s.cfg.ClientTimeout)
+	}
+	return thrift.NewTServerSocketTimeout(s.cfg.Addr, s.cfg.ClientTimeout)
+}
+
 // Run starts the Thrift server after Go-Spring signals readiness.
 func (s *SimpleThriftServer) Run(ctx context.Context, sig gs.ReadySignal) error {
-	transport, err := thrift.NewTServerSocket(s.cfg.Addr)
+	transport, err := s.newTransport()
 	if err != nil {
 		return errutil.Explain(err, "failed to listen on %s", s.cfg.Addr)
 	}
@@ -72,7 +98,8 @@ func (s *SimpleThriftServer) Run(ctx context.Context, sig gs.ReadySignal) error 
 	return nil
 }
 
-// Stop gracefully stops the underlying Thrift server.
+// Stop gracefully stops the underlying Thrift server, interrupting the accept
+// loop and waiting for in-flight requests to drain.
 func (s *SimpleThriftServer) Stop() error {
 	return s.svr.Stop()
 }

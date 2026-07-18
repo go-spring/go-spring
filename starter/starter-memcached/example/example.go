@@ -155,6 +155,14 @@ func runTest(s *Service) {
 	}
 
 	fmt.Println("Response from server:", string(item.Value), "counter:", n)
+
+	// Feature 4: health check. The client's Ping probes every configured server
+	// and is the readiness signal — read straight off the autowired client.
+	if err := s.Memcached.Ping(); err != nil {
+		log.Errorf(ctx, log.TagAppDef, "health ping failed: %v", err)
+		os.Exit(1)
+	}
+
 	syscall.Kill(os.Getpid(), syscall.SIGTERM)
 }
 

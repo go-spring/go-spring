@@ -63,3 +63,6 @@ err := s.Pool.Submit(func() {
 
 * **支持多个 ants 协程池**：你可以在配置文件中定义多个池，并在项目中按名称引用它们。
 * **支持 ants 扩展**：你可以通过实现 `Driver` 接口来扩展池的创建逻辑。
+* **panic 处理器**：在启动前调用 `StarterAnts.SetPanicHandler(fn)`，可捕获提交任务抛出的 panic；不设置时 ants 会在 worker goroutine 上重新 panic。该回调为所有 DefaultDriver 构建的池共享的全局钩子；按池定制需自定义 `Driver`。
+* **池运行时指标**：直接在池上读取 `pool.Running()`、`pool.Free()`、`pool.Cap()`（非 OTel）以监控利用率。
+* **优雅关闭**：destroy 回调会调用 `Release()`，停止后台 purge goroutine 并回收所有 worker。

@@ -33,6 +33,24 @@ import _ "go-spring.org/starter-echo"
 spring.http.server.enabled=false
 # 本示例中 starter-echo 默认监听 :8002。
 spring.echo.server.addr=:8002
+
+# 超时（继承自 SimpleHttpServerConfig）。
+spring.echo.server.readTimeout=5s
+spring.echo.server.headerTimeout=1s
+spring.echo.server.writeTimeout=5s
+spring.echo.server.idleTimeout=60s
+
+# 请求体大小上限（字节，0 表示不限制）。
+spring.echo.server.maxBodySize=1048576
+
+# 可选的、由 starter 提供的存活探针端点。
+spring.echo.server.health.enabled=true
+spring.echo.server.health.path=/healthz
+
+# HTTPS：启用并指定 PEM 证书/私钥路径。
+spring.echo.server.tls.enabled=false
+spring.echo.server.tls.certFile=
+spring.echo.server.tls.keyFile=
 ```
 
 当 `spring.echo.server.enabled` 为 `true`（默认）且应用提供了 `RouterRegister` Bean 时，

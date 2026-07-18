@@ -181,6 +181,17 @@ func runTest(s *Service) {
 	}
 
 	fmt.Println("Response from server:", v, "counter:", n, "ttl:", ttl)
+
+	// Feature 4: health check + pool monitoring. A borrowed connection answers
+	// PING for readiness, and pool.Stats() exposes runtime pool counters — both
+	// read straight off the autowired *redis.Pool with no starter wrapper.
+	if _, err := c.Do("PING"); err != nil {
+		log.Errorf(ctx, log.TagAppDef, "health ping failed: %v", err)
+		os.Exit(1)
+	}
+	stats := s.Redis.Stats()
+	fmt.Println("Pool stats:", "active:", stats.ActiveCount, "idle:", stats.IdleCount)
+
 	syscall.Kill(os.Getpid(), syscall.SIGTERM)
 }
 

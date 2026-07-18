@@ -60,21 +60,18 @@ func newClient(c Config) (*gorm.DB, error) {
 		err error
 		ld  *discovery.LiveDialer
 	)
-	if c.ServiceName == "" {
-		db, err = gorm.Open(clickhouse.Open(c.DSN()))
+
+	// The native driver (ch.OpenDB) is required whenever we must inject a custom
+	// TLS config or a discovery-backed dialer, neither of which the URL-style DSN
+	// can express. Otherwise the plain DSN path stays as before.
+	useNative := c.ServiceName != "" || c.TLSEnabled
+	if !useNative {
+		db, err = gorm.Open(clickhouse.Open(c.DSN()), gormConfig(c))
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		d, err := discovery.MustGet(c.Discovery)
-		if err != nil {
-			return nil, err
-		}
-		ld, err = discovery.NewLiveDialer(context.Background(), d, c.ServiceName)
-		if err != nil {
-			return nil, err
-		}
-		sqlDB := ch.OpenDB(&ch.Options{
+		opts := &ch.Options{
 			Addr: []string{c.Addr},
 			Auth: ch.Auth{
 				Database: c.DB,
@@ -83,11 +80,31 @@ func newClient(c Config) (*gorm.DB, error) {
 			},
 			DialTimeout: c.DialTimeout,
 			ReadTimeout: c.ReadTimeout,
-			DialContext: ld.Dial,
-		})
-		db, err = gorm.Open(clickhouse.New(clickhouse.Config{Conn: sqlDB}))
+		}
+		if c.TLSEnabled {
+			tlsCfg, terr := buildTLSConfig(c)
+			if terr != nil {
+				return nil, terr
+			}
+			opts.TLS = tlsCfg
+		}
+		if c.ServiceName != "" {
+			d, derr := discovery.MustGet(c.Discovery)
+			if derr != nil {
+				return nil, derr
+			}
+			ld, derr = discovery.NewLiveDialer(context.Background(), d, c.ServiceName)
+			if derr != nil {
+				return nil, derr
+			}
+			opts.DialContext = ld.Dial
+		}
+		sqlDB := ch.OpenDB(opts)
+		db, err = gorm.Open(clickhouse.New(clickhouse.Config{Conn: sqlDB}), gormConfig(c))
 		if err != nil {
-			_ = ld.Stop()
+			if ld != nil {
+				_ = ld.Stop()
+			}
 			_ = sqlDB.Close()
 			return nil, err
 		}
@@ -95,6 +112,16 @@ func newClient(c Config) (*gorm.DB, error) {
 	if err := db.Use(tracing.NewPlugin(tracing.WithDBSystem("clickhouse"))); err != nil {
 		if ld != nil {
 			_ = ld.Stop()
+		}
+		return nil, err
+	}
+	// Fail fast: verify connectivity and apply pool settings at creation time.
+	if err := applyPool(db, c); err != nil {
+		if ld != nil {
+			_ = ld.Stop()
+		}
+		if sqlDB, derr := db.DB(); derr == nil {
+			_ = sqlDB.Close()
 		}
 		return nil, err
 	}

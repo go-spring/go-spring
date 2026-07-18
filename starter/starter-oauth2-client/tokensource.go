@@ -19,6 +19,8 @@ package StarterOAuth2Client
 import (
 	"context"
 	"net/http"
+	"sync/atomic"
+	"time"
 
 	"go-spring.org/spring/gs"
 	"golang.org/x/oauth2"
@@ -28,18 +30,59 @@ import (
 func init() {
 	// Register OAuth2 token sources alongside the HTTP clients over the same
 	// "${spring.oauth2.client}" configuration group. Beans are keyed by type
-	// plus name, so an oauth2.TokenSource coexists with the *http.Client of
-	// the same name. This exposes the raw bearer token for callers that need
-	// to inject it themselves (e.g., gRPC metadata) rather than send it via
-	// an *http.Client. Token sources hold no closable resource, so no destroy
-	// callback is needed.
+	// plus name, so a *TokenSource coexists with the *http.Client of the same
+	// name. It exposes the raw bearer token for callers that need to inject it
+	// themselves (e.g., gRPC metadata) rather than send it via an *http.Client,
+	// and additionally surfaces the cached token's status for observability.
+	// Token sources hold no closable resource, so no destroy callback is needed.
 	gs.Group("${spring.oauth2.client}", newTokenSource, nil)
 }
 
-// newTokenSource builds an oauth2.TokenSource that mints and refreshes bearer
-// tokens via the client-credentials grant. The returned source caches the
-// current token and refreshes it automatically once expired.
-func newTokenSource(c Config) (oauth2.TokenSource, error) {
+// TokenSource wraps an oauth2.TokenSource (client-credentials grant) and records
+// the most recently minted token so callers can observe the current bearer
+// token, its validity, and its expiry without forcing a fetch. It satisfies
+// oauth2.TokenSource, so it drops into anything expecting one.
+type TokenSource struct {
+	src  oauth2.TokenSource
+	last atomic.Pointer[oauth2.Token]
+}
+
+// Token returns a valid token, fetching or refreshing it as needed, and caches
+// the result for later observation via Peek/Valid/Expiry.
+func (t *TokenSource) Token() (*oauth2.Token, error) {
+	tok, err := t.src.Token()
+	if err == nil {
+		t.last.Store(tok)
+	}
+	return tok, err
+}
+
+// Peek returns the most recently observed token without triggering a fetch, or
+// nil if Token has not yet been called.
+func (t *TokenSource) Peek() *oauth2.Token {
+	return t.last.Load()
+}
+
+// Valid reports whether a token has been fetched and is not expired. It does not
+// trigger a fetch.
+func (t *TokenSource) Valid() bool {
+	tok := t.last.Load()
+	return tok != nil && tok.Valid()
+}
+
+// Expiry returns the expiry of the most recently observed token, or the zero
+// time if none has been fetched.
+func (t *TokenSource) Expiry() time.Time {
+	if tok := t.last.Load(); tok != nil {
+		return tok.Expiry
+	}
+	return time.Time{}
+}
+
+// newTokenSource builds a *TokenSource over an oauth2.TokenSource that mints and
+// refreshes bearer tokens via the client-credentials grant. The underlying
+// source caches the current token and refreshes it automatically once expired.
+func newTokenSource(c Config) (*TokenSource, error) {
 	cfg := &clientcredentials.Config{
 		ClientID:       c.ClientID,
 		ClientSecret:   c.ClientSecret,
@@ -56,5 +99,5 @@ func newTokenSource(c Config) (oauth2.TokenSource, error) {
 		ctx = context.WithValue(ctx, oauth2.HTTPClient, &http.Client{Timeout: c.Timeout})
 	}
 
-	return cfg.TokenSource(ctx), nil
+	return &TokenSource{src: cfg.TokenSource(ctx)}, nil
 }

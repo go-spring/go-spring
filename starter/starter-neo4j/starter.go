@@ -18,6 +18,7 @@ package StarterNeo4j
 
 import (
 	"context"
+	"time"
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 	"go-spring.org/spring/gs"
@@ -32,6 +33,8 @@ func init() {
 }
 
 // newClient creates a new Neo4j client based on the provided configuration.
+// After the driver is built, connectivity is verified so that misconfiguration
+// or an unreachable server fails fast at startup rather than on first query.
 func newClient(c Config) (neo4j.DriverWithContext, error) {
 	d, ok := driverRegistry[c.Driver]
 	if !ok {
@@ -41,7 +44,30 @@ func newClient(c Config) (neo4j.DriverWithContext, error) {
 	if err != nil {
 		return nil, errutil.Explain(err, "failed to create neo4j client")
 	}
+
+	// Fail fast: verify the server is reachable before handing out the driver.
+	ctx, cancel := verifyContext(c.SocketConnectTimeout)
+	defer cancel()
+	if err := client.VerifyConnectivity(ctx); err != nil {
+		_ = client.Close(context.Background())
+		return nil, errutil.Explain(err, "failed to verify neo4j connectivity: %s", c.URI)
+	}
 	return client, nil
+}
+
+// HealthCheck reports whether the Neo4j driver can reach the server. It is a
+// thin readiness probe suitable for wiring into a health endpoint.
+func HealthCheck(ctx context.Context, client neo4j.DriverWithContext) error {
+	return client.VerifyConnectivity(ctx)
+}
+
+// verifyContext derives a context for the startup connectivity check, bounded by
+// the socket connect timeout when set so the probe cannot hang indefinitely.
+func verifyContext(timeout time.Duration) (context.Context, context.CancelFunc) {
+	if timeout <= 0 {
+		timeout = 5 * time.Second
+	}
+	return context.WithTimeout(context.Background(), timeout)
 }
 
 // destroyClient closes the Neo4j client.

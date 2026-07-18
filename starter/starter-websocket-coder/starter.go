@@ -44,6 +44,7 @@ func init() {
 // purpose: the options are used to upgrade requests on an existing HTTP
 // server, which owns the listening address and timeouts.
 type Config struct {
+	Subprotocols         []string `value:"${subprotocols:=}"`
 	InsecureSkipVerify   bool     `value:"${insecureSkipVerify:=false}"`
 	OriginPatterns       []string `value:"${originPatterns:=}"`
 	CompressionMode      int      `value:"${compressionMode:=0}"`
@@ -54,6 +55,7 @@ type Config struct {
 // configuration.
 func NewAcceptOptions(cfg Config) *websocket.AcceptOptions {
 	return &websocket.AcceptOptions{
+		Subprotocols:         cfg.Subprotocols,
 		InsecureSkipVerify:   cfg.InsecureSkipVerify,
 		OriginPatterns:       cfg.OriginPatterns,
 		CompressionMode:      websocket.CompressionMode(cfg.CompressionMode),

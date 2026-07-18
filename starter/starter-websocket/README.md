@@ -38,6 +38,11 @@ server, which owns the port and timeouts:
 spring.websocket.handshakeTimeout=10s
 spring.websocket.readBufferSize=1024
 spring.websocket.writeBufferSize=1024
+# Enable permessage-deflate compression.
+spring.websocket.enableCompression=false
+# Origin allowlist matched against the request's Origin header. Empty keeps
+# gorilla's default same-origin policy; a single "*" accepts any origin.
+spring.websocket.allowedOrigins=
 ```
 
 To customize beyond these fields (e.g. `CheckOrigin` or compression), provide

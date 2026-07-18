@@ -17,6 +17,8 @@
 package StarterWebsocket
 
 import (
+	"net/http"
+	"slices"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -41,16 +43,33 @@ func init() {
 // purpose: the upgrader is mounted onto an existing HTTP server, which owns
 // the listening address and timeouts.
 type Config struct {
-	HandshakeTimeout time.Duration `value:"${handshakeTimeout:=10s}"`
-	ReadBufferSize   int           `value:"${readBufferSize:=1024}"`
-	WriteBufferSize  int           `value:"${writeBufferSize:=1024}"`
+	HandshakeTimeout  time.Duration `value:"${handshakeTimeout:=10s}"`
+	ReadBufferSize    int           `value:"${readBufferSize:=1024}"`
+	WriteBufferSize   int           `value:"${writeBufferSize:=1024}"`
+	EnableCompression bool          `value:"${enableCompression:=false}"`
+
+	// AllowedOrigins is an explicit allowlist matched against the request's
+	// Origin header. Empty keeps gorilla's default same-origin policy; a single
+	// "*" entry accepts any origin (use with care).
+	AllowedOrigins []string `value:"${allowedOrigins:=}"`
 }
 
 // NewUpgrader builds a *websocket.Upgrader from ${spring.websocket} configuration.
 func NewUpgrader(cfg Config) *websocket.Upgrader {
-	return &websocket.Upgrader{
-		HandshakeTimeout: cfg.HandshakeTimeout,
-		ReadBufferSize:   cfg.ReadBufferSize,
-		WriteBufferSize:  cfg.WriteBufferSize,
+	u := &websocket.Upgrader{
+		HandshakeTimeout:  cfg.HandshakeTimeout,
+		ReadBufferSize:    cfg.ReadBufferSize,
+		WriteBufferSize:   cfg.WriteBufferSize,
+		EnableCompression: cfg.EnableCompression,
 	}
+	if len(cfg.AllowedOrigins) > 0 {
+		allowed := cfg.AllowedOrigins
+		u.CheckOrigin = func(r *http.Request) bool {
+			if slices.Contains(allowed, "*") {
+				return true
+			}
+			return slices.Contains(allowed, r.Header.Get("Origin"))
+		}
+	}
+	return u
 }

@@ -24,18 +24,32 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sync/atomic"
 	"syscall"
 	"time"
 
 	"github.com/allegro/bigcache/v3"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
-	_ "go-spring.org/starter-bigcache"
+	StarterBigCache "go-spring.org/starter-bigcache"
 )
 
+// removed counts entries evicted from any DefaultDriver-built cache. It proves
+// the OnRemove hook registered via SetOnRemove is wired through the starter.
+var removed int64
+
+func init() {
+	// Register a global eviction/expiry callback. It must be set before the
+	// container starts, since the callback is captured when each cache is built.
+	StarterBigCache.SetOnRemove(func(key string, entry []byte) {
+		atomic.AddInt64(&removed, 1)
+	})
+}
+
 type Service struct {
-	Hot  *bigcache.BigCache `autowire:"hot"`
-	Cold *bigcache.BigCache `autowire:"cold"`
+	Hot   *bigcache.BigCache `autowire:"hot"`
+	Cold  *bigcache.BigCache `autowire:"cold"`
+	Evict *bigcache.BigCache `autowire:"evict"`
 }
 
 func main() {
@@ -123,6 +137,31 @@ func runTest(s *Service) {
 	}
 
 	fmt.Println("Response from server:", "hot len:", s.Hot.Len(), "cold:", string(cv))
+
+	// Feature 4: hit/miss statistics. The hot cache has stats-enabled, so a hit
+	// followed by a miss is reflected in Stats() — the read mechanism for cache
+	// effectiveness monitoring.
+	_, _ = s.Hot.Get("only-cold") // miss (key lives in cold)
+	_ = s.Hot.Set("stat-key", []byte("v"))
+	_, _ = s.Hot.Get("stat-key") // hit
+	st := s.Hot.Stats()
+	fmt.Println("Hot stats:", "hits:", st.Hits, "misses:", st.Misses)
+
+	// Feature 5: OnRemove callback. Overflow the hard-capped `evict` cache so
+	// older entries are evicted, firing the callback registered via SetOnRemove.
+	big := make([]byte, 900)
+	for i := 0; i < 4000; i++ {
+		if err := s.Evict.Set(fmt.Sprintf("k-%d", i), big); err != nil {
+			log.Errorf(ctx, log.TagAppDef, "evict SET failed: %v", err)
+			os.Exit(1)
+		}
+	}
+	if atomic.LoadInt64(&removed) == 0 {
+		log.Errorf(ctx, log.TagAppDef, "expected OnRemove to fire on eviction, got 0")
+		os.Exit(1)
+	}
+	fmt.Println("OnRemove fired:", atomic.LoadInt64(&removed), "times")
+
 	syscall.Kill(os.Getpid(), syscall.SIGTERM)
 }
 

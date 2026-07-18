@@ -33,6 +33,28 @@ type Config struct {
 	TimeZone       string        `value:"${timezone:=}"`       // Timezone, e.g., Asia/Shanghai
 	ConnectTimeout time.Duration `value:"${connectTimeout:=}"` // Connection timeout
 
+	// SSL certificate material. PostgreSQL negotiates TLS through SSLMode; these
+	// paths supply the CA / client certificate / key when a verifying mode or
+	// client-cert auth is used.
+	SSLRootCert string `value:"${sslrootcert:=}"` // Path to CA certificate (PEM)
+	SSLCert     string `value:"${sslcert:=}"`     // Path to client certificate (PEM)
+	SSLKey      string `value:"${sslkey:=}"`      // Path to client private key (PEM)
+
+	// Connection pool tuning. A zero value leaves the database/sql default in
+	// place (see sql.DB.SetMaxOpenConns and friends).
+	MaxOpenConns    int           `value:"${max-open-conns:=0}"`     // Max open connections (0 = unlimited)
+	MaxIdleConns    int           `value:"${max-idle-conns:=0}"`     // Max idle connections (0 = default 2)
+	ConnMaxLifetime time.Duration `value:"${conn-max-lifetime:=0}"`  // Max lifetime of a connection (0 = unlimited)
+	ConnMaxIdleTime time.Duration `value:"${conn-max-idle-time:=0}"` // Max idle time of a connection (0 = unlimited)
+
+	// PingTimeout bounds the startup connectivity check. The client fails fast
+	// during creation if the server cannot be reached within this window.
+	PingTimeout time.Duration `value:"${ping-timeout:=5s}"`
+
+	// SlowThreshold enables GORM slow-query logging when > 0: queries slower than
+	// this are logged at warn level.
+	SlowThreshold time.Duration `value:"${slow-threshold:=0}"`
+
 	// ServiceName is the service discovery name. When set, Host/Port are ignored
 	// and the connection dials a live instance resolved from the discovery backend.
 	ServiceName string `value:"${service-name:=}"`
@@ -59,6 +81,19 @@ func (c Config) DSN() string {
 	sb.WriteString(c.DB)
 	sb.WriteString(" sslmode=")
 	sb.WriteString(c.SSLMode)
+
+	if c.SSLRootCert != "" {
+		sb.WriteString(" sslrootcert=")
+		sb.WriteString(c.SSLRootCert)
+	}
+	if c.SSLCert != "" {
+		sb.WriteString(" sslcert=")
+		sb.WriteString(c.SSLCert)
+	}
+	if c.SSLKey != "" {
+		sb.WriteString(" sslkey=")
+		sb.WriteString(c.SSLKey)
+	}
 
 	if c.TimeZone != "" {
 		sb.WriteString(" TimeZone=")

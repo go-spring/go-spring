@@ -25,6 +25,19 @@ import (
 
 var driverRegistry = map[string]Driver{}
 
+// onRemove is an optional callback fired when an entry leaves the cache
+// (expiry or eviction). It is a global hook shared by every instance built by
+// DefaultDriver; register it with SetOnRemove before the container starts.
+// Per-instance callbacks require a custom Driver.
+var onRemove func(key string, entry []byte)
+
+// SetOnRemove registers a callback invoked whenever DefaultDriver-built caches
+// evict or expire an entry. Pass nil to clear it. Call this before the
+// application starts, since the callback is read when each cache is created.
+func SetOnRemove(fn func(key string, entry []byte)) {
+	onRemove = fn
+}
+
 func init() {
 	RegisterDriver("DefaultDriver", DefaultDriver{})
 }
@@ -87,5 +100,6 @@ func (DefaultDriver) CreateClient(c Config) (*bigcache.BigCache, error) {
 	conf.MaxEntrySize = c.MaxEntrySize
 	conf.HardMaxCacheSize = c.HardMaxCacheSize
 	conf.StatsEnabled = c.StatsEnabled
+	conf.OnRemove = onRemove
 	return bigcache.New(context.Background(), conf)
 }

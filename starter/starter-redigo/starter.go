@@ -42,6 +42,15 @@ func newClient(c Config) (*redis.Pool, error) {
 	if err != nil {
 		return nil, errutil.Explain(err, "failed to create redis client")
 	}
+	// Fail fast: the redigo pool dials lazily, so borrow one connection and
+	// PING it at startup. A misconfigured address or unreachable server then
+	// surfaces during boot rather than on the first request.
+	conn := pool.Get()
+	defer func() { _ = conn.Close() }()
+	if _, err := conn.Do("PING"); err != nil {
+		_ = pool.Close()
+		return nil, errutil.Explain(err, "redis: startup ping failed")
+	}
 	return pool, nil
 }
 

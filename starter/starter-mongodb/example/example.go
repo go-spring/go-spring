@@ -31,7 +31,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 
-	_ "go-spring.org/starter-mongodb"
+	StarterMongoDB "go-spring.org/starter-mongodb"
 )
 
 type Service struct {
@@ -87,8 +87,8 @@ func main() {
 
 func runTest(s *Service) {
 	ctx := context.Background()
-	if err := s.Mongo.Ping(ctx, nil); err != nil {
-		log.Errorf(ctx, log.TagAppDef, "PING failed: %v", err)
+	if err := StarterMongoDB.HealthCheck(ctx, s.Mongo); err != nil {
+		log.Errorf(ctx, log.TagAppDef, "HealthCheck failed: %v", err)
 		os.Exit(1)
 	}
 

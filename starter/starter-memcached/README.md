@@ -65,3 +65,11 @@ The [example.go](example/example.go) program demonstrates and asserts three core
   reference them by name in your project.
 * **Support Memcached extensions**: You can extend Memcached functionality by implementing the `Driver` interface — see
   the example implementation `AnotherMemcachedDriver`.
+* **Startup connection validation (fail-fast)**: after building the client the starter issues a `Ping` against every
+  configured server; an unreachable server fails the boot instead of the first request.
+* **Health check / readiness**: the client's `Ping()` probes all servers and is the readiness signal — call it straight
+  off the autowired client.
+* **Connection pool / timeouts**: `timeout` and `max-idle-conns` map to the client's per-server socket timeout and idle
+  connection pool; both fall back to the driver defaults (100ms / 2) when left at 0.
+* **Authentication**: the `bradfitz/gomemcache` driver does not implement SASL, so no auth fields are exposed. Restrict
+  access at the network layer (VPC/security group) instead.

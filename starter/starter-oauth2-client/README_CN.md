@@ -69,20 +69,31 @@ resp, err := s.Client.Get("https://api.example.com/resource")
 * **支持多个 OAuth2 客户端**:可在配置文件中定义多个客户端(各自独立凭证),按名称引用。
 * **可配置认证方式**:`auth-style` 决定凭证如何发送到 token 端点 —— `auto`(默认)、
   `header`(HTTP Basic)、`params`(请求体参数)。
-* **`oauth2.TokenSource` bean**:除 `*http.Client` 之外,starter 还会为每个
-  `spring.oauth2.client.<name>` 配置项以**相同名称**注册一个 `oauth2.TokenSource`。
-  当你需要直接拿到 bearer token 时(例如注入到 gRPC metadata),按名称注入即可:
+* **`*TokenSource` bean**:除 `*http.Client` 之外,starter 还会为每个
+  `spring.oauth2.client.<name>` 配置项以**相同名称**注册一个
+  `*StarterOAuth2Client.TokenSource`。它实现了 `oauth2.TokenSource`,可直接用于任何
+  需要该接口的场景。当你需要直接拿到 bearer token 时(例如注入到 gRPC metadata),
+  按名称注入即可:
 
   ```go
-  import "golang.org/x/oauth2"
+  import StarterOAuth2Client "go-spring.org/starter-oauth2-client"
 
   type Service struct {
-      TokenSrc oauth2.TokenSource `autowire:"downstream"`
+      TokenSrc *StarterOAuth2Client.TokenSource `autowire:"downstream"`
   }
 
   // tok, err := s.TokenSrc.Token()
   // 使用 tok.AccessToken
   ```
+
+  除 `Token()` 外,它还暴露了缓存 token 的状态,便于观测且不会触发请求:
+
+  | 方法 | 说明 |
+  | --- | --- |
+  | `Token()` | 返回有效 token,按需获取/刷新并缓存。 |
+  | `Peek()` | 返回最近一次观测到的 token,尚未获取时返回 `nil`。 |
+  | `Valid()` | 报告是否已获取到 token 且未过期。 |
+  | `Expiry()` | 返回最近观测 token 的过期时间,没有则返回零值时间。 |
 
 * **附加 token 端点参数(`endpoint-params`)**:部分提供方需要在 token 端点携带额外参数,
   例如 Auth0 的 `audience` 或 Azure AD 的 `resource`。以 map 形式声明,map 的 key

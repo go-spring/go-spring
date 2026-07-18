@@ -60,7 +60,8 @@ reply, _ := s.Conn.Request("demo.rpc", []byte("ping"), time.Second)
 ## 核心功能
 
 [example](example/example.go) 针对真实服务自断言了四项功能：核心发布/订阅、请求-应答、
-队列组（每条消息只投递给一个成员）、以及 JetStream（向 stream 发布后再拉回消息）。
+队列组（每条消息只投递给一个成员）、以及 JetStream（向 stream 发布后再拉回消息）。运行前
+还会检查 `Conn.Healthy()` 报告连接处于可用状态。
 
 连接层事件（异步错误、断连、重连、关闭）会被桥接进 go-spring 日志。
 
@@ -70,3 +71,30 @@ reply, _ := s.Conn.Request("demo.rpc", []byte("ping"), time.Second)
   即可在该实例的 `Conn.JetStream` 上暴露 JetStream 上下文，它派生自同一条连接。
 * **多连接**：`spring.nats.instances` 下的每一项都会成为一个独立配置的 `*Conn` bean，
   按名称注入即可访问不同的集群或 JetStream 域。
+* **健康检查**：`Conn.Healthy()` 反映自动重连客户端的实时状态，健康/就绪探针可随时查询，
+  无需只依赖连接事件日志。
+* **鉴权**：除用户名/密码与 token 外，还支持 NATS 2.x 去中心化鉴权——凭据文件
+  （`creds-file`）或 nkey seed 文件（`nkey-file`）。
+* **TLS**：设置 `spring.nats.instances.<name>.tls.enabled=true` 即可协商 TLS，可选地指定
+  CA 证书（`tls.ca-file`）并提供客户端证书（`tls.cert-file`/`tls.key-file`）以实现双向 TLS。
+
+## 配置项
+
+`spring.nats.instances.<name>` 下每条连接读取以下配置：
+
+| 配置项 | 默认值 | 说明 |
+| --- | --- | --- |
+| `url` | （必填） | NATS 服务 URL，集群可用逗号分隔多个。 |
+| `name` | `` | 上报给服务端的连接名。 |
+| `username` / `password` | `` | 用户名/密码鉴权。 |
+| `token` | `` | token 鉴权（用户名/密码的替代方案）。 |
+| `creds-file` | `` | NATS 凭据文件（JWT + nkey seed）路径，用于去中心化鉴权。 |
+| `nkey-file` | `` | nkey seed 文件路径（`creds-file` 的替代方案）。 |
+| `tls.enabled` | `false` | 为连接协商 TLS。 |
+| `tls.ca-file` | `` | 校验服务端证书的 PEM CA 包；为空时用系统根证书。 |
+| `tls.cert-file` / `tls.key-file` | `` | 双向 TLS 的客户端证书与私钥（须同时设置）。 |
+| `tls.insecure-skip-verify` | `false` | 关闭服务端证书校验（仅测试用）。 |
+| `max-reconnects` | `60` | 最大重连次数；`-1` 表示无限。 |
+| `reconnect-wait` | `2s` | 每次重连之间的等待时长。 |
+| `connect-timeout` | `5s` | 初次拨号的超时上限。 |
+| `jetstream.enabled` | `false` | 在 `Conn.JetStream` 上暴露 JetStream 上下文。 |

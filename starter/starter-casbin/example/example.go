@@ -22,20 +22,22 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sync"
 	"syscall"
 	"time"
 
-	"github.com/casbin/casbin/v2"
+	fileadapter "github.com/casbin/casbin/v2/persist/file-adapter"
 	"go-spring.org/spring/gs"
 
-	_ "go-spring.org/starter-casbin"
+	StarterCasbin "go-spring.org/starter-casbin"
 )
 
 // Service consumes the Casbin enforcer purely by injection. The bean is named
 // after its config group key (${spring.casbin.rbac.*} -> "rbac"), so we bind it
-// with `autowire:"rbac"`.
+// with `autowire:"rbac"`. The bean type is the starter's *Enforcer wrapper,
+// which embeds *casbin.Enforcer, so Enforce and friends are used directly.
 type Service struct {
-	Enforcer *casbin.Enforcer `autowire:"rbac"`
+	Enforcer *StarterCasbin.Enforcer `autowire:"rbac"`
 }
 
 // Allowed answers whether subject sub may perform act on obj.
@@ -48,7 +50,49 @@ func (s *Service) Allowed(sub, obj, act string) bool {
 	return ok
 }
 
+// policyPath is a runtime-owned copy of the policy, used to prove hot reload
+// without mutating the checked-in fixture.
+var policyPath string
+
+// watcher is the demo persist.Watcher registered under "local". A production
+// deployment would register a distributed watcher (Redis, etcd, ...) whose
+// remote updates fire the callback; here we invoke it directly to prove the
+// enforcer reloads its policy on signal.
+var watcher = &localWatcher{}
+
+// localWatcher is a minimal persist.Watcher: it records the enforcer's reload
+// callback and lets the example trigger it via Update, standing in for a
+// cross-instance change notification.
+type localWatcher struct {
+	mu sync.Mutex
+	cb func(string)
+}
+
+func (w *localWatcher) SetUpdateCallback(cb func(string)) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.cb = cb
+	return nil
+}
+
+func (w *localWatcher) Update() error {
+	w.mu.Lock()
+	cb := w.cb
+	w.mu.Unlock()
+	if cb != nil {
+		cb("")
+	}
+	return nil
+}
+
+func (w *localWatcher) Close() {}
+
 func main() {
+	// Seed a writable policy file from the checked-in fixture and register the
+	// adapter + watcher the config points at, before the container starts.
+	seedPolicy()
+	StarterCasbin.RegisterAdapter("file", fileadapter.NewAdapter(policyPath))
+	StarterCasbin.RegisterWatcher("local", watcher)
 
 	// Here `s` is not referenced by any other object,
 	// so we need to register it as a root object.
@@ -81,6 +125,7 @@ func main() {
 }
 
 func runTest(s *Service) {
+	// Policies loaded through the registered file adapter.
 	// alice is admin -> read+write allowed.
 	if !s.Allowed("alice", "/data", "read") {
 		fmt.Fprintln(os.Stderr, "expected alice read allowed")
@@ -99,14 +144,59 @@ func runTest(s *Service) {
 		fmt.Fprintln(os.Stderr, "expected bob write denied")
 		os.Exit(1)
 	}
-	// unknown subject -> denied.
+	// carol is unknown -> denied for now.
 	if s.Allowed("carol", "/data", "read") {
 		fmt.Fprintln(os.Stderr, "expected carol read denied")
 		os.Exit(1)
 	}
 
-	fmt.Println("Response from server: casbin rbac enforced ok")
+	// Hot reload: grant carol the admin role in the backing store, then signal
+	// the watcher. The enforcer's callback reloads the policy, so carol is now
+	// allowed — without restarting the app.
+	appendPolicy("g, carol, admin")
+	if err := watcher.Update(); err != nil {
+		fmt.Fprintln(os.Stderr, "watcher update failed:", err)
+		os.Exit(1)
+	}
+	if !s.Allowed("carol", "/data", "read") {
+		fmt.Fprintln(os.Stderr, "expected carol read allowed after hot reload")
+		os.Exit(1)
+	}
+
+	fmt.Println("Response from server: casbin rbac enforced ok, hot reload applied")
 	syscall.Kill(os.Getpid(), syscall.SIGTERM)
+}
+
+// seedPolicy copies the checked-in policy into a temp file the example can
+// mutate at runtime, leaving the fixture untouched.
+func seedPolicy() {
+	src, err := os.ReadFile("./conf/policy.csv")
+	if err != nil {
+		panic(err)
+	}
+	f, err := os.CreateTemp("", "casbin-policy-*.csv")
+	if err != nil {
+		panic(err)
+	}
+	if _, err := f.Write(src); err != nil {
+		panic(err)
+	}
+	_ = f.Close()
+	policyPath = f.Name()
+}
+
+// appendPolicy adds a policy line to the backing store used by the adapter.
+func appendPolicy(line string) {
+	f, err := os.OpenFile(policyPath, os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "append policy failed:", err)
+		os.Exit(1)
+	}
+	defer func() { _ = f.Close() }()
+	if _, err := fmt.Fprintln(f, line); err != nil {
+		fmt.Fprintln(os.Stderr, "append policy failed:", err)
+		os.Exit(1)
+	}
 }
 
 // ----------------------------------------------------------------------------

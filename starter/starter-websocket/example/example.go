@@ -148,7 +148,13 @@ func main() {
 
 func runTest() {
 	ctx := context.Background()
-	authHeader := http.Header{"X-App": []string{"go-spring"}}
+	// Carry the X-App header the middleware requires, plus an Origin that
+	// matches spring.websocket.allowedOrigins so the upgrader's origin check
+	// accepts the handshake.
+	authHeader := http.Header{
+		"X-App":  []string{"go-spring"},
+		"Origin": []string{"http://127.0.0.1:9696"},
+	}
 
 	// Feature 1: text echo on /echo (middleware allowed).
 	echoConn, _, err := websocket.DefaultDialer.Dial("ws://127.0.0.1:9696/echo", authHeader)

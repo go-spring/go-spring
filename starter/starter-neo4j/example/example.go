@@ -111,6 +111,12 @@ func main() {
 func runTest(s *Service) {
 	ctx := context.Background()
 
+	// Feature 0: readiness probe — verify connectivity before exercising queries.
+	if err := StarterNeo4j.HealthCheck(ctx, s.Neo4j); err != nil {
+		log.Errorf(ctx, log.TagAppDef, "HealthCheck failed: %v", err)
+		os.Exit(1)
+	}
+
 	// Feature 1: CREATE / MERGE a node with properties.
 	if _, err := s.query(ctx,
 		"MERGE (p:Person {name: $name}) SET p.age = $age RETURN p",

@@ -31,6 +31,26 @@ import StarterGrpc "go-spring.org/starter-grpc"
 ```properties
 spring.http.server.enabled=false
 spring.grpc.server.addr=:9494
+
+# 消息大小上限与并发限制（0 表示使用 gRPC 默认值）。
+spring.grpc.server.maxRecvMsgSize=4194304
+spring.grpc.server.maxSendMsgSize=4194304
+spring.grpc.server.maxConcurrentStreams=100
+spring.grpc.server.connectionTimeout=0
+
+# 服务端 keepalive 策略（0 表示保持 gRPC 默认值）。
+spring.grpc.server.keepalive.time=2h
+spring.grpc.server.keepalive.timeout=20s
+spring.grpc.server.keepalive.maxConnectionIdle=0
+spring.grpc.server.keepalive.maxConnectionAge=0
+
+# 标准 grpc_health_v1 健康检查服务（默认开启）。
+spring.grpc.server.health.enabled=true
+
+# 传输层 TLS：启用并指定 PEM 证书/私钥路径。
+spring.grpc.server.tls.enabled=false
+spring.grpc.server.tls.certFile=
+spring.grpc.server.tls.keyFile=
 ```
 
 ### 3. 注册 gRPC 服务

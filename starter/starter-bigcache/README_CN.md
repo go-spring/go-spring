@@ -62,3 +62,6 @@ value, err := s.Cache.Get("key")
 
 * **支持多个 BigCache 实例**：你可以在配置文件中定义多个 BigCache 实例，并在项目中按名称引用它们。
 * **支持 BigCache 扩展**：你可以通过实现 `Driver` 接口来扩展 BigCache 的创建逻辑。
+* **命中率统计**：设置 `stats-enabled=true` 后读取 `cache.Stats()` 获取命中/未命中/冲突计数，用于监控缓存效果。
+* **淘汰/过期回调**：在启动前调用 `StarterBigCache.SetOnRemove(fn)`，当条目被淘汰或过期时收到通知。该回调为所有 DefaultDriver 构建的缓存共享的全局钩子；按实例定制需自定义 `Driver`。
+* **优雅关闭**：destroy 回调会调用 `Close()`，停止后台清理 goroutine。

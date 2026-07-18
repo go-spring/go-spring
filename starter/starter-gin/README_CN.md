@@ -33,6 +33,24 @@ import _ "go-spring.org/starter-gin"
 spring.http.server.enabled=false
 # 本示例中 starter-gin 默认监听 :8001。
 spring.gin.server.addr=:8001
+
+# 超时（继承自 SimpleHttpServerConfig）。
+spring.gin.server.readTimeout=5s
+spring.gin.server.headerTimeout=1s
+spring.gin.server.writeTimeout=5s
+spring.gin.server.idleTimeout=60s
+
+# 请求体大小上限（字节，0 表示不限制）。
+spring.gin.server.maxBodySize=1048576
+
+# 可选的、由 starter 提供的存活探针端点。
+spring.gin.server.health.enabled=true
+spring.gin.server.health.path=/healthz
+
+# HTTPS：启用并指定 PEM 证书/私钥路径。
+spring.gin.server.tls.enabled=false
+spring.gin.server.tls.certFile=
+spring.gin.server.tls.keyFile=
 ```
 
 当 `spring.gin.server.enabled` 为 `true`（默认）且应用提供了 `RouterRegister` Bean 时，

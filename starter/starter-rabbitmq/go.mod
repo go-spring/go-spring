@@ -6,6 +6,7 @@ require (
 	github.com/rabbitmq/amqp091-go v1.10.0
 	go-spring.org/log v0.1.4
 	go-spring.org/spring v1.3.4
+	go-spring.org/stdlib v0.1.7
 )
 
 require (
@@ -21,7 +22,6 @@ require (
 	github.com/smartystreets/goconvey v1.8.1 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
 	go-spring.org/gs-mock v0.0.9 // indirect
-	go-spring.org/stdlib v0.1.7 // indirect
 	golang.org/x/arch v0.26.0 // indirect
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
 	golang.org/x/sys v0.44.0 // indirect

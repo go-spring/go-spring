@@ -64,3 +64,8 @@ str, err := s.Redis.Set(r.Context(), "key", "value", 0).Result()
 
 * **支持多 Redis 实例**：可以在配置文件中定义多个 Redis 实例，并在项目中使用 name 进行引用。
 * **支持 Redis 扩展**：可以通过实现 `Driver` 接口来扩展 Redis 功能，参见示例中的 `AnotherRedisDriver` 实现。
+* **启动期连接校验（fail-fast）**：创建客户端后会执行一次 `Ping`，地址配置错误或服务不可达时启动即失败，而非等到首次请求。
+* **健康检查 / readiness**：go-redis 客户端自带 `Ping(ctx)`，可直接在注入的客户端上调用做健康探测。
+* **连接池运行时监控**：`client.PoolStats()` 返回连接池实时计数（命中、未命中、总连接/空闲连接）。
+* **TLS**：开启 `tls.enabled` 并提供 `ca-file`（双向 TLS 再加 `cert-file`/`key-file`）即可通过 TLS 连接 Redis，
+  详见 [app.properties](example/conf/app.properties) 中的注释示例。

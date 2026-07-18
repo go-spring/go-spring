@@ -56,6 +56,23 @@ Go-Spring 内置 HTTP 服务（Hertz 自己管理监听器）：
 ```properties
 spring.http.server.enabled=false
 spring.hertz.server.addr=127.0.0.1:8003
+
+# 超时（命名对齐 SimpleHttpServerConfig，通过 Hertz 选项应用）。
+spring.hertz.server.readTimeout=5s
+spring.hertz.server.writeTimeout=5s
+spring.hertz.server.idleTimeout=60s
+
+# 请求体大小上限（字节，0 表示使用 Hertz 默认值）。
+spring.hertz.server.maxBodySize=1048576
+
+# 可选的、由 starter 提供的存活探针端点。
+spring.hertz.server.health.enabled=true
+spring.hertz.server.health.path=/healthz
+
+# HTTPS：启用并指定 PEM 证书/私钥路径。
+spring.hertz.server.tls.enabled=false
+spring.hertz.server.tls.certFile=
+spring.hertz.server.tls.keyFile=
 ```
 
 ### 4. 运行应用

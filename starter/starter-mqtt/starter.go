@@ -17,7 +17,10 @@
 package StarterMQTT
 
 import (
+	"context"
+
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 )
 
@@ -31,6 +34,8 @@ func init() {
 
 // newClient creates and connects an MQTT client based on the provided configuration.
 func newClient(c Config) (mqtt.Client, error) {
+	ctx := context.Background()
+
 	opts := mqtt.NewClientOptions().
 		AddBroker(c.Broker).
 		SetClientID(c.ClientID).
@@ -39,6 +44,30 @@ func newClient(c Config) (mqtt.Client, error) {
 		SetCleanSession(c.CleanSession).
 		SetKeepAlive(c.KeepAlive).
 		SetConnectTimeout(c.ConnectTimeout)
+
+	// Bridge connection-lifecycle events into go-spring's log so the client's
+	// health (default auto-reconnect stays on) shows up alongside app logs.
+	opts.SetOnConnectHandler(func(_ mqtt.Client) {
+		log.Infof(ctx, log.TagAppDef, "mqtt connected to %q", c.Broker)
+	})
+	opts.SetConnectionLostHandler(func(_ mqtt.Client, err error) {
+		log.Warnf(ctx, log.TagAppDef, "mqtt connection lost: %v", err)
+	})
+	opts.SetReconnectingHandler(func(_ mqtt.Client, _ *mqtt.ClientOptions) {
+		log.Infof(ctx, log.TagAppDef, "mqtt reconnecting to %q", c.Broker)
+	})
+
+	tlsCfg, err := c.TLS.tlsConfig()
+	if err != nil {
+		return nil, err
+	}
+	if tlsCfg != nil {
+		opts.SetTLSConfig(tlsCfg)
+	}
+
+	if c.Will.Topic != "" {
+		opts.SetWill(c.Will.Topic, c.Will.Payload, c.Will.QoS, c.Will.Retained)
+	}
 
 	client := mqtt.NewClient(opts)
 	token := client.Connect()

@@ -37,6 +37,17 @@ type Config struct {
 	// default is empty.
 	Token string `value:"${token:=}"`
 
+	// CredsFile is the path to a NATS credentials file (JWT + nkey seed),
+	// used for decentralized (NATS 2.x / NGS) auth. Default is empty.
+	CredsFile string `value:"${creds-file:=}"`
+
+	// NKeyFile is the path to an nkey seed file used for nkey auth,
+	// an alternative to CredsFile. Default is empty.
+	NKeyFile string `value:"${nkey-file:=}"`
+
+	// TLS configures the transport security for the connection.
+	TLS TLSConfig `value:"${tls}"`
+
 	// MaxReconnects is the maximum number of reconnect attempts,
 	// -1 means unlimited, default is 60.
 	MaxReconnects int `value:"${max-reconnects:=60}"`
@@ -49,6 +60,27 @@ type Config struct {
 
 	// JetStream configures the JetStream context derived from this connection.
 	JetStream JetStreamConfig `value:"${jetstream}"`
+}
+
+// TLSConfig configures transport security for the NATS connection. When Enabled
+// is true the client negotiates TLS; the remaining fields are optional and only
+// consulted while Enabled is true.
+type TLSConfig struct {
+	// Enabled turns on TLS for the connection, default is false.
+	Enabled bool `value:"${enabled:=false}"`
+
+	// CAFile is the path to a PEM CA bundle used to verify the server
+	// certificate. When empty the system root pool is used.
+	CAFile string `value:"${ca-file:=}"`
+
+	// CertFile and KeyFile are the client certificate and key used for
+	// mutual TLS. Both must be set together, default is empty.
+	CertFile string `value:"${cert-file:=}"`
+	KeyFile  string `value:"${key-file:=}"`
+
+	// InsecureSkipVerify disables server certificate verification. It is
+	// intended for testing only and must not be used in production.
+	InsecureSkipVerify bool `value:"${insecure-skip-verify:=false}"`
 }
 
 // JetStreamConfig configures the JetStream context. When Enabled is true a

@@ -31,6 +31,26 @@ Add gRPC configuration in your project's [configuration file](example/conf/app.p
 ```properties
 spring.http.server.enabled=false
 spring.grpc.server.addr=:9494
+
+# Message-size caps and concurrency limits (0 keeps the gRPC default).
+spring.grpc.server.maxRecvMsgSize=4194304
+spring.grpc.server.maxSendMsgSize=4194304
+spring.grpc.server.maxConcurrentStreams=100
+spring.grpc.server.connectionTimeout=0
+
+# Server-side keepalive enforcement (0 leaves gRPC defaults intact).
+spring.grpc.server.keepalive.time=2h
+spring.grpc.server.keepalive.timeout=20s
+spring.grpc.server.keepalive.maxConnectionIdle=0
+spring.grpc.server.keepalive.maxConnectionAge=0
+
+# Standard grpc_health_v1 health service (on by default).
+spring.grpc.server.health.enabled=true
+
+# Transport TLS: enable and point at a PEM cert/key pair.
+spring.grpc.server.tls.enabled=false
+spring.grpc.server.tls.certFile=
+spring.grpc.server.tls.keyFile=
 ```
 
 ### 3. Register your service

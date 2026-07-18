@@ -19,11 +19,16 @@ package StarterGrpc
 import (
 	"context"
 	"net"
+	"time"
 
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/health"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/keepalive"
 )
 
 func init() {
@@ -45,9 +50,40 @@ func init() {
 // ServiceRegister registers services on a grpc.Server.
 type ServiceRegister func(svr *grpc.Server)
 
+// TLSConfig enables transport-level TLS by pointing at a PEM certificate/key
+// pair. When Enabled is false the server accepts plaintext connections.
+type TLSConfig struct {
+	Enabled  bool   `value:"${enabled:=false}"`
+	CertFile string `value:"${certFile:=}"`
+	KeyFile  string `value:"${keyFile:=}"`
+}
+
+// KeepaliveConfig tunes server-side keepalive enforcement. Zero values leave
+// the corresponding gRPC default in place.
+type KeepaliveConfig struct {
+	Time              time.Duration `value:"${time:=0}"`
+	Timeout           time.Duration `value:"${timeout:=0}"`
+	MaxConnectionIdle time.Duration `value:"${maxConnectionIdle:=0}"`
+	MaxConnectionAge  time.Duration `value:"${maxConnectionAge:=0}"`
+}
+
+// HealthConfig toggles the standard grpc_health_v1 health service. It is
+// enabled by default because it is the conventional way to expose gRPC
+// readiness to load balancers and probes.
+type HealthConfig struct {
+	Enabled bool `value:"${enabled:=true}"`
+}
+
 // Config defines gRPC server configuration.
 type Config struct {
-	Addr string `value:"${addr:=:9494}"`
+	Addr                 string          `value:"${addr:=:9494}"`
+	ConnectionTimeout    time.Duration   `value:"${connectionTimeout:=0}"`
+	MaxRecvMsgSize       int             `value:"${maxRecvMsgSize:=0}"`
+	MaxSendMsgSize       int             `value:"${maxSendMsgSize:=0}"`
+	MaxConcurrentStreams uint32          `value:"${maxConcurrentStreams:=0}"`
+	Keepalive            KeepaliveConfig `value:"${keepalive}"`
+	TLS                  TLSConfig       `value:"${tls}"`
+	Health               HealthConfig    `value:"${health}"`
 }
 
 // SimpleGrpcServer adapts a grpc.Server to the Go-Spring server lifecycle.
@@ -62,9 +98,58 @@ func NewSimpleGrpcServer(cfg Config, reg ServiceRegister) *SimpleGrpcServer {
 	return &SimpleGrpcServer{cfg: cfg, reg: reg}
 }
 
+// buildOptions translates the bound Config into grpc.ServerOption values.
+func (s *SimpleGrpcServer) buildOptions() ([]grpc.ServerOption, error) {
+	var opts []grpc.ServerOption
+	if s.cfg.ConnectionTimeout > 0 {
+		opts = append(opts, grpc.ConnectionTimeout(s.cfg.ConnectionTimeout))
+	}
+	if s.cfg.MaxRecvMsgSize > 0 {
+		opts = append(opts, grpc.MaxRecvMsgSize(s.cfg.MaxRecvMsgSize))
+	}
+	if s.cfg.MaxSendMsgSize > 0 {
+		opts = append(opts, grpc.MaxSendMsgSize(s.cfg.MaxSendMsgSize))
+	}
+	if s.cfg.MaxConcurrentStreams > 0 {
+		opts = append(opts, grpc.MaxConcurrentStreams(s.cfg.MaxConcurrentStreams))
+	}
+
+	ka := s.cfg.Keepalive
+	if ka.Time > 0 || ka.Timeout > 0 || ka.MaxConnectionIdle > 0 || ka.MaxConnectionAge > 0 {
+		opts = append(opts, grpc.KeepaliveParams(keepalive.ServerParameters{
+			Time:              ka.Time,
+			Timeout:           ka.Timeout,
+			MaxConnectionIdle: ka.MaxConnectionIdle,
+			MaxConnectionAge:  ka.MaxConnectionAge,
+		}))
+	}
+
+	if s.cfg.TLS.Enabled {
+		creds, err := credentials.NewServerTLSFromFile(s.cfg.TLS.CertFile, s.cfg.TLS.KeyFile)
+		if err != nil {
+			return nil, errutil.Explain(err, "failed to load TLS key pair")
+		}
+		opts = append(opts, grpc.Creds(creds))
+	}
+	return opts, nil
+}
+
 // Run starts the gRPC server after Go-Spring signals readiness.
 func (s *SimpleGrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
-	s.svr = grpc.NewServer()
+	opts, err := s.buildOptions()
+	if err != nil {
+		return err
+	}
+	s.svr = grpc.NewServer(opts...)
+
+	// Mount the standard health service so probes and load balancers can query
+	// serving status via grpc_health_v1.
+	if s.cfg.Health.Enabled {
+		hs := health.NewServer()
+		healthpb.RegisterHealthServer(s.svr, hs)
+		hs.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
+	}
+
 	s.reg(s.svr)
 
 	listener, err := net.Listen("tcp", s.cfg.Addr)

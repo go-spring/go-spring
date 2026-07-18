@@ -64,3 +64,9 @@ The [example.go](example/example.go) program demonstrates and asserts three core
 * **Supports multiple BigCache instances**: You can define multiple BigCache instances in the configuration file and
   reference them by name in your project.
 * **Support BigCache extensions**: You can extend BigCache creation by implementing the `Driver` interface.
+* **Hit/miss statistics**: set `stats-enabled=true` and read `cache.Stats()` for hit/miss/collision counters — the
+  read mechanism for cache-effectiveness monitoring.
+* **Eviction/expiry callback**: register `StarterBigCache.SetOnRemove(fn)` before startup to be notified when an entry
+  is evicted or expires. It is a global hook shared by every DefaultDriver-built cache; per-instance callbacks require a
+  custom `Driver`.
+* **Graceful shutdown**: the destroy callback calls `Close()`, stopping the background cleaner goroutine.

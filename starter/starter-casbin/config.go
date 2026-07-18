@@ -19,6 +19,18 @@ package StarterCasbin
 // Config holds the configuration parameters for a Casbin enforcer.
 type Config struct {
 	Model    string `value:"${model}"`          // Path to the model file (model.conf)
-	Policy   string `value:"${policy}"`         // Path to the policy file (policy.csv)
-	AutoSave bool   `value:"${autoSave:=true}"` // Whether policy mutations are persisted back to the policy file
+	Policy   string `value:"${policy:=}"`       // Path to the policy file (policy.csv); ignored when Adapter is set
+	AutoSave bool   `value:"${autoSave:=true}"` // Whether policy mutations are persisted back to the storage
+
+	// Adapter names a persist.Adapter previously registered with
+	// RegisterAdapter. When set, the enforcer loads/saves policies through that
+	// adapter (DB, file, ...) instead of the Policy file. Empty means use the
+	// file adapter backed by Policy.
+	Adapter string `value:"${adapter:=}"`
+
+	// Watcher names a persist.Watcher previously registered with
+	// RegisterWatcher. When set, the enforcer reloads its policy whenever the
+	// watcher signals a change from another instance, enabling hot reload and
+	// multi-instance synchronization. Empty means no watcher.
+	Watcher string `value:"${watcher:=}"`
 }

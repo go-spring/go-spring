@@ -61,6 +61,11 @@ func fail(format string, args ...any) {
 }
 
 func runTest(s *Service) {
+	// Feature 0: health — both connections report a live status via Healthy().
+	if !s.Main.Healthy() || !s.Work.Healthy() {
+		fail("connection not healthy: main=%v work=%v", s.Main.Healthy(), s.Work.Healthy())
+	}
+
 	// Feature 1: core pub/sub round-trip.
 	{
 		received := make(chan string, 1)

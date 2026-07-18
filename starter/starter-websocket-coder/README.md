@@ -41,6 +41,8 @@ There is no server address here — the options are applied when upgrading on an
 existing HTTP server, which owns the port and timeouts:
 
 ```properties
+# Subprotocols the server is willing to negotiate.
+spring.websocket.subprotocols=echo.v1
 spring.websocket.insecureSkipVerify=false
 spring.websocket.originPatterns=chat.example.com
 spring.websocket.compressionMode=0

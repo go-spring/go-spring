@@ -31,6 +31,7 @@ import (
 	"go-spring.org/starter-grpc/example/idl/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/metadata"
 )
 
@@ -168,6 +169,20 @@ func runTest() {
 	// (or panicked reading incoming metadata) the Echo above would have
 	// failed. Reaching this point means it ran and passed the request
 	// through cleanly.
+
+	// Server hardening: the starter mounts the standard grpc_health_v1 service
+	// (spring.grpc.server.health.enabled defaults to true). Probe it and assert
+	// the server reports SERVING.
+	healthResp, err := healthpb.NewHealthClient(conn).Check(ctx, &healthpb.HealthCheckRequest{})
+	if err != nil {
+		log.Errorf(ctx, log.TagAppDef, "health check failed: %v", err)
+		os.Exit(1)
+	}
+	fmt.Println("Health status:", healthResp.Status)
+	if healthResp.Status != healthpb.HealthCheckResponse_SERVING {
+		log.Errorf(ctx, log.TagAppDef, "unexpected health status: %v", healthResp.Status)
+		os.Exit(1)
+	}
 
 	syscall.Kill(os.Getpid(), syscall.SIGTERM)
 }

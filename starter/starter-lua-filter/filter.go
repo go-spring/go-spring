@@ -21,6 +21,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	lua "github.com/yuin/gopher-lua"
 	"github.com/yuin/gopher-lua/parse"
@@ -33,25 +34,56 @@ import (
 // script, and can inspect the request, mutate response headers, short-circuit
 // with deny(), or simply fall through to the wrapped handler.
 type Filter struct {
-	name  string
-	proto *lua.FunctionProto
-	pool  sync.Pool
+	name   string
+	script string
+	proto  atomic.Pointer[lua.FunctionProto] // swapped atomically by Reload
+	pool   sync.Pool
+
+	mu     sync.Mutex    // guards states
+	states []*lua.LState // every VM the pool has created, closed on destroy
 }
 
 // newFilter compiles the Lua script referenced by the config into a reusable
 // function prototype and prepares a pool of sandboxed VMs.
 func newFilter(c Config) (*Filter, error) {
-	src, err := os.ReadFile(c.Script)
+	proto, err := compileFile(c.Script)
 	if err != nil {
-		return nil, errutil.Explain(err, "lua filter: read script %s", c.Script)
+		return nil, err
 	}
-	proto, err := compile(string(src), c.Script)
-	if err != nil {
-		return nil, errutil.Explain(err, "lua filter: compile script %s", c.Script)
+	f := &Filter{name: c.Script, script: c.Script}
+	f.proto.Store(proto)
+	f.pool.New = func() any {
+		L := newSandbox()
+		f.mu.Lock()
+		f.states = append(f.states, L)
+		f.mu.Unlock()
+		return L
 	}
-	f := &Filter{name: c.Script, proto: proto}
-	f.pool.New = func() any { return newSandbox() }
 	return f, nil
+}
+
+// Reload recompiles the script from disk and atomically swaps it in. In-flight
+// requests finish against the previous prototype; subsequent requests pick up
+// the new one. It returns an error (leaving the running script untouched) if the
+// new source fails to compile, so a bad edit can never take the filter down.
+func (f *Filter) Reload() error {
+	proto, err := compileFile(f.script)
+	if err != nil {
+		return err
+	}
+	f.proto.Store(proto)
+	return nil
+}
+
+// destroy closes every VM the pool handed out, releasing the resources held by
+// the Lua runtimes. It runs at container shutdown.
+func (f *Filter) destroy() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, L := range f.states {
+		L.Close()
+	}
+	f.states = nil
 }
 
 // Wrap returns an http.Handler that runs the Lua script before delegating to
@@ -68,7 +100,7 @@ func (f *Filter) Wrap(next http.Handler) http.Handler {
 		st := &reqState{r: r, w: w}
 		f.install(L, st)
 
-		L.Push(L.NewFunctionFromProto(f.proto))
+		L.Push(L.NewFunctionFromProto(f.proto.Load()))
 		if err := L.PCall(0, 0, nil); err != nil {
 			http.Error(w, "lua filter error: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -128,13 +160,22 @@ func (f *Filter) install(L *lua.LState, st *reqState) {
 	}))
 }
 
-// compile parses and compiles Lua source into a reusable function prototype.
-func compile(source, name string) (*lua.FunctionProto, error) {
-	chunk, err := parse.Parse(strings.NewReader(source), name)
+// compileFile reads and compiles a Lua source file into a reusable function
+// prototype.
+func compileFile(path string) (*lua.FunctionProto, error) {
+	src, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
+		return nil, errutil.Explain(err, "lua filter: read script %s", path)
 	}
-	return lua.Compile(chunk, name)
+	chunk, err := parse.Parse(strings.NewReader(string(src)), path)
+	if err != nil {
+		return nil, errutil.Explain(err, "lua filter: compile script %s", path)
+	}
+	proto, err := lua.Compile(chunk, path)
+	if err != nil {
+		return nil, errutil.Explain(err, "lua filter: compile script %s", path)
+	}
+	return proto, nil
 }
 
 // newSandbox builds a restricted Lua VM: only pure-computation libraries are

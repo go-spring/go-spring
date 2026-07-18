@@ -24,6 +24,20 @@ import (
 
 var driverRegistry = map[string]Driver{}
 
+// panicHandler is an optional handler invoked when a task submitted to a
+// DefaultDriver-built pool panics. It is a global hook shared by every such
+// pool; register it with SetPanicHandler before the container starts. Without
+// it, ants re-panics on the worker goroutine. Per-pool handlers require a
+// custom Driver.
+var panicHandler func(any)
+
+// SetPanicHandler registers a handler invoked when a task panics on any
+// DefaultDriver-built pool. Pass nil to clear it. Call this before the
+// application starts, since the handler is read when each pool is created.
+func SetPanicHandler(fn func(any)) {
+	panicHandler = fn
+}
+
 func init() {
 	RegisterDriver("DefaultDriver", DefaultDriver{})
 }
@@ -85,5 +99,6 @@ func (DefaultDriver) CreatePool(c Config) (*ants.Pool, error) {
 		ants.WithMaxBlockingTasks(c.MaxBlockingTasks),
 		ants.WithNonblocking(c.Nonblocking),
 		ants.WithDisablePurge(c.DisablePurge),
+		ants.WithPanicHandler(panicHandler),
 	)
 }

@@ -32,7 +32,7 @@ import (
 	"go-spring.org/spring/gs"
 	"golang.org/x/oauth2"
 
-	_ "go-spring.org/starter-oauth2-client"
+	StarterOAuth2Client "go-spring.org/starter-oauth2-client"
 )
 
 // issuedToken is the access token the fake authorization server hands out and
@@ -48,9 +48,9 @@ const expectedAudience = "https://api.example.com"
 // is injected by that name. The starter also registers an oauth2.TokenSource
 // under the same name, and an *oauth2.Config for the "login" authcode entry.
 type Service struct {
-	Client   *http.Client       `autowire:"downstream"`
-	TokenSrc oauth2.TokenSource `autowire:"downstream"`
-	OAuth    *oauth2.Config     `autowire:"login"`
+	Client   *http.Client                     `autowire:"downstream"`
+	TokenSrc *StarterOAuth2Client.TokenSource `autowire:"downstream"`
+	OAuth    *oauth2.Config                   `autowire:"login"`
 }
 
 // startAuthServer runs a minimal client-credentials token endpoint on :9401.
@@ -137,6 +137,17 @@ func runTest(s *Service) {
 		os.Exit(1)
 	}
 
+	// Feature 2b: after a fetch, the cached token is observable without forcing
+	// another round-trip to the auth server.
+	if !s.TokenSrc.Valid() {
+		log.Errorf(ctx, log.TagAppDef, "expected cached token to be valid")
+		os.Exit(1)
+	}
+	if peek := s.TokenSrc.Peek(); peek == nil || peek.AccessToken != issuedToken {
+		log.Errorf(ctx, log.TagAppDef, "unexpected peeked token: %+v", peek)
+		os.Exit(1)
+	}
+
 	// Feature 3: the authorization_code config builds a redirect URL.
 	authURL := s.OAuth.AuthCodeURL("xyz-state")
 	if !strings.Contains(authURL, "client_id=web-client") ||
@@ -148,6 +159,7 @@ func runTest(s *Service) {
 
 	fmt.Println("Response from protected resource:", string(body))
 	fmt.Println("Token from TokenSource:", tok.AccessToken)
+	fmt.Println("Token expiry (observed):", s.TokenSrc.Expiry())
 	fmt.Println("Authorization Code URL:", authURL)
 	syscall.Kill(os.Getpid(), syscall.SIGTERM)
 }

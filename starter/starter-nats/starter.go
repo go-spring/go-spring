@@ -18,6 +18,7 @@ package StarterNats
 
 import (
 	"context"
+	"crypto/tls"
 
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
@@ -33,6 +34,14 @@ import (
 type Conn struct {
 	*nats.Conn
 	JetStream jetstream.JetStream
+}
+
+// Healthy reports whether the connection is currently established. It reflects
+// the live state of the auto-reconnecting client, so callers (health probes,
+// readiness endpoints) can query it at any time rather than relying only on the
+// connection-event logs.
+func (c *Conn) Healthy() bool {
+	return c.Conn != nil && c.Conn.IsConnected()
 }
 
 func init() {
@@ -75,6 +84,29 @@ func newConn(c Config) (*Conn, error) {
 	}
 	if c.Token != "" {
 		opts = append(opts, nats.Token(c.Token))
+	}
+	if c.CredsFile != "" {
+		opts = append(opts, nats.UserCredentials(c.CredsFile))
+	}
+	if c.NKeyFile != "" {
+		opt, err := nats.NkeyOptionFromSeed(c.NKeyFile)
+		if err != nil {
+			return nil, errutil.Explain(err, "failed to load nats nkey seed: %s", c.NKeyFile)
+		}
+		opts = append(opts, opt)
+	}
+	if c.TLS.Enabled {
+		if c.TLS.InsecureSkipVerify {
+			opts = append(opts, nats.Secure(&tls.Config{InsecureSkipVerify: true}))
+		} else {
+			opts = append(opts, nats.Secure())
+		}
+		if c.TLS.CAFile != "" {
+			opts = append(opts, nats.RootCAs(c.TLS.CAFile))
+		}
+		if c.TLS.CertFile != "" || c.TLS.KeyFile != "" {
+			opts = append(opts, nats.ClientCert(c.TLS.CertFile, c.TLS.KeyFile))
+		}
 	}
 
 	nc, err := nats.Connect(c.URL, opts...)

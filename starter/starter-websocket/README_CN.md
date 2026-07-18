@@ -35,6 +35,11 @@ upgrader 挂载在既有 HTTP 服务上，端口与超时由该服务负责：
 spring.websocket.handshakeTimeout=10s
 spring.websocket.readBufferSize=1024
 spring.websocket.writeBufferSize=1024
+# 启用 permessage-deflate 压缩。
+spring.websocket.enableCompression=false
+# 与请求 Origin 头做匹配的来源白名单。留空则沿用 gorilla 默认的同源策略；
+# 单独填写 "*" 表示接受任意来源。
+spring.websocket.allowedOrigins=
 ```
 
 若需更多定制（如 `CheckOrigin`、压缩等），可自行提供 `*websocket.Upgrader` Bean，

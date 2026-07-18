@@ -17,9 +17,14 @@
 package StarterNeo4j
 
 import (
+	"crypto/tls"
+	"crypto/x509"
+	"fmt"
+	"os"
 	"time"
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
+	"github.com/neo4j/neo4j-go-driver/v5/neo4j/auth"
 )
 
 var driverRegistry = map[string]Driver{}
@@ -64,8 +69,58 @@ type Config struct {
 	// on transient errors, e.g., "30s".
 	MaxTransactionRetryTime time.Duration `value:"${max-transaction-retry-time:=30s}"`
 
+	// TLS configures the certificate trust used for the encrypted URI schemes
+	// ("bolt+s", "bolt+ssc", "neo4j+s", "neo4j+ssc"). Encryption itself is
+	// selected by the URI scheme; these fields only customize the trust store
+	// and client certificate. They are ignored for the plaintext "bolt"/"neo4j"
+	// schemes.
+	TLS TLSConfig `value:"${tls}"`
+
 	// Driver specifies which Neo4j driver to use, defaults to DefaultDriver.
 	Driver string `value:"${driver:=DefaultDriver}"`
+}
+
+// TLSConfig customizes certificate trust for the encrypted Neo4j URI schemes.
+type TLSConfig struct {
+	// CACertFile is the path to a PEM-encoded CA certificate used to verify the
+	// server certificate. When empty, the system trust store is used.
+	CACertFile string `value:"${ca-cert-file:=}"`
+
+	// CertFile is the path to the PEM-encoded client certificate for mutual TLS,
+	// default is empty.
+	CertFile string `value:"${cert-file:=}"`
+
+	// KeyFile is the path to the PEM-encoded client private key for mutual TLS,
+	// default is empty.
+	KeyFile string `value:"${key-file:=}"`
+}
+
+// apply configures the encryption-related fields of conf from the TLS settings.
+// The CA certificate (if any) is loaded into conf.TlsConfig, and a client
+// certificate (if any) is installed as a static certificate provider for
+// mutual TLS. Both only take effect for the "+s"/"+ssc" URI schemes.
+func (t TLSConfig) apply(conf *neo4j.Config) error {
+	if t.CACertFile != "" {
+		pem, err := os.ReadFile(t.CACertFile)
+		if err != nil {
+			return fmt.Errorf("neo4j: read ca cert: %w", err)
+		}
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(pem) {
+			return fmt.Errorf("neo4j: no certificates parsed from %s", t.CACertFile)
+		}
+		conf.TlsConfig = &tls.Config{RootCAs: pool}
+	}
+	if t.CertFile != "" || t.KeyFile != "" {
+		provider, err := auth.NewStaticClientCertificateProvider(
+			auth.ClientCertificate{CertFile: t.CertFile, KeyFile: t.KeyFile},
+		)
+		if err != nil {
+			return fmt.Errorf("neo4j: load client certificate: %w", err)
+		}
+		conf.ClientCertificateProvider = provider
+	}
+	return nil
 }
 
 // Driver interface defines how to create a Neo4j client.
@@ -91,11 +146,20 @@ func (DefaultDriver) CreateClient(c Config) (neo4j.DriverWithContext, error) {
 	if c.Username != "" {
 		auth = neo4j.BasicAuth(c.Username, c.Password, c.Realm)
 	}
-	return neo4j.NewDriverWithContext(c.URI, auth, func(conf *neo4j.Config) {
+	var tlsErr error
+	client, err := neo4j.NewDriverWithContext(c.URI, auth, func(conf *neo4j.Config) {
 		conf.MaxConnectionPoolSize = c.MaxConnectionPoolSize
 		conf.MaxConnectionLifetime = c.MaxConnectionLifetime
 		conf.ConnectionAcquisitionTimeout = c.ConnectionAcquisitionTimeout
 		conf.SocketConnectTimeout = c.SocketConnectTimeout
 		conf.MaxTransactionRetryTime = c.MaxTransactionRetryTime
+		tlsErr = c.TLS.apply(conf)
 	})
+	if err != nil {
+		return nil, err
+	}
+	if tlsErr != nil {
+		return nil, tlsErr
+	}
+	return client, nil
 }

@@ -4,8 +4,10 @@ go 1.26
 
 require (
 	github.com/IBM/sarama v1.45.1
+	github.com/xdg-go/scram v1.2.0
 	go-spring.org/log v0.1.4
 	go-spring.org/spring v1.3.4
+	go-spring.org/stdlib v0.1.7
 )
 
 require (
@@ -38,12 +40,14 @@ require (
 	github.com/smartystreets/goconvey v1.8.1 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
 	github.com/stretchr/testify v1.11.1 // indirect
+	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
+	github.com/xdg-go/stringprep v1.0.4 // indirect
 	go-spring.org/gs-mock v0.0.9 // indirect
-	go-spring.org/stdlib v0.1.7 // indirect
 	golang.org/x/arch v0.26.0 // indirect
 	golang.org/x/crypto v0.51.0 // indirect
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
 	golang.org/x/net v0.54.0 // indirect
 	golang.org/x/sys v0.44.0 // indirect
+	golang.org/x/text v0.37.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )

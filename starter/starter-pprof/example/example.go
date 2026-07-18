@@ -45,17 +45,20 @@ func main() {
 	// Run the Go-Spring application.
 	gs.Run()
 
-	// Example usage (the pprof starter serves its endpoints on :9981 by default):
+	// Example usage (the pprof starter serves its endpoints on 127.0.0.1:9981
+	// by default and requires the configured token):
 	//
-	// ~ curl http://127.0.0.1:9981/debug/pprof/
-	// ~ curl http://127.0.0.1:9981/debug/pprof/heap
-	// ~ curl http://127.0.0.1:9981/debug/pprof/cmdline
+	// ~ curl -H 'Authorization: Bearer s3cr3t' http://127.0.0.1:9981/debug/pprof/
+	// ~ curl 'http://127.0.0.1:9981/debug/pprof/heap?token=s3cr3t'
+	// ~ curl http://127.0.0.1:9981/debug/pprof/cmdline   # -> 401 Unauthorized
 }
 
-// runTest verifies the three pprof endpoints served by starter-pprof's dedicated
-// HTTP server, then triggers a graceful shutdown. Exits non-zero on any failure.
+// runTest verifies the pprof endpoints are protected by the configured token:
+// unauthenticated requests are rejected, and requests carrying the token
+// succeed. It then triggers a graceful shutdown. Exits non-zero on any failure.
 func runTest() {
 	const base = "http://127.0.0.1:9981"
+	const token = "s3cr3t"
 
 	endpoints := []string{
 		"/debug/pprof/",
@@ -63,8 +66,31 @@ func runTest() {
 		"/debug/pprof/cmdline",
 	}
 
+	// Without the token every endpoint must be rejected.
 	for _, path := range endpoints {
 		resp, err := http.Get(base + path)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "request failed:", path, err)
+			os.Exit(1)
+		}
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusUnauthorized {
+			fmt.Fprintln(os.Stderr, "expected 401 without token:", path, resp.StatusCode)
+			os.Exit(1)
+		}
+		fmt.Println("Rejected without token:", path, resp.Status)
+	}
+
+	// With the bearer token the endpoints serve normally.
+	for _, path := range endpoints {
+		req, err := http.NewRequest(http.MethodGet, base+path, nil)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "build request failed:", path, err)
+			os.Exit(1)
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "request failed:", path, err)
 			os.Exit(1)

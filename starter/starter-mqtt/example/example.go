@@ -102,6 +102,12 @@ func (s *Service) subscribeOnce(timeout time.Duration) (string, error) {
 func runTest(s *Service) {
 	ctx := context.Background()
 
+	// Health: the injected client exposes its live connection status.
+	if !s.Client.IsConnected() {
+		log.Errorf(ctx, log.TagAppDef, "client not connected")
+		os.Exit(1)
+	}
+
 	// Feature: pub/sub round-trip on a single topic at QoS 1.
 	// Subscribe first so the retained-free message is delivered live,
 	// then publish and assert the payload comes back.

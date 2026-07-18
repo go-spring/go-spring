@@ -68,3 +68,11 @@ The [example.go](example/example.go) program demonstrates and asserts three core
   configuration file and reference them by name in your project.
 * **Support ants extensions**: You can extend pool creation by implementing the
   `Driver` interface.
+* **Panic handler**: register `StarterAnts.SetPanicHandler(fn)` before startup to
+  recover panics thrown by submitted tasks; without it ants re-panics on the
+  worker goroutine. It is a global hook shared by every DefaultDriver-built pool;
+  per-pool handlers require a custom `Driver`.
+* **Runtime pool metrics**: read `pool.Running()`, `pool.Free()`, and
+  `pool.Cap()` straight off the pool (no OTel) to monitor utilization.
+* **Graceful shutdown**: the destroy callback calls `Release()`, stopping the
+  background purge goroutine and reclaiming all workers.

@@ -17,6 +17,9 @@
 package StarterGoRedis
 
 import (
+	"context"
+	"time"
+
 	"github.com/redis/go-redis/extra/redisotel/v9"
 	"github.com/redis/go-redis/v9"
 	"go-spring.org/spring/gs"
@@ -54,7 +57,25 @@ func newClient(c Config) (*redis.Client, error) {
 	if err := redisotel.InstrumentMetrics(client); err != nil {
 		return nil, err
 	}
+	// Fail fast: verify the connection is usable at startup so a misconfigured
+	// address or unreachable server surfaces during boot rather than on the
+	// first request. The DialTimeout bounds how long the probe may block.
+	ctx, cancel := context.WithTimeout(context.Background(), pingTimeout(c))
+	defer cancel()
+	if err := client.Ping(ctx).Err(); err != nil {
+		_ = client.Close()
+		return nil, errutil.Explain(err, "redis: startup ping failed")
+	}
 	return client, nil
+}
+
+// pingTimeout picks a bound for the startup ping: the configured DialTimeout
+// when set, otherwise a conservative default.
+func pingTimeout(c Config) time.Duration {
+	if c.DialTimeout > 0 {
+		return c.DialTimeout
+	}
+	return 5 * time.Second
 }
 
 // destroyClient closes the Redis client and stops any discovery watch behind it.

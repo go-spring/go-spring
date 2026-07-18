@@ -66,3 +66,11 @@ The [example.go](example/example.go) program demonstrates and asserts three core
   them by name in your project.
 * **Support Redis extensions**: You can extend Redis functionality by implementing the `Driver` interface — see the
   example implementation `AnotherRedisDriver`.
+* **Startup connection validation (fail-fast)**: after building the client the starter issues a `Ping`; a misconfigured
+  address or unreachable server fails the boot instead of the first request.
+* **Health check / readiness**: the go-redis client exposes `Ping(ctx)` for readiness probes — call it straight off the
+  autowired client.
+* **Connection-pool monitoring**: `client.PoolStats()` returns live pool counters (hits, misses, total/idle conns) for
+  runtime monitoring.
+* **TLS**: enable `tls.enabled` and provide `ca-file` (and `cert-file`/`key-file` for mutual TLS) to dial Redis over TLS;
+  see the commented block in [app.properties](example/conf/app.properties).

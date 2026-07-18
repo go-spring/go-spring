@@ -32,6 +32,14 @@ import _ "go-spring.org/starter-thrift"
 ```properties
 spring.http.server.enabled=false
 spring.thrift.server.addr=:9292
+
+# 服务端 socket 的单连接客户端超时（0 表示不超时）。
+spring.thrift.server.clientTimeout=30s
+
+# TLS 服务端传输：启用并指定 PEM 证书/私钥路径。
+spring.thrift.server.tls.enabled=false
+spring.thrift.server.tls.certFile=
+spring.thrift.server.tls.keyFile=
 ```
 
 ### 3. 注册 Processor

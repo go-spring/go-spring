@@ -124,13 +124,11 @@ func main() {
 func runTest(s *Service) {
 	ctx := context.Background()
 
-	// Feature 1: cluster info — verify connectivity.
-	info, err := s.ES.Info()
-	if err != nil || info.IsError() {
-		log.Errorf(ctx, log.TagAppDef, "Info failed: err=%v res=%v", err, info)
+	// Feature 1: readiness probe — verify cluster connectivity.
+	if err := StarterElasticsearch.HealthCheck(s.ES); err != nil {
+		log.Errorf(ctx, log.TagAppDef, "HealthCheck failed: %v", err)
 		os.Exit(1)
 	}
-	_ = info.Body.Close()
 
 	// Feature 2: index a document (refresh so it is immediately searchable).
 	body := `{"title":"hello","views":1}`

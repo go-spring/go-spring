@@ -80,7 +80,7 @@ The script sees these globals, re-bound per request:
 
 ## Core Features
 
-The [example.go](example/example.go) program demonstrates and asserts three
+The [example.go](example/example.go) program demonstrates and asserts four
 core filter behaviors:
 
 * **Pass-through + mutate** — a normal `/hello` request reaches the handler and
@@ -89,6 +89,8 @@ core filter behaviors:
   business handler is never reached.
 * **Conditional pass** — the same `/admin` path succeeds once the script's token
   condition is satisfied.
+* **Hot reload** — after rewriting the script on disk and calling `Reload()`, the
+  new rules take effect without restarting the process.
 
 ## Advanced Features
 
@@ -99,3 +101,8 @@ core filter behaviors:
 * **Sandboxed VM**: each request borrows a pooled `*lua.LState` that opens only
   the `base`/`table`/`string`/`math` libraries — filesystem and loader escapes
   (`dofile`/`loadfile`/`load`) are stripped.
+* **Hot reload**: call `Filter.Reload()` to recompile the script and atomically
+  swap in the new bytecode. A compile failure leaves the previous script in place,
+  so a bad edit never takes down the filter.
+* **Resource cleanup**: the starter registers a destroy callback that closes every
+  pooled `*lua.LState` on shutdown, releasing the VMs the filter created.

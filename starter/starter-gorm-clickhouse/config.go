@@ -31,6 +31,30 @@ type Config struct {
 	DialTimeout time.Duration `value:"${dialTimeout:=}"` // Connection dial timeout, optional
 	ReadTimeout time.Duration `value:"${readTimeout:=}"` // Read timeout, optional
 
+	// Connection pool tuning. A zero value leaves the database/sql default in
+	// place (see sql.DB.SetMaxOpenConns and friends).
+	MaxOpenConns    int           `value:"${max-open-conns:=0}"`     // Max open connections (0 = unlimited)
+	MaxIdleConns    int           `value:"${max-idle-conns:=0}"`     // Max idle connections (0 = default 2)
+	ConnMaxLifetime time.Duration `value:"${conn-max-lifetime:=0}"`  // Max lifetime of a connection (0 = unlimited)
+	ConnMaxIdleTime time.Duration `value:"${conn-max-idle-time:=0}"` // Max idle time of a connection (0 = unlimited)
+
+	// PingTimeout bounds the startup connectivity check. The client fails fast
+	// during creation if the server cannot be reached within this window.
+	PingTimeout time.Duration `value:"${ping-timeout:=5s}"`
+
+	// SlowThreshold enables GORM slow-query logging when > 0: queries slower than
+	// this are logged at warn level.
+	SlowThreshold time.Duration `value:"${slow-threshold:=0}"`
+
+	// TLS configuration. When TLSEnabled is set, the native ClickHouse driver
+	// negotiates a secure connection; CA/cert/key paths supply custom material
+	// and TLSSkipVerify disables server certificate verification.
+	TLSEnabled    bool   `value:"${tls-enabled:=false}"`     // Enable TLS (secure native connection)
+	TLSSkipVerify bool   `value:"${tls-skip-verify:=false}"` // Skip server certificate verification
+	TLSCA         string `value:"${tls-ca:=}"`               // Path to CA certificate (PEM)
+	TLSCert       string `value:"${tls-cert:=}"`             // Path to client certificate (PEM)
+	TLSKey        string `value:"${tls-key:=}"`              // Path to client private key (PEM)
+
 	// ServiceName is the service discovery name. When set, Addr is ignored and
 	// the connection dials a live instance resolved from the discovery backend.
 	ServiceName string `value:"${service-name:=}"`

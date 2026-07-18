@@ -62,7 +62,8 @@ reply, _ := s.Conn.Request("demo.rpc", []byte("ping"), time.Second)
 
 The [example](example/example.go) self-asserts four features against a live server:
 core pub/sub, request-reply, queue groups (each message delivered to exactly one
-member), and JetStream (publish to a stream then pull the message back).
+member), and JetStream (publish to a stream then pull the message back). It also
+checks `Conn.Healthy()` reports the connection as up before exercising them.
 
 Connection-layer events (async errors, disconnect, reconnect, close) are bridged into
 go-spring's log.
@@ -75,3 +76,33 @@ go-spring's log.
 * **Multiple connections**: Every entry under `spring.nats.instances` becomes an
   independently configured `*Conn` bean; inject them by name to talk to different
   clusters or JetStream domains.
+* **Health check**: `Conn.Healthy()` reflects the live state of the auto-reconnecting
+  client, so health/readiness probes can query it at any time without relying only on
+  the connection-event logs.
+* **Authentication**: Beyond username/password and token, the starter supports NATS 2.x
+  decentralized auth via a credentials file (`creds-file`) or an nkey seed file
+  (`nkey-file`).
+* **TLS**: Set `spring.nats.instances.<name>.tls.enabled=true` to negotiate TLS.
+  Optionally pin a CA bundle (`tls.ca-file`) and supply a client certificate
+  (`tls.cert-file`/`tls.key-file`) for mutual TLS.
+
+## Configuration
+
+Each connection under `spring.nats.instances.<name>` reads the following properties:
+
+| Property | Default | Description |
+| --- | --- | --- |
+| `url` | (required) | NATS server URL(s), comma-separated for a cluster. |
+| `name` | `` | Connection name reported to the server. |
+| `username` / `password` | `` | Username/password authentication. |
+| `token` | `` | Token authentication (alternative to username/password). |
+| `creds-file` | `` | Path to a NATS credentials file (JWT + nkey seed) for decentralized auth. |
+| `nkey-file` | `` | Path to an nkey seed file (alternative to `creds-file`). |
+| `tls.enabled` | `false` | Negotiate TLS for the connection. |
+| `tls.ca-file` | `` | PEM CA bundle to verify the server certificate; system roots when empty. |
+| `tls.cert-file` / `tls.key-file` | `` | Client certificate and key for mutual TLS (set together). |
+| `tls.insecure-skip-verify` | `false` | Disable server certificate verification (testing only). |
+| `max-reconnects` | `60` | Maximum reconnect attempts; `-1` means unlimited. |
+| `reconnect-wait` | `2s` | Delay between reconnect attempts. |
+| `connect-timeout` | `5s` | Bound on the initial dial. |
+| `jetstream.enabled` | `false` | Expose a JetStream context on `Conn.JetStream`. |

@@ -63,7 +63,7 @@ func newClient(c Config) (*gorm.DB, error) {
 	)
 
 	if c.ServiceName == "" {
-		db, err = gorm.Open(postgres.Open(c.DSN()))
+		db, err = gorm.Open(postgres.Open(c.DSN()), gormConfig(c))
 		if err != nil {
 			return nil, err
 		}
@@ -86,7 +86,7 @@ func newClient(c Config) (*gorm.DB, error) {
 		// It ignores the addr and connects to a live instance.
 		pgxCfg.DialFunc = ld.DialContext
 		sqlDB := stdlib.OpenDB(*pgxCfg)
-		db, err = gorm.Open(postgres.New(postgres.Config{Conn: sqlDB}))
+		db, err = gorm.Open(postgres.New(postgres.Config{Conn: sqlDB}), gormConfig(c))
 		if err != nil {
 			_ = sqlDB.Close()
 			_ = ld.Stop()
@@ -97,6 +97,16 @@ func newClient(c Config) (*gorm.DB, error) {
 	if err := db.Use(tracing.NewPlugin(tracing.WithDBSystem("postgresql"))); err != nil {
 		if ld != nil {
 			_ = ld.Stop()
+		}
+		return nil, err
+	}
+	// Fail fast: verify connectivity and apply pool settings at creation time.
+	if err := applyPool(db, c); err != nil {
+		if ld != nil {
+			_ = ld.Stop()
+		}
+		if sqlDB, derr := db.DB(); derr == nil {
+			_ = sqlDB.Close()
 		}
 		return nil, err
 	}

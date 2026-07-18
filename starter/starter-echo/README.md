@@ -34,6 +34,24 @@ Add configuration in your project's [configuration file](example/conf/app.proper
 spring.http.server.enabled=false
 # starter-echo listens on :8002 by default in this example.
 spring.echo.server.addr=:8002
+
+# Timeouts (inherited from SimpleHttpServerConfig).
+spring.echo.server.readTimeout=5s
+spring.echo.server.headerTimeout=1s
+spring.echo.server.writeTimeout=5s
+spring.echo.server.idleTimeout=60s
+
+# Request-body size cap in bytes (0 = unlimited).
+spring.echo.server.maxBodySize=1048576
+
+# Optional starter-served liveness endpoint.
+spring.echo.server.health.enabled=true
+spring.echo.server.health.path=/healthz
+
+# HTTPS: enable and point at a PEM cert/key pair.
+spring.echo.server.tls.enabled=false
+spring.echo.server.tls.certFile=
+spring.echo.server.tls.keyFile=
 ```
 
 The starter registers its server bean when `spring.echo.server.enabled` is `true` (default) and a

@@ -38,6 +38,7 @@ func main() {
 	// when none is present, this custom one wins and every request passes
 	// through the Lua script first — regardless of the web framework behind it.
 	gs.Provide(func(guard *StarterLuaFilter.Filter) *gs.HttpServeMux {
+		guardFilter = guard
 		mux := http.NewServeMux()
 		mux.HandleFunc("/hello", func(w http.ResponseWriter, r *http.Request) {
 			_, _ = w.Write([]byte("hello"))
@@ -72,6 +73,13 @@ func main() {
 	// admin ok
 }
 
+// guardFilter is captured at wiring time so runTest can trigger a hot reload.
+var guardFilter *StarterLuaFilter.Filter
+
+// scriptPath is a runtime-owned copy of the Lua script, so the hot-reload demo
+// can rewrite it without touching the checked-in fixture.
+var scriptPath string
+
 func runTest() {
 	// Feature 1: a normal request passes and carries the header the Lua filter
 	// injected on every response.
@@ -93,7 +101,24 @@ func runTest() {
 		fail("admin with token: status=%d body=%q", status, body)
 	}
 
-	fmt.Println("Response from server: lua filter allowed /hello, blocked /admin, then allowed /admin with token")
+	// Feature 4: hot reload — rewrite the script to also gate /hello, then
+	// reload it at runtime. Subsequent requests pick up the new rules without a
+	// restart. A bad edit would fail Reload and leave the running script intact.
+	rewriteScript(`resp.set_header("X-Lua-Filter", "guard")
+if req.path == "/hello" then
+    deny(403, "hello disabled")
+    return
+end
+`)
+	if err := guardFilter.Reload(); err != nil {
+		fail("reload failed: %v", err)
+	}
+	status, _, body = do("GET", "/hello", "")
+	if status != 403 {
+		fail("hello after reload: expected 403, got %d body=%q", status, body)
+	}
+
+	fmt.Println("Response from server: lua filter allowed /hello, blocked /admin, then blocked /hello after hot reload")
 	syscall.Kill(os.Getpid(), syscall.SIGTERM)
 }
 
@@ -126,7 +151,9 @@ func fail(format string, args ...any) {
 // ----------------------------------------------------------------------------
 
 // init sets the working directory to the directory where this source file
-// resides, so the relative Lua script path in app.properties resolves.
+// resides, then seeds a writable copy of the Lua script and points the starter
+// at it via a GS_ environment override, so the hot-reload demo can rewrite the
+// script without mutating the checked-in fixture.
 func init() {
 	var execDir string
 	_, filename, _, ok := runtime.Caller(0)
@@ -141,4 +168,32 @@ func init() {
 		panic(err)
 	}
 	fmt.Println(workDir)
+
+	src, err := os.ReadFile("./scripts/guard.lua")
+	if err != nil {
+		panic(err)
+	}
+	f, err := os.CreateTemp("", "guard-*.lua")
+	if err != nil {
+		panic(err)
+	}
+	if _, err := f.Write(src); err != nil {
+		panic(err)
+	}
+	_ = f.Close()
+	scriptPath = f.Name()
+
+	// GS_SPRING_LUA_FILTER_GUARD_SCRIPT overrides
+	// spring.lua.filter.guard.script from app.properties.
+	if err := os.Setenv("GS_SPRING_LUA_FILTER_GUARD_SCRIPT", scriptPath); err != nil {
+		panic(err)
+	}
+}
+
+// rewriteScript replaces the runtime script file's contents, staging a new
+// version for the next Reload.
+func rewriteScript(src string) {
+	if err := os.WriteFile(scriptPath, []byte(src), 0o600); err != nil {
+		fail("rewrite script: %v", err)
+	}
 }
