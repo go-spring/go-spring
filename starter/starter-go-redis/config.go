@@ -17,12 +17,19 @@
 package StarterGoRedis
 
 import (
+	"context"
+	"sync"
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"go-spring.org/stdlib/discovery"
 )
 
 var driverRegistry = map[string]Driver{}
+
+// liveDialers tracks the discovery-backed dialer behind each client built by
+// DefaultDriver, so destroyClient can stop the background watch on shutdown.
+var liveDialers sync.Map // *redis.Client -> *discovery.LiveDialer
 
 func init() {
 	RegisterDriver("DefaultDriver", DefaultDriver{})
@@ -68,6 +75,12 @@ type Config struct {
 	// When set, Addr is ignored and the actual address is resolved via service discovery.
 	ServiceName string `value:"${service-name:=}"`
 
+	// Discovery selects which registered discovery backend resolves ServiceName.
+	// It is only consulted when ServiceName is set. A company registers its
+	// naming service once via discovery.Register; the default backend name is
+	// "default".
+	Discovery string `value:"${discovery:=default}"`
+
 	// Driver specifies which Redis driver to use, defaults to DefaultDriver.
 	Driver string `value:"${driver:=DefaultDriver}"`
 }
@@ -90,8 +103,15 @@ func RegisterDriver(name string, driver Driver) {
 type DefaultDriver struct{}
 
 // CreateClient creates a new Redis client based on the provided configuration.
+//
+// When c.ServiceName is set, the address is resolved through the registered
+// discovery backend (c.Discovery) instead of c.Addr: a LiveDialer keeps the
+// endpoint set fresh and the client dials a live instance on each new
+// connection. Combined with c.ConnMaxLifetime, connections recycle onto updated
+// addresses without rebuilding the client. When c.ServiceName is empty this is
+// a plain Addr dial, unchanged from before.
 func (DefaultDriver) CreateClient(c Config) (*redis.Client, error) {
-	return redis.NewClient(&redis.Options{
+	opts := &redis.Options{
 		Addr:            c.Addr,
 		Password:        c.Password,
 		DB:              c.DB,
@@ -103,5 +123,26 @@ func (DefaultDriver) CreateClient(c Config) (*redis.Client, error) {
 		DialTimeout:     c.DialTimeout,
 		ReadTimeout:     c.ReadTimeout,
 		WriteTimeout:    c.WriteTimeout,
-	}), nil
+	}
+
+	var ld *discovery.LiveDialer
+	if c.ServiceName != "" {
+		d, err := discovery.MustGet(c.Discovery)
+		if err != nil {
+			return nil, err
+		}
+		ld, err = discovery.NewLiveDialer(context.Background(), d, c.ServiceName)
+		if err != nil {
+			return nil, err
+		}
+		// Addr becomes a label for the pool; the dialer picks a live endpoint.
+		opts.Addr = c.ServiceName
+		opts.Dialer = ld.DialContext
+	}
+
+	client := redis.NewClient(opts)
+	if ld != nil {
+		liveDialers.Store(client, ld)
+	}
+	return client, nil
 }

@@ -17,17 +17,27 @@
 package StarterGormPostgres
 
 import (
+	"context"
+	"sync"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/stdlib"
 	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/discovery"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/plugin/opentelemetry/tracing"
 )
 
+// liveDialers tracks the discovery-backed dialer behind each client, so
+// destroyClient can stop the background watch when the client is torn down.
+var liveDialers sync.Map // *gorm.DB -> *discovery.LiveDialer
+
 func init() {
 	// Register multiple GORM clients as a group.
 	// Each instance is created according to the configuration in "${spring.gorm.postgres}".
 	// This allows defining multiple database connections dynamically.
-	gs.Group("${spring.gorm.postgres}", newClient, nil)
+	gs.Group("${spring.gorm.postgres}", newClient, destroyClient)
 }
 
 // newClient creates a GORM database client using the PostgreSQL driver, bridged
@@ -35,13 +45,71 @@ func init() {
 // connection-pool metrics through the OTel globals that starter-otel installs;
 // when starter-otel is absent those globals are no-ops, so this stays a
 // zero-config, zero-overhead opt-in that needs no per-component adaptation.
+//
+// When c.ServiceName is set, the address is resolved through the registered
+// discovery backend: a LiveDialer is bound to the pgx DialFunc so each new
+// physical connection reaches a live instance and address changes take effect
+// without rebuilding the client. When c.ServiceName is empty this is a plain
+// DSN dial, unchanged from before.
 func newClient(c Config) (*gorm.DB, error) {
-	db, err := gorm.Open(postgres.Open(c.DSN()))
-	if err != nil {
+	var (
+		db  *gorm.DB
+		err error
+		ld  *discovery.LiveDialer
+	)
+
+	if c.ServiceName == "" {
+		db, err = gorm.Open(postgres.Open(c.DSN()))
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		d, err := discovery.MustGet(c.Discovery)
+		if err != nil {
+			return nil, err
+		}
+		ld, err = discovery.NewLiveDialer(context.Background(), d, c.ServiceName)
+		if err != nil {
+			return nil, err
+		}
+		pgxCfg, err := pgx.ParseConfig(c.DSN())
+		if err != nil {
+			_ = ld.Stop()
+			return nil, err
+		}
+		// LiveDialer.DialContext matches pgconn.DialFunc exactly:
+		// func(ctx context.Context, network, addr string) (net.Conn, error).
+		// It ignores the addr and connects to a live instance.
+		pgxCfg.DialFunc = ld.DialContext
+		sqlDB := stdlib.OpenDB(*pgxCfg)
+		db, err = gorm.Open(postgres.New(postgres.Config{Conn: sqlDB}))
+		if err != nil {
+			_ = sqlDB.Close()
+			_ = ld.Stop()
+			return nil, err
+		}
+	}
+
+	if err := db.Use(tracing.NewPlugin(tracing.WithDBSystem("postgresql"))); err != nil {
+		if ld != nil {
+			_ = ld.Stop()
+		}
 		return nil, err
 	}
-	if err := db.Use(tracing.NewPlugin(tracing.WithDBSystem("postgresql"))); err != nil {
-		return nil, err
+	if ld != nil {
+		liveDialers.Store(db, ld)
 	}
 	return db, nil
+}
+
+// destroyClient stops any discovery watch behind the client and closes the
+// underlying connection pool.
+func destroyClient(db *gorm.DB) error {
+	if v, ok := liveDialers.LoadAndDelete(db); ok {
+		_ = v.(*discovery.LiveDialer).Stop()
+	}
+	if sqlDB, err := db.DB(); err == nil {
+		return sqlDB.Close()
+	}
+	return nil
 }

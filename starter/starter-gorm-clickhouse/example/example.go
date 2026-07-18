@@ -45,7 +45,8 @@ type KV struct {
 func (KV) TableName() string { return "kv" }
 
 type Service struct {
-	DB *gorm.DB `autowire:"primary"`
+	DB          *gorm.DB `autowire:"primary"`
+	DiscoveryDB *gorm.DB `autowire:"discovery"`
 }
 
 func main() {
@@ -145,6 +146,21 @@ func runTest(s *Service) {
 	}
 
 	fmt.Println("Response from server:", version, "count:", count)
+
+	// Feature 4: the discovery-backed client. Its address came from the
+	// registered discovery backend (service-name=clickhouse-cluster), not from
+	// conf's dummy addr, so a successful round-trip proves discovery is wired.
+	var discVersion string
+	if err := s.DiscoveryDB.Raw("SELECT version()").Scan(&discVersion).Error; err != nil {
+		fmt.Fprintln(os.Stderr, "discovery query failed:", err)
+		os.Exit(1)
+	}
+	if discVersion == "" {
+		fmt.Fprintln(os.Stderr, "discovery empty version")
+		os.Exit(1)
+	}
+	fmt.Println("Response from discovered server:", discVersion)
+
 	syscall.Kill(os.Getpid(), syscall.SIGTERM)
 }
 

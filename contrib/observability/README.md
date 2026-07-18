@@ -87,7 +87,7 @@ self-hosted, open-source trace store the practical Go choices today are:
 
 ```
 contrib/observability/
-├── proto/                     # shared Triple IDL + generated stubs (DO NOT EDIT the *.go)
+├── idl/                       # shared Triple IDL + generated stubs (DO NOT EDIT the *.go)
 ├── provider/                  # the GreetService provider (identical to dubbo-go/triple)
 │   └── conf/app.properties    # metrics :9090, OTLP → :4317, JSON logs → ../logs
 ├── consumer/                  # discovers via etcd, calls, asserts, exits
@@ -98,7 +98,7 @@ contrib/observability/
 │   ├── 3-lgtm/                # + otel-collector-config.yml, tempo.yml, correlation datasources
 │   └── 5-elastic/             # + otel-collector-config.yml (elasticsearch exporter)
 └── scripts/
-    ├── gen-code.sh            # regenerate proto/*.go from the IDL
+    ├── gen-code.sh            # regenerate idl/*.go from the IDL
     └── smoke-test.sh <stack>  # bring up a stack + app, run consumer, tear down
 ```
 

@@ -6,18 +6,17 @@
 #   go install github.com/zeromicro/go-zero/tools/goctl@latest
 #
 # Only the two "DO NOT EDIT" files come from goctl:
-#   types/types.go       (request/response structs)
-#   handler/routes.go    (route table)
+#   idl/types.go         (request/response structs)  → package idl (shared DTOs)
+#   provider/routes.go   (route table)               → package main (server side)
 #
-# Those two paths are framework-forced, so they stay at project root even
-# though this generator lives under idl/. All other files (handler entry in
-# handler/, and the svc + logic bean in svc/) are hand-written and
-# Go-Spring-owned, so they survive re-generation.
+# All other files are hand-written and Go-Spring-owned, so they survive
+# re-generation: the handler entry (provider/greethandler.go) and the
+# ServiceContext + GreetLogic bean (provider/servicecontext.go, provider/logic.go).
 #
 # We run goctl inside a scratch workspace whose parent module is "greetapi"
 # (goctl generates imports rooted at the parent module + --dir subpath), then
-# rewrite "greetapi/gen/internal/..." → "greetapi/..." so the generated files
-# sit at project root, flattened out of goctl's internal/ scaffold.
+# rewrite "greetapi/gen/internal/..." → "greetapi/..." and re-home the two files
+# into our flat idl/ + provider/ layout.
 #
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
@@ -29,21 +28,25 @@ trap 'rm -rf "$tmp"' EXIT
 cp greet.api "$tmp/"
 (cd "$tmp" && goctl api go -api greet.api -dir gen --style gozero)
 
-# Only take types.go and routes.go from the goctl output; everything else is
-# hand-written and lives under handler/ and svc/ already. The two destinations
-# are one level up from idl/ — the framework-forced paths at project root.
-cp "$tmp/gen/internal/types/types.go"    ../types/types.go
-cp "$tmp/gen/internal/handler/routes.go" ../handler/routes.go
+# types.go holds the shared request/response DTOs; it lives in idl/ as package idl.
+cp "$tmp/gen/internal/types/types.go" ./types.go
+sed -i.bak -e 's|greetapi/gen/internal|greetapi|g' -e 's|^package types$|package idl|' ./types.go
+rm -f ./types.go.bak
 
-# Rewrite the goctl-embedded module path back to our flattened project layout
-# (goctl's internal/svc becomes our top-level svc, etc.).
-for f in ../types/types.go ../handler/routes.go; do
-    sed -i.bak 's|greetapi/gen/internal|greetapi|g' "$f"
-    rm -f "${f}.bak"
-done
+# routes.go is the server route table; it joins the flat provider package (main).
+# ServiceContext now lives in that same package, so drop goctl's svc import and
+# the svc. qualifier, and rename the package handler → main.
+cp "$tmp/gen/internal/handler/routes.go" ../provider/routes.go
+sed -i.bak \
+    -e 's|greetapi/gen/internal|greetapi|g' \
+    -e '\|"greetapi/svc"|d' \
+    -e 's|\*svc\.ServiceContext|*ServiceContext|g' \
+    -e 's|^package handler$|package main|' \
+    ../provider/routes.go
+rm -f ../provider/routes.go.bak
 
 # Re-apply the Apache License header — goctl strips it.
-for f in ../types/types.go ../handler/routes.go; do
+for f in ./types.go ../provider/routes.go; do
     if ! head -1 "$f" | grep -q "Copyright"; then
         cat > "${f}.new" << 'EOF'
 // Copyright 2025 The Go-Spring Authors.
@@ -66,4 +69,4 @@ EOF
     fi
 done
 
-echo "Regenerated: types/types.go, handler/routes.go"
+echo "Regenerated: idl/types.go, provider/routes.go"

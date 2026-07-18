@@ -1,0 +1,7 @@
+services:
+  mqtt:
+    image: eclipse-mosquitto:2
+    container_name: starter-mqtt
+    command: ["mosquitto", "-c", "/mosquitto-no-auth.conf"]
+    ports:
+      - "127.0.0.1:1883:1883"

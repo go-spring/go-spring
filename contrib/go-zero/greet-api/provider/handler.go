@@ -20,9 +20,6 @@ import (
 	"github.com/zeromicro/go-zero/rest"
 	"go-spring.org/spring/gs"
 	gozerorest "go-spring.org/starter-go-zero/rest"
-
-	"greetapi/handler"
-	"greetapi/svc"
 )
 
 func init() {
@@ -33,9 +30,9 @@ func init() {
 	// its server depends only on this function type, so the concrete route
 	// registration stays here without the server ever knowing about it —
 	// mirroring the ServiceRegister pattern in the sibling greet-rpc.
-	gs.Provide(func(l *svc.GreetLogic) gozerorest.HandlerRegister {
+	gs.Provide(func(l *GreetLogic) gozerorest.HandlerRegister {
 		return func(server *rest.Server) {
-			handler.RegisterHandlers(server, &svc.ServiceContext{Logic: l})
+			RegisterHandlers(server, &ServiceContext{Logic: l})
 		}
 	})
 }

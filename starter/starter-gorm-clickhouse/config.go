@@ -30,6 +30,13 @@ type Config struct {
 	DB          string        `value:"${db:=default}"`     // Database name, default "default"
 	DialTimeout time.Duration `value:"${dialTimeout:=}"`   // Connection dial timeout, optional
 	ReadTimeout time.Duration `value:"${readTimeout:=}"`   // Read timeout, optional
+
+	// ServiceName is the service discovery name. When set, Addr is ignored and
+	// the connection dials a live instance resolved from the discovery backend.
+	ServiceName string `value:"${service-name:=}"`
+	// Discovery selects which registered discovery backend resolves ServiceName.
+	// Only consulted when ServiceName is set; defaults to "default".
+	Discovery string `value:"${discovery:=default}"`
 }
 
 // DSN constructs the ClickHouse URL-style Data Source Name based on the configuration.

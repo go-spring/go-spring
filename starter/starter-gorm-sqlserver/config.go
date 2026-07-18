@@ -28,6 +28,14 @@ type Config struct {
 	Host     string `value:"${host}"`         // Database host
 	Port     string `value:"${port:=1433}"`   // Database port
 	DB       string `value:"${db}"`           // Database name
+
+	// ServiceName is the service discovery name. When set, Host/Port are
+	// ignored for dialing and the connection reaches a live instance resolved
+	// from the discovery backend.
+	ServiceName string `value:"${service-name:=}"`
+	// Discovery selects which registered discovery backend resolves ServiceName.
+	// Only consulted when ServiceName is set; defaults to "default".
+	Discovery string `value:"${discovery:=default}"`
 }
 
 // DSN constructs the SQL Server Data Source Name based on the configuration.

@@ -48,12 +48,13 @@
 | `starter-neo4j` | [neo4j-go-driver](https://github.com/neo4j/neo4j-go-driver) | Neo4j 图数据库 |
 | `starter-elasticsearch` | [go-elasticsearch](https://github.com/elastic/go-elasticsearch) | Elasticsearch 搜索引擎 |
 
-## 缓存 (Redis)
+## 缓存
 
 | Starter | 底层库 | 说明 |
 | --- | --- | --- |
 | `starter-go-redis` | [go-redis](https://github.com/redis/go-redis) | Redis 客户端 |
 | `starter-redigo` | [redigo](https://github.com/gomodule/redigo) | Redis 客户端（另一驱动实现） |
+| `starter-memcached` | [gomemcache](https://github.com/bradfitz/gomemcache) | Memcached 客户端 |
 
 ## 消息队列
 

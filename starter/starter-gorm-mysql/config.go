@@ -35,6 +35,13 @@ type Config struct {
 	Charset      string        `value:"${charset:=}"`      // Character set, e.g., utf8mb4
 	ParseTime    bool          `value:"${parseTime:=}"`    // Parse time values into time.Time
 	Location     string        `value:"${loc:=}"`          // Timezone location, e.g., Asia/Shanghai
+
+	// ServiceName is the service discovery name. When set, Addr is ignored and
+	// the connection dials a live instance resolved from the discovery backend.
+	ServiceName string `value:"${service-name:=}"`
+	// Discovery selects which registered discovery backend resolves ServiceName.
+	// Only consulted when ServiceName is set; defaults to "default".
+	Discovery string `value:"${discovery:=default}"`
 }
 
 // DSN constructs the MySQL Data Source Name based on the configuration.

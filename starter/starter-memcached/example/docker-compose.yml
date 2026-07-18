@@ -1,0 +1,6 @@
+services:
+  memcached:
+    image: memcached:1.6
+    container_name: starter-memcached
+    ports:
+      - "127.0.0.1:11211:11211"

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# Regenerates greet.pb.go and greet.triple.go under proto/ from the protobuf
-# IDL. Run this after editing proto/greet.proto. Requires:
+# Regenerates greet.pb.go and greet.triple.go under idl/ from the protobuf
+# IDL. Run this after editing idl/greet.proto. Requires:
 #
 #   go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
 #   go install github.com/dubbogo/protoc-gen-go-triple/v3@latest
@@ -17,7 +17,7 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-protoc --proto_path=proto \
-  --go_out=paths=source_relative:./proto \
-  --go-triple_out=paths=source_relative:./proto \
-  proto/greet.proto
+protoc --proto_path=idl \
+  --go_out=paths=source_relative:./idl \
+  --go-triple_out=paths=source_relative:./idl \
+  idl/greet.proto

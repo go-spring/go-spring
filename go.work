@@ -25,6 +25,7 @@ use (
 	./contrib/registry/nacos
 	./contrib/registry/polaris
 	./contrib/registry/zookeeper
+	./contrib/trpc-go/trpc
 	./examples/bookman
 	./examples/chatAI
 	./examples/miniapi
@@ -37,6 +38,9 @@ use (
 	./log/benchmarks/fields
 	./log/benchmarks/logs
 	./spring
+	./starter/starter-ants
+	./starter/starter-bigcache
+	./starter/starter-casbin
 	./starter/starter-dubbo
 	./starter/starter-echo
 	./starter/starter-elasticsearch
@@ -55,8 +59,12 @@ use (
 	./starter/starter-kitex
 	./starter/starter-kitex/example
 	./starter/starter-kratos
+	./starter/starter-lua-filter
+	./starter/starter-memcached
 	./starter/starter-mongodb
+	./starter/starter-mqtt
 	./starter/starter-neo4j
+	./starter/starter-oauth2-client
 	./starter/starter-otel
 	./starter/starter-pprof
 	./starter/starter-pulsar

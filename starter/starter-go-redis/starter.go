@@ -20,6 +20,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/redis/go-redis/extra/redisotel/v9"
 	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/discovery"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -53,7 +54,10 @@ func newClient(c Config) (*redis.Client, error) {
 	return client, nil
 }
 
-// destroyClient closes the Redis client.
+// destroyClient closes the Redis client and stops any discovery watch behind it.
 func destroyClient(client *redis.Client) error {
+	if v, ok := liveDialers.LoadAndDelete(client); ok {
+		_ = v.(*discovery.LiveDialer).Stop()
+	}
 	return client.Close()
 }

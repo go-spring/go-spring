@@ -15,11 +15,11 @@
   go-zero 的 zRPC 层 —— 所以 consumer 直接连固定的 `host:port`。(这里的
   `docker-compose.yml` 只用于拉起可观测后端,并非注册中心;见
   [可观测](#可观测)。)
-- **goctl 产物已展平且保持很薄。** 只有 `types/types.go` 与
-  `handler/routes.go` 由 goctl 生成、通过 `idl/gen-code.sh` 重新生成;
-  其余部分(`handler/greethandler.go`,以及 `svc/` 下的 `ServiceContext`
+- **goctl 产物已展平且保持很薄。** 只有 `idl/types.go` 与
+  `provider/routes.go` 由 goctl 生成、通过 `idl/gen-code.sh` 重新生成;
+  其余部分(`provider/greethandler.go`,以及 `provider/` 下的 `ServiceContext`
   与 `GreetLogic` bean)是手写,让 Greet 业务逻辑得以参与 Go-Spring 的依赖注入。
-  goctl 的 `internal/` 脚手架外壳被丢弃 —— 各包直接放在模块根目录下。
+  goctl 的 `internal/` 脚手架外壳被丢弃 —— 共享 DTO 放在 `idl/`,整个服务端是单个扁平的 `provider/` 包。
 
 这是 go-zero 示例的 HTTP 半边;zRPC/gRPC 那一半 —— 同一个 `Greet` 服务,
 但由 `greet.proto` 生成 —— 在旁边的 [`../greet-rpc`](../greet-rpc)。
@@ -45,14 +45,14 @@
 contrib/go-zero/greet-api/
 ├── idl/greet.api                       # go-zero API IDL
 ├── idl/gen-code.sh                     # 重新生成 goctl 所有的两份文件
-├── types/types.go                     # goctl 生成的请求/响应结构(请勿手改)
-├── handler/routes.go                  # goctl 生成的路由表(请勿手改)
-├── handler/greethandler.go            # 手写,解析请求并调用 Logic bean
-├── svc/servicecontext.go              # 手写,承载被注入的 Logic bean
-├── svc/logic.go                       # 手写,GreetLogic IoC bean
-├── provider/handler.go                # HandlerRegister bean,把路由与 Logic 绑起来
-├── provider/main.go                   # gs.Run(),长驻 HTTP server
-├── consumer/main.go                   # HTTP POST,断言响应后退出
+├── idl/types.go                        # goctl 生成的请求/响应结构(请勿手改)
+├── provider/routes.go                  # goctl 生成的路由表(请勿手改)
+├── provider/greethandler.go            # 手写,解析请求并调用 Logic bean
+├── provider/servicecontext.go          # 手写,承载被注入的 Logic bean
+├── provider/logic.go                   # 手写,GreetLogic IoC bean
+├── provider/handler.go                 # HandlerRegister bean,把路由与 Logic 绑起来
+├── provider/main.go                    # gs.Run(),长驻 HTTP server
+├── consumer/main.go                    # HTTP POST,断言响应后退出
 ├── conf/app.properties                # provider 配置(含可观测)
 ├── docker-compose.yml                 # 可观测后端(prometheus/jaeger/loki/promtail)
 ├── docker/                            # prometheus.yml + promtail-config.yml
@@ -70,11 +70,11 @@ goctl api go -api idl/greet.api -dir <tmp>/gen --style gozero
 ```
 
 `idl/gen-code.sh` 会在一个父模块名为 `greetapi` 的临时工作区里执行同样的命令,并且**只**
-把 `types/types.go` 与 `handler/routes.go` 挑出来放到项目里(并把 goctl 的
+把 `idl/types.go` 与 `provider/routes.go` 挑出来放到项目里(并把 goctl 的
 `internal/` 导入路径改写为模块根路径)。
 goctl 生成的其余部分 —— `greet.go`(main)、`etc/greet.yaml`、`internal/config`、
-`svc/servicecontext.go`、`svc/logic.go` 对应文件、
-`handler/greethandler.go` —— 有意不采纳:生命周期与配置交由 Go-Spring
+`provider/servicecontext.go`、`provider/logic.go` 对应文件、
+`provider/greethandler.go` —— 有意不采纳:生命周期与配置交由 Go-Spring
 管理,业务逻辑住在一个 Go-Spring bean 里,而不是每次请求都 `NewGreetLogic()`。
 
 ## 改造:原生 go-zero → Go-Spring

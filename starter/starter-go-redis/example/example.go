@@ -49,7 +49,8 @@ func (AnotherRedisDriver) CreateClient(c StarterGoRedis.Config) (*redis.Client, 
 }
 
 type Service struct {
-	Redis *redis.Client `autowire:"cache"`
+	Redis          *redis.Client `autowire:"cache"`
+	DiscoveryRedis *redis.Client `autowire:"discovery"`
 }
 
 func main() {
@@ -170,6 +171,21 @@ func runTest(s *Service) {
 	}
 
 	fmt.Println("Response from server:", v, "counter:", n, "ttl:", ttl)
+
+	// Feature 4: the discovery-backed client. Its address came from the
+	// registered discovery backend (service-name=redis-cluster), not from
+	// conf's dummy addr, so a successful round-trip proves discovery is wired.
+	if _, err := s.DiscoveryRedis.Set(ctx, "disc-key", "disc-value", 0).Result(); err != nil {
+		log.Errorf(ctx, log.TagAppDef, "discovery SET failed: %v", err)
+		os.Exit(1)
+	}
+	dv, err := s.DiscoveryRedis.Get(ctx, "disc-key").Result()
+	if err != nil || dv != "disc-value" {
+		log.Errorf(ctx, log.TagAppDef, "discovery GET failed: v=%q err=%v", dv, err)
+		os.Exit(1)
+	}
+	fmt.Println("Response from discovered server:", dv)
+
 	syscall.Kill(os.Getpid(), syscall.SIGTERM)
 }
 

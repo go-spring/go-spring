@@ -30,7 +30,7 @@ import (
 
 	"go-spring.org/spring/gs"
 
-	"greetapi/types"
+	"greetapi/idl"
 )
 
 // Consumer holds the client-side settings injected from
@@ -62,7 +62,7 @@ func main() {
 // On success it sends SIGTERM so gs.Run() shuts down cleanly, making the
 // process exit code the smoke-test result for scripts/smoke-test.sh.
 func runTest(c *Consumer) {
-	body, err := json.Marshal(types.GreetReq{Name: "Hello, go-zero!"})
+	body, err := json.Marshal(idl.GreetReq{Name: "Hello, go-zero!"})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error marshalling request: %v\n", err)
 		os.Exit(1)
@@ -82,7 +82,7 @@ func runTest(c *Consumer) {
 		os.Exit(1)
 	}
 
-	var greet types.GreetResp
+	var greet idl.GreetResp
 	if err := json.NewDecoder(resp.Body).Decode(&greet); err != nil {
 		fmt.Fprintf(os.Stderr, "error decoding response: %v\n", err)
 		os.Exit(1)

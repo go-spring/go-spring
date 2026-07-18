@@ -50,12 +50,13 @@ HTTP server the application already runs (no own port).
 | `starter-neo4j` | [neo4j-go-driver](https://github.com/neo4j/neo4j-go-driver) | Neo4j graph database |
 | `starter-elasticsearch` | [go-elasticsearch](https://github.com/elastic/go-elasticsearch) | Elasticsearch search engine |
 
-## Cache (Redis)
+## Cache
 
 | Starter | Underlying library | Notes |
 | --- | --- | --- |
 | `starter-go-redis` | [go-redis](https://github.com/redis/go-redis) | Redis client |
 | `starter-redigo` | [redigo](https://github.com/gomodule/redigo) | Redis client (alternative driver) |
+| `starter-memcached` | [gomemcache](https://github.com/bradfitz/gomemcache) | Memcached client |
 
 ## Message Queues
 

@@ -27,7 +27,7 @@ import (
 
 	"dubbo.apache.org/dubbo-go/v3/client"
 	_ "dubbo.apache.org/dubbo-go/v3/imports"
-	greet "go-spring.org/observability/proto"
+	greet "go-spring.org/observability/idl"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	_ "go-spring.org/starter-dubbo"

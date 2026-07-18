@@ -32,6 +32,13 @@ type Config struct {
 	SSLMode        string        `value:"${sslmode:=disable}"`   // SSL mode, e.g., disable, require, verify-full
 	TimeZone       string        `value:"${timezone:=}"`         // Timezone, e.g., Asia/Shanghai
 	ConnectTimeout time.Duration `value:"${connectTimeout:=}"`   // Connection timeout
+
+	// ServiceName is the service discovery name. When set, Host/Port are ignored
+	// and the connection dials a live instance resolved from the discovery backend.
+	ServiceName string `value:"${service-name:=}"`
+	// Discovery selects which registered discovery backend resolves ServiceName.
+	// Only consulted when ServiceName is set; defaults to "default".
+	Discovery string `value:"${discovery:=default}"`
 }
 
 // DSN constructs the PostgreSQL Data Source Name based on the configuration.
