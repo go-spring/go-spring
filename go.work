@@ -82,10 +82,14 @@ use (
 	./starter/starter-rabbitmq
 	./starter/starter-redigo
 	./starter/starter-resilience
+	./starter/starter-scheduler
 	./starter/starter-thrift
 	./starter/starter-trpc
 	./starter/starter-trpc/example
+	./starter/starter-validation
+	./starter/starter-validation/example
 	./starter/starter-websocket
 	./starter/starter-websocket-coder
 	./stdlib
+	./stdlib/event/example
 )

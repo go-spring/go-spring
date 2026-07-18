@@ -1,0 +1,6 @@
+# English validation messages. Keys follow the "validation.<rule>" convention
+# produced by FieldError.MessageKey(); {0} is the field path, {1} the rule param.
+validation:
+  required: "{0} is required"
+  email: "{0} must be a valid email address"
+  min: "{0} must be at least {1}"

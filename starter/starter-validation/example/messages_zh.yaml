@@ -1,0 +1,6 @@
+# 中文校验消息。键遵循 FieldError.MessageKey() 的 "validation.<rule>" 约定;
+# {0} 是字段路径,{1} 是规则参数。
+validation:
+  required: "{0} 不能为空"
+  email: "{0} 必须是合法的邮箱地址"
+  min: "{0} 不能小于 {1}"

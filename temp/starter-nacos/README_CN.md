@@ -64,6 +64,48 @@ content, err := s.Config.GetConfig(vo.ConfigParam{DataId: "key", Group: "DEFAULT
 2. **配置监听**：`ListenConfig` 注册 `OnChange` 回调，随后的 `PublishConfig` 触发回调并推送新值。
 3. **服务注册 + 发现**：`RegisterInstance` 注册服务实例，`GetService` 通过命名客户端完成发现。
 
+## 远程配置 Provider
+
+除了可注入的配置客户端外，`starter-nacos` 还向 Go-Spring 配置系统注册了一个 `nacos`
+远程配置 Provider。它可以在启动时直接从 Nacos 配置中心拉取应用配置，并在运行时热更新——
+无需重启。
+
+### 1. 从 Nacos 导入配置
+
+在配置文件中使用 Provider 语法声明导入
+`[optional:]nacos:<host>:<port>/<dataId>?<query>`：
+
+```properties
+spring.app.imports=optional:nacos:127.0.0.1:8848/gs-config-demo?group=DEFAULT_GROUP&format=properties
+```
+
+查询参数：
+
+| 参数         | 默认值           | 说明                                     |
+|--------------|------------------|------------------------------------------|
+| `group`      | `DEFAULT_GROUP`  | Nacos 配置分组                           |
+| `namespace`  | （public）       | 命名空间 id                              |
+| `format`     | data id 后缀，否则 `properties` | 内容格式：`properties`/`yaml`/`toml`/`json` |
+| `username`   | （空）           | 鉴权用户名                               |
+| `password`   | （空）           | 鉴权密码                                 |
+| `timeout-ms` | `5000`           | 请求超时（毫秒）                         |
+
+加上 `optional:` 前缀后，即使 data id 尚不存在应用也能正常启动；发布后其值会被自动补全。
+
+### 2. 绑定动态字段
+
+将导入的配置项绑定到 `gs.Dync[T]` 字段即可实现实时更新：
+
+```go
+type Demo struct {
+    Message gs.Dync[string] `value:"${demo.message:=none}"`
+}
+```
+
+远程配置变更时，Provider 的变更监听器会触发一次应用属性刷新，所有绑定的 `gs.Dync`
+字段都会被原子更新。完整的“发布 → 热更新”流程参见
+[example-config](example-config/example.go)。
+
 ## 高级功能
 
 * **命名 + 配置客户端**：`INamingClient` 与 `IConfigClient` 都会注册为 `__default__` Bean（接口类型不同）。

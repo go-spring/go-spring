@@ -42,6 +42,23 @@ func init() {
 	// Register multiple naming clients as a group.
 	// Each instance is created according to the configuration in "${spring.nacos.instances}".
 	gs.Group("${spring.nacos.instances}", newNamingClient, destroyNamingClient)
+
+	// Register the refresh bridge as a root object so it is always created.
+	// It links the "nacos" remote config provider's change listener to the
+	// application's property refresh, enabling hot-reload of bound beans.
+	gs.Provide(newConfigRefreshBridge).Export(gs.As[gs.Rooter]())
+}
+
+// configRefreshBridge connects remote Nacos config changes to the
+// application-wide property refresh mechanism.
+type configRefreshBridge struct{}
+
+// newConfigRefreshBridge installs the refresh hook used by the "nacos" config
+// provider. It injects the framework's PropertiesRefresher so that a remote
+// config change reloads all sources and updates bound gs.Dync fields.
+func newConfigRefreshBridge(r *gs.PropertiesRefresher) *configRefreshBridge {
+	setRefreshHook(r.RefreshProperties)
+	return &configRefreshBridge{}
 }
 
 // buildParam converts Config into the parameter object expected by the SDK.

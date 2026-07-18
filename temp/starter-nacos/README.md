@@ -68,6 +68,51 @@ The [example](example/example.go) demonstrates three core Nacos capabilities end
 3. **Service register + discovery**: `RegisterInstance` publishes a service instance and
    `GetService` discovers it via the naming client.
 
+## Remote Configuration Provider
+
+Beyond the injectable config client, `starter-nacos` registers a `nacos` remote
+configuration provider with the Go-Spring config system. This lets you pull
+application configuration directly from a Nacos config server at startup and
+hot-reload it at runtime — no restart required.
+
+### 1. Import config from Nacos
+
+Declare the import in your configuration file using the provider syntax
+`[optional:]nacos:<host>:<port>/<dataId>?<query>`:
+
+```properties
+spring.app.imports=optional:nacos:127.0.0.1:8848/gs-config-demo?group=DEFAULT_GROUP&format=properties
+```
+
+Query parameters:
+
+| Key          | Default         | Description                              |
+|--------------|-----------------|------------------------------------------|
+| `group`      | `DEFAULT_GROUP` | Nacos config group                       |
+| `namespace`  | (public)        | Namespace id                             |
+| `format`     | data id ext, else `properties` | Content format: `properties`/`yaml`/`toml`/`json` |
+| `username`   | (empty)         | Auth username                            |
+| `password`   | (empty)         | Auth password                            |
+| `timeout-ms` | `5000`          | Request timeout in milliseconds          |
+
+Prefix with `optional:` so the application still starts when the data id does
+not exist yet; the value is filled in once it is published.
+
+### 2. Bind a dynamic field
+
+Bind imported keys to a `gs.Dync[T]` field so they update live:
+
+```go
+type Demo struct {
+    Message gs.Dync[string] `value:"${demo.message:=none}"`
+}
+```
+
+When the remote config changes, the provider's change listener triggers an
+application property refresh, and all bound `gs.Dync` fields are updated
+atomically. See [example-config](example-config/example.go) for the full
+publish → hot-reload flow.
+
 ## Advanced Features
 
 * **Naming + config clients**: Both `INamingClient` and `IConfigClient` are registered as
