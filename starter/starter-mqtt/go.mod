@@ -3,7 +3,7 @@ module go-spring.org/starter-mqtt
 go 1.26
 
 require (
-	github.com/eclipse/paho.mqtt.golang v1.5.0
+	github.com/eclipse/paho.mqtt.golang v1.5.1
 	go-spring.org/log v0.1.4
 	go-spring.org/spring v1.3.4
 	go-spring.org/stdlib v0.1.7
