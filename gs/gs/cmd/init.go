@@ -28,6 +28,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"go-spring.org/gs/cmd/feature"
 	"go-spring.org/gs/internal/runcmd"
 	"go-spring.org/stdlib/errutil"
 	gomodule "golang.org/x/mod/module"
@@ -48,19 +49,37 @@ var supportedLangs = map[string]struct{}{
 func NewInitCmd() *cobra.Command {
 	var module string
 	var lang string
+	var list bool
 
 	c := &cobra.Command{
 		Use:          "init",
 		Short:        "init go server project",
-		Example:      "  gs init -m github.com/you/hello",
+		Example:      "  gs init -m github.com/you/hello --grpc --http",
 		SilenceUsage: true,
 	}
 
 	c.Flags().StringVarP(&module, "module", "m", "", `Go module path (required), e.g. "github.com/you/hello"`)
 	c.Flags().StringVar(&lang, "lang", "zh", `Documentation language: "zh" (default) or "en"`)
+	c.Flags().BoolVar(&list, "list-features", false, "list selectable features and exit")
 	runcmd.BindFlag(c)
 
+	// The feature manifest is compiled into gs, so its flags must be registered
+	// now, before argv is parsed. A parse error is a build defect; surface it in
+	// RunE rather than panic at construction.
+	m, manifestErr := feature.Embedded()
+	var selected func() map[string]struct{}
+	if manifestErr == nil {
+		selected = bindFeatureFlags(c, m)
+	}
+
 	c.RunE = func(cmd *cobra.Command, args []string) error {
+		if manifestErr != nil {
+			return manifestErr
+		}
+		if list {
+			fmt.Print(formatFeatures(m))
+			return nil
+		}
 		if module == "" {
 			return errutil.Explain(nil, "module name is required")
 		}
@@ -73,7 +92,7 @@ func NewInitCmd() *cobra.Command {
 		if _, ok := supportedLangs[lang]; !ok {
 			return errutil.Explain(nil, "unknown lang %q; supported: zh, en", lang)
 		}
-		return runInit(module, lang)
+		return runInit(module, lang, m, selected())
 	}
 
 	return c
@@ -81,7 +100,9 @@ func NewInitCmd() *cobra.Command {
 
 // runInit is the RunE handler for `gs init`. The caller must have already
 // validated module via gomodule.CheckPath and lang against supportedLangs.
-func runInit(module, lang string) error {
+// selected names the features to keep; every other manifest feature is pruned
+// from the cloned superset.
+func runInit(module, lang string, m *feature.Manifest, selected map[string]struct{}) error {
 	ss := strings.Split(module, "/")
 	projectName := ss[len(ss)-1]
 
@@ -106,6 +127,13 @@ func runInit(module, lang string) error {
 
 	log.Println("[INFO] Selecting documentation language")
 	if err := stripLangSuffix(srcDir, lang); err != nil {
+		return err
+	}
+
+	// Prune must run on the raw layout, before placeholder replacement: a
+	// feature's Owns paths and init imports use the GS_PROJECT_MODULE token.
+	log.Println("[INFO] Pruning unselected features")
+	if err := feature.Prune(srcDir, m, selected); err != nil {
 		return err
 	}
 
@@ -145,16 +173,25 @@ func runInit(module, lang string) error {
 // resolved version (e.g. "v1.2.3"), and a cleanup func that removes the
 // surrounding temp directory. On error the cleanup func is a no-op.
 func fetchLayout() (srcDir, version string, cleanup func(), err error) {
-	cleanup = func() {}
-
 	tag, version, err := latestLayoutTag()
 	if err != nil {
-		return "", "", cleanup, err
+		return "", "", func() {}, err
 	}
+	srcDir, cleanup, err = fetchLayoutAt(tag)
+	return srcDir, version, cleanup, err
+}
+
+// fetchLayoutAt sparse-checks-out the layout/ subdirectory at the given tag
+// (e.g. "layout/v1.2.3") and returns its local path plus a cleanup func that
+// removes the surrounding temp directory. `gs add` uses this with the version
+// pinned in the project's gs.json so newly copied slices match the layout the
+// project was created from; on error the cleanup func is a no-op.
+func fetchLayoutAt(tag string) (srcDir string, cleanup func(), err error) {
+	cleanup = func() {}
 
 	tempDir, err := os.MkdirTemp("", "gs-layout-")
 	if err != nil {
-		return "", "", cleanup, errutil.Explain(err, "create temp directory")
+		return "", cleanup, errutil.Explain(err, "create temp directory")
 	}
 	cleanup = func() { _ = os.RemoveAll(tempDir) }
 	defer func() {
@@ -182,7 +219,7 @@ func fetchLayout() (srcDir, version string, cleanup func(), err error) {
 	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Dir = tempDir
 	if err = runcmd.Run(cmd, fmt.Sprintf("Cloning go-spring at %s", tag)); err != nil {
-		return "", "", cleanup, err
+		return "", cleanup, err
 	}
 
 	// Pull only the layout/ directory into the working tree.
@@ -190,19 +227,19 @@ func fetchLayout() (srcDir, version string, cleanup func(), err error) {
 	cmd = exec.Command("git", "sparse-checkout", "set", "layout")
 	cmd.Dir = repoDir
 	if err = runcmd.Run(cmd, "Extracting layout directory"); err != nil {
-		return "", "", cleanup, err
+		return "", cleanup, err
 	}
 
 	// Move layout/ out of the repo and discard the rest.
 	log.Println("[INFO] Cleaning up temporary git metadata")
 	projectDir := filepath.Join(tempDir, "layout")
 	if err = os.Rename(filepath.Join(repoDir, "layout"), projectDir); err != nil {
-		return "", "", cleanup, errutil.Explain(err, "move layout directory")
+		return "", cleanup, errutil.Explain(err, "move layout directory")
 	}
 	if err = os.RemoveAll(repoDir); err != nil {
-		return "", "", cleanup, errutil.Explain(err, "remove repo directory")
+		return "", cleanup, errutil.Explain(err, "remove repo directory")
 	}
-	return projectDir, version, cleanup, nil
+	return projectDir, cleanup, nil
 }
 
 // latestLayoutTag returns the highest-semver release tag of the form

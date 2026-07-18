@@ -3,7 +3,7 @@
     {
       "key": "grpc",
       "category": "server",
-      "desc": "gRPC + protobuf service",
+      "desc": "gRPC + protobuf server",
       "owns": {
         "dirs": ["idl/grpc", "internal/api/server/grpcsvr"],
         "files": [
@@ -16,24 +16,249 @@
       }
     },
     {
-      "key": "gorm-mysql",
-      "category": "store",
-      "desc": "GORM + MySQL storage scaffolding",
+      "key": "dubbo",
+      "category": "server",
+      "desc": "Dubbo (triple) server",
       "owns": {
-        "dirs": ["internal/infra/repo/mysql"],
-        "init_imports": ["go-spring.org/starter-gorm-mysql"]
-      },
-      "params": {
-        "instances": {
-          "type": "list",
-          "default": ["default"],
-          "desc": "which DB instances to scaffold a repo for"
-        },
-        "charset": {
-          "type": "string",
-          "default": "utf8mb4",
-          "desc": "default charset baked into the generated sample"
-        }
+        "dirs": ["idl/dubbo", "internal/api/server/dubbosvr"],
+        "files": [
+          "internal/api/controller/order/order_controller_dubbo.go",
+          "internal/api/controller/order/converter/converter_dubbo.go",
+          "internal/api/controller/user/user_controller_dubbo.go",
+          "internal/api/controller/user/converter/converter_dubbo.go"
+        ],
+        "init_imports": ["GS_PROJECT_MODULE/internal/api/server/dubbosvr"]
+      }
+    },
+    {
+      "key": "thrift",
+      "category": "server",
+      "desc": "Apache Thrift server",
+      "owns": {
+        "dirs": ["idl/thrift", "internal/api/server/thriftsvr"],
+        "files": [
+          "internal/api/controller/order/order_controller_thrift.go",
+          "internal/api/controller/order/converter/converter_thrift.go",
+          "internal/api/controller/user/user_controller_thrift.go",
+          "internal/api/controller/user/converter/converter_thrift.go"
+        ],
+        "init_imports": ["GS_PROJECT_MODULE/internal/api/server/thriftsvr"]
+      }
+    },
+    {
+      "key": "trpc",
+      "category": "server",
+      "desc": "tRPC-Go server",
+      "owns": {
+        "dirs": ["idl/trpc", "internal/api/server/trpcsvr"],
+        "files": [
+          "internal/api/controller/order/order_controller_trpc.go",
+          "internal/api/controller/order/converter/converter_trpc.go",
+          "internal/api/controller/user/user_controller_trpc.go",
+          "internal/api/controller/user/converter/converter_trpc.go"
+        ],
+        "init_imports": ["GS_PROJECT_MODULE/internal/api/server/trpcsvr"]
+      }
+    },
+    {
+      "key": "gozero",
+      "category": "server",
+      "desc": "go-zero server",
+      "owns": {
+        "dirs": ["idl/gozero", "internal/api/server/gozerosvr"],
+        "files": [
+          "internal/api/controller/order/order_controller_gozero.go",
+          "internal/api/controller/order/converter/converter_gozero.go",
+          "internal/api/controller/user/user_controller_gozero.go",
+          "internal/api/controller/user/converter/converter_gozero.go"
+        ],
+        "init_imports": ["GS_PROJECT_MODULE/internal/api/server/gozerosvr"]
+      }
+    },
+    {
+      "key": "kitex-thrift",
+      "category": "server",
+      "desc": "Kitex + Thrift server",
+      "owns": {
+        "dirs": ["idl/kitex-thrift", "internal/api/server/kitexthriftsvr"],
+        "files": [
+          "internal/api/controller/order/order_controller_kitexthrift.go",
+          "internal/api/controller/order/converter/converter_kitexthrift.go",
+          "internal/api/controller/user/user_controller_kitexthrift.go",
+          "internal/api/controller/user/converter/converter_kitexthrift.go"
+        ],
+        "init_imports": ["GS_PROJECT_MODULE/internal/api/server/kitexthriftsvr"]
+      }
+    },
+    {
+      "key": "kitex-grpc",
+      "category": "server",
+      "desc": "Kitex + gRPC server",
+      "owns": {
+        "dirs": ["idl/kitex-grpc", "internal/api/server/kitexgrpcsvr"],
+        "files": [
+          "internal/api/controller/order/order_controller_kitexgrpc.go",
+          "internal/api/controller/order/converter/converter_kitexgrpc.go",
+          "internal/api/controller/user/user_controller_kitexgrpc.go",
+          "internal/api/controller/user/converter/converter_kitexgrpc.go"
+        ],
+        "init_imports": ["GS_PROJECT_MODULE/internal/api/server/kitexgrpcsvr"]
+      }
+    },
+    {
+      "key": "kratos-http",
+      "category": "server",
+      "desc": "Kratos + HTTP server",
+      "owns": {
+        "dirs": ["idl/kratos-http", "internal/api/server/kratoshttpsvr"],
+        "files": [
+          "internal/api/controller/order/order_controller_kratoshttp.go",
+          "internal/api/controller/order/converter/converter_kratoshttp.go",
+          "internal/api/controller/user/user_controller_kratoshttp.go",
+          "internal/api/controller/user/converter/converter_kratoshttp.go"
+        ],
+        "init_imports": ["GS_PROJECT_MODULE/internal/api/server/kratoshttpsvr"]
+      }
+    },
+    {
+      "key": "kratos-grpc",
+      "category": "server",
+      "desc": "Kratos + gRPC server",
+      "owns": {
+        "dirs": ["idl/kratos-grpc", "internal/api/server/kratosgrpcsvr"],
+        "files": [
+          "internal/api/controller/order/order_controller_kratosgrpc.go",
+          "internal/api/controller/order/converter/converter_kratosgrpc.go",
+          "internal/api/controller/user/user_controller_kratosgrpc.go",
+          "internal/api/controller/user/converter/converter_kratosgrpc.go"
+        ],
+        "init_imports": ["GS_PROJECT_MODULE/internal/api/server/kratosgrpcsvr"]
+      }
+    },
+    {
+      "key": "goframe-http",
+      "category": "server",
+      "desc": "GoFrame + HTTP server",
+      "owns": {
+        "dirs": ["idl/goframe-http", "internal/api/server/goframehttpsvr"],
+        "files": [
+          "internal/api/controller/order/order_controller_goframehttp.go",
+          "internal/api/controller/order/converter/converter_goframehttp.go",
+          "internal/api/controller/user/user_controller_goframehttp.go",
+          "internal/api/controller/user/converter/converter_goframehttp.go"
+        ],
+        "init_imports": ["GS_PROJECT_MODULE/internal/api/server/goframehttpsvr"]
+      }
+    },
+    {
+      "key": "goframe-grpc",
+      "category": "server",
+      "desc": "GoFrame + gRPC server",
+      "owns": {
+        "dirs": ["idl/goframe-grpc", "internal/api/server/goframegrpcsvr"],
+        "files": [
+          "internal/api/controller/order/order_controller_goframegrpc.go",
+          "internal/api/controller/order/converter/converter_goframegrpc.go",
+          "internal/api/controller/user/user_controller_goframegrpc.go",
+          "internal/api/controller/user/converter/converter_goframegrpc.go"
+        ],
+        "init_imports": ["GS_PROJECT_MODULE/internal/api/server/goframegrpcsvr"]
+      }
+    },
+    {
+      "key": "http",
+      "category": "server",
+      "desc": "stdlib net/http server (gs-http-gen IDL routes)",
+      "owns": {
+        "dirs": ["idl/http", "internal/api/server/httpsvr"],
+        "files": [
+          "internal/api/controller/order/order_controller.go",
+          "internal/api/controller/order/converter/converter.go",
+          "internal/api/controller/user/user_controller.go",
+          "internal/api/controller/user/converter/converter.go"
+        ],
+        "init_imports": ["GS_PROJECT_MODULE/internal/api/server/httpsvr"]
+      }
+    },
+    {
+      "key": "ws",
+      "category": "server",
+      "desc": "WebSocket server (dedicated http.Server)",
+      "owns": {
+        "dirs": ["internal/api/server/wssvr"],
+        "init_imports": ["GS_PROJECT_MODULE/internal/api/server/wssvr"]
+      }
+    },
+    {
+      "key": "mq",
+      "category": "server",
+      "desc": "message-queue consumer server",
+      "owns": {
+        "dirs": ["internal/api/server/mqsvr"],
+        "init_imports": ["GS_PROJECT_MODULE/internal/api/server/mqsvr"]
+      }
+    },
+    {
+      "key": "kratos-ws",
+      "category": "server",
+      "desc": "Kratos + WebSocket server",
+      "owns": {
+        "dirs": ["idl/kratos-ws", "internal/api/server/kratoswssvr"],
+        "init_imports": ["GS_PROJECT_MODULE/internal/api/server/kratoswssvr"]
+      }
+    },
+    {
+      "key": "goframe-tcp",
+      "category": "server",
+      "desc": "GoFrame + TCP server",
+      "owns": {
+        "dirs": ["idl/goframe-tcp", "internal/api/server/goframetcpsvr"],
+        "init_imports": ["GS_PROJECT_MODULE/internal/api/server/goframetcpsvr"]
+      }
+    },
+    {
+      "key": "goframe-ws",
+      "category": "server",
+      "desc": "GoFrame + WebSocket server",
+      "owns": {
+        "dirs": ["idl/goframe-ws", "internal/api/server/goframewssvr"],
+        "init_imports": ["GS_PROJECT_MODULE/internal/api/server/goframewssvr"]
+      }
+    },
+    {
+      "key": "gin",
+      "category": "server",
+      "desc": "Gin HTTP server (IDL-free)",
+      "owns": {
+        "dirs": ["internal/api/server/ginsvr"],
+        "init_imports": [
+          "GS_PROJECT_MODULE/internal/api/server/ginsvr",
+          "go-spring.org/starter-gin"
+        ]
+      }
+    },
+    {
+      "key": "echo",
+      "category": "server",
+      "desc": "Echo HTTP server (IDL-free)",
+      "owns": {
+        "dirs": ["internal/api/server/echosvr"],
+        "init_imports": [
+          "GS_PROJECT_MODULE/internal/api/server/echosvr",
+          "go-spring.org/starter-echo"
+        ]
+      }
+    },
+    {
+      "key": "hertz",
+      "category": "server",
+      "desc": "Hertz HTTP server (IDL-free)",
+      "owns": {
+        "dirs": ["internal/api/server/hertzsvr"],
+        "init_imports": [
+          "GS_PROJECT_MODULE/internal/api/server/hertzsvr",
+          "go-spring.org/starter-hertz"
+        ]
       }
     }
   ]

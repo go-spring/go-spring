@@ -53,6 +53,11 @@ var ErrRateLimited = errors.New("resilience: rate limited")
 // rejected because the circuit breaker for its resource is open.
 var ErrCircuitOpen = errors.New("resilience: circuit open")
 
+// ErrBulkheadFull is returned (or wrapped) by an [Executor] when an operation is
+// rejected because the resource already has the maximum number of concurrent
+// in-flight operations allowed by the bulkhead.
+var ErrBulkheadFull = errors.New("resilience: bulkhead full")
+
 // Policy is a backend-neutral description of the protection wanted for a set of
 // operations. Each [Driver] maps these knobs onto its own primitives (the
 // builtin driver reads them directly; sentinel-golang translates them into its
@@ -76,6 +81,13 @@ type Policy struct {
 	// allowed through (half-open). Ignored when ErrorThreshold is 0; defaults to
 	// a few seconds when unset.
 	OpenDuration time.Duration
+
+	// MaxConcurrent caps the number of operations allowed to run against a
+	// resource at the same time (the bulkhead / isolation stage). Excess calls
+	// are rejected with [ErrBulkheadFull] rather than queued, so a slow
+	// downstream cannot exhaust the caller's goroutines or connections. 0
+	// disables the bulkhead.
+	MaxConcurrent int
 
 	// MaxRetries is the number of extra attempts after the first failure. 0
 	// means a single attempt with no retry. Retries respect the circuit breaker
@@ -106,4 +118,28 @@ type Executor interface {
 // register under a name via [RegisterDriver].
 type Driver interface {
 	NewExecutor(Policy) (Executor, error)
+}
+
+// Fallback runs fn through exec and, when the operation is rejected (rate
+// limited, circuit open, bulkhead full) or fails after all retries, invokes
+// degrade to produce a graceful result instead of surfacing the error. It is
+// the degradation stage of the framework and composes with any [Executor]
+// regardless of driver: degrade receives the triggering error so it can serve
+// cached data for [ErrCircuitOpen] yet propagate a genuine bug, for example.
+//
+// degrade's own error (or nil) becomes the final result. When exec is nil the
+// call is a transparent pass-through: fn runs once and its error, if any, still
+// reaches degrade, so wiring stays a no-op until a policy is configured.
+func Fallback(ctx context.Context, exec Executor, resource string,
+	fn func(context.Context) error, degrade func(context.Context, error) error) error {
+	var err error
+	if exec == nil {
+		err = fn(ctx)
+	} else {
+		err = exec.Execute(ctx, resource, fn)
+	}
+	if err == nil {
+		return nil
+	}
+	return degrade(ctx, err)
 }

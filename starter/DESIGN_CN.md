@@ -17,13 +17,16 @@ starter 是**集成模块**:只负责把某一个第三方服务或框架接入 
   `config.go`(绑定用的 `Config` 结构体及 driver 注册表)、`README.md` /
   `README_CN.md`,以及仅用于冒烟和集成的 `example/` module —— 不放
   `build.sh` / `bootstrap.sh` 等部署脚手架,只留 `check.sh` / `gen.sh` 与源码。
+  配置 Provider 类(§2.5)在此之上有变体:用 `provider.go` 取代 `config.go`
+  (没有绑定 `Config` —— 连接参数从导入 source 串解析),冒烟 module 为
+  `example-config/`。
 - **每个源文件都要有 Apache License 头**(见 [../LICENSE_HEADER](../LICENSE_HEADER))。
 - **内部依赖靠 `go.work` 解析,不写 `require`。** 工作区内模块互相依赖通过 workspace
   文件解析;给内部模块加 `require` 会让 `go mod tidy` 去 proxy 拉包并 404。
 
-## 2. 四种形态
+## 2. 五种形态
 
-每个 starter 都恰好属于以下四种形态之一。形态决定了它的生命周期、端口行为,以及
+每个 starter 都恰好属于以下五种形态之一。形态决定了它的生命周期、端口行为,以及
 应用如何消费它。
 
 ### 2.1 Server 类(自持监听端口)
@@ -90,6 +93,38 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
 - **`starter-pprof`** 在**独立**端口跑一个专用 HTTP server 暴露运行时 profile,刻意
   与应用主端口隔开。
 
+### 2.5 配置 Provider 类(远程配置中心)
+
+`starter-config-nacos`、`starter-config-etcd`、`starter-config-consul` 把远程配置
+中心(Nacos / etcd / Consul KV)接入应用,使其能在启动时从中加载配置、运行时热更新。
+
+- **按角色拆,不按后端拆。** Nacos、Consul、etcd 都是**双能力**后端 —— 既做配置也做
+  服务发现。这两者在 Go-Spring 里是不同的接入点,因此落在不同 starter:**config**
+  角色是配置 Provider 类 starter(本形态);**discovery** 角色走 client 侧
+  (`stdlib/discovery`,§3)或框架原生(`contrib/registry/`,§3)。配置 Provider 类
+  starter 只做 config 角色,别的都不做。命名对标 Spring Cloud Alibaba
+  (`nacos-config` vs `nacos-discovery`)。
+- **它注册的是 provider,不是 bean。** 接缝是 `init()` 里的
+  `conf.RegisterProvider(name, fn)`,不是 `gs.Provide`。配置 Provider 类 starter
+  不产生可注入的 bean;应用只需 blank import。这也是它带 `provider.go` 而没有
+  `config.go` 的原因。
+- **provider 在容器存在之前运行。** `spring.app.imports=`
+  `[optional:]<name>:<host>:<port>/<key>?<query>` 会在 `AppConfig.Refresh` 阶段
+  调用 provider,此时任何 bean 都还没装配。因此它拿不到 client bean —— 只能从 source
+  串自建 client,并按连接维度缓存该 client,避免每次 refresh 泄漏 goroutine。连接参数
+  (鉴权、namespace、format……)来自 source 的 query 串,而非绑定的 `Config`。
+- **变更监听必须无条件先注册,在拉取之前。** provider 必须在"拉取的
+  `optional`+不存在提前 return"**之前**装好 watch/监听器。否则应用在 key 尚不存在时
+  启动就永远不注册 watch,后续 publish 也永不触发刷新。监听器按 `(client, key)` 去重。
+- **热更新复用框架刷新,经 `Rooter` 桥接。** 一个 `configRefreshBridge` bean 注入
+  `*gs.PropertiesRefresher`,把它的 `RefreshProperties` 存进 provider 的
+  `refreshHook`(一个 `atomic.Pointer`)。远端变更时监听器调用该 hook,重新加载所有
+  配置源(重跑 provider),并通过 `gs_dync` 的两阶段原子提交重新绑定所有 `gs.Dync[T]`
+  字段。把需要热更新的 key 绑到 `gs.Dync[T]`。
+- **内容解析复用核心 reader。** 用 `spring/conf/reader/{prop,yaml,toml,json}` 的
+  `Read` 函数(按 `format` query 参数选择)解析远端字节,`flatten.Flatten` 后返回
+  `map[string]string`。
+
 ## 3. 横切约束
 
 - **配置前缀按能力划分,不按实现划分。** 实现**同一**能力的两个 starter 共用一个前缀
@@ -105,10 +140,25 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
 - **现阶段容忍重复优先于过早抽象。** 公共能力(health、TLS、fail-fast)刻意在每个模块
   各写一份,而不抽到公共包。后续可能有统一收敛的一轮重构;在那之前不要建跨 starter 的
   helper 包。
-- **服务发现只做 client 侧。** client 类 starter 可通过 `stdlib/discovery`
-  (由 driver 的 dialer 钩子注入 `LiveDialer`)把 `ServiceName` 解析成实时端点。RPC
-  的 **provider** 注册刻意不在范围内 —— 它太依赖具体框架,硬统一只会套壳。
-  `ServiceName` 为空时 client 按地址直连,行为不变。
+- **优先用框架自带的注册与发现;没有的才考虑统一。** 默认使用每个框架**自己**的
+  注册与发现机制,而不是在其之上硬套一层 Go-Spring 抽象。只有对**本身没有原生机制**
+  的传输层,才**考虑**由 Go-Spring 提供统一能力。原因:各 RPC 框架各自带一套互不
+  兼容的注册抽象(kitex 的 `registry.Registry`、kratos 的 `registry.Registrar`、
+  dubbo-go 的 config-only registries、go-zero 的 `discov.EtcdConf`……),再加一层
+  Go-Spring `Registrar` 只会变成把我们的抽象翻译进各框架抽象的**第二层胶水**——正是
+  这层耦合让"统一"变成净亏损。截至 2026-07-18 的评估:
+  - *有原生注册+发现,用它们的(opt-in):* `kitex`(`kitex-contrib/registry-etcd`)、
+    `kratos`(`kratos.Registrar`)、`go-zero`(`discov.EtcdConf`)、`goframe`(`gsvc`)、
+    `dubbo`(config registries)、`trpc`(naming 插件)。各 starter 均已用"空=直连"
+    的开关接好。
+  - *无原生 provider 注册,有真实需求时才是候选:* 裸 gRPC(`starter-grpc`)、
+    Apache Thrift(`starter-thrift`)、纯 HTTP web(gin/echo/hertz)。只有这些才值得
+    做 Go-Spring 注册 seam,且要等具体需求落地。
+- **client 侧发现已统一,provider 注册不统一。** client 类 starter 可通过
+  `stdlib/discovery`(由 driver 的 dialer 钩子注入 `LiveDialer`)把 `ServiceName`
+  解析成实时端点,这对各基础设施客户端是通用的。RPC 的 **provider** 注册按上述原则
+  保持框架原生。`ServiceName` 为空时 client 按地址直连,行为不变。各框架原生注册进
+  consul/etcd/nacos/zookeeper/polaris 的示例见 `contrib/registry/`。
 - **可观测遵循"中心定义、边缘桥接"。** starter 通过 OTel 全局输出,或用 `SetLogger`
   钩子把库的内部日志桥接进 go-spring `log`;桥接时必须同时补一个 go-spring
   `FileLogger` sink,否则会丢掉 console 输出。
@@ -122,6 +172,9 @@ WebSocket(`websocket`、`websocket-coder`)、中间件(`lua-filter`)、鉴权
    每实例 `Destroy`。
 5. Server? → 自持端口、提前监听/就绪后 serve、优雅 `Stop`、应用提供注册 bean、
    默认开启开关。
-6. 在底层库支持的前提下补 health、TLS、destroy。
-7. 提供双语 README,以及只含 `check.sh` 的 `example/`(不放部署脚手架)。
-8. 内部依赖走 `go.work`,不写 `require`。
+6. 配置 Provider? → `provider.go` 里 `conf.RegisterProvider`(无 `config.go`、
+   无 bean),从 source 串解析参数、缓存 client、在拉取前无条件注册监听、经 `Rooter`
+   bean 把 `PropertiesRefresher` 桥接进 `refreshHook`,配 `example-config/`。
+7. 在底层库支持的前提下补 health、TLS、destroy。
+8. 提供双语 README,以及只含 `check.sh` 的 `example/`(不放部署脚手架)。
+9. 内部依赖走 `go.work`,不写 `require`。

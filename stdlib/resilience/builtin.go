@@ -50,6 +50,7 @@ type builtinExecutor struct {
 type resourceState struct {
 	bucket  *tokenBucket
 	breaker *circuitBreaker
+	sem     chan struct{}
 }
 
 func (e *builtinExecutor) state(resource string) *resourceState {
@@ -78,12 +79,29 @@ func (e *builtinExecutor) state(resource string) *resourceState {
 		}
 		s.breaker = &circuitBreaker{threshold: e.policy.ErrorThreshold, openFor: open}
 	}
+	if e.policy.MaxConcurrent > 0 {
+		// A buffered channel is a non-blocking counting semaphore: a full buffer
+		// means the bulkhead is at capacity, so excess calls are rejected rather
+		// than queued.
+		s.sem = make(chan struct{}, e.policy.MaxConcurrent)
+	}
 	e.states[resource] = s
 	return s
 }
 
 func (e *builtinExecutor) Execute(ctx context.Context, resource string, fn func(context.Context) error) error {
 	s := e.state(resource)
+
+	// The bulkhead bounds concurrent in-flight calls to the resource; one slot
+	// is held for the whole Execute (retries included) and released when done.
+	if s.sem != nil {
+		select {
+		case s.sem <- struct{}{}:
+			defer func() { <-s.sem }()
+		default:
+			return ErrBulkheadFull
+		}
+	}
 
 	attempts := e.policy.MaxRetries + 1
 	var err error

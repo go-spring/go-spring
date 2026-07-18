@@ -20,6 +20,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -91,4 +92,34 @@ func TestSentinelRoundTripperRetry(t *testing.T) {
 	assert.That(t, resp.StatusCode).Equal(http.StatusOK)
 	_ = resp.Body.Close()
 	assert.That(t, atomic.LoadInt32(&hits)).Equal(int32(3))
+}
+
+// TestSentinelBulkhead proves the neutral MaxConcurrent knob is carried by
+// sentinel's isolation (concurrency) rule: with a limit of 1, a second call made
+// while the first is still in-flight is rejected as the neutral ErrBulkheadFull.
+func TestSentinelBulkhead(t *testing.T) {
+	e := newExec(t, resilience.Policy{MaxConcurrent: 1})
+
+	release := make(chan struct{})
+	entered := make(chan struct{})
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		_ = e.Execute(context.Background(), "svc-bulkhead", func(context.Context) error {
+			close(entered)
+			<-release
+			return nil
+		})
+	}()
+
+	<-entered // first call holds the only concurrency slot
+	err := e.Execute(context.Background(), "svc-bulkhead", func(context.Context) error { return nil })
+	assert.Error(t, err).Is(resilience.ErrBulkheadFull)
+
+	close(release)
+	wg.Wait()
+
+	// Slot freed: a subsequent call is admitted again.
+	assert.Error(t, e.Execute(context.Background(), "svc-bulkhead", func(context.Context) error { return nil })).Nil()
 }

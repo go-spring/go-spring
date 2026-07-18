@@ -25,6 +25,7 @@ import (
 	"github.com/alibaba/sentinel-golang/core/base"
 	"github.com/alibaba/sentinel-golang/core/circuitbreaker"
 	"github.com/alibaba/sentinel-golang/core/flow"
+	"github.com/alibaba/sentinel-golang/core/isolation"
 
 	"go-spring.org/stdlib/resilience"
 )
@@ -85,6 +86,19 @@ func (e *sentinelExecutor) ensureRules(resource string) error {
 		}
 	}
 
+	if e.policy.MaxConcurrent > 0 {
+		// sentinel's isolation slot tracks in-flight concurrency per resource via
+		// the Entry/Exit pair below, so the neutral bulkhead maps straight onto a
+		// concurrency rule with no extra bookkeeping on our side.
+		if _, err := isolation.LoadRulesOfResource(resource, []*isolation.Rule{{
+			Resource:   resource,
+			MetricType: isolation.Concurrency,
+			Threshold:  uint32(e.policy.MaxConcurrent),
+		}}); err != nil {
+			return fmt.Errorf("resilience: load isolation rule for %q: %w", resource, err)
+		}
+	}
+
 	e.loaded[resource] = true
 	return nil
 }
@@ -136,6 +150,8 @@ func mapBlockError(b *base.BlockError) error {
 	switch b.BlockType() {
 	case base.BlockTypeCircuitBreaking:
 		return fmt.Errorf("%w: %s", resilience.ErrCircuitOpen, b.Error())
+	case base.BlockTypeIsolation:
+		return fmt.Errorf("%w: %s", resilience.ErrBulkheadFull, b.Error())
 	default:
 		return fmt.Errorf("%w: %s", resilience.ErrRateLimited, b.Error())
 	}

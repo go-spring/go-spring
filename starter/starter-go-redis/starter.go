@@ -28,6 +28,7 @@ import (
 	"go-spring.org/stdlib/discovery"
 	"go-spring.org/stdlib/errutil"
 	"go-spring.org/stdlib/flatten"
+	"go-spring.org/stdlib/health"
 )
 
 func init() {
@@ -50,9 +51,15 @@ func init() {
 			case "", "single", "sentinel":
 				b := r.Provide(newClient, gs.ValueArg(c)).Name(name).Destroy(destroyClient)
 				b.SetFileLine(file, line)
+				// Contribute a health indicator for this instance, injecting the
+				// client just registered above by name.
+				h := r.Provide(newClientHealth, gs.ValueArg(name), gs.TagArg(name)).Export(gs.As[health.Indicator]())
+				h.SetFileLine(file, line)
 			case "cluster":
 				b := r.Provide(newClusterClient, gs.ValueArg(c)).Name(name).Destroy(destroyClusterClient)
 				b.SetFileLine(file, line)
+				h := r.Provide(newClusterHealth, gs.ValueArg(name), gs.TagArg(name)).Export(gs.As[health.Indicator]())
+				h.SetFileLine(file, line)
 			default:
 				return errutil.Explain(nil, "redis: invalid mode %q for instance %q (want single/sentinel/cluster)", c.Mode, name)
 			}

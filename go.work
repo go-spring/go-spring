@@ -37,9 +37,13 @@ use (
 	./log/benchmarks/fields
 	./log/benchmarks/logs
 	./spring
+	./starter/starter-actuator
 	./starter/starter-ants
 	./starter/starter-bigcache
 	./starter/starter-casbin
+	./starter/starter-config-consul
+	./starter/starter-config-etcd
+	./starter/starter-config-nacos
 	./starter/starter-dubbo
 	./starter/starter-echo
 	./starter/starter-elasticsearch

@@ -21,16 +21,19 @@ not belong here.
   registration + lifecycle), `config.go` (the bound `Config` struct and any
   driver registry), `README.md` / `README_CN.md`, and an `example/` module that
   exists for smoke tests and integration only — no `build.sh` / `bootstrap.sh` /
-  deployment scaffolding, only `check.sh` / `gen.sh` / source.
+  deployment scaffolding, only `check.sh` / `gen.sh` / source. Config-provider
+  starters (§2.5) vary this: they carry `provider.go` instead of `config.go`
+  (no bound `Config` — connection parameters are parsed from the import source
+  string), and their smoke module is `example-config/`.
 - **Apache License header** on every source file (see
   [../LICENSE_HEADER](../LICENSE_HEADER)).
 - **Internal deps resolve through `go.work`, never `require`.** Modules in this
   workspace depend on each other via the workspace file; adding a `require` on an
   internal module sends `go mod tidy` to the proxy and 404s.
 
-## 2. The Four Archetypes
+## 2. The Five Archetypes
 
-Every starter falls into exactly one of four shapes. Its shape dictates its
+Every starter falls into exactly one of five shapes. Its shape dictates its
 lifecycle, its port behavior, and how the application consumes it.
 
 ### 2.1 Server starters (own a listener)
@@ -116,6 +119,47 @@ facilities.
 - **`starter-pprof`** runs a *dedicated* HTTP server on its own port for runtime
   profiles, kept off the application's main port on purpose.
 
+### 2.5 Config-provider starters (remote configuration center)
+
+`starter-config-nacos`, `starter-config-etcd`, and `starter-config-consul`
+integrate a remote configuration center (Nacos / etcd / Consul KV) so an
+application can load configuration from it at startup and hot-reload at runtime.
+
+- **Split by role, not by backend.** Nacos, Consul, and etcd are each *dual*
+  backends — they serve both configuration and service discovery. These two are
+  different integration points in Go-Spring, so they live in different starters:
+  the **config** role is a config-provider starter (this archetype); the
+  **discovery** role is client-side (`stdlib/discovery`, §3) or framework-native
+  (`contrib/registry/`, §3). A config-provider starter does the config role and
+  nothing else. The naming mirrors Spring Cloud Alibaba
+  (`nacos-config` vs `nacos-discovery`).
+- **It registers a provider, not a bean.** The seam is
+  `conf.RegisterProvider(name, fn)` called in `init()`, not `gs.Provide`. A
+  config-provider starter produces no injectable bean; the application just
+  blank-imports it. This is why it carries `provider.go` and no `config.go`.
+- **The provider runs before the container exists.** `spring.app.imports=`
+  `[optional:]<name>:<host>:<port>/<key>?<query>` invokes the provider during
+  `AppConfig.Refresh`, before any bean is wired. It therefore cannot inject a
+  client bean — it builds its own client from the source string, and caches that
+  client per connection tuple so repeated refreshes do not leak goroutines.
+  Connection parameters (auth, namespace, format, ...) come from the source
+  query string, not a bound `Config`.
+- **Register the change listener unconditionally, before the fetch.** The
+  provider must install its watch/listener *before* the fetch's
+  `optional`-and-missing early return. Otherwise an app that starts before the
+  key exists never registers a watch, and a later publish never triggers a
+  reload. Dedup listeners per `(client, key)`.
+- **Hot-reload reuses the framework refresh, via a `Rooter` bridge.** A
+  `configRefreshBridge` bean injects `*gs.PropertiesRefresher` and stores its
+  `RefreshProperties` into the provider's `refreshHook` (an `atomic.Pointer`).
+  On a remote change the listener calls the hook, which reloads every source
+  (re-running the provider) and re-binds all `gs.Dync[T]` fields through the
+  two-phase, atomic commit in `gs_dync`. Bind live keys to `gs.Dync[T]`.
+- **Content parsing reuses core readers.** Decode remote bytes with the
+  `spring/conf/reader/{prop,yaml,toml,json}` `Read` functions keyed by a
+  `format` query param, then `flatten.Flatten` before returning
+  `map[string]string`.
+
 ## 3. Cross-Cutting Constraints
 
 - **Config prefix is per capability, not per implementation.** Two starters that
@@ -136,11 +180,33 @@ facilities.
   capabilities (health, TLS, fail-fast) are intentionally written once per
   module rather than extracted into a shared package. A consolidation pass may
   come later; until then, do not build cross-starter helper packages.
-- **Service discovery is client-side only.** Client starters can resolve a
-  `ServiceName` to live endpoints through `stdlib/discovery` (`LiveDialer`
-  injected via the driver's dialer hook). RPC *provider* registration is
-  deliberately out of scope — it is too framework-specific to unify. When
-  `ServiceName` is empty the client dials the address directly, unchanged.
+- **Prefer framework-native registration and discovery; unify only where none
+  exists.** The default is to use each framework's *own* registration and
+  discovery mechanism rather than force a Go-Spring abstraction on top of it. A
+  Go-Spring-provided unified capability is considered *only* for transports that
+  have no native mechanism of their own. The reasoning: the RPC frameworks each
+  ship an incompatible registration abstraction (kitex's `registry.Registry`,
+  kratos's `registry.Registrar`, dubbo-go's config-only registries, go-zero's
+  `discov.EtcdConf`, ...), so a Go-Spring `Registrar` on top would just become a
+  second translation layer bridging our abstraction into each framework's — the
+  very coupling that makes "unify it" a net loss. Evaluation as of 2026-07-18:
+  - *Have native registration + discovery — use theirs (opt-in):* `kitex`
+    (`kitex-contrib/registry-etcd`), `kratos` (`kratos.Registrar`), `go-zero`
+    (`discov.EtcdConf`), `goframe` (`gsvc`), `dubbo` (config registries), `trpc`
+    (naming plugins). Each starter already wires this behind an empty-means-
+    direct-connect toggle.
+  - *No native provider registration — candidates if a real need appears:* plain
+    gRPC (`starter-grpc`), Apache Thrift (`starter-thrift`), and plain HTTP web
+    servers (gin/echo/hertz). Only these would justify a Go-Spring registration
+    seam, and only when a concrete requirement lands.
+- **Client-side discovery is already unified; provider registration is not.**
+  Client starters resolve a `ServiceName` to live endpoints through
+  `stdlib/discovery` (`LiveDialer` injected via the driver's dialer hook); this
+  is generic across infrastructure clients. RPC *provider* registration stays
+  framework-native per the principle above. When `ServiceName` is empty the
+  client dials the address directly, unchanged. For examples of framework-native
+  provider registration into consul/etcd/nacos/zookeeper/polaris, see
+  `contrib/registry/`.
 - **Observability is central-define, edge-bridge.** The starter emits through
   the OTel globals or bridges the library's internal logs into go-spring `log`
   via a `SetLogger` hook; it must also add a go-spring `FileLogger` sink or the
@@ -156,7 +222,11 @@ facilities.
    fail-fast, startup probe, per-instance `Destroy`.
 5. Server? → own port, listen-early/serve-on-ready, graceful `Stop`,
    app-supplied register bean, enabled-by-default toggle.
-6. Add health, TLS, and destroy where the underlying library supports them.
-7. Ship a bilingual README pair and an `example/` with `check.sh` only (no
+6. Config-provider? → `provider.go` with `conf.RegisterProvider` (no `config.go`,
+   no bean), parse params from the source string, cache the client, register the
+   listener unconditionally before the fetch, bridge `PropertiesRefresher` into
+   `refreshHook` via a `Rooter` bean, ship `example-config/`.
+7. Add health, TLS, and destroy where the underlying library supports them.
+8. Ship a bilingual README pair and an `example/` with `check.sh` only (no
    deployment scaffolding).
-8. Resolve internal deps through `go.work`, never `require`.
+9. Resolve internal deps through `go.work`, never `require`.
