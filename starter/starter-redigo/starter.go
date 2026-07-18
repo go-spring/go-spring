@@ -19,6 +19,7 @@ package StarterRedigo
 import (
 	"github.com/gomodule/redigo/redis"
 	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/discovery"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -54,7 +55,10 @@ func newClient(c Config) (*redis.Pool, error) {
 	return pool, nil
 }
 
-// destroyClient closes the Redis client.
+// destroyClient closes the Redis pool and stops any discovery watch behind it.
 func destroyClient(pool *redis.Pool) error {
+	if v, ok := liveDialers.LoadAndDelete(pool); ok {
+		_ = v.(*discovery.LiveDialer).Stop()
+	}
 	return pool.Close()
 }

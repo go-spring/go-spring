@@ -6,6 +6,9 @@
 及服务生命周期的集成模块。每个 starter 都是独立的 Go module。下面按领域归类，
 方便你快速定位所需的 starter。
 
+所有 starter 共同遵循的设计约束(形态、端口、driver 模式、多实例、fail-fast……）
+见 [DESIGN_CN.md](DESIGN_CN.md)。
+
 ## Web / HTTP 框架
 
 通过 Go-Spring 服务生命周期托管由应用提供的 Web 引擎。
@@ -28,6 +31,7 @@
 | `starter-grpc` | [google.golang.org/grpc](https://pkg.go.dev/google.golang.org/grpc) | 轻量 gRPC 服务封装 |
 | `starter-kitex` | [cloudwego/kitex](https://github.com/cloudwego/kitex) | 服务封装，可选 etcd 注册 |
 | `starter-thrift` | [Apache Thrift](https://thrift.apache.org/) | 基于 `TSimpleServer` 封装 `TProcessor` bean |
+| `starter-trpc` | [trpc-group/trpc-go](https://github.com/trpc-group/trpc-go) | 通过属性配置服务（不使用 `trpc_go.yaml`），直连方式 |
 | `starter-dubbo` | [dubbo-go/v3](https://pkg.go.dev/dubbo.apache.org/dubbo-go/v3) | 完整服务端 + 客户端，支持注册中心服务发现 |
 | `starter-go-zero/zrpc` | [zeromicro/go-zero](https://github.com/zeromicro/go-zero) | 通过 `ServiceRegister` bean 托管 zrpc gRPC 服务，可选 etcd 注册 |
 | `starter-goframe/grpc` | [gogf/gf](https://github.com/gogf/gf) | goframe gRPC 服务（`grpcx.GrpcServer`） |

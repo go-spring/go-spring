@@ -32,8 +32,11 @@ import (
 var driverRegistry = map[string]Driver{}
 
 // liveDialers tracks the discovery-backed dialer behind each client built by
-// DefaultDriver, so destroyClient can stop the background watch on shutdown.
-var liveDialers sync.Map // *redis.Client -> *discovery.LiveDialer
+// DefaultDriver, so the destructors can stop the background watch on shutdown.
+// The key is the client value (*redis.Client for single/sentinel), the value is
+// the *discovery.LiveDialer. Cluster/sentinel topologies self-discover their
+// nodes and never use a LiveDialer, so only single-mode clients appear here.
+var liveDialers sync.Map // redis client -> *discovery.LiveDialer
 
 func init() {
 	RegisterDriver("DefaultDriver", DefaultDriver{})
@@ -41,9 +44,46 @@ func init() {
 
 // Config defines Redis connection configuration.
 type Config struct {
+	// Mode selects the Redis topology: "single" (default), "sentinel", or
+	// "cluster". It stays "single" by default so existing single-node
+	// configurations keep working unchanged.
+	//   - single:   dials Addr (or ServiceName via service discovery).
+	//   - sentinel:  connects to the master resolved by MasterName through
+	//                SentinelAddrs; the bean type is still *redis.Client.
+	//   - cluster:   connects to the cluster seeded by Addrs; the bean type is
+	//                *redis.ClusterClient (a distinct type — see README).
+	Mode string `value:"${mode:=single}"`
+
 	// Addr is the Redis server address, e.g., "127.0.0.1:6379".
-	// Either Addr or ServiceName must be set.
+	// Used only in single mode; either Addr or ServiceName must be set.
 	Addr string `value:"${addr:=}"`
+
+	// MasterName is the sentinel master group name. Required in sentinel mode.
+	MasterName string `value:"${master-name:=}"`
+
+	// SentinelAddrs are the sentinel node addresses, e.g.,
+	// ["127.0.0.1:26379", "127.0.0.1:26380"]. Required in sentinel mode.
+	SentinelAddrs []string `value:"${sentinel-addrs:=}"`
+
+	// SentinelPassword is the password used to authenticate with the sentinels
+	// themselves (distinct from Password, which authenticates with the master).
+	SentinelPassword string `value:"${sentinel-password:=}"`
+
+	// Addrs are the cluster seed node addresses, e.g.,
+	// ["127.0.0.1:7000", "127.0.0.1:7001"]. Required in cluster mode.
+	Addrs []string `value:"${addrs:=}"`
+
+	// MaxRedirects is the maximum number of MOVED/ASK redirects to follow in
+	// cluster mode, default is 0 (go-redis default of 3 applies).
+	MaxRedirects int `value:"${max-redirects:=0}"`
+
+	// RouteByLatency routes read-only commands to the lowest-latency node in
+	// cluster mode. Default is false.
+	RouteByLatency bool `value:"${route-by-latency:=false}"`
+
+	// RouteRandomly routes read-only commands to a random node in cluster mode.
+	// Default is false.
+	RouteRandomly bool `value:"${route-randomly:=false}"`
 
 	// Password is the Redis server password, default is empty.
 	Password string `value:"${password:=}"`
@@ -76,8 +116,11 @@ type Config struct {
 	// Shorter values facilitate smoother traffic switching during service discovery updates.
 	ConnMaxLifetime time.Duration `value:"${conn-max-lifetime:=2m}"`
 
-	// ServiceName is the service discovery name for Redis cluster.
-	// When set, Addr is ignored and the actual address is resolved via service discovery.
+	// ServiceName is the service discovery name for a single Redis instance.
+	// When set, Addr is ignored and the actual address is resolved via service
+	// discovery. It applies to single mode only: sentinel and cluster topologies
+	// self-discover their nodes, so combining ServiceName with those modes is
+	// rejected at startup.
 	ServiceName string `value:"${service-name:=}"`
 
 	// Discovery selects which registered discovery backend resolves ServiceName.
@@ -149,9 +192,19 @@ func buildTLSConfig(c TLSConfig) (*tls.Config, error) {
 	return cfg, nil
 }
 
-// Driver interface defines how to create a Redis client.
+// Driver interface defines how to create a single/sentinel Redis client, whose
+// bean type is *redis.Client.
 type Driver interface {
 	CreateClient(c Config) (*redis.Client, error)
+}
+
+// ClusterDriver is an optional interface a Driver may also implement to support
+// cluster mode, whose bean type is *redis.ClusterClient. It is kept separate
+// from Driver so existing custom drivers that only build *redis.Client continue
+// to compile unchanged. The starter type-asserts to ClusterDriver only when
+// Mode=cluster.
+type ClusterDriver interface {
+	CreateClusterClient(c Config) (*redis.ClusterClient, error)
 }
 
 // RegisterDriver registers a Redis driver with the given name.
@@ -163,21 +216,51 @@ func RegisterDriver(name string, driver Driver) {
 	driverRegistry[name] = driver
 }
 
-// DefaultDriver is the default implementation of the Driver interface.
+// DefaultDriver is the default implementation of the Driver interface. It also
+// implements ClusterDriver, so it can build all three topologies.
 type DefaultDriver struct{}
 
-// CreateClient creates a new Redis client based on the provided configuration.
+var (
+	_ Driver        = DefaultDriver{}
+	_ ClusterDriver = DefaultDriver{}
+)
+
+// CreateClient creates a single or sentinel Redis client based on c.Mode. Both
+// topologies return *redis.Client.
 //
-// When c.ServiceName is set, the address is resolved through the registered
-// discovery backend (c.Discovery) instead of c.Addr: a LiveDialer keeps the
-// endpoint set fresh and the client dials a live instance on each new
+// In single mode, when c.ServiceName is set the address is resolved through the
+// registered discovery backend (c.Discovery) instead of c.Addr: a LiveDialer
+// keeps the endpoint set fresh and the client dials a live instance on each new
 // connection. Combined with c.ConnMaxLifetime, connections recycle onto updated
-// addresses without rebuilding the client. When c.ServiceName is empty this is
-// a plain Addr dial, unchanged from before.
+// addresses without rebuilding the client. When c.ServiceName is empty this is a
+// plain Addr dial.
+//
+// In sentinel mode the client connects to the master resolved by c.MasterName
+// through c.SentinelAddrs; service discovery is not used.
 func (DefaultDriver) CreateClient(c Config) (*redis.Client, error) {
 	tlsConfig, err := buildTLSConfig(c.TLS)
 	if err != nil {
 		return nil, err
+	}
+
+	if c.Mode == "sentinel" {
+		client := redis.NewFailoverClient(&redis.FailoverOptions{
+			MasterName:       c.MasterName,
+			SentinelAddrs:    c.SentinelAddrs,
+			SentinelPassword: c.SentinelPassword,
+			Password:         c.Password,
+			DB:               c.DB,
+			Username:         c.Username,
+			PoolSize:         c.PoolSize,
+			MaxIdleConns:     c.MaxIdle,
+			ConnMaxLifetime:  c.ConnMaxLifetime,
+			MaxRetries:       c.MaxRetries,
+			DialTimeout:      c.DialTimeout,
+			ReadTimeout:      c.ReadTimeout,
+			WriteTimeout:     c.WriteTimeout,
+			TLSConfig:        tlsConfig,
+		})
+		return client, nil
 	}
 
 	opts := &redis.Options{
@@ -214,5 +297,32 @@ func (DefaultDriver) CreateClient(c Config) (*redis.Client, error) {
 	if ld != nil {
 		liveDialers.Store(client, ld)
 	}
+	return client, nil
+}
+
+// CreateClusterClient creates a cluster Redis client seeded by c.Addrs. The bean
+// type is *redis.ClusterClient. Cluster mode self-discovers its nodes, so
+// c.ServiceName / LiveDialer is not used here.
+func (DefaultDriver) CreateClusterClient(c Config) (*redis.ClusterClient, error) {
+	tlsConfig, err := buildTLSConfig(c.TLS)
+	if err != nil {
+		return nil, err
+	}
+	client := redis.NewClusterClient(&redis.ClusterOptions{
+		Addrs:           c.Addrs,
+		Password:        c.Password,
+		Username:        c.Username,
+		MaxRedirects:    c.MaxRedirects,
+		RouteByLatency:  c.RouteByLatency,
+		RouteRandomly:   c.RouteRandomly,
+		PoolSize:        c.PoolSize,
+		MaxIdleConns:    c.MaxIdle,
+		ConnMaxLifetime: c.ConnMaxLifetime,
+		MaxRetries:      c.MaxRetries,
+		DialTimeout:     c.DialTimeout,
+		ReadTimeout:     c.ReadTimeout,
+		WriteTimeout:    c.WriteTimeout,
+		TLSConfig:       tlsConfig,
+	})
 	return client, nil
 }

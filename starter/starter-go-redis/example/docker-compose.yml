@@ -1,6 +1,40 @@
 services:
+  # Single-node instance backing the `cache`, `session`, and `discovery` beans.
   redis:
     image: redis:7
     container_name: starter-go-redis
     ports:
       - "127.0.0.1:6379:6379"
+
+  # Sentinel topology: one master plus one sentinel monitoring it. The `sentinel`
+  # bean connects to the sentinel, which hands back the master's address.
+  redis-master:
+    image: redis:7
+    container_name: starter-go-redis-master
+    command: ["redis-server", "--port", "6379"]
+
+  redis-sentinel:
+    image: redis:7
+    container_name: starter-go-redis-sentinel
+    depends_on:
+      - redis-master
+    # Generate the sentinel config in a writable path (sentinel rewrites it at
+    # runtime), then start in sentinel mode. resolve-hostnames lets it monitor
+    # the master by its compose service name.
+    command:
+      - sh
+      - -c
+      - |
+        printf 'port 26379\nsentinel resolve-hostnames yes\nsentinel monitor mymaster redis-master 6379 1\nsentinel down-after-milliseconds mymaster 5000\nsentinel failover-timeout mymaster 10000\n' > /tmp/sentinel.conf
+        exec redis-server /tmp/sentinel.conf --sentinel
+    ports:
+      - "127.0.0.1:26379:26379"
+
+  # Cluster topology: a ready-made 3-master/3-replica cluster on 7000-7005.
+  # On Linux the host reaches the announced node IPs directly through the docker
+  # bridge; the seed ports are published so the client can bootstrap.
+  redis-cluster:
+    image: grokzen/redis-cluster:7.0.10
+    container_name: starter-go-redis-cluster
+    ports:
+      - "127.0.0.1:7000-7005:7000-7005"

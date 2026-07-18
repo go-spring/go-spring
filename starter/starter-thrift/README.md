@@ -36,6 +36,16 @@ spring.thrift.server.addr=:9292
 # Per-connection client timeout on the server socket (0 = no timeout).
 spring.thrift.server.clientTimeout=30s
 
+# Wire protocol: binary (default) / compact / json. Must match the client.
+spring.thrift.server.protocol=binary
+
+# Transport wrapper: none (raw socket, default) / buffered / framed.
+# Must match the client. "framed" is required by many cross-language clients.
+spring.thrift.server.transport=none
+
+# Buffer / max frame size (bytes) for buffered/framed transports.
+spring.thrift.server.bufferSize=4096
+
 # TLS server transport: enable and point at a PEM cert/key pair.
 spring.thrift.server.tls.enabled=false
 spring.thrift.server.tls.certFile=
@@ -60,8 +70,8 @@ blocks, each asserted end-to-end by `runTest`:
 
 1. **Echo RPC** — the client invokes `EchoService.Echo` with
    `"Hello, Thrift!"` and asserts the response body is identical,
-   verifying the standard request/response path over `TSocket` +
-   `TBinaryProtocol`.
+   verifying the standard request/response path over the configured
+   `compact` protocol + `framed` transport.
 2. **TProcessor middleware/decorator** — `loggingProcessor` is a real
    `thrift.TProcessor` implementation that wraps the generated
    `EchoServiceProcessor`. On each RPC it reads the method name, logs
@@ -78,12 +88,28 @@ blocks, each asserted end-to-end by `runTest`:
 
 ### A note on transports
 
-The starter's `NewTSimpleServer2` uses the identity transport factory
-(no `TFramedTransport` wrapping) with `TBinaryProtocol`. The example
-client matches exactly: raw `TSocket` + `TBinaryProtocol`. If you
-switch the server to framed transport, wrap the client socket in
-`thrift.NewTFramedTransportConf` — a client/server transport mismatch
-will deadlock or corrupt the wire protocol.
+The starter builds the server with `NewTSimpleServer4`, exposing both a
+protocol factory and a transport factory:
+
+- **Protocol** (`spring.thrift.server.protocol`): `binary` (default),
+  `compact`, or `json`. The client's protocol factory must match.
+- **Transport** (`spring.thrift.server.transport`): `none` (raw socket,
+  the historical default), `buffered`, or `framed`. `framed` prepends a
+  length prefix to each message and is required by many cross-language
+  clients. The client's transport must match.
+
+A client/server protocol or transport mismatch will deadlock or corrupt
+the wire protocol. The [example](example/example.go) configures the
+server with `compact` + `framed` and pairs the client accordingly:
+`TFramedTransport` wrapping the socket + `TCompactProtocol`.
+
+### A note on server models
+
+Go's Thrift library only ships `TSimpleServer`. Despite the name, its
+`AcceptLoop` spawns one goroutine per connection, so it is already a
+concurrent server. The `THsHaServer` / `TThreadPoolServer` variants are
+Java/C++ concepts and do not exist in the Go library — there is no
+"multi-threaded server" to switch to.
 
 ## Notes
 

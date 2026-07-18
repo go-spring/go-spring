@@ -53,7 +53,8 @@ func (AnotherESDriver) CreateClient(c StarterElasticsearch.Config) (*elasticsear
 const indexName = "starter-es-example"
 
 type Service struct {
-	ES *elasticsearch.Client `autowire:"docs"`
+	ES     *elasticsearch.Client `autowire:"docs"`
+	DiscES *elasticsearch.Client `autowire:"disc"`
 }
 
 func main() {
@@ -171,6 +172,16 @@ func runTest(s *Service) {
 	}
 
 	fmt.Println("Response from server: indexed, get found, search matched")
+
+	// Feature 5: the discovery-backed client. Its node addresses came from the
+	// registered discovery backend (service-name=es-cluster), not from conf's
+	// static addresses, so a successful cluster probe proves discovery is wired.
+	if err := StarterElasticsearch.HealthCheck(s.DiscES); err != nil {
+		log.Errorf(ctx, log.TagAppDef, "discovery HealthCheck failed: %v", err)
+		os.Exit(1)
+	}
+	fmt.Println("Response from discovered server: cluster reachable")
+
 	syscall.Kill(os.Getpid(), syscall.SIGTERM)
 }
 

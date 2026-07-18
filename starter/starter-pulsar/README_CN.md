@@ -64,6 +64,49 @@ msg, _ := consumer.Receive(ctx)
 consumer.Ack(msg)
 ```
 
+## 可观测
+
+### Metrics(原生 Prometheus)
+
+pulsar-client-go 没有 OTel contrib,但客户端始终会把 producer/consumer/连接指标上报到
+一个 `prometheus.Registerer`。go-spring 的可观测层([starter-otel](../starter-otel))是
+独立的 OTel 流水线,因此与其硬塞一个脆弱的桥接,本 starter 选择用纯 Prometheus 的方式暴露
+pulsar 的原生指标——与 [contrib/go-zero](../../contrib/go-zero) 示例一致的做法。
+
+在配置文件中为实例开启 `/metrics` 端点:
+
+```properties
+spring.pulsar.instances.a.metrics.enabled=true
+spring.pulsar.instances.a.metrics.port=9091
+spring.pulsar.instances.a.metrics.path=/metrics
+```
+
+每个实例拥有独立的 `prometheus.Registry` 和独立的 HTTP 服务,因此多个客户端不会在相同的
+`pulsar_client_*` 指标名上冲突,请为每个实例指定不同的 `port`。该端点默认关闭,避免引入
+starter 时意外占用端口;客户端 bean 销毁时对应的服务会被关闭。将 Prometheus 指向
+`http://<host>:<port>/metrics` 抓取即可。
+
+### Tracing(原生 OTel 辅助函数)
+
+pulsar 自身没有 span 注入点,因此消息级链路追踪通过基于 OTel API 的调用点辅助函数完成。
+它们依赖 starter-otel 安装的全局 `TracerProvider` 与传播器,并把 W3C 链路上下文携带在消息
+`Properties` 里;未引入 starter-otel 时它们是空操作,也不会改动任何消息字节。
+
+```go
+import starter "go-spring.org/starter-pulsar"
+
+// 生产端:开启 span 并把链路上下文注入到消息 properties。
+msg := &pulsar.ProducerMessage{Payload: []byte("v")}
+ctx, span := starter.StartProducerSpan(ctx, msg)
+_, err := producer.Send(ctx, msg)
+starter.EndSpan(span, err)
+
+// 消费端:延续消息 properties 里携带的链路。
+ctx, span := starter.StartConsumerSpan(ctx, msg)
+err := handle(ctx, msg)
+starter.EndSpan(span, err)
+```
+
 ## 高级特性
 
 * **多 Pulsar 客户端**:`spring.pulsar.instances` 下的每一项都会成为一个独立配置的

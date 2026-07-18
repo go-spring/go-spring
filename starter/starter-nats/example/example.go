@@ -66,10 +66,15 @@ func runTest(s *Service) {
 		fail("connection not healthy: main=%v work=%v", s.Main.Healthy(), s.Work.Healthy())
 	}
 
-	// Feature 1: core pub/sub round-trip.
+	// Feature 1: core pub/sub round-trip. The publish uses PublishMsg with an
+	// OTel producer span that injects trace context into the message header, and
+	// the subscriber starts a consumer span linked back to it (both no-ops unless
+	// starter-otel is imported).
 	{
 		received := make(chan string, 1)
 		sub, err := s.Main.Subscribe("demo.pubsub", func(m *nats.Msg) {
+			_, span := StarterNats.StartConsumeSpan(context.Background(), m)
+			defer StarterNats.EndSpan(span, nil)
 			select {
 			case received <- string(m.Data):
 			default:
@@ -79,7 +84,11 @@ func runTest(s *Service) {
 			fail("subscribe failed: %v", err)
 		}
 		_ = s.Main.Flush()
-		if err := s.Main.Publish("demo.pubsub", []byte("hello")); err != nil {
+		msg := &nats.Msg{Subject: "demo.pubsub", Data: []byte("hello")}
+		_, span := StarterNats.StartPublishSpan(context.Background(), msg)
+		err = s.Main.PublishMsg(msg)
+		StarterNats.EndSpan(span, err)
+		if err != nil {
 			fail("publish failed: %v", err)
 		}
 		select {

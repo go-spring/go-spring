@@ -45,7 +45,8 @@ func (AnotherNeo4jDriver) CreateClient(c StarterNeo4j.Config) (neo4j.DriverWithC
 }
 
 type Service struct {
-	Neo4j neo4j.DriverWithContext `autowire:"graph"`
+	Neo4j     neo4j.DriverWithContext `autowire:"graph"`
+	DiscNeo4j neo4j.DriverWithContext `autowire:"disc"`
 }
 
 // query runs a Cypher statement and returns the eager result.
@@ -168,6 +169,24 @@ func runTest(s *Service) {
 	}
 
 	fmt.Println("Response from server: age:", age, "knows:", count)
+
+	// Feature 4: the discovery-backed client. Its URI host was spliced in from
+	// the registered discovery backend (service-name=neo4j-cluster) at startup,
+	// not taken from conf's dummy host, so a successful query proves discovery is
+	// wired.
+	discRes, err := neo4j.ExecuteQuery(ctx, s.DiscNeo4j,
+		"RETURN 1 AS ok", nil, neo4j.EagerResultTransformer)
+	if err != nil || len(discRes.Records) == 0 {
+		log.Errorf(ctx, log.TagAppDef, "discovery query failed: err=%v", err)
+		os.Exit(1)
+	}
+	ok, _ := discRes.Records[0].Get("ok")
+	if ok != int64(1) {
+		log.Errorf(ctx, log.TagAppDef, "discovery query expected 1, got %v", ok)
+		os.Exit(1)
+	}
+	fmt.Println("Response from discovered server: ok:", ok)
+
 	syscall.Kill(os.Getpid(), syscall.SIGTERM)
 }
 

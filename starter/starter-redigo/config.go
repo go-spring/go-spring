@@ -17,16 +17,23 @@
 package StarterRedigo
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/gomodule/redigo/redis"
+	"go-spring.org/stdlib/discovery"
 	"go-spring.org/stdlib/errutil"
 )
 
 var driverRegistry = map[string]Driver{}
+
+// liveDialers tracks the discovery-backed dialer behind each pool built by
+// DefaultDriver, so destroyClient can stop the background watch on shutdown.
+var liveDialers sync.Map // *redis.Pool -> *discovery.LiveDialer
 
 func init() {
 	RegisterDriver("DefaultDriver", DefaultDriver{})
@@ -70,6 +77,12 @@ type Config struct {
 	// ServiceName is the service discovery name for Redis cluster.
 	// When set, Addr is ignored and the actual address is resolved via service discovery.
 	ServiceName string `value:"${service-name:=}"`
+
+	// Discovery selects which registered discovery backend resolves ServiceName.
+	// It is only consulted when ServiceName is set. A company registers its
+	// naming service once via discovery.Register; the default backend name is
+	// "default". Field layout matches starter-go-redis.
+	Discovery string `value:"${discovery:=default}"`
 
 	// TLS configures an optional TLS connection to Redis. When TLS.Enabled is
 	// false (the default) the client dials in plaintext. Field layout matches
@@ -153,12 +166,32 @@ func RegisterDriver(name string, driver Driver) {
 type DefaultDriver struct{}
 
 // CreateClient creates a new Redis client based on the provided configuration.
+//
+// When c.ServiceName is set, the address is resolved through the registered
+// discovery backend (c.Discovery) instead of c.Addr: a LiveDialer keeps the
+// endpoint set fresh and the pool dials a live instance for each new connection.
+// Combined with c.ConnMaxLifetime, pooled connections recycle onto updated
+// addresses without rebuilding the pool. When c.ServiceName is empty this is a
+// plain Addr dial, unchanged from before.
 func (DefaultDriver) CreateClient(c Config) (*redis.Pool, error) {
 	tlsConfig, err := buildTLSConfig(c.TLS)
 	if err != nil {
 		return nil, err
 	}
-	return &redis.Pool{
+
+	var ld *discovery.LiveDialer
+	if c.ServiceName != "" {
+		d, err := discovery.MustGet(c.Discovery)
+		if err != nil {
+			return nil, err
+		}
+		ld, err = discovery.NewLiveDialer(context.Background(), d, c.ServiceName)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	pool := &redis.Pool{
 		MaxActive:       c.PoolSize,
 		MaxIdle:         c.MaxIdle,
 		MaxConnLifetime: c.ConnMaxLifetime,
@@ -180,6 +213,11 @@ func (DefaultDriver) CreateClient(c Config) (*redis.Pool, error) {
 					redis.DialTLSSkipVerify(c.TLS.InsecureSkipVerify),
 				)
 			}
+			// With service discovery the LiveDialer picks a live endpoint and
+			// ignores the static c.Addr passed below.
+			if ld != nil {
+				opts = append(opts, redis.DialContextFunc(ld.DialContext))
+			}
 			conn, err := redis.Dial("tcp", c.Addr, opts...)
 			if err != nil {
 				return nil, err
@@ -193,5 +231,9 @@ func (DefaultDriver) CreateClient(c Config) (*redis.Pool, error) {
 			}
 			return conn, nil
 		},
-	}, nil
+	}
+	if ld != nil {
+		liveDialers.Store(pool, ld)
+	}
+	return pool, nil
 }

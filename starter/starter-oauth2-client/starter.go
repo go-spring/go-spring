@@ -17,11 +17,9 @@
 package StarterOAuth2Client
 
 import (
-	"context"
 	"net/http"
 
 	"go-spring.org/spring/gs"
-	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
 )
 
@@ -36,7 +34,9 @@ func init() {
 
 // newClient builds an *http.Client whose transport injects an OAuth2 bearer
 // token obtained via the client-credentials grant. Tokens are fetched lazily on
-// the first request and refreshed automatically once expired.
+// the first request and refreshed automatically once expired. Both the token
+// exchange and downstream requests are traced via otelContext (no-op without
+// starter-otel).
 func newClient(c Config) (*http.Client, error) {
 	cfg := &clientcredentials.Config{
 		ClientID:       c.ClientID,
@@ -47,14 +47,7 @@ func newClient(c Config) (*http.Client, error) {
 		EndpointParams: c.endpointParams(),
 	}
 
-	ctx := context.Background()
-	if c.Timeout > 0 {
-		// oauth2 uses the client stored under oauth2.HTTPClient both for the
-		// token fetch and as the base of the returned client's transport.
-		ctx = context.WithValue(ctx, oauth2.HTTPClient, &http.Client{Timeout: c.Timeout})
-	}
-
-	client := cfg.Client(ctx)
+	client := cfg.Client(otelContext(c.Timeout))
 	if c.Timeout > 0 {
 		client.Timeout = c.Timeout
 	}

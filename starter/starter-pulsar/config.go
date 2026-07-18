@@ -70,4 +70,27 @@ type Config struct {
 	// lookup against a non-existent, non-partitioned topic normally succeeds
 	// (returns the topic name), so the default is safe on a fresh cluster.
 	HealthCheckTopic string `value:"${health-check-topic:=persistent://public/default/__health_check}"`
+
+	// Metrics exposes the pulsar client's native Prometheus metrics.
+	Metrics MetricsConfig `value:"${metrics}"`
+}
+
+// MetricsConfig controls exposure of pulsar-client-go's built-in Prometheus
+// metrics. pulsar has no OTel contrib, but the client always emits
+// producer/consumer/connection metrics into a prometheus.Registerer. go-spring's
+// observability layer (starter-otel) is a separate OTel pipeline, so rather than
+// force a fragile bridge we expose these native metrics the pure-Prometheus way:
+// a dedicated per-instance registry scraped over a standalone /metrics endpoint,
+// the same approach the contrib/go-zero example uses.
+type MetricsConfig struct {
+	// Enabled turns on the /metrics endpoint for this client instance. Default
+	// is false so importing the starter never binds a port unexpectedly.
+	Enabled bool `value:"${enabled:=false}"`
+
+	// Port is the TCP port the /metrics endpoint listens on. Give each instance
+	// a distinct port when more than one has metrics enabled.
+	Port int `value:"${port:=9091}"`
+
+	// Path is the HTTP path the metrics are served on.
+	Path string `value:"${path:=/metrics}"`
 }

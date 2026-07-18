@@ -30,7 +30,7 @@ import (
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 
-	_ "go-spring.org/starter-rabbitmq"
+	starter "go-spring.org/starter-rabbitmq"
 )
 
 const queueName = "hello"
@@ -80,7 +80,9 @@ func main() {
 	// value%
 }
 
-// publish declares the queue and sends a message onto it.
+// publish declares the queue and sends a message onto it. The publish is wrapped
+// in an OTel producer span (no-op unless starter-otel is imported), which also
+// injects trace context into the message headers.
 func (s *Service) publish(ctx context.Context, body string) error {
 	ch, err := s.Conn.Channel()
 	if err != nil {
@@ -90,13 +92,19 @@ func (s *Service) publish(ctx context.Context, body string) error {
 	if _, err = ch.QueueDeclare(queueName, false, false, false, false, nil); err != nil {
 		return err
 	}
-	return ch.PublishWithContext(ctx, "", queueName, false, false, amqp.Publishing{
+	pub := amqp.Publishing{
 		ContentType: "text/plain",
 		Body:        []byte(body),
-	})
+	}
+	ctx, span := starter.StartPublishSpan(ctx, "", queueName, &pub)
+	err = ch.PublishWithContext(ctx, "", queueName, false, false, pub)
+	starter.EndSpan(span, err)
+	return err
 }
 
-// consume declares the queue and pulls a single message from it.
+// consume declares the queue and pulls a single message from it. Each delivery
+// starts an OTel consumer span linked to the producer via the propagated trace
+// context (no-op unless starter-otel is imported).
 func (s *Service) consume() (string, error) {
 	ch, err := s.Conn.Channel()
 	if err != nil {
@@ -113,6 +121,8 @@ func (s *Service) consume() (string, error) {
 	if !ok {
 		return "", nil
 	}
+	_, span := starter.StartConsumeSpan(context.Background(), &msg)
+	starter.EndSpan(span, nil)
 	return string(msg.Body), nil
 }
 

@@ -19,6 +19,7 @@ package StarterThrift
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"time"
 
 	"github.com/apache/thrift/lib/go/thrift"
@@ -52,9 +53,19 @@ type TLSConfig struct {
 }
 
 // Config defines Thrift server configuration.
+//
+// Protocol selects the on-the-wire message encoding and must match the
+// client (binary/compact/json). Transport selects an optional transport
+// wrapper: "none" keeps the raw socket (the historical default), while
+// "framed" prepends a length prefix to each message — required by many
+// cross-language clients. Both settings must be paired with a matching
+// client; a mismatch corrupts the wire protocol.
 type Config struct {
 	Addr          string        `value:"${addr:=:9292}"`
 	ClientTimeout time.Duration `value:"${clientTimeout:=0}"`
+	Protocol      string        `value:"${protocol:=binary}"`
+	Transport     string        `value:"${transport:=none}"`
+	BufferSize    int           `value:"${bufferSize:=4096}"`
 	TLS           TLSConfig     `value:"${tls}"`
 }
 
@@ -84,13 +95,53 @@ func (s *SimpleThriftServer) newTransport() (thrift.TServerTransport, error) {
 	return thrift.NewTServerSocketTimeout(s.cfg.Addr, s.cfg.ClientTimeout)
 }
 
+// protocolFactory maps the configured protocol name to a thrift
+// TProtocolFactory. The server and client must agree on the protocol.
+func (s *SimpleThriftServer) protocolFactory() (thrift.TProtocolFactory, error) {
+	switch s.cfg.Protocol {
+	case "", "binary":
+		return thrift.NewTBinaryProtocolFactoryConf(nil), nil
+	case "compact":
+		return thrift.NewTCompactProtocolFactoryConf(nil), nil
+	case "json":
+		return thrift.NewTJSONProtocolFactory(), nil
+	default:
+		return nil, fmt.Errorf("unknown thrift protocol %q (want binary/compact/json)", s.cfg.Protocol)
+	}
+}
+
+// transportFactory maps the configured transport name to a thrift
+// TTransportFactory. "none" keeps the raw socket (identity factory) to
+// preserve backwards compatibility; the server and client must agree.
+func (s *SimpleThriftServer) transportFactory() (thrift.TTransportFactory, error) {
+	switch s.cfg.Transport {
+	case "", "none":
+		return thrift.NewTTransportFactory(), nil
+	case "buffered":
+		return thrift.NewTBufferedTransportFactory(s.cfg.BufferSize), nil
+	case "framed":
+		conf := &thrift.TConfiguration{MaxFrameSize: int32(s.cfg.BufferSize)}
+		return thrift.NewTFramedTransportFactoryConf(thrift.NewTTransportFactory(), conf), nil
+	default:
+		return nil, fmt.Errorf("unknown thrift transport %q (want none/buffered/framed)", s.cfg.Transport)
+	}
+}
+
 // Run starts the Thrift server after Go-Spring signals readiness.
 func (s *SimpleThriftServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	transport, err := s.newTransport()
 	if err != nil {
 		return errutil.Explain(err, "failed to listen on %s", s.cfg.Addr)
 	}
-	s.svr = thrift.NewTSimpleServer2(s.proc, transport)
+	protoFactory, err := s.protocolFactory()
+	if err != nil {
+		return err
+	}
+	transFactory, err := s.transportFactory()
+	if err != nil {
+		return err
+	}
+	s.svr = thrift.NewTSimpleServer4(s.proc, transport, transFactory, protoFactory)
 	<-sig.TriggerAndWait()
 	if err = s.svr.Serve(); err != nil {
 		return errutil.Explain(err, "failed to serve on %s", s.cfg.Addr)

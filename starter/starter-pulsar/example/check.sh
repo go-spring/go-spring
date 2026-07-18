@@ -33,13 +33,31 @@ for _ in $(seq 1 90); do
     fi
     sleep 1
 done
-# Give the broker a moment to finish initializing after the port opens.
-sleep 5
+# The 6650 port opens well before the broker is actually ready, so gate on the
+# admin health endpoint instead of a fixed sleep (up to another 60s).
+for _ in $(seq 1 60); do
+    if curl -fsS http://127.0.0.1:8080/admin/v2/brokers/health 2>/dev/null | grep -qi ok; then
+        break
+    fi
+    sleep 1
+done
 
 go run . &
 pid=$!
 ( sleep 40; kill -9 "${pid}" 2>/dev/null ) &
 watchdog=$!
+
+# Scrape the native Prometheus /metrics endpoint the starter exposes while the
+# example is running. Best-effort: a failure here does not fail the smoke, but a
+# success confirms pulsar_client_* metrics are actually served.
+( for _ in $(seq 1 20); do
+    if curl -fsS http://127.0.0.1:9091/metrics 2>/dev/null | grep -q "pulsar_client_"; then
+        echo "METRICS OK: pulsar_client_* served on :9091/metrics"
+        break
+    fi
+    sleep 1
+  done ) &
+
 rc=0
 wait "${pid}" 2>/dev/null || rc=$?
 kill "${watchdog}" 2>/dev/null || true

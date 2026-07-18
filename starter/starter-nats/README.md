@@ -86,6 +86,40 @@ go-spring's log.
   Optionally pin a CA bundle (`tls.ca-file`) and supply a client certificate
   (`tls.cert-file`/`tls.key-file`) for mutual TLS.
 
+## Observability
+
+Distributed tracing is available through native OTel helpers that ride the
+global `TracerProvider` and propagator installed by
+[starter-otel](../starter-otel). Without starter-otel they are no-ops and change
+no message bytes, so instrumenting your code is a safe, zero-config opt-in.
+
+```go
+import starter "go-spring.org/starter-nats"
+
+// Producer: publish with PublishMsg so trace context can ride the message header.
+msg := &nats.Msg{Subject: "demo.pubsub", Data: []byte("hello")}
+_, span := starter.StartPublishSpan(ctx, msg)
+err := conn.PublishMsg(msg)
+starter.EndSpan(span, err)
+
+// Consumer: continue the trace carried in the message header.
+ctx, span := starter.StartConsumeSpan(ctx, msg)
+err := handle(ctx, msg)
+starter.EndSpan(span, err)
+```
+
+Why call-site helpers instead of a wrapped connection:
+
+* `nats.go` has no official OTel instrumentation, and its API (`Publish`,
+  `Subscribe`, `Request`, `QueueSubscribe`, plus JetStream) is broad and
+  callback-driven, so a wrapper would have to shadow all of it and still leave the
+  JetStream context uninstrumented.
+* `nats.Msg` carries a `Header` (since NATS 2.2) that survives the broker
+  round-trip. Propagating context requires publishing a `*nats.Msg` via
+  `PublishMsg`/`RespondMsg` rather than the header-less `Publish(subject, data)`;
+  instrumenting at the call site is what links producer to consumer across
+  services.
+
 ## Configuration
 
 Each connection under `spring.nats.instances.<name>` reads the following properties:

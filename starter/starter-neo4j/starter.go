@@ -18,10 +18,12 @@ package StarterNeo4j
 
 import (
 	"context"
+	"net/url"
 	"time"
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
 	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/discovery"
 	"go-spring.org/stdlib/errutil"
 )
 
@@ -35,7 +37,26 @@ func init() {
 // newClient creates a new Neo4j client based on the provided configuration.
 // After the driver is built, connectivity is verified so that misconfiguration
 // or an unreachable server fails fast at startup rather than on first query.
+//
+// Observability note: the neo4j-go-driver speaks the binary Bolt protocol and
+// ships no official OpenTelemetry instrumentation, nor a command-monitor hook
+// comparable to the SQL/MongoDB drivers, so there is no clean seam to emit
+// client spans from the starter. Rather than hand-roll a fragile bridge, tracing
+// is left to the application (wrap ExecuteQuery / session calls with an OTel span
+// where needed). This is a documented gap, not an oversight.
+//
+// When c.ServiceName is set, the address is resolved once through the registered
+// discovery backend (c.Discovery) and spliced into the URI host; see the
+// ServiceName field docs for the startup-only limitation.
 func newClient(c Config) (neo4j.DriverWithContext, error) {
+	if c.ServiceName != "" {
+		uri, err := resolveURI(c)
+		if err != nil {
+			return nil, err
+		}
+		c.URI = uri
+	}
+
 	d, ok := driverRegistry[c.Driver]
 	if !ok {
 		return nil, errutil.Explain(nil, "neo4j driver not found: %s", c.Driver)
@@ -53,6 +74,39 @@ func newClient(c Config) (neo4j.DriverWithContext, error) {
 		return nil, errutil.Explain(err, "failed to verify neo4j connectivity: %s", c.URI)
 	}
 	return client, nil
+}
+
+// resolveURI resolves c.ServiceName through the registered discovery backend and
+// returns c.URI with its host replaced by a live endpoint. It fails fast when no
+// backend is registered or the service currently has no endpoints. Healthy
+// endpoints are preferred; backends that do not track health yield all endpoints
+// as eligible. This is a one-shot resolution because the neo4j driver exposes no
+// dialer injection point (see Config.ServiceName).
+func resolveURI(c Config) (string, error) {
+	backend, err := discovery.MustGet(c.Discovery)
+	if err != nil {
+		return "", err
+	}
+	eps, err := backend.Resolve(context.Background(), c.ServiceName)
+	if err != nil {
+		return "", errutil.Explain(err, "neo4j: resolve service %s", c.ServiceName)
+	}
+	if len(eps) == 0 {
+		return "", errutil.Explain(nil, "neo4j: discovery %q returned no endpoints for %q", c.Discovery, c.ServiceName)
+	}
+	addr := eps[0].Addr
+	for _, ep := range eps {
+		if ep.Healthy {
+			addr = ep.Addr
+			break
+		}
+	}
+	u, err := url.Parse(c.URI)
+	if err != nil {
+		return "", errutil.Explain(err, "neo4j: parse uri %s", c.URI)
+	}
+	u.Host = addr
+	return u.String(), nil
 }
 
 // HealthCheck reports whether the Neo4j driver can reach the server. It is a

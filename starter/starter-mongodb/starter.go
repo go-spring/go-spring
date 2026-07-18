@@ -19,12 +19,18 @@ package StarterMongoDB
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"go-spring.org/spring/gs"
+	"go-spring.org/stdlib/discovery"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
+
+// liveDialers tracks the discovery-backed dialer behind each client, so
+// destroyClient can stop the background watch on teardown.
+var liveDialers sync.Map // *mongo.Client -> *discovery.LiveDialer
 
 func init() {
 
@@ -34,11 +40,20 @@ func init() {
 	gs.Group("${spring.mongodb.instances}", newClient, destroyClient)
 }
 
-// newClient creates a new MongoDB client based on the provided configuration.
-// After the client is built it is pinged so that misconfiguration or an
-// unreachable server fails fast at startup rather than on first use.
+// newClient creates a new MongoDB client based on the provided configuration,
+// bridged into go-spring's unified observability via a command monitor (see
+// observability.go). After the client is built it is pinged so that
+// misconfiguration or an unreachable server fails fast at startup rather than
+// on first use.
+//
+// When c.ServiceName is set, the address is resolved through the registered
+// discovery backend (c.Discovery): a LiveDialer is injected as the client's
+// ContextDialer, so each new connection dials a currently-live instance and
+// address changes take effect without rebuilding the client. When c.ServiceName
+// is empty this dials the URI hosts directly, unchanged from before.
 func newClient(c Config) (*mongo.Client, error) {
 	opts := options.Client().ApplyURI(c.URI)
+	opts.SetMonitor(newCommandMonitor())
 	if c.ConnectTimeout > 0 {
 		opts.SetConnectTimeout(c.ConnectTimeout)
 	}
@@ -68,8 +83,26 @@ func newClient(c Config) (*mongo.Client, error) {
 		opts.SetTLSConfig(tlsCfg)
 	}
 
+	var ld *discovery.LiveDialer
+	if c.ServiceName != "" {
+		d, err := discovery.MustGet(c.Discovery)
+		if err != nil {
+			return nil, err
+		}
+		ld, err = discovery.NewLiveDialer(context.Background(), d, c.ServiceName)
+		if err != nil {
+			return nil, err
+		}
+		// The LiveDialer ignores the dialed address and picks a live endpoint;
+		// its DialContext matches the options.ContextDialer interface directly.
+		opts.SetDialer(ld)
+	}
+
 	client, err := mongo.Connect(opts)
 	if err != nil {
+		if ld != nil {
+			_ = ld.Stop()
+		}
 		return nil, fmt.Errorf("mongodb: create client: %w", err)
 	}
 
@@ -78,7 +111,13 @@ func newClient(c Config) (*mongo.Client, error) {
 	defer cancel()
 	if err := client.Ping(ctx, nil); err != nil {
 		_ = client.Disconnect(context.Background())
+		if ld != nil {
+			_ = ld.Stop()
+		}
 		return nil, fmt.Errorf("mongodb: ping %s: %w", c.URI, err)
+	}
+	if ld != nil {
+		liveDialers.Store(client, ld)
 	}
 	return client, nil
 }
@@ -98,7 +137,11 @@ func pingContext(timeout time.Duration) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), timeout)
 }
 
-// destroyClient disconnects the MongoDB client.
+// destroyClient disconnects the MongoDB client and stops any discovery watch
+// behind it.
 func destroyClient(client *mongo.Client) error {
+	if v, ok := liveDialers.LoadAndDelete(client); ok {
+		_ = v.(*discovery.LiveDialer).Stop()
+	}
 	return client.Disconnect(context.Background())
 }

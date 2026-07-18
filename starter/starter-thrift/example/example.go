@@ -139,18 +139,20 @@ func main() {
 // on the result. On any assertion failure it exits(1); on success it sends
 // SIGTERM to itself so gs.Run() shuts down cleanly.
 //
-// The server uses TSimpleServer2, whose defaults are the identity
-// transport factory + binary protocol. The client below matches: raw
-// TSocket + TBinaryProtocol. Do NOT wrap the client in TFramedTransport
-// here — the server does not framed-wrap, and a mismatch would deadlock
-// or corrupt reads.
+// The server is configured (conf/app.properties) with compact protocol +
+// framed transport, so the client MUST match: it wraps the raw TSocket in
+// TFramedTransport and uses TCompactProtocol. A protocol or transport
+// mismatch between client and server would deadlock or corrupt reads.
 func runTest() {
 	ctx := context.Background()
 
-	transport := thrift.NewTSocketConf(":9292", nil)
+	socket := thrift.NewTSocketConf(":9292", nil)
+	// Framed transport must match the server's framed transport factory.
+	transport := thrift.NewTFramedTransportConf(socket, nil)
 	defer transport.Close()
 
-	protocolFactory := thrift.NewTBinaryProtocolFactoryConf(nil)
+	// Compact protocol must match the server's compact protocol factory.
+	protocolFactory := thrift.NewTCompactProtocolFactoryConf(nil)
 	client := proto.NewEchoServiceClientFactory(transport, protocolFactory)
 
 	if err := transport.Open(); err != nil {
@@ -173,8 +175,8 @@ func runTest() {
 	// Feature 3: A second round-trip with a distinct payload. This proves
 	// the wrapped processor forwards correctly across independent calls,
 	// and — combined with the counter check below — that the middleware
-	// runs per RPC rather than once at startup. (Server uses buffered +
-	// binary; framed transport is not applicable here, see runTest doc.)
+	// runs per RPC rather than once at startup. (Server uses framed +
+	// compact; the client above matches, see runTest doc.)
 	resp2, err := client.Echo(ctx, &proto.EchoRequest{Message: "Middleware works!"})
 	if err != nil {
 		log.Errorf(ctx, log.TagAppDef, "Error calling Echo (2): %v", err)

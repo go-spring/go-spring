@@ -78,6 +78,24 @@ type Config struct {
 
 	// Driver specifies which Neo4j driver to use, defaults to DefaultDriver.
 	Driver string `value:"${driver:=DefaultDriver}"`
+
+	// ServiceName resolves the connection address through a registered discovery
+	// backend instead of relying solely on the URI host. When set, the endpoint
+	// is resolved once at startup and spliced into the URI host, so the driver
+	// connects to a live instance handed out by the company naming service.
+	//
+	// Limitation: unlike clients that accept a custom dialer, the neo4j driver
+	// builds its connection pool from the URI and exposes no dialer injection
+	// point, so this is a one-shot resolution at startup — address changes after
+	// startup are not picked up until the client is rebuilt. When empty, the URI
+	// host is used unchanged.
+	ServiceName string `value:"${service-name:=}"`
+
+	// Discovery selects which registered discovery backend resolves ServiceName.
+	// It is only consulted when ServiceName is set. A company registers its
+	// naming service once via discovery.Register; the default backend name is
+	// "default".
+	Discovery string `value:"${discovery:=default}"`
 }
 
 // TLSConfig customizes certificate trust for the encrypted Neo4j URI schemes.

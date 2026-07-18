@@ -36,6 +36,16 @@ spring.thrift.server.addr=:9292
 # 服务端 socket 的单连接客户端超时（0 表示不超时）。
 spring.thrift.server.clientTimeout=30s
 
+# 传输协议：binary（默认）/ compact / json。必须与客户端一致。
+spring.thrift.server.protocol=binary
+
+# 传输层包装：none（裸 socket，默认）/ buffered / framed。
+# 必须与客户端一致。很多跨语言客户端要求使用 framed。
+spring.thrift.server.transport=none
+
+# buffered/framed 传输的缓冲区 / 最大帧大小（字节）。
+spring.thrift.server.bufferSize=4096
+
 # TLS 服务端传输：启用并指定 PEM 证书/私钥路径。
 spring.thrift.server.tls.enabled=false
 spring.thrift.server.tls.certFile=
@@ -58,8 +68,8 @@ gs.Provide(func(c *Controller) thrift.TProcessor {
 [示例](example/example.go) 展示了 3 个 Thrift 关键能力，均在 `runTest` 中做了端到端断言：
 
 1. **Echo RPC**：客户端调用 `EchoService.Echo`，传入 `"Hello, Thrift!"`，
-   并断言响应体原样返回，验证标准的 `TSocket` + `TBinaryProtocol`
-   请求/响应链路。
+   并断言响应体原样返回，验证在所配置的 `compact` 协议 + `framed`
+   传输下的标准请求/响应链路。
 2. **TProcessor 中间件 / 装饰器**：`loggingProcessor` 是一个真实的
    `thrift.TProcessor` 实现，包装了生成代码的 `EchoServiceProcessor`。
    每次 RPC 都会读取方法名并打印日志，然后转发到内层 processor 对应
@@ -74,11 +84,24 @@ gs.Provide(func(c *Controller) thrift.TProcessor {
 
 ### 关于传输层
 
-Starter 内部的 `NewTSimpleServer2` 使用默认的 identity 传输工厂（不做
-`TFramedTransport` 包装）+ `TBinaryProtocol`。示例客户端严格对齐：裸
-`TSocket` + `TBinaryProtocol`。若你把服务端切换到 framed 传输，客户端
-需要用 `thrift.NewTFramedTransportConf` 包装 socket —— 客户端/服务端
-传输层不匹配会导致读死锁或协议错乱。
+Starter 通过 `NewTSimpleServer4` 构建服务端，同时暴露协议工厂与传输工厂：
+
+- **协议**（`spring.thrift.server.protocol`）：`binary`（默认）、
+  `compact`、`json`。客户端的协议工厂必须与之匹配。
+- **传输**（`spring.thrift.server.transport`）：`none`（裸 socket，
+  历史默认值）、`buffered`、`framed`。`framed` 会为每条消息添加长度
+  前缀，很多跨语言客户端要求使用它。客户端的传输必须与之匹配。
+
+客户端/服务端在协议或传输上不匹配会导致读死锁或协议错乱。
+[示例](example/example.go) 将服务端配置为 `compact` + `framed`，并让
+客户端相应对齐：用 `TFramedTransport` 包装 socket + `TCompactProtocol`。
+
+### 关于服务器模型
+
+Go 版 Thrift 库只提供 `TSimpleServer`。虽然名字叫 "Simple"，它的
+`AcceptLoop` 对每个连接都会 `go` 一个新 goroutine，本身就是每连接一
+goroutine 的并发模型。`THsHaServer` / `TThreadPoolServer` 是 Java/C++
+的概念，Go 库并不提供 —— 不存在可切换的"多线程 server"。
 
 ## 说明
 

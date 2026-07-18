@@ -49,8 +49,10 @@ func (AnotherRedisDriver) CreateClient(c StarterGoRedis.Config) (*redis.Client, 
 }
 
 type Service struct {
-	Redis          *redis.Client `autowire:"cache"`
-	DiscoveryRedis *redis.Client `autowire:"discovery"`
+	Redis          *redis.Client        `autowire:"cache"`
+	DiscoveryRedis *redis.Client        `autowire:"discovery"`
+	SentinelRedis  *redis.Client        `autowire:"sentinel"`
+	ClusterRedis   *redis.ClusterClient `autowire:"cluster"`
 }
 
 func main() {
@@ -197,6 +199,34 @@ func runTest(s *Service) {
 	stats := s.Redis.PoolStats()
 	fmt.Println("Pool stats:", "hits:", stats.Hits, "misses:", stats.Misses,
 		"total-conns:", stats.TotalConns, "idle-conns:", stats.IdleConns)
+
+	// Feature 6: sentinel topology. The `sentinel` instance (mode=sentinel in
+	// conf) connects to the master resolved via the sentinels, but is still a
+	// plain *redis.Client, so the command surface is identical to single mode.
+	if _, err := s.SentinelRedis.Set(ctx, "sentinel-key", "sentinel-value", 0).Result(); err != nil {
+		log.Errorf(ctx, log.TagAppDef, "sentinel SET failed: %v", err)
+		os.Exit(1)
+	}
+	sv, err := s.SentinelRedis.Get(ctx, "sentinel-key").Result()
+	if err != nil || sv != "sentinel-value" {
+		log.Errorf(ctx, log.TagAppDef, "sentinel GET failed: v=%q err=%v", sv, err)
+		os.Exit(1)
+	}
+	fmt.Println("Response from sentinel master:", sv)
+
+	// Feature 7: cluster topology. The `cluster` instance (mode=cluster in conf)
+	// is a *redis.ClusterClient — a distinct bean type — that routes keys across
+	// the cluster's hash slots. redisotel attaches per node via OnNewNode.
+	if _, err := s.ClusterRedis.Set(ctx, "cluster-key", "cluster-value", 0).Result(); err != nil {
+		log.Errorf(ctx, log.TagAppDef, "cluster SET failed: %v", err)
+		os.Exit(1)
+	}
+	cv, err := s.ClusterRedis.Get(ctx, "cluster-key").Result()
+	if err != nil || cv != "cluster-value" {
+		log.Errorf(ctx, log.TagAppDef, "cluster GET failed: v=%q err=%v", cv, err)
+		os.Exit(1)
+	}
+	fmt.Println("Response from cluster:", cv)
 
 	syscall.Kill(os.Getpid(), syscall.SIGTERM)
 }

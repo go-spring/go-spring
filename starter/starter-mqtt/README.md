@@ -64,6 +64,24 @@ the subscription handler. It also checks `Client.IsConnected()` before publishin
 Connection-layer events (connect, connection lost, reconnecting) are bridged into
 go-spring's log.
 
+## Observability
+
+Distributed tracing is **not applicable** to this starter, and this is a
+deliberate decision rather than a gap:
+
+* `paho.mqtt.golang` has no official OTel instrumentation.
+* More fundamentally, MQTT 3.1.1 — the protocol version this client speaks — has
+  no per-message metadata channel. `Client.Publish(topic, qos, retained, payload)`
+  exposes nowhere to attach a W3C `traceparent`, and the broker delivers only the
+  raw payload. User Properties, which would carry trace context, exist only in
+  MQTT 5, unsupported by this paho v3 client. Smuggling trace context into the
+  application payload or the topic would corrupt the message contract, so it is
+  not done.
+
+The practical consequence: producer and consumer spans cannot be linked across
+the broker. Connection-layer events (connect, connection lost, reconnecting) are
+still bridged into go-spring's log for operational visibility.
+
 ## Advanced Features
 
 * **Multiple MQTT clients**: Every entry under `spring.mqtt.instances` becomes an

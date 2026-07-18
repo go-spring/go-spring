@@ -2,7 +2,10 @@ module go-spring.org/starter-pprof
 
 go 1.26
 
-require go-spring.org/spring v1.3.4
+require (
+	go-spring.org/log v0.1.4
+	go-spring.org/spring v1.3.4
+)
 
 require (
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
@@ -17,7 +20,6 @@ require (
 	github.com/smartystreets/goconvey v1.8.1 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
 	go-spring.org/gs-mock v0.0.9 // indirect
-	go-spring.org/log v0.1.4 // indirect
 	go-spring.org/stdlib v0.1.7 // indirect
 	golang.org/x/arch v0.26.0 // indirect
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect

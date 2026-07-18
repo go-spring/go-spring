@@ -77,6 +77,45 @@ msg := <-pc.Messages()
 fmt.Println(string(msg.Value))
 ```
 
+## Observability
+
+Distributed tracing is available through native OTel helpers that ride the
+global `TracerProvider` and propagator installed by
+[starter-otel](../starter-otel). Without starter-otel they are no-ops and change
+no message bytes, so instrumenting your code is a safe, zero-config opt-in.
+
+```go
+import starter "go-spring.org/starter-kafka-sarama"
+
+// Producer: start a span and inject W3C trace context into the record headers.
+msg := &sarama.ProducerMessage{Topic: "hello", Value: sarama.StringEncoder("v")}
+_, span := starter.StartProducerSpan(ctx, msg)
+_, _, err := producer.SendMessage(msg)
+starter.EndSpan(span, err)
+
+// Consumer: continue the trace carried in the record headers.
+ctx, span := starter.StartConsumerSpan(ctx, msg)
+err := handle(ctx, msg)
+starter.EndSpan(span, err)
+```
+
+Why call-site helpers instead of a wrapped producer/consumer:
+
+* The only official OTel instrumentation for sarama, `otelsarama`, is
+  **deprecated** and still pinned to the abandoned `github.com/Shopify/sarama`
+  module. This starter uses `github.com/IBM/sarama`; the two are distinct Go
+  types, so `otelsarama.WrapSyncProducer` cannot wrap an IBM producer and pulling
+  it in would drag a second, conflicting sarama fork into the build.
+* `sarama.SyncProducer.SendMessage` takes no `context.Context`, so a producer
+  *wrapper* has nowhere to receive request-scoped context from and could only
+  emit disconnected root spans. Passing `ctx` explicitly at the call site is what
+  lets traces link across services.
+
+**Metrics**: sarama emits metrics through its own `go-metrics` registry
+(`sarama.Config.MetricRegistry`), a system unrelated to OTel/Prometheus. Bridging
+it requires a third-party `go-metrics`→Prometheus adapter, so it is intentionally
+left out of scope here rather than shipped as a fragile wrapper.
+
 ## Advanced
 
 * **Multiple Kafka clients**: define multiple clients under

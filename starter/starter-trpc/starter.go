@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package trpcgs
+package StarterTrpc
 
 import (
 	"context"
@@ -30,7 +30,7 @@ import (
 
 func init() {
 	// Server side: gated on a ServiceRegister bean — no service to expose means
-	// no server, so the client-only consumer is never forced to stand one up.
+	// no server, so the client-only apps are never forced to stand one up.
 	// Config is read from the ${spring.trpc.server} prefix.
 	enableSimpleTrpcServer := gs.OnProperty("spring.trpc.server.enabled").
 		HavingValue("true").MatchIfMissing()
@@ -42,6 +42,30 @@ func init() {
 			Condition(gs.OnBean[ServiceRegister]())
 		return nil
 	})
+}
+
+// ServiceRegister binds a service handler onto a tRPC server.Server. This
+// function type keeps SimpleTrpcServer service-agnostic: it drives the
+// lifecycle while each service supplies its own register bean, typically
+// wrapping the generated xxx.RegisterXxxServiceService.
+type ServiceRegister func(s *server.Server)
+
+// Config defines the tRPC server configuration, bound from ${spring.trpc.server}.
+//
+// tRPC-Go's own trpc.NewServer() reads a trpc_go.yaml and owns configuration +
+// plugin bootstrap globally. This starter takes the other fork: it builds a tRPC
+// *Config programmatically from these Go-Spring properties and hands it to
+// trpc.NewServerWithConfig, so there is no trpc_go.yaml and all config lives in
+// conf/app.properties like every other Go-Spring service.
+type Config struct {
+	// Addr is the host:port the service listens on, split into tRPC's IP/Port.
+	Addr string `value:"${addr:=127.0.0.1:8000}"`
+	// ServiceName is the fully-qualified tRPC service name (trpc.app.server.service).
+	// It must match the callee name baked into the generated client stub.
+	ServiceName string `value:"${service.name:=trpc.helloworld.greet.GreetService}"`
+	// Network / Protocol default to tRPC's own tcp + trpc wire protocol.
+	Network  string `value:"${network:=tcp}"`
+	Protocol string `value:"${protocol:=trpc}"`
 }
 
 // SimpleTrpcServer adapts a tRPC server.Server to the Go-Spring server
@@ -84,7 +108,7 @@ func (s *SimpleTrpcServer) Run(ctx context.Context, sig gs.ReadySignal) error {
 	// Build the tRPC config in code instead of loading trpc_go.yaml, so the
 	// whole service is configured through Go-Spring properties. NewServerWithConfig
 	// repairs defaults and builds the service; plugin setup is intentionally left
-	// out (this direct-connect example uses no naming/registry plugins).
+	// out (this direct-connect starter uses no naming/registry plugins).
 	cfg := &trpc.Config{}
 	cfg.Server.Service = []*trpc.ServiceConfig{
 		{

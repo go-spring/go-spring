@@ -47,7 +47,8 @@ func (AnotherMemcachedDriver) CreateClient(c StarterMemcached.Config) (*memcache
 }
 
 type Service struct {
-	Memcached *memcache.Client `autowire:"cache"`
+	Memcached          *memcache.Client `autowire:"cache"`
+	DiscoveryMemcached *memcache.Client `autowire:"discovery"`
 }
 
 func main() {
@@ -156,7 +157,21 @@ func runTest(s *Service) {
 
 	fmt.Println("Response from server:", string(item.Value), "counter:", n)
 
-	// Feature 4: health check. The client's Ping probes every configured server
+	// Feature 4: the discovery-backed client. Its server list came from the
+	// registered discovery backend (service-name=memcached-cluster), not from
+	// conf, so a successful round-trip proves discovery is wired.
+	if err := s.DiscoveryMemcached.Set(&memcache.Item{Key: "disc-key", Value: []byte("disc-value")}); err != nil {
+		log.Errorf(ctx, log.TagAppDef, "discovery SET failed: %v", err)
+		os.Exit(1)
+	}
+	discItem, err := s.DiscoveryMemcached.Get("disc-key")
+	if err != nil || string(discItem.Value) != "disc-value" {
+		log.Errorf(ctx, log.TagAppDef, "discovery GET failed: err=%v", err)
+		os.Exit(1)
+	}
+	fmt.Println("Response from discovered server:", string(discItem.Value))
+
+	// Feature 5: health check. The client's Ping probes every configured server
 	// and is the readiness signal — read straight off the autowired client.
 	if err := s.Memcached.Ping(); err != nil {
 		log.Errorf(ctx, log.TagAppDef, "health ping failed: %v", err)

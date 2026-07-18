@@ -7,8 +7,8 @@
 #
 # --rpconly emits only the RPC stubs (messages + service desc + client proxy),
 # not a full project scaffold. The trailing "mockgen" warning about go.mod is
-# harmless — the .pb.go/.trpc.go files are generated before it. This example is
-# one module, so no per-idl go.mod is kept.
+# harmless — the .pb.go/.trpc.go files are generated before it. The example is
+# a single module, so no per-idl go.mod is kept.
 #
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"

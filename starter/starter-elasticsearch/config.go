@@ -69,6 +69,28 @@ type Config struct {
 	// EnableDebugLogger enables the debug logging of the transport, default is false.
 	EnableDebugLogger bool `value:"${enable-debug-logger:=false}"`
 
+	// ServiceName resolves the node addresses through a registered discovery
+	// backend instead of the static Addresses list. When set, the endpoints are
+	// resolved once at startup and turned into "scheme://host:port" addresses.
+	//
+	// Limitation: this is a one-shot resolution at startup — the resulting node
+	// list is fixed for the client's lifetime. Elasticsearch cluster addresses
+	// are typically stable VIPs, so this is usually sufficient; when it is not,
+	// leave ServiceName empty and configure Addresses directly. When empty, the
+	// static Addresses (or CloudID) are used unchanged.
+	ServiceName string `value:"${service-name:=}"`
+
+	// Discovery selects which registered discovery backend resolves ServiceName.
+	// It is only consulted when ServiceName is set. A company registers its
+	// naming service once via discovery.Register; the default backend name is
+	// "default".
+	Discovery string `value:"${discovery:=default}"`
+
+	// DiscoveryScheme is the URL scheme ("http" or "https") prepended to each
+	// discovered "host:port" endpoint, since discovery yields addresses without a
+	// scheme. It is only used when ServiceName is set; default is "http".
+	DiscoveryScheme string `value:"${discovery-scheme:=http}"`
+
 	// Driver specifies which Elasticsearch driver to use, defaults to DefaultDriver.
 	Driver string `value:"${driver:=DefaultDriver}"`
 }

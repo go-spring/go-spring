@@ -34,6 +34,9 @@ func init() {
 
 // newClient creates a new Memcached client based on the provided configuration.
 func newClient(c Config) (*memcache.Client, error) {
+	if len(c.Servers) == 0 && c.ServiceName == "" {
+		return nil, errutil.Explain(nil, "memcached: one of servers or service-name must be set")
+	}
 	d, ok := driverRegistry[c.Driver]
 	if !ok {
 		return nil, errutil.Explain(nil, "memcached driver not found: %s", c.Driver)

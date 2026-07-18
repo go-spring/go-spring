@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package trpcgs
+package StarterTrpc
 
 import (
 	"context"

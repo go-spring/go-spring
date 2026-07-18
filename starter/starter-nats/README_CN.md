@@ -78,6 +78,36 @@ reply, _ := s.Conn.Request("demo.rpc", []byte("ping"), time.Second)
 * **TLS**：设置 `spring.nats.instances.<name>.tls.enabled=true` 即可协商 TLS，可选地指定
   CA 证书（`tls.ca-file`）并提供客户端证书（`tls.cert-file`/`tls.key-file`）以实现双向 TLS。
 
+## 可观测性
+
+分布式链路追踪通过原生 OTel 辅助函数提供,依赖
+[starter-otel](../starter-otel) 安装的全局 `TracerProvider` 与传播器。未引入
+starter-otel 时它们为 no-op,也不改动任何消息字节,因此埋点是安全的零配置可选项。
+
+```go
+import starter "go-spring.org/starter-nats"
+
+// 生产者:使用 PublishMsg 发布,使链路上下文可随消息 header 传播。
+msg := &nats.Msg{Subject: "demo.pubsub", Data: []byte("hello")}
+_, span := starter.StartPublishSpan(ctx, msg)
+err := conn.PublishMsg(msg)
+starter.EndSpan(span, err)
+
+// 消费者:延续消息 header 中携带的链路上下文。
+ctx, span := starter.StartConsumeSpan(ctx, msg)
+err := handle(ctx, msg)
+starter.EndSpan(span, err)
+```
+
+为什么用调用点辅助函数,而不是包装连接:
+
+* `nats.go` 没有官方 OTel instrumentation,其 API(`Publish`、`Subscribe`、
+  `Request`、`QueueSubscribe` 以及 JetStream)面广且以回调为主,包装器需要影子实现
+  全部接口,而且仍会漏掉 JetStream 上下文。
+* `nats.Msg` 携带 `Header`(自 NATS 2.2 起)且能存活于 broker 往返。传播上下文需要用
+  `PublishMsg`/`RespondMsg` 发布 `*nats.Msg`,而非无 header 的 `Publish(subject, data)`;
+  在调用点埋点才能把生产者与消费者跨服务串联起来。
+
 ## 配置项
 
 `spring.nats.instances.<name>` 下每条连接读取以下配置：

@@ -103,6 +103,18 @@ resp, err := s.Client.Get("https://api.example.com/resource")
   spring.oauth2.client.downstream.endpoint-params.audience=https://api.example.com
   ```
 
+## 可观测性
+
+token 端点交换与下游业务请求均已接入分布式链路追踪。starter 使用
+[`otelhttp`](https://pkg.go.dev/go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp)
+包裹底层 `*http.Client` 的 transport,因此每一次出站请求都会通过
+[`starter-otel`](../starter-otel) 安装的 OpenTelemetry 全局对象产生一个 client span。
+
+这是一项零配置、可选启用的能力,与 go-redis 的 `redisotel` hook 思路一致:引入
+`starter-otel` 即自动产生 span;不引入时 OTel 全局对象为 no-op,既不产生 span 也不
+改动任何请求字节。埋点只发生在一个位置——token 获取与返回 client 共享的 transport
+——所以每次 token 获取、每次下游调用都只产生一个 span(不会重复计数)。
+
 ### 授权码模式(Authorization Code)
 
 对于需要用户登录/重定向的交互式流程,使用单独的配置前缀

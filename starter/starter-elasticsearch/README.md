@@ -69,3 +69,25 @@ The [example.go](example/example.go) file demonstrates the following core Elasti
   file and reference them by name in your project.
 * **Support Elasticsearch extensions**: You can extend Elasticsearch functionality by implementing the `Driver`
   interface — see the example implementation `AnotherESDriver`.
+* **Observability**: the default driver wires the transport into go-spring's
+  unified observability via `elastictransport.NewOtelInstrumentation`, emitting
+  client spans through the OpenTelemetry global `TracerProvider` that
+  `starter-otel` installs. When `starter-otel` is absent that global is a no-op,
+  so it stays a zero-config opt-in.
+* **Service discovery**: set `service-name` on an instance to resolve its node
+  addresses through a registered discovery backend instead of the static
+  `addresses` list. Each discovered `host:port` endpoint is turned into a node
+  address using `discovery-scheme` (default `http`). Select the backend with
+  `discovery` (default `default`); a company registers its naming service once
+  via `discovery.Register`.
+
+  ```properties
+  spring.elasticsearch.disc.service-name=es-cluster
+  spring.elasticsearch.disc.discovery-scheme=http
+  ```
+
+  Limitation: this is a **one-shot resolution at startup** — the node list is
+  fixed for the client's lifetime. Elasticsearch cluster addresses are typically
+  stable VIPs, so this is usually sufficient; when it is not, leave
+  `service-name` empty and configure `addresses` directly.
+

@@ -72,6 +72,41 @@ msg := <-pc.Messages()
 fmt.Println(string(msg.Value))
 ```
 
+## 可观测
+
+分布式链路追踪通过原生 OTel 辅助函数提供,它们依赖
+[starter-otel](../starter-otel) 安装的全局 `TracerProvider` 与传播器。未引入
+starter-otel 时它们是空操作,也不会改动任何消息字节,因此埋点是安全、零配置的可选项。
+
+```go
+import starter "go-spring.org/starter-kafka-sarama"
+
+// 生产端:开启 span 并把 W3C 链路上下文注入到消息头。
+msg := &sarama.ProducerMessage{Topic: "hello", Value: sarama.StringEncoder("v")}
+_, span := starter.StartProducerSpan(ctx, msg)
+_, _, err := producer.SendMessage(msg)
+starter.EndSpan(span, err)
+
+// 消费端:延续消息头里携带的链路。
+ctx, span := starter.StartConsumerSpan(ctx, msg)
+err := handle(ctx, msg)
+starter.EndSpan(span, err)
+```
+
+为什么用调用点辅助函数,而不是包装 producer/consumer:
+
+* sarama 唯一的官方 OTel 埋点包 `otelsarama` 已**废弃**,且仍锁定在被弃用的
+  `github.com/Shopify/sarama` 模块。本 starter 使用 `github.com/IBM/sarama`,二者是
+  不同的 Go 类型,`otelsarama.WrapSyncProducer` 无法包装 IBM 的 producer,强行引入还会
+  把第二个相互冲突的 sarama fork 带进构建。
+* `sarama.SyncProducer.SendMessage` 不接收 `context.Context`,因此 producer *包装器*
+  无处获取请求级上下文,只能产出彼此孤立的根 span。在调用点显式传入 `ctx`,才能让链路
+  跨服务串联。
+
+**Metrics**:sarama 通过自带的 `go-metrics` 注册表(`sarama.Config.MetricRegistry`)
+上报指标,这套体系与 OTel/Prometheus 无关。桥接它需要第三方 `go-metrics`→Prometheus
+适配器,因此这里有意不纳入范围,而不是硬塞一个脆弱的包装。
+
 ## 高级特性
 
 * **支持多个 Kafka 客户端**:可以在配置文件中的 `spring.kafka.instances` 下定义多个

@@ -67,3 +67,30 @@ The [example.go](example/example.go) exercises three core MongoDB operations end
 * **Multiple MongoDB instances**: Every entry under `spring.mongodb.instances`
   becomes an independently configured `*mongo.Client` bean; inject them by name to
   talk to different clusters or databases.
+
+* **Observability**: each client is bridged into go-spring's unified
+  observability through a command monitor that emits one client span per MongoDB
+  command via the OpenTelemetry global `TracerProvider` that `starter-otel`
+  installs. When `starter-otel` is absent that global is a no-op, so spans cost
+  nothing and no per-app wiring is needed. (The bridge is implemented directly
+  against the v2 driver's event API because the official `otelmongo`
+  instrumentation targets the v1 driver and is type-incompatible with the v2
+  driver used here.)
+
+* **Service discovery**: set `service-name` on an instance to resolve its address
+  through a registered discovery backend instead of the URI hosts. A
+  `LiveDialer` is injected as the client's dialer, so each new connection reaches
+  a currently-live instance and address changes take effect without rebuilding
+  the client. Select the backend with `discovery` (default `default`); a company
+  registers its naming service once via `discovery.Register`.
+
+  ```properties
+  spring.mongodb.instances.disc.uri=mongodb://0.0.0.0:0/?directConnection=true
+  spring.mongodb.instances.disc.service-name=mongo-cluster
+  ```
+
+  Note: this bypasses MongoDB's own replica-set / mongos topology discovery — the
+  driver dials whatever the naming service hands out. Use it when the intent is
+  "reach the service via the company naming service"; leave `service-name` empty
+  to let the driver manage topology from the URI.
+

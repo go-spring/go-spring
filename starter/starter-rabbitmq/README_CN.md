@@ -67,6 +67,36 @@ _ = ch.PublishWithContext(ctx, "", "hello", false, false, amqp.Publishing{Body: 
 3. **QoS + 手动 ack**：调用 `ch.Qos(1, 0, false)` 将 prefetch 限制为 1，使用
    `autoAck=false` 消费消息，处理后显式调用 `msg.Ack(false)`。
 
+## 可观测性
+
+分布式链路追踪通过原生 OTel 辅助函数提供,依赖
+[starter-otel](../starter-otel) 安装的全局 `TracerProvider` 与传播器。未引入
+starter-otel 时它们为 no-op,也不改动任何消息字节,因此埋点是安全的零配置可选项。
+
+```go
+import starter "go-spring.org/starter-rabbitmq"
+
+// 生产者:开启 span 并把 W3C 链路上下文注入消息 headers。
+pub := amqp.Publishing{ContentType: "text/plain", Body: []byte("v")}
+ctx, span := starter.StartPublishSpan(ctx, exchange, routingKey, &pub)
+err := ch.PublishWithContext(ctx, exchange, routingKey, false, false, pub)
+starter.EndSpan(span, err)
+
+// 消费者:延续 delivery headers 中携带的链路上下文。
+ctx, span := starter.StartConsumeSpan(ctx, &delivery)
+err := handle(ctx, delivery)
+starter.EndSpan(span, err)
+```
+
+为什么用调用点辅助函数,而不是包装 channel/publisher:
+
+* `amqp091-go` 没有官方 OTel instrumentation,而 starter 的 bean 是
+  `*amqp.Connection`——channel、publish、delivery 全由调用方创建,没有可自动埋点的
+  接缝。包装器需要重新暴露整个 `Channel` 接口,而且仍会漏掉对裸连接的使用。
+* `amqp.Publishing` 携带 `Headers` 表且每个 delivery 都会回传,因此在调用点埋点——
+  即你已持有 `Publishing` / `Delivery` 的地方——才能传播链路上下文,把生产者与消费者
+  跨服务串联起来。
+
 ## 高级功能
 
 * **多 RabbitMQ 实例**：`spring.rabbitmq.instances` 下的每一项都会成为一个独立配置的

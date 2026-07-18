@@ -25,7 +25,6 @@ use (
 	./contrib/registry/nacos
 	./contrib/registry/polaris
 	./contrib/registry/zookeeper
-	./contrib/trpc-go/trpc
 	./examples/bookman
 	./examples/chatAI
 	./examples/miniapi
@@ -72,6 +71,8 @@ use (
 	./starter/starter-rabbitmq
 	./starter/starter-redigo
 	./starter/starter-thrift
+	./starter/starter-trpc
+	./starter/starter-trpc/example
 	./starter/starter-websocket
 	./starter/starter-websocket-coder
 	./stdlib

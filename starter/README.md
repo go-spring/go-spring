@@ -7,6 +7,9 @@ wire third-party services and frameworks into the Go-Spring IoC container and
 server lifecycle. Each starter is its own Go module. Below is a domain-based
 overview to help you find the right one.
 
+For the shared design constraints every starter follows (archetypes, ports,
+driver mode, multi-instance, fail-fast, ...), see [DESIGN.md](DESIGN.md).
+
 ## Web / HTTP Frameworks
 
 Serve an application-provided web engine through the Go-Spring server lifecycle.
@@ -30,6 +33,7 @@ and graceful shutdown.
 | `starter-grpc` | [google.golang.org/grpc](https://pkg.go.dev/google.golang.org/grpc) | Lightweight gRPC server wrapper |
 | `starter-kitex` | [cloudwego/kitex](https://github.com/cloudwego/kitex) | Server wrapper with optional etcd registration |
 | `starter-thrift` | [Apache Thrift](https://thrift.apache.org/) | `TSimpleServer` wrapper for a `TProcessor` bean |
+| `starter-trpc` | [trpc-group/trpc-go](https://github.com/trpc-group/trpc-go) | Server wrapper configured via properties (no `trpc_go.yaml`), direct-connect |
 | `starter-dubbo` | [dubbo-go/v3](https://pkg.go.dev/dubbo.apache.org/dubbo-go/v3) | Full server + client with registry-based discovery |
 | `starter-go-zero/zrpc` | [zeromicro/go-zero](https://github.com/zeromicro/go-zero) | zrpc gRPC server via a `ServiceRegister` bean, with optional etcd registration |
 | `starter-goframe/grpc` | [gogf/gf](https://github.com/gogf/gf) | goframe gRPC server (`grpcx.GrpcServer`) |

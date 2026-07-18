@@ -19,9 +19,12 @@ package StarterPulsar
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"sync"
 
 	"github.com/apache/pulsar-client-go/pulsar"
 	plog "github.com/apache/pulsar-client-go/pulsar/log"
+	"github.com/prometheus/client_golang/prometheus"
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
@@ -65,24 +68,53 @@ func newClient(c Config) (pulsar.Client, error) {
 		opts.Authentication = pulsar.NewAuthenticationToken(c.Token)
 	}
 
+	// Expose the client's native Prometheus metrics via a dedicated registry and
+	// /metrics endpoint when enabled. The server is remembered so destroyClient
+	// can shut it down; pulsar defaults MetricsRegisterer to the process-wide
+	// DefaultRegisterer, which we deliberately avoid to keep instances isolated.
+	var srv *http.Server
+	if c.Metrics.Enabled {
+		var reg prometheus.Registerer
+		reg, srv = newMetricsServer(c.Metrics)
+		opts.MetricsRegisterer = reg
+	}
+
 	cl, err := pulsar.NewClient(opts)
 	if err != nil {
+		if srv != nil {
+			_ = srv.Shutdown(context.Background())
+		}
 		return nil, errutil.Explain(err, "failed to create pulsar client: %s", c.URL)
 	}
 
 	if c.FailFast {
 		if _, err = cl.TopicPartitions(c.HealthCheckTopic); err != nil {
 			cl.Close()
+			if srv != nil {
+				_ = srv.Shutdown(context.Background())
+			}
 			return nil, errutil.Explain(err, "pulsar broker probe failed on %s (topic=%s)", c.URL, c.HealthCheckTopic)
 		}
+	}
+	if srv != nil {
+		metricsServers.Store(cl, srv)
 	}
 	return cl, nil
 }
 
+// metricsServers tracks the /metrics HTTP server started for each client so
+// destroyClient can shut it down. gs.Group's destroy callback only receives the
+// bean (the pulsar.Client), so the server is keyed by the client here rather
+// than being carried on the bean itself, which would change the injected type.
+var metricsServers sync.Map // pulsar.Client -> *http.Server
+
 // destroyClient closes the Pulsar client, which releases all producers and
-// consumers held by it.
+// consumers held by it, then shuts down its /metrics server if one was started.
 func destroyClient(cl pulsar.Client) error {
 	cl.Close()
+	if v, ok := metricsServers.LoadAndDelete(cl); ok {
+		_ = v.(*http.Server).Shutdown(context.Background())
+	}
 	return nil
 }
 

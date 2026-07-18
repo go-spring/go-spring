@@ -66,6 +66,24 @@ type Config struct {
 
 	// TLS configures transport encryption for the connection.
 	TLS TLSConfig `value:"${tls}"`
+
+	// ServiceName resolves the connection address through a registered discovery
+	// backend instead of relying solely on the URI hosts. When set, a LiveDialer
+	// is injected as the client's ContextDialer, so every new connection reaches
+	// a currently-live instance and address changes take effect without
+	// rebuilding the client. When empty, the URI hosts are dialed directly.
+	//
+	// Note: this bypasses MongoDB's own topology discovery (replica set / mongos)
+	// — the driver dials whatever the naming service hands out. Use it when the
+	// intent is "reach the service via the company naming service"; keep it empty
+	// to let the driver manage replica-set/mongos topology from the URI.
+	ServiceName string `value:"${service-name:=}"`
+
+	// Discovery selects which registered discovery backend resolves ServiceName.
+	// It is only consulted when ServiceName is set. A company registers its
+	// naming service once via discovery.Register; the default backend name is
+	// "default".
+	Discovery string `value:"${discovery:=default}"`
 }
 
 // TLSConfig configures TLS for the MongoDB client. When Enabled is false all

@@ -50,7 +50,8 @@ func (AnotherRedisDriver) CreateClient(c StarterRedigo.Config) (*redis.Pool, err
 }
 
 type Service struct {
-	Redis *redis.Pool `autowire:"cache"`
+	Redis          *redis.Pool `autowire:"cache"`
+	DiscoveryRedis *redis.Pool `autowire:"discovery"`
 }
 
 func main() {
@@ -182,7 +183,23 @@ func runTest(s *Service) {
 
 	fmt.Println("Response from server:", v, "counter:", n, "ttl:", ttl)
 
-	// Feature 4: health check + pool monitoring. A borrowed connection answers
+	// Feature 4: the discovery-backed client. Its address came from the
+	// registered discovery backend (service-name=redis-cluster), not from
+	// conf's dummy addr, so a successful round-trip proves discovery is wired.
+	dc := s.DiscoveryRedis.Get()
+	defer func() { _ = dc.Close() }()
+	if _, err := redis.String(dc.Do("SET", "disc-key", "disc-value")); err != nil {
+		log.Errorf(ctx, log.TagAppDef, "discovery SET failed: %v", err)
+		os.Exit(1)
+	}
+	dv, err := redis.String(dc.Do("GET", "disc-key"))
+	if err != nil || dv != "disc-value" {
+		log.Errorf(ctx, log.TagAppDef, "discovery GET failed: v=%q err=%v", dv, err)
+		os.Exit(1)
+	}
+	fmt.Println("Response from discovered server:", dv)
+
+	// Feature 5: health check + pool monitoring. A borrowed connection answers
 	// PING for readiness, and pool.Stats() exposes runtime pool counters — both
 	// read straight off the autowired *redis.Pool with no starter wrapper.
 	if _, err := c.Do("PING"); err != nil {

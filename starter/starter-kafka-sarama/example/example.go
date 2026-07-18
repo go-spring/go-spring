@@ -29,7 +29,7 @@ import (
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 
-	_ "go-spring.org/starter-kafka-sarama"
+	starter "go-spring.org/starter-kafka-sarama"
 )
 
 const topic = "hello"
@@ -54,21 +54,28 @@ func main() {
 }
 
 // publish sends a single record to the topic and waits for the broker ack,
-// using a SyncProducer derived from the shared client.
-func (s *Service) publish(value string) error {
+// using a SyncProducer derived from the shared client. StartProducerSpan wraps
+// the send in an OTel producer span and injects trace context into the record
+// headers; it is a no-op unless starter-otel is imported.
+func (s *Service) publish(ctx context.Context, value string) error {
 	producer, err := sarama.NewSyncProducerFromClient(s.Client)
 	if err != nil {
 		return err
 	}
 	defer producer.Close()
 	msg := &sarama.ProducerMessage{Topic: topic, Value: sarama.StringEncoder(value)}
+
+	_, span := starter.StartProducerSpan(ctx, msg)
 	_, _, err = producer.SendMessage(msg)
+	starter.EndSpan(span, err)
 	return err
 }
 
 // consume reads the first record from partition 0 starting at the oldest
-// offset, using a Consumer derived from the shared client.
-func (s *Service) consume(timeout time.Duration) (string, error) {
+// offset, using a Consumer derived from the shared client. StartConsumerSpan
+// continues the trace carried in the record headers; it is a no-op unless
+// starter-otel is imported.
+func (s *Service) consume(ctx context.Context, timeout time.Duration) (string, error) {
 	consumer, err := sarama.NewConsumerFromClient(s.Client)
 	if err != nil {
 		return "", err
@@ -83,6 +90,8 @@ func (s *Service) consume(timeout time.Duration) (string, error) {
 
 	select {
 	case msg := <-pc.Messages():
+		_, span := starter.StartConsumerSpan(ctx, msg)
+		starter.EndSpan(span, nil)
 		return string(msg.Value), nil
 	case err := <-pc.Errors():
 		return "", err
@@ -94,13 +103,13 @@ func (s *Service) consume(timeout time.Duration) (string, error) {
 func runTest(s *Service) {
 	ctx := context.Background()
 
-	if err := s.publish("value"); err != nil {
+	if err := s.publish(ctx, "value"); err != nil {
 		log.Errorf(ctx, log.TagAppDef, "PUBLISH failed: %v", err)
 		os.Exit(1)
 	}
 
 	// Consuming can lag behind producing, so poll with a bounded timeout.
-	body, err := s.consume(10 * time.Second)
+	body, err := s.consume(ctx, 10*time.Second)
 	if err != nil || body != "value" {
 		log.Errorf(ctx, log.TagAppDef, "CONSUME failed: body=%q err=%v", body, err)
 		os.Exit(1)

@@ -17,8 +17,6 @@
 package StarterOAuth2Client
 
 import (
-	"context"
-	"net/http"
 	"sync/atomic"
 	"time"
 
@@ -92,12 +90,7 @@ func newTokenSource(c Config) (*TokenSource, error) {
 		EndpointParams: c.endpointParams(),
 	}
 
-	ctx := context.Background()
-	if c.Timeout > 0 {
-		// oauth2 uses the client stored under oauth2.HTTPClient for the token
-		// fetch, so honor Timeout there too.
-		ctx = context.WithValue(ctx, oauth2.HTTPClient, &http.Client{Timeout: c.Timeout})
-	}
+	ctx := otelContext(c.Timeout)
 
 	return &TokenSource{src: cfg.TokenSource(ctx)}, nil
 }

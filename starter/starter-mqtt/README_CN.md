@@ -62,6 +62,20 @@ _ = token.Error()
 
 连接层事件（连接、连接丢失、重连中）会被桥接进 go-spring 日志。
 
+## 可观测性
+
+分布式链路追踪**不适用**于本 starter,这是刻意取舍而非缺失:
+
+* `paho.mqtt.golang` 没有官方 OTel instrumentation。
+* 更根本的原因是:该客户端所说的 MQTT 3.1.1 协议没有逐消息的元数据通道。
+  `Client.Publish(topic, qos, retained, payload)` 没有任何位置可挂载 W3C
+  `traceparent`,broker 也只投递原始 payload。能携带链路上下文的 User Properties
+  仅存在于 MQTT 5,而此 paho v3 客户端并不支持。把链路上下文塞进业务 payload 或 topic
+  会破坏消息契约,故不采用。
+
+实际影响:生产者与消费者的 span 无法跨 broker 串联。连接层事件(连接、连接丢失、
+重连中)仍会桥接进 go-spring 日志以供运维观测。
+
 ## 高级功能
 
 * **多 MQTT 客户端**：`spring.mqtt.instances` 下的每一项都会成为一个独立配置的

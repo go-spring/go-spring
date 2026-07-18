@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package trpc.helloworld.greet;
 
-option go_package = "go-spring.org/trpc-go/trpc/idl;greet";
+option go_package = "go-spring.org/starter-trpc/example/idl;greet";
 
 message GreetRequest {
   string name = 1;

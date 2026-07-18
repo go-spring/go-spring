@@ -29,7 +29,7 @@ import (
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 
-	_ "go-spring.org/starter-pulsar"
+	starter "go-spring.org/starter-pulsar"
 )
 
 const (
@@ -57,17 +57,26 @@ func main() {
 }
 
 // publish creates a producer and sends a single message to the topic.
+// StartProducerSpan wraps the send in an OTel producer span and injects trace
+// context into the message properties; it is a no-op unless starter-otel is
+// imported.
 func (s *Service) publish(ctx context.Context, value string) error {
 	producer, err := s.Client.CreateProducer(pulsar.ProducerOptions{Topic: topic})
 	if err != nil {
 		return err
 	}
 	defer producer.Close()
-	_, err = producer.Send(ctx, &pulsar.ProducerMessage{Payload: []byte(value)})
+	msg := &pulsar.ProducerMessage{Payload: []byte(value)}
+
+	ctx, span := starter.StartProducerSpan(ctx, msg)
+	_, err = producer.Send(ctx, msg)
+	starter.EndSpan(span, err)
 	return err
 }
 
-// consume subscribes to the topic and reads a single message.
+// consume subscribes to the topic and reads a single message. StartConsumerSpan
+// continues the trace carried in the message properties; it is a no-op unless
+// starter-otel is imported.
 func (s *Service) consume(ctx context.Context) (string, error) {
 	consumer, err := s.Client.Subscribe(pulsar.ConsumerOptions{
 		Topic:            topic,
@@ -82,7 +91,9 @@ func (s *Service) consume(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	_, span := starter.StartConsumerSpan(ctx, msg)
 	consumer.Ack(msg)
+	starter.EndSpan(span, nil)
 	return string(msg.Payload()), nil
 }
 

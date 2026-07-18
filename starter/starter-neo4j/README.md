@@ -71,3 +71,32 @@ The [example.go](example/example.go) file demonstrates the following core Neo4j 
   them by name in your project.
 * **Support Neo4j extensions**: You can extend Neo4j functionality by implementing the `Driver` interface — see the
   example implementation `AnotherNeo4jDriver`.
+* **Service discovery**: set `service-name` on an instance to resolve its address
+  through a registered discovery backend instead of the URI host. The endpoint is
+  resolved once at startup and spliced into the URI host. Select the backend with
+  `discovery` (default `default`); a company registers its naming service once via
+  `discovery.Register`.
+
+  ```properties
+  spring.neo4j.disc.uri=bolt://0.0.0.0:0
+  spring.neo4j.disc.username=neo4j
+  spring.neo4j.disc.password=password
+  spring.neo4j.disc.service-name=neo4j-cluster
+  ```
+
+  Limitation: unlike clients that accept a custom dialer, the neo4j driver builds
+  its connection pool from the URI and exposes no dialer injection point, so this
+  is a **one-shot resolution at startup** — address changes afterwards are not
+  picked up until the client is rebuilt.
+
+## Observability
+
+The neo4j-go-driver speaks the binary Bolt protocol and ships **no official
+OpenTelemetry instrumentation**, nor a command-monitor hook comparable to the
+SQL/MongoDB drivers. There is therefore no clean seam for the starter to emit
+client spans, so — unlike `starter-gorm-*`, `starter-go-redis`, and
+`starter-mongodb` — tracing is **not wired in the starter**. Applications that
+need spans should wrap their `ExecuteQuery` / session calls with an
+OpenTelemetry span directly. This is a documented gap driven by upstream driver
+support, not an oversight.
+

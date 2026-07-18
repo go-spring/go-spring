@@ -110,6 +110,22 @@ endpoint and a protected resource server, then demonstrates and asserts:
   spring.oauth2.client.downstream.endpoint-params.audience=https://api.example.com
   ```
 
+## Observability
+
+Both the token-endpoint exchange and the downstream business requests are
+instrumented for distributed tracing. The starter wraps the underlying
+`*http.Client` transport with
+[`otelhttp`](https://pkg.go.dev/go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp),
+so every outbound request emits a client span through the OpenTelemetry globals
+that [`starter-otel`](../starter-otel) installs.
+
+This is a zero-config opt-in that mirrors go-redis's `redisotel` hooks: import
+`starter-otel` and spans flow automatically; without it the OTel globals are
+no-ops, so no spans are produced and no request bytes change. Instrumentation
+happens at a single point — the transport shared by the token fetch and the
+returned client — so each token fetch and each downstream call yields exactly
+one span (no double counting).
+
 ### Authorization Code Grant
 
 For interactive user-login / redirect flows, use the separate configuration

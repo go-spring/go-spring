@@ -35,7 +35,8 @@ import (
 )
 
 type Service struct {
-	Mongo *mongo.Client `autowire:"a"`
+	Mongo     *mongo.Client `autowire:"a"`
+	DiscMongo *mongo.Client `autowire:"disc"`
 }
 
 func (s *Service) coll() *mongo.Collection {
@@ -145,6 +146,30 @@ func runTest(s *Service) {
 	}
 
 	fmt.Println("Response from server:", res["value"], "->", res2["value"])
+
+	// Feature 4: the discovery-backed client. Its address came from the
+	// registered discovery backend (service-name=mongo-cluster), not from conf's
+	// dummy uri, so a successful round-trip proves discovery is wired.
+	discColl := s.DiscMongo.Database("test").Collection("disc")
+	if err := discColl.Drop(ctx); err != nil {
+		log.Errorf(ctx, log.TagAppDef, "discovery DROP failed: %v", err)
+		os.Exit(1)
+	}
+	if _, err := discColl.InsertOne(ctx, bson.M{"key": "key", "value": "disc-value"}); err != nil {
+		log.Errorf(ctx, log.TagAppDef, "discovery INSERT failed: %v", err)
+		os.Exit(1)
+	}
+	var discRes bson.M
+	if err := discColl.FindOne(ctx, bson.M{"key": "key"}).Decode(&discRes); err != nil {
+		log.Errorf(ctx, log.TagAppDef, "discovery FIND failed: %v", err)
+		os.Exit(1)
+	}
+	if fmt.Sprint(discRes["value"]) != "disc-value" {
+		log.Errorf(ctx, log.TagAppDef, "discovery FIND value mismatch: got %v", discRes["value"])
+		os.Exit(1)
+	}
+	fmt.Println("Response from discovered server:", discRes["value"])
+
 	syscall.Kill(os.Getpid(), syscall.SIGTERM)
 }
 
