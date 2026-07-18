@@ -20,6 +20,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"go-spring.org/stdlib/resilience"
 )
 
 // Config holds the configuration parameters for a MySQL connection.
@@ -68,10 +70,63 @@ type Config struct {
 	// Only consulted when ServiceName is set; defaults to "default".
 	Discovery string `value:"${discovery:=default}"`
 
+	// Resilience optionally protects MySQL operations with rate limiting and
+	// circuit breaking. It is disabled by default; when enabled a set of gorm
+	// callbacks routes every DB op through the selected resilience driver.
+	// For a DB, max-retries is best left at 0: retrying a write re-sends it, and
+	// gorm/database-sql already retry at their layer.
+	Resilience ResilienceConfig `value:"${resilience:=}"`
+
 	// tlsParam carries the resolved MySQL DSN "tls" value (built-in mode name or
 	// a registered custom config name). It is set internally, not bound from
 	// configuration.
 	tlsParam string
+}
+
+// ResilienceConfig binds the backend-neutral resilience knobs exposed by
+// stdlib/resilience. Driver selects which registered backend enforces them:
+// "default" (bundled, zero-dependency) or "sentinel" (recommended, enabled by
+// blank-importing starter-resilience). Switching backends is a one-line config
+// change — no code touches the callback seam.
+type ResilienceConfig struct {
+	// Enabled attaches the resilience callbacks. When false the client is unchanged.
+	Enabled bool `value:"${enabled:=false}"`
+
+	// Driver names the registered resilience backend to use.
+	Driver string `value:"${driver:=default}"`
+
+	// RateLimit caps sustained throughput in operations per second (0 disables).
+	RateLimit float64 `value:"${rate-limit:=0}"`
+
+	// Burst is the momentary allowance above RateLimit (0 = driver default).
+	Burst int `value:"${burst:=0}"`
+
+	// ErrorThreshold is the consecutive-failure count that trips the breaker
+	// open (0 disables circuit breaking). gorm.ErrRecordNotFound never counts.
+	ErrorThreshold int `value:"${error-threshold:=0}"`
+
+	// OpenDuration is how long the breaker stays open before a trial operation.
+	OpenDuration time.Duration `value:"${open-duration:=0}"`
+
+	// MaxRetries is the number of extra attempts after a failure. Keep 0 for a
+	// DB: retrying a write re-sends it, and gorm/database-sql already retry at
+	// their layer.
+	MaxRetries int `value:"${max-retries:=0}"`
+
+	// AttemptTimeout bounds each individual attempt (0 = no per-attempt bound).
+	AttemptTimeout time.Duration `value:"${attempt-timeout:=0}"`
+}
+
+// policy maps the bound config onto the backend-neutral resilience.Policy.
+func (r ResilienceConfig) policy() resilience.Policy {
+	return resilience.Policy{
+		RateLimit:      r.RateLimit,
+		Burst:          r.Burst,
+		ErrorThreshold: r.ErrorThreshold,
+		OpenDuration:   r.OpenDuration,
+		MaxRetries:     r.MaxRetries,
+		Timeout:        r.AttemptTimeout,
+	}
 }
 
 // DSN constructs the MySQL Data Source Name based on the configuration.

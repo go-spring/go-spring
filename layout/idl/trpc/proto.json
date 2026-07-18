@@ -1,0 +1,15 @@
+{
+  "protocol": "trpc",
+  "framework": "trpc-go",
+  "service": "GS_PROJECT_NAMEService",
+  "idlFiles": ["service.proto"],
+  "generator": {
+    "tools": ["trpc-cmdline"],
+    "trpc-cmdline": "latest"
+  },
+  "genScript": "gen.sh",
+  "output": "pb/",
+  "server": "trpcsvr",
+  "listen": ":8100",
+  "methods": ["Ping", "CreateOrder", "PayOrder", "ShipOrder", "RegisterUser", "UpgradeUser"]
+}

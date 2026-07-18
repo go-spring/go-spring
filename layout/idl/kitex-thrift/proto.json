@@ -1,0 +1,16 @@
+{
+  "protocol": "kitex-thrift",
+  "framework": "kitex",
+  "service": "GS_PROJECT_NAMEService",
+  "idlFiles": ["service.thrift"],
+  "generator": {
+    "tools": ["kitex", "thriftgo"],
+    "kitex": "v0.16.3",
+    "thriftgo": "v0.4.5"
+  },
+  "genScript": "gen.sh",
+  "output": "kitex_gen/",
+  "server": "kitexthriftsvr",
+  "listen": ":8888",
+  "methods": ["Ping", "CreateOrder", "PayOrder", "ShipOrder", "RegisterUser", "UpgradeUser"]
+}

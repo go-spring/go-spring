@@ -70,6 +70,7 @@ use (
 	./starter/starter-pulsar
 	./starter/starter-rabbitmq
 	./starter/starter-redigo
+	./starter/starter-resilience
 	./starter/starter-thrift
 	./starter/starter-trpc
 	./starter/starter-trpc/example

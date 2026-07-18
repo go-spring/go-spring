@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package kratosws;
+
+option go_package = "GS_PROJECT_MODULE/idl/kratos-ws/pb;pb";
+
+// Envelope is the wire format for every message exchanged on the kratos-ws
+// endpoint. type distinguishes commands; payload is opaque JSON bytes and is
+// decoded by the receiver based on type.
+message Envelope {
+  string type = 1;
+  bytes payload = 2;
+}
+
+// EchoPayload is the payload for Envelope{type:"echo"}: the connection echoes
+// message back with the same seq so clients can correlate.
+message EchoPayload {
+  string message = 1;
+  int64 seq = 2;
+}

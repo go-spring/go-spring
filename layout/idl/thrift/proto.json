@@ -1,0 +1,15 @@
+{
+  "protocol": "thrift",
+  "framework": "apache-thrift",
+  "service": "GS_PROJECT_NAMEService",
+  "idlFiles": ["service.thrift"],
+  "generator": {
+    "tools": ["thriftgo"],
+    "thriftgo": "v0.4.5"
+  },
+  "genScript": "gen.sh",
+  "output": "gen/",
+  "server": "thriftsvr",
+  "listen": ":9092",
+  "methods": ["Ping", "CreateOrder", "PayOrder", "ShipOrder", "RegisterUser", "UpgradeUser"]
+}

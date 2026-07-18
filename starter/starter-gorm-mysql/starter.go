@@ -137,6 +137,13 @@ func newClient(c Config) (*gorm.DB, error) {
 		}
 		return nil, err
 	}
+	if err := applyResilience(c, db); err != nil {
+		cleanup(conn, tlsName)
+		if sqlDB, derr := db.DB(); derr == nil {
+			_ = sqlDB.Close()
+		}
+		return nil, err
+	}
 	if conn != nil {
 		liveDialers.Store(db, conn)
 	}
@@ -167,6 +174,7 @@ func deregisterTLS(name string) {
 // destroyClient stops any discovery watch behind the client, deregisters its
 // dial network and TLS config names, and closes the underlying connection pool.
 func destroyClient(db *gorm.DB) error {
+	closeResilience(db)
 	if v, ok := liveDialers.LoadAndDelete(db); ok {
 		conn := v.(*discoveryConn)
 		_ = conn.ld.Stop()

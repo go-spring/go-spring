@@ -25,6 +25,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -85,8 +86,21 @@ func startResourceServer() {
 		}
 		_, _ = w.Write([]byte("hello from protected resource"))
 	})
+	// /api/flaky fails with 503 on its first two calls, then succeeds. It proves
+	// the resilience transport retries transient 5xx responses transparently.
+	mux.HandleFunc("/api/flaky", func(w http.ResponseWriter, r *http.Request) {
+		if atomic.AddInt32(&flakyHits, 1) <= 2 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		_, _ = w.Write([]byte("recovered after retries"))
+	})
 	_ = http.ListenAndServe("127.0.0.1:9402", mux)
 }
+
+// flakyHits counts how many times /api/flaky has been hit, so the resilient
+// client's retries are observable.
+var flakyHits int32
 
 func main() {
 	go startAuthServer()
@@ -157,10 +171,30 @@ func runTest(s *Service) {
 		os.Exit(1)
 	}
 
+	// Feature 4: resilience. The same injected client calls a flaky endpoint
+	// that returns 503 twice before succeeding; the resilience transport retries
+	// transparently, so the caller sees a single successful response.
+	flakyResp, err := s.Client.Get("http://127.0.0.1:9402/api/flaky")
+	if err != nil {
+		log.Errorf(ctx, log.TagAppDef, "flaky request failed: %v", err)
+		os.Exit(1)
+	}
+	flakyBody, _ := io.ReadAll(flakyResp.Body)
+	_ = flakyResp.Body.Close()
+	if flakyResp.StatusCode != http.StatusOK || string(flakyBody) != "recovered after retries" {
+		log.Errorf(ctx, log.TagAppDef, "resilience retry did not recover: status=%d body=%q", flakyResp.StatusCode, string(flakyBody))
+		os.Exit(1)
+	}
+	if got := atomic.LoadInt32(&flakyHits); got != 3 {
+		log.Errorf(ctx, log.TagAppDef, "expected 3 attempts (2 failures + 1 success), got %d", got)
+		os.Exit(1)
+	}
+
 	fmt.Println("Response from protected resource:", string(body))
 	fmt.Println("Token from TokenSource:", tok.AccessToken)
 	fmt.Println("Token expiry (observed):", s.TokenSrc.Expiry())
 	fmt.Println("Authorization Code URL:", authURL)
+	fmt.Printf("Resilience: recovered after %d attempts: %s\n", atomic.LoadInt32(&flakyHits), string(flakyBody))
 	syscall.Kill(os.Getpid(), syscall.SIGTERM)
 }
 

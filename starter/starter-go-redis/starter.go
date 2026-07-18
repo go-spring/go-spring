@@ -86,6 +86,10 @@ func newClient(c Config) (*redis.Client, error) {
 		_ = destroyClient(client)
 		return nil, err
 	}
+	if err := applyResilience(c, client); err != nil {
+		_ = destroyClient(client)
+		return nil, err
+	}
 	return client, nil
 }
 
@@ -114,6 +118,10 @@ func newClusterClient(c Config) (*redis.ClusterClient, error) {
 	}
 	if err := failFastPing(c, client); err != nil {
 		_ = client.Close()
+		return nil, err
+	}
+	if err := applyResilience(c, client); err != nil {
+		_ = destroyClusterClient(client)
 		return nil, err
 	}
 	return client, nil
@@ -178,6 +186,7 @@ func pingTimeout(c Config) time.Duration {
 // destroyClient closes a single/sentinel client and stops any discovery watch
 // behind it.
 func destroyClient(client *redis.Client) error {
+	closeResilience(client)
 	if v, ok := liveDialers.LoadAndDelete(client); ok {
 		_ = v.(*discovery.LiveDialer).Stop()
 	}
@@ -187,5 +196,6 @@ func destroyClient(client *redis.Client) error {
 // destroyClusterClient closes a cluster client. Cluster mode never uses a
 // LiveDialer, so there is no discovery watch to stop.
 func destroyClusterClient(client *redis.ClusterClient) error {
+	closeResilience(client)
 	return client.Close()
 }

@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package goframetcp;
+
+option go_package = "GS_PROJECT_MODULE/idl/goframe-tcp/pb;pb";
+
+// Frame is the length-prefixed payload exchanged on the raw TCP socket. The
+// wire framing (length header, delimiter) is decided by the server itself;
+// this proto only pins down the request/response body encoding so both sides
+// agree on the JSON/protobuf shape a frame carries.
+message Frame {
+  string type = 1;    // logical message type, used for dispatch on the server
+  bytes  body = 2;    // opaque payload, encoded by the client (e.g. JSON)
+  int64  seq  = 3;    // client-assigned sequence number, echoed by the server
+}

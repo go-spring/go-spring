@@ -1,0 +1,15 @@
+{
+  "protocol": "gozero-rest",
+  "framework": "go-zero",
+  "service": "GS_PROJECT_NAMEService",
+  "idlFiles": ["service.api"],
+  "generator": {
+    "tools": ["goctl"],
+    "goctl": "v1.10.1"
+  },
+  "genScript": "gen.sh",
+  "output": "handler/, types/",
+  "server": "gozerosvr",
+  "listen": ":8899",
+  "methods": ["Ping", "CreateOrder", "PayOrder", "ShipOrder", "RegisterUser", "UpgradeUser"]
+}

@@ -16,7 +16,11 @@
 
 package StarterNats
 
-import "time"
+import (
+	"time"
+
+	"go-spring.org/stdlib/resilience"
+)
 
 // Config defines NATS client connection configuration.
 type Config struct {
@@ -60,6 +64,61 @@ type Config struct {
 
 	// JetStream configures the JetStream context derived from this connection.
 	JetStream JetStreamConfig `value:"${jetstream}"`
+
+	// Resilience optionally protects outbound calls with rate limiting and
+	// circuit breaking. It is disabled by default; when enabled the opt-in
+	// PublishGuarded/RequestGuarded methods on Conn route the outbound call
+	// through the selected resilience driver. nats has no reject-capable
+	// middleware seam, so plain Publish/Request stay unchanged — callers pick
+	// per-call whether they want the guard.
+	Resilience ResilienceConfig `value:"${resilience:=}"`
+}
+
+// ResilienceConfig binds the backend-neutral resilience knobs exposed by
+// stdlib/resilience. Driver selects which registered backend enforces them:
+// "default" (bundled, zero-dependency) or "sentinel" (recommended, enabled by
+// blank-importing starter-resilience). Switching backends is a one-line config
+// change — no code touches the guard seam.
+type ResilienceConfig struct {
+	// Enabled attaches the resilience executor to the connection. When false
+	// the guarded methods degrade to plain Publish/Request.
+	Enabled bool `value:"${enabled:=false}"`
+
+	// Driver names the registered resilience backend to use.
+	Driver string `value:"${driver:=default}"`
+
+	// RateLimit caps sustained throughput in ops per second (0 disables).
+	RateLimit float64 `value:"${rate-limit:=0}"`
+
+	// Burst is the momentary allowance above RateLimit (0 = driver default).
+	Burst int `value:"${burst:=0}"`
+
+	// ErrorThreshold is the consecutive-failure count that trips the breaker
+	// open (0 disables circuit breaking).
+	ErrorThreshold int `value:"${error-threshold:=0}"`
+
+	// OpenDuration is how long the breaker stays open before a trial call.
+	OpenDuration time.Duration `value:"${open-duration:=0}"`
+
+	// MaxRetries is the number of extra attempts after a failure. Keep 0 for
+	// publishing — retrying a publish can duplicate a message; leave retry to
+	// the caller who knows whether the message is idempotent.
+	MaxRetries int `value:"${max-retries:=0}"`
+
+	// AttemptTimeout bounds each individual attempt (0 = no per-attempt bound).
+	AttemptTimeout time.Duration `value:"${attempt-timeout:=0}"`
+}
+
+// policy maps the bound config onto the backend-neutral resilience.Policy.
+func (r ResilienceConfig) policy() resilience.Policy {
+	return resilience.Policy{
+		RateLimit:      r.RateLimit,
+		Burst:          r.Burst,
+		ErrorThreshold: r.ErrorThreshold,
+		OpenDuration:   r.OpenDuration,
+		MaxRetries:     r.MaxRetries,
+		Timeout:        r.AttemptTimeout,
+	}
 }
 
 // TLSConfig configures transport security for the NATS connection. When Enabled

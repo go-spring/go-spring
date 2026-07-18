@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package goframews;
+
+option go_package = "GS_PROJECT_MODULE/idl/goframe-ws/pb;pb";
+
+// Frame is the WebSocket payload exchanged with a connected peer. Frames are
+// carried over websocket.TextMessage / websocket.BinaryMessage; the wire codec
+// (JSON vs protobuf) is chosen by the connection handler in goframewssvr.
+message Frame {
+  string type = 1;    // logical message type, used for dispatch on the server
+  bytes  body = 2;    // opaque payload, encoded by the client (e.g. JSON)
+  int64  seq  = 3;    // client-assigned sequence number, echoed by the server
+}

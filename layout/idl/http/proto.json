@@ -1,0 +1,16 @@
+{
+  "protocol": "http",
+  "framework": "stdlib-net-http",
+  "service": "GS_PROJECT_NAMEService",
+  "idlFiles": ["common.idl", "ping.idl", "order.idl", "user.idl"],
+  "metaFile": "meta.json",
+  "generator": {
+    "tools": ["gs-http-gen"],
+    "install": "go install go-spring.org/gs-http-gen@latest"
+  },
+  "genScript": "gen.sh",
+  "output": "proto/",
+  "server": "httpsvr",
+  "listen": ":8000",
+  "methods": ["Ping", "CreateOrder", "PayOrder", "ShipOrder", "RegisterUser", "UpgradeUser"]
+}

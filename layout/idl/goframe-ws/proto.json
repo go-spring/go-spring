@@ -1,0 +1,16 @@
+{
+  "protocol": "websocket",
+  "framework": "goframe",
+  "service": "GS_PROJECT_NAMEFrameHandler",
+  "idlFiles": ["payload.proto"],
+  "generator": {
+    "tools": ["protoc", "protoc-gen-go"],
+    "protoc": "v5.27.0",
+    "protoc-gen-go": "v1.34.2"
+  },
+  "genScript": "gen.sh",
+  "output": "pb/",
+  "server": "goframewssvr",
+  "listen": ":8011",
+  "methods": []
+}

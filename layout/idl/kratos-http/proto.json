@@ -1,0 +1,17 @@
+{
+  "protocol": "http",
+  "framework": "kratos",
+  "service": "GS_PROJECT_NAMEService",
+  "idlFiles": ["service.proto"],
+  "generator": {
+    "tools": ["protoc", "protoc-gen-go", "protoc-gen-go-http"],
+    "protoc": "v5.27.0",
+    "protoc-gen-go": "v1.34.2",
+    "protoc-gen-go-http": "v2.7.3"
+  },
+  "genScript": "gen.sh",
+  "output": "pb/",
+  "server": "kratoshttpsvr",
+  "listen": ":8005",
+  "methods": ["Ping", "CreateOrder", "PayOrder", "ShipOrder", "RegisterUser", "UpgradeUser"]
+}

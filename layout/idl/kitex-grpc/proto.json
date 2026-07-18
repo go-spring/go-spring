@@ -1,0 +1,15 @@
+{
+  "protocol": "kitex-grpc",
+  "framework": "kitex",
+  "service": "GS_PROJECT_NAMEService",
+  "idlFiles": ["service.proto"],
+  "generator": {
+    "tools": ["kitex", "protoc"],
+    "kitex": "v0.16.3"
+  },
+  "genScript": "gen.sh",
+  "output": "kitex_gen/",
+  "server": "kitexgrpcsvr",
+  "listen": ":9095",
+  "methods": ["Ping", "CreateOrder", "PayOrder", "ShipOrder", "RegisterUser", "UpgradeUser"]
+}

@@ -1,0 +1,17 @@
+{
+  "protocol": "grpc",
+  "framework": "kratos",
+  "service": "GS_PROJECT_NAMEService",
+  "idlFiles": ["service.proto"],
+  "generator": {
+    "tools": ["protoc", "protoc-gen-go", "protoc-gen-go-grpc"],
+    "protoc": "v5.27.0",
+    "protoc-gen-go": "v1.34.2",
+    "protoc-gen-go-grpc": "v1.5.1"
+  },
+  "genScript": "gen.sh",
+  "output": "pb/",
+  "server": "kratosgrpcsvr",
+  "listen": ":9094",
+  "methods": ["Ping", "CreateOrder", "PayOrder", "ShipOrder", "RegisterUser", "UpgradeUser"]
+}

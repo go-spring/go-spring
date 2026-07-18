@@ -25,15 +25,28 @@ import (
 	"go-spring.org/log"
 	"go-spring.org/spring/gs"
 	"go-spring.org/stdlib/errutil"
+	"go-spring.org/stdlib/resilience"
 )
 
 // Conn wraps a NATS connection together with an optional JetStream context.
 // The embedded *nats.Conn lets callers use Publish/Subscribe/Request directly on
 // the bean; JetStream is non-nil only when jetstream.enabled is set, since it is
 // derived from the same connection rather than opening a second one.
+//
+// When Config.Resilience.Enabled is true the opt-in PublishGuarded and
+// RequestGuarded methods route the call through a rate-limiter / circuit-
+// breaker executor; the plain Publish/Request remain untouched. nats exposes no
+// reject-capable middleware, so the guard lives at the call site — callers pick
+// per-invocation whether they want protection.
 type Conn struct {
 	*nats.Conn
 	JetStream jetstream.JetStream
+
+	// exec is nil unless Config.Resilience.Enabled; when set, the guarded
+	// methods route through it. resource is the stable per-instance key so the
+	// limiter/breaker state is scoped per connection rather than per subject.
+	exec     resilience.Executor
+	resource string
 }
 
 // Healthy reports whether the connection is currently established. It reflects
@@ -123,11 +136,20 @@ func newConn(c Config) (*Conn, error) {
 		}
 		conn.JetStream = js
 	}
+	if err := applyResilience(c, conn); err != nil {
+		nc.Close()
+		return nil, err
+	}
 	return conn, nil
 }
 
 // destroyConn drains the connection, letting in-flight subscriptions finish
 // before the underlying socket is closed. Drain closes the connection when done.
+// When a resilience executor is attached its Close releases any background
+// resources of a production driver.
 func destroyConn(conn *Conn) error {
+	if conn.exec != nil {
+		_ = conn.exec.Close()
+	}
 	return conn.Drain()
 }

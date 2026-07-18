@@ -1,0 +1,76 @@
+syntax = "proto3";
+
+package kratoshttp;
+
+option go_package = "GS_PROJECT_MODULE/idl/kratos-http/pb;pb";
+
+// Ping health check.
+message PingReq {
+  string name = 1;
+}
+
+message PingResp {
+  string message = 1;
+}
+
+// Order domain messages.
+message Order {
+  string id = 1;
+  string user_id = 2;
+  double amount = 3;
+  int32 status = 4;
+}
+
+message CreateOrderReq {
+  string id = 1;
+  string user_id = 2;
+  double amount = 3;
+}
+
+message OrderResp {
+  int32 code = 1;
+  string message = 2;
+  Order data = 3;
+}
+
+message PayOrderReq {
+  string id = 1;
+}
+
+message ShipOrderReq {
+  string id = 1;
+}
+
+// User domain messages.
+message User {
+  int64 id = 1;
+  string name = 2;
+  string email = 3;
+  int32 level = 4;
+}
+
+message RegisterUserReq {
+  string id = 1;
+  string name = 2;
+  string email = 3;
+}
+
+message UserResp {
+  int32 code = 1;
+  string message = 2;
+  User data = 3;
+}
+
+message UpgradeUserReq {
+  int64 id = 1;
+}
+
+// GS_PROJECT_NAMEService is the aggregate service exposed over kratos-http.
+service GS_PROJECT_NAMEService {
+  rpc Ping(PingReq) returns (PingResp);
+  rpc CreateOrder(CreateOrderReq) returns (OrderResp);
+  rpc PayOrder(PayOrderReq) returns (OrderResp);
+  rpc ShipOrder(ShipOrderReq) returns (OrderResp);
+  rpc RegisterUser(RegisterUserReq) returns (UserResp);
+  rpc UpgradeUser(UpgradeUserReq) returns (UserResp);
+}
